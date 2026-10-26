@@ -278,10 +278,11 @@ export const 离职交接理由 = "成员停用，离职交接";
 export async function 交接卡点(tx: Prisma.TransactionClient, 走的人: string, 接手人: string, 操作人: string, 进公海项目: readonly string[]): Promise<number> {
   if (!企业版()) return 0;
   return 看全部(async () => {
-    const 们 = await tx.entBlocker.findMany({ where: { assigneeId: 走的人, status: { in: ["待接受", "处理中"] } }, select: { id: true, projectId: true } });
+    const 们 = await tx.entBlocker.findMany({ where: { assigneeId: 走的人, status: { in: ["待接受", "处理中"] } }, select: { id: true, projectId: true, project: { select: { pooledAt: true } } } });
     const 进公海 = new Set(进公海项目);
     for (const b of 们) {
-      const 回看板 = 进公海.has(b.projectId);
+      // 「交接中」发起时就放进公海的项目，到接手人确认时已经在公海里了，也回看板
+      const 回看板 = 进公海.has(b.projectId) || b.project.pooledAt !== null;
       await tx.entBlocker.update({ where: { id: b.id }, data: 回看板 ? { status: "看板", assigneeId: null } : { status: "待接受", assigneeId: 接手人 } });
       await 记(tx, b.id, 操作人, "handover", { fromUserId: 走的人, toUserId: 回看板 ? null : 接手人, note: 离职交接理由 });
     }

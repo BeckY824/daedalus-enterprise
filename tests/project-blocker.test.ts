@@ -241,6 +241,16 @@ describe("企业版卡点", () => {
     expect((await 流转(乙id)).at(-1)).toMatchObject({ action: "handover", fromUserId: 组员.id, toUserId: null });
   });
 
+  it("离职交接「交接中」：发起时已放进公海的项目，确认时不在名单里也回看板", async () => {
+    const 项目乙 = (await prisma.project.create({ data: { name: "项目乙", customerId: 客户, ownerId: 销售.id, creatorId: 销售.id } })).id;
+    await prisma.projectMember.create({ data: { projectId: 项目乙, userId: 组员.id, inviteStatus: "JOINED" } });
+    const 乙 = await 发布卡点(销售, await 沟通(销售, 项目乙), 卡, 组员.id, now);
+    const 乙id = (乙 as { id: string }).id;
+    await prisma.project.update({ where: { id: 项目乙 }, data: { pooledAt: new Date() } });
+    await prisma.$transaction((tx) => 交接卡点(tx, 组员.id, 组长.id, 老板.id, []));
+    expect(await prisma.entBlocker.findUniqueOrThrow({ where: { id: 乙id } })).toMatchObject({ status: "看板", assigneeId: null });
+  });
+
   it("卡点默认：管理员能改，坏值报错；发布按新默认", async () => {
     expect(await 存卡点默认(老板, { 时限天数: { 中度卡点: 0 } })).toMatchObject({ ok: false });
     expect(await 存卡点默认(老板, { 阻碍主体们: [] })).toMatchObject({ ok: false });
