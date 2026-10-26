@@ -33,6 +33,8 @@ const 列表页 = [
 const 不算列表页 = [
   "src/components/DataList.tsx",
   "src/app/(app)/reports/ReportsView.tsx",
+  // 企业版「数据」页按项目统计（2026-10-26）：按负责人的两张统计小表，同复盘，列的是汇总数不是业务记录
+  "src/app/(app)/overview/ProjectStatsView.tsx",
   "src/app/(app)/channels/ReferralRadar.tsx",
   // 设置里的成员、登录机器、操作日志：都是一页就放得下的小表，没有筛选分页批量
   "src/app/(app)/settings/MembersTab.tsx",
