@@ -19,7 +19,8 @@ import { AI补清洗, 去掉AI清洗, 格式说明键, 同一家说明键, type 
 import { 预演, type 预演计数 } from "./apply";
 import { 清洗, 数一数, 名键, type 本地索引, type 清洗结果 } from "./clean";
 import { 成记录, 拆联系人, 拆出的客户ID列, type 读出的表 } from "./excel";
-import { 猜映射, 说明键, 值对照, 值说法, 进备注, type 建议器, type 成员, type 表概要 } from "./mapping";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
+import { 猜映射, 说明键, 值对照, 值叫法, 值说法, 进备注, type 建议器, type 成员, type 表概要 } from "./mapping";
 import { 实体顺序, 字段中文, 实体名, 格式类们, type 格式类, type 来源, type 实体, type 映射, type 原始记录, type 问题, type 待写, type 值对照名, type 列映射 } from "./types";
 
 /** 报告里最多列多少条问题（存进库的那份）；总数另记，界面上说「还有 N 条没列出」 */
@@ -50,6 +51,8 @@ export type 试跑报告 = {
     值: { 名: 值对照名; 叫法: string; 原值: string; 我们的值: string; 说明?: 说明 }[];
     负责人: { 写法: string; 成员Id: string; 成员名: string; 说明?: 说明 }[];
     默认负责人: { id: string; 名: string };
+    /** 企业版只用项目：商机行写成项目（报告上「商机」说成「项目」，阶段对照的是项目节点） */
+    项目?: boolean;
   };
   /** AI 清洗补认的（和人在报告里改的）：格式 = 规则认不出的格子认成了什么；同一家 = 名字很像的两家是不是同一家 */
   清洗?: {
@@ -151,6 +154,7 @@ export async function 试跑(p: 试跑参数): Promise<试跑结果> {
     建议器: p.建议器,
     已有: p.已有映射,
     留AI: p.留AI,
+    项目: await 企业版只用项目(),
   });
   提醒.push(...猜.提醒);
   const m = 猜.映射;
@@ -425,7 +429,7 @@ function 成报告(p: {
   const 值: 试跑报告["映射"]["值"] = [];
   for (const k of Object.keys(值对照) as 值对照名[]) {
     for (const [v, to] of Object.entries(m.值[k])) {
-      值.push({ 名: k, 叫法: 值对照[k].叫法, 原值: v, 我们的值: to ? 值说法(k, to) : "", 说明: 说[说明键.值(k, v)] });
+      值.push({ 名: k, 叫法: 值叫法(k, m.项目), 原值: v, 我们的值: to ? 值说法(k, to) : "", 说明: 说[说明键.值(k, v)] });
     }
   }
   const 名字 = new Map(p.候选.map((u) => [u.id, u.name]));
@@ -471,7 +475,7 @@ function 成报告(p: {
     问题,
     问题总数: 结果.问题.length,
     问题分类,
-    映射: { 列, 值, 负责人, 默认负责人: { id: m.默认负责人Id, 名: 名字.get(m.默认负责人Id) ?? "" } },
+    映射: { 列, 值, 负责人, 默认负责人: { id: m.默认负责人Id, 名: 名字.get(m.默认负责人Id) ?? "" }, 项目: !!m.项目 },
     清洗,
     样例,
     公海: p.公海,

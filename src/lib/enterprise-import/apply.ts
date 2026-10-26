@@ -26,6 +26,7 @@ import { 同号条件, 分机留存起 } from "../phone-dedupe";
 import { 看全部 } from "../team-scope";
 import { 客户附加列 } from "./clean";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
+import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
 
 type Tx = Prisma.TransactionClient;
 export type 标量 = string | number | boolean | null;
@@ -38,7 +39,7 @@ export const 比对字段: Record<实体, readonly string[]> = {
   lead: ["name", "contact", "phone", "email", "industry", "source", "status", "ownerId", "remark"],
   contact: ["name", "position", "phone", "email", "wechat", "isPrimary", "remark", "customerId"],
   opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "ownerId", "remark", "customerId"],
-  followup: ["type", "title", "content", "status", "occurredAt", "ownerId", "customerId", "opportunityId"],
+  followup: ["type", "title", "content", "status", "occurredAt", "ownerId", "customerId", "opportunityId", "projectId"],
 };
 const 负责人列: Record<实体, string> = { customer: "salesOwnerId", lead: "ownerId", contact: "", opportunity: "ownerId", followup: "ownerId" };
 /** 同号连上已有客户时只补这几格 */
@@ -76,6 +77,8 @@ export type 现场 = {
   兜底负责人: string;
   分机起: Date | null;
   现在: string;
+  /** 企业版只用项目：商机行建成项目、跟进挂项目（映射.项目） */
+  项目?: boolean;
 };
 
 const J = (v: unknown) => JSON.stringify(v);
@@ -146,15 +149,27 @@ export async function 读现值(tx: Tx, e: 实体, id: string): Promise<值表 |
         closed: { select: { closedAt: true } },
       },
     });
-    if (!o) return null;
+    if (!o) return 读项目(tx, id);
     const { closed, ...主 } = o;
     return 规整({ ...主, closedAt: o.status === "OPEN" ? null : (closed?.closedAt ?? null) });
   }
   const f = await tx.followUp.findUnique({
     where: { id },
-    select: { type: true, title: true, content: true, status: true, occurredAt: true, ownerId: true, customerId: true, opportunityId: true },
+    select: {
+      type: true,
+      title: true,
+      content: true,
+      status: true,
+      occurredAt: true,
+      ownerId: true,
+      customerId: true,
+      opportunityId: true,
+      projectNode: { select: { projectId: true } },
+    },
   });
-  return f ? 规整(f) : null;
+  if (!f) return null;
+  const { projectNode, ...主 } = f;
+  return 规整({ ...主, projectId: projectNode?.projectId ?? null });
 }
 
 function 规整(o: Record<string, unknown>): 值表 {
@@ -165,8 +180,8 @@ function 拣(v: 值表, 键: readonly string[]): 值表 {
   return Object.fromEntries(键.filter((k) => k in v).map((k) => [k, v[k]]));
 }
 
-/** 新建一条，返回 id。值已经过 落值（负责人认过、父记录换成我们的 id、日期是 ISO） */
-export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string): Promise<string> {
+/** 新建一条，返回 id。值已经过 落值（负责人认过、父记录换成我们的 id、日期是 ISO）。项目 = 商机行建成项目 */
+export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?: boolean): Promise<string> {
   if (e === "customer") {
     const c = await tx.customer.create({
       data: {
@@ -215,6 +230,7 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string): Promise
     });
     return c.id;
   }
+  if (e === "opportunity" && 项目) return 建项目(tx, v, 现在);
   if (e === "opportunity") {
     const status = 串(v.status) ?? "OPEN";
     const o = await tx.opportunity.create({
@@ -249,7 +265,14 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string): Promise
     },
     select: { id: true },
   });
+  if (v.projectId) await 挂项目(tx, f.id, String(v.projectId));
   return f.id;
+}
+
+/** 跟进挂到项目当前所在的节点上（同项目页「记一笔沟通」） */
+async function 挂项目(tx: Tx, followUpId: string, projectId: string): Promise<void> {
+  const p = await tx.project.findUnique({ where: { id: projectId }, select: { node: true } });
+  if (p) await tx.followUpProject.create({ data: { followUpId, projectId, node: p.node } });
 }
 
 /** 改已有记录的这几格。现值 = 改之前读到的（商机结单要看原来的状态） */
@@ -284,6 +307,7 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     await tx.contact.update({ where: { id }, data });
     return;
   }
+  if (e === "opportunity" && (await 是项目(tx, id))) return 改项目(tx, id, 改动, 现值, 现在);
   if (e === "opportunity") {
     const data: Prisma.OpportunityUncheckedUpdateInput = {};
     for (const k of ["name", "stage", "status", "ownerId", "customerId"] as const) if (有(k)) data[k] = String(改动[k]);
@@ -309,6 +333,10 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
   if (有("occurredAt")) data.occurredAt = 日(改动.occurredAt) ?? new Date(现在);
   if (有("opportunityId")) data.opportunityId = 串(改动.opportunityId);
   await tx.followUp.update({ where: { id }, data });
+  if (有("projectId") && 串(改动.projectId) !== 串(现值.projectId ?? null)) {
+    await tx.followUpProject.deleteMany({ where: { followUpId: id } });
+    if (改动.projectId) await 挂项目(tx, id, String(改动.projectId));
+  }
 }
 
 /* ───────────────────────── 一条 ───────────────────────── */
@@ -322,7 +350,7 @@ async function 认父(tx: Tx, 源: 来源, e: "customer" | "opportunity", 父: {
   const 在 =
     e === "customer"
       ? await tx.customer.findUnique({ where: { id }, select: { id: true } })
-      : await tx.opportunity.findUnique({ where: { id }, select: { customerId: true } });
+      : ((await tx.opportunity.findUnique({ where: { id }, select: { customerId: true } })) ?? (await tx.project.findUnique({ where: { id }, select: { customerId: true } })));
   return 在 ? id : null;
 }
 
@@ -345,11 +373,14 @@ export async function 落值(tx: Tx, 现: 现场, w: 待写, 上次: 值表 | nu
   if (w.实体 === "followup") {
     // 商机找不到不算错：清洗时已经提醒过，跟进照挂在客户下面
     let oid = w.父商机 ? await 认父(tx, 现.源, "opportunity", w.父商机) : null;
+    // 父商机建成了项目：跟进挂项目（商机那格留空）；项目和跟进不是同一位客户就不挂
+    const 项 = oid ? await tx.project.findUnique({ where: { id: oid }, select: { customerId: true } }) : null;
     if (oid) {
-      const o = await tx.opportunity.findUnique({ where: { id: oid }, select: { customerId: true } });
+      const o = 项 ?? (await tx.opportunity.findUnique({ where: { id: oid }, select: { customerId: true } }));
       if (o?.customerId !== v.customerId) oid = null;
     }
-    v.opportunityId = oid;
+    v.opportunityId = 项 ? null : oid;
+    v.projectId = 项 ? oid : null;
     if (空(v.occurredAt)) v.occurredAt = 上次?.occurredAt ?? 现值?.occurredAt ?? 现.现在;
   }
   if (w.实体 === "opportunity") {
@@ -390,7 +421,7 @@ async function 再认同号(tx: Tx, 现: 现场, phone: string): Promise<string 
 
 async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
   const v = await 落值(tx, 现, w, null, null);
-  const id = await 建(tx, w.实体, v, 现.现在);
+  const id = await 建(tx, w.实体, v, 现.现在, 现.项目);
   await tx.entExternalRef.create({
     data: { source: 现.源, entity: w.实体, externalId: w.外部ID, targetId: id, fingerprint: w.指纹, written: J(v), raw: J(w.原始), batchId: 现.批次Id },
   });
@@ -504,6 +535,7 @@ export async function 开现场(批次Id: string, 源: 来源, m: 映射, 用户
     兜底负责人: 可任.has(用户.id) ? 用户.id : (成员[0]?.id ?? 用户.id),
     分机起: await 分机留存起(),
     现在: new Date().toISOString(),
+    项目: !!m.项目,
   };
 }
 
@@ -673,7 +705,7 @@ async function 收尾(批次Id: string, 用户: Actor): Promise<void> {
     summary: `从${来源名[批.source as 来源] ?? 批.source}${叫法}：新建 ${批.created} 条，更新 ${批.updated} 条，跳过 ${批.skipped} 条，${批.conflicts} 条冲突待定，${批.failed} 条没写进去`,
     detail: { batchId: 批次Id, source: 批.source, kind: 批.kind, created: 批.created, updated: 批.updated, skipped: 批.skipped, conflicts: 批.conflicts, failed: 批.failed },
   });
-  for (const p of ["/customers", "/leads", "/opportunities", "/dashboard"]) revalidatePath(p);
+  for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
 }
 
 async function 结果(批次Id: string): Promise<写入结果> {

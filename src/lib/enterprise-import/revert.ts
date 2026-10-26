@@ -9,6 +9,7 @@
  *       名下挂着这一批以外的记录（手记的跟进、任务、合同……）、之后的同步或冲突处理又改过它（先撤那一批）
  *   - 这一批记下的待定冲突改成「已撤回」，跟进删了的客户重算「最近跟进」
  *   - 冲突处理那一批（kind = resolve）：照样退格子、退对照行（本地已删时建回来的那条删掉），定下的冲突回到待定
+ *   - 企业版只用项目时商机行建成的是项目：opportunity 这一类先找商机、找不到按项目退（见 project-target.ts）
  * 恢复：回收区里的照原 id 建回去、对照行建回去；改过的格子再改回导入后的样子。撤回之后又导进来、又改过的跳过。
  *
  * 和写一批一样分段、可续：每 每趟条数 行一个小事务，处理到哪记在行上（undo / restoredAt），断了再调一次接着来；
@@ -23,6 +24,7 @@ import { 看全部 } from "../team-scope";
 import { 外贸键 } from "../customer-extra";
 import { 读现值, 改, 规, 引用键, type 值表 } from "./apply";
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
+import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-target";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -68,7 +70,7 @@ function 拣(v: 值表, 键: string[]): 值表 {
  * 这一批新建的这条还能不能删：名下挂着别的记录、导入不碰的格子被人填过 → 不能，返回原因。
  * 这一批自己建的子记录这时已经先退掉了（倒着退），还挂着的就是外面的、或留下没撤的
  */
-async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string | null): Promise<string | null> {
+async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string | null, 写过: 值表): Promise<string | null> {
   const 别的对照 = await tx.entExternalRef.count({ where: { entity: e, targetId: id, ...(自己的对照 ? { id: { not: 自己的对照 } } : {}) } });
   if (别的对照) return "原系统还有别的记录连着它（同号并入，或之后的同步连上的），先撤回那几条";
 
@@ -134,7 +136,7 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
         _count: { select: { followUps: true, quotes: true, tradeOrders: true, supplierQuotes: true } },
       },
     });
-    if (!o) return null;
+    if (!o) return 项目挂件(tx, id);
     if (o.contractWin) return "这个商机是签合同时赢下来的";
     if (Object.values(o._count).some((n) => n > 0)) return "名下已经有这一批以外的跟进、报价或订单";
     return o.money ? "导入之后又设过币种" : null;
@@ -150,11 +152,13 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
       contactId: true,
       source: { select: { followUpId: true } },
       orderNode: { select: { followUpId: true } },
-      projectNode: { select: { followUpId: true } },
+      projectNode: { select: { projectId: true } },
     },
   });
   if (!f) return null;
-  if (f.orderNode || f.projectNode) return "这条跟进挂到了订单或项目的节点上";
+  // 导入时自己挂上的项目（父商机建成了项目）不算；挂到了别的项目才是外面动过
+  const 自己挂的 = !!f.projectNode && 写过.projectId === f.projectNode.projectId;
+  if (f.orderNode || (f.projectNode && !自己挂的)) return "这条跟进挂到了订单或项目的节点上";
   if (f.source) return "这条跟进有 AI 整理的原文";
   return [f.duration, f.dueAt, f.dueOn, f.dueHasTime, f.participants, f.contactId].some((v) => v !== null) ? "导入之后又补过这条跟进（时长、提醒、联系人等）" : null;
 }
@@ -164,16 +168,18 @@ async function 快照(tx: Tx, e: 实体, id: string): Promise<object | null> {
   if (e === "customer") return tx.customer.findUnique({ where: { id }, include: { extra: true, creator: true, pool: true } });
   if (e === "lead") return tx.lead.findUnique({ where: { id } });
   if (e === "contact") return tx.contact.findUnique({ where: { id } });
-  if (e === "opportunity") return tx.opportunity.findUnique({ where: { id }, include: { closed: true } });
-  return tx.followUp.findUnique({ where: { id } });
+  if (e === "opportunity") return (await tx.opportunity.findUnique({ where: { id }, include: { closed: true } })) ?? 项目快照(tx, id);
+  return tx.followUp.findUnique({ where: { id }, include: { projectNode: true } });
 }
 
 async function 删(tx: Tx, e: 实体, id: string): Promise<void> {
   if (e === "customer") await tx.customer.delete({ where: { id } });
   else if (e === "lead") await tx.lead.delete({ where: { id } });
   else if (e === "contact") await tx.contact.delete({ where: { id } });
-  else if (e === "opportunity") await tx.opportunity.delete({ where: { id } });
-  else await tx.followUp.delete({ where: { id } });
+  else if (e === "opportunity") {
+    if (await 是项目(tx, id)) await tx.project.delete({ where: { id } });
+    else await tx.opportunity.delete({ where: { id } });
+  } else await tx.followUp.delete({ where: { id } });
 }
 
 /** 补空时新建的外贸档案，格子退回空之后整行删掉：库里不留一条全空的行（全空的行和没有这行在页面上一样） */
@@ -192,18 +198,24 @@ async function 建回(tx: Tx, e: 实体, data: Record<string, unknown>): Promise
     if (pool) await tx.customerPool.create({ data: pool as Prisma.CustomerPoolUncheckedCreateInput });
   } else if (e === "lead") await tx.lead.create({ data: data as Prisma.LeadUncheckedCreateInput });
   else if (e === "contact") await tx.contact.create({ data: data as Prisma.ContactUncheckedCreateInput });
+  else if (e === "opportunity" && data.__项目) await 建回项目(tx, data);
   else if (e === "opportunity") {
     const { closed, ...主 } = data;
     await tx.opportunity.create({ data: 主 as Prisma.OpportunityUncheckedCreateInput });
     if (closed) await tx.opportunityClose.create({ data: closed as Prisma.OpportunityCloseUncheckedCreateInput });
-  } else await tx.followUp.create({ data: data as Prisma.FollowUpUncheckedCreateInput });
+  } else {
+    // 挂项目那条跟着建回；项目已经不在了就不挂（跟进照样回来）
+    const { projectNode, ...主 } = data as { projectNode?: Prisma.FollowUpProjectUncheckedCreateInput | null };
+    await tx.followUp.create({ data: 主 as Prisma.FollowUpUncheckedCreateInput });
+    if (projectNode && (await 是项目(tx, projectNode.projectId))) await tx.followUpProject.create({ data: projectNode });
+  }
 }
 
 async function 还在(tx: Tx, e: 实体, id: string): Promise<boolean> {
   if (e === "customer") return !!(await tx.customer.findUnique({ where: { id }, select: { id: true } }));
   if (e === "lead") return !!(await tx.lead.findUnique({ where: { id }, select: { id: true } }));
   if (e === "contact") return !!(await tx.contact.findUnique({ where: { id }, select: { id: true } }));
-  if (e === "opportunity") return !!(await tx.opportunity.findUnique({ where: { id }, select: { id: true } }));
+  if (e === "opportunity") return !!(await tx.opportunity.findUnique({ where: { id }, select: { id: true } })) || 是项目(tx, id);
   return !!(await tx.followUp.findUnique({ where: { id }, select: { id: true } }));
 }
 
@@ -258,7 +270,7 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
       return "无";
     }
     if (!一致(现值, 写过)) throw new 不动("导入之后又改过");
-    const 拦 = await 还挂着(tx, e, row.targetId, 连着?.id ?? null);
+    const 拦 = await 还挂着(tx, e, row.targetId, 连着?.id ?? null, 写过);
     if (拦) throw new 不动(拦);
     await tx.entTrash.create({
       data: { batchId: 批次Id, entity: e, targetId: row.targetId, data: J(await 快照(tx, e, row.targetId)), ref: 连着 ? J(连着) : null, rowId: row.id },
@@ -307,7 +319,7 @@ async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过:
     const data = 解<Record<string, unknown> | null>(t.data, null);
     if (!data) throw new 不动("回收区里这条读不出来了");
     if (e !== "customer" && e !== "lead" && !(await 还在(tx, "customer", String(data.customerId)))) throw new 不动("所属客户不在了");
-    if (e === "followup" && data.opportunityId && !(await 还在(tx, "opportunity", String(data.opportunityId)))) data.opportunityId = null;
+    if (e === "followup" && data.opportunityId && !(await tx.opportunity.findUnique({ where: { id: String(data.opportunityId) }, select: { id: true } }))) data.opportunityId = null;
     await 建回(tx, e, data);
     if (存的对照) {
       if (现对照) await tx.entExternalRef.update({ where: { id: 现对照.id }, data: 对照数据(存的对照) });
@@ -480,7 +492,7 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
       summary: `撤回从${来源名[源] ?? 源}${叫法(批.kind)}的那一批：删掉 ${r.删掉} 条，还原 ${r.还原} 条${r.留下数 ? `，${r.留下数} 条导入后被动过、留下没动` : ""}`,
       detail: { batchId: 批次Id, 删掉: r.删掉, 还原: r.还原, 留下数: r.留下数 },
     });
-    for (const p of ["/customers", "/leads", "/opportunities", "/dashboard"]) revalidatePath(p);
+    for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
   }
   return 结果(批次Id);
 }
@@ -566,7 +578,7 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
       summary: `恢复撤回的那一批（${来源名[批.source as 来源] ?? 批.source}${叫法(批.kind)}）：恢复 ${r.恢复} 条${r.留下数 ? `，${r.留下数} 条撤回后又有变动、跳过` : ""}`,
       detail: { batchId: 批次Id, 恢复: r.恢复, 留下数: r.留下数 },
     });
-    for (const p of ["/customers", "/leads", "/opportunities", "/dashboard"]) revalidatePath(p);
+    for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
   }
   return 结果(批次Id);
 }
