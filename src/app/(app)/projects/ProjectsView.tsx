@@ -18,6 +18,7 @@ import { categorical } from "@/lib/palette";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import { 字典of, 结局叫法, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import InviteInbox, { type 邀请行 } from "./InviteInbox";
 
 /** 看板五列的颜色：三个阶段沿用商机管道的蓝绿黄，成功交付粉、没成灰 */
 const 列色: Record<看板列, string> = {
@@ -53,7 +54,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 看板列头写项目数和按币种分开的金额合计；异常状态的项目留在订单列、左边框标红
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法,
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 邀请们 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -64,6 +65,8 @@ export default function ProjectsView({
   企业版?: boolean;
   /** 企业版组织规则里改过的出口叫法 */
   出口叫法?: 出口叫法改动;
+  /** 企业版：等我回的项目组邀请（别的版本是空的） */
+  邀请们?: 邀请行[];
 }) {
   const router = useRouter();
   const 字典 = 字典of(企业版, 出口叫法);
@@ -127,6 +130,8 @@ export default function ProjectsView({
           </Space>
         }
       />
+
+      <InviteInbox 邀请们={邀请们} />
 
       {看法 === "列表" ? (
         <DataList<项目行>
