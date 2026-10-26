@@ -8,6 +8,9 @@ import { 视图们, type 视图 } from "./views";
 import DataShell from "./DataShell";
 import { 唯一负责人 } from "@/lib/owners";
 import { getBusiness } from "@/lib/business";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
+import { 项目现在, 项目一段 } from "./project-stats";
+import { ProjectNowView, ProjectPeriodView } from "./ProjectStatsView";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +30,9 @@ export default async function DataPage({ searchParams }: { searchParams: SP }) {
   await requireUser();
   const sp = await searchParams;
   const view: 视图 = (视图们 as readonly string[]).includes(sp.view ?? "") ? (sp.view as 视图) : "现在";
+
+  // 企业版只用项目：三个视图都按项目数（10-26 用户：「「数据」页改成按项目统计」）
+  if (await 企业版只用项目()) return <项目数据 view={view} />;
 
   if (view === "现在") {
     return (
@@ -53,6 +59,30 @@ export default async function DataPage({ searchParams }: { searchParams: SP }) {
   return (
     <DataShell view={view}>
       <ReportsView {...数} 口径={口径} 单人={只有一个人} />
+    </DataShell>
+  );
+}
+
+async function 项目数据({ view }: { view: 视图 }) {
+  const 业务 = await getBusiness();
+  const 本位币 = 业务.currency;
+  if (view === "现在") {
+    const [数, 唯一] = await Promise.all([项目现在(本位币), 唯一负责人()]);
+    return (
+      <DataShell view={view} 项目>
+        <ProjectNowView 数={数} 本位币={本位币} 单人={唯一 !== null && 数.按人.every((r) => r.id === 唯一)} />
+      </DataShell>
+    );
+  }
+  const now = dayjs();
+  const 本月 = view === "本月";
+  const from = (本月 ? now.startOf("month") : now.startOf("year")).toDate();
+  const to = (本月 ? now.endOf("month") : now.endOf("year")).toDate();
+  const 口径 = 本月 ? now.format("YYYY 年 M 月") : `${now.year()} 年`;
+  const [数, 唯一] = await Promise.all([项目一段(from, to, 本月 ? "day" : "month", 本位币), 唯一负责人()]);
+  return (
+    <DataShell view={view} 项目>
+      <ProjectPeriodView 数={数} 本位币={本位币} 口径={口径} 单人={唯一 !== null && 数.按人.every((r) => r.id === 唯一)} />
     </DataShell>
   );
 }
