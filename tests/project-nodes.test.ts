@@ -4,7 +4,7 @@
  * 异常要选类别（备注可空）、已转商机 / 赢单是进下一阶段不是结局、看板每张卡落在哪一列。
  */
 import { describe, it, expect } from "vitest";
-import { 改节点问题, 不退回线索, 能改到的阶段, 要写原因, 原因上限, 交付还差, 下一步, 看板列, 节点序号, 节点总数, 节点们, 阶段们, 第一个节点 } from "@/lib/project/nodes";
+import { 改节点问题, 企业版字典, 能改到的阶段, 要写原因, 原因上限, 交付还差, 下一步, 看板列, 节点序号, 节点总数, 节点们, 阶段们, 第一个节点 } from "@/lib/project/nodes";
 
 /** 项目在哪 + 两个勾；默认停在订单最后一个节点，这样往哪都不算往前跳，单测别的规矩 */
 const 在 = (phase: string, node: string, 勾: { balanceSettled: boolean; acceptancePassed: boolean }, result: string | null = null) => ({ phase, node, result, ...勾 });
@@ -75,8 +75,8 @@ describe("改节点问题", () => {
 
   it("企业版转商机后不可回退：商机、订单（含结局）都不能回线索阶段，也不能点线索流失；线索阶段内照旧前后调；不是企业版照旧能退", () => {
     for (const 现在 of [在("商机", "明确需求", 没勾), 在("商机", "签约审批", 没勾, "丢单"), 在("订单", "生产备货", 没勾, "异常状态"), 都勾]) {
-      expect(改节点问题({ phase: "线索", node: "潜客培育" }, 现在, undefined, true)).toBe(不退回线索);
-      expect(改节点问题({ phase: "线索", node: "线索推进", result: "线索流失" }, 现在, { 备注: "联系不上" }, true)).toBe(不退回线索);
+      expect(改节点问题({ phase: "线索", node: "潜客培育" }, 现在, undefined, true, 企业版字典)).toMatch("不能退回线索阶段");
+      expect(改节点问题({ phase: "线索", node: "线索推进", result: "线索流失" }, 现在, { 备注: "联系不上" }, true, 企业版字典)).toMatch("不能退回线索阶段");
       expect(改节点问题({ phase: "线索", node: "潜客培育" }, 现在)).toBeNull();
     }
     // 线索阶段里：往后退、往前一步、转商机都行
@@ -84,13 +84,13 @@ describe("改节点问题", () => {
     expect(改节点问题({ phase: "商机", node: "明确需求" }, 在("线索", "线索推进", 没勾), undefined, true)).toBeNull();
     // 线索流失了还能拉回线索阶段（没转商机）
     expect(改节点问题({ phase: "线索", node: "线索验证" }, 在("线索", "线索验证", 没勾, "线索流失"), undefined, true)).toBeNull();
-    // 商机里往后退到商机第一个节点照旧
-    expect(改节点问题({ phase: "商机", node: "明确需求" }, 在("订单", "生产备货", 没勾), undefined, true)).toBeNull();
+    // 订单也回不了商机（跨阶段单向）
+    expect(改节点问题({ phase: "商机", node: "明确需求" }, 在("订单", "生产备货", 没勾), undefined, true, 企业版字典)).toMatch("不能退回商机阶段");
   });
 
-  it("下拉能列的阶段：企业版出了线索阶段就不列线索；线索阶段、非企业版三段都列", () => {
+  it("下拉能列的阶段：企业版只列当前和后面的阶段；线索阶段、非企业版三段都列", () => {
     expect(能改到的阶段("商机", true)).toEqual(["商机", "订单"]);
-    expect(能改到的阶段("订单", true)).toEqual(["商机", "订单"]);
+    expect(能改到的阶段("订单", true)).toEqual(["订单"]);
     expect(能改到的阶段("线索", true)).toEqual([...阶段们]);
     expect(能改到的阶段("商机", false)).toEqual([...阶段们]);
     expect(能改到的阶段("乱写", true)).toEqual([...阶段们]);
