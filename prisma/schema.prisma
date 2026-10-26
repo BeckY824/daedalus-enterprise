@@ -1274,7 +1274,11 @@ model EntMember {
 /// 不建外键：同 EntMember。线索删了这几行留着当记录，「我分出去的线索」读的时候跳过
 model EntLeadAssign {
   id         String   @id @default(cuid())
-  leadId     String
+  /// 老的线索表（Lead）；企业版只用项目以后分的是项目，这一列写空串、记在 projectId
+  /// （存量库这列是 NOT NULL，迁移只能加不能改约束，所以不改成可空）
+  leadId     String   @default("")
+  /// 企业版「新线索」= 项目的线索阶段（10-26，migrations/056）：分的是哪个项目
+  projectId  String?
   /// 分给谁（销售）
   toUserId   String
   /// 分之前的负责人；线索原来没人负责时为空
@@ -1294,6 +1298,7 @@ model EntLeadAssign {
   @@index([toUserId, month])
   @@index([fromUserId])
   @@index([leadId])
+  @@index([projectId])
 }
 
 /// 企业版联系方式子表（2026-10-26，测试清单 B1 / B5 / B8，融合对照 §2 / §8.1 B1，migrations/054）。一行一个号。

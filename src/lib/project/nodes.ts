@@ -52,6 +52,14 @@ export function 结局所在阶段(r: 结局): 阶段 {
 /** 异常备注、没成原因最长多少字 */
 export const 原因上限 = 500;
 
+/** 企业版：转了商机就不回线索阶段（线索只以「线索流失」或「转商机」结束） */
+export const 不退回线索 = "已转商机，不能退回线索阶段";
+
+/** 企业版改节点时能选的阶段：已经出了线索阶段的，线索那几个节点不给选 */
+export function 能改到的阶段(当前阶段: string, 企业: boolean): 阶段[] {
+  return 企业 && 是阶段(当前阶段) && 当前阶段 !== "线索" ? 阶段们.filter((s) => s !== "线索") : [...阶段们];
+}
+
 /** 点「线索流失 / 丢单」要写一句原因（10-25 企业版实测 F8：节点变更里原因不能空） */
 export function 要写原因(r: unknown): r is "线索流失" | "丢单" {
   return r === "线索流失" || r === "丢单";
@@ -66,15 +74,17 @@ export function 交付还差(p: { balanceSettled: boolean; acceptancePassed: boo
  * 改到哪里合不合规矩：不合规矩返回一句人话，合规矩返回 null。
  * 不管「谁能改」、类别在不在字典里（那是 lib/project/db.ts 的事），只管取值、前后方向和两条门槛。
  * 项目 = 现在的位置 + 两个勾；往前比现在多走超过一步就不让。
+ * 企业版（企业 = true）多两条：丢单、线索流失要写原因；已转商机的不能退回线索阶段（10-26 用户定的三大阶段规则）。
  */
 export function 改节点问题(
   到: 位置,
   项目: 位置 & { balanceSettled: boolean; acceptancePassed: boolean },
   异常?: { categoryId?: string | null; 备注?: string | null },
-  要原因 = false,
+  企业 = false,
 ): string | null {
   if (!是阶段(到.phase)) return `没有「${到.phase}」这个阶段`;
   if (!节点们[到.phase].includes(到.node)) return `「${到.phase}」阶段没有「${到.node}」这个节点`;
+  if (企业 && 到.phase === "线索" && 是阶段(项目.phase) && 项目.phase !== "线索") return 不退回线索;
   if (节点序号(到) > 节点序号(项目) + 1) {
     const 下 = 下一步({ phase: 项目.phase, node: 项目.node });
     return 下 ? `节点不能往前跳，只能先推到「${下.node}」` : "节点不能往前跳";
@@ -83,7 +93,7 @@ export function 改节点问题(
   if (r == null) return null;
   if (!是结局(r)) return `没有「${r}」这个结局`;
   if (结局所在阶段(r) !== 到.phase) return `「${r}」只能在${结局所在阶段(r)}阶段点`;
-  if (要原因 && 要写原因(r)) {
+  if (企业 && 要写原因(r)) {
     const 原因 = (异常?.备注 ?? "").trim();
     if (!原因) return `点「${r}」要写一句原因`;
     if (原因.length > 原因上限) return `原因请控制在 ${原因上限} 字以内`;

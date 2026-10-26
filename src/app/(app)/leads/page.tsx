@@ -11,6 +11,10 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
+import { 读项目列表 } from "@/lib/project/list";
+import { 看板分列 } from "@/lib/project/board";
+import ProjectsView from "../projects/ProjectsView";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +22,22 @@ export const dynamic = "force-dynamic";
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ keyword?: string; status?: string; ownerId?: string; source?: string }>;
+  searchParams: Promise<{ keyword?: string; status?: string; ownerId?: string; source?: string; pool?: string }>;
 }) {
   const me = await requireUser();
   const sp = await searchParams;
+  /*
+    企业版只用项目：「新线索」= 项目的线索阶段（10-26 用户：「线索也要去项目里面作为三阶段」）。
+    老的 Lead 表在企业版不再列；新建走项目向导，落在潜客培育。
+  */
+  if (await 企业版只用项目()) {
+    const d = await 读项目列表(me, sp, "线索");
+    // 分配、满额提醒照老线索页的口径（下面那段），只是分的是线索阶段的项目
+    const 线索分配开着 = (await 规则开着("线索分配")) && !(await 当前是共享区());
+    const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
+    const 满额提醒们 = await 读满额提醒(me.id);
+    return <ProjectsView {...d} 列={看板分列(d.行)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 满额提醒={满额提醒们} />;
+  }
   const where: Prisma.LeadWhereInput = {
     AND: [await 线索关键词条件(sp.keyword)],
     ...(sp.status ? { status: sp.status } : {}),

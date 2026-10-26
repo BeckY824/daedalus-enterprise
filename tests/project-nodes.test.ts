@@ -4,7 +4,7 @@
  * 异常要选类别（备注可空）、已转商机 / 赢单是进下一阶段不是结局、看板每张卡落在哪一列。
  */
 import { describe, it, expect } from "vitest";
-import { 改节点问题, 要写原因, 原因上限, 交付还差, 下一步, 看板列, 节点序号, 节点总数, 节点们, 阶段们, 第一个节点 } from "@/lib/project/nodes";
+import { 改节点问题, 不退回线索, 能改到的阶段, 要写原因, 原因上限, 交付还差, 下一步, 看板列, 节点序号, 节点总数, 节点们, 阶段们, 第一个节点 } from "@/lib/project/nodes";
 
 /** 项目在哪 + 两个勾；默认停在订单最后一个节点，这样往哪都不算往前跳，单测别的规矩 */
 const 在 = (phase: string, node: string, 勾: { balanceSettled: boolean; acceptancePassed: boolean }, result: string | null = null) => ({ phase, node, result, ...勾 });
@@ -59,17 +59,41 @@ describe("改节点问题", () => {
   it("企业版线索流失、丢单要写原因：没写 / 全是空格拦，超长拦；成功交付、回到节点不用写；不是企业版照旧（F8）", () => {
     const 流失 = { phase: "线索", node: "线索推进", result: "线索流失" };
     const 丢 = { phase: "商机", node: "签约审批", result: "丢单" };
-    expect(改节点问题(流失, 都没勾, undefined, true)).toBe("点「线索流失」要写一句原因");
+    const 线索里 = 在("线索", "线索推进", 没勾);
+    expect(改节点问题(流失, 线索里, undefined, true)).toBe("点「线索流失」要写一句原因");
     expect(改节点问题(丢, 都没勾, { 备注: "   " }, true)).toBe("点「丢单」要写一句原因");
     expect(改节点问题(丢, 都没勾, { 备注: "贵".repeat(原因上限 + 1) }, true)).toMatch(`${原因上限} 字以内`);
     expect(改节点问题(丢, 都没勾, { 备注: "贵".repeat(原因上限) }, true)).toBeNull();
-    expect(改节点问题(流失, 都没勾, { 备注: " 联系不上 " }, true)).toBeNull();
+    expect(改节点问题(流失, 线索里, { 备注: " 联系不上 " }, true)).toBeNull();
     expect(改节点问题({ phase: "订单", node: "尾款结算", result: "成功交付" }, 都勾, undefined, true)).toBeNull();
-    expect(改节点问题({ phase: "线索", node: "线索推进" }, 都没勾, undefined, true)).toBeNull();
+    expect(改节点问题({ phase: "线索", node: "线索验证" }, 线索里, undefined, true)).toBeNull();
     // 开关关：和原来一样不要原因
     expect(改节点问题(流失, 都没勾)).toBeNull();
     expect(改节点问题(丢, 都没勾, { 备注: "  " }, false)).toBeNull();
     expect([要写原因("线索流失"), 要写原因("丢单"), 要写原因("成功交付"), 要写原因("异常状态"), 要写原因(null)]).toEqual([true, true, false, false, false]);
+  });
+
+  it("企业版转商机后不可回退：商机、订单（含结局）都不能回线索阶段，也不能点线索流失；线索阶段内照旧前后调；不是企业版照旧能退", () => {
+    for (const 现在 of [在("商机", "明确需求", 没勾), 在("商机", "签约审批", 没勾, "丢单"), 在("订单", "生产备货", 没勾, "异常状态"), 都勾]) {
+      expect(改节点问题({ phase: "线索", node: "潜客培育" }, 现在, undefined, true)).toBe(不退回线索);
+      expect(改节点问题({ phase: "线索", node: "线索推进", result: "线索流失" }, 现在, { 备注: "联系不上" }, true)).toBe(不退回线索);
+      expect(改节点问题({ phase: "线索", node: "潜客培育" }, 现在)).toBeNull();
+    }
+    // 线索阶段里：往后退、往前一步、转商机都行
+    expect(改节点问题({ phase: "线索", node: "潜客培育" }, 在("线索", "线索推进", 没勾), undefined, true)).toBeNull();
+    expect(改节点问题({ phase: "商机", node: "明确需求" }, 在("线索", "线索推进", 没勾), undefined, true)).toBeNull();
+    // 线索流失了还能拉回线索阶段（没转商机）
+    expect(改节点问题({ phase: "线索", node: "线索验证" }, 在("线索", "线索验证", 没勾, "线索流失"), undefined, true)).toBeNull();
+    // 商机里往后退到商机第一个节点照旧
+    expect(改节点问题({ phase: "商机", node: "明确需求" }, 在("订单", "生产备货", 没勾), undefined, true)).toBeNull();
+  });
+
+  it("下拉能列的阶段：企业版出了线索阶段就不列线索；线索阶段、非企业版三段都列", () => {
+    expect(能改到的阶段("商机", true)).toEqual(["商机", "订单"]);
+    expect(能改到的阶段("订单", true)).toEqual(["商机", "订单"]);
+    expect(能改到的阶段("线索", true)).toEqual([...阶段们]);
+    expect(能改到的阶段("商机", false)).toEqual([...阶段们]);
+    expect(能改到的阶段("乱写", true)).toEqual([...阶段们]);
   });
 
   it("成功交付：两项都勾上才让点，只勾一项写明还差哪项", () => {
