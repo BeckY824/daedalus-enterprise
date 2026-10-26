@@ -92,10 +92,12 @@ const 不订阅 = () => () => {};
 
 /**
  * 要下一步 = 企业版开了超时回收：首条沟通要填下一步时间（项目建在线索阶段）。
+ * 能填下一步 = 企业版：没开超时回收也摆这一格、选填（10-26 验收 #4，向导里原来看不到下一步时间）
  * 企业版 = 第一步先选号码类型、按类型验格式、全公司查重（2026-10-26，customers/number-actions.ts）；关着第一步和原来一模一样
  */
 function WizardBody({ users, 要下一步, 企业, 全名, 旧 }: { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档; 全名: string; 旧: { 稿: 稿; 步: number } | null }) {
   const 企业版 = !!企业;
+  const 能填下一步 = 企业版;
   const router = useRouter();
   const { message } = App.useApp();
   const b = useBusiness();
@@ -396,7 +398,7 @@ function WizardBody({ users, 要下一步, 企业, 全名, 旧 }: { users: 可�
               <Radio value={false}>没有明确回复</Radio>
             </Radio.Group>
           ), true)}
-          {要下一步 && 一行("下一步时间", (
+          {(要下一步 || 能填下一步) && 一行("下一步时间", (
             <>
               <DatePicker
                 style={{ width: "100%" }}
@@ -405,9 +407,9 @@ function WizardBody({ users, 要下一步, 企业, 全名, 旧 }: { users: 可�
                 onChange={(v) => 改("跟进", { 下一步时间: v ? v.format("YYYY-MM-DD") : null })}
                 placeholder="选一天"
               />
-              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>到那天还没人跟进，项目会自动回到项目公海</div>
+              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "到那天还没人跟进，项目会自动回到项目公海" : "选填：打算哪天再跟进，项目上会显示"}</div>
             </>
-          ), true)}
+          ), 要下一步)}
         </>
       )}
 

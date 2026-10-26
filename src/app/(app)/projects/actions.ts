@@ -52,9 +52,9 @@ export async function 建档向导(input: 建档向导输入) {
     if (!input || typeof input !== "object" || !input.客户 || typeof input.客户 !== "object") return { ok: false as const, error: "建档信息不完整，请从头再走一遍" };
     // 开了超时回收：项目建在线索阶段，首条跟进也得填下一步时间
     const 规则 = await 生效组织规则();
-    // 下一步时间只在开了超时回收时有这格（不是企业版一律没开）：没开时老草稿里留着的也不认、不写，和原来一样
+    // 下一步时间：开了超时回收必填；企业版没开也能选填（验收 #4）；不是企业版没有这格，老草稿里留着的也不认、不写，和原来一样
     const 要下一步 = 规则.超时回收.开;
-    const 好 = 规整向导(me, 要下一步 || !input.跟进 ? input : { ...input, 跟进: { ...input.跟进, 下一步时间: null } }, new Date(), 要下一步, 企业版());
+    const 好 = 规整向导(me, 要下一步 || 企业版() || !input.跟进 ? input : { ...input, 跟进: { ...input.跟进, 下一步时间: null } }, new Date(), 要下一步, 企业版());
     if ("error" in 好) return { ok: false as const, error: 好.error };
     // 企业版新建线索要选渠道（10-26：直接选渠道，不是来源类型）
     if (企业版()) {
