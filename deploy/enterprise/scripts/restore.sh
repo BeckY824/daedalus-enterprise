@@ -55,7 +55,7 @@ if [ "${SKIP_PREBACKUP:-}" != "1" ]; then
 fi
 
 say "停止应用…"
-docker compose stop crm >/dev/null
+crm_stop
 
 say "写入数据…"
 # 先解到数据卷里的临时目录，确认数据库在，再一次性换掉旧数据：
