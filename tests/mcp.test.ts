@@ -90,7 +90,9 @@ describe("开出去的工具", () => {
     // 2026-10-05：订单打开（外贸客户建议），供应商页仍关着
     expect(名字.includes("list_orders")).toBe(订单);
     expect(名字.includes("list_suppliers")).toBe(供应商页);
-    expect(名字.length).toBe(14 + (订单 ? 1 : 0) + (供应商页 ? 1 : 0));
+    // 2026-10-26 企业版按项目查（三大阶段）：只读，开出去
+    expect(名字).toContain("list_projects");
+    expect(名字.length).toBe(15 + (订单 ? 1 : 0) + (供应商页 ? 1 : 0));
   });
 
   it("每个工具都带说明和 JSON Schema——客户端拿它做补全和校验", () => {
