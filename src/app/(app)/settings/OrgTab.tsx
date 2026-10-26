@@ -11,6 +11,7 @@ import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改�
 import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, type 成员改动 } from "./org-actions";
 import type { 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
+import OrgSyncCard from "./OrgSyncCard";
 
 export type 组织架构 = {
   部门: 组织部门[];
@@ -34,7 +35,7 @@ type 结果 = Promise<{ ok: boolean; error?: string }>;
 
 const 总管级 = (r: string) => r === "director" || r === "admin";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
-const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm" };
+const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 交接要确认: "org-rule-handover-confirm" };
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
 /** 「后台设置谁能改」表的列 */
 const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场管理", "直属上级", "虚线上级"];
@@ -265,6 +266,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
           </Space>
         )}
       </Card>
+
+      {能改 && <OrgSyncCard />}
 
       <Card title="部门" extra={只看}>
         <p className="muted">部门最多 {部门最多层数} 层。销售没指定直属上级时，按所在部门往上找销售管理当他的上级。</p>
