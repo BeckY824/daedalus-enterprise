@@ -22,16 +22,19 @@ import { 视图们, type 视图 } from "./views";
  */
 export default function DataShell({
   view,
+  项目 = false,
   children,
 }: {
   view: 视图;
+  /** 企业版只用项目：数的是项目的三大阶段，不是签约 */
+  项目?: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const b = useBusiness();
   return (
     <>
-      <PageHead title="数据" subtitle={`业务现状与${签约叫(b)}复盘`} />
+      <PageHead title="数据" subtitle={项目 ? "项目现状与复盘" : `业务现状与${签约叫(b)}复盘`} />
       {/* 三视图切换在页头下面、内容上面，靠左（设计稿 08/DATA·NOW）。
           它不是页头上的一个动作，它是「下面这一屏说的是哪一段时间」——
           放在右上角时，人看完标题往下走，会先撞上数字再回头找它 */}
