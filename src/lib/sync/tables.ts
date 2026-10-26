@@ -65,6 +65,8 @@ export const 不同步表 = [
   "EntLeadAssign", "EntLeadQuota",
   // 企业版「交接中」（2026-10-26）：同上
   "EntHandover",
+  // 企业版联系方式子表（2026-10-26，migrations/054）：同上
+  "ContactMethod",
 ] as const;
 
 /**
