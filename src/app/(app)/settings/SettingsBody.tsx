@@ -9,6 +9,7 @@ import { 角色字典, 异常类别字典, 能进公海的阶段 } from "@/lib/p
 import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 读卡点默认 } from "@/lib/project/blocker";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 全部企业字典 } from "@/lib/enterprise/dict";
 import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
@@ -102,8 +103,13 @@ export default async function SettingsBody() {
     共享区 ? "共享试用区不能改"
     : org && 改权限 ? (能改设置(org, me, 项, 改权限) ? null : 谁能改的话(改权限, 项))
     : me.role === "ADMIN" ? null : "只有老板能改";
+  // 企业版选项字典（分配方式、回收原因……）也放在项目模式这一栏；还没有地方用它们，用的人先都记 0
+  const 企业选项 = 项目设置底 && (await 全部企业字典());
   const 项目设置 = 项目设置底 && {
     ...项目设置底,
+    企业选项: 企业选项
+      ? Object.fromEntries(Object.entries(企业选项).map(([k, xs]) => [k, xs.map((x) => ({ id: x.id, name: x.name, active: x.active, 用的人: 0 }))]))
+      : null,
     挡: { 字典: 挡("字典"), 持有上限: 挡("持有上限"), 节点时限: 挡("节点时限"), 必填字段: 挡("必填字段") },
   };
   const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限

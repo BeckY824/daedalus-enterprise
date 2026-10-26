@@ -69,6 +69,8 @@ export const 不同步表 = [
   "ContactMethod",
   // 企业版卡点、沟通记录编号（2026-10-26）：同上
   "EntBlocker", "EntBlockerLog", "EntFollowUpMeta",
+  // 企业版选项字典（2026-10-26，migrations/057）：同上
+  "EntDictItem",
 ] as const;
 
 /**

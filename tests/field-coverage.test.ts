@@ -73,6 +73,8 @@ const 可写: Record<string, string[]> = {
   ProjectMember: ["roleId"],
   ProjectRole: ["name", "active"],
   ProjectExceptionCategory: ["name", "active"],
+  // 企业版选项字典（2026-10-26）：设置 → 项目模式 → 企业选项（settings/ent-dict-actions.ts）
+  EntDictItem: ["name", "active"],
   FollowUp: ["type", "title", "content", "status", "duration", "occurredAt", "dueAt", "participants", "customerId", "contactId", "opportunityId"],
   Task: ["title", "dueAt", "done", "customerId"],
   FollowPlan: ["subject", "plannedAt", "method", "done", "customerId"],
@@ -360,6 +362,7 @@ const 派生: Record<string, Record<string, string>> = {
   ProjectMember: { projectId: "哪个项目的组员，加人时定", userId: "哪位成员，加人时定；换人 = 删了再加", invitedById: "谁拉进来的，加人时打上" },
   ProjectRole: { sort: "加角色时排到最后，系统写；不做拖动排序" },
   ProjectExceptionCategory: { sort: "加类别时排到最后，系统写；不做拖动排序" },
+  EntDictItem: { kind: "加选项时就定了是哪一类，不改", sort: "加选项时排到最后，系统写；不做拖动排序" },
   ProjectNodeLog: {
     projectId: "哪个项目，改节点时系统写", userId: "谁改的，系统写", at: "改的那一刻，系统写",
     fromPhase: "改之前的阶段，系统写", fromNode: "改之前的节点，系统写", fromResult: "改之前的结局，系统写",

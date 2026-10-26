@@ -113,7 +113,7 @@ export async function 角色字典(db: Prisma.TransactionClient = prisma) {
 
 /**
  * 两本字典谁能改：不是企业版只有老板（和项目模式开关同一条规矩）；
- * 企业版按「后台设置谁能改」的「异常类别、组员角色字典」一行，默认老板和总管理员（B2 第 6 条，10-26）
+ * 企业版按「后台设置谁能改」的「异常类别、组员角色、企业选项字典」一行，默认老板和总管理员（B2 第 6 条，10-26）
  */
 async function 挡字典(me: 谁, 叫法: string): Promise<string | null> {
   const 挡 = await 挡改设置(me, "字典");
