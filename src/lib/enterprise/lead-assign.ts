@@ -193,7 +193,7 @@ export async function 我分出去的(我: string, 最多 = 200): Promise<分出
       select: { id: true, name: true },
     })).map((u) => [u.id, u.name]),
   );
-  return 留.flatMap((r) => {
+  return 留.flatMap((r): 分出去的线索[] => {
     const 共 = { 接手人: 人名.get(r.toUserId) ?? "—", line: r.line, kind: r.kind, 分配时间: r.createdAt.toISOString() };
     if (r.projectId) {
       const p = 项目.get(r.projectId);

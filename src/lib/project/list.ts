@@ -14,7 +14,7 @@ export const 项目上限 = 500;
  * 项目页和企业版「新线索」页共用的取数：先跑超时回收，再按筛选取项目、拼成 项目行。
  * 只看阶段 = "线索" 时只取还在线索阶段的（含已线索流失的），企业版 /leads 用。
  */
-export async function 读项目列表(me: Parameters<typeof 公海超时收回>[0], sp: 项目筛选, 只看阶段?: 阶段) {
+export async function 读项目列表(me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0], sp: 项目筛选, 只看阶段?: 阶段) {
   // 企业版超时回收：先收再列，列表里看到的就是收完的样子
   await 公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e));
   const 词 = 搜索词(sp.keyword);
