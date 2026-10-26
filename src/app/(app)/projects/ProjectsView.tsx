@@ -50,10 +50,13 @@ function 节点文字(r: 项目行) {
 
 /**
  * 项目页（团队版项目模式 1a）：列表和看板两种看法，同一批行、同一组筛选。
- * 看板列头写项目数和按币种分开的金额合计；异常状态的项目留在订单列、左边框标红
+ * 看板列头写项目数和按币种分开的金额合计；异常状态的项目留在订单列、左边框标红。
+ *
+ * 阶段 = "线索"：企业版「新线索」页（/leads）。只列线索阶段的项目、只有列表，
+ * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 邀请们 = [],
+  行, 列: 看板, 取到上限, users, filters, 邀请们 = [], 阶段,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -62,11 +65,15 @@ export default function ProjectsView({
   filters: { keyword: string; ownerId: string; pool: string };
   /** 企业版：等我回的项目组邀请（别的版本是空的） */
   邀请们?: 邀请行[];
+  /** 企业版「新线索」页：只看线索阶段 */
+  阶段?: "线索";
 }) {
   const router = useRouter();
   const b = useBusiness();
-  const [看法, set看法] = useLocalPref<"列表" | "看板">("projects-view", "看板");
-  const { f, setF, apply, reset, pending } = useUrlFilters("/projects", filters);
+  const 新线索 = 阶段 === "线索";
+  const [存的看法, set看法] = useLocalPref<"列表" | "看板">("projects-view", "看板");
+  const 看法 = 新线索 ? "列表" : 存的看法;
+  const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
   const 新建 = () => router.push("/projects/new");
@@ -115,12 +122,18 @@ export default function ProjectsView({
   return (
     <div>
       <PageHead
-        title="项目"
-        subtitle={取到上限 ? "只显示最近改过的 500 个项目，用搜索找更早的" : "从线索到交付，一个项目一条线"}
+        title={新线索 ? "新线索" : "项目"}
+        subtitle={
+          取到上限
+            ? `只显示最近改过的 500 个${新线索 ? "新线索" : "项目"}，用搜索找更早的`
+            : 新线索
+              ? "项目的线索阶段：潜客培育 → 线索验证 → 线索推进，以转商机或线索流失结束；转了商机到「项目」里接着走"
+              : "从线索到交付，一个项目一条线"
+        }
         extra={
           <Space>
-            <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />
-            <Button type="primary" icon={<PlusOutlined />} onClick={新建}>新建项目</Button>
+            {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />}
+            <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新建新线索" : "新建项目"}</Button>
           </Space>
         }
       />
@@ -129,17 +142,25 @@ export default function ProjectsView({
 
       {看法 === "列表" ? (
         <DataList<项目行>
-          页="projects"
+          页={新线索 ? "ent-leads" : "projects"}
           列={列表}
           行={行}
           空库={行.length === 0 && !在筛}
           加载中={pending}
           行链接={(r) => `/projects/${r.id}`}
-          空态={{
-            title: "还没有项目",
-            hint: `项目是跟一位${b.customer}做的一件事：从线索培育一路走到交付。新建时会一起建好${b.customer}、联系人和第一次沟通。`,
-            primary: { label: "新建第一个项目", onClick: 新建 },
-          }}
+          空态={
+            新线索
+              ? {
+                  title: "还没有新线索",
+                  hint: `新线索就是还在线索阶段的项目。新建时会一起建好${b.customer}、联系人和第一次沟通，从潜客培育开始。`,
+                  primary: { label: "新建第一条新线索", onClick: 新建 },
+                }
+              : {
+                  title: "还没有项目",
+                  hint: `项目是跟一位${b.customer}做的一件事：从线索培育一路走到交付。新建时会一起建好${b.customer}、联系人和第一次沟通。`,
+                  primary: { label: "新建第一个项目", onClick: 新建 },
+                }
+          }
           筛选={筛选}
         />
       ) : (

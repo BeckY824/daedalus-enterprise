@@ -12,7 +12,7 @@ import { dayjs, fmtDateTime } from "@/lib/utils";
 import { 跟进类型们 } from "@/lib/constants";
 import { 外贸精简 } from "@/lib/business-config";
 import { 金额 } from "@/lib/currency";
-import { 阶段们, 节点们, 出口们, 交付还差, 下一步, 节点序号, 节点总数, 原因上限, 要写原因, type 位置 } from "@/lib/project/nodes";
+import { 节点们, 出口们, 交付还差, 下一步, 节点序号, 节点总数, 原因上限, 要写原因, 能改到的阶段, type 位置 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
@@ -89,11 +89,12 @@ function 位置文字(p: 位置): string {
  * 下拉里的去处：每个阶段的节点，加上这个阶段的「没走成」结局（订单阶段是成功交付和异常状态）。
  * 异常状态只在项目已经在订单阶段时出现，线索、商机阶段不给这个入口。
  * 往前只能一步（比现在多走超过一步的灰着），往后随便退——和 lib/project/nodes.ts 改节点问题 同一条规矩
+ * 企业版：已经出了线索阶段的，线索那一组不列（转商机后不可回退）
  */
-function 去处们(当前: 位置, 不能往前 = false) {
+function 去处们(当前: 位置, 不能往前 = false, 企业 = false) {
   // 配了必填、不是老板主管：往前的节点灰着（靠填齐自动推），结局照旧能点
   const 太远 = (到: 位置) => 节点序号(到) > 节点序号(当前) + (不能往前 && !到.result ? 0 : 1);
-  return 阶段们.map((s) => {
+  return 能改到的阶段(当前.phase, 企业).map((s) => {
     const 尾 = 节点们[s][节点们[s].length - 1];
     const 结局 = s === "订单" ? 出口们.订单.filter((r) => r !== "异常状态" || 当前.phase === "订单") : [出口们[s][1]];
     return {
@@ -278,7 +279,7 @@ export default function ProjectDetail({
               value={null}
               disabled={!节点可改 || 忙}
               title={节点不能改}
-              options={去处们(当前, !!p.必填?.只能靠填齐 || !!p.不给推)}
+              options={去处们(当前, !!p.必填?.只能靠填齐 || !!p.不给推, p.企业版)}
               onChange={(v: string | null) => v && 改到(JSON.parse(v) as 位置)}
             />
             {/* 灰掉的按钮收不到鼠标事件，外面包一层 span 才能悬停出原因 */}

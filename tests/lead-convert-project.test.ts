@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   开: true,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-vi.mock("@/app/(app)/leads/LeadsView", () => ({ default: () => null }));
+vi.mock("@/app/(app)/leads/LeadsView", () => ({ default: function LeadsView() { return null; } }));
+vi.mock("@/app/(app)/projects/ProjectsView", () => ({ default: function ProjectsView() { return null; } }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
@@ -21,6 +22,8 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { convertLead, mergeLeadInto } from "@/app/(app)/leads/actions";
 import LeadsPage from "@/app/(app)/leads/page";
+import LeadsView from "@/app/(app)/leads/LeadsView";
+import ProjectsView from "@/app/(app)/projects/ProjectsView";
 import { 第一个节点 } from "@/lib/project/nodes";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 
@@ -109,14 +112,26 @@ describe("开关关着：和原来一样只转客户", () => {
   });
 });
 
-describe("线索页交给界面的「企业版项目」（F1：只有它为真，新建线索才不跳建档向导）", () => {
-  const 交出 = async () => ((await LeadsPage({ searchParams: Promise.resolve({}) })) as unknown as { props: { 企业版项目: boolean } }).props.企业版项目;
-  it("企业版 + 项目模式 → 真", async () => { expect(await 交出()).toBe(true); });
-  it("不是企业版 → 假；没开项目模式 → 假", async () => {
+describe("线索页（10-26：企业版只用项目时 /leads = 项目的线索阶段）", () => {
+  type 交出的 = { type: unknown; props: { 阶段?: string; 行?: { name: string; phase: string }[] } };
+  const 交出 = async () => (await LeadsPage({ searchParams: Promise.resolve({}) })) as unknown as 交出的;
+  it("企业版 + 项目模式 → 交给项目列表、阶段=线索，只列线索阶段的项目（含已线索流失的）", async () => {
+    const c = await prisma.customer.create({ data: { name: "某客户", phone: "13900000001", salesOwnerId: 甲 } });
+    const 建 = (name: string, phase: string, node: string, result: string | null = null) =>
+      prisma.project.create({ data: { name, customerId: c.id, ownerId: 甲, creatorId: 甲, phase, node, result } });
+    await 建("线索一", "线索", "潜客培育");
+    await 建("线索二", "线索", "线索推进", "线索流失");
+    await 建("商机一", "商机", "明确需求");
+    const r = await 交出();
+    expect(r.type).toBe(ProjectsView);
+    expect(r.props.阶段).toBe("线索");
+    expect(r.props.行!.map((x) => x.name).sort()).toEqual(["线索一", "线索二"]);
+  });
+  it("不是企业版、或没开项目模式 → 还是原来的线索页", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
-    expect(await 交出()).toBe(false);
+    expect((await 交出()).type).toBe(LeadsView);
     vi.stubEnv("CRM_ENTERPRISE", "1");
     mocks.开 = false;
-    expect(await 交出()).toBe(false);
+    expect((await 交出()).type).toBe(LeadsView);
   });
 });
