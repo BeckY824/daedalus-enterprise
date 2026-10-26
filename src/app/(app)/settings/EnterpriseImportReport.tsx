@@ -167,7 +167,7 @@ export default function EnterpriseImportReport({
         size="small"
         pagination={false}
         dataSource={列们}
-        title={() => <b>{实体名[e]}</b>}
+        title={() => <b>{名(e)}</b>}
         columns={[
           { title: "原系统的列", dataIndex: "表头", width: 180 },
           {
@@ -191,6 +191,8 @@ export default function EnterpriseImportReport({
     );
   };
 
+  // 企业版只用项目时，「商机」行建成项目，界面上也叫项目
+  const 名 = (e: 实体) => (e === "opportunity" && 报告.映射.项目 ? "项目" : 实体名[e]);
   const 要选类别 = 报告.文件.filter((f) => !f.实体);
 
   return (
@@ -233,7 +235,7 @@ export default function EnterpriseImportReport({
                   status={!f.实体 && !改.文件实体?.[f.名] ? "warning" : undefined}
                   placeholder="认不出，请选"
                   value={改.文件实体?.[f.名] ?? f.实体 ?? undefined}
-                  options={实体顺序.map((e) => ({ value: e, label: 实体名[e] }))}
+                  options={实体顺序.map((e) => ({ value: e, label: 名(e) }))}
                   onChange={(v) => set改((x) => ({ ...x, 文件实体: { ...x.文件实体, [f.名]: v } }))}
                 />
               ),
@@ -254,7 +256,7 @@ export default function EnterpriseImportReport({
         )}
         dataSource={实体顺序.map((e) => ({ 实体: e, ...报告.按类[e] })).filter((x) => x.待写 + x.跳过 + x.提醒 > 0)}
         columns={[
-          { title: "类别", render: (_, x) => 实体名[x.实体] },
+          { title: "类别", render: (_, x) => 名(x.实体) },
           { title: "新建", dataIndex: "新建" },
           { title: "更新", dataIndex: "更新" },
           { title: "没变", dataIndex: "没变" },
@@ -276,7 +278,7 @@ export default function EnterpriseImportReport({
           )}
           dataSource={实体顺序.flatMap((e) => (报告.预演!.按类[e] ? [{ 实体: e, ...报告.预演!.按类[e]! }] : []))}
           columns={[
-            { title: "类别", render: (_, x) => 实体名[x.实体] },
+            { title: "类别", render: (_, x) => 名(x.实体) },
             { title: "新建", dataIndex: "新建" },
             { title: "更新", dataIndex: "更新" },
             { title: "跳过", dataIndex: "跳过" },
@@ -311,7 +313,7 @@ export default function EnterpriseImportReport({
           <Space wrap size={[6, 6]} style={{ marginBottom: 8 }}>
             {报告.问题分类.map((c) => (
               <Tag key={`${c.实体}-${c.级别}-${c.类别}`} color={c.级别 === "跳过" ? "red" : "gold"}>
-                {实体名[c.实体]} · {c.类别} · {c.级别} {c.数}
+                {名(c.实体)} · {c.类别} · {c.级别} {c.数}
               </Tag>
             ))}
           </Space>
@@ -328,7 +330,7 @@ export default function EnterpriseImportReport({
             columns={[
               { title: "", width: 64, render: (_, p) => <Tag color={p.级别 === "跳过" ? "red" : "gold"}>{p.级别}</Tag> },
               { title: "类别", width: 110, dataIndex: "类别" },
-              { title: "哪一条", width: 220, render: (_, p) => `${实体名[p.实体]} · ${p.出处 ? `${p.出处}${p.行号 ? ` 第 ${p.行号} 行` : ""}` : p.外部ID}` },
+              { title: "哪一条", width: 220, render: (_, p) => `${名(p.实体)} · ${p.出处 ? `${p.出处}${p.行号 ? ` 第 ${p.行号} 行` : ""}` : p.外部ID}` },
               { title: "说明", dataIndex: "说明" },
             ]}
           />

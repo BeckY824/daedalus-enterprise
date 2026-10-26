@@ -16,6 +16,7 @@ import { 规整表头 } from "../import/fields";
 import { 认枚举 } from "../import/plan";
 import { 阶段值, type BusinessConfig } from "../business-config";
 import { 标准字段, 字段中文, 实体名, type 原始记录, type 实体, type 列映射, type 映射, type 值对照名 } from "./types";
+import { 项目阶段值, 项目节点对值 } from "./project-values";
 
 /** 列映射里的特殊值：这一列不单独落字段，「表头：值」拼进备注（跟进拼进内容），一格信息都不丢 */
 export const 进备注 = "+remark";
@@ -138,10 +139,11 @@ export const 值对照: Record<值对照名, { 实体: 实体; 字段: string; �
   跟进状态: { 实体: "customer", 字段: "followStatus", 叫法: "客户跟进状态" },
 };
 
-export function 合法值(名: 值对照名): string[] {
+/** 项目 = 企业版只用项目：「阶段」能填的是项目节点和结局 */
+export function 合法值(名: 值对照名, 项目?: boolean): string[] {
   switch (名) {
     case "阶段":
-      return [...OPP_STAGES, 输单];
+      return 项目 ? [...项目阶段值] : [...OPP_STAGES, 输单];
     case "线索状态":
       return [...LEAD_STATUSES];
     case "跟进类型":
@@ -149,6 +151,11 @@ export function 合法值(名: 值对照名): string[] {
     case "跟进状态":
       return [...FOLLOW_STATUSES];
   }
+}
+
+/** 报告、对照表上这一种值叫什么：项目模式下「阶段」叫「项目节点」 */
+export function 值叫法(名: 值对照名, 项目?: boolean): string {
+  return 名 === "阶段" && 项目 ? "项目节点" : 值对照[名].叫法;
 }
 
 /** 合法值 → 给人 / 给 AI 看的说法（跟进类型存的是英文） */
@@ -195,10 +202,37 @@ const 同义词: Record<值对照名, [string, RegExp][]> = {
   ],
 };
 
+/** 项目模式的「阶段」同义词：原值里含这些词就认成这个节点 / 结局。新旧节点原名先由 项目节点对值 认 */
+const 项目同义词: [string, RegExp][] = [
+  ["丢单", /输单|丢单|未成交|失败|lost/i],
+  ["线索流失", /流失|无效|放弃/],
+  ["成功交付", /已交付|交付完成|已完成|结项/],
+  ["尾款结算", /尾款/],
+  ["验收交付", /验收/],
+  ["安装实施", /安装|实施/],
+  ["物流运输", /物流|运输|发货/],
+  ["成交推进", /成交推进|谈判|商务|negotiat/i],
+  ["生产备货", /生产|备货|赢单|已成交|won/i],
+  ["首款支付", /首款|预付|定金/],
+  ["签订合同", /合同|签约|签单/],
+  ["签约审批", /审批|审核/],
+  ["共识方案", /方案|报价|投标|proposal|quot/i],
+  ["明确需求", /需求|立项|调研|评估|商机|qualif/i],
+  ["线索推进", /推进|跟进中/],
+  ["线索验证", /验证|复审|核实/],
+  ["潜客培育", /培育|潜客|新建|初步|接触|意向|prospect|new/i],
+];
+
 /** 规则认一个值：先认原样（含业务里改过的显示名），再认同义词。认不出返回 "" */
-export function 规则对值(名: 值对照名, 原值: string, b?: 业务): string {
+export function 规则对值(名: 值对照名, 原值: string, b?: 业务, 项目?: boolean): string {
   const s = 原值.trim();
   if (!s) return "";
+  if (名 === "阶段" && 项目) {
+    const v = 项目节点对值(s);
+    if (v) return v;
+    for (const [x, re] of 项目同义词) if (re.test(s)) return x;
+    return "";
+  }
   if (名 === "阶段") {
     const v = 阶段值(b, s);
     if ((OPP_STAGES as readonly string[]).includes(v)) return v;
@@ -387,6 +421,8 @@ export type 猜映射参数 = {
   已有?: 映射 | null;
   /** 已有映射里 AI 认的也不动（改映射重新试跑：不再问一次 AI，上次 AI 认的照留） */
   留AI?: boolean;
+  /** 企业版只用项目：商机行写成项目，阶段对照项目节点 */
+  项目?: boolean;
 };
 
 export type 猜映射结果 = { 映射: 映射; 提醒: string[] };
@@ -406,6 +442,12 @@ export async function 猜映射(p: 猜映射参数): Promise<猜映射结果> {
   const m = p.已有 ? structuredClone(p.已有) : 空映射(p.默认负责人Id);
   m.说明 ??= {};
   if (!m.默认负责人Id) m.默认负责人Id = p.默认负责人Id;
+  // 开关换过（上次试跑还是商机、这次是项目，或反过来）：上次的阶段对照对的是另一套值，整个重认
+  if (!!m.项目 !== !!p.项目) {
+    for (const v of Object.keys(m.值.阶段)) delete m.说明[说明键.值("阶段", v)];
+    m.值.阶段 = {};
+  }
+  m.项目 = !!p.项目;
   const 提醒: string[] = [];
   // 人定过的（重新试跑时还有上次 AI 认的）不再动，也不再问
   const 手动 = (k: string) => m.说明![k] === "手动" || (!!p.留AI && m.说明![k] === "AI");
@@ -441,12 +483,12 @@ export async function 猜映射(p: 猜映射参数): Promise<猜映射结果> {
     const 认不出: string[] = [];
     for (const v of 原.值[k]) {
       if (手动(说明键.值(k, v))) continue;
-      const hit = 规则对值(k, v, p.业务);
+      const hit = 规则对值(k, v, p.业务, m.项目);
       m.值[k][v] = hit;
       m.说明[说明键.值(k, v)] = "规则";
       if (!hit) 认不出.push(v);
     }
-    if (认不出.length) 待问值[k] = { 原值: 认不出.slice(0, 每项上限), 可选: 合法值(k).map((v) => 值说法(k, v)) };
+    if (认不出.length) 待问值[k] = { 原值: 认不出.slice(0, 每项上限), 可选: 合法值(k, m.项目).map((v) => 值说法(k, v)) };
   }
   const 待问人: string[] = [];
   for (const w of 原.负责人) {
@@ -514,7 +556,7 @@ export function 收AI建议(m: 映射, out: AI输出, 输入: AI输入, 候选: 
     if (!m.值[k] || !vs || typeof vs !== "object") continue;
     for (const [v, 说] of Object.entries(vs)) {
       if (!问了.has(v) || typeof 说 !== "string") continue;
-      const 合法 = 合法值(k).find((x) => x === 说 || 值说法(k, x) === 说);
+      const 合法 = 合法值(k, m.项目).find((x) => x === 说 || 值说法(k, x) === 说);
       if (!合法) continue;
       m.值[k][v] = 合法;
       m.说明[说明键.值(k, v)] = "AI";

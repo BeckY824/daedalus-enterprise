@@ -16,6 +16,8 @@ import { FOLLOW_TYPES, OPP_STAGES, STAGE_PROBABILITY } from "../constants";
 import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
 import { 拆多人, 进备注, 输单 } from "./mapping";
+import { 第一个节点, 是结局 } from "../project/nodes";
+import { 结局默认节点, 节点所在阶段 } from "./project-values";
 import { 实体顺序, 必填, 实体名, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写 } from "./types";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
@@ -357,14 +359,29 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
       }
 
       if (e === "opportunity") {
-        const 阶段 = 对值(r, "阶段", s.值.stage, OPP_STAGES[0], "商机阶段");
-        let status: "WON" | "LOST" | "OPEN" = s.值.status ? 认商机状态(s.值.status) : "OPEN";
-        let stage = 阶段;
-        if (阶段 === 输单) {
-          status = "LOST";
-          stage = OPP_STAGES[0];
-        } else if (阶段 === "赢单成交" && status === "OPEN") status = "WON";
-        if (status === "WON") stage = "赢单成交";
+        // 项目模式：stage = 项目节点，status = 结局（没结局 = OPEN）；赢率、预计成交项目没有
+        const 项目 = !!m.项目;
+        let status: string;
+        let stage: string;
+        if (项目) {
+          const 位 = 对值(r, "阶段", s.值.stage, 第一个节点.node, "项目节点");
+          stage = 是结局(位) ? 结局默认节点(位) : 位;
+          status = 是结局(位) ? 位 : "OPEN";
+          // 原系统另有一列状态说了输单：线索阶段算线索流失，往后算丢单（丢单在商机阶段，订单阶段的退回商机第一个节点）
+          if (status === "OPEN" && s.值.status && 认商机状态(s.值.status) === "LOST") {
+            status = 节点所在阶段(stage) === "线索" ? "线索流失" : "丢单";
+            if (status === "丢单" && 节点所在阶段(stage) !== "商机") stage = 结局默认节点("丢单");
+          }
+        } else {
+          const 阶段 = 对值(r, "阶段", s.值.stage, OPP_STAGES[0], "商机阶段");
+          status = s.值.status ? 认商机状态(s.值.status) : "OPEN";
+          stage = 阶段;
+          if (阶段 === 输单) {
+            status = "LOST";
+            stage = OPP_STAGES[0];
+          } else if (阶段 === "赢单成交" && status === "OPEN") status = "WON";
+          if (status === "WON") stage = "赢单成交";
+        }
         let amount = 0;
         if (s.值.amount) {
           const a = 认金额(s.值.amount);
@@ -373,14 +390,16 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
             出问题(r, "提醒", "格式不对", `金额「${s.值.amount}」认不出，先记 0，原样放进了备注`);
           } else amount = a;
         }
-        let probability = status === "WON" ? 100 : status === "LOST" ? 0 : (STAGE_PROBABILITY[stage] ?? 10);
-        if (s.值.probability && status === "OPEN") {
+        let probability: number | null = 项目 ? null : status === "WON" ? 100 : status === "LOST" ? 0 : (STAGE_PROBABILITY[stage] ?? 10);
+        if (项目 && s.值.probability) 附加.push(`赢率：${s.值.probability}`);
+        if (!项目 && s.值.probability && status === "OPEN") {
           const p = 认赢率(s.值.probability);
           if (p === null) 出问题(r, "提醒", "格式不对", `赢率「${s.值.probability}」认不出，按阶段给 ${probability}%`);
           else probability = p;
         }
         let expectedDealAt: string | null = null;
-        if (s.值.expectedDealAt) {
+        if (项目 && s.值.expectedDealAt) 附加.push(`预计成交：${s.值.expectedDealAt}`);
+        else if (s.值.expectedDealAt) {
           const d = 认日期(s.值.expectedDealAt);
           if (d) expectedDealAt = d.toISOString();
           else {
@@ -389,6 +408,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           }
         }
         // 赢单 / 输单要有个历史日期，不然看板会把它算成本月的成交
+        const 结了 = 项目 ? `项目「${status}」` : status === "WON" ? "赢单" : "输单";
         let closedAt: string | null = null;
         if (status !== "OPEN") {
           const d = s.值.closedAt ? 认日期(s.值.closedAt) : null;
@@ -404,8 +424,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
               "提醒",
               "缺日期",
               expectedDealAt
-                ? `${status === "WON" ? "赢单" : "输单"}没有结单日期，按预计成交日期记`
-                : `${status === "WON" ? "赢单" : "输单"}没有结单日期，会按导入当天算进看板`,
+                ? `${结了}没有结单日期，按预计成交日期记`
+                : `${结了}没有结单日期，会按导入当天算进看板`,
             );
           }
         }

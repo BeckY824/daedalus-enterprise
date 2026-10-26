@@ -16,7 +16,7 @@
 import { 解析CSV带行号, 解码CSV } from "../import/parse";
 import { 读xlsx各表 } from "../import/xlsx";
 import { 规整表头 } from "../import/fields";
-import { 合法值, 值对照, 值说法, 进备注, type 成员 } from "./mapping";
+import { 合法值, 值对照, 值叫法, 值说法, 进备注, type 成员 } from "./mapping";
 import { 实体顺序, 标准字段, 字段中文, 实体名, type 实体, type 值对照名 } from "./types";
 import type { 试跑报告, 映射改动 } from "./report";
 
@@ -60,7 +60,7 @@ export function 导出对照表(报告: 试跑报告, 成员们: readonly 成员
     for (const c of 列们) 行.push(["列", 实体名[e], c.表头, c.字段名, 能填]);
   }
   for (const v of 报告.映射.值) {
-    行.push([v.叫法, 实体名[值对照[v.名].实体], v.原值, v.我们的值, 合法值(v.名).map((x) => 值说法(v.名, x)).join("、")]);
+    行.push([v.叫法, 实体名[值对照[v.名].实体], v.原值, v.我们的值, 合法值(v.名, 报告.映射.项目).map((x) => 值说法(v.名, x)).join("、")]);
   }
   const 人提示 = "成员名字或邮箱（重名的填邮箱）；空着 = 默认负责人";
   for (const p of 报告.映射.负责人) 行.push(["负责人", "", p.写法, 负责人写法(p.成员Id, 成员们), 人提示]);
@@ -97,7 +97,7 @@ export function 读回对照表(文件: { 名: string; bytes: Uint8Array }, 报�
   const 问题: string[] = [];
   let 改了 = 0;
   const 实体按名 = new Map(实体顺序.map((e) => [实体名[e], e]));
-  const 值按叫法 = new Map((Object.keys(值对照) as 值对照名[]).map((k) => [值对照[k].叫法, k]));
+  const 值按叫法 = new Map((Object.keys(值对照) as 值对照名[]).map((k) => [值叫法(k, 报告.映射.项目), k]));
   const 当前列 = (e: 实体, h: string) => 报告.映射.列[e]?.find((c) => c.表头 === h);
 
   const 认人 = (s: string): { id: string } | { 错: string } => {
@@ -139,8 +139,9 @@ export function 读回对照表(文件: { 名: string; bytes: Uint8Array }, 报�
       const 现 = 报告.映射.值.find((v) => v.名 === 值名 && v.原值 === 原);
       if (!现) return void 问题.push(`${第}：这次的数据里没有${类别}「${原}」（原系统写法别改）`);
       if (!我们 || 我们 === 现.我们的值) return;
-      const to = 合法值(值名).find((x) => x === 我们 || 值说法(值名, x) === 我们);
-      if (!to) return void 问题.push(`${第}：${类别}没有「${我们}」，要填 ${合法值(值名).map((x) => 值说法(值名, x)).join("、")} 之一`);
+      const 可填 = 合法值(值名, 报告.映射.项目);
+      const to = 可填.find((x) => x === 我们 || 值说法(值名, x) === 我们);
+      if (!to) return void 问题.push(`${第}：${类别}没有「${我们}」，要填 ${可填.map((x) => 值说法(值名, x)).join("、")} 之一`);
       ((改.值 ??= {})[值名] ??= {})[原] = to;
       改了++;
       return;

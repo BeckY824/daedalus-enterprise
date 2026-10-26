@@ -138,7 +138,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
 
         if (c.localDeleted) {
           if (选 === "保留我们") continue; // 删了就是删了：不建、对照行不动，原系统再改时还会问
-          const 新id = await 建(tx, e, v!, 现.现在);
+          const 新id = await 建(tx, e, v!, 现.现在, 现.项目);
           await tx.entExternalRef.update({ where: { id: ref.id }, data: { targetId: 新id, written: J(v), batchId: 批.id } });
           await tx.entImportRow.create({ data: { batchId: 批.id, entity: e, externalId: c.externalId, targetId: 新id, kind: "create", written: J(v), refBefore: J(ref) } });
           if (e === "followup" && v!.customerId) 碰过.add(String(v!.customerId));
@@ -194,7 +194,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
       summary: `处理从${来源名[源] ?? 源}同步来的冲突：${r.定了} 笔${选}${r.过时 ? `，${r.过时} 笔已过时` : ""}${r.没定.length - r.过时 > 0 ? `，${r.没定.length - r.过时} 笔没定` : ""}`,
       detail: { batchId: r.批次Id, source: 源, 选, 定了: r.定了, 过时: r.过时, 没定: r.没定.slice(0, 50) },
     });
-    for (const p of ["/customers", "/leads", "/opportunities", "/dashboard"]) revalidatePath(p);
+    for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
   }
   return r;
 }
