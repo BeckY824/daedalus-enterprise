@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
-import { 上限最大, 时长最大, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
 import { 加企业选项, 改企业选项 } from "./ent-dict-actions";
@@ -15,6 +15,8 @@ import { 卡点类型们, 影响等级们, 时限最大, 主体名上限, 主体
 
 const 节点们 = 企业版字典.节点们;
 const 默认天数 = 企业版字典.默认超时天数;
+import { 改提成比例 } from "@/app/(app)/projects/commission-actions";
+import { 提成比例问题, type 提成比例 } from "@/lib/project/commission";
 
 type 字典项 = { id: string; name: string; active: boolean; 用的人: number };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
@@ -36,6 +38,11 @@ export type 项目设置 = {
   挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段" | "阶段规则", string | null>;
   /** 企业版卡点的默认值（每类卡点的时限、阻碍主体的选项）；不是企业版 = null，卡片不出 */
   卡点默认?: 卡点默认 | null;
+  挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段", string | null>;
+  /** 企业版提成比例 A（底价）/ B（溢价），百分数；不是企业版 = null，卡片不出（服务端读的 企业版()） */
+  提成比例: 提成比例 | null;
+  /** 老板、总管理员能改提成比例 */
+  能改提成比例: boolean;
 };
 
 /**
@@ -85,6 +92,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
       {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
+      {value.提成比例 && <RatesCard 比例={value.提成比例} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
     </div>
   );
 }
@@ -185,7 +193,7 @@ function DictCard({
 
 /**
  * 项目持有上限（企业版组织规则，默认关）：开了以后每人手上线索 / 商机阶段的项目到了上限，就领不了公海、也不能再被指派。
- * 自己建档、跟着客户转、离职交接不拦。每人可以单独设，空着 = 用默认
+ * 自己建档、跟着客户转、离职交接不拦。每人可以单独设，空着 = 用默认；填 999 = 不限（10-26）
  */
 function HoldCapCard({
   规则, 持有, 成员, 挡, 忙, 跑,
@@ -214,13 +222,14 @@ function HoldCapCard({
       }
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从项目公海领、也不能再被指派新项目；自己建档的不拦。默认关，不限个数。
+        开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从项目公海领、也不能再被指派新项目；自己建档的不拦。默认关，不限个数。填 {上限最大} = 不限。
       </div>
       {规则.持有上限开 && (
         <>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
             <span>默认每人最多</span>
             <InputNumber aria-label="默认持有上限" min={1} max={上限最大} precision={0} suffix="个" style={{ width: 120 }} disabled={!!挡} value={默认} onChange={(v) => set默认(v)} />
+            {是不限(默认) && <Tag color="processing" data-testid="hold-cap-unlimited-default">不限</Tag>}
           </div>
           {成员.map((u) => (
             <div key={u.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
@@ -229,11 +238,12 @@ function HoldCapCard({
               <InputNumber
                 aria-label={`${u.name}的持有上限`}
                 min={0} max={上限最大} precision={0} suffix="个" style={{ width: 120, flex: "0 0 auto" }}
-                placeholder={`默认 ${默认 ?? 规则.默认上限}`}
+                placeholder={`默认 ${是不限(默认 ?? 规则.默认上限) ? "不限" : (默认 ?? 规则.默认上限)}`}
                 disabled={!!挡}
                 value={每人[u.id] ?? null}
                 onChange={(v) => set每人((m) => ({ ...m, [u.id]: v }))}
               />
+              {是不限(每人[u.id]) && <Tag color="processing" style={{ marginInlineEnd: 0, flex: "0 0 auto" }}>不限</Tag>}
             </div>
           ))}
           {!挡 && (
@@ -454,6 +464,42 @@ function BlockerDefaultsCard({
       </div>
       {!挡 && (
         <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了 || !齐了} onClick={() => void 保存()}>保存</Button>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * 提成比例（企业版）：底价提成 = 项目底价 × A，溢价提成 = 项目溢价 × B。老板、总管理员能改，每次改动进操作记录。
+ * 改了以后没赢单的项目预估马上按新比例算；已经赢单的实际提成不变
+ */
+function RatesCard({
+  比例, 能改, 忙, 跑,
+}: {
+  比例: 提成比例; 能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const [A, setA] = useState<number | null>(比例.底价比例);
+  const [B, setB] = useState<number | null>(比例.溢价比例);
+  const 问题 = 提成比例问题({ 底价比例: A ?? undefined, 溢价比例: B ?? undefined });
+  const 改了 = A !== 比例.底价比例 || B !== 比例.溢价比例;
+  return (
+    <Card title="提成比例" extra={!能改 && <span style={{ color: "var(--text-muted)" }}>只有老板、总管理员能改</span>}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
+      </div>
+      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+          底价比例
+          <InputNumber<number> aria-label="底价提成比例" min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={A} onChange={(v) => setA(v)} />
+        </span>
+        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+          溢价比例
+          <InputNumber<number> aria-label="溢价提成比例" min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={B} onChange={(v) => setB(v)} />
+        </span>
+      </div>
+      {能改 && 改了 && 问题 && <div style={{ color: "var(--danger-text)", marginBottom: 8 }}>{问题}</div>}
+      {能改 && (
+        <Button type="primary" disabled={忙 || !改了 || !!问题} onClick={() => void 跑(() => 改提成比例({ 底价比例: A!, 溢价比例: B! }), "已保存提成比例")}>保存</Button>
       )}
     </Card>
   );

@@ -9,6 +9,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
+import { 读项目提成 } from "@/lib/project/commission-db";
 import { 超时回收日, 超时起点, 超时理由, 系统 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
@@ -86,6 +87,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 不给推 = 企业 && !公海 && !p.result ? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
   // 企业版：线索验证往后推要先有一条客户明确回复的沟通（lib/project/stage-gates.ts）
   const 有效沟通 = 企业 && p.phase === "线索" ? await 有效沟通数(prisma, p.id) : 0;
+  // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
+  const 提成 = 企业 ? await 读项目提成(me, p, p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId), org, (uid) => 叫(uid)!, prisma) : null;
 
   // 企业版卡点（lib/project/blocker.ts）：沟通编号、时限提醒、卡点列表和发卡点；别的版本一样不查
   const [编号, 卡点们, 能发, 卡点默认, 卡点人们] = 企业
@@ -126,6 +129,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
     members: p.members.map((m) => ({ id: m.id, userId: m.userId, name: 叫(m.userId)!, roleId: m.roleId, inviteStatus: m.inviteStatus })),
+    提成,
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };
   return <ProjectDetail 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;

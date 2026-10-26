@@ -22,6 +22,7 @@ import { 读团队 } from "../sync/client";
 import { dayjs } from "../utils";
 import { 看全部 } from "../team-scope";
 import { 记沟通编号 } from "./followup-meta";
+import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 
@@ -295,6 +296,8 @@ export async function 改节点(
         closedAt: result ? (p.result === result ? p.closedAt : new Date()) : null,
       },
     });
+    // 企业版提成：进订单（赢单）固定实际提成，退出订单清掉（lib/project/commission-db.ts）
+    await 节点变了的提成(tx, p.id, p.phase, 到.phase);
     await tx.projectNodeLog.create({
       data: {
         projectId: p.id, userId: me.id,
@@ -779,6 +782,7 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
     if (还差(规则, await 读必填数据(tx, p)).length) break;
     if (await 企业版推进关(tx, p, 下)) break;
     await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node } });
+    await 节点变了的提成(tx, p.id, p.phase, 下.phase);
     await tx.projectNodeLog.create({
       data: {
         projectId: p.id, userId: me.id, reason: 自动推进理由,

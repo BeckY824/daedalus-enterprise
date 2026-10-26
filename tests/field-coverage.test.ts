@@ -46,6 +46,9 @@ const 可写: Record<string, string[]> = {
   EntFollowUpMeta: ["nextAt"],
   // 企业版沟通标记（2026-10-26）：记项目沟通 / 建档向导一起写，沟通弹窗里选阶段、选客户是否明确回复
   EntFollowUpMark: ["phase", "replied"],
+  // 企业版提成（2026-10-26）：projects/commission-actions.ts 的 存项目底价 / 存提成分配
+  EntCommission: ["basePrice"],
+  EntCommissionSplit: ["userId", "percent"],
   Customer: ["name", "phone", "school", "grade", "major", "channelId", "referrerCustomerId", "salesOwnerId", "channelOwnerId", "followStatus", "decisionStatus", "expectedSignAt", "remark"],
   Channel: ["name", "phone", "remark", "channelOwnerId", "active"],
   Lead: ["name", "contact", "phone", "email", "industry", "source", "status", "remark", "ownerId"],
@@ -97,6 +100,20 @@ const 派生: Record<string, Record<string, string>> = {
   },
   EntLeadQuota: { setById: "最后改配额的人，当前登录账号" },
   EntFollowUpMark: { followUpId: "主键：标的是哪条沟通（一条沟通只挂一个项目，一行一条）", projectId: "哪个项目，记沟通时跟 FollowUpProject 一起写" },
+  EntCommission: {
+    projectId: "哪个项目，一个项目一行；存项目底价时按项目定，不改",
+    updatedById: "最后改项目底价的人，当前登录账号",
+    fixedAt: "赢单（进订单阶段）那一刻打上，退回商机清掉",
+    fixedDeal: "赢单时的成交金额，从项目金额抄过来",
+    fixedBase: "赢单时的项目底价",
+    fixedRateBase: "赢单时设置里的底价比例",
+    fixedRatePremium: "赢单时设置里的溢价比例",
+    fixedTotal: "赢单时按上面几项算出来的实际提成",
+  },
+  EntCommissionSplit: {
+    projectId: "哪个项目；分配按项目整份存",
+    setById: "最后改这一份的人，当前登录账号",
+  },
   Opportunity: { activityAt: "最近业务推进时间；转交负责人保留，业务字段/报价变化时刷新，老数据为空沿用原修改时间" },
   Customer: {
     expectedSignOn: "预计签约原日历日，随保存/导入/同步保留；旧数据未知为空",
