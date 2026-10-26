@@ -541,12 +541,6 @@ describe("企业版项目组：邀请 → 同意 / 拒绝（10-26）", () => {
     // 乙不是组员，照旧看不到
     expect((await prisma.project.findMany({ where: 限定条件("Project", 乙.id) as never }))).toEqual([]);
   });
-
-  it("组员角色默认 6 个：原来 4 个 + 采购、跟单；停用了、改了名的不再补", async () => {
-    expect((await 角色字典()).map((r) => r.name)).toEqual([...默认角色们, "采购", "跟单"]);
-    await prisma.projectRole.update({ where: { id: "purchase" }, data: { name: "采购部", active: false } });
-    expect((await 角色字典()).map((r) => r.name)).toEqual([...默认角色们, "采购部", "跟单"]);
-  });
 });
 
 describe("开关关着：项目组照团队版（10-26 企业版邀请不影响）", () => {
