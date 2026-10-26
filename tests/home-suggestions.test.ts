@@ -23,7 +23,9 @@ const 页 = () => readFile("src/app/(app)/dashboard/page.tsx", "utf8");
  */
 async function 单人分支() {
   const s = await 页();
-  const 段 = s.slice(s.indexOf("兜底: Suggestion[] = 就我一个人"), s.indexOf("for (const x of 兜底)"));
+  // 企业版只用项目的那一支（2026-10-26）排在前面，单人分支从「就我一个人」那个三元开始数
+  const 全 = s.slice(s.indexOf("兜底: Suggestion[] ="), s.indexOf("for (const x of 兜底)"));
+  const 段 = 全.slice(全.indexOf("就我一个人"));
   return 段.slice(段.indexOf("? ["), 段.indexOf(": ["));
 }
 
