@@ -48,6 +48,9 @@ jobs:
         # 要 tag：tests/r2-shell-upgrade 拿老版本的 tag 建老库来测升级，浅检出没有 tag 会直接报红
         with:
           fetch-depth: 0
+      # 企业版仓库不打 v* tag（release.yml 见 tag 就发镜像），老版本的 tag 从公开的桌面端仓库拉，只落在这台 runner 上
+      - name: 拉升级测试要的老版本 tag
+        run: git fetch --no-tags https://github.com/BeckY824/daedalus-crm.git 'refs/tags/v*:refs/tags/v*'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
