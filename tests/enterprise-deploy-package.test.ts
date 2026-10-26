@@ -7,7 +7,9 @@
  * - 首启只建 admin，名单外（界面上加的）账号不提示、不删
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { USERS, 要建的账号 } from "../prisma/seed";
 
@@ -79,8 +81,10 @@ describe("升级先在测试机验证", () => {
     expect(验证).not.toMatch(/docker compose up/);
   });
 
-  it("我方的 tools/ 不进给客户的交付包", () => {
-    expect(打包).not.toMatch(/\$HERE\/tools/);
+  it("我方的 tools/ 不进给客户的交付包（只带冒烟检查 smoke.sh）", () => {
+    // 演练、打包、升级验证是我方用的；smoke.sh 是装完给客户跑的，单独拷这一个
+    expect(打包).not.toMatch(/cp -R "\$HERE\/tools/);
+    expect(打包.match(/\$HERE\/tools\/[^"\s]*/g)).toEqual(["$HERE/tools/smoke.sh"]);
     expect(打包).toMatch(/cp -R "\$HERE\/scripts"/);
   });
 
@@ -113,6 +117,24 @@ describe("备份真能恢复（恢复演练）", () => {
     expect(演练).toMatch(/NO_START=1/);
   });
 
+  it("同一秒连跑两次备份不撞名：加序号，拒绝覆盖那条兜底照留", () => {
+    const 备份 = 读("deploy/enterprise/scripts/backup.sh");
+    expect(备份).toMatch(/NAME="crm-\$STAMP-\$N"/);
+    expect(备份).toMatch(/已存在，拒绝覆盖/);
+    // 把取名那段原样抠出来，在临时目录里同一秒跑三次
+    const 段 = 备份.slice(备份.indexOf('NAME="crm-$STAMP"'), 备份.indexOf('OUT="backups/$NAME.tar.gz.enc"'));
+    const 目录 = mkdtempSync(path.join(tmpdir(), "bk-"));
+    mkdirSync(path.join(目录, "backups"));
+    const 脚本 = path.join(目录, "name.sh");
+    writeFileSync(脚本, `cd "$1"; COPY_DIR=""; for i in 1 2 3; do STAMP=20261026-120000\n${段}\ntouch "backups/$NAME.tar.gz.enc"; done\n`);
+    execFileSync("bash", [脚本, 目录]);
+    expect(readdirSync(path.join(目录, "backups")).sort()).toEqual([
+      "crm-20261026-120000-2.tar.gz.enc",
+      "crm-20261026-120000-3.tar.gz.enc",
+      "crm-20261026-120000.tar.gz.enc",
+    ]);
+  });
+
   it("五种坏备份都要被拒绝、数据不动", () => {
     for (const 坏 of ["截断一半", "中间改一个字节", "密码不对", "随机字节", "没有数据库的包"]) {
       expect(演练).toMatch(new RegExp(`refuse "${坏}"`));
@@ -125,9 +147,13 @@ describe("备份真能恢复（恢复演练）", () => {
   });
 
   it("CI 恢复演练跑三遍，一条命令安装且计时 30 分钟", () => {
-    expect(ci).toMatch(/restore-drill:[\s\S]*round: \[1, 2, 3\]/);
+    // 三遍分别用 localhost、127.0.0.1、内网 IP 装：后两遍走 Caddy 内部 CA 自签
+    expect(ci).toMatch(/restore-drill:[\s\S]*round: 1\s+addr: localhost\s+- round: 2\s+addr: 127\.0\.0\.1\s+- round: 3\s+addr: 内网IP/);
     expect(ci).toMatch(/upgrade-drill:[\s\S]*round: \[1, 2, 3\]/);
-    expect(ci).toMatch(/scripts\/install\.sh --domain localhost --load/);
+    expect(ci).toMatch(/scripts\/install\.sh --domain "\$ADDR" --load/);
+    expect(ci).toMatch(/tools\/smoke\.sh --password-file/);
+    expect(ci).toMatch(/\/etc\/cron\.d\/crm-backup/);
+    expect(ci).toMatch(/curl[^\n]*--cacert/);
     expect(ci).toMatch(/-lt 1800/);
     expect(ci).toMatch(/tools\/restore-drill\.sh --fill/);
   });
