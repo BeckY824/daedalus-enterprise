@@ -46,6 +46,18 @@ crm_running() {
   [ "$(docker compose ps --status running -q crm 2>/dev/null)" != "" ]
 }
 
+# 停应用，等到 compose 也认它停了才返回：stop 刚返回时 ps 可能还报 running，
+# 紧接着的 crm_sh 就会去 exec 一个已停的容器（"service crm is not running"，10-26 CI 恢复演练撞过）
+crm_stop() {
+  docker compose stop crm >/dev/null
+  local i=0
+  while crm_running; do
+    i=$((i + 1))
+    [ "$i" -ge 30 ] && die "应用停不下来（30 秒后还在跑）"
+    sleep 1
+  done
+}
+
 # 在 crm 容器里跑一段 shell。容器在跑就 exec 进去；没跑（比如恢复演练时库已被删、容器起不来）
 # 就临时起一个只挂数据卷、不跑应用的容器
 crm_sh() {

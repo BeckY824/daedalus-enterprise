@@ -66,7 +66,7 @@ fi
 
 # ── 1. 指纹 A ─────────────────────────────────────────
 say "1/6 停应用，拍指纹 A"
-docker compose stop crm >/dev/null
+crm_stop
 A="$(snap)"
 printf '%s\n' "$A" | head -1 | grep -qx 'integrity ok' || die "库本身就不完整：$(printf '%s\n' "$A" | head -1)"
 ok "A：$(summary "$A")"
