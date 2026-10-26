@@ -121,7 +121,7 @@ it("小框：方式按计划写的认（电话沟通 → 电话）；「不排�
   await expect.poll(() => 框.getByLabel("跟进方式").locator("..").innerText()).toContain("电话沟通");
   await 框.getByLabel("这次聊了什么").fill("打过了，样品没问题");
   await 框.getByText("不排", { exact: true }).click();
-  expect(await 框.innerText()).not.toContain("会排一条");
+  await 框.getByText(/会排一条/).waitFor({ state: "detached", timeout: 5_000 });
   await page.getByRole("button", { name: "保存并完成" }).click();
   await page.getByText("已记一笔，「问样品」完成").waitFor({ timeout: 15_000 });
   const [c] = (await 调用们()).filter((x) => x.名 === "saveFollowUp");
