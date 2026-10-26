@@ -2,7 +2,7 @@
  * 团队版项目模式 1a 的读写（lib/project/db.ts）+ 业务员看得到哪些项目（lib/team-scope.ts）。
  * 钉的是总控 10-23 的规则：每改一次节点留一行、往前只能一步、成功交付两项都勾才让点、异常要选类别（备注可空）、
  * 恢复 = 再改节点；组员角色、异常类别字典只有老板能改、停用不删；项目跟客户走，负责人自己的也看得到；
- * 项目公海（线索 / 商机阶段负责人放回、谁都能领、都留痕；企业版里放回的人也能领回、有持有上限，
+ * 项目公海（线索 / 商机阶段负责人放回、谁都能领、都留痕；企业版里原负责人领不回（10-26 定稿）、有持有上限，
  * 不是企业版（CRM_ENTERPRISE 不设）时 Setting 里开着也不生效、放回的人不能自己领回）；建档人谁都改不了。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -11,9 +11,11 @@ import { resetDb } from "./reset";
 import {
   改节点, 勾交付, 角色字典, 加角色, 改角色, 默认角色们, 客户的项目数, 能管项目, 改项目, 加组员, 换组员角色, 移出组员,
   异常类别字典, 加异常类别, 改异常类别, 默认异常类别们, 放回公海, 领取公海项目, 公海超时收回, 持有数,
+  回邀请, 待我回的邀请, 记项目沟通,
 } from "@/lib/project/db";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 限定条件 } from "@/lib/team-scope";
+import { dayjs } from "@/lib/utils";
 
 let 老板: { id: string; role: string };
 let 乙: { id: string; role: string };
@@ -257,22 +259,19 @@ describe("项目公海", () => {
     expect(log).toMatchObject({ kind: "pool-release", userId: 乙.id, fromOwnerId: 乙.id, toOwnerId: null, toNode: "潜客培育" });
   });
 
-  it("放回去的人在公海里改不了，但能自己领回；别人领了就是新负责人，留痕；领走后别人再领拦", async () => {
+  it("放回去的人在公海里改不了，原负责人也领不回（10-26 定稿）；别人领了就是新负责人，留痕；领走后别人再领拦", async () => {
     const p = await 项目(乙.id);
     await 放回公海(乙, p.id);
     expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
     expect(await 改项目(乙, p.id, { name: "改个名" })).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
-    expect(await 领取公海项目(乙, p.id)).toEqual({ ok: true });
-    expect(await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ ownerId: 乙.id, pooledAt: null });
-    await 放回公海(乙, p.id);
+    expect(await 领取公海项目(乙, p.id)).toEqual({ ok: false, error: "原负责人不能领回" });
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ ownerId: 乙.id });
     expect(await 领取公海项目(丙, p.id)).toEqual({ ok: true });
     expect(await 领取公海项目(老板, p.id)).toMatchObject({ ok: false, error: expect.stringContaining("领走") });
     expect(await 领取公海项目(乙, p.id)).toMatchObject({ ok: false, error: expect.stringContaining("领走") });
     expect(await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ ownerId: 丙.id, pooledAt: null });
     const logs = await prisma.projectNodeLog.findMany({ where: { projectId: p.id }, orderBy: { at: "asc" } });
     expect(logs.map((l) => [l.kind, l.userId, l.fromOwnerId, l.toOwnerId])).toEqual([
-      ["pool-release", 乙.id, 乙.id, null],
-      ["pool-claim", 乙.id, 乙.id, 乙.id],
       ["pool-release", 乙.id, 乙.id, null],
       ["pool-claim", 丙.id, 乙.id, 丙.id],
     ]);
@@ -481,5 +480,77 @@ describe("项目组", () => {
     expect(await 移出组员(乙, m.id)).toEqual({ ok: true });
     expect(await 移出组员(乙, m.id)).toEqual({ ok: true });
     expect(await prisma.projectMember.count()).toBe(0);
+  });
+});
+
+describe("企业版项目组：邀请 → 同意 / 拒绝（10-26）", () => {
+  beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", "1"); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("加组员 = 发邀请；只有本人能回；同意进组、拒绝记没接受；拒绝过的能再邀；邀请着的不能重复邀", async () => {
+    const p = await 项目(乙.id);
+    expect(await 加组员(乙, p.id, 丙.id)).toEqual({ ok: true });
+    const m = await prisma.projectMember.findFirstOrThrow({ where: { projectId: p.id } });
+    expect(m).toMatchObject({ userId: 丙.id, inviteStatus: "INVITED", invitedById: 乙.id });
+    expect(await 加组员(乙, p.id, 丙.id)).toMatchObject({ ok: false, error: expect.stringContaining("邀请过") });
+    expect((await 待我回的邀请(丙)).map((r) => [r.项目, r.负责人, r.邀请人])).toEqual([["一号项目", "yi", "yi"]]);
+    expect(await 待我回的邀请(乙)).toEqual([]);
+    // 别人替他点不行
+    expect(await 回邀请(乙, m.id, true)).toMatchObject({ ok: false });
+    expect(await 回邀请(丙, m.id, false)).toEqual({ ok: true, projectId: p.id });
+    expect((await prisma.projectMember.findUniqueOrThrow({ where: { id: m.id } })).inviteStatus).toBe("DECLINED");
+    expect(await 回邀请(丙, m.id, true)).toMatchObject({ ok: false, error: expect.stringContaining("拒绝过") });
+    expect(await 待我回的邀请(丙)).toEqual([]);
+    // 再邀一次，这回同意
+    expect(await 加组员(乙, p.id, 丙.id)).toEqual({ ok: true });
+    expect((await prisma.projectMember.findUniqueOrThrow({ where: { id: m.id } })).inviteStatus).toBe("INVITED");
+    expect(await 回邀请(丙, m.id, true)).toEqual({ ok: true, projectId: p.id });
+    expect((await prisma.projectMember.findUniqueOrThrow({ where: { id: m.id } })).inviteStatus).toBe("JOINED");
+    expect(await 加组员(乙, p.id, 丙.id)).toMatchObject({ ok: false, error: expect.stringContaining("已经在") });
+  });
+
+  it("拉自己直接进组，不用自己点同意", async () => {
+    const p = await 项目(乙.id);
+    expect(await 加组员(老板, p.id, 老板.id)).toEqual({ ok: true });
+    expect((await prisma.projectMember.findFirstOrThrow()).inviteStatus).toBe("JOINED");
+  });
+
+  it("同意前看不到项目、记不了沟通；同意后看得到（同事客户下的也行），节点变更、组员、沟通跟着放开", async () => {
+    const p = await 项目(老板.id, 客户甲);
+    const 看到的 = async () => (await prisma.project.findMany({ where: 限定条件("Project", 丙.id) as never })).map((r) => r.id);
+    expect(await 加组员(老板, p.id, 丙.id)).toEqual({ ok: true });
+    expect(await 看到的()).toEqual([]);
+    expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm") })).toMatchObject({ ok: false });
+    const m = await prisma.projectMember.findFirstOrThrow();
+    await 回邀请(丙, m.id, true);
+    expect(await 看到的()).toEqual([p.id]);
+    expect(await prisma.projectMember.count({ where: 限定条件("ProjectMember", 丙.id) as never })).toBe(1);
+    expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm") })).toMatchObject({ ok: true });
+    expect(await prisma.followUpProject.count({ where: 限定条件("FollowUpProject", 丙.id) as never })).toBe(1);
+    // 乙不是组员，照旧看不到
+    expect((await prisma.project.findMany({ where: 限定条件("Project", 乙.id) as never }))).toEqual([]);
+  });
+
+  it("组员角色默认 6 个：原来 4 个 + 采购、跟单；停用了、改了名的不再补", async () => {
+    expect((await 角色字典()).map((r) => r.name)).toEqual([...默认角色们, "采购", "跟单"]);
+    await prisma.projectRole.update({ where: { id: "purchase" }, data: { name: "采购部", active: false } });
+    expect((await 角色字典()).map((r) => r.name)).toEqual([...默认角色们, "采购部", "跟单"]);
+  });
+});
+
+describe("开关关着：项目组照团队版（10-26 企业版邀请不影响）", () => {
+  it("加人直接进组、组员角色 4 个、待回邀请是空的、组员不加进看得到的范围", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    try {
+      expect((await 角色字典()).map((r) => r.name)).toEqual([...默认角色们]);
+      const p = await 项目(老板.id, 客户甲);
+      expect(await 加组员(老板, p.id, 丙.id)).toEqual({ ok: true });
+      expect((await prisma.projectMember.findFirstOrThrow()).inviteStatus).toBe("JOINED");
+      expect(await 待我回的邀请(丙)).toEqual([]);
+      expect(await prisma.project.findMany({ where: 限定条件("Project", 丙.id) as never })).toEqual([]);
+      expect(JSON.stringify(限定条件("Project", 丙.id))).not.toContain("members");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

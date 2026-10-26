@@ -17,6 +17,7 @@ import { 主题颜色 } from "@/lib/chart-theme";
 import { categorical } from "@/lib/palette";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
+import InviteInbox, { type 邀请行 } from "./InviteInbox";
 
 /** 看板五列的颜色：三个阶段沿用商机管道的蓝绿黄，成功交付粉、没成灰 */
 const 列色: Record<看板列, string> = {
@@ -52,13 +53,15 @@ function 节点文字(r: 项目行) {
  * 看板列头写项目数和按币种分开的金额合计；异常状态的项目留在订单列、左边框标红
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters,
+  行, 列: 看板, 取到上限, users, filters, 邀请们 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
   取到上限: boolean;
   users: 可选成员[];
   filters: { keyword: string; ownerId: string; pool: string };
+  /** 企业版：等我回的项目组邀请（别的版本是空的） */
+  邀请们?: 邀请行[];
 }) {
   const router = useRouter();
   const b = useBusiness();
@@ -75,7 +78,7 @@ export default function ProjectsView({
     { title: b.customer, key: "customer", width: 180, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
     { title: "节点", key: "node", width: 170, render: (_, r) => 节点文字(r) },
     { title: "金额", key: "amount", width: 130, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
-    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`${r.ownerName} 放回的`}>公海</Tag> : <UserCell name={r.ownerName} />) }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>公海</Tag> : <UserCell name={r.ownerName} />) }]),
     { title: "最近更新", key: "updatedAt", width: 120, render: (_, r) => fmtDate(r.updatedAt) },
   ];
 
@@ -121,6 +124,8 @@ export default function ProjectsView({
           </Space>
         }
       />
+
+      <InviteInbox 邀请们={邀请们} />
 
       {看法 === "列表" ? (
         <DataList<项目行>
