@@ -536,7 +536,7 @@ describe("企业版项目组：邀请 → 同意 / 拒绝（10-26）", () => {
     await 回邀请(丙, m.id, true);
     expect(await 看到的()).toEqual([p.id]);
     expect(await prisma.projectMember.count({ where: 限定条件("ProjectMember", 丙.id) as never })).toBe(1);
-    expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm") })).toMatchObject({ ok: true });
+    expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), 阶段: p.phase, 明确回复: true })).toMatchObject({ ok: true });
     expect(await prisma.followUpProject.count({ where: 限定条件("FollowUpProject", 丙.id) as never })).toBe(1);
     // 乙不是组员，照旧看不到
     expect((await prisma.project.findMany({ where: 限定条件("Project", 乙.id) as never }))).toEqual([]);

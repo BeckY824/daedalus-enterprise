@@ -110,7 +110,7 @@ export default async function SettingsBody() {
     企业选项: 企业选项
       ? Object.fromEntries(Object.entries(企业选项).map(([k, xs]) => [k, xs.map((x) => ({ id: x.id, name: x.name, active: x.active, 用的人: 0 }))]))
       : null,
-    挡: { 字典: 挡("字典"), 持有上限: 挡("持有上限"), 节点时限: 挡("节点时限"), 必填字段: 挡("必填字段") },
+    挡: { 字典: 挡("字典"), 持有上限: 挡("持有上限"), 节点时限: 挡("节点时限"), 必填字段: 挡("必填字段"), 阶段规则: 挡("阶段规则") },
   };
   const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限
     ? (() => {

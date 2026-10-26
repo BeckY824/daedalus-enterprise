@@ -19,6 +19,7 @@ import { categorical } from "@/lib/palette";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 字典of, 结局叫法, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
 import { 自动分配线索, 批量自动分配, type 自动分配结果 } from "../leads/assign-actions";
@@ -47,10 +48,10 @@ function 异常说明(r: 项目行) {
   return [r.exceptionCategory, r.exceptionReason].filter(Boolean).join("：") || undefined;
 }
 
-/** 节点那一格：有结局写结局，异常标红 */
-function 节点文字(r: 项目行) {
+/** 节点那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红 */
+function 节点文字(r: 项目行, 字典: 阶段字典) {
   if (r.result === "异常状态") return <Tag color="error" title={异常说明(r)}>异常 · {r.exceptionCategory ?? r.node}</Tag>;
-  if (r.result) return <Tag>{r.result}</Tag>;
+  if (r.result) return <Tag>{结局叫法(r.result, 字典)}</Tag>;
   return <span>{r.phase} · {r.node}</span>;
 }
 
@@ -62,13 +63,17 @@ function 节点文字(r: 项目行) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 邀请们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [],
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 邀请们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
   取到上限: boolean;
   users: 可选成员[];
   filters: { keyword: string; ownerId: string; pool: string };
+  /** 服务端的 企业版()：结局叫法跟着字典 */
+  企业版?: boolean;
+  /** 企业版组织规则里改过的出口叫法 */
+  出口叫法?: 出口叫法改动;
   /** 企业版：等我回的项目组邀请（别的版本是空的） */
   邀请们?: 邀请行[];
   /** 企业版：「我的卡点」看板（指给我的、我项目上等人认领的；别的版本是空的） */
@@ -84,6 +89,7 @@ export default function ProjectsView({
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
+  const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
   // 分配只在新线索页：线索阶段的项目按配额分给销售（老的 Lead 分配搬过来，见 leads/assign-actions.ts 的 项目 选项）
@@ -142,7 +148,7 @@ export default function ProjectsView({
   const 列表: 列<项目行>[] = [
     { title: "项目", dataIndex: "name", width: 200, ellipsis: true },
     { title: b.customer, key: "customer", width: 180, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
-    { title: "节点", key: "node", width: 170, render: (_, r) => 节点文字(r) },
+    { title: "节点", key: "node", width: 170, render: (_, r) => 节点文字(r, 字典) },
     { title: "金额", key: "amount", width: 130, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>公海</Tag> : <UserCell name={r.ownerName} />) }]),
     { title: "最近更新", key: "updatedAt", width: 120, render: (_, r) => fmtDate(r.updatedAt) },
@@ -280,7 +286,7 @@ export default function ProjectsView({
                           </div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>
-                              {异常 ? `异常 · ${r.exceptionCategory ? `${r.exceptionCategory} · ` : ""}` : r.result && r.result !== "成功交付" ? `${r.result} · ` : ""}{r.node}
+                              {异常 ? `异常 · ${r.exceptionCategory ? `${r.exceptionCategory} · ` : ""}` : r.result && r.result !== "成功交付" ? `${结局叫法(r.result, 字典)} · ` : ""}{r.node}
                             </span>
                             <span className="pipe-card-a">{金额(r.amount, r.currency)}</span>
                           </div>

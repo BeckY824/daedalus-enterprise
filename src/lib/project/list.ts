@@ -4,6 +4,8 @@ import { 负责人候选 } from "@/lib/owners";
 import type { 项目行 } from "./board";
 import type { 阶段 } from "./nodes";
 import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请 } from "./db";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 生效组织规则 } from "./org-rules-store";
 
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string };
 
@@ -48,6 +50,9 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   return {
     行,
     取到上限: rows.length >= 项目上限,
+    // 结局叫法跟着字典：企业版组织规则里改过的出口叫法
+    企业版: 企业版(),
+    出口叫法: 企业版() ? (await 生效组织规则()).阶段.出口叫法 : undefined,
     users,
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "" },

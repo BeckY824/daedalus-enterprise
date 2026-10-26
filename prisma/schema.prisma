@@ -1301,6 +1301,21 @@ model EntLeadAssign {
   @@index([projectId])
 }
 
+/// 企业版沟通标记（2026-10-26）：一条项目沟通一行。phase = 记的时候项目在哪个阶段（必须是项目当前阶段）；
+/// replied = 客户是否明确回复，有效线索要至少一条 replied = true 的沟通才能过「线索验证」。
+/// 不建外键：同 EntMember。跟进删了这一行留着也不读（数的时候按 FollowUpProject 还在的算）
+model EntFollowUpMark {
+  followUpId String   @id
+  projectId  String
+  /// 线索 / 商机 / 订单
+  phase      String
+  /// 客户是否明确回复
+  replied    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([projectId])
+}
+
 /// 企业版联系方式子表（2026-10-26，测试清单 B1 / B5 / B8，融合对照 §2 / §8.1 B1，migrations/054）。一行一个号。
 /// 企业版建档向导写：选了号码类型的那个号（contactId 空）+ 联系人那一步的电话 / 邮箱 / 微信（挂 contactId）。
 /// 全公司查重按 kind + numberKey 比（lib/enterprise/contact-dedupe.ts）。老号码还在 Customer.phone / Contact / CustomerExtra，

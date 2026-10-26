@@ -63,6 +63,8 @@ export const 不同步表 = [
   "EntDept", "EntMember",
   // 企业版线索分配（2026-10-24）：同上
   "EntLeadAssign", "EntLeadQuota",
+  // 企业版沟通标记（2026-10-26）：同上
+  "EntFollowUpMark",
   // 企业版「交接中」（2026-10-26）：同上
   "EntHandover",
   // 企业版联系方式子表（2026-10-26，migrations/054）：同上
