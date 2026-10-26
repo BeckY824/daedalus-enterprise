@@ -133,7 +133,10 @@ export async function 配额of(userId: string, db: 库 = prisma): Promise<number
 }
 
 export type 分出去的线索 = {
-  leadId: string;
+  /** 老的线索表；企业版只用项目以后分的是项目，这里为空、看 projectId */
+  leadId: string | null;
+  /** 企业版「新线索」= 项目的线索阶段：分的是哪个项目 */
+  projectId: string | null;
   name: string;
   status: string;
   convertedAt: string | null;
@@ -159,32 +162,65 @@ export async function 我分出去的(我: string, 最多 = 200): Promise<分出
     orderBy: { createdAt: "desc" },
     take: 最多 * 2,
   });
+  // 同一条（线索或项目）分了几次只留最近一次
   const 最近 = new Map<string, (typeof 记录)[number]>();
-  for (const r of 记录) if (!最近.has(r.leadId)) 最近.set(r.leadId, r);
-  const ids = [...最近.keys()].slice(0, 最多);
-  const leads = await defaultClient.lead.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, name: true, status: true, convertedAt: true, customerId: true, owner: { select: { name: true } } },
-  });
+  for (const r of 记录) {
+    const k = r.projectId ? `p:${r.projectId}` : r.leadId ? `l:${r.leadId}` : null;
+    if (k && !最近.has(k)) 最近.set(k, r);
+  }
+  const 留 = [...最近.values()].slice(0, 最多);
+  const leadIds = 留.flatMap((r) => (r.projectId || !r.leadId ? [] : [r.leadId]));
+  const projectIds = 留.flatMap((r) => (r.projectId ? [r.projectId] : []));
+  const [leads, projects] = await Promise.all([
+    leadIds.length
+      ? defaultClient.lead.findMany({
+          where: { id: { in: leadIds } },
+          select: { id: true, name: true, status: true, convertedAt: true, customerId: true, owner: { select: { name: true } } },
+        })
+      : [],
+    projectIds.length
+      ? defaultClient.project.findMany({
+          where: { id: { in: projectIds } },
+          select: { id: true, name: true, phase: true, node: true, result: true, customerId: true, ownerId: true, pooledAt: true },
+        })
+      : [],
+  ]);
   const 线索 = new Map(leads.map((l) => [l.id, l]));
+  const 项目 = new Map(projects.map((p) => [p.id, p]));
   const 人名 = new Map(
-    (await defaultClient.user.findMany({ where: { id: { in: [...new Set([...最近.values()].map((r) => r.toUserId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]),
+    (await defaultClient.user.findMany({
+      where: { id: { in: [...new Set([...留.map((r) => r.toUserId), ...projects.map((p) => p.ownerId)])] } },
+      select: { id: true, name: true },
+    })).map((u) => [u.id, u.name]),
   );
-  return ids.flatMap((id) => {
-    const r = 最近.get(id)!;
-    const l = 线索.get(id);
+  return 留.flatMap((r) => {
+    const 共 = { 接手人: 人名.get(r.toUserId) ?? "—", line: r.line, kind: r.kind, 分配时间: r.createdAt.toISOString() };
+    if (r.projectId) {
+      const p = 项目.get(r.projectId);
+      if (!p) return []; // 项目被删了
+      // 项目不单独记转商机的时间：转没转看状态那一栏（阶段 · 节点，或结局）
+      return [{
+        leadId: null,
+        projectId: p.id,
+        name: p.name,
+        status: p.result ?? `${p.phase} · ${p.node}`,
+        convertedAt: null,
+        customerId: p.customerId,
+        当前负责人: p.pooledAt ? "公海" : (人名.get(p.ownerId) ?? null),
+        ...共,
+      }];
+    }
+    const l = r.leadId ? 线索.get(r.leadId) : undefined;
     if (!l) return []; // 线索被删了
     return [{
-      leadId: id,
+      leadId: l.id,
+      projectId: null,
       name: l.name,
       status: l.status,
       convertedAt: l.convertedAt?.toISOString() ?? null,
       customerId: l.customerId,
-      接手人: 人名.get(r.toUserId) ?? "—",
       当前负责人: l.owner?.name ?? null,
-      line: r.line,
-      kind: r.kind,
-      分配时间: r.createdAt.toISOString(),
+      ...共,
     }];
   });
 }

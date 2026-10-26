@@ -31,7 +31,11 @@ export default async function LeadsPage({
   */
   if (await 企业版只用项目()) {
     const d = await 读项目列表(me, sp, "线索");
-    return <ProjectsView {...d} 列={看板分列(d.行)} 阶段="线索" />;
+    // 分配、满额提醒照老线索页的口径（下面那段），只是分的是线索阶段的项目
+    const 线索分配开着 = (await 规则开着("线索分配")) && !(await 当前是共享区());
+    const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
+    const 满额提醒们 = await 读满额提醒(me.id);
+    return <ProjectsView {...d} 列={看板分列(d.行)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 满额提醒={满额提醒们} />;
   }
   const where: Prisma.LeadWhereInput = {
     AND: [await 线索关键词条件(sp.keyword)],

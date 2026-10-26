@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Select, Space, Segmented, Tag } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { App, Button, Select, Space, Segmented, Tag } from "antd";
+import { PlusOutlined, ThunderboltOutlined, UserSwitchOutlined } from "@ant-design/icons";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
@@ -17,7 +18,11 @@ import { 主题颜色 } from "@/lib/chart-theme";
 import { categorical } from "@/lib/palette";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
+import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
+import { 自动分配线索, 批量自动分配, type 自动分配结果 } from "../leads/assign-actions";
+import { AssignLeadModal, AssignedOutButton } from "../leads/AssignLead";
+import LeadFullNotices from "../leads/LeadFullNotices";
 
 /** 看板五列的颜色：三个阶段沿用商机管道的蓝绿黄，成功交付粉、没成灰 */
 const 列色: Record<看板列, string> = {
@@ -56,7 +61,7 @@ function 节点文字(r: 项目行) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 邀请们 = [], 阶段,
+  行, 列: 看板, 取到上限, users, filters, 邀请们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -67,10 +72,20 @@ export default function ProjectsView({
   邀请们?: 邀请行[];
   /** 企业版「新线索」页：只看线索阶段 */
   阶段?: "线索";
+  /** 企业版「线索分配和配额」开着：页头摆「我分出去的」 */
+  线索分配开着?: boolean;
+  /** 我能分配（老板、总管理员、市场管理）：每行「分配」「自动分配」、勾选后批量自动分配；服务端还会再查一遍 */
+  能自动分配?: boolean;
+  /** 自动分配因都已满额没分出去的提醒 */
+  满额提醒?: 满额提醒[];
 }) {
   const router = useRouter();
+  const { message, modal } = App.useApp();
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
+  // 分配只在新线索页：线索阶段的项目按配额分给销售（老的 Lead 分配搬过来，见 leads/assign-actions.ts 的 项目 选项）
+  const 可分 = 新线索 && 能自动分配;
+  const [分配中, set分配中] = useState<项目行 | null>(null);
   const [存的看法, set看法] = useLocalPref<"列表" | "看板">("projects-view", "看板");
   const 看法 = 新线索 ? "列表" : 存的看法;
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
@@ -80,6 +95,47 @@ export default function ProjectsView({
   // 公海里同事客户的项目不给客户名（page.tsx 露客户），领取后再看
   const 领了再看 = `领取后显示${b.customer}`;
 
+  const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`;
+
+  async function 自动分(r: 项目行) {
+    try {
+      const res = await 自动分配线索(r.id, { 项目: true });
+      if (!res.ok) return void message.error(res.error);
+      message.success(`「${r.name}」${分给了(res)}：${res.为什么}`, 5);
+      router.refresh();
+    } catch {
+      message.error("没分成，请稍后再试");
+    }
+  }
+
+  async function 批量自动分(ids: string[], 清空: () => void) {
+    let res: Awaited<ReturnType<typeof 批量自动分配>>;
+    try {
+      res = await 批量自动分配(ids, { 项目: true });
+    } catch {
+      return void message.error("没分成，请稍后再试");
+    }
+    if (!res.ok) return void message.error(res.error);
+    清空();
+    router.refresh();
+    const 成 = res.结果.filter((x) => x.ok).length;
+    modal.info({
+      title: `自动分配：${成} 条分出去了${成 < res.结果.length ? `，${res.结果.length - 成} 条没分` : ""}`,
+      width: 560,
+      okText: "知道了",
+      content: (
+        <ul className="lead-auto-assign-list" data-testid="lead-auto-assign-result">
+          {res.结果.map((x) => (
+            <li key={x.leadId}>
+              <span className="lead-auto-assign-name" title={x.name}>{x.name}</span>
+              {x.ok ? <span>{分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
+            </li>
+          ))}
+        </ul>
+      ),
+    });
+  }
+
   const 列表: 列<项目行>[] = [
     { title: "项目", dataIndex: "name", width: 200, ellipsis: true },
     { title: b.customer, key: "customer", width: 180, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
@@ -87,6 +143,16 @@ export default function ProjectsView({
     { title: "金额", key: "amount", width: 130, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>公海</Tag> : <UserCell name={r.ownerName} />) }]),
     { title: "最近更新", key: "updatedAt", width: 120, render: (_, r) => fmtDate(r.updatedAt) },
+    // 已线索流失的不再分（服务端也拦）
+    ...(可分 ? [{
+      title: "", key: "act", width: 90, fixed: "right" as const,
+      render: (_: unknown, r: 项目行) => (r.result ? null : (
+        <Space size={2}>
+          <Button aria-label={`分配 ${r.name}`} title="分配给…" type="text" size="small" icon={<UserSwitchOutlined />} onClick={() => set分配中(r)} />
+          <Button aria-label={`自动分配 ${r.name}`} title="自动分配" type="text" size="small" icon={<ThunderboltOutlined />} onClick={() => void 自动分(r)} />
+        </Space>
+      )),
+    }] : []),
   ];
 
   const 筛选 = (
@@ -132,6 +198,7 @@ export default function ProjectsView({
         }
         extra={
           <Space>
+            {新线索 && 线索分配开着 && <AssignedOutButton />}
             {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />}
             <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新建新线索" : "新建项目"}</Button>
           </Space>
@@ -139,6 +206,7 @@ export default function ProjectsView({
       />
 
       <InviteInbox 邀请们={邀请们} />
+      {新线索 && <LeadFullNotices 提醒={提醒们} />}
 
       {看法 === "列表" ? (
         <DataList<项目行>
@@ -162,6 +230,9 @@ export default function ProjectsView({
                 }
           }
           筛选={筛选}
+          批量={可分 ? (选中, 清空) => (
+            <Button size="small" icon={<ThunderboltOutlined />} onClick={() => void 批量自动分(选中, 清空)}>自动分配</Button>
+          ) : undefined}
         />
       ) : (
         <>
@@ -224,6 +295,7 @@ export default function ProjectsView({
           </div>
         </>
       )}
+      {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} />}
     </div>
   );
 }

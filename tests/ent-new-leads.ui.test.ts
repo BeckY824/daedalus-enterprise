@@ -17,6 +17,8 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){window.__去.push(u)},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true});");
+  // 分配那几个 server action：记下调了什么，回成功
+  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒');");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -29,20 +31,20 @@ beforeAll(async () => {
     const 长='某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购项目第二期';
     const row=(i,node)=>({id:'p'+i,name:长+i,customerId:'c'+i,customerName:长,ownerId:'u'+(i%2),ownerName:'王'+i,phase:'线索',node,result:null,exceptionCategory:null,exceptionReason:null,pooled:false,amount:1234567,currency:'CNY',updatedAt:new Date().toISOString()});
     const 行=[row(1,'潜客培育'),row(2,'线索验证'),{...row(3,'线索推进'),result:'线索流失'}];
-    window.__画=(阶段)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <Projects 行={行} 列={[]} 取到上限={false} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:''}} 阶段={阶段?'线索':undefined}/>
+    window.__画=(阶段,能分)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
+      <Projects 行={行} 列={[]} 取到上限={false} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分}/>
     </BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 打开(新线索: boolean, width = 1280): Promise<{ page: Page; errors: string[] }> {
+async function 打开(新线索: boolean, width = 1280, 能分 = false): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto(`http://ent.test/${新线索 ? "leads" : "projects"}`); await page.addScriptTag({ content: bundle });
-  await page.evaluate((v) => (window as unknown as { __画: (v: boolean) => void }).__画(v), 新线索);
+  await page.evaluate(([v, f]) => (window as unknown as { __画: (v: boolean, f: boolean) => void }).__画(v, f), [新线索, 能分]);
   await page.getByRole("heading").first().waitFor();
   return { page, errors };
 }
@@ -81,4 +83,21 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：不横向溢出，新
   const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
   expect(点中).toContain("新建新线索");
   await page.close();
+});
+
+it("能分配的人：每条没结局的新线索有「分配」「自动分配」，线索流失的没有；自动分配按项目分；不能分的人看不到", async () => {
+  const { page, errors } = await 打开(true, 1280, true);
+  const 长 = "某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购项目第二期";
+  expect(await page.getByRole("button", { name: `分配 ${长}1`, exact: true }).count()).toBe(1);
+  expect(await page.getByRole("button", { name: `自动分配 ${长}2` }).count()).toBe(1);
+  expect(await page.getByRole("button", { name: `分配 ${长}3`, exact: true }).count()).toBe(0);
+  await page.getByRole("button", { name: `自动分配 ${长}1` }).click();
+  await page.getByText("按顺序", { exact: false }).first().waitFor();
+  const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
+  expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true }]);
+  expect(await 去了(page)).toEqual([]); // 点按钮不触发行跳转
+  expect(errors).toEqual([]); await page.close();
+  const 不能 = await 打开(true);
+  expect(await 不能.page.getByRole("button", { name: `分配 ${长}1`, exact: true }).count()).toBe(0);
+  await 不能.page.close();
 });

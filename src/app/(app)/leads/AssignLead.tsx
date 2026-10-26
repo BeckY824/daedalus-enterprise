@@ -16,8 +16,8 @@ import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 
 const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}`;
 
-/** 给一条线索点「分配」：lead = null 时不显示 */
-export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: string; ownerId: string | null } | null; 关: () => void }) {
+/** 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的 */
+export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void }) {
   const router = useRouter();
   const { message } = App.useApp();
   const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划" }>();
@@ -38,7 +38,8 @@ export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: strin
     if (!v) return;
     set忙(true);
     try {
-      const res = await 分配线索({ leadId: lead.id, toUserId: v.toUserId, line: v.line || null, kind: v.kind });
+      const 哪条 = lead.项目 ? { projectId: lead.id } : { leadId: lead.id };
+      const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind });
       if (!res.ok) {
         message.error(res.error, 5);
         return;
@@ -106,7 +107,7 @@ export function AssignedOutButton() {
         <p className="muted" style={{ marginTop: 0 }}>你分出去、或原来在你名下被分走的线索；同一条分了几次只算最近一次。</p>
         <Table<分出去的线索>
           size="small"
-          rowKey="leadId"
+          rowKey={(r) => r.projectId ?? r.leadId ?? ""}
           loading={行 === null}
           dataSource={行 ?? []}
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
