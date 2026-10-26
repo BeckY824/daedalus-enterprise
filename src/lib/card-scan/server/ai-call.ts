@@ -3,10 +3,13 @@
  *
  * 连哪：CARD_SCAN_AI_BASE_URL / CARD_SCAN_AI_KEY 配了就用它；没配就借模型网关的上游（GATEWAY_BASE_URL / GATEWAY_API_KEY，
  * 和背调同一个中转站）。模型 CARD_SCAN_AI_MODEL，默认见 默认模型。都没有 Key、或 CARD_SCAN_AI_OFF=1 → 返回 null，手机用规则。
+ * 企业版（私有部署）没配这几样：用这家在「设置 → AI 接入」配的模型（和首页 AI 同一把 Key）。
  * 不扣次数、不走背调计费（2026-10-20 用户定「免费不扣次数」）。
  * 名片文字只在这次请求里：不落盘、不打日志（出错只记状态码）。
  */
 import { 读网关配置 } from "@/lib/gateway";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { getLlmConfig, type LlmConfig } from "@/lib/llm-config";
 import { AI系统提示, AI用户消息, 验AI回答, type AI回答, type 名片行 } from "../ai";
 
 /**
@@ -26,13 +29,20 @@ export function 整理配置(env: NodeJS.ProcessEnv = process.env): { baseUrl: s
   return 网关 ? { apiKey: 网关.apiKey, baseUrl: 网关.baseUrl, model } : null;
 }
 
+/** 接口实际用的：名片专用 / 网关的优先；企业版都没配就借设置里的模型。CARD_SCAN_AI_OFF=1 一律不整理 */
+export async function 用哪个模型整理(env: NodeJS.ProcessEnv = process.env): Promise<LlmConfig | null> {
+  const 专用 = 整理配置(env);
+  if (专用 || env.CARD_SCAN_AI_OFF?.trim() === "1" || !企业版()) return 专用;
+  return getLlmConfig();
+}
+
 /** 问一次。超时、非 200、不是 JSON、验不过都返回 null（调用方用规则），从不抛 */
 export async function AI整理名片(
   行们: 名片行[],
   行业们: readonly string[],
-  设: { 抓?: typeof fetch; env?: NodeJS.ProcessEnv; 超时?: number } = {},
+  设: { 抓?: typeof fetch; env?: NodeJS.ProcessEnv; 超时?: number; cfg?: LlmConfig | null } = {},
 ): Promise<AI回答 | null> {
-  const cfg = 整理配置(设.env);
+  const cfg = 设.cfg !== undefined ? 设.cfg : 整理配置(设.env);
   if (!cfg || !行们.length) return null;
   try {
     const r = await (设.抓 ?? fetch)(`${cfg.baseUrl}/chat/completions`, {

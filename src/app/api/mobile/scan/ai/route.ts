@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { 认扫名片的人, 建限次 } from "@/lib/card-scan/server/auth";
-import { AI整理名片, 整理配置 } from "@/lib/card-scan/server/ai-call";
+import { AI整理名片, 用哪个模型整理 } from "@/lib/card-scan/server/ai-call";
 import type { 名片行 } from "@/lib/card-scan/ai";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * 扫名片的 AI 整理（2026-10-20 用户定「用 AI，免费不扣次数」，只给团队版）。
+ * 扫名片的 AI 整理（2026-10-20 用户定「用 AI，免费不扣次数」，只给团队版；10-26 起企业版也给，模型见 用哪个模型整理）。
  *
  *   GET  能不能用（团队版、服务器配了模型）：手机据此决定认完要不要再问一句
  *   POST body = {行们: 名片行[], 行业们: string[]}（OCR 认出的文字，不是照片；行业选项是这个团队桌面端的）
@@ -23,7 +23,7 @@ const 最多字节 = 16 * 1024;
 export async function GET(req: Request) {
   const 人 = await 认扫名片的人(req);
   if (人 instanceof NextResponse) return 人;
-  return NextResponse.json({ ok: Boolean(整理配置()) }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ok: Boolean(await 用哪个模型整理()) }, { headers: { "Cache-Control": "no-store" } });
 }
 
 /** 只收认得出的形状：手机传来的东西原样拼进提示词，别让人塞别的进去 */
@@ -48,7 +48,8 @@ function 读行们(x: unknown): 名片行[] | null {
 export async function POST(req: Request) {
   const 人 = await 认扫名片的人(req);
   if (人 instanceof NextResponse) return 人;
-  if (!整理配置()) return NextResponse.json({ error: "这台服务器没配模型" }, { status: 404 });
+  const cfg = await 用哪个模型整理();
+  if (!cfg) return NextResponse.json({ error: "这台服务器没配模型" }, { status: 404 });
   if (Number(req.headers.get("content-length") ?? 0) > 最多字节) return NextResponse.json({ error: "太长了" }, { status: 413 });
   let body: { 行们?: unknown; 行业们?: unknown };
   try {
@@ -64,6 +65,6 @@ export async function POST(req: Request) {
     ? body.行业们.filter((x): x is string => typeof x === "string" && x.trim().length > 0 && x.length <= 30).map((x) => x.trim()).slice(0, 60)
     : [];
   if (!记一次(人.accountId)) return NextResponse.json({ error: "扫得太快了" }, { status: 429 });
-  const 答 = await AI整理名片(行们, 行业们);
+  const 答 = await AI整理名片(行们, 行业们, { cfg });
   return NextResponse.json({ 答 }, { headers: { "Cache-Control": "no-store" } });
 }

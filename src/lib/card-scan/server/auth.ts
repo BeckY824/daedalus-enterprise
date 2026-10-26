@@ -1,9 +1,11 @@
 /**
- * 扫名片几个服务器接口共用的：认人（只给团队版）、按账号限次。
+ * 扫名片几个服务器接口共用的：认人（团队版、企业版）、按账号限次。
  * 认字（app/api/mobile/scan）和 AI 整理（app/api/mobile/scan/ai）各有各的次数表。
  */
 import { NextResponse } from "next/server";
 import { multiTenant } from "@/lib/tenant/context";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { getCurrentUser } from "@/lib/auth";
 import { 认领, 取Bearer } from "@/lib/tenant/device-token";
 import { 连手机资格 } from "@/lib/tenant/mobile-link";
 
@@ -22,10 +24,15 @@ async function 是团队版(accountId: string): Promise<boolean> {
 
 /**
  * 只给登录了的团队版账号（和连手机同一条：在团队、团队开着、有自己连上的设备）。
- * 不是多租户（自部署）就当没有这个接口，手机自己认、自己拆
+ * 企业版（私有部署，2026-10-26 定名片识别放服务器）：没有手机伴侣和团队中转，认网页登录的人，按人限次。
+ * 别的自部署就当没有这个接口，手机自己认、自己拆
  */
 export async function 认扫名片的人(req: Request): Promise<{ accountId: string } | NextResponse> {
-  if (!multiTenant()) return new NextResponse("Not Found", { status: 404 });
+  if (!multiTenant()) {
+    if (!企业版()) return new NextResponse("Not Found", { status: 404 });
+    const 我 = await getCurrentUser();
+    return 我 ? { accountId: 我.id } : NextResponse.json({ error: "登录已失效，请重新登录" }, { status: 401 });
+  }
   const t = await 认领(取Bearer(req));
   if (!t) return NextResponse.json({ error: "登录已失效，请重新登录" }, { status: 401 });
   if (!(await 是团队版(t.accountId))) return NextResponse.json({ error: "服务器识别只给团队版" }, { status: 403 });

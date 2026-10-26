@@ -2,6 +2,7 @@
  * 服务器认名片（2026-10-20，用户同意「服务器识别为主、本机识别兜底」）：
  *   - lib/card-scan/server/pool.ts：同一时间认 N 张、其余排队报位置；排太多 / 排太久回「太忙」；手机走了撤掉；线程挂了 / 卡住重起；闲了关线程
  *   - app/api/mobile/scan：只给团队版令牌（自部署 404、没令牌 401、不是团队版 403）、按账号限次、照片大小上限、一行一行回排队和结果
+ *     企业版（2026-10-26 定名片识别放服务器）：认网页登录的人（没登录 401），按人限次
  *   - lib/card-scan/cloud.ts：手机这头读排队位置；服务器不给用 / 忙 / 断了都抛 服务器不认（认名片改在手机上认）
  *   - 真认一张（ocr-server/worker.mjs 打过才跑：next dev / build 会打；CI 上由托管版 e2e 真跑接口）
  */
@@ -122,7 +123,9 @@ const 假 = vi.hoisted(() => ({
   资格: new Map<string, string>(),
   认: null as null | ((图: Uint8Array, 模型: string, o: { signal?: AbortSignal; 进?: (n: number) => void }) => Promise<unknown>),
   预热: 0,
+  我: null as null | { id: string; name: string },
 }));
+vi.mock("@/lib/auth", () => ({ getCurrentUser: async () => 假.我 }));
 vi.mock("@/lib/tenant/context", () => ({ multiTenant: () => 假.多租户 }));
 vi.mock("@/lib/tenant/device-token", () => ({
   取Bearer: (req: Request) => /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? null,
@@ -202,6 +205,33 @@ describe("POST /api/mobile/scan", () => {
     const r = await 路由.GET(new Request("http://x/api/mobile/scan", { headers: { authorization: "Bearer dk_team" } }));
     expect(await r.json()).toEqual({ ok: true });
     expect(假.预热).toBeGreaterThan(0);
+  });
+
+  describe("企业版（私有部署，没有手机伴侣）", () => {
+    beforeEach(() => { 假.多租户 = false; 假.我 = { id: "u1", name: "乙" }; vi.stubEnv("CRM_ENTERPRISE", "1"); });
+    afterEach(() => { vi.unstubAllEnvs(); 假.我 = null; });
+
+    it("网页登录了就能认，不看令牌；没登录 401", async () => {
+      const r = await 发(null);
+      expect(r.status).toBe(200);
+      expect((await 行们(r)).at(-1)).toEqual({ 框: [{ poly: [[0, 0]], text: "PP-OCRv6_tiny", score: 0.9 }] });
+      expect(await (await 路由.GET(new Request("http://x/api/mobile/scan"))).json()).toEqual({ ok: true });
+      假.我 = null;
+      expect((await 发(null)).status).toBe(401);
+      expect((await 发("dk_team")).status).toBe(401);
+    });
+
+    it("按人限次：第 91 遍 429；换个人不受影响", async () => {
+      for (let i = 0; i < 90; i++) expect((await 发(null)).status).toBe(200);
+      expect((await 发(null)).status).toBe(429);
+      假.我 = { id: "u2", name: "丙" };
+      expect((await 发(null)).status).toBe(200);
+    });
+
+    it("开关关：照旧 404", async () => {
+      vi.stubEnv("CRM_ENTERPRISE", "");
+      expect((await 发(null)).status).toBe(404);
+    });
   });
 });
 
