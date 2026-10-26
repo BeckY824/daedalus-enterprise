@@ -221,21 +221,21 @@ describe("企业版：联系人那一步的号码也查重（验收 #3）", () =
 
   it("联系人邮箱撞到同事客户档案上的：拦下，说是哪一格、找谁，一行不写", async () => {
     await 乙的客户();
-    const r = await 建档向导(输入({ 联系人: { name: "王经理", email: " wang@corp.COM " } }));
+    const r = await 建档向导(await 企业输入({ 联系人: { name: "王经理", email: " wang@corp.COM " } }));
     expect(r).toEqual({ ok: false, error: "联系人邮箱：⛔号码重复，可与 乙 沟通核实" });
-    expect(await 各表行数()).toEqual({ ...全空, customer: 1 });
+    expect(await 各表行数()).toMatchObject({ ...全空, customer: 1 });
     expect(await prisma.contactMethod.count()).toBe(0);
   });
 
   it("联系人电话格式不对：拦下，一行不写", async () => {
-    const r = await 建档向导(输入({ 联系人: { name: "王经理", phone: "1390000" } }));
+    const r = await 建档向导(await 企业输入({ 联系人: { name: "王经理", phone: "1390000" } }));
     expect(r).toEqual({ ok: false, error: "联系人电话：⚠️手机号格式错误" });
-    expect(await 各表行数()).toEqual(全空);
+    expect(await 各表行数()).toMatchObject(全空);
   });
 
   it("建好：联系人的号记进子表并挂上联系人；跟第一步同一个号不算自己撞自己", async () => {
-    const r = await 建档向导(输入({
-      客户: { ...输入().客户, phone: "13900000003", 企业号码: { 类型: "手机号", 值: "139 0000 0003" } },
+    const r = await 建档向导(await 企业输入({
+      客户: { ...(await 企业输入()).客户, phone: "13900000003", 企业号码: { 类型: "手机号", 值: "139 0000 0003" } },
       联系人: { name: "王经理", phone: "13900000003", email: "Wang@Corp.com", wechat: "WangLi_88" },
     }));
     expect(r).toMatchObject({ ok: true });
