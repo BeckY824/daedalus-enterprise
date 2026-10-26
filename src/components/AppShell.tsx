@@ -83,6 +83,8 @@ type Props = {
    * 企业版（客户自己服务器上的网页版）两处都不去：none = 不画反馈键和回复提示。
    */
   反馈去向: "cloud" | "github" | "none";
+  /** 企业版只用项目（10-26，lib/enterprise/project-only.ts）：没有「商机」入口，「线索」叫「新线索」 */
+  企业版项目?: boolean;
   /**
    * 中栏，由并行路由槽位 @pane/[[...slug]] 渲染好传进来，连 <aside class="pane"> 一起。
    * 没有中栏的路由那边返回 null，这里什么都不画——壳不该知道哪个模块有中栏。
@@ -115,7 +117,7 @@ type Props = {
 /** 面板常驻要的最小窗口宽度，见 AppShell 里 窄窗 那段 */
 const 面板放不下 = "(max-width: 1599px)";
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, pane, ai, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, pane, ai, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -211,14 +213,15 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       */
       { key: "/dashboard", icon: <HomeOutlined />, label: "首页", 组: "主" },
       { key: "/customers", icon: <TeamOutlined />, label: b.customer, 组: "主" },
-      { key: "/opportunities", icon: <DollarOutlined />, label: "商机", 组: "主" },
+      // 企业版只用项目一条线，没有商机（10-26）
+      ...(企业版项目 ? [] : [{ key: "/opportunities", icon: <DollarOutlined />, label: "商机", 组: "主" as const }]),
       // 团队版项目模式开着才有（2026-10-23，D-31）；关着时 /projects 是 404
       ...(b.projectMode ? [{ key: "/projects", icon: <ProjectOutlined />, label: "项目", 组: "主" as const }] : []),
       // 外贸模版才有订单（2026-10-03），在商机和跟进中间（2026-10-05 外贸客户：「商机和跟进中间，增加类目订单」）
       ...(b.template === "trade" && 订单 ? [{ key: "/orders", icon: <ContainerOutlined />, label: "订单", 组: "主" as const }] : []),
       { key: "/follow-ups", icon: <InteractionOutlined />, label: "跟进", 组: "主" },
       { key: "/overview", icon: <DashboardOutlined />, label: "数据", 组: "主" },
-      { key: "/leads", icon: <ShareAltOutlined />, label: "线索", 组: "更多" },
+      { key: "/leads", icon: <ShareAltOutlined />, label: 企业版项目 ? "新线索" : "线索", 组: "更多" },
       /*
         外贸模版不摆联系人、渠道（2026-10-05 外贸客户建议）：联系人本来就挂在客户下面（客户页那一节），
         客户搜索也搜得到联系人的名字、电话、邮箱；渠道是推荐人 / 分佣那一套，外贸用来源。页面还在，⌘K 能到
@@ -233,7 +236,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       ...(b.template === "trade" && 供应商页 ? [{ key: "/suppliers", icon: <ShopOutlined />, label: "供应商", 组: "更多" as const }] : []),
       ...(workspace?.billing ? [{ key: "/billing", icon: <DollarOutlined />, label: "开通订阅", 组: "更多" as const }] : []),
     ],
-    [b.customer, b.template, b.projectMode, workspace?.billing],
+    [b.customer, b.template, b.projectMode, workspace?.billing, 企业版项目],
   );
 
   // 选中项取最长匹配前缀，/customers/xxx 也算在客户管理下
@@ -515,7 +518,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       </nav>
 
       {/* ⌘K：跳页或问一句。挂在壳上，哪一页都在 */}
-      <CommandBar 有AI={Boolean(ai)} />
+      <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} />
       {/* 我们回了你的反馈、还没看：左下角一条轻提示（一次一条，可关） */}
       {反馈去向 !== "none" && <FeedbackReplyToast 去向={反馈去向} />}
 

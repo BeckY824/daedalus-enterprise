@@ -22,6 +22,8 @@ import { 本地模式 } from "@/lib/desktop/cloud";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
+import NoAiHome from "./NoAiHome";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 对话 = sp0.c ? await 读对话(sp0.c) : null;
   // 企业版自动分配因都已满额没分出去的提醒：首页顶部也摆一份，和线索页同一份数据，哪边关了两边都没了
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
+  // 企业版项目：首页只做对话（2026-10-26 用户定），数据看板只在「数据」页
+  const 只用项目 = await 企业版只用项目();
   if (!(await llmEnabled())) {
     /*
       没配 AI 的首页就是数据看板。但**一条业务数据都没有**的时候，看板没什么可看，
@@ -61,6 +65,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       // StartCard 自带那句「欢迎使用 Daedalus CRM」，这里不再叠一个页头
       return <StartCard 自己服务器={自己服务器()} 去导入={去导入(user.role)} 企业版={企业版()} />;
     }
+    if (只用项目) return <NoAiHome 管理员={user.role === "ADMIN"} 满额提醒={满额提醒们} />;
     return <Board 满额提醒={满额提醒们} />;
   }
 
@@ -104,7 +109,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   );
   if (mine.total > 0) parts.push(`${mine.total} 位${b.customer}正在被遗忘`);
   if (myLast?.customer.name) parts.push(`上次跟的是${myLast.customer.name}`);
-  if (线索数 > 0) parts.push(`有 ${线索数} 条线索`);
+  if (线索数 > 0) parts.push(`有 ${线索数} 条${只用项目 ? "新线索" : "线索"}`);
 
   /*
     输入框底下那排问题。设计稿要求 4-6 条，而且**每一条都要是具体的问题**，
@@ -131,7 +136,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     「要不要问负责人」，这里是第五处，口径一致。
     单人那一套问的是「我」：我这周做了什么、谁被我落下了、我手上还剩多少。
   */
-  const 兜底: Suggestion[] = 就我一个人
+  /*
+    企业版项目没有「商机」这张表的入口（2026-10-26 去掉了），AI 那边也还不认项目，
+    所以问商机、问签约的两条换成问跟进的——问出来的东西用户点得进去
+  */
+  const 兜底: Suggestion[] = 只用项目
+    ? [
+        { label: `今天谁最需要跟进？`, question: `今天最该跟进的${b.customer}是谁，为什么` },
+        { label: `哪些${b.customer}很久没碰了？`, question: `哪些${b.customer}很久没跟进了，该先找谁` },
+        { label: "我这周做了什么？", question: "我这周做了什么" },
+        { label: `各跟进状态各有多少${b.customer}？`, question: `各跟进状态各有多少${b.customer}` },
+        { label: "帮我记一次电话", question: "帮我记一次电话沟通" },
+      ]
+    : 就我一个人
     ? [
         { label: "我这周做了什么？", question: "我这周做了什么" },
         { label: `哪些${b.customer}我很久没碰了？`, question: `哪些${b.customer}我很久没跟进了，该先找谁` },

@@ -97,7 +97,8 @@ export default function RecordView({
   contacts,
   contracts,
   opportunities,
-  报价记录 = [],
+  报价记录: 报价记录档 = [],
+  项目们 = null,
   tasks,
   plan,
   followUps,
@@ -123,6 +124,8 @@ export default function RecordView({
   const history = useFollowHistory(customer.id, followUps, followUpsHasMore);
   const { 问怎么拿掉 } = useContactRemoval();
   const { 先问转走的项目 } = useTransferConfirm();
+  // 企业版项目模式：报价挂在商机上，企业版没有商机这条线，报价记录一并不摆（10-26）
+  const 报价记录 = 项目们 ? [] : 报价记录档;
   const revertChoice = useRef<string>(REVERT_CHOICES[0].value);
   const [报价全开, set报价全开] = useState(false);
   /*
@@ -653,32 +656,53 @@ export default function RecordView({
             ))}
           </div>
 
-          <div className="rec-sec">
-            <div className="rec-sec-t">
-              <span>商机 {opportunities.length > 0 && opportunities.length}</span>
-              <Space size={4}>{!只读 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => setOpportunityOpen(true)} aria-label="新建关联商机" />} <Link href="/opportunities">全部 ›</Link></Space>
+          {项目们 ? (
+            /* 企业版项目模式（10-26）：客户名下的项目替掉商机——用户：「去除掉商机，不要演用个人版的老模型」 */
+            <div className="rec-sec">
+              <div className="rec-sec-t">
+                <span>项目 {项目们.length > 0 && 项目们.length}</span>
+                <Link href="/projects">全部 ›</Link>
+              </div>
+              {项目们.length === 0 && <div className="rec-empty">还没有项目</div>}
+              {项目们.map((p) => (
+                <RowLink key={p.id} href={`/projects/${encodeURIComponent(p.id)}`} className="rec-mini rec-mini-2">
+                  <span className="rec-mini-n" title={p.name}>{p.name}</span>
+                  <span className="rec-mini-sub">
+                    <Tag style={{ margin: 0, borderRadius: 6 }}>{p.phase}</Tag>
+                    <span className="rec-mini-m" title={p.result ?? p.node}>{p.result === "异常状态" ? `异常 · ${p.node}` : p.result ?? p.node}</span>
+                    <span className="rec-mini-m rec-mini-money">{金额(p.amount, p.currency)}</span>
+                  </span>
+                </RowLink>
+              ))}
             </div>
-            {opportunities.length === 0 && <div className="rec-empty">还没有商机</div>}
-            {opportunities.map((o) => (
-              // 两行：名字独占一行，阶段和金额在下面（审查 M4）。原来三样挤一行，
-              // 264 宽的左栏里名字只剩「恒拓 · …」，截掉的恰恰是认出这一单的那半截
-              <RowLink key={o.id} href={`/opportunities?opportunity=${encodeURIComponent(o.id)}`} className="rec-mini rec-mini-2">
-                <span className="rec-mini-n" title={o.name}>{o.name}</span>
-                <span className="rec-mini-sub">
-                  <StageTag stage={o.stage} />
-                  {/* 赢单 / 丢单挂个标（J-088），和商机列表名称列一样；不挂的话丢掉的单看着也像还在谈 */}
-                  {o.status !== "OPEN" && (
-                    <Tag color={o.status === "WON" ? "success" : "error"} style={{ margin: 0, borderRadius: 6 }}>
-                      {o.status === "WON" ? (是订单 ? "已转订单" : "已赢单") : "已丢单"}
-                    </Tag>
-                  )}
-                  <span className="rec-mini-m rec-mini-money">{金额(o.amount, o.currency)}</span>
-                  {/* 外贸：哪天询的盘（客户：「3 月问了一次没成，5 月又问，这样知道客户计划采购的时间点」） */}
-                  {外贸 && o.createdAt && <span className="rec-mini-m" title="询盘时间">{fmtDate(o.createdAt)} 询盘</span>}
-                </span>
-              </RowLink>
-            ))}
-          </div>
+          ) : (
+            <div className="rec-sec">
+              <div className="rec-sec-t">
+                <span>商机 {opportunities.length > 0 && opportunities.length}</span>
+                <Space size={4}>{!只读 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => setOpportunityOpen(true)} aria-label="新建关联商机" />} <Link href="/opportunities">全部 ›</Link></Space>
+              </div>
+              {opportunities.length === 0 && <div className="rec-empty">还没有商机</div>}
+              {opportunities.map((o) => (
+                // 两行：名字独占一行，阶段和金额在下面（审查 M4）。原来三样挤一行，
+                // 264 宽的左栏里名字只剩「恒拓 · …」，截掉的恰恰是认出这一单的那半截
+                <RowLink key={o.id} href={`/opportunities?opportunity=${encodeURIComponent(o.id)}`} className="rec-mini rec-mini-2">
+                  <span className="rec-mini-n" title={o.name}>{o.name}</span>
+                  <span className="rec-mini-sub">
+                    <StageTag stage={o.stage} />
+                    {/* 赢单 / 丢单挂个标（J-088），和商机列表名称列一样；不挂的话丢掉的单看着也像还在谈 */}
+                    {o.status !== "OPEN" && (
+                      <Tag color={o.status === "WON" ? "success" : "error"} style={{ margin: 0, borderRadius: 6 }}>
+                        {o.status === "WON" ? (是订单 ? "已转订单" : "已赢单") : "已丢单"}
+                      </Tag>
+                    )}
+                    <span className="rec-mini-m rec-mini-money">{金额(o.amount, o.currency)}</span>
+                    {/* 外贸：哪天询的盘（客户：「3 月问了一次没成，5 月又问，这样知道客户计划采购的时间点」） */}
+                    {外贸 && o.createdAt && <span className="rec-mini-m" title="询盘时间">{fmtDate(o.createdAt)} 询盘</span>}
+                  </span>
+                </RowLink>
+              ))}
+            </div>
+          )}
 
           {/*
             报价记录（2026-10-03）：这个客户历次报过的产品和单价，新的在前。没报过就不出现这一节（少即是多）。
@@ -838,7 +862,7 @@ export default function RecordView({
                     </div>
                   </motion.div>
                 ) : (
-                  <FollowItem key={e.f.id} f={e.f} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读} />
+                  <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读} />
                 ),
               )}
             </AnimatePresence>
@@ -949,7 +973,7 @@ export default function RecordView({
         待收口计划={plan && !dayjs(plan.plannedAt).isAfter(dayjs().endOf("day")) ? plan : null}
         完成了计划={(p, 已完成) => void 完成计划(p, `跟进已记录，计划「${p.subject}」一并完成`, 已完成)}
         contacts={contacts}
-        opportunities={opportunities}
+        opportunities={项目们 ? [] : opportunities}
         orders={contracts.flatMap((c) => (c.order ? [{ id: c.order.id, no: c.order.no }] : []))}
         aiEnabled={aiEnabled}
         只读={只读}
@@ -1139,7 +1163,7 @@ function StatusPicker({
   );
 }
 
-function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true }: { f: FollowUpRow; showOwner: boolean; index: number; onEdit: () => void; onDelete: () => void; 可改?: boolean }) {
+function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 不挂商机 = false }: { f: FollowUpRow; showOwner: boolean; index: number; onEdit: () => void; onDelete: () => void; 可改?: boolean; 不挂商机?: boolean }) {
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const meta = FOLLOW_TYPE_MAP[f.type] ?? FOLLOW_TYPE_MAP.OTHER;
   const [srcOpen, setSrcOpen] = useState(false);
@@ -1156,7 +1180,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true }: { 
           {f.order && !f.title?.includes(f.order.no) && (
             <RowLink href={`/orders/${f.order.id}`} className="rec-tl-order" title={`订单 ${f.order.no}`}>订单 {f.order.no}</RowLink>
           )}
-          {f.opportunity && <RowLink href={`/opportunities?opportunity=${encodeURIComponent(f.opportunity.id)}`} className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</RowLink>}
+          {f.opportunity && !不挂商机 && <RowLink href={`/opportunities?opportunity=${encodeURIComponent(f.opportunity.id)}`} className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</RowLink>}
           {f.status !== "已完成" && (
             <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
               {f.status}

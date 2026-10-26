@@ -85,3 +85,11 @@ it("不是企业版：行上还是「转客户」，转好去客户页", async (
   await expect.poll(去了).toEqual(["/customers/c1"]);
   expect(errors).toEqual([]); await page.close();
 });
+
+it("页头：企业版项目叫「新线索」，开关关照旧叫「线索」（10-26 用户定线索改名）", async () => {
+  for (const [企业版项目, 名] of [[true, "新线索"], [false, "线索"]] as const) {
+    const { page, errors } = await 打开(企业版项目);
+    expect((await page.locator("h1").first().innerText()).trim()).toBe(名);
+    expect(errors).toEqual([]); await page.close();
+  }
+});
