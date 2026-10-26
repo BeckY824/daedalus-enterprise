@@ -65,6 +65,8 @@ export const 不同步表 = [
   "EntLeadAssign", "EntLeadQuota",
   // 企业版提成（2026-10-26）：同上
   "EntCommission", "EntCommissionSplit",
+  // 企业版「交接中」（2026-10-26）：同上
+  "EntHandover",
   // 企业版联系方式子表（2026-10-26，migrations/054）：同上
   "ContactMethod",
 ] as const;
@@ -145,6 +147,11 @@ export const 指向人的列: [string, string][] = [
   ["EntCommission", "updatedById"],
   ["EntCommissionSplit", "userId"],
   ["EntCommissionSplit", "setById"],
+  // 企业版「交接中」（2026-10-26）：不建外键
+  ["EntHandover", "fromUserId"],
+  ["EntHandover", "toUserId"],
+  ["EntHandover", "byUserId"],
+  ["EntHandover", "doneById"],
 ];
 
 /**

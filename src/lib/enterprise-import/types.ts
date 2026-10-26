@@ -37,6 +37,26 @@ export type 原始记录 = {
 };
 
 /**
+ * 原系统的通讯录（组织架构同步用，src/lib/enterprise/org-sync.ts）：部门和人，ID 都是原系统的。
+ * 部门的上级外部ID 为 null = 挂在根上（飞书的「0」、钉钉的「1」本身不算一个部门）。
+ */
+export type 通讯录部门 = { 外部ID: string; 名: string; 上级外部ID: string | null; 排序: number };
+export type 通讯录人 = {
+  外部ID: string;
+  名: string;
+  邮箱?: string;
+  职务?: string;
+  /** 第一个当主部门；空 = 挂在根上 */
+  部门外部IDs: string[];
+  /** 直属上级（原系统里设了的才有） */
+  上级外部ID?: string;
+  /** 是哪个部门的负责人 */
+  是负责人?: boolean;
+  离职?: boolean;
+};
+export type 通讯录 = { 部门们: 通讯录部门[]; 人们: 通讯录人[] };
+
+/**
  * 我们这边的标准字段。`ref` 结尾的是「挂到谁下面」：
  * customerRef / customerName 认客户，opportunityRef / opportunityName 认商机（跟进用）
  */
@@ -111,9 +131,20 @@ export type 映射 = {
   };
   /** 对不上的负责人落到谁名下 */
   默认负责人Id: string;
+  /**
+   * 规则认不出的格子 → 我们的写法（AI 清洗补认的，或人在报告里改的）。null = 认不出，照规则原样进备注。
+   * 金额写数字串、日期写 YYYY-MM-DD、时间写 YYYY-MM-DD HH:mm、国家 / 来源写候选里的叫法；清洗时照规则再认一遍，认不出不用
+   */
+  格式?: Partial<Record<格式类, Record<string, string | null>>>;
+  /** 本批里名字很像、电话不同的两家客户是不是同一家：键 `前一家名键|后一家名键`。true = 后一家并进前一家 */
+  同一家?: Record<string, boolean>;
   /** 每个字段 / 每个值是谁定的：规则 / AI / 手动。只给报告看 */
   说明?: Record<string, "规则" | "AI" | "手动">;
 };
+
+/** AI 清洗补认的几类格子（ai-clean.ts） */
+export const 格式类们 = ["金额", "日期", "时间", "国家", "来源"] as const;
+export type 格式类 = (typeof 格式类们)[number];
 
 export type 值对照名 = keyof 映射["值"];
 
