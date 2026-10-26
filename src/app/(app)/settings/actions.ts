@@ -9,6 +9,7 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接要确认, 离职交接中, 了结 } from "@/lib/enterprise/handover-db";
+import { 交接卡点 } from "@/lib/project/blocker";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
@@ -350,6 +351,8 @@ export async function deactivateUser(id: string, transferToId: string, 方式: �
     const 分 = await 停用分拣(tx, id, 方式, 企业版());
     const 项目 = await 离职转给接手人(tx, 分, id, transferToId, me.id, 记分配);
     await 离职放进公海(tx, 分, me.id);
+    // 企业版卡点：他手上没解决的转给接手人待接受；项目进了公海的回看板（跟着项目走）
+    await 交接卡点(tx, id, transferToId, me.id, 分.进公海项目);
     await tx.user.update({ where: { id }, data: { active: false } });
     const { 订单项目: _, ...记 } = 分;
     return { ...记, 项目 };

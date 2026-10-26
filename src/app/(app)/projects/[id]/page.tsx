@@ -12,7 +12,9 @@ import { 超时回收日, 超时起点, 超时理由, 系统 } from "@/lib/proje
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { dayjs } from "@/lib/utils";
-import ProjectDetail, { type 项目详情, type 放回方式 } from "./ProjectDetail";
+import { 项目的卡点, 能发卡点, 读卡点默认, 卡点可选的人, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
+import { 时限提醒of } from "@/lib/project/blocker-rules";
+import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +82,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     : null;
   const 不给推 = 企业 && !公海 && !p.result ? 往前推不给(me, p.ownerId, await 直属才推(org)) : null;
 
+  // 企业版卡点（lib/project/blocker.ts）：沟通编号、时限提醒、卡点列表和发卡点；别的版本一样不查
+  const [编号, 卡点们, 能发, 卡点默认, 卡点人们] = 企业
+    ? await Promise.all([沟通编号们(露 ? p.followUps.map((f) => f.followUp.id) : []), 项目的卡点(me, p.id), 能发卡点(me, p.id), 读卡点默认(), 卡点可选的人(me, p.id)])
+    : [new Map<string, { code: string; nextAt: Date | null }>(), [], false, null, []];
+  const 卡点: 项目卡点 | null = 企业 && 卡点默认 ? { 们: 卡点们.map(卡点给界面), 能发: 能发 && 露, 默认: 卡点默认, 人们: 卡点人们 } : null;
   const 详情: 项目详情 = {
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
@@ -105,10 +112,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       ...(l.kind === "pool-release" ? { 放回方式: 认放回(l.reason) } : {}),
     })),
     followUps: (露 ? p.followUps : [])
-      .map((f) => ({ id: f.followUp.id, type: f.followUp.type, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node }))
+      .map((f) => {
+        const 编 = 编号.get(f.followUp.id);
+        return {
+          id: f.followUp.id, type: f.followUp.type, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node,
+          ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限提醒of(编.nextAt) : null } : {}),
+        };
+      })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
     members: p.members.map((m) => ({ id: m.id, userId: m.userId, name: 叫(m.userId)!, roleId: m.roleId, inviteStatus: m.inviteStatus })),
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };
-  return <ProjectDetail p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
+  return <ProjectDetail 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
 }
