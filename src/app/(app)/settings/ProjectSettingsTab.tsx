@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag } from "antd";
+import { App, Button, Card, Input, InputNumber, Popconfirm, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
 import { 上限最大, 时长最大, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 import { 节点们 } from "@/lib/project/nodes";
+import { 加企业选项, 改企业选项 } from "./ent-dict-actions";
+import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterprise/dict-kinds";
 import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
 
 type 字典项 = { id: string; name: string; active: boolean; 用的人: number };
@@ -17,6 +19,8 @@ export type 项目设置 = {
   类别们: 字典项[];
   /** 企业版组织规则，每条默认关；不是企业版 = null，卡片不出（服务端读的 企业版()） */
   组织规则: 组织规则 | null;
+  /** 企业版选项字典（分配方式、回收原因……），按种类分；不是企业版 = null，卡片不出 */
+  企业选项: Record<string, 字典项[]> | null;
   /** 每人手上线索 / 商机阶段的项目数（userId → 个数），算持有上限的口径 */
   持有: Record<string, number>;
   /**
@@ -67,9 +71,39 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
         停用说明="停用后不能再选；已经用着它的项目不变"
         项们={value.类别们} 挡={value.挡.字典} 忙={忙} 跑={跑} 加={加项目异常类别} 改={改项目异常类别}
       />
+      {value.企业选项 && <EntDictCard 各类={value.企业选项} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
       {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 忙={忙} 跑={跑} />}
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
+    </div>
+  );
+}
+
+/** 企业版选项字典：上面切换是哪一类，下面就是那一类的字典卡。只给选项，哪里都不强制必填 */
+function EntDictCard({ 各类, 挡, 忙, 跑 }: {
+  各类: Record<string, 字典项[]>; 挡: string | null; 忙: boolean;
+  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const [种类, set种类] = useState<字典种类>(字典种类们[0]);
+  const 定义 = 字典定义[种类];
+  return (
+    <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+      <div style={{ overflowX: "auto" }}>
+        <Segmented
+          aria-label="选项类别"
+          value={种类}
+          onChange={(v) => set种类(v as 字典种类)}
+          options={字典种类们.map((k) => ({ value: k, label: 字典定义[k].名 }))}
+        />
+      </div>
+      <DictCard
+        key={种类}
+        title={`企业选项 · ${定义.名}`} 叫法="选项" 用的说法="处在用" 新的提示={`新${定义.名}`}
+        说明={`${定义.说明}只给选项，不强制填。停用的选项不能再选，已经选过的照样显示。`}
+        停用说明="停用后不能再选；已经选过的照样显示"
+        项们={各类[种类] ?? []} 挡={挡} 忙={忙} 跑={跑}
+        加={(name) => 加企业选项(种类, name)} 改={改企业选项}
+      />
     </div>
   );
 }

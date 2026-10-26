@@ -1279,3 +1279,18 @@ model EntHandover {
   @@index([toUserId, status])
   @@index([fromUserId, status])
 }
+
+/// 企业版选项字典（2026-10-26，迁移 057）：分配方式、回收原因、无效原因、转让原因、验证结果、客户状态、项目标签，
+/// 一张表按 kind 分。默认值由 lib/enterprise/dict.ts 第一次读时补上（迁移不许 INSERT），只停用不删。
+/// 只给选项、不设必填；谁能改同项目字典（「后台设置谁能改」的字典一行）
+model EntDictItem {
+  id        String   @id @default(cuid())
+  /// 哪一类，见 lib/enterprise/dict.ts 的 字典种类们
+  kind      String
+  name      String
+  sort      Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([kind, name])
+}
