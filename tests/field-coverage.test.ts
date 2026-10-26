@@ -85,6 +85,7 @@ const 派生: Record<string, Record<string, string>> = {
     byUserId: "点分配的那个人，当前登录账号",
     counted: "算不算进当月配额，按线索种类和设置算出来",
     month: "分配那一刻的年月，按业务钟算（企业版北京时间），每月清零靠它",
+    projectId: "分的是哪个项目（企业版新线索=项目的线索阶段），从被分的那条项目上来",
   },
   EntLeadQuota: { setById: "最后改配额的人，当前登录账号" },
   Opportunity: { activityAt: "最近业务推进时间；转交负责人保留，业务字段/报价变化时刷新，老数据为空沿用原修改时间" },
