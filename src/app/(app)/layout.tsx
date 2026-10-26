@@ -113,6 +113,8 @@ export default async function AppLayout({
         订单要看={(({ 超期, 今天 }) => ({ 超期, 今天 }))(算提醒([], new Date(), 订单提醒项).订单)}
         desktop={desktop}
         反馈去向={企业版() ? "none" : 本地模式() || multiTenant() ? "cloud" : "github"}
+        // 企业版只用项目一条线：左栏和 ⌘K 没有商机，线索叫「新线索」（lib/enterprise/project-only.ts）
+        企业版项目={企业版() && business.projectMode === true}
         pane={pane}
         ai={有AI ? { models } : null}
         收藏={收藏}

@@ -322,7 +322,7 @@ export default function LeadsView({
   return (
     <>
       <PageHead
-        title="线索"
+        title={企业版项目 ? "新线索" : "线索"}
         subtitle="还没建档的线索"
         extra={
           <Space>
