@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
+import dayjs from "dayjs";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 记项目沟通 } from "@/lib/project/db";
@@ -29,7 +30,8 @@ describe("企业版卡点", () => {
   let 老板: 人, 经理: 人, 组长: 人, 虚: 人, 销售: 人, 组员: 人, 散: 人, 散主管: 人;
   let 客户: string, 项目: string;
   const now = new Date();
-  const 今天 = now.toISOString().slice(0, 10);
+  // 按本地（测试 TZ=Asia/Shanghai）的日子算，伦敦傍晚 UTC 日期会比本地早一天，下一步时间会被当成「早于今天」
+  const 今天 = dayjs(now).format("YYYY-MM-DD");
 
   async function 建(email: string, role: string): Promise<人> {
     const u = await prisma.user.create({ data: { email, name: email, title: "", role, password: "x" } });
