@@ -450,6 +450,8 @@ export async function 改组织规则(改: 规则改动) {
       ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个节点配了必填` : "组织规则：节点推进关"
       : 改.超时回收 !== undefined
       ? t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个节点的处理时长` : "组织规则：超时回收关"
+      : 改.公海?.多项目客户 !== undefined
+      ? `组织规则：多项目客户公海走法 ${g.多项目客户}`
       : g.持有上限开 ? `组织规则：项目持有上限开，默认 ${是不限(g.默认上限) ? "不限" : `${g.默认上限} 个`}，单独设了 ${Object.keys(g.每人上限).length} 人` : "组织规则：项目持有上限关";
     await recordAudit({ user: me, action: "update", entity: "Setting", entityId: "orgRules", summary: 说, detail: 新 });
     // 改了时长当场按新的扫一遍（老板保存前已经看过会回收几个）
