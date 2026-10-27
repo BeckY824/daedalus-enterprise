@@ -20,7 +20,7 @@ export const 设置项 = {
   持有上限: { 名: "公海持有上限", 可选: 三类, 默认: ["销售管理", "总管理员"] },
   字典: { 名: "异常类别、组员角色、企业选项字典", 可选: 三类, 默认: ["总管理员"] },
   字段权限: { 名: "字段权限表", 可选: 三类, 默认: ["总管理员"] },
-  阶段规则: { 名: "阶段出口叫法、往前推权限（负责人可推 / 仅上级推）", 可选: 三类, 默认: ["销售管理", "总管理员"] },
+  阶段规则: { 名: "阶段结束状态叫法、往前推权限（负责人可推 / 仅上级推）", 可选: 三类, 默认: ["销售管理", "总管理员"] },
 } as const satisfies Record<string, { 名: string; 可选: readonly 能改的人[]; 默认: readonly 能改的人[] }>;
 export type 设置项名 = keyof typeof 设置项;
 export const 设置项们 = Object.keys(设置项) as 设置项名[];
@@ -62,4 +62,47 @@ export function 能改设置(org: 组织, 我: { id: string; role: string }, 项
 /** 「只有老板、销售管理、总管理员能改」这样的一句，界面和报错共用 */
 export function 谁能改的话(配置: 改权限配置, 项: 设置项名): string {
   return `只有${["老板", ...谁能改(配置, 项)].join("、")}能改`;
+}
+
+/**
+ * 节点时限再按节点拆（10-27 批注）：「谁能改」表里有这一类人以后，销售管理只改潜客培育，市场管理改潜客培育 + 线索验证；
+ * 总管理员和老板每个节点都能改，超时回收的开关也只有他们能动（开关管所有节点）
+ */
+export const 时限可改节点: Readonly<Record<"销售管理" | "市场管理", readonly string[]>> = {
+  销售管理: ["潜客培育"],
+  市场管理: ["潜客培育", "线索验证"],
+};
+export type 时限范围 = "全部" | readonly string[];
+
+/** 我能改哪几个节点的时限："全部" = 每个节点都能改、能开关；[] = 一个都不能改 */
+export function 能改时限的节点(org: 组织, 我: { id: string; role: string }, 配置: 改权限配置): 时限范围 {
+  if (我.role === "ADMIN") return "全部";
+  if (!能改设置(org, 我, "节点时限", 配置)) return [];
+  const 类 = 管理员类别of(org, 我.id);
+  if (类 === "总管理员") return "全部";
+  return 类 ? 时限可改节点[类] : [];
+}
+
+const 天数值 = (v: unknown): string | null => (v === null || v === undefined || v === "" ? null : String(v));
+
+/**
+ * 这次超时回收改动里有没有我动不了的：开关真变了、或哪个节点的天数真变了（交来的节点天数是整张表，没变的节点不算）。
+ * null = 都能改，否则是挡住的那句
+ */
+export function 挡时限改动(
+  范围: 时限范围,
+  现在: { 开: boolean; 节点天数: Record<string, number> },
+  改: { 开?: unknown; 节点天数?: Record<string, unknown> | null } | null | undefined,
+): string | null {
+  if (范围 === "全部" || !改 || typeof 改 !== "object") return null;
+  if (改.开 !== undefined && 改.开 !== 现在.开) return "超时回收的开关只有老板、总管理员能动";
+  if (!改.节点天数 || typeof 改.节点天数 !== "object") return null;
+  const 交来 = 改.节点天数;
+  for (const n of new Set([...Object.keys(现在.节点天数), ...Object.keys(交来)])) {
+    if (范围.includes(n)) continue;
+    if (天数值(现在.节点天数[n]) !== 天数值(交来[n])) {
+      return 范围.length ? `你只能改${范围.map((x) => `「${x}」`).join("")}的时限，「${n}」由老板、总管理员改` : `「${n}」的时限你改不了`;
+    }
+  }
+  return null;
 }

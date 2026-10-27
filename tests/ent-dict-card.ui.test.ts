@@ -1,4 +1,4 @@
-/** 设置 → 项目模式 → 企业选项字典（2026-10-26）：切换种类看各自的选项、加一个、停用一个；窄屏不横向撑出页面。服务端动作换成内存假实现。 */
+/** 设置 → 项目模式 → 企业选项字典（2026-10-26）：切换种类看各自的选项、加一个、停用一个；分配方式下面勾「谁能用」再存（10-27）；窄屏不横向撑出页面。服务端动作换成内存假实现。 */
 import { afterAll, beforeAll, it, expect } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
@@ -11,12 +11,13 @@ const plugin: Plugin = { name: "stub-actions", setup(b) {
     export const 加组员角色=空, 改组员角色=空, 加项目异常类别=空, 改项目异常类别=空, 改组织规则=空, 预览超时回收=async()=>({ok:true,项目:[]}), 存卡点默认Action=空, 改提成比例=空;
     export const 加企业选项=async(kind,name)=>{window.__opts[kind].push({id:'n'+name,name,active:true,用的人:0});window.__rerender();return{ok:true}};
     export const 改企业选项=async(id,patch)=>{for(const xs of Object.values(window.__opts))for(const x of xs)if(x.id===id)Object.assign(x,patch);window.__rerender();return{ok:true}};
+    export const 存分配谁能用=async(v)=>{window.__assignUse=v;return{ok:true}};
     export const useRouter=()=>({refresh(){}});` }));
 } };
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import{App}from'antd';import C from'@/app/(app)/settings/ProjectSettingsTab';
     import{字典种类们,字典定义}from'@/lib/enterprise/dict-kinds';
-    window.__opts=Object.fromEntries(字典种类们.map(k=>[k,字典定义[k].默认.map((name,i)=>({id:k+i,name,active:true,用的人:0}))]));
+    window.__opts=Object.fromEntries(字典种类们.map(k=>[k,字典定义[k].默认.map((name,i)=>({id:'dict-'+k+'-'+i,name,active:true,用的人:0}))]));
     const root=createRoot(document.getElementById('root'));
     window.__rerender=()=>root.render(<App><div style={{maxWidth:640,padding:16}}><C 成员={[]} value={{角色们:[],类别们:[],组织规则:null,持有:{},企业选项:JSON.parse(JSON.stringify(window.__opts)),挡:{字典:null,持有上限:null,节点时限:null,必填字段:null}}}/></div></App>);
     window.__rerender();`, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -29,7 +30,20 @@ it("切换种类、加选项、停用；375 宽不横向撑出", async () => {
   await page.goto("http://dict.test");
   await page.addScriptTag({ content: bundle });
   await page.getByText("企业选项 · 分配方式").waitFor();
-  expect(await page.getByText("自拓自持").count()).toBe(1);
+  expect(await page.getByText("自拓自持", { exact: true }).count()).toBe(2);
+  // 谁能用：「公海捞取」默认销售成员没勾，勾上存，交上去的是整张表
+  await page.getByText("分配方式 · 谁能用").waitFor();
+  const 捞取 = page.getByRole("group", { name: "「公海捞取」谁能用" });
+  expect(await 捞取.getByRole("checkbox", { name: "销售成员" }).isChecked()).toBe(false);
+  expect(await 捞取.getByRole("checkbox", { name: "渠道运营" }).isChecked()).toBe(true);
+  await 捞取.getByText("销售成员").click();
+  await page.getByRole("button", { name: /保\s*存/ }).last().click();
+  await page.waitForFunction(() => !!(window as unknown as { __assignUse?: unknown }).__assignUse);
+  const 交的 = await page.evaluate(() => (window as unknown as { __assignUse: Record<string, string[]> }).__assignUse);
+  expect(交的["dict-assign-2"]).toEqual(expect.arrayContaining(["marketing_mgr", "sales", "channel_ops", "project_ops"]));
+  expect(交的["dict-assign-2"]).toHaveLength(4);
+  expect(交的["dict-assign-3"]).toEqual(["marketing_mgr"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await page.getByText("回收原因", { exact: true }).click();
   await page.getByText("企业选项 · 回收原因").waitFor();
   expect(await page.getByText("销售离职").count()).toBe(1);

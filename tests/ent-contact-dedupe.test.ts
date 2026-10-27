@@ -57,7 +57,7 @@ describe("企业版开着", () => {
 
   it("撞到别人名下的：号码重复，可与 负责人 沟通核实（客户电话写法不同也撞）", async () => {
     await 建("乙的客户", 乙, { phone: "+86 13900000101" });
-    expect(await 查号码("手机号", "13900000101")).toMatchObject({ ok: true, 状态: "重复", 提示: "⛔号码重复，可与 乙 沟通核实", 撞: { salesOwnerName: "乙" } });
+    expect(await 查号码("手机号", "13900000101")).toMatchObject({ ok: true, 状态: "重复", 提示: "⛔号码重复：客户「乙的客户」已有此号码，本次录入已拦截，可与 乙 沟通核实", 撞: { salesOwnerName: "乙" } });
   });
 
   it("撞到我名下的：我的通讯录已有；在公海的：公海待捞", async () => {
@@ -90,6 +90,18 @@ describe("企业版开着", () => {
     expect((await 撞号结论(prisma, [c.id], 甲, null)).撞).toMatchObject({ id: c.id, name: "乙的客户" });
   });
 
+  it("重复的提示（10-27 批注）：看得到的带客户名 + 本次录入已拦截；看不到的不说名字；公海的也说已拦截、不说名字", async () => {
+    const c = await 建("乙的客户", 乙, { phone: "13900000101" });
+    expect((await 撞号结论(prisma, [c.id], 甲, null)).提示).toBe("⛔号码重复：客户「乙的客户」已有此号码，本次录入已拦截，可与 乙 沟通核实");
+    const 看不到 = (await 撞号结论(prisma, [c.id], 甲, 甲)).提示;
+    expect(看不到).toBe("⛔号码重复：同事名下的客户已有此号码，本次录入已拦截，可与 乙 沟通核实");
+    expect(看不到).not.toContain("乙的客户");
+    await prisma.customerPool.create({ data: { customerId: c.id } });
+    const 公海 = (await 撞号结论(prisma, [c.id], 甲, null)).提示;
+    expect(公海).toBe("⛔号码为公海待捞状态，本次录入已拦截");
+    expect(公海).not.toContain("乙的客户");
+  });
+
   it("旺旺 ID：保存时存一行；别人换大小写、空格再建就挡下；子账号是另一个号", async () => {
     当(乙);
     const r = await saveCustomer(客户({ name: "旺旺客户", salesOwnerId: 乙, 企业号码: { 类型: "旺旺ID", 值: "My Shop:kefu01" } }));
@@ -97,9 +109,9 @@ describe("企业版开着", () => {
     const 行 = await prisma.contactMethod.findMany();
     expect(行).toMatchObject([{ kind: "wangwang", value: "MyShop:kefu01", numberKey: "myshop:kefu01", contactId: null, formatStatus: "ok", region: null }]);
     当(甲);
-    expect(await 查号码("旺旺ID", "myshop:KEFU01")).toMatchObject({ 状态: "重复", 提示: "⛔号码重复，可与 乙 沟通核实" });
+    expect(await 查号码("旺旺ID", "myshop:KEFU01")).toMatchObject({ 状态: "重复", 提示: "⛔号码重复：客户「旺旺客户」已有此号码，本次录入已拦截，可与 乙 沟通核实" });
     const 再建 = await saveCustomer(客户({ name: "又一个", 企业号码: { 类型: "旺旺ID", 值: "MYSHOP : kefu01" } }));
-    expect(再建).toEqual({ ok: false, error: "⛔号码重复，可与 乙 沟通核实" });
+    expect(再建).toEqual({ ok: false, error: "⛔号码重复：客户「旺旺客户」已有此号码，本次录入已拦截，可与 乙 沟通核实" });
     expect(await 查号码("旺旺ID", "MyShop")).toMatchObject({ 状态: "首次录入" });
     expect(await 查号码("旺旺ID", "MyShop:kefu02")).toMatchObject({ 状态: "首次录入" });
     expect(await prisma.customer.count()).toBe(1);
@@ -123,7 +135,7 @@ describe("企业版开着", () => {
   it("保存：撞到另一位负责人联系人上的电话也挡下", async () => {
     const c = await 建("乙的客户", 乙);
     await prisma.contact.create({ data: { customerId: c.id, name: "王经理", phone: "13900000104" } });
-    expect(await saveCustomer(客户({ name: "撞了", 企业号码: { 类型: "手机号", 值: "13900000104" } }))).toEqual({ ok: false, error: "⛔号码重复，可与 乙 沟通核实" });
+    expect(await saveCustomer(客户({ name: "撞了", 企业号码: { 类型: "手机号", 值: "13900000104" } }))).toEqual({ ok: false, error: "⛔号码重复：客户「乙的客户」已有此号码，本次录入已拦截，可与 乙 沟通核实" });
   });
 
   it("全公司查号在事务里也能用（查完再写那一步）", async () => {
@@ -151,7 +163,7 @@ describe("企业版开着", () => {
   it("撞到好几条认首条（建档最早）：先建的是同事 → 提示同事；首条在公海 → 公海待捞", async () => {
     const 早 = await 建("乙的老客户", 乙, { phone: "13900000107", createdAt: new Date("2026-01-01") });
     await 建("甲的新客户", 甲, { phone: "13900000107", createdAt: new Date("2026-06-01") });
-    expect(await 查号码("手机号", "13900000107")).toMatchObject({ 状态: "重复", 提示: "⛔号码重复，可与 乙 沟通核实" });
+    expect(await 查号码("手机号", "13900000107")).toMatchObject({ 状态: "重复", 提示: "⛔号码重复：客户「乙的老客户」已有此号码，本次录入已拦截，可与 乙 沟通核实" });
     await prisma.customerPool.create({ data: { customerId: 早.id } });
     expect(await 查号码("手机号", "13900000107")).toMatchObject({ 状态: "公海待捞", 提示: 查重提示.公海待捞 });
   });

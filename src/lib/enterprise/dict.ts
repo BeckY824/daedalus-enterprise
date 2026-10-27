@@ -9,9 +9,12 @@ import { prisma } from "@/lib/prisma";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 挡改设置 } from "./edit-perm";
-import { 字典种类们, 字典定义, 选项名上限, type 字典种类 } from "./dict-kinds";
+import { 字典种类们, 字典定义, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, type 字典种类 } from "./dict-kinds";
+import { 分配谁能用key, 规整分配谁能用, 能用分配方式, 谁能用的话, type 分配谁能用配置 } from "./assign-use";
+import { 读组织 } from "./org";
 
 export * from "./dict-kinds";
+export * from "./assign-use";
 
 const 是种类 = (k: unknown): k is 字典种类 => typeof k === "string" && (字典种类们 as readonly string[]).includes(k);
 /** 默认项的固定 id：dict-<种类>-<序号>，改名不变 */
@@ -50,14 +53,48 @@ export async function 选的原因(kind: 字典种类, v: unknown): Promise<{ ok
   if (!企业版()) return { ok: true, 值: null };
   const n = typeof v === "string" ? v.trim() : "";
   if (!n) return { ok: true, 值: null };
-  if (!(await 可选项(kind)).includes(n)) return { ok: false, error: `「${n}」不在${字典定义[kind].名}里（可能刚被停用），刷新后再选` };
-  return { ok: true, 值: n };
+  // 选「其他」要写一句：存成「其他：xxx」，只要「其他」这一项还启用着
+  const 其他错 = 其他没写好(n);
+  if (其他错) return { ok: false, error: 其他错 };
+  const { 选, 写 } = 拆其他(n);
+  if (!(await 可选项(kind)).includes(选 ?? n)) return { ok: false, error: `「${选 ?? n}」不在${字典定义[kind].名}里（可能刚被停用），刷新后再选` };
+  return { ok: true, 值: 选 === 其他项 ? `${其他前缀}${写.trim()}` : n };
 }
 
 /** 分配记录上的「分配方式」：0 = 指定分配、1 = 自动分配，取字典里这一项现在的叫法（改过名跟着改）；事务外调 */
-export async function 分配方式叫法(i: 0 | 1): Promise<string> {
+export async function 分配方式叫法(i: 0 | 1 | 2): Promise<string> {
   const 有 = (await 企业字典("assign")).find((x) => x.id === 默认id("assign", i));
   return 有?.name ?? 字典定义.assign.默认[i];
+}
+
+/** 分配方式谁能用（assign-use.ts）：没存 = 默认；不是企业版 = 空 */
+export async function 读分配谁能用(): Promise<分配谁能用配置> {
+  if (!企业版()) return {};
+  const { getSetting } = await import("@/lib/settings");
+  return 规整分配谁能用(await getSetting<unknown>(分配谁能用key));
+}
+
+/**
+ * 用某个分配方式之前查：这个人的业务角色能不能用（i 是默认项序号：0 指定、1 自动）。
+ * null = 能用，否则是挡住的那句；不是企业版 = null（不管）。事务外调
+ */
+export async function 挡分配方式(me: { id: string; role: string }, i: 0 | 1): Promise<string | null> {
+  if (!企业版() || me.role === "ADMIN") return null;
+  const id = 默认id("assign", i);
+  const [org, 配置] = await Promise.all([读组织(), 读分配谁能用()]);
+  if (能用分配方式(org, me, id, 配置)) return null;
+  return 谁能用的话(id, await 分配方式叫法(i), 配置);
+}
+
+/** 存「谁能用」：只认分配方式字典里有的项；谁能改同字典一行 */
+export async function 改分配谁能用(me: { id: string; role: string }, 配置: unknown): Promise<结果> {
+  const 挡住 = await 挡(me, "assign");
+  if (挡住) return { ok: false, error: 挡住 };
+  const 有的 = new Set((await 企业字典("assign")).map((x) => x.id));
+  const 新 = Object.fromEntries(Object.entries(规整分配谁能用(配置)).filter(([id]) => 有的.has(id)));
+  const { setSetting } = await import("@/lib/settings");
+  await setSetting(分配谁能用key, { ...(await 读分配谁能用()), ...新 });
+  return { ok: true };
 }
 
 async function 挡(me: { id: string; role: string }, kind: unknown): Promise<string | null> {

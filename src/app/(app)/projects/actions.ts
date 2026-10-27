@@ -20,7 +20,8 @@ import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-ru
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
-import { 挡改设置, type 设置项名 } from "@/lib/enterprise/edit-perm";
+import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
+import { 读组织 } from "@/lib/enterprise/org";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, type 位置 } from "@/lib/project/nodes";
@@ -371,15 +372,21 @@ export async function 移出项目组员(memberId: string) {
 }
 
 /**
- * 这次改动碰到的每一块都得能改：公海 = 持有上限，超时回收 = 节点时限，节点推进 = 必填字段
+ * 这次改动碰到的每一块都得能改：公海 = 持有上限，超时回收 = 节点时限（再按节点拆），节点推进 = 必填字段
  * （「后台设置谁能改」，lib/enterprise/edit-perm-table.ts；老板总能改）
  */
 async function 挡组织规则(me: { id: string; role: string }, 改: 规则改动): Promise<string | null> {
-  const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各节点时限"], ["节点推进", "必填字段", "节点必填字段"], ["阶段", "阶段规则", "阶段出口叫法和往前推权限"]];
+  const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各节点时限"], ["节点推进", "必填字段", "节点必填字段"], ["阶段", "阶段规则", "阶段结束状态叫法和往前推权限"]];
   for (const [k, 项, 叫法] of 块) {
     if (改?.[k] === undefined) continue;
     const 挡 = await 挡改设置(me, 项);
     if (挡) return `${叫法}${挡}`;
+  }
+  // 节点时限再按节点拆：销售管理 / 市场管理只能动自己那几个节点，开关只有老板、总管理员（edit-perm-table.ts 时限可改节点）
+  if (改?.超时回收 !== undefined && 企业版()) {
+    const [org, 配置, 现在] = await Promise.all([读组织(), 读改权限(), 读组织规则()]);
+    const 挡 = 挡时限改动(能改时限的节点(org, me, 配置), 现在.超时回收, 改.超时回收);
+    if (挡) return 挡;
   }
   return null;
 }
@@ -398,7 +405,7 @@ export async function 改组织规则(改: 规则改动) {
     const g = 新.公海, t = 新.超时回收;
     const 推 = 新.节点推进;
     const 说 = 改.阶段 !== undefined
-      ? `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的出口叫法`
+      ? `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的结束状态叫法`
       : 改.节点推进 !== undefined
       ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个节点配了必填` : "组织规则：节点推进关"
       : 改.超时回收 !== undefined

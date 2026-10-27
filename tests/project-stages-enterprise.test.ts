@@ -30,25 +30,25 @@ const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默
 describe("企业版字典：按对方阶段值做种子", () => {
   it("线索 5 / 商机 8 / 订单 7，含出口，值和对方表一致", () => {
     expect(阶段值们(企, "线索")).toEqual(["潜客培育", "线索验证", "线索推进", "已转商机", "线索流失"]);
-    expect(阶段值们(企, "商机")).toEqual(["明确需求", "共识方案", "成交推进", "签约审批", "签订合同", "首款支付", "赢单", "丢单"]);
+    expect(阶段值们(企, "商机")).toEqual(["明确需求", "共识方案", "成交推进", "签约审批", "签订合同", "首款支付", "商机赢单", "商机丢单"]);
     expect(阶段值们(企, "订单")).toEqual(["生产备货", "物流运输", "安装实施", "验收交付", "尾款结算", "成功交付", "异常状态"]);
     expect([阶段值们(企, "线索").length, 阶段值们(企, "商机").length, 阶段值们(企, "订单").length]).toEqual([5, 8, 7]);
   });
 
-  it("出口叫法：线索 已转商机 / 线索流失，商机 赢单 / 丢单；流程代码们没了", () => {
+  it("结束状态默认叫法（10-27 批注）：线索 已转商机 / 线索流失，商机 商机赢单 / 商机丢单；结局值不变；流程代码们没了", () => {
     expect("流程代码们" in 企).toBe(false);
     expect(企.出口们.线索.map((o) => o.叫法)).toEqual(["已转商机", "线索流失"]);
-    expect(企.出口们.商机.map((o) => o.叫法)).toEqual(["赢单", "丢单"]);
+    expect(企.出口们.商机.map((o) => o.叫法)).toEqual(["商机赢单", "商机丢单"]);
     expect(企.出口们.商机.map((o) => o.结局)).toEqual([null, "丢单"]);
     expect(企.出口们.订单.map((o) => o.叫法)).toEqual(["成功交付", "异常状态"]);
     expect(结局叫法("线索流失", 企)).toBe("线索流失");
-    expect(结局叫法("丢单", 企)).toBe("丢单");
+    expect(结局叫法("丢单", 企)).toBe("商机丢单");
     expect(结局叫法("成功交付", 企)).toBe("成功交付");
   });
 
   it("后台改出口叫法（挡改设置）：只换叫法、不换结局值；没改的用字典里的", () => {
     const 改 = 字典of(true, { 商机: ["赢了", null], 线索: [null, "没戏"] });
-    expect(改.出口们.商机.map((o) => [o.叫法, o.结局])).toEqual([["赢了", null], ["丢单", "丢单"]]);
+    expect(改.出口们.商机.map((o) => [o.叫法, o.结局])).toEqual([["赢了", null], ["商机丢单", "丢单"]]);
     expect(改.出口们.线索.map((o) => [o.叫法, o.结局])).toEqual([["已转商机", null], ["没戏", "线索流失"]]);
     expect(结局叫法("线索流失", 改)).toBe("没戏");
     expect(改.节点们).toBe(企.节点们);
@@ -120,7 +120,7 @@ describe("结局只有两条（企业版字典）", () => {
     const 线索推进 = 在("线索", "线索推进");
     expect(改节点问题({ phase: "线索", node: "线索推进", result: "线索流失" }, 线索推进, 原因, true, 企)).toBeNull();
     expect(改节点问题({ phase: "商机", node: "明确需求" }, 线索推进, undefined, true, 企)).toBeNull();
-    expect(改节点问题({ phase: "线索", node: "线索推进", result: "丢单" }, 线索推进, 原因, true, 企)).toBe("「丢单」只能在商机阶段点");
+    expect(改节点问题({ phase: "线索", node: "线索推进", result: "丢单" }, 线索推进, 原因, true, 企)).toBe("「商机丢单」只能在商机阶段点");
     expect(改节点问题({ phase: "线索", node: "线索推进", result: "成功交付" }, 线索推进, undefined, true, 企)).toMatch("只能在订单阶段点");
     expect(改节点问题({ phase: "线索", node: "线索推进", result: "异常状态" }, 线索推进, { categoryId: "x" }, true, 企)).toMatch("只能在订单阶段点");
   });
@@ -215,7 +215,7 @@ describe("读写库（CRM_ENTERPRISE 开 / 关）", () => {
 
   it("企业版：线索阶段点丢单被拦，点线索流失（写原因）能点", async () => {
     const p = await 项目({ node: "线索验证" });
-    expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证", result: "丢单" }, { 备注: "不要了" })).toMatchObject({ ok: false, error: "「丢单」只能在商机阶段点" });
+    expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证", result: "丢单" }, { 备注: "不要了" })).toMatchObject({ ok: false, error: "「商机丢单」只能在商机阶段点" });
     expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证", result: "线索流失" }, { 备注: "不要了" })).toMatchObject({ ok: true });
     expect(await 现(p.id)).toMatchObject({ result: "线索流失" });
   });

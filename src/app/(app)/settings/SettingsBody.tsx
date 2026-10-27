@@ -9,7 +9,7 @@ import { 角色字典, 异常类别字典, 能进公海的阶段 } from "@/lib/p
 import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 读卡点默认 } from "@/lib/project/blocker";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 全部企业字典 } from "@/lib/enterprise/dict";
+import { 全部企业字典, 读分配谁能用 } from "@/lib/enterprise/dict";
 import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
@@ -18,7 +18,7 @@ import { 文字里号码打码 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 管理员类别of } from "@/lib/enterprise/org";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { getSetting } from "@/lib/settings";
-import { 读改权限, 能改设置, 谁能改的话, type 设置项名 } from "@/lib/enterprise/edit-perm";
+import { 读改权限, 能改设置, 谁能改的话, 能改时限的节点, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import type { 组织架构 } from "./OrgTab";
 import { 本月分配情况 } from "../leads/assign-actions";
 import { 读提成比例, 能改提成比例 } from "@/lib/project/commission-db";
@@ -123,7 +123,10 @@ export default async function SettingsBody() {
     企业选项: 企业选项
       ? Object.fromEntries(Object.entries(企业选项).map(([k, xs]) => [k, xs.map((x) => ({ id: x.id, name: x.name, active: x.active, 用的人: 0 }))]))
       : null,
+    分配谁能用: 企业选项 ? await 读分配谁能用() : undefined,
     挡: { 字典: 挡("字典"), 持有上限: 挡("持有上限"), 节点时限: 挡("节点时限"), 必填字段: 挡("必填字段"), 阶段规则: 挡("阶段规则") },
+    // 节点时限能改的话再按节点拆（销售管理只改潜客培育……），和服务端 挡时限改动 同一套
+    时限节点: org && 改权限 ? 能改时限的节点(org, me, 改权限) : undefined,
   };
   const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限
     ? (() => {

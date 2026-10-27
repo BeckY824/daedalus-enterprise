@@ -14,3 +14,36 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
 };
 
 export const 选项名上限 = 20;
+
+/**
+ * 选「其他」要写一句（10-27 批注）：存成「其他：xxx」。只认字面叫「其他」的那一项，改了名就当普通选项。
+ * 下拉（components/DictSelect.tsx）和服务端（dict.ts 选的原因）都用这几个
+ */
+export const 其他项 = "其他";
+export const 其他前缀 = "其他：";
+export const 其他补充上限 = 30;
+
+/** 下拉选的 + 补充的字 → 提交上去的值；没选 = null；选了其他没写 = "其他"（提交会被拦） */
+export function 合其他(选: string | null | undefined, 写: string): string | null {
+  if (!选) return null;
+  if (选 !== 其他项) return 选;
+  const t = 写.trim();
+  return t ? `${其他前缀}${t}` : 其他项;
+}
+
+/** 反过来：提交值 → 下拉选的 + 补充的字 */
+export function 拆其他(v: string | null | undefined): { 选: string | null; 写: string } {
+  if (!v) return { 选: null, 写: "" };
+  if (v.startsWith(其他前缀)) return { 选: 其他项, 写: v.slice(其他前缀.length) };
+  return { 选: v, 写: "" };
+}
+
+/** 选了其他但没写 / 写太长：给一句提示；没问题 = null */
+export function 其他没写好(v: string | null | undefined): string | null {
+  const { 选, 写 } = 拆其他(v);
+  if (选 !== 其他项) return null;
+  const t = 写.trim();
+  if (!t) return "选了「其他」，请写一下具体是什么";
+  if (t.length > 其他补充上限) return `「其他」后面最多写 ${其他补充上限} 个字`;
+  return null;
+}

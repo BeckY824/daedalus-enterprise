@@ -17,7 +17,7 @@ import { 读组织, type 组织 } from "@/lib/enterprise/org";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 分配方式叫法 } from "@/lib/enterprise/dict";
+import { 分配方式叫法, 挡分配方式 } from "@/lib/enterprise/dict";
 import { 发满额提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -59,6 +59,9 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
   try {
     const org = await 读组织();
     if (!能分配(org, me)) return { ok: false, error: "只有老板、总管理员、市场管理能分配线索" };
+    // 还要看分配方式字典的「谁能用」（assign-use.ts）：指定分配
+    const 方式挡 = await 挡分配方式(me, 0);
+    if (方式挡) return { ok: false, error: 方式挡 };
     const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line, kind, 自动: false });
     return r.ok ? r : { ok: false, error: r.error };
   } catch (e) {
@@ -211,6 +214,8 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
   try {
     const org = await 读组织();
     if (!能分配(org, me)) return { ok: false, error: "只有老板、总管理员、市场管理能分配线索" };
+    const 方式挡 = await 挡分配方式(me, 1);
+    if (方式挡) return { ok: false, error: 方式挡 };
     const 哪条 = 目标of(opts.项目 ? { projectId: id } : { leadId: id });
     if (!哪条) return { ok: false, error: "要分哪一条？刷新看看" };
     const r = await 自动分给(me, org, 哪条, line, kind);
@@ -286,6 +291,8 @@ export async function 批量自动分配(leadIds: string[], opts: { 项目?: boo
   try {
     const org = await 读组织();
     if (!能分配(org, me)) return { ok: false, error: "只有老板、总管理员、市场管理能分配线索" };
+    const 方式挡 = await 挡分配方式(me, 1);
+    if (方式挡) return { ok: false, error: 方式挡 };
     const 项目 = opts?.项目 === true;
     const 名 = new Map((项目
       ? await prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })

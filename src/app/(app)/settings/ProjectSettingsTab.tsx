@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
+import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
 import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
-import { 加企业选项, 改企业选项 } from "./ent-dict-actions";
+import { 加企业选项, 改企业选项, 存分配谁能用 } from "./ent-dict-actions";
 import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterprise/dict-kinds";
+import type { 时限范围 } from "@/lib/enterprise/edit-perm-table";
+import { 分配可选角色, 谁能用, type 分配谁能用配置 } from "@/lib/enterprise/assign-use";
+import { 角色名 } from "@/lib/sync/dept-policy";
 import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
 import { 存卡点默认Action } from "@/app/(app)/projects/blocker-actions";
 import { 卡点类型们, 影响等级们, 时限最大, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -29,6 +32,8 @@ export type 项目设置 = {
   组织规则: 组织规则 | null;
   /** 企业版选项字典（分配方式、回收原因……），按种类分；不是企业版 = null，卡片不出 */
   企业选项: Record<string, 字典项[]> | null;
+  /** 分配方式每一项谁能用（存过的；没存的项按默认）；不是企业版不给 */
+  分配谁能用?: 分配谁能用配置;
   /** 每人手上线索 / 商机阶段的项目数（userId → 个数），算持有上限的口径 */
   持有: Record<string, number>;
   /**
@@ -36,6 +41,8 @@ export type 项目设置 = {
    * 不是企业版只有老板能改；共享试用区谁都不能改）
    */
   挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段" | "阶段规则", string | null>;
+  /** 节点时限能改时，能改哪几个节点："全部" = 都能改、能开关；没给 = 全部（老板 / 不是企业版） */
+  时限节点?: 时限范围;
   /** 企业版卡点的默认值（每类卡点的时限、阻碍主体的选项）；不是企业版 = null，卡片不出 */
   卡点默认?: 卡点默认 | null;
   /** 企业版提成比例 A（底价）/ B（溢价），百分数；不是企业版 = null，卡片不出（服务端读的 企业版()） */
@@ -85,9 +92,9 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
         停用说明="停用后不能再选；已经用着它的项目不变"
         项们={value.类别们} 挡={value.挡.字典} 忙={忙} 跑={跑} 加={加项目异常类别} 改={改项目异常类别}
       />
-      {value.企业选项 && <EntDictCard 各类={value.企业选项} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
+      {value.企业选项 && <EntDictCard 各类={value.企业选项} 谁能用配置={value.分配谁能用 ?? {}} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
-      {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 忙={忙} 跑={跑} />}
+      {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} 忙={忙} 跑={跑} />}
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
       {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
@@ -97,8 +104,8 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
 }
 
 /** 企业版选项字典：上面切换是哪一类，下面就是那一类的字典卡。只给选项，哪里都不强制必填 */
-function EntDictCard({ 各类, 挡, 忙, 跑 }: {
-  各类: Record<string, 字典项[]>; 挡: string | null; 忙: boolean;
+function EntDictCard({ 各类, 谁能用配置, 挡, 忙, 跑 }: {
+  各类: Record<string, 字典项[]>; 谁能用配置: 分配谁能用配置; 挡: string | null; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
   const [种类, set种类] = useState<字典种类>(字典种类们[0]);
@@ -123,7 +130,46 @@ function EntDictCard({ 各类, 挡, 忙, 跑 }: {
         项们={各类[种类] ?? []} 挡={挡} 忙={忙} 跑={跑}
         加={(name) => 加企业选项(种类, name)} 改={改企业选项}
       />
+      {种类 === "assign" && <AssignUseCard 项们={各类.assign ?? []} 配置={谁能用配置} 挡={挡} 忙={忙} 跑={跑} />}
     </div>
+  );
+}
+
+/**
+ * 分配方式谁能用（10-27）：每一项按业务角色勾，服务端（lib/enterprise/assign-use.ts）照这个拦；
+ * 「谁能用」= 谁能选这种方式把线索分出去；指定分配、自动分配有操作对得上，公海捞取、暂不分配、自拓自持先存着（从公海领照旧非原负责人都能领）
+ */
+function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
+  项们: 字典项[]; 配置: 分配谁能用配置; 挡: string | null; 忙: boolean;
+  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const 起 = () => Object.fromEntries(项们.map((x) => { const v = 谁能用(x.id, 配置); return [x.id, v === "所有人" ? [...分配可选角色] : [...v]]; }));
+  const [勾, set勾] = useState<Record<string, string[]>>(起);
+  const 改了 = 项们.some((x) => (勾[x.id] ?? []).join() !== (起()[x.id] ?? []).join());
+  return (
+    <Card title="分配方式 · 谁能用" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。指定分配、自动分配现在就按这里拦；公海捞取、暂不分配、自拓自持先存着，从公海领照旧。
+      </div>
+      {项们.map((x) => (
+        <div key={x.id} style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8, minWidth: 0 }}>
+          <span style={{ flex: "0 0 7em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: x.active ? undefined : "var(--text-muted)" }} title={x.name}>{x.name}</span>
+          <Checkbox.Group
+            aria-label={`「${x.name}」谁能用`}
+            disabled={!!挡 || 忙}
+            value={勾[x.id] ?? []}
+            onChange={(v) => set勾({ ...勾, [x.id]: v as string[] })}
+            options={分配可选角色.map((r) => ({ value: r, label: 角色名[r] }))}
+          />
+        </div>
+      ))}
+      {!挡 && (
+        <Space>
+          <Button type="primary" disabled={忙 || !改了} onClick={() => void 跑(() => 存分配谁能用(勾), "已保存")}>保存</Button>
+          {改了 && <Button disabled={忙} onClick={() => set勾(起())}>还原</Button>}
+        </Space>
+      )}
+    </Card>
   );
 }
 
@@ -262,14 +308,16 @@ function HoldCapCard({
  * 保存前先按新设置数一遍「现在会回收几个」，有的话让老板确认
  */
 function TimeoutCard({
-  规则, 挡, 忙, 跑,
+  规则, 挡, 范围, 忙, 跑,
 }: {
-  规则: 组织规则["超时回收"]; 挡: string | null; 忙: boolean;
+  规则: 组织规则["超时回收"]; 挡: string | null; 范围: 时限范围; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
   const { message, modal } = App.useApp();
   const [天数, set天数] = useState<Record<string, number | null>>(规则.节点天数);
   const 节点 = [...节点们.线索, ...节点们.商机];
+  const 全能 = 范围 === "全部";
+  const 能改 = (n: string) => !挡 && (全能 || 范围.includes(n));
   const 改了 = 节点.some((n) => (天数[n] ?? null) !== (规则.节点天数[n] ?? null));
 
   /** 先数会回收几个，有就确认；改完提示真收了几个 */
@@ -303,7 +351,7 @@ function TimeoutCard({
           <Switch
             aria-label="超时回收"
             checked={规则.开}
-            disabled={!!挡 || 忙}
+            disabled={!!挡 || !全能 || 忙}
             onChange={(开) => void (开 ? 确认后存({ 超时回收: { 开 } }, "已开超时回收") : 跑(() => 改组织规则({ 超时回收: { 开 } }), "已关超时回收"))}
           />
         </Space>
@@ -312,6 +360,11 @@ function TimeoutCard({
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，线索、商机阶段的项目在一个节点上超过处理时长还没跟进，自动回到项目公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的节点按 ${默认天数} 天算` : "没填天数的节点不回收"}，订单阶段不回收。默认关。
       </div>
+      {!挡 && !全能 && (
+        <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+          {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他节点和开关由老板、总管理员改。` : "节点时限和开关由老板、总管理员改。"}
+        </div>
+      )}
       {规则.开 && (
         <>
           {(["线索", "商机"] as const).map((阶段) => (
@@ -324,7 +377,7 @@ function TimeoutCard({
                     aria-label={`「${n}」的处理时长`}
                     min={1} max={时长最大} precision={0} suffix="天" style={{ width: 120, flex: "0 0 auto" }}
                     placeholder={默认天数 ? `默认 ${默认天数} 天` : "不回收"}
-                    disabled={!!挡}
+                    disabled={!能改(n)}
                     value={天数[n] ?? null}
                     onChange={(v) => set天数((m) => ({ ...m, [n]: v }))}
                   />
@@ -332,7 +385,7 @@ function TimeoutCard({
               ))}
             </div>
           ))}
-          {!挡 && (
+          {节点.some(能改) && (
             <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了} onClick={() => void 确认后存({ 超时回收: { 节点天数: 天数 } }, "已保存")}>保存</Button>
           )}
         </>
@@ -543,7 +596,7 @@ function StageRuleCard({
         style={{ display: "grid", gap: 4, marginBottom: 16 }}
         options={推进权限们.map((v) => ({ value: v, label: <span>{v}<span style={{ color: "var(--text-muted)" }}>：{推进权限说明[v]}</span></span> }))}
       />
-      <div style={{ fontWeight: 500, marginBottom: 8 }}>出口叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
+      <div style={{ fontWeight: 500, marginBottom: 8 }}>结束状态叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
       {阶段们.map((s) => {
         const [成, 没成] = 企业版字典.出口们[s];
         return (
