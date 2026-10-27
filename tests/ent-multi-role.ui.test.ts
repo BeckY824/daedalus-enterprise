@@ -80,6 +80,7 @@ it("非老板的选项里没有总管理、管理员；老板有", async () => {
     try {
       await 展开(page, "小王");
       const 选项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+      await 选项.filter({ hasText: "市场管理" }).first().waitFor(); // allInnerTexts 不等，负载高时下拉还没渲染完会读到空
       const 字 = await 选项.allInnerTexts();
       expect(字.filter(t => t === "总管理").length).toBe(有);
       expect(字.filter(t => t === "管理员").length).toBe(有);
