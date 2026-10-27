@@ -36,7 +36,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑 }: { projectId: s
             <Button disabled={忙 || 底价 === t.项目底价} onClick={() => void 跑(() => 存项目底价(projectId, 底价), "已存项目底价")}>保存</Button>
           </Space.Compact>
         ) : (
-          <span title={t.能填底价 && 固定了 ? "已经赢单，实际提成已固定；要改项目底价先把项目退回商机" : "项目底价由项目负责人填"}>{钱(t.实际?.项目底价 ?? t.项目底价)}</span>
+          <span title={t.能填底价 && 固定了 ? "已经赢单，实际提成已固定，不能再改" : "项目底价由项目负责人填"}>{钱(t.实际?.项目底价 ?? t.项目底价)}</span>
         )}
       </div>
       <div style={行样}><span style={键样}>项目溢价</span>{用的 ? 钱(用的.项目溢价) : "—"}{用的 && 用的.项目溢价 === 0 && 用的.成交金额 < 用的.项目底价 && <span style={淡}>（成交金额低于底价，溢价算 0）</span>}</div>

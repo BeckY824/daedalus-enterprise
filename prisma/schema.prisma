@@ -1360,7 +1360,7 @@ model EntLeadQuota {
 
 /// 企业版提成表（2026-10-26，迁移 051）：每个项目一份。成交金额就是 Project.amount（同币种），这里只存人填的项目底价，
 /// 和赢单（商机 → 订单）那一刻按当时的比例算出来固定的实际提成。比例存 Setting（entCommissionRates），算法在 lib/project/commission.ts。
-/// 只在企业版写；退回商机清掉固定的那几列，再赢单按那时的比例重算。指向人的列不建外键
+/// 只在企业版写；企业版进了订单不能退回商机（10-27 定），固定后不再变。指向人的列不建外键
 model EntCommission {
   projectId        String    @id
   project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)

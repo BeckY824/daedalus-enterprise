@@ -26,6 +26,7 @@ import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -250,6 +251,8 @@ export async function 改节点(
   const 规则 = await 生效组织规则();
   const org = 企业版() ? await 读组织() : null;
   const 推的组织 = await 直属才推(org);
+  // 企业版字段权限（规则没开 = 全能改，不读库）：「阶段 / 节点」只能看的角色改不了节点和结局
+  const 级别 = await 字段权限of(me.id);
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -260,6 +263,8 @@ export async function 改节点(
     到 = 本套位置(到, 字典);
     const 问题 = 改节点问题({ ...到, result }, p, 异常, 企业版(), 字典);
     if (问题) return { ok: false as const, error: 问题 };
+    const 挡 = 到.phase !== p.phase || 到.node !== p.node || result !== p.result ? 改不了的话(级别, ["商机阶段"]) : null;
+    if (挡) return { ok: false as const, error: 挡 };
     const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
     const 不给 = 往前 ? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到)) : null;
     if (不给) return { ok: false as const, error: 不给 };
@@ -297,7 +302,7 @@ export async function 改节点(
         closedAt: result ? (p.result === result ? p.closedAt : new Date()) : null,
       },
     });
-    // 企业版提成：进订单（赢单）固定实际提成，退出订单清掉（lib/project/commission-db.ts）
+    // 企业版提成：进订单（赢单）固定实际提成（lib/project/commission-db.ts）。企业版进了订单不能退回商机（改节点问题 里拦）
     await 节点变了的提成(tx, p.id, p.phase, 到.phase);
     await tx.projectNodeLog.create({
       data: {
@@ -393,6 +398,7 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 export async function 改项目(me: 谁, projectId: string, patch: 向导项目 & { contactId?: string | null }): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const 规则 = await 生效组织规则();
+  const 级别 = await 字段权限of(me.id);
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -408,6 +414,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 向导项目 
     const 新 = { ...好, contactId };
     const 变了 = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     if (!变了.length) return { ok: true as const, 变了 };
+    // 企业版字段权限：动了「只能看」的金额 / 负责人就拒（名称、备注、联系人不在表里，照旧能改）
+    const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
+    if (挡) return { ok: false as const, error: 挡 };
     const 换人 = 新.ownerId !== p.ownerId;
     if (换人) {
       // 这里改不了阶段和结局（规整项目只出名称、负责人、金额、备注），p 的阶段 / 结局就是改完的
@@ -454,7 +463,7 @@ export async function 超上限(
 }
 
 /**
- * 放回公海：只有负责人本人能放，线索 / 商机阶段才行。ownerId 留着放回去的人（他就是「历史负责人」；企业版里自己也能再领回，别的版本不能），
+ * 放回公海：只有负责人本人能放，线索 / 商机阶段才行。ownerId 留着放回去的人（他就是「历史负责人」；原负责人不能自己领回，企业版和别的版本一样，见 lib/enterprise/pool-rules.ts），
  * 记一行 pool-release。项目组、节点、交付两项都不动
  */
 export async function 放回公海(me: 谁, projectId: string, 原因?: unknown): Promise<结果> {

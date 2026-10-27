@@ -104,7 +104,7 @@ const 派生: Record<string, Record<string, string>> = {
   EntCommission: {
     projectId: "哪个项目，一个项目一行；存项目底价时按项目定，不改",
     updatedById: "最后改项目底价的人，当前登录账号",
-    fixedAt: "赢单（进订单阶段）那一刻打上，退回商机清掉",
+    fixedAt: "赢单（进订单阶段）那一刻打上，企业版进了订单不能退，之后不变",
     fixedDeal: "赢单时的成交金额，从项目金额抄过来",
     fixedBase: "赢单时的项目底价",
     fixedRateBase: "赢单时设置里的底价比例",
