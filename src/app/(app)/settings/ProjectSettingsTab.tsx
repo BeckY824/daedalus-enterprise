@@ -105,8 +105,10 @@ function EntDictCard({ 各类, 挡, 忙, 跑 }: {
   const 定义 = 字典定义[种类];
   return (
     <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+      {/* 七类在 1024 宽的设置页里一排放不下，折成两行，不要左右拖（10-27）；外框的横滚只在样式没加载时兜底 */}
       <div style={{ overflowX: "auto" }}>
         <Segmented
+          className="seg-wrap"
           aria-label="选项类别"
           value={种类}
           onChange={(v) => set种类(v as 字典种类)}
