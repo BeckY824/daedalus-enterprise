@@ -6,6 +6,7 @@
 import { businessDayjs } from "./business-clock";
 import { prisma } from "./prisma";
 import { recordAudit, type Actor } from "./audit";
+import { 企业版 } from "./enterprise/switch";
 
 export const AI_FEATURES = {
   parse: "跟进速记",
@@ -18,6 +19,11 @@ export const AI_FEATURES = {
   research: "联网背调",
 } as const;
 export type AiFeature = keyof typeof AI_FEATURES;
+
+/** 企业版把「简报」叫「智能总结」（10-27 会议：「将简报功能名称改为智能总结」）；只在服务端读开关 */
+export function 简报名(): string {
+  return 企业版() ? "智能总结" : "简报";
+}
 
 export async function recordAiUse(user: Actor, feature: AiFeature, summary: string, entityId?: string | null) {
   await recordAudit({ user, action: "ai_use", entity: "Ai", entityId: feature, summary, detail: entityId ? { 对象: entityId } : undefined });
@@ -34,5 +40,5 @@ export async function aiUsageThisMonth(now = new Date()): Promise<AiUsage> {
     _count: { _all: true },
   });
   const map = new Map(rows.map((r) => [r.entityId, r._count._all]));
-  return (Object.keys(AI_FEATURES) as AiFeature[]).map((f) => ({ feature: f, label: AI_FEATURES[f], count: map.get(f) ?? 0 }));
+  return (Object.keys(AI_FEATURES) as AiFeature[]).map((f) => ({ feature: f, label: f === "brief" && 企业版() ? "智能总结" : AI_FEATURES[f], count: map.get(f) ?? 0 }));
 }

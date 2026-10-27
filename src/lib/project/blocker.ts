@@ -394,7 +394,7 @@ export async function 我的卡点(me: 谁): Promise<卡点视图[]> {
           { status: "看板", project: { pooledAt: null, OR: [{ ownerId: me.id }, { id: { in: 组.map((m) => m.projectId) } }] } },
         ],
       },
-      include: 卡点带, orderBy: { dueAt: "asc" },
+      include: 卡点带, orderBy: { createdAt: "asc" }, // 开得最久的在前（10-27 去时限后不再按到期排）
     });
     return 成视图(me, 们, org);
   });

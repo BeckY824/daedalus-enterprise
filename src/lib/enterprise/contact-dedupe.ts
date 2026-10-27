@@ -90,13 +90,7 @@ export type 查号结论 =
  */
 export async function 撞号结论(db: 库, ids: string[], 我: string, 读的我: 谁 | null): Promise<查号结论> {
   if (!ids.length) return { 状态: "首次录入", 提示: 查重提示.首次录入, 撞: null };
-  const 们 = await 看全部(async () => db.customer.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, name: true, school: true, createdAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: 1,
-  }));
-  const 挑 = 们[0];
+  const 挑 = await 首条撞的(db, ids);
   if (!挑) return { 状态: "首次录入", 提示: 查重提示.首次录入, 撞: null };
   const 看得见 = 看得到(挑, 读的我);
   const 同事 = 挑.salesOwner?.name ?? "同事";
@@ -110,6 +104,21 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
   if (挑.salesOwnerId === 我 && !挑.pool) return { 状态: "我的通讯录已有", 提示: 查重提示.我的通讯录已有, 撞 };
   if (挑.pool) return { 状态: "公海待捞", 提示: 查重提示.公海待捞, 撞 };
   return { 状态: "重复", 提示: 查重提示.重复(同事, 撞.name), 撞 };
+}
+
+/**
+ * 撞到的好几位里认哪一条（建档最早、同一刻按 id），不管看不看得到。
+ * 只给服务端内部用（AI 建档撞了要给原负责人建待办，要原客户 id 和负责人 id），别原样交给前端
+ */
+export async function 首条撞的(db: 库, ids: string[]) {
+  if (!ids.length) return null;
+  const 们 = await 看全部(async () => db.customer.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, school: true, createdAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: 1,
+  }));
+  return 们[0] ?? null;
 }
 
 /** 本机没撞的，再问一下团队版服务端（同 checkDuplicate）。旺旺 ID 服务端没有这一种，不问 */

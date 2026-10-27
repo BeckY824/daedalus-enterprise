@@ -26,6 +26,8 @@ let 经理: { id: string; name: string };
 let 乙: { id: string; name: string };
 let 丙: { id: string; name: string };
 let 客户: string;
+/** 丙自己的客户：⑧ 起多项目客户整体转让，乙的项目收回时客户甲连同挂在它名下的项目一起进客户公海，丙的项目要挂在别的客户下才测得到扫的范围 */
+let 丙客户: string;
 
 async function 人(email: string, name: string, role: string) {
   const u = await prisma.user.create({ data: { email, name, title: "", role, password: "x" } });
@@ -48,6 +50,7 @@ beforeEach(async () => {
   乙 = await 人("yi", "乙", "SALES");
   丙 = await 人("bing", "丙", "SALES");
   客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 乙.id } })).id;
+  丙客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000003", salesOwnerId: 丙.id } })).id;
   await setSetting("business", { projectMode: true });
   await setSetting("orgRules", 开着({ 潜客培育: 3 }));
 });
@@ -59,7 +62,7 @@ afterEach(() => {
 describe("企业版服务器：低权限先触发，也是全公司扫", () => {
   it("市场经理 00:02 先打开首页：乙、丙名下超时的都收回；00:05 夜里那一轮不重复收", async () => {
     const p乙 = await 项目(乙.id, "2026-10-22 10:00");
-    const p丙 = await 项目(丙.id, "2026-10-21 10:00");
+    const p丙 = await 项目(丙.id, "2026-10-21 10:00", 丙客户);
     expect(await 公海超时收回(经理, 时("2026-10-25 00:02"))).toBe(2);
     expect(await 在公海(p乙.id)).toBe(true);
     expect(await 在公海(p丙.id)).toBe(true);
@@ -109,7 +112,7 @@ describe("团队模式：只扫自己名下的那次不记全公司的号", () =
 
   it("乙先打开（只收乙的），丙同一天再打开照样收丙的", async () => {
     const p乙 = await 项目(乙.id, "2026-10-22 10:00");
-    const p丙 = await 项目(丙.id, "2026-10-22 10:00");
+    const p丙 = await 项目(丙.id, "2026-10-22 10:00", 丙客户);
     expect(await 公海超时收回(乙, 时("2026-10-25 09:00"))).toBe(1);
     expect(await 在公海(p乙.id)).toBe(true);
     expect(await 在公海(p丙.id)).toBe(false);
@@ -128,7 +131,7 @@ describe("团队模式：只扫自己名下的那次不记全公司的号", () =
 
   it("低权限先扫过自己的，再全公司扫（切回服务器口径）仍收得到别人的", async () => {
     const p乙 = await 项目(乙.id, "2026-10-22 10:00");
-    const p丙 = await 项目(丙.id, "2026-10-22 10:00");
+    const p丙 = await 项目(丙.id, "2026-10-22 10:00", 丙客户);
     expect(await 公海超时收回(乙, 时("2026-10-25 00:02"))).toBe(1);
     团队.配置 = null;
     expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(1);

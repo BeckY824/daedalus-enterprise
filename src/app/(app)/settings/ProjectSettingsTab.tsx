@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
-import { 上限最大, 时长最大, 是不限, 推进权限们, 多项目客户走法们, type 推进权限, type 多项目客户走法, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
 import { 要沟通的节点 } from "@/lib/project/stage-gates";
@@ -15,12 +15,12 @@ import { 分配可选角色, 谁能用, type 分配谁能用配置 } from "@/lib
 import { 角色名 } from "@/lib/sync/dept-policy";
 import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
 import { 存卡点默认Action } from "@/app/(app)/projects/blocker-actions";
-import { 卡点类型们, 影响等级们, 时限最大, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
 
 const 节点们 = 企业版字典.节点们;
 const 默认天数 = 企业版字典.默认超时天数;
 import { 改提成比例 } from "@/app/(app)/projects/commission-actions";
-import { 提成比例问题, type 提成比例 } from "@/lib/project/commission";
+import { 三套提成比例问题, 提成范围们, type 三套提成比例, type 提成范围 } from "@/lib/project/commission";
 
 type 字典项 = { id: string; name: string; active: boolean; 用的人: number };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
@@ -44,10 +44,10 @@ export type 项目设置 = {
   挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段" | "阶段规则", string | null>;
   /** 节点时限能改时，能改哪几个节点："全部" = 都能改、能开关；没给 = 全部（老板 / 不是企业版） */
   时限节点?: 时限范围;
-  /** 企业版卡点的默认值（每类卡点的时限、阻碍主体的选项）；不是企业版 = null，卡片不出 */
+  /** 企业版卡点的默认值（阻碍主体的选项、默认类型和影响）；不是企业版 = null，卡片不出 */
   卡点默认?: 卡点默认 | null;
-  /** 企业版提成比例 A（底价）/ B（溢价），百分数；不是企业版 = null，卡片不出（服务端读的 企业版()） */
-  提成比例: 提成比例 | null;
+  /** 企业版提成比例 A（底价）/ B（溢价），百分数，内贸 / 外贸 / 不限三套；不是企业版 = null，卡片不出（服务端读的 企业版()） */
+  提成比例: 三套提成比例 | null;
   /** 老板、总管理员能改提成比例 */
   能改提成比例: boolean;
 };
@@ -95,7 +95,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       />
       {value.企业选项 && <EntDictCard 各类={value.企业选项} 谁能用配置={value.分配谁能用 ?? {}} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
-      {value.组织规则 && <PoolRouteCard 走法={value.组织规则.公海.多项目客户} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
+      {value.组织规则 && <PoolRouteCard />}
       {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} 忙={忙} 跑={跑} />}
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
@@ -468,7 +468,8 @@ function AdvanceCard({
 }
 
 /**
- * 卡点默认值（企业版）：每类卡点默认几天内解决（发布时没填时限就按这个）、阻碍主体有哪些选项、发布时默认选的类型和影响。
+ * 卡点默认值（企业版）：阻碍主体有哪些选项、发布时默认选的类型和影响。
+ * 10-27 会议：卡点先不设解决时限，每类的天数不再让填（库里照旧存着，发布时仍按它写 dueAt，界面不显示）。
  * 谁能改跟字典一样
  */
 function BlockerDefaultsCard({
@@ -476,32 +477,21 @@ function BlockerDefaultsCard({
 }: {
   默认: 卡点默认; 挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const [天数, set天数] = useState<Record<string, number | null>>(默认.时限天数);
   const [主体们, set主体们] = useState<string[]>(默认.阻碍主体们);
   const [类型, set类型] = useState(默认.默认类型);
   const [影响, set影响] = useState(默认.默认影响);
   const 改了 =
-    卡点类型们.some((t) => 天数[t] !== 默认.时限天数[t]) ||
     主体们.join("\n") !== 默认.阻碍主体们.join("\n") || 类型 !== 默认.默认类型 || 影响 !== 默认.默认影响;
-  const 齐了 = 卡点类型们.every((t) => 天数[t] != null) && 主体们.length > 0;
-  const 保存 = () => 跑(() => 存卡点默认Action({ 时限天数: 天数, 阻碍主体们: 主体们, 默认类型: 类型, 默认影响: 影响 }), "已保存");
+  const 齐了 = 主体们.length > 0;
+  const 保存 = () => 跑(() => 存卡点默认Action({ 阻碍主体们: 主体们, 默认类型: 类型, 默认影响: 影响 }), "已保存");
   const 行 = { display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" as const };
 
   return (
     <Card title="卡点默认值" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        在项目沟通记录上发卡点时，没填解决时限就按这里的天数算；阻碍主体从下面的选项里单选。
+        在项目沟通记录上发卡点时，阻碍主体从下面的选项里单选；卡点不设解决时限，只记从出现到解决用了几天。
       </div>
-      {卡点类型们.map((t) => (
-        <div key={t} style={行}>
-          <span style={{ width: 72 }}>{t}</span>
-          <InputNumber
-            aria-label={`${t}的解决时限`} min={1} max={时限最大} precision={0} suffix="天" style={{ width: 120 }}
-            disabled={!!挡} value={天数[t] ?? null} onChange={(v) => set天数((m) => ({ ...m, [t]: v }))}
-          />
-        </div>
-      ))}
-      <div style={{ ...行, marginTop: 12 }}>
+      <div style={行}>
         <span style={{ width: 72 }}>阻碍主体</span>
         <Select
           aria-label="阻碍主体的选项" mode="tags" style={{ flex: "1 1 240px", minWidth: 0 }} disabled={!!挡}
@@ -526,36 +516,50 @@ function BlockerDefaultsCard({
 }
 
 /**
- * 提成比例（企业版）：底价提成 = 项目底价 × A，溢价提成 = 项目溢价 × B。老板、总管理员能改，每次改动进操作记录。
- * 改了以后没赢单的项目预估马上按新比例算；已经赢单的实际提成不变
+ * 提成比例（企业版）：底价提成 = 项目底价 × A，溢价提成 = 项目溢价 × B。内贸、外贸、不限三套，按项目负责人的业务线取（10-27 会议）。
+ * 老板、总管理员能改，每次改动进操作记录。改了以后没赢单的项目预估马上按新比例算；已经赢单的实际提成不变
  */
+const 范围说明: Record<提成范围, string> = {
+  内贸: "负责人业务线是内贸",
+  外贸: "负责人业务线是外贸",
+  不限: "两边都做、没设业务线",
+};
+type 草稿比例 = Record<提成范围, { 底价比例: number | null; 溢价比例: number | null }>;
+
 function RatesCard({
   比例, 能改, 忙, 跑,
 }: {
-  比例: 提成比例; 能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  比例: 三套提成比例; 能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const [A, setA] = useState<number | null>(比例.底价比例);
-  const [B, setB] = useState<number | null>(比例.溢价比例);
-  const 问题 = 提成比例问题({ 底价比例: A ?? undefined, 溢价比例: B ?? undefined });
-  const 改了 = A !== 比例.底价比例 || B !== 比例.溢价比例;
+  const [草稿, set草稿] = useState<草稿比例>(比例);
+  const 交 = Object.fromEntries(提成范围们.map((k) => [k, { 底价比例: 草稿[k].底价比例 ?? undefined, 溢价比例: 草稿[k].溢价比例 ?? undefined }]));
+  const 问题 = 三套提成比例问题(交);
+  const 改了 = 提成范围们.some((k) => 草稿[k].底价比例 !== 比例[k].底价比例 || 草稿[k].溢价比例 !== 比例[k].溢价比例);
+  const 改 = (k: 提成范围, 哪个: "底价比例" | "溢价比例", v: number | null) => set草稿((d) => ({ ...d, [k]: { ...d[k], [哪个]: v } }));
   return (
     <Card title="提成比例" extra={!能改 && <span style={{ color: "var(--text-muted)" }}>只有老板、总管理员能改</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
+        底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0。按项目负责人的业务线用内贸 / 外贸那一套，两边都做或没设业务线的用「不限」。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
       </div>
-      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-          底价比例
-          <InputNumber<number> aria-label="底价提成比例" min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={A} onChange={(v) => setA(v)} />
-        </span>
-        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-          溢价比例
-          <InputNumber<number> aria-label="溢价提成比例" min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={B} onChange={(v) => setB(v)} />
-        </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+        {提成范围们.map((k) => (
+          <div key={k} style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ flex: "0 0 auto", minWidth: 40, fontWeight: 600 }} title={范围说明[k]}>{k}</span>
+            <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+              底价比例
+              <InputNumber<number> aria-label={`${k} 底价提成比例`} min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={草稿[k].底价比例} onChange={(v) => 改(k, "底价比例", v)} />
+            </span>
+            <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+              溢价比例
+              <InputNumber<number> aria-label={`${k} 溢价提成比例`} min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={草稿[k].溢价比例} onChange={(v) => 改(k, "溢价比例", v)} />
+            </span>
+            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{范围说明[k]}</span>
+          </div>
+        ))}
       </div>
       {能改 && 改了 && 问题 && <div style={{ color: "var(--danger-text)", marginBottom: 8 }}>{问题}</div>}
       {能改 && (
-        <Button type="primary" disabled={忙 || !改了 || !!问题} onClick={() => void 跑(() => 改提成比例({ 底价比例: A!, 溢价比例: B! }), "已保存提成比例")}>保存</Button>
+        <Button type="primary" disabled={忙 || !改了 || !!问题} onClick={() => void 跑(() => 改提成比例(草稿 as 三套提成比例), "已保存提成比例")}>保存</Button>
       )}
     </Card>
   );
@@ -570,31 +574,14 @@ const 推进权限说明: Record<推进权限, string> = {
  * 阶段规则（企业版，10-26 会定）：往前推节点谁能推（默认负责人可推），线索、商机两个阶段出口的叫法。
  * 改叫法只换说法：存的结局、节点、跨阶段单向的规矩都不变。往后退、点结局不归推进权限管。每次推进都记在节点变更里
  */
-const 多项目客户说明: Record<多项目客户走法, string> = {
-  项目可转让: "路线 1（默认）。只有这个项目进出项目公海，客户和别的项目留在原负责人名下；名下只有一个项目的客户才跟着进出客户公海",
-  客户可转让: "路线 2。客户是一个整体：项目进了项目公海，客户也进客户公海；谁领这个项目，客户连同名下别的项目一起归他。客户名下有没结束的订单阶段项目时客户不跟着进",
-};
-
-/** 客户名下有多个项目时，两级公海怎么走（10-27 两条路线二选一，规矩在 lib/enterprise/pool-link.ts）。谁能改同持有上限 */
-function PoolRouteCard({
-  走法, 挡, 忙, 跑,
-}: {
-  走法: 多项目客户走法; 挡: string | null; 忙: boolean;
-  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
-}) {
+/** 客户名下有多个项目时两级公海怎么走：10-27 会议定项目随客户整体转让，不再二选一，这里只说明（规矩在 lib/enterprise/pool-link.ts） */
+function PoolRouteCard() {
   return (
-    <Card title="多项目客户的公海走法" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
-      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        客户名下只有一个项目时两条一样：项目进项目公海，客户也进客户公海，领项目连客户一起领。
+    <Card title="多项目客户的公海走法">
+      <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+        项目随客户整体转让，不单独转让某一个项目：项目进了项目公海，客户连同名下别的项目一起进客户公海；谁领这个项目，客户和别的项目一起归他。
+        客户名下有没结束的订单阶段项目时，客户不跟着进。
       </div>
-      <Radio.Group
-        aria-label="多项目客户公海"
-        disabled={!!挡 || 忙}
-        value={走法}
-        onChange={(e) => void 跑(() => 改组织规则({ 公海: { 多项目客户: e.target.value as 多项目客户走法 } }), "已保存")}
-        style={{ display: "grid", gap: 4 }}
-        options={多项目客户走法们.map((v) => ({ value: v, label: <span>{v}<span style={{ color: "var(--text-muted)" }}>：{多项目客户说明[v]}</span></span> }))}
-      />
     </Card>
   );
 }

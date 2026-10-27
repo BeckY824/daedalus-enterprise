@@ -15,7 +15,7 @@ import { setSetting } from "@/lib/settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则, type 规则名 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读组织, 建组织, 管理员类别of, 部门挪动问题, 上级设置问题, type 组织部门 } from "@/lib/enterprise/org";
+import { 读组织, 建组织, 管理员类别of, 拆角色, 合角色, 部门挪动问题, 上级设置问题, type 组织部门 } from "@/lib/enterprise/org";
 import { 是业务角色, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 挡改设置, 规整改权限, 改权限key, 设置项, 设置项们, 谁能改, type 设置项名 } from "@/lib/enterprise/edit-perm";
@@ -117,7 +117,8 @@ export async function 删部门(id: string): Promise<结果> {
 
 export type 成员改动 = {
   deptId?: string | null;
-  bizRole?: string;
+  /** 业务角色可多选（10-27），存逗号串；传数组也收 */
+  bizRole?: string | string[];
   line?: string | null;
   managerId?: string | null;
   dottedManagerId?: string | null;
@@ -139,24 +140,31 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
     ]);
     const 人 = users.find((u) => u.id === userId);
     if (!人 || !人.active) return { ok: false, error: "这个人不在职" };
-    if (改.bizRole !== undefined && !是业务角色(改.bizRole)) return { ok: false, error: "没有这个角色" };
+    let 新角色们: 业务角色[] | null = null;
+    if (改.bizRole !== undefined) {
+      const 传 = (Array.isArray(改.bizRole) ? 改.bizRole : String(改.bizRole).split(",")).map((r) => String(r).trim()).filter(Boolean);
+      if (!传.length) return { ok: false, error: "至少要有一个角色" };
+      if (!传.every(是业务角色)) return { ok: false, error: "没有这个角色" };
+      新角色们 = 拆角色(传.join(","));
+      改.bizRole = 合角色(新角色们);
+    }
     if (改.line !== undefined && 改.line !== null && 改.line !== "内贸" && 改.line !== "外贸") return { ok: false, error: "业务线只能是内贸、外贸或两边都做" };
     if (改.deptId && !depts.some((d) => d.id === 改.deptId)) return { ok: false, error: "这个部门已经不在了，刷新看看" };
 
     const 原 = 建组织(users, members, depts);
-    const 原角色 = 原.成员.get(userId)!.bizRole;
-    if (!who.是老板 && (总管级(原角色) || 总管级(改.bizRole))) return { ok: false, error: "总管理、管理员这两个角色只有老板能给、能改" };
+    const 原角色们 = 原.成员.get(userId)!.角色们;
+    if (!who.是老板 && [...原角色们, ...(新角色们 ?? [])].some(总管级)) return { ok: false, error: "总管理、管理员这两个角色只有老板能给、能改" };
 
     // 带着这次改动重建一遍再查上级：一次同时改部门和上级时按改完的样子算
     const 旧行 = members.find((m) => m.userId === userId);
     const 新行 = {
       userId,
       deptId: 旧行?.deptId ?? null,
-      bizRole: 旧行?.bizRole ?? 原角色,
       line: 旧行?.line ?? null,
       managerId: 旧行?.managerId ?? null,
       dottedManagerId: 旧行?.dottedManagerId ?? null,
       ...改,
+      bizRole: 新角色们 ? 合角色(新角色们) : (旧行?.bizRole ?? 合角色(原角色们)),
     };
     const 新 = 建组织(users, [...members.filter((m) => m.userId !== userId), 新行], depts);
     const 问题 =
@@ -164,12 +172,13 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
       (改.dottedManagerId !== undefined ? 上级设置问题(新, userId, 改.dottedManagerId, "虚线") : null);
     if (问题) return { ok: false, error: 问题 };
 
-    await prisma.entMember.upsert({ where: { userId }, create: 新行, update: 改 });
+    const 存 = { ...改, bizRole: 新角色们 ? 合角色(新角色们) : undefined };
+    await prisma.entMember.upsert({ where: { userId }, create: 新行, update: 存 });
 
     const 名 = (id: string | null | undefined) => (id ? users.find((u) => u.id === id)?.name ?? id : "不指定");
     const 说 = [
       改.deptId !== undefined && `部门 → ${改.deptId ? depts.find((d) => d.id === 改.deptId)!.name : "未分部门"}`,
-      改.bizRole !== undefined && `角色 → ${角色名[改.bizRole as 业务角色]}`,
+      新角色们 && `角色 → ${新角色们.map((r) => 角色名[r]).join("、")}`,
       改.line !== undefined && `业务线 → ${改.line ?? "两边都做"}`,
       改.managerId !== undefined && `直属上级 → ${名(改.managerId)}`,
       改.dottedManagerId !== undefined && `虚线上级 → ${名(改.dottedManagerId)}`,

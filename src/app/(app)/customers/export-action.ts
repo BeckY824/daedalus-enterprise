@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma";
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { 能导入导出, 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 客户筛选条件, 客户行字段, 成客户行, type 客户条件, type 客户行 } from "./query";
 import { 负责人候选 } from "@/lib/owners";
@@ -18,7 +19,7 @@ const 跟进上限 = 50_000;
 export async function 导出客户(条件: 客户条件): Promise<
   { ok: true; rows: 客户行[]; 跟进: 跟进导出行[]; 截断了: boolean; 跟进截断了: boolean } | { ok: false; error: string }
 > {
-  await requireUser();
+  if (!(await 能导入导出(await requireUser()))) return { ok: false, error: 不能导入导出 };
   const where = await 客户筛选条件(条件);
   const [全部, 号] = await Promise.all([
     prisma.customer.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 导出上限 + 1, select: { ...客户行字段, createdAt: true } }),
@@ -84,9 +85,14 @@ async function 导出归属省略(where: Prisma.CustomerWhereInput) {
   return { 隐藏负责人: !!唯一 && !其他归属, 负责人指纹: createHash("sha256").update(JSON.stringify(候选.map(u => u.id).sort())).digest("hex") };
 }
 
+/** 企业版只给老板和总管理员（10-27 会议）；按钮藏了，这里再挡直调 */
+async function 要能导出() {
+  if (!(await 能导入导出(await requireUser()))) throw new Error(不能导入导出);
+}
+
 /** 完整导出按固定顺序分批读取，每批请求独立检查当前权限。 */
 export async function 开始完整导出(条件: 客户条件) {
-  await requireUser();
+  await 要能导出();
   const 截止 = new Date();
   const where = { AND: [await 客户筛选条件(条件), { createdAt: { lte: 截止 } }] };
   const [客户数, 跟进数] = await Promise.all([
@@ -97,7 +103,7 @@ export async function 开始完整导出(条件: 客户条件) {
 }
 
 export async function 读取完整导出批次(条件: 客户条件, 截止文本: string, 类别: "客户" | "跟进", 游标?: string) {
-  await requireUser();
+  await 要能导出();
   const 截止 = new Date(截止文本);
   if (!Number.isFinite(截止.getTime()) || 截止 > new Date() || (类别 !== "客户" && 类别 !== "跟进") || (游标 !== undefined && (typeof 游标 !== "string" || 游标.length > 128))) throw new Error("导出参数无效，请重新导出");
   const where = { AND: [await 客户筛选条件(条件), { createdAt: { lte: 截止 } }] };
@@ -122,7 +128,7 @@ export async function 读取完整导出批次(条件: 客户条件, 截止文�
 
 /** 导出期间发生相关写入/删除时不把分批结果冒充同一时刻的完整快照。 */
 export async function 校验完整导出(条件: 客户条件, 起点: Awaited<ReturnType<typeof 开始完整导出>>, 指纹: { 类别: "客户" | "跟进"; 指纹: string }[]) {
-  await requireUser();
+  await 要能导出();
   if (!起点 || typeof 起点.截止 !== "string" || !Number.isSafeInteger(起点.客户数) || 起点.客户数 < 0 || !Number.isSafeInteger(起点.跟进数) || 起点.跟进数 < 0 || !Array.isArray(指纹) || 指纹.some((x) => !x || (x.类别 !== "客户" && x.类别 !== "跟进") || !/^[a-f0-9]{64}$/.test(x.指纹))) throw new Error("导出参数无效，请重新导出");
   const 截止 = new Date(起点.截止);
   if (!Number.isFinite(截止.getTime()) || 截止 > new Date()) throw new Error("导出参数无效，请重新导出");

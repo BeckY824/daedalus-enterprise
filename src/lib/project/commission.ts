@@ -4,6 +4,8 @@
  * 规矩（用户和总控 10-26 定）：
  *   - 底价提成 = 项目底价 × A（默认 2%）；溢价提成 = (成交金额 − 项目底价) × B（默认 30%）。
  *     成交金额低于底价时溢价算 0，不出负数。A、B 是百分数，存 Setting（entCommissionRates），管理员在设置里改
+ *   - A、B 分内贸、外贸、不限三套（10-27 会议），按项目负责人的业务线（EntMember.line）取；两边都做 / 没设 = 不限。
+ *     Setting 里旧的一套平铺值当「不限」，内贸、外贸没存过的跟「不限」一样
  *   - 成交金额 = 项目上现有的金额（Project.amount，同币种）；项目底价由项目负责人在项目的提成表里填（EntCommission.basePrice；10-26 定，老板也不代填）
  *   - 组长（项目负责人）按百分比分给已进组（JOINED）的组员，合计 ≤ 100%，剩下的归组长
  *   - 赢单（商机 → 订单）那一刻按当时的比例把实际提成固定下来；之前只显示预估
@@ -17,6 +19,15 @@ export type 提成比例 = { 底价比例: number; 溢价比例: number };
 /** Setting 里的键 */
 export const 提成比例键 = "entCommissionRates";
 export const 默认提成比例: 提成比例 = { 底价比例: 2, 溢价比例: 30 };
+
+/** 三套比例：内贸、外贸按负责人的业务线取，其余（两边都做、没设）用不限 */
+export const 提成范围们 = ["内贸", "外贸", "不限"] as const;
+export type 提成范围 = (typeof 提成范围们)[number];
+export type 三套提成比例 = Record<提成范围, 提成比例>;
+
+export function 提成范围of(line: string | null | undefined): 提成范围 {
+  return line === "内贸" || line === "外贸" ? line : "不限";
+}
 
 /** 钱、百分数都留两位小数 */
 export function 两位(n: number): number {
@@ -36,6 +47,24 @@ export function 规整提成比例(v: unknown): 提成比例 {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const 取 = (k: keyof 提成比例) => (百分数问题(o[k], k) ? 默认提成比例[k] : (o[k] as number));
   return { 底价比例: 取("底价比例"), 溢价比例: 取("溢价比例") };
+}
+
+/** Setting 里存的 → 三套。新结构逐套规整；旧的平铺一套当「不限」；内贸、外贸缺了跟「不限」一样 */
+export function 规整三套提成比例(v: unknown): 三套提成比例 {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const 新结构 = 提成范围们.some((k) => o[k] && typeof o[k] === "object");
+  const 不限 = 规整提成比例(新结构 ? o.不限 : o);
+  const 取 = (k: "内贸" | "外贸") => (o[k] && typeof o[k] === "object" ? 规整提成比例({ ...不限, ...(o[k] as object) }) : 不限);
+  return { 内贸: 取("内贸"), 外贸: 取("外贸"), 不限 };
+}
+
+export function 三套提成比例问题(v: unknown): string | null {
+  if (!v || typeof v !== "object") return "提成比例的格式不对，刷新再试";
+  for (const k of 提成范围们) {
+    const 错 = 提成比例问题((v as Record<string, { 底价比例?: unknown; 溢价比例?: unknown }>)[k]);
+    if (错) return `${k}：${错}`;
+  }
+  return null;
 }
 
 export function 提成比例问题(v: { 底价比例?: unknown; 溢价比例?: unknown } | null | undefined): string | null {
@@ -112,8 +141,10 @@ export type 提成卡 = {
   /** 现在项目上的金额；固定了以后看 实际.成交金额 */
   成交金额: number;
   项目底价: number | null;
-  /** 现在设置里的比例（预估按它算） */
+  /** 现在设置里的比例（预估按它算）：按负责人业务线取的那一套 */
   比例: 提成比例;
+  /** 用的哪一套 */
+  范围: 提成范围;
   预估: 提成算式 | null;
   /** 赢单时固定下来的；没赢单 = null */
   实际: (提成算式 & { 比例: 提成比例; 固定于: string; 按算式?: number }) | null;

@@ -1,7 +1,8 @@
 /**
  * 企业版「分配方式谁能用」（2026-10-27）：分配方式字典的每一项，按业务角色勾谁能用。
  *
- * 默认照流程表（M = 市场、S = 销售、Q = 其他）：指定分配 M/S/Q，自动分配 M/Q，公海捞取 M/Q，暂不分配 M，自拓自持 S/Q。
+ * 默认照 10-27 会上定的：销售只有指定分配、自拓自持；市场除自拓自持外都有；其他角色一样都没有。
+ * （早先照流程表给过其他角色指定 / 自动 / 公海捞取 / 自持，会上改了；管理员已存过的不动。）
  * 市场 = 市场管理；销售 = 销售管理 + 销售成员；其他 = 渠道运营 + 项目运营。
  * - 总管理、管理员、老板（账号管理员）每样都能用，不受这张表管。
  * - 后来加的选项默认谁都能用（没有对应的操作，管不着）。
@@ -23,11 +24,11 @@ const 其他: 分配可选角色[] = ["channel_ops", "project_ops"];
 export const 分配方式id = { 指定: "dict-assign-0", 自动: "dict-assign-1", 公海捞取: "dict-assign-2", 暂不分配: "dict-assign-3", 自拓自持: "dict-assign-4" } as const;
 
 export const 分配默认谁能用: Readonly<Record<string, readonly 分配可选角色[]>> = {
-  [分配方式id.指定]: [...市场, ...销售, ...其他],
-  [分配方式id.自动]: [...市场, ...其他],
-  [分配方式id.公海捞取]: [...市场, ...其他],
+  [分配方式id.指定]: [...市场, ...销售],
+  [分配方式id.自动]: [...市场],
+  [分配方式id.公海捞取]: [...市场],
   [分配方式id.暂不分配]: [...市场],
-  [分配方式id.自拓自持]: [...销售, ...其他],
+  [分配方式id.自拓自持]: [...销售],
 };
 
 export type 分配谁能用配置 = Record<string, 分配可选角色[]>;
@@ -51,11 +52,12 @@ export function 谁能用(id: string, 配置: 分配谁能用配置): readonly �
 
 export function 能用分配方式(org: 组织, 我: { id: string; role: string }, id: string, 配置: 分配谁能用配置): boolean {
   if (我.role === "ADMIN") return true;
-  const r = org.成员.get(我.id)?.bizRole;
-  if (!r) return false;
-  if (r === "director" || r === "admin") return true;
+  const 们 = org.成员.get(我.id)?.角色们;
+  if (!们?.length) return false;
+  if (们.includes("director") || 们.includes("admin")) return true;
   const 能 = 谁能用(id, 配置);
-  return 能 === "所有人" || 能.includes(r as 分配可选角色);
+  // 兼几个角色的（10-27），哪个角色能用都算
+  return 能 === "所有人" || 们.some((r) => 能.includes(r as 分配可选角色));
 }
 
 /** 挡住时那句：「指定分配」只有总管理、管理员和市场管理、销售管理能用 */

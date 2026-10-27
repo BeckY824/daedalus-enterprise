@@ -40,6 +40,7 @@ export default function AiPanel({
   signed,
   hasRecords,
   on记跟进,
+  简报叫 = "简报",
 }: {
   customerId: string;
   customerName: string;
@@ -51,6 +52,8 @@ export default function AiPanel({
   hasRecords: boolean;
   /** 背调卡上「记一条跟进」：就地打开记录页的跟进表单（RecordView 给） */
   on记跟进?: () => void;
+  /** 企业版叫「智能总结」（10-27 会议：「将简报功能名称改为智能总结」），别的版本照旧叫简报 */
+  简报叫?: string;
 }) {
   const b = useBusiness();
   // 自己 Key、付费、自部署的人不花次数，那句「会用掉 1 次」对他们不成立（lib/ai-meter.ts）
@@ -118,7 +121,7 @@ export default function AiPanel({
   }, [customerId, researchJob?.status]);
 
   /** 侧栏那条「AI 任务」认这个：叫什么、点了回哪儿 */
-  const 标签 = useMemo(() => ({ 名: `${customerName} 的简报`, 去: `/customers/${customerId}` }), [customerName, customerId]);
+  const 标签 = useMemo(() => ({ 名: `${customerName} 的${简报叫}`, 去: `/customers/${customerId}` }), [customerName, customerId, 简报叫]);
 
   function regenerate() {
     if (AI已用完) return;
@@ -186,9 +189,9 @@ export default function AiPanel({
           <ThunderboltOutlined /> {result ? `AI 已读完 ${customerName} 的记录` : `AI 可以读 ${customerName} 的记录`}
         </span>
         {(result || loading) && (
-          <Tooltip title="重新生成简报">
-            <Button size="small" type="text" icon={<ReloadOutlined spin={loading} />} onClick={regenerate} disabled={loading || !hasRecords || AI已用完} aria-label="简报">
-              简报
+          <Tooltip title={`重新生成${简报叫}`}>
+            <Button size="small" type="text" icon={<ReloadOutlined spin={loading} />} onClick={regenerate} disabled={loading || !hasRecords || AI已用完} aria-label={简报叫}>
+              {简报叫}
               <AiCost />
             </Button>
           </Tooltip>
@@ -254,7 +257,7 @@ export default function AiPanel({
       {hasRecords && !loading && !result && !error && (
         <div className="rec-ai-idle">
           <Button type="primary" size="small" icon={<ThunderboltOutlined />} onClick={regenerate} disabled={AI已用完}>
-            生成简报
+            生成{简报叫}
           </Button>
           <span>读完这位{b.customer}的全部跟进，给一段故事线和下一步建议。{计次 && "会用掉 1 次 AI 额度。"}</span>
         </div>
@@ -272,7 +275,7 @@ export default function AiPanel({
               <div className="rec-ai-q">
                 问：{shown.meta}
                 <a style={{ marginLeft: 8 }} onClick={() => clearJob(askKey)}>
-                  回到简报
+                  回到{简报叫}
                 </a>
               </div>
             )}

@@ -1,5 +1,6 @@
 "use server";
 
+import { 新建只给自己 } from "@/lib/enterprise/import-perm";
 import { businessDayjs } from "@/lib/business-clock";
 import { 转交商机 } from "@/lib/opportunity-activity";
 import { hasVisibleText } from "@/lib/form-validation";
@@ -372,7 +373,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     }
   }
 
-  const salesOwnerId = input.salesOwnerId || (await 唯一负责人());
+  // 企业版普通销售新建的客户只能记在自己名下（10-27 会议，lib/enterprise/import-perm.ts），不看表单传来的
+  const salesOwnerId = !input.id && (await 新建只给自己(me)) ? me.id : input.salesOwnerId || (await 唯一负责人());
   if (!salesOwnerId) return { ok: false, error: "请选择销售负责人" };
 
   const sign = parseSignDate(input.expectedSignAt, 改前 ?? undefined);

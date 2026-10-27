@@ -16,7 +16,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { businessDayjs } from "@/lib/business-clock";
-import { 管理员类别of, type 组织 } from "./org-core";
+import { 管理员类别们of, type 组织 } from "./org-core";
 import { 能改设置, type 改权限配置 } from "./edit-perm-table";
 
 export const 线索种类 = ["营销", "营销企划"] as const;
@@ -40,8 +40,8 @@ const 能接的角色 = new Set(["sales", "sales_mgr"]);
 /** 能点「分配」的人：老板（账号管理员）、总管理员、市场管理 */
 export function 能分配(org: 组织, 我: { id: string; role: string }): boolean {
   if (我.role === "ADMIN") return true;
-  const 类 = 管理员类别of(org, 我.id);
-  return 类 === "总管理员" || 类 === "市场管理";
+  const 类们 = 管理员类别们of(org, 我.id);
+  return 类们.has("总管理员") || 类们.has("市场管理");
 }
 
 /**
@@ -56,7 +56,7 @@ export function 能设配额(org: 组织, 我: { id: string; role: string }, 目
 export function 接手问题(org: 组织, 接手人: string, line: 线 | null): string | null {
   const m = org.成员.get(接手人);
   if (!m) return "接手人不在组织里，或者已经停用";
-  if (!能接的角色.has(m.bizRole)) return "线索只能分给销售或销售管理";
+  if (!m.角色们.some((r) => 能接的角色.has(r))) return "线索只能分给销售或销售管理";
   if (line && m.line && m.line !== line) return `他是${m.line}销售，这条线索走${line}`;
   return null;
 }
@@ -141,8 +141,8 @@ export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>
 /** 能改「参与自动分配」开关的人（Q-12 默认）：老板、总管理员、销售管理；直属上级只能看 */
 export function 能改参与(org: 组织, 我: { id: string; role: string }): boolean {
   if (我.role === "ADMIN") return true;
-  const 类 = 管理员类别of(org, 我.id);
-  return 类 === "总管理员" || 类 === "销售管理";
+  const 类们 = 管理员类别们of(org, 我.id);
+  return 类们.has("总管理员") || 类们.has("销售管理");
 }
 
 // —— 读库 ——

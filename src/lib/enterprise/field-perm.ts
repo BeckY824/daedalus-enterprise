@@ -10,7 +10,6 @@
  *
  * 纯数据和纯函数在 field-perm-table.ts（设置页客户端组件 import 那个），这里 re-export 再加读库的两个。
  */
-import type { 业务角色 } from "@/lib/sync/dept-policy";
 import { 字段权限key, 字段级别of, 规整字段配置, 改不了的话, type 字段名, type 字段级别 } from "./field-perm-table";
 
 export * from "./field-perm-table";
@@ -18,6 +17,8 @@ export * from "./field-perm-table";
 // —— 读库 ——
 
 const 全能改 = (): 字段级别 => "改";
+const 宽度: Record<字段级别, number> = { 改: 2, 看: 1, 藏: 0 };
+const 最宽 = (们: 字段级别[]): 字段级别 => 们.reduce((a, b) => (宽度[b] > 宽度[a] ? b : a), "藏");
 
 /**
  * 这个人的字段级别查询器。规则没开、企业版没开、老板、没登录 → 全是「改」（现在的行为）。
@@ -33,11 +34,12 @@ export async function 字段权限of(userId?: string | null): Promise<(名: 字�
   const u = await prisma.user.findUnique({ where: { id }, select: { role: true } });
   if (!u || u.role === "ADMIN") return 全能改;
   const { 读组织 } = await import("./org");
-  const 角色 = (await 读组织()).成员.get(id)?.bizRole;
-  if (!角色) return 全能改;
+  const 角色们 = (await 读组织()).成员.get(id)?.角色们;
+  if (!角色们?.length) return 全能改;
   const { getSetting } = await import("@/lib/settings");
   const 配置 = 规整字段配置(await getSetting<unknown>(字段权限key));
-  return (名) => 字段级别of(配置, 名, 角色);
+  // 兼几个角色的（10-27），取最宽的那个：有一个角色能改就能改，再看能不能看
+  return (名) => 最宽(角色们.map((r) => 字段级别of(配置, 名, r)));
 }
 
 /** 写之前查：这次要动的字段里有改不了的就给那句话，都能改 = null */

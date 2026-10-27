@@ -202,6 +202,21 @@ describe("业务角色", () => {
     expect((await 成员行(经理))!.bizRole).toBe("sales");
   });
 
+  it("兼职角色：负责人只换销售那一个，兼的市场管理留着（10-27 角色多选）", async () => {
+    await prisma.user.update({ where: { id: 经理 }, data: { role: "SALES" } });
+    await prisma.entMember.create({ data: { userId: 经理, bizRole: "sales,marketing_mgr" } });
+    await 接飞书();
+    await 同步通讯录("feishu");
+    expect((await 成员行(经理))!.bizRole).toBe("sales,marketing_mgr");
+    换联网(假网(飞书录).网);
+    await 同步通讯录("feishu");
+    expect((await 成员行(经理))!.bizRole).toBe("sales_mgr,marketing_mgr");
+    // 再跑一次没变化
+    换联网(假网(飞书录).网);
+    await 同步通讯录("feishu");
+    expect((await 成员行(经理))!.bizRole).toBe("sales_mgr,marketing_mgr");
+  });
+
   it("老板和总管理的角色从来不动，角色对照也改不了", async () => {
     await prisma.entMember.create({ data: { userId: 张三, bizRole: "director" } });
     await 存角色对照("feishu", { 总经理: "sales", 外贸专员: "sales" }, { id: 老板, name: "老板" });

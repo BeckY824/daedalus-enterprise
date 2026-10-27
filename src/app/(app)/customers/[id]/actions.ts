@@ -16,6 +16,8 @@ import { 领取 } from "../pool-actions";
 import { 认回打码号 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 记沟通编号 } from "@/lib/project/followup-meta";
+import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 版本冲突, 版本条件, 推进版本 } from "@/lib/edit-version";
 import { dayjs } from "@/lib/utils";
 import { parseScheduleDate } from "@/lib/schedule-date";
@@ -67,6 +69,11 @@ export type FollowUpInput = {
    * undefined = 不碰；null = 不挂了；给了 id 就挂上（整单，不挂某一步）
    */
   orderId?: string | null;
+  /**
+   * 企业版：新建时挂到哪个项目上（10-27 会议：「默认自动关联当前项目」，表单默认选最近在推的那个）。
+   * undefined / null = 不挂；只认这位客户自己、没结束、不在公海的项目。编辑时忽略
+   */
+  projectId?: string | null;
   participants?: string | null;
   /**
    * 速记解析时粘贴的原文（聊天记录 / 口述）。只在新建且经 AI 起草时有值，
@@ -133,6 +140,19 @@ async function 挂订单(followUpId: string, customerId: string, orderId: string
   if (!o) return;
   await db.followUpOrder.upsert({ where: { followUpId }, create: { followUpId, orderId: o.id, nodeIdx: 0 }, update: { orderId: o.id, nodeIdx: 0 } });
   revalidatePath(`/orders/${o.id}`);
+}
+
+/**
+ * 企业版新建跟进挂到项目上：和项目页记沟通（lib/project/db.ts 的 记项目沟通）一样挂当时的节点、编沟通号、记阶段标记，
+ * 项目页的沟通里也看得到。不是这位客户的、已结束的、在公海的都不挂
+ */
+async function 挂项目(followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient) {
+  const p = await db.project.findFirst({ where: { id: projectId, customerId, result: null, pooledAt: null }, select: { id: true, node: true, phase: true } });
+  if (!p) return;
+  await db.followUpProject.create({ data: { followUpId, projectId: p.id, node: p.node } });
+  await 记沟通编号(db, followUpId, p.id, null);
+  await 记沟通标记(db, followUpId, p.id, p.phase, false);
+  revalidatePath(`/projects/${p.id}`);
 }
 
 export async function saveFollowUp(input: FollowUpInput) {
@@ -209,6 +229,7 @@ export async function saveFollowUp(input: FollowUpInput) {
         summary: `${input.id ? "修改" : "记了"}${customer.name}的一条${类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
         detail: { 客户: customer.name, 类型: 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120) } });
       if (input.orderId !== undefined) await 挂订单(id, input.customerId, input.orderId, tx);
+      if (!input.id && input.projectId && 企业版()) await 挂项目(id, input.customerId, input.projectId, tx);
       for (const item of extra?.tasks ?? []) {
         const 时间 = parseScheduleDate(item.dueAt)!;
         const task = await tx.task.create({ data: { title: item.title.trim(), dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: input.customerId, ownerId: user.id } });

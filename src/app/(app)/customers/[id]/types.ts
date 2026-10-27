@@ -67,7 +67,9 @@ export type RecordProps = {
    * 企业版项目模式（10-26）：这位名下的项目，新的在前。给了（哪怕空数组）就用「项目」一节替掉「商机」一节，
    * 报价记录、跟进上的关联商机也不摆——企业版只有项目一条线。不给 = 个人版、团队版，照旧
    */
-  项目们?: { id: string; name: string; phase: string; node: string; result: string | null; amount: number; currency: string }[] | null;
+  /** 企业版：客户级的旺旺 ID（只在联系方式子表里），基本资料只读摆出来；没有 = 不摆 */
+  旺旺们?: string[];
+  项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;
   customer: CustomerRow;
   contacts: ContactRow[];
   opportunities: {

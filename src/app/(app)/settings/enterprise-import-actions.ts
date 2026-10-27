@@ -15,11 +15,12 @@ import { 合法值, 值说法, 值对照 } from "@/lib/enterprise-import/mapping
 import { 导出对照表, 读回对照表 } from "@/lib/enterprise-import/template";
 import { 负责人候选 } from "@/lib/owners";
 import { 来源们, 来源名, type 来源, type 值对照名 } from "@/lib/enterprise-import/types";
+import { 最高管理 } from "@/lib/enterprise/import-perm";
 
 /**
  * 设置页「企业版导入」那一栏的服务端动作。上传文件走 /api/enterprise-import/upload（server action 默认只收 1 MB）。
  *
- * 每个动作都先过 要管理员()：企业版开着、是管理员、不是共享试用区。栏目只在这时才摆出来，
+ * 每个动作都先过 要管理员()：企业版开着、是老板或总管理员、不是共享试用区。栏目只在这时才摆出来，
  * 但 server action 能被直调，这里再挡一次。
  * 写入、撤回、恢复都是「一段一段」：每调一次干 20 秒左右就返回，界面看 完了 再接着调，一万条不会卡死一个请求。
  */
@@ -27,7 +28,8 @@ import { 来源们, 来源名, type 来源, type 值对照名 } from "@/lib/ente
 async function 要管理员() {
   if (!企业版()) throw new Error("企业版没开");
   const me = await requireUser();
-  if (me.role !== "ADMIN" || (await 当前是共享区())) throw new Error("只有管理员能做企业版导入");
+  // 10-27 会议：导入只给老板和总管理员（lib/enterprise/import-perm.ts）
+  if (!(await 最高管理(me)) || (await 当前是共享区())) throw new Error("只有老板和总管理员能做企业版导入");
   return me;
 }
 

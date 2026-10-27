@@ -141,7 +141,8 @@ describe("新建时负责人默认是我（T-015 / T-025）", () => {
       const 源 = fs.readFileSync(path.resolve(__dirname, "..", 文件), "utf8");
       const 行 = 源.split("\n").filter((l) => l.includes("默认负责人(我, users)"));
       expect(行.length, 文件).toBe(1);
-      expect(行[0], 文件).toContain(`${字段}: 默认负责人(我, users)`);
+      // 企业版普通销售新建锁成自己（10-27 ⑦，ent-import-export-perm）：只多一个锁住的分支，没锁照旧只用 默认负责人()
+      expect(行[0], 文件).toMatch(new RegExp(`${字段}: (锁给自己 \\? 锁给自己\\.id : )?默认负责人\\(我, users\\)`));
       expect(行[0], 文件).not.toMatch(/默认负责人\(我, users\)\s*(\?\?|\|\|)/);
     }
   });

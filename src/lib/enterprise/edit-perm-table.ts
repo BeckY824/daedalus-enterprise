@@ -7,7 +7,7 @@
  * - 「直属上级」「虚线上级」只对线索配额有意义：给自己的下属设。
  * 纯数据和纯函数，客户端组件也 import；读库的在 edit-perm.ts。
  */
-import { 直属上级of, 虚线上级of, 管理员类别of, type 组织, type 管理员类别 } from "./org-core";
+import { 直属上级of, 虚线上级of, 管理员类别们of, type 组织, type 管理员类别 } from "./org-core";
 
 export type 能改的人 = 管理员类别 | "直属上级" | "虚线上级";
 
@@ -53,8 +53,8 @@ export function 谁能改(配置: 改权限配置, 项: 设置项名): readonly 
 export function 能改设置(org: 组织, 我: { id: string; role: string }, 项: 设置项名, 配置: 改权限配置, 目标?: string): boolean {
   if (我.role === "ADMIN") return true;
   const 谁 = 谁能改(配置, 项);
-  const 类 = 管理员类别of(org, 我.id);
-  if (类 && 谁.includes(类)) return true;
+  // 兼几类管理员的（10-27 角色多选），哪一类在表里都算
+  if ([...管理员类别们of(org, 我.id)].some((类) => 谁.includes(类))) return true;
   if (!目标) return false;
   return (谁.includes("直属上级") && 直属上级of(org, 目标) === 我.id) || (谁.includes("虚线上级") && 虚线上级of(org, 目标) === 我.id);
 }
@@ -78,9 +78,13 @@ export type 时限范围 = "全部" | readonly string[];
 export function 能改时限的节点(org: 组织, 我: { id: string; role: string }, 配置: 改权限配置): 时限范围 {
   if (我.role === "ADMIN") return "全部";
   if (!能改设置(org, 我, "节点时限", 配置)) return [];
-  const 类 = 管理员类别of(org, 我.id);
-  if (类 === "总管理员") return "全部";
-  return 类 ? 时限可改节点[类] : [];
+  const 类们 = 管理员类别们of(org, 我.id);
+  if (类们.has("总管理员")) return "全部";
+  // 销售管理兼市场管理：两边的节点合起来，但只算「谁能改」表里有的那一类
+  const 谁 = 谁能改(配置, "节点时限");
+  const 节点 = new Set<string>();
+  for (const 类 of ["销售管理", "市场管理"] as const) if (类们.has(类) && 谁.includes(类)) 时限可改节点[类].forEach((n) => 节点.add(n));
+  return [...节点];
 }
 
 const 天数值 = (v: unknown): string | null => (v === null || v === undefined || v === "" ? null : String(v));

@@ -52,6 +52,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
+import { 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { patchCustomer } from "@/app/(app)/customers/actions";
 import { deleteContact, restoreContact } from "@/app/(app)/customers/[id]/actions";
 import { TOOL_MAP, type ToolContext } from "@/lib/agent/tools";
@@ -104,6 +105,9 @@ const 期望: Record<角色, ([boolean, boolean] | null)[]> = {
  * 普通销售、虚线上级在组织里没写业务角色，按账号角色 SALES 推成 sales；经理是 sales_mgr、总管理员是 director；老板永远不受限
  */
 const 打码: Record<角色, boolean | null> = { 老板: F, 总管理员: F, 经理: F, 虚线上级: T, 普通销售: T, 停用的人: 无 };
+
+/** 导出只给老板和总管理员（10-27 会议）：其他角色整个接口被拒，「导出」那一列只比对这两位，另一组钉被拒 */
+const 能导出: Record<角色, boolean> = { 老板: T, 总管理员: T, 经理: F, 虚线上级: F, 普通销售: F, 停用的人: F };
 
 const 客户id = new Map<string, string>(); // 归属（用户 id 或 "公海"）→ 客户 id
 const 电话前缀 = "1380077";
@@ -267,7 +271,7 @@ it("期望表完整：每个 角色 × 记录 都有定义，不适用的格和�
   }
 });
 
-const 看的格 = 角色.flatMap((r) => 接口.flatMap((口) => 记录.flatMap((k, i) => (期望[r][i] ? [{ role: r, api: 口, kind: k, want: 期望[r][i]![0], mask: 期望[r][i]![0] ? 打码[r] : 无 }] : []))));
+const 看的格 = 角色.flatMap((r) => 接口.filter((口) => 口 !== "导出" || 能导出[r] || r === "停用的人").flatMap((口) => 记录.flatMap((k, i) => (期望[r][i] ? [{ role: r, api: 口, kind: k, want: 期望[r][i]![0], mask: 期望[r][i]![0] ? 打码[r] : 无 }] : []))));
 const 改的格 = 角色.flatMap((r) => 记录.flatMap((k, i) => (期望[r][i] ? [{ role: r, kind: k, want: 期望[r][i]![1] }] : [])));
 
 describe("看得到 + 电话是否打码", () => {
@@ -278,6 +282,12 @@ describe("看得到 + 电话是否打码", () => {
     if (号 === null) return;
     const 原号 = (await raw.customer.findUniqueOrThrow({ where: { id } })).phone!;
     expect(号).toBe(mask ? maskPhone(原号) : 原号);
+  });
+});
+
+describe("导出只给老板和总管理员", () => {
+  it.each(["经理", "虚线上级", "普通销售"] as const)("%s 调导出客户被拒", async (role) => {
+    expect(await 作为(role, () => 导出客户({}))).toEqual({ ok: false, error: 不能导入导出 });
   });
 });
 

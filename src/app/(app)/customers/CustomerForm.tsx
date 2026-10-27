@@ -70,6 +70,8 @@ type FormProps = {
   /** 外部渠道（如老师、中介） */
   channels: Option[];
   onClose: (saved: boolean) => void;
+  /** 企业版普通销售：新建的客户负责人只能是自己（10-27 会议；服务端 saveCustomer 同样强制） */
+  负责人只能自己?: boolean;
 };
 
 /**
@@ -118,6 +120,7 @@ function CustomerFormInner({
   users,
   channels,
   onClose,
+  负责人只能自己 = false,
 }: FormProps) {
   const b = useBusiness();
   /** 外贸模版：多问国家 / WhatsApp / 微信 / 邮箱 / 来源，不问推荐人、渠道负责人、预计签约（2026-10-05 外贸客户建议） */
@@ -157,7 +160,10 @@ function CustomerFormInner({
    */
   const 四选一 = 外贸 && !editing?.phone;
   const 填了 = (k: "whatsapp" | "email" | "wechat" | "alibabaId") => String(form.getFieldValue(["extra", k]) ?? "").trim() !== "";
-  const 负责人选项 = 成员选项(users);
+  const 锁给自己 = !editing && 负责人只能自己 && 我 ? 我 : null;
+  const 负责人选项 = 锁给自己
+    ? 成员选项(users).filter((o) => o.value === 锁给自己.id).concat(users.some((u) => u.id === 锁给自己.id) ? [] : [{ value: 锁给自己.id, label: 锁给自己.name }])
+    : 成员选项(users);
   if (editing && !users.some((u) => u.id === editing.salesOwnerId)) {
     负责人选项.push({ value: editing.salesOwnerId, label: `${editing.salesOwnerName}（已不再担任负责人）` });
   }
@@ -289,7 +295,7 @@ function CustomerFormInner({
         initialValues={
           editing
             ? { ...editing, expectedSignAt: editing.expectedSignAt ? dayjs(editing.expectedSignAt) : null }
-            : { followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 默认负责人(我, users) }
+            : { followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 锁给自己 ? 锁给自己.id : 默认负责人(我, users) }
         }
       >
         {conflict && (
@@ -418,9 +424,9 @@ function CustomerFormInner({
                 label="销售负责人"
                 name="salesOwnerId"
                 rules={[{ required: true, message: "请选择销售负责人" }]}
-                extra={外贸 ? "负责谈单、下单" : "负责谈单签约"}
+                extra={锁给自己 ? "新建的只能记在自己名下" : 外贸 ? "负责谈单、下单" : "负责谈单签约"}
               >
-                <Select placeholder="请选择" options={负责人选项} />
+                <Select placeholder="请选择" options={负责人选项} disabled={Boolean(锁给自己)} />
               </Form.Item>
             </Col>
           )}

@@ -44,7 +44,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑 }: { projectId: s
       <div style={行样}><span style={键样}>项目溢价</span>{用的 ? 钱(用的.项目溢价) : "—"}{用的 && 用的.项目溢价 === 0 && 用的.成交金额 < 用的.项目底价 && <span style={淡}>（成交金额低于底价，溢价算 0）</span>}</div>
       <div style={行样}>
         <span style={键样}>预估提成</span>
-        {t.预估 ? <span>{钱(t.预估.合计)} <span style={淡}>= 底价 × {t.比例.底价比例}%（{钱(t.预估.底价提成)}）+ 溢价 × {t.比例.溢价比例}%（{钱(t.预估.溢价提成)}）</span></span> : <span style={淡}>填了项目底价才算得出来</span>}
+        {t.预估 ? <span>{钱(t.预估.合计)} <span style={淡}>= 底价 × {t.比例.底价比例}%（{钱(t.预估.底价提成)}）+ 溢价 × {t.比例.溢价比例}%（{钱(t.预估.溢价提成)}），按{t.范围}比例</span></span> : <span style={淡}>填了项目底价才算得出来</span>}
       </div>
       <div style={行样}>
         <span style={键样}>实际提成</span>

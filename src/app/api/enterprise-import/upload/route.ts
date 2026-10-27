@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
+import { 最高管理 } from "@/lib/enterprise/import-perm";
 import { 读文件们, type 读出的表 } from "@/lib/enterprise-import/excel";
 import { 试跑 } from "@/lib/enterprise-import/report";
 import { 已认映射, 读同步设置 } from "@/lib/enterprise-import/sync";
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
   if (!企业版()) return NextResponse.json({ error: "企业版没开" }, { status: 404 });
   const 我 = await getCurrentUser();
   if (!我) return NextResponse.json({ error: "请先登录" }, { status: 401 });
-  if (我.role !== "ADMIN" || (await 当前是共享区())) return NextResponse.json({ error: "只有管理员能做企业版导入" }, { status: 403 });
+  if (!(await 最高管理(我)) || (await 当前是共享区())) return NextResponse.json({ error: "只有老板和总管理员能做企业版导入" }, { status: 403 });
 
   const 切了 = (await 读同步设置("excel")).切换;
   if (切了) return NextResponse.json({ error: `Excel 导入已经在 ${切了.时间.slice(0, 10)} 切换过了，不再收新文件` }, { status: 400 });

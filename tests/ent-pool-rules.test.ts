@@ -4,8 +4,8 @@
  *   - 单项目客户（D6）：名下只有这一个项目，项目进项目公海（放回 / 超时），客户也进客户公海；领项目把客户一起领过来
  *   - 领客户即领项目：领 / 分配客户公海里的客户，名下项目公海里的项目一起过来
  *   - 原负责人不能领回（10-26 定稿「非原负责人均可领取」）：开关在 公海规则，默认拦，报「原负责人不能领回」
- *   - 项目公海从属客户公海：客户进公海名下项目全跟着、谁领谁带走；多项目客户一个项目超期只收这一个
- *   - 多项目客户走法（C15，后台二选一）：默认项目可转让照上面；客户可转让 = 放回 / 超时客户也进、领项目连客户和别的项目一起领，有没结束的订单项目不进
+ *   - 项目公海从属客户公海：客户进公海名下项目全跟着、谁领谁带走；名下有没结束的订单时一个项目超期只收这一个
+ *   - 多项目客户（10-27 会议定固定客户可转让，存着旧的项目可转让也不认）：放回 / 超时客户也进、领项目连客户和别的项目一起领，有没结束的订单项目不进
  *   - 超时回收记在「系统」名下（QA #16），不记成打开页面的那位
  *   - 直接指定给某人（批量分配）：新负责人看得到联系人、项目、沟通记录，原负责人看不到了
  *   - 开关关着照旧：上面这些企业版的一条都不做
@@ -130,13 +130,7 @@ describe("单项目客户（D6）", () => {
     expect(await 负责人(c)).toBe(乙.id);
   });
 
-  it("名下有两个项目、或客户归别人的：客户不进公海（客户留原负责人，只换项目负责人）", async () => {
-    const 两个 = await 客户(乙.id);
-    const p1 = await 项目(乙.id, 两个);
-    await 项目(乙.id, 两个);
-    expect(await 放回公海(乙, p1)).toEqual({ ok: true });
-    expect(await 在客户公海(两个)).toBe(false);
-
+  it("客户归别人的：客户不进公海（客户留原负责人，只换项目负责人）；名下几个项目的见「项目随客户整体转让」", async () => {
     const 别人的 = await 客户(丙.id);
     const p2 = await 项目(乙.id, 别人的);
     expect(await 放回公海(乙, p2)).toEqual({ ok: true });
@@ -314,9 +308,7 @@ describe("项目公海从属客户公海（10-26 定稿）", () => {
     const p1 = await 项目(乙.id, c);
     const p2 = await 项目(乙.id, c);
     await 放回公海(乙, p1);
-    expect(await 在客户公海(c)).toBe(false);
-    当(乙);
-    await 放进公海([c]);
+    expect(await 在客户公海(c)).toBe(true);
     当(丙);
     expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
     expect(await prisma.project.findUniqueOrThrow({ where: { id: p1 } })).toMatchObject({ ownerId: 丙.id, pooledAt: null });
@@ -334,11 +326,11 @@ describe("项目公海从属客户公海（10-26 定稿）", () => {
     expect(await 在客户公海(c)).toBe(false);
   });
 
-  it("多项目客户只有一个项目超期：只收这一个项目，客户和另一个项目留在乙名下", async () => {
+  it("多项目客户一个项目超期、名下还有没结束的订单：只收这一个项目，客户和订单留在乙名下", async () => {
     await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 节点天数: { 潜客培育: 3 } } });
     const c = await 客户(乙.id);
     const 超期 = await 项目(乙.id, c, { createdAt: 天前(10, 今) });
-    const 新的 = await 项目(乙.id, c, { createdAt: 天前(1, 今) });
+    const 新的 = await 项目(乙.id, c, { createdAt: 天前(1, 今), phase: "订单", node: "生产备货" });
     expect(await 公海超时收回(老板, 今)).toBe(1);
     expect(await 项目在公海(超期)).toBe(true);
     expect(await 项目在公海(新的)).toBe(false);
@@ -358,23 +350,34 @@ describe("项目公海从属客户公海（10-26 定稿）", () => {
   });
 });
 
-describe("多项目客户走法（C15 路线 1 / 路线 2）", () => {
+describe("多项目客户：项目随客户整体转让（10-27 会议定固定路线 2）", () => {
   const 选 = (走法: "项目可转让" | "客户可转让", 补: Record<string, unknown> = {}) =>
     setSetting("orgRules", { ...默认组织规则, ...补, 公海: { ...默认组织规则.公海, 多项目客户: 走法 } });
 
-  it("路线 1 项目可转让（明着选）：同默认，放回一个项目客户不进公海，领项目不带客户", async () => {
+  it("没设过（默认）：放回一个项目，客户连同另一个项目一起进；领项目连客户带走", async () => {
+    const c = await 客户(乙.id);
+    const p1 = await 项目(乙.id, c);
+    const p2 = await 项目(乙.id, c);
+    await 放回公海(乙, p1);
+    expect(await 在客户公海(c)).toBe(true);
+    expect(await 领取公海项目(丙, p1)).toEqual({ ok: true });
+    expect(await 负责人(c)).toBe(丙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p2 } })).ownerId).toBe(丙.id);
+  });
+
+  it("库里存着旧的项目可转让：也按客户整体走，不再只转一个项目", async () => {
     await 选("项目可转让");
     const c = await 客户(乙.id);
     const p1 = await 项目(乙.id, c);
     const p2 = await 项目(乙.id, c);
     await 放回公海(乙, p1);
-    expect(await 在客户公海(c)).toBe(false);
+    expect(await 在客户公海(c)).toBe(true);
     expect(await 领取公海项目(丙, p1)).toEqual({ ok: true });
-    expect(await 负责人(c)).toBe(乙.id);
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: p2 } })).ownerId).toBe(乙.id);
+    expect(await 负责人(c)).toBe(丙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p2 } })).ownerId).toBe(丙.id);
   });
 
-  it("路线 2 客户可转让：放回一个项目，客户也进客户公海（理由写清）；丙领这个项目，客户和另一个项目一起归丙", async () => {
+  it("客户可转让：放回一个项目，客户也进客户公海（理由写清）；丙领这个项目，客户和另一个项目一起归丙", async () => {
     await 选("客户可转让");
     const c = await 客户(乙.id);
     const p1 = await 项目(乙.id, c);
@@ -390,7 +393,7 @@ describe("多项目客户走法（C15 路线 1 / 路线 2）", () => {
     expect(await prisma.customerOwnerLog.count({ where: { customerId: c, kind: "claim", toOwnerId: 丙.id } })).toBe(1);
   });
 
-  it("路线 2 超时回收也一样：多项目客户一个项目超期，客户跟着进客户公海", async () => {
+  it("超时回收也一样：多项目客户一个项目超期，客户跟着进客户公海", async () => {
     await 选("客户可转让", { 超时回收: { 开: true, 节点天数: { 潜客培育: 3 } } });
     const c = await 客户(乙.id);
     const 超期 = await 项目(乙.id, c, { createdAt: 天前(10, 今) });
@@ -400,7 +403,7 @@ describe("多项目客户走法（C15 路线 1 / 路线 2）", () => {
     expect(await prisma.customerPool.findUniqueOrThrow({ where: { customerId: c } })).toMatchObject({ userId: null, reason: 客户整体进公海理由 });
   });
 
-  it("路线 2 名下有没结束的订单阶段项目：客户不跟着进（订单不进公海），领项目也不带客户；订单结束了的不挡", async () => {
+  it("名下有没结束的订单阶段项目：客户不跟着进（订单不进公海），领项目也不带客户；订单结束了的不挡", async () => {
     await 选("客户可转让");
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
@@ -418,7 +421,7 @@ describe("多项目客户走法（C15 路线 1 / 路线 2）", () => {
     expect(await 在客户公海(c2)).toBe(true);
   });
 
-  it("路线 2 客户归别人、只是项目归乙：客户照样不进", async () => {
+  it("客户归别人、只是项目归乙：客户照样不进", async () => {
     await 选("客户可转让");
     const c = await 客户(丙.id);
     const p = await 项目(乙.id, c);

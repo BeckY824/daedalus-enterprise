@@ -152,7 +152,9 @@ describe("扫库收回", () => {
     await setSetting("orgRules", 开着({ 潜客培育: 30 }));
     await 项目(乙.id);
     expect(await 公海超时收回(老板, 天后(5))).toBe(0);
-    await 项目(乙.id, { createdAt: 天后(-40) });
+    // 挂在另一个客户下：⑧ 起多项目客户整体进客户公海，同一客户的第二个项目跟着客户走、不单独收
+    const 客户乙 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 乙.id } })).id;
+    await 项目(乙.id, { createdAt: 天后(-40), customerId: 客户乙 });
     expect(await 公海超时收回(老板, 天后(5))).toBe(0);
     await setSetting("orgRules", 开着({ 潜客培育: 3 }));
     invalidateSettingsCache();
