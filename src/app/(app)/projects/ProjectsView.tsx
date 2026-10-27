@@ -103,7 +103,7 @@ export default function ProjectsView({
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
-  const 新建 = () => router.push("/projects/new");
+  const 新建 = () => router.push(新线索 ? "/leads/new" : "/projects/new");
   // 公海里同事客户的项目不给客户名（page.tsx 露客户），领取后再看
   const 领了再看 = `领取后显示${b.customer}`;
 

@@ -160,7 +160,7 @@ export function BlockerList({ 们, 人们, 带项目 = false, 空 = "还没有�
       {们.map((b) => (
         <div key={b.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line-soft)", minWidth: 0 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>{b.code}</span>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{b.code}</span>
             <Tag color={状态色[b.status]}>{b.status}</Tag>
             <Tag color={类型色[b.type]}>{b.type}</Tag>
             <Tag>{b.impact}</Tag>

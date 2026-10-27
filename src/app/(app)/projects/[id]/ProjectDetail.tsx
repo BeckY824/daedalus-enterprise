@@ -484,7 +484,7 @@ export default function ProjectDetail({
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <FollowTypeCell type={f.type} />
                 <Tag>{f.node}</Tag>
-                {f.code && <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>{f.code}</span>}
+                {f.code && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{f.code}</span>}
                 {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
                 <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
                 {卡点?.能发 && <Button type="link" size="small" style={{ padding: 0 }} onClick={() => set发卡点于(f.id)}>发卡点</Button>}
