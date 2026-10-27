@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { App, Button, Select, Space, Segmented, Tag } from "antd";
 import { PlusOutlined, ThunderboltOutlined, UserSwitchOutlined } from "@ant-design/icons";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
@@ -88,6 +89,7 @@ export default function ProjectsView({
   满额提醒?: 满额提醒[];
 }) {
   const router = useRouter();
+  const 预取 = useHoverPrefetch();
   const { message, modal } = App.useApp();
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
@@ -273,6 +275,10 @@ export default function ProjectsView({
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看} · ${r.node}`}
                           aria-label={`${r.name}，${r.customerName ?? 领了再看}，${异常 ? "异常 · " : ""}${r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在项目公海里" : ""}`}
                           onClick={() => router.push(`/projects/${r.id}`)}
+                          onMouseEnter={() => 预取.进(`/projects/${r.id}`)}
+                          onMouseLeave={预取.出}
+                          onFocus={() => 预取.进(`/projects/${r.id}`)}
+                          onBlur={预取.出}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();

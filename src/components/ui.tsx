@@ -2,6 +2,7 @@
 
 import { Tag, Avatar, Space } from "antd";
 import { 主题颜色 } from "@/lib/chart-theme";
+import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { palette } from "@/lib/palette";
 import {
   ArrowUpOutlined,
@@ -194,14 +195,40 @@ export function StageTag({ stage }: { stage: string }) {
 }
 
 /**
- * 列表里每一行上的链接：不预取（2026-10-20）。
+ * 列表里每一行上的链接：不按视口预取（2026-10-20）。
  *
  * next/link 默认一进视口就预取目标页。客户名单、表格、时间线一屏几十上百行，
  * 每行都预取一遍详情页，渲染进程和本机服务端都白干活、白占内存，可人一次只点开一位。
- * 点了照常跳，只是不提前取。左栏导航、页里单个的「查看全部」之类仍用 Link，照旧预取。
+ * 左栏导航、页里单个的「查看全部」之类仍用 Link，照旧预取。
+ *
+ * 悬停停住那一行才整页预取（10-27，lib/prefetch-full）：人要点的就是这一行，点下去时页已经在本地，
+ * 放到云上也不用再等一来回。
  */
-export function RowLink(props: ComponentProps<typeof Link>) {
-  return <Link prefetch={false} {...props} />;
+export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, ...props }: ComponentProps<typeof Link>) {
+  const 预取 = useHoverPrefetch();
+  const 去 = typeof props.href === "string" ? props.href : null;
+  return (
+    <Link
+      prefetch={false}
+      {...props}
+      onMouseEnter={(e) => {
+        预取.进(去);
+        onMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        预取.出();
+        onMouseLeave?.(e);
+      }}
+      onFocus={(e) => {
+        预取.进(去);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        预取.出();
+        onBlur?.(e);
+      }}
+    />
+  );
 }
 
 /**

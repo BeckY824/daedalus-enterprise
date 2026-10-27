@@ -46,8 +46,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   esac
   ANY_REF=1
   if [ -z "$FULL" ]; then
-    [ -n "$BASE" ] || { git fetch -q origin main 2>/dev/null || true; }
-    BASE=$(git merge-base origin/main "$local_sha" 2>/dev/null) || FULL=1
+    # 跟推去的那个远端的 main 比：企业版推 ent，和桌面端的 origin/main 差了几百个文件，会次次退回全量（10-27）。
+    # 推到裸地址（桌面端推 GitHub 地址）时 $1 是网址，没有对应的远端分支，照旧用 origin
+    if [ -z "$MAIN_REMOTE" ]; then
+      MAIN_REMOTE=origin
+      git show-ref -q --verify "refs/remotes/$1/main" 2>/dev/null && MAIN_REMOTE=$1
+    fi
+    [ -n "$BASE" ] || { git fetch -q "$MAIN_REMOTE" main 2>/dev/null || true; }
+    BASE=$(git merge-base "$MAIN_REMOTE/main" "$local_sha" 2>/dev/null) || FULL=1
     [ -n "$BASE" ] && git -c core.quotePath=false diff --name-only --diff-filter=d "$BASE" "$local_sha" >> "$CHANGED"
   fi
 done

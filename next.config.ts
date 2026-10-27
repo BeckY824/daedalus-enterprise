@@ -99,10 +99,13 @@ const nextConfig: NextConfig = {
      * 设为 60 秒后，一分钟内重复访问同一页面直接走本地缓存，切换是瞬时的。
      * 代价是数据最多滞后 60 秒——对 CRM 这种低频变更场景可以接受，
      * 且新建/修改后我们本来就会主动 router.refresh()。
+     *
+     * static 管的是「整页预取」（悬停预取、左栏空闲时预热，见 lib/prefetch-full）存多久。
+     * 原来 300 秒：预热进来的页五分钟内不再问服务器，比点进去看的页还旧。改成和 dynamic 一样 60 秒（10-27）
      */
     staleTimes: {
       dynamic: 60,
-      static: 300,
+      static: 60,
     },
   },
 };

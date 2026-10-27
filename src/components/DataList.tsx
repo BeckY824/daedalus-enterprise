@@ -3,6 +3,7 @@
 import { 登记页面行 } from "@/lib/page-rows";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Table, Button, Dropdown, Checkbox } from "antd";
 import { SettingOutlined } from "@ant-design/icons";
 import type { ColumnType } from "antd/es/table";
@@ -119,6 +120,7 @@ export default function DataList<T extends { id: string }>({
   页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 批量, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序,
 }: Props<T>) {
   const router = useRouter();
+  const 预取 = useHoverPrefetch();
   /** 真的只取了一部分：库里的总数比取回来的多（本地筛掉的不算，见 截断.取回） */
   const 取回 = 截断?.取回 ?? 行.length;
   const 真截断 = !!截断 && 截断.总数 > 取回;
@@ -333,6 +335,9 @@ export default function DataList<T extends { id: string }>({
                   if (去) router.push(去);
                   else 行点击?.(r);
                 },
+                // 停在哪一行就先把那一页整页取回来，点下去不用再等服务器（10-27，lib/prefetch-full）
+                onMouseEnter: 行链接 ? () => 预取.进(行链接(r)) : undefined,
+                onMouseLeave: 行链接 ? 预取.出 : undefined,
                 style: { cursor: "pointer" },
               })
             : undefined
