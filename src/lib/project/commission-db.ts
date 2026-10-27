@@ -79,7 +79,7 @@ export async function 改提成比例(me: 谁, input: { 底价比例?: unknown; 
 const 项目字段 = { id: true, name: true, ownerId: true, pooledAt: true, phase: true, customerId: true } as const;
 
 /**
- * 填 / 改 / 清项目底价。已经赢单固定了的不让改（要改先退回商机）；
+ * 填 / 改 / 清项目底价。已经赢单固定了的不让改（企业版进了订单不能退回商机，固定后就不变）；
  * 在订单阶段还没固定（赢单时底价没填）的，填上那一刻按当时的比例固定
  */
 export async function 存项目底价(me: 谁, projectId: string, 底价: number | null): Promise<错 | { ok: true; 变了: boolean; 前?: number | null; 后?: number | null; 固定了?: boolean; name?: string; customerId?: string }> {
@@ -92,7 +92,7 @@ export async function 存项目底价(me: 谁, projectId: string, 底价: number
     if (问题) return { ok: false as const, error: 问题 };
     const 值 = 底价 == null ? null : 两位(底价);
     const 有 = await tx.entCommission.findUnique({ where: { projectId: p.id } });
-    if (有?.fixedAt) return { ok: false as const, error: "已经赢单，实际提成已固定；要改项目底价先把项目退回商机" };
+    if (有?.fixedAt) return { ok: false as const, error: "已经赢单，实际提成已固定，不能再改" };
     const 前 = 有?.basePrice ?? null;
     if (前 === 值) return { ok: true as const, 变了: false };
     await tx.entCommission.upsert({
@@ -157,7 +157,7 @@ async function 固定实际提成(tx: Prisma.TransactionClient, projectId: strin
 
 /**
  * 节点变了（lib/project/db.ts 改节点、按必填推进 在同一笔事务里调）：
- * 从别的阶段进到订单 = 赢单，固定实际提成；从订单退回去 = 清掉固定的，再赢单按那时的比例重算。不是企业版什么都不做
+ * 从别的阶段进到订单 = 赢单，固定实际提成。企业版改节点不让出订单（10-27 定），「从订单退回去就清掉」只是兜底，正常走不到。不是企业版什么都不做
  */
 export async function 节点变了的提成(tx: Prisma.TransactionClient, projectId: string, 从: string, 到: string): Promise<void> {
   if (!企业版() || 从 === 到) return;

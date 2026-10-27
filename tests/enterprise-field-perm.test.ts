@@ -22,6 +22,7 @@ import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { patchCustomer, assignSalesOwner, bulkFollowStatus } from "@/app/(app)/customers/actions";
 import { saveOpportunity, moveStage } from "@/app/(app)/opportunities/actions";
 import { 设字段权限 } from "@/app/(app)/settings/org-actions";
+import { 改节点, 改项目 } from "@/lib/project/db";
 
 let 老板: string;
 let 销售: string;
@@ -121,6 +122,43 @@ describe("规则开关", () => {
     expect(await saveOpportunity({ ...原样, stage: "谈判审核" })).toMatchObject({ ok: false, error: expect.stringContaining("阶段") });
     expect(await saveOpportunity({ ...原样, name: "商机B" })).toMatchObject({ ok: true });
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).stage).toBe("方案报价");
+  });
+});
+
+describe("项目（10-27 审计：企业版只用项目，金额 / 阶段·节点 / 负责人这三行管项目）", () => {
+  const 建项目 = async () => (await prisma.project.create({ data: { name: "项目A", customerId: 客户, ownerId: 销售, creatorId: 销售, phase: "商机", node: "共识方案", amount: 100 } })).id;
+  const 甲 = { id: "", role: "SALES" };
+
+  it("开了：阶段·节点只能看 → 改节点、改结局都拦；金额只能看 → 改金额拦；只改名字照存", async () => {
+    await 开规则();
+    await setSetting(字段权限key, { 商机阶段: { sales: "看" }, 商机金额: { sales: "看" } });
+    const id = await 建项目();
+    甲.id = 销售;
+    expect(await 改节点(甲, id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: false, error: expect.stringContaining("阶段 / 节点") });
+    expect(await 改节点(甲, id, { phase: "商机", node: "共识方案", result: "丢单" }, { 备注: "价格" })).toMatchObject({ ok: false, error: expect.stringContaining("阶段 / 节点") });
+    expect(await 改项目(甲, id, { name: "项目A", amount: 200 })).toMatchObject({ ok: false, error: expect.stringContaining("金额") });
+    expect(await 改项目(甲, id, { name: "项目B", amount: 100 })).toMatchObject({ ok: true });
+    const 后 = await prisma.project.findUniqueOrThrow({ where: { id } });
+    expect([后.name, 后.node, 后.amount, 后.result]).toEqual(["项目B", "共识方案", 100, null]);
+  });
+
+  it("负责人只能看 → 改项目换负责人拦；老板不受限", async () => {
+    await 开规则();
+    await setSetting(字段权限key, { 商机负责人: { sales: "看" } });
+    const id = await 建项目();
+    甲.id = 销售;
+    expect(await 改项目(甲, id, { name: "项目A", amount: 100, ownerId: 老板 })).toMatchObject({ ok: false, error: expect.stringContaining("负责人") });
+    expect(await 改节点({ id: 老板, role: "ADMIN" }, id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true });
+  });
+
+  it("规则没开 / 不是企业版：照旧能改节点和金额", async () => {
+    await setSetting(字段权限key, { 商机阶段: { sales: "看" }, 商机金额: { sales: "看" } });
+    const id = await 建项目();
+    甲.id = 销售;
+    expect(await 改节点(甲, id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true });
+    await 开规则();
+    mocks.企业版 = false;
+    expect(await 改项目(甲, id, { name: "项目A", amount: 300 })).toMatchObject({ ok: true });
   });
 });
 
