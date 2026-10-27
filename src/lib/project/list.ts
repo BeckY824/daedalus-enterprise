@@ -3,7 +3,8 @@ import { 搜索词 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
 import type { 项目行 } from "./board";
 import type { 阶段 } from "./nodes";
-import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请 } from "./db";
+import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的 } from "./db";
+import { 即将回收 } from "./timeout";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 生效组织规则 } from "./org-rules-store";
 
@@ -29,8 +30,20 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     },
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
-    include: { customer: { select: { name: true } }, exceptionCategory: { select: { name: true } } },
+    include: {
+      customer: { select: { name: true, lastFollowAt: true, pool: { select: { customerId: true } } } },
+      exceptionCategory: { select: { name: true } },
+      logs: 算超时要的.logs,
+    },
   });
+  const 企业 = 企业版();
+  const 规则 = 企业 ? await 生效组织规则() : null;
+  const 今 = new Date();
+  const 将收 = (p: (typeof rows)[number]) => {
+    if (!规则 || p.pooledAt) return null;
+    const 日 = 项目回收日(规则, p);
+    return 即将回收(日, 今) ? 日 : null;
+  };
   const [人, users, 可见, 邀请] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.ownerId))] } }, select: { id: true, name: true } }),
     负责人候选(),
@@ -45,14 +58,15 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     ownerId: p.ownerId, ownerName: 名字.get(p.ownerId) ?? "已不在的成员",
     phase: p.phase, node: p.node, result: p.result, exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
+    ...(企业 ? { 即将回收: 将收(p) } : {}),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(),
   }));
   return {
     行,
     取到上限: rows.length >= 项目上限,
     // 结局叫法跟着字典：企业版组织规则里改过的出口叫法
-    企业版: 企业版(),
-    出口叫法: 企业版() ? (await 生效组织规则()).阶段.出口叫法 : undefined,
+    企业版: 企业,
+    出口叫法: 规则?.阶段.出口叫法,
     users,
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "" },

@@ -39,6 +39,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 建档向导, 改项目节点, 放回项目公海, 领取项目, 编辑项目 } from "@/app/(app)/projects/actions";
 import { saveLead, convertLead } from "@/app/(app)/leads/actions";
 import { dayjs } from "@/lib/utils";
+import { 收回提醒尾 } from "@/lib/project/db";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
 import { 建公司, type 公司 } from "./sim/公司";
@@ -400,7 +401,7 @@ async function 剧本开() {
   await 扫("2026-01-28 08:00");
   await 查("D3-按下一步收回", async () => expect(await 在公海("P2")).toBe(true));
   await 查("D3-原负责人收提醒", async () => {
-    const t = await 作为("老板", () => prisma.task.findMany({ where: { ownerId: 公.id["内销2"], title: { contains: "P2" } } }));
+    const t = await 作为("老板", () => prisma.task.findMany({ where: { ownerId: 公.id["内销2"], title: { contains: "P2", endsWith: 收回提醒尾 } } }));
     expect(t.length).toBe(1);
   });
   await 查("D3-进公海记历史负责人", async () => {
@@ -516,7 +517,7 @@ async function 剧本开() {
   await 查("D7-收回都有提醒", async () => {
     // P2 收回两次：1/28 一次（提醒内销2）；内销1 1/29 领走后潜客培育 3 天，2/1 00:05 又一次（提醒内销1）
     for (const [n, 谁, 次] of [["P1", "内销1", 1], ["P2", "内销2", 1], ["P2", "内销1", 1], ["P3", "外销1", 1], ["P5", "内销6", 1], ["P6", "内销2", 1]] as const) {
-      const t = await 作为("老板", () => prisma.task.count({ where: { ownerId: 公.id[谁], title: { contains: `「${n}」` } } }));
+      const t = await 作为("老板", () => prisma.task.count({ where: { ownerId: 公.id[谁], title: { contains: `「${n}」`, endsWith: 收回提醒尾 } } }));
       expect(t, `${n} → ${谁}`).toBe(次);
     }
   });

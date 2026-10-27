@@ -16,7 +16,7 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因 } from "@/lib/enterprise/dict";
 import { 生效组织规则 } from "./org-rules-store";
-import { 超时回收日, 已超时, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
+import { 超时回收日, 已超时, 即将回收, 将回收提醒, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
@@ -518,7 +518,7 @@ export async function 领取公海项目(me: 谁, projectId: string): Promise<�
 /** 本机记的「今天按这份规则扫过了」：值 = 日期 + 规则，老板改了时长当天再扫一遍 */
 const 超时扫过键 = "projectTimeoutSweptOn";
 
-const 算超时要的 = {
+export const 算超时要的 = {
   id: true, name: true, phase: true, node: true, result: true, pooledAt: true, nextStepAt: true, ownerId: true, customerId: true, createdAt: true,
   customer: { select: { lastFollowAt: true, pool: { select: { customerId: true } } } },
   logs: { select: { at: true }, orderBy: { at: "desc" as const }, take: 1 },
@@ -529,13 +529,22 @@ type 待查项目 = Prisma.ProjectGetPayload<{ select: typeof 算超时要的 }>
  * 起点 = 最近一次有人管：建项目、最后一行节点变更 / 转让 / 领取、客户上最后一次跟进，取最晚的（timeout.ts）。
  * 客户在客户公海里的不收（企业版第四节）：项目跟着客户，谁领客户谁带走；先收进项目公海就和客户拆开了
  */
+export function 项目回收日(规则: 组织规则, p: 待查项目): string | null {
+  if (p.customer.pool) return null;
+  return 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业版()));
+}
+
 function 超时了(规则: 组织规则, p: 待查项目, 今: Date): boolean {
-  if (p.customer.pool) return false;
-  return 已超时(超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业版())), 今);
+  return 已超时(项目回收日(规则, p), 今);
 }
 
 /** 按这份规则现在超时的项目（还在线索 / 商机、没结局、不在公海、节点设了时长；企业版没设的按默认 7 天） */
 async function 超时的项目(规则: 组织规则, 今: Date, ownerId?: string): Promise<待查项目[]> {
+  return (await 会收的项目(规则, ownerId)).filter((p) => 超时了(规则, p, 今));
+}
+
+/** 按这份规则会被收回的项目（不管哪天收） */
+async function 会收的项目(规则: 组织规则, ownerId?: string): Promise<待查项目[]> {
   const 节点 = Object.keys(规则.超时回收.节点天数);
   const 有默认 = !!字典of(企业版()).默认超时天数;
   if (!规则.超时回收.开 || (!节点.length && !有默认)) return [];
@@ -543,7 +552,7 @@ async function 超时的项目(规则: 组织规则, 今: Date, ownerId?: string
     where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] }, ...(有默认 ? {} : { node: { in: 节点 } }), customer: { pool: { is: null } }, ...(ownerId ? { ownerId } : {}) },
     select: 算超时要的,
   });
-  return 们.filter((p) => 超时了(规则, p, 今));
+  return 们.filter((p) => !!项目回收日(规则, p));
 }
 
 /** 老板改时长前先看：按这份规则现在会有几个项目回到公海（不分谁的，全看） */
@@ -605,8 +614,26 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数 },
     });
   }
+  await 提醒明天收(规则, 今, 只扫);
   await setSetting(键, 记号);
   return 收了.length;
+}
+
+/**
+ * 回收前一天（10-27）：明天就要收回的项目，给负责人一条待办提醒（和收回那条同一个地方：首页待办、提醒）。
+ * 跟着超时扫走（夜里 00:05 或白天第一次打开页面），同一天同一个项目只提醒一次：老板当天改了时长再扫也不重复
+ */
+async function 提醒明天收(规则: 组织规则, 今: Date, 只扫?: string): Promise<void> {
+  const 今天 = dayjs(今).format("YYYY-MM-DD");
+  for (const p of await 会收的项目(规则, 只扫)) {
+    const 日 = 项目回收日(规则, p);
+    if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
+    const title = 将回收提醒(p.name, p.node, 日);
+    if (await prisma.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) continue;
+    await prisma.task.create({
+      data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId },
+    });
+  }
 }
 
 /**

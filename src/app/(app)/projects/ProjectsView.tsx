@@ -150,7 +150,7 @@ export default function ProjectsView({
   const 列表: 列<项目行>[] = [
     { title: "项目", dataIndex: "name", width: 180, render: (v: string) => <span className="clamp" title={v}>{v}</span> },
     { title: b.customer, key: "customer", width: 170, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
-    { title: "节点", key: "node", width: 150, render: (_, r) => 节点文字(r, 字典) },
+    { title: "节点", key: "node", width: 150, render: (_, r) => <>{节点文字(r, 字典)}{r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
     { title: "金额", key: "amount", width: 120, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>公海</Tag> : <UserCell name={r.ownerName} />) }]),
     { title: "最近更新", key: "updatedAt", width: 100, render: (_, r) => fmtDate(r.updatedAt) },
@@ -273,7 +273,7 @@ export default function ProjectsView({
                           tabIndex={0}
                           role="link"
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看} · ${r.node}`}
-                          aria-label={`${r.name}，${r.customerName ?? 领了再看}，${异常 ? "异常 · " : ""}${r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在项目公海里" : ""}`}
+                          aria-label={`${r.name}，${r.customerName ?? 领了再看}，${异常 ? "异常 · " : ""}${r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在项目公海里" : ""}${r.即将回收 ? "，即将回收" : ""}`}
                           onClick={() => router.push(`/projects/${r.id}`)}
                           onMouseEnter={() => 预取.进(`/projects/${r.id}`)}
                           onMouseLeave={预取.出}
@@ -299,7 +299,12 @@ export default function ProjectsView({
                           {r.pooled ? (
                             <div className="pipe-card-m"><span className="pipe-card-o"><Tag style={{ marginInlineEnd: 0 }}>公海</Tag></span></div>
                           ) : (
-                            !不问归属 && <div className="pipe-card-m"><span className="pipe-card-o">{r.ownerName}</span></div>
+                            (!不问归属 || r.即将回收) && (
+                              <div className="pipe-card-m">
+                                <span className="pipe-card-o">{不问归属 ? null : r.ownerName}</span>
+                                {r.即将回收 && <将收标 日={r.即将回收} />}
+                              </div>
+                            )
                           )}
                         </div>
                       );
@@ -314,4 +319,9 @@ export default function ProjectsView({
       {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} />}
     </div>
   );
+}
+
+/** 企业版超时回收：明天（或今天）没人跟进就回到项目公海（10-27） */
+function 将收标({ 日 }: { 日: string }) {
+  return <Tag color="warning" style={{ marginInlineEnd: 0, flexShrink: 0 }} title={`${日} 前没人跟进，会自动回到项目公海`}>即将回收</Tag>;
 }
