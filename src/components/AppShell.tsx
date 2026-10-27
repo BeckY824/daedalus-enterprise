@@ -267,14 +267,26 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   /*
     网页版左栏主组几项空闲时整页预热（10-27，lib/prefetch-full）：首页、客户、项目、跟进、数据每天来回切，
     预热过的点下去直接从本地出页，不等服务器。只在页面空下来以后取，不和当前页抢；省流量不取；
-    60 秒后过期（staleTimes.static），过期了悬停（unstable_dynamicOnHover）还会再取一次
+    60 秒后过期（staleTimes.static），过期了悬停（unstable_dynamicOnHover）还会再取一次。
+    企业版的新线索虽然摆在「更多」里，却是每天的入口，一起预热（10-27 第二轮：没预热时第一次点要 0.6 秒）。
+    详情页（客户、项目）没法整页预热——不知道人要点哪一行，行也不许一进视口就取（e2e/row-prefetch）。
+    第一次点慢在页面自己的脚本：悬停预取回来才知道要哪几个脚本，再去下一趟，+200ms 往返时要 0.65 秒。
+    所以空闲时先把这两页的界面组件 import 进来：打包出来就是同几个脚本文件（Turbopack 按模块分块，
+    10-27 对过 client-reference-manifest），点下去只等数据。只下脚本，不碰服务器上的数据
   */
-  const 主组 = useMemo(() => nav.filter((n) => n.组 === "主").map((n) => n.key).join(" "), [nav]);
+  const 预热页 = useMemo(
+    () => [...nav.filter((n) => n.组 === "主").map((n) => n.key), ...(企业版项目 ? ["/leads"] : [])].join(" "),
+    [nav, 企业版项目],
+  );
   useEffect(() => {
     if (desktop || 省流量()) return;
-    const 要 = 主组.split(" ").filter(Boolean);
+    const 要 = 预热页.split(" ").filter(Boolean);
     // 当前这页已经在眼前，不用再取
-    const 取 = () => 要.filter((k) => location.pathname !== k).forEach((k) => 整页预取(router, k));
+    const 取 = () => {
+      要.filter((k) => location.pathname !== k).forEach((k) => 整页预取(router, k));
+      void import("@/app/(app)/customers/[id]/RecordView").catch(() => {});
+      if (要.includes("/projects")) void import("@/app/(app)/projects/[id]/ProjectDetail").catch(() => {});
+    };
     const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
     if (w.requestIdleCallback) {
       const id = w.requestIdleCallback(取, { timeout: 3000 });
@@ -282,7 +294,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     }
     const t = setTimeout(取, 1200);
     return () => clearTimeout(t);
-  }, [desktop, 主组, router]);
+  }, [desktop, 预热页, router]);
 
   /*
     网页版的标签页标题跟着当前页走（「客户 · Daedalus CRM」）：浏览器里常开着好几个标签，只写产品名分不出哪个是哪个，
