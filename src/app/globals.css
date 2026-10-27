@@ -1267,6 +1267,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .stat-who-sub { display: block; font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); word-break: break-all; }
 /* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
 .member-who { min-width: 0; }
+/* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
+.member-table { overflow-x: auto; }
 .member-table .ant-table-thead th { white-space: nowrap; }
 @media (max-width: 1199px) { .member-who-sub { padding-left: 0; } }
 .member-who-sub { display: block; padding-left: 38px; font-size: var(--fs-note); color: var(--text-muted); word-break: break-all; }

@@ -88,14 +88,14 @@ export default function FollowUpsView({
     },
     {
       // 类型三样齐全：颜色、图标、文字。只有颜色的话，色弱的人和扫得快的人都认不出来
-      title: "类型", key: "type", dataIndex: "type", width: 96, 常驻: true,
+      title: "类型", key: "type", dataIndex: "type", width: 104, 常驻: true, // 104：「WhatsApp」带图标要 101，1024 宽+AI 栏时 96 伸出 5px
       render: (v) => <FollowTypeCell type={v} />,
     },
     {
       // 这一页的正文就是「聊了什么」，所以它是最宽的一列。
       // 最多两行（10-27 改）：一行省略号太多字看不到；再长的悬停看全文，读全文去记录页。
-      // 宽度放 240：13 寸窗口下整张表不用左右拖
-      title: "内容", key: "content", dataIndex: "title", width: 240,
+      // 宽度放 232：13 寸窗口下整张表不用左右拖（类型列加的 8 从这里扣）
+      title: "内容", key: "content", dataIndex: "title", width: 232,
       render: (v, r) => (
         <span className="clamp" title={`${v ? v + " · " : ""}${r.content}`}>
           {v && <b style={{ fontWeight: 500 }}>{v}</b>}

@@ -240,8 +240,9 @@ test("填了大写的登录名要归一成小写，否则会出现「填的名�
   await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
   await expect(弹窗).toBeHidden();
 
-  // 列表里存下来的必须already是小写——登录时是按小写比对的
-  await expect(page.getByRole("cell", { name: `daxie${戳}`, exact: true })).toBeVisible();
+  // 列表里存下来的必须already是小写——登录时是按小写比对的。
+  // 10-27 起登录名是姓名下面那行小字（「登录名 · 职位」），不再单占一格；正则区分大小写
+  await expect(page.locator(".member-who-sub", { hasText: new RegExp(`^daxie${戳}( · |$)`) })).toBeVisible();
 });
 
 /**
