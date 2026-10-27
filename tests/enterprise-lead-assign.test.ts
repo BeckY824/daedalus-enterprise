@@ -161,8 +161,13 @@ describe("自动分配线索", () => {
     expect(r.ok && r.为什么).toMatch(/本月已分 \/ 配额比例最低（0\/10，和 1 人并列/);
     expect(await 负责人(L)).toBe(外贸);
     expect(await prisma.entLeadAssign.count({ where: { leadId: L, toUserId: 外贸, byUserId: 市场, counted: true } })).toBe(1);
+    // 分配方式（10-27）：自动分的记「自动分配」，手动分的记「指定分配」；叫法跟着字典改名走
+    expect((await prisma.entLeadAssign.findFirstOrThrow({ where: { leadId: L } })).way).toBe("自动分配");
+    expect((await prisma.entLeadAssign.findFirstOrThrow({ where: { toUserId: 内贸 } })).way).toBe("指定分配");
+    await prisma.entDictItem.update({ where: { id: "dict-assign-1" }, data: { name: "系统派单" } });
     // 走内贸线：外贸对不上，两边 0 条
     expect(await 自动分配线索(await 建线索("M"), { line: "内贸" })).toMatchObject({ ok: true, toUserId: 两边 });
+    expect((await prisma.entLeadAssign.findFirstOrThrow({ where: { toUserId: 两边 } })).way).toBe("系统派单");
   });
 
   it("分满的跳过；都满了报没人能接，线索不动", async () => {
@@ -676,6 +681,8 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
     expect(await 项目(P)).toMatchObject({ ownerId: 内贸, nextStepAt: null, pooledAt: null });
     expect(await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: P } })).toMatchObject({ leadId: "", toUserId: 内贸, fromUserId: 市场, byUserId: 市场, counted: true });
     expect(await prisma.projectNodeLog.count({ where: { projectId: P, kind: "transfer", fromOwnerId: 市场, toOwnerId: 内贸 } })).toBe(1);
+    expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: P, kind: "transfer" } })).toMatchObject({ reason: "分配方式：指定分配" });
+    expect((await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: P } })).way).toBe("指定分配");
     await 配(外贸, 1);
     expect(await 分配线索({ projectId: await 建项目("Q"), toUserId: 外贸 })).toEqual({ ok: true });
     const R = await 建项目("R");

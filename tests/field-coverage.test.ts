@@ -97,6 +97,7 @@ const 派生: Record<string, Record<string, string>> = {
     counted: "算不算进当月配额，按线索种类和设置算出来",
     month: "分配那一刻的年月，按业务钟算（企业版北京时间），每月清零靠它",
     projectId: "分的是哪个项目（企业版新线索=项目的线索阶段），从被分的那条项目上来",
+    way: "分配方式（字典「分配方式」当时的叫法），按谁点的系统记：手动分=指定分配，自动分=自动分配，不让人填",
   },
   EntLeadQuota: { setById: "最后改配额的人，当前登录账号" },
   EntFollowUpMark: { followUpId: "主键：标的是哪条沟通（一条沟通只挂一个项目，一行一条）", projectId: "哪个项目，记沟通时跟 FollowUpProject 一起写" },
@@ -269,6 +270,7 @@ const 派生: Record<string, Record<string, string>> = {
     status: "待确认 → 已确认 / 已撤回 / 已拒收，只有确认、撤回、拒收三个动作能改",
     doneAt: "了结那一刻，系统打上",
     doneById: "谁了结的，系统打上",
+    reason: "转让原因，发起时从字典「转让原因」里选（可不选），存当时的叫法，不改",
   },
   EntImportBatch: {
     source: "从哪来（excel / feishu / dingtalk），建批时定",

@@ -43,7 +43,7 @@ export default function HandoverPending({ 等我确认, 我发起的 }: { 等我
     const 余 = h.kind === "离职"
       ? Object.entries(h.个数).filter(([k, n]) => k !== "客户" && n > 0).map(([k, n]) => `${n} 个${k}`).join("、")
       : "";
-    return `${h.kind === "离职" ? `离职成员「${h.从}」` : `「${h.从}」名下`}的 ${h.客户总数} 位客户${余 ? `（另有 ${余}）` : ""}${名}`;
+    return `${h.kind === "离职" ? `离职成员「${h.从}」` : `「${h.从}」名下`}的 ${h.客户总数} 位客户${余 ? `（另有 ${余}）` : ""}${名}${h.reason ? `（转让原因：${h.reason}）` : ""}`;
   };
 
   return (

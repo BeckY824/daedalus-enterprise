@@ -42,6 +42,24 @@ export async function 可选项(kind: 字典种类): Promise<string[]> {
   return (await 企业字典(kind)).filter((x) => x.active).map((x) => x.name);
 }
 
+/**
+ * 下拉提交上来的原因（10-27）：不是企业版或没选 = null；选的必须是这一类当前启用的选项。
+ * 在事务外调（读设置别进事务，会等到超时）。
+ */
+export async function 选的原因(kind: 字典种类, v: unknown): Promise<{ ok: true; 值: string | null } | { ok: false; error: string }> {
+  if (!企业版()) return { ok: true, 值: null };
+  const n = typeof v === "string" ? v.trim() : "";
+  if (!n) return { ok: true, 值: null };
+  if (!(await 可选项(kind)).includes(n)) return { ok: false, error: `「${n}」不在${字典定义[kind].名}里（可能刚被停用），刷新后再选` };
+  return { ok: true, 值: n };
+}
+
+/** 分配记录上的「分配方式」：0 = 指定分配、1 = 自动分配，取字典里这一项现在的叫法（改过名跟着改）；事务外调 */
+export async function 分配方式叫法(i: 0 | 1): Promise<string> {
+  const 有 = (await 企业字典("assign")).find((x) => x.id === 默认id("assign", i));
+  return 有?.name ?? 字典定义.assign.默认[i];
+}
+
 async function 挡(me: { id: string; role: string }, kind: unknown): Promise<string | null> {
   if (!企业版()) return "企业版才有这项设置";
   if (!是种类(kind)) return "没有这类选项";

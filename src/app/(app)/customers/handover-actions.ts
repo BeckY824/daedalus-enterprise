@@ -28,6 +28,8 @@ export type 交接行 = {
   发起人: string;
   /** 离职的「转交 / 公海」 */
   way: string | null;
+  /** 企业版转让原因（字典「转让原因」，没选为空） */
+  reason: string | null;
   个数: Record<string, number>;
   /** 前几位客户的名字（接手人确认前要知道接的是谁）；客户总数另给 */
   客户: string[];
@@ -69,7 +71,7 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
     const 成行 = (h: (typeof 行)[number]): 交接行 => {
       const ids = 读ids(h.customerIds);
       return {
-        id: h.id, kind: h.kind as 交接种类, way: h.way,
+        id: h.id, kind: h.kind as 交接种类, way: h.way, reason: h.reason,
         从: 人.get(h.fromUserId) ?? "（已删除的成员）", 给: 人.get(h.toUserId) ?? "（已删除的成员）", 发起人: 人.get(h.byUserId) ?? "（已删除的成员）",
         个数: 读个数(h.counts), 客户: ids.slice(0, 列几位).map((id) => 名.get(id)).filter((x): x is string => !!x), 客户总数: ids.length,
         createdAt: h.createdAt.toISOString(),
