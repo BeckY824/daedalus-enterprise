@@ -543,7 +543,7 @@ function StageRuleCard({
         style={{ display: "grid", gap: 4, marginBottom: 16 }}
         options={推进权限们.map((v) => ({ value: v, label: <span>{v}<span style={{ color: "var(--text-muted)" }}>：{推进权限说明[v]}</span></span> }))}
       />
-      <div style={{ fontWeight: 500, marginBottom: 8 }}>出口叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
+      <div style={{ fontWeight: 500, marginBottom: 8 }}>结束状态叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
       {阶段们.map((s) => {
         const [成, 没成] = 企业版字典.出口们[s];
         return (

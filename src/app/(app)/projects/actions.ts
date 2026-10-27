@@ -375,7 +375,7 @@ export async function 移出项目组员(memberId: string) {
  * （「后台设置谁能改」，lib/enterprise/edit-perm-table.ts；老板总能改）
  */
 async function 挡组织规则(me: { id: string; role: string }, 改: 规则改动): Promise<string | null> {
-  const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各节点时限"], ["节点推进", "必填字段", "节点必填字段"], ["阶段", "阶段规则", "阶段出口叫法和往前推权限"]];
+  const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各节点时限"], ["节点推进", "必填字段", "节点必填字段"], ["阶段", "阶段规则", "阶段结束状态叫法和往前推权限"]];
   for (const [k, 项, 叫法] of 块) {
     if (改?.[k] === undefined) continue;
     const 挡 = await 挡改设置(me, 项);
@@ -398,7 +398,7 @@ export async function 改组织规则(改: 规则改动) {
     const g = 新.公海, t = 新.超时回收;
     const 推 = 新.节点推进;
     const 说 = 改.阶段 !== undefined
-      ? `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的出口叫法`
+      ? `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的结束状态叫法`
       : 改.节点推进 !== undefined
       ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个节点配了必填` : "组织规则：节点推进关"
       : 改.超时回收 !== undefined
