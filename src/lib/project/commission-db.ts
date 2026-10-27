@@ -34,7 +34,7 @@ export function 能改提成比例(me: 谁, org: 组织 | null): boolean {
 /** 更正已固定的实际提成：只有业务角色是总管理（director）的人；管理员（admin）、销售管理都不行（10-27 定）。
  *  没设业务角色的老板账号按账号角色推成总管理，所以默认能改 */
 export function 能更正提成(me: 谁, org: 组织 | null): boolean {
-  return !!org && org.成员.get(me.id)?.bizRole === "director";
+  return !!org && !!org.成员.get(me.id)?.角色们.includes("director");
 }
 
 /** 填 / 改项目底价：只有项目负责人（不在公海），老板、总管理员也不代填（10-26 定） */

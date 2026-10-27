@@ -20,7 +20,7 @@ import { jwtVerify } from "jose";
 import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
 import { 看得到, type 限定 } from "@/lib/team-scope";
-import { 建组织, 实线下属, 虚线下属, 管理员类别of, type 组织 } from "./org-core";
+import { 建组织, 实线下属, 虚线下属, 管理员类别of, 管理员类别们of, type 组织 } from "./org-core";
 import { 规则 } from "./rules";
 
 /** lib/auth.ts 的 COOKIE */
@@ -151,7 +151,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   if (!范围) return null;
   // 市场管理分线索（同 lead-assign 能分配；老板、总管理员上面已经不限定）：线索开着分配时全看全改，
   // 不然分出去就看不到、也分不了（F9 10-25）。客户那条线还是按组织架构
-  const 线索 = 管理员类别of(org, id) === "市场管理" && (await 开着(db, 规则.线索分配.key)) ? { 线索全看: true } : {};
+  const 线索 = 管理员类别们of(org, id).has("市场管理") && (await 开着(db, 规则.线索分配.key)) ? { 线索全看: true } : {};
   if (!范围.读) return { 我: 范围.写, 互看: false, 别人的: new Set(), ...线索 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）

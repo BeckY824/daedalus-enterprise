@@ -4,13 +4,16 @@
  * 不碰数据库，所以 Prisma 那一层的限定（lib/enterprise/visibility.ts）也能直接用，不会绕回 lib/prisma.ts；
  * 从库里读组织在 org.ts。
  */
-import { 是业务角色, 部门最多层数, type 业务角色, type 业务线 } from "@/lib/sync/dept-policy";
+import { 业务角色 as 角色顺序, 部门最多层数, type 业务角色, type 业务线 } from "@/lib/sync/dept-policy";
 import type { 组织部门 } from "./org-tree";
 
 export type 组织成员 = {
   userId: string;
   deptId: string | null;
+  /** 主角色 = 角色们里排最前的那个（按 dept-policy 的顺序） */
   bizRole: 业务角色;
+  /** 一个人可以兼几个角色（10-27 会议）；至少一个 */
+  角色们: 业务角色[];
   line: 业务线 | null;
   managerId: string | null;
   dottedManagerId: string | null;
@@ -22,6 +25,17 @@ export type 组织 = { 成员: Map<string, 组织成员>; 部门: Map<string, �
 export function 推业务角色(账号角色: string | null | undefined): 业务角色 {
   return 账号角色 === "ADMIN" ? "director" : 账号角色 === "MANAGER" ? "sales_mgr" : "sales";
 }
+
+/**
+ * EntMember.bizRole 存逗号串（10-27：业务角色可多选，不加字段）：拆开、丢掉不认识的、去重、按固定顺序排。
+ * 老数据就是一个角色，拆出来还是它自己。
+ */
+export function 拆角色(s: string | null | undefined): 业务角色[] {
+  const 有 = new Set(String(s ?? "").split(",").map((x) => x.trim()));
+  return 角色顺序.filter((r) => 有.has(r));
+}
+/** 存回库里的样子；空数组 = 空串（调用方自己挡） */
+export const 合角色 = (们: readonly string[]): string => 拆角色(们.join(",")).join(",");
 
 const 是业务线 = (x: unknown): x is 业务线 => x === "内贸" || x === "外贸";
 
@@ -36,11 +50,14 @@ export function 建组织(
   for (const u of users) {
     if (!u.active) continue;
     const m = 行.get(u.id);
+    const 拆 = 拆角色(m?.bizRole);
+    const 角色们 = 拆.length ? 拆 : [推业务角色(u.role)];
     成员.set(u.id, {
       userId: u.id,
       // 部门被删了的当没分部门
       deptId: m?.deptId && 部门.has(m.deptId) ? m.deptId : null,
-      bizRole: m && 是业务角色(m.bizRole) ? m.bizRole : 推业务角色(u.role),
+      bizRole: 角色们[0],
+      角色们,
       line: m && 是业务线(m.line) ? m.line : null,
       managerId: m?.managerId ?? null,
       dottedManagerId: m?.dottedManagerId ?? null,
@@ -61,11 +78,11 @@ export function 直属上级of(org: 组织, userId: string): string | null {
   if (m.managerId && m.managerId !== userId && org.成员.has(m.managerId)) return m.managerId;
 
   let dept = m.deptId;
-  if (m.bizRole === "sales_mgr" && dept) dept = org.部门.get(dept)?.parentId ?? null;
+  if (m.角色们.includes("sales_mgr") && dept) dept = org.部门.get(dept)?.parentId ?? null;
   // 多走两步兜住断链；成环的部门树走满步数就停
   for (let i = 0; dept && i < 部门最多层数 + 2; i++) {
     const 候选 = [...org.成员.values()]
-      .filter((x) => x.deptId === dept && x.bizRole === "sales_mgr" && x.userId !== userId)
+      .filter((x) => x.deptId === dept && x.角色们.includes("sales_mgr") && x.userId !== userId)
       .map((x) => x.userId)
       .sort();
     if (候选.length) return 候选[0];
@@ -105,12 +122,20 @@ export const 虚线下属 = (org: 组织, 我: string, 层数 = Infinity) => 下
 
 /** 企业版管理员三类（10-24）：销售管理 / 市场管理 / 总管理员；别的角色 = 不是管理员 */
 export type 管理员类别 = "销售管理" | "市场管理" | "总管理员";
+/** 兼几个角色的人，几类都算（10-27）：销售管理兼市场管理的，两边的权都有 */
+export function 管理员类别们of(org: 组织, userId: string): Set<管理员类别> {
+  const 们 = new Set<管理员类别>();
+  for (const r of org.成员.get(userId)?.角色们 ?? []) {
+    if (r === "director" || r === "admin") 们.add("总管理员");
+    else if (r === "sales_mgr") 们.add("销售管理");
+    else if (r === "marketing_mgr") 们.add("市场管理");
+  }
+  return 们;
+}
+/** 最高的那一类：总管理员 > 销售管理 > 市场管理；只问「是不是总管理员 / 是不是管理员」时用，问别的类用 管理员类别们of */
 export function 管理员类别of(org: 组织, userId: string): 管理员类别 | null {
-  const r = org.成员.get(userId)?.bizRole;
-  if (r === "director" || r === "admin") return "总管理员";
-  if (r === "sales_mgr") return "销售管理";
-  if (r === "marketing_mgr") return "市场管理";
-  return null;
+  const 们 = 管理员类别们of(org, userId);
+  return 们.has("总管理员") ? "总管理员" : 们.has("销售管理") ? "销售管理" : 们.has("市场管理") ? "市场管理" : null;
 }
 
 /** 部门在第几层（一级部门 = 1，null = 顶上 = 0）；断链、成环 = Infinity */

@@ -52,11 +52,12 @@ export function 谁能用(id: string, 配置: 分配谁能用配置): readonly �
 
 export function 能用分配方式(org: 组织, 我: { id: string; role: string }, id: string, 配置: 分配谁能用配置): boolean {
   if (我.role === "ADMIN") return true;
-  const r = org.成员.get(我.id)?.bizRole;
-  if (!r) return false;
-  if (r === "director" || r === "admin") return true;
+  const 们 = org.成员.get(我.id)?.角色们;
+  if (!们?.length) return false;
+  if (们.includes("director") || 们.includes("admin")) return true;
   const 能 = 谁能用(id, 配置);
-  return 能 === "所有人" || 能.includes(r as 分配可选角色);
+  // 兼几个角色的（10-27），哪个角色能用都算
+  return 能 === "所有人" || 们.some((r) => 能.includes(r as 分配可选角色));
 }
 
 /** 挡住时那句：「指定分配」只有总管理、管理员和市场管理、销售管理能用 */

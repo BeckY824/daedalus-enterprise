@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { App, Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd";
 import { 角色名, 业务角色, 部门最多层数 } from "@/lib/sync/dept-policy";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
+import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
 import { 规则, 规则名们, type 规则名 } from "@/lib/enterprise/rules-table";
 import { 字段, 字段名们, 字段级别of, 推荐字段配置, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
@@ -302,7 +303,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         <p className="muted">业务线用来分线索：内贸线索只分给内贸的人，外贸同理，「两边都做」两种都能分到。虚线上级只能看他的客户，不能改、不能转。</p>
         <ul className="team-dept-members" data-testid="org-members">
           {value.成员.map((m) => {
-            const 改他 = 能改 && (是老板 || !总管级(m.bizRole));
+            const 他的角色 = 拆角色(m.bizRole);
+            const 改他 = 能改 && (是老板 || !他的角色.some(总管级));
             const 别人 = value.成员.filter((x) => x.id !== m.id).map((x) => ({ value: x.id, label: x.name }));
             return (
               <li key={m.id} data-testid={`org-member-${m.id}`}>
@@ -311,9 +313,10 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                   value={m.deptId ?? "__无"} onChange={(v) => 设(m.id, { deptId: v === "__无" ? null : v })}
                   labelRender={({ value: v }) => 名.get(String(v)) ?? "未分部门"}
                   options={[{ value: "__无", label: "未分部门" }, ...部门选项]} />
-                <Select size="small" style={{ minWidth: 110 }} aria-label={`${m.name} 的角色`} disabled={!改他 || 忙}
-                  value={m.bizRole} onChange={(v) => 设(m.id, { bizRole: v })}
-                  options={业务角色.filter((r) => 是老板 || !总管级(r) || r === m.bizRole).map((r) => ({ value: r, label: 角色名[r] }))} />
+                {/* 业务角色可多选（10-27）：一个人兼销售管理和市场管理之类；至少留一个，清空不交 */}
+                <Select size="small" mode="multiple" style={{ minWidth: 150, maxWidth: 320 }} aria-label={`${m.name} 的角色`} disabled={!改他 || 忙}
+                  value={他的角色} onChange={(v: string[]) => { if (v.length) 设(m.id, { bizRole: 合角色(v) }); }}
+                  options={业务角色.filter((r) => 是老板 || !总管级(r) || 他的角色.includes(r)).map((r) => ({ value: r, label: 角色名[r] }))} />
                 <Select size="small" style={{ minWidth: 110 }} aria-label={`${m.name} 的业务线`} disabled={!改他 || 忙}
                   value={m.line ?? "__都"} onChange={(v) => 设(m.id, { line: v === "__都" ? null : v })}
                   options={[{ value: "__都", label: "两边都做" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />

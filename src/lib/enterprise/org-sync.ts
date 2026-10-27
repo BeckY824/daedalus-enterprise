@@ -22,7 +22,7 @@ import { encryptSecret, getSetting, invalidateSettingsCache, maskSecret } from "
 import { recordAudit, type Actor } from "@/lib/audit";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 建组织, 上级设置问题, 推业务角色 } from "@/lib/enterprise/org-core";
+import { 建组织, 上级设置问题, 推业务角色, 拆角色, 合角色 } from "@/lib/enterprise/org-core";
 import { 是业务角色, 部门最多层数, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 连接键, 当前联网, 读连接配置 } from "@/lib/enterprise-import/adapter";
 import { 飞书适配器 } from "@/lib/enterprise-import/feishu";
@@ -49,7 +49,7 @@ export type 通讯录设置 = {
   /** 上游人 ID → User.id */
   人对照: Record<string, string>;
   /** 上次同步给每个人的业务角色：这边的和它不一样 = 有人手动改过，不覆盖 */
-  给过: Record<string, 业务角色>;
+  给过: Record<string, string>;
   /** 多久同步一次：默认每小时，可改半小时 */
   间隔分钟?: 通讯录间隔;
 };
@@ -62,6 +62,10 @@ export const 通讯录键 = (源: 通讯录来源) => `entOrgSync.${源}`;
 export const 通讯录间隔毫秒 = 55 * 60_000;
 const 间隔毫秒 = (s: Pick<通讯录设置, "间隔分钟">) => (s.间隔分钟 === 30 ? 25 * 60_000 : 通讯录间隔毫秒);
 /** 角色对照只能给到这些：总管理 / 管理员只有老板在组织页手动给 */
+/** 业务角色可多选（10-27），存逗号串；比较前先规整，顺序不同不算改过 */
+const 规整角色 = (x: string | null | undefined) => 拆角色(x).join(",");
+/** 通讯录只管销售这一摊：换掉销售 / 销售管理，兼着的其它角色留着 */
+const 换销售角色 = (现: string | undefined, 新: "sales" | "sales_mgr") => 合角色([...拆角色(现).filter((r) => r !== "sales" && r !== "sales_mgr"), 新]);
 export const 对照能给的角色 = (r: unknown): r is 业务角色 => 是业务角色(r) && r !== "director" && r !== "admin";
 /** 同步建的账号的密码占位：不是 bcrypt 串，登录永远对不上，要管理员在用户管理里设密码 */
 const 不能登录 = "!通讯录同步建的账号-请在用户管理里设密码";
@@ -200,7 +204,7 @@ type 人计划 = {
   新建?: { email: string; name: string; title: string };
   deptExt: string | null;
   上级外部ID: string | null;
-  bizRole: 业务角色 | null;
+  bizRole: string | null;
 };
 
 /** 上游每个部门在第几层（根下面 = 1）；断链的当挂在根上，成环的截断 */
@@ -373,8 +377,8 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
         // 现有的人：没有 EntMember 行的按账号角色推（和组织页一致）
         const 现角色 = uid ? (成员有.get(uid)?.bizRole ?? 推业务角色(用户有.get(uid)?.role)) : undefined;
         const 老板 = uid ? 用户有.get(uid)?.role === "ADMIN" : false;
-        const 总管级 = 现角色 === "director" || 现角色 === "admin";
-        const 手动改过 = !!uid && s.给过[uid] !== undefined && 现角色 !== s.给过[uid];
+        const 总管级 = 拆角色(现角色).some((r) => r === "director" || r === "admin");
+        const 手动改过 = !!uid && s.给过[uid] !== undefined && 规整角色(现角色) !== 规整角色(s.给过[uid]);
         // 第一次同步认到的现有账号：只有职务对照（管理员明确配的）能改它的角色，别的保持原样
         const 第一次认到 = !!uid && s.给过[uid] === undefined;
         const 对上的 = 职务 ? s.角色对照[职务] : undefined;
@@ -382,7 +386,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
         if (老板 || 总管级 || 手动改过) continue;
         if (对上的 && 对照能给的角色(对上的)) 这个.bizRole = 对上的;
         else if (第一次认到) continue;
-        else 这个.bizRole = p.是负责人 ? "sales_mgr" : "sales";
+        else 这个.bizRole = 换销售角色(现角色, p.是负责人 ? "sales_mgr" : "sales");
       }
 
       // 先把要建的账号建出来，拿到 id
@@ -412,7 +416,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
         const bizRole = p.bizRole ?? 原?.bizRole ?? 推业务角色(用户有.get(uid)?.role);
         if (p.bizRole) 给过[uid] = p.bizRole;
         // 第一次认到、没动它的：记下当时的角色，下次才分得清是不是有人手动改过
-        else if (给过[uid] === undefined && 是业务角色(bizRole)) 给过[uid] = bizRole;
+        else if (给过[uid] === undefined && 拆角色(bizRole).length) 给过[uid] = 规整角色(bizRole);
         目标.set(uid, { deptId, bizRole, managerId: 原?.managerId ?? null, line: 原?.line ?? null, dottedManagerId: 原?.dottedManagerId ?? null });
       }
       const 部门后 = await tx.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } });

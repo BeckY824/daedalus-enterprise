@@ -10,7 +10,7 @@
  */
 import { getSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 管理员类别of, type 组织 } from "./org-core";
+import { 管理员类别们of, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
 
 export type 满额提醒 = { id: string; at: string; 条数: number; 线索: string[]; 谁点的: string };
@@ -21,8 +21,8 @@ const 最多留 = 20;
 /** 收提醒的人：组织里的市场管理、总管理员（没建组织行的老板按账号推成总管理员，也在内） */
 export function 满额提醒收件人(org: 组织): string[] {
   return [...org.成员.keys()].filter((id) => {
-    const 类 = 管理员类别of(org, id);
-    return 类 === "市场管理" || 类 === "总管理员";
+    const 类们 = 管理员类别们of(org, id);
+    return 类们.has("市场管理") || 类们.has("总管理员");
   });
 }
 
