@@ -75,12 +75,14 @@ beforeEach(async () => {
 });
 
 describe("纯函数", () => {
-  it("默认表照批注：指定 市场+销售+其他，自动 / 公海捞取 市场+其他，暂不分配 市场，自拓自持 销售+其他", () => {
-    expect(分配默认谁能用[分配方式id.指定]).toEqual(["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"]);
-    expect(分配默认谁能用[分配方式id.自动]).toEqual(["marketing_mgr", "channel_ops", "project_ops"]);
-    expect(分配默认谁能用[分配方式id.公海捞取]).toEqual(["marketing_mgr", "channel_ops", "project_ops"]);
+  it("默认表照 10-27 会上定的：销售只有指定、自持；市场除自持外都有；其他角色一样都没有", () => {
+    expect(分配默认谁能用[分配方式id.指定]).toEqual(["marketing_mgr", "sales_mgr", "sales"]);
+    expect(分配默认谁能用[分配方式id.自动]).toEqual(["marketing_mgr"]);
+    expect(分配默认谁能用[分配方式id.公海捞取]).toEqual(["marketing_mgr"]);
     expect(分配默认谁能用[分配方式id.暂不分配]).toEqual(["marketing_mgr"]);
-    expect(分配默认谁能用[分配方式id.自拓自持]).toEqual(["sales_mgr", "sales", "channel_ops", "project_ops"]);
+    expect(分配默认谁能用[分配方式id.自拓自持]).toEqual(["sales_mgr", "sales"]);
+    // 按角色看：其他角色（渠道运营、项目运营）默认五项都不能用
+    for (const r of ["channel_ops", "project_ops"] as const) expect(Object.values(分配默认谁能用).some(v => v.includes(r))).toBe(false);
     expect(谁能用("dict-assign-9", {})).toBe("所有人");
     expect(谁能用(分配方式id.自动, { [分配方式id.自动]: [] })).toEqual([]);
   });
@@ -102,9 +104,12 @@ describe("纯函数", () => {
     expect(能(分配方式id.暂不分配, 市场)).toBe(true);
     expect(能(分配方式id.暂不分配, 销售)).toBe(false);
     expect(能(分配方式id.公海捞取, 销售)).toBe(false);
-    expect(能(分配方式id.公海捞取, 渠道)).toBe(true);
+    expect(能(分配方式id.公海捞取, 渠道)).toBe(false);
+    expect(能(分配方式id.公海捞取, 市场)).toBe(true);
     expect(能(分配方式id.自拓自持, 市场)).toBe(false);
-    expect(能(分配方式id.自拓自持, 项运)).toBe(true);
+    expect(能(分配方式id.自拓自持, 销售)).toBe(true);
+    expect(能(分配方式id.自拓自持, 项运)).toBe(false);
+    expect(能(分配方式id.指定, 渠道)).toBe(false);
     expect(能("dict-assign-9", 销售)).toBe(true);
     expect(能(分配方式id.公海捞取, 销售, "SALES", { [分配方式id.公海捞取]: ["sales"] })).toBe(true);
     expect(能(分配方式id.指定, "没这个人")).toBe(false);
