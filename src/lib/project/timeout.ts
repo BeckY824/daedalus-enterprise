@@ -78,5 +78,10 @@ export function 即将回收(回收日: string | null, 今: Date | string = new 
 
 /** 回收前一天给负责人的待办提醒标题（同一天同一个项目只提醒一次，按标题查重） */
 export function 将回收提醒(项目名: string, 节点: string, 回收日: string): string {
-  return `项目「${项目名}」在「${节点}」再不跟进，${回收日} 会自动回到项目公海`;
+  return `${将回收提醒头(项目名, 节点)}${回收日} 会自动回到项目公海`;
+}
+
+/** 提醒标题去掉回收日的那截：记了沟通后按它找这个项目这个节点还没勾的提醒 */
+export function 将回收提醒头(项目名: string, 节点: string): string {
+  return `项目「${项目名}」在「${节点}」再不跟进，`;
 }

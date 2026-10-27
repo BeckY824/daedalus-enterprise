@@ -17,7 +17,7 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因 } from "@/lib/enterprise/dict";
 import { 生效组织规则 } from "./org-rules-store";
-import { 超时回收日, 已超时, 即将回收, 将回收提醒, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
+import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
@@ -682,8 +682,25 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
     if (!c?.lastFollowAt || c.lastFollowAt < 好.occurredAt) await 看全部(() => tx.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 好.occurredAt } }));
     if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
-    return { ok: true as const, followUpId: 跟进.id, ...带推进(await 按必填推进(tx, 规则, me, p.id)) };
+    const 推进 = await 按必填推进(tx, 规则, me, p.id);
+    await 勾掉将回收提醒(tx, 规则, p, now);
+    return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
   });
+}
+
+/**
+ * 企业版（10-27）：记了沟通，回收日往后推了、不再是明天以内，负责人那条「再不跟进」的提醒跟着勾掉。
+ * 下一步时间填的今天（回收日还是明天）就不勾：明天那条提醒照样作数。按记沟通前的项目名 + 节点找（自动推进可能换了节点）
+ */
+async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组织规则, p: { id: string; name: string; node: string; ownerId: string; customerId: string }, now: Date): Promise<void> {
+  if (!企业版()) return;
+  const 现 = await 看全部(() => tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 }));
+  const 日 = 现 && 项目回收日(规则, 现);
+  if (日 && 即将回收(日, now)) return;
+  await 看全部(() => tx.task.updateMany({
+    where: { ownerId: p.ownerId, customerId: p.customerId, done: false, title: { startsWith: 将回收提醒头(p.name, p.node) } },
+    data: { done: true, doneAt: now },
+  }));
 }
 
 /**
