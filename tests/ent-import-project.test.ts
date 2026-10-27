@@ -2,7 +2,7 @@
  * 企业版只用项目时，飞书 / Excel 导入的「商机」行建成项目（10-26 用户：「把线索，商机，订单都放到项目里，是三大阶段」）。
  *
  *   阶段对照认项目节点：2.0 节点原样、1.0 叫法按旧名表、别的按同义词；结局（流失 / 丢单 / 交付）落成 result
- *   另一列状态说了输单：线索阶段算线索流失，往后算丢单
+ *   另一列状态说了输单：线索阶段算线索流失，商机阶段算丢单，订单阶段标异常状态、停在原节点（10-27）
  *   跟进挂到父项目当前节点；撤回整批删项目（连节点日志、挂项目那条），恢复照原 id 建回
  *   开关关：照旧建商机
  */
@@ -74,12 +74,13 @@ describe("项目模式", () => {
         ["O4", "C2", "老客户回访", "流失", "", "", "", "2025-03-05"],
         ["O5", "C2", "去年标书", "备货安装", "输单", "", "", "2025-04-01"],
         ["O6", "C1", "交付完的", "已交付", "", "8万", "", "2025-05-01"],
+        ["O7", "C1", "商机里输的", "签订合同", "输单", "", "", "2025-06-01"],
       ]),
     ]);
     expect(报告.映射.项目).toBe(true);
     expect(报告.映射.值.filter((v) => v.名 === "阶段").every((v) => v.叫法 === "项目节点")).toBe(true);
     expect(await prisma.opportunity.count()).toBe(0);
-    expect(await prisma.project.count()).toBe(6);
+    expect(await prisma.project.count()).toBe(7);
 
     const 一 = await 项目("服务器采购");
     expect([一.phase, 一.node, 一.result, 一.amount]).toEqual(["商机", "共识方案", null, 120000]);
@@ -94,9 +95,15 @@ describe("项目模式", () => {
     const 流失 = await 项目("老客户回访");
     expect([流失.phase, 流失.node, 流失.result]).toEqual(["线索", "潜客培育", "线索流失"]);
     expect(流失.closedAt).toEqual(new Date("2025-03-05T00:00:00"));
-    // 订单阶段的节点 + 状态列说输单：丢单只在商机阶段，退回商机第一个节点
+    // 订单阶段的节点 + 状态列说输单：统一标成异常状态、停在原订单节点，不退回商机；类别留空，导完补
     const 丢 = await 项目("去年标书");
-    expect([丢.phase, 丢.node, 丢.result]).toEqual(["商机", "明确需求", "丢单"]);
+    expect([丢.phase, 丢.node, 丢.result, 丢.exceptionCategoryId]).toEqual(["订单", "生产备货", "异常状态", null]);
+    expect(丢.closedAt).toEqual(new Date("2025-04-01T00:00:00"));
+    expect(丢.logs[0]).toMatchObject({ toPhase: "订单", toNode: "生产备货", toResult: "异常状态" });
+    expect(报告.问题).toContainEqual(expect.objectContaining({ 外部ID: "O5", 级别: "提醒", 说明: expect.stringContaining("异常类别导完") }));
+    // 商机阶段的输单照旧是丢单，停在原节点
+    const 商机丢 = await 项目("商机里输的");
+    expect([商机丢.phase, 商机丢.node, 商机丢.result]).toEqual(["商机", "签订合同", "丢单"]);
     const 交付 = await 项目("交付完的");
     expect([交付.phase, 交付.node, 交付.result]).toEqual(["订单", "尾款结算", "成功交付"]);
   });
