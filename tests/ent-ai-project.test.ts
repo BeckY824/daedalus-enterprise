@@ -132,6 +132,10 @@ describe("确认新线索卡", () => {
     id: "p1", kind: "add_lead" as const, customerId: "", customerName: "", reason: "测试",
     name: "星河电子", contact: "周经理", phone: "13700001234", source: "展会", status: "待跟进", remark: "要样品", ...补,
   });
+  let 展会: string;
+  beforeEach(async () => {
+    展会 = (await prisma.channel.create({ data: { name: "展会", channelOwnerId: 老板.id } })).id;
+  });
 
   it("只用项目：建客户 + 线索阶段的项目 + 首条跟进，不写线索表", async () => {
     当(乙);
@@ -139,11 +143,24 @@ describe("确认新线索卡", () => {
     expect(r).toMatchObject({ ok: true });
     expect(await prisma.lead.count()).toBe(0);
     const p = await prisma.project.findFirstOrThrow({ include: { customer: true } });
-    expect(p).toMatchObject({ name: "星河电子", phase: "线索", result: null, ownerId: 乙.id });
-    expect(p.customer).toMatchObject({ name: "星河电子", salesOwnerId: 乙.id, remark: "要样品" });
+    expect(p).toMatchObject({ name: "星河电子", phase: "线索", node: "潜客培育", result: null, ownerId: 乙.id });
+    expect(p.customer).toMatchObject({ name: "星河电子", salesOwnerId: 乙.id, remark: "要样品", channelId: 展会 });
     expect(await prisma.contact.findFirst({ where: { customerId: p.customerId } })).toMatchObject({ name: "周经理", phone: "13700001234" });
     const 跟进 = await prisma.followUp.findFirstOrThrow({ where: { customerId: p.customerId } });
-    expect(跟进.content).toBe("在首页对话里新建的线索，来源：展会");
+    expect(跟进.content).toBe("在首页对话里新建的线索，渠道：展会");
+    expect(await prisma.entFollowUpMark.findFirstOrThrow({ where: { followUpId: 跟进.id } })).toMatchObject({ phase: "线索", replied: false });
+  });
+
+  it("只用项目：来源里只含一个渠道名也认；对不上或停用的不猜，不建", async () => {
+    当(乙);
+    expect(await applyProposal(线索卡({ source: "展会认识的" }) as never)).toMatchObject({ ok: true });
+    await prisma.channel.update({ where: { id: 展会 }, data: { active: false } });
+    for (const source of ["展会", "其他"]) {
+      expect(await applyProposal(线索卡({ id: `p-${source}`, name: `星河${source}`, phone: "", source }) as never)).toEqual({
+        ok: false, error: "新线索要选渠道，卡上的来源对不上渠道：请到「新线索」页用向导建",
+      });
+    }
+    expect(await prisma.project.count()).toBe(1);
   });
 
   it("只用项目、开了超时回收：不建，说去「新线索」页用向导建", async () => {

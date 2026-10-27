@@ -38,7 +38,7 @@ describe("企业版卡点", () => {
     return { id: u.id, role };
   }
   async function 沟通(me: 人 = 销售, pid = 项目) {
-    const r = await 记项目沟通(me, pid, { type: "PHONE", content: "客户说预算要等下月", occurredAt: 今天, 下一步时间: 今天 }, now);
+    const r = await 记项目沟通(me, pid, { type: "PHONE", content: "客户说预算要等下月", occurredAt: 今天, 下一步时间: 今天, 阶段: "线索", 明确回复: true }, now);
     expect(r.ok, JSON.stringify(r)).toBe(true);
     return r.followUpId!;
   }

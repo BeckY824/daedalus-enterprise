@@ -19,6 +19,8 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true});");
   // 分配那几个 server action：记下调了什么，回成功
   stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒');");
+  // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
+  stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,指认卡点Action=好,认领卡点Action=好,接受卡点Action=好,转让卡点Action=好,返回卡点Action=好,改卡点进度Action=好,解决卡点Action=好,卡点可选的人Action=async()=>[];");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

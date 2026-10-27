@@ -38,7 +38,7 @@ beforeEach(async () => {
   mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
   const c = await prisma.customer.create({ data: { name: "客户", phone: "13800000001", salesOwnerId: 甲 } });
   项目id = (await prisma.project.create({ data: { name: "一期", customerId: c.id, ownerId: 甲, creatorId: 甲 } })).id;
-  const r = await 记项目沟通({ id: 甲, role: "ADMIN" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10) });
+  const r = await 记项目沟通({ id: 甲, role: "ADMIN" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
   沟通id = r.followUpId!;
 });
 afterEach(() => { vi.unstubAllEnvs(); });

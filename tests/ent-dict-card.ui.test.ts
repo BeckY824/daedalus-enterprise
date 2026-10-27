@@ -5,10 +5,10 @@ import path from "node:path";
 import { chromium, type Browser } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "stub-actions", setup(b) {
-  b.onResolve({ filter: /\/projects\/actions$|\/ent-dict-actions$|^next\/navigation$/ }, (a) => ({ path: a.path, namespace: "fixture" }));
+  b.onResolve({ filter: /\/projects\/actions$|\/ent-dict-actions$|\/blocker-actions$|\/commission-actions$|^next\/navigation$/ }, (a) => ({ path: a.path, namespace: "fixture" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ loader: "js", contents: `
     const 空=async()=>({ok:true});
-    export const 加组员角色=空, 改组员角色=空, 加项目异常类别=空, 改项目异常类别=空, 改组织规则=空, 预览超时回收=async()=>({ok:true,项目:[]});
+    export const 加组员角色=空, 改组员角色=空, 加项目异常类别=空, 改项目异常类别=空, 改组织规则=空, 预览超时回收=async()=>({ok:true,项目:[]}), 存卡点默认Action=空, 改提成比例=空;
     export const 加企业选项=async(kind,name)=>{window.__opts[kind].push({id:'n'+name,name,active:true,用的人:0});window.__rerender();return{ok:true}};
     export const 改企业选项=async(id,patch)=>{for(const xs of Object.values(window.__opts))for(const x of xs)if(x.id===id)Object.assign(x,patch);window.__rerender();return{ok:true}};
     export const useRouter=()=>({refresh(){}});` }));

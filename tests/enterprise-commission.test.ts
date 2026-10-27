@@ -190,7 +190,7 @@ describe("项目底价和分配", () => {
 });
 
 describe("赢单固定实际提成", () => {
-  it("进订单那一刻按当时的比例固定；之后改比例、改金额不动实际；退回商机清掉", async () => {
+  it("进订单那一刻按当时的比例固定；之后改比例、改金额不动实际；退不回商机，固定一直不动", async () => {
     当(乙, "SALES");
     await 存项目底价(项目id, 100000);
     await 存提成分配(项目id, { [丙]: 25 });
@@ -211,10 +211,10 @@ describe("赢单固定实际提成", () => {
     当(乙, "SALES");
     expect(await 存项目底价(项目id, 90000)).toMatchObject({ ok: false, error: expect.stringContaining("已经赢单") });
 
+    // 进了订单不回商机（10-26 三大阶段规则），固定的提成也就一直不动
     当(甲, "ADMIN");
-    expect(await 改节点(mocks.user, 项目id, { phase: "商机", node: "首款支付" })).toMatchObject({ ok: true });
-    expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedAt: null, fixedTotal: null, basePrice: 100000 });
-    expect((await 卡({ id: 乙, role: "SALES" }))!.实际).toBeNull();
+    expect(await 改节点(mocks.user, 项目id, { phase: "商机", node: "首款支付" })).toMatchObject({ ok: false, error: expect.stringContaining("不能退回商机") });
+    expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedTotal: 8000, basePrice: 100000 });
   });
 
   it("没填底价就赢单：在订单阶段补填底价时固定", async () => {
