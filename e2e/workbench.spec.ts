@@ -191,8 +191,9 @@ test("客户列表：默认只摆六列，其余在「列」里", async ({ page 
   await page.goto("/customers");
   await page.waitForSelector(".ant-table-row");
 
-  // 六列 + 勾选框 + 操作列
-  const 表头 = await page.locator(".ant-table-thead th").allInnerTexts();
+  // 六列 + 勾选框 + 操作列；操作列的「操作」只给读屏念（.sr-only），不算看得见的列
+  const 表头 = await page.locator(".ant-table-thead th").evaluateAll((ths) =>
+    ths.map((th) => { const c = th.cloneNode(true) as HTMLElement; c.querySelectorAll(".sr-only").forEach((e) => e.remove()); return c.textContent ?? ""; }));
   expect(表头.filter((t) => t.trim()).length).toBe(6);
 
   // 收起来的列要能勾出来
