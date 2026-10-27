@@ -1141,7 +1141,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-side .cust-link-t { overflow-wrap: anywhere; }
 @container (max-width: 880px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
 /* 基本资料「展开更多 N 项」、左栏底部「更多」：文字按钮靠左，和字段左缘对齐 */
-.rec-sec-more, .rec-more .ant-btn { padding: 0 8px; height: auto; }
+.rec-sec-more { padding: 0 8px; height: auto; }
 
 .rec-composer { padding: 14px 16px 12px; }
 .rec-composer textarea { font-size: var(--fs-section); }

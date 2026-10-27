@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
-/* 10-27 会议：企业版客户页左栏——联系人一人一卡、电话 / 邮箱 / 微信完整显示可点，空字段收起，推荐 / 报价 / 签约收进「更多」。
+/* 10-27 会议：企业版客户页左栏——联系人一人一卡、电话 / 邮箱 / 微信完整显示可点，空字段收起，推荐 / 报价 / 签约不摆（纪要：客户页仅保留基础信息、联系人、关联项目三类）。
    开关关闭（不传 项目们）时左栏保持原样 */
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
@@ -66,7 +66,7 @@ it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在、可点�
     expect(await page.getByText("ww_buyer").count()).toBe(1);
   } finally { await page.close(); }
 });
-it("企业版：空字段收起、「展开更多」能展开；签约收进「更多」；1024 宽不横滚", async () => {
+it("企业版：空字段收起、「展开更多」能展开；没有签约、推荐关系；1024 宽不横滚", async () => {
   const page = await open(true, 1024);
   try {
     expect(await page.locator("[data-field='remark']").count()).toBe(0);
@@ -77,9 +77,8 @@ it("企业版：空字段收起、「展开更多」能展开；签约收进「�
     await page.getByRole("button", { name: "收起没填的" }).click();
     expect(await page.locator("[data-field='remark']").count()).toBe(0);
     expect(await page.getByText("登记签约").count()).toBe(0);
-    await page.getByRole("button", { name: /^更多：/ }).click();
-    expect(await page.getByText("登记签约").count()).toBe(1);
-    expect(await page.getByText("推荐人").count()).toBe(1);
+    expect(await page.getByText("推荐人").count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^更多：/ }).count()).toBe(0);
     const aside = page.locator("aside").first();
     expect(await aside.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   } finally { await page.close(); }

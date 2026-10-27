@@ -144,11 +144,10 @@ export default function RecordView({
   /*
     企业版项目模式（10-27 会议：前台冗余优化，先做一版、对方终稿到了再调）：
     基本资料只摆填了的，没填的收进「展开更多」；联系人每人一张小卡，电话 / 邮箱 / 微信各一行完整显示、点了能拨能发；
-    推荐关系、签约收进左栏最底下的「更多」。个人版、团队版不变
+    推荐关系、签约不摆（纪要：「客户页仅保留 基础信息、联系人、关联项目 三类核心内容」；数据都还在，个人版、团队版不变）
   */
   const 企业 = 项目们 !== null;
   const [资料全开, set资料全开] = useState(false);
-  const [更多开, set更多开] = useState(false);
   /*
     外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」、多出订单号；
     不摆预计签约、推荐关系、渠道负责人；档案里多国家 / WhatsApp / 微信 / 邮箱 / 来源
@@ -440,7 +439,7 @@ export default function RecordView({
     router.refresh();
   }
 
-  /** 推荐关系那一节：个人版 / 团队版摆在基本资料下面，企业版收进左栏最底下的「更多」 */
+  /** 推荐关系那一节：个人版 / 团队版摆在基本资料下面，企业版不摆 */
   const 推荐节 = !外贸 && (
           <div className="rec-sec">
             <div className="rec-sec-t">
@@ -782,21 +781,12 @@ export default function RecordView({
             </div>
           )}
 
-          {/* 企业版：推荐关系、报价、签约不是天天看的，收进左栏最底下的「更多」，联系人和项目往上提 */}
-          {企业 && (
-            <div className="rec-sec rec-more">
-              <Button type="link" size="small" onClick={() => set更多开(!更多开)} aria-expanded={更多开}>
-                {更多开 ? "收起" : "更多"}：{[!外贸 && "推荐关系", 报价记录.length > 0 && "报价记录", 叫].filter(Boolean).join("、")}
-              </Button>
-            </div>
-          )}
-          {企业 && 更多开 && 推荐节}
 
           {/*
             报价记录（2026-10-03）：这个客户历次报过的产品和单价，新的在前。没报过就不出现这一节（少即是多）。
             先摆 5 行，多了点开——左栏是档案，不是报价单
           */}
-          {(!企业 || 更多开) && 报价记录.length > 0 && (
+          {!企业 && 报价记录.length > 0 && (
             <div className="rec-sec">
               <div className="rec-sec-t">
                 <span>报价记录 {报价记录.length}</span>
@@ -823,7 +813,7 @@ export default function RecordView({
             </div>
           )}
 
-          {(!企业 || 更多开) && (
+          {!企业 && (
           <div className="rec-sec">
             <div className="rec-sec-t">
               <span>{叫} {contracts.length > 0 && contracts.length}</span>
