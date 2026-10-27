@@ -62,7 +62,8 @@ export default function AuditTab({ logs }: { logs: AuditRow[] }) {
                 rowKey="id"
                 size="middle"
                 dataSource={logs}
-                scroll={{ x: 760 }}
+                // 留个底：手机上内容那列至少还有 160 宽，放不下就在框里横滚；1024 的设置页约 494，不滚
+                scroll={{ x: 480 }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
                 locale={{ emptyText: "还没有任何操作记录" }}
                 expandable={{
@@ -82,36 +83,39 @@ export default function AuditTab({ logs }: { logs: AuditRow[] }) {
                     </pre>
                   ),
                 }}
+                // 时间两行、动作和对象并一格（10-27）：设置弹窗里不用左右拖，内容那列多留宽度
                 columns={[
-      {
+                  {
                     title: "时间",
                     dataIndex: "at",
-                    width: 170,
-                    render: (v: string) => dayjs(v).format("YYYY-MM-DD HH:mm:ss"),
-                  },
-      {
-                    title: "操作人",
-                    dataIndex: "userName",
-                    width: 130,
-                    render: (v: string) => <UserCell name={v} size={26} />,
-                  },
-      {
-                    title: "动作",
-                    dataIndex: "action",
                     width: 100,
                     render: (v: string) => (
-                      <Tag color={ACTION_COLOR[v] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
-                        {ACTION_LABEL[v] ?? v}
-                      </Tag>
+                      <span className="audit-at">
+                        {dayjs(v).format("YYYY-MM-DD")}
+                        <span className="muted">{dayjs(v).format("HH:mm:ss")}</span>
+                      </span>
                     ),
                   },
-      {
-                    title: "对象",
-                    dataIndex: "entity",
-                    width: 90,
-                    render: (v: string) => (v === "Customer" ? b.customer : ENTITY_LABEL[v] ?? v),
+                  {
+                    title: "操作人",
+                    dataIndex: "userName",
+                    width: 120,
+                    render: (v: string) => <UserCell name={v} size={26} />,
                   },
-                  { title: "内容", dataIndex: "summary" },
+                  {
+                    title: "动作",
+                    dataIndex: "action",
+                    width: 96,
+                    render: (v: string, r: AuditRow) => (
+                      <span className="audit-act">
+                        <Tag color={ACTION_COLOR[v] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
+                          {ACTION_LABEL[v] ?? v}
+                        </Tag>
+                        <span className="muted">{r.entity === "Customer" ? b.customer : ENTITY_LABEL[r.entity] ?? r.entity}</span>
+                      </span>
+                    ),
+                  },
+                  { title: "内容", dataIndex: "summary", render: (v: string) => <span style={{ wordBreak: "break-word" }}>{v}</span> },
                 ]}
               />
     </>

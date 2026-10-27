@@ -148,12 +148,12 @@ export default function ProjectsView({
   }
 
   const 列表: 列<项目行>[] = [
-    { title: "项目", dataIndex: "name", width: 200, ellipsis: true },
-    { title: b.customer, key: "customer", width: 180, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
-    { title: "节点", key: "node", width: 170, render: (_, r) => 节点文字(r, 字典) },
-    { title: "金额", key: "amount", width: 130, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
+    { title: "项目", dataIndex: "name", width: 180, render: (v: string) => <span className="clamp" title={v}>{v}</span> },
+    { title: b.customer, key: "customer", width: 170, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
+    { title: "节点", key: "node", width: 150, render: (_, r) => 节点文字(r, 字典) },
+    { title: "金额", key: "amount", width: 120, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>公海</Tag> : <UserCell name={r.ownerName} />) }]),
-    { title: "最近更新", key: "updatedAt", width: 120, render: (_, r) => fmtDate(r.updatedAt) },
+    { title: "最近更新", key: "updatedAt", width: 100, render: (_, r) => fmtDate(r.updatedAt) },
     // 已线索流失的不再分（服务端也拦）
     ...(可分 ? [{
       title: "", key: "act", width: 90, fixed: "right" as const,

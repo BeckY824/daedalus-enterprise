@@ -225,7 +225,7 @@ test("1024：拖到第二行的列里，整列亮、松手就推进", async ({ p
   await expect(第一列.locator(".pipe-card", { hasText: "Drag me into the second row" })).toBeVisible();
 });
 
-test("1280：卡片底行两个负责人 + 大额 + 长英文名，金额一行、负责人不冲出卡片", async ({ page }) => {
+test("1280：卡片底行两个负责人 + 大额 + 长英文名，金额一行、负责人换行写全不冲出卡片", async ({ page }) => {
   await 开管道(page, 1280, 680);
   const 大 = page.locator(".pipe-card", { hasText: "Big order · long owner" });
   const 欧 = page.locator(".pipe-card", { hasText: "EUR order · my own" });
@@ -243,6 +243,7 @@ test("1280：卡片底行两个负责人 + 大额 + 长英文名，金额一行�
       有负责人: !!人,
       负责人一行: 人 ? 一行(人) : null,
       负责人出界: 人 ? 人.getBoundingClientRect().right > 框.right - 1 : null,
+      负责人写全: 人 ? 人.scrollWidth <= 人.clientWidth + 1 && 人.getBoundingClientRect().bottom <= 框.bottom : null,
       负责人提示: 人?.title ?? null,
     };
   });
@@ -251,7 +252,8 @@ test("1280：卡片底行两个负责人 + 大额 + 长英文名，金额一行�
   expect(a.金额, "大额").toMatch(/1,234,567\.89/);
   expect(a.金额一行, "金额一行写完").toBe(true);
   expect(a.金额出界, "金额冲出卡片").toBe(false);
-  expect(a.负责人一行, "长英文名一行省略").toBe(true);
+  // 10-27 起长名字换行写全、不省略（演示反馈「文字显示不全」）：只要不冲出卡片、字都看得见
+  expect(a.负责人写全, "长英文名换行写全").toBe(true);
   expect(a.负责人出界, "长英文名冲出卡片").toBe(false);
   expect(a.负责人提示, "悬停看全名").toBe(另一个人.名);
   const b = await 量底行(欧);

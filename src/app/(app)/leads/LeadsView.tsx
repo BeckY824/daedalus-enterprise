@@ -213,18 +213,18 @@ export default function LeadsView({
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, rows.map((r) => r.ownerId));
 
   const 列表: 列<Row>[] = [
-    { title: "线索", key: "name", dataIndex: "name", width: 220, 常驻: true, render: (v) => <span className="link-strong">{v}</span> },
-    { title: "联系人", key: "contact", dataIndex: "contact", width: 120, render: (v) => v ?? <span className="muted">—</span> },
-    { title: "来源", key: "source", dataIndex: "source", width: 120, render: (v) => <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> },
+    { title: "线索", key: "name", dataIndex: "name", width: 200, 常驻: true, render: (v) => <span className="link-strong">{v}</span> },
+    { title: "联系人", key: "contact", dataIndex: "contact", width: 104, render: (v) => v ?? <span className="muted">—</span> },
+    { title: "来源", key: "source", dataIndex: "source", width: 100, render: (v) => <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> },
     {
-      title: "状态", key: "status", dataIndex: "status", width: 110,
+      title: "状态", key: "status", dataIndex: "status", width: 96,
       render: (v) => (
         <Tag color={LEAD_STATUS_COLOR[v] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
           {v}
         </Tag>
       ),
     },
-    ...(不问归属 ? [] : [{ title: "负责人", key: "ownerName", dataIndex: "ownerName", width: 140, render: (v: string) => <UserCell name={v} size={24} /> }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "ownerName", dataIndex: "ownerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
     { title: "创建时间", key: "createdAt", dataIndex: "createdAt", width: 116, render: (v) => <span className="muted nowrap">{smartTime(v)}</span> },
 
     { title: "联系电话", key: "phone", dataIndex: "phone", width: 140, 默认: false, render: (v) => v ?? <span className="muted">—</span> },

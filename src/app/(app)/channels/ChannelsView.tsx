@@ -112,7 +112,7 @@ export default function ChannelsView({
 
   const 列表: 列<Row>[] = [
     {
-      title: "渠道", key: "name", dataIndex: "name", width: 180, 常驻: true,
+      title: "渠道", key: "name", dataIndex: "name", width: 160, 常驻: true,
       // 停用的在名字旁边就写明（审查 D12）：「状态」那一列在窄窗口下可能在视野外
       render: (v, r) => (
         <span className="chan-name">
@@ -121,9 +121,9 @@ export default function ChannelsView({
         </span>
       ),
     },
-    ...(不问归属 ? [] : [{ title: "渠道负责人", key: "channelOwnerName", dataIndex: "channelOwnerName", width: 140, render: (v: string) => <UserCell name={v} size={24} /> }]),
+    ...(不问归属 ? [] : [{ title: "渠道负责人", key: "channelOwnerName", dataIndex: "channelOwnerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
     {
-      title: "直接推荐", key: "directCount", dataIndex: "directCount", width: 110,
+      title: "直接推荐", key: "directCount", dataIndex: "directCount", width: 96,
       sorter: (a, b2) => a.directCount - b2.directCount,
       render: (v: number, r) => (
         <Tooltip title={`这条渠道亲自带来的${b.customer}，不含他们再转介绍来的`}>
@@ -140,7 +140,7 @@ export default function ChannelsView({
         却是同一个谓词算了两遍。转介绍到底带来了多少人，这张表一直答不出来。
         现在「直接」只数没有上游学员的那些，差额就是转介绍的部分。
       */
-      title: "整条推荐链", key: "chainCount", dataIndex: "chainCount", width: 120,
+      title: "整条推荐链", key: "chainCount", dataIndex: "chainCount", width: 110,
       sorter: (a, b2) => a.chainCount - b2.chainCount,
       render: (v: number, r) => (
         <Tooltip title={`含下游转介绍带来的全部${b.customer}；其中 ${r.directCount} 位是这条渠道直接带来的`}>
@@ -158,7 +158,8 @@ export default function ChannelsView({
     },
     {
       // 状态三样齐全：颜色、图标、文字。只靠一个灰标签，扫过去认不出哪条停用了
-      title: "状态", key: "active", dataIndex: "active", width: 100,
+      // 1024 宽时收起这一列（10-27）：停用的名字旁边已经写着，不靠这一列也看得出
+      title: "状态", key: "active", dataIndex: "active", width: 80, responsive: ["xl"],
       render: (v: boolean) =>
         v ? (
           <Tag color="success" style={{ margin: 0, borderRadius: 6 }}>
