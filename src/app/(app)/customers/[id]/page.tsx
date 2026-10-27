@@ -4,6 +4,7 @@ import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
 import RecordView from "./RecordView";
@@ -90,6 +91,14 @@ export default async function CustomerDetailPage({
       原负责人领不回={!!customer.pool && customer.salesOwnerId === me.id && 拦原负责人()}
       // 历史负责人只企业版摆；记录不管开没开都记着（换负责人那一刻写，开了以后之前的也看得到）
       换负责人记录={企业版() ? await 历史负责人of(customer.id) : []}
+      // 企业版只用项目：商机一节换成这位名下的项目（10-26）
+      项目们={(await 企业版只用项目())
+        ? await prisma.project.findMany({
+            where: { customerId: customer.id },
+            orderBy: { updatedAt: "desc" },
+            select: { id: true, name: true, phase: true, node: true, result: true, amount: true, currency: true },
+          })
+        : null}
       // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
       只读={await 只读客户(defaultClient, customer)}
       customer={{

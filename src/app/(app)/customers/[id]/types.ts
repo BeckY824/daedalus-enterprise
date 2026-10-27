@@ -63,6 +63,11 @@ export type RecordProps = {
   原负责人领不回?: boolean;
   /** 换负责人记录（企业版 D-36），时间正序；左栏「历史负责人」用，没有就不摆 */
   换负责人记录?: import("@/lib/owner-log").换负责人记录[];
+  /**
+   * 企业版项目模式（10-26）：这位名下的项目，新的在前。给了（哪怕空数组）就用「项目」一节替掉「商机」一节，
+   * 报价记录、跟进上的关联商机也不摆——企业版只有项目一条线。不给 = 个人版、团队版，照旧
+   */
+  项目们?: { id: string; name: string; phase: string; node: string; result: string | null; amount: number; currency: string }[] | null;
   customer: CustomerRow;
   contacts: ContactRow[];
   opportunities: {
