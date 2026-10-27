@@ -20,7 +20,8 @@ import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-ru
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
-import { 挡改设置, type 设置项名 } from "@/lib/enterprise/edit-perm";
+import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
+import { 读组织 } from "@/lib/enterprise/org";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, type 位置 } from "@/lib/project/nodes";
@@ -371,7 +372,7 @@ export async function 移出项目组员(memberId: string) {
 }
 
 /**
- * 这次改动碰到的每一块都得能改：公海 = 持有上限，超时回收 = 节点时限，节点推进 = 必填字段
+ * 这次改动碰到的每一块都得能改：公海 = 持有上限，超时回收 = 节点时限（再按节点拆），节点推进 = 必填字段
  * （「后台设置谁能改」，lib/enterprise/edit-perm-table.ts；老板总能改）
  */
 async function 挡组织规则(me: { id: string; role: string }, 改: 规则改动): Promise<string | null> {
@@ -380,6 +381,12 @@ async function 挡组织规则(me: { id: string; role: string }, 改: 规则改�
     if (改?.[k] === undefined) continue;
     const 挡 = await 挡改设置(me, 项);
     if (挡) return `${叫法}${挡}`;
+  }
+  // 节点时限再按节点拆：销售管理 / 市场管理只能动自己那几个节点，开关只有老板、总管理员（edit-perm-table.ts 时限可改节点）
+  if (改?.超时回收 !== undefined && 企业版()) {
+    const [org, 配置, 现在] = await Promise.all([读组织(), 读改权限(), 读组织规则()]);
+    const 挡 = 挡时限改动(能改时限的节点(org, me, 配置), 现在.超时回收, 改.超时回收);
+    if (挡) return 挡;
   }
   return null;
 }

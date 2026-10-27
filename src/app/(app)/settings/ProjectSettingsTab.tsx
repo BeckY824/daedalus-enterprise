@@ -9,6 +9,7 @@ import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权�
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
 import { 加企业选项, 改企业选项 } from "./ent-dict-actions";
 import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterprise/dict-kinds";
+import type { 时限范围 } from "@/lib/enterprise/edit-perm-table";
 import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
 import { 存卡点默认Action } from "@/app/(app)/projects/blocker-actions";
 import { 卡点类型们, 影响等级们, 时限最大, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -36,6 +37,8 @@ export type 项目设置 = {
    * 不是企业版只有老板能改；共享试用区谁都不能改）
    */
   挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段" | "阶段规则", string | null>;
+  /** 节点时限能改时，能改哪几个节点："全部" = 都能改、能开关；没给 = 全部（老板 / 不是企业版） */
+  时限节点?: 时限范围;
   /** 企业版卡点的默认值（每类卡点的时限、阻碍主体的选项）；不是企业版 = null，卡片不出 */
   卡点默认?: 卡点默认 | null;
   /** 企业版提成比例 A（底价）/ B（溢价），百分数；不是企业版 = null，卡片不出（服务端读的 企业版()） */
@@ -87,7 +90,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       />
       {value.企业选项 && <EntDictCard 各类={value.企业选项} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
-      {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 忙={忙} 跑={跑} />}
+      {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} 忙={忙} 跑={跑} />}
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
       {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
@@ -262,14 +265,16 @@ function HoldCapCard({
  * 保存前先按新设置数一遍「现在会回收几个」，有的话让老板确认
  */
 function TimeoutCard({
-  规则, 挡, 忙, 跑,
+  规则, 挡, 范围, 忙, 跑,
 }: {
-  规则: 组织规则["超时回收"]; 挡: string | null; 忙: boolean;
+  规则: 组织规则["超时回收"]; 挡: string | null; 范围: 时限范围; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
   const { message, modal } = App.useApp();
   const [天数, set天数] = useState<Record<string, number | null>>(规则.节点天数);
   const 节点 = [...节点们.线索, ...节点们.商机];
+  const 全能 = 范围 === "全部";
+  const 能改 = (n: string) => !挡 && (全能 || 范围.includes(n));
   const 改了 = 节点.some((n) => (天数[n] ?? null) !== (规则.节点天数[n] ?? null));
 
   /** 先数会回收几个，有就确认；改完提示真收了几个 */
@@ -303,7 +308,7 @@ function TimeoutCard({
           <Switch
             aria-label="超时回收"
             checked={规则.开}
-            disabled={!!挡 || 忙}
+            disabled={!!挡 || !全能 || 忙}
             onChange={(开) => void (开 ? 确认后存({ 超时回收: { 开 } }, "已开超时回收") : 跑(() => 改组织规则({ 超时回收: { 开 } }), "已关超时回收"))}
           />
         </Space>
@@ -312,6 +317,11 @@ function TimeoutCard({
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，线索、商机阶段的项目在一个节点上超过处理时长还没跟进，自动回到项目公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的节点按 ${默认天数} 天算` : "没填天数的节点不回收"}，订单阶段不回收。默认关。
       </div>
+      {!挡 && !全能 && (
+        <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+          {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他节点和开关由老板、总管理员改。` : "节点时限和开关由老板、总管理员改。"}
+        </div>
+      )}
       {规则.开 && (
         <>
           {(["线索", "商机"] as const).map((阶段) => (
@@ -324,7 +334,7 @@ function TimeoutCard({
                     aria-label={`「${n}」的处理时长`}
                     min={1} max={时长最大} precision={0} suffix="天" style={{ width: 120, flex: "0 0 auto" }}
                     placeholder={默认天数 ? `默认 ${默认天数} 天` : "不回收"}
-                    disabled={!!挡}
+                    disabled={!能改(n)}
                     value={天数[n] ?? null}
                     onChange={(v) => set天数((m) => ({ ...m, [n]: v }))}
                   />
@@ -332,7 +342,7 @@ function TimeoutCard({
               ))}
             </div>
           ))}
-          {!挡 && (
+          {节点.some(能改) && (
             <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了} onClick={() => void 确认后存({ 超时回收: { 节点天数: 天数 } }, "已保存")}>保存</Button>
           )}
         </>
