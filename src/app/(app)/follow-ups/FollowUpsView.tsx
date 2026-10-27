@@ -76,38 +76,36 @@ export default function FollowUpsView({
   const 列表: 列<Row>[] = [
     {
       // 第一列是「这条是谁的」，和别的列表一样钉在左边；类型再有用也回答不了「是谁」
-      title: `所属${b.customer}`, 列名: `所属${b.customer}`, key: "customerName", dataIndex: "customerName", width: 190, 常驻: true,
+      title: `所属${b.customer}`, 列名: `所属${b.customer}`, key: "customerName", dataIndex: "customerName", width: 170, 常驻: true,
       // 人名下面一行公司（2026-10-19）：同名的人、只记得公司名的人，扫一眼就对得上
       render: (v, r) => <CustomerLink id={r.customerId} name={v} company={r.customerCompany} />,
     },
     {
       // 「什么时候」紧跟在「是谁」后面（审查 M3）：原来排在最右，13 寸窗口下只剩一个数字露在外面。
       // 这张表按时间倒序排，时间是扫一眼就要对上的东西
-      title: "时间", key: "occurredAt", dataIndex: "occurredAt", width: 110, 常驻: true,
+      title: "时间", key: "occurredAt", dataIndex: "occurredAt", width: 100, 常驻: true,
       render: (v) => <span className="muted nowrap">{smartTime(v)}</span>,
     },
     {
       // 类型三样齐全：颜色、图标、文字。只有颜色的话，色弱的人和扫得快的人都认不出来
-      title: "类型", key: "type", dataIndex: "type", width: 110, 常驻: true,
+      title: "类型", key: "type", dataIndex: "type", width: 104, 常驻: true, // 104：「WhatsApp」带图标要 101，1024 宽+AI 栏时 96 伸出 5px
       render: (v) => <FollowTypeCell type={v} />,
     },
     {
       // 这一页的正文就是「聊了什么」，所以它是最宽的一列。
-      // 标题和内容压在同一行：两行一格的话每行 50px 高，一屏少看四五条，
-      // 而真要读全文是去记录页，不是在这张表上
-      title: "内容", key: "content", dataIndex: "title", width: 300,
-      // ellipsis 要交给 antd：自己在单元格里写 overflow 是没用的，
-      // 撑开表格的是 td 本身，它得先拿到 max-width
-      ellipsis: true,
+      // 最多两行（10-27 改）：一行省略号太多字看不到；再长的悬停看全文，读全文去记录页。
+      // 宽度放 232：13 寸窗口下整张表不用左右拖（类型列加的 8 从这里扣）
+      title: "内容", key: "content", dataIndex: "title", width: 232,
       render: (v, r) => (
-        <span title={`${v ? v + " · " : ""}${r.content}`}>
+        <span className="clamp" title={`${v ? v + " · " : ""}${r.content}`}>
           {v && <b style={{ fontWeight: 500 }}>{v}</b>}
           {v && r.content && <span className="muted"> · </span>}
           <span className="muted">{r.content}</span>
         </span>
       ),
     },
-    { title: "对接人", key: "contactName", dataIndex: "contactName", width: 96, render: (v) => v ?? <span className="muted">—</span> },
+    // 1024 宽时先收对接人，整张表不用左右拖；1200 以上才出（10-27）
+    { title: "对接人", key: "contactName", dataIndex: "contactName", width: 96, responsive: ["xl"], render: (v) => v ?? <span className="muted">—</span> },
     ...(不问归属 ? [] : [{ title: "跟进人", key: "ownerName", dataIndex: "ownerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
 
     { title: "时长", key: "duration", dataIndex: "duration", width: 90, 默认: false, render: (v) => (v ? duration(v) : <span className="muted">—</span>) },

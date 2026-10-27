@@ -384,7 +384,7 @@ export default function CustomersView({
       title: `${b.fields.school}·${b.fields.major}`,
       key: "schoolMajor",
       列名: `${b.fields.school}·${b.fields.major}`,
-      width: 250,
+      width: 230,
       render: (_, r) =>
         r.school || r.major ? (
           <span>
@@ -395,7 +395,7 @@ export default function CustomersView({
           <span className="muted">—</span>
         ),
     },
-    { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 118, render: (v) => <FollowStatusTag status={v} /> },
+    { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v) => <FollowStatusTag status={v} /> },
     // 外贸不摆预计签约（2026-10-05 外贸客户：「没有意义」——采购时间点看商机的询盘时间）
     ...(外贸 ? [] : [{
       title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 116,
@@ -413,8 +413,9 @@ export default function CustomersView({
         ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放进公海" : r.pool.reason}`}>{公海标签(v)}</Tag>
         : <UserCell name={v} size={24} />,
     }]),
+    // 三列各收一点，1366 宽时默认列和公海列都不用左右拖（10-27）；负责人不收，「公海（原 X）」要放得下
     {
-      title: "最近跟进", key: "lastFollowAt", dataIndex: "lastFollowAt", width: 208,
+      title: "最近跟进", key: "lastFollowAt", dataIndex: "lastFollowAt", width: 180,
       // 冷热在前：扫一眼这一列就知道谁凉了，日期留着给要细看的人
       render: (v, r) => (
         <span className="heat-cell">

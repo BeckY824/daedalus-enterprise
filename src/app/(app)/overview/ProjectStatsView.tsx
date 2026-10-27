@@ -33,16 +33,20 @@ function 外币提示({ n, 本位币, 说 }: { n: number; 本位币: string; 说
   return n > 0 ? <p className="muted">另有 {n} 个{说}不是 {本位币}，金额没算进来（不换汇）。</p> : null;
 }
 
-/** 名字列：点了去项目列表按这个人筛（线索阶段的去新线索） */
+/** 名字列：点了去项目列表按这个人筛（线索阶段的去新线索）。
+ *  名字不截断；同名的「王芳（邮箱）」拆两行，邮箱小字放下面，表格不用左右拖 */
 const 名字列 = (去: (id: string) => string) => ({
   title: "负责人",
   dataIndex: "name",
-  ellipsis: true,
-  render: (v: string, r: { id: string }) => (
-    <Link href={去(r.id)} className="link-strong" title={v}>
-      {v}
-    </Link>
-  ),
+  render: (v: string, r: { id: string }) => {
+    const m = /^(.*)（(.+@.+)）$/.exec(v);
+    return (
+      <Link href={去(r.id)} className="link-strong stat-who" title={v}>
+        {m ? m[1] : v}
+        {m && <span className="stat-who-sub">{m[2]}</span>}
+      </Link>
+    );
+  },
 });
 
 export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 本位币: string; 单人: boolean }) {
@@ -114,7 +118,7 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} xl={单人 ? 24 : 12}>
+        <Col xs={24} xxl={单人 ? 24 : 12}>
           <Card title={<span className="section-title">各节点的项目</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>只数进行中的</Typography.Text>}>
             {有项目 ? (
               <Chart option={节点option} height={数.节点.length * 24 + 24} />
@@ -124,7 +128,7 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
           </Card>
         </Col>
         {!单人 && (
-          <Col xs={24} xl={12}>
+          <Col xs={24} xxl={12}>
             <Card title={<span className="section-title">按负责人</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>进行中的，公海里的不算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
               <Table<人行现在>
                 size="small"
@@ -132,7 +136,6 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
                 dataSource={数.按人}
                 columns={cols}
                 pagination={false}
-                scroll={{ x: 560 }}
                 locale={表格空态({ title: "还没有人手上有项目", hint: "分了线索、建了项目之后这里按人拆。", demo: false })}
               />
             </Card>
@@ -214,7 +217,6 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
             dataSource={数.按人}
             columns={cols}
             pagination={false}
-            scroll={{ x: 640 }}
             locale={表格空态({ title: "这一段还没有人动过项目", hint: "换一个时间段看看。", demo: false })}
           />
         </Card>

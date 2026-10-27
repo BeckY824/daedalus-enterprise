@@ -169,6 +169,9 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   return (
     // minmax(0, 1fr)：不让 nowrap 的表格把整页撑宽，表格在各自卡片里横向滚动
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
+      {/* 通讯录同步放最上面：演示时找了半天，原来夹在权限表下面（10-27） */}
+      {能改 && <OrgSyncCard />}
+
       <Card title="组织规则" extra={只看}>
         <p className="muted">每条规则单独开关，默认都关着：关着时和团队版一样，按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         <div style={{ display: "grid", gap: 12 }}>
@@ -206,7 +209,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                   <th scope="row">{字段[f].名}<div className="muted">{字段[f].用在}</div></th>
                   {业务角色.map((r) => (
                     <td key={r}>
-                      <Select size="small" style={{ minWidth: 88 }} aria-label={`${角色名[r]} 对「${字段[f].名}」`} disabled={!!字段权限挡 || 忙}
+                      <Select size="small" style={{ minWidth: 76 }} aria-label={`${角色名[r]} 对「${字段[f].名}」`} disabled={!!字段权限挡 || 忙}
                         value={字段级别of(表, f, r)} onChange={(v) => 设格(f, r, v)}
                         options={(字段[f].能藏 ? (["改", "看", "藏"] as const) : (["改", "看"] as const)).map((x) => ({ value: x, label: 级别名[x] }))} />
                     </td>
@@ -267,7 +270,6 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         )}
       </Card>
 
-      {能改 && <OrgSyncCard />}
 
       <Card title="部门" extra={只看}>
         <p className="muted">部门最多 {部门最多层数} 层。销售没指定直属上级时，按所在部门往上找销售管理当他的上级。</p>

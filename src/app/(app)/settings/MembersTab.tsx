@@ -228,24 +228,36 @@ export default function MembersTab({
   }
 
   const columns: ColumnsType<Row> = [
-    { title: "姓名", dataIndex: "name", width: 150, render: (v) => <UserCell name={v} size={30} /> },
-    { title: 用邮箱登录 ? "登录邮箱" : "登录用户名", dataIndex: "email", width: 200 },
-    { title: "职位", dataIndex: "title", width: 120 },
+    // 姓名、登录名、职位并成一列（10-27）：设置弹窗里九列铺开要左右拖，登录名和职位小字放名字下面
+    {
+      title: "姓名",
+      dataIndex: "name",
+      width: 220,
+      render: (v, r) => (
+        <div className="member-who">
+          <UserCell name={v} size={30} />
+          <span className="member-who-sub" title={用邮箱登录 ? "登录邮箱" : "登录用户名"}>
+            {[r.email, r.title].filter(Boolean).join(" · ")}
+          </span>
+        </div>
+      ),
+    },
     {
       title: "角色",
       dataIndex: "role",
-      width: 120,
+      width: 90,
       render: (v) => (
         <Tag color={v === "ADMIN" ? "red" : v === "MANAGER" ? "blue" : "default"} style={{ margin: 0, borderRadius: 6 }}>
           {ROLES.find((r) => r.value === v)?.label ?? v}
         </Tag>
       ),
     },
-    { title: `负责${b.customer}`, dataIndex: "customerCount", width: 90 },
+    // 1024 宽时设置页右边只剩约 490，两个次要的数先收起，1200 以上才出（10-27）
+    { title: `负责${b.customer}`, dataIndex: "customerCount", width: 80, responsive: ["xl"] },
     users.some((u) => u.项目阶段)
-      ? { title: "项目数", key: "项目数", width: 170, render: (_: unknown, r: Row) => <span style={{ whiteSpace: "nowrap" }}>{按阶段说(r.项目阶段 ?? {})}</span> }
+      ? { title: "项目数", key: "项目数", width: 120, render: (_: unknown, r: Row) => 按阶段说(r.项目阶段 ?? {}) }
       : { title: "商机数", dataIndex: "oppCount", width: 80 },
-    { title: "跟进数", dataIndex: "followCount", width: 80 },
+    { title: "跟进数", dataIndex: "followCount", width: 70, responsive: ["xl"] },
     {
       title: "状态",
       dataIndex: "active",
@@ -353,6 +365,7 @@ export default function MembersTab({
       )}
       <Table<Row>
         rowKey="id"
+        className="member-table"
         rowSelection={能批量 ? {
           selectedRowKeys: 勾了,
           onChange: (keys) => set勾了(keys as string[]),
@@ -362,7 +375,6 @@ export default function MembersTab({
         dataSource={users}
         columns={columns}
         pagination={false}
-        scroll={{ x: 1050 }}
       />
 
       <Modal

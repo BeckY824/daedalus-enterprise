@@ -719,11 +719,11 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .roster-m { flex: 1; min-width: 0; }
 .roster-l0 { display: flex; align-items: baseline; gap: var(--s2); }
 .roster-src { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--text-muted); }
-.roster-m > .roster-n { display: block; margin-top: 1px; }
-.roster-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.roster-m > .roster-n { display: -webkit-box; margin-top: 1px; }
+.roster-n { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; font-weight: 600; }
 .roster-t { flex: none; font-size: var(--fs-min); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .roster-l2 { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.roster-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
+.roster-note { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; font-size: var(--fs-note); color: var(--text-muted); }
 /* 右下角的圆点：橙 = 计划到期、灰 = 一个月没动静、绿 = 正常（CustomerRoster 的 点()） */
 .roster-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--success); }
 .roster-dot.due { background: var(--warning); }
@@ -1262,6 +1262,18 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .ant-tag { border-radius: var(--r-tag); padding-inline: 9px; font-weight: 500; line-height: 20px; }
 .link-strong { color: var(--ink); font-weight: 500; }
 .link-strong:hover { color: var(--brand); }
+/* 数据页按负责人：名字不截断，同名的邮箱小字另起一行 */
+.stat-who { word-break: break-word; }
+.stat-who-sub { display: block; font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); word-break: break-all; }
+/* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
+.member-who { min-width: 0; }
+/* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
+.member-table { overflow-x: auto; }
+.member-table .ant-table-thead th { white-space: nowrap; }
+@media (max-width: 1199px) { .member-who-sub { padding-left: 0; } }
+.member-who-sub { display: block; padding-left: 38px; font-size: var(--fs-note); color: var(--text-muted); word-break: break-all; }
+/* 设置 · 操作日志：日期 / 时分秒两行，动作标签下面写对象 */
+.audit-at, .audit-act { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; white-space: nowrap; }
 .ant-table-thead > tr > th { font-size: var(--fs-note); font-weight: 500; letter-spacing: 0.01em; }
 /* 表格密度。幻灯片里一行 70px、一屏 4 行；这张表是拿来扫的，一屏得有 15 行以上。
    高度写在 td 上、内边距压到 4，一行就稳定在 40——头像 30 也撑不开它。 */
@@ -1848,7 +1860,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
 /* 落点要看得出来：拖过去时整列亮一下，不然人不知道松手会掉进哪一列 */
 .pipe-col-on { background: var(--brand-bg); border-color: var(--brand-line); }
-.pipe-h { display: flex; align-items: baseline; gap: 6px; }
+.pipe-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; } /* 金额放不下就折到第二行，不截成「¥ 1,23…」（10-27，1280 宽五列时） */
 .pipe-h b { font-size: var(--fs-body); font-weight: 600; color: var(--ink); white-space: nowrap; flex: none; } /* 阶段名能自己改（6 字内），一行放下；挤的时候让右边的金额省略。列最窄 184，6 个字加张数放得下，金额挤了就省略 */
 .pipe-dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; flex: none; }
 .pipe-n { font-size: var(--fs-min); color: var(--text-muted); font-variant-numeric: tabular-nums; }
@@ -1863,9 +1875,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .pipe-card-drag { opacity: 0.45; }
 .pipe-card-t { font-weight: 500; color: var(--ink); } /* 再加 .clamp：最多两行，卡片的 title 里有全名 */
 .pipe-card-m { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: var(--s2); margin-top: var(--s1); }
-/* 列宽固定以后底行放不下金额 + 负责人：金额一行写完，负责人挤不下就折到下一行、再长就省略（title 里有全名） */
+/* 列宽固定以后底行放不下金额 + 负责人：金额一行写完，负责人挤不下就折到下一行，再长就换行写完，不省略 */
 .pipe-card-a { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pipe-card-o { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pipe-card-o { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; max-width: 100%; word-break: break-word; }
 /* 每列先摆 50 张（2026-10-24），底下接着翻；列最窄 184，放不下就折行，不撑宽列 */
 .pipe-more.ant-btn { height: auto; min-height: 28px; white-space: normal; color: var(--brand); gap: 6px; }
 
@@ -2573,6 +2585,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .org-field-perm thead th { font-weight: 600; }
 .org-field-perm tbody th { font-weight: 500; }
 .org-field-perm tbody th .muted { font-size: 12px; font-weight: 400; }
+/* 表头和行头可以折行（10-27）：设置弹窗 1280 宽时字段权限表 820 比 712 宽，要左右拖；格子里的下拉框不折 */
+.org-field-perm thead th, .org-field-perm tbody th { white-space: normal; }
+.seg-wrap { max-width: 100%; }
+.seg-wrap .ant-segmented-group { flex-wrap: wrap; }
+.org-field-perm tbody th { min-width: 6em; max-width: 9em; }
 /* 线索分配那一屏：长名字截断，悬停看全名；窄窗口靠外层横向滚动 */
 .org-lead-assign-name { display: inline-block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 /* 批量自动分配的结果：一条一行，线索名太长省略，别把弹窗撑开 */
