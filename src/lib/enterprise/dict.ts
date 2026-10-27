@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 挡改设置 } from "./edit-perm";
-import { 字典种类们, 字典定义, 选项名上限, type 字典种类 } from "./dict-kinds";
+import { 字典种类们, 字典定义, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, type 字典种类 } from "./dict-kinds";
 
 export * from "./dict-kinds";
 
@@ -50,8 +50,12 @@ export async function 选的原因(kind: 字典种类, v: unknown): Promise<{ ok
   if (!企业版()) return { ok: true, 值: null };
   const n = typeof v === "string" ? v.trim() : "";
   if (!n) return { ok: true, 值: null };
-  if (!(await 可选项(kind)).includes(n)) return { ok: false, error: `「${n}」不在${字典定义[kind].名}里（可能刚被停用），刷新后再选` };
-  return { ok: true, 值: n };
+  // 选「其他」要写一句：存成「其他：xxx」，只要「其他」这一项还启用着
+  const 其他错 = 其他没写好(n);
+  if (其他错) return { ok: false, error: 其他错 };
+  const { 选, 写 } = 拆其他(n);
+  if (!(await 可选项(kind)).includes(选 ?? n)) return { ok: false, error: `「${选 ?? n}」不在${字典定义[kind].名}里（可能刚被停用），刷新后再选` };
+  return { ok: true, 值: 选 === 其他项 ? `${其他前缀}${写.trim()}` : n };
 }
 
 /** 分配记录上的「分配方式」：0 = 指定分配、1 = 自动分配，取字典里这一项现在的叫法（改过名跟着改）；事务外调 */

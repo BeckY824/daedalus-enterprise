@@ -1,6 +1,8 @@
 "use client";
 
-import { App, Select } from "antd";
+import { App } from "antd";
+import DictSelect from "@/components/DictSelect";
+import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { 转走项目说法 } from "@/lib/carry-over";
 import { 转走项目预览of } from "./actions";
 
@@ -19,16 +21,18 @@ export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: st
   async function 问转让原因(给谁: string, 新负责人: string): Promise<string | null | false> {
     if (!转让原因?.选项.length || 新负责人 === 转让原因.自己) return null;
     let 选: string | null = null;
-    const 转 = await modal.confirm({
+    // 选了「其他」没写具体内容时「转让」点不了
+    const 框 = modal.confirm({
       title: `转给「${给谁}」`,
       icon: null,
       content: (
-        <Select allowClear placeholder="转让原因（可不选）" style={{ width: "100%" }} aria-label="转让原因"
-          options={转让原因.选项.map((v) => ({ value: v, label: v }))} onChange={(v?: string) => { 选 = v ?? null; }} />
+        <DictSelect placeholder="转让原因（可不选）" style={{ width: "100%" }} aria-label="转让原因" options={转让原因.选项}
+          onChange={(v) => { 选 = v; 框.update({ okButtonProps: { disabled: !!其他没写好(v) } }); }} />
       ),
       okText: "转让",
       cancelText: "取消",
     });
+    const 转 = await 框;
     return 转 ? 选 : false;
   }
 
