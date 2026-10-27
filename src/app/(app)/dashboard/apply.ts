@@ -18,6 +18,8 @@ import { 建档向导 } from "../projects/actions";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 要下一步时间 } from "@/lib/project/wizard";
 import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 认出备注里的号码, AI建档查重 } from "@/lib/enterprise/ai-lead-dedupe";
 import { saveOpportunity } from "../opportunities/actions";
 import { saveChannel } from "../channels/actions";
 import { 按名字找负责人 } from "@/lib/owners";
@@ -232,9 +234,23 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
 /**
  * 企业版只用项目时的新线索卡：走项目的建档向导，建一位客户、主要联系人和一个线索阶段的项目，首条跟进写明从对话来。
  * 不给撤销：向导一笔建了好几样，撤回去要删客户，交给人到项目页处理。
+ * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 旺旺，撞了不建、提醒原负责人。
+ * 不撞：创建人 = 负责人 = 录入人（客户销售负责人、项目负责人都是自己）
  */
-async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, meId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true } | { ok: false; error: string }> {
+  const meId = me.id;
   const 号 = p.phone.trim();
+  const { 号们, 剩 } = 认出备注里的号码(p.remark || "");
+  const 手机 = 号 ? 验号码("手机号", 号) : null;
+  const 撞了 = await AI建档查重([...(手机?.ok ? [手机] : []), ...号们], me);
+  if (撞了) return { ok: false, error: 撞了 };
+  const 邮箱 = 号们.find((h) => h.类型 === "邮箱")?.值 ?? null;
+  const 微信 = 号们.find((h) => h.类型 === "微信")?.值 ?? null;
+  // 客户只有一格企业号码：有电话放电话；没电话按邮箱 → 微信 → 旺旺放第一个认出的（新建客户企业号码不是手机号才免填电话）。
+  // 邮箱、微信另有联系人那格；旺旺没占企业号码的话那行留回备注
+  const 旺旺 = 号们.find((h) => h.类型 === "旺旺ID");
+  const 企业号 = 号 ? { 类型: "手机号", 值: 号 } : (["邮箱", "微信", "旺旺ID"] as const).map((t) => 号们.find((h) => h.类型 === t)).find(Boolean);
+  const 备注 = 旺旺 && 企业号?.类型 !== "旺旺ID" ? [剩, `旺旺：${旺旺.值}`].filter(Boolean).join("\n") : 剩;
   // 企业版新建线索要选渠道：卡上只有来源一格，来源就是某个启用中的渠道名（或只含一个渠道名）才认，认不出不猜
   const 渠道们 = await prisma.channel.findMany({ where: { active: true }, select: { id: true, name: true } });
   const 来源 = p.source.trim();
@@ -243,11 +259,11 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, meId: st
   if (!渠道) return { ok: false, error: "新线索要选渠道，卡上的来源对不上渠道：请到「新线索」页用向导建" };
   const r = await 建档向导({
     客户: {
-      name: p.name, phone: 号, 企业号码: 号 ? { 类型: "手机号", 值: 号 } : null,
+      name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
       school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
-      remark: p.remark || null, salesOwnerId: meId, channelId: 渠道.id, referrerCustomerId: null,
+      remark: 备注 || null, salesOwnerId: meId, channelId: 渠道.id, referrerCustomerId: null,
     },
-    联系人: { name: p.contact.trim() || p.name, phone: 号 || null },
+    联系人: { name: p.contact.trim() || p.name, phone: 号 || null, email: 邮箱, wechat: 微信 },
     // 负责人是自己、节点放线索第一步、明确回复记「没有」：都是卡上没有的格，按最保守的填，要改到项目页改
     项目: { name: p.name, amount: 0, ownerId: meId },
     跟进: {
@@ -325,7 +341,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   let done: { ok: true } | { ok: false; error: string };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
-    done = await 建成项目(p, me.id);
+    done = await 建成项目(p, me);
   } else if (p.kind === "update_customer") {
     done = await 改档案(p.customerId, p.changes);
   } else if (p.kind === "add_opportunity") {
