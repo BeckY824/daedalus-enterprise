@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ keyword?: string; status?: string; ownerId?: string; source?: string; pool?: string }>;
+  searchParams: Promise<{ keyword?: string; status?: string; ownerId?: string; source?: string; pool?: string; recycled?: string }>;
 }) {
   const me = await requireUser();
   const sp = await searchParams;

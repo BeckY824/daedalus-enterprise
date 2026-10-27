@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { App, Alert, Button, Card, Checkbox, Input, Modal, Popconfirm, Progress, Radio, Select, Space, Tag, Timeline, Tooltip } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
+import DictSelect from "@/components/DictSelect";
+import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { 必填叫法 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -572,17 +574,17 @@ export default function ProjectDetail({
         open={!!没成框}
         title={没成框 ? `定结果：${结局叫法(没成框.result ?? "", 字典)}` : ""}
         okText="确定"
-        okButtonProps={{ danger: true, disabled: !没成备注, loading: 忙 }}
+        okButtonProps={{ danger: true, disabled: !没成备注 || !!其他没写好(无效原因), loading: 忙 }}
         onCancel={() => set没成框(null)}
         onOk={async () => {
-          if (!没成框 || !没成备注) return;
+          if (!没成框 || !没成备注 || 其他没写好(无效原因)) return;
           const ok = await 跑(() => 改项目节点(p.id, 没成框, { 备注: 没成备注 }), `已改到 ${位置文字(没成框, 字典)}`);
           if (ok) set没成框(null);
         }}
       >
         <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? "选一个无效原因，或写一句为什么没成（至少一样），会记在节点变更里；以后捡回来把节点改回去就行。" : "写一句为什么没成，会记在节点变更里；以后捡回来把节点改回去就行。"}</div>
         {选无效原因 && (
-          <Select style={{ width: "100%", marginBottom: 8 }} allowClear placeholder="无效原因" aria-label="无效原因" value={无效原因} onChange={(v) => set无效原因(v ?? null)} options={p.原因选项.无效.map((x) => ({ value: x, label: x }))} />
+          <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={p.原因选项.无效} />
         )}
         <Input.TextArea rows={4} maxLength={原因上限 - (无效原因 ? 无效原因.length + 无效原因前缀.length + 1 : 0)} showCount value={原因} onChange={(e) => set原因(e.target.value)} placeholder={选无效原因 ? "补充说明" : "原因（必填）"} aria-label="原因" />
       </Modal>
@@ -591,7 +593,7 @@ export default function ProjectDetail({
         open={放回框}
         title="放回项目公海？"
         okText="放回公海"
-        okButtonProps={{ loading: 忙 }}
+        okButtonProps={{ loading: 忙, disabled: !!其他没写好(回收原因) }}
         onCancel={() => set放回框(false)}
         onOk={async () => {
           const ok = await 跑(() => 放回项目公海(p.id, 回收原因), "已放回项目公海");
@@ -599,7 +601,7 @@ export default function ProjectDetail({
         }}
       >
         <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人。</div>
-        <Select style={{ width: "100%" }} allowClear placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={(v) => set回收原因(v ?? null)} options={p.原因选项.回收.map((x) => ({ value: x, label: x }))} />
+        <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
       </Modal>
     </div>
   );

@@ -130,7 +130,7 @@ describe("阶段规则（企业版 10-26：往前推权限 + 出口叫法）", (
     const 叫法 = 合上改动(改了 as never, { 阶段: { 出口叫法: { 商机: [" 签了 ", ""] } } });
     expect(叫法).toMatchObject({ 阶段: { 推进权限: "仅上级推", 出口叫法: { 商机: ["签了", null] } } });
     expect(合上改动(默认组织规则, { 阶段: { 推进权限: "随便" as never } })).toMatchObject({ error: expect.stringContaining("往前推权限") });
-    expect(合上改动(默认组织规则, { 阶段: { 出口叫法: { 商机: ["x".repeat(11), null] } } })).toMatchObject({ error: expect.stringContaining("出口叫法") });
+    expect(合上改动(默认组织规则, { 阶段: { 出口叫法: { 商机: ["x".repeat(11), null] } } })).toMatchObject({ error: expect.stringContaining("结束状态叫法") });
     expect(合上改动(默认组织规则, { 阶段: { 出口叫法: { 商机: ["一样", "一样"] } } })).toMatchObject({ error: expect.stringContaining("不能叫一样") });
     expect(合上改动(默认组织规则, { 阶段: { 出口叫法: { 别的: ["a", "b"] } } })).toMatchObject({ error: expect.stringContaining("没有「别的」") });
   });

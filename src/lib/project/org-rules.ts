@@ -75,15 +75,15 @@ function 一个叫法(v: unknown): string | null | undefined {
 
 /** 出口叫法整份规整：每个阶段两个都空就不留；坏的 → error（读的时候忽略那个阶段） */
 function 规整出口叫法(raw: unknown): 出口叫法改动 | { error: string } {
-  if (!raw || typeof raw !== "object") return { error: "出口叫法格式不对，刷新再试" };
+  if (!raw || typeof raw !== "object") return { error: "结束状态叫法格式不对，刷新再试" };
   const 出: Record<string, [string | null, string | null]> = {};
   for (const [s, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!(阶段们 as readonly string[]).includes(s)) return { error: `没有「${s}」这个阶段` };
     if (v === null || v === undefined) continue;
-    if (!Array.isArray(v) || v.length !== 2) return { error: "出口叫法格式不对，刷新再试" };
+    if (!Array.isArray(v) || v.length !== 2) return { error: "结束状态叫法格式不对，刷新再试" };
     const 成 = 一个叫法(v[0]), 没成 = 一个叫法(v[1]);
-    if (成 === undefined || 没成 === undefined) return { error: `${s}阶段的出口叫法请填 1–${出口叫法上限} 个字` };
-    if (成 && 成 === 没成) return { error: `${s}阶段两个出口不能叫一样的名字` };
+    if (成 === undefined || 没成 === undefined) return { error: `${s}阶段的结束状态叫法请填 1–${出口叫法上限} 个字` };
+    if (成 && 成 === 没成) return { error: `${s}阶段两个结束状态不能叫一样的名字` };
     if (成 || 没成) 出[s] = [成, 没成];
   }
   return 出;
