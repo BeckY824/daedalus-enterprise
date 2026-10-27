@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Input, Select } from "antd";
 import { 其他项, 其他补充上限, 合其他, 拆其他 } from "@/lib/enterprise/dict-kinds";
 
@@ -26,11 +26,12 @@ export default function DictSelect({
   "aria-label"?: string;
 }) {
   const [s, setS] = useState(() => 拆其他(value));
-  // 外面改了值（比如重新打开弹框时清空）就跟着；自己打字引起的变化不重设，免得光标跳
-  useEffect(() => {
-    if (value === undefined) return;
-    setS((cur) => (合其他(cur.选, cur.写) === (value ?? null) ? cur : 拆其他(value)));
-  }, [value]);
+  // 外面改了值（比如重新打开弹框时清空）就跟着；自己打字引起的变化不重设，免得光标跳。渲染时比上一次的值，不用 effect
+  const [上次, set上次] = useState(value);
+  if (value !== 上次) {
+    set上次(value);
+    if (value !== undefined && 合其他(s.选, s.写) !== (value ?? null)) setS(拆其他(value));
+  }
   const 改 = (选: string | null, 写: string) => {
     setS({ 选, 写 });
     onChange?.(合其他(选, 写));
