@@ -36,7 +36,7 @@ describe("企业版推节点只给直属上级", () => {
   const 项目 = (ownerId: string, 补: Record<string, unknown> = {}) =>
     prisma.project.create({ data: { name: "项目", customerId: 客户, ownerId, creatorId: ownerId, ...补 } });
   const 往前 = { phase: "线索", node: "线索验证" };
-  const 仅上级 = { ...默认组织规则, 阶段: { 推进权限: "仅上级推" as const, 出口叫法: {} } };
+  const 仅上级 = { ...默认组织规则, 阶段: { 推进权限: "仅上级推" as const, 出口叫法: {}, 前两节点要沟通: false } };
 
   beforeEach(async () => {
     await resetDb();

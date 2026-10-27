@@ -266,7 +266,7 @@ export async function 改节点(
     const 挡 = 到.phase !== p.phase || 到.node !== p.node || result !== p.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
     const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
-    const 不给 = 往前 ? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到)) : null;
+    const 不给 = 往前 ? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则)) : null;
     if (不给) return { ok: false as const, error: 不给 };
     // 企业版节点必填（D-37）：配了必填的节点，往前推只给老板、主管、负责人的直属上级、总管理员；销售本人填齐了自动推
     if (往前 && 按必填走(规则, p.node) && me.role !== "ADMIN" && me.role !== "MANAGER" && !代管节点(me, p.ownerId, org)) {
@@ -794,7 +794,7 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
     if (!下) break;
     if (!往前 && !(await 往前进来的(tx, p))) break;
     if (还差(规则, await 读必填数据(tx, p)).length) break;
-    if (await 企业版推进关(tx, p, 下)) break;
+    if (await 企业版推进关(tx, p, 下, 规则)) break;
     await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node } });
     await 节点变了的提成(tx, p.id, p.phase, 下.phase);
     await tx.projectNodeLog.create({
