@@ -62,9 +62,10 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: 生产模式
+    // 企业版服务器一启动就连库，库得在起服务之前建好（原因见 e2e/global-setup.ts 文件头）
+    command: (企业版 ? "npx tsx e2e/global-setup.ts && " : "") + (生产模式
       ? `npx next build && npx next start --port ${PORT}`
-      : `npx next dev --port ${PORT}`,
+      : `npx next dev --port ${PORT}`),
     url: `http://localhost:${PORT}/login`,
     reuseExistingServer: false,
     timeout: 生产模式 ? 420_000 : 180_000,

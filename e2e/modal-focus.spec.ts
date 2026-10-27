@@ -82,11 +82,13 @@ test("弹框还在开场动画时就点开一个下拉：动画走完不把焦�
   await page.waitForLoadState("networkidle").catch(() => {});
   await page.getByRole("button", { name: /新建客户/ }).click();
   const 框 = page.getByRole("dialog", { name: "新建客户" });
-  // 不等动画：一出来就点「销售负责人」
-  await 框.getByLabel("销售负责人").click();
-  const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)").filter({ has: page.locator("#salesOwnerId_list") });
+  // 企业版销售新建客户负责人锁成自己、下拉是禁用的，改点「跟进状态」——要测的是焦点不被拽回，点哪个下拉都一样
+  const [标签, 字段] = process.env.CRM_ENTERPRISE === "1" ? ["跟进状态", "followStatus"] : ["销售负责人", "salesOwnerId"];
+  // 不等动画：一出来就点
+  await 框.getByLabel(标签).click();
+  const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)").filter({ has: page.locator(`#${字段}_list`) });
   await expect(下拉).toBeVisible();
   await page.waitForTimeout(800); // 开场动画走完、afterOpenChange 已经跑过
   await expect(下拉).toBeVisible();
-  expect(await page.evaluate(() => (document.activeElement as HTMLElement | null)?.id)).toBe("salesOwnerId");
+  expect(await page.evaluate(() => (document.activeElement as HTMLElement | null)?.id)).toBe(字段);
 });
