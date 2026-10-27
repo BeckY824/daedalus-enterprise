@@ -4,7 +4,7 @@ import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { consumeUserAiQuota } from "@/lib/ai-quota";
-import { recordAiUse } from "@/lib/ai-usage";
+import { recordAiUse, 简报名 } from "@/lib/ai-usage";
 import { chatJSON } from "@/lib/llm";
 import { sanitizeFollowUpDraft, sanitizeBrief, type FollowUpDraft, type CustomerBrief } from "@/lib/ai-draft";
 import { dayjs, 现在带周几 } from "@/lib/utils";
@@ -219,7 +219,8 @@ async function 生成简报(input: {
     "读取记录",
     [`${customer.followUps.length} 条跟进`, sourceCount ? `${sourceCount} 段原文` : null, customer.opportunities.length ? `${customer.opportunities.length} 个商机` : null, customer.plans[0] ? "1 条计划" : null].filter(Boolean).join(" · "),
   );
-  stepStart(emit, "think", question ? "围绕问题重读" : "生成简报");
+  const 名 = 简报名();
+  stepStart(emit, "think", question ? "围绕问题重读" : `生成${名}`);
 
   const oppLines = customer.opportunities.length
     ? customer.opportunities
@@ -277,10 +278,11 @@ ${question ? `\n【销售此刻的问题】\n${question}\n` : ""}
   try {
     // 简报要读整条时间线还要标引用，推理模型常常要想 60 秒以上；给到 120 秒
     const raw = await chatJSON(prompt, { timeoutMs: 120_000, feature: "brief" });
-    stepDone(emit, "think", question ? "围绕问题重读" : "生成简报");
-    await recordAiUse(user, "brief", `AI 生成简报（${b.customer}「${customer.name}」${question ? `，问题「${question.slice(0, 40)}」` : ""}）`, input.customerId);
+    stepDone(emit, "think", question ? "围绕问题重读" : `生成${名}`);
+    await recordAiUse(user, "brief", `AI 生成${名}（${b.customer}「${customer.name}」${question ? `，问题「${question.slice(0, 40)}」` : ""}）`, input.customerId);
     return { ok: true, brief: sanitizeBrief(raw), records };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "简报生成失败，请稍后重试" };
+    // sanitizeBrief 的报错写死了「简报」，企业版换成这边的叫法
+    return { ok: false, error: (e instanceof Error ? e.message : "简报生成失败，请稍后重试").replaceAll("简报", 名) };
   }
 }

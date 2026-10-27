@@ -166,7 +166,7 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
           label="业务简介"
           /* 右下角那个字数是绝对定位的，会压在 extra 这段说明上，靠 .field-count 让出一行 */
           className="field-count"
-          extra="一段话：你们卖什么、客户是谁、怎么成交。会注入全部 AI 功能的提示词，改这一段，速记、简报、问数据、唤醒与邀请话术全部跟着换语境。"
+          extra={`一段话：你们卖什么、客户是谁、怎么成交。会注入全部 AI 功能的提示词，改这一段，速记、${企业版 ? "智能总结" : "简报"}、问数据、唤醒与邀请话术全部跟着换语境。`}
           rules={[{ required: true, message: "请写一段业务简介" }, { max: 500, message: "500 字以内" }]}
         >
           <Input.TextArea rows={3} showCount maxLength={500} />

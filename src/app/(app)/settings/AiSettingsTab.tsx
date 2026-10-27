@@ -126,7 +126,7 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
           modal.confirm({
             title: testResult ? "这次测试没通过，还要保存吗？" : "还没测试过连接，要直接保存吗？",
             content:
-              "保存之后，首页提问、临战简报、问数据、盯盘话术都会走这套配置。地址或 Key 不对的话它们会一起失灵，而且要等下次使用时才发现。",
+              `保存之后，首页提问、${企业版 ? "智能总结" : "临战简报"}、问数据、盯盘话术都会走这套配置。地址或 Key 不对的话它们会一起失灵，而且要等下次使用时才发现。`,
             okText: "仍然保存",
             cancelText: "先测一下",
             onOk: () => resolve(true),
@@ -173,7 +173,7 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
           showIcon
           style={{ marginBottom: 16 }}
           title="还没有配置 AI，所有 AI 入口当前是隐藏的"
-          description="选一家、填一个 Key 并保存，跟进速记、临战简报、问数据、盯盘话术、转介绍邀请五个功能会立刻出现。其余功能不受影响。"
+          description={`选一家、填一个 Key 并保存，跟进速记、${企业版 ? "智能总结" : "临战简报"}、问数据、盯盘话术、转介绍邀请五个功能会立刻出现。其余功能不受影响。`}
         />
       )}
 

@@ -961,7 +961,7 @@ export default function RecordView({
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
               <div className="rec-card">
-                <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} />
+                <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} />
               </div>
             )}
 
@@ -1031,7 +1031,7 @@ export default function RecordView({
           进程内任务表上（lib/ai-jobs），不在组件 state 里，关掉再开还在那儿 */}
       {aiEnabled && AI在抽屉里 && (
         <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${customer.name}`}>
-          <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} />
+          <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} />
         </Drawer>
       )}
 
