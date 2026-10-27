@@ -14,7 +14,7 @@ import { chromium, type Browser, type Page } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "ent-project-only", setup(b) {
   b.onResolve({ filter: /^next\/(navigation|link)$/ }, a => ({ path: a.path, namespace: "fixture" }));
-  b.onResolve({ filter: /(^|\/)(UpdateRow|WhatsNew|AiTasks|AiDock|FeedbackButton|AiCost|RailResizer|LeadFullNotices)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
+  b.onResolve({ filter: /(^|\/)(UpdateRow|WhatsNew|AiTasks|AiDock|FeedbackButton|AiCost|RailResizer|LeadFullNotices|RecordView|ProjectDetail)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
   b.onLoad({ filter: /.*/, namespace: "empty-child" }, () => ({ contents: "export default function Empty(){return null} export function AiMeterBar(){return null}" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ resolveDir: process.cwd(), contents: a.path === "next/link"
     ? `import React from 'react';export default function Link({href,onClick,prefetch,children,...p}){return React.createElement('a',{...p,href,onClick:e=>{onClick?.(e);if(!e.defaultPrevented){e.preventDefault();window.__route=href}}},children)}`
