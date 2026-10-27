@@ -88,7 +88,8 @@ export type 项目详情 = {
 };
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
-const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 48px" };
+// 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
+const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 60px", whiteSpace: "nowrap" };
 
 /** 删项目的确认框：列出一起删掉的几样，说清沟通记录本身不删 */
 function 删除说明(n: 项目详情["删前清点"], 客户叫法: string) {
