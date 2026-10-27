@@ -3,6 +3,9 @@
  *
  * next/link 一进视口就预取：客户表格 + 中栏名单一屏几十行，原来每行都去取一遍详情页。
  * 预取只在生产构建里发生（next dev 不预取），所以这条只在 E2E_PROD=1 下跑——CI 就是这么跑的。
+ *
+ * 10-27 起悬停停住的那一行整页预取（lib/prefetch-full）：人要点的就是这一行。
+ * 所以先把鼠标挪到页角，看一屏的行没跟着取；再停在一行上，看只取了这一行。
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
@@ -45,6 +48,8 @@ test("客户列表：行上的详情页一个都不预取，左栏照旧预取",
   page.on("request", (r) => {
     if (r.headers()["next-router-prefetch"]) 预取.push(new URL(r.url()).pathname);
   });
+  // 登录时鼠标停在页中间，进列表后会正好压在某一行上，那是「悬停」，不算视口预取
+  await page.mouse.move(1, 1);
   await page.goto("/customers");
   const 行 = page.locator("a[href^='/customers/']");
   // 表格和中栏名单都摆出来了，行上的链接在视口里
@@ -54,9 +59,13 @@ test("客户列表：行上的详情页一个都不预取，左栏照旧预取",
   await page.waitForTimeout(1500);
   expect(预取.filter((p) => /^\/customers\/(?!recent$)[^/]+$/.test(p)), "行上的客户详情页被预取了").toEqual([]);
 
-  // 点一行照常进详情
+  // 停在一行上：只取这一行
   const 第一位 = page.locator("table a[href^='/customers/']").first();
   const 去 = await 第一位.getAttribute("href");
+  await 第一位.hover();
+  await expect.poll(() => 预取.filter((p) => /^\/customers\/(?!recent$)[^/]+$/.test(p)), { timeout: 5_000 }).toEqual([去]);
+
+  // 点一行照常进详情
   await 第一位.click();
   await page.waitForURL((u) => u.pathname === 去);
 });

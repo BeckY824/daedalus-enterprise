@@ -37,6 +37,7 @@ import WhatsNew from "./WhatsNew";
 import AiTasks from "./AiTasks";
 import AiDock from "./AiDock";
 import { usePageUnderOverlay } from "@/lib/page-under-overlay";
+import { 整页预取, 省流量 } from "@/lib/prefetch-full";
 import type { ModelOption } from "@/lib/llm";
 import FeedbackButton from "./FeedbackButton";
 import FeedbackReplyToast from "./feedback/FeedbackReplyToast";
@@ -249,6 +250,39 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
   }, [pathname]);
+  /*
+    网页版点左栏那一下就亮到新的一项上（10-27）：放到云服务器上，新页的数据要等一趟网络，
+    地址栏还没换之前 selectedKey 不动，人会以为没点上又点一次。记下点的是哪一项，
+    页一换（pathname 变了）就清掉，回到按地址算（渲染时比上一次的地址，React 文档推荐的做法，不走 effect）。
+    桌面端在本机，换页本来就是即时的，不动
+  */
+  const [去向, set去向] = useState<string | null>(null);
+  const [上次地址, set上次地址] = useState(pathname);
+  if (上次地址 !== pathname) {
+    set上次地址(pathname);
+    set去向(null);
+  }
+  const 亮项 = 去向 ?? selectedKey;
+
+  /*
+    网页版左栏主组几项空闲时整页预热（10-27，lib/prefetch-full）：首页、客户、项目、跟进、数据每天来回切，
+    预热过的点下去直接从本地出页，不等服务器。只在页面空下来以后取，不和当前页抢；省流量不取；
+    60 秒后过期（staleTimes.static），过期了悬停（unstable_dynamicOnHover）还会再取一次
+  */
+  const 主组 = useMemo(() => nav.filter((n) => n.组 === "主").map((n) => n.key).join(" "), [nav]);
+  useEffect(() => {
+    if (desktop || 省流量()) return;
+    const 要 = 主组.split(" ").filter(Boolean);
+    // 当前这页已经在眼前，不用再取
+    const 取 = () => 要.filter((k) => location.pathname !== k).forEach((k) => 整页预取(router, k));
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(取, { timeout: 3000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(取, 1200);
+    return () => clearTimeout(t);
+  }, [desktop, 主组, router]);
 
   /*
     网页版的标签页标题跟着当前页走（「客户 · Daedalus CRM」）：浏览器里常开着好几个标签，只写产品名分不出哪个是哪个，
@@ -282,6 +316,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
          网页团队版照旧进表格：那边要按人分配、批量改，表格是主场。手机菜单也照旧进表格 */
       href={desktop && n.key === "/customers" ? "/customers/recent" : n.key}
       prefetch={desktop && n.key === "/customers" ? false : undefined}
+      /* 网页版悬停就整页预取（默认只取到骨架，点进去还要再等一趟数据）。桌面端在本机，照旧。
+         next/link 的类型取的是老路由那份，没有这一项；运行时用的是 app 路由的 Link，认这一项 */
+      {...(desktop ? {} : { unstable_dynamicOnHover: true })}
       /* 跳转页的结果会被客户端路由缓存住（staleTimes 60 秒）：第二次点会回到上一次跳去的那位，
          不是刚看过的那位。每次带一个新参数，确保回到服务端读 cookie */
       onClick={
@@ -291,15 +328,20 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
               e.preventDefault();
               router.push(`/customers/recent?t=${Date.now()}`);
             }
-          : undefined
+          : desktop
+            ? undefined
+            : (e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                if (n.key !== selectedKey) set去向(n.key);
+              }
       }
       aria-label={n.key === "/follow-ups" && 要跟说法 ? `${n.label}，${要跟说法}` : n.key === "/orders" && 订单说法 ? `${n.label}，${订单说法}` : n.label}
-      className={`rail-item${selectedKey === n.key ? " on" : ""}`}
+      className={`rail-item${亮项 === n.key ? " on" : ""}`}
     >
       {/* 选中那块底色是**同一块**在两项之间滑过去的（layoutId），不是这边灭那边亮。
           切页时眼睛跟着它走，不用重新找自己在哪一项上。
           系统开了「减弱动态效果」就按 0 秒，等于原来的瞬切。 */}
-      {selectedKey === n.key && (
+      {亮项 === n.key && (
         <motion.span layoutId="rail-on" className="rail-on-bg" transition={{ duration: 少动 ? 0 : 时长.base, ease: 曲线.ease }} />
       )}
       {n.icon}
