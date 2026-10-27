@@ -28,6 +28,7 @@ import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 限定的我, 看得到 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
+import { 能导入导出, 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { getBusiness } from "@/lib/business";
 import { resolveAttribution } from "@/lib/attribution";
@@ -93,6 +94,7 @@ function 补全(方案: 导入方案, userId: string): 导入方案 | null {
  */
 export async function 暂存导入表(号: string, 块: 一块, 头?: { 表头: string[]; 共: number }): Promise<{ ok: true; 收到: number } | { ok: false; error: string }> {
   const me = await requireUser();
+  if (!(await 能导入导出(me))) return { ok: false, error: 不能导入导出 };
   const r = 收块(me.id, 号, 块, 头);
   return r.ok || r.error !== "暂存过期" ? r : { ok: false, error: 暂存过期.error };
 }
@@ -203,6 +205,7 @@ function 算补空(r: ReturnType<typeof 摊开>[number], 旧: { school: string |
 /** 预览反映当前数据库快照；执行前数据或权限变化时，以执行结果为准。 */
 export async function 预览导入(原方案: 导入方案): Promise<{ ok: true; 预览: 预览 } | { ok: false; error: string; 重送?: true }> {
   const me = await requireUser();
+  if (!(await 能导入导出(me))) return { ok: false, error: 不能导入导出 };
   const 方案 = 补全(原方案, me.id);
   if (!方案) return 暂存过期;
   const { 行, 合掉几行 } = await 排好(方案);
@@ -446,6 +449,7 @@ async function 记一笔(me: Awaited<ReturnType<typeof requireUser>>, 客户叫�
  */
 export async function 执行导入(原方案: 导入方案, fileName: string): Promise<导入结果> {
   const me = await requireUser();
+  if (!(await 能导入导出(me))) return { ok: false, error: 不能导入导出 };
   const 方案 = 补全(原方案, me.id);
   if (!方案) return 暂存过期;
   const { b, 行 } = await 排好(方案);
@@ -485,6 +489,7 @@ export type 分段结果 =
 export async function 分段导入(原方案: 导入方案, fileName: string, 续: { batchId?: string; 起: number }): Promise<分段结果> {
   const 开始 = Date.now();
   const me = await requireUser();
+  if (!(await 能导入导出(me))) return { ok: false, error: 不能导入导出 };
   const 方案 = 补全(原方案, me.id);
   if (!方案) return 暂存过期;
   const { b, 行 } = await 排好(方案);

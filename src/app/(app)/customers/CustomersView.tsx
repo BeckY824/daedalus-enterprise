@@ -71,6 +71,10 @@ type Props = {
   users: 可选成员[];
   /** 老板（管理员）：公海里的客户能直接「分配给…」某位同事（2026-10-20）。业务员不摆 */
   能分配公海?: boolean;
+  /** 企业版只有老板和总管理员能导入导出（10-27 会议），别人不摆按钮；不是企业版一律 true */
+  能导入导出?: boolean;
+  /** 企业版普通销售新建客户负责人只能是自己（10-27 会议） */
+  负责人只能自己?: boolean;
   channels: Option[];
   /** 进来就把新建表单打开（首页空库那张「开始」卡的落点） */
   直接新建?: boolean;
@@ -159,7 +163,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -295,7 +299,7 @@ export default function CustomersView({
   const 导出取消 = useRef<AbortController | null>(null);
   useEffect(() => () => 导出取消.current?.abort(), []);
   const [formOpen, setFormOpen] = useState(Boolean(直接新建));
-  const [导入开着, set导入开着] = useState(Boolean(直接粘贴));
+  const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出);
   /** ?new=1 / ?import=paste 进来就开：等水合完再开。服务端先画一个开着的弹窗，会和客户端那一版对不上（跟进页同一写法） */
   const 已水合 = useSyncExternalStore(无订阅, () => true, () => false);
   /*
@@ -514,8 +518,8 @@ export default function CustomersView({
           <Space>
             {/* 导入和导出都是次动作，排在主动作左边。导入空库时也要在——
                 第一次进来的人手上那份 Excel 正是他不想一条条录的原因 */}
-            <Button icon={<ImportOutlined />} onClick={() => set导入开着(true)}>导入</Button>
-            {!空库 && (<>
+            {能导入导出 && <Button icon={<ImportOutlined />} onClick={() => set导入开着(true)}>导入</Button>}
+            {能导入导出 && !空库 && (<>
               <Button
                 icon={<ExportOutlined />}
                 loading={导出中}
@@ -573,7 +577,7 @@ export default function CustomersView({
             ? `${b.customer}是这套系统的中心：跟进记录、商机、订单都挂在他身上。`
             : `${b.customer}是这套系统的中心：跟进记录、商机、签约都挂在他身上，推荐归属也按他这条线往上算。`,
           primary: { label: `新建第一位${b.customer}`, onClick: 新建 },
-          secondary: [{ label: "从 Excel 导入", onClick: () => set导入开着(true) }],
+          secondary: 能导入导出 ? [{ label: "从 Excel 导入", onClick: () => set导入开着(true) }] : [],
         }}
         筛选={
           /*
@@ -786,6 +790,7 @@ export default function CustomersView({
         editing={editing}
         users={users}
         channels={channels}
+        负责人只能自己={负责人只能自己}
         onClose={(saved) => {
           setFormOpen(false);
           setEditing(null);
@@ -793,7 +798,7 @@ export default function CustomersView({
         }}
       />
 
-      <ImportDrawer
+      {能导入导出 && <ImportDrawer
         open={导入开着 && 已水合}
         b={b}
         aiEnabled={Boolean(aiEnabled)}
@@ -802,7 +807,7 @@ export default function CustomersView({
         onDone={() => router.refresh()}
         看这一批={(id) => router.push(`/customers?batch=${id}`)}
         有别的成员={users.length > 1}
-      />
+      />}
     </>
   );
 }
