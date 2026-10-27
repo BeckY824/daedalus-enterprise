@@ -43,7 +43,8 @@ export default function RootLayout({
       </head>
       <body>
         <AntdRegistry>
-          <ConfigProvider locale={zhCN} theme={themeConfig}>
+          {/* 两个字的按钮 antd 默认中间插空格（「客 户」「确 定」），全站不插（10-27 界面统一） */}
+          <ConfigProvider locale={zhCN} theme={themeConfig} button={{ autoInsertSpace: false }}>
             {/* 动效的两条全局约定（减弱动态时 motion 不动、默认过渡用全站那条曲线）挂在 MotionTheme 里，
                 值跟着当前主题读——见 components/MotionTheme.tsx */}
             <MotionTheme>

@@ -78,14 +78,14 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
  * 建档向导（团队版项目模式 1a，2026-10-23）：查重 → 联系人 → 客户 → 项目 → 首条沟通。
  * 中途关掉不落库，填过的存在本机草稿里（一人一份），下次进来接着填；最后一步一笔建好，失败整笔不留
  */
-export default function ProjectWizard({ users, 要下一步, 企业 = null }: { users: 可选成员[]; 要下一步: boolean; 企业?: 企业建档 }) {
+export default function ProjectWizard({ users, 要下一步, 企业 = null, 新线索 = false }: { users: 可选成员[]; 要下一步: boolean; 企业?: 企业建档; 新线索?: boolean }) {
   // 草稿在本机 localStorage 里，服务端渲染时读不到；挂上之后再按草稿起头，免得两边对不上
   const 挂上了 = useSyncExternalStore(不订阅, () => true, () => false);
   const 我 = useMe();
   const 全名 = 草稿全名(我?.id, 草稿键);
   if (!挂上了) return null;
   const 旧 = 读草稿(全名) as { 稿?: 稿; 步?: number } | null;
-  return <WizardBody key={全名} users={users} 要下一步={要下一步} 企业={企业} 全名={全名} 旧={旧?.稿 && 有内容(旧.稿) ? { 稿: 旧.稿, 步: Number(旧.步) || 0 } : null} />;
+  return <WizardBody key={全名} users={users} 要下一步={要下一步} 企业={企业} 新线索={新线索} 全名={全名} 旧={旧?.稿 && 有内容(旧.稿) ? { 稿: 旧.稿, 步: Number(旧.步) || 0 } : null} />;
 }
 
 const 不订阅 = () => () => {};
@@ -95,7 +95,7 @@ const 不订阅 = () => () => {};
  * 能填下一步 = 企业版：没开超时回收也摆这一格、选填（10-26 验收 #4，向导里原来看不到下一步时间）
  * 企业版 = 第一步先选号码类型、按类型验格式、全公司查重（2026-10-26，customers/number-actions.ts）；关着第一步和原来一模一样
  */
-function WizardBody({ users, 要下一步, 企业, 全名, 旧 }: { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档; 全名: string; 旧: { 稿: 稿; 步: number } | null }) {
+function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档; 新线索: boolean; 全名: string; 旧: { 稿: 稿; 步: number } | null }) {
   const 企业版 = !!企业;
   const 能填下一步 = 企业版;
   const router = useRouter();
@@ -222,7 +222,7 @@ function WizardBody({ users, 要下一步, 企业, 全名, 旧 }: { users: 可�
 
   return (
     <div style={{ maxWidth: 720 }}>
-      <PageHead title="新建项目" subtitle={`一次建好${b.customer}、联系人、项目和第一次沟通；中途离开会存成草稿`} />
+      <PageHead title={新线索 ? "新建新线索" : "新建项目"} subtitle={`一次建好${b.customer}、联系人、项目和第一次沟通；中途离开会存成草稿`} />
       {接着填 && (
         <Alert
           type="info"
@@ -342,7 +342,7 @@ function WizardBody({ users, 要下一步, 企业, 全名, 旧 }: { users: 可�
                 showSearch
                 optionFilterProp="label"
               />
-              {企业.渠道们.length === 0 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>还没有渠道：请先在「设置」里加渠道</div>}
+              {企业.渠道们.length === 0 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>还没有渠道：先去 <Link href="/channels">渠道页</Link> 加一个</div>}
             </>
           ), true)}
           {!企业 && 一行(b.fields.school, <Input value={d.客户.school} onChange={(e) => 改("客户", { school: e.target.value })} />)}

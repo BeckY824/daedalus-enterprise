@@ -88,7 +88,8 @@ export type 项目详情 = {
 };
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
-const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 48px" };
+// 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
+const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 60px", whiteSpace: "nowrap" };
 
 /** 删项目的确认框：列出一起删掉的几样，说清沟通记录本身不删 */
 function 删除说明(n: 项目详情["删前清点"], 客户叫法: string) {
@@ -483,7 +484,7 @@ export default function ProjectDetail({
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <FollowTypeCell type={f.type} />
                 <Tag>{f.node}</Tag>
-                {f.code && <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>{f.code}</span>}
+                {f.code && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{f.code}</span>}
                 {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
                 <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
                 {卡点?.能发 && <Button type="link" size="small" style={{ padding: 0 }} onClick={() => set发卡点于(f.id)}>发卡点</Button>}

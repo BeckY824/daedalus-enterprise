@@ -14,7 +14,7 @@ import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
-import { 文字里号码打码 } from "@/lib/utils";
+import { 文字里号码打码, 同名带邮箱 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 管理员类别of } from "@/lib/enterprise/org";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { getSetting } from "@/lib/settings";
@@ -130,7 +130,8 @@ export default async function SettingsBody() {
   };
   const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限
     ? (() => {
-        const 名 = new Map(users.map((u) => [u.id, u.name]));
+        // 同名的带邮箱：组织架构每人一行、上级下拉都靠这个分清两个王芳
+        const 名 = 同名带邮箱(users.filter((u) => org.成员.has(u.id)));
         return {
           部门: [...org.部门.values()],
           成员: users.filter((u) => org.成员.has(u.id)).map((u) => {
@@ -139,7 +140,7 @@ export default async function SettingsBody() {
             const 指定 = m.managerId && org.成员.has(m.managerId) ? m.managerId : null;
             const 自动 = 指定 ? null : 直属上级of(org, u.id);
             return {
-              id: u.id, name: u.name, deptId: m.deptId, bizRole: m.bizRole, line: m.line,
+              id: u.id, name: 名.get(u.id)!, deptId: m.deptId, bizRole: m.bizRole, line: m.line,
               managerId: 指定, dottedManagerId: 虚线上级of(org, u.id),
               自动上级: 自动 ? 名.get(自动) ?? null : null,
             };

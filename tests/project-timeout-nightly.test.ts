@@ -11,7 +11,7 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 公海超时收回, 收回提醒尾 } from "@/lib/project/db";
+import { 公海超时收回, 收回提醒尾, 记项目沟通 } from "@/lib/project/db";
 import { 夜里扫超时, 启动夜扫, 停夜扫, 夜扫在跑, 过了夜扫时刻 } from "@/lib/project/nightly";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 超时理由, 将回收提醒, 即将回收 } from "@/lib/project/timeout";
@@ -180,6 +180,29 @@ describe("回收前一天提醒 + 即将回收（10-27）", () => {
       将回收提醒("一号项目", "潜客培育", "2026-10-26"),
       将回收提醒("二号项目", "潜客培育", "2026-10-27"),
     ]);
+  });
+
+  it("记了沟通：回收日推到明天以后 → 那条提醒勾掉；下一步填今天（明天还会收）→ 不勾", async () => {
+    const p = await 项目("2026-10-23 10:00"); // 3 天 → 10-26
+    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
+    const 没勾的 = async () => (await 提醒们()).filter((t) => !t.done).length;
+    expect(await 没勾的()).toBe(1);
+    const 乙我 = { id: 乙, name: "乙", role: "SALES" } as never;
+    const 现在 = 时("2026-10-25 10:00");
+    const 沟通 = (下一步时间: string) => ({ type: "PHONE", content: "聊了", occurredAt: "2026-10-25 09:00", 下一步时间, 阶段: "线索", 明确回复: false });
+    expect(await 记项目沟通(乙我, p.id, 沟通("2026-10-25"), 现在)).toMatchObject({ ok: true }); // 下一步今天过完 → 10-26 还是收
+    expect(await 没勾的()).toBe(1);
+    expect(await 记项目沟通(乙我, p.id, 沟通("2026-10-28"), 现在)).toMatchObject({ ok: true }); // 起点推到 10-25 → 10-28
+    expect(await 提醒们()).toEqual([expect.objectContaining({ done: true, doneAt: 现在 })]);
+  });
+
+  it("不是企业版：记沟通不碰待办（同样标题的也不勾）", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    const p = await 项目("2026-10-23 10:00");
+    await prisma.task.create({ data: { title: 将回收提醒("一号项目", "潜客培育", "2026-10-26"), dueOn: "2026-10-25", customerId: 客户, ownerId: 乙 } });
+    const r = await 记项目沟通({ id: 乙, name: "乙", role: "SALES" } as never, p.id, { type: "PHONE", content: "聊了", occurredAt: "2026-10-25 09:00", 下一步时间: "2026-10-28" }, 时("2026-10-25 10:00"));
+    expect(r).toMatchObject({ ok: true });
+    expect((await 提醒们()).map((t) => t.done)).toEqual([false]);
   });
 
   it("项目列表 / 看板：明天要收的行带回收日，其余不带；公海里的不标", async () => {
