@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Button, Card, Input, InputNumber, Modal, Select, Space, Tag, Timeline } from "antd";
+import { App, Button, Card, Input, Modal, Select, Space, Tag, Timeline } from "antd";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
-import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 理由上限, 时限最大, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 理由上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import {
   发布卡点Action, 指认卡点Action, 认领卡点Action, 接受卡点Action, 转让卡点Action, 返回卡点Action, 改卡点进度Action, 解决卡点Action, 卡点可选的人Action,
 } from "./blocker-actions";
@@ -51,13 +51,18 @@ function 流转文字(l: 卡点卡["流转"][number]): string {
   return [`${l.谁} ${叫}`, 路].filter(Boolean).join(" · ");
 }
 
-/** 过期没解决：时限是 dueAt */
-function 过期(b: 卡点卡): boolean {
-  return b.status !== "已解决" && dayjs(b.dueAt).isBefore(dayjs());
+/**
+ * 卡点用了多久（10-27 会议：先不设解决时限，只记从出现到解决的实际耗时）：没解决的「已开 N 天」，解决了的「用了 N 天解决」。
+ * 不满一天算 1 天；dueAt / dueDays 照旧写进库，界面不再显示
+ */
+export function 耗时文字(b: Pick<卡点卡, "status" | "createdAt" | "resolvedAt">, now: Date = new Date()): string {
+  const 止 = b.status === "已解决" && b.resolvedAt ? dayjs(b.resolvedAt) : dayjs(now);
+  const 天 = Math.max(1, Math.ceil(止.diff(dayjs(b.createdAt), "hour", true) / 24));
+  return b.status === "已解决" && b.resolvedAt ? `用了 ${天} 天解决（${fmtDateTime(b.resolvedAt)}）` : `已开 ${天} 天`;
 }
 
 /**
- * 从一条沟通记录发布卡点：类型、影响、阻碍主体（单选，选项是老板在设置里配的）、描述、解决时限（不填按类型的默认天数）、
+ * 从一条沟通记录发布卡点：类型、影响、阻碍主体（单选，选项是老板在设置里配的）、描述、
  * 资源申请，可以直接指认给项目上的一个人（不指 = 进看板等人认领）
  */
 export function PublishBlockerModal({ followUpId, 默认, 人们, onClose }: { followUpId: string; 默认: 卡点默认; 人们: 可选人[]; onClose: () => void }) {
@@ -66,10 +71,8 @@ export function PublishBlockerModal({ followUpId, 默认, 人们, onClose }: { f
   const [impact, setImpact] = useState<string>(默认.默认影响);
   const [obstacle, setObstacle] = useState<string | null>(null);
   const [description, setDescription] = useState("");
-  const [dueDays, setDueDays] = useState<number | null>(null);
   const [resourceRequest, setResourceRequest] = useState("");
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
-  const 默认天 = 默认.时限天数[type as keyof 卡点默认["时限天数"]];
   const 差 = !obstacle ? "选一个阻碍主体" : !description.trim() ? "写一句卡在哪" : "";
   return (
     <Modal
@@ -81,7 +84,7 @@ export function PublishBlockerModal({ followUpId, 默认, 人们, onClose }: { f
       onOk={async () => {
         if (差) return;
         const ok = await 跑(
-          () => 发布卡点Action(followUpId, { type, impact, obstacle, description, dueDays: dueDays ?? undefined, resourceRequest }, assigneeId),
+          () => 发布卡点Action(followUpId, { type, impact, obstacle, description, resourceRequest }, assigneeId),
           assigneeId ? "已发布，等对方接受" : "已发布到卡点看板",
         );
         if (ok) onClose();
@@ -92,17 +95,6 @@ export function PublishBlockerModal({ followUpId, 默认, 人们, onClose }: { f
         <Select aria-label="影响等级" value={impact} onChange={(v: string) => setImpact(v)} options={影响等级们.map((t) => ({ value: t, label: t }))} />
         <Select aria-label="阻碍主体" placeholder="阻碍主体" value={obstacle} onChange={(v: string) => setObstacle(v)} options={默认.阻碍主体们.map((t) => ({ value: t, label: t }))} />
         <Input.TextArea aria-label="卡点描述" rows={3} maxLength={描述上限} showCount value={description} onChange={(e) => setDescription(e.target.value)} placeholder="卡在哪（必填）" />
-        <InputNumber
-          aria-label="解决时限"
-          style={{ width: "100%" }}
-          min={1}
-          max={时限最大}
-          precision={0}
-          value={dueDays}
-          onChange={(v) => setDueDays(typeof v === "number" ? v : null)}
-          placeholder={`解决时限（天），不填按${type}默认 ${默认天} 天`}
-          addonAfter="天"
-        />
         <Input.TextArea aria-label="资源申请" rows={2} maxLength={描述上限} value={resourceRequest} onChange={(e) => setResourceRequest(e.target.value)} placeholder="需要什么资源（可不写）" />
         <Select
           aria-label="指认给"
@@ -120,7 +112,7 @@ export function PublishBlockerModal({ followUpId, 默认, 人们, onClose }: { f
 type 框 = { kind: "指认" | "转让" | "返回" | "进度" | "解决"; b: 卡点卡 } | null;
 
 /**
- * 一串卡点：每条显示编号、状态、类型、影响、阻碍主体、时限、经手人，按 能 给按钮；流转（谁、什么时候、从谁到谁）展开看。
+ * 一串卡点：每条显示编号、状态、类型、影响、阻碍主体、开了多久、经手人，按 能 给按钮；流转（谁、什么时候、从谁到谁）展开看。
  * 项目详情和「我的卡点」看板共用；带项目名 = 看板上用（点了进项目）
  */
 export function BlockerList({ 们, 人们, 带项目 = false, 空 = "还没有卡点" }: { 们: 卡点卡[]; 人们?: 可选人[] | ((projectId: string) => Promise<可选人[]>); 带项目?: boolean; 空?: string }) {
@@ -168,8 +160,8 @@ export function BlockerList({ 们, 人们, 带项目 = false, 空 = "还没有�
             {带项目 && <Link href={`/projects/${b.projectId}`}>{b.项目}</Link>}
           </div>
           <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{b.description}</div>
-          <div style={{ color: 过期(b) ? "var(--danger-text)" : "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
-            {b.status === "已解决" && b.resolvedAt ? `${fmtDateTime(b.resolvedAt)} 解决` : `时限 ${b.dueDays} 天，${dayjs(b.dueAt).format("YYYY-MM-DD HH:mm")} 前${过期(b) ? "（已超时）" : ""}`}
+          <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
+            {耗时文字(b)}
             {" · "}{b.经手人 ? `经手 ${b.经手人}` : "看板上，没人接"}{" · "}{b.发布人} 发布
           </div>
           {b.resourceRequest && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>资源申请：{b.resourceRequest}</div>}

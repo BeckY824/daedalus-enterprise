@@ -15,7 +15,7 @@ import { 分配可选角色, 谁能用, type 分配谁能用配置 } from "@/lib
 import { 角色名 } from "@/lib/sync/dept-policy";
 import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
 import { 存卡点默认Action } from "@/app/(app)/projects/blocker-actions";
-import { 卡点类型们, 影响等级们, 时限最大, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
 
 const 节点们 = 企业版字典.节点们;
 const 默认天数 = 企业版字典.默认超时天数;
@@ -44,7 +44,7 @@ export type 项目设置 = {
   挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段" | "阶段规则", string | null>;
   /** 节点时限能改时，能改哪几个节点："全部" = 都能改、能开关；没给 = 全部（老板 / 不是企业版） */
   时限节点?: 时限范围;
-  /** 企业版卡点的默认值（每类卡点的时限、阻碍主体的选项）；不是企业版 = null，卡片不出 */
+  /** 企业版卡点的默认值（阻碍主体的选项、默认类型和影响）；不是企业版 = null，卡片不出 */
   卡点默认?: 卡点默认 | null;
   /** 企业版提成比例 A（底价）/ B（溢价），百分数；不是企业版 = null，卡片不出（服务端读的 企业版()） */
   提成比例: 提成比例 | null;
@@ -468,7 +468,8 @@ function AdvanceCard({
 }
 
 /**
- * 卡点默认值（企业版）：每类卡点默认几天内解决（发布时没填时限就按这个）、阻碍主体有哪些选项、发布时默认选的类型和影响。
+ * 卡点默认值（企业版）：阻碍主体有哪些选项、发布时默认选的类型和影响。
+ * 10-27 会议：卡点先不设解决时限，每类的天数不再让填（库里照旧存着，发布时仍按它写 dueAt，界面不显示）。
  * 谁能改跟字典一样
  */
 function BlockerDefaultsCard({
@@ -476,32 +477,21 @@ function BlockerDefaultsCard({
 }: {
   默认: 卡点默认; 挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const [天数, set天数] = useState<Record<string, number | null>>(默认.时限天数);
   const [主体们, set主体们] = useState<string[]>(默认.阻碍主体们);
   const [类型, set类型] = useState(默认.默认类型);
   const [影响, set影响] = useState(默认.默认影响);
   const 改了 =
-    卡点类型们.some((t) => 天数[t] !== 默认.时限天数[t]) ||
     主体们.join("\n") !== 默认.阻碍主体们.join("\n") || 类型 !== 默认.默认类型 || 影响 !== 默认.默认影响;
-  const 齐了 = 卡点类型们.every((t) => 天数[t] != null) && 主体们.length > 0;
-  const 保存 = () => 跑(() => 存卡点默认Action({ 时限天数: 天数, 阻碍主体们: 主体们, 默认类型: 类型, 默认影响: 影响 }), "已保存");
+  const 齐了 = 主体们.length > 0;
+  const 保存 = () => 跑(() => 存卡点默认Action({ 阻碍主体们: 主体们, 默认类型: 类型, 默认影响: 影响 }), "已保存");
   const 行 = { display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" as const };
 
   return (
     <Card title="卡点默认值" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        在项目沟通记录上发卡点时，没填解决时限就按这里的天数算；阻碍主体从下面的选项里单选。
+        在项目沟通记录上发卡点时，阻碍主体从下面的选项里单选；卡点不设解决时限，只记从出现到解决用了几天。
       </div>
-      {卡点类型们.map((t) => (
-        <div key={t} style={行}>
-          <span style={{ width: 72 }}>{t}</span>
-          <InputNumber
-            aria-label={`${t}的解决时限`} min={1} max={时限最大} precision={0} suffix="天" style={{ width: 120 }}
-            disabled={!!挡} value={天数[t] ?? null} onChange={(v) => set天数((m) => ({ ...m, [t]: v }))}
-          />
-        </div>
-      ))}
-      <div style={{ ...行, marginTop: 12 }}>
+      <div style={行}>
         <span style={{ width: 72 }}>阻碍主体</span>
         <Select
           aria-label="阻碍主体的选项" mode="tags" style={{ flex: "1 1 240px", minWidth: 0 }} disabled={!!挡}
