@@ -14,6 +14,10 @@ import { statusLabel, type BusinessConfig } from "@/lib/business-config";
 import { patchCustomer, saveCustomer, saveContract } from "../customers/actions";
 import { saveFollowUp, savePlan, deleteFollowUp } from "../customers/[id]/actions";
 import { saveLead } from "../leads/actions";
+import { 建档向导 } from "../projects/actions";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 要下一步时间 } from "@/lib/project/wizard";
+import { 企业版字典 } from "@/lib/project/stage-dict";
 import { saveOpportunity } from "../opportunities/actions";
 import { saveChannel } from "../channels/actions";
 import { 按名字找负责人 } from "@/lib/owners";
@@ -225,6 +229,38 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
   }
 }
 
+/**
+ * 企业版只用项目时的新线索卡：走项目的建档向导，建一位客户、主要联系人和一个线索阶段的项目，首条跟进写明从对话来。
+ * 不给撤销：向导一笔建了好几样，撤回去要删客户，交给人到项目页处理。
+ */
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, meId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const 号 = p.phone.trim();
+  // 企业版新建线索要选渠道：卡上只有来源一格，来源就是某个启用中的渠道名（或只含一个渠道名）才认，认不出不猜
+  const 渠道们 = await prisma.channel.findMany({ where: { active: true }, select: { id: true, name: true } });
+  const 来源 = p.source.trim();
+  const 含 = 渠道们.filter((c) => 来源.includes(c.name));
+  const 渠道 = 渠道们.find((c) => c.name === 来源) ?? (含.length === 1 ? 含[0] : null);
+  if (!渠道) return { ok: false, error: "新线索要选渠道，卡上的来源对不上渠道：请到「新线索」页用向导建" };
+  const r = await 建档向导({
+    客户: {
+      name: p.name, phone: 号, 企业号码: 号 ? { 类型: "手机号", 值: 号 } : null,
+      school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
+      remark: p.remark || null, salesOwnerId: meId, channelId: 渠道.id, referrerCustomerId: null,
+    },
+    联系人: { name: p.contact.trim() || p.name, phone: 号 || null },
+    // 负责人是自己、节点放线索第一步、明确回复记「没有」：都是卡上没有的格，按最保守的填，要改到项目页改
+    项目: { name: p.name, amount: 0, ownerId: meId },
+    跟进: {
+      type: "OTHER", content: `在首页对话里新建的线索，渠道：${渠道.name}`, occurredAt: new Date().toISOString(),
+      节点: 企业版字典.节点们.线索[0], 明确回复: false,
+    },
+  });
+  if (r.ok) return { ok: true };
+  // 开了超时回收：首条跟进要填下一步时间，卡上没有这一格
+  if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填下一步时间：请到「新线索」页用向导建" };
+  return { ok: false, error: r.error };
+}
+
 async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>): Promise<ApplyResult> {
   const b = await getBusiness();
 
@@ -281,9 +317,15 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     }
   }
 
+  // 企业版只用项目：商机是项目的一个阶段，不再单独建；新线索 = 线索阶段的项目（10-26 用户：「记得把线索，商机，订单都放到项目里，是三大阶段」）
+  const 只用项目 = 企业版() && b.projectMode === true;
+  if (只用项目 && p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
+
   let done: { ok: true } | { ok: false; error: string };
   let 撤销: 撤销凭据 | undefined;
-  if (p.kind === "update_customer") {
+  if (只用项目 && p.kind === "add_lead") {
+    done = await 建成项目(p, me.id);
+  } else if (p.kind === "update_customer") {
     done = await 改档案(p.customerId, p.changes);
   } else if (p.kind === "add_opportunity") {
     const r = await saveOpportunity({

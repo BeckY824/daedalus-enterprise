@@ -158,6 +158,21 @@ describe("备份真能恢复（恢复演练）", () => {
     expect(ci).toMatch(/tools\/restore-drill\.sh --fill/);
   });
 
+  it("停应用要等 compose 也认它停了，再在里面跑东西（stop 刚返回 ps 还可能报 running）", () => {
+    expect(演练).toMatch(/^crm_stop$/m);
+    expect(恢复).toMatch(/^crm_stop$/m);
+    expect(演练 + 恢复).not.toMatch(/docker compose stop crm/);
+    // 假 docker：stop 之后前两次 ps 还报 running，第三次才空
+    const 目录 = mkdtempSync(path.join(tmpdir(), "stop-"));
+    const 假 = path.join(目录, "docker");
+    writeFileSync(假, `#!/bin/bash\nn=$(cat "${目录}/n" 2>/dev/null || echo 0)\ncase "$2" in\n  stop) echo stop >> "${目录}/log";;\n  ps) echo $((n+1)) > "${目录}/n"; [ "$n" -lt 2 ] && echo abc123;;\nesac\nexit 0\n`, { mode: 0o755 });
+    const 脚本 = path.join(目录, "run.sh");
+    writeFileSync(脚本, `set -e\nsource "${path.join(ROOT, "deploy/enterprise/scripts/lib.sh")}"\nsleep() { :; }\ncrm_stop\nps_n=$(cat "${目录}/n")\necho "done $ps_n"\n`);
+    const 出 = execFileSync("bash", [脚本], { env: { ...process.env, PATH: `${目录}:${process.env.PATH}` } }).toString();
+    expect(出.trim()).toBe("done 3");
+    expect(readFileSync(path.join(目录, "log"), "utf8").trim()).toBe("stop");
+  });
+
   it("CI 用这次打的镜像打交付包，不去拉 GHCR 上的同名版本", () => {
     expect(打包).toMatch(/LOCAL_APP_IMAGE/);
     expect(ci).toMatch(/LOCAL_APP_IMAGE=1 deploy\/enterprise\/tools\/pack\.sh/);

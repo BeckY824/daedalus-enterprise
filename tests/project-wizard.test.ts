@@ -42,6 +42,13 @@ function 输入(补: Partial<建档向导输入> = {}): 建档向导输入 {
   };
 }
 
+/** 企业版建档（10-26）：渠道、负责人、跟进节点、客户是否明确回复都要选 */
+async function 企业输入(补: Partial<建档向导输入> = {}): Promise<建档向导输入> {
+  const 渠道 = (await prisma.channel.findFirst({ where: { name: "小红" } })) ?? (await prisma.channel.create({ data: { name: "小红", channelOwnerId: 甲 } }));
+  const b = 输入(补);
+  return { ...b, 客户: { ...b.客户, channelId: 渠道.id }, 项目: { ownerId: 甲, ...b.项目 }, 跟进: { 节点: "潜客培育", 明确回复: false, ...b.跟进 } };
+}
+
 async function 各表行数() {
   const [customer, contact, project, log, followUp, link, creator] = await Promise.all([
     prisma.customer.count(), prisma.contact.count(), prisma.project.count(), prisma.projectNodeLog.count(),
@@ -105,17 +112,17 @@ describe("建档向导", () => {
     it("企业版开了超时回收：不填拦，填了写上项目", async () => {
       vi.stubEnv("CRM_ENTERPRISE", "1");
       await setSetting("orgRules", 开着超时);
-      expect(await 建档向导(输入())).toMatchObject({ ok: false, error: expect.stringContaining("下一步时间") });
-      const 下一步 = await 项目的(await 建档向导(带下一步("2099-01-01")));
+      expect(await 建档向导(await 企业输入())).toMatchObject({ ok: false, error: expect.stringContaining("下一步时间") });
+      const 下一步 = await 项目的(await 建档向导(await 企业输入(带下一步("2099-01-01"))));
       expect(下一步 && typeof 下一步 !== "string" && 下一步.getFullYear()).toBe(2099);
     });
 
     it("企业版没开超时回收（验收 #4）：下一步时间选填，不填照建，填了写上项目，早于今天拦", async () => {
       vi.stubEnv("CRM_ENTERPRISE", "1");
-      expect(await 项目的(await 建档向导(输入()))).toBeNull();
-      const 下一步 = await 项目的(await 建档向导({ ...带下一步("2099-01-01"), 客户: { ...输入().客户, phone: "13900000013" }, 联系人: { ...输入().联系人, phone: "13900000023" } }));
+      expect(await 项目的(await 建档向导(await 企业输入()))).toBeNull();
+      const 下一步 = await 项目的(await 建档向导(await 企业输入({ ...带下一步("2099-01-01"), 客户: { ...输入().客户, phone: "13900000013" }, 联系人: { ...输入().联系人, phone: "13900000023" } })));
       expect(下一步 && typeof 下一步 !== "string" && 下一步.getFullYear()).toBe(2099);
-      expect(await 建档向导({ ...带下一步("2020-01-01"), 客户: { ...输入().客户, phone: "13900000014" }, 联系人: { ...输入().联系人, phone: "13900000024" } })).toMatchObject({ ok: false, error: expect.stringContaining("不能早于今天") });
+      expect(await 建档向导(await 企业输入({ ...带下一步("2020-01-01"), 客户: { ...输入().客户, phone: "13900000014" }, 联系人: { ...输入().联系人, phone: "13900000024" } }))).toMatchObject({ ok: false, error: expect.stringContaining("不能早于今天") });
     });
   });
 
@@ -138,9 +145,48 @@ describe("建档向导", () => {
     await prisma.project.create({ data: { name: "已有", customerId: 客.id, ownerId: 乙, creatorId: 乙 } });
     await prisma.project.create({ data: { name: "已有", customerId: 客.id, ownerId: 甲, creatorId: 甲 } });
     const 前 = await 各表行数();
-    expect(await 建档向导(输入({ 项目: { name: "x", ownerId: 乙 } }))).toMatchObject({ ok: false, error: expect.stringContaining("持有上限") });
+    expect(await 建档向导(await 企业输入({ 项目: { name: "x", ownerId: 乙 } }))).toMatchObject({ ok: false, error: expect.stringContaining("持有上限") });
     expect(await 各表行数()).toEqual(前);
-    expect(await 建档向导(输入())).toMatchObject({ ok: true });
+    expect(await 建档向导(await 企业输入())).toMatchObject({ ok: true });
+  });
+
+  describe("企业版新建线索（10-26：负责人、渠道必选；跟进节点、客户是否明确回复必选）", () => {
+    beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", "1"); });
+
+    it("缺哪样拦哪样，一行不写", async () => {
+      const 好 = await 企业输入();
+      const 前 = await 各表行数();
+      const 无负责人 = { ...好, 项目: { ...好.项目, ownerId: null } };
+      expect(await 建档向导(无负责人 as never)).toMatchObject({ ok: false, error: "请选项目负责人" });
+      expect(await 建档向导({ ...好, 客户: { ...好.客户, channelId: null } })).toMatchObject({ ok: false, error: "请选渠道" });
+      await prisma.channel.updateMany({ data: { active: false } });
+      expect(await 建档向导(好)).toMatchObject({ ok: false, error: "这个渠道不存在或已停用，换一个" });
+      await prisma.channel.updateMany({ data: { active: true } });
+      expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 节点: undefined } })).toMatchObject({ ok: false, error: expect.stringContaining("跟进节点") });
+      expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 节点: "明确需求" } })).toMatchObject({ ok: false, error: expect.stringContaining("跟进节点") });
+      expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 明确回复: undefined } })).toMatchObject({ ok: false, error: "请选客户是否明确回复" });
+      // 落在线索验证之后却没有明确回复：不算有效线索
+      expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 节点: "线索推进", 明确回复: false } })).toMatchObject({ ok: false, error: expect.stringContaining("明确回复") });
+      expect(await 各表行数()).toEqual(前);
+    });
+
+    it("建成：项目落在选的节点，首条沟通记上阶段和明确回复", async () => {
+      const r = await 建档向导(await 企业输入({ 跟进: { type: "PHONE", content: "回了", occurredAt: "2026-10-20 10:00", 节点: "线索推进", 明确回复: true } }));
+      expect(r).toMatchObject({ ok: true });
+      if (!r.ok) return;
+      expect(await prisma.project.findUniqueOrThrow({ where: { id: r.projectId } })).toMatchObject({ phase: "线索", node: "线索推进" });
+      const f = await prisma.followUp.findFirstOrThrow({ include: { projectNode: true } });
+      expect(f.projectNode).toMatchObject({ projectId: r.projectId, node: "线索推进" });
+      expect(await prisma.entFollowUpMark.findUniqueOrThrow({ where: { followUpId: f.id } })).toMatchObject({ projectId: r.projectId, phase: "线索", replied: true });
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).channelId).toBeTruthy();
+    });
+  });
+
+  it("不是企业版：渠道、跟进节点、明确回复都不要，不写标记，节点一律潜客培育", async () => {
+    const r = await 建档向导(输入({ 跟进: { type: "PHONE", content: "聊了", occurredAt: "2026-10-20 10:00", 节点: "线索推进", 明确回复: true } }));
+    expect(r).toMatchObject({ ok: true });
+    if (r.ok) expect((await prisma.project.findUniqueOrThrow({ where: { id: r.projectId } })).node).toBe("潜客培育");
+    expect(await prisma.entFollowUpMark.count()).toBe(0);
   });
 
   it("不是企业版：Setting 里持有上限开着也不拦", async () => {
@@ -183,21 +229,21 @@ describe("企业版：联系人那一步的号码也查重（验收 #3）", () =
 
   it("联系人邮箱撞到同事客户档案上的：拦下，说是哪一格、找谁，一行不写", async () => {
     await 乙的客户();
-    const r = await 建档向导(输入({ 联系人: { name: "王经理", email: " wang@corp.COM " } }));
+    const r = await 建档向导(await 企业输入({ 联系人: { name: "王经理", email: " wang@corp.COM " } }));
     expect(r).toEqual({ ok: false, error: "联系人邮箱：⛔号码重复，可与 乙 沟通核实" });
-    expect(await 各表行数()).toEqual({ ...全空, customer: 1 });
+    expect(await 各表行数()).toMatchObject({ ...全空, customer: 1 });
     expect(await prisma.contactMethod.count()).toBe(0);
   });
 
   it("联系人电话格式不对：拦下，一行不写", async () => {
-    const r = await 建档向导(输入({ 联系人: { name: "王经理", phone: "1390000" } }));
+    const r = await 建档向导(await 企业输入({ 联系人: { name: "王经理", phone: "1390000" } }));
     expect(r).toEqual({ ok: false, error: "联系人电话：⚠️手机号格式错误" });
-    expect(await 各表行数()).toEqual(全空);
+    expect(await 各表行数()).toMatchObject(全空);
   });
 
   it("建好：联系人的号记进子表并挂上联系人；跟第一步同一个号不算自己撞自己", async () => {
-    const r = await 建档向导(输入({
-      客户: { ...输入().客户, phone: "13900000003", 企业号码: { 类型: "手机号", 值: "139 0000 0003" } },
+    const r = await 建档向导(await 企业输入({
+      客户: { ...(await 企业输入()).客户, phone: "13900000003", 企业号码: { 类型: "手机号", 值: "139 0000 0003" } },
       联系人: { name: "王经理", phone: "13900000003", email: "Wang@Corp.com", wechat: "WangLi_88" },
     }));
     expect(r).toMatchObject({ ok: true });

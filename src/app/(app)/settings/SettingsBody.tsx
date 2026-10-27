@@ -7,7 +7,9 @@ import { describeLlmConfig } from "@/lib/llm";
 import { getBusiness } from "@/lib/business";
 import { 角色字典, 异常类别字典, 能进公海的阶段 } from "@/lib/project/db";
 import { 读组织规则 } from "@/lib/project/org-rules-store";
+import { 读卡点默认 } from "@/lib/project/blocker";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 全部企业字典 } from "@/lib/enterprise/dict";
 import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
@@ -19,6 +21,7 @@ import { getSetting } from "@/lib/settings";
 import { 读改权限, 能改设置, 谁能改的话, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import type { 组织架构 } from "./OrgTab";
 import { 本月分配情况 } from "../leads/assign-actions";
+import { 读提成比例, 能改提成比例 } from "@/lib/project/commission-db";
 
 /**
  * 设置的正文（服务端组件，负责取数）。**两条路由共用它**：
@@ -66,16 +69,22 @@ export default async function SettingsBody() {
         prisma.project.groupBy({ by: ["exceptionCategoryId"], where: { exceptionCategoryId: { not: null } }, _count: { _all: true } }),
         // 组织规则只企业版有：别的版本不读、卡片不出
         企业版() ? 读组织规则() : null,
+        企业版() ? 读卡点默认() : null,
         // 每人手上的线索 / 商机项目数，和 lib/project/db.ts 持有数 同一个口径
         !企业版() ? [] : prisma.project.groupBy({ by: ["ownerId"], where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] } }, _count: { _all: true } }),
-      ]).then(([角色, 用量, 类别, 类别用量, 组织规则, 持有]) => {
+        // 提成比例 A / B 只企业版有：别的版本不读、卡片不出
+        企业版() ? 读提成比例() : null,
+      ]).then(([角色, 用量, 类别, 类别用量, 组织规则, 卡点默认, 持有, 提成比例]) => {
         const 用 = new Map(用量.map((x) => [x.roleId, x._count._all]));
         const 类别用 = new Map(类别用量.map((x) => [x.exceptionCategoryId, x._count._all]));
         return {
           角色们: 角色.map((r) => ({ id: r.id, name: r.name, active: r.active, 用的人: 用.get(r.id) ?? 0 })),
           类别们: 类别.map((c) => ({ id: c.id, name: c.name, active: c.active, 用的人: 类别用.get(c.id) ?? 0 })),
           组织规则,
+          卡点默认,
           持有: Object.fromEntries(持有.map((x) => [x.ownerId, x._count._all])),
+          提成比例,
+          能改提成比例: false,
         };
       })
     : null;
@@ -99,9 +108,14 @@ export default async function SettingsBody() {
     共享区 ? "共享试用区不能改"
     : org && 改权限 ? (能改设置(org, me, 项, 改权限) ? null : 谁能改的话(改权限, 项))
     : me.role === "ADMIN" ? null : "只有老板能改";
+  // 企业版选项字典（分配方式、回收原因……）也放在项目模式这一栏；还没有地方用它们，用的人先都记 0
+  const 企业选项 = 项目设置底 && (await 全部企业字典());
   const 项目设置 = 项目设置底 && {
     ...项目设置底,
-    挡: { 字典: 挡("字典"), 持有上限: 挡("持有上限"), 节点时限: 挡("节点时限"), 必填字段: 挡("必填字段") },
+    企业选项: 企业选项
+      ? Object.fromEntries(Object.entries(企业选项).map(([k, xs]) => [k, xs.map((x) => ({ id: x.id, name: x.name, active: x.active, 用的人: 0 }))]))
+      : null,
+    挡: { 字典: 挡("字典"), 持有上限: 挡("持有上限"), 节点时限: 挡("节点时限"), 必填字段: 挡("必填字段"), 阶段规则: 挡("阶段规则") },
   };
   const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限
     ? (() => {
@@ -136,7 +150,7 @@ export default async function SettingsBody() {
 
   return (
     <SettingsView
-      项目设置={项目设置}
+      项目设置={项目设置 && { ...项目设置, 能改提成比例: !!项目设置.提成比例 && !共享区 && 能改提成比例(me, org) }}
       组织架构={组织架构}
       me={me}
       /**

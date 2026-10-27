@@ -40,6 +40,15 @@ const 可写: Record<string, string[]> = {
   // 企业版线索分配（2026-10-24）：leads/assign-actions.ts 的 分配线索 / 设配额
   EntLeadAssign: ["leadId", "toUserId", "line", "kind"],
   EntLeadQuota: ["userId", "quota"],
+  // 企业版卡点（2026-10-26）：projects/blocker-actions.ts 的 发布 / 指认 / 转让 / 改进度 / 解决
+  EntBlocker: ["type", "impact", "obstacle", "description", "dueDays", "assigneeId", "resourceRequest", "progress", "solution", "result"],
+  // 记项目沟通填的下一步时间（projects/actions.ts 记项目沟通Action）
+  EntFollowUpMeta: ["nextAt"],
+  // 企业版沟通标记（2026-10-26）：记项目沟通 / 建档向导一起写，沟通弹窗里选阶段、选客户是否明确回复
+  EntFollowUpMark: ["phase", "replied"],
+  // 企业版提成（2026-10-26）：projects/commission-actions.ts 的 存项目底价 / 存提成分配
+  EntCommission: ["basePrice"],
+  EntCommissionSplit: ["userId", "percent"],
   Customer: ["name", "phone", "school", "grade", "major", "channelId", "referrerCustomerId", "salesOwnerId", "channelOwnerId", "followStatus", "decisionStatus", "expectedSignAt", "remark"],
   Channel: ["name", "phone", "remark", "channelOwnerId", "active"],
   Lead: ["name", "contact", "phone", "email", "industry", "source", "status", "remark", "ownerId"],
@@ -69,6 +78,8 @@ const 可写: Record<string, string[]> = {
   ProjectMember: ["roleId"],
   ProjectRole: ["name", "active"],
   ProjectExceptionCategory: ["name", "active"],
+  // 企业版选项字典（2026-10-26）：设置 → 项目模式 → 企业选项（settings/ent-dict-actions.ts）
+  EntDictItem: ["name", "active"],
   FollowUp: ["type", "title", "content", "status", "duration", "occurredAt", "dueAt", "participants", "customerId", "contactId", "opportunityId"],
   Task: ["title", "dueAt", "done", "customerId"],
   FollowPlan: ["subject", "plannedAt", "method", "done", "customerId"],
@@ -85,8 +96,24 @@ const 派生: Record<string, Record<string, string>> = {
     byUserId: "点分配的那个人，当前登录账号",
     counted: "算不算进当月配额，按线索种类和设置算出来",
     month: "分配那一刻的年月，按业务钟算（企业版北京时间），每月清零靠它",
+    projectId: "分的是哪个项目（企业版新线索=项目的线索阶段），从被分的那条项目上来",
   },
   EntLeadQuota: { setById: "最后改配额的人，当前登录账号" },
+  EntFollowUpMark: { followUpId: "主键：标的是哪条沟通（一条沟通只挂一个项目，一行一条）", projectId: "哪个项目，记沟通时跟 FollowUpProject 一起写" },
+  EntCommission: {
+    projectId: "哪个项目，一个项目一行；存项目底价时按项目定，不改",
+    updatedById: "最后改项目底价的人，当前登录账号",
+    fixedAt: "赢单（进订单阶段）那一刻打上，退回商机清掉",
+    fixedDeal: "赢单时的成交金额，从项目金额抄过来",
+    fixedBase: "赢单时的项目底价",
+    fixedRateBase: "赢单时设置里的底价比例",
+    fixedRatePremium: "赢单时设置里的溢价比例",
+    fixedTotal: "赢单时按上面几项算出来的实际提成",
+  },
+  EntCommissionSplit: {
+    projectId: "哪个项目；分配按项目整份存",
+    setById: "最后改这一份的人，当前登录账号",
+  },
   Opportunity: { activityAt: "最近业务推进时间；转交负责人保留，业务字段/报价变化时刷新，老数据为空沿用原修改时间" },
   Customer: {
     expectedSignOn: "预计签约原日历日，随保存/导入/同步保留；旧数据未知为空",
@@ -355,6 +382,7 @@ const 派生: Record<string, Record<string, string>> = {
   ProjectMember: { projectId: "哪个项目的组员，加人时定", userId: "哪位成员，加人时定；换人 = 删了再加", invitedById: "谁拉进来的，加人时打上" },
   ProjectRole: { sort: "加角色时排到最后，系统写；不做拖动排序" },
   ProjectExceptionCategory: { sort: "加类别时排到最后，系统写；不做拖动排序" },
+  EntDictItem: { kind: "加选项时就定了是哪一类，不改", sort: "加选项时排到最后，系统写；不做拖动排序" },
   ProjectNodeLog: {
     projectId: "哪个项目，改节点时系统写", userId: "谁改的，系统写", at: "改的那一刻，系统写",
     fromPhase: "改之前的阶段，系统写", fromNode: "改之前的节点，系统写", fromResult: "改之前的结局，系统写",
@@ -367,6 +395,18 @@ const 派生: Record<string, Record<string, string>> = {
   },
   FollowUpProject: { followUpId: "哪条沟通记录，记的时候定", projectId: "挂在哪个项目，记的时候定", node: "记这条时项目在哪个节点，系统打上" },
   CustomerCreator: { customerId: "哪位客户，一位一行", userId: "实际建档的人，向导保存那一刻打上，不改", at: "建档那一刻，系统打上" },
+  EntBlocker: {
+    code: "BLK + 日期 + 当天流水，发布时系统生成，不改", projectId: "从哪个项目的沟通发布，发布时定",
+    followUpId: "从哪条沟通发布，发布时定", customerId: "发布那一刻项目的客户，系统照抄", contactId: "发布那一刻项目的联系人，系统照抄",
+    phase: "发布那一刻项目的阶段，系统照抄", dueAt: "发布时间 + 解决时限，系统算",
+    status: "看板 / 待接受 / 处理中 / 已解决，按认领、接受、转让、返回、解决系统写",
+    creatorId: "发布的人，当前登录账号", resolvedAt: "点解决的那一刻，系统写",
+  },
+  EntBlockerLog: {
+    blockerId: "哪个卡点，系统写", userId: "谁做的，当前登录账号", at: "那一刻，系统写", action: "发布 / 指认 / 认领 / 接受 / 转让 / 返回 / 解决 / 改进度 / 离职交接，系统写",
+    fromUserId: "交出去的人，系统写", toUserId: "接过来的人，系统写", note: "返回看板的理由、解决结果等，跟着那一步写；只增不改",
+  },
+  EntFollowUpMeta: { followUpId: "哪条沟通，记的时候定", projectId: "挂在哪个项目，记的时候定", code: "FUL + 日期 + 当天流水，记的时候系统生成" },
   CustomerOwnerLog: {
     customerId: "哪位客户，换负责人时系统写", userId: "谁换的，系统写", at: "换的那一刻，系统写",
     fromOwnerId: "换之前的负责人（历史负责人），系统写", toOwnerId: "换之后的负责人，系统写",

@@ -73,8 +73,35 @@ export const 满了 = (已分: number, 配额: number | null) => 配额 !== null
 /** 自动分配只挑填了配额、而且不是 0 的人（10-25：没填的不参与；配额 0 也不分） */
 export const 有配额 = (配额: number | null): 配额 is number => 配额 !== null && 配额 > 0;
 
-/** 不参与自动分配的人：Setting 里存 JSON string[]，没存 = 人人参与。设置 → 组织架构 →「线索分配」里每人一个开关 */
+/**
+ * 每人参不参与自动分配（10-26 改三态）：允许 / 暂停 / 禁止。暂停 = 暂时不参与、可随时恢复；禁止 = 不参与。
+ * 两种都不进轮转，手动分配都照常。存 Setting：{ userId: "暂停" | "禁止" }，允许的不存，没存 = 人人允许。
+ * 老格式（10-24 起的开关）是 string[] = 关掉的人，读成 禁止；对象里存 true / false 的读成 允许 / 禁止。下一次改就写成新格式
+ */
 export const 自动分配不参与key = "enterprise.lead_assign.auto_excluded";
+
+export const 参与状态们 = ["允许", "暂停", "禁止"] as const;
+export type 参与状态 = (typeof 参与状态们)[number];
+export const 是参与状态 = (x: unknown): x is 参与状态 => (参与状态们 as readonly unknown[]).includes(x);
+
+/** 存着的值规整成 userId → 暂停 / 禁止（允许不放进来）。存坏了的当没设 */
+export function 认参与状态(v: unknown): Record<string, Exclude<参与状态, "允许">> {
+  const out: Record<string, Exclude<参与状态, "允许">> = {};
+  if (Array.isArray(v)) {
+    for (const id of v) if (typeof id === "string" && id) out[id] = "禁止";
+    return out;
+  }
+  if (!v || typeof v !== "object") return out;
+  for (const [id, x] of Object.entries(v as Record<string, unknown>)) {
+    if (!id) continue;
+    if (x === "暂停" || x === "禁止") out[id] = x;
+    else if (x === false) out[id] = "禁止";
+  }
+  return out;
+}
+
+/** 这个人现在的状态 */
+export const 参与状态of = (表: Record<string, 参与状态>, userId: string): 参与状态 => 表[userId] ?? "允许";
 
 export type 候选人 = { userId: string; 已分: number; 配额: number | null; 进池: Date };
 
@@ -133,7 +160,10 @@ export async function 配额of(userId: string, db: 库 = prisma): Promise<number
 }
 
 export type 分出去的线索 = {
-  leadId: string;
+  /** 老的线索表；企业版只用项目以后分的是项目，这里为空、看 projectId */
+  leadId: string | null;
+  /** 企业版「新线索」= 项目的线索阶段：分的是哪个项目 */
+  projectId: string | null;
   name: string;
   status: string;
   convertedAt: string | null;
@@ -159,32 +189,65 @@ export async function 我分出去的(我: string, 最多 = 200): Promise<分出
     orderBy: { createdAt: "desc" },
     take: 最多 * 2,
   });
+  // 同一条（线索或项目）分了几次只留最近一次
   const 最近 = new Map<string, (typeof 记录)[number]>();
-  for (const r of 记录) if (!最近.has(r.leadId)) 最近.set(r.leadId, r);
-  const ids = [...最近.keys()].slice(0, 最多);
-  const leads = await defaultClient.lead.findMany({
-    where: { id: { in: ids } },
-    select: { id: true, name: true, status: true, convertedAt: true, customerId: true, owner: { select: { name: true } } },
-  });
+  for (const r of 记录) {
+    const k = r.projectId ? `p:${r.projectId}` : r.leadId ? `l:${r.leadId}` : null;
+    if (k && !最近.has(k)) 最近.set(k, r);
+  }
+  const 留 = [...最近.values()].slice(0, 最多);
+  const leadIds = 留.flatMap((r) => (r.projectId || !r.leadId ? [] : [r.leadId]));
+  const projectIds = 留.flatMap((r) => (r.projectId ? [r.projectId] : []));
+  const [leads, projects] = await Promise.all([
+    leadIds.length
+      ? defaultClient.lead.findMany({
+          where: { id: { in: leadIds } },
+          select: { id: true, name: true, status: true, convertedAt: true, customerId: true, owner: { select: { name: true } } },
+        })
+      : [],
+    projectIds.length
+      ? defaultClient.project.findMany({
+          where: { id: { in: projectIds } },
+          select: { id: true, name: true, phase: true, node: true, result: true, customerId: true, ownerId: true, pooledAt: true },
+        })
+      : [],
+  ]);
   const 线索 = new Map(leads.map((l) => [l.id, l]));
+  const 项目 = new Map(projects.map((p) => [p.id, p]));
   const 人名 = new Map(
-    (await defaultClient.user.findMany({ where: { id: { in: [...new Set([...最近.values()].map((r) => r.toUserId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]),
+    (await defaultClient.user.findMany({
+      where: { id: { in: [...new Set([...留.map((r) => r.toUserId), ...projects.map((p) => p.ownerId)])] } },
+      select: { id: true, name: true },
+    })).map((u) => [u.id, u.name]),
   );
-  return ids.flatMap((id) => {
-    const r = 最近.get(id)!;
-    const l = 线索.get(id);
+  return 留.flatMap((r): 分出去的线索[] => {
+    const 共 = { 接手人: 人名.get(r.toUserId) ?? "—", line: r.line, kind: r.kind, 分配时间: r.createdAt.toISOString() };
+    if (r.projectId) {
+      const p = 项目.get(r.projectId);
+      if (!p) return []; // 项目被删了
+      // 项目不单独记转商机的时间：转没转看状态那一栏（阶段 · 节点，或结局）
+      return [{
+        leadId: null,
+        projectId: p.id,
+        name: p.name,
+        status: p.result ?? `${p.phase} · ${p.node}`,
+        convertedAt: null,
+        customerId: p.customerId,
+        当前负责人: p.pooledAt ? "公海" : (人名.get(p.ownerId) ?? null),
+        ...共,
+      }];
+    }
+    const l = r.leadId ? 线索.get(r.leadId) : undefined;
     if (!l) return []; // 线索被删了
     return [{
-      leadId: id,
+      leadId: l.id,
+      projectId: null,
       name: l.name,
       status: l.status,
       convertedAt: l.convertedAt?.toISOString() ?? null,
       customerId: l.customerId,
-      接手人: 人名.get(r.toUserId) ?? "—",
       当前负责人: l.owner?.name ?? null,
-      line: r.line,
-      kind: r.kind,
-      分配时间: r.createdAt.toISOString(),
+      ...共,
     }];
   });
 }

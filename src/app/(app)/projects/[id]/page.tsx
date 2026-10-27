@@ -8,11 +8,17 @@ import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 负责人可推 } from "@/lib/project/org-rules";
+import { 读项目提成 } from "@/lib/project/commission-db";
 import { 超时回收日, 超时起点, 超时理由, 系统 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 字典of } from "@/lib/project/stage-dict";
+import { 有效沟通数 } from "@/lib/project/stage-gates";
 import { dayjs } from "@/lib/utils";
-import ProjectDetail, { type 项目详情, type 放回方式 } from "./ProjectDetail";
+import { 项目的卡点, 能发卡点, 读卡点默认, 卡点可选的人, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
+import { 时限提醒of } from "@/lib/project/blocker-rules";
+import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +75,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   // 企业版超时回收：线索 / 商机阶段记沟通要填下一步时间；算出哪天会自动回公海（和 lib/project/db.ts 公海超时收回 同一个起点）
   const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
-  const 回收日 = 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt));
+  const 回收日 = 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null));
   const 能记沟通 = 企业 && !公海 && (能改 || p.members.some((m) => m.userId === me.id && m.inviteStatus === "JOINED"));
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
@@ -78,14 +84,23 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 必填 = !公海 && !p.result && 按必填走(规则, p.node)
     ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p)), 只能靠填齐: me.role !== "ADMIN" && me.role !== "MANAGER" && !代管节点(me, p.ownerId, org) }
     : null;
-  const 不给推 = 企业 && !公海 && !p.result ? 往前推不给(me, p.ownerId, await 直属才推(org)) : null;
+  const 不给推 = 企业 && !公海 && !p.result ? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
+  // 企业版：线索验证往后推要先有一条客户明确回复的沟通（lib/project/stage-gates.ts）
+  const 有效沟通 = 企业 && p.phase === "线索" ? await 有效沟通数(prisma, p.id) : 0;
+  // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
+  const 提成 = 企业 ? await 读项目提成(me, p, p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId), org, (uid) => 叫(uid)!, prisma) : null;
 
+  // 企业版卡点（lib/project/blocker.ts）：沟通编号、时限提醒、卡点列表和发卡点；别的版本一样不查
+  const [编号, 卡点们, 能发, 卡点默认, 卡点人们] = 企业
+    ? await Promise.all([沟通编号们(露 ? p.followUps.map((f) => f.followUp.id) : []), 项目的卡点(me, p.id), 能发卡点(me, p.id), 读卡点默认(), 卡点可选的人(me, p.id)])
+    : [new Map<string, { code: string; nextAt: Date | null }>(), [], false, null, []];
+  const 卡点: 项目卡点 | null = 企业 && 卡点默认 ? { 们: 卡点们.map(卡点给界面), 能发: 能发 && 露, 默认: 卡点默认, 人们: 卡点人们 } : null;
   const 详情: 项目详情 = {
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
     ownerId: p.ownerId, ownerName: 叫(p.ownerId)!, historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
     phase: p.phase, node: p.node, result: p.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
-    pooled: 公海, 企业版: 企业, 来源线索,
+    pooled: 公海, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通, 来源线索,
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 回收日, 要下一步, 能记沟通, 必填, 不给推, 能改节点: 节点能改,
     能放公海: !公海 && me.id === p.ownerId && (能进公海的阶段 as readonly string[]).includes(p.phase),
@@ -105,10 +120,17 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       ...(l.kind === "pool-release" ? { 放回方式: 认放回(l.reason) } : {}),
     })),
     followUps: (露 ? p.followUps : [])
-      .map((f) => ({ id: f.followUp.id, type: f.followUp.type, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node }))
+      .map((f) => {
+        const 编 = 编号.get(f.followUp.id);
+        return {
+          id: f.followUp.id, type: f.followUp.type, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node,
+          ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限提醒of(编.nextAt) : null } : {}),
+        };
+      })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
     members: p.members.map((m) => ({ id: m.id, userId: m.userId, name: 叫(m.userId)!, roleId: m.roleId, inviteStatus: m.inviteStatus })),
+    提成,
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };
-  return <ProjectDetail p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
+  return <ProjectDetail 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
 }

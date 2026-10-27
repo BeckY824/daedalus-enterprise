@@ -63,7 +63,7 @@ async function 记交接分配(tx: Prisma.TransactionClient, 线索: string[], f
   if (!没转化.length) return;
   const 上次 = new Map<string, string>();
   for (const r of await tx.entLeadAssign.findMany({ where: { leadId: { in: 没转化 } }, orderBy: { createdAt: "desc" }, select: { leadId: true, kind: true } })) {
-    if (!上次.has(r.leadId)) 上次.set(r.leadId, r.kind);
+    if (r.leadId && !上次.has(r.leadId)) 上次.set(r.leadId, r.kind);
   }
   const 月 = 月份();
   await tx.entLeadAssign.createMany({

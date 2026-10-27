@@ -17,10 +17,44 @@ import { randomUUID } from "node:crypto";
 import { chatMessagesJSON, chatTextStream, buildSystemPrompt, chatTools, type ToolMessage } from "../llm";
 import { TOOLS as 全部工具, TOOL_MAP as 全部工具表, proposalVocab, type ToolContext } from "./tools";
 import { 不开放的工具 } from "@/lib/features";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /** 这一版交给模型的工具：关掉的功能（订单、供应商）不给，模型叫了也当没有（lib/features.ts） */
-const TOOLS = 全部工具.filter((t) => !不开放的工具.includes(t.name));
-const TOOL_MAP = new Map(TOOLS.map((t) => [t.name, t])) as typeof 全部工具表;
+const 基础工具 = 全部工具.filter((t) => !不开放的工具.includes(t.name));
+
+/** 企业版只用项目时没有的老表工具：线索、商机都是项目的阶段了，问它们走 list_projects */
+const 只用项目不给 = ["list_leads", "list_opportunities", "propose_opportunity"];
+
+/**
+ * 这一家这一问能用的工具。
+ *   项目模式开着才给 list_projects（没开时项目表是空的，给了只会让模型去查一张空表）；
+ *   企业版只用项目（10-26 用户：「线索，商机，订单都放到项目里，是三大阶段」）时去掉线索表、商机表的工具，
+ *   propose_lead 换个说法：确认后建的是客户 + 一个在线索阶段的项目（apply.ts 的 add_lead）。
+ */
+export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只用项目: boolean) {
+  const TOOLS = 基础工具
+    .filter((t) => (t.name === "list_projects" ? b.projectMode === true : true))
+    .filter((t) => !(只用项目 && 只用项目不给.includes(t.name)))
+    .map((t) =>
+      只用项目 && t.name === "propose_lead"
+        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。" }
+        : t,
+    );
+  return { TOOLS, TOOL_MAP: new Map(TOOLS.map((t) => [t.name, t])) as typeof 全部工具表 };
+}
+
+/** 直连和页面范围里写死的老表工具，在只用项目的企业版换成按阶段查项目 */
+export function 换成项目(c: { name: string; args: Record<string, unknown> }): { name: string; args: Record<string, unknown> } {
+  const 词 = (v: unknown) => (typeof v === "string" && v.trim() ? { keyword: v.trim() } : {});
+  if (c.name === "list_leads") return { name: "list_projects", args: { phase: "线索", ...词(c.args.keyword) } };
+  if (c.name === "list_opportunities") return { name: "list_projects", args: { phase: "商机", ...词(c.args.customerName) } };
+  return c;
+}
+
+/** 页面上下文那段话里指路的老表工具，同样换成按阶段查项目（新线索页指的还是 list_leads） */
+export function 页面说法换成项目(s: string): string {
+  return s.replace(/list_leads/g, "list_projects（phase=线索）").replace(/list_opportunities/g, "list_projects（phase=商机）");
+}
 import { SCHEMAS } from "./schemas";
 import { 查询表 } from "./query";
 import { 有DSML, 解析DSML } from "@/lib/llm-dsml";
@@ -318,7 +352,7 @@ export async function runAgent(
   input: { question: string; user: { id: string; name: string }; b: BusinessConfig; history?: HistoryTurn[]; 页面上下文?: string; 页面范围?: 页面范围 },
   ev: AgentEvents = {},
 ): Promise<AgentResult> {
-  const { question, user, b, history, 页面上下文, 页面范围 } = input;
+  const { question, user, b, history, 页面范围 } = input;
   /**
    * **这一个问题的编号。** 下面每一次模型调用（每步决策、工具那一轮、最终回答、
    * 以及「吐的不是答案」的重答）都带着它，网关据此**一个问题只扣一次**——
@@ -329,6 +363,9 @@ export async function runAgent(
    * 正好就是这个函数。调用方给不给都不影响——这个函数每跑一次就是一个问题。
    */
   const 问题id = randomUUID();
+  const 只用项目 = 企业版() && b.projectMode === true;
+  const { TOOLS, TOOL_MAP } = 这一家的工具(b, 只用项目);
+  const 页面上下文 = 只用项目 && input.页面上下文 ? 页面说法换成项目(input.页面上下文) : input.页面上下文;
   const toolDoc = TOOLS.map((t) => `- ${t.name}：${t.description}\n  参数：${t.args}`).join("\n");
 
   /**
@@ -374,7 +411,13 @@ ${工作方式}
 - 工具没找到、也没告诉你别处有时，只说“当前可访问范围内未找到”，不要把关键词当成人名
 - 问数字用 query_metric；问"该联系谁"用 get_watchlist / get_my_plans
 - 已经拿到足够信息就停下来回答，不要重复调用同一个工具
-- 最多 ${MAX_STEPS} 步
+- 最多 ${MAX_STEPS} 步${
+    只用项目
+      ? `
+- **这一家只用项目**：线索、商机、订单是同一个项目的三个阶段（新线索 → 商机 → 订单），没有单独的线索表和商机表。
+  问线索、商机、订单都用 list_projects（phase 选阶段）；页面说明里要是写着 list_leads / list_opportunities，也一样换成 list_projects`
+      : ""
+  }
 - 问题前面可能附着我们之前的对话。它只用来解开指代（"他""这位""那个学校""再约一下"）；
   真正要回答的永远是最后那个"问题："。别把之前答过的内容再抄一遍，也别拿旧数字当现在的数字——
   该查还得查${
@@ -423,7 +466,8 @@ ${工作方式}
    * 团队版的服务端日志会把它们留在云上。加规则要的真实问句去对话存档里看。
    * `AGENT_INTENTS=0` 关掉（对照实验用）。
    */
-  const 直连 = process.env.AGENT_INTENTS === "0" ? null : 认意图(question, Boolean(history?.length), 页面范围);
+  const 认到 = process.env.AGENT_INTENTS === "0" ? null : 认意图(question, Boolean(history?.length), 页面范围);
+  const 直连 = 认到 && 只用项目 ? { ...认到, 调用: 认到.调用.map(换成项目) } : 认到;
   if (直连) console.info(`[intent] 命中「${直连.名}」：${直连.调用.map((c) => c.name).join(" → ")}`);
   else console.info("[intent] 没命中");
   /*
@@ -633,7 +677,9 @@ ${工作方式}
         `你刚才已经用完全相同的参数调过 ${tool.name} 了，结果还是那一个：${调过的.get(签名)}。` +
         `再调一次不会有不同的结果。要么换一套参数，要么换一个工具——可用的：` +
         `${TOOLS.filter((t) => SCHEMAS[t.name] && t.name !== tool.name).map((t) => t.name).join("、")}。` +
-        `线索（list_leads）、商机（list_opportunities）、渠道（list_channels）和客户（search_customers）是**不同的表**，` +
+        (只用项目
+          ? `项目（list_projects，线索 / 商机 / 订单是它的三个阶段）、渠道（list_channels）和客户（search_customers）是**不同的表**，`
+          : `线索（list_leads）、商机（list_opportunities）、渠道（list_channels）和客户（search_customers）是**不同的表**，`) +
         `在一张表里查不到的东西要换一张表查。都查不到就直接作答，如实说没找到。`;
       // 回执的最后一条是留给结果的占位：原生那条按 tool_call_id 对上，JSON 协议那条是 user
       const 回执 = 选择.回执;

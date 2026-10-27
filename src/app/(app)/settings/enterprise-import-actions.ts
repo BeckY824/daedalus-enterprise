@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 重新试跑, type 试跑报告, type 映射改动 } from "@/lib/enterprise-import/report";
 import { 写一批, type 写入结果 } from "@/lib/enterprise-import/apply";
@@ -86,6 +87,7 @@ const 列多少批 = 200;
 
 export async function 企业版导入概况(): Promise<企业版概况> {
   await 要管理员();
+  const 项目 = await 企业版只用项目();
   const [批们, 待定冲突, 快照们, 成员们, 同步] = await Promise.all([
     prisma.entImportBatch.findMany({
       where: { kind: { in: ["full", "sync"] } },
@@ -129,7 +131,7 @@ export async function 企业版导入概况(): Promise<企业版概况> {
     快照们: 快照们.map((s) => ({ id: s.id, 来源: s.来源, 名: 来源名[s.来源] ?? s.来源, 条数: s.条数, 人名: (s.人Id && 名.get(s.人Id)) || "", 时间: s.时间.toISOString() })),
     成员们: 成员们.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name })),
     合法值们: Object.fromEntries(
-      (Object.keys(值对照) as 值对照名[]).map((名) => [名, 合法值(名).map((v) => ({ 值: v, 说法: 值说法(名, v) }))]),
+      (Object.keys(值对照) as 值对照名[]).map((名) => [名, 合法值(名, 项目).map((v) => ({ 值: v, 说法: 值说法(名, v) }))]),
     ) as 企业版概况["合法值们"],
   };
 }

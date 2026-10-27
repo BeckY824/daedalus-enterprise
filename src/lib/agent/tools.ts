@@ -22,6 +22,8 @@ import { 一行说法 } from "../quote";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 订单列表 } from "../order-db";
 import { 节点灯 } from "../order";
+import { 阶段们, 结局们, 是阶段, 是结局 } from "../project/nodes";
+import { 看得到的客户, 露客户 } from "../project/db";
 import { 订单节点 } from "../features";
 import { 现值选取, 现值表 } from "./current-values";
 import { prisma, defaultClient } from "../prisma";
@@ -642,6 +644,74 @@ export const TOOLS: Tool[] = [
             ...(外贸精简(ctx.b) ? {} : { 成交概率: o.probability, 预计成交: o.expectedDealAt ? dayjs(o.expectedDealAt).format("YYYY-MM-DD") : null }),
             多久没动: `${dayjs().diff(dayjs(o.updatedAt), "day")} 天`,
             负责人: o.owner?.name ?? null,
+          })),
+        },
+      };
+    },
+  },
+  {
+    name: "list_projects",
+    description: `列项目。项目模式下线索、商机、订单是**同一个项目的三个阶段**（${阶段们.join(" → ")}），没有单独的线索表和商机表：\
+问「有哪些新线索」用 phase=线索，「手上的商机」用 phase=商机，「在交付的订单」用 phase=订单。\
+默认只列进行中的（没结局）；问「流失的 / 丢的 / 交付完的 / 异常的」用 result（${结局们.join(" / ")}，或「全部」）。\
+「多久没动的」用 idleDays，「公海里的」用 pooled。按最近改过排，给总数和各阶段个数。`,
+    args: `{"phase": "${阶段们.join("/")}，可空", "node": "节点名，可空", "result": "${结局们.join("/")}/全部，可空，默认只看进行中", "ownerName": "负责人姓名，可空", "keyword": "项目名或客户名里的关键词，可空", "idleDays": 至少几天没动，可空, "pooled": 只看公海里的，可空}`,
+    async run(args, ctx) {
+      const phase = 是阶段(args.phase) ? args.phase : null;
+      const node = str(args.node, 20);
+      const r = str(args.result, 10);
+      const ownerName = str(args.ownerName, 20);
+      const 词 = str(args.keyword, 30);
+      const 天 = typeof args.idleDays === "number" && args.idleDays > 0 ? Math.floor(args.idleDays) : null;
+      const where: Prisma.ProjectWhereInput = {
+        ...(phase ? { phase } : {}),
+        ...(node ? { node } : {}),
+        ...(r === "全部" ? {} : 是结局(r) ? { result: r } : { result: null }),
+        ...(ownerName ? { ownerId: { in: (await prisma.user.findMany({ where: { name: { contains: ownerName } }, select: { id: true } })).map((u) => u.id) } } : {}),
+        ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }] } : {}),
+        ...(天 ? { updatedAt: { lt: dayjs().subtract(天, "day").toDate() } } : {}),
+        ...(args.pooled === true ? { pooledAt: { not: null } } : {}),
+      };
+      const [total, 各阶段, rows] = await Promise.all([
+        prisma.project.count({ where }),
+        prisma.project.groupBy({ by: ["phase"], where, _count: { _all: true } }),
+        prisma.project.findMany({
+          where, orderBy: { updatedAt: "desc" }, take: 30,
+          select: {
+            id: true, name: true, customerId: true, ownerId: true, phase: true, node: true, result: true, amount: true, currency: true,
+            nextStepAt: true, updatedAt: true, pooledAt: true, customer: { select: { name: true } }, exceptionCategory: { select: { name: true } },
+          },
+        }),
+      ]);
+      const [人, 可见] = await Promise.all([
+        prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((p) => p.ownerId))] } }, select: { id: true, name: true } }),
+        看得到的客户(rows.map((p) => p.customerId)),
+      ]);
+      const 名字 = new Map(人.map((u) => [u.id, u.name]));
+      const me = { id: ctx.userId };
+      // 公海里同事客户的项目不露客户名（和项目页一个规矩，见 lib/project/db.ts 的 露客户）；按客户名搜到的也剔掉，免得拿名字试出来
+      const 列 = rows.filter((p) => !词 || p.name.includes(词) || 露客户(me, p, 可见));
+      // 带关键词时总数也按剔过的算（最多 30 个），不然「1 个项目、列出 0 个」一样露了底
+      const 数 = 词 ? 列.length : total;
+      const 个数 = (ph: string) => (词 ? 列.filter((p) => p.phase === ph).length : (各阶段.find((g) => g.phase === ph)?._count._all ?? 0));
+      return {
+        summary: `${数} 个项目（${阶段们.map((ph) => `${ph} ${个数(ph)}`).join("、")}）${数 > 列.length ? `，列出最近改过的 ${列.length} 个` : ""}`,
+        data: {
+          总数: 数,
+          各阶段: Object.fromEntries(阶段们.map((ph) => [ph, 个数(ph)])),
+          项目: 列.map((p) => ({
+            id: p.id,
+            名称: p.name,
+            ...(露客户(me, p, 可见) ? { customerId: p.customerId, 客户: p.customer.name } : { 客户: "（公海里同事的客户，看不到名字）" }),
+            阶段: p.phase,
+            节点: p.node,
+            结局: p.result ?? "进行中",
+            ...(p.result === "异常状态" && p.exceptionCategory ? { 异常类别: p.exceptionCategory.name } : {}),
+            金额: p.amount,
+            币种: p.currency,
+            负责人: p.pooledAt ? "在公海" : (名字.get(p.ownerId) ?? "已不在的成员"),
+            下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
+            多久没动: `${dayjs().diff(p.updatedAt, "day")} 天`,
           })),
         },
       };

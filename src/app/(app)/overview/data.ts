@@ -39,7 +39,7 @@ export type 复盘 = {
 /** 趋势那张图的横轴按什么切：本月按天，本年按月 */
 export type 粒度 = "day" | "month";
 
-function bucketOf(d: Date, 粒: 粒度) {
+export function bucketOf(d: Date, 粒: 粒度) {
   return dayjs(d).format(粒 === "day" ? "MM-DD" : "YYYY-MM");
 }
 
@@ -57,7 +57,7 @@ function bucketOf(d: Date, 粒: 粒度) {
  * `to` 是**开区间**——上面那条查询用的是 `lt: to`，刻度必须跟它一致，
  * 否则会在右边多铺一个永远为 0 的刻度（这一版写成 `<=` 时就是这样）。
  */
-function 刻度们(from: Date, to: Date, 粒: 粒度): string[] {
+export function 刻度们(from: Date, to: Date, 粒: 粒度): string[] {
   const 止 = new Date(Math.min(to.getTime(), Date.now()));
   const out: string[] = [];
   let d = dayjs(from);

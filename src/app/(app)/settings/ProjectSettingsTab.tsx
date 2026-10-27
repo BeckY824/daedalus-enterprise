@@ -2,11 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag } from "antd";
+import { App, Button, Card, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
-import { 上限最大, 时长最大, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
-import { 节点们 } from "@/lib/project/nodes";
+import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+// 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
+import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
+import { 加企业选项, 改企业选项 } from "./ent-dict-actions";
+import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterprise/dict-kinds";
 import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
+import { 存卡点默认Action } from "@/app/(app)/projects/blocker-actions";
+import { 卡点类型们, 影响等级们, 时限最大, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
+
+const 节点们 = 企业版字典.节点们;
+const 默认天数 = 企业版字典.默认超时天数;
+import { 改提成比例 } from "@/app/(app)/projects/commission-actions";
+import { 提成比例问题, type 提成比例 } from "@/lib/project/commission";
 
 type 字典项 = { id: string; name: string; active: boolean; 用的人: number };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
@@ -17,13 +27,21 @@ export type 项目设置 = {
   类别们: 字典项[];
   /** 企业版组织规则，每条默认关；不是企业版 = null，卡片不出（服务端读的 企业版()） */
   组织规则: 组织规则 | null;
+  /** 企业版选项字典（分配方式、回收原因……），按种类分；不是企业版 = null，卡片不出 */
+  企业选项: Record<string, 字典项[]> | null;
   /** 每人手上线索 / 商机阶段的项目数（userId → 个数），算持有上限的口径 */
   持有: Record<string, number>;
   /**
    * 每张卡这个人能不能改：null = 能改，否则是「只有……能改」那句（服务端按「后台设置谁能改」算好，
    * 不是企业版只有老板能改；共享试用区谁都不能改）
    */
-  挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段", string | null>;
+  挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段" | "阶段规则", string | null>;
+  /** 企业版卡点的默认值（每类卡点的时限、阻碍主体的选项）；不是企业版 = null，卡片不出 */
+  卡点默认?: 卡点默认 | null;
+  /** 企业版提成比例 A（底价）/ B（溢价），百分数；不是企业版 = null，卡片不出（服务端读的 企业版()） */
+  提成比例: 提成比例 | null;
+  /** 老板、总管理员能改提成比例 */
+  能改提成比例: boolean;
 };
 
 /**
@@ -67,9 +85,42 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
         停用说明="停用后不能再选；已经用着它的项目不变"
         项们={value.类别们} 挡={value.挡.字典} 忙={忙} 跑={跑} 加={加项目异常类别} 改={改项目异常类别}
       />
+      {value.企业选项 && <EntDictCard 各类={value.企业选项} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
       {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 忙={忙} 跑={跑} />}
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
+      {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
+      {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
+      {value.提成比例 && <RatesCard 比例={value.提成比例} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
+    </div>
+  );
+}
+
+/** 企业版选项字典：上面切换是哪一类，下面就是那一类的字典卡。只给选项，哪里都不强制必填 */
+function EntDictCard({ 各类, 挡, 忙, 跑 }: {
+  各类: Record<string, 字典项[]>; 挡: string | null; 忙: boolean;
+  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const [种类, set种类] = useState<字典种类>(字典种类们[0]);
+  const 定义 = 字典定义[种类];
+  return (
+    <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+      <div style={{ overflowX: "auto" }}>
+        <Segmented
+          aria-label="选项类别"
+          value={种类}
+          onChange={(v) => set种类(v as 字典种类)}
+          options={字典种类们.map((k) => ({ value: k, label: 字典定义[k].名 }))}
+        />
+      </div>
+      <DictCard
+        key={种类}
+        title={`企业选项 · ${定义.名}`} 叫法="选项" 用的说法="处在用" 新的提示={`新${定义.名}`}
+        说明={`${定义.说明}只给选项，不强制填。停用的选项不能再选，已经选过的照样显示。`}
+        停用说明="停用后不能再选；已经选过的照样显示"
+        项们={各类[种类] ?? []} 挡={挡} 忙={忙} 跑={跑}
+        加={(name) => 加企业选项(种类, name)} 改={改企业选项}
+      />
     </div>
   );
 }
@@ -141,7 +192,7 @@ function DictCard({
 
 /**
  * 项目持有上限（企业版组织规则，默认关）：开了以后每人手上线索 / 商机阶段的项目到了上限，就领不了公海、也不能再被指派。
- * 自己建档、跟着客户转、离职交接不拦。每人可以单独设，空着 = 用默认
+ * 自己建档、跟着客户转、离职交接不拦。每人可以单独设，空着 = 用默认；填 999 = 不限（10-26）
  */
 function HoldCapCard({
   规则, 持有, 成员, 挡, 忙, 跑,
@@ -170,13 +221,14 @@ function HoldCapCard({
       }
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从项目公海领、也不能再被指派新项目；自己建档的不拦。默认关，不限个数。
+        开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从项目公海领、也不能再被指派新项目；自己建档的不拦。默认关，不限个数。填 {上限最大} = 不限。
       </div>
       {规则.持有上限开 && (
         <>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
             <span>默认每人最多</span>
             <InputNumber aria-label="默认持有上限" min={1} max={上限最大} precision={0} suffix="个" style={{ width: 120 }} disabled={!!挡} value={默认} onChange={(v) => set默认(v)} />
+            {是不限(默认) && <Tag color="processing" data-testid="hold-cap-unlimited-default">不限</Tag>}
           </div>
           {成员.map((u) => (
             <div key={u.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
@@ -185,11 +237,12 @@ function HoldCapCard({
               <InputNumber
                 aria-label={`${u.name}的持有上限`}
                 min={0} max={上限最大} precision={0} suffix="个" style={{ width: 120, flex: "0 0 auto" }}
-                placeholder={`默认 ${默认 ?? 规则.默认上限}`}
+                placeholder={`默认 ${是不限(默认 ?? 规则.默认上限) ? "不限" : (默认 ?? 规则.默认上限)}`}
                 disabled={!!挡}
                 value={每人[u.id] ?? null}
                 onChange={(v) => set每人((m) => ({ ...m, [u.id]: v }))}
               />
+              {是不限(每人[u.id]) && <Tag color="processing" style={{ marginInlineEnd: 0, flex: "0 0 auto" }}>不限</Tag>}
             </div>
           ))}
           {!挡 && (
@@ -203,7 +256,7 @@ function HoldCapCard({
 
 /**
  * 超时回收（企业版组织规则，默认关）：线索、商机阶段按节点设最长处理天数，超过还没跟进的项目自动回到项目公海、负责人收到提醒。
- * 没设天数的节点不回收；订单阶段不回收。开了以后在项目上记沟通要填下一步时间。
+ * 没设天数的节点按默认天数（企业版字典，7 天）回收；订单阶段不回收。开了以后在项目上记沟通要填下一步时间。
  * 保存前先按新设置数一遍「现在会回收几个」，有的话让老板确认
  */
 function TimeoutCard({
@@ -255,7 +308,7 @@ function TimeoutCard({
       }
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        开了以后，线索、商机阶段的项目在一个节点上超过处理时长还没跟进，自动回到项目公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。没填天数的节点不回收，订单阶段不回收。默认关。
+        开了以后，线索、商机阶段的项目在一个节点上超过处理时长还没跟进，自动回到项目公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的节点按 ${默认天数} 天算` : "没填天数的节点不回收"}，订单阶段不回收。默认关。
       </div>
       {规则.开 && (
         <>
@@ -268,7 +321,7 @@ function TimeoutCard({
                   <InputNumber
                     aria-label={`「${n}」的处理时长`}
                     min={1} max={时长最大} precision={0} suffix="天" style={{ width: 120, flex: "0 0 auto" }}
-                    placeholder="不回收"
+                    placeholder={默认天数 ? `默认 ${默认天数} 天` : "不回收"}
                     disabled={!!挡}
                     value={天数[n] ?? null}
                     onChange={(v) => set天数((m) => ({ ...m, [n]: v }))}
@@ -348,11 +401,172 @@ function AdvanceCard({
           {!挡 && (
             <Space wrap style={{ marginTop: 4 }}>
               <Button type="primary" disabled={忙 || !改了} onClick={() => void 跑(() => 改组织规则({ 节点推进: { 必填 } }), "已保存")}>保存</Button>
-              <Button disabled={忙} onClick={() => set必填({ ...建议必填 })}>用建议清单</Button>
+              <Button disabled={忙} onClick={() => set必填(Object.fromEntries(Object.entries(建议必填).map(([n, v]) => [本套节点名(n, 企业版字典), v])))}>用建议清单</Button>
             </Space>
           )}
         </>
       )}
+    </Card>
+  );
+}
+
+/**
+ * 卡点默认值（企业版）：每类卡点默认几天内解决（发布时没填时限就按这个）、阻碍主体有哪些选项、发布时默认选的类型和影响。
+ * 谁能改跟字典一样
+ */
+function BlockerDefaultsCard({
+  默认, 挡, 忙, 跑,
+}: {
+  默认: 卡点默认; 挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const [天数, set天数] = useState<Record<string, number | null>>(默认.时限天数);
+  const [主体们, set主体们] = useState<string[]>(默认.阻碍主体们);
+  const [类型, set类型] = useState(默认.默认类型);
+  const [影响, set影响] = useState(默认.默认影响);
+  const 改了 =
+    卡点类型们.some((t) => 天数[t] !== 默认.时限天数[t]) ||
+    主体们.join("\n") !== 默认.阻碍主体们.join("\n") || 类型 !== 默认.默认类型 || 影响 !== 默认.默认影响;
+  const 齐了 = 卡点类型们.every((t) => 天数[t] != null) && 主体们.length > 0;
+  const 保存 = () => 跑(() => 存卡点默认Action({ 时限天数: 天数, 阻碍主体们: 主体们, 默认类型: 类型, 默认影响: 影响 }), "已保存");
+  const 行 = { display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" as const };
+
+  return (
+    <Card title="卡点默认值" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        在项目沟通记录上发卡点时，没填解决时限就按这里的天数算；阻碍主体从下面的选项里单选。
+      </div>
+      {卡点类型们.map((t) => (
+        <div key={t} style={行}>
+          <span style={{ width: 72 }}>{t}</span>
+          <InputNumber
+            aria-label={`${t}的解决时限`} min={1} max={时限最大} precision={0} suffix="天" style={{ width: 120 }}
+            disabled={!!挡} value={天数[t] ?? null} onChange={(v) => set天数((m) => ({ ...m, [t]: v }))}
+          />
+        </div>
+      ))}
+      <div style={{ ...行, marginTop: 12 }}>
+        <span style={{ width: 72 }}>阻碍主体</span>
+        <Select
+          aria-label="阻碍主体的选项" mode="tags" style={{ flex: "1 1 240px", minWidth: 0 }} disabled={!!挡}
+          value={主体们} maxCount={主体最多} placeholder="输入后回车添加"
+          onChange={(v: string[]) => set主体们([...new Set(v.map((x) => x.trim()).filter((x) => x && x.length <= 主体名上限))])}
+          open={false} tokenSeparators={[",", "，"]}
+        />
+      </div>
+      <div style={行}>
+        <span style={{ width: 72 }}>默认类型</span>
+        <Select aria-label="默认卡点类型" style={{ width: 160 }} disabled={!!挡} value={类型} onChange={set类型} options={卡点类型们.map((t) => ({ value: t, label: t }))} />
+      </div>
+      <div style={行}>
+        <span style={{ width: 72 }}>默认影响</span>
+        <Select aria-label="默认影响" style={{ width: 160 }} disabled={!!挡} value={影响} onChange={set影响} options={影响等级们.map((t) => ({ value: t, label: t }))} />
+      </div>
+      {!挡 && (
+        <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了 || !齐了} onClick={() => void 保存()}>保存</Button>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * 提成比例（企业版）：底价提成 = 项目底价 × A，溢价提成 = 项目溢价 × B。老板、总管理员能改，每次改动进操作记录。
+ * 改了以后没赢单的项目预估马上按新比例算；已经赢单的实际提成不变
+ */
+function RatesCard({
+  比例, 能改, 忙, 跑,
+}: {
+  比例: 提成比例; 能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const [A, setA] = useState<number | null>(比例.底价比例);
+  const [B, setB] = useState<number | null>(比例.溢价比例);
+  const 问题 = 提成比例问题({ 底价比例: A ?? undefined, 溢价比例: B ?? undefined });
+  const 改了 = A !== 比例.底价比例 || B !== 比例.溢价比例;
+  return (
+    <Card title="提成比例" extra={!能改 && <span style={{ color: "var(--text-muted)" }}>只有老板、总管理员能改</span>}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
+      </div>
+      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+          底价比例
+          <InputNumber<number> aria-label="底价提成比例" min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={A} onChange={(v) => setA(v)} />
+        </span>
+        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+          溢价比例
+          <InputNumber<number> aria-label="溢价提成比例" min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={B} onChange={(v) => setB(v)} />
+        </span>
+      </div>
+      {能改 && 改了 && 问题 && <div style={{ color: "var(--danger-text)", marginBottom: 8 }}>{问题}</div>}
+      {能改 && (
+        <Button type="primary" disabled={忙 || !改了 || !!问题} onClick={() => void 跑(() => 改提成比例({ 底价比例: A!, 溢价比例: B! }), "已保存提成比例")}>保存</Button>
+      )}
+    </Card>
+  );
+}
+
+const 推进权限说明: Record<推进权限, string> = {
+  负责人可推: "负责人自己、直属上级、老板、总管理员都能往前推",
+  仅上级推: "负责人有直属上级时，只有直属上级、老板、总管理员能往前推",
+};
+
+/**
+ * 阶段规则（企业版，10-26 会定）：往前推节点谁能推（默认负责人可推），线索、商机两个阶段出口的叫法。
+ * 改叫法只换说法：存的结局、节点、跨阶段单向的规矩都不变。往后退、点结局不归推进权限管。每次推进都记在节点变更里
+ */
+function StageRuleCard({
+  规则, 挡, 忙, 跑,
+}: {
+  规则: 组织规则["阶段"]; 挡: string | null; 忙: boolean;
+  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const 阶段们 = ["线索", "商机"] as const;
+  const 原来 = (s: (typeof 阶段们)[number]): [string, string] => [规则.出口叫法[s]?.[0] ?? "", 规则.出口叫法[s]?.[1] ?? ""];
+  const [叫法, set叫法] = useState<Record<string, [string, string]>>(() => Object.fromEntries(阶段们.map((s) => [s, 原来(s)])));
+  const 改了 = 阶段们.some((s) => 叫法[s][0] !== 原来(s)[0] || 叫法[s][1] !== 原来(s)[1]);
+  const 存 = () => 跑(() => 改组织规则({
+    阶段: { 出口叫法: Object.fromEntries(阶段们.map((s) => [s, [叫法[s][0].trim() || null, 叫法[s][1].trim() || null] as const])) },
+  }), "已保存");
+
+  return (
+    <Card title="阶段规则" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        线索阶段只能走到「转商机」或「流失」，商机阶段只能「赢单」或「丢单」，订单只能从商机进；进了下一个阶段就退不回上一个，阶段里面往后退随便退。每次推进都记在节点变更里。
+      </div>
+      <div style={{ fontWeight: 500, marginBottom: 8 }}>谁能往前推节点</div>
+      <Radio.Group
+        aria-label="往前推权限"
+        disabled={!!挡 || 忙}
+        value={规则.推进权限}
+        onChange={(e) => void 跑(() => 改组织规则({ 阶段: { 推进权限: e.target.value as 推进权限 } }), "已保存")}
+        style={{ display: "grid", gap: 4, marginBottom: 16 }}
+        options={推进权限们.map((v) => ({ value: v, label: <span>{v}<span style={{ color: "var(--text-muted)" }}>：{推进权限说明[v]}</span></span> }))}
+      />
+      <div style={{ fontWeight: 500, marginBottom: 8 }}>出口叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
+      {阶段们.map((s) => {
+        const [成, 没成] = 企业版字典.出口们[s];
+        return (
+          <div key={s} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0, flexWrap: "wrap" }}>
+            <span style={{ flex: "0 0 64px" }}>{s}阶段</span>
+            {([0, 1] as const).map((i) => (
+              <Input
+                key={i}
+                aria-label={`${s}阶段${i === 0 ? "走成" : "没走成"}的叫法`}
+                style={{ flex: "1 1 140px", minWidth: 0 }}
+                maxLength={出口叫法上限}
+                placeholder={(i === 0 ? 成 : 没成).叫法}
+                disabled={!!挡}
+                value={叫法[s][i]}
+                onChange={(e) => set叫法((m) => {
+                  const v: [string, string] = [...m[s]];
+                  v[i] = e.target.value;
+                  return { ...m, [s]: v };
+                })}
+              />
+            ))}
+          </div>
+        );
+      })}
+      {!挡 && <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了} onClick={() => void 存()}>保存叫法</Button>}
     </Card>
   );
 }

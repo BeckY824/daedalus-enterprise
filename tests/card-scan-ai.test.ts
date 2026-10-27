@@ -3,6 +3,7 @@
  *   - lib/card-scan/ai.ts：模型只回行号，验回答（行号越界、乱回、行业不在选项里）；合进规则的字段时值一律从 OCR 原文拿，号码照旧听规则
  *   - lib/card-scan/server/ai-call.ts：超时、非 200、不是 JSON 都返回 null（手机用规则），不抛；不打名片内容
  *   - app/api/mobile/scan/ai：只给团队版令牌、没配模型 404、太长 413、看不懂 400、按账号限次 429
+ *     企业版（2026-10-26 起）：认网页登录的人；没配名片专用模型就用「设置 → AI 接入」的模型；CARD_SCAN_AI_OFF=1 照样关
  *   - lib/card-scan/cloud.ts 服务器整理：不给用记下不再问；出错一律 null
  * 用的是 tests/fixtures/card-scan 里编的演示名片，不含真名片
  */
@@ -121,7 +122,13 @@ describe("AI整理名片（服务器调模型）", () => {
 });
 
 // ---------- 接口 ----------
-const 假 = vi.hoisted(() => ({ 多租户: true, 令牌: new Map<string, string>(), 资格: new Map<string, string>(), 答: null as unknown }));
+const 假 = vi.hoisted(() => ({
+  多租户: true, 令牌: new Map<string, string>(), 资格: new Map<string, string>(), 答: null as unknown,
+  我: null as null | { id: string; name: string },
+  设置模型: null as null | { apiKey: string; baseUrl: string; model: string },
+}));
+vi.mock("@/lib/auth", () => ({ getCurrentUser: async () => 假.我 }));
+vi.mock("@/lib/llm-config", () => ({ getLlmConfig: async () => 假.设置模型 }));
 vi.mock("@/lib/tenant/context", () => ({ multiTenant: () => 假.多租户 }));
 vi.mock("@/lib/tenant/device-token", () => ({
   取Bearer: (req: Request) => /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? null,
@@ -182,6 +189,49 @@ describe("/api/mobile/scan/ai", () => {
   it("按账号 10 分钟 60 张：第 61 张 429", async () => {
     for (let i = 0; i < 60; i++) expect((await 发("dk_team")).status).toBe(200);
     expect((await 发("dk_team")).status).toBe(429);
+  });
+
+  describe("企业版", () => {
+    beforeEach(() => {
+      假.多租户 = false;
+      假.我 = { id: "u1", name: "乙" };
+      假.设置模型 = { apiKey: "s", baseUrl: "https://llm.example/v1", model: "deepseek-chat" };
+      vi.stubEnv("CRM_ENTERPRISE", "1");
+      vi.stubEnv("CARD_SCAN_AI_KEY", "");
+      vi.stubEnv("GATEWAY_API_KEY", "");
+    });
+    afterEach(() => { 假.我 = null; 假.设置模型 = null; });
+
+    it("登录了就能用；用设置里配的模型和地址", async () => {
+      const r = await 发(null);
+      expect(r.status).toBe(200);
+      expect((await r.json()).答).toMatchObject({ 行业: "制造业" });
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe("https://llm.example/v1/chat/completions");
+      expect(JSON.parse(String(init.body)).model).toBe("deepseek-chat");
+      expect(await (await 路由.GET(new Request("http://x/api/mobile/scan/ai"))).json()).toEqual({ ok: true });
+    });
+    it("配了名片专用模型：用专用的", async () => {
+      vi.stubEnv("CARD_SCAN_AI_KEY", "k");
+      vi.stubEnv("CARD_SCAN_AI_BASE_URL", "https://up.example/v1");
+      await 发(null);
+      expect(vi.mocked(fetch).mock.calls[0][0]).toBe("https://up.example/v1/chat/completions");
+    });
+    it("没登录 401；设置里也没配 404；CARD_SCAN_AI_OFF=1 404", async () => {
+      假.我 = null;
+      expect((await 发(null)).status).toBe(401);
+      假.我 = { id: "u1", name: "乙" };
+      假.设置模型 = null;
+      expect((await 发(null)).status).toBe(404);
+      假.设置模型 = { apiKey: "s", baseUrl: "https://llm.example/v1", model: "m" };
+      vi.stubEnv("CARD_SCAN_AI_OFF", "1");
+      expect((await 发(null)).status).toBe(404);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+    it("开关关：照旧 404，不碰设置里的模型", async () => {
+      vi.stubEnv("CRM_ENTERPRISE", "");
+      expect((await 发(null)).status).toBe(404);
+    });
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * 企业版超时回收（D-34，lib/project/timeout.ts + lib/project/db.ts 公海超时收回 / 超时预览 / 记项目沟通）。
  *   - 回收日：起点 + 节点天数；下一步时间那天过完也收，但不比节点天数晚；比起点早的下一步不算
- *   - 扫库：没开不扫；没设时长的节点、订单阶段、有结局的、已在公海的不收；收了留痕（理由写超时）+ 负责人一条待办
+ *   - 扫库：没开不扫；订单阶段、有结局的、已在公海的不收；没设时长的节点企业版按默认 7 天（见 project-stages-enterprise.test.ts）；收了留痕（理由写超时）+ 负责人一条待办
  *   - 一天按同一份规则扫一次，规则改了当天再扫；团队模式只扫自己名下的
  *   - 记沟通：开了超时回收的线索 / 商机阶段要下一步时间；谁能记；跟进推后起点
  *   - 不是企业版（CRM_ENTERPRISE 不设）：Setting 里开着也不扫、记沟通不要下一步时间
@@ -101,7 +101,7 @@ describe("扫库收回", () => {
     expect(await prisma.project.count({ where: { pooledAt: { not: null } } })).toBe(0);
   });
 
-  it("超时的回公海：留痕写理由、负责人一条待办、清下一步时间；没到的、没设时长的、订单的、有结局的不动", async () => {
+  it("超时的回公海：留痕写理由、负责人一条待办、清下一步时间；没到的、没设时长的（5 天还没到默认 7 天）、订单的、有结局的不动", async () => {
     await setSetting("orgRules", 开着({ 潜客培育: 3, 明确需求: 10, 生产备货: 1 }));
     const 超 = await 项目(乙.id, { nextStepAt: 天后(1) });
     const 没到 = await 项目(乙.id, { phase: "商机", node: "明确需求" });
@@ -185,7 +185,7 @@ describe("扫库收回", () => {
   });
 
   describe("记项目沟通", () => {
-    const 沟通 = (补: Record<string, unknown> = {}) => ({ type: "PHONE", content: "聊了报价", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), ...补 });
+    const 沟通 = (补: Record<string, unknown> = {}) => ({ type: "PHONE", content: "聊了报价", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), 阶段: "线索", 明确回复: false, ...补 });
 
     it("开了超时回收：线索 / 商机阶段不填下一步时间不让存，说清楚缺什么；订单阶段不要", async () => {
       await setSetting("orgRules", 开着({ 潜客培育: 3 }));
@@ -201,7 +201,7 @@ describe("扫库收回", () => {
       expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).lastFollowAt).not.toBeNull();
 
       const 订单 = await 项目(乙.id, { phase: "订单", node: "生产备货" });
-      expect((await 记项目沟通(乙, 订单.id, 沟通())).ok).toBe(true);
+      expect((await 记项目沟通(乙, 订单.id, 沟通({ 阶段: "订单" }))).ok).toBe(true);
     });
 
     it("没开：下一步时间可填可不填", async () => {

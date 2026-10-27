@@ -15,6 +15,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
+import { 交接卡点 } from "@/lib/project/blocker";
 import { 带走并记下 } from "@/lib/carry-over-db";
 import { 待确认, 了结, 读ids, type 交接种类 } from "@/lib/enterprise/handover-db";
 import { getBusiness } from "@/lib/business";
@@ -111,6 +112,8 @@ export async function 确认交接(id: string): Promise<结果> {
       const 项目 = await 离职转给接手人(tx, 分, h.fromUserId, me.id, h.byUserId, 记分配);
       // 发起到确认之间又该进公海的（方式 = 公海），这时一起放
       await 离职放进公海(tx, 分, h.byUserId);
+      // 企业版卡点：确认了才跟着转给接手人；项目在公海里的回看板
+      await 交接卡点(tx, h.fromUserId, me.id, h.byUserId, 分.进公海项目);
       return { 分, 项目 };
     }, { timeout: 30_000 }));
     if (!成) return { ok: false, error: 已处理 };

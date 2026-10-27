@@ -88,6 +88,19 @@ export const 只读SCHEMAS: Record<string, Schema> = {
     properties: { keyword: 串("名称 / 联系人 / 电话"), status: 串(), source: 串() },
     additionalProperties: false,
   },
+  list_projects: {
+    type: "object",
+    properties: {
+      phase: 串("线索 / 商机 / 订单"),
+      node: 串("节点名"),
+      result: 串("线索流失 / 丢单 / 成功交付 / 异常状态 / 全部；不填只看进行中"),
+      ownerName: 串("负责人姓名"),
+      keyword: 串("项目名或客户名"),
+      idleDays: 数("至少几天没动"),
+      pooled: 真假("只看公海里的"),
+    },
+    additionalProperties: false,
+  },
   list_opportunities: {
     type: "object",
     properties: {
