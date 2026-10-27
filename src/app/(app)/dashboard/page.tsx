@@ -21,6 +21,7 @@ import { 算提醒 } from "@/lib/reminders";
 import { 本地模式 } from "@/lib/desktop/cloud";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import NoAiHome from "./NoAiHome";
@@ -62,8 +63,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     */
     const 学员数 = await prisma.customer.count();
     if (学员数 === 0 && (await prisma.lead.count()) === 0) {
-      // StartCard 自带那句「欢迎使用 Daedalus CRM」，这里不再叠一个页头
-      return <StartCard 自己服务器={自己服务器()} 去导入={去导入(user.role)} 企业版={企业版()} />;
+      // StartCard 自带那句「欢迎使用 <产品名>」，这里不再叠一个页头
+      return <StartCard 自己服务器={自己服务器()} 去导入={去导入(user.role)} 企业版={企业版()} 产品名={自定产品名() ?? undefined} />;
     }
     if (只用项目) return <NoAiHome 管理员={user.role === "ADMIN"} 满额提醒={满额提醒们} />;
     return <Board 满额提醒={满额提醒们} />;

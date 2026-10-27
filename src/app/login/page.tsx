@@ -9,6 +9,7 @@ import { 自助注册已关闭 } from "@/lib/tenant/signup-policy";
 import { 本地模式, 读 as 读云端凭据, 上次策略, 云端地址 } from "@/lib/desktop/cloud";
 import { 停用了 } from "@/lib/desktop/disabled-text";
 import { 读专属服务器 } from "@/lib/desktop/dedicated-server";
+import { 自定产品名 } from "@/lib/enterprise/brand";
 
 /**
  * 必须动态渲染：要不要画「忘记密码」取决于运行时的 MULTI_TENANT 和 SMTP_*。
@@ -78,6 +79,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
          关掉自助注册（SIGNUP_REDIRECT）时这个入口跟着消失，和桌面端问 policy 得到的答案同源。 */
       可注册={multiTenant() && !自助注册已关闭()}
       注册地址="/signup"
+      产品名={自定产品名() ?? undefined}
     />
   );
 }

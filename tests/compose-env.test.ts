@@ -43,6 +43,7 @@ const 不用进容器: Record<string, string> = {
   ENT_DINGTALK_OPERATOR: "企业版通讯录凭据的本机兜底：上线时由对方管理员在后台「飞书连接 / 钉钉连接」页填，加密存库；部署包故意不映射，凭据不进 .env",
   NEXT_RUNTIME: "Next 自己设的（nodejs / edge），不是我们配的",
   CRM_READ_POOL: "企业版只读通道的关闭开关，只在企业版生效：企业版部署包（deploy/enterprise/docker-compose.yml）里映射着，根目录各 compose 不开企业版、读了也不起作用",
+  CRM_PRODUCT_NAME: "企业版界面上的产品名，只在企业版生效：企业版部署包（deploy/enterprise/docker-compose.yml）里映射着，根目录各 compose 不开企业版、读了也不起作用",
   CRM_HOME_CACHE: "企业版首页缓存的关闭开关，只在企业版生效：企业版部署包（deploy/enterprise/docker-compose.yml）里映射着，根目录各 compose 不开企业版、读了也不起作用",
   CRM_SCOPED_SYNC: "范围同步灰度开关，默认关；须老板迁移流程验收、服务器备份及回退方案就绪后由运维显式加入 compose",
   CRM_SCOPED_SYNC_LEGACY_TEAMS: "范围同步开着时仍走旧协议的团队（回滚逃生口），默认空；需要时由运维和 CRM_SCOPED_SYNC 一起加入 compose",

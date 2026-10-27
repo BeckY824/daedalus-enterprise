@@ -20,7 +20,7 @@ import { 外贸精简 } from "@/lib/business-config";
  * 自己升为主按钮——不能出现一张卡上零个主按钮的情况。
  * 企业版的管理员例外：那边没有演示数据，主按钮是「导入」（去设置 → 企业版导入），见 去导入。
  */
-export default function StartCard({ 自己服务器 = false, 去导入 = false, 企业版 = false }: {
+export default function StartCard({ 自己服务器 = false, 去导入 = false, 企业版 = false, 产品名 = "Daedalus CRM" }: {
   /**
    * 跑在客户自己部署的服务器上（企业版私有部署、自部署的网页版，2026-10-25）：
    * 第三句不能再说「数据只在你的电脑上」「账号用来记 AI 次数和团队版同步」——
@@ -38,6 +38,8 @@ export default function StartCard({ 自己服务器 = false, 去导入 = false, 
    * 换成项目那条线——管理员先导入、建组织和成员、设项目规则；成员从新建项目开始。page.tsx 按 企业版() 传
    */
   企业版?: boolean;
+  /** 欢迎语里的产品名。企业版部署可换（CRM_PRODUCT_NAME，lib/enterprise/brand.ts），page.tsx 传 */
+  产品名?: string;
 } = {}) {
   const b = useBusiness();
   const router = useRouter();
@@ -59,11 +61,11 @@ export default function StartCard({ 自己服务器 = false, 去导入 = false, 
   */
   const 步骤 = [`粘一段聊天，切成${b.customer}`, "问一句进展", "让它记一笔"];
 
-  if (企业版) return <企业版开始 b={b} 管理员={去导入} 去={(u) => router.push(u)} />;
+  if (企业版) return <企业版开始 b={b} 管理员={去导入} 产品名={产品名} 去={(u) => router.push(u)} />;
 
   return (
     <>
-      <h1 className="start-h">欢迎使用 Daedalus CRM</h1>
+      <h1 className="start-h">欢迎使用 {产品名}</h1>
       {/*
         三句介绍（2026-10-02，原型第二页「先放点客户进来」那张清单改成的）：
         第一次进来的人先知道这东西能替他做什么，再看下面那张卡从哪儿开始。
@@ -148,11 +150,11 @@ export default function StartCard({ 自己服务器 = false, 去导入 = false, 
 }
 
 /** 企业版空库首页：项目从建档到推进一条线，不提演示数据和粘聊天（验收 #8） */
-function 企业版开始({ b, 管理员, 去 }: { b: ReturnType<typeof useBusiness>; 管理员: boolean; 去: (url: string) => void }) {
+function 企业版开始({ b, 管理员, 产品名, 去 }: { b: ReturnType<typeof useBusiness>; 管理员: boolean; 产品名: string; 去: (url: string) => void }) {
   const 步骤 = 管理员 ? [`导入${b.customer}数据`, "建组织和成员", "设好项目规则"] : ["新建第一个项目", "记一次沟通", "按节点往前推"];
   return (
     <>
-      <h1 className="start-h">欢迎使用 Daedalus CRM</h1>
+      <h1 className="start-h">欢迎使用 {产品名}</h1>
       <ul className="start-intro">
         <li>
           <b>项目一条线走到底</b>

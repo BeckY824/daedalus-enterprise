@@ -34,12 +34,13 @@ const 话: Record<门口, { 一句: string; 小字: string }> = {
   },
 };
 
-export default function AuthSide({ 门 = "桌面端" }: { 门?: 门口 }) {
+/** 产品名：企业版部署可换（CRM_PRODUCT_NAME），不传就是默认名 */
+export default function AuthSide({ 门 = "桌面端", 产品名 }: { 门?: 门口; 产品名?: string }) {
   return (
     <aside className="auth-side">
       <div className="auth-mark">
         <PixelLogo size={96} />
-        <TypeBrand />
+        <TypeBrand 名字={产品名} />
       </div>
       <p className="auth-claim">{话[门].一句}</p>
       <p className="auth-fine">{话[门].小字}</p>

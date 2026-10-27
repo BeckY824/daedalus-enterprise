@@ -14,6 +14,7 @@ import { businessTimeZone } from "@/lib/business-clock";
 import { 本地模式, 归属对不上, 读 as 读云端凭据 } from "@/lib/desktop/cloud";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 自定产品名 } from "@/lib/enterprise/brand";
 import { accessibleWorkspacesFor } from "@/lib/tenant/workspace-access";
 import { llmEnabled, listModelOptions } from "@/lib/llm";
 import { 读AI计次, 不计次 } from "@/lib/ai-meter";
@@ -115,6 +116,7 @@ export default async function AppLayout({
         反馈去向={企业版() ? "none" : 本地模式() || multiTenant() ? "cloud" : "github"}
         // 企业版只用项目一条线：左栏和 ⌘K 没有商机，线索叫「新线索」（lib/enterprise/project-only.ts）
         企业版项目={企业版() && business.projectMode === true}
+        产品名={自定产品名() ?? undefined}
         pane={pane}
         ai={有AI ? { models } : null}
         收藏={收藏}
