@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
-import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+import { 上限最大, 时长最大, 是不限, 推进权限们, 多项目客户走法们, type 推进权限, type 多项目客户走法, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
 import { 要沟通的节点 } from "@/lib/project/stage-gates";
@@ -95,6 +95,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       />
       {value.企业选项 && <EntDictCard 各类={value.企业选项} 谁能用配置={value.分配谁能用 ?? {}} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
+      {value.组织规则 && <PoolRouteCard 走法={value.组织规则.公海.多项目客户} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
       {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} 忙={忙} 跑={跑} />}
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
@@ -138,7 +139,7 @@ function EntDictCard({ 各类, 谁能用配置, 挡, 忙, 跑 }: {
 
 /**
  * 分配方式谁能用（10-27）：每一项按业务角色勾，服务端（lib/enterprise/assign-use.ts）照这个拦；
- * 「谁能用」= 谁能选这种方式把线索分出去；指定分配、自动分配有操作对得上，公海捞取、暂不分配、自拓自持先存着（从公海领照旧非原负责人都能领）
+ * 「谁能用」= 谁能选这种方式把线索分出去：线索页的指定分配、自动分配，加上新建线索向导里的五种都照这个拦（10-27 A7）；从公海领照旧非原负责人都能领
  */
 function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
   项们: 字典项[]; 配置: 分配谁能用配置; 挡: string | null; 忙: boolean;
@@ -150,7 +151,7 @@ function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
   return (
     <Card title="分配方式 · 谁能用" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。指定分配、自动分配现在就按这里拦；公海捞取、暂不分配、自拓自持先存着，从公海领照旧。
+        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。新建线索时只能选自己能用的方式：指定分配要选负责人，自动分配建好就分给销售，公海捞取建好放进项目公海，暂不分配、自拓自持先记在自己名下。从公海领不看这里，非原负责人都能领。
       </div>
       {项们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8, minWidth: 0 }}>
@@ -569,6 +570,35 @@ const 推进权限说明: Record<推进权限, string> = {
  * 阶段规则（企业版，10-26 会定）：往前推节点谁能推（默认负责人可推），线索、商机两个阶段出口的叫法。
  * 改叫法只换说法：存的结局、节点、跨阶段单向的规矩都不变。往后退、点结局不归推进权限管。每次推进都记在节点变更里
  */
+const 多项目客户说明: Record<多项目客户走法, string> = {
+  项目可转让: "路线 1（默认）。只有这个项目进出项目公海，客户和别的项目留在原负责人名下；名下只有一个项目的客户才跟着进出客户公海",
+  客户可转让: "路线 2。客户是一个整体：项目进了项目公海，客户也进客户公海；谁领这个项目，客户连同名下别的项目一起归他。客户名下有没结束的订单阶段项目时客户不跟着进",
+};
+
+/** 客户名下有多个项目时，两级公海怎么走（10-27 两条路线二选一，规矩在 lib/enterprise/pool-link.ts）。谁能改同持有上限 */
+function PoolRouteCard({
+  走法, 挡, 忙, 跑,
+}: {
+  走法: 多项目客户走法; 挡: string | null; 忙: boolean;
+  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  return (
+    <Card title="多项目客户的公海走法" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        客户名下只有一个项目时两条一样：项目进项目公海，客户也进客户公海，领项目连客户一起领。
+      </div>
+      <Radio.Group
+        aria-label="多项目客户公海"
+        disabled={!!挡 || 忙}
+        value={走法}
+        onChange={(e) => void 跑(() => 改组织规则({ 公海: { 多项目客户: e.target.value as 多项目客户走法 } }), "已保存")}
+        style={{ display: "grid", gap: 4 }}
+        options={多项目客户走法们.map((v) => ({ value: v, label: <span>{v}<span style={{ color: "var(--text-muted)" }}>：{多项目客户说明[v]}</span></span> }))}
+      />
+    </Card>
+  );
+}
+
 function StageRuleCard({
   规则, 挡, 忙, 跑,
 }: {

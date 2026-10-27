@@ -19,7 +19,8 @@ export const 项目名上限 = 60;
 export const 备注上限 = 500;
 
 export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null };
-export type 向导项目 = { name: string; ownerId?: string | null; amount?: number | null; currency?: string | null; remark?: string | null };
+/** 分配方式：企业版才有，默认五项的序号（lib/enterprise/dict.ts 分配方式序号），只在 projects/actions.ts 建档向导里认 */
+export type 向导项目 = { name: string; ownerId?: string | null; amount?: number | null; currency?: string | null; remark?: string | null; 分配方式?: number | null };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
 /**
  * 阶段、明确回复：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看

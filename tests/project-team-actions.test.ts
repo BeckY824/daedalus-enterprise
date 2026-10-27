@@ -97,7 +97,7 @@ describe("改组织规则（企业版持有上限）", () => {
   it("老板开、设默认和单独上限，存下并留记录；再关", async () => {
     expect(await 改组织规则({ 公海: { 持有上限开: true } })).toEqual({ ok: true, 收回: 0 });
     expect(await 改组织规则({ 公海: { 默认上限: 8, 每人上限: { [乙]: 3 } } })).toEqual({ ok: true, 收回: 0 });
-    expect((await 读组织规则()).公海).toEqual({ 持有上限开: true, 默认上限: 8, 每人上限: { [乙]: 3 } });
+    expect((await 读组织规则()).公海).toEqual({ 持有上限开: true, 默认上限: 8, 每人上限: { [乙]: 3 }, 多项目客户: "项目可转让" });
     expect(await 改组织规则({ 公海: { 持有上限开: false } })).toEqual({ ok: true, 收回: 0 });
     expect((await 读组织规则()).公海).toMatchObject({ 持有上限开: false, 默认上限: 8 });
     expect((await 记录()).map((r) => r.summary)).toEqual([

@@ -4,6 +4,8 @@
  * 老板、总管理、管理员每样都能用；后加的项默认所有人；存坏了当没存；
  * 改了以后 分配线索 / 自动分配线索 照着拦；「公海捞取」= 谁能把线索放去公海分，不管领：从公海领照旧非原负责人都能领（10-26）；
  * 谁能改同字典一行、只认字典里有的项；不是企业版一条都不管。
+ * 新建线索向导（10-27 A7）：五种都生效——只能选自己能用、还启用着的；自动分配建好分给销售、公海捞取建好进项目公海、暂不分配 / 自拓自持记在自己名下；
+ * 没传分配方式（老草稿）照负责人推。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -15,6 +17,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => mocks.企业版 }));
 vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => false }));
+vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
   return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), projectMode: true }) };
@@ -27,10 +30,10 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 读组织 } from "@/lib/enterprise/org";
 import {
   分配默认谁能用, 分配方式id, 分配谁能用key, 规整分配谁能用, 谁能用, 能用分配方式, 谁能用的话,
-  挡分配方式, 改分配谁能用, 读分配谁能用,
+  挡分配方式, 改分配谁能用, 读分配谁能用, 我能用的分配方式,
 } from "@/lib/enterprise/dict";
 import { 分配线索, 自动分配线索 } from "@/app/(app)/leads/assign-actions";
-import { 领取项目 } from "@/app/(app)/projects/actions";
+import { 领取项目, 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
 import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
 
 let 老板: string, 总管: string, 市场: string, 销售经理: string, 销售: string, 另一销售: string, 渠道: string, 项运: string;
@@ -165,5 +168,107 @@ describe("不是企业版", () => {
     当(市场);
     const r = await 分配线索({ leadId: await 建线索("D"), toUserId: 销售 });
     expect(r.ok ? "" : r.error).not.toMatch("只有老板");
+  });
+});
+
+describe("新建线索向导：五种分配方式都生效（10-27 A7）", () => {
+  let 号 = 0;
+  const 向导 = async (项目: Partial<建档向导输入["项目"]>) => {
+    号++;
+    const 渠 = (await prisma.channel.findFirst()) ?? (await prisma.channel.create({ data: { name: "小红", channelOwnerId: 老板 } }));
+    return 建档向导({
+      客户: {
+        name: `向导客户${号}`, phone: `1391111${String(号).padStart(4, "0")}`, school: null, grade: null, major: null,
+        followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
+        salesOwnerId: 项目.ownerId ?? mocks.user.id, channelId: 渠.id, referrerCustomerId: null,
+      },
+      联系人: { name: "王经理", position: "采购", phone: "" },
+      项目: { name: `向导项目${号}`, amount: 0, currency: "CNY", ownerId: mocks.user.id, ...项目 },
+      跟进: { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false },
+    });
+  };
+  const 项目of = (id: string) => prisma.project.findUniqueOrThrow({ where: { id }, include: { customer: { select: { salesOwnerId: true } } } });
+
+  it("下拉只给能用、还启用着的：市场 = 指定 / 自动 / 公海捞取 / 暂不分配，销售 = 指定 / 自拓自持；停用的不出", async () => {
+    expect((await 我能用的分配方式({ id: 市场, role: "SALES" })).map((x) => x.i)).toEqual([0, 1, 2, 3]);
+    expect((await 我能用的分配方式({ id: 销售, role: "SALES" })).map((x) => x.i)).toEqual([0, 4]);
+    expect((await 我能用的分配方式({ id: 老板, role: "ADMIN" })).map((x) => x.i)).toEqual([0, 1, 2, 3, 4]);
+    await prisma.entDictItem.update({ where: { id: 分配方式id.暂不分配 }, data: { active: false } });
+    expect((await 我能用的分配方式({ id: 市场, role: "SALES" })).map((x) => x.i)).toEqual([0, 1, 2]);
+    当(市场);
+    expect(await 向导({ 分配方式: 3 })).toMatchObject({ ok: false, error: "这种分配方式已停用，换一种" });
+  });
+
+  it("用不了的拦下、一行不写：销售选暂不分配、市场选自拓自持", async () => {
+    当(销售);
+    expect(await 向导({ 分配方式: 3 })).toMatchObject({ ok: false });
+    当(市场);
+    expect(await 向导({ 分配方式: 4 })).toMatchObject({ ok: false });
+    expect(await 向导({ 分配方式: 9 })).toMatchObject({ ok: false, error: "没有这种分配方式，刷新后再选" });
+    expect(await prisma.project.count()).toBe(0);
+  });
+
+  it("指定分配：记在选的负责人名下", async () => {
+    当(市场);
+    const r = await 向导({ 分配方式: 0, ownerId: 销售 });
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) return;
+    const p = await 项目of(r.projectId);
+    expect([p.ownerId, p.customer.salesOwnerId, p.pooledAt]).toEqual([销售, 销售, null]);
+    expect("转走" in r).toBe(false);
+  });
+
+  it("暂不分配 / 自拓自持：选了别人也记在自己名下", async () => {
+    当(市场);
+    const a = await 向导({ 分配方式: 3, ownerId: 销售 });
+    当(销售);
+    const b = await 向导({ 分配方式: 4, ownerId: 另一销售 });
+    for (const [r, 谁] of [[a, 市场], [b, 销售]] as const) {
+      expect(r).toMatchObject({ ok: true });
+      if (r.ok) expect((await 项目of(r.projectId)).ownerId).toBe(谁);
+    }
+  });
+
+  it("公海捞取：建好放进项目公海", async () => {
+    当(市场);
+    const r = await 向导({ 分配方式: 2 });
+    expect(r).toMatchObject({ ok: true, 转走: true, 提示: "已放进项目公海，等人捞取" });
+    if (r.ok) expect((await 项目of(r.projectId)).pooledAt).not.toBeNull();
+  });
+
+  it("自动分配：建好按规则分给一位销售，客户跟着走", async () => {
+    当(市场);
+    const r = await 向导({ 分配方式: 1 });
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) return;
+    const p = await 项目of(r.projectId);
+    if (r.转走) {
+      expect([销售, 另一销售, 销售经理]).toContain(p.ownerId);
+      expect(p.customer.salesOwnerId).toBe(p.ownerId);
+    } else {
+      // 没人可分：项目留在市场名下，回一句为什么
+      expect(p.ownerId).toBe(市场);
+      expect(r.提示).toMatch("没成");
+    }
+  });
+
+  it("没传分配方式（老草稿）：选了别人 = 指定，建给自己 = 自拓自持，用不了自拓自持的 = 暂不分配", async () => {
+    当(销售);
+    const a = await 向导({ ownerId: 另一销售 });
+    const b = await 向导({});
+    当(市场);
+    const c = await 向导({});
+    for (const [r, 谁] of [[a, 另一销售], [b, 销售], [c, 市场]] as const) {
+      expect(r).toMatchObject({ ok: true });
+      if (r.ok) expect((await 项目of(r.projectId)).ownerId).toBe(谁);
+    }
+    const 审计 = await prisma.auditLog.findMany({ where: { entity: "Project", action: "create" }, select: { summary: true }, orderBy: { at: "asc" } });
+    expect(审计.map((x) => x.summary.match(/分配方式「(.+?)」/)?.[1])).toEqual(["指定分配", "自拓自持", "暂不分配"]);
+  });
+
+  it("不是企业版：不看分配方式，照负责人建", async () => {
+    mocks.企业版 = false;
+    当(销售);
+    expect(await 我能用的分配方式({ id: 销售, role: "SALES" })).toEqual([]);
   });
 });

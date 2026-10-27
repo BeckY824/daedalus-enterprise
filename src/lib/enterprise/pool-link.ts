@@ -3,22 +3,35 @@
  *   - 单项目客户：客户名下只有这一个项目，项目进项目公海 → 客户也进客户公海；领这个项目 → 客户一起领过来
  *   - 领客户即领项目：领 / 分配客户公海里的客户，名下放在项目公海里的项目一起归领的人
  *     （没进项目公海的项目本来就跟着客户整体转，见 carry-over-db 跟着客户转的项目）
+ *   - 多项目客户（10-27，组织规则 公海.多项目客户，后台二选一）：项目可转让（默认）= 上面两条只认单项目客户；
+ *     客户可转让 = 不数项目，客户是一个整体：项目进项目公海 → 客户也进（名下有没结束的订单阶段项目除外，订单不进公海）；
+ *     领这个项目 → 客户连同名下别的项目一起领过来
  *
  * 查和改都包在 看全部() 里：按组织看客户开着时请求带着打开页面那个人的范围，判「名下只有一个项目」不能只数他看得到的
  */
 import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
-import { 公海规则, 单项目客户进公海理由 } from "./pool-rules";
+import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由 } from "./pool-rules";
 import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位 } from "@/lib/carry-over-db";
 import { 转让痕 } from "@/lib/project/db";
+import { 规整组织规则 } from "@/lib/project/org-rules";
+
+/** 后台选的多项目客户走法。在事务里直接读那一行，不走设置缓存（缓存冷着时另开连接查，SQLite 写事务里会等锁） */
+async function 客户可转让(tx: Prisma.TransactionClient): Promise<boolean> {
+  const 行 = await tx.setting.findUnique({ where: { key: "orgRules" }, select: { value: true } });
+  let v: unknown = null;
+  try { v = 行 ? JSON.parse(行.value) : null; } catch { /* 坏了按默认 */ }
+  return 规整组织规则(v).公海.多项目客户 === "客户可转让";
+}
 
 /**
  * 项目刚进了项目公海（主动放回、超时回收），在同一笔事务里调：客户名下一共只有这一个项目、
  * 客户和项目是同一位负责人、客户还不在公海 → 客户也放进客户公海。返回放了没有。
  * 只看同一位负责人：客户归别人、只是项目归他的，不能因为他放回项目就把别人的客户也扔进公海。
- * 操作人 = 放进去的人；超时回收没有人放，传 null（同自动掉公海）
+ * 操作人 = 放进去的人；超时回收没有人放，传 null（同自动掉公海）。
+ * 后台选了 客户可转让：不要求只有一个项目，名下有没结束的订单阶段项目才不进（别的项目跟着客户待着，谁领客户谁带走）
  */
 export async function 单项目客户跟进公海(
   tx: Prisma.TransactionClient,
@@ -30,8 +43,12 @@ export async function 单项目客户跟进公海(
   return 看全部(async () => {
     const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
     if (!c || c.pool || c.salesOwnerId !== p.ownerId) return false;
-    if ((await tx.project.count({ where: { customerId: p.customerId } })) !== 1) return false;
-    await tx.customerPool.create({ data: { customerId: p.customerId, userId: 操作人, reason: 单项目客户进公海理由, at } });
+    const 几个 = await tx.project.count({ where: { customerId: p.customerId } });
+    if (几个 !== 1) {
+      if (!(await 客户可转让(tx))) return false;
+      if (await tx.project.count({ where: { customerId: p.customerId, phase: "订单", result: null } })) return false;
+    }
+    await tx.customerPool.create({ data: { customerId: p.customerId, userId: 操作人, reason: 几个 === 1 ? 单项目客户进公海理由 : 客户整体进公海理由, at } });
     return true;
   });
 }
@@ -39,7 +56,8 @@ export async function 单项目客户跟进公海(
 /**
  * 刚从项目公海领了一个项目，在同一笔事务里调：客户在客户公海里、名下只有这一个项目 → 客户也归领的人，
  * 规矩同客户公海领取（记领取时间、删公海那一行、原负责人没做完的活跟着过来、记一行换负责人）。
- * 返回领过来的客户（原来归谁），没领返回 null
+ * 返回领过来的客户（原来归谁），没领返回 null。后台选了 客户可转让：不数项目，客户在客户公海就一起领，
+ * 名下没进项目公海的别的项目由 带走一位 一起转过来
  */
 export async function 单项目客户跟着领(
   tx: Prisma.TransactionClient,
@@ -49,7 +67,7 @@ export async function 单项目客户跟着领(
   if (!企业版() || !公海规则.领项目带走单项目客户) return null;
   return 看全部(async () => {
     if (!(await tx.customerPool.findUnique({ where: { customerId }, select: { customerId: true } }))) return null;
-    if ((await tx.project.count({ where: { customerId } })) !== 1) return null;
+    if (!(await 客户可转让(tx)) && (await tx.project.count({ where: { customerId } })) !== 1) return null;
     const c = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true } });
     if (!c) return null;
     // 顺序同客户公海领取：先改负责人、最后删公海那一行

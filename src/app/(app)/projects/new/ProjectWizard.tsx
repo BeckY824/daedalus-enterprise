@@ -35,14 +35,25 @@ type 稿 = {
   带过?: Partial<联系人三格>;
   /** 渠道：企业版新建线索必选（老草稿里没有） */
   客户: { name: string; school: string; remark: string; 渠道?: string };
-  项目: { name: string; ownerId: string; amount: number | null; currency: string; remark: string };
+  /** 分配方式：企业版才有（默认五项的序号，0 指定 / 1 自动 / 2 公海捞取 / 3 暂不分配 / 4 自拓自持）；老草稿里没有 */
+  项目: { name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number };
   /** 下一步时间（YYYY-MM-DD）：开了超时回收时才有这格、必填；老草稿里没有这格 */
   /** 节点、明确回复：企业版首条沟通必选（跟进节点 = 项目落在线索阶段哪一步）；团队版没有 */
   跟进: { type: string; content: string; occurredAt: string; 下一步时间?: string | null; 节点?: string; 明确回复?: boolean | null };
 };
 
 /** 企业版新建线索（10-26）：负责人、渠道必选；只留联系方式、首次沟通记录、跟进节点、客户是否明确回复这几格预设 */
-export type 企业建档 = { 渠道们: { id: string; name: string }[]; 节点们: readonly string[] } | null;
+/** 分配方式们：这个人能用、还启用着的分配方式（10-27 A7：五种都生效，只有「指定分配」要选负责人） */
+export type 企业建档 = { 渠道们: { id: string; name: string }[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[] } | null;
+
+/** 企业版：这次要不要选负责人。只有「指定分配」要；没有可选的分配方式（老配置）照旧选负责人 */
+const 要选负责人 = (d: 稿, 企业: 企业建档) => !!企业 && (!企业.分配方式们.length || d.项目.分配方式 === 0);
+const 分配说明: Record<number, string> = {
+  1: "建好后按自动分配规则分给销售，项目不在你名下",
+  2: "建好后放进项目公海，等人捞取",
+  3: "先记在你名下，之后再分配",
+  4: "记在你名下，自己跟进",
+};
 
 function 空稿(ownerId: string, currency: string, 首类型: string): 稿 {
   return {
@@ -64,7 +75,7 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
   if (步 === 0) return !d.phone.trim() ? "先填电话再查" : 已查 !== d.phone.trim() ? "点「查重」看看这个号码有没有人录过" : "";
   if (步 === 1) return d.联系人.name.trim() ? "" : "请填写联系人姓名";
   if (步 === 2) return !d.客户.name.trim() ? "请填写名称" : 企业 && !d.客户.渠道 ? "请选渠道" : "";
-  if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && !d.项目.ownerId ? "请选项目负责人" : "";
+  if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined ? "请选分配方式" : 要选负责人(d, 企业) && !d.项目.ownerId ? "请选项目负责人" : "";
   if (!d.跟进.content.trim()) return "请填写这次沟通的内容";
   if (企业) {
     if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选跟进节点（线索阶段的哪一步）";
@@ -108,7 +119,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
   // 企业版负责人不默认自己：必须选（10-26）；跟进节点默认线索第一步；号码类型默认手机号（最常见）
   const 新稿 = (): 稿 => {
     const n = 空稿(企业 ? "" : 默认负责人(我, users) ?? 我?.id ?? "", b.currency || 默认币种, 能选类型[0]?.value ?? "PHONE");
-    return 企业 ? { ...n, 号码类型: "手机号", 跟进: { ...n.跟进, 节点: 企业.节点们[0], 明确回复: null } } : n;
+    // 分配方式只有一种能用就直接选上
+    const 分 = 企业?.分配方式们.length === 1 ? 企业.分配方式们[0].i : undefined;
+    return 企业 ? { ...n, 号码类型: "手机号", 项目: { ...n.项目, 分配方式: 分 }, 跟进: { ...n.跟进, 节点: 企业.节点们[0], 明确回复: null } } : n;
   };
 
   // 上次没填完的接着填
@@ -174,6 +187,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
 
   const 提交 = async () => {
     set交中(true);
+    // 企业版不是「指定分配」的：先建在我名下（服务端也这么改），建好再按分配方式转走
+    const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
     try {
       const r = await 建档向导({
         客户: {
@@ -183,10 +198,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           school: d.客户.school || null, grade: null, major: null,
           followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: d.客户.remark || null,
           // 客户也记在项目负责人名下：负责人打开项目时得看得到这位客户
-          salesOwnerId: d.项目.ownerId || null, channelId: 企业 ? d.客户.渠道 || null : null, referrerCustomerId: null,
+          salesOwnerId: 负责人 || null, channelId: 企业 ? d.客户.渠道 || null : null, referrerCustomerId: null,
         },
         联系人: d.联系人,
-        项目: { ...d.项目, amount: d.项目.amount ?? 0, ownerId: d.项目.ownerId || null },
+        项目: { ...d.项目, amount: d.项目.amount ?? 0, ownerId: 负责人 || null, 分配方式: 企业 ? d.项目.分配方式 ?? null : undefined },
         跟进: 企业 ? d.跟进 : { type: d.跟进.type, content: d.跟进.content, occurredAt: d.跟进.occurredAt, 下一步时间: d.跟进.下一步时间 },
       });
       if (!r.ok) {
@@ -195,7 +210,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
       }
       清草稿(全名);
       message.success(`已建好项目「${d.项目.name.trim()}」`);
-      router.push(`/projects/${r.projectId}`);
+      if ("提示" in r && r.提示) (r.转走 ? message.info : message.warning)(r.提示);
+      // 分走了 / 进了公海，项目不在我名下：回线索列表
+      router.push("转走" in r && r.转走 ? (新线索 ? "/leads" : "/projects") : `/projects/${r.projectId}`);
     } catch {
       message.error("没建成，请稍后再试；填过的还在");
     } finally {
@@ -353,7 +370,20 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
       {步 === 3 && (
         <>
           {一行("项目名称", <Input value={d.项目.name} maxLength={项目名上限} showCount onChange={(e) => 改("项目", { name: e.target.value })} />, true)}
-          {(企业 || !独自一人(users, d.项目.ownerId)) && 一行("负责人", (
+          {企业 && 企业.分配方式们.length > 0 && 一行("分配方式", (
+            <>
+              <Select
+                style={{ width: "100%" }}
+                aria-label="分配方式"
+                value={d.项目.分配方式}
+                placeholder="选分配方式"
+                options={企业.分配方式们.map((x) => ({ value: x.i, label: x.名 }))}
+                onChange={(v) => 改("项目", { 分配方式: v })}
+              />
+              {d.项目.分配方式 !== undefined && 分配说明[d.项目.分配方式] && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{分配说明[d.项目.分配方式]}</div>}
+            </>
+          ), true)}
+          {(企业 ? 要选负责人(d, 企业) : !独自一人(users, d.项目.ownerId)) && 一行("负责人", (
             <Select style={{ width: "100%" }} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={负责人选项} onChange={(v) => 改("项目", { ownerId: v })} />
           ), !!企业)}
           {!企业 && 一行("金额", (

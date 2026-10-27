@@ -27,6 +27,8 @@ import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
+import { 向导自动分配 } from "../leads/assign-actions";
+import { 我能用的分配方式, 挡分配方式, 是分配方式序号, type 分配方式序号 } from "@/lib/enterprise/dict";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
 
@@ -46,11 +48,18 @@ export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联�
  * 建档向导的最后一步：客户、主要联系人、项目、首条跟进一笔建好。
  * 客户查重撞了、哪一步写失败了，整笔都不留；中途关掉向导时根本没走到这里
  */
-export async function 建档向导(input: 建档向导输入) {
+export async function 建档向导(输入: 建档向导输入) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
-    if (!input || typeof input !== "object" || !input.客户 || typeof input.客户 !== "object") return { ok: false as const, error: "建档信息不完整，请从头再走一遍" };
+    if (!输入 || typeof 输入 !== "object" || !输入.客户 || typeof 输入.客户 !== "object") return { ok: false as const, error: "建档信息不完整，请从头再走一遍" };
+    // 企业版分配方式（A7，10-27）：只能用分配方式字典里这个人能用、还启用着的那几种（assign-use.ts）。
+    // 指定分配 = 负责人是选的那位；另外四种都先建在我名下，自动分配建好后按自动分配转出去、公海捞取建好后放进项目公海
+    const 分配 = 企业版() ? await 定分配方式(me, 输入.项目) : null;
+    if (分配 && "error" in 分配) return { ok: false as const, error: 分配.error };
+    const input = 分配 && 分配.i !== 0
+      ? { ...输入, 客户: { ...输入.客户, salesOwnerId: me.id }, 项目: { ...输入.项目, ownerId: me.id } }
+      : 输入;
     // 开了超时回收：项目建在线索阶段，首条跟进也得填下一步时间
     const 规则 = await 生效组织规则();
     // 下一步时间：开了超时回收必填；企业版没开也能选填（验收 #4）；不是企业版没有这格，老草稿里留着的也不认、不写，和原来一样
@@ -105,15 +114,46 @@ export async function 建档向导(input: 建档向导输入) {
     if (!r.ok) return r;
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: 建了.projectId,
-      summary: `建档：新建项目「${好.项目.name}」（负责人 ${负责人.name}），连同主要联系人「${好.联系人.name}」和首条跟进`,
-      detail: { 项目: 好.项目.name, 负责人: 负责人.name, 金额: 好.项目.amount, 币种: 好.项目.currency, 联系人: 好.联系人.name },
+      summary: `建档：新建项目「${好.项目.name}」（负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同主要联系人「${好.联系人.name}」和首条跟进`,
+      detail: { 项目: 好.项目.name, 负责人: 负责人.name, 金额: 好.项目.amount, 币种: 好.项目.currency, 联系人: 好.联系人.name, ...(分配 ? { 分配方式: 分配.名 } : {}) },
     });
     // 首条跟进记在潜客培育上：配的必填建档时就齐了的，接着往前推
     await 客户存了推项目(me, r.id);
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
-    return { ok: true as const, customerId: r.id, projectId: 建了.projectId! };
+    const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!) : null;
+    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(分了 ?? {}) };
   } catch (e) { return 不在了(e); }
+}
+
+/**
+ * 向导这次用哪种分配方式：传了就用传的；没传（老草稿、老调用）照负责人推：选了别人 / 没选 = 指定分配（没选照旧拦「请选项目负责人」），建给自己 = 自拓自持，用不了自拓自持的 = 暂不分配。
+ * 推出来的也要过「谁能用」
+ */
+async function 定分配方式(me: Awaited<ReturnType<typeof requireUser>>, 项目: 建档向导输入["项目"] | undefined): Promise<{ i: 分配方式序号; 名: string } | { error: string }> {
+  const 能用 = await 我能用的分配方式(me);
+  const 传 = 项目?.分配方式;
+  if (传 !== undefined && 传 !== null && !是分配方式序号(传)) return { error: "没有这种分配方式，刷新后再选" };
+  const 有 = (i: 分配方式序号) => 能用.some((x) => x.i === i);
+  const i: 分配方式序号 = 是分配方式序号(传) ? 传 : 项目?.ownerId !== me.id ? 0 : 有(4) ? 4 : 有(3) ? 3 : 0;
+  const 中 = 能用.find((x) => x.i === i);
+  if (中) return 中;
+  return { error: (await 挡分配方式(me, i)) ?? "这种分配方式已停用，换一种" };
+}
+
+/** 建好之后：自动分配转给挑中的人，公海捞取放进项目公海；没成的项目留在我名下，回一句提示（建档本身算成了）。转走 = 项目已不在我名下 */
+async function 建好再分(me: Awaited<ReturnType<typeof requireUser>>, 分配: { i: 分配方式序号; 名: string }, projectId: string): Promise<{ 提示: string; 转走: boolean } | null> {
+  if (分配.i === 1) {
+    const r = await 向导自动分配(projectId);
+    return r.ok ? { 提示: `已按「${分配.名}」分给 ${r.接手人}`, 转走: true } : { 提示: `项目先建在你名下，「${分配.名}」没成：${r.error}`, 转走: false };
+  }
+  if (分配.i === 2) {
+    const r = await 放回公海(me, projectId, null);
+    if (!r.ok) return { 提示: `项目先建在你名下，没放进公海：${r.error}`, 转走: false };
+    刷新项目(projectId);
+    return { 提示: "已放进项目公海，等人捞取", 转走: true };
+  }
+  return null;
 }
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */
@@ -410,6 +450,8 @@ export async function 改组织规则(改: 规则改动) {
       ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个节点配了必填` : "组织规则：节点推进关"
       : 改.超时回收 !== undefined
       ? t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个节点的处理时长` : "组织规则：超时回收关"
+      : 改.公海?.多项目客户 !== undefined
+      ? `组织规则：多项目客户公海走法 ${g.多项目客户}`
       : g.持有上限开 ? `组织规则：项目持有上限开，默认 ${是不限(g.默认上限) ? "不限" : `${g.默认上限} 个`}，单独设了 ${Object.keys(g.每人上限).length} 人` : "组织规则：项目持有上限关";
     await recordAudit({ user: me, action: "update", entity: "Setting", entityId: "orgRules", summary: 说, detail: 新 });
     // 改了时长当场按新的扫一遍（老板保存前已经看过会回收几个）
