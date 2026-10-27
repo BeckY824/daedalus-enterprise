@@ -197,7 +197,8 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
           <StatCard icon={<TrophyOutlined />} color={阶段色.订单} label="成功交付" value={t.成功交付} note={money(t.交付金额)} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<StopOutlined />} color={categorical.orange} label="没成" value={t.线索流失 + t.丢单} note={`线索流失 ${t.线索流失} · 丢单 ${t.丢单} · 异常 ${t.异常状态}`} />
+          {/* 没成 = 流失 + 丢单；异常还在处理，不算没成。原来三个数并排写，看着像加不平（10-27） */}
+          <StatCard icon={<StopOutlined />} color={categorical.orange} label="没成" value={t.线索流失 + t.丢单} note={`线索流失 ${t.线索流失} · 丢单 ${t.丢单}${t.异常状态 ? `；另有异常 ${t.异常状态}，不算在没成里` : ""}`} />
         </Col>
       </Row>
 

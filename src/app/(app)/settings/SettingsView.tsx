@@ -1,6 +1,7 @@
 "use client";
 
 import { useBusinessTimeZone } from "@/lib/business-client";
+import { 同名带邮箱 } from "@/lib/utils";
 
 import { useState } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
@@ -104,6 +105,10 @@ export default function SettingsView({
   const tab = useSearchParams().get("tab") ?? "members";
 
   /** 设置的几项。说明一句话写清这一项管什么——只有名字的话，「业务配置」是个谜 */
+  // 持有上限名单每人一行：同名的带邮箱才分得清是谁（10-27）
+  const 在职 = users.filter((u) => u.active);
+  const 叫 = 同名带邮箱(在职);
+  const 持有成员 = 在职.map((u) => ({ id: u.id, name: 叫.get(u.id)! }));
   const 目录: { key: string; label: string; 说明: string; children: React.ReactNode }[] = [
     /**
      * 个人资料排第一：这一页最常被打开的原因是「改我自己的什么」，
@@ -122,7 +127,7 @@ export default function SettingsView({
     ...(isAdmin || 桌面端 ? [{ key: "ai", label: "AI 接入", children: <AiSettingsTab llm={llm} usage={aiUsage} 企业版={企业版} /> }] : []),
     ...(isAdmin ? [{ key: "business", label: "业务配置", children: <BusinessSettingsTab value={business} 多人={users.filter((u) => u.active).length > 1} 企业版={企业版} /> }] : []),
     ...(组织架构 ? [{ key: "org", label: "组织架构", children: <OrgTab value={组织架构} /> }] : []),
-    ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }))} /> }] : []),
+    ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={持有成员} /> }] : []),
     { key: "imports", label: "导入记录", children: <ImportsTab /> },
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },

@@ -342,7 +342,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
                 showSearch
                 optionFilterProp="label"
               />
-              {企业.渠道们.length === 0 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>还没有渠道：请先在「设置」里加渠道</div>}
+              {企业.渠道们.length === 0 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>还没有渠道：先去 <Link href="/channels">渠道页</Link> 加一个</div>}
             </>
           ), true)}
           {!企业 && 一行(b.fields.school, <Input value={d.客户.school} onChange={(e) => 改("客户", { school: e.target.value })} />)}

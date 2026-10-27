@@ -173,12 +173,15 @@ export type 可选成员 = { id: string; name: string; email: string };
  * 不撞名的保持原样：全都带上等于给每个人加噪音。
  */
 export function 成员选项(users: 可选成员[]): { value: string; label: string }[] {
+  const 叫 = 同名带邮箱(users);
+  return users.map((u) => ({ value: u.id, label: 叫.get(u.id)! }));
+}
+
+/** 成员 id → 显示名：同名的（两个王芳）后面带邮箱，不同名的就是名字。名单、下拉都用这一份（10-27 持有上限 / 组织架构分不出同名） */
+export function 同名带邮箱(users: 可选成员[]): Map<string, string> {
   const 同名计数 = new Map<string, number>();
   for (const u of users) 同名计数.set(u.name, (同名计数.get(u.name) ?? 0) + 1);
-  return users.map((u) => ({
-    value: u.id,
-    label: (同名计数.get(u.name) ?? 0) > 1 ? `${u.name}（${u.email}）` : u.name,
-  }));
+  return new Map(users.map((u) => [u.id, (同名计数.get(u.name) ?? 0) > 1 ? `${u.name}（${u.email}）` : u.name]));
 }
 
 /**
