@@ -84,7 +84,9 @@ describe("项目模式", () => {
     const 一 = await 项目("服务器采购");
     expect([一.phase, 一.node, 一.result, 一.amount]).toEqual(["商机", "共识方案", null, 120000]);
     expect(一.closedAt).toBeNull();
-    expect(一.remark).toContain("预计成交：2025-09-01");
+    // 预计成交日期落项目上（10-27 从客户挪到项目），不再塞备注
+    expect(一.expectedDealAt).toEqual(new Date("2025-09-01T00:00:00"));
+    expect(一.remark ?? "").not.toContain("预计成交");
     expect(一.logs).toHaveLength(1);
     expect(一.logs[0]).toMatchObject({ toPhase: "商机", toNode: "共识方案", toResult: null });
     expect([(await 项目("样品单")).node, (await 项目("外贸展会")).node]).toEqual(["签订合同", "明确需求"]);

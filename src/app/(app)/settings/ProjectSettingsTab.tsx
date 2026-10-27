@@ -7,6 +7,7 @@ import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异�
 import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
+import { 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 加企业选项, 改企业选项, 存分配谁能用 } from "./ent-dict-actions";
 import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterprise/dict-kinds";
 import type { 时限范围 } from "@/lib/enterprise/edit-perm-table";
@@ -596,6 +597,20 @@ function StageRuleCard({
         style={{ display: "grid", gap: 4, marginBottom: 16 }}
         options={推进权限们.map((v) => ({ value: v, label: <span>{v}<span style={{ color: "var(--text-muted)" }}>：{推进权限说明[v]}</span></span> }))}
       />
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 16, minWidth: 0 }}>
+        <Switch
+          aria-label="前两个节点要沟通"
+          size="small"
+          style={{ flex: "none", marginTop: 3 }}
+          disabled={!!挡 || 忙}
+          checked={规则.前两节点要沟通}
+          onChange={(v) => void 跑(() => 改组织规则({ 阶段: { 前两节点要沟通: v } }), "已保存")}
+        />
+        <div style={{ minWidth: 0 }}>
+          <div>线索、商机前两个节点各要一条沟通才能往后推</div>
+          <div style={{ color: "var(--text-muted)" }}>开了：{要沟通的节点().join("、")} 这几个节点上，各记过至少一条沟通才能推到下一个节点（必填齐了的自动推进也一样）。默认关</div>
+        </div>
+      </div>
       <div style={{ fontWeight: 500, marginBottom: 8 }}>结束状态叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
       {阶段们.map((s) => {
         const [成, 没成] = 企业版字典.出口们[s];

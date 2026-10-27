@@ -116,10 +116,10 @@ describe("节点推进设置（D-37）", () => {
 
 describe("阶段规则（企业版 10-26：往前推权限 + 出口叫法）", () => {
   it("默认负责人可推、没改叫法；存坏的退回默认、坏了的阶段丢掉", () => {
-    expect(默认组织规则.阶段).toEqual({ 推进权限: "负责人可推", 出口叫法: {} });
+    expect(默认组织规则.阶段).toEqual({ 推进权限: "负责人可推", 出口叫法: {}, 前两节点要沟通: false });
     expect(规整组织规则({ 阶段: { 推进权限: "谁都能推", 出口叫法: "乱" } }).阶段).toEqual(默认组织规则.阶段);
     expect(规整组织规则({ 阶段: { 推进权限: "仅上级推", 出口叫法: { 线索: ["转了", null], 商机: ["x".repeat(20), "y"], 别的: ["a", "b"] } } }).阶段)
-      .toEqual({ 推进权限: "仅上级推", 出口叫法: { 线索: ["转了", null] } });
+      .toEqual({ 推进权限: "仅上级推", 出口叫法: { 线索: ["转了", null] }, 前两节点要沟通: false });
   });
 
   it("合上改动：只改传了的；填错的报出来", () => {
@@ -133,5 +133,12 @@ describe("阶段规则（企业版 10-26：往前推权限 + 出口叫法）", (
     expect(合上改动(默认组织规则, { 阶段: { 出口叫法: { 商机: ["x".repeat(11), null] } } })).toMatchObject({ error: expect.stringContaining("结束状态叫法") });
     expect(合上改动(默认组织规则, { 阶段: { 出口叫法: { 商机: ["一样", "一样"] } } })).toMatchObject({ error: expect.stringContaining("不能叫一样") });
     expect(合上改动(默认组织规则, { 阶段: { 出口叫法: { 别的: ["a", "b"] } } })).toMatchObject({ error: expect.stringContaining("没有「别的」") });
+  });
+
+  it("前两节点要沟通：默认关、只认 true、改动只收开或关", () => {
+    expect(规整组织规则({ 阶段: { 前两节点要沟通: "yes" } }).阶段.前两节点要沟通).toBe(false);
+    expect(规整组织规则({ 阶段: { 前两节点要沟通: true } }).阶段.前两节点要沟通).toBe(true);
+    expect(合上改动(默认组织规则, { 阶段: { 前两节点要沟通: true } })).toMatchObject({ 阶段: { 前两节点要沟通: true, 推进权限: "负责人可推" } });
+    expect(合上改动(默认组织规则, { 阶段: { 前两节点要沟通: "开" as never } })).toMatchObject({ error: expect.stringContaining("前两个节点要沟通") });
   });
 });

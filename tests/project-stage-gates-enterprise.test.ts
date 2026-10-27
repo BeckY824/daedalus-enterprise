@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 改节点, 改项目, 记项目沟通 } from "@/lib/project/db";
 import { 判MQL } from "@/lib/project/mql";
-import { 缺有效沟通, 记沟通阶段问题 } from "@/lib/project/stage-gates";
+import { 缺有效沟通, 记沟通阶段问题, 缺本节点沟通, 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
@@ -118,6 +118,64 @@ describe("企业版三大阶段的门", () => {
     });
   });
 
+  describe("后台开关：线索、商机前两个节点各要一条沟通", () => {
+    const 开 = () => setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 前两节点要沟通: true } });
+
+    it("管的是 潜客培育 / 线索验证 / 明确需求 / 共识方案", () => {
+      expect(要沟通的节点()).toEqual(["潜客培育", "线索验证", "明确需求", "共识方案"]);
+    });
+
+    it("默认关：潜客培育、明确需求没沟通也能往后推", async () => {
+      const p = await 项目({ node: "潜客培育" });
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
+      const q = await 项目({ phase: "商机", node: "明确需求" });
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "共识方案" })).toMatchObject({ ok: true });
+    });
+
+    it("开了：本节点没沟通拦下，记了一条（在本节点记的）才放行；别的节点记的不算", async () => {
+      await 开();
+      const p = await 项目({ node: "潜客培育" });
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toEqual({ ok: false, error: 缺本节点沟通("潜客培育") });
+      await 记有效沟通(p.id, false);
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
+      // 到了线索验证，潜客培育时记的那条不算
+      expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺本节点沟通("线索验证") });
+
+      const q = await 项目({ phase: "商机", node: "明确需求" });
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "共识方案" })).toEqual({ ok: false, error: 缺本节点沟通("明确需求") });
+      await 记有效沟通(q.id, false, "商机");
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "共识方案" })).toMatchObject({ ok: true });
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "成交推进" })).toEqual({ ok: false, error: 缺本节点沟通("共识方案") });
+      await 记有效沟通(q.id, true, "商机");
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "成交推进" })).toMatchObject({ ok: true });
+      // 第三个节点起不管
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "签约审批" })).toMatchObject({ ok: true });
+    });
+
+    it("开了：往回退、结束项目不拦", async () => {
+      await 开();
+      const q = await 项目({ phase: "商机", node: "共识方案" });
+      expect(await 改节点(老板, q.id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true });
+      expect(await 改节点(老板, q.id, { phase: "商机", node: "明确需求", result: "丢单" }, { 备注: "不做了" })).toMatchObject({ ok: true });
+    });
+
+    it("开了：自动推进也停在没沟通的节点", async () => {
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 前两节点要沟通: true }, 节点推进: { 开: true, 必填: { 明确需求: ["金额"] } } });
+      const q = await 项目({ phase: "商机", node: "明确需求" });
+      expect(await 改项目(乙, q.id, { name: "一号项目", amount: 5 })).not.toHaveProperty("自动推到");
+      expect((await 现(q.id)).node).toBe("明确需求");
+      expect(await 记项目沟通(乙, q.id, 沟通({ 阶段: "商机", 明确回复: false }))).toMatchObject({ ok: true, 自动推到: ["共识方案"] });
+    });
+
+    it("不是企业版：存了开也不拦", async () => {
+      await 开();
+      vi.stubEnv("CRM_ENTERPRISE", "");
+      invalidateSettingsCache();
+      const q = await 项目({ phase: "商机", node: "明确需求" });
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "共识方案" })).toMatchObject({ ok: true });
+    });
+  });
+
   describe("MQL 人工判", () => {
     it("合格：往前推到线索推进（照旧要有效沟通、记节点变更）", async () => {
       const p = await 项目({ node: "线索验证" });
@@ -128,31 +186,34 @@ describe("企业版三大阶段的门", () => {
       expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } })).toMatchObject({ fromNode: "线索验证", toNode: "线索推进", userId: 老板.id });
     });
 
-    it("不合格：退回潜客培育，写下一步时间 + 培育跟进计划；日期不填、早于今天拦", async () => {
+    it("不合格：退回潜客培育，写下一步时间 + 培育跟进计划；日期不填、早于今天、计划内容不填拦", async () => {
       const p = await 项目({ node: "线索验证" });
       expect(await 判MQL(乙, p.id, false)).toEqual({ ok: false, error: "MQL 不合格要定下一次培育跟进的日期" });
       expect(await 判MQL(乙, p.id, false, dayjs().subtract(1, "day").format("YYYY-MM-DD"))).toEqual({ ok: false, error: "下一次培育跟进不能早于今天" });
+      expect(await 判MQL(乙, p.id, false, 明天())).toEqual({ ok: false, error: "MQL 不合格要写下一次培育跟进的计划内容" });
+      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "   ")).toEqual({ ok: false, error: "MQL 不合格要写下一次培育跟进的计划内容" });
+      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "长".repeat(201))).toEqual({ ok: false, error: "计划内容最多 200 个字" });
       expect((await 现(p.id)).node).toBe("线索验证");
       expect(await prisma.followPlan.count()).toBe(0);
 
-      expect(await 判MQL(乙, p.id, false, 明天())).toEqual({ ok: true });
+      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "  下月再问预算  ")).toEqual({ ok: true });
       const 后 = await 现(p.id);
       expect(后).toMatchObject({ phase: "线索", node: "潜客培育" });
       expect(dayjs(后.nextStepAt).format("YYYY-MM-DD")).toBe(明天());
       const 计划 = await prisma.followPlan.findFirstOrThrow();
       expect(计划).toMatchObject({ customerId: 客户, ownerId: 乙.id, plannedOn: 明天(), done: false });
-      expect(计划.subject).toContain("MQL 不合格");
+      expect(计划.subject).toBe("潜客培育：下月再问预算");
     });
 
     it("只有停在线索验证的能判；不是企业版判不了，一行不写", async () => {
       for (const 补 of [{ node: "潜客培育" }, { node: "线索推进" }, { node: "线索验证", result: "线索流失" }, { phase: "商机", node: "明确需求" }]) {
         const p = await 项目(补);
-        expect(await 判MQL(老板, p.id, false, 明天())).toEqual({ ok: false, error: "只有停在「线索验证」的项目能判 MQL" });
+        expect(await 判MQL(老板, p.id, false, 明天(), new Date(), "再问")).toEqual({ ok: false, error: "只有停在「线索验证」的项目能判 MQL" });
       }
       expect(await 判MQL(老板, "没这个", true)).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
       vi.stubEnv("CRM_ENTERPRISE", "");
       const q = await 项目({ node: "线索验证" });
-      expect(await 判MQL(老板, q.id, false, 明天())).toEqual({ ok: false, error: "MQL 判定只在企业版有" });
+      expect(await 判MQL(老板, q.id, false, 明天(), new Date(), "再问")).toEqual({ ok: false, error: "MQL 判定只在企业版有" });
       expect(await prisma.followPlan.count()).toBe(0);
       expect(await prisma.projectNodeLog.count()).toBe(0);
     });

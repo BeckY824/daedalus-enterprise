@@ -8,8 +8,8 @@ import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 const 规则 = (必填: Record<string, string[]>, 开 = true): 组织规则 => ({ ...默认组织规则, 节点推进: { 开, 必填 } });
 
 const 空数据 = (node = "潜客培育"): 必填数据 => ({
-  项目: { node, contactId: null, nextStepAt: null, amount: 0, remark: null, acceptancePassed: false },
-  客户: { phone: null, expectedSignAt: null, extra: null },
+  项目: { node, contactId: null, nextStepAt: null, expectedDealAt: null, amount: 0, remark: null, acceptancePassed: false },
+  客户: { phone: null, extra: null },
   联系人们: [],
   沟通节点们: [],
 });
@@ -61,8 +61,8 @@ describe("还差", () => {
 
   it("都填了：空", () => {
     const d: 必填数据 = {
-      项目: { node: "潜客培育", contactId: "c1", nextStepAt: new Date(), amount: 100, remark: "要 200 台", acceptancePassed: true },
-      客户: { phone: null, expectedSignAt: "2026-11-30", extra: { country: "德国", source: "展会", level: "A" } },
+      项目: { node: "潜客培育", contactId: "c1", nextStepAt: new Date(), expectedDealAt: "2026-11-30", amount: 100, remark: "要 200 台", acceptancePassed: true },
+      客户: { phone: null, extra: { country: "德国", source: "展会", level: "A" } },
       联系人们: [{ email: "a@b.com" }],
       沟通节点们: ["潜客培育"],
     };
@@ -72,12 +72,18 @@ describe("还差", () => {
   it("联系方式：客户上任一样、或任一联系人的电话 / 邮箱 / 微信都算；空白不算", () => {
     const r = 规则({ 潜客培育: ["联系方式"] });
     expect(还差(r, 空数据())).toEqual(["联系方式"]);
-    expect(还差(r, { ...空数据(), 客户: { phone: "  ", expectedSignAt: null, extra: { whatsapp: "" } } })).toEqual(["联系方式"]);
+    expect(还差(r, { ...空数据(), 客户: { phone: "  ", extra: { whatsapp: "" } } })).toEqual(["联系方式"]);
     for (const extra of [{ whatsapp: "+49" }, { wechat: "w" }, { email: "e" }, { alibabaId: "x" }]) {
-      expect(还差(r, { ...空数据(), 客户: { phone: null, expectedSignAt: null, extra } })).toEqual([]);
+      expect(还差(r, { ...空数据(), 客户: { phone: null, extra } })).toEqual([]);
     }
-    expect(还差(r, { ...空数据(), 客户: { phone: "138", expectedSignAt: null, extra: null } })).toEqual([]);
+    expect(还差(r, { ...空数据(), 客户: { phone: "138", extra: null } })).toEqual([]);
     expect(还差(r, { ...空数据(), 联系人们: [{ phone: "" }, { wechat: "w" }] })).toEqual([]);
+  });
+
+  it("预计成交日期读项目上的（10-27 从客户挪到项目）", () => {
+    const r = 规则({ 潜客培育: ["预计成交日期"] });
+    expect(还差(r, 空数据())).toEqual(["预计成交日期"]);
+    expect(还差(r, { ...空数据(), 项目: { ...空数据().项目, expectedDealAt: new Date("2026-12-01") } })).toEqual([]);
   });
 
   it("金额要大于 0；需求空白不算；本节点沟通只认这个节点记的", () => {

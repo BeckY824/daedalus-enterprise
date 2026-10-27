@@ -11,10 +11,11 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 公海超时收回 } from "@/lib/project/db";
+import { 公海超时收回, 收回提醒尾 } from "@/lib/project/db";
 import { 夜里扫超时, 启动夜扫, 停夜扫, 夜扫在跑, 过了夜扫时刻 } from "@/lib/project/nightly";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
-import { 超时理由 } from "@/lib/project/timeout";
+import { 超时理由, 将回收提醒, 即将回收 } from "@/lib/project/timeout";
+import { 读项目列表 } from "@/lib/project/list";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 
 const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 节点天数 } });
@@ -79,7 +80,11 @@ describe("夜里定时扫", () => {
     expect(await 在公海(p.id)).toBe(true);
     const log = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } });
     expect(log).toMatchObject({ kind: "pool-release", fromOwnerId: 乙, toOwnerId: null, reason: 超时理由, userId: "system" }); // QA #16：记「系统」，不记打开页面 / 跑定时的那位
-    expect(await prisma.task.count({ where: { ownerId: 乙 } })).toBe(1);
+    // 23:59 那遍是回收前一天：先给负责人一条「明天会收」的提醒（10-27）；00:05 收回再一条
+    expect((await prisma.task.findMany({ where: { ownerId: 乙 }, orderBy: { createdAt: "asc" } })).map((t) => t.title)).toEqual([
+      将回收提醒("一号项目", "潜客培育", "2026-10-25"),
+      `项目「一号项目」在「潜客培育」超过处理时长没跟进，${收回提醒尾}`,
+    ]);
     expect(await prisma.auditLog.count({ where: { action: "pool", entity: "Project" } })).toBe(1);
   });
 
@@ -141,5 +146,62 @@ describe("夜里定时扫", () => {
     await prisma.user.update({ where: { id: 老板.id }, data: { active: false } });
     expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
     expect(await 在公海(p.id)).toBe(false);
+  });
+});
+
+describe("回收前一天提醒 + 即将回收（10-27）", () => {
+  const 提醒们 = () => prisma.task.findMany({ where: { ownerId: 乙, title: { contains: "会自动回到项目公海" } } });
+
+  it("即将回收：回收日是明天或今天才算，后天不算，不会收不算", () => {
+    expect(即将回收("2026-10-26", 时("2026-10-25 23:00"))).toBe(true);
+    expect(即将回收("2026-10-25", 时("2026-10-25 09:00"))).toBe(true);
+    expect(即将回收("2026-10-27", 时("2026-10-25 23:00"))).toBe(false);
+    expect(即将回收(null, 时("2026-10-25 09:00"))).toBe(false);
+  });
+
+  it("夜扫：明天要收的给负责人一条待办提醒；同一天再扫（老板改了时长）不重复；后天收的不提醒", async () => {
+    const 明天收 = await 项目("2026-10-23 10:00"); // 3 天 → 10-26
+    const 另一位 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 乙 } })).id;
+    await 项目("2026-10-24 10:00", { customerId: 另一位, name: "二号项目" }); // → 10-27
+    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
+    expect((await 提醒们()).map((t) => ({ title: t.title, dueOn: t.dueOn, customerId: t.customerId }))).toEqual([
+      { title: 将回收提醒("一号项目", "潜客培育", "2026-10-26"), dueOn: "2026-10-25", customerId: 客户 },
+    ]);
+    // 当天改了别的节点的时长 → 记号变了、再扫一遍，不重复提醒
+    await setSetting("orgRules", 开着({ 潜客培育: 3, 线索验证: 5 }));
+    invalidateSettingsCache();
+    await 公海超时收回(老板, 时("2026-10-25 10:00"));
+    expect(await 提醒们()).toHaveLength(1);
+    // 负责人当天记了跟进（客户最近跟进往后推）→ 第二天不收、也不再提醒一号
+    await prisma.customer.update({ where: { id: 客户 }, data: { lastFollowAt: 时("2026-10-25 11:00") } });
+    expect(await 夜里扫超时(时("2026-10-26 00:05"))).toBe(0);
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: 明天收.id } })).toMatchObject({ pooledAt: null });
+    expect((await 提醒们()).map((t) => t.title)).toEqual([
+      将回收提醒("一号项目", "潜客培育", "2026-10-26"),
+      将回收提醒("二号项目", "潜客培育", "2026-10-27"),
+    ]);
+  });
+
+  it("项目列表 / 看板：明天要收的行带回收日，其余不带；公海里的不标", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(时("2026-10-25 09:00"));
+    const 明天收 = await 项目("2026-10-23 10:00");
+    const 另一位 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 乙 } })).id;
+    const 还早 = await 项目("2026-10-24 10:00", { customerId: 另一位, name: "二号项目" });
+    const 丙客户 = (await prisma.customer.create({ data: { name: "客户丙", phone: "13800000003", salesOwnerId: 乙 } })).id;
+    const 公海里 = await 项目("2026-10-23 10:00", { customerId: 丙客户, name: "三号项目", pooledAt: 时("2026-10-24 10:00") });
+    const 列 = await 读项目列表({ id: 老板.id, name: 老板.name, role: "ADMIN" } as never, {});
+    const 标 = Object.fromEntries(列.行.map((r) => [r.id, r.即将回收]));
+    expect(标).toEqual({ [明天收.id]: "2026-10-26", [还早.id]: null, [公海里.id]: null });
+  });
+
+  it("不是企业版：不提醒，列表行不带这个字段", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    await setSetting("orgRules", 开着({ 潜客培育: 3 }));
+    const p = await 项目("2026-10-22 10:00");
+    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
+    expect(await 提醒们()).toHaveLength(0);
+    const 列 = await 读项目列表({ id: 老板.id, name: 老板.name, role: "ADMIN" } as never, {});
+    expect(列.行.find((r) => r.id === p.id)).not.toHaveProperty("即将回收");
   });
 });

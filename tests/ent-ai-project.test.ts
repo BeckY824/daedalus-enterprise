@@ -4,7 +4,7 @@
  *   list_projects：三阶段个数、默认只看进行中、result / 关键词 / 公海；公海里同事客户的项目不露客户名，按客户名也搜不出来
  *   给哪些工具：只用项目时不给 list_leads / list_opportunities / propose_opportunity；项目模式才有 list_projects
  *   直连：「线索清单」「商机清单」换成 list_projects 的线索 / 商机阶段
- *   确认新线索卡：建客户 + 线索阶段的项目，不写线索表；开了超时回收说清去哪建；商机卡拦下
+ *   确认新线索卡：建客户 + 线索阶段的项目，不写线索表；开了超时回收要填卡上的下一步；商机卡拦下
  *   开关关：新线索卡照旧写线索表
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -14,6 +14,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 
 import { prisma } from "@/lib/prisma";
+import { dayjs } from "@/lib/utils";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -163,13 +164,20 @@ describe("确认新线索卡", () => {
     expect(await prisma.project.count()).toBe(1);
   });
 
-  it("只用项目、开了超时回收：不建，说去「新线索」页用向导建", async () => {
+  it("只用项目、开了超时回收：卡上没填下一步不建，说要填；填了就建，下一步时间记在项目上", async () => {
     await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 节点天数: { 潜客培育: 3 } } });
     invalidateSettingsCache();
     const r = await applyProposal(线索卡() as never);
-    expect(r).toEqual({ ok: false, error: "开了超时回收，新线索要填下一步时间：请到「新线索」页用向导建" });
+    expect(r).toEqual({ ok: false, error: "开了超时回收，新线索要填「下一步」时间" });
     expect(await prisma.project.count()).toBe(0);
     expect(await prisma.customer.count()).toBe(0);
+
+    当(乙);
+    const 明天 = dayjs().add(1, "day").format("YYYY-MM-DD");
+    expect(await applyProposal(线索卡({ id: "p2", nextAt: 明天 }) as never)).toMatchObject({ ok: true });
+    const 项目 = await prisma.project.findFirstOrThrow();
+    expect(dayjs(项目.nextStepAt).format("YYYY-MM-DD")).toBe(明天);
+    expect(await applyProposal(线索卡({ id: "p3", name: "别家", phone: "", nextAt: "不是日期" }) as never)).toEqual({ ok: false, error: "nextAt 解析不了，用 YYYY-MM-DD" });
   });
 
   it("只用项目：商机卡拦下", async () => {

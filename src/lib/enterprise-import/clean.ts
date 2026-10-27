@@ -498,7 +498,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
       }
 
       if (e === "opportunity") {
-        // 项目模式：stage = 项目节点，status = 结局（没结局 = OPEN）；赢率、预计成交项目没有
+        // 项目模式：stage = 项目节点，status = 结局（没结局 = OPEN）；赢率项目没有，预计成交落项目上（10-27）
         const 项目 = !!m.项目;
         let status: string;
         let stage: string;
@@ -538,8 +538,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           else probability = p;
         }
         let expectedDealAt: string | null = null;
-        if (项目 && s.值.expectedDealAt) 附加.push(`预计成交：${s.值.expectedDealAt}`);
-        else if (s.值.expectedDealAt) {
+        if (s.值.expectedDealAt) {
           const d = 认日期(s.值.expectedDealAt) ?? 补日期("日期", s.值.expectedDealAt);
           if (d) expectedDealAt = d.toISOString();
           else {

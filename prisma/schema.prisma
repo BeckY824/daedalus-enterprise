@@ -901,6 +901,8 @@ model Project {
   amount               Float                     @default(0)
   currency             String                    @default("CNY")
   remark               String?
+  /// 预计成交日期（企业版）：这个项目预计哪天签。老数据从客户的 expectedSignAt 搬过来，只搬客户名下只有一个进行中项目的，见 lib/project/expected-deal.ts
+  expectedDealAt       DateTime?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 有结局的那一刻；回到进行中就清掉

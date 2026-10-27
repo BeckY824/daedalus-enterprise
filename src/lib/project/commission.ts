@@ -55,6 +55,20 @@ export function 算提成(成交金额: number | null | undefined, 项目底价:
 }
 
 /** 项目底价：空 = 清掉；要 ≥ 0、最多两位小数 */
+/** 更正已固定提成的原因：必填，最多这么多字 */
+export const 更正原因上限 = 200;
+
+/** 更正已固定的实际提成：新金额和底价一样的规矩（不能空），原因必填 */
+export function 更正问题(金额: unknown, 原因: unknown): string | null {
+  if (金额 === null || 金额 === undefined) return "要填更正后的实际提成";
+  const 金额问题 = 底价问题(金额);
+  if (金额问题) return 金额问题.replace("项目底价", "实际提成");
+  const 说 = typeof 原因 === "string" ? 原因.trim() : "";
+  if (!说) return "要写更正原因";
+  if (说.length > 更正原因上限) return `更正原因最多 ${更正原因上限} 个字`;
+  return null;
+}
+
 export function 底价问题(v: unknown): string | null {
   if (v === null) return null;
   if (typeof v !== "number" || !Number.isFinite(v)) return "项目底价要填一个数";
@@ -102,13 +116,15 @@ export type 提成卡 = {
   比例: 提成比例;
   预估: 提成算式 | null;
   /** 赢单时固定下来的；没赢单 = null */
-  实际: (提成算式 & { 比例: 提成比例; 固定于: string }) | null;
+  实际: (提成算式 & { 比例: 提成比例; 固定于: string; 按算式?: number }) | null;
   /** 按实际（固定了）或预估分到每个人；组长排第一 */
   每人: (每人一份 & { name: string })[];
   /** 组长、管理员能改分配 */
   能改: boolean;
   /** 只有项目负责人能填项目底价 */
   能填底价: boolean;
+  /** 只有总管理员能更正已固定的实际提成 */
+  能更正: boolean;
   /** 能分给的人：已进组的组员（不含组长） */
   组员: { userId: string; name: string }[];
   /** 存着的分配（编辑框的初值） */

@@ -8,6 +8,7 @@
  *   - 起点 = 最近一次「有人管」：建项目、换节点、接手（转让/领取）、客户上记了跟进，取最晚的
  *   - 起点 + 节点天数 那天还没新动静 → 回收（按自然日，和客户公海一样）
  *   - 记沟通时填了下一步时间：下一步那天过完还没跟进就回收，但不会比节点天数更晚（节点天数是上限）
+ *   - 回收前一天（10-27）：夜扫给负责人一条待办提醒；项目看板、列表标「即将回收」
  */
 import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
@@ -67,4 +68,15 @@ export function 超时回收日(规则: 组织规则, p: 超时项目, 起点: D
 export function 已超时(回收日: string | null, 今: Date | string = new Date()): boolean {
   if (!回收日) return false;
   return dayjs(今).format("YYYY-MM-DD") >= 回收日;
+}
+
+/** 回收日是明天（或今天还没扫到）：给负责人提前一天提醒、看板 / 列表标「即将回收」（10-27） */
+export function 即将回收(回收日: string | null, 今: Date | string = new Date()): boolean {
+  if (!回收日) return false;
+  return dayjs(回收日).diff(dayjs(今).startOf("day"), "day") <= 1;
+}
+
+/** 回收前一天给负责人的待办提醒标题（同一天同一个项目只提醒一次，按标题查重） */
+export function 将回收提醒(项目名: string, 节点: string, 回收日: string): string {
+  return `项目「${项目名}」在「${节点}」再不跟进，${回收日} 会自动回到项目公海`;
 }

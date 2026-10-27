@@ -11,12 +11,13 @@ import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记 } from "./stage-gates";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { parseDateInput } from "@/lib/date-input";
 import { 读组织, 直属上级of, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因 } from "@/lib/enterprise/dict";
 import { 生效组织规则 } from "./org-rules-store";
-import { 超时回收日, 已超时, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
+import { 超时回收日, 已超时, 即将回收, 将回收提醒, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
@@ -266,7 +267,7 @@ export async function 改节点(
     const 挡 = 到.phase !== p.phase || 到.node !== p.node || result !== p.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
     const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
-    const 不给 = 往前 ? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到)) : null;
+    const 不给 = 往前 ? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则)) : null;
     if (不给) return { ok: false as const, error: 不给 };
     // 企业版节点必填（D-37）：配了必填的节点，往前推只给老板、主管、负责人的直属上级、总管理员；销售本人填齐了自动推
     if (往前 && 按必填走(规则, p.node) && me.role !== "ADMIN" && me.role !== "MANAGER" && !代管节点(me, p.ownerId, org)) {
@@ -390,12 +391,12 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 }
 
 /**
- * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩同向导第四步（规整项目）；
+ * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期。规矩同向导第四步（规整项目）；
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
  * 换负责人 = 转让：能管项目的人（负责人本人、老板、主管）能转，只改这一个项目，记谁、何时、从谁到谁。
  * 公海里的项目老板 / 主管指了新负责人 = 出公海。建档人（creatorId）不在这里、哪里都不给改
  */
-export async function 改项目(me: 谁, projectId: string, patch: 向导项目 & { contactId?: string | null }): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
+export async function 改项目(me: 谁, projectId: string, patch: 向导项目 & { contactId?: string | null; expectedDealAt?: string | null }): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const 规则 = await 生效组织规则();
   const 级别 = await 字段权限of(me.id);
@@ -411,8 +412,12 @@ export async function 改项目(me: 谁, projectId: string, patch: 向导项目 
       const c = await tx.contact.findUnique({ where: { id: contactId }, select: { customerId: true } });
       if (c?.customerId !== p.customerId) return { ok: false as const, error: "这位联系人不在这个客户下，刷新看看" };
     }
+    const 日 = 预计成交日(patch.expectedDealAt, p.expectedDealAt);
+    if (日 === undefined) return { ok: false as const, error: "预计成交日期格式不对，请选一个日期" };
     const 新 = { ...好, contactId };
-    const 变了 = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
+    const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
+    const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
+    if (日变了) 变了.push("expectedDealAt");
     if (!变了.length) return { ok: true as const, 变了 };
     // 企业版字段权限：动了「只能看」的金额 / 负责人就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
@@ -424,10 +429,20 @@ export async function 改项目(me: 谁, projectId: string, patch: 向导项目 
       if (超) return { ok: false as const, error: 超 };
     }
     // 换了人，上一位填的下一步时间不替新负责人算（超时回收从接手那天重新算）
-    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(换人 ? { nextStepAt: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
+    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 ? { nextStepAt: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
     if (换人) await 记转让(tx, p, me.id, p.ownerId, 新.ownerId);
     return { ok: true as const, 变了, ...带推进(await 按必填推进(tx, 规则, me, p.id)) };
   });
+}
+
+/**
+ * 预计成交日期（企业版，10-27 从客户挪到项目）：没传 = 不动；空 = 清掉；认不出 = undefined（报错）。
+ * 不是企业版界面上没有这格，传了也不动
+ */
+function 预计成交日(v: string | null | undefined, 原: Date | null): Date | null | undefined {
+  if (v === undefined || !企业版()) return 原;
+  if (v === null || (typeof v === "string" && !v.trim())) return null;
+  return parseDateInput(v) ?? undefined;
 }
 
 /** 能进公海的阶段：线索、商机；订单阶段不能放 */
@@ -518,7 +533,7 @@ export async function 领取公海项目(me: 谁, projectId: string): Promise<�
 /** 本机记的「今天按这份规则扫过了」：值 = 日期 + 规则，老板改了时长当天再扫一遍 */
 const 超时扫过键 = "projectTimeoutSweptOn";
 
-const 算超时要的 = {
+export const 算超时要的 = {
   id: true, name: true, phase: true, node: true, result: true, pooledAt: true, nextStepAt: true, ownerId: true, customerId: true, createdAt: true,
   customer: { select: { lastFollowAt: true, pool: { select: { customerId: true } } } },
   logs: { select: { at: true }, orderBy: { at: "desc" as const }, take: 1 },
@@ -529,13 +544,22 @@ type 待查项目 = Prisma.ProjectGetPayload<{ select: typeof 算超时要的 }>
  * 起点 = 最近一次有人管：建项目、最后一行节点变更 / 转让 / 领取、客户上最后一次跟进，取最晚的（timeout.ts）。
  * 客户在客户公海里的不收（企业版第四节）：项目跟着客户，谁领客户谁带走；先收进项目公海就和客户拆开了
  */
+export function 项目回收日(规则: 组织规则, p: 待查项目): string | null {
+  if (p.customer.pool) return null;
+  return 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业版()));
+}
+
 function 超时了(规则: 组织规则, p: 待查项目, 今: Date): boolean {
-  if (p.customer.pool) return false;
-  return 已超时(超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业版())), 今);
+  return 已超时(项目回收日(规则, p), 今);
 }
 
 /** 按这份规则现在超时的项目（还在线索 / 商机、没结局、不在公海、节点设了时长；企业版没设的按默认 7 天） */
 async function 超时的项目(规则: 组织规则, 今: Date, ownerId?: string): Promise<待查项目[]> {
+  return (await 会收的项目(规则, ownerId)).filter((p) => 超时了(规则, p, 今));
+}
+
+/** 按这份规则会被收回的项目（不管哪天收） */
+async function 会收的项目(规则: 组织规则, ownerId?: string): Promise<待查项目[]> {
   const 节点 = Object.keys(规则.超时回收.节点天数);
   const 有默认 = !!字典of(企业版()).默认超时天数;
   if (!规则.超时回收.开 || (!节点.length && !有默认)) return [];
@@ -543,7 +567,7 @@ async function 超时的项目(规则: 组织规则, 今: Date, ownerId?: string
     where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] }, ...(有默认 ? {} : { node: { in: 节点 } }), customer: { pool: { is: null } }, ...(ownerId ? { ownerId } : {}) },
     select: 算超时要的,
   });
-  return 们.filter((p) => 超时了(规则, p, 今));
+  return 们.filter((p) => !!项目回收日(规则, p));
 }
 
 /** 老板改时长前先看：按这份规则现在会有几个项目回到公海（不分谁的，全看） */
@@ -605,8 +629,26 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数 },
     });
   }
+  await 提醒明天收(规则, 今, 只扫);
   await setSetting(键, 记号);
   return 收了.length;
+}
+
+/**
+ * 回收前一天（10-27）：明天就要收回的项目，给负责人一条待办提醒（和收回那条同一个地方：首页待办、提醒）。
+ * 跟着超时扫走（夜里 00:05 或白天第一次打开页面），同一天同一个项目只提醒一次：老板当天改了时长再扫也不重复
+ */
+async function 提醒明天收(规则: 组织规则, 今: Date, 只扫?: string): Promise<void> {
+  const 今天 = dayjs(今).format("YYYY-MM-DD");
+  for (const p of await 会收的项目(规则, 只扫)) {
+    const 日 = 项目回收日(规则, p);
+    if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
+    const title = 将回收提醒(p.name, p.node, 日);
+    if (await prisma.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) continue;
+    await prisma.task.create({
+      data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId },
+    });
+  }
 }
 
 /**
@@ -741,19 +783,19 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
  */
 export async function 读必填数据(
   tx: Prisma.TransactionClient,
-  p: { id: string; customerId: string; node: string; contactId: string | null; nextStepAt: Date | null; amount: number; remark: string | null; acceptancePassed: boolean },
+  p: { id: string; customerId: string; node: string; contactId: string | null; nextStepAt: Date | null; expectedDealAt: Date | null; amount: number; remark: string | null; acceptancePassed: boolean },
 ): Promise<必填数据> {
   const [c, 联系人们, 沟通] = await Promise.all([
     tx.customer.findUnique({
       where: { id: p.customerId },
-      select: { phone: true, expectedSignAt: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
+      select: { phone: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
     }),
     tx.contact.findMany({ where: { customerId: p.customerId }, select: { phone: true, email: true, wechat: true } }),
     tx.followUpProject.findMany({ where: { projectId: p.id }, select: { node: true }, distinct: ["node"] }),
   ]);
   return {
-    项目: { node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed },
-    客户: { phone: c?.phone ?? null, expectedSignAt: c?.expectedSignAt ?? null, extra: c?.extra ?? null },
+    项目: { node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed },
+    客户: { phone: c?.phone ?? null, extra: c?.extra ?? null },
     联系人们,
     沟通节点们: 沟通.map((x) => x.node),
   };
@@ -794,7 +836,7 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
     if (!下) break;
     if (!往前 && !(await 往前进来的(tx, p))) break;
     if (还差(规则, await 读必填数据(tx, p)).length) break;
-    if (await 企业版推进关(tx, p, 下)) break;
+    if (await 企业版推进关(tx, p, 下, 规则)) break;
     await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node } });
     await 节点变了的提成(tx, p.id, p.phase, 下.phase);
     await tx.projectNodeLog.create({

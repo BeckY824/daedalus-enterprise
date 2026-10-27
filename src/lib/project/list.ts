@@ -3,9 +3,11 @@ import { 搜索词 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
 import type { 项目行 } from "./board";
 import type { 阶段 } from "./nodes";
-import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请 } from "./db";
+import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的 } from "./db";
+import { 即将回收 } from "./timeout";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 生效组织规则 } from "./org-rules-store";
+import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string };
@@ -20,6 +22,7 @@ export const 项目上限 = 500;
 export async function 读项目列表(me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0], sp: 项目筛选, 只看阶段?: 阶段) {
   // 企业版超时回收：先收再列，列表里看到的就是收完的样子
   await 公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e));
+  await 回填一次();
   const 词 = 搜索词(sp.keyword);
   const rows = await prisma.project.findMany({
     where: {
@@ -30,11 +33,22 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     },
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
-    include: { customer: { select: { name: true } }, exceptionCategory: { select: { name: true } } },
+    include: {
+      customer: { select: { name: true, lastFollowAt: true, pool: { select: { customerId: true } } } },
+      exceptionCategory: { select: { name: true } },
+      logs: 算超时要的.logs,
+    },
   });
   const 企 = 企业版();
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
+  const 规则 = 企 ? await 生效组织规则() : null;
+  const 今 = new Date();
+  const 将收 = (p: (typeof rows)[number]) => {
+    if (!规则 || p.pooledAt) return null;
+    const 日 = 项目回收日(规则, p);
+    return 即将回收(日, 今) ? 日 : null;
+  };
   const [人, users, 可见, 邀请, 收回] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.ownerId))] } }, select: { id: true, name: true } }),
     负责人候选(),
@@ -50,6 +64,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     ownerId: p.ownerId, ownerName: 名字.get(p.ownerId) ?? "已不在的成员",
     phase: p.phase, node: p.node, result: p.result, exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
+    ...(企 ? { 即将回收: 将收(p) } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(),
   }));
@@ -58,7 +73,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     取到上限: rows.length >= 项目上限,
     // 结局叫法跟着字典：企业版组织规则里改过的出口叫法
     企业版: 企,
-    出口叫法: 企 ? (await 生效组织规则()).阶段.出口叫法 : undefined,
+    出口叫法: 规则?.阶段.出口叫法,
     users,
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛 },

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import dayjs from "dayjs";
 import { Button, Card, Input, InputNumber, Modal, Popconfirm, Select, Space, Tag } from "antd";
+import DatePicker from "@/components/BusinessDatePicker";
 import { 币种选项 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { 成员选项, 独自一人, type 可选成员 } from "@/lib/utils";
@@ -29,12 +31,13 @@ export function ProjectEditModal({
   open: boolean;
   onClose: () => void;
   跑: 跑法;
-  p: { id: string; name: string; ownerId: string; amount: number; currency: string; remark: string | null; contactId: string | null };
+  /** expectedDealAt：企业版才传（YYYY-MM-DD 或 null）；不传 = 不摆这格、不交 */
+  p: { id: string; name: string; ownerId: string; amount: number; currency: string; remark: string | null; contactId: string | null; expectedDealAt?: string | null };
   候选: 可选成员[];
   联系人们: 联系人[];
 }) {
   // 父组件每次打开时才挂上，初值就是最新的
-  const [d, setD] = useState({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contactId });
+  const [d, setD] = useState({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contactId, expectedDealAt: p.expectedDealAt });
   const [忙, set忙] = useState(false);
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
   const 行 = (label: string, el: React.ReactNode) => (
@@ -76,6 +79,14 @@ export function ProjectEditModal({
           <Select style={{ width: 140 }} value={d.currency} options={币种选项()} onChange={(v) => 改({ currency: v })} showSearch optionFilterProp="label" />
           <InputNumber<number> style={{ width: "100%" }} min={0} value={d.amount} formatter={金额格式} onChange={(v) => 改({ amount: v ?? 0 })} />
         </Space.Compact>
+      ))}
+      {p.expectedDealAt !== undefined && 行("预计成交日期", (
+        <DatePicker
+          style={{ width: "100%" }}
+          value={d.expectedDealAt ? dayjs(d.expectedDealAt) : null}
+          onChange={(v) => 改({ expectedDealAt: v ? v.format("YYYY-MM-DD") : null })}
+          placeholder="选一天"
+        />
       ))}
       {行("备注", <Input.TextArea rows={3} maxLength={备注上限} showCount value={d.remark} onChange={(e) => 改({ remark: e.target.value })} />)}
     </Modal>

@@ -85,7 +85,8 @@ export type Proposal =
   | (Base & { kind: "set_status"; field: "followStatus" | "decisionStatus"; to: string })
   | (Base & { kind: "add_followup"; type: string; title: string; content: string; occurredAt: string })
   | (Base & { kind: "add_plan"; subject: string; plannedAt: string; method: string })
-  | (Base & { kind: "add_lead"; name: string; contact: string; phone: string; source: string; status: string; remark: string })
+  | (Base & { kind: "add_lead"; name: string; contact: string; phone: string; source: string; status: string; remark: string;
+      /** 下一步时间（企业版建成项目用，开了超时回收必填，YYYY-MM-DD）；别的版本不看（10-27） */ nextAt?: string })
   | (Base & { kind: "update_customer"; changes: 一处改动[] })
   | (Base & { kind: "add_opportunity"; name: string; amount: number; /** 币种（2026-10-03）。老的建议卡没有：当本位币 */ currency?: string; stage: string; probability: number; expectedDealAt: string; remark: string })
   | (Base & { kind: "add_contract"; amount: number; currency?: string; signedAt: string; remark: string })
@@ -280,6 +281,8 @@ export function buildProposal(
   const src = { value: 认.ok ? 认.value : str(args.source, 30) || "其他" };
   const st = pickEnum(args.status, LEAD_STATUSES, "待跟进");
   if (!st.ok) return { ok: false, error: `status 必须是：${LEAD_STATUSES.join("/")}` };
+  const 下一步 = parseWhen(args.nextAt, true);
+  if (!下一步.ok) return { ok: false, error: "nextAt 解析不了，用 YYYY-MM-DD" };
   return {
     ok: true,
     proposal: {
@@ -291,6 +294,7 @@ export function buildProposal(
       source: src.value,
       status: st.value,
       remark: str(args.remark, 500),
+      ...(下一步.at ? { nextAt: 下一步.at } : {}),
     },
   };
 }
