@@ -252,12 +252,13 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, meId: st
     项目: { name: p.name, amount: 0, ownerId: meId },
     跟进: {
       type: "OTHER", content: `在首页对话里新建的线索，渠道：${渠道.name}`, occurredAt: new Date().toISOString(),
+      下一步时间: p.nextAt || null,
       节点: 企业版字典.节点们.线索[0], 明确回复: false,
     },
   });
   if (r.ok) return { ok: true };
-  // 开了超时回收：首条跟进要填下一步时间，卡上没有这一格
-  if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填下一步时间：请到「新线索」页用向导建" };
+  // 开了超时回收：首条跟进要填下一步时间（卡上「下一步」那格）
+  if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填「下一步」时间" };
   return { ok: false, error: r.error };
 }
 

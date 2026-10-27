@@ -373,6 +373,19 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
             <Field label="来源">
               <OptionInput size="small" style={{ width: 130 }} allowClear={false} value={draft.source} options={渠道名们 ? [...渠道名们] : b.sources} onChange={(v) => setDraft({ ...draft, source: v })} />
             </Field>
+            {/* 企业版建成项目：首条沟通的下一步时间（开了超时回收必填）；别的版本不显示 */}
+            {渠道名们 && (
+              <Field label="下一步">
+                <DatePicker
+                  size="small"
+                  style={{ width: 130 }}
+                  format="YYYY-MM-DD"
+                  disabledDate={(d) => d.isBefore(dayjs(), "day")}
+                  value={draft.nextAt ? dayjs(draft.nextAt) : null}
+                  onChange={(d) => setDraft({ ...draft, nextAt: d ? d.format("YYYY-MM-DD") : "" })}
+                />
+              </Field>
+            )}
             <Field label="状态">
               <Select
                 size="small"

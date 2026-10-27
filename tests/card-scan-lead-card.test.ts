@@ -1,6 +1,6 @@
 /**
  * 企业版首页对话框认名片（2026-10-27）：
- *   - lib/card-scan/lead-card.ts：认出来的表单摆成一张「新建线索」卡（名称放公司、联系人放人名、别的格拼进备注；只有一个渠道才预填来源）
+ *   - lib/card-scan/lead-card.ts：认出来的表单摆成一张「新建线索」卡（名称放公司、联系人放人名、别的格拼进备注；只有一个渠道才预填来源；下一步先放明天）
  *   - lib/card-scan/cloud.ts 走网页登录：不带令牌、靠登录 cookie 认；服务器上没配模型（404）就不整理，回 null 让调用方用规则拆的
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +35,11 @@ describe("名片成新线索卡", () => {
 
     const 不同 = 名片成新线索卡(表({ name: "Anna", phone: "1", whatsapp: "2" }), DEFAULT_BUSINESS, []);
     expect(不同.ok && 不同.proposal.remark).toBe("WhatsApp：2");
+  });
+
+  it("下一步时间先放明天（开了超时回收必填），人在卡上改", () => {
+    const r = 名片成新线索卡(表({ name: "Anna" }), DEFAULT_BUSINESS, ["展会"], "card", new Date("2026-10-27T10:00:00Z"));
+    expect(r.ok && r.proposal.nextAt).toBe("2026-10-28");
   });
 
   it("姓名公司都没认出：不出卡，说清楚", () => {
