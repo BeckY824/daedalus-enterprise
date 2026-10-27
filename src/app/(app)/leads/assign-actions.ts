@@ -229,6 +229,26 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
   }
 }
 
+/**
+ * 建档向导选了「自动分配」（A7，10-27）：项目刚建在我名下，按自动分配挑人转过去，客户跟着给接手的人（向导建的客户只有这一个项目）。
+ * 只认我自己是负责人、线索阶段、没进公海的项目。不查「能分配」（老板 / 总管理 / 市场管理）：向导里能不能自动分只看分配方式的「谁能用」
+ */
+export async function 向导自动分配(projectId: string): Promise<自动分配结果> {
+  const me = await 进门();
+  if (!me) return 没开;
+  try {
+    const 方式挡 = await 挡分配方式(me, 1);
+    if (方式挡) return { ok: false, error: 方式挡 };
+    const p = await prisma.project.findFirst({ where: { id: String(projectId ?? "") }, select: { ownerId: true, phase: true, pooledAt: true, customerId: true } });
+    if (!p || p.ownerId !== me.id || p.phase !== "线索" || p.pooledAt) return { ok: false, error: "只能自动分配自己名下、还在线索阶段的项目" };
+    const r = await 自动分给(me, await 读组织(), { projectId }, null, "营销");
+    if (r.ok) await prisma.customer.updateMany({ where: { id: p.customerId, salesOwnerId: me.id }, data: { salesOwnerId: r.toUserId } });
+    return r;
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
 /** 自动分配线索()、批量自动分配() 共用：进门、能不能分已经查过 */
 async function 自动分给(me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类): Promise<自动分配结果> {
   const 看 = await 分前看(哪条);

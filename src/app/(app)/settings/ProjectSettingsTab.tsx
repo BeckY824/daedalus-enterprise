@@ -138,7 +138,7 @@ function EntDictCard({ 各类, 谁能用配置, 挡, 忙, 跑 }: {
 
 /**
  * 分配方式谁能用（10-27）：每一项按业务角色勾，服务端（lib/enterprise/assign-use.ts）照这个拦；
- * 「谁能用」= 谁能选这种方式把线索分出去；指定分配、自动分配有操作对得上，公海捞取、暂不分配、自拓自持先存着（从公海领照旧非原负责人都能领）
+ * 「谁能用」= 谁能选这种方式把线索分出去：线索页的指定分配、自动分配，加上新建线索向导里的五种都照这个拦（10-27 A7）；从公海领照旧非原负责人都能领
  */
 function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
   项们: 字典项[]; 配置: 分配谁能用配置; 挡: string | null; 忙: boolean;
@@ -150,7 +150,7 @@ function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
   return (
     <Card title="分配方式 · 谁能用" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。指定分配、自动分配现在就按这里拦；公海捞取、暂不分配、自拓自持先存着，从公海领照旧。
+        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。新建线索时只能选自己能用的方式：指定分配要选负责人，自动分配建好就分给销售，公海捞取建好放进项目公海，暂不分配、自拓自持先记在自己名下。从公海领不看这里，非原负责人都能领。
       </div>
       {项们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8, minWidth: 0 }}>
