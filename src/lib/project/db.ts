@@ -11,6 +11,7 @@ import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记 } from "./stage-gates";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { parseDateInput } from "@/lib/date-input";
 import { 读组织, 直属上级of, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
@@ -390,12 +391,12 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 }
 
 /**
- * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩同向导第四步（规整项目）；
+ * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期。规矩同向导第四步（规整项目）；
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
  * 换负责人 = 转让：能管项目的人（负责人本人、老板、主管）能转，只改这一个项目，记谁、何时、从谁到谁。
  * 公海里的项目老板 / 主管指了新负责人 = 出公海。建档人（creatorId）不在这里、哪里都不给改
  */
-export async function 改项目(me: 谁, projectId: string, patch: 向导项目 & { contactId?: string | null }): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
+export async function 改项目(me: 谁, projectId: string, patch: 向导项目 & { contactId?: string | null; expectedDealAt?: string | null }): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const 规则 = await 生效组织规则();
   const 级别 = await 字段权限of(me.id);
@@ -411,8 +412,12 @@ export async function 改项目(me: 谁, projectId: string, patch: 向导项目 
       const c = await tx.contact.findUnique({ where: { id: contactId }, select: { customerId: true } });
       if (c?.customerId !== p.customerId) return { ok: false as const, error: "这位联系人不在这个客户下，刷新看看" };
     }
+    const 日 = 预计成交日(patch.expectedDealAt, p.expectedDealAt);
+    if (日 === undefined) return { ok: false as const, error: "预计成交日期格式不对，请选一个日期" };
     const 新 = { ...好, contactId };
-    const 变了 = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
+    const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
+    const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
+    if (日变了) 变了.push("expectedDealAt");
     if (!变了.length) return { ok: true as const, 变了 };
     // 企业版字段权限：动了「只能看」的金额 / 负责人就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
@@ -424,10 +429,20 @@ export async function 改项目(me: 谁, projectId: string, patch: 向导项目 
       if (超) return { ok: false as const, error: 超 };
     }
     // 换了人，上一位填的下一步时间不替新负责人算（超时回收从接手那天重新算）
-    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(换人 ? { nextStepAt: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
+    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 ? { nextStepAt: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
     if (换人) await 记转让(tx, p, me.id, p.ownerId, 新.ownerId);
     return { ok: true as const, 变了, ...带推进(await 按必填推进(tx, 规则, me, p.id)) };
   });
+}
+
+/**
+ * 预计成交日期（企业版，10-27 从客户挪到项目）：没传 = 不动；空 = 清掉；认不出 = undefined（报错）。
+ * 不是企业版界面上没有这格，传了也不动
+ */
+function 预计成交日(v: string | null | undefined, 原: Date | null): Date | null | undefined {
+  if (v === undefined || !企业版()) return 原;
+  if (v === null || (typeof v === "string" && !v.trim())) return null;
+  return parseDateInput(v) ?? undefined;
 }
 
 /** 能进公海的阶段：线索、商机；订单阶段不能放 */
@@ -768,19 +783,19 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
  */
 export async function 读必填数据(
   tx: Prisma.TransactionClient,
-  p: { id: string; customerId: string; node: string; contactId: string | null; nextStepAt: Date | null; amount: number; remark: string | null; acceptancePassed: boolean },
+  p: { id: string; customerId: string; node: string; contactId: string | null; nextStepAt: Date | null; expectedDealAt: Date | null; amount: number; remark: string | null; acceptancePassed: boolean },
 ): Promise<必填数据> {
   const [c, 联系人们, 沟通] = await Promise.all([
     tx.customer.findUnique({
       where: { id: p.customerId },
-      select: { phone: true, expectedSignAt: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
+      select: { phone: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
     }),
     tx.contact.findMany({ where: { customerId: p.customerId }, select: { phone: true, email: true, wechat: true } }),
     tx.followUpProject.findMany({ where: { projectId: p.id }, select: { node: true }, distinct: ["node"] }),
   ]);
   return {
-    项目: { node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed },
-    客户: { phone: c?.phone ?? null, expectedSignAt: c?.expectedSignAt ?? null, extra: c?.extra ?? null },
+    项目: { node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed },
+    客户: { phone: c?.phone ?? null, extra: c?.extra ?? null },
     联系人们,
     沟通节点们: 沟通.map((x) => x.node),
   };

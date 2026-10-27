@@ -23,7 +23,7 @@ export const 必填项们 = [
   { key: "主联系人", 说明: "项目上选了主联系人" },
   { key: "需求", 说明: "写在项目的「备注」那一格（备注里写了需求就算）" },
   { key: "金额", 说明: "项目金额大于 0" },
-  { key: "预计成交日期", 说明: "客户的预计签约时间" },
+  { key: "预计成交日期", 说明: "项目的预计成交日期" },
   { key: "下一步时间", 说明: "项目的下一步时间" },
   { key: "本节点沟通", 说明: "在这个节点上记过至少一条沟通" },
   { key: "验收通过", 说明: "「验收通过」打了勾" },
@@ -57,10 +57,9 @@ export const 建议必填: Record<string, 必填项[]> = {
 
 /** 算还差时要的数据（db.ts 读好传进来） */
 export type 必填数据 = {
-  项目: { node: string; contactId: string | null; nextStepAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean };
+  项目: { node: string; contactId: string | null; nextStepAt: Date | string | null; expectedDealAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean };
   客户: {
     phone: string | null;
-    expectedSignAt: Date | string | null;
     extra: { country?: string | null; whatsapp?: string | null; wechat?: string | null; email?: string | null; source?: string | null; level?: string | null; alibabaId?: string | null } | null;
   };
   联系人们: { phone?: string | null; email?: string | null; wechat?: string | null }[];
@@ -82,7 +81,7 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "主联系人": return !!d.项目.contactId;
     case "需求": return 有(d.项目.remark);
     case "金额": return d.项目.amount > 0;
-    case "预计成交日期": return !!d.客户.expectedSignAt;
+    case "预计成交日期": return !!d.项目.expectedDealAt;
     case "下一步时间": return !!d.项目.nextStepAt;
     case "本节点沟通": return d.沟通节点们.includes(d.项目.node);
     case "验收通过": return d.项目.acceptancePassed;

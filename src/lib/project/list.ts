@@ -7,6 +7,7 @@ import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 
 import { 即将回收 } from "./timeout";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 生效组织规则 } from "./org-rules-store";
+import { 回填一次 } from "./expected-deal";
 
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string };
 
@@ -20,6 +21,7 @@ export const 项目上限 = 500;
 export async function 读项目列表(me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0], sp: 项目筛选, 只看阶段?: 阶段) {
   // 企业版超时回收：先收再列，列表里看到的就是收完的样子
   await 公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e));
+  await 回填一次();
   const 词 = 搜索词(sp.keyword);
   const rows = await prisma.project.findMany({
     where: {

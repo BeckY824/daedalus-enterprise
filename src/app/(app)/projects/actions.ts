@@ -262,10 +262,10 @@ export async function 改项目异常类别(id: string, patch: { name?: string; 
   } catch (e) { return 不在了(e); }
 }
 
-const 项目字段名: Record<string, string> = { name: "名称", ownerId: "负责人", amount: "金额", currency: "币种", remark: "备注", contactId: "主联系人" };
+const 项目字段名: Record<string, string> = { name: "名称", ownerId: "负责人", amount: "金额", currency: "币种", remark: "备注", contactId: "主联系人", expectedDealAt: "预计成交日期" };
 
-/** 编辑项目：名称、负责人、金额、币种、备注、主联系人 */
-export async function 编辑项目(projectId: string, patch: 向导项目 & { contactId?: string | null }) {
+/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期 */
+export async function 编辑项目(projectId: string, patch: 向导项目 & { contactId?: string | null; expectedDealAt?: string | null }) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
