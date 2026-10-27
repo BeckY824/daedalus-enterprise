@@ -12,7 +12,10 @@ import ModelPicker from "@/components/ModelPicker";
 import type { 附件 } from "@/components/AskFiles";
 import type { ModelOption } from "@/lib/llm";
 import { useBusiness } from "@/lib/business-client";
-import { clearJob } from "@/lib/ai-jobs";
+import { clearJob, setJobValue } from "@/lib/ai-jobs";
+import type { StreamJob } from "@/lib/ai-stream";
+import type { AgentAnswer } from "@/lib/thread-history";
+import type { Proposal } from "@/lib/agent/proposals";
 import { cancelStream } from "@/lib/ai-stream";
 import { addTurn, clearThread, type Turn } from "@/lib/home-thread";
 import { 是刚交过来的 } from "@/lib/home-ask";
@@ -25,6 +28,7 @@ import { useResearchEntry } from "@/components/research/ResearchEntry";
 import { 像邮件原文, type 邮件信号 } from "@/lib/research/verify/mail";
 import { 是免费邮箱 } from "@/lib/research/verify/domain";
 import { ComposerFoot, ComposerTools, ComposerTop, SendKey } from "./ComposerParts";
+import CardScanKey from "./CardScanKey";
 import type { Suggestion } from "./HomeChat";
 import type { 这一屏 } from "./useHomeTurns";
 
@@ -169,7 +173,7 @@ function useComposerHeight(composerRef: React.RefObject<HTMLDivElement | null>) 
   }, [composerRef]);
 }
 
-export default function Composer({ ref, 屏, scope, models, model, 模式, suggestions, 空库, on发出 }: {
+export default function Composer({ ref, 屏, scope, models, model, 模式, suggestions, 空库, 渠道名们, on发出 }: {
   ref?: React.Ref<ComposerHandle>;
   屏: 这一屏;
   scope: string;
@@ -178,6 +182,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   模式: "宽" | "窄";
   suggestions: Suggestion[];
   空库: boolean;
+  /** 企业版只用项目的首页才给（启用中的渠道名）：摆「名片」键，认完摆一张新建线索卡 */
+  渠道名们?: readonly string[];
   /** 刚发出去的那一问。只有它会在挂载时把自己滚到视口顶部，翻历史不该乱跳 */
   on发出: (id: string) => void;
 }) {
@@ -266,6 +272,16 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     if (!shouldQueue) start(turn);
     发完(turn.id);
   }
+  /** 认好一张名片：新开一轮，答案就是那张新建线索卡（不调模型、不扣次数）；框里打了一半的字不清 */
+  function 出名片卡(p: Proposal, 摘要: string) {
+    const turn = addTurn(scope, { question: "认名片建线索", kind: "ask" });
+    const 答: StreamJob<AgentAnswer> = {
+      steps: [],
+      answer: { text: `从名片认出：${摘要}。核对一下，来源选好渠道再点确认。`, records: [], customers: [], proposals: [p] },
+    };
+    setJobValue(`home:${turn.id}`, 答);
+    on发出(turn.id);
+  }
   useImperativeHandle(ref, () => ({ 问: (x: string) => submit(x) }));
   // 放在 submit 定义之后：effect 里提前用到后面才声明的函数，React 编译器的检查不认
   useAddressAsk(submit);
@@ -306,23 +322,26 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
                 : `问一位${b.customer}，或问一个数`
           }
           栏左={
-            <ComposerTools
-              宽={宽}
-              摆背调键={调.入口}
-              背调模式={背调模式}
-              on切背调={() => {
-                调.set背调模式((v) => !v);
-                taRef.current?.focus();
-              }}
-              files={files}
-              setFiles={setFiles}
-              在跑={running != null}
-              邮件={邮件}
-              on开邮件={() => 调.set邮件框({})}
-              摆粘贴键={!背调模式 && !(empty && 空库 && 宽)}
-              on粘贴={() => 粘.去粘贴("")}
-              on预载={预载导入抽屉}
-            />
+            <>
+              <ComposerTools
+                宽={宽}
+                摆背调键={调.入口}
+                背调模式={背调模式}
+                on切背调={() => {
+                  调.set背调模式((v) => !v);
+                  taRef.current?.focus();
+                }}
+                files={files}
+                setFiles={setFiles}
+                在跑={running != null}
+                邮件={邮件}
+                on开邮件={() => 调.set邮件框({})}
+                摆粘贴键={!背调模式 && !(empty && 空库 && 宽)}
+                on粘贴={() => 粘.去粘贴("")}
+                on预载={预载导入抽屉}
+              />
+              {渠道名们 && !背调模式 && <CardScanKey 宽={宽} 在跑={running != null} 渠道名们={渠道名们} on出卡={出名片卡} />}
+            </>
           }
           栏右={<ModelPicker options={models} value={model} />}
           上方={

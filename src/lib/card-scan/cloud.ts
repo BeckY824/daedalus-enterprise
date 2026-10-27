@@ -31,8 +31,19 @@ export function 设识别令牌(t: string | null): void {
   令牌 = t;
 }
 
+/**
+ * 电脑网页（企业版首页对话框认名片，2026-10-27）：带着登录 cookie 调同一套接口，不用令牌（server/auth.ts 企业版认网页登录的人）
+ */
+let 网页 = false;
+export function 走网页登录(开 = true): void {
+  if (开 !== 网页) { 停用 = false; 不整理 = false; }
+  网页 = 开;
+}
+const 有身份 = () => Boolean(令牌) || 网页;
+const 认证头 = (): Record<string, string> => (令牌 ? { Authorization: `Bearer ${令牌}` } : {});
+
 export function 能用服务器(): boolean {
-  return Boolean(令牌) && !停用 && (typeof navigator === "undefined" || navigator.onLine !== false);
+  return 有身份() && !停用 && (typeof navigator === "undefined" || navigator.onLine !== false);
 }
 
 const 不给用 = (status: number) => status === 401 || status === 403 || status === 404;
@@ -44,7 +55,7 @@ export function 服务器预热(抓: typeof fetch = fetch): Promise<boolean> {
   if (!能用服务器()) return Promise.resolve(false);
   在问 ??= (async () => {
     try {
-      const r = await 抓("/api/mobile/scan", { headers: { Authorization: `Bearer ${令牌}` }, cache: "no-store", signal: AbortSignal.timeout(10_000) });
+      const r = await 抓("/api/mobile/scan", { headers: 认证头(), cache: "no-store", signal: AbortSignal.timeout(10_000) });
       if (不给用(r.status)) 停用 = true;
       return r.ok;
     } catch {
@@ -78,7 +89,7 @@ export async function 服务器认(
   try {
     r = await 抓(`/api/mobile/scan?lang=${encodeURIComponent(语言)}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${令牌}`, "Content-Type": 图.type || "image/jpeg" },
+      headers: { ...认证头(), "Content-Type": 图.type || "image/jpeg" },
       body: 图,
       signal: 停,
     });
@@ -122,11 +133,11 @@ export async function 服务器认(
  * 回的是模型的原样回答（调用方用 验AI回答 再验一遍）；不给用、超时（默认 9 秒，服务器那头 8 秒）、出错一律 null
  */
 export async function 服务器整理(行们: 名片行[], 行业们: readonly string[], 设: { 抓?: typeof fetch; 毫秒?: number } = {}): Promise<unknown> {
-  if (!令牌 || 不整理 || (typeof navigator !== "undefined" && navigator.onLine === false)) return null;
+  if (!有身份() || 不整理 || (typeof navigator !== "undefined" && navigator.onLine === false)) return null;
   try {
     const r = await (设.抓 ?? fetch)("/api/mobile/scan/ai", {
       method: "POST",
-      headers: { Authorization: `Bearer ${令牌}`, "Content-Type": "application/json" },
+      headers: { ...认证头(), "Content-Type": "application/json" },
       body: JSON.stringify({ 行们, 行业们 }),
       cache: "no-store",
       signal: AbortSignal.timeout(设.毫秒 ?? 9_000),

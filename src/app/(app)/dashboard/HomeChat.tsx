@@ -15,6 +15,7 @@ import Composer, { type ComposerHandle } from "./Composer";
 import { useHomeTurns } from "./useHomeTurns";
 import LeadFullNotices from "../leads/LeadFullNotices";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 新线索来源 } from "@/components/ProposalCard";
 
 export type Suggestion = { label: string; question: string; kind?: "ask" | "prep" | "recap" };
 
@@ -32,7 +33,7 @@ export type Suggestion = { label: string; question: string; kind?: "ask" | "prep
 /** 本月签约按币种分开（2026-10-03，不换汇）；空数组 = 这个月还没签 */
 export type 首页信号 = { 逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string };
 
-export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [] }: {
+export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们 }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   userName: string;
@@ -72,6 +73,8 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   企业版?: boolean;
   /** 首页才给：企业版自动分配因都已满额没分出去的提醒，摆在问答列最上面（lib/enterprise/lead-full-notice.ts） */
   满额提醒?: 满额提醒[];
+  /** 首页才给：企业版只用项目时启用中的渠道名。给了就摆「名片」键，新建线索卡的来源从这里选 */
+  渠道名们?: string[];
 }) {
   const b = useBusiness();
   const model = useModel(models);
@@ -99,45 +102,48 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   const 窄 = 模式 === "窄";
 
   return (
-    <div className={`cli${empty ? " cli-empty" : ""}${窄 ? " cli-narrow" : ""}`}>
-      {/* 首页对话列表收起了（或窗口太窄成了抽屉）：问答区左上角一颗侧栏图标把它叫回来，和列表页头上那颗是同一个。右侧 AI 面板（窄）里不摆 */}
-      {!窄 && <PaneToggle 栏="chat" 位置="主区" className="pane-toggle-float" />}
-      <div className="cli-col">
-        {!窄 && <LeadFullNotices 提醒={满额提醒} />}
-        {empty && 窄 ? (
-          /*
-            窄模式（右侧面板）的空屏：380 宽塞不下问候、信号、建议问题那一套，
-            而且人是在**别的页面上**顺手问一句，不需要再被问候一次。
-            只留一句说明——它还要告诉人「这儿带着当前页」。
-          */
-          <div className="cli-narrow-hint">
-            问一句关于这一页的，或者任何{b.customer}、任何数。
-            <br />
-            输入 <kbd>/</kbd> 看命令。
-          </div>
-        ) : empty && 空库 ? (
-          /* 一条业务数据都没有：不摆信号、不摆建议问题，只有一张「开始」卡 */
-          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-            <StartCard 自己服务器={自己服务器} 去导入={去导入} 企业版={企业版} />
-          </motion.div>
-        ) : empty ? (
-          <Welcome userName={userName} 信号={信号} context={context} />
-        ) : (
-          <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} />
-        )}
+    <新线索来源.Provider value={渠道名们 ?? null}>
+      <div className={`cli${empty ? " cli-empty" : ""}${窄 ? " cli-narrow" : ""}`}>
+        {/* 首页对话列表收起了（或窗口太窄成了抽屉）：问答区左上角一颗侧栏图标把它叫回来，和列表页头上那颗是同一个。右侧 AI 面板（窄）里不摆 */}
+        {!窄 && <PaneToggle 栏="chat" 位置="主区" className="pane-toggle-float" />}
+        <div className="cli-col">
+          {!窄 && <LeadFullNotices 提醒={满额提醒} />}
+          {empty && 窄 ? (
+            /*
+              窄模式（右侧面板）的空屏：380 宽塞不下问候、信号、建议问题那一套，
+              而且人是在**别的页面上**顺手问一句，不需要再被问候一次。
+              只留一句说明——它还要告诉人「这儿带着当前页」。
+            */
+            <div className="cli-narrow-hint">
+              问一句关于这一页的，或者任何{b.customer}、任何数。
+              <br />
+              输入 <kbd>/</kbd> 看命令。
+            </div>
+          ) : empty && 空库 ? (
+            /* 一条业务数据都没有：不摆信号、不摆建议问题，只有一张「开始」卡 */
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+              <StartCard 自己服务器={自己服务器} 去导入={去导入} 企业版={企业版} />
+            </motion.div>
+          ) : empty ? (
+            <Welcome userName={userName} 信号={信号} context={context} />
+          ) : (
+            <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} />
+          )}
 
-        <Composer
-          ref={composerRef}
-          屏={屏}
-          scope={scope}
-          models={models}
-          model={model}
-          模式={模式}
-          suggestions={suggestions}
-          空库={空库}
-          on发出={set刚发的}
-        />
+          <Composer
+            ref={composerRef}
+            屏={屏}
+            scope={scope}
+            models={models}
+            model={model}
+            模式={模式}
+            suggestions={suggestions}
+            空库={空库}
+            渠道名们={渠道名们}
+            on发出={set刚发的}
+          />
+        </div>
       </div>
-    </div>
+    </新线索来源.Provider>
   );
 }

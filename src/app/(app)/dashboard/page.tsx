@@ -181,6 +181,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       去导入={去导入(user.role)}
       企业版={企业版()}
       满额提醒={满额提醒们}
+      渠道名们={只用项目 ? (await prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } })).map((c) => c.name) : undefined}
       空库={学员数 === 0 && 线索数 === 0 && mine.total === 0 && myPlans === 0 && 没做完的待办 === 0}
       信号={{
         逾期,

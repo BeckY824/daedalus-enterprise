@@ -4,7 +4,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import OptionInput from "@/components/OptionInput";
 import Shortcut from "./Shortcut";
 
-import { useMemo, useRef, useState } from "react";
+import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { App, Select, Input, Checkbox } from "antd";
@@ -43,9 +43,16 @@ import { useMotionTheme } from "@/components/MotionTheme";
  * 记号：「任务 key:卡片 id」。给了就把确认 / 忽略记进任务表（lib/ai-jobs 的 处理过的建议）——
  * 卡片重挂时照它恢复，侧栏也靠它知道还有没有要人确认的。不给就只在这张卡自己身上记。
  */
+/**
+ * 企业版只用项目的首页：新建线索卡上「来源」要选启用中的渠道（建成项目按渠道认，dashboard/apply.ts），
+ * 不是业务配置里的来源。没给就照旧用来源
+ */
+export const 新线索来源 = createContext<readonly string[] | null>(null);
+
 export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal; 记号?: string }) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
+  const 渠道名们 = useContext(新线索来源);
   /* 三个档案字段叫什么、「职位」那一格有哪些选项，跟着业务配置走（通用版 vs 教培预设） */
   const 字段表 = 可改字段表(b);
   const { message } = App.useApp();
@@ -364,7 +371,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
               <Input size="small" style={{ width: 150 }} placeholder="可留空" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
             </Field>
             <Field label="来源">
-              <OptionInput size="small" style={{ width: 130 }} allowClear={false} value={draft.source} options={b.sources} onChange={(v) => setDraft({ ...draft, source: v })} />
+              <OptionInput size="small" style={{ width: 130 }} allowClear={false} value={draft.source} options={渠道名们 ? [...渠道名们] : b.sources} onChange={(v) => setDraft({ ...draft, source: v })} />
             </Field>
             <Field label="状态">
               <Select
