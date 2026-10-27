@@ -17,6 +17,7 @@ import { fmtDate, 成员选项, type 可选成员 } from "@/lib/utils";
 import { 金额, 合计文字 } from "@/lib/currency";
 import { 主题颜色 } from "@/lib/chart-theme";
 import { categorical } from "@/lib/palette";
+import { 收回次数筛们 } from "@/lib/project/recycle-count";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
@@ -70,7 +71,7 @@ export default function ProjectsView({
   列: 看板一列[];
   取到上限: boolean;
   users: 可选成员[];
-  filters: { keyword: string; ownerId: string; pool: string };
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string };
   /** 服务端的 企业版()：结局叫法跟着字典 */
   企业版?: boolean;
   /** 企业版组织规则里改过的出口叫法 */
@@ -152,6 +153,8 @@ export default function ProjectsView({
     { title: b.customer, key: "customer", width: 170, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
     { title: "节点", key: "node", width: 150, render: (_, r) => 节点文字(r, 字典) },
     { title: "金额", key: "amount", width: 120, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
+    // 企业版项目公海：被收回过几次（放回、超时回收都算）
+    ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>公海</Tag> : <UserCell name={r.ownerName} />) }]),
     { title: "最近更新", key: "updatedAt", width: 100, render: (_, r) => fmtDate(r.updatedAt) },
     // 已线索流失的不再分（服务端也拦）
@@ -189,9 +192,18 @@ export default function ProjectsView({
         style={{ width: 120 }}
         aria-label="项目公海"
         value={f.pool || ""}
-        onChange={(v: string) => apply({ pool: v })}
+        onChange={(v: string) => apply({ pool: v, recycled: "" })}
         options={[{ value: "", label: "全部项目" }, { value: "1", label: "项目公海" }]}
       />
+      {企业版 && f.pool === "1" && (
+        <Select
+          style={{ width: 150 }}
+          aria-label="收回次数"
+          value={f.recycled || ""}
+          onChange={(v: string) => apply({ recycled: v })}
+          options={[...收回次数筛们]}
+        />
+      )}
       <ResetFilters 显示={Object.values(f).some(Boolean)} onClick={reset} />
     </Space>
   );

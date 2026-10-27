@@ -21,6 +21,8 @@ export type 项目行 = {
   exceptionReason: string | null;
   /** 在项目公海里（ownerId 还是放回去的人，界面写「公海」） */
   pooled: boolean;
+  /** 企业版：被收回公海几次（放回、超时回收都算，recycle-count.ts）；别的版本不给 */
+  收回次数?: number;
   amount: number;
   currency: string;
   updatedAt: string;
