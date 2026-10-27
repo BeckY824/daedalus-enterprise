@@ -5,6 +5,7 @@
  *   - 填 / 改项目底价：只有项目负责人（项目在公海里时不算），老板、总管理员也不代填（10-26 定）
  *   - 改分配：组长（项目负责人，项目在公海里时不算）、老板（ADMIN）、组织里的总管理员
  *   - 改 A / B（提成比例）：老板、总管理员
+ *   - 更正已固定的实际提成：只有组织里的总管理员（10-27 加），要写原因，操作记录留前后值
  *   - 看提成卡：上面这些人 + 已进组的组员 + 业务主管（MANAGER）+ 负责人的直属上级、虚线上级
  * 不是企业版：每个动作直接拦、一行不写；读一律 null；赢单挂钩什么都不做
  */
@@ -14,7 +15,7 @@ import { getSetting, invalidateSettingsCache } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 虚线上级of, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
 import {
-  提成比例键, 规整提成比例, 提成比例问题, 两位, 算提成, 底价问题, 分配问题, 分到每人,
+  提成比例键, 规整提成比例, 提成比例问题, 两位, 算提成, 底价问题, 分配问题, 分到每人, 更正问题,
   type 提成比例, type 分配, type 提成卡,
 } from "./commission";
 
@@ -28,6 +29,12 @@ const 总管理员 = (me: 谁, org: 组织 | null) => !!org && 管理员类别of
 /** 改提成比例（A / B）：老板、组织里的总管理员 */
 export function 能改提成比例(me: 谁, org: 组织 | null): boolean {
   return me.role === "ADMIN" || 总管理员(me, org);
+}
+
+/** 更正已固定的实际提成：只有业务角色是总管理（director）的人；管理员（admin）、销售管理都不行（10-27 定）。
+ *  没设业务角色的老板账号按账号角色推成总管理，所以默认能改 */
+export function 能更正提成(me: 谁, org: 组织 | null): boolean {
+  return !!org && org.成员.get(me.id)?.bizRole === "director";
 }
 
 /** 填 / 改项目底价：只有项目负责人（不在公海），老板、总管理员也不代填（10-26 定） */
@@ -102,6 +109,28 @@ export async function 存项目底价(me: 谁, projectId: string, 底价: number
     });
     const 固定了 = p.phase === "订单" && 值 != null ? await 固定实际提成(tx, p.id) : false;
     return { ok: true as const, 变了: true, 前, 后: 值, 固定了, name: p.name, customerId: p.customerId };
+  });
+}
+
+/**
+ * 总管理员更正已固定的实际提成（只改合计，分配比例照旧，每人按新合计分）。没固定的不让更正：还没赢单就去改底价 / 比例
+ */
+export async function 更正实际提成(me: 谁, projectId: string, 金额: unknown, 原因: unknown): Promise<错 | { ok: true; 变了: boolean; 前?: number; 后?: number; 原因?: string; name?: string; customerId?: string }> {
+  if (!企业版()) return 没开企业版;
+  if (!能更正提成(me, await 读组织())) return { ok: false, error: "只有总管理员能更正已固定的提成" };
+  const 问题 = 更正问题(金额, 原因);
+  if (问题) return { ok: false, error: 问题 };
+  const 后 = 两位(金额 as number);
+  const 说 = (原因 as string).trim();
+  return 查完再写(async (tx) => {
+    const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
+    if (!p) return 项目不在;
+    const c = await tx.entCommission.findUnique({ where: { projectId: p.id } });
+    if (!c?.fixedAt || c.fixedTotal == null) return { ok: false as const, error: "实际提成还没固定（赢单时才固定），不用更正" };
+    const 前 = c.fixedTotal;
+    if (前 === 后) return { ok: true as const, 变了: false };
+    await tx.entCommission.update({ where: { projectId: p.id }, data: { fixedTotal: 后, updatedById: me.id } });
+    return { ok: true as const, 变了: true, 前, 后, 原因: 说, name: p.name, customerId: p.customerId };
   });
 }
 
@@ -192,7 +221,8 @@ export async function 读项目提成(
     ? (() => {
         const 当时 = { 底价比例: c.fixedRateBase!, 溢价比例: c.fixedRatePremium! };
         const 算 = 算提成(c.fixedDeal, c.fixedBase, 当时)!;
-        return { ...算, 合计: c.fixedTotal ?? 算.合计, 比例: 当时, 固定于: c.fixedAt!.toISOString() };
+        const 合计 = c.fixedTotal ?? 算.合计;
+        return { ...算, 合计, 比例: 当时, 固定于: c.fixedAt!.toISOString(), ...(合计 !== 算.合计 ? { 按算式: 算.合计 } : {}) };
       })()
     : null;
   const 每人 = 分到每人(实际 ? 实际.合计 : 预估?.合计 ?? null, p.ownerId, 分, 在组).map((x) => ({ ...x, name: 叫(x.userId) }));
@@ -200,6 +230,7 @@ export async function 读项目提成(
     币种: p.currency, 成交金额: p.amount, 项目底价: c?.basePrice ?? null, 比例, 预估, 实际, 每人,
     能改: 能改提成(me, p, org),
     能填底价: 能填底价(me, p),
+    能更正: !!实际 && 能更正提成(me, org),
     组员: [...在组].filter((uid) => uid !== p.ownerId).map((uid) => ({ userId: uid, name: 叫(uid) })),
     分配: Object.fromEntries(分.filter((s) => 在组.has(s.userId)).map((s) => [s.userId, s.percent])),
   };

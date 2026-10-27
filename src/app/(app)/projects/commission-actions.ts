@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * 企业版提成的写（2026-10-26，迁移 051）：项目底价、组长分配、提成比例 A / B。
+ * 企业版提成的写（2026-10-26，迁移 051）：项目底价、组长分配、提成比例 A / B、总管理员更正已固定提成（10-27）。
  * 项目模式没开、不是企业版：每个动作直接拦，一行不写、不记操作记录。
  * 读写和谁能改在 lib/project/commission-db.ts、算法在 lib/project/commission.ts，这里只管登录、开关、操作记录和刷新
  */
@@ -13,7 +13,7 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
-import { 存项目底价 as 存底价, 存提成分配 as 存分配, 改提成比例 as 改比例 } from "@/lib/project/commission-db";
+import { 存项目底价 as 存底价, 存提成分配 as 存分配, 改提成比例 as 改比例, 更正实际提成 as 更正 } from "@/lib/project/commission-db";
 import type { 分配 } from "@/lib/project/commission";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
@@ -43,6 +43,25 @@ export async function 存项目底价(projectId: string, 底价: number | null) 
         user: me, action: "update", entity: "EntCommission", entityId: projectId,
         summary: `项目「${r.name ?? ""}」的项目底价：${钱(r.前)} → ${钱(r.后)}${r.固定了 ? "（已在订单阶段，实际提成按现在的比例固定）" : ""}`,
         detail: { 项目底价: { 前: r.前 ?? null, 后: r.后 ?? null }, 固定了: !!r.固定了 },
+      });
+      刷新项目(projectId, r.customerId);
+    }
+    return r.ok ? { ok: true as const, 变了: r.变了 } : r;
+  } catch (e) { return 不在了(e); }
+}
+
+/** 总管理员更正已固定的实际提成：新金额 + 原因，操作记录留前后值 */
+export async function 更正实际提成(projectId: string, 金额: number | null, 原因: string) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    if (!企业版()) return 不是企业版;
+    const r = await 更正(me, projectId, 金额, 原因);
+    if (r.ok && r.变了) {
+      await recordAudit({
+        user: me, action: "update", entity: "EntCommission", entityId: projectId,
+        summary: `项目「${r.name ?? ""}」更正实际提成：${钱(r.前)} → ${钱(r.后)}，原因：${r.原因 ?? ""}`,
+        detail: { 实际提成: { 前: r.前 ?? null, 后: r.后 ?? null }, 原因: r.原因 ?? "" },
       });
       刷新项目(projectId, r.customerId);
     }
