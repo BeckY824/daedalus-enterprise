@@ -100,7 +100,7 @@ export default async function CustomerDetailPage({
         ? await prisma.project.findMany({
             where: { customerId: customer.id },
             orderBy: { updatedAt: "desc" },
-            select: { id: true, name: true, phase: true, node: true, result: true, amount: true, currency: true },
+            select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
           })
         : null}
       // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）

@@ -69,7 +69,7 @@ export type RecordProps = {
    */
   /** 企业版：客户级的旺旺 ID（只在联系方式子表里），基本资料只读摆出来；没有 = 不摆 */
   旺旺们?: string[];
-  项目们?: { id: string; name: string; phase: string; node: string; result: string | null; amount: number; currency: string }[] | null;
+  项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;
   customer: CustomerRow;
   contacts: ContactRow[];
   opportunities: {

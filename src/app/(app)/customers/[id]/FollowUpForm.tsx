@@ -78,6 +78,7 @@ export default function FollowUpForm({
   contacts: 给定联系人,
   opportunities: 给定商机,
   orders: 给定订单,
+  projects = null,
   aiEnabled,
   initialAiText,
   待收口计划 = null,
@@ -98,6 +99,11 @@ export default function FollowUpForm({
   opportunities?: { id: string; name: string }[];
   /** 这位客户的订单（外贸模版，2026-10-05）：「关联商机 / 订单」那一格的第二组 */
   orders?: { id: string; no: string }[];
+  /**
+   * 企业版只用项目时这位客户在推的项目（没结束、不在公海，最近动过的在前）。给了就把「关联商机」换成「关联项目」，
+   * 新建默认选第一个（10-27 会议：「默认自动关联当前项目」）；编辑不改挂哪个项目，这一格不摆
+   */
+  projects?: { id: string; name: string }[] | null;
   aiEnabled: boolean;
   /** 记录页顶部的速记框直接带过来的原文：打开即解析，少点一次 */
   initialAiText?: string;
@@ -148,6 +154,8 @@ export default function FollowUpForm({
   */
   const 挂订单 = 外贸订单(b);
   const orders = 挂订单 ? 给定订单 ?? 近况?.orders ?? [] : [];
+  /** 新建默认挂的项目：页面按最近动过排，第一个就是当前在推的 */
+  const 默认项目 = projects?.[0]?.id;
   /** 挑人时的「到期计划」和记录页同一个口径：最早那条没做完的，今天或更早到期 */
   const 收口计划 = 挑人
     ? 近况?.未完成计划 && !dayjs(近况.未完成计划.plannedAt).isAfter(dayjs().endOf("day")) ? 近况.未完成计划 : null
@@ -203,7 +211,7 @@ export default function FollowUpForm({
       onClose();
     },
     填过: () => aiText.trim() !== "",
-    不存: 给定客户 ? [] : ["customerId", "contactId", "opportunityId"],
+    不存: 给定客户 ? ["projectId"] : ["customerId", "contactId", "opportunityId", "projectId"],
   });
 
   async function onAiParse() {
@@ -309,9 +317,10 @@ export default function FollowUpForm({
         type: record?.type ?? (有WhatsApp ? "WHATSAPP" : "PHONE"),
         status: "已完成", dueHasTime: true,
         occurredAt: dayjs(),
+        projectId: 默认项目,
       });
     }
-  }, [open, record, form, 有WhatsApp]);
+  }, [open, record, form, 有WhatsApp, 默认项目]);
 
   /*
     保存中：网慢时连点两下会建出两条一样的记录（跟进带的 AI 待办和计划也各建两份，2026-10-02 排查）。
@@ -349,7 +358,7 @@ export default function FollowUpForm({
       dueHasTime: !record?.id || record.dueHasTime != null || form.isFieldTouched("dueHasTime") || form.isFieldTouched("dueAt") ? Boolean(v.dueHasTime) : undefined,
       确认过期待办: 创建过期待办 && v.确认过期待办 === true,
       contactId: v.contactId ?? null,
-      ...拆关联(v.opportunityId, 挂订单, record?.id ? record.opportunityId ?? null : null),
+      ...(projects ? (!record?.id ? { projectId: v.projectId ?? null } : {}) : 拆关联(v.opportunityId, 挂订单, record?.id ? record.opportunityId ?? null : null)),
       participants: v.participants ?? null,
       // 经 AI 解析过才带原文：手工写的跟进没有"原文"这个概念
       sourceText: !record?.id && extras ? aiText : null,
@@ -518,7 +527,13 @@ export default function FollowUpForm({
               />
             </Form.Item>
           </Col>
-          <Col span={12}>
+          {projects ? !record?.id && (
+            <Col span={12}>
+              <Form.Item name="projectId" label="关联项目" extra={projects.length === 0 ? "这位客户没有在推的项目" : undefined}>
+                <Select allowClear placeholder="不挂项目" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
+              </Form.Item>
+            </Col>
+          ) : <Col span={12}>
             <Form.Item name="opportunityId" label={挂订单 ? "关联商机 / 订单" : "关联商机"}>
               <Select
                 allowClear
@@ -533,7 +548,7 @@ export default function FollowUpForm({
                 }
               />
             </Form.Item>
-          </Col>
+          </Col>}
 
           {showDuration && (
             <Col span={12}>

@@ -147,6 +147,8 @@ export default function RecordView({
     推荐关系、签约不摆（纪要：「客户页仅保留 基础信息、联系人、关联项目 三类核心内容」；数据都还在，个人版、团队版不变）
   */
   const 企业 = 项目们 !== null;
+  /** 记跟进默认挂的项目：没结束、不在公海的，最近动过的排前面（page.tsx 按 updatedAt 倒序给） */
+  const 在推项目 = 项目们?.filter((p) => !p.result && !p.pooledAt) ?? null;
   const [资料全开, set资料全开] = useState(false);
   /*
     外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」、多出订单号；
@@ -428,6 +430,7 @@ export default function RecordView({
       content: text,
       status: "已完成",
       occurredAt: new Date().toISOString(),
+      projectId: 在推项目?.[0]?.id ?? null,
     });
     setQuickSaving(false);
     if (!res.ok) {
@@ -1054,6 +1057,7 @@ export default function RecordView({
         完成了计划={(p, 已完成) => void 完成计划(p, `跟进已记录，计划「${p.subject}」一并完成`, 已完成)}
         contacts={contacts}
         opportunities={项目们 ? [] : opportunities}
+        projects={在推项目}
         orders={contracts.flatMap((c) => (c.order ? [{ id: c.order.id, no: c.order.no }] : []))}
         aiEnabled={aiEnabled}
         只读={只读}
