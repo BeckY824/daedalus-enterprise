@@ -20,7 +20,7 @@ import { 卡点类型们, 影响等级们, 主体名上限, 主体最多, type �
 const 节点们 = 企业版字典.节点们;
 const 默认天数 = 企业版字典.默认超时天数;
 import { 改提成比例 } from "@/app/(app)/projects/commission-actions";
-import { 提成比例问题, type 提成比例 } from "@/lib/project/commission";
+import { 三套提成比例问题, 提成范围们, type 三套提成比例, type 提成范围 } from "@/lib/project/commission";
 
 type 字典项 = { id: string; name: string; active: boolean; 用的人: number };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
@@ -46,8 +46,8 @@ export type 项目设置 = {
   时限节点?: 时限范围;
   /** 企业版卡点的默认值（阻碍主体的选项、默认类型和影响）；不是企业版 = null，卡片不出 */
   卡点默认?: 卡点默认 | null;
-  /** 企业版提成比例 A（底价）/ B（溢价），百分数；不是企业版 = null，卡片不出（服务端读的 企业版()） */
-  提成比例: 提成比例 | null;
+  /** 企业版提成比例 A（底价）/ B（溢价），百分数，内贸 / 外贸 / 不限三套；不是企业版 = null，卡片不出（服务端读的 企业版()） */
+  提成比例: 三套提成比例 | null;
   /** 老板、总管理员能改提成比例 */
   能改提成比例: boolean;
 };
@@ -516,36 +516,50 @@ function BlockerDefaultsCard({
 }
 
 /**
- * 提成比例（企业版）：底价提成 = 项目底价 × A，溢价提成 = 项目溢价 × B。老板、总管理员能改，每次改动进操作记录。
- * 改了以后没赢单的项目预估马上按新比例算；已经赢单的实际提成不变
+ * 提成比例（企业版）：底价提成 = 项目底价 × A，溢价提成 = 项目溢价 × B。内贸、外贸、不限三套，按项目负责人的业务线取（10-27 会议）。
+ * 老板、总管理员能改，每次改动进操作记录。改了以后没赢单的项目预估马上按新比例算；已经赢单的实际提成不变
  */
+const 范围说明: Record<提成范围, string> = {
+  内贸: "负责人业务线是内贸",
+  外贸: "负责人业务线是外贸",
+  不限: "两边都做、没设业务线",
+};
+type 草稿比例 = Record<提成范围, { 底价比例: number | null; 溢价比例: number | null }>;
+
 function RatesCard({
   比例, 能改, 忙, 跑,
 }: {
-  比例: 提成比例; 能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  比例: 三套提成比例; 能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const [A, setA] = useState<number | null>(比例.底价比例);
-  const [B, setB] = useState<number | null>(比例.溢价比例);
-  const 问题 = 提成比例问题({ 底价比例: A ?? undefined, 溢价比例: B ?? undefined });
-  const 改了 = A !== 比例.底价比例 || B !== 比例.溢价比例;
+  const [草稿, set草稿] = useState<草稿比例>(比例);
+  const 交 = Object.fromEntries(提成范围们.map((k) => [k, { 底价比例: 草稿[k].底价比例 ?? undefined, 溢价比例: 草稿[k].溢价比例 ?? undefined }]));
+  const 问题 = 三套提成比例问题(交);
+  const 改了 = 提成范围们.some((k) => 草稿[k].底价比例 !== 比例[k].底价比例 || 草稿[k].溢价比例 !== 比例[k].溢价比例);
+  const 改 = (k: 提成范围, 哪个: "底价比例" | "溢价比例", v: number | null) => set草稿((d) => ({ ...d, [k]: { ...d[k], [哪个]: v } }));
   return (
     <Card title="提成比例" extra={!能改 && <span style={{ color: "var(--text-muted)" }}>只有老板、总管理员能改</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
+        底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0。按项目负责人的业务线用内贸 / 外贸那一套，两边都做或没设业务线的用「不限」。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
       </div>
-      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-          底价比例
-          <InputNumber<number> aria-label="底价提成比例" min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={A} onChange={(v) => setA(v)} />
-        </span>
-        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-          溢价比例
-          <InputNumber<number> aria-label="溢价提成比例" min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={B} onChange={(v) => setB(v)} />
-        </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+        {提成范围们.map((k) => (
+          <div key={k} style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ flex: "0 0 auto", minWidth: 40, fontWeight: 600 }} title={范围说明[k]}>{k}</span>
+            <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+              底价比例
+              <InputNumber<number> aria-label={`${k} 底价提成比例`} min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={草稿[k].底价比例} onChange={(v) => 改(k, "底价比例", v)} />
+            </span>
+            <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+              溢价比例
+              <InputNumber<number> aria-label={`${k} 溢价提成比例`} min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改} value={草稿[k].溢价比例} onChange={(v) => 改(k, "溢价比例", v)} />
+            </span>
+            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{范围说明[k]}</span>
+          </div>
+        ))}
       </div>
       {能改 && 改了 && 问题 && <div style={{ color: "var(--danger-text)", marginBottom: 8 }}>{问题}</div>}
       {能改 && (
-        <Button type="primary" disabled={忙 || !改了 || !!问题} onClick={() => void 跑(() => 改提成比例({ 底价比例: A!, 溢价比例: B! }), "已保存提成比例")}>保存</Button>
+        <Button type="primary" disabled={忙 || !改了 || !!问题} onClick={() => void 跑(() => 改提成比例(草稿 as 三套提成比例), "已保存提成比例")}>保存</Button>
       )}
     </Card>
   );

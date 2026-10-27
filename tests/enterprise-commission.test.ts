@@ -2,6 +2,7 @@
  * 企业版提成 + 组长分配（2026-10-26，迁移 051）。
  * 钉的是：2% / 30% 怎么算、成交低于底价溢价算 0；改 A / B 进操作记录；分配合计不能超 100%、剩下的归组长；
  * 组长以外的销售改不了分配；赢单（进订单）那一刻固定实际提成；开关关着照旧——一行不写、卡片不出。
+ * 10-27：比例分内贸 / 外贸 / 不限三套，按项目负责人的业务线取，两边都做或没设的用不限；旧的平铺值当不限读。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -31,6 +32,11 @@ let 丙: string; // 已进组的组员
 let 丁: string; // 邀请了还没同意
 let 项目id: string;
 
+/** 三套比例：没单独给内贸 / 外贸的跟不限一样 */
+const 三套 = (底价比例: number, 溢价比例: number, 另: Partial<Record<"内贸" | "外贸", [number, number]>> = {}) => {
+  const 套 = (k: "内贸" | "外贸") => ({ 底价比例: 另[k]?.[0] ?? 底价比例, 溢价比例: 另[k]?.[1] ?? 溢价比例 });
+  return { 内贸: 套("内贸"), 外贸: 套("外贸"), 不限: { 底价比例, 溢价比例 } };
+};
 const 记录 = () => prisma.auditLog.findMany({ orderBy: { at: "asc" }, select: { entity: true, entityId: true, summary: true } });
 const 当 = (id: string, role: string) => { mocks.user = { ...mocks.user, id, role }; };
 const 名 = (uid: string) => ({ [甲]: "甲", [乙]: "乙", [丙]: "丙", [丁]: "丁" })[uid] ?? "?";
@@ -77,7 +83,7 @@ describe("算法", () => {
     expect(算提成(120000, null, 默认提成比例)).toBeNull();
   });
   it("没设过比例：默认 2% / 30%", async () => {
-    expect(await 读提成比例()).toEqual({ 底价比例: 2, 溢价比例: 30 });
+    expect(await 读提成比例()).toEqual(三套(2, 30));
   });
   it("分配合计超 100% 报错；正好 100% 行", () => {
     expect(分配问题({ a: 60, b: 40.01 })).toMatch(/超过 100%/);
@@ -96,18 +102,31 @@ describe("算法", () => {
 
 describe("提成比例 A / B", () => {
   it("老板改了进操作记录；没改动不记", async () => {
-    expect(await 改提成比例({ 底价比例: 3, 溢价比例: 25 })).toEqual({ ok: true, 变了: true });
-    expect(await 改提成比例({ 底价比例: 3, 溢价比例: 25 })).toEqual({ ok: true, 变了: false });
-    expect(await 读提成比例()).toEqual({ 底价比例: 3, 溢价比例: 25 });
+    expect(await 改提成比例(三套(3, 25, { 内贸: [2, 30], 外贸: [2, 30] }))).toEqual({ ok: true, 变了: true });
+    expect(await 改提成比例(三套(3, 25, { 内贸: [2, 30], 外贸: [2, 30] }))).toEqual({ ok: true, 变了: false });
+    expect(await 读提成比例()).toEqual(三套(3, 25, { 内贸: [2, 30], 外贸: [2, 30] }));
+    expect(await 改提成比例(三套(3, 25, { 内贸: [1.5, 20], 外贸: [2, 30] }))).toEqual({ ok: true, 变了: true });
     expect(await 记录()).toEqual([
-      { entity: "Setting", entityId: "entCommissionRates", summary: "提成比例：底价 2% → 3%，溢价 30% → 25%" },
+      { entity: "Setting", entityId: "entCommissionRates", summary: "提成比例：不限 底价 2% → 3%，溢价 30% → 25%" },
+      { entity: "Setting", entityId: "entCommissionRates", summary: "提成比例：内贸 底价 2% → 1.5%，溢价 30% → 20%" },
     ]);
+  });
+  it("旧的平铺值（10-27 之前存的）当不限读，内贸 / 外贸跟着它", async () => {
+    await prisma.setting.create({ data: { key: "entCommissionRates", value: JSON.stringify({ 底价比例: 4, 溢价比例: 35 }) } });
+    invalidateSettingsCache();
+    expect(await 读提成比例()).toEqual(三套(4, 35));
+  });
+  it("少一套、不是对象：拦，库里不写", async () => {
+    const { 外贸: _, ...少外贸 } = 三套(3, 25);
+    expect(await 改提成比例({ ...少外贸, 外贸: { 底价比例: 3 } } as never)).toMatchObject({ ok: false, error: expect.stringContaining("外贸") });
+    expect(await 改提成比例(null as never)).toMatchObject({ ok: false });
+    expect(await prisma.setting.findUnique({ where: { key: "entCommissionRates" } })).toBeNull();
   });
   it("销售改不了；超出 0–100 拦", async () => {
     当(乙, "SALES");
-    expect(await 改提成比例({ 底价比例: 3, 溢价比例: 25 })).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
+    expect(await 改提成比例(三套(3, 25))).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
     当(甲, "ADMIN");
-    expect(await 改提成比例({ 底价比例: 101, 溢价比例: 25 })).toMatchObject({ ok: false });
+    expect(await 改提成比例(三套(3, 25, { 外贸: [101, 25] }))).toMatchObject({ ok: false, error: expect.stringContaining("外贸") });
     expect(await prisma.setting.findUnique({ where: { key: "entCommissionRates" } })).toBeNull();
     expect(await 记录()).toEqual([]);
   });
@@ -201,7 +220,7 @@ describe("赢单固定实际提成", () => {
     expect(c).toMatchObject({ fixedDeal: 120000, fixedBase: 100000, fixedRateBase: 2, fixedRatePremium: 30, fixedTotal: 8000 });
     expect(c.fixedAt).toBeInstanceOf(Date);
 
-    await 改提成比例({ 底价比例: 5, 溢价比例: 50 });
+    await 改提成比例(三套(5, 50));
     await prisma.project.update({ where: { id: 项目id }, data: { amount: 200000 } });
     const t = (await 卡({ id: 乙, role: "SALES" }))!;
     expect(t.实际).toMatchObject({ 成交金额: 120000, 项目底价: 100000, 合计: 8000, 比例: { 底价比例: 2, 溢价比例: 30 } });
@@ -224,6 +243,43 @@ describe("赢单固定实际提成", () => {
     当(乙, "SALES");
     expect(await 存项目底价(项目id, 100000)).toEqual({ ok: true, 变了: true });
     expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedTotal: 8000 });
+  });
+});
+
+describe("按负责人的业务线取比例（10-27）", () => {
+  const 卡带组织 = async () => {
+    const p = await prisma.project.findUniqueOrThrow({ where: { id: 项目id } });
+    const 在组 = (await prisma.projectMember.findMany({ where: { projectId: 项目id, inviteStatus: "JOINED" } })).map((m) => m.userId);
+    return (await 读项目提成({ id: 乙, role: "SALES" }, p, 在组, await 读组织(), 名, prisma))!;
+  };
+  beforeEach(async () => {
+    await 改提成比例(三套(2, 30, { 内贸: [1, 10], 外贸: [3, 40] }));
+    当(乙, "SALES");
+    await 存项目底价(项目id, 100000);
+    当(甲, "ADMIN");
+  });
+  it("负责人是内贸：预估和赢单固定都按内贸那一套", async () => {
+    await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: "内贸" } });
+    const t = await 卡带组织();
+    expect(t.范围).toBe("内贸");
+    expect(t.比例).toEqual({ 底价比例: 1, 溢价比例: 10 });
+    expect(t.预估?.合计).toBe(3000);
+    await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
+    expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedRateBase: 1, fixedRatePremium: 10, fixedTotal: 3000 });
+  });
+  it("负责人是外贸：按外贸", async () => {
+    await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: "外贸" } });
+    expect((await 卡带组织()).预估?.合计).toBe(11000);
+    await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
+    expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedRateBase: 3, fixedRatePremium: 40, fixedTotal: 11000 });
+  });
+  it("两边都做（业务线空）、不在组织里：按不限", async () => {
+    expect((await 卡带组织()).范围).toBe("不限");
+    await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: null } });
+    const t = await 卡带组织();
+    expect([t.范围, t.预估?.合计]).toEqual(["不限", 8000]);
+    await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
+    expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedRateBase: 2, fixedRatePremium: 30, fixedTotal: 8000 });
   });
 });
 
@@ -313,7 +369,7 @@ describe("开关关着照旧", () => {
     expect(await 存项目底价(项目id, 100000)).toMatchObject({ ok: false, error: "提成是企业版的功能" });
     expect(await 存提成分配(项目id, { [丙]: 30 })).toMatchObject({ ok: false, error: "提成是企业版的功能" });
     当(甲, "ADMIN");
-    expect(await 改提成比例({ 底价比例: 3, 溢价比例: 25 })).toMatchObject({ ok: false, error: "提成是企业版的功能" });
+    expect(await 改提成比例(三套(3, 25))).toMatchObject({ ok: false, error: "提成是企业版的功能" });
     expect(await 卡({ id: 甲, role: "ADMIN" })).toBeNull();
     expect(await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
     expect(await prisma.entCommission.count()).toBe(0);
@@ -326,7 +382,7 @@ describe("开关关着照旧", () => {
     mocks.开 = false;
     expect(await 存项目底价(项目id, 100000)).toMatchObject({ ok: false, error: expect.stringContaining("没开") });
     expect(await 存提成分配(项目id, { [丙]: 30 })).toMatchObject({ ok: false, error: expect.stringContaining("没开") });
-    expect(await 改提成比例({ 底价比例: 3, 溢价比例: 25 })).toMatchObject({ ok: false, error: expect.stringContaining("没开") });
+    expect(await 改提成比例(三套(3, 25))).toMatchObject({ ok: false, error: expect.stringContaining("没开") });
     expect(await prisma.entCommission.count()).toBe(0);
     expect(await 记录()).toEqual([]);
   });

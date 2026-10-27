@@ -14,7 +14,7 @@ import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
 import { 存项目底价 as 存底价, 存提成分配 as 存分配, 改提成比例 as 改比例, 更正实际提成 as 更正 } from "@/lib/project/commission-db";
-import type { 分配 } from "@/lib/project/commission";
+import type { 分配, 三套提成比例 } from "@/lib/project/commission";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
 const 不是企业版 = { ok: false as const, error: "提成是企业版的功能" };
@@ -93,8 +93,8 @@ export async function 存提成分配(projectId: string, 分: 分配) {
   } catch (e) { return 不在了(e); }
 }
 
-/** 老板 / 总管理员改提成比例 A（底价）、B（溢价），百分数 */
-export async function 改提成比例(input: { 底价比例: number; 溢价比例: number }) {
+/** 老板 / 总管理员改提成比例 A（底价）、B（溢价），百分数；内贸 / 外贸 / 不限三套一起交 */
+export async function 改提成比例(input: 三套提成比例) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
@@ -103,7 +103,7 @@ export async function 改提成比例(input: { 底价比例: number; 溢价比�
     if (r.ok && r.变了) {
       await recordAudit({
         user: me, action: "update", entity: "Setting", entityId: "entCommissionRates",
-        summary: `提成比例：底价 ${r.前.底价比例}% → ${r.后.底价比例}%，溢价 ${r.前.溢价比例}% → ${r.后.溢价比例}%`,
+        summary: `提成比例：${r.改了.map((k) => `${k} 底价 ${r.前[k].底价比例}% → ${r.后[k].底价比例}%，溢价 ${r.前[k].溢价比例}% → ${r.后[k].溢价比例}%`).join("；")}`,
         detail: { 前: r.前, 后: r.后 },
       });
       revalidatePath("/settings");

@@ -4,7 +4,7 @@
  * 谁能干什么（10-26 总控定，PR 里写明）：
  *   - 填 / 改项目底价：只有项目负责人（项目在公海里时不算），老板、总管理员也不代填（10-26 定）
  *   - 改分配：组长（项目负责人，项目在公海里时不算）、老板（ADMIN）、组织里的总管理员
- *   - 改 A / B（提成比例）：老板、总管理员
+ *   - 改 A / B（提成比例，内贸 / 外贸 / 不限三套）：老板、总管理员
  *   - 更正已固定的实际提成：只有组织里的总管理员（10-27 加），要写原因，操作记录留前后值
  *   - 看提成卡：上面这些人 + 已进组的组员 + 业务主管（MANAGER）+ 负责人的直属上级、虚线上级
  * 不是企业版：每个动作直接拦、一行不写；读一律 null；赢单挂钩什么都不做
@@ -15,8 +15,8 @@ import { getSetting, invalidateSettingsCache } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 虚线上级of, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
 import {
-  提成比例键, 规整提成比例, 提成比例问题, 两位, 算提成, 底价问题, 分配问题, 分到每人, 更正问题,
-  type 提成比例, type 分配, type 提成卡,
+  提成比例键, 提成范围们, 规整三套提成比例, 三套提成比例问题, 提成范围of, 两位, 算提成, 底价问题, 分配问题, 分到每人, 更正问题,
+  type 提成比例, type 三套提成比例, type 分配, type 提成卡,
 } from "./commission";
 
 type 谁 = { id: string; role: string };
@@ -53,31 +53,35 @@ export function 能看提成(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
   return !!org && (直属上级of(org, p.ownerId) === me.id || 虚线上级of(org, p.ownerId) === me.id);
 }
 
-export async function 读提成比例(): Promise<提成比例> {
-  return 规整提成比例(await getSetting(提成比例键));
+export async function 读提成比例(): Promise<三套提成比例> {
+  return 规整三套提成比例(await getSetting(提成比例键));
 }
 
 /** 事务里读比例：getSetting 走事务外的连接和缓存，事务里只用 tx */
-async function 事务里的比例(tx: Prisma.TransactionClient): Promise<提成比例> {
+async function 事务里的比例(tx: Prisma.TransactionClient): Promise<三套提成比例> {
   const r = await tx.setting.findUnique({ where: { key: 提成比例键 } });
   let v: unknown = null;
   try { v = r ? JSON.parse(r.value) : null; } catch { v = null; }
-  return 规整提成比例(v);
+  return 规整三套提成比例(v);
 }
 
-/** 改 A / B。返回改前改后，操作记录在 action 里记 */
-export async function 改提成比例(me: 谁, input: { 底价比例?: unknown; 溢价比例?: unknown }): Promise<错 | { ok: true; 变了: boolean; 前: 提成比例; 后: 提成比例 }> {
+const 一样 = (a: 提成比例, b: 提成比例) => a.底价比例 === b.底价比例 && a.溢价比例 === b.溢价比例;
+
+/** 改 A / B（三套一起交）。返回改前改后和改了哪几套，操作记录在 action 里记 */
+export async function 改提成比例(me: 谁, input: unknown): Promise<错 | { ok: true; 变了: boolean; 前: 三套提成比例; 后: 三套提成比例; 改了: (typeof 提成范围们)[number][] }> {
   if (!企业版()) return 没开企业版;
   if (!能改提成比例(me, await 读组织())) return { ok: false, error: "只有老板或总管理员能改提成比例" };
-  const 问题 = 提成比例问题(input);
+  const 问题 = 三套提成比例问题(input);
   if (问题) return { ok: false, error: 问题 };
-  const 后: 提成比例 = { 底价比例: 两位(input.底价比例 as number), 溢价比例: 两位(input.溢价比例 as number) };
+  const 交 = input as Record<string, { 底价比例: number; 溢价比例: number }>;
+  const 后 = Object.fromEntries(提成范围们.map((k) => [k, { 底价比例: 两位(交[k].底价比例), 溢价比例: 两位(交[k].溢价比例) }])) as 三套提成比例;
   const r = await 查完再写(async (tx) => {
     const 前 = await 事务里的比例(tx);
-    if (前.底价比例 === 后.底价比例 && 前.溢价比例 === 后.溢价比例) return { ok: true as const, 变了: false, 前, 后 };
+    const 改了 = 提成范围们.filter((k) => !一样(前[k], 后[k]));
+    if (!改了.length) return { ok: true as const, 变了: false, 前, 后, 改了 };
     const value = JSON.stringify(后);
     await tx.setting.upsert({ where: { key: 提成比例键 }, update: { value }, create: { key: 提成比例键, value } });
-    return { ok: true as const, 变了: true, 前, 后 };
+    return { ok: true as const, 变了: true, 前, 后, 改了 };
   });
   if (r.变了) invalidateSettingsCache();
   return r;
@@ -169,13 +173,14 @@ export async function 存提成分配(me: 谁, projectId: string, 分: 分配): 
   });
 }
 
-/** 按此刻的成交金额、底价、比例把实际提成固定下来。底价没填、已经固定过 → 不动，返回 false */
+/** 按此刻的成交金额、底价、比例（负责人业务线那一套）把实际提成固定下来。底价没填、已经固定过 → 不动，返回 false */
 async function 固定实际提成(tx: Prisma.TransactionClient, projectId: string): Promise<boolean> {
   const c = await tx.entCommission.findUnique({ where: { projectId } });
   if (!c || c.basePrice == null || c.fixedAt) return false;
-  const p = await tx.project.findUnique({ where: { id: projectId }, select: { amount: true } });
+  const p = await tx.project.findUnique({ where: { id: projectId }, select: { amount: true, ownerId: true } });
   if (!p) return false;
-  const 比例 = await 事务里的比例(tx);
+  const 人 = await tx.entMember.findUnique({ where: { userId: p.ownerId }, select: { line: true } });
+  const 比例 = (await 事务里的比例(tx))[提成范围of(人?.line)];
   const 算 = 算提成(p.amount, c.basePrice, 比例)!;
   await tx.entCommission.update({
     where: { projectId },
@@ -211,11 +216,13 @@ export async function 读项目提成(
   if (!企业版()) return null;
   const 在组 = new Set(在组ids);
   if (!能看提成(me, p, 在组, org)) return null;
-  const [c, 分, 比例] = await Promise.all([
+  const [c, 分, 三套] = await Promise.all([
     db.entCommission.findUnique({ where: { projectId: p.id } }),
     db.entCommissionSplit.findMany({ where: { projectId: p.id }, orderBy: { percent: "desc" } }),
     读提成比例(),
   ]);
+  const 范围 = 提成范围of(org?.成员.get(p.ownerId)?.line);
+  const 比例 = 三套[范围];
   const 预估 = 算提成(p.amount, c?.basePrice, 比例);
   const 实际 = c?.fixedAt && c.fixedBase != null && c.fixedRateBase != null && c.fixedRatePremium != null
     ? (() => {
@@ -227,7 +234,7 @@ export async function 读项目提成(
     : null;
   const 每人 = 分到每人(实际 ? 实际.合计 : 预估?.合计 ?? null, p.ownerId, 分, 在组).map((x) => ({ ...x, name: 叫(x.userId) }));
   return {
-    币种: p.currency, 成交金额: p.amount, 项目底价: c?.basePrice ?? null, 比例, 预估, 实际, 每人,
+    币种: p.currency, 成交金额: p.amount, 项目底价: c?.basePrice ?? null, 比例, 范围, 预估, 实际, 每人,
     能改: 能改提成(me, p, org),
     能填底价: 能填底价(me, p),
     能更正: !!实际 && 能更正提成(me, org),
