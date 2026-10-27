@@ -140,6 +140,9 @@
   --page-pattern-size: auto;
 }
 
+/* 看不见、读屏念得到（列表操作列的表头「操作」，components/DataList） */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
 /* ---------- 外观（设置 → 外观，lib/appearance.ts） ----------
    只换值，不换结构。<html> 上的 data-paper / data-skin 在第一次绘制前由 layout 里那段小脚本挂好，
    所以刷新时不会先闪一下原底。这里不许写裸色值（tests/design-tokens.test.ts），只许指到已有 token 上 */
