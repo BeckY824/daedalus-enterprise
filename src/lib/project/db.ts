@@ -419,7 +419,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 向导项目 
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
     if (!变了.length) return { ok: true as const, 变了 };
-    // 企业版字段权限：动了「只能看」的金额 / 负责人就拒（名称、备注、联系人不在表里，照旧能改）
+    // 企业版字段权限：动了「只能看」的金额 / 负责人 / 预计成交日期就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
     if (挡) return { ok: false as const, error: 挡 };
     const 换人 = 新.ownerId !== p.ownerId;

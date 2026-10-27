@@ -151,6 +151,19 @@ describe("项目（10-27 审计：企业版只用项目，金额 / 阶段·节�
     expect(await 改节点({ id: 老板, role: "ADMIN" }, id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true });
   });
 
+  it("预计签约只能看 → 项目的预计成交日期改不了（10-27 从客户挪来，沿用这一行）；原样交回照存", async () => {
+    await 开规则();
+    await setSetting(字段权限key, { 预计签约: { sales: "看" } });
+    const id = await 建项目();
+    expect(await 改项目({ id: 老板, role: "ADMIN" }, id, { name: "项目A", amount: 100, expectedDealAt: "2026-11-30" })).toMatchObject({ ok: true });
+    甲.id = 销售;
+    const 原日 = "2026-11-30";
+    expect(await 改项目(甲, id, { name: "项目A", amount: 100, expectedDealAt: "2026-12-31" })).toMatchObject({ ok: false, error: expect.stringContaining("预计签约") });
+    expect(await 改项目(甲, id, { name: "项目A", amount: 100, expectedDealAt: "" })).toMatchObject({ ok: false, error: expect.stringContaining("预计签约") });
+    expect(await 改项目(甲, id, { name: "项目C", amount: 100, expectedDealAt: 原日 })).toMatchObject({ ok: true });
+    expect(await 改项目({ id: 老板, role: "ADMIN" }, id, { name: "项目C", amount: 100, expectedDealAt: "2026-12-31" })).toMatchObject({ ok: true });
+  });
+
   it("规则没开 / 不是企业版：照旧能改节点和金额", async () => {
     await setSetting(字段权限key, { 商机阶段: { sales: "看" }, 商机金额: { sales: "看" } });
     const id = await 建项目();
@@ -159,6 +172,9 @@ describe("项目（10-27 审计：企业版只用项目，金额 / 阶段·节�
     await 开规则();
     mocks.企业版 = false;
     expect(await 改项目(甲, id, { name: "项目A", amount: 300 })).toMatchObject({ ok: true });
+    await setSetting(字段权限key, { 预计签约: { sales: "看" } });
+    expect(await 改项目(甲, id, { name: "项目A", amount: 300, expectedDealAt: "2026-12-31" })).toMatchObject({ ok: true });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id } })).expectedDealAt).toBeNull();
   });
 });
 
