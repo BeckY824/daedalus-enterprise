@@ -1292,6 +1292,8 @@ model EntLeadAssign {
   line       String?
   /// 营销 / 营销企划。企划线索走哪边、算不算数还没定（lib/enterprise/lead-assign.ts 的 计不计数 留口子）
   kind       String   @default("营销")
+  /// 分配方式（10-27，migrations/060）：指定分配 / 自动分配，名字取「分配方式」字典里那一项当时的叫法；老记录为空
+  way        String?
   /// 算不算进接手人当月的分配数（配额按它数）
   counted    Boolean  @default(true)
   /// YYYY-MM（业务钟：企业版北京时间），按月清零就是只数本月这一格
@@ -1409,6 +1411,8 @@ model EntHandover {
   byUserId    String
   /// 离职交接的方式（转交 / 公海）；转让为空
   way         String?
+  /// 转让原因（10-27，migrations/059）：「转让原因」字典里选的；不选、离职交接为空
+  reason      String?
   /// 转让：要转的客户 id（JSON 数组）；离职：发起时清点到的客户 id，只作对照，确认时按当时重新分
   customerIds String    @default("[]")
   /// 发起时清点的个数（JSON），给接手人看「要接几位客户、几个项目」

@@ -139,6 +139,8 @@ type Props = {
   只读ids?: string[];
   /** 企业版这一页公海里原负责人是我的：领取按钮灰着、悬停说「原负责人不能领回」（lib/enterprise/pool-rules.ts）。别的版本一律空 */
   原负责人领不回ids?: string[];
+  /** 企业版批量转给别人时可选的转让原因（字典「转让原因」）；选项空 = 不问（别的版本） */
+  转让原因?: { 选项: string[]; 自己: string };
 };
 
 /**
@@ -157,7 +159,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 金额排序 = "", 等级排序 = "", 排序币种,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -174,7 +176,7 @@ export default function CustomersView({
 
   const { message } = App.useApp();
   const { 问删除 } = useDeleteCustomers();
-  const { 先问转走的项目 } = useTransferConfirm();
+  const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
 
   /**
    * 批量改完给一次撤销（排查 D1）。原来点一下就写库、没有退路，选错一页就是一批数据改错。
@@ -693,7 +695,9 @@ export default function CustomersView({
                   label: o.label,
                   onClick: async () => {
                     if (!(await 先问转走的项目(selected, o.value))) return;
-                    const res = await assignSalesOwner(selected, o.value);
+                    const 原因 = await 问转让原因(o.label, o.value);
+                    if (原因 === false) return;
+                    const res = await assignSalesOwner(selected, o.value, 原因);
                     清空();
                     router.refresh();
                     if (!res.ok) return void message.error(res.error);

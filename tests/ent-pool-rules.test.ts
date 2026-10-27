@@ -29,6 +29,7 @@ import { 公海规则, 单项目客户进公海理由, 原负责人不能领回�
 import { 系统, 超时理由 } from "@/lib/project/timeout";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 放回公海, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
+import { 可选项 } from "@/lib/enterprise/dict";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 放进公海, 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
@@ -187,6 +188,22 @@ describe("单项目客户（D6）", () => {
     expect(await 领取公海项目(丙, p2)).toEqual({ ok: true });
     expect(await 负责人(c2)).toBe(乙.id);
     expect(await 在客户公海(c2)).toBe(true);
+  });
+});
+
+describe("放回公海选回收原因（10-27 字典接下拉）", () => {
+  it("带原因：记在放回那一行；不在字典里（停用了）回错、项目不动；不选照放", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await 项目(乙.id, c);
+    const [第一个] = await 可选项("recycle");
+    expect(await 放回公海(乙, p, "随便写的")).toMatchObject({ ok: false, error: expect.stringContaining("不在") });
+    expect(await 项目在公海(p)).toBe(false);
+    expect(await 放回公海(乙, p, 第一个)).toEqual({ ok: true });
+    expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p, kind: "pool-release" } })).toMatchObject({ reason: `回收原因：${第一个}` });
+    const p2 = await 项目(乙.id, c);
+    expect(await 放回公海(乙, p2)).toEqual({ ok: true });
+    expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p2, kind: "pool-release" } })).reason).toBeNull();
   });
 });
 
@@ -366,6 +383,14 @@ describe("直接指定给某人：联系人、项目、沟通记录跟着客户�
 
 describe("开关关着照旧", () => {
   beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", ""); });
+
+  it("放回公海带的原因不看、不记（没有字典）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    expect(await 放回公海(乙, p, "随便写的")).toEqual({ ok: true });
+    expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p, kind: "pool-release" } })).reason).toBeNull();
+    expect(await prisma.entDictItem.count()).toBe(0);
+  });
 
   it("单项目客户放回项目公海：客户不跟着进；领项目不带客户；领客户不带项目公海里的项目；放回的人不能自己领回", async () => {
     const c = await 客户(乙.id);

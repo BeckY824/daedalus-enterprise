@@ -31,6 +31,8 @@ export type 项目详情 = {
   contact: { id: string; name: string; position: string | null } | null;
   /** 线索转出来的项目：来源线索的名字（null = 那条线索已删除）和转化日；不是线索转的、或公海里还没领时是 null */
   来源线索: { name: string | null; convertedAt: string | null } | null;
+  /** 企业版字典下拉（10-27）：放回公海选「回收原因」、线索流失选「无效原因」；不是企业版两个都是空的，界面照旧 */
+  原因选项: { 回收: string[]; 无效: string[] };
   ownerId: string; ownerName: string; creatorName: string; createdAt: string;
   /** 历史负责人（只企业版有，别的版本是空的）：把这个项目放回过公海的人，最近放回的在前，同一个人只列一次 */
   historyOwners: string[];
@@ -175,6 +177,8 @@ function 进公海说法(进: 项目详情["进公海"], 原负责人: string): 
 /** 企业版卡点：项目详情上的卡点列表、发卡点要的默认值和可指认的人；不是企业版不给（null） */
 export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点默认; 人们: 可选人[] };
 
+const 无效原因前缀 = "无效原因：";
+
 const 提醒色 = { 稳: "green", 拿捏: "gold", 超时: "red" } as const;
 
 export default function ProjectDetail({
@@ -196,6 +200,9 @@ export default function ProjectDetail({
   const [忙, set忙] = useState(false);
   const [异常框, set异常框] = useState<位置 | null>(null);
   const [没成框, set没成框] = useState<位置 | null>(null);
+  const [无效原因, set无效原因] = useState<string | null>(null);
+  const [放回框, set放回框] = useState(false);
+  const [回收原因, set回收原因] = useState<string | null>(null);
   const [原因, set原因] = useState("");
   const [类别, set类别] = useState<string | null>(null);
   const [编辑开着, set编辑开着] = useState(false);
@@ -250,6 +257,7 @@ export default function ProjectDetail({
     }
     if (p.企业版 && 要写原因(到.result)) {
       set原因("");
+      set无效原因(null);
       set没成框(到);
       return;
     }
@@ -259,6 +267,10 @@ export default function ProjectDetail({
     }
     void 跑(() => 改项目节点(p.id, 到), `已改到 ${位置文字(到, 字典)}`);
   };
+
+  // 线索流失（企业版、字典里有启用的无效原因）：选一个或写一句，至少一样；合成「无效原因：X」+ 补充说明记进节点变更
+  const 选无效原因 = 没成框?.result === "线索流失" && p.原因选项.无效.length > 0;
+  const 没成备注 = 选无效原因 && 无效原因 ? [`${无效原因前缀}${无效原因}`, 原因.trim()].filter(Boolean).join("\n") : 原因.trim();
 
   const 删 = async () => {
     set忙(true);
@@ -281,7 +293,9 @@ export default function ProjectDetail({
         subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
         extra={
           <Space wrap>
-            {p.能放公海 && (
+            {/* 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认 */}
+            {p.能放公海 && p.企业版 && <Button disabled={忙} onClick={() => { set回收原因(null); set放回框(true); }}>放回公海</Button>}
+            {p.能放公海 && !p.企业版 && (
               <Popconfirm title="放回项目公海？" description={p.企业版 ? "放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人" : "放回去以后谁都能领，你自己不能再领回来"} okText="放回公海" onConfirm={() => void 跑(() => 放回项目公海(p.id), "已放回项目公海")}>
                 <Button disabled={忙}>放回公海</Button>
               </Popconfirm>
@@ -444,7 +458,9 @@ export default function ProjectDetail({
                 <div>
                   <div>{l.kind !== "node" ? 换人文字(l) : l.from ? `${位置文字(l.from, 字典)} → ${位置文字(l.to, 字典)}` : `建档，落在 ${位置文字(l.to, 字典)}`}</div>
                   {l.category && <div style={{ color: "var(--danger-text)" }}>异常类别：{l.category}</div>}
-                  {l.reason && l.reason !== 超时理由 && <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>}
+                  {l.kind === "node" && l.reason && l.reason !== 超时理由 && <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>}
+                  {/* 换人那几行：企业版记的回收原因 / 分配方式（10-27）原样淡色显示；超时、停用上一行已经说了 */}
+                  {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>}
                   <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
                 </div>
               ),
@@ -542,16 +558,34 @@ export default function ProjectDetail({
         open={!!没成框}
         title={没成框 ? `定结果：${结局叫法(没成框.result ?? "", 字典)}` : ""}
         okText="确定"
-        okButtonProps={{ danger: true, disabled: !原因.trim(), loading: 忙 }}
+        okButtonProps={{ danger: true, disabled: !没成备注, loading: 忙 }}
         onCancel={() => set没成框(null)}
         onOk={async () => {
-          if (!没成框 || !原因.trim()) return;
-          const ok = await 跑(() => 改项目节点(p.id, 没成框, { 备注: 原因 }), `已改到 ${位置文字(没成框, 字典)}`);
+          if (!没成框 || !没成备注) return;
+          const ok = await 跑(() => 改项目节点(p.id, 没成框, { 备注: 没成备注 }), `已改到 ${位置文字(没成框, 字典)}`);
           if (ok) set没成框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>写一句为什么没成，会记在节点变更里；以后捡回来把节点改回去就行。</div>
-        <Input.TextArea rows={4} maxLength={原因上限} showCount value={原因} onChange={(e) => set原因(e.target.value)} placeholder="原因（必填）" aria-label="原因" />
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? "选一个无效原因，或写一句为什么没成（至少一样），会记在节点变更里；以后捡回来把节点改回去就行。" : "写一句为什么没成，会记在节点变更里；以后捡回来把节点改回去就行。"}</div>
+        {选无效原因 && (
+          <Select style={{ width: "100%", marginBottom: 8 }} allowClear placeholder="无效原因" aria-label="无效原因" value={无效原因} onChange={(v) => set无效原因(v ?? null)} options={p.原因选项.无效.map((x) => ({ value: x, label: x }))} />
+        )}
+        <Input.TextArea rows={4} maxLength={原因上限 - (无效原因 ? 无效原因.length + 无效原因前缀.length + 1 : 0)} showCount value={原因} onChange={(e) => set原因(e.target.value)} placeholder={选无效原因 ? "补充说明" : "原因（必填）"} aria-label="原因" />
+      </Modal>
+
+      <Modal
+        open={放回框}
+        title="放回项目公海？"
+        okText="放回公海"
+        okButtonProps={{ loading: 忙 }}
+        onCancel={() => set放回框(false)}
+        onOk={async () => {
+          const ok = await 跑(() => 放回项目公海(p.id, 回收原因), "已放回项目公海");
+          if (ok) set放回框(false);
+        }}
+      >
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人。</div>
+        <Select style={{ width: "100%" }} allowClear placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={(v) => set回收原因(v ?? null)} options={p.原因选项.回收.map((x) => ({ value: x, label: x }))} />
       </Modal>
     </div>
   );

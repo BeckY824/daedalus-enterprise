@@ -12,6 +12,7 @@ import { 外贸订单 } from "@/lib/business-config";
 import type { SessionUser } from "@/lib/auth";
 import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用 } from "./actions";
 import type { 停用方式 } from "@/lib/offboard-db";
+import { 按阶段说 } from "@/lib/project/member-count";
 
 /** 设置 · 团队成员：谁能进、谁是管理员。新增、编辑、停用（停用要先把名下的客户转交出去） */
 
@@ -24,6 +25,8 @@ export type Row = {
   active: boolean;
   customerCount: number;
   oppCount: number;
+  /** 企业版：在跟（没结局）的项目按阶段数（线索 / 商机 / 订单）；有它就不摆「商机数」 */
+  项目阶段?: Record<string, number>;
   followCount: number;
 };
 
@@ -239,7 +242,9 @@ export default function MembersTab({
       ),
     },
     { title: `负责${b.customer}`, dataIndex: "customerCount", width: 90 },
-    { title: "商机数", dataIndex: "oppCount", width: 80 },
+    users.some((u) => u.项目阶段)
+      ? { title: "项目数", key: "项目数", width: 170, render: (_: unknown, r: Row) => <span style={{ whiteSpace: "nowrap" }}>{按阶段说(r.项目阶段 ?? {})}</span> }
+      : { title: "商机数", dataIndex: "oppCount", width: 80 },
     { title: "跟进数", dataIndex: "followCount", width: 80 },
     {
       title: "状态",

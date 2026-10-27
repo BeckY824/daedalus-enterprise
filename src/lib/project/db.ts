@@ -14,8 +14,9 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
+import { 选的原因 } from "@/lib/enterprise/dict";
 import { 生效组织规则 } from "./org-rules-store";
-import { 超时回收日, 已超时, 超时理由, 超时起点, 系统 } from "./timeout";
+import { 超时回收日, 已超时, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
@@ -456,7 +457,11 @@ export async function 超上限(
  * 放回公海：只有负责人本人能放，线索 / 商机阶段才行。ownerId 留着放回去的人（他就是「历史负责人」；企业版里自己也能再领回，别的版本不能），
  * 记一行 pool-release。项目组、节点、交付两项都不动
  */
-export async function 放回公海(me: 谁, projectId: string): Promise<结果> {
+export async function 放回公海(me: 谁, projectId: string, 原因?: unknown): Promise<结果> {
+  // 企业版可选「回收原因」（字典），事务外先核；记在 pool-release 那行的 reason
+  const 选 = await 选的原因("recycle", 原因);
+  if (!选.ok) return 选;
+  const reason = 选.值 ? `${回收原因前缀}${选.值}` : null;
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -465,7 +470,7 @@ export async function 放回公海(me: 谁, projectId: string): Promise<结果> 
     if (!(能进公海的阶段 as readonly string[]).includes(p.phase)) return { ok: false as const, error: "订单阶段的项目不能放回公海" };
     const 现在 = new Date();
     await tx.project.update({ where: { id: p.id }, data: { pooledAt: 现在, nextStepAt: null } });
-    await 记转让(tx, p, me.id, p.ownerId, null, "pool-release");
+    await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason);
     // 企业版：客户名下只有这一个项目，客户也一起进客户公海（pool-link.ts）
     await 单项目客户跟进公海(tx, p, me.id, 现在);
     return { ok: true as const };

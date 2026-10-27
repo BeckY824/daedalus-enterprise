@@ -17,6 +17,7 @@ import { 读组织, type 组织 } from "@/lib/enterprise/org";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 分配方式叫法 } from "@/lib/enterprise/dict";
 import { 发满额提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -58,7 +59,7 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
   try {
     const org = await 读组织();
     if (!能分配(org, me)) return { ok: false, error: "只有老板、总管理员、市场管理能分配线索" };
-    const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line, kind });
+    const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line, kind, 自动: false });
     return r.ok ? r : { ok: false, error: r.error };
   } catch (e) {
     return 不在了(e);
@@ -71,11 +72,13 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
  * 分满了（配额满、或项目的持有上限到了）带 满: true，自动分配据此顺延到下一个人
  */
 async function 分给(
-  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类 },
+  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean },
 ): Promise<{ ok: true } | { ok: false; error: string; 满?: true }> {
   const 问题 = 接手问题(org, input.toUserId, input.line);
   if (问题) return { ok: false, error: 问题 };
-  if (input.projectId !== undefined) return 分项目给(me, { ...input, projectId: input.projectId });
+  // 分配方式（10-27，字典「分配方式」前两项的叫法）：事务外读好，记进分配记录和审计
+  const way = await 分配方式叫法(input.自动 ? 1 : 0);
+  if (input.projectId !== undefined) return 分项目给(me, { ...input, projectId: input.projectId, way });
 
   // 走限定过的连接：「按组织架构看客户」开着时，看不到的线索当不在
   const lead = await prisma.lead.findFirst({ where: { id: input.leadId }, select: { id: true, name: true } });
@@ -96,7 +99,7 @@ async function 分给(
     }
     await tx.lead.update({ where: { id: lead.id }, data: { ownerId: input.toUserId } });
     await tx.entLeadAssign.create({
-      data: { leadId: lead.id, toUserId: input.toUserId, fromUserId: 现在.ownerId, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月 },
+      data: { leadId: lead.id, toUserId: input.toUserId, fromUserId: 现在.ownerId, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way },
     });
     return { ok: true, fromUserId: 现在.ownerId };
   });
@@ -107,7 +110,7 @@ async function 分给(
   await recordAudit({
     user: me, action: "update", entity: "Lead", entityId: lead.id,
     summary: `分配线索「${lead.name}」给 ${接手?.name ?? input.toUserId}${line ? `（${line}）` : ""}${counted ? "" : "，不计数"}`,
-    detail: { toUserId: input.toUserId, fromUserId: 落库.fromUserId, line, kind: input.kind, counted, month: 月 },
+    detail: { toUserId: input.toUserId, fromUserId: 落库.fromUserId, line, kind: input.kind, counted, month: 月, 分配方式: way },
   });
   revalidatePath("/leads");
   return { ok: true };
@@ -120,7 +123,7 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
  * 换负责人 = 转让：清下一步时间（超时回收从接手那天重新算），在公海里的出公海，记一行转让痕
  */
 async function 分项目给(
-  me: SessionUser, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类 },
+  me: SessionUser, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string },
 ): Promise<{ ok: true } | { ok: false; error: string; 满?: true }> {
   const p0 = await prisma.project.findFirst({ where: { id: input.projectId }, select: { id: true, name: true } });
   if (!p0) return { ok: false, error: 项目不在 };
@@ -142,11 +145,11 @@ async function 分项目给(
     const 超 = await 超上限(tx, 规则, input.toUserId, p);
     if (超) return { ok: false, 满: true, error: 超 };
     await tx.project.update({ where: { id: p.id }, data: { ownerId: input.toUserId, nextStepAt: null, pooledAt: null } });
-    await 记转让(tx, p, me.id, p.ownerId, input.toUserId);
+    await 记转让(tx, p, me.id, p.ownerId, input.toUserId, "transfer", `分配方式：${input.way}`);
     // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId);
     await tx.entLeadAssign.create({
-      data: { projectId: p.id, toUserId: input.toUserId, fromUserId: p.ownerId, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月 },
+      data: { projectId: p.id, toUserId: input.toUserId, fromUserId: p.ownerId, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });
     return { ok: true, fromUserId: p.ownerId };
   });
@@ -157,7 +160,7 @@ async function 分项目给(
   await recordAudit({
     user: me, action: "update", entity: "Project", entityId: p0.id,
     summary: `分配新线索「${p0.name}」给 ${接手?.name ?? input.toUserId}${line ? `（${line}）` : ""}${counted ? "" : "，不计数"}`,
-    detail: { toUserId: input.toUserId, fromUserId: 落库.fromUserId, line, kind: input.kind, counted, month: 月 },
+    detail: { toUserId: input.toUserId, fromUserId: 落库.fromUserId, line, kind: input.kind, counted, month: 月, 分配方式: input.way },
   });
   revalidatePath("/leads");
   revalidatePath("/projects");
@@ -258,7 +261,7 @@ async function 自动分给(me: SessionUser, org: 组织, 哪条: 目标, line: 
       };
     }
     const 为什么 = 挑的理由(候选, 跳过, 查满, 谁);
-    const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, kind });
+    const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, kind, 自动: true });
     if (r.ok) {
       return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 额.get(谁) ?? null, 为什么 };
     }

@@ -139,14 +139,15 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
 }
 
 /** 负责人把项目放回项目公海（线索 / 商机阶段） */
-export async function 放回项目公海(projectId: string) {
+export async function 放回项目公海(projectId: string, 原因?: string | null) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
-    const r = await 放回公海(me, projectId);
+    const r = await 放回公海(me, projectId, 原因);
     if (r.ok) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
-      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `把项目「${p?.name ?? ""}」放回项目公海` });
+      const 选了 = 企业版() && typeof 原因 === "string" && 原因.trim() ? 原因.trim() : null;
+      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `把项目「${p?.name ?? ""}」放回项目公海${选了 ? `（${选了}）` : ""}`, ...(选了 ? { detail: { 回收原因: 选了 } } : {}) });
       刷新项目(projectId, p?.customerId);
     }
     return r;

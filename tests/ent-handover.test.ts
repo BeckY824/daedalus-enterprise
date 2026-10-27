@@ -24,6 +24,7 @@ import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接 } from "@/app/(app)/customers/handover-actions";
 import { 了结 } from "@/lib/enterprise/handover-db";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
+import { 可选项 } from "@/lib/enterprise/dict";
 
 type 人 = { id: string; role: string };
 let 老板: 人, 组长: 人, 销售: 人, 接手: 人;
@@ -177,6 +178,18 @@ describe("转让交接中", () => {
     expect((await prisma.task.findUniqueOrThrow({ where: { id: t.id } })).ownerId).toBe(接手.id);
     expect(await prisma.customerOwnerLog.findFirstOrThrow({ where: { customerId: a.id } })).toMatchObject({ fromOwnerId: 销售.id, toOwnerId: 接手.id, kind: "assign" });
     expect(await prisma.customerOwnerLog.count({ where: { customerId: b.id } })).toBe(0);
+  });
+
+  it("转让原因（10-27 字典接下拉）：存在这笔交接上、列表里带着、留痕里有；不在字典里回错、一笔都不发", async () => {
+    const a = await 客户(销售.id);
+    const [原因] = await 可选项("transfer");
+    expect(await assignSalesOwner([a.id], 接手.id, "随便写的")).toMatchObject({ ok: false, error: expect.stringContaining("不在") });
+    expect(await prisma.entHandover.count()).toBe(0);
+    expect(await assignSalesOwner([a.id], 接手.id, 原因)).toMatchObject({ ok: true, 交接中: 1 });
+    expect((await 一笔()).reason).toBe(原因);
+    当(接手);
+    expect((await 待确认的交接()).等我确认[0]).toMatchObject({ reason: 原因 });
+    expect(await prisma.auditLog.count({ where: { summary: { contains: `（${原因}）` } } })).toBeGreaterThan(0);
   });
 
   it("多位原负责人：一人一笔", async () => {

@@ -14,6 +14,8 @@ import type { 组织规则 } from "./org-rules";
 import { 团队版字典, type 阶段字典 } from "./stage-dict";
 
 export const 超时理由 = "超过节点处理时长没跟进，自动回到项目公海";
+/** 企业版手动放回公海时选的「回收原因」（字典）记成「回收原因：X」（10-27） */
+export const 回收原因前缀 = "回收原因：";
 
 /**
  * 超时回收是系统做的：节点留痕（ProjectNodeLog.userId）、操作日志记在「系统」名下，不记在谁碰巧打开了页面、或夜扫找的那位老板名下（QA #16）。

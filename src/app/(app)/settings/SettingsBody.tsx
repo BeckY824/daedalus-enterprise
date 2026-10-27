@@ -22,6 +22,7 @@ import { 读改权限, 能改设置, 谁能改的话, type 设置项名 } from "
 import type { 组织架构 } from "./OrgTab";
 import { 本月分配情况 } from "../leads/assign-actions";
 import { 读提成比例, 能改提成比例 } from "@/lib/project/commission-db";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 
 /**
  * 设置的正文（服务端组件，负责取数）。**两条路由共用它**：
@@ -59,6 +60,12 @@ export default async function SettingsBody() {
       _count: { select: { salesCustomers: true, opportunities: true, followUps: true } },
     },
   });
+  // 企业版只用项目（10-27 用户「改成项目数」）：「商机数」换成在跟的项目数（没结局、不在公海——公海里的 ownerId 是放回的人），
+  // 按三阶段分开数；别的版本照旧数老商机（lib/project/member-count.ts）
+  const 项目数 = (await 企业版只用项目())
+    ? await prisma.project.groupBy({ by: ["ownerId", "phase"], where: { result: null, pooledAt: null }, _count: { _all: true } })
+    : null;
+  const 阶段数of = (id: string) => Object.fromEntries((项目数 ?? []).filter((g) => g.ownerId === id).map((g) => [g.phase, g._count._all]));
 
   // 项目模式（团队版 1a）开着才多一栏：组员角色字典、异常类别字典
   const 项目设置底 = business.projectMode
@@ -108,7 +115,8 @@ export default async function SettingsBody() {
     共享区 ? "共享试用区不能改"
     : org && 改权限 ? (能改设置(org, me, 项, 改权限) ? null : 谁能改的话(改权限, 项))
     : me.role === "ADMIN" ? null : "只有老板能改";
-  // 企业版选项字典（分配方式、回收原因……）也放在项目模式这一栏；还没有地方用它们，用的人先都记 0
+  // 企业版选项字典（分配方式、回收原因……）也放在项目模式这一栏。分配 / 回收 / 转让 / 判无效的记录里存的是当时的叫法（文字），
+  // 改名、停用、删都不动旧记录，所以用的人记 0
   const 企业选项 = 项目设置底 && (await 全部企业字典());
   const 项目设置 = 项目设置底 && {
     ...项目设置底,
@@ -191,6 +199,7 @@ export default async function SettingsBody() {
         active: u.active,
         customerCount: u._count.salesCustomers,
         oppCount: u._count.opportunities,
+        ...(项目数 ? { 项目阶段: 阶段数of(u.id) } : {}),
         followCount: u._count.followUps,
       }))}
     />

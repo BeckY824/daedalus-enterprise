@@ -20,6 +20,7 @@ import { 客户页签归属 } from "@/lib/pool";
 import { 管全队客户 } from "@/lib/constants";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
+import { 可选项 } from "@/lib/enterprise/dict";
 
 export const dynamic = "force-dynamic";
 
@@ -178,6 +179,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       只读ids={await 虚线只读的(defaultClient, rows.map((r) => r.id))}
       // 企业版「非原负责人均可领取」（10-26 定稿）：这一页公海里原负责人是我的，领取按钮灰着（接口也拦，pool-actions.ts 领取）
       原负责人领不回ids={拦原负责人() ? rows.filter((r) => r.pool && r.salesOwnerId === me.id).map((r) => r.id) : []}
+      // 企业版批量转给别人时可选的转让原因（字典「转让原因」，10-27）；别的版本空 = 不问
+      转让原因={{ 选项: await 可选项("transfer"), 自己: me.id }}
       本月新增={sp.createdWithin === "本月"}
       直接推荐={sp.directOf ? ((await prisma.channel.findUnique({ where: { id: sp.directOf }, select: { name: true } }))?.name ?? "这个渠道") : null}
       本批={sp.batch ? { 几位: total } : null}
