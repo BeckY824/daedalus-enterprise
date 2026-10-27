@@ -284,17 +284,17 @@ export async function 编辑项目(projectId: string, patch: 向导项目 & { co
 }
 
 /** 企业版 MQL 人工判定：线索验证上判合格（推到线索推进）/ 不合格（退回潜客培育 + 培育跟进计划） */
-export async function 判MQLAction(projectId: string, 合格: boolean, 下一步时间?: string | null) {
+export async function 判MQLAction(projectId: string, 合格: boolean, 下一步时间?: string | null, 计划内容?: string | null) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
     if (!企业版()) return { ok: false as const, error: "MQL 判定只在企业版有" };
-    const r = await 判MQL(me, projectId, 合格 === true, 下一步时间 ?? null);
+    const r = await 判MQL(me, projectId, 合格 === true, 下一步时间 ?? null, new Date(), 计划内容 ?? null);
     if (r.ok) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
       await recordAudit({
         user: me, action: "update", entity: "Project", entityId: projectId,
-        summary: 合格 ? `项目「${p?.name ?? ""}」MQL 判合格，推到 ${MQL合格去}` : `项目「${p?.name ?? ""}」MQL 判不合格，退回 ${MQL不合格去}，${下一步时间 ?? ""} 再跟进`,
+        summary: 合格 ? `项目「${p?.name ?? ""}」MQL 判合格，推到 ${MQL合格去}` : `项目「${p?.name ?? ""}」MQL 判不合格，退回 ${MQL不合格去}，${下一步时间 ?? ""} 再跟进：${String(计划内容 ?? "").trim()}`,
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
       刷新项目(projectId, p?.customerId);

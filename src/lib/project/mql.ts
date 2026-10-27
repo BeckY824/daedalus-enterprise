@@ -9,7 +9,7 @@ import { prisma } from "../prisma";
 import { parseDateInput } from "../date-input";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 改节点 } from "./db";
-import { 有效线索节点 } from "./stage-gates";
+import { 有效线索节点, 培育计划上限 } from "./stage-gates";
 
 type 谁 = { id: string; role: string };
 
@@ -17,7 +17,7 @@ export const MQL合格去 = "线索推进";
 export const MQL不合格去 = "潜客培育";
 
 export async function 判MQL(
-  me: 谁, projectId: string, 合格: boolean, 下一步时间?: string | null, now: Date = new Date(),
+  me: 谁, projectId: string, 合格: boolean, 下一步时间?: string | null, now: Date = new Date(), 计划内容?: string | null,
 ): Promise<({ ok: true; 自动推到?: string[] } | { ok: false; error: string })> {
   if (!企业版()) return { ok: false, error: "MQL 判定只在企业版有" };
   const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, phase: true, node: true, result: true, customerId: true, ownerId: true } });
@@ -27,13 +27,16 @@ export async function 判MQL(
   const 日 = parseDateInput(下一步时间);
   if (!日) return { ok: false, error: "MQL 不合格要定下一次培育跟进的日期" };
   if (dayjs(日).format("YYYY-MM-DD") < dayjs(now).format("YYYY-MM-DD")) return { ok: false, error: "下一次培育跟进不能早于今天" };
+  const 内容 = String(计划内容 ?? "").trim();
+  if (!内容) return { ok: false, error: "MQL 不合格要写下一次培育跟进的计划内容" };
+  if (内容.length > 培育计划上限) return { ok: false, error: `计划内容最多 ${培育计划上限} 个字` };
   const r = await 改节点(me, p.id, { phase: "线索", node: MQL不合格去 });
   if (!r.ok) return r;
   await prisma.$transaction(async (tx) => {
     await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 日 } });
     await tx.followPlan.create({
       data: {
-        subject: `潜客培育：项目「${p.name}」MQL 不合格，按计划再跟进`,
+        subject: `潜客培育：${内容}`,
         plannedAt: 日, plannedOn: dayjs(日).format("YYYY-MM-DD"), plannedHasTime: false,
         customerId: p.customerId, ownerId: p.ownerId,
       },

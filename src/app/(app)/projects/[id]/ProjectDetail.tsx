@@ -15,7 +15,7 @@ import { 金额 } from "@/lib/currency";
 import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import type { 出口叫法改动 } from "@/lib/project/stage-dict";
-import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
+import { 有效线索节点, 缺有效沟通, 培育计划上限 } from "@/lib/project/stage-gates";
 import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 判MQLAction } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
@@ -210,6 +210,7 @@ export default function ProjectDetail({
   const [发卡点于, set发卡点于] = useState<string | null>(null);
   const [不合格框, set不合格框] = useState(false);
   const [培育日, set培育日] = useState<string | null>(null);
+  const [培育计划, set培育计划] = useState("");
   const 当前: 位置 = { phase: p.phase, node: p.node, result: p.result };
   const 字典 = 字典of(p.企业版, p.出口叫法);
   const 节点总数 = 节点总数of(字典);
@@ -372,7 +373,7 @@ export default function ProjectDetail({
                 <Button size="small" type="primary" disabled={忙 || 没有效沟通} onClick={() => void 跑(() => 判MQLAction(p.id, true), "判为合格，已推到线索推进")}>合格</Button>
               </span>
             </Tooltip>
-            <Button size="small" disabled={忙} onClick={() => { set培育日(null); set不合格框(true); }}>不合格，回潜客培育</Button>
+            <Button size="small" disabled={忙} onClick={() => { set培育日(null); set培育计划(""); set不合格框(true); }}>不合格，回潜客培育</Button>
           </div>
         )}
         {没有效沟通 && !判MQL && (
@@ -536,11 +537,11 @@ export default function ProjectDetail({
         open={不合格框}
         title="MQL 不合格：回潜客培育"
         okText="确定"
-        okButtonProps={{ disabled: !培育日, loading: 忙 }}
+        okButtonProps={{ disabled: !培育日 || !培育计划.trim(), loading: 忙 }}
         onCancel={() => set不合格框(false)}
         onOk={async () => {
-          if (!培育日) return;
-          const ok = await 跑(() => 判MQLAction(p.id, false, 培育日), `已回到潜客培育，${培育日} 再跟进`);
+          if (!培育日 || !培育计划.trim()) return;
+          const ok = await 跑(() => 判MQLAction(p.id, false, 培育日, 培育计划), `已回到潜客培育，${培育日} 再跟进`);
           if (ok) set不合格框(false);
         }}
       >
@@ -551,6 +552,16 @@ export default function ProjectDetail({
           value={培育日 ? dayjs(培育日) : null}
           disabledDate={(x) => x.isBefore(dayjs(), "day")}
           onChange={(v) => set培育日(v ? v.format("YYYY-MM-DD") : null)}
+        />
+        <Input.TextArea
+          rows={3}
+          maxLength={培育计划上限}
+          showCount
+          style={{ marginTop: 8 }}
+          value={培育计划}
+          onChange={(e) => set培育计划(e.target.value)}
+          placeholder="下一步计划内容（必填），比如：下月再问一次预算"
+          aria-label="下一步计划内容"
         />
       </Modal>
 

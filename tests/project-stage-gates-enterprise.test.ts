@@ -128,31 +128,34 @@ describe("企业版三大阶段的门", () => {
       expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } })).toMatchObject({ fromNode: "线索验证", toNode: "线索推进", userId: 老板.id });
     });
 
-    it("不合格：退回潜客培育，写下一步时间 + 培育跟进计划；日期不填、早于今天拦", async () => {
+    it("不合格：退回潜客培育，写下一步时间 + 培育跟进计划；日期不填、早于今天、计划内容不填拦", async () => {
       const p = await 项目({ node: "线索验证" });
       expect(await 判MQL(乙, p.id, false)).toEqual({ ok: false, error: "MQL 不合格要定下一次培育跟进的日期" });
       expect(await 判MQL(乙, p.id, false, dayjs().subtract(1, "day").format("YYYY-MM-DD"))).toEqual({ ok: false, error: "下一次培育跟进不能早于今天" });
+      expect(await 判MQL(乙, p.id, false, 明天())).toEqual({ ok: false, error: "MQL 不合格要写下一次培育跟进的计划内容" });
+      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "   ")).toEqual({ ok: false, error: "MQL 不合格要写下一次培育跟进的计划内容" });
+      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "长".repeat(201))).toEqual({ ok: false, error: "计划内容最多 200 个字" });
       expect((await 现(p.id)).node).toBe("线索验证");
       expect(await prisma.followPlan.count()).toBe(0);
 
-      expect(await 判MQL(乙, p.id, false, 明天())).toEqual({ ok: true });
+      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "  下月再问预算  ")).toEqual({ ok: true });
       const 后 = await 现(p.id);
       expect(后).toMatchObject({ phase: "线索", node: "潜客培育" });
       expect(dayjs(后.nextStepAt).format("YYYY-MM-DD")).toBe(明天());
       const 计划 = await prisma.followPlan.findFirstOrThrow();
       expect(计划).toMatchObject({ customerId: 客户, ownerId: 乙.id, plannedOn: 明天(), done: false });
-      expect(计划.subject).toContain("MQL 不合格");
+      expect(计划.subject).toBe("潜客培育：下月再问预算");
     });
 
     it("只有停在线索验证的能判；不是企业版判不了，一行不写", async () => {
       for (const 补 of [{ node: "潜客培育" }, { node: "线索推进" }, { node: "线索验证", result: "线索流失" }, { phase: "商机", node: "明确需求" }]) {
         const p = await 项目(补);
-        expect(await 判MQL(老板, p.id, false, 明天())).toEqual({ ok: false, error: "只有停在「线索验证」的项目能判 MQL" });
+        expect(await 判MQL(老板, p.id, false, 明天(), new Date(), "再问")).toEqual({ ok: false, error: "只有停在「线索验证」的项目能判 MQL" });
       }
       expect(await 判MQL(老板, "没这个", true)).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
       vi.stubEnv("CRM_ENTERPRISE", "");
       const q = await 项目({ node: "线索验证" });
-      expect(await 判MQL(老板, q.id, false, 明天())).toEqual({ ok: false, error: "MQL 判定只在企业版有" });
+      expect(await 判MQL(老板, q.id, false, 明天(), new Date(), "再问")).toEqual({ ok: false, error: "MQL 判定只在企业版有" });
       expect(await prisma.followPlan.count()).toBe(0);
       expect(await prisma.projectNodeLog.count()).toBe(0);
     });
