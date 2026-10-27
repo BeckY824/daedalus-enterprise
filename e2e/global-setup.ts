@@ -13,7 +13,10 @@ export default function globalSetup() {
   for (const f of [E2E_DB, `${E2E_DB}-wal`, `${E2E_DB}-shm`]) rmSync(f, { force: true });
   writeFileSync(E2E_DB, "");
 
-  const env = { ...process.env, DATABASE_URL: `file:${E2E_DB}` };
+  // 企业版开关开着跑这套时（CRM_ENTERPRISE=1），seed 只会建 admin；用例要登张三、李四，测试账号照建。
+  // 只影响造账号这一步，服务器那边照样开着企业版
+  const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: `file:${E2E_DB}` };
+  delete env.CRM_ENTERPRISE;
   execFileSync("npx", ["prisma", "db", "push", "--skip-generate", "--accept-data-loss"], {
     cwd: ROOT, env, stdio: "pipe",
   });
