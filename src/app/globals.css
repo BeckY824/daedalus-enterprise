@@ -1121,6 +1121,27 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-mini-line > .rec-mini-cut { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rec-mini-line > .rec-mini-amt { flex: none; }
 .rec-empty { padding: 4px 8px 8px; font-size: var(--fs-note); color: var(--text-faint); }
+/* 企业版联系人小卡（10-27 会议：联系方式完整展示）：姓名 / 关键 / 职位一行，下面电话 / 邮箱 / 微信各一行，长了换行不截断 */
+.rec-contact { position: relative; padding: 6px 8px; border-radius: var(--r-card); font-size: var(--fs-body); }
+.rec-contact:hover { background: var(--row-hover); }
+.rec-contact-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.rec-contact-n { min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+.rec-contact-p { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
+.rec-contact-line { padding-left: 34px; font-size: var(--fs-note); line-height: 20px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.rec-contact-k { margin-right: var(--s2); color: var(--text-muted); }
+.rec-contact .rec-mini-acts { top: 4px; translate: none; }
+.rec-contact:hover .rec-mini-acts { opacity: 1; pointer-events: auto; }
+
+/* 企业版项目详情两栏（10-27 会后排版，ProjectDetail）：左边节点 / 沟通 / 卡点，右边资料 320px。
+   按容器宽不按视口：桌面端开着 AI 侧栏时主区变窄，视口量不准。窄于 880 退一栏，干活的在上 */
+.proj-wrap { container-type: inline-size; }
+.proj-2col { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+/* 列要钉成 minmax(0,1fr)：默认的隐式列按内容最小宽度算，一个没空格的超长客户名能把 320 的右栏撑到上千（10-27 单测量出 1119px） */
+.proj-main, .proj-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+.proj-side .cust-link-t { overflow-wrap: anywhere; }
+@container (max-width: 880px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
+/* 基本资料「展开更多 N 项」、左栏底部「更多」：文字按钮靠左，和字段左缘对齐 */
+.rec-sec-more, .rec-more .ant-btn { padding: 0 8px; height: auto; }
 
 .rec-composer { padding: 14px 16px 12px; }
 .rec-composer textarea { font-size: var(--fs-section); }

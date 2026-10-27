@@ -292,8 +292,180 @@ export default function ProjectDetail({
     }
   };
 
+  // 各张卡先摆成常量：企业版两栏、别的版本照原来一栏，摆法不同、卡是同一份
+  const 节点卡 = (
+    <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>现在在</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>
+            {p.phase} · {p.node}
+            {p.result && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}>{结局叫法(p.result, 字典)}</Tag>}
+          </div>
+        </div>
+        <Space wrap>
+          <Select
+            style={{ width: 200 }}
+            placeholder={异常 ? "改到某个节点就算恢复" : "改到…"}
+            value={null}
+            disabled={!节点可改 || 忙}
+            title={节点不能改}
+            options={去处们(当前, !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通, 字典)}
+            onChange={(v: string | null) => {
+              if (!v) return;
+              const { phase, node, result } = JSON.parse(v) as 位置;
+              改到({ phase, node, ...(result ? { result } : {}) });
+            }}
+          />
+          {/* 灰掉的按钮收不到鼠标事件，外面包一层 span 才能悬停出原因 */}
+          <Tooltip title={节点不能改 ?? p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined) ?? (p.必填?.只能靠填齐 ? "这个节点填齐必填后自动往前推；要先推请找老板或主管" : 下 ? undefined : p.result ? "先改回某个节点再往前推" : "这是最后一个节点了，接下来点结局")}>
+            <span>
+              <Button type="primary" disabled={!节点可改 || 忙 || !下 || !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通} onClick={() => 下 && 改到(下)}>
+                {下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步"}
+              </Button>
+            </span>
+          </Tooltip>
+        </Space>
+      </div>
+      <Progress
+        style={{ marginTop: 12, marginBottom: 0 }}
+        percent={Math.round(((p.result === "成功交付" ? 节点总数 : 节点序号(当前, 字典)) / 节点总数) * 100)}
+        showInfo={false}
+        status={异常 ? "exception" : p.result === "成功交付" ? "success" : "active"}
+        aria-label={`第 ${节点序号(当前, 字典) + 1} 个节点，共 ${节点总数} 个`}
+      />
+      {判MQL && (
+        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span style={{ color: "var(--text-muted)" }}>MQL 判断：</span>
+          <Tooltip title={没有效沟通 ? 缺有效沟通 : undefined}>
+            <span>
+              <Button size="small" type="primary" disabled={忙 || 没有效沟通} onClick={() => void 跑(() => 判MQLAction(p.id, true), "判为合格，已推到线索推进")}>合格</Button>
+            </span>
+          </Tooltip>
+          <Button size="small" disabled={忙} onClick={() => { set培育日(null); set培育计划(""); set不合格框(true); }}>不合格，回潜客培育</Button>
+        </div>
+      )}
+      {没有效沟通 && !判MQL && (
+        <div style={{ marginTop: 12, color: "var(--text-muted)" }}>还没有客户明确回复的沟通：记一条、选「客户明确回复了」，才能推过线索验证</div>
+      )}
+      {p.必填 && (
+        <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
+          {p.必填.还差.length
+            ? `这个节点填齐必填后自动往前推，还差：${p.必填.还差.map(必填叫法).join("、")}`
+            : "这个节点的必填都齐了"}
+        </div>
+      )}
+    </Card>
+  );
+  const 项目卡 = (
+    <Card title="项目" extra={可改 && <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>}>
+      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后显示</span>}</div>
+      {p.来源线索 && (
+        <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
+      )}
+      {p.contact && <div style={行样}><span style={键样}>联系人</span>{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</div>}
+      <div style={行样}><span style={键样}>金额</span>{金额(p.amount, p.currency)}</div>
+      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>}
+      {/* 在公海里时 ownerName 是原负责人：不写成「负责人 X」，也不把系统收回说成 X 放回的（QA #14） */}
+      <div style={行样}><span style={键样}>负责人</span>{p.pooled ? <span>在公海里<span style={{ color: "var(--text-muted)" }}>（原负责人 {p.ownerName}{进公海说法(p.进公海, p.ownerName)}）</span></span> : p.ownerName}</div>
+      {p.historyOwners.length > 0 && (
+        <div style={行样}><span style={键样}>历史</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }} title="历史负责人：把这个项目放回过公海的人">{p.historyOwners.join("、")}</span></div>
+      )}
+      {p.nextStepAt && !p.pooled && <div style={行样}><span style={键样}>下一步</span>{p.nextStepAt}</div>}
+      {p.回收日 && <div style={{ ...行样, color: 回收临近(p.回收日) ? "var(--warning-text)" : "var(--text-muted)" }}>{p.回收日} 前没人跟进，会自动回到项目公海</div>}
+      {p.remark && <div style={{ marginTop: 8, whiteSpace: "pre-wrap", color: "var(--text-muted)" }}>{p.remark}</div>}
+    </Card>
+  );
+  const 交付卡 = 显示交付 && (
+    <Card title="交付">
+      {(["balanceSettled", "acceptancePassed"] as const).map((k) => {
+        const 勾了 = p[k];
+        const 谁 = k === "balanceSettled" ? p.balanceSettledBy : p.acceptancePassedBy;
+        const 何时 = k === "balanceSettled" ? p.balanceSettledAt : p.acceptancePassedAt;
+        return (
+          <div key={k} style={{ marginBottom: 8 }}>
+            <Checkbox
+              checked={勾了}
+              disabled={!可改 || 忙 || (勾了 && p.result === "成功交付")}
+              title={不能改 ?? (勾了 && p.result === "成功交付" ? "已经成功交付了；要取消先把节点改回去" : undefined)}
+              onChange={(e) => void 跑(() => 勾项目交付(p.id, k, e.target.checked))}
+            >
+              {k === "balanceSettled" ? "尾款结清" : "验收通过"}
+            </Checkbox>
+            {勾了 && 谁 && <span style={{ color: "var(--text-muted)", marginLeft: 4 }}>{谁} · {fmtDateTime(何时)}</span>}
+          </div>
+        );
+      })}
+      <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
+        {p.result === "成功交付" ? "已经成功交付" : 差.length ? `两项都勾上才能点成功交付（还差${差.join("、")}）` : "两项都勾上了，可以点成功交付"}
+      </div>
+      {p.result !== "成功交付" && (
+        <Button
+          style={{ marginTop: 8 }}
+          disabled={!可改 || 忙 || 差.length > 0}
+          title={不能改 ?? (差.length ? `还差${差.join("、")}` : undefined)}
+          onClick={() => 改到({ phase: "订单", node: p.phase === "订单" ? p.node : 字典.节点们.订单[字典.节点们.订单.length - 1], result: "成功交付" })}
+        >
+          成功交付
+        </Button>
+      )}
+    </Card>
+  );
+  const 项目组卡 = <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />;
+  const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑} />;
+  const 变更卡 = (
+    <Card title="节点变更">
+      <Timeline
+        items={p.logs.map((l) => ({
+          color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : l.to.result === "成功交付" ? "green" : "blue",
+          content: (
+            <div>
+              <div>{l.kind !== "node" ? 换人文字(l) : l.from ? `${位置文字(l.from, 字典)} → ${位置文字(l.to, 字典)}` : `建档，落在 ${位置文字(l.to, 字典)}`}</div>
+              {l.category && <div style={{ color: "var(--danger-text)" }}>异常类别：{l.category}</div>}
+              {l.kind === "node" && l.reason && l.reason !== 超时理由 && <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>}
+              {/* 换人那几行：企业版记的回收原因 / 分配方式（10-27）原样淡色显示；超时、停用上一行已经说了 */}
+              {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>}
+              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
+            </div>
+          ),
+        }))}
+      />
+    </Card>
+  );
+  const 沟通卡 = (
+    <Card
+      title="沟通"
+      extra={
+        p.能记沟通 ? (
+          // 企业版：沟通是这一页最常做的事，主按钮（10-27 会后排版）
+          p.企业版 ? <Button type="primary" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条沟通</Button> : <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>
+        ) : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>
+      }
+    >
+      {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后显示"}</div>}
+      {p.followUps.map((f) => (
+        <div key={f.id} style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <FollowTypeCell type={f.type} />
+            <Tag>{f.node}</Tag>
+            {f.code && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{f.code}</span>}
+            {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
+            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
+            {卡点?.能发 && <Button type="link" size="small" style={{ padding: 0 }} onClick={() => set发卡点于(f.id)}>发卡点</Button>}
+          </div>
+          <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{f.content}</div>
+        </div>
+      ))}
+    </Card>
+  );
+  const 卡点区 = 卡点 && (
+    <Card title={`卡点（${卡点.们.length}）`} extra={卡点.能发 && <span style={{ color: "var(--text-muted)", fontSize: 12 }}>在沟通记录上点「发卡点」</span>}>
+      <BlockerList 们={卡点.们} 人们={卡点.人们} 空="还没有卡点" />
+    </Card>
+  );
+
   return (
-    <div style={{ maxWidth: 960 }}>
+    <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
       <PageHead
         title={p.name}
         subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
@@ -330,175 +502,45 @@ export default function ProjectDetail({
         />
       )}
 
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>现在在</div>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>
-              {p.phase} · {p.node}
-              {p.result && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}>{结局叫法(p.result, 字典)}</Tag>}
+      {p.企业版 ? (
+        <>
+          {/* 企业版两栏（10-27 会后排版）：左边干活——节点、沟通、卡点；右边看资料——项目、交付、项目组、提成、节点变更。
+              容器窄了（有 AI 侧栏、窗口小）退成一栏，干活的在上（globals.css .proj-2col） */}
+          <div className="proj-2col">
+            <div className="proj-main">
+              {节点卡}
+              {沟通卡}
+              {卡点区}
             </div>
+            <aside className="proj-side" aria-label="项目资料">
+              {项目卡}
+              {交付卡}
+              {项目组卡}
+              {提成区}
+              {变更卡}
+            </aside>
           </div>
-          <Space wrap>
-            <Select
-              style={{ width: 200 }}
-              placeholder={异常 ? "改到某个节点就算恢复" : "改到…"}
-              value={null}
-              disabled={!节点可改 || 忙}
-              title={节点不能改}
-              options={去处们(当前, !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通, 字典)}
-              onChange={(v: string | null) => {
-                if (!v) return;
-                const { phase, node, result } = JSON.parse(v) as 位置;
-                改到({ phase, node, ...(result ? { result } : {}) });
-              }}
-            />
-            {/* 灰掉的按钮收不到鼠标事件，外面包一层 span 才能悬停出原因 */}
-            <Tooltip title={节点不能改 ?? p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined) ?? (p.必填?.只能靠填齐 ? "这个节点填齐必填后自动往前推；要先推请找老板或主管" : 下 ? undefined : p.result ? "先改回某个节点再往前推" : "这是最后一个节点了，接下来点结局")}>
-              <span>
-                <Button type="primary" disabled={!节点可改 || 忙 || !下 || !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通} onClick={() => 下 && 改到(下)}>
-                  {下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步"}
-                </Button>
-              </span>
-            </Tooltip>
-          </Space>
-        </div>
-        <Progress
-          style={{ marginTop: 12, marginBottom: 0 }}
-          percent={Math.round(((p.result === "成功交付" ? 节点总数 : 节点序号(当前, 字典)) / 节点总数) * 100)}
-          showInfo={false}
-          status={异常 ? "exception" : p.result === "成功交付" ? "success" : "active"}
-          aria-label={`第 ${节点序号(当前, 字典) + 1} 个节点，共 ${节点总数} 个`}
-        />
-        {判MQL && (
-          <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            <span style={{ color: "var(--text-muted)" }}>MQL 判断：</span>
-            <Tooltip title={没有效沟通 ? 缺有效沟通 : undefined}>
-              <span>
-                <Button size="small" type="primary" disabled={忙 || 没有效沟通} onClick={() => void 跑(() => 判MQLAction(p.id, true), "判为合格，已推到线索推进")}>合格</Button>
-              </span>
-            </Tooltip>
-            <Button size="small" disabled={忙} onClick={() => { set培育日(null); set培育计划(""); set不合格框(true); }}>不合格，回潜客培育</Button>
-          </div>
-        )}
-        {没有效沟通 && !判MQL && (
-          <div style={{ marginTop: 12, color: "var(--text-muted)" }}>还没有客户明确回复的沟通：记一条、选「客户明确回复了」，才能推过线索验证</div>
-        )}
-        {p.必填 && (
-          <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
-            {p.必填.还差.length
-              ? `这个节点填齐必填后自动往前推，还差：${p.必填.还差.map(必填叫法).join("、")}`
-              : "这个节点的必填都齐了"}
-          </div>
-        )}
-      </Card>
+        </>
+      ) : (
+        <>
+          {节点卡}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 16 }}>
-        <Card title="项目" extra={可改 && <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>}>
-          <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后显示</span>}</div>
-          {p.来源线索 && (
-            <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
-          )}
-          {p.contact && <div style={行样}><span style={键样}>联系人</span>{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</div>}
-          <div style={行样}><span style={键样}>金额</span>{金额(p.amount, p.currency)}</div>
-          {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>}
-          {/* 在公海里时 ownerName 是原负责人：不写成「负责人 X」，也不把系统收回说成 X 放回的（QA #14） */}
-          <div style={行样}><span style={键样}>负责人</span>{p.pooled ? <span>在公海里<span style={{ color: "var(--text-muted)" }}>（原负责人 {p.ownerName}{进公海说法(p.进公海, p.ownerName)}）</span></span> : p.ownerName}</div>
-          {p.historyOwners.length > 0 && (
-            <div style={行样}><span style={键样}>历史</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }} title="历史负责人：把这个项目放回过公海的人">{p.historyOwners.join("、")}</span></div>
-          )}
-          {p.nextStepAt && !p.pooled && <div style={行样}><span style={键样}>下一步</span>{p.nextStepAt}</div>}
-          {p.回收日 && <div style={{ ...行样, color: 回收临近(p.回收日) ? "var(--warning-text)" : "var(--text-muted)" }}>{p.回收日} 前没人跟进，会自动回到项目公海</div>}
-          {p.remark && <div style={{ marginTop: 8, whiteSpace: "pre-wrap", color: "var(--text-muted)" }}>{p.remark}</div>}
-        </Card>
-        {显示交付 && <Card title="交付">
-          {(["balanceSettled", "acceptancePassed"] as const).map((k) => {
-            const 勾了 = p[k];
-            const 谁 = k === "balanceSettled" ? p.balanceSettledBy : p.acceptancePassedBy;
-            const 何时 = k === "balanceSettled" ? p.balanceSettledAt : p.acceptancePassedAt;
-            return (
-              <div key={k} style={{ marginBottom: 8 }}>
-                <Checkbox
-                  checked={勾了}
-                  disabled={!可改 || 忙 || (勾了 && p.result === "成功交付")}
-                  title={不能改 ?? (勾了 && p.result === "成功交付" ? "已经成功交付了；要取消先把节点改回去" : undefined)}
-                  onChange={(e) => void 跑(() => 勾项目交付(p.id, k, e.target.checked))}
-                >
-                  {k === "balanceSettled" ? "尾款结清" : "验收通过"}
-                </Checkbox>
-                {勾了 && 谁 && <span style={{ color: "var(--text-muted)", marginLeft: 4 }}>{谁} · {fmtDateTime(何时)}</span>}
-              </div>
-            );
-          })}
-          <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
-            {p.result === "成功交付" ? "已经成功交付" : 差.length ? `两项都勾上才能点成功交付（还差${差.join("、")}）` : "两项都勾上了，可以点成功交付"}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 16 }}>
+            {项目卡}
+            {交付卡}
           </div>
-          {p.result !== "成功交付" && (
-            <Button
-              style={{ marginTop: 8 }}
-              disabled={!可改 || 忙 || 差.length > 0}
-              title={不能改 ?? (差.length ? `还差${差.join("、")}` : undefined)}
-              onClick={() => 改到({ phase: "订单", node: p.phase === "订单" ? p.node : 字典.节点们.订单[字典.节点们.订单.length - 1], result: "成功交付" })}
-            >
-              成功交付
-            </Button>
-          )}
-        </Card>}
-      </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />
-      </div>
+          <div style={{ marginBottom: 16 }}>{项目组卡}</div>
 
-      {p.提成 && (
-        <div style={{ marginBottom: 16 }}>
-          <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑} />
-        </div>
+          {提成区 && <div style={{ marginBottom: 16 }}>{提成区}</div>}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+            {变更卡}
+            {沟通卡}
+            {卡点区}
+          </div>
+        </>
       )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-        <Card title="节点变更">
-          <Timeline
-            items={p.logs.map((l) => ({
-              color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : l.to.result === "成功交付" ? "green" : "blue",
-              content: (
-                <div>
-                  <div>{l.kind !== "node" ? 换人文字(l) : l.from ? `${位置文字(l.from, 字典)} → ${位置文字(l.to, 字典)}` : `建档，落在 ${位置文字(l.to, 字典)}`}</div>
-                  {l.category && <div style={{ color: "var(--danger-text)" }}>异常类别：{l.category}</div>}
-                  {l.kind === "node" && l.reason && l.reason !== 超时理由 && <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>}
-                  {/* 换人那几行：企业版记的回收原因 / 分配方式（10-27）原样淡色显示；超时、停用上一行已经说了 */}
-                  {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>}
-                  <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
-                </div>
-              ),
-            }))}
-          />
-        </Card>
-        <Card
-          title="沟通"
-          extra={p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button> : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>}
-        >
-          {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后显示"}</div>}
-          {p.followUps.map((f) => (
-            <div key={f.id} style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <FollowTypeCell type={f.type} />
-                <Tag>{f.node}</Tag>
-                {f.code && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{f.code}</span>}
-                {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
-                <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-                {卡点?.能发 && <Button type="link" size="small" style={{ padding: 0 }} onClick={() => set发卡点于(f.id)}>发卡点</Button>}
-              </div>
-              <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{f.content}</div>
-            </div>
-          ))}
-        </Card>
-        {卡点 && (
-          <Card title={`卡点（${卡点.们.length}）`} extra={卡点.能发 && <span style={{ color: "var(--text-muted)", fontSize: 12 }}>在沟通记录上点「发卡点」</span>}>
-            <BlockerList 们={卡点.们} 人们={卡点.人们} 空="还没有卡点" />
-          </Card>
-        )}
-      </div>
 
       {可改 && 编辑开着 && (
         <ProjectEditModal

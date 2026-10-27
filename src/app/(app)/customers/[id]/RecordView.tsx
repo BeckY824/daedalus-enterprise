@@ -85,6 +85,18 @@ type Entry =
   | { kind: "contract"; at: string; c: ContractRow };
 
 /** 负责人下拉的选项：现任不在候选里（管理员、已停用）时补进去，标上「（不在候选里）」，别显示成一串 id */
+/**
+ * 企业版的电话 / 邮箱点一下就拨 / 写信（10-27 会议）。电话已在服务端过了脱敏器，打了码（带 *）的号拨不出去，只显示不加链接
+ */
+function 号码链接({ kind, value }: { kind: "tel" | "mailto"; value: string }) {
+  if (kind === "tel") {
+    const 拨 = value.replace(/[^\d+]/g, "");
+    if (value.includes("*") || !拨) return <>{value}</>;
+    return <a href={`tel:${拨}`}>{value}</a>;
+  }
+  return <a href={`mailto:${value}`}>{value}</a>;
+}
+
 function 带上现任(users: { id: string; name: string; email: string }[], 现任: string | null, 现任名: string | null | undefined) {
   const 选项 = 成员选项(users);
   if (现任 && !users.some((u) => u.id === 现任)) 选项.unshift({ value: 现任, label: `${现任名 ?? "（已删除的成员）"}（不在候选里）` });
@@ -99,6 +111,7 @@ export default function RecordView({
   opportunities,
   报价记录: 报价记录档 = [],
   项目们 = null,
+  旺旺们 = [],
   tasks,
   plan,
   followUps,
@@ -129,6 +142,14 @@ export default function RecordView({
   const revertChoice = useRef<string>(REVERT_CHOICES[0].value);
   const [报价全开, set报价全开] = useState(false);
   /*
+    企业版项目模式（10-27 会议：前台冗余优化，先做一版、对方终稿到了再调）：
+    基本资料只摆填了的，没填的收进「展开更多」；联系人每人一张小卡，电话 / 邮箱 / 微信各一行完整显示、点了能拨能发；
+    推荐关系、签约收进左栏最底下的「更多」。个人版、团队版不变
+  */
+  const 企业 = 项目们 !== null;
+  const [资料全开, set资料全开] = useState(false);
+  const [更多开, set更多开] = useState(false);
+  /*
     外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」、多出订单号；
     不摆预计签约、推荐关系、渠道负责人；档案里多国家 / WhatsApp / 微信 / 邮箱 / 来源
   */
@@ -142,6 +163,22 @@ export default function RecordView({
   /** 有 WhatsApp 号：记跟进、排计划、完成小框的方式都默认 WhatsApp（2026-10-17 PR26 手测，和手机上一样） */
   const 有WhatsApp = !!档?.whatsapp?.trim();
   const 官网 = 官网网址(档?.website);
+  /** 企业版：这一格摆不摆。填了的总摆；没填的点「展开更多」才摆，摆出来照样点一下就能填 */
+  const 摆 = (v: unknown) => !企业 || 资料全开 || (v !== null && v !== undefined && v !== "");
+  /** 企业版：档案那组（国家、邮箱、微信……）展开后没填过也摆，好补 */
+  const 摆档案组 = 摆档案 || (企业 && 资料全开);
+  const 摆渠道负责人 = !外贸 && !独自一人(users, customer.channelOwnerId);
+  /** 企业版收起了几格没填的：数给「展开更多 N 项」 */
+  const 没填几项 = 企业
+    ? [
+        customer.phone, customer.school, customer.major, customer.grade,
+        档?.country, 档?.whatsapp, 档?.email, 档?.wechat, 档?.alibabaId, 档?.source, 档?.level, 档?.website,
+        ...(摆渠道负责人 ? [customer.channelOwnerId] : []),
+        ...(!外贸 ? [customer.expectedSignAt] : []),
+        customer.signedAmount > 0 ? 1 : null,
+        customer.remark,
+      ].filter((v) => v === null || v === undefined || v === "").length
+    : 0;
   /** 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp */
   const 背调档案 = useMemo(
     () => ({ company: customer.school, country: 档?.country, website: 档?.website, phone: customer.phone, whatsapp: 档?.whatsapp }),
@@ -403,6 +440,41 @@ export default function RecordView({
     router.refresh();
   }
 
+  /** 推荐关系那一节：个人版 / 团队版摆在基本资料下面，企业版收进左栏最底下的「更多」 */
+  const 推荐节 = !外贸 && (
+          <div className="rec-sec">
+            <div className="rec-sec-t">
+              <span>推荐关系</span>
+            </div>
+            <div className="rec-field" style={{ cursor: "default" }}>
+              <div className="rec-field-k">推荐人</div>
+              <div className="rec-field-v">{customer.referrerName ?? <span style={{ color: "var(--text-muted)" }}>自然流量</span>}</div>
+            </div>
+            <Tooltip title="推荐链往上第二代，不足两代取链条最顶端" placement="left">
+              <div className="rec-field" style={{ cursor: "default" }}>
+                <div className="rec-field-k">渠道归属</div>
+                <div className="rec-field-v">{customer.attributionName ?? "—"}</div>
+              </div>
+            </Tooltip>
+          </div>
+  );
+
+  /** 联系人右边的编辑 / 删除：两种摆法共用 */
+  const 联系人操作 = (c: ContactRow) => !只读 && (
+    <span className="rec-mini-acts">
+      <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${c.name}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
+      <Button
+        type="text"
+        size="small"
+        danger
+        icon={<DeleteOutlined />}
+        aria-label={`删除联系人 ${c.name}`}
+        // 先问只移出还是彻底删（2026-10-01 用户反馈：删完联系人页里也没了）
+        onClick={() => 问怎么拿掉(c)}
+      />
+    </span>
+  );
+
   return (
     <>
       <div className="rec-head">
@@ -542,10 +614,12 @@ export default function RecordView({
               <span>基本资料</span>
               {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => setCustOpen(true)}>编辑全部</Button>}
             </div>
-            <div className="rec-field" style={{ cursor: "default" }}>
-              <div className="rec-field-k">电话</div>
-              <div className="rec-field-v">{customer.phone || <span className="rec-field-empty">未填</span>}</div>
-            </div>
+            {摆(customer.phone) && (
+              <div className="rec-field" style={{ cursor: "default" }}>
+                <div className="rec-field-k">电话</div>
+                <div className="rec-field-v">{customer.phone ? (企业 ? <号码链接 kind="tel" value={customer.phone} /> : customer.phone) : <span className="rec-field-empty">未填</span>}</div>
+              </div>
+            )}
             {sourceLead && <div className="rec-field" style={{cursor:"default"}} data-testid="customer-lead-origin">
               <div className="rec-field-k">来源线索</div>
               <div className="rec-field-v" style={{overflowWrap:"anywhere"}}>
@@ -553,20 +627,27 @@ export default function RecordView({
                 <div style={{color:"var(--text-muted)",fontSize:12}}>编号 {sourceLead.id} · 转化时间 {sourceLead.convertedAt ? fmtDateTime(sourceLead.convertedAt) : "未记录"}</div>
               </div>
             </div>}
-            <InlineField customerId={customer.id} field="school" label={b.fields.school} value={customer.school} />
-            <InlineField customerId={customer.id} field="major" label={b.fields.major} value={customer.major} />
-            <InlineField customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />
-            {摆档案 && (
+            {摆(customer.school) && <InlineField customerId={customer.id} field="school" label={b.fields.school} value={customer.school} />}
+            {摆(customer.major) && <InlineField customerId={customer.id} field="major" label={b.fields.major} value={customer.major} />}
+            {摆(customer.grade) && <InlineField customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />}
+            {摆档案组 && (
               <>
-                <InlineField customerId={customer.id} field="country" label="国家" value={档?.country ?? null} kind="combo" options={国家候选.flatMap((g) => g.国家).map((x) => ({ value: x, label: x }))} />
-                <InlineField customerId={customer.id} field="whatsapp" label="WhatsApp" value={档?.whatsapp ?? null} />
-                <InlineField customerId={customer.id} field="email" label="邮箱" value={档?.email ?? null} />
-                <InlineField customerId={customer.id} field="wechat" label="微信" value={档?.wechat ?? null} />
-                <InlineField customerId={customer.id} field="alibabaId" label="阿里 ID" value={档?.alibabaId ?? null} />
-                <InlineField customerId={customer.id} field="source" label="来源" value={档?.source ?? null} kind="combo" options={b.sources.map((x) => ({ value: x, label: x }))} />
-                <InlineField customerId={customer.id} field="level" label="客户等级" value={档?.level ?? null} kind="select" options={客户等级.map((x) => ({ value: x, label: 客户等级说明[x] }))} placeholder="没分级" 可清空 />
-                <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />
+                {摆(档?.country) && <InlineField customerId={customer.id} field="country" label="国家" value={档?.country ?? null} kind="combo" options={国家候选.flatMap((g) => g.国家).map((x) => ({ value: x, label: x }))} />}
+                {摆(档?.whatsapp) && <InlineField customerId={customer.id} field="whatsapp" label="WhatsApp" value={档?.whatsapp ?? null} />}
+                {摆(档?.email) && <InlineField customerId={customer.id} field="email" label="邮箱" value={档?.email ?? null} />}
+                {摆(档?.wechat) && <InlineField customerId={customer.id} field="wechat" label="微信" value={档?.wechat ?? null} />}
+                {摆(档?.alibabaId) && <InlineField customerId={customer.id} field="alibabaId" label="阿里 ID" value={档?.alibabaId ?? null} />}
+                {摆(档?.source) && <InlineField customerId={customer.id} field="source" label="来源" value={档?.source ?? null} kind="combo" options={b.sources.map((x) => ({ value: x, label: x }))} />}
+                {摆(档?.level) && <InlineField customerId={customer.id} field="level" label="客户等级" value={档?.level ?? null} kind="select" options={客户等级.map((x) => ({ value: x, label: 客户等级说明[x] }))} placeholder="没分级" 可清空 />}
+                {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
               </>
+            )}
+            {/* 企业版：建档第一步选了旺旺时，旺旺 ID 只在联系方式子表里（客户表、档案都没有这一格），只读摆出来 */}
+            {企业 && 旺旺们.length > 0 && (
+              <div className="rec-field" style={{ cursor: "default" }}>
+                <div className="rec-field-k">旺旺 ID</div>
+                <div className="rec-field-v">{旺旺们.join("、")}</div>
+              </div>
             )}
             {/* 选项里带上现任：负责人是管理员或已停用时不在候选里，原来下拉直接显示一串 id（排查 D8）。
                 一个人用（桌面端）时这两格不摆：下拉里只有自己，摆着只是让人多想一下（和客户表单同一个 独自一人 规则） */}
@@ -593,35 +674,25 @@ export default function RecordView({
               </Tooltip>
             )}
             {/* 渠道负责人默认跟着推荐链；这里改的是这一位的单独订正，清空即恢复按推荐链 */}
-            {!外贸 && !独自一人(users, customer.channelOwnerId) && (
+            {摆渠道负责人 && 摆(customer.channelOwnerId) && (
               <InlineField customerId={customer.id} field="channelOwnerId" label="渠道负责人" value={customer.channelOwnerId} kind="select" options={带上现任(users, customer.channelOwnerId, customer.channelOwnerName)} placeholder="按推荐链自动确定" 可清空 />
             )}
-            {!外贸 && <InlineField customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder="未定" />}
-            <div className="rec-field" style={{ cursor: "default" }}>
-              <div className="rec-field-k">{叫}金额</div>
-              <div className="rec-field-v">{customer.signedAmount > 0 ? 已签约文字 : <span className="rec-field-empty">{是订单 ? "还没有订单" : "未签约"}</span>}</div>
-            </div>
-            <InlineField customerId={customer.id} field="remark" label="备注" value={customer.remark} kind="textarea" placeholder="点击写备注" />
-          </div>
-
-          {!外贸 && (
-          <div className="rec-sec">
-            <div className="rec-sec-t">
-              <span>推荐关系</span>
-            </div>
-            <div className="rec-field" style={{ cursor: "default" }}>
-              <div className="rec-field-k">推荐人</div>
-              <div className="rec-field-v">{customer.referrerName ?? <span style={{ color: "var(--text-muted)" }}>自然流量</span>}</div>
-            </div>
-            <Tooltip title="推荐链往上第二代，不足两代取链条最顶端" placement="left">
+            {!外贸 && 摆(customer.expectedSignAt) && <InlineField customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder="未定" />}
+            {摆(customer.signedAmount > 0 ? 1 : null) && (
               <div className="rec-field" style={{ cursor: "default" }}>
-                <div className="rec-field-k">渠道归属</div>
-                <div className="rec-field-v">{customer.attributionName ?? "—"}</div>
+                <div className="rec-field-k">{叫}金额</div>
+                <div className="rec-field-v">{customer.signedAmount > 0 ? 已签约文字 : <span className="rec-field-empty">{是订单 ? "还没有订单" : "未签约"}</span>}</div>
               </div>
-            </Tooltip>
-
+            )}
+            {摆(customer.remark) && <InlineField customerId={customer.id} field="remark" label="备注" value={customer.remark} kind="textarea" placeholder="点击写备注" />}
+            {没填几项 > 0 && (
+              <Button type="link" size="small" className="rec-sec-more" onClick={() => set资料全开(!资料全开)} aria-expanded={资料全开}>
+                {资料全开 ? "收起没填的" : `展开更多 ${没填几项} 项`}
+              </Button>
+            )}
           </div>
-          )}
+
+          {!企业 && 推荐节}
 
           <div className="rec-sec">
             <div className="rec-sec-t">
@@ -629,7 +700,24 @@ export default function RecordView({
               {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
             </div>
             {contacts.length === 0 && <div className="rec-empty">还没有联系人</div>}
-            {contacts.map((c) => (
+            {contacts.map((c) =>
+              企业 ? (
+                /* 企业版（10-27 会议：联系方式要完整展示）：一人一张小卡，电话 / 邮箱 / 微信各占一行、长了换行不截断。
+                   原来一行只摆「职位或电话」其中一个，有职位就看不到电话 */
+                <div key={c.id} className="rec-contact">
+                  <div className="rec-contact-h">
+                    <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(c.name)}</Avatar>
+                    <span className="rec-contact-n">{c.name}</span>
+                    {c.isPrimary && <Tag color="blue" style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+                    {c.position && <span className="rec-contact-p">{c.position}</span>}
+                  </div>
+                  {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><号码链接 kind="tel" value={c.phone} /></div>}
+                  {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><号码链接 kind="mailto" value={c.email} /></div>}
+                  {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span>{c.wechat}</div>}
+                  {!c.phone && !c.email && !c.wechat && <div className="rec-contact-line rec-field-empty">没留联系方式</div>}
+                  {联系人操作(c)}
+                </div>
+              ) : (
               <div key={c.id} className="rec-mini">
                 <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12 }}>{initial(c.name)}</Avatar>
                 {/* 截断成「母亲…」之后，鼠标停上去得看得到全名 */}
@@ -640,20 +728,10 @@ export default function RecordView({
                 <span className="rec-mini-m">{c.position ?? c.phone ?? ""}</span>
                 {/* 编辑 / 删除平时不占位（审查 M4）：原来两颗图标常驻，三个字的名字被挤成「周明远…」。
                     悬停或键盘焦点进来时盖在右边那段说明上出现，和时间线每条的做法一样 */}
-                {!只读 && <span className="rec-mini-acts">
-                  <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${c.name}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    aria-label={`删除联系人 ${c.name}`}
-                    // 先问只移出还是彻底删（2026-10-01 用户反馈：删完联系人页里也没了）
-                    onClick={() => 问怎么拿掉(c)}
-                  />
-                </span>}
+                {联系人操作(c)}
               </div>
-            ))}
+              ),
+            )}
           </div>
 
           {项目们 ? (
@@ -704,11 +782,21 @@ export default function RecordView({
             </div>
           )}
 
+          {/* 企业版：推荐关系、报价、签约不是天天看的，收进左栏最底下的「更多」，联系人和项目往上提 */}
+          {企业 && (
+            <div className="rec-sec rec-more">
+              <Button type="link" size="small" onClick={() => set更多开(!更多开)} aria-expanded={更多开}>
+                {更多开 ? "收起" : "更多"}：{[!外贸 && "推荐关系", 报价记录.length > 0 && "报价记录", 叫].filter(Boolean).join("、")}
+              </Button>
+            </div>
+          )}
+          {企业 && 更多开 && 推荐节}
+
           {/*
             报价记录（2026-10-03）：这个客户历次报过的产品和单价，新的在前。没报过就不出现这一节（少即是多）。
             先摆 5 行，多了点开——左栏是档案，不是报价单
           */}
-          {报价记录.length > 0 && (
+          {(!企业 || 更多开) && 报价记录.length > 0 && (
             <div className="rec-sec">
               <div className="rec-sec-t">
                 <span>报价记录 {报价记录.length}</span>
@@ -735,6 +823,7 @@ export default function RecordView({
             </div>
           )}
 
+          {(!企业 || 更多开) && (
           <div className="rec-sec">
             <div className="rec-sec-t">
               <span>{叫} {contracts.length > 0 && contracts.length}</span>
@@ -773,6 +862,7 @@ export default function RecordView({
               ),
             )}
           </div>
+          )}
         </aside>
 
         {/* ================= 中栏：时间线 ================= */}

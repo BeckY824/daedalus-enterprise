@@ -91,6 +91,10 @@ export default async function CustomerDetailPage({
       原负责人领不回={!!customer.pool && customer.salesOwnerId === me.id && 拦原负责人()}
       // 历史负责人只企业版摆；记录不管开没开都记着（换负责人那一刻写，开了以后之前的也看得到）
       换负责人记录={企业版() ? await 历史负责人of(customer.id) : []}
+      // 企业版：只记在联系方式子表里的旺旺 ID（建档时第一步选了旺旺，客户表和档案里都没有这一格），基本资料里摆出来
+      旺旺们={企业版()
+        ? (await prisma.contactMethod.findMany({ where: { customerId: customer.id, contactId: null, kind: "wangwang" }, orderBy: { createdAt: "asc" }, select: { value: true } })).map((m) => m.value)
+        : []}
       // 企业版只用项目：商机一节换成这位名下的项目（10-26）
       项目们={(await 企业版只用项目())
         ? await prisma.project.findMany({
