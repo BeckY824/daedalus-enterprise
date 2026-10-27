@@ -52,7 +52,7 @@ async function 打开(新线索: boolean, width = 1280, 能分 = false): Promise
 }
 const 去了 = (page: Page) => page.evaluate(() => (window as unknown as { __去: string[] }).__去);
 
-it("新线索页：标题「新线索」，只有列表，三个线索节点都列出来，新建去项目向导", async () => {
+it("新线索页：标题「新线索」，只有列表，三个线索节点都列出来，新建去 /leads/new（同一个向导）", async () => {
   const { page, errors } = await 打开(true);
   expect(await page.getByRole("heading").first().innerText()).toBe("新线索");
   expect(await page.locator(".ant-segmented").count()).toBe(0);
@@ -62,7 +62,7 @@ it("新线索页：标题「新线索」，只有列表，三个线索节点都�
   expect(t).toContain("线索流失");
   expect(t).toContain("转了商机到「项目」里接着走");
   await page.getByRole("button", { name: "新建新线索" }).click();
-  expect(await 去了(page)).toEqual(["/projects/new"]);
+  expect(await 去了(page)).toEqual(["/leads/new"]);
   expect(errors).toEqual([]); await page.close();
 });
 
