@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
-import { 加字典项, 改字典项, 字典定义, type 字典种类 } from "@/lib/enterprise/dict";
+import { 加字典项, 改字典项, 改分配谁能用, 字典定义, type 字典种类 } from "@/lib/enterprise/dict";
 
 export async function 加企业选项(kind: 字典种类, name: string) {
   try {
@@ -33,5 +33,18 @@ export async function 改企业选项(id: string, patch: { name?: string; active
       revalidatePath("/settings");
     }
     return r.ok ? { ok: true as const } : r;
+  } catch (e) { return 不在了(e); }
+}
+
+/** 分配方式每一项谁能用（按业务角色勾）；规矩在 lib/enterprise/assign-use.ts */
+export async function 存分配谁能用(配置: Record<string, string[]>) {
+  try {
+    const me = await requireUser();
+    const r = await 改分配谁能用(me, 配置);
+    if (r.ok) {
+      await recordAudit({ user: me, action: "update", entity: "Setting", entityId: "enterprise.assign_use", summary: "改了分配方式谁能用", detail: { 谁能用: 配置 } });
+      revalidatePath("/settings");
+    }
+    return r;
   } catch (e) { return 不在了(e); }
 }

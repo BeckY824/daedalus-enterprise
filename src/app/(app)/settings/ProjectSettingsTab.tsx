@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
+import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
 import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
-import { 加企业选项, 改企业选项 } from "./ent-dict-actions";
+import { 加企业选项, 改企业选项, 存分配谁能用 } from "./ent-dict-actions";
 import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterprise/dict-kinds";
 import type { 时限范围 } from "@/lib/enterprise/edit-perm-table";
+import { 分配可选角色, 谁能用, type 分配谁能用配置 } from "@/lib/enterprise/assign-use";
+import { 角色名 } from "@/lib/sync/dept-policy";
 import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
 import { 存卡点默认Action } from "@/app/(app)/projects/blocker-actions";
 import { 卡点类型们, 影响等级们, 时限最大, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -30,6 +32,8 @@ export type 项目设置 = {
   组织规则: 组织规则 | null;
   /** 企业版选项字典（分配方式、回收原因……），按种类分；不是企业版 = null，卡片不出 */
   企业选项: Record<string, 字典项[]> | null;
+  /** 分配方式每一项谁能用（存过的；没存的项按默认）；不是企业版不给 */
+  分配谁能用?: 分配谁能用配置;
   /** 每人手上线索 / 商机阶段的项目数（userId → 个数），算持有上限的口径 */
   持有: Record<string, number>;
   /**
@@ -88,7 +92,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
         停用说明="停用后不能再选；已经用着它的项目不变"
         项们={value.类别们} 挡={value.挡.字典} 忙={忙} 跑={跑} 加={加项目异常类别} 改={改项目异常类别}
       />
-      {value.企业选项 && <EntDictCard 各类={value.企业选项} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
+      {value.企业选项 && <EntDictCard 各类={value.企业选项} 谁能用配置={value.分配谁能用 ?? {}} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
       {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} 忙={忙} 跑={跑} />}
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
@@ -100,8 +104,8 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
 }
 
 /** 企业版选项字典：上面切换是哪一类，下面就是那一类的字典卡。只给选项，哪里都不强制必填 */
-function EntDictCard({ 各类, 挡, 忙, 跑 }: {
-  各类: Record<string, 字典项[]>; 挡: string | null; 忙: boolean;
+function EntDictCard({ 各类, 谁能用配置, 挡, 忙, 跑 }: {
+  各类: Record<string, 字典项[]>; 谁能用配置: 分配谁能用配置; 挡: string | null; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
   const [种类, set种类] = useState<字典种类>(字典种类们[0]);
@@ -126,7 +130,46 @@ function EntDictCard({ 各类, 挡, 忙, 跑 }: {
         项们={各类[种类] ?? []} 挡={挡} 忙={忙} 跑={跑}
         加={(name) => 加企业选项(种类, name)} 改={改企业选项}
       />
+      {种类 === "assign" && <AssignUseCard 项们={各类.assign ?? []} 配置={谁能用配置} 挡={挡} 忙={忙} 跑={跑} />}
     </div>
+  );
+}
+
+/**
+ * 分配方式谁能用（10-27）：每一项按业务角色勾，服务端（lib/enterprise/assign-use.ts）照这个拦；
+ * 「谁能用」= 谁能选这种方式把线索分出去；指定分配、自动分配有操作对得上，公海捞取、暂不分配、自拓自持先存着（从公海领照旧非原负责人都能领）
+ */
+function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
+  项们: 字典项[]; 配置: 分配谁能用配置; 挡: string | null; 忙: boolean;
+  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const 起 = () => Object.fromEntries(项们.map((x) => { const v = 谁能用(x.id, 配置); return [x.id, v === "所有人" ? [...分配可选角色] : [...v]]; }));
+  const [勾, set勾] = useState<Record<string, string[]>>(起);
+  const 改了 = 项们.some((x) => (勾[x.id] ?? []).join() !== (起()[x.id] ?? []).join());
+  return (
+    <Card title="分配方式 · 谁能用" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。指定分配、自动分配现在就按这里拦；公海捞取、暂不分配、自拓自持先存着，从公海领照旧。
+      </div>
+      {项们.map((x) => (
+        <div key={x.id} style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8, minWidth: 0 }}>
+          <span style={{ flex: "0 0 7em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: x.active ? undefined : "var(--text-muted)" }} title={x.name}>{x.name}</span>
+          <Checkbox.Group
+            aria-label={`「${x.name}」谁能用`}
+            disabled={!!挡 || 忙}
+            value={勾[x.id] ?? []}
+            onChange={(v) => set勾({ ...勾, [x.id]: v as string[] })}
+            options={分配可选角色.map((r) => ({ value: r, label: 角色名[r] }))}
+          />
+        </div>
+      ))}
+      {!挡 && (
+        <Space>
+          <Button type="primary" disabled={忙 || !改了} onClick={() => void 跑(() => 存分配谁能用(勾), "已保存")}>保存</Button>
+          {改了 && <Button disabled={忙} onClick={() => set勾(起())}>还原</Button>}
+        </Space>
+      )}
+    </Card>
   );
 }
 
