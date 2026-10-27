@@ -6,6 +6,7 @@ import { themeConfig } from "@/lib/theme";
 import MotionTheme from "@/components/MotionTheme";
 import { 外观预设脚本, 默认外观 } from "@/lib/appearance";
 import "./globals.css";
+import { 自定产品名 } from "@/lib/enterprise/brand";
 /* 主题（设置 → 外观 → 主题）。每套只在 <html data-skin="x"> 时生效，现状下这几份一条都不命中。
    字体只登记 @font-face、不预加载：浏览器只在某段字真用上这个字体时才去下载，所以不选这套主题就一个字节都不下。
    只取拉丁子集——中文走系统字（宋体 / 苹方），不打包中文字体 */
@@ -22,10 +23,13 @@ import "@fontsource/jetbrains-mono/latin-500.css";
 import "@fontsource/jetbrains-mono/latin-700.css";
 import "@fontsource/instrument-serif/latin-400.css";
 
-export const metadata: Metadata = {
-  title: "Daedalus CRM",
-  description: "客户全周期管理，让销售更高效",
-};
+/** 企业版可换产品名（CRM_PRODUCT_NAME，lib/enterprise/brand.ts）；别的版本照旧 */
+export function generateMetadata(): Metadata {
+  return {
+    title: 自定产品名() ?? "Daedalus CRM",
+    description: "客户全周期管理，让销售更高效",
+  };
+}
 
 export default function RootLayout({
   children,

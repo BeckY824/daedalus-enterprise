@@ -29,6 +29,7 @@ export default function LoginForm({
   可注册 = false,
   注册地址,
   提示,
+  产品名,
 }: {
   可找回密码: boolean;
   用邮箱: boolean;
@@ -37,6 +38,8 @@ export default function LoginForm({
   注册地址?: string;
   /** 为什么会站在这一页。有就先说清，再让人登 */
   提示?: string;
+  /** 左栏的产品名。企业版部署可换（CRM_PRODUCT_NAME，lib/enterprise/brand.ts），不传是默认名 */
+  产品名?: string;
 }) {
   const { 曲线, 时长 } = useMotionTheme();
   /** 托管版的账号是邮箱，自部署是管理员建的登录名。见 page.tsx */
@@ -105,7 +108,7 @@ export default function LoginForm({
 
   return (
     <div className="auth">
-      <AuthSide 门={用邮箱 ? "托管版" : "自部署"} />
+      <AuthSide 门={用邮箱 ? "托管版" : "自部署"} 产品名={产品名} />
 
       <main className="auth-main">
         <motion.form

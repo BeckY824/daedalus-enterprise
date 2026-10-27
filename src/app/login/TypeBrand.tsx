@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { 打字 } from "@/lib/motion";
 import { useSystemReducedMotion } from "@/lib/reduced-motion";
 
-const 名字 = "Daedalus.AI CRM";
+const 默认名 = "Daedalus.AI CRM";
 let 看过=false;
 const 不订阅=()=>()=>{};
 function 读看过(){try{return 看过||sessionStorage.getItem("crm:auth-brand-seen")==="1"}catch{return 看过}}
@@ -17,7 +17,8 @@ const 服务端未看=()=>false;
  * 没打到的字也占着位置（visibility: hidden），只是看不见——打的过程中整行宽度不变，
  * 标和名字不会跟着一点点往右挤。开了「减弱动态」就直接是打好的样子，没有光标。
  */
-export default function TypeBrand() {
+/** 名字：企业版部署可换成自己的产品名（CRM_PRODUCT_NAME，lib/enterprise/brand.ts），中间那段「AI」高亮只给默认名 */
+export default function TypeBrand({ 名字 = 默认名 }: { 名字?: string }) {
   // 不用 motion 的 useReducedMotion：开了「减弱动态」的人每次进登录页都 hydration 对不上，整张表单丢掉重画
   const 少动 = useSystemReducedMotion();
   const 已看=useSyncExternalStore(不订阅,读看过,服务端未看);
@@ -41,7 +42,7 @@ export default function TypeBrand() {
       clearInterval(定时);
       记看过();
     };
-  }, [少动,已看]);
+  }, [少动,已看,名字]);
 
   const 打完 = 少动 || 已看 || n >= 名字.length;
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function TypeBrand() {
   return (
     <span className="auth-brand" aria-label={名字}>
       {[...名字].map((c, k) => (
-        <span key={k} aria-hidden="true" className={k < 显示 ? undefined : "auth-brand-todo"} data-ai={k >= 8 && k <= 10 ? "" : undefined}>
+        <span key={k} aria-hidden="true" className={k < 显示 ? undefined : "auth-brand-todo"} data-ai={名字 === 默认名 && k >= 8 && k <= 10 ? "" : undefined}>
           {c === " " ? " " : c}
           {/* 光标贴在刚打出来的那个字后面；一个字都没打时贴在最前面 */}
           {!少动 && !已看 && !收了 && k === Math.max(显示 - 1, 0) && <i className={`auth-brand-caret${显示 === 0 ? " at-start" : ""}`} />}

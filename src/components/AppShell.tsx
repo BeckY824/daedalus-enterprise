@@ -85,6 +85,8 @@ type Props = {
   反馈去向: "cloud" | "github" | "none";
   /** 企业版只用项目（10-26，lib/enterprise/project-only.ts）：没有「商机」入口，「线索」叫「新线索」 */
   企业版项目?: boolean;
+  /** 标签页标题里的产品名。企业版可换成客户自己的（lib/enterprise/brand.ts） */
+  产品名?: string;
   /**
    * 中栏，由并行路由槽位 @pane/[[...slug]] 渲染好传进来，连 <aside class="pane"> 一起。
    * 没有中栏的路由那边返回 null，这里什么都不画——壳不该知道哪个模块有中栏。
@@ -117,7 +119,7 @@ type Props = {
 /** 面板常驻要的最小窗口宽度，见 AppShell 里 窄窗 那段 */
 const 面板放不下 = "(max-width: 1599px)";
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, pane, ai, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, 产品名 = "Daedalus CRM", pane, ai, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -261,7 +263,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   }, [nav, pathname]);
   useEffect(() => {
     if (desktop || !当前页名) return;
-    const 要 = `${当前页名} · Daedalus CRM`;
+    const 要 = `${当前页名} · ${产品名}`;
     const 设 = () => {
       if (document.title !== 要) document.title = 要;
     };
@@ -270,7 +272,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     const 盯 = new MutationObserver(设);
     盯.observe(document.head, { childList: true, subtree: true, characterData: true });
     return () => 盯.disconnect();
-  }, [desktop, 当前页名]);
+  }, [desktop, 当前页名, 产品名]);
 
   /** 左栏的一项（主导航和「更多」共用）。选中那块底色仍是同一块在各项之间滑（layoutId） */
   const 一项 = (n: (typeof nav)[number]) => (
@@ -399,7 +401,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
           >
             <Button type="text" icon={<MenuOutlined />} aria-label="打开导航菜单" />
           </Dropdown>
-          <Link href="/dashboard" aria-label="Daedalus CRM" style={{ display: "inline-flex" }}>
+          <Link href="/dashboard" aria-label={产品名} style={{ display: "inline-flex" }}>
             <Logo size={20} />
           </Link>
           <span style={{ flex: 1 }} />
