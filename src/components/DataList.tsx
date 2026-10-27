@@ -221,6 +221,18 @@ export default function DataList<T extends { id: string }>({
     if (到 !== null) 框.scrollLeft = 到;
   }
 
+  /**
+   * antd 勾选框自带的读屏名是英文「Select all / Select row」，念出来对不上是哪一行。
+   * 换成「选中 + 这一行叫什么」，叫不出名字的念「选中这一行」（10-27 整合第 8 条）
+   */
+  const 勾选框标签 = {
+    getTitleCheckboxProps: () => ({ "aria-label": "全选本页" }),
+    getCheckboxProps: (r: T) => ({
+      ...(不可勾?.(r) ? { disabled: true } : {}),
+      "aria-label": 行名(r) ? `选中 ${行名(r)}` : "选中这一行",
+    }),
+  };
+
   const 显示的列 = useMemo(
     () =>
       全部列
@@ -232,6 +244,8 @@ export default function DataList<T extends { id: string }>({
           ...(i === 0 && c.常驻 && !c.fixed ? { fixed: "left" as const } : {}),
           // 带上列键做类名，挪到看得见 靠它找表头
           className: [c.className, `dl-col-${列键(c)}`].filter(Boolean).join(" "),
+          // 操作列表头是空的，读屏念到这一格只有「列标题」；看不见的「操作」两个字给读屏用（10-27 整合第 8 条）
+          ...(c.title === "" ? { title: <span className="sr-only">操作</span> } : {}),
         })),
     [全部列, 可见],
   );
@@ -327,7 +341,7 @@ export default function DataList<T extends { id: string }>({
           emptyText: 空库 ? <EmptyState {...空态} /> : (没对上 ?? <div className="list-none">没有符合条件的，换个条件或点「重置」看全部</div>),
         }}
         scroll={{ x }}
-        rowSelection={批量 ? { selectedRowKeys: 选中, onChange: (k) => set选中(k as string[]), fixed: true, getCheckboxProps: 不可勾 ? (r) => ({ disabled: 不可勾(r) }) : undefined } : undefined}
+        rowSelection={批量 ? { selectedRowKeys: 选中, onChange: (k) => set选中(k as string[]), fixed: true, ...勾选框标签 } : undefined}
         rowClassName={(r) => [新来的.includes(r.id) || 亮?.includes(r.id) ? "row-fresh" : "", 行类?.(r) ?? ""].filter(Boolean).join(" ")}
         onRow={
           行链接 || 行点击

@@ -137,8 +137,10 @@ export function StatCard({
 /** 客户名称前的方块徽标 */
 export function CompanyLogo({ name, size = 28 }: { name: string; size?: number }) {
   return (
+    // 首字只是装饰，名字就挨在旁边：读屏不该先念一遍首字再念全名
     <span
       className="company-logo"
+      aria-hidden
       style={{ background: avatarColor(name), color: AVATAR_TEXT, width: size, height: size, fontSize: size * 0.43 }}
     >
       {companyInitial(name)}
@@ -151,7 +153,7 @@ export function UserCell({ name, size = 28 }: { name: string; size?: number }) {
   return (
     // 名字那一项要能缩：只给 span 省略号不够，外面那层 .ant-space-item 照样被长名字撑开（10-20 Windows 最窄窗口量出来伸出 18px），见 globals.css .user-cell
     <Space size={8} className="user-cell" style={{ maxWidth: "100%" }}>
-      <Avatar size={size} style={{ background: avatarColor(name), color: AVATAR_TEXT, fontSize: size * 0.45, flex: "none" }}>
+      <Avatar aria-hidden size={size} style={{ background: avatarColor(name), color: AVATAR_TEXT, fontSize: size * 0.45, flex: "none" }}>
         {initial(name)}
       </Avatar>
       {/* 名字长了要省略号收尾，不能溢出到相邻元素上（业绩排行里就压在进度条上过） */}
