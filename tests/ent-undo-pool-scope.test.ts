@@ -7,6 +7,7 @@
  *   - 真领的照常撤：还给原负责人、放回公海
  *   - 老板撤自己的分配照常；另一位老板撤不了（那一下不是他做的）
  *   - 只认 30 分钟内的那一下（2026-10-28 审查）：隔了半小时以上的领取 / 分配撤不了
+ *   - 负责人没换过的（分给原负责人）认领取记录：主管填 给谁 = 负责人，塞不进从没进过公海的客户；真分的照常撤
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -36,8 +37,11 @@ const 归谁 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ 
 const 在公海 = async (id: string) => (await prisma.customerPool.count({ where: { customerId: id } })) > 0;
 const 撤销记录数 = (customerId: string) => prisma.customerOwnerLog.count({ where: { customerId, kind: "undo" } });
 /** 把这位客户的换负责人记录往前挪 分钟 分钟（模拟「隔了一阵子才撤」） */
-const 记录挪到 = (customerId: string, 分钟: number) =>
-  prisma.customerOwnerLog.updateMany({ where: { customerId }, data: { at: new Date(Date.now() - 分钟 * 60_000) } });
+const 记录挪到 = async (customerId: string, 分钟: number) => {
+  const at = new Date(Date.now() - 分钟 * 60_000);
+  await prisma.customerOwnerLog.updateMany({ where: { customerId }, data: { at } });
+  await prisma.customerClaim.updateMany({ where: { customerId }, data: { at } });
+};
 
 beforeEach(async () => {
   await resetDb();
@@ -128,5 +132,28 @@ describe("公海撤销只撤自己刚才那一下", () => {
     await 记录挪到(c.id, 31);
     expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小王.id)).toMatchObject({ ok: true, updated: 0 });
     expect(await 归谁(c.id)).toBe(小王.id);
+  });
+  it("负责人没换过的：主管填 给谁 = 负责人，塞不进从没进过公海的客户", async () => {
+    const c = await 客户(小李.id);
+    当(组长);
+    expect(await 撤销公海("分配", [{ id: c.id, 值: 小李.id }], undefined, 小李.id)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 在公海(c.id)).toBe(false);
+    expect(await 撤销记录数(c.id)).toBe(0);
+  });
+
+  it("分给原负责人的照常撤：放回公海；31 分钟前的撤不了", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id]);
+    当(老板);
+    const r = await 分配公海([c.id], 小李.id);
+    if (!r.ok) throw new Error(r.error);
+    expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小李.id)).toMatchObject({ ok: true, updated: 1 });
+    expect(await 在公海(c.id)).toBe(true);
+    const r2 = await 分配公海([c.id], 小李.id);
+    if (!r2.ok) throw new Error(r2.error);
+    await 记录挪到(c.id, 31);
+    expect(await 撤销公海("分配", r2.原负责人!, r2.带过来, 小李.id)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 在公海(c.id)).toBe(false);
   });
 });
