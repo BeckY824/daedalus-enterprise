@@ -1,6 +1,6 @@
 /**
  * 企业版只用项目时，MCP 也不开老表的列表工具（10-28，lib/mcp/tools.ts）：和应用里的 agent 同一张排除表（agent/run.ts）。
- * 钉的是：tools/list 不列 list_leads / list_opportunities / list_contracts / list_orders，list_projects 照列；
+ * 钉的是：tools/list 不列 list_leads / list_opportunities / list_contracts，list_projects 照列（list_orders 10-28 整个删了）；
  * tools/call 点名调也拒；不是企业版照旧都在（企业版的 projectMode 读出来就锁成开着，见 business-config.ts 企业版锁定）。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -14,7 +14,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 处理 } from "@/lib/mcp/rpc";
 import { 跑工具 } from "@/lib/mcp/tools";
 
-const 老表 = ["list_leads", "list_opportunities", "list_contracts", "list_orders"];
+const 老表 = ["list_leads", "list_opportunities", "list_contracts"];
 let 老板: { id: string; name: string };
 
 async function 列名() {

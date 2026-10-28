@@ -888,22 +888,6 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   border-bottom: 1px dashed var(--line-soft);
 }
 
-/* ---------- 漏斗 ---------- */
-.funnel-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: var(--fs-section);
-  padding: 8px 0;
-}
-
-.funnel-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex: none;
-}
-
 /* ---------- 小工具 ---------- */
 .muted {
   color: var(--text-muted);
@@ -2288,15 +2272,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 
 /* 登记签约弹窗底下「顺手收个尾」那一块（ContractForm）：商机标赢单、计划和待办一并完成。
    和上面的表单用一道细线隔开——它不是签约的字段，是签约带出来的几件事 */
-/* 订单详情（2026-10-03）：节点那一套页面企业版仓库 10-28 删了，这里只剩轻量订单页还在用的跟进列表和报价表 */
-.ord-notes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
-.ord-notes li { display: flex; flex-direction: column; gap: 2px; padding: var(--s2) 0; border-top: 1px solid var(--line-soft); }
-.ord-quote { width: 100%; border-collapse: collapse; font-size: var(--fs-note); }
-.ord-quote th { text-align: left; font-weight: 400; color: var(--text-muted); padding: 4px 8px 6px 0; }
-.ord-quote td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line-soft); }
-.ord-quote .r { text-align: right; font-variant-numeric: tabular-nums; }
-.ord-quote tfoot td { color: var(--text-muted); }
-
 /* 商机框里的报价明细（2026-10-03）：产品、规格、数量、单位、单价、小计、删。760 宽的框里一行放得下 */
 .qt { display: flex; flex-direction: column; gap: 6px; }
 .qt-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.6fr) 84px 76px 96px 96px 28px; gap: 6px; align-items: center; }

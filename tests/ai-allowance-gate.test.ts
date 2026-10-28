@@ -5,7 +5,7 @@ import { closeTestDatabases } from "./close-databases";
  * 2026-09-28 之前只有 /api/ai/stream 过闸门——起草话术、起草邀请、AI 解析、盯盘解读、
  * 粘贴切分五扇门都没上锁，托管版照样无限免费。这里钉三件事：
  *   1. 包装本身的收费契约：放行扣一次；没给出答案退；用户自己中断的不退；用完了 fn 根本不跑
- *   2. 每个 AI 动作真的接上了：额度用完时六个动作都回同一句话，一行业务代码都不跑
+ *   2. 每个 AI 动作真的接上了：额度用完时五个动作都回同一句话，一行业务代码都不跑
  *   3. 守卫：扫 src 里所有调模型的地方，新加的 AI 动作没套包装就红
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
@@ -219,12 +219,12 @@ describe("带额度：收费契约", () => {
   });
 });
 
-describe("六个 AI 动作都接上了闸门", () => {
+describe("五个 AI 动作都接上了闸门", () => {
   it("零额度时空/坏输入先返回输入错误，无模型请求及账本变动（H019）", async () => {
     const ws = await 建工作区();
     await 用光(ws); const before = await 用掉(ws);
     const { parseFollowUpDraft, generateBrief } = await import("@/app/(app)/customers/[id]/ai");
-    const { draftWakeup, explainWatchlist } = await import("@/app/(app)/dashboard/ai");
+    const { draftWakeup } = await import("@/app/(app)/dashboard/ai");
     const { draftInvite } = await import("@/app/(app)/channels/ai");
     const { 粘成表格 } = await import("@/app/(app)/customers/ai");
     const results = [
@@ -233,8 +233,6 @@ describe("六个 AI 动作都接上了闸门", () => {
       await generateBrief({ customerId: "   " }),
       await generateBrief({ customerId: "c", question: 42 as never }),
       await draftWakeup({ customerId: "c", reason: "" }),
-      await explainWatchlist({ items: [] }),
-      await explainWatchlist({ items: [null as never] }),
       await draftInvite({ customerId: 42 as never }),
       await 粘成表格("   "),
       await 粘成表格(42 as never),
@@ -257,14 +255,13 @@ describe("六个 AI 动作都接上了闸门", () => {
     const ws = await 建工作区();
     const 那句话 = await 用光(ws);
     const { parseFollowUpDraft, generateBrief } = await import("@/app/(app)/customers/[id]/ai");
-    const { draftWakeup, explainWatchlist } = await import("@/app/(app)/dashboard/ai");
+    const { draftWakeup } = await import("@/app/(app)/dashboard/ai");
     const { draftInvite } = await import("@/app/(app)/channels/ai");
     const { 粘成表格 } = await import("@/app/(app)/customers/ai");
     const 结果 = {
       AI解析: await parseFollowUpDraft({ customerId: "c", text: "刚跟家长聊了二十分钟" }),
       简报: await generateBrief({ customerId: "c" }),
       起草话术: await draftWakeup({ customerId: "c", reason: "沉睡 20 天" }),
-      盯盘解读: await explainWatchlist({ items: [{ customerId: "c", reason: "x" }] }),
       起草邀请: await draftInvite({ customerId: "c" }),
       粘贴切分: await 粘成表格("张三 13800000001"),
     };

@@ -201,7 +201,7 @@ jobs:
       - run: npx prisma generate --schema=prisma/control.prisma
         env:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
-      # 发版前排版闸门（10-19）：桌面本地模式 + 像真客户的数据，1024/1280/1366 × AI 栏常驻 / 左栏最宽量主要页面越界、被盖住。
+      # 发版前排版闸门（10-19）：企业版服务（e2e-layout/企业版.ts 建库灌数据，10-28 起）+ 像真客户的数据，1024/1280/1366 × AI 栏常驻 / 左栏最宽量主要页面越界、被盖住。
       # 这几天的显示 bug 都是客户先发现的，以后让它在这里先红。规则见 e2e/layout-audit.ts，不许为了变绿放宽
       # 不用 --shard：它按用例条数切、不看耗时。哪片跑哪几份写在 playwright.layout.config.ts 的分片表里，按实测秒数排（10-28）
       - run: npx playwright test -c playwright.layout.config.ts ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}

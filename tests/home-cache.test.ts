@@ -7,7 +7,7 @@
  *   非企业版 / CRM_HOME_CACHE=0 每次现数
  * - 指纹带 -shm 的 inode（-shm 删了重建，新头可能和旧头逐字相同）
  * - key：过了零点换一份；沉睡按 谁的 各一份；限定可见范围的人不走缓存
- * - 对拍：客户数、沉睡前几名、全部商机、近期待办开着缓存和关着结果一模一样；刚写进去的客户 / 跟进 / 商机 / 计划马上反映出来
+ * - 对拍：沉睡前几名、盯盘名单开着缓存和关着结果一模一样；刚写进去的客户 / 跟进 / 计划马上反映出来
  * 用拷出来的一份库（绝对路径，企业版开只读通道），不碰共用的测试库。
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
@@ -32,11 +32,8 @@ import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { PrismaClient } from "@/generated/prisma";
 import { 关读通道, 读通道 } from "@/lib/read-pool";
 import { 库指纹, shm路径, 缓存着, 首页缓存开着, 清首页缓存, 首页缓存条数 } from "@/lib/home-cache";
-import { 客户数, 取行数, 全部商机 } from "@/lib/dashboard-sql";
-import { 首页待办, 近期待办 } from "@/lib/dashboard-todo";
 import { _内部 as 盯盘, loadWatchlistPage } from "@/lib/sentinel-data";
 import { dayjs } from "@/lib/utils";
-import { 可见客户 } from "@/lib/team-scope";
 import nativeDayjs from "dayjs";
 import { 今天零点 } from "@/lib/overdue";
 
@@ -398,29 +395,6 @@ describe("对拍：开着缓存和关着一模一样，刚写的马上反映", (
     return { 现数, 缓存, 再取 };
   };
 
-  it("客户数", async () => {
-    const now = dayjs();
-    const 数 = () => 客户数(prisma, now, null);
-    const r1 = await 两边(数);
-    expect(r1.缓存).toEqual(r1.现数);
-    expect(r1.再取).toEqual(r1.现数);
-
-    // 改返回值不影响缓存里那份
-    r1.再取.trend[0].created = -1;
-    r1.再取.每周新增[0] = -1;
-    expect(await 数()).toEqual(r1.现数);
-
-    // 新建档 + 新跟进：缓存开着也马上数进去
-    const c = await 新客户("刚建", 60_000);
-    await raw.followUp.create({ data: { customerId: c.id, ownerId: 老板, type: "PHONE", title: "刚跟", content: "x", occurredAt: new Date(Date.now() - 60_000) } });
-    const r2 = await 两边(数);
-    expect(r2.缓存).toEqual(r2.现数);
-    expect(r2.再取).toEqual(r2.现数);
-    const 末 = (r: typeof r1.现数) => r.trend[r.trend.length - 1];
-    expect(末(r2.现数).created).toBe(末(r1.现数).created + 1);
-    expect(末(r2.现数).active).toBe(末(r1.现数).active + 1);
-  });
-
   it("沉睡前几名（含别的几样的重叠）", async () => {
     const now = dayjs();
     const 边界 = 盯盘.沉睡边界(now)!;
@@ -449,81 +423,6 @@ describe("对拍：开着缓存和关着一模一样，刚写的马上反映", (
     expect(没有.重叠).toBe(0);
   });
 
-  it("全部商机：改返回值不影响缓存；新商机、改阶段马上反映", async () => {
-    const 客户 = (await raw.customer.findFirst({ select: { id: true } }))!.id;
-    for (let i = 0; i < 6; i++) await raw.opportunity.create({ data: { name: `商机${i}`, customerId: 客户, ownerId: 老板, amount: 1000 * (i + 1), stage: ["初步沟通", "需求确认", "赢单成交"][i % 3], status: i % 3 === 2 ? "WON" : "OPEN" } });
-    const 取 = () => 全部商机(prisma, true);
-    const r1 = await 两边(取);
-    expect(r1.现数).toHaveLength(6);
-    expect(r1.缓存).toEqual(r1.现数);
-    expect(r1.再取).toEqual(r1.现数);
-    r1.再取.length = 0;
-    expect(await 取()).toEqual(r1.现数);
-
-    const o = await raw.opportunity.create({ data: { name: "刚建的商机", customerId: 客户, ownerId: 老板, amount: 99, stage: "初步沟通" } });
-    await raw.opportunity.updateMany({ where: { name: "商机0" }, data: { stage: "需求确认" } });
-    const r2 = await 两边(取);
-    expect(r2.缓存).toEqual(r2.现数);
-    expect(r2.再取).toEqual(r2.现数);
-    expect(r2.现数).toHaveLength(7);
-    expect(r2.现数.some((x) => x.amount === 99)).toBe(true);
-    expect(r2.现数.filter((x) => x.stage === "需求确认")).toHaveLength(r1.现数.filter((x) => x.stage === "需求确认").length + 1);
-    await raw.opportunity.delete({ where: { id: o.id } });
-  });
-
-  it("近期待办：改返回值不影响缓存；新计划、做完马上反映；限定的人不走缓存", async () => {
-    const [甲, 乙] = await raw.customer.findMany({ select: { id: true, name: true }, take: 2, orderBy: { id: "asc" } });
-    for (let i = 0; i < 4; i++) await raw.followPlan.create({ data: { subject: `计划${i}`, plannedAt: new Date(Date.now() + (i + 1) * 天), customerId: 甲.id, ownerId: 老板 } });
-    await raw.task.create({ data: { title: "没排时间的待办", customerId: 乙.id, ownerId: 老板 } });
-    const 取 = () => 首页待办(prisma, true);
-    const r1 = await 两边(取);
-    expect(r1.现数).toEqual(await 近期待办(prisma));
-    expect(r1.现数).toHaveLength(5);
-    expect(r1.缓存).toEqual(r1.现数);
-    expect(r1.再取).toEqual(r1.现数);
-    r1.再取[0].title = "改了";
-    r1.再取.length = 1;
-    expect(await 取()).toEqual(r1.现数);
-
-    // 新计划排到最前、做完一条：缓存开着也马上换
-    const 新 = await raw.followPlan.create({ data: { subject: "最急的", plannedAt: new Date(Date.now() + 3_600_000), customerId: 乙.id, ownerId: 老板 } });
-    await raw.followPlan.updateMany({ where: { subject: "计划0" }, data: { done: true } });
-    const r2 = await 两边(取);
-    expect(r2.缓存).toEqual(r2.现数);
-    expect(r2.再取).toEqual(r2.现数);
-    expect(r2.现数[0]).toMatchObject({ id: `plan:${新.id}`, title: "最急的", customerName: 乙.name });
-    expect(r2.现数.some((x) => x.title === "计划0")).toBe(false);
-
-    // 限定（业务员）：现取，不进缓存
-    const 限定 = {
-      task: { findMany: async () => [] },
-      followPlan: { findMany: async () => [] },
-    } as unknown as typeof prisma;
-    开();
-    清首页缓存();
-    expect(await 首页待办(限定, false)).toEqual([]);
-    expect(首页缓存条数()).toBe(0);
-    expect(await 首页待办(prisma, true)).toEqual(r2.现数);
-  });
-
-  it("首页接的是缓存那两个", () => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/dashboard/Board.tsx"), "utf8");
-    expect(src).toMatch(/首页待办\(prisma, await 不限定\(\)\)/);
-    expect(src).not.toMatch(/近期待办\(prisma/);
-    expect(src).toMatch(/全部商机\(prisma, await 不限定\(\)\)/);
-  });
-
-  it("客户数：过了零点换一份，不拿昨天那份", async () => {
-    const 今天 = dayjs();
-    const 明天 = 今天.add(1, "day");
-    开();
-    const 今 = await 客户数(prisma, 今天, null);
-    const 明 = await 客户数(prisma, 明天, null);
-    关();
-    expect(明).toEqual(await 客户数(prisma, 明天, null));
-    expect(明).not.toEqual(今);
-  });
-
   it("沉睡：过了零点换一份，各人各一份", async () => {
     const 业务员 = (await raw.user.create({ data: { email: "hc-sales@x.com", name: "业务员", password: "x", role: "USER" } })).id;
     await raw.customer.create({ data: { name: "业务员的", phone: "13600000001", salesOwnerId: 业务员, followStatus: "意向较高", createdAt: new Date(Date.now() - 70 * 天), lastFollowAt: new Date(Date.now() - 70 * 天) } });
@@ -543,26 +442,6 @@ describe("对拍：开着缓存和关着一模一样，刚写的马上反映", (
     expect(只他.沉睡).toBe(1);
     expect(全部今.沉睡).toBeGreaterThan(1);
     expect(全部明.沉睡).toBeGreaterThan(全部今.沉睡);
-  });
-
-  it("限定可见范围的人不走缓存：库里带范围数，和限定后的行算的一样，也不污染不限定的那份", async () => {
-    const now = dayjs();
-    const 业务员 = (await raw.user.findFirst({ where: { email: "hc-sales@x.com" } }))?.id
-      ?? (await raw.user.create({ data: { email: "hc-sales@x.com", name: "业务员", password: "x", role: "USER" } })).id;
-    await raw.customer.create({ data: { name: "限定的", phone: "13600000002", salesOwnerId: 业务员, followStatus: "待跟进", createdAt: new Date(Date.now() - 2 * 天) } });
-    // 只看得到业务员那份客户的 db（代替 team-scope 那层 where），当基准
-    const 限定 = {
-      customer: { findMany: (q: object) => raw.customer.findMany({ ...q, where: 可见客户(业务员) }) },
-      followUp: { findMany: (q: { where?: object }) => raw.followUp.findMany({ ...q, where: { ...q.where, customer: 可见客户(业务员) } }) },
-    } as unknown as typeof prisma;
-    开();
-    const 全部 = await 客户数(prisma, now, null);
-    清首页缓存();
-    const 限定的 = await 客户数(prisma, now, 业务员);
-    expect(首页缓存条数()).toBe(0);
-    expect(限定的).toEqual(await 取行数(限定, now));
-    expect(限定的).not.toEqual(全部);
-    expect(await 客户数(prisma, now, null)).toEqual(全部);
   });
 
   it("盯盘名单：别的几样那份进缓存；改返回值不漏；新逾期计划、做完马上反映；各人、各天各一份", async () => {

@@ -54,6 +54,7 @@ import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
 import { 团队订单前缀 } from "@/lib/order";
+import { 订单 as 订单开着 } from "@/lib/features";
 import { 读团队 } from "@/lib/sync/client";
 import type { Prisma } from "@/generated/prisma";
 
@@ -1235,7 +1236,6 @@ export async function saveContract(input: {
     if (联动) for (const path of ["/opportunities", "/opportunities/pipeline", "/follow-ups/plans", "/dashboard"]) revalidatePath(path);
 
     revalidateCustomer(input.customerId);
-    if (单) revalidatePath("/orders");
     return { ok: true, ...(联动 ? { 联动 } : {}), ...(单 ? { 订单: 单 } : {}) };
   } catch (e) {
     if (e instanceof 订单说不通) return { ok: false, error: e.message };
@@ -1368,7 +1368,6 @@ export async function deleteContract(
     });
   
     revalidateCustomer(customerId);
-    if (订单) revalidatePath("/orders");
     return { ok: true, remaining, 退回商机 };
   } catch (e) {
     return 不在了(e);
@@ -1493,4 +1492,11 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
 export async function 推荐人候选(): Promise<{ id: string; name: string }[]> {
   await requireUser();
   return 可选客户();
+}
+
+/** 外贸签约框里选供应商的候选（原在订单页 actions，2026-10-28 订单页删后挪来）：含稳定ID，同名档案仍分别可选。 */
+export async function 供应商候选(): Promise<{ id: string; name: string }[]> {
+  await requireUser();
+  if (!订单开着) return [];
+  return prisma.supplier.findMany({ orderBy: [{ name: "asc" }, { id: "asc" }], take: 500, select: { id: true, name: true } });
 }

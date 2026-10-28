@@ -248,7 +248,7 @@ async function 页头被切的(page: Page) {
 
 test("全站页头右上角按钮：1024 / 1366 宽、宽字体下都在窗口里", async ({ page }) => {
   await 登录(page);
-  const 页们 = ["/customers", "/customers/recent", `/customers/${客户id}`, "/follow-ups", "/follow-ups/plans", "/opportunities", "/opportunities/pipeline", "/orders", "/leads", "/contacts", "/channels", "/overview", "/settings"];
+  const 页们 = ["/customers", "/customers/recent", `/customers/${客户id}`, "/follow-ups", "/follow-ups/plans", "/opportunities", "/opportunities/pipeline", "/leads", "/contacts", "/channels", "/overview", "/settings"];
   for (const 宽 of [1024, 1366]) {
     await page.setViewportSize({ width: 宽, height: 800 });
     for (const 路 of 页们) {

@@ -100,32 +100,6 @@ test("每个页面在零数据下都要有给人看的引导，不能一片空�
   expect(问题, `以下页面在零数据下可能是空白的：\n${问题.join("\n")}`).toEqual([]);
 });
 
-test("零数据时数据首页不该显示任何编出来的涨跌", async ({ page }) => {
-  /**
-   * 原本预测销售额那张卡写死 delta={18.6}，一条数据都没有也显示
-   * 「较上月 ↑ 18.6%」；三条小曲线也是写死的数组，零数据照样画出上升线。
-   * 数据首页上的假数字比没有数字更糟——人会照着它做判断。
-   */
-  await 登录(page);
-  await page.goto("/dashboard");
-  await page.waitForTimeout(800);
-
-  const 涨跌 = await page.evaluate(() =>
-    [...document.querySelectorAll(".stat-delta")].map((el) => (el as HTMLElement).innerText.trim()),
-  );
-  const 编出来的 = 涨跌.filter((t) => /[↑↓]\s*[1-9]/.test(t));
-  expect(编出来的, `零数据时出现了非零涨跌，多半是写死的：${JSON.stringify(涨跌)}`).toEqual([]);
-
-  /**
-   * 小曲线不在这里断言：它是 ECharts 画的，扒图形既不稳也容易误伤图标的 path
-   * （第一版就把 antd 图标算进去了）。改用两条更准的：
-   *   - tests/guards.test.ts 禁止源码里出现写死的 Sparkline 数组
-   *   - tests/dashboard-series.test.ts 直接测序列的计算逻辑
-   * 这个漏洞真实发生过：「商机总金额」的曲线一直是写死的数组，
-   * 线上零数据时照样画出一条上升线，是看线上截图才发现的。
-   */
-});
-
 test("表格类页面零数据时要显示空状态提示，而不是只有表头", async ({ page }) => {
   await 登录(page);
   const 有表格的 = ["/leads", "/customers", "/channels", "/contacts", "/projects", "/follow-ups"];
@@ -337,44 +311,6 @@ test("业绩排行里的姓名不能溢出压到进度条上", async ({ page }) 
   );
   expect(没裁剪的, `这些姓名没有做省略处理，长了会压住相邻元素：${JSON.stringify(没裁剪的)}`).toEqual([]);
   expect(Array.isArray(溢出的)).toBe(true);
-});
-
-test("商机管道：末档不再结构性为零，且时间窗下拉是接线的", async ({ page }) => {
-  test.skip(企业版, "企业版只用项目：没有商机管道，数据页按项目数（overview/page.tsx 项目数据）");
-  /**
-   * 管道原本只统计 status=OPEN，而阶段推到「赢单成交」时状态必然变成 WON，
-   * 所以末档永远是 0——漏斗最有用的读数（转化终点）被砍掉了。
-   * 「本月/本季」那个下拉当时也没有接线，选了没反应，却又写着「本月」。
-   */
-  await 登录(page);
-  await page.goto("/dashboard");
-  await page.waitForTimeout(800);
-
-  const 读末档 = () =>
-    page.evaluate(() => {
-      const 行 = [...document.querySelectorAll(".funnel-row")];
-      const 末 = 行[行.length - 1] as HTMLElement | undefined;
-      return 末?.innerText.replace(/\n/g, " ") ?? "";
-    });
-
-  const 本月 = await 读末档();
-  expect(本月, "末档不是「赢单成交」").toContain("赢单成交");
-  expect(本月, `末档仍然是 0，口径没改对：${本月}`).not.toMatch(/赢单成交\s+0\s/);
-
-  // 口径要写在卡片上，否则没人看得出前四档和末档不是一个东西
-  await expect(page.getByText(/前四档为当前进行中的商机/)).toBeVisible();
-
-  // 下拉切到本季，页面要真的响应（本季包含本月，末档数量不应变小）
-  await page.locator(".ant-card").filter({ hasText: "商机管道" }).locator(".ant-select").first().click();
-  const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
-  await 下拉.waitFor({ state: "visible" });
-  await 下拉.locator(".ant-select-item-option").filter({ hasText: "本季" }).click();
-  await page.waitForTimeout(500);
-  await expect(page.getByText(/「赢单成交」为本季已赢单/)).toBeVisible();
-
-  const 本季 = await 读末档();
-  const 取数 = (t: string) => Number(t.match(/赢单成交\s+(\d+)/)?.[1] ?? -1);
-  expect(取数(本季), "切到本季后末档数量反而变少了").toBeGreaterThanOrEqual(取数(本月));
 });
 
 test("推荐链上的客户，详情页要能看出上下游与归属", async ({ page }) => {

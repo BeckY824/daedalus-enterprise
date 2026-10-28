@@ -83,7 +83,6 @@ describe("会调模型的按钮都挂着「1 次」", () => {
     ["app/(app)/customers/[id]/AiPanel.tsx", ["起草跟进话术", "起草转介绍邀请", "简报"]],
     ["app/(app)/customers/[id]/FollowUpForm.tsx", ["AI 解析填表"]],
     ["app/(app)/customers/[id]/RecordView.tsx", ["AI 解析"]],
-    ["app/(app)/dashboard/SentinelCard.tsx", ["AI 解读", "起草跟进"]],
     ["app/(app)/channels/ReferralRadar.tsx", ["起草邀请"]],
     ["app/(app)/dashboard/TurnView.tsx", ["起草跟进话术", "起草转介绍邀请"]],
   ] as const)("%s", (文件, 字们) => {

@@ -6,8 +6,7 @@ import { chromium, type Browser, type Page } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "contract-date-actions", setup(b) {
   b.onResolve({ filter: /^next\/navigation$/ }, a => ({ path: a.path, namespace: "fixture", pluginData: "export const useRouter=()=>({refresh(){},push(){}});" }));
-  b.onResolve({ filter: /^\.\.\/actions$/ }, a => ({ path: a.path, namespace: "fixture", pluginData: "export const saveContract=async(value)=>{window.__saved=value;return {ok:true}};export const listContractLinks=async()=>({商机:[],计划:[],待办:[]});" }));
-  b.onResolve({ filter: /^\.\.\/\.\.\/orders\/actions$/ }, a => ({ path: a.path, namespace: "fixture", pluginData: "export const 供应商候选=async()=>[];" }));
+  b.onResolve({ filter: /^\.\.\/actions$/ }, a => ({ path: a.path, namespace: "fixture", pluginData: "export const saveContract=async(value)=>{window.__saved=value;return {ok:true}};export const listContractLinks=async()=>({商机:[],计划:[],待办:[]});export const 供应商候选=async()=>[];" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

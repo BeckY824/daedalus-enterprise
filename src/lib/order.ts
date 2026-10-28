@@ -2,14 +2,11 @@
  * 外贸订单的规则（2026-10-03 外贸第 3a 块）。不碰数据库，客户端和服务端都能引。
  * 依据：~/CRM/外贸CRM模版-2026-10-03/外贸CRM模版.md 第一节（12 节点）、2.8（单据）、2.9（回款）。
  *
- * 节点三条规矩（和配套 Excel 一样）：
- *   1. 每个节点只有「截止日 + 状态」。截止日过了还没完成就红，3 天内到期就黄；其余信息写进跟进记录
- *   2. 「不适用」是一等公民：EXW 不订舱、全款不分定金尾款……标了就不参与超期和进度
- *   3. 「当前节点」= 第一个既没完成也不是不适用的，算出来、不让人手填
+ * 当前节点、节点灯、超期数、进度、订单的钱只给订单页用，2026-10-28 随订单页一起删了；
+ * 留下的是签约生成订单（lib/order-contract.ts）和签约表单要用的。
  */
 
-import { businessDay, businessDayjs } from "./business-clock";
-import { calendarDay, calendarDaysBetween } from "./schedule-date";
+import { businessDayjs } from "./business-clock";
 
 export const 节点名们 = [
   "询盘",
@@ -52,61 +49,6 @@ export function 默认单据(incoterm?: string | null): string[] {
     ...(我方投保 ? ["保险单"] : []),
     "尾款水单",
   ];
-}
-
-export type 节点 = { idx: number; name: string; dueAt: string | null; status: string; doneAt?: string | null };
-
-const 不算 = (n: Pick<节点, "status">) => n.status === "已完成" || n.status === "不适用";
-
-/** 当前节点：第一个既没完成也不是不适用的。全走完了返回 null（这单结束了） */
-export function 当前节点<T extends Pick<节点, "status" | "idx">>(nodes: T[]): T | null {
-  return [...nodes].sort((a, b) => a.idx - b.idx).find((n) => !不算(n)) ?? null;
-}
-
-export type 灯 = "红" | "黄" | "绿" | "灰" | "无";
-
-/**
- * 一格的颜色：
- *   已完成 → 绿；不适用 → 灰；
- *   没完成、截止日在今天之前 → 红（超期）；卡住 → 红；
- *   没完成、截止日在 3 天内（含今天）→ 黄；
- *   其余 → 无（没排日子，或者还早）
- */
-export function 节点灯(n: Pick<节点, "status" | "dueAt">, 现在: Date = new Date()): 灯 {
-  return 按今天的灯(n, () => calendarDay(现在));
-}
-
-/** 今天要用到才算，算一次：已完成、不适用、卡住、没排日子的不用算 */
-function 按今天的灯(n: Pick<节点, "status" | "dueAt">, 今天: () => string): 灯 {
-  if (n.status === "已完成") return "绿";
-  if (n.status === "不适用") return "灰";
-  if (n.status === "卡住") return "红";
-  if (!n.dueAt) return "无";
-  const 差天 = calendarDaysBetween(今天(), businessDay(n.dueAt));
-  if (差天 < 0) return "红";
-  if (差天 <= 3) return "黄";
-  return "无";
-}
-
-/** 超期了几个节点（卡住也算：都是「这一步出问题了」）。今天只算一次，不必每个节点都重算 */
-export function 超期数(nodes: Pick<节点, "status" | "dueAt">[], 现在: Date = new Date()): number {
-  let 今天: string | undefined;
-  const 取今天 = () => (今天 ??= calendarDay(现在));
-  return nodes.filter((n) => 按今天的灯(n, 取今天) === "红").length;
-}
-
-/** 进度 %：完成的 ÷ 适用的（不适用的不进分母）。一个都不适用就当 100 */
-export function 进度(nodes: Pick<节点, "status">[]): number {
-  const 适用 = nodes.filter((n) => n.status !== "不适用");
-  if (!适用.length) return 100;
-  return Math.round((适用.filter((n) => n.status === "已完成").length / 适用.length) * 100);
-}
-
-/** 钱：尾款应收 = 金额 - 定金应收；未收 = 金额 - 定金实收 - 尾款实收（不小于 0） */
-export function 订单的钱(o: { amount: number; depositDue: number; depositPaid: number; balancePaid: number }) {
-  const 尾款应收 = Math.max(0, Math.round((o.amount - o.depositDue) * 100) / 100);
-  const 未收 = Math.max(0, Math.round((o.amount - o.depositPaid - o.balancePaid) * 100) / 100);
-  return { 尾款应收, 未收 };
 }
 
 /**

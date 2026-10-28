@@ -2,12 +2,11 @@
  * 回归总表「L-联动」里修了但没测试钉着的几条（2026-10-04 上线前第 2 期补测）。每条一句话说清钉的是什么：
  *   L-039 渠道页「直接推荐 N 人」点进客户列表，筛出来的也是 N 人
  *   L-043 首页欢迎句「今天要跟 N 条」和左栏角标、Dock 同一个函数
- *   L-030 首页看板「近期跟进任务」：只用计划、不用待办的人这张卡也不空
  *   L-045 商机页汇总按全量算，不是取回来的前 300 行
  *   L-053 通用预设的来源列表是现在这一套（微信 / 小红书 / 抖音 / 视频号…）
  *   L-070 表单里不再留教培例子（王妈妈、试听）
  *   L-071 改了状态显示名后，速记解析的提示词写「显示名（值：存储值）」
- *   L-111 订单 / 供应商这一版关着：AI 面板不再给那两页指路去调不开放的工具
+ *   L-111 订单 / 供应商两页 2026-10-28 已删：AI 面板不再给那两页指路
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -31,7 +30,6 @@ vi.mock("@/lib/llm", async (原) => ({
 }));
 for (const m of [
   "@/app/(app)/channels/ChannelsView", "@/app/(app)/customers/CustomersView",
-  "@/app/(app)/dashboard/DashboardView",
 ]) vi.doMock(m, () => ({ default: () => null }));
 
 import { prisma } from "@/lib/prisma";
@@ -41,7 +39,6 @@ import { saveBusiness, DEFAULT_BUSINESS } from "@/lib/business";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { parseFollowUpDraft } from "@/app/(app)/customers/[id]/ai";
 import { 认页面 } from "@/lib/ai-context-page";
-import { 订单 } from "@/lib/features";
 
 const ROOT = path.resolve(__dirname, "..");
 let 我: string;
@@ -88,17 +85,6 @@ describe("L-043 首页欢迎句的「今天要跟 N 条」和左栏角标、Dock
   });
 });
 
-describe("L-030 首页看板「近期跟进任务」计划和待办合在一起", () => {
-  it("只排了计划、一条待办都没有：这张卡不空，列的就是那条计划", async () => {
-    const c = await prisma.customer.create({ data: { name: "王总", phone: "13800000001", salesOwnerId: 我 } });
-    await prisma.followPlan.create({ data: { customerId: c.id, ownerId: 我, subject: "回访报价", plannedAt: new Date(Date.now() + 86400000), method: "电话沟通" } });
-    const 看板 = 属性(await (await import("@/app/(app)/dashboard/Board")).default({}));
-    const 任务 = 看板.tasks as { title?: string; 标题?: string; customerName?: string }[];
-    expect(任务.length).toBe(1);
-    expect(JSON.stringify(任务[0])).toContain("回访报价");
-  });
-});
-
 describe("L-053 通用预设的来源列表", () => {
   it("是现在这一套：微信、小红书、抖音、视频号都在，教培的「家长转介绍」类不在", () => {
     expect(DEFAULT_BUSINESS.sources).toEqual(expect.arrayContaining(["微信", "小红书", "抖音", "视频号"]));
@@ -138,10 +124,9 @@ describe("L-071 改了状态显示名，速记解析的提示词跟着说", () =
   });
 });
 
-describe("L-111 关着的页，AI 面板不给指路", () => {
-  it("/suppliers、/opportunities（2026-10-28 已删）没有上下文说法；开着的订单页、别的页照旧有", () => {
-    if (订单) expect(认页面("/orders", null)?.提示).toContain("list_orders");
-    else expect(认页面("/orders", null)).toBeNull();
+describe("L-111 删掉的页，AI 面板不给指路", () => {
+  it("/orders、/suppliers、/opportunities（2026-10-28 已删）没有上下文说法；别的页照旧有", () => {
+    expect(认页面("/orders", null)).toBeNull();
     expect(认页面("/suppliers", null)).toBeNull();
     expect(认页面("/opportunities", null)).toBeNull();
     expect(认页面("/opportunities/pipeline", null)).toBeNull();

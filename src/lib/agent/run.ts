@@ -16,18 +16,14 @@ import { randomUUID } from "node:crypto";
  */
 import { chatMessagesJSON, chatTextStream, buildSystemPrompt, chatTools, type ToolMessage } from "../llm";
 import { TOOLS as 全部工具, TOOL_MAP as 全部工具表, proposalVocab, type ToolContext } from "./tools";
-import { 不开放的工具 } from "@/lib/features";
 import { 企业版 } from "@/lib/enterprise/switch";
-
-/** 这一版交给模型的工具：关掉的功能（订单、供应商）不给，模型叫了也当没有（lib/features.ts） */
-const 基础工具 = 全部工具.filter((t) => !不开放的工具.includes(t.name));
 
 /**
  * 企业版只用项目时没有的老表工具：线索、商机、订单都是项目的阶段了，问它们走 list_projects。
- * 合同、订单的老入口 10-28 也关了（只用项目挡老入口），提议签约 / 查老表只会落到看不见的数据上。
- * 直连里写死的（问供应商走 list_orders）不在表里就跳过，交给模型选
+ * 合同的老入口 10-28 也关了（只用项目挡老入口），提议签约 / 查老表只会落到看不见的数据上。
+ * 直连里写死的工具不在表里就跳过，交给模型选（订单页和 list_orders 10-28 已删）
  */
-export const 只用项目不给 = ["list_leads", "list_opportunities", "propose_opportunity", "propose_contract", "list_contracts", "list_orders"];
+export const 只用项目不给 = ["list_leads", "list_opportunities", "propose_opportunity", "propose_contract", "list_contracts"];
 
 /**
  * 这一家这一问能用的工具。
@@ -36,7 +32,7 @@ export const 只用项目不给 = ["list_leads", "list_opportunities", "propose_
  *   propose_lead 换个说法：确认后建的是客户 + 一个在线索阶段的项目（apply.ts 的 add_lead）。
  */
 export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只用项目: boolean) {
-  const TOOLS = 基础工具
+  const TOOLS = 全部工具
     .filter((t) => (t.name === "list_projects" ? b.projectMode === true : true))
     .filter((t) => !(只用项目 && 只用项目不给.includes(t.name)))
     .map((t) =>

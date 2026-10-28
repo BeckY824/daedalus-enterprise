@@ -9,7 +9,7 @@
  * 企业版只用项目、到不了；表还在库里（老库启动时 legacy-cleanup 清空）。真要上，从桌面端仓库搬回来。
  */
 
-/** 订单（外贸模版）：左栏「订单」、客户页的订单区、商机「转为订单」、跟进挂订单、AI / MCP 的 list_orders */
+/** 订单（外贸模版）：客户页的订单区、商机「转为订单」、跟进挂订单。订单页和 AI 的 list_orders 10-28 已删（企业版只用项目，到不了） */
 export const 订单 = true;
 
 /**
@@ -18,6 +18,3 @@ export const 订单 = true;
  * 关着时保存商机不碰报价（不交明细 = 不另记一版）。e2e/quote 跟着这个开关跳过。
  */
 export const 报价明细 = false;
-
-/** 跟着上面的开关不交给模型、不开给 MCP 的工具 */
-export const 不开放的工具: readonly string[] = [...(订单 ? [] : ["list_orders"])];

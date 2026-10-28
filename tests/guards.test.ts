@@ -76,35 +76,6 @@ describe("构建期也必须能拿到 AUTH_SECRET", () => {
   });
 });
 
-describe("数据首页不许出现编出来的数字", () => {
-  /**
-   * 「假数字比没有数字更糟」——数据首页上的数是拿来做判断的。
-   * 这条曾经真的漏过：三条小曲线里有一条一直是写死的数组
-   * [12,18,15,24,...]，线上零数据时照样画出一条漂亮的上升线，
-   * 是看线上截图才发现的。源码级挡住最直接。
-   */
-  /** 去掉注释再检查——注释里会引用这些写法来说明「原本是怎么错的」 */
-  async function 去注释的源码() {
-    const fs = await import("node:fs/promises");
-    const src = await fs.readFile("src/app/(app)/dashboard/DashboardView.tsx", "utf8");
-    return src
-      .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "") // JSX 里的 {/* ... */}
-      .replace(/\/\*[\s\S]*?\*\//g, "")               // 普通块注释
-      .replace(/\/\/.*$/gm, "");                        // 行注释
-  }
-
-  it("Sparkline 不许传写死的数组", async () => {
-    const 写死的 = [...(await 去注释的源码()).matchAll(/<Sparkline\s+data=\{\[/g)];
-    expect(写死的, "有 Sparkline 直接写了数组字面量，应当传真实计算出来的序列").toHaveLength(0);
-  });
-
-  it("StatCard 的 delta 不许传字面量", async () => {
-    // delta={18.6} 这种；delta={stats.xxx} 是允许的
-    const 写死的 = [...(await 去注释的源码()).matchAll(/delta=\{[\d.]+\}/g)].map((m) => m[0]);
-    expect(写死的, `涨跌被写死了：${写死的.join(", ")}`).toEqual([]);
-  });
-});
-
 describe("删除保护：被引用的学员不能删", () => {
   it("查得出哪些学员是他人的推荐来源或归属对象", async () => {
     const g1 = await prisma.customer.create({

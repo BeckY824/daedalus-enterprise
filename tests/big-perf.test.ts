@@ -3,7 +3,7 @@
  *
  * 造 2 万位客户（一半带外贸档案、一部分带联系人）、10 万条跟进、2 千张订单，量这几样要多久：
  * 客户列表一页 + 总数、关键词搜索（会搜到联系人 / 档案 / 订单号那几路）、按国家筛、导出（取数 + 写 xlsx）、
- * 订单一览、导入 2 万行、撤销这一批。结果打在控制台里，过关线写在断言上（宽松，防的是数量级的退化）。
+ * 导入 2 万行、撤销这一批（订单一览随订单页 2026-10-28 删了）。结果打在控制台里，过关线写在断言上（宽松，防的是数量级的退化）。
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
@@ -21,7 +21,6 @@ import { 客户筛选条件, 客户行字段 } from "@/app/(app)/customers/query
 import { 导出客户 } from "@/app/(app)/customers/export-action";
 import { 客户导出表, 跟进导出表 } from "@/app/(app)/customers/export-table";
 import { 写xlsx } from "@/lib/xlsx-write";
-import { 订单列表 } from "@/lib/order-db";
 import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
 import { 字段表, 猜列 } from "@/lib/import/fields";
 
@@ -87,7 +86,7 @@ describe.runIf(process.env.BIG === "1")("大库性能（B.4）", () => {
     await prisma.$disconnect();
   });
 
-  it("客户列表、搜索、筛选、订单一览", async () => {
+  it("客户列表、搜索、筛选", async () => {
     const 一页 = async (sp: Parameters<typeof 客户筛选条件>[0]) => {
       const where = await 客户筛选条件(sp);
       return Promise.all([prisma.customer.findMany({ where, orderBy: { createdAt: "desc" }, take: 20, select: 客户行字段 }), prisma.customer.count({ where })]);
@@ -98,7 +97,6 @@ describe.runIf(process.env.BIG === "1")("大库性能（B.4）", () => {
     await 计时("搜联系人名", () => 一页({ keyword: "Contact 15" }), 3000);
     await 计时("搜订单号", () => 一页({ keyword: "PI-1999" }), 3000);
     await 计时("按国家筛", () => 一页({ country: "阿联酋" }), 1500);
-    await 计时("订单一览", () => 订单列表(), 3000);
   }, 120_000);
 
   it("导出：取数 + 写 xlsx", async () => {

@@ -851,10 +851,10 @@ export default function RecordView({
             {contracts.length === 0 && <div className="rec-empty">{是订单 ? "还没有订单。商机点「转为订单」，或在这里新建" : "还没有签约"}</div>}
             {contracts.map((c) =>
               是订单 ? (
-                // 外贸：一笔签约就是一张订单。两行：订单号 + 金额；确认日 · 付款方式 · 供应商。点进订单页看挂在它上面的跟进
+                // 外贸：一笔签约就是一张订单。两行：订单号 + 金额；确认日 · 付款方式 · 供应商（订单页 10-28 已删，订单号只显示不跳）
                 <div key={c.id} className="rec-mini rec-mini-2">
                   <span className="rec-mini-n rec-mini-line">
-                    {c.order ? <RowLink className="rec-mini-cut" href={`/orders/${c.order.id}`} title={c.order.no}>{c.order.no}</RowLink> : <span className="muted rec-mini-cut" title="切到外贸之前登记的。点右边的编辑，填上订单号（或付款方式、供应商）就补成一张订单">（还没有订单号，点编辑补上）</span>}
+                    {c.order ? <span className="rec-mini-cut" title={c.order.no}>{c.order.no}</span> : <span className="muted rec-mini-cut" title="切到外贸之前登记的。点右边的编辑，填上订单号（或付款方式、供应商）就补成一张订单">（还没有订单号，点编辑补上）</span>}
                     <span className="rec-mini-amt">{金额(c.amount, c.currency)}</span>
                   </span>
                   {/* 确认日、付款方式、供应商各一段，挤不下就折行（原来拼成一串 nowrap，长供应商名直接越出卡片） */}
@@ -1286,9 +1286,9 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 不�
         <div className="rec-tl-head">
           <span className="rec-tl-type">{meta.label}</span>
           {f.title?.trim() && <span className="rec-tl-title" title={f.title}>· {f.title}</span>}
-          {/* 挂在订单上的（2026-10-05）：标出订单号，点过去看这张订单的全部跟进。标题已经写着这个订单号就不重复 */}
+          {/* 挂在订单上的（2026-10-05）：标出订单号（订单页 10-28 已删，只显示不跳）。标题已经写着这个订单号就不重复 */}
           {f.order && !f.title?.includes(f.order.no) && (
-            <RowLink href={`/orders/${f.order.id}`} className="rec-tl-order" title={`订单 ${f.order.no}`}>订单 {f.order.no}</RowLink>
+            <span className="rec-tl-order" title={`订单 ${f.order.no}`}>订单 {f.order.no}</span>
           )}
           {f.opportunity && !不挂商机 && <RowLink href={`/opportunities?opportunity=${encodeURIComponent(f.opportunity.id)}`} className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</RowLink>}
           {f.status !== "已完成" && (

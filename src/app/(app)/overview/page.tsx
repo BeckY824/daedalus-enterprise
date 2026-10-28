@@ -1,7 +1,6 @@
 import { 签约叫 } from "@/lib/business-config";
 import { requireUser } from "@/lib/auth";
 import { dayjs } from "@/lib/utils";
-import Board from "../dashboard/Board";
 import ReportsView from "../reports/ReportsView";
 import { 加载复盘 } from "./data";
 import { 视图们, type 视图 } from "./views";
@@ -34,16 +33,9 @@ export default async function DataPage({ searchParams }: { searchParams: SP }) {
   // 企业版只用项目：三个视图都按项目数（10-26 用户：「「数据」页改成按项目统计」）
   if (await 企业版只用项目()) return <项目数据 view={view} />;
 
-  if (view === "现在") {
-    return (
-      <DataShell view={view}>
-        <Board 内嵌 />
-      </DataShell>
-    );
-  }
-
+  // 不按项目时的「现在」原来是老数据看板（Board），10-28 删了（企业版只用项目，到不了），落到「本月」
   const now = dayjs();
-  const 本月 = view === "本月";
+  const 本月 = view !== "本年";
   const from = (本月 ? now.startOf("month") : now.startOf("year")).toDate();
   const to = (本月 ? now.endOf("month") : now.endOf("year")).toDate();
   const 业务 = await getBusiness();
