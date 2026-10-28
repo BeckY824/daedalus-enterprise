@@ -27,7 +27,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
+      - run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
         # 上线用到的依赖有高危及以上漏洞就红（H-068，10-04 起）。修不了上游的用 package.json 的 overrides 钉住
       - run: npm audit --omit=dev --audit-level=high
       - run: npx prisma generate
@@ -58,7 +59,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
+      - run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
       # NSIS 单测读取锁定版本的真实上游模板；不运行 Electron 下载或原生构建脚本。
       - name: 安装 NSIS 模板测试依赖
         run: npm ci --prefix desktop --ignore-scripts --no-audit --no-fund
@@ -113,7 +115,8 @@ jobs:
         with:
           path: ~/.npm
           key: npm-e2e-${{ hashFiles('package-lock.json') }}
-      - run: npm ci
+      # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
+      - run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
       # next build 用 Next 的增量编译缓存；源码没变的部分直接复用（10-24 提速）
       - name: 缓存 Next 构建
         uses: actions/cache@v4
@@ -162,7 +165,8 @@ jobs:
         with:
           path: ~/.npm
           key: npm-e2e-${{ hashFiles('package-lock.json') }}
-      - run: npm ci
+      # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
+      - run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
       - run: npx prisma generate
       - run: npx prisma generate --schema=prisma/control.prisma
         env:
@@ -196,7 +200,8 @@ jobs:
         with:
           path: ~/.npm
           key: npm-e2e-${{ hashFiles('package-lock.json') }}
-      - run: npm ci
+      # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
+      - run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
       - name: 缓存 Next 构建
         uses: actions/cache@v4
         with:
