@@ -1,11 +1,11 @@
 /**
- * 团队同步之后的疑似重复（2026-10-03）：两个人各录了同一位客户、各建了同一家供应商。
- * 同步不替人合并：号码一样不一定是同一个人（一个号码几个联系人的公司常见），名字一样的供应商可能是两家分厂。
+ * 团队同步之后的疑似重复（2026-10-03）：两个人各录了同一位客户。
+ * 同步不替人合并：号码一样不一定是同一个人（一个号码几个联系人的公司常见）。
  * 列出来、给链接，让人自己判断。
  * 2026-10-20：客户这一类能合并成一份（lib/customer-merge.ts），每行带两份的对比（负责人、跟进条数、最近跟进、建档时间）
  * 和默认留哪份（跟进多的；一样多留先建的）；标了「不是同一个人」的那几对不再列（CustomerNotDupe，同步给全队）。
+ * 2026-10-28：供应商那一类随供应商页一起删了，只剩客户。
  */
-import { 供应商页 } from "@/lib/features";
 import { prisma } from "../prisma";
 import { 号键 } from "../phone";
 import { 号键SQL, 按号键找 } from "../phone-dedupe";
@@ -25,7 +25,7 @@ export type 疑似记录 = {
   跟进?: number; 最近跟进?: string | null; 建档?: string;
 };
 /** 留：默认留哪份（客户才有） */
-export type 疑似组 = { 种类: "客户" | "供应商"; 依据: string; 记录: 疑似记录[]; 留?: string };
+export type 疑似组 = { 种类: "客户"; 依据: string; 记录: 疑似记录[]; 留?: string };
 
 /** 默认留跟进多的那份；一样多留先建的（用户 10-20 定） */
 export function 默认留(记录: 疑似记录[]): string | undefined {
@@ -56,9 +56,6 @@ export async function 疑似重复(): Promise<疑似组[]> {
     select: { id: true, name: true, salesOwner: { select: { name: true } }, createdAt: true, followUps: { select: { occurredAt: true }, orderBy: { occurredAt: "desc" }, take: 1 }, _count: { select: { followUps: true } } },
     orderBy: { createdAt: "asc" },
   });
-  // 供应商页这一版不上（lib/features.ts）：不列，点进去也是 404
-  const 名字们 = 供应商页 ? await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM "Supplier" GROUP BY name HAVING COUNT(*) > 1 LIMIT 50`) : [];
-  const 供应商 = await prisma.supplier.findMany({ where: { name: { in: 名字们.map((x) => x.name) } }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
   const 客户行 = (c: Omit<(typeof 客户)[number], "phone">): 疑似记录 => ({
     id: c.id, name: c.name, href: `/customers/${c.id}`, 谁的: c.salesOwner.name,
     // 最近跟进按跟进现算：lastFollowAt 是派生列，同步过来的老数据可能没算过
@@ -81,11 +78,6 @@ export async function 疑似重复(): Promise<疑似组[]> {
   ].filter((g) => g.记录.length >= 2 && !都标过(g.记录.map((r) => r.id))).map((g) => ({ ...g, 留: 默认留(g.记录) }));
   return [
     ...客户组,
-    ...名字们.map((g) => ({
-      种类: "供应商" as const,
-      依据: `名称「${g.name}」`,
-      记录: 供应商.filter((s) => s.name === g.name).map((s) => ({ id: s.id, name: s.name, href: `/suppliers/${s.id}`, 谁的: null })),
-    })),
     /*
       号码那一句是裸 SQL 查的、不过团队版限定；记录是限定过的。业务员看来两条都是同事的那组，记录是空的、号码却摆出来了——
       等于把同事客户的号码给了他（10-04 撞号不露同事客户那次查出来的）。自己看得到不到两条的组不算「疑似重复」

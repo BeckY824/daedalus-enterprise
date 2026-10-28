@@ -13,7 +13,7 @@ import { 合并重复动作, 撤销合并动作, 不是同一个人动作 } from
  *
  * 每组列出几份的对比：负责人、跟进条数、最近一次跟进、建档时间；默认留跟进多的那份，一样多留先建的，每组都能改选。
  * 顶上「全选 / 批量合并」，每组也能单独合并或标「不是同一个人」（标了以后全队都不再列）。
- * 合并前自动备份一份；合并后能撤销一次（lib/customer-merge.ts）。供应商那一类照旧只列出来、给链接
+ * 合并前自动备份一份；合并后能撤销一次（lib/customer-merge.ts）。
  */
 export default function DupeMergeCard({ 组们, 上次合并, 叫法, 变了 }: {
   组们: 疑似组[];
@@ -24,7 +24,6 @@ export default function DupeMergeCard({ 组们, 上次合并, 叫法, 变了 }: 
   const router = useRouter();
   const { message, modal } = App.useApp();
   const 客户组 = useMemo(() => 组们.filter((g) => g.种类 === "客户"), [组们]);
-  const 供应商组 = 组们.filter((g) => g.种类 === "供应商");
   const 键 = (g: 疑似组) => `${g.种类}${g.依据}`;
   const [留, set留] = useState<Record<string, string>>({});
   const [选, set选] = useState<Set<string>>(new Set());
@@ -164,18 +163,6 @@ export default function DupeMergeCard({ 组们, 上次合并, 叫法, 变了 }: 
           </li>
         ))}
       </ul>
-      {供应商组.length > 0 && (
-        <ul className="team-dupes">
-          {供应商组.map((g) => (
-            <li key={键(g)}>
-              <span className="muted">{g.种类} · {g.依据}：</span>
-              {g.记录.map((r, i) => (
-                <span key={r.id}>{i > 0 && "、"}<RowLink href={r.href}>{r.name}</RowLink></span>
-              ))}
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }

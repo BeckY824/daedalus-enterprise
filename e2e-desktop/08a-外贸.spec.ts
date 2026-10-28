@@ -13,7 +13,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { 读取完整导出 } from "../e2e/export-download";
 import { 成表 } from "../src/lib/import/parse";
-import { 订单, 订单节点 } from "../src/lib/features";
+import { 订单 } from "../src/lib/features";
 import { 盯控制台, 进门 } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
@@ -172,7 +172,7 @@ test("客户页：订单区、WhatsApp 链接、已下单；跟进挂到订单�
   const 单行 = page.getByRole("main").locator(".ant-table-row", { hasText: 单号 });
   await expect(单行).toContainText(客户名);
   await expect(单行).toContainText("US$ 42,000");
-  if (!订单节点) await expect(单行).toContainText("T/T 30/70");
+  await expect(单行).toContainText("T/T 30/70");
   expect(问题, 问题.join("\n")).toEqual([]);
 });
 

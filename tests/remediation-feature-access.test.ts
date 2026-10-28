@@ -7,9 +7,8 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => state.user }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 订单节点, 供应商页, 报价明细 } from "@/lib/features";
-import { createOrder, saveOrder, saveOrderNode, saveOrderDoc, addOrderDoc, deleteOrderDoc, addOrderNodeNote, saveOrderPurchase } from "@/app/(app)/orders/actions";
-import { saveSupplier, deleteSupplier, saveSupplierQuote, deleteSupplierQuote, 读比价 } from "@/app/(app)/suppliers/actions";
+// 订单节点、供应商页两个开关连同它们的写入口 2026-10-28 已删，这里只剩报价明细
+import { 报价明细 } from "@/lib/features";
 import { saveOpportunity, 读报价 } from "@/app/(app)/opportunities/actions";
 
 let ids: { customer: string; opportunity: string; order: string; doc: string; supplier: string; quote: string };
@@ -37,21 +36,9 @@ async function snapshot() {
 
 describe("L-110/W-050 关闭功能的服务端同样拒绝", () => {
   it.each([
-    ["旧高级新建订单", () => createOrder({ customerId: ids.customer, no: "QA-NEW" })],
-    ["改定金", () => saveOrder(ids.order, { depositPaid: 100 })],
-    ["改采购", () => saveOrderPurchase(ids.order, { cost: 200 })],
-    ["改节点", () => saveOrderNode(ids.order, 1, { status: "已完成" })],
-    ["改单据", () => saveOrderDoc(ids.doc, "已收齐")],
-    ["加单据", () => addOrderDoc(ids.order, "QA-新单据")],
-    ["删单据", () => deleteOrderDoc(ids.doc)],
-    ["节点记跟进", () => addOrderNodeNote(ids.order, 1, "QA-节点跟进")],
-    ["改供应商", () => saveSupplier({ id: ids.supplier, name: "QA-已修改" })],
-    ["删供应商", () => deleteSupplier(ids.supplier)],
-    ["存比价", () => saveSupplierQuote({ opportunityId: ids.opportunity, supplierId: ids.supplier, product: "QA-新产品", unitPrice: 20 })],
-    ["删比价", () => deleteSupplierQuote(ids.quote)],
     ["保存关闭的报价明细", () => saveOpportunity({ id: ids.opportunity, name: "QA-商机修改", customerId: ids.customer, ownerId: state.user.id, amount: 1, stage: "初步沟通", status: "OPEN", probability: 20, 报价: [{ product: "QA", qty: 1, unitPrice: 1 }] })],
   ] as const)("%s：拒绝且业务库完全不变", async (_label, operation) => {
-    expect([订单节点, 供应商页, 报价明细]).toEqual([false, false, false]);
+    expect(报价明细).toBe(false);
     const before = await snapshot();
     expect(await operation()).toMatchObject({ ok: false, error: expect.stringContaining("未开放") });
     expect(await snapshot()).toBe(before);
@@ -59,6 +46,5 @@ describe("L-110/W-050 关闭功能的服务端同样拒绝", () => {
 
   it("关闭的只读高级入口不返回遗留明细", async () => {
     expect(await 读报价(ids.opportunity)).toEqual([]);
-    expect(await 读比价(ids.opportunity)).toEqual({ 行: [], 供应商: [], 产品: [] });
   });
 });

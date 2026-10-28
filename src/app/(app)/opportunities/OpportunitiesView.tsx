@@ -2,7 +2,6 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 
-import { 供应商页 } from "@/lib/features";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Space, Select, Tag, InputNumber, App, Dropdown, Popover, Alert } from "antd";
@@ -25,7 +24,6 @@ import { saveContract } from "../customers/actions";
 import ContractForm from "../customers/[id]/ContractForm";
 import InlineConfirm from "@/components/InlineConfirm";
 import OpportunityForm from "./OpportunityForm";
-import CompareDrawer from "./CompareDrawer";
 import { 金额格式 } from "@/lib/money-input";
 import { 金额, 合计文字, 币种符号 } from "@/lib/currency";
 import { useBusiness } from "@/lib/business-client";
@@ -90,9 +88,6 @@ export default function OpportunitiesView({
     setEditing(null);
     setOpen(true);
   };
-  /** 正在看哪个商机的供应商比价（外贸模版，3c） */
-  const [比价, set比价] = useState<OppRow | null>(null);
-  const 比价项 = (r: OppRow) => (b.template === "trade" && 供应商页 ? [{ key: "compare", label: "供应商比价", onClick: () => set比价(r) }] : []);
   /*
     外贸模版（2026-10-05 外贸客户建议）：赢单叫「转为订单」——和线索转客户一个意思，点了就是订单框（金额币种从商机带），
     存下来是一张订单 + 一笔签约、这个商机标为已转订单（lib/order-contract.ts）。不摆成交概率、预计成交，改摆询盘时间
@@ -396,7 +391,6 @@ export default function OpportunitiesView({
             <Dropdown
               menu={{
                 items: [
-                  ...比价项(r),
                   { key: "reopen", label: "重新打开", onClick: () => void 重开(r) },
                 ],
               }}
@@ -415,7 +409,6 @@ export default function OpportunitiesView({
               <Dropdown
                 menu={{
                   items: [
-                    ...比价项(r),
                     { key: "won", label: 是订单 ? "转为订单" : "标记赢单", onClick: () => 去赢(r) },
                     { key: "lost", label: "标记丢单", danger: true, onClick: () => { set问赢单(null); set问丢单(r.id); } },
                   ],
@@ -552,7 +545,6 @@ export default function OpportunitiesView({
         }
       />
 
-      {供应商页 && <CompareDrawer open={比价 !== null} opp={比价} onClose={() => set比价(null)} />}
       {/* 外贸：转为订单 = 从这一单开订单框（和管道里拖进「客户确认」同一个框） */}
       {转订单 && (
         <ContractForm

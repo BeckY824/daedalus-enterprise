@@ -2,7 +2,7 @@
  * 二轮排查（r2-data）· 导出。
  *
  * 筛选后导出全部（不是当前一页）、上万行、公式注入防护、中文 / 逗号 / 换行 / 引号。
- * 导出的取数是 customers/export-action.ts 的 导出客户()，拼文件是 lib/csv.ts 的 toCsv()——两样都在这里打。
+ * 导出的取数是 customers/export-action.ts 的 导出客户()，拼文件是 tests/helpers/csv.ts 的 toCsv()——两样都在这里打。
  * 列表页上那段 exportCsv（拼表头、文件名）是组件内部函数，没法单测，问题写在报告里（代码审读）。
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
@@ -19,7 +19,7 @@ import { 造本人 } from "./r2-data-helpers";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
 import { 客户导出表 } from "@/app/(app)/customers/export-table";
 import { 执行导入 } from "@/app/(app)/customers/import-actions";
-import { toCsv, csvCell, BOM } from "@/lib/csv";
+import { toCsv, csvCell, BOM } from "./helpers/csv";
 import { 解析CSV, 成表 } from "@/lib/import/parse";
 import { 认枚举, 摊开 } from "@/lib/import/plan";
 import { 字段表, 猜列 } from "@/lib/import/fields";

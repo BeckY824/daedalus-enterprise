@@ -1,7 +1,7 @@
 /**
  * 客户列表「导出」的表头和每一行。从 CustomersView 的 exportCsv 里拆出来，是为了能单测「导出 → 再导入一圈」
  * （2026-10-04 J-073：原来 13 列、没有备注，人手录的备注导出全没了，组件内部函数测不到，就一直没人发现）。
- * 转义、BOM、公式注入防护在 lib/csv.ts 的 toCsv 里，这里只管写哪几列。
+ * 拼文件在 export.worker.ts（写 xlsx），这里只管写哪几列。原来的 lib/csv.ts 源码里没人用了，2026-10-28 挪进 tests/helpers/csv.ts。
  */
 import type { BusinessConfig } from "@/lib/business-config";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";

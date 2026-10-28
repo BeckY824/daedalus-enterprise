@@ -13,7 +13,6 @@ import { 算提醒, 定了时刻 } from "@/lib/reminders";
 import { 截止说法 } from "@/lib/deadline";
 import { parseDateInput } from "@/lib/date-input";
 import { 节点灯, 默认订单号 } from "@/lib/order";
-import { 过期了 } from "@/lib/supplier";
 import { defaultClient as db } from "@/lib/prisma";
 import { resetDb } from "./reset";
 const originalTZ = process.env.TZ;
@@ -59,7 +58,6 @@ it("逾期/日历天/Dock汇总/显示/订单和供应报价采用同一业务�
   expect(截止说法("2026-11-01")).toBe("今天"); expect(截止说法("2026-10-31")).toBe("逾期 1 天");
   expect(冷热("2026-10-31T15:59:59Z").天).toBe(1);
   expect(节点灯({ status: "未开始", dueAt: "2026-10-31" }, now)).toBe("红");
-  expect(过期了("2026-10-31", now)).toBe(true); expect(过期了("2026-11-01", now)).toBe(false);
   expect(默认订单号([], now)).toBe("20261101-1");
 });
 it("数据库逾期计数与同日摘要一致，日期元数据和旧瞬间分别查", async () => {

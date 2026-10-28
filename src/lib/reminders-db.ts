@@ -1,6 +1,6 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 读的我 } from "@/lib/team-scope";
-import { 今天界线, type 提醒项, type 订单提醒项 } from "@/lib/reminders";
+import { 今天界线, type 提醒项 } from "@/lib/reminders";
 
 /**
  * 某人名下还没做的跟进计划和待办，摊成 算提醒() 要的样子。
@@ -49,21 +49,4 @@ async function 照数(ownerId: string, now: Date): Promise<{ 逾期: number; 今
     prisma.task.count({ where: { done: false, ownerId, dueAt: { not: null }, OR: [{ dueOn: 今天串 }, { OR: [{ dueOn: null }, { dueOn: "" }], dueAt: { gte: 今天开始, lt: 明天开始 } }] } }),
   ]);
   return { 逾期: a + b, 今天: c + d };
-}
-
-/**
- * 某人（业务员）名下订单里要看的节点：没完成、不是不适用，排了截止日或者卡住了。
- * 没有订单（通用模版）就是空的，什么都不多算。
- */
-export async function 取订单提醒项(ownerId: string): Promise<订单提醒项[]> {
-  const nodes = await prisma.tradeOrderNode.findMany({
-    where: {
-      status: { notIn: ["已完成", "不适用"] },
-      OR: [{ dueAt: { not: null } }, { status: "卡住" }],
-      // 跟客户现在的负责人走（二审）：order.ownerId 是下单那一刻固化的业绩归属，客户转给同事之后原业务员还在收提醒、点进去看不到
-      order: { customer: { salesOwnerId: ownerId } },
-    },
-    select: { name: true, dueAt: true, status: true, order: { select: { id: true, no: true } } },
-  });
-  return nodes.map((n) => ({ orderId: n.order.id, no: n.order.no, 节点: n.name, 时间: n.dueAt, 卡住: n.status === "卡住" }));
 }

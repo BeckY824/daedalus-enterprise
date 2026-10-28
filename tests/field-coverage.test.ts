@@ -62,17 +62,14 @@ const 可写: Record<string, string[]> = {
   ContractMoney: ["currency", "amountExact"],
   // 报价明细（2026-10-03）：saveOpportunity 收 报价，一行五个字段
   QuoteLine: ["product", "spec", "qty", "unit", "unitPrice"],
-  // 外贸订单（2026-10-03）：表头 saveOrder，节点 saveOrderNode，单据 saveOrderDoc / addOrderDoc
-  TradeOrder: ["no", "amount", "currency", "incoterm", "payment", "depositDue", "depositPaid", "depositAt", "balancePaid", "balanceAt", "remark"],
-  TradeOrderNode: ["name", "dueAt", "status"],
+  // 外贸订单（2026-10-05 订单 = 签约）：记签约时 order-contract 写号、金额、币种、付款方式；节点版写入口 2026-10-28 已删，其余列见 派生
+  TradeOrder: ["no", "amount", "currency", "payment"],
   // 客户的外贸档案（2026-10-05）：客户表单 saveCustomer 的 extra、记录页 patchCustomer 单格改、导入、线索转客户
   // 2026-10-16 加客户等级、官网：同样走 saveCustomer 的 extra、patchCustomer、导入
   CustomerExtra: ["country", "whatsapp", "wechat", "email", "source", "level", "website", "alibabaId"],
-  TradeOrderDoc: ["name", "state"],
-  // 供应商和比价（3c）：saveSupplier / saveSupplierQuote / saveOrderPurchase
-  Supplier: ["name", "category", "region", "contact", "phone", "wechat", "invoice", "payment", "rating", "issues", "remark"],
-  SupplierQuote: ["supplierId", "product", "unitPrice", "currency", "withInvoice", "moq", "leadDays", "sampleFee", "validUntil", "verdict", "reason"],
-  TradeOrderPurchase: ["supplierId", "cost", "currency", "fxRate"],
+  // 供应商：记签约时手填的供应商名，库里没有就按名字新建、挂到订单的采购行（order-contract）；供应商页、比价 2026-10-28 已删
+  Supplier: ["name"],
+  TradeOrderPurchase: ["supplierId"],
   // 团队版项目模式 1a（2026-10-23）：建档向导、项目详情（编辑项目 / 改节点 / 勾交付 / 项目组）、设置里的「项目模式」一栏
   Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt"],
   ProjectMember: ["roleId"],
@@ -86,6 +83,9 @@ const 可写: Record<string, string[]> = {
   // 对话历史：人能改的只有标题（重命名）。其余是系统打的，见下面「派生」
   AiConversation: ["title"],
 };
+
+/** 订单节点版、供应商页、比价的写入口 2026-10-28 已删：表照 schema 留着，同步和启动清理照旧带这些列，只是没有页面再改它 */
+const 页面已删 = (...列: string[]) => Object.fromEntries(列.map((f) => [f, "写它的页面 2026-10-28 已删（订单节点版 / 供应商页 / 比价），列留着给老库和同步"]));
 
 /** 派生 / 只读：写明为什么不能直接改 */
 const 派生: Record<string, Record<string, string>> = {
@@ -151,12 +151,14 @@ const 派生: Record<string, Record<string, string>> = {
     opportunityId: "从哪个商机生成的，建单时打上；商机删了置空",
     ownerId: "业务员，下单那一刻固化（同 ContractOwner），业绩按它算",
     contractId: "这张订单是哪一笔签约（2026-10-05 订单 = 签约），建单时和签约一起写，不改",
+    ...页面已删("incoterm", "depositDue", "depositPaid", "depositAt", "balancePaid", "balanceAt", "remark"),
   },
   CustomerExtra: { customerId: "哪位客户的档案，一位一行" },
-  TradeOrderNode: { orderId: "属于哪张订单", idx: "第几步（1–12），建单时排好", doneAt: "改成已完成的那一刻，系统打上；改回别的就清掉" },
-  TradeOrderDoc: { orderId: "属于哪张订单", sort: "清单里的顺序，加一样时排在最后" },
-  SupplierQuote: { opportunityId: "哪个商机（询盘）的比价，建行时定", quotedAt: "记下这一行的那一刻，系统打上" },
-  TradeOrderPurchase: { orderId: "哪张订单，一张一行" },
+  TradeOrderNode: { orderId: "属于哪张订单", idx: "第几步（1–12），建单时排好", doneAt: "改成已完成的那一刻，系统打上；改回别的就清掉", ...页面已删("name", "dueAt", "status") },
+  TradeOrderDoc: { orderId: "属于哪张订单", sort: "清单里的顺序，加一样时排在最后", ...页面已删("name", "state") },
+  SupplierQuote: { opportunityId: "哪个商机（询盘）的比价，建行时定", quotedAt: "记下这一行的那一刻，系统打上", ...页面已删("supplierId", "product", "unitPrice", "currency", "withInvoice", "moq", "leadDays", "sampleFee", "validUntil", "verdict", "reason") },
+  TradeOrderPurchase: { orderId: "哪张订单，一张一行", ...页面已删("cost", "currency", "fxRate") },
+  Supplier: 页面已删("category", "region", "contact", "phone", "wechat", "invoice", "payment", "rating", "issues", "remark"),
   // 公海（第 6 块）：整行是「放进 / 领取」两个动作的结果，没有单改某一格的入口
   CustomerPool: {
     customerId: "哪位客户，有这一行 = 在公海；放进公海时建、领取时删",

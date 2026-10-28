@@ -22,7 +22,6 @@ export const 工具口语: Record<string, (次: number, 客户: string) => strin
   // 外贸里签约就是订单：说「成交记录」两个模版都对（F.3）
   list_contracts: () => "查了成交记录",
   list_orders: () => "查了订单",
-  list_suppliers: () => "查了供应商",
   list_users: () => "查了账号名单",
   search_followups: (n) => `搜了 ${n} 次跟进记录`,
   /*
