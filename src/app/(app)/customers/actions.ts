@@ -39,7 +39,7 @@ import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
 import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
-import { 记换负责人 } from "@/lib/owner-log-db";
+import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 交接要确认, 交接中的客户 } from "@/lib/enterprise/handover-db";
@@ -954,7 +954,8 @@ async function 发起转让交接(me: { id: string; name: string }, ids: string[
  *   - 原负责人已经停用的不还（还给停用的人等于丢进黑洞），留在新负责人那儿
  *   - 带过来的活也只还「还挂在新负责人名下、还没做完」的
  * 看全部（团队版，lib/team-scope.ts）：业务员把自己的客户转给同事，客户一换人他就看不到了，限定着查撤不回来。
- * 所以要撤哪几位不靠限定定：要么是还给我自己（我刚转出去的），要么是我现在看得到的（公海里的）
+ * 所以要撤哪几位不靠限定定：要么是还给我自己（我刚转出去的），要么是我现在看得到的（公海里的）；
+ * 并且这位最近一条换负责人记录得是我把他从原负责人换给新负责人的（是我刚换的）——原值是前端传的，不能光信它
  */
 export async function 撤销改负责人(原值: { id: string; 值: string }[], 新负责人: string, 带过来?: 带走的): Promise<BulkResult> {
   const me = await requireUser();
@@ -964,7 +965,9 @@ export async function 撤销改负责人(原值: { id: string; 值: string }[], 
   const 看得到 = new Set((await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((c) => c.id));
   const 还归他 = new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: 新负责人 }, select: { id: true } }))).map((c) => c.id));
   const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 原值.map((x) => x.值) }, active: true }, select: { id: true } })).map((u) => u.id));
-  const 退 = 原值.filter((x) => 还归他.has(x.id) && 在职的.has(x.值) && (x.值 === me.id || 看得到.has(x.id)));
+  // 只撤我自己刚才那一下（2026-10-28 越权排查）：原值、新负责人都是前端传的，不对上换负责人记录，业务员能把同事的客户「撤」给自己
+  const 我换的 = await 是我刚换的(原值.map((x) => ({ customerId: x.id, 原: x.值, 现: 新负责人 })), me.id);
+  const 退 = 原值.filter((x) => 我换的.has(x.id) && 还归他.has(x.id) && 在职的.has(x.值) && (x.值 === me.id || 看得到.has(x.id)));
   await 钉住老签约();
   const 退了: { id: string; salesOwnerId: string }[] = [];
   for (const x of 退) {
