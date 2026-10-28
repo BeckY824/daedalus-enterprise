@@ -437,7 +437,7 @@ test("键盘可用性：两个输入框按回车都能登录", async ({ page }) 
 test("浏览器后退在各页面之间表现正常", async ({ page }) => {
   await 登录(page);
   await page.goto("/customers");
-  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "线索", exact: true }).click();
+  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: 企业版 ? "新线索" : "线索", exact: true }).click();
   await expect(page).toHaveURL(/\/leads/);
   await page.goBack();
   await expect(page, "从线索退回来应当回到客户列表").toHaveURL(/\/customers/);

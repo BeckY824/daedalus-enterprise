@@ -773,6 +773,7 @@ test("从「新增客户」点进来时，列表要说清自己只是一个子�
 });
 
 test("趋势图点一根柱子，看得到这一段是哪几笔凑出来的", async ({ page }) => {
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：数据页没有签约金额趋势图");
   await 登录(page);
   await page.goto("/overview?view=" + encodeURIComponent("本年"));
   /*
@@ -830,6 +831,7 @@ test("联系人页能直接加一位，但第一格必须先选归属", async ({
   界面这一层没有——而那个输入框第一版没接表单 id，标签和输入框的关联断了（getByLabel 找不到、读屏念不出来）
 */
 test("新建线索：来源一格能直接填列表里没有的说法，按标签找得到输入框，存完列表里看得见", async ({ page }) => {
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：新线索走项目向导（/leads/new），不弹老的新建线索框");
   const 名 = `朋友圈线索${Date.now().toString().slice(-5)}`;
   await 登录(page);
   await page.goto("/leads");
