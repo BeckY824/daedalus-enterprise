@@ -145,6 +145,7 @@ for (const 尺寸 of [
   { 名: "手机宽度", width: 390, height: 844 },
 ]) {
   test(`${尺寸.名}（${尺寸.width}）：新建时一样能选推荐人`, async ({ page }) => {
+    test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     await page.setViewportSize({ width: 尺寸.width, height: 尺寸.height });
     await 登录(page);
     await 新建时选推荐人(page);

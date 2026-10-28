@@ -28,6 +28,7 @@ test("生产冷加载new=1预填第1001位，无水合错误、取消不写入�
   expect(errors).toEqual([]);
 });
 test("客户详情内就地新建商机，客户正确预填并实际保存到该客户", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目，没有商机：客户页不摆「新建关联商机」");
   await login(page); await page.goto(`/customers/${target}`); await page.getByRole("button", { name: "新建关联商机" }).click();
   const dialog = page.getByRole("dialog", { name: "新建商机" }); await expect(dialog).toBeVisible();
   await expect(dialog.locator(".ant-select").filter({ has: page.locator("#customerId") })).toContainText("QA远端目标");

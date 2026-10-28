@@ -14,6 +14,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -75,6 +76,8 @@ test("J-003 行内「职位」：敲两个字 → ↓ 回车选候选 → 存的
   const id = await 造客户("键盘选职位");
   await 登录(page);
   await page.goto(`/customers/${id}`);
+  // 企业版没填的格收在「展开更多」里（RecordView.tsx 摆）
+  if (企业版) await page.getByRole("button", { name: /展开更多/ }).click();
   // 点开那一格（dev 下刚出来可能还没水合：没变成输入框就再点）
   const 格 = page.getByRole("button", { name: "编辑职位" });
   const 框 = page.getByRole("main").locator(".rec-field-editing input");
@@ -83,7 +86,7 @@ test("J-003 行内「职位」：敲两个字 → ↓ 回车选候选 → 存的
     await expect(框).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
   // 企业版默认职位是企业版那 19 个（business-config.ts 企业版职位），「部门」对上的是「部门总监」
-  const 候选 = process.env.CRM_ENTERPRISE === "1" ? "部门总监" : "部门负责人";
+  const 候选 = 企业版 ? "部门总监" : "部门负责人";
   await 框.pressSequentially("部门");
   await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 候选 })).toBeVisible();
   await page.keyboard.press("ArrowDown");
