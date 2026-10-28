@@ -1,4 +1,4 @@
-import { 列工具, 跑工具 } from "./tools";
+import { 列工具, 跑工具, 只用项目 } from "./tools";
 
 /**
  * MCP 的 JSON-RPC 处理。传输那一层（HTTP）在 api/mcp/route.ts，这里只管消息。
@@ -46,7 +46,7 @@ export async function 处理(req: 请求, who: { id: string; name: string }, 版
       return 结果(req.id, {});
 
     case "tools/list":
-      return 结果(req.id, { tools: 列工具() });
+      return 结果(req.id, { tools: 列工具(await 只用项目()) });
 
     case "tools/call": {
       const p = (req.params ?? {}) as { name?: unknown; arguments?: unknown };

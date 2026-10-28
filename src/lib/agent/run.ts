@@ -27,7 +27,7 @@ const 基础工具 = 全部工具.filter((t) => !不开放的工具.includes(t.n
  * 合同、订单的老入口 10-28 也关了（只用项目挡老入口），提议签约 / 查老表只会落到看不见的数据上。
  * 直连里写死的（问供应商走 list_orders）不在表里就跳过，交给模型选
  */
-const 只用项目不给 = ["list_leads", "list_opportunities", "propose_opportunity", "propose_contract", "list_contracts", "list_orders"];
+export const 只用项目不给 = ["list_leads", "list_opportunities", "propose_opportunity", "propose_contract", "list_contracts", "list_orders"];
 
 /**
  * 这一家这一问能用的工具。
