@@ -38,7 +38,8 @@ jobs:
 
   unit:
     name: 单元测试 ${{ matrix.shard }}/4
-    runs-on: ubuntu-latest
+    # 钉 24.04：ubuntu-latest 2026-10-28 起逐步换成 26.04，Playwright 1.56 在上面装不了 chromium，整片挂
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
