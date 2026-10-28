@@ -102,7 +102,7 @@ export async function 建档向导(输入: 建档向导输入) {
         if (ids.length) throw new 联系人号码撞了(ids, 号.格);
       }
       await 向导(tx, customerId);
-      for (const 号 of 联号) await 记号码(tx, customerId, 建了.contactId ?? null, 号);
+      for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
     });
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {

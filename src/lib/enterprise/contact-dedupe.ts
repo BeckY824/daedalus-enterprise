@@ -18,11 +18,11 @@
  * 「🔀请选择号码类型」两条是格式那一半的（contact-format.ts）
  */
 import type { Prisma } from "@/generated/prisma";
-import type { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { 号键 } from "@/lib/phone";
 import { 号键SQL, 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件 } from "@/lib/email-dedupe";
-import { 看全部, 看得到, type 谁 } from "@/lib/team-scope";
+import { 看全部, 看得到, 限定的我, 只读错误, type 谁 } from "@/lib/team-scope";
 import { 问同事 } from "@/lib/sync/dedupe-client";
 import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
 import { 号码归属地 } from "./phone-region";
@@ -137,11 +137,29 @@ export async function 企业号码查重(db: 库, 号: { 类型: 号码类型; �
 }
 
 /**
+ * 记到哪位客户上，调用方必须说清（2026-10-28：函数自己挡越权，不靠入口）：
+ * - 刚建的：同一笔事务里刚 create 出来的那位。不查范围——销售管理建档能指定别人当负责人，刚建好的可能不在自己能改的范围里
+ * - 已有：库里本来就有的。先按「能改谁」（限定的我：自己 + 实线下属，虚线下属的不算）认一遍，不在范围里抛 只读错误、一行不写；
+ *   在 看全部 里调 = 调用方明说不限，照记
+ */
+export type 记到 = { 刚建的: string } | { 已有: string };
+
+async function 记到谁(tx: Prisma.TransactionClient, 到: 记到): Promise<string> {
+  if ("刚建的" in 到) return 到.刚建的;
+  const 我 = await 限定的我(prisma);
+  if (!我) return 到.已有;
+  const c = await tx.customer.findUnique({ where: { id: 到.已有 }, select: { salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
+  if (!c || !看得到(c, 我)) throw new 只读错误("记不了号码：这位客户不在你能改的范围里");
+  return 到.已有;
+}
+
+/**
  * 往联系方式子表里记一个号（企业版建档，事务里调）。同一位客户同类型同规整值已经有一行的不再加一行：
  * 那一行还没挂联系人、这次给了联系人的，挂上。手机号顺带记归属地（离线号段 / 国外按区号）
  */
-export async function 记号码(tx: Prisma.TransactionClient, customerId: string, contactId: string | null, 号: 验好的号): Promise<void> {
+export async function 记号码(tx: Prisma.TransactionClient, 到: 记到, contactId: string | null, 号: 验好的号): Promise<void> {
   if (!进子表(号.类型) || !号.键) return;
+  const customerId = await 记到谁(tx, 到);
   const kind = 号码库类型[号.类型];
   const 有 = await tx.contactMethod.findFirst({ where: { customerId, kind, numberKey: 号.键 }, select: { id: true, contactId: true } });
   if (有) {

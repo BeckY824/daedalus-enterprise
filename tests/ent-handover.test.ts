@@ -211,7 +211,7 @@ describe("转让交接中", () => {
     await 客户(销售.id);
     await assignSalesOwner([(await prisma.customer.findFirstOrThrow()).id], 接手.id);
     const h = await 一笔();
-    const 成 = await Promise.all([了结(prisma, h.id, "已确认", 接手.id), 了结(prisma, h.id, "已撤回", 老板.id)]);
+    const 成 = await Promise.all([了结(prisma, h.id, "已确认", 接手), 了结(prisma, h.id, "已撤回", 老板)]);
     expect(成.filter(Boolean)).toHaveLength(1);
   });
 });
