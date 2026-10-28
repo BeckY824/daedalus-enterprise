@@ -5,6 +5,8 @@ import { 同步表 } from "./tables";
 import type { 改动 } from "./local";
 // 从 canon 取、不从 crypto 取：这个文件手机端（浏览器）也要用，不能牵进 node:crypto
 import { 规范串 } from "./canon";
+// 只读 process.env、不牵 node 模块：浏览器里永远是「关」（企业版不走手机端同步，见下面 企业版附件父表）
+import { 企业版 } from "../enterprise/switch";
 export const 范围字段: Record<string, readonly string[]> = {
   User: [], Setting: [], Channel: [], Supplier: [],
   Customer: ["salesOwnerId", "channelOwnerId"],
@@ -38,6 +40,20 @@ export const 范围父表: Record<string, Record<string, string>> = {
   FollowUpOrder: { followUpId: "FollowUp", orderId: "TradeOrder" },
   Attachment: { opportunityId: "Opportunity", orderId: "TradeOrder" },
 };
+/**
+ * 企业版联系人附件（2026-10-28）：名片、联系人图片挂在线索（leadId）或联系人（contactId）上，可见规则跟着它走——
+ * 看不到那条线索 / 那位客户，附件也看不到；同事的客户只读（Attachment 不在 互看可加 里，传不了、删不了）。
+ * 只在 CRM_ENTERPRISE=1 时认：团队版的附件没有这两列（接口不收），元数据、父链和原来一字不差，新旧版本混着用核对范围也对得上。
+ * 企业版网页端不走这套同步，读写由加了限定的 prisma 管（api/attachments/access.ts）；这里补齐是为了两边规矩一致、以后接同步不漏
+ */
+const 企业版附件字段 = ["leadId", "contactId"] as const;
+const 附件父表 = 范围父表.Attachment;
+Object.defineProperty(范围父表, "Attachment", {
+  enumerable: true,
+  get: () => (企业版() ? { ...附件父表, leadId: "Lead", contactId: "Contact" } : 附件父表),
+});
+/** 这张表的元数据带哪些键：企业版的附件多 leadId / contactId（只在有值时带，挂商机 / 订单的老附件元数据不变） */
+export const 范围字段之 = (t: string): readonly string[] => (t === "Attachment" && 企业版() ? [...范围字段[t], ...企业版附件字段] : 范围字段[t] ?? []);
 export type 范围元数据 = Pick<改动, "t" | "k" | "o" | "h"> & { fields: Record<string, string | null> };
 /** delSeq：把它删成现在这样的那一包的批次号（deleted 时才有意义；2026-10-14 起记，之前建的索引没有） */
 export type 范围索引 = { t: string; k: string; fields: Record<string, string | null>; clocks: Record<string, string>; deleted: boolean; clock: string; routeSeq: number; delSeq?: number };
@@ -51,9 +67,10 @@ const 编号 = (s: unknown): s is string => typeof s === "string" && /^[\w-]{1,1
 export function 提取范围(e: 改动): 范围元数据 {
   if (!(同步表 as readonly string[]).includes(e.t) || !编号(e.k) || !/^(I|U|D)$/.test(e.o) || !/^\d{13,16}-[\w-]{1,100}$/.test(e.h)) throw Error("范围事件格式不对");
   const fields: 范围元数据["fields"] = {};
-  if (e.o !== "D") for (const key of 范围字段[e.t]) {
+  if (e.o !== "D") for (const key of 范围字段之(e.t)) {
     if (e.o === "U" && !e.c.includes(key)) continue;
     const v = e.r?.[key] ?? null;
+    if (v === null && !范围字段[e.t].includes(key)) continue;
     if (v !== null && !编号(v)) throw Error("范围引用格式不对");
     fields[key] = v as string | null;
   }

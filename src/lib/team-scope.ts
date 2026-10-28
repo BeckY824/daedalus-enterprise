@@ -136,6 +136,16 @@ export async function 虚线只读的(db: PrismaClient, ids: string[]): Promise<
   return x.全拦 ? ids.filter((id) => x.别人的.has(id)) : [];
 }
 
+/**
+ * 企业版虚线上级看得到虚线下属没转客户的线索（读按负责人放开），改线索却走写的范围、改不动：
+ * 线索上的附件（联系人附件 10-28）按同一个口径挡传、删。挂了客户的线索照旧按 同事的客户 认；市场管理全看线索时不挡
+ */
+export async function 虚线只读线索(db: PrismaClient, l: { ownerId: string | null; customerId: string | null }): Promise<boolean> {
+  const x = await 现在的限定(db);
+  if (!x.全拦 || x.线索全看 || !x.我 || l.customerId) return false;
+  return !l.ownerId || !(typeof x.我 === "string" ? l.ownerId === x.我 : x.我.includes(l.ownerId));
+}
+
 /** 选中的里有虚线下属的客户：挡下时给人看的那句；没有回 null */
 export async function 虚线只读挡(db: PrismaClient, ids: string[]): Promise<string | null> {
   const 中 = await 虚线只读的(db, ids);

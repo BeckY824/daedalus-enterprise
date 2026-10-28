@@ -1,6 +1,6 @@
-import { expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { 同步表 } from "@/lib/sync/tables";
-import { 合并范围, 提取范围, 推送可写, 算范围, 范围可读, 范围可写, 核对范围, 范围字段, 行键, type 范围索引 } from "@/lib/sync/scope-policy";
+import { 合并范围, 提取范围, 推送可写, 算范围, 范围可读, 范围可写, 核对范围, 范围字段, 范围字段之, 范围父表, 行键, type 范围索引 } from "@/lib/sync/scope-policy";
 import type { 改动 } from "@/lib/sync/local";
 const event = (t: string, k: string, r: Record<string, unknown>, c = Object.keys(r), h = "1700000000000-test"): 改动 => ({ t, k, r, c, h, o: "I" });
 const index = (t: string, k: string, r: Record<string, unknown>) => 合并范围(undefined, 提取范围(event(t, k, r)), 1);
@@ -78,4 +78,58 @@ it('推送可写：转交之后同一次请求里还能改子记录（按请求�
   expect(推送可写(start, rows, planU, 'three', false)).toBe(false);
   // 老板永远可写
   expect(推送可写(start, rows, boss, 'boss', true)).toBe(true);
+});
+
+describe('企业版联系人附件（2026-10-28）：挂线索 / 联系人的附件跟着线索、客户走', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  /** 在 fixture 上补：one 自己没转的线索、one 客户下的联系人、老板私客下的联系人。index 在调用时按开关取字段，要先设开关再调 */
+  function rows附件() {
+    const rows = fixture();
+    for (const r of [index('Lead', 'lone', { ownerId: 'acct_one' }), index('Contact', 'c1', { customerId: 'one' }), index('Contact', 'cb', { customerId: 'boss' })]) rows.set(行键(r.t, r.k), r);
+    return rows;
+  }
+  const 删包 = (old: 范围索引) => 合并范围(old, { t: old.t, k: old.k, o: 'D', h: '1900000000000-test', fields: {} }, 9);
+  it('开关开着：线索上的只给线索负责人，联系人上的跟客户；看不到就读不到，只读的同事客户传不了也删不了', () => {
+    vi.stubEnv('CRM_ENTERPRISE', '1');
+    const rows = rows附件();
+    const 线索的 = index('Attachment', 'a1', { leadId: 'lone' }), 联系人的 = index('Attachment', 'a2', { contactId: 'c1' }), 私客的 = index('Attachment', 'a3', { contactId: 'cb' });
+    expect(线索的.fields).toEqual({ opportunityId: null, orderId: null, leadId: 'lone' });
+    expect(算范围(线索的, rows)?.id).toBe('personal:acct_one');
+    expect(范围可读(算范围(线索的, rows), 'one', false)).toBe(true);
+    // 线索是个人范围：互看开着也只给本人
+    expect(范围可读(算范围(线索的, rows), 'two', false, true)).toBe(false);
+    expect(算范围(联系人的, rows)?.id).toBe('Customer:one');
+    expect(范围可读(算范围(联系人的, rows), 'two', false)).toBe(false);
+    expect(范围可读(算范围(私客的, rows), 'one', false)).toBe(false);
+    expect(范围可读(算范围(私客的, rows), 'boss', true)).toBe(true);
+    // 传：自己的客户 / 线索能传；老板私客下不行；互看开着能看同事客户的附件，但传不了
+    expect(范围可写(undefined, 联系人的, rows, 'one', false)).toBe(true);
+    expect(范围可写(undefined, 线索的, rows, 'one', false)).toBe(true);
+    expect(范围可写(undefined, 私客的, rows, 'one', false)).toBe(false);
+    expect(范围可读(算范围(联系人的, rows), 'two', false, true)).toBe(true);
+    expect(范围可写(undefined, 联系人的, rows, 'two', false, true)).toBe(false);
+    expect(范围可写(undefined, 线索的, rows, 'two', false, true)).toBe(false);
+    // 删：只读的同事客户删不了，自己的能删
+    for (const old of [联系人的, 线索的]) rows.set(行键(old.t, old.k), old);
+    expect(范围可写(联系人的, 删包(联系人的), rows, 'two', false, true)).toBe(false);
+    expect(范围可写(线索的, 删包(线索的), rows, 'two', false, true)).toBe(false);
+    expect(范围可写(联系人的, 删包(联系人的), rows, 'one', false)).toBe(true);
+    // 挂商机 / 订单的老附件元数据不多带空键（和团队版一字不差）
+    expect(Object.keys(index('Attachment', 'old', { opportunityId: 'op' }).fields)).toEqual(['opportunityId', 'orderId']);
+  });
+  it('开关关着（个人版 / 团队版）：附件元数据、父链和原来一样，带了 leadId / contactId 也不认', () => {
+    vi.stubEnv('CRM_ENTERPRISE', '');
+    const rows = rows附件();
+    expect(范围字段之('Attachment')).toEqual(['opportunityId', 'orderId']);
+    expect(Object.keys(范围父表.Attachment).sort()).toEqual(['opportunityId', 'orderId']);
+    const a = index('Attachment', 'a1', { leadId: 'lone', contactId: 'c1' });
+    expect(a.fields).toEqual({ opportunityId: null, orderId: null });
+    expect(算范围(a, rows)).toBeNull();
+    expect(范围可写(undefined, a, rows, 'one', false)).toBe(false);
+    // 开着时抽的元数据，关着的接收端核对不过（不会被当成合法包悄悄收下）
+    vi.stubEnv('CRM_ENTERPRISE', '1');
+    const e = event('Attachment', 'a1', { leadId: 'lone' }), meta = 提取范围(e);
+    vi.stubEnv('CRM_ENTERPRISE', '');
+    expect(核对范围(meta, e)).toBe(false);
+  });
 });

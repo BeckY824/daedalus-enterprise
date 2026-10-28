@@ -19,6 +19,8 @@ import { 有效沟通数 } from "@/lib/project/stage-gates";
 import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 卡点可选的人, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 import { 时限提醒of } from "@/lib/project/blocker-rules";
+// 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
+import { 联系人附件入口 } from "@/app/api/attachments/access";
 import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 
 export const dynamic = "force-dynamic";
@@ -96,6 +98,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     ? await Promise.all([沟通编号们(露 ? p.followUps.map((f) => f.followUp.id) : []), 项目的卡点(me, p.id), 能发卡点(me, p.id), 读卡点默认(), 卡点可选的人(me, p.id)])
     : [new Map<string, { code: string; nextAt: Date | null }>(), [], false, null, []];
   const 卡点: 项目卡点 | null = 企业 && 卡点默认 ? { 们: 卡点们.map(卡点给界面), 能发: 能发 && 露, 默认: 卡点默认, 人们: 卡点人们 } : null;
+  // 企业版联系人附件（2026-10-28）：项目卡联系人那一行下面给「附件」，和客户页同一个弹窗；不是企业版、公海里没领的不查
+  const 联系人附件 = 企业 && 露 && p.contact ? await 联系人附件入口(p.contact.id) : null;
   // 企业版字典下拉（10-27）：不是企业版 可选项 给空
   const [回收原因们, 无效原因们] = await Promise.all([可选项("recycle"), 可选项("invalid")]);
   const 详情: 项目详情 = {
@@ -135,6 +139,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
     members: p.members.map((m) => ({ id: m.id, userId: m.userId, name: 叫(m.userId)!, roleId: m.roleId, inviteStatus: m.inviteStatus })),
     提成,
+    ...(联系人附件 ? { 联系人附件 } : {}),
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };
   return <ProjectDetail 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;

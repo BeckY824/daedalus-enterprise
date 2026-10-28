@@ -17,7 +17,7 @@ import { 对齐我的名字 } from "../desktop/my-name";
 import { 改身份, 建同步表, 装触发器, 卸触发器, 记全量, 待推, 记已推, 回放, 装了吗, 只留自己的, 没同步上, 本机结构签名, type 改动 } from "./local";
 import { createHmac } from "node:crypto";
 import { 范围快照, 记录快照, 清理失权副本, 转为范围冲突, 范围冲突数, 验收范围包, 范围包错误, 范围包未到, 主字段, type 拉到的范围包 } from "./scoped-local";
-import { 提取范围, 行键, 范围字段, 还等吗, type 范围索引, type 卡住的范围 } from "./scope-policy";
+import { 提取范围, 行键, 范围字段之, 还等吗, type 范围索引, type 卡住的范围 } from "./scope-policy";
 import { 同步表 } from "./tables";
 import { 报查重 } from "./dedupe-client";
 import { 封范围, 规范串 } from "./crypto";
@@ -1193,7 +1193,7 @@ function 改归属根(改动: 改动[]): string[] {
   const roots = new Set<string>();
   for (const e of 改动) {
     if (e.t === "CustomerPool") roots.add(行键("Customer", e.k));
-    else if (e.o === "U" && (范围字段[e.t] ?? []).some((f) => e.c.includes(f))) roots.add(行键(e.t, e.k));
+    else if (e.o === "U" && 范围字段之(e.t).some((f) => e.c.includes(f))) roots.add(行键(e.t, e.k));
   }
   return [...roots];
 }

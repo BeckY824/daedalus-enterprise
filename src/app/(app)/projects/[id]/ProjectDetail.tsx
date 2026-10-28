@@ -24,6 +24,7 @@ import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联�
 import { BlockerList, PublishBlockerModal, type 卡点卡, type 可选人 } from "../BlockerPanel";
 import type { 卡点默认 } from "@/lib/project/blocker-rules";
 import { ProjectCommissionCard } from "./ProjectCommission";
+import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
 
 export type 项目详情 = {
@@ -31,6 +32,8 @@ export type 项目详情 = {
   /** null = 公海里同事客户的项目，领取后再给（page.tsx 露客户）；联系人、沟通这时也是空的 */
   customer: { id: string; name: string; school: string | null } | null;
   contact: { id: string; name: string; position: string | null } | null;
+  /** 企业版联系人附件（2026-10-28）：联系人那一行下面的「附件」入口；只读 = 同事的 / 虚线下属的客户，只能看。别的版本、看不到这位联系人时没有这个字段 */
+  联系人附件?: { 个数: number; 只读: boolean };
   /** 线索转出来的项目：来源线索的名字（null = 那条线索已删除）和转化日；不是线索转的、或公海里还没领时是 null */
   来源线索: { name: string | null; convertedAt: string | null } | null;
   /** 企业版字典下拉（10-27）：放回公海选「回收原因」、线索流失选「无效原因」；不是企业版两个都是空的，界面照旧 */
@@ -363,7 +366,9 @@ export default function ProjectDetail({
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
-      {p.contact && <div style={行样}><span style={键样}>联系人</span>{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</div>}
+      {/* 联系人名字、职位可能很长：在 1024 宽的项目卡里折行，不顶出卡片 */}
+      {p.contact && <div style={行样}><span style={键样}>联系人</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>}
+      {p.contact && p.联系人附件 && <div style={行样}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       <div style={行样}><span style={键样}>金额</span>{金额(p.amount, p.currency)}</div>
       {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>}
       {/* 在公海里时 ownerName 是原负责人：不写成「负责人 X」，也不把系统收回说成 X 放回的（QA #14） */}

@@ -9,15 +9,18 @@ import { useState } from "react";
 import { Button, Modal } from "antd";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 
-export default function ContactAttachments({ contactId, 名字, 起始个数, 只读 }: { contactId: string; 名字: string; 起始个数: number; 只读: boolean }) {
+type 入口参数 = { contactId: string; 名字: string; 起始个数: number; 只读: boolean };
+
+/**
+ * 只是「N 张 / 添加名片或图片」那个入口和弹窗，不带外面那一行（2026-10-28）：项目详情页联系人那一行下面也用它，
+ * 那边的行样式是项目卡自己的
+ */
+export function ContactAttachmentsButton({ contactId, 名字, 起始个数, 只读 }: 入口参数) {
   const [开, set开] = useState(false);
   const [个数, set个数] = useState(起始个数);
-  if (只读 && 个数 === 0) {
-    return <div className="rec-contact-line"><span className="rec-contact-k">附件</span><span className="rec-field-empty">无</span></div>;
-  }
+  if (只读 && 个数 === 0) return <span className="rec-field-empty">无</span>;
   return (
-    <div className="rec-contact-line">
-      <span className="rec-contact-k">附件</span>
+    <>
       <Button type="link" size="small" style={{ padding: 0, height: "auto", fontSize: "inherit" }} onClick={() => set开(true)} aria-label={`${名字} 的附件`}>
         {个数 ? `${个数} 张` : "添加名片或图片"}
       </Button>
@@ -32,6 +35,15 @@ export default function ContactAttachments({ contactId, 名字, 起始个数, �
       >
         <AttachmentsPanel 归属={{ contactId }} 只读={只读} 说明="把名片或这位联系人相关的图片拖到这里，或点一下选图片" on个数={set个数} />
       </Modal>
+    </>
+  );
+}
+
+export default function ContactAttachments(p: 入口参数) {
+  return (
+    <div className="rec-contact-line">
+      <span className="rec-contact-k">附件</span>
+      <ContactAttachmentsButton {...p} />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 同事的客户, 只读话 } from "@/lib/team-scope";
+import { 同事的客户, 只读话, 虚线只读线索 } from "@/lib/team-scope";
 import { 订单 } from "@/lib/features";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 附件个数 } from "@/lib/attachments";
 import type { 归属 } from "@/lib/attachment-rules";
 
 /**
@@ -20,7 +21,7 @@ export function 读归属(q: URLSearchParams): 归属 | null {
 
 /**
  * 附件跟着它挂的商机 / 订单 / 线索 / 联系人走权限：用加了限定的 prisma 去取那一条——看不到的那条，它的附件也看不到。
- * 要改（传、删）时再挡只读的客户（团队互看时同事的、企业版虚线下属的）。线索没转客户时，看得到就改得了（和改线索一个口径）。
+ * 要改（传、删）时再挡只读的客户（团队互看时同事的、企业版虚线下属的）。线索没转客户时，改得了线索才改得了附件（和改线索一个口径）。
  * 返回给日志用的一句「商机「xx」」，不行就回一句人话
  */
 export async function 认父记录(挂在: 归属, 要改: boolean): Promise<{ 叫法: string } | { 错: string; 状态: number }> {
@@ -39,8 +40,10 @@ export async function 认父记录(挂在: 归属, 要改: boolean): Promise<{ �
     叫法 = `订单 ${o.no}`;
   } else if ("leadId" in 挂在) {
     if (!企业版()) return { 错: "此版本未开放线索附件", 状态: 404 };
-    const l = await prisma.lead.findFirst({ where: { id: 挂在.leadId }, select: { name: true, customerId: true } });
+    const l = await prisma.lead.findFirst({ where: { id: 挂在.leadId }, select: { name: true, customerId: true, ownerId: true } });
     if (!l) return { 错: "这条线索已经不在了，刷新看看", 状态: 404 };
+    // 虚线下属没转客户的线索：看得到、改不了（改线索走写的范围），附件也只给看
+    if (要改 && await 虚线只读线索(defaultClient, l)) return { 错: await 只读话(defaultClient), 状态: 403 };
     客户 = l.customerId;
     叫法 = `线索「${l.name}」`;
   } else {
@@ -73,4 +76,14 @@ export async function 认附件父记录(
     先错 ??= r;
   }
   return 先错!;
+}
+
+/**
+ * 企业版项目详情页联系人那一行的「附件」入口（2026-10-28）：和接口同一个口径——
+ * 认父记录 读不到就不给入口（同事的线索、别人的客户），改不了（同事的 / 虚线下属的客户）就只给看。不是企业版一律 null
+ */
+export async function 联系人附件入口(contactId: string): Promise<{ 个数: number; 只读: boolean } | null> {
+  if (!企业版() || "错" in await 认父记录({ contactId }, false)) return null;
+  const 个数 = (await 附件个数(defaultClient, { contactIds: [contactId] })).联系人.get(contactId) ?? 0;
+  return { 个数, 只读: "错" in await 认父记录({ contactId }, true) };
 }
