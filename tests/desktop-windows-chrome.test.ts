@@ -9,39 +9,18 @@ import path from "node:path";
 
 const 读 = (p: string) => readFileSync(path.resolve(__dirname, "..", p), "utf8");
 const css = 读("src/app/globals.css");
-const main = 读("desktop/main.js");
-const preload = 读("desktop/preload-app.js");
 const theme = 读("src/lib/theme.ts");
 const 去注释 = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "");
 
 describe("Windows 标题栏", () => {
-  it("不画系统标题栏，三个钮交给系统叠在右上角，高度和 --caption-h 一致", () => {
-    const h = /--caption-h:\s*(\d+)px/.exec(css);
-    expect(h, "--caption-h 应该在 :root 里").not.toBeNull();
-    const 高 = Number(h![1]);
-    expect(main).toMatch(/process\.platform === "win32" \? \{\s*titleBarStyle: "hidden",/);
-    const 高们 = [...main.matchAll(/height:\s*(\d+)\s*\}/g)].map((m) => Number(m[1])).filter((n) => n < 80);
-    expect(高们.length).toBeGreaterThanOrEqual(2); // 建窗口一处、setTitleBarOverlay 一处
-    for (const n of 高们) expect(n).toBe(高);
+  it("--caption-h 在 :root 里（壳那一半在桌面端仓库里钉）", () => {
+    expect(/--caption-h:\s*(\d+)px/.exec(css), "--caption-h 应该在 :root 里").not.toBeNull();
   });
 
   it("页面在 Windows 上让出右上角那条，拖动把手就是它", () => {
     const 正文 = 去注释(css);
     expect(正文).toContain("html.os-win .shell-desktop .drag-strip { height: var(--caption-h); }");
     expect(正文).toMatch(/html\.os-win \.shell-desktop \.main \{ padding-top: calc\(var\(--caption-h\)/);
-    expect(preload).toContain('classList.add("os-win")');
-    expect(preload).toContain('ipcRenderer.send("shell:titlebar"');
-  });
-
-  it("主进程只收 rgb()/#hex，而且只收主窗口发来的", () => {
-    const 段 = main.slice(main.indexOf('ipcMain.on("shell:titlebar"'));
-    expect(段).toContain("e.sender !== win.webContents");
-    expect(段).toMatch(/\^\(#\[0-9a-fA-F\]\{6\}/);
-  });
-
-  it("Windows 菜单没有「以软件名命名的应用菜单」，关于在帮助里", () => {
-    expect(main).toContain("const 头两项 = isMac");
-    expect(main).toContain("...关于项,");
   });
 });
 

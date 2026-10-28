@@ -33,12 +33,11 @@ describe("隐私说法", () => {
     用户一点提交就公开了。现在菜单和设置页都叫开应用内反馈框（FeedbackButton 的 反馈事件）。
     自部署网页版的反馈键去 GitHub 是对的（那是开源项目的 issue），不在这条管的范围里
   */
-  it("桌面端菜单和设置 → 桌面端不开公开的 GitHub issue", () => {
-    for (const f of ["desktop/main.js", "src/app/(app)/settings/DesktopTab.tsx"]) {
+  it("设置 → 桌面端不开公开的 GitHub issue（菜单那一半在桌面端仓库里钉）", () => {
+    for (const f of ["src/app/(app)/settings/DesktopTab.tsx"]) {
       expect(readFileSync(path.resolve(__dirname, "..", f), "utf8"), f).not.toMatch(/github\.com\/[^"'`\s]+\/issues\/new/);
     }
-    expect(readFileSync(path.resolve(__dirname, "../desktop/main.js"), "utf8")).toContain('new Event("feedback:open")');
-    // 两边的事件名得是同一个，不然菜单点了没反应也不报错
+    // 壳的菜单发的是这个事件名，改名会让那边点了没反应
     expect(readFileSync(path.resolve(__dirname, "../src/components/FeedbackButton.tsx"), "utf8")).toContain('export const 反馈事件 = "feedback:open"');
   });
 });

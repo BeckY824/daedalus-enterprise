@@ -47,7 +47,7 @@ function 拆成老库(f: string) {
   d.close();
 }
 
-/** 老库升级：照 desktop/server-entry.js 把整个 migrations/ 重跑一遍（加列那句第二遍抛 duplicate column name，当预期跳过） */
+/** 老库升级：照 docker-entrypoint.sh 把整个 migrations/ 重跑一遍（加列那句第二遍抛 duplicate column name，当预期跳过） */
 function 跑迁移(f: string) {
   const d = new DatabaseSync(f);
   for (const m of fs.readdirSync(迁移目录).filter((x) => x.endsWith(".sql")).sort()) {
