@@ -120,6 +120,7 @@ export default async function AppLayout({
         反馈去向={企业版() ? "none" : 本地模式() || multiTenant() ? "cloud" : "github"}
         // 企业版只用项目一条线：左栏和 ⌘K 没有商机，线索叫「新线索」（lib/enterprise/project-only.ts）
         企业版项目={企业版() && business.projectMode === true}
+        企业版={企业版()}
         产品名={自定产品名() ?? undefined}
         pane={pane}
         ai={有AI ? { models } : null}

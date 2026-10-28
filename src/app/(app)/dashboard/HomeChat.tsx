@@ -69,7 +69,7 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   自己服务器?: boolean;
   /** 空库那张「开始」卡用：企业版管理员，主按钮去企业版导入（见 StartCard） */
   去导入?: boolean;
-  /** 空库那张「开始」卡用：企业版换成项目那条线的引导（见 StartCard） */
+  /** 企业版：空库那张「开始」卡换成项目那条线的引导（见 StartCard）；回答里提到的客户不摆「起草转介绍邀请」（TurnView） */
   企业版?: boolean;
   /** 首页才给：企业版自动分配因都已满额没分出去的提醒，摆在问答列最上面（lib/enterprise/lead-full-notice.ts） */
   满额提醒?: 满额提醒[];
@@ -130,7 +130,7 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
           ) : empty ? (
             <Welcome userName={userName} 信号={信号} context={context} />
           ) : (
-            <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} />
+            <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} 企业版={企业版} />
           )}
 
           <Composer

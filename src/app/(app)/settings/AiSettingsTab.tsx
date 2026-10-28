@@ -173,7 +173,10 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
           showIcon
           style={{ marginBottom: 16 }}
           title="还没有配置 AI，所有 AI 入口当前是隐藏的"
-          description={`选一家、填一个 Key 并保存，跟进速记、${企业版 ? "智能总结" : "临战简报"}、问数据、盯盘话术、转介绍邀请五个功能会立刻出现。其余功能不受影响。`}
+          // 企业版没有转介绍邀请（转介绍分佣链是教培那一套），不列
+          description={企业版
+            ? "选一家、填一个 Key 并保存，跟进速记、智能总结、问数据、盯盘话术四个功能会立刻出现。其余功能不受影响。"
+            : "选一家、填一个 Key 并保存，跟进速记、临战简报、问数据、盯盘话术、转介绍邀请五个功能会立刻出现。其余功能不受影响。"}
         />
       )}
 
@@ -325,7 +328,8 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
             共 {usage.reduce((s, u) => s + u.count, 0)} 次，按自然月统计，来自操作日志
           </Typography.Text>
           <Space wrap size={[16, 6]} style={{ marginTop: 6 }}>
-            {usage.map((u) => (
+            {/* 企业版没有转介绍邀请这个入口：没用过就不列（真用过的照实摆，和上面的合计对得上） */}
+            {usage.filter((u) => !(企业版 && u.feature === "invite" && u.count === 0)).map((u) => (
               <span key={u.feature} style={{ fontSize: 13 }}>
                 {u.label} <Typography.Text strong>{u.count}</Typography.Text>
               </span>

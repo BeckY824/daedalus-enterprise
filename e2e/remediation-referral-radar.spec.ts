@@ -1,5 +1,6 @@
 import {test,expect} from "@playwright/test";
 import {连库,清空业务数据} from "./mock-data";
+import { 企业版 } from "./owner-pick";
 test.describe.configure({mode:"serial"});
 test.beforeAll(async()=>{const db=连库();try{
  await 清空业务数据(db);const owner=(await db.user.findUniqueOrThrow({where:{email:"zhangsan"}})).id;
@@ -9,6 +10,7 @@ test.beforeAll(async()=>{const db=连库();try{
 }finally{await db.$disconnect()}});
 test.afterAll(async()=>{const db=连库();try{await 清空业务数据(db)}finally{await db.$disconnect()}});
 test("生产渠道雷达对齐真实签约、精确金额，建议不编造邀请历史",async({page})=>{
+ test.skip(企业版,"企业版渠道页只留渠道清单，不摆转介绍雷达；在开关关着那套里验");
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));await page.goto("/login");await page.getByPlaceholder("用户名").fill("zhangsan");await page.getByPlaceholder("登录密码").fill("admin123");await page.getByRole("button",{name:/登\s*录/}).click();await page.waitForURL(/\/dashboard/);await page.goto("/channels");
  const radar=page.getByRole("main").locator(".ant-card").filter({hasText:"转介绍雷达"});await expect(radar).toBeVisible();
  const row=radar.getByRole("row").filter({hasText:"QA推荐人"});await expect(row.getByRole("cell")).toHaveText(["QA推荐人","2","1","US$ 120.51"]);

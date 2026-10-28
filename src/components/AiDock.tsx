@@ -33,6 +33,7 @@ export default function AiDock({
   models,
   开着,
   set开着,
+  企业版 = false,
 }: {
   userName: string;
   models: ModelOption[];
@@ -43,6 +44,8 @@ export default function AiDock({
    */
   开着: boolean;
   set开着: (开: boolean) => void;
+  /** 企业版（经 AppShell 传下来）：回答里提到的客户不摆「起草转介绍邀请」 */
+  企业版?: boolean;
 }) {
   /*
     不是地址栏：设置浮层开着时地址栏是 /settings，而底下还是刚才那页。
@@ -145,6 +148,7 @@ export default function AiDock({
           context=""
           models={models}
           空库={false}
+          企业版={企业版}
         />
       </div>
     </aside>

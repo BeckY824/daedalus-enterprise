@@ -41,6 +41,7 @@ export default function AiPanel({
   hasRecords,
   on记跟进,
   简报叫 = "简报",
+  企业版,
 }: {
   customerId: string;
   customerName: string;
@@ -54,8 +55,16 @@ export default function AiPanel({
   on记跟进?: () => void;
   /** 企业版叫「智能总结」（10-27 会议：「将简报功能名称改为智能总结」），别的版本照旧叫简报 */
   简报叫?: string;
+  /**
+   * 企业版：和外贸一样不摆「起草转介绍邀请」（转介绍分佣链是教培那一套）。
+   * 不给时按 简报叫 认——记录页只在企业版（只用项目）才传「智能总结」，开关关着时一定是「简报」
+   */
+  企业版?: boolean;
 }) {
   const b = useBusiness();
+  const 企业 = 企业版 ?? 简报叫 === "智能总结";
+  /** 摆不摆「起草转介绍邀请」：签了约、且不是企业版（外贸由记录页传 signed 时已排除） */
+  const 能邀转介绍 = signed && !企业;
   // 自己 Key、付费、自部署的人不花次数，那句「会用掉 1 次」对他们不成立（lib/ai-meter.ts）
   const { 计次 } = useAiMeter();
   const AI已用完 = useAiOutOfCredits();
@@ -324,7 +333,7 @@ export default function AiPanel({
             menu={{
               items: [
                 { key: "wakeup", label: <>起草跟进话术 <AiCost /></>, disabled: wakeupJob?.status === "loading" || AI已用完 },
-                ...(signed ? [{ key: "invite", label: <>起草转介绍邀请 <AiCost /></>, disabled: inviteJob?.status === "loading" || AI已用完 }] : []),
+                ...(能邀转介绍 ? [{ key: "invite", label: <>起草转介绍邀请 <AiCost /></>, disabled: inviteJob?.status === "loading" || AI已用完 }] : []),
               ],
               onClick: ({ key }) => doDraft(key as 草稿类),
             }}
@@ -357,7 +366,7 @@ export default function AiPanel({
 
       {[
         { kind: "wakeup" as const, job: wakeupJob, title: "跟进话术草稿", 在做: `读 ${customerName} 的跟进，起草一段能直接发的微信` },
-        { kind: "invite" as const, job: inviteJob, title: "转介绍邀请草稿", 在做: `照 ${customerName} 的情况，起草一段请他介绍朋友的微信` },
+        ...(企业 ? [] : [{ kind: "invite" as const, job: inviteJob, title: "转介绍邀请草稿", 在做: `照 ${customerName} 的情况，起草一段请他介绍朋友的微信` }]),
       ].map(({ kind, job, title, 在做 }) => (
         <AnimatePresence key={kind}>
           {job?.status === "loading" && (

@@ -17,7 +17,7 @@ export type 一轮的动作 = {
 };
 
 /** 已经问过的那一列。只在换了几轮、或刚发了一问时重渲；流式出字只重渲正在流的那一轮（ai-jobs 按键订阅） */
-function TurnLog({ turns, 刚发的, scope, 动作 }: { turns: Turn[]; 刚发的: string | null; scope: string; 动作: 一轮的动作 }) {
+function TurnLog({ turns, 刚发的, scope, 动作, 企业版 = false }: { turns: Turn[]; 刚发的: string | null; scope: string; 动作: 一轮的动作; 企业版?: boolean }) {
   return (
     <div className="cli-log">
       {turns.map((t) => (
@@ -25,6 +25,7 @@ function TurnLog({ turns, 刚发的, scope, 动作 }: { turns: Turn[]; 刚发的
           key={t.id}
           turn={t}
           scrollOnMount={t.id === 刚发的}
+          企业版={企业版}
           onRetry={() => {
             clearJob(`home:${t.id}`);
             // 找公司后接着背调的那一轮：重新背调是新的一次（新 runId，照常扣），不再沿用找公司那一笔

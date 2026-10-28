@@ -8,6 +8,7 @@ import { buildReferralRadar } from "@/lib/referral";
 import { 带币种, 签约合计 } from "@/lib/money-db";
 import { getBusiness, 签约叫 } from "@/lib/business";
 import { 渠道汇总 } from "@/lib/attribution";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,9 @@ export default async function ChannelsPage() {
   const statMap = 渠道汇总(channels.map((c) => c.id), allCustomers);
 
   const business = await getBusiness();
-  const radar = buildReferralRadar(
+  // 企业版渠道就是预设的来源清单，没有转介绍链：雷达不算、不摆（ChannelsView 里一并藏掉计数）
+  const 企业 = 企业版();
+  const radar = 企业 ? { topReferrers: [], inviteCandidates: [] } : buildReferralRadar(
     allCustomers.map((c) => ({
       id: c.id,
       name: c.name,
@@ -75,6 +78,7 @@ export default async function ChannelsPage() {
     <ChannelsView
       users={users}
       radar={radar}
+      企业版={企业}
       aiEnabled={await llmEnabled()}
       rows={channels.map((c) => ({
         id: c.id,

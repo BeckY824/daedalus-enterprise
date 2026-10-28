@@ -1,4 +1,6 @@
 import LegalPage, { 运营主体, 联系邮箱 } from "@/components/LegalPage";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 简报名 } from "@/lib/ai-usage";
 
 export const metadata = { title: "隐私政策 · Daedalus CRM" };
 
@@ -52,7 +54,8 @@ export default function PrivacyPage() {
 
       <h2>二、你点了 AI 功能之后，数据会发给谁</h2>
       <p>
-        当你使用 AI 功能（首页提问、客户简报、话术、建议卡等）时，为了生成回答，本软件会把与你的问题相关的业务数据——
+        {/* 企业版把简报叫「智能总结」（lib/ai-usage.ts 简报名）；开关关着时照旧写「客户简报」 */}
+        当你使用 AI 功能（首页提问、{企业版() ? 简报名() : "客户简报"}、话术、建议卡等）时，为了生成回答，本软件会把与你的问题相关的业务数据——
         例如某位客户的姓名、联系方式、档案和跟进记录——连同你的问题一起发送给大模型服务商处理。
       </p>
       <ul>

@@ -112,6 +112,7 @@ export default function TurnView({
   on选定,
   on改,
   scrollOnMount,
+  企业版 = false,
 }: {
   turn: Turn;
   onRetry: () => void;
@@ -122,6 +123,8 @@ export default function TurnView({
   /** 只有人名 + 电话那一轮：点选了候选公司（接着背调）/「其实是公司名」 */
   on改?: (patch: Partial<Turn>) => void;
   scrollOnMount: boolean;
+  /** 企业版（服务端读开关，经 HomeChat → TurnLog 传下来）：和外贸一样不摆「起草转介绍邀请」 */
+  企业版?: boolean;
 }) {
   const b = useBusiness();
   const 复制 = useCopy();
@@ -389,7 +392,7 @@ export default function TurnView({
             涉及 {answer.customers.length} 位{b.customer}
           </div>
           {answer.customers.slice(0, 5).map((c) => (
-            <CustomerRow key={c.id} customer={c} />
+            <CustomerRow key={c.id} customer={c} 企业版={企业版} />
           ))}
         </div>
       )}
@@ -442,7 +445,7 @@ export default function TurnView({
 }
 
 /** 卡片里的一行：客户名、状态、动作；草稿就地展开，与记录页、盯盘、雷达共用同一份 */
-function CustomerRow({ customer }: { customer: 提到的客户 }) {
+function CustomerRow({ customer, 企业版 }: { customer: 提到的客户; 企业版: boolean }) {
   const AI已用完 = useAiOutOfCredits();
   const 复制 = useCopyDraft();
   const wakeup = useJob<string>(草稿键("wakeup", customer.id));
@@ -451,7 +454,7 @@ function CustomerRow({ customer }: { customer: 提到的客户 }) {
   const b = useBusiness();
   /*
     状态可能是存储值（「已签约」，有的工具这么给），也可能已经是显示名：都按这家的叫法摆。
-    外贸不摆转介绍（推荐那一套外贸藏了，F.3）
+    外贸不摆转介绍（推荐那一套外贸藏了，F.3）；企业版也不摆：转介绍分佣链是教培那一套，企业版没有
   */
   const 已签 = customer.followStatus === "已签约" || customer.followStatus === statusLabel(b, "已签约");
   return (
@@ -464,7 +467,7 @@ function CustomerRow({ customer }: { customer: 提到的客户 }) {
           {wakeup?.status === "loading" ? "起草中…" : "起草跟进话术"}
           {wakeup?.status !== "loading" && <AiCost />}
         </button>
-        {已签 && !外贸精简(b) && (
+        {已签 && !外贸精简(b) && !企业版 && (
           <button type="button" className="cli-link" onClick={() => run("invite")} disabled={invite?.status === "loading" || AI已用完}>
             {invite?.status === "loading" ? "起草中…" : "起草转介绍邀请"}
             {invite?.status !== "loading" && <AiCost />}
