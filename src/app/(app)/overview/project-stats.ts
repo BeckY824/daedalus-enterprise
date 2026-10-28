@@ -71,6 +71,11 @@ export type 项目一段 = {
   按人: 人行一段[];
   /** 这一段成功交付的外币项目，金额没算进来 */
   外币: number;
+  /**
+   * 成交：这一段里转了订单、或成功交付结束的项目，一个项目只数一次（两样都有也只算一个）。
+   * 企业版首页「本月成交」用它（10-28 去遗留 A4），不按客户签约数
+   */
+  成交: number;
 };
 
 /**
@@ -89,7 +94,7 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
       select: { projectId: true, fromPhase: true, at: true, project: { select: { ownerId: true } } },
       orderBy: { at: "asc" },
     }),
-    prisma.project.findMany({ where: { result: { not: null }, closedAt: 段 }, select: { ownerId: true, result: true, closedAt: true, amount: true, currency: true } }),
+    prisma.project.findMany({ where: { result: { not: null }, closedAt: 段 }, select: { id: true, ownerId: true, result: true, closedAt: true, amount: true, currency: true } }),
   ]);
 
   const 桶 = new Map<string, 段桶>(刻度们(from, to, 粒).map((label) => [label, { label, 新建: 0, 转商机: 0, 转订单: 0, 成功交付: 0 }]));
@@ -137,8 +142,14 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
     } else if (r === "线索流失" || r === "丢单") 行(p.ownerId).没成++;
   }
 
+  const 成交了 = new Set<string>([
+    ...[...数过].filter((k) => k.startsWith("转订单:")).map((k) => k.slice("转订单:".length)),
+    ...结.filter((p) => p.result === "成功交付").map((p) => p.id),
+  ]);
+
   return {
     合计,
+    成交: 成交了.size,
     trend: [...桶.values()].sort((a, b) => a.label.localeCompare(b.label)),
     按人: (await 起名(人)).sort((a, b) => b.交付金额 - a.交付金额 || b.成功交付 - a.成功交付 || b.转订单 - a.转订单 || b.转商机 - a.转商机 || b.新建 - a.新建),
     外币,

@@ -1,5 +1,6 @@
 import { test,expect,type Page } from "@playwright/test";
 import {连库,清空业务数据} from "./mock-data";
+import { 企业版 } from "./owner-pick";
 test.describe.configure({mode:"serial"});
 test.beforeAll(async()=>{const db=连库();try{
  await 清空业务数据(db);const owner=(await db.user.findUniqueOrThrow({where:{email:"zhangsan"}})).id;
@@ -9,6 +10,7 @@ test.beforeAll(async()=>{const db=连库();try{
 test.afterAll(async()=>{const db=连库();try{await 清空业务数据(db)}finally{await db.$disconnect()}});
 async function login(page:Page){await page.goto("/login");await page.getByPlaceholder("用户名").fill("zhangsan");await page.getByPlaceholder("登录密码").fill("admin123");await page.getByRole("button",{name:/登\s*录/}).click();await page.waitForURL(/\/dashboard/)}
 test("实际表头排序跨页执行，全部范围及币种说明可见",async({page})=>{
+ test.skip(企业版,"企业版不摆签约金额列，成交看项目（10-28 去遗留 A4）");
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));await login(page);await page.goto("/customers?pageSize=10");
  await page.getByRole("button",{name:"选择要显示的列"}).click();await page.getByRole("checkbox",{name:"签约金额",exact:true}).check();await page.getByRole("button",{name:"选择要显示的列"}).click();
  const header=page.locator("th.dl-col-signedAmount");await header.click();await page.waitForURL(/sort=amount-asc/);await header.click();await page.waitForURL(/sort=amount-desc/);
@@ -17,6 +19,7 @@ test("实际表头排序跨页执行，全部范围及币种说明可见",async(
  expect(new URL(page.url()).searchParams.get("sort")).toBe("amount-desc");expect(errors).toEqual([]);
 });
 test("每页50条筛选后保留，重置与前进后退的筛选显示正确",async({page})=>{
+ test.skip(企业版,"企业版不按跟进状态筛，用客户状态（10-28 去遗留 A1）");
  await login(page);await page.goto("/customers?pageSize=50");
  const status=page.locator(".ant-select").filter({hasText:"全部跟进状态"});await status.click();await page.locator('.ant-select-dropdown:visible').getByTitle("跟进中",{exact:true}).click();await page.waitForURL(/followStatus=/);
  expect(new URL(page.url()).searchParams.get("pageSize")).toBe("50");await expect(page.locator("tbody tr[data-row-key]")).toHaveCount(25);

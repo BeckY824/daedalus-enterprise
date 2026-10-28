@@ -26,6 +26,7 @@ export const CUSTOMER_FIELD_LABELS: Record<string, string> = {
   major: "行业",
   followStatus: "跟进状态",
   decisionStatus: "客户决策状态",
+  custStatus: "客户状态",
   expectedSignAt: "预计签约时间",
   remark: "备注",
   salesOwnerId: "销售负责人",

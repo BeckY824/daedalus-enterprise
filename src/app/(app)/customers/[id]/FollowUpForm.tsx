@@ -529,9 +529,19 @@ export default function FollowUpForm({
           </Col>
           {projects ? !record?.id && (
             <Col span={12}>
-              <Form.Item name="projectId" label="关联项目" extra={projects.length === 0 ? "这位客户没有在推的项目" : undefined}>
-                <Select allowClear placeholder="不挂项目" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
-              </Form.Item>
+              {/*
+                10-26 白板：「沟通跟进记录必须选项目当前阶段」。有在推项目就必选、不能清空；
+                一个在推项目都没有时先照旧能记（projectId 存空），只提示去建项目
+              */}
+              {projects.length > 0 ? (
+                <Form.Item name="projectId" label="关联项目" rules={[{ required: true, message: "请选择关联项目" }]}>
+                  <Select placeholder="选择项目" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
+                </Form.Item>
+              ) : (
+                <Form.Item name="projectId" label="关联项目" extra="没挂项目，建议先建项目">
+                  <Select disabled placeholder="没有在推的项目" options={[]} />
+                </Form.Item>
+              )}
             </Col>
           ) : <Col span={12}>
             <Form.Item name="opportunityId" label={挂订单 ? "关联商机 / 订单" : "关联商机"}>

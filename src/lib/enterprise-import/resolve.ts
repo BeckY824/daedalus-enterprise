@@ -15,6 +15,7 @@ import { 看全部 } from "../team-scope";
 import { 写不进, 开现场, 落值, 建, 改, 读现值, 规, 引用键, type 现场, type 值表 } from "./apply";
 import { 别的在写, 重算最近跟进, type 定的一笔 } from "./revert";
 import { 来源名, 实体名, type 来源, type 实体, type 映射, type 待写 } from "./types";
+import { 企业版只用项目 } from "../enterprise/project-only";
 
 export const 一次最多 = 200;
 
@@ -72,6 +73,8 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
   const 批们 = await prisma.entImportBatch.findMany({ where: { id: { in: 们.map((c) => c.batchId).filter((x): x is string => !!x) } }, select: { id: true, mapping: true } });
   const 映射们 = new Map(批们.map((b) => [b.id, 解<映射 | null>(b.mapping, null)]));
   const 底 = await 开现场("", 源, { 默认负责人Id: "" } as 映射, 用户);
+  // 本地已删、采用原系统时建回来的商机行：企业版只用项目时建成项目（同写入时 开现场 的 项目），不能建回老的商机表
+  底.项目 = await 企业版只用项目();
 
   const r = await 查完再写((tx) =>
     看全部(async () => {
@@ -109,6 +112,11 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           continue;
         }
         const 现: 现场 = { ...底, 批次Id: 批.id, m: (c.batchId && 映射们.get(c.batchId)) || 底.m };
+        // 企业版只用项目：改成项目之前那批记下的商机（阶段是商机那一套），本地删了也不照原系统建回老商机表
+        if (c.localDeleted && e === "opportunity" && 现.项目 && !现.m.项目 && 选 === "采用原系统") {
+          结果.没定.push(明细("这是改成项目之前的商机，企业版不再建回商机"));
+          continue;
+        }
         const 上次 = 解<值表>(ref.written, {});
         const 字段 = 解<冲突字段>(c.fields, {});
 

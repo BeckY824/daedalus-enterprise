@@ -34,6 +34,8 @@ export type CustomerRow = {
   major: string | null;
   followStatus: string;
   decisionStatus: string;
+  /** 客户状态（企业版才有，字典 custStatus）。老调用方没给就当没有 */
+  custStatus?: string | null;
   expectedSignAt: string | null;
   lastFollowAt: string | null;
   remark: string | null;
@@ -72,6 +74,13 @@ type FormProps = {
   onClose: (saved: boolean) => void;
   /** 企业版普通销售：新建的客户负责人只能是自己（10-27 会议；服务端 saveCustomer 同样强制） */
   负责人只能自己?: boolean;
+  /**
+   * 企业版（10-28 去遗留）：推荐人三选一换成一格必填的「渠道」，不摆渠道负责人；
+   * 跟进状态 / 决策状态换成「客户状态」。别的版本 false，表单一格不变
+   */
+  企业版?: boolean;
+  /** 企业版客户状态的可选项（字典 custStatus 启用中的） */
+  客户状态选项?: string[];
 };
 
 /**
@@ -121,6 +130,8 @@ function CustomerFormInner({
   channels,
   onClose,
   负责人只能自己 = false,
+  企业版: 企业 = false,
+  客户状态选项 = [],
 }: FormProps) {
   const b = useBusiness();
   /** 外贸模版：多问国家 / WhatsApp / 微信 / 邮箱 / 来源，不问推荐人、渠道负责人、预计签约（2026-10-05 外贸客户建议） */
@@ -138,7 +149,7 @@ function CustomerFormInner({
   // 先看推荐人再看渠道：转介绍的人 channelId 也有值（排查 A1，见 lib/referrer-kind.ts）
   const [referrerType, setReferrerType] = useState<"channel" | "customer" | "none">(推荐方式(editing));
   const 推荐人 = useReferrerCandidates(
-    !外贸,
+    !外贸 && !企业,
     editing?.referrerCustomerId ? { id: editing.referrerCustomerId, name: editing.referrerName ?? editing.referrerCustomerId } : null,
   );
   /**
@@ -153,6 +164,8 @@ function CustomerFormInner({
    */
   /** 新建必填；编辑时只有原来就有号码的才必填（和 saveCustomer 同一条，见 lib/phone.ts） */
   const 电话必填 = !editing || Boolean(editing.phone);
+  /** 企业版渠道同理：新建必填；编辑时只有原来挂着渠道的才必填（和 saveCustomer 同一条）——老线索转来没渠道的，改备注不该被拦 */
+  const 渠道必填 = !editing || Boolean(editing.channelId);
   /**
    * 外贸：电话 / WhatsApp / 邮箱 / 微信至少填一个（2026-10-19 客户反馈「联系电话没星号却是必填；只知道微信号怎么办」）；
    * 2026-10-21 加阿里国际站 ID，成了五选一（客户反馈：国际站来的询盘很多只有买家 ID）。
@@ -226,6 +239,7 @@ function CustomerFormInner({
               channelId: editing.channelId,
               referrerCustomerId: editing.referrerCustomerId,
               channelOwnerId: editing.channelOwnerId,
+              ...(企业 ? { custStatus: editing.custStatus ?? null } : {}),
             }
           : null,
         name: v.name,
@@ -233,8 +247,10 @@ function CustomerFormInner({
         school: v.school ?? null,
         grade: v.grade ?? null,
         major: v.major ?? null,
-        followStatus: v.followStatus,
-        decisionStatus: v.decisionStatus,
+        // 企业版不摆跟进 / 决策状态：照原样交回（新建给默认值），改的是客户状态
+        followStatus: 企业 ? (editing?.followStatus ?? "待跟进") : v.followStatus,
+        decisionStatus: 企业 ? (editing?.decisionStatus ?? "了解中") : v.decisionStatus,
+        ...(企业 ? { custStatus: v.custStatus ?? null } : {}),
         /*
           外贸模版不摆这三格：照原样交回去，别因为表单里没有就清掉（切回通用模版时它们还在）。
           没摆的格子 validateFields 不给值，所以从 editing 取
@@ -242,8 +258,14 @@ function CustomerFormInner({
         expectedSignAt: 外贸 || (editing && !form.isFieldTouched("expectedSignAt")) ? editing?.expectedSignAt ?? null : v.expectedSignAt ? v.expectedSignAt.format("YYYY-MM-DD") : null,
         remark: v.remark ?? null,
         salesOwnerId: v.salesOwnerId,
-        channelId: 外贸 ? (editing?.channelId ?? null) : referrerType === "channel" ? (v.channelId ?? null) : null,
-        referrerCustomerId: 外贸 ? (editing?.referrerCustomerId ?? null) : referrerType === "customer" ? (v.referrerCustomerId ?? null) : null,
+        /*
+          企业版只问渠道：没换渠道就把原来的推荐链原样交回（转介绍来的人 channelId 也有值，别把推荐人清掉）；
+          换了渠道就是直接挂这个渠道，推荐人清空
+        */
+        channelId: 企业 ? (v.channelId ?? null) : 外贸 ? (editing?.channelId ?? null) : referrerType === "channel" ? (v.channelId ?? null) : null,
+        referrerCustomerId: 企业
+          ? (editing && v.channelId === editing.channelId ? editing.referrerCustomerId : null)
+          : 外贸 ? (editing?.referrerCustomerId ?? null) : referrerType === "customer" ? (v.referrerCustomerId ?? null) : null,
         /*
           外贸档案只交改过的那几格（2026-10-05 复查）：开着框的这会儿同事在记录页改了国家，我只改名字就保存，
           原来五格全交、把他改的国家冲回旧值
@@ -295,7 +317,7 @@ function CustomerFormInner({
         initialValues={
           editing
             ? { ...editing, expectedSignAt: editing.expectedSignAt ? dayjs(editing.expectedSignAt) : null }
-            : { followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 锁给自己 ? 锁给自己.id : 默认负责人(我, users) }
+            : { followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 锁给自己 ? 锁给自己.id : 默认负责人(我, users), ...(企业 ? { custStatus: 客户状态选项[0] } : {}) }
         }
       >
         {conflict && (
@@ -557,8 +579,15 @@ function CustomerFormInner({
           </>
         )}
 
+        {/* 企业版：只问一格必填的渠道（启用中的；原来挂着已停用的照样显示），不摆推荐人三选一、渠道负责人（10-28 去遗留 A3） */}
+        {企业 && (
+          <Form.Item label="渠道" name="channelId" rules={[{ required: 渠道必填, message: "请选择渠道" }]}>
+            <Select showSearch placeholder="选择渠道" optionFilterProp="label" options={渠道选项} />
+          </Form.Item>
+        )}
+
         {/* 推荐人：决定渠道归属与渠道负责人，两者由系统按规则自动计算。外贸模版不摆（推荐分佣链是教培那一套） */}
-        {!外贸 && (<>
+        {!外贸 && !企业 && (<>
         <Form.Item label="推荐人" style={{ marginBottom: 12 }}>
           <Radio.Group
             value={referrerType}
@@ -649,6 +678,15 @@ function CustomerFormInner({
         </>)}
 
         <Row gutter={16}>
+          {企业 ? (
+            <Col span={8}>
+              {/* 企业版：跟进状态、决策状态换成客户状态（字典 custStatus，10-28 去遗留 A1）；原值停用了也照样显示 */}
+              <Form.Item label="客户状态" name="custStatus">
+                <Select allowClear placeholder="选择客户状态"
+                  options={[...new Set([...客户状态选项, ...(editing?.custStatus ? [editing.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
+              </Form.Item>
+            </Col>
+          ) : (<>
           <Col span={8}>
             <Form.Item label="跟进状态" name="followStatus" rules={[{ required: true }]}>
               <Select options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
@@ -659,6 +697,7 @@ function CustomerFormInner({
               <Select options={DECISION_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
             </Form.Item>
           </Col>
+          </>)}
           {!外贸 && (
             <Col span={8}>
               <Form.Item label="预计签约时间" name="expectedSignAt" extra={editing?.expectedSignAt && !isCalendarDate(editing.expectedSignAt) ? "旧记录未保存原日历日，请核对日期；重新选日期后会保存原日历日。" : undefined}>

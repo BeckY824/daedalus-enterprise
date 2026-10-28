@@ -3,6 +3,7 @@
  * 按那一列筛得出、导出照样带那一列、记录页照样写着。数据层的「删选项 / 改叫法 / 清空」在 tests/field-config.test.ts。
  */
 import { test, expect, type Page } from "@playwright/test";
+import { 企业版 } from "./owner-pick";
 import { readFileSync } from "node:fs";
 import { 连库, 清空业务数据 } from "./mock-data";
 import { 成表 } from "../src/lib/import/parse";
@@ -45,6 +46,7 @@ test.afterAll(async () => {
 });
 
 test("隐藏「跟进状态」列（「职位」默认就藏着）：按跟进状态照样筛得出、导出照样带这两列、记录页照样写着", async ({ page }) => {
+  test.skip(企业版, "企业版不摆跟进状态，用客户状态（10-28 去遗留 A1）");
   await 登录(page);
   await page.goto("/customers");
   await page.waitForSelector(".ant-table-row");

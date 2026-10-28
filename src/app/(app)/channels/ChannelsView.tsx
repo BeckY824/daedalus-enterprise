@@ -45,11 +45,17 @@ export default function ChannelsView({
   users,
   radar,
   aiEnabled,
+  企业版 = false,
 }: {
   rows: Row[];
   users: 可选成员[];
   radar: { topReferrers: TopReferrer[]; inviteCandidates: InviteCandidate[] };
   aiEnabled: boolean;
+  /**
+   * 企业版（服务端读开关传进来）：渠道是预设的来源清单，没有转介绍分佣链那一套。
+   * 只留渠道清单（名称、停用），藏掉直接推荐 / 整条推荐链 / 链上签约额三列、转介绍雷达、副标题
+   */
+  企业版?: boolean;
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -110,18 +116,8 @@ export default function ChannelsView({
     }
   }
 
-  const 列表: 列<Row>[] = [
-    {
-      title: "渠道", key: "name", dataIndex: "name", width: 160, 常驻: true,
-      // 停用的在名字旁边就写明（审查 D12）：「状态」那一列在窄窗口下可能在视野外
-      render: (v, r) => (
-        <span className="chan-name">
-          <span className="link-strong">{v}</span>
-          {!r.active && <Tag style={{ margin: 0, borderRadius: 6 }}>已停用</Tag>}
-        </span>
-      ),
-    },
-    ...(不问归属 ? [] : [{ title: "渠道负责人", key: "channelOwnerName", dataIndex: "channelOwnerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
+  /** 转介绍链那三列：企业版不摆 */
+  const 推荐链列: 列<Row>[] = [
     {
       title: "直接推荐", key: "directCount", dataIndex: "directCount", width: 96,
       sorter: (a, b2) => a.directCount - b2.directCount,
@@ -156,6 +152,21 @@ export default function ChannelsView({
       sorter: (a, b2) => a.chainAmount - b2.chainAmount,
       render: (v: number, r) => (v > 0 ? <span style={{ fontWeight: 500 }}>{合计文字(r.chainMoney)}</span> : <span className="muted">—</span>),
     },
+  ];
+
+  const 列表: 列<Row>[] = [
+    {
+      title: "渠道", key: "name", dataIndex: "name", width: 160, 常驻: true,
+      // 停用的在名字旁边就写明（审查 D12）：「状态」那一列在窄窗口下可能在视野外
+      render: (v, r) => (
+        <span className="chan-name">
+          <span className="link-strong">{v}</span>
+          {!r.active && <Tag style={{ margin: 0, borderRadius: 6 }}>已停用</Tag>}
+        </span>
+      ),
+    },
+    ...(不问归属 ? [] : [{ title: "渠道负责人", key: "channelOwnerName", dataIndex: "channelOwnerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
+    ...(企业版 ? [] : 推荐链列),
     {
       // 状态三样齐全：颜色、图标、文字。只靠一个灰标签，扫过去认不出哪条停用了
       // 1024 宽时收起这一列（10-27）：停用的名字旁边已经写着，不靠这一列也看得出
@@ -226,7 +237,7 @@ export default function ChannelsView({
     <>
       <PageHead
         title="渠道"
-        subtitle="外部推荐来源与转介绍"
+        subtitle={企业版 ? undefined : "外部推荐来源与转介绍"}
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
             新建渠道
@@ -243,7 +254,9 @@ export default function ChannelsView({
         行类={(r) => (r.active ? undefined : "row-off")}
         空态={{
           title: "还没有渠道",
-          hint: `渠道是${b.customer}从哪来的：${b.template === "trade" ? "展会、线上平台、代理商" : b.fields.school === "院校" ? "合作老师、中介、家长社群" : "合作伙伴、代理商、推荐社群"}。渠道负责人定了之后，这条线上进来的${b.customer}业绩自动归他；转介绍带来的下游也算在这条链上。`,
+          hint: 企业版
+            ? `渠道是${b.customer}从哪来的。在这里维护渠道清单，新建${b.customer}时从清单里选；不再用的渠道停用即可。`
+            : `渠道是${b.customer}从哪来的：${b.template === "trade" ? "展会、线上平台、代理商" : b.fields.school === "院校" ? "合作老师、中介、家长社群" : "合作伙伴、代理商、推荐社群"}。渠道负责人定了之后，这条线上进来的${b.customer}业绩自动归他；转介绍带来的下游也算在这条链上。`,
           primary: { label: "新建第一个渠道", onClick: () => openForm(null) },
         }}
         筛选={
@@ -282,7 +295,7 @@ export default function ChannelsView({
       />
 
       {/* 雷达在两栏都空时不出现，页面不该有一块常驻的空卡片 */}
-      {(radar.topReferrers.length > 0 || radar.inviteCandidates.length > 0) && (
+      {!企业版 && (radar.topReferrers.length > 0 || radar.inviteCandidates.length > 0) && (
         <ReferralRadar topReferrers={radar.topReferrers} inviteCandidates={radar.inviteCandidates} aiEnabled={aiEnabled} />
       )}
 
@@ -322,7 +335,7 @@ export default function ChannelsView({
                 label="渠道负责人"
                 name="channelOwnerId"
                 rules={[{ required: true, message: "请选择渠道负责人" }]}
-                extra={`之后由该渠道新增的${b.customer}及其下游转介绍归此人；已有${b.customer}的归属不变，个别要改的到其档案里单独改`}
+                extra={企业版 ? `之后由该渠道新增的${b.customer}归此人；已有${b.customer}的归属不变，个别要改的到其档案里单独改` : `之后由该渠道新增的${b.customer}及其下游转介绍归此人；已有${b.customer}的归属不变，个别要改的到其档案里单独改`}
               >
                 <Select placeholder="请选择" options={成员选项(users)} />
               </Form.Item>

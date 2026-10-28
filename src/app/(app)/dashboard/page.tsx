@@ -28,6 +28,7 @@ import NoAiHome from "./NoAiHome";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
 import { 数新线索 } from "@/lib/project/list";
+import { 项目一段 } from "../overview/project-stats";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +102,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     数线索(只用项目),
   ]);
 
+  /*
+    企业版只用项目（10-28 去遗留 A1 / A4）：「高意向」改数客户状态「意向」的（同样不含公海）；
+    「本月签约」改「本月成交」，和数据页同一个函数（这个月转了订单或成功交付的项目，一个项目只数一次）
+  */
+  const 企业信号 = 只用项目
+    ? {
+        意向: await prisma.customer.count({ where: { custStatus: "意向", pool: { is: null } } }),
+        本月成交: (await 项目一段(now.startOf("month").toDate(), now.endOf("month").toDate(), "day", b.currency)).成交,
+      }
+    : undefined;
+
   const 就我一个人 = (await 唯一负责人()) !== null;
   const parts: string[] = [];
   const 要跟 = 算提醒(提醒项);
@@ -151,7 +163,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         { label: `今天谁最需要跟进？`, question: `今天最该跟进的${b.customer}是谁，为什么` },
         { label: `哪些${b.customer}很久没碰了？`, question: `哪些${b.customer}很久没跟进了，该先找谁` },
         { label: "我这周做了什么？", question: "我这周做了什么" },
-        { label: `各跟进状态各有多少${b.customer}？`, question: `各跟进状态各有多少${b.customer}` },
+        // 企业版不问跟进状态（10-28 去遗留 A1：企业版用客户状态，AI 那边还不认它，问了答不上）
         { label: "帮我记一次电话", question: "帮我记一次电话沟通" },
       ]
     : 就我一个人
@@ -194,6 +206,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         高意向,
         本月签约: 签约合计(本月签约),
         高意向标签: statusLabel(b, "意向较高"),
+        ...(企业信号 ? { 企业: 企业信号 } : {}),
       }}
     />
   );

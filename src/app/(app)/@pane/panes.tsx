@@ -7,6 +7,7 @@ import ConversationList from "@/app/(app)/dashboard/ConversationList";
 import { 列对话 } from "@/app/(app)/dashboard/threads";
 import { llmEnabled } from "@/lib/llm";
 import { FOLLOW_TYPE_MAP } from "@/lib/constants";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /**
  * 中栏（312px）的内容。眼下**只有一种**：学员记录页的窄名单。
@@ -59,6 +60,7 @@ export async function 学员名单() {
     },
   });
   const 位 = new Map(ids?.map((id, i) => [id, i]));
+  const 企业 = 企业版();
   const rows = ids ? 取.sort((a, b) => 位.get(a.id)! - 位.get(b.id)!) : 取;
   return (
     <CustomerRoster
@@ -73,7 +75,8 @@ export async function 学员名单() {
             mine: c.salesOwnerId === me.id,
             lastNote: c.followUps[0]?.content?.trim().slice(0, 60) || null,
             // 渠道名 > 转介绍 > 最近一次跟进方式，都没有就留空。
-            source: c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),
+            // 企业版只认渠道（预设的来源清单，没有转介绍链）：没有渠道就留空，不回落
+            source: 企业 ? c.channel?.name ?? null : c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),
             nextPlanAt: p ? scheduleValue(p.plannedAt, p.plannedOn) : null,
           };
         }),

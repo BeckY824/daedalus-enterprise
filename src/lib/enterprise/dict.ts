@@ -25,6 +25,7 @@ type 结果 = { ok: true } | { ok: false; error: string };
 /** 一类的选项：按排序列出（停用的也列，界面自己挑）；这一类一行都没有就先建默认的 */
 export async function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
   const 停用 = 字典定义[kind].默认停用 ?? [];
+  if (字典定义[kind].旧默认) await 补换默认(kind, db);
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
       await db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } });
@@ -47,6 +48,27 @@ async function 补停用(kind: 字典种类, 停用: readonly string[], db: Pris
   const ids = 字典定义[kind].默认.flatMap((n, i) => (停用.includes(n) ? [默认id(kind, i)] : []));
   await db.entDictItem.updateMany({ where: { kind, id: { in: ids }, name: { in: [...停用] } }, data: { active: false } });
   await 记下补停过(kind, db);
+}
+
+/**
+ * 整套默认换过（客户状态，10-28）：之前建好的库里，还叫旧名的默认项（固定 id、名字没被人改过）改成同序号的新名，只改一次。
+ * 新名已经被别的项占了的那一个跳过；人改过名、自己加的不动。改完记一笔，以后不再碰
+ */
+const 换默认记号 = (kind: 字典种类) => `entDict.defaultRenamed.${kind}`;
+async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
+  if (await db.setting.findUnique({ where: { key: 换默认记号(kind) } })) return;
+  const { 默认, 旧默认 = [] } = 字典定义[kind];
+  const 现有 = await db.entDictItem.findMany({ where: { kind }, select: { id: true, name: true } });
+  const 占着 = new Set(现有.map((x) => x.name));
+  for (const [i, 旧名] of 旧默认.entries()) {
+    const 新名 = 默认[i];
+    const 那项 = 现有.find((x) => x.id === 默认id(kind, i) && x.name === 旧名);
+    if (!那项 || !新名 || 占着.has(新名)) continue;
+    await db.entDictItem.update({ where: { id: 那项.id }, data: { name: 新名 } });
+    占着.delete(旧名);
+    占着.add(新名);
+  }
+  await db.setting.upsert({ where: { key: 换默认记号(kind) }, update: {}, create: { key: 换默认记号(kind), value: "true" } });
 }
 
 /** 全部几类一次读出，设置页用；不是企业版 = null */

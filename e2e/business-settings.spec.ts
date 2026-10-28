@@ -114,8 +114,18 @@ test.describe.serial("业务配置", () => {
     await 面板.getByLabel("档案字段 1").fill("所属机构");
     await 保存并等提示(page, 面板);
 
-    await page.goto("/customers");
-    await expect(page.getByRole("columnheader", { name: "所属机构" })).toBeVisible();
+    if (企业版) {
+      // 企业版列表不摆档案字段那一列（10-28 去遗留），新建又走 /projects/new 整页，改名看编辑框里的字段名
+      await 确保有一位客户(page);
+      await page.goto("/customers");
+      await page.getByRole("main").getByRole("button", { name: /^编辑 / }).first().click();
+      await expect(page.getByRole("dialog").getByLabel("所属机构")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toBeHidden();
+    } else {
+      await page.goto("/customers");
+      await expect(page.getByRole("columnheader", { name: "所属机构" })).toBeVisible();
+    }
 
     面板 = await 打开业务配置(page);
     await 面板.getByLabel("档案字段 1").fill("公司");

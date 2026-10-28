@@ -70,7 +70,7 @@ function 拣(v: 值表, 键: string[]): 值表 {
  * 这一批新建的这条还能不能删：名下挂着别的记录、导入不碰的格子被人填过 → 不能，返回原因。
  * 这一批自己建的子记录这时已经先退掉了（倒着退），还挂着的就是外面的、或留下没撤的
  */
-async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string | null, 写过: 值表): Promise<string | null> {
+async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string | null, 写过: 值表, 批次Id: string): Promise<string | null> {
   const 别的对照 = await tx.entExternalRef.count({ where: { entity: e, targetId: id, ...(自己的对照 ? { id: { not: 自己的对照 } } : {}) } });
   if (别的对照) return "原系统还有别的记录连着它（同号并入，或之后的同步连上的），先撤回那几条";
 
@@ -136,7 +136,7 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
         _count: { select: { followUps: true, quotes: true, tradeOrders: true, supplierQuotes: true } },
       },
     });
-    if (!o) return 项目挂件(tx, id);
+    if (!o) return 项目挂件(tx, id, 批次Id);
     if (o.contractWin) return "这个商机是签合同时赢下来的";
     if (Object.values(o._count).some((n) => n > 0)) return "名下已经有这一批以外的跟进、报价或订单";
     return o.money ? "导入之后又设过币种" : null;
@@ -270,7 +270,7 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
       return "无";
     }
     if (!一致(现值, 写过)) throw new 不动("导入之后又改过");
-    const 拦 = await 还挂着(tx, e, row.targetId, 连着?.id ?? null, 写过);
+    const 拦 = await 还挂着(tx, e, row.targetId, 连着?.id ?? null, 写过, 批次Id);
     if (拦) throw new 不动(拦);
     await tx.entTrash.create({
       data: { batchId: 批次Id, entity: e, targetId: row.targetId, data: J(await 快照(tx, e, row.targetId)), ref: 连着 ? J(连着) : null, rowId: row.id },

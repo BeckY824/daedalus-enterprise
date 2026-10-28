@@ -42,7 +42,7 @@ import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, typ
 import { 记换负责人 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 交接要确认, 交接中的客户 } from "@/lib/enterprise/handover-db";
-import { 选的原因 } from "@/lib/enterprise/dict";
+import { 选的原因, 可选项 } from "@/lib/enterprise/dict";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/lib/enterprise/contact-dedupe";
 import { setOppStatus } from "../opportunities/actions";
@@ -61,6 +61,19 @@ import type { Prisma } from "@/generated/prisma";
 const 不合法 = (名: string, 表: readonly string[], v: unknown) => (表.includes(v as string) ? null : `${名}「${v}」不是合法取值`);
 const 跟进不对 = (v: unknown) => 不合法("跟进状态", FOLLOW_STATUSES, v);
 const 决策不对 = (v: unknown) => 不合法("决策状态", DECISION_STATUSES, v);
+
+/**
+ * 企业版客户状态（字典 custStatus）。交来的得是启用中的一项；库里原值哪怕后来停用了，原样交回也认。
+ * 没交（undefined）：新建给字典第一项，编辑保留原值。空串 / null = 清空。只在 企业版() 下调
+ */
+async function 定客户状态(交: string | null | undefined, 原: string | null, 新建: boolean): Promise<{ 值: string | null } | { error: string }> {
+  const 项 = await 可选项("custStatus");
+  if (交 === undefined) return { 值: 新建 ? 项[0] ?? null : 原 };
+  const v = (交 ?? "").trim();
+  if (!v) return { 值: null };
+  if (v === 原 || 项.includes(v)) return { 值: v };
+  return { error: `客户状态「${v}」不在可选范围内，请刷新后重选` };
+}
 
 /** 是不是一位在职成员。各处下拉只列在职的；把客户交给停用的人等于丢进黑洞 */
 async function 在职(id: string): Promise<boolean> {
@@ -86,6 +99,11 @@ export type CustomerInput = {
   major: string | null;
   followStatus: string;
   decisionStatus: string;
+  /**
+   * 客户状态（企业版，2026-10-28，取自字典 custStatus）。undefined = 不碰（新建时企业版给字典第一项）；
+   * 开关关着一律不看、不写
+   */
+  custStatus?: string | null;
   expectedSignAt: Date | string | null;
   remark: string | null;
   /** 一个人的工作区里界面上不问这一项，留空由服务端填成那唯一的人 */
@@ -112,7 +130,7 @@ export type CustomerInput = {
 export type CustomerSnapshot = Pick<
   CustomerInput,
   | "name" | "phone" | "school" | "grade" | "major"
-  | "followStatus" | "decisionStatus" | "expectedSignAt" | "remark"
+  | "followStatus" | "decisionStatus" | "custStatus" | "expectedSignAt" | "remark"
   | "salesOwnerId" | "channelId" | "referrerCustomerId"
 > & { channelOwnerId?: string | null };
 
@@ -329,6 +347,19 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
 
   const 状态错 = 跟进不对(input.followStatus) ?? 决策不对(input.decisionStatus);
   if (状态错) return { ok: false, error: 状态错 };
+  const 企客状态 = 企业版() ? await 定客户状态(input.custStatus, 改前?.custStatus ?? null, !改前) : null;
+  if (企客状态 && "error" in 企客状态) return { ok: false, error: 企客状态.error };
+  /*
+    企业版来源只认渠道（2026-10-28）：原来有渠道的不许清空；换了渠道，新渠道得是启用中的。
+    新建走建档向导，那边已经必选渠道；别的入口（AI 建档、找客）没渠道的照旧放行
+  */
+  if (企业版() && 改前 && 改前.channelId && !input.channelId && !input.referrerCustomerId) {
+    return { ok: false, error: "请选择渠道" };
+  }
+  if (企业版() && input.channelId && input.channelId !== 改前?.channelId) {
+    const 渠道 = await prisma.channel.findUnique({ where: { id: input.channelId }, select: { active: true } });
+    if (!渠道?.active) return { ok: false, error: "这个渠道不存在或已停用，请换一个" };
+  }
   /*
     共享试用区里 WhatsApp 和电话一样是打了码给人看的：交回来还带着 * 就是没动它，不碰这一格（同电话的 认回打码号）
   */
@@ -387,6 +418,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     major: input.major?.trim() || null,
     followStatus: input.followStatus,
     decisionStatus: input.decisionStatus,
+    // 开关关着这一格不进 data：不写、也不参与比对和留痕
+    ...(企客状态 ? { custStatus: 企客状态.值 } : {}),
     expectedSignAt: sign.at,
     expectedSignOn: sign.on,
     remark: input.remark?.trim() || null,
@@ -1340,7 +1373,7 @@ class 签约没删着 extends Error {}
 /* ---------- 记录页的行内编辑 ---------- */
 
 /** 记录页里能直接点着改的字段。姓名、手机（要查重）、推荐关系（要重算归属）仍走完整表单 */
-const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "salesOwnerId", "channelOwnerId", ...外贸键] as const;
+const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", ...外贸键] as const;
 export type PatchableKey = (typeof PATCHABLE)[number];
 
 /**
@@ -1390,6 +1423,14 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     const 错 = 决策不对(v);
     if (错) return { ok: false, error: 错 };
     data.decisionStatus = v;
+  } else if (key === "custStatus") {
+    // 客户状态只有企业版有（字典 custStatus）；开关关着不收
+    if (!企业版()) return { ok: false, error: "这个字段不能在这里改" };
+    const 原 = await prisma.customer.findUnique({ where: { id }, select: { custStatus: true } });
+    if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
+    const r = await 定客户状态(v ?? null, 原.custStatus, false);
+    if ("error" in r) return { ok: false, error: r.error };
+    data.custStatus = r.值;
   } else if (key === "salesOwnerId") {
     if (typeof v !== "string" || !v || !(await 在职(v))) return { ok: false, error: "负责人不存在或已停用" };
     data.salesOwnerId = v;

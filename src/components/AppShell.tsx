@@ -90,6 +90,8 @@ type Props = {
   反馈去向: "cloud" | "github" | "none";
   /** 企业版只用项目（10-26，lib/enterprise/project-only.ts）：没有「商机」入口，「线索」叫「新线索」 */
   企业版项目?: boolean;
+  /** 企业版开关（服务端读了传下来）：右侧 AI 面板的回答里不摆「起草转介绍邀请」 */
+  企业版?: boolean;
   /** 标签页标题里的产品名。企业版可换成客户自己的（lib/enterprise/brand.ts） */
   产品名?: string;
   /**
@@ -128,7 +130,7 @@ type Props = {
 /** 面板常驻要的最小窗口宽度，见 AppShell 里 窄窗 那段 */
 const 面板放不下 = "(max-width: 1599px)";
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -660,7 +662,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
         它自己决定首页不出现（首页就是宽模式的同一块东西）。
         手机上不出现：390 宽摆不下正文 + 380 的面板。
       */}
-      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={记住面板} />}
+      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={记住面板} 企业版={企业版} />}
     </div>
     </DockOpenContext.Provider>
   );

@@ -162,6 +162,7 @@ test("J-013 有数据的库里搜一个不存在的词：写「没有符合条�
 });
 
 test("J-020 批量改状态：提示条点「撤销」，两位各回各的原状态", async ({ page }) => {
+  test.skip(企业版, "企业版不用跟进状态，不摆批量状态（10-28 去遗留 A1）");
   const p = 连库();
   const 甲 = await p.customer.create({ data: { name: "批改甲", phone: "13730000001", salesOwnerId: 张三, followStatus: "待跟进" } });
   const 乙 = await p.customer.create({ data: { name: "批改乙", phone: "13730000002", salesOwnerId: 张三, followStatus: "跟进中" } });

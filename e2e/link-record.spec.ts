@@ -74,11 +74,15 @@ test("L-025 编辑框只换推荐渠道：保存后渠道负责人是新渠道�
   const q = 连库();
   expect(await q.customer.findUniqueOrThrow({ where: { id: c.id }, select: { channelOwnerId: true } })).toEqual({ channelOwnerId: 李四.id });
   await q.$disconnect();
-  await page.goto(`/customers/${c.id}`);
-  await expect(page.getByRole("main").locator(".rec-field", { hasText: "渠道负责人" })).toContainText("李四");
+  // 企业版记录页不摆渠道负责人（10-28 去遗留 A3），上面库里的值照样核
+  if (!企业版) {
+    await page.goto(`/customers/${c.id}`);
+    await expect(page.getByRole("main").locator(".rec-field", { hasText: "渠道负责人" })).toContainText("李四");
+  }
 });
 
 test("L-046 记录页头「已签约」后面是签约日（回填的上个月那天），不是预计签约日", async ({ page }) => {
+  test.skip(企业版, "企业版记录页头不摆签约标签，成交看项目（10-28 去遗留 A4）");
   const p = 连库();
   const 我 = await p.user.findFirstOrThrow({ where: { email: 管理员.用户名 } });
   const c = await p.customer.create({

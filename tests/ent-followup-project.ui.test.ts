@@ -1,8 +1,8 @@
 /**
  * 企业版客户页记跟进默认挂项目（10-27 会议：「默认自动关联当前项目」；服务端规则见 ent-followup-project.test.ts）。
  *
- *   给了在推项目：「关联商机」换成「关联项目」，默认选第一个（页面按最近动过排）；清空后交上去是 null
- *   给了空列表：这一格还在，提示「这位客户没有在推的项目」，交上去是 null
+ *   给了在推项目：「关联商机」换成「关联项目」，默认选第一个（页面按最近动过排）；必选，不能清空（10-28 A2）
+ *   给了空列表：这一格还在，提示「没挂项目，建议先建项目」，照旧能记，交上去是 null
  *   编辑：不摆这一格，交上去不带 projectId
  *   开关关闭（页面不给 projects）：和原来一样是「关联商机」，交上去不带 projectId
  *   Windows 1024 / 1280 / 1366：超长项目名不横向撑出，「保存」点得中
@@ -66,22 +66,21 @@ it("给了在推项目：「关联项目」默认选第一个，交上去带它�
   } finally { await page.close(); }
 });
 
-it("清空「关联项目」：交上去是 null", async () => {
+it("有在推项目时「关联项目」必选：没有清除按钮", async () => {
   const { page } = await open({ 项目: "有" });
   try {
     const 项 = 格(page, "关联项目");
     expect(await 项.locator(".ant-select-content-has-value").count()).toBe(1);
     await 项.locator(".ant-select").hover();
-    await 项.locator(".ant-select-clear").click();
-    expect(await 项.locator(".ant-select-content-has-value").count()).toBe(0);
-    expect((await 存(page)).projectId).toBeNull();
+    expect(await 项.locator(".ant-select-clear").count()).toBe(0);
+    expect(await 项.locator(".ant-form-item-required").count()).toBe(1);
   } finally { await page.close(); }
 });
 
 it("没有在推的项目：这一格提示一句，交上去是 null", async () => {
   const { page, errors } = await open({ 项目: "空" });
   try {
-    expect(await 格(page, "关联项目").innerText()).toContain("这位客户没有在推的项目");
+    expect(await 格(page, "关联项目").innerText()).toContain("没挂项目，建议先建项目");
     expect((await 存(page)).projectId).toBeNull();
     expect(errors).toEqual([]);
   } finally { await page.close(); }
