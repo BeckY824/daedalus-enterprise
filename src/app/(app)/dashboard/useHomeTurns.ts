@@ -113,7 +113,7 @@ export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, �
     if (AI已用完 || turn.kind === "research") return;
     runStream<AgentAnswer>(
       `home:${turn.id}`,
-      { mode: "agent", question: turn.question, model, history: 收集上下文(turn.id), files: turn.files, pageContext: 上下文提示, pageScope: 上下文范围 },
+      { mode: "agent", question: turn.question, model, history: 收集上下文(turn.id), files: turn.files, pageContext: 上下文提示, pageScope: 上下文范围, card: turn.名片 },
       undefined,
       // 带上标签，这一问就会出现在侧栏的「AI 任务」里：切去别的页面也看得见它跑完没有，
       // 点一下回到这一条。问题本身当名字，截短到一行

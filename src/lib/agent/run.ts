@@ -58,7 +58,7 @@ export function 页面说法换成项目(s: string): string {
 import { SCHEMAS } from "./schemas";
 import { 查询表 } from "./query";
 import { 有DSML, 解析DSML } from "@/lib/llm-dsml";
-import { 认意图, type 页面范围 } from "./intents";
+import { 认意图, type 命中结果, type 页面范围 } from "./intents";
 import type { Proposal } from "./proposals";
 import type { Emit } from "../ai-steps";
 import type { BriefRecord } from "../ai-draft";
@@ -349,7 +349,11 @@ export function 开头清洗器(emit: (s: string) => void) {
 }
 
 export async function runAgent(
-  input: { question: string; user: { id: string; name: string }; b: BusinessConfig; history?: HistoryTurn[]; 页面上下文?: string; 页面范围?: 页面范围 },
+  input: {
+    question: string; user: { id: string; name: string }; b: BusinessConfig; history?: HistoryTurn[]; 页面上下文?: string; 页面范围?: 页面范围;
+    /** 调用方已经定好要跑哪几个工具（名片识别先查公司和联系人，card-scan/agent-prompt.ts）：不再认意图，跑完只让模型说话 */
+    指定调用?: 命中结果;
+  },
   ev: AgentEvents = {},
 ): Promise<AgentResult> {
   const { question, user, b, history, 页面范围 } = input;
@@ -468,7 +472,7 @@ ${工作方式}
    * 团队版的服务端日志会把它们留在云上。加规则要的真实问句去对话存档里看。
    * `AGENT_INTENTS=0` 关掉（对照实验用）。
    */
-  const 认到 = process.env.AGENT_INTENTS === "0" ? null : 认意图(question, Boolean(history?.length), 页面范围);
+  const 认到 = input.指定调用 ?? (process.env.AGENT_INTENTS === "0" ? null : 认意图(question, Boolean(history?.length), 页面范围));
   const 直连 = 认到 && 只用项目 ? { ...认到, 调用: 认到.调用.map(换成项目) } : 认到;
   if (直连) console.info(`[intent] 命中「${直连.名}」：${直连.调用.map((c) => c.name).join(" → ")}`);
   else console.info("[intent] 没命中");

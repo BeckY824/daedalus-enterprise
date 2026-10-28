@@ -50,11 +50,14 @@ import { useMotionTheme } from "@/components/MotionTheme";
  * 不是业务配置里的来源。没给就照旧用来源
  */
 export const 新线索来源 = createContext<readonly string[] | null>(null);
+/** 同一处：开了超时回收，新线索卡的「下一步时间」也必填（和 dashboard/apply.ts 的拦截同一份 missingFields） */
+export const 新线索要下一步 = createContext(false);
 
 export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal; 记号?: string }) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const 渠道名们 = useContext(新线索来源);
+  const 要下一步 = useContext(新线索要下一步);
   /* 三个档案字段叫什么、「职位」那一格有哪些选项，跟着业务配置走（通用版 vs 教培预设） */
   const 字段表 = 可改字段表(b);
   const { message } = App.useApp();
@@ -79,7 +82,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   /** 真正要提交的那张卡：逐项时只带勾上的那几项 */
   const 要提交的 = useMemo<Proposal>(() => 只留选中的改动(draft, 勾了), [draft, 勾了]);
   // 模型不知道的字段留空，人在卡片上补齐才能确认
-  const missing = missingFields(要提交的, b);
+  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步 } : undefined);
   const 能确认 = state !== "saving" && missing.length === 0 && 勾了.length > 0;
 
   async function confirm() {

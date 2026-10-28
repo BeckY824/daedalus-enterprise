@@ -4,7 +4,7 @@
  *   list_projects：三阶段个数、默认只看进行中、result / 关键词 / 公海；公海里同事客户的项目不露客户名，按客户名也搜不出来
  *   给哪些工具：只用项目时不给 list_leads / list_opportunities / propose_opportunity；项目模式才有 list_projects
  *   直连：「线索清单」「商机清单」换成 list_projects 的线索 / 商机阶段
- *   确认新线索卡：建客户 + 线索阶段的项目，不写线索表；开了超时回收要填卡上的下一步；商机卡拦下
+ *   确认新线索卡：建客户 + 线索阶段的项目，不写线索表；开了超时回收要填卡上的下一步（和卡上「还差」同一句，10-28）；商机卡拦下
  *   开关关：新线索卡照旧写线索表
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -158,7 +158,7 @@ describe("确认新线索卡", () => {
     await prisma.channel.update({ where: { id: 展会 }, data: { active: false } });
     for (const source of ["展会", "其他"]) {
       expect(await applyProposal(线索卡({ id: `p-${source}`, name: `星河${source}`, phone: "", source }) as never)).toEqual({
-        ok: false, error: "新线索要选渠道，卡上的来源对不上渠道：请到「新线索」页用向导建",
+        ok: false, error: `卡上的来源「${source}」对不上启用中的渠道：请在卡上重新选来源（渠道）`,
       });
     }
     expect(await prisma.project.count()).toBe(1);
@@ -168,7 +168,7 @@ describe("确认新线索卡", () => {
     await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 节点天数: { 潜客培育: 3 } } });
     invalidateSettingsCache();
     const r = await applyProposal(线索卡() as never);
-    expect(r).toEqual({ ok: false, error: "开了超时回收，新线索要填「下一步」时间" });
+    expect(r).toEqual({ ok: false, error: "还差下一步时间，填好再确认" });
     expect(await prisma.project.count()).toBe(0);
     expect(await prisma.customer.count()).toBe(0);
 

@@ -306,7 +306,13 @@ export function buildProposal(
 /** 卡片上说话要跟模版走的那几样（外贸：签约叫订单、「已签约」显示成「已下单」，2026-10-06 F.3） */
 type 叫法 = Pick<BusinessConfig, "statusLabels" | "template"> | null | undefined;
 
-export function missingFields(p: Proposal, b?: 叫法): string[] {
+/**
+ * 企业版只用项目时新线索卡多两样必填（2026-10-28）：建成的是线索阶段的项目，要挂渠道（dashboard/apply.ts 建成项目）；
+ * 开了超时回收还要「下一步」时间（lib/project/wizard.ts 规整沟通）。不给就只认名称，和原来一样
+ */
+export type 建档必填 = { 只用项目: boolean; 要下一步: boolean };
+
+export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): string[] {
   const miss: string[] = [];
   if (p.kind === "set_status" && !p.to) miss.push("新状态");
   if (p.kind === "add_followup" && p.content.trim().length < 4) miss.push("沟通内容");
@@ -315,7 +321,11 @@ export function missingFields(p: Proposal, b?: 叫法): string[] {
     if (!p.plannedAt) miss.push("时间");
     if (!p.method) miss.push("方式");
   }
-  if (p.kind === "add_lead" && !p.name.trim()) miss.push("名称");
+  if (p.kind === "add_lead") {
+    if (!p.name.trim()) miss.push("名称");
+    if (建档?.只用项目 && !p.source.trim()) miss.push("来源（渠道）");
+    if (建档?.只用项目 && 建档.要下一步 && !p.nextAt) miss.push("下一步时间");
+  }
   if (p.kind === "update_customer") {
     for (const c of p.changes) {
       const spec = 可改字段[c.field];

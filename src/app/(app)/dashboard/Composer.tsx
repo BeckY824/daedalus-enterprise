@@ -272,14 +272,25 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     if (!shouldQueue) start(turn);
     发完(turn.id);
   }
-  /** 认好一张名片：新开一轮，答案就是那张新建线索卡（不调模型、不扣次数）；框里打了一半的字不清 */
+  /**
+   * 认好一张名片：新开一轮，连卡交给 Agent（2026-10-28 用户：「名片识别也要走agent，以及固定的提示词。」）——
+   * 服务端换成固定提示词、先查公司和联系人撞没撞库，说清还差哪几格；回答下面还是这张卡，人补齐点确认才写库。
+   * 算一次提问。次数用完了就照旧直接摆卡（不调模型）；框里打了一半的字不清
+   */
   function 出名片卡(p: Proposal, 摘要: string) {
-    const turn = addTurn(scope, { question: "认名片建线索", kind: "ask" });
-    const 答: StreamJob<AgentAnswer> = {
-      steps: [],
-      answer: { text: `从名片认出：${摘要}。核对一下，来源选好渠道再点确认。`, records: [], customers: [], proposals: [p] },
-    };
-    setJobValue(`home:${turn.id}`, 答);
+    if (AI已用完) {
+      const turn = addTurn(scope, { question: "认名片建线索", kind: "ask" });
+      const 答: StreamJob<AgentAnswer> = {
+        steps: [],
+        answer: { text: `从名片认出：${摘要}。核对一下，来源选好渠道再点确认。`, records: [], customers: [], proposals: [p] },
+      };
+      setJobValue(`home:${turn.id}`, 答);
+      on发出(turn.id);
+      return;
+    }
+    const 排队 = Boolean(running);
+    const turn = addTurn(scope, { question: `认名片建线索：${摘要}`, kind: "ask", 名片: p, queued: 排队 });
+    if (!排队) start(turn);
     on发出(turn.id);
   }
   useImperativeHandle(ref, () => ({ 问: (x: string) => submit(x) }));

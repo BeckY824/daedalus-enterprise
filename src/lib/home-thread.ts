@@ -27,6 +27,7 @@ import { useSyncExternalStore } from "react";
 import type { 邮件信号 } from "./research/verify/mail";
 import type { 候选公司, 出现 } from "./research/person";
 import type { 搜索结果 } from "./research/types";
+import type { Proposal } from "./agent/proposals";
 
 export type Turn = {
   id: string;
@@ -58,6 +59,11 @@ export type Turn = {
    * 一旦入库，人粘进去的聊天记录就进了备份。见 components/AskFiles.tsx。
    */
   files?: { name: string; text: string }[];
+  /**
+   * 企业版认名片认出来的那张新线索卡（2026-10-28）：随这一问发给 Agent，服务端换成固定提示词、固定先查重，
+   * 回答里还是这张卡（id 不变，名片原图按 id 认）。见 lib/card-scan/agent-prompt.ts
+   */
+  名片?: Proposal;
 };
 
 /** 首页那一屏的 scope。别的页面用自己的 pathname */

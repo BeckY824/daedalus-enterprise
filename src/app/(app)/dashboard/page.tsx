@@ -25,6 +25,7 @@ import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import NoAiHome from "./NoAiHome";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 
 export const dynamic = "force-dynamic";
 
@@ -182,6 +183,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       企业版={企业版()}
       满额提醒={满额提醒们}
       渠道名们={只用项目 ? (await prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } })).map((c) => c.name) : undefined}
+      要下一步={只用项目 ? (await 生效组织规则()).超时回收.开 : false}
       空库={学员数 === 0 && 线索数 === 0 && mine.total === 0 && myPlans === 0 && 没做完的待办 === 0}
       信号={{
         逾期,
