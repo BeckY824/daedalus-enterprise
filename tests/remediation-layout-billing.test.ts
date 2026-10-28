@@ -1,11 +1,13 @@
 import { afterEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ hosted: true, queries: [] as string[], workspaces: [{ id: "qa-ws", name: "QA", slug: "qa-private", role: "OWNER" }] }));
+const state = vi.hoisted(() => ({ hosted: true, queries: [] as string[], business: {} as Record<string, unknown>, workspaces: [{ id: "qa-ws", name: "QA", slug: "qa-private", role: "OWNER" }] }));
 vi.mock("@/lib/auth", () => ({ getCurrentUser: async () => ({ id: "qa", name: "QA", role: "ADMIN", accountId: "qa-account", workspaceId: "qa-ws" }) }));
 vi.mock("@/lib/prisma", () => ({ prisma: { customer: { count: async () => {state.queries.push("customer");return 1} }, opportunity: { count: async () => {state.queries.push("opportunity");return 1} } } }));
+// 左栏两个角标走 lib/scope-sql.ts（带范围时裸 SQL 数，10-28 企业版 P1）
+vi.mock("@/lib/scope-sql", () => ({ 看得到的客户数: async () => {state.queries.push("customer");return 1}, 看得到的在谈商机数: async () => {state.queries.push("opportunity");return 1} }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("@/lib/favorites", () => ({ 读收藏: async () => {state.queries.push("favorites");return []} }));
 vi.mock("@/lib/reminders-db", () => ({ 取提醒项: async () => [], 数提醒: async () => ({ 逾期: 0, 今天: 0 }), 取订单提醒项: async () => [] }));
-vi.mock("@/lib/business", () => ({ getBusiness: async () => ({}) }));
+vi.mock("@/lib/business", () => ({ getBusiness: async () => state.business }));
 vi.mock("@/lib/desktop/cloud", () => ({ 本地模式: () => false, 归属对不上: () => false, 读: () => null }));
 vi.mock("@/lib/tenant/context", () => ({ multiTenant: () => state.hosted }));
 vi.mock("@/lib/tenant/workspace-access", () => ({ accessibleWorkspacesFor: async () => state.workspaces }));
@@ -47,4 +49,13 @@ it.each([true,false])("L-112 hosted=%s 每次布局只加载一次实际用于�
  expect(state.queries.sort()).toEqual(["customer","favorites","opportunity"]);
  const props=找壳(layout)!;
  expect(props.计数).toMatchObject({"/customers":1,"/opportunities":1});expect(props.收藏).toEqual([]);
+});
+
+it("企业版项目模式左栏不画商机，也就不数", async () => {
+  state.hosted = false; state.queries = []; state.business = { projectMode: true }; vi.stubEnv("CRM_ENTERPRISE", "1");
+  try {
+    const layout = await AppLayout({ children: null, pane: null, modal: null });
+    expect(state.queries.sort()).toEqual(["customer", "favorites"]);
+    expect(找壳(layout)).toBeTruthy();
+  } finally { state.business = {}; }
 });

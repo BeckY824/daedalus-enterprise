@@ -8,6 +8,7 @@ import { getSetting, setSetting } from "@/lib/settings";
 import { recordAudit } from "@/lib/audit";
 import { 读团队 } from "@/lib/sync/client";
 import { 看全部 } from "@/lib/team-scope";
+import { 看得到的客户数 } from "@/lib/scope-sql";
 import { dayjs } from "@/lib/utils";
 import { 不掉公海的状态, 公海截止, 自动理由 } from "@/lib/pool";
 
@@ -70,9 +71,10 @@ async function 按天扫(me: { id: string; name: string }, 今: Date): Promise<n
 /**
  * 这一次渲染看得到的客户总数（带限定）。左栏「客户」角标和客户页页签用同一个数：React 的 cache() 让同一次
  * RSC 渲染里只数一遍（Server Action、路由处理器里它不缓存，每次照数）。企业版开了按组织看客户时，
- * 带范围的客户计数要 Customer LEFT JOIN CustomerPool 全表扫一遍，10 倍数据一次 ~20 ms（2026-10-26 企业版 p95）
+ * 带范围的客户计数要 Customer LEFT JOIN CustomerPool 全表扫一遍，10 倍数据一次 ~20 ms（2026-10-26 企业版 p95），
+ * 压测时 1148 次平均 126 ms（10-28 P1）：带范围时改用裸 SQL 数（lib/scope-sql.ts，三个条件都走索引），不带范围照旧
  */
-export const 客户总数 = cache(() => prisma.customer.count());
+export const 客户总数 = cache(() => 看得到的客户数());
 
 /**
  * 客户页两个页签上的数（不带筛选）：「客户」= 不在公海的，「公海」= 在公海的。和左栏「客户」角标同一套限定，两数相加 = 角标。
@@ -84,6 +86,7 @@ export const 客户总数 = cache(() => prisma.customer.count());
  * 带限定的全部客户 = 看得到的非公海 + 全部公海；互看读两边都不限定。公海表的 customerId 是外键、删客户连带删
  */
 export async function 客户页签数(): Promise<{ 公海: number; 非公海: number }> {
-  const [全部, 公海] = await Promise.all([客户总数(), prisma.customerPool.count()]);
+  // 公海表带限定数 = 全部公海（见上），就不让钩子再给它套 Customer 那层 JOIN
+  const [全部, 公海] = await Promise.all([客户总数(), 看全部(() => prisma.customerPool.count())]);
   return { 公海, 非公海: 全部 - 公海 };
 }
