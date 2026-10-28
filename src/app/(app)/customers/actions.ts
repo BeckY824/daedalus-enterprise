@@ -41,6 +41,7 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 交接要确认, 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 选的原因, 可选项 } from "@/lib/enterprise/dict";
 import { 验号码 } from "@/lib/enterprise/contact-format";
@@ -1102,6 +1103,8 @@ export async function saveContract(input: {
 }): Promise<SaveContractResult> {
   try {
     const me = await requireUser();
+    const 老入口 = await 只用项目挡老入口("合同");
+    if (老入口) return { ok: false, error: 老入口 };
     if (!Number.isFinite(input.amount) || input.amount <= 0) {
       return { ok: false, error: "签约金额必须为正数" };
     }
@@ -1295,6 +1298,8 @@ export async function deleteContract(
 ): Promise<{ ok: true; remaining: number; 退回商机: number } | { ok: false; error: string }> {
   try {
     const me = await requireUser();
+    const 老入口 = await 只用项目挡老入口("合同");
+    if (老入口) return { ok: false, error: 老入口 };
     const b = await getBusiness();
   
     if (revertTo) {

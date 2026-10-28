@@ -24,6 +24,7 @@ import { 订单列表 } from "../order-db";
 import { 节点灯 } from "../order";
 import { 阶段们, 结局们, 是阶段, 是结局 } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
+import { 企业版 } from "../enterprise/switch";
 import { 订单节点 } from "../features";
 import { 现值选取, 现值表 } from "./current-values";
 import { prisma, defaultClient } from "../prisma";
@@ -78,6 +79,8 @@ type Tool = {
   run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 };
 
+/** get_customer 里最多带几个项目：只给近况，全量走 list_projects */
+const 项目最多 = 10;
 const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
 /**
@@ -287,6 +290,32 @@ export const TOOLS: Tool[] = [
       const timeline = formatTimeline(c.followUps, { numbered: true }).replace(/^\[(\d+)\]/gm, (_m, n) => `[${Number(n) + offset}]`);
       const sources = c.followUps.filter((f) => f.source?.text).length;
       const b = ctx.b;
+      /*
+        企业版只用项目（10-28）：商机是项目的一个阶段，问「他那个项目到哪了」要看得到这位名下的项目。
+        和客户页同一份取法（customers/[id]/page.tsx 的 项目们）：带限定的 prisma 按客户取，看得到哪些由限定层
+        （lib/team-scope.ts 的 看得到的项目）说了算；最近动过的 10 个，再多的用 list_projects 按客户名查
+      */
+      const 只用项目 = 企业版() && b.projectMode === true;
+      const 项目行 = 只用项目
+        ? await prisma.project.findMany({
+            where: { customerId: c.id },
+            orderBy: { updatedAt: "desc" },
+            take: 项目最多 + 1,
+            select: { id: true, name: true, phase: true, node: true, result: true, nextStepAt: true, ownerId: true, pooledAt: true },
+          })
+        : [];
+      const 项目负责人 = 项目行.length
+        ? new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(项目行.map((p) => p.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
+        : new Map<string, string>();
+      const 项目 = 项目行.slice(0, 项目最多).map((p) => ({
+        id: p.id,
+        名称: p.name,
+        阶段: p.phase,
+        节点: p.node,
+        结局: p.result ?? "进行中",
+        下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
+        负责人: p.pooledAt ? "在公海" : (项目负责人.get(p.ownerId) ?? "已不在的成员"),
+      }));
       const data = {
         id: c.id,
         name: c.name,
@@ -311,8 +340,9 @@ export const TOOLS: Tool[] = [
         openTasks: c.tasks.map((t) => `${t.title}${t.dueAt ? `（${dayjs(scheduleValue(t.dueAt, t.dueOn)).format(t.dueOn ? "MM-DD" : "MM-DD HH:mm")}）` : ""}`),
         nextPlan: c.plans[0] ? `${dayjs(scheduleValue(c.plans[0].plannedAt, c.plans[0].plannedOn)).format(c.plans[0].plannedOn ? "MM-DD" : "MM-DD HH:mm")} ${c.plans[0].method}：${c.plans[0].subject}` : null,
         timeline: timeline || "（从未跟进过）",
+        ...(只用项目 ? { 项目, ...(项目行.length > 项目最多 ? { 项目说明: `只列最近动过的 ${项目最多} 个，更早的用 list_projects 按客户名查` } : {}) } : {}),
       };
-      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${c.opportunities.length ? `、${c.opportunities.length} 个商机` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
+      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${c.opportunities.length ? `、${c.opportunities.length} 个商机` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length} 个项目` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
     },
   },
   {

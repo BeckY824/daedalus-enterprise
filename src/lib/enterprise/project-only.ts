@@ -11,3 +11,12 @@ import { 企业版 } from "./switch";
 export async function 企业版只用项目(): Promise<boolean> {
   return 企业版() && (await getBusiness()).projectMode === true;
 }
+
+/**
+ * 企业版只用项目时，老的商机 / 合同 / 订单写入口一律拒（10-28 定版前收口）：这几张表企业版没有页面，
+ * 写进去的人看不见、启动清理（legacy-cleanup.ts）又会删掉，数据悄悄分叉。返回拒绝的话，放行返回 null
+ */
+export async function 只用项目挡老入口(东西: "商机" | "合同" | "订单"): Promise<string | null> {
+  if (!(await 企业版只用项目())) return null;
+  return `这里${东西}已并进项目：请到项目页推进或记成交`;
+}
