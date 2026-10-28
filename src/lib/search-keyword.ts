@@ -90,10 +90,13 @@ export function 客户id集合(ids: readonly string[]): Prisma.CustomerWhereInpu
   return chunks.length ? {OR:chunks} : {id:{in:[]}};
 }
 
-/** 仅内置列名参与SQL；值全部参数绑定。最终模型查询继续经过租户/业务员限定。 */
-export async function 客户关键词条件(raw: unknown, onlyPicker = false, userId?: string): Promise<Prisma.CustomerWhereInput> {
+/**
+ * 关键词拼成一段 WHERE（客户表别名 c），只有内置列名进 SQL，值全部参数绑定；没关键词返回 null。
+ * 客户关键词条件和列表页的 关键词分页（customers/query.ts）共用这一份，号码藏着（Y27）、Unicode 大小写规则都在这里
+ */
+export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userId?: string): Promise<{ sql: string; values: string[] } | null> {
   const k = 搜索词(raw);
-  if (!k) return {};
+  if (!k) return null;
   const 藏号 = await 号码藏着(userId);
   const phone = 号码片段(k);
   const pattern = 包含模式(k), phonePattern = 包含模式(phone ?? k), sitePattern = 包含模式(网址域名(k) ?? k);
@@ -116,7 +119,14 @@ export async function 客户关键词条件(raw: unknown, onlyPicker = false, us
     values.push(pattern,...号值,pattern,pattern);
     parts.push('c.id IN (SELECT o."customerId" FROM "TradeOrder" o WHERE o.no GLOB ?)'); values.push(pattern);
   }
-  const rows = await prisma.$queryRawUnsafe<{id:string}[]>(`SELECT c.id FROM "Customer" c WHERE ${parts.join(" OR ")}`, ...values);
+  return { sql: `(${parts.join(" OR ")})`, values };
+}
+
+/** 仅内置列名参与SQL；值全部参数绑定。最终模型查询继续经过租户/业务员限定。 */
+export async function 客户关键词条件(raw: unknown, onlyPicker = false, userId?: string): Promise<Prisma.CustomerWhereInput> {
+  const w = await 客户关键词SQL(raw, onlyPicker, userId);
+  if (!w) return {};
+  const rows = await prisma.$queryRawUnsafe<{id:string}[]>(`SELECT c.id FROM "Customer" c WHERE ${w.sql}`, ...w.values);
   // 避免Prisma把一个超长in拆成多条各自skip的查询，导致后页静默变空。
   return 客户id集合(rows.map(r=>r.id));
 }
