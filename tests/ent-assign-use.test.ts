@@ -75,14 +75,14 @@ beforeEach(async () => {
 });
 
 describe("纯函数", () => {
-  it("默认表照 10-27 会上定的：销售只有指定、自持；市场除自持外都有；其他角色一样都没有", () => {
-    expect(分配默认谁能用[分配方式id.指定]).toEqual(["marketing_mgr", "sales_mgr", "sales"]);
+  it("默认表：销售只有指定、自持；市场除自持外都有；其他角色只有指定、公海捞取（10-28）", () => {
+    expect(分配默认谁能用[分配方式id.指定]).toEqual(["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"]);
     expect(分配默认谁能用[分配方式id.自动]).toEqual(["marketing_mgr"]);
-    expect(分配默认谁能用[分配方式id.公海捞取]).toEqual(["marketing_mgr"]);
+    expect(分配默认谁能用[分配方式id.公海捞取]).toEqual(["marketing_mgr", "channel_ops", "project_ops"]);
     expect(分配默认谁能用[分配方式id.暂不分配]).toEqual(["marketing_mgr"]);
     expect(分配默认谁能用[分配方式id.自拓自持]).toEqual(["sales_mgr", "sales"]);
-    // 按角色看：其他角色（渠道运营、项目运营）默认五项都不能用
-    for (const r of ["channel_ops", "project_ops"] as const) expect(Object.values(分配默认谁能用).some(v => v.includes(r))).toBe(false);
+    // 按角色看：其他角色（渠道运营、项目运营）默认只有指定、公海捞取
+    for (const r of ["channel_ops", "project_ops"] as const) expect(Object.entries(分配默认谁能用).filter(([, v]) => v.includes(r)).map(([id]) => id)).toEqual([分配方式id.指定, 分配方式id.公海捞取]);
     expect(谁能用("dict-assign-9", {})).toBe("所有人");
     expect(谁能用(分配方式id.自动, { [分配方式id.自动]: [] })).toEqual([]);
   });
@@ -104,12 +104,14 @@ describe("纯函数", () => {
     expect(能(分配方式id.暂不分配, 市场)).toBe(true);
     expect(能(分配方式id.暂不分配, 销售)).toBe(false);
     expect(能(分配方式id.公海捞取, 销售)).toBe(false);
-    expect(能(分配方式id.公海捞取, 渠道)).toBe(false);
+    expect(能(分配方式id.公海捞取, 渠道)).toBe(true);
     expect(能(分配方式id.公海捞取, 市场)).toBe(true);
     expect(能(分配方式id.自拓自持, 市场)).toBe(false);
     expect(能(分配方式id.自拓自持, 销售)).toBe(true);
     expect(能(分配方式id.自拓自持, 项运)).toBe(false);
-    expect(能(分配方式id.指定, 渠道)).toBe(false);
+    expect(能(分配方式id.指定, 渠道)).toBe(true);
+    expect(能(分配方式id.自动, 渠道)).toBe(false);
+    expect(能(分配方式id.暂不分配, 项运)).toBe(false);
     expect(能("dict-assign-9", 销售)).toBe(true);
     expect(能(分配方式id.公海捞取, 销售, "SALES", { [分配方式id.公海捞取]: ["sales"] })).toBe(true);
     expect(能(分配方式id.指定, "没这个人")).toBe(false);
@@ -255,6 +257,21 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
       expect(p.ownerId).toBe(市场);
       expect(r.提示).toMatch("没成");
     }
+  });
+
+  it("其他角色（渠道运营、项目运营）能新建线索：下拉 = 指定 / 公海捞取；建给自己、指定别人、放公海都成，选自动被拦（10-28）", async () => {
+    for (const 谁 of [渠道, 项运]) expect((await 我能用的分配方式({ id: 谁, role: "SALES" })).map((x) => x.i)).toEqual([0, 2]);
+    当(渠道);
+    const a = await 向导({});
+    const b = await 向导({ 分配方式: 0, ownerId: 销售 });
+    当(项运);
+    const c = await 向导({ 分配方式: 2 });
+    for (const [r, 谁] of [[a, 渠道], [b, 销售], [c, 项运]] as const) {
+      expect(r).toMatchObject({ ok: true });
+      if (r.ok) expect((await 项目of(r.projectId)).ownerId).toBe(谁);
+    }
+    if (c.ok) expect((await 项目of(c.projectId)).pooledAt).not.toBeNull();
+    expect(await 向导({ 分配方式: 1 })).toMatchObject({ ok: false });
   });
 
   it("没传分配方式（老草稿）：选了别人 = 指定，建给自己 = 自拓自持，用不了自拓自持的 = 暂不分配", async () => {

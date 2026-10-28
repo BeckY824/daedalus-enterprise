@@ -8,7 +8,7 @@ const plugin: Plugin = { name: "stub-actions", setup(b) {
   b.onResolve({ filter: /\/projects\/actions$|\/ent-dict-actions$|\/blocker-actions$|\/commission-actions$|^next\/navigation$/ }, (a) => ({ path: a.path, namespace: "fixture" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ loader: "js", contents: `
     const 空=async()=>({ok:true});
-    export const 加组员角色=空, 改组员角色=空, 加项目异常类别=空, 改项目异常类别=空, 改组织规则=空, 预览超时回收=async()=>({ok:true,项目:[]}), 存卡点默认Action=空, 改提成比例=空;
+    export const 加组员角色=空, 改组员角色=空, 加项目异常类别=空, 改项目异常类别=空, 改组织规则=空, 预览超时回收=async()=>({ok:true,项目:[]}), 存卡点默认Action=空, 改提成比例=空, 改按人提成比例=空;
     export const 加企业选项=async(kind,name)=>{window.__opts[kind].push({id:'n'+name,name,active:true,用的人:0});window.__rerender();return{ok:true}};
     export const 改企业选项=async(id,patch)=>{for(const xs of Object.values(window.__opts))for(const x of xs)if(x.id===id)Object.assign(x,patch);window.__rerender();return{ok:true}};
     export const 存分配谁能用=async(v)=>{window.__assignUse=v;return{ok:true}};
@@ -31,18 +31,18 @@ it("切换种类、加选项、停用；375 宽不横向撑出", async () => {
   await page.addScriptTag({ content: bundle });
   await page.getByText("企业选项 · 分配方式").waitFor();
   expect(await page.getByText("自拓自持", { exact: true }).count()).toBe(2);
-  // 谁能用：「公海捞取」默认销售成员没勾，勾上存，交上去的是整张表
+  // 谁能用：「公海捞取」默认销售成员没勾、其他角色勾着（10-28），勾上销售成员存，交上去的是整张表
   await page.getByText("分配方式 · 谁能用").waitFor();
   const 捞取 = page.getByRole("group", { name: "「公海捞取」谁能用" });
   expect(await 捞取.getByRole("checkbox", { name: "销售成员" }).isChecked()).toBe(false);
-  expect(await 捞取.getByRole("checkbox", { name: "渠道运营" }).isChecked()).toBe(false);
+  expect(await 捞取.getByRole("checkbox", { name: "渠道运营" }).isChecked()).toBe(true);
   expect(await 捞取.getByRole("checkbox", { name: "市场管理" }).isChecked()).toBe(true);
   await 捞取.getByText("销售成员").click();
   await page.getByRole("button", { name: /保\s*存/ }).last().click();
   await page.waitForFunction(() => !!(window as unknown as { __assignUse?: unknown }).__assignUse);
   const 交的 = await page.evaluate(() => (window as unknown as { __assignUse: Record<string, string[]> }).__assignUse);
-  expect(交的["dict-assign-2"]).toEqual(expect.arrayContaining(["marketing_mgr", "sales"]));
-  expect(交的["dict-assign-2"]).toHaveLength(2);
+  expect(交的["dict-assign-2"]).toEqual(expect.arrayContaining(["marketing_mgr", "channel_ops", "project_ops", "sales"]));
+  expect(交的["dict-assign-2"]).toHaveLength(4);
   expect(交的["dict-assign-3"]).toEqual(["marketing_mgr"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await page.getByText("回收原因", { exact: true }).click();

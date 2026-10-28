@@ -21,7 +21,8 @@ import { getSetting } from "@/lib/settings";
 import { 读改权限, 能改设置, 谁能改的话, 能改时限的节点, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import type { 组织架构 } from "./OrgTab";
 import { 本月分配情况 } from "../leads/assign-actions";
-import { 读提成比例, 能改提成比例 } from "@/lib/project/commission-db";
+import { 读提成比例, 读按人提成比例, 能改提成比例 } from "@/lib/project/commission-db";
+import { 提成范围of } from "@/lib/project/commission";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 
 /**
@@ -115,6 +116,21 @@ export default async function SettingsBody() {
     共享区 ? "共享试用区不能改"
     : org && 改权限 ? (能改设置(org, me, 项, 改权限) ? null : 谁能改的话(改权限, 项))
     : me.role === "ADMIN" ? null : "只有老板能改";
+  /**
+   * 按人单设提成比例（10-28）：列组织里（在职）的销售管理、销售，再加上已经单设过但现在不是销售的人（不列出来就改不掉了）；
+   * 名字同名带邮箱，业务线给界面显示「留空跟哪一套」
+   */
+  const 按人提成数据 = async (o: NonNullable<typeof org>) => {
+    const 比例 = await 读按人提成比例(o);
+    const 在内 = users.filter((u) => o.成员.has(u.id));
+    const 名 = 同名带邮箱(在内);
+    return {
+      比例,
+      人们: 在内
+        .filter((u) => Object.hasOwn(比例, u.id) || o.成员.get(u.id)!.角色们.some((r) => r === "sales_mgr" || r === "sales"))
+        .map((u) => ({ id: u.id, name: 名.get(u.id)!, 范围: 提成范围of(o.成员.get(u.id)!.line) })),
+    };
+  };
   // 企业版选项字典（分配方式、回收原因……）也放在项目模式这一栏。分配 / 回收 / 转让 / 判无效的记录里存的是当时的叫法（文字），
   // 改名、停用、删都不动旧记录，所以用的人记 0
   const 企业选项 = 项目设置底 && (await 全部企业字典());
@@ -127,6 +143,7 @@ export default async function SettingsBody() {
     挡: { 字典: 挡("字典"), 持有上限: 挡("持有上限"), 节点时限: 挡("节点时限"), 必填字段: 挡("必填字段"), 阶段规则: 挡("阶段规则") },
     // 节点时限能改的话再按节点拆（销售管理只改潜客培育……），和服务端 挡时限改动 同一套
     时限节点: org && 改权限 ? 能改时限的节点(org, me, 改权限) : undefined,
+    按人提成: 项目设置底.提成比例 && org ? await 按人提成数据(org) : null,
   };
   const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限
     ? (() => {
