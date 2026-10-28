@@ -47,7 +47,16 @@ async function open(是老板: boolean, width = 1366) {
 }
 const 交了 = (page: import("playwright").Page) => page.evaluate(() => (Reflect.get(window, "__交") ?? []) as [string, { bizRole?: string }][]);
 const 角色框 = (page: import("playwright").Page, id: string) => page.getByTestId(`org-member-${id}`).locator(".ant-select-multiple");
-const 展开 = async (page: import("playwright").Page, name: string) => { await page.getByLabel(`${name} 的角色`).click(); await page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().waitFor(); };
+// 负载高时下拉偶尔没开、或开了又被收起（CI 和本机连跑都挂过）：没开就再点，直到一次读到的选项里有「市场管理」，返回这次读到的
+const 展开 = async (page: import("playwright").Page, name: string) => {
+  let 字: string[] = [];
+  await expect.poll(async () => {
+    if (!(await page.locator(".ant-select-dropdown:visible").count())) await page.getByLabel(`${name} 的角色`).click();
+    字 = await page.locator(".ant-select-dropdown:visible .ant-select-item-option").allInnerTexts();
+    return 字;
+  }, { timeout: 10_000, interval: 300 }).toContain("市场管理");
+  return 字;
+};
 
 it("兼两个角色显示两个标签；再加一个，交上去是规整的逗号串", async () => {
   const { page, errors } = await open(true);
@@ -78,10 +87,7 @@ it("非老板的选项里没有总管理、管理员；老板有", async () => {
   for (const [是老板, 有] of [[false, 0], [true, 1]] as const) {
     const { page, errors } = await open(是老板);
     try {
-      await 展开(page, "小王");
-      const 选项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
-      await 选项.filter({ hasText: "市场管理" }).first().waitFor(); // allInnerTexts 不等，负载高时下拉还没渲染完会读到空
-      const 字 = await 选项.allInnerTexts();
+      const 字 = await 展开(page, "小王");
       expect(字.filter(t => t === "总管理").length).toBe(有);
       expect(字.filter(t => t === "管理员").length).toBe(有);
       expect(字).toContain("市场管理");

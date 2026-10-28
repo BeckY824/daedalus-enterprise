@@ -19,6 +19,15 @@ import { 装个假模型, 拆掉假模型 } from "./fake-llm";
 import { 连库 } from "./mock-data";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
+/** 企业版只有老板和总管理员能导入导出（src/lib/enterprise/import-perm.ts），普通销售看不到这个键，换管理员来做 */
+const 能导入 = process.env.CRM_ENTERPRISE !== "1";
+
+/** 带 ?import= 的两条：企业版先换成管理员，导入抽屉才摆得出来 */
+async function 换能导入的人(page: Page) {
+  if (能导入) return;
+  await page.context().clearCookies();
+  await 登录(page, { 用户名: "admin", 密码: "admin123" });
+}
 
 /**
  * 首页那块对话面只在**配了 AI** 的时候画（没配就是数据看板或「开始」卡，
@@ -54,12 +63,12 @@ const 一段聊天 = [
   "还有个张总，手机 13700002222，他是老王介绍过来的，目前只是了解阶段",
 ].join("\n");
 
-async function 登录(page: Page) {
+async function 登录(page: Page, who = 账号) {
   await page.goto("/login");
   const 提示 = page.locator(".ant-alert");
   for (let i = 0; i < 3; i++) {
-    await page.getByPlaceholder("用户名").fill(账号.用户名);
-    await page.getByPlaceholder("登录密码").fill(账号.密码);
+    await page.getByPlaceholder("用户名").fill(who.用户名);
+    await page.getByPlaceholder("登录密码").fill(who.密码);
     await page.getByRole("button", { name: /登\s*录/ }).click();
     for (let t = 0; t < 40; t++) {
       if (/\/dashboard/.test(page.url())) return;
@@ -161,6 +170,7 @@ test("D-031 /customers?new=1：新建框开一次，地址上的 new=1 当场抹
 });
 
 test("D-031 /customers?import=paste：导入抽屉开着，地址上的 import 当场抹掉、别的筛选参数留着，刷新不再弹", async ({ page }) => {
+  await 换能导入的人(page);
   await page.goto("/customers?import=paste&q=%E7%B2%98%E8%B4%B4%E7%BB%84");
   await expect(page.locator(".ant-drawer-open")).toBeVisible();
   await expect(page).toHaveURL(/\/customers\?q=/);
@@ -178,6 +188,7 @@ test("D-031 /customers?import=paste：导入抽屉开着，地址上的 import �
   「从假变真」那一下等不到。空库「开始」卡上的主按钮「粘一段聊天」走的就是这条路。修法：来路 的初值取 初始来路。
 */
 test("/customers?import=paste：抽屉直接停在「粘一段文本」那一栏", async ({ page }) => {
+  await 换能导入的人(page);
   await page.goto("/customers?import=paste");
   const 抽屉 = page.locator(".ant-drawer");
   await expect(抽屉).toBeVisible();

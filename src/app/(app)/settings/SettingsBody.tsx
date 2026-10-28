@@ -140,7 +140,8 @@ export default async function SettingsBody() {
             const 指定 = m.managerId && org.成员.has(m.managerId) ? m.managerId : null;
             const 自动 = 指定 ? null : 直属上级of(org, u.id);
             return {
-              id: u.id, name: 名.get(u.id)!, deptId: m.deptId, bizRole: m.bizRole, line: m.line,
+              // m.bizRole 只是主角色；角色框是多选，要给全（逗号串）——给主角色的话兼的角色刷新就不见了，再改一次就被冲掉
+              id: u.id, name: 名.get(u.id)!, deptId: m.deptId, bizRole: m.角色们.join(","), line: m.line,
               managerId: 指定, dottedManagerId: 虚线上级of(org, u.id),
               自动上级: 自动 ? 名.get(自动) ?? null : null,
             };

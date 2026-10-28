@@ -11,6 +11,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版, 负责人锁给自己 } from "./owner-pick";
 
 const 销售 = { 用户名: "zhangsan", 密码: "admin123" };
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
@@ -46,9 +47,16 @@ async function 填客户(page: Page, 姓名: string, 手机: string) {
   const 弹窗 = page.getByRole("dialog", { name: "新建客户" });
   await 弹窗.getByLabel("客户姓名").fill(姓名);
   await 弹窗.getByLabel("联系电话").fill(手机);
-  await 弹窗.getByLabel("销售负责人").click();
-  // 按名字选，不能取 first()：下拉是按姓名排序的，多一个账号顺序就变了
-  await 下拉选项(page, "salesOwnerId_list").filter({ hasText: "张三" }).first().click();
+  // 企业版里销售张三新建的本来就锁在自己名下
+  if (企业版) {
+    await 负责人锁给自己(弹窗);
+    // 原来点负责人下拉顺带让手机号失焦、触发查重；锁着没得点，手动失焦
+    await 弹窗.getByLabel("联系电话").blur();
+  } else {
+    await 弹窗.getByLabel("销售负责人").click();
+    // 按名字选，不能取 first()：下拉是按姓名排序的，多一个账号顺序就变了
+    await 下拉选项(page, "salesOwnerId_list").filter({ hasText: "张三" }).first().click();
+  }
   return 弹窗;
 }
 
@@ -133,8 +141,11 @@ test("编辑自己时不该把自己当成重复", async ({ page }) => {
   await expect(弹窗).toBeHidden();
 });
 
+/** 企业版普通销售的负责人下拉是锁着的，看候选得换管理员来开 */
+const 看下拉的人 = 企业版 ? 管理员 : 销售;
+
 test("没有重名时，下拉不该给任何人加登录名后缀", async ({ page }) => {
-  await 登录(page, 销售);
+  await 登录(page, 看下拉的人);
   await page.goto("/customers");
   await page.getByRole("button", { name: /新建客户/ }).click();
   await page.getByRole("dialog", { name: "新建客户" }).getByLabel("销售负责人").click();
@@ -298,7 +309,7 @@ test("报表按 id 聚合：两个同名销售的业绩不能合并成一行", a
  * 走查时发现的，不是实现错误，是当初没定过的规矩。
  */
 test("负责人下拉不列管理员，与业绩排行榜口径一致", async ({ page }) => {
-  await 登录(page, 销售);
+  await 登录(page, 看下拉的人);
 
   // 客户的销售负责人
   await page.goto("/customers");

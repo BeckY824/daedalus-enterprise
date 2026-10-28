@@ -38,7 +38,8 @@ jobs:
 
   unit:
     name: 单元测试 ${{ matrix.shard }}/4
-    runs-on: ubuntu-latest
+    # 钉 24.04：ubuntu-latest 2026-10-28 起逐步换成 26.04，Playwright 1.56 在上面装不了 chromium，整片挂
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -139,6 +140,85 @@ jobs:
           path: test-results/
           retention-days: 7
 
+  e2e-web-ent:
+    name: E2E 网页·企业版开 ${{ matrix.shard }}/5
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      # 容器里没有 setup-node，npm 下载缓存自己存（10-24 提速）
+      - name: 缓存 npm 下载
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-e2e-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+      # next build 用 Next 的增量编译缓存；源码没变的部分直接复用（10-24 提速）
+      - name: 缓存 Next 构建
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ github.job }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts', 'public/**') }}
+          restore-keys: |
+            next-${{ github.job }}-${{ hashFiles('package-lock.json') }}-
+      - run: npx prisma generate
+        # 托管版的控制面客户端也要生成，否则 import @/generated/control 编译不过
+      - run: npx prisma generate --schema=prisma/control.prisma
+        env:
+          CONTROL_DATABASE_URL: file:/tmp/control-ci.db
+      # 默认网页验生产构建，避免只验证 dev server；仍使用隔离 E2E 库。
+      # 每片各自 next build、各自跑 globalSetup 建空库；片内仍按文件串行
+      # 同一套网页用例，服务器开企业版开关再跑一遍（2026-10-27）：桌面端 / 团队版攒下的流程就是企业版的回归标准。
+      # 设计上就不一样的按文件跳过，名单和理由在 e2e-ent/网页用例企业版跳过.json
+      - run: npx playwright test --shard=${{ matrix.shard }}/5
+        env:
+          CRM_ENTERPRISE: "1"
+          E2E_PROD: "1"
+          HOME: /root
+          # 用例的浏览器固定 Asia/Shanghai，服务端也要一致，否则日期文案水合失配
+          TZ: Asia/Shanghai
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-web-ent-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
+
+  e2e-ent-flow:
+    name: E2E 企业版主流程
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: 缓存 npm 下载
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-e2e-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma generate --schema=prisma/control.prisma
+        env:
+          CONTROL_DATABASE_URL: file:/tmp/control-ci.db
+      # 只有企业版才有的流程（2026-10-27）：四类账号、导入导出权限、跳转、组织设置、项目公海整体转让。
+      # 自己的库和种子（e2e-ent/global-setup.ts），测试密码每轮随机、不进仓库
+      - run: npm run test:ent
+        env:
+          HOME: /root
+          TZ: Asia/Shanghai
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-ent-flow
+          path: test-results/
+          retention-days: 7
+
   e2e-layout:
     name: 排版闸门 ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
@@ -221,14 +301,14 @@ jobs:
 
   e2e:
     name: E2E
-    needs: [e2e-web, e2e-layout]
+    needs: [e2e-web, e2e-web-ent, e2e-ent-flow, e2e-layout]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: 各片都绿才算过
         run: |
-          echo "网页：${{ needs.e2e-web.result }}；排版闸门：${{ needs.e2e-layout.result }}"
-          [ "${{ needs.e2e-web.result }}" = success ] && [ "${{ needs.e2e-layout.result }}" = success ]
+          echo "网页：${{ needs.e2e-web.result }}；网页·企业版开：${{ needs.e2e-web-ent.result }}；企业版主流程：${{ needs.e2e-ent-flow.result }}；排版闸门：${{ needs.e2e-layout.result }}"
+          [ "${{ needs.e2e-web.result }}" = success ] && [ "${{ needs.e2e-web-ent.result }}" = success ] && [ "${{ needs.e2e-ent-flow.result }}" = success ] && [ "${{ needs.e2e-layout.result }}" = success ]
 
   # 每轮 CI 的真实耗时写进本轮的 Summary：总墙钟 + 每个 job，便于盯「总耗时 ≤ 12 分钟」
   timing:

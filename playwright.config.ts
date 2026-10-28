@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 /** E2E 用自己的库，绝不碰开发库与线上库 */
@@ -13,6 +14,16 @@ const PORT = Number(process.env.E2E_PORT) || 3100;
  * 生产分支（缺失即拒绝启动）。数据仍在独立的 e2e 库上，不碰线上。
  */
 const 生产模式 = process.env.E2E_PROD === "1";
+
+/**
+ * CRM_ENTERPRISE=1 时把这整套原样在企业版开关打开的服务器上再跑一遍（2026-10-27）：
+ * 桌面端 / 团队版攒下的流程用例，就是企业版的回归标准。设计上就不一样的用例按文件跳过，
+ * 名单和理由在 e2e-ent/网页用例企业版跳过.json，不许不写理由就往里加。
+ */
+const 企业版 = process.env.CRM_ENTERPRISE === "1";
+const 企业版跳过: string[] = 企业版
+  ? (JSON.parse(readFileSync(path.resolve(__dirname, "e2e-ent/网页用例企业版跳过.json"), "utf8")) as { 文件: string }[]).map((x) => `**/${x.文件}`)
+  : [];
 
 export default defineConfig({
   testDir: "./e2e",
@@ -29,7 +40,7 @@ export default defineConfig({
    *     testDir 已经只指 e2e/，这里再排一遍：谁把 testDir 放宽到仓库根，也不会把它拉进网页模式里跑
    *   team-qa-ops 是运营台排版压测，托管模式 + 自己的库（playwright.team-qa-ops.config.ts）
    */
-  testIgnore: ["**/ai-acceptance.spec.ts", "**/hosted.spec.ts", "**/e2e-desktop/**", "**/team-qa-ops.spec.ts"],
+  testIgnore: ["**/ai-acceptance.spec.ts", "**/hosted.spec.ts", "**/e2e-desktop/**", "**/team-qa-ops.spec.ts", ...企业版跳过],
   globalSetup: "./e2e/global-setup.ts",
   // 冒烟用例共用一个库、按业务链条前后依赖，必须串行
   fullyParallel: false,
@@ -51,9 +62,10 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: 生产模式
+    // 企业版服务器一启动就连库，库得在起服务之前建好（原因见 e2e/global-setup.ts 文件头）
+    command: (企业版 ? "npx tsx e2e/global-setup.ts && " : "") + (生产模式
       ? `npx next build && npx next start --port ${PORT}`
-      : `npx next dev --port ${PORT}`,
+      : `npx next dev --port ${PORT}`),
     url: `http://localhost:${PORT}/login`,
     reuseExistingServer: false,
     timeout: 生产模式 ? 420_000 : 180_000,
@@ -75,6 +87,7 @@ export default defineConfig({
       // 背调（research.spec.ts）：搜索走模拟数据，不连我们的服务器、不花钱。生产模式下不配就背调不了，所以两种模式都钉上
       CRM_RESEARCH_CHANNEL: "mock",
       ...(生产模式 ? { NODE_ENV: "production" } : {}),
+      ...(企业版 ? { CRM_ENTERPRISE: "1" } : {}),
     },
   },
 });

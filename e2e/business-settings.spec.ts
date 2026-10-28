@@ -194,10 +194,11 @@ test.describe.serial("业务配置", () => {
     await page.getByRole("tab", { name: "AI 接入" }).click();
     const 面板 = page.getByRole("tabpanel", { name: "AI 接入" });
 
-    // 两个选择，不是一堆字段
-    await expect(面板.getByRole("radio", { name: /用我们的/ })).toBeVisible();
+    // 两个选择，不是一堆字段。企业版装在客户自己的服务器上，「我们的」说成「服务器上配好的」
+    const 企业版 = process.env.CRM_ENTERPRISE === "1";
+    await expect(面板.getByRole("radio", { name: 企业版 ? /用服务器上配好的/ : /用我们的/ })).toBeVisible();
     await expect(面板.getByRole("radio", { name: /用你自己的 API Key/ })).toBeVisible();
-    await expect(面板.getByText(/Key 加密存在这台机器上/)).toBeVisible();
+    await expect(面板.getByText(企业版 ? /Key 加密存在这台服务器上/ : /Key 加密存在这台机器上/)).toBeVisible();
 
     // 默认不摆接口地址：绝大多数人用不着它
     await expect(面板.locator("#baseUrl")).toHaveCount(0);
@@ -231,8 +232,9 @@ test.describe.serial("状态显示名", () => {
     await 确保有一位客户(page);
 
     await page.goto("/customers");
-    // antd Select 的占位文字不可点，点它所在的选择框
-    const 状态筛选 = page.locator(".ant-select").filter({ hasText: "全部跟进状态" });
+    // antd Select 的占位文字不可点，点它所在的选择框。限在 main 里：页面刚流式到达的那一下，
+    // React 在 body 末尾还挂着一份 <div hidden> 的同样内容（几百毫秒后就收走），不限定会撞上两个
+    const 状态筛选 = page.getByRole("main").locator(".ant-select").filter({ hasText: "全部跟进状态" });
     await 状态筛选.click();
     // antd 的下拉项是 div，不带 option 角色，按类名找
     const 选项 = page.locator(".ant-select-dropdown .ant-select-item-option-content");
@@ -244,7 +246,7 @@ test.describe.serial("状态显示名", () => {
     await 面板.getByLabel("已试听", { exact: true }).clear();
     await 保存并等提示(page, 面板);
     await page.goto("/customers");
-    await page.locator(".ant-select").filter({ hasText: "全部跟进状态" }).click();
+    await page.getByRole("main").locator(".ant-select").filter({ hasText: "全部跟进状态" }).click();
     await expect(page.locator(".ant-select-dropdown .ant-select-item-option-content").filter({ hasText: /^已试听$/ })).toBeVisible();
   });
 });

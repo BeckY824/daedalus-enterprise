@@ -153,8 +153,11 @@ test("删跟进（顺带建了待办的提醒）：就地确认说「连同它�
   const 那条 = page.getByRole("main").locator(".rec-tl-item", { hasText: `周五回电${戳}` });
   const 待办 = page.getByRole("main").locator(".rec-task", { hasText: `周五回电${戳}` });
   await expect(待办).toHaveCount(1);
-  await 那条.hover();
-  await 那条.getByRole("button", { name: "删除跟进" }).click();
+  // 悬停才露出删除键；企业版详情页在这之后还会挪一下版面，鼠标一离开键就又被时间盖住，所以悬停和点一起重来
+  await expect(async () => {
+    await 那条.hover();
+    await 那条.getByRole("button", { name: "删除跟进" }).click({ timeout: 2000 });
+  }).toPass();
   await expect(就地确认(page)).toContainText("连同它的待办一起删？");
   await 就地确认(page).getByRole("button", { name: "删除" }).click();
   const 提示 = page.locator(".ant-message", { hasText: "已删除这条跟进" });
