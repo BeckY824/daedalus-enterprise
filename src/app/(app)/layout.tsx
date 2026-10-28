@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { 订单节点 } from "@/lib/features";
 import { 读收藏 } from "@/lib/favorites";
 import { 客户总数 } from "@/lib/pool-db";
-import { prisma } from "@/lib/prisma";
+import { 看得到的在谈商机数 } from "@/lib/scope-sql";
 import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
@@ -64,13 +64,14 @@ export default async function AppLayout({
     桌面端 Dock 上的数都是这一个（lib/reminders-db.ts）。layout 在客户端导航时不重算，
     但完成、改期、新建之后各处都会 router.refresh()——那时它跟着变。中栏要的数据在 @pane 槽位里各自查
   */
+  const 业务 = getBusiness();
   const [要跟, 订单提醒项, business, ua, 有AI, models, 收藏, 客户数, 在谈商机数] = await Promise.all([
     // 只要两个数：在库里数（lib/reminders-db.ts 数提醒，口径同 算提醒），不把名下没做的全拉回来
     数提醒(user.id),
     // 订单节点这一版不上（lib/features.ts）：不取，左栏和 Dock 上也就没有订单的数
     订单节点 ? 取订单提醒项(user.id) : Promise.resolve([]),
     // 业务术语（学员/客户、院校/年级/专业…）：全站客户端组件从这里拿
-    getBusiness(),
+    业务,
     headers().then((h) => h.get("user-agent") ?? ""),
     /*
       全局 AI 面板（AiDock）要的两样。放在 layout 里取：它哪一页都在，
@@ -83,7 +84,8 @@ export default async function AppLayout({
     读收藏(user.id),
     // 和客户页页签同一个数，同一次渲染只数一遍（lib/pool-db.ts 客户总数）
     客户总数(),
-    prisma.opportunity.count({ where: { status: "OPEN" } }),
+    // 企业版项目模式左栏没有商机这一项（AppShell 不画），不数；带范围时用裸 SQL 数（lib/scope-sql.ts）
+    业务.then((b) => (企业版() && b.projectMode === true ? 0 : 看得到的在谈商机数())),
   ]);
   /*
     这个人点 AI 按钮花不花次数、还剩几次（lib/ai-meter.ts）：全站的「1 次」角标和输入框下那行字都认它。

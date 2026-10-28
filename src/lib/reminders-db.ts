@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, defaultClient } from "@/lib/prisma";
+import { 看全部, 读的我 } from "@/lib/team-scope";
 import { 今天界线, type 提醒项, type 订单提醒项 } from "@/lib/reminders";
 
 /**
@@ -31,6 +32,14 @@ export async function 取提醒项(ownerId: string): Promise<提醒项[]> {
  * 口径和 算提醒(取提醒项()) 一样（tests/reminder-count.test.ts 对拍）：有原日历日的按日历日比，没有的按时间比，没排时间的不算
  */
 export async function 数提醒(ownerId: string, now = new Date()): Promise<{ 逾期: number; 今天: number }> {
+  // 数的是自己名下的：钩子给计划 / 待办加的那句（负责人在范围里 OR 客户看得到）对它恒真，却让 SQLite 用不上 ownerId 的索引、
+  // 每句都 JOIN 客户和公海表（压测时 45–119 ms 一句，2026-10-28 企业版 P1）。名下这人不在读的范围里（没认出的人）才照旧限定
+  const 读 = await 读的我(defaultClient);
+  const 恒真 = !读 || (typeof 读 === "string" ? 读 === ownerId : 读.includes(ownerId));
+  return 恒真 ? 看全部(() => 照数(ownerId, now)) : 照数(ownerId, now);
+}
+
+async function 照数(ownerId: string, now: Date): Promise<{ 逾期: number; 今天: number }> {
   const { 今天开始, 明天开始, 今天串 } = 今天界线(now);
   // 算提醒() 里空串的日历日当没有：按时间算
   const [a, b, c, d] = await Promise.all([
