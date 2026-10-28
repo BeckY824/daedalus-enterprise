@@ -97,14 +97,14 @@ jobs:
           [ "${{ needs.lint.result }}" = success ] && [ "${{ needs.unit.result }}" = success ]
 
   e2e-web-ent:
-    name: E2E 网页·企业版开 ${{ matrix.shard }}/5
+    name: E2E 网页·企业版开 ${{ matrix.shard }}/6
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       # 容器里没有 setup-node，npm 下载缓存自己存（10-24 提速）
@@ -133,7 +133,10 @@ jobs:
       # 开关关着那遍 10-28 删了：这个仓库只发企业版。
       # 设计上就不一样的按文件跳过，名单和理由在 e2e-ent/网页用例企业版跳过.json
       # PR 上同一片挂满 2 条（重试后仍红才算）就停，别把剩下的跑完白等；推 main 照样全跑完，红几条看全（10-28）
-      - run: npx playwright test --shard=${{ matrix.shard }}/5 ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
+      # 6 片（10-28，原 5 片）：按 main 绿跑各文件实测耗时模拟 playwright 的按条数切法，
+      # 5 片最慢一片用例 ~188 秒、6 片 ~150 秒、7 片 ~128 秒；第 7 片再省 20 秒不值一台机器的固定开销（装依赖 + 构建 ~3–4 分钟）。
+      # 最大的文件（workbench ~67 秒）远小于每片 ~105 秒的均值，不用拆文件
+      - run: npx playwright test --shard=${{ matrix.shard }}/6 ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
         env:
           CRM_ENTERPRISE: "1"
           E2E_PROD: "1"
@@ -207,8 +210,10 @@ jobs:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
       # 发版前排版闸门（10-19）：桌面本地模式 + 像真客户的数据，1024/1280/1366 × AI 栏常驻 / 左栏最宽量主要页面越界、被盖住。
       # 这几天的显示 bug 都是客户先发现的，以后让它在这里先红。规则见 e2e/layout-audit.ts，不许为了变绿放宽
-      - run: npx playwright test -c playwright.layout.config.ts --shard=${{ matrix.shard }}/3 ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
+      # 不用 --shard：它按用例条数切、不看耗时。哪片跑哪几份写在 playwright.layout.config.ts 的分片表里，按实测秒数排（10-28）
+      - run: npx playwright test -c playwright.layout.config.ts ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
         env:
+          LAYOUT_SHARD: ${{ matrix.shard }}
           E2E_PROD: "1"
           HOME: /root
           TZ: Asia/Shanghai
