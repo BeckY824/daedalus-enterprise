@@ -57,7 +57,12 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
     // 摆着这一项时清空 = 不开（存 0）；没摆时表单里没有它，照原值存回去，别悄悄关掉（表单公海天数，T-044 有用例）
     try {
       // 项目模式同理：没摆（一个人用）时照原值存回去
-      const res = await saveBusinessSettings({ ...v, poolDays: 表单公海天数(v.poolDays, 多人, value.poolDays), projectMode: 多人 ? v.projectMode === true : value.projectMode });
+      // 企业版不摆模版、公海天数、项目模式、两组显示名：模版和开关服务端锁住，两组显示名照原值存回去，别被空表单清掉
+      const res = await saveBusinessSettings(
+        企业版
+          ? { ...v, template: "general", poolDays: 0, projectMode: true, statusLabels: value.statusLabels, stageLabels: value.stageLabels ?? {} }
+          : { ...v, poolDays: 表单公海天数(v.poolDays, 多人, value.poolDays), projectMode: 多人 ? v.projectMode === true : value.projectMode },
+      );
       if (res.ok) {
         set套了(null);
         message.success(res.补了来源 ? `已保存，全站措辞已更新；${res.补了来源} 位${v.customer ?? "客户"}的来源从渠道 / 线索补了过来` : "已保存，全站措辞已更新");
@@ -95,7 +100,8 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
 
   return (
     <div className="set-col" style={{ paddingTop: 8 }}>
-      <div className="biz-preset">
+      {/* 企业版只有一种用法（business-config.ts 企业版锁定）：预设、模版、公海天数、项目模式开关、状态 / 阶段显示名、演示数据都是桌面端的，不摆 */}
+      {!企业版 && <div className="biz-preset">
         <span>套用预设</span>
         {/* 教培那套不再给新用户（10-03：只有通用和外贸两个模版）；正在用它的老用户还看得到，免得「恢复」不回去 */}
         {Object.keys(BUSINESS_PRESETS).filter((名) => 名 !== "教培招生" || value.fields.school === "院校").map((名) => (
@@ -112,10 +118,10 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
         ) : (
           <i>把下面整组填好，还能再改</i>
         )}
-      </div>
+      </div>}
       <Form form={form} layout="vertical" initialValues={value}>
         <Row gutter={16}>
-          <Col xs={24} sm={12}>
+          {!企业版 && <Col xs={24} sm={12}>
             <Form.Item
               name="template"
               label="模版"
@@ -131,14 +137,14 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
                 onChange={(e) => 套用(模版预设[e.target.value as BusinessTemplate])}
               />
             </Form.Item>
-          </Col>
+          </Col>}
           <Col xs={24} sm={12}>
             <Form.Item name="currency" label="本位币" extra="新建商机、订单 / 签约时默认选它；已经填好的金额不跟着变。" rules={[{ required: true, message: "选一个" }]}>
               <Select showSearch optionFilterProp="label" options={币种选项()} style={{ maxWidth: 260 }} />
             </Form.Item>
           </Col>
         </Row>
-        {多人 && (
+        {多人 && !企业版 && (
           <Form.Item
             name="poolDays"
             label="自动放进公海"
@@ -147,7 +153,7 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
             <InputNumber min={0} max={365} precision={0} suffix="天" style={{ width: 140 }} />
           </Form.Item>
         )}
-        {多人 && (
+        {多人 && !企业版 && (
           <Form.Item
             name="projectMode"
             label="项目模式"
@@ -205,6 +211,7 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
           {tags(`${examples.industries.slice(0, 3).join("、")}…`)}
         </Form.Item>
 
+        {!企业版 && <>
         <Typography.Title level={5} style={{ marginTop: 8 }}>状态显示名</Typography.Title>
         {旧状态有冲突 && <Alert type="warning" showIcon title="已有状态显示名冲突" description="页面会附上原状态以便区分。请在下面修正重复或借用其他状态的名称后保存。" style={{ marginBottom: 12 }} />}
         <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 12 }}>
@@ -237,9 +244,10 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
             </Col>
           ))}
         </Row>
+        </>}
 
         <Button type="primary" onClick={onSave} loading={saving}>保存</Button>
-        <Button type="text" style={{ marginLeft: 8 }} onClick={() => 套用("通用销售")}>恢复默认</Button>
+        {!企业版 && <Button type="text" style={{ marginLeft: 8 }} onClick={() => 套用("通用销售")}>恢复默认</Button>}
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, fontSize: 13 }}>
           不做的：自定义字段、自定义状态流转——那是另一个量级的功能。
         </Typography.Paragraph>
@@ -251,7 +259,7 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
         摆在这一栏是因为它和业务配置是同一类事：都是「这个库长什么样」，都只有管理员能动。
         整栏出不出现由 DemoDataSection 自己判断——桌面端不给灌，那边连标题都不该有。
       */}
-      <DemoDataSection />
+      {!企业版 && <DemoDataSection />}
     </div>
   );
 }

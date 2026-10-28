@@ -63,6 +63,7 @@ test.describe.configure({ mode: "serial" });
 
 test.describe("A 组：跨会话的数据可见性", () => {
   test("甲新建的客户，乙刷新后能看到", async ({ browser }) => {
+    test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     const 甲 = await 另一个人(browser, 甲账号);
     const 乙 = await 另一个人(browser, 管理员);
 
@@ -80,6 +81,7 @@ test.describe("A 组：跨会话的数据可见性", () => {
   });
 
   test("客户端路由缓存：离开再回来时可能看到旧列表，硬刷新一定是新的", async ({ browser }) => {
+    test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     /**
      * next.config.ts 里 staleTimes.dynamic = 60，是性能取舍不是缺陷。
      * 这条用例把实际行为固化下来：软导航可能拿到缓存，硬刷新一定拿到最新。
@@ -115,6 +117,7 @@ test.describe("A 组：跨会话的数据可见性", () => {
 
 test.describe("D 组：批量操作交叉", () => {
   test("两人同时批量改状态，都要收到真实条数且不互相锁死", async ({ browser }) => {
+    test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     const 甲 = await 另一个人(browser, 甲账号);
     const 乙 = await 另一个人(browser, 管理员);
 
@@ -162,6 +165,7 @@ test.describe("D 组：批量操作交叉", () => {
   });
 
   test("一人批量改负责人、另一人正在编辑同一条，两边的改动都要在", async ({ browser }) => {
+    test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     const 甲 = await 另一个人(browser, 甲账号);
     const 乙 = await 另一个人(browser, 管理员);
 
@@ -256,6 +260,7 @@ test.describe("D2 组：批量改负责人的撤销（T-019）", () => {
 
 test.describe("E 组：同账号多设备与在线停用", () => {
   test("同一个账号在两台设备上同时登录，两边都能正常用", async ({ browser }) => {
+    test.skip(企业版, "企业版只用项目：客户的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     const 设备一 = await 另一个人(browser, 甲账号);
     const 设备二 = await 另一个人(browser, 甲账号);
 

@@ -6,6 +6,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -50,6 +51,7 @@ async function 点删除(page: Page) {
 }
 
 test("客户详情：只移出、撤销、再移出", async ({ page }) => {
+  test.skip(企业版, "企业版项目模式联系人是一人一张小卡（RecordView 企业版项目模式），没有行内删除钮；移出撤销在开关关着那套里验");
   await 登录(page);
   await page.goto(`/customers/${甲}`);
   const 联系人块 = page.getByRole("main").locator(".rec-sec", { hasText: "添加联系人" });
@@ -75,6 +77,7 @@ test("客户详情：只移出、撤销、再移出", async ({ page }) => {
 });
 
 test("联系人页：写「未归属」，点开挂到别的客户下面", async ({ page }) => {
+  test.skip(企业版, "靠上一条把王经理移出才「未归属」，企业版上一条已跳过；在开关关着那套里验");
   await 登录(page);
   await page.goto("/contacts");
   const 行 = page.locator("tr.ant-table-row", { hasText: "王经理" });
@@ -93,6 +96,7 @@ test("联系人页：写「未归属」，点开挂到别的客户下面", async
 });
 
 test("彻底删除也能撤销", async ({ page }) => {
+  test.skip(企业版, "同上：企业版联系人小卡没有行内删除钮");
   const p = 连库();
   await p.contact.create({ data: { customerId: 甲, name: "王经理", phone: "13911110003" } });
   await p.$disconnect();

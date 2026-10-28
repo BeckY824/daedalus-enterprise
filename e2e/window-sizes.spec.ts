@@ -12,6 +12,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据, 造模拟数据 } from "./mock-data";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -71,7 +72,8 @@ test("15 寸 1512 宽、面板收着：记录页的时间线至少 480，AI 栏�
 test("最小窗口 1024：列表筛选行一行摆下，「列」不被挤到第二行", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 700 });
   await 登录(page);
-  for (const 路 of ["/customers", "/opportunities", "/follow-ups"]) {
+  // 企业版只用项目：/opportunities 转去项目页，项目页没有这条筛选行
+  for (const 路 of 企业版 ? ["/customers", "/follow-ups"] : ["/customers", "/opportunities", "/follow-ups"]) {
     await page.goto(路);
     await page.waitForSelector(".list-bar");
     const 顶 = await page.locator(".list-bar").evaluate((b) => {
@@ -161,6 +163,7 @@ test("J-202：1120 宽客户表滚到最右，最后一列不被固定的操作�
 });
 
 test("J-207：弹框在高窗口里上下居中，不钉在离顶 100px", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户页「新建客户」去项目页新建，不弹框；弹框居中在开关关着那套里验");
   await 登录(page);
   for (const 高 of [800, 1300]) {
     await page.setViewportSize({ width: 1440, height: 高 });

@@ -7,6 +7,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { 读取完整导出 } from "./export-download";
+import { 企业版 } from "./owner-pick";
+import { 连库 } from "./mock-data";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
@@ -69,6 +71,7 @@ test("2. 未登录访问内页会被挡回登录页", async ({ page }) => {
 });
 
 test("3. 新建线索后能在列表里看到", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：左栏没有老线索页，新线索在项目里");
   await 登录(page);
   await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "线索", exact: true }).click();
   await expect(page).toHaveURL(/\/leads/);
@@ -84,6 +87,7 @@ test("3. 新建线索后能在列表里看到", async ({ page }) => {
 });
 
 test("4. 线索转客户：客户库出现，线索标记已转化", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：左栏没有老线索页，线索转客户在项目里走；上一条已跳过");
   await 登录(page);
   await page.goto("/leads");
 
@@ -107,6 +111,16 @@ test("4. 线索转客户：客户库出现，线索标记已转化", async ({ pa
 });
 
 test("5. 给客户录一条跟进，时间线上要看得见", async ({ page }) => {
+  // 客户本是第 3、4 条从线索建、转出来的；企业版那两条跳过，这里直接在库里给张三建这位，后面几条照常走
+  if (企业版) {
+    const db = 连库();
+    try {
+      const 张三 = await db.user.findFirstOrThrow({ where: { email: 账号.用户名 } });
+      await db.customer.create({ data: { name: 客户名, phone: 手机号, salesOwnerId: 张三.id, channelOwnerId: 张三.id } });
+    } finally {
+      await db.$disconnect();
+    }
+  }
   await 登录(page);
   await page.goto("/customers");
   await page.locator("main").getByRole("link", { name: 客户名 }).click();
@@ -130,6 +144,7 @@ test("5. 给客户录一条跟进，时间线上要看得见", async ({ page }) 
 });
 
 test("6. 登记签约后，跟进状态变成已签约、金额显示出来", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户页不录签约，成交走项目的订单阶段");
   await 登录(page);
   await page.goto("/customers");
   await page.locator("main").getByRole("link", { name: 客户名 }).click();
@@ -145,6 +160,7 @@ test("6. 登记签约后，跟进状态变成已签约、金额显示出来", as
 });
 
 test("7. 同一天同金额再录一笔，要弹窗确认而不是默默翻倍", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户页不录签约，上一条已跳过");
   await 登录(page);
   await page.goto("/customers");
   await page.locator("main").getByRole("link", { name: 客户名 }).click();

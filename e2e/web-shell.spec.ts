@@ -8,6 +8,7 @@
  * 「Daedalus CRM」——第一版只在 effect 里设一次，goto 整页加载偶尔是对的，点左栏就被盖回去了。
  */
 import { test, expect, type Page } from "@playwright/test";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -43,9 +44,11 @@ test.describe("网页版", () => {
     await page.waitForTimeout(1500);
     await expect(page).toHaveTitle("客户 · Daedalus CRM");
 
-    await 左栏(page).getByRole("link", { name: /^商机/ }).first().click();
-    await page.waitForURL(/\/opportunities/);
-    await expect(page).toHaveTitle("商机 · Daedalus CRM");
+    // 企业版只用项目：左栏没有商机，点项目（AppShell 的 nav）
+    const [页, 路] = 企业版 ? ["项目", /\/projects/] : ["商机", /\/opportunities/];
+    await 左栏(page).getByRole("link", { name: new RegExp(`^${页}`) }).first().click();
+    await page.waitForURL(路);
+    await expect(page).toHaveTitle(`${页} · Daedalus CRM`);
   });
 
   test("认不出的页不碰标题，留给页面自己", async ({ page }) => {

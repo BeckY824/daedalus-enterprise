@@ -37,6 +37,7 @@ async function 登录(page: Page) {
 test.describe.configure({ mode: "serial" });
 
 test("存储型 XSS：客户备注里的脚本不会被执行，按字面显示", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验（备注按字面显示的渲染两套共用）");
   const 弹窗数 = { n: 0 };
   page.on("dialog", async (d) => { 弹窗数.n++; await d.dismiss(); });
 
@@ -81,6 +82,7 @@ test("存储型 XSS：客户备注里的脚本不会被执行，按字面显示"
 });
 
 test("存储型 XSS：跟进内容同样不会被执行", async ({ page }) => {
+  test.skip(企业版, "依赖上一条新建的 XSS 客户；企业版新建客户去项目页，上一条已跳过；在开关关着那套里验");
   const 弹窗数 = { n: 0 };
   page.on("dialog", async (d) => { 弹窗数.n++; await d.dismiss(); });
 

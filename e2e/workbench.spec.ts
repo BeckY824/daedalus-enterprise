@@ -515,8 +515,8 @@ test("数据：三处看数并成一页，/reports 这条 URL 还在", async ({ 
   for (const v of ["本月", "本年"]) {
     await 切换.getByText(v, { exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`view=${encodeURIComponent(v)}`));
-    // 每一段的数都要写明是按什么口径算的
-    await expect(page.getByRole("main").locator(".stat-delta").first()).toContainText("按签约日期算");
+    // 每一段的数都要写明是按什么口径算的（企业版只用项目：数据页按项目数，overview/page.tsx 项目数据，没有这行口径）
+    if (process.env.CRM_ENTERPRISE !== "1") await expect(page.getByRole("main").locator(".stat-delta").first()).toContainText("按签约日期算");
   }
 
   // 老书签不能死
@@ -659,10 +659,10 @@ test("设置：左目录分两组、带搜索，一页上只有一列目录", as
   // 限定在正文里：流式渲染时 Next 会先把新内容放进 body 下一块隐藏的容器再挪过来，
   // allInnerTexts 连隐藏的也读，赶上那一瞬间就是两份
   const 项 = await page.locator("main .set-nav-i b").allInnerTexts();
-  // 企业版多两项：组织架构（部门、业务角色）和企业版导入（迁老系统的数据）
+  // 企业版多三项：组织架构（部门、业务角色）、项目模式（企业版锁定只用项目，组织规则和字典在这一栏）、企业版导入（迁老系统的数据）
   expect(项).toEqual(
     process.env.CRM_ENTERPRISE === "1"
-      ? ["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "组织架构", "业务配置", "AI 接入", "导入记录", "企业版导入", "操作日志"]
+      ? ["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "组织架构", "业务配置", "项目模式", "AI 接入", "导入记录", "企业版导入", "操作日志"]
       : ["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "业务配置", "AI 接入", "导入记录", "操作日志"],
   );
   expect(await page.locator("main .set-nav-h").allInnerTexts()).toEqual(["个人", "工作区"]);
@@ -712,6 +712,7 @@ test("AI 接入：没测过连接就保存会先拦一下", async ({ page }) => 
 /* ---------- 收尾：指标落地、图表落地、联系人入口（2026-09-17 逐页核对后补的三件） ---------- */
 
 test("数据「现在」那四张卡，每一张都点得进一个能把这个数重新数一遍的页面", async ({ page }) => {
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：数据页四张卡是新线索 / 商机 / 订单 / 异常状态，按项目数（overview/page.tsx 项目数据）");
   await 登录(page);
   await page.goto("/overview");
 
@@ -739,6 +740,7 @@ test("数据「现在」那四张卡，每一张都点得进一个能把这个�
 });
 
 test("「逾期跟进」点进计划页：先看全部成员，同事那条逾期的也在（T-023）", async ({ page }) => {
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：数据页四张卡是新线索 / 商机 / 订单 / 异常状态，没有逾期跟进卡");
   // 自己备一条李四名下的逾期计划：只有我自己的计划时「我的 / 全部成员」那一层不摆，测不出来
   const p = 连库();
   const 李四 = await p.user.findFirstOrThrow({ where: { email: "lisi" } });
@@ -771,6 +773,7 @@ test("从「新增客户」点进来时，列表要说清自己只是一个子�
 });
 
 test("趋势图点一根柱子，看得到这一段是哪几笔凑出来的", async ({ page }) => {
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：数据页没有签约金额趋势图");
   await 登录(page);
   await page.goto("/overview?view=" + encodeURIComponent("本年"));
   /*
@@ -828,6 +831,7 @@ test("联系人页能直接加一位，但第一格必须先选归属", async ({
   界面这一层没有——而那个输入框第一版没接表单 id，标签和输入框的关联断了（getByLabel 找不到、读屏念不出来）
 */
 test("新建线索：来源一格能直接填列表里没有的说法，按标签找得到输入框，存完列表里看得见", async ({ page }) => {
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：新线索走项目向导（/leads/new），不弹老的新建线索框");
   const 名 = `朋友圈线索${Date.now().toString().slice(-5)}`;
   await 登录(page);
   await page.goto("/leads");

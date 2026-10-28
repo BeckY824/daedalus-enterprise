@@ -546,14 +546,19 @@ describe("配额", () => {
   it("本月分配情况：分配的人、销售管理看全部能接的人，别的上级只看自己能设配额的；带持有和参与", async () => {
     await 设配额(外贸, 5);
     当(市场);
-    await 分配线索({ leadId: await 建线索("A"), toUserId: 外贸 });
+    // 企业版项目模式锁开（10-28），持有数的是线索阶段的项目
+    const 客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000000", salesOwnerId: 市场 } })).id;
+    const 项目 = async (name: string, data: Partial<{ ownerId: string; phase: string; node: string; result: string | null; pooledAt: Date | null }> = {}) =>
+      (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, ...data } })).id;
+    await 分配线索({ projectId: await 项目("A"), toUserId: 外贸 });
     const 全 = (await 本月分配情况())!;
     expect(全.map((r) => r.userId).sort()).toEqual([销售经理, 虚线经理, 内贸, 外贸, 两边].sort());
     expect(全.find((r) => r.userId === 外贸)).toMatchObject({ 已分: 1, 配额: 5, line: "外贸", 持有: 1, 参与: true, 能设配额: false, 能改参与: false });
-    // 持有只数待跟进、跟进中的
-    await prisma.lead.create({ data: { name: "放弃", ownerId: 外贸, status: "已放弃" } });
-    await prisma.lead.create({ data: { name: "转了", ownerId: 外贸, status: "已转化" } });
-    await prisma.lead.create({ data: { name: "跟进", ownerId: 外贸, status: "跟进中" } });
+    // 持有只数线索阶段、没结局、不在公海的
+    await 项目("流失", { ownerId: 外贸, result: "线索流失" });
+    await 项目("转了", { ownerId: 外贸, phase: "商机", node: "需求确认" });
+    await 项目("公海", { ownerId: 外贸, pooledAt: new Date() });
+    await 项目("跟进", { ownerId: 外贸 });
     当(老板, "ADMIN");
     await 设自动分配参与(内贸, false);
     const 老板看 = (await 本月分配情况())!;

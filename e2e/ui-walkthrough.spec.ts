@@ -154,6 +154,7 @@ test("表格类页面零数据时要显示空状态提示，而不是只有表�
 });
 
 test("必填项校验：不只是红框，文字必须真的看得见", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   /**
    * 只断言「有错误元素」是不够的——dev 模式下这些文字会因为入场动画
    * 卡在高度 0，红框有、文字没有。这里直接量高度。
@@ -182,6 +183,7 @@ test("必填项校验：不只是红框，文字必须真的看得见", async ({
 });
 
 test("手机号格式错误要给出能看懂的提示", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   await 登录(page);
   await page.goto("/customers");
   await page.getByRole("button", { name: /新建客户/ }).click();
@@ -202,6 +204,7 @@ test("手机号格式错误要给出能看懂的提示", async ({ page }) => {
 });
 
 test("超长文本不能把列表撑出横向滚动条", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   await 登录(page);
   await page.goto("/customers");
   await page.getByRole("button", { name: /新建客户/ }).click();
@@ -314,6 +317,7 @@ test("列表满页时分页可用，翻页后内容真的变了", async ({ page 
 });
 
 test("看板有数据时各阶段都画得出来", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机看板，阶段在项目看板上");
   await 登录(page);
   await page.goto("/opportunities/pipeline");
   await page.waitForTimeout(900);
@@ -352,6 +356,7 @@ test("业绩排行里的姓名不能溢出压到进度条上", async ({ page }) 
 });
 
 test("商机管道：末档不再结构性为零，且时间窗下拉是接线的", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机管道，数据页按项目数（overview/page.tsx 项目数据）");
   /**
    * 管道原本只统计 status=OPEN，而阶段推到「赢单成交」时状态必然变成 WON，
    * 所以末档永远是 0——漏斗最有用的读数（转化终点）被砍掉了。
@@ -389,6 +394,7 @@ test("商机管道：末档不再结构性为零，且时间窗下拉是接线�
 });
 
 test("推荐链上的客户，详情页要能看出上下游与归属", async ({ page }) => {
+  test.skip(企业版, "企业版客户页只留基础信息、联系人、关联项目，不摆推荐关系（RecordView.tsx 推荐节）");
   await 登录(page);
   await page.goto("/customers");
   await page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").fill("链条3号");
@@ -431,7 +437,7 @@ test("键盘可用性：两个输入框按回车都能登录", async ({ page }) 
 test("浏览器后退在各页面之间表现正常", async ({ page }) => {
   await 登录(page);
   await page.goto("/customers");
-  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "线索", exact: true }).click();
+  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: 企业版 ? "新线索" : "线索", exact: true }).click();
   await expect(page).toHaveURL(/\/leads/);
   await page.goBack();
   await expect(page, "从线索退回来应当回到客户列表").toHaveURL(/\/customers/);
@@ -456,6 +462,7 @@ test("刷新后筛选条件要还在，不能白筛一次", async ({ page }) => 
 });
 
 test("连点两次保存不会建出两条", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   await 登录(page);
   await page.goto("/customers");
   const 手机 = `1361${戳}`.slice(0, 11).padEnd(11, "8");

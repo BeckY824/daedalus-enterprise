@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 async function login(page: Page) {
   await page.goto("/login"); await page.getByPlaceholder("用户名").fill("admin"); await page.getByPlaceholder("登录密码").fill("admin123");
   await page.getByRole("button", { name: /登\s*录/ }).click(); await page.waitForURL(/\/dashboard/);
@@ -24,6 +25,7 @@ test("T-038/T-039 成员编辑冲突与恢复失败在界面如实提示", async
   } finally { if (id) await db.user.delete({ where: { id } }); await db.$disconnect(); }
 });
 test("J-094 管道撤销只执行一次，旧撤销不能盖掉后续编辑", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机管道");
   const db = 连库(); let customerId = "";
   try {
     const owner = await db.user.findFirstOrThrow({ where: { active: true, role: { not: "ADMIN" } } });

@@ -9,6 +9,7 @@ import { 角色字典, 异常类别字典, 能进公海的阶段 } from "@/lib/p
 import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 读卡点默认 } from "@/lib/project/blocker";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 能导入导出 } from "@/lib/enterprise/import-perm";
 import { 全部企业字典, 读分配谁能用 } from "@/lib/enterprise/dict";
 import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
@@ -187,6 +188,9 @@ export default async function SettingsBody() {
     ? users.filter((u) => u.role !== "ADMIN" && 直属上级of(org, u.id) === me.id).map((u) => u.id)
     : [];
 
+  // 谁能导入只认 import-perm.ts 一处（现在企业版是老板、总管理员），以后放宽只改那里
+  const 能导入 = await 能导入导出(me);
+
   return (
     <SettingsView
       项目设置={项目设置 && { ...项目设置, 能改提成比例: !!项目设置.提成比例 && !共享区 && 能改提成比例(me, org) }}
@@ -200,7 +204,9 @@ export default async function SettingsBody() {
        */
       isAdmin={me.role === "ADMIN" && !共享区}
       共享区={共享区}
-      企业版导入={企业版() && !共享区 && (me.role === "ADMIN" || (!!org && 管理员类别of(org, me.id) === "总管理员"))}
+      企业版导入={企业版() && !共享区 && 能导入}
+      /* 不能导入的人那栏永远是空的，不摆 */
+      导入记录={能导入}
       /* 托管版的登录标识是邮箱（控制面账号按邮箱认，找回密码也靠它）；
          自部署版是用户名，既有账号是 admin / zhangsan 这种，不能改 */
       用邮箱登录={multiTenant()}

@@ -60,6 +60,7 @@ export default function SettingsView({
   企业版 = false,
   组织架构 = null,
   企业版导入 = false,
+  导入记录 = true,
   下属可停用 = [],
 }: {
   users: Row[];
@@ -95,6 +96,8 @@ export default function SettingsView({
   组织架构?: 组织架构 | null;
   /** 企业版（CRM_ENTERPRISE=1）的管理员：多一栏「企业版导入」（飞书 / 钉钉 / Excel 首次导入、同步、切换） */
   企业版导入?: boolean;
+  /** 「导入记录」那一栏：企业版只给能导入的人（老板、总管理员），其余照旧都有 */
+  导入记录?: boolean;
   /** 企业版：我是直属上级、能给他们办离职的人 */
   下属可停用?: string[];
 }) {
@@ -128,7 +131,7 @@ export default function SettingsView({
     ...(isAdmin ? [{ key: "business", label: "业务配置", children: <BusinessSettingsTab value={business} 多人={users.filter((u) => u.active).length > 1} 企业版={企业版} /> }] : []),
     ...(组织架构 ? [{ key: "org", label: "组织架构", children: <OrgTab value={组织架构} /> }] : []),
     ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={持有成员} /> }] : []),
-    { key: "imports", label: "导入记录", children: <ImportsTab /> },
+    ...(导入记录 ? [{ key: "imports", label: "导入记录", children: <ImportsTab /> }] : []),
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
   ]

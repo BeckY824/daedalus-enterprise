@@ -541,12 +541,17 @@ export default function RecordView({
         预计签约只读（在档案里改），所以它不长得像按钮。
       */}
       <div className="rec-tags">
-        <StatusPicker customerId={customer.id} field="followStatus" value={customer.followStatus} options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))}>
-          <FollowStatusTag status={customer.followStatus} />
-        </StatusPicker>
-        <StatusPicker customerId={customer.id} field="decisionStatus" value={customer.decisionStatus} options={DECISION_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))}>
-          <DecisionStatusTag status={customer.decisionStatus} />
-        </StatusPicker>
+        {/* 企业版不摆这两枚（2026-10-28）：这是桌面端那条跟进漏斗，企业版客户走到哪一步看项目的阶段 */}
+        {!企业 && (
+          <>
+            <StatusPicker customerId={customer.id} field="followStatus" value={customer.followStatus} options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))}>
+              <FollowStatusTag status={customer.followStatus} />
+            </StatusPicker>
+            <StatusPicker customerId={customer.id} field="decisionStatus" value={customer.decisionStatus} options={DECISION_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))}>
+              <DecisionStatusTag status={customer.decisionStatus} />
+            </StatusPicker>
+          </>
+        )}
         {/* 来源（照毛玻璃原型的那枚「来源：WhatsApp」）：渠道或推荐人。自然流量不摆——没有来源就不占位 */}
         {外贸
           ? 档?.source && <span className="rec-tags-n">来源：{档.source}</span>

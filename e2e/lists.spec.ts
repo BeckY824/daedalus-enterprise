@@ -18,6 +18,7 @@ import { 读取完整导出 } from "./export-download";
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 /** 企业版只有老板和总管理员能导入导出（src/lib/enterprise/import-perm.ts），普通销售看不到这个键，换管理员来做 */
@@ -189,6 +190,7 @@ test("J-020 批量改状态：提示条点「撤销」，两位各回各的原�
 });
 
 test("J-026 新建线索不选来源：存成「其他」，不是「官网注册」", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：新线索在项目里建，没有老线索新建框");
   await 登录(page);
   await page.goto("/leads");
   const 框 = page.getByRole("dialog", { name: "新建线索" });
@@ -210,6 +212,7 @@ test("J-026 新建线索不选来源：存成「其他」，不是「官网注�
 });
 
 test("J-024 线索的电话已经是某位客户的：转客户时说清是谁，点「并到」→ 线索已转化、关联到那位，进了他的记录页", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：左栏没有老线索页，线索转客户在项目里走");
   const p = 连库();
   const 老客 = await p.customer.create({ data: { name: "撞号老客", phone: "13955550024", salesOwnerId: 张三 } });
   const 线索 = await p.lead.create({ data: { name: "又来一次的人", phone: "139 5555 0024", ownerId: 张三 } });
@@ -238,6 +241,7 @@ test("J-024 线索的电话已经是某位客户的：转客户时说清是谁�
 });
 
 test("T-029 线索列表：按电话搜得到；按负责人、来源筛得出来，地址留着条件", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：新线索页按项目查，没有老线索列表的筛选");
   const p = 连库();
   await p.lead.createMany({
     data: [
@@ -294,6 +298,7 @@ test("J-015 联系人页按关系本地筛完：不冒「只有最近 N 条，�
 });
 
 test("T-030 数据页按销售负责人点名字：就地打开他这一段签的那几笔（签约时的负责人、限这个月），页头写清口径", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：数据页按项目数（overview/page.tsx 项目数据），没有按销售负责人的签约表");
   const p = 连库();
   // 张三这个月签下、后来转给李四的一位；张三去年签的一笔（不在这个月里）
   const c = await p.customer.create({ data: { name: "转走了的签约客", phone: "13988880030", salesOwnerId: 李四 } });
@@ -328,6 +333,7 @@ test("T-030 数据页按销售负责人点名字：就地打开他这一段签�
 });
 
 test("没配 AI 的首页：页头「首页」不和「数据」重名；本月签约 0 写 ¥0；排行金额带 ¥ 写清口径；上月没新增不写「持平」（J-124 / J-125 / J-121 / J-111）", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：首页和数据页按项目数，没有本月签约、签约排行（dashboard/page.tsx 企业版分支）");
   // 两位销售各赢一单（排行 > 1 人才画榜）；这个月没有签约
   const p = 连库();
   try {

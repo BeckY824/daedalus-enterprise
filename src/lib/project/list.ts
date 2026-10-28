@@ -16,6 +16,14 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
 export const 项目上限 = 500;
 
 /**
+ * 企业版首页「有 N 条新线索」：还在线索阶段、没结局（没线索流失）、不在公海的项目。
+ * 老的 Lead 表在企业版不再列，数它会说出一个点进 /leads 对不上的数（10-28 排查）。
+ */
+export function 数新线索() {
+  return prisma.project.count({ where: { phase: "线索", result: null, pooledAt: null } });
+}
+
+/**
  * 项目页和企业版「新线索」页共用的取数：先跑超时回收，再按筛选取项目、拼成 项目行。
  * 只看阶段 = "线索" 时只取还在线索阶段的（含已线索流失的），企业版 /leads 用。
  */

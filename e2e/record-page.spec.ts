@@ -14,6 +14,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -75,6 +76,8 @@ test("J-003 行内「职位」：敲两个字 → ↓ 回车选候选 → 存的
   const id = await 造客户("键盘选职位");
   await 登录(page);
   await page.goto(`/customers/${id}`);
+  // 企业版没填的格收在「展开更多」里（RecordView.tsx 摆）
+  if (企业版) await page.getByRole("button", { name: /展开更多/ }).click();
   // 点开那一格（dev 下刚出来可能还没水合：没变成输入框就再点）
   const 格 = page.getByRole("button", { name: "编辑职位" });
   const 框 = page.getByRole("main").locator(".rec-field-editing input");
@@ -82,13 +85,15 @@ test("J-003 行内「职位」：敲两个字 → ↓ 回车选候选 → 存的
     if (!(await 框.isVisible())) await 格.click();
     await expect(框).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
+  // 企业版默认职位是企业版那 19 个（business-config.ts 企业版职位），「部门」对上的是「部门总监」
+  const 候选 = 企业版 ? "部门总监" : "部门负责人";
   await 框.pressSequentially("部门");
-  await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "部门负责人" })).toBeVisible();
+  await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 候选 })).toBeVisible();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
-  await expect.poll(() => 查((p) => p.customer.findUniqueOrThrow({ where: { id } }).then((c) => c.grade))).toBe("部门负责人");
+  await expect.poll(() => 查((p) => p.customer.findUniqueOrThrow({ where: { id } }).then((c) => c.grade))).toBe(候选);
   await page.reload();
-  await expect(page.getByRole("button", { name: "编辑职位" })).toContainText("部门负责人");
+  await expect(page.getByRole("button", { name: "编辑职位" })).toContainText(候选);
 });
 
 test("J-082 记录页勾完成的待办：原地划线留着、能撤销；之后在「已完成」里看得到", async ({ page }) => {
@@ -197,6 +202,7 @@ test("J-083 计划页点完成：那一行先留在原地打着勾，不立刻�
 });
 
 test("签约金额：自动带上勾着的商机金额之和；取消勾一个跟着减；手填过就不再跟", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机（src/lib/enterprise/project-only.ts）");
   const id = await 造客户("两单一起签");
   await 查(async (p) => {
     await p.opportunity.create({ data: { name: "年框", customerId: id, ownerId: 我id, amount: 10000, stage: "方案报价", probability: 60 } });
@@ -231,6 +237,7 @@ test("签约金额：自动带上勾着的商机金额之和；取消勾一个�
 });
 
 test("J-088 记录页左栏的商机写状态：赢单、丢单各挂一个标，进行中的不挂（和商机列表的标一样）", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机（src/lib/enterprise/project-only.ts）");
   const id = await 造客户("商机状态");
   await 查((p) =>
     p.opportunity.createMany({

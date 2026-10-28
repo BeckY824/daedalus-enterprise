@@ -5,6 +5,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
 
@@ -80,6 +81,7 @@ test.afterAll(async () => {
 
 test.describe.serial("业务配置", () => {
   test("把「客户」改成「学员」，侧边栏、列表页标题与表头同步变；改回去后恢复", async ({ page }) => {
+    test.skip(企业版, "企业版新建客户走 /projects/new 整页，没有新建客户弹框");
     await 登录(page);
     await 改客户名词(page, "学员");
 
@@ -129,6 +131,7 @@ test.describe.serial("业务配置", () => {
    * 而当时没有任何一条用例把它整条走过。
    */
   test("整套换成外贸的说法：客户 / 公司 / 国家 / 产品，各页跟着变，数据不动", async ({ page }) => {
+    test.skip(企业版, "企业版模版锁在通用，没有外贸那套说法（business-config.ts 企业版锁定）");
     await 登录(page);
     await 确保有一位客户(page);
 
@@ -222,6 +225,7 @@ test.describe.serial("业务配置", () => {
 
 test.describe.serial("状态显示名", () => {
   test("把「已试听」显示为「已体验」：筛选下拉与批量菜单跟着变，存储值不变；改回去后恢复", async ({ page }) => {
+    test.skip(企业版, "企业版业务配置不摆状态显示名（BusinessSettingsTab 企业版）");
     await 登录(page);
     let 面板 = await 打开业务配置(page);
     await 面板.getByLabel("已试听", { exact: true }).fill("已体验");

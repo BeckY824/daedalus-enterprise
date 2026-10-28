@@ -7,6 +7,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
 const 戳 = String(Date.now()).slice(-5);
@@ -94,6 +95,7 @@ test("L-046 记录页头「已签约」后面是签约日（回填的上个月�
 });
 
 test("L-013 清除演示数据的确认框：叫「学员」时写学员、列全会删什么、不露 ** 星号", async ({ page }) => {
+  test.skip(企业版, "企业版业务配置不出演示数据一节（桌面端的）");
   const p = 连库();
   await p.setting.upsert({ where: { key: "demoDataSeededAt" }, create: { key: "demoDataSeededAt", value: new Date().toISOString() }, update: {} });
   await p.$disconnect();

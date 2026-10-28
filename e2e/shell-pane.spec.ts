@@ -22,6 +22,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据, 造模拟数据 } from "./mock-data";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -97,6 +98,7 @@ test.describe("中栏跟着路由走", () => {
   });
 
   test("六张列表页都没有中栏——全宽的一张表，旁边不挂同样内容的名单", async ({ page }) => {
+    test.skip(企业版, "企业版只用项目：左栏没有商机、线索，列表页不是这六张");
     await 登录(page);
     for (const [名字, 落地] of [["客户", 到.客户], ["线索", 到.线索], ["商机", 到.商机], ["跟进", 到.跟进]] as const) {
       await 点侧栏(page, 名字, 落地);
@@ -157,6 +159,7 @@ test.describe("中栏跟着路由走", () => {
   });
 
   test("商机和跟进的两个视图改用页头按钮切换，不再占一列中栏", async ({ page }) => {
+    test.skip(企业版, "企业版只用项目：没有商机页");
     await 登录(page);
     await 点侧栏(page, "商机", 到.商机);
     await page.getByRole("button", { name: "管道" }).click();

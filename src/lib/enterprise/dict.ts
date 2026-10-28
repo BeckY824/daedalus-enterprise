@@ -24,12 +24,29 @@ type 结果 = { ok: true } | { ok: false; error: string };
 
 /** 一类的选项：按排序列出（停用的也列，界面自己挑）；这一类一行都没有就先建默认的 */
 export async function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
+  const 停用 = 字典定义[kind].默认停用 ?? [];
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
-      await db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: i } });
+      await db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } });
     }
-  }
+    if (停用.length) await 记下补停过(kind, db);
+  } else if (停用.length) await 补停用(kind, 停用, db);
   return db.entDictItem.findMany({ where: { kind }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
+}
+
+/**
+ * 默认停用是后加的（10-28）：之前建好的库里这几项还启用着，补停一次。只停还叫原名的默认项，
+ * 停完（或新建时就停着）记一笔，以后管理员自己再启用就不再动它。不放迁移：迁移只加表加列，也管不住「只停一次」
+ */
+const 补停用记号 = (kind: 字典种类) => `entDict.defaultOff.${kind}`;
+async function 记下补停过(kind: 字典种类, db: Prisma.TransactionClient) {
+  await db.setting.upsert({ where: { key: 补停用记号(kind) }, update: {}, create: { key: 补停用记号(kind), value: "true" } });
+}
+async function 补停用(kind: 字典种类, 停用: readonly string[], db: Prisma.TransactionClient) {
+  if (await db.setting.findUnique({ where: { key: 补停用记号(kind) } })) return;
+  const ids = 字典定义[kind].默认.flatMap((n, i) => (停用.includes(n) ? [默认id(kind, i)] : []));
+  await db.entDictItem.updateMany({ where: { kind, id: { in: ids }, name: { in: [...停用] } }, data: { active: false } });
+  await 记下补停过(kind, db);
 }
 
 /** 全部几类一次读出，设置页用；不是企业版 = null */

@@ -7,6 +7,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
 
@@ -118,6 +119,7 @@ test("删客户（批量 3 位）+ 撤销导入批次：叫「学员」时确认
 });
 
 test("删商机：确认框说关联几条跟进、是赢单的；删了点撤销回来", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机（src/lib/enterprise/project-only.ts）");
   const p = 连库();
   const c = await p.customer.create({ data: { name: `商机客户${戳}`, phone: `1384${戳}0`.slice(0, 11), salesOwnerId: 我 } });
   const o = await p.opportunity.create({ data: { customerId: c.id, ownerId: 我, name: `年框${戳}`, amount: 50000, stage: "赢单成交", status: "WON", probability: 100 } });
@@ -171,6 +173,7 @@ test("删跟进（顺带建了待办的提醒）：就地确认说「连同它�
 });
 
 test("删签约：确认框说清金额、会退回哪个赢单商机、状态退到哪一档；删完提示退回了几个商机", async ({ page }) => {
+  test.skip(企业版, "企业版没有签约和赢单商机（只用项目，src/lib/enterprise/project-only.ts）");
   const p = 连库();
   const c = await p.customer.create({ data: { name: `签约客户${戳}`, phone: `1386${戳}0`.slice(0, 11), salesOwnerId: 我, followStatus: "已签约" } });
   const o = await p.opportunity.create({ data: { customerId: c.id, ownerId: 我, name: `试单${戳}`, amount: 8800, stage: "赢单成交", status: "WON", probability: 100 } });
@@ -234,6 +237,8 @@ test("删渠道 / 删线索：有客户挂着的渠道拦下说清；没转化�
   await page.getByRole("dialog").getByRole("button", { name: /删\s*除/ }).click();
   await expect(page.locator("tr.ant-table-row", { hasText: `空渠道${戳}` })).toHaveCount(0);
 
+  // 企业版只用项目：左栏没有老线索页（线索在项目里），线索那半在开关关着那套里验
+  if (企业版) return;
   await page.goto("/leads");
   const 转过的 = page.locator("tr.ant-table-row", { hasText: `转过的线索${戳}` });
   await expect(转过的.getByRole("link", { name: /查看客户/ })).toBeVisible();

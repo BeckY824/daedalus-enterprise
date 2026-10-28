@@ -13,6 +13,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 装个假模型, 拆掉假模型, 假回答 } from "./fake-llm";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -235,11 +236,11 @@ test.describe("全局 AI 面板", () => {
       // 窄一点的窗口简报区收在页头「AI」按钮打开的抽屉里：打开抽屉也不许自己跑
       const 抽屉键 = page.getByRole("button", { name: /^thunderbolt AI$/ });
       if (await 抽屉键.isVisible()) await 抽屉键.click();
-      await expect(page.getByRole("button", { name: /生成简报/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: 企业版 ? /生成智能总结/ : /生成简报/ })).toBeVisible();
       await page.waitForTimeout(3000);
       expect(叫了).toEqual([]);
       // 反过来证明这只耳朵是好的：人点了才叫
-      await page.getByRole("button", { name: /生成简报/ }).click();
+      await page.getByRole("button", { name: 企业版 ? /生成智能总结/ : /生成简报/ }).click();
       await expect.poll(() => 叫了.length).toBeGreaterThan(0);
     } finally {
       await p.followUp.deleteMany({ where: { customerId: c.id } });
@@ -450,6 +451,7 @@ test.describe("记录页的几处样子（1440、配了 AI）", () => {
   });
 
   test("J-212 / J-222 / J-211：速记说明不被「1 次」角标挤成好几行；「生成简报」字看得清；左栏签约金额不截成「¥…」", async ({ page }) => {
+    test.skip(企业版, "企业版记录页不摆签约金额（左栏签约那一节是桌面端的），简报改叫智能总结");
     const { p, id } = await 备一位("记录页样子");
     try {
       await 登录(page);
@@ -470,7 +472,7 @@ test.describe("记录页的几处样子（1440、配了 AI）", () => {
       // J-222：「生成简报」原来是灰字压蓝底，看不见。窗口不够宽时 AI 栏收在页头「AI」按钮的抽屉里
       // CI 上字体不同，1440 也会收进抽屉；机器慢时页头那颗「AI」点早了（还没接上事件）抽屉不开——没出来就再点
       const 抽屉键 = page.getByRole("button", { name: /^thunderbolt AI$/ });
-      const 键 = page.getByRole("button", { name: /生成简报/ });
+      const 键 = page.getByRole("button", { name: 企业版 ? /生成智能总结/ : /生成简报/ });
       // 抽屉已经开着（还在滑开）就别再点：再点一下是关上，下一行就一直等一颗已经不在的按钮（10-07 main CI 撞到，两趟都卡满 60 秒）
       const 抽屉开着 = page.locator(".ant-drawer-open");
       // 水合后会按正文宽度把 SSR 的内联按钮移进抽屉。每次取色前都重新确认入口，
