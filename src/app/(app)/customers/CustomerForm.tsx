@@ -164,6 +164,8 @@ function CustomerFormInner({
    */
   /** 新建必填；编辑时只有原来就有号码的才必填（和 saveCustomer 同一条，见 lib/phone.ts） */
   const 电话必填 = !editing || Boolean(editing.phone);
+  /** 企业版渠道同理：新建必填；编辑时只有原来挂着渠道的才必填（和 saveCustomer 同一条）——老线索转来没渠道的，改备注不该被拦 */
+  const 渠道必填 = !editing || Boolean(editing.channelId);
   /**
    * 外贸：电话 / WhatsApp / 邮箱 / 微信至少填一个（2026-10-19 客户反馈「联系电话没星号却是必填；只知道微信号怎么办」）；
    * 2026-10-21 加阿里国际站 ID，成了五选一（客户反馈：国际站来的询盘很多只有买家 ID）。
@@ -579,7 +581,7 @@ function CustomerFormInner({
 
         {/* 企业版：只问一格必填的渠道（启用中的；原来挂着已停用的照样显示），不摆推荐人三选一、渠道负责人（10-28 去遗留 A3） */}
         {企业 && (
-          <Form.Item label="渠道" name="channelId" rules={[{ required: true, message: "请选择渠道" }]}>
+          <Form.Item label="渠道" name="channelId" rules={[{ required: 渠道必填, message: "请选择渠道" }]}>
             <Select showSearch placeholder="选择渠道" optionFilterProp="label" options={渠道选项} />
           </Form.Item>
         )}
