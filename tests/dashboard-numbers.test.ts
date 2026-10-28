@@ -186,6 +186,8 @@ describe("企业版空库的「开始」卡：管理员主按钮去导入，不�
     const p = await 卡props();
     expect(p.空库).toBe(true);
     expect(p.去导入).toBe(true);
+    // 库里也改：能不能导入走 import-perm.ts，组织里还是老板就算总管理员
+    await prisma.user.update({ where: { id: 我 }, data: { role: "SALES" } });
     mocks.user = { ...mocks.user, role: "SALES" };
     expect((await 卡props()).去导入).toBe(false);
     mocks.ai = false;

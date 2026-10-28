@@ -30,7 +30,7 @@ import { 调云 } from "@/lib/sync/client";
 import { isEmail } from "@/lib/tenant/accounts";
 import { createSession } from "@/lib/auth";
 import { saveLlmConfig, clearLlmConfig, resolveLlmConfigForTest, testLlm, type ModelOption } from "@/lib/llm";
-import { getBusiness, saveBusiness, mergeBusiness, 状态名问题, 阶段名问题, type BusinessConfig } from "@/lib/business";
+import { getBusiness, saveBusiness, mergeBusiness, 企业版锁定, 状态名问题, 阶段名问题, type BusinessConfig } from "@/lib/business";
 import { 判断可用 } from "@/lib/jev/client";
 import { 自动判断开着, 设自动判断 } from "@/lib/jev/settings";
 
@@ -734,7 +734,8 @@ export async function testLlmSettings(input: { baseUrl: string; model: string; a
 
 export async function saveBusinessSettings(cfg: BusinessConfig) {
   const me = await requireAdmin();
-  const merged = mergeBusiness(cfg);
+  // 企业版先锁住（模版、项目模式、公海天数不认表单的），改了哪几项、补不补来源都按锁过的算
+  const merged = 企业版() ? 企业版锁定(mergeBusiness(cfg)) : mergeBusiness(cfg);
   const 状态错误 = Object.values(状态名问题(merged))[0];
   if (状态错误) return { ok: false as const, error: 状态错误 };
   const 阶段错误 = Object.values(阶段名问题(merged))[0];
@@ -761,7 +762,7 @@ export async function saveBusinessSettings(cfg: BusinessConfig) {
 }
 
 const BUSINESS_FIELD_LABELS: Record<keyof BusinessConfig, string> = {
-  brief: "业务简介", customer: "核心名词", fields: "档案字段名", grades: "年级选项", sources: "线索来源", industries: "行业选项", statusLabels: "状态显示名", stageLabels: "商机阶段名",
+  brief: "业务简介", customer: "核心名词", fields: "档案字段名", grades: "档案字段 2 的选项", sources: "线索来源", industries: "行业选项", statusLabels: "状态显示名", stageLabels: "商机阶段名",
   template: "模版", currency: "本位币", poolDays: "自动放进公海", projectMode: "项目模式",
 };
 

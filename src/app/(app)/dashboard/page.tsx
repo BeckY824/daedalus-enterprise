@@ -26,13 +26,17 @@ import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import NoAiHome from "./NoAiHome";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 能导入导出 } from "@/lib/enterprise/import-perm";
+import { 数新线索 } from "@/lib/project/list";
 
 export const dynamic = "force-dynamic";
 
 /** 客户自己部署的服务器（企业版、自部署网页版）：空库那张「开始」卡不说「数据只在你的电脑上」 */
 const 自己服务器 = () => !本地模式() && !multiTenant();
-/** 企业版的管理员：空库「开始」卡的主按钮是去企业版导入（企业版不给灌演示数据，见 demo-data.ts） */
-const 去导入 = (role: string) => 企业版() && !multiTenant() && role === "ADMIN";
+/** 企业版能导入的人（import-perm.ts，和设置里「导入记录」同一个口径）：空库「开始」卡的主按钮是去企业版导入（企业版不给灌演示数据，见 demo-data.ts） */
+const 去导入 = async (user: { id: string; role: string }) => 企业版() && !multiTenant() && (await 能导入导出(user));
+/** 首页「有 N 条新线索」：企业版只用项目数线索阶段的项目（和 /leads 同一张表），其余照旧数 Lead 表 */
+const 数线索 = (只用项目: boolean) => (只用项目 ? 数新线索() : prisma.lead.count());
 
 /**
  * 首页。配了 AI 就是一个对话面（指标图表去了 /overview）；没配 AI 就直接是数据看板。
@@ -63,9 +67,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       首页都是那张「开始」卡。配了 AI 的那条路在 HomeChat 里做同样的判断。
     */
     const 学员数 = await prisma.customer.count();
-    if (学员数 === 0 && (await prisma.lead.count()) === 0) {
+    if (学员数 === 0 && (await 数线索(只用项目)) === 0) {
       // StartCard 自带那句「欢迎使用 <产品名>」，这里不再叠一个页头
-      return <StartCard 自己服务器={自己服务器()} 去导入={去导入(user.role)} 企业版={企业版()} 产品名={自定产品名() ?? undefined} />;
+      return <StartCard 自己服务器={自己服务器()} 去导入={await 去导入(user)} 企业版={企业版()} 产品名={自定产品名() ?? undefined} />;
     }
     if (只用项目) return <NoAiHome 管理员={user.role === "ADMIN"} 满额提醒={满额提醒们} />;
     return <Board 满额提醒={满额提醒们} />;
@@ -94,7 +98,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     // 取行按币种合计（不换汇）：币种在 ContractMoney 上，aggregate 分不了
     prisma.contract.findMany({ select: { amount: true, ...带币种.签约 }, where: { signedAt: { gte: now.startOf("month").toDate(), lt: now.add(1, "month").startOf("month").toDate(), lte: now.toDate() } } }),
     prisma.customer.count(),
-    prisma.lead.count(),
+    数线索(只用项目),
   ]);
 
   const 就我一个人 = (await 唯一负责人()) !== null;
@@ -179,7 +183,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       models={models}
       /* 一条业务数据都没有：首页换成一张「开始」卡，不摆信号也不摆指标 */
       自己服务器={自己服务器()}
-      去导入={去导入(user.role)}
+      去导入={await 去导入(user)}
       企业版={企业版()}
       满额提醒={满额提醒们}
       渠道名们={只用项目 ? (await prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } })).map((c) => c.name) : undefined}

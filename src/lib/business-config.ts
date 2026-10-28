@@ -372,3 +372,39 @@ export function mergeBusiness(partial: Partial<BusinessConfig> | null | undefine
     projectMode: p.projectMode === true,
   };
 }
+
+/**
+ * 企业版的业务配置（2026-10-28）：企业版只有一种用法——通用措辞、项目模式开着、不按天自动扫公海
+ * （回收走企业版自己的规则，见 lib/enterprise/）。存了别的也不认：读出来、存进去都先过这一道。
+ * 桌面端那几项（模版、预设、公海天数、项目模式开关）在企业版的设置页里不摆，见 BusinessSettingsTab。
+ */
+export function 企业版锁定(b: BusinessConfig): BusinessConfig {
+  return { ...b, template: "general", projectMode: true, poolDays: 0 };
+}
+
+/** 企业版默认的职位选项（对方给的担任职务表，2026-10-28） */
+export const 企业版职位: readonly string[] = [
+  "董事长", "总经理", "CEO", "董事长秘书", "总经理助理", "分管副总", "部门总监", "业务负责人", "项目经理",
+  "项目设计负责人", "采购", "财务", "法务", "技术", "国企高管", "店长", "店员", "运营主管", "场馆经理",
+];
+
+export const 企业版简介 =
+  "面向企业和机构客户的项目型销售团队。客户是公司和公司里的人，一个客户下可以有多个项目，" +
+  "每个项目按线索、商机、订单三个阶段推进到成交。";
+
+const 同一组 = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+/**
+ * 企业版的默认职位和业务简介：没存过、或存的还是桌面端某个预设原样（没人动过）就换成企业版的；
+ * 人改过的一律照存的。只在读的时候换，不回写库——哪天回到桌面端口径，库里还是原来那份
+ */
+export function 企业版默认业务(b: BusinessConfig): BusinessConfig {
+  const 预设们 = Object.values(BUSINESS_PRESETS);
+  const 没动过职位 = 预设们.some((p) => 同一组(b.grades, p.grades));
+  const 没动过简介 = 预设们.some((p) => b.brief === p.brief);
+  return {
+    ...b,
+    grades: 没动过职位 ? [...企业版职位] : b.grades,
+    brief: 没动过简介 ? 企业版简介 : b.brief,
+  };
+}

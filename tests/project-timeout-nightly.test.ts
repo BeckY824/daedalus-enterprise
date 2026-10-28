@@ -138,11 +138,15 @@ describe("夜里定时扫", () => {
     expect(await prisma.setting.findUnique({ where: { key: "projectTimeoutSweptOn" } })).toBeNull();
   });
 
-  it("项目模式关着、没有在职老板：不扫", async () => {
+  it("企业版项目模式锁着开：存着关也照扫", async () => {
     const p = await 项目("2026-10-01 10:00");
     await setSetting("business", { projectMode: false });
-    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
-    await setSetting("business", { projectMode: true });
+    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(1);
+    expect(await 在公海(p.id)).toBe(true);
+  });
+
+  it("没有在职老板：不扫", async () => {
+    const p = await 项目("2026-10-01 10:00");
     await prisma.user.update({ where: { id: 老板.id }, data: { active: false } });
     expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
     expect(await 在公海(p.id)).toBe(false);

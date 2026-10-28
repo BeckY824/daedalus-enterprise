@@ -1,6 +1,6 @@
 /**
  * 企业版两级公海的规则（2026-10-26，lib/enterprise/pool-rules.ts + pool-link.ts）：
- *   - D12：自动掉公海和项目超时回收（Y18）一样，低权限的人先打开页面也按全公司扫；团队模式「今天扫过了」只记在自己号上
+ *   - 企业版不按天数自动掉公海（10-28 业务配置锁 poolDays = 0）：客户进公海只走项目超时 / 放回；团队模式「今天扫过了」只记在自己号上
  *   - 单项目客户（D6）：名下只有这一个项目，项目进项目公海（放回 / 超时），客户也进客户公海；领项目把客户一起领过来
  *   - 领客户即领项目：领 / 分配客户公海里的客户，名下项目公海里的项目一起过来
  *   - 原负责人不能领回（10-26 定稿「非原负责人均可领取」）：开关在 公海规则，默认拦，报「原负责人不能领回」
@@ -89,23 +89,19 @@ afterEach(() => {
   Object.assign(公海规则, 原规则);
 });
 
-describe("D12 自动掉公海：低权限的人先打开也按全公司扫", () => {
-  it("按组织看客户开着，乙带着自己的身份先打开：丙名下 30 天没跟进的也掉；同一天经理再打开不重复扫", async () => {
+describe("自动掉公海（按天数）", () => {
+  it("企业版：存着 30 天也不按天数扫，谁先打开都一样（客户进公海只走项目超时 / 放回）", async () => {
     await 开按组织看();
     const 乙的 = await 客户(乙.id, { lastFollowAt: 天前(40, 今) });
     const 丙的 = await 客户(丙.id, { lastFollowAt: 天前(40, 今) });
-    const 新的 = await 客户(丙.id, { lastFollowAt: 天前(3, 今) });
-    // 先确认范围真的生效：乙只看得到自己的
-    expect(await 以谁的身份(乙.id, () => prisma.customer.count())).toBe(1);
-    expect(await 以谁的身份(乙.id, () => 自动掉公海(乙, 今))).toBe(2);
-    expect(await 在客户公海(乙的)).toBe(true);
-    expect(await 在客户公海(丙的)).toBe(true);
-    expect(await 在客户公海(新的)).toBe(false);
-    await 客户(丙.id, { lastFollowAt: 天前(40, 今) });
-    expect(await 以谁的身份(经理.id, () => 自动掉公海(经理, 今))).toBe(0);
+    expect(await 以谁的身份(乙.id, () => 自动掉公海(乙, 今))).toBe(0);
+    expect(await 自动掉公海(老板, 今)).toBe(0);
+    expect(await 在客户公海(乙的)).toBe(false);
+    expect(await 在客户公海(丙的)).toBe(false);
   });
 
   it("团队模式每台只扫自己名下的：乙扫过了不挡丙同一天扫自己的", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
     mocks.团队 = { teamId: "t", key: "k", device: "d" };
     const 乙的 = await 客户(乙.id, { lastFollowAt: 天前(40, 今) });
     const 丙的 = await 客户(丙.id, { lastFollowAt: 天前(40, 今) });
