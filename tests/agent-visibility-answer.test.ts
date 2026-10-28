@@ -69,3 +69,15 @@ it("回答回炉再查询仍为空时，无依据的权限断言仍不能流出"
   const r = await ask(); expect(r.text).toContain('当前可访问范围内未找到'); expect(r.emitted).toBe(r.text);
   expect(r.emitted).not.toMatch(/DSML|不是权限问题|系统里不存在/);
 });
+it("名片查重（调用方指定了查什么）搜空时，模型的话照常放出：要接着说缺哪几格、补联系方式", async () => {
+  const { runAgent } = await import("@/lib/agent/run");
+  const tokens: string[] = [];
+  model.answer = '你看得到的范围里没查到同名的。卡上还差「来源（渠道）」，名片上没认出联系方式，请补一个。';
+  const r = await runAgent({
+    question: "识别名片", user: { id: "qa-user", name: "QA" }, b: DEFAULT_BUSINESS,
+    指定调用: { 名: "名片查重", 调用: [{ name: "find_person", args: { name: "QA新公司" } }, { name: "find_person", args: { name: "QA新联系人" } }] },
+  }, { onToken: t => tokens.push(t) });
+  expect(r.text).toBe(model.answer);
+  expect(tokens.join("")).toBe(model.answer);
+  expect(r.text).not.toContain('无法据此区分');
+});
