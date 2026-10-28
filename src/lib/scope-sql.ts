@@ -52,6 +52,29 @@ export async function 看得到的在谈商机数(): Promise<number> {
 }
 
 /**
+ * 看得到的跟进记录几条（= prisma.followUp.count({ where: { type?, ownerId? } })），跟进记录页不带关键词时的总数。
+ * Prisma 那句是 FollowUp LEFT JOIN Customer LEFT JOIN CustomerPool 再 OR，20 万条跟进整表扫：压测时 106 次平均 422 ms，
+ * 单查业务员 79 ms、经理 91 ms（2026-10-28 企业版 B 库）。写成 customerId IN (看得到的客户)：业务员 9.5 ms，经理 47–64 ms。
+ * 试过 EXISTS：计数 95 ms，不用。取前 300 条那句 Prisma 本来就 1–4 ms（顺着 occurredAt 索引倒着找），不改
+ */
+export async function 看得到的跟进数(筛: { type?: string; ownerId?: string }): Promise<number> {
+  const 范围 = await 看得到的();
+  if (!范围) return prisma.followUp.count({ where: { ...(筛.type ? { type: 筛.type } : {}), ...(筛.ownerId ? { ownerId: 筛.ownerId } : {}) } });
+  const 条件 = [`f."customerId" IN (SELECT c.id FROM "Customer" c WHERE ${范围.where})`];
+  const 参数: string[] = [...范围.参数];
+  if (筛.type) {
+    条件.push(`f."type" = ?`);
+    参数.push(筛.type);
+  }
+  if (筛.ownerId) {
+    条件.push(`f."ownerId" = ?`);
+    参数.push(筛.ownerId);
+  }
+  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "FollowUp" f WHERE ${条件.join(" AND ")}`, ...参数);
+  return Number(r.n);
+}
+
+/**
  * 看得到的客户里最近跟进的前 n 位的编号，顺序同 orderBy [lastFollowAt desc, createdAt desc]（同一列、同一个 ORDER BY，
  * 没跟进过的照 SQLite 排在最后）。null = 不限定，调用方照旧用 Prisma 排
  */

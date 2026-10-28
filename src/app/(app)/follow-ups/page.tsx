@@ -6,6 +6,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 跟进筛选成员 } from "@/lib/owners";
 import { 带过来的客户 } from "@/lib/options";
 import { llmEnabled } from "@/lib/llm";
+import { 看得到的跟进数 } from "@/lib/scope-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,8 @@ export default async function FollowUpsPage({
 
   const [总数, rows, users, 预选客户, aiEnabled] = await Promise.all([
     // take: 300 取回来的行数不是总数，分页条会拿它冒充总数。见 leads/page.tsx 的说明
-    prisma.followUp.count({ where }),
+    // 不带关键词时走裸 SQL（企业版按组织看时 Prisma 那句整表扫，见 lib/scope-sql.ts）；带关键词照旧
+    词 ? prisma.followUp.count({ where }) : 看得到的跟进数({ type: sp.type, ownerId: sp.ownerId }),
     prisma.followUp.findMany({
       where,
       orderBy: { occurredAt: "desc" },
