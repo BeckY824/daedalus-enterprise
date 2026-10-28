@@ -120,12 +120,11 @@ describe("B3 起草转介绍邀请", () => {
   });
 });
 
+/* B5 隐私页不改：企业版 /privacy 跳登录页，且它是构建期静态页、读不到运行时开关；为一个看不到的词把 prisma 拉进静态页不值 */
 describe("B5 隐私页", () => {
-  it("企业版写 简报名()，关着照旧「客户简报」", async () => {
+  it("不引 ai-usage（会连带 prisma 进静态页）", async () => {
     const s = await 读("src/app/privacy/page.tsx");
-    expect(s).toContain('import { 简报名 } from "@/lib/ai-usage";');
-    expect(s).toContain('首页提问、{企业版() ? 简报名() : "客户简报"}、话术、建议卡等');
-    expect(s).not.toContain("首页提问、客户简报、");
+    expect(s).not.toContain("@/lib/ai-usage");
   });
 });
 
