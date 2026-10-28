@@ -24,15 +24,25 @@ export async function 记换负责人(
 }
 
 /**
+ * 换负责人之后多久内还能撤（30 分钟）。是假设、不是定稿：撤销提示条只亮几秒，
+ * 30 分钟留够网络慢、标签页挂着没关、提示条点了没回来再点一次；再长就不算「刚才那一下」了
+ */
+export const 撤销时限毫秒 = 30 * 60 * 1000;
+
+/**
  * 撤销换负责人只认「我自己刚才那一下」：这几位客户各自最近的一条换负责人记录，得是 操作人 把他从 原 换到 现 的。
  * 原 / 现 是前端传回来的（撤销提示条带着）：光凭「现在还归 现」认，业务员把 原 填成自己、现 填成同事，
  * 就能把同事的客户「撤」到自己名下（2026-10-28 越权排查）。回能撤的客户 id。
+ * 只认 撤销时限 之内的那一下（2026-10-28 审查）：不限时的话，拿旧的撤销参数隔几天还能撤，
+ * 业务员能把早已不归他的客户拉回来（只要中间没人再换过）。时限外没有记录 = 最近那一下太旧，撤不了。
  * 看全部里查：客户换了人，操作人多半已经看不到这位客户和他的记录了
  */
 export async function 是我刚换的(撤: { customerId: string; 原: string; 现: string }[], 操作人: string): Promise<Set<string>> {
   if (!撤.length) return new Set();
+  // 只取时限内的记录：最近一条若早于时限，时限内就没有记录，等于撤不了；最近一条在时限内，它也就是时限内最近的那条
+  const 起 = new Date(Date.now() - 撤销时限毫秒);
   const 记录 = await 看全部(() => prisma.customerOwnerLog.findMany({
-    where: { customerId: { in: [...new Set(撤.map((x) => x.customerId))] } },
+    where: { customerId: { in: [...new Set(撤.map((x) => x.customerId))] }, at: { gte: 起 } },
     orderBy: [{ at: "desc" }, { id: "desc" }],
     select: { customerId: true, userId: true, fromOwnerId: true, toOwnerId: true },
   }));

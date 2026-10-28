@@ -6,6 +6,7 @@
  *   - 业务员拿同事客户的 id 伪造撤销：不动，负责人、待办都还在同事名下，不写撤销记录
  *   - 原来是我的、被老板转给了同事：我也撤不回来（那一下不是我做的）
  *   - 自己转出去的照常撤；老板、业务主管撤自己刚才那一下照常
+ *   - 只认 30 分钟内的那一下（2026-10-28 审查）：提示条只亮几秒，拿旧的撤销参数隔几天还能把已经不归自己的客户拉回来
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -33,6 +34,9 @@ const 客户 = (salesOwnerId: string) =>
   prisma.customer.create({ data: { name: `客户${++号}`, phone: `1380000${String(号).padStart(4, "0")}`, salesOwnerId } });
 const 归谁 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).salesOwnerId;
 const 撤销记录数 = (customerId: string) => prisma.customerOwnerLog.count({ where: { customerId, kind: "undo" } });
+/** 把这位客户的换负责人记录往前挪 分钟 分钟（模拟「隔了一阵子才撤」） */
+const 记录挪到 = (customerId: string, 分钟: number) =>
+  prisma.customerOwnerLog.updateMany({ where: { customerId }, data: { at: new Date(Date.now() - 分钟 * 60_000) } });
 
 beforeEach(async () => {
   await resetDb();
@@ -120,5 +124,28 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     当(小王);
     expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 0 });
     expect(await 归谁(c.id)).toBe(小李.id);
+  });
+
+  it("只认 30 分钟内的那一下：31 分钟前自己转出去的撤不回来，负责人和名下的活都不动", async () => {
+    const c = await 客户(小王.id);
+    const t = await prisma.task.create({ data: { title: "回电", customerId: c.id, ownerId: 小王.id } });
+    当(小王);
+    const r = await assignSalesOwner([c.id], 小李.id);
+    if (!r.ok) throw new Error(r.error);
+    await 记录挪到(c.id, 31);
+    expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 归谁(c.id)).toBe(小李.id);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: t.id } })).ownerId).toBe(小李.id);
+    expect(await 撤销记录数(c.id)).toBe(0);
+  });
+
+  it("29 分钟前自己转出去的照常撤（网络慢、标签页挂着）", async () => {
+    const c = await 客户(小王.id);
+    当(小王);
+    const r = await assignSalesOwner([c.id], 小李.id);
+    if (!r.ok) throw new Error(r.error);
+    await 记录挪到(c.id, 29);
+    expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 1 });
+    expect(await 归谁(c.id)).toBe(小王.id);
   });
 });
