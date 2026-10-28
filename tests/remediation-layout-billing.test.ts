@@ -3,7 +3,7 @@ const state = vi.hoisted(() => ({ hosted: true, queries: [] as string[], busines
 vi.mock("@/lib/auth", () => ({ getCurrentUser: async () => ({ id: "qa", name: "QA", role: "ADMIN", accountId: "qa-account", workspaceId: "qa-ws" }) }));
 vi.mock("@/lib/prisma", () => ({ prisma: { customer: { count: async () => {state.queries.push("customer");return 1} }, opportunity: { count: async () => {state.queries.push("opportunity");return 1} } } }));
 // 左栏两个角标走 lib/scope-sql.ts（带范围时裸 SQL 数，10-28 企业版 P1）
-vi.mock("@/lib/scope-sql", () => ({ 看得到的客户数: async () => {state.queries.push("customer");return 1}, 看得到的在谈商机数: async () => {state.queries.push("opportunity");return 1} }));
+vi.mock("@/lib/scope-sql", () => ({ 看得到的客户数: async () => {state.queries.push("customer");return 1} }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("@/lib/favorites", () => ({ 读收藏: async () => {state.queries.push("favorites");return []} }));
 vi.mock("@/lib/reminders-db", () => ({ 取提醒项: async () => [], 数提醒: async () => ({ 逾期: 0, 今天: 0 }) }));
@@ -46,9 +46,9 @@ it.each([
 
 it.each([true,false])("L-112 hosted=%s 每次布局只加载一次实际用于侧栏的计数与收藏",async hosted=>{
  state.hosted=hosted;state.queries=[];const layout=await AppLayout({children:null,pane:null,modal:null});
- expect(state.queries.sort()).toEqual(["customer","favorites","opportunity"]);
+ expect(state.queries.sort()).toEqual(["customer","favorites"]);
  const props=找壳(layout)!;
- expect(props.计数).toMatchObject({"/customers":1,"/opportunities":1});expect(props.收藏).toEqual([]);
+ expect(props.计数).toEqual({"/customers":1});expect(props.收藏).toEqual([]);
 });
 
 it("企业版项目模式左栏不画商机，也就不数", async () => {

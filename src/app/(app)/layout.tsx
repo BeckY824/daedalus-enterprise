@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { 读收藏 } from "@/lib/favorites";
 import { 客户总数 } from "@/lib/pool-db";
-import { 看得到的在谈商机数 } from "@/lib/scope-sql";
 import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
@@ -65,7 +64,7 @@ export default async function AppLayout({
     但完成、改期、新建之后各处都会 router.refresh()——那时它跟着变。中栏要的数据在 @pane 槽位里各自查
   */
   const 业务 = getBusiness();
-  const [要跟, business, ua, 有AI, models, 收藏, 客户数, 在谈商机数] = await Promise.all([
+  const [要跟, business, ua, 有AI, models, 收藏, 客户数] = await Promise.all([
     // 只要两个数：在库里数（lib/reminders-db.ts 数提醒，口径同 算提醒），不把名下没做的全拉回来
     数提醒(user.id),
     // 业务术语（学员/客户、院校/年级/专业…）：全站客户端组件从这里拿
@@ -78,12 +77,11 @@ export default async function AppLayout({
     */
     llmEnabled(),
     listModelOptions(),
-    // 左栏下半截（2026-10-02 照毛玻璃原型）：收藏的客户、客户和在谈商机的数。都很便宜，和上面一起查
+    // 左栏下半截（2026-10-02 照毛玻璃原型）：收藏的客户、客户数。都很便宜，和上面一起查
     读收藏(user.id),
     // 和客户页页签同一个数，同一次渲染只数一遍（lib/pool-db.ts 客户总数）
+    // 左栏商机一项 10-28 删了（/opportunities 一律转到 /projects），在谈商机数也不数了
     客户总数(),
-    // 企业版项目模式左栏没有商机这一项（AppShell 不画），不数；带范围时用裸 SQL 数（lib/scope-sql.ts）
-    业务.then((b) => (企业版() && b.projectMode === true ? 0 : 看得到的在谈商机数())),
   ]);
   /*
     这个人点 AI 按钮花不花次数、还剩几次（lib/ai-meter.ts）：全站的「1 次」角标和输入框下那行字都认它。
@@ -122,7 +120,7 @@ export default async function AppLayout({
         收藏={收藏}
         演示名单={await 读演示名单()}
         演示换人={演示登录}
-        计数={{ "/customers": 客户数, "/opportunities": 在谈商机数 }}
+        计数={{ "/customers": 客户数 }}
       >
         {children}
       </AppShell>

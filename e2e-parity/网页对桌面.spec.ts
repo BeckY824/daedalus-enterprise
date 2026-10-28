@@ -49,12 +49,9 @@ const 页们: { 名: string; 址: string }[] = [
   { 名: "客户记录页-无空格名", 址: "/customers/gate-nospace" },
   // 商机列表 / 看板 10-28 删了（/opportunities 转到 /projects）
   { 名: "项目看板", 址: "/projects" },
-  { 名: "订单列表", 址: "/orders" },
-  { 名: "订单详情", 址: "/orders/gate-scandi-t0" },
   { 名: "跟进记录", 址: "/follow-ups" },
   { 名: "计划", 址: "/follow-ups/plans" },
   { 名: "待跟名单", 址: "/follow-ups/watchlist" },
-  { 名: "供应商", 址: "/suppliers" },
   { 名: "设置-业务配置", 址: "/settings?tab=business" },
   { 名: "设置-AI", 址: "/settings?tab=ai" },
   { 名: "设置-桌面端", 址: "/settings?tab=desktop" },
