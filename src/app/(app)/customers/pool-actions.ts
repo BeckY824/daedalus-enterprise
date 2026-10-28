@@ -14,7 +14,7 @@ import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 带走并记下, 还项目, type 带走的 } from "@/lib/carry-over-db";
-import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
+import { 记换负责人, 是我刚换的, 撤销时限毫秒 } from "@/lib/owner-log-db";
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
@@ -201,7 +201,16 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 原.map((x) => x.值) }, active: true }, select: { id: true } })).map((u) => u.id));
   const 换过 = 原.filter((x) => x.值 !== 现);
   const 我换的 = await 是我刚换的(换过.map((x) => ({ customerId: x.id, 原: x.值, 现 })), me.id);
-  const 退 = 原.filter((x) => 还归我.some((c) => c.id === x.id) && 在职的.has(x.值) && (x.值 === 现 || 我换的.has(x.id)));
+  // 负责人没换过的（原负责人自己领回 / 分给原负责人）没有换负责人记录，认领取记录：时限内领给 现 的才撤。
+  // 不认的话，主管填 给谁 = 负责人，就能把任意一位（看不到的、虚线只读的）客户塞进公海（2026-10-28 审查）
+  const 没换过 = 原.filter((x) => x.值 === 现).map((x) => x.id);
+  const 刚领的 = new Set(没换过.length
+    ? (await 看全部(() => prisma.customerClaim.findMany({
+        where: { customerId: { in: 没换过 }, userId: 现, at: { gte: new Date(Date.now() - 撤销时限毫秒) } },
+        select: { customerId: true },
+      }))).map((c) => c.customerId)
+    : []);
+  const 退 = 原.filter((x) => 还归我.some((c) => c.id === x.id) && 在职的.has(x.值) && (x.值 === 现 ? 刚领的.has(x.id) : 我换的.has(x.id)));
   await 钉住老签约();
   for (const x of 退) {
     await prisma.$transaction(async (tx) => {
