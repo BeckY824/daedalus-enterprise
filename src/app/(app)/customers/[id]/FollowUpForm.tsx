@@ -288,12 +288,27 @@ export default function FollowUpForm({
   }
 
   const autoParsed = useRef<string | null>(null);
+  /**
+   * 这一回打开是按哪条 record 初始化的；undefined = 关着、还没初始化。
+   * 默认项目、有WhatsApp 晚到或后变时 effect 会再跑：原来整张表 resetFields，人选的类型、写的内容全没了（2026-10-28）。
+   * 现在只在打开那一刻（关→开、换了一条 record）清表重填，之后只补空
+   */
+  const 初始化过 = useRef<Rec | null | undefined>(undefined);
   useEffect(() => {
     if (!open) {
       autoParsed.current = null;
       人改过类型.current = false;
+      初始化过.current = undefined;
       return;
     }
+    if (初始化过.current === record) {
+      if (record?.id) return;
+      // 项目还空着、人也没碰过才挂默认项目；类型人没改过才跟着有没有 WhatsApp 号走（同换人）
+      if (默认项目 && form.getFieldValue("projectId") == null && !form.isFieldTouched("projectId")) form.setFieldsValue({ projectId: 默认项目 });
+      if (!record?.type && !人改过类型.current) form.setFieldsValue({ type: 有WhatsApp ? "WHATSAPP" : "PHONE" });
+      return;
+    }
+    初始化过.current = record;
     if (initialAiText && aiEnabled && !record?.id && autoParsed.current !== initialAiText) {
       autoParsed.current = initialAiText;
       setAiText(initialAiText);
