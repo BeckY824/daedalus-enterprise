@@ -12,6 +12,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
+import { 企业版 } from "./owner-pick";
 
 const 前缀 = "越界回归";
 const 金额字 = "US$ 1,234,567.89";
@@ -122,6 +123,7 @@ async function 越界的(page: Page, 行: string) {
 }
 
 test("客户详情：左栏商机 / 报价 / 订单行和时间线订单卡，在 1024–1366 宽、宽字体下都不越出卡片，金额整段显示", async ({ page }) => {
+  test.skip(企业版, "企业版模版锁在通用，没有外贸出口的报价 / 订单");
   await 登录(page);
   await 套预设(page, "外贸出口");
   for (const 宽 of [1024, 1280, 1366]) {

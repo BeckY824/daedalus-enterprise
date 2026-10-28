@@ -1,6 +1,18 @@
 [
-  { "文件": "card-scan.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts" },
-  { "文件": "mobile-create.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts" },
-  { "文件": "mobile-images.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts" },
-  { "文件": "team-qa-mobile.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts" }
+  {"文件": "card-scan.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts"},
+  {"文件": "mobile-create.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts"},
+  {"文件": "mobile-images.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts"},
+  {"文件": "team-qa-mobile.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts"},
+  {"文件": "opportunity-won.spec.ts", "理由": "企业版只用项目：没有商机和管道，/opportunities 转去项目页（src/lib/enterprise/project-only.ts）；赢单登记签约在开关关着那套里验"},
+  {"文件": "opportunity-name-long.spec.ts", "理由": "企业版只用项目：没有商机，新建商机框不出现（src/lib/enterprise/project-only.ts）"},
+  {"文件": "remediation-opportunity-summary.spec.ts", "理由": "企业版只用项目：没有商机（src/lib/enterprise/project-only.ts）"},
+  {"文件": "trade-basics.spec.ts", "理由": "企业版模版锁在通用，没有外贸出口（business-config.ts 企业版锁定）"},
+  {"文件": "trade-order.spec.ts", "理由": "企业版模版锁在通用，没有外贸出口（business-config.ts 企业版锁定）"},
+  {"文件": "remediation-business-copy.spec.ts", "理由": "企业版模版锁在通用，业务配置不出切模版（business-config.ts 企业版锁定）"},
+  {"文件": "remediation-supplier.spec.ts", "理由": "企业版模版锁在通用，没有外贸出口的供应商（business-config.ts 企业版锁定）"},
+  {"文件": "stage-labels.spec.ts", "理由": "企业版业务配置不出阶段名一节，阶段走项目的三大阶段（business-config.ts 企业版锁定）"},
+  {"文件": "remediation-solo-freeze.spec.ts", "理由": "企业版只用项目：没有商机管道和老线索表单（src/lib/enterprise/project-only.ts）"},
+  {"文件": "duplicate.spec.ts", "理由": "企业版新建客户走 /projects/new 整页，没有新建客户弹框；建档查重在 e2e-ent 里验"},
+  {"文件": "currency.spec.ts", "理由": "企业版只用项目：没有商机和登记签约（src/lib/enterprise/project-only.ts）"},
+  {"文件": "alibaba-id.spec.ts", "理由": "企业版模版锁在通用，业务配置没有切外贸出口（business-config.ts 企业版锁定）"}
 ]

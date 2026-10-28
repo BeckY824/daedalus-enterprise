@@ -44,6 +44,7 @@ test.beforeAll(async () => {
 });
 
 test("新建客户时可以就地建渠道，建完自动选中并同步到渠道管理", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   await 登录(page);
   await page.goto("/customers");
 
@@ -101,6 +102,7 @@ test("新建客户时可以就地建渠道，建完自动选中并同步到渠�
 });
 
 test("就地建渠道时重名会被挡住，且弹窗留在原地让人改", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   await 登录(page);
   await page.goto("/customers");
 

@@ -10,6 +10,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
 const 前缀 = "反馈1019测试";
@@ -82,6 +83,7 @@ test.afterAll(async ({ browser }) => {
 });
 
 test("新建客户：点外面不关；填了按 Esc 先问；留着草稿下次接着填；只填微信能存；同微信号再建被挡", async ({ page }) => {
+  test.skip(企业版, "企业版模版锁在通用，没有外贸出口；新建客户去项目页");
   const 问题: string[] = [];
   page.on("pageerror", (e) => 问题.push(`[pageerror] ${e.message.slice(0, 200)}`));
   await 登录(page);

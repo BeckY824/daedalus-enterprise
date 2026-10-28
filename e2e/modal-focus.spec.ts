@@ -4,6 +4,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据, 造模拟数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -47,6 +48,7 @@ async function 光标在第一格(page: Page, 哪个: string) {
 }
 
 test("新建客户 / 商机 / 线索 / 渠道：弹框开好光标就在第一格，直接能打字", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有新建商机 / 老线索框，新建客户去项目页");
   await 登录(page);
   for (const [路, 名] of [["/customers", "新建客户"], ["/opportunities", "新建商机"], ["/leads", "新建线索"], ["/channels", "新建渠道"]] as const) {
     await page.goto(路);
@@ -77,6 +79,7 @@ test("联系人页「添加联系人」：开好光标在第一个打字格（�
 });
 
 test("弹框还在开场动画时就点开一个下拉：动画走完不把焦点拽回第一格，下拉还开着", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   await 登录(page);
   await page.goto("/customers");
   await page.waitForLoadState("networkidle").catch(() => {});

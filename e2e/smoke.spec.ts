@@ -7,6 +7,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { 读取完整导出 } from "./export-download";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
@@ -69,6 +70,7 @@ test("2. 未登录访问内页会被挡回登录页", async ({ page }) => {
 });
 
 test("3. 新建线索后能在列表里看到", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：左栏没有老线索页，新线索在项目里");
   await 登录(page);
   await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "线索", exact: true }).click();
   await expect(page).toHaveURL(/\/leads/);

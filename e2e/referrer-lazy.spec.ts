@@ -11,6 +11,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 推荐人 = { id: "e2e-lazy-ref-parent", name: "懒取推荐人甲" };
 const 被推荐 = { id: "e2e-lazy-ref-child", name: "懒取被推荐乙" };
@@ -112,6 +113,7 @@ test("页面数据里不再带全部客户", async ({ page }) => {
 });
 
 test("新建：候选取得慢也不空，回来以后能搜能选", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   await page.setViewportSize({ width: 1440, height: 900 });
   await 登录(page);
   await 新建时选推荐人(page);

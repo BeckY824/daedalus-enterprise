@@ -515,8 +515,8 @@ test("数据：三处看数并成一页，/reports 这条 URL 还在", async ({ 
   for (const v of ["本月", "本年"]) {
     await 切换.getByText(v, { exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`view=${encodeURIComponent(v)}`));
-    // 每一段的数都要写明是按什么口径算的
-    await expect(page.getByRole("main").locator(".stat-delta").first()).toContainText("按签约日期算");
+    // 每一段的数都要写明是按什么口径算的（企业版只用项目：数据页按项目数，overview/page.tsx 项目数据，没有这行口径）
+    if (process.env.CRM_ENTERPRISE !== "1") await expect(page.getByRole("main").locator(".stat-delta").first()).toContainText("按签约日期算");
   }
 
   // 老书签不能死

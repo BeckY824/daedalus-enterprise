@@ -17,6 +17,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 /** 企业版只有老板和总管理员能导入导出（src/lib/enterprise/import-perm.ts），普通销售看不到这个键，换管理员来做 */
@@ -157,6 +158,7 @@ test("短的、一行的粘贴不打扰人", async ({ page }) => {
   不抹的话第一天点过「手动录一位」，之后每次打开应用都自己弹框
 */
 test("D-031 /customers?new=1：新建框开一次，地址上的 new=1 当场抹掉，刷新不再弹", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   await page.goto("/customers?new=1");
   const 框 = page.getByRole("dialog", { name: /^新建/ });
   await expect(框).toBeVisible();
@@ -200,6 +202,7 @@ test("/customers?import=paste：抽屉直接停在「粘一段文本」那一栏
   报 Hydration failed——服务端就把新建框画成开着的。改成和跟进页一样「等水合完再开」。
 */
 test("直接打开 /customers?new=1：不报水合错误", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   const 错: string[] = [];
   page.on("console", (m) => { if (m.type() === "error" && /Hydration/i.test(m.text())) 错.push(m.text().slice(0, 200)); });
   page.on("pageerror", (e) => { if (/Hydration/i.test(e.message)) 错.push(e.message.slice(0, 200)); });

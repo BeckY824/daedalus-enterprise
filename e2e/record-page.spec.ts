@@ -82,13 +82,15 @@ test("J-003 行内「职位」：敲两个字 → ↓ 回车选候选 → 存的
     if (!(await 框.isVisible())) await 格.click();
     await expect(框).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
+  // 企业版默认职位是企业版那 19 个（business-config.ts 企业版职位），「部门」对上的是「部门总监」
+  const 候选 = process.env.CRM_ENTERPRISE === "1" ? "部门总监" : "部门负责人";
   await 框.pressSequentially("部门");
-  await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "部门负责人" })).toBeVisible();
+  await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 候选 })).toBeVisible();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
-  await expect.poll(() => 查((p) => p.customer.findUniqueOrThrow({ where: { id } }).then((c) => c.grade))).toBe("部门负责人");
+  await expect.poll(() => 查((p) => p.customer.findUniqueOrThrow({ where: { id } }).then((c) => c.grade))).toBe(候选);
   await page.reload();
-  await expect(page.getByRole("button", { name: "编辑职位" })).toContainText("部门负责人");
+  await expect(page.getByRole("button", { name: "编辑职位" })).toContainText(候选);
 });
 
 test("J-082 记录页勾完成的待办：原地划线留着、能撤销；之后在「已完成」里看得到", async ({ page }) => {

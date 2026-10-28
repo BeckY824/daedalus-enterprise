@@ -7,6 +7,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 前缀 = "两行公司测试";
 const 公司 = `${前缀}·临沂佳盈国际食品贸易有限公司`;
@@ -82,6 +83,7 @@ test("跟进记录：所属客户下面一行公司，没公司只一行；按�
 });
 
 test("商机列表：所属客户同样两行，按公司名搜得到", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机列表（src/lib/enterprise/project-only.ts）");
   await 登录(page);
   await page.goto(`/opportunities?keyword=${encodeURIComponent("临沂佳盈国际食品")}`);
   const 行 = page.locator(".ant-table-row", { hasText: `${前缀}·王建国` });

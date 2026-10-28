@@ -11,6 +11,7 @@
 import { test, expect } from "@playwright/test";
 import { 订单, 供应商页 } from "../src/lib/features";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 let 巡检客户 = "";
 test.beforeAll(async () => {
@@ -84,9 +85,12 @@ test("控制台巡检", async ({ page }) => {
   await page.waitForTimeout(1200);
   // 记录页没有页签；点一下状态标签把下拉也渲染一遍。
   // 标签行 2026-09-17 起在页头名字底下（.rec-tags），不在左边那张档案卡里
-  await page.getByRole("main").locator(".rec-tags .ant-tag").first().click();
-  await page.waitForTimeout(800);
-  await page.keyboard.press("Escape");
+  // 企业版不摆这排跟进状态标签（客户走到哪一步看项目阶段），没得点
+  if (!企业版) {
+    await page.getByRole("main").locator(".rec-tags .ant-tag").first().click();
+    await page.waitForTimeout(800);
+    await page.keyboard.press("Escape");
+  }
   const 详情正文数 = await page.locator("main").count();
   if (详情正文数 !== 1) 问题.push(`[结构] 这一页有 ${详情正文数} 个 <main>`);
   console.log(问题.length === 0 ? "✓ 客户详情（含状态下拉）" : `✗ 客户详情\n    ${问题.join("\n    ")}`);

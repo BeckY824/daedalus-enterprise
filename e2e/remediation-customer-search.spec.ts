@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 let target: string;
 test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
@@ -14,6 +15,7 @@ async function login(page: Page) {
   await page.goto("/login"); await page.getByPlaceholder("用户名").fill("zhangsan"); await page.getByPlaceholder("登录密码").fill("admin123"); await page.getByRole("button", { name: /登\s*录/ }).click(); await page.waitForURL(/\/dashboard/);
 }
 test("生产冷加载new=1预填第1001位，无水合错误、取消不写入且参数被消费", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
   const errors: string[] = []; page.on("pageerror", e => { errors.push(page.url() + " " + e.message); console.log("QA页面异常", page.url(), e.message); }); await login(page);
   await page.goto(`/opportunities?new=1&customer=${target}`);
   const dialog = page.getByRole("dialog", { name: "新建商机" }); await expect(dialog).toBeVisible();

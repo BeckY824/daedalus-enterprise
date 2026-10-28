@@ -18,6 +18,7 @@ import { 读取完整导出 } from "./export-download";
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 /** 企业版只有老板和总管理员能导入导出（src/lib/enterprise/import-perm.ts），普通销售看不到这个键，换管理员来做 */
@@ -189,6 +190,7 @@ test("J-020 批量改状态：提示条点「撤销」，两位各回各的原�
 });
 
 test("J-026 新建线索不选来源：存成「其他」，不是「官网注册」", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：新线索在项目里建，没有老线索新建框");
   await 登录(page);
   await page.goto("/leads");
   const 框 = page.getByRole("dialog", { name: "新建线索" });
