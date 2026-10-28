@@ -136,6 +136,9 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
                 dataSource={数.按人}
                 columns={cols}
                 pagination={false}
+                // 窄了在卡片里横滚：1024 宽 + AI 栏常驻时卡片只剩三百多，五列数字 496 就放不下，不给就伸出卡片（排版闸门 10-28）。
+                // 给数字不给 max-content：名字照旧能折行，宽的时候不会无端横滚。616 = 名字留 120 + 72×3 + 140×2
+                scroll={{ x: 616 }}
                 locale={表格空态({ title: "还没有人手上有项目", hint: "分了线索、建了项目之后这里按人拆。", demo: false })}
               />
             </Card>
@@ -218,6 +221,8 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
             dataSource={数.按人}
             columns={cols}
             pagination={false}
+            // 同上：窄了在卡片里横滚，不伸出。640 = 名字留 120 + 76×5 + 140
+            scroll={{ x: 640 }}
             locale={表格空态({ title: "这一段还没有人动过项目", hint: "换一个时间段看看。", demo: false })}
           />
         </Card>
