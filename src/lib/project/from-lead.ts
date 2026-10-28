@@ -10,6 +10,10 @@
  * 10-26 验收 #13：转出来的项目没有来源线索、没有下一步时间、没有首条跟进，开了超时回收的一转过去就按节点时长在倒数，
  * 项目页上也看不出是哪条线索来的。现在转化时必须带一条首条跟进（和建档向导同一套规整，lib/project/wizard.ts 规整沟通）：
  * 跟进记在客户和主要联系人上、挂到项目的第一个节点，下一步时间写到项目上，项目记下来源线索 id。
+ *
+ * 10-28：企业版导入 / 同步进来的线索也走这里建成线索阶段的项目（enterprise-import/apply.ts）。原系统那条线索没有首条沟通，
+ * 所以 跟进 可以不给：不建跟进、不动客户最近跟进时间、项目不带下一步时间；
+ * 联系人Id 给了就用给的（null = 不挂），不给照旧挂客户的主要联系人。
  */
 import type { Prisma } from "@/generated/prisma";
 import { 默认币种 } from "../currency";
@@ -18,17 +22,21 @@ import { 项目名上限, type 规整好的沟通 } from "./wizard";
 
 export async function 线索建项目(
   tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog" | "followUp" | "followUpProject" | "customer">,
-  a: { 线索名: string; leadId: string; customerId: string; ownerId: string; creatorId: string; 跟进: 规整好的沟通 },
+  a: { 线索名: string; leadId: string; customerId: string; ownerId: string; creatorId: string; 跟进?: 规整好的沟通; 联系人Id?: string | null },
 ): Promise<string> {
-  const 联系人 = await tx.contact.findFirst({ where: { customerId: a.customerId, isPrimary: true }, select: { id: true } });
+  const 联系人 =
+    a.联系人Id !== undefined
+      ? a.联系人Id ? { id: a.联系人Id } : null
+      : await tx.contact.findFirst({ where: { customerId: a.customerId, isPrimary: true }, select: { id: true } });
   const 项目 = await tx.project.create({
     data: {
       name: a.线索名.trim().slice(0, 项目名上限), customerId: a.customerId, contactId: 联系人?.id ?? null,
       ownerId: a.ownerId, creatorId: a.creatorId, amount: 0, currency: 默认币种,
-      phase: 第一个节点.phase, node: 第一个节点.node, nextStepAt: a.跟进.nextStepAt, sourceLeadId: a.leadId,
+      phase: 第一个节点.phase, node: 第一个节点.node, nextStepAt: a.跟进?.nextStepAt ?? null, sourceLeadId: a.leadId,
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: a.creatorId, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });
+  if (!a.跟进) return 项目.id;
   const 跟进 = await tx.followUp.create({
     data: {
       type: a.跟进.type, content: a.跟进.content, occurredAt: a.跟进.occurredAt, title: "", status: "已完成",

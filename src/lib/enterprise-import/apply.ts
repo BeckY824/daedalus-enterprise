@@ -27,6 +27,7 @@ import { 看全部 } from "../team-scope";
 import { 客户附加列 } from "./clean";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
+import { 线索建项目 } from "../project/from-lead";
 
 type Tx = Prisma.TransactionClient;
 export type 标量 = string | number | boolean | null;
@@ -426,7 +427,42 @@ async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
     data: { source: 现.源, entity: w.实体, externalId: w.外部ID, targetId: id, fingerprint: w.指纹, written: J(v), raw: J(w.原始), batchId: 现.批次Id },
   });
   await tx.entImportRow.create({ data: { batchId: 现.批次Id, entity: w.实体, externalId: w.外部ID, targetId: id, kind: "create", written: J(v) } });
+  if (w.实体 === "lead" && 现.项目) await 线索落项目(tx, 现, w, id, v);
   return "新建";
+}
+
+/** 线索顺手建出来的那几条在导入记录里的 externalId：加前缀，和原系统真的客户 / 联系人 / 商机行的对照键不撞 */
+export const 线索带出 = (外部ID: string) => `线索:${外部ID}`;
+
+/**
+ * 企业版只用项目：「新线索」页只列线索阶段的项目，老 Lead 表那边看不见（10-28）。
+ * 导进来的线索照旧建一行 Lead（对照表连着它，之后同步改的是它），再照线索转化那样建成线索阶段的项目（lib/project/from-lead.ts 线索建项目）：
+ *   - 客户：唯一的同号客户就挂它；没有就按线索名新建一位（院校、渠道这些不填，撤回时不会被当成「补过档案」拦住）
+ *   - 联系人：新建的客户、线索上有联系人名字才建一位主要联系人，项目挂上它
+ *   - 没有首条沟通（原系统没给），项目不带下一步时间；来源线索记这条 Lead
+ * 已转化 / 已放弃的线索不建项目（转化过的原系统里另有客户和商机，会照客户、商机行导进来）。
+ * 建出来的客户、联系人、项目各记一行导入记录（externalId 加前缀），整批撤回时倒着一起退掉。
+ * Lead 行不标已转化、不连客户：标了撤回会被「已经转成客户了」拦住。
+ */
+async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v: 值表): Promise<void> {
+  if (v.status === "已转化" || v.status === "已放弃") return;
+  const 负责人 = 串(v.ownerId) ?? 现.兜底负责人;
+  const 记 = async (e: 实体, id: string) =>
+    tx.entImportRow.create({
+      data: { batchId: 现.批次Id, entity: e, externalId: 线索带出(w.外部ID), targetId: id, kind: "create", written: J(await 读现值(tx, e, id)) },
+    });
+  let customerId = await 再认同号(tx, 现, String(v.phone ?? ""));
+  let 联系人Id: string | null = null;
+  if (!customerId) {
+    customerId = await 建(tx, "customer", { name: v.name, phone: v.phone, salesOwnerId: 负责人, followStatus: null, remark: null }, 现.现在);
+    await 记("customer", customerId);
+    if (!空(v.contact)) {
+      联系人Id = await 建(tx, "contact", { name: v.contact, position: null, phone: v.phone, email: v.email, wechat: null, isPrimary: true, remark: null, customerId }, 现.现在);
+      await 记("contact", 联系人Id);
+    }
+  }
+  const 项目Id = await 线索建项目(tx, { 线索名: String(v.name), leadId, customerId, ownerId: 负责人, creatorId: 负责人, 联系人Id });
+  await 记("opportunity", 项目Id);
 }
 
 /** 连上我们这边早就有的同号客户：只补空着的格子；对照表记原系统这次的值，之后同步照三方比对 */
