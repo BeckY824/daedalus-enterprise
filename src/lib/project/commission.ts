@@ -6,6 +6,7 @@
  *     成交金额低于底价时溢价算 0，不出负数。A、B 是百分数，存 Setting（entCommissionRates），管理员在设置里改
  *   - A、B 分内贸、外贸、不限三套（10-27 会议），按项目负责人的业务线（EntMember.line）取；两边都做 / 没设 = 不限。
  *     Setting 里旧的一套平铺值当「不限」，内贸、外贸没存过的跟「不限」一样
+ *   - 管理员还能给某个人单设一套（10-28，entCommissionRatesByUser），比业务线那一套优先（取提成比例）
  *   - 成交金额 = 项目上现有的金额（Project.amount，同币种）；项目底价由项目负责人在项目的提成表里填（EntCommission.basePrice；10-26 定，老板也不代填）
  *   - 组长（项目负责人）按百分比分给已进组（JOINED）的组员，合计 ≤ 100%，剩下的归组长
  *   - 赢单（商机 → 订单）那一刻按当时的比例把实际提成固定下来；之前只显示预估
@@ -65,6 +66,59 @@ export function 三套提成比例问题(v: unknown): string | null {
     if (错) return `${k}：${错}`;
   }
   return null;
+}
+
+/**
+ * 按人单设（10-28 用户「以销售个人为单位」）：管理员给某个人单独定 A / B，存 Setting（entCommissionRatesByUser），
+ * userId → 单设的那几项。取比例的顺序：负责人单设的 → 负责人业务线那一套 → 默认 2% / 30%；
+ * 只设了一项的，另一项跟业务线那一套。离职（不在组织里）的人的条目留在库里，读的时候不算
+ */
+export const 按人提成比例键 = "entCommissionRatesByUser";
+export type 单设比例 = Partial<提成比例>;
+export type 按人提成比例 = Record<string, 单设比例>;
+
+/** 和三套一样的规整规矩：坏的那项不要（跟业务线走），一项都没剩的人整条不要；给了 在职 就把不在职的人去掉 */
+export function 规整按人提成比例(v: unknown, 在职?: (userId: string) => boolean): 按人提成比例 {
+  const 出: 按人提成比例 = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return 出;
+  for (const [uid, x] of Object.entries(v as Record<string, unknown>)) {
+    if (!uid || !x || typeof x !== "object" || Array.isArray(x)) continue;
+    if (在职 && !在职(uid)) continue;
+    const o = x as Record<string, unknown>;
+    const 一人: 单设比例 = {};
+    for (const k of ["底价比例", "溢价比例"] as const) if (!百分数问题(o[k], k)) 一人[k] = o[k] as number;
+    if (一人.底价比例 != null || 一人.溢价比例 != null) 出[uid] = 一人;
+  }
+  return 出;
+}
+
+/** 管理员交上来的按人设置：每人两项，null = 跟业务线；不是 null 的要是 0–100、最多两位小数 */
+export type 按人提成提交 = Record<string, { 底价比例: number | null; 溢价比例: number | null }>;
+
+export function 按人提成比例问题(v: unknown, 叫: (userId: string) => string = () => "有一个人"): string | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return "按人设置的格式不对，刷新再试";
+  for (const [uid, x] of Object.entries(v as Record<string, unknown>)) {
+    if (!uid || !x || typeof x !== "object" || Array.isArray(x)) return "按人设置的格式不对，刷新再试";
+    const o = x as Record<string, unknown>;
+    for (const [k, 叫法] of [["底价比例", "底价提成比例"], ["溢价比例", "溢价提成比例"]] as const) {
+      if (o[k] == null) continue;
+      const 错 = 百分数问题(o[k], 叫法);
+      if (错) return `${叫(uid)}：${错}`;
+    }
+  }
+  return null;
+}
+
+/** 某个负责人此刻该用的比例。按人 要先按在职规整过（规整按人提成比例 给 在职） */
+export function 取提成比例(
+  三套: 三套提成比例, 按人: 按人提成比例, userId: string, line: string | null | undefined,
+): { 比例: 提成比例; 范围: 提成范围; 单设: "全部" | "部分" | null } {
+  const 范围 = 提成范围of(line);
+  const 线 = 三套[范围];
+  const 人 = Object.hasOwn(按人, userId) ? 按人[userId] : undefined;
+  const 底 = 人?.底价比例, 溢 = 人?.溢价比例;
+  const 比例 = { 底价比例: 底 ?? 线.底价比例, 溢价比例: 溢 ?? 线.溢价比例 };
+  return { 比例, 范围, 单设: 底 != null && 溢 != null ? "全部" : 底 != null || 溢 != null ? "部分" : null };
 }
 
 export function 提成比例问题(v: { 底价比例?: unknown; 溢价比例?: unknown } | null | undefined): string | null {
@@ -143,8 +197,10 @@ export type 提成卡 = {
   项目底价: number | null;
   /** 现在设置里的比例（预估按它算）：按负责人业务线取的那一套 */
   比例: 提成比例;
-  /** 用的哪一套 */
+  /** 用的哪一套（单设了的话，没设的那项按这一套） */
   范围: 提成范围;
+  /** 负责人有没有单设的比例（10-28）：全部 = 两项都单设，部分 = 只设了一项；没有 = null */
+  单设?: "全部" | "部分" | null;
   预估: 提成算式 | null;
   /** 赢单时固定下来的；没赢单 = null */
   实际: (提成算式 & { 比例: 提成比例; 固定于: string; 按算式?: number }) | null;

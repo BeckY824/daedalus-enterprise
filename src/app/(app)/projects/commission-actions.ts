@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * 企业版提成的写（2026-10-26，迁移 051）：项目底价、组长分配、提成比例 A / B、总管理员更正已固定提成（10-27）。
+ * 企业版提成的写（2026-10-26，迁移 051）：项目底价、组长分配、提成比例 A / B（三套 + 按人单设 10-28）、总管理员更正已固定提成（10-27）。
  * 项目模式没开、不是企业版：每个动作直接拦，一行不写、不记操作记录。
  * 读写和谁能改在 lib/project/commission-db.ts、算法在 lib/project/commission.ts，这里只管登录、开关、操作记录和刷新
  */
@@ -13,8 +13,8 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
-import { 存项目底价 as 存底价, 存提成分配 as 存分配, 改提成比例 as 改比例, 更正实际提成 as 更正 } from "@/lib/project/commission-db";
-import type { 分配, 三套提成比例 } from "@/lib/project/commission";
+import { 存项目底价 as 存底价, 存提成分配 as 存分配, 改提成比例 as 改比例, 改按人提成比例 as 改按人, 更正实际提成 as 更正 } from "@/lib/project/commission-db";
+import type { 分配, 三套提成比例, 按人提成提交, 单设比例 } from "@/lib/project/commission";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
 const 不是企业版 = { ok: false as const, error: "提成是企业版的功能" };
@@ -105,6 +105,29 @@ export async function 改提成比例(input: 三套提成比例) {
         user: me, action: "update", entity: "Setting", entityId: "entCommissionRates",
         summary: `提成比例：${r.改了.map((k) => `${k} 底价 ${r.前[k].底价比例}% → ${r.后[k].底价比例}%，溢价 ${r.前[k].溢价比例}% → ${r.后[k].溢价比例}%`).join("；")}`,
         detail: { 前: r.前, 后: r.后 },
+      });
+      revalidatePath("/settings");
+      revalidatePath("/projects", "layout");
+    }
+    return r.ok ? { ok: true as const, 变了: r.变了 } : r;
+  } catch (e) { return 不在了(e); }
+}
+
+const 单设话 = (x: 单设比例 | null, k: keyof 单设比例) => (x?.[k] == null ? "跟业务线" : `${x[k]}%`);
+
+/** 老板 / 总管理员按人单设 A / B（10-28）：交改了的那几个人，null = 跟业务线；每改一个人在操作记录里写前后 */
+export async function 改按人提成比例(input: 按人提成提交) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    if (!企业版()) return 不是企业版;
+    const r = await 改按人(me, input ?? {});
+    if (r.ok && r.变了) {
+      const 名 = new Map((await 看全部(() => prisma.user.findMany({ where: { id: { in: r.改了.map((x) => x.userId) } }, select: { id: true, name: true } }))).map((u) => [u.id, u.name]));
+      await recordAudit({
+        user: me, action: "update", entity: "Setting", entityId: "entCommissionRatesByUser",
+        summary: `按人提成比例：${r.改了.map((x) => `${名.get(x.userId) ?? "已不在的成员"} 底价 ${单设话(x.前, "底价比例")} → ${单设话(x.后, "底价比例")}，溢价 ${单设话(x.前, "溢价比例")} → ${单设话(x.后, "溢价比例")}`).join("；")}`,
+        detail: { 改了: r.改了 },
       });
       revalidatePath("/settings");
       revalidatePath("/projects", "layout");
