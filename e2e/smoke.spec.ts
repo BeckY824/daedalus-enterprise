@@ -144,6 +144,7 @@ test("5. 给客户录一条跟进，时间线上要看得见", async ({ page }) 
 });
 
 test("6. 登记签约后，跟进状态变成已签约、金额显示出来", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户页不录签约，成交走项目的订单阶段");
   await 登录(page);
   await page.goto("/customers");
   await page.locator("main").getByRole("link", { name: 客户名 }).click();
@@ -159,6 +160,7 @@ test("6. 登记签约后，跟进状态变成已签约、金额显示出来", as
 });
 
 test("7. 同一天同金额再录一笔，要弹窗确认而不是默默翻倍", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：客户页不录签约，上一条已跳过");
   await 登录(page);
   await page.goto("/customers");
   await page.locator("main").getByRole("link", { name: 客户名 }).click();

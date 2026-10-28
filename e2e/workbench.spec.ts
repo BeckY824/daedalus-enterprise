@@ -712,6 +712,7 @@ test("AI 接入：没测过连接就保存会先拦一下", async ({ page }) => 
 /* ---------- 收尾：指标落地、图表落地、联系人入口（2026-09-17 逐页核对后补的三件） ---------- */
 
 test("数据「现在」那四张卡，每一张都点得进一个能把这个数重新数一遍的页面", async ({ page }) => {
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：数据页四张卡是新线索 / 商机 / 订单 / 异常状态，按项目数（overview/page.tsx 项目数据）");
   await 登录(page);
   await page.goto("/overview");
 

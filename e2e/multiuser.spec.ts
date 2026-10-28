@@ -165,6 +165,7 @@ test.describe("D 组：批量操作交叉", () => {
   });
 
   test("一人批量改负责人、另一人正在编辑同一条，两边的改动都要在", async ({ browser }) => {
+    test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     const 甲 = await 另一个人(browser, 甲账号);
     const 乙 = await 另一个人(browser, 管理员);
 

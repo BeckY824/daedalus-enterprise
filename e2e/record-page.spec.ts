@@ -237,6 +237,7 @@ test("签约金额：自动带上勾着的商机金额之和；取消勾一个�
 });
 
 test("J-088 记录页左栏的商机写状态：赢单、丢单各挂一个标，进行中的不挂（和商机列表的标一样）", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机（src/lib/enterprise/project-only.ts）");
   const id = await 造客户("商机状态");
   await 查((p) =>
     p.opportunity.createMany({
