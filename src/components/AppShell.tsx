@@ -33,7 +33,7 @@ import {
 } from "@ant-design/icons";
 import type { SessionUser } from "@/lib/auth";
 import type { 演示组 } from "@/lib/enterprise/demo-switch";
-import { 演示登录 } from "@/app/login/demo-actions";
+import type { LoginResult } from "@/app/login/actions";
 import { avatarColor, initial, AVATAR_TEXT } from "@/lib/utils";
 import Logo from "./Logo";
 import UpdateRow from "./UpdateRow";
@@ -104,6 +104,8 @@ type Props = {
   ai: { models: ModelOption[] } | null;
   /** 演示部署（CRM_DEMO_SWITCH=1）才有：账号菜单里按业务角色列出所有人，点谁就换成谁（lib/enterprise/demo-switch.ts） */
   演示名单?: 演示组[] | null;
+  /** 和演示名单一起给：服务端 action（login/demo-actions.ts）从 layout 传进来，客户端组件不直接 import 服务端模块 */
+  演示换人?: (userId: string) => Promise<LoginResult>;
   children: React.ReactNode;
 };
 
@@ -126,7 +128,7 @@ type Props = {
 /** 面板常驻要的最小窗口宽度，见 AppShell 里 窄窗 那段 */
 const 面板放不下 = "(max-width: 1599px)";
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -389,8 +391,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
    * 软导航也不会重新跑服务端的权限和左栏。
    */
   async function 换成(id: string) {
-    if (id === user.id) return;
-    const res = await 演示登录(id).catch(() => ({ ok: false as const, error: "换人失败，请检查网络连接后重试" }));
+    if (id === user.id || !演示换人) return;
+    const res = await 演示换人(id).catch(() => ({ ok: false as const, error: "换人失败，请检查网络连接后重试" }));
     if (!res.ok) return void window.alert(res.error);
     // 同 login/after-login.ts：换的是会话，整页重来才干净
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination

@@ -5,9 +5,8 @@
  * 给客户试用的演示服务器才开：CRM_DEMO_SWITCH=1，而且必须同时是企业版、自部署（不是托管版、不是桌面端）。
  * 开着等于**谁拿到地址谁就能以任何人（包括老板）身份进来**——正式部署永远不设。
  */
-import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
-import { 读组织, type 组织 } from "./org";
+import type { 组织 } from "./org";
 import { multiTenant } from "@/lib/tenant/context";
 import { 本地模式 } from "@/lib/desktop/cloud";
 import { 业务角色 as 角色顺序, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
@@ -46,6 +45,9 @@ export function 分组演示名单(
 /** 开关关着返回 null：调用方据此什么都不画 */
 export async function 读演示名单(): Promise<演示组[] | null> {
   if (!演示切换()) return null;
+  /* 登录页也调它：库模块一 import 就开连接（lib/prisma.ts 的 PRAGMA），开关关着的登录页不能连库——
+     网页版 E2E 先起服务、探活 /login，再删库重建，提前连上就整片登录失败（e2e/global-setup.ts 文件头） */
+  const [{ prisma }, { 读组织 }] = await Promise.all([import("@/lib/prisma"), import("./org")]);
   const [人们, org] = await Promise.all([
     prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, email: true, title: true }, orderBy: { createdAt: "asc" } }),
     读组织(),
