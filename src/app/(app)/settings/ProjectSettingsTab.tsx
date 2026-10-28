@@ -19,8 +19,10 @@ import { 卡点类型们, 影响等级们, 主体名上限, 主体最多, type �
 
 const 节点们 = 企业版字典.节点们;
 const 默认天数 = 企业版字典.默认超时天数;
-import { 改提成比例 } from "@/app/(app)/projects/commission-actions";
-import { 三套提成比例问题, 提成范围们, type 三套提成比例, type 提成范围 } from "@/lib/project/commission";
+import { 改提成比例, 改按人提成比例 } from "@/app/(app)/projects/commission-actions";
+import {
+  三套提成比例问题, 提成范围们, 按人提成比例问题, type 三套提成比例, type 提成范围, type 按人提成比例, type 按人提成提交,
+} from "@/lib/project/commission";
 
 type 字典项 = { id: string; name: string; active: boolean; 用的人: number };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
@@ -50,6 +52,11 @@ export type 项目设置 = {
   提成比例: 三套提成比例 | null;
   /** 老板、总管理员能改提成比例 */
   能改提成比例: boolean;
+  /**
+   * 按人单设的提成比例（10-28）：人们 = 组织里的销售管理、销售（和已经单设过的人），范围 = 他的业务线用哪一套；
+   * 比例 = 已单设的（离职的不在里面）。不是企业版 = null / 没给，卡片不出
+   */
+  按人提成?: { 人们: { id: string; name: string; 范围: 提成范围 }[]; 比例: 按人提成比例 } | null;
 };
 
 /**
@@ -101,6 +108,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
       {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
       {value.提成比例 && <RatesCard 比例={value.提成比例} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
+      {value.提成比例 && value.按人提成 && <PerUserRatesCard 三套={value.提成比例} {...value.按人提成} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
     </div>
   );
 }
@@ -560,6 +568,92 @@ function RatesCard({
       {能改 && 改了 && 问题 && <div style={{ color: "var(--danger-text)", marginBottom: 8 }}>{问题}</div>}
       {能改 && (
         <Button type="primary" disabled={忙 || !改了 || !!问题} onClick={() => void 跑(() => 改提成比例(草稿 as 三套提成比例), "已保存提成比例")}>保存</Button>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * 提成比例 · 按人设置（10-28 用户「以销售个人为单位」）：给某个销售单独定底价、溢价比例，比业务线那一套优先；
+ * 留空的那项跟他业务线的那一套。只交改了的人（别人同时在改别的人不会被冲掉）；每改一个人进操作记录。
+ * 人多了有个按名字找的框；名字太长省略、悬停看全
+ */
+type 草稿单设 = Record<string, { 底价比例: number | null; 溢价比例: number | null }>;
+const 搜索门槛 = 8;
+
+function PerUserRatesCard({
+  三套, 人们, 比例, 能改, 忙, 跑,
+}: {
+  三套: 三套提成比例; 人们: { id: string; name: string; 范围: 提成范围 }[]; 比例: 按人提成比例;
+  能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const 原 = (id: string) => ({ 底价比例: 比例[id]?.底价比例 ?? null, 溢价比例: 比例[id]?.溢价比例 ?? null });
+  const [草稿, set草稿] = useState<草稿单设>(() => Object.fromEntries(人们.map((u) => [u.id, 原(u.id)])));
+  const [找, set找] = useState("");
+  const 值 = (id: string) => 草稿[id] ?? 原(id);
+  const 改了的: 按人提成提交 = Object.fromEntries(
+    人们.filter((u) => 值(u.id).底价比例 !== 原(u.id).底价比例 || 值(u.id).溢价比例 !== 原(u.id).溢价比例).map((u) => [u.id, 值(u.id)]),
+  );
+  const 名 = new Map(人们.map((u) => [u.id, u.name]));
+  const 问题 = 按人提成比例问题(改了的, (id) => 名.get(id) ?? "有一个人");
+  const 有改动 = Object.keys(改了的).length > 0;
+  const 改 = (id: string, 哪个: "底价比例" | "溢价比例", v: number | null) => set草稿((d) => ({ ...d, [id]: { ...值(id), [哪个]: v } }));
+  const 词 = 找.trim().toLowerCase();
+  const 显示 = 词 ? 人们.filter((u) => u.name.toLowerCase().includes(词)) : 人们;
+  const 单设数 = 人们.filter((u) => 比例[u.id]).length;
+  return (
+    <Card
+      title="提成比例 · 按人设置"
+      extra={!能改 ? <span style={{ color: "var(--text-muted)" }}>只有老板、总管理员能改</span> : 单设数 > 0 && <span style={{ color: "var(--text-muted)" }}>已单设 {单设数} 人</span>}
+    >
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        给某个销售单独定比例，比上面按业务线的那一套优先；留空的那项跟他业务线的比例走（框里灰字就是现在用的）。离职的人自动不算。改了以后，他还没赢单的项目按新比例预估；已经赢单的实际提成不变。
+      </div>
+      {人们.length > 搜索门槛 && (
+        <Input allowClear placeholder="按名字找" aria-label="按名字找销售" style={{ maxWidth: 240, marginBottom: 12 }} value={找} onChange={(e) => set找(e.target.value)} />
+      )}
+      {人们.length === 0 ? (
+        <div style={{ color: "var(--text-muted)" }}>组织里还没有销售。先在「组织架构」里把人设成销售或销售管理</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+          {显示.length === 0 && <div style={{ color: "var(--text-muted)" }}>没找到叫「{找.trim()}」的人</div>}
+          {显示.map((u) => {
+            const 线 = 三套[u.范围];
+            const v = 值(u.id);
+            return (
+              <div key={u.id} style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+                <span
+                  title={u.name}
+                  style={{ flex: "0 1 160px", minWidth: 0, maxWidth: 160, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
+                  {u.name}
+                </span>
+                <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                  底价比例
+                  <InputNumber<number>
+                    aria-label={`${u.name} 底价提成比例`} min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改}
+                    placeholder={String(线.底价比例)} value={v.底价比例} onChange={(x) => 改(u.id, "底价比例", x ?? null)}
+                  />
+                </span>
+                <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                  溢价比例
+                  <InputNumber<number>
+                    aria-label={`${u.name} 溢价提成比例`} min={0} max={100} precision={2} suffix="%" style={{ width: 120 }} disabled={!能改}
+                    placeholder={String(线.溢价比例)} value={v.溢价比例} onChange={(x) => 改(u.id, "溢价比例", x ?? null)}
+                  />
+                </span>
+                <span style={{ color: "var(--text-muted)", fontSize: 12 }}>留空跟{u.范围}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {能改 && 有改动 && 问题 && <div style={{ color: "var(--danger-text)", marginBottom: 8 }}>{问题}</div>}
+      {能改 && 人们.length > 0 && (
+        <Space wrap>
+          <Button type="primary" disabled={忙 || !有改动 || !!问题} onClick={() => void 跑(() => 改按人提成比例(改了的), "已保存按人提成比例")}>保存</Button>
+          {有改动 && <Button disabled={忙} onClick={() => set草稿(Object.fromEntries(人们.map((u) => [u.id, 原(u.id)])))}>撤销改动</Button>}
+        </Space>
       )}
     </Card>
   );
