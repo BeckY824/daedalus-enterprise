@@ -132,7 +132,8 @@ jobs:
       # 网页用例在开着企业版开关的服务器上跑（2026-10-27）：桌面端 / 团队版攒下的流程就是企业版的回归标准。
       # 开关关着那遍 10-28 删了：这个仓库只发企业版。
       # 设计上就不一样的按文件跳过，名单和理由在 e2e-ent/网页用例企业版跳过.json
-      - run: npx playwright test --shard=${{ matrix.shard }}/5
+      # PR 上同一片挂满 2 条（重试后仍红才算）就停，别把剩下的跑完白等；推 main 照样全跑完，红几条看全（10-28）
+      - run: npx playwright test --shard=${{ matrix.shard }}/5 ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
         env:
           CRM_ENTERPRISE: "1"
           E2E_PROD: "1"
@@ -165,7 +166,7 @@ jobs:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
       # 只有企业版才有的流程（2026-10-27）：四类账号、导入导出权限、跳转、组织设置、项目公海整体转让。
       # 自己的库和种子（e2e-ent/global-setup.ts），测试密码每轮随机、不进仓库
-      - run: npm run test:ent
+      - run: npm run test:ent -- ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
         env:
           HOME: /root
           TZ: Asia/Shanghai
@@ -206,7 +207,7 @@ jobs:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
       # 发版前排版闸门（10-19）：桌面本地模式 + 像真客户的数据，1024/1280/1366 × AI 栏常驻 / 左栏最宽量主要页面越界、被盖住。
       # 这几天的显示 bug 都是客户先发现的，以后让它在这里先红。规则见 e2e/layout-audit.ts，不许为了变绿放宽
-      - run: npx playwright test -c playwright.layout.config.ts --shard=${{ matrix.shard }}/3
+      - run: npx playwright test -c playwright.layout.config.ts --shard=${{ matrix.shard }}/3 ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
         env:
           E2E_PROD: "1"
           HOME: /root
