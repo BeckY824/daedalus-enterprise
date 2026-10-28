@@ -130,7 +130,9 @@ test("可见范围：销售乙看不到销售甲的客户（列表没有、详�
 // 所以点完要看框里真显示了这一项，没落上就整段重来；多选框已经选上的不再点，免得又点掉
 async function 选(page: Page, 框名: string, 项: string) {
   const 框 = page.getByRole("main").getByRole("combobox", { name: 框名 });
-  const 选上了 = page.locator(".ant-select", { has: 框 }).locator(`[title="${项}"]:not(.ant-select-item)`);
+  // has 里的定位是相对 .ant-select 往里找的，不能再从 main 起头
+  const 选上了 = page.locator(".ant-select", { has: page.getByRole("combobox", { name: 框名 }) })
+    .locator(`[title="${项}"]:not(.ant-select-item)`);
   const 那项 = page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${项}"]`);
   await expect(async () => {
     if (await 选上了.count()) return;
