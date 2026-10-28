@@ -47,7 +47,7 @@ import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibil
 import { 规则 } from "@/lib/enterprise/rules";
 import { 字段权限key } from "@/lib/enterprise/field-perm";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 客户筛选条件 } from "@/app/(app)/customers/query";
+import { 客户筛选条件, 关键词分页 } from "@/app/(app)/customers/query";
 import { 最近批次, 撤销批次 } from "@/app/(app)/customers/import-actions";
 import { 线索关键词条件, 号码藏着 } from "@/lib/search-keyword";
 import { 跑工具 } from "@/lib/mcp/tools";
@@ -200,8 +200,14 @@ describe("Y27 电话藏着：按号码搜不出来", () => {
   const 列表搜得到 = (u: 谁, k: string, cid: string) =>
     作为(u, async () => {
       await requireUser();
-      for (const sp of [{ keyword: k }, { keyword: k, pool: "1" }]) if ((await db.customer.findMany({ where: await 客户筛选条件(sp), select: { id: true } })).some((c) => c.id === cid)) return true;
-      return false;
+      let 老 = false, 快 = false;
+      for (const sp of [{ keyword: k }, { keyword: k, pool: "1" }]) {
+        if ((await db.customer.findMany({ where: await 客户筛选条件(sp), select: { id: true } })).some((c) => c.id === cid)) 老 = true;
+        // 列表页的关键词快路径（P2）藏号口径要和老路一样
+        if ((await 关键词分页(sp, 1, 1000))?.ids.includes(cid)) 快 = true;
+      }
+      expect({ u, k, 快 }).toEqual({ u, k, 快: 老 });
+      return 老;
     });
   const 线索搜得到 = (u: 谁, k: string) =>
     作为(u, async () => {
