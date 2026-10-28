@@ -183,22 +183,48 @@ test.skip("【下一版】计划页删一条计划之后，提示条里能撤销
 
 test("J-083 计划页点完成：那一行先留在原地打着勾，不立刻抽走", async ({ page }) => {
   const id = await 造客户("完成留位");
-  await 查(async (p) => {
+  const [先做的] = await 查(async (p) => {
+    const 建了 = [];
     for (const [i, 主题] of ["先做的回访", "后面那条"].entries()) {
-      await p.followPlan.create({ data: { customerId: id, ownerId: 我id, subject: 主题, method: "电话沟通", plannedAt: new Date(Date.now() + (i + 1) * 3600_000) } });
+      建了.push(await p.followPlan.create({ data: { customerId: id, ownerId: 我id, subject: 主题, method: "电话沟通", plannedAt: new Date(Date.now() + (i + 1) * 3600_000) } }));
     }
+    return 建了;
   });
   await 登录(page);
   await page.goto("/follow-ups/plans");
   const 行 = page.getByRole("main").locator(".plan-row", { hasText: "先做的回访" });
+  /*
+    「完成」那一下的 server action 先扣住，断言做完再放行。
+    原来是和它赛跑：action 带着 revalidatePath 回来，新的一版列表里就没有这一行了；
+    CI 慢的时候断言还没轮到，行已经被抽走，第一行成了「后面那条」（toHaveClass 只给了 300ms）。
+    扣住之后「点完、库还没回话」这一段要多长有多长：这正是人眼看到的那一刻——
+    本地先打勾留位、不等服务端；要是有人改成等服务端回来再标、或者一点就从本地列表里删掉，这里照样红
+  */
+  let 放行!: () => void;
+  const 等放行 = new Promise<void>((r) => (放行 = r));
+  let 扣住了 = false;
+  await page.route("**/follow-ups/plans**", async (route) => {
+    const req = route.request();
+    if (!扣住了 && req.method() === "POST" && req.headers()["next-action"] && (req.postData() ?? "").includes(先做的.id)) {
+      扣住了 = true;
+      await 等放行;
+    }
+    await route.fallback();
+  });
   await 行.getByRole("button", { name: "完成 先做的回访" }).click();
   // 2026-10-16 起点计划的完成先弹小框（记一笔 + 排下次）；这里只看留位，走「跳过，直接完成」= 原来那一下
   await page.getByRole("button", { name: "跳过，直接完成" }).click();
+  await expect.poll(() => 扣住了, { message: "没等到「完成」那一下的请求" }).toBe(true);
   // 点完的那一刻还在原处、是「做完了」的样子；下面那条没顶上来
-  await expect(行).toHaveClass(/plan-row-done/, { timeout: 300 });
+  await expect(行).toHaveClass(/plan-row-done/);
   await expect(page.getByRole("main").locator(".plan-row").filter({ hasText: /先做的回访|后面那条/ }).first()).toContainText("先做的回访");
-  // 留够了再走
+  // 库里这时确实还没完成：上面看到的留位是本地先画的，不是服务端回来之后的样子
+  expect(await 查((p) => p.followPlan.findUniqueOrThrow({ where: { id: 先做的.id } }))).toMatchObject({ done: false });
+  放行();
+  // 留够了再走；下面那条顶上来
   await expect(行).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByRole("main").locator(".plan-row").filter({ hasText: /先做的回访|后面那条/ }).first()).toContainText("后面那条");
+  expect(await 查((p) => p.followPlan.findUniqueOrThrow({ where: { id: 先做的.id } }))).toMatchObject({ done: true });
 });
 
 test("签约金额：自动带上勾着的商机金额之和；取消勾一个跟着减；手填过就不再跟", async ({ page }) => {

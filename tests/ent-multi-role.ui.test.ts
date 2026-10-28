@@ -47,16 +47,26 @@ async function open(是老板: boolean, width = 1366) {
 }
 const 交了 = (page: import("playwright").Page) => page.evaluate(() => (Reflect.get(window, "__交") ?? []) as [string, { bizRole?: string }][]);
 const 角色框 = (page: import("playwright").Page, id: string) => page.getByTestId(`org-member-${id}`).locator(".ant-select-multiple");
-// 负载高时下拉偶尔没开、或开了又被收起（CI 和本机连跑都挂过）：没开就再点，直到一次读到的选项里有「市场管理」，返回这次读到的
+/*
+  负载高时下拉偶尔没开、或开了又被收起（CI 和本机连跑都挂过）：没开就再点，直到一次读到的选项里有「市场管理」，返回这次读到的。
+  「开没开」看输入框的 aria-expanded，不看下拉层露没露出来（10-28 单测片负载高时 10 秒都没读到选项）：
+  点下去之后框已经是开着的，下拉层要等渲染、对位、入场动画才算「看得见」，慢的时候过了一轮还没出来；
+  原来这时又点一下，而点选择框是「开 / 关」来回切的，等于亲手把它关上，下一轮再开、再关……
+  现在只在它确实关着时才点；开着就等选项画出来再读。整段给 30 秒，用到它的用例自己放宽到 60 秒
+*/
 const 展开 = async (page: import("playwright").Page, name: string) => {
+  const 框 = page.getByLabel(`${name} 的角色`);
+  const 选项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
   let 字: string[] = [];
   await expect.poll(async () => {
-    if (!(await page.locator(".ant-select-dropdown:visible").count())) await page.getByLabel(`${name} 的角色`).click();
-    字 = await page.locator(".ant-select-dropdown:visible .ant-select-item-option").allInnerTexts();
+    if ((await 框.getAttribute("aria-expanded")) !== "true") await 框.click();
+    await 选项.first().waitFor({ timeout: 3_000 }).catch(() => {});
+    字 = await 选项.allInnerTexts();
     return 字;
-  }, { timeout: 10_000, interval: 300 }).toContain("市场管理");
+  }, { timeout: 30_000, interval: 300 }).toContain("市场管理");
   return 字;
 };
+const 慢 = 60_000;
 
 it("兼两个角色显示两个标签；再加一个，交上去是规整的逗号串", async () => {
   const { page, errors } = await open(true);
@@ -69,7 +79,7 @@ it("兼两个角色显示两个标签；再加一个，交上去是规整的逗�
     expect(await 交了(page)).toEqual([["a", { bizRole: "sales_mgr,sales,marketing_mgr" }]]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
-});
+}, 慢);
 
 it("删掉最后一个角色：不交", async () => {
   const { page, errors } = await open(true);
@@ -94,7 +104,7 @@ it("非老板的选项里没有总管理、管理员；老板有", async () => {
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
-});
+}, 慢);
 
 it.each([1024, 1280, 1366])("Windows %ipx：多个标签和超长名字不横向撑出，角色框点得中", async (w) => {
   const { page } = await open(false, w);
