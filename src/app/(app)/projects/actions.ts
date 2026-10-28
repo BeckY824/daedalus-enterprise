@@ -122,7 +122,7 @@ export async function 建档向导(输入: 建档向导输入) {
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
     const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!) : null;
-    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(分了 ?? {}) };
+    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, contactId: 建了.contactId ?? null, ...(分了 ?? {}) };
   } catch (e) { return 不在了(e); }
 }
 

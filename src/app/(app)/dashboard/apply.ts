@@ -37,7 +37,13 @@ export type 撤销凭据 =
    */
   | { kind: "set_status"; customerId: string; field: "followStatus" | "decisionStatus"; to: string; 改成: string };
 
-export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据 } | { ok: false; error: string };
+/**
+ * 新线索卡确认后，名片原图该挂到哪（企业版联系人附件）：只用项目时建的是客户 + 主要联系人 → 挂联系人；
+ * 其余走 saveLead 建线索 → 挂线索，转客户时再补上联系人。只有企业版、只有新线索卡才带
+ */
+export type 附件去处 = { contactId: string } | { leadId: string };
+
+export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处 } | { ok: false; error: string };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -237,7 +243,7 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
  * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 旺旺，撞了不建、提醒原负责人。
  * 不撞：创建人 = 负责人 = 录入人（客户销售负责人、项目负责人都是自己）
  */
-async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true } | { ok: false; error: string }> {
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处 } | { ok: false; error: string }> {
   const meId = me.id;
   const 号 = p.phone.trim();
   const { 号们, 剩 } = 认出备注里的号码(p.remark || "");
@@ -272,7 +278,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       节点: 企业版字典.节点们.线索[0], 明确回复: false,
     },
   });
-  if (r.ok) return { ok: true };
+  if (r.ok) return { ok: true, ...(r.contactId ? { 附件去处: { contactId: r.contactId } } : {}) };
   // 开了超时回收：首条跟进要填下一步时间（卡上「下一步」那格）
   if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填「下一步」时间" };
   return { ok: false, error: r.error };
@@ -338,7 +344,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   const 只用项目 = 企业版() && b.projectMode === true;
   if (只用项目 && p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
 
-  let done: { ok: true } | { ok: false; error: string };
+  let done: { ok: true; 附件去处?: 附件去处 } | { ok: false; error: string };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
     done = await 建成项目(p, me);
@@ -392,13 +398,13 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     done = r.ok ? { ok: true } : { ok: false, error: "计划没能保存" };
   } else {
     const r = await saveLead({ name: p.name, contact: p.contact || null, phone: p.phone || null, source: p.source, status: p.status, remark: p.remark || null });
-    done = r.ok ? { ok: true } : { ok: false, error: r.error };
+    done = !r.ok ? { ok: false, error: r.error } : { ok: true, ...(企业版() && r.id ? { 附件去处: { leadId: r.id } } : {}) };
   }
   if (!done.ok) return done;
 
   const summary = summarizeApplied(p, b.customer, b);
   await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason } });
-  return { ok: true, message: summary.replace("确认 AI 建议：", "已"), 撤销 };
+  return { ok: true, message: summary.replace("确认 AI 建议：", "已"), 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}) };
 }
 
 /**

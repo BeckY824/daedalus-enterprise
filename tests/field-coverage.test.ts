@@ -360,6 +360,8 @@ const 派生: Record<string, Record<string, string>> = {
   Attachment: {
     opportunityId: "挂在哪个商机上，传的时候定",
     orderId: "挂在哪张订单上，传的时候定",
+    leadId: "挂在哪条线索上（企业版名片建档 / 线索编辑框传的时候定），线索删了这列也不清",
+    contactId: "挂在哪位联系人上（企业版传的时候定；线索转客户、并进老客户时补上）",
     name: "原文件名，传的时候定（去掉路径和 Windows 不认的字符）",
     mime: "文件类型，传的时候定。决定能不能在页面里显示，不给改",
     size: "文件字节数，存文件时量出来",

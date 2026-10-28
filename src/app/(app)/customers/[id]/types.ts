@@ -69,6 +69,11 @@ export type RecordProps = {
    */
   /** 企业版：客户级的旺旺 ID（只在联系方式子表里），基本资料只读摆出来；没有 = 不摆 */
   旺旺们?: string[];
+  /**
+   * 企业版联系人附件（2026-10-28）：联系人 id → 附件几张（没有的不在里面）。给了（哪怕空对象）联系人小卡上才摆「附件」一行；
+   * 不给 = 开关关着或个人版、团队版，照旧
+   */
+  联系人附件数?: Record<string, number> | null;
   项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;
   customer: CustomerRow;
   contacts: ContactRow[];

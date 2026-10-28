@@ -7,7 +7,7 @@ import { recordAudit } from "@/lib/audit";
 import { 附件文件, 删附件, 确保文件 } from "@/lib/attachments";
 import { 是附件编号, 是图片, 读大小 } from "@/lib/attachment-rules";
 import { 解析范围 } from "@/app/ocr-files/[...path]/route";
-import { 认父记录 } from "../access";
+import { 认附件父记录 } from "../access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,9 +24,7 @@ async function 取(id: string, 要改: boolean) {
   if (!是附件编号(id)) return { 错: "找不到这个附件", 状态: 404 } as const;
   const a = await prisma.attachment.findFirst({ where: { id } });
   if (!a) return { 错: "这个附件已经不在了，刷新看看", 状态: 404 } as const;
-  const 挂在 = a.opportunityId ? { opportunityId: a.opportunityId } : a.orderId ? { orderId: a.orderId } : null;
-  if (!挂在) return { 错: "找不到这个附件", 状态: 404 } as const;
-  const 父 = await 认父记录(挂在, 要改);
+  const 父 = await 认附件父记录(a, 要改);
   if ("错" in 父) return 父;
   return { a, 叫法: 父.叫法 };
 }

@@ -10,7 +10,9 @@ import Link from "next/link";
 import { App, Select, Input, Checkbox } from "antd";
 import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
-import { applyProposal, undoProposal, type 撤销凭据 } from "@/app/(app)/dashboard/apply";
+import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
+import { 取走名片原图 } from "@/lib/card-scan/originals";
+import { 传附件 } from "@/lib/attachment-upload";
 import { describeProposal, missingFields, 只留选中的改动, 可改字段表, type Proposal } from "@/lib/agent/proposals";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
@@ -96,6 +98,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       setState("done");
       // 不再弹「已给某某记了一条…」：卡上落的那个印说的就是这件事，同一句话说两遍是噪音
       if (焦点在卡里) requestAnimationFrame(() => 对话框?.focus());
+      // 名片建的线索：选的几张原图存成它（或建出来的主要联系人）的附件。存完再刷一次，附件数跟着出来
+      if (r.附件去处) void 存名片原图(r.附件去处);
       /*
         **落库之后要刷这一页。**
         0.38.0 之前这张卡只出现在首页，首页没有会过期的列表，所以不刷也看不出来。
@@ -109,6 +113,25 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       setState("idle");
       setErr(r.error);
     }
+  }
+
+  /**
+   * 逐张传，不并发：几张大图同时压、同时传，慢机器上会卡住界面。
+   * 线索已经建好了，图没传上去不回滚，只说清几张没存、到哪补（企业版联系人附件，2026-10-28）
+   */
+  async function 存名片原图(去处: 附件去处) {
+    const 图们 = 取走名片原图(proposal.id);
+    if (!图们.length) return;
+    const 挂在 = "contactId" in 去处 ? { contactId: 去处.contactId } : { leadId: 去处.leadId };
+    const 错: string[] = [];
+    for (const f of 图们) {
+      const r = await 传附件(挂在, f);
+      if (!r.ok) 错.push(r.error);
+    }
+    const 到哪补 = "contactId" in 去处 ? "到客户的联系人上点「附件」补传" : "到线索页编辑这条线索补传";
+    if (错.length === 图们.length) message.warning(`名片照片没存上：${错[0]}。${到哪补}`);
+    else if (错.length) message.warning(`${图们.length} 张名片照片存了 ${图们.length - 错.length} 张，${错.length} 张没存上（${错[0]}）。${到哪补}`);
+    router.refresh();
   }
 
   async function undo() {

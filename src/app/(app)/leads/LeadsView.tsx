@@ -1,5 +1,6 @@
 "use client";
 
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { requiredText } from "@/lib/form-validation";
 
 import { 签约叫 } from "@/lib/business-config";
@@ -65,6 +66,7 @@ export default function LeadsView({
   要下一步 = false,
   线索分配开着 = false,
   满额提醒 = [],
+  联系人附件 = false,
 }: {
   rows: Row[];
   /** 库里一共多少条。行只取了前 300，分页条不能拿行数冒充总数 */
@@ -84,6 +86,11 @@ export default function LeadsView({
   线索分配开着?: boolean;
   /** 企业版自动分配因都已满额没分出去的提醒，只有市场管理、总管理员有（lib/enterprise/lead-full-notice.ts） */
   满额提醒?: 满额提醒[];
+  /**
+   * 企业版联系人附件（2026-10-28）：编辑线索时表单底下摆附件区（名片原图等），转客户时这些附件跟到联系人上。
+   * 新建时不摆：线索还没有 id，存了再传
+   */
+  联系人附件?: boolean;
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -453,6 +460,12 @@ export default function LeadsView({
             </Col>
           </Row>
         </Form>
+        {联系人附件 && editing && (
+          <div style={{ marginTop: 4 }}>
+            <div className="section-title" style={{ marginBottom: 8 }}>联系人附件</div>
+            <AttachmentsPanel 归属={{ leadId: editing.id }} 说明="把名片或联系人相关图片拖到这里，或点一下选图片" />
+          </div>
+        )}
       </Modal>
       {能自动分配 && <AssignLeadModal lead={分配中} 关={() => set分配中(null)} />}
       {企业版项目 && (

@@ -28,14 +28,14 @@ export type 导出行 = {
   remark: string | null;
   /** 外贸档案（2026-10-05）。外贸模版导出时写成五列 */
   extra?: 外贸档案 | null;
-  /** 这位的商机 / 订单上一共挂了几张产品图片（D-24）。图片不进 Excel，只写张数 */
-  附件数?: { 商机: number; 订单: number } | null;
+  /** 这位的商机 / 订单上一共挂了几张产品图片（D-24）。图片不进 Excel，只写张数。联系人 = 企业版联系人附件（名片原图等，10-28） */
+  附件数?: { 商机: number; 订单: number; 联系人?: number } | null;
 };
 
-/** 「商机 2 张、订单 1 张」；一张都没有写空 */
+/** 「商机 2 张、订单 1 张、联系人 3 张」；一张都没有写空 */
 export function 附件个数说法(n: 导出行["附件数"]): string {
   if (!n) return "";
-  return [n.商机 ? `商机 ${n.商机} 张` : "", n.订单 ? `订单 ${n.订单} 张` : ""].filter(Boolean).join("、");
+  return [n.商机 ? `商机 ${n.商机} 张` : "", n.订单 ? `订单 ${n.订单} 张` : "", n.联系人 ? `联系人 ${n.联系人} 张` : ""].filter(Boolean).join("、");
 }
 
 /** 行上的签约按币种；老的调用方没给 signedTotals 时把 signedAmount 当人民币 */

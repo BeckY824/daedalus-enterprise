@@ -3,7 +3,7 @@
 import { useFollowHistory } from "./useFollowHistory";
 
 
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { 只读上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -36,6 +36,7 @@ import TaskForm from "./TaskForm";
 import OpportunityForm from "../../opportunities/OpportunityForm";
 import PlanForm from "./PlanForm";
 import ContactForm from "./ContactForm";
+import ContactAttachments from "./ContactAttachments";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
@@ -112,6 +113,7 @@ export default function RecordView({
   报价记录: 报价记录档 = [],
   项目们 = null,
   旺旺们 = [],
+  联系人附件数 = null,
   tasks,
   plan,
   followUps,
@@ -717,10 +719,12 @@ export default function RecordView({
                   {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><号码链接 kind="mailto" value={c.email} /></div>}
                   {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span>{c.wechat}</div>}
                   {!c.phone && !c.email && !c.wechat && <div className="rec-contact-line rec-field-empty">没留联系方式</div>}
+                  {联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
                   {联系人操作(c)}
                 </div>
               ) : (
-              <div key={c.id} className="rec-mini">
+              <Fragment key={c.id}>
+              <div className="rec-mini">
                 <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12 }}>{initial(c.name)}</Avatar>
                 {/* 截断成「母亲…」之后，鼠标停上去得看得到全名 */}
                 <span className="rec-mini-n" title={c.name}>
@@ -732,6 +736,9 @@ export default function RecordView({
                     悬停或键盘焦点进来时盖在右边那段说明上出现，和时间线每条的做法一样 */}
                 {联系人操作(c)}
               </div>
+              {/* 企业版没开项目模式时联系人还是一行一个：附件那一行摆在名字底下 */}
+              {联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
+              </Fragment>
               ),
             )}
           </div>
