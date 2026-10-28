@@ -164,10 +164,10 @@ describe("意图直连（J-148 / J-149）", () => {
   });
 });
 
-/* 上线前第 3 期 3.6：关掉的功能（lib/features.ts），AI 那边也不开。2026-10-05 订单打开了、供应商页仍关着 */
+/* 上线前第 3 期 3.6：关掉的功能（lib/features.ts），AI 那边也不开。2026-10-05 订单打开了；供应商页 2026-10-28 连同 list_suppliers 删了 */
 describe("关掉的功能不交给模型", async () => {
-  const { 订单, 供应商页 } = await import("@/lib/features");
-  it.runIf(!供应商页)("工具表里没有 list_suppliers；模型照名字叫了也不执行", async () => {
+  const { 订单 } = await import("@/lib/features");
+  it("工具表里没有 list_suppliers；模型照名字叫了也不执行", async () => {
     剧本 = [{ name: "list_suppliers", args: "{}" }];
     const r = await 问("我有哪些供应商");
     expect(给的工具.length).toBeGreaterThanOrEqual(1);

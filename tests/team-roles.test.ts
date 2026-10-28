@@ -340,29 +340,7 @@ describe("业务员只看自己的 + 公海", () => {
     }
   });
 
-  it("供应商（2026-10-06 复查）：业务员打开一家供应商，只看到自己客户的比价和订单，看不到同事客户的名字", async () => {
-    const 厂 = await raw.supplier.create({ data: { name: "共用的厂" } });
-    for (const [k, owner] of [["小王的客户", 小王], ["小李的客户", 小李]] as const) {
-      const o = await raw.tradeOrder.create({ data: { no: `S-${k}`, customerId: ids[k], ownerId: owner } });
-      await raw.tradeOrderPurchase.create({ data: { orderId: o.id, supplierId: 厂.id } });
-      const 商机 = await raw.opportunity.findFirstOrThrow({ where: { customerId: ids[k] } });
-      await raw.supplierQuote.create({ data: { opportunityId: 商机.id, supplierId: 厂.id, product: `${k} 的货` } });
-    }
-    try {
-      const { 供应商详情, 供应商列表 } = await import("@/lib/supplier-db");
-      当("wang");
-      进团队();
-      const 详 = await 供应商详情(厂.id);
-      expect(详?.purchases.map((p) => p.客户)).toEqual(["小王的客户"]);
-      expect(详?.quotes.map((q) => q.客户)).toEqual(["小王的客户"]);
-      expect((await 供应商列表()).find((x) => x.id === 厂.id)).toMatchObject({ 比价: 1, 合作单数: 1 });
-      出团队();
-      expect((await 供应商详情(厂.id))?.purchases).toHaveLength(2);
-    } finally {
-      await raw.tradeOrder.deleteMany();
-      await raw.supplier.deleteMany();
-    }
-  });
+  // 供应商详情（2026-10-06 复查）那条：供应商页连同 lib/supplier-db 2026-10-28 已删，用例跟着删
 
   it("二审：业务员在编辑框里把客户交给同事、同时改了 WhatsApp——保存成功，其余档案格不被清掉", async () => {
     const id = ids["小王的客户"];
@@ -388,27 +366,19 @@ describe("业务员只看自己的 + 公海", () => {
     }
   });
 
-  it("回归核对 W-041 / W-048 / W-010：订单节点、单据按客户限定；AI 列供应商只带自己客户的比价；业务员编的默认订单号不撞同事看不到的单", async () => {
-    const 厂 = await raw.supplier.create({ data: { name: "共用的厂2" } });
+  it("回归核对 W-041 / W-010：订单节点、单据按客户限定；业务员编的默认订单号不撞同事看不到的单（W-048 的 list_suppliers 2026-10-28 已删）", async () => {
     const 今 = new Date();
     const 日 = `${今.getFullYear()}${String(今.getMonth() + 1).padStart(2, "0")}${String(今.getDate()).padStart(2, "0")}`;
     for (const [k, owner] of [["小王的客户", 小王], ["小李的客户", 小李]] as const) {
       // 小李那张单的号就是今天的第 1 号：小王看不到它，但编号时不能再编出同一个号
       const o = await raw.tradeOrder.create({ data: { no: owner === 小李 ? `${日}-1` : `N-${k}`, customerId: ids[k], ownerId: owner, nodes: { create: [{ idx: 1, name: "询盘" }] }, docs: { create: [{ name: "PI", sort: 0 }] } } });
       void o;
-      const 商机 = await raw.opportunity.findFirstOrThrow({ where: { customerId: ids[k] } });
-      await raw.supplierQuote.create({ data: { opportunityId: 商机.id, supplierId: 厂.id, product: `${k} 的货` } });
     }
     try {
       当("wang");
       进团队();
       expect(await db.tradeOrderNode.count()).toBe(1);
       expect(await db.tradeOrderDoc.count()).toBe(1);
-      const ctx = { userId: 小王, userName: "小王", b: await getBusiness(), recordOffset: 0, proposals: [] } as unknown as ToolContext;
-      const 出 = await TOOL_MAP.get("list_suppliers")!.run({ keyword: "共用的厂2" }, ctx);
-      const 比价 = JSON.stringify(出.data);
-      expect(比价).toContain("小王的客户");
-      expect(比价).not.toContain("小李的客户");
       const { 写签约的订单 } = await import("@/lib/order-contract");
       const k = await raw.contract.create({ data: { customerId: ids["小王的客户"], amount: 1, signedAt: 今 } });
       const 单 = await db.$transaction((tx) => 写签约的订单(tx, { 签约id: k.id, customerId: ids["小王的客户"], ownerId: 小王, amount: 1, currency: "USD", 附加: {} }));
@@ -417,7 +387,6 @@ describe("业务员只看自己的 + 公海", () => {
       出团队();
       await raw.tradeOrder.deleteMany();
       await raw.contract.deleteMany({ where: { customerId: ids["小王的客户"], amount: 1 } });
-      await raw.supplier.deleteMany();
     }
   });
 

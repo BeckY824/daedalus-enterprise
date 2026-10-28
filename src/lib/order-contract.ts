@@ -74,7 +74,7 @@ export async function 写签约的订单(
   const 现在 = a.现在 ?? new Date();
   const 填的号 = a.附加.no !== undefined ? 文本(a.附加.no, 40) : undefined;
   const payment = a.附加.payment !== undefined ? 文本(a.附加.payment, 60) || null : undefined;
-  // 和供应商档案页同一个规矩：去首尾空格、最长 60 字、名字一字不差算同一家（suppliers/actions.ts saveSupplier）
+  // 供应商的规矩：去首尾空格、最长 60 字、名字一字不差算同一家（档案页 2026-10-28 删了，规矩照旧）
   const 供应商名 = a.附加.supplier !== undefined ? 文本(a.附加.supplier, 60) : undefined;
 
   const 已有 = await tx.tradeOrder.findUnique({ where: { contractId: a.签约id }, select: { id: true, no: true, depositDue: true, purchase: { select: { supplierId: true, supplier: { select: { name: true } } } } } });
@@ -131,7 +131,7 @@ export async function 写签约的订单(
         currency: a.currency,
         payment: payment ?? null,
         contractId: a.签约id,
-        // 节点、单据这一版不摆（lib/features.ts 订单节点），照旧建上：哪天打开时老订单不至于一步都没有
+        // 节点、单据的页面 2026-10-28 已删，这里照旧建上：同步表、启动清理都还认这两张子表，删建法另起一单
         nodes: {
           // 订单就是客户确认了（一笔签约）：询盘 → 客户确认这前 4 步一律算走完，不论挂没挂上商机（二审）
           create: 节点名们.map((name, i) => {
@@ -145,8 +145,8 @@ export async function 写签约的订单(
     });
   }
   /*
-    比价里「选用」的那家（供应商页开着时有比价）：新建、从商机转来、人又没填供应商——带它过去（二审：原来 createOrder 里有，
-    订单改走签约之后断了）。人填了就以人填的为准
+    比价里「选用」的那家（比价页 2026-10-28 已删，库里原有的比价记录还认）：新建、从商机转来、人又没填供应商——带它过去
+    （二审：原来新建订单时有，订单改走签约之后断了）。人填了就以人填的为准
   */
   if (!已有 && !供应商 && a.opportunityId) {
     const 选 = await tx.supplierQuote.findFirst({ where: { opportunityId: a.opportunityId, verdict: "选用" }, orderBy: { quotedAt: "desc" }, select: { supplierId: true } });

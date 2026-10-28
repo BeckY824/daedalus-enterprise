@@ -1,13 +1,11 @@
 import { redirect } from "next/navigation";
-import { 订单节点 } from "@/lib/features";
 import { 读收藏 } from "@/lib/favorites";
 import { 客户总数 } from "@/lib/pool-db";
 import { 看得到的在谈商机数 } from "@/lib/scope-sql";
 import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
-import { 算提醒 } from "@/lib/reminders";
-import { 数提醒, 取订单提醒项 } from "@/lib/reminders-db";
+import { 数提醒 } from "@/lib/reminders-db";
 import { getBusiness } from "@/lib/business";
 import { BusinessProvider } from "@/lib/business-client";
 import { businessTimeZone } from "@/lib/business-clock";
@@ -67,11 +65,9 @@ export default async function AppLayout({
     但完成、改期、新建之后各处都会 router.refresh()——那时它跟着变。中栏要的数据在 @pane 槽位里各自查
   */
   const 业务 = getBusiness();
-  const [要跟, 订单提醒项, business, ua, 有AI, models, 收藏, 客户数, 在谈商机数] = await Promise.all([
+  const [要跟, business, ua, 有AI, models, 收藏, 客户数, 在谈商机数] = await Promise.all([
     // 只要两个数：在库里数（lib/reminders-db.ts 数提醒，口径同 算提醒），不把名下没做的全拉回来
     数提醒(user.id),
-    // 订单节点这一版不上（lib/features.ts）：不取，左栏和 Dock 上也就没有订单的数
-    订单节点 ? 取订单提醒项(user.id) : Promise.resolve([]),
     // 业务术语（学员/客户、院校/年级/专业…）：全站客户端组件从这里拿
     业务,
     headers().then((h) => h.get("user-agent") ?? ""),
@@ -115,7 +111,6 @@ export default async function AppLayout({
         user={user}
         workspace={workspace ? { name: workspace.name, multiple: workspaces.length > 1, billing: multiTenant() && workspace.role === "OWNER" && !是共享工作区(workspace.slug) } : undefined}
         要跟={要跟}
-        订单要看={(({ 超期, 今天 }) => ({ 超期, 今天 }))(算提醒([], new Date(), 订单提醒项).订单)}
         desktop={desktop}
         反馈去向={企业版() ? "none" : 本地模式() || multiTenant() ? "cloud" : "github"}
         // 企业版只用项目一条线：左栏和 ⌘K 没有商机，线索叫「新线索」（lib/enterprise/project-only.ts）

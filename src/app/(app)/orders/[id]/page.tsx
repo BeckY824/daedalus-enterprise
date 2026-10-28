@@ -13,6 +13,6 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const o = await 订单详情(id);
   if (!o) notFound();
-  // 只有轻量的订单页——信息 + 挂在它上面的跟进。节点那一套页面（OrderView / OrderForm）企业版仓库 10-28 删了，见 lib/features.ts 订单节点
+  // 只有轻量的订单页——信息 + 挂在它上面的跟进。节点那一套企业版仓库 10-28 删了，见 lib/features.ts 顶上的说明
   return <OrderLite o={o} />;
 }

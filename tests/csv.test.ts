@@ -7,7 +7,7 @@
  * 公式注入（打开即执行）。
  */
 import { describe, it, expect } from "vitest";
-import { toCsv, csvCell, BOM } from "@/lib/csv";
+import { toCsv, csvCell, BOM } from "./helpers/csv";
 
 describe("中文与编码", () => {
   it("必须带 BOM，否则 Excel 打开中文是乱码", () => {

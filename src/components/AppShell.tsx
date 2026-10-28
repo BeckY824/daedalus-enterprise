@@ -1,6 +1,6 @@
 "use client";
 
-import { 订单, 供应商页 } from "@/lib/features";
+import { 订单 } from "@/lib/features";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { palette } from "@/lib/palette";
 import { useRouter, usePathname } from "next/navigation";
@@ -20,7 +20,6 @@ import {
   DollarOutlined,
   ProjectOutlined,
   ContainerOutlined,
-  ShopOutlined,
   InteractionOutlined,
   SettingOutlined,
   DeploymentUnitOutlined,
@@ -75,11 +74,6 @@ type Props = {
    * 和桌面端 Dock 上的数是同一个——左栏「跟进」、手机顶栏铃铛都挂它，人在 Dock 上看见 1，打开应用能顺着找到那个 1
    */
   要跟: { 逾期: number; 今天: number };
-  /**
-   * 订单里要看的节点（外贸模版，2026-10-03）：超期 + 今天到期。挂在左栏「订单」上，
-   * Dock 上的数 = 「跟进」这个数 + 它（lib/reminders.ts）。没有订单就是 0，什么都不显示
-   */
-  订单要看?: { 超期: number; 今天: number };
   /** 跑在桌面端（Electron）里：红黄绿钮嵌在图标栏顶上，系统标题栏不再画 */
   desktop: boolean;
   /**
@@ -130,7 +124,7 @@ type Props = {
 /** 面板常驻要的最小窗口宽度，见 AppShell 里 窄窗 那段 */
 const 面板放不下 = "(max-width: 1599px)";
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -209,13 +203,11 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     就叫桌面端的壳马上再问一次，Dock 上的数跟着变。原来只有计划页会叫，别处处理完 Dock 要等下一分钟。
     首次挂载不叫：壳自己启动后就在问
   */
-  const 订单数 = 订单要看.超期 + 订单要看.今天;
-  const 订单说法 = 订单数 > 0 ? `${订单数} 个节点要看${订单要看.超期 > 0 ? `（超期 ${订单要看.超期}）` : ""}` : "";
   const 上次要跟 = useRef<number | null>(null);
   useEffect(() => {
-    if (上次要跟.current !== null && 上次要跟.current !== 要跟数 + 订单数) void window.desktopReminders?.刷新();
-    上次要跟.current = 要跟数 + 订单数;
-  }, [要跟数, 订单数]);
+    if (上次要跟.current !== null && 上次要跟.current !== 要跟数) void window.desktopReminders?.刷新();
+    上次要跟.current = 要跟数;
+  }, [要跟数]);
 
   const nav = useMemo(
     () => [
@@ -245,8 +237,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
             { key: "/contacts", icon: <ContactsOutlined />, label: "联系人", 组: "更多" as const },
             { key: "/channels", icon: <DeploymentUnitOutlined />, label: "渠道", 组: "更多" as const },
           ]),
-      // 供应商（3c）同样外贸才有：通用销售没有「找工厂比价」这一步
-      ...(b.template === "trade" && 供应商页 ? [{ key: "/suppliers", icon: <ShopOutlined />, label: "供应商", 组: "更多" as const }] : []),
       ...(workspace?.billing ? [{ key: "/billing", icon: <DollarOutlined />, label: "开通订阅", 组: "更多" as const }] : []),
     ],
     [b.customer, b.template, b.projectMode, workspace?.billing, 企业版项目],
@@ -255,7 +245,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   // 选中项取最长匹配前缀，/customers/xxx 也算在客户管理下
   const 少动 = useReducedMotion();
   const selectedKey = useMemo(() => {
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/orders", "/suppliers", "/follow-ups", "/settings", "/billing"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/orders", "/follow-ups", "/settings", "/billing"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
@@ -357,7 +347,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
                 if (n.key !== selectedKey) set去向(n.key);
               }
       }
-      aria-label={n.key === "/follow-ups" && 要跟说法 ? `${n.label}，${要跟说法}` : n.key === "/orders" && 订单说法 ? `${n.label}，${订单说法}` : n.label}
+      aria-label={n.key === "/follow-ups" && 要跟说法 ? `${n.label}，${要跟说法}` : n.label}
       className={`rail-item${亮项 === n.key ? " on" : ""}`}
     >
       {/* 选中那块底色是**同一块**在两项之间滑过去的（layoutId），不是这边灭那边亮。
@@ -372,9 +362,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
           点进去是记录页，页头「计划」按钮上还挂着同一个数，再点就是逾期和今天那两组 */}
       {n.key === "/follow-ups" && 要跟数 > 0 && (
         <span className="rail-count" title={`${要跟说法}${desktop ? "，和应用图标提示一致" : "，查看跟进计划中的逾期和今天"}`}>{要跟数 > 99 ? "99+" : 要跟数}</span>
-      )}
-      {n.key === "/orders" && 订单数 > 0 && (
-        <span className="rail-count" title={`${订单说法}${desktop ? "，计入应用图标提示" : ""}`}>{订单数 > 99 ? "99+" : 订单数}</span>
       )}
       {/* 灰的数只是「有多少」，不是「要处理」：和上面那个红的分开，红的才催人 */}
       {(计数[n.key] ?? 0) > 0 && <span className="rail-num">{计数[n.key]}</span>}

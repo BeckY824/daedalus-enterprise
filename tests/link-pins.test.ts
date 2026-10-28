@@ -41,7 +41,7 @@ import { saveBusiness, DEFAULT_BUSINESS } from "@/lib/business";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { parseFollowUpDraft } from "@/app/(app)/customers/[id]/ai";
 import { 认页面 } from "@/lib/ai-context-page";
-import { 订单, 供应商页 } from "@/lib/features";
+import { 订单 } from "@/lib/features";
 
 const ROOT = path.resolve(__dirname, "..");
 let 我: string;
@@ -150,7 +150,7 @@ describe("L-071 改了状态显示名，速记解析的提示词跟着说", () =
 });
 
 describe("L-111 关着的页，AI 面板不给指路", () => {
-  it.runIf(!供应商页)("/suppliers 没有上下文说法；开着的订单页、别的页照旧有", () => {
+  it("/suppliers（2026-10-28 已删）没有上下文说法；开着的订单页、别的页照旧有", () => {
     if (订单) expect(认页面("/orders", null)?.提示).toContain("list_orders");
     else expect(认页面("/orders", null)).toBeNull();
     expect(认页面("/suppliers", null)).toBeNull();

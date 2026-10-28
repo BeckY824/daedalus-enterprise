@@ -12,11 +12,11 @@ import { 金额 } from "@/lib/currency";
 import type { 订单详情数据 } from "@/lib/order-db";
 import ContractForm from "../../customers/[id]/ContractForm";
 import { addOrderNote } from "../actions";
-import { 供应商页, 报价明细 } from "@/lib/features";
+import { 报价明细 } from "@/lib/features";
 import { 小计, 报价合计 } from "@/lib/quote";
 
 /**
- * 一张订单，轻量版（2026-10-05 外贸客户建议；节点关着时用它，见 lib/features.ts 订单节点）。
+ * 一张订单，轻量版（2026-10-05 外贸客户建议；订单节点那一套 2026-10-28 已删，订单详情只剩这一版）。
  *
  * 客户要的就两样：订单上的几项信息（订单号、客户、金额、付款方式、供应商、确认时间），
  * 和「对订单执行做跟进的记录」——所以下面是挂在这张订单上的跟进，顶上一个框直接记一笔。
@@ -67,7 +67,7 @@ export default function OrderLite({ o }: { o: 订单详情数据 }) {
           <Descriptions.Item label="付款方式">{o.payment ?? <span className="muted">—</span>}</Descriptions.Item>
           <Descriptions.Item label="供应商">
             {o.采购?.supplierName
-              ? 供应商页 && o.采购.supplierId ? <Link href={`/suppliers/${o.采购.supplierId}`}>{o.采购.supplierName}</Link> : o.采购.supplierName
+              ? o.采购.supplierName
               : <span className="muted">—</span>}
           </Descriptions.Item>
           <Descriptions.Item label="订单确认时间">{fmtDate(确认)}</Descriptions.Item>

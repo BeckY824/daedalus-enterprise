@@ -2,7 +2,7 @@
  * 企业版只用项目时老入口加闸（10-28 定版前收口，src/lib/enterprise/project-only.ts 只用项目挡老入口）。
  *
  *   合同（saveContract / deleteContract）、商机（saveOpportunity / moveStage / setOppStatus / restoreOpportunities）、
- *   订单（createOrder / saveOrder / addOrderNote）：只用项目时拒绝、一行不写
+ *   订单（addOrderNote；新建 / 改订单的入口 2026-10-28 已删）：只用项目时拒绝、一行不写
  *   没开项目模式、或不是企业版：不挡（团队版 / 个人版照旧）
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,7 +21,7 @@ import { invalidateSettingsCache } from "@/lib/settings";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { saveContract, deleteContract } from "@/app/(app)/customers/actions";
 import { saveOpportunity, moveStage, setOppStatus, restoreOpportunities } from "@/app/(app)/opportunities/actions";
-import { createOrder, saveOrder, addOrderNote } from "@/app/(app)/orders/actions";
+import { addOrderNote } from "@/app/(app)/orders/actions";
 
 let 客户 = "";
 
@@ -57,10 +57,15 @@ describe("只用项目挡老入口", () => {
     expect(await moveStage("x", "初步沟通")).toEqual(挡("商机"));
     expect(await setOppStatus("x", "WON")).toEqual(挡("商机"));
     expect(await restoreOpportunities([])).toEqual(挡("商机"));
-    expect(await createOrder({ customerId: 客户, amount: 1000 } as never)).toEqual(挡("订单"));
-    expect(await saveOrder("x", { amount: 1000 } as never)).toEqual(挡("订单"));
     expect(await addOrderNote("x", "话")).toEqual(挡("订单"));
     expect([await prisma.contract.count(), await prisma.opportunity.count(), await prisma.tradeOrder.count()]).toEqual([0, 0, 0]);
+  });
+
+  it("/orders 只用项目时转到项目页，没开项目模式照旧进", async () => {
+    const OrdersLayout = (await import("@/app/(app)/orders/layout")).default;
+    await expect(OrdersLayout({ children: null })).rejects.toMatchObject({ digest: expect.stringContaining("/projects") });
+    mocks.开 = false;
+    await expect(OrdersLayout({ children: "页" })).resolves.toBe("页");
   });
 
   it("没开项目模式：照旧能记合同、建商机", async () => {
