@@ -11,6 +11,10 @@ import { 收文件, 拼文件 } from "@/lib/ask-files";
 import { 收客户页面筛选 } from "@/lib/ai-page-filters";
 import { AI文本输入错误 } from "@/lib/ai-input";
 import { 背调一次 } from "@/lib/research/stream";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { missingFields } from "@/lib/agent/proposals";
+import { 收名片卡, 名片要查, 名片提示词 } from "@/lib/card-scan/agent-prompt";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 
 /** 一个问题最多多长。300 太短，一句完整的业务问题经常就写不下 */
 const 问题上限 = 1000;
@@ -95,20 +99,31 @@ export async function POST(req: Request) {
               req.signal.addEventListener("abort", () => abort.abort());
               // 浏览器报上来的模型名不可信，按设置页的白名单收一遍
               const model = await resolveModel(typeof body.model === "string" ? body.model : undefined);
-              const files = 收文件(body.files);
-              const 问 = 拼文件(question.trim().slice(0, 问题上限), files);
+              /*
+                企业版名片识别（2026-10-28）：认出来的卡连着发过来，问题换成固定提示词、固定先查公司和联系人，
+                回答里只放这一张卡——人核对、补齐、点确认才写库。不带上文和页面，免得别的话题混进来。
+                只认企业版只用项目的家：别的版本带了 card 也照普通问题走
+              */
+              const 名片 = 企业版() && b.projectMode === true ? 收名片卡(body.card, b) : null;
+              const files = 名片 ? undefined : 收文件(body.files);
+              const 问 = 名片
+                ? 名片提示词(名片, missingFields(名片, b, { 只用项目: true, 要下一步: (await 生效组织规则()).超时回收.开 }))
+                : 拼文件(question.trim().slice(0, 问题上限), files);
               // 当前页的上下文。浏览器来的，收一道长度；空串当没给。
               // 上限从 300 放到 1200：现在还带着这一页上列着的名字（最多 50 个）
-              const 页面 = typeof body.pageContext === "string" ? body.pageContext.trim().slice(0, 1200) : "";
-              const 范围 = 页面范围;
-              const r = await runAgent({ question: 问, user: { id: user.id, name: user.name }, b, history, 页面上下文: 页面 || undefined, 页面范围: 范围 }, { emit, model, onToken: (t) => send({ type: "token", text: t }), onReset: () => send({ type: "reset" }), signal: abort.signal });
+              const 页面 = !名片 && typeof body.pageContext === "string" ? body.pageContext.trim().slice(0, 1200) : "";
+              const 范围 = 名片 ? undefined : 页面范围;
+              const r = await runAgent(
+                { question: 问, user: { id: user.id, name: user.name }, b, history: 名片 ? undefined : history, 页面上下文: 页面 || undefined, 页面范围: 范围, 指定调用: 名片 ? 名片要查(名片) : undefined },
+                { emit, model, onToken: (t) => send({ type: "token", text: t }), onReset: () => send({ type: "reset" }), signal: abort.signal },
+              );
               // 日志只记问题和文件**名**，不记文件内容——那张表全员可读
               await recordAiUse(
                 user,
                 "ask",
                 `AI 对话：「${question.trim().slice(0, 60)}」（${r.steps} 次工具调用${model ? `，${model}` : ""}${files ? `，带了 ${files.map((f) => f.name).join("、")}` : ""}）`,
               );
-              return { ok: true as const, answer: { text: r.text, records: r.records, customers: r.customers, proposals: r.proposals } };
+              return { ok: true as const, answer: { text: r.text, records: r.records, customers: r.customers, proposals: 名片 ? [名片] : r.proposals } };
             },
             { 中断: req.signal },
           );

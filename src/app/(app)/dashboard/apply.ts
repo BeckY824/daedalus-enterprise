@@ -17,6 +17,7 @@ import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 要下一步时间 } from "@/lib/project/wizard";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 认出备注里的号码, AI建档查重 } from "@/lib/enterprise/ai-lead-dedupe";
@@ -262,7 +263,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 来源 = p.source.trim();
   const 含 = 渠道们.filter((c) => 来源.includes(c.name));
   const 渠道 = 渠道们.find((c) => c.name === 来源) ?? (含.length === 1 ? 含[0] : null);
-  if (!渠道) return { ok: false, error: "新线索要选渠道，卡上的来源对不上渠道：请到「新线索」页用向导建" };
+  if (!渠道) return { ok: false, error: `卡上的来源「${p.source}」对不上启用中的渠道：请在卡上重新选来源（渠道）` };
   const r = await 建档向导({
     客户: {
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
@@ -284,6 +285,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   return { ok: false, error: r.error };
 }
 
+const 卡上来源 = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 60) : "");
+
 async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>): Promise<ApplyResult> {
   const b = await getBusiness();
 
@@ -298,10 +301,18 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   // 人改过的值和模型给的值一样不可信，重新校验一遍
   const checked = buildProposal(input.id, input.kind, c, input as unknown as Record<string, unknown>, b);
   if (!checked.ok) return { ok: false, error: checked.error };
-  const p = checked.proposal;
+  // 企业版只用项目：商机是项目的一个阶段，不再单独建；新线索 = 线索阶段的项目（10-26 用户：「记得把线索，商机，订单都放到项目里，是三大阶段」）
+  const 只用项目 = 企业版() && b.projectMode === true;
+  /*
+    只用项目的新线索卡，来源是渠道名：照卡上原样拿（buildProposal 认不出就填「其他」，那样空着也看不出来），
+    空着就算缺，和卡上「还差来源（渠道）」同一句
+  */
+  const p: Proposal = 只用项目 && checked.proposal.kind === "add_lead"
+    ? { ...checked.proposal, source: 卡上来源((input as { source?: unknown }).source) }
+    : checked.proposal;
 
   // 前端禁用按钮不算防线：必填项没填齐就不写
-  const miss = missingFields(p, b);
+  const miss = missingFields(p, b, 只用项目 ? { 只用项目, 要下一步: (await 生效组织规则()).超时回收.开 } : undefined);
   if (miss.length) return { ok: false, error: `还差${miss.join("、")}，填好再确认` };
 
   /*
@@ -340,8 +351,6 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     }
   }
 
-  // 企业版只用项目：商机是项目的一个阶段，不再单独建；新线索 = 线索阶段的项目（10-26 用户：「记得把线索，商机，订单都放到项目里，是三大阶段」）
-  const 只用项目 = 企业版() && b.projectMode === true;
   if (只用项目 && p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
 
   let done: { ok: true; 附件去处?: 附件去处 } | { ok: false; error: string };
