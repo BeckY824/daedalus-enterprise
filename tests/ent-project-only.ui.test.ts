@@ -1,8 +1,8 @@
 /**
  * 企业版只用项目一条线（2026-10-26 用户定：去掉商机，线索改名「新线索」，首页改成对话框）。
  *
- *   左栏：企业版项目没有「商机」，「线索」叫「新线索」；开关关（团队版项目模式、个人版）和原来一样
- *   ⌘K：企业版项目没有商机、商机管道两条，换成项目
+ *   左栏：企业版项目没有「商机」，「线索」叫「新线索」；开关关时线索不改名，商机一项 10-28 起也不摆（/opportunities 一律转 /projects）
+ *   ⌘K：没有商机、商机管道两条，项目模式开着就有项目
  *   没配 AI 的首页：企业版项目不是数据看板，是一张「AI 未配置」卡；管理员才有「去配置 AI」
  *   Windows 1024 / 1280 / 1366 宽度下左栏和那张卡不横向溢出
  */
@@ -49,28 +49,25 @@ it("企业版项目：左栏没有「商机」，线索叫「新线索」，项�
   expect(errors).toEqual([]); await page.close();
 });
 
-it("开关关（团队版项目模式）：左栏照旧有「商机」，线索不改名", async () => {
+it("开关关（团队版项目模式）：线索不改名；商机一项 10-28 起也不摆", async () => {
   const { page, errors } = await 打开(false);
   const t = await 左栏(page);
-  expect(t).toContain("商机");
+  expect(t).not.toMatch(/商机/);
   expect(t).not.toContain("新线索");
   expect(t).toMatch(/线索/);
   expect(errors).toEqual([]); await page.close();
 });
 
-it("⌘K：企业版项目没有商机两条，换成项目；开关关照旧", async () => {
+it("⌘K：没有商机两条，换成项目；开关关也一样（10-28 删了商机两条）", async () => {
   for (const 企业版项目 of [true, false]) {
     const { page } = await 打开(企业版项目);
     await page.keyboard.press("Control+k");
     const dialog = page.getByRole("dialog"); await dialog.waitFor();
     await dialog.locator("input").fill("商机");
     const t = await dialog.innerText();
-    if (企业版项目) expect(t).not.toMatch(/商机管道/);
-    else expect(t).toContain("商机管道");
-    if (企业版项目) {
-      await dialog.locator("input").fill("项目");
-      expect(await dialog.innerText()).toContain("线索、商机、订单三个阶段");
-    }
+    expect(t).not.toMatch(/商机管道/);
+    await dialog.locator("input").fill("项目");
+    expect(await dialog.innerText()).toContain("线索、商机、订单三个阶段");
     await page.close();
   }
 });

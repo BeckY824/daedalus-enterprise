@@ -126,7 +126,6 @@ const 一级: Record<string, 页> = {
     工具: "query_records（表=联系人）",
     提醒: "联系人在自己的一张表里，search_customers 查不到他们。问某一位客户有哪些联系人时另说——那走 search_customers 再 get_customer。",
   },
-  "/opportunities": { 名: "商机", 提示: "用户正在看商机列表", 工具: "list_opportunities", 查一个: { 工具: "list_opportunities", 参数: "customerName" } },
   // 团队版项目模式（开关开着左栏才有）；list_projects 也只在项目模式交给模型
   "/projects": { 名: "项目", 提示: "用户正在看项目看板（每张卡一个项目，按阶段分列；点开是项目详情）", 工具: "list_projects", 查一个: { 工具: "list_projects", 参数: "keyword" } },
   "/orders": {
@@ -135,7 +134,6 @@ const 一级: Record<string, 页> = {
     工具: "list_orders",
     查一个: { 工具: "list_orders", 参数: "customerName" },
   },
-  "/opportunities/pipeline": { 名: "商机 · 管道", 提示: "用户正在看商机管道看板", 工具: "list_opportunities" },
   "/follow-ups": {
     名: "跟进记录",
     提示: "用户正在看跟进记录列表",

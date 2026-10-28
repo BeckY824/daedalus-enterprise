@@ -29,12 +29,6 @@ export type 提醒项 = {
   方式?: string | null;
 };
 
-/**
- * 外贸订单的一个节点（2026-10-03）：没完成、也不是不适用的，排了截止日或者标了卡住。
- * 和计划 / 待办分开数：它们点进去是两个地方（订单一览、跟进计划），各自的角标各数各的，Dock 上是两个之和。
- */
-export type 订单提醒项 = { orderId: string; no: string; 节点: string; 时间: Date | null; 卡住: boolean };
-
 export type 定时项 = { key: string; at: string; 标题: string; 客户: string; customerId: string; 方式?: string | null };
 
 export type 提醒摘要 = {
@@ -49,11 +43,7 @@ export type 提醒摘要 = {
   错过: 定时项[];
   /** 逾期里最久的那一个，早上那条汇总要点名 */
   最久: { 客户: string; 天: number } | null;
-  /**
-   * 订单节点（外贸模版才有）：超期 = 截止日在今天之前或卡住，今天 = 今天到期。和订单一览里的红格、黄格（今天那一天）同一个口径（lib/order.ts 节点灯）。
-   * 左栏「订单」上的数 = 超期 + 今天；Dock 上的数 = 跟进那两个 + 这两个。
-   */
-  订单: { 超期: number; 今天: number; 最久: { no: string; 节点: string; 天: number } | null };
+  // 订单节点 2026-10-28 随开关删了，这里不再数订单；桌面壳没收到「订单」那一项就当 0（desktop/reminders.js）
 };
 
 const 天 = 86_400_000;
@@ -100,7 +90,7 @@ export function 今天界线(now = new Date()): { 今天开始: Date; 明天开�
   return { 今天开始: 零点(now), 明天开始: businessDayjs(now).add(1, "day").startOf("day").toDate(), 今天串: calendarDay(now) };
 }
 
-export function 算提醒(项: 提醒项[], now = new Date(), 订单项: 订单提醒项[] = []): 提醒摘要 {
+export function 算提醒(项: 提醒项[], now = new Date()): 提醒摘要 {
   const { 今天开始, 明天开始, 今天串 } = 今天界线(now);
   let 逾期 = 0;
   let 今天 = 0;
@@ -140,21 +130,5 @@ export function 算提醒(项: 提醒项[], now = new Date(), 订单项: 订单�
   const 最久 = 最早逾期
     ? { 客户: 最早逾期.客户, 天: calendarDaysBetween(最早逾期日, 今天串) }
     : null;
-  return { 逾期, 今天, 定时, 错过, 最久, 订单: 算订单(订单项, 今天开始, 明天开始) };
-}
-
-function 算订单(项: 订单提醒项[], 今天开始: Date, 明天开始: Date): 提醒摘要["订单"] {
-  let 超期 = 0;
-  let 今天 = 0;
-  let 最早: 订单提醒项 | null = null;
-  for (const x of 项) {
-    if (x.卡住 || (x.时间 && x.时间 < 今天开始)) {
-      超期++;
-      if (x.时间 && x.时间 < 今天开始 && (!最早 || x.时间 < 最早.时间!)) 最早 = x;
-    } else if (x.时间 && x.时间 < 明天开始) {
-      今天++;
-    }
-  }
-  const 最久 = 最早 ? { no: 最早.no, 节点: 最早.节点, 天: calendarDaysBetween(calendarDay(最早.时间!), calendarDay(今天开始)) } : null;
-  return { 超期, 今天, 最久 };
+  return { 逾期, 今天, 定时, 错过, 最久 };
 }

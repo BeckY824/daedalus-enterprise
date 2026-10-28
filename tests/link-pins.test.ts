@@ -139,11 +139,13 @@ describe("L-071 改了状态显示名，速记解析的提示词跟着说", () =
 });
 
 describe("L-111 关着的页，AI 面板不给指路", () => {
-  it("/suppliers（2026-10-28 已删）没有上下文说法；开着的订单页、别的页照旧有", () => {
+  it("/suppliers、/opportunities（2026-10-28 已删）没有上下文说法；开着的订单页、别的页照旧有", () => {
     if (订单) expect(认页面("/orders", null)?.提示).toContain("list_orders");
     else expect(认页面("/orders", null)).toBeNull();
     expect(认页面("/suppliers", null)).toBeNull();
-    expect(认页面("/opportunities", null)?.提示).toContain("list_opportunities");
+    expect(认页面("/opportunities", null)).toBeNull();
+    expect(认页面("/opportunities/pipeline", null)).toBeNull();
+    expect(认页面("/customers", null)?.提示).toContain("search_customers");
   });
 });
 

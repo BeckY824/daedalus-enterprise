@@ -58,11 +58,7 @@ function 造(种子: number, now: Date): SentinelInput {
     const i = 挑客户();
     return { customerId: 编号(i), customerName: `客户${i}`, ownerName: "乙", name: `商机${k}`, stage: "初步沟通", updatedAt: 几天前(5, 70) };
   });
-  const lateOrderNodes = Array.from({ length: Math.floor(r() * 池 * 0.2) }, (_, k) => {
-    const i = 挑客户();
-    return { orderId: `o${k}`, orderNo: `NO${k}`, idx: 1 + (k % 5), nodeName: "订舱", dueAt: r() < 0.2 ? null : 几天前(-5, 40), 卡住: r() < 0.3, customerId: 编号(i), customerName: `客户${i}`, ownerName: "丙" };
-  });
-  return { overduePlans, customers, opportunities, lateOrderNodes };
+  return { overduePlans, customers, opportunities };
 }
 
 describe("合并：和 buildWatchlist 一起判、切前 n 条一样", () => {
@@ -74,7 +70,7 @@ describe("合并：和 buildWatchlist 一起判、切前 n 条一样", () => {
       const 全 = 判(input, now);
       const 清单 = 判({ ...input, customers: [] }, now);
       const 按客户 = new Map(清单.map((x) => [x.customerId, x]));
-      const 沉睡 = 判({ overduePlans: [], opportunities: [], lateOrderNodes: [], customers: input.customers }, now);
+      const 沉睡 = 判({ overduePlans: [], opportunities: [], customers: input.customers }, now);
       for (const s of 沉睡) {
         const o = 按客户.get(s.customerId);
         if (!o) 见过.只沉睡++;
@@ -142,7 +138,6 @@ async function 原来(now: Dayjs) {
       overduePlans: plans.map((p) => ({ customerId: p.customer.id, customerName: p.customer.name, ownerName: p.owner.name, subject: p.subject, plannedAt: scheduleValue(p.plannedAt, p.plannedOn)! })),
       customers: customers.map((c) => ({ id: c.id, name: c.name, followStatus: c.followStatus, lastFollowAt: c.lastFollowAt, createdAt: c.createdAt, ownerName: c.salesOwner.name })),
       opportunities: opps.map((o) => ({ customerId: o.customer.id, customerName: o.customer.name, ownerName: o.owner.name, name: o.name, stage: stageLabel(business, o.stage), updatedAt: o.activityAt ?? o.updatedAt })),
-      lateOrderNodes: [],
     },
     now.toDate(),
     business.customer,

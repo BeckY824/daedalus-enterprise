@@ -32,11 +32,11 @@ export async function GET(req: Request) {
     没登录云端账号、或者这个目录还是上一个账号的：什么都不报。
     Dock 上挂着一个上一个人的数、或者登录页后面弹一条「今天有 3 个要跟进」，都是在替别人说话。
   */
-  if (归属对不上() || !读云端凭据()) return NextResponse.json({ 逾期: 0, 今天: 0, 定时: [], 错过: [], 最久: null, 订单: { 超期: 0, 今天: 0, 最久: null } });
+  if (归属对不上() || !读云端凭据()) return NextResponse.json({ 逾期: 0, 今天: 0, 定时: [], 错过: [], 最久: null });
 
   const 我 = await 本机我(prisma);
-  if (!我) return NextResponse.json({ 逾期: 0, 今天: 0, 定时: [], 错过: [], 最久: null, 订单: { 超期: 0, 今天: 0, 最久: null } });
+  if (!我) return NextResponse.json({ 逾期: 0, 今天: 0, 定时: [], 错过: [], 最久: null });
 
-  // 订单节点 2026-10-28 已删：早报、Dock 数字里不算订单，回包里「订单」那一项恒为 0（壳照旧认这个形状）
+  // 订单节点 2026-10-28 已删：回包不带「订单」，壳当 0（desktop/reminders.js）
   return NextResponse.json(算提醒(await 取提醒项(我.id), new Date()));
 }
