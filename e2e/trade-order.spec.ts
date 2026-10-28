@@ -137,7 +137,7 @@ test("外贸：转为订单 → 客户页订单区 → 跟进挂订单 → 订�
   await page.getByRole("main").locator(".rec-tl-order", { hasText: "PI-E2E-01" }).click();
   await page.waitForURL(/\/orders\/[^/?]+$/);
   await expect(page.locator(".ord-notes").first()).toContainText("工厂说 10 月 25 日货好");
-  // 节点开着时订单页是节点那一套（e2e/order-nodes.spec.ts 走它），挂在整单上的跟进在「整单的记录」里——上面那句已经验过
+  // 节点那一套页面企业版仓库删了（lib/features.ts 订单节点），订单页只有轻量版
   if (!订单节点) {
     await page.getByLabel("在这张订单上记一笔").fill("订舱了，船期 11/2");
     await page.getByRole("button", { name: /记\s*下/ }).click();
