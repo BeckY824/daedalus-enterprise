@@ -202,6 +202,18 @@ test("8. 两个人同时改同一条客户：改不同字段自动合并，改�
     await expect(page.getByRole("dialog")).toBeVisible();
   }
 
+  /** 企业版列表不摆公司、行业两列（10-28 去遗留），改看编辑框里存下的值 */
+  async function 改动都在(page: Page, 期望: Record<string, string>) {
+    if (企业版) {
+      await 打开编辑框(page);
+      for (const [字段, 值] of Object.entries(期望)) await expect(page.getByRole("dialog").getByLabel(字段)).toHaveValue(值);
+      await page.keyboard.press("Escape");
+      return;
+    }
+    await page.goto("/customers");
+    for (const 值 of Object.values(期望)) await expect(page.getByRole("row", { name: new RegExp(客户名) })).toContainText(值);
+  }
+
   // 两人同时打开同一条
   await 打开编辑框(甲);
   await 打开编辑框(乙);
@@ -216,9 +228,7 @@ test("8. 两个人同时改同一条客户：改不同字段自动合并，改�
   await expect(乙.getByText("已保存")).toBeVisible();
 
   // 两人的改动都在
-  await 甲.goto("/customers");
-  await expect(甲.getByRole("row", { name: new RegExp(客户名) })).toContainText("星辰科技");
-  await expect(甲.getByRole("row", { name: new RegExp(客户名) })).toContainText("软件服务");
+  await 改动都在(甲, { 公司: "星辰科技", 行业: "软件服务" });
 
   // 这次两人改同一项，后提交的必须被拦下
   await 打开编辑框(甲);
@@ -233,8 +243,7 @@ test("8. 两个人同时改同一条客户：改不同字段自动合并，改�
   await expect(乙.getByRole("dialog")).toContainText("公司");
 
   // 甲的值保住了
-  await 甲.goto("/customers");
-  await expect(甲.getByRole("row", { name: new RegExp(客户名) })).toContainText("远望信息");
+  await 改动都在(甲, { 公司: "远望信息" });
 
   await 甲上下文.close();
   await 乙上下文.close();

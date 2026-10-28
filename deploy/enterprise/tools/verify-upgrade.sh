@@ -15,6 +15,7 @@
 # 证书是自签或内网 CA 时加 INSECURE=1（curl 不校验证书）；DOMAIN=localhost 自动不校验。
 # 库是空的（CI、刚装的测试机）时加 FILL=1：先往每张表灌演练数据（drill/fill.js），不然「没少、没变」等于没验。
 # 新版本有意改了某张核心表的旧数据（数据迁移）时，CORE_SKIP="表名 …" 跳过那几张，并在发版说明里写清楚。
+# 企业版启动时有意清掉的老表（商机、合同、订单、供应商及子表）行数和哈希都不比，见 drill/legacy.js。
 set -euo pipefail
 
 DRILL="$(cd "$(dirname "$0")/drill" && pwd)"
@@ -26,7 +27,7 @@ source "$CRM_DIR/scripts/lib.sh"
 need_docker
 
 case "${1:-}" in
-  "" | -h | --help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  "" | -h | --help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
 # --load 的包路径是相对调用处写的，lib.sh 已经 cd 走了，这里换成绝对路径
 ARGS=("$@")
@@ -39,19 +40,15 @@ DOMAIN="$(env_get DOMAIN)"
 CURL=(curl -fsS --max-time 20 --resolve "$DOMAIN:443:127.0.0.1")
 if [ "${INSECURE:-}" = "1" ] || [ "$(tls_mode)" = internal ]; then CURL+=(-k); fi
 
-# 每张表的行数，一行一张「表名 行数」，按表名排好
+# 每张表的行数，一行一张「表名 行数」，按表名排好。
+# 企业版只用项目（10-28）：新版本启动时有意清空商机、合同、订单、供应商这几张老表，这部分不比，见 drill/legacy.js
 table_counts() {
-  crm_sh 'node --experimental-sqlite -e "
-    const { DatabaseSync } = require(\"node:sqlite\");
-    const db = new DatabaseSync(\"/data/crm.db\");
-    const ts = db.prepare(\"SELECT name FROM sqlite_master WHERE type=\x27table\x27 AND name NOT LIKE \x27sqlite_%\x27 ORDER BY name\").all();
-    for (const t of ts) console.log(t.name + \" \" + db.prepare(\"SELECT COUNT(*) AS n FROM \\\"\" + t.name + \"\\\"\").get().n);
-  " 2>/dev/null'
+  cat "$DRILL/legacy.js" "$DRILL/table-counts.js" | crm_sh "node --experimental-sqlite - 2>/dev/null"
 }
 
 # 核心业务表的内容哈希。第一次（不带参数）第一行是起点各表的列，之后传这行进来，只按这些列算
 core_hash() {
-  { if [ -n "${1:-}" ]; then printf 'const BASE = %s;\n' "$1"; fi; cat "$DRILL/core-hash.js"; } |
+  { if [ -n "${1:-}" ]; then printf 'const BASE = %s;\n' "$1"; fi; cat "$DRILL/legacy.js" "$DRILL/core-hash.js"; } |
     crm_sh "CORE_SKIP='${CORE_SKIP:-}' node --experimental-sqlite - 2>/dev/null"
 }
 
