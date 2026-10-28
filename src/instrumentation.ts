@@ -9,6 +9,9 @@ export async function register() {
   // 企业版用不到的老表清一次（只做一次，见 enterprise/legacy-cleanup.ts）
   const { 清理一次 } = await import("./lib/enterprise/legacy-cleanup");
   void 清理一次();
+  // 老线索里还在推的转成线索阶段的项目（只做一次，见 enterprise/lead-to-project.ts）
+  const { 转项目一次 } = await import("./lib/enterprise/lead-to-project");
+  void 转项目一次();
   const { 启动定时 } = await import("./lib/enterprise-import/sync");
   启动定时();
   const { 启动夜扫 } = await import("./lib/project/nightly");
