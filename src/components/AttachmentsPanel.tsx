@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { App, Button, Image, Popconfirm, Spin, Upload } from "antd";
 import { DeleteOutlined, FileOutlined, InboxOutlined } from "@ant-design/icons";
-import { 附件上限字节, 图片长边, 可以压, 要重画, 是图片, 换成jpg, 每条最多, 规整文件名, 超限说明, 读大小, 只收图片, 收的类型, 不收说明, type 附件, type 归属 } from "@/lib/attachment-rules";
+import { 附件上限字节, 图片长边, 是图片, 每条最多, 读大小, 只收图片, 收的类型, type 附件, type 归属 } from "@/lib/attachment-rules";
+import { 传附件, 归属查询 } from "@/lib/attachment-upload";
 
 declare global {
   interface Window {
@@ -15,13 +16,17 @@ declare global {
 /**
  * 商机 / 订单上的「图片」区（2026-10-22 D-24）：拖进来或点选；出缩略图、点开看大图；能删。
  * 图片先在这台电脑上压到长边 2000 像素再传，超了上限当场说超了多少，不等传完。
- * 这一版只收图片（只收图片）；别的文件那套（写名字大小、点开交给系统程序）留着，放开时不用重写
+ * 这一版只收图片（只收图片）；别的文件那套（写名字大小、点开交给系统程序）留着，放开时不用重写。
+ *
+ * 企业版联系人附件（10-28）也用这一块：归属 = 线索 / 联系人，说明 换成名片那句；只读 = 只看不传不删（只读的客户）。
+ * on个数：张数变了告诉外面（联系人卡上的「附件 N」跟着变）
  */
-export default function AttachmentsPanel({ 归属: 挂在 }: { 归属: 归属 }) {
+export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说明, on个数 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void }) {
   const { message } = App.useApp();
   const [列表, set列表] = useState<附件[] | null>(null);
   const [传着, set传着] = useState(0);
-  const 查询 = "opportunityId" in 挂在 ? `opportunityId=${encodeURIComponent(挂在.opportunityId)}` : `orderId=${encodeURIComponent(挂在.orderId)}`;
+  const 查询 = 归属查询(挂在);
+  useEffect(() => { if (列表) on个数?.(列表.length); }, [列表, on个数]);
 
   const 读 = useCallback(async (): Promise<附件[]> => {
     const r = await fetch(`/api/attachments?${查询}`, { cache: "no-store" });
@@ -53,26 +58,11 @@ export default function AttachmentsPanel({ 归属: 挂在 }: { 归属: 归属 })
   }, [读, message]);
 
   async function 传一个(f: File) {
-    const 名 = 规整文件名(f.name);
-    const 不收 = 不收说明(名, f.type);
-    if (不收) return void message.error(不收);
     set传着((n) => n + 1);
     try {
-      const 好 = await 准备(f, 名);
-      const 超 = 超限说明(好.名, 好.体.size);
-      if (超) return void message.error(超);
-      const q = new URLSearchParams({ name: 好.名 });
-      if (好.w && 好.h) { q.set("w", String(好.w)); q.set("h", String(好.h)); }
-      const r = await fetch(`/api/attachments?${查询}&${q}`, {
-        method: "POST",
-        body: 好.体,
-        headers: { "Content-Type": 好.体.type || "application/octet-stream" },
-      });
-      const j = (await r.json().catch(() => ({}))) as { error?: string };
-      if (!r.ok) return void message.error(j.error ?? `「${名}」没传上去（${r.status}）`);
+      const r = await 传附件(挂在, f);
+      if (!r.ok) return void message.error(r.error);
       await 刷新();
-    } catch (e) {
-      message.error(`「${名}」没传上去：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       set传着((n) => n - 1);
     }
@@ -113,7 +103,7 @@ export default function AttachmentsPanel({ 归属: 挂在 }: { 归属: 归属 })
 
   return (
     <div className="att-panel" data-testid="attachments-panel">
-      <div data-testid="attachment-upload">
+      {!只读 && <div data-testid="attachment-upload">
       <Upload.Dragger
         multiple
         showUploadList={false}
@@ -125,17 +115,17 @@ export default function AttachmentsPanel({ 归属: 挂在 }: { 归属: 归属 })
         }}
       >
         <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-        <p className="ant-upload-text">{满了 ? `已经 ${每条最多} 张了，先删掉几张不要的` : 只收图片 ? "把产品图片拖到这里，或点一下选图片" : "把文件拖到这里，或点一下选文件"}</p>
+        <p className="ant-upload-text">{满了 ? `已经 ${每条最多} 张了，先删掉几张不要的` : 说明 ?? (只收图片 ? "把产品图片拖到这里，或点一下选图片" : "把文件拖到这里，或点一下选文件")}</p>
         <p className="ant-upload-hint">JPG、PNG、GIF、WebP、BMP 都行；单张最多 {读大小(附件上限字节)}，会先压到长边 {图片长边} 像素再存</p>
       </Upload.Dragger>
-      </div>
+      </div>}
 
       {列表 === null ? (
         <div style={{ padding: 16, textAlign: "center" }}><Spin /></div>
       ) : (
         <>
           {传着 > 0 && <div className="muted" style={{ marginTop: 10 }}><Spin size="small" /> 正在传 {传着} 个…</div>}
-          {列表.length === 0 && 传着 === 0 && <div className="muted" style={{ marginTop: 10 }}>{只收图片 ? "还没有图片。" : "还没有附件。"}</div>}
+          {列表.length === 0 && 传着 === 0 && <div className="muted" style={{ marginTop: 只读 ? 0 : 10 }}>{只收图片 ? "还没有图片。" : "还没有附件。"}</div>}
           {图们.length > 0 && (
             <Image.PreviewGroup>
               <div className="att-pics">
@@ -147,7 +137,7 @@ export default function AttachmentsPanel({ 归属: 挂在 }: { 归属: 归属 })
                       <div className="att-missing" data-testid="attachment-missing">文件不在这台电脑上</div>
                     )}
                     <div className="att-pic-name">{a.name}</div>
-                    <删按钮 a={a} 删={删} />
+                    {!只读 && <删按钮 a={a} 删={删} />}
                   </div>
                 ))}
               </div>
@@ -160,7 +150,7 @@ export default function AttachmentsPanel({ 归属: 挂在 }: { 归属: 归属 })
                   <FileOutlined />
                   <a onClick={() => void 打开(a)} title="用这台电脑上的程序打开">{a.name}</a>
                   {a.有文件 ? <span className="muted">{读大小(a.size)}</span> : <span className="muted" data-testid="attachment-missing">文件不在这台电脑上</span>}
-                  <删按钮 a={a} 删={删} />
+                  {!只读 && <删按钮 a={a} 删={删} />}
                 </li>
               ))}
             </ul>
@@ -177,36 +167,4 @@ function 删按钮({ a, 删 }: { a: 附件; 删: (a: 附件) => Promise<void> })
       <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label={`删掉 ${a.name}`} data-testid="attachment-delete" />
     </Popconfirm>
   );
-}
-
-/**
- * 能压的图片长边超过 图片长边 就在这台电脑上缩：JPEG / WebP / BMP 出 JPEG（白底，0.85），PNG 还是 PNG（可能是带透明的图标）。
- * JPEG / WebP / BMP 不超也重画一遍，去掉 EXIF（拍摄地点、相机型号）；按 EXIF 里的方向先转正，竖拍的不会躺倒。
- * GIF、别的文件原样；读不出来的图也原样传
- */
-async function 准备(f: File, 名: string): Promise<{ 体: Blob; 名: string; w?: number; h?: number }> {
-  if (!可以压(f.type) || typeof createImageBitmap !== "function") return { 体: f, 名 };
-  let 图: ImageBitmap;
-  try { 图 = await createImageBitmap(f, { imageOrientation: "from-image" }); } catch { return { 体: f, 名 }; }
-  try {
-    if (!要重画(f.type, 图.width, 图.height)) return { 体: f, 名, w: 图.width, h: 图.height };
-    const 比 = Math.min(1, 图片长边 / Math.max(图.width, 图.height));
-    const w = Math.round(图.width * 比);
-    const h = Math.round(图.height * 比);
-    const 画布 = document.createElement("canvas");
-    画布.width = w;
-    画布.height = h;
-    const g = 画布.getContext("2d");
-    if (!g) return { 体: f, 名, w: 图.width, h: 图.height };
-    const png = f.type === "image/png";
-    // JPEG 没有透明，透明处垫白（和界面主题无关，所以不走 token）
-    if (!png) { g.fillStyle = "white"; g.fillRect(0, 0, w, h); }
-    g.imageSmoothingQuality = "high";
-    g.drawImage(图, 0, 0, w, h);
-    const 体 = await new Promise<Blob | null>((ok) => 画布.toBlob(ok, png ? "image/png" : "image/jpeg", 0.85));
-    if (!体) return { 体: f, 名, w: 图.width, h: 图.height };
-    return { 体, 名: png || f.type === "image/jpeg" ? 名 : 换成jpg(名), w, h };
-  } finally {
-    图.close();
-  }
 }

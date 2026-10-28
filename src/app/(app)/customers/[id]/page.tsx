@@ -20,6 +20,7 @@ import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户 } from "@/lib/team-scope";
 import { 管全队客户 } from "@/lib/constants";
+import { 附件个数 } from "@/lib/attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +106,8 @@ export default async function CustomerDetailPage({
         : null}
       // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
       只读={await 只读客户(defaultClient, customer)}
+      // 企业版联系人附件（10-28）：每位联系人挂了几张；附件表不分权限，能看到这位客户就能看到他联系人的附件
+      联系人附件数={企业版() ? Object.fromEntries((await 附件个数(defaultClient, { contactIds: customer.contacts.map((c) => c.id) })).联系人) : null}
       customer={{
         id: customer.id,
         name: customer.name,

@@ -10,6 +10,7 @@ import { 客户筛选条件, 客户行字段, 成客户行, type 客户条件, t
 import { 负责人候选 } from "@/lib/owners";
 import type { 跟进导出行 } from "./export-table";
 import { 客户附件个数 } from "@/lib/attachments";
+import { 企业版 } from "@/lib/enterprise/switch";
 import { 订单 } from "@/lib/features";
 
 /** 旧调用保留有明确截断标志的有界结果；产品按钮使用下面的完整分批出口。 */
@@ -69,7 +70,7 @@ export async function 导出客户(条件: 客户条件): Promise<
       orderNo: f.orderNode?.order.no ?? null,
       ownerName: f.owner.name,
     }));
-  const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 订单);
+  const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 订单, 企业版());
   return { ok: true, rows: rows.map((r) => ({ ...成客户行(r, 号), 附件数: 附件.get(r.id) ?? null })), 跟进, 截断了: 全部.length > 导出上限, 跟进截断了: 跟进行.length > 跟进上限 };
 }
 
@@ -111,7 +112,7 @@ export async function 读取完整导出批次(条件: 客户条件, 截止文�
   if (类别 === "客户") {
     const all = await prisma.customer.findMany({ where: { AND: [where, ...(游标 ? [{ id: { gt: 游标 } }] : [])] }, orderBy: { id: "asc" }, take: 5001, select: 客户行字段 });
     const rows = all.slice(0, 5000);
-    const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 订单);
+    const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 订单, 企业版());
     const values = rows.map((r) => ({ ...成客户行(r, 号), 附件数: 附件.get(r.id) ?? null }));
     return { 类别: "客户" as const, rows: values, 指纹: createHash("sha256").update(JSON.stringify(values)).digest("hex"), 游标: all.length > 5000 ? rows.at(-1)!.id : null };
   }

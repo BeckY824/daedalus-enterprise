@@ -95,6 +95,7 @@ export default async function LeadsPage({
       要下一步={要下一步}
       线索分配开着={线索分配开着}
       满额提醒={满额提醒们}
+      联系人附件={企业版()}
       rows={rows.map((l) => ({
         id: l.id,
         name: l.name,

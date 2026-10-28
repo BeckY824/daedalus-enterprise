@@ -34,6 +34,7 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
+import { 线索附件转给联系人 } from "@/lib/attachments";
 
 /**
  * 企业版「线索分配和配额」开着时，负责人只能经「分配」换（F2，10-25 实测）：编辑、新建里随手改负责人
@@ -107,6 +108,8 @@ export async function saveLead(input: {
   // 新建、没人管的线索，原负责人都当作「我」：建给自己、认领照常，给别人要走分配
   const 不给 = input.id && !原 ? null : await 改负责人不给(user, 原?.ownerId ?? user.id, data.ownerId);
   if (不给) return { ok: false as const, error: 不给 };
+  // 新建的线索编号：企业版名片建档拿它挂名片原图（联系人附件）
+  let 新id: string | undefined;
   if (input.id) {
     const 写了 = await prisma.lead.updateMany({ where: { id: input.id, ...版本条件(input.版本) }, data });
     if (写了.count === 0) return { ok: false as const, error: 原来源 === undefined ? "这条线索已经不在了（可能已删除）" : 版本冲突 };
@@ -117,6 +120,7 @@ export async function saveLead(input: {
     });
   } else {
     const l = await prisma.lead.create({ data });
+    新id = l.id;
     await recordAudit({
       user, action: "create", entity: "Lead", entityId: l.id,
       summary: `新建线索「${data.name}」：${data.source} · ${data.status}`,
@@ -126,7 +130,7 @@ export async function saveLead(input: {
 
   revalidatePath("/leads");
   revalidatePath("/dashboard");
-  return { ok: true as const };
+  return { ok: true as const, id: input.id ?? 新id };
 }
 
 export async function deleteLeads(ids: string[]) {
@@ -284,7 +288,10 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
             }
           : undefined,
       },
+      include: { contacts: { select: { id: true } } },
     });
+    // 企业版联系人附件：线索上的名片原图跟到新建的联系人上（线索没写联系人就只留在线索上，导出按客户照样数得到）
+    if (企业版() && customer.contacts[0]) await 线索附件转给联系人(tx, id, customer.contacts[0].id);
 
     // 外贸模版：来源、邮箱进客户的外贸档案（2026-10-05）。规整不过（邮箱格式怪）就不带那一格，原文还在线索上
     if (b.template === "trade") {
@@ -346,6 +353,14 @@ export async function mergeLeadInto(leadId: string, customerId: string, 跟进?:
       data: { status: "已转化", convertedAt: new Date(), ...(已关联 ? { remark: 备注 } : { customerId }) },
     });
     if (!gate.count) return null;
+    // 企业版联系人附件：线索上的名片原图挂到那位客户的联系人上——电话 / 邮箱对得上的那位，没有就关键联系人，再没有就最早那位
+    if (企业版()) {
+      const 号 = 电话.ok ? 电话.phone : null;
+      const 认人 = [...(号 ? [{ phone: 号 }] : []), ...(邮箱 ? [{ email: 邮箱 }] : [])];
+      const 人 = (认人.length ? await tx.contact.findFirst({ where: { customerId, OR: 认人 }, select: { id: true } }) : null)
+        ?? await tx.contact.findFirst({ where: { customerId }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], select: { id: true } });
+      if (人) await 线索附件转给联系人(tx, leadId, 人.id);
+    }
     return { projectId: 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId, customerId, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进 }) : undefined };
   });
   if (!结果) return { ok: false, error: "这条线索刚刚已经转化过了，刷新看看" };

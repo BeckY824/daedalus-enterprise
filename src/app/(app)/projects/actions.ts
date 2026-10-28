@@ -122,7 +122,8 @@ export async function 建档向导(输入: 建档向导输入) {
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
     const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!) : null;
-    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(分了 ?? {}) };
+    // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
+    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
   } catch (e) { return 不在了(e); }
 }
 
