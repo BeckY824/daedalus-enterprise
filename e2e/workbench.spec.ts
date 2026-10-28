@@ -740,6 +740,7 @@ test("数据「现在」那四张卡，每一张都点得进一个能把这个�
 });
 
 test("「逾期跟进」点进计划页：先看全部成员，同事那条逾期的也在（T-023）", async ({ page }) => {
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：数据页四张卡是新线索 / 商机 / 订单 / 异常状态，没有逾期跟进卡");
   // 自己备一条李四名下的逾期计划：只有我自己的计划时「我的 / 全部成员」那一层不摆，测不出来
   const p = 连库();
   const 李四 = await p.user.findFirstOrThrow({ where: { email: "lisi" } });

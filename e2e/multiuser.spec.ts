@@ -260,6 +260,7 @@ test.describe("D2 组：批量改负责人的撤销（T-019）", () => {
 
 test.describe("E 组：同账号多设备与在线停用", () => {
   test("同一个账号在两台设备上同时登录，两边都能正常用", async ({ browser }) => {
+    test.skip(企业版, "企业版只用项目：客户的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     const 设备一 = await 另一个人(browser, 甲账号);
     const 设备二 = await 另一个人(browser, 甲账号);
 

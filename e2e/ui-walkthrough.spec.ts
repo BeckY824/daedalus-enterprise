@@ -394,6 +394,7 @@ test("商机管道：末档不再结构性为零，且时间窗下拉是接线�
 });
 
 test("推荐链上的客户，详情页要能看出上下游与归属", async ({ page }) => {
+  test.skip(企业版, "企业版客户页只留基础信息、联系人、关联项目，不摆推荐关系（RecordView.tsx 推荐节）");
   await 登录(page);
   await page.goto("/customers");
   await page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").fill("链条3号");
