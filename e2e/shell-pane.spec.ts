@@ -370,13 +370,29 @@ test.describe("设置浮层：背后不冒面板、高亮和正文对得上、�
     await page.goto("/settings");
     const 页签 = page.getByRole("tablist", { name: "设置分类" }).getByRole("tab");
     await expect(页签.first()).toBeVisible();
-    await page.waitForLoadState("networkidle").catch(() => {});
+    /*
+      原来开始记之前只拿 networkidle 兜一下（等不到就吞掉），负载高时页面刚加载的那批请求——左栏链接的预取、
+      没回来的 RSC——都在开始记之后才冒出来，被算成「切页签重拉」（CI 上有一次收到 23 条，看数量像是这一批；本机没复现出原样）。
+      现在：先等页面 load 完、页签区有且只有一个亮着、页签已被 React 接管，点第一下之前那一刻才开始记；
+      只算真正把页面重要一遍的请求：整页文档，或者不是预取的 RSC 请求。
+      router.replace / router.push / router.refresh 发的 RSC 请求都不带 next-router-prefetch，照样会被抓到，
+      J-186 要防的回归（换回 router.replace 让 force-dynamic 的整页重拉）一条不漏；放过的只有预取——预取不会让页面重拉
+    */
+    await page.waitForLoadState("load");
+    await expect(page.getByRole("tablist", { name: "设置分类" }).locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
+    // 服务端出的 HTML 里页签就已经在、也亮着；React 接管（挂上 onClick）之前点下去会落空。等页签身上有了 React 的属性再点
+    await expect.poll(() => 页签.last().evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), { message: "页签一直没被 React 接管" }).toBe(true);
     const 重拉: string[] = [];
+    let 开始记 = false;
     page.on("request", (r) => {
+      if (!开始记) return;
       const u = r.url();
-      if (r.resourceType() === "document" || /[?&]_rsc=/.test(u) || r.headers()["rsc"] === "1") 重拉.push(`${r.method()} ${u}`);
+      const h = r.headers();
+      const 是rsc = /[?&]_rsc=/.test(u) || h["rsc"] === "1";
+      if (r.resourceType() === "document" || (是rsc && !h["next-router-prefetch"])) 重拉.push(`${r.method()} ${u}`);
     });
     const n = Math.min(await 页签.count(), 3);
+    开始记 = true;
     for (let i = 0; i < n; i++) {
       await 页签.nth(i).click();
       await expect(页签.nth(i)).toHaveAttribute("aria-selected", "true");
