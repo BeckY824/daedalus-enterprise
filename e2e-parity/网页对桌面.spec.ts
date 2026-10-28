@@ -23,7 +23,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { PrismaClient } from "../src/generated/prisma";
 import { 灌真客户 } from "../e2e-layout/种子";
-import { 关掉弹窗 } from "../e2e-layout/外贸模版";
+import { 关掉弹窗 } from "../e2e-layout/排版闸门";
 import { 库 } from "./global-setup";
 import 有意的差别 from "./有意的差别.json";
 
