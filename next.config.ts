@@ -63,8 +63,8 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
 
   /*
-    只给 e2e 用（playwright.feedback-chain.config.ts）：同一份代码里同时起「云端」和「桌面端本地服务」两个 next dev。
-    Next 16 一个构建目录只许一个 dev（<distDir>/dev/lock），所以云端那个换个目录；
+    只给 e2e 用（playwright.layout.config.ts 开发模式）：同一个工作树里自己开着的 next dev 和排版闸门那个 next dev 不抢目录。
+    Next 16 一个构建目录只许一个 dev（<distDir>/dev/lock），所以闸门那个换个目录；
     tsconfig 也换成一个 extends 主配置的，免得 next dev 往 tsconfig.json 的 include 里加那个目录。不设就是默认
   */
   distDir: process.env.NEXT_DIST_DIR || ".next",

@@ -23,7 +23,6 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:hosted": "playwright test --config playwright.hosted.config.ts",
-    "test:desktop": "playwright test --config playwright.desktop.config.ts",
     "test:ent": "playwright test --config playwright.enterprise.config.ts",
     "test:team": "node scripts/team-sim/run.mjs",
     "test:team:scoped": "node scripts/team-sim/run.mjs --scoped",

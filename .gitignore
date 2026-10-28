@@ -85,16 +85,12 @@ desktop/server-bundle/
 desktop/.smoke-data/
 desktop/*.log
 prisma/e2e-hosted/
-# 桌面端本地模式 e2e 的库与数据目录（playwright.desktop.config.ts，每轮重建）
-/prisma/e2e-desktop.db*
-/prisma/e2e-desktop-data/
 # 网页对桌面截图对比的库（playwright.parity.config.ts，每轮重建）
 /prisma/e2e-parity.db*
 # 运营台排版压测（playwright.team-qa-ops.config.ts）
 /prisma/e2e-team-qa-ops/
-# 应用内反馈回复整条链（playwright.feedback-chain.config.ts）：云端那个 next dev 的构建目录和库
+# 另换的 next 构建目录（next.config.ts 的 distDir；排版闸门开发模式用 .next-layout-ent）
 /.next-*/
-/prisma/e2e-feedback-chain/
 # 企业版主流程（playwright.enterprise.config.ts）：库和每轮随机的测试密码
 /prisma/e2e-ent/
 # 排版闸门的企业版服务（e2e-layout/企业版.ts）：库、每轮随机的测试密码、给 next dev 的 tsconfig
