@@ -274,6 +274,27 @@ html.glass .auth-fine { color: var(--ink-soft); }
 .auth-mobile-mark { display: none; }
 @media (max-width: 760px) { .auth { grid-template-columns: 1fr; } .auth-side { display: none; } .auth-mobile-mark { display: block; margin-bottom: var(--s2); } }
 
+/* 演示部署的选人门（login/DemoLogin.tsx）：按角色分组，一人一行，点了就进 */
+.demo-login { width: min(400px, 100%); }
+.demo-login-group { display: flex; flex-direction: column; gap: 2px; }
+.demo-login-group h2 { margin: var(--s2) 0 var(--s1); font-size: var(--fs-min); font-weight: 500; color: var(--text-muted); letter-spacing: 0.04em; }
+.demo-login-person { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-width: 0; padding: 8px 36px 8px 12px; border: 1px solid transparent; border-radius: var(--r-card); background: none; font: inherit; text-align: left; cursor: pointer; transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+.demo-login-person:hover:not(:disabled) { background: var(--hover); border-color: var(--line-soft); }
+.demo-login-person:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.demo-login-person:disabled { cursor: default; opacity: 0.5; }
+.demo-login-person b { max-width: 100%; font-size: var(--fs-body); font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.demo-login-person span { max-width: 100%; font-size: var(--fs-min); color: var(--text-muted); overflow-wrap: anywhere; }
+.demo-login-spin { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
+
+/* 演示换人子菜单（AppShell 账号菜单，CRM_DEMO_SWITCH=1）：人多时自己滚，不撑出屏幕 */
+.demo-switch-pop .ant-dropdown-menu { max-height: 70vh; overflow-y: auto; max-width: min(320px, calc(100vw - 32px)); }
+/* 手机上二级菜单会往左弹到屏幕外（375 宽实测 left −187）：钉在左边距上，盖住一级菜单 */
+@media (max-width: 767px) { .demo-switch-pop.ant-dropdown-menu-submenu-popup { left: 16px !important; } }
+.demo-switch-gap { display: inline-block; width: 14px; }
+.demo-switch-person { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.demo-switch-person b { font-weight: 500; color: var(--ink); }
+.demo-switch-person span { font-size: var(--fs-min); color: var(--text-muted); white-space: normal; overflow-wrap: anywhere; }
+
 /* 验证码（components/OtpInput.tsx）：真正接键盘的是那个透明 input，格子只是画出来的样子 */
 .otp { --otp-gap: var(--s2); position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: var(--otp-gap); cursor: text; }
 .otp-cell { height: 52px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-card); background: var(--panel);
@@ -2601,6 +2622,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 设置 → 团队 → 部门与权限（团队版 1b）：窄窗口下每行折行，不横向撑开 */
 .team-dept-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; min-height: 28px; }
 .team-dept-acts { display: inline-flex; flex-wrap: wrap; }
+.member-roles { display: flex; flex-wrap: wrap; gap: 4px; }
+.team-dept-name { display: inline-flex; align-items: center; gap: 6px; min-width: 200px; overflow-wrap: anywhere; }
+.team-dept-branch { color: var(--text-faint); line-height: 1; }
 .team-dept-members, .team-dept-scopes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
 .team-dept-members li, .team-dept-scopes li { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
 .team-dept-members li > b { min-width: 72px; }

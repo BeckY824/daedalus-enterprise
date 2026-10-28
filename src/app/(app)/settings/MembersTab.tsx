@@ -13,6 +13,7 @@ import type { SessionUser } from "@/lib/auth";
 import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用 } from "./actions";
 import type { 停用方式 } from "@/lib/offboard-db";
 import { 按阶段说 } from "@/lib/project/member-count";
+import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 
 /** 设置 · 团队成员：谁能进、谁是管理员。新增、编辑、停用（停用要先把名下的客户转交出去） */
 
@@ -27,7 +28,15 @@ export type Row = {
   oppCount: number;
   /** 企业版：在跟（没结局）的项目按阶段数（线索 / 商机 / 订单）；有它就不摆「商机数」 */
   项目阶段?: Record<string, number>;
+  /** 企业版：组织架构里的业务角色（可多个，按固定顺序）；有它角色列就摆它，账号角色退到编辑框里叫「账号权限」 */
+  业务角色?: 业务角色[];
   followCount: number;
+};
+
+/** 管人的红、带团队的蓝，其余默认灰——跟账号角色那套颜色同一个意思 */
+const 业务角色色: Record<业务角色, string | undefined> = {
+  director: "red", admin: "red", sales_mgr: "blue", marketing_mgr: "blue",
+  sales: undefined, channel_ops: undefined, project_ops: undefined,
 };
 
 export default function MembersTab({
@@ -55,6 +64,7 @@ export default function MembersTab({
   const [editing, setEditing] = useState<Row | null>(null);
   const [恢复中, set恢复中] = useState<string | null>(null);
   const [form] = Form.useForm();
+  const 按业务角色 = users.some((u) => u.业务角色);
 
   useEffect(() => {
     if (!open) return;
@@ -242,16 +252,31 @@ export default function MembersTab({
         </div>
       ),
     },
-    {
-      title: "角色",
-      dataIndex: "role",
-      width: 90,
-      render: (v) => (
-        <Tag color={v === "ADMIN" ? "red" : v === "MANAGER" ? "blue" : "default"} style={{ margin: 0, borderRadius: 6 }}>
-          {ROLES.find((r) => r.value === v)?.label ?? v}
-        </Tag>
-      ),
-    },
+    按业务角色
+      ? {
+          title: "角色",
+          key: "业务角色",
+          width: 120,
+          render: (_: unknown, r: Row) => (
+            <div className="member-roles">
+              {(r.业务角色 ?? []).map((x) => (
+                <Tag key={x} color={业务角色色[x]} style={{ margin: 0, borderRadius: 6 }}>
+                  {角色名[x]}
+                </Tag>
+              ))}
+            </div>
+          ),
+        }
+      : {
+          title: "角色",
+          dataIndex: "role",
+          width: 90,
+          render: (v: string) => (
+            <Tag color={v === "ADMIN" ? "red" : v === "MANAGER" ? "blue" : "default"} style={{ margin: 0, borderRadius: 6 }}>
+              {ROLES.find((r) => r.value === v)?.label ?? v}
+            </Tag>
+          ),
+        },
     // 1024 宽时设置页右边只剩约 490，两个次要的数先收起，1200 以上才出（10-27）
     { title: `负责${b.customer}`, dataIndex: "customerCount", width: 80, responsive: ["xl"] },
     users.some((u) => u.项目阶段)
@@ -444,7 +469,15 @@ export default function MembersTab({
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="role" label="角色" extra="销售主管与销售目前使用相同业务权限；职位仅用于展示，管理权限由角色决定。">
+              <Form.Item
+                name="role"
+                label={按业务角色 ? "账号权限" : "角色"}
+                extra={
+                  按业务角色
+                    ? "只管能不能进后台设置；总管理、销售管理这些业务角色在「组织架构」里设。"
+                    : "销售主管与销售目前使用相同业务权限；职位仅用于展示，管理权限由角色决定。"
+                }
+              >
                 <Select options={ROLES.map((r) => ({ value: r.value, label: r.label }))} />
               </Form.Item>
             </Col>

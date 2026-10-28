@@ -10,6 +10,8 @@ import { 本地模式, 读 as 读云端凭据, 上次策略, 云端地址 } from
 import { 停用了 } from "@/lib/desktop/disabled-text";
 import { 读专属服务器 } from "@/lib/desktop/dedicated-server";
 import { 自定产品名 } from "@/lib/enterprise/brand";
+import { 读演示名单 } from "@/lib/enterprise/demo-switch";
+import DemoLogin from "./DemoLogin";
 
 /**
  * 必须动态渲染：要不要画「忘记密码」取决于运行时的 MULTI_TENANT 和 SMTP_*。
@@ -63,6 +65,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       />
     );
   }
+
+  /* 演示部署（CRM_DEMO_SWITCH=1）：不要密码，选人就进。开关关着读出来是 null，走下面的正常登录 */
+  const 演示名单 = await 读演示名单();
+  if (演示名单) return <DemoLogin 名单={演示名单} 产品名={自定产品名() ?? undefined} />;
 
   /*
     登录框那一格叫什么，取决于这个部署里账号长什么样：
