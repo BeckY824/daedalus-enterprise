@@ -17,6 +17,7 @@ import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 要下一步时间 } from "@/lib/project/wizard";
+import { 客户在推项目 } from "@/lib/project/active";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 验号码 } from "@/lib/enterprise/contact-format";
@@ -393,7 +394,13 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     done = await patchCustomer(p.customerId, p.field, p.to);
     if (done.ok && 原) 撤销 = { kind: "set_status", customerId: p.customerId, field: p.field, to: 原[p.field], 改成: p.to };
   } else if (p.kind === "add_followup") {
+    /*
+      企业版只用项目（10-28）：手动记跟进有在推项目时必挂项目；AI 卡上没地方选，这位看得到的在推项目只有一个就挂它，
+      有好几个先不挂（照旧只记在客户下）——卡片上让人挑一个是后续的事，这里不猜。挂的时候 saveFollowUp 里的 挂项目 再核一遍
+    */
+    const 在推 = 只用项目 ? await 客户在推项目(p.customerId, 2) : [];
     const r = await saveFollowUp({
+      ...(在推.length === 1 ? { projectId: 在推[0].id } : {}),
       customerId: p.customerId,
       type: p.type,
       title: p.title || null,
