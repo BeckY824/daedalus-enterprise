@@ -8,7 +8,6 @@ import path from "node:path";
 import {defaultClient as db} from "@/lib/prisma";
 import {resetDb} from "./reset";
 import {订单列表,订单详情} from "@/lib/order-db";
-import {供应商详情} from "@/lib/supplier-db";
 import {订单的钱} from "@/lib/order";
 import {忘掉限定} from "@/lib/team-scope";
 import {TOOLS} from "@/lib/agent/tools";
@@ -23,13 +22,12 @@ it("超过500/1000张订单仍全量，最旧的超期订单排在前，AI注明
  try{const rows=await 订单列表();expect(rows).toHaveLength(1001);expect(rows[0].id).toBe("total-0000");expect(new Set(rows.map(r=>r.id)).size).toBe(1001);expect(spy.mock.calls.every(([args])=>Number(args?.take)<=1000)).toBe(true)}finally{spy.mockRestore()}
  const ai=await TOOLS.find(t=>t.name==="list_orders")!.run({}, {userId:state.user.id,userName:"QA",b:DEFAULT_BUSINESS,recordOffset:0,proposals:[]});expect(ai.summary).toContain("1001 张订单");expect(ai.summary).toContain("列出");expect(ai.data).toHaveLength(30);
 });
-it("列表/详情/供应商销售额均跟真实签约精确金额，采购额独立保留，未收不读旧副本",async()=>{
+it("列表/详情均跟真实签约精确金额，未收不读旧副本（供应商详情页 2026-10-28 已删）",async()=>{
  const supplier=await db.supplier.create({data:{name:"QA工厂"}});
  const contract=await db.contract.create({data:{customerId:"order-totals-customer",amount:251,signedAt:new Date("2026-02-01"),money:{create:{currency:"USD",amountExact:250.51}}}});
  const order=await db.tradeOrder.create({data:{no:"QA-MONEY",ownerId:state.user.id,customerId:"order-totals-customer",contractId:contract.id,amount:999,currency:"EUR",depositDue:100,depositPaid:30,balancePaid:20,purchase:{create:{supplierId:supplier.id,cost:1234,currency:"CNY"}}}});
  const row=(await 订单列表())[0], detail=(await 订单详情(order.id))!;
  expect([row.amount,row.currency,row.未收]).toEqual([250.51,"USD",200.51]);expect([detail.amount,detail.currency,订单的钱(detail).未收]).toEqual([250.51,"USD",200.51]);
- const purchase=(await 供应商详情(supplier.id))!.purchases[0];expect([purchase.amount,purchase.currency,purchase.cost,purchase.costCurrency]).toEqual([250.51,"USD",1234,"CNY"]);
  await db.tradeOrder.update({where:{id:order.id},data:{balancePaid:300}});expect((await 订单列表())[0].未收).toBe(0);
 });
 it("无对应签约的旧订单保留原金额币种，负责人筛选与真实业务员范围均生效",async()=>{

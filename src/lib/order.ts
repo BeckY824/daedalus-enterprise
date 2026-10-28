@@ -29,14 +29,8 @@ export const 节点名们 = [
 /** 前四个节点是商机那一段（询盘 → 客户确认），从赢单的商机生成订单时它们已经走完了 */
 export const 成交前节点数 = 4;
 
-export const 节点状态们 = ["未开始", "进行中", "已完成", "卡住", "不适用"] as const;
-export type 节点状态 = (typeof 节点状态们)[number];
-
-export const 贸易条款们 = ["EXW", "FCA", "FOB", "CFR", "CIF", "DAP", "DDP"] as const;
+// 节点状态、贸易条款、单据状态那几张表和定金比例是节点版编辑框用的，2026-10-28 随订单节点写入口一起删了
 export const 常用付款方式 = ["T/T 30/70", "T/T 100% 前", "L/C at sight", "D/P", "PayPal", "阿里信保"];
-
-export const 单据状态们 = ["未收", "已收", "已发客户", "不需要"] as const;
-export type 单据状态 = (typeof 单据状态们)[number];
 
 /**
  * 按贸易条款默认要收的单据（2.8 那张表）。「选」「客户要才要」的不默认列，要的人自己加一行。
@@ -106,21 +100,6 @@ export function 进度(nodes: Pick<节点, "status">[]): number {
   const 适用 = nodes.filter((n) => n.status !== "不适用");
   if (!适用.length) return 100;
   return Math.round((适用.filter((n) => n.status === "已完成").length / 适用.length) * 100);
-}
-
-/**
- * 从付款方式里读出定金比例：「T/T 30/70」→ 0.3，「T/T 100% 前」→ 1。读不出来（L/C、D/P、自由文本）返回 null。
- * 只拿来**预填**定金应收，人可以改。
- */
-export function 定金比例(payment?: string | null): number | null {
-  const s = payment ?? "";
-  const 分 = s.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
-  if (分) {
-    const a = Number(分[1]), b = Number(分[2]);
-    if (a + b === 100) return a / 100;
-  }
-  if (/100\s*%?\s*前|全款|100%\s*in advance/i.test(s)) return 1;
-  return null;
 }
 
 /** 钱：尾款应收 = 金额 - 定金应收；未收 = 金额 - 定金实收 - 尾款实收（不小于 0） */

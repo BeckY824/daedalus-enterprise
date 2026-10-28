@@ -1,30 +1,14 @@
 /**
- * 订单节点超期提醒（2026-10-03 外贸第 3b 块）。
+ * 订单节点超期提醒（2026-10-03 外贸第 3b 块）——纯函数这一层。
  *   - 算提醒：订单节点单独数（超期 = 截止日在今天之前或卡住；今天 = 今天到期），点名最久的那一单那一步
  *   - 壳：Dock 上的数 = 跟进两个数 + 订单两个数；早报带订单那半句；老的本地服务不回订单当 0
  *   - 盯盘：订单超期一类，排在逾期计划前面，点理由直达那张订单那一步
- *   - 取数：只取业务员名下的、没完成没不适用、排了日子或卡住的
+ * 订单节点开关 2026-10-28 删了：库里不再取订单提醒项（/api/desktop/reminders 回包里订单恒为 0、盯盘不取订单），
+ * 「从库里取」那一段跟着删；壳和纯函数照旧认这个形状，这里继续钉着
  */
-import { 订单节点 } from "@/lib/features";
-import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  user: { id: "", name: "我", email: "me@local", role: "ADMIN", title: "管理员", avatar: null },
-}));
-// 此套件验证高级功能启用时的实现；默认关闭的服务端拒绝由remediation-feature-access单独覆盖。
-vi.mock("@/lib/features", async (original) => ({ ...(await original<object>()), 订单节点: true }));
-vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
-vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
-
-import { prisma } from "@/lib/prisma";
-import { resetDb } from "./reset";
-import { 造本人, 造客户 } from "./r2-data-helpers";
+import { describe, it, expect } from "vitest";
 import { 算提醒, type 订单提醒项 } from "@/lib/reminders";
-import { 取订单提醒项 } from "@/lib/reminders-db";
 import { buildWatchlist } from "@/lib/sentinel";
-import { loadWatchlist } from "@/lib/sentinel-data";
-import { createOrder, saveOrderNode } from "@/app/(app)/orders/actions";
-import { dayjs } from "@/lib/utils";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const 壳 = require("../desktop/reminders.js");
 
@@ -93,34 +77,5 @@ describe("盯盘：订单超期", () => {
     ]);
     expect(items[0]).toMatchObject({ reason: "订单 A-1 第 9 步「订舱」已超期 2 天", href: "/orders/o1?node=9" });
     expect(items[1].reason).toBe("订单 C-1 卡在第 7 步「生产跟进」");
-  });
-});
-
-describe("从库里取", () => {
-  let 我: string;
-  beforeEach(async () => {
-    await resetDb();
-    我 = (await 造本人()).id;
-    mocks.user = { ...mocks.user, id: 我 };
-  });
-  afterAll(async () => { await prisma.$disconnect(); });
-
-  it("取订单提醒项：只取我名下、没完成没不适用、排了日子或卡住的；盯盘里看得到超期那一步", async () => {
-    const c = await 造客户(我, { name: "Acme" });
-    const r = await createOrder({ customerId: c.id, amount: 100, currency: "USD", no: "A-1" });
-    if (!r.ok) throw new Error(r.error);
-    const 昨天 = dayjs().subtract(1, "day").endOf("day").toISOString();
-    await saveOrderNode(r.id, 5, { dueAt: 昨天 });
-    await saveOrderNode(r.id, 6, { dueAt: 昨天, status: "已完成" });
-    await saveOrderNode(r.id, 7, { dueAt: 昨天, status: "不适用" });
-    await saveOrderNode(r.id, 8, { status: "卡住" });
-    const 项 = await 取订单提醒项(我);
-    expect(项.map((x) => [x.节点, x.卡住]).sort()).toEqual([["收定金", false], ["验货 / 货好", true]]);
-    expect(await 取订单提醒项("别人")).toEqual([]);
-    expect(算提醒([], new Date(), 项).订单.超期).toBe(2);
-    const 盯 = await loadWatchlist();
-    // 订单节点这一版不上（lib/features.ts）：盯盘里不出订单
-    if (订单节点) expect(盯[0]).toMatchObject({ kind: "order_late", customerName: "Acme" });
-    else expect(盯.some((x) => x.kind === "order_late")).toBe(false);
   });
 });

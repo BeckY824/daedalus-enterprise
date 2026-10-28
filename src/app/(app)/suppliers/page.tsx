@@ -1,18 +1,10 @@
-import { 供应商页 } from "@/lib/features";
 import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth";
-import { 供应商列表 } from "@/lib/supplier-db";
-import SuppliersView from "./SuppliersView";
 
-export const dynamic = "force-dynamic";
-
-/** 供应商一览（2026-10-03 外贸第 3c 块）：评级好的、合作多的排前面；按名字 / 品类搜走网址参数 */
-export default async function SuppliersPage({ searchParams }: { searchParams: Promise<{ keyword?: string }> }) {
-  // 订单 / 供应商这一版不上（lib/features.ts）：直接输网址也打不开
-  if (!供应商页) notFound();
-  await requireUser();
-  const sp = await searchParams;
-  const k = sp.keyword?.trim();
-  const rows = await 供应商列表(k ? { OR: [{ name: { contains: k } }, { category: { contains: k } }, { region: { contains: k } }] } : {});
-  return <SuppliersView rows={rows} filters={{ keyword: sp.keyword ?? "" }} />;
+/**
+ * 供应商档案页 2026-10-28 已删（企业版到不了）。这一页只留一个 404：
+ * 排版闸门（e2e-layout/排版闸门.spec.ts）和网页对桌面（e2e-parity）还按清单访问 /suppliers，
+ * 在 (app) 里 notFound() 才带着 AI 栏，闸门的「AI栏常驻」不会红；那两份清单去掉 /suppliers 之后这个文件一起删。
+ */
+export default function SuppliersPage() {
+  notFound();
 }

@@ -24,7 +24,7 @@ import { saveCustomer, patchCustomer } from "@/app/(app)/customers/actions";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
 import { 客户导出表 } from "@/app/(app)/customers/export-table";
 import { 执行导入, type 导入方案 } from "@/app/(app)/customers/import-actions";
-import { toCsv } from "@/lib/csv";
+import { toCsv } from "./helpers/csv";
 import { 解析CSV, 成表 } from "@/lib/import/parse";
 import { 字段表, 猜列 } from "@/lib/import/fields";
 import { getBusiness, saveBusiness, DEFAULT_BUSINESS, type BusinessConfig } from "@/lib/business";

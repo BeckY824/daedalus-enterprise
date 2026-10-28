@@ -9,7 +9,7 @@
  * 渲染或用法缺陷（本项目就出现过 antd v6 的 Alert/Space 弃用属性）。
  */
 import { test, expect } from "@playwright/test";
-import { 订单, 供应商页 } from "../src/lib/features";
+import { 订单 } from "../src/lib/features";
 import { 连库, 清空业务数据 } from "./mock-data";
 import { 企业版 } from "./owner-pick";
 
@@ -40,9 +40,8 @@ const 页面 = [
   ["联系人", "/contacts"],
   // 商机列表 / 看板 10-28 删了（/opportunities 转到这里）
   ["项目", "/projects"],
-  // 外贸模版的两页（2026-10-03）：空着也不许报警。0.46.15 这一版不上（lib/features.ts），关着时页面是 404，不巡
+  // 外贸模版的订单页（2026-10-03）：空着也不许报警。关着时页面是 404，不巡（供应商页 2026-10-28 已删）
   ...(订单 ? [["订单", "/orders"]] : []),
-  ...(供应商页 ? [["供应商", "/suppliers"]] : []),
   ["跟进记录", "/follow-ups"],
   ["跟进计划", "/follow-ups/plans"],
   ["数据复盘", "/reports"],

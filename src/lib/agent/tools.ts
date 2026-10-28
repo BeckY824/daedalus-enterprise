@@ -21,14 +21,11 @@ import { 金额 as 显示金额, 合计文字, 按币种合计 } from "../curren
 import { 一行说法 } from "../quote";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 订单列表 } from "../order-db";
-import { 节点灯 } from "../order";
 import { 阶段们, 结局们, 是阶段, 是结局 } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 企业版 } from "../enterprise/switch";
-import { 订单节点 } from "../features";
 import { 现值选取, 现值表 } from "./current-values";
-import { prisma, defaultClient } from "../prisma";
-import { 读的我, 可见客户 } from "../team-scope";
+import { prisma } from "../prisma";
 import { dayjs } from "../utils";
 import { FOLLOW_TYPE_MAP, OPP_STAGES } from "../constants";
 import { formatTimeline } from "../ai-context";
@@ -834,18 +831,14 @@ export const TOOLS: Tool[] = [
   },
   {
     /*
-      外贸订单（2026-10-03）。订单是赢单之后的事：12 个节点各有截止日和状态。
-      问「哪几单超期了」「这单走到哪一步」「还有多少钱没收回来」用它。
+      外贸订单（2026-10-03；2026-10-05 外贸客户建议的轻量订单，12 个节点那一版 2026-10-28 已删）。
+      只有订单上那几项，执行进展在挂着的跟进里——别让模型去说节点、未收。
     */
     name: "list_orders",
-    description: 订单节点
-      ? "列外贸订单（赢单之后跟进交付的那张单：12 个节点——收定金、下单给工厂、生产、验货、订舱、装柜、开船、单据尾款）。" +
-        "每单给出当前节点、超期了哪几步、进度、未收金额。" +
-        "问「哪几单超期了」「某某那单走到哪了」「还有多少尾款没收」用它。"
-      : // 节点关着（2026-10-05 外贸客户建议的轻量订单）：只有订单上那几项，执行进展在挂着的跟进里——别让模型去说节点、未收
-        "列外贸订单（客户确认、下了单的那一笔）：订单号、客户、金额、付款方式、供应商、订单确认时间、业务员。" +
-        "问「某某下过几单」「这个月确认了哪些订单」「那单的付款方式是什么」用它；订单执行到哪了看那位客户的跟进记录。",
-    args: '{"customerName": "客户姓名，可空", "ownerName": "业务员姓名，可空", "onlyLate": "true/false，可空"}',
+    description:
+      "列外贸订单（客户确认、下了单的那一笔）：订单号、客户、金额、付款方式、供应商、订单确认时间、业务员。" +
+      "问「某某下过几单」「这个月确认了哪些订单」「那单的付款方式是什么」用它；订单执行到哪了看那位客户的跟进记录。",
+    args: '{"customerName": "客户姓名，可空", "ownerName": "业务员姓名，可空"}',
     async run(args) {
       const name = str(args.customerName, 30);
       const owner = str(args.ownerName, 20);
@@ -854,81 +847,17 @@ export const TOOLS: Tool[] = [
         ...(name ? { customer: { name: { contains: name } } } : {}),
         ...(owner ? { ownerId: { in: 叫这个名字的 } } : {}),
       });
-      const 现在 = new Date();
-      if (!订单节点) {
-        return {
-          summary: `${rows.length} 张订单${rows.length > 30 ? "（列出前 30 张，数量为全部筛选结果）" : ""}`,
-          data: rows.slice(0, 30).map((r) => ({
-            orderId: r.id,
-            订单号: r.no,
-            客户: r.customerName,
-            金额: 显示金额(r.amount, r.currency),
-            付款方式: r.payment ?? "未填",
-            供应商: r.supplier ?? "未填",
-            订单确认时间: dayjs(r.confirmedAt).format("YYYY-MM-DD"),
-            业务员: r.ownerName,
-          })),
-        };
-      }
-      const 选 = args.onlyLate === true || args.onlyLate === "true" ? rows.filter((r) => r.超期 > 0) : rows;
       return {
-        summary: `${选.length} 张订单${选.some((r) => r.超期) ? `，其中 ${选.filter((r) => r.超期).length} 张有超期` : ""}${选.length > 30 ? "（列出前 30 张，数量为全部筛选结果）" : ""}`,
-        data: 选.slice(0, 30).map((r) => ({
+        summary: `${rows.length} 张订单${rows.length > 30 ? "（列出前 30 张，数量为全部筛选结果）" : ""}`,
+        data: rows.slice(0, 30).map((r) => ({
           orderId: r.id,
           订单号: r.no,
           客户: r.customerName,
           金额: 显示金额(r.amount, r.currency),
-          当前节点: r.当前 ? `${r.当前.idx}. ${r.当前.name}` : "12 步都走完了",
-          超期的节点: r.nodes.filter((n) => 节点灯(n, 现在) === "红").map((n) => `${n.idx}. ${n.name}（${n.status}${n.dueAt ? `，截止 ${dayjs(n.dueAt).format("YYYY-MM-DD")}` : ""}）`),
-          进度: `${r.进度}%`,
-          未收: r.未收 > 0 ? 显示金额(r.未收, r.currency) : "收齐了",
+          付款方式: r.payment ?? "未填",
+          供应商: r.supplier ?? "未填",
+          订单确认时间: dayjs(r.confirmedAt).format("YYYY-MM-DD"),
           业务员: r.ownerName,
-        })),
-      };
-    },
-  },
-  {
-    /* 供应商（3c）：档案 + 历次比价。问「上次 LED 面板灯哪家最便宜」「XX 厂出过什么问题」用它 */
-    name: "list_suppliers",
-    description:
-      "列供应商（工厂）：品类、地区、评级、出过的问题、合作过几单，以及最近的比价（产品、出厂价、含不含票、结论和理由）。" +
-      "可按名称 / 品类 / 地区关键词筛，product 只看比过这个产品的价。问「上次 XX 哪家最便宜」「某某厂出过什么问题」「这个产品问过哪几家」用它。",
-    args: '{"keyword": "供应商名称 / 品类 / 地区里的词，可空", "product": "产品名里的词，可空"}',
-    async run(args) {
-      const k = str(args.keyword, 30);
-      const 产品 = str(args.product, 60);
-      // 业务员只看得到自己客户的比价（二审，同 lib/supplier-db.ts）：供应商不挂在客户下面，嵌套带出的比价得自己筛
-      // 团队开了互看：全队的比价都看得到（读的我 = null）
-      const 我 = await 读的我(defaultClient);
-      const 比价限 = 我 ? { opportunity: { customer: 可见客户(我) } } : {};
-      const rows = await prisma.supplier.findMany({
-        where: {
-          ...(k ? { OR: [{ name: { contains: k } }, { category: { contains: k } }, { region: { contains: k } }] } : {}),
-          ...(产品 ? { quotes: { some: { product: { contains: 产品 }, ...比价限 } } } : {}),
-        },
-        take: 30,
-        include: {
-          _count: { select: { purchases: 我 ? { where: { order: { customer: 可见客户(我) } } } : true } },
-          quotes: {
-            where: { ...(产品 ? { product: { contains: 产品 } } : {}), ...比价限 },
-            orderBy: { quotedAt: "desc" },
-            take: 5,
-            select: { product: true, unitPrice: true, currency: true, withInvoice: true, quotedAt: true, verdict: true, reason: true, opportunity: { select: { name: true } } },
-          },
-        },
-      });
-      return {
-        summary: `${rows.length} 家供应商`,
-        data: rows.map((s) => ({
-          supplierId: s.id,
-          名称: s.name,
-          品类: s.category,
-          地区: s.region,
-          评级: s.rating,
-          出过的问题: s.issues,
-          开票: s.invoice,
-          合作单数: s._count.purchases,
-          最近比价: s.quotes.map((q) => `${dayjs(q.quotedAt).format("YYYY-MM-DD")} ${q.product} ${显示金额(q.unitPrice, q.currency)}${q.withInvoice ? "（含票）" : "（不含票）"} · ${q.verdict}${q.reason ? `（${q.reason}）` : ""} · 询盘「${q.opportunity.name}」`),
         })),
       };
     },

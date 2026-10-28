@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 处理 } from "@/lib/mcp/rpc";
 import { 列工具, MCP_TOOL_NAMES } from "@/lib/mcp/tools";
-import { 订单, 供应商页 } from "@/lib/features";
+import { 订单 } from "@/lib/features";
 import { 生成令牌, 认令牌, 撤销令牌, 读令牌 } from "@/lib/mcp/token";
 
 let 我: { id: string; name: string };
@@ -87,12 +87,12 @@ describe("开出去的工具", () => {
     // 「我这周做了什么」也开出去：只读，而且在 Claude Code 那边问这句比切回应用更顺手
     expect(名字).toContain("my_recap");
     // 2026-10-03 外贸订单、供应商比价：只读。0.46.15 这一版不上（lib/features.ts），关着时不开出去
-    // 2026-10-05：订单打开（外贸客户建议），供应商页仍关着
+    // 2026-10-05：订单打开（外贸客户建议）；供应商页连同 list_suppliers 2026-10-28 删了
     expect(名字.includes("list_orders")).toBe(订单);
-    expect(名字.includes("list_suppliers")).toBe(供应商页);
+    expect(名字).not.toContain("list_suppliers");
     // 2026-10-26 企业版按项目查（三大阶段）：只读，开出去
     expect(名字).toContain("list_projects");
-    expect(名字.length).toBe(15 + (订单 ? 1 : 0) + (供应商页 ? 1 : 0));
+    expect(名字.length).toBe(15 + (订单 ? 1 : 0));
   });
 
   it("每个工具都带说明和 JSON Schema——客户端拿它做补全和校验", () => {
@@ -156,7 +156,7 @@ describe("协议", () => {
   });
 
   // 上线前第 3 期 3.6：这一版关掉的订单 / 供应商，列表里不给之外，别人的客户端照名字直接叫也不行
-  it.runIf(!供应商页)("关着的供应商：tools/call 照名字直接叫也进不来", async () => {
+  it("关着的、删掉的工具：tools/call 照名字直接叫也进不来", async () => {
     for (const name of [...(订单 ? [] : ["list_orders"]), "list_suppliers"]) {
       const r = (await 问("tools/call", { name, arguments: {} })) as { result: { isError: boolean; content: { text: string }[] } };
       expect(r.result.isError, name).toBe(true);

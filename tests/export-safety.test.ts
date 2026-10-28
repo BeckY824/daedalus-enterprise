@@ -1,6 +1,6 @@
 import { it, expect } from "vitest";
 import { unzipSync, strFromU8 } from "fflate";
-import { csvCell } from "@/lib/csv";
+import { csvCell } from "./helpers/csv";
 import { 写xlsx } from "@/lib/xlsx-write";
 it("CSV前导空白后的公式也必须作为文本，原字保留", () => {
   for (const s of [" =1+1", "   +SUM(A1)", " \t@SUM(A1)", "\n=1+1", "\uFEFF=1+1", "\u00a0-1"]) expect(csvCell(s).startsWith("\"'"), JSON.stringify(s)).toBe(true);
