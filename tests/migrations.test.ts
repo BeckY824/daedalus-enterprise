@@ -123,7 +123,7 @@ describe("迁移文件", () => {
     /*
       这条用例就是 runner 本身：一个文件一次 db.exec，抛出来的只按
       duplicate column name / already exists 放过。和 docker-entrypoint.sh、
-      desktop/server-entry.js、scripts/build-template.mjs 里的 catch 一个口径。
+      scripts/build-template.mjs 里的 catch 一个口径。
     */
     const 临时库 = path.join(ROOT, "prisma/_migration-check.db");
     rmSync(临时库, { force: true });
@@ -173,7 +173,7 @@ describe("迁移文件", () => {
       所以这里按「循环的个数」对：每一个 readdirSync（一次遍历迁移目录）
       都必须配一处容错。多一个循环少一个 catch，这条就红。
     */
-    for (const f of ["docker-entrypoint.sh", "desktop/server-entry.js", "scripts/build-template.mjs"]) {
+    for (const f of ["docker-entrypoint.sh", "scripts/build-template.mjs"]) {
       const src = readFileSync(path.join(ROOT, f), "utf8");
       const 循环 = src.match(/readdirSync/g)?.length ?? 0;
       const 放过 = src.match(new RegExp(容错.source, "g"))?.length ?? 0;

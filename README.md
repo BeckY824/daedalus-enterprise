@@ -78,7 +78,7 @@
 4. **换个行业说法**：「设置 → 业务配置」里改名词和三个档案字段（教培招生有现成预设，点一下整套换过去），全站同步
 
 Mac 使用**差量更新**，Windows 使用完整安装包覆盖更新。Windows 安装包未签名，安装说明见 [Windows 版](docs/Windows版.md)。
-安装、放行与更新见 [docs/桌面端安装.md](docs/桌面端安装.md)；实现见 [desktop/README.md](desktop/README.md)；
+安装、放行与更新见 [docs/桌面端安装.md](docs/桌面端安装.md)；
 接 Claude Code / Codex 见 [docs/MCP接入.md](docs/MCP接入.md)；
 官网要提供的下载页与版本信息见 [docs/网站对接.md](docs/网站对接.md)。
 

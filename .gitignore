@@ -78,12 +78,6 @@ prisma/shots.db*
 prisma/control.db*
 prisma/ws/
 
-# 桌面客户端的依赖与产物
-desktop/node_modules/
-desktop/dist/
-desktop/server-bundle/
-desktop/.smoke-data/
-desktop/*.log
 prisma/e2e-hosted/
 # 桌面端本地模式 e2e 的库与数据目录（playwright.desktop.config.ts，每轮重建）
 /prisma/e2e-desktop.db*
@@ -100,10 +94,7 @@ prisma/e2e-hosted/
 # 排版闸门的企业版服务（e2e-layout/企业版.ts）：库、每轮随机的测试密码、给 next dev 的 tsconfig
 /prisma/e2e-layout-ent/
 
-# 图标生成的临时目录（scripts/make-icon.mjs 每次开头就 rmSync 它，产物在 desktop/assets/）
-/.icon-build/
-
-# 本机联调时 desktop/node_modules 常是指向别处的符号链接：它是文件不是目录，上面的 node_modules/ 匹配不上，
+# node_modules 是指向别处的符号链接时它是文件不是目录，上面的 node_modules/ 匹配不上，
 # 2026-09-29 被 git add 带进过仓库（指向一个 Mac 临时目录）。不带斜杠的这条连链接一起忽略
 node_modules
 

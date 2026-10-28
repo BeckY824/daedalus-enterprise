@@ -17,7 +17,6 @@ import { HistoryOutlined } from "@ant-design/icons";
 import Markdown from "@/components/Markdown";
 import { 有没有新内容, 看过了, 全部更新记录 } from "@/app/(app)/whats-new-actions";
 import { 分节, type 一版 } from "@/lib/changelog";
-import { displayVersion, displayReleaseNotes } from "../../desktop/release-version";
 
 /** 「2026-10-04」→「10 月 4 日」：和别处的日期说法一致，年份不重要 */
 function 说日期(d: string | null): string {
@@ -119,8 +118,8 @@ export default function WhatsNew() {
       全部更新记录(),
       window.desktopShell?.version().catch(() => null),
     ]).then(([x, 桌面版本]) => set全部({
-      现在: displayVersion(桌面版本 || x.现在),
-      段: displayReleaseNotes(x.段),
+      现在: 桌面版本 || x.现在,
+      段: x.段,
     })).catch(() => set全部出错(true));
   }
 

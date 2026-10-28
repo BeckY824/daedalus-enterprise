@@ -9,11 +9,9 @@
  * 三个 workflow（CI / 镜像 / 桌面包）一起挂。本地 `npm run dev` 和 `npm test`
  * 一个字都不会说，因为它们用的是已经装好的 node_modules。
  *
- * 所以这个脚本只动四个确定的位置：
+ * 所以这个脚本只动三个确定的位置（企业库不带桌面壳，只有根目录这一个包）：
  *   package.json.version
- *   desktop/package.json.version
  *   package-lock.json 的顶层 version 和 packages[""].version
- *   desktop/package-lock.json 的同两处
  * 别的一个字节都不碰。
  *
  * 用法：node scripts/bump-version.mjs 0.31.0
@@ -40,13 +38,9 @@ function 改(相对路径, 改法) {
 }
 
 console.log(`版本号 → ${新版}`);
-for (const pkg of ["package.json", "desktop/package.json"]) {
-  改(pkg, (d) => void (d.version = 新版));
-}
-for (const lock of ["package-lock.json", "desktop/package-lock.json"]) {
-  改(lock, (d) => {
-    d.version = 新版;
-    if (d.packages?.[""]) d.packages[""].version = 新版;
-  });
-}
+改("package.json", (d) => void (d.version = 新版));
+改("package-lock.json", (d) => {
+  d.version = 新版;
+  if (d.packages?.[""]) d.packages[""].version = 新版;
+});
 console.log("\n接下来：写 CHANGELOG、提交 `chore: " + 新版 + "`、跑一次 `npm ci --dry-run` 确认锁文件没歪。");

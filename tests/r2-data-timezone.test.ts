@@ -10,7 +10,6 @@
  * 所以这里在用例里改 process.env.TZ（Node 会当场换时区），跑完换回去。
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
-import { createRequire } from "node:module";
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "我", email: "me@local", role: "ADMIN", title: "管理员", avatar: null },
@@ -31,8 +30,6 @@ import { savePlan } from "@/app/(app)/customers/[id]/actions";
 import { saveContract } from "@/app/(app)/customers/actions";
 import { 认日期 } from "@/lib/import/plan";
 import { dayjs } from "@/lib/utils";
-
-const 壳 = createRequire(import.meta.url)("../desktop/reminders.js");
 
 const 原TZ = process.env.TZ;
 afterAll(async () => {
@@ -108,16 +105,6 @@ describe.each(时区们)("月末深夜（本地 10-31 23:30），时区 %s", (tz
     进时区(tz, now);
     const 摘要 = 算提醒(await 取提醒项(我), new Date());
     expect(摘要.定时.map((x) => x.标题)).toEqual(["今晚 23:45", "明早 0:30"]);
-  });
-
-  it("早报：设 09:00，今天（当地 10-31）发过就不再发；跨过当地零点算新的一天", () => {
-    进时区(tz, now);
-    const 设置 = 壳.规整设置({});
-    const 摘要 = { 逾期: 1, 今天: 2, 定时: [], 最久: null };
-    expect(壳.今天串(new Date())).toBe("2026-10-31");
-    expect(壳.该发早报(设置, { 早报日: "2026-10-31", 已提醒: [] }, 摘要, new Date())).toBe(false);
-    expect(壳.该发早报(设置, { 早报日: "2026-10-30", 已提醒: [] }, 摘要, new Date())).toBe(true);
-    expect(壳.该发早报(设置, { 早报日: "2026-10-31", 已提醒: [] }, 摘要, 本地(2026, 11, 1, 9, 1))).toBe(true);
   });
 
   it("本月签约：数据页「本月」合计 = 首页口径 = 300（月初零点那笔算、下月 0:10 和上月 23:59 不算）", async () => {

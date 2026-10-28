@@ -66,13 +66,3 @@ describe("本机我()（T-014）", () => {
     expect(await 团队里被停用(prisma)).toBe(true);
   });
 });
-
-describe("server-entry 启动对名字：同一条规则（裸 SQL，读源码钉住）", () => {
-  const entry = fs.readFileSync(path.resolve(__dirname, "../desktop/server-entry.js"), "utf8");
-  it("有我这一行就只认它，停用了就谁也不改；没有才取第一个在职管理员", () => {
-    expect(entry).toContain("SELECT id, email, name, active FROM User WHERE id = ?");
-    expect(entry).toMatch(/我行\s*\?\s*\(我行\.active \? 我行 : null\)/);
-    // 原来那句会在我被停用时落到老板那一行
-    expect(entry).not.toContain("(id = ? OR role = 'ADMIN')");
-  });
-});

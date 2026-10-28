@@ -39,7 +39,7 @@ function 被排掉(p: string) {
 describe("R-025 .dockerignore 不许排掉构建要用的文件", () => {
   it("规则本身认得对：排掉的是真该排的（防止正则写坏了整条测试变成永远绿）", () => {
     expect(被排掉("node_modules/x")).toBe(true);
-    expect(被排掉("desktop/main.js")).toBe(true);
+    expect(被排掉("e2e/a.spec.ts")).toBe(true);
     expect(被排掉("README.md")).toBe(true);
     expect(被排掉("tests/a.test.ts")).toBe(true);
     expect(被排掉("src/app/page.tsx")).toBe(false);
@@ -105,22 +105,5 @@ describe("R-042 shell 脚本里 $变量 后面不许紧跟中文", () => {
   it("这道守卫认得出坏写法（自检）", () => {
     expect(/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/.test('echo "版本 $V（新）"')).toBe(true);
     expect(/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/.test('echo "版本 ${V}（新）"')).toBe(false);
-  });
-});
-
-describe("发版验证脚本 verify-quit-install.mjs 跟得上客户端的更新门槛", () => {
-  // 这个脚本只在发版时手跑，客户端改了门槛它不会自己红：B-7 / D-091 之后它就一直超时，到 0.46.16 才发现
-  const 脚本 = 读("desktop/scripts/verify-quit-install.mjs");
-  it("假 feed 带 64 位十六进制 sha256（没有就进 manual、不下差量）", () => {
-    expect(读("desktop/main.js")).toContain("const 哈希可核 = /^[a-f0-9]{64}$/i.test(新版.sha256");
-    const feed行 = 脚本.split("\n").find((l) => /^const feed = \{/.test(l));
-    expect(feed行, "找不到 const feed = { … }").toBeTruthy();
-    expect(feed行).toMatch(/\bsha256: 占位哈希/);
-    expect(脚本).toMatch(/const 占位哈希 = "0"\.repeat\(64\);/);
-  });
-  it("子进程带 CRM_UPDATE_ALLOW_LOCAL_HTTP=1（假 feed 是本机 http）", () => {
-    expect(读("desktop/update-security.js")).toContain('process.env.CRM_UPDATE_ALLOW_LOCAL_HTTP === "1"');
-    expect(脚本).toMatch(/env: \{[^}]*CRM_UPDATE_ALLOW_LOCAL_HTTP: "1"/);
-    expect(脚本).toMatch(/http:\/\/127\.0\.0\.1:\$\{服务器\.address\(\)\.port\}/);
   });
 });
