@@ -17,6 +17,7 @@ import { 认回打码号 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
+import { 在推项目条件 } from "@/lib/project/active";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 版本冲突, 版本条件, 推进版本 } from "@/lib/edit-version";
 import { dayjs } from "@/lib/utils";
@@ -147,7 +148,7 @@ async function 挂订单(followUpId: string, customerId: string, orderId: string
  * 项目页的沟通里也看得到。不是这位客户的、已结束的、在公海的都不挂
  */
 async function 挂项目(followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient) {
-  const p = await db.project.findFirst({ where: { id: projectId, customerId, result: null, pooledAt: null }, select: { id: true, node: true, phase: true } });
+  const p = await db.project.findFirst({ where: { id: projectId, customerId, ...在推项目条件 }, select: { id: true, node: true, phase: true } });
   if (!p) return;
   await db.followUpProject.create({ data: { followUpId, projectId: p.id, node: p.node } });
   await 记沟通编号(db, followUpId, p.id, null);

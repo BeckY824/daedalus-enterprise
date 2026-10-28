@@ -5,7 +5,7 @@
  *   看 = 自己 + 实线下属 + 虚线下属，撤 = 自己 + 实线下属；老板、总管理员全部。
  * - Y27 电话设成「藏」：列表上号码打了码，可拿完整号码、前 7 位、后 4 位一搜还是能把人搜出来。
  *   现在藏电话的人，客户搜索（含联系人电话、WhatsApp）、线索搜索、AI 助手（search_customers、list_leads、
- *   query_records 按电话筛）都不按号码匹配；姓名照常搜得到，号码照常打码。
+ *   query_records 按电话筛）都不按号码匹配（企业版只用项目后 MCP 不再给 list_leads）；姓名照常搜得到，号码照常打码。
  *
  * 每条都有反例（没权限的人看不到、搜不到）和开关关着的那一条（个人版、团队版照旧）。
  * 组织：经理 → 普通销售（实线）、小张（虚线）；老板 ADMIN；外人谁都不挂。字段权限：电话对 sales 「藏」。
@@ -249,9 +249,10 @@ describe("Y27 电话藏着：按号码搜不出来", () => {
     expect(await 开关关着(() => AI搜到(普通销售, k, id[目标]))).toBe(true);
   });
 
-  it.each(片段(线索号))("AI 助手 list_leads（MCP）搜「%s」：电话藏的人搜不到，能看的人、开关关着搜得到", async (k) => {
-    expect(await AI线索搜到(普通销售, k)).toBe(false);
-    expect(await AI线索搜到(经理, k)).toBe(true);
+  // 企业版只用项目（10-28）：MCP 不再给 list_leads，谁点名调都拒；开关关着照旧搜得到
+  it.each(片段(线索号))("AI 助手 list_leads（MCP）搜「%s」：企业版不给这个工具，开关关着搜得到", async (k) => {
+    await expect(AI线索搜到(普通销售, k)).rejects.toThrow("没有这个工具：list_leads");
+    await expect(AI线索搜到(经理, k)).rejects.toThrow("没有这个工具：list_leads");
     expect(await 开关关着(() => AI线索搜到(普通销售, k))).toBe(true);
   });
 

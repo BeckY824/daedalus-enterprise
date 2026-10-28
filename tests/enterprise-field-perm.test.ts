@@ -114,14 +114,13 @@ describe("规则开关", () => {
     expect((await 字段权限of(主管))("跟进状态")).toBe("改");
   });
 
-  it("商机：阶段只能看时拖阶段、编辑改阶段都拦，只改名字照存", async () => {
+  it("商机：企业版只用项目，老入口在字段权限之前就拦（阶段·金额的字段权限改管项目，见下）", async () => {
     await 开规则();
     const o = await prisma.opportunity.create({ data: { name: "商机A", customerId: 客户, ownerId: 销售, amount: 100, stage: "方案报价", status: "OPEN", probability: 75 } });
-    expect(await moveStage(o.id, "谈判审核")).toMatchObject({ ok: false, error: expect.stringContaining("阶段") });
+    expect(await moveStage(o.id, "谈判审核")).toMatchObject({ ok: false, error: expect.stringContaining("并进项目") });
     const 原样 = { id: o.id, name: "商机A", customerId: 客户, ownerId: 销售, amount: 100, stage: "方案报价", status: "OPEN", probability: 75 };
-    expect(await saveOpportunity({ ...原样, stage: "谈判审核" })).toMatchObject({ ok: false, error: expect.stringContaining("阶段") });
-    expect(await saveOpportunity({ ...原样, name: "商机B" })).toMatchObject({ ok: true });
-    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).stage).toBe("方案报价");
+    expect(await saveOpportunity({ ...原样, name: "商机B" })).toMatchObject({ ok: false, error: expect.stringContaining("并进项目") });
+    expect(await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({ name: "商机A", stage: "方案报价" });
   });
 });
 

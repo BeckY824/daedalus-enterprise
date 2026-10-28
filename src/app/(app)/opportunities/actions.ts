@@ -18,6 +18,7 @@ import { 外贸订单 } from "@/lib/business-config";
 import type { Prisma } from "@/generated/prisma";
 import { 报价明细 } from "@/lib/features";
 import { 挡字段 } from "@/lib/enterprise/field-perm";
+import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 整理报价行, 报价合计 } from "@/lib/quote";
 import { 写报价, 历次报价, 上次报价 as 查上次报价, type 一次报价 } from "@/lib/quote-db";
 
@@ -87,6 +88,8 @@ export async function saveOpportunity(input: {
   报价?: unknown;
 }) {
   const me = await requireUser();
+  const 老入口 = await 只用项目挡老入口("商机");
+  if (老入口) return { ok: false as const, error: 老入口 };
   if (!input || typeof input !== "object" || typeof input.name !== "string") return { ok: false as const, error: "商机信息格式不正确" };
   if (!报价明细 && input.报价 !== undefined) return { ok: false as const, error: "此版本未开放报价明细功能" };
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
@@ -235,6 +238,8 @@ export async function 上次报价(customerId: string, product: string, 除了?:
 export async function moveStage(id: string, stage: string, 还原概率?: number, 期望版本?: string) {
   try {
     const me = await requireUser();
+    const 老入口 = await 只用项目挡老入口("商机");
+    if (老入口) return { ok: false as const, error: 老入口 };
     if (!OPP_STAGES.includes(stage as (typeof OPP_STAGES)[number])) return { ok: false as const, error: `商机阶段「${stage}」不是合法取值` };
     if (还原概率 !== undefined && (!Number.isFinite(还原概率) || 还原概率 < 0 || 还原概率 > 100)) return { ok: false as const, error: "成交概率必须在 0~100 之间" };
     const 挡 = await 挡字段(me.id, ["商机阶段"]);
@@ -277,6 +282,8 @@ export async function setOppStatus(
 ) {
   try {
     const me = await requireUser();
+    const 老入口 = await 只用项目挡老入口("商机");
+    if (老入口) return { ok: false as const, error: 老入口 };
     if (!OPP_STATUSES.includes(status)) return { ok: false as const, error: `商机状态「${status}」不是合法取值` };
     if (还原 && (!OPP_STAGES.includes(还原.stage as (typeof OPP_STAGES)[number]) || !Number.isFinite(还原.probability) || 还原.probability < 0 || 还原.probability > 100)) return { ok: false as const, error: "撤销的阶段或概率不合法" };
     if (还原 && status !== "WON" && 还原.stage === "赢单成交") return { ok: false as const, error: "进行中或丢单不能使用赢单阶段" };
@@ -384,6 +391,8 @@ export async function 删商机前清点(ids: string[]) {
 export async function restoreOpportunities(快照: 删掉的商机[]) {
   try {
     const me = await requireUser();
+    const 老入口 = await 只用项目挡老入口("商机");
+    if (老入口) return { ok: false as const, error: 老入口 };
     let 回来 = 0;
     for (const o of 快照) {
       if (await prisma.opportunity.findUnique({ where: { id: o.id }, select: { id: true } })) continue;
