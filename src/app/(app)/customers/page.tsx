@@ -9,7 +9,7 @@ import { 负责人候选 } from "@/lib/owners";
 import { 可选渠道 } from "@/lib/options";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { llmEnabled } from "@/lib/llm";
-import { 客户筛选条件, 客户行字段, 成客户行, 客户金额分页, 在看子集, 只按页签 } from "./query";
+import { 客户筛选条件, 客户行字段, 成客户行, 客户金额分页, 在看子集, 只按页签, 关键词分页, 按序取客户行 } from "./query";
 import { 规整币种 } from "@/lib/currency";
 import { 自动掉公海, 客户页签数 } from "@/lib/pool-db";
 import { getBusiness } from "@/lib/business";
@@ -87,16 +87,21 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 等级排序 = sp.sort === "level-asc" || sp.sort === "level-desc" ? sp.sort : "";
   const sortCurrency = 规整币种(sp.sortCurrency, b.currency);
 
-  const where = await 客户筛选条件(sp);
+  /*
+    带关键词、只筛本表等值的（最常见的「搜一下」）：总数、页码和这一页的 id 一条 SQL 出（P2，query.ts 关键词分页）。
+    接不住的组合 快 = null，下面照原来 count + findMany
+  */
+  const 快 = sort || 等级排序 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
+  const where = 快 ? null : await 客户筛选条件(sp);
   // URL 参数、删空最后一页都不能使 skip 变成 NaN 或停留在空的越界页。
   const 子集 = 在看子集(sp);
   /*
     两个页签上的数：都不带筛选、和左栏「客户」角标在同一套限定下数（layout.tsx 的 customer.count()），
     所以「我的 / 团队客户 N」+「公海 M」= 角标。子集里不摆页签，不数
   */
-  const 就是页签 = 子集 ? null : 只按页签(where);
+  const 就是页签 = 子集 || !where ? null : 只按页签(where);
   const [筛出, 页签数] = await Promise.all([
-    就是页签 ? Promise.resolve(null) : prisma.customer.count({ where }),
+    快 ? Promise.resolve(快.total) : 就是页签 ? Promise.resolve(null) : prisma.customer.count({ where: where! }),
     子集 ? Promise.resolve(null) : 客户页签数(),
   ]);
   const 公海总数 = 页签数?.公海 ?? null;
@@ -108,13 +113,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     负责人条件不带：换到公海页签时它会清掉（公海里的负责人是「原负责人」），数要和点过去看到的对得上
   */
   const 公海里匹配 = !子集 && sp.pool !== "1" && total === 0 && 公海总数
-    ? await prisma.customer.count({ where: await 客户筛选条件({ ...sp, pool: "1", salesOwnerId: undefined }) })
+    ? ((快 ? await 关键词分页({ ...sp, pool: "1", salesOwnerId: undefined }, 1, 1) : null)?.total
+      ?? await prisma.customer.count({ where: await 客户筛选条件({ ...sp, pool: "1", salesOwnerId: undefined }) }))
     : 0;
-  const page = Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
+  const page = 快?.page ?? Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
 
   const [rows, users, channels, 用着的职位, 用着的国家] = await Promise.all([
-    sort ? 客户金额分页(where, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
-      where,
+    快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
+      where: where!,
       orderBy: 等级排序
         ? [{ extra: { level: { sort: 等级排序 === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }]
         : [{ createdAt: "desc" }, { id: "desc" }],

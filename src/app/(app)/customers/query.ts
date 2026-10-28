@@ -1,9 +1,10 @@
 import { scheduleValue } from "@/lib/schedule-date";
-import { prisma } from "@/lib/prisma";
+import { prisma, defaultClient } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 import { dayjs } from "@/lib/utils";
 import { 带币种, 签约金额, 签约合计, 签约币种 } from "@/lib/money-db";
-import { 客户关键词条件, 客户id集合 } from "@/lib/search-keyword";
+import { 客户关键词条件, 客户关键词SQL, 客户id集合 } from "@/lib/search-keyword";
+import { 读的我 } from "@/lib/team-scope";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 未分级 } from "./query-shared";
 import { 读团队 } from "@/lib/sync/client";
@@ -188,6 +189,65 @@ export async function 客户金额分页(where: Prisma.CustomerWhereInput, order
   const rows = await prisma.customer.findMany({ where: { AND: [where, { id: { in: ids } }] }, select: 客户行字段 });
   const positions = new Map(ids.map((id, index) => [id, index]));
   return rows.sort((a, b) => positions.get(a.id)! - positions.get(b.id)!);
+}
+
+/** 快路径接得住的本表等值筛选（列名固定，值参数绑定） */
+const 等值列 = ["grade", "followStatus", "decisionStatus", "salesOwnerId", "channelOwnerId"] as const;
+
+/**
+ * 带关键词的列表：总数、钳过的页码和这一页的 id 用一条 SQL 出（P2，2026-10-28）。
+ * 原来关键词先查出全部 id、拼成每 500 个一块的 IN（宽词时 10 万个参数），count 和 findMany 各带一遍，
+ * 10 万客户搜「138」要 1.6–1.9 s；这样写 60–75 ms（老板）、7–10 ms（业务员）。
+ *
+ * 范围和 lib/team-scope.ts 的 可见客户(读的我) ∧ 公海条件 是同一个口径，化简后：
+ * 「客户」页签 = 我负责（销售或渠道）∧ 不在公海；「公海」页签 = 在公海（公海人人看得到）；老板只剩页签条件。
+ * **那边的可见范围改了，这里要跟着改**（customer-keyword-page.test.ts 拿 Prisma 老路逐页对拍守着）。
+ * 这里只给 id，行由调用方经限定层再取一次：范围就算写宽了，也只会多算总数，不会多给行。
+ *
+ * 接不住的组合（等级、部门、批次、国家来源、本月、直推）返回 null，调用方走老路
+ */
+export async function 关键词分页(sp: 客户条件, 请求页: number, pageSize: number): Promise<{ total: number; page: number; ids: string[] } | null> {
+  if (sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source) return null;
+  const kw = await 客户关键词SQL(sp.keyword);
+  if (!kw) return null;
+  const 公海 = sp.pool === "1";
+  const 谁 = await 读的我(defaultClient);
+  const 段 = [kw.sql];
+  const 值: unknown[] = [...kw.values];
+  if (公海) 段.push('EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
+  else {
+    if (谁) {
+      const ids = typeof 谁 === "string" ? [谁] : [...谁];
+      const q = ids.map(() => "?").join(", ");
+      段.push(`(c."salesOwnerId" IN (${q}) OR c."channelOwnerId" IN (${q}))`);
+      值.push(...ids, ...ids);
+    }
+    段.push('NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
+  }
+  for (const col of 等值列) if (sp[col]) { 段.push(`c."${col}" = ?`); 值.push(sp[col]); }
+  // a 放每页条数和请求页，下面的 ? 按出现顺序绑定；页码钳在 SQL 里做（越界页回最后一页，0 条回第 1 页），和 page.tsx 原来的公式一样。
+  // m 必须 MATERIALIZED：不然 SQLite 会把它内联两次，扫两遍；关键词命中一次扫完记下来，数和排序都在 m 上做
+  const rows = await prisma.$queryRawUnsafe<{ total: number | bigint; id: string | null }[]>(
+    `WITH a(sz, pg) AS (SELECT ?, ?),
+m AS MATERIALIZED (SELECT c.id, c."createdAt" FROM "Customer" c WHERE ${段.join(" AND ")}),
+n AS (SELECT COUNT(*) AS total FROM m)
+SELECT n.total AS total, p.id AS id FROM n LEFT JOIN (
+  SELECT id, "createdAt" FROM m ORDER BY "createdAt" DESC, id DESC
+  LIMIT (SELECT sz FROM a) OFFSET (SELECT MAX(0, MIN(pg, (total + sz - 1) / sz) - 1) * sz FROM n, a)
+) p ON 1 ORDER BY p."createdAt" DESC, p.id DESC`,
+    pageSize, 请求页, ...值,
+  );
+  const total = Number(rows[0]?.total ?? 0);
+  const page = Math.min(请求页, Math.max(1, Math.ceil(total / pageSize)));
+  return { total, page, ids: rows.flatMap((r) => (r.id ? [r.id] : [])) };
+}
+
+/** 按给定的 id 顺序取行（经限定层）。关键词快路径用 */
+export async function 按序取客户行(ids: string[]): Promise<取到的行[]> {
+  if (!ids.length) return [];
+  const 行 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: 客户行字段 });
+  const 位 = new Map(ids.map((id, i) => [id, i]));
+  return 行.sort((a, b) => 位.get(a.id)! - 位.get(b.id)!);
 }
 
 export function 成客户行(r: 取到的行, 号: (p: string) => string) {
