@@ -12,7 +12,11 @@
  *   - 每页量（e2e/layout-audit.ts）：盒子里有东西伸出去（撑出 / 被裁，有意横滚的区域不算）、按钮链接被切一半（出界）、
  *     不折行的字冲出自己的盒子（字溢出）、可点的东西中心点上是别人（被盖住）、短字被挤成竖排（折行）、整页横滚。顶上量一次，滚到底再量一次
  *
+ * 10-28 按宽度拆成三份（排版闸门-1024 / -1280 / -1366.spec.ts，每份三种摆法），CI 好把它们摊到不同片上；
+ * 每份各自灌数据、各自收尾，单跑哪一份都行。用例本身在这里，三份 spec 只是调用。
+ *
  *   npx playwright test -c playwright.layout.config.ts               # 有问题就红，失败说明里列出每一条
+ *   npx playwright test -c playwright.layout.config.ts 排版闸门-1280     # 只跑一个宽度
  *   TEAM_QA_REPORT=1 E2E_SHOT_DIR=… npx playwright test -c playwright.layout.config.ts   # 只记：JSON + 有问题那屏截图，不判红
  *
  * 不许为了变绿放宽检查：真有意横滚的区域在页面上就是 overflow-x: auto，检查自己会跳过；被误伤的先查是不是真问题
@@ -26,11 +30,8 @@ import { 灌真客户, 灌长商机, 长名同事 } from "./种子";
 import { 关掉弹窗, 切外贸 } from "./外贸模版";
 import 现存问题 from "./现存问题.json";
 
-test.describe.configure({ mode: "serial" });
-
 const 只记 = process.env.TEAM_QA_REPORT === "1";
 const 出处 = process.env.E2E_SHOT_DIR ? path.join(process.env.E2E_SHOT_DIR, "闸门") : null;
-const 记录: { 宽: number; 摆法: string; 屏: string; 问题: 排版问题[] }[] = [];
 
 /*
   现存问题清单（e2e-layout/现存问题.json）：第一次跑出来、在别的会话负责的文件里（10-19 时是 #39 外贸功能会话的客户记录页、商机列表、跟进记录）的问题。
@@ -40,9 +41,9 @@ const 记录: { 宽: number; 摆法: string; 屏: string; 问题: 排版问题[]
 */
 const 已知 = new Map(现存问题.map((x) => [x.键, x.归属]));
 const 键 = (页: string, x: 排版问题) => `${页} | ${x.类} | ${x.在哪.split(" > ").slice(-2).join(" > ")}`;
-const 见过的已知 = new Set<string>();
 
-const 宽们 = [1024, 1280, 1366];
+/** 三份 spec 各管一个宽度；playwright.layout.config.ts 的分片表按文件名认 */
+export const 宽们 = [1024, 1280, 1366] as const;
 const 摆法们 = ["默认", "AI栏常驻", "左栏最宽"] as const;
 type 摆法 = (typeof 摆法们)[number];
 
@@ -101,34 +102,41 @@ async function 滚到(page: Page, 比例: number) {
   await page.waitForTimeout(200);
 }
 
-test.beforeAll(async ({ browser }) => {
-  const db = 连库();
-  try {
-    const 我 = await 我的id(db);
-    await 灌真客户(db, 我);
-    await 灌长商机(db, 我);
-  } finally {
-    await db.$disconnect();
-  }
-  await 切外贸(browser);
-});
+/** 一个宽度的三组（默认 / AI栏常驻 / 左栏最宽）连同灌数据和收尾；在 spec 文件顶层调用 */
+export function 排版闸门(宽: (typeof 宽们)[number]) {
+  test.describe.configure({ mode: "serial" });
 
-test.afterAll(async () => {
-  // 长名同事只在这一份里用：别留给团队页等别的用例（成员数、名单都会变）
-  const db = 连库();
-  try {
-    await db.customer.deleteMany({ where: { id: "gate-longopp" } });
-    await db.user.deleteMany({ where: { id: 长名同事.id } });
-  } finally {
-    await db.$disconnect();
-  }
-  // 单跑某一组时别的组才有的问题本来就看不到：整轮九组都跑完再信这份名单
-  const 好了 = [...已知.keys()].filter((k) => !见过的已知.has(k));
-  if (好了.length) console.log(`\n排版闸门：现存问题清单里这 ${好了.length} 条这一轮没再出现，整轮确认修好后从 e2e-layout/现存问题.json 删掉：\n${好了.map((k) => `  - ${k}`).join("\n")}`);
-  if (出处) { mkdirSync(出处, { recursive: true }); writeFileSync(path.join(出处, "闸门排版问题.json"), JSON.stringify(记录, null, 2)); }
-});
+  const 记录: { 宽: number; 摆法: string; 屏: string; 问题: 排版问题[] }[] = [];
+  // 状态放在函数里：同一个 worker 里几份 spec 共用这个模块，放外面会串
+  const 见过的已知 = new Set<string>();
 
-for (const 宽 of 宽们) {
+  test.beforeAll(async ({ browser }) => {
+    const db = 连库();
+    try {
+      const 我 = await 我的id(db);
+      await 灌真客户(db, 我);
+      await 灌长商机(db, 我);
+    } finally {
+      await db.$disconnect();
+    }
+    await 切外贸(browser);
+  });
+
+  test.afterAll(async () => {
+    // 长名同事只在排版闸门里用：每个宽度跑完都删，别留给团队页等别的用例（成员数、名单都会变）；下一个宽度的 beforeAll 会重新灌
+    const db = 连库();
+    try {
+      await db.customer.deleteMany({ where: { id: "gate-longopp" } });
+      await db.user.deleteMany({ where: { id: 长名同事.id } });
+    } finally {
+      await db.$disconnect();
+    }
+    // 只看清单里标了在这个宽度出现过的条目；单跑某一组时别的组才有的问题本来就看不到，三个宽度九组都跑完再信这份名单
+    const 好了 = 现存问题.filter((x) => x.在哪几组.some((g) => g.startsWith(`${宽} `)) && !见过的已知.has(x.键)).map((x) => x.键);
+    if (好了.length) console.log(`\n排版闸门 ${宽} 宽：现存问题清单里这 ${好了.length} 条这一轮没再出现，整轮确认修好后从 e2e-layout/现存问题.json 删掉：\n${好了.map((k) => `  - ${k}`).join("\n")}`);
+    if (出处) { mkdirSync(出处, { recursive: true }); writeFileSync(path.join(出处, `闸门排版问题-${宽}.json`), JSON.stringify(记录, null, 2)); }
+  });
+
   for (const 摆 of 摆法们) {
     test(`${宽} 宽 · ${摆}：主要页面不撑破、不被切、不被盖住`, async ({ page }) => {
       test.setTimeout(10 * 60_000);
