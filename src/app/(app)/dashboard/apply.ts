@@ -352,6 +352,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   }
 
   if (只用项目 && p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
+  if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
   let done: { ok: true; 附件去处?: 附件去处 } | { ok: false; error: string };
   let 撤销: 撤销凭据 | undefined;

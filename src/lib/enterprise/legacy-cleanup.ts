@@ -17,7 +17,8 @@ import { getSetting, setSetting } from "../settings";
 import { 附件文件 } from "../attachments";
 import { 企业版 } from "./switch";
 
-export const 清理记号键 = "entLegacyCleanup.v1";
+// v2（10-28）：老入口加闸前可能又写进来的，再扫一次
+export const 清理记号键 = "entLegacyCleanup.v2";
 
 export type 清理计数 = { 附件: number; 订单: number; 合同: number; 商机: number; 供应商: number; 对照: number; 跟进解挂: number };
 
