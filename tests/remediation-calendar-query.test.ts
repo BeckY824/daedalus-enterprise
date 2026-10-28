@@ -5,7 +5,6 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => state.user }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw Error("NOT_FOUND"); } }));
 vi.mock("@/lib/llm", async original => ({ ...(await original<object>()), llmEnabled: async () => false }));
 vi.mock("@/app/(app)/customers/[id]/RecordView", () => ({ default: () => null }));
-vi.mock("@/app/(app)/dashboard/DashboardView", () => ({ default: () => null }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
@@ -14,7 +13,6 @@ import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import { readCalendarSorted } from "@/lib/agent/calendar-query";
 import { 取客户近况 } from "@/app/(app)/customers/[id]/pick";
 import DetailPage from "@/app/(app)/customers/[id]/page";
-import Board from "@/app/(app)/dashboard/Board";
 let customerId: string;
 const originalTZ = process.env.TZ;
 const ctx = () => ({ userId: state.user.id, userName: "QA", b: DEFAULT_BUSINESS, recordOffset: 0, proposals: [] });
@@ -49,12 +47,11 @@ it("通用AI升/降序在取1条前排序，任务与计划同规则", async () 
   ] });
   expect((await query({ 表: "任务", 排序: { 字段: "截止时间", 降序: false }, 取: 1 })).结果[0].标题).toBe("钟点任务");
 });
-it("记录页/客户近况/看板/AI专用工具均取真正最早的原日历日，不先按旧索引截断", async () => {
+it("记录页/客户近况/AI专用工具均取真正最早的原日历日，不先按旧索引截断", async () => {
   await fixtures();
   expect((await 取客户近况(customerId))!.未完成计划!.subject).toBe("钟点7日晚");
   const detail = await DetailPage({ params: Promise.resolve({ id: customerId }), searchParams: Promise.resolve({}) });
   expect(detail.props.plan.subject).toBe("钟点7日晚");
-  const board = await Board({}); expect(board.props.tasks[0].title).toBe("钟点7日晚");
   const plans = (await TOOLS.find(t => t.name === "get_my_plans")!.run({}, ctx())).data as { 跟进计划: { subject: string }[] };
   expect(plans.跟进计划[0].subject).toBe("钟点7日晚");
 });

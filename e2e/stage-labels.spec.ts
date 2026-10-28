@@ -1,6 +1,6 @@
 /**
  * 商机阶段名自己改（2026-10-21）：老板在设置 → 业务配置里把五个阶段都改成 6 个字（上限），
- * Windows 常见的 1280 / 1366 宽下，看板漏斗、管道列头、商机列表的阶段标签都不撑破、不折行、不被切。
+ * Windows 常见的 1280 / 1366 宽下，管道列头、商机列表的阶段标签都不撑破、不折行、不被切（首页看板漏斗 2026-10-28 随老数据看板删了）。
  * 配超长公司名、商机名一起看。跑完把阶段名改回空（原名），不影响后面的用例。
  *
  * 截图写到 E2E_SHOT_DIR（不给就不截）
@@ -69,7 +69,7 @@ test.afterAll(async () => {
 });
 
 for (const 宽 of [1280, 1366]) {
-  test(`${宽} 宽：六个字的阶段名在漏斗、管道、商机列表都放得下`, async ({ page }) => {
+  test(`${宽} 宽：六个字的阶段名在管道、商机列表都放得下`, async ({ page }) => {
     test.setTimeout(180_000);
     await page.setViewportSize({ width: 宽, height: 800 });
     await 登录(page);
@@ -78,18 +78,6 @@ for (const 宽 of [1280, 1366]) {
       const 区 = await 填阶段名(page, 新名);
       await 区.scrollIntoViewIfNeeded();
       await 截("设置");
-
-      await page.goto("/dashboard");
-      const 漏斗 = page.locator(".funnel-row").first();
-      await expect(漏斗).toContainText(新名.初步沟通);
-      await 漏斗.scrollIntoViewIfNeeded();
-      for (const n of Object.values(新名)) {
-        const 字 = page.locator(".funnel-row span", { hasText: n });
-        const h = await 字.evaluate((el) => el.getBoundingClientRect().height);
-        expect(h, `漏斗「${n}」折行了`).toBeLessThan(26);
-      }
-      if (截图目录) await 漏斗.locator("xpath=ancestor::div[contains(@class,'ant-card')][1]").screenshot({ path: `${截图目录}/阶段名-${宽}-看板漏斗.png` });
-      await 量(page);
 
       await page.goto("/opportunities/pipeline");
       await expect(page.locator(".pipe-h b").first()).toHaveText(新名.初步沟通);

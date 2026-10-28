@@ -14,7 +14,6 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
   stub(/^@\/app\/\(app\)\/customers\/\[id\]\/pick$/, "const rows=[{id:'original',name:'原客户',附注:null},{id:'new',name:'新客户',附注:null}];export const 搜客户=async()=>rows,取客户选项=async id=>rows.find(r=>r.id===id)??null;");
   stub(/^\.\/ReferralRadar$/, "export default function C(){return null}");
   stub(/^@\/components\/DataList$/, "export default function C(){return null}");
-  stub(/orders\/actions$/, "export const 供应商候选=async()=>[];");
   stub(/^\.\.\/channels\/actions$/, "export const saveChannel=async()=>({ok:true});");
   stub(/^(\.\/|\.\.\/)actions$/, `
     const save=async x=>{window.__calls.push(x);if(window.__fail)throw Error('network');return {ok:true,id:'saved'}};
@@ -23,6 +22,7 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
     export const patchCustomer=async(id,key,value)=>save({id,key,value});
     export const saveContract=async x=>window.__duplicate&&!x.force?{duplicate:{amount:123,currency:'CNY',signedAt:new Date().toISOString()}}:save(x);
     export const listContractLinks=async()=>({商机:[],计划:[],待办:[]});
+    export const 供应商候选=async()=>[];
     export const toggleChannel=save,deleteChannel=save;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
   `);

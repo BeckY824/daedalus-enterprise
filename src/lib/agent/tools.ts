@@ -20,7 +20,6 @@ import { 带币种, 商机币种, 签约币种, 签约金额, 签约合计 } fro
 import { 金额 as 显示金额, 合计文字, 按币种合计 } from "../currency";
 import { 一行说法 } from "../quote";
 import { 客户来源线索 } from "../customer-lead-origin";
-import { 订单列表 } from "../order-db";
 import { 阶段们, 结局们, 是阶段, 是结局 } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 企业版 } from "../enterprise/switch";
@@ -826,39 +825,6 @@ export const TOOLS: Tool[] = [
             备注: c.remark || null,
           })),
         },
-      };
-    },
-  },
-  {
-    /*
-      外贸订单（2026-10-03；2026-10-05 外贸客户建议的轻量订单，12 个节点那一版 2026-10-28 已删）。
-      只有订单上那几项，执行进展在挂着的跟进里——别让模型去说节点、未收。
-    */
-    name: "list_orders",
-    description:
-      "列外贸订单（客户确认、下了单的那一笔）：订单号、客户、金额、付款方式、供应商、订单确认时间、业务员。" +
-      "问「某某下过几单」「这个月确认了哪些订单」「那单的付款方式是什么」用它；订单执行到哪了看那位客户的跟进记录。",
-    args: '{"customerName": "客户姓名，可空", "ownerName": "业务员姓名，可空"}',
-    async run(args) {
-      const name = str(args.customerName, 30);
-      const owner = str(args.ownerName, 20);
-      const 叫这个名字的 = owner ? (await prisma.user.findMany({ where: { name: { contains: owner } }, select: { id: true } })).map((u) => u.id) : [];
-      const rows = await 订单列表({
-        ...(name ? { customer: { name: { contains: name } } } : {}),
-        ...(owner ? { ownerId: { in: 叫这个名字的 } } : {}),
-      });
-      return {
-        summary: `${rows.length} 张订单${rows.length > 30 ? "（列出前 30 张，数量为全部筛选结果）" : ""}`,
-        data: rows.slice(0, 30).map((r) => ({
-          orderId: r.id,
-          订单号: r.no,
-          客户: r.customerName,
-          金额: 显示金额(r.amount, r.currency),
-          付款方式: r.payment ?? "未填",
-          供应商: r.supplier ?? "未填",
-          订单确认时间: dayjs(r.confirmedAt).format("YYYY-MM-DD"),
-          业务员: r.ownerName,
-        })),
       };
     },
   },

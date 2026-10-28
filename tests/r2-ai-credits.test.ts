@@ -62,16 +62,15 @@ const 多步剧本 = (工具们: { name: string; args: Record<string, unknown> }
 };
 
 describe("一个问题多步只扣一次", () => {
-  it("盯盘话术、解读、邀请按实际功能记成本，三个动作各扣一次", async () => {
-    const line = 接线({ 上游: (r) => 回文本(JSON.stringify(r.第几次 === 2 ? { [客户]: "继续跟进" } : { message: "你好" })) });
+  it("盯盘话术、邀请按实际功能记成本，两个动作各扣一次", async () => {
+    const line = 接线({ 上游: () => 回文本(JSON.stringify({ message: "你好" })) });
     const actions = await import("@/app/(app)/dashboard/ai");
     expect((await actions.draftWakeup({ customerId: 客户, reason: "QA" })).ok).toBe(true);
-    expect((await actions.explainWatchlist({ items: [{ customerId: 客户, reason: "QA" }] })).ok).toBe(true);
     expect((await (await import("@/app/(app)/channels/ai")).draftInvite({ customerId: 客户 })).ok).toBe(true);
-    expect(line.网关.map((r) => r.feature)).toEqual(["wakeup", "explain", "invite"]);
+    expect(line.网关.map((r) => r.feature)).toEqual(["wakeup", "invite"]);
     const { control } = await import("@/lib/tenant/control");
-    expect((await control.aiCall.findMany({ where: { ownerId: 账号.acc.id } })).map((r) => r.feature).sort()).toEqual(["explain", "invite", "wakeup"]);
-    expect(await 用掉(账号.acc.id)).toBe(3);
+    expect((await control.aiCall.findMany({ where: { ownerId: 账号.acc.id } })).map((r) => r.feature).sort()).toEqual(["invite", "wakeup"]);
+    expect(await 用掉(账号.acc.id)).toBe(2);
   });
   it("查四次库再回答（5 次上游调用）：扣 1 次，全程一个编号", async () => {
     const 线 = 接线({

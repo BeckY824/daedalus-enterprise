@@ -29,13 +29,12 @@ import { saveBusinessSettings } from "@/app/(app)/settings/actions";
 import { getBusiness } from "@/lib/business";
 import { 拆关联 } from "@/lib/follow-link";
 import { 改过的档案 } from "@/lib/customer-extra";
-import { addOrderNote, 供应商候选 } from "@/app/(app)/orders/actions";
+import { 供应商候选 } from "@/app/(app)/customers/actions";
 import { convertLead } from "@/app/(app)/leads/actions";
 import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
 import { 客户导出表, 跟进导出表 } from "@/app/(app)/customers/export-table";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
-import { 订单列表, 订单详情 } from "@/lib/order-db";
 import { 字段表, 猜列 } from "@/lib/import/fields";
 import { 写xlsx, 列字母 } from "@/lib/xlsx-write";
 import { 读xlsx } from "@/lib/import/xlsx";
@@ -119,7 +118,7 @@ describe("订单就是一笔签约", () => {
     const c = await 客户();
     const r = await saveContract({ customerId: c.id, amount: 1000, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-9" } });
     if (!r.ok || !r.订单) throw new Error("没建出来");
-    const n = await addOrderNote(r.订单.id, "工厂说 10 月 20 日出货");
+    const n = await saveFollowUp({ customerId: c.id, type: "OTHER", content: "工厂说 10 月 20 日出货", status: "已完成", occurredAt: new Date().toISOString(), orderId: r.订单.id });
     expect(n.ok).toBe(true);
     const k = await prisma.contract.findFirstOrThrow();
     const d = await deleteContract(k.id, c.id, null);
@@ -143,10 +142,6 @@ describe("订单就是一笔签约", () => {
     // 节点照建（开关打开时老订单不至于一步都没有），从商机来的前四步已完成
     expect(单.nodes.slice(0, 4).every((n) => n.status === "已完成")).toBe(true);
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("WON");
-    // 订单一览：客户要的几列都有
-    const [行] = await 订单列表();
-    expect(行).toMatchObject({ no: "PI-77", customerName: "Timur", payment: "T/T 30/70", supplier: null });
-    expect(行.confirmedAt).toBeTruthy();
   });
 
   it("别人家的商机 id 从浏览器塞进来：不挂", async () => {
@@ -177,8 +172,6 @@ describe("跟进挂订单", () => {
     const f = await saveFollowUp({ customerId: c.id, type: "OTHER", content: "验货通过", status: "已完成", occurredAt: new Date().toISOString(), orderId: r.订单.id });
     if (!f.ok) throw new Error(f.error);
     expect((await prisma.followUpOrder.findUniqueOrThrow({ where: { followUpId: f.id } })).orderId).toBe(r.订单.id);
-    const 详 = await 订单详情(r.订单.id);
-    expect(详?.notes.map((x) => x.content)).toEqual(["验货通过"]);
 
     // 删掉再撤销：挂回去
     const d = await deleteFollowUp(f.id, c.id);
@@ -200,8 +193,8 @@ describe("跟进挂订单", () => {
     const c = await 客户();
     const r = await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 订单: {} });
     if (!r.ok || !r.订单) throw new Error("没建出来");
-    const n = await addOrderNote(r.订单.id, "订舱了");
-    if (!n.ok) throw new Error("记不上");
+    const n = await saveFollowUp({ customerId: c.id, type: "OTHER", content: "订舱了", status: "已完成", occurredAt: new Date().toISOString(), orderId: r.订单.id });
+    if (!n.ok) throw new Error(n.error);
     await saveFollowUp({ id: n.id, customerId: c.id, type: "OTHER", content: "订舱了，船期 11/2", status: "已完成", occurredAt: new Date().toISOString() });
     expect(await prisma.followUpOrder.count()).toBe(1);
   });
@@ -415,22 +408,6 @@ describe("复查一轮（10-06）", () => {
     const r = await saveContract({ customerId: c.id, amount: 2, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-1" } });
     expect(r).toMatchObject({ ok: false, error: expect.stringContaining("订单号「PI-1」已经有一张了") });
     expect(await prisma.contract.count()).toBe(1);
-  });
-
-  it("订单一览的金额以签约为准；list_orders 只给订单上那几项（节点版 2026-10-28 已删）", async () => {
-    await 外贸();
-    const c = await 客户();
-    const r = await saveContract({ customerId: c.id, amount: 100, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-3", payment: "T/T" } });
-    if (!r.ok || !r.订单) throw new Error("没建出来");
-    await prisma.tradeOrder.update({ where: { id: r.订单.id }, data: { amount: 1, currency: "CNY" } }); // 抄的那份对不上了
-    const [行] = await 订单列表();
-    expect(行).toMatchObject({ amount: 100, currency: "USD" });
-    const ctx = { userId: jia.id, userName: "甲", b: BUSINESS_PRESETS["外贸出口"], recordOffset: 0, proposals: [] };
-    const 出 = await TOOLS.find((t) => t.name === "list_orders")!.run({}, ctx as never);
-    const 一单 = (出.data as Record<string, unknown>[])[0];
-    expect(一单).toMatchObject({ 订单号: "PI-3", 付款方式: "T/T" });
-    expect(一单).not.toHaveProperty("当前节点");
-    expect(一单).not.toHaveProperty("未收");
   });
 
   it("AI 按订单号找客户：「PI-xxx 是哪位客户」——search_customers 和客户列表搜的是同一个范围（C.2）", async () => {

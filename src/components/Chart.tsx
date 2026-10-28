@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import { 主题图表选项 } from "@/lib/chart-theme";
-import { palette } from "@/lib/palette";
 import * as echarts from "echarts/core";
 import { LineChart, BarChart } from "echarts/charts";
 import {
@@ -114,44 +113,4 @@ export default function Chart({
   }, [option]);
 
   return <div ref={ref} style={{ width: "100%", height, cursor: 点一段 ? "pointer" : undefined }} />;
-}
-
-/** 设计稿里指标卡右下角那种迷你趋势线 */
-export function Sparkline({
-  data,
-  color = palette.brand,
-  height = 44,
-}: {
-  data: number[];
-  color?: string;
-  height?: number;
-}) {
-  const option: EChartsCoreOption = {
-    grid: { left: 0, right: 0, top: 4, bottom: 0 },
-    xAxis: { type: "category", show: false, boundaryGap: false },
-    yAxis: { type: "value", show: false, min: "dataMin", max: "dataMax" },
-    series: [
-      {
-        type: "line",
-        data,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 2, color },
-        areaStyle: {
-          color: {
-            type: "linear",
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: color + "40" },
-              { offset: 1, color: color + "00" },
-            ],
-          },
-        },
-      },
-    ],
-  };
-  return <Chart option={option} height={height} />;
 }

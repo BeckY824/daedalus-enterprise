@@ -219,29 +219,20 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       // 企业版只用项目一条线，没有商机（10-26）；/opportunities 一律转到 /projects，左栏这一项 10-28 删了
       // 团队版项目模式开着才有（2026-10-23，D-31）；关着时 /projects 是 404
       ...(b.projectMode ? [{ key: "/projects", icon: <ProjectOutlined />, label: "项目", 组: "主" as const }] : []),
-      // 外贸模版的订单入口 10-28 删了：企业版模版锁在通用（business-config.ts 企业版锁定），走不到
       { key: "/follow-ups", icon: <InteractionOutlined />, label: "跟进", 组: "主" },
       { key: "/overview", icon: <DashboardOutlined />, label: "数据", 组: "主" },
       { key: "/leads", icon: <ShareAltOutlined />, label: 企业版项目 ? "新线索" : "线索", 组: "更多" },
-      /*
-        外贸模版不摆联系人、渠道（2026-10-05 外贸客户建议）：联系人本来就挂在客户下面（客户页那一节），
-        客户搜索也搜得到联系人的名字、电话、邮箱；渠道是推荐人 / 分佣那一套，外贸用来源。页面还在，⌘K 能到
-      */
-      ...(b.template === "trade"
-        ? []
-        : [
-            { key: "/contacts", icon: <ContactsOutlined />, label: "联系人", 组: "更多" as const },
-            { key: "/channels", icon: <DeploymentUnitOutlined />, label: "渠道", 组: "更多" as const },
-          ]),
+      { key: "/contacts", icon: <ContactsOutlined />, label: "联系人", 组: "更多" },
+      { key: "/channels", icon: <DeploymentUnitOutlined />, label: "渠道", 组: "更多" },
       ...(workspace?.billing ? [{ key: "/billing", icon: <DollarOutlined />, label: "开通订阅", 组: "更多" as const }] : []),
     ],
-    [b.customer, b.template, b.projectMode, workspace?.billing, 企业版项目],
+    [b.customer, b.projectMode, workspace?.billing, 企业版项目],
   );
 
   // 选中项取最长匹配前缀，/customers/xxx 也算在客户管理下
   const 少动 = useReducedMotion();
   const selectedKey = useMemo(() => {
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/orders", "/follow-ups", "/settings", "/billing"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/follow-ups", "/settings", "/billing"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";

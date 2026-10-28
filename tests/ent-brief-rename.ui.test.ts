@@ -39,7 +39,7 @@ const plugin: Plugin = { name: "brief-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:''}),认号码动作=async()=>null,存背调到客户=async()=>({ok:true,id:'x'}),认联系方式=async()=>({email:'',phone:''}),新建客户并存背调=async()=>({ok:true}),找同名客户=async()=>[];");
-  stub(/\/(dashboard|channels)\/ai$/, "export const draftWakeup=async()=>({ok:true,message:''}),draftInvite=async()=>({ok:true,message:''}),explainWatchlist=async()=>({ok:true});");
+  stub(/\/(dashboard|channels)\/ai$/, "export const draftWakeup=async()=>({ok:true,message:''}),draftInvite=async()=>({ok:true,message:''});");
   stub(/research\/(ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

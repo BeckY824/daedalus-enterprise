@@ -23,7 +23,7 @@ import { runQuery } from "@/lib/report-run";
 import { buildProposal, describeProposal } from "@/lib/agent/proposals";
 import { buildReferralRadar } from "@/lib/referral";
 import { 签约合计 } from "@/lib/money-db";
-import { 同币环比, 合并合计, 取币种, 币种符号 } from "@/lib/currency";
+import { 合并合计, 币种符号 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { BUSINESS_PRESETS, DEFAULT_BUSINESS } from "@/lib/business-config";
@@ -53,20 +53,9 @@ describe("纯函数", () => {
     expect(金额格式(1000000, 失焦)).toBe("1,000,000");
   });
 
-  it("环比只在两个月同一种币时算：上月人民币、本月来了美元就不给", () => {
-    const 人民币 = (n: number) => [{ 币种: "CNY", 合计: n }];
-    expect(同币环比(人民币(150), 人民币(100))).toBe(50);
-    expect(同币环比([], 人民币(100))).toBe(-100);
-    expect(同币环比([{ 币种: "USD", 合计: 150 }], 人民币(100))).toBeUndefined();
-    expect(同币环比([...人民币(1), { 币种: "USD", 合计: 1 }], 人民币(100))).toBeUndefined();
-    expect(同币环比(人民币(100), [])).toBeUndefined();
-  });
-
-  it("合并合计 / 取币种 / 币种符号", () => {
+  it("合并合计 / 币种符号", () => {
     const 合 = 合并合计([{ 币种: "USD", 合计: 100 }], [{ 币种: "USD", 合计: 50 }, { 币种: "EUR", 合计: 20 }]);
     expect(合).toEqual([{ 币种: "USD", 合计: 150 }, { 币种: "EUR", 合计: 20 }]);
-    expect(取币种(合, "EUR")).toBe(20);
-    expect(取币种(合, "JPY")).toBe(0);
     expect(币种符号("CNY")).toBe("¥");
     expect(币种符号("USD")).toContain("$");
     expect(币种符号("EUR")).toBe("€");

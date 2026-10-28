@@ -118,11 +118,6 @@ export const 只读SCHEMAS: Record<string, Schema> = {
     properties: { keyword: 串(), includeInactive: 真假("连停用的一起列") },
     additionalProperties: false,
   },
-  list_orders: {
-    type: "object",
-    properties: { customerName: 串(), ownerName: 串() },
-    additionalProperties: false,
-  },
   list_contracts: {
     type: "object",
     properties: {

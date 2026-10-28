@@ -108,7 +108,7 @@ describe("给哪些工具、直连换成什么", () => {
   it("只用项目：有 list_projects，没有线索表、商机表那几样；新线索卡说的是建项目", () => {
     const n = 名({ projectMode: true }, true);
     expect(n).toContain("list_projects");
-    for (const x of ["list_leads", "list_opportunities", "propose_opportunity", "propose_contract", "list_contracts", "list_orders"]) expect(n).not.toContain(x);
+    for (const x of ["list_leads", "list_opportunities", "propose_opportunity", "propose_contract", "list_contracts"]) expect(n).not.toContain(x);
     expect(这一家的工具({ projectMode: true }, true).TOOL_MAP.get("propose_lead")!.description).toContain("线索」阶段的项目");
   });
 

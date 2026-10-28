@@ -1,6 +1,5 @@
 import { TOOLS, TOOL_MAP, type ToolContext } from "@/lib/agent/tools";
 import { 只读SCHEMAS, type Schema } from "@/lib/agent/schemas";
-import { 不开放的工具 } from "@/lib/features";
 import { getBusiness } from "@/lib/business";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 只用项目不给 } from "@/lib/agent/run";
@@ -35,9 +34,9 @@ export type McpTool = {
 const 只读标注 = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
 
 /** 开出去的工具名单。propose_* 一个都不在里面，理由见文件头 */
-export const MCP_TOOL_NAMES = Object.keys(只读SCHEMAS).filter((n) => !不开放的工具.includes(n));
+export const MCP_TOOL_NAMES = Object.keys(只读SCHEMAS);
 
-/** 企业版只用项目时，老表的列表工具（线索、商机、合同、订单）也不开出去：和应用里的 agent 同一张表（agent/run.ts） */
+/** 企业版只用项目时，老表的列表工具（线索、商机、合同）也不开出去：和应用里的 agent 同一张表（agent/run.ts） */
 export async function 只用项目(): Promise<boolean> {
   return 企业版() && (await getBusiness()).projectMode === true;
 }

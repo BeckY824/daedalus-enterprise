@@ -4,7 +4,6 @@
   {"文件": "mobile-images.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts"},
   {"文件": "team-qa-mobile.spec.ts", "理由": "企业版不留手机伴侣 /m（团队版功能），proxy 跳 /dashboard，见 src/lib/enterprise/web-paths.ts"},
   {"文件": "trade-basics.spec.ts", "理由": "企业版模版锁在通用，没有外贸出口（business-config.ts 企业版锁定）"},
-  {"文件": "trade-order.spec.ts", "理由": "企业版模版锁在通用，没有外贸出口（business-config.ts 企业版锁定）"},
   {"文件": "remediation-business-copy.spec.ts", "理由": "企业版模版锁在通用，业务配置不出切模版（business-config.ts 企业版锁定）"},
   {"文件": "remediation-supplier.spec.ts", "理由": "企业版模版锁在通用，没有外贸出口的供应商（business-config.ts 企业版锁定）"},
   {"文件": "stage-labels.spec.ts", "理由": "企业版业务配置不出阶段名一节，阶段走项目的三大阶段（business-config.ts 企业版锁定）"},

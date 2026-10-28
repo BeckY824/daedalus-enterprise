@@ -140,7 +140,6 @@ async function 挂订单(followUpId: string, customerId: string, orderId: string
   const o = await db.tradeOrder.findFirst({ where: { id: orderId, customerId }, select: { id: true } });
   if (!o) return;
   await db.followUpOrder.upsert({ where: { followUpId }, create: { followUpId, orderId: o.id, nodeIdx: 0 }, update: { orderId: o.id, nodeIdx: 0 } });
-  revalidatePath(`/orders/${o.id}`);
 }
 
 /**

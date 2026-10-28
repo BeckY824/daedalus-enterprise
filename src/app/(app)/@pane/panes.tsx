@@ -104,7 +104,7 @@ export function 无中栏() {
  * 「上周问的那条回款怎么算的」现在要么翻不到，要么得把它和别的事混在同一屏。
  * 列表只列自己的（threads.ts 按 ownerId 查）。
  *
- * 没配 AI 的库不出这一栏：那时首页是数据看板，根本没有对话这回事。
+ * 没配 AI 的库不出这一栏：那时首页是「AI 还没配」那一屏（dashboard/NoAiHome.tsx），根本没有对话这回事。
  */
 export async function 对话列表() {
   await requireUser();

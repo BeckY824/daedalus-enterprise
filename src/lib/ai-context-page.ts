@@ -20,7 +20,6 @@
  * 人正站在哪一页是我们**确定知道**的信息，把它兑换成一句指名道姓的话，
  * 比让模型每次重新推理一遍稳得多（和 agent/intents.ts 是同一个思路）。
  */
-import { 订单 } from "./features";
 import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "./business-config";
 import { 客户页面筛选键, type 页面客户筛选 } from "./ai-page-filters";
 export type 页面上下文 = {
@@ -81,9 +80,6 @@ type 页 = {
   查一个?: { 工具: string; 参数: string };
 };
 
-/** 跟着功能开关关掉的页：不给上下文说法 */
-const 关着的页 = new Set(订单 ? [] : ["/orders"]);
-
 const 一级: Record<string, 页> = {
   "/dashboard": { 名: "首页", 提示: "" },
   "/overview": {
@@ -128,12 +124,6 @@ const 一级: Record<string, 页> = {
   },
   // 团队版项目模式（开关开着左栏才有）；list_projects 也只在项目模式交给模型
   "/projects": { 名: "项目", 提示: "用户正在看项目看板（每张卡一个项目，按阶段分列；点开是项目详情）", 工具: "list_projects", 查一个: { 工具: "list_projects", 参数: "keyword" } },
-  "/orders": {
-    名: "订单",
-    提示: "用户正在看外贸订单一览（每行一单：订单号、客户、金额、付款方式、供应商、订单确认时间）",
-    工具: "list_orders",
-    查一个: { 工具: "list_orders", 参数: "customerName" },
-  },
   "/follow-ups": {
     名: "跟进记录",
     提示: "用户正在看跟进记录列表",
@@ -199,11 +189,7 @@ function 指路(p: 页): string {
  * @param 详情名   详情页上这条记录叫什么（客户姓名等）。列表页传 null
  */
 export function 认页面(pathname: string, params: URLSearchParams | null, 详情名?: string | null, 可见行?: readonly string[], b: BusinessConfig = DEFAULT_BUSINESS): 页面上下文 | null {
-  /*
-    订单关着时（lib/features.ts）那一页没有入口，工具也不交给模型——这里也不再指路去 list_orders，
-    不然万一停在那个地址上，模型会被叫去调一个它手里没有的工具（L-111）
-  */
-  const 命中 = 关着的页.has(pathname) ? undefined : 一级[pathname];
+  const 命中 = 一级[pathname];
   if (命中) {
     const 条件: string[] = [];
     for (const [k, 说法] of Object.entries(筛选说法)) {

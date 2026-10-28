@@ -83,7 +83,7 @@ describe("口径：计划 + 待办都算", () => {
   });
 });
 
-describe("三处都从 lib/overdue.ts 取，不许再各写一份", () => {
+describe("都从 lib/overdue.ts 取，不许再各写一份", () => {
   const 读 = (rel: string) => fs.readFileSync(path.resolve(__dirname, "../src", rel), "utf8");
 
   it("首页信号：数逾期跟进，只数我的", () => {
@@ -91,12 +91,6 @@ describe("三处都从 lib/overdue.ts 取，不许再各写一份", () => {
     expect(s).toMatch(/数逾期跟进\(prisma, \{ ownerId: user\.id \}\)/);
   });
 
-  it("数据页那张卡：数逾期跟进，全团队", () => {
-    const s = 读("app/(app)/dashboard/Board.tsx");
-    expect(s).toMatch(/数逾期跟进\(prisma\)/);
-    expect(s).not.toMatch(/plannedAt:\s*\{\s*lt:/);
-    expect(s).not.toMatch(/dueAt:\s*\{\s*lt:/);
-  });
 
   it("计划页的「逾期」一组：用 逾期判定() 分（PlansView 走 lib/plans-groups 的 分组，和服务端同一个）", () => {
     const s = 读("app/(app)/follow-ups/plans/PlansView.tsx");

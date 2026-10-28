@@ -1,6 +1,6 @@
 /**
  * 盯盘清单的取数：从库里捞出三类原料，交给 sentinel.ts 的纯规则打分。
- * 首页（AI 对话的建议 chip）和数据看板（盯盘卡片）共用，避免两处各写一遍查询。
+ * 首页（AI 对话的建议 chip）、盯盘清单页和 AI 的 get_watchlist 共用，避免各写一遍查询。
  */
 import { scheduleValue } from "./schedule-date";
 import { 今天零点, 逾期条件 } from "./overdue";

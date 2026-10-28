@@ -17,8 +17,6 @@ const 列表页 = [
   "src/app/(app)/channels/ChannelsView.tsx",
   "src/app/(app)/contacts/ContactsView.tsx",
   "src/app/(app)/follow-ups/FollowUpsView.tsx",
-  // 外贸（2026-10-03）
-  "src/app/(app)/orders/OrdersView.tsx",
 ];
 
 /**

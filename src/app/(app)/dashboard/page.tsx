@@ -10,7 +10,6 @@ import { dayjs } from "@/lib/utils";
 import { getBusiness } from "@/lib/business";
 import { statusLabel, 外贸订单 } from "@/lib/business-config";
 import { loadWatchlistPage } from "@/lib/sentinel-data";
-import Board from "./Board";
 import HomeChat, { type Suggestion } from "./HomeChat";
 import StartCard from "./StartCard";
 import { 读对话 } from "./threads";
@@ -40,7 +39,7 @@ const 去导入 = async (user: { id: string; role: string }) => 企业版() && !
 const 数线索 = (只用项目: boolean) => (只用项目 ? 数新线索() : prisma.lead.count());
 
 /**
- * 首页。配了 AI 就是一个对话面（指标图表去了 /overview）；没配 AI 就直接是数据看板。
+ * 首页。配了 AI 就是一个对话面（指标图表去了 /overview）；没配 AI 是「AI 还没配」那一屏（NoAiHome）。
  */
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ q?: string; c?: string }> }) {
   const user = await requireUser();
@@ -59,12 +58,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 对话 = sp0.c ? await 读对话(sp0.c) : null;
   // 企业版自动分配因都已满额没分出去的提醒：首页顶部也摆一份，和线索页同一份数据，哪边关了两边都没了
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
-  // 企业版项目：首页只做对话（2026-10-26 用户定），数据看板只在「数据」页
+  // 企业版项目：首页只做对话（2026-10-26 用户定），数据只在「数据」页
   const 只用项目 = await 企业版只用项目();
   if (!(await llmEnabled())) {
     /*
-      没配 AI 的首页就是数据看板。但**一条业务数据都没有**的时候，看板没什么可看，
-      而第一次打开的人最需要的恰恰是一个起点——所以空库时不论配没配 AI，
+      **一条业务数据都没有**的时候，第一次打开的人最需要的是一个起点——所以空库时不论配没配 AI，
       首页都是那张「开始」卡。配了 AI 的那条路在 HomeChat 里做同样的判断。
     */
     const 学员数 = await prisma.customer.count();
@@ -72,8 +70,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       // StartCard 自带那句「欢迎使用 <产品名>」，这里不再叠一个页头
       return <StartCard 自己服务器={自己服务器()} 去导入={await 去导入(user)} 企业版={企业版()} 产品名={自定产品名() ?? undefined} />;
     }
-    if (只用项目) return <NoAiHome 管理员={user.role === "ADMIN"} 满额提醒={满额提醒们} />;
-    return <Board 满额提醒={满额提醒们} />;
+    // 老的数据看板（Board / DashboardView）10-28 删了：企业版只用项目，没配 AI 的首页一律是这一屏
+    return <NoAiHome 管理员={user.role === "ADMIN"} 满额提醒={满额提醒们} />;
   }
 
   const b = await getBusiness();

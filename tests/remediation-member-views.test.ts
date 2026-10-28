@@ -4,7 +4,6 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => state.user }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 vi.mock("@/app/(app)/contacts/ContactsView", () => ({ default: () => null }));
 vi.mock("@/app/(app)/follow-ups/FollowUpsView", () => ({ default: () => null }));
-vi.mock("@/app/(app)/dashboard/Board", () => ({ default: () => null }));
 vi.mock("@/app/(app)/overview/DataShell", () => ({ default: () => null }));
 vi.mock("@/app/(app)/reports/ReportsView", () => ({ default: () => null }));
 import { prisma } from "@/lib/prisma";

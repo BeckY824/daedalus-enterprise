@@ -9,11 +9,10 @@ import { Modal, Form, InputNumber, Input, App, Checkbox, Space, AutoComplete, Ro
 import { dayjs, fmtDate } from "@/lib/utils";
 import { 金额 } from "@/lib/currency";
 import CurrencySelect from "@/components/CurrencySelect";
-import { saveContract, listContractLinks, type 签约联动, type 签约联动结果 } from "../actions";
+import { saveContract, listContractLinks, 供应商候选, type 签约联动, type 签约联动结果 } from "../actions";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸订单 } from "@/lib/business-config";
 import { 常用付款方式 } from "@/lib/order";
-import { 供应商候选 } from "../../orders/actions";
 import { StageTag } from "@/components/ui";
 import { 金额格式 } from "@/lib/money-input";
 import { 聚焦首项 } from "@/lib/modal-focus";

@@ -16,7 +16,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 import { parseFollowUpDraft, generateBrief } from "@/app/(app)/customers/[id]/ai";
-import { draftWakeup, explainWatchlist } from "@/app/(app)/dashboard/ai";
+import { draftWakeup } from "@/app/(app)/dashboard/ai";
 import { draftInvite } from "@/app/(app)/channels/ai";
 import { llmEnabled } from "@/lib/llm";
 import { resetAiQuota, AI_LIMIT } from "@/lib/ai-quota";
@@ -116,19 +116,6 @@ describe("AI 配额接线", () => {
     const res = await draftWakeup({ customerId: "nope", reason: "x" });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toContain("太频繁");
-  });
-});
-
-describe("盯盘解读守卫", () => {
-  it("空清单要拒绝", async () => {
-    const res = await explainWatchlist({ items: [] });
-    expect(res.ok).toBe(false);
-  });
-
-  it("客户不存在要报得清楚", async () => {
-    const res = await explainWatchlist({ items: [{ customerId: "nope", reason: "x" }] });
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error).toContain("不存在");
   });
 });
 
