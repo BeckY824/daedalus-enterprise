@@ -4,9 +4,8 @@
  * 10-19 客户连报的几个显示 bug（Windows 上客户详情左栏商机小行溢出卡片、时间线跟进头一行被长商机名挤到 AI 栏底下点不动、
  * 跟进记录页右上按钮被切一半、毛玻璃中栏白线）全是客户先发现的。这一份让同一类问题在 CI 里先红：
  *
- *   - 数据：e2e-layout/种子.ts（10-28 起企业版那份在 e2e-layout/企业版.ts，名字、长句照搬），照真客户的样子（一整句英文商机名、英国公司全大写长名、长供应商名、T/T 30/70、US$ 1,234,567.89、一位客户挂好几个商机 / 订单）；
- *     e2e-layout/长选项.ts 起服务前写好外贸模版 + 二十多个长来源 / 职级 / 行业选项 + 长字段名（10-22 排版普查）
- *     D-25 起再加一批长商机（整段询盘、长网址、长中文、中英混排，一个长英文名同事挂大额卡）
+ *   - 数据：e2e-layout/企业版.ts 起服务前建库灌数据，名字、长句取自 e2e-layout/种子.ts，照真客户的样子（一整句英文项目名、英国公司全大写长名、
+ *     整段询盘、长网址、长中文、中英混排、一个长英文名同事挂大额项目），业务配置写长来源 / 职级 / 行业选项 + 长字段名（10-22 排版普查）
  *   - 窗口：Windows 常见的 1024 / 1280 / 1366 宽（高 680：任务栏 + 标题栏之后剩的），每个宽度三种摆法：默认、右边 AI 栏常驻、左栏拖到最宽
  *   - 页面：首页、客户列表、客户记录页（名单 + 详情）、商机列表 / 看板、订单列表 / 详情、跟进记录、计划、待跟名单、供应商、设置各页、团队页
  *     10-28 起本仓库只出企业版：闸门改到企业版服务上（e2e-layout/企业版.ts 建库灌数据，playwright.layout.config.ts 的「企业版」项目），
@@ -29,7 +28,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { 查排版, 说问题, type 排版问题 } from "../e2e/layout-audit";
 import { 企业版进门, 企业版种子 } from "./企业版";
-import { 关掉弹窗 } from "./外贸模版";
 import 现存问题清单 from "./现存问题.json";
 
 const 只记 = process.env.TEAM_QA_REPORT === "1";
@@ -83,6 +81,15 @@ const 页们 = (种子 = 企业版种子()): { 名: string; 址: string; 存?: R
 
 /** antd 的提示、通知是浮在最上面一会儿就走的；水合时 Next 的开发提示也不算 */
 const 忽略 = [".ant-message", ".ant-notification", "nextjs-portal"];
+
+/** 「已更新到 …」那个弹窗盖在页面上会把量出来的东西全搅乱，出现就点「知道了」关掉（等 = 0 时只看一眼不等） */
+export async function 关掉弹窗(page: Page, 等 = 0) {
+  const 弹窗 = page.getByRole("dialog", { name: /已更新到/ });
+  if (await 弹窗.waitFor({ state: "visible", timeout: 等 || 1 }).then(() => true, () => false)) {
+    await 弹窗.getByRole("button", { name: /知\s*道\s*了/ }).click();
+    await expect(弹窗).toBeHidden();
+  }
+}
 
 /** 新库第一次进主界面会在页面出来之后自己弹「已更新到 …」：等一下，弹了就关（点过一次服务端记住，后面不再弹） */
 async function 去(page: Page, 址: string, 摆: 摆法, 存?: Record<string, string>) {
