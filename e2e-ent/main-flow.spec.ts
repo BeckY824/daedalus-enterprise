@@ -100,6 +100,30 @@ test("客户详情、项目详情都能打开", async ({ page }) => {
   await expect(page.getByRole("main").locator(".page-head h1")).toHaveText("同客户项目二");
 });
 
+// 按组织看客户（org_scope）：单测钉的是算范围，这条钉列表页、详情页真的按范围取数。放在会改归属的几条前面
+test("可见范围：销售乙看不到销售甲的客户（列表没有、详情找不到），公海照看；经理看得到下属的；老板全看", async ({ page }) => {
+  const 正文 = page.getByRole("main");
+  await 登录(page, "销售2");
+  await page.goto("/customers?pool=1");
+  await expect(正文.getByText("公海客户甲").first()).toBeVisible();
+  await page.goto("/customers");
+  await expect(正文.locator(".page-head")).toBeVisible();
+  await expect(正文.getByText("销售甲的客户")).toHaveCount(0);
+  await page.goto(`/customers/${种.自己客户}`);
+  await expect(正文.getByText("没有找到这条记录")).toBeVisible();
+  await expect(正文.getByText("销售甲的客户")).toHaveCount(0);
+
+  for (const 谁 of ["经理", "老板"] as const) {
+    await page.context().clearCookies();
+    await 登录(page, 谁);
+    await page.goto("/customers");
+    await expect(正文.getByText("销售甲的客户").first()).toBeVisible();
+    if (谁 === "老板") await expect(正文.getByText("市场的客户").first()).toBeVisible();
+    await page.goto(`/customers/${种.自己客户}`);
+    await expect(正文.getByText("销售甲的客户").first()).toBeVisible();
+  }
+});
+
 /** 点开 aria-label 是 框名 的下拉，选标题是 项 的那一项（antd 的选项带 title） */
 async function 选(page: Page, 框名: string, 项: string) {
   const 那项 = page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${项}"]`);
@@ -221,6 +245,38 @@ test("字段权限：销售的备注只能看就改不了；电话看不到就�
   const 改后 = await db.customer.findUniqueOrThrow({ where: { id: 种.自己客户 } });
   expect(改后.name).toBe("销售甲的客户改名");
   expect(改后.phone).toBe("13900000002");
+});
+
+// 规则「交接要接手人确认」开着：转让先挂起，接手人确认了才换人，项目跟着走。放在字段权限后面（那条要销售甲还管着这位客户）
+test("交接要确认：老板把销售甲的客户转给销售乙，确认前还归销售甲、销售乙看不到；销售乙确认接手后客户和项目都归他", async ({ page }) => {
+  const 正文 = page.getByRole("main");
+  const 归谁 = async () => (await db.customer.findUniqueOrThrow({ where: { id: 种.自己客户 } })).salesOwnerId;
+  const [销售1, 销售2] = await Promise.all([账号.销售1, 账号.销售2].map((email) => db.user.findFirstOrThrow({ where: { email } })));
+
+  await 登录(page, "老板");
+  await page.goto("/customers");
+  await 正文.getByRole("row", { name: /销售甲的客户/ }).getByRole("checkbox").check();
+  await 正文.getByRole("button", { name: /批量分配/ }).click();
+  // 侧栏也是 menuitem，限定在下拉里
+  await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").getByRole("menuitem", { name: 种.名字.销售2 }).click();
+  // 名下有项目（线索乙）先问一起转，再问转让原因（可不选）
+  await page.getByRole("dialog").getByRole("button", { name: "一起转" }).click();
+  await page.getByRole("dialog").filter({ hasText: `转给「${种.名字.销售2}」` }).getByRole("button", { name: /转\s*让/ }).click();
+  await expect(提示(page, `已发起交接：1 名等 ${种.名字.销售2} 确认`)).toBeVisible();
+  expect(await 归谁()).toBe(销售1.id);
+
+  await page.context().clearCookies();
+  await 登录(page, "销售2");
+  await page.goto("/customers");
+  const 待确认 = 正文.locator(".ant-alert", { hasText: "等你确认" });
+  await expect(待确认).toContainText(`「${种.名字.老板}」把「${种.名字.销售1}」名下的 1 位客户交接给你`);
+  await expect(正文.getByRole("row", { name: /销售甲的客户/ })).toHaveCount(0);
+  await 待确认.getByRole("button", { name: "确认接手" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /确\s*认/ }).click();
+  await expect(提示(page, "已接手 1 位客户")).toBeVisible();
+  await expect(正文.getByRole("row", { name: /销售甲的客户/ })).toBeVisible();
+  expect(await 归谁()).toBe(销售2.id);
+  expect((await db.project.findFirstOrThrow({ where: { name: "线索乙" } })).ownerId).toBe(销售2.id);
 });
 
 test("项目公海：原负责人领取灰着；别的销售领了，项目、客户、同客户的另一个项目一起归他", async ({ page }) => {
