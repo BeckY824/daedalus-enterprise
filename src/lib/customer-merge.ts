@@ -21,6 +21,7 @@ import { randomBytes } from "node:crypto";
 import type { Prisma, PrismaClient } from "@/generated/prisma";
 import { prisma } from "./prisma";
 import { 看全部 } from "./team-scope";
+import { 管全队客户 } from "./constants";
 
 type Tx = Prisma.TransactionClient;
 type 行 = Record<string, unknown>;
@@ -252,8 +253,12 @@ export async function 撤销上一批(db: PrismaClient = prisma): Promise<{ 撤�
 /** 一对的编号：两个客户编号排好、用 __ 连起来（同步的编号只许字母数字 - _） */
 export const 不重复编号 = (a: string, b: string) => (a < b ? `${a}__${b}` : `${b}__${a}`);
 
-/** 一组里两两标上「不是同一个人」。已经标过的跳过 */
-export async function 标不是同一个人(ids: string[], 我: { id: string }, db: PrismaClient = prisma): Promise<number> {
+/**
+ * 一组里两两标上「不是同一个人」。已经标过的跳过。
+ * 只有老板 / 主管（管全队客户）能标：函数自己挡，不靠入口（2026-10-28）。我 带上角色，不给就当没权限
+ */
+export async function 标不是同一个人(ids: string[], 我: { id: string; role: string }, db: PrismaClient = prisma): Promise<number> {
+  if (!管全队客户(我.role)) throw new Error("只有老板或主管能标「不是同一个人」");
   const 排好 = [...new Set(ids)].sort();
   let n = 0;
   await 看全部(() => db.$transaction(async (tx) => {

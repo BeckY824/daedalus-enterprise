@@ -109,7 +109,7 @@ export async function 确认交接(id: string): Promise<结果> {
     const 方式: 停用方式 = (停用方式们 as readonly string[]).includes(h.way ?? "") ? (h.way as 停用方式) : "转交";
     const 记分配 = await 规则开着("线索分配");
     const 成 = await 看全部(() => prisma.$transaction(async (tx) => {
-      if (!(await 了结(tx, h.id, "已确认", me.id, { toUserId: me.id }))) return null;
+      if (!(await 了结(tx, h.id, "已确认", me))) return null;
       const 分 = await 停用分拣(tx, h.fromUserId, 方式, true);
       const 项目 = await 离职转给接手人(tx, 分, h.fromUserId, me.id, h.byUserId, 记分配);
       // 发起到确认之间又该进公海的（方式 = 公海），这时一起放
@@ -133,7 +133,7 @@ export async function 确认交接(id: string): Promise<结果> {
 
   const ids = 读ids(h.customerIds);
   const 换 = await 看全部(() => prisma.$transaction(async (tx) => {
-    if (!(await 了结(tx, h.id, "已确认", me.id, { toUserId: me.id }))) return null;
+    if (!(await 了结(tx, h.id, "已确认", me))) return null;
     const 还归他 = (await tx.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId }, select: { id: true } })).map((c) => c.id);
     if (还归他.length) await tx.customer.updateMany({ where: { id: { in: 还归他 } }, data: { salesOwnerId: me.id } });
     return 还归他;
@@ -174,7 +174,7 @@ async function 了结一笔(
   const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id } }));
   if (!h || h.status !== 待确认) return { ok: false, error: 已处理 };
   if (!能(h)) return { ok: false, error: 不能 };
-  if (!(await 看全部(() => 了结(prisma, h.id, 状态, me.id)))) return { ok: false, error: 已处理 };
+  if (!(await 看全部(() => 了结(prisma, h.id, 状态, me)))) return { ok: false, error: 已处理 };
   const 人 = new Map((await prisma.user.findMany({ where: { id: { in: [h.fromUserId, h.toUserId] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const n = 读ids(h.customerIds).length;
   await recordAudit({

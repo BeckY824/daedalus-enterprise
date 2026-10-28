@@ -464,7 +464,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       }
       const created = await tx.customer.create({ data });
       await 写外贸档案(tx, created.id, { ...档案.data, ...(企号?.类型 === "邮箱" ? { email: 企号.值 } : 企号?.类型 === "微信" ? { wechat: 企号.值 } : {}) }, false);
-      if (企号) await 记号码(tx, created.id, null, 企号);
+      if (企号) await 记号码(tx, { 刚建的: created.id }, null, 企号);
       if (认得(接着)) await 接着(tx, created.id);
       return { created } as const;
     });
