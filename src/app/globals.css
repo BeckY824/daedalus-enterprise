@@ -1103,7 +1103,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 }
 .rec-field:hover { background: var(--row-hover); }
 .rec-field-editing { background: var(--row-hover); cursor: default; }
-.rec-field-k { font-size: var(--fs-note); color: var(--text-muted); line-height: 22px; white-space: nowrap; }
+.rec-field-k { font-size: var(--fs-note); color: var(--text-muted); line-height: 22px; overflow-wrap: anywhere; } /* 不再 nowrap：自定义的长字段名在 66px 里折行，不压到右边的值上；内置最长的「渠道负责人」65px 照旧一行 */
 .rec-field-v { font-size: var(--fs-body); color: var(--ink); line-height: 22px; word-break: break-word; }
 .rec-field-empty { color: var(--text-faint); }
 .rec-field-saving { opacity: 0.5; }
@@ -1185,7 +1185,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: var(--fs-body);
 }
 .rec-plan-k { color: var(--brand); font-weight: 600; white-space: nowrap; }
-.rec-plan-v { flex: 1 1 100%; min-width: 0; color: var(--ink); order: 3; }
+.rec-plan-v { flex: 1 1 100%; min-width: 0; color: var(--ink); order: 3; overflow-wrap: anywhere; } /* 不带空格的长名字也得断，不然撑出整页横滚 */
 .rec-plan-m { color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; margin-left: auto; }
 .rec-plan-m.is-over { color: var(--danger-text); }
 .rec-tl { padding: 4px 16px 10px; }
@@ -1214,7 +1214,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 @media (hover: none) {
   .rec-tl-acts { position: static; translate: none; opacity: 1; pointer-events: auto; background: none; padding-left: 0; margin-left: auto; }
 }
-.rec-tl-content { margin: 6px 0 4px; color: var(--ink-soft); font-size: var(--fs-section); line-height: 1.75; white-space: pre-wrap; }
+.rec-tl-content { margin: 6px 0 4px; color: var(--ink-soft); font-size: var(--fs-section); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; } /* 长网址一口气不断，会撑出整页横滚 */
 .rec-tl-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--fs-note); color: var(--text-muted); margin-top: 4px; }
 .rec-tl-contract { background: var(--success-bg); border: 1px solid var(--success-line); border-radius: var(--r-card); padding: 10px 14px; }
 /* 签约 / 订单卡片：订单号 + 金额长的时候日期折到下一行靠右，不再越出卡片（2026-10-19 排查） */

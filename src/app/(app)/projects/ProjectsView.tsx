@@ -149,7 +149,8 @@ export default function ProjectsView({
   }
 
   const 列表: 列<项目行>[] = [
-    { title: "项目", dataIndex: "name", width: 180, render: (v: string) => <span className="clamp" title={v}>{v}</span> },
+    // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「节点」挤成两个字一行
+    { title: "项目", dataIndex: "name", width: 180, 常驻: true, render: (v: string) => <span className="clamp" title={v}>{v}</span> },
     { title: b.customer, key: "customer", width: 170, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
     { title: "节点", key: "node", width: 150, render: (_, r) => <>{节点文字(r, 字典)}{r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
     { title: "金额", key: "amount", width: 120, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
@@ -298,7 +299,7 @@ export default function ProjectsView({
                             }
                           }}
                         >
-                          <div className="pipe-card-t">{r.name}</div>
+                          <div className="pipe-card-t clamp" title={r.name}>{r.name}</div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看}</span>
                           </div>
