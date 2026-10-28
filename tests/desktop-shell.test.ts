@@ -91,7 +91,7 @@ describe("菜单照 Claude 桌面端那套：只有标准项", () => {
     */
     // 也认「模版 && 功能开关」（2026-10-04：订单 / 供应商这一版不上，lib/features.ts）
     const 按模版 = new Set([...shell.matchAll(/b\.template === "\w+"(?: && [^?]+)? \? \[\{ key: "(\/[a-z-]+)"/g)].map((m) => m[1]));
-    expect(按模版.has("/orders")).toBe(true);
+    // 外贸模版的「订单」入口 2026-10-28 删了（企业版模版锁在通用），现在按模版出的入口一个都没有；正则留着，以后再加照样排掉
     // 托管工作区创建者的订阅入口同样由页面按权限决定，原生菜单不知道当前工作区角色。
     const 按权限 = new Set([...shell.matchAll(/workspace\?\.billing \? \[\{ key: "(\/[a-z-]+)"/g)].map((m) => m[1]));
     expect(按权限.has("/billing")).toBe(true);

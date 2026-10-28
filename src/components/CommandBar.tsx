@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { Modal } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
-import { 外贸订单 } from "@/lib/business-config";
 import { 换一位 } from "@/lib/roster";
 
 /**
@@ -44,15 +43,8 @@ export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: 
       { 名: b.customer, 去: "/customers", 说明: "全部档案与跟进" },
       { 名: "渠道", 去: "/channels", 说明: "外部推荐来源" },
       { 名: "联系人", 去: "/contacts", 说明: b.fields.school === "院校" ? "家长、老师、经办人" : "客户那边对接的人" },
-      // 企业版只用项目（10-26）：商机两项换成项目
-      ...(企业版项目
-        ? [{ 名: "项目", 去: "/projects", 说明: "线索、商机、订单三个阶段" }]
-        : [
-            { 名: "商机", 去: "/opportunities", 说明: "在谈的单子" },
-            { 名: "商机管道", 去: "/opportunities/pipeline", 说明: "按阶段拖着看" },
-          ]),
-      // 外贸模版的订单（2026-10-05）：左栏有，这里也要有
-      ...(外贸订单(b) ? [{ 名: "订单", 去: "/orders", 说明: "客户确认的每一单" }] : []),
+      // 企业版只用项目（10-26）；商机两项（/opportunities 一律转到 /projects）和外贸订单 10-28 删了，和左栏一致
+      ...(b.projectMode ? [{ 名: "项目", 去: "/projects", 说明: "线索、商机、订单三个阶段" }] : []),
       { 名: "跟进记录", 去: "/follow-ups", 说明: "已经发生的沟通" },
       { 名: "跟进计划", 去: "/follow-ups/plans", 说明: "排好还没做的" },
       { 名: "设置", 去: "/settings", 说明: "账号、密码、AI 接入、业务配置" },
