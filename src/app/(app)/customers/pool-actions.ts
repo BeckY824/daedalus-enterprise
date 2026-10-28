@@ -14,7 +14,7 @@ import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 带走并记下, 还项目, type 带走的 } from "@/lib/carry-over-db";
-import { 记换负责人 } from "@/lib/owner-log-db";
+import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
@@ -182,6 +182,8 @@ export async function 分配公海(ids: string[], userId: string): Promise<公�
  * 领取之前就归我的计划、待办、商机不动（复查：原来按「我名下没做完的」整个转回去，把我自己的也送走了）。
  * 只撤自己刚才那一下：只认「现在还归我、不在公海」的那几位；原负责人已经停用的不还（还给停用的人等于丢进黑洞），留在我这儿。
  * 撤销分配（老板）：同撤销领取，「我」换成分到的那位（给谁）——只认现在还归他、不在公海的，他名下带过去的活还回去
+ * 负责人真换过的还要对上换负责人记录（2026-10-28）：最近一条得是我把他从原负责人换到现在这位的。
+ * 不然业务员把自己的客户当「刚领的」撤，原负责人随手填个同事，就绕过交接把客户塞到同事名下
  */
 export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: { id: string; 值: string }[], 带过来?: 带走的, 给谁?: string): Promise<公海结果> {
   const me = await requireUser();
@@ -197,7 +199,9 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   }
   const 还归我 = await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: 现, pool: null }, select: { id: true } });
   const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 原.map((x) => x.值) }, active: true }, select: { id: true } })).map((u) => u.id));
-  const 退 = 原.filter((x) => 还归我.some((c) => c.id === x.id) && 在职的.has(x.值));
+  const 换过 = 原.filter((x) => x.值 !== 现);
+  const 我换的 = await 是我刚换的(换过.map((x) => ({ customerId: x.id, 原: x.值, 现 })), me.id);
+  const 退 = 原.filter((x) => 还归我.some((c) => c.id === x.id) && 在职的.has(x.值) && (x.值 === 现 || 我换的.has(x.id)));
   await 钉住老签约();
   for (const x of 退) {
     await prisma.$transaction(async (tx) => {
