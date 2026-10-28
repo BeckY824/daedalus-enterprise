@@ -173,6 +173,8 @@ model Customer {
   @@index([decisionStatus])
   /// 客户列表默认按建档时间倒序翻页（迁移 049）：10 万客户时没有它每页都要全表排序一遍
   @@index([createdAt, id])
+  /// 企业版首页「意向客户」按客户状态数（迁移 065）
+  @@index([custStatus])
 }
 
 /// 签约记录。同一学员可多次签约（续费、补课），便于按月/季/年复盘
@@ -934,6 +936,10 @@ model Project {
   @@index([ownerId])
   @@index([sourceLeadId])
   @@index([pooledAt])
+  /// 企业版新线索页按阶段筛、按最近更新倒序取前 500（迁移 065）
+  @@index([phase, updatedAt])
+  /// 项目页不筛阶段时按最近更新倒序取前 500（迁移 065）
+  @@index([updatedAt])
 }
 
 /// 项目组成员，多对多。1a 负责人直接加人写 JOINED；1b 的进组邀请用 INVITED / DECLINED 和 invitedById

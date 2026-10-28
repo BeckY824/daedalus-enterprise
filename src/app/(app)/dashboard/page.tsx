@@ -95,9 +95,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     // 计划 + 待办都算，和点进去的计划页「我的 · 逾期」、数据页那张卡同一个函数（lib/overdue.ts）
     数逾期跟进(prisma, { ownerId: user.id }),
     // 公海里的不算：点进去是客户列表的「客户」页签，那里不含公海（2026-10-13），数要对得上
-    prisma.customer.count({ where: { followStatus: "意向较高", pool: { is: null } } }),
-    // 取行按币种合计（不换汇）：币种在 ContractMoney 上，aggregate 分不了
-    prisma.contract.findMany({ select: { amount: true, ...带币种.签约 }, where: { signedAt: { gte: now.startOf("month").toDate(), lt: now.add(1, "month").startOf("month").toDate(), lte: now.toDate() } } }),
+    // 企业版只用项目时这一格换成客户状态「意向」（下面的企业信号），跟进状态不用数
+    只用项目 ? 0 : prisma.customer.count({ where: { followStatus: "意向较高", pool: { is: null } } }),
+    // 取行按币种合计（不换汇）：币种在 ContractMoney 上，aggregate 分不了。
+    // 企业版只用项目时这一格换成「本月成交」（下面的企业信号，Signals 里整格替掉），合同不用查
+    只用项目 ? [] : prisma.contract.findMany({ select: { amount: true, ...带币种.签约 }, where: { signedAt: { gte: now.startOf("month").toDate(), lt: now.add(1, "month").startOf("month").toDate(), lte: now.toDate() } } }),
     prisma.customer.count(),
     数线索(只用项目),
   ]);
