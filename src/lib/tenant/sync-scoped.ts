@@ -14,7 +14,7 @@ import { 范围开关 } from "./scoped-flag";
 import { 能同步 } from "./team-plan";
 import { 团队索引, 缓存关着, 索引版本, 记改过, 推送开始, 推送结束, 有推送在途, 目录增量, type 范围组 } from "./scoped-index";
 import { 包的编号 } from "../sync/crypto";
-import { 合并范围, 推送可写, 挂在已删的上, 算范围, 范围可读, 范围字段, 行键, type 范围元数据, type 范围索引, type 范围行表, type 读限 } from "../sync/scope-policy";
+import { 合并范围, 推送可写, 挂在已删的上, 算范围, 范围可读, 范围字段, 范围字段之, 行键, type 范围元数据, type 范围索引, type 范围行表, type 读限 } from "../sync/scope-policy";
 import { 查重单次上限, 查重一问上限, 查重哈希格式, type 查重条目, type 查重命中 } from "../sync/dedupe";
 
 /** denied：403 时被拒的包在本次 packets 里的下标（整批已回滚）；新客户端据此只把这几条转冲突、其余原样重推 */
@@ -100,7 +100,7 @@ function validate(packet: 范围包) {
   const m = packet?.meta;
   if (!m || !Object.hasOwn(范围字段, m.t) || typeof m.k !== 'string' || !/^[\w-]{1,100}$/.test(m.k) || !/^(I|U|D)$/.test(m.o) || typeof m.h !== 'string' || !/^\d{13,16}-[\w-]{1,100}$/.test(m.h)) fail(400, "范围事件格式不对");
   if (!m.fields || typeof m.fields !== "object" || Array.isArray(m.fields)) fail(400, "范围字段格式不对");
-  for (const [k, v] of Object.entries(m.fields)) if (!范围字段[m.t].includes(k) || (v !== null && (typeof v !== 'string' || !/^[\w-]{1,100}$/.test(v)))) fail(400, "不允许的范围字段");
+  for (const [k, v] of Object.entries(m.fields)) if (!范围字段之(m.t).includes(k) || (v !== null && (typeof v !== 'string' || !/^[\w-]{1,100}$/.test(v)))) fail(400, "不允许的范围字段");
   if (m.o === 'D' && Object.keys(m.fields).length) fail(400, "删除事件不能改归属");
   if (packet.baseline !== undefined && typeof packet.baseline !== 'boolean') fail(400, "范围密文包格式不对");
   if (!/^[a-f0-9]{64}$/.test(packet.eventId) || typeof packet.data !== 'string' || packet.data.length > 8 * 1024 * 1024) fail(400, "范围密文包格式不对");

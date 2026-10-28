@@ -6,7 +6,9 @@
  *   - 线索转客户：线索上的附件补挂到新建的联系人上（leadId 留着）；并进老客户：挂到电话对得上的那位
  *   - 清孤儿：线索删了、联系人还在 → 不动；两边都不在 → 先不动，满 1 天才删
  *   - 导出：含联系人时数联系人和挂在已转化线索上的；不含时没有这一项；「联系人 N 张」
- *   - 开关关着（个人版、团队版）：leadId / contactId 参数一律 400，转客户不补 contactId
+ *   - 项目页联系人那一行的入口（联系人附件入口）：个数跟库里一样，只读客户只给看
+ *   - 开关关着（个人版、团队版）：leadId / contactId 参数一律 400，转客户不补 contactId，项目页没有入口
+ * 真库、不 mock 身份的越权用例在 contact-attachments-scope.test.ts
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import fs from "node:fs";
@@ -38,6 +40,7 @@ import { GET as 列, POST as 传 } from "@/app/api/attachments/route";
 import { GET as 取, DELETE as 删 } from "@/app/api/attachments/[id]/route";
 import { convertLead, mergeLeadInto, saveLead } from "@/app/(app)/leads/actions";
 import { 附件个数说法 } from "@/app/(app)/customers/export-table";
+import { 联系人附件入口 } from "@/app/api/attachments/access";
 
 const 目录 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-catt-"));
 process.env.CRM_DATA_DIR = 目录;
@@ -219,7 +222,28 @@ describe("导出", () => {
   });
 });
 
+describe("企业版：项目页联系人附件入口", () => {
+  it("个数跟库里一样；只读客户只给看；联系人不在了没有入口", async () => {
+    const c = await prisma.customer.create({ data: { name: "QA-客户", phone: "", salesOwnerId: 我 } });
+    const p = await prisma.contact.create({ data: { name: "QA-孙", customerId: c.id } });
+    expect(await 联系人附件入口(p.id)).toEqual({ 个数: 0, 只读: false });
+    await 传一个(`contactId=${p.id}`, 字节("一"));
+    await 传一个(`contactId=${p.id}`, 字节("二"));
+    expect(await 联系人附件入口(p.id)).toEqual({ 个数: 2, 只读: false });
+    mocks.只读.add(c.id);
+    expect(await 联系人附件入口(p.id)).toEqual({ 个数: 2, 只读: true });
+    expect(await 联系人附件入口("nope-contact")).toBeNull();
+  });
+});
+
 describe("开关关着（个人版、团队版）", () => {
+  it("项目页没有联系人附件入口", async () => {
+    const c = await prisma.customer.create({ data: { name: "QA-客户", phone: "", salesOwnerId: 我 } });
+    const p = await prisma.contact.create({ data: { name: "QA-周", customerId: c.id } });
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect(await 联系人附件入口(p.id)).toBeNull();
+  });
+
   it("leadId / contactId 参数一律 400，转客户不补 contactId", async () => {
     const l = await 线索();
     // 开着时传一张，关掉再看
