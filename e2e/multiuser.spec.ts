@@ -117,6 +117,7 @@ test.describe("A 组：跨会话的数据可见性", () => {
 
 test.describe("D 组：批量操作交叉", () => {
   test("两人同时批量改状态，都要收到真实条数且不互相锁死", async ({ browser }) => {
+    test.skip(企业版, "企业版只用项目：客户 / 线索的「新建」去项目页新建，不弹老的新建框；在开关关着那套里验");
     const 甲 = await 另一个人(browser, 甲账号);
     const 乙 = await 另一个人(browser, 管理员);
 

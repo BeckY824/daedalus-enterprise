@@ -77,6 +77,7 @@ test("客户详情：只移出、撤销、再移出", async ({ page }) => {
 });
 
 test("联系人页：写「未归属」，点开挂到别的客户下面", async ({ page }) => {
+  test.skip(企业版, "靠上一条把王经理移出才「未归属」，企业版上一条已跳过；在开关关着那套里验");
   await 登录(page);
   await page.goto("/contacts");
   const 行 = page.locator("tr.ant-table-row", { hasText: "王经理" });

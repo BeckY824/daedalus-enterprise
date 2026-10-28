@@ -317,6 +317,7 @@ test("列表满页时分页可用，翻页后内容真的变了", async ({ page 
 });
 
 test("看板有数据时各阶段都画得出来", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机看板，阶段在项目看板上");
   await 登录(page);
   await page.goto("/opportunities/pipeline");
   await page.waitForTimeout(900);

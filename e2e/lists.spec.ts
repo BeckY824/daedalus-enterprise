@@ -212,6 +212,7 @@ test("J-026 新建线索不选来源：存成「其他」，不是「官网注�
 });
 
 test("J-024 线索的电话已经是某位客户的：转客户时说清是谁，点「并到」→ 线索已转化、关联到那位，进了他的记录页", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：左栏没有老线索页，线索转客户在项目里走");
   const p = 连库();
   const 老客 = await p.customer.create({ data: { name: "撞号老客", phone: "13955550024", salesOwnerId: 张三 } });
   const 线索 = await p.lead.create({ data: { name: "又来一次的人", phone: "139 5555 0024", ownerId: 张三 } });

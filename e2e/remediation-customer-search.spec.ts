@@ -37,6 +37,7 @@ test("客户详情内就地新建商机，客户正确预填并实际保存到�
   const db = 连库(); try { expect(await db.opportunity.findFirst({ where: { name: "详情就地商机" } })).toMatchObject({ customerId: target, amount: 123 }); } finally { await db.$disconnect(); }
 });
 test("按唯一ID冷加载已有商机，无水合错误，取消保留列表筛选", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目，没有商机；上一条建商机已跳过");
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message)); await login(page);
   const db = 连库(); let id: string;
   try { id = (await db.opportunity.findFirstOrThrow({ where: { name: "详情就地商机" } })).id; } finally { await db.$disconnect(); }

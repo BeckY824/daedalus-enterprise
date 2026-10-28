@@ -202,6 +202,7 @@ test("J-083 计划页点完成：那一行先留在原地打着勾，不立刻�
 });
 
 test("签约金额：自动带上勾着的商机金额之和；取消勾一个跟着减；手填过就不再跟", async ({ page }) => {
+  test.skip(企业版, "企业版只用项目：没有商机（src/lib/enterprise/project-only.ts）");
   const id = await 造客户("两单一起签");
   await 查(async (p) => {
     await p.opportunity.create({ data: { name: "年框", customerId: id, ownerId: 我id, amount: 10000, stage: "方案报价", probability: 60 } });

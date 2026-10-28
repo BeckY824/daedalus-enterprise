@@ -237,6 +237,8 @@ test("删渠道 / 删线索：有客户挂着的渠道拦下说清；没转化�
   await page.getByRole("dialog").getByRole("button", { name: /删\s*除/ }).click();
   await expect(page.locator("tr.ant-table-row", { hasText: `空渠道${戳}` })).toHaveCount(0);
 
+  // 企业版只用项目：左栏没有老线索页（线索在项目里），线索那半在开关关着那套里验
+  if (企业版) return;
   await page.goto("/leads");
   const 转过的 = page.locator("tr.ant-table-row", { hasText: `转过的线索${戳}` });
   await expect(转过的.getByRole("link", { name: /查看客户/ })).toBeVisible();
