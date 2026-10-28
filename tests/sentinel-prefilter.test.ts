@@ -100,7 +100,6 @@ async function 原来(now: Dayjs, 谁的?: string) {
       overduePlans: [],
       customers: customers.map((c) => ({ id: c.id, name: c.name, followStatus: c.followStatus, lastFollowAt: c.lastFollowAt, createdAt: c.createdAt, ownerName: c.salesOwner.name })),
       opportunities: opps.map((o) => ({ customerId: o.customer.id, customerName: o.customer.name, ownerName: o.owner.name, name: o.name, stage: stageLabel(business, o.stage), updatedAt: o.activityAt ?? o.updatedAt })),
-      lateOrderNodes: [],
     },
     now.toDate(),
     business.customer,

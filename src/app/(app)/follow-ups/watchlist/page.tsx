@@ -28,7 +28,7 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Pr
       {result.items.length === 0 ? <p className="muted">当前范围没有需要提醒的记录。</p> : result.items.map(item => <div key={item.customerId} style={{ padding: "12px 0", borderBottom: "1px solid var(--line-soft)", overflowWrap: "anywhere" /* 无空格长客户名伸出卡片（10-19 排版闸门） */ }}>
         <RowLink href={`/customers/${item.customerId}`} className="link-strong">{item.customerName}</RowLink>
         <span className="muted"> · {item.ownerName} · {KIND_LABEL[item.kind].replace("学员", b.customer)}</span>
-        <p style={{ margin: "6px 0 0" }}>{item.href ? <RowLink href={item.href}>{item.reason}</RowLink> : item.reason}</p>
+        <p style={{ margin: "6px 0 0" }}>{item.reason}</p>
       </div>)}
       <nav aria-label="盯盘分页" style={{ display: "flex", gap: 16, marginTop: 16 }}>
         {current > 1 && <Link href={href(current - 1)}>上一页</Link>}

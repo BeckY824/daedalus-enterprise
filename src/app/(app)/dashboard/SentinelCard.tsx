@@ -14,7 +14,6 @@ import { 起草, 草稿键, useCopyDraft } from "@/lib/draft-jobs";
 import { RowLink } from "@/components/ui";
 
 const KIND_COLOR: Record<WatchItem["kind"], string> = {
-  order_late: "error",
   overdue_plan: "error",
   sleeping: "warning",
   stalled_opp: "processing",
@@ -115,8 +114,7 @@ function SentinelRow({
               {it.customerName}
             </RowLink>
             <span style={{ flex: 1, minWidth: 200, color: "var(--text-muted)", fontSize: 14 }}>
-              {/* 订单超期：理由本身就是去处，点了直接到那张订单那一步 */}
-              {it.href ? <RowLink href={it.href}>{it.reason}</RowLink> : it.reason}
+              {it.reason}
             </span>
             <span style={{ color: "var(--text-muted)", fontSize: 13, flex: "none" }}>{it.ownerName}</span>
             {aiEnabled && !draftText && (
