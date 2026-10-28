@@ -4,6 +4,7 @@
  * 每一行是一种删法，每一列是删完之后人会去看的一处：
  *   联系人页 / 跟进页 / 商机管道 / 签约业绩（数据页）/ 待办计划 / 公海 / 线索页 / 渠道页 / 首页数字，外加「撤销后」。
  * 每一列都取**真实页面交给界面的那份数据**（page.tsx 服务端取数跑一遍，View 换成空壳），首页数字用首页同一组函数。
+ * （商机管道一列：那一页 10-28 删了，改成照它原来的取法直接查库。）
  *
  * 断言方式：删之前看一遍、删之后看一遍，算出「哪几列、多了什么少了什么」，整份 toEqual——
  * 写出来的列必须这么变，**没写出来的列必须一点没变**。能撤销的，撤完再看一遍必须和删之前一模一样。
@@ -19,7 +20,7 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user, getCurrentUs
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NOT_FOUND"); }, redirect: () => { throw new Error("REDIRECT"); } }));
 for (const m of [
   "@/app/(app)/follow-ups/FollowUpsView", "@/app/(app)/follow-ups/plans/PlansView",
-  "@/app/(app)/opportunities/pipeline/PipelineView", "@/app/(app)/contacts/ContactsView", "@/app/(app)/leads/LeadsView",
+  "@/app/(app)/contacts/ContactsView", "@/app/(app)/leads/LeadsView",
   "@/app/(app)/channels/ChannelsView", "@/app/(app)/customers/CustomersView",
 ]) vi.doMock(m, () => ({ default: () => null }));
 
@@ -125,7 +126,8 @@ async function 看一遍() {
   const [联系人, 跟进, 管道, 计划页, 公海, 线索, 渠道] = await Promise.all([
     import("@/app/(app)/contacts/page").then((m) => m.default(sp())),
     import("@/app/(app)/follow-ups/page").then((m) => m.default(sp())),
-    import("@/app/(app)/opportunities/pipeline/page").then((m) => m.default()),
+    // 商机管道页 10-28 删了；照它原来的取法直接查：进行中的 + 赢下的（本测试里赢单都是刚赢的，落在原来的 30 天里）
+    prisma.opportunity.findMany({ where: { status: { in: ["OPEN", "WON"] } }, include: { customer: { select: { name: true } } } }),
     import("@/app/(app)/follow-ups/plans/page").then((m) => m.default(sp())),
     import("@/app/(app)/customers/page").then((m) => m.default(sp({ pool: "1" }))),
     import("@/app/(app)/leads/page").then((m) => m.default(sp())),
@@ -138,7 +140,7 @@ async function 看一遍() {
   return {
     联系人页: 排(行(联系人).map((r) => (r.未归属 ? `未归属|${r.name}（原${r.原来}）` : `${r.customerName}|${r.name}${r.isPrimary ? "★" : ""}`))),
     跟进页: 排(行(跟进).map((r) => `${r.customerName}|${r.content}|跟${r.contactName ?? "—"}`)),
-    商机管道: 排(行(管道).map((r) => `${r.customerName}|${r.name}|${r.status}|${r.stage}`)),
+    商机管道: 排(管道.map((o) => `${o.customer.name}|${o.name}|${o.status}|${o.stage}`)),
     签约业绩: { 笔数: 复盘.total.count, 金额: 复盘.total.amount },
     待办计划: 排([
       ...行(计划页, "plans").map((r) => `${r.customerName}|计划|${r.subject}`),

@@ -48,7 +48,7 @@ test.afterAll(async () => {
   await p.$disconnect();
 });
 
-const 页面 = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/opportunities", "/follow-ups", "/follow-ups/plans", "/settings"];
+const 页面 = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/follow-ups", "/follow-ups/plans", "/settings"];
 
 /**
  * 页面上每一段「给人读的文字」的字号与颜色。

@@ -40,8 +40,7 @@ const 页面 = [
   { 路径: "/customers", 名字: "客户" },
   { 路径: "/channels", 名字: "渠道" },
   { 路径: "/contacts", 名字: "联系人" },
-  { 路径: "/opportunities", 名字: "商机" },
-  { 路径: "/opportunities/pipeline", 名字: "商机管道" },
+  { 路径: "/projects", 名字: "项目" },
   { 路径: "/follow-ups", 名字: "跟进记录" },
   { 路径: "/follow-ups/plans", 名字: "跟进计划" },
   { 路径: "/reports", 名字: "数据-本年" },
@@ -129,7 +128,7 @@ test("零数据时数据首页不该显示任何编出来的涨跌", async ({ pa
 
 test("表格类页面零数据时要显示空状态提示，而不是只有表头", async ({ page }) => {
   await 登录(page);
-  const 有表格的 = ["/leads", "/customers", "/channels", "/contacts", "/opportunities", "/follow-ups"];
+  const 有表格的 = ["/leads", "/customers", "/channels", "/contacts", "/projects", "/follow-ups"];
   const 问题: string[] = [];
 
   for (const 路径 of 有表格的) {
@@ -314,21 +313,6 @@ test("列表满页时分页可用，翻页后内容真的变了", async ({ page 
     })
     .not.toBe(第一页首行);
   await page.screenshot({ path: "test-results/走查/分页-第二页.png", fullPage: true });
-});
-
-test("看板有数据时各阶段都画得出来", async ({ page }) => {
-  test.skip(企业版, "企业版只用项目：没有商机看板，阶段在项目看板上");
-  await 登录(page);
-  await page.goto("/opportunities/pipeline");
-  await page.waitForTimeout(900);
-  await page.screenshot({ path: "test-results/走查/看板-有数据.png", fullPage: true });
-
-  const 文本 = await page.locator("main").innerText();
-  for (const 阶段 of ["初步沟通", "需求确认", "方案报价", "谈判审核", "赢单成交"]) {
-    expect(文本, `看板缺少「${阶段}」这一列`).toContain(阶段);
-  }
-  const r = await 横向溢出(page);
-  expect(r.溢出, `看板横向溢出：${JSON.stringify(r)}`).toBe(false);
 });
 
 test("业绩排行里的姓名不能溢出压到进度条上", async ({ page }) => {

@@ -200,7 +200,7 @@ describe("商机拖阶段 / 改状态后撤销", () => {
     const o = await 商机(c.id);
     await moveStage(o.id, "赢单成交");
     expect(await prisma.opportunityClose.count()).toBe(1);
-    await moveStage(o.id, "方案报价", 75); // 界面上的撤销就是这么调的（PipelineView 推进(…, 是撤销)）
+    await moveStage(o.id, "方案报价", 75); // 撤销就是这么调的（原商机管道页 PipelineView 推进(…, 是撤销)，页面 10-28 删了，动作还留着）
     const 现 = await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } });
     expect([现.stage, 现.probability, 现.status]).toEqual(["方案报价", 75, "OPEN"]);
     expect(await prisma.opportunityClose.count()).toBe(0);

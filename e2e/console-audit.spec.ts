@@ -38,10 +38,8 @@ const 页面 = [
   ["客户", "/customers"],
   ["渠道", "/channels"],
   ["联系人", "/contacts"],
-  ["商机列表", "/opportunities"],
-  // J-219：带 ?new=1 一进来就开新建框，首次加载出过水合报错
-  ["商机列表（直接开新建框）", "/opportunities?new=1"],
-  ["商机看板", "/opportunities/pipeline"],
+  // 商机列表 / 看板 10-28 删了（/opportunities 转到这里）
+  ["项目", "/projects"],
   // 外贸模版的订单页（2026-10-03）：空着也不许报警。关着时页面是 404，不巡（供应商页 2026-10-28 已删）
   ...(订单 ? [["订单", "/orders"]] : []),
   ["跟进记录", "/follow-ups"],

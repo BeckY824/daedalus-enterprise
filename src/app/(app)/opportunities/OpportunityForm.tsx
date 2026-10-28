@@ -14,7 +14,6 @@ import { saveOpportunity, 读报价 } from "./actions";
 import QuoteLines, { 新行, 交出去, 草稿合计, type 草稿行 } from "./QuoteLines";
 import type { 一次报价 } from "@/lib/quote-db";
 import { 报价明细 } from "@/lib/features";
-import type { OppRow } from "./OpportunitiesView";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import CurrencySelect from "@/components/CurrencySelect";
@@ -22,6 +21,33 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { useMe, 默认负责人 } from "@/lib/me-client";
 import { useBusiness } from "@/lib/business-client";
 import { stageLabel, 外贸订单, 外贸精简 } from "@/lib/business-config";
+
+/**
+ * 编辑框拿到的那一条商机。原来跟着商机列表页（OpportunitiesView）定义；企业版没有商机列表和管道（10-28 删了），
+ * 这个框只剩客户记录页「新建关联商机」一个入口，类型挪到这里
+ */
+export type OppRow = {
+  id: string;
+  name: string;
+  amount: number;
+  /** 币种（2026-10-03） */
+  currency: string;
+  stage: string;
+  status: string;
+  probability: number;
+  expectedDealAt: string | null;
+  /** 外贸模版下叫「询盘时间」（2026-10-05）：商机是哪天来的，人能改 */
+  createdAt: string;
+  remark: string | null;
+  customerId: string;
+  customerName: string;
+  /** 公司（Customer.school）：所属客户那一格的第二行 */
+  customerCompany?: string | null;
+  ownerId: string;
+  ownerName: string;
+  /** 编辑框的版本号：保存时带回去，期间有人改过就不盖掉（排查 D3，lib/edit-version.ts） */
+  updatedAt: string;
+};
 
 /** 商机名是一行字：换行（含粘贴进来的）并成一个空格 */
 const 并成一行 = (v: unknown) => (typeof v === "string" ? v.replace(/[ \t]*[\r\n]+[ \t]*/g, " ") : v);
@@ -31,11 +57,10 @@ const clientHydrated = () => true;
 const serverHydrated = () => false;
 
 /**
- * 新建 / 编辑商机的框。列表页和管道页共用（2026-09-29）：管道页原来没有表单，
- * 点「新建商机」要跳回列表页再打开——按钮写着新建，人却被带走了。
+ * 新建 / 编辑商机的框。原来列表页和管道页共用（2026-09-29）；那两页 10-28 删了（企业版只用项目），
+ * 现在只有客户记录页「新建关联商机」在用。
  *
- * **样子和字段顺序别动**：教程第 07 集就是在列表页点「新建商机」、依次填名称、选客户、写金额录的，
- * 这里只是把那一块原样挪出来。
+ * **样子和字段顺序别动**：教程第 07 集就是照这个框依次填名称、选客户、写金额录的。
  */
 export default function OpportunityForm({
   open,
@@ -52,7 +77,7 @@ export default function OpportunityForm({
   customers: { id: string; name: string }[];
   initialCustomer?: { id: string; name: string } | null;
   onClose: () => void;
-  /** 新建时带上新商机的 id（管道页靠它把排在后面的那张也取回来） */
+  /** 新建时带上新商机的 id */
   onSaved: (id?: string) => void;
 }) {
   // URL可直接打开弹窗；Antd Portal要在水合后挂载，服务端与首轮客户端保持关闭。

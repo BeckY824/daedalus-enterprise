@@ -496,20 +496,21 @@ test("计划页「改」：框开着时这条在另一个窗口被改了，保�
   await p.$disconnect();
 });
 
-test("商机管道：列头写着这一阶段压着多少钱", async ({ page }) => {
+// 商机管道 10-28 删了；项目看板用的是同一套 .pipe 版式（/opportunities 原本就转到这里）
+test("项目看板：列头写着这一阶段压着多少钱", async ({ page }) => {
   await 登录(page);
-  await page.goto("/opportunities/pipeline");
+  await page.goto("/projects");
   await page.waitForSelector(".pipe-col");
   const 合计 = await page.locator(".pipe-sum").allInnerTexts();
   expect(合计.length).toBeGreaterThan(0);
   for (const x of 合计) expect(x).toMatch(/¥|￥|\d/);
 });
 
-// 原来是「管道自己横滚」：2026-10-22 起各阶段按宽度等分、放不下折行，管道和页面都不横滚（细的量法见 e2e-layout/商机管道.spec.ts）
-test("1024 下管道和页面都不横滚", async ({ page }) => {
+// 原来是「管道自己横滚」：2026-10-22 起各阶段按宽度等分、放不下折行，看板和页面都不横滚（三个宽度的细量法见 e2e-layout/排版闸门.ts 的项目看板）
+test("1024 下项目看板和页面都不横滚", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 800 });
   await 登录(page);
-  await page.goto("/opportunities/pipeline");
+  await page.goto("/projects");
   await page.waitForSelector(".pipe-col");
 
   const r = await page.evaluate(() => {

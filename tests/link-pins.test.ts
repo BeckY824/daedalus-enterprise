@@ -30,7 +30,7 @@ vi.mock("@/lib/llm", async (原) => ({
   },
 }));
 for (const m of [
-  "@/app/(app)/channels/ChannelsView", "@/app/(app)/customers/CustomersView", "@/app/(app)/opportunities/OpportunitiesView",
+  "@/app/(app)/channels/ChannelsView", "@/app/(app)/customers/CustomersView",
   "@/app/(app)/dashboard/DashboardView",
 ]) vi.doMock(m, () => ({ default: () => null }));
 
@@ -96,17 +96,6 @@ describe("L-030 首页看板「近期跟进任务」计划和待办合在一起"
     const 任务 = 看板.tasks as { title?: string; 标题?: string; customerName?: string }[];
     expect(任务.length).toBe(1);
     expect(JSON.stringify(任务[0])).toContain("回访报价");
-  });
-});
-
-describe("L-045 商机页汇总按全量算", () => {
-  it("301 个商机：列表只取回 300 行，汇总药丸的单数和合计照样是 301 个的", async () => {
-    const c = await prisma.customer.create({ data: { name: "王总", phone: "13800000001", salesOwnerId: 我 } });
-    await prisma.opportunity.createMany({ data: Array.from({ length: 301 }, (_, i) => ({ customerId: c.id, ownerId: 我, name: `商机${i}`, amount: 100, stage: "初步接洽" })) });
-    const 页 = 属性(await (await import("@/app/(app)/opportunities/page")).default(sp())) as { rows: unknown[]; 汇总: { 单数: number; 合计: { 币种: string; 合计: number }[] } };
-    expect(页.rows.length).toBe(300);
-    expect(页.汇总.单数).toBe(301);
-    expect(页.汇总.合计).toEqual([{ 币种: "CNY", 合计: 30100 }]);
   });
 });
 

@@ -1897,14 +1897,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .pick-ctx { display: flex; flex-direction: column; font-size: var(--fs-note); color: var(--text-muted); }
 .pick-ctx-0 { color: var(--text-faint); }
 
-/* ---------- 商机管道 ----------
+/* ---------- 看板（原商机管道，10-28 起项目看板 ProjectsView 在用） ----------
    任何宽度都不横滚（2026-10-22）：原来一排 flex 往右滚，商机名一长那一列就被撑到上千宽，后面几个阶段得往右拉才看得到。
    现在各阶段等宽排一行，放不下就折到下一行（最窄 184，和原来一样：Windows 1280 起五个阶段正好一排，1024 才折）；页面只上下滚。列本身能缩（min-width: 0），里面的名字两行省略 */
 .pipe { display: grid; grid-template-columns: repeat(auto-fit, minmax(184px, 1fr)); gap: var(--s3); padding-bottom: var(--s2); align-items: start; }
 .pipe-col { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-height: 220px;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
-/* 落点要看得出来：拖过去时整列亮一下，不然人不知道松手会掉进哪一列 */
-.pipe-col-on { background: var(--brand-bg); border-color: var(--brand-line); }
 .pipe-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; } /* 金额放不下就折到第二行，不截成「¥ 1,23…」（10-27，1280 宽五列时） */
 .pipe-h b { font-size: var(--fs-body); font-weight: 600; color: var(--ink); white-space: nowrap; flex: none; } /* 阶段名能自己改（6 字内），一行放下；挤的时候让右边的金额省略。列最窄 184，6 个字加张数放得下，金额挤了就省略 */
 .pipe-dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; flex: none; }
@@ -1917,7 +1915,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   padding: var(--s2) var(--s3); margin-bottom: var(--s2); cursor: grab; }
 .pipe-card:hover { border-color: var(--line-strong); }
 .pipe-card:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
-.pipe-card-drag { opacity: 0.45; }
 .pipe-card-t { font-weight: 500; color: var(--ink); } /* 再加 .clamp：最多两行，卡片的 title 里有全名 */
 .pipe-card-m { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: var(--s2); margin-top: var(--s1); }
 /* 列宽固定以后底行放不下金额 + 负责人：金额一行写完，负责人挤不下就折到下一行，再长就换行写完，不省略 */
@@ -2067,8 +2064,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    退到 --panel 而不是透明：名字列和操作列固定着（sticky），底色一透明，
    横滚过的正文就从它们底下透出来，亮起的那一行反而认不出是谁。 */
 .row-fresh > td { animation: row-fresh 2s var(--ease) 1 both; }
-/* 管道页新建的那张卡：和列表里新建的行同一种亮法（底色从品牌浅底退回卡片底） */
-.pipe-card.pipe-card-fresh { animation: row-fresh 2s var(--ease) 1 both; }
 @keyframes row-fresh {
   0% { background-color: var(--brand-bg); }
   55% { background-color: var(--brand-bg); }
@@ -2327,20 +2322,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .contract-links-g .ant-checkbox-group { display: flex; flex-direction: column; gap: var(--s1); }
 .contract-links-i { display: inline-flex; align-items: center; gap: var(--s2); }
 .contract-links-m { color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; }
-
-/* 商机列表操作列：「标为丢单？」比这一格宽，往左盖在负责人那一格上，不撑宽整列 */
-.opp-act { position: relative; display: flex; justify-content: flex-start; min-height: 24px; }
-/* 问句盖在左边「负责人」那格上：左边缘一段渐隐，名字尾巴淡出而不是被一刀切；底色跟着行（悬停时是 --row-hover） */
-.opp-act .inlc-ask { position: absolute; right: 0; top: 0; bottom: 0; padding-left: var(--s5);
-  background: linear-gradient(to right, transparent, var(--inlc-bg, var(--panel)) var(--s4)); }
-.ant-table-row:hover .opp-act .inlc-ask { --inlc-bg: var(--row-hover); }
-
-/* 商机「标记赢单」的就地确认（OpportunitiesView 的 WonAsk）：一句问话、两个可改的数、三颗键 */
-.won-ask { display: flex; flex-direction: column; gap: var(--s2); max-width: 320px; }
-.won-ask-t { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
-.won-ask-s { font-size: var(--fs-note); color: var(--text-muted); }
-.won-ask-b { margin-top: var(--s1); }
-.won-ask-o { margin-top: var(--s2); font-size: var(--fs-note); }
 
 /* 业务配置顶上那排预设。它是填表的快捷方式，所以做得比一个功能区轻：
    一行小字 + 两颗小键，不画卡片、不占标题 */
