@@ -37,12 +37,18 @@ export function 读ids(s: string): string[] {
 
 type 库 = Pick<Prisma.TransactionClient, "entHandover">;
 
-/** 这几位里正在转让交接中的（同一位客户不能同时交给两个人）。看全部：别人发起的交接也要数上 */
-export async function 交接中的客户(ids: string[], db: 库 = prisma): Promise<Set<string>> {
+/**
+ * 这几位里正在转让交接中的（同一位客户不能同时交给两个人）。交接那张表看全部：别人发起的交接也要数上；
+ * 报出来的只留调用人看得到的那几位（2026-10-28：函数自己挡，不靠入口）——客户表限定着查一遍。
+ * 在 看全部 里调（发起转让交接，候选已经按限定取过）= 调用方明说不限，照原样全报
+ */
+export async function 交接中的客户(ids: string[], db: Pick<Prisma.TransactionClient, "entHandover" | "customer"> = prisma): Promise<Set<string>> {
   if (!ids.length) return new Set();
   const 要 = new Set(ids);
   const 行 = await 看全部(() => db.entHandover.findMany({ where: { kind: "转让", status: 待确认 }, select: { customerIds: true } }));
-  return new Set(行.flatMap((r) => 读ids(r.customerIds)).filter((id) => 要.has(id)));
+  const 中 = [...new Set(行.flatMap((r) => 读ids(r.customerIds)).filter((id) => 要.has(id)))];
+  if (!中.length) return new Set();
+  return new Set((await db.customer.findMany({ where: { id: { in: 中 } }, select: { id: true } })).map((c) => c.id));
 }
 
 /** 这位成员有没有还没确认的离职交接 */
@@ -51,13 +57,15 @@ export function 离职交接中(userId: string, db: 库 = prisma) {
 }
 
 /**
- * 把一行从待确认改成别的状态：带着 status 条件改，两个人同时点（接手人确认、发起人撤回）只成一个。
- * 改成了返回 true
+ * 把一行从待确认改成别的状态：带着 status 条件改，两个人同时点（接手人确认、发起人撤回）只成一个。改成了返回 true。
+ * 谁能了结函数自己挡（2026-10-28，不靠入口）：确认、拒收只有接手人；撤回只有发起人或管理员（ADMIN）。
+ * 不是这几位的一律改不成、返回 false（和「已经被别人了结」同一个说法）
  */
-export async function 了结(db: 库, id: string, 状态: Exclude<交接状态, "待确认">, 谁: string, 额外?: Prisma.EntHandoverWhereInput): Promise<boolean> {
+export async function 了结(db: 库, id: string, 状态: Exclude<交接状态, "待确认">, 我: { id: string; role: string }): Promise<boolean> {
+  const 谁能 = 状态 === "已撤回" ? (我.role === "ADMIN" ? {} : { byUserId: 我.id }) : { toUserId: 我.id };
   const r = await db.entHandover.updateMany({
-    where: { id, status: 待确认, ...额外 },
-    data: { status: 状态, doneAt: new Date(), doneById: 谁 },
+    where: { id, status: 待确认, ...谁能 },
+    data: { status: 状态, doneAt: new Date(), doneById: 我.id },
   });
   return r.count === 1;
 }

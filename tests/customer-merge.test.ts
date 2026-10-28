@@ -190,7 +190,7 @@ describe("两台同步", () => {
     const { X, Y } = await 一对重复(A);
     await 进团队(A, "boss"); await 进团队(B, "wang");
     await 回放(B, 拆((await 推(A, "A"))!, 钥匙), "B");
-    await 标不是同一个人([X.id, Y.id], { id: 老板 }, A);
+    await 标不是同一个人([X.id, Y.id], { id: 老板, role: "ADMIN" }, A);
     await 回放(B, 拆((await 推(A, "A"))!, 钥匙), "B");
     expect(await B.customerNotDupe.findUniqueOrThrow({ where: { id: 不重复编号(X.id, Y.id) } })).toMatchObject({ userId: 老板 });
   });
@@ -216,7 +216,7 @@ describe("疑似重复列表", () => {
       expect(组?.记录.find((x) => x.id === b.id)?.最近跟进).toBeTruthy(); // 按跟进现算，不靠 lastFollowAt
       expect(组?.记录.find((x) => x.id === a.id)?.最近跟进).toBeNull();
       expect(组?.记录.find((x) => x.id === a.id)?.建档).toBe("2026-10-01T00:00:00.000Z");
-      await 标不是同一个人([a.id, b.id], { id: 人 });
+      await 标不是同一个人([a.id, b.id], { id: 人, role: "ADMIN" });
       expect((await 疑似重复()).find((g) => g.记录.some((x) => x.id === a.id))).toBeUndefined();
     } finally {
       await prisma.customerNotDupe.deleteMany({ where: { customerId: { in: [a.id, b.id] } } });
