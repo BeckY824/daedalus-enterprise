@@ -41,6 +41,7 @@ const 不用进容器: Record<string, string> = {
   ENT_DINGTALK_APP_KEY: "企业版通讯录凭据的本机兜底：上线时由对方管理员在后台「飞书连接 / 钉钉连接」页填，加密存库；部署包故意不映射，凭据不进 .env",
   ENT_DINGTALK_APP_SECRET: "企业版通讯录凭据的本机兜底：上线时由对方管理员在后台「飞书连接 / 钉钉连接」页填，加密存库；部署包故意不映射，凭据不进 .env",
   ENT_DINGTALK_OPERATOR: "企业版通讯录凭据的本机兜底：上线时由对方管理员在后台「飞书连接 / 钉钉连接」页填，加密存库；部署包故意不映射，凭据不进 .env",
+  CRM_DEMO_SWITCH: "演示服务器免密选人 / 换人的开关，只在企业版自部署生效：正式部署永远不设，企业版部署包故意不映射（lib/enterprise/demo-switch.ts）",
   NEXT_RUNTIME: "Next 自己设的（nodejs / edge），不是我们配的",
   CRM_READ_POOL: "企业版只读通道的关闭开关，只在企业版生效：企业版部署包（deploy/enterprise/docker-compose.yml）里映射着，根目录各 compose 不开企业版、读了也不起作用",
   CRM_PRODUCT_NAME: "企业版界面上的产品名，只在企业版生效：企业版部署包（deploy/enterprise/docker-compose.yml）里映射着，根目录各 compose 不开企业版、读了也不起作用",

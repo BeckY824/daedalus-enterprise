@@ -22,7 +22,7 @@ test("切外贸整组待保存再生效，名词跨数据/成员/渠道一致，
  await panel.locator("#customer").fill("伙伴");await panel.getByRole("button",{name:/^保\s*存$/}).first().click();await expect(page.getByText("已保存，全站措辞已更新")).toBeVisible();
  await page.goto("/overview");await expect(page.getByRole("main")).toContainText("伙伴趋势分析");await expect(page.getByRole("main")).toContainText("累计伙伴");
  await page.goto("/channels");await expect(page.getByRole("main")).toContainText("展会、线上平台、代理商");await expect(page.getByRole("main")).not.toContainText("家长社群");
- await page.goto("/settings?tab=members");await expect(page.getByRole("columnheader",{name:"负责伙伴"})).toBeVisible();await page.getByRole("button",{name:/新增成员/}).click();await expect(page.getByRole("dialog")).toContainText("销售主管与销售目前使用相同业务权限");await page.getByRole("dialog").getByRole("button",{name:/取\s*消/}).click();
+ await page.goto("/settings?tab=members");await expect(page.getByRole("columnheader",{name:"负责伙伴"})).toBeVisible();await page.getByRole("button",{name:/新增成员/}).click();await expect(page.getByRole("dialog")).toContainText(process.env.CRM_ENTERPRISE==="1"?"业务角色在「组织架构」里设":"销售主管与销售目前使用相同业务权限");/* 企业版角色列摆组织架构的业务角色，编辑框里只剩「账号权限」（10-28） */await page.getByRole("dialog").getByRole("button",{name:/取\s*消/}).click();
  const rsc:string[]=[];page.on("request",r=>{if(r.method()==="GET"&&new URL(r.url()).pathname==="/settings"&&r.headers().rsc==="1")rsc.push(r.url())});
  for(const name of ["个人资料","登录与密码","业务配置","团队成员"]){await page.getByRole("tab",{name}).click();await expect(page.getByRole("tabpanel",{name})).toBeVisible()}
  expect(rsc).toEqual([]);expect(errors).toEqual([]);

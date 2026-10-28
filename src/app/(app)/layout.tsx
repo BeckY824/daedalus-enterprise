@@ -15,6 +15,8 @@ import { 本地模式, 归属对不上, 读 as 读云端凭据 } from "@/lib/des
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 自定产品名 } from "@/lib/enterprise/brand";
+import { 读演示名单 } from "@/lib/enterprise/demo-switch";
+import { 演示登录 } from "@/app/login/demo-actions";
 import { accessibleWorkspacesFor } from "@/lib/tenant/workspace-access";
 import { llmEnabled, listModelOptions } from "@/lib/llm";
 import { 读AI计次, 不计次 } from "@/lib/ai-meter";
@@ -122,6 +124,8 @@ export default async function AppLayout({
         pane={pane}
         ai={有AI ? { models } : null}
         收藏={收藏}
+        演示名单={await 读演示名单()}
+        演示换人={演示登录}
         计数={{ "/customers": 客户数, "/opportunities": 在谈商机数 }}
       >
         {children}

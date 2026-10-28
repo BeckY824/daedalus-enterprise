@@ -16,6 +16,7 @@ import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
 import { 文字里号码打码, 同名带邮箱 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 管理员类别of } from "@/lib/enterprise/org";
+import { 拆角色, 推业务角色 } from "@/lib/enterprise/org-core";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { getSetting } from "@/lib/settings";
 import { 读改权限, 能改设置, 谁能改的话, 能改时限的节点, type 设置项名 } from "@/lib/enterprise/edit-perm";
@@ -65,6 +66,14 @@ export default async function SettingsBody() {
   // 按三阶段分开数；别的版本照旧数老商机（lib/project/member-count.ts）
   const 项目数 = (await 企业版只用项目())
     ? await prisma.project.groupBy({ by: ["ownerId", "phase"], where: { result: null, pooledAt: null }, _count: { _all: true } })
+    : null;
+  // 企业版「团队成员」的角色列摆业务角色（10-28 用户：「看所有人的角色都是销售？这个不应该吧」）——账号上的 role 只管能不能进后台，
+  // 停用的人也要有，所以直接读 EntMember，不走只含在职的 读组织()；没设过的按账号角色推，和 组织 同一个口径
+  const 业务角色of = 企业版()
+    ? await prisma.entMember.findMany({ select: { userId: true, bizRole: true } }).then((ms) => {
+        const 存 = new Map(ms.map((m) => [m.userId, 拆角色(m.bizRole)]));
+        return (u: { id: string; role: string }) => (存.get(u.id)?.length ? 存.get(u.id)! : [推业务角色(u.role)]);
+      })
     : null;
   const 阶段数of = (id: string) => Object.fromEntries((项目数 ?? []).filter((g) => g.ownerId === id).map((g) => [g.phase, g._count._all]));
 
@@ -222,6 +231,7 @@ export default async function SettingsBody() {
         customerCount: u._count.salesCustomers,
         oppCount: u._count.opportunities,
         ...(项目数 ? { 项目阶段: 阶段数of(u.id) } : {}),
+        ...(业务角色of ? { 业务角色: 业务角色of(u) } : {}),
         followCount: u._count.followUps,
       }))}
     />

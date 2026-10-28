@@ -28,8 +28,12 @@ import {
   MenuOutlined,
   LogoutOutlined,
   DownOutlined,
+  SwapOutlined,
+  CheckOutlined,
 } from "@ant-design/icons";
 import type { SessionUser } from "@/lib/auth";
+import type { 演示组 } from "@/lib/enterprise/demo-switch";
+import type { LoginResult } from "@/app/login/actions";
 import { avatarColor, initial, AVATAR_TEXT } from "@/lib/utils";
 import Logo from "./Logo";
 import UpdateRow from "./UpdateRow";
@@ -98,6 +102,10 @@ type Props = {
    * 而不是点开一个说"先去设置里配 AI"的空壳。
    */
   ai: { models: ModelOption[] } | null;
+  /** 演示部署（CRM_DEMO_SWITCH=1）才有：账号菜单里按业务角色列出所有人，点谁就换成谁（lib/enterprise/demo-switch.ts） */
+  演示名单?: 演示组[] | null;
+  /** 和演示名单一起给：服务端 action（login/demo-actions.ts）从 layout 传进来，客户端组件不直接 import 服务端模块 */
+  演示换人?: (userId: string) => Promise<LoginResult>;
   children: React.ReactNode;
 };
 
@@ -120,7 +128,7 @@ type Props = {
 /** 面板常驻要的最小窗口宽度，见 AppShell 里 窄窗 那段 */
 const 面板放不下 = "(max-width: 1599px)";
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, 产品名 = "Daedalus CRM", pane, ai, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, 订单要看 = { 超期: 0, 今天: 0 }, desktop, 反馈去向, 企业版项目 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -377,6 +385,47 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     router.refresh();
   }
 
+  const 我的演示角色 = 演示名单?.find((g) => g.人.some((p) => p.id === user.id))?.名;
+  /**
+   * 演示换人：换会话 cookie 后整页重载到同一个模块的首页——权限变了，详情页（别人的客户）多半看不了，
+   * 软导航也不会重新跑服务端的权限和左栏。
+   */
+  async function 换成(id: string) {
+    if (id === user.id || !演示换人) return;
+    const res = await 演示换人(id).catch(() => ({ ok: false as const, error: "换人失败，请检查网络连接后重试" }));
+    if (!res.ok) return void window.alert(res.error);
+    // 同 login/after-login.ts：换的是会话，整页重来才干净
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/" + (pathname.split("/")[1] || "dashboard"));
+  }
+  const 演示菜单 = 演示名单?.length
+    ? [
+        { type: "divider" as const },
+        {
+          key: "demo-switch",
+          icon: <SwapOutlined />,
+          label: "切换身份（演示）",
+          popupClassName: "demo-switch-pop",
+          children: 演示名单.map((g) => ({
+            type: "group" as const,
+            key: `demo-g:${g.角色}`,
+            label: g.名,
+            children: g.人.map((p) => ({
+              key: `demo:${p.id}`,
+              icon: p.id === user.id ? <CheckOutlined /> : <span className="demo-switch-gap" />,
+              disabled: p.id === user.id,
+              label: (
+                <span className="demo-switch-person">
+                  <b>{p.name}</b>
+                  {p.说明 && <span>{p.说明}</span>}
+                </span>
+              ),
+            })),
+          })),
+        },
+      ]
+    : [];
+
   /**
    * 退出登录。桌面端本地模式下它退的是**云端账号**（api/auth/logout 会顺手吊销这台机器的
    * 设备令牌），退完落到的登录页画的就是云端账号那张表单，注册、找回密码都在。
@@ -400,6 +449,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
    */
   const userMenu = {
     onClick: ({ key }: { key: string }) => {
+      if (key.startsWith("demo:")) void 换成(key.slice(5));
       // 软导航才会命中拦截路由（@modal/(.)settings），设置才是盖在当前页上的一层
       if (key === "settings") router.push("/settings");
       if (key === "logout") void logout();
@@ -415,13 +465,14 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
             </Avatar>
             <div style={{ minWidth: 0 }}>
               <b>{user.name}</b>
-              <span>{[user.title, user.email].filter(Boolean).join(" · ")}</span>
+              <span>{[我的演示角色, user.title, user.email].filter(Boolean).join(" · ")}</span>
               {workspace && <span>当前工作区：{workspace.name}</span>}
             </div>
           </div>
         ),
       },
       ...(workspace?.multiple ? [{ key: "workspaces", label: "切换工作区" }] : []),
+      ...演示菜单,
       { type: "divider" as const },
       {
         key: "settings",
