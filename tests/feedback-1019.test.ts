@@ -1,14 +1,12 @@
 /**
  * 客户使用反馈（2026-10-19，05-反馈与复盘/客户使用反馈-审查-20261019.md）桌面端采纳的几条：
  *
- *   2. Windows 点 ×：问「最小化到托盘 / 退出」（desktop/close-to-tray.js + main.js 那段接线）
+ *   （2. Windows 点 × 最小化到托盘：属于桌面壳，企业库不带壳，不在这里钉）
  *   3. 跟进类型加「微信沟通」（WECHAT）
  *   4. 录入弹窗草稿（lib/form-guard 的存取；弹窗行为在 feedback-1019.ui.test.ts 里用真浏览器钉）
  *   5. 外贸新建客户：电话 / WhatsApp / 邮箱 / 微信至少填一个；只有微信的按微信认人（表单、导入同一条规矩）
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
-import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "甲", email: "a@x", role: "ADMIN", title: "管理员", avatar: null },
@@ -29,9 +27,6 @@ import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, 跟进类型们 } from "@/lib/constants"
 import { 方式到类型 } from "@/app/(app)/customers/[id]/CompletePlanModal";
 import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容 } from "@/lib/form-guard";
 import { dayjs } from "@/lib/utils";
-
-const require_ = createRequire(import.meta.url);
-const 关窗 = require_("../desktop/close-to-tray.js");
 
 let jia: { id: string };
 const 外贸配置 = BUSINESS_PRESETS["外贸出口"];
@@ -219,89 +214,5 @@ describe("4. 录入弹窗草稿（只存本机）", () => {
     expect(有内容({ extra: { wechat: "wx" } })).toBe(true);
     expect(有内容({ amount: 0 })).toBe(true);
     expect(有内容({ at: dayjs() })).toBe(true);
-  });
-});
-
-describe("2. Windows 点 ×：最小化到托盘 / 退出", () => {
-  it("该怎么关：Mac、要退出了（退出 / 装更新 / 换包 / 关机）一律放行；Windows 按存的方式，没存过、怪值都问", () => {
-    const 关 = (平台: string, 要退出了: boolean, 方式?: unknown) => 关窗.该怎么关({ 平台, 要退出了, 方式 });
-    expect(关("darwin", false, "tray")).toBe("放行");
-    expect(关("linux", false, undefined)).toBe("放行");
-    expect(关("win32", true, "tray")).toBe("放行");
-    expect(关("win32", true, undefined)).toBe("放行");
-    expect(关("win32", false, "quit")).toBe("放行");
-    expect(关("win32", false, "tray")).toBe("藏");
-    expect(关("win32", false, undefined)).toBe("问");
-    expect(关("win32", false, "ask")).toBe("问");
-    expect(关("win32", false, "随便")).toBe("问");
-    expect(关窗.规整方式(null)).toBe("ask");
-  });
-
-  it("问一下：三个按钮对上 tray / quit / 取消；取消时勾了「记住」也不记", async () => {
-    const 问 = (response: number, checkboxChecked: boolean) => {
-      const 收到: unknown[] = [];
-      const dialog = { showMessageBox: async (...a: unknown[]) => (收到.push(a), { response, checkboxChecked }) };
-      return 关窗.问一下(dialog, "win").then((r: unknown) => ({ r, 收到 }));
-    };
-    const 一 = await 问(0, true);
-    expect(一.r).toEqual({ 方式: "tray", 记住: true });
-    const [win, 框] = 一.收到[0] as [string, { buttons: string[]; checkboxLabel: string; cancelId: number }];
-    expect(win).toBe("win");
-    expect(框.buttons).toEqual(["最小化到托盘", "退出", "取消"]);
-    expect(框.cancelId).toBe(2);
-    expect(框.checkboxLabel).toMatch(/记住/);
-    expect((await 问(1, false)).r).toEqual({ 方式: "quit", 记住: false });
-    expect((await 问(2, true)).r).toEqual({ 方式: null, 记住: false });
-  });
-
-  it("托盘：单击回窗口；右键有「打开」「退出」，有要跟的多一项去计划页；退出时销毁", () => {
-    const 记 = { 回窗口: 0, 去计划页: 0, 退出: 0 };
-    let 菜单: { label?: string; type?: string; click?: () => void }[] = [];
-    const 监听: Record<string, () => void> = {};
-    let 毁了 = false;
-    let 提示 = "";
-    class Tray {
-      constructor(public 图: unknown) {}
-      setToolTip(t: string) { 提示 = t; }
-      setContextMenu(m: typeof 菜单) { 菜单 = m; }
-      on(e: string, f: () => void) { 监听[e] = f; }
-      displayBalloon() {}
-      isDestroyed() { return 毁了; }
-      destroy() { 毁了 = true; }
-    }
-    const 图 = { isEmpty: () => false, resize: () => 图 };
-    const t = 关窗.建托盘({
-      Tray, Menu: { buildFromTemplate: (x: typeof 菜单) => x }, nativeImage: { createFromPath: () => 图 },
-      图标路径: "icon.png", 名字: "Daedalus CRM",
-      回窗口: () => 记.回窗口++, 去计划页: () => 记.去计划页++, 退出: () => 记.退出++,
-    });
-    监听.click();
-    expect(记.回窗口).toBe(1);
-    expect(菜单.map((m) => m.label ?? m.type)).toEqual(["打开 Daedalus CRM", "separator", "退出"]);
-    t.设要跟数(3);
-    expect(菜单.map((m) => m.label ?? m.type)).toEqual(["打开 Daedalus CRM", "今天要跟 3 条", "separator", "退出"]);
-    expect(提示).toBe("Daedalus CRM · 今天要跟 3 条");
-    菜单[1].click!();
-    菜单[3].click!();
-    expect([记.去计划页, 记.退出]).toEqual([1, 1]);
-    t.销毁();
-    t.销毁();
-    expect(毁了).toBe(true);
-  });
-
-  it("main.js 接线：close 里把 正在退出 当「要退出了」；before-quit 置 正在退出、window-all-closed / 启动故障保持运行 那两处没动；托盘随进程销毁", () => {
-    const main = readFileSync("desktop/main.js", "utf8");
-    expect(main).toMatch(/require\("\.\/close-to-tray"\)/);
-    expect(main).toMatch(/关窗\.该怎么关\(\{ 平台: process\.platform, 要退出了: 正在退出 \|\| 系统要关, 方式: 读配置\(\)\.closeAction \}\)/);
-    expect(main).toMatch(/closeAction: c\.closeAction/);
-    expect(main).toMatch(/app\.on\("before-quit"[\s\S]*?正在退出 = true;/);
-    expect(main).toMatch(/  app\.on\("window-all-closed", \(\) => \{\r?\n\s+if \(process\.platform !== "darwin" && !启动故障保持运行\) app\.quit\(\);/);
-    expect(main).toMatch(/app\.on\("will-quit", \(\) => \{ 托盘\?\.销毁\(\); 托盘 = null; \}\);/);
-    expect(main).toMatch(/on\("query-session-end", \(\) => \{ 系统要关 = true; \}\)/);
-    // 打包清单里带上了这个文件：漏了的话装好的 Windows 版一启动就 require 失败
-    expect(JSON.parse(readFileSync("desktop/package.json", "utf8")).build.files).toContain("close-to-tray.js");
-    const preload = readFileSync("desktop/preload-app.js", "utf8");
-    expect(preload).toMatch(/shell:close-action/);
-    expect(preload).toMatch(/shell:set-close-action/);
   });
 });

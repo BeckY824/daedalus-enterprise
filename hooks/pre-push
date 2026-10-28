@@ -92,7 +92,7 @@ step 类型检查 npx tsc --noEmit
 
 LINT_FILES=$(grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' "$CHANGED" || true)
 if [ -n "$LINT_FILES" ]; then
-  # 被 eslint 配置忽略的（desktop/、生成代码）不报警告
+  # 被 eslint 配置忽略的（生成代码等）不报警告
   step "代码检查（$(printf '%s\n' "$LINT_FILES" | wc -l | tr -d ' ') 个改过的文件）" \
     sh -c 'printf "%s\n" "$1" | tr "\n" "\0" | xargs -0 npx eslint --no-warn-ignored --' _ "$LINT_FILES"
 else
@@ -101,7 +101,7 @@ fi
 
 # 改过的用例本身
 grep -E '^tests/.+\.test\.ts$' "$CHANGED" >> "$TESTS" || true
-# 不走 import、直接按路径读源码的用例（readFileSync("../desktop/main.js") 之类）：
+# 不走 import、直接按路径读源码的用例（readFileSync("src/app/login/actions.ts") 之类）：
 # 用「仓库内路径」和「上一级目录/文件名」两种写法在 tests/ 里搜
 while IFS= read -r f; do
   case "$f" in tests/*) continue ;; esac

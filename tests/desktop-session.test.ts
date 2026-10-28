@@ -354,7 +354,7 @@ describe("回到上一页：next 只认站内的应用路径", () => {
  * 换了账号登录，但数据目录还是上一个账号那份。
  *
  * 2026-09-20 用户报的：在桌面端换了一个云端账号登录，进去看到的还是上一个账号的
- * 客户、跟进和 AI 对话。目录**分是分开的**（desktop/accounts.js 钉在 desktop-accounts.test.ts），
+ * 客户、跟进和 AI 对话。目录**分是分开的**（desktop/accounts.js，在桌面端仓库里钉），
  * 坏的是那道接缝——换目录这件事当时全指望登录页喊一声 `shell:switch-account`：
  *
  *   桥不在（浏览器里打开的、桥没挂上）→ 那一声没人接
@@ -365,7 +365,7 @@ describe("回到上一页：next 只认站内的应用路径", () => {
  *
  * 所以这里钉的是**失败即关**：归属和令牌对不上时，哪条路都不给进。
  * 让它真的换过去是壳那边的事（desktop/main.js 的 盯住凭据 / 看凭据换没换，
- * 钉在 desktop-shell.test.ts）。
+ * 在桌面端仓库里钉）。
  */
 describe("换了账号但目录还没换：哪儿都不给进", () => {
   const 目录 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-switch-"));

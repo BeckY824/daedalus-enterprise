@@ -8,7 +8,6 @@ import { prisma } from "@/lib/prisma";
 import { 本地模式 } from "@/lib/desktop/cloud";
 import { 切更新记录, 这次新的, 只留桌面端, 并成段, type 一版 } from "@/lib/changelog";
 import { version as 仓库版本 } from "../../../package.json";
-import { displayVersion, displayReleaseNotes } from "../../../desktop/release-version";
 
 /**
  * 桌面端「这一版更新了什么」（2026-10-02）。左栏账号那一行的「新」图标、账号菜单里的「更新记录」都从这儿取。
@@ -59,7 +58,7 @@ export async function 有没有新内容(): Promise<{ 版本: string; 段: 一�
       return null;
     }
     // 先不记：点了「知道了」才算看过，没点的话下次打开还在
-    return { 版本: displayVersion(现在), 段: displayReleaseNotes(这一版) };
+    return { 版本: 现在, 段: 这一版 };
   }
   if (看过 === 现在) return null;
   const 全部 = await 读全部();
@@ -71,7 +70,7 @@ export async function 有没有新内容(): Promise<{ 版本: string; 段: 一�
     await setSetting(看过的键, 现在);
     return null;
   }
-  return { 版本: displayVersion(现在), 段: displayReleaseNotes(段) };
+  return { 版本: 现在, 段 };
 }
 
 /** 点了「知道了」 */
@@ -85,7 +84,5 @@ export async function 看过了(): Promise<void> {
 export async function 全部更新记录(): Promise<{ 现在: string; 段: 一版[] }> {
   await requireUser();
   const 段 = ((await 读全部()) ?? []).slice(0, 30);
-  return 本地模式()
-    ? { 现在: displayVersion(现在的版本()), 段: displayReleaseNotes(段) }
-    : { 现在: 现在的版本(), 段 };
+  return { 现在: 现在的版本(), 段 };
 }

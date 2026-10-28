@@ -2,8 +2,9 @@
  * 客户反馈 2026-10-19 采纳的两条团队版改动，和真实桌面端、真实中转一起跑（同 tests/mobile-sync.test.ts 的搭法）：
  *   老板、li、zhao 三台电脑走真实 lib/sync/client.ts；li 的一部手机走 lib/mobile/sync.ts。
  *
- *   1. 老板提醒（lib/sync/team-notice.ts → desktop/team-notices.js）：同事新建客户 / 商机 / 跟进，只有老板那台出提醒；
- *      本人录的不提醒自己；同一个人一分钟内的合成一条；老板电脑离线一阵回来，攒下的几十条只弹一条汇总
+ *   1. 老板提醒（lib/sync/team-notice.ts）：同事新建客户 / 商机 / 跟进，只有老板那台出提醒项；本人录的不提醒自己；
+ *      老板电脑离线一阵回来，攒下的一次取全。（壳那一半——一分钟内合成一条、汇总成一条、跟进开关——
+ *      在 desktop/team-notices.js，属于桌面壳，在桌面端仓库里钉；企业库不带壳）
  *   2. 手机新建客户 / 商机（lib/mobile/sync.ts 新建客户 / 新建商机）：归本人，推上去后本人和老板的电脑马上看得到，
  *      别的业务员看不到；规矩和电脑上的新建框一样（外贸：电话 / WhatsApp / 邮箱至少一个）
  *
@@ -150,11 +151,6 @@ afterAll(async () => {
 import { 同事新建提醒, type 同事新建 } from "@/lib/sync/team-notice";
 import { 记新插, 取走新插 } from "@/lib/sync/team-notice-box";
 import { 分表, 客户们 } from "@/lib/mobile/view";
-// 壳里的合并规则（CommonJS）：和 main.js 用的是同一份
-import 壳 from "../desktop/team-notices.js";
-import 提醒设置 from "../desktop/reminders.js";
-
-const 默认开关 = 提醒设置.默认设置;
 /** 同步一轮，再按本地服务 /api/desktop/sync 的做法取这台的提醒 */
 async function 轮取(w: 谁, 现在 = Date.now()): Promise<同事新建[]> {
   当(w);
@@ -171,16 +167,6 @@ async function 都同步(): Promise<同事新建[]> {
   expect(await 轮取("li")).toEqual([]);
   return boss;
 }
-function 假壳(起: number) {
-  let 钟 = 起;
-  const 发了: { title: string; body: string; 去: string; 收回了: boolean }[] = [];
-  const 提醒 = 壳.创建同事提醒({
-    发: (x: { title: string; body: string; 去: string }) => { const 条 = { ...x, 收回了: false }; 发了.push(条); return { ok: true, 收回: () => { 条.收回了 = true; } }; },
-    现在: () => 钟,
-  });
-  return { 提醒, 发了, 过: (ms: number) => { 钟 += ms; }, 还在: () => 发了.filter((x) => !x.收回了) };
-}
-
 describe("老板提醒 + 手机新建客户 / 商机（两台电脑 + 手机）", () => {
   it("准备：团队用外贸模版、本位币 USD；老板那台第一次取提醒记下起点，之前的历史不提醒", async () => {
     await db("boss").setting.upsert({ where: { key: "business" }, create: { key: "business", value: JSON.stringify({ template: "trade", currency: "USD", customer: "客户" }) }, update: {} });
@@ -239,47 +225,28 @@ describe("老板提醒 + 手机新建客户 / 商机（两台电脑 + 手机）"
     expect(老板的.map((x) => [x.类, x.谁, x.谁名, x.名])).toEqual([["客户", A("li"), "li", "Nordlicht Leuchten GmbH"], ["商机", A("li"), "li", "工矿灯 2000 套"]]);
     expect(老板的[0].去).toBe(`/customers/${客户}`);
     expect(老板的[1].去).toBe(`/opportunities?opportunity=${商机}`);
-    // 壳：同一个人这一批两条 → 一条通知
-    const 壳们 = 假壳(Date.now());
-    壳们.提醒.收(老板的, 默认开关);
-    expect(壳们.发了.map((x) => x.title)).toEqual(["li 新增 1 位客户、1 个商机"]);
   });
 
-  it("同一个人一分钟内又建了一位：先弹的那条收回，换成合并的一条；过了一分钟的另起一条", async () => {
-    const 壳们 = 假壳(Date.now());
+  it("手机接着又建了几位：老板那台每一轮都只出这一轮新建的那几条（一分钟内合成一条归壳管）", async () => {
     await 手机.新建客户(机, 库, 状态, { name: "Fjord Lighting AS", email: "post@fjord.example", country: "挪威" });
     await 手机轮();
-    壳们.提醒.收(await 都同步(), 默认开关);
-    expect(壳们.还在().map((x) => x.title)).toEqual(["li 新建了客户"]);
-    壳们.过(30_000);
+    expect((await 都同步()).map((x) => [x.类, x.谁名, x.名])).toEqual([["客户", "li", "Fjord Lighting AS"]]);
     await 手机.新建客户(机, 库, 状态, { name: "Sol Iluminación SL", phone: "+34 600 111 222", country: "西班牙" });
-    await 手机轮();
-    壳们.提醒.收(await 都同步(), 默认开关);
-    expect(壳们.发了).toHaveLength(2);
-    expect(壳们.发了[0].收回了).toBe(true);
-    expect(壳们.还在().map((x) => [x.title, x.body, x.去])).toEqual([["li 新增 2 位客户", "Fjord Lighting AS、Sol Iluminación SL", "/customers"]]);
-    壳们.过(61_000);
     await 手机.新建客户(机, 库, 状态, { name: "Adriatic Light d.o.o.", whatsapp: "+385 91 000 1111" });
     await 手机轮();
-    壳们.提醒.收(await 都同步(), 默认开关);
-    expect(壳们.还在().map((x) => x.title)).toEqual(["li 新增 2 位客户", "li 新建了客户"]);
+    expect((await 都同步()).map((x) => [x.类, x.谁名, x.名])).toEqual([["客户", "li", "Sol Iluminación SL"], ["客户", "li", "Adriatic Light d.o.o."]]);
   });
 
-  it("跟进默认不提醒；老板打开「新跟进」后才提醒", async () => {
+  it("手机记的跟进也进老板那台的提醒项、点开去那位客户（默认关、打开才弹归壳管）", async () => {
     const 客户 = [...库.表("Customer")].find((r) => r.name === "Fjord Lighting AS")!.id as string;
     await 手机.记跟进(机, 库, 状态, { customerId: 客户, type: "EMAIL", content: "发了目录和报价单" });
     await 手机轮();
     const 老板的 = await 都同步();
     expect(老板的.map((x) => [x.类, x.名, x.题])).toEqual([["跟进", "Fjord Lighting AS", ""]]);
-    const 关着 = 假壳(Date.now());
-    关着.提醒.收(老板的, 默认开关);
-    expect(关着.发了).toEqual([]);
-    const 开着 = 假壳(Date.now());
-    开着.提醒.收(老板的, { ...默认开关, 同事跟进: true });
-    expect(开着.发了.map((x) => [x.title, x.去])).toEqual([["li 记了一条跟进", `/customers/${客户}`]]);
+    expect(老板的[0].去).toBe(`/customers/${客户}`);
   });
 
-  it("老板电脑离线一阵：li 在电脑上建了 12 位、zhao 建了 3 位；老板回来同步只弹一条汇总，不刷屏", async () => {
+  it("老板电脑离线一阵：li 在电脑上建了 12 位、zhao 建了 3 位；老板回来同步一次取全 15 条（汇总成一条归壳管）", async () => {
     当("li");
     for (let i = 1; i <= 12; i++) await db("li").customer.create({ data: { id: `bulk-li-${i}`, name: `批量客户 ${i}`, phone: `+4470000000${String(i).padStart(2, "0")}`, salesOwnerId: A("li") } });
     for (let i = 1; i <= 12; i++) await db("li").auditLog.create({ data: { userId: A("li"), userName: "li", action: "create", entity: "Customer", entityId: `bulk-li-${i}`, summary: `新建客户「批量客户 ${i}」` } });
@@ -292,11 +259,6 @@ describe("老板提醒 + 手机新建客户 / 商机（两台电脑 + 手机）"
     const 老板的 = await 轮取("boss", 回来);
     expect(老板的).toHaveLength(15);
     expect(new Set(老板的.map((x) => x.谁名))).toEqual(new Set(["li", "zhao"]));
-    const 壳们 = 假壳(回来);
-    壳们.提醒.收(老板的, 默认开关);
-    expect(壳们.发了).toHaveLength(1);
-    expect(壳们.发了[0]).toMatchObject({ title: "li等 2 人新增 15 位客户", 去: "/customers" });
-    expect(壳们.发了[0].body).toMatch(/等$/);
   });
 
   it("本人录的不提醒自己；起点之前的、同一行记了两遍的只算一次", async () => {
