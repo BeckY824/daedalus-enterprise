@@ -6,7 +6,7 @@
 // 行哈希排序后再哈希，和 snapshot.js 一样不依赖物理顺序。
 // 前面还拼着 legacy.js：企业版启动时有意清掉的老数据不比（附件只比清理不碰的，指向老表的外键列不算）。
 // 只比起点就有的行（按 id）：企业版启动时会把老线索转成项目，新加客户、联系人、项目，这是有意的；行数没少由行数那步管。
-/* global legacyTables, legacyCols, LEGACY_KEEP */
+/* global legacyTables, legacyCols, legacyKeep */
 const { DatabaseSync } = require("node:sqlite");
 const crypto = require("node:crypto");
 
@@ -40,7 +40,8 @@ if (!cols) {
 }
 for (const [t, cs] of Object.entries(cols)) {
   if (SKIP.has(t)) continue;
-  const st = db.prepare(`SELECT ${cs.map(q).join(",")} FROM ${q(t)}${LEGACY_KEEP[t] ? ` WHERE ${LEGACY_KEEP[t]}` : ""}`);
+  const where = legacyKeep(db, t);
+  const st = db.prepare(`SELECT ${cs.map(q).join(",")} FROM ${q(t)}${where ? ` WHERE ${where}` : ""}`);
   st.setReadBigInts(true);
   const keep = ids[t] && new Set(ids[t]);
   const hs = [];

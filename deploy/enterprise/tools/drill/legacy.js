@@ -20,11 +20,19 @@ function legacyTables(db) {
   return gone;
 }
 
-// 清理会删的那部分之外（和 legacy-cleanup.ts 的条件一一对应）
-const LEGACY_KEEP = {
-  Attachment: `("opportunityId" IS NULL AND "orderId" IS NULL) OR "leadId" IS NOT NULL OR "contactId" IS NOT NULL`,
-  EntExternalRef: `"targetId" IS NULL OR "targetId" NOT IN (SELECT "id" FROM "Opportunity")`,
-};
+// 清理会删的那部分之外（和 legacy-cleanup.ts 的条件一一对应）。起点可能是老版本，列还没加：缺的列按空算；整张表都不该比时返回 null
+function legacyKeep(db, t) {
+  const has = (tb, c) => db.prepare(`PRAGMA table_info("${tb}")`).all().some((x) => x.name === c);
+  if (t === "Attachment") {
+    const nul = ["opportunityId", "orderId"].filter((c) => has(t, c)).map((c) => `"${c}" IS NULL`);
+    const own = ["leadId", "contactId"].filter((c) => has(t, c)).map((c) => `"${c}" IS NOT NULL`);
+    return nul.length ? [`(${nul.join(" AND ")})`, ...own].join(" OR ") : "";
+  }
+  if (t === "EntExternalRef" && has(t, "targetId") && has("Opportunity", "id")) {
+    return `"targetId" IS NULL OR "targetId" NOT IN (SELECT "id" FROM "Opportunity")`;
+  }
+  return "";
+}
 // 留下来的表里指向老表的外键列（跟进挂商机等）：清理会置空，置空时 updatedAt 也跟着变，都不算进内容哈希
 function legacyCols(db, gone, t) {
   const fk = db.prepare(`PRAGMA foreign_key_list("${t}")`).all().filter((f) => gone.has(f.table)).map((f) => f.from);
