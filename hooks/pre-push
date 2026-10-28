@@ -5,7 +5,9 @@
 #   推 main 或 tag：照旧跑全套——类型检查 + 整库代码检查 + 全部单测。
 #   推功能分支：类型检查照跑；代码检查只查相对 origin/main 改过的文件；单测只跑和改动相关的
 #     （import 链上的用 vitest related 找，按路径读源码的用例用文件名在 tests/ 里搜）。
-#     改到会影响整套的文件（vitest 配置、测试库建表、prisma、依赖、tsconfig、eslint 配置、钩子本身）
+#     改到 prisma/ 或 package.json / package-lock.json（10-28 起不再退回全套）：还是上面这三样，
+#       外加两份迁移一致性用例：tests/migrations.test.ts（业务库）、tests/control-migrations.test.ts（控制库）。
+#     改到会影响整套的文件（vitest 配置、测试库建表、模版构建脚本、tsconfig、eslint 配置、钩子本身）
 #     就退回全套。全套交给 CI，CI 照旧一条不少地跑并加上 E2E 与密钥扫描。
 #   想在功能分支上也跑全套：PREPUSH_FULL=1 git push …
 #
@@ -64,9 +66,14 @@ if [ -z "$ANY_REF" ]; then
   FULL=1
 fi
 
-if [ -z "$FULL" ] && grep -Eq '^(vitest\.config\.|tests/setup-db\.ts$|scripts/build-template\.mjs$|prisma/|package(-lock)?\.json$|tsconfig\.json$|eslint\.config\.|hooks/pre-push$)' "$CHANGED"; then
+if [ -z "$FULL" ] && grep -Eq '^(vitest\.config\.|tests/setup-db\.ts$|scripts/build-template\.mjs$|tsconfig\.json$|eslint\.config\.|hooks/pre-push$)' "$CHANGED"; then
   echo "▶ 改到了影响整套的文件，照全套跑"
   FULL=1
+fi
+# prisma/、依赖：不退回全套（10-28），相关用例之外再加迁移一致性用例
+MIGRATION=
+if [ -z "$FULL" ] && grep -Eq '^(prisma/|package(-lock)?\.json$)' "$CHANGED"; then
+  MIGRATION=1
 fi
 
 if [ -n "$FULL" ]; then
@@ -100,6 +107,13 @@ while IFS= read -r f; do
   case "$f" in tests/*) continue ;; esac
   grep -rlF -e "$f" -e "$(basename "$(dirname "$f")")/$(basename "$f")" tests --include='*.test.ts' >> "$TESTS" 2>/dev/null || true
 done < "$CHANGED"
+if [ -n "$MIGRATION" ]; then
+  # 迁移一致性：业务库迁移 ↔ schema.prisma、控制库迁移 ↔ control.prisma
+  for t in tests/migrations.test.ts tests/control-migrations.test.ts; do
+    [ -f "$t" ] && printf '%s\n' "$t" >> "$TESTS"
+  done
+  echo "  · 改到 prisma/ 或依赖：相关用例之外加跑迁移一致性用例"
+fi
 sort -u -o "$TESTS" "$TESTS"
 # vitest related 顺着 import 找到其余相关用例；传进去的用例文件自己也会跑
 if [ -s "$CHANGED" ]; then
