@@ -10,7 +10,7 @@
  *
  * 模版从「设置 → 业务配置」界面切（设置有进程内缓存，直接改库服务端看不到），结束切回通用销售。数据自己造自己收。
  */
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
 
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
@@ -36,6 +36,25 @@ async function 登录(page: Page) {
 /** antd 下拉里点一项：页面上同名的 role=option 有一份是给读屏的隐藏副本，点看得见的那份 */
 async function 选(page: Page, 字: string | RegExp) {
   await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 字 }).first().click();
+}
+
+/**
+ * 点开「标签」那一格下拉、点「字」，并且等框里真显示出「字」才算选上。
+ * CI 上偶发：点了选项、值没落上（下拉还在展开 / 收起动画里，点击落空），存进库里那一格是空的。
+ * 没落上就重开下拉再点一次；断言照旧在后面查库。
+ */
+async function 选定(page: Page, 框: Locator, 标签: string, 字: string) {
+  const 那格 = 框.getByLabel(标签);
+  // has 里的定位是相对 .ant-select 往里找的，不能从 框 起头
+  const 选上了 = 框.locator(".ant-select", { has: page.getByLabel(标签) }).locator(".ant-select-content-has-value", { hasText: 字 });
+  const 那项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 字 }).first();
+  await expect(async () => {
+    if (await 选上了.count()) return;
+    if (!(await 那项.isVisible())) await 那格.click();
+    await expect(那项).toBeVisible({ timeout: 2_000 });
+    await 那项.click();
+    await expect(选上了).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 async function 套预设(page: Page, 名: string) {
@@ -112,10 +131,8 @@ test("界面：新建客户填等级、官网 → 记录页有等级章、官网
   await 框.getByLabel(/客户名称|客户姓名|姓名/).first().fill(新客户);
   await 框.getByLabel("WhatsApp").fill("+1 646 555 0199");
   await 框.getByLabel("国家").fill("美国");
-  await 框.getByLabel("客户等级").click();
-  await 选(page, "B 常规");
-  await 框.getByLabel("销售负责人").click();
-  await 选(page, "张三");
+  await 选定(page, 框, "客户等级", "B 常规");
+  await 选定(page, 框, "销售负责人", "张三");
   await 框.getByLabel("官网").fill("acme-e2e");
   await 框.getByRole("button", { name: /保\s*存/ }).click();
   await expect(框.getByText("官网格式不对")).toBeVisible();
