@@ -49,24 +49,12 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
-        # 要 tag：tests/r2-shell-upgrade 拿老版本的 tag 建老库来测升级，浅检出没有 tag 会直接报红
-        with:
-          fetch-depth: 0
-      # 企业版仓库不打 v* tag（release.yml 见 tag 就发镜像），老版本的 tag 从公开的桌面端仓库拉，只落在这台 runner 上
-      - name: 拉升级测试要的老版本 tag
-        run: git fetch --no-tags https://github.com/BeckY824/daedalus-crm.git 'refs/tags/v*:refs/tags/v*'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
       - run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
-      # NSIS 单测读取锁定版本的真实上游模板；不运行 Electron 下载或原生构建脚本。
-      - name: 安装 NSIS 模板测试依赖
-        run: npm ci --prefix desktop --ignore-scripts --no-audit --no-fund
-      # 安装桌面依赖也会启用既有解压链路测试。7zip-bin 的文件未必带执行位，先修复并验证工具可运行。
-      - name: 准备解压链路测试工具
-        run: node -e "const {path7za}=require('./desktop/node_modules/7zip-bin'); require('node:fs').chmodSync(path7za,0o755); require('node:child_process').execFileSync(path7za,['i'],{stdio:'ignore'})"
       - run: npx prisma generate
       - run: npx prisma generate --schema=prisma/control.prisma
         env:

@@ -1,6 +1,5 @@
 "use client";
 
-import { 订单 } from "@/lib/features";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { palette } from "@/lib/palette";
 import { useRouter, usePathname } from "next/navigation";
@@ -19,7 +18,6 @@ import {
   ContactsOutlined,
   DollarOutlined,
   ProjectOutlined,
-  ContainerOutlined,
   InteractionOutlined,
   SettingOutlined,
   DeploymentUnitOutlined,
@@ -218,12 +216,10 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       */
       { key: "/dashboard", icon: <HomeOutlined />, label: "首页", 组: "主" },
       { key: "/customers", icon: <TeamOutlined />, label: b.customer, 组: "主" },
-      // 企业版只用项目一条线，没有商机（10-26）
-      ...(企业版项目 ? [] : [{ key: "/opportunities", icon: <DollarOutlined />, label: "商机", 组: "主" as const }]),
+      // 企业版只用项目一条线，没有商机（10-26）；/opportunities 一律转到 /projects，左栏这一项 10-28 删了
       // 团队版项目模式开着才有（2026-10-23，D-31）；关着时 /projects 是 404
       ...(b.projectMode ? [{ key: "/projects", icon: <ProjectOutlined />, label: "项目", 组: "主" as const }] : []),
-      // 外贸模版才有订单（2026-10-03），在商机和跟进中间（2026-10-05 外贸客户：「商机和跟进中间，增加类目订单」）
-      ...(b.template === "trade" && 订单 ? [{ key: "/orders", icon: <ContainerOutlined />, label: "订单", 组: "主" as const }] : []),
+      // 外贸模版的订单入口 10-28 删了：企业版模版锁在通用（business-config.ts 企业版锁定），走不到
       { key: "/follow-ups", icon: <InteractionOutlined />, label: "跟进", 组: "主" },
       { key: "/overview", icon: <DashboardOutlined />, label: "数据", 组: "主" },
       { key: "/leads", icon: <ShareAltOutlined />, label: 企业版项目 ? "新线索" : "线索", 组: "更多" },

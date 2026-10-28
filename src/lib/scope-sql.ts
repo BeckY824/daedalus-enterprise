@@ -35,23 +35,6 @@ export async function 看得到的客户数(): Promise<number> {
 }
 
 /**
- * 看得到的在谈商机几个（= prisma.opportunity.count({ where: { status: "OPEN" } })）。左栏「商机」角标每个页面都数一遍。
- * Prisma 那句是 Opportunity LEFT JOIN Customer LEFT JOIN CustomerPool 再 OR，压测时 1047 次平均 66 ms（2026-10-28 企业版 P1）。
- * 写成 EXISTS（逐个商机按主键去看它的客户在不在范围里）：经理（看三四万位）也不比原来慢；
- * 写成 customerId IN (看得到的客户) 业务员快一倍，经理要先攒几万个编号，慢四倍，不用
- */
-export async function 看得到的在谈商机数(): Promise<number> {
-  const 范围 = await 看得到的();
-  if (!范围) return prisma.opportunity.count({ where: { status: "OPEN" } });
-  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
-    `SELECT COUNT(*) AS n FROM "Opportunity" o WHERE o."status" = ? AND EXISTS (SELECT 1 FROM "Customer" c WHERE c.id = o."customerId" AND (${范围.where}))`,
-    "OPEN",
-    ...范围.参数,
-  );
-  return Number(r.n);
-}
-
-/**
  * 看得到的跟进记录几条（= prisma.followUp.count({ where: { type?, ownerId? } })），跟进记录页不带关键词时的总数。
  * Prisma 那句是 FollowUp LEFT JOIN Customer LEFT JOIN CustomerPool 再 OR，20 万条跟进整表扫：压测时 106 次平均 422 ms，
  * 单查业务员 79 ms、经理 91 ms（2026-10-28 企业版 B 库）。写成 customerId IN (看得到的客户)：业务员 9.5 ms，经理 47–64 ms。

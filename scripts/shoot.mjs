@@ -29,8 +29,6 @@ const PAGES = [
   { file: "05-customer-detail", url: null, label: "客户详情·跟进记录", settle: 1500 },
   { file: "06-contacts", url: "/contacts", label: "联系人" },
   { file: "06b-channels", url: "/channels", label: "渠道管理·转介绍雷达" },
-  { file: "07-opportunities", url: "/opportunities", label: "商机列表" },
-  { file: "08-pipeline", url: "/opportunities/pipeline", label: "商机管道" },
   { file: "09-follow-ups", url: "/follow-ups", label: "跟进记录" },
   { file: "10-plans", url: "/follow-ups/plans", label: "跟进计划" },
   { file: "11-settings", url: "/settings", label: "设置" },

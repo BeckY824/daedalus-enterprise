@@ -21,10 +21,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
-
-const require_ = createRequire(import.meta.url);
 
 const 根 = path.resolve(__dirname, "..");
 const 临时根 = path.join(os.tmpdir(), `crm-machine-${process.pid}`);
@@ -544,84 +541,8 @@ describe("控制面的两条安装路径要一致", () => {
   });
 });
 
-describe("桌面端算机器标识的那个模块", () => {
-  const 机器 = require_("../desktop/machine.js") as {
-    机器哈希: () => string | null;
-    算哈希: (原始: unknown) => string | null;
-    盐: string;
-  };
-  const 源码 = fs.readFileSync(path.join(根, "desktop/machine.js"), "utf8");
-
-  it("同一个硬件标识永远算出同一串，不同的算出不同的", async () => {
-    const { 算哈希 } = 机器;
-    const a = 算哈希("90CBBA5B-CA5C-5B91-9F0A-111111111111");
-    expect(a).toMatch(/^[0-9a-f]{64}$/);
-    expect(算哈希("90cbba5b-ca5c-5b91-9f0a-111111111111"), "大小写是同一台机器").toBe(a);
-    expect(算哈希(" 90CBBA5B-CA5C-5B91-9F0A-111111111111 "), "两头的空白不算").toBe(a);
-    expect(算哈希("{90CBBA5B-CA5C-5B91-9F0A-111111111111}"), "注册表那对花括号不算").toBe(a);
-    expect(算哈希("90CBBA5B-CA5C-5B91-9F0A-222222222222")).not.toBe(a);
-  });
-
-  it("加了盐：传上去的不是硬件 UUID 的裸 sha256", async () => {
-    const { 算哈希, 盐 } = 机器;
-    const uuid = "90cbba5b-ca5c-5b91-9f0a-333333333333";
-    expect(算哈希(uuid)).not.toBe(createHash("sha256").update(uuid).digest("hex"));
-    expect(算哈希(uuid)).toBe(createHash("sha256").update(`${盐}:${uuid}`).digest("hex"));
-  });
-
-  it("取不到、占位值、命令的报错输出一律是 null，不是一台新机器", async () => {
-    const { 算哈希 } = 机器;
-    for (const 坏 of [
-      "",
-      "   ",
-      null,
-      undefined,
-      "0",
-      "N/A",
-      "unknown",
-      "To be filled by O.E.M.",
-      "00000000-0000-0000-0000-000000000000",
-      "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
-      "ioreg: command not found",
-      "ERROR: 系统找不到指定的注册表项或值。",
-      "x".repeat(200),
-    ]) {
-      expect(算哈希(坏), `「${String(坏).slice(0, 20)}」不该算出一个哈希`).toBeNull();
-    }
-  });
-
-  it("这台机器上算出来的值是稳定的（算两遍一样）", async () => {
-    const { 机器哈希 } = 机器;
-    const a = 机器哈希();
-    expect(机器哈希()).toBe(a);
-    if (process.platform === "darwin") {
-      expect(a, "macOS 上 ioreg 一定读得到 IOPlatformUUID").toMatch(/^[0-9a-f]{64}$/);
-    }
-  });
-
-  it("**不许**在取不到时编一个标识出来", () => {
-    /*
-      这条是白送与不白送的分界线。随机值 = 每次启动都是一台新电脑（送到底）；
-      存在文件里的 id = 删掉文件就换一份额度；机器名的哈希 = 改个名就是新电脑，
-      同时所有同名机器撞成一台。所以这个模块里不该出现任何"造一个 id"的东西。
-    */
-    for (const 不该有 of ["randomUUID", "randomBytes", "hostname", "Math.random", "userInfo", "Date.now"]) {
-      expect(源码.includes(不该有), `machine.js 里不该出现 ${不该有}——取不到就返回 null`).toBe(false);
-    }
-  });
-
-  it("在打包白名单里，而且壳真的把它传给了本地服务", () => {
-    /*
-      三处对着同一个环境变量名，都是编译器看不见的字符串。
-      改坏了不报错：机器哈希永远取不到，于是**谁都拿不到注册赠送**，而没人会立刻发现。
-    */
-    const pkg = JSON.parse(fs.readFileSync(path.join(根, "desktop/package.json"), "utf8")) as { build?: { files?: string[] } };
-    expect(pkg.build?.files, "不在 files 里就进不了 app.asar").toContain("machine.js");
-
-    const main = fs.readFileSync(path.join(根, "desktop/main.js"), "utf8");
-    expect(main).toContain('require("./machine")');
-    expect(main).toMatch(/CRM_MACHINE_HASH: 机器\.机器哈希\(\)/);
-
+describe("服务端带上机器标识", () => {
+  it("登录时从 CRM_MACHINE_HASH 取机器哈希带给云端（壳那一半在桌面端仓库里钉）", () => {
     const 服务端 = fs.readFileSync(path.join(根, "src/lib/desktop/cloud.ts"), "utf8");
     expect(服务端, "服务端要从同一个环境变量名里取").toContain("CRM_MACHINE_HASH");
     expect(服务端, "登录时要把它带上，否则云端永远不知道是哪台机器").toMatch(/machine: 机器哈希\(\)/);

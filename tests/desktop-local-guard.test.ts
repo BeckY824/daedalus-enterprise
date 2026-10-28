@@ -41,9 +41,4 @@ describe("接上了", () => {
     expect(读("src/app/api/desktop/session/route.ts")).toMatch(/if \(!是本机地址\(req\.headers\.get\("host"\)/);
     expect(读("src/proxy.ts")).toMatch(/DESKTOP_LOCAL === "1" && !本机地址\(request\.headers\.get\("host"\)\)/);
   });
-  it("壳给发往当前本地端口的请求带 x-desktop-token", () => {
-    const src = 读("desktop/main.js");
-    expect(src).toContain("session.defaultSession.webRequest.onBeforeSendHeaders(");
-    expect(src).toMatch(/细\.requestHeaders\["x-desktop-token"\] = 本地\.token/);
-  });
 });

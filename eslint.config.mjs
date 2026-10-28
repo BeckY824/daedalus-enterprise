@@ -9,16 +9,13 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
-    // 应用内反馈回复整条链 e2e 里云端那个 next dev 的构建目录（next.config.ts 的 distDir）
+    // 另换的 next 构建目录（next.config.ts 的 distDir；排版闸门开发模式用 .next-layout-ent）
     ".next-*/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
     // Prisma 生成的客户端代码，不参与 lint
     "src/generated/**",
-    // 桌面客户端是独立的 Electron 包：主进程必须走 CommonJS，
-    // 用 Next 这套规则去 lint 它只会得到一堆「不许 require」的假阳性
-    "desktop/**",
     // 扫名片的识别运行库：scripts/build-ocr.mjs 从 node_modules 打出来的压缩包，不是我们写的
     "public/ocr/**",
     // 服务器认名片的识别线程：同一个脚本用 esbuild 打出来的（SDK + OpenCV + onnxruntime 一个文件）

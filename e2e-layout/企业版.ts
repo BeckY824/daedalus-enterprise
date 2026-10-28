@@ -1,16 +1,15 @@
 /**
  * 排版闸门的企业版服务（10-28）：本仓库只出企业版（CRM_ENTERPRISE=1，项目模式），闸门量的页面要是企业版用户真看得到的那些。
- * 桌面端那一套（本地模式 + 假云端，playwright.desktop.config.ts）照旧给团队页、我的反馈等别的 spec 用；
- * 闸门三份（排版闸门-1024 / -1280 / -1366）改到这里起的企业版服务上跑，见 playwright.layout.config.ts 的「企业版」项目。
+ * 闸门三份（排版闸门-1024 / -1280 / -1366）都在这里起的企业版服务上跑，见 playwright.layout.config.ts（10-28 起和桌面端那一套脱钩）。
  *
- * 库、端口都是自己的：prisma/e2e-layout-ent/（不进仓库）、桌面端端口 + 2（默认 3302，跟着 E2E_PORT 挪）。
+ * 库、端口都是自己的：prisma/e2e-layout-ent/（不进仓库）、E2E_PORT + 2（默认 3302，跟着 E2E_PORT 挪）。
  * 和 e2e-ent/global-setup.ts 一样由 webServer 命令在起服务前跑（企业版服务器一启动就连库）：
  *
  *   npx tsx e2e-layout/企业版.ts
  *
  * 数据照种子.ts 的长名客户造，换成企业版的样子：没有商机 / 订单 / 供应商（企业版启动清理会删老表，见 lib/enterprise/legacy-cleanup.ts），
  * 每位客户挂线索 / 商机 / 订单三个阶段的项目（项目名用长句、整段询盘、长网址、长中文、中英混排），一位长英文名同事挂大额项目，
- * 跟进记录挂在项目上、跟进计划有逾期的；业务配置写长来源 / 长职级 / 长行业 + 长字段名（同长选项.ts，设置有进程内缓存，只能起服务前写）。
+ * 跟进记录挂在项目上、跟进计划有逾期的；业务配置写长来源 / 长职级 / 长行业 + 长字段名（设置有进程内缓存，只能起服务前写）。
  * 名字、号码都是编的。密码每轮随机，只写进 seed.json（不进仓库），用例从那里读
  */
 import { execFileSync } from "node:child_process";
@@ -27,7 +26,7 @@ const ROOT = path.resolve(__dirname, "..");
 export const 企业版目录 = path.resolve(ROOT, "prisma/e2e-layout-ent");
 export const 企业版库 = path.join(企业版目录, "e2e-layout-ent.db");
 const 种子文件 = path.join(企业版目录, "seed.json");
-/** 桌面端本地服务在 E2E_PORT（默认 3300），云端桩 +1，企业版 +2 */
+/** E2E_PORT（默认 3300）+ 2：沿用和桌面端那一套同开时的端口，本机已有的 E2E_PORT 习惯不用改 */
 export const 企业版端口 = (Number(process.env.E2E_PORT) || 3300) + 2;
 export const 企业版地址 = `http://localhost:${企业版端口}`;
 
@@ -53,7 +52,7 @@ async function 建库() {
   rmSync(企业版目录, { recursive: true, force: true });
   mkdirSync(企业版目录, { recursive: true });
   writeFileSync(企业版库, "");
-  // 开发模式下这份服务和桌面端那份同目录各起一个 next dev：构建目录、tsconfig 都换开（见 next.config.ts 的 distDir 那段）
+  // 开发模式下换开构建目录、tsconfig，免得和同一工作树里自己开着的 next dev 抢目录（见 next.config.ts 的 distDir 那段）
   writeFileSync(path.join(企业版目录, "tsconfig.json"), JSON.stringify({ extends: "../../tsconfig.json" }, null, 2));
 
   const 密码 = randomBytes(9).toString("base64url");

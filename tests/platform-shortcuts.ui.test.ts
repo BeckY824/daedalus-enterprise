@@ -36,8 +36,9 @@ it.each([["Win32","Control","Ctrl+"],["MacIntel","Meta","⌘"]])("%s 对应快�
   await page.close();
 });
 
-it("W-050 外贸快捷跳转有轻订单，但没有关闭的供应商与报价入口",async()=>{
+// 外贸订单入口 2026-10-28 随企业版清死代码删了（企业版模版锁在通用），⌘K 和左栏都不再摆
+it("W-050 外贸快捷跳转没有订单，也没有关闭的供应商与报价入口",async()=>{
  const page=await browser.newPage();await page.route("http://keys.test/**",r=>r.fulfill({contentType:"text/html",body:"<meta charset='utf-8'><div id='root'></div>"}));
  await page.goto("http://keys.test");await page.evaluate(()=>Reflect.set(window,"__trade",true));await page.addScriptTag({content:bundle});await page.locator("#key").waitFor();await page.keyboard.press("Meta+k");
- const dialog=page.getByRole("dialog");await dialog.waitFor();expect(await dialog.innerText()).toContain("订单");expect(await dialog.innerText()).not.toContain("供应商");expect(await dialog.innerText()).not.toContain("报价明细");await page.close();
+ const dialog=page.getByRole("dialog");await dialog.waitFor();expect(await dialog.innerText()).not.toContain("订单");expect(await dialog.innerText()).not.toContain("供应商");expect(await dialog.innerText()).not.toContain("报价明细");await page.close();
 });

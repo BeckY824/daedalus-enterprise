@@ -14,7 +14,7 @@
 4. `ALTER TABLE ... ADD COLUMN` 是第 2 条的唯一例外，因为 SQLite 没有
    `ADD COLUMN IF NOT EXISTS`：第二次执行必然抛 `duplicate column name`。
    所有 runner 都把这一句（和 `already exists`）当预期跳过：
-   `docker-entrypoint.sh` 四处、`desktop/server-entry.js`、`scripts/build-template.mjs`。
+   `docker-entrypoint.sh` 四处、`scripts/build-template.mjs`。
    **加列的迁移单独一个文件、只放 ADD COLUMN**（配套的 `CREATE INDEX IF NOT EXISTS`
    可以同文件）：一旦和别的语句混在一起，那一句抛出来就把同文件后面的全跳过了。
    例子见 `006-ai-conversation-scope.sql`

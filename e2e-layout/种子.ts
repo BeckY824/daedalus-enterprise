@@ -3,14 +3,15 @@
  *
  * 照客户手上真有的样子造：商机名一整句英文（品名 + 条款 + 目的国 + 目标价 + 数量）、英国公司全大写长名、
  * 长供应商中文名、T/T 30/70、US$ 1,234,567.89、一位客户挂好几个商机 / 订单、几种状态和等级。
- * 名字、号码都是编的，不是任何真客户。直接写库（桌面本地模式的 e2e 库，prisma/e2e-desktop.db），id 固定前缀 gate-，重复跑先删后建
+ * 名字、号码都是编的，不是任何真客户。id 固定前缀 gate-，重复跑先删后建。
+ * 10-28 起排版闸门只跑企业版：长名字、长句给 e2e-layout/企业版.ts 造项目用；灌真客户 只剩 e2e-parity/网页对桌面.spec.ts 在用（直接写它自己那份库）
  */
 import type { PrismaClient } from "../src/generated/prisma";
 
 export const 长句商机 = "chicken breast BFQ. Exw. 10kg/Box. Country is Turkmenistan / Tadjikistan. Target price is 1300$, quantity 500 tons";
 export const 客户们 = [
   { k: "scandi", name: "SCANDI PAK EUROPE LTD", country: "英国", level: "A 级", source: "展会获取", follow: "跟进中", decision: "意向强" },
-  // 这一位的来源、职级、行业都用长选项.ts 里的长选项（10-22 排版普查：长选项、长字段名才露出字压字、Tag 盖住旁边一列）
+  // 这一位的来源、职级、行业都用长选项（企业版.ts 起服务前写进业务配置；10-22 排版普查：长选项、长字段名才露出字压字、Tag 盖住旁边一列）
   { k: "long-uk", name: "THE INTERNATIONAL GROUP OF SCANDINAVIAN FOOD PACKAGING AND COLD CHAIN LOGISTICS HOLDINGS LIMITED (UK BRANCH)", country: "英国", level: "B 级", source: "LinkedInSalesNavigatorOutboundCampaignAutumn2026", follow: "待跟进", decision: "了解中",
     school: "THE INTERNATIONAL GROUP OF SCANDINAVIAN FOOD PACKAGING HOLDINGS LIMITED / شركة النور للأغذية المجمدة", grade: "SeniorProcurementManagerForFrozenPoultryAndSeafoodImports", major: "冷冻禽肉水产品及清真认证肉类产品进出口批发与零售连锁" },
   { k: "turkmen", name: "Türkmen Azyk Önümleri Hojalyk Jemgyýeti «Altyn Asyr Trading»", country: "土库曼斯坦", level: "A 级", source: "阿里国际站", follow: "跟进中", decision: "比价中" },
@@ -88,22 +89,6 @@ export async function 灌真客户(db: PrismaClient, 我: string) {
   ].entries()) {
     await db.lead.create({ data: { id: `gate-lead-${i}`, ...l, contact: "Mr. Alexander Christopher Montgomery-Smythe", phone: `+971 4 555 ${String(1000 + i)}`, email: `buyer.${i}@international-group-holdings.example.ae`, status: "待跟进", ownerId: 我 } });
   }
-}
-
-/**
- * 10-19 用户 Mac 截图（0.46.21）：客户详情时间线两处越出右边——「其他记录」行头的「订单 xxx」把日期挤出去、绿色订单卡把日期挤出去。
- * main 上 8a8bd9f（.rec-tl-order 可缩省略）、de52983（订单卡头折行）应已修好；这里照截图造一份，闸门里量着
- */
-export const 混排订单号 = "adijosidjfjsaofa撒大叔大叔大叔大叔大叔大叔的";
-export async function 灌混排订单(db: PrismaClient, 我: string) {
-  await db.customer.deleteMany({ where: { id: "gate-mixorder" } });
-  const 现在 = Date.now();
-  await db.customer.create({ data: { id: "gate-mixorder", name: "订单号混排测试客户", phone: "+86 138 0000 1919", salesOwnerId: 我, followStatus: "跟进中", lastFollowAt: new Date(现在) } });
-  // 外贸模版下签约就是订单：绿色订单卡画的是这条签约（订单号 + 金额 + 日期挤在一行）
-  await db.contract.create({ data: { id: "gate-mixorder-c0", customerId: "gate-mixorder", amount: 123123121, signedAt: new Date(现在 - 3600_000), owner: { create: { salesOwnerId: 我 } }, money: { create: { currency: "CNY", amountExact: 123123121 } } } });
-  await db.tradeOrder.create({ data: { id: "gate-mixorder-t0", no: 混排订单号, customerId: "gate-mixorder", contractId: "gate-mixorder-c0", ownerId: 我, amount: 123123121, currency: "CNY", payment: "T/T 30/70", createdAt: new Date(现在 - 3600_000) } });
-  const f = await db.followUp.create({ data: { customerId: "gate-mixorder", ownerId: 我, type: "OTHER", title: "", status: "已完成", occurredAt: new Date(现在 - 600_000), content: "客户确认了唛头和装柜时间" } });
-  await db.followUpOrder.create({ data: { followUpId: f.id, orderId: "gate-mixorder-t0", nodeIdx: 0 } });
 }
 
 /**

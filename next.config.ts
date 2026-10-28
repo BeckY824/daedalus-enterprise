@@ -58,13 +58,12 @@ const nextConfig: NextConfig = {
   // Prisma 生成的客户端里有动态路径，Turbopack 会把整个项目追进 standalone（含 public/）；Dockerfile 另外再拷一遍 public，
   // 扫名片的 115 MB 识别文件就会在镜像里出现两份。public/ocr 不追，只走 COPY public 那一份；服务器识别的 ocr-server 也是 Dockerfile 单独拷
   outputFileTracingExcludes: { "*": ["public/ocr/**", "ocr-server/**"] },
-  // 全项目没有一处用 next/image；关掉图片优化，/_next/image 那条路就不走了，
-  // 桌面端的本地服务因此可以不带 sharp（Mac 约 18 MB 原生库 / Windows 约 10 MB wasm，desktop/scripts/build-server.mjs 第 9 步删）
+  // 全项目没有一处用 next/image；关掉图片优化，/_next/image 那条路就不走了，运行时也就用不到 sharp
   images: { unoptimized: true },
 
   /*
-    只给 e2e 用（playwright.feedback-chain.config.ts）：同一份代码里同时起「云端」和「桌面端本地服务」两个 next dev。
-    Next 16 一个构建目录只许一个 dev（<distDir>/dev/lock），所以云端那个换个目录；
+    只给 e2e 用（playwright.layout.config.ts 开发模式）：同一个工作树里自己开着的 next dev 和排版闸门那个 next dev 不抢目录。
+    Next 16 一个构建目录只许一个 dev（<distDir>/dev/lock），所以闸门那个换个目录；
     tsconfig 也换成一个 extends 主配置的，免得 next dev 往 tsconfig.json 的 include 里加那个目录。不设就是默认
   */
   distDir: process.env.NEXT_DIST_DIR || ".next",

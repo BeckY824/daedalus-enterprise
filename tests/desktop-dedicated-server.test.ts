@@ -160,21 +160,6 @@ describe("设了专属服务器：全跟着走", () => {
     expect(专属.问过).toContain("GET /api/account/policy");
   });
 
-  it("发码脚本（desktop/scripts/server-code.mjs）出的码，登录页解得开；认不过的地址不出码", async () => {
-    const 专属 = await 假云端(像我们的云端);
-    const { execFile } = await import("node:child_process");
-    const 跑 = (...参: string[]) =>
-      new Promise<{ code: number; out: string }>((ok) =>
-        execFile(process.execPath, ["desktop/scripts/server-code.mjs", ...参], (e, out) => ok({ code: e ? Number(e.code) : 0, out: out.trim() })),
-      );
-    const r = await 跑(专属.url, "Even 专属");
-    expect(r.code).toBe(0);
-    const { 解码服务器码 } = await import("@/lib/desktop/dedicated-server");
-    expect(解码服务器码(r.out)).toEqual({ url: 专属.url, name: "Even 专属" });
-    const 坏 = await 假云端(回(404, {}));
-    expect((await 跑(坏.url)).code).toBe(1);
-  });
-
   it("码只粘了一半：说码不完整，不存", async () => {
     const { 设专属服务器, 编码服务器码 } = await import("@/lib/desktop/dedicated-server");
     const 码 = 编码服务器码("https://cn.example.com", "Even");
@@ -325,17 +310,5 @@ describe("只有没登录时能换", () => {
     delete process.env.DESKTOP_LOCAL;
     const { 桌面端设专属服务器 } = await import("@/app/login/actions");
     expect((await 桌面端设专属服务器("https://cn.example.com")).ok).toBe(false);
-  });
-});
-
-describe("壳", () => {
-  it("每次起本地服务都把数据根里的设置文件路径传过去；自动更新的源不看它", () => {
-    const main = fs.readFileSync(path.resolve("desktop/main.js"), "utf8");
-    expect(main).toMatch(/CRM_SERVER_FILE: 云端\.专属服务器文件\(数据根\)/);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const 云端 = require(path.resolve("desktop/cloud.js"));
-    expect(云端.专属服务器文件("/x/DaedalusCRM")).toBe(path.join("/x/DaedalusCRM", "dedicated-server.json"));
-    const updater = fs.readFileSync(path.resolve("desktop/updater.js"), "utf8");
-    expect(updater).not.toMatch(/dedicated-server|CRM_SERVER_FILE|CRM_CLOUD_URL/);
   });
 });
