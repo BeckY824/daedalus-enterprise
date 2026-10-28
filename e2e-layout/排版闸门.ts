@@ -30,7 +30,7 @@ import path from "node:path";
 import { 查排版, 说问题, type 排版问题 } from "../e2e/layout-audit";
 import { 企业版进门, 企业版种子 } from "./企业版";
 import { 关掉弹窗 } from "./外贸模版";
-import 现存问题 from "./现存问题.json";
+import 现存问题清单 from "./现存问题.json";
 
 const 只记 = process.env.TEAM_QA_REPORT === "1";
 const 出处 = process.env.E2E_SHOT_DIR ? path.join(process.env.E2E_SHOT_DIR, "闸门") : null;
@@ -41,6 +41,8 @@ const 出处 = process.env.E2E_SHOT_DIR ? path.join(process.env.E2E_SHOT_DIR, "�
   清单里的修好了（一整轮都没再出现）会在输出里提示「可以从清单删掉」——删掉之后它再回来就红。
   键 = 页面 | 类 | 位置最后两层；不含宽度和像素数，同一处问题在哪个宽度出现都算同一条
 */
+// 标上类型：清单删空（[]）时 JSON 推出来是 never[]，下面取 .键 会编译不过
+const 现存问题: { 键: string; 归属: string; 在哪几组: string[] }[] = 现存问题清单;
 const 已知 = new Map(现存问题.map((x) => [x.键, x.归属]));
 const 键 = (页: string, x: 排版问题) => `${页} | ${x.类} | ${x.在哪.split(" > ").slice(-2).join(" > ")}`;
 

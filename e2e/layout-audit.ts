@@ -119,11 +119,16 @@ export async function 查排版(page: Page, 选项: 查排版选项 = {}): Promi
         if (cr.width < 1 || cr.height < 1) continue;
         // 负外边距故意往外探的（列表行 margin: 0 -6px 让悬停底色出血、antd 栅格 .ant-row 的 gutter）不算：
         // 从它到 el 之间每一层探出去的都减掉
-        let 探右 = 0, 探左 = 0;
+        let 探右 = 0, 探左 = 0, 中间裁了 = false;
         for (let e: Element | null = c; e && e !== el; e = e.parentElement) {
           const ms = e === c ? cs : getComputedStyle(e);
+          // 中间隔着一层自己会滚 / 会裁的盒子（表格 scroll.x 的 .ant-table-content），c 伸得再远也被它收住了，
+          // 看不出 el 外面；那一层自己另外量（10-28：数据页表格加了横滚后，外层栅格 8px 的 gutter 让外层 div 的 scrollWidth 多出来，
+          // 这里又把滚动框里的整张表当成伸出 255px）
+          if (e !== c && ms.overflowX !== "visible") { 中间裁了 = true; break; }
           探右 += Math.max(0, -parseFloat(ms.marginRight) || 0); 探左 += Math.max(0, -parseFloat(ms.marginLeft) || 0);
         }
+        if (中间裁了) continue;
         const 超 = Math.max(cr.right - r.right - 探右, r.left - cr.left - 探左);
         if (超 > 多) { 多 = 超; 最远 = c; }
       }

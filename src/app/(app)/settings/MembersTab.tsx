@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Radio } from "antd";
+import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Radio, Grid } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined } from "@ant-design/icons";
 import { UserCell } from "@/components/ui";
@@ -237,6 +237,7 @@ export default function MembersTab({
     });
   }
 
+  const 屏 = Grid.useBreakpoint();
   const columns: ColumnsType<Row> = [
     // 姓名、登录名、职位并成一列（10-27）：设置弹窗里九列铺开要左右拖，登录名和职位小字放名字下面
     {
@@ -400,6 +401,10 @@ export default function MembersTab({
         dataSource={users}
         columns={columns}
         pagination={false}
+        // 按列宽排、窄了横滚：不给的话长名字按全长把姓名列撑到 400 多，整张表伸出设置页（排版闸门 10-28）。
+        // 名字在 UserCell 里自带省略号和 title；xl 以下那两列不显示，不算进宽度
+        tableLayout="fixed"
+        scroll={{ x: columns.reduce((和, c) => (c.responsive && !屏.xl ? 和 : 和 + (Number(c.width) || 0)), 能批量 ? 32 : 0) }}
       />
 
       <Modal
