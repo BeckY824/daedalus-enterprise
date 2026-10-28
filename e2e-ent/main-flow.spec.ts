@@ -5,8 +5,9 @@ import { ENT_DB, 账号, 读种子, type 种子 } from "./global-setup";
 /**
  * 企业版主流程：主套在 CRM_ENTERPRISE=1 下重跑的是桌面端 / 团队版的回归，这里补只有企业版才有的。
  * 人和数据见 global-setup.ts；公海那条会改归属，放最后、整套串行。
+ * 不重试：串行套重试是从头再跑一遍，数据却不重置（线索甲已经分出去了），只会在别处再红一次，把真正的错盖住。
  */
-test.describe.configure({ mode: "serial" });
+test.describe.configure({ mode: "serial", retries: 0 });
 
 let 种: 种子;
 let db: PrismaClient;
@@ -125,13 +126,21 @@ test("可见范围：销售乙看不到销售甲的客户（列表没有、详�
 });
 
 /** 点开 aria-label 是 框名 的下拉，选标题是 项 的那一项（antd 的选项带 title） */
+// 下拉还在展开动画里时点中的项可能落不上值（CI 上见过：点了「看不到」，框里还是「能改」，保存一直灰着），
+// 所以点完要看框里真显示了这一项，没落上就整段重来；多选框已经选上的不再点，免得又点掉
 async function 选(page: Page, 框名: string, 项: string) {
+  const 框 = page.getByRole("main").getByRole("combobox", { name: 框名 });
+  // has 里的定位是相对 .ant-select 往里找的，不能再从 main 起头
+  const 选上了 = page.locator(".ant-select", { has: page.getByRole("combobox", { name: 框名 }) })
+    .locator(`[title="${项}"]:not(.ant-select-item)`);
   const 那项 = page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${项}"]`);
   await expect(async () => {
-    await page.getByRole("main").getByRole("combobox", { name: 框名 }).click();
+    if (await 选上了.count()) return;
+    if (!(await 那项.isVisible())) await 框.click();
     await expect(那项).toBeVisible({ timeout: 2_000 });
+    await 那项.click();
+    await expect(选上了.first()).toBeVisible({ timeout: 2_000 });
   }).toPass();
-  await 那项.click();
 }
 const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-notice", { hasText: 字 });
 
