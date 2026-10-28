@@ -8,6 +8,7 @@
  */
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
+import { 企业版, 负责人锁给自己 } from "./owner-pick";
 
 const 甲账号 = { 用户名: "zhangsan", 密码: "admin123" };
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
@@ -47,10 +48,13 @@ async function 新建客户(page: Page, 姓名: string, 手机: string) {
   await 弹窗.getByLabel("联系电话").fill(手机);
   // antd Select 的选项渲染在 portal 里，且下拉是懒挂载的，
   // 必须等下拉真正展开再点，否则 getByRole("option") 会一直等不到
-  await 弹窗.getByLabel("销售负责人").click();
-  const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
-  await 下拉.waitFor({ state: "visible" });
-  await 下拉.locator(".ant-select-item-option").first().click();
+  if (企业版) await 负责人锁给自己(弹窗);
+  else {
+    await 弹窗.getByLabel("销售负责人").click();
+    const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+    await 下拉.waitFor({ state: "visible" });
+    await 下拉.locator(".ant-select-item-option").first().click();
+  }
   await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
   await expect(弹窗).toBeHidden();
 }
@@ -178,7 +182,11 @@ test.describe("D 组：批量操作交叉", () => {
     await 下拉.waitFor({ state: "visible" });
     // 管理员已不在负责人候选里（只做系统维护），转给另一名销售
     await 下拉.getByRole("menuitem", { name: "李四" }).click();
-    await expect(乙.page.locator(".ant-message")).toContainText(/条/);
+    if (企业版) {
+      // 企业版转给别人先问转让原因（可不选，useTransferConfirm）；规则「交接要接手人确认」开着时提示是「已发起交接」
+      await 乙.page.getByRole("dialog").filter({ hasText: "转给「李四」" }).getByRole("button", { name: /转\s*让/ }).click();
+      await expect(乙.page.locator(".ant-message")).toContainText(/条|交接/);
+    } else await expect(乙.page.locator(".ant-message")).toContainText(/条/);
 
     // 甲改的是公司，不是负责人，应当自动合并
     await 甲.page.getByRole("dialog").getByLabel("公司").fill("星辰科技");
@@ -222,6 +230,8 @@ test.describe("D2 组：批量改负责人的撤销（T-019）", () => {
       const 下拉 = 管.page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
       await 下拉.waitFor({ state: "visible" });
       await 下拉.getByRole("menuitem", { name: "李四" }).click();
+      // 企业版转给别人先问转让原因（可不选，useTransferConfirm）
+      if (企业版) await 管.page.getByRole("dialog").filter({ hasText: "转给「李四」" }).getByRole("button", { name: /转\s*让/ }).click();
       const 提示 = 管.page.locator(".ant-message-notice", { hasText: "已转给 李四" });
       await expect(提示).toBeVisible();
       await expect.poll(async () => (await p.customer.findMany({ where: { name: { startsWith: 前缀 } } })).every((c) => c.salesOwnerId === 李四.id)).toBe(true);

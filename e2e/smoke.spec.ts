@@ -10,6 +10,8 @@ import { 读取完整导出 } from "./export-download";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
+/** 企业版只有老板和总管理员能导入导出（src/lib/enterprise/import-perm.ts），普通销售看不到这个键，换管理员来做 */
+const 导出的人 = process.env.CRM_ENTERPRISE === "1" ? 管理员 : 账号;
 
 /** 同一轮跑出来的数据带同样的后缀，避免和别轮撞名 */
 const 戳 = String(Date.now()).slice(-6);
@@ -229,7 +231,7 @@ test("9. 筛选后导出：行数对得上、中文原样、公式不会被带�
    * 2026-10-05 起导出是 xlsx（外贸客户要带上跟进记录）：中文不再靠 BOM，格子都是文本格（inlineStr），
    * 「=1+1」原样是文字、表里一个公式（<f>）都没有。
    */
-  await 登录(page);
+  await 登录(page, 导出的人);
 
   // 在一个「会被导出的」自由文本字段里埋一个公式。
   // 备注不在导出列里，所以这里用行业——载荷必须落在真的会导出的列上，

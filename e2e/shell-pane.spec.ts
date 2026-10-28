@@ -254,9 +254,15 @@ test.describe("中栏跟着路由走", () => {
       };
     });
     await 登录(page);
+    const 键 = page.getByRole("button", { name: /反馈/ });
+    // 企业版不留反馈键：layout 里 反馈去向="none"，问题走客户自己的渠道，不往 GitHub 也不往我们这儿
+    if (process.env.CRM_ENTERPRISE === "1") {
+      await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible();
+      await expect(键).toHaveCount(0);
+      return;
+    }
     // 这套 e2e 跑的是单租户（自部署）：他的实例不该认识我们的云，
     // 所以这里既不弹框也不发请求，点了直接开 issues
-    const 键 = page.getByRole("button", { name: /反馈/ });
     await expect(键).toHaveAttribute("title", /GitHub/);
 
     let 发了请求 = false;

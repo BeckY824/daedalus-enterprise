@@ -659,7 +659,12 @@ test("设置：左目录分两组、带搜索，一页上只有一列目录", as
   // 限定在正文里：流式渲染时 Next 会先把新内容放进 body 下一块隐藏的容器再挪过来，
   // allInnerTexts 连隐藏的也读，赶上那一瞬间就是两份
   const 项 = await page.locator("main .set-nav-i b").allInnerTexts();
-  expect(项).toEqual(["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "业务配置", "AI 接入", "导入记录", "操作日志"]);
+  // 企业版多两项：组织架构（部门、业务角色）和企业版导入（迁老系统的数据）
+  expect(项).toEqual(
+    process.env.CRM_ENTERPRISE === "1"
+      ? ["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "组织架构", "业务配置", "AI 接入", "导入记录", "企业版导入", "操作日志"]
+      : ["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "业务配置", "AI 接入", "导入记录", "操作日志"],
+  );
   expect(await page.locator("main .set-nav-h").allInnerTexts()).toEqual(["个人", "工作区"]);
   // 中栏撤了：一页上摆两列目录，人得先弄清它们有什么区别
   await expect(page.locator("aside.pane")).toHaveCount(0);

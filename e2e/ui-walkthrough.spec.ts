@@ -15,6 +15,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据, 造模拟数据 } from "./mock-data";
+import { 企业版, 负责人锁给自己 } from "./owner-pick";
 
 /**
  * 这一组比别的用例宽三分之一的超时（默认 60 秒）。
@@ -210,10 +211,13 @@ test("超长文本不能把列表撑出横向滚动条", async ({ page }) => {
   await 弹窗.getByLabel("公司").fill("很长的公司名称".repeat(8));
   await 弹窗.getByLabel("行业").fill("很长的行业名称".repeat(8));
   await 弹窗.getByLabel("备注").fill("第一行\n第二行\n" + "很长的备注".repeat(40));
-  await 弹窗.getByLabel("销售负责人").click();
-  const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
-  await 下拉.waitFor({ state: "visible" });
-  await 下拉.locator(".ant-select-item-option").first().click();
+  if (企业版) await 负责人锁给自己(弹窗);
+  else {
+    await 弹窗.getByLabel("销售负责人").click();
+    const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+    await 下拉.waitFor({ state: "visible" });
+    await 下拉.locator(".ant-select-item-option").first().click();
+  }
   await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
   await expect(弹窗).toBeHidden();
 
@@ -438,15 +442,17 @@ test("浏览器后退在各页面之间表现正常", async ({ page }) => {
 test("刷新后筛选条件要还在，不能白筛一次", async ({ page }) => {
   await 登录(page);
   await page.goto("/customers");
-  await page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").fill("超长");
+  // 限在 main 里：页面刚流式到达时 body 末尾还有一份 <div hidden> 的同样内容，几百毫秒后才收走
+  const 搜索框 = page.getByRole("main").getByPlaceholder("姓名 / 电话 / 公司 / 行业");
+  await 搜索框.fill("超长");
   // 工具栏 2026-09-17 起没有「搜索」按钮：关键词回车生效
-  await page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").press("Enter");
+  await 搜索框.press("Enter");
   await page.waitForURL(/keyword=/);
   const 筛选后 = page.url();
 
   await page.reload();
   expect(page.url(), "刷新后筛选条件丢了").toBe(筛选后);
-  await expect(page.getByPlaceholder("姓名 / 电话 / 公司 / 行业")).toHaveValue("超长");
+  await expect(搜索框).toHaveValue("超长");
 });
 
 test("连点两次保存不会建出两条", async ({ page }) => {
@@ -458,22 +464,27 @@ test("连点两次保存不会建出两条", async ({ page }) => {
   const 弹窗 = page.getByRole("dialog");
   await 弹窗.getByLabel("客户姓名").fill(`连点${戳}`);
   await 弹窗.getByLabel("联系电话").fill(手机);
-  await 弹窗.getByLabel("销售负责人").click();
-  const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
-  await 下拉.waitFor({ state: "visible" });
-  await 下拉.locator(".ant-select-item-option").first().click();
+  if (企业版) await 负责人锁给自己(弹窗);
+  else {
+    await 弹窗.getByLabel("销售负责人").click();
+    const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+    await 下拉.waitFor({ state: "visible" });
+    await 下拉.locator(".ant-select-item-option").first().click();
+  }
 
   const 保存 = 弹窗.getByRole("button", { name: /保\s*存/ });
   await 保存.click({ clickCount: 2, delay: 30 }).catch(() => {});
   await expect(弹窗).toBeHidden();
 
   await page.reload();
-  await page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").fill(`连点${戳}`);
+  // 限定在正文：刷新后流式渲染那一瞬间 body 下还有一份隐藏的同样页面
+  const 正文 = page.getByRole("main");
+  await 正文.getByPlaceholder("姓名 / 电话 / 公司 / 行业").fill(`连点${戳}`);
   // 工具栏 2026-09-17 起没有「搜索」按钮：关键词回车生效
-  await page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").press("Enter");
+  await 正文.getByPlaceholder("姓名 / 电话 / 公司 / 行业").press("Enter");
   await page.waitForURL(/keyword=/);
   await page.reload();
-  await expect(page.locator(".ant-table-row"), "连点两次建出了多条").toHaveCount(1);
+  await expect(正文.locator(".ant-table-row"), "连点两次建出了多条").toHaveCount(1);
 });
 
 test("走查结束：清掉模拟数据", async () => {

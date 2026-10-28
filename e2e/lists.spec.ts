@@ -20,11 +20,13 @@ import { 连库, 清空业务数据 } from "./mock-data";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
+/** 企业版只有老板和总管理员能导入导出（src/lib/enterprise/import-perm.ts），普通销售看不到这个键，换管理员来做 */
+const 导出的人 = process.env.CRM_ENTERPRISE === "1" ? { 用户名: "admin", 密码: "admin123" } : 账号;
 
-async function 登录(page: Page) {
+async function 登录(page: Page, who = 账号) {
   await page.goto("/login");
-  await page.getByPlaceholder("用户名").fill(账号.用户名);
-  await page.getByPlaceholder("登录密码").fill(账号.密码);
+  await page.getByPlaceholder("用户名").fill(who.用户名);
+  await page.getByPlaceholder("登录密码").fill(who.密码);
   await page.getByRole("button", { name: /登\s*录/ }).click();
   await page.waitForURL(/\/dashboard/);
 }
@@ -132,7 +134,7 @@ test("J-002 渠道直接带来的、刚导入的这一批：翻页后子集都�
 });
 
 test("导出按当前的子集和筛选：本月新增里导出的是这 22 位全部，不是当前一页、也没有老客", async ({ page }) => {
-  await 登录(page);
+  await 登录(page, 导出的人);
   await page.goto("/customers?createdWithin=本月");
   await expect(page.getByRole("main").getByText("只看本月新增")).toBeVisible();
   const [下载] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: /导\s*出/ }).click()]);
@@ -248,7 +250,8 @@ test("T-029 线索列表：按电话搜得到；按负责人、来源筛得出�
   await 登录(page);
   const 行名 = async () => {
     await expect(page.getByRole("main").locator(".ant-table-row").first()).toBeVisible();
-    return page.locator(".ant-table-row td:first-child").allInnerTexts();
+    // 也限在 main 里：页面刚流式到达时 body 末尾还有一份 <div hidden> 的同样行，读早了会算两遍
+    return page.getByRole("main").locator(".ant-table-row td:first-child").allInnerTexts();
   };
   // 电话：搜中间一段数字、带空格的写法都算
   await page.goto(`/leads?keyword=${encodeURIComponent("6666 0029")}`);
@@ -358,7 +361,7 @@ test("没配 AI 的首页：页头「首页」不和「数据」重名；本月�
   await expect(导航.getByRole("link", { name: "首页", exact: true })).toHaveAttribute("href", "/dashboard");
   await expect(导航.getByRole("link", { name: "数据", exact: true })).toHaveAttribute("href", "/overview");
   await page.goto("/overview");
-  await expect(page.locator(".page-head h1")).toHaveText("数据");
+  await expect(page.getByRole("main").locator(".page-head h1")).toHaveText("数据");
   await expect(page.getByRole("main").locator(".stat-card", { hasText: "本月签约" })).toContainText(/¥\s?0(?![\d,])/);
 });
 

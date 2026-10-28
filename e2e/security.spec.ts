@@ -6,6 +6,7 @@
  * 转义与否取决于渲染时怎么插进 DOM，不取决于存了什么。
  */
 import { test, expect, type Page } from "@playwright/test";
+import { 企业版, 负责人锁给自己 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 const 戳 = String(Date.now()).slice(-6);
@@ -48,10 +49,13 @@ test("存储型 XSS：客户备注里的脚本不会被执行，按字面显示"
   await 表单.getByLabel("客户姓名").fill(姓名);
   await 表单.getByLabel("联系电话").fill(`1375${戳}`.slice(0, 11).padEnd(11, "8"));
   await 表单.getByLabel("备注").fill(载荷.join("\n"));
-  await 表单.getByLabel("销售负责人").click();
-  const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
-  await 下拉.waitFor({ state: "visible" });
-  await 下拉.locator(".ant-select-item-option").first().click();
+  if (企业版) await 负责人锁给自己(表单);
+  else {
+    await 表单.getByLabel("销售负责人").click();
+    const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+    await 下拉.waitFor({ state: "visible" });
+    await 下拉.locator(".ant-select-item-option").first().click();
+  }
   await 表单.getByRole("button", { name: /保\s*存/ }).click();
   await expect(表单).toBeHidden();
 

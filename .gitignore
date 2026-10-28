@@ -95,6 +95,8 @@ prisma/e2e-hosted/
 # 应用内反馈回复整条链（playwright.feedback-chain.config.ts）：云端那个 next dev 的构建目录和库
 /.next-*/
 /prisma/e2e-feedback-chain/
+# 企业版主流程（playwright.enterprise.config.ts）：库和每轮随机的测试密码
+/prisma/e2e-ent/
 
 # 图标生成的临时目录（scripts/make-icon.mjs 每次开头就 rmSync 它，产物在 desktop/assets/）
 /.icon-build/

@@ -6,6 +6,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版, 负责人锁给自己 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 const 戳 = String(Date.now()).slice(-6);
@@ -50,8 +51,11 @@ test("新建客户时可以就地建渠道，建完自动选中并同步到渠�
   const 弹窗 = page.getByRole("dialog", { name: "新建客户" });
   await 弹窗.getByLabel("客户姓名").fill(客户名);
   await 弹窗.getByLabel("联系电话").fill(`139${戳}00`);
-  await 弹窗.getByLabel("销售负责人").click();
-  await 下拉选项(page, "salesOwnerId_list").first().click();
+  if (企业版) await 负责人锁给自己(弹窗);
+  else {
+    await 弹窗.getByLabel("销售负责人").click();
+    await 下拉选项(page, "salesOwnerId_list").first().click();
+  }
 
   // 切到「外部渠道」，此时库里一条渠道都没有
   await 弹窗.getByText("外部渠道", { exact: true }).click();
