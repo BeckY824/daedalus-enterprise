@@ -72,6 +72,22 @@ describe("J-018 四张列表页「共 N 条」是真总数，不是 take: 300 �
   });
 });
 
+describe("线索页来源下拉：设置里的 + 库里用着的，去重（2026-10-28 改成 groupBy；企业版开关关着）", () => {
+  it("库里用着、设置里没有的也给出来，每种只出现一次；库里那部分和 distinct 老写法一致", async () => {
+    expect(process.env.CRM_ENTERPRISE).toBeUndefined();
+    await prisma.lead.createMany({
+      data: ["自填甲", "自填甲", "自填乙", "微信", "自填甲", "自填乙"].map((source, i) => ({ name: `线索${i}`, ownerId: 我, source })),
+    });
+    const el = (await LeadsPage({ searchParams: 空() })) as unknown as 元素;
+    const 来源们 = el.props.来源们 as string[];
+    expect(new Set(来源们).size).toBe(来源们.length);
+    expect(来源们).toEqual(expect.arrayContaining(["自填甲", "自填乙", "微信"]));
+    const 老写法 = (await prisma.lead.findMany({ distinct: ["source"], select: { source: true } })).map((l) => l.source);
+    const 库里的 = 来源们.filter((s) => 老写法.includes(s));
+    expect([...库里的].sort()).toEqual([...老写法].sort());
+  });
+});
+
 describe("J-014 联系人页按微信号搜", () => {
   it("只有微信号的联系人：挂在客户上的、未归属的，按微信号都搜得到", async () => {
     const c = await 造客户(我, { name: "远山资本" });
