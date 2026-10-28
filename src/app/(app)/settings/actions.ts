@@ -497,7 +497,7 @@ export async function reactivateUser(id: string) {
   if (u.active) return { ok: true as const };
   // 企业版「交接中」：人回来了，还没确认的离职交接作废（不然接手人之后一确认，在职的人名下的东西被转走）
   const 在交接 = 企业版() ? await 离职交接中(id) : null;
-  if (在交接) await 了结(prisma, 在交接.id, "已撤回", me.id);
+  if (在交接) await 了结(prisma, 在交接.id, "已撤回", me);
   // 托管版：停用时撤掉的成员资格要加回来，否则他登录会被告知「没有工作区」
   if (托管版()) {
     const t = await resolveCurrentTenant();
