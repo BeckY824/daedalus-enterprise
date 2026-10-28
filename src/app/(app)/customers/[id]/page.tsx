@@ -21,6 +21,7 @@ import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户 } from "@/lib/team-scope";
 import { 管全队客户 } from "@/lib/constants";
 import { 附件个数 } from "@/lib/attachments";
+import { 可选项 } from "@/lib/enterprise/dict";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,8 @@ export default async function CustomerDetailPage({
       // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
       只读={await 只读客户(defaultClient, customer)}
       // 企业版联系人附件（10-28）：每位联系人挂了几张；附件表不分权限，能看到这位客户就能看到他联系人的附件
+      // 企业版客户状态（字典 custStatus，10-28 去遗留 A1）：标签行一枚章点了能改
+      客户状态选项={企业版() ? await 可选项("custStatus") : []}
       联系人附件数={企业版() ? Object.fromEntries((await 附件个数(defaultClient, { contactIds: customer.contacts.map((c) => c.id) })).联系人) : null}
       customer={{
         id: customer.id,
@@ -117,6 +120,7 @@ export default async function CustomerDetailPage({
         major: customer.major,
         followStatus: customer.followStatus,
         decisionStatus: customer.decisionStatus,
+        custStatus: customer.custStatus,
         expectedSignAt: scheduleValue(customer.expectedSignAt, customer.expectedSignOn),
         lastFollowAt: customer.lastFollowAt?.toISOString() ?? null,
         remark: customer.remark,

@@ -31,7 +31,11 @@ export type Suggestion = { label: string; question: string; kind?: "ask" | "prep
  * 输入框（Composer）。打字只重渲输入框，流式出字只重渲正在流的那一轮。
  */
 /** 本月签约按币种分开（2026-10-03，不换汇）；空数组 = 这个月还没签 */
-export type 首页信号 = { 逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string };
+export type 首页信号 = {
+  逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string;
+  /** 企业版只用项目（10-28）：第二、三格换成客户状态「意向」几位、本月成交几个项目；不给 = 别的版本，照旧 */
+  企业?: { 意向: number; 本月成交: number };
+};
 
 export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */

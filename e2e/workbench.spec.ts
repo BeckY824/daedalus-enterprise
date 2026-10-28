@@ -15,6 +15,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据, 造模拟数据 } from "./mock-data";
 // AI 接入那几步只留一份：ai-dock 和 import 两组也要装同一个假模型
 import { 配好AI } from "./fake-llm";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 /** 只有管理员能改 AI 接入 */
@@ -194,7 +195,8 @@ test("客户列表：默认只摆六列，其余在「列」里", async ({ page 
   // 六列 + 勾选框 + 操作列；操作列的「操作」只给读屏念（.sr-only），不算看得见的列
   const 表头 = await page.locator(".ant-table-thead th").evaluateAll((ths) =>
     ths.map((th) => { const c = th.cloneNode(true) as HTMLElement; c.querySelectorAll(".sr-only").forEach((e) => e.remove()); return c.textContent ?? ""; }));
-  expect(表头.filter((t) => t.trim()).length).toBe(6);
+  // 企业版少一列：不摆「院校·专业」那一列（10-28 去遗留 B2），跟进状态换成客户状态不增不减
+  expect(表头.filter((t) => t.trim()).length).toBe(企业版 ? 5 : 6);
 
   // 收起来的列要能勾出来
   await page.getByRole("button", { name: "列" }).click();
@@ -229,17 +231,19 @@ test("列设置：能连着勾好几项，单子不会自己收；再点按钮�
   await 列按钮.click();
   await 菜单.waitFor({ state: "visible" });
 
-  // 连着勾两项，每勾一次单子都还得在。
-  // 挑这两个是因为它们的名字不跟业务配置走（「职位/年级」那一列会跟着变）
-  for (const 列名 of ["联系电话", "决策状态"]) {
+  // 连着点两项，每点一次单子都还得在。
+  // 挑这两个是因为它们的名字不跟业务配置走（「职位/年级」那一列会跟着变）。
+  // 企业版不摆决策状态（10-28 去遗留 A1），第二项改成把默认显示的「最近跟进」勾掉
+  const 第二项 = 企业版 ? "最近跟进" : "决策状态";
+  for (const 列名 of ["联系电话", 第二项]) {
     await 菜单.getByText(列名, { exact: true }).click();
-    await expect(菜单, `勾了「${列名}」之后单子不该收起来`).toBeVisible();
+    await expect(菜单, `点了「${列名}」之后单子不该收起来`).toBeVisible();
   }
 
-  // 两列都出来了，说明两次点击都真的生效了（不是只有第一次）
-  for (const 列名 of ["联系电话", "决策状态"]) {
-    await expect(page.locator(".ant-table-thead th", { hasText: 列名 })).toBeVisible();
-  }
+  // 两次点击都真的生效了（不是只有第一次）
+  await expect(page.locator(".ant-table-thead th", { hasText: "联系电话" })).toBeVisible();
+  if (企业版) await expect(page.locator(".ant-table-thead th", { hasText: "最近跟进" })).toHaveCount(0);
+  else await expect(page.locator(".ant-table-thead th", { hasText: "决策状态" })).toBeVisible();
 
   // 再点一次按钮才收——这是「自己再点击它就关闭」那一条
   await 列按钮.click();

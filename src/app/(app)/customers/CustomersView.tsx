@@ -136,6 +136,8 @@ type Props = {
     level: string;
     /** 团队版部门（1b，2026-10-23） */
     dept: string;
+    /** 客户状态（企业版才有这一格） */
+    custStatus?: string;
   };
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
   部门选项?: { value: string; label: string }[];
@@ -145,6 +147,13 @@ type Props = {
   原负责人领不回ids?: string[];
   /** 企业版批量转给别人时可选的转让原因（字典「转让原因」）；选项空 = 不问（别的版本） */
   转让原因?: { 选项: string[]; 自己: string };
+  /**
+   * 企业版（10-28 去遗留）：跟进状态、决策状态、冷热、签约金额、院校·专业、推荐人、渠道归属、渠道负责人都不摆，
+   * 换成「客户状态」一列一个筛选（字典 custStatus）。别的版本 false，列和筛选一格不变
+   */
+  企业版?: boolean;
+  /** 企业版客户状态的可选项（字典 custStatus 启用中的）；别的版本空 */
+  客户状态选项?: string[];
 };
 
 /**
@@ -163,7 +172,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [],
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -383,7 +392,8 @@ export default function CustomersView({
       常驻: true,
       render: (v, r) => <RowLink href={`/customers/${r.id}`} className="link-strong">{v}</RowLink>,
     },
-    {
+    // 企业版不摆院校·专业（10-28 去遗留 B2）
+    ...(企业 ? [] : [{
       // 院校和专业永远一起看。分成两列只是把同一件事拆开占两倍宽
       title: `${b.fields.school}·${b.fields.major}`,
       key: "schoolMajor",
@@ -398,8 +408,11 @@ export default function CustomersView({
         ) : (
           <span className="muted">—</span>
         ),
-    },
-    { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v) => <FollowStatusTag status={v} /> },
+    } satisfies 列<CustomerRow>]),
+    // 企业版：跟进状态换成客户状态（字典 custStatus，10-28 去遗留 A1）
+    企业
+      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 110, render: (v: string | null) => (v ? <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : <span className="muted">—</span>) }
+      : { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v: string) => <FollowStatusTag status={v} /> },
     // 外贸不摆预计签约（2026-10-05 外贸客户：「没有意义」——采购时间点看商机的询盘时间）
     ...(外贸 ? [] : [{
       title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 116,
@@ -421,9 +434,10 @@ export default function CustomersView({
     {
       title: "最近跟进", key: "lastFollowAt", dataIndex: "lastFollowAt", width: 180,
       // 冷热在前：扫一眼这一列就知道谁凉了，日期留着给要细看的人
+      // 企业版不摆冷热：它按跟进状态算，企业版不用跟进状态（10-28 去遗留 A1）
       render: (v, r) => (
         <span className="heat-cell">
-          <Heat at={v} status={r.followStatus} />
+          {!企业 && <Heat at={v} status={r.followStatus} />}
           <span className="muted nowrap">{smartTime(v)}</span>
         </span>
       ),
@@ -431,22 +445,23 @@ export default function CustomersView({
 
     { title: "联系电话", key: "phone", dataIndex: "phone", width: 140, 默认: false, render: (v) => <span className="nowrap">{maskPhone(v)}</span> },
     { title: b.fields.grade, key: "grade", dataIndex: "grade", width: 90, 默认: false, render: (v) => v ?? <span className="muted">—</span> },
-    { title: "决策状态", key: "decisionStatus", dataIndex: "decisionStatus", width: 128, 默认: false, render: (v) => <DecisionStatusTag status={v} /> },
+    // 企业版不摆决策状态、签约金额（10-28 去遗留 A1 / A4）
+    ...(企业 ? [] : [{ title: "决策状态", key: "decisionStatus", dataIndex: "decisionStatus", width: 128, 默认: false, render: (v: string) => <DecisionStatusTag status={v} /> },
     {
       title: <span title={`按 ${f.sortCurrency || b.currency} 金额在全部筛选结果中排序，其他币种不相加`}>{签约叫(b)}金额</span>, 列名: `${签约叫(b)}金额`, key: "signedAmount", dataIndex: "signedAmount", width: 120, 默认: false,
       sorter: true,
       sortOrder: 金额排序 === "amount-asc" ? "ascend" : 金额排序 === "amount-desc" ? "descend" : null,
-      render: (v: number, r) => (v > 0 ? <span style={{ fontWeight: 500 }}>{合计文字(签约各币(r))}</span> : <span className="muted">—</span>),
-    },
-    // 推荐人、渠道归属、渠道负责人：外贸不摆（推荐分佣链是教培那一套，外贸看来源）
-    ...(外贸 ? [] : [
+      render: (v: number, r: CustomerRow) => (v > 0 ? <span style={{ fontWeight: 500 }}>{合计文字(签约各币(r))}</span> : <span className="muted">—</span>),
+    } satisfies 列<CustomerRow>]),
+    // 推荐人、渠道归属、渠道负责人：外贸不摆（推荐分佣链是教培那一套，外贸看来源）；企业版也不摆（10-28 去遗留 B2）
+    ...(外贸 || 企业 ? [] : [
       { title: "推荐人", key: "referrerName", dataIndex: "referrerName", width: 120, 默认: false, render: (v: string | null) => v ?? <span className="muted">自然流量</span> },
       {
         title: "渠道归属", key: "attributionName", dataIndex: "attributionName", width: 120, 默认: false,
         render: (v: string | null) => (v ? <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : <span className="muted">—</span>),
       },
     ]),
-    ...(不问归属 || 外贸 ? [] : [{
+    ...(不问归属 || 外贸 || 企业 ? [] : [{
       title: "渠道负责人", key: "channelOwnerName", dataIndex: "channelOwnerName", width: 130, 默认: false,
       render: (v: string | null) => (v ? <UserCell name={v} size={24} /> : <span className="muted">—</span>),
     }]),
@@ -573,7 +588,9 @@ export default function CustomersView({
         行链接={(r) => `/customers/${r.id}`}
         空态={{
           title: `还没有${b.customer}`,
-          hint: 外贸
+          hint: 企业
+            ? `${b.customer}是这套系统的中心：跟进记录和项目都挂在他身上。`
+            : 外贸
             ? `${b.customer}是这套系统的中心：跟进记录、商机、订单都挂在他身上。`
             : `${b.customer}是这套系统的中心：跟进记录、商机、签约都挂在他身上，推荐归属也按他这条线往上算。`,
           primary: { label: `新建第一位${b.customer}`, onClick: 新建 },
@@ -613,9 +630,15 @@ export default function CustomersView({
               onChange={(v) => setF({ ...f, keyword: v })}
               onSearch={(v) => apply({ keyword: v })}
             />
-            <Select style={{ width: 140 }} placeholder="全部跟进状态" allowClear
-              value={f.followStatus || undefined} onChange={(v) => apply({ followStatus: v ?? "" })}
-              options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
+            {企业 ? (
+              <Select style={{ width: 140 }} placeholder="全部客户状态" allowClear aria-label="客户状态"
+                value={f.custStatus || undefined} onChange={(v) => apply({ custStatus: v ?? "" })}
+                options={[...new Set([...客户状态选项, ...(f.custStatus ? [f.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
+            ) : (
+              <Select style={{ width: 140 }} placeholder="全部跟进状态" allowClear
+                value={f.followStatus || undefined} onChange={(v) => apply({ followStatus: v ?? "" })}
+                options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
+            )}
             {/* 外贸：国家是第一眼要分的（时差、市场、报价口径），摆在外面；只给库里真有的国家 */}
             {外贸 && (国家们.length > 0 || f.country) && (
               <Select style={{ width: 130 }} placeholder="全部国家" allowClear showSearch
@@ -650,15 +673,17 @@ export default function CustomersView({
                   <Select style={{ width: "100%" }} placeholder={`全部${b.fields.grade}`} allowClear
                     value={f.grade || undefined} onChange={(v) => apply({ grade: v ?? "" })}
                     options={[...b.grades.map((g) => ({ value: g, label: g })), ...旧职位.map((g) => ({ value: g, label: `${g}（已不在选项里）` }))]} />
-                  <Select style={{ width: "100%" }} placeholder="全部决策状态" allowClear
-                    value={f.decisionStatus || undefined} onChange={(v) => apply({ decisionStatus: v ?? "" })}
-                    options={DECISION_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
+                  {!企业 && (
+                    <Select style={{ width: "100%" }} placeholder="全部决策状态" allowClear
+                      value={f.decisionStatus || undefined} onChange={(v) => apply({ decisionStatus: v ?? "" })}
+                      options={DECISION_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
+                  )}
                   {外贸 && (
                     <Select style={{ width: "100%" }} placeholder="全部来源" allowClear showSearch
                       value={f.source || undefined} onChange={(v) => apply({ source: v ?? "" })}
                       options={[...new Set([...b.sources, ...(f.source ? [f.source] : [])])].map((x) => ({ value: x, label: x }))} />
                   )}
-                  {!不问归属 && !外贸 && (
+                  {!不问归属 && !外贸 && !企业 && (
                     <Select style={{ width: "100%" }} placeholder="全部渠道负责人" allowClear
                       value={f.channelOwnerId || undefined} onChange={(v) => apply({ channelOwnerId: v ?? "" })}
                       options={成员选项(users)} />
@@ -739,7 +764,8 @@ export default function CustomersView({
                 放进公海
               </Button>
             ))}
-            <Dropdown
+            {/* 批量改跟进状态：企业版不用跟进状态，不摆（10-28 去遗留 A1） */}
+            {!企业 && <Dropdown
               menu={{
                 items: FOLLOW_STATUSES.map((s) => ({
                   key: s,
@@ -755,7 +781,7 @@ export default function CustomersView({
               }}
             >
               <Button size="small" icon={<TagsOutlined />}>批量状态</Button>
-            </Dropdown>
+            </Dropdown>}
             <Button
               size="small"
               danger
@@ -791,6 +817,8 @@ export default function CustomersView({
         users={users}
         channels={channels}
         负责人只能自己={负责人只能自己}
+        企业版={企业}
+        客户状态选项={客户状态选项}
         onClose={(saved) => {
           setFormOpen(false);
           setEditing(null);

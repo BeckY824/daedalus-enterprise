@@ -130,6 +130,8 @@ model Customer {
   /// ---------- 跟进与决策 ----------
   followStatus   String    @default("待跟进") /// 跟进状态
   decisionStatus String    @default("了解中") /// 客户决策状态
+  /// 企业版客户状态（迁移 064，2026-10-28）：选项在企业版字典「客户状态」，企业版用它替掉上面两个；别的版本一直是空
+  custStatus     String?
   expectedSignAt DateTime? /// 预计签约时间
   expectedSignOn String? /// 原日历日；旧记录未知为空
   lastFollowAt   DateTime? /// 最近跟进

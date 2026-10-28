@@ -49,7 +49,7 @@ const 可写: Record<string, string[]> = {
   // 企业版提成（2026-10-26）：projects/commission-actions.ts 的 存项目底价 / 存提成分配
   EntCommission: ["basePrice"],
   EntCommissionSplit: ["userId", "percent"],
-  Customer: ["name", "phone", "school", "grade", "major", "channelId", "referrerCustomerId", "salesOwnerId", "channelOwnerId", "followStatus", "decisionStatus", "expectedSignAt", "remark"],
+  Customer: ["name", "phone", "school", "grade", "major", "channelId", "referrerCustomerId", "salesOwnerId", "channelOwnerId", "followStatus", "decisionStatus", "custStatus", "expectedSignAt", "remark"],
   Channel: ["name", "phone", "remark", "channelOwnerId", "active"],
   Lead: ["name", "contact", "phone", "email", "industry", "source", "status", "remark", "ownerId"],
   Contract: ["customerId", "amount", "signedAt", "remark"],

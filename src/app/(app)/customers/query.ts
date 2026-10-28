@@ -9,6 +9,7 @@ import { 取档案 } from "@/lib/customer-extra-db";
 import { 未分级 } from "./query-shared";
 import { 读团队 } from "@/lib/sync/client";
 import { 部门里的人 } from "@/lib/sync/dept-policy";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /**
  * 客户列表的查询条件、取哪些字段、怎么变成一行——列表页和「导出」共用这一份（2026-10-02 排查）。
@@ -20,6 +21,8 @@ export type 客户条件 = {
   grade?: string;
   followStatus?: string;
   decisionStatus?: string;
+  /** 客户状态（企业版字典 custStatus，10-28） */
+  custStatus?: string;
   salesOwnerId?: string;
   channelOwnerId?: string;
   createdWithin?: string;
@@ -118,6 +121,8 @@ export async function 客户筛选条件(
     ...(sp.grade ? { grade: sp.grade } : {}),
     ...(sp.followStatus ? { followStatus: sp.followStatus } : {}),
     ...(sp.decisionStatus ? { decisionStatus: sp.decisionStatus } : {}),
+    // 客户状态只有企业版认；开关关着地址栏带了也当没带
+    ...(sp.custStatus && 企业版() ? { custStatus: sp.custStatus } : {}),
     ...(sp.salesOwnerId ? { salesOwnerId: sp.salesOwnerId } : {}),
     ...(sp.channelOwnerId ? { channelOwnerId: sp.channelOwnerId } : {}),
     ...(sp.createdWithin === "本月"
@@ -146,6 +151,7 @@ export const 客户行字段 = {
   major: true,
   followStatus: true,
   decisionStatus: true,
+  custStatus: true,
   expectedSignAt: true,
   expectedSignOn: true,
   lastFollowAt: true,
@@ -192,7 +198,7 @@ export async function 客户金额分页(where: Prisma.CustomerWhereInput, order
 }
 
 /** 快路径接得住的本表等值筛选（列名固定，值参数绑定） */
-const 等值列 = ["grade", "followStatus", "decisionStatus", "salesOwnerId", "channelOwnerId"] as const;
+const 等值列 = ["grade", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId"] as const;
 
 /**
  * 带关键词的列表：总数、钳过的页码和这一页的 id 用一条 SQL 出（P2，2026-10-28）。
@@ -224,7 +230,7 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
     }
     段.push('NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
   }
-  for (const col of 等值列) if (sp[col]) { 段.push(`c."${col}" = ?`); 值.push(sp[col]); }
+  for (const col of 等值列) if (sp[col] && (col !== "custStatus" || 企业版())) { 段.push(`c."${col}" = ?`); 值.push(sp[col]); }
   // a 放每页条数和请求页，下面的 ? 按出现顺序绑定；页码钳在 SQL 里做（越界页回最后一页，0 条回第 1 页），和 page.tsx 原来的公式一样。
   // m 必须 MATERIALIZED：不然 SQLite 会把它内联两次，扫两遍；关键词命中一次扫完记下来，数和排序都在 m 上做
   const rows = await prisma.$queryRawUnsafe<{ total: number | bigint; id: string | null }[]>(
@@ -260,6 +266,7 @@ export function 成客户行(r: 取到的行, 号: (p: string) => string) {
     major: r.major,
     followStatus: r.followStatus,
     decisionStatus: r.decisionStatus,
+    custStatus: r.custStatus,
     expectedSignAt: scheduleValue(r.expectedSignAt, r.expectedSignOn),
     lastFollowAt: r.lastFollowAt?.toISOString() ?? null,
     remark: r.remark,

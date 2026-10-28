@@ -74,6 +74,8 @@ export type RecordProps = {
    * 不给 = 开关关着或个人版、团队版，照旧
    */
   联系人附件数?: Record<string, number> | null;
+  /** 企业版客户状态的可选项（字典 custStatus 启用中的，10-28 去遗留 A1）；不给 = 别的版本，标签行照旧 */
+  客户状态选项?: string[];
   项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;
   customer: CustomerRow;
   contacts: ContactRow[];

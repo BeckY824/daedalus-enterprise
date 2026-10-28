@@ -52,6 +52,8 @@ export const 客户列字段: Record<string, 字段名> = {
   channelOwnerId: "渠道负责人",
   followStatus: "跟进状态",
   decisionStatus: "决策状态",
+  // 客户状态（企业版，10-28）顶替了跟进状态，权限沿用「跟进状态」那行
+  custStatus: "跟进状态",
   expectedSignAt: "预计签约",
   remark: "客户备注",
 };

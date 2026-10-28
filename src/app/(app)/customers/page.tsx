@@ -30,6 +30,8 @@ type SP = Promise<{
   grade?: string;
   followStatus?: string;
   decisionStatus?: string;
+  /** 客户状态（企业版字典 custStatus，10-28）；别的版本不认 */
+  custStatus?: string;
   salesOwnerId?: string;
   channelOwnerId?: string;
   /** 外贸档案的国家 / 来源（2026-10-05） */
@@ -182,7 +184,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         source: sp.source ?? "",
         level: sp.level ?? "",
         dept: sp.dept ?? "",
+        // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
+        ...(企业版() ? { custStatus: sp.custStatus ?? "" } : {}),
       }}
+      企业版={企业版()}
+      客户状态选项={await 可选项("custStatus")}
       部门选项={部门选项}
       // 企业版虚线下属的客户：只能看（10-25 实测 F4）。团队版、没开组织架构可见范围时一律空
       只读ids={await 虚线只读的(defaultClient, rows.map((r) => r.id))}

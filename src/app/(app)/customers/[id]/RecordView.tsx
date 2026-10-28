@@ -126,6 +126,7 @@ export default function RecordView({
   原负责人领不回 = false,
   只读: 只读档 = false,
   换负责人记录 = [],
+  客户状态选项 = [],
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档;
@@ -170,7 +171,8 @@ export default function RecordView({
   const 摆 = (v: unknown) => !企业 || 资料全开 || (v !== null && v !== undefined && v !== "");
   /** 企业版：档案那组（国家、邮箱、微信……）展开后没填过也摆，好补 */
   const 摆档案组 = 摆档案 || (企业 && 资料全开);
-  const 摆渠道负责人 = !外贸 && !独自一人(users, customer.channelOwnerId);
+  // 企业版不摆渠道负责人（10-28 去遗留 A3：来源只问渠道，不按推荐链分负责人）
+  const 摆渠道负责人 = !外贸 && !企业 && !独自一人(users, customer.channelOwnerId);
   /** 企业版收起了几格没填的：数给「展开更多 N 项」 */
   const 没填几项 = 企业
     ? [
@@ -178,7 +180,6 @@ export default function RecordView({
         档?.country, 档?.whatsapp, 档?.email, 档?.wechat, 档?.alibabaId, 档?.source, 档?.level, 档?.website,
         ...(摆渠道负责人 ? [customer.channelOwnerId] : []),
         ...(!外贸 ? [customer.expectedSignAt] : []),
-        customer.signedAmount > 0 ? 1 : null,
         customer.remark,
       ].filter((v) => v === null || v === undefined || v === "").length
     : 0;
@@ -552,8 +553,18 @@ export default function RecordView({
             </StatusPicker>
           </>
         )}
+        {/* 企业版：客户状态一枚章（字典 custStatus，10-28 去遗留 A1），点一下就能改；原值停用了也照样在选项里 */}
+        {企业 && (
+          <StatusPicker customerId={customer.id} field="custStatus" value={customer.custStatus ?? ""}
+            options={[...new Set([...客户状态选项, ...(customer.custStatus ? [customer.custStatus] : [])])].map((s) => ({ value: s, label: s }))}>
+            <Tag style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{customer.custStatus ?? "未设客户状态"}</Tag>
+          </StatusPicker>
+        )}
         {/* 来源（照毛玻璃原型的那枚「来源：WhatsApp」）：渠道或推荐人。自然流量不摆——没有来源就不占位 */}
-        {外贸
+        {/* 企业版只认渠道（10-28 去遗留 A3）：写渠道名，没挂渠道就不摆，不写推荐人 */}
+        {企业
+          ? customer.channelName && <span className="rec-tags-n">渠道：{customer.channelName}</span>
+          : 外贸
           ? 档?.source && <span className="rec-tags-n">来源：{档.source}</span>
           : customer.referrerName && <span className="rec-tags-n">来源：{customer.referrerName}</span>}
         {/* 客户等级（2026-10-16）：一枚字母章，放在国家前面——先看这位要花多少力气 */}
@@ -582,7 +593,8 @@ export default function RecordView({
           </span>
         )}
         {/* 一个数都没有就不出现：「预计签约 —」占着一行却什么也没说 */}
-        {(customer.signedAmount > 0 || (customer.expectedSignAt && !外贸)) && (
+        {/* 企业版不摆（10-28 去遗留 A4）：成交看项目，不看签约 */}
+        {!企业 && (customer.signedAmount > 0 || (customer.expectedSignAt && !外贸)) && (
           <span className="rec-tags-n">
             {customer.signedAmount > 0 ? `${是订单 ? "已下单" : "已签约"} ${已签约文字}` : "预计签约"}
             {/* 已签约后面跟的是实际签约日（最近一笔；contracts 按签约日倒序）。原来跟的是预计签约日，
@@ -592,7 +604,8 @@ export default function RecordView({
               : customer.expectedSignAt && ` · ${fmtDate(customer.expectedSignAt)}`}
           </span>
         )}
-        {要看冷热(customer.followStatus) && (
+        {/* 冷热按跟进状态算，企业版不用跟进状态，不摆（10-28 去遗留 A1） */}
+        {!企业 && 要看冷热(customer.followStatus) && (
           <span className={`rec-heat${计划过期天 > 0 ? " is-over" : ""}`}>
             <Heat at={customer.lastFollowAt} />
             {/* 排了计划又过了期，比「几天没跟」更要紧：那是答应过的事 */}
@@ -687,7 +700,8 @@ export default function RecordView({
               <InlineField customerId={customer.id} field="channelOwnerId" label="渠道负责人" value={customer.channelOwnerId} kind="select" options={带上现任(users, customer.channelOwnerId, customer.channelOwnerName)} placeholder="按推荐链自动确定" 可清空 />
             )}
             {!外贸 && 摆(customer.expectedSignAt) && <InlineField customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder="未定" />}
-            {摆(customer.signedAmount > 0 ? 1 : null) && (
+            {/* 企业版不摆签约金额（10-28 去遗留 A4） */}
+            {!企业 && 摆(customer.signedAmount > 0 ? 1 : null) && (
               <div className="rec-field" style={{ cursor: "default" }}>
                 <div className="rec-field-k">{叫}金额</div>
                 <div className="rec-field-v">{customer.signedAmount > 0 ? 已签约文字 : <span className="rec-field-empty">{是订单 ? "还没有订单" : "未签约"}</span>}</div>
@@ -879,7 +893,7 @@ export default function RecordView({
               onChange={(e) => setMemo(e.target.value)}
               autoSize={{ minRows: 2, maxRows: 8 }}
               maxLength={5000}
-              placeholder={customer.pool ? `公海${b.customer}：记一笔跟进就领取过来、归你跟进…` : aiEnabled ? `记一笔，或直接粘贴和${b.customer}的微信聊天记录…` : "记一笔…"}
+              placeholder={customer.pool ? `公海${b.customer}：记一笔跟进就领取过来、归你跟进…` : 企业 ? "粘贴聊天记录或会议要点" : aiEnabled ? `记一笔，或直接粘贴和${b.customer}的微信聊天记录…` : "记一笔…"}
             />
             <div className="rec-composer-bar">
               <span className="rec-composer-hint">
@@ -976,7 +990,7 @@ export default function RecordView({
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
               <div className="rec-card">
-                <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} />
+                <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} />
               </div>
             )}
 
@@ -1046,7 +1060,7 @@ export default function RecordView({
           进程内任务表上（lib/ai-jobs），不在组件 state 里，关掉再开还在那儿 */}
       {aiEnabled && AI在抽屉里 && (
         <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${customer.name}`}>
-          <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} />
+          <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} />
         </Drawer>
       )}
 
@@ -1225,7 +1239,7 @@ function StatusPicker({
   children,
 }: {
   customerId: string;
-  field: "followStatus" | "decisionStatus";
+  field: "followStatus" | "decisionStatus" | "custStatus";
   value: string;
   options: { value: string; label: string }[];
   children: React.ReactNode;
