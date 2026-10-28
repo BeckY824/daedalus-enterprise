@@ -83,6 +83,18 @@ const nextConfig: NextConfig = {
     return { beforeFiles: [{ source: "/ocr/:path*", destination: "/ocr-files/:path*" }], afterFiles: [], fallback: [] };
   },
 
+  /**
+   * 商机列表和商机管道两页 10-28 删了（企业版只用项目，lib/enterprise/project-only.ts）。
+   * 旧书签、跟进里存着的老链接（/opportunities?opportunity=…、/opportunities/pipeline）都转到项目，不落 404。
+   * 不永久：浏览器不记死，哪天这个地址另有用处不用等缓存过期
+   */
+  async redirects() {
+    return [
+      { source: "/opportunities", destination: "/projects", permanent: false },
+      { source: "/opportunities/:path*", destination: "/projects", permanent: false },
+    ];
+  },
+
   async headers() {
     return [
       { source: "/:path*", headers: 安全头 },

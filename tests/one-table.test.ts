@@ -16,7 +16,6 @@ const 列表页 = [
   "src/app/(app)/leads/LeadsView.tsx",
   "src/app/(app)/channels/ChannelsView.tsx",
   "src/app/(app)/contacts/ContactsView.tsx",
-  "src/app/(app)/opportunities/OpportunitiesView.tsx",
   "src/app/(app)/follow-ups/FollowUpsView.tsx",
   // 外贸（2026-10-03）
   "src/app/(app)/orders/OrdersView.tsx",
@@ -54,7 +53,6 @@ const 不算列表页 = [
   "src/app/(app)/customers/import-steps.tsx",
   // 外贸（2026-10-03）：一个询盘的几行比价、一家供应商自己的历次比价和采过的订单。
   // 都是挂在一条记录下面的小表，几行到几十行，没有筛选、分页、批量——同复盘里的排行
-  "src/app/(app)/opportunities/CompareDrawer.tsx",
   "src/app/(app)/suppliers/[id]/SupplierView.tsx",
 ];
 

@@ -41,3 +41,13 @@ describe("安全响应头", () => {
     }
   });
 });
+
+/** 商机列表和商机管道 10-28 删了（企业版只用项目）：老链接转去项目，不落 404 */
+describe("旧商机地址", () => {
+  it("/opportunities 和它下面的地址都转到 /projects，且不是永久转", async () => {
+    const 规则 = await nextConfig.redirects!();
+    for (const source of ["/opportunities", "/opportunities/:path*"]) {
+      expect(规则.find((r) => r.source === source), source).toMatchObject({ destination: "/projects", permanent: false });
+    }
+  });
+});

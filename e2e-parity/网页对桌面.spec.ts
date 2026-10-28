@@ -22,7 +22,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { PrismaClient } from "../src/generated/prisma";
-import { 灌真客户, 灌长商机 } from "../e2e-layout/种子";
+import { 灌真客户 } from "../e2e-layout/种子";
 import { 关掉弹窗 } from "../e2e-layout/外贸模版";
 import { 库 } from "./global-setup";
 import 有意的差别 from "./有意的差别.json";
@@ -47,8 +47,8 @@ const 页们: { 名: string; 址: string }[] = [
   { 名: "客户记录页", 址: "/customers/gate-scandi" },
   { 名: "客户记录页-长英文名", 址: "/customers/gate-long-uk" },
   { 名: "客户记录页-无空格名", 址: "/customers/gate-nospace" },
-  { 名: "商机列表", 址: "/opportunities" },
-  { 名: "商机看板", 址: "/opportunities/pipeline" },
+  // 商机列表 / 看板 10-28 删了（/opportunities 转到 /projects）
+  { 名: "项目看板", 址: "/projects" },
   { 名: "订单列表", 址: "/orders" },
   { 名: "订单详情", 址: "/orders/gate-scandi-t0" },
   { 名: "跟进记录", 址: "/follow-ups" },
@@ -158,7 +158,6 @@ test.beforeAll(async ({ browser }) => {
   try {
     const 我 = (await db.user.findFirstOrThrow({ where: { email: "admin" } })).id;
     await 灌真客户(db, 我);
-    await 灌长商机(db, 我);
   } finally {
     await db.$disconnect();
   }

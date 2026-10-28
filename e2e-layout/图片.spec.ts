@@ -1,9 +1,9 @@
 /**
- * 商机 / 订单的「图片」区（2026-10-22 D-24）在 Windows 常见宽度下的样子。
+ * 订单的「图片」区（2026-10-22 D-24）在 Windows 常见宽度下的样子。
  *
  * 数据用 e2e-layout/种子.ts（长英文公司名、一整句英文商机名），再真传一张 3000×1500 的 PNG、一张 800×600 的 JPEG：
  *   - 图片在这台电脑上压到长边 2000（看接口回的宽高），出缩略图，点开看大图
- *   - 1280 / 1366 宽，订单详情和商机编辑框各跑一遍 layout-audit，截图
+ *   - 1280 / 1366 宽，订单详情跑一遍 layout-audit，截图（商机编辑框那一遍 10-28 随商机列表页删了）
  *   - 选 PDF 当场说「不是图片」，一张也不多
  *   - 删掉一张，列表里就没了
  */
@@ -18,7 +18,6 @@ import { 关掉弹窗, 切外贸 } from "./外贸模版";
 test.describe.configure({ mode: "serial" });
 const 出处 = process.env.E2E_SHOT_DIR ? path.join(process.env.E2E_SHOT_DIR, "图片") : null;
 const 订单 = "gate-scandi-t0";
-const 商机 = "gate-scandi-o1";
 
 test.beforeAll(async ({ browser }) => {
   const db = 连库();
@@ -93,18 +92,6 @@ for (const 宽 of [1280, 1366]) {
     await 截(page, `${宽}-订单详情-大图`);
     await page.keyboard.press("Escape");
     await expect(page.locator(".ant-image-preview-img")).toBeHidden();
-  });
-
-  test(`${宽} 宽 · 商机编辑框的图片区`, async ({ page }) => {
-    await page.setViewportSize({ width: 宽, height: 宽 === 1366 ? 768 : 800 });
-    await 进门(page, `/opportunities?opportunity=${商机}`);
-    await 关掉弹窗(page, 2_000);
-    const 框 = page.getByRole("dialog").filter({ has: page.getByTestId("attachments-panel") });
-    await expect(框).toBeVisible();
-    const 区 = 框.getByTestId("attachments-panel");
-    if ((await 区.getByTestId("attachment-item").count()) === 0) await 传两张(page, 区);
-    await 区.scrollIntoViewIfNeeded();
-    await 量(page, `${宽}-商机编辑`);
   });
 }
 

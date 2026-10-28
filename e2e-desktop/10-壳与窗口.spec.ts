@@ -76,7 +76,7 @@ test("D-113 数据页、首页、商机看板、计划页：卡片都从顶部�
     await db.$disconnect();
   }
   await 进来(page, "/overview");
-  for (const 去处 of ["/overview", "/dashboard", "/opportunities/pipeline", "/follow-ups/plans"]) {
+  for (const 去处 of ["/overview", "/dashboard", "/projects", "/follow-ups/plans"]) {
     await page.goto(去处);
     await page.waitForLoadState("networkidle").catch(() => {});
     const 结果 = await page.evaluate(() => {
