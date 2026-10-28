@@ -2,9 +2,9 @@
  * 企业版只用项目时的首页 AI（10-26 用户：「首页改成对话框吧」「记得把线索，商机，订单都放到项目里，是三大阶段」）。
  *
  *   list_projects：三阶段个数、默认只看进行中、result / 关键词 / 公海；公海里同事客户的项目不露客户名，按客户名也搜不出来
- *   给哪些工具：只用项目时不给 list_leads / list_opportunities / propose_opportunity；项目模式才有 list_projects
+ *   给哪些工具：只用项目时不给 list_leads / list_opportunities / propose_opportunity，也不给合同、订单的老表工具（10-28）；项目模式才有 list_projects
  *   直连：「线索清单」「商机清单」换成 list_projects 的线索 / 商机阶段
- *   确认新线索卡：建客户 + 线索阶段的项目，不写线索表；开了超时回收要填卡上的下一步（和卡上「还差」同一句，10-28）；商机卡拦下
+ *   确认新线索卡：建客户 + 线索阶段的项目，不写线索表；开了超时回收要填卡上的下一步（和卡上「还差」同一句，10-28）；商机卡、签约卡拦下
  *   开关关：新线索卡照旧写线索表
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -108,13 +108,13 @@ describe("给哪些工具、直连换成什么", () => {
   it("只用项目：有 list_projects，没有线索表、商机表那几样；新线索卡说的是建项目", () => {
     const n = 名({ projectMode: true }, true);
     expect(n).toContain("list_projects");
-    for (const x of ["list_leads", "list_opportunities", "propose_opportunity"]) expect(n).not.toContain(x);
+    for (const x of ["list_leads", "list_opportunities", "propose_opportunity", "propose_contract", "list_contracts", "list_orders"]) expect(n).not.toContain(x);
     expect(这一家的工具({ projectMode: true }, true).TOOL_MAP.get("propose_lead")!.description).toContain("线索」阶段的项目");
   });
 
   it("项目模式但不是企业版：两套都在；没开项目模式：没有 list_projects", () => {
     const 团队 = 名({ projectMode: true }, false);
-    for (const x of ["list_projects", "list_leads", "list_opportunities"]) expect(团队).toContain(x);
+    for (const x of ["list_projects", "list_leads", "list_opportunities", "propose_contract", "list_contracts"]) expect(团队).toContain(x);
     const 关 = 名({ projectMode: false }, false);
     expect(关).not.toContain("list_projects");
     expect(关).toContain("list_leads");
@@ -188,6 +188,16 @@ describe("确认新线索卡", () => {
     } as never);
     expect(r).toEqual({ ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" });
     expect(await prisma.opportunity.count()).toBe(0);
+  });
+
+  it("只用项目：签约卡拦下（10-28 老入口加闸）", async () => {
+    const c = await 客户(老板.id, "云帆科技");
+    const r = await applyProposal({
+      id: "p3", kind: "add_contract", customerId: c, customerName: "云帆科技", reason: "测试",
+      amount: 100000, signedAt: "2026-10-28", remark: "",
+    } as never);
+    expect(r).toEqual({ ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" });
+    expect(await prisma.contract.count()).toBe(0);
   });
 
   it("开关关：照旧写线索表", async () => {

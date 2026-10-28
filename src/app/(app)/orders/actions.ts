@@ -13,6 +13,7 @@ import { 读团队 } from "@/lib/sync/client";
 import { getBusiness } from "@/lib/business";
 import { 订单, 订单节点, 供应商页 } from "@/lib/features";
 import { 外贸订单 } from "@/lib/business-config";
+import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { saveFollowUp } from "../customers/[id]/actions";
 
 /**
@@ -92,6 +93,8 @@ function 整理(input: 订单输入): { ok: true; data: Record<string, unknown> 
 export async function createOrder(input: 订单输入 & { customerId: string; opportunityId?: string | null }) {
   try {
     const me = await requireUser();
+    const 老入口 = await 只用项目挡老入口("订单");
+    if (老入口) return { ok: false as const, error: 老入口 };
     if (!订单 || !订单节点) return { ok: false as const, error: "此版本未开放订单节点与单据功能" };
     /*
       外贸模版下订单就是一笔签约（2026-10-05，lib/order-contract.ts）：只从「新建订单」/「转为订单」那个框建，
@@ -195,6 +198,8 @@ export async function saveOrderPurchase(orderId: string, input: { supplierId?: s
 export async function saveOrder(id: string, input: 订单输入) {
   try {
     const me = await requireUser();
+    const 老入口 = await 只用项目挡老入口("订单");
+    if (老入口) return { ok: false as const, error: 老入口 };
     if (!订单节点 && ["incoterm", "depositDue", "depositPaid", "depositAt", "balancePaid", "balanceAt"].some((k) => k in input)) return { ok: false as const, error: "此版本未开放订单条款与定金尾款管理" };
     if (!订单) return { ok: false as const, error: "此版本未开放订单功能" };
     const 原 = await prisma.tradeOrder.findUnique({ where: { id: String(id ?? "") }, select: { id: true, no: true, customerId: true, amount: true, depositDue: true, contractId: true } });
@@ -358,6 +363,8 @@ export async function addOrderNodeNote(orderId: string, idx: number, content: st
 export async function addOrderNote(orderId: string, content: string) {
   try {
     await requireUser();
+    const 老入口 = await 只用项目挡老入口("订单");
+    if (老入口) return { ok: false as const, error: 老入口 };
     if (!订单) return { ok: false as const, error: "此版本未开放订单功能" };
     const 话 = 文本(content, 5000);
     if (!话) return { ok: false as const, error: "写点什么再记" };

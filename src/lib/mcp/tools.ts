@@ -3,6 +3,8 @@ import { 只读SCHEMAS, type Schema } from "@/lib/agent/schemas";
 import { 不开放的工具 } from "@/lib/features";
 import { getBusiness } from "@/lib/business";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 只用项目不给 } from "@/lib/agent/run";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /**
  * 把 agent 的工具箱翻译成 MCP 的形。
@@ -35,8 +37,14 @@ const 只读标注 = { readOnlyHint: true, destructiveHint: false, idempotentHin
 /** 开出去的工具名单。propose_* 一个都不在里面，理由见文件头 */
 export const MCP_TOOL_NAMES = Object.keys(只读SCHEMAS).filter((n) => !不开放的工具.includes(n));
 
-export function 列工具(): McpTool[] {
-  return TOOLS.filter((t) => MCP_TOOL_NAMES.includes(t.name)).map((t) => ({
+/** 企业版只用项目时，老表的列表工具（线索、商机、合同、订单）也不开出去：和应用里的 agent 同一张表（agent/run.ts） */
+export async function 只用项目(): Promise<boolean> {
+  return 企业版() && (await getBusiness()).projectMode === true;
+}
+const 开给 = (name: string, 只用: boolean) => MCP_TOOL_NAMES.includes(name) && !(只用 && 只用项目不给.includes(name));
+
+export function 列工具(只用 = false): McpTool[] {
+  return TOOLS.filter((t) => 开给(t.name, 只用)).map((t) => ({
     name: t.name,
     description: t.description,
     inputSchema: 只读SCHEMAS[t.name],
@@ -52,12 +60,13 @@ export function 列工具(): McpTool[] {
  * 对面把它直接转述给用户也不会错。
  */
 export async function 跑工具(name: string, args: Record<string, unknown>, who: { id: string; name: string }) {
-  if (!MCP_TOOL_NAMES.includes(name)) throw new Error(`没有这个工具：${name}`);
+  const b = await getBusiness();
+  if (!开给(name, 企业版() && b.projectMode === true)) throw new Error(`没有这个工具：${name}`);
   const tool = TOOL_MAP.get(name);
   if (!tool) throw new Error(`没有这个工具：${name}`);
   // 脱敏器同样要给（见 agent/run.ts 那段）：MCP 是第五个出口，别再漏一个。
   // 令牌不带 cookie，企业版字段权限要按令牌的主人查，所以把 who.id 传进去
-  const ctx: ToolContext = { userId: who.id, userName: who.name, b: await getBusiness(), recordOffset: 0, proposals: [], 号: await 号码脱敏器(who.id) };
+  const ctx: ToolContext = { userId: who.id, userName: who.name, b, recordOffset: 0, proposals: [], 号: await 号码脱敏器(who.id) };
   const r = await tool.run(args ?? {}, ctx);
   return { summary: r.summary, data: r.data };
 }
