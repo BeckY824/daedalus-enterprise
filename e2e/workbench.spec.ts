@@ -388,8 +388,26 @@ async function 挑(page: Page, 名: string) {
   // 打开时焦点就在「客户」这一格：直接打字就是在搜
   await expect(弹窗.locator(".ant-select-focused").first()).toBeVisible();
   await page.keyboard.type(名.slice(0, 4));
-  await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: 名 }).first().click();
-  await expect(弹窗.locator(".pick-ctx")).toContainText("上次跟进");
+  /*
+    CI 上偶发：点了那位、「上次跟进」那行一直没出来（框里还是「挑好之后…」）——点击落了空：
+    打字触发的服务端搜索回来时下拉整列重画，点的那一下正好落在换下去的旧行上 / 收起途中。
+    所以点完要看框里真挑中了这一位；没挑中就重开下拉、重新搜、再点。断言（上次跟进）不变
+  */
+  const 客户格 = 弹窗.locator(".ant-form-item", { has: page.locator(".pick-ctx") }).locator(".ant-select").first();
+  const 挑中了 = 客户格.locator(".ant-select-content-has-value", { hasText: 名 });
+  const 那位 = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: 名 }).first();
+  await expect(async () => {
+    if (!(await 挑中了.count())) {
+      if (!(await 那位.isVisible())) {
+        await 客户格.click();
+        await page.keyboard.type(名.slice(0, 4));
+      }
+      await expect(那位).toBeVisible({ timeout: 3_000 });
+      await 那位.click();
+      await expect(挑中了).toBeVisible({ timeout: 2_000 });
+    }
+    await expect(弹窗.locator(".pick-ctx")).toContainText("上次跟进", { timeout: 5_000 });
+  }).toPass({ timeout: 30_000 });
   // 下拉收起的动画走完再往下：收起途中按的 Esc 归下拉，不归弹窗
   await expect(page.locator(".ant-select-dropdown:visible")).toHaveCount(0);
   return 弹窗;
