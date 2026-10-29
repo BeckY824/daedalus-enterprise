@@ -6,7 +6,7 @@
  * 清洗做的事：
  *   - 按列映射把原列落到标准字段；映射成「进备注」的列拼成「表头：值」进备注（跟进进内容），一格不丢
  *   - 负责人、阶段、线索状态、跟进方式、跟进状态按映射换成我们的值；对不上的用默认值 + 记一笔「提醒」
- *   - 客户状态（企业版字典）和启用的选项一字不差才落，对不上原样进备注
+ *   - 客户状态、客户类型（企业版字典）和启用的选项一字不差才落，对不上原样进备注
  *   - 电话、日期、金额、赢率按我们的格式认；认不出的原样进备注 + 提醒，不硬塞
  *   - 同一批里同号、外部 ID 不同 → 认作同一家，后一条并进前一条（名字不同另提醒）；名字很像但号不同 → 疑似重名，照写、提醒
  *   - 联系人 / 商机 / 跟进挂客户：先认所属客户 ID，再认客户名（本批里唯一、或我们这边唯一）；认不出整条跳过
@@ -14,10 +14,13 @@
  *   - 规则认不出的格子先查 m.格式（AI 清洗补认的 / 人在报告里改的，见 ai-clean.ts），查到的照规则再认一遍才用；
  *     m.同一家 认作同一家的两家客户，后一家并进前一家。并进去的那条空着的格子、别名、另一个号带到前一条上
  *   - 电话格里写的是邮箱 / 微信 / WhatsApp 的放进对应的格子；一格几个号的第一个当电话，其余进备注
+ *   - 联系人的手机 / 邮箱 / 微信和我们这边已有的联系人、或本批前面一条撞了（同类型同查重键，P13 第 2 条）：照写，
+ *     提醒「号码重复」并带上撞到的那位（报告里能点进去），不并、不跳过——是不是同一个人、要不要挂过去由人定
  */
 import { createHash } from "node:crypto";
 import { CUSTOMER_SOURCES, FOLLOW_TYPES, OPP_STAGES, STAGE_PROBABILITY, TRADE_SOURCES } from "../constants";
 import { 国家候选 } from "../customer-extra";
+import { 联系人号查重键 } from "../enterprise/customer-v2";
 import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
 import { 拆多人, 进备注, 输单 } from "./mapping";
@@ -39,7 +42,17 @@ export type 本地索引 = {
   商机名: Map<string, string[]>;
   /** 企业版字典里启用着的客户状态（custStatus）。没给 = 不认，原系统的客户状态一律进备注 */
   客户状态?: readonly string[];
+  /** 企业版字典里启用着的客户类型（custType）。没给 = 不认，一律进备注 */
+  客户类型?: readonly string[];
+  /** `${kind}|${查重键}` → 我们这边有这个号的联系人（kind = phone / email / wechat，键见 联系人号查重键）。没给 = 不查 */
+  联系人号?: Map<string, 已有联系人[]>;
 };
+
+/** 号码撞到的我们这边那位联系人：名字 + 主客户（报告里点进主客户页） */
+export type 已有联系人 = { id: string; name: string; customerId: string; customerName: string };
+
+/** 导入的联系人要查重的几格：标准字段 → ContactMethod.kind 和报告里的叫法 */
+export const 联系人查重格 = [["phone", "phone", "手机"], ["email", "email", "邮箱"], ["wechat", "wechat", "微信"]] as const;
 
 export const 空索引 = (): 本地索引 => ({ 引用: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map() });
 
@@ -196,6 +209,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
   const 批客户 = new Map<string, 待写>();
   const 批客户名 = new Map<string, string[]>();
   const 批商机 = new Map<string, 待写>();
+  /** 本批联系人的号：`${kind}|${查重键}` → 先出现的那条 */
+  const 批联系人号 = new Map<string, 原始记录>();
 
   const 负责人 = (r: 原始记录, 写法: string | undefined): string => {
     if (!写法) {
@@ -290,13 +305,37 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
   };
 
   /** 客户状态：和字典里启用的某一项一字不差才落；对不上原样进备注，提醒一笔（不猜、不落默认值） */
-  const 认客户状态 = (r: 原始记录, v: string | undefined, 附加: string[]): string | null => {
+  const 认字典 = (r: 原始记录, v: string | undefined, 附加: string[], 叫法: string, 选项: readonly string[] | undefined): string | null => {
     const t = v?.trim();
     if (!t) return null;
-    if (本地.客户状态?.includes(t)) return t;
-    附加.push(`客户状态：${t}`);
-    出问题(r, "提醒", "值对不上", `客户状态「${t}」不在我们的客户状态选项里，原样放进了备注`);
+    if (选项?.includes(t)) return t;
+    附加.push(`${叫法}：${t}`);
+    出问题(r, "提醒", "值对不上", `${叫法}「${t}」不在我们的${叫法}选项里，原样放进了备注`);
     return null;
+  };
+
+  /**
+   * 联系人号码查重：每格算查重键，先比本批前面的（报一次就够），再比我们这边已有的（以前导过、落到同一位的不算）。
+   * 只提醒不拦：照写，说清撞了谁
+   */
+  const 查联系人号 = (r: 原始记录, 值: 待写["值"], 自己?: string) => {
+    for (const [格, kind, 叫法] of 联系人查重格) {
+      const v = 值[格];
+      const 键 = typeof v === "string" ? 联系人号查重键(kind, v) : "";
+      if (!键) continue;
+      const k = `${kind}|${键}`;
+      const 前 = 批联系人号.get(k);
+      if (前) 出问题(r, "提醒", "号码重复", `${叫法} ${v} 和本批${前.行号 ? `第 ${前.行号} 行` : `「${前.外部ID}」`}的联系人一样，照写两位，请人看是不是同一个人`);
+      else 批联系人号.set(k, r);
+      const 撞 = (本地.联系人号?.get(k) ?? []).filter((x) => x.id !== 自己);
+      if (!撞.length) continue;
+      const 头 = 撞[0];
+      问题们.push({
+        级别: "提醒", 类别: "号码重复", 实体: r.实体, 外部ID: r.外部ID, 行号: r.行号, 出处: r.出处,
+        说明: `${叫法} ${v} 已经记在联系人「${头.name}」（${头.customerName}）身上${撞.length > 1 ? `等 ${撞.length} 位` : ""}，照写、不合并；是不是同一个人请导完点进去核对`,
+        链接: 撞.slice(0, 3).map((x) => ({ 名: `${x.name}（${x.customerName}）`, 客户Id: x.customerId })),
+      });
+    }
   };
 
   const 缺必填 = (r: 原始记录, s: 标准): boolean => {
@@ -353,8 +392,10 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     const 段: string[] = [];
     if (名键(String(b.name ?? "")) !== 名键(String(a.name ?? ""))) 段.push(`又名：${b.name}`);
     if (b.phone && !a.phone) a.phone = b.phone;
-    if (b.custStatus && !a.custStatus) a.custStatus = b.custStatus;
     else if (b.phone && 号键(String(b.phone)) !== 号键(String(a.phone))) 段.push(`另一个电话：${b.phone}`);
+    // 字典两格：前一条空着才补（原来夹在电话的 if / else if 中间，补了客户状态就漏记「另一个电话」，P13 顺手拆开）
+    if (b.custStatus && !a.custStatus) a.custStatus = b.custStatus;
+    if (b.customerType && !a.customerType) a.customerType = b.customerType;
     for (const k of 客户附加列) {
       if (b[k] == null || b[k] === "") continue;
       if (a[k] == null || a[k] === "") a[k] = b[k];
@@ -395,7 +436,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const email = 补格(s.值.email, 号.email, "邮箱", 附加);
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);
         const whatsapp = 补格(s.值.whatsapp, 号.whatsapp, "WhatsApp", 附加);
-        const custStatus = 认客户状态(r, s.值.custStatus, 附加);
+        const custStatus = 认字典(r, s.值.custStatus, 附加, "客户状态", 本地.客户状态);
+        const customerType = 认字典(r, s.值.customerType, 附加, "客户类型", 本地.客户类型);
         const 值: 待写["值"] = {
           name: s.值.name,
           phone,
@@ -403,6 +445,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           followStatus: 对值(r, "跟进状态", s.值.followStatus, "待跟进", "跟进状态"),
           // 没认出就不带这一格：以前导过的照三方比对，不会因为这次没给就把我们这边的客户状态清掉
           ...(custStatus ? { custStatus } : {}),
+          ...(customerType ? { customerType } : {}),
           remark: 拼备注(s.值.remark, ...附加),
           email,
           wechat,
@@ -498,19 +541,17 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const email = 补格(s.值.email, 号.email, "邮箱", 附加);
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);
         if (号.whatsapp) 附加.push(`WhatsApp：${号.whatsapp}`);
-        收(
-          r,
-          {
-            name: s.值.name,
-            position: s.值.position ?? null,
-            phone: 号.phone || null,
-            email,
-            wechat,
-            isPrimary: s.值.isPrimary ? 认是否(s.值.isPrimary) : false,
-            remark: 拼备注(s.值.remark, ...附加),
-          },
-          { 父客户, 目标 },
-        );
+        const 值: 待写["值"] = {
+          name: s.值.name,
+          position: s.值.position ?? null,
+          phone: 号.phone || null,
+          email,
+          wechat,
+          isPrimary: s.值.isPrimary ? 认是否(s.值.isPrimary) : false,
+          remark: 拼备注(s.值.remark, ...附加),
+        };
+        查联系人号(r, 值, 目标?.本地ID);
+        收(r, 值, { 父客户, 目标 });
         continue;
       }
 

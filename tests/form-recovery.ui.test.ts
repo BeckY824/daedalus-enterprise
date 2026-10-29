@@ -12,6 +12,7 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   stub(/^@\/app\/\(app\)\/customers\/\[id\]\/pick$/, "const rows=[{id:'original',name:'原客户',附注:null},{id:'new',name:'新客户',附注:null}];export const 搜客户=async()=>rows,取客户选项=async id=>rows.find(r=>r.id===id)??null;");
+  stub(/^\.\/contact-link-actions$/, "export const 挂到客户=async()=>({ok:true}),改挂靠说明=挂到客户,解除挂靠=挂到客户,换主客户=挂到客户;");
   stub(/^@\/components\/DataList$/, "export default function C(){return null}");
   stub(/^\.\.\/channels\/actions$/, "export const saveChannel=async()=>({ok:true});");
   stub(/^(\.\/|\.\.\/)actions$/, `

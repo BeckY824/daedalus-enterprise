@@ -5,10 +5,12 @@
  *   号码种类表 —— 号码类型字典（contactKind）→ 每一项存成哪种 kind、怎么验
  *   验联系人号码们 / 存联系人号码 —— 联系人「联系方式」几行（类型 + 号码）的校验和落库
  *   关联客户们 —— 客户页「关联客户」卡片的列表（两头都看得到同一行；改 / 删在 customers/[id]/link-actions.ts）
+ *   联系人挂靠回填 —— 每位联系人的主客户补一行 ContactCustomer（2026-10-29 P13：联系人能挂多位客户）
+ *   客户的联系人们 / 联系人另挂 —— 客户页联系人卡：挂靠到这位的那几位；主客户是这位的另外还挂在哪（主客户是这位的照旧跟客户一起取）
  */
 import type { Prisma } from "@/generated/prisma";
-import { prisma } from "@/lib/prisma";
-import { 看全部 } from "@/lib/team-scope";
+import { prisma, defaultClient } from "@/lib/prisma";
+import { 看全部, 同事的客户 } from "@/lib/team-scope";
 import { getSetting, setSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
 import { 企业字典 } from "./dict";
@@ -39,6 +41,35 @@ export function 级别D改C一次(): Promise<number> {
     return 0;
   });
   return g.__entLevelD2C;
+}
+
+// ---------- 联系人挂多位客户（P13） ----------
+
+const g2 = globalThis as unknown as { __entContactLinkFill?: Promise<number> };
+
+/**
+ * 每位联系人的主客户（Contact.customerId）补一行挂靠，已经有的不动。迁移里不许写 INSERT（tests/migrations.test.ts），
+ * 放这里每次启动跑一遍：INSERT OR IGNORE … SELECT，有唯一索引兜着，重跑不会多出行。
+ * 新建联系人、换主客户由 saveContact / 换主客户 自己写；别的路子改了 Contact.customerId（合并客户、导入）的，下次启动补上。
+ * 客户页联系人卡本来就按「主客户是这位 或 挂到这位」两头查，少这一行不影响显示
+ */
+export async function 联系人挂靠回填(): Promise<number> {
+  if (!企业版()) return 0;
+  return prisma.$executeRawUnsafe(
+    `INSERT OR IGNORE INTO "ContactCustomer" ("id", "contactId", "customerId", "createdAt")
+     SELECT 'cc' || lower(hex(randomblob(12))), c."id", c."customerId", c."createdAt" FROM "Contact" c
+     WHERE NOT EXISTS (SELECT 1 FROM "ContactCustomer" x WHERE x."contactId" = c."id" AND x."customerId" = c."customerId")`,
+  );
+}
+
+/** 服务启动时排着跑（instrumentation.ts）；同一进程只跑一次，出错下次启动再试 */
+export function 联系人挂靠回填一次(): Promise<number> {
+  g2.__entContactLinkFill ??= 联系人挂靠回填().catch((e) => {
+    g2.__entContactLinkFill = undefined;
+    console.error("[联系人挂靠] 回填出错，下次再试", e);
+    return 0;
+  });
+  return g2.__entContactLinkFill;
 }
 
 // ---------- 联系人号码 ----------
@@ -148,4 +179,66 @@ export async function 关联客户们(customerId: string): Promise<关联一行[
     const n = 名.get(o);
     return n == null ? [] : [{ id: x.id, otherId: o, otherName: n, 看得到: 看.has(o), note: x.note, createdAt: x.createdAt.toISOString() }];
   });
+}
+
+// ---------- 客户的联系人们（P13） ----------
+
+/** 挂到这位客户上的一位联系人（主客户是别人的）。主客户看不到时只给名字，不给链接 */
+export type 挂来的联系人 = {
+  contact: Prisma.ContactGetPayload<{ include: { contactMethods: { select: { kind: true; value: true } } } }>;
+  linkId: string;
+  note: string | null;
+  主客户: { id: string; name: string; 看得到: boolean; 能改: boolean };
+};
+
+/**
+ * 客户页联系人卡要多摆的那几位：挂到这位客户上、主客户是别人的（主客户是这位的照旧跟客户一起取）。
+ * 本人看不到这位客户（限定层查不到）就给空；挂靠行和联系人用 看全部 取（挂在看得到的客户上就看得到这位联系人），
+ * 主客户能不能改另算：编辑联系人、换主客户只在主客户那一头能改时摆
+ */
+export async function 客户的联系人们(customerId: string): Promise<挂来的联系人[]> {
+  if (!企业版()) return [];
+  if (!(await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } }))) return [];
+  const 行们 = await 看全部(() => prisma.contactCustomer.findMany({
+    where: { customerId, contact: { customerId: { not: customerId } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    include: {
+      contact: {
+        include: {
+          contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } },
+          customer: { select: { id: true, name: true } },
+        },
+      },
+    },
+  }));
+  if (!行们.length) return [];
+  const 主们 = [...new Set(行们.map((x) => x.contact.customerId))];
+  const 看 = new Set((await prisma.customer.findMany({ where: { id: { in: 主们 } }, select: { id: true } })).map((c) => c.id));
+  const 只读 = new Set<string>();
+  for (const id of 主们) if (看.has(id) && (await 同事的客户(defaultClient, id))) 只读.add(id);
+  return 行们.map(({ contact: { customer, ...contact }, ...x }) => ({
+    contact,
+    linkId: x.id,
+    note: x.note,
+    主客户: { id: customer.id, name: customer.name, 看得到: 看.has(customer.id), 能改: 看.has(customer.id) && !只读.has(customer.id) },
+  }));
+}
+
+/**
+ * 这几位联系人除了主客户，另外还挂在哪些客户上（客户页联系人卡摆「也挂在」，联系人列表「所属客户」后面摆 +N）。
+ * 看不到的客户只给名字
+ */
+export async function 联系人另挂(contactIds: string[]): Promise<Record<string, { id: string; name: string; 看得到: boolean }[]>> {
+  if (!企业版() || !contactIds.length) return {};
+  const 行们 = await 看全部(() => prisma.contactCustomer.findMany({
+    where: { contactId: { in: contactIds } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { contactId: true, contact: { select: { customerId: true } }, customer: { select: { id: true, name: true } } },
+  }));
+  const 另 = 行们.filter((x) => x.customer.id !== x.contact.customerId);
+  if (!另.length) return {};
+  const 看 = new Set((await prisma.customer.findMany({ where: { id: { in: [...new Set(另.map((x) => x.customer.id))] } }, select: { id: true } })).map((c) => c.id));
+  const 出: Record<string, { id: string; name: string; 看得到: boolean }[]> = {};
+  for (const x of 另) (出[x.contactId] ??= []).push({ ...x.customer, 看得到: 看.has(x.customer.id) });
+  return 出;
 }

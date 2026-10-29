@@ -40,6 +40,8 @@ export const 别名: Record<实体, Record<string, string[]>> = {
     followStatus: ["跟进状态"],
     // 「客户状态」是另一样东西（企业版字典 custStatus：潜在 / 意向 / 成交…），以前错并进跟进状态，10-29 拆开
     custStatus: ["客户状态"],
+    // 企业版字典 custType（个人买家 / 贸易商…，2026-10-29 P13 第 4 条）
+    customerType: ["客户类型", "客户类别", "客户分类"],
     remark: ["备注", "说明", "描述", "remark", "note"],
     email: ["邮箱", "电子邮箱", "email"],
     wechat: ["微信", "微信号"],

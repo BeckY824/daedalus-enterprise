@@ -33,7 +33,8 @@ import { 带走说法 } from "@/lib/carry-over";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { WhatsApp网址, 官网网址, 官网短写, 客户等级, 客户等级说明, type 客户等级 as 等级 } from "@/lib/customer-extra";
-import { 企业客户级别, 企业级别说明, 企业级别, 拼地址 } from "@/lib/enterprise/customer-v2";
+import { 级别选项, 拼地址 } from "@/lib/enterprise/customer-v2";
+import LevelStars from "@/components/LevelStars";
 import LocalTime from "@/components/LocalTime";
 import { 未分级 } from "./query-shared";
 import { useUrlFilters } from "@/lib/url-filters";
@@ -139,6 +140,8 @@ type Props = {
     dept: string;
     /** 客户状态（企业版才有这一格） */
     custStatus?: string;
+    /** 客户类型（企业版才有这一格，字典 custType，P13） */
+    customerType?: string;
   };
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
   部门选项?: { value: string; label: string }[];
@@ -157,6 +160,8 @@ type Props = {
   客户状态选项?: string[];
   /** 企业版分配方式的可选项（字典 custAssign 启用中的，定稿 P5 第 30 条）；别的版本空 */
   分配方式选项?: string[];
+  /** 企业版客户类型的可选项（字典 custType 启用中的，2026-10-29 P13 第 4 条）；别的版本空 */
+  客户类型选项?: string[];
 };
 
 /**
@@ -175,7 +180,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 分配方式选项 = [],
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 分配方式选项 = [], 客户类型选项 = [],
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -335,7 +340,7 @@ export default function CustomersView({
   }, []);
 
   /** 收起来的那三个里还筛着几个。收起来不等于可以不告诉人 */
-  const 更多筛了 = [f.grade, f.decisionStatus, f.channelOwnerId, f.source, 企业 ? f.level : ""].filter(Boolean).length;
+  const 更多筛了 = [f.grade, f.decisionStatus, f.channelOwnerId, f.source, 企业 ? f.level : "", 企业 ? f.customerType : ""].filter(Boolean).length;
   /** 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选 */
   const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v).length;
   /** 重置留在当前页签：在「公海」里点重置，回到的是全部公海，不是跳回「客户」 */
@@ -393,17 +398,20 @@ export default function CustomersView({
 
   /**
    * 企业版客户改版（定稿 P5 第 22、23 条）：外贸那几列（国家、WhatsApp、邮箱、微信、阿里 ID、来源）不摆，
-   * 换成级别 S/A/B/C（排序同一个 level 键，S 在 A 前）、地址、官网、分配方式；后三列收在「列」里
+   * 换成级别 S/A/B/C（排序同一个 level 键，S 在 A 前）、地址、官网、分配方式；后三列收在「列」里。
+   * P13（2026-10-29）：级别画成星（components/LevelStars.tsx，4 格等宽，76 宽放得下）；加「客户类型」一列，
+   * 字典项可以改成很长的字，超出 96 宽省略、悬停看全
    */
   const 企业列: 列<CustomerRow>[] = [
     {
       title: "级别", key: "level", width: 76,
       sorter: true,
       sortOrder: 等级排序 === "level-asc" ? "ascend" : 等级排序 === "level-desc" ? "descend" : null,
-      render: (_: unknown, r) => {
-        const 级 = 企业级别(r.extra?.level);
-        return 级 ? <span className={`cust-level cust-level-${级}`} title={企业级别说明[级]}>{级}</span> : 空;
-      },
+      render: (_: unknown, r) => <LevelStars level={r.extra?.level} 空={空} />,
+    },
+    {
+      title: "客户类型", key: "customerType", width: 96,
+      render: (_: unknown, r) => (r.customerType ? <span className="clamp-1" style={{ display: "block" }} title={r.customerType}>{r.customerType}</span> : 空),
     },
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
     {
@@ -423,7 +431,10 @@ export default function CustomersView({
       dataIndex: "name",
       width: 160,
       常驻: true,
-      render: (v, r) => <RowLink href={`/customers/${r.id}`} className="link-strong">{v}</RowLink>,
+      // 企业版公司名常常很长：一行截断、悬停看全，不把行撑成三四行（P13）。别的版本照旧折行
+      render: (v, r) => 企业
+        ? <RowLink href={`/customers/${r.id}`} className="link-strong clamp-1" style={{ display: "block" }} title={v}>{v}</RowLink>
+        : <RowLink href={`/customers/${r.id}`} className="link-strong">{v}</RowLink>,
     },
     // 企业版不摆院校·专业（10-28 去遗留 B2）
     ...(企业 ? [] : [{
@@ -712,7 +723,12 @@ export default function CustomersView({
                   {企业 && (
                     <Select style={{ width: "100%" }} placeholder="全部级别" allowClear aria-label="客户级别"
                       value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
-                      options={[...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] })), { value: 未分级, label: 未分级 }]} />
+                      options={[...级别选项(), { value: 未分级, label: 未分级 }]} />
+                  )}
+                  {企业 && (
+                    <Select style={{ width: "100%" }} placeholder="全部客户类型" allowClear aria-label="客户类型"
+                      value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
+                      options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
                   )}
                   {!企业 && (
                     <Select style={{ width: "100%" }} placeholder="全部决策状态" allowClear
@@ -861,6 +877,7 @@ export default function CustomersView({
         企业版={企业}
         客户状态选项={客户状态选项}
         分配方式选项={分配方式选项}
+        客户类型选项={客户类型选项}
         onClose={(saved) => {
           setFormOpen(false);
           setEditing(null);

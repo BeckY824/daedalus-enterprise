@@ -25,13 +25,18 @@ type 结果 = { ok: true } | { ok: false; error: string };
 /** 一类的选项：按排序列出（停用的也列，界面自己挑）；这一类一行都没有就先建默认的 */
 export async function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
   const 停用 = 字典定义[kind].默认停用 ?? [];
+  const { 默认顺序 } = 字典定义[kind];
   if (字典定义[kind].旧默认) await 补换默认(kind, db);
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
-      await db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } });
+      await db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name) } });
     }
     if (停用.length) await 记下补停过(kind, db);
-  } else if (停用.length) await 补停用(kind, 停用, db);
+    if (默认顺序) await 记下(换顺序记号(kind), db);
+  } else {
+    if (停用.length) await 补停用(kind, 停用, db);
+    if (默认顺序) await 补换顺序(kind, db);
+  }
   return db.entDictItem.findMany({ where: { kind }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
 }
 
@@ -69,6 +74,29 @@ async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
     占着.add(新名);
   }
   await db.setting.upsert({ where: { key: 换默认记号(kind) }, update: {}, create: { key: 换默认记号(kind), value: "true" } });
+}
+
+/** 第 i 个默认项排第几：有 默认顺序 按它，没有就是 i */
+function 默认位置(kind: 字典种类, i: number): number {
+  const { 默认, 默认顺序 } = 字典定义[kind];
+  const k = 默认顺序?.indexOf(默认[i]) ?? -1;
+  return k >= 0 ? k : i;
+}
+const 记下 = (key: string, db: Prisma.TransactionClient) => db.setting.upsert({ where: { key }, update: {}, create: { key, value: "true" } });
+
+/**
+ * 默认顺序是后改的（客户状态 10-29：流失挪到丢单前面）：之前建好的库里，要挪的默认项都还是原名、还在原位置（sort = 序号）才挪，
+ * 有一项被人改过名或挪过就整类不动（不猜人的意思）。只看一次，记一笔
+ */
+const 换顺序记号 = (kind: 字典种类) => `entDict.defaultOrder.${kind}`;
+async function 补换顺序(kind: 字典种类, db: Prisma.TransactionClient) {
+  if (await db.setting.findUnique({ where: { key: 换顺序记号(kind) } })) return;
+  const { 默认 } = 字典定义[kind];
+  const 要挪 = 默认.flatMap((name, i) => (默认位置(kind, i) !== i ? [{ id: 默认id(kind, i), name, i }] : []));
+  const 现有 = await db.entDictItem.findMany({ where: { id: { in: 要挪.map((x) => x.id) } }, select: { id: true, name: true, sort: true } });
+  const 没动过 = 要挪.every((x) => 现有.some((r) => r.id === x.id && r.name === x.name && r.sort === x.i));
+  if (没动过) for (const x of 要挪) await db.entDictItem.update({ where: { id: x.id }, data: { sort: 默认位置(kind, x.i) } });
+  await 记下(换顺序记号(kind), db);
 }
 
 /** 全部几类一次读出，设置页用；不是企业版 = null */

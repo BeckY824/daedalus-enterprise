@@ -17,7 +17,8 @@ import { 号键 } from "@/lib/phone";
 import { 不掉公海的状态, 公海截止 } from "@/lib/pool";
 import { AI补清洗, 去掉AI清洗, 格式说明键, 同一家说明键, type 清洗器 } from "./ai-clean";
 import { 预演, type 预演计数 } from "./apply";
-import { 清洗, 数一数, 名键, type 本地索引, type 清洗结果 } from "./clean";
+import { 清洗, 数一数, 名键, 联系人查重格, type 本地索引, type 清洗结果, type 已有联系人 } from "./clean";
+import { 联系人号查重键 } from "@/lib/enterprise/customer-v2";
 import { 成记录, 拆联系人, 拆出的客户ID列, type 读出的表 } from "./excel";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 可选项 } from "@/lib/enterprise/dict";
@@ -78,14 +79,17 @@ export type 试跑报告 = {
  * 电话按号键整串比；带分机认主号那种细的，正式写入时 查完再写 里再认一次
  */
 export async function 读本地索引(源: 来源): Promise<本地索引> {
-  const [客户们, 商机们, 对照们] = await 看全部(async () =>
+  const [客户们, 商机们, 对照们, 联系人们, 子表号] = await 看全部(async () =>
     Promise.all([
       prisma.customer.findMany({ select: { id: true, name: true, phone: true } }),
       prisma.opportunity.findMany({ select: { id: true, customerId: true, name: true } }),
       prisma.entExternalRef.findMany({ where: { source: 源 }, select: { entity: true, externalId: true, targetId: true, fingerprint: true } }),
+      prisma.contact.findMany({ select: { id: true, name: true, customerId: true, phone: true, email: true, wechat: true, customer: { select: { name: true } } } }),
+      // 联系方式子表里挂在联系人身上的手机 / 邮箱 / 微信（企业版客户页填的多个号都在这里）
+      prisma.contactMethod.findMany({ where: { contactId: { not: null }, kind: { in: 联系人查重格.map((x) => x[1]) } }, select: { contactId: true, kind: true, value: true } }),
     ]),
   );
-  const 索引: 本地索引 = { 引用: new Map(), 指纹: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map(), 客户状态: await 可选项("custStatus") };
+  const 索引: 本地索引 = { 引用: new Map(), 指纹: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map(), 客户状态: await 可选项("custStatus"), 客户类型: await 可选项("custType") };
   const 加 = (m: Map<string, string[]>, k: string, id: string) => {
     if (!k) return;
     const a = m.get(k);
@@ -97,6 +101,20 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
     if (c.phone) 加(索引.客户号, 号键(c.phone), c.id);
   }
   for (const o of 商机们) 加(索引.商机名, `${o.customerId}|${名键(o.name)}`, o.id);
+  // 联系人号码查重（P13 第 2 条）：老三格 + 子表，同一位同一个号只记一次
+  const 联系人号 = new Map<string, 已有联系人[]>();
+  const 人 = new Map(联系人们.map((c) => [c.id, { id: c.id, name: c.name, customerId: c.customerId, customerName: c.customer.name }]));
+  const 记号 = (kind: string, v: string | null, id: string | null) => {
+    const 键 = v ? 联系人号查重键(kind, v) : "";
+    const 谁 = id ? 人.get(id) : undefined;
+    if (!键 || !谁) return;
+    const 们 = 联系人号.get(`${kind}|${键}`);
+    if (!们) 联系人号.set(`${kind}|${键}`, [谁]);
+    else if (!们.some((x) => x.id === id)) 们.push(谁);
+  };
+  for (const c of 联系人们) for (const [格, kind] of 联系人查重格) 记号(kind, c[格], c.id);
+  for (const m of 子表号) 记号(m.kind, m.value, m.contactId);
+  索引.联系人号 = 联系人号;
   for (const r of 对照们) {
     索引.引用.set(`${r.entity}|${r.externalId}`, r.targetId);
     索引.指纹!.set(`${r.entity}|${r.externalId}`, r.fingerprint);

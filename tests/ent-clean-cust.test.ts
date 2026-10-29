@@ -22,6 +22,8 @@ import { 客户筛选条件 } from "@/app/(app)/customers/query";
 import { 项目一段 } from "../src/app/(app)/overview/project-stats";
 
 const 新默认 = ["潜在", "意向", "成交", "交付", "复购", "忠诚", "丢单", "流失", "异常"];
+/** 2026-10-29 P13 调了默认顺序（流失放到丢单前面），默认表的序号不动，只改排序 */
+const 新顺序 = ["潜在", "意向", "成交", "交付", "复购", "忠诚", "流失", "丢单", "异常"];
 let 销售: string;
 
 beforeEach(async () => {
@@ -58,7 +60,7 @@ const 状态 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ 
 describe("客户状态字典", () => {
   it("新库：九个新默认，按序启用", async () => {
     expect(字典定义.custStatus.默认).toEqual(新默认);
-    expect(await 可选项("custStatus")).toEqual(新默认);
+    expect(await 可选项("custStatus")).toEqual(新顺序);
   });
 
   it("老库还叫旧名的默认项改成同序号新名；人改过名的、自己加的不动；只改一次", async () => {
@@ -68,7 +70,7 @@ describe("客户状态字典", () => {
     }
     await prisma.entDictItem.create({ data: { kind: "custStatus", name: "自己加的", sort: 99 } });
     const 名 = (await 企业字典("custStatus")).map((x) => x.name);
-    expect(名).toEqual(["潜在", "我们改过的", ...新默认.slice(2), "自己加的"]);
+    expect(名).toEqual(["潜在", "我们改过的", ...新顺序.slice(2), "自己加的"]);
     // 改完再把某项改回旧名，不会再被换
     await prisma.entDictItem.update({ where: { id: "dict-custStatus-0" }, data: { name: 旧[0] } });
     expect((await 企业字典("custStatus"))[0].name).toBe(旧[0]);

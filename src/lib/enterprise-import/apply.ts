@@ -36,7 +36,7 @@ type 结果 = "新建" | "更新" | "跳过" | "冲突";
 
 /** 每类拿来比对、记进对照表的格子（落库的列名；客户的外贸几格、商机的结单日期在附表里） */
 export const 比对字段: Record<实体, readonly string[]> = {
-  customer: ["name", "phone", "salesOwnerId", "followStatus", "custStatus", "remark", ...客户附加列],
+  customer: ["name", "phone", "salesOwnerId", "followStatus", "custStatus", "customerType", "remark", ...客户附加列],
   lead: ["name", "contact", "phone", "email", "industry", "source", "status", "ownerId", "remark"],
   contact: ["name", "position", "phone", "email", "wechat", "isPrimary", "remark", "customerId"],
   opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "ownerId", "remark", "customerId"],
@@ -44,7 +44,7 @@ export const 比对字段: Record<实体, readonly string[]> = {
 };
 const 负责人列: Record<实体, string> = { customer: "salesOwnerId", lead: "ownerId", contact: "", opportunity: "ownerId", followup: "ownerId" };
 /** 同号连上已有客户时只补这几格 */
-const 补空格 = ["custStatus", "remark", ...客户附加列] as const;
+const 补空格 = ["custStatus", "customerType", "remark", ...客户附加列] as const;
 
 const 段长 = () => Number(process.env.ENT_IMPORT_SEGMENT_MS) || 20_000;
 const 每趟条数 = 25;
@@ -114,7 +114,7 @@ export async function 读现值(tx: Tx, e: 实体, id: string): Promise<值表 |
   if (e === "customer") {
     const c = await tx.customer.findUnique({
       where: { id },
-      select: { name: true, phone: true, salesOwnerId: true, followStatus: true, custStatus: true, remark: true, extra: true },
+      select: { name: true, phone: true, salesOwnerId: true, followStatus: true, custStatus: true, customerType: true, remark: true, extra: true },
     });
     if (!c) return null;
     const { extra, ...主 } = c;
@@ -191,6 +191,7 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
         salesOwnerId: String(v.salesOwnerId),
         followStatus: 串(v.followStatus) ?? "待跟进",
         custStatus: 串(v.custStatus ?? null),
+        customerType: 串(v.customerType ?? null),
         remark: 串(v.remark),
       },
       select: { id: true },
@@ -287,6 +288,7 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     if (有("salesOwnerId")) data.salesOwnerId = String(改动.salesOwnerId);
     if (有("followStatus")) data.followStatus = 串(改动.followStatus) ?? "待跟进";
     if (有("custStatus")) data.custStatus = 串(改动.custStatus);
+    if (有("customerType")) data.customerType = 串(改动.customerType);
     if (有("remark")) data.remark = 串(改动.remark);
     const 主改 = Object.keys(data).length > 0;
     if (主改) await tx.customer.update({ where: { id }, data });

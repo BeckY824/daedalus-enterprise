@@ -164,6 +164,8 @@ model Customer {
   addrDistrict String?
   /// 分配方式：自持 / 非自持 / 公海领取（企业版字典 custAssign）
   assignWay    String?
+  /// 企业版客户类型（迁移 092，2026-10-29 P13 第 4 条）：个人买家 / 贸易商 / 代理商 / 经销商……（企业版字典 custType）。别的版本一直是空
+  customerType String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -178,6 +180,8 @@ model Customer {
   pool          CustomerPool?
   /// 最近一次从公海领走（第 6 块复查）。见 CustomerClaim
   claim         CustomerClaim?
+  /// 企业版：挂在这位客户名下的联系人（含主客户是别人的，迁移 090）。见 ContactCustomer
+  contactLinks  ContactCustomer[]
   /// 外贸档案：国家、WhatsApp、微信、邮箱、来源（2026-10-05）。见 CustomerExtra
   extra         CustomerExtra?
   lead          Lead?
@@ -277,7 +281,26 @@ model Contact {
   projects  Project[]
   /// 企业版联系方式子表里挂在这位身上的号（migrations/054）
   contactMethods ContactMethod[]
+  /// 企业版：这位联系人挂着的全部客户（主客户那一行也在，迁移 090）。见 ContactCustomer
+  customerLinks  ContactCustomer[]
 
+  @@index([customerId])
+}
+
+/// 企业版客户↔联系人多对多（2026-10-29，P13 第 1 条，迁移 090）：同一个人可以挂在好几位客户名下，一对只记一行。
+/// Contact.customerId 还是主客户（权限、联系人列表、导出都按它）；这张表记全部挂靠，主客户那一行也在。
+/// 老数据启动时回填（lib/enterprise/customer-v2-db.ts 的 联系人挂靠回填）；挂 / 解除 / 换主客户在 customers/[id]/contact-link-actions.ts
+model ContactCustomer {
+  id         String   @id @default(cuid())
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// 在这家的职位 / 关系说明（选填，最多 40 字）
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@unique([contactId, customerId])
   @@index([customerId])
 }
 

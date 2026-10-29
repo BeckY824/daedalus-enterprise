@@ -5,6 +5,7 @@ import ContactsView from "./ContactsView";
 import type { Prisma } from "@/generated/prisma";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 负责人候选 } from "@/lib/owners";
+import { 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,8 @@ export default async function ContactsPage({
     负责人候选(),
   ]);
   const 号 = await 号码脱敏器();
+  // 企业版联系人挂多位客户（P13）：所属客户后面摆 +N，鼠标停上去看另外挂在哪几位（开关关着给空）
+  const 另挂 = await 联系人另挂(rows.map((c) => c.id));
 
   return (
     <ContactsView
@@ -85,6 +88,7 @@ export default async function ContactsPage({
         ownerName: c.customer.salesOwner.name,
         ownerId: c.customer.salesOwner.id,
         ownerEmail: c.customer.salesOwner.email,
+        也挂在: (另挂[c.id] ?? []).map((x) => x.name),
       })).concat(
         散的.map((u) => ({
           id: u.id,
@@ -106,6 +110,7 @@ export default async function ContactsPage({
           ownerName: "",
           ownerId: "",
           ownerEmail: "",
+          也挂在: [] as string[],
         })),
       )}
     />

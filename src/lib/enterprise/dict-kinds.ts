@@ -1,5 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "custType"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -7,8 +7,10 @@ export type 字典种类 = (typeof 字典种类们)[number];
  * 默认停用：默认选项里建出来就是停用的那几项（2026-10-28 对方删了「预算不足」「竞品中标」）。
  * 不从默认里拿掉：默认项的 id 按序号排（dict.ts 默认id），拿掉一项后面的全错位
  * 旧默认：整套默认换过的那一类，换之前的默认（同序号）。已经建好的库里还叫旧名的默认项，第一次读时改成新名一次（dict.ts 补换默认）
+ * 默认顺序：默认项的排列跟 默认 的序号不一样时写（默认 的序号就是 id，换了顺序 id 会错位，所以另记一份）。
+ *   新库按它排；老库里默认项还是原名、原位置的，第一次读时挪一次（dict.ts 补换顺序），人改过名的不动
  */
-export const 字典定义: Record<字典种类, { 名: string; 说明: string; 默认: readonly string[]; 默认停用?: readonly string[]; 旧默认?: readonly string[] }> = {
+export const 字典定义: Record<字典种类, { 名: string; 说明: string; 默认: readonly string[]; 默认停用?: readonly string[]; 旧默认?: readonly string[]; 默认顺序?: readonly string[] }> = {
   assign: { 名: "分配方式", 说明: "线索落到谁手上的方式。", 默认: ["指定分配", "自动分配", "公海捞取", "暂不分配", "自拓自持"] },
   recycle: { 名: "回收原因", 说明: "线索、客户收回公海或收回重分时选的原因。", 默认: ["超时未跟进", "销售离职", "线索质量不达标", "客户主动终止", "主管收回重分配", "项目丢单", "其他"] },
   invalid: { 名: "无效原因", 说明: "判线索无效时选的原因。", 默认: ["需求不存在", "预算不足", "竞品中标", "客户终止", "联系方式无效", "重复线索", "其他"], 默认停用: ["预算不足", "竞品中标"] },
@@ -23,6 +25,8 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
     说明: "客户当前所处的状态。",
     默认: ["潜在", "意向", "成交", "交付", "复购", "忠诚", "丢单", "流失", "异常"],
     旧默认: ["正常", "休眠中", "休眠预警", "跟进超时", "流失预警", "已流失", "公海待捞", "正在转让", "确认无效"],
+    // 10-29（P13 第 6 条）：流失排到丢单前面。id 不动（dict-custStatus-6 还是丢单、-7 还是流失），只换排序
+    默认顺序: ["潜在", "意向", "成交", "交付", "复购", "忠诚", "流失", "丢单", "异常"],
   },
   projTag: { 名: "项目标签", 说明: "给项目分优先级。", 默认: ["A 重点推进", "B 潜力跟进", "C 正常培育"] },
   // 渠道属性（2026-10-29）：渠道页新建、筛选和渠道选择器第一级都用这一份
@@ -34,6 +38,8 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
     默认几项按序号对到 ContactMethod.kind（customer-v2.ts 内置号码种类），改名不影响已存的号；自己加的存成 custom:<叫法>
   */
   contactKind: { 名: "号码类型", 说明: "联系人联系方式的类型。", 默认: ["手机", "座机", "微信", "邮箱", "WhatsApp", "阿里国际站ID"] },
+  // 客户类型（2026-10-29，P13 第 4 条）：客户新建 / 编辑 / 详情 / 列表筛选、导入都用这一份，存在 Customer.customerType
+  custType: { 名: "客户类型", 说明: "客户是哪一类买家。", 默认: ["个人买家", "贸易商", "代理商", "经销商"] },
 };
 
 export const 选项名上限 = 20;

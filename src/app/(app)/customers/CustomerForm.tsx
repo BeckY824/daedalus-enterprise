@@ -24,7 +24,7 @@ import { 带走说法 } from "@/lib/carry-over";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
-import { 企业客户级别, 企业级别说明, 企业级别, 国内叫法, 是国内, 地址每格上限, 简称上限 } from "@/lib/enterprise/customer-v2";
+import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 简称上限 } from "@/lib/enterprise/customer-v2";
 
 export type CustomerRow = {
   id: string;
@@ -44,6 +44,8 @@ export type CustomerRow = {
   addrCity?: string | null;
   addrDistrict?: string | null;
   assignWay?: string | null;
+  /** 客户类型（企业版，字典 custType，2026-10-29 P13 第 4 条，迁移 092）。老调用方没给就当没填 */
+  customerType?: string | null;
   expectedSignAt: string | null;
   lastFollowAt: string | null;
   remark: string | null;
@@ -91,6 +93,8 @@ type FormProps = {
   客户状态选项?: string[];
   /** 企业版分配方式的可选项（字典 custAssign 启用中的，定稿 P5 第 30 条） */
   分配方式选项?: string[];
+  /** 企业版客户类型的可选项（字典 custType 启用中的，P13 第 4 条） */
+  客户类型选项?: string[];
 };
 
 /**
@@ -143,6 +147,7 @@ function CustomerFormInner({
   企业版: 企业 = false,
   客户状态选项 = [],
   分配方式选项 = [],
+  客户类型选项 = [],
 }: FormProps) {
   const b = useBusiness();
   /** 外贸模版：多问国家 / WhatsApp / 微信 / 邮箱 / 来源，不问推荐人、渠道负责人、预计签约（2026-10-05 外贸客户建议） */
@@ -308,6 +313,7 @@ function CustomerFormInner({
                 addrCity: v.addrCity ?? null,
                 addrDistrict: 国内址 ? (v.addrDistrict ?? null) : null,
                 assignWay: v.assignWay ?? null,
+                customerType: v.customerType ?? null,
               },
             }
           : {}),
@@ -472,7 +478,14 @@ function CustomerFormInner({
           <Col span={8}>
             {/* 级别 S/A/B/C（定稿 P5 第 23 条，原来的 D 并进 C）：还是存 extra.level */}
             <Form.Item label="客户级别" name={["extra", "level"]}>
-              <Select allowClear placeholder="没分级" options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} />
+              <Select allowClear placeholder="没分级" options={级别选项()} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            {/* 客户类型（P13 第 4 条）：选项在设置 → 字典「客户类型」，能改能停用；原值停用了也照样显示 */}
+            <Form.Item label="客户类型" name="customerType">
+              <Select allowClear placeholder="选填"
+                options={[...new Set([...客户类型选项, ...(editing?.customerType ? [editing.customerType] : [])])].map((s) => ({ value: s, label: s }))} />
             </Form.Item>
           </Col>
           </>) : (<>
@@ -949,7 +962,7 @@ function 认人记号() {
   );
 }
 
-/** 企业版并发比对的基准：简称、地址四格、分配方式（打开表单那一刻的值） */
+/** 企业版并发比对的基准：简称、地址四格、分配方式、客户类型（打开表单那一刻的值） */
 function 企业资料基准(e: CustomerRow) {
   return {
     shortName: e.shortName ?? null,
@@ -958,6 +971,7 @@ function 企业资料基准(e: CustomerRow) {
     addrCity: e.addrCity ?? null,
     addrDistrict: e.addrDistrict ?? null,
     assignWay: e.assignWay ?? null,
+    customerType: e.customerType ?? null,
   };
 }
 
