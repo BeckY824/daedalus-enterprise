@@ -154,10 +154,11 @@ describe("只读通道拿不到写", () => {
     开();
     expect(读通道()).not.toBeNull();
     const g = globalThis as unknown as { __读通道: { 原: typeof raw } };
-    for (let k = 0; k < 4; k++) {
-      const [t] = await g.__读通道.原.$queryRawUnsafe<{ timeout: number }[]>("PRAGMA busy_timeout");
-      expect(Number(t.timeout)).toBeGreaterThanOrEqual(5000);
-    }
+    // 同时发 16 条才会摊到 4 条连接上（一条条 await 只会拿到同一条）。
+    // 5000 是 Prisma 6 每开一条连接自带的默认值，不是这里设的：升级后默认变了这条会红
+    const 各连接 = await Promise.all(Array.from({ length: 16 }, () =>
+      g.__读通道.原.$queryRawUnsafe<{ timeout: number }[]>("PRAGMA busy_timeout")));
+    for (const [t] of 各连接) expect(Number(t.timeout)).toBeGreaterThanOrEqual(5000);
     const [j] = await g.__读通道.原.$queryRawUnsafe<{ journal_mode: string }[]>("PRAGMA journal_mode");
     expect(String(j.journal_mode).toLowerCase()).toBe("wal");
   });
