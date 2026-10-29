@@ -132,6 +132,10 @@ model Customer {
   decisionStatus String    @default("了解中") /// 客户决策状态
   /// 企业版客户状态（迁移 064，2026-10-28）：选项在企业版字典「客户状态」，企业版用它替掉上面两个；别的版本一直是空
   custStatus     String?
+  /// 企业版统一公海（迁移 079，2026-10-29）：老板 / 主管标「无效客户」的时间，空 = 有效。标了的领不了，只有老板能恢复
+  poolInvalidAt  DateTime?
+  /// 企业版统一公海（迁移 080）：被主动退回公海的累计次数（客户放进公海 + 项目放回项目公海；超时、离职不算）
+  poolReturns    Int       @default(0)
   expectedSignAt DateTime? /// 预计签约时间
   expectedSignOn String? /// 原日历日；旧记录未知为空
   lastFollowAt   DateTime? /// 最近跟进

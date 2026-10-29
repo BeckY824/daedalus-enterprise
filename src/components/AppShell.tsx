@@ -27,6 +27,7 @@ import {
   DownOutlined,
   SwapOutlined,
   CheckOutlined,
+  InboxOutlined,
 } from "@ant-design/icons";
 import type { SessionUser } from "@/lib/auth";
 import type { 演示组 } from "@/lib/enterprise/demo-switch";
@@ -219,6 +220,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       // 企业版只用项目一条线，没有商机（10-26）；/opportunities 一律转到 /projects，左栏这一项 10-28 删了
       // 团队版项目模式开着才有（2026-10-23，D-31）；关着时 /projects 是 404
       ...(b.projectMode ? [{ key: "/projects", icon: <ProjectOutlined />, label: "项目", 组: "主" as const }] : []),
+      // 企业版项目模式：客户公海 + 项目公海合成一页（统一公海 P7，2026-10-29）
+      ...(企业版项目 ? [{ key: "/pool", icon: <InboxOutlined />, label: "公海", 组: "主" as const }] : []),
       { key: "/follow-ups", icon: <InteractionOutlined />, label: "跟进", 组: "主" },
       { key: "/overview", icon: <DashboardOutlined />, label: "数据", 组: "主" },
       { key: "/leads", icon: <ShareAltOutlined />, label: 企业版项目 ? "新线索" : "线索", 组: "更多" },
@@ -232,7 +235,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   // 选中项取最长匹配前缀，/customers/xxx 也算在客户管理下
   const 少动 = useReducedMotion();
   const selectedKey = useMemo(() => {
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/follow-ups", "/settings", "/billing"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/pool", "/follow-ups", "/settings", "/billing"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
