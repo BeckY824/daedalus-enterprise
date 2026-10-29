@@ -10,7 +10,7 @@ import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接要确认, 离职交接中, 了结 } from "@/lib/enterprise/handover-db";
 import { 交接卡点 } from "@/lib/project/blocker";
-import bcrypt from "bcryptjs";
+import { 哈希密码, 核对密码串 } from "@/lib/password";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -232,7 +232,7 @@ export async function saveUser(input: {
       try {
         await prisma.user.update({
           where: { id: input.id },
-          data: input.password ? { ...base, password: await bcrypt.hash(input.password, 10) } : base,
+          data: input.password ? { ...base, password: await 哈希密码(input.password) } : base,
         });
       } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "P2002") return { ok: false, error: "该登录用户名已被占用" };
@@ -270,7 +270,7 @@ export async function saveUser(input: {
       await prisma.workspaceAccount.create({ data: { userId: user.id, accountId: 配.accountId } });
     } else {
       await prisma.user.create({
-        data: { ...base, password: await bcrypt.hash(input.password, 10) },
+        data: { ...base, password: await 哈希密码(input.password) },
       });
     }
   }
@@ -558,7 +558,7 @@ export async function 改我的资料(input: { name: string; title: string }) {
  * 改自己的密码。任何人都可以改自己的。
  *
  * **托管版改的是控制面那把。** 业务库这一列存的是不可用的占位符 `!managed`
- * （见 lib/tenant/workspaces.ts），拿它去 bcrypt.compare 永远不成立——
+ * （见 lib/tenant/workspaces.ts），拿它去核对密码永远不成立——
  * 也就是说在那之前，托管版里**没有人改得了自己的密码**，界面一律回「原密码错误」。
  * 我们发给试用公司的初始密码，他们自己换不掉。
  */
@@ -581,7 +581,7 @@ export async function changeMyPassword(oldPwd: string, newPwd: string) {
    */
   const 我的工作区 = link ? (await resolveCurrentTenant())?.workspaceId : undefined;
 
-  const 对得上 = link ? await 核对密码(link.accountId, oldPwd) : await bcrypt.compare(oldPwd, user.password);
+  const 对得上 = link ? await 核对密码(link.accountId, oldPwd) : await 核对密码串(oldPwd, user.password);
   if (!对得上) return { ok: false as const, error: "原密码错误" };
   // 界面上有长度校验，但接口直调能绕开——空密码会让任何人用这个账号登进来
   if (!newPwd || newPwd.length < MIN_PASSWORD) {
@@ -602,7 +602,7 @@ export async function changeMyPassword(oldPwd: string, newPwd: string) {
   } else {
     await prisma.user.update({
       where: { id: me.id },
-      data: { password: await bcrypt.hash(newPwd, 10) },
+      data: { password: await 哈希密码(newPwd) },
     });
   }
   // 只记「改过密码」这件事，不记任何密码内容

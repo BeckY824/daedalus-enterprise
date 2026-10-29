@@ -80,7 +80,7 @@ async function 进第一位客户(page: Page) {
   await expect(page).toHaveURL(/\/customers\/[^/]+$/);
 }
 
-const 到 = { 客户: /\/customers$/, 线索: /\/leads$/, 商机: /\/opportunities$/, 跟进: /\/follow-ups$/, 设置: /\/settings$/ };
+const 到 = { 客户: /\/customers$/, 线索: /\/leads$/, 渠道: /\/channels$/, 商机: /\/opportunities$/, 跟进: /\/follow-ups$/, 设置: /\/settings$/ };
 
 test.describe("中栏跟着路由走", () => {
   test("首页的中栏是「对话」——配了 AI 才有", async ({ page }) => {
@@ -142,7 +142,8 @@ test.describe("中栏跟着路由走", () => {
     await 点侧栏(page, "客户", 到.客户);
     await 进第一位客户(page);
     await expect(中栏(page)).toBeVisible();
-    await 点侧栏(page, "线索", 到.线索);
+    // 企业版左栏没有线索了（10-29 六个根目录），切去渠道
+    await 点侧栏(page, 企业版 ? "渠道" : "线索", 企业版 ? 到.渠道 : 到.线索);
     await expect(中栏(page)).toHaveCount(0);
   });
 
@@ -151,7 +152,8 @@ test.describe("中栏跟着路由走", () => {
     await 点侧栏(page, "客户", 到.客户);
     await 进第一位客户(page);
     await expect(中栏(page)).toBeVisible();
-    await 点侧栏(page, "线索", 到.线索);
+    // 企业版左栏没有线索了（10-29 六个根目录），切去渠道
+    await 点侧栏(page, 企业版 ? "渠道" : "线索", 企业版 ? 到.渠道 : 到.线索);
     await expect(中栏(page)).toHaveCount(0);
     await page.goBack();
     await expect(page).toHaveURL(/\/customers\/[^/]+$/);

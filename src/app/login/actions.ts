@@ -1,6 +1,6 @@
 "use server";
 
-import bcrypt from "bcryptjs";
+import { 哈希密码, 核对密码串, 要升级 } from "@/lib/password";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
@@ -87,10 +87,14 @@ export async function login(email: string, password: string): Promise<LoginResul
     return { ok: false, error: "账号不存在或已停用" };
   }
 
-  const valid = await bcrypt.compare(password, user.password);
+  const valid = await 核对密码串(password, user.password);
   if (!valid) {
     keys.forEach(([k, 上限]) => 记一次失败(k, Date.now(), 上限));
     return { ok: false, error: "密码错误" };
+  }
+  // 老的 bcrypt 串趁这次对上换成 scrypt；只认库里还是这一串时才换，别盖掉同一刻刚改的新密码
+  if (要升级(user.password)) {
+    await prisma.user.updateMany({ where: { id: user.id, password: user.password }, data: { password: await 哈希密码(password) } });
   }
 
   keys.forEach(([k]) => 清除限流(k));

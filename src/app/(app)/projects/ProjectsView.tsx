@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { App, Badge, Button, Select, Space, Segmented, Tag } from "antd";
 import { CloseOutlined, InteractionOutlined, PlusOutlined, ShareAltOutlined, ThunderboltOutlined, UserSwitchOutlined } from "@ant-design/icons";
 import { useFollowDue } from "@/components/FollowDue";
-import { useNarrow } from "@/lib/roster";
+import { DOCK_W, DockOpenContext, useNarrow } from "@/lib/roster";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
@@ -101,8 +101,10 @@ export default function ProjectsView({
   const 新线索 = 阶段 === "线索";
   const 要跟 = useFollowDue();
   const 要跟数 = 要跟.逾期 + 要跟.今天;
-  // 手机上页头右边四颗键摆不下（页头那组不换行），新线索、跟进只留图标，名字在 aria-label / 悬停说明里
-  const 小屏 = useNarrow("(max-width: 767px)");
+  // 页头右边那组不换行（.page-head-a 是 flex: none），窄了新线索、跟进只留图标，名字在 aria-label / 悬停说明里。
+  // 手机上四颗键摆不下；AI 栏开着时正文再让出 380，Windows 1024 也摆不下（排版闸门量出撑出 60px）
+  const 面板开着 = useContext(DockOpenContext);
+  const 小屏 = useNarrow(`(max-width: ${面板开着 ? 1023 + DOCK_W : 767}px)`);
   // 分配只在新线索页：线索阶段的项目按配额分给销售（老的 Lead 分配搬过来，见 leads/assign-actions.ts 的 项目 选项）
   const 可分 = 新线索 && 能自动分配;
   const [分配中, set分配中] = useState<项目行 | null>(null);
