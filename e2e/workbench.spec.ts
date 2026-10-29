@@ -207,8 +207,8 @@ test("客户列表：默认只摆六列，其余在「列」里", async ({ page 
   // 六列 + 勾选框 + 操作列；操作列的「操作」只给读屏念（.sr-only），不算看得见的列
   const 表头 = await page.locator(".ant-table-thead th").evaluateAll((ths) =>
     ths.map((th) => { const c = th.cloneNode(true) as HTMLElement; c.querySelectorAll(".sr-only").forEach((e) => e.remove()); return c.textContent ?? ""; }));
-  // 企业版少一列：不摆「院校·专业」那一列（10-28 去遗留 B2），跟进状态换成客户状态不增不减
-  expect(表头.filter((t) => t.trim()).length).toBe(企业版 ? 5 : 6);
+  // 企业版：不摆「院校·专业」（10-28 去遗留 B2），跟进状态换成客户状态，多一列「级别」（定稿客户字段），还是六列
+  expect(表头.filter((t) => t.trim()).length).toBe(6);
 
   // 收起来的列要能勾出来
   await page.getByRole("button", { name: "列" }).click();

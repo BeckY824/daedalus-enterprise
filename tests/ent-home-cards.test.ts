@@ -1,7 +1,7 @@
 /**
  * 企业版项目模式首页四张指标卡（10-29 首页改版 #10 / 待 2，lib/project/home-cards.ts + home-cards-db.ts + list.ts 的 f）：
  *   - 本月新增：这个月（北京时间）新建的项目，不管在不在推
- *   - 重点项目：在推、客户级别 S / A
+ *   - 重点项目：在推、客户级别 S
  *   - 暂未跟进：在推、一条沟通都没挂到项目上
  *   - 即将逾期：在推的线索 / 商机，回收日在 3 天以内；超时回收没开恒为 0
  *   - 本月赢单：这个月有一次「商机 → 订单」节点变更的项目（10-29 会议二2，绿卡）
@@ -95,7 +95,7 @@ describe("口径（纯函数）", () => {
 
   it("重点 / 暂未跟进只看在推的；本月新增不管在不在推", () => {
     const 字典 = 字典of(true);
-    expect(首页卡条件("key", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, customer: { extra: { is: { level: { in: ["S", "A"] } } } } });
+    expect(首页卡条件("key", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, customer: { extra: { is: { level: { in: ["S"] } } } } });
     expect(首页卡条件("no-follow", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, followUps: { none: {} } });
     const 新 = 首页卡条件("month-new", 默认组织规则, 字典);
     expect(新).not.toHaveProperty("result");
@@ -114,7 +114,7 @@ describe("取数和项目页筛选", () => {
     老板 = (await prisma.user.create({ data: { email: "boss", name: "老板", title: "", role: "ADMIN", password: "x" } })).id;
     业务员 = (await prisma.user.create({ data: { email: "sales", name: "业务员", title: "", role: "SALES", password: "x" } })).id;
     mocks.user = { ...mocks.user, id: 老板, role: "ADMIN" };
-    const 重点客户 = await prisma.customer.create({ data: { name: "客户甲", phone: "13900000001", salesOwnerId: 老板, extra: { create: { level: "A" } } } });
+    const 重点客户 = await prisma.customer.create({ data: { name: "客户甲", phone: "13900000001", salesOwnerId: 老板, extra: { create: { level: "S" } } } });
     const 普通客户 = await prisma.customer.create({ data: { name: "客户乙", phone: "13900000002", salesOwnerId: 老板, extra: { create: { level: "C" } } } });
     const 业务员客户 = await prisma.customer.create({ data: { name: "客户丙", phone: "13900000003", salesOwnerId: 业务员, extra: { create: { level: "S" } } } });
     const 建 = async (名: string, customerId: string, ownerId: string, data: Record<string, unknown> = {}) => {

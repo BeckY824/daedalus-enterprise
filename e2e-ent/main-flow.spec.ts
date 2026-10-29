@@ -248,7 +248,7 @@ test("字段权限：销售的备注只能看就改不了；电话看不到就�
   await expect(正文.getByText("13900000002")).toHaveCount(0);
   // 号码打着码进编辑框，不碰电话、只改姓名也得存得下，号码不能被打码串覆盖
   框 = await 编辑();
-  await 框.getByLabel("客户姓名").fill("销售甲的客户改名");
+  await 框.getByLabel("客户全称").fill("销售甲的客户改名"); // 企业版客户是单位，这格叫「客户全称」
   await 框.getByRole("button", { name: /保\s*存/ }).click();
   await expect(框).toBeHidden();
   const 改后 = await db.customer.findUniqueOrThrow({ where: { id: 种.自己客户 } });

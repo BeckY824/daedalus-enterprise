@@ -7,6 +7,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -84,6 +85,7 @@ test("新建待办：连点两次创建 → 只多一条待办", async ({ page }
 });
 
 test("制定跟进计划：连点两次保存 → 只多一条计划", async ({ page }) => {
+  test.skip(企业版, "企业版客户页不摆「下次跟进」，制定跟进计划在项目上（客户页摆法）");
   await 登录(page);
   await page.goto(`/customers/${客户id}`);
   const 框 = await 打开(page, "制定跟进计划", "制定跟进计划");

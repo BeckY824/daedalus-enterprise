@@ -8,7 +8,7 @@
  *
  * 卡（URL 参数 f 的值 → 卡名 → 口径）：
  *   month-new  本月新增   这个月（北京时间自然月，1 号 0 点起）新建的项目，不管现在是否还在推、有没有结局
- *   key        重点项目   在推的项目里，客户级别是 重点级别（S、A）的
+ *   key        重点项目   在推的项目里，客户级别是 重点级别（S）的
  *   no-follow  暂未跟进   在推的项目里，一条沟通都还没挂上的（FollowUpProject 没有行）
  *   due-soon   即将逾期   在推的线索 / 商机项目里，超时回收日在 即将逾期天数（3 天）以内的；
  *                          回收日和项目页「即将回收」标签同一套算法（timeout.ts 的 超时回收日），只是提前量从 1 天放到 3 天。
@@ -53,8 +53,8 @@ export const 首页卡色: Partial<Record<首页卡键, "good" | "warn">> = {
  */
 export type 首页卡数 = Partial<Record<首页卡键, number>> & { 逾期待办?: number };
 
-/** 「重点项目」认的客户级别。级别存在 CustomerExtra.level（大写），以后加了 S 级就自动算进来 */
-export const 重点级别 = ["S", "A"] as const;
+/** 「重点项目」认的客户级别（定稿：S 是重点客户）。级别存在 CustomerExtra.level（大写） */
+export const 重点级别 = ["S"] as const;
 
 /** 「即将逾期」：回收日离今天还剩几天以内（含当天）。项目页「即将回收」标签是 1 天，这里放宽到 3 天 */
 export const 即将逾期天数 = 3;

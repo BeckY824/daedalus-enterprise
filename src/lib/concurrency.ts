@@ -33,6 +33,13 @@ export const CUSTOMER_FIELD_LABELS: Record<string, string> = {
   channelId: "推荐渠道",
   referrerCustomerId: "推荐客户",
   channelOwnerId: "渠道负责人",
+  // 企业版客户改版（2026-10-29，定稿 P5，迁移 072）：开关关着 data 里没有这几格，diffKeys 只比 data 里有的，不影响别的版本
+  shortName: "客户简称",
+  addrCountry: "地址（国家）",
+  addrProvince: "地址（省份）",
+  addrCity: "地址（城市）",
+  addrDistrict: "地址（区县）",
+  assignWay: "分配方式",
 };
 
 type 叫法 = { customer: string; fields: { school: string; grade: string; major: string } };
