@@ -1795,6 +1795,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 渠道全称（2026-10-29 改版）：再长也只占一行、多出的省略号，鼠标停上去看全；「已停用」标签不被挤掉 */
 .chan-full { display: flex; align-items: center; gap: var(--s2); min-width: 0; max-width: 100%; }
 .chan-full > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 选渠道的级联（ChannelPicker）：手机宽两三列并排会顶出屏幕，每列收窄；格子本身已省略号 + title */
+.chan-picker-pop .ant-cascader-menu-item { max-width: min(400px, 44vw); }
 .chan-num { font-variant-numeric: tabular-nums; }
 /* 渠道详情里的投入记录：一笔一行，删除钮靠右 */
 .chan-invest { list-style: none; margin: 0; padding: 0; }
