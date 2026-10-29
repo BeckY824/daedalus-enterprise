@@ -643,6 +643,10 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 /* 记录页左边那条窄名单。比别的中栏窄一档：它只要装得下
    「名字 + 状态 + 最近什么时候」，再宽就开始和正文抢地方 */
 .pane-roster { width: var(--roster-w); }
+/* 首帧兜底：服务端不知道窗口多宽，那一帧名单一律当「露着」画成整栏，水合后窄窗再收进抽屉，
+   正文先窄后宽跳一下（1024 宽实测单栏 → 两栏）。窄于名单门槛（lib/roster.ts，220+312+52+630）时
+   水合后它必定在抽屉里，所以这里直接不画整栏那个 aside，不会误藏。服务端那帧右边面板一律收着，门槛不用加 380 */
+@media (max-width: 1213px) { aside.pane-roster { display: none; } }
 
 /* 首页中栏：问过的对话。
    **比记录页那条名单还窄**（232 vs 312）：一行就是一句话，不摆头像不摆标签，
@@ -1260,44 +1264,38 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 刚勾完成、还留在原处的那几秒：划线变淡，一眼看得出「这条完了」，也看得出还能撤 */
 .rec-task.is-done .rec-task-t { text-decoration: line-through; color: var(--text-muted); }
 
-/* 记录页在什么宽度上收。两个断点都是算出来的，不是拍的：
-     1440（桌面端窗口的默认尺寸）：左栏 164 + 名单 220 + 正文内边距 52 = 436，正文 1004。
-       档案 240 + AI 340 + 间距 32 = 612，时间线还剩 392 —— 三栏都在，站得住。
-     1440 以下：名单先收成抽屉（lib/roster.ts），正文拿回那 220，三栏照旧。
-     1180 以下：AI 也收成抽屉（记录页自己渲染 Drawer），只剩档案 + 时间线。
-   收的顺序是「先收名单再收 AI」：名单是换人看用的，AI 是正在读的这一位的，
-   屏幕紧张时后者更该留着。 */
-@media (max-width: 1179px) {
-  /* AI 收成抽屉（记录页自己渲染 Drawer），正文让出那 340 给时间线。
-     待办和「下次跟进」不跟着进抽屉——它们是这一位的事实，不是 AI 的产出，
-     横过来摆在时间线下面就行 */
-  .rec { grid-template-columns: 240px minmax(0, 1fr); }
-  .rec-right { grid-column: 1 / -1; }
-  .rec-rail { position: static; }
+/* 记录页在什么宽度上收：看正文**实际**多宽（容器查询，容器是 RecordView 最外层的 .rec-page），不看视口。
+   视口断点不知道左栏、名单露没露着、右边全局 AI 面板开没开，服务端渲染的第一帧又不知道窗口多宽，
+   结果第一帧按三栏排、JS 一量再缩成两栏，整页跳一下（2026-10-29）。容器查询第一帧就是对的。
+     1090 = 资料 240 + AI 栏 340 + 两道间距 + 时间线至少 480，再窄 AI 收进抽屉（头部「AI」按钮）；
+     630 以下单栏。和 RecordView 里的 AI栏门槛 / 单栏门槛 是同一对数。
+   RecordView 量到宽度后还会挂 rec-2col / rec-1col 两个类，只当记号（E2E 认它），样式全在这里。 */
+.rec-page { container: rec / inline-size; }
+@container rec (max-width: 1089px) {
+  /* 待办和「下次跟进」不跟着进抽屉——它们是这一位的事实，不是 AI 的产出。
+     两栏时放到时间线**上面**、两张并排，资料栏占左边两行。原来是整行排在最底下：资料栏六百多高，
+     13 / 15 寸上要滚一屏才看得到今天该做什么（2026-10-03 窗口走查；15 寸 1512 也走这一套） */
+  .rec { grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .rec .rec-rail { position: static; }
+  .rec > .rec-rail:first-child { grid-column: 1; grid-row: 1 / span 2; }
+  .rec > .rec-right { grid-column: 2; grid-row: 1; }
+  .rec > .rec-col { grid-column: 2; grid-row: 2; }
+  .rec > .rec-right > .ant-space { flex-direction: row; flex-wrap: wrap; column-gap: var(--s4); }
+  .rec > .rec-right > .ant-space > .ant-space-item { flex: 1 1 200px; min-width: 0; }
+  /* 还没量到宽度时 AI 栏和头部「AI」按钮都渲染了，这里只露该露的那个 */
+  .rec-ai-guess-col { display: none; }
 }
-@media (max-width: 900px) {
-  .rec { grid-template-columns: 1fr; }
+@container rec (min-width: 1090px) {
+  .rec-ai-guess-btn { display: none; }
 }
-/* 上面两条看视口，只管第一帧（还没量到正文多宽的时候）。量到之后由 RecordView 按正文实际宽度
-   挂这两个类——右边的全局面板开着时视口断点会误判，见 lib/roster.ts 的 DockOpenContext */
-.rec.rec-2col { grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: auto 1fr; }
-.rec.rec-2col .rec-rail { position: static; }
-/* 两栏时「待办」「下次跟进」放到时间线**上面**、两张并排，资料栏占左边两行。
-   原来是整行排在最底下：资料栏六百多高，13 / 15 寸上要滚一屏才看得到今天该做什么（2026-10-03 窗口走查；
-   AI 栏的门槛提到 1090 以后，15 寸 1512 也走这一套） */
-.rec.rec-2col > .rec-rail:first-child { grid-column: 1; grid-row: 1 / span 2; }
-.rec.rec-2col > .rec-right { grid-column: 2; grid-row: 1; }
-.rec.rec-2col > .rec-col { grid-column: 2; grid-row: 2; }
-.rec.rec-2col > .rec-right > .ant-space { flex-direction: row; flex-wrap: wrap; column-gap: var(--s4); }
-.rec.rec-2col > .rec-right > .ant-space > .ant-space-item { flex: 1 1 200px; min-width: 0; }
-.rec.rec-1col { grid-template-columns: minmax(0, 1fr); }
-/* 单栏时 rec-2col 也挂着（正文 < 630 一定也 < 1090），上面那几条「放第 2 列」更具体、会盖过单栏：
-   网格多出一条隐式列，时间线整栏被挤到正文右边、压在全局 AI 面板底下，铅笔点不到
-   （2026-10-19 客户 Windows 截图；1280 宽手动开着 AI 面板就是这样）。叠成一列：档案、待办、时间线 */
-.rec.rec-2col.rec-1col { grid-template-rows: none; }
-.rec.rec-2col.rec-1col > .rec-rail:first-child { grid-column: 1; grid-row: 1; }
-.rec.rec-2col.rec-1col > .rec-right { grid-column: 1; grid-row: 2; }
-.rec.rec-2col.rec-1col > .rec-col { grid-column: 1; grid-row: 3; }
+/* 单栏要盖过上面那几条「放第 2 列」：否则网格多出一条隐式列，时间线整栏被挤到正文右边、压在全局 AI 面板底下，
+   铅笔点不到（2026-10-19 客户 Windows 截图；1280 宽手动开着 AI 面板就是这样）。叠成一列：档案、待办、时间线 */
+@container rec (max-width: 629px) {
+  .rec { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .rec > .rec-rail:first-child { grid-column: 1; grid-row: 1; }
+  .rec > .rec-right { grid-column: 1; grid-row: 2; }
+  .rec > .rec-col { grid-column: 1; grid-row: 3; }
+}
 
 /* ---------- 首页：对话面 ---------- */
 .home { min-height: calc(100vh - 140px); display: flex; flex-direction: column; }

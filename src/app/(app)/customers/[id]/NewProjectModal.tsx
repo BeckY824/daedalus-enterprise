@@ -106,7 +106,7 @@ export default function NewProjectModal({
       onCancel={onClose}
       confirmLoading={存着}
       destroyOnHidden
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 12 }}>客户：{customerName}（自动带上）</div>
       <Form
