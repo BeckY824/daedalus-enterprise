@@ -2,8 +2,10 @@
 /**
  * 企业版压测（10-24 结果：30 人 × 10 倍数据，主要页面 p95 < 200 ms）。
  *
- *   node scripts/perf/enterprise-p95.mjs --out <输出目录> [--scale 10] [--duration 180] [--port 3570] [--skip-build] [--reuse-db] [--extra]
- *   GATE=1 …   任何一页 p95 ≥ 200 ms 或有请求出错就以 1 退出
+ *   node scripts/perf/enterprise-p95.mjs --out <输出目录> [--scale 10] [--duration 180] [--port 3570] [--skip-build] [--reuse-db] [--extra] [--limit 200] [--first-js]
+ *   GATE=1 …   任何一页 p95 ≥ --limit（默认 200 ms）或有请求出错就以 1 退出
+ *   --first-js  再量登录 / 首页 / 客户列表的首屏 JS（HTML 里全部 script 逐个 gzip -6 求和，10-28 P4 的量法），
+ *               超 first-js-baseline.json 的上限、或比里面的基线涨 > 10% 也算红。CI 速度闸门用（10-29，测试规划 S12）
  *
  * 流程：
  *   1. <输出目录>/crm.db 新建一份空库（prisma db push），enterprise-seed.ts 造 30 人 + SCALE 倍数据；
@@ -24,6 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import zlib from "node:zlib";
 
 const 仓库 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const require = createRequire(path.join(仓库, "package.json"));
@@ -41,7 +44,7 @@ const 名单文件 = path.join(输出, "people.json");
 const 种子文件 = path.join(输出, "seed.json");
 const 加一组 = 参数.extra === "1";
 const 密钥 = "perf-only-secret-not-used-anywhere-else-0123456789";
-const 门槛 = 200;
+const 门槛 = Number(参数.limit ?? 200);
 const 等 = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(输出, { recursive: true });
 
@@ -147,6 +150,23 @@ for (const u of 名单) for (const 页 of 页面) for (const 法 of 方式) {
 }
 if (坏.length) { console.error("热身有页面没打开：\n" + 坏.slice(0, 20).join("\n")); process.exit(1); }
 
+/* ---------- 首屏 JS（--first-js） ---------- */
+if (参数["first-js"]) {
+  const 表 = JSON.parse(fs.readFileSync(path.join(仓库, "scripts/perf/first-js-baseline.json"), "utf8"));
+  const 老板 = 名单.find((u) => u.role === "ADMIN") ?? 名单[0];
+  结果.firstJs = {};
+  for (const [名, { path: p, login, baseKB, maxKB }] of Object.entries(表.pages)) {
+    const r = await fetch(`${站}${p}`, { headers: login ? { cookie: 老板.cookie } : {}, redirect: "manual" });
+    const html = await r.text();
+    const 脚本 = [...new Set([...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, "&")))];
+    let 字节 = 0;
+    for (const s of 脚本) 字节 += zlib.gzipSync(Buffer.from(await (await fetch(new URL(s, 站))).arrayBuffer()), { level: 6 }).length;
+    const kb = +(字节 / 1024).toFixed(1);
+    const 线 = Math.min(maxKB, +(baseKB * 1.1).toFixed(1));
+    结果.firstJs[名] = { kb, scripts: 脚本.length, baseKB, maxKB, limitKB: 线, pass: r.status === 200 && 脚本.length > 0 && kb <= 线 };
+  }
+}
+
 /* ---------- 4. 单人基线 ---------- */
 const 销售 = 名单.find((u) => u.role === "SALES");
 结果.single = {};
@@ -189,6 +209,8 @@ for (const role of ["ADMIN", "MANAGER", "SALES"]) 结果.load.byRole[role] = 汇
 结果.errorsSample = 样本.filter((x) => !x.ok).slice(0, 10).map((x) => `${x.页} ${x.法} ${x.role} → ${x.status}`);
 
 const 超 = Object.entries(结果.load.pages).filter(([, v]) => v.p95 != null && v.p95 >= 门槛).map(([k, v]) => `${k} p95 ${v.p95} ms`);
+const 包超 = Object.entries(结果.firstJs ?? {}).filter(([, v]) => !v.pass).map(([k, v]) => `${k} 首屏 JS ${v.kb} KB（线 ${v.limitKB}）`);
+超.push(...包超);
 结果.pass = 超.length === 0 && 结果.load.all.errors === 0;
 结果.over = 超;
 fs.writeFileSync(path.join(输出, "result.json"), JSON.stringify(结果, null, 2));
@@ -211,6 +233,14 @@ const md = [
   "",
   "按角色：" + Object.entries(结果.load.byRole).map(([k, v]) => `${k} p95 ${v.p95} ms（${v.n} 次）`).join("；"),
   "",
+  ...(结果.firstJs ? [
+    "## 首屏 JS（gzip -6，HTML 里全部 script 求和）",
+    "",
+    "| 页面 | script 数 | KB | 基线 KB | 线 KB（上限与基线 +10% 取小） | |",
+    "|---|---|---|---|---|---|",
+    ...Object.entries(结果.firstJs).map(([k, v]) => `| ${k} | ${v.scripts} | **${v.kb}** | ${v.baseKB} | ${v.limitKB} | ${v.pass ? "绿" : "红"} |`),
+    "",
+  ] : []),
   "## 单人基线（一个销售顺序打开，每页 12 次）",
   "",
   "| 页面 | 次数 | p50 | p95 | p99 | 出错 | 大小 KB |",

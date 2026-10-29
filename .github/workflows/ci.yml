@@ -16,7 +16,7 @@ concurrency:
 # 10-28 瘦身：这个仓库只发企业版（部署都开 CRM_ENTERPRISE=1），只验开关关着的两组任务
 # （E2E 网页 1–5/5、和 main 逐字段一致的差分）护不住我们发出去的东西，删掉。
 # 分支保护认的三个必过检查名字不变：「类型 / 代码检查 / 单元测试」「E2E」「密钥扫描」，
-# 前两个现在是汇总 job，等各片跑完、全绿才绿。
+# 前两个现在是汇总 job，等各片跑完、全绿才绿。10-29 起「E2E」也等速度闸门（perf）。
 jobs:
   lint:
     name: 类型 / 代码检查（tsc + eslint）
@@ -217,16 +217,70 @@ jobs:
           path: test-results/
           retention-days: 7
 
+  # 速度闸门（10-29，测试规划 S4 + S12）：生产构建起服务，30 人 × 1 倍数据各压 60 秒，
+  # A（全员看全部）和 B（按组织看，org-seed 后同一份库再压一轮）每页 p95 < 300 ms、0 出错；
+  # 顺带量登录 / 首页 / 客户列表首屏 JS（HTML 里全部 script 逐个 gzip -6 求和），
+  # 超上限或比 scripts/perf/first-js-baseline.json 涨 > 10% 就红。本机 1 倍 p95 ~50 ms，CI 机慢 2–3 倍也还有余量
+  perf:
+    name: 速度闸门
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
+      - run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
+      - name: 缓存 Next 构建
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ github.job }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts', 'public/**') }}
+          restore-keys: |
+            next-${{ github.job }}-${{ hashFiles('package-lock.json') }}-
+      - run: npx prisma generate
+      - run: npx prisma generate --schema=prisma/control.prisma
+        env:
+          CONTROL_DATABASE_URL: file:/tmp/control-ci.db
+      - name: A：全员看全部 + 首屏 JS
+        # 红了也把这轮的表留下（B 会覆盖 result.md），Summary 里两轮都看得到
+        run: |
+          rc=0; node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --extra --limit 300 --first-js || rc=$?
+          cp /tmp/perf/result.md /tmp/perf/A.md 2>/dev/null || true
+          exit $rc
+        env:
+          GATE: "1"
+      - name: B：按组织看
+        run: |
+          DATABASE_URL=file:/tmp/perf/crm.db SEED=/tmp/perf/seed.json NODE_ENV=development npx tsx scripts/perf/enterprise-org-seed.ts
+          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --extra --limit 300 --reuse-db --skip-build
+        env:
+          GATE: "1"
+      - name: 结果写进 Summary
+        if: always()
+        run: cat /tmp/perf/A.md /tmp/perf/result.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-gate
+          path: |
+            /tmp/perf/*.md
+            /tmp/perf/*.json
+            /tmp/perf/server.log
+          retention-days: 7
+
   e2e:
     name: E2E
-    needs: [e2e-web-ent, e2e-ent-flow, e2e-layout]
+    needs: [e2e-web-ent, e2e-ent-flow, e2e-layout, perf]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: 各片都绿才算过
         run: |
-          echo "网页·企业版开：${{ needs.e2e-web-ent.result }}；企业版主流程：${{ needs.e2e-ent-flow.result }}；排版闸门：${{ needs.e2e-layout.result }}"
-          [ "${{ needs.e2e-web-ent.result }}" = success ] && [ "${{ needs.e2e-ent-flow.result }}" = success ] && [ "${{ needs.e2e-layout.result }}" = success ]
+          echo "网页·企业版开：${{ needs.e2e-web-ent.result }}；企业版主流程：${{ needs.e2e-ent-flow.result }}；排版闸门：${{ needs.e2e-layout.result }}；速度闸门：${{ needs.perf.result }}"
+          [ "${{ needs.e2e-web-ent.result }}" = success ] && [ "${{ needs.e2e-ent-flow.result }}" = success ] && [ "${{ needs.e2e-layout.result }}" = success ] && [ "${{ needs.perf.result }}" = success ]
 
   # 每轮 CI 的真实耗时写进本轮的 Summary：总墙钟 + 每个 job，便于盯「总耗时 ≤ 12 分钟」
   timing:
