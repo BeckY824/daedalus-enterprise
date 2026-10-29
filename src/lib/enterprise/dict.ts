@@ -5,6 +5,7 @@
  *
  * 谁能改同项目模式的两本字典：「后台设置谁能改」的字典一行（挡改设置(me, "字典")）。不是企业版不读不写。
  */
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
@@ -111,6 +112,17 @@ export async function 可选项(kind: 字典种类): Promise<string[]> {
   if (!企业版()) return [];
   return (await 企业字典(kind)).filter((x) => x.active).map((x) => x.name);
 }
+
+/**
+ * 页面渲染用的读法：同一次请求里同一类只读一次（React cache，10-29）。客户页一屏要读好几类、中栏名单也要读客户状态，
+ * 每处直接调 企业字典 是每次 3～4 句（数行数、看记号、取列表）。只给服务端组件渲染用：写库、校验提交（选的原因）照旧现读
+ */
+export const 页面字典 = cache((kind: 字典种类): Promise<EntDictItem[]> => 企业字典(kind));
+/** 同 可选项，走 页面字典 */
+export const 页面可选项 = cache(async (kind: 字典种类): Promise<string[]> => {
+  if (!企业版()) return [];
+  return (await 页面字典(kind)).filter((x) => x.active).map((x) => x.name);
+});
 
 /**
  * 下拉提交上来的原因（10-27）：不是企业版或没选 = null；选的必须是这一类当前启用的选项。
