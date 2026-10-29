@@ -50,7 +50,7 @@ export const 状态of = (g: 组): 待办状态 => (g === "逾期" ? "逾期" : g
 export const 在卡里 = (卡: 待办卡, g: 组): boolean => 卡 === "all" || 卡的组[卡] === g;
 
 /**
- * 挑出这一页要摆的：按人筛（只看）→ 按类型筛 → 分组 → 逾期在前、然后按时间从早到晚、没时间的排最后
+ * 挑出这一页要摆的：按人筛（只看：一个人的 id，或一组人 = 看板的人 的 谁；不给 = 不筛）→ 按类型筛 → 分组 → 逾期在前、然后按时间从早到晚、没时间的排最后
  * （分组 的「以后」里没时间的本来就在末尾）→ 按卡筛 → 切出第 页 页。
  * 四张卡的条数跟着人和类型走（换成「任务」，卡上数的也只是任务），不跟着卡本身。
  * 页码超出最后一页时落到最后一页（完成了几条、换了人之后地址栏里的页码可能已经没那么多页）。
@@ -58,11 +58,12 @@ export const 在卡里 = (卡: 待办卡, g: 组): boolean => 卡 === "all" || �
 export function 挑一页(
   全部: readonly 轻项[],
   { 只看, 类型 = "all", 卡 = "all", 页 = 1, now = dayjs(), 每页 = 复盘待办每页 }: {
-    只看?: string; 类型?: 待办类型; 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number;
+    只看?: string | readonly string[]; 类型?: 待办类型; 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number;
   } = {},
 ): { 计数: Record<待办卡, number>; 总数: number; 页: number; 要: { key: string; 组: 组 }[] } {
   const 前缀 = 类型 === "all" ? null : `${类型}:`;
-  const 这些 = 全部.filter((x) => (!只看 || x.ownerId === 只看) && (!前缀 || x.key.startsWith(前缀)));
+  const 人 = 只看 === undefined ? null : new Set(typeof 只看 === "string" ? [只看] : 只看);
+  const 这些 = 全部.filter((x) => (!人 || 人.has(x.ownerId)) && (!前缀 || x.key.startsWith(前缀)));
   const 分 = 分组(这些, now);
   const 排好 = 组名.flatMap((g) => 分[g].map((x) => ({ key: x.key, 组: g })));
   const 卡里 = 排好.filter((x) => 在卡里(卡, x.组));

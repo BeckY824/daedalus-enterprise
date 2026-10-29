@@ -22,7 +22,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import { 管全队客户 } from "@/lib/constants";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
-import { 可选项 } from "@/lib/enterprise/dict";
+import { 页面可选项 } from "@/lib/enterprise/dict";
 import { 企业版字典 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -38,16 +38,13 @@ export default async function CustomerDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ focus?: string }>;
 }) {
-  const me = await requireUser();
-  const { id } = await params;
+  // 企业版只用项目（P14）：时间线走下面的「沟通记录」，老时间线那 51 条不取。和登录态一起读（互不依赖）
+  const [me, { id }, sp, 只项目] = await Promise.all([requireUser(), params, searchParams, 企业版只用项目()]);
   /*
     从到点提醒点进来（?focus=plan:…）：记录页只摆一条计划（最早那条），叫你的那条若不是最早的，
     点进来就找不到它、也闪不了（2026-10-02 排查 3-3）。这时摆的是叫你的那一条
   */
-  const 要看的计划 = /^plan:(.+)$/.exec((await searchParams).focus ?? "")?.[1] ?? null;
-
-  // 企业版只用项目（P14）：时间线走下面的「沟通记录」，老时间线那 51 条不取
-  const 只项目 = await 企业版只用项目();
+  const 要看的计划 = /^plan:(.+)$/.exec(sp.focus ?? "")?.[1] ?? null;
 
   const customer = await prisma.customer.findUnique({
     where: { id },
@@ -83,19 +80,76 @@ export default async function CustomerDetailPage({
 
   customer.plans = earliestScheduled(customer.plans, p => scheduleOrder(p.plannedAt, p.plannedOn), 1);
 
-  // 演示区是公开的，同一份数据所有访客共用：号码一律打码。
-  // 自己部署的实例不受影响——销售要照着这个号打电话。
-  const 号 = await 号码脱敏器();
-
-  // 推荐人候选不再跟页面一起下来，客户表单打开时才取（CustomerForm 的 useReferrerCandidates，2026-10-20）
-  const [users, channels] = await Promise.all([负责人候选(), 可选渠道()]);
   const 企 = 企业版();
+  /*
+    下面这些互不依赖（或只依赖上面那条客户），一次并起来取（10-29 提速）：原来 JSX 属性里一个个 await，
+    客户页一屏是二十来次串着的往返。有先后的用 .then 接在各自的前一步后面，不另起一道墙
+  */
+  // 企业版联系人挂多位客户（P13 第 1 条）：挂到这位的别人家联系人排在自家的后面；自家的另外挂在哪也带上
+  const 挂来的P = 企 ? 客户的联系人们(customer.id) : Promise.resolve([]);
+  const 全部联系人idP = 挂来的P.then((挂来的) => [...customer.contacts.map((c) => c.id), ...挂来的.map((x) => x.contact.id)]);
+  const 规则P = 只项目 ? 生效组织规则() : null;
+  const [
+    号, users, channels, 挂来的, 另挂, 只项目四样,
+    sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
+    联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数, 报价记录,
+  ] = await Promise.all([
+    // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
+    号码脱敏器(),
+    // 推荐人候选不再跟页面一起下来，客户表单打开时才取（CustomerForm 的 useReferrerCandidates，2026-10-20）
+    负责人候选(),
+    可选渠道(),
+    挂来的P,
+    企 ? 联系人另挂(customer.contacts.map((c) => c.id)) : Promise.resolve({} as Awaited<ReturnType<typeof 联系人另挂>>),
+    /*
+      企业版只用项目（P14）：时间线换成「沟通记录」——这位客户在我看得到的各项目里的跟进 + 不属于任何项目的老跟进，只读；
+      「跟进」按钮列这些项目、点了跳过去（lib/enterprise/customer-follow-feed.ts，服务端按项目可见范围滤）
+    */
+    只项目
+      ? Promise.all([
+          客户沟通汇总(me, customer.id),
+          跟进去处们(me, customer.id),
+          页面可选项("transfer"),
+          prisma.followPlan.findMany({ where: { customerId: customer.id, done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], take: 20 }),
+        ])
+      : null,
+    客户来源线索(customer.id),
+    llmEnabled(),
+    收藏了吗(me.id, id),
+    // 历史负责人只企业版摆；记录不管开没开都记着（换负责人那一刻写，开了以后之前的也看得到）
+    企 ? 历史负责人of(customer.id) : [],
+    // 企业版：只记在联系方式子表里的旺旺 ID（建档时第一步选了旺旺，客户表和档案里都没有这一格），基本资料里摆出来
+    企
+      ? prisma.contactMethod.findMany({ where: { customerId: customer.id, contactId: null, kind: "wangwang" }, orderBy: { createdAt: "asc" }, select: { value: true } }).then((ms) => ms.map((m) => m.value))
+      : [],
+    // 企业版只用项目：商机一节换成这位名下的项目（10-26）
+    只项目
+      ? prisma.project.findMany({
+          where: { customerId: customer.id },
+          orderBy: { updatedAt: "desc" },
+          select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
+        })
+      : null,
+    // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
+    规则P ? 规则P.then((r) => 客户参与的项目(customer.id, 字典of(true, r.阶段.出口叫法))) : null,
+    // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
+    只读客户(defaultClient, customer),
+    // 企业版客户状态（字典 custStatus，10-28 去遗留 A1）：标签行一枚章点了能改
+    企 ? 页面可选项("custStatus") : [],
+    // 企业版联系人附件（10-28）：每位联系人挂了几张；附件表不分权限，能看到这位客户就能看到他联系人的附件
+    企 ? 全部联系人idP.then((ids) => 联系人分类附件数(defaultClient, ids)) : null,
+    // 企业版客户改版（定稿 P5）：关联客户卡片、联系人号码类型、分配方式
+    企 ? 关联客户们(customer.id) : null,
+    企 ? 号码种类表().then((t) => t.map((x) => ({ 名: x.名, kind: x.kind, active: x.active }))) : undefined,
+    企 ? 页面可选项("custAssign") : undefined,
+    企 ? 页面可选项("custType") : undefined,
+    规则P,
+    企 ? 全部联系人idP.then(async (ids) => Object.fromEntries((await 附件个数(defaultClient, { contactIds: ids })).联系人)) : null,
+    报价明细 ? 客户报价记录(customer.id) : [],
+  ]);
+  const [汇总, 跟进去处, 转让选项, 待办计划] = 只项目四样 ?? [null, null, null, null];
   // 号码类的几种（手机、座机、WhatsApp）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
   const 打码种类 = new Set(["phone", "landline", "whatsapp"]);
-  // 企业版联系人挂多位客户（P13 第 1 条）：挂到这位的别人家联系人排在自家的后面；自家的另外挂在哪也带上
-  const 挂来的 = 企 ? await 客户的联系人们(customer.id) : [];
-  const 另挂 = 企 ? await 联系人另挂(customer.contacts.map((c) => c.id)) : {};
-  const 全部联系人id = [...customer.contacts.map((c) => c.id), ...挂来的.map((x) => x.contact.id)];
   const 联系人一行 = (c: (typeof customer.contacts)[number]) => ({
     id: c.id,
     name: c.name,
@@ -117,60 +171,30 @@ export default async function CustomerDetailPage({
       : {}),
   });
 
-  /*
-    企业版只用项目（P14）：时间线换成「沟通记录」——这位客户在我看得到的各项目里的跟进 + 不属于任何项目的老跟进，只读；
-    「跟进」按钮列这些项目、点了跳过去（lib/enterprise/customer-follow-feed.ts，服务端按项目可见范围滤）
-  */
-  // 这几样互不依赖，一起取（串着是 9 次往返左右，速度闸门客户详情 p95 被顶过线）
-  const [汇总, 跟进去处, 转让选项, 待办计划] = 只项目
-    ? await Promise.all([
-        客户沟通汇总(me, customer.id),
-        跟进去处们(me, customer.id),
-        可选项("transfer"),
-        prisma.followPlan.findMany({ where: { customerId: customer.id, done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], take: 20 }),
-      ])
-    : [null, null, null, null];
-
   return (
     <RecordView
       key={customer.id}
-      sourceLead={await 客户来源线索(customer.id)}
+      sourceLead={sourceLead}
       users={users}
       channels={channels}
-      aiEnabled={await llmEnabled()}
-      已收藏={await 收藏了吗(me.id, id)}
+      aiEnabled={aiEnabled}
+      已收藏={已收藏}
       能放公海={管全队客户(me.role) || customer.salesOwnerId === me.id}
       原负责人领不回={!!customer.pool && customer.salesOwnerId === me.id && 拦原负责人()}
-      // 历史负责人只企业版摆；记录不管开没开都记着（换负责人那一刻写，开了以后之前的也看得到）
-      换负责人记录={企业版() ? await 历史负责人of(customer.id) : []}
-      // 企业版：只记在联系方式子表里的旺旺 ID（建档时第一步选了旺旺，客户表和档案里都没有这一格），基本资料里摆出来
-      旺旺们={企业版()
-        ? (await prisma.contactMethod.findMany({ where: { customerId: customer.id, contactId: null, kind: "wangwang" }, orderBy: { createdAt: "asc" }, select: { value: true } })).map((m) => m.value)
-        : []}
-      // 企业版只用项目：商机一节换成这位名下的项目（10-26）
-      项目们={(await 企业版只用项目())
-        ? await prisma.project.findMany({
-            where: { customerId: customer.id },
-            orderBy: { updatedAt: "desc" },
-            select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
-          })
-        : null}
-      // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
-      参与项目们={(await 企业版只用项目()) ? await 客户参与的项目(customer.id, 字典of(true, (await 生效组织规则()).阶段.出口叫法)) : null}
-      // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
-      只读={await 只读客户(defaultClient, customer)}
-      // 企业版联系人附件（10-28）：每位联系人挂了几张；附件表不分权限，能看到这位客户就能看到他联系人的附件
-      // 企业版客户状态（字典 custStatus，10-28 去遗留 A1）：标签行一枚章点了能改
-      客户状态选项={企业版() ? await 可选项("custStatus") : []}
-      联系人分类附件数={企 ? await 联系人分类附件数(defaultClient, 全部联系人id) : null}
-      // 企业版客户改版（定稿 P5）：关联客户卡片、联系人号码类型、分配方式
-      关联们={企 ? await 关联客户们(customer.id) : null}
-      号码种类={企 ? (await 号码种类表()).map((x) => ({ 名: x.名, kind: x.kind, active: x.active })) : undefined}
-      分配方式选项={企 ? await 可选项("custAssign") : undefined}
-      客户类型选项={企 ? await 可选项("custType") : undefined}
+      换负责人记录={换负责人记录}
+      旺旺们={旺旺们}
+      项目们={项目们}
+      参与项目们={参与项目们}
+      只读={只读}
+      客户状态选项={客户状态选项}
+      联系人分类附件数={联系人分类附件}
+      关联们={关联们}
+      号码种类={号码种类}
+      分配方式选项={分配方式选项}
+      客户类型选项={客户类型选项}
       // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/screen.tsx）
-      新建项目={企 && (await 企业版只用项目()) ? { 节点们: [...企业版字典.节点们.线索], 要下一步: (await 生效组织规则()).超时回收.开 } : null}
-      联系人附件数={企业版() ? Object.fromEntries((await 附件个数(defaultClient, { contactIds: 全部联系人id })).联系人) : null}
+      新建项目={企 && 规则 ? { 节点们: [...企业版字典.节点们.线索], 要下一步: 规则.超时回收.开 } : null}
+      联系人附件数={联系人附件数}
       customer={{
         id: customer.id,
         name: customer.name,
@@ -217,7 +241,7 @@ export default async function CustomerDetailPage({
           挂靠: { linkId: x.linkId, note: x.note, 主客户Id: x.主客户.id, 主客户名: x.主客户.name, 主客户看得到: x.主客户.看得到, 能改: x.主客户.能改 },
         })),
       ]}
-      报价记录={报价明细 ? await 客户报价记录(customer.id) : []}
+      报价记录={报价记录}
       contracts={customer.contracts.map((c) => ({
         id: c.id,
         amount: 签约金额(c),

@@ -64,17 +64,20 @@ export default async function DataPage({ searchParams }: { searchParams: SP }) {
  * 只取当前页签要的数——在「待办」不查图表，在「数据」不查待办。
  * 按成员看：管理层地址栏 ownerId 选人（下拉在 DataShell，页签上面、两个页签共用），业务员强制只看自己；
  * 只看某一个人时，图表、按负责人那张表（藏掉）和待办都只数他的。
+ * 默认「全部」（10-29 定稿）：总管理员 / 老板 = 所有人；别的上级 = 自己 + 直属和间接下属（看板的人 的 谁），
+ * 这一圈在服务端按负责人筛，地址栏塞别人的 id 也只回落到「全部」。
  */
 async function 项目数据({ view, user, sp }: { view: 视图; user: { id: string; role: string }; sp: Awaited<SP> }) {
   const 人 = await 看板的人(user, sp.ownerId);
   const 只看 = 人.只看;
+  const 范围 = 只看 ?? 人.谁;
   const 选人 = 人.选项 ? { 选项: 人.选项, 当前: 只看 ?? "" } : undefined;
   const 页签 = 读页签(sp.tab, sp.view);
 
   if (页签 === "todo") {
     const 卡 = 读卡(sp.f);
     const 类型 = 读类型(sp.kind);
-    const d = await 复盘待办of(只看, { 卡, 类型, 页: 读页码(sp.p) });
+    const d = await 复盘待办of(范围, { 卡, 类型, 页: 读页码(sp.p) });
     return (
       <DataShell view={view} 项目 选人={选人} 页签="todo">
         <BoardTodos 数={d} 卡={卡} 类型={类型} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
@@ -85,7 +88,7 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
   const 业务 = await getBusiness();
   const 本位币 = 业务.currency;
   if (view === "现在") {
-    const [数, 唯一] = await Promise.all([项目现在(本位币, 只看), 唯一负责人()]);
+    const [数, 唯一] = await Promise.all([项目现在(本位币, 范围), 唯一负责人()]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="data">
         <ProjectNowView 数={数} 本位币={本位币} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
@@ -97,7 +100,7 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
   const from = (本月 ? now.startOf("month") : now.startOf("year")).toDate();
   const to = (本月 ? now.endOf("month") : now.endOf("year")).toDate();
   const 口径 = 本月 ? now.format("YYYY 年 M 月") : `${now.year()} 年`;
-  const [数, 唯一] = await Promise.all([项目一段(from, to, 本月 ? "day" : "month", 本位币, 只看), 唯一负责人()]);
+  const [数, 唯一] = await Promise.all([项目一段(from, to, 本月 ? "day" : "month", 本位币, 范围), 唯一负责人()]);
   return (
     <DataShell view={view} 项目 选人={选人} 页签="data">
       <ProjectPeriodView 数={数} 本位币={本位币} 口径={口径} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />

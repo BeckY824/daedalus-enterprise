@@ -12,6 +12,7 @@ import { 已立项天数 } from "./project-fields";
 import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 import { 认首页卡, 首页卡条件, 即将逾期 } from "./home-cards";
+import { 首页卡的人 } from "./home-cards-db";
 import { 字典of, 阶段与进程, type 阶段字典 } from "./stage-dict";
 import { 待我复核的 } from "./lead-verify";
 
@@ -33,7 +34,7 @@ export function 数新线索() {
  * 项目页和企业版「新线索」页共用的取数：先跑超时回收，再按筛选取项目、拼成 项目行。
  * 只看阶段 = "线索" 时只取还在线索阶段的（含已线索流失的），企业版 /leads 用。
  */
-export async function 读项目列表(me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0], sp: 项目筛选, 只看阶段?: 阶段) {
+export async function 读项目列表(me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0] & { role: string }, sp: 项目筛选, 只看阶段?: 阶段) {
   // 企业版超时回收：先收再列，列表里看到的就是收完的样子
   await 公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e));
   await 回填一次();
@@ -43,6 +44,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 今 = new Date();
   // 首页指标卡的筛选只在企业版认；条件和卡上 count 用的是同一份（home-cards.ts），数对得上
   const 卡 = 规则 ? 认首页卡(sp.f) : "";
+  // 点卡进来的，和卡上的数同一圈人（首页卡的人：业务员只看自己，上级看自己 + 下属，老板全看），数对得上
+  const 卡的人 = 卡 ? await 首页卡的人(me) : undefined;
   const rows = await prisma.project.findMany({
     where: {
       ...(只看阶段 ? { phase: 只看阶段 } : {}),
@@ -50,7 +53,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
       ...(typeof sp.ownerId === "string" && sp.ownerId ? { ownerId: sp.ownerId } : {}),
       ...(sp.pool === "1" ? { pooledAt: { not: null } } : {}),
       // 卡的条件里也可能有 OR（即将逾期的粗筛），放进 AND 里不和搜索词的 OR 打架
-      ...(卡 && 规则 ? { AND: [首页卡条件(卡, 规则, 字典of(企), 今)] } : {}),
+      ...(卡 && 规则 ? { AND: [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的人 ? [{ ownerId: { in: [...卡的人] } }] : [])] } : {}),
     },
     orderBy: { updatedAt: "desc" },
     take: 项目上限,

@@ -8,7 +8,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { Tag, Drawer } from "antd";
 import { SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { FOLLOW_STATUS_COLOR } from "@/lib/constants";
-import { 名单分组, 未填写组 } from "@/lib/roster-groups";
+import { 名单分组, 客户状态分组, 未填写组 } from "@/lib/roster-groups";
+import { 客户状态色 } from "@/lib/enterprise/cust-status-color";
 import { avatarColor, initial, smartTime, AVATAR_TEXT } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel } from "@/lib/business-config";
@@ -24,6 +25,8 @@ export type CustomerRosterData = {
     id: string;
     name: string;
     followStatus: string;
+    /** 企业版客户状态（字典 custStatus）；别的版本不给 */
+    custStatus?: string | null;
     lastFollowAt: string | null;
     ownerName: string;
     lastNote: string | null;
@@ -34,6 +37,11 @@ export type CustomerRosterData = {
     /** 最近一条还没做的计划：「本周要跟」和右下角圆点看它 */
     nextPlanAt?: string | null;
   }[];
+  /**
+   * 企业版：按客户状态分组（10-29）。顺序 = 字典里启用的几项按字典排，颜色按字典项给（lib/enterprise/cust-status-color.ts）。
+   * 别的版本不给，照旧按跟进状态分
+   */
+  客户状态?: { 顺序: string[]; 颜色: Record<string, string> } | null;
 };
 
 /**
@@ -93,7 +101,12 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
   );
   const 分组 = !q.trim();
   // 分组规则在 lib/roster-groups.ts：预设外的单独成组、空串归「未填写」，一个人都不能消失（2026-10-04 L-072）
-  const 组们 = useMemo(() => 名单分组(页签里), [页签里]);
+  const 按客户状态 = data.客户状态 ?? null;
+  const 组们 = useMemo(() => (按客户状态 ? 客户状态分组(页签里, 按客户状态.顺序) : 名单分组(页签里)), [页签里, 按客户状态]);
+  /** 行上标签、组头说的那个状态：企业版是客户状态，别的版本是跟进状态（按业务叫法） */
+  const 状态名 = (s: string) => (按客户状态 ? s : statusLabel(b, s));
+  const 状态色 = (s: string) =>
+    按客户状态 ? (按客户状态.颜色[s] ?? (s === 未填写组 ? "default" : 客户状态色({ name: s }))) : (FOLLOW_STATUS_COLOR[s] ?? "default");
   const 切组 = (s: string) => set收起的(收起的.includes(s) ? 收起的.filter((x) => x !== s) : [...收起的, s]);
 
 
@@ -128,6 +141,7 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
       : !r.lastFollowAt || dayjs().diff(dayjs(r.lastFollowAt), "day") >= 30
         ? { cls: "cold", 说: "一个月没跟进了" }
         : { cls: "ok", 说: "最近跟进过" };
+  const 行状态 = (r: CustomerRosterData["rows"][number]) => (按客户状态 ? r.custStatus : r.followStatus)?.trim() || 未填写组;
   const 一行 = (r: CustomerRosterData["rows"][number], 带状态: boolean) => {
     const d = 点(r);
     return (
@@ -144,8 +158,8 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
           <span className="roster-l0">
             <span className="roster-src">
               {带状态 && (
-                <Tag color={FOLLOW_STATUS_COLOR[r.followStatus] ?? "default"} style={{ margin: "0 6px 0 0", borderRadius: 5, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
-                  {statusLabel(b, r.followStatus?.trim() || 未填写组)}
+                <Tag color={状态色(行状态(r))} style={{ margin: "0 6px 0 0", borderRadius: 5, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
+                  {状态名(行状态(r))}
                 </Tag>
               )}
               {r.source ?? ""}
@@ -218,7 +232,7 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
                 <div key={g.s} className="roster-group">
                   <button type="button" className="roster-sec" aria-expanded={开} onClick={() => 切组(g.s)}>
                     <span className="roster-car" aria-hidden="true">▾</span>
-                    {statusLabel(b, g.s)}
+                    {状态名(g.s)}
                     <span className="roster-cnt">{g.rows.length}</span>
                   </button>
                   {开 && g.rows.map((r) => 一行(r, false))}

@@ -25,6 +25,14 @@ export function 项目名单分组<T extends { 阶段: string | null }>(rows: T[
   return 按预设分组(rows, (r) => r.阶段, 阶段们);
 }
 
+/**
+ * 企业版客户中栏按「客户状态」分组（10-29 用户：「应该是按客户状态来设置。而不是待跟进，跟进中，意向较高，已签约」）。
+ * 顺序 = 字典 custStatus 里启用的几项、按字典排序（服务端传进来）；停用了但还有人挂着的、字典外的接在后面，空的归「未填写」。
+ */
+export function 客户状态分组<T extends { custStatus?: string | null }>(rows: T[], 顺序: readonly string[]): { s: string; rows: T[] }[] {
+  return 按预设分组(rows, (r) => r.custStatus, 顺序);
+}
+
 function 按预设分组<T>(rows: T[], 取: (r: T) => string | null | undefined, 预设们: readonly string[]): { s: string; rows: T[] }[] {
   const 组名 = (r: T) => 取(r)?.trim() || 未填写组;
   const 预设 = new Set<string>(预设们);
