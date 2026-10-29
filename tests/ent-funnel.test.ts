@@ -101,7 +101,8 @@ describe("可见范围：老板看全员，业务员看自己（企业版 + 项�
     const 月初 = new Date();
     月初.setDate(1);
     月初.setHours(0, 0, 0, 0);
-    const 现在 = new Date();
+    // 截止留 1 秒：库里记的建立时间和这里的「现在」毫秒上偶尔对不齐，最后建的那条会被挤出段外（负载下时有时无）
+    const 现在 = new Date(Date.now() + 1000);
     // 段外建一条老板名下的：一段的漏斗不算它，现在的漏斗算
     const 老客户 = (await prisma.customer.create({ data: { name: "客户三", phone: "13800000013", salesOwnerId: 老板.id } })).id;
     await 建(老板.id, 老客户, "商机", undefined, new Date(月初.getTime() - 86400000));

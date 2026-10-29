@@ -19,6 +19,7 @@ import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 有效沟通数 } from "@/lib/project/stage-gates";
+import { 读线索验证 } from "@/lib/project/lead-verify";
 import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 卡点可选的人, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 import { 时限提醒of } from "@/lib/project/blocker-rules";
@@ -120,6 +121,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     level: p.level,
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
   };
+  // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查
+  const 线索验证 = 企业 && p.phase === "线索" ? await 读线索验证(me, p) : null;
   // 企业版项目画像、项目附件（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）。
   // 项目名单在中栏（@pane/projects/[id] → panes.tsx 项目名单），不在这页里读
   const 存的需求 = 读产品需求(p.productNeeds);
@@ -138,7 +141,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
     ownerId: p.ownerId, ownerName: 叫(p.ownerId)!, historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
     phase: p.phase, node: p.node, result: p.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
-    pooled: 公海, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通, 来源线索,
+    pooled: 公海, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 回收日,
