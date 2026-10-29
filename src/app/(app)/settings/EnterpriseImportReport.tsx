@@ -340,7 +340,20 @@ export default function EnterpriseImportReport({
               { title: "", width: 64, render: (_, p) => <Tag color={p.级别 === "跳过" ? "red" : "gold"}>{p.级别}</Tag> },
               { title: "类别", width: 110, dataIndex: "类别" },
               { title: "哪一条", width: 220, render: (_, p) => `${名(p.实体)} · ${p.出处 ? `${p.出处}${p.行号 ? ` 第 ${p.行号} 行` : ""}` : p.外部ID}` },
-              { title: "说明", dataIndex: "说明" },
+              {
+                title: "说明",
+                render: (_, p) => (
+                  <>
+                    {p.说明}
+                    {/* 号码重复：撞到的那位点得进去（新开一页，报告不丢） */}
+                    {p.链接?.map((x) => (
+                      <a key={x.客户Id + x.名} href={`/customers/${encodeURIComponent(x.客户Id)}`} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>
+                        {x.名}
+                      </a>
+                    ))}
+                  </>
+                ),
+              },
             ]}
           />
         </div>

@@ -40,6 +40,7 @@ export const CUSTOMER_FIELD_LABELS: Record<string, string> = {
   addrCity: "地址（城市）",
   addrDistrict: "地址（区县）",
   assignWay: "分配方式",
+  customerType: "客户类型",
 };
 
 type 叫法 = { customer: string; fields: { school: string; grade: string; major: string } };

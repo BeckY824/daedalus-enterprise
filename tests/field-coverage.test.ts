@@ -53,7 +53,9 @@ const 可写: Record<string, string[]> = {
   EntLeadVerify: ["invalidReason", "verifyNote", "reviewNote", "disputeNote", "finalNote"],
   Customer: ["name", "phone", "school", "grade", "major", "channelId", "referrerCustomerId", "salesOwnerId", "channelOwnerId", "followStatus", "decisionStatus", "custStatus", "expectedSignAt", "remark",
     // 企业版客户改版（2026-10-29，迁移 072）：客户表单 saveCustomer 的 企业资料
-    "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay"],
+    "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay",
+    // 企业版客户类型（2026-10-29，迁移 092）：客户表单 / 行内改 / 导入
+    "customerType"],
   // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
   Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate"],
   // 企业版渠道投入（2026-10-29）：渠道详情抽屉里录一笔（channels/actions.ts 的 addChannelInvest）
@@ -66,6 +68,8 @@ const 可写: Record<string, string[]> = {
   ContactMethod: ["kind", "value"],
   // 企业版关联客户（2026-10-29，迁移 075）：客户页「关联客户」卡（customers/[id]/link-actions.ts 的 关联客户 / 改关联说明）
   EntCustomerLink: ["otherId", "note"],
+  // 企业版联系人挂多位客户（2026-10-29，迁移 090）：联系人卡「挂到别的客户」（customers/[id]/contact-link-actions.ts 的 挂到客户 / 改挂靠说明）
+  ContactCustomer: ["customerId", "note"],
   // 未归属联系人：联系人页上点开改资料（saveUnassignedContact）
   UnassignedContact: ["name", "position", "phone", "email", "wechat", "remark"],
   Opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "remark", "customerId", "ownerId"],
@@ -405,6 +409,10 @@ const 派生: Record<string, Record<string, string>> = {
   EntCustomerLink: {
     customerId: "一对客户里 id 小的那位，关联时按两边 id 排出来，不改",
     userId: "关联的那个人，当前登录账号",
+  },
+  // 企业版联系人挂多位客户（2026-10-29）
+  ContactCustomer: {
+    contactId: "挂的是哪位联系人，挂的时候定，不改（换人等于另挂一行）",
   },
   // 团队版项目模式 1a（2026-10-23）：系统打上的
   Project: {

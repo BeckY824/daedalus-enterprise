@@ -5,7 +5,7 @@ import { hasVisibleText } from "@/lib/form-validation";
 import { 不在了 } from "@/lib/not-there";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 只读客户 } from "@/lib/team-scope";
+import { 只读客户, 读的我 } from "@/lib/team-scope";
 import { 虚线只读话 } from "@/lib/enterprise/visibility";
 import type { Prisma } from "@/generated/prisma";
 import { requireUser } from "@/lib/auth";
@@ -13,7 +13,7 @@ import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES } from "@/lib/constants";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { recordAudit } from "@/lib/audit";
 import { 领取 } from "../pool-actions";
-import { 认回打码号 } from "@/lib/phone";
+import { 认回打码号, 号键 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
@@ -26,6 +26,7 @@ import { 是逾期 } from "@/lib/overdue";
 import { parseDateInput } from "@/lib/date-input";
 import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "@/lib/enterprise/customer-v2";
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, type 交上来的号 } from "@/lib/enterprise/customer-v2-db";
+import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 
 /**
  * 这一页上的写操作也要留痕。
@@ -656,13 +657,29 @@ function 规整企业联系人(x: 企业联系人资料): { ok: true; data: { ge
   return { ok: true, data };
 }
 
-export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null }) {
+/**
+ * 企业版号码查重（2026-10-29 P13 第 2 条）撞了：不保存，回 撞了 给表单摆成能点的链接。
+ * 照存 = 人看过提示、确认是另一个人（同一个号两个人用，比如公司总机）；再交一次带上它就不查
+ */
+export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null; 照存?: boolean }) {
   try {
     const me = await requireUser();
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
-    const 原 = input.id ? await prisma.contact.findUnique({ where: { id: input.id }, select: { phone: true, contactMethods: { select: { kind: true, value: true } } } }) : null;
+    const 原 = input.id
+      ? await prisma.contact.findUnique({
+          where: { id: input.id },
+          select: { phone: true, email: true, wechat: true, customerId: true, isPrimary: true, contactMethods: { select: { kind: true, value: true, numberKey: true } } },
+        })
+      : null;
     if (input.id && !原) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
+    /*
+      企业版联系人挂多位客户（2026-10-29 P13 第 1 条）：编辑不换主客户——从挂靠的那位客户页上编辑时，交上来的 customerId 是那一位，
+      主客户和「主要联系人」照原样（主要联系人说的是主客户那边的）。换主客户走 换主客户（contact-link-actions.ts）
+    */
+    const 从挂靠编辑 = 企业版() && !!原 && 原.customerId !== input.customerId;
+    const 主客户 = 从挂靠编辑 && 原 ? 原.customerId : input.customerId;
+    const 主要 = 从挂靠编辑 && 原 ? 原.isPrimary : input.isPrimary;
     // 企业版新几格和号码几行：事务外先验（号码类型要读字典）
     const 企 = 企业版() && input.企业 ? 规整企业联系人(input.企业) : null;
     if (企 && !企.ok) return 企;
@@ -680,7 +697,24 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
     if (号 && !号.ok) return 号;
     const 电话 = 号 ? ({ ok: true, phone: null } as const) : 联系人电话(input.phone, 原?.phone);
     if (!电话.ok) return 电话;
-    const data = { ...规整(input), phone: 电话.phone, ...(企?.ok ? 企.data : {}), isPrimary: input.isPrimary, customerId: input.customerId };
+    /*
+      全部联系方式查重（同类型 + 规整值，全公司联系人）：只查这次新出现的号——这位原来就有的不再查，
+      不然老数据里本来就重的号，改个职位也存不下
+    */
+    if (号 && !input.照存) {
+      const 原有 = new Set((原?.contactMethods ?? []).map((x) => `${x.kind}|${x.numberKey}`));
+      if (原) for (const [kind, v] of [["phone", 原.phone], ["email", 原.email], ["wechat", 原.wechat]] as const) {
+        const 键 = v ? (kind === "phone" ? 号键(v) : v.trim().toLowerCase()) : "";
+        if (键) 原有.add(`${kind}|${键}`);
+      }
+      const 新的 = 号.行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
+      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id) : [];
+      if (撞了.length) {
+        const 表 = await 号码种类表();
+        return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k)), 撞了 };
+      }
+    }
+    const data = { ...规整(input), phone: 电话.phone, ...(企?.ok ? 企.data : {}), isPrimary: 主要, customerId: 主客户 };
     const 落库id = await prisma.$transaction(async (tx) => {
       // 编辑走版本闸门（排查 D3）：期间有人改过就一行不写
       if (input.id) {
@@ -688,16 +722,18 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         if (写了.count === 0) return null;
       }
       const savedId = input.id ?? (await tx.contact.create({ data })).id;
+      // 企业版：新建的联系人在主客户上记一行挂靠（客户页的联系人卡片、联系人页都按挂靠表 + 主客户列出来）
+      if (!input.id && 企业版()) await tx.contactCustomer.create({ data: { contactId: savedId, customerId: 主客户 } });
       /*
         企业版交了号码几行：整组换掉，第一个手机 / 邮箱 / 微信写回联系人老三格（列表、查重、导出、老版本还读这三格）。
         老三格按号码几行算，表单上的 phone / email / wechat 这时不看
       */
       if (号) {
-        const 三 = await 存联系人号码(tx, input.customerId, savedId, 号.行们);
+        const 三 = await 存联系人号码(tx, 主客户, savedId, 号.行们);
         await tx.contact.update({ where: { id: savedId }, data: 三 });
         Object.assign(data, 三);
       }
-      if (input.isPrimary) await 只留这一个关键(tx, input.customerId, savedId);
+      if (主要 && !从挂靠编辑) await 只留这一个关键(tx, 主客户, savedId);
       return savedId;
     });
     if (!落库id) return { ok: false as const, error: 版本冲突 };
@@ -707,7 +743,7 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
     })() : undefined;
     await recordAudit({
       user: me, action: input.id ? "update" : "create", entity: "Contact", entityId: 落库id,
-      summary: `${input.id ? "修改" : "新建"}${await 客户名(input.customerId)}的联系人「${data.name}」${input.isPrimary ? "（主要联系人）" : ""}`,
+      summary: `${input.id ? "修改" : "新建"}${await 客户名(主客户)}的联系人「${data.name}」${主要 ? "（主要联系人）" : ""}`,
       detail: {
         姓名: data.name, 职位: data.position, 电话: data.phone, 微信: data.wechat, 主要联系人: data.isPrimary,
         ...(企?.ok ? { 性别: 企.data.gender, 生日: 企.data.birthday, 爱好: 企.data.hobby, 地址: 企.data.address } : {}),
@@ -715,8 +751,9 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
       },
     });
   
-    刷新联系人(input.customerId);
-    await 客户存了推项目(me, input.customerId);
+    刷新联系人(主客户);
+    if (从挂靠编辑) 刷新联系人(input.customerId);
+    await 客户存了推项目(me, 主客户);
     return { ok: true as const };
   } catch (e) {
     return 不在了(e);

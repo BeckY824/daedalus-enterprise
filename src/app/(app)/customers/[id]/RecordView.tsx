@@ -37,13 +37,15 @@ import OpportunityForm from "../../opportunities/OpportunityForm";
 import PlanForm from "./PlanForm";
 import ContactForm from "./ContactForm";
 import ContactAttachments from "./ContactAttachments";
+import ContactLinks from "./ContactLinks";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
 import AiPanel from "./AiPanel";
 import LinkedCustomers from "./LinkedCustomers";
 import NewProjectModal from "./NewProjectModal";
-import { 客户页摆法, 企业客户级别, 企业级别说明, 企业级别, 拼地址, 简称上限 } from "@/lib/enterprise/customer-v2";
+import { 客户页摆法, 级别选项, 企业级别, 拼地址, 简称上限 } from "@/lib/enterprise/customer-v2";
+import LevelStars from "@/components/LevelStars";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import { toggleTask, deleteTask, deleteFollowUp, restoreFollowUp, completePlan, saveFollowUp } from "./actions";
@@ -139,6 +141,7 @@ export default function RecordView({
   关联们 = null,
   号码种类,
   分配方式选项 = [],
+  客户类型选项 = [],
   新建项目 = null,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
@@ -201,7 +204,7 @@ export default function RecordView({
             ...(!外贸 ? [customer.expectedSignAt] : []),
             customer.remark,
           ]
-        : [customer.phone, customer.shortName, customer.school, 级别值, 地址文字, 档?.website, customer.assignWay, customer.remark]
+        : [customer.phone, customer.shortName, customer.school, 级别值, customer.customerType, 地址文字, 档?.website, customer.assignWay, customer.remark]
       ).filter((v) => v === null || v === undefined || v === "").length
     : 0;
   /** 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp */
@@ -486,10 +489,11 @@ export default function RecordView({
   );
 
   /** 联系人右边的编辑 / 删除：两种摆法共用 */
-  const 联系人操作 = (c: ContactRow) => !只读 && (
+  // 挂来的联系人（企业版 P13）：资料归主客户，主客户那头我能改才给编辑；删除不给，拿掉走卡上的「解除挂靠」
+  const 联系人操作 = (c: ContactRow) => !只读 && (!c.挂靠 || c.挂靠.能改) && (
     <span className="rec-mini-acts">
       <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${c.name}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
-      <Button
+      {!c.挂靠 && <Button
         type="text"
         size="small"
         danger
@@ -497,7 +501,7 @@ export default function RecordView({
         aria-label={`删除联系人 ${c.name}`}
         // 先问只移出还是彻底删（2026-10-01 用户反馈：删完联系人页里也没了）
         onClick={() => 问怎么拿掉(c)}
-      />
+      />}
     </span>
   );
 
@@ -594,7 +598,7 @@ export default function RecordView({
           : customer.referrerName && <span className="rec-tags-n">来源：{customer.referrerName}</span>}
         {/* 客户等级（2026-10-16）：一枚字母章，放在国家前面——先看这位要花多少力气 */}
         {摆法.新字段
-          ? 级别值 && <span className={`cust-level cust-level-${级别值}`} title={`客户级别：${企业级别说明[级别值]}`}>{级别值}</span>
+          ? 级别值 && <span className="rec-tags-n"><LevelStars level={级别值} /></span>
           : 外贸 && 档?.level && <span className={`cust-level cust-level-${档.level}`} title={`客户等级：${客户等级说明[档.level as 客户等级值] ?? 档.level}`}>{档.level}</span>}
         {外贸 && 摆法.旧字段 && 档?.country && <span className="rec-tags-n">{档.country}</span>}
         {/* 对方此刻几点（2026-10-16）：按国家首都的时区；和本机同一钟点时不显示 */}
@@ -684,7 +688,11 @@ export default function RecordView({
             {摆法.旧字段 && 摆(customer.grade) && <InlineField customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />}
             {摆法.新字段 && (
               <>
-                {摆(级别值) && <InlineField customerId={customer.id} field="level" label="客户级别" value={级别值} kind="select" options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} placeholder="没分级" 可清空 />}
+                {摆(级别值) && <InlineField customerId={customer.id} field="level" label="客户级别" value={级别值} kind="select" options={级别选项()} placeholder="没分级" 可清空 />}
+                {摆(customer.customerType) && (
+                  <InlineField customerId={customer.id} field="customerType" label="客户类型" value={customer.customerType ?? null} kind="select"
+                    options={[...new Set([...客户类型选项, ...(customer.customerType ? [customer.customerType] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空 />
+                )}
                 {摆(地址文字) && (
                   <div className="rec-field" style={{ cursor: "default" }} title="地址分省市区，点「编辑全部」改">
                     <div className="rec-field-k">地址</div>
@@ -785,6 +793,7 @@ export default function RecordView({
                     <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(c.name)}</Avatar>
                     <span className="rec-contact-n">{c.name}</span>
                     {c.isPrimary && <Tag color="blue" style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+                    {c.挂靠 && <Tag style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
                     {c.position && <span className="rec-contact-p">{c.position}</span>}
                   </div>
                   {c.号码们 && 号码种类 ? (
@@ -816,6 +825,8 @@ export default function RecordView({
                         <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={只读} 分类={分类} />
                       ))
                     : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
+                  {/* 挂多位客户（P13 第 1 条）：主客户是谁、另外挂在哪，挂到别的 / 换主客户 / 解除 */}
+                  <ContactLinks customerId={customer.id} c={c} 只读={只读} />
                   {联系人操作(c)}
                 </div>
               ) : (
@@ -1199,6 +1210,7 @@ export default function RecordView({
         企业版={企业}
         客户状态选项={客户状态选项}
         分配方式选项={分配方式选项}
+        客户类型选项={客户类型选项}
         onClose={(saved) => {
           setCustOpen(false);
           if (saved) router.refresh();
@@ -1213,7 +1225,7 @@ export default function RecordView({
           customerName={customer.shortName || customer.name}
           默认负责人={customer.salesOwnerId}
           users={users}
-          联系人们={contacts.map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
+          联系人们={contacts.filter((c) => !c.挂靠).map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
           节点们={新建项目.节点们}
           要下一步={新建项目.要下一步}
         />
