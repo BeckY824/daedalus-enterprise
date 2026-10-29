@@ -31,6 +31,9 @@ const 不算列表页 = [
   "src/app/(app)/reports/ReportsView.tsx",
   // 企业版「数据」页按项目统计（2026-10-26）：按负责人的两张统计小表，同复盘，列的是汇总数不是业务记录
   "src/app/(app)/overview/ProjectStatsView.tsx",
+  // 企业版复盘页「待办」页签（P15，10-29）：计划页那份未完成事项按卡切开的一页，列固定、分页在服务端；
+  // 没有批量、列设置、筛选栏（筛选是上面四张指标卡），业务记录本身的列表页还是跟进计划页
+  "src/app/(app)/overview/BoardTodos.tsx",
   // 设置里的成员、登录机器、操作日志：都是一页就放得下的小表，没有筛选分页批量
   "src/app/(app)/settings/MembersTab.tsx",
   "src/app/(app)/settings/PasswordTab.tsx",

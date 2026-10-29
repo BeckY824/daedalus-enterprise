@@ -4,6 +4,9 @@
  *   - 重点项目：在推、客户级别 S / A
  *   - 暂未跟进：在推、一条沟通都没挂到项目上
  *   - 即将逾期：在推的线索 / 商机，回收日在 3 天以内；超时回收没开恒为 0
+ *   - 本月赢单：这个月有一次「商机 → 订单」节点变更的项目（10-29 会议二2，绿卡）
+ *   - 今日待办：我名下今天到期 + 已逾期的计划和待办（数提醒），点了去 /follow-ups/plans（绿卡）
+ *   - 首页摆哪四张只看 首页摆的卡；数首页卡 只数摆着的
  *   - 卡上的数 = 点进 /projects?f=… 列出来的行数；按组织架构看客户开着时业务员只数自己看得到的
  *   - f 乱传当没筛；不是企业版不认 f
  */
@@ -17,7 +20,7 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 认首页卡, 本月起止, 即将逾期, 即将逾期粗筛, 首页卡条件, 首页卡键们, 首页卡口径 } from "@/lib/project/home-cards";
+import { 认首页卡, 本月起止, 即将逾期, 即将逾期粗筛, 首页卡条件, 首页卡键们, 首页卡口径, 首页摆的卡, 首页卡色, 首页卡链接, type 首页卡键 } from "@/lib/project/home-cards";
 import { 数首页卡 } from "@/lib/project/home-cards-db";
 import { 读项目列表 } from "@/lib/project/list";
 import { 默认组织规则 } from "@/lib/project/org-rules";
@@ -28,16 +31,37 @@ import { setSetting } from "@/lib/settings";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 
 const 开超时 = { ...默认组织规则, 超时回收: { 开: true, 节点天数: {} } };
+/** 老的四张（红卡那一版），老用例照旧数这四张 */
+const 老四张: 首页卡键[] = ["month-new", "key", "no-follow", "due-soon"];
 
 describe("口径（纯函数）", () => {
-  it("四张卡的键、名字固定，乱传 f 当没筛", () => {
-    expect([...首页卡键们]).toEqual(["month-new", "key", "no-follow", "due-soon"]);
-    expect(首页卡键们.map((k) => 首页卡口径[k].名)).toEqual(["本月新增", "重点项目", "暂未跟进", "即将逾期"]);
+  it("卡的键、名字固定，乱传 f 当没筛", () => {
+    expect([...首页卡键们]).toEqual(["month-new", "key", "no-follow", "due-soon", "month-won", "today-todo"]);
+    expect(首页卡键们.map((k) => 首页卡口径[k].名)).toEqual(["本月新增", "重点项目", "暂未跟进", "即将逾期", "本月赢单", "今日待办"]);
     expect(认首页卡("key")).toBe("key");
     expect(认首页卡("due-soon")).toBe("due-soon");
+    expect(认首页卡("month-won")).toBe("month-won");
+    // 今日待办不是项目筛选：/projects?f=today-todo 当没筛
+    expect(认首页卡("today-todo")).toBe("");
     expect(认首页卡("all")).toBe("");
     expect(认首页卡(["key"])).toBe("");
     expect(认首页卡(undefined)).toBe("");
+  });
+
+  it("首页摆的卡：保留本月新增、重点项目，两张绿卡换掉两张红卡；今日待办去复盘页待办页签的「今天到期」", () => {
+    expect([...首页摆的卡]).toEqual(["month-new", "key", "today-todo", "month-won"]);
+    expect(首页摆的卡.map((k) => 首页卡色[k])).toEqual([undefined, undefined, "good", "good"]);
+    expect(首页卡色["no-follow"]).toBe("warn");
+    expect(首页卡链接("today-todo")).toBe("/overview?f=today");
+    expect(首页卡链接("today-todo", "u1")).toBe("/overview?ownerId=u1&f=today");
+    expect(首页卡链接("month-won")).toBe("/projects?f=month-won");
+  });
+
+  it("本月赢单：本月有一条商机 → 订单的节点留痕", () => {
+    const 今 = new Date("2026-10-15T04:00:00Z");
+    expect(首页卡条件("month-won", 默认组织规则, 字典of(true), 今)).toEqual({
+      logs: { some: { kind: "node", fromPhase: "商机", toPhase: "订单", at: { gte: new Date("2026-09-30T16:00:00.000Z"), lt: new Date("2026-10-31T16:00:00.000Z") } } },
+    });
   });
 
   it("本月按北京时间的自然月算：UTC 10-31 17:00 已经是北京 11 月", () => {
@@ -107,7 +131,7 @@ describe("取数和项目页筛选", () => {
   const 列 = async (f: string) => (await 读项目列表({ id: mocks.user.id, name: mocks.user.name, role: mocks.user.role }, { f })).行.map((r) => r.name).sort();
 
   it("老板看全员：卡上的数和点进去的行对得上", async () => {
-    const 数 = await 数首页卡();
+    const 数 = await 数首页卡(老板, new Date(), 老四张);
     expect(数).toEqual({ "month-new": 4, key: 3, "no-follow": 2, "due-soon": 0 });
     expect(await 列("month-new")).toEqual(["业务员的", "普通公海", "普通成交", "重点新"]);
     expect(await 列("key")).toEqual(["业务员的", "重点新", "重点跟过"]);
@@ -122,12 +146,12 @@ describe("取数和项目页筛选", () => {
     await setSetting("enterprise.rule.org_scope", true);
     await prisma.entMember.create({ data: { userId: 业务员 } });
     mocks.user = { ...mocks.user, id: 业务员, name: "业务员", role: "SALES" };
-    const 数 = await 以谁的身份(业务员, () => 数首页卡());
+    const 数 = await 以谁的身份(业务员, () => 数首页卡(业务员, new Date(), 老四张));
     // 本月新增里多一个「普通公海」：项目公海里的项目人人看得到
     expect(数).toEqual({ "month-new": 2, key: 1, "no-follow": 1, "due-soon": 0 });
     expect(await 以谁的身份(业务员, () => 列("month-new"))).toEqual(["业务员的", "普通公海"]);
     expect(await 以谁的身份(业务员, () => 列("key"))).toEqual(["业务员的"]);
-    expect((await 以谁的身份(老板, () => 数首页卡()))["key"]).toBe(3);
+    expect((await 以谁的身份(老板, () => 数首页卡(老板)))["key"]).toBe(3);
   });
 
   it("开了超时回收：回收日 3 天以内的才算即将逾期", async () => {
@@ -137,9 +161,45 @@ describe("取数和项目页筛选", () => {
     await prisma.project.update({ where: { id: 项["业务员的"] }, data: { nextStepAt: dayjs().add(1, "day").toDate() } });
     // 「重点跟过」上月建的会被先收走，挪到今天，留一个回收日还远的
     await prisma.project.update({ where: { id: 项["重点跟过"] }, data: { createdAt: new Date() } });
-    const 数 = await 数首页卡();
+    const 数 = await 数首页卡(老板, new Date(), 老四张);
     expect(数["due-soon"]).toBe(2);
     expect(await 列("due-soon")).toEqual(["业务员的", "重点新"]);
+  });
+
+  it("默认只数首页摆的四张：本月赢单 = 本月商机 → 订单的项目，点进去行对得上", async () => {
+    const 本月 = dayjs().startOf("month").add(1, "hour").toDate();
+    const 上月 = dayjs().startOf("month").subtract(3, "day").toDate();
+    const 留痕 = (projectId: string, userId: string, from: string, to: string, at: Date) =>
+      prisma.projectNodeLog.create({ data: { projectId, userId, kind: "node", fromPhase: from, fromNode: from, toPhase: to, toNode: to, at } });
+    await 留痕(项["重点新"], 老板, "商机", "订单", 本月);
+    await 留痕(项["重点新"], 老板, "商机", "订单", new Date()); // 来回改：同一个项目只算一个
+    await 留痕(项["重点跟过"], 老板, "商机", "订单", 上月); // 上月的不算
+    await 留痕(项["普通成交"], 老板, "线索", "商机", 本月); // 只进了商机，不算
+    await 留痕(项["业务员的"], 业务员, "商机", "订单", 本月);
+    const 数 = await 数首页卡(老板);
+    expect(Object.keys(数).sort()).toEqual(["key", "month-new", "month-won", "today-todo"]);
+    expect(数["month-won"]).toBe(2);
+    expect(await 列("month-won")).toEqual(["业务员的", "重点新"]);
+    // 按组织架构看客户开着：业务员只数自己的
+    await setSetting("enterprise.rule.org_scope", true);
+    await prisma.entMember.create({ data: { userId: 业务员 } });
+    expect((await 以谁的身份(业务员, () => 数首页卡(业务员)))["month-won"]).toBe(1);
+  });
+
+  it("今日待办：我名下今天到期 + 已逾期的计划和待办，明天的、做完的、别人的不算", async () => {
+    const 客户 = await prisma.customer.findFirstOrThrow({ where: { name: "客户甲" } });
+    const 今天 = dayjs().startOf("day");
+    const 计划 = (ownerId: string, plannedAt: Date, done = false) => prisma.followPlan.create({ data: { subject: "回访", plannedAt, done, customerId: 客户.id, ownerId } });
+    const 待办 = (ownerId: string, dueAt: Date | null) => prisma.task.create({ data: { title: "发资料", dueAt, customerId: 客户.id, ownerId } });
+    await 计划(老板, 今天.subtract(2, "day").add(10, "hour").toDate()); // 逾期
+    await 计划(老板, 今天.add(23, "hour").toDate()); // 今天
+    await 待办(老板, 今天.subtract(1, "day").toDate()); // 逾期
+    await 计划(老板, 今天.add(1, "day").add(10, "hour").toDate()); // 明天，不算
+    await 计划(老板, 今天.subtract(1, "day").toDate(), true); // 做完了，不算
+    await 待办(老板, null); // 没排时间，不算
+    await 计划(业务员, 今天.subtract(1, "day").toDate()); // 别人的
+    expect((await 数首页卡(老板))["today-todo"]).toBe(3);
+    expect((await 数首页卡(业务员))["today-todo"]).toBe(1);
   });
 
   it("不是企业版：不认 f", async () => {

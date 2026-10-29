@@ -5,7 +5,7 @@
  * 只查不写：和向导第一步那颗「查重」同一个服务端动作（customers/number-actions.ts 查号码），
  * 格式规矩在 lib/enterprise/contact-format.ts，撞到谁照向导那样点得进去
  */
-import { useState } from "react";
+import { useImperativeHandle, useState } from "react";
 import Link from "next/link";
 import { Alert, App, Button, Input, Popover, Select, Space } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
@@ -13,7 +13,12 @@ import { 查号码, type 查号码结果 } from "../customers/number-actions";
 import { 向导能选类型, 号码类型叫法, type 号码类型 } from "@/lib/enterprise/contact-format";
 
 /** 不跟着「正在回答」变灰：查号码不碰这一轮对话，边等回答边查是常事 */
-export default function DedupeKey({ 宽 }: { 宽: boolean }) {
+export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
+  宽: boolean;
+  /** 不摆自己的键（收进「+」菜单，P15）：小框挂在一个看不见的锚上（紧挨着「+」），由 开 打开 */
+  藏键?: boolean;
+  开?: React.Ref<{ 打开: () => void }>;
+}) {
   const { message } = App.useApp();
   const [开, set开] = useState(false);
   const [类型, set类型] = useState<号码类型>("手机号");
@@ -21,6 +26,7 @@ export default function DedupeKey({ 宽 }: { 宽: boolean }) {
   const [查中, set查中] = useState(false);
   /** 查回来的那句；改了类型或号码就清掉，免得旧结论挂在新号码底下 */
   const [结果, set结果] = useState<查号码结果 | null>(null);
+  useImperativeHandle(开ref, () => ({ 打开: () => set开(true) }), []);
 
   async function 查() {
     const 值 = 号.trim();
@@ -84,7 +90,7 @@ export default function DedupeKey({ 宽 }: { 宽: boolean }) {
 
   return (
     <Popover content={框} trigger="click" placement="topLeft" open={开} onOpenChange={set开}>
-      <button
+      {藏键 ? <span className="cli-anchor" aria-hidden="true" /> : <button
         type="button"
         className={`cli-tool${宽 ? " cli-tool-t" : ""}${开 ? " cli-tool-on" : ""}`}
         aria-label="查重"
@@ -93,7 +99,7 @@ export default function DedupeKey({ 宽 }: { 宽: boolean }) {
       >
         <FileSearchOutlined />
         {宽 && <span>查重</span>}
-      </button>
+      </button>}
     </Popover>
   );
 }

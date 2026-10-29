@@ -117,7 +117,7 @@ describe("暗黑：选择器与优先级", () => {
     expect(多).toEqual([]);
   });
 
-  it("「明亮」小样的值和根块一致", () => {
+  it("「浅色」小样的值和根块一致", () => {
     expect(亮小样.size).toBeGreaterThan(0);
     for (const [k, v] of 亮小样) expect(v, k).toBe(根.get(k));
   });

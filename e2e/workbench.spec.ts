@@ -542,8 +542,8 @@ test("1024 下项目看板和页面都不横滚", async ({ page }) => {
 test("数据：三处看数并成一页，/reports 这条 URL 还在", async ({ page }) => {
   await 登录(page);
   await page.goto("/overview");
-  // 企业版项目模式页头叫「复盘看板」（10-29），别的照旧叫「数据」
-  await expect(page.getByRole("heading", { name: /^(数据|复盘看板)$/ })).toBeVisible();
+  // 企业版项目模式页头叫「复盘」（定稿 -2 版，原来叫「复盘看板」），别的照旧叫「数据」
+  await expect(page.getByRole("heading", { name: /^(数据|复盘)$/ })).toBeVisible();
 
   // 三个视图，切过去地址跟着变
   // 页头那个视图切换是第一个；面板收着、正文够宽时，下面图表的时间窗也是一个 segmented，也有「本月」
