@@ -25,6 +25,10 @@ export type 项目行 = {
   即将回收?: string | null;
   /** 企业版：被收回公海几次（放回、超时回收都算，recycle-count.ts）；别的版本不给 */
   收回次数?: number;
+  /** 企业版（10-29 P6）：预计成交日期 YYYY-MM-DD（没填 = null）、已立项天数、项目来源名（项目没选跟客户来源走，都没有 = null）；别的版本不给 */
+  expectedDealAt?: string | null;
+  已立项天数?: number;
+  项目来源?: string | null;
   amount: number;
   currency: string;
   updatedAt: string;
