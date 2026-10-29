@@ -34,7 +34,7 @@ import { 字段表, 猜列 } from "@/lib/import/fields";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import { 取提醒项 } from "@/lib/reminders-db";
 import { 数逾期跟进 } from "@/lib/overdue";
-import { loadWatchlist } from "@/lib/sentinel-data";
+import { loadWatchlistPage } from "@/lib/sentinel-data";
 import { 加载复盘 } from "@/app/(app)/overview/data";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
 import { dayjs } from "@/lib/utils";
@@ -85,7 +85,7 @@ async function 各页取数(还在的客户?: string) {
     客户列表: () => import("@/app/(app)/customers/page").then((m) => m.default({ searchParams: sp } as never)),
     ...(还在的客户 ? { 记录页: () => import("@/app/(app)/customers/[id]/page").then((m) => m.default({ params: Promise.resolve({ id: 还在的客户 }), searchParams: sp } as never)) } : {}),
     提醒: () => 取提醒项(我),
-    盯盘: () => loadWatchlist(dayjs(), { ownerId: 我 }),
+    盯盘: () => loadWatchlistPage(dayjs(), { ownerId: 我 }).then((r) => r.items),
     数据页本月: () => 加载复盘(dayjs().startOf("month").toDate(), dayjs().endOf("month").toDate(), "day"),
     导出: () => 导出客户({}),
   };

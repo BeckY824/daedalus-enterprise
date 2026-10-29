@@ -151,7 +151,7 @@ describe("L-051 建议卡确认 / 撤销之后刷新这一页", () => {
 
 describe("L-045 首页「正在被遗忘」先只数我的、再排前几位", () => {
   it("同事名下 10 位分更高的被遗忘客户、我名下 1 位：我的那位在，同事的一位都不混进来", async () => {
-    const { loadWatchlist } = await import("@/lib/sentinel-data");
+    const { loadWatchlistPage } = await import("@/lib/sentinel-data");
     const { dayjs } = await import("@/lib/utils");
     const 同事 = await prisma.user.create({ data: { email: "co@x", name: "同事", title: "销售", role: "SALES", password: "x" } });
     const 早 = (天: number) => new Date(Date.now() - 天 * 86400000);
@@ -159,10 +159,10 @@ describe("L-045 首页「正在被遗忘」先只数我的、再排前几位", (
       await prisma.customer.create({ data: { name: `同事的${i}`, phone: `1370000${String(i).padStart(4, "0")}`, salesOwnerId: 同事.id, followStatus: "意向较高", createdAt: 早(60) } });
     }
     await prisma.customer.create({ data: { name: "我的那位", phone: "13800000001", salesOwnerId: 我, followStatus: "跟进中", createdAt: 早(30) } });
-    const 我的 = await loadWatchlist(dayjs(), { ownerId: 我 });
+    const 我的 = (await loadWatchlistPage(dayjs(), { ownerId: 我 })).items;
     expect(我的.map((w) => w.customerName)).toEqual(["我的那位"]);
     // 不限人时同事的那十位排在前面——先取前 8 再按人筛的老写法，「我的那位」就被挤掉了
-    const 全部 = await loadWatchlist(dayjs());
+    const 全部 = (await loadWatchlistPage(dayjs())).items;
     expect(全部.slice(0, 8).some((w) => w.customerName === "我的那位")).toBe(false);
   });
 });
