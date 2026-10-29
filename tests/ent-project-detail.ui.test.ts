@@ -33,7 +33,7 @@ beforeAll(async () => {
     const 提成={币种:'CNY',成交金额:1234567.89,项目底价:1000000,比例:{底价比例:2,溢价比例:30},范围:'外贸',预估:{成交金额:1234567.89,项目底价:1000000,项目溢价:234567.89,底价提成:20000,溢价提成:70370.37,合计:90370.37},实际:null,
       每人:[{userId:'qa',比例:60,金额:54222.22,组长:true,name:'组长甲'},{userId:'u2',比例:40,金额:36148.15,组长:false,name:'组员'+串}],能改:true,能填底价:true,能更正:false,组员:[{userId:'u2',name:'组员'+串}],分配:{u2:40}};
     window.__render=(企业)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <ProjectDetail p={{...基,企业版:企业,能记沟通:企业,提成:企业?提成:null,...(企业?{项目来源:{name:'渠道'+串,跟客户:true},channelId:null,已立项天数:28,渠道们:[],aiEnabled:true}:{})}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={企业?{们:[],能发:true,默认:{},人们:[]}:null}/>
+      <ProjectDetail p={{...基,企业版:企业,能记沟通:企业,提成:企业?提成:null,...(企业?{项目来源:{name:'渠道'+串,跟客户:true},channelId:null,已立项天数:28,渠道们:[],aiEnabled:true,level:'A',所在地:{addrCountry:'中国',addrProvince:'广东省',addrCity:'深圳市'+'市'.repeat(30),addrDistrict:'南山区',location:'科技园'+串}}:{})}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={企业?{们:[],能发:true,默认:{},人们:[]}:null}/>
     </BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -130,6 +130,43 @@ it("开关关闭：照原来一列摆、960 宽，没有两栏；没有提成卡
     expect(await page.getByText("项目来源").count()).toBe(0);
     expect(await page.getByText("提成", { exact: true }).count()).toBe(0);
     expect(await page.locator(".ant-card-head-title").allTextContents()).toEqual(["项目", "交付", "项目组", "进程变更", "沟通"]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280, 1366])("P11 定稿 -2 版 %ipx：项目卡有级别星、区域、地址（长地址折行不撑卡）；编辑框里有项目级别、所在地四格、详细地址，不横向溢出", async (w) => {
+  const { page, errors } = await open(true, w);
+  try {
+    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "项目来源" }).first();
+    const 字 = await 卡.innerText();
+    expect(字).toContain("★★★☆");
+    expect(字).toContain("A 重点");
+    expect(字).toMatch(/区域\s*深圳市/);
+    expect(字).toContain("广东省 深圳市");
+    expect(await 卡.evaluate(c => c.scrollWidth <= c.clientWidth + 1)).toBe(true);
+    // 级别在金额前面
+    expect(字.indexOf("级别")).toBeLessThan(字.indexOf("金额"));
+    await 卡.locator(".ant-card-extra button").click(); // antd 两字按钮中间会插空格（「编 辑」），按卡头的按钮点
+    const 框 = page.locator(".ant-modal-container"); // 这版 antd 的弹框外壳叫 container（没有 .ant-modal-content）
+    await 框.getByText("项目级别").waitFor();
+    for (const 名 of ["国家/地区", "省", "市", "区县", "详细地址"]) expect(await 框.getByLabel(名, { exact: true }).count()).toBeGreaterThan(0);
+    expect(await 框.getByRole("textbox", { name: "详细地址" }).inputValue()).toContain("科技园");
+    // 四格每格都在框里、不重叠出框
+    const 框盒 = (await 框.boundingBox())!;
+    for (const 名 of ["省", "市", "区县"]) {
+      const b = (await 框.getByRole("textbox", { name: 名, exact: true }).boundingBox())!;
+      expect(b.x).toBeGreaterThanOrEqual(框盒.x);
+      expect(b.x + b.width).toBeLessThanOrEqual(框盒.x + 框盒.width);
+      expect(b.width).toBeGreaterThanOrEqual(90);
+    }
+    expect(await 框.evaluate(c => c.scrollWidth <= c.clientWidth + 1)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // 改成国外：省、区县两格收起来，只留城市
+    const 国家 = 框.getByRole("combobox", { name: "国家/地区" });
+    await 国家.fill("美国");
+    await 框.getByRole("textbox", { name: "省", exact: true }).waitFor({ state: "detached" });
+    expect(await 框.getByRole("textbox", { name: "区县", exact: true }).count()).toBe(0);
+    expect(await 框.getByRole("textbox", { name: "市", exact: true }).getAttribute("placeholder")).toContain("城市");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

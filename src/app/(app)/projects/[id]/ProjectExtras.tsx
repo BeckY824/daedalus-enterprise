@@ -6,36 +6,32 @@ import Link from "next/link";
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import { App, Button, Card, Input, Select } from "antd";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { 所在地上限, 所在地提示 } from "@/lib/project/profile-rules";
 import type { 项目画像键 } from "@/lib/enterprise/dict-kinds";
 import type { 侧栏项目 } from "@/lib/project/list";
 import { 改项目画像Action } from "../actions";
 
-/** 项目画像（企业版 P11）：五项字典 + 所在地。选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示不出来） */
+/** 项目画像（企业版 P11）：五项字典（所在地、级别在编辑项目框里改）。选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示不出来） */
 export type 项目画像 = {
   项们: { 键: 项目画像键; 名: string; 多选: boolean; 选项: string[] }[];
   值: Partial<Record<Exclude<项目画像键, "productNeeds">, string | null>> & { productNeeds: string[] };
-  location: string | null;
 };
 
 const 空 = <span style={{ color: "var(--text-muted)" }}>—</span>;
 
 /**
- * 「项目画像」卡：能改的人改一项存一项（下拉选了就存、所在地失焦 / 回车存），不能改的只看。
+ * 「项目画像」卡：能改的人改一项存一项（下拉选了就存），不能改的只看。
  * 存失败（选项刚被停用、没权限了）提示原因并回到存之前的样子
  */
 export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: string; 画像: 项目画像; 能改: boolean }) {
   const { message } = App.useApp();
   const router = useRouter();
   const [值, set值] = useState(画像.值);
-  const [地, set地] = useState(画像.location ?? "");
   const [忙, set忙] = useState(false);
   // 服务端刷新后（别人改了、自己存完 router.refresh）跟着新值走；渲染时比上一次的，不用 effect
   const [上次, set上次] = useState(画像);
   if (画像 !== 上次) {
     set上次(画像);
     set值(画像.值);
-    set地(画像.location ?? "");
   }
 
   const 存 = async (patch: Parameters<typeof 改项目画像Action>[1], 回退: () => void) => {
@@ -49,11 +45,6 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
     } finally {
       set忙(false);
     }
-  };
-  const 存地 = () => {
-    const 新 = 地.trim();
-    if (新 === (画像.location ?? "")) return;
-    void 存({ location: 新 || null }, () => set地(画像.location ?? ""));
   };
 
   return (
@@ -103,25 +94,6 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
             </div>
           </div>
         ))}
-        <div className="proj-profile-row">
-          <span className="proj-profile-key">所在地</span>
-          <div className="proj-profile-val">
-            {能改 ? (
-              <Input
-                aria-label="所在地"
-                placeholder={所在地提示}
-                maxLength={所在地上限}
-                disabled={忙}
-                value={地}
-                onChange={(e) => set地(e.target.value)}
-                onBlur={存地}
-                onPressEnter={(e) => (e.target as HTMLInputElement).blur()}
-              />
-            ) : (
-              <span className="proj-profile-text" title={画像.location ?? undefined}>{画像.location || 空}</span>
-            )}
-          </div>
-        </div>
       </div>
     </Card>
   );

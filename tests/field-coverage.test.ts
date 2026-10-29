@@ -72,7 +72,9 @@ const 可写: Record<string, string[]> = {
   // 团队版项目模式 1a（2026-10-23）：建档向导、项目详情（编辑项目 / 改节点 / 勾交付 / 项目组）、设置里的「项目模式」一栏
   Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt", "channelId",
     // 企业版项目画像（P11，迁移 087）：详情页「项目画像」卡改一项存一项（projects/actions.ts 改项目画像Action → lib/project/profile.ts）
-    "budgetLevel", "priceSense", "decisionChain", "demandStatus", "productNeeds", "location"],
+    "budgetLevel", "priceSense", "decisionChain", "demandStatus", "productNeeds",
+    // 企业版项目级别、所在地四格 + 详细地址（P11 定稿 -2 版，迁移 093；location 是 087 加的，现在当详细地址）：编辑项目框（编辑项目 → lib/project/db.ts 改项目）
+    "level", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "location"],
   ProjectMember: ["roleId"],
   ProjectRole: ["name", "active"],
   ProjectExceptionCategory: ["name", "active"],

@@ -4,16 +4,17 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 项目画像项, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
 import { 能管项目 } from "./db";
-import { 读产品需求, 存产品需求, 规整所在地 } from "./profile-rules";
+import { 读产品需求, 存产品需求 } from "./profile-rules";
 
 type 谁 = { id: string; role: string };
 
-/** 改画像传的：五项 + 所在地，没传的不动；单选传 null / 空 = 清掉，多选传 [] = 清掉 */
-export type 画像改动 = Partial<Record<Exclude<项目画像键, "productNeeds">, string | null>> & { productNeeds?: string[] | null; location?: string | null };
-export type 画像字段 = 项目画像键 | "location";
+/** 改画像传的：五项，没传的不动；单选传 null / 空 = 清掉，多选传 [] = 清掉 */
+export type 画像改动 = Partial<Record<Exclude<项目画像键, "productNeeds">, string | null>> & { productNeeds?: string[] | null };
+export type 画像字段 = 项目画像键;
 
 /**
- * 项目画像（企业版 P11，迁移 087）：预算能力、价格感知、决策链路、需求状态（单选）、产品需求（多选）、所在地。
+ * 项目画像（企业版 P11，迁移 087）：预算能力、价格感知、决策链路、需求状态（单选）、产品需求（多选）。
+ * 所在地（地址四格 + 详细地址）定稿 -2 版改成和客户地址一套，挪到「编辑项目」里（db.ts 改项目），不走这里。
  * 谁能改同 改项目：能管项目（负责人本人、老板、主管；公海里的先领取）。
  * 选项来自企业字典（设置 → 项目模式 里改）：新选的得是启用着的；已经存着、后来停用的那项不动它就留着（多选里也是），
  * 免得别人改了一项把停用的那项顺手抹掉。字典校验要读库，放在事务外（同 改项目 的 字段权限of）
@@ -23,7 +24,7 @@ export async function 改项目画像(me: 谁, projectId: string, patch: 画像�
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const id = String(projectId ?? "");
   // 事务外先按可见范围读一遍：看不到的项目和不存在一样
-  const 原 = await prisma.project.findFirst({ where: { id }, select: { budgetLevel: true, priceSense: true, decisionChain: true, demandStatus: true, productNeeds: true, location: true } });
+  const 原 = await prisma.project.findFirst({ where: { id }, select: { budgetLevel: true, priceSense: true, decisionChain: true, demandStatus: true, productNeeds: true } });
   if (!原) return { ok: false, error: "这个项目已经不在了，刷新看看" };
 
   const 新: Partial<Record<画像字段, string | null>> = {};
@@ -48,11 +49,6 @@ export async function 改项目画像(me: 谁, projectId: string, patch: 画像�
       if (!对.ok) return 对;
       新[项.键] = 对.值;
     }
-  }
-  if ("location" in patch) {
-    const 地 = 规整所在地(patch.location);
-    if (!地.ok) return 地;
-    新.location = 地.值;
   }
   const 变了 = (Object.keys(新) as 画像字段[]).filter((k) => (新[k] ?? null) !== (原[k] ?? null));
   if (!变了.length) return { ok: true, 变了 };

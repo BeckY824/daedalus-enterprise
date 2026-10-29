@@ -29,6 +29,8 @@ export type 项目行 = {
   expectedDealAt?: string | null;
   已立项天数?: number;
   项目来源?: string | null;
+  /** 企业版（P11 定稿 -2 版，迁移 093）：项目级别 S / A / B / C，null = 没分级；别的版本不给 */
+  level?: string | null;
   amount: number;
   currency: string;
   updatedAt: string;

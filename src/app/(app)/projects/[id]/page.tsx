@@ -117,6 +117,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,
+    // 项目级别、所在地（P11 定稿 -2 版，迁移 093）：级别是项目自己的，都给看；所在地跟客户资料一样，公海里同事客户的项目没领之前不给
+    level: p.level,
+    所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
   };
   // 企业版项目画像、项目附件、左边的项目列表（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）
   const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
@@ -129,7 +132,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       return { 键: 项.键, 名: 字典定义[项.种类].名, 多选: 项.多选, 选项: [...启用, ...存着.filter((x) => !启用.includes(x))] };
     })),
     值: { budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, demandStatus: p.demandStatus, productNeeds: 存的需求 },
-    location: p.location,
   };
   const [项目附件, 侧栏] = 企业 ? await Promise.all([露 ? 项目附件入口(p.id) : null, 读侧栏项目(字典)]) : [null, null];
   const 详情: 项目详情 = {

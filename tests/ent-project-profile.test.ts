@@ -1,19 +1,18 @@
 /**
- * 企业版项目页 P11（10-29）：阶段 / 进程分开、项目画像五项 + 所在地（迁移 087）。
+ * 企业版项目页 P11（10-29）：阶段 / 进程分开、项目画像五项（迁移 087）。所在地、级别改走编辑项目，见 ent-project-location-level.test.ts
  *
  * 钉的是：
  *   - 阶段与进程：没结局按库里 phase / node；有结局按结局认阶段（成功交付、异常状态归订单，线索流失归线索，丢单归商机），
  *     结局按字典叫法（企业版「商机丢单」、后台改的叫法），节点按 改名 对到这套
- *   - 规整所在地：去两头空格、中间空白并成一个、空 = 清掉、超长报错不截断、不是字符串报错
  *   - 读 / 存产品需求：存 JSON 数组、去重保序、空数组存 null；坏数据读成 []
  *   - 改项目画像（真库 + 企业字典）：单选只认启用着的项；已存的项停用了，不改它照留、别的项照改；多选同理；
- *     所在地存得进读得出；负责人、老板能改，同事、公海里的改不了；没变不写；不是企业版不认
+ *     负责人、老板能改，同事、公海里的改不了；没变不写；不是企业版不认（所在地不再是画像的一项，传了不认）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 阶段与进程, 团队版字典, 企业版字典, 字典of, type 阶段字典 } from "@/lib/project/stage-dict";
-import { 规整所在地, 读产品需求, 存产品需求, 所在地上限 } from "@/lib/project/profile-rules";
+import { 读产品需求, 存产品需求 } from "@/lib/project/profile-rules";
 import { 改项目画像 } from "@/lib/project/profile";
 import { 企业字典 } from "@/lib/enterprise/dict";
 
@@ -41,21 +40,6 @@ describe("阶段与进程：阶段、进程分两格", () => {
     expect(阶段与进程({ phase: "商机", node: "明确需求", result: "怪结局" })).toEqual({ 阶段: "商机", 进程: "明确需求", 结局: "怪结局" });
     const 换名: 阶段字典 = { ...团队版字典, 改名: { 潜客培育: "客户培育" } };
     expect(阶段与进程({ phase: "线索", node: "潜客培育" }, 换名).进程).toBe("客户培育");
-  });
-});
-
-describe("规整所在地", () => {
-  it("去两头空格、中间空白并成一个；空 = 清掉", () => {
-    expect(规整所在地("  上海  ")).toEqual({ ok: true, 值: "上海" });
-    expect(规整所在地("United \t  Kingdom")).toEqual({ ok: true, 值: "United Kingdom" });
-    expect(规整所在地("   ")).toEqual({ ok: true, 值: null });
-    expect(规整所在地(null)).toEqual({ ok: true, 值: null });
-  });
-
-  it("超长报错，不偷偷截断；不是字符串报错", () => {
-    expect(规整所在地("一".repeat(所在地上限))).toEqual({ ok: true, 值: "一".repeat(所在地上限) });
-    expect(规整所在地("一".repeat(所在地上限 + 1))).toMatchObject({ ok: false, error: expect.stringContaining(String(所在地上限)) });
-    expect(规整所在地(12 as unknown)).toMatchObject({ ok: false });
   });
 });
 
@@ -126,29 +110,22 @@ describe("改项目画像（真库、企业字典）", () => {
     expect((await 读()).productNeeds).toBeNull();
   });
 
-  it("所在地：规整后存进库、读得出；超长拦下不写；没变不写", async () => {
-    expect(await 改项目画像(乙, 项目id, { location: "  杭州 " })).toEqual({ ok: true, 变了: ["location"] });
-    expect((await 读()).location).toBe("杭州");
-    expect(await 改项目画像(乙, 项目id, { location: "杭州" })).toEqual({ ok: true, 变了: [] });
-    expect(await 改项目画像(乙, 项目id, { location: "长".repeat(所在地上限 + 1) })).toMatchObject({ ok: false });
-    expect(await 改项目画像(乙, 项目id, { location: "Germany" })).toEqual({ ok: true, 变了: ["location"] });
-    expect((await 读()).location).toBe("Germany");
-    expect(await 改项目画像(乙, 项目id, { location: "" })).toEqual({ ok: true, 变了: ["location"] });
-    expect((await 读()).location).toBeNull();
-  });
-
   it("谁能改同改项目：负责人、老板能改；同事、公海里的（含放回去的原负责人）改不了，库里不动", async () => {
-    expect(await 改项目画像(丙, 项目id, { location: "北京" })).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
-    expect(await 改项目画像(老板, 项目id, { location: "北京" })).toEqual({ ok: true, 变了: ["location"] });
+    expect(await 改项目画像(丙, 项目id, { budgetLevel: "预算充足" })).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
+    expect(await 改项目画像(老板, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"] });
+    expect(await 改项目画像(老板, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: [] });
     await prisma.project.update({ where: { id: 项目id }, data: { pooledAt: new Date() } });
-    expect(await 改项目画像(乙, 项目id, { location: "上海" })).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
-    expect((await 读()).location).toBe("北京");
+    expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算匹配" })).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
+    expect((await 读()).budgetLevel).toBe("预算充足");
   });
 
   it("不是企业版不认；项目不在了报不在", async () => {
-    expect(await 改项目画像(乙, "no-such", { location: "北京" })).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
-    vi.stubEnv("CRM_ENTERPRISE", "");
-    expect(await 改项目画像(乙, 项目id, { location: "北京" })).toMatchObject({ ok: false, error: "此版本没有项目画像" });
+    expect(await 改项目画像(乙, "no-such", { budgetLevel: "预算充足" })).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
+    // 所在地不再从画像这条路改：混在 patch 里也不写
+    expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算充足", location: "北京" } as Parameters<typeof 改项目画像>[2])).toEqual({ ok: true, 变了: ["budgetLevel"] });
     expect((await 读()).location).toBeNull();
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算匹配" })).toMatchObject({ ok: false, error: "此版本没有项目画像" });
+    expect((await 读()).budgetLevel).toBe("预算充足");
   });
 });
