@@ -2,6 +2,8 @@
  * 公海轻量（2026-10-03，0.46.15 第 6 块）：张三把自己的客户放进公海 → 李四在「公海」里看到「公海（原 张三）」→
  * 领取，负责人变成李四 → 撤销，又回到公海 → 记录页上也有那枚标签和「领取」。
  * 2026-10-13 起公海和客户分两页签：默认「客户」页签不含公海，「公海」页签（?pool=1）只有公海；负责人下拉里不再有「公海」。
+ * 2026-10-29（P7 统一公海）：企业版项目模式下公海挪去 /pool 一页看，客户页不再摆页签，?pool=1 转去 /pool；
+ * 公海页上没有撤销，原负责人领不回。
  * 种子库本来就有三个人（多人），公海的入口才出现。造的客户结束时删掉。
  */
 import { test, expect, type Browser, type Page } from "@playwright/test";
@@ -56,7 +58,7 @@ test.afterAll(async () => {
   await db.$disconnect();
 });
 
-test("放进公海 → 别人在公海里领走 → 撤销回到公海；记录页有标签和领取", async ({ browser }) => {
+test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记录页有标签和领取", async ({ browser }) => {
   const 张 = await 一个人(browser, 张三);
   // 张三：搜到这一位，勾上，批量「放进公海」
   await 张.page.goto(`/customers?keyword=${encodeURIComponent(客户名)}`);
@@ -65,45 +67,30 @@ test("放进公海 → 别人在公海里领走 → 撤销回到公海；记录�
   await 行.getByRole("checkbox").check();
   await 张.page.getByRole("button", { name: "放进公海" }).click();
   await expect(张.page.getByText("已放进公海 1 位")).toBeVisible();
-  // 「客户」页签不含公海：放进去就从这一页走了；搜不到时指一条去公海的路
+  // 客户页不含公海：放进去就从这一页走了；搜不到时指一条去公海的路，关键词带上
   await expect(行).toHaveCount(0);
+  await expect(张.page.locator(".page-head .ant-segmented")).toHaveCount(0);
   await 张.page.getByRole("button", { name: /公海里有 1 位匹配/ }).click();
-  await expect(张.page).toHaveURL(/pool=1/);
-  await expect(张.page.getByRole("row", { name: new RegExp(客户名) }).getByText("公海（原 张三）")).toBeVisible();
+  await expect(张.page).toHaveURL(/\/pool\?keyword=/);
+  const 张的公海行 = 张.page.getByRole("row", { name: new RegExp(客户名) });
+  await expect(张的公海行.getByText("公海客户")).toBeVisible();
+  // 原负责人领不回
+  await expect(张的公海行.getByRole("button", { name: `领取 ${客户名}` })).toBeDisabled();
+  // 老链接 ?pool=1 转去 /pool
+  await 张.page.goto(`/customers?pool=1&keyword=${encodeURIComponent(客户名)}`);
+  await expect(张.page).toHaveURL(/\/pool\?keyword=/);
   await 张.ctx.close();
 
   const 李 = await 一个人(browser, 李四);
   const page = 李.page;
-  // 李四：负责人下拉里没有「公海」了（页签代替了它）
-  await page.goto("/customers");
+  // 李四：客户页里没有它，公海页里有
+  await page.goto(`/customers?keyword=${encodeURIComponent(客户名)}`);
+  await page.waitForSelector(".list");
   await expect(page.getByRole("row", { name: new RegExp(客户名) })).toHaveCount(0);
-  await page.locator(".list-bar .ant-select").filter({ hasText: "全部负责人" }).click();
-  const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
-  await 下拉.waitFor({ state: "visible" });
-  await expect(下拉.getByTitle("公海", { exact: true })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  // 页签上的数：没进团队叫「我的客户 N」+「公海 M」，加起来 = 左栏「客户」角标
-  const 页签 = page.locator(".page-head .ant-segmented-item");
-  await expect(页签.first()).toHaveText(/^我的客户 \d+$/);
-  await expect(页签.nth(1)).toHaveText(/^公海 \d+$/);
-  const [客户N, 公海M] = (await 页签.allInnerTexts()).map((t) => Number(t.match(/\d+/)![0]));
-  expect(公海M).toBeGreaterThanOrEqual(1);
-  await expect(page.locator(".rail-nav a", { has: page.locator("b", { hasText: /^客户$/ }) }).locator(".rail-num")).toHaveText(String(客户N + 公海M));
-  // 「公海」页签，这一位在里面
-  await page.locator(".page-head .ant-segmented-item", { hasText: /^公海/ }).click();
-  await expect(page).toHaveURL(/pool=1/);
+  await page.goto(`/pool?keyword=${encodeURIComponent(客户名)}`);
   const 公海行 = page.getByRole("row", { name: new RegExp(客户名) });
-  await expect(公海行.getByText("公海（原 张三）")).toBeVisible();
-  // 公海页签上批量只有「领取」，没有「放进公海」
-  await 公海行.getByRole("checkbox").check();
-  await expect(page.locator(".list-sel").getByRole("button", { name: "领取" })).toBeVisible();
-  await expect(page.locator(".list-sel").getByRole("button", { name: "放进公海" })).toHaveCount(0);
-  await 公海行.getByRole("checkbox").uncheck();
-
-  // 行上「领取」
   await 公海行.getByRole("button", { name: `领取 ${客户名}` }).click();
-  const 提示 = page.locator(".ant-message").filter({ hasText: "已领取 1 位" });
-  await expect(提示).toBeVisible();
+  await expect(page.getByText(`已领取「${客户名}」`)).toBeVisible();
   // 领走了：公海里没有它了
   await expect(page.getByRole("row", { name: new RegExp(客户名) })).toHaveCount(0);
   const db = 连库();
@@ -112,16 +99,11 @@ test("放进公海 → 别人在公海里领走 → 撤销回到公海；记录�
     expect(c.salesOwner.name).toBe("李四");
     expect(c.pool).toBeNull();
 
-    // 撤销：还给张三、放回公海
-    await 提示.getByRole("button", { name: "撤销" }).click();
-    await expect(page.getByText(/已撤销，1 位改回原样/)).toBeVisible();
-    await expect(page.getByRole("row", { name: new RegExp(客户名) }).getByText("公海（原 张三）")).toBeVisible();
-    const d = await db.customer.findFirstOrThrow({ where: { name: 客户名 }, include: { salesOwner: true, pool: true } });
-    expect(d.salesOwner.name).toBe("张三");
-    expect(d.pool).not.toBeNull();
-
-    // 记录页：标签 + 领取
-    await page.goto(`/customers/${d.id}`);
+    // 记录页：再放回公海（原负责人张三），标签 + 领取
+    const 张号 = await db.user.findUniqueOrThrow({ where: { email: "zhangsan" } });
+    await db.customer.update({ where: { id: c.id }, data: { salesOwnerId: 张号.id } });
+    await db.customerPool.create({ data: { customerId: c.id, reason: "手动" } });
+    await page.goto(`/customers/${c.id}`);
     await expect(page.locator(".rec-pool:visible").getByText("公海（原 张三）")).toBeVisible();
     await page.locator(".rec-pool:visible").getByRole("button", { name: /领取/ }).click();
     await expect(page.getByText("已领取，负责人改成你")).toBeVisible();
@@ -133,33 +115,31 @@ test("放进公海 → 别人在公海里领走 → 撤销回到公海；记录�
 });
 
 /*
-  T-046：负责人格写「公海（原 X）」，同事名字很长时整枚标签压到右边「最近跟进」那一列上。
-  修法是表格里的标签不超出格子（max-width: 100% + 省略号，title 里留全名）
+  T-046：公海里的长名字不许压到隔壁列。2026-10-29 起公海在 /pool：客户名太长时那一格省略，
+  全名留在 title 里，右边不超出「客户名称」那一格（1024 宽，Windows 最窄的那档）
 */
-test("同事名字很长：「公海（原 …）」标签不超出负责人那一格，压不到「最近跟进」上", async ({ browser }) => {
+test("客户名很长：/pool 里客户名那一格省略，不压到「项目名称」上", async ({ browser }) => {
   const db = 连库();
-  const 长名 = "欧阳长长长长长长长长长长名字的同事";
-  const 名 = "公海长名客户";
+  const 名 = "公海长名客户欧阳长长长长长长长长长长长长长长长长长长长长长长长长长长名字";
   await db.customer.deleteMany({ where: { name: 名 } });
   await db.user.deleteMany({ where: { email: "pool-long-name" } });
-  const 同事 = await db.user.create({ data: { email: "pool-long-name", name: 长名, password: "x", role: "SALES", title: "销售", active: false } });
+  const 同事 = await db.user.create({ data: { email: "pool-long-name", name: "欧阳长长长长长长长长长长名字的同事", password: "x", role: "SALES", title: "销售", active: false } });
   const c = await db.customer.create({ data: { name: 名, phone: "13755550062", salesOwnerId: 同事.id } });
   await db.customerPool.create({ data: { customerId: c.id, reason: "手动" } });
   const 张 = await 一个人(browser, 张三);
   try {
-    await 张.page.setViewportSize({ width: 1280, height: 800 });
-    await 张.page.goto(`/customers?pool=1&keyword=${encodeURIComponent(名)}`);
+    await 张.page.setViewportSize({ width: 1024, height: 768 });
+    await 张.page.goto(`/pool?keyword=${encodeURIComponent(名)}`);
     const 行 = 张.page.getByRole("row", { name: new RegExp(名) });
-    const 标签 = 行.locator(".pool-tag");
-    await expect(标签).toBeVisible();
-    // 全名留在 title 里，悬停看得到
-    await expect(标签).toHaveAttribute("title", new RegExp(长名));
-    const 格 = 标签.locator("xpath=ancestor::td[1]");
+    const 链 = 行.getByRole("link", { name: 名 });
+    await expect(链).toBeVisible();
+    await expect(链).toHaveAttribute("title", 名);
+    const 格 = 链.locator("xpath=ancestor::td[1]");
     const 下一格 = 格.locator("xpath=following-sibling::td[1]");
-    const [t, g, n] = await Promise.all([标签.boundingBox(), 格.boundingBox(), 下一格.boundingBox()]);
+    const [t, g, n] = await Promise.all([链.boundingBox(), 格.boundingBox(), 下一格.boundingBox()]);
     expect(t && g && n, "拿不到位置").toBeTruthy();
-    expect(t!.x + t!.width, `标签右边 ${t!.x + t!.width} 超出了负责人那一格（右边 ${g!.x + g!.width}）`).toBeLessThanOrEqual(g!.x + g!.width + 0.5);
-    expect(t!.x + t!.width, "标签压到了下一列").toBeLessThanOrEqual(n!.x + 0.5);
+    expect(t!.x + t!.width, `客户名右边 ${t!.x + t!.width} 超出了那一格（右边 ${g!.x + g!.width}）`).toBeLessThanOrEqual(g!.x + g!.width + 0.5);
+    expect(t!.x + t!.width, "客户名压到了下一列").toBeLessThanOrEqual(n!.x + 0.5);
   } finally {
     await 张.ctx.close();
     await db.customer.deleteMany({ where: { name: 名 } });
