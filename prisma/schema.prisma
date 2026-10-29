@@ -154,6 +154,17 @@ model Customer {
   lastFollowAt   DateTime? /// 最近跟进
   remark         String?
 
+  /// ---------- 企业版客户改版（迁移 072，2026-10-29 定稿 P5 第 23 条）：别的版本一直是空 ----------
+  /// 客户简称（客户全称还是 name）
+  shortName    String?
+  /// 客户地址：国家 → 省 → 市 → 区县。国内选到区县；国外只记国家和城市（省、区县存空）。lib/enterprise/customer-v2.ts 的 拼地址
+  addrCountry  String?
+  addrProvince String?
+  addrCity     String?
+  addrDistrict String?
+  /// 分配方式：自持 / 非自持 / 公海领取（企业版字典 custAssign）
+  assignWay    String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -176,6 +187,9 @@ model Customer {
   ownerLogs     CustomerOwnerLog[]
   /// 企业版联系方式子表（migrations/054）。见 ContactMethod
   contactMethods ContactMethod[]
+  /// 企业版关联客户（迁移 075）：一对客户一行，小的 id 在 customerId。见 EntCustomerLink
+  linksFrom      EntCustomerLink[] @relation("EntCustomerLinkFrom")
+  linksTo        EntCustomerLink[] @relation("EntCustomerLinkTo")
 
   @@index([phone])
   @@index([salesOwnerId])
@@ -245,6 +259,14 @@ model Contact {
   wechat     String?
   isPrimary  Boolean  @default(false) // 关键联系人
   remark     String?
+  /// ---------- 企业版联系人改版（迁移 073，2026-10-29 定稿 P5 第 24 条）：别的版本一直是空 ----------
+  /// 性别：男 / 女
+  gender     String?
+  /// 生日：YYYY-MM-DD 日历日（不带时区，生日不跟着时区挪）
+  birthday   String?
+  hobby      String?
+  /// 地址：一行手填，非必填
+  address    String?
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
@@ -474,6 +496,8 @@ model Attachment {
   leadId        String?
   /// 挂在哪位联系人上（企业版，迁移 063）
   contactId     String?
+  /// 联系人附件分类（企业版，迁移 074）：名片 / 相册；空 = 没分类（联系人那边算相册）。lib/enterprise/customer-v2.ts 的 附件分类们
+  tag           String?
   /// 原文件名（人看的）；图片压过以后扩展名换成 .jpg
   name          String
   mime          String
@@ -1344,4 +1368,22 @@ model EntDictItem {
   createdAt DateTime @default(now())
 
   @@unique([kind, name])
+}
+
+/// 企业版关联客户（迁移 075，2026-10-29 定稿 P5 待定 15）：手动选一个客户、填一句关系说明（同一集团、母子公司、互相介绍……），
+/// 两边客户页的「关联客户」卡都看得到。一对客户只记一行：customerId 放 id 小的、otherId 放大的。图谱放后续
+model EntCustomerLink {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation("EntCustomerLinkFrom", fields: [customerId], references: [id], onDelete: Cascade)
+  otherId    String
+  other      Customer @relation("EntCustomerLinkTo", fields: [otherId], references: [id], onDelete: Cascade)
+  /// 关系说明，最多 40 个字，可以空
+  note       String?
+  /// 谁关联的。不建外键，同 AuditLog
+  userId     String
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, otherId])
+  @@index([otherId])
 }

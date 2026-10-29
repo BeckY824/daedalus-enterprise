@@ -106,6 +106,7 @@ test("外接屏 2560：数据页四张指标卡一排；直接打开设置不铺
     J-207 弹框钉在离顶 100px（窗口越高越偏上）；设置浮层切长栏时整层蹿高
 */
 test("J-203：15 寸 1512×900 打开记录页，不用滚就看得见「下次跟进」和「待办」", async ({ page }) => {
+  test.skip(企业版, "企业版客户页不摆「下次跟进」，跟进计划在项目上（客户页摆法）");
   const p = 连库();
   const 我 = await p.user.findFirstOrThrow({ where: { email: 账号.用户名 } });
   const c = await p.customer.create({ data: { name: "待办在上面", phone: "13900005151", salesOwnerId: 我.id } });
