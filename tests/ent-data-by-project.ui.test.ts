@@ -4,6 +4,7 @@
  *   现在：副标题「项目现状与复盘」，卡片 新线索 / 商机 / 订单 / 异常状态，节点图，按负责人表；只有一个人时不摆表
  *   本月：新建 / 转商机 / 成功交付 / 没成，走势图，按负责人表；外币另外说一句
  *   开关关：副标题照旧「业务现状与签约复盘」
+ *   复盘页带页签（P15）：「待办 | 数据」两个页签，数据页签里才有三视图切换
  *   Windows 1024 / 1280 / 1366 宽度 + 超长名字：页面不横向溢出
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
@@ -36,6 +37,7 @@ beforeAll(async () => {
       公海:2,外币:1,
       漏斗:项目漏斗of([...Array(12)].map(()=>({phase:'线索',result:null})).concat([...Array(8)].map(()=>({phase:'商机',result:null})),[...Array(5)].map(()=>({phase:'订单',result:'成功交付'})))),
       按人:[1,2,3].map(i=>({id:'u'+i,name:长+i,线索:4,商机:3,订单:1,商机金额:98765432,订单金额:12345678})),
+      线索节点:节点们['线索'].map((node,i)=>({node,count:i+2})),
     };
     const 一段={
       合计:{新建:6,转商机:4,转订单:2,成功交付:3,交付金额:23456789,线索流失:1,丢单:1,异常状态:0},
@@ -43,9 +45,10 @@ beforeAll(async () => {
       按人:[1,2].map(i=>({id:'u'+i,name:长+i,新建:3,转商机:2,转订单:1,成功交付:1,交付金额:23456789,没成:1})),
       外币:0,
       漏斗:项目漏斗of([...Array(6)].map((_,i)=>({phase:i<4?'商机':'线索',result:i<3?'成功交付':null}))),
+      线索节点:节点们['线索'].map((node,i)=>({node,count:i})),
     };
-    window.__画=(view,项目,单人)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:项目}}>
-      <DataShell view={view} 项目={项目}>
+    window.__画=(view,项目,单人,页签)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:项目}}>
+      <DataShell view={view} 项目={项目} 页签={页签||undefined}>
         {!项目?<div>老的</div>:view==='现在'?<ProjectNowView 数={现在} 本位币="CNY" 单人={单人}/>:<ProjectPeriodView 数={一段} 本位币="CNY" 口径="2026 年 10 月" 单人={单人}/>}
       </DataShell>
     </BusinessProvider></App>);
@@ -54,12 +57,12 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 打开(view: string, 项目 = true, width = 1280, 单人 = false): Promise<{ page: Page; errors: string[] }> {
+async function 打开(view: string, 项目 = true, width = 1280, 单人 = false, 页签 = ""): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://ent.test/overview"); await page.addScriptTag({ content: bundle });
-  await page.evaluate(([v, p, s]) => (window as unknown as { __画: (v: string, p: boolean, s: boolean) => void }).__画(v, p, s), [view, 项目, 单人] as const);
+  await page.evaluate(([v, p, s, t]) => (window as unknown as { __画: (v: string, p: boolean, s: boolean, t: string) => void }).__画(v, p, s, t), [view, 项目, 单人, 页签] as const);
   await page.getByRole("heading").first().waitFor();
   return { page, errors };
 }
@@ -81,7 +84,8 @@ it("本月：新建 / 转商机 / 成功交付 / 没成，走势图，按负责�
   const t = await page.locator("body").innerText();
   for (const s of ["新建项目", "转商机", "成功交付", "没成", "项目走势", "全周期漏斗", "按负责人", "线索流失 1 · 丢单 1"]) expect(t).toContain(s);
   expect(t).not.toContain("不是 CNY");
-  expect(await page.locator("canvas").count()).toBe(1);
+  // 走势图 + 线索瀑布（P15）
+  expect(await page.locator("canvas").count()).toBe(2);
   expect(errors).toEqual([]); await page.close();
 });
 
@@ -112,4 +116,15 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：两个视图都不横
     expect(box!.x + box!.width).toBeLessThanOrEqual(w);
     await page.close();
   }
+});
+
+it("复盘页带页签：「待办 | 数据」，数据页签里有三视图切换和漏斗 + 线索瀑布", async () => {
+  const { page, errors } = await 打开("现在", true, 1280, false, "data");
+  const tabs = page.getByRole("tab");
+  expect(await tabs.allInnerTexts()).toEqual(["待办", "数据"]);
+  expect(await page.getByRole("tab", { name: "数据" }).getAttribute("aria-selected")).toBe("true");
+  const t = await page.locator("body").innerText();
+  for (const s of ["线索瀑布", "全周期漏斗", "现在"]) expect(t).toContain(s);
+  expect(await page.locator(".data-shell-body .data-shell-bar .ant-segmented").count()).toBe(1);
+  expect(errors).toEqual([]); await page.close();
 });

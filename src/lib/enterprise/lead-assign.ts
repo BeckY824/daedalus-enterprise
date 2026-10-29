@@ -148,15 +148,49 @@ export function 能改参与(org: 组织, 我: { id: string; role: string }): bo
 // —— 读库 ——
 
 /** 查完再写 的事务里传 tx 进来，查的和写的落在同一个事务 */
-type 库 = Pick<Prisma.TransactionClient, "entLeadAssign" | "entLeadQuota">;
+type 库 = Pick<Prisma.TransactionClient, "entLeadAssign" | "entLeadQuota" | "entLeadQuotaBonus">;
 
 /** 本月已经算进数的分配条数 */
 export async function 本月已分(userId: string, 月 = 月份(), db: 库 = prisma): Promise<number> {
   return db.entLeadAssign.count({ where: { toUserId: userId, month: 月, counted: true } });
 }
 
-export async function 配额of(userId: string, db: 库 = prisma): Promise<number | null> {
-  return (await db.entLeadQuota.findUnique({ where: { userId } }))?.quota ?? null;
+/**
+ * 生效配额 = 设的每月配额 + 本月加的额（线索验证：最终判无效的线索给负责人本月 +1，lib/project/lead-verify.ts）。
+ * 没设配额 = null，加额不起作用：手动分本来不限、自动分配本来不挑他
+ */
+export const 生效配额 = (基: number | null, 加: number): number | null => (基 === null ? null : 基 + 加);
+
+/** 本月加了几条额：按 月份() 那一格存，下个月是新的一格 = 每月清零 */
+export async function 本月加额(userId: string, 月 = 月份(), db: Pick<库, "entLeadQuotaBonus"> = prisma): Promise<number> {
+  return (await db.entLeadQuotaBonus.findUnique({ where: { userId_month: { userId, month: 月 } } }))?.count ?? 0;
+}
+
+/** 一批人本月各加了几条额，没加的不在表里 */
+export async function 本月加额们(ids: string[], 月 = 月份(), db: Pick<库, "entLeadQuotaBonus"> = prisma): Promise<Map<string, number>> {
+  if (!ids.length) return new Map();
+  const 行 = await db.entLeadQuotaBonus.findMany({ where: { userId: { in: ids }, month: 月 } });
+  return new Map(行.map((r) => [r.userId, r.count]));
+}
+
+/**
+ * 给 userId 本月配额 +1（线索最终判无效时调）。没设配额的人不加，返回 false：
+ * 他不参与自动分配、手动分也不限，加了没意义，还会让以后设配额的那个月凭空多出来
+ */
+export async function 加一条配额(db: Pick<库, "entLeadQuota" | "entLeadQuotaBonus">, userId: string, 月 = 月份()): Promise<boolean> {
+  if (!(await db.entLeadQuota.findUnique({ where: { userId } }))) return false;
+  await db.entLeadQuotaBonus.upsert({
+    where: { userId_month: { userId, month: 月 } },
+    create: { userId, month: 月, count: 1 },
+    update: { count: { increment: 1 } },
+  });
+  return true;
+}
+
+/** 生效配额：设的配额 + 本月加的额；没设 = null */
+export async function 配额of(userId: string, db: 库 = prisma, 月 = 月份()): Promise<number | null> {
+  const 基 = (await db.entLeadQuota.findUnique({ where: { userId } }))?.quota ?? null;
+  return 基 === null ? null : 生效配额(基, await 本月加额(userId, 月, db));
 }
 
 export type 分出去的线索 = {

@@ -13,6 +13,7 @@ import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 import { 认首页卡, 首页卡条件, 即将逾期 } from "./home-cards";
 import { 字典of, 阶段与进程, type 阶段字典 } from "./stage-dict";
+import { 待我复核的 } from "./lead-verify";
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string };
@@ -67,12 +68,13 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     const 日 = 项目回收日(规则, p);
     return 即将回收(日, 今) ? 日 : null;
   };
-  const [人, users, 可见, 邀请, 收回] = await Promise.all([
+  const [人, users, 可见, 邀请, 收回, 待复核] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.ownerId))] } }, select: { id: true, name: true } }),
     负责人候选(),
     看得到的客户(rows.map((r) => r.customerId)),
     待我回的邀请(me),
     企 ? 数收回次数(rows.map((r) => r.id), prisma) : Promise.resolve(null),
+    企 ? 待我复核的(me) : Promise.resolve([]),
   ]);
   const 名字 = new Map(人.map((u) => [u.id, u.name]));
   // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）
@@ -96,6 +98,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     出口叫法: 规则?.阶段.出口叫法,
     users,
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    // 企业版线索验证（P12）：等我复核 / 终验 / 认领的线索
+    待复核们: 待复核.map((r) => ({ ...r, 更新于: r.更新于.toISOString() })),
     filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡 },
   };
 }

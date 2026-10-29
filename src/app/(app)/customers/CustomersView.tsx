@@ -400,7 +400,7 @@ export default function CustomersView({
    * 企业版客户改版（定稿 P5 第 22、23 条）：外贸那几列（国家、WhatsApp、邮箱、微信、阿里 ID、来源）不摆，
    * 换成级别 S/A/B/C（排序同一个 level 键，S 在 A 前）、地址、官网、分配方式；后三列收在「列」里。
    * P13（2026-10-29）：级别画成星（components/LevelStars.tsx，4 格等宽，76 宽放得下）；加「客户类型」一列，
-   * 字典项可以改成很长的字，超出 96 宽省略、悬停看全
+   * 字典项可以改成很长的字，超出 96 宽省略、悬停看全；默认收在「列」里，列表还是六列（1024 宽排得下）
    */
   const 企业列: 列<CustomerRow>[] = [
     {
@@ -410,7 +410,7 @@ export default function CustomersView({
       render: (_: unknown, r) => <LevelStars level={r.extra?.level} 空={空} />,
     },
     {
-      title: "客户类型", key: "customerType", width: 96,
+      title: "客户类型", key: "customerType", width: 96, 默认: false,
       render: (_: unknown, r) => (r.customerType ? <span className="clamp-1" style={{ display: "block" }} title={r.customerType}>{r.customerType}</span> : 空),
     },
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },

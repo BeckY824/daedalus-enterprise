@@ -28,8 +28,7 @@ import { useResearchEntry } from "@/components/research/ResearchEntry";
 import { 像邮件原文, type 邮件信号 } from "@/lib/research/verify/mail";
 import { 是免费邮箱 } from "@/lib/research/verify/domain";
 import { ComposerFoot, ComposerTools, ComposerTop, SendKey } from "./ComposerParts";
-import CardScanKey from "./CardScanKey";
-import DedupeKey from "./DedupeKey";
+import ComposerPlus from "./ComposerPlus";
 import { useNarrow } from "@/lib/roster";
 import type { Suggestion } from "./HomeChat";
 import type { 这一屏 } from "./useHomeTurns";
@@ -51,7 +50,7 @@ const COMMANDS: { cmd: string; hint: string; question: string }[] = [
   { cmd: "/recap", hint: "回顾上次沟通：上次跟的那位聊到哪了", question: "找我最近一次跟进的那位，读记录，告诉我上次聊到哪、有什么没接住" },
   { cmd: "/watch", hint: "盯盘：正在被遗忘的人，各自该从哪接上", question: "看盯盘清单，对前几位各给一句现在该从哪接上" },
   { cmd: "/model", hint: "换个模型", question: "" },
-  // 左栏那一项叫「数据」，这里也叫「数据」（审查 D3）；企业版项目模式叫「看板」，在下面换
+  // 左栏那一项叫「数据」，这里也叫「数据」（审查 D3）；企业版项目模式叫「复盘」，在下面换
   { cmd: "/board", hint: "打开数据", question: "" },
   { cmd: "/clear", hint: "清空这一屏", question: "" },
 ];
@@ -306,9 +305,9 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
 
   const empty = turns.length === 0;
   const showCmds = q.startsWith("/") && !q.includes(" ");
-  // 企业版项目模式左栏那一项叫「看板」（10-29），/board 的说明跟着叫
+  // 企业版项目模式左栏那一项叫「复盘」（P15 改叫法），/board 的说明跟着叫
   const cmdMatches = showCmds
-    ? 命令表(models.length).filter((c) => c.cmd.startsWith(q.trim())).map((c) => (c.cmd === "/board" && b.projectMode ? { ...c, hint: "打开复盘看板" } : c))
+    ? 命令表(models.length).filter((c) => c.cmd.startsWith(q.trim())).map((c) => (c.cmd === "/board" && b.projectMode ? { ...c, hint: "打开复盘" } : c))
     : [];
   /** 打了一个斜杠开头、却一条命令都对不上：就地说一句，不再回车后整行静默清空 */
   const 没这个命令 = showCmds && q.trim().length > 1 && cmdMatches.length === 0;
@@ -341,29 +340,47 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
           }
           栏左={
             <>
-              <ComposerTools
-                宽={宽}
-                摆背调键={调.入口}
-                背调模式={背调模式}
-                on切背调={() => {
-                  调.set背调模式((v) => !v);
-                  taRef.current?.focus();
-                }}
-                files={files}
-                setFiles={setFiles}
-                在跑={running != null}
-                邮件={邮件}
-                on开邮件={() => 调.set邮件框({})}
-                摆粘贴键={!背调模式 && !(empty && 空库 && 宽)}
-                on粘贴={() => 粘.去粘贴("")}
-                on预载={预载导入抽屉}
-                附件字={渠道名们 ? "附件" : undefined}
-                摆附件键={!(渠道名们 && 手机)}
-              />
-              {/* 企业版项目模式（只有它传 渠道名们）：背调、查重、附件分开放（10-29 首页改版 待 1）。
-                  桌面：上面的文本附件键带字「附件」+ 查重 + 名片；手机：查重 + 一颗调相机的「附件」，拍的照片走认名片建线索 */}
-              {渠道名们 && !背调模式 && <DedupeKey 宽={宽} />}
-              {渠道名们 && !背调模式 && <CardScanKey 宽={宽} 在跑={running != null} 渠道名们={渠道名们} on出卡={出名片卡} 拍照={手机} />}
+              {/* 企业版项目模式（只有它传 渠道名们）：附件、名片、查重、粘一段聊天、背调收进一颗「+」（P15）；
+                  背调模式下照原样摆退出背调和粘询盘邮件两颗。别的版本照旧并排 */}
+              {渠道名们 && !背调模式 ? (
+                <ComposerPlus
+                  宽={宽}
+                  拍照={手机}
+                  在跑={running != null}
+                  files={files}
+                  setFiles={setFiles}
+                  摆粘贴键={!(empty && 空库 && 宽)}
+                  on粘贴={() => 粘.去粘贴("")}
+                  on预载={预载导入抽屉}
+                  摆背调键={调.入口}
+                  on切背调={() => {
+                    调.set背调模式((v) => !v);
+                    taRef.current?.focus();
+                  }}
+                  渠道名们={渠道名们}
+                  on出卡={出名片卡}
+                />
+              ) : (
+                <ComposerTools
+                  宽={宽}
+                  摆背调键={调.入口}
+                  背调模式={背调模式}
+                  on切背调={() => {
+                    调.set背调模式((v) => !v);
+                    taRef.current?.focus();
+                  }}
+                  files={files}
+                  setFiles={setFiles}
+                  在跑={running != null}
+                  邮件={邮件}
+                  on开邮件={() => 调.set邮件框({})}
+                  摆粘贴键={!背调模式 && !(empty && 空库 && 宽)}
+                  on粘贴={() => 粘.去粘贴("")}
+                  on预载={预载导入抽屉}
+                  附件字={渠道名们 ? "附件" : undefined}
+                  摆附件键={!(渠道名们 && 手机)}
+                />
+              )}
             </>
           }
           栏右={<ModelPicker options={models} value={model} />}

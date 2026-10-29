@@ -37,7 +37,7 @@ export type 首页信号 = {
   逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string;
 };
 
-export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 产品名, 指标卡 }: {
+export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 产品名, 指标卡, 我 }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   userName: string;
@@ -88,6 +88,8 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
    * 左 2/3 对话、右 1/3 竖排卡（手机上对话在上、卡在下），欢迎屏只留问候和「欢迎使用 {产品名}」
    */
   指标卡?: 首页卡数;
+  /** 当前账号 id：今日待办卡点进复盘页时带上看本人（HomeCards） */
+  我?: string;
 }) {
   const b = useBusiness();
   const model = useModel(models);
@@ -166,7 +168,7 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
           <div className="cli-ck">
             <div className="cli-ck-g">
               {对话列}
-              <HomeCards 数={指标卡} />
+              <HomeCards 数={指标卡} 我={我} />
             </div>
           </div>
         ) : (

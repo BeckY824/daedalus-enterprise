@@ -49,6 +49,8 @@ const 可写: Record<string, string[]> = {
   // 企业版提成（2026-10-26）：projects/commission-actions.ts 的 存项目底价 / 存提成分配
   EntCommission: ["basePrice"],
   EntCommissionSplit: ["userId", "percent"],
+  // 企业版线索有效性验证（2026-10-29，P12）：projects/actions.ts 的 线索初判 / 市场复核 / 销售终验 / 总管理终判 收的说明和无效原因
+  EntLeadVerify: ["invalidReason", "verifyNote", "reviewNote", "disputeNote", "finalNote"],
   Customer: ["name", "phone", "school", "grade", "major", "channelId", "referrerCustomerId", "salesOwnerId", "channelOwnerId", "followStatus", "decisionStatus", "custStatus", "expectedSignAt", "remark",
     // 企业版客户改版（2026-10-29，迁移 072）：客户表单 saveCustomer 的 企业资料
     "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay",
@@ -130,6 +132,35 @@ const 派生: Record<string, Record<string, string>> = {
   EntCommissionSplit: {
     projectId: "哪个项目；分配按项目整份存",
     setById: "最后改这一份的人，当前登录账号",
+  },
+  EntLeadVerify: {
+    projectId: "哪个项目，一个项目一行；第一次初判时按项目建，不改",
+    verdict: "线索判定，按四步走到哪一步系统算（lib/project/lead-verify.ts），人点的是有效 / 无效 / 还需培育，不直接填",
+    pending: "等哪一步，按判的结果、「市场复核」规则和组织里有没有市场管理系统算",
+    verifiedById: "销售初判的人，当前登录账号",
+    verifiedAt: "销售初判那一刻",
+    reviewResult: "市场复核点的有效 / 无效，按按钮记，不是自由填",
+    reviewedById: "市场复核的人，当前登录账号",
+    reviewedAt: "市场复核那一刻",
+    salesAck: "销售终验点的接受复核 / 提交异议，按按钮记",
+    ackedAt: "销售终验那一刻",
+    finalResult: "最终结果，市场判无效 / 总管理终判 / 直接判有效推进时系统写",
+    finalById: "定最终结果的人，当前登录账号",
+    finalAt: "定最终结果那一刻",
+  },
+  EntLeadVerifyLog: {
+    projectId: "哪个项目，每一步系统记一行",
+    step: "哪一步，系统按调用的是哪个 action 记",
+    verdict: "这一步判的，按按钮记",
+    reason: "无效原因，从判无效那一步抄过来",
+    note: "这一步的说明，从那一步收的说明抄过来",
+    userId: "点的那个人，当前登录账号",
+    at: "点的那一刻",
+  },
+  EntLeadQuotaBonus: {
+    userId: "加给谁：最终判无效那条线索的负责人",
+    month: "加在哪个业务月（北京时间），每月清零靠它",
+    count: "这个月因线索最终无效加了几条配额，系统累加",
   },
   Opportunity: { activityAt: "最近业务推进时间；转交负责人保留，业务字段/报价变化时刷新，老数据为空沿用原修改时间" },
   Customer: {

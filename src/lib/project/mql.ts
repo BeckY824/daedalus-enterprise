@@ -10,6 +10,7 @@ import { parseDateInput } from "../date-input";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 改节点 } from "./db";
 import { 有效线索节点, 培育计划上限 } from "./stage-gates";
+import { 等复核拦 } from "./lead-verify-guard";
 
 type 谁 = { id: string; role: string };
 
@@ -23,6 +24,8 @@ export async function 判MQL(
   const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, phase: true, node: true, result: true, customerId: true, ownerId: true } });
   if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
   if (p.result || p.phase !== "线索" || p.node !== 有效线索节点) return { ok: false, error: `只有停在「${有效线索节点}」的项目能判 MQL` };
+  const 等着 = await 等复核拦(prisma, p.id);
+  if (等着) return { ok: false, error: 等着 };
   if (合格) return 改节点(me, p.id, { phase: "线索", node: MQL合格去 });
   const 日 = parseDateInput(下一步时间);
   if (!日) return { ok: false, error: "MQL 不合格要定下一次培育跟进的日期" };
