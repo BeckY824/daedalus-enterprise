@@ -3,12 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import ChannelsView from "./ChannelsView";
 import { 负责人候选 } from "@/lib/owners";
-import { llmEnabled } from "@/lib/llm";
-import { buildReferralRadar } from "@/lib/referral";
-import { 带币种, 签约合计 } from "@/lib/money-db";
-import { getBusiness, 签约叫 } from "@/lib/business";
-import { 渠道汇总 } from "@/lib/attribution";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
+import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
 
 export const dynamic = "force-dynamic";
 
@@ -20,81 +17,57 @@ export default async function ChannelsPage() {
       orderBy: [{ active: "desc" }, { createdAt: "desc" }],
       select: {
         id: true, name: true, phone: true, remark: true, active: true, createdAt: true, updatedAt: true,
+        attr: true, platform: true, endDate: true, createdById: true,
         channelOwnerId: true,
         channelOwner: { select: { name: true } },
       },
     }),
     /*
       走 负责人候选()，不直接查「排除管理员」。
-      「渠道负责人」是必填项，而桌面端和刚注册的托管版工作区里只有一个人、那个人是管理员——
+      「渠道负责人」是必填项，而刚开的工作区里只有一个人、那个人是管理员——
       直接用严格口径的话这个下拉是空的，于是**新建渠道这条路整个走不通**（2026-09-18 报上来的）。
       候选名单里留了「没有别人时列出全部在职成员」那条回退，见 lib/owners.ts。
     */
     负责人候选(),
   ]);
 
-  /**
-   * 学员只查**一次**，渠道汇总和转介绍雷达都从这一份里算。
-   *
-   * 原来这里是 `channels.map(async ...)`：每个渠道各跑一次 `customer.findMany`，
-   * 渠道有几个就往返几次；紧接着又几乎重复地全表查了一遍学员给雷达用，
-   * 两处的差别只有一个 channelId 字段。渠道多起来之后，切到这一页要等的就是这些往返——
-   * 2026-09-17 在桌面端真机上看到这一页会闪一段骨架屏，量的就是它。
-   * 本地 CRM 的学员规模一次取回完全撑得住，按 channelId 在内存里分组即可。
-   */
-  const allCustomers = await prisma.customer.findMany({
-    select: {
-      id: true,
-      name: true,
-      followStatus: true,
-      referrerCustomerId: true,
-      channelId: true,
-      contracts: { select: { amount: true, ...带币种.签约 } },
-    },
-  });
-
-  // 「直接」和「整条链」是两个谓词——到 2026-09-19 为止是同一个，两列永远相等。
-  // 口径和为什么抽成函数见 lib/attribution.ts 的 渠道汇总
-  const statMap = 渠道汇总(channels.map((c) => c.id), allCustomers);
-
-  const business = await getBusiness();
-  // 企业版渠道就是预设的来源清单，没有转介绍链：雷达不算、不摆（ChannelsView 里一并藏掉计数）
-  const 企业 = 企业版();
-  const radar = 企业 ? { topReferrers: [], inviteCandidates: [] } : buildReferralRadar(
-    allCustomers.map((c) => ({
-      id: c.id,
-      name: c.name,
-      followStatus: c.followStatus,
-      referrerCustomerId: c.referrerCustomerId,
-      contractCount: c.contracts.length,
-      signedAmount: 0, // 已提供按币种精确合计，不使用旧人民币兼容值
-      signed: 签约合计(c.contracts),
-    })),
-    business.currency, 签约叫(business),
-  );
+  /*
+    统计一次读完（2026-10-29 渠道改版）：项目一趟、投入一趟，按渠道在内存里分组，
+    口径全在 lib/enterprise/channel-stats.ts 的 算渠道统计。原来的转介绍链汇总、雷达整个不算了——
+    企业版的渠道是预设的来源清单，没有推荐链
+  */
+  const [统计, 创建人们, 属性选项] = await Promise.all([
+    读渠道统计(channels),
+    prisma.user.findMany({
+      where: { id: { in: [...new Set(channels.map((c) => c.createdById).filter((x): x is string => Boolean(x)))] } },
+      select: { id: true, name: true },
+    }),
+    // 不是企业版（单测里）字典是空的，退回默认那五项，表单照样能选
+    企业版() ? 可选项("channelAttr") : Promise.resolve([...字典定义.channelAttr.默认]),
+  ]);
+  const 创建人 = new Map(创建人们.map((u) => [u.id, u.name]));
 
   const 号 = await 号码脱敏器();
   return (
     <ChannelsView
       users={users}
-      radar={radar}
-      企业版={企业}
-      aiEnabled={await llmEnabled()}
+      属性选项={属性选项}
       rows={channels.map((c) => ({
         id: c.id,
         name: c.name,
-        // 共享试用区打码，和客户、联系人同一个出口（2026-10-02 排查 A6）
+        // 表单里不再问电话，编辑时原样交回去（打码的由 认回打码号 认回原号，不会被抹掉）
         phone: 号(c.phone),
         remark: c.remark,
         active: c.active,
+        attr: c.attr,
+        platform: c.platform,
+        endDate: c.endDate ? c.endDate.toISOString() : null,
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
+        createdByName: c.createdById ? 创建人.get(c.createdById) ?? null : null,
         channelOwnerId: c.channelOwnerId,
         channelOwnerName: c.channelOwner.name,
-        directCount: statMap[c.id]?.directCustomers ?? 0,
-        chainCount: statMap[c.id]?.chainCustomers ?? 0,
-        chainAmount: statMap[c.id]?.chainAmount ?? 0,
-        chainMoney: statMap[c.id]?.chainMoney ?? [],
+        统计: 统计[c.id],
       }))}
     />
   );

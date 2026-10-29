@@ -1666,7 +1666,17 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 渠道表里停用的那几行整行压淡，名字旁边写「已停用」（审查 D12）。操作列不压：恢复键要看得清 */
 .row-off > td:not(.ant-table-cell-fix-end) { color: var(--text-muted); }
 .row-off .link-strong { color: var(--text-muted); }
-.chan-name { display: inline-flex; align-items: center; gap: var(--s2); }
+/* 渠道全称（2026-10-29 改版）：再长也只占一行、多出的省略号，鼠标停上去看全；「已停用」标签不被挤掉 */
+.chan-full { display: flex; align-items: center; gap: var(--s2); min-width: 0; max-width: 100%; }
+.chan-full > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chan-num { font-variant-numeric: tabular-nums; }
+/* 渠道详情里的投入记录：一笔一行，删除钮靠右 */
+.chan-invest { list-style: none; margin: 0; padding: 0; }
+.chan-invest > li { position: relative; padding: var(--s2) 32px var(--s2) 0; border-bottom: 1px solid var(--line); }
+.chan-invest-main { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; min-width: 0; }
+.chan-invest-who { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chan-invest-remark { margin-top: 2px; overflow-wrap: anywhere; }
+.chan-invest-del { position: absolute; right: 0; top: var(--s2); }
 /* 「重置」一直占着位置，没筛时只是看不见（审查 M17）：原来它一出现就把「列」挤到第二行，
    整张表往下跳一截。出现消失只淡入淡出，不位移。visibility 晚一拍再收，淡出才看得见 */
 .list-reset { transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s; }
