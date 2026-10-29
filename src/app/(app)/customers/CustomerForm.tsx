@@ -24,7 +24,7 @@ import { 带走说法 } from "@/lib/carry-over";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
-import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 简称上限 } from "@/lib/enterprise/customer-v2";
+import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 地址叫法, 详细地址上限, 简称上限 } from "@/lib/enterprise/customer-v2";
 
 export type CustomerRow = {
   id: string;
@@ -43,6 +43,8 @@ export type CustomerRow = {
   addrProvince?: string | null;
   addrCity?: string | null;
   addrDistrict?: string | null;
+  /** 地址第五格「客户地址」（迁移 091，P14 第 7 条）：公司详细地址 */
+  addrDetail?: string | null;
   assignWay?: string | null;
   /** 客户类型（企业版，字典 custType，2026-10-29 P13 第 4 条，迁移 092）。老调用方没给就当没填 */
   customerType?: string | null;
@@ -312,6 +314,7 @@ function CustomerFormInner({
                 addrProvince: 国内址 ? (v.addrProvince ?? null) : null,
                 addrCity: v.addrCity ?? null,
                 addrDistrict: 国内址 ? (v.addrDistrict ?? null) : null,
+                addrDetail: v.addrDetail ?? null,
                 assignWay: v.assignWay ?? null,
                 customerType: v.customerType ?? null,
               },
@@ -533,10 +536,13 @@ function CustomerFormInner({
         */}
         {企业 && (
           <>
-            {/* 地址（待定 17）：国内到省 / 市 / 区县，国外只要国家 + 城市；国家空着、填了省市的当国内 */}
+            {/*
+              地址（待定 17；P14 第 7 条定的五格叫法：国家地区、省、市、区 / 县级市、客户地址）：
+              国内到省 / 市 / 区县，国外只要国家 + 城市；国家空着、填了省市的当国内。第五格「客户地址」国内国外都摆
+            */}
             <Row gutter={16}>
               <Col span={国内址 ? 6 : 8}>
-                <Form.Item label="国家" name="addrCountry" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
+                <Form.Item label={地址叫法.addrCountry} name="addrCountry" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
                   <AutoComplete
                     allowClear
                     placeholder={国内叫法}
@@ -547,24 +553,27 @@ function CustomerFormInner({
               </Col>
               {国内址 && (
                 <Col span={6}>
-                  <Form.Item label="省" name="addrProvince" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
+                  <Form.Item label={地址叫法.addrProvince} name="addrProvince" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
                     <Input placeholder="如 广东省" />
                   </Form.Item>
                 </Col>
               )}
               <Col span={国内址 ? 6 : 16}>
-                <Form.Item label="城市" name="addrCity" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
+                <Form.Item label={地址叫法.addrCity} name="addrCity" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
                   <Input placeholder={国内址 ? "如 深圳市" : "如 Los Angeles"} />
                 </Form.Item>
               </Col>
               {国内址 && (
                 <Col span={6}>
-                  <Form.Item label="区县" name="addrDistrict" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
+                  <Form.Item label={地址叫法.addrDistrict} name="addrDistrict" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
                     <Input placeholder="如 南山区" />
                   </Form.Item>
                 </Col>
               )}
             </Row>
+            <Form.Item label={地址叫法.addrDetail} name="addrDetail" rules={[{ max: 详细地址上限, message: `最多 ${详细地址上限} 个字` }]}>
+              <Input placeholder={国内址 ? "公司详细地址，如 科技园南区 8 栋 501" : "Street address, building, suite"} />
+            </Form.Item>
             <Row gutter={16}>
               <Col span={16}>
                 <Form.Item
@@ -962,7 +971,7 @@ function 认人记号() {
   );
 }
 
-/** 企业版并发比对的基准：简称、地址四格、分配方式、客户类型（打开表单那一刻的值） */
+/** 企业版并发比对的基准：简称、地址五格、分配方式、客户类型（打开表单那一刻的值） */
 function 企业资料基准(e: CustomerRow) {
   return {
     shortName: e.shortName ?? null,
@@ -970,6 +979,7 @@ function 企业资料基准(e: CustomerRow) {
     addrProvince: e.addrProvince ?? null,
     addrCity: e.addrCity ?? null,
     addrDistrict: e.addrDistrict ?? null,
+    addrDetail: e.addrDetail ?? null,
     assignWay: e.assignWay ?? null,
     customerType: e.customerType ?? null,
   };

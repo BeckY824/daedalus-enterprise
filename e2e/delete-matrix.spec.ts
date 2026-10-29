@@ -154,6 +154,7 @@ test("删商机：确认框说关联几条跟进、是赢单的；删了点撤�
 });
 
 test("删跟进（顺带建了待办的提醒）：就地确认说「连同它的待办」；删了待办也没了，点撤销都回来", async ({ page }) => {
+  test.skip(企业版, "企业版客户页的沟通记录只读（各项目跟进的汇总），跟进页、项目沟通卡也没有删除键");
   const p = 连库();
   const c = await p.customer.create({ data: { name: `跟进客户${戳}`, phone: `1385${戳}0`.slice(0, 11), salesOwnerId: 我 } });
   const 到点 = new Date(Date.now() + 2 * 86400000);

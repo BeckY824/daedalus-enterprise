@@ -55,7 +55,9 @@ const 可写: Record<string, string[]> = {
     // 企业版客户改版（2026-10-29，迁移 072）：客户表单 saveCustomer 的 企业资料
     "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay",
     // 企业版客户类型（2026-10-29，迁移 092）：客户表单 / 行内改 / 导入
-    "customerType"],
+    "customerType",
+    // 企业版客户地址第五格「客户地址」（2026-10-29，迁移 091，P14 第 7 条）：客户表单 saveCustomer 的 企业资料
+    "addrDetail"],
   // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
   Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate"],
   // 企业版渠道投入（2026-10-29）：渠道详情抽屉里录一笔（channels/actions.ts 的 addChannelInvest）

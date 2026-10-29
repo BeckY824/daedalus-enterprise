@@ -94,6 +94,19 @@ export function 拼地址(a: Partial<客户地址> | null | undefined): string {
   return 段.map((x) => (x ?? "").trim()).filter(Boolean).filter((x, i, 全) => 全.indexOf(x) === i).join(" ");
 }
 
+/**
+ * 地址五格的叫法（P14 第 7 条，10-29 对方定的说法）：国家地区、省、市、区 / 县级市、客户地址。
+ * 前四格是 072 的 addr*，第五格「客户地址」是 091 的 addrDetail（公司详细地址，国内国外都收）
+ */
+export const 地址叫法 = { addrCountry: "国家地区", addrProvince: "省", addrCity: "市", addrDistrict: "区 / 县级市", addrDetail: "客户地址" } as const;
+export const 详细地址上限 = 100;
+/** 客户地址（详细地址）一格：去头尾空白、连续空白并一个；空 = null；超长给错 */
+export function 规整详细地址(v: unknown): { ok: true; 值: string | null } | { ok: false; error: string } {
+  const t = (typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "") || null;
+  if (t && t.length > 详细地址上限) return { ok: false, error: `${地址叫法.addrDetail}最多 ${详细地址上限} 个字` };
+  return { ok: true, 值: t };
+}
+
 // ---------- 客户简称、分配方式 ----------
 
 export const 简称上限 = 20;
@@ -224,6 +237,10 @@ export function 老三格(号码们: readonly { kind: string; value: string }[])
  *   移到项目（黄）：记录输入
  *   待办客户和项目两处都留（10-29 会议待定 14）
  *   客户页不放（红）：转让（走整客户转让）、背调、下次跟进
+ * 10-29 P14 又定：
+ *   跟进去项目 —— 「跟进」按钮跳到项目（一个直接跳、多个菜单挑、没有就新建项目），菜单里带「转让」（复用整客户转让）
+ *   沟通汇总 —— 时间线改成只读「沟通记录」，汇总各项目的跟进（每条标项目、点了去项目）
+ *   背调卡 —— 客户背调单独一张卡（不挂在 AI 面板、「跟进」菜单里）
  * 客户详情里划掉的旧字段（第 22、29、30 条：行业、职位、国家、WhatsApp、邮箱、微信、阿里 ID、旧客户等级、预计签约、客户属性）也一起不摆，库里照留
  */
 export function 客户页摆法(企业项目模式: boolean) {
@@ -238,5 +255,8 @@ export function 客户页摆法(企业项目模式: boolean) {
     关联客户: 企业项目模式,
     新字段: 企业项目模式,
     新建项目: 企业项目模式,
+    跟进去项目: 企业项目模式,
+    沟通汇总: 企业项目模式,
+    背调卡: 企业项目模式,
   } as const;
 }

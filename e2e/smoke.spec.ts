@@ -112,24 +112,33 @@ test("4. 线索转客户：客户库出现，线索标记已转化", async ({ pa
 
 test("5. 给客户录一条跟进，时间线上要看得见", async ({ page }) => {
   // 客户本是第 3、4 条从线索建、转出来的；企业版那两条跳过，这里直接在库里给张三建这位，后面几条照常走
+  let 企业客户id = "";
   if (企业版) {
     const db = 连库();
     try {
       const 张三 = await db.user.findFirstOrThrow({ where: { email: 账号.用户名 } });
-      await db.customer.create({ data: { name: 客户名, phone: 手机号, salesOwnerId: 张三.id, channelOwnerId: 张三.id } });
+      企业客户id = (await db.customer.create({ data: { name: 客户名, phone: 手机号, salesOwnerId: 张三.id, channelOwnerId: 张三.id } })).id;
     } finally {
       await db.$disconnect();
     }
   }
   await 登录(page);
-  await page.goto("/customers");
-  await page.locator("main").getByRole("link", { name: 客户名 }).click();
-
-  await page.getByRole("button", { name: /记录跟进/ }).first().click();
+  if (企业版) {
+    // 企业版客户页的沟通记录只读（各项目的跟进汇总过来）：从跟进页带着这位记一笔，回客户页看汇总里有没有
+    await page.goto(`/follow-ups?customer=${企业客户id}&new=1`);
+  } else {
+    await page.goto("/customers");
+    await page.locator("main").getByRole("link", { name: 客户名 }).click();
+    await page.getByRole("button", { name: /记录跟进/ }).first().click();
+  }
   const 弹窗 = page.getByRole("dialog");
   await 弹窗.getByLabel("标题").fill("首次电话沟通");
   await 弹窗.getByLabel("沟通内容").fill("介绍了课程与价格");
   await 弹窗.getByRole("button", { name: /保\s*存|确\s*定/ }).click();
+  if (企业版) {
+    await expect(弹窗).toBeHidden();
+    await page.goto(`/customers/${企业客户id}`);
+  }
 
   /**
    * 断言的是沟通内容而不是标题：时间线上只渲染跟进类型和内容，

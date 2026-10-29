@@ -96,7 +96,8 @@ test("制定跟进计划：连点两次保存 → 只多一条计划", async ({ 
 
 test("记录跟进（带截止时间、连带建待办）：连点两次保存 → 跟进和连带的待办都只一份", async ({ page }) => {
   await 登录(page);
-  await page.goto(`/customers/${客户id}`);
+  // 企业版客户页的「跟进」去项目里记；带着这位到跟进页，页头「记录跟进」是同一个框
+  await page.goto(企业版 ? `/follow-ups?customer=${客户id}` : `/customers/${客户id}`);
   const 框 = await 打开(page, "记录跟进", "新建跟进");
   // 换成「跟进任务」才有截止时间；填了截止时间、状态没做完，保存时顺带建一条待办
   await 框.getByLabel("跟进类型").click();

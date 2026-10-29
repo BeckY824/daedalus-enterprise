@@ -23,7 +23,7 @@ import { invalidateSettingsCache, getSetting } from "@/lib/settings";
 import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
 import {
   企业级别, 认企业级别, 规整地址, 拼地址, 关联对, 另一头, 认生日, 是附件分类,
-  认号码种类, 验一行号码, 老三格, 客户页摆法,
+  认号码种类, 验一行号码, 老三格, 客户页摆法, 规整详细地址, 地址叫法,
 } from "@/lib/enterprise/customer-v2";
 import { 级别D改C, 级别改过记号键, 号码种类表, 种类叫法, 验联系人号码们, 联系人号码们, 关联客户们 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人分类附件数 } from "@/lib/attachments";
@@ -91,6 +91,14 @@ describe("纯函数", () => {
     expect(拼地址(null)).toBe("");
   });
 
+  it("地址五格叫法对齐（P14 第 7 条）；客户地址（详细地址）去空白、空当 null、超 100 字不收", () => {
+    expect(Object.values(地址叫法)).toEqual(["国家地区", "省", "市", "区 / 县级市", "客户地址"]);
+    expect(规整详细地址("  科技园南区   8 栋 ")).toEqual({ ok: true, 值: "科技园南区 8 栋" });
+    expect(规整详细地址("  ")).toEqual({ ok: true, 值: null });
+    expect(规整详细地址(null)).toEqual({ ok: true, 值: null });
+    expect(规整详细地址("长".repeat(101)).ok).toBe(false);
+  });
+
   it("关联对：一对只一行（小 id 在前），自己不行；另一头", () => {
     expect(关联对("b", "a")).toEqual({ customerId: "a", otherId: "b" });
     expect(关联对("a", "a")).toBeNull();
@@ -121,9 +129,9 @@ describe("纯函数", () => {
     expect(联系人号码们({ phone: "13800000001", email: null, wechat: null }, [{ kind: "email", value: "a@b.c" }])).toEqual([{ kind: "email", value: "a@b.c" }]);
   });
 
-  it("客户页摆法：项目模式去掉记录输入 / 待办 / 下次跟进 / 转让 / 背调 / 旧字段，加关联客户 / 新字段 / 新建项目", () => {
-    expect(客户页摆法(true)).toMatchObject({ 记录输入: false, 待办: true, 下次跟进: false, 转让: false, 背调: false, 旧字段: false, 关联客户: true, 新字段: true, 新建项目: true });
-    expect(客户页摆法(false)).toMatchObject({ 记录输入: true, 待办: true, 下次跟进: true, 转让: true, 背调: true, 旧字段: true, 关联客户: false, 新字段: false, 新建项目: false });
+  it("客户页摆法：项目模式去掉记录输入 / 待办 / 下次跟进 / 转让 / 背调 / 旧字段，加关联客户 / 新字段 / 新建项目 / 跟进去项目 / 沟通汇总 / 背调卡", () => {
+    expect(客户页摆法(true)).toMatchObject({ 记录输入: false, 待办: true, 下次跟进: false, 转让: false, 背调: false, 旧字段: false, 关联客户: true, 新字段: true, 新建项目: true, 跟进去项目: true, 沟通汇总: true, 背调卡: true });
+    expect(客户页摆法(false)).toMatchObject({ 记录输入: true, 待办: true, 下次跟进: true, 转让: true, 背调: true, 旧字段: true, 关联客户: false, 新字段: false, 新建项目: false, 跟进去项目: false, 沟通汇总: false, 背调卡: false });
   });
 
   it("档案改动只交改了的级别 / 官网，不动外贸那几格", () => {
@@ -182,6 +190,17 @@ describe("saveCustomer 企业版几格", () => {
     expect(坏).toMatchObject({ ok: false, error: "客户级别只能是 S / A / B / C" });
     expect((await 整表保存(id, { 企业资料: { assignWay: "乱填" } })).ok).toBe(false);
     expect((await 整表保存(id, { 企业资料: { shortName: "长".repeat(21) } })).ok).toBe(false);
+  });
+
+  it("客户地址（详细地址，迁移 091）：国外客户也收；不交不碰；超长不收", async () => {
+    const id = await 新建id({ 企业资料: { addrCountry: "美国", addrCity: "纽约", addrDetail: " 5th Ave  100 " } });
+    const 详 = async () => (await prisma.customer.findUniqueOrThrow({ where: { id } })).addrDetail;
+    expect(await 详()).toBe("5th Ave 100");
+    expect((await 整表保存(id, { 企业资料: { shortName: "简" } })).ok).toBe(true);
+    expect(await 详()).toBe("5th Ave 100");
+    expect((await 整表保存(id, { 企业资料: { addrDetail: "长".repeat(101) } })).ok).toBe(false);
+    expect((await 整表保存(id, { 企业资料: { addrDetail: null } })).ok).toBe(true);
+    expect(await 详()).toBeNull();
   });
 
   it("来源只记第一次的渠道：建好之后换渠道不收", async () => {
