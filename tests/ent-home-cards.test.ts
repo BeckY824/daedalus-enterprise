@@ -1,7 +1,7 @@
 /**
  * 企业版项目模式首页四张指标卡（10-29 首页改版 #10 / 待 2，lib/project/home-cards.ts + home-cards-db.ts + list.ts 的 f）：
  *   - 本月新增：这个月（北京时间）新建的项目，不管在不在推
- *   - 重点项目：在推、客户级别 S
+ *   - 重点项目：在推、项目级别 S / A（Project.level；不看客户级别）
  *   - 暂未跟进：在推、一条沟通都没挂到项目上
  *   - 即将逾期：在推的线索 / 商机，回收日在 3 天以内；超时回收没开恒为 0
  *   - 本月赢单：这个月有一次「商机 → 订单」节点变更的项目（10-29 会议二2，绿卡）
@@ -95,7 +95,7 @@ describe("口径（纯函数）", () => {
 
   it("重点 / 暂未跟进只看在推的；本月新增不管在不在推", () => {
     const 字典 = 字典of(true);
-    expect(首页卡条件("key", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, customer: { extra: { is: { level: { in: ["S"] } } } } });
+    expect(首页卡条件("key", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, level: { in: ["S", "A"] } });
     expect(首页卡条件("no-follow", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, followUps: { none: {} } });
     const 新 = 首页卡条件("month-new", 默认组织规则, 字典);
     expect(新).not.toHaveProperty("result");
@@ -117,16 +117,16 @@ describe("取数和项目页筛选", () => {
     mocks.user = { ...mocks.user, id: 老板, role: "ADMIN" };
     const 重点客户 = await prisma.customer.create({ data: { name: "客户甲", phone: "13900000001", salesOwnerId: 老板, extra: { create: { level: "S" } } } });
     const 普通客户 = await prisma.customer.create({ data: { name: "客户乙", phone: "13900000002", salesOwnerId: 老板, extra: { create: { level: "C" } } } });
-    const 业务员客户 = await prisma.customer.create({ data: { name: "客户丙", phone: "13900000003", salesOwnerId: 业务员, extra: { create: { level: "S" } } } });
+    const 业务员客户 = await prisma.customer.create({ data: { name: "客户丙", phone: "13900000003", salesOwnerId: 业务员, extra: { create: { level: "C" } } } });
     const 建 = async (名: string, customerId: string, ownerId: string, data: Record<string, unknown> = {}) => {
       项[名] = (await prisma.project.create({ data: { name: 名, customerId, ownerId, creatorId: ownerId, ...data } })).id;
     };
     const 上月 = dayjs().startOf("month").subtract(3, "day").toDate();
-    await 建("重点新", 重点客户.id, 老板); // 本月新增、重点、暂未跟进
-    await 建("重点跟过", 重点客户.id, 老板, { createdAt: 上月 }); // 重点（挂了沟通，不算暂未跟进；上月建的不算本月）
+    await 建("重点新", 重点客户.id, 老板, { level: "S" }); // 本月新增、重点（S 比 A 高，也算）、暂未跟进
+    await 建("重点跟过", 重点客户.id, 老板, { createdAt: 上月, level: "A" }); // 重点（挂了沟通，不算暂未跟进；上月建的不算本月）
     await 建("普通成交", 普通客户.id, 老板, { result: "成功交付" }); // 本月新增（已有结局也算），不在推
-    await 建("普通公海", 普通客户.id, 老板, { pooledAt: new Date() }); // 本月新增，不在推
-    await 建("业务员的", 业务员客户.id, 业务员); // 本月新增、重点、暂未跟进——业务员自己的
+    await 建("普通公海", 普通客户.id, 老板, { pooledAt: new Date(), level: "S" }); // 本月新增，不在推（级别 S 也不算重点）
+    await 建("业务员的", 业务员客户.id, 业务员, { level: "A" }); // 本月新增、重点（客户是 C，项目是 A）、暂未跟进——业务员自己的
     const 沟通 = await prisma.followUp.create({ data: { type: "PHONE", title: "电话", content: "聊了", customerId: 重点客户.id, ownerId: 老板 } });
     await prisma.followUpProject.create({ data: { followUpId: 沟通.id, projectId: 项["重点跟过"], node: "潜客培育" } });
   });
@@ -165,14 +165,16 @@ describe("取数和项目页筛选", () => {
     await prisma.entMember.create({ data: { userId: 经理 } });
     await prisma.entMember.create({ data: { userId: 业务员, managerId: 经理 } });
     const 经理客户 = await prisma.customer.create({ data: { name: "客户丁", phone: "13900000004", salesOwnerId: 经理, extra: { create: { level: "S" } } } });
-    await prisma.project.create({ data: { name: "经理的", customerId: 经理客户.id, ownerId: 经理, creatorId: 经理 } });
+    await prisma.project.create({ data: { name: "经理的", customerId: 经理客户.id, ownerId: 经理, creatorId: 经理, level: "A" } });
+    // 客户是 S、项目是 B：不算重点（只看项目自己的级别）
+    await prisma.project.create({ data: { name: "经理的普通", customerId: 经理客户.id, ownerId: 经理, creatorId: 经理, level: "B" } });
     mocks.user = { ...mocks.user, id: 经理, name: "经理", role: "SALES" };
     const 数 = await 数首页卡(经理, new Date(), 老四张);
-    expect(数).toEqual({ "month-new": 2, key: 2, "no-follow": 2, "due-soon": 0 });
-    expect(await 列("month-new")).toEqual(["业务员的", "经理的"]);
+    expect(数).toEqual({ "month-new": 3, key: 2, "no-follow": 3, "due-soon": 0 });
+    expect(await 列("month-new")).toEqual(["业务员的", "经理的", "经理的普通"]);
     expect(await 列("key")).toEqual(["业务员的", "经理的"]);
     // 不点卡的项目页不按这一圈筛（照旧由数据那层管）
-    expect((await 列("")).length).toBe(6);
+    expect((await 列("")).length).toBe(7);
   });
 
   it("开了超时回收：回收日 3 天以内的才算即将逾期", async () => {
