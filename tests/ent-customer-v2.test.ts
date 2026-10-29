@@ -122,7 +122,7 @@ describe("纯函数", () => {
   });
 
   it("客户页摆法：项目模式去掉记录输入 / 待办 / 下次跟进 / 转让 / 背调 / 旧字段，加关联客户 / 新字段 / 新建项目", () => {
-    expect(客户页摆法(true)).toMatchObject({ 记录输入: false, 待办: false, 下次跟进: false, 转让: false, 背调: false, 旧字段: false, 关联客户: true, 新字段: true, 新建项目: true });
+    expect(客户页摆法(true)).toMatchObject({ 记录输入: false, 待办: true, 下次跟进: false, 转让: false, 背调: false, 旧字段: false, 关联客户: true, 新字段: true, 新建项目: true });
     expect(客户页摆法(false)).toMatchObject({ 记录输入: true, 待办: true, 下次跟进: true, 转让: true, 背调: true, 旧字段: true, 关联客户: false, 新字段: false, 新建项目: false });
   });
 

@@ -335,7 +335,7 @@ export default function CustomersView({
   }, []);
 
   /** 收起来的那三个里还筛着几个。收起来不等于可以不告诉人 */
-  const 更多筛了 = [f.grade, f.decisionStatus, f.channelOwnerId, f.source].filter(Boolean).length;
+  const 更多筛了 = [f.grade, f.decisionStatus, f.channelOwnerId, f.source, 企业 ? f.level : ""].filter(Boolean).length;
   /** 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选 */
   const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v).length;
   /** 重置留在当前页签：在「公海」里点重置，回到的是全部公海，不是跳回「客户」 */
@@ -681,11 +681,6 @@ export default function CustomersView({
                 options={[...new Set([...国家们, ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
             )}
             {/* 客户等级（2026-10-16）：和国家一样摆在外面——按等级挑今天先跟谁 */}
-            {企业 && (
-              <Select style={{ width: 120 }} placeholder="全部级别" allowClear aria-label="客户级别"
-                value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
-                options={[...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] })), { value: 未分级, label: 未分级 }]} />
-            )}
             {外贸 && !企业 && (
               <Select style={{ width: 120 }} placeholder="全部等级" allowClear aria-label="客户等级"
                 value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
@@ -713,6 +708,12 @@ export default function CustomersView({
                   <Select style={{ width: "100%" }} placeholder={`全部${b.fields.grade}`} allowClear
                     value={f.grade || undefined} onChange={(v) => apply({ grade: v ?? "" })}
                     options={[...b.grades.map((g) => ({ value: g, label: g })), ...旧职位.map((g) => ({ value: g, label: `${g}（已不在选项里）` }))]} />
+                  {/* 企业版级别收在这里：摆外面 1024 宽会把筛选行挤成两行；列表里「级别」一列默认摆着 */}
+                  {企业 && (
+                    <Select style={{ width: "100%" }} placeholder="全部级别" allowClear aria-label="客户级别"
+                      value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
+                      options={[...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] })), { value: 未分级, label: 未分级 }]} />
+                  )}
                   {!企业 && (
                     <Select style={{ width: "100%" }} placeholder="全部决策状态" allowClear
                       value={f.decisionStatus || undefined} onChange={(v) => apply({ decisionStatus: v ?? "" })}

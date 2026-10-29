@@ -218,17 +218,18 @@ test("8. 两个人同时改同一条客户：改不同字段自动合并，改�
   await 打开编辑框(甲);
   await 打开编辑框(乙);
 
-  // 甲改公司，乙改行业——不是同一项，都该存下
+  // 甲改公司，乙改行业——不是同一项，都该存下。企业版不摆行业（定稿 P5 第 22 条），乙改简称
+  const 乙改 = 企业版 ? "简称" : "行业";
   await 甲.getByRole("dialog").getByLabel("公司").fill("星辰科技");
   await 甲.getByRole("dialog").getByRole("button", { name: /保\s*存/ }).click();
   await expect(甲.getByText("已保存")).toBeVisible();
 
-  await 乙.getByRole("dialog").getByLabel("行业").fill("软件服务");
+  await 乙.getByRole("dialog").getByLabel(乙改).fill("软件服务");
   await 乙.getByRole("dialog").getByRole("button", { name: /保\s*存/ }).click();
   await expect(乙.getByText("已保存")).toBeVisible();
 
   // 两人的改动都在
-  await 改动都在(甲, { 公司: "星辰科技", 行业: "软件服务" });
+  await 改动都在(甲, { 公司: "星辰科技", [乙改]: "软件服务" });
 
   // 这次两人改同一项，后提交的必须被拦下
   await 打开编辑框(甲);

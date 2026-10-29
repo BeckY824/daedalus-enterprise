@@ -52,6 +52,7 @@ test.afterAll(async () => {
 });
 
 test("L-025 编辑框只换推荐渠道：保存后渠道负责人是新渠道的人，不钉在旧人", async ({ page }) => {
+  test.skip(企业版, "企业版客户来源建好就锁（定稿 P5 第 22 条），编辑框不能换渠道；锁住由 ent-customer-v2 单测钉");
   const p = 连库();
   const 张三 = await p.user.findFirstOrThrow({ where: { email: "zhangsan" } });
   const 李四 = await p.user.findFirstOrThrow({ where: { email: "lisi" } });
