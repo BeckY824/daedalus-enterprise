@@ -1,0 +1,23 @@
+{
+  "说明": "首屏 JS 闸门（测试规划 S12，10-29）：baseKB 是 main 现值（10-29 在 5208694d 本机量的；首页比 10-28 的 866.6 小了一截），maxKB 是上限；线 = min(maxKB, baseKB × 1.1)。故意变大（加了必要的包）就在同一个 PR 里改 baseKB，并写清为什么",
+  "pages": {
+    "登录": {
+      "path": "/login",
+      "login": false,
+      "baseKB": 379.1,
+      "maxKB": 400
+    },
+    "首页": {
+      "path": "/dashboard",
+      "login": true,
+      "baseKB": 661.5,
+      "maxKB": 900
+    },
+    "客户列表": {
+      "path": "/customers",
+      "login": true,
+      "baseKB": 819.4,
+      "maxKB": 850
+    }
+  }
+}
