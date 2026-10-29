@@ -27,6 +27,7 @@ import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
+import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
 import { 自动分配线索, 批量自动分配, type 自动分配结果 } from "../leads/assign-actions";
 import { AssignLeadModal, AssignedOutButton } from "../leads/AssignLead";
@@ -69,7 +70,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 邀请们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [],
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -83,6 +84,8 @@ export default function ProjectsView({
   出口叫法?: 出口叫法改动;
   /** 企业版：等我回的项目组邀请（别的版本是空的） */
   邀请们?: 邀请行[];
+  /** 企业版线索验证：等我复核 / 终验 / 认领的线索（别的版本是空的） */
+  待复核们?: 待复核行[];
   /** 企业版：「我的卡点」看板（指给我的、我项目上等人认领的；别的版本是空的） */
   卡点们?: 卡点卡[];
   /** 企业版「新线索」页：只看线索阶段 */
@@ -280,6 +283,7 @@ export default function ProjectsView({
       />
 
       <InviteInbox 邀请们={邀请们} />
+      <VerifyInbox 们={待复核们} />
       <MyBlockersBoard 们={卡点们} />
       {新线索 && <LeadFullNotices 提醒={提醒们} />}
 

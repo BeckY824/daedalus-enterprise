@@ -21,7 +21,7 @@ export type 组织架构 = {
   能改: boolean;
   /** 账号管理员：总管理、管理员两个角色只有老板能给、能动 */
   是老板: boolean;
-  /** 每条组织规则的开关，默认都关 */
+  /** 每条组织规则的开关：除了「市场复核」默认开，别的默认都关 */
   规则开着: Record<规则名, boolean>;
   /** 「角色 × 字段」表，只有和默认（能改）不一样的格 */
   字段权限: 字段配置;
@@ -36,7 +36,7 @@ type 结果 = Promise<{ ok: boolean; error?: string }>;
 
 const 总管级 = (r: string) => r === "director" || r === "admin";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
-const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 交接要确认: "org-rule-handover-confirm" };
+const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 交接要确认: "org-rule-handover-confirm", 市场复核: "org-rule-market-review" };
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
 /** 「后台设置谁能改」表的列 */
 const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场管理", "直属上级", "虚线上级"];
@@ -174,7 +174,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       {能改 && <OrgSyncCard />}
 
       <Card title="组织规则" extra={只看}>
-        <p className="muted">每条规则单独开关，默认都关着：关着时和团队版一样，按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
+        <p className="muted">每条规则单独开关，除了「{规则.市场复核.名}」都默认关着：关着时和团队版一样，按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         <div style={{ display: "grid", gap: 12 }}>
           {规则名们.map((名) => (
             <Space align="start" key={名}>

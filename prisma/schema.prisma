@@ -794,6 +794,9 @@ model Project {
   /// 企业版提成（2026-10-26）：提成表一份、组长分给组员的比例
   entCommission       EntCommission?
   entCommissionSplits EntCommissionSplit[]
+  /// 企业版线索有效性验证（2026-10-29，P12）：当前状态一份、每一步一行留痕。见 EntLeadVerify
+  entLeadVerify     EntLeadVerify?
+  entLeadVerifyLogs EntLeadVerifyLog[]
 
   @@index([customerId])
   @@index([ownerId])
@@ -1240,6 +1243,75 @@ model EntLeadQuota {
   /// 最后一次是谁设的
   setById   String
   updatedAt DateTime @updatedAt
+}
+
+/// 企业版线索配额加额（2026-10-29，迁移 089，P12）：线索最终判成无效（市场复核或总管理终判）给这条线索的负责人本月 +1。
+/// 生效配额 = EntLeadQuota.quota + 本月这一行的 count；下个月没有行就是 0（按月清零）。没设配额的人不加（他不参与自动分配、手动分也不限）。
+/// 指向人的列不建外键
+model EntLeadQuotaBonus {
+  userId    String
+  /// 业务月 YYYY-MM（北京时间，同 EntLeadAssign.month）
+  month     String
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, month])
+}
+
+/// 企业版线索有效性验证（2026-10-29，迁移 088，P12）：每个项目一份当前状态，四步走在 lib/project/lead-verify.ts。
+/// 销售初判（有效 / 无效 / 还需培育）→ 无效的进市场复核（规则「市场复核」关着或组织里没有市场管理就直接到总管理）→
+/// 市场判有效回销售终验（接受复核 / 提交异议）→ 异议到总管理终判。最终无效 = 项目点成线索流失。
+/// 列名对着客户表：线索判定 verdict、无效原因 invalidReason、验证人 / 时间、复核结果 / 说明 / 人 / 时间、接受复核 / 提交异议 salesAck、最终结果 finalResult。
+/// 只在企业版、项目模式下写。指向人的列不建外键，项目删了随项目级联
+model EntLeadVerify {
+  projectId     String    @id
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 线索判定：有效线索 / 暂未判定 / 初验无效 / 无效线索
+  verdict       String    @default("暂未判定")
+  /// 等哪一步：市场复核 / 销售终验 / 总管理终判 / 销售认领（总管理判有效后等销售认领或退回公海）；null = 没在等
+  pending       String?
+  /// 无效原因（销售初判无效时选 / 写的）
+  invalidReason String?
+  /// 销售初判的说明
+  verifyNote    String?
+  /// 验证人 / 验证时间（销售初判）
+  verifiedById  String?
+  verifiedAt    DateTime?
+  /// 复核结果：有效 / 无效（市场复核）；复核说明 / 复核人 / 复核时间
+  reviewResult  String?
+  reviewNote    String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  /// 销售终验：接受复核 / 提交异议；异议说明；终验时间
+  salesAck      String?
+  disputeNote   String?
+  ackedAt       DateTime?
+  /// 最终结果：有效线索 / 无效线索；谁定的（市场复核或总管理终判）、说明、时间
+  finalResult   String?
+  finalNote     String?
+  finalById     String?
+  finalAt       DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@index([pending])
+}
+
+/// 企业版线索有效性验证留痕（2026-10-29，迁移 088，P12）：每一步一行，项目详情页的小时间线读它。指向人的列不建外键
+model EntLeadVerifyLog {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 销售初判 / 市场复核 / 销售终验 / 总管理终判 / 销售认领
+  step      String
+  /// 这一步判的：有效 / 无效 / 还需培育 / 接受复核 / 提交异议 / 认领继续 / 退回公海
+  verdict   String
+  /// 无效原因（只有判无效那一步有）
+  reason    String?
+  note      String?
+  userId    String
+  at        DateTime @default(now())
+
+  @@index([projectId, at])
 }
 
 /// 企业版提成表（2026-10-26，迁移 051）：每个项目一份。成交金额就是 Project.amount（同币种），这里只存人填的项目底价，

@@ -26,6 +26,7 @@ import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/pro
 import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
+import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, type 初判 } from "@/lib/project/lead-verify";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { 向导自动分配 } from "../leads/assign-actions";
 import { 我能用的分配方式, 挡分配方式, 是分配方式序号, type 分配方式序号 } from "@/lib/enterprise/dict";
@@ -350,6 +351,59 @@ export async function 判MQLAction(projectId: string, 合格: boolean, 下一步
     }
     return r;
   } catch (e) { return 不在了(e); }
+}
+
+/** 线索验证（P12）五个入口共用：登录、项目模式、企业版，成了记审计（谁判了什么）、刷新列表和详情 */
+async function 验证一步(projectId: string, 说法: (项目: string) => string, 做: (me: Awaited<ReturnType<typeof requireUser>>) => Promise<{ ok: true; 自动推到?: string[] } | { ok: false; error: string }>) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    if (!企业版()) return { ok: false as const, error: "线索验证只在企业版有" };
+    const r = await 做(me);
+    if (r.ok) {
+      const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } }));
+      await recordAudit({ user: me, action: "update", entity: "EntLeadVerify", entityId: projectId, summary: 说法(p?.name ?? "") });
+      await 记这个项目的自动推进(me, projectId, r.自动推到);
+      刷新项目(projectId, p?.customerId);
+      revalidatePath("/leads");
+    }
+    return r;
+  } catch (e) { return 不在了(e); }
+}
+
+const 短 = (v: unknown) => String(v ?? "").trim().slice(0, 100);
+
+/** 1. 销售初判：有效 / 无效（要无效原因，交复核）/ 还需培育（同 MQL 不合格，要下一次培育日期和计划） */
+export async function 线索初判Action(
+  projectId: string, 判: 初判,
+  附: { invalidReason?: string | null; verifyNote?: string | null; 下一步时间?: string | null; 计划内容?: string | null } = {},
+) {
+  return 验证一步(projectId, (名) => `项目「${名}」线索初判：${判}${判 === "无效" ? `，无效原因：${短(附.invalidReason)}` : ""}${附.verifyNote ? `；${短(附.verifyNote)}` : ""}`,
+    (me) => 销售初判(me, projectId, 判, 附 ?? {}));
+}
+
+/** 2. 市场复核：判有效（回销售终验）/ 判无效（线索流失） */
+export async function 市场复核Action(projectId: string, 有效: boolean, reviewNote?: string | null) {
+  return 验证一步(projectId, (名) => `项目「${名}」市场复核：判${有效 ? "有效" : "无效"}${reviewNote ? `；${短(reviewNote)}` : ""}`,
+    (me) => 市场复核(me, projectId, 有效 === true, reviewNote));
+}
+
+/** 3. 销售终验：接受复核（推到线索推进）/ 提交异议（要说明，交总管理终判） */
+export async function 销售终验Action(projectId: string, 接受: boolean, disputeNote?: string | null) {
+  return 验证一步(projectId, (名) => `项目「${名}」销售终验：${接受 ? "接受复核" : `提交异议；${短(disputeNote)}`}`,
+    (me) => 销售终验(me, projectId, 接受 === true, disputeNote));
+}
+
+/** 4. 总管理终判：判有效（回销售认领）/ 判无效（线索流失） */
+export async function 总管理终判Action(projectId: string, 有效: boolean, finalNote?: string | null) {
+  return 验证一步(projectId, (名) => `项目「${名}」总管理终判：判${有效 ? "有效" : "无效"}${finalNote ? `；${短(finalNote)}` : ""}`,
+    (me) => 总管理终判(me, projectId, 有效 === true, finalNote));
+}
+
+/** 总管理判有效后，销售认领继续推，或自己退回公海（算主动退回） */
+export async function 销售认领Action(projectId: string, 继续: boolean) {
+  return 验证一步(projectId, (名) => `项目「${名}」终判有效后${继续 ? "认领继续推进" : "退回公海"}`,
+    (me) => 销售认领(me, projectId, 继续 === true));
 }
 
 async function 组员说法(projectId: string, userId: string) {
