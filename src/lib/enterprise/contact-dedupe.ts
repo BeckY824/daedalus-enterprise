@@ -37,16 +37,16 @@ export type 验好的号 = { 类型: 号码类型; 值: string; 键: string };
 
 type 库 = Prisma.TransactionClient | typeof prisma;
 
-/** 联系人表里号码对得上的客户 id。联系人的电话存的是人填的原样，按号键比；国内号顺带认带 86 的写法 */
+/** 联系人表里号码对得上的客户 id。联系人的电话存的是人填的原样，按号键比；国内号顺带认带 86 的写法。回收站里的联系人不算（P9） */
 async function 联系人里的(db: 库, 类型: "手机号" | "邮箱" | "微信", 键: string): Promise<string[]> {
   if (类型 === "手机号") {
     const 键们 = /^\d{11}$/.test(键) ? [键, `86${键}`] : [键];
     const 行 = await db.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT DISTINCT "customerId" AS id FROM "Contact" WHERE ${号键SQL('"phone"')} IN (${键们.map(() => "?").join(", ")})`, ...键们);
+      `SELECT DISTINCT "customerId" AS id FROM "Contact" WHERE "deletedAt" IS NULL AND ${号键SQL('"phone"')} IN (${键们.map(() => "?").join(", ")})`, ...键们);
     return 行.map((r) => r.id);
   }
   const 列 = 类型 === "邮箱" ? "email" : "wechat";
-  const 行 = await db.$queryRawUnsafe<{ id: string }[]>(`SELECT DISTINCT "customerId" AS id FROM "Contact" WHERE lower(trim("${列}")) = ?`, 键);
+  const 行 = await db.$queryRawUnsafe<{ id: string }[]>(`SELECT DISTINCT "customerId" AS id FROM "Contact" WHERE "deletedAt" IS NULL AND lower(trim("${列}")) = ?`, 键);
   return 行.map((r) => r.id);
 }
 

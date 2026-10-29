@@ -469,9 +469,9 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
   const [计数, 配额, 持有, 名字, 状态表] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: ids } }, _count: { _all: true } }),
     prisma.entLeadQuota.findMany({ where: { userId: { in: ids } } }),
-    // 持有数不受「按组织架构看客户」限定：上级看下属手上几条，本来就该看得到这个数
+    // 持有数不受「按组织架构看客户」限定：上级看下属手上几条，本来就该看得到这个数。不限定的连接不过软删扩展，回收站里的（P9）自己排掉
     (await 企业版只用项目())
-      ? defaultClient.project.groupBy({ by: ["ownerId"], where: { ownerId: { in: ids }, phase: "线索", result: null, pooledAt: null }, _count: { _all: true } })
+      ? defaultClient.project.groupBy({ by: ["ownerId"], where: { ownerId: { in: ids }, phase: "线索", result: null, pooledAt: null, deletedAt: null, customer: { deletedAt: null } }, _count: { _all: true } })
       : defaultClient.lead.groupBy({ by: ["ownerId"], where: { ownerId: { in: ids }, status: { in: ["待跟进", "跟进中"] } }, _count: { _all: true } }),
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, createdAt: true } }),
     参与状态表(),

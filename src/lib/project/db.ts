@@ -345,7 +345,9 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, ownerId: true, pooledAt: true, customerId: true } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (!能管项目(me, p)) return { ok: false as const, error: "只有项目负责人、老板或主管能删项目" };
-    await tx.project.delete({ where: { id: p.id } });
+    // 企业版（P9）：只记 deletedAt，进设置 → 回收站，节点留痕、项目组都留着，恢复时原样回来
+    if (企业版()) await tx.project.update({ where: { id: p.id }, data: { deletedAt: new Date() } });
+    else await tx.project.delete({ where: { id: p.id } });
     return { ok: true as const, name: p.name, customerId: p.customerId };
   });
 }

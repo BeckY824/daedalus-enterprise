@@ -207,7 +207,8 @@ export async function 我分出去的(我: string, 最多 = 200): Promise<分出
       : [],
     projectIds.length
       ? defaultClient.project.findMany({
-          where: { id: { in: projectIds } },
+          // 不限定的连接不过软删扩展：回收站里的项目（P9）当删了，自己带上
+          where: { id: { in: projectIds }, deletedAt: null, customer: { deletedAt: null } },
           select: { id: true, name: true, phase: true, node: true, result: true, customerId: true, ownerId: true, pooledAt: true },
         })
       : [],

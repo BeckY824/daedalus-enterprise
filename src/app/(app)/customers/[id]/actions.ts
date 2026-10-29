@@ -16,6 +16,7 @@ import { 领取 } from "../pool-actions";
 import { 认回打码号 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 软删开着, 撤销软删 } from "@/lib/enterprise/soft-delete";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 在推项目条件 } from "@/lib/project/active";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
@@ -228,7 +229,7 @@ export async function saveFollowUp(input: FollowUpInput) {
       const latest = await tx.followUp.findFirst({ where: { customerId: input.customerId, occurredAt: { lte: new Date() } }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
       // 同事的客户：最近跟进时间是派生列、本来就不同步（各台回放时重算），裸 SQL 只改本机，不动 updatedAt、不推一条改客户
       // 和回放时的重算同一句（lib/sync/local.ts 重算派生），日期在库里怎么存不用这里管
-      if (同事的) await tx.$executeRawUnsafe('UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ?) WHERE id = ?', input.customerId, input.customerId);
+      if (同事的) await tx.$executeRawUnsafe('UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ? AND "deletedAt" IS NULL) WHERE id = ?', input.customerId, input.customerId);
       else await tx.customer.update({ where: { id: input.customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
       return { ok: true as const, id, 待办id, 下次计划id, audits };
     });
@@ -247,7 +248,9 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 删之前先取内容：删完这条记录就无从还原了。整条连 AI 速记的原文一起留着，给撤销用（排查 D2）
     const 待删 = await prisma.followUp.findUnique({ where: { id }, include: { source: true } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
-    await prisma.followUp.delete({ where: { id } });
+    // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（撤销 / 恢复时按跟进补回来）
+    if (软删开着()) await prisma.followUp.update({ where: { id }, data: { deletedAt: new Date() } });
+    else await prisma.followUp.delete({ where: { id } });
     await 跟着改待办(customerId, 待删, null);
     await recordAudit({
       user: me, action: "delete", entity: "FollowUp", entityId: id,
@@ -301,7 +304,8 @@ export async function restoreFollowUp(快照: 删掉的跟进) {
       快照.contactId ? prisma.contact.findUnique({ where: { id: 快照.contactId }, select: { id: true } }) : null,
       快照.opportunityId ? prisma.opportunity.findUnique({ where: { id: 快照.opportunityId }, select: { id: true } }) : null,
     ]);
-    await prisma.followUp.create({
+    // 企业版（P9）：删的时候只进了回收站，撤销就是把那一条拿回来，不再建一条
+    if (!(await 撤销软删("FollowUp", 快照.id))) await prisma.followUp.create({
       data: {
         id: 快照.id, type: 快照.type, title: 快照.title, content: 快照.content, status: 快照.status, duration: 快照.duration,
         occurredAt: new Date(快照.occurredAt), dueAt: 快照.dueAt ? new Date(快照.dueAt) : null, dueOn: 快照.dueOn ?? null, dueHasTime: 快照.dueHasTime ?? null, participants: 快照.participants,
@@ -878,7 +882,10 @@ export async function deleteContact(id: string) {
       return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
     }
     const 跟进 = await prisma.followUp.findMany({ where: { contactId: id }, select: { id: true } });
-    const c = await prisma.contact.delete({ where: { id } });
+    // 企业版（P9）：只记 deletedAt，进回收站；跟进记录还挂着他，回来时「跟谁谈的」照旧
+    const c = 软删开着()
+      ? await prisma.contact.update({ where: { id }, data: { deletedAt: new Date() } })
+      : await prisma.contact.delete({ where: { id } });
     await recordAudit({
       user: me, action: "delete", entity: "Contact", entityId: id,
       summary: `删除${await 客户名(c.customerId)}的联系人「${c.name}」`,
@@ -968,8 +975,11 @@ export async function restoreContact(快照: 删掉的联系人) {
       if (!(await prisma.customer.findUnique({ where: { id: 快照.customerId }, select: { id: true } }))) {
         return { ok: false as const, error: "原来那位客户已经不在了，撤不回来" };
       }
+      // 企业版（P9）：删的时候只进了回收站，拿回来就行；关键联系人按快照还原
+      const 拿回来了 = await 撤销软删("Contact", 快照.id);
       await prisma.$transaction(async (tx) => {
-        await tx.contact.create({
+        if (拿回来了) await tx.contact.update({ where: { id: 快照.id }, data: { isPrimary: 快照.isPrimary } });
+        else await tx.contact.create({
           data: {
             id: 快照.id, name: 快照.name, position: 快照.position, phone: 号, email: 快照.email, wechat: 快照.wechat,
             remark: 快照.remark, isPrimary: 快照.isPrimary, customerId: 快照.customerId, createdAt: new Date(快照.createdAt),

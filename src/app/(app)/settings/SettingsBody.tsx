@@ -8,6 +8,7 @@ import { 角色字典, 异常类别字典, 能进公海的阶段 } from "@/lib/p
 import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 读卡点默认 } from "@/lib/project/blocker";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 能管回收站 } from "@/lib/enterprise/soft-delete";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
 import { 全部企业字典, 读分配谁能用 } from "@/lib/enterprise/dict";
 import { aiUsageThisMonth } from "@/lib/ai-usage";
@@ -182,6 +183,8 @@ export default async function SettingsBody() {
 
   // 谁能导入只认 import-perm.ts 一处（现在企业版是老板、总管理员），以后放宽只改那里
   const 能导入 = await 能导入导出(me);
+  // 回收站：企业版的老板、主管、管理员（谁能看 / 恢复 / 彻底删除只认 lib/enterprise/soft-delete.ts）
+  const 有回收站 = 企业版() && !共享区 && (await 能管回收站(me));
 
   return (
     <SettingsView
@@ -199,6 +202,7 @@ export default async function SettingsBody() {
       企业版导入={企业版() && !共享区 && 能导入}
       /* 不能导入的人那栏永远是空的，不摆 */
       导入记录={能导入}
+      回收站={有回收站}
       /* 托管版的登录标识是邮箱（控制面账号按邮箱认，找回密码也靠它）；
          自部署版是用户名，既有账号是 admin / zhangsan 这种，不能改 */
       用邮箱登录={multiTenant()}
