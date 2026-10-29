@@ -37,7 +37,9 @@ export const 别名: Record<实体, Record<string, string[]>> = {
     name: ["客户名称", "公司名称", "企业名称", "客户名", "客户全称", "客户", "公司", "名称", "account name", "company"],
     phone: ["电话", "手机", "手机号", "手机号码", "联系电话", "公司电话", "座机", "联系方式", "phone", "mobile", "tel"],
     owner: ["负责人", "客户负责人", "归属人", "所属销售", "销售负责人", "销售", "拥有者", "owner"],
-    followStatus: ["跟进状态", "客户状态"],
+    followStatus: ["跟进状态"],
+    // 「客户状态」是另一样东西（企业版字典 custStatus：潜在 / 意向 / 成交…），以前错并进跟进状态，10-29 拆开
+    custStatus: ["客户状态"],
     remark: ["备注", "说明", "描述", "remark", "note"],
     email: ["邮箱", "电子邮箱", "email"],
     wechat: ["微信", "微信号"],

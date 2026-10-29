@@ -6,6 +6,7 @@
  * 清洗做的事：
  *   - 按列映射把原列落到标准字段；映射成「进备注」的列拼成「表头：值」进备注（跟进进内容），一格不丢
  *   - 负责人、阶段、线索状态、跟进方式、跟进状态按映射换成我们的值；对不上的用默认值 + 记一笔「提醒」
+ *   - 客户状态（企业版字典）和启用的选项一字不差才落，对不上原样进备注
  *   - 电话、日期、金额、赢率按我们的格式认；认不出的原样进备注 + 提醒，不硬塞
  *   - 同一批里同号、外部 ID 不同 → 认作同一家，后一条并进前一条（名字不同另提醒）；名字很像但号不同 → 疑似重名，照写、提醒
  *   - 联系人 / 商机 / 跟进挂客户：先认所属客户 ID，再认客户名（本批里唯一、或我们这边唯一）；认不出整条跳过
@@ -36,6 +37,8 @@ export type 本地索引 = {
   客户号: Map<string, string[]>;
   /** `${客户id}|${商机名键}` → 商机 id（可能多个） */
   商机名: Map<string, string[]>;
+  /** 企业版字典里启用着的客户状态（custStatus）。没给 = 不认，原系统的客户状态一律进备注 */
+  客户状态?: readonly string[];
 };
 
 export const 空索引 = (): 本地索引 => ({ 引用: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map() });
@@ -286,6 +289,16 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     return 默认;
   };
 
+  /** 客户状态：和字典里启用的某一项一字不差才落；对不上原样进备注，提醒一笔（不猜、不落默认值） */
+  const 认客户状态 = (r: 原始记录, v: string | undefined, 附加: string[]): string | null => {
+    const t = v?.trim();
+    if (!t) return null;
+    if (本地.客户状态?.includes(t)) return t;
+    附加.push(`客户状态：${t}`);
+    出问题(r, "提醒", "值对不上", `客户状态「${t}」不在我们的客户状态选项里，原样放进了备注`);
+    return null;
+  };
+
   const 缺必填 = (r: 原始记录, s: 标准): boolean => {
     const 缺 = 必填[r.实体].filter((f) => !s.值[f]);
     if (!缺.length) return false;
@@ -340,6 +353,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     const 段: string[] = [];
     if (名键(String(b.name ?? "")) !== 名键(String(a.name ?? ""))) 段.push(`又名：${b.name}`);
     if (b.phone && !a.phone) a.phone = b.phone;
+    if (b.custStatus && !a.custStatus) a.custStatus = b.custStatus;
     else if (b.phone && 号键(String(b.phone)) !== 号键(String(a.phone))) 段.push(`另一个电话：${b.phone}`);
     for (const k of 客户附加列) {
       if (b[k] == null || b[k] === "") continue;
@@ -381,11 +395,14 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const email = 补格(s.值.email, 号.email, "邮箱", 附加);
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);
         const whatsapp = 补格(s.值.whatsapp, 号.whatsapp, "WhatsApp", 附加);
+        const custStatus = 认客户状态(r, s.值.custStatus, 附加);
         const 值: 待写["值"] = {
           name: s.值.name,
           phone,
           salesOwnerId: 负责人(r, s.值.owner),
           followStatus: 对值(r, "跟进状态", s.值.followStatus, "待跟进", "跟进状态"),
+          // 没认出就不带这一格：以前导过的照三方比对，不会因为这次没给就把我们这边的客户状态清掉
+          ...(custStatus ? { custStatus } : {}),
           remark: 拼备注(s.值.remark, ...附加),
           email,
           wechat,
