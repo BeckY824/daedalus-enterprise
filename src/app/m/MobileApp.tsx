@@ -275,7 +275,7 @@ export default function MobileApp() {
     return () => { clearTimeout(首); clearInterval(t); document.removeEventListener("visibilitychange", 前台); window.removeEventListener("online", 联网); };
   }, [阶段, 跑同步]);
 
-  /* ---------- 本人的新设备来要授权：在前台时每 15 秒问一次，回到前台马上问（和电脑上的 MobileAuthPrompt 一样） ---------- */
+  /* ---------- 本人的新设备来要授权：在前台时每 15 秒问一次，回到前台马上问 ---------- */
   useEffect(() => {
     if (阶段 !== "app" || !云) return;
     let 停 = false;
@@ -1274,7 +1274,7 @@ function UnsyncedSheet({ 列, 说, on处理 }: { 列: { key: string; 来自: "�
 }
 
 /**
- * 本人的新电脑 / 新手机来要授权（2026-10-15，0.46.17）。话和电脑上的授权框（components/MobileAuthPrompt）对齐：
+ * 本人的新电脑 / 新手机来要授权（2026-10-15，0.46.17）。话和电脑上的授权框（桌面端仓库）对齐：
  * 传什么、我们看不到、在哪移除；再加配对数字——和那台屏幕上的对一下，对不上别点允许。
  * 新电脑在这里批准的话管不了团队（老板的管理钥匙不在手机上），那台的设置页会写明。
  */

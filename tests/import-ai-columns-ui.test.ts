@@ -30,7 +30,7 @@ const 桩插件: Plugin = {
       export const 粘成表格 = (...参) => { 记("粘", 参); return window.__粘贴结果 ? Promise.resolve(window.__粘贴结果) : new Promise(() => {}); };
       // 认列的回答由用例自己决定什么时候回：把 resolve 存起来
       export const 猜列建议 = (...参) => { 记("猜列", 参); return new Promise((r) => window.__认列回.push(r)); };
-      export const 导入认列状态 = () => Promise.resolve({ 能认列: window.__能认列, 本机: window.__本机 });
+      export const 导入认列状态 = () => Promise.resolve({ 能认列: window.__能认列 });
     `);
     桩(/^\.\/import-actions$/, `
       const 记 = (名, 参) => (window.__调用[名] ||= []).push(JSON.parse(JSON.stringify(参)));
@@ -84,18 +84,18 @@ afterAll(async () => {
 /** 第三列「备用栏」规则认不出来；四行数据，看发给 AI 的是不是只有前 3 行 */
 const 表 = ["姓名,手机号,备用栏", "张三,13800000001,展会", "李四,13800000002,朋友介绍", "王五,13800000003,官网", "赵六,13800000004,展会"].join("\n");
 
-async function 开(选项: { 能认列?: boolean; 本机?: boolean; 零额度?: boolean } = {}): Promise<Page> {
+async function 开(选项: { 能认列?: boolean; 零额度?: boolean } = {}): Promise<Page> {
   const page = await browser.newPage();
   await page.route("http://import-drawer.test/**", (r) =>
     r.fulfill({ contentType: "text/html", body: `<!doctype html><meta charset="utf-8"><div id="root"></div>` }),
   );
   await page.goto("http://import-drawer.test/");
-  await page.evaluate(({ 能认列, 本机, 零额度 }) => {
+  await page.evaluate(({ 能认列, 零额度 }) => {
     const state = 零额度 ? { 计次: true, 还剩: 0, 上限: 30 } : { 计次: false, 还剩: null, 上限: null };
-    Object.assign(window, { __能认列: 能认列, __本机: 本机, __计次: state, __余额: state });
+    Object.assign(window, { __能认列: 能认列, __计次: state, __余额: state });
     const original = window.fetch;
     window.fetch = async (...args) => String(args[0]).includes("/api/ai/meter") ? new Response(JSON.stringify((window as unknown as { __余额: unknown }).__余额)) : original(...args);
-  }, { 能认列: 选项.能认列 ?? true, 本机: 选项.本机 ?? false, 零额度: 选项.零额度 ?? false });
+  }, { 能认列: 选项.能认列 ?? true, 零额度: 选项.零额度 ?? false });
   await page.addScriptTag({ content: 包 });
   await page.getByText("把 Excel 或 CSV 拖到这里").waitFor();
   return page;
@@ -239,17 +239,10 @@ describe("AI 认列回来晚了：不许改人已经看过预览的对应（J-05
 
 describe("抽屉上说的是实情（L-076 / H-096）", () => {
   it("网页端不说「文件不上传」，说清内容会传到服务器", async () => {
-    const page = await 开({ 本机: false });
+    const page = await 开();
     await expect.poll(() => page.locator("body").innerText()).toMatch(/传到服务器/);
     const 全文 = await page.locator("body").innerText();
     expect(全文).not.toMatch(/不上传/);
-    await page.close();
-  });
-
-  it("桌面端本机：说写进这台电脑上的库", async () => {
-    const page = await 开({ 本机: true });
-    await expect.poll(() => page.locator("body").innerText()).toMatch(/这台电脑上的库/);
-    expect(await page.locator("body").innerText()).not.toMatch(/不上传/);
     await page.close();
   });
 });

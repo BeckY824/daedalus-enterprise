@@ -53,24 +53,12 @@ describe("网页版（自部署）", () => {
   });
 });
 
-describe("桌面端", () => {
-  it("界面上不给灌：可灌 = false", async () => {
-    process.env.DESKTOP_LOCAL = "1";
-    const s = await 查演示数据状态();
-    expect(s.可灌).toBe(false);
-  });
-
-  it("绕过界面直接调也拒绝——护栏不能只写在按钮上", async () => {
-    process.env.DESKTOP_LOCAL = "1";
-    const r = await 灌一套演示数据();
-    expect(r.ok).toBe(false);
-    expect(await prisma.customer.count()).toBe(0);
-  });
-
+// 原来「桌面端」那两条（DESKTOP_LOCAL=1 不给灌）随 demo-data.ts 的本地模式分支在死代码第三批删了
+describe("不给灌的部署（企业版）", () => {
   it("之前灌过的库，「清除」这条路还在", async () => {
-    // 老版本桌面端上灌的那一套
+    // 开关打开前灌过的那一套
     expect((await 灌一套演示数据()).ok).toBe(true);
-    process.env.DESKTOP_LOCAL = "1";
+    vi.stubEnv("CRM_ENTERPRISE", "1");
 
     const s = await 查演示数据状态();
     expect(s.可灌).toBe(false);

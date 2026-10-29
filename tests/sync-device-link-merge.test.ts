@@ -1,12 +1,12 @@
 /**
  * 本人的新电脑经配对批准连上团队，**这台电脑上本来就有客户**（2026-10-16 用户问到）：
  * 电脑 A 已在团队里、云上有客户；电脑 B 连上前自己也录了客户。连接页答应用户的是：
- * 「这台电脑上已有的 N 位客户会带进团队，和云上的合在一起、不覆盖；同一位客户两边各有一份的列在疑似重复；连上之前会先自动备份」。
+ * 「这台电脑上已有的 N 位客户会带进团队，和云上的合在一起、不覆盖；同一位客户两边各有一份的两份都留着；连上之前会先自动备份」。
  * 合并靠 lib/sync/device-link.ts 收下() → 本机开同步(true) 记全量（和邀请码加入同一段），这里端到端核一遍：
  *   - 先备份（backups/before-device-link-*.db，是连之前原样的库）
  *   - B 的客户 / 联系人 / 跟进 / 商机 / 计划作为本人的推上去；A、B 最后都是两边的总和，谁也没盖掉谁
  *   - B 的业务配置（模版、币种）不推，以团队为准
- *   - 同一位客户两边各一份：两边都在「疑似重复」里
+ *   - 同一位客户两边各一份：两份都留着
  *   - B 上有客户挂在模板占位账号（张三 / 李四）名下：业务员身份连上不被范围策略拒、本机不被当失权清掉（修了：归到本人）；
  *     老板身份连上照原样带进团队（老板什么都能推），「没同步上」「待老板核对」都是空的
  *   - 老板本人的第二台电脑：建团队那台批准（能管理团队）、手机批准（只同步、管不了）两种
@@ -47,7 +47,6 @@ import * as 新机 from "@/lib/sync/device-link";
 import * as 密 from "@/lib/sync/crypto-web";
 import * as 手机 from "@/lib/mobile/sync";
 import * as 连 from "@/lib/mobile/link";
-import { 疑似重复 } from "@/lib/sync/dupes";
 import { 没同步上 } from "@/lib/sync/local";
 
 let client: typeof import("@/lib/sync/client");
@@ -285,12 +284,9 @@ describe("业务员 li 的第二台电脑 B（本来就有客户）经配对连�
     expect(await 设置("li2")).toBe(业务配置("CNY"));
   });
 
-  it("同一位客户两边各一份：A、B、老板那台的「疑似重复」里都有这一组", async () => {
+  it("同一位客户两边各一份：A、B、老板那台两份都在，不替人合并", async () => {
     for (const w of ["li", "li2", "boss"] as const) {
-      当(w);
-      const 组 = (await 疑似重复()).find((g) => g.记录.some((r) => r.id === "c-li"));
-      expect(组, w).toBeTruthy();
-      expect(组!.记录.map((r) => r.id).sort(), w).toEqual(["c-b-dup", "c-li"]);
+      for (const id of ["c-b-dup", "c-li"]) expect(await db(w).customer.findUnique({ where: { id } }), `${w} ${id}`).toBeTruthy();
     }
   });
 
@@ -335,8 +331,7 @@ describe("老板本人的第二台电脑（我是建的人）", () => {
       expect(zs?.salesOwnerId, w).not.toBe(模板.张三);
       expect(await db(w).opportunity.findUnique({ where: { id: "o-b2-zs" } }), w).toMatchObject({ ownerId: zs!.salesOwnerId });
       expect(await db(w).customer.findUnique({ where: { id: "c-li" } }), w).toMatchObject({ name: "Atlas Home Supplies" });
-      当(w);
-      expect((await 疑似重复()).find((g) => g.记录.some((r) => r.id === "c-boss"))?.记录.map((r) => r.id).sort(), w).toEqual(["c-b2-dup", "c-boss"]);
+      expect(await db(w).customer.findUnique({ where: { id: "c-b2-dup" } }), w).toBeTruthy();
     }
     for (const w of ["li", "zhao"] as const) for (const id of ["c-b2-own", "c-b2-zs", "c-b2-dup", "c-boss"]) expect(await db(w).customer.findUnique({ where: { id } }), `${w} ${id}`).toBeNull();
     expect(await 设置("boss")).toBe(业务配置("CNY"));

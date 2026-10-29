@@ -27,10 +27,8 @@ vi.mock("@/lib/prisma", async () => {
 import { PrismaClient } from "@/generated/prisma";
 import { prisma as 甲 } from "@/lib/prisma";
 import { 建团队, 同步一轮, 推一下, 退出团队, 读团队, 设传输, 设卡住限时, 解邀请码, 团队状态, type 传输 } from "@/lib/sync/client";
-import { 没同步上分钟 } from "@/lib/sync/sync-age";
 import { 改身份, 建同步表, 装触发器, 记全量, 待推, 记已推, 回放, 装了吗, type 改动 } from "@/lib/sync/local";
 import { 封, 拆 } from "@/lib/sync/crypto";
-import { 疑似重复 } from "@/lib/sync/dupes";
 import { getBusiness } from "@/lib/business";
 
 /* ---------------- 假中转 ---------------- */
@@ -210,12 +208,11 @@ describe("桌面端同步客户端", () => {
     expect(!坏.ok && 坏.error).toContain("钥匙不对");
     云.批.pop();
 
-    // 两个人各录了同一位客户：同步后列进疑似重复，不替人合并（2026-10-20 起带默认留哪份，合并要老板 / 主管自己点）
+    // 两个人各录了同一位客户：同步后两份都在，不替人合并
     await 乙.customer.create({ data: { id: "c3", name: "王总（乙录的）", phone: "13800000001", salesOwnerId: "acct_yi" } });
     await 乙同步(码.key, 码.teamId);
     await 同步一轮();
-    const 重 = await 疑似重复();
-    expect(重).toEqual([{ 种类: "客户", 依据: "号码 13800000001", 留: "c1", 记录: [expect.objectContaining({ id: "c1", 谁的: "甲" }), expect.objectContaining({ id: "c3", 谁的: "乙" })] }]);
+    expect(await 甲.customer.count({ where: { phone: "13800000001" } })).toBe(2);
 
     // T-003 合不了的撞车（两人各把一条线索挂到同一位客户上）：不静默，设置 → 团队里数得出「没同步上」
     expect(await 团队状态()).toMatchObject({ 没同步上: { 条数: 0 } });
@@ -457,7 +454,7 @@ describe("桌面端同步客户端", () => {
   it.each([
     ["断网", 0, "连不上云端，检查一下网络"],
     ["云端 5xx", 502, "Bad Gateway"],
-  ])("%s：这一轮记错、上次同步上的时间不动，5 分钟起提醒；好了之后下一轮同步上、提醒消失", async (_名, 状态, 话) => {
+  ])("%s：这一轮记错、上次同步上的时间不动，好了之后下一轮同步上", async (_名, 状态, 话) => {
     const 码 = await 新团队(`坏网队${状态}`);
     乙推(码.teamId, 码.key, [乙的新客户(`cN${状态}`)]);
     const 前 = 读团队()!;
@@ -470,16 +467,11 @@ describe("桌面端同步客户端", () => {
     expect(c.lastError).toBeTruthy();
     expect(Date.parse(c.lastSyncAt!)).toBeGreaterThan(Date.parse(前.lastSyncAt!));
     expect(c.lastOkAt).toBe(前.lastOkAt);
-    expect(没同步上分钟(c, Date.parse(前.lastOkAt!) + 6 * 60_000)).toBe(6);
-    expect(没同步上分钟(c, Date.parse(前.lastOkAt!) + 4 * 60_000)).toBeNull();
-    // 刚打开软件、这个进程第一轮还没跑完：lastOkAt 是关机前的，不提醒；跑完一轮以后照常（质量审 #105 建议 3）
-    expect(没同步上分钟({ ...c, 跑过一轮: false }, Date.parse(前.lastOkAt!) + 600 * 60_000)).toBeNull();
     expect((await 团队状态()).跑过一轮).toBe(true);
     expect(await 同步一轮()).toMatchObject({ ok: true });
     const 好 = 读团队()!;
     expect(好.lastError).toBeNull();
     expect(Date.parse(好.lastOkAt!)).toBeGreaterThan(Date.parse(前.lastOkAt!));
-    expect(没同步上分钟(好, Date.now())).toBeNull();
     expect(await 甲.customer.count({ where: { id: `cN${状态}` } })).toBe(1);
     expect((await 退出团队()).ok).toBe(true);
   });

@@ -176,7 +176,7 @@ export default function ImportDrawer({
   const 因预览作废 = useRef(false);
   const [认列中, set认列中] = useState(false);
   /** 开门时问一次：有没有认列按钮、内容落在哪儿（null = 还没问到，抽屉上就先不说） */
-  const [认列状态, set认列状态] = useState<{ 能认列: boolean; 本机: boolean } | null>(null);
+  const [认列状态, set认列状态] = useState<{ 能认列: boolean } | null>(null);
   useEffect(() => {
     if (!open || 认列状态) return;
     let 算数 = true;
@@ -563,8 +563,7 @@ export default function ImportDrawer({
                 说实情（L-076 / H-096）：原来不分网页、桌面都写「文件不上传——读完直接落到你自己的库里」，
                 网页端的表格内容其实要传到服务器；AI 认列那一步另有按钮、另说发什么
               */}
-              {认列状态?.本机 === true && "文件在这台电脑上读，读出来的内容写进这台电脑上的库。"}
-              {认列状态?.本机 === false && "文件在浏览器里读成表格，表格内容会传到服务器，点「开始导入」后写进你们工作区的库。"}
+              {认列状态 && "文件在浏览器里读成表格，表格内容会传到服务器，点「开始导入」后写进你们工作区的库。"}
             </p>
           </Upload.Dragger>
           <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 14 }}>

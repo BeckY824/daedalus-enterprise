@@ -9,7 +9,6 @@
  * 为什么自部署版不直连搜索服务：搜索 Key 只给我们的服务器配（10-16 定的），开源自部署的人没有这个 Key。
  * 真有人要，再加一个「直连」通道就是——编排一行不用改。
  */
-import { 本地模式, 模型配置 as 云端模型配置 } from "../desktop/cloud";
 import { 背调超时 } from "./retry";
 import type { 开始回应, 搜索结果, 读页结果, 收尾回应, 价目回应, 花费, 搜索回应, 读页回应 } from "./types";
 import { 模拟通道 } from "./mock";
@@ -150,12 +149,12 @@ export function 云端通道(cfg: { baseUrl: string; apiKey: string; models: str
 /**
  * 界面上摆不摆背调的入口（首页的「背调」键、客户页的「背调」按钮、「帮我背调 X」直接出背调卡）。
  *
- * 和下面 选通道 是同一套判断，只是不看登录：桌面端没登录也摆（点了说「请先登录」，登了就能用），
+ * 和下面 选通道 是同一套判断（桌面端那条死代码第三批删了）：
  * 开发和 mock 也摆。剩下的是不在桌面端的正式环境——自部署 / 企业版网页，那里永远走不通，
  * 摆出来只会点出一句「背调目前只在桌面端可用」，所以干脆不摆（10-24，企业版 10-27 测试前）
  */
 export function 背调有入口(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.CRM_RESEARCH_CHANNEL === "mock" || 本地模式() || env.NODE_ENV !== "production";
+  return env.CRM_RESEARCH_CHANNEL === "mock" || env.NODE_ENV !== "production";
 }
 
 /**
@@ -166,9 +165,7 @@ export function 背调有入口(env: NodeJS.ProcessEnv = process.env): boolean {
  */
 export async function 选通道(env: NodeJS.ProcessEnv = process.env): Promise<通道结果> {
   if (env.CRM_RESEARCH_CHANNEL === "mock") return { ok: true, 通道: 模拟通道() };
-  const 云端 = 本地模式() ? 云端模型配置() : null;
-  // 登录了云端就走云端：填没填自己的模型 Key 都一样——背调的搜索和分析都用我们的服务、照价扣（10-16 总控定）
-  if (云端) return { ok: true, 通道: 云端通道(云端) };
+  // 原来桌面端登录了云端走 云端通道 那一支，死代码第三批删了（企业版里 本地模式() 恒为假）；云端通道 本身还留着，见报告
   if (env.NODE_ENV !== "production") return { ok: true, 通道: 模拟通道() };
-  return { ok: false, error: 本地模式() ? "背调要联网搜索，请先在桌面端登录账号" : "背调目前只在桌面端可用" };
+  return { ok: false, error: "背调目前只在桌面端可用" };
 }

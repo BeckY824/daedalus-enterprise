@@ -19,7 +19,6 @@ import { 字段表, type 字段名 } from "@/lib/import/fields";
 import { 问选择, type 选择答案 } from "@/lib/jev/client";
 import { 组问题 } from "@/lib/jev/columns";
 import { 自动判断开着 } from "@/lib/jev/settings";
-import { 本地模式 } from "@/lib/desktop/cloud";
 import { 组提示词, 核对, 粘贴字数上限, 分批粘贴, 合并粘贴批次, type 粘贴结果, type 粘贴续作, type 粘贴批表 } from "@/lib/import/paste";
 import { 带额度 } from "@/lib/tenant/ai-allowance";
 import { AI文本输入错误 } from "@/lib/ai-input";
@@ -143,11 +142,10 @@ export async function 猜列建议(
  * 本身不碰模型——只看开关和部署形态。
  *
  *   能认列  连得上判断模型、并且管理员打开了「导入时让 AI 认列」（默认关）
- *   本机    桌面端本地模式：内容写进这台电脑上的库。否则（网页端）表格内容要传到服务器
  */
-export async function 导入认列状态(): Promise<{ 能认列: boolean; 本机: boolean }> {
+export async function 导入认列状态(): Promise<{ 能认列: boolean }> {
   await requireUser();
-  return { 能认列: await 能认列(), 本机: 本地模式() };
+  return { 能认列: await 能认列() };
 }
 
 /**

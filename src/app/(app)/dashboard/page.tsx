@@ -1,6 +1,4 @@
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { 要选模版 } from "@/lib/onboarding";
 import { requireUser } from "@/lib/auth";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 公海超时收回 } from "@/lib/project/db";
@@ -17,7 +15,6 @@ import { 数逾期跟进 } from "@/lib/overdue";
 import { 带币种, 签约合计 } from "@/lib/money-db";
 import { 取提醒项 } from "@/lib/reminders-db";
 import { 算提醒 } from "@/lib/reminders";
-import { 本地模式 } from "@/lib/desktop/cloud";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 自定产品名 } from "@/lib/enterprise/brand";
@@ -32,7 +29,7 @@ import { 项目一段 } from "../overview/project-stats";
 export const dynamic = "force-dynamic";
 
 /** 客户自己部署的服务器（企业版、自部署网页版）：空库那张「开始」卡不说「数据只在你的电脑上」 */
-const 自己服务器 = () => !本地模式() && !multiTenant();
+const 自己服务器 = () => !multiTenant();
 /** 企业版能导入的人（import-perm.ts，和设置里「导入记录」同一个口径）：空库「开始」卡的主按钮是去企业版导入（企业版不给灌演示数据，见 demo-data.ts） */
 const 去导入 = async (user: { id: string; role: string }) => 企业版() && !multiTenant() && (await 能导入导出(user));
 /** 首页「有 N 条新线索」：企业版只用项目数线索阶段的项目（和 /leads 同一张表），其余照旧数 Lead 表 */
@@ -43,8 +40,6 @@ const 数线索 = (只用项目: boolean) => (只用项目 ? 数新线索() : pr
  */
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ q?: string; c?: string }> }) {
   const user = await requireUser();
-  // 桌面端新库第一次进来先选模版（lib/onboarding.ts）。登录后、新建账号后都落在首页，在这一处拦就够
-  if (await 要选模版()) redirect("/start");
   // 公海：开了「N 天没跟进自动放进公海」就一天扫一次（lib/pool-db.ts）。首页是每天第一眼，在这儿扫
   await 自动掉公海(user);
   // 企业版超时回收：项目在节点上超过处理时长没跟进，回到项目公海（lib/project/db.ts，没开不扫）
