@@ -541,7 +541,8 @@ test("1024 下项目看板和页面都不横滚", async ({ page }) => {
 
 test("数据：三处看数并成一页，/reports 这条 URL 还在", async ({ page }) => {
   await 登录(page);
-  await page.goto("/overview");
+  // 企业版项目模式复盘页默认开「待办」页签（P15），视图切换在「数据」页签里
+  await page.goto("/overview?tab=data");
   // 企业版项目模式页头叫「复盘」（定稿 -2 版，原来叫「复盘看板」），别的照旧叫「数据」
   await expect(page.getByRole("heading", { name: /^(数据|复盘)$/ })).toBeVisible();
 
