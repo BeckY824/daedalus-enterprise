@@ -15,6 +15,9 @@
  *   - 没导过、我们这边有同号客户 → 连上它，只补空着的格子（客户状态、备注、外贸档案），负责人和跟进状态不动
  *   - 否则新建；赢单 / 输单带上结单日期（看板按它算月份），跟进写完给客户补「最近跟进」
  * 负责人对不上在职的业务员（离职、被改成管理员）：退回上次的负责人 → 默认负责人 → 导入的人
+ *
+ * P8（10-29）：客户简称 / 地址四格 / 分配方式、联系人性别 / 生日 / 爱好 / 地址照三方比对，但只在表里给了才比（空的不算冲突）；
+ * 来源对上的渠道只补空、归属没定的才挂，不记冲突；客户 / 联系人的号同时记进 ContactMethod 子表（照 P5 记号码）
  */
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@/generated/prisma";
@@ -24,7 +27,9 @@ import { 查完再写 } from "../check-then-write";
 import { 写外贸档案 } from "../customer-extra-db";
 import { 同号条件, 分机留存起 } from "../phone-dedupe";
 import { 看全部 } from "../team-scope";
-import { 客户附加列 } from "./clean";
+import { 记号码, 号码库类型, type 验好的号 } from "../enterprise/contact-dedupe";
+import { 验号码 } from "../enterprise/contact-format";
+import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
 import { 线索建项目 } from "../project/from-lead";
@@ -36,15 +41,20 @@ type 结果 = "新建" | "更新" | "跳过" | "冲突";
 
 /** 每类拿来比对、记进对照表的格子（落库的列名；客户的外贸几格、商机的结单日期在附表里） */
 export const 比对字段: Record<实体, readonly string[]> = {
-  customer: ["name", "phone", "salesOwnerId", "followStatus", "custStatus", "customerType", "remark", ...客户附加列],
+  customer: ["name", "phone", "salesOwnerId", "followStatus", "custStatus", "customerType", "remark", ...客户附加列, ...客户新列, "channelId"],
   lead: ["name", "contact", "phone", "email", "industry", "source", "status", "ownerId", "remark"],
-  contact: ["name", "position", "phone", "email", "wechat", "isPrimary", "remark", "customerId"],
+  contact: ["name", "position", "phone", "email", "wechat", "isPrimary", "remark", "customerId", ...联系人新列],
   opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "ownerId", "remark", "customerId"],
   followup: ["type", "title", "content", "status", "occurredAt", "ownerId", "customerId", "opportunityId", "projectId"],
 };
 const 负责人列: Record<实体, string> = { customer: "salesOwnerId", lead: "ownerId", contact: "", opportunity: "ownerId", followup: "ownerId" };
-/** 同号连上已有客户时只补这几格 */
-const 补空格 = ["custStatus", "customerType", "remark", ...客户附加列] as const;
+/** 同号连上已有客户时只补这几格（渠道还要归属没定才补，见 可挂渠道） */
+const 补空格 = ["custStatus", "customerType", "remark", ...客户附加列, ...客户新列, "channelId"] as const;
+/**
+ * 企业版的新几格和渠道（P8）：原系统认得出才带这一格（清洗时逐格留空），没带 = 这次不碰，不算原系统清空了、也不算冲突。
+ * 渠道只补空：我们这边已经挂了渠道 / 定了归属的不动、不记冲突（归属固化）
+ */
+const 只补的格 = new Set<string>([...客户新列, ...联系人新列, "channelId"]);
 
 const 段长 = () => Number(process.env.ENT_IMPORT_SEGMENT_MS) || 20_000;
 const 每趟条数 = 25;
@@ -114,7 +124,23 @@ export async function 读现值(tx: Tx, e: 实体, id: string): Promise<值表 |
   if (e === "customer") {
     const c = await tx.customer.findUnique({
       where: { id },
-      select: { name: true, phone: true, salesOwnerId: true, followStatus: true, custStatus: true, customerType: true, remark: true, extra: true },
+      select: {
+        name: true,
+        phone: true,
+        salesOwnerId: true,
+        followStatus: true,
+        custStatus: true,
+        customerType: true,
+        remark: true,
+        extra: true,
+        shortName: true,
+        addrCountry: true,
+        addrProvince: true,
+        addrCity: true,
+        addrDistrict: true,
+        assignWay: true,
+        channelId: true,
+      },
     });
     if (!c) return null;
     const { extra, ...主 } = c;
@@ -130,7 +156,20 @@ export async function 读现值(tx: Tx, e: 实体, id: string): Promise<值表 |
   if (e === "contact") {
     const c = await tx.contact.findUnique({
       where: { id },
-      select: { name: true, position: true, phone: true, email: true, wechat: true, isPrimary: true, remark: true, customerId: true },
+      select: {
+        name: true,
+        position: true,
+        phone: true,
+        email: true,
+        wechat: true,
+        isPrimary: true,
+        remark: true,
+        customerId: true,
+        gender: true,
+        birthday: true,
+        hobby: true,
+        address: true,
+      },
     });
     return c ? 规整(c) : null;
   }
@@ -181,6 +220,79 @@ function 拣(v: 值表, 键: readonly string[]): 值表 {
   return Object.fromEntries(键.filter((k) => k in v).map((k) => [k, v[k]]));
 }
 
+/* ───────────────────────── 渠道 / 号码子表（P8） ───────────────────────── */
+
+/** 这位客户的归属还没定：渠道、业绩归属、推荐人都空着，才能照原系统的来源挂上渠道 */
+async function 可挂渠道(tx: Tx, id: string): Promise<boolean> {
+  const c = await tx.customer.findUnique({
+    where: { id },
+    select: { channelId: true, attributionChannelId: true, attributionCustomerId: true, referrerCustomerId: true },
+  });
+  return !!c && !c.channelId && !c.attributionChannelId && !c.attributionCustomerId && !c.referrerCustomerId;
+}
+
+/**
+ * 挂渠道 = 渠道直接推荐（同建档向导选渠道）：渠道、业绩归属渠道都是它，渠道负责人跟着渠道走。
+ * null = 三格一起清掉（撤回补上的渠道）
+ */
+async function 渠道格(tx: Tx, cid: string | null) {
+  if (!cid) return { channelId: null, attributionChannelId: null, channelOwnerId: null };
+  const ch = await tx.channel.findUnique({ where: { id: cid }, select: { channelOwnerId: true } });
+  if (!ch) throw new 写不进("要挂的渠道不在了");
+  return { channelId: cid, attributionChannelId: cid, channelOwnerId: ch.channelOwnerId };
+}
+
+type 号格 = "手机号" | "邮箱" | "微信";
+/** 联系人主表上的号 → 子表里的类型 */
+const 联系人号格: readonly (readonly ["phone" | "email" | "wechat", 号格])[] = [
+  ["phone", "手机号"],
+  ["email", "邮箱"],
+  ["wechat", "微信"],
+];
+
+/** 一格号码验成子表那一行；空的、验不过的（座机、格式不对）不进子表，主表照存原样 */
+function 验成(类型: 号格, 原: unknown): 验好的号 | null {
+  if (原 === null || 原 === undefined || 原 === "") return null;
+  const r = 验号码(类型, String(原));
+  return r.ok && r.键 ? { 类型: r.类型, 值: r.值, 键: r.键 } : null;
+}
+
+/** 客户本人的号（主表 phone，导入只认手机号）：这一行是不是它 */
+async function 是本人号(tx: Tx, customerId: string, kind: string, 键: string): Promise<boolean> {
+  if (kind !== 号码库类型.手机号) return false;
+  const c = await tx.customer.findUnique({ where: { id: customerId }, select: { phone: true } });
+  return !!c && 验成("手机号", c.phone)?.键 === 键;
+}
+
+/** 客户的号记进子表（建档 / 建回时）：同 P5 建档，挂在客户本人上（contactId 空） */
+export async function 记客户号(tx: Tx, customerId: string, phone: unknown): Promise<void> {
+  const 号 = 验成("手机号", phone);
+  if (号) await 记号码(tx, { 刚建的: customerId }, null, 号);
+}
+
+/** 联系人的电话 / 邮箱 / 微信记进子表、挂上这位联系人（同号已有一行就挂上它，不另加） */
+export async function 记联系人号(tx: Tx, customerId: string, contactId: string, v: Record<string, unknown>): Promise<void> {
+  for (const [列, 类型] of 联系人号格) {
+    const 号 = 验成(类型, v[列]);
+    // 导入、撤回都是调用方明说不限范围的（看全部）
+    if (号) await 看全部(() => 记号码(tx, { 已有: customerId }, contactId, 号));
+  }
+}
+
+/** 联系人名下这一类的旧号摘掉：和客户本人号是同一行的只摘掉联系人，别的整行删 */
+async function 摘号(tx: Tx, customerId: string, contactId: string, kind: string, 键: string): Promise<void> {
+  const 行 = await tx.contactMethod.findFirst({ where: { customerId, contactId, kind, numberKey: 键 }, select: { id: true } });
+  if (!行) return;
+  if (await 是本人号(tx, customerId, kind, 键)) await tx.contactMethod.update({ where: { id: 行.id }, data: { contactId: null } });
+  else await tx.contactMethod.delete({ where: { id: 行.id } });
+}
+
+/** 联系人要删之前（撤回）：名下的号全摘掉，不在客户上留一行没人认的号 */
+export async function 摘联系人号(tx: Tx, contactId: string): Promise<void> {
+  const 们 = await tx.contactMethod.findMany({ where: { contactId }, select: { customerId: true, kind: true, numberKey: true } });
+  for (const m of 们) await 摘号(tx, m.customerId, contactId, m.kind, m.numberKey);
+}
+
 /** 新建一条，返回 id。值已经过 落值（负责人认过、父记录换成我们的 id、日期是 ISO）。项目 = 商机行建成项目 */
 export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?: boolean): Promise<string> {
   if (e === "customer") {
@@ -193,11 +305,15 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
         custStatus: 串(v.custStatus ?? null),
         customerType: 串(v.customerType ?? null),
         remark: 串(v.remark),
+        ...Object.fromEntries(客户新列.map((k) => [k, 串(v[k] ?? null)])),
+        ...(v.channelId ? await 渠道格(tx, String(v.channelId)) : {}),
       },
       select: { id: true },
     });
     // 刚建出来的不用推版本（同大批导入）
     await 写外贸档案(tx, c.id, Object.fromEntries(客户附加列.filter((k) => !空(v[k])).map((k) => [k, String(v[k])])), false);
+    // 号记进联系方式子表（同 P5 建档：客户本人的号 contactId 空）；座机 / 格式不对的不进
+    await 记客户号(tx, c.id, v.phone);
     return c.id;
   }
   if (e === "lead") {
@@ -228,9 +344,11 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
         isPrimary: v.isPrimary === true,
         remark: 串(v.remark),
         customerId: String(v.customerId),
+        ...Object.fromEntries(联系人新列.map((k) => [k, 串(v[k] ?? null)])),
       },
       select: { id: true },
     });
+    await 记联系人号(tx, String(v.customerId), c.id, v);
     return c.id;
   }
   if (e === "opportunity" && 项目) return 建项目(tx, v, 现在);
@@ -290,8 +408,17 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     if (有("custStatus")) data.custStatus = 串(改动.custStatus);
     if (有("customerType")) data.customerType = 串(改动.customerType);
     if (有("remark")) data.remark = 串(改动.remark);
+    for (const k of 客户新列) if (有(k)) data[k] = 串(改动[k]);
+    if (有("channelId")) Object.assign(data, await 渠道格(tx, 串(改动.channelId)));
     const 主改 = Object.keys(data).length > 0;
     if (主改) await tx.customer.update({ where: { id }, data });
+    if (有("phone") && 串(改动.phone) !== 串(现值.phone ?? null)) {
+      // 换了号：子表里客户本人的旧号删掉（联系人也挂着的那行留给联系人），新号记上
+      const 旧 = 验成("手机号", 现值.phone);
+      if (旧) await tx.contactMethod.deleteMany({ where: { customerId: id, contactId: null, kind: 号码库类型.手机号, numberKey: 旧.键 } });
+      const 新 = 验成("手机号", 改动.phone);
+      if (新) await 看全部(() => 记号码(tx, { 已有: id }, null, 新));
+    }
     const 档案 = Object.fromEntries(客户附加列.filter(有).map((k) => [k, 串(改动[k])]));
     // 主表改过了 updatedAt 已经往前走；只改档案时让它推一下版本（撤销靠 updatedAt 认人改过没有）
     await 写外贸档案(tx, id, 档案, !主改);
@@ -307,9 +434,18 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
   if (e === "contact") {
     const data: Prisma.ContactUncheckedUpdateInput = {};
     for (const k of ["name", "customerId"] as const) if (有(k)) data[k] = String(改动[k]);
-    for (const k of ["position", "phone", "email", "wechat", "remark"] as const) if (有(k)) data[k] = 串(改动[k]);
+    for (const k of ["position", "phone", "email", "wechat", "remark", ...联系人新列] as const) if (有(k)) data[k] = 串(改动[k]);
     if (有("isPrimary")) data.isPrimary = 改动.isPrimary === true;
     await tx.contact.update({ where: { id }, data });
+    // 号改了：子表里这位名下的旧号摘掉、新号挂上（改所属客户的不搬号：导入同步不会改联系人的所属客户）
+    const customerId = String(现值.customerId);
+    for (const [列, 类型] of 联系人号格) {
+      if (!有(列) || 串(改动[列]) === 串(现值[列] ?? null)) continue;
+      const 旧 = 验成(类型, 现值[列]);
+      if (旧) await 摘号(tx, customerId, id, 号码库类型[类型], 旧.键);
+      const 新 = 验成(类型, 改动[列]);
+      if (新) await 看全部(() => 记号码(tx, { 已有: customerId }, id, 新));
+    }
     return;
   }
   if (e === "opportunity" && (await 是项目(tx, id))) return 改项目(tx, id, 改动, 现值, 现在);
@@ -393,6 +529,8 @@ export async function 落值(tx: Tx, 现: 现场, w: 待写, 上次: 值表 | nu
     else if (空(v.closedAt)) v.closedAt = 上次?.closedAt ?? 现值?.closedAt ?? 现.现在;
   }
   if (w.实体 === "customer" && 空(v.phone)) v.phone = "";
+  // 试跑之后渠道被删了：这次不挂（来源文字照存在外贸档案里）
+  if (w.实体 === "customer" && v.channelId && !(await tx.channel.findUnique({ where: { id: String(v.channelId) }, select: { id: true } }))) delete v.channelId;
   return 规整(拣(v, 比对字段[w.实体]));
 }
 
@@ -475,7 +613,9 @@ async function 补空(tx: Tx, 现: 现场, w: 待写, 目标: string): Promise<�
   const v = await 落值(tx, 现, w, null, 现值);
   const 补: 值表 = {};
   const before: 值表 = {};
+  const 挂得上 = !空(v.channelId) && (await 可挂渠道(tx, 目标));
   for (const k of 补空格) {
+    if (k === "channelId" && !挂得上) continue;
     if (空(现值[k]) && !空(v[k])) {
       补[k] = v[k];
       before[k] = 现值[k];
@@ -531,10 +671,21 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
   const 冲: Record<string, { 原系统: 标量; 我们: 标量; 上次: 标量 }> = {};
   const 新上次: 值表 = { ...上次 };
   for (const k of 比对字段[w.实体]) {
+    // 新几格 / 渠道：原系统这次没带就不碰（逐格留空，空值不算冲突）
+    if (只补的格.has(k) && !(k in v)) continue;
     const n = 规(v[k]);
     const l = 规(上次[k]);
     const c = 规(现值[k]);
     if (同(n, l)) continue; // 原系统没改
+    if (k === "channelId") {
+      // 渠道只补空：我们这边空着、归属也没定才挂；挂了别的渠道不动、不记冲突（归属固化）
+      if (c === null && n !== null && (await 可挂渠道(tx, ref.targetId))) {
+        改动[k] = n;
+        before[k] = c;
+      }
+      新上次[k] = n;
+      continue;
+    }
     if (同(c, l)) {
       // 我们这边没动过：照原系统改
       改动[k] = n;

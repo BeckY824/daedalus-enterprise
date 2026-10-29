@@ -28,6 +28,7 @@ import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
+import { 项目级别和地址改成, type 项目级别和地址 } from "./profile-rules";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -391,12 +392,14 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 }
 
 /**
- * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期、项目来源。规矩同向导第四步（规整项目）；
+ * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期、项目来源、项目级别、所在地（地址四格 + 详细地址）。
+ * 规矩同向导第四步（规整项目）；级别和所在地见 profile-rules.ts 项目级别和地址改成（不是企业版传了也不动）；
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
  * 换负责人 = 转让：能管项目的人（负责人本人、老板、主管）能转，只改这一个项目，记谁、何时、从谁到谁。
  * 公海里的项目老板 / 主管指了新负责人 = 出公海。建档人（creatorId）不在这里、哪里都不给改
  */
-export async function 改项目(me: 谁, projectId: string, patch: 向导项目 & { contactId?: string | null; expectedDealAt?: string | null }): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
+export type 编辑项目改动 = 向导项目 & { contactId?: string | null; expectedDealAt?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>;
+export async function 改项目(me: 谁, projectId: string, patch: 编辑项目改动): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const 规则 = await 生效组织规则();
   const 级别 = await 字段权限of(me.id);
@@ -419,7 +422,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 向导项目 
       const 渠道 = await tx.channel.findUnique({ where: { id: 来源 }, select: { active: true } });
       if (!渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
     }
-    const 新 = { ...好, contactId, channelId: 来源 };
+    const 位置 = 企业版() ? 项目级别和地址改成(patch, p) : null;
+    if (位置 && !位置.ok) return { ok: false as const, error: 位置.error };
+    const 新 = { ...好, contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");

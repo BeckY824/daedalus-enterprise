@@ -61,8 +61,8 @@ export type 通讯录 = { 部门们: 通讯录部门[]; 人们: 通讯录人[] }
  * customerRef / customerName 认客户，opportunityRef / opportunityName 认商机（跟进用）
  */
 export const 标准字段 = {
-  customer: ["id", "name", "phone", "owner", "followStatus", "custStatus", "customerType", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website"],
-  contact: ["id", "customerRef", "customerName", "name", "position", "phone", "email", "wechat", "isPrimary", "remark"],
+  customer: ["id", "name", "phone", "owner", "followStatus", "custStatus", "customerType", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website", "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay"],
+  contact: ["id", "customerRef", "customerName", "name", "position", "phone", "email", "wechat", "isPrimary", "remark", "gender", "birthday", "hobby", "address"],
   lead: ["id", "name", "contact", "phone", "email", "industry", "source", "status", "owner", "remark"],
   opportunity: ["id", "customerRef", "customerName", "name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "owner", "remark"],
   followup: ["id", "customerRef", "customerName", "opportunityRef", "opportunityName", "type", "title", "content", "occurredAt", "owner", "status"],
@@ -85,6 +85,17 @@ export const 字段中文: Record<string, string> = {
   source: "来源",
   level: "客户等级",
   website: "网站",
+  // 企业版主表新几格（迁移 072）：简称、地址四格、分配方式；联系人性别 / 生日 / 爱好 / 地址
+  shortName: "客户简称",
+  addrCountry: "地址国家",
+  addrProvince: "省份",
+  addrCity: "城市",
+  addrDistrict: "区县",
+  assignWay: "分配方式",
+  gender: "性别",
+  birthday: "生日",
+  hobby: "爱好",
+  address: "联系人地址",
   customerRef: "所属客户 ID",
   customerName: "所属客户名称",
   position: "职位 / 关系",

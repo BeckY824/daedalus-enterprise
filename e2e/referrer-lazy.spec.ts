@@ -120,6 +120,7 @@ test("新建：候选取得慢也不空，回来以后能搜能选", async ({ pa
 });
 
 test("编辑：原来的推荐人立刻显示名字，候选回来后不变、排除自己", async ({ page }) => {
+  test.skip(企业版, "企业版客户表单没有推荐人三选一，换成了一格渠道（10-28 去遗留）");
   await page.setViewportSize({ width: 1440, height: 900 });
   await 登录(page);
   await page.goto(`/customers/${被推荐.id}`);

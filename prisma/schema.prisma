@@ -519,6 +519,8 @@ model Attachment {
   leadId        String?
   /// 挂在哪位联系人上（企业版，迁移 063）
   contactId     String?
+  /// 挂在哪个项目上（企业版项目详情页「附件」，迁移 086）
+  projectId     String?
   /// 联系人附件分类（企业版，迁移 074）：名片 / 相册；空 = 没分类（联系人那边算相册）。lib/enterprise/customer-v2.ts 的 附件分类们
   tag           String?
   /// 原文件名（人看的）；图片压过以后扩展名换成 .jpg
@@ -537,6 +539,7 @@ model Attachment {
   @@index([orderId])
   @@index([leadId])
   @@index([contactId])
+  @@index([projectId])
 }
 
 model FollowUp {
@@ -826,6 +829,28 @@ model Project {
   /// 渠道统计按它算；老项目没填的退回去用客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）
   channelId            String?
   channel              Channel?                  @relation("ProjectChannel", fields: [channelId], references: [id], onDelete: SetNull)
+  /// 项目画像（企业版，迁移 087）：都可空，存选项名；选项在企业字典里（projBudget / projPrice / projDecision / projDemand / projProduct），
+  /// 设置 → 项目模式里改。字典里停用的选项已存的值照留，不改这一项就不重新校验
+  /// 预算能力（单选）
+  budgetLevel          String?
+  /// 价格感知（单选）
+  priceSense           String?
+  /// 决策链路（单选）
+  decisionChain        String?
+  /// 需求状态（单选）
+  demandStatus         String?
+  /// 产品需求（多选）：JSON 数组字符串，如 ["常规标品","部署服务"]；空数组存 NULL
+  productNeeds         String?
+  /// 详细地址（定位）（企业版，迁移 087 加的列，原叫「所在地」）：街道门牌之类的自由文字，可空；国家 / 省 / 市 / 区县在下面四列
+  location             String?
+  /// 项目所在地（企业版，迁移 093）：和客户地址同一套（lib/enterprise/customer-v2.ts 规整地址），都可空；
+  /// 国内存 国家 + 省 + 市 + 区县，国外只存国家 + 城市。显示用的「项目区域」见 lib/project/profile-rules.ts 项目区域
+  addrCountry          String?
+  addrProvince         String?
+  addrCity             String?
+  addrDistrict         String?
+  /// 项目级别（企业版，迁移 093）：S / A / B / C，可空；界面显示成星级（lib/enterprise/level-stars.ts 级别星数）
+  level                String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 有结局的那一刻；回到进行中就清掉
