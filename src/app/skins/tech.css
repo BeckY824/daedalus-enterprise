@@ -21,6 +21,10 @@
   --heat-on: #5ee0ff; --heat-off: #15303a;
   --seal: #3fe6a2;
   --nav-on-bg: #0c2a34; --nav-on-fg: #b5f2ff;
+  --avatar-1: var(--brand-bg); --avatar-2: var(--success-bg); --avatar-3: var(--warning-bg); --avatar-4: var(--danger-bg);
+  --avatar-5: var(--hover); --avatar-6: var(--brand-bg); --avatar-7: var(--danger-bg); --avatar-8: var(--hover);
+  --cat-teal: var(--success); --cat-lime: var(--warning);
+  --logo-frame: #e6ebf2; --logo-line: #6f97ff;
 
   --font-ui: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "PingFang SC", "Daedalus YaHei", "Microsoft YaHei", monospace;
   --font-display: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, "PingFang SC", "Daedalus YaHei", "Microsoft YaHei", monospace;
@@ -42,9 +46,11 @@
   --t-seal: 180ms;
   --stagger: 40ms;
 }
-/* 白底：同一套性格的浅色版——白纸、深青、坐标格淡到几乎看不见；不发光，用细线 */
-:root[data-skin="tech"][data-paper="white"] {
+/* 白底：同一套性格的浅色版——白纸、深青、坐标格淡到几乎看不见；不发光，用细线。
+   暗黑模式下不认白底，科技一律用上面那套深色（dark.css 的通用暗块也跳过科技） */
+:root[data-skin="tech"][data-paper="white"]:not([data-mode="dark"]) {
   color-scheme: light;
+  --logo-frame: #0b1b33; --logo-line: #1554e8;
   --brand: #007aa3; --brand-deep: #005d7c; --brand-bg: #e2f4fa; --brand-line: #9fd3e4;
   --ink: #0b1a22; --ink-soft: #2a3d47; --text-muted: #5b707b; --text-faint: #97a9b1;
   --line: #cfe0e6; --line-soft: #e3eef2; --line-strong: #9fc0cb;

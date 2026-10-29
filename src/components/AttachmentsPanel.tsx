@@ -23,11 +23,12 @@ declare global {
  *
  * 企业版项目附件（P11，10-29）：归属 = 项目，什么文件都收（收所有文件），说法从「图片」换成「附件」
  */
-export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说明, on个数 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void }) {
+export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说明, on个数, 分类 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null }) {
   const { message } = App.useApp();
   const [列表, set列表] = useState<附件[] | null>(null);
   const [传着, set传着] = useState(0);
-  const 查询 = 归属查询(挂在);
+  // 分类（企业版联系人的 名片 / 相册，10-29）：只列这一格、传上去记成这一格
+  const 查询 = 归属查询(挂在) + (分类 ? `&tag=${encodeURIComponent(分类)}` : "");
   const 只图 = 只收图片 && !收所有文件(挂在);
   const 叫 = 只图 ? "图片" : "附件";
   useEffect(() => { if (列表) on个数?.(列表.length); }, [列表, on个数]);
@@ -64,7 +65,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
   async function 传一个(f: File) {
     set传着((n) => n + 1);
     try {
-      const r = await 传附件(挂在, f);
+      const r = await 传附件(挂在, f, 分类);
       if (!r.ok) return void message.error(r.error);
       await 刷新();
     } finally {

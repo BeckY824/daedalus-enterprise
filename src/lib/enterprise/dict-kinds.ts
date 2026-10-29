@@ -1,5 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -27,6 +27,13 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
   projTag: { 名: "项目标签", 说明: "给项目分优先级。", 默认: ["A 重点推进", "B 潜力跟进", "C 正常培育"] },
   // 渠道属性（2026-10-29）：渠道页新建、筛选和渠道选择器第一级都用这一份
   channelAttr: { 名: "渠道属性", 说明: "渠道是哪一类来源，新建渠道时必选。", 默认: ["公域引流", "客户介绍", "人脉引荐", "分销合作", "个人自拓"] },
+  // 客户分配方式（2026-10-29，定稿 P5 第 23 条）：跟线索的 assign 不是一回事，单列一类
+  custAssign: { 名: "客户分配方式", 说明: "客户是怎么到销售手上的。", 默认: ["自持", "非自持", "公海领取"] },
+  /*
+    联系人号码类型（2026-10-29，定稿 P5 第 24 条）：联系人「联系方式」一行 = 类型 + 号码。
+    默认几项按序号对到 ContactMethod.kind（customer-v2.ts 内置号码种类），改名不影响已存的号；自己加的存成 custom:<叫法>
+  */
+  contactKind: { 名: "号码类型", 说明: "联系人联系方式的类型。", 默认: ["手机", "座机", "微信", "邮箱", "WhatsApp", "阿里国际站ID"] },
   /*
     项目画像五项（2026-10-29）：项目详情页「项目画像」里填，都可不填，存在 Project 的五列上（迁移 087）。
     产品需求可多选，另外四项单选。这五类不带「其他」：选项不够就在这里加

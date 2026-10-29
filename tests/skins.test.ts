@@ -71,10 +71,23 @@ describe("antd 跟着主题走（skins/shared.css）", () => {
     expect([...用到]).toEqual([ANTD_CSS_VAR_KEY]);
   });
 
-  it("每条都只在换皮时生效，现状下 antd 原样", () => {
+  it("每条都只在换皮或暗黑时生效，现状明亮下 antd 原样", () => {
     for (const b of 拆块(shared))
       for (const sel of b.选择器.split(/,(?![^()]*\))/).map((x) => x.trim()))
-        expect(sel, "shared.css 的选择器要以 :root[data-skin]:not([data-skin=\"now\"]) 开头").toMatch(/^:root\[data-skin\]:not\(\[data-skin="now"\]\)/);
+        expect(sel, "shared.css 的选择器要以 :root[data-skin]:not([data-skin=\"now\"]) 或 :root:is(那个, [data-mode=\"dark\"]) 开头").toMatch(
+          /^:root(?:\[data-skin\]:not\(\[data-skin="now"\]\)|:is\(\[data-skin\]:not\(\[data-skin="now"\]\), \[data-mode="dark"\]\))/,
+        );
+  });
+
+  /* P10：现状在暗黑下 antd 也得接到 token 上，不然按钮、表格、弹窗还是 lib/theme.ts 的浅色字面量 */
+  it("接色的块（含 --ant-color-* 或组件底色）暗黑下也生效", () => {
+    const 漏: string[] = [];
+    for (const b of 拆块(shared)) {
+      if (!/\.css-var-dd/.test(b.选择器)) continue;
+      const 有色 = [...变量(b.体).values()].some((v) => /var\(--(?:brand|ink|panel|line|hover|text|success|warning|danger|on-ink|workbench|row-hover)/.test(v));
+      if (有色 && !b.选择器.includes('[data-mode="dark"]')) 漏.push(b.选择器);
+    }
+    expect(漏, `这些块暗黑下不生效：${漏.join("；")}`).toEqual([]);
   });
 
   it("覆盖的 --ant-* 名字 antd 真有（拼错一个，那一项就还是蓝的）", async () => {
