@@ -92,10 +92,10 @@ const 清空 = {
 };
 
 async function 写状态(projectId: string, data: Record<string, unknown>, 痕: { step: 验证步; verdict: string; reason?: string | null; note?: string | null; userId: string }) {
-  await 看全部(() => prisma.$transaction([
-    prisma.entLeadVerify.upsert({ where: { projectId }, create: { projectId, ...data }, update: data }),
-    prisma.entLeadVerifyLog.create({ data: { projectId, ...痕, reason: 痕.reason ?? null, note: 痕.note || null } }),
-  ]));
+  await 看全部(() => prisma.$transaction(async (tx) => {
+    await tx.entLeadVerify.upsert({ where: { projectId }, create: { projectId, ...data }, update: data });
+    await tx.entLeadVerifyLog.create({ data: { projectId, ...痕, reason: 痕.reason ?? null, note: 痕.note || null } });
+  }));
 }
 
 /** 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、负责人本月配额 +1。都在一个事务里，项目先被人动了就作废 */
