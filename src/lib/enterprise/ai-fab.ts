@@ -10,7 +10,7 @@ import { 企业版亮项 } from "./nav";
  *   - 首页不出现：首页本身就是对话（AiDock 在首页也不画）
  *   - 面板开着不出现：宽屏常驻时面板已经在右边了，浮标再挂一枚是两个入口打架；
  *     手机上面板盖满整屏，浮标藏起来也就不会挡住输入框
- * 路径给「底下那页」（设置浮层开着时是浮层底下那一页，不是地址栏的 /settings），和 AiDock 一个口径。
+ * 路径给地址栏的 pathname：设置浮层开着时地址是 /settings，认不出亮项，浮标让开、不压在设置上面。
  */
 export function 浮标显示(路径: string, pool: string | null, o: { 企业版项目: boolean; 有AI: boolean; 面板开着: boolean }): boolean {
   if (!o.企业版项目 || !o.有AI || o.面板开着) return false;
