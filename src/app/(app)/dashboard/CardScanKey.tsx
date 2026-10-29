@@ -9,10 +9,13 @@
  * 认出来的卡交给对话 Agent（2026-10-28，Composer 出名片卡）：固定提示词，先查公司、联系人撞没撞库，说清还差哪几格，
  * 算一次提问（认字本身不扣）。认字时照片只在这台电脑上缩一下传给自己的服务器，认字那头不存；
  * 原图另走附件接口存到建出来的线索 / 联系人上，卡被忽略或页面刷新就不存
+ *
+ * 拍照（10-29 首页改版 待 1）：手机上这颗键叫「附件」，点了直接调后置相机（capture="environment"），
+ * 拍到的照片照样走上面这一套认名片；桌面上还是选文件、叫「名片」
  */
 import { useRef, useState } from "react";
 import { App } from "antd";
-import { IdcardOutlined, LoadingOutlined } from "@ant-design/icons";
+import { CameraOutlined, IdcardOutlined, LoadingOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
 import { 名片转表单 } from "@/lib/card-scan/form";
@@ -28,8 +31,10 @@ const 预热 = () => {
   void import("@/lib/card-scan/ocr");
 };
 
-export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡 }: {
+export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍照 = false }: {
   宽: boolean;
+  /** 手机上：键叫「附件」，点了调相机，一次拍一张 */
+  拍照?: boolean;
   在跑: boolean;
   渠道名们: readonly string[];
   /** 认好了：摆这张卡（Composer 里新开一轮） */
@@ -86,17 +91,18 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡 }: {
         onPointerEnter={预热}
         onFocus={预热}
         disabled={在跑 || 认着}
-        title="选名片照片（正反面可以一起选），认出来摆成一张新建线索卡，核对后确认；照片会存成新线索的附件"
-        aria-label="认名片建线索"
+        title={拍照 ? "拍一张名片，认出来摆成一张新建线索卡，核对后确认；照片会存成新线索的附件" : "选名片照片（正反面可以一起选），认出来摆成一张新建线索卡，核对后确认；照片会存成新线索的附件"}
+        aria-label={拍照 ? "拍照建线索" : "认名片建线索"}
       >
-        {认着 ? <LoadingOutlined /> : <IdcardOutlined />}
-        {宽 && <span>名片</span>}
+        {认着 ? <LoadingOutlined /> : 拍照 ? <CameraOutlined /> : <IdcardOutlined />}
+        {宽 && <span>{拍照 ? "附件" : "名片"}</span>}
       </button>
       <input
         ref={选}
         type="file"
         accept="image/*"
-        multiple
+        multiple={!拍照}
+        capture={拍照 ? "environment" : undefined}
         hidden
         onChange={(e) => {
           const 图们 = [...(e.target.files ?? [])].filter((f) => f.type.startsWith("image/"));

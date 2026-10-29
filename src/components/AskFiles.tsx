@@ -25,10 +25,13 @@ export default function AskFiles({
   files,
   onChange,
   disabled,
+  字,
 }: {
   files: 附件[];
   onChange: (f: 附件[]) => void;
   disabled?: boolean;
+  /** 键上带的字（企业版项目模式首页叫「附件」，和背调、查重并排）；不给 = 只有图标 */
+  字?: string;
 }) {
   const { message } = App.useApp();
   const input = useRef<HTMLInputElement>(null);
@@ -70,13 +73,14 @@ export default function AskFiles({
       />
       <button
         type="button"
-        className="cli-tool"
+        className={`cli-tool${字 ? " cli-tool-t" : ""}`}
         disabled={disabled || 读取中}
         onClick={() => input.current?.click()}
         title="带一个文本文件问（txt / md / csv / tsv / json / log）。内容只随这一问发给模型，不会存下来"
         aria-label="添加文件"
       >
         <PaperClipOutlined />
+        {字 && <span>{字}</span>}
       </button>
       {files.map((f) => (
         <span key={f.name} className="cli-file" title={`${f.name} · ${Math.round(f.size / 1024) || 1} KB · 只随这一问发出，不会存下来`}>

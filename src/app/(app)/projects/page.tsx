@@ -10,7 +10,7 @@ import ProjectsView from "./ProjectsView";
 export const dynamic = "force-dynamic";
 
 /** 项目模式关着时这一页不存在（404），侧栏也没有入口。见 设计-团队版项目模式1a 第三节 */
-export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ keyword?: string; ownerId?: string; pool?: string; recycled?: string }> }) {
+export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string }> }) {
   const me = await requireUser();
   if ((await getBusiness()).projectMode !== true) notFound();
   // 先读列表（里面先跑超时回收），再取「我的卡点」，看到的是收完的样子

@@ -142,13 +142,25 @@ test("空库首页：一张「开始」卡，整页只有一个主按钮，没�
   expect(Math.abs(卡.x - 框.x)).toBeLessThanOrEqual(2);
 });
 
-test("有数据的首页：一行三个信号，不是三张卡", async ({ page }) => {
+test("有数据的首页：一行三个信号，不是三张卡（企业版：四张指标卡）", async ({ page }) => {
   const p = 连库();
   await 造模拟数据(p);
   await p.$disconnect();
 
   await 登录(page);
   await page.goto("/dashboard");
+  if (企业版) {
+    // 企业版只用项目：首页是对话 + 右边四张指标卡（10-29 首页改版），问候下面不再摆信号
+    await page.waitForSelector(".home-cards");
+    await expect(page.locator(".signals")).toHaveCount(0);
+    await expect(page.locator(".home-cards .home-card")).toHaveCount(4);
+    // 每张卡点进去是项目页按同一口径筛好的那批，且都带口径
+    for (const 卡 of await page.locator(".home-cards .home-card").all()) {
+      expect(await 卡.getAttribute("href")).toMatch(/^\/projects\?f=/);
+      expect((await 卡.getAttribute("title")) ?? "").not.toBe("");
+    }
+    return;
+  }
   await page.waitForSelector(".signals");
 
   await expect(page.locator(".signals .signal")).toHaveCount(3);

@@ -8,7 +8,7 @@ import { useBusiness } from "@/lib/business-client";
 import { 首页屏 } from "@/lib/home-thread";
 import type { 历史消息 } from "@/lib/thread-history";
 import PaneToggle from "@/components/PaneToggle";
-import StartCard from "./StartCard";
+import StartCard, { 默认产品名 } from "./StartCard";
 import Welcome from "./Welcome";
 import TurnLog, { type 一轮的动作 } from "./TurnLog";
 import Composer, { type ComposerHandle } from "./Composer";
@@ -16,6 +16,8 @@ import { useHomeTurns } from "./useHomeTurns";
 import LeadFullNotices from "../leads/LeadFullNotices";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 新线索来源, 新线索要下一步 } from "@/components/ProposalCard";
+import HomeCards from "./HomeCards";
+import type { 首页卡数 } from "@/lib/project/home-cards";
 
 export type Suggestion = { label: string; question: string; kind?: "ask" | "prep" | "recap" };
 
@@ -33,11 +35,9 @@ export type Suggestion = { label: string; question: string; kind?: "ask" | "prep
 /** 本月签约按币种分开（2026-10-03，不换汇）；空数组 = 这个月还没签 */
 export type 首页信号 = {
   逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string;
-  /** 企业版只用项目（10-28）：第二、三格换成客户状态「意向」几位、本月成交几个项目；不给 = 别的版本，照旧 */
-  企业?: { 意向: number; 本月成交: number };
 };
 
-export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 产品名 }: {
+export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 产品名, 指标卡 }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   userName: string;
@@ -83,6 +83,11 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   要下一步?: boolean;
   /** 空库时「开始」卡欢迎语里的产品名（企业版 CRM_PRODUCT_NAME，page.tsx 传）；不给 = StartCard 自己的默认名 */
   产品名?: string;
+  /**
+   * 首页才给：企业版项目模式的四张指标卡（10-29 首页改版 #9–#12）。给了首页就是「驾驶舱」：
+   * 左 2/3 对话、右 1/3 竖排卡（手机上对话在上、卡在下），欢迎屏只留问候和「欢迎使用 {产品名}」
+   */
+  指标卡?: 首页卡数;
 }) {
   const b = useBusiness();
   const model = useModel(models);
@@ -108,6 +113,47 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
 
   const empty = turns.length === 0;
   const 窄 = 模式 === "窄";
+  const 驾驶舱 = !!指标卡 && !窄;
+
+  const 对话列 = (
+    <div className="cli-col">
+      {!窄 && <LeadFullNotices 提醒={满额提醒} />}
+      {empty && 窄 ? (
+        /*
+          窄模式（右侧面板）的空屏：380 宽塞不下问候、信号、建议问题那一套，
+          而且人是在**别的页面上**顺手问一句，不需要再被问候一次。
+          只留一句说明——它还要告诉人「这儿带着当前页」。
+        */
+        <div className="cli-narrow-hint">
+          问一句关于这一页的，或者任何{b.customer}、任何数。
+          <br />
+          输入 <kbd>/</kbd> 看命令。
+        </div>
+      ) : empty && 空库 ? (
+        /* 一条业务数据都没有：不摆信号、不摆建议问题，只有一张「开始」卡 */
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+          <StartCard 自己服务器={自己服务器} 去导入={去导入} 企业版={企业版} 产品名={产品名} />
+        </motion.div>
+      ) : empty ? (
+        <Welcome userName={userName} 信号={信号} context={context} 欢迎={驾驶舱 ? `欢迎使用 ${产品名 ?? 默认产品名}` : undefined} />
+      ) : (
+        <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} 企业版={企业版} />
+      )}
+
+      <Composer
+        ref={composerRef}
+        屏={屏}
+        scope={scope}
+        models={models}
+        model={model}
+        模式={模式}
+        suggestions={suggestions}
+        空库={空库}
+        渠道名们={渠道名们}
+        on发出={set刚发的}
+      />
+    </div>
+  );
 
   return (
     <新线索来源.Provider value={渠道名们 ?? null}>
@@ -115,43 +161,17 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
       <div className={`cli${empty ? " cli-empty" : ""}${窄 ? " cli-narrow" : ""}`}>
         {/* 首页对话列表收起了（或窗口太窄成了抽屉）：问答区左上角一颗侧栏图标把它叫回来，和列表页头上那颗是同一个。右侧 AI 面板（窄）里不摆 */}
         {!窄 && <PaneToggle 栏="chat" 位置="主区" className="pane-toggle-float" />}
-        <div className="cli-col">
-          {!窄 && <LeadFullNotices 提醒={满额提醒} />}
-          {empty && 窄 ? (
-            /*
-              窄模式（右侧面板）的空屏：380 宽塞不下问候、信号、建议问题那一套，
-              而且人是在**别的页面上**顺手问一句，不需要再被问候一次。
-              只留一句说明——它还要告诉人「这儿带着当前页」。
-            */
-            <div className="cli-narrow-hint">
-              问一句关于这一页的，或者任何{b.customer}、任何数。
-              <br />
-              输入 <kbd>/</kbd> 看命令。
+        {驾驶舱 ? (
+          /* 容器查询量的是这一格（去掉左栏、对话列表之后剩的宽），不是整个窗口；PaneToggle 是 fixed，得留在它外面 */
+          <div className="cli-ck">
+            <div className="cli-ck-g">
+              {对话列}
+              <HomeCards 数={指标卡} />
             </div>
-          ) : empty && 空库 ? (
-            /* 一条业务数据都没有：不摆信号、不摆建议问题，只有一张「开始」卡 */
-            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-              <StartCard 自己服务器={自己服务器} 去导入={去导入} 企业版={企业版} 产品名={产品名} />
-            </motion.div>
-          ) : empty ? (
-            <Welcome userName={userName} 信号={信号} context={context} />
-          ) : (
-            <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} 企业版={企业版} />
-          )}
-
-          <Composer
-            ref={composerRef}
-            屏={屏}
-            scope={scope}
-            models={models}
-            model={model}
-            模式={模式}
-            suggestions={suggestions}
-            空库={空库}
-            渠道名们={渠道名们}
-            on发出={set刚发的}
-          />
-        </div>
+          </div>
+        ) : (
+          对话列
+        )}
       </div>
     </新线索要下一步.Provider>
     </新线索来源.Provider>
