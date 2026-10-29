@@ -1,6 +1,7 @@
 "use server";
 
 import { 新建只给自己 } from "@/lib/enterprise/import-perm";
+import { 软删开着, 软删客户, 回收站保留天数 } from "@/lib/enterprise/soft-delete";
 import { businessDayjs } from "@/lib/business-clock";
 import { 转交商机 } from "@/lib/opportunity-activity";
 import { hasVisibleText } from "@/lib/form-validation";
@@ -699,8 +700,9 @@ function revalidateCustomer(id?: string) {
 async function 删除依赖错误(db: Prisma.TransactionClient, ids: string[], 客户叫法: string): Promise<string | null> {
   const visible = await db.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
   if (!visible.length) return null;
-  // 项目模式（2026-10-23）：级联会把项目连同节点变更一起删掉，挂着项目的客户先拦；没开过项目模式的工作区这里查出来永远是空
-  const 项目数 = await 看全部(() => 客户的项目数(visible.map((c) => c.id), db));
+  // 项目模式（2026-10-23）：级联会把项目连同节点变更一起删掉，挂着项目的客户先拦；没开过项目模式的工作区这里查出来永远是空。
+  // 企业版删客户是进回收站（P9）：项目跟着客户一起进、一起回来，不拦
+  const 项目数 = 软删开着() ? new Map<string, number>() : await 看全部(() => 客户的项目数(visible.map((c) => c.id), db));
   if (项目数.size) {
     const 说 = visible.filter((c) => 项目数.has(c.id)).map((c) => `「${c.name}」名下还有 ${项目数.get(c.id)} 个项目`);
     return 说.length === 1 && visible.length === 1
@@ -759,6 +761,29 @@ export async function deleteCustomers(
   */
   if (!待删.length) return { ok: false, error: `${ids.length > 1 ? "这几" : "这"}位${b.customer}已经在别处删掉了，刷新看看` };
   const 清点 = await 删除前清点(待删.map((c) => c.id));
+  // 企业版（P9）：进回收站。联系人、项目、沟通记录记同一个时刻一起进，线索不动；30 天内能恢复
+  if (软删开着()) {
+    const 删了 = await prisma.$transaction(async (tx) => {
+      const dependencyError = await 删除依赖错误(tx, 待删.map((c) => c.id), b.customer);
+      if (dependencyError) throw new 客户删除阻塞(dependencyError);
+      return 软删客户(tx, 待删.map((c) => c.id));
+    }).catch((e) => {
+      if (e instanceof 客户删除阻塞) return e;
+      throw e;
+    });
+    if (删了 instanceof 客户删除阻塞) return { ok: false, error: 删了.message };
+    if (!删了) return { ok: false, error: `${ids.length > 1 ? "这几" : "这"}位${b.customer}已经在别处删掉了，刷新看看` };
+    await recordAudit({
+      user: me, action: "delete", entity: "Customer",
+      entityId: 待删.length === 1 ? 待删[0].id : null,
+      summary: `删除 ${删了} 名${b.customer}（进回收站，${回收站保留天数} 天内可恢复）：${待删.map((c) => c.name).join("、")}`,
+      detail: { 客户: 待删, 一起进回收站的: 清点 },
+    });
+    revalidateCustomer();
+    revalidatePath("/contacts");
+    revalidatePath("/projects");
+    return { ok: true, deleted: 删了, 留下联系人: 0 };
+  }
   let 联系人: Awaited<ReturnType<typeof 搬走并删>>["联系人"] = [];
   let res: { count: number } = { count: 0 };
   for (let 第几次 = 0; ; 第几次++) {
@@ -837,12 +862,17 @@ export type 删除清点 = {
   联系人: number;
   /** 从线索转来的：线索还在，退回「跟进中」（L-014） */
   线索: number;
+  /** 企业版（P9）：删了进回收站、30 天内能恢复，联系人和项目跟着一起进，线索不动 */
+  进回收站: boolean;
+  /** 一起进回收站的项目（只在 进回收站 时数） */
+  项目: number;
 };
 
 export async function 删除前清点(ids: string[]): Promise<删除清点> {
   await requireUser();
   const 在 = { customerId: { in: ids } };
-  const [跟进, 商机, 计划, 待办, 签约, 联系人, 线索] = await Promise.all([
+  const 软 = 软删开着();
+  const [跟进, 商机, 计划, 待办, 签约, 联系人, 线索, 项目] = await Promise.all([
     prisma.followUp.count({ where: 在 }),
     prisma.opportunity.count({ where: 在 }),
     prisma.followPlan.count({ where: 在 }),
@@ -850,11 +880,12 @@ export async function 删除前清点(ids: string[]): Promise<删除清点> {
     prisma.contract.findMany({ where: 在, select: { amount: true, ...带币种.签约 } }),
     prisma.contact.count({ where: 在 }),
     prisma.lead.count({ where: 在 }),
+    软 ? prisma.project.count({ where: 在 }) : 0,
   ]);
   return {
     跟进, 商机, 计划和待办: 计划 + 待办,
     签约: 签约.length, 签约金额: 签约合计(签约),
-    联系人, 线索,
+    联系人, 线索, 进回收站: 软, 项目,
   };
 }
 

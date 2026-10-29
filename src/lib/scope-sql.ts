@@ -21,7 +21,8 @@ async function 看得到的(): Promise<{ where: string; 参数: string[] } | nul
   if (!们.length) 们.push("__无");
   const 占 = 们.map(() => "?").join(",");
   return {
-    where: `c."salesOwnerId" IN (${占}) OR c."channelOwnerId" IN (${占}) OR c.id IN (SELECT "customerId" FROM "CustomerPool")`,
+    // 回收站里的客户（企业版软删，P9）不算：裸 SQL 不过 Prisma 扩展，自己带上。外层是 AND，三段 OR 照旧各走各的索引
+    where: `(c."salesOwnerId" IN (${占}) OR c."channelOwnerId" IN (${占}) OR c.id IN (SELECT "customerId" FROM "CustomerPool")) AND c."deletedAt" IS NULL`,
     参数: [...们, ...们],
   };
 }
@@ -43,7 +44,7 @@ export async function 看得到的客户数(): Promise<number> {
 export async function 看得到的跟进数(筛: { type?: string; ownerId?: string }): Promise<number> {
   const 范围 = await 看得到的();
   if (!范围) return prisma.followUp.count({ where: { ...(筛.type ? { type: 筛.type } : {}), ...(筛.ownerId ? { ownerId: 筛.ownerId } : {}) } });
-  const 条件 = [`f."customerId" IN (SELECT c.id FROM "Customer" c WHERE ${范围.where})`];
+  const 条件 = [`f."customerId" IN (SELECT c.id FROM "Customer" c WHERE ${范围.where})`, `f."deletedAt" IS NULL`];
   const 参数: string[] = [...范围.参数];
   if (筛.type) {
     条件.push(`f."type" = ?`);

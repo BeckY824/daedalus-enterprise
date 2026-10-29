@@ -1,5 +1,6 @@
 import {test,expect,type Page} from "@playwright/test";
 import {连库,清空业务数据} from "./mock-data";
+import {企业版} from "./owner-pick";
 test.describe.configure({mode:"serial"});
 test.beforeAll(async()=>{const db=连库();try{
  await 清空业务数据(db);const owner=(await db.user.findUniqueOrThrow({where:{email:"zhangsan"}})).id;
@@ -28,10 +29,14 @@ test("详情删除入口先提示推荐依赖，不弹不可执行的最终确�
 });
 test("详情删除取消不写入，确认后回列表且联系人进入未归属",async({page})=>{
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));await login(page);await page.goto("/customers/delete-free");await ask(page);
- const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();await expect(dialog.getByText("删除后不能恢复。")).toBeVisible();await expect(dialog.getByText(/1 位联系人不删/)).toBeVisible();
+ const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();// 企业版（P9）：删了进回收站，联系人跟着客户一起进，不进未归属
+ if(企业版){await expect(dialog.getByText(/1 位联系人一起进回收站/)).toBeVisible();}else{await expect(dialog.getByText("删除后不能恢复。")).toBeVisible();await expect(dialog.getByText(/1 位联系人不删/)).toBeVisible();}
  await dialog.getByRole("button",{name:/取\s*消/}).click();await expect(dialog).toBeHidden();
  const db=连库();try{expect(await db.customer.findUnique({where:{id:"delete-free"}})).not.toBeNull();expect(await db.unassignedContact.count()).toBe(0)}finally{await db.$disconnect()}
  await ask(page);await expect(dialog).toBeVisible();await dialog.getByRole("button",{name:/删\s*除/}).click();await page.waitForURL(/\/customers(?:\?|$)/);
- const check=连库();try{expect(await check.customer.findUnique({where:{id:"delete-free"}})).toBeNull();expect(await check.unassignedContact.findUnique({where:{id:"preserved-contact"}})).toMatchObject({name:"保留下来的联系人",wasPrimary:true,fromCustomerId:"delete-free"})}finally{await check.$disconnect()}
+ const check=连库();try{
+  if(企业版){expect((await check.customer.findUnique({where:{id:"delete-free"}}))?.deletedAt).not.toBeNull();expect((await check.contact.findUnique({where:{id:"preserved-contact"}}))?.deletedAt).not.toBeNull();expect(await check.unassignedContact.count()).toBe(0)}
+  else{expect(await check.customer.findUnique({where:{id:"delete-free"}})).toBeNull();expect(await check.unassignedContact.findUnique({where:{id:"preserved-contact"}})).toMatchObject({name:"保留下来的联系人",wasPrimary:true,fromCustomerId:"delete-free"})}
+ }finally{await check.$disconnect()}
  expect(errors).toEqual([]);
 });

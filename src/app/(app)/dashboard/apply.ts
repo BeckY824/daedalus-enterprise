@@ -16,6 +16,8 @@ import { saveFollowUp, savePlan, deleteFollowUp } from "../customers/[id]/action
 import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 软删开着, 看已删 } from "@/lib/enterprise/soft-delete";
+import { 看全部 } from "@/lib/team-scope";
 import { 要下一步时间 } from "@/lib/project/wizard";
 import { 客户在推项目 } from "@/lib/project/active";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -437,7 +439,9 @@ export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok
     // 只删这位客户名下的那一条：凭据里的 id 对不上客户就不动
     const f = await prisma.followUp.findFirst({ where: { id: String(u.id), customerId: u.customerId }, select: { id: true } });
     if (!f) return { ok: false, error: "那条跟进已经不在了，可能已被删掉" };
-    await deleteFollowUp(f.id, u.customerId);
+    const 删 = await deleteFollowUp(f.id, u.customerId);
+    // 企业版（P9）删跟进是进回收站；撤销是「档案回到确认之前」，AI 刚写的这条不该留在回收站里，真删
+    if (删.ok && 软删开着()) await 看已删(() => 看全部(() => prisma.followUp.deleteMany({ where: { id: f.id, deletedAt: { not: null } } })));
   } else if (u.kind === "set_status" && (u.field === "followStatus" || u.field === "decisionStatus")) {
     /*
       2026-10-04 J-172：先核对现在还是不是卡片改成的那个值。原来直接写回原值——确认之后同事改成了「已签约」，

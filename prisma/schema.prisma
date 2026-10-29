@@ -169,6 +169,8 @@ model Customer {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
+  deletedAt DateTime?
 
   contacts      Contact[]
   followUps     FollowUp[]
@@ -208,6 +210,7 @@ model Customer {
   @@index([createdAt, id])
   /// 企业版首页「意向客户」按客户状态数（迁移 065）
   @@index([custStatus])
+  @@index([deletedAt])
 }
 
 /// 签约记录。同一学员可多次签约（续费、补课），便于按月/季/年复盘
@@ -275,6 +278,8 @@ model Contact {
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
+  deletedAt DateTime?
 
   followUps FollowUp[]
   /// 作为主联系人的项目（2026-10-23 项目模式 1a）
@@ -285,6 +290,7 @@ model Contact {
   customerLinks  ContactCustomer[]
 
   @@index([customerId])
+  @@index([deletedAt])
 }
 
 /// 企业版客户↔联系人多对多（2026-10-29，P13 第 1 条，迁移 090）：同一个人可以挂在好几位客户名下，一对只记一行。
@@ -577,6 +583,8 @@ model FollowUp {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
+  deletedAt DateTime?
 
   @@index([customerId, occurredAt])
   @@index([type])
@@ -584,6 +592,7 @@ model FollowUp {
   @@index([occurredAt])
   /// 按成员筛跟进（迁移 050）：只有上面那条时 SQLite 没统计信息，会改成按 occurredAt 扫全表再挑人
   @@index([ownerId, occurredAt])
+  @@index([deletedAt])
 }
 
 /// 跟进记录的原文。
@@ -853,6 +862,8 @@ model Project {
   level                String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
+  /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
+  deletedAt DateTime?
   /// 有结局的那一刻；回到进行中就清掉
   closedAt             DateTime?
 
@@ -880,6 +891,7 @@ model Project {
   @@index([phase, updatedAt])
   /// 项目页不筛阶段时按最近更新倒序取前 500（迁移 065）
   @@index([updatedAt])
+  @@index([deletedAt])
 }
 
 /// 项目组成员，多对多。1a 负责人直接加人写 JOINED；1b 的进组邀请用 INVITED / DECLINED 和 invitedById

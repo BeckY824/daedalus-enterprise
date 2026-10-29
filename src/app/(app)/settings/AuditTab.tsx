@@ -22,6 +22,7 @@ const ACTION_LABEL: Record<string, string> = {
   create: "新建", update: "修改", delete: "删除", assign: "转派",
   convert: "转化", deactivate: "停用", reactivate: "恢复", password: "改密码", device_revoke: "退出机器", ai_use: "AI", ai_apply: "确认 AI 建议", ai_undo: "撤销 AI 建议",
   pool: "放进公海", claim: "领取", import: "导入", merge: "合并重复",
+  restore: "从回收站恢复", purge: "彻底删除",
 };
 const ENTITY_LABEL: Record<string, string> = {
   Customer: "学员", Contract: "签约", Lead: "线索", User: "成员", Channel: "渠道", Setting: "系统设置", Ai: "AI 功能", Device: "机器",
@@ -46,7 +47,7 @@ function safeJson(raw: string | null): string {
 const ACTION_COLOR: Record<string, string> = {
   create: "success", update: "processing", delete: "error",
   assign: "cyan", convert: "gold", deactivate: "warning", reactivate: "default", password: "default", ai_use: "purple", ai_apply: "green", ai_undo: "default",
-  pool: "default", claim: "cyan", merge: "geekblue",
+  pool: "default", claim: "cyan", merge: "geekblue", restore: "green", purge: "error",
 };
 
 export default function AuditTab({ logs }: { logs: AuditRow[] }) {
