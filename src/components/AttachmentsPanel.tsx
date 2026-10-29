@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { App, Button, Image, Popconfirm, Spin, Upload } from "antd";
 import { DeleteOutlined, FileOutlined, InboxOutlined } from "@ant-design/icons";
-import { 附件上限字节, 图片长边, 是图片, 每条最多, 读大小, 只收图片, 收的类型, type 附件, type 归属 } from "@/lib/attachment-rules";
+import { 附件上限字节, 图片长边, 是图片, 每条最多, 读大小, 只收图片, 收的类型, 收所有文件, type 附件, type 归属 } from "@/lib/attachment-rules";
 import { 传附件, 归属查询 } from "@/lib/attachment-upload";
 
 declare global {
@@ -20,28 +20,32 @@ declare global {
  *
  * 企业版联系人附件（10-28）也用这一块：归属 = 线索 / 联系人，说明 换成名片那句；只读 = 只看不传不删（只读的客户）。
  * on个数：张数变了告诉外面（联系人卡上的「附件 N」跟着变）
+ *
+ * 企业版项目附件（P11，10-29）：归属 = 项目，什么文件都收（收所有文件），说法从「图片」换成「附件」
  */
 export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说明, on个数 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void }) {
   const { message } = App.useApp();
   const [列表, set列表] = useState<附件[] | null>(null);
   const [传着, set传着] = useState(0);
   const 查询 = 归属查询(挂在);
+  const 只图 = 只收图片 && !收所有文件(挂在);
+  const 叫 = 只图 ? "图片" : "附件";
   useEffect(() => { if (列表) on个数?.(列表.length); }, [列表, on个数]);
 
   const 读 = useCallback(async (): Promise<附件[]> => {
     const r = await fetch(`/api/attachments?${查询}`, { cache: "no-store" });
     const j = (await r.json().catch(() => ({}))) as { 附件?: 附件[]; error?: string };
-    if (!r.ok) throw new Error(j.error ?? `读图片没成（${r.status}）`);
+    if (!r.ok) throw new Error(j.error ?? `读${叫}没成（${r.status}）`);
     return j.附件 ?? [];
-  }, [查询]);
+  }, [查询, 叫]);
 
   const 刷新 = useCallback(
     () =>
       读().then(set列表, (e: unknown) => {
         set列表((x) => x ?? []);
-        message.error(e instanceof Error ? e.message : "读图片没成");
+        message.error(e instanceof Error ? e.message : `读${叫}没成`);
       }),
-    [读, message],
+    [读, message, 叫],
   );
 
   useEffect(() => {
@@ -51,11 +55,11 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
       (e: unknown) => {
         if (走了) return;
         set列表([]);
-        message.error(e instanceof Error ? e.message : "读图片没成");
+        message.error(e instanceof Error ? e.message : `读${叫}没成`);
       },
     );
     return () => { 走了 = true; };
-  }, [读, message]);
+  }, [读, message, 叫]);
 
   async function 传一个(f: File) {
     set传着((n) => n + 1);
@@ -108,15 +112,17 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
         multiple
         showUploadList={false}
         disabled={满了}
-        accept={只收图片 ? 收的类型 : undefined}
+        accept={只图 ? 收的类型 : undefined}
         beforeUpload={(f) => {
           void 传一个(f);
           return false;
         }}
       >
         <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-        <p className="ant-upload-text">{满了 ? `已经 ${每条最多} 张了，先删掉几张不要的` : 说明 ?? (只收图片 ? "把产品图片拖到这里，或点一下选图片" : "把文件拖到这里，或点一下选文件")}</p>
-        <p className="ant-upload-hint">JPG、PNG、GIF、WebP、BMP 都行；单张最多 {读大小(附件上限字节)}，会先压到长边 {图片长边} 像素再存</p>
+        <p className="ant-upload-text">{满了 ? (只图 ? `已经 ${每条最多} 张了，先删掉几张不要的` : `已经 ${每条最多} 个了，先删掉几个不要的`) : 说明 ?? (只图 ? "把产品图片拖到这里，或点一下选图片" : "把文件拖到这里，或点一下选文件")}</p>
+        <p className="ant-upload-hint">{只图
+          ? <>JPG、PNG、GIF、WebP、BMP 都行；单张最多 {读大小(附件上限字节)}，会先压到长边 {图片长边} 像素再存</>
+          : <>合同、方案、表格、图片都行；单个最多 {读大小(附件上限字节)}，图片会先压到长边 {图片长边} 像素再存</>}</p>
       </Upload.Dragger>
       </div>}
 
@@ -125,7 +131,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
       ) : (
         <>
           {传着 > 0 && <div className="muted" style={{ marginTop: 10 }}><Spin size="small" /> 正在传 {传着} 个…</div>}
-          {列表.length === 0 && 传着 === 0 && <div className="muted" style={{ marginTop: 只读 ? 0 : 10 }}>{只收图片 ? "还没有图片。" : "还没有附件。"}</div>}
+          {列表.length === 0 && 传着 === 0 && <div className="muted" style={{ marginTop: 只读 ? 0 : 10 }}>{只图 ? "还没有图片。" : "还没有附件。"}</div>}
           {图们.length > 0 && (
             <Image.PreviewGroup>
               <div className="att-pics">

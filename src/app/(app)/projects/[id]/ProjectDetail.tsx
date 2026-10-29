@@ -17,7 +17,7 @@ import { 外贸精简 } from "@/lib/business-config";
 import { 金额 } from "@/lib/currency";
 import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
-import type { 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通, 培育计划上限 } from "@/lib/project/stage-gates";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
@@ -33,6 +33,8 @@ import type { 卡点默认 } from "@/lib/project/blocker-rules";
 import { ProjectCommissionCard } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
+import type { 侧栏项目 } from "@/lib/project/list";
+import { ProjectAttachmentsCard, ProjectNavOpenButton, ProjectProfileCard, ProjectSideNav, useProjectNav, type 项目画像 } from "./ProjectExtras";
 
 export type 项目详情 = {
   id: string; name: string; remark: string | null; amount: number; currency: string;
@@ -100,6 +102,10 @@ export type 项目详情 = {
   提成: 提成卡 | null;
   /** 删项目时一起删掉的：节点留痕（含转让痕）、项目组、沟通和项目的关联 */
   删前清点: { 留痕: number; 组员: number; 沟通: number };
+  /** 企业版项目画像（P11）：不是企业版、公海里没领的不给 */
+  画像?: 项目画像;
+  /** 企业版项目附件（P11）：看得到才有；只读 = 不能改这个项目（api/attachments/access.ts 项目附件入口） */
+  项目附件?: { 个数: number; 只读: boolean };
 };
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
@@ -202,7 +208,7 @@ const 无效原因前缀 = "无效原因：";
 const 提醒色 = { 稳: "green", 拿捏: "gold", 超时: "red" } as const;
 
 export default function ProjectDetail({
-  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null,
+  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 侧栏 = null,
 }: {
   p: 项目详情;
   能改: boolean;
@@ -213,6 +219,8 @@ export default function ProjectDetail({
   /** 在用的异常类别（进异常状态时选） */
   类别们: { id: string; name: string }[];
   卡点?: 项目卡点 | null;
+  /** 企业版左边的项目列表（P11）；别的版本 null，不摆 */
+  侧栏?: 侧栏项目[] | null;
 }) {
   const router = useRouter();
   const { message } = App.useApp();
@@ -308,14 +316,23 @@ export default function ProjectDetail({
   };
 
   // 各张卡先摆成常量：企业版两栏、别的版本照原来一栏，摆法不同、卡是同一份
+  const 位 = 阶段与进程(p, 字典);
+  const 导航 = useProjectNav();
   const 节点卡 = (
     <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>现在在</div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>
-            {p.phase} · {p.node}
-            {p.result && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}>{结局叫法(p.result, 字典)}</Tag>}
+        {/* P11：阶段（线索/商机/订单）和进程（节点）分两格摆，不拼成一串；成功交付、异常状态的阶段算订单 */}
+        <div className="proj-where">
+          <div>
+            <div className="proj-where-label">阶段</div>
+            <div className="proj-where-value">{位.阶段}</div>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div className="proj-where-label">进程</div>
+            <div className="proj-where-value">
+              <span className="proj-where-node" title={位.进程}>{位.进程}</span>
+              {位.结局 && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}>{位.结局}</Tag>}
+            </div>
           </div>
         </div>
         <Space wrap>
@@ -491,8 +508,12 @@ export default function ProjectDetail({
     </Card>
   );
 
-  return (
+  const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
+  const 附件卡 = p.项目附件 && <ProjectAttachmentsCard key={p.id} projectId={p.id} 起始个数={p.项目附件.个数} 只读={p.项目附件.只读} />;
+
+  const 正文 = (
     <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
+      {侧栏 && <ProjectNavOpenButton onClick={导航.切} />}
       <PageHead
         title={p.name}
         subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
@@ -538,9 +559,11 @@ export default function ProjectDetail({
               {节点卡}
               {沟通卡}
               {卡点区}
+              {附件卡}
             </div>
             <aside className="proj-side" aria-label="项目资料">
               {项目卡}
+              {画像卡}
               {交付卡}
               {项目组卡}
               {提成区}
@@ -674,6 +697,14 @@ export default function ProjectDetail({
         <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人。</div>
         <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
       </Modal>
+    </div>
+  );
+  if (!侧栏) return 正文;
+  // 企业版（P11）：左边一条项目列表，点一个换一个；窄了（<1280）默认收起，摆开时浮在内容上（globals.css .proj-shell）
+  return (
+    <div className="proj-shell" data-nav={导航.data}>
+      <ProjectSideNav 们={侧栏} 当前={p.id} 收起={导航.切} 点了={导航.点了} />
+      {正文}
     </div>
   );
 }

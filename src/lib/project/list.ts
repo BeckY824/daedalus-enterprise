@@ -12,7 +12,7 @@ import { 已立项天数 } from "./project-fields";
 import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 import { 认首页卡, 首页卡条件, 即将逾期 } from "./home-cards";
-import { 字典of } from "./stage-dict";
+import { 字典of, 阶段与进程, type 阶段字典 } from "./stage-dict";
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string };
@@ -98,4 +98,20 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡 },
   };
+}
+
+/** 详情页左边那条小列表的一行（P11）：只要名字和在哪，不带客户名（公海里同事客户的项目也不露客户） */
+export type 侧栏项目 = { id: string; name: string; 阶段: string; 进程: string; 结局: string | null; pooled: boolean };
+
+/**
+ * 企业版项目详情页左边的项目列表（P11）：和项目页同一个范围——同一个按可见范围筛过的 prisma、同样按最近改过排、同样最多 项目上限 个，
+ * 不另开权限口子。不跑超时回收（那是项目页列表的事，详情页每点一个都扫一遍太重）
+ */
+export async function 读侧栏项目(字典: 阶段字典): Promise<侧栏项目[]> {
+  const rows = await prisma.project.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 项目上限,
+    select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true },
+  });
+  return rows.map((r) => ({ id: r.id, name: r.name, ...阶段与进程(r, 字典), pooled: !!r.pooledAt }));
 }

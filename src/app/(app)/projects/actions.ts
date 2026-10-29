@@ -28,7 +28,8 @@ import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { 向导自动分配 } from "../leads/assign-actions";
-import { 我能用的分配方式, 挡分配方式, 是分配方式序号, type 分配方式序号 } from "@/lib/enterprise/dict";
+import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, type 分配方式序号 } from "@/lib/enterprise/dict";
+import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
 
@@ -329,6 +330,27 @@ export async function 编辑项目(projectId: string, patch: 向导项目 & { co
       刷新项目(projectId, p?.customerId);
     }
     return r.ok ? { ok: true as const, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
+  } catch (e) { return 不在了(e); }
+}
+
+/** 留痕里画像字段的叫法：五项跟字典的名字，所在地另写 */
+const 画像字段名 = (k: 画像字段): string => (k === "location" ? "所在地" : 字典定义[项目画像项.find((x) => x.键 === k)!.种类].名);
+
+/** 企业版项目画像（P11）：详情页「项目画像」卡改一项存一项；规矩见 lib/project/profile.ts */
+export async function 改项目画像Action(projectId: string, patch: 画像改动) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    const r = await 改项目画像(me, projectId, patch);
+    if (r.ok && r.变了.length) {
+      const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
+      await recordAudit({
+        user: me, action: "update", entity: "Project", entityId: projectId,
+        summary: `编辑项目「${p?.name ?? ""}」：改了${r.变了.map(画像字段名).join("、")}`,
+      });
+      刷新项目(projectId, p?.customerId);
+    }
+    return r.ok ? { ok: true as const } : r;
   } catch (e) { return 不在了(e); }
 }
 

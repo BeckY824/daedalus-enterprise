@@ -70,7 +70,9 @@ const 可写: Record<string, string[]> = {
   CustomerExtra: ["country", "whatsapp", "wechat", "email", "source", "level", "website", "alibabaId"],
   // 外贸订单 / 供应商整套 7 张表 2026-10-29 删了（迁移 066），这里和 派生 里都不再列
   // 团队版项目模式 1a（2026-10-23）：建档向导、项目详情（编辑项目 / 改节点 / 勾交付 / 项目组）、设置里的「项目模式」一栏
-  Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt", "channelId"],
+  Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt", "channelId",
+    // 企业版项目画像（P11，迁移 087）：详情页「项目画像」卡改一项存一项（projects/actions.ts 改项目画像Action → lib/project/profile.ts）
+    "budgetLevel", "priceSense", "decisionChain", "demandStatus", "productNeeds", "location"],
   ProjectMember: ["roleId"],
   ProjectRole: ["name", "active"],
   ProjectExceptionCategory: ["name", "active"],
@@ -351,6 +353,7 @@ const 派生: Record<string, Record<string, string>> = {
     orderId: "老库里挂在订单上的那列；订单表 2026-10-29 删了（迁移 066），新传的不再写，列留着不删",
     leadId: "挂在哪条线索上（企业版名片建档 / 线索编辑框传的时候定），线索删了这列也不清",
     contactId: "挂在哪位联系人上（企业版传的时候定；线索转客户、并进老客户时补上）",
+    projectId: "挂在哪个项目上（企业版项目详情页「附件」传的时候定，P11 迁移 086）",
     name: "原文件名，传的时候定（去掉路径和 Windows 不认的字符）",
     mime: "文件类型，传的时候定。决定能不能在页面里显示，不给改",
     size: "文件字节数，存文件时量出来",

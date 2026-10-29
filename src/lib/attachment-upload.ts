@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 把一张图片传成附件（浏览器里用）：先在这台电脑上压、去 EXIF，超了上限当场说，再 POST /api/attachments。
+ * 把一张图片（企业版项目附件什么文件都行）传成附件（浏览器里用）：先在这台电脑上压、去 EXIF，超了上限当场说，再 POST /api/attachments。
  * 附件区（components/AttachmentsPanel.tsx）和名片建档（首页名片识别，企业版联系人附件）共用这一份，压法、说法一样
  */
 import { 图片长边, 可以压, 要重画, 换成jpg, 规整文件名, 超限说明, 不收说明, 归属键, type 附件, type 归属 } from "./attachment-rules";
@@ -13,7 +13,7 @@ export function 归属查询(挂在: 归属): string {
 
 export async function 传附件(挂在: 归属, f: File): Promise<{ ok: true; 附件?: 附件 } | { ok: false; error: string }> {
   const 名 = 规整文件名(f.name);
-  const 不收 = 不收说明(名, f.type);
+  const 不收 = 不收说明(名, f.type, 挂在);
   if (不收) return { ok: false, error: 不收 };
   try {
     const 好 = await 准备(f, 名);

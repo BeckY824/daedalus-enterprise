@@ -25,7 +25,7 @@ import { 按预计成交排 } from "@/lib/project/project-fields";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
-import { 字典of, 结局叫法, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 字典of, 结局叫法, 阶段与进程, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
 import { 自动分配线索, 批量自动分配, type 自动分配结果 } from "../leads/assign-actions";
@@ -54,11 +54,12 @@ function 异常说明(r: 项目行) {
   return [r.exceptionCategory, r.exceptionReason].filter(Boolean).join("：") || undefined;
 }
 
-/** 节点那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红 */
+/** 进程那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红；阶段单独一列（P11），这里只写节点 */
 function 节点文字(r: 项目行, 字典: 阶段字典) {
   if (r.result === "异常状态") return <Tag color="error" title={异常说明(r)}>异常 · {r.exceptionCategory ?? r.node}</Tag>;
   if (r.result) return <Tag>{结局叫法(r.result, 字典)}</Tag>;
-  return <span>{r.phase} · {r.node}</span>;
+  const 进程 = 阶段与进程(r, 字典).进程;
+  return <span className="clamp" title={进程}>{进程}</span>;
 }
 
 /**
@@ -170,7 +171,9 @@ export default function ProjectsView({
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「节点」挤成两个字一行
     { title: "项目", dataIndex: "name", width: 180, 常驻: true, render: (v: string) => <span className="clamp" title={v}>{v}</span> },
     { title: b.customer, key: "customer", width: 170, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
-    { title: "当前进程", key: "node", width: 150, render: (_, r) => <>{节点文字(r, 字典)}{r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
+    // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列
+    ...(新线索 ? [] : [{ title: "阶段", key: "phase", width: 72, render: (_: unknown, r: 项目行) => 阶段与进程(r, 字典).阶段 }]),
+    { title: "当前进程", key: "node", width: 130, render: (_, r) => <>{节点文字(r, 字典)}{r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
     { title: "金额", key: "amount", width: 120, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
     // 企业版项目公海：被收回过几次（放回、超时回收都算）
     // 企业版（10-29 P6）：预计成交日期（能排，没填的总在最后）、已立项几天、项目来源（项目没选跟客户来源走）

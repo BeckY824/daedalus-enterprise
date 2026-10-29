@@ -1,5 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -27,7 +27,26 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
   projTag: { 名: "项目标签", 说明: "给项目分优先级。", 默认: ["A 重点推进", "B 潜力跟进", "C 正常培育"] },
   // 渠道属性（2026-10-29）：渠道页新建、筛选和渠道选择器第一级都用这一份
   channelAttr: { 名: "渠道属性", 说明: "渠道是哪一类来源，新建渠道时必选。", 默认: ["公域引流", "客户介绍", "人脉引荐", "分销合作", "个人自拓"] },
+  /*
+    项目画像五项（2026-10-29）：项目详情页「项目画像」里填，都可不填，存在 Project 的五列上（迁移 087）。
+    产品需求可多选，另外四项单选。这五类不带「其他」：选项不够就在这里加
+  */
+  projBudget: { 名: "预算能力", 说明: "客户在这个项目上的预算情况。", 默认: ["预算不足", "预算模糊", "预算偏紧", "预算匹配", "预算充足"] },
+  projPrice: { 名: "价格感知", 说明: "客户对报价的反应。", 默认: ["闻价止步", "暂无异议", "犹豫比价", "先验后定", "价格认可"] },
+  projDecision: { 名: "决策链路", 说明: "客户那边谁拍板、要过几道。", 默认: ["决策人决策", "多层级决策", "多部门决策", "多部门+多层级决策"] },
+  projDemand: { 名: "需求状态", 说明: "客户的需求走到了哪一步。", 默认: ["潜客培育", "线索验证", "线索推进", "商机跟进", "订单交付"] },
+  projProduct: { 名: "产品需求", 说明: "客户要哪几类产品或服务，可多选。", 默认: ["常规标品", "内容定制", "部署服务", "运维支持"] },
 };
+
+/** 项目画像五项：字段名 → 字典种类、是否多选。界面、校验、测试都按这一份走 */
+export const 项目画像项 = [
+  { 键: "budgetLevel", 种类: "projBudget", 多选: false },
+  { 键: "priceSense", 种类: "projPrice", 多选: false },
+  { 键: "decisionChain", 种类: "projDecision", 多选: false },
+  { 键: "demandStatus", 种类: "projDemand", 多选: false },
+  { 键: "productNeeds", 种类: "projProduct", 多选: true },
+] as const satisfies readonly { 键: string; 种类: 字典种类; 多选: boolean }[];
+export type 项目画像键 = (typeof 项目画像项)[number]["键"];
 
 export const 选项名上限 = 20;
 

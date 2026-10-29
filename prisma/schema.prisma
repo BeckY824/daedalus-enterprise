@@ -474,6 +474,8 @@ model Attachment {
   leadId        String?
   /// 挂在哪位联系人上（企业版，迁移 063）
   contactId     String?
+  /// 挂在哪个项目上（企业版项目详情页「附件」，迁移 086）
+  projectId     String?
   /// 原文件名（人看的）；图片压过以后扩展名换成 .jpg
   name          String
   mime          String
@@ -490,6 +492,7 @@ model Attachment {
   @@index([orderId])
   @@index([leadId])
   @@index([contactId])
+  @@index([projectId])
 }
 
 model FollowUp {
@@ -779,6 +782,20 @@ model Project {
   /// 渠道统计按它算；老项目没填的退回去用客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）
   channelId            String?
   channel              Channel?                  @relation("ProjectChannel", fields: [channelId], references: [id], onDelete: SetNull)
+  /// 项目画像（企业版，迁移 087）：都可空，存选项名；选项在企业字典里（projBudget / projPrice / projDecision / projDemand / projProduct），
+  /// 设置 → 项目模式里改。字典里停用的选项已存的值照留，不改这一项就不重新校验
+  /// 预算能力（单选）
+  budgetLevel          String?
+  /// 价格感知（单选）
+  priceSense           String?
+  /// 决策链路（单选）
+  decisionChain        String?
+  /// 需求状态（单选）
+  demandStatus         String?
+  /// 产品需求（多选）：JSON 数组字符串，如 ["常规标品","部署服务"]；空数组存 NULL
+  productNeeds         String?
+  /// 项目所在地（企业版，迁移 087）：国内填城市名，国外填国家，自由文字
+  location             String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 有结局的那一刻；回到进行中就清掉
