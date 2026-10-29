@@ -278,7 +278,8 @@ test("交接要确认：老板把销售甲的客户转给销售乙，确认前�
   await 登录(page, "销售2");
   await page.goto("/customers");
   const 待确认 = 正文.locator(".ant-alert", { hasText: "等你确认" });
-  await expect(待确认).toContainText(`「${种.名字.老板}」把「${种.名字.销售1}」名下的 1 位客户交接给你`);
+  // 接手人确认前看得到接的是谁（客户名；前面的用例可能改过名，只认开头）
+  await expect(待确认).toContainText(new RegExp(`「${种.名字.老板}」把「${种.名字.销售1}」名下的 1 位客户：销售甲的客户\\S*交接给你`));
   await expect(正文.getByRole("row", { name: /销售甲的客户/ })).toHaveCount(0);
   await 待确认.getByRole("button", { name: "确认接手" }).click();
   await page.getByRole("dialog").getByRole("button", { name: /确\s*认/ }).click();
