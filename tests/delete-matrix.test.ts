@@ -150,7 +150,8 @@ async function 看一遍() {
     ]),
     公海: 排(行(公海).map((r) => String(r.name))),
     线索页: 排(行(线索).map((r) => `${r.name}|${r.status}|${r.customerId ? "连着客户" : "—"}`)),
-    渠道页: 排(行(渠道).map((r) => `${r.name}|直接${r.directCount}`)),
+    // 2026-10-29 渠道改版：推荐链计数不算了，改看统计里的关联项目数（按客户的来源渠道归）
+    渠道页: 排(行(渠道).map((r) => `${r.name}|项目${(r.统计 as { 关联项目: number } | undefined)?.关联项目 ?? 0}`)),
     首页: {
       客户数: await prisma.customer.count(),
       逾期: await 数逾期跟进(prisma, { ownerId: 我 }),
@@ -198,7 +199,7 @@ describe("删除矩阵（2a）：每一种删法 × 每一处看到的", () => {
     expect(属于(看.待办计划, "甲").length).toBe(3);
     expect(看.公海).toEqual(["丁"]);
     expect(看.线索页).toEqual(["待跟进线索|待跟进|—", "甲线索|已转化|连着客户"]);
-    expect(看.渠道页).toEqual(["空渠道|直接0", "老周|直接1"]);
+    expect(看.渠道页).toEqual(["空渠道|项目0", "老周|项目0"]);
     expect(看.首页).toEqual({ 客户数: 5, 逾期: 9, 今天要跟: 9, 本月签约: 6000 });
   });
 
@@ -373,7 +374,7 @@ describe("删除矩阵（2a）：每一种删法 × 每一处看到的", () => {
     expect(await deleteChannel(w.老周)).toMatchObject({ ok: false, error: expect.stringContaining("1 名客户") });
     expect(await 看一遍()).toEqual(前);
     expect(await deleteChannel(w.空渠道)).toEqual({ ok: true });
-    expect(变化(前, await 看一遍())).toEqual({ 渠道页: { 少: ["空渠道|直接0"], 多: [] } });
+    expect(变化(前, await 看一遍())).toEqual({ 渠道页: { 少: ["空渠道|项目0"], 多: [] } });
   });
 
   it("删线索（已转化的那条）：只少线索页一行，转出来的客户和他的一切都在", async () => {

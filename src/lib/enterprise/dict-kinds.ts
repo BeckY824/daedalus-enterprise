@@ -1,5 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -25,6 +25,8 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
     旧默认: ["正常", "休眠中", "休眠预警", "跟进超时", "流失预警", "已流失", "公海待捞", "正在转让", "确认无效"],
   },
   projTag: { 名: "项目标签", 说明: "给项目分优先级。", 默认: ["A 重点推进", "B 潜力跟进", "C 正常培育"] },
+  // 渠道属性（2026-10-29）：渠道页新建、筛选和渠道选择器第一级都用这一份
+  channelAttr: { 名: "渠道属性", 说明: "渠道是哪一类来源，新建渠道时必选。", 默认: ["公域引流", "客户介绍", "人脉引荐", "分销合作", "个人自拓"] },
 };
 
 export const 选项名上限 = 20;

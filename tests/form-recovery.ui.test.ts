@@ -12,7 +12,6 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   stub(/^@\/app\/\(app\)\/customers\/\[id\]\/pick$/, "const rows=[{id:'original',name:'原客户',附注:null},{id:'new',name:'新客户',附注:null}];export const 搜客户=async()=>rows,取客户选项=async id=>rows.find(r=>r.id===id)??null;");
-  stub(/^\.\/ReferralRadar$/, "export default function C(){return null}");
   stub(/^@\/components\/DataList$/, "export default function C(){return null}");
   stub(/^\.\.\/channels\/actions$/, "export const saveChannel=async()=>({ok:true});");
   stub(/^(\.\/|\.\.\/)actions$/, `
@@ -24,6 +23,7 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
     export const listContractLinks=async()=>({商机:[],计划:[],待办:[]});
     export const 供应商候选=async()=>[];
     export const toggleChannel=save,deleteChannel=save;
+    export const listChannelInvests=async()=>({ok:true,rows:[],能录:false}),addChannelInvest=save,deleteChannelInvest=save;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
   `);
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -52,7 +52,7 @@ beforeAll(async () => {
       masked:<BusinessProvider value={BUSINESS_PRESETS['外贸出口']}><Customer open editing={{id:'masked',name:'共享客户',phone:'138****0001',salesOwnerId:'u',salesOwnerName:'QA',followStatus:'待跟进',decisionStatus:'了解中',extra:{whatsapp:'原WhatsApp'},updatedAt:'2026-10-08T08:00:00Z'}} users={[{id:'u',name:'QA',role:'ADMIN',active:true}]} channels={[]} onClose={()=>{}}/></BusinessProvider>,
       contract:<Contract open customerId="c1" editing={null} onClose={done}/>,
       profile:<Profile me={{name:'原名',title:'',email:'qa@example.invalid'}}/>,
-      channel:<Channels rows={[]} users={[{id:'u1',name:'我',role:'ADMIN',active:true}]} radar={{topReferrers:[],inviteCandidates:[]}} aiEnabled={false}/>};
+      channel:<Channels rows={[]} users={[{id:'u1',name:'我',role:'ADMIN',active:true}]} 属性选项={['公域引流']}/>};
     createRoot(document.getElementById('root')).render(<App>{forms[window.__kind]}</App>);`, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
@@ -99,7 +99,8 @@ it("推荐人候选没取到：已选的名字照常显示，下拉写明没取�
 it.each([
   ["plan", "subject", "请填写跟进主题"], ["contact", "name", "请填写姓名"],
   ["contract", "amount", "请输入签约金额"], ["profile", "name", "名字不能为空"],
-  ["channel", "name", "请输入渠道姓名"],
+  // 渠道表单 2026-10-29 改版：渠道属性、渠道名称、来源三项必填；下面先把属性、来源填好，只拿渠道名称这一格来回试
+  ["channel", "platform", "请填写渠道名称"],
 ])("%s 校验不产生未处理拒绝，网络失败后保留内容并可重试", async (kind, field, warning) => {
   const page = await browser.newPage(); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -108,7 +109,12 @@ it.each([
   await page.evaluate(kind => Object.assign(window, { __kind: kind, __calls: [], __fail: true, __saved: 0 }), kind);
   await page.evaluate(() => Object.assign(window, { __reminderRefreshes: 0, desktopReminders: { 刷新: async () => { window.__reminderRefreshes++; } } }));
   await page.addScriptTag({ content: bundle });
-  if (kind === "channel") await page.getByRole("button", { name: /新建渠道/ }).click();
+  if (kind === "channel") {
+    await page.getByRole("button", { name: /新建渠道/ }).click();
+    await page.locator("#source").fill("官方账号");
+    await page.locator("#attr").click();
+    await page.locator(".ant-select-item-option-content").getByText("公域引流", { exact: true }).click();
+  }
   const input = page.locator(`#${field}`);
   await input.fill("");
   const save = page.getByRole("button", { name: /保\s*存/ });

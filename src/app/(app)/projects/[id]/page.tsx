@@ -6,6 +6,9 @@ import { 能管项目, 能改节点, 代管节点, 往前推不给, 直属才推
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 可选渠道们 } from "@/lib/enterprise/channel-options";
+import { llmEnabled } from "@/lib/llm";
+import { 已立项天数 } from "@/lib/project/project-fields";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -33,7 +36,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const p = await prisma.project.findUnique({
     where: { id },
     include: {
-      customer: { select: { id: true, name: true, school: true, lastFollowAt: true } },
+      customer: { select: { id: true, name: true, school: true, lastFollowAt: true, channel: { select: { name: true } } } },
+      channel: { select: { name: true } },
       contact: { select: { id: true, name: true, position: true } },
       exceptionCategory: { select: { name: true } },
       logs: { orderBy: { at: "desc" }, take: 200 },
@@ -102,6 +106,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 联系人附件 = 企业 && 露 && p.contact ? await 联系人附件入口(p.contact.id) : null;
   // 企业版字典下拉（10-27）：不是企业版 可选项 给空
   const [回收原因们, 无效原因们] = await Promise.all([可选项("recycle"), 可选项("invalid")]);
+  // 企业版项目来源 / 已立项天数 / AI 录入（10-29 P6）：项目自己选了渠道就用它，没选跟客户来源走（和渠道统计 lib/enterprise/channel-stats.ts 同一条规则）
+  const 企业项目字段 = !企业 ? {} : {
+    项目来源: p.channel ? { name: p.channel.name, 跟客户: false } : 露 && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true } : null,
+    channelId: p.channelId,
+    已立项天数: 已立项天数(p.createdAt),
+    ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
+    aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,
+  };
   const 详情: 项目详情 = {
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
@@ -111,7 +123,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 回收日,
-    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), 要下一步, 能记沟通, 必填, 不给推, 能改节点: 节点能改,
+    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 必填, 不给推, 能改节点: 节点能改,
     能放公海: !公海 && me.id === p.ownerId && (能进公海的阶段 as readonly string[]).includes(p.phase),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
     能领取: 公海 && (企业 ? !原负责人领不回 : me.id !== p.ownerId),

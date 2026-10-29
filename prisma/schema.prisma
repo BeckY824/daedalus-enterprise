@@ -72,23 +72,36 @@ model Lead {
 /// 外部推荐渠道（如老师、中介、合作方）。链条最顶端的推荐来源。
 model Channel {
   id             String  @id @default(cuid())
-  name           String  @unique /// 渠道姓名，如「小红」
+  name           String  @unique /// 渠道全称；企业版是「渠道名称|来源」拼成的（2026-10-29），老版本是渠道姓名
   phone          String?
   remark         String?
   /// 渠道负责人：内部员工，负责吸纳该渠道带来的所有客户，整条推荐链永久继承
   channelOwnerId String
   channelOwner   User    @relation("ChannelOwner", fields: [channelOwnerId], references: [id])
   active         Boolean @default(true)
+  /// 企业版渠道属性（2026-10-29，迁移 067）：字典 channelAttr 的名字，见 lib/enterprise/dict-kinds.ts。别的版本不填
+  attr           String?
+  /// 企业版渠道名称（迁移 068）：「渠道名称|来源」的前一段。name 存拼好的渠道全称
+  platform       String?
+  /// 企业版结束日期（迁移 069）：累计运营天数算到这天，没填算到今天
+  endDate        DateTime?
+  /// 企业版创建人（迁移 070）：老渠道、导入时对不上人的留空。不建外键
+  createdById    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// 企业版渠道投入（迁移 071）
+  invests         EntChannelInvest[]
   /// 由该渠道直接推荐的学员
   directCustomers Customer[] @relation("CustomerChannel")
   /// 渠道归属计算落到该渠道的学员（往上两代命中）
   attributed      Customer[] @relation("CustomerAttributionChannel")
+  /// 企业版项目来源落到这个渠道的项目（迁移 077）
+  projects        Project[]  @relation("ProjectChannel")
 
   @@index([channelOwnerId])
+  @@index([createdById])
 }
 
 /// 学员（潜在或已签约）
@@ -757,6 +770,11 @@ model Project {
   remark               String?
   /// 预计成交日期（企业版）：这个项目预计哪天签。老数据从客户的 expectedSignAt 搬过来，只搬客户名下只有一个进行中项目的，见 lib/project/expected-deal.ts
   expectedDealAt       DateTime?
+  /// 项目来源（企业版，迁移 077）：这个项目是哪个渠道带来的，存渠道 id，界面写渠道全称。
+  /// 客户来源（Customer.channelId）记第一次的渠道、不再改；每个项目各记各的。新建项目时默认带客户来源，可以改。
+  /// 渠道统计按它算；老项目没填的退回去用客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）
+  channelId            String?
+  channel              Channel?                  @relation("ProjectChannel", fields: [channelId], references: [id], onDelete: SetNull)
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 有结局的那一刻；回到进行中就清掉
@@ -777,6 +795,8 @@ model Project {
   @@index([ownerId])
   @@index([sourceLeadId])
   @@index([pooledAt])
+  /// 渠道统计按项目来源取数（迁移 077）
+  @@index([channelId])
   /// 企业版新线索页按阶段筛、按最近更新倒序取前 500（迁移 065）
   @@index([phase, updatedAt])
   /// 项目页不筛阶段时按最近更新倒序取前 500（迁移 065）
@@ -1291,6 +1311,25 @@ model EntHandover {
 /// 企业版选项字典（2026-10-26，迁移 057）：分配方式、回收原因、无效原因、转让原因、验证结果、客户状态、项目标签，
 /// 一张表按 kind 分。默认值由 lib/enterprise/dict.ts 第一次读时补上（迁移不许 INSERT），只停用不删。
 /// 只给选项、不设必填；谁能改同项目字典（「后台设置谁能改」的字典一行）
+/// 企业版渠道投入（2026-10-29，迁移 071）：一条一笔。渠道负责人、管理员、设置里勾了「录入渠道投入」的角色能录。
+/// 总投入产出比 = 累计成交 ÷ 投入合计，口径在 lib/enterprise/channel-stats.ts
+model EntChannelInvest {
+  id        String   @id @default(cuid())
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  amount    Float
+  /// 默认取业务币种；和成交额不同币种时产出比不算
+  currency  String   @default("CNY")
+  /// 投入发生在哪天（当地零点）
+  date      DateTime
+  remark    String?
+  /// 谁录的。不建外键
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@index([channelId, date])
+}
+
 model EntDictItem {
   id        String   @id @default(cuid())
   /// 哪一类，见 lib/enterprise/dict.ts 的 字典种类们

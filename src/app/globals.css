@@ -1247,6 +1247,24 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 数据页按负责人：名字不截断，同名的邮箱小字另起一行 */
 .stat-who { word-break: break-word; }
 .stat-who-sub { display: block; font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); word-break: break-all; }
+/* 复盘看板 · 全周期漏斗（ProjectFunnel）：四条横条往下递减；个数写在条上、转化率写在右边，含义靠字不靠颜色。
+   条只用一种色（--brand 调淡、压在 --panel 上），主题换了、暗色主题下跟着变，字用 --ink 保证看得清 */
+.pfun-note { margin: 0 0 var(--s3); font-size: var(--fs-note); color: var(--text-muted); }
+.pfun { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.pfun-row { display: grid; grid-template-columns: 3em minmax(0, 1fr) 5.5em; align-items: center; gap: var(--s3); }
+.pfun-name { font-size: var(--fs-body); font-weight: 500; color: var(--ink); }
+.pfun-track { display: flex; min-width: 0; }
+.pfun-bar {
+  display: flex; align-items: center; min-width: 3em; height: 32px; padding: 0 var(--s3); box-sizing: border-box;
+  border-radius: var(--r-ctl); border: 1px solid var(--brand-line);
+  background: color-mix(in srgb, var(--brand) 18%, var(--panel));
+}
+/* 0 个：条不画实底，只留虚线框和一个 0，免得看着像少画了一条 */
+.pfun-bar-0 { background: transparent; border-style: dashed; border-color: var(--line); }
+.pfun-n { font-size: var(--fs-body); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pfun-rate { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.pfun-rate-v { font-size: var(--fs-body); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pfun-rate-k { font-size: var(--fs-min); color: var(--text-muted); }
 /* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
 .member-who { min-width: 0; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
@@ -1692,7 +1710,17 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 渠道表里停用的那几行整行压淡，名字旁边写「已停用」（审查 D12）。操作列不压：恢复键要看得清 */
 .row-off > td:not(.ant-table-cell-fix-end) { color: var(--text-muted); }
 .row-off .link-strong { color: var(--text-muted); }
-.chan-name { display: inline-flex; align-items: center; gap: var(--s2); }
+/* 渠道全称（2026-10-29 改版）：再长也只占一行、多出的省略号，鼠标停上去看全；「已停用」标签不被挤掉 */
+.chan-full { display: flex; align-items: center; gap: var(--s2); min-width: 0; max-width: 100%; }
+.chan-full > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chan-num { font-variant-numeric: tabular-nums; }
+/* 渠道详情里的投入记录：一笔一行，删除钮靠右 */
+.chan-invest { list-style: none; margin: 0; padding: 0; }
+.chan-invest > li { position: relative; padding: var(--s2) 32px var(--s2) 0; border-bottom: 1px solid var(--line); }
+.chan-invest-main { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; min-width: 0; }
+.chan-invest-who { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chan-invest-remark { margin-top: 2px; overflow-wrap: anywhere; }
+.chan-invest-del { position: absolute; right: 0; top: var(--s2); }
 /* 「重置」一直占着位置，没筛时只是看不见（审查 M17）：原来它一出现就把「列」挤到第二行，
    整张表往下跳一截。出现消失只淡入淡出，不位移。visibility 晚一拍再收，淡出才看得见 */
 .list-reset { transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s; }
@@ -2381,6 +2409,71 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   }
   /* 四张一排的指标卡：840 里摆四张每张 200，太挤；改成两张一排 */
   .shell-dock-open .ant-col-xl-6 { flex: 0 0 50%; max-width: 50%; }
+}
+
+/* ---------- 企业版项目模式右下角的 AI 浮标（AiFab，定稿 #13） ----------
+   圆的、贴右下角，一圈渐变光晕在呼吸、里面一层慢慢转（类 Siri）。颜色全走变量：暗色主题下光晕跟着主题色变。
+   z-index 25：在正文和顶栏（10）之上、在反馈提示（30）和所有浮层（Modal 1000）之下，弹出来的东西都盖得住它。
+   **面板开着就不出现**（AppShell 里那个判断），所以它永远不会压在面板的输入框上。 */
+.ai-fab {
+  position: fixed; z-index: 25; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom));
+  width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+  isolation: isolate; transition: scale var(--t-fast) var(--ease);
+}
+.ai-fab > span { position: absolute; border-radius: 50%; pointer-events: none; }
+.ai-fab-halo {
+  inset: -6px; z-index: -1; filter: blur(10px); opacity: .55;
+  background: conic-gradient(from 0deg, var(--brand), var(--cat-violet), var(--cat-pink), var(--cat-cyan), var(--brand));
+  animation: fab-breathe 3.2s ease-in-out infinite;
+}
+.ai-fab-swirl {
+  inset: 0; box-shadow: var(--shadow-pop);
+  background: conic-gradient(from 90deg, var(--brand), var(--cat-cyan), var(--cat-violet), var(--cat-pink), var(--brand));
+  animation: fab-spin 8s linear infinite;
+}
+/* 中间一点高光，再压一层主色的深处：看着是一颗有体积的球，不是一块彩色圆片 */
+.ai-fab-core {
+  inset: 4px;
+  background:
+    radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--on-ink) 75%, transparent), transparent 46%),
+    radial-gradient(circle at 60% 70%, color-mix(in srgb, var(--brand-deep) 45%, transparent), transparent 72%);
+}
+.ai-fab:hover { scale: 1.06; }
+/* 按下比悬停快：90ms 一档 */
+.ai-fab:active { scale: .94; transition-duration: var(--t-press); }
+.ai-fab:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
+@keyframes fab-breathe { 0%, 100% { opacity: .42; scale: .94; } 50% { opacity: .72; scale: 1.06; } }
+@keyframes fab-spin { to { rotate: 360deg; } }
+
+/* 正文底下给浮标让出一截：滚到底，分页和最后一行的按钮都在它上面，不被它压着。
+   正文的内边距写在 AppShell 行内，所以要 !important；反馈提示出着时两个取大的（它在左下、浮标在右下） */
+.has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: 88px !important; }
+html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: max(88px, var(--fbt-room)) !important; }
+
+/* 从浮标点开的：面板从右下角那一点长出来，接上刚才点的位置 */
+.shell-fab-opened .dock { transform-origin: 100% 100%; animation: dock-from-fab var(--t-morph) var(--ease-morph); }
+@keyframes dock-from-fab { from { opacity: 0; scale: .96; } to { opacity: 1; scale: 1; } }
+
+@media (max-width: 767px) {
+  .ai-fab { width: 48px; height: 48px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
+  /* 手机上反馈提示是一整条横在底下：浮标抬到它上面 */
+  html.fbt-room .ai-fab { bottom: calc(var(--fbt-room) + 6px + env(safe-area-inset-bottom)); }
+  html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: calc(var(--fbt-room) + 72px) !important; }
+  /* 手机上的 AI 面板：同一块 AiDock 铺满屏（390 宽摆不下正文 + 380 的一栏），× 收起。拖宽度那条缝没意义，藏掉 */
+  .dock {
+    position: fixed; inset: 0; z-index: 40; width: auto; height: 100dvh; border-left: 0;
+    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+  }
+  .dock .rail-resizer { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 不转、不呼吸、按下不缩：光晕停在一个固定的亮度上，还是那颗球，只是不动 */
+  /* 只写 scale / rotate，不写 transform：三个写在一起时 CSS 压缩会把它们并成一条 transform:scale3d(1,1,1)…，
+     scale / rotate 两条被吞掉，悬停照样放大（10-29 实点量出来的）。浮标本来就不用 transform */
+  .ai-fab, .ai-fab > span { animation: none !important; scale: none !important; rotate: none !important; }
+  .ai-fab:active { opacity: .8; }
+  .shell-fab-opened .dock { animation: none !important; }
 }
 
 /* 列表筛出 0 条时那一句（DataList）。不是空库引导，安安静静一行 */
