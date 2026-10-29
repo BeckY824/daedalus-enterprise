@@ -262,12 +262,23 @@ test("9. 筛选后导出：行数对得上、中文原样、公式不会被带�
   // 在一个「会被导出的」自由文本字段里埋一个公式。
   // 备注不在导出列里，所以这里用行业——载荷必须落在真的会导出的列上，
   // 否则这条断言等于没测（第一版就是这么写的，白跑了一轮）。
-  await page.goto("/customers");
-  await page.getByRole("row", { name: new RegExp(客户名) }).getByRole("button").first().click();
-  const 编辑框 = page.getByRole("dialog");
-  await 编辑框.getByLabel("行业").fill("=1+1");
-  await 编辑框.getByRole("button", { name: /保\s*存/ }).click();
-  await expect(编辑框).toBeHidden();
+  // 企业版客户表单不摆行业（客户页摆法 旧字段），直接在库里埋；行业照样在导出列里
+  if (企业版) {
+    const db = 连库();
+    try {
+      await db.customer.updateMany({ where: { name: 客户名 }, data: { major: "=1+1" } });
+    } finally {
+      await db.$disconnect();
+    }
+    await page.goto("/customers");
+  } else {
+    await page.goto("/customers");
+    await page.getByRole("row", { name: new RegExp(客户名) }).getByRole("button").first().click();
+    const 编辑框 = page.getByRole("dialog");
+    await 编辑框.getByLabel("行业").fill("=1+1");
+    await 编辑框.getByRole("button", { name: /保\s*存/ }).click();
+    await expect(编辑框).toBeHidden();
+  }
 
   // 用姓名筛出唯一一条，导出的行数应当跟着筛选走。
   // 工具栏 2026-09-17 起没有「搜索」按钮了（下拉改了就生效，关键词回车生效）
