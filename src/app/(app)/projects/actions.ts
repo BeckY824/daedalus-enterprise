@@ -418,6 +418,8 @@ export async function 移出项目组员(memberId: string) {
  */
 async function 挡组织规则(me: { id: string; role: string }, 改: 规则改动): Promise<string | null> {
   const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各节点时限"], ["节点推进", "必填字段", "节点必填字段"], ["阶段", "阶段规则", "阶段结束状态叫法和往前推权限"]];
+  // 一块都没传就不过任何门，不能当「允许」放过去（10-29 权限枚举表扫出：空改动谁都能存一次规则、留审计）
+  if (!块.some(([k]) => 改?.[k] !== undefined)) return "没有要改的规则";
   for (const [k, 项, 叫法] of 块) {
     if (改?.[k] === undefined) continue;
     const 挡 = await 挡改设置(me, 项);
