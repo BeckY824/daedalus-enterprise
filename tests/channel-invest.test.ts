@@ -1,6 +1,6 @@
 /**
  * 企业版渠道（2026-10-29 渠道改版）的服务端：
- * - saveChannel 的企业表单：渠道属性 / 渠道名称 / 来源必填，全称不填拼成「名称|来源」，属性要在字典里；不交 attr 的老调用照旧。
+ * - saveChannel 的企业表单：渠道属性 / 渠道名称 / 来源必填，全称一律拼成「名称|来源」（P16 不让手填），属性要在字典里；不交 attr 的老调用照旧。
  * - 渠道投入：只有老板、总管理员、市场管理能录、能删（10-29 P16 写死），渠道负责人、销售管理、销售只能看；录了投入的渠道不能删。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -60,10 +60,13 @@ describe("saveChannel 企业表单", () => {
     expect(c.endDate?.getFullYear()).toBe(2026);
   });
 
-  it("全称手改了就用手改的", async () => {
+  it("全称不让手填：交来的 name 不看，一律拼；编辑时改了来源，全称跟着换", async () => {
     const r = await 交({ name: "小红书旗舰店" });
     expect(r.ok).toBe(true);
-    expect((await prisma.channel.findFirst({ where: { platform: "小红书" } }))?.name).toBe("小红书旗舰店");
+    const id = (r as { id: string }).id;
+    expect((await prisma.channel.findUniqueOrThrow({ where: { id } })).name).toBe("小红书|店铺");
+    expect((await 交({ id, name: "小红书|店铺", source: "某店" })).ok).toBe(true);
+    expect((await prisma.channel.findUniqueOrThrow({ where: { id } })).name).toBe("小红书|某店");
   });
 
   it("三样必填、属性要在字典里、全称不能重复、不能太长", async () => {
@@ -72,7 +75,8 @@ describe("saveChannel 企业表单", () => {
     expect(await 交({ source: "" })).toEqual({ ok: false, error: "请填写来源" });
     expect((await 交({ attr: "瞎写的" })).ok).toBe(false);
     expect(await 交({ platform: "抖音", source: "官方号" })).toEqual({ ok: false, error: "渠道「抖音|官方号」已存在" });
-    expect(await 交({ name: "长".repeat(81) })).toEqual({ ok: false, error: "渠道全称最多 80 个字" });
+    expect(await 交({ platform: "长".repeat(40), source: "短".repeat(40) })).toEqual({ ok: false, error: "渠道名称加来源拼成的全称最多 80 个字，请缩短" });
+    expect((await 交({ platform: "长".repeat(40), source: "短".repeat(39) })).ok).toBe(true);
     expect((await 交({ endDate: "不是日期" })).ok).toBe(false);
   });
 

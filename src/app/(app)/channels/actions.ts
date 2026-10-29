@@ -32,7 +32,8 @@ export async function saveChannel(input: {
   /** 打开编辑框那一刻的 updatedAt。给了就当闸门：期间有人改过不盖掉（排查 D3） */
   版本?: string | null;
   /**
-   * 企业版渠道表单（2026-10-29）交这几样：渠道属性、渠道名称、来源必填，name（渠道全称）不填就拼成「渠道名称|来源」。
+   * 企业版渠道表单（2026-10-29）交这几样：渠道属性、渠道名称、来源必填，name（渠道全称）一律拼成「渠道名称|来源」，
+   * 交来的 name 不看（P16：全称不让手填，界面上只给预览）。
    * 不交 attr（客户表单里就地建渠道、首页 AI 建渠道、老测试）照原来只要 name，这几列不动
    */
   attr?: string | null;
@@ -62,8 +63,8 @@ export async function saveChannel(input: {
     if (!来源) return { ok: false, error: "请填写来源" };
     const 结束 = input.endDate ? parseDateInput(input.endDate) : null;
     if (input.endDate && !结束) return { ok: false, error: "结束日期不对，请重新选" };
-    if (!hasVisibleText(input.name)) input = { ...input, name: 拼全称(platform, 来源) };
-    if (input.name.trim().length > 全称上限) return { ok: false, error: `渠道全称最多 ${全称上限} 个字` };
+    input = { ...input, name: 拼全称(platform, 来源) };
+    if (input.name.length > 全称上限) return { ok: false, error: `渠道名称加来源拼成的全称最多 ${全称上限} 个字，请缩短` };
     企业列 = { attr, platform, endDate: 结束 };
   }
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）

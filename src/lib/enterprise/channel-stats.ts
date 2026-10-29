@@ -39,8 +39,11 @@ export function 项目算哪个渠道(项目来源: string | null | undefined, �
   return 项目来源 || 客户来源 || null;
 }
 
-/** 产出比的平均 / 最高 / 最低三列：对方还没定口径，先不摆。定了把这个改成 true，列和算法已经留好 */
-export const 显示产出比分布 = false;
+/**
+ * 产出比的平均值 / 最高值 / 最低值三列（10-29 P16 打开）：摆在「投入产出比」后面，抽屉统计里也有。
+ * 口径见 产出比分布()；要临时收起改成 false，列和抽屉那一项一起不见
+ */
+export const 显示产出比分布 = true;
 
 export type 币种合计 = { 币种: string; 合计: number };
 
@@ -141,13 +144,15 @@ export function 算渠道统计(渠道们: 统计用渠道[], 项目们: 统计�
 }
 
 /**
- * 产出比分布（显示产出比分布 打开才用）：一组渠道的产出比平均 / 最高 / 最低，算不了的渠道不进。
- * 留着是因为对方的表里有这三列，口径（按渠道平均还是加权）还没定
+ * 产出比分布：一组渠道（列表里是同一个「渠道名称」下的各个来源）的投入产出比平均值 / 最高值 / 最低值。
+ * - 平均是各来源产出比的简单平均（不按投入加权），保留两位；
+ * - 算不了产出比的（没录投入、混了币种）不进，个数 = 进了的几个；一个都算不了给 null。
+ * 对方只说要这三个数，没说加权；要改加权只改这里
  */
-export function 产出比分布(统计们: 渠道统计[]): { 平均: number; 最高: number; 最低: number } | null {
+export function 产出比分布(统计们: 渠道统计[]): { 平均: number; 最高: number; 最低: number; 个数: number } | null {
   const 比 = 统计们.map((s) => s.产出比).filter((x): x is number => x !== null);
   if (比.length === 0) return null;
-  return { 平均: 分(比.reduce((s, x) => s + x, 0) / 比.length), 最高: Math.max(...比), 最低: Math.min(...比) };
+  return { 平均: 分(比.reduce((s, x) => s + x, 0) / 比.length), 最高: Math.max(...比), 最低: Math.min(...比), 个数: 比.length };
 }
 
 /** 渠道全称上限，和 name 原来的长度一样不设库约束，表单和导入都按这个挡 */

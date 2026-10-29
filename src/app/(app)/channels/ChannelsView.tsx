@@ -64,6 +64,30 @@ function 编辑初值(r: Row) {
   };
 }
 
+/**
+ * 渠道全称（P16）：不让手填，永远是「渠道名称|来源」拼出来的（服务端 saveChannel 也照这个重拼）。
+ * 这里只给预览；编辑一条老渠道、拼出来和原来的全称不一样时，写清保存后会从什么改成什么，免得悄悄被换掉
+ */
+function FullNamePreview({ 原名 }: { 原名: string | null }) {
+  const form = Form.useFormInstance();
+  const platform = Form.useWatch("platform", form) as string | undefined;
+  const source = Form.useWatch("source", form) as string | undefined;
+  const 新 = 拼全称(platform, source);
+  const 会改 = 原名 !== null && 新 !== "" && 新 !== 原名;
+  return (
+    <Form.Item label="渠道全称" extra="按「渠道名称|来源」自动拼，不用填；改全称就改上面两项。全称不能和别的渠道重名">
+      <div aria-live="polite" style={{ overflowWrap: "anywhere", minHeight: 22 }}>
+        {新 ? <strong>{新}</strong> : <span className="muted">填了渠道名称和来源后自动出来</span>}
+      </div>
+      {会改 && (
+        <div className="muted" style={{ fontSize: 12, marginTop: 4, overflowWrap: "anywhere" }}>
+          保存后全称从「{原名}」改成「{新}」
+        </div>
+      )}
+    </Form.Item>
+  );
+}
+
 export default function ChannelsView({
   rows: 全部行,
   users,
@@ -114,29 +138,9 @@ export default function ChannelsView({
     requestAnimationFrame(() => set亮行([id]));
     亮计时.current = setTimeout(() => set亮行([]), 2000);
   }
-  /**
-   * 全称跟着「渠道名称 / 来源」自动拼，人改过就不再覆盖：
-   * 当前全称是空的、或者正是上一次自动拼出来的那串，才换成新拼的
-   */
-  const 上次拼 = useRef("");
-
   function openForm(r: Row | null) {
     setEditing(r);
-    if (r) {
-      const 初 = 编辑初值(r);
-      上次拼.current = 拼全称(初.platform, 初.source);
-    } else 上次拼.current = "";
     setOpen(true);
-  }
-
-  function 表单变了(changed: Record<string, unknown>, all: { platform?: string; source?: string; name?: string }) {
-    if ("platform" in changed || "source" in changed) {
-      const 新 = 拼全称(all.platform, all.source);
-      const 现 = (all.name ?? "").trim();
-      if (!现 || 现 === 上次拼.current) form.setFieldValue("name", 新);
-      上次拼.current = 新;
-    }
-    守.改了();
   }
 
   async function onOk() {
@@ -147,7 +151,8 @@ export default function ChannelsView({
       const res = await saveChannel({
         id: editing?.id,
         版本: editing?.updatedAt,
-        name: v.name ?? "",
+        // 全称不让手填（P16）：服务端也照「渠道名称|来源」重拼，这里交一份一样的
+        name: 拼全称(v.platform, v.source),
         phone: editing?.phone ?? null,
         remark: v.remark ?? null,
         channelOwnerId: v.channelOwnerId,
@@ -184,7 +189,7 @@ export default function ChannelsView({
     render: (_: unknown, r: Row) => (统计(r)[键].length ? <span className="chan-num nowrap">{合计文字(统计(r)[键], b.currency)}</span> : 无),
   });
 
-  /** 产出比平均 / 最高 / 最低（显示产出比分布 打开才摆）：同一个「渠道名称」下各来源的产出比 */
+  /** 产出比平均值 / 最高值 / 最低值（显示产出比分布 打开才摆）：同一个「渠道名称」下各来源的产出比，抽屉里也用 */
   const 分布 = useMemo(() => {
     const m = new Map<string, ReturnType<typeof 产出比分布>>();
     if (!显示产出比分布) return m;
@@ -196,12 +201,26 @@ export default function ChannelsView({
     for (const [k, v] of 组) m.set(k, 产出比分布(v));
     return m;
   }, [全部行]);
+  const 分布说明 = { 平均: "简单平均，不按投入加权", 最高: "取最高的那个", 最低: "取最低的那个" } as const;
   const 分布列: 列<Row>[] = 显示产出比分布
     ? (["平均", "最高", "最低"] as const).map((k) => ({
-        title: `产出比${k}`, key: `产出比${k}`, width: 96, align: "right" as const,
+        title: (
+          <Tooltip title={`同一个渠道名称下各来源的投入产出比，${分布说明[k]}；没录投入、混了币种的来源不算`}>
+            <span className="nowrap">产出比{k}值</span>
+          </Tooltip>
+        ),
+        key: `产出比${k}`, width: 116, align: "right" as const,
+        sorter: (a: Row, b2: Row) => (分布.get(a.platform ?? a.name)?.[k] ?? -1) - (分布.get(b2.platform ?? b2.name)?.[k] ?? -1),
         render: (_: unknown, r: Row) => {
-          const d = 分布.get(r.platform ?? r.name);
-          return d ? <span className="chan-num">{d[k]}</span> : 无;
+          const 名 = r.platform ?? r.name;
+          const d = 分布.get(名);
+          return d ? (
+            <Tooltip title={`「${名}」下 ${d.个数} 个来源能算产出比`}>
+              <span className="chan-num">{d[k]}</span>
+            </Tooltip>
+          ) : (
+            <Tooltip title={`「${名}」下的来源都还算不了产出比`}>{无}</Tooltip>
+          );
         },
       }))
     : [];
@@ -374,7 +393,7 @@ export default function ChannelsView({
         }
       />
 
-      {详情 && <ChannelDrawer key={详情.id} row={详情} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={() => openForm(详情)} />}
+      {详情 && <ChannelDrawer key={详情.id} row={详情} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={() => openForm(详情)} />}
 
       {open && (
         <Modal
@@ -392,7 +411,7 @@ export default function ChannelsView({
             form={form}
             layout="vertical"
             style={{ marginTop: 8 }}
-            onValuesChange={表单变了}
+            onValuesChange={() => 守.改了()}
             // 新建时渠道负责人默认是我（团队同步之后候选里有同事）
             initialValues={editing ? 编辑初值(editing) : { active: true, channelOwnerId: 默认负责人(我, users) }}
           >
@@ -413,19 +432,25 @@ export default function ChannelsView({
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="来源" name="source" rules={[{ required: true, whitespace: true, message: "请填写来源" }]}>
+                <Form.Item
+                  label="来源"
+                  name="source"
+                  dependencies={["platform"]}
+                  rules={[
+                    { required: true, whitespace: true, message: "请填写来源" },
+                    ({ getFieldValue }) => ({
+                      validator: (_, v: string | undefined) =>
+                        拼全称(getFieldValue("platform"), v).length > 全称上限
+                          ? Promise.reject(new Error(`渠道名称加来源拼成的全称最多 ${全称上限} 个字，请缩短`))
+                          : Promise.resolve(),
+                    }),
+                  ]}
+                >
                   <Input placeholder="如：官方账号" maxLength={全称上限} />
                 </Form.Item>
               </Col>
               <Col span={24}>
-                <Form.Item
-                  label="渠道全称"
-                  name="name"
-                  extra="按「渠道名称|来源」自动拼好；要换个叫法可以直接改。全称不能和别的渠道重名"
-                  rules={[{ max: 全称上限, message: `渠道全称最多 ${全称上限} 个字` }]}
-                >
-                  <Input placeholder="填了渠道名称和来源后自动出来" />
-                </Form.Item>
+                <FullNamePreview 原名={editing?.name ?? null} />
               </Col>
               <Col xs={24} sm={12}>
                 <Form.Item label="结束日期" name="endDate" extra="不填 = 还在运营，天数算到今天">
