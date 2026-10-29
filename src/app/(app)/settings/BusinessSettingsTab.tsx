@@ -139,7 +139,7 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
             </Form.Item>
           </Col>}
           <Col xs={24} sm={12}>
-            <Form.Item name="currency" label="本位币" extra="新建商机、订单 / 签约时默认选它；已经填好的金额不跟着变。" rules={[{ required: true, message: "选一个" }]}>
+            <Form.Item name="currency" label="本位币" extra="新建项目 / 签约时默认选它；已经填好的金额不跟着变。" rules={[{ required: true, message: "选一个" }]}>
               <Select showSearch optionFilterProp="label" options={币种选项()} style={{ maxWidth: 260 }} />
             </Form.Item>
           </Col>

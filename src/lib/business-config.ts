@@ -52,7 +52,7 @@ export type BusinessConfig = {
   stageLabels?: Record<string, string>;
   /** 用的是哪个模版。见上面 BusinessTemplate */
   template: BusinessTemplate;
-  /** 本位币：新建商机 / 签约时默认选它。通用 CNY、外贸 USD；见 lib/currency.ts */
+  /** 本位币：新建项目（及其下商机）/ 签约时默认选它。通用 CNY、外贸 USD；见 lib/currency.ts */
   currency: string;
   /**
    * 公海：多少天没跟进就自动放进公海。0 = 不开（默认）。只在多人时有意义，随团队同步（整个 business 一份）。
