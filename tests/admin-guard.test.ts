@@ -222,7 +222,7 @@ describe("开工作区", () => {
 
     const a = await control.account.findFirst({ where: { phone: "13800138004" } });
     expect(a!.password).not.toBe(r.password);
-    expect(a!.password.startsWith("$2")).toBe(true);
+    expect(a!.password.startsWith("scrypt$")).toBe(true);
   });
 
   it("同一个号开第二次要拒——否则他的第一个工作区就登不进去了", async () => {
