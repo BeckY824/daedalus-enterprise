@@ -192,6 +192,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       自己服务器={自己服务器()}
       去导入={await 去导入(user)}
       企业版={企业版()}
+      产品名={自定产品名() ?? undefined}
       满额提醒={满额提醒们}
       渠道名们={只用项目 ? (await prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } })).map((c) => c.name) : undefined}
       要下一步={只用项目 ? (await 生效组织规则()).超时回收.开 : false}
