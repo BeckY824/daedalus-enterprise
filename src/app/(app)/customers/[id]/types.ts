@@ -25,6 +25,8 @@ export type FollowUpRow = {
   opportunity?: { id: string; name: string } | null;
   /** 编辑框的版本号（2026-10-04 J-105） */
   updatedAt: string;
+  /** 企业版客户页「沟通记录」汇总时：这条属于哪个项目（null = 客户本身挂的老跟进；2026-10-29 P14） */
+  项目?: { id: string; 名: string } | null;
 };
 
 export type ContactRow = {
@@ -129,6 +131,15 @@ export type RecordProps = {
   plan: { id: string; subject: string; plannedAt: string; plannedHasTime?: boolean | null; method: string; updatedAt: string } | null;
   followUps: FollowUpRow[];
   followUpsHasMore?: boolean;
+  /**
+   * 企业版只用项目（P14 第 3 条）：「跟进」菜单列的项目——主客户是这位的 + 关联进来的，只含我看得到沟通内容的。
+   * 下一步：项目下一步时间（待办里摆一行只读的，第 2 条）。null = 不是项目模式，「跟进」照旧就地记
+   */
+  跟进去处?: import("@/lib/enterprise/customer-follow-feed").跟进去处[] | null;
+  /** 「跟进」菜单里「转让」用：转让原因字典 + 我是谁（同客户列表 useTransferConfirm） */
+  转让原因?: { 选项: string[]; 自己: string };
+  /** 企业版只用项目（P14 第 2 条）：待办卡里摆的跟进计划，这位客户所有没完成的（只读，到计划页去办）。不给 = 别的版本 */
+  待办计划?: { id: string; subject: string; plannedAt: string | null; plannedHasTime?: boolean | null }[];
   users: 可选成员[];
   channels: { id: string; name: string }[];
   /** 服务端是否配置了 AI。没配时 AI 面板整体不渲染 */

@@ -27,6 +27,7 @@ import { 企业版字典 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
+import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +113,13 @@ export default async function CustomerDetailPage({
         }
       : {}),
   });
+
+  /*
+    企业版只用项目（P14）：时间线换成「沟通记录」——这位客户在我看得到的各项目里的跟进 + 不属于任何项目的老跟进，只读；
+    「跟进」按钮列这些项目、点了跳过去（lib/enterprise/customer-follow-feed.ts，服务端按项目可见范围滤）
+  */
+  const 只项目 = await 企业版只用项目();
+  const 汇总 = 只项目 ? await 客户沟通汇总(me, customer.id) : null;
 
   return (
     <RecordView
@@ -237,8 +245,17 @@ export default async function CustomerDetailPage({
             }
           : null
       }
-      followUps={customer.followUps.slice(0, 50).map(serializeFollowHistory)}
-      followUpsHasMore={customer.followUps.length > 50}
+      followUps={汇总 ? 汇总.rows : customer.followUps.slice(0, 50).map(serializeFollowHistory)}
+      followUpsHasMore={汇总 ? 汇总.hasMore : customer.followUps.length > 50}
+      跟进去处={只项目 ? await 跟进去处们(me, customer.id) : null}
+      // 「跟进」菜单里的「转让」（P14 第 3 条）：同客户列表批量转让，选人后问原因（字典 transfer）
+      转让原因={只项目 ? { 选项: await 可选项("transfer"), 自己: me.id } : undefined}
+      // 待办里的跟进计划（P14 第 2 条）：这位客户所有没完成的（含项目判输时排的「潜客培育」），不止最早那一条
+      待办计划={只项目
+        ? (await prisma.followPlan.findMany({ where: { customerId: customer.id, done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], take: 20 }))
+            .map((p) => ({ id: p.id, subject: p.subject, plannedAt: scheduleValue(p.plannedAt, p.plannedOn), plannedHasTime: p.plannedHasTime }))
+            .sort((a, b) => (a.plannedAt ?? "").localeCompare(b.plannedAt ?? ""))
+        : undefined}
     />
   );
 }

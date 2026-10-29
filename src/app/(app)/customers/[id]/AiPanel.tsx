@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button, Input, Alert, Typography, Tooltip, Dropdown } from "antd";
-import { ThunderboltOutlined, ReloadOutlined, CopyOutlined, ArrowUpOutlined, DownOutlined, EditOutlined, GlobalOutlined } from "@ant-design/icons";
+import { ThunderboltOutlined, ReloadOutlined, CopyOutlined, ArrowUpOutlined, DownOutlined, EditOutlined } from "@ant-design/icons";
 import { motion, AnimatePresence } from "motion/react";
 import type { CustomerBrief, BriefRecord } from "@/lib/ai-draft";
 import { useBusiness } from "@/lib/business-client";
@@ -15,13 +15,8 @@ import AiCost, { useAiMeter, useAiOutOfCredits } from "@/components/AiCost";
 import { 起草, 草稿键, useCopyDraft, type 草稿类 } from "@/lib/draft-jobs";
 import { 起草语言们, 起草语气们, type 起草语言, type 起草语气 } from "@/lib/draft-style";
 import { useLocalPref } from "@/lib/local-pref";
-import ResearchRun from "@/components/research/ResearchRun";
-import ResearchPerson from "@/components/research/ResearchPerson";
-import { useResearchEntry } from "@/components/research/ResearchEntry";
-import type { Turn } from "@/lib/home-thread";
-import { dayjs } from "@/lib/utils";
-import { 最近背调, 背调价目 } from "@/lib/research/actions";
-import { 客户背调对象, 对象说明, type 客户档案 } from "@/lib/research/subject";
+import type { 客户档案 } from "@/lib/research/subject";
+import { useCustomerResearch } from "./useCustomerResearch";
 
 type BriefAnswer = { brief: CustomerBrief; records: BriefRecord[] };
 
@@ -43,6 +38,7 @@ export default function AiPanel({
   简报叫 = "简报",
   企业版,
   不背调 = false,
+  背调另放 = false,
 }: {
   customerId: string;
   customerName: string;
@@ -63,6 +59,8 @@ export default function AiPanel({
   企业版?: boolean;
   /** 企业版项目模式客户页不摆背调按钮（定稿 P5 待定 14 红框）；以前存下的背调摘要照样能看 */
   不背调?: boolean;
+  /** 企业版客户页：背调整段交给右栏「客户背调」卡（CustomerResearchCard），AI 面板里一点不摆（P14 第 5 条） */
+  背调另放?: boolean;
 }) {
   const b = useBusiness();
   const 企业 = 企业版 ?? 简报叫 === "智能总结";
@@ -79,58 +77,8 @@ export default function AiPanel({
   const wakeupJob = useJob<string>(草稿键("wakeup", customerId));
   const inviteJob = useJob<string>(草稿键("invite", customerId));
   const [q, setQ] = useState("");
-  /*
-    背调（lib/research）：点了才出确认卡，确认了才跑、才扣。任务挂在 ai-jobs 上（research:<客户>），
-    切走再回来卡还在。上一次背调存成了时间线上一条「背调｜」开头的记录，这里摆一行能展开的摘要
-  */
-  const researchKey = `research:${customerId}`;
-  const researchJob = useJob(researchKey);
-  const personKey = `${researchKey}:person`;
-  const personJob = useJob(personKey);
-  const [背调开, set背调开] = useState(false);
-  /* 背调谁（10-21 客户反馈：以前拿客户名当公司查）。没公司的先找公司，点选了候选就接着背调那家（同一个 runId，不另扣） */
-  const 对象 = useMemo(() => 客户背调对象({ name: customerName, ...档案 }, b.fields.school), [customerName, 档案, b.fields.school]);
-  const [接着, set接着] = useState<Turn["接着"]>();
-  const [上次背调, set上次背调] = useState<Awaited<ReturnType<typeof 最近背调>>>(null);
-  const [看上次, set看上次] = useState(false);
-  /* 按钮上写「背调 · 剩 N 次」：点按钮本身就是确认（10-16 用户），所以扣费得写在按钮上，不够就点不了 */
-  const [背调价, set背调价] = useState<Awaited<ReturnType<typeof 背调价目>> | null>(null);
-  /** 自部署 / 企业版网页背调走不通：按钮不摆、价也不问（lib/research/channel.ts 背调有入口）。以前存下的背调照样能看 */
-  const 背调入口 = useResearchEntry() && !不背调;
-  useEffect(() => {
-    if (!背调入口) return;
-    let 活 = true;
-    背调价目().then((r) => 活 && set背调价(r)).catch(() => {});
-    return () => {
-      活 = false;
-    };
-  }, [researchJob?.status, 背调入口]);
-  // 查不了（没公司没官网没国际号码）也让点：点了就地说清补哪样——按钮灰着、提示又出不来，人不知道为什么
-  const 背调能点 = Boolean(背调价?.可用 && (背调价.还剩 == null || 背调价.还剩 >= 背调价.扣次));
-  /* 点按钮就开跑，所以查谁、扣几次都得先写在提示里 */
-  const 扣法 = 对象.种类 === "找人" ? "开始搜索后扣 1 次背调，没认出公司、只出简版的不扣" : "扣 1 次背调";
-  const 背调说明 =
-    对象.种类 === "不够"
-      ? 对象.原因
-      : `${对象说明(对象)}。` +
-        (!背调价
-          ? "上网查基本面、相关性、信号、风险、切入建议"
-          : !背调价.可用
-            ? `背调用不了：${背调价.原因}`
-            : 背调价.模拟
-              ? "开发环境用模拟数据，不扣次数"
-              : 背调价.还剩 == null
-                ? "不限次数"
-                : 背调能点
-                  ? `${扣法}（还剩 ${背调价.还剩} 次）`
-                  : "背调次数用完了，需要加次数请联系我们");
-  useEffect(() => {
-    let 活 = true;
-    最近背调(customerId).then((r) => 活 && set上次背调(r)).catch(() => {});
-    return () => {
-      活 = false;
-    };
-  }, [customerId, researchJob?.status]);
+  /* 背调（lib/research）整段在 useCustomerResearch：企业版客户页把它单拎成一张卡（P14 第 5 条），这里就不摆 */
+  const 背调 = useCustomerResearch({ customerId, customerName, 档案, on记跟进, 能发起: !不背调, 开: !背调另放 });
 
   /** 侧栏那条「AI 任务」认这个：叫什么、点了回哪儿 */
   const 标签 = useMemo(() => ({ 名: `${customerName} 的${简报叫}`, 去: `/customers/${customerId}` }), [customerName, customerId, 简报叫]);
@@ -208,60 +156,10 @@ export default function AiPanel({
             </Button>
           </Tooltip>
         )}
-        {背调入口 && (
-          <Tooltip title={背调说明}>
-            <Button size="small" type="text" icon={<GlobalOutlined />} onClick={() => set背调开(true)} disabled={背调开 || Boolean(researchJob) || Boolean(personJob) || !背调能点} aria-label="背调">
-              背调{背调价?.可用 && !背调价.模拟 && 背调价.还剩 != null ? ` · 剩 ${背调价.还剩} 次` : ""}
-            </Button>
-          </Tooltip>
-        )}
+        {背调.按钮}
       </div>
 
-      {(背调开 || researchJob || personJob) && (
-        <div className="rec-ai-research">
-          {researchJob || 接着 || 对象.种类 === "公司" ? (
-            <ResearchRun
-              jobKey={researchKey}
-              company={接着?.候选.公司 ?? (对象.种类 === "公司" ? 对象.公司 : customerName)}
-              对象={接着 ? `背调 ${接着.候选.公司} · 联系人 ${customerName}` : 对象.种类 === "公司" ? 对象说明(对象) : undefined}
-              接着={接着}
-              customer={{ id: customerId, name: customerName }}
-              on记跟进={on记跟进}
-              直接开跑
-              onCancel={() => set背调开(false)}
-              任务去={`/customers/${customerId}`}
-            />
-          ) : 对象.种类 === "找人" ? (
-            <ResearchPerson
-              jobKey={personKey}
-              名={对象.名}
-              电话={对象.电话}
-              直接开跑
-              onPick={(c, runId, 证据, 出现) => set接着({ runId, 人: { 名: 对象.名, 电话: 对象.电话 }, 候选: c, 出现, 证据 })}
-              onCancel={() => set背调开(false)}
-              任务去={`/customers/${customerId}`}
-            />
-          ) : (
-            <div className="rs-confirm" role="group" aria-label="背调查不了">
-              <span className="rs-confirm-t">{对象.原因}</span>
-              <button type="button" className="rs-btn" onClick={() => set背调开(false)}>知道了</button>
-            </div>
-          )}
-          {((researchJob && researchJob.status !== "loading") || (!researchJob && personJob && personJob.status !== "loading")) && (
-            <a className="rec-ai-research-x" onClick={() => { clearJob(researchKey); clearJob(personKey); set接着(undefined); set背调开(false); }}>
-              收起背调
-            </a>
-          )}
-        </div>
-      )}
-      {!背调开 && !researchJob && 上次背调 && (
-        <div className="rec-ai-last">
-          <a onClick={() => set看上次((v) => !v)}>
-            上次背调 {dayjs(上次背调.at).format("MM-DD")}：{上次背调.title.replace(/^背调｜/, "")}
-          </a>
-          {看上次 && <pre className="rec-ai-last-body">{上次背调.content}</pre>}
-        </div>
-      )}
+      {背调.区}
 
       {hasRecords && (loading || steps.length > 0) && <AiTrace steps={steps} done={!loading} ms={shown?.value?.ms} compact />}
 

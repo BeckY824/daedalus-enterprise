@@ -15,7 +15,8 @@ function mergeRows(...groups: FollowUpRow[][]): FollowUpRow[] {
   return [...rows.values()].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 }
 
-export function useFollowHistory(customerId: string, head: FollowUpRow[], headHasMore: boolean) {
+/** loader：翻页用哪个查询；企业版客户页传 loadCustomerFeed（只读汇总各项目的沟通，P14），默认是客户自己的跟进 */
+export function useFollowHistory(customerId: string, head: FollowUpRow[], headHasMore: boolean, loader: typeof loadFollowHistory = loadFollowHistory) {
   const [state, setState] = useState<HistoryState | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const currentCustomer = useRef<string | null>(customerId);
@@ -29,7 +30,7 @@ export function useFollowHistory(customerId: string, head: FollowUpRow[], headHa
     const ticket = Symbol(); request.current = ticket; setPending(customerId);
     const base: HistoryState = current ?? { customerId, rows: head, hidden: [], cursor: cursorOf(head.at(-1)), hasMore: headHasMore, paged: false };
     try {
-      const result = await loadFollowHistory(customerId, base.cursor);
+      const result = await loader(customerId, base.cursor);
       if (currentCustomer.current !== customerId || request.current !== ticket) return;
       if (!result.ok) throw new Error(result.error);
       setState(previous => {

@@ -14,8 +14,9 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海;");
-  stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]});");
-  stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null});");
+  stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false});");
+  stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null}");
+  stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({}),deleteCustomers=async()=>({ok:false});
     export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,saveFollowUp=toggleTask,deleteFollowUp=toggleTask,restoreFollowUp=toggleTask;
@@ -35,16 +36,25 @@ beforeAll(async () => {
       {id:'c3',name:'王五',position:'前台',phone:null,email:null,wechat:null,isPrimary:false,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'},
     ];
     const contracts=[{id:'k1',amount:12000,currency:'CNY',signedAt:'2026-09-01T00:00:00.000Z',updatedAt:'2026-09-01T00:00:00.000Z'}];
-    window.__render=(企业)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})}/></BusinessProvider></App></ConfigProvider>);
+    const 长项目='超长项目名称用来看会不会把菜单撑破'.repeat(3);
+    const p14={
+      跟进去处:[{id:'p1',名:长项目,主:true,结束:false,说明:null,下一步:'2026-10-30T02:00:00.000Z'},{id:'p2',名:'关联进来的项目',主:false,结束:true,说明:'已结束',下一步:null}],
+      待办计划:[{id:'fp1',subject:'回访报价',plannedAt:'2026-10-31T02:00:00.000Z',plannedHasTime:false}],
+      followUps:[
+        {id:'f2',type:'PHONE',title:'项目里的沟通',content:'谈了交期',status:'已完成',duration:null,occurredAt:'2026-10-20T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-20T02:00:00.000Z',项目:{id:'p1',名:长项目}},
+        {id:'f1',type:'EMAIL',title:'客户本身的老跟进',content:'老记录',status:'已完成',duration:null,occurredAt:'2026-10-01T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-01T02:00:00.000Z',项目:null},
+      ],
+    };
+    window.__render=(企业,项目模式)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})}/></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(企业: boolean, width = 1366) {
+async function open(企业: boolean, width = 1366, 项目模式 = false) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://left.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://left.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(e => (window as unknown as { __render: (x: boolean) => void }).__render(e), 企业);
+  await page.evaluate(([e, p]) => (window as unknown as { __render: (x: boolean, y: boolean) => void }).__render(e, p), [企业, 项目模式] as const);
   await page.getByText("联系人", { exact: false }).first().waitFor();
   return page;
 }
@@ -96,5 +106,30 @@ it("开关关闭：左栏照旧——一行一个联系人、空字段都在、�
     expect(await page.getByText("登记签约").count()).toBe(1);
     expect(await page.getByRole("link", { name: "13800138000" }).count()).toBe(0);
     expect(await page.getByText("ww_buyer").count()).toBe(0);
+  } finally { await page.close(); }
+});
+it("企业版项目模式（P14）：没有记录输入、头上是「跟进」；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
+  const page = await open(true, 1024, true);
+  try {
+    // antd 两个汉字的按钮中间自动加空格
+    expect(await page.getByRole("button", { name: /^跟\s?进$/ }).count()).toBe(1);
+    expect(await page.getByText("记录跟进").count()).toBe(0);
+    expect(await page.locator("textarea").count()).toBe(0);
+    expect(await page.getByText("沟通记录", { exact: true }).count()).toBe(1);
+    const 项目链 = page.locator(".rec-tl-proj");
+    expect(await 项目链.count()).toBe(1);
+    expect(await 项目链.getAttribute("href")).toBe("/projects/p1#project-follow");
+    // 只读：沟通记录上没有编辑、删除
+    expect(await page.locator(".rec-tl-item").getByRole("button", { name: /编辑|删除/ }).count()).toBe(0);
+    expect(await page.getByText("回访报价").count()).toBe(1);
+    expect(await page.locator(".rec-task-k").allInnerTexts()).toEqual(["计划", "项目"]);
+    expect(await page.getByText("下次跟进").count()).toBe(0);
+    // 两个项目：点「跟进」打开菜单，长名字不把菜单撑出屏
+    await page.getByRole("button", { name: /^跟\s?进$/ }).click();
+    await page.getByText("去项目里跟进").waitFor();
+    expect(await page.getByText("关联进来的项目").count()).toBe(1);
+    const 菜单宽 = await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first().evaluate(el => el.getBoundingClientRect().right);
+    expect(菜单宽).toBeLessThanOrEqual(1024);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   } finally { await page.close(); }
 });

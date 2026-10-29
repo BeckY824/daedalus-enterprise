@@ -129,9 +129,9 @@ describe("纯函数", () => {
     expect(联系人号码们({ phone: "13800000001", email: null, wechat: null }, [{ kind: "email", value: "a@b.c" }])).toEqual([{ kind: "email", value: "a@b.c" }]);
   });
 
-  it("客户页摆法：项目模式去掉记录输入 / 待办 / 下次跟进 / 转让 / 背调 / 旧字段，加关联客户 / 新字段 / 新建项目", () => {
-    expect(客户页摆法(true)).toMatchObject({ 记录输入: false, 待办: true, 下次跟进: false, 转让: false, 背调: false, 旧字段: false, 关联客户: true, 新字段: true, 新建项目: true });
-    expect(客户页摆法(false)).toMatchObject({ 记录输入: true, 待办: true, 下次跟进: true, 转让: true, 背调: true, 旧字段: true, 关联客户: false, 新字段: false, 新建项目: false });
+  it("客户页摆法：项目模式去掉记录输入 / 待办 / 下次跟进 / 转让 / 背调 / 旧字段，加关联客户 / 新字段 / 新建项目 / 跟进去项目 / 沟通汇总 / 背调卡", () => {
+    expect(客户页摆法(true)).toMatchObject({ 记录输入: false, 待办: true, 下次跟进: false, 转让: false, 背调: false, 旧字段: false, 关联客户: true, 新字段: true, 新建项目: true, 跟进去项目: true, 沟通汇总: true, 背调卡: true });
+    expect(客户页摆法(false)).toMatchObject({ 记录输入: true, 待办: true, 下次跟进: true, 转让: true, 背调: true, 旧字段: true, 关联客户: false, 新字段: false, 新建项目: false, 跟进去项目: false, 沟通汇总: false, 背调卡: false });
   });
 
   it("档案改动只交改了的级别 / 官网，不动外贸那几格", () => {

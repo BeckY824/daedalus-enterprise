@@ -1188,6 +1188,17 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    2026-10-19 客户截图：商机名一长（「chicken breast BFQ. Exw. 10kg/Box. … 500 tons」），原来 flex:none 不让缩，
    时间和编辑 / 删除被推出中栏、压到右边 AI 栏底下，点铅笔点到的是 AI 栏。现在它跟着缩、一行省略，悬停看全文 */
 .rec-tl-order { font-size: var(--fs-note); white-space: nowrap; flex: 0 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
+/* 企业版「沟通记录」每条标的项目（P14 第 6 条）：长项目名截断，悬停看全名 */
+.rec-tl-proj { max-width: 16em; }
+/* 「沟通记录」标题（只读，汇总各项目的跟进） */
+.rec-tl-cap { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: var(--fs-note); font-weight: 600; color: var(--text-muted); }
+.rec-tl-cap-hint { font-weight: 400; }
+/* 「跟进」菜单里的项目（P14 第 3 条）：长名字截断，后面跟一句「关联 / 已结束 / 在公海」 */
+.rec-go { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: min(320px, 80vw); }
+.rec-go-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-go-note { flex: none; font-size: var(--fs-note); color: var(--text-muted); }
+/* 「转让」子菜单：成员多时自己滚，不撑出屏幕 */
+.rec-go-sub .ant-dropdown-menu-sub { max-height: min(360px, 60vh); overflow-y: auto; }
 .rec-tl-head > .ant-tag { flex: none; }
 .rec-tl-time { flex: none; margin-left: auto; font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rec-tl-when { flex: none; position: relative; margin-left: auto; display: inline-flex; align-items: center; }
@@ -1243,6 +1254,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-task { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: var(--fs-body); }
 /* 待办标题长了折行，到期时间不被挤出右栏（2026-10-19 排查） */
 .rec-task-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* 待办卡里企业版多摆的「计划 / 项目」行打的小标（P14 第 2 条） */
+.rec-task-k { flex: none; font-size: var(--fs-note); color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; line-height: 18px; }
 .rec-task-due { flex: none; margin-left: auto; font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
 /* 刚勾完成、还留在原处的那几秒：划线变淡，一眼看得出「这条完了」，也看得出还能撤 */
 .rec-task.is-done .rec-task-t { text-decoration: line-through; color: var(--text-muted); }
