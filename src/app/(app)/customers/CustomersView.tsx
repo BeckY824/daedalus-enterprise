@@ -282,8 +282,8 @@ export default function CustomersView({
   const b = useBusiness();
   // 项目模式开着：新建一律走建档向导（客户、联系人、项目、首条沟通一次建好）
   /**
-   * 企业版项目模式（统一公海 P7，2026-10-29）：公海挪去 /pool 一页看，这里不摆「客户 / 公海」页签、不摆「新建客户」
-   * （客户从新建项目里来）。?pool=1 的老链接服务端直接转去 /pool
+   * 企业版项目模式（统一公海 P7，2026-10-29）：公海挪去 /pool 一页看，这里不摆「客户 / 公海」页签。
+   * 「新建客户」照旧在（项目模式下走建档向导）。?pool=1 的老链接服务端直接转去 /pool
    */
   const 统一公海 = 企业 && b.projectMode === true;
   const 新建 = () => {
@@ -564,11 +564,9 @@ export default function CustomersView({
               </Button>
               {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span><Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button></Space>}
             </>)}
-            {!统一公海 && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={新建}>
-                新建{b.customer}
-              </Button>
-            )}
+            <Button type="primary" icon={<PlusOutlined />} onClick={新建}>
+              新建{b.customer}
+            </Button>
           </Space>
         }
       />

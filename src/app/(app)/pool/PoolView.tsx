@@ -110,7 +110,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     },
     {
       title: "入池原因", key: "原因", width: 140,
-      render: (_, r) => <span className={r.类 === "无效" ? "clamp" : "clamp muted"} style={r.类 === "无效" ? { color: "var(--ant-color-error, #cf1322)" } : undefined} title={r.入池原因}>{r.入池原因}</span>,
+      render: (_, r) => <span className={r.类 === "无效" ? "clamp" : "clamp muted"} style={r.类 === "无效" ? { color: "var(--danger-text)" } : undefined} title={r.入池原因}>{r.入池原因}</span>,
     },
     {
       title: "操作", key: "操作", width: 116, 常驻: true, fixed: "right",
