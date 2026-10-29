@@ -2,8 +2,7 @@
  * 版本号：根 package.json 和 package-lock.json 对得上。
  *
  * 企业库不带桌面壳，版本号只在根目录这两份里。
- * 「版本号和 tag 对不对得上」挡在 CI 里：.github/workflows/release.yml
- * 的「版本号要和 tag 对得上」那一步，在构建开始前就失败。
+ * 企业版不打 tag 发镜像（2026-10-29 删了 release.yml，私有部署直接从库里打包），所以没有 tag 那一道核对。
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
