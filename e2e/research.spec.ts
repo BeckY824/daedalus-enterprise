@@ -287,6 +287,7 @@ test.describe("客户页的背调按钮", () => {
   });
 
   test("公司、官网、国际号码都没有：点了就地说清补哪样，不开跑", async ({ page }) => {
+    test.skip(企业版, "企业版客户页不摆背调按钮（客户页摆法 背调）");
     const id = await 造客户({ name: "只有名字的客户", phone: "13800138222" });
     await 登录(page);
     await page.goto(`/customers/${id}`);
