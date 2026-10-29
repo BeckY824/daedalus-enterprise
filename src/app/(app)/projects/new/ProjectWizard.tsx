@@ -357,14 +357,15 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           {一行(`${b.customer}名称`, <Input value={d.客户.name} onChange={(e) => 改("客户", { name: e.target.value })} />, true)}
           {企业 && 一行("渠道", (
             <>
-              <Select
-                style={{ width: "100%" }}
-                value={d.客户.渠道 || undefined}
-                placeholder="这条线索从哪个渠道来"
-                options={企业.渠道们.map((c) => ({ value: c.id, label: c.name }))}
-                onChange={(v) => 改("客户", { 渠道: v })}
-                showSearch
-                optionFilterProp="label"
+              {/* P16：先选渠道名称再选具体来源（一个级联到底），选了来源渠道就定了；也能直接打字搜全称 */}
+              <ChannelPicker
+                aria-label="渠道"
+                层级="两级"
+                channels={企业.渠道们}
+                value={d.客户.渠道 || null}
+                allowClear={false}
+                placeholder="这条线索从哪个渠道、哪个来源来"
+                onChange={(v) => 改("客户", { 渠道: v ?? undefined })}
               />
               {企业.渠道们.length === 0 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>还没有渠道：先去 <Link href="/channels">渠道页</Link> 加一个</div>}
             </>
@@ -382,6 +383,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
             <>
               <ChannelPicker
                 aria-label="项目来源"
+                层级="两级"
                 style={{ width: "100%" }}
                 channels={企业.渠道们}
                 value={d.项目.渠道 || d.客户.渠道 || null}

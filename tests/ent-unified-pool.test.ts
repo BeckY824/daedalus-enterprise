@@ -59,6 +59,9 @@ describe("入池原因与快捷", () => {
     expect(入池原因文字("主动退回", 0)).toBe("主动退回（第 1 次）");
     expect(入池原因文字("主动退回", 3)).toBe("主动退回（第 3 次）");
     expect(入池原因文字("超时回收", 5)).toBe("超时回收");
+    // 「无效」页面上叫「无效线索」（10-29 P16），类名不变
+    expect(入池原因文字("无效", 2)).toBe("无效线索");
+    expect(入池原因文字("离职交接", 0)).toBe("离职交接");
   });
   it("快捷：一到三次各一档，多次从常量起；无效优先；离职交接不进任何按钮", () => {
     expect(归到快捷({ 类: "主动退回", 累计: 1 })).toBe("首次退回");
@@ -203,7 +206,7 @@ describe("无效客户", () => {
     当(老板);
     expect(await 分配公海([c], 丙.id)).toMatchObject({ ok: false });
     const 页 = await 读公海页(老板, { 快捷: "无效客户" }, 1, 20);
-    expect(页.行.map((r) => [r.customerId, r.入池原因])).toEqual([[c, "无效"]]);
+    expect(页.行.map((r) => [r.customerId, r.入池原因])).toEqual([[c, "无效线索"]]);
 
     当(经理);
     expect(await 恢复有效客户([c])).toEqual({ ok: false, error: "只有老板能恢复无效客户" });
