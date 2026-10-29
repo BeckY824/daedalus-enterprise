@@ -715,6 +715,8 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .roster-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--success); }
 .roster-dot.due { background: var(--warning); }
 .roster-dot.cold { background: var(--text-faint); }
+/* 项目名单（ProjectRoster）右下角的当前进程：挤不下就省略，不把最近一句压没 */
+.roster-stage { flex: none; max-width: 6.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--text-faint); }
 /* 名单顶上的页签：全部 / 我的 / 本周要跟 */
 .roster-tabs { display: flex; gap: 4px; padding: 0 var(--s3) var(--s2); }
 .roster-tab { padding: 4px 10px; border: 0; border-radius: var(--r-ctl); background: none; font: inherit; font-size: var(--fs-note); color: var(--text-muted); cursor: pointer; transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
@@ -1097,13 +1099,34 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-contact:hover .rec-mini-acts { opacity: 1; pointer-events: auto; }
 
 /* 企业版项目详情两栏（10-27 会后排版，ProjectDetail）：左边节点 / 沟通 / 卡点，右边资料 320px。
-   按容器宽不按视口：桌面端开着 AI 侧栏时主区变窄，视口量不准。窄于 880 退一栏，干活的在上 */
+   按容器宽不按视口：中栏项目名单摊开、或桌面端开着 AI 侧栏时主区变窄，视口量不准。
+   P11 起左边还有中栏项目名单（ProjectRoster，和客户记录页同一个位置）：1280 宽正文约 790、1366 约 870，
+   窄于 1000 右栏收到 280；窄于 630 退一栏、干活的在上（和客户记录页的单栏线同一条） */
 .proj-wrap { container-type: inline-size; }
 .proj-2col { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
 /* 列要钉成 minmax(0,1fr)：默认的隐式列按内容最小宽度算，一个没空格的超长客户名能把 320 的右栏撑到上千（10-27 单测量出 1119px） */
 .proj-main, .proj-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 .proj-side .cust-link-t { overflow-wrap: anywhere; }
-@container (max-width: 880px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 1000px) { .proj-2col { grid-template-columns: minmax(0, 1fr) 280px; } }
+@container (max-width: 629px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
+/* 页头最左边那颗「显示项目列表」（PaneToggle，名单收起或在抽屉里时才有），照客户记录页 .rec-head */
+.proj-head { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
+.proj-head > .page-head { flex: 1; min-width: 0; }
+.proj-head > .pane-toggle { margin: 4px 0 0 -6px; flex: none; }
+/* 节点卡（P11）：阶段、进程分两格摆，不拼成一串；进程名太长省略号收尾，悬停看全 */
+.proj-where { display: flex; flex-wrap: wrap; gap: 8px 28px; min-width: 0; }
+.proj-where > div { min-width: 0; }
+.proj-where-label { color: var(--text-muted); margin-bottom: 4px; }
+.proj-where-value { display: flex; align-items: center; min-width: 0; font-size: 18px; font-weight: 600; line-height: 28px; }
+.proj-where-node { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 项目画像卡（P11）：键 64px 一列，值占满；下拉、输入框都按卡宽，不撑开右栏 */
+.proj-profile { display: grid; gap: 10px; }
+.proj-profile-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; min-width: 0; }
+.proj-profile-key { color: var(--text-muted); white-space: nowrap; }
+.proj-profile-val { min-width: 0; overflow-wrap: anywhere; }
+.proj-profile-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* 基本资料「展开更多 N 项」、左栏底部「更多」：文字按钮靠左，和字段左缘对齐 */
 .rec-sec-more { padding: 0 8px; height: auto; }
 

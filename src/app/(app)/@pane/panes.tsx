@@ -8,6 +8,11 @@ import { 列对话 } from "@/app/(app)/dashboard/threads";
 import { llmEnabled } from "@/lib/llm";
 import { FOLLOW_TYPE_MAP } from "@/lib/constants";
 import { 企业版 } from "@/lib/enterprise/switch";
+import ProjectRoster from "@/components/ProjectRoster";
+import { getBusiness } from "@/lib/business";
+import { 读名单项目 } from "@/lib/project/list";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 字典of } from "@/lib/project/stage-dict";
 
 /**
  * 中栏（312px）的内容。眼下**只有一种**：学员记录页的窄名单。
@@ -83,6 +88,19 @@ export async function 学员名单() {
       }}
     />
   );
+}
+
+/**
+ * 企业版项目详情页的中栏：项目名单（P11，照上面的学员名单）。应用导航 | 项目名单 | 项目详情，三个竖条。
+ *
+ * 只在 `/projects/[id]` 出现，列表页和新建页没有（理由同学员名单）。只在企业版且开了项目模式时出：
+ * 别的版本、项目模式关着，这一格和原来一样是空的。范围走带限定的 prisma，和项目页同一个口径（lib/project/list.ts 读名单项目）
+ */
+export async function 项目名单() {
+  const me = await requireUser();
+  if (!企业版() || (await getBusiness()).projectMode !== true) return null;
+  const 规则 = await 生效组织规则();
+  return <ProjectRoster data={await 读名单项目(me, 字典of(true, 规则.阶段.出口叫法))} />;
 }
 
 /**

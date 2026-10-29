@@ -48,6 +48,14 @@ export const 别名: Record<实体, Record<string, string[]>> = {
     source: ["客户来源", "来源", "渠道"],
     level: ["客户等级", "等级", "级别"],
     website: ["网站", "官网", "网址"],
+    // 「客户全称」走上面 name；「简称」单独落 shortName（P8，10-29）
+    shortName: ["客户简称", "简称", "公司简称"],
+    // 「所在国家」「国家」留给外贸的 country（老测试和老表都这么认）
+    addrCountry: ["地址国家"],
+    addrProvince: ["省份", "省", "所在省份", "所在省"],
+    addrCity: ["城市", "市", "所在城市", "所在市"],
+    addrDistrict: ["区县", "区", "县", "所在区县"],
+    assignWay: ["分配方式", "客户分配方式"],
   },
   contact: {
     id: ["联系人ID", "联系人编号", ...通用ID],
@@ -60,6 +68,10 @@ export const 别名: Record<实体, Record<string, string[]>> = {
     wechat: ["微信", "微信号"],
     isPrimary: ["关键联系人", "主联系人", "是否主联系人", "首要联系人"],
     remark: ["备注", "说明", "remark"],
+    gender: ["性别"],
+    birthday: ["生日", "出生日期", "出生年月日"],
+    hobby: ["爱好", "兴趣爱好", "兴趣"],
+    address: ["联系人地址", "地址", "住址", "联系地址"],
   },
   lead: {
     id: ["线索ID", "线索编号", ...通用ID],

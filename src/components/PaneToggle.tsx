@@ -21,12 +21,13 @@ function 侧栏图标() {
   );
 }
 
-export default function PaneToggle({ 栏, 位置, className }: { 栏: 中栏; 位置: "中栏" | "主区"; className?: string }) {
+/** 名：按钮上说的是哪份名单，默认客户名单 / 对话列表；项目详情页的中栏传「项目列表」（P11） */
+export default function PaneToggle({ 栏, 位置, className, 名: 叫 }: { 栏: 中栏; 位置: "中栏" | "主区"; className?: string; 名?: string }) {
   const b = useBusiness();
   const p = useMiddlePane(栏);
   // 主区那颗只在中栏不在时出现；中栏那颗跟着中栏（整栏或抽屉）走
   if (位置 === "主区" && p.露着) return null;
-  const 名 = 栏 === "roster" ? `${b.customer}名单` : "对话列表";
+  const 名 = 叫 ?? (栏 === "roster" ? `${b.customer}名单` : "对话列表");
   const 开着 = 位置 === "中栏" ? true : p.抽屉开着;
   const 说 = `${开着 ? "隐藏" : "显示"}${名}`;
   return (
