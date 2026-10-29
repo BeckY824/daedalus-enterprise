@@ -119,11 +119,11 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} xxl={单人 ? 24 : 12}>
-          <Card title={<span className="section-title">各节点的项目</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>只数进行中的</Typography.Text>}>
+          <Card title={<span className="section-title">各进程的项目</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>只数进行中的</Typography.Text>}>
             {有项目 ? (
               <Chart option={节点option} height={数.节点.length * 24 + 24} />
             ) : (
-              <EmptyState title="还没有进行中的项目" hint="新建一条线索，或者从飞书 / Excel 导入，这里会按节点数出来。" demo={false} />
+              <EmptyState title="还没有进行中的项目" hint="新建一条线索，或者从飞书 / Excel 导入，这里会按进程数出来。" demo={false} />
             )}
           </Card>
         </Col>
@@ -205,7 +205,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
         </Col>
       </Row>
 
-      <Card style={{ marginTop: 16 }} title={<span className="section-title">项目走势</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>一个项目来回改节点只数一次</Typography.Text>}>
+      <Card style={{ marginTop: 16 }} title={<span className="section-title">项目走势</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>一个项目来回改进程只数一次</Typography.Text>}>
         {有事 ? (
           <Chart option={趋势option} height={320} />
         ) : (

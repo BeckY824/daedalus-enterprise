@@ -78,7 +78,7 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
   if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined ? "请选分配方式" : 要选负责人(d, 企业) && !d.项目.ownerId ? "请选项目负责人" : "";
   if (!d.跟进.content.trim()) return "请填写这次沟通的内容";
   if (企业) {
-    if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选跟进节点（线索阶段的哪一步）";
+    if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选当前进程（线索阶段的哪一步）";
     if (typeof d.跟进.明确回复 !== "boolean") return "请选客户是否明确回复";
     if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点) && !d.跟进.明确回复) return 缺有效沟通;
   }
@@ -419,7 +419,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
             />
           ), true)}
           {一行("沟通内容", <Input.TextArea rows={4} value={d.跟进.content} onChange={(e) => 改("跟进", { content: e.target.value })} />, true)}
-          {企业 && 一行("跟进节点", (
+          {企业 && 一行("当前进程", (
             <Select style={{ width: "100%" }} value={d.跟进.节点} options={企业.节点们.map((n) => ({ value: n, label: n }))} onChange={(v) => 改("跟进", { 节点: v })} />
           ), true)}
           {企业 && 一行("客户是否明确回复", (

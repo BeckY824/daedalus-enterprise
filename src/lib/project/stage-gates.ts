@@ -27,7 +27,7 @@ export function 要沟通的节点(): string[] {
   const 字典 = 字典of(true);
   return [...字典.节点们.线索.slice(0, 2), ...字典.节点们.商机.slice(0, 2)];
 }
-export const 缺本节点沟通 = (node: string) => `「${node}」要先记一条沟通才能往后推：后台开了「线索、商机前两个节点各要一条沟通」`;
+export const 缺本节点沟通 = (node: string) => `「${node}」要先记一条沟通才能往后推：后台开了「线索、商机前两个进程各要一条沟通」`;
 
 /**
  * 往前推到 到：线索阶段越过「线索验证」要先有有效沟通；

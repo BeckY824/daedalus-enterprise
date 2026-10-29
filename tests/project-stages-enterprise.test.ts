@@ -98,7 +98,7 @@ describe("跨阶段单向（改节点问题，企业版字典）", () => {
     expect(改节点问题({ phase: "订单", node: "生产备货" }, 在("订单", "尾款结算"), undefined, true, 企)).toBeNull();
     expect(改节点问题({ phase: "商机", node: "明确需求" }, 在("商机", "签订合同"), undefined, true, 企)).toBeNull();
     expect(改节点问题({ phase: "线索", node: "潜客培育" }, 在("线索", "线索推进"), undefined, true, 企)).toBeNull();
-    expect(改节点问题({ phase: "商机", node: "签约审批" }, 在("商机", "明确需求"), undefined, true, 企)).toMatch("节点不能往前跳");
+    expect(改节点问题({ phase: "商机", node: "签约审批" }, 在("商机", "明确需求"), undefined, true, 企)).toMatch("进程不能往前跳");
     expect(改节点问题({ phase: "订单", node: "验收交付" }, 在("订单", "安装实施"), undefined, true, 企)).toBeNull();
     expect(改节点问题({ phase: "商机", node: "明确需求" }, 在("线索", "线索推进"), undefined, true, 企)).toBeNull();
     expect(改节点问题({ phase: "订单", node: "生产备货" }, 在("商机", "首款支付"), undefined, true, 企)).toBeNull();
@@ -106,10 +106,10 @@ describe("跨阶段单向（改节点问题，企业版字典）", () => {
   });
 
   it("订单只能从商机进：线索直接跳订单、商机中间节点跳订单都不行", () => {
-    expect(改节点问题({ phase: "订单", node: "生产备货" }, 在("线索", "线索推进"), undefined, true, 企)).toMatch("节点不能往前跳");
-    expect(改节点问题({ phase: "订单", node: "生产备货" }, 在("线索", "潜客培育"), undefined, true, 企)).toMatch("节点不能往前跳");
-    expect(改节点问题({ phase: "订单", node: "生产备货" }, 在("商机", "签订合同"), undefined, true, 企)).toMatch("节点不能往前跳");
-    expect(改节点问题({ phase: "订单", node: "物流运输" }, 在("商机", "首款支付"), undefined, true, 企)).toMatch("节点不能往前跳");
+    expect(改节点问题({ phase: "订单", node: "生产备货" }, 在("线索", "线索推进"), undefined, true, 企)).toMatch("进程不能往前跳");
+    expect(改节点问题({ phase: "订单", node: "生产备货" }, 在("线索", "潜客培育"), undefined, true, 企)).toMatch("进程不能往前跳");
+    expect(改节点问题({ phase: "订单", node: "生产备货" }, 在("商机", "签订合同"), undefined, true, 企)).toMatch("进程不能往前跳");
+    expect(改节点问题({ phase: "订单", node: "物流运输" }, 在("商机", "首款支付"), undefined, true, 企)).toMatch("进程不能往前跳");
   });
 });
 

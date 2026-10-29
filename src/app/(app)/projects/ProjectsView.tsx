@@ -152,7 +152,7 @@ export default function ProjectsView({
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「节点」挤成两个字一行
     { title: "项目", dataIndex: "name", width: 180, 常驻: true, render: (v: string) => <span className="clamp" title={v}>{v}</span> },
     { title: b.customer, key: "customer", width: 170, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
-    { title: "节点", key: "node", width: 150, render: (_, r) => <>{节点文字(r, 字典)}{r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
+    { title: "当前进程", key: "node", width: 150, render: (_, r) => <>{节点文字(r, 字典)}{r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
     { title: "金额", key: "amount", width: 120, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
     // 企业版项目公海：被收回过几次（放回、超时回收都算）
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),

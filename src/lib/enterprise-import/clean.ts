@@ -520,7 +520,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         let status: string;
         let stage: string;
         if (项目) {
-          const 位 = 对值(r, "阶段", s.值.stage, 第一个节点.node, "项目节点");
+          const 位 = 对值(r, "阶段", s.值.stage, 第一个节点.node, "当前进程");
           stage = 是结局(位) ? 结局默认节点(位) : 位;
           status = 是结局(位) ? 位 : "OPEN";
           // 原系统另有一列状态说了输单：线索阶段算线索流失，商机阶段算丢单；
