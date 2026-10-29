@@ -108,6 +108,12 @@ test.beforeEach(async ({ page, context }) => {
 });
 
 test("首页输入框里一直摆着「粘一段聊天」", async ({ page }) => {
+  // 企业版项目模式 10-29 把它从「+」里拿掉了（composer 里「粘一段聊天 10-29 拿掉了」）：反过来钉它不在，粘贴时的提示照旧
+  if (企业版) {
+    await expect(page.locator(".cli-bar2-l").getByRole("button", { name: "更多入口" })).toBeVisible();
+    await expect(await 找框内入口(page)).toHaveCount(0);
+    return;
+  }
   await expect(await 找框内入口(page)).toBeVisible();
 });
 
@@ -120,6 +126,7 @@ test("空库时那张「开始」卡的主按钮也是「粘」，不是手敲�
 });
 
 test("点它就开在「粘一段文本」那一栏，不用先点导入再找栏位", async ({ page }) => {
+  test.skip(企业版, "企业版项目模式输入框里没有这个入口（10-29 拿掉）；抽屉停在哪一栏由 ?import=paste 那条钉着");
   await (await 找框内入口(page)).click();
   const 抽屉 = page.locator(".ant-drawer");
   await expect(抽屉).toBeVisible();

@@ -13,8 +13,7 @@ import StartCard from "./StartCard";
 import { 读对话 } from "./threads";
 import { 数逾期跟进 } from "@/lib/overdue";
 import { 带币种, 签约合计 } from "@/lib/money-db";
-import { 取提醒项 } from "@/lib/reminders-db";
-import { 算提醒 } from "@/lib/reminders";
+import { 数提醒 } from "@/lib/reminders-db";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 自定产品名 } from "@/lib/enterprise/brand";
@@ -81,7 +80,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       数新线索(),
       prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
       prisma.task.count({ where: { ownerId: user.id, done: false } }),
-      数首页卡(user.id),
+      数首页卡(user),
       prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } }),
       生效组织规则(),
     ]);
@@ -101,16 +100,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         要下一步={规则.超时回收.开}
         空库={学员数 === 0 && 线索数 === 0 && myPlans === 0 && 没做完的待办 === 0}
         指标卡={卡}
-        我={user.id}
       />
     );
   }
 
   const b = await getBusiness();
   const now = dayjs();
-  const [提醒项, 没做完的待办, myPlans, myLast, mine, models, 逾期, 高意向, 本月签约, 学员数, 线索数] = await Promise.all([
-    // 欢迎句「今天要跟 N 条」和左栏角标、Dock 同一个函数（lib/reminders）：计划 + 待办、逾期 + 今天（排查 C5）
-    取提醒项(user.id),
+  const [要跟, 没做完的待办, myPlans, myLast, mine, models, 逾期, 高意向, 本月签约, 学员数, 线索数] = await Promise.all([
+    // 欢迎句「今天要跟 N 条」和左栏角标、Dock 同一个函数（lib/reminders-db 数提醒）：计划 + 待办、逾期 + 今天（排查 C5）
+    数提醒(user.id),
     prisma.task.count({ where: { ownerId: user.id, done: false } }),
     prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
     prisma.followUp.findFirst({ where: { ownerId: user.id }, orderBy: { occurredAt: "desc" }, select: { customer: { select: { name: true } } } }),
@@ -134,7 +132,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const 就我一个人 = (await 唯一负责人()) !== null;
   const parts: string[] = [];
-  const 要跟 = 算提醒(提醒项);
   const 今天要跟 = 要跟.逾期 + 要跟.今天;
   const 没做完 = myPlans + 没做完的待办;
   parts.push(

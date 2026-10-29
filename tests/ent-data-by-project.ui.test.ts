@@ -37,7 +37,8 @@ beforeAll(async () => {
       公海:2,外币:1,
       漏斗:项目漏斗of([...Array(12)].map(()=>({phase:'线索',result:null})).concat([...Array(8)].map(()=>({phase:'商机',result:null})),[...Array(5)].map(()=>({phase:'订单',result:'成功交付'})))),
       按人:[1,2,3].map(i=>({id:'u'+i,name:长+i,线索:4,商机:3,订单:1,商机金额:98765432,订单金额:12345678})),
-      线索节点:节点们['线索'].map((node,i)=>({node,count:i+2})),
+      线索节点:节点们['线索'].map((node,i)=>({node,count:i+2,流失:i,判无效:i===1?1:0,退回公海:i===0?2:0})),
+      线索转商机:5,
     };
     const 一段={
       合计:{新建:6,转商机:4,转订单:2,成功交付:3,交付金额:23456789,线索流失:1,丢单:1,异常状态:0},
@@ -45,7 +46,8 @@ beforeAll(async () => {
       按人:[1,2].map(i=>({id:'u'+i,name:长+i,新建:3,转商机:2,转订单:1,成功交付:1,交付金额:23456789,没成:1})),
       外币:0,
       漏斗:项目漏斗of([...Array(6)].map((_,i)=>({phase:i<4?'商机':'线索',result:i<3?'成功交付':null}))),
-      线索节点:节点们['线索'].map((node,i)=>({node,count:i})),
+      线索节点:节点们['线索'].map((node,i)=>({node,count:i,流失:i===2?1:0,判无效:0,退回公海:0})),
+      线索转商机:4,
     };
     window.__画=(view,项目,单人,页签)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:项目}}>
       <DataShell view={view} 项目={项目} 页签={页签||undefined}>

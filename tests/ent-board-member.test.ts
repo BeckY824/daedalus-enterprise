@@ -1,6 +1,7 @@
 /**
  * 企业版复盘页（P15）：按成员看 + 线索瀑布 + 「待办」页签（10-29 改成两个页签：待办 | 数据）。
- *   - 看板范围of（纯函数）：老板 / 主管 / 管理员类别 / 手下有人 = 管理层，能选的人 = 数据那层本来看得到的人；业务员只有自己
+ *   - 看板范围of（纯函数）：老板 / 主管 / 管理员类别 / 手下有人 = 管理层；老板、总管理员全看，别的上级 = 自己 + 直接 / 间接 + 虚线下属；
+ *     业务员只有自己。只按组织架构定，不看「按组织看客户」开没开（10-29 定稿）
  *   - 看板的人：业务员强制只看自己（地址栏带了别人也不认）；管理层默认看全部、选范围外的当没选；能选的只有一个人时不给下拉
  *   - 项目现在 / 项目一段 带只看：只数那个人负责的（公海的不算）；线索节点按潜客培育 → 线索验证 → 线索推进铺开
  *   - 挑一页：逾期在前、按时间从早到晚、没时间的最后；四张卡的条数跟着人和类型走；卡筛、类型筛；每页 20 条、页码超了落末页
@@ -40,26 +41,36 @@ describe("看板范围of（纯函数）", () => {
       ],
       [],
     );
-  const 排 = (r: { 管理层: boolean; 可选: string[] }) => ({ ...r, 可选: [...r.可选].sort() });
+  const 排 = (r: { 管理层: boolean; 全看: boolean; 可选: string[] }) => ({ ...r, 可选: [...r.可选].sort() });
   const 全部 = [老板, 主管, 经理, 小王, 小张, 外人].sort();
 
-  it("业务员：不是管理层，只有自己（开没开按组织看都一样）", () => {
-    expect(看板范围of(org(), "SALES", 外人, false)).toEqual({ 管理层: false, 可选: [外人] });
-    expect(看板范围of(org(), "SALES", 小王, true)).toEqual({ 管理层: false, 可选: [小王] });
+  it("业务员：不是管理层，只有自己", () => {
+    expect(看板范围of(org(), "SALES", 外人)).toEqual({ 管理层: false, 全看: false, 可选: [外人] });
+    expect(看板范围of(org(), "SALES", 小王)).toEqual({ 管理层: false, 全看: false, 可选: [小王] });
   });
-  it("老板 / 主管：管理层，能选全部人", () => {
-    expect(排(看板范围of(org(), "ADMIN", 老板, false))).toEqual({ 管理层: true, 可选: 全部 });
-    expect(排(看板范围of(org(), "MANAGER", 主管, false))).toEqual({ 管理层: true, 可选: 全部 });
-    expect(排(看板范围of(org(), "ADMIN", 老板, true))).toEqual({ 管理层: true, 可选: 全部 });
+  it("老板：全看，能选全部人；主管账号不是总管理员，算别的上级——手下没人就只有自己", () => {
+    expect(排(看板范围of(org(), "ADMIN", 老板))).toEqual({ 管理层: true, 全看: true, 可选: 全部 });
+    expect(看板范围of(org(), "MANAGER", 主管)).toEqual({ 管理层: true, 全看: false, 可选: [主管] });
   });
-  it("手下有人的经理：没开按组织看时数据那层只给他自己（团队版限业务员），开了 = 自己 + 实线 + 虚线下属", () => {
-    expect(看板范围of(org(), "SALES", 经理, false)).toEqual({ 管理层: true, 可选: [经理] });
-    expect(排(看板范围of(org(), "SALES", 经理, true))).toEqual({ 管理层: true, 可选: [经理, 小王, 小张].sort() });
+  it("手下有人的经理：自己 + 实线 + 虚线下属，看不到外人", () => {
+    expect(排(看板范围of(org(), "SALES", 经理))).toEqual({ 管理层: true, 全看: false, 可选: [经理, 小王, 小张].sort() });
+  });
+  it("间接下属也算：经理的下属再带人，经理的范围一路往下", () => {
+    const 链 = 建组织(
+      [经理, 小王, 外人].map((id) => ({ id, role: "SALES", active: true })),
+      [
+        { userId: 小王, deptId: null, bizRole: "sales", line: null, managerId: 经理, dottedManagerId: null },
+        { userId: 外人, deptId: null, bizRole: "sales", line: null, managerId: 小王, dottedManagerId: null },
+      ],
+      [],
+    );
+    expect(排(看板范围of(链, "SALES", 经理))).toEqual({ 管理层: true, 全看: false, 可选: [经理, 小王, 外人].sort() });
+    expect(排(看板范围of(链, "SALES", 小王))).toEqual({ 管理层: true, 全看: false, 可选: [小王, 外人].sort() });
   });
 });
 
 describe("线索节点of（纯函数）", () => {
-  it("只数进行中的线索，按节点先后铺开，没有的摆 0", () => {
+  it("停着的只数进行中、不在公海的线索，按节点先后铺开，没有的摆 0", () => {
     const r = 线索节点of([
       { phase: "线索", node: "潜客培育", result: null },
       { phase: "线索", node: "潜客培育", result: null },
@@ -69,6 +80,27 @@ describe("线索节点of（纯函数）", () => {
     ]);
     expect(r.map((x) => x.node)).toEqual(["潜客培育", "线索验证", "线索推进"]);
     expect(r.map((x) => x.count)).toEqual([2, 0, 1]);
+    expect(r.every((x) => x.流失 + x.判无效 + x.退回公海 === 0)).toBe(true);
+  });
+  it("每个节点流出去的：线索流失、判无效（拆出来，不重算进流失）、退回公海（还没结局）各数各的", () => {
+    const r = 线索节点of([
+      { phase: "线索", node: "潜客培育", result: "线索流失" },
+      { phase: "线索", node: "潜客培育", result: null, pooledAt: new Date() },
+      { phase: "线索", node: "线索验证", result: "线索流失", 判无效: true },
+      { phase: "线索", node: "线索验证", result: "线索流失", pooledAt: new Date() }, // 流失后又进了公海：算流失，不重算退回
+      { phase: "线索", node: "线索推进", result: null },
+    ]);
+    expect(r.map((x) => [x.count, x.流失, x.判无效, x.退回公海])).toEqual([[0, 1, 0, 1], [0, 1, 1, 0], [1, 0, 0, 0]]);
+  });
+  it("线索转商机of：进了商机 / 订单的，有结局也算（丢单、成功交付），线索流失的不算", async () => {
+    const { 线索转商机of } = await import("../src/app/(app)/overview/project-stats");
+    expect(线索转商机of([
+      { phase: "线索", node: "潜客培育", result: null },
+      { phase: "商机", node: "共识方案", result: null },
+      { phase: "商机", node: "共识方案", result: "丢单" },
+      { phase: "订单", node: "生产备货", result: "成功交付" },
+      { phase: "线索", node: "潜客培育", result: "线索流失" },
+    ])).toBe(3);
   });
 });
 
@@ -206,7 +238,7 @@ describe("库里取数和权限", () => {
   const 内容 = (d: { 行: { 内容: string }[] }) => d.行.map((x) => x.内容).sort();
 
   it("看板的人：业务员强制只看自己，带了别人也不认；不是企业版不给选", async () => {
-    expect(await 看板的人({ id: 外人, role: "SALES" }, 老板)).toEqual({ 只看: 外人, 选项: null });
+    expect(await 看板的人({ id: 外人, role: "SALES" }, 老板)).toEqual({ 只看: 外人, 谁: [外人], 选项: null });
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await 看板的人({ id: 老板, role: "ADMIN" }, 外人)).toEqual({ 选项: null });
   });
@@ -214,21 +246,30 @@ describe("库里取数和权限", () => {
   it("看板的人：老板默认看全部，能选所有人（自己排第一）；选的人不在范围里当没选", async () => {
     const r = await 看板的人({ id: 老板, role: "ADMIN" });
     expect(r.只看).toBeUndefined();
+    expect(r.谁).toBeUndefined(); // 全部 = 不限
     expect(r.选项?.map((o) => o.value)[0]).toBe(老板);
     expect(r.选项?.map((o) => o.value).sort()).toEqual([老板, 经理, 小王, 外人].sort());
     expect((await 看板的人({ id: 老板, role: "ADMIN" }, 小王)).只看).toBe(小王);
     expect((await 看板的人({ id: 老板, role: "ADMIN" }, "nobody")).只看).toBeUndefined();
   });
 
-  it("看板的人：按组织看开着时，经理只能选自己和下属，选外人当没选", async () => {
-    await setSetting("enterprise.rule.org_scope", true);
-    const r = await 看板的人({ id: 经理, role: "SALES" }, 外人);
-    expect(r.只看).toBeUndefined();
-    expect(r.选项?.map((o) => o.value).sort()).toEqual([经理, 小王].sort());
-    // 没开按组织看：经理的数据只到自己，不给下拉
-    await setSetting("enterprise.rule.org_scope", false);
-    忘掉企业版范围();
-    expect(await 看板的人({ id: 经理, role: "SALES" }, 小王)).toEqual({ 只看: undefined, 选项: null });
+  it("看板的人：经理只能选自己和下属，「全部」= 这一圈，选外人当没选；开没开按组织看都一样", async () => {
+    for (const 开 of [true, false]) {
+      await setSetting("enterprise.rule.org_scope", 开);
+      忘掉企业版范围();
+      const r = await 看板的人({ id: 经理, role: "SALES" }, 外人);
+      expect(r.只看).toBeUndefined();
+      expect([...(r.谁 ?? [])].sort()).toEqual([经理, 小王].sort());
+      expect(r.选项?.map((o) => o.value)).toEqual([经理, 小王]); // 自己排第一
+      expect(await 看板的人({ id: 经理, role: "SALES" }, 小王)).toMatchObject({ 只看: 小王, 谁: [小王] });
+    }
+  });
+
+  it("复盘待办of 服务端兜底：按组织看没开（数据层不拦人）时，经理的「全部」也只数自己 + 下属", async () => {
+    const { 谁 } = await 看板的人({ id: 经理, role: "SALES" });
+    const 经 = await 以谁的身份(经理, () => 复盘待办of(谁));
+    expect(内容(经)).toEqual(["小王发资料", "小王回访", "经理发资料", "经理回访"].sort());
+    expect(经.计数).toEqual({ overdue: 2, today: 0, week: 0, all: 4 });
   });
 
   it("复盘待办of：老板看全员、选了谁只看到谁的；做完的不算；逾期在前、没时间的最后", async () => {
@@ -272,7 +313,7 @@ describe("库里取数和权限", () => {
     expect(全.行.filter((x) => x.ownerId === 外人).every((x) => x.projectName === null)).toBe(true);
   });
 
-  it("项目现在 / 项目一段 带只看：只数这个人负责的，公海的不算；线索节点跟着走", async () => {
+  it("项目现在 / 项目一段 带只看：只数这个人负责的，公海的不算停着、算退回公海；线索节点跟着走", async () => {
     const 建 = (ownerId: string, phase: string, node: string, extra: Record<string, unknown> = {}) =>
       prisma.project.create({ data: { name: `${ownerId}-${node}`, customerId: 客户[ownerId], ownerId, creatorId: ownerId, phase, node, ...extra } });
     await 建(小王, "线索", "潜客培育");
@@ -282,25 +323,37 @@ describe("库里取数和权限", () => {
     await 建(外人, "线索", "潜客培育");
     await 建(外人, "订单", "生产备货");
 
+    const 判了 = await 建(外人, "线索", "线索验证", { result: "线索流失" });
+    await prisma.entLeadVerify.create({ data: { projectId: 判了.id, finalResult: "无效线索" } });
+    await 建(外人, "线索", "潜客培育", { result: "线索流失" });
+
     const 全 = await 项目现在("CNY");
-    expect(全.线索节点.map((x) => x.count)).toEqual([3, 1, 0]);
+    expect(全.线索节点.map((x) => [x.count, x.流失, x.判无效, x.退回公海])).toEqual([[2, 1, 0, 1], [1, 0, 1, 0], [0, 0, 0, 0]]);
+    expect(全.线索转商机).toBe(2);
     const 王 = await 项目现在("CNY", 小王);
     expect(王.阶段.map((x) => [x.phase, x.count])).toEqual([["线索", 2], ["商机", 1], ["订单", 0]]);
-    expect(王.线索节点.map((x) => x.count)).toEqual([1, 1, 0]);
+    expect(王.线索节点.map((x) => [x.count, x.退回公海])).toEqual([[1, 1], [1, 0], [0, 0]]);
+    expect(王.线索转商机).toBe(1);
+    // 一串人（上级的「全部」）= 这几个人的合起来
+    const 两人 = await 项目现在("CNY", [小王, 外人]);
+    expect(两人.线索节点.map((x) => x.count)).toEqual(全.线索节点.map((x) => x.count));
+    expect(两人.线索转商机).toBe(2);
 
     const from = dayjs().startOf("month").toDate();
     const to = dayjs().endOf("month").toDate();
     const 段王 = await 项目一段(from, to, "day", "CNY", 小王);
     const 段全 = await 项目一段(from, to, "day", "CNY");
-    expect(段王.线索节点.map((x) => x.count)).toEqual([1, 1, 0]); // 公海那个不算在小王头上
+    expect(段王.线索节点.map((x) => x.count)).toEqual([1, 1, 0]); // 公海那个不算停在小王这里
+    expect(段王.线索节点.map((x) => x.退回公海)).toEqual([1, 0, 0]); // 算成从潜客培育退回公海
+    expect(段王.线索转商机).toBe(1);
     expect(段全.线索节点.reduce((s, x) => s + x.count, 0)).toBeGreaterThan(段王.线索节点.reduce((s, x) => s + x.count, 0));
   });
 });
 
 describe("首页「+」摆哪几项（lib/enterprise/composer-plus.ts）", () => {
-  it("桌面：附件、名片、查重、粘一段聊天、背调；手机：没有文本附件，名片叫拍名片；不摆的键不进菜单", async () => {
+  it("桌面：附件、名片、查重、背调（粘一段聊天 10-29 拿掉了）；手机：没有文本附件，名片叫拍名片；不摆的键不进菜单", async () => {
     const { 加号菜单项 } = await import("@/lib/enterprise/composer-plus");
-    expect(加号菜单项({ 摆附件: true, 拍照: false, 摆粘贴: true, 摆背调: true }).map((x) => x.label)).toEqual(["附件", "名片", "查重", "粘一段聊天", "背调"]);
-    expect(加号菜单项({ 摆附件: false, 拍照: true, 摆粘贴: false, 摆背调: false }).map((x) => x.label)).toEqual(["拍名片", "查重"]);
+    expect(加号菜单项({ 摆附件: true, 拍照: false, 摆背调: true }).map((x) => x.label)).toEqual(["附件", "名片", "查重", "背调"]);
+    expect(加号菜单项({ 摆附件: false, 拍照: true, 摆背调: false }).map((x) => x.label)).toEqual(["拍名片", "查重"]);
   });
 });

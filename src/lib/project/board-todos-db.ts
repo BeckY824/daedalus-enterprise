@@ -7,7 +7,8 @@ import { 挑一页, 复盘待办每页, type 复盘待办, type 复盘待办行,
 
 /**
  * 复盘页「待办」页签取数（P15）。查询全走带限定的 prisma：业务员看不到别人客户上的事项，和「数据」页签同一层限定；
- * 只看 再按负责人筛（业务员由 看板的人 强制成本人）。
+ * 只看 再按负责人筛：一个人的 id，或 看板的人 给的 谁（一组人；业务员强制成本人、上级是自己 + 下属）——
+ * 这一层是服务端兜底，不靠「按组织看客户」开着。
  * 不限定时轻列表走计划页同一个短时缓存（同一个键），30 人同时开复盘页不各查一遍。
  * 分页在服务端：轻列表上挑出当页的 20 条（挑一页），只取这 20 条的详情和它们客户的进行中项目。
  */
@@ -15,13 +16,13 @@ import { 挑一页, 复盘待办每页, type 复盘待办, type 复盘待办行,
  * 只要四张卡的条数时（首页「今日待办」卡）：同一份轻列表、同一层限定、同一个 挑一页，
  * 所以首页卡上的数 = 点进 /overview?f=today（或 f=overdue）列出来的条数。不取详情
  */
-export async function 复盘待办计数(只看?: string, now: ReturnType<typeof dayjs> = dayjs()): Promise<复盘待办["计数"]> {
+export async function 复盘待办计数(只看?: string | readonly string[], now: ReturnType<typeof dayjs> = dayjs()): Promise<复盘待办["计数"]> {
   const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
   return 挑一页(await 未完成轻列表(prisma, 共用), { 只看, now }).计数;
 }
 
 export async function 复盘待办of(
-  只看?: string,
+  只看?: string | readonly string[],
   q: { 类型?: 待办类型; 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number } = {},
 ): Promise<复盘待办> {
   const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
