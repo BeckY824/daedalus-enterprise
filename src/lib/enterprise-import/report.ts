@@ -78,14 +78,24 @@ export type 试跑报告 = {
  * 电话按号键整串比；带分机认主号那种细的，正式写入时 查完再写 里再认一次
  */
 export async function 读本地索引(源: 来源): Promise<本地索引> {
-  const [客户们, 商机们, 对照们] = await 看全部(async () =>
+  const [客户们, 商机们, 对照们, 渠道们] = await 看全部(async () =>
     Promise.all([
       prisma.customer.findMany({ select: { id: true, name: true, phone: true } }),
       prisma.opportunity.findMany({ select: { id: true, customerId: true, name: true } }),
       prisma.entExternalRef.findMany({ where: { source: 源 }, select: { entity: true, externalId: true, targetId: true, fingerprint: true } }),
+      prisma.channel.findMany({ where: { active: true }, select: { id: true, name: true, platform: true } }),
     ]),
   );
-  const 索引: 本地索引 = { 引用: new Map(), 指纹: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map(), 客户状态: await 可选项("custStatus") };
+  const 索引: 本地索引 = {
+    引用: new Map(),
+    指纹: new Map(),
+    客户名: new Map(),
+    客户号: new Map(),
+    商机名: new Map(),
+    客户状态: await 可选项("custStatus"),
+    渠道: 渠道索引(渠道们),
+    分配方式: await 可选项("custAssign"),
+  };
   const 加 = (m: Map<string, string[]>, k: string, id: string) => {
     if (!k) return;
     const a = m.get(k);
@@ -102,6 +112,25 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
     索引.指纹!.set(`${r.entity}|${r.externalId}`, r.fingerprint);
   }
   return 索引;
+}
+
+/**
+ * 来源对渠道用的索引：渠道全称（企业版是「渠道名称|来源」）认，「渠道名称」那一段也认；
+ * 一段对上几个渠道的不认（不猜），全称对上的优先
+ */
+export function 渠道索引(渠道们: readonly { id: string; name: string; platform?: string | null }[]): Map<string, string> {
+  const 全称 = new Map<string, string>();
+  const 段 = new Map<string, string | null>();
+  for (const c of 渠道们) {
+    const k = 名键(c.name);
+    if (k) 全称.set(k, c.id);
+    const p = 名键(c.platform || c.name.split("|")[0] || "");
+    if (p && p !== k) 段.set(p, 段.has(p) && 段.get(p) !== c.id ? null : c.id);
+  }
+  const m = new Map<string, string>();
+  for (const [k, id] of 段) if (id) m.set(k, id);
+  for (const [k, id] of 全称) m.set(k, id);
+  return m;
 }
 
 /* ───────────────────────── 试跑 ───────────────────────── */
