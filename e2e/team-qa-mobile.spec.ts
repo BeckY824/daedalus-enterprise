@@ -2,7 +2,7 @@
  * 手机伴侣 /m 的排版压力走查（2026-10-19 团队版主动排查）：几种常见手机宽度 × 刁钻数据，每一屏都用 layout-audit 量一遍。
  *
  *   宽度：360（常见安卓）、375（iPhone SE / mini）、412（大屏安卓）、430（iPhone Pro Max）
- *   数据：超长英文公司名、一长串不带空格的、阿拉伯文、俄文、emoji、超长中文公司名、超大金额、超长订单号 / 商机名、
+ *   数据：超长英文公司名、一长串不带空格的、阿拉伯文、俄文、emoji、超长中文公司名、超大金额、超长商机名、
  *        长邮箱、长网址的跟进、公海客户、同事记的跟进、过期计划、同步被拒的几条、超长团队名 / 账号名
  *
  * 发现的问题写进 E2E_SHOT_DIR/手机排版问题.json（没有就写进 test 输出目录），有问题的那一屏截图。
@@ -29,7 +29,6 @@ const 名们 = {
   长中: "深圳市宝安区福永街道某某照明电器科技股份有限公司东莞分公司（外贸二部）",
 };
 const 长邮箱 = "procurement.department.lighting.projects@alrashid-trading-and-contracting.example.com";
-const 长单号 = "PI-2026-10-19-ALRASHID-RIYADH-0001234567890";
 const 长商机 = "沙特利雅得新城 NEOM 配套道路照明二期项目 LED 路灯 12000 套 + 智能控制系统 + 五年质保";
 const 长网址 = "https://www.alrashid-trading-and-contracting.example.com/procurement/tenders/2026/lighting/specification-sheet-v3-final-final.pdf";
 
@@ -44,10 +43,8 @@ function 压力数据(): 种子行[] {
     行.push({ t: "Contact", k: `ct-${k}`, r: { id: `ct-${k}`, customerId: id, name: `${name} 采购经理 Mohammed bin Abdullah Al-Rashid`, position: "Senior Procurement Manager (Lighting & Electrical)", phone: "+966 50 000 0000", email: 长邮箱, wechat: "", isPrimary: true } });
     行.push({ t: "Opportunity", k: `o-${k}`, r: { id: `o-${k}`, customerId: id, name: 长商机, stage: "方案报价", status: "OPEN", amount: 123456789012.34, ownerId: "acct_li", createdAt: 现在 - 天, updatedAt: 现在 - 天, activityAt: 现在 - 天 } });
     行.push({ t: "OpportunityMoney", k: `o-${k}`, r: { opportunityId: `o-${k}`, currency: i % 2 ? "USD" : "AED" } });
-    行.push({ t: "TradeOrder", k: `t-${k}`, r: { id: `t-${k}`, no: 长单号, customerId: id, ownerId: "acct_li", amount: 98765432.1, currency: "USD", createdAt: 现在 - 天, updatedAt: 现在 - 天 } });
     行.push({ t: "FollowUp", k: `f-${k}-1`, r: { id: `f-${k}-1`, customerId: id, type: "WECHAT", content: `对方要规格书：${长网址}\n${"很长的一段沟通记录，".repeat(12)}`, occurredAt: 现在 - 2 * 天, ownerId: "acct_wang", opportunityId: `o-${k}` } });
     行.push({ t: "FollowUp", k: `f-${k}-2`, r: { id: `f-${k}-2`, customerId: id, type: "WHATSAPP", content: "Supercalifragilisticexpialidocious".repeat(4), occurredAt: 现在 - 3 * 天, ownerId: "acct_li" } });
-    行.push({ t: "FollowUpOrder", k: `f-${k}-2`, r: { followUpId: `f-${k}-2`, orderId: `t-${k}`, nodeIdx: 0 } });
     // 过期 / 今天 / 之后的计划：今天页三组都有
     行.push({ t: "FollowPlan", k: `p-${k}`, r: { id: `p-${k}`, customerId: id, subject: `${长商机}——确认样品和报价`, plannedAt: 现在 + (i - 3) * 天, method: "微信沟通", done: false, ownerId: "acct_li" } });
   }

@@ -1,8 +1,8 @@
 /**
  * 大库性能（2026-10-06 测试分期第 B 期 B.4）。平时跳过：BIG=1 npx vitest run tests/big-perf.test.ts
  *
- * 造 2 万位客户（一半带外贸档案、一部分带联系人）、10 万条跟进、2 千张订单，量这几样要多久：
- * 客户列表一页 + 总数、关键词搜索（会搜到联系人 / 档案 / 订单号那几路）、按国家筛、导出（取数 + 写 xlsx）、
+ * 造 2 万位客户（一半带外贸档案、一部分带联系人）、10 万条跟进、2 千笔签约，量这几样要多久：
+ * 客户列表一页 + 总数、关键词搜索（会搜到联系人 / 档案那几路；订单号那路随订单表 2026-10-29 删了）、按国家筛、导出（取数 + 写 xlsx）、
  * 导入 2 万行、撤销这一批（订单一览随订单页 2026-10-28 删了）。结果打在控制台里，过关线写在断言上（宽松，防的是数量级的退化）。
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
@@ -67,15 +67,13 @@ describe.runIf(process.env.BIG === "1")("大库性能（B.4）", () => {
       await prisma.$executeRawUnsafe(`INSERT INTO "FollowUp" (id, type, title, content, status, occurredAt, customerId, ownerId, createdAt, updatedAt) VALUES ${值.join(",")}`);
     }
     for (let i = 0; i < 订单数; i += 500) {
-      const 签 = [], 单 = [];
+      const 签 = [];
       for (let j = i; j < Math.min(i + 500, 订单数); j++) {
         签.push(`('k${j}', 'c${j}', ${1000 + j}, datetime('now', '-${j % 300} days'), datetime('now'), datetime('now'))`);
-        单.push(`('o${j}', 'PI-${j}', 'c${j}', '${jia.id}', ${1000 + j}, 'USD', 'T/T', 'k${j}', datetime('now'), datetime('now'))`);
       }
       await prisma.$executeRawUnsafe(`INSERT INTO "Contract" (id, customerId, amount, signedAt, createdAt, updatedAt) VALUES ${签.join(",")}`);
-      await prisma.$executeRawUnsafe(`INSERT INTO "TradeOrder" (id, no, customerId, ownerId, amount, currency, payment, contractId, createdAt, updatedAt) VALUES ${单.join(",")}`);
     }
-    结果.push(`造数据（${客户数} 客户 / ${跟进数} 跟进 / ${订单数} 订单）：${Math.round(performance.now() - 起)} ms`);
+    结果.push(`造数据（${客户数} 客户 / ${跟进数} 跟进 / ${订单数} 签约）：${Math.round(performance.now() - 起)} ms`);
   }, 600_000);
 
   afterAll(async () => {
@@ -92,10 +90,9 @@ describe.runIf(process.env.BIG === "1")("大库性能（B.4）", () => {
       return Promise.all([prisma.customer.findMany({ where, orderBy: { createdAt: "desc" }, take: 20, select: 客户行字段 }), prisma.customer.count({ where })]);
     };
     await 计时("客户列表第一页 + 总数", () => 一页({}), 1500);
-    const [, n1] = await 计时("搜一个公司名（含联系人 / 档案 / 订单号几路）", () => 一页({ keyword: "Company 1234" }), 3000);
+    const [, n1] = await 计时("搜一个公司名（含联系人 / 档案几路）", () => 一页({ keyword: "Company 1234" }), 3000);
     expect(n1).toBeGreaterThan(0);
     await 计时("搜联系人名", () => 一页({ keyword: "Contact 15" }), 3000);
-    await 计时("搜订单号", () => 一页({ keyword: "PI-1999" }), 3000);
     await 计时("按国家筛", () => 一页({ country: "阿联酋" }), 1500);
   }, 120_000);
 

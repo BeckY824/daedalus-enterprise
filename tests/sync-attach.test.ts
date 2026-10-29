@@ -88,7 +88,7 @@ const 桌面传: 传输 = (方法, 路径, body) => 调中转(账号[临时.谁]
 async function 清空(d: PrismaClient) {
   for (const t of ["AiMessage", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerClaim", "CustomerPool"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.user.create({ data: { id: "cmusc55660000dulko96ek8kr", email: "admin", name: "管理员", role: "ADMIN", password: "x", title: "管理员", createdAt: new Date("2026-10-01T00:00:00Z") } });
 }
 // 产品图片在同步一轮之后后台传（质量审 #93 D）：测试里等它传完再往下看

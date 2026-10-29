@@ -125,7 +125,7 @@ export const BUSINESS_PRESETS: Record<string, BusinessConfig> = {
       与家人商议 → 客户内部讨论，决定报名 → 决定下单。「已加微信」对海外客户
       多半不是微信，改成中性的「已建联」。值本身不动，只改显示名。
     */
-    // 已签约 → 已下单（2026-10-05）：外贸模版下签约就是订单，见 lib/order-contract.ts
+    // 已签约 → 已下单（2026-10-05）：外贸模版下签约界面上叫订单（签约叫）
     statusLabels: { 已加微信: "已建联", 已试听: "已寄样", 与家人商议: "内部讨论", 已决定报名: "已决定下单", 已签约: "已下单" },
     stageLabels: { 初步沟通: "询盘", 需求确认: "比价中", 方案报价: "已报价", 谈判审核: "寄样", 赢单成交: "客户确认" },
     template: "trade",
@@ -277,8 +277,7 @@ export function 阶段名问题(b: 有阶段名): Record<string, string> {
 
 /**
  * 外贸模版下「签约」就是「订单」（2026-10-05 外贸客户建议：「把客户详情里面的签约名称改成订单」）。
- * 一笔签约同时是一张订单（lib/order-contract.ts），界面上叫订单、多出订单号 / 付款方式 / 供应商；
- * 存的还是签约，业绩、首页、数据页照签约算。订单开关关着（lib/features.ts）时一律照旧叫签约
+ * 只是叫法：存的就是签约（原来另写一张订单表、多出订单号 / 付款方式 / 供应商，2026-10-29 连表删了），业绩、首页、数据页照签约算。订单开关关着（lib/features.ts）时一律照旧叫签约
  */
 export function 外贸订单(b: Pick<BusinessConfig, "template"> | null | undefined): boolean {
   return b?.template === "trade" && 订单;

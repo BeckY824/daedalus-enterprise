@@ -1,5 +1,5 @@
 /**
- * 手机伴侣只读看团队的产品图片（2026-10-22 D-24）：客户详情列这位客户商机、订单上的图，前几张自动取来当缩略图，点开全屏看。
+ * 手机伴侣只读看团队的产品图片（2026-10-22 D-24）：客户详情列这位客户商机上的图（订单那份 2026-10-29 随订单表删了），前几张自动取来当缩略图，点开全屏看。
  *
  * 和 mobile-create 一样不走登录 + 授权（e2e/mobile-seed.ts 灌好「已经连上团队」的状态，团队钥匙是 "A"×43、编号 0）；
  * 图片通道（/api/sync/attach）用 page.route 接住，回桌面端 封附件 封好的密文——和真云端回的是同一份字节。
@@ -27,7 +27,7 @@ const 图 = readFileSync(path.join(__dirname, "fixtures/cards/02-en-uk.jpg"));
 const sha = createHash("sha256").update(图).digest("hex");
 const 密文 = (id: string) => 封附件(图, "A".repeat(43), 0, { teamId: "t_e2e", id, sha256: sha });
 
-test("客户详情：商机、订单上的产品图片自动取来当缩略图，点开全屏看；还在上传的说清楚", async ({ page }) => {
+test("客户详情：商机上的产品图片自动取来当缩略图，点开全屏看；还在上传的说清楚", async ({ page }) => {
   const 问过: string[] = [];
   await page.route("**/api/sync/attach?**", (r) => {
     const u = new URL(r.request().url());
@@ -40,9 +40,8 @@ test("客户详情：商机、订单上的产品图片自动取来当缩略图�
     行们: [
       { t: "Customer", k: "c1", r: { id: "c1", name: "Atlas Home", salesOwnerId: "acct_li", followStatus: "意向较高" } },
       { t: "Opportunity", k: "o1", r: { id: "o1", customerId: "c1", name: "春季家居", amount: 186000, stage: "方案报价", status: "OPEN" } },
-      { t: "TradeOrder", k: "t1", r: { id: "t1", customerId: "c1", no: "PI-001" } },
       { t: "Attachment", k: "a1", r: { id: "a1", opportunityId: "o1", name: "样品正面.jpg", mime: "image/jpeg", size: 图.length, sha256: sha, createdAt: 1760000000000 } },
-      { t: "Attachment", k: "a2", r: { id: "a2", orderId: "t1", name: "包装.jpg", mime: "image/jpeg", size: 图.length, sha256: sha, createdAt: 1760000100000 } },
+      { t: "Attachment", k: "a2", r: { id: "a2", opportunityId: "o1", name: "包装.jpg", mime: "image/jpeg", size: 图.length, sha256: sha, createdAt: 1760000100000 } },
       { t: "Attachment", k: "a_up", r: { id: "a_up", opportunityId: "o1", name: "刚拍的.jpg", mime: "image/jpeg", size: 图.length, sha256: sha, createdAt: 1760000200000 } },
     ],
   });
@@ -53,14 +52,14 @@ test("客户详情：商机、订单上的产品图片自动取来当缩略图�
   await expect(卡.getByText("3 张")).toBeVisible();
   // 前几张自动取：解开、核过 sha256 的显示成缩略图；还在上传的留占位
   await expect(卡.locator("img")).toHaveCount(2);
-  await expect(卡.getByText("订单 PI-001")).toBeVisible();
+  await expect(卡.getByText("春季家居").first()).toBeVisible();
   expect(问过.every((x) => x.endsWith("@m_e2e"))).toBe(true);
   await 截(page, "mobile-images-详情.png");
 
   await 卡.getByRole("button", { name: "看图片 包装.jpg" }).click();
   const 大图 = page.getByRole("dialog", { name: "包装.jpg" });
   await expect(大图.locator("img")).toBeVisible();
-  await expect(大图.getByText("订单 PI-001 ·")).toBeVisible();
+  await expect(大图.getByText("春季家居 ·")).toBeVisible();
   await expect(大图).toHaveCSS("opacity", "1");
   await 截(page, "mobile-images-大图.png");
   await 大图.click();

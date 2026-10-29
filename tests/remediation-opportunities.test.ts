@@ -36,11 +36,12 @@ it("W-008 外贸三个入口不能无订单标成已转订单", async () => {
   }
   expect(await prisma.auditLog.count()).toBe(0);
 });
-it("W-008 改阶段不能绕过已有订单的回退限制", async () => {
+it("W-008 改阶段不能绕过已转订单的回退限制（订单表 2026-10-29 删了，认签约连着的商机）", async () => {
+  await setSetting("business", BUSINESS_PRESETS["外贸出口"]); invalidateSettingsCache();
   const o = await create({ status: "WON", stage: "赢单成交", probability: 100 });
   const c = await prisma.contract.create({ data: { customerId, amount: 100, signedAt: new Date() } });
-  await prisma.tradeOrder.create({ data: { no: "QA-LINKED", customerId, ownerId: state.user.id, contractId: c.id, opportunityId: o.id, amount: 100 } });
-  expect(await moveStage(o.id, "方案报价")).toMatchObject({ ok: false, error: expect.stringContaining("QA-LINKED") });
+  await prisma.contractWin.create({ data: { opportunityId: o.id, contractId: c.id, prevStage: "方案报价", prevProbability: 75 } });
+  expect(await moveStage(o.id, "方案报价")).toMatchObject({ ok: false, error: expect.stringContaining("已经转成订单") });
   expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("WON");
 });
 it("J-094 相同阶段重复提交不重复写库/审计", async () => {

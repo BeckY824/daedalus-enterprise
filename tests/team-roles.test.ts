@@ -94,7 +94,7 @@ async function 种数据() {
   for (const k of Object.keys(ids)) delete ids[k];
   for (const t of ["AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool", "CustomerClaim"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   // 三个人在本机库里都是管理员（同步进来、改身份之后的样子），等 对齐角色 来定谁是业务员
   for (const [id, name] of [[老板, "老板"], [小王, "小王"], [小李, "小李"]]) {
     await raw.user.create({ data: { id, email: `${id}@x.com`, name, password: "x", role: "ADMIN" } });
@@ -317,28 +317,18 @@ describe("业务员只看自己的 + 公海", () => {
     expect(await db.customer.count()).toBe(3);
   });
 
-  it("订单（2026-10-05 打开）：订单一览、外贸档案、订单上的跟进，业务员只看得到自己客户的", async () => {
-    for (const [k, owner] of [["小王的客户", 小王], ["小李的客户", 小李]] as const) {
-      const o = await raw.tradeOrder.create({ data: { no: `PI-${k}`, customerId: ids[k], ownerId: owner, amount: 1, currency: "USD" } });
-      await raw.customerExtra.create({ data: { customerId: ids[k], country: "美国" } });
-      const f = await raw.followUp.findFirstOrThrow({ where: { customerId: ids[k] } });
-      await raw.followUpOrder.create({ data: { followUpId: f.id, orderId: o.id, nodeIdx: 0 } });
-    }
+  it("外贸档案：业务员只看得到自己客户的（订单表、订单上的跟进 2026-10-29 删了，迁移 066）", async () => {
+    for (const k of ["小王的客户", "小李的客户"]) await raw.customerExtra.create({ data: { customerId: ids[k], country: "美国" } });
     try {
       当("wang");
       进团队();
-      expect((await db.tradeOrder.findMany({ select: { no: true } })).map((x) => x.no)).toEqual(["PI-小王的客户"]);
       expect(await db.customerExtra.count()).toBe(1);
-      expect(await db.followUpOrder.count()).toBe(1);
       出团队();
-      expect(await db.tradeOrder.count()).toBe(2);
+      expect(await db.customerExtra.count()).toBe(2);
     } finally {
-      await raw.tradeOrder.deleteMany();
       await raw.customerExtra.deleteMany();
     }
   });
-
-  // 供应商详情（2026-10-06 复查）那条：供应商页连同 lib/supplier-db 2026-10-28 已删，用例跟着删
 
   it("二审：业务员在编辑框里把客户交给同事、同时改了 WhatsApp——保存成功，其余档案格不被清掉", async () => {
     const id = ids["小王的客户"];
@@ -361,30 +351,6 @@ describe("业务员只看自己的 + 公海", () => {
       await raw.customerExtra.deleteMany();
       await raw.auditLog.deleteMany({ where: { at: { gte: 起 } } }); // 后面的用例数日志条数
       登录的.user = { ...登录的.user, id: "acct_wang" };
-    }
-  });
-
-  it("回归核对 W-041 / W-010：订单节点、单据按客户限定；业务员编的默认订单号不撞同事看不到的单（W-048 的 list_suppliers 2026-10-28 已删）", async () => {
-    const 今 = new Date();
-    const 日 = `${今.getFullYear()}${String(今.getMonth() + 1).padStart(2, "0")}${String(今.getDate()).padStart(2, "0")}`;
-    for (const [k, owner] of [["小王的客户", 小王], ["小李的客户", 小李]] as const) {
-      // 小李那张单的号就是今天的第 1 号：小王看不到它，但编号时不能再编出同一个号
-      const o = await raw.tradeOrder.create({ data: { no: owner === 小李 ? `${日}-1` : `N-${k}`, customerId: ids[k], ownerId: owner, nodes: { create: [{ idx: 1, name: "询盘" }] }, docs: { create: [{ name: "PI", sort: 0 }] } } });
-      void o;
-    }
-    try {
-      当("wang");
-      进团队();
-      expect(await db.tradeOrderNode.count()).toBe(1);
-      expect(await db.tradeOrderDoc.count()).toBe(1);
-      const { 写签约的订单 } = await import("@/lib/order-contract");
-      const k = await raw.contract.create({ data: { customerId: ids["小王的客户"], amount: 1, signedAt: 今 } });
-      const 单 = await db.$transaction((tx) => 写签约的订单(tx, { 签约id: k.id, customerId: ids["小王的客户"], ownerId: 小王, amount: 1, currency: "USD", 附加: {} }));
-      expect(单?.no).toBe(`${日}-2`);
-    } finally {
-      出团队();
-      await raw.tradeOrder.deleteMany();
-      await raw.contract.deleteMany({ where: { customerId: ids["小王的客户"], amount: 1 } });
     }
   });
 
@@ -414,24 +380,6 @@ describe("业务员只看自己的 + 公海", () => {
     上线前测试 4.2「AI 回答只有自己的 + 公海」：AI 的工具读库走的是同一个 prisma（限定层在 Prisma 上），
     这里把问 AI 时最常用的几把工具挨个跑一遍——找客户、按名字读客户、搜跟进、列商机、盯盘——答出来的只有看得到的
   */
-  it("订单的其余出口（测试分期 E.4）：AI 按订单号找客户，业务员只拿到自己客户的（订单页、list_orders 10-28 已删）", async () => {
-    for (const [k, owner] of [["小王的客户", 小王], ["小李的客户", 小李]] as const) {
-      await raw.tradeOrder.create({ data: { no: `PI-${k}`, customerId: ids[k], ownerId: owner, amount: 1, currency: "USD" } });
-    }
-    try {
-      当("wang");
-      进团队();
-      const ctx: ToolContext = { userId: 小王, userName: "小王", b: await getBusiness(), recordOffset: 0, proposals: [] };
-      const 跑 = async (名: string, args: Record<string, unknown>) => JSON.stringify((await TOOL_MAP.get(名)!.run(args, ctx)).data);
-      // 订单号这条路是 C.2 新加的：报同事的 PI 号也不能把那位客户带出来
-      expect(await 跑("search_customers", { query: "PI-小李" }), "按订单号找客户").not.toContain("小李的客户");
-      expect(await 跑("search_customers", { query: "PI-小王" })).toContain("小王的客户");
-    } finally {
-      出团队();
-      await raw.tradeOrder.deleteMany();
-    }
-  });
-
   it("AI 的工具也只答看得到的：找客户、读别人的客户、搜跟进、列商机、盯盘都没有同事的", async () => {
     当("wang");
     进团队();

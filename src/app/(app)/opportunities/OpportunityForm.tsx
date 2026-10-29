@@ -251,7 +251,7 @@ export default function OpportunityForm({
           <Col span={8}>
             <Form.Item name="stage" label="阶段" extra={外贸订单(b) && editing?.status !== "WON" ? "客户确认了，在商机列表里点「转为订单」" : undefined}>
               <Select
-                /* 外贸：赢单成交（客户确认）= 转为订单，要走订单框记下订单号和金额——这里直接选只会得到一张没有订单的「已转订单」（2026-10-05 复查） */
+                /* 外贸：赢单成交（客户确认）= 转为订单，要走订单框记下金额——这里直接选只会得到一张没有订单的「已转订单」（2026-10-05 复查） */
                 options={OPP_STAGES.filter((s) => !外贸订单(b) || s !== "赢单成交" || editing?.stage === "赢单成交").map((s) => ({ value: s, label: stageLabel(b, s) }))}
                 /*
                   和拖拽同一个规矩（moveStage）：概率只在人没动过时跟着阶段变，手填的 75% 不冲掉；

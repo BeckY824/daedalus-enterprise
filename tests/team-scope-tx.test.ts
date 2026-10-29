@@ -38,7 +38,7 @@ beforeAll(async () => {
   process.env.CRM_DATA_DIR = 临时.dir;
   for (const t of ["AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool", "CustomerClaim"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.user.create({ data: { id: 老板, email: "boss@x.com", name: "老板", password: "x", role: "ADMIN" } });
   await raw.user.create({ data: { id: 小王, email: "wang@x.com", name: "小王", password: "x", role: "SALES" } });
   await raw.customer.create({ data: { name: "小王的客户", phone: "13800000001", salesOwnerId: 小王 } });

@@ -8,7 +8,7 @@ import { 规范串 } from "./canon";
 // 只读 process.env、不牵 node 模块：浏览器里永远是「关」（企业版不走手机端同步，见下面 企业版附件父表）
 import { 企业版 } from "../enterprise/switch";
 export const 范围字段: Record<string, readonly string[]> = {
-  User: [], Setting: [], Channel: [], Supplier: [],
+  User: [], Setting: [], Channel: [],
   Customer: ["salesOwnerId", "channelOwnerId"],
   CustomerPool: ["customerId"], CustomerClaim: ["customerId"], CustomerExtra: ["customerId"],
   // 合并记号跟着被合并的那位走（原来管它的人那台也要收到、好把本机那份收掉）；「不是同一个人」跟着编号小的那位
@@ -19,11 +19,9 @@ export const 范围字段: Record<string, readonly string[]> = {
   Contract: ["customerId"], ContractOwner: ["contractId"], ContractMoney: ["contractId"], ContractWin: ["opportunityId", "contractId"],
   FollowUp: ["customerId", "opportunityId", "contactId"], FollowUpSource: ["followUpId"],
   Task: ["customerId"], FollowPlan: ["customerId"], AuditLog: ["userId", "entity", "entityId"],
-  Quote: ["opportunityId"], QuoteLine: ["quoteId"], SupplierQuote: ["opportunityId"],
-  TradeOrder: ["customerId", "opportunityId", "contractId"], TradeOrderNode: ["orderId"], TradeOrderDoc: ["orderId"], TradeOrderPurchase: ["orderId"],
-  FollowUpOrder: ["followUpId", "orderId"],
-  // 产品图片挂在商机或订单上（二选一），跟着它走
-  Attachment: ["opportunityId", "orderId"],
+  Quote: ["opportunityId"], QuoteLine: ["quoteId"],
+  // 产品图片挂在商机上，跟着它走（原来也能挂订单，订单表 2026-10-29 删了）
+  Attachment: ["opportunityId"],
 };
 export const 范围父表: Record<string, Record<string, string>> = {
   CustomerPool: { customerId: "Customer" }, CustomerClaim: { customerId: "Customer" }, CustomerExtra: { customerId: "Customer" },
@@ -34,11 +32,8 @@ export const 范围父表: Record<string, Record<string, string>> = {
   ContractWin: { opportunityId: "Opportunity", contractId: "Contract" },
   FollowUp: { customerId: "Customer", opportunityId: "Opportunity", contactId: "Contact" }, FollowUpSource: { followUpId: "FollowUp" },
   Task: { customerId: "Customer" }, FollowPlan: { customerId: "Customer" },
-  Quote: { opportunityId: "Opportunity" }, QuoteLine: { quoteId: "Quote" }, SupplierQuote: { opportunityId: "Opportunity" },
-  TradeOrder: { customerId: "Customer", opportunityId: "Opportunity", contractId: "Contract" },
-  TradeOrderNode: { orderId: "TradeOrder" }, TradeOrderDoc: { orderId: "TradeOrder" }, TradeOrderPurchase: { orderId: "TradeOrder" },
-  FollowUpOrder: { followUpId: "FollowUp", orderId: "TradeOrder" },
-  Attachment: { opportunityId: "Opportunity", orderId: "TradeOrder" },
+  Quote: { opportunityId: "Opportunity" }, QuoteLine: { quoteId: "Quote" },
+  Attachment: { opportunityId: "Opportunity" },
 };
 /**
  * 企业版联系人附件（2026-10-28）：名片、联系人图片挂在线索（leadId）或联系人（contactId）上，可见规则跟着它走——
@@ -52,7 +47,7 @@ Object.defineProperty(范围父表, "Attachment", {
   enumerable: true,
   get: () => (企业版() ? { ...附件父表, leadId: "Lead", contactId: "Contact" } : 附件父表),
 });
-/** 这张表的元数据带哪些键：企业版的附件多 leadId / contactId（只在有值时带，挂商机 / 订单的老附件元数据不变） */
+/** 这张表的元数据带哪些键：企业版的附件多 leadId / contactId（只在有值时带，挂商机的老附件元数据不变） */
 export const 范围字段之 = (t: string): readonly string[] => (t === "Attachment" && 企业版() ? [...范围字段[t], ...企业版附件字段] : 范围字段[t] ?? []);
 export type 范围元数据 = Pick<改动, "t" | "k" | "o" | "h"> & { fields: Record<string, string | null> };
 /** delSeq：把它删成现在这样的那一包的批次号（deleted 时才有意义；2026-10-14 起记，之前建的索引没有） */
@@ -96,7 +91,7 @@ export function 算范围(row: 范围索引, rows: 范围行表, seen = new Set<
   const key = 行键(row.t, row.k);
   if (seen.has(key) || seen.size > 12) return null;
   const next = new Set(seen).add(key);
-  if (["User", "Setting", "Channel", "Supplier"].includes(row.t)) return { id: "team", owners: [], public: true, routeSeq: row.routeSeq };
+  if (["User", "Setting", "Channel"].includes(row.t)) return { id: "team", owners: [], public: true, routeSeq: row.routeSeq };
   if (row.t === "Customer") {
     const pool = rows.get(行键("CustomerPool", row.k));
     return { id: key, owners: [row.fields.salesOwnerId, row.fields.channelOwnerId].filter((x): x is string => !!x), public: !!pool && !pool.deleted, routeSeq: row.routeSeq };
@@ -143,10 +138,10 @@ export const 范围可读 = (scope: 范围 | null, accountId: string, owner: boo
  */
 export type 读限 = { 部门?: (scope: 范围) => boolean; 进组?: ReadonlySet<string>; 虚线?: ReadonlySet<string>; 虚线加跟进?: boolean };
 /**
- * 互看时同事的客户只许「加跟进」：新建跟进、它的来源 / 关联订单、操作日志。改资料、删、转交、改别人的计划和待办一律不许。
+ * 互看时同事的客户只许「加跟进」：新建跟进、它的来源、操作日志。改资料、删、转交、改别人的计划和待办一律不许。
  * 计划、待办不在里面：服务器看不到它们的负责人（范围元数据只有客户编号），建了以后本人也改不了、勾不掉，干脆不让在同事的客户上建
  */
-export const 互看可加 = new Set(["FollowUp", "FollowUpSource", "FollowUpOrder", "AuditLog"]);
+export const 互看可加 = new Set(["FollowUp", "FollowUpSource", "AuditLog"]);
 /**
  * 写权限先核旧范围，再核新范围。转交出去允许，但不能借伪造归属抢其他私客。
  * 主管（2026-10-20，老板 → 业务主管 → 业务员，中继 SyncMember.role = manager）：「看全部，不管人」——全队客户这条线和自己的一样能改

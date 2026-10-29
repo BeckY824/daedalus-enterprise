@@ -149,7 +149,7 @@ async function 转冲突(tx: Db, seqs: number[], reason: string) {
 export async function 范围冲突数(db: Db): Promise<number> {
   try { await 建范围冲突表(db); return Number((await db.$queryRawUnsafe<{ n: bigint | number }[]>("SELECT COUNT(*) AS n FROM _sync_scope_conflict WHERE resolvedAt IS NULL"))[0]?.n ?? 0); } catch { return 0; }
 }
-const 全队表 = ['User', 'Setting', 'Channel', 'Supplier'];
+const 全队表 = ['User', 'Setting', 'Channel'];
 /** 失去权限后不仅删客户，也清除同步日志、相关导入撤销快照里的旧副本。
  * 失权记录若仍有未上传改动：先转成显式冲突（_sync_scope_conflict），绝不静默丢弃，也不推给云端。
  * 边界：只处理本账号 crm.db；不删备份文件、不删 AI 对话（只统计可能涉及失权客户的条数供界面提示）。

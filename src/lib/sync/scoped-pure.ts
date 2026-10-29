@@ -13,8 +13,7 @@ export const 主键表: Record<string, string> = {
   Opportunity: "id", OpportunityClose: "opportunityId", OpportunityMoney: "opportunityId",
   Contract: "id", ContractOwner: "contractId", ContractMoney: "contractId", ContractWin: "opportunityId",
   FollowUp: "id", FollowUpSource: "followUpId", Task: "id", FollowPlan: "id", AuditLog: "id",
-  Quote: "id", QuoteLine: "id", Supplier: "id", SupplierQuote: "id",
-  TradeOrder: "id", TradeOrderNode: "id", TradeOrderDoc: "id", TradeOrderPurchase: "orderId", FollowUpOrder: "followUpId",
+  Quote: "id", QuoteLine: "id",
   Attachment: "id",
 };
 

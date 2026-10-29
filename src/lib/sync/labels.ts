@@ -3,12 +3,12 @@
  */
 import { CUSTOMER_FIELD_LABELS } from "../concurrency";
 
-const 表名: Record<string, string> = { Customer: "客户", CustomerExtra: "客户档案", Contact: "联系人", FollowUp: "跟进", Opportunity: "商机", Contract: "签约", Task: "任务", FollowPlan: "跟进计划", Lead: "线索", UnassignedContact: "待归属联系人", TradeOrder: "外贸订单",
+const 表名: Record<string, string> = { Customer: "客户", CustomerExtra: "客户档案", Contact: "联系人", FollowUp: "跟进", Opportunity: "商机", Contract: "签约", Task: "任务", FollowPlan: "跟进计划", Lead: "线索", UnassignedContact: "待归属联系人",
   // 2026-10-19 补齐同步表（团队版主动排查：两人同时领公海同一位，没抢到的人「待核对」里出现英文 CustomerPool / CustomerClaim）
   User: "成员", Setting: "设置", Channel: "渠道", CustomerPool: "公海", CustomerClaim: "领取记录", OpportunityClose: "商机结单", OpportunityMoney: "商机金额",
   ContractOwner: "签约负责人", ContractMoney: "签约金额", ContractWin: "签约赢下的商机", FollowUpSource: "跟进原文", AuditLog: "操作日志",
-  Quote: "报价单", QuoteLine: "报价明细", Supplier: "供应商", SupplierQuote: "供应商报价", TradeOrderNode: "订单节点", TradeOrderDoc: "订单单据",
-  TradeOrderPurchase: "订单采购", FollowUpOrder: "跟进关联订单", Attachment: "产品图片",
+  Quote: "报价单", QuoteLine: "报价明细",
+  Attachment: "产品图片",
   // 合并重复（2026-10-20）
   CustomerMerge: "合并记号", CustomerNotDupe: "不是同一个人的标记" };
 /** 列的叫法：原来直接摆库里的列名（「remark、updatedAt」），业务员看不懂改的是什么（2026-10-16 团队版全面检验） */

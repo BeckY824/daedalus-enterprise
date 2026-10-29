@@ -66,11 +66,6 @@ export type FollowUpInput = {
   contactId?: string | null;
   opportunityId?: string | null;
   /**
-   * 挂在哪张订单上（2026-10-05 外贸客户建议：「关联商机改成关联商机 / 关联订单，可以关联到订单号」）。
-   * undefined = 不碰；null = 不挂了；给了 id 就挂上（整单，不挂某一步）
-   */
-  orderId?: string | null;
-  /**
    * 企业版：新建时挂到哪个项目上（10-27 会议：「默认自动关联当前项目」，表单默认选最近在推的那个）。
    * undefined / null = 不挂；只认这位客户自己、没结束、不在公海的项目。编辑时忽略
    */
@@ -124,22 +119,6 @@ async function 跟着改待办(customerId: string, 旧: 带时间的跟进, 新:
     await db.task.update({ where: { id: 那条.id }, data: { title: 待办标题(新), dueAt: 新.dueAt, dueOn: 新.dueOn ?? null, dueHasTime: 新.dueHasTime ?? null } });
   }
   刷新待办(customerId);
-}
-
-/**
- * 跟进挂到订单上 / 摘下来。只认这位客户自己的订单（id 是从浏览器来的）。
- * 原来挂在某一步（节点开着时记的）的，换订单才改成整单（nodeIdx 0），没换就留着原来那一步
- */
-async function 挂订单(followUpId: string, customerId: string, orderId: string | null, db: Prisma.TransactionClient | typeof prisma = prisma) {
-  const 原 = await db.followUpOrder.findUnique({ where: { followUpId } });
-  if (!orderId) {
-    if (原) await db.followUpOrder.delete({ where: { followUpId } });
-    return;
-  }
-  if (原?.orderId === orderId) return;
-  const o = await db.tradeOrder.findFirst({ where: { id: orderId, customerId }, select: { id: true } });
-  if (!o) return;
-  await db.followUpOrder.upsert({ where: { followUpId }, create: { followUpId, orderId: o.id, nodeIdx: 0 }, update: { orderId: o.id, nodeIdx: 0 } });
 }
 
 /**
@@ -228,7 +207,6 @@ export async function saveFollowUp(input: FollowUpInput) {
       audits.push({ user, action: input.id ? "update" : "create", entity: "FollowUp", entityId: id,
         summary: `${input.id ? "修改" : "记了"}${customer.name}的一条${类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
         detail: { 客户: customer.name, 类型: 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120) } });
-      if (input.orderId !== undefined) await 挂订单(id, input.customerId, input.orderId, tx);
       if (!input.id && input.projectId && 企业版()) await 挂项目(id, input.customerId, input.projectId, tx);
       for (const item of extra?.tasks ?? []) {
         const 时间 = parseScheduleDate(item.dueAt)!;
@@ -265,7 +243,7 @@ export async function deleteFollowUp(id: string, customerId: string) {
   try {
     const me = await requireUser();
     // 删之前先取内容：删完这条记录就无从还原了。整条连 AI 速记的原文一起留着，给撤销用（排查 D2）
-    const 待删 = await prisma.followUp.findUnique({ where: { id }, include: { source: true, orderNode: true } });
+    const 待删 = await prisma.followUp.findUnique({ where: { id }, include: { source: true } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
     await prisma.followUp.delete({ where: { id } });
     await 跟着改待办(customerId, 待删, null);
@@ -287,13 +265,12 @@ export async function deleteFollowUp(id: string, customerId: string) {
   
     revalidatePath(`/customers/${customerId}`);
     revalidatePath("/follow-ups");
-    const { source, orderNode, ...行 } = 待删;
+    const { source, ...行 } = 待删;
     const 快照: 删掉的跟进 = {
       ...行,
       occurredAt: 行.occurredAt.toISOString(), dueAt: 行.dueAt?.toISOString() ?? null,
       createdAt: 行.createdAt.toISOString(), updatedAt: 行.updatedAt.toISOString(),
       原文: source?.text ?? null,
-      订单: orderNode ? { orderId: orderNode.orderId, nodeIdx: orderNode.nodeIdx } : null,
     };
     return { ok: true as const, 快照 };
   } catch (e) {
@@ -308,8 +285,6 @@ export type 删掉的跟进 = {
   createdAt: string; updatedAt: string;
   /** AI 速记时粘贴的原文，没有就是 null */
   原文: string | null;
-  /** 挂在哪张订单（哪一步）上（2026-10-05）。老快照没有这一格 */
-  订单?: { orderId: string; nodeIdx: number } | null;
 };
 
 /** 撤销删除一条跟进：原样建回来，连 AI 速记的原文（排查 D2）。联系人、商机这会儿已经不在了的，那一格空着 */
@@ -333,10 +308,6 @@ export async function restoreFollowUp(快照: 删掉的跟进) {
         ...(快照.原文 ? { source: { create: { text: 快照.原文 } } } : {}),
       },
     });
-    // 原来挂着的订单还在就挂回去
-    if (快照.订单 && (await prisma.tradeOrder.findUnique({ where: { id: 快照.订单.orderId }, select: { id: true } }))) {
-      await prisma.followUpOrder.create({ data: { followUpId: 快照.id, orderId: 快照.订单.orderId, nodeIdx: 快照.订单.nodeIdx } });
-    }
     // 删的时候顺带的待办一起删了：撤销时一起回来
     const 回来的 = { ...快照, dueAt: 快照.dueAt ? new Date(快照.dueAt) : null };
     if (会带待办(回来的) && 快照.status !== "已完成") {

@@ -7,11 +7,11 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => state.user }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-// 订单节点、供应商页两个开关连同它们的写入口 2026-10-28 已删，这里只剩报价明细
+// 订单节点、供应商页两个开关连同它们的写入口 2026-10-28 已删，订单 / 供应商表 2026-10-29 删了（迁移 066），这里只剩报价明细
 import { 报价明细 } from "@/lib/features";
 import { saveOpportunity, 读报价 } from "@/app/(app)/opportunities/actions";
 
-let ids: { customer: string; opportunity: string; order: string; doc: string; supplier: string; quote: string };
+let ids: { customer: string; opportunity: string };
 beforeEach(async () => {
   await resetDb();
   invalidateSettingsCache();
@@ -19,17 +19,12 @@ beforeEach(async () => {
   state.user.id = user.id;
   const c = await prisma.customer.create({ data: { name: "QA-客户", phone: "", salesOwnerId: user.id } });
   const o = await prisma.opportunity.create({ data: { name: "QA-商机", customerId: c.id, ownerId: user.id } });
-  const supplier = await prisma.supplier.create({ data: { name: "QA-供应商" } });
-  const order = await prisma.tradeOrder.create({ data: { no: "QA-ORDER", customerId: c.id, ownerId: user.id, nodes: { create: { idx: 1, name: "QA-节点" } }, docs: { create: { name: "QA-单据", sort: 0 } }, purchase: { create: { supplierId: supplier.id, cost: 1 } } }, include: { docs: true } });
-  const quote = await prisma.supplierQuote.create({ data: { opportunityId: o.id, supplierId: supplier.id, product: "QA-产品", unitPrice: 1 } });
-  ids = { customer: c.id, opportunity: o.id, order: order.id, doc: order.docs[0].id, supplier: supplier.id, quote: quote.id };
+  ids = { customer: c.id, opportunity: o.id };
 });
 afterAll(async () => { await prisma.$disconnect(); });
 
 async function snapshot() {
   return JSON.stringify(await Promise.all([
-    prisma.supplier.findMany(), prisma.supplierQuote.findMany(), prisma.tradeOrder.findMany(),
-    prisma.tradeOrderNode.findMany(), prisma.tradeOrderDoc.findMany(), prisma.tradeOrderPurchase.findMany(),
     prisma.opportunity.findMany(), prisma.quote.findMany(), prisma.followUp.findMany(), prisma.auditLog.findMany(),
   ]));
 }

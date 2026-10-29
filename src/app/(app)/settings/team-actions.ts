@@ -180,7 +180,7 @@ export async function 合并重复动作(对们: 一对[]) {
   for (const 料 of r.合了) {
     const 负责人 = (料.客户 as { salesOwnerId?: string }).salesOwnerId;
     const 名 = 负责人 ? (await prisma.user.findUnique({ where: { id: 负责人 }, select: { name: true } }))?.name : null;
-    const 挪 = Object.entries(料.挪了).map(([t, ids]) => `${{ FollowUp: "跟进", Opportunity: "商机", Contract: "签约", Contact: "联系人", Task: "待办", FollowPlan: "计划", TradeOrder: "订单" }[t] ?? t} ${ids.length}`).join("、");
+    const 挪 = Object.entries(料.挪了).map(([t, ids]) => `${{ FollowUp: "跟进", Opportunity: "商机", Contract: "签约", Contact: "联系人", Task: "待办", FollowPlan: "计划" }[t] ?? t} ${ids.length}`).join("、");
     await recordAudit({
       user: me, action: "merge", entity: "Customer", entityId: 料.留,
       summary: `合并重复${叫法}：把「${料.并名}」（负责人 ${名 ?? "（已不在）"}）合并进「${料.留名}」${挪 ? `，挪过来 ${挪}` : ""}${Object.keys(料.补了).length + Object.keys(料.档案补了).length ? `，补上了 ${Object.keys(料.补了).length + Object.keys(料.档案补了).length} 格空着的资料` : ""}`,

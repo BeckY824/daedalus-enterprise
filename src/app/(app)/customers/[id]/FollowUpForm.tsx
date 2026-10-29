@@ -15,8 +15,7 @@ import { dayjs, fmtDateTime } from "@/lib/utils";
 import { saveFollowUp, completePlan } from "./actions";
 import { parseFollowUpDraft } from "./ai";
 import { useBusiness } from "@/lib/business-client";
-import { 外贸订单, 外贸精简 } from "@/lib/business-config";
-import { 拆关联, 订单前缀 } from "@/lib/follow-link";
+import { 外贸精简 } from "@/lib/business-config";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
@@ -49,8 +48,6 @@ type Rec = {
   dueHasTime?: boolean | null;
   contactId?: string | null;
   opportunityId?: string | null;
-  /** 挂在哪张订单上（2026-10-05） */
-  orderId?: string | null;
   participants?: string | null;
   /** 编辑时的版本号（J-105）：保存时交回去当闸门 */
   updatedAt?: string;
@@ -77,7 +74,6 @@ export default function FollowUpForm({
   record,
   contacts: 给定联系人,
   opportunities: 给定商机,
-  orders: 给定订单,
   projects = null,
   aiEnabled,
   initialAiText,
@@ -97,8 +93,6 @@ export default function FollowUpForm({
   /** 记录页上给；挑人时用挑中那位的 */
   contacts?: { id: string; name: string; position: string | null }[];
   opportunities?: { id: string; name: string }[];
-  /** 这位客户的订单（外贸模版，2026-10-05）：「关联商机 / 订单」那一格的第二组 */
-  orders?: { id: string; no: string }[];
   /**
    * 企业版只用项目时这位客户在推的项目（没结束、不在公海，最近动过的在前）。给了就把「关联商机」换成「关联项目」，
    * 新建默认选第一个（10-27 会议：「默认自动关联当前项目」）；编辑不改挂哪个项目，这一格不摆
@@ -148,12 +142,7 @@ export default function FollowUpForm({
   const customerId = 给定客户 ?? 近况?.id;
   const contacts = 给定联系人 ?? 近况?.contacts ?? [];
   const opportunities = 给定商机 ?? 近况?.opportunities ?? [];
-  /*
-    外贸模版：「关联商机」改成「关联商机 / 订单」（2026-10-05 外贸客户：「里面的选项可以关联到订单号，
-    这样就可以对订单执行做跟进的记录了」）。同一格、两组；选订单存的是「订单:<id>」，保存时拆开
-  */
-  const 挂订单 = 外贸订单(b);
-  const orders = 挂订单 ? 给定订单 ?? 近况?.orders ?? [] : [];
+  // 外贸「关联商机 / 订单」里订单那一组（跟进挂订单）2026-10-29 随订单表一起删了，只挂商机
   /** 新建默认挂的项目：页面按最近动过排，第一个就是当前在推的 */
   const 默认项目 = projects?.[0]?.id;
   /** 挑人时的「到期计划」和记录页同一个口径：最早那条没做完的，今天或更早到期 */
@@ -319,7 +308,6 @@ export default function FollowUpForm({
     if (record?.id) {
       form.setFieldsValue({
         ...record,
-        opportunityId: record.orderId && 挂订单 ? `${订单前缀}${record.orderId}` : record.opportunityId,
         occurredAt: dayjs(record.occurredAt),
         dueAt: record.dueAt ? dayjs(record.dueAt) : null,
         dueHasTime: !record.dueAt || !isCalendarDate(record.dueAt),
@@ -373,7 +361,7 @@ export default function FollowUpForm({
       dueHasTime: !record?.id || record.dueHasTime != null || form.isFieldTouched("dueHasTime") || form.isFieldTouched("dueAt") ? Boolean(v.dueHasTime) : undefined,
       确认过期待办: 创建过期待办 && v.确认过期待办 === true,
       contactId: v.contactId ?? null,
-      ...(projects ? (!record?.id ? { projectId: v.projectId ?? null } : {}) : 拆关联(v.opportunityId, 挂订单, record?.id ? record.opportunityId ?? null : null)),
+      ...(projects ? (!record?.id ? { projectId: v.projectId ?? null } : {}) : { opportunityId: v.opportunityId ?? null }),
       participants: v.participants ?? null,
       // 经 AI 解析过才带原文：手工写的跟进没有"原文"这个概念
       sourceText: !record?.id && extras ? aiText : null,
@@ -559,18 +547,11 @@ export default function FollowUpForm({
               )}
             </Col>
           ) : <Col span={12}>
-            <Form.Item name="opportunityId" label={挂订单 ? "关联商机 / 订单" : "关联商机"}>
+            <Form.Item name="opportunityId" label="关联商机">
               <Select
                 allowClear
-                placeholder={挂订单 ? "选择商机或订单号" : "选择商机"}
-                options={
-                  (挂订单 && orders.length
-                    ? [
-                        { label: "订单", options: orders.map((o) => ({ value: `${订单前缀}${o.id}`, label: `订单 ${o.no}` })) },
-                        { label: "商机", options: opportunities.map((o) => ({ value: o.id, label: o.name })) },
-                      ]
-                    : opportunities.map((o) => ({ value: o.id, label: o.name }))) as { value?: string; label: string; options?: { value: string; label: string }[] }[]
-                }
+                placeholder="选择商机"
+                options={opportunities.map((o) => ({ value: o.id, label: o.name }))}
               />
             </Form.Item>
           </Col>}

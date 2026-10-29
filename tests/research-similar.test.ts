@@ -10,8 +10,8 @@ vi.mock("@/lib/prisma", () => ({ prisma: { customer: { findMany: (a: unknown) =>
 describe("老客户清单", () => {
   it("查询只选名字、档案字段、国家，不选联系方式和跟进", async () => {
     findMany.mockResolvedValue([
-      { id: "c1", name: "Nordlicht", school: "电气批发", grade: null, major: null, followStatus: "已签约", extra: { country: "德国" }, _count: { contracts: 0, tradeOrders: 0 } },
-      { id: "c2", name: "Sol Andino", school: null, grade: null, major: "照明", followStatus: "跟进中", extra: null, _count: { contracts: 0, tradeOrders: 0 } },
+      { id: "c1", name: "Nordlicht", school: "电气批发", grade: null, major: null, followStatus: "已签约", extra: { country: "德国" }, _count: { contracts: 0 } },
+      { id: "c2", name: "Sol Andino", school: null, grade: null, major: "照明", followStatus: "跟进中", extra: null, _count: { contracts: 0 } },
     ]);
     const { 老客户清单 } = await import("@/lib/research/similar");
     const list = await 老客户清单({ fields: { school: "公司", grade: "职位", major: "行业" } });

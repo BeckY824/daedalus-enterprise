@@ -43,7 +43,7 @@ it('公海领取需原有公海权限；领取完成后其他业务员不能继�
   expect(范围可写(pool, deleted, rows, 'one', false)).toBe(true); rows.set('CustomerPool:public', deleted);
   expect(范围可读(算范围(c, rows), 'two', false)).toBe(false);
 });
-it('商机/签约/订单父链必须属于同一客户；循环/未知父链均拒绝', () => {
+it('商机/签约父链必须属于同一客户；循环/未知父链均拒绝', () => {
   const rows = fixture();
   const op = index('Opportunity', 'op', { customerId: 'one' }); rows.set('Opportunity:op', op);
   const contract = index('Contract', 'contract', { customerId: 'boss' }); rows.set('Contract:contract', contract);
@@ -93,7 +93,7 @@ describe('企业版联系人附件（2026-10-28）：挂线索 / 联系人的附
     vi.stubEnv('CRM_ENTERPRISE', '1');
     const rows = rows附件();
     const 线索的 = index('Attachment', 'a1', { leadId: 'lone' }), 联系人的 = index('Attachment', 'a2', { contactId: 'c1' }), 私客的 = index('Attachment', 'a3', { contactId: 'cb' });
-    expect(线索的.fields).toEqual({ opportunityId: null, orderId: null, leadId: 'lone' });
+    expect(线索的.fields).toEqual({ opportunityId: null, leadId: 'lone' });
     expect(算范围(线索的, rows)?.id).toBe('personal:acct_one');
     expect(范围可读(算范围(线索的, rows), 'one', false)).toBe(true);
     // 线索是个人范围：互看开着也只给本人
@@ -114,16 +114,16 @@ describe('企业版联系人附件（2026-10-28）：挂线索 / 联系人的附
     expect(范围可写(联系人的, 删包(联系人的), rows, 'two', false, true)).toBe(false);
     expect(范围可写(线索的, 删包(线索的), rows, 'two', false, true)).toBe(false);
     expect(范围可写(联系人的, 删包(联系人的), rows, 'one', false)).toBe(true);
-    // 挂商机 / 订单的老附件元数据不多带空键（和团队版一字不差）
-    expect(Object.keys(index('Attachment', 'old', { opportunityId: 'op' }).fields)).toEqual(['opportunityId', 'orderId']);
+    // 挂商机的老附件元数据不多带空键（和团队版一字不差；orderId 随订单表 2026-10-29 删了，不再进元数据）
+    expect(Object.keys(index('Attachment', 'old', { opportunityId: 'op' }).fields)).toEqual(['opportunityId']);
   });
   it('开关关着（个人版 / 团队版）：附件元数据、父链和原来一样，带了 leadId / contactId 也不认', () => {
     vi.stubEnv('CRM_ENTERPRISE', '');
     const rows = rows附件();
-    expect(范围字段之('Attachment')).toEqual(['opportunityId', 'orderId']);
-    expect(Object.keys(范围父表.Attachment).sort()).toEqual(['opportunityId', 'orderId']);
+    expect(范围字段之('Attachment')).toEqual(['opportunityId']);
+    expect(Object.keys(范围父表.Attachment).sort()).toEqual(['opportunityId']);
     const a = index('Attachment', 'a1', { leadId: 'lone', contactId: 'c1' });
-    expect(a.fields).toEqual({ opportunityId: null, orderId: null });
+    expect(a.fields).toEqual({ opportunityId: null });
     expect(算范围(a, rows)).toBeNull();
     expect(范围可写(undefined, a, rows, 'one', false)).toBe(false);
     // 开着时抽的元数据，关着的接收端核对不过（不会被当成合法包悄悄收下）

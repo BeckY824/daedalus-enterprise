@@ -28,7 +28,7 @@ type 行 = Record<string, unknown>;
 
 /** 挪过去的子记录：表、主键列、哪几条 */
 const 子表: [表: string, 主键: string][] = [
-  ["Contact", "id"], ["Opportunity", "id"], ["Contract", "id"], ["TradeOrder", "id"],
+  ["Contact", "id"], ["Opportunity", "id"], ["Contract", "id"],
   ["FollowUp", "id"], ["Task", "id"], ["FollowPlan", "id"], ["Project", "id"],
   // 换负责人的记录（2026-10-24）：并过来的客户以前是谁的，跟着挪到留下的那位
   ["CustomerOwnerLog", "id"],

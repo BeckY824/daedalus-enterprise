@@ -47,7 +47,7 @@ beforeAll(async () => {
   设("MULTI_TENANT", undefined);
   for (const t of ["AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool", "CustomerClaim", "EntMember", "EntDept"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$queryRawUnsafe("PRAGMA journal_mode = WAL");
   老板 = (await raw.user.create({ data: { email: "pc-boss@x.com", name: "老板", password: "x", role: "ADMIN" } })).id;
   业务员 = (await raw.user.create({ data: { email: "pc-sales@x.com", name: "业务员", password: "x", role: "USER" } })).id;

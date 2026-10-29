@@ -28,14 +28,14 @@ export type 导出行 = {
   remark: string | null;
   /** 外贸档案（2026-10-05）。外贸模版导出时写成五列 */
   extra?: 外贸档案 | null;
-  /** 这位的商机 / 订单上一共挂了几张产品图片（D-24）。图片不进 Excel，只写张数。联系人 = 企业版联系人附件（名片原图等，10-28） */
-  附件数?: { 商机: number; 订单: number; 联系人?: number } | null;
+  /** 这位的商机上一共挂了几张产品图片（D-24）。图片不进 Excel，只写张数。联系人 = 企业版联系人附件（名片原图等，10-28） */
+  附件数?: { 商机: number; 联系人?: number } | null;
 };
 
-/** 「商机 2 张、订单 1 张、联系人 3 张」；一张都没有写空 */
+/** 「商机 2 张、联系人 3 张」；一张都没有写空 */
 export function 附件个数说法(n: 导出行["附件数"]): string {
   if (!n) return "";
-  return [n.商机 ? `商机 ${n.商机} 张` : "", n.订单 ? `订单 ${n.订单} 张` : "", n.联系人 ? `联系人 ${n.联系人} 张` : ""].filter(Boolean).join("、");
+  return [n.商机 ? `商机 ${n.商机} 张` : "", n.联系人 ? `联系人 ${n.联系人} 张` : ""].filter(Boolean).join("、");
 }
 
 /** 行上的签约按币种；老的调用方没给 signedTotals 时把 signedAmount 当人民币 */
@@ -72,7 +72,7 @@ export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负�
     // 导出写「USD 3,200 · CNY 19,800」：只写数字的话，美元单在表里就成了人民币
     r.expectedSignAt ? fmtDate(r.expectedSignAt) : "", 签约各币(r).filter((x) => x.合计 > 0).map((x) => `${x.币种} ${x.合计}`).join(" · "),
     ...(隐藏负责人 ? [] : [r.salesOwnerName, r.channelOwnerName ?? ""]),
-    // 图片不进 Excel（D-24），写明商机、订单上各挂了几张；导回来这列不收（lib/import/plan.ts 自家导出只读列）
+    // 图片不进 Excel（D-24），写明商机（企业版还有联系人）上各挂了几张；导回来这列不收（lib/import/plan.ts 自家导出只读列）
     附件个数说法(r.附件数),
     r.remark ?? "",
   ]);
@@ -89,7 +89,6 @@ export type 跟进导出行 = {
   content: string;
   status: string;
   opportunityName: string | null;
-  orderNo: string | null;
   ownerName: string;
 };
 
@@ -98,12 +97,11 @@ export type 跟进导出行 = {
  * 一条跟进一行，按客户、再按时间先后排，带上客户姓名和电话——在 Excel 里按客户筛就是这位的全部往来
  */
 export function 跟进导出表(rows: 跟进导出行[], b: BusinessConfig): { head: string[]; body: string[][] } {
-  const 挂 = 签约叫(b) === "订单" ? "关联商机 / 订单" : "关联商机";
   return {
-    head: [`${b.customer}姓名`, "联系电话", "时间", "方式", "标题", "内容", "状态", 挂, "记录人"],
+    head: [`${b.customer}姓名`, "联系电话", "时间", "方式", "标题", "内容", "状态", "关联商机", "记录人"],
     body: rows.map((f) => [
       f.customerName, f.phone, fmtDateTime(f.occurredAt), FOLLOW_TYPE_MAP[f.type]?.label ?? f.type, f.title, f.content, f.status,
-      f.orderNo ? `订单 ${f.orderNo}` : f.opportunityName ?? "", f.ownerName,
+      f.opportunityName ?? "", f.ownerName,
     ]),
   };
 }

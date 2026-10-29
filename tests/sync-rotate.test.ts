@@ -79,7 +79,7 @@ beforeAll(async () => {
   // 甲的库：清掉别的用例留下的，种模板账号
   for (const t of ["AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead"]) await 甲.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await 甲.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await 甲.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await 甲.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await 甲.user.create({ data: { id: "cmusc55660000dulko96ek8kr", email: "admin", name: "管理员", role: "ADMIN", password: "x", title: "管理员" } });
 });
 

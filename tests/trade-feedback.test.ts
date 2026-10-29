@@ -1,8 +1,7 @@
 /**
  * 外贸客户的建议（2026-10-05，并进 0.46.15）。规划：~/CRM/外贸客户建议-并进0.46.15-规划-2026-10-05.md
- *   - 订单就是一笔签约：外贸模版下「新建订单」= 登记签约 + 订单号 / 付款方式 / 供应商（lib/order-contract.ts）
- *   - 商机转为订单：联动只赢这一单，订单挂上它
- *   - 跟进挂订单：「关联商机 / 订单」，撤销删除时挂回去
+ *   - 订单就是一笔签约：外贸模版下「签约」叫「订单」（订单表 2026-10-29 删了，迁移 066，只剩签约本身）
+ *   - 商机转为订单：联动只赢这一单
  *   - 客户的外贸档案：国家 / WhatsApp / 微信 / 邮箱 / 来源；线索转客户带来源和邮箱；搜索搜得到联系人
  *   - 导入认这几列，补空只补空的、撤销还原；导出 xlsx 两张表，第一张能原样导回
  *   - 询盘时间 = 商机 createdAt，能改、不许晚于今天
@@ -22,14 +21,12 @@ import { BUSINESS_PRESETS, DEFAULT_BUSINESS, 外贸订单, 签约叫, 外贸精�
 import { saveContract, deleteContract, patchCustomer, saveCustomer } from "@/app/(app)/customers/actions";
 import { TOOLS } from "@/lib/agent/tools";
 import { 文字里号码打码 } from "@/lib/utils";
-import { saveFollowUp, deleteFollowUp, restoreFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { saveOpportunity, setOppStatus } from "@/app/(app)/opportunities/actions";
 import { 补来源 } from "@/lib/customer-extra-db";
 import { saveBusinessSettings } from "@/app/(app)/settings/actions";
 import { getBusiness } from "@/lib/business";
-import { 拆关联 } from "@/lib/follow-link";
 import { 改过的档案 } from "@/lib/customer-extra";
-import { 供应商候选 } from "@/app/(app)/customers/actions";
 import { convertLead } from "@/app/(app)/leads/actions";
 import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
@@ -73,75 +70,27 @@ describe("开关和叫法", () => {
   });
 });
 
-describe("订单就是一笔签约", () => {
-  it("新建订单：同一个事务里一笔签约 + 一张订单，订单号按日期编，供应商能填新名字", async () => {
+describe("外贸下签约就是一笔签约（订单表 2026-10-29 删了，迁移 066）", () => {
+  it("外贸模版登记签约：只建签约、推客户状态，日志说的是订单", async () => {
     await 外贸();
     const c = await 客户();
-    const r = await saveContract({
-      customerId: c.id, amount: 3250.5, currency: "USD", signedAt: new Date(2026, 9, 5), remark: "FOB 上海",
-      订单: { no: "", payment: "T/T 30/70", supplier: "  临沂某某食品厂 " },
-    });
+    const r = await saveContract({ customerId: c.id, amount: 3250.5, currency: "USD", signedAt: new Date(2026, 9, 5), remark: "FOB 上海" });
     expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.订单?.no).toMatch(/^\d{8}-1$/);
-    const o = await prisma.tradeOrder.findFirstOrThrow({ include: { contract: { include: { money: true } }, purchase: { include: { supplier: true } } } });
-    expect(o.contract?.money?.amountExact).toBe(3250.5);
-    expect(o).toMatchObject({ amount: 3250.5, currency: "USD", payment: "T/T 30/70", customerId: c.id, ownerId: jia.id });
-    expect(o.purchase?.supplier?.name).toBe("临沂某某食品厂");
+    const k = await prisma.contract.findFirstOrThrow({ include: { money: true } });
+    expect(k.money?.amountExact).toBe(3250.5);
     // 客户推到已签约（外贸显示「已下单」），业绩照签约算
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).followStatus).toBe("已签约");
-    // 第二张单写同一家供应商：不另建
-    await saveContract({ customerId: c.id, amount: 100, currency: "USD", signedAt: new Date(2026, 9, 6), remark: null, 订单: { supplier: "临沂某某食品厂" } });
-    expect(await prisma.supplier.count()).toBe(1);
-    expect((await 供应商候选()).map((x) => x.name)).toEqual(["临沂某某食品厂"]);
-    const 号 = (await prisma.tradeOrder.findMany({ orderBy: { createdAt: "asc" } })).map((x) => x.no);
-    expect(new Set(号).size).toBe(2);
-    // 日志说的是订单
     expect((await prisma.auditLog.findMany({ where: { entity: "Contract" } })).every((x) => x.summary.includes("订单"))).toBe(true);
   });
 
-  it("编辑：金额币种跟着签约改，订单号 / 付款方式改得了；清空供应商就摘掉", async () => {
-    await 外贸();
-    const c = await 客户();
-    await saveContract({ customerId: c.id, amount: 1000, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-001", payment: "T/T", supplier: "A 厂" } });
-    const k = await prisma.contract.findFirstOrThrow();
-    const r = await saveContract({ id: k.id, customerId: c.id, amount: 1200, currency: "EUR", signedAt: new Date(), remark: null, 订单: { no: "PI-001A", payment: "L/C at sight", supplier: "" } });
-    expect(r.ok).toBe(true);
-    const o = await prisma.tradeOrder.findFirstOrThrow({ include: { purchase: true } });
-    expect(o).toMatchObject({ no: "PI-001A", payment: "L/C at sight", amount: 1200, currency: "EUR" });
-    expect(o.purchase?.supplierId).toBeNull();
-    expect(await prisma.tradeOrder.count()).toBe(1);
-  });
-
-  it("删这笔签约 = 删这张订单；挂在订单上的跟进留着", async () => {
-    await 外贸();
-    const c = await 客户();
-    const r = await saveContract({ customerId: c.id, amount: 1000, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-9" } });
-    if (!r.ok || !r.订单) throw new Error("没建出来");
-    const n = await saveFollowUp({ customerId: c.id, type: "OTHER", content: "工厂说 10 月 20 日出货", status: "已完成", occurredAt: new Date().toISOString(), orderId: r.订单.id });
-    expect(n.ok).toBe(true);
-    const k = await prisma.contract.findFirstOrThrow();
-    const d = await deleteContract(k.id, c.id, null);
-    expect(d.ok).toBe(true);
-    expect(await prisma.tradeOrder.count()).toBe(0);
-    expect(await prisma.followUp.count({ where: { customerId: c.id } })).toBe(1);
-    expect((await prisma.auditLog.findFirstOrThrow({ where: { action: "delete", entity: "Contract" } })).summary).toContain("订单 PI-9");
-  });
-
-  it("商机转为订单：联动只勾这一单，订单挂上这个商机，商机赢单", async () => {
+  it("商机转为订单：联动只勾这一单，商机赢单", async () => {
     await 外贸();
     const c = await 客户();
     const o = await prisma.opportunity.create({ data: { name: "Chicken breast IQF", customerId: c.id, amount: 28000, stage: "方案报价", probability: 60, ownerId: jia.id } });
-    const r = await saveContract({
-      customerId: c.id, amount: 28000, currency: "USD", signedAt: new Date(), remark: null,
-      联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] }, 订单: { no: "PI-77", payment: "T/T 30/70" },
-    });
+    const r = await saveContract({ customerId: c.id, amount: 28000, currency: "USD", signedAt: new Date(), remark: null, 联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] } });
     expect(r.ok).toBe(true);
-    const 单 = await prisma.tradeOrder.findFirstOrThrow({ include: { nodes: { orderBy: { idx: "asc" } } } });
-    expect(单.opportunityId).toBe(o.id);
-    // 节点照建（开关打开时老订单不至于一步都没有），从商机来的前四步已完成
-    expect(单.nodes.slice(0, 4).every((n) => n.status === "已完成")).toBe(true);
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("WON");
+    expect(await prisma.contractWin.count({ where: { opportunityId: o.id } })).toBe(1);
   });
 
   it("别人家的商机 id 从浏览器塞进来：不挂", async () => {
@@ -149,54 +98,8 @@ describe("订单就是一笔签约", () => {
     const c = await 客户();
     const 别人 = await 客户("别人");
     const o = await prisma.opportunity.create({ data: { name: "别人的单", customerId: 别人.id, amount: 1, ownerId: jia.id } });
-    await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] }, 订单: {} });
-    expect((await prisma.tradeOrder.findFirstOrThrow()).opportunityId).toBeNull();
+    await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] } });
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("OPEN");
-  });
-
-  it("不给订单那几格（通用模版的登记签约）：不建订单", async () => {
-    const c = await 客户();
-    await saveContract({ customerId: c.id, amount: 10, signedAt: new Date(), remark: null });
-    expect(await prisma.tradeOrder.count()).toBe(0);
-  });
-});
-
-describe("跟进挂订单", () => {
-  it("挂上、换成商机就摘掉；别的客户的订单挂不上；删了再撤销挂回去", async () => {
-    await 外贸();
-    const c = await 客户();
-    const 别人 = await 客户("别人");
-    const r = await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-1" } });
-    const r2 = await saveContract({ customerId: 别人.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-2" } });
-    if (!r.ok || !r.订单 || !r2.ok || !r2.订单) throw new Error("没建出来");
-    const f = await saveFollowUp({ customerId: c.id, type: "OTHER", content: "验货通过", status: "已完成", occurredAt: new Date().toISOString(), orderId: r.订单.id });
-    if (!f.ok) throw new Error(f.error);
-    expect((await prisma.followUpOrder.findUniqueOrThrow({ where: { followUpId: f.id } })).orderId).toBe(r.订单.id);
-
-    // 删掉再撤销：挂回去
-    const d = await deleteFollowUp(f.id, c.id);
-    if (!d.ok) throw new Error("删不掉");
-    expect(await prisma.followUpOrder.count()).toBe(0);
-    await restoreFollowUp(d.快照);
-    expect((await prisma.followUpOrder.findUniqueOrThrow({ where: { followUpId: f.id } })).orderId).toBe(r.订单.id);
-
-    // 改成挂别人的订单：不认
-    await saveFollowUp({ id: f.id, customerId: c.id, type: "OTHER", content: "验货通过", status: "已完成", occurredAt: new Date().toISOString(), orderId: r2.订单.id });
-    expect((await prisma.followUpOrder.findUniqueOrThrow({ where: { followUpId: f.id } })).orderId).toBe(r.订单.id);
-    // 改成 null：摘掉
-    await saveFollowUp({ id: f.id, customerId: c.id, type: "OTHER", content: "验货通过", status: "已完成", occurredAt: new Date().toISOString(), orderId: null });
-    expect(await prisma.followUpOrder.count()).toBe(0);
-  });
-
-  it("不交 orderId（通用模版、AI 卡、老调用）：挂着的原样留着", async () => {
-    await 外贸();
-    const c = await 客户();
-    const r = await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 订单: {} });
-    if (!r.ok || !r.订单) throw new Error("没建出来");
-    const n = await saveFollowUp({ customerId: c.id, type: "OTHER", content: "订舱了", status: "已完成", occurredAt: new Date().toISOString(), orderId: r.订单.id });
-    if (!n.ok) throw new Error(n.error);
-    await saveFollowUp({ id: n.id, customerId: c.id, type: "OTHER", content: "订舱了，船期 11/2", status: "已完成", occurredAt: new Date().toISOString() });
-    expect(await prisma.followUpOrder.count()).toBe(1);
   });
 });
 
@@ -332,15 +235,14 @@ describe("导出：xlsx 两张表，带跟进记录", () => {
     expect(strFromU8(文件["xl/worksheets/sheet1.xml"])).toContain('state="frozen"');
   });
 
-  it("导出客户带上这些客户的跟进，按客户、再按时间先后；挂订单的写订单号", async () => {
+  it("导出客户带上这些客户的跟进，按客户、再按时间先后；挂商机的写商机名", async () => {
     await 外贸();
     const a = await 客户("A");
     const b2 = await 客户("B");
     // 两位同一毫秒建出来时列表顺序不定：把 A 的建档时间往前挪，列表（新的在前）就是 B、A
     await prisma.customer.update({ where: { id: a.id }, data: { createdAt: new Date(2026, 0, 1) } });
-    const r = await saveContract({ customerId: a.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-5" } });
-    if (!r.ok || !r.订单) throw new Error("没建出来");
-    await saveFollowUp({ customerId: a.id, type: "PHONE", content: "第二次", status: "已完成", occurredAt: new Date(2026, 9, 2).toISOString(), orderId: r.订单.id });
+    const opp = await prisma.opportunity.create({ data: { name: "庭院灯", customerId: a.id, amount: 10, ownerId: jia.id } });
+    await saveFollowUp({ customerId: a.id, type: "PHONE", content: "第二次", status: "已完成", occurredAt: new Date(2026, 9, 2).toISOString(), opportunityId: opp.id });
     await saveFollowUp({ customerId: a.id, type: "PHONE", content: "第一次", status: "已完成", occurredAt: new Date(2026, 9, 1).toISOString() });
     await saveFollowUp({ customerId: b2.id, type: "EMAIL", content: "B 的", status: "已完成", occurredAt: new Date(2026, 8, 1).toISOString() });
     await patchCustomer(a.id, "country", "美国");
@@ -355,8 +257,8 @@ describe("导出：xlsx 两张表，带跟进记录", () => {
     const 跟 = 跟进导出表(出.跟进, b);
     // 客户顺序同列表（新建的在前：B、A），每位里按时间先后
     expect(跟.body.map((x) => x[5])).toEqual(["B 的", "第一次", "第二次"]);
-    expect(跟.body[2][7]).toBe("订单 PI-5");
-    expect(跟.head[7]).toBe("关联商机 / 订单");
+    expect(跟.body[2][7]).toBe("庭院灯");
+    expect(跟.head[7]).toBe("关联商机");
   });
 
   it("外贸导出的第一张表原样导回来：国家、WhatsApp、邮箱、来源各落各的格，不进备注", async () => {
@@ -375,52 +277,13 @@ describe("导出：xlsx 两张表，带跟进记录", () => {
   });
 });
 
-describe("团队版：业务员只看自己的订单", () => {
-  it("TradeOrder / CustomerExtra / FollowUpOrder / TradeOrderPurchase 都按客户限定", () => {
-    for (const m of ["TradeOrder", "CustomerExtra"]) expect(限定条件(m, "u1")).toMatchObject({ customer: { OR: expect.any(Array) } });
-    for (const m of ["FollowUpOrder", "TradeOrderPurchase"]) expect(限定条件(m, "u1")).toMatchObject({ order: { customer: { OR: expect.any(Array) } } });
+describe("团队版：业务员只看自己的外贸档案", () => {
+  it("CustomerExtra 按客户限定", () => {
+    expect(限定条件("CustomerExtra", "u1")).toMatchObject({ customer: { OR: expect.any(Array) } });
   });
 });
 
 describe("复查一轮（10-06）", () => {
-  it("外贸下登记签约不带订单那几格（AI 建议卡、老调用方）：照样建一张订单", async () => {
-    await 外贸();
-    const c = await 客户();
-    const r = await saveContract({ customerId: c.id, amount: 500, currency: "USD", signedAt: new Date(), remark: "AI 建议卡登记" });
-    expect(r.ok).toBe(true);
-    expect(await prisma.tradeOrder.count({ where: { customerId: c.id } })).toBe(1);
-  });
-
-  it("编辑一笔没有订单的老签约：不顺手补建订单", async () => {
-    const c = await 客户();
-    await saveContract({ customerId: c.id, amount: 500, signedAt: new Date(2026, 5, 1), remark: null }); // 通用模版时期登记的
-    await 外贸();
-    const k = await prisma.contract.findFirstOrThrow();
-    const r = await saveContract({ id: k.id, customerId: c.id, amount: 500, currency: "USD", signedAt: k.signedAt, remark: "改个备注", 订单: { no: "" } });
-    expect(r.ok).toBe(true);
-    expect(await prisma.tradeOrder.count()).toBe(0);
-  });
-
-  it("手填的订单号撞了别的单：整笔不落库、说清楚", async () => {
-    await 外贸();
-    const c = await 客户();
-    await saveContract({ customerId: c.id, amount: 1, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-1" } });
-    const r = await saveContract({ customerId: c.id, amount: 2, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-1" } });
-    expect(r).toMatchObject({ ok: false, error: expect.stringContaining("订单号「PI-1」已经有一张了") });
-    expect(await prisma.contract.count()).toBe(1);
-  });
-
-  it("AI 按订单号找客户：「PI-xxx 是哪位客户」——search_customers 和客户列表搜的是同一个范围（C.2）", async () => {
-    await 外贸();
-    const c = await 客户();
-    await saveContract({ customerId: c.id, amount: 100, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-7788" } });
-    const ctx = { userId: jia.id, userName: "甲", b: BUSINESS_PRESETS["外贸出口"], recordOffset: 0, proposals: [] };
-    const 出 = await TOOLS.find((t) => t.name === "search_customers")!.run({ query: "PI-7788" }, ctx as never);
-    expect(JSON.stringify(出.data)).toContain("Timur");
-    // 客户列表那边本来就搜得到
-    expect(await prisma.customer.count({ where: await 客户筛选条件({ keyword: "PI-7788" }) })).toBe(1);
-  });
-
   it("G.3 外贸下 AI 拿到的状态是这家的叫法：find_person 说「已下单」不说「已签约」；list_opportunities 说「已转订单」、不给概率", async () => {
     await 外贸();
     const c = await 客户("Ahmed");
@@ -474,41 +337,12 @@ describe("复查一轮（10-06）", () => {
 });
 
 describe("二审（10-06）", () => {
-  it("编辑切外贸之前的老签约：填了订单号就补成一张订单（号按签约日），什么都不填不建", async () => {
-    const c = await 客户();
-    await saveContract({ customerId: c.id, amount: 500, signedAt: new Date(2026, 5, 1), remark: null });
-    await 外贸();
-    const k = await prisma.contract.findFirstOrThrow();
-    await saveContract({ id: k.id, customerId: c.id, amount: 500, currency: "USD", signedAt: k.signedAt, remark: null, 订单: { no: "", payment: null } });
-    expect(await prisma.tradeOrder.count()).toBe(0);
-    expect(await prisma.supplier.count()).toBe(0);
-    const r = await saveContract({ id: k.id, customerId: c.id, amount: 500, currency: "USD", signedAt: k.signedAt, remark: null, 订单: { no: "", payment: "T/T" } });
-    expect(r.ok).toBe(true);
-    const o = await prisma.tradeOrder.findFirstOrThrow({ include: { nodes: { orderBy: { idx: "asc" } } } });
-    expect(o.no).toBe("20260601-1");
-    expect(o.contractId).toBe(k.id);
-    // 订单就是客户确认：前 4 步记完成
-    expect(o.nodes.slice(0, 4).every((n) => n.status === "已完成")).toBe(true);
-  });
-
-  it("签约金额改得比定金应收还少：拦下、说清楚", async () => {
-    await 外贸();
-    const c = await 客户();
-    const r = await saveContract({ customerId: c.id, amount: 1000, currency: "USD", signedAt: new Date(), remark: null, 订单: {} });
-    if (!r.ok || !r.订单) throw new Error("没建出来");
-    await prisma.tradeOrder.update({ where: { id: r.订单.id }, data: { depositDue: 300 } });
-    const k = await prisma.contract.findFirstOrThrow();
-    const r2 = await saveContract({ id: k.id, customerId: c.id, amount: 200, currency: "USD", signedAt: k.signedAt, remark: null, 订单: {} });
-    expect(r2).toMatchObject({ ok: false, error: expect.stringContaining("定金应收") });
-    expect((await prisma.contract.findFirstOrThrow()).amount).toBe(1000);
-  });
-
-  it("转过订单的商机不许直接改回进行中 / 丢单；删了订单就退回进行中", async () => {
+  it("转过订单的商机（签约联动赢下的）不许直接改回进行中 / 丢单；删了那笔签约就退回进行中", async () => {
     await 外贸();
     const c = await 客户();
     const o = await prisma.opportunity.create({ data: { name: "鸡胸", customerId: c.id, amount: 10, ownerId: jia.id } });
-    await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] }, 订单: { no: "PI-R" } });
-    expect(await setOppStatus(o.id, "OPEN")).toMatchObject({ ok: false, error: expect.stringContaining("PI-R") });
+    await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] } });
+    expect(await setOppStatus(o.id, "OPEN")).toMatchObject({ ok: false, error: expect.stringContaining("已经转成订单") });
     expect(await saveOpportunity({ id: o.id, name: "鸡胸", customerId: c.id, amount: 10, stage: "谈判审核", status: "LOST", probability: 0 })).toMatchObject({ ok: false });
     const k = await prisma.contract.findFirstOrThrow();
     expect((await deleteContract(k.id, c.id, null)).ok).toBe(true);
@@ -539,36 +373,9 @@ describe("二审（10-06）", () => {
     expect((await prisma.customer.findFirstOrThrow({ where: { name: "Omar" } })).phone).toMatch(/966557654321/);
   });
 
-  it("客户搜索认订单号", async () => {
-    await 外贸();
-    const c = await 客户("Acme");
-    await saveContract({ customerId: c.id, amount: 1, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-SEARCH-9" } });
-    await 客户("别人");
-    const 名 = (await prisma.customer.findMany({ where: await 客户筛选条件({ keyword: "SEARCH-9" }), select: { name: true } })).map((x) => x.name);
-    expect(名).toEqual(["Acme"]);
-  });
 });
 
 describe("回归核对补钉（10-06，W-外贸并进）", () => {
-  it("W-005 / W-056 删签约时签约没删着（不是这位客户的）：订单也不删", async () => {
-    await 外贸();
-    const c = await 客户();
-    const 别人 = await 客户("别人");
-    await saveContract({ customerId: c.id, amount: 1, currency: "USD", signedAt: new Date(), remark: null, 订单: { no: "PI-K" } });
-    const k = await prisma.contract.findFirstOrThrow();
-    const r = await deleteContract(k.id, 别人.id, null);
-    expect(r.ok).toBe(false);
-    expect(await prisma.tradeOrder.count()).toBe(1);
-    expect(await prisma.contract.count()).toBe(1);
-  });
-
-  it("W-012 跟进选订单时保留原来挂着的商机；选商机摘掉订单；不挂订单的模版不交 orderId", () => {
-    expect(拆关联("订单:o1", true, "opp1")).toEqual({ opportunityId: "opp1", orderId: "o1" });
-    expect(拆关联("opp2", true, "opp1")).toEqual({ opportunityId: "opp2", orderId: null });
-    expect(拆关联(undefined, true)).toEqual({ opportunityId: null, orderId: null });
-    expect(拆关联("opp2", false)).toEqual({ opportunityId: "opp2" });
-  });
-
   it("W-013 / W-014 询盘时间：服务器按 UTC 算时，东八区「今天」也收；改了进日志", async () => {
     await 外贸();
     const c = await 客户();
@@ -611,16 +418,6 @@ describe("回归核对补钉（10-06，W-外贸并进）", () => {
     expect(备注).toContain("销售负责人：张三");
   });
 
-  it("W-047 比价里「选用」的那家，转为订单时带到订单上（人没填供应商时）", async () => {
-    await 外贸();
-    const c = await 客户();
-    const o = await prisma.opportunity.create({ data: { name: "鸡胸", customerId: c.id, amount: 10, ownerId: jia.id } });
-    const 厂 = await prisma.supplier.create({ data: { name: "选用的厂" } });
-    await prisma.supplierQuote.create({ data: { opportunityId: o.id, supplierId: 厂.id, product: "鸡胸", verdict: "选用" } });
-    await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] }, 订单: { no: "PI-S" } });
-    expect((await prisma.tradeOrder.findFirstOrThrow({ include: { purchase: true } })).purchase?.supplierId).toBe(厂.id);
-  });
-
   it("W-054 写档案推客户版本号：严格往前（不往回退）", async () => {
     await 外贸();
     const c = await 客户();
@@ -632,7 +429,7 @@ describe("回归核对补钉（10-06，W-外贸并进）", () => {
 });
 
 describe("B.3 老数据上切外贸再切回（2026-10-06 测试分期）", () => {
-  it("通用模版的老数据：设置里切外贸 → 来源补上、老签约不凭空变订单、赢单商机照旧；再切回通用照样能用", async () => {
+  it("通用模版的老数据：设置里切外贸 → 来源补上、老签约原样、赢单商机照旧；再切回通用照样能用", async () => {
     // 通用模版下的老数据
     const ch = await prisma.channel.create({ data: { name: "老带新渠道", channelOwnerId: jia.id } });
     const 甲 = await prisma.customer.create({ data: { name: "老客户甲", phone: "13900000001", salesOwnerId: jia.id, channelId: ch.id } });
@@ -640,7 +437,6 @@ describe("B.3 老数据上切外贸再切回（2026-10-06 测试分期）", () =
     await prisma.lead.create({ data: { name: "乙公司", source: "展会", customerId: 乙.id, ownerId: jia.id, status: "已转化" } });
     const o = await prisma.opportunity.create({ data: { name: "老商机", customerId: 甲.id, amount: 100, ownerId: jia.id } });
     await saveContract({ customerId: 甲.id, amount: 100, signedAt: new Date(2026, 4, 1), remark: null, 联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] } });
-    expect(await prisma.tradeOrder.count()).toBe(0);
 
     // 设置里切外贸（走真的保存动作）
     const 外 = BUSINESS_PRESETS["外贸出口"];
@@ -650,17 +446,15 @@ describe("B.3 老数据上切外贸再切回（2026-10-06 测试分期）", () =
     expect((await getBusiness()).template).toBe("trade");
     const 来 = async (id: string) => (await prisma.customerExtra.findUnique({ where: { customerId: id } }))?.source;
     expect([await 来(甲.id), await 来(乙.id)]).toEqual(["老带新渠道", "展会"]);
-    expect(await prisma.tradeOrder.count()).toBe(0); // 老签约不凭空变成订单
+    expect(await prisma.contract.count()).toBe(1); // 老签约原样还是那一笔
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("WON");
 
-    // 外贸下给老签约补订单号 → 补成一张订单；再切回通用，改金额，订单跟着改
+    // 再切回通用，改金额照样能存
     const k = await prisma.contract.findFirstOrThrow();
-    await saveContract({ id: k.id, customerId: 甲.id, amount: 100, currency: "CNY", signedAt: k.signedAt, remark: null, 订单: { no: "OLD-1" } });
-    expect((await prisma.tradeOrder.findFirstOrThrow()).no).toBe("OLD-1");
     await saveBusinessSettings({ ...BUSINESS_PRESETS["通用销售"], poolDays: 0 });
     invalidateSettingsCache();
-    await saveContract({ id: k.id, customerId: 甲.id, amount: 250, currency: "CNY", signedAt: k.signedAt, remark: null });
-    expect((await prisma.tradeOrder.findFirstOrThrow()).amount).toBe(250);
+    expect((await saveContract({ id: k.id, customerId: 甲.id, amount: 250, currency: "CNY", signedAt: k.signedAt, remark: null })).ok).toBe(true);
+    expect((await prisma.contract.findFirstOrThrow()).amount).toBe(250);
     // 再切回外贸：不重复补来源（已经有了）
     expect(await saveBusinessSettings({ ...外, poolDays: 0 })).toMatchObject({ ok: true, 补了来源: 0 });
   });

@@ -34,7 +34,7 @@ async function 一台(名: string): Promise<PrismaClient> {
     await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
   }
   await db.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
   const 那时 = new Date("2026-10-01T00:00:00Z");
   await db.user.create({ data: { id: 老板, email: "admin", name: "老板", role: "ADMIN", password: "x", createdAt: 那时 } });
   await db.user.create({ data: { id: 王, email: "wang", name: "王业务", role: "SALES", password: "x", createdAt: 那时 } });

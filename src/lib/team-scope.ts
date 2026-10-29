@@ -261,15 +261,7 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false): Rec
     case "CustomerPool":
     case "CustomerClaim":
     case "CustomerOwnerLog":
-    // 订单（2026-10-05 打开）：0.46.15 时订单整个关着，这里没列，业务员能在订单页看到全队的单
-    case "TradeOrder":
       return { customer: 客户 };
-    case "FollowUpOrder":
-    case "TradeOrderPurchase":
-    // 节点、单据（二审：节点开关打开后盯盘、按 id 改节点都会碰到同事的单）
-    case "TradeOrderNode":
-    case "TradeOrderDoc":
-      return { order: { customer: 客户 } };
     case "Task":
     case "FollowPlan":
       return { OR: [{ ownerId: 我 }, { customer: 客户 }] };
@@ -284,7 +276,6 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false): Rec
     case "OpportunityClose":
     case "OpportunityMoney":
     case "Quote":
-    case "SupplierQuote":
       return { opportunity: { customer: 客户 } };
     case "QuoteLine":
       return { quote: { opportunity: { customer: 客户 } } };

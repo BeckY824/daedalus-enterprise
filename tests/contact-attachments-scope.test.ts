@@ -73,7 +73,7 @@ beforeAll(async () => {
   delete process.env.DESKTOP_LOCAL;
   for (const t of ["Attachment", "ProjectNodeLog", "Project", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool", "CustomerClaim", "EntMember", "EntDept"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   for (const id of [销售A, 销售B, 虚线上级]) await raw.user.create({ data: { id, email: `${id}@x.com`, name: id, password: "x", role: "SALES" } });
   await raw.entMember.createMany({ data: [{ userId: 虚线上级, bizRole: "sales_mgr" }, { userId: 销售A, dottedManagerId: 虚线上级 }, { userId: 销售B }] });
   // 超长公司名照样走（界面折行在项目页另核）

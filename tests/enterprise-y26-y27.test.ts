@@ -89,7 +89,7 @@ beforeAll(async () => {
   delete process.env.DESKTOP_LOCAL;
   for (const t of ["AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool", "CustomerClaim", "CustomerExtra", "EntMember", "EntDept"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   const 人 = (uid: string, role = "SALES") => raw.user.create({ data: { id: uid, email: `${uid}@x.com`, name: uid, password: "x", role } });
   await 人(老板, "ADMIN");
   for (const uid of [经理, 普通销售, 小张, 外人]) await 人(uid);

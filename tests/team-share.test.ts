@@ -69,7 +69,7 @@ const 任务: Record<string, string> = {};
 async function 种数据() {
   for (const t of ["AuditLog", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool", "CustomerClaim"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   for (const [id, name] of [[老板, "老板"], [小王, "小王"], [小李, "小李"], ["acct_gone", "走了的"]]) {
     await raw.user.create({ data: { id, email: `${id}@x.com`, name, password: "x", role: "ADMIN", active: id !== "acct_gone" } });
   }

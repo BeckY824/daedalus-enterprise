@@ -4,6 +4,7 @@
 //   老表和级联子表不比（按外键算闭包，免得以后加子表漏写）；附件、对照行只比清理不碰的那部分；指向老表的外键列（和 updatedAt）不比。
 // 要用调用方打开的 db（DatabaseSync）。
 /* eslint-disable @typescript-eslint/no-unused-vars -- 这里只定义，拼在后面的脚本里用 */
+// TradeOrder、Supplier 及其子表 2026-10-29 起由迁移 066 直接删表：升级前的老库里还有，照样不比；升级后没有这几张表，按「不在」跳过
 const LEGACY_ROOTS = ["Opportunity", "Contract", "TradeOrder", "Supplier"];
 
 function legacyTables(db) {

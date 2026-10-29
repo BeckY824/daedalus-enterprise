@@ -10,7 +10,11 @@
    `CREATE INDEX IF NOT EXISTS`。容器每次启动都会把整个目录重跑一遍，
    不记录「执行到哪了」——少一套状态就少一处会对不上的地方
 3. 因此**只能加东西，不能改也不能删**：加表、加索引、加列。
-   改列类型、改约束、删任何东西都不行——真要改表结构，走 `REBUILD_DB=1`（会先备份）
+   改列类型、改约束、删任何东西都不行——真要改表结构，走 `REBUILD_DB=1`（会先备份）。
+   **唯一的例外**是 `066-drop-trade-tables.sql`（2026-10-29）：外贸订单 / 供应商整套 7 张表
+   企业版不再用，用 `DROP TABLE IF EXISTS` 删掉，先子表后父表。每次启动 016 / 017 / 023 会先把它们
+   建回空表、066 再删，重跑不抛。只许这 7 张、只许这种写法，名单钉在
+   `tests/migration-allowed-drops.ts`，两份迁移守卫测试都按它放行——别往里加别的表
 4. `ALTER TABLE ... ADD COLUMN` 是第 2 条的唯一例外，因为 SQLite 没有
    `ADD COLUMN IF NOT EXISTS`：第二次执行必然抛 `duplicate column name`。
    所有 runner 都把这一句（和 `already exists`）当预期跳过：

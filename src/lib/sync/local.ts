@@ -545,7 +545,7 @@ async function 合并同名(tx: Prisma.TransactionClient, t: string, 规: { 列:
   }
 }
 
-const 表的叫法: Record<string, string> = { User: "同事账号", Lead: "线索", Channel: "渠道", Customer: "客户", FollowUp: "跟进", TradeOrder: "订单", TradeOrderNode: "订单节点", CustomerExtra: "客户档案（国家、WhatsApp…）" };
+const 表的叫法: Record<string, string> = { User: "同事账号", Lead: "线索", Channel: "渠道", Customer: "客户", FollowUp: "跟进", CustomerExtra: "客户档案（国家、WhatsApp…）" };
 
 /**
  * 回放时没放进来、两台因此对不上的改动（T-003）：撞了合不了的唯一约束（同事登录名、两条线索挂同一位客户……）。

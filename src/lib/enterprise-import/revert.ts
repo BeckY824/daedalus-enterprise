@@ -99,7 +99,6 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
             plans: true,
             opportunities: true,
             contracts: true,
-            tradeOrders: true,
             projects: true,
             referrals: true,
             attributedCustomers: true,
@@ -133,12 +132,12 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
       select: {
         money: { select: { opportunityId: true } },
         contractWin: { select: { opportunityId: true } },
-        _count: { select: { followUps: true, quotes: true, tradeOrders: true, supplierQuotes: true } },
+        _count: { select: { followUps: true, quotes: true } },
       },
     });
     if (!o) return 项目挂件(tx, id, 批次Id);
     if (o.contractWin) return "这个商机是签合同时赢下来的";
-    if (Object.values(o._count).some((n) => n > 0)) return "名下已经有这一批以外的跟进、报价或订单";
+    if (Object.values(o._count).some((n) => n > 0)) return "名下已经有这一批以外的跟进或报价";
     return o.money ? "导入之后又设过币种" : null;
   }
   const f = await tx.followUp.findUnique({
@@ -151,14 +150,13 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
       participants: true,
       contactId: true,
       source: { select: { followUpId: true } },
-      orderNode: { select: { followUpId: true } },
       projectNode: { select: { projectId: true } },
     },
   });
   if (!f) return null;
   // 导入时自己挂上的项目（父商机建成了项目）不算；挂到了别的项目才是外面动过
   const 自己挂的 = !!f.projectNode && 写过.projectId === f.projectNode.projectId;
-  if (f.orderNode || (f.projectNode && !自己挂的)) return "这条跟进挂到了订单或项目的节点上";
+  if (f.projectNode && !自己挂的) return "这条跟进挂到了项目的节点上";
   if (f.source) return "这条跟进有 AI 整理的原文";
   return [f.duration, f.dueAt, f.dueOn, f.dueHasTime, f.participants, f.contactId].some((v) => v !== null) ? "导入之后又补过这条跟进（时长、提醒、联系人等）" : null;
 }

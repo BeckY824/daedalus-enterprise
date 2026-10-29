@@ -68,7 +68,7 @@ async function 开(f: string): Promise<PrismaClient> {
     await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
   }
   await db.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await db.user.create({ data: { ...管理员, password: "x", title: "管理员", createdAt: new Date("2026-10-01T00:00:00Z") } });
   await 建同步表(db);
   await 装触发器(db);

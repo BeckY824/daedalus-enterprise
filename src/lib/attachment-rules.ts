@@ -87,11 +87,11 @@ export type 附件 = {
   有文件: boolean;
 };
 
-/** 挂在哪：商机 / 订单（D-24）；线索 / 联系人只在企业版（2026-10-28 联系人附件，接口按 企业版() 放行） */
-export type 归属 = { opportunityId: string } | { orderId: string } | { leadId: string } | { contactId: string };
+/** 挂在哪：商机（D-24）；线索 / 联系人只在企业版（2026-10-28 联系人附件，接口按 企业版() 放行）。订单那种 2026-10-29 随订单表删了 */
+export type 归属 = { opportunityId: string } | { leadId: string } | { contactId: string };
 
 /** 归属的那一个键和编号：拼查询串、日志用 */
-export type 归属键名 = "opportunityId" | "orderId" | "leadId" | "contactId";
+export type 归属键名 = "opportunityId" | "leadId" | "contactId";
 export function 归属键(挂在: 归属): [归属键名, string] {
   return Object.entries(挂在)[0] as [归属键名, string];
 }
