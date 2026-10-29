@@ -9,14 +9,27 @@
  * - 前后带空格的按去掉空格后的认，「 跟进中」不另起一个看着一模一样的组。
  */
 import { FOLLOW_STATUSES } from "./constants";
+import { 阶段们 } from "./project/stage-dict";
 
 export const 未填写组 = "未填写";
 
 export function 名单分组<T extends { followStatus: string | null }>(rows: T[]): { s: string; rows: T[] }[] {
-  const 组名 = (r: T) => r.followStatus?.trim() || 未填写组;
-  const 预设 = new Set<string>(FOLLOW_STATUSES);
+  return 按预设分组(rows, (r) => r.followStatus, FOLLOW_STATUSES);
+}
+
+/**
+ * 项目详情页中栏名单（ProjectRoster.tsx）按「当前阶段」分组（P11）：线索 / 商机 / 订单，按三大阶段的顺序。
+ * 规矩和上面同一条——一个项目都不能消失：字典外的阶段单独成组接在后面，空的归「未填写」
+ */
+export function 项目名单分组<T extends { 阶段: string | null }>(rows: T[]): { s: string; rows: T[] }[] {
+  return 按预设分组(rows, (r) => r.阶段, 阶段们);
+}
+
+function 按预设分组<T>(rows: T[], 取: (r: T) => string | null | undefined, 预设们: readonly string[]): { s: string; rows: T[] }[] {
+  const 组名 = (r: T) => 取(r)?.trim() || 未填写组;
+  const 预设 = new Set<string>(预设们);
   const 其余 = [...new Set(rows.map(组名).filter((s) => !预设.has(s)))];
   // 「未填写」放最后：它不是一种状态，是缺了状态
-  const 顺序 = [...FOLLOW_STATUSES, ...其余.filter((s) => s !== 未填写组), ...(其余.includes(未填写组) ? [未填写组] : [])];
+  const 顺序 = [...预设们, ...其余.filter((s) => s !== 未填写组), ...(其余.includes(未填写组) ? [未填写组] : [])];
   return 顺序.map((s) => ({ s, rows: rows.filter((r) => 组名(r) === s) })).filter((g) => g.rows.length > 0);
 }

@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
-import { App, Button, Card, Input, Select } from "antd";
+import { App, Card, Select } from "antd";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import type { 项目画像键 } from "@/lib/enterprise/dict-kinds";
-import type { 侧栏项目 } from "@/lib/project/list";
 import { 改项目画像Action } from "../actions";
 
 /** 项目画像（企业版 P11）：五项字典（所在地、级别在编辑项目框里改）。选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示不出来） */
@@ -106,63 +103,5 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读 }: { pr
     <Card title={`附件（${个数}）`}>
       <AttachmentsPanel 归属={{ projectId }} 只读={只读} on个数={set个数} />
     </Card>
-  );
-}
-
-/**
- * 详情页左边的项目列表（企业版 P11）：范围和项目页一样（lib/project/list.ts 读侧栏项目），点一个换一个，当前那个高亮。
- * 宽度 ≥1280 默认摆开、窄了默认收起（globals.css .proj-shell）；点了按钮就按点的来。
- * 收起 / 摆开记在 开 里：null = 跟宽度走；窄屏摆开时浮在内容上面，点了某个项目就收回去
- */
-export function useProjectNav() {
-  const [开, set开] = useState<boolean | null>(null);
-  const 窄 = () => typeof window !== "undefined" && window.matchMedia("(max-width: 1279px)").matches;
-  const 现在开着 = () => 开 ?? !窄();
-  return {
-    data: 开 === null ? undefined : 开 ? "open" : "closed",
-    切: () => set开(!现在开着()),
-    点了: () => { if (窄()) set开(null); },
-  };
-}
-
-export function ProjectSideNav({ 们, 当前, 收起, 点了 }: { 们: 侧栏项目[]; 当前: string; 收起: () => void; 点了: () => void }) {
-  const [词, set词] = useState("");
-  const 表 = useRef<HTMLUListElement>(null);
-  // 打开时把当前那个滚进来（列表最多 500 个，当前的可能在很下面）
-  useEffect(() => {
-    表.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
-  }, [当前]);
-  const t = 词.trim().toLowerCase();
-  const 列 = t ? 们.filter((x) => x.name.toLowerCase().includes(t)) : 们;
-  return (
-    // 窄屏浮着的时候按 Esc 收回去（焦点在列表里、搜索框里都算）
-    <nav className="proj-nav" aria-label="项目列表" onKeyDown={(e) => { if (e.key === "Escape") 收起(); }}>
-      <div className="proj-nav-head">
-        <span>项目（{们.length}）</span>
-        <Button type="text" size="small" icon={<MenuFoldOutlined />} aria-label="收起项目列表" title="收起" onClick={收起} />
-      </div>
-      {们.length > 8 && <Input size="small" allowClear placeholder="找项目" value={词} onChange={(e) => set词(e.target.value)} style={{ margin: "0 8px 8px", width: "calc(100% - 16px)" }} />}
-      <ul ref={表} className="proj-nav-list">
-        {列.map((x) => (
-          <li key={x.id}>
-            <Link href={`/projects/${x.id}`} aria-current={x.id === 当前 ? "page" : undefined} className={x.id === 当前 ? "proj-nav-item on" : "proj-nav-item"} onClick={点了}>
-              <span className="proj-nav-name" title={x.name}>{x.name}</span>
-              <span className="proj-nav-meta">
-                <span className="proj-nav-phase">{x.阶段}</span>
-                <span className="proj-nav-node" title={x.结局 ?? x.进程}>{x.结局 ?? x.进程}</span>
-                {x.pooled && <span className="proj-nav-pool">公海</span>}
-              </span>
-            </Link>
-          </li>
-        ))}
-        {!列.length && <li className="proj-nav-empty">{t ? "没有对得上的项目" : "还没有项目"}</li>}
-      </ul>
-    </nav>
-  );
-}
-
-export function ProjectNavOpenButton({ onClick }: { onClick: () => void }) {
-  return (
-    <Button className="proj-nav-open" size="small" icon={<MenuUnfoldOutlined />} onClick={onClick}>项目列表</Button>
   );
 }

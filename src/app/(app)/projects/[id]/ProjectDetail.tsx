@@ -36,8 +36,8 @@ import type { 卡点默认 } from "@/lib/project/blocker-rules";
 import { ProjectCommissionCard } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
-import type { 侧栏项目 } from "@/lib/project/list";
-import { ProjectAttachmentsCard, ProjectNavOpenButton, ProjectProfileCard, ProjectSideNav, useProjectNav, type 项目画像 } from "./ProjectExtras";
+import PaneToggle from "@/components/PaneToggle";
+import { ProjectAttachmentsCard, ProjectProfileCard, type 项目画像 } from "./ProjectExtras";
 
 export type 项目详情 = {
   id: string; name: string; remark: string | null; amount: number; currency: string;
@@ -229,7 +229,7 @@ const 无效原因前缀 = "无效原因：";
 const 提醒色 = { 稳: "green", 拿捏: "gold", 超时: "red" } as const;
 
 export default function ProjectDetail({
-  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 侧栏 = null,
+  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null,
 }: {
   p: 项目详情;
   能改: boolean;
@@ -240,8 +240,6 @@ export default function ProjectDetail({
   /** 在用的异常类别（进异常状态时选） */
   类别们: { id: string; name: string }[];
   卡点?: 项目卡点 | null;
-  /** 企业版左边的项目列表（P11）；别的版本 null，不摆 */
-  侧栏?: 侧栏项目[] | null;
 }) {
   const router = useRouter();
   const { message } = App.useApp();
@@ -338,7 +336,6 @@ export default function ProjectDetail({
 
   // 各张卡先摆成常量：企业版两栏、别的版本照原来一栏，摆法不同、卡是同一份
   const 位 = 阶段与进程(p, 字典);
-  const 导航 = useProjectNav();
   const 节点卡 = (
     <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
@@ -543,32 +540,44 @@ export default function ProjectDetail({
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
   const 附件卡 = p.项目附件 && <ProjectAttachmentsCard key={p.id} projectId={p.id} 起始个数={p.项目附件.个数} 只读={p.项目附件.只读} />;
 
+  const 页头 = (
+    <PageHead
+      title={p.name}
+      subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
+      extra={
+        <Space wrap>
+          {/* 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认 */}
+          {p.能放公海 && p.企业版 && <Button disabled={忙} onClick={() => { set回收原因(null); set放回框(true); }}>放回公海</Button>}
+          {p.能放公海 && !p.企业版 && (
+            <Popconfirm title="放回项目公海？" description={p.企业版 ? "放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人" : "放回去以后谁都能领，你自己不能再领回来"} okText="放回公海" onConfirm={() => void 跑(() => 放回项目公海(p.id), "已放回项目公海")}>
+              <Button disabled={忙}>放回公海</Button>
+            </Popconfirm>
+          )}
+          {p.能领取 && <Button type="primary" disabled={忙} onClick={() => void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了")}>领取</Button>}
+          {/* 企业版原负责人：按钮摆着、灰着，悬停说为什么（接口也拦，lib/project/db.ts 领取公海项目） */}
+          {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
+          {能改 && (
+            <Popconfirm title="删除这个项目？" description={删除说明(p.删前清点, b.customer)} okText="删除" okButtonProps={{ danger: true }} onConfirm={() => void 删()}>
+              <Button danger disabled={忙}>删除项目</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      }
+    />
+  );
+
   const 正文 = (
     <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
-      {侧栏 && <ProjectNavOpenButton onClick={导航.切} />}
-      <PageHead
-        title={p.name}
-        subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
-        extra={
-          <Space wrap>
-            {/* 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认 */}
-            {p.能放公海 && p.企业版 && <Button disabled={忙} onClick={() => { set回收原因(null); set放回框(true); }}>放回公海</Button>}
-            {p.能放公海 && !p.企业版 && (
-              <Popconfirm title="放回项目公海？" description={p.企业版 ? "放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人" : "放回去以后谁都能领，你自己不能再领回来"} okText="放回公海" onConfirm={() => void 跑(() => 放回项目公海(p.id), "已放回项目公海")}>
-                <Button disabled={忙}>放回公海</Button>
-              </Popconfirm>
-            )}
-            {p.能领取 && <Button type="primary" disabled={忙} onClick={() => void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了")}>领取</Button>}
-            {/* 企业版原负责人：按钮摆着、灰着，悬停说为什么（接口也拦，lib/project/db.ts 领取公海项目） */}
-            {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
-            {能改 && (
-              <Popconfirm title="删除这个项目？" description={删除说明(p.删前清点, b.customer)} okText="删除" okButtonProps={{ danger: true }} onConfirm={() => void 删()}>
-                <Button danger disabled={忙}>删除项目</Button>
-              </Popconfirm>
-            )}
-          </Space>
-        }
-      />
+      {p.企业版 ? (
+        /* 企业版（P11）：项目名单在中栏（@pane/projects/[id]，components/ProjectRoster.tsx）。
+           它收起或收成抽屉时，标题最左边补一颗侧栏图标把它叫回来，和客户详情页同一颗（components/PaneToggle.tsx） */
+        <div className="proj-head">
+          <PaneToggle 栏="roster" 位置="主区" 名="项目列表" />
+          {页头}
+        </div>
+      ) : (
+        页头
+      )}
 
       {p.pooled && (
         <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在项目公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
@@ -731,14 +740,7 @@ export default function ProjectDetail({
       </Modal>
     </div>
   );
-  if (!侧栏) return 正文;
-  // 企业版（P11）：左边一条项目列表，点一个换一个；窄了（<1280）默认收起，摆开时浮在内容上（globals.css .proj-shell）
-  return (
-    <div className="proj-shell" data-nav={导航.data}>
-      <ProjectSideNav 们={侧栏} 当前={p.id} 收起={导航.切} 点了={导航.点了} />
-      {正文}
-    </div>
-  );
+  return 正文;
 }
 
 /** 回收日在两天内（含已到）：提示变成警示色 */

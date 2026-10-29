@@ -26,7 +26,6 @@ import { 时限提醒of } from "@/lib/project/blocker-rules";
 import { 联系人附件入口, 项目附件入口 } from "@/app/api/attachments/access";
 import { 项目画像项, 其他项, 字典定义 } from "@/lib/enterprise/dict-kinds";
 import { 读产品需求 } from "@/lib/project/profile-rules";
-import { 读侧栏项目 } from "@/lib/project/list";
 import type { 项目画像 } from "./ProjectExtras";
 import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 
@@ -121,8 +120,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     level: p.level,
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
   };
-  // 企业版项目画像、项目附件、左边的项目列表（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）
-  const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
+  // 企业版项目画像、项目附件（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）。
+  // 项目名单在中栏（@pane/projects/[id] → panes.tsx 项目名单），不在这页里读
   const 存的需求 = 读产品需求(p.productNeeds);
   const 画像: 项目画像 | null = !企业 || !露 ? null : {
     项们: await Promise.all(项目画像项.map(async (项) => {
@@ -133,7 +132,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     })),
     值: { budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, demandStatus: p.demandStatus, productNeeds: 存的需求 },
   };
-  const [项目附件, 侧栏] = 企业 ? await Promise.all([露 ? 项目附件入口(p.id) : null, 读侧栏项目(字典)]) : [null, null];
+  const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
   const 详情: 项目详情 = {
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
@@ -176,5 +175,5 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     ...(项目附件 ? { 项目附件 } : {}),
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };
-  return <ProjectDetail key={p.id} 侧栏={侧栏} 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
+  return <ProjectDetail key={p.id} 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
 }

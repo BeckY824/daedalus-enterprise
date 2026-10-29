@@ -709,6 +709,8 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .roster-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--success); }
 .roster-dot.due { background: var(--warning); }
 .roster-dot.cold { background: var(--text-faint); }
+/* 项目名单（ProjectRoster）右下角的当前进程：挤不下就省略，不把最近一句压没 */
+.roster-stage { flex: none; max-width: 6.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--text-faint); }
 /* 名单顶上的页签：全部 / 我的 / 本周要跟 */
 .roster-tabs { display: flex; gap: 4px; padding: 0 var(--s3) var(--s2); }
 .roster-tab { padding: 4px 10px; border: 0; border-radius: var(--r-ctl); background: none; font: inherit; font-size: var(--fs-note); color: var(--text-muted); cursor: pointer; transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
@@ -1091,13 +1093,20 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-contact:hover .rec-mini-acts { opacity: 1; pointer-events: auto; }
 
 /* 企业版项目详情两栏（10-27 会后排版，ProjectDetail）：左边节点 / 沟通 / 卡点，右边资料 320px。
-   按容器宽不按视口：桌面端开着 AI 侧栏时主区变窄，视口量不准。窄于 880 退一栏，干活的在上 */
+   按容器宽不按视口：中栏项目名单摊开、或桌面端开着 AI 侧栏时主区变窄，视口量不准。
+   P11 起左边还有中栏项目名单（ProjectRoster，和客户记录页同一个位置）：1280 宽正文约 790、1366 约 870，
+   窄于 1000 右栏收到 280；窄于 630 退一栏、干活的在上（和客户记录页的单栏线同一条） */
 .proj-wrap { container-type: inline-size; }
 .proj-2col { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
 /* 列要钉成 minmax(0,1fr)：默认的隐式列按内容最小宽度算，一个没空格的超长客户名能把 320 的右栏撑到上千（10-27 单测量出 1119px） */
 .proj-main, .proj-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 .proj-side .cust-link-t { overflow-wrap: anywhere; }
-@container (max-width: 880px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 1000px) { .proj-2col { grid-template-columns: minmax(0, 1fr) 280px; } }
+@container (max-width: 629px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
+/* 页头最左边那颗「显示项目列表」（PaneToggle，名单收起或在抽屉里时才有），照客户记录页 .rec-head */
+.proj-head { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
+.proj-head > .page-head { flex: 1; min-width: 0; }
+.proj-head > .pane-toggle { margin: 4px 0 0 -6px; flex: none; }
 /* 节点卡（P11）：阶段、进程分两格摆，不拼成一串；进程名太长省略号收尾，悬停看全 */
 .proj-where { display: flex; flex-wrap: wrap; gap: 8px 28px; min-width: 0; }
 .proj-where > div { min-width: 0; }
@@ -1112,36 +1121,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-profile-val { min-width: 0; overflow-wrap: anywhere; }
 .proj-profile-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 企业版详情页左边的项目列表（P11，ProjectExtras ProjectSideNav）。
-   ≥1280 默认摆开占 184px；窄了默认收起，点「项目列表」浮在内容上面（不挤正文）。data-nav 是点过按钮之后的状态，盖过宽度默认。
-   摆开时正文少了 196px：右栏收到 280、退一栏的线降到 800，1280（正文约 812）/ 1366 宽还是两栏；收起或窄屏浮层时照原来 320 / 880 */
-.proj-shell { position: relative; display: grid; grid-template-columns: 184px minmax(0, 1fr); gap: 12px; align-items: start; max-width: 1396px; }
-@media (min-width: 1280px) {
-  @container (min-width: 801px) { .proj-shell:not([data-nav="closed"]) .proj-2col { grid-template-columns: minmax(0, 1fr) 280px; } }
-}
-.proj-nav { position: sticky; top: 12px; display: flex; flex-direction: column; max-height: calc(100vh - 96px); min-width: 0; border: 1px solid var(--border); border-radius: var(--r-card); background: var(--panel); }
-.proj-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 6px 8px 12px; font-weight: 600; }
-.proj-nav-list { list-style: none; margin: 0; padding: 0 6px 6px; overflow-y: auto; min-height: 0; }
-.proj-nav-item { display: block; padding: 6px 8px; border-radius: 6px; color: var(--ink); min-width: 0; transition: background-color var(--t-fast) var(--ease); }
-.proj-nav-item:hover { background: var(--hover); color: var(--ink); }
-.proj-nav-item.on { background: var(--brand-bg); color: var(--brand-deep); }
-.proj-nav-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.proj-nav-item.on .proj-nav-name { font-weight: 600; }
-.proj-nav-meta { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-note); color: var(--text-muted); }
-.proj-nav-phase { flex: none; }
-.proj-nav-node { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.proj-nav-pool { flex: none; margin-left: auto; }
-.proj-nav-empty { padding: 8px; color: var(--text-muted); font-size: var(--fs-note); }
-.proj-nav-open { display: none; margin-bottom: 8px; }
-.proj-shell[data-nav="closed"] { grid-template-columns: minmax(0, 1fr); }
-.proj-shell[data-nav="closed"] .proj-nav { display: none; }
-.proj-shell[data-nav="closed"] .proj-nav-open { display: inline-flex; }
-@media (max-width: 1279px) {
-  .proj-shell { grid-template-columns: minmax(0, 1fr); }
-  .proj-shell:not([data-nav="open"]) .proj-nav { display: none; }
-  .proj-shell:not([data-nav="open"]) .proj-nav-open { display: inline-flex; }
-  .proj-shell[data-nav="open"] .proj-nav { position: absolute; z-index: 20; top: 0; left: 0; width: 260px; max-height: min(70vh, 560px); box-shadow: var(--shadow-pop); }
-}
 /* 基本资料「展开更多 N 项」、左栏底部「更多」：文字按钮靠左，和字段左缘对齐 */
 .rec-sec-more { padding: 0 8px; height: auto; }
 

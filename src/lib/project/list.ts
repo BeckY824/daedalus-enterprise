@@ -100,18 +100,54 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   };
 }
 
-/** 详情页左边那条小列表的一行（P11）：只要名字和在哪，不带客户名（公海里同事客户的项目也不露客户） */
-export type 侧栏项目 = { id: string; name: string; 阶段: string; 进程: string; 结局: string | null; pooled: boolean };
+/**
+ * 项目详情页中栏名单的一行（P11，照客户记录页的名单）：名字、在哪个阶段 / 进程、最近一次沟通。
+ * 客户名和沟通内容只在露客户时给（公海里同事客户的项目不露，lib/project/db.ts 露客户），不露时这几格都是 null
+ */
+export type 名单项目 = {
+  id: string;
+  name: string;
+  阶段: string;
+  进程: string;
+  结局: string | null;
+  pooled: boolean;
+  customerName: string | null;
+  /** 最近一次沟通的方式（FOLLOW_TYPE_MAP 的键）和时间 */
+  lastType: string | null;
+  lastAt: string | null;
+  lastNote: string | null;
+  /** 项目的下一步日期：「本周要跟」和右下角圆点看它（计划是挂在客户上的，按项目只有这一格）；有结局或在公海就不算 */
+  nextAt: string | null;
+};
 
 /**
- * 企业版项目详情页左边的项目列表（P11）：和项目页同一个范围——同一个按可见范围筛过的 prisma、同样按最近改过排、同样最多 项目上限 个，
+ * 企业版项目详情页的中栏名单（P11）：和项目页同一个范围——同一个按可见范围筛过的 prisma、同样按最近改过排、同样最多 项目上限 个，
  * 不另开权限口子。不跑超时回收（那是项目页列表的事，详情页每点一个都扫一遍太重）
  */
-export async function 读侧栏项目(字典: 阶段字典): Promise<侧栏项目[]> {
+export async function 读名单项目(me: { id: string }, 字典: 阶段字典): Promise<{ rows: 名单项目[]; 取到上限: boolean }> {
   const rows = await prisma.project.findMany({
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
-    select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true },
+    select: {
+      id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, nextStepAt: true,
+      customer: { select: { name: true } },
+      followUps: { orderBy: { followUp: { occurredAt: "desc" } }, take: 1, select: { followUp: { select: { type: true, content: true, occurredAt: true } } } },
+    },
   });
-  return rows.map((r) => ({ id: r.id, name: r.name, ...阶段与进程(r, 字典), pooled: !!r.pooledAt }));
+  const 可见 = await 看得到的客户(rows.map((r) => r.customerId));
+  return {
+    取到上限: rows.length >= 项目上限,
+    rows: rows.map((r) => {
+      const 露 = 露客户(me, r, 可见);
+      const f = 露 ? r.followUps[0]?.followUp : undefined;
+      return {
+        id: r.id, name: r.name, ...阶段与进程(r, 字典), pooled: !!r.pooledAt,
+        customerName: 露 ? r.customer.name : null,
+        lastType: f?.type ?? null,
+        lastAt: f ? f.occurredAt.toISOString() : null,
+        lastNote: f?.content?.trim().slice(0, 60) || null,
+        nextAt: r.nextStepAt && !r.result && !r.pooledAt ? dayjs(r.nextStepAt).format("YYYY-MM-DD") : null,
+      };
+    }),
+  };
 }
