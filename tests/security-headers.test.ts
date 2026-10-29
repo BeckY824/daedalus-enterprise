@@ -42,11 +42,12 @@ describe("安全响应头", () => {
   });
 });
 
-/** 商机列表和商机管道 10-28 删了（企业版只用项目）：老链接转去项目，不落 404 */
+/** 商机列表和商机管道、订单、供应商 10-28 删了（企业版只用项目）：老链接转去项目，不落 404 */
 describe("旧商机地址", () => {
-  it("/opportunities 和它下面的地址都转到 /projects，且不是永久转", async () => {
+  it("/opportunities、/orders、/suppliers 和它们下面的地址都转到 /projects，且不是永久转", async () => {
+    // 订单、供应商两页 10-28 删了、表 10-29 也删了（迁移 066），老书签同样转项目
     const 规则 = await nextConfig.redirects!();
-    for (const source of ["/opportunities", "/opportunities/:path*"]) {
+    for (const source of ["/opportunities", "/opportunities/:path*", "/orders", "/orders/:path*", "/suppliers", "/suppliers/:path*"]) {
       expect(规则.find((r) => r.source === source), source).toMatchObject({ destination: "/projects", permanent: false });
     }
   });
