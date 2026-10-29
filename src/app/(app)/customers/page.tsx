@@ -84,6 +84,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const b = await getBusiness();
   // 首页「开始」卡的 ?new=1：项目模式开着时新建走建档向导
   if (b.projectMode && sp.new === "1") redirect("/projects/new");
+  // 企业版项目模式：公海统一在 /pool（P7），老链接 ?pool=1 转过去，关键词带上
+  if (企业版() && b.projectMode && sp.pool === "1") redirect(sp.keyword ? `/pool?${new URLSearchParams({ keyword: sp.keyword })}` : "/pool");
   const sort = sp.sort === "amount-asc" || sp.sort === "amount-desc" ? sp.sort : "";
   /** 按客户等级排（2026-10-16）：A→D 或 D→A，没分级的总在最后 */
   const 等级排序 = sp.sort === "level-asc" || sp.sort === "level-desc" ? sp.sort : "";

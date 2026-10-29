@@ -284,6 +284,11 @@ export default function CustomersView({
   }
   const b = useBusiness();
   // 项目模式开着：新建一律走建档向导（客户、联系人、项目、首条沟通一次建好）
+  /**
+   * 企业版项目模式（统一公海 P7，2026-10-29）：公海挪去 /pool 一页看，这里不摆「客户 / 公海」页签。
+   * 「新建客户」照旧在（项目模式下走建档向导）。?pool=1 的老链接服务端直接转去 /pool
+   */
+  const 统一公海 = 企业 && b.projectMode === true;
   const 新建 = () => {
     if (b.projectMode) return router.push("/projects/new");
     setEditing(null);
@@ -543,7 +548,7 @@ export default function CustomersView({
           页签记在地址上（pool=1），翻页、搜索、筛选都留在这一页签里。
           一个人用、公海里也没人时不摆——那时公海就是个空抽屉；空库不摆；子集（筛选行上那三种标记）里不摆：那几个数本来就含公海
         */
-        titleAside={!空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
+        titleAside={!统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
           <Segmented
             aria-label={`${b.customer} / 公海`}
             value={f.pool ? "公海" : "客户"}
@@ -602,7 +607,9 @@ export default function CustomersView({
           公海里匹配 > 0 ? (
             <div className="list-none">
               这里没有符合条件的；
-              <Button type="link" size="small" style={{ padding: 0 }} onClick={() => apply({ pool: "1", salesOwnerId: "" })}>
+              <Button type="link" size="small" style={{ padding: 0 }} onClick={() => (统一公海
+                ? router.push(f.keyword ? `/pool?${new URLSearchParams({ keyword: f.keyword })}` : "/pool")
+                : apply({ pool: "1", salesOwnerId: "" }))}>
                 公海里有 {公海里匹配} 位匹配 ›
               </Button>
             </div>

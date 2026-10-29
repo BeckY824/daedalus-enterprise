@@ -20,7 +20,10 @@ import { 外贸精简 } from "@/lib/business-config";
  * 自己升为主按钮——不能出现一张卡上零个主按钮的情况。
  * 企业版的管理员例外：那边没有演示数据，主按钮是「导入」（去设置 → 企业版导入），见 去导入。
  */
-export default function StartCard({ 自己服务器 = false, 去导入 = false, 企业版 = false, 产品名 = "Daedalus CRM" }: {
+/** 没设自定产品名（CRM_PRODUCT_NAME）时「欢迎使用 …」里的名字；企业版首页的欢迎语也用它 */
+export const 默认产品名 = "Daedalus CRM";
+
+export default function StartCard({ 自己服务器 = false, 去导入 = false, 企业版 = false, 产品名 = 默认产品名 }: {
   /**
    * 跑在客户自己部署的服务器上（企业版私有部署、自部署的网页版，2026-10-25）：
    * 第三句不能再说「数据只在你的电脑上」「账号用来记 AI 次数和团队版同步」——

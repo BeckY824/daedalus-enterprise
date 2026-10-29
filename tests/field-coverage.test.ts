@@ -126,6 +126,8 @@ const 派生: Record<string, Record<string, string>> = {
     attributionChannelId: "推荐链往上两代算出来的，改推荐人它就跟着变",
     attributionCustomerId: "同上",
     lastFollowAt: "最近一条跟进的时间，记跟进时自动维护",
+    poolInvalidAt: "企业版统一公海：pool/actions.ts 的 标无效客户 / 恢复有效客户打上和清掉，不随客户资料编辑",
+    poolReturns: "企业版统一公海：主动退回公海时系统累加（放进公海 / 放回项目公海），撤销放进时减回，不许手工改",
   },
   Lead: {
     convertedAt: "convertLead 转化时打上",

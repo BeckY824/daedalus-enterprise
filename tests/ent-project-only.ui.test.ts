@@ -47,7 +47,7 @@ it("企业版项目：左栏六个根目录、这个顺序；没有商机、新�
   expect(t).not.toMatch(/商机|新线索|联系人|跟进|更多|数据/);
   const 名 = await page.getByRole("navigation", { name: "主导航" }).locator("a.rail-item").evaluateAll((as) => as.map((a) => a.getAttribute("aria-label")));
   expect(名).toEqual(["首页", "看板", "渠道", "公海", "客户", "项目"]);
-  expect(await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "公海", exact: true }).getAttribute("href")).toBe("/customers?pool=1");
+  expect(await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "公海", exact: true }).getAttribute("href")).toBe("/pool");
   expect(errors).toEqual([]); await page.close();
 });
 

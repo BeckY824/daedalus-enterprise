@@ -4,7 +4,7 @@ import { useContext, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { App, Badge, Button, Select, Space, Segmented, Tag } from "antd";
-import { InteractionOutlined, PlusOutlined, ShareAltOutlined, ThunderboltOutlined, UserSwitchOutlined } from "@ant-design/icons";
+import { CloseOutlined, InteractionOutlined, PlusOutlined, ShareAltOutlined, ThunderboltOutlined, UserSwitchOutlined } from "@ant-design/icons";
 import { useFollowDue } from "@/components/FollowDue";
 import { DOCK_W, DockOpenContext, useNarrow } from "@/lib/roster";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
@@ -20,6 +20,7 @@ import { 金额, 合计文字 } from "@/lib/currency";
 import { 主题颜色 } from "@/lib/chart-theme";
 import { categorical } from "@/lib/palette";
 import { 收回次数筛们 } from "@/lib/project/recycle-count";
+import { 认首页卡, 首页卡口径 } from "@/lib/project/home-cards";
 import { 按预计成交排 } from "@/lib/project/project-fields";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
@@ -74,7 +75,8 @@ export default function ProjectsView({
   列: 看板一列[];
   取到上限: boolean;
   users: 可选成员[];
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string };
+  /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string };
   /** 服务端的 企业版()：结局叫法跟着字典 */
   企业版?: boolean;
   /** 企业版组织规则里改过的出口叫法 */
@@ -113,6 +115,13 @@ export default function ProjectsView({
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
   const 新建 = () => router.push(新线索 ? "/leads/new" : "/projects/new");
+  // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批
+  const 卡 = 认首页卡(filters.f);
+  const 卡标 = 卡 ? (
+    <Tag className="proj-card-filter" closable title={首页卡口径[卡].说明} onClose={(e) => { e.preventDefault(); apply({ f: "" }); }} closeIcon={<CloseOutlined aria-label={`清掉「${首页卡口径[卡].名}」筛选`} />}>
+      {首页卡口径[卡].名}
+    </Tag>
+  ) : undefined;
   // 公海里同事客户的项目不给客户名（page.tsx 露客户），领取后再看
   const 领了再看 = `领取后显示${b.customer}`;
 
@@ -228,6 +237,7 @@ export default function ProjectsView({
     <div>
       <PageHead
         title={新线索 ? "新线索" : "项目"}
+        titleAside={卡标}
         subtitle={
           取到上限
             ? `只显示最近改过的 500 个${新线索 ? "新线索" : "项目"}，用搜索找更早的`
@@ -236,7 +246,8 @@ export default function ProjectsView({
               : "从线索到交付，一个项目一条线"
         }
         extra={
-          <Space>
+          // 窄屏（手机、Windows 1024）按钮多了换行，不撑出页宽
+          <Space wrap>
             {/*
               企业版左栏只剩六个根目录（10-29，lib/enterprise/nav.ts）：新线索、跟进不在左栏了，入口摆在这里。
               跟进的红数（逾期 + 今天要跟）左栏挂在「项目」上，点进来在这颗键上找得到同一个数。

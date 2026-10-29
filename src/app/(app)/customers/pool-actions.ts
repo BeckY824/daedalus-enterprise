@@ -18,6 +18,8 @@ import { 记换负责人, 是我刚换的, 撤销时限毫秒 } from "@/lib/owne
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { Prisma } from "@/generated/prisma";
 
 export type 公海结果 =
   | {
@@ -41,9 +43,28 @@ export type 公海结果 =
 
 function 刷新(ids: string[]) {
   revalidatePath("/customers");
+  revalidatePath("/pool");
   if (ids.length === 1) revalidatePath(`/customers/${ids[0]}`);
   revalidatePath("/dashboard");
 }
+
+/**
+ * 企业版统一公海（P7，迁移 080）：每位客户累计主动退回几次。放进公海 +1、撤销放进 −1（不到 0），
+ * 超时回收、离职交接、撤销领取放回去的都不算。走裸 SQL：只是个计数，不该顶掉 updatedAt（「最近更新」排序）
+ */
+async function 记退回(ids: string[], 加: 1 | -1) {
+  if (!企业版() || !ids.length) return;
+  await prisma.$executeRaw(加 === 1
+    ? Prisma.sql`UPDATE "Customer" SET "poolReturns" = "poolReturns" + 1 WHERE "id" IN (${Prisma.join(ids)})`
+    : Prisma.sql`UPDATE "Customer" SET "poolReturns" = MAX(0, "poolReturns" - 1) WHERE "id" IN (${Prisma.join(ids)})`);
+}
+
+/** 企业版统一公海（P7，迁移 079）：这几位里标了无效的（还在公海里的）。标了无效的不能领、不能分 */
+async function 无效的(ids: string[]): Promise<Set<string>> {
+  if (!企业版() || !ids.length) return new Set();
+  return new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, pool: { isNot: null }, poolInvalidAt: { not: null } }, select: { id: true } }))).map((c) => c.id));
+}
+const 无效不能领提示 = "标了无效的客户不能领取，要老板先恢复";
 
 /**
  * 放进公海：负责人本人或管理员才能放（别人的客户你放不进去——那等于替同事把人扔了）。可批量，
@@ -63,6 +84,7 @@ export async function 放进公海(ids: string[]): Promise<公海结果> {
     return 没权限 ? { ok: false, error: `只有负责人或管理员能把${b.customer}放进公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
   }
   await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason: "手动" })) });
+  await 记退回(能放.map((c) => c.id), 1);
   await recordAudit({
     user: me, action: "pool", entity: "Customer", entityId: 能放.length === 1 ? 能放[0].id : null,
     summary: `把 ${能放.length} 名${b.customer}放进公海`,
@@ -86,7 +108,11 @@ export async function 领取(ids: string[]): Promise<公海结果> {
   const 不能领 = 拦原负责人()
     ? new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: me.id, pool: { isNot: null } }, select: { id: true } }))).map((c) => c.id))
     : new Set<string>();
-  if (不能领.size && 不能领.size === new Set(ids).size) return { ok: false, error: 原负责人不能领回提示 };
+  // 企业版：标了无效的不能领（统一公海 P7），和原负责人领不回一样算「没权限」那几位
+  const 无效 = await 无效的(ids);
+  const 原负责人的 = 不能领.size;
+  for (const id of 无效) 不能领.add(id);
+  if (不能领.size && 不能领.size === new Set(ids).size) return { ok: false, error: 原负责人的 ? 原负责人不能领回提示 : 无效不能领提示 };
   // 换负责人之前先把老签约「签约那一刻是谁的」钉住（排查 X1，和批量分配一样）
   await 钉住老签约();
   const 领到: { id: string; 值: string }[] = [];
@@ -104,16 +130,18 @@ export async function 领取(ids: string[]): Promise<公海结果> {
     */
     const 原 = await 看全部(() => prisma.$transaction(async (tx) => {
       if (!(await tx.customerPool.findUnique({ where: { customerId: id }, select: { customerId: true } }))) return null;
-      const c = await tx.customer.findUnique({ where: { id }, select: { salesOwnerId: true } });
+      const c = await tx.customer.findUnique({ where: { id }, select: { salesOwnerId: true, poolInvalidAt: true } });
       // 客户没了：抛出去整个回滚
       if (!c) throw new Error("客户不在了");
+      // 查完到这一刻之间被标了无效（企业版统一公海）：不领
+      if (企业版() && c.poolInvalidAt) throw new Error("已标无效");
       if (c.salesOwnerId !== me.id) await tx.customer.update({ where: { id }, data: { salesOwnerId: me.id } });
       await tx.customerClaim.upsert({ where: { customerId: id }, update: { userId: me.id, at: new Date() }, create: { customerId: id, userId: me.id } });
       const 删 = await tx.customerPool.deleteMany({ where: { customerId: id } });
       if (!删.count) throw new Error("已被领走");
       return c.salesOwnerId;
     })).catch((e) => {
-      if (e instanceof Error && (e.message === "客户不在了" || e.message === "已被领走")) return null;
+      if (e instanceof Error && (e.message === "客户不在了" || e.message === "已被领走" || e.message === "已标无效")) return null;
       throw e;
     });
     if (原 !== null) 领到.push({ id, 值: 原 });
@@ -145,25 +173,29 @@ export async function 分配公海(ids: string[], userId: string): Promise<公�
   const 给 = await prisma.user.findFirst({ where: { id: String(userId ?? ""), active: true }, select: { id: true, name: true } });
   if (!给) return { ok: false, error: "这位同事不在了或已停用，换一位" };
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
+  // 企业版：标了无效的分不出去（统一公海 P7），算「没权限」那几位
+  const 无效 = await 无效的(ids);
+  if (无效.size && 无效.size === new Set(ids).size) return { ok: false, error: "标了无效的客户不能分配，要老板先恢复" };
   await 钉住老签约();
   const 分到: { id: string; 值: string }[] = [];
-  for (const id of [...new Set(ids)]) {
+  for (const id of [...new Set(ids)].filter((x) => !无效.has(x))) {
     const 原 = await 看全部(() => prisma.$transaction(async (tx) => {
       if (!(await tx.customerPool.findUnique({ where: { customerId: id }, select: { customerId: true } }))) return null;
-      const c = await tx.customer.findUnique({ where: { id }, select: { salesOwnerId: true } });
+      const c = await tx.customer.findUnique({ where: { id }, select: { salesOwnerId: true, poolInvalidAt: true } });
       if (!c) throw new Error("客户不在了");
+      if (企业版() && c.poolInvalidAt) throw new Error("已标无效");
       if (c.salesOwnerId !== 给.id) await tx.customer.update({ where: { id }, data: { salesOwnerId: 给.id } });
       await tx.customerClaim.upsert({ where: { customerId: id }, update: { userId: 给.id, at: new Date() }, create: { customerId: id, userId: 给.id } });
       const 删 = await tx.customerPool.deleteMany({ where: { customerId: id } });
       if (!删.count) throw new Error("已被领走");
       return c.salesOwnerId;
     })).catch((e) => {
-      if (e instanceof Error && (e.message === "客户不在了" || e.message === "已被领走")) return null;
+      if (e instanceof Error && (e.message === "客户不在了" || e.message === "已被领走" || e.message === "已标无效")) return null;
       throw e;
     });
     if (原 !== null) 分到.push({ id, 值: 原 });
   }
-  if (!分到.length) return { ok: true, updated: 0, unchanged: ids.length, 没权限: 0 };
+  if (!分到.length) return { ok: true, updated: 0, unchanged: ids.length - 无效.size, 没权限: 无效.size };
   const { 数: 带走, 记下: 带过来 } = await 带走并记下(分到.map((x) => ({ customerId: x.id, 旧: x.值 })), 给.id, me.id, "pool-assign");
   const 公海项目 = await 领客户带走公海项目(分到.map((x) => x.id), 给.id, me.id);
   if (公海项目.length) 带走.项目 = (带走.项目 ?? 0) + 公海项目.length;
@@ -173,7 +205,7 @@ export async function 分配公海(ids: string[], userId: string): Promise<公�
     detail: { ids: 分到.map((x) => x.id), 给: 给.id, 原负责人: 分到.map((x) => ({ id: x.id, salesOwnerId: x.值 })) },
   });
   刷新(ids);
-  return { ok: true, updated: 分到.length, unchanged: ids.length - 分到.length, 没权限: 0, 带走, 原负责人: 分到, 带过来, 给谁: 给 };
+  return { ok: true, updated: 分到.length, unchanged: ids.length - 分到.length - 无效.size, 没权限: 无效.size, 带走, 原负责人: 分到, 带过来, 给谁: 给 };
 }
 
 /**
@@ -193,7 +225,10 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   /** 这几位现在归谁：领取 = 我，分配 = 分到的那位 */
   const 现 = 动作 === "分配" ? 给谁! : me.id;
   if (动作 === "放进") {
-    const r = await prisma.customerPool.deleteMany({ where: { customerId: { in: ids }, userId: me.id } });
+    // 先认出真撤得动的那几位，退回计数只减它们（企业版统一公海）
+    const 撤 = (await prisma.customerPool.findMany({ where: { customerId: { in: ids }, userId: me.id }, select: { customerId: true } })).map((x) => x.customerId);
+    const r = await prisma.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } });
+    if (r.count) await 记退回(撤, -1);
     刷新(ids);
     return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0 };
   }
