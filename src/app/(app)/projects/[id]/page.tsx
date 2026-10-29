@@ -23,7 +23,10 @@ import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 卡点可选的人, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 import { 时限提醒of } from "@/lib/project/blocker-rules";
 // 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
-import { 联系人附件入口 } from "@/app/api/attachments/access";
+import { 联系人附件入口, 项目附件入口 } from "@/app/api/attachments/access";
+import { 项目画像项, 其他项, 字典定义 } from "@/lib/enterprise/dict-kinds";
+import { 读产品需求 } from "@/lib/project/profile-rules";
+import type { 项目画像 } from "./ProjectExtras";
 import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 
 export const dynamic = "force-dynamic";
@@ -113,7 +116,23 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,
+    // 项目级别、所在地（P11 定稿 -2 版，迁移 093）：级别是项目自己的，都给看；所在地跟客户资料一样，公海里同事客户的项目没领之前不给
+    level: p.level,
+    所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
   };
+  // 企业版项目画像、项目附件（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）。
+  // 项目名单在中栏（@pane/projects/[id] → panes.tsx 项目名单），不在这页里读
+  const 存的需求 = 读产品需求(p.productNeeds);
+  const 画像: 项目画像 | null = !企业 || !露 ? null : {
+    项们: await Promise.all(项目画像项.map(async (项) => {
+      // 选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示成一串值）；「其他」要另写一句，这里一改就存，不给选
+      const 存着 = 项.多选 ? 存的需求 : [p[项.键]].filter((x): x is string => !!x);
+      const 启用 = (await 可选项(项.种类)).filter((x) => x !== 其他项);
+      return { 键: 项.键, 名: 字典定义[项.种类].名, 多选: 项.多选, 选项: [...启用, ...存着.filter((x) => !启用.includes(x))] };
+    })),
+    值: { budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, demandStatus: p.demandStatus, productNeeds: 存的需求 },
+  };
+  const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
   const 详情: 项目详情 = {
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
@@ -152,7 +171,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     members: p.members.map((m) => ({ id: m.id, userId: m.userId, name: 叫(m.userId)!, roleId: m.roleId, inviteStatus: m.inviteStatus })),
     提成,
     ...(联系人附件 ? { 联系人附件 } : {}),
+    ...(画像 ? { 画像 } : {}),
+    ...(项目附件 ? { 项目附件 } : {}),
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };
-  return <ProjectDetail 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
+  return <ProjectDetail key={p.id} 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
 }

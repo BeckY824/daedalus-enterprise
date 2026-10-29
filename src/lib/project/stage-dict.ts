@@ -116,3 +116,16 @@ export function 结局叫法(r: string, 字典: 阶段字典 = 团队版字典):
 export function 本套节点名(node: string, 字典: 阶段字典): string {
   return 字典.改名[node] ?? node;
 }
+
+/**
+ * 阶段、进程分开摆（P11，10-29）：阶段 = 线索 / 商机 / 订单，进程 = 节点（潜客培育、验收交付…），界面上不再拼成「线索·潜客培育」一串。
+ * 有结局的按结局认阶段（出口们里它挂在哪个阶段）：成功交付、异常状态归订单，线索流失归线索，丢单归商机——不看库里 phase。
+ * 结局 = 按字典的叫法（后台改了出口叫法就用改的），没结局 = null
+ */
+export function 阶段与进程(
+  p: { phase: string; node: string; result?: string | null },
+  字典: 阶段字典 = 团队版字典,
+): { 阶段: string; 进程: string; 结局: string | null } {
+  const 归 = p.result ? 阶段们.find((s) => 字典.出口们[s].some((o) => o.结局 === p.result)) : undefined;
+  return { 阶段: 归 ?? p.phase, 进程: 本套节点名(p.node, 字典), 结局: p.result ? 结局叫法(p.result, 字典) : null };
+}

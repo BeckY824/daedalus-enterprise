@@ -12,7 +12,7 @@ import { 已立项天数 } from "./project-fields";
 import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 import { 认首页卡, 首页卡条件, 即将逾期 } from "./home-cards";
-import { 字典of } from "./stage-dict";
+import { 字典of, 阶段与进程, type 阶段字典 } from "./stage-dict";
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string };
@@ -84,7 +84,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     pooled: !!p.pooledAt,
     ...(企 ? { 即将回收: 将收(p) } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
-    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null } : {}),
+    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(),
   }));
@@ -97,5 +97,57 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     users,
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡 },
+  };
+}
+
+/**
+ * 项目详情页中栏名单的一行（P11，照客户记录页的名单）：名字、在哪个阶段 / 进程、最近一次沟通。
+ * 客户名和沟通内容只在露客户时给（公海里同事客户的项目不露，lib/project/db.ts 露客户），不露时这几格都是 null
+ */
+export type 名单项目 = {
+  id: string;
+  name: string;
+  阶段: string;
+  进程: string;
+  结局: string | null;
+  pooled: boolean;
+  customerName: string | null;
+  /** 最近一次沟通的方式（FOLLOW_TYPE_MAP 的键）和时间 */
+  lastType: string | null;
+  lastAt: string | null;
+  lastNote: string | null;
+  /** 项目的下一步日期：「本周要跟」和右下角圆点看它（计划是挂在客户上的，按项目只有这一格）；有结局或在公海就不算 */
+  nextAt: string | null;
+};
+
+/**
+ * 企业版项目详情页的中栏名单（P11）：和项目页同一个范围——同一个按可见范围筛过的 prisma、同样按最近改过排、同样最多 项目上限 个，
+ * 不另开权限口子。不跑超时回收（那是项目页列表的事，详情页每点一个都扫一遍太重）
+ */
+export async function 读名单项目(me: { id: string }, 字典: 阶段字典): Promise<{ rows: 名单项目[]; 取到上限: boolean }> {
+  const rows = await prisma.project.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 项目上限,
+    select: {
+      id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, nextStepAt: true,
+      customer: { select: { name: true } },
+      followUps: { orderBy: { followUp: { occurredAt: "desc" } }, take: 1, select: { followUp: { select: { type: true, content: true, occurredAt: true } } } },
+    },
+  });
+  const 可见 = await 看得到的客户(rows.map((r) => r.customerId));
+  return {
+    取到上限: rows.length >= 项目上限,
+    rows: rows.map((r) => {
+      const 露 = 露客户(me, r, 可见);
+      const f = 露 ? r.followUps[0]?.followUp : undefined;
+      return {
+        id: r.id, name: r.name, ...阶段与进程(r, 字典), pooled: !!r.pooledAt,
+        customerName: 露 ? r.customer.name : null,
+        lastType: f?.type ?? null,
+        lastAt: f ? f.occurredAt.toISOString() : null,
+        lastNote: f?.content?.trim().slice(0, 60) || null,
+        nextAt: r.nextStepAt && !r.result && !r.pooledAt ? dayjs(r.nextStepAt).format("YYYY-MM-DD") : null,
+      };
+    }),
   };
 }

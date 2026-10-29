@@ -15,7 +15,7 @@ import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了 } from "@/lib/enterprise/contact-dedupe";
 import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
-import { 改节点, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, type 交付项 } from "@/lib/project/db";
+import { 改节点, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -28,7 +28,8 @@ import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { 向导自动分配 } from "../leads/assign-actions";
-import { 我能用的分配方式, 挡分配方式, 是分配方式序号, type 分配方式序号 } from "@/lib/enterprise/dict";
+import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, type 分配方式序号 } from "@/lib/enterprise/dict";
+import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
 
@@ -311,10 +312,14 @@ export async function 改项目异常类别(id: string, patch: { name?: string; 
   } catch (e) { return 不在了(e); }
 }
 
-const 项目字段名: Record<string, string> = { name: "名称", ownerId: "负责人", amount: "金额", currency: "币种", remark: "备注", contactId: "主联系人", expectedDealAt: "预计成交日期", channelId: "项目来源" };
+// 地址四格留痕都叫「所在地」，拼摘要时去重
+const 项目字段名: Record<string, string> = {
+  name: "名称", ownerId: "负责人", amount: "金额", currency: "币种", remark: "备注", contactId: "主联系人", expectedDealAt: "预计成交日期", channelId: "项目来源",
+  level: "项目级别", addrCountry: "所在地", addrProvince: "所在地", addrCity: "所在地", addrDistrict: "所在地", location: "详细地址",
+};
 
-/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源 */
-export async function 编辑项目(projectId: string, patch: 向导项目 & { contactId?: string | null; expectedDealAt?: string | null }) {
+/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、所在地 */
+export async function 编辑项目(projectId: string, patch: 编辑项目改动) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
@@ -323,12 +328,33 @@ export async function 编辑项目(projectId: string, patch: 向导项目 & { co
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
       await recordAudit({
         user: me, action: "update", entity: "Project", entityId: projectId,
-        summary: `编辑项目「${p?.name ?? ""}」：改了${r.变了.map((k) => 项目字段名[k] ?? k).join("、")}`,
+        summary: `编辑项目「${p?.name ?? ""}」：改了${[...new Set(r.变了.map((k) => 项目字段名[k] ?? k))].join("、")}`,
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
       刷新项目(projectId, p?.customerId);
     }
     return r.ok ? { ok: true as const, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
+  } catch (e) { return 不在了(e); }
+}
+
+/** 留痕里画像字段的叫法：跟字典的名字 */
+const 画像字段名 = (k: 画像字段): string => 字典定义[项目画像项.find((x) => x.键 === k)!.种类].名;
+
+/** 企业版项目画像（P11）：详情页「项目画像」卡改一项存一项；规矩见 lib/project/profile.ts */
+export async function 改项目画像Action(projectId: string, patch: 画像改动) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    const r = await 改项目画像(me, projectId, patch);
+    if (r.ok && r.变了.length) {
+      const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
+      await recordAudit({
+        user: me, action: "update", entity: "Project", entityId: projectId,
+        summary: `编辑项目「${p?.name ?? ""}」：改了${r.变了.map(画像字段名).join("、")}`,
+      });
+      刷新项目(projectId, p?.customerId);
+    }
+    return r.ok ? { ok: true as const } : r;
   } catch (e) { return 不在了(e); }
 }
 

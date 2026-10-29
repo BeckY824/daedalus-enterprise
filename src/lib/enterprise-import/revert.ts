@@ -22,7 +22,7 @@ import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 外贸键 } from "../customer-extra";
-import { 读现值, 改, 规, 引用键, type 值表 } from "./apply";
+import { 读现值, 改, 规, 引用键, 摘联系人号, 记客户号, 记联系人号, type 值表 } from "./apply";
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
 import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-target";
 
@@ -112,8 +112,11 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
     if (Object.values(挂件).some((n) => n > 0)) return "名下已经有这一批以外的跟进、联系人、商机、任务或合同";
     if (c.lead) return "有线索转成了这位客户";
     if (c.claim) return "有人从公海领过他";
+    // 导入时照来源挂上的渠道（渠道直接推荐：渠道 = 业绩归属渠道，负责人跟着渠道）不算人补的
+    const 自己挂的渠道 = !!c.channelId && 写过.channelId === c.channelId && c.attributionChannelId === c.channelId;
+    const 渠道那几格 = 自己挂的渠道 ? [] : [c.channelId, c.channelOwnerId, c.attributionChannelId];
     const 填过 =
-      [c.school, c.grade, c.major, c.channelId, c.channelOwnerId, c.referrerCustomerId, c.attributionChannelId, c.attributionCustomerId, c.expectedSignAt, c.expectedSignOn].some(
+      [c.school, c.grade, c.major, ...渠道那几格, c.referrerCustomerId, c.attributionCustomerId, c.expectedSignAt, c.expectedSignOn].some(
         (v) => v !== null,
       ) || c.decisionStatus !== "了解中";
     return 填过 ? "导入之后又补过档案（院校、渠道、推荐人、决策状态等）" : null;
@@ -173,8 +176,11 @@ async function 快照(tx: Tx, e: 实体, id: string): Promise<object | null> {
 async function 删(tx: Tx, e: 实体, id: string): Promise<void> {
   if (e === "customer") await tx.customer.delete({ where: { id } });
   else if (e === "lead") await tx.lead.delete({ where: { id } });
-  else if (e === "contact") await tx.contact.delete({ where: { id } });
-  else if (e === "opportunity") {
+  else if (e === "contact") {
+    // 联系方式子表里这位的号：删联系人只会把 contactId 置空，号还留在客户上；先摘掉（客户本人那个号留下）
+    await 摘联系人号(tx, id);
+    await tx.contact.delete({ where: { id } });
+  } else if (e === "opportunity") {
     if (await 是项目(tx, id)) await tx.project.delete({ where: { id } });
     else await tx.opportunity.delete({ where: { id } });
   } else await tx.followUp.delete({ where: { id } });
@@ -191,12 +197,16 @@ async function 建回(tx: Tx, e: 实体, data: Record<string, unknown>): Promise
   if (e === "customer") {
     const { extra, creator, pool, ...主 } = data;
     await tx.customer.create({ data: 主 as Prisma.CustomerUncheckedCreateInput });
+    // 子表的号跟着客户删掉了（Cascade），照主表的号重记（快照里不存子表，老快照也一样能建回）
+    await 记客户号(tx, String(主.id), 主.phone);
     if (extra) await tx.customerExtra.create({ data: extra as Prisma.CustomerExtraUncheckedCreateInput });
     if (creator) await tx.customerCreator.create({ data: creator as Prisma.CustomerCreatorUncheckedCreateInput });
     if (pool) await tx.customerPool.create({ data: pool as Prisma.CustomerPoolUncheckedCreateInput });
   } else if (e === "lead") await tx.lead.create({ data: data as Prisma.LeadUncheckedCreateInput });
-  else if (e === "contact") await tx.contact.create({ data: data as Prisma.ContactUncheckedCreateInput });
-  else if (e === "opportunity" && data.__项目) await 建回项目(tx, data);
+  else if (e === "contact") {
+    await tx.contact.create({ data: data as Prisma.ContactUncheckedCreateInput });
+    await 记联系人号(tx, String(data.customerId), String(data.id), data);
+  } else if (e === "opportunity" && data.__项目) await 建回项目(tx, data);
   else if (e === "opportunity") {
     const { closed, ...主 } = data;
     await tx.opportunity.create({ data: 主 as Prisma.OpportunityUncheckedCreateInput });
