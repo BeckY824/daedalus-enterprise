@@ -6,25 +6,31 @@ import { describe, it, expect } from "vitest";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { 读外观, 外观预设脚本, 外观键, 默认外观, 网页玻璃键 } from "@/lib/appearance";
+import { 读外观, 外观预设脚本, 外观键, 默认外观, 网页玻璃键, 解明暗, 明暗表 } from "@/lib/appearance";
 
 const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 const WIN = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 
-function 跑(存的: string | null, ua = MAC) {
+/** 系统暗：undefined = 环境里根本没有 matchMedia（老浏览器 / 测试 vm），脚本得照样跑完 */
+function 跑(存的: string | null, ua = MAC, 系统暗?: boolean) {
   const dataset: Record<string, string> = {};
   const 类 = new Set<string>();
   vm.runInNewContext(外观预设脚本, {
     localStorage: { getItem: (k: string) => (k === 外观键 ? 存的 : null) },
     navigator: { userAgent: ua },
+    ...(系统暗 === undefined ? {} : { matchMedia: (q: string) => ({ matches: 系统暗 && q === "(prefers-color-scheme: dark)" }) }),
     document: { documentElement: { dataset, classList: { add: (c: string) => 类.add(c) } } },
   });
   return { dataset, 类 };
 }
 
+/** 脚本认出来的外观；mode 是存的值，挂上去的是解出来的 light / dark，另看 dataset.mode */
 function 跑脚本(存的: string | null) {
   const { dataset } = 跑(存的);
-  return { paper: dataset.paper, skin: dataset.skin };
+  const v = 读外观(存的);
+  // 没有 matchMedia 时 system 解成亮色：和 解明暗(…, false) 一致
+  expect(dataset.mode).toBe(解明暗(v.mode, false));
+  return { paper: dataset.paper, skin: dataset.skin, mode: v.mode };
 }
 
 const 网页 = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
@@ -53,7 +59,7 @@ describe("外观", () => {
 
   it("存了白底：设置页和首次绘制前的脚本认出来的一样", () => {
     const raw = JSON.stringify({ paper: "white", skin: "now" });
-    expect(读外观(raw)).toEqual({ paper: "white", skin: "now" });
+    expect(读外观(raw)).toEqual({ paper: "white", skin: "now", mode: "light" });
     expect(跑脚本(raw)).toEqual(读外观(raw));
   });
 
@@ -63,9 +69,39 @@ describe("外观", () => {
     for (const { key } of 主题表)
       for (const paper of ["tone", "white"]) {
         const raw = JSON.stringify({ paper, skin: key });
-        expect(读外观(raw)).toEqual({ paper, skin: key });
+        expect(读外观(raw)).toEqual({ paper, skin: key, mode: "light" });
         expect(跑脚本(raw)).toEqual(读外观(raw));
       }
+  });
+
+  it("明暗：三档两边认法一样，跟随系统按 prefers-color-scheme 解，挂上去的只有 light / dark", () => {
+    expect(明暗表.map((x) => x.key)).toEqual(["light", "dark", "system"]);
+    expect(默认外观.mode).toBe("light");
+    for (const mode of ["light", "dark", "system"] as const)
+      for (const 系统暗 of [false, true]) {
+        const raw = JSON.stringify({ paper: "white", skin: "pixel", mode });
+        expect(读外观(raw)).toEqual({ paper: "white", skin: "pixel", mode });
+        const 该挂 = mode === "system" ? (系统暗 ? "dark" : "light") : mode;
+        expect(解明暗(mode, 系统暗)).toBe(该挂);
+        expect(跑(raw, MAC, 系统暗).dataset).toEqual({ paper: "white", skin: "pixel", mode: 该挂 });
+      }
+    // 认不出的明暗回到亮色，不连累另外两项
+    for (const mode of ["night", 1, null, "DARK"]) {
+      const raw = JSON.stringify({ paper: "white", skin: "luxe", mode });
+      expect(读外观(raw)).toEqual({ paper: "white", skin: "luxe", mode: "light" });
+      expect(跑(raw, MAC, true).dataset).toEqual({ paper: "white", skin: "luxe", mode: "light" });
+    }
+    // matchMedia 抛错也不能拖垮整段脚本（paper / skin 照挂）
+    const dataset: Record<string, string> = {};
+    vm.runInNewContext(外观预设脚本, {
+      localStorage: { getItem: () => JSON.stringify({ skin: "tech", mode: "system" }) },
+      navigator: { userAgent: MAC },
+      matchMedia: () => {
+        throw new Error("x");
+      },
+      document: { documentElement: { dataset, classList: { add: () => {} } } },
+    });
+    expect(dataset).toEqual({ paper: "tone", skin: "tech", mode: "light" });
   });
 
   it("白底只换地面，不许在 :root 之外写色值", () => {
@@ -121,5 +157,7 @@ describe("外观", () => {
   it("根布局把脚本放在 <head> 里（放进 body 就晚了一帧，会闪）", () => {
     const layout = fs.readFileSync(path.resolve(__dirname, "../src/app/layout.tsx"), "utf8");
     expect(layout).toMatch(/<head>[\s\S]*外观预设脚本[\s\S]*<\/head>/);
+    // 服务端先按默认挂上 data-mode，脚本再改；少了这一项，没开 JS 的人看到的是一半亮一半暗
+    expect(layout).toMatch(/data-mode=\{默认外观\.mode\}/);
   });
 });

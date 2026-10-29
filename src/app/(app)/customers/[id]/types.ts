@@ -41,6 +41,14 @@ export type ContactRow = {
   /** 未归属联系人的原归属和移出时身份。空值表示旧记录未保留该信息。 */
   fromCustomerId?: string | null;
   wasPrimary?: boolean | null;
+  /** 企业版联系人改版（2026-10-29，定稿 P5 第 24 条，迁移 073）。老调用方没给就当没填 */
+  gender?: string | null;
+  /** YYYY-MM-DD */
+  birthday?: string | null;
+  hobby?: string | null;
+  address?: string | null;
+  /** 联系方式几行（类型 kind + 号码）；子表里没有的拿老三格拼（customer-v2-db.ts 的 联系人号码们）。不给 = 别的版本 */
+  号码们?: { kind: string; value: string }[];
 };
 
 export type RecordProps = {
@@ -71,6 +79,19 @@ export type RecordProps = {
    * 不给 = 开关关着或个人版、团队版，照旧
    */
   联系人附件数?: Record<string, number> | null;
+  /**
+   * 企业版联系人附件分两格（2026-10-29，定稿 P5 待定 19）：联系人 id → 名片 / 相册各几张（没分类的老附件算相册）。
+   * 给了就摆两行替掉「附件」一行
+   */
+  联系人分类附件数?: Record<string, { 名片: number; 相册: number }> | null;
+  /** 企业版关联客户（待定 15，迁移 075）：两个方向都算。给了（哪怕空数组）才摆「关联客户」卡片 */
+  关联们?: import("@/lib/enterprise/customer-v2-db").关联一行[] | null;
+  /** 企业版联系人号码类型（字典 contactKind，停用的也在：老号要显示叫法） */
+  号码种类?: { 名: string; kind: string; active: boolean }[];
+  /** 企业版客户分配方式的可选项（字典 custAssign 启用中的） */
+  分配方式选项?: string[];
+  /** 企业版项目模式客户页「新建项目」（待定 16）：线索阶段的节点、要不要必填下一步时间。不给 = 不摆这个按钮 */
+  新建项目?: { 节点们: string[]; 要下一步: boolean } | null;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的，10-28 去遗留 A1）；不给 = 别的版本，标签行照旧 */
   客户状态选项?: string[];
   项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;

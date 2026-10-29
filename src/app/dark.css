@@ -1,0 +1,86 @@
+/*
+  暗黑（P10，<html data-mode="dark">）。只换 token 值，不加形状规则。
+
+  组织：
+    1. 通用暗底：一套中性色（底/面板/字/线/悬停）+ 语义色 + 头像底 + 阴影，盖在 now / 像素 / 奢华 / 账本上。
+       科技主题本来就是暗的，暗黑下直接用它自己那套（tech.css 的白底块带了 :not([data-mode="dark"])）。
+    2. 每套主题自己的暗块：主色按主题保留色相、提亮到在暗面板上够对比；像素/奢华/账本的派生色（热力、印章、导航高亮）跟着改。
+
+  优先级：通用块 :root[data-mode="dark"]:not([data-skin="tech"]) 是 (0,3,0)，主题块 :root[data-mode="dark"][data-skin="x"] 也是 (0,3,0)，
+  都和白底块同级、但本文件在 layout 里最后引入，同级靠后者赢；主题主块 :root[data-skin="x"] 只有 (0,2,0)。tests/dark-mode.test.ts 锁着。
+
+  设置页的小样：[data-skin-preview] 是主题小样（暗黑下也画成暗的），[data-mode-preview] 是明暗那一行的小样。
+  漏一个颜色变量不会报错，只会在暗底上留一块白——守卫用例逐套主题 × 底色核对覆盖和对比度。
+*/
+:root[data-mode="dark"]:not([data-skin="tech"]),
+:root[data-mode="dark"] [data-skin-preview]:not([data-skin-preview="tech"]),
+[data-mode-preview="dark"] {
+  color-scheme: dark;
+  --workbench: #0f1115; --panel: #171a1f; --hover: #23272e; --row-hover: #1d2026;
+  --line: #2c3038; --line-soft: #24272e; --line-strong: #3a3f48;
+  --ink: #e8eaee; --ink-soft: #c4c8d0; --text-muted: #9aa1ad; --text-faint: #6b7280;
+  --on-ink: #0b1220;
+  --success: #4ade80; --success-text: #6ee7a0; --success-bg: #10241a; --success-line: #1f5135;
+  --warning: #f59e0b; --warning-text: #fbbf5a; --warning-bg: #2a1e0c; --warning-line: #5c4310;
+  --danger: #f87171; --danger-text: #fca5a5; --danger-bg: #2c1416; --danger-line: #5f2428;
+  --avatar-1: #1e2a44; --avatar-2: #1a3326; --avatar-3: #3a2f12; --avatar-4: #3d1f1f;
+  --avatar-5: #2a2444; --avatar-6: #14303d; --avatar-7: #3a1d2e; --avatar-8: #262c36;
+  --cat-teal: #2bb3a3; --cat-lime: #84cc16;
+  --pencil: var(--text-faint); --pencil-text: var(--text-muted);
+  --heat-on: var(--brand); --heat-off: var(--line);
+  --seal: var(--ink);
+  --nav-on-bg: var(--brand-bg); --nav-on-fg: var(--brand-deep);
+  --logo-frame: #e6ebf2; --logo-line: #6f97ff;
+  --shadow-card: none;
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --page-pattern: none;
+}
+
+/* 明暗那一行「明亮」的小样：暗黑下也要画成浅的，值和 :root 那块一样（守卫比对） */
+[data-mode-preview="light"] {
+  color-scheme: light;
+  --workbench: #fafafa; --panel: #ffffff; --line: #e5e7eb; --line-soft: #eceef2;
+}
+
+/* now：蓝主色提亮；八个分类色换成暗底上的亮一档 */
+:root[data-mode="dark"][data-skin="now"],
+:root[data-mode="dark"][data-skin] [data-skin-preview="now"] {
+  --brand: #6b95ff; --brand-deep: #c3d3ff; --brand-bg: #1a2547; --brand-line: #2f437a;
+  --cat-blue: #60a5fa; --cat-green: #4ade80; --cat-yellow: #facc15; --cat-orange: #fb923c;
+  --cat-pink: #f472b6; --cat-violet: #a78bfa; --cat-cyan: #22d3ee; --cat-amber: #fbbf24;
+}
+
+/* 像素：线和硬阴影原来是黑的，暗底上换成亮的（墨色 / 淡字色），点阵底纹跟着线色走 */
+:root[data-mode="dark"][data-skin="pixel"],
+:root[data-mode="dark"][data-skin] [data-skin-preview="pixel"] {
+  --brand: #8f98ff; --brand-deep: #c9cdff; --brand-bg: #1d2050; --brand-line: #4a52b8;
+  --line: var(--ink); --line-strong: var(--ink);
+  --heat-on: var(--ink); --heat-off: var(--line-soft);
+  --seal: var(--brand);
+  --nav-on-bg: var(--ink); --nav-on-fg: var(--panel);
+  --shadow-card: 4px 4px 0 var(--text-faint);
+  --shadow-pop: 6px 6px 0 var(--text-faint);
+  --page-pattern: radial-gradient(var(--line-soft) 1px, transparent 1.2px);
+}
+
+/* 奢华：墨绿主色在暗底上压不住，换成浅一档的灰绿；按钮字随之变深 */
+:root[data-mode="dark"][data-skin="luxe"],
+:root[data-mode="dark"][data-skin] [data-skin-preview="luxe"] {
+  --brand: #8fbfae; --brand-deep: #cfe5dc; --brand-bg: #1c2b26; --brand-line: #3a5a4f;
+  --on-ink: #0e1a16;
+  --heat-on: var(--ink); --heat-off: var(--line-strong);
+  --seal: var(--brand);
+  --nav-on-bg: transparent; --nav-on-fg: var(--ink);
+  --shadow-pop: 0 24px 48px -24px rgba(0, 0, 0, 0.6);
+}
+
+/* 账本：账本绿提亮，红印章保留（提亮一档），横格底纹用暗线 */
+:root[data-mode="dark"][data-skin="ledger"],
+:root[data-mode="dark"][data-skin] [data-skin-preview="ledger"] {
+  --brand: #7fc0a2; --brand-deep: #c4e6d5; --brand-bg: #15291f; --brand-line: #2f5a46;
+  --success: var(--brand); --success-text: var(--brand); --success-bg: var(--brand-bg); --success-line: var(--brand-line);
+  --heat-on: var(--ink); --heat-off: var(--line-soft);
+  --seal: #e0533d;
+  --shadow-pop: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  --page-pattern: repeating-linear-gradient(to bottom, transparent 0 31px, var(--line-soft) 31px 32px);
+}

@@ -20,8 +20,11 @@ import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户 } from "@/lib/team-scope";
 import { 管全队客户 } from "@/lib/constants";
-import { 附件个数 } from "@/lib/attachments";
+import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
+import { 关联客户们, 号码种类表, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
 import { 可选项 } from "@/lib/enterprise/dict";
+import { 企业版字典 } from "@/lib/project/nodes";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +60,8 @@ export default async function CustomerDetailPage({
         orderBy: { signedAt: "desc" },
         include: 带币种.签约,
       },
-      contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] },
+      // 企业版联系人的号码几行（定稿 P5 第 24 条）；别的版本这张子表里没有挂联系人的行，带上也是空
+      contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], include: { contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } } } },
       opportunities: { orderBy: { createdAt: "desc" }, include: 带币种.商机 },
       tasks: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
       plans: { where: { done: false, ...(要看的计划 ? { id: 要看的计划 } : {}) }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }] },
@@ -79,6 +83,9 @@ export default async function CustomerDetailPage({
 
   // 推荐人候选不再跟页面一起下来，客户表单打开时才取（CustomerForm 的 useReferrerCandidates，2026-10-20）
   const [users, channels] = await Promise.all([负责人候选(), 可选渠道()]);
+  const 企 = 企业版();
+  // 号码类的几种（手机、座机、WhatsApp）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
+  const 打码种类 = new Set(["phone", "landline", "whatsapp"]);
 
   return (
     <RecordView
@@ -109,6 +116,13 @@ export default async function CustomerDetailPage({
       // 企业版联系人附件（10-28）：每位联系人挂了几张；附件表不分权限，能看到这位客户就能看到他联系人的附件
       // 企业版客户状态（字典 custStatus，10-28 去遗留 A1）：标签行一枚章点了能改
       客户状态选项={企业版() ? await 可选项("custStatus") : []}
+      联系人分类附件数={企 ? await 联系人分类附件数(defaultClient, customer.contacts.map((c) => c.id)) : null}
+      // 企业版客户改版（定稿 P5）：关联客户卡片、联系人号码类型、分配方式
+      关联们={企 ? await 关联客户们(customer.id) : null}
+      号码种类={企 ? (await 号码种类表()).map((x) => ({ 名: x.名, kind: x.kind, active: x.active })) : undefined}
+      分配方式选项={企 ? await 可选项("custAssign") : undefined}
+      // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/screen.tsx）
+      新建项目={企 && (await 企业版只用项目()) ? { 节点们: [...企业版字典.节点们.线索], 要下一步: (await 生效组织规则()).超时回收.开 } : null}
       联系人附件数={企业版() ? Object.fromEntries((await 附件个数(defaultClient, { contactIds: customer.contacts.map((c) => c.id) })).联系人) : null}
       customer={{
         id: customer.id,
@@ -120,6 +134,12 @@ export default async function CustomerDetailPage({
         followStatus: customer.followStatus,
         decisionStatus: customer.decisionStatus,
         custStatus: customer.custStatus,
+        shortName: customer.shortName,
+        addrCountry: customer.addrCountry,
+        addrProvince: customer.addrProvince,
+        addrCity: customer.addrCity,
+        addrDistrict: customer.addrDistrict,
+        assignWay: customer.assignWay,
         expectedSignAt: scheduleValue(customer.expectedSignAt, customer.expectedSignOn),
         lastFollowAt: customer.lastFollowAt?.toISOString() ?? null,
         remark: customer.remark,
@@ -149,6 +169,15 @@ export default async function CustomerDetailPage({
         isPrimary: c.isPrimary,
         remark: c.remark,
         updatedAt: c.updatedAt.toISOString(),
+        ...(企
+          ? {
+              gender: c.gender,
+              birthday: c.birthday,
+              hobby: c.hobby,
+              address: c.address,
+              号码们: 联系人号码们(c, c.contactMethods).map((x) => ({ kind: x.kind, value: 打码种类.has(x.kind) ? 号(x.value) : x.value })),
+            }
+          : {}),
       }))}
       报价记录={报价明细 ? await 客户报价记录(customer.id) : []}
       contracts={customer.contracts.map((c) => ({

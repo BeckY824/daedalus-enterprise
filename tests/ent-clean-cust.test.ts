@@ -123,15 +123,17 @@ describe("保存客户状态", () => {
 });
 
 describe("渠道", () => {
-  it("原来有渠道的不许清空；换成停用的渠道拒；换成启用的可以", async () => {
+  // 2026-10-29 定稿 P5 待定 18：客户来源记第一次带来的渠道，建好之后不能改（原来「换成启用的可以」随之作废）
+  it("原来有渠道的不许清空、不许换；新建时选停用的渠道拒", async () => {
     const 甲 = (await prisma.channel.create({ data: { name: "甲渠道", channelOwnerId: 销售 } })).id;
     const 乙 = (await prisma.channel.create({ data: { name: "乙渠道", active: false, channelOwnerId: 销售 } })).id;
     const 丙 = (await prisma.channel.create({ data: { name: "丙渠道", channelOwnerId: 销售 } })).id;
     const a = await 新建({ channelId: 甲 });
     if (!a.ok) throw new Error(a.error);
     expect(await 整表保存(a.id, { channelId: null })).toEqual({ ok: false, error: "请选择渠道" });
-    expect(await 整表保存(a.id, { channelId: 乙 })).toEqual({ ok: false, error: "这个渠道不存在或已停用，请换一个" });
-    expect((await 整表保存(a.id, { channelId: 丙 })).ok).toBe(true);
+    expect(await 整表保存(a.id, { channelId: 丙 })).toEqual({ ok: false, error: "客户来源记的是第一次带来的渠道，建好之后不能改" });
+    expect((await 整表保存(a.id, { channelId: 甲 })).ok).toBe(true);
+    expect(await 新建({ name: "另一位", phone: "13800000002", channelId: 乙 })).toEqual({ ok: false, error: "这个渠道不存在或已停用，请换一个" });
   });
 
   it("开关关着：清空渠道照旧放行", async () => {

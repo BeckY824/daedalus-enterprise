@@ -73,6 +73,8 @@ export const 不同步表 = [
   "EntChannelInvest",
   // 企业版线索有效性验证、配额加额（2026-10-29，migrations/088、089）：同上
   "EntLeadVerify", "EntLeadVerifyLog", "EntLeadQuotaBonus",
+  // 企业版关联客户（2026-10-29，migrations/075）：同上
+  "EntCustomerLink",
 ] as const;
 
 /**
@@ -135,6 +137,8 @@ export const 指向人的列: [string, string][] = [
   ["EntBlockerLog", "toUserId"],
   // 企业版渠道投入是谁录的（2026-10-29）
   ["EntChannelInvest", "userId"],
+  // 企业版关联客户是谁关联的（2026-10-29）：不建外键
+  ["EntCustomerLink", "userId"],
   ["ProjectNodeLog", "fromOwnerId"],
   ["ProjectNodeLog", "toOwnerId"],
   ["CustomerCreator", "userId"],
