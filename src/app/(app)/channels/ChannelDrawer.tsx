@@ -2,7 +2,7 @@
 
 /**
  * 渠道详情抽屉（2026-10-29 渠道改版）：上面是渠道的资料和那一排统计，下面是投入记录。
- * 投入一笔一行，由这个渠道的负责人或管理员录（设置 → 编辑权限 →「渠道投入」可以再放给别的角色）；
+ * 投入一笔一行，只有老板、总管理员、市场管理能录、能删（10-29 P16，channel-stats.ts 的 能录投入），别人只看；
  * 录完 / 删完刷新页面，列表上的「当前投入」「投入产出比」跟着变。
  */
 import { useCallback, useEffect, useState } from "react";
@@ -30,6 +30,7 @@ export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { 
   const b = useBusiness();
   const [投入, set投入] = useState<投入行[] | null>(null);
   const [能录, set能录] = useState(false);
+  const [不能录因, set不能录因] = useState<string | null>(null);
   const [错, set错] = useState<string | null>(null);
   const [录, set录] = useState(false);
   const [忙, set忙] = useState(false);
@@ -46,6 +47,7 @@ export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { 
     set错(null);
     set投入(res.rows);
     set能录(res.能录);
+    set不能录因(res.不能录因 ?? null);
   }, [row.id]);
 
   useEffect(() => {
@@ -61,6 +63,7 @@ export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { 
       set错(null);
       set投入(res.rows);
       set能录(res.能录);
+      set不能录因(res.不能录因 ?? null);
     });
     return () => {
       作废 = true;
@@ -152,6 +155,8 @@ export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { 
           </Button>
         )}
       </div>
+      {/* 只能看的人说一句为什么没有「录一笔投入」，免得以为按钮丢了 */}
+      {!能录 && 不能录因 && 投入 !== null && <div className="muted" style={{ margin: "4px 0 8px", fontSize: 12 }}>{不能录因}</div>}
 
       {能录 && 录 && (
         <Form

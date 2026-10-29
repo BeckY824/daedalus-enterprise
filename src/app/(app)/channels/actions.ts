@@ -13,8 +13,8 @@ import { getBusiness } from "@/lib/business";
 import { 不在了 } from "@/lib/not-there";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 选的原因 } from "@/lib/enterprise/dict";
-import { 挡改设置 } from "@/lib/enterprise/edit-perm";
-import { 拼全称, 全称上限 } from "@/lib/enterprise/channel-stats";
+import { 读组织 } from "@/lib/enterprise/org";
+import { 拼全称, 全称上限, 能录投入, 不能录投入 } from "@/lib/enterprise/channel-stats";
 import { parseDateInput } from "@/lib/date-input";
 import { 规整币种, 是币种 } from "@/lib/currency";
 
@@ -190,17 +190,19 @@ export async function deleteChannel(id: string): Promise<{ ok: true } | { ok: fa
 
 export type 投入行 = { id: string; amount: number; currency: string; date: string; remark: string | null; userName: string | null; createdAt: string };
 
-/** 能不能给这个渠道录 / 删投入：管理员、这个渠道的负责人、设置里「录入渠道投入」勾了的那几类人 */
+/**
+ * 能不能给这个渠道录 / 删投入：只有老板、总管理员、市场管理（10-29 P16，channel-stats.ts 的 能录投入）。
+ * 渠道负责人也不行了；按钮藏了，这里再挡直调。不是企业版（没有业务角色）只认老板
+ */
 async function 挡投入(me: { id: string; role: string }, channelId: string): Promise<{ 名: string } | { error: string; 不在?: true }> {
-  const c = await prisma.channel.findUnique({ where: { id: channelId }, select: { name: true, channelOwnerId: true } });
+  const c = await prisma.channel.findUnique({ where: { id: channelId }, select: { name: true } });
   if (!c) return { error: "这个渠道已经不在了（可能在别处删了），刷新看看", 不在: true };
-  if (me.role === "ADMIN" || c.channelOwnerId === me.id) return { 名: c.name };
-  const 挡 = await 挡改设置(me, "渠道投入");
-  return 挡 ? { error: `录入渠道投入${挡}，或由这个渠道的负责人录` } : { 名: c.name };
+  const 能 = me.role === "ADMIN" || (企业版() && 能录投入(await 读组织(), me));
+  return 能 ? { 名: c.name } : { error: 不能录投入 };
 }
 
-/** 渠道详情抽屉里的投入记录，新的在前。谁都能看（列表上的投入合计本来就人人看得到）；能不能录一并带回去 */
-export async function listChannelInvests(channelId: string): Promise<{ ok: true; rows: 投入行[]; 能录: boolean } | { ok: false; error: string }> {
+/** 渠道详情抽屉里的投入记录，新的在前。谁都能看（列表上的投入合计本来就人人看得到）；能不能录一并带回去，不能录的带那句为什么 */
+export async function listChannelInvests(channelId: string): Promise<{ ok: true; rows: 投入行[]; 能录: boolean; 不能录因?: string } | { ok: false; error: string }> {
   const me = await requireUser();
   if (typeof channelId !== "string" || !channelId) return { ok: false, error: "缺渠道" };
   const 查 = await 挡投入(me, channelId);
@@ -210,6 +212,7 @@ export async function listChannelInvests(channelId: string): Promise<{ ok: true;
   return {
     ok: true,
     能录: !("error" in 查),
+    ...("error" in 查 ? { 不能录因: 查.error } : {}),
     rows: 行.map((r) => ({ id: r.id, amount: r.amount, currency: r.currency, date: r.date.toISOString(), remark: r.remark, userName: 人.get(r.userId) ?? null, createdAt: r.createdAt.toISOString() })),
   };
 }

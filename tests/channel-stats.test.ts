@@ -4,9 +4,10 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  算渠道统计, 算产出比, 运营天数, 拼全称, 拆来源, 产出比分布, 是有效线索, 算成交, 全称分隔,
+  算渠道统计, 算产出比, 运营天数, 拼全称, 拆来源, 产出比分布, 是有效线索, 算成交, 全称分隔, 能录投入,
   type 统计用项目, type 渠道统计,
 } from "@/lib/enterprise/channel-stats";
+import { 建组织 } from "@/lib/enterprise/org-core";
 
 const 日 = (s: string) => new Date(`${s}T00:00:00`);
 const 项 = (channelId: string | null, phase: string, amount = 0, currency = "CNY", result: string | null = null): 统计用项目 => ({ channelId, phase, result, amount, currency });
@@ -106,5 +107,19 @@ describe("产出比分布", () => {
     expect(产出比分布([统(1), 统(3), 统(null), 统(2.5)])).toEqual({ 平均: 2.17, 最高: 3, 最低: 1 });
     expect(产出比分布([统(null)])).toBeNull();
     expect(产出比分布([])).toBeNull();
+  });
+});
+
+describe("能录投入（P16：只有老板、总管理员、市场管理）", () => {
+  const org = 建组织(
+    ["boss", "dir", "adm", "mm", "sm", "ops", "s", "multi"].map((id) => ({ id, role: id === "boss" ? "ADMIN" : "SALES", active: true })),
+    ([["dir", "director"], ["adm", "admin"], ["mm", "marketing_mgr"], ["sm", "sales_mgr"], ["ops", "channel_ops"], ["s", "sales"], ["multi", "sales,marketing_mgr"]] as const)
+      .map(([userId, bizRole]) => ({ userId, deptId: null, bizRole, line: null, managerId: null, dottedManagerId: null })),
+    [],
+  );
+  it("老板、总管理、管理员、市场管理（兼着也算）能录；销售管理、渠道运营、销售不能", () => {
+    expect(能录投入(org, { id: "boss", role: "ADMIN" })).toBe(true);
+    for (const id of ["dir", "adm", "mm", "multi"]) expect(能录投入(org, { id, role: "SALES" })).toBe(true);
+    for (const id of ["sm", "ops", "s", "不在组织里"]) expect(能录投入(org, { id, role: "SALES" })).toBe(false);
   });
 });
