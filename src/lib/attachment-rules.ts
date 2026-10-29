@@ -25,8 +25,15 @@ export function 是图片(mime: string): boolean {
  */
 export const 只收图片 = true;
 export const 收的类型 = [...图片类型].join(",");
-export function 不收说明(名字: string, mime: string): string | null {
-  if (!只收图片 || 是图片(mime)) return null;
+/**
+ * 企业版项目附件（2026-10-29 P11）什么文件都收：合同、方案、报价单都挂在项目上。
+ * 取文件那头非图片一律当下载（octet-stream + sandbox），在本站打开跑不了脚本
+ */
+export function 收所有文件(挂在: 归属): boolean {
+  return "projectId" in 挂在;
+}
+export function 不收说明(名字: string, mime: string, 挂在?: 归属): string | null {
+  if (!只收图片 || 是图片(mime) || (挂在 && 收所有文件(挂在))) return null;
   return `「${名字}」不是图片，这里只收 JPG、PNG、GIF、WebP、BMP 图片`;
 }
 
@@ -87,11 +94,14 @@ export type 附件 = {
   有文件: boolean;
 };
 
-/** 挂在哪：商机（D-24）；线索 / 联系人只在企业版（2026-10-28 联系人附件，接口按 企业版() 放行）。订单那种 2026-10-29 随订单表删了 */
-export type 归属 = { opportunityId: string } | { leadId: string } | { contactId: string };
+/**
+ * 挂在哪：商机（D-24）；线索 / 联系人只在企业版（2026-10-28 联系人附件，接口按 企业版() 放行）。订单那种 2026-10-29 随订单表删了。
+ * 项目（P11，2026-10-29）只在企业版、项目模式开着时认
+ */
+export type 归属 = { opportunityId: string } | { leadId: string } | { contactId: string } | { projectId: string };
 
 /** 归属的那一个键和编号：拼查询串、日志用 */
-export type 归属键名 = "opportunityId" | "leadId" | "contactId";
+export type 归属键名 = "opportunityId" | "leadId" | "contactId" | "projectId";
 export function 归属键(挂在: 归属): [归属键名, string] {
   return Object.entries(挂在)[0] as [归属键名, string];
 }

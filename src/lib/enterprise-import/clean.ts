@@ -23,6 +23,7 @@ import { 查电话, 号键 } from "../phone";
 import { 拆多人, 进备注, 输单 } from "./mapping";
 import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
+import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
 import { 实体顺序, 必填, 实体名, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
@@ -39,6 +40,10 @@ export type 本地索引 = {
   商机名: Map<string, string[]>;
   /** 企业版字典里启用着的客户状态（custStatus）。没给 = 不认，原系统的客户状态一律进备注 */
   客户状态?: readonly string[];
+  /** 渠道名键 → 渠道 id（启用中的；渠道全称和「渠道名称」那一段都认，一段对上几家的不认）。没给 = 来源只存文字，不挂渠道 */
+  渠道?: Map<string, string>;
+  /** 企业版字典里启用着的客户分配方式（custAssign）。没给 = 不认，原系统的分配方式一律进备注 */
+  分配方式?: readonly string[];
 };
 
 export const 空索引 = (): 本地索引 => ({ 引用: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map() });
@@ -172,14 +177,21 @@ function 认跟进记录状态(v: string): string {
   return "已完成";
 }
 
-/** 客户等级只存 A–D 一个大写字母（迁移 037）：「A类」「a级」认成 A，别的认不出 */
+/** 客户级别只认企业版的 S / A / B / C（定稿 P5 第 23 条）：「S级」「a类」认成大写一个字母，老的 D 并进 C，别的认不出 */
 function 认等级(v: string): string | null {
-  const m = /^([a-dA-D])(类|级|档|$)/.exec(v.trim());
-  return m ? m[1].toUpperCase() : null;
+  const m = /^([a-dsA-DS])(类|級|级|档|$)/.exec(v.trim());
+  return m ? 企业级别(m[1]) : null;
 }
+
+/** 企业版客户 / 联系人的新几格（迁移 072）：只有认出来的才放进 值（逐格留空：空的不带这一格，不会清掉我们这边的） */
+type 新格 = Record<string, string>;
 
 /** 客户的外贸几格：落 CustomerExtra，写的时候从 值 里分出来 */
 export const 客户附加列 = ["email", "wechat", "whatsapp", "country", "source", "level", "website"] as const;
+/** 客户主表上企业版的新几格（迁移 072）：简称、地址四格、分配方式 */
+export const 客户新列 = ["shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay"] as const;
+/** 联系人主表上企业版的新几格（迁移 072）：性别、生日、爱好、地址 */
+export const 联系人新列 = ["gender", "birthday", "hobby", "address"] as const;
 
 type 号 = { phone: string; email?: string; wechat?: string; whatsapp?: string; 另: string[] };
 
@@ -347,15 +359,106 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     return w;
   };
 
+  /** 分配方式：和字典里启用的某一项一字不差才落；对不上原样进备注，提醒一笔（同 认客户状态） */
+  const 认分配方式 = (r: 原始记录, v: string | undefined, 附加: string[]): string | null => {
+    const t = v?.trim();
+    if (!t) return null;
+    if (本地.分配方式?.includes(t)) return t;
+    附加.push(`分配方式：${t}`);
+    出问题(r, "提醒", "值对不上", `分配方式「${t}」不在我们的分配方式选项里，原样放进了备注`);
+    return null;
+  };
+
+  /** 来源对渠道：原文或格式认过的写法和某个渠道的名字对上就挂上（只补空，写的时候再看）；对不上的原样进备注、提醒一笔，不中断 */
+  const 认渠道 = (r: 原始记录, 原: string | undefined, 认过: string | null, 附加: string[]): string | null => {
+    const t = 原?.trim();
+    if (!t || !本地.渠道) return null;
+    const hit = 本地.渠道.get(名键(t)) ?? (认过 ? 本地.渠道.get(名键(认过)) : undefined);
+    if (hit) return hit;
+    附加.push(`来源：${t}`);
+    出问题(r, "提醒", "值对不上", `来源「${t}」对不上我们的渠道，没挂渠道，原样放进了备注`);
+    return null;
+  };
+
+  /** 客户的简称 / 地址 / 分配方式：认出来的放进 新格，认不出的进备注 + 提醒 */
+  const 客户新格 = (r: 原始记录, v: Record<string, string | undefined>, 附加: string[]): 新格 => {
+    const o: 新格 = {};
+    const 简称 = v.shortName?.trim();
+    if (简称) {
+      o.shortName = 简称.slice(0, 简称上限);
+      if (简称.length > 简称上限) {
+        附加.push(`客户简称：${简称}`);
+        出问题(r, "提醒", "格式不对", `客户简称超过 ${简称上限} 个字，截到前 ${简称上限} 个字，原文放进了备注`);
+      }
+    }
+    const 地址原 = { addrCountry: v.addrCountry, addrProvince: v.addrProvince, addrCity: v.addrCity, addrDistrict: v.addrDistrict };
+    if (Object.values(地址原).some((x) => x?.trim())) {
+      const 地 = 规整地址(地址原);
+      const 原文 = (["addrCountry", "addrProvince", "addrCity", "addrDistrict"] as const).map((k) => 地址原[k]?.trim()).filter(Boolean).join(" ");
+      if (!地.ok) {
+        附加.push(`地址：${原文}`);
+        出问题(r, "提醒", "格式不对", `地址认不出（${地.error}），原样放进了备注`);
+      } else {
+        for (const [k, x] of Object.entries(地.值)) if (x) o[k] = x;
+        // 国外的省 / 区县不存（只记国家 + 城市）：丢掉的那几格进备注，一格不丢
+        const 丢 = (["addrProvince", "addrDistrict"] as const).filter((k) => 地址原[k]?.trim() && !地.值[k]);
+        if (丢.length) 附加.push(...丢.map((k) => `${字段中文[k]}：${地址原[k]!.trim()}`));
+      }
+    }
+    const 分配 = 认分配方式(r, v.assignWay, 附加);
+    if (分配) o.assignWay = 分配;
+    return o;
+  };
+
+  /** 联系人的性别 / 生日 / 爱好 / 地址：认出来的放进 新格，认不出的进备注 + 提醒 */
+  const 联系人新格 = (r: 原始记录, v: Record<string, string | undefined>, 附加: string[]): 新格 => {
+    const o: 新格 = {};
+    const 性别 = v.gender?.trim();
+    if (性别) {
+      const 认 = /^(男|男性|先生|m|male)$/i.test(性别) ? "男" : /^(女|女性|女士|f|female)$/i.test(性别) ? "女" : null;
+      if (认 && (性别们 as readonly string[]).includes(认)) o.gender = 认;
+      else {
+        附加.push(`性别：${性别}`);
+        出问题(r, "提醒", "值对不上", `性别「${性别}」认不出（只认男 / 女），原样放进了备注`);
+      }
+    }
+    const 生日原 = v.birthday?.trim();
+    if (生日原) {
+      let 生日 = 认生日(生日原);
+      if (生日 === undefined) {
+        const d = 认日期(生日原);
+        if (d) 生日 = 认生日(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+      }
+      if (生日) o.birthday = 生日;
+      else {
+        附加.push(`生日：${生日原}`);
+        出问题(r, "提醒", "格式不对", `生日「${生日原}」认不出日期，原样放进了备注`);
+      }
+    }
+    for (const [k, 上限, 名] of [["hobby", 爱好上限, "爱好"], ["address", 联系人地址上限, "联系人地址"]] as const) {
+      const t = v[k]?.trim();
+      if (!t) continue;
+      o[k] = t.slice(0, 上限);
+      if (t.length > 上限) {
+        附加.push(`${名}：${t}`);
+        出问题(r, "提醒", "格式不对", `${名}超过 ${上限} 个字，截到前 ${上限} 个字，原文放进了备注`);
+      }
+    }
+    return o;
+  };
+
   /** 客户并进前一条：前一条空着的格子拿后一条的补上，名字不同记「又名」、号不同记「另一个电话」、后一条的备注也拼过去，再重算前一条的指纹 */
   const 带过去 = (主: 待写, 后: 待写) => {
     const [a, b] = [主.值, 后.值];
     const 段: string[] = [];
     if (名键(String(b.name ?? "")) !== 名键(String(a.name ?? ""))) 段.push(`又名：${b.name}`);
+    // 以前 custStatus 那行插在电话的 if / else 中间，把「另一个电话」吞了（P8 修）
     if (b.phone && !a.phone) a.phone = b.phone;
-    if (b.custStatus && !a.custStatus) a.custStatus = b.custStatus;
     else if (b.phone && 号键(String(b.phone)) !== 号键(String(a.phone))) 段.push(`另一个电话：${b.phone}`);
-    for (const k of 客户附加列) {
+    if (b.custStatus && !a.custStatus) a.custStatus = b.custStatus;
+    else if (b.custStatus && a.custStatus !== b.custStatus) 段.push(`客户状态：${b.custStatus}`);
+    if (b.channelId && !a.channelId) a.channelId = b.channelId;
+    for (const k of [...客户附加列, ...客户新列]) {
       if (b[k] == null || b[k] === "") continue;
       if (a[k] == null || a[k] === "") a[k] = b[k];
       else if (a[k] !== b[k]) 段.push(`${字段中文[k] ?? k}：${b[k]}`);
@@ -396,6 +499,9 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);
         const whatsapp = 补格(s.值.whatsapp, 号.whatsapp, "WhatsApp", 附加);
         const custStatus = 认客户状态(r, s.值.custStatus, 附加);
+        const source = s.值.source ? (查格式("来源", s.值.source) ?? s.值.source) : null;
+        const channelId = 认渠道(r, s.值.source, source, 附加);
+        const 新 = 客户新格(r, s.值, 附加);
         const 值: 待写["值"] = {
           name: s.值.name,
           phone,
@@ -408,9 +514,12 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           wechat,
           whatsapp,
           country: s.值.country ? (查格式("国家", s.值.country) ?? s.值.country) : null,
-          source: s.值.source ? (查格式("来源", s.值.source) ?? s.值.source) : null,
+          source,
           level,
           website: s.值.website ?? null,
+          // 对上渠道才带 channelId（写的时候只补空、归属没定的才挂）；新几格也是认出来才带
+          ...(channelId ? { channelId } : {}),
+          ...新,
         };
         // 同号：并进前一条（外部 ID 不同，原系统里重复建了）。和我们这边「一个号一位客户」的查重一个口径，名字不同也并，提醒人看
         const 键 = phone ? 号键(phone) : "";
@@ -498,9 +607,11 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const email = 补格(s.值.email, 号.email, "邮箱", 附加);
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);
         if (号.whatsapp) 附加.push(`WhatsApp：${号.whatsapp}`);
+        const 新 = 联系人新格(r, s.值, 附加);
         收(
           r,
           {
+            ...新,
             name: s.值.name,
             position: s.值.position ?? null,
             phone: 号.phone || null,

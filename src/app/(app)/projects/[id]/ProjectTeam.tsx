@@ -9,6 +9,10 @@ import { 金额格式 } from "@/lib/money-input";
 import { 成员选项, 独自一人, type 可选成员 } from "@/lib/utils";
 import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
+import AddressInput, { 空地址 } from "@/components/AddressInput";
+import { 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 级别星 } from "@/lib/enterprise/level-stars";
+import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
@@ -24,7 +28,8 @@ function 角色选项(角色们: 角色[], 现在?: string | null) {
 const 邀请说法: Record<string, string> = { INVITED: "已邀请", DECLINED: "没接受" };
 
 /**
- * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩和建档向导第四步一样（服务端 规整项目）
+ * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩和建档向导第四步一样（服务端 规整项目）。
+ * 企业版另有项目级别（S / A / B / C，显示成星）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）
  */
 export function ProjectEditModal({
   open, onClose, 跑, p, 候选, 联系人们, 渠道们,
@@ -33,7 +38,13 @@ export function ProjectEditModal({
   onClose: () => void;
   跑: 跑法;
   /** expectedDealAt：企业版才传（YYYY-MM-DD 或 null）；不传 = 不摆这格、不交 */
-  p: { id: string; name: string; ownerId: string; amount: number; currency: string; remark: string | null; contactId: string | null; expectedDealAt?: string | null; channelId?: string | null };
+  p: {
+    id: string; name: string; ownerId: string; amount: number; currency: string; remark: string | null; contactId: string | null; expectedDealAt?: string | null; channelId?: string | null;
+    /** 企业版才传；不传 = 不摆、不交 */
+    level?: string | null;
+    /** 企业版、看得到客户资料才传（公海里同事客户的项目不给）；不传或 null = 不摆、不交 */
+    所在地?: (客户地址 & { location: string | null }) | null;
+  };
   候选: 可选成员[];
   联系人们: 联系人[];
   /** 企业版项目来源可选的渠道；不传 = 不摆「项目来源」、不交 channelId */
@@ -41,8 +52,16 @@ export function ProjectEditModal({
 }) {
   // 父组件每次打开时才挂上，初值就是最新的
   const [d, setD] = useState({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contactId, expectedDealAt: p.expectedDealAt, channelId: 渠道们 ? (p.channelId ?? null) : undefined });
+  const [级别, set级别] = useState(p.level ?? null);
+  const [地址, set地址] = useState<客户地址>(p.所在地 ? { addrCountry: p.所在地.addrCountry, addrProvince: p.所在地.addrProvince, addrCity: p.所在地.addrCity, addrDistrict: p.所在地.addrDistrict } : 空地址);
+  const [详细, set详细] = useState(p.所在地?.location ?? "");
   const [忙, set忙] = useState(false);
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
+  // 没传的不交：服务端按「没传 = 不动」处理（项目级别和地址改成）
+  const 附带 = {
+    ...(p.level !== undefined ? { level: 级别 } : {}),
+    ...(p.所在地 ? { ...地址, location: 详细.trim() || null } : {}),
+  };
   const 行 = (label: string, el: React.ReactNode) => (
     <div style={{ marginBottom: 12 }}>
       <div style={{ marginBottom: 4, color: "var(--text-muted)" }}>{label}</div>
@@ -58,12 +77,23 @@ export function ProjectEditModal({
       onCancel={onClose}
       onOk={async () => {
         set忙(true);
-        const ok = await 跑(() => 编辑项目(p.id, { ...d, amount: d.amount ?? 0 }), "已保存");
+        const ok = await 跑(() => 编辑项目(p.id, { ...d, amount: d.amount ?? 0, ...附带 }), "已保存");
         set忙(false);
         if (ok) onClose();
       }}
     >
       {行("项目名称", <Input value={d.name} maxLength={项目名上限} showCount onChange={(e) => 改({ name: e.target.value })} />)}
+      {p.level !== undefined && 行("项目级别", (
+        <Select
+          style={{ width: "100%" }}
+          aria-label="项目级别"
+          allowClear
+          placeholder="不分级"
+          value={级别 ?? undefined}
+          options={企业客户级别.map((x) => ({ value: x, label: `${级别星(x)}  ${企业级别说明[x]}` }))}
+          onChange={(v?: string) => set级别(v ?? null)}
+        />
+      ))}
       {!独自一人(候选, d.ownerId) && 行("负责人", (
         <Select style={{ width: "100%" }} value={d.ownerId} options={成员选项(候选)} onChange={(v) => 改({ ownerId: v })} />
       ))}
@@ -102,6 +132,8 @@ export function ProjectEditModal({
           aria-label="项目来源"
         />
       ))}
+      {p.所在地 && 行("所在地", <AddressInput value={地址} onChange={set地址} />)}
+      {p.所在地 && 行("详细地址", <Input aria-label="详细地址" placeholder={详细地址提示} maxLength={详细地址上限} value={详细} onChange={(e) => set详细(e.target.value)} />)}
       {行("备注", <Input.TextArea rows={3} maxLength={备注上限} showCount value={d.remark} onChange={(e) => 改({ remark: e.target.value })} />)}
     </Modal>
   );

@@ -57,8 +57,11 @@ it("新线索页：标题「新线索」，只有列表，三个线索节点都�
   expect(await page.getByRole("heading").first().innerText()).toBe("新线索");
   expect(await page.locator(".ant-segmented").count()).toBe(0);
   const t = await page.locator("body").innerText();
-  expect(t).toContain("线索 · 潜客培育");
-  expect(t).toContain("线索 · 线索验证");
+  // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列，进程格只写节点（不再是「线索 · 潜客培育」）
+  expect(t).toContain("潜客培育");
+  expect(t).toContain("线索验证");
+  expect(t).not.toContain("线索 · ");
+  expect(await page.getByRole("columnheader", { name: "阶段", exact: true }).count()).toBe(0);
   expect(t).toContain("线索流失");
   expect(t).toContain("转了商机到「项目」里接着走");
   await page.getByRole("button", { name: "新建新线索" }).click();
