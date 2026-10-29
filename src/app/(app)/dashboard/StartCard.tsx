@@ -151,14 +151,14 @@ export default function StartCard({ 自己服务器 = false, 去导入 = false, 
 
 /** 企业版空库首页：项目从建档到推进一条线，不提演示数据和粘聊天（验收 #8） */
 function 企业版开始({ b, 管理员, 产品名, 去 }: { b: ReturnType<typeof useBusiness>; 管理员: boolean; 产品名: string; 去: (url: string) => void }) {
-  const 步骤 = 管理员 ? [`导入${b.customer}数据`, "建组织和成员", "设好项目规则"] : ["新建第一个项目", "记一次沟通", "按节点往前推"];
+  const 步骤 = 管理员 ? [`导入${b.customer}数据`, "建组织和成员", "设好项目规则"] : ["新建第一个项目", "记一次沟通", "按进程往前推"];
   return (
     <>
       <h1 className="start-h">欢迎使用 {产品名}</h1>
       <ul className="start-intro">
         <li>
           <b>项目一条线走到底</b>
-          <span>从线索、建档、推进到交付，每个节点谁负责、下一步什么时候，都记在项目上。</span>
+          <span>从线索、建档、推进到交付，每个进程谁负责、下一步什么时候，都记在项目上。</span>
         </li>
         <li>
           <b>公海和超时回收自动管</b>

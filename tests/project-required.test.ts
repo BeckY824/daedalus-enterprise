@@ -2,7 +2,7 @@
  * 企业版节点必填（lib/project/required.ts，D-37）：没开 / 没配的节点永远不差；配了的按数据算还差哪几样。
  */
 import { describe, it, expect } from "vitest";
-import { 还差, 节点推进生效, 按必填走, 节点必填, 能配必填的节点, 建议必填, 必填项名们, type 必填数据 } from "@/lib/project/required";
+import { 还差, 节点推进生效, 按必填走, 节点必填, 能配必填的节点, 建议必填, 必填项名们, 必填叫法, type 必填数据 } from "@/lib/project/required";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 
 const 规则 = (必填: Record<string, string[]>, 开 = true): 组织规则 => ({ ...默认组织规则, 节点推进: { 开, 必填 } });
@@ -96,5 +96,12 @@ describe("还差", () => {
     d.项目.remark = "要样品";
     d.沟通节点们.push("线索验证");
     expect(还差(r, d)).toEqual([]);
+  });
+
+  it("给人看的叫法（10-29）：本节点沟通叫「当前进程沟通」，需求写明是项目备注，别的原样；键不变", () => {
+    expect(必填叫法("本节点沟通")).toBe("当前进程沟通");
+    expect(必填叫法("需求")).toBe("需求（项目备注）");
+    expect(必填叫法("金额")).toBe("金额");
+    expect(必填项名们).toContain("本节点沟通");
   });
 });

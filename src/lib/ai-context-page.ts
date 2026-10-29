@@ -197,7 +197,8 @@ function 指路(p: 页): string {
  * @param 详情名   详情页上这条记录叫什么（客户姓名等）。列表页传 null
  */
 export function 认页面(pathname: string, params: URLSearchParams | null, 详情名?: string | null, 可见行?: readonly string[], b: BusinessConfig = DEFAULT_BUSINESS): 页面上下文 | null {
-  const 命中 = 一级[pathname];
+  // 企业版项目模式（10-29）：/overview 在左栏叫「看板」，页头叫「复盘看板」，这里跟着叫，用户看到的标签对得上
+  const 命中 = pathname === "/overview" && b.projectMode && 一级[pathname] ? { ...一级[pathname], 名: "看板", 提示: "用户正在看复盘看板" } : 一级[pathname];
   if (命中) {
     const 条件: string[] = [];
     for (const [k, 说法] of Object.entries(筛选说法)) {

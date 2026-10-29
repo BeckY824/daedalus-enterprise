@@ -111,7 +111,7 @@ describe("飞书整本同步", () => {
     const 孙市场 = await 人("feishu-ou-m1@contacts.invalid");
     for (const u of [李组长, 赵四, 孙市场]) {
       expect(u.role).toBe("SALES");
-      expect(u.password.startsWith("$2")).toBe(false);
+      expect(u.password.startsWith("$2") || u.password.startsWith("scrypt$")).toBe(false);
     }
     expect(李组长.title).toBe("大区经理");
 

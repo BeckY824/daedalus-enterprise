@@ -37,7 +37,7 @@ export type 首页信号 = {
   企业?: { 意向: number; 本月成交: number };
 };
 
-export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false }: {
+export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 产品名 }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   userName: string;
@@ -81,6 +81,8 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   渠道名们?: string[];
   /** 企业版开了超时回收：新线索卡的下一步时间必填 */
   要下一步?: boolean;
+  /** 空库时「开始」卡欢迎语里的产品名（企业版 CRM_PRODUCT_NAME，page.tsx 传）；不给 = StartCard 自己的默认名 */
+  产品名?: string;
 }) {
   const b = useBusiness();
   const model = useModel(models);
@@ -129,7 +131,7 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
           ) : empty && 空库 ? (
             /* 一条业务数据都没有：不摆信号、不摆建议问题，只有一张「开始」卡 */
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-              <StartCard 自己服务器={自己服务器} 去导入={去导入} 企业版={企业版} />
+              <StartCard 自己服务器={自己服务器} 去导入={去导入} 企业版={企业版} 产品名={产品名} />
             </motion.div>
           ) : empty ? (
             <Welcome userName={userName} 信号={信号} context={context} />

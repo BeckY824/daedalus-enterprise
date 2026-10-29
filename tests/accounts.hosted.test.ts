@@ -156,10 +156,26 @@ describe("账号", () => {
 
     const row = await control.account.findFirst({ where: { phone: "13811112222" } });
     expect(row?.password).not.toContain("qiming2026");
-    expect(row?.password.startsWith("$2")).toBe(true);
+    expect(row?.password.startsWith("scrypt$")).toBe(true);
 
     expect(await verifyAccount("13811112222", "qiming2026")).toBeTruthy();
     expect(await verifyAccount("13811112222", "错的密码")).toBeNull();
+  });
+
+  it("老的 bcrypt 串照样能登，登上之后换成 scrypt；密码错不动它", async () => {
+    const { verifyAccount } = await import("@/lib/tenant/accounts");
+    const { control } = await import("@/lib/tenant/control");
+    const bcrypt = (await import("bcryptjs")).default;
+    const old = await bcrypt.hash("laohao2026", 10);
+    await control.account.create({ data: { phone: "13833334444", password: old, name: "老账号" } });
+
+    expect(await verifyAccount("13833334444", "错的密码")).toBeNull();
+    expect((await control.account.findFirst({ where: { phone: "13833334444" } }))?.password).toBe(old);
+
+    expect(await verifyAccount("13833334444", "laohao2026")).toBeTruthy();
+    const now = (await control.account.findFirst({ where: { phone: "13833334444" } }))?.password ?? "";
+    expect(now.startsWith("scrypt$")).toBe(true);
+    expect(await verifyAccount("13833334444", "laohao2026")).toBeTruthy();
   });
 
   it("不存在的账号与密码错返回同一种结果，不做查号接口", async () => {

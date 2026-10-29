@@ -1,7 +1,8 @@
 /**
  * 企业版只用项目一条线（2026-10-26 用户定：去掉商机，线索改名「新线索」，首页改成对话框）。
  *
- *   左栏：企业版项目没有「商机」，「线索」叫「新线索」；开关关时线索不改名，商机一项 10-28 起也不摆（/opportunities 一律转 /projects）
+ *   左栏：企业版项目只有六个根目录（10-29）：首页 / 看板 / 渠道 / 公海 / 客户 / 项目；新线索、联系人、跟进不在左栏，也没有「更多」。
+ *         开关关时线索不改名，商机一项 10-28 起也不摆（/opportunities 一律转 /projects）
  *   ⌘K：没有商机、商机管道两条，项目模式开着就有项目
  *   没配 AI 的首页：企业版项目不是数据看板，是一张「AI 未配置」卡；管理员才有「去配置 AI」
  *   Windows 1024 / 1280 / 1366 宽度下左栏和那张卡不横向溢出
@@ -40,12 +41,13 @@ async function 打开(企业版项目: boolean, 管理员 = true, width = 1280):
 }
 const 左栏 = (page: Page) => page.getByRole("navigation", { name: "主导航" }).innerText();
 
-it("企业版项目：左栏没有「商机」，线索叫「新线索」，项目还在", async () => {
+it("企业版项目：左栏六个根目录、这个顺序；没有商机、新线索、联系人、跟进、更多", async () => {
   const { page, errors } = await 打开(true);
   const t = await 左栏(page);
-  expect(t).not.toMatch(/商机/);
-  expect(t).toContain("新线索");
-  expect(t).toContain("项目");
+  expect(t).not.toMatch(/商机|新线索|联系人|跟进|更多|数据/);
+  const 名 = await page.getByRole("navigation", { name: "主导航" }).locator("a.rail-item").evaluateAll((as) => as.map((a) => a.getAttribute("aria-label")));
+  expect(名).toEqual(["首页", "看板", "渠道", "公海", "客户", "项目"]);
+  expect(await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "公海", exact: true }).getAttribute("href")).toBe("/pool");
   expect(errors).toEqual([]); await page.close();
 });
 

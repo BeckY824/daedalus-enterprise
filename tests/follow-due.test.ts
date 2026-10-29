@@ -25,9 +25,14 @@ describe("要跟的数：一个口径、处处一样", () => {
 
   it("左栏「跟进」、手机铃铛、记录页「计划」按钮都挂它", () => {
     const 壳 = 读("src/components/AppShell.tsx");
-    expect(壳).toContain('n.key === "/follow-ups" && 要跟数 > 0');
+    // 左栏哪一项挂红数看 挂要跟：别的版本是「跟进」，企业版项目模式跟进不在左栏，挂在「项目」上（lib/enterprise/nav.ts，10-29）
+    expect(壳).toContain("n.挂要跟 && 要跟数 > 0");
+    expect(壳).toMatch(/key: "\/follow-ups", icon: <InteractionOutlined \/>, label: "跟进", 组: "主", 挂要跟: true/);
+    expect(读("src/lib/enterprise/nav.ts")).toMatch(/key: "\/projects", label: "项目", 图: "项目", 挂要跟: true/);
     expect(壳).toMatch(/<Badge count=\{要跟数\}/);
     expect(读("src/app/(app)/follow-ups/FollowUpsView.tsx")).toContain("useFollowDue()");
+    // 企业版项目页页头的「跟进」键挂同一个数
+    expect(读("src/app/(app)/projects/ProjectsView.tsx")).toContain("useFollowDue()");
   });
 
   it("这个数一变就叫桌面端的壳马上再问，Dock 不用等下一分钟", () => {

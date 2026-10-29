@@ -8,6 +8,7 @@ import { Modal } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { 换一位 } from "@/lib/roster";
+import { 公海入口 } from "@/lib/enterprise/nav";
 
 /**
  * ⌘K。
@@ -36,10 +37,26 @@ export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: 
   const [idx, setIdx] = useState(0);
 
   const 页面 = useMemo(
-    () => [
+    () => 企业版项目
+      ? [
+          // 企业版项目模式（10-29）：先是左栏那六个根目录，同一个顺序（lib/enterprise/nav.ts）；
+          // 不进左栏的新线索、联系人、跟进照样搜得到，路由都在
+          { 名: "首页", 去: "/dashboard", 说明: "问一句，或看今天要跟谁" },
+          { 名: "看板", 去: "/overview", 说明: "复盘看板：现在 / 本月 / 本年" },
+          { 名: "渠道", 去: "/channels", 说明: "外部推荐来源" },
+          { 名: "公海", 去: 公海入口, 说明: `没人跟的${b.customer}，谁都能领` },
+          { 名: b.customer, 去: "/customers", 说明: "全部档案与跟进" },
+          { 名: "项目", 去: "/projects", 说明: "线索、商机、订单三个阶段" },
+          { 名: "新线索", 去: "/leads", 说明: "还没建档的人" },
+          { 名: "联系人", 去: "/contacts", 说明: "客户那边对接的人" },
+          { 名: "跟进记录", 去: "/follow-ups", 说明: "已经发生的沟通" },
+          { 名: "跟进计划", 去: "/follow-ups/plans", 说明: "排好还没做的" },
+          { 名: "设置", 去: "/settings", 说明: "账号、密码、AI 接入、业务配置" },
+        ]
+      : [
       { 名: "首页", 去: "/dashboard", 说明: "问一句，或看今天要跟谁" },
       { 名: "数据", 去: "/overview", 说明: "现在 / 本月 / 本年" },
-      { 名: 企业版项目 ? "新线索" : "线索", 去: "/leads", 说明: "还没建档的人" },
+      { 名: "线索", 去: "/leads", 说明: "还没建档的人" },
       { 名: b.customer, 去: "/customers", 说明: "全部档案与跟进" },
       { 名: "渠道", 去: "/channels", 说明: "外部推荐来源" },
       { 名: "联系人", 去: "/contacts", 说明: b.fields.school === "院校" ? "家长、老师、经办人" : "客户那边对接的人" },
@@ -48,7 +65,7 @@ export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: 
       { 名: "跟进记录", 去: "/follow-ups", 说明: "已经发生的沟通" },
       { 名: "跟进计划", 去: "/follow-ups/plans", 说明: "排好还没做的" },
       { 名: "设置", 去: "/settings", 说明: "账号、密码、AI 接入、业务配置" },
-    ],
+        ],
     [b, 企业版项目],
   );
 
