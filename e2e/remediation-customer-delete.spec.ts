@@ -15,8 +15,12 @@ async function ask(page:Page){
  const item=page.getByRole("menuitem",{name:/删除这位客户/});
  await expect(async()=>{
   if(!(await item.isVisible())){
-   await page.getByRole("heading").first().hover();
-   await page.getByRole("button",{name:"客户更多操作"}).hover();
+   // 企业版头部是「跟进」+ 点开的下拉（项目、新建项目、转让、编辑、删除…）；别的版本是移入展开的「更多」
+   if(企业版)await page.getByRole("button",{name:"跟进到哪个项目、更多操作"}).click();
+   else{
+    await page.getByRole("heading").first().hover();
+    await page.getByRole("button",{name:"客户更多操作"}).hover();
+   }
   }
   await expect(item).toBeVisible({timeout:2_000});
  }).toPass({timeout:20_000});

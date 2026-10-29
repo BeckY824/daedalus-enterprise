@@ -49,8 +49,13 @@ async function 进第一位客户(page: Page) {
 test("最小窗口 1024×700：「新建跟进」比窗口高也看得见「保存」，中间那段自己滚", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 700 });
   await 登录(page);
-  await 进第一位客户(page);
-  await page.getByRole("button", { name: /记录跟进/ }).first().click();
+  if (企业版) {
+    // 企业版客户页的「跟进」去项目里记；同一个「新建跟进」框在跟进页页头
+    await page.goto("/follow-ups?new=1");
+  } else {
+    await 进第一位客户(page);
+    await page.getByRole("button", { name: /记录跟进/ }).first().click();
+  }
   const 框 = page.locator(".ant-modal-container").last();
   await expect(框).toBeVisible();
   const 保存 = 框.locator(".ant-modal-footer").getByRole("button", { name: /保\s*存/ });

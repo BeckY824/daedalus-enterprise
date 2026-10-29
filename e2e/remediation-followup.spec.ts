@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { 连库 } from "./mock-data";
 import { 配好AI, 拆掉假模型 } from "./fake-llm";
+import { 企业版 } from "./owner-pick";
 
 test("J-177 AI组合保存故障整体回滚，原表单重试后所有项一并完成", async ({ page, browser }) => {
   test.setTimeout(120_000);
@@ -24,8 +25,10 @@ test("J-177 AI组合保存故障整体回滚，原表单重试后所有项一并
     const address = gateway.address();
     if (!address || typeof address === "string") throw new Error("QA gateway address missing");
     await 配好AI(page, `http://127.0.0.1:${address.port}/v1`);
-    await page.goto(`/customers/${customerId}`);
-    await page.getByRole("button", { name: "记录跟进", exact: true }).click();
+    // 企业版客户页的「跟进」去项目里记；带着这位到跟进页，页头「记录跟进」是同一个框
+    await page.goto(企业版 ? `/follow-ups?customer=${customerId}` : `/customers/${customerId}`);
+    // 跟进页页头按钮带加号图标，无障碍名是「plus 记录跟进」
+    await page.getByRole("button", { name: /^(plus )?记录跟进$/ }).click();
     const dialog = page.getByRole("dialog", { name: "新建跟进" });
     await dialog.getByPlaceholder(/跟进速记/).fill("QA已确认报价，我明天发报价，后天再打电话回访。");
     await dialog.getByRole("button", { name: /AI 解析填表/ }).click();
