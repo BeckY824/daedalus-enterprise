@@ -89,7 +89,7 @@ export default function ReportsView({
         backgroundColor: palette.panel,
         borderColor: palette.lineSoft,
         textStyle: { color: palette.inkSoft, fontSize: 12 },
-        extraCssText: "box-shadow:0 6px 20px rgba(16,43,77,.12);border-radius:8px;",
+        extraCssText: "box-shadow:var(--shadow-pop);border-radius:8px;",
         valueFormatter: (v: number) => 金额(v, 币种),
       },
       grid: { left: 8, right: 12, top: 30, bottom: 4, containLabel: true },
