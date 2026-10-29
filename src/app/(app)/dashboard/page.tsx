@@ -24,7 +24,7 @@ import NoAiHome from "./NoAiHome";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
 import { 数新线索 } from "@/lib/project/list";
-import { 项目一段 } from "../overview/project-stats";
+import { 数首页卡 } from "@/lib/project/home-cards-db";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +53,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 对话 = sp0.c ? await 读对话(sp0.c) : null;
   // 企业版自动分配因都已满额没分出去的提醒：首页顶部也摆一份，和线索页同一份数据，哪边关了两边都没了
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
-  // 企业版项目：首页只做对话（2026-10-26 用户定），数据只在「数据」页
+  // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「看板」页
   const 只用项目 = await 企业版只用项目();
   if (!(await llmEnabled())) {
     /*
@@ -67,6 +67,42 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     }
     // 老的数据看板（Board / DashboardView）10-28 删了：企业版只用项目，没配 AI 的首页一律是这一屏
     return <NoAiHome 管理员={user.role === "ADMIN"} 满额提醒={满额提醒们} />;
+  }
+
+  if (只用项目) {
+    /*
+      企业版项目模式（10-29 首页改版 #9–#12）：左边对话、右边四张指标卡。欢迎屏只有问候和「欢迎使用 {产品名}」，
+      不摆信号、上下文、建议问题，所以这条路只取要用的：卡上的四个数（口径在 lib/project/home-cards.ts）、
+      空库判断要的几个 count、新线索卡要的渠道名和「下一步必填」
+    */
+    const [models, 学员数, 线索数, myPlans, 没做完的待办, 卡, 渠道, 规则] = await Promise.all([
+      listModelOptions(),
+      prisma.customer.count(),
+      数新线索(),
+      prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
+      prisma.task.count({ where: { ownerId: user.id, done: false } }),
+      数首页卡(),
+      prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } }),
+      生效组织规则(),
+    ]);
+    return (
+      <HomeChat
+        会话={对话}
+        userName={user.name}
+        suggestions={[]}
+        context=""
+        models={models}
+        自己服务器={自己服务器()}
+        去导入={await 去导入(user)}
+        企业版
+        产品名={自定产品名() ?? undefined}
+        满额提醒={满额提醒们}
+        渠道名们={渠道.map((c) => c.name)}
+        要下一步={规则.超时回收.开}
+        空库={学员数 === 0 && 线索数 === 0 && myPlans === 0 && 没做完的待办 === 0}
+        指标卡={卡}
+      />
+    );
   }
 
   const b = await getBusiness();
@@ -88,25 +124,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     // 计划 + 待办都算，和点进去的计划页「我的 · 逾期」、数据页那张卡同一个函数（lib/overdue.ts）
     数逾期跟进(prisma, { ownerId: user.id }),
     // 公海里的不算：点进去是客户列表的「客户」页签，那里不含公海（2026-10-13），数要对得上
-    // 企业版只用项目时这一格换成客户状态「意向」（下面的企业信号），跟进状态不用数
-    只用项目 ? 0 : prisma.customer.count({ where: { followStatus: "意向较高", pool: { is: null } } }),
-    // 取行按币种合计（不换汇）：币种在 ContractMoney 上，aggregate 分不了。
-    // 企业版只用项目时这一格换成「本月成交」（下面的企业信号，Signals 里整格替掉），合同不用查
-    只用项目 ? [] : prisma.contract.findMany({ select: { amount: true, ...带币种.签约 }, where: { signedAt: { gte: now.startOf("month").toDate(), lt: now.add(1, "month").startOf("month").toDate(), lte: now.toDate() } } }),
+    prisma.customer.count({ where: { followStatus: "意向较高", pool: { is: null } } }),
+    // 取行按币种合计（不换汇）：币种在 ContractMoney 上，aggregate 分不了
+    prisma.contract.findMany({ select: { amount: true, ...带币种.签约 }, where: { signedAt: { gte: now.startOf("month").toDate(), lt: now.add(1, "month").startOf("month").toDate(), lte: now.toDate() } } }),
     prisma.customer.count(),
     数线索(只用项目),
   ]);
-
-  /*
-    企业版只用项目（10-28 去遗留 A1 / A4）：「高意向」改数客户状态「意向」的（同样不含公海）；
-    「本月签约」改「本月成交」，和数据页同一个函数（这个月转了订单或成功交付的项目，一个项目只数一次）
-  */
-  const 企业信号 = 只用项目
-    ? {
-        意向: await prisma.customer.count({ where: { custStatus: "意向", pool: { is: null } } }),
-        本月成交: (await 项目一段(now.startOf("month").toDate(), now.endOf("month").toDate(), "day", b.currency)).成交,
-      }
-    : undefined;
 
   const 就我一个人 = (await 唯一负责人()) !== null;
   const parts: string[] = [];
@@ -122,7 +145,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   );
   if (mine.total > 0) parts.push(`${mine.total} 位${b.customer}正在被遗忘`);
   if (myLast?.customer.name) parts.push(`上次跟的是${myLast.customer.name}`);
-  if (线索数 > 0) parts.push(`有 ${线索数} 条${只用项目 ? "新线索" : "线索"}`);
+  if (线索数 > 0) parts.push(`有 ${线索数} 条线索`);
 
   /*
     输入框底下那排问题。设计稿要求 4-6 条，而且**每一条都要是具体的问题**，
@@ -149,19 +172,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     「要不要问负责人」，这里是第五处，口径一致。
     单人那一套问的是「我」：我这周做了什么、谁被我落下了、我手上还剩多少。
   */
-  /*
-    企业版项目没有「商机」这张表的入口（2026-10-26 去掉了），AI 那边也还不认项目，
-    所以问商机、问签约的两条换成问跟进的——问出来的东西用户点得进去
-  */
-  const 兜底: Suggestion[] = 只用项目
-    ? [
-        { label: `今天谁最需要跟进？`, question: `今天最该跟进的${b.customer}是谁，为什么` },
-        { label: `哪些${b.customer}很久没碰了？`, question: `哪些${b.customer}很久没跟进了，该先找谁` },
-        { label: "我这周做了什么？", question: "我这周做了什么" },
-        // 企业版不问跟进状态（10-28 去遗留 A1：企业版用客户状态，AI 那边还不认它，问了答不上）
-        { label: "帮我记一次电话", question: "帮我记一次电话沟通" },
-      ]
-    : 就我一个人
+  const 兜底: Suggestion[] = 就我一个人
     ? [
         { label: "我这周做了什么？", question: "我这周做了什么" },
         { label: `哪些${b.customer}我很久没碰了？`, question: `哪些${b.customer}我很久没跟进了，该先找谁` },
@@ -194,15 +205,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       企业版={企业版()}
       产品名={自定产品名() ?? undefined}
       满额提醒={满额提醒们}
-      渠道名们={只用项目 ? (await prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } })).map((c) => c.name) : undefined}
-      要下一步={只用项目 ? (await 生效组织规则()).超时回收.开 : false}
       空库={学员数 === 0 && 线索数 === 0 && mine.total === 0 && myPlans === 0 && 没做完的待办 === 0}
       信号={{
         逾期,
         高意向,
         本月签约: 签约合计(本月签约),
         高意向标签: statusLabel(b, "意向较高"),
-        ...(企业信号 ? { 企业: 企业信号 } : {}),
       }}
     />
   );

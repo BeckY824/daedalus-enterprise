@@ -142,13 +142,25 @@ test("空库首页：一张「开始」卡，整页只有一个主按钮，没�
   expect(Math.abs(卡.x - 框.x)).toBeLessThanOrEqual(2);
 });
 
-test("有数据的首页：一行三个信号，不是三张卡", async ({ page }) => {
+test("有数据的首页：一行三个信号，不是三张卡（企业版：四张指标卡）", async ({ page }) => {
   const p = 连库();
   await 造模拟数据(p);
   await p.$disconnect();
 
   await 登录(page);
   await page.goto("/dashboard");
+  if (企业版) {
+    // 企业版只用项目：首页是对话 + 右边四张指标卡（10-29 首页改版），问候下面不再摆信号
+    await page.waitForSelector(".home-cards");
+    await expect(page.locator(".signals")).toHaveCount(0);
+    await expect(page.locator(".home-cards .home-card")).toHaveCount(4);
+    // 每张卡点进去是项目页按同一口径筛好的那批，且都带口径
+    for (const 卡 of await page.locator(".home-cards .home-card").all()) {
+      expect(await 卡.getAttribute("href")).toMatch(/^\/projects\?f=/);
+      expect((await 卡.getAttribute("title")) ?? "").not.toBe("");
+    }
+    return;
+  }
   await page.waitForSelector(".signals");
 
   await expect(page.locator(".signals .signal")).toHaveCount(3);
@@ -195,8 +207,8 @@ test("客户列表：默认只摆六列，其余在「列」里", async ({ page 
   // 六列 + 勾选框 + 操作列；操作列的「操作」只给读屏念（.sr-only），不算看得见的列
   const 表头 = await page.locator(".ant-table-thead th").evaluateAll((ths) =>
     ths.map((th) => { const c = th.cloneNode(true) as HTMLElement; c.querySelectorAll(".sr-only").forEach((e) => e.remove()); return c.textContent ?? ""; }));
-  // 企业版少一列：不摆「院校·专业」那一列（10-28 去遗留 B2），跟进状态换成客户状态不增不减
-  expect(表头.filter((t) => t.trim()).length).toBe(企业版 ? 5 : 6);
+  // 企业版：不摆「院校·专业」（10-28 去遗留 B2），跟进状态换成客户状态，多一列「级别」（定稿客户字段），还是六列
+  expect(表头.filter((t) => t.trim()).length).toBe(6);
 
   // 收起来的列要能勾出来
   await page.getByRole("button", { name: "列" }).click();

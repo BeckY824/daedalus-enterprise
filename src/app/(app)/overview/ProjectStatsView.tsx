@@ -25,7 +25,7 @@ const tooltip = {
   backgroundColor: palette.panel,
   borderColor: palette.lineSoft,
   textStyle: { color: palette.inkSoft, fontSize: 12 },
-  extraCssText: "box-shadow:0 6px 20px rgba(16,43,77,.12);border-radius:8px;",
+  extraCssText: "box-shadow:var(--shadow-pop);border-radius:8px;",
 };
 const 轴字 = { color: palette.textMuted, fontSize: 12 };
 

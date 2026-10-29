@@ -73,6 +73,7 @@ test.afterAll(async () => {
 });
 
 test("J-003 行内「职位」：敲两个字 → ↓ 回车选候选 → 存的是候选全文，不是打了一半的字", async ({ page }) => {
+  test.skip(企业版, "企业版客户页不摆「职位」（定稿划掉的旧字段，库里照留）");
   const id = await 造客户("键盘选职位");
   await 登录(page);
   await page.goto(`/customers/${id}`);

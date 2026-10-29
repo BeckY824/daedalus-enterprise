@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { palette } from "@/lib/palette";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import { 要跟Context } from "./FollowDue";
@@ -274,7 +273,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
     const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
     if (企) return 企;
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/follow-ups", "/settings", "/billing"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/pool", "/follow-ups", "/settings", "/billing"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
@@ -533,7 +532,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
           <span style={{ flex: 1 }} />
           {/* 手机上也要能说一句：用得别扭的时刻多半就发生在手机上（在路上翻学员的时候） */}
           {反馈去向 !== "none" && <FeedbackButton 去向={反馈去向} />}
-          <Badge count={要跟数} size="small" color={要跟.逾期 > 0 ? "var(--danger)" : palette.textMuted}>
+          <Badge count={要跟数} size="small" color={要跟.逾期 > 0 ? "var(--danger)" : "var(--text-muted)"}>
             <Button type="text" icon={<BellOutlined />} aria-label={要跟说法 ? `跟进计划，${要跟说法}` : "跟进计划"} onClick={() => router.push("/follow-ups/plans")} />
           </Badge>
           <Dropdown trigger={["click"]} menu={userMenu}>

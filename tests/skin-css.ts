@@ -2,7 +2,7 @@
  * 主题样式表（src/app/skins/*.css）的读法，给 skins / design-tokens / motion-tokens 三份守卫共用。
  *
  * 一个主题文件里只有两种块：
- *   token 块  选择器只是 `:root[data-skin="x"]`（可带 `[data-paper="white"]`）或 `[data-skin-preview="x"]`，
+ *   token 块  选择器只是 `:root[data-skin="x"]`（可带 `[data-paper="white"]`）或 `[data-skin-preview="x"]`（暗黑那几种见下面 TOKEN选择器），
  *             块里只有 `--名字: 值;`（外加 color-scheme）。色值、曲线只许写在这里
  *   形状规则  其余的块。每套不超过 10 条
  */
@@ -18,7 +18,26 @@ export const 去注释 = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, (m) => m.
 
 export type 块 = { 选择器: string; 体: string; 起: number; 止: number; token块: boolean };
 
-const TOKEN选择器 = /^(?::root\[data-skin="[\w-]+"\](?:\[data-paper="[\w-]+"\])?|\[data-skin-preview="[\w-]+"\])$/;
+/*
+  认得的 token 选择器（裸 :root 不算——那是 globals.css 的根块）：
+    :root[data-skin="x"]  :root[data-skin="x"][data-paper="y"]（可再带 :not([data-mode="dark"])，科技白底暗黑下让位）
+    [data-skin-preview="x"]
+    暗黑（app/dark.css）：:root[data-mode="dark"]:not([data-skin="x"])、:root[data-mode="dark"] [data-skin-preview]:not([data-skin-preview="x"])、
+                          :root[data-mode="dark"][data-skin="x"]、:root[data-mode="dark"][data-skin] [data-skin-preview="x"]、[data-mode-preview="x"]
+*/
+const TOKEN选择器 = new RegExp(
+  "^(?:" +
+    [
+      String.raw`:root\[data-skin="[\w-]+"\](?:\[data-paper="[\w-]+"\](?::not\(\[data-mode="dark"\]\))?)?`,
+      String.raw`\[data-skin-preview="[\w-]+"\]`,
+      String.raw`:root\[data-mode="dark"\]:not\(\[data-skin="[\w-]+"\]\)`,
+      String.raw`:root\[data-mode="dark"\] \[data-skin-preview\]:not\(\[data-skin-preview="[\w-]+"\]\)`,
+      String.raw`:root\[data-mode="dark"\]\[data-skin="[\w-]+"\]`,
+      String.raw`:root\[data-mode="dark"\]\[data-skin\] \[data-skin-preview="[\w-]+"\]`,
+      String.raw`\[data-mode-preview="[\w-]+"\]`,
+    ].join("|") +
+    ")$",
+);
 
 /** 只认一层的块（主题文件里不许嵌套 @media，这也是一条规矩：减弱动态只在 globals.css 里管） */
 export function 拆块(css: string): 块[] {
