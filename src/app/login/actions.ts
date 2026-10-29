@@ -1,26 +1,17 @@
 "use server";
 
-import { 本机我, 团队里被停用 } from "@/lib/desktop/me";
-import { 停用了 } from "@/lib/desktop/disabled-text";
 import bcrypt from "bcryptjs";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { getSetting, setSetting } from "@/lib/settings";
-import { 同步名字键 } from "@/lib/desktop/synced-name";
-import { 对齐我的名字 } from "@/lib/desktop/my-name";
-import { 调云 } from "@/lib/sync/client";
 import { createSession } from "@/lib/auth";
 import { 检查限流, 记一次失败, 清除限流, 解析来源IP, 阈值, IP阈值 } from "@/lib/rate-limit";
 import { multiTenant } from "@/lib/tenant/context";
 import { verifyAccount } from "@/lib/tenant/accounts";
 import { accessibleWorkspacesFor } from "@/lib/tenant/workspace-access";
-import { 本地模式, 登录 as 云端登录, 注册开始 as 云端注册开始, 注册 as 云端注册, 核对验证码 as 云端核对验证码, 策略 as 云端策略, 读 as 读云端凭据, type 注册去向 } from "@/lib/desktop/cloud";
-import { 设专属服务器, 退出专属服务器, type 设置结果 } from "@/lib/desktop/dedicated-server";
 
 export type LoginResult =
-  | { ok: true; 换账号?: boolean; 选工作区?: boolean }
-  /** 已开号：注册成了、紧接着的登录没成（第六轮 C6）。门口据此带人去输密码，而不是让他再注册一遍 */
-  | { ok: false; error: string; 已开号?: boolean };
+  | { ok: true; 选工作区?: boolean }
+  | { ok: false; error: string };
 
 /**
  * 限流的 key 同时按「账号」和「来源 IP」记。
@@ -105,146 +96,4 @@ export async function login(email: string, password: string): Promise<LoginResul
   keys.forEach(([k]) => 清除限流(k));
   await createSession(user.id);
   return { ok: true };
-}
-
-/**
- * 桌面端本地模式的登录：账号密码交给云端换一枚设备令牌，然后以本机那个管理员的身份进来。
- *
- * 桌面端只有这一套身份。2026-09-17 之前还有第二套——业务库里那个管理员自己的随机密码，
- * 网页 /login 认的是它，用户从没见过它，于是「退出登录」之后就被锁在自己机器外面。
- * 现在 /login 在本地模式画的就是这张表单，认的只有云端账号。
- *
- * 限流在云端那头（/api/account/token 按账号和 IP 两档），这里不重复记：
- * 本机服务只听 127.0.0.1，来源 IP 永远是自己。
- */
-export async function 桌面端登录(target: string, password: string): Promise<LoginResult> {
-  if (!本地模式()) return { ok: false, error: "这个入口只有桌面端有" };
-  const t = target.trim();
-  if (!t || !password) return { ok: false, error: "请填手机号（或邮箱）和密码" };
-
-  const r = await 云端登录(t, password);
-  if (!r.ok) return { ok: false, error: r.error };
-
-  /*
-    换了个人登录：**到此为止，一个字都不往本机库里写**。
-
-    数据目录一个云端账号一份（desktop/accounts.js），而这会儿进程连着的还是
-    **上一个人的库**——再往下走就是把新登录这位的名字和邮箱写进人家的 User 表里。
-    接下来该由壳去换目录、重起本地服务，起来之后 server-entry.js 会照着
-    新目录里的 .cloud.json 把名字对一遍，和这里做的是同一件事。
-    会话也不在这儿建：那是上一个库里的管理员的会话。
-  */
-  if (r.data.换了账号) return { ok: true, 换账号: true };
-
-  /**
-   * 本机库里那个管理员就是「你」：登录邮箱对成账号的，名字**只在你没改过的时候**才跟着对。
-   * server-entry.js 每次启动也会对一遍，这里是为了不等重启就对上——
-   * 登录完下一屏的左下角就该是你的名字，不是「管理员」。
-   */
-  const 我 = await 本机我(prisma);
-  const admin = 我 ? await prisma.user.findUnique({ where: { id: 我.id } }) : null;
-  if (!admin) {
-    if (await 团队里被停用(prisma)) return { ok: false, error: 停用了 };
-    return { ok: false, error: "本机数据库里没有管理员账号。请从「帮助 → 反馈问题」告诉我们" };
-  }
-  const 联系 = (r.data.contact || t).toLowerCase();
-  const 云端名字 = r.data.name || 联系.split("@")[0];
-  const 名字 = await 该用的名字(admin.name, 云端名字);
-  try {
-    /*
-      职位也是「你改过就不动」：原来每次登录都写回「管理员」，个人资料里改的职位活不过一次登录（排查 B4）。
-      空的和模板库带的「系统管理员」（prisma/seed.ts）算没改过，照旧写成「管理员」
-    */
-    const 职位 = admin.title?.trim();
-    await prisma.user.update({
-      where: { id: admin.id },
-      data: { email: 联系, name: 名字, title: 职位 && 职位 !== "系统管理员" ? 职位 : "管理员" },
-    });
-  } catch {
-    // 邮箱撞上了本地另一个账号（老库里手工建过同名同事）：名字照改，登录名不动
-    await prisma.user.update({ where: { id: admin.id }, data: { name: 名字 } }).catch(() => {});
-  }
-  await createSession(admin.id);
-  // 这台改过名字、当时没推上云端的，登录上了顺手推上去（lib/desktop/my-name.ts）；不等它，登录不因网络慢卡住
-  void 对齐我的名字(调云).catch(() => undefined);
-  return { ok: true };
-}
-
-/**
- * 这次登录该把名字写成什么。
- *
- * **在设置里改过名字的人，重启之后必须还是那个名字。** 这条路原来是无条件写云端那个名字的，
- * 于是「个人资料」里改完、重新登录一次就被改回去了——用户改了，我们又改回来，
- * 而且不说一声（2026-09-18 报的 bug）。
- *
- * 判断「改没改过」不靠猜，靠记账：每次同步下来的云端名字记在 `desktop.syncedName` 里。
- *   本机名字 == 上次同步下来的那个  → 这个名字是我们写的，云端改了就跟着改
- *   不相等                        → 是人自己写的，不动
- * 没有这条记录（老库、第一次登录）就按「跟着对」处理，并把账记上——
- * 那时本机名字多半还是种子库里的「管理员」。
- */
-async function 该用的名字(本机名字: string, 云端名字: string): Promise<string> {
-  const 上次 = await getSetting<string>(同步名字键);
-  const 人改过 = 上次 != null && 本机名字 !== 上次;
-  await setSetting(同步名字键, 云端名字);
-  return 人改过 ? 本机名字 : 云端名字;
-}
-
-/**
- * 登录页、找回密码页出来以后在后台问云端开着哪几条路（2026-10-21）。
- * 原来这一问挡在出页前面，国内第一次打开时整扇窗要白等好几秒。
- */
-export async function 桌面端策略() {
-  if (!本地模式()) return null;
-  return 云端策略();
-}
-
-/**
- * 登录页上的「使用专属服务器」/「退出专属服务器」。**只在没登录时能换**：
- * 手上的令牌只对发它的那套云端有效，登录着换过去，同步、AI 会拿着这枚令牌去问另一套云端
- */
-export async function 桌面端设专属服务器(输入: string): Promise<设置结果> {
-  if (!本地模式()) return { ok: false, error: "只有桌面端能设专属服务器" };
-  if (读云端凭据()) return { ok: false, error: "先退出登录，再换服务器" };
-  return 设专属服务器(String(输入 ?? "").slice(0, 2000));
-}
-
-export async function 桌面端退出专属服务器(): Promise<设置结果> {
-  if (!本地模式()) return { ok: false, error: "只有桌面端能设专属服务器" };
-  if (读云端凭据()) return { ok: false, error: "先退出登录，再换服务器" };
-  退出专属服务器();
-  return { ok: true, 状态: { 状态: "无" } };
-}
-
-/**
- * 桌面端登录页的「继续」：填了邮箱，问云端这个人该去哪一步。
- * 手机号不问——注册只收邮箱，填手机号的一定是老账号，直接去输密码。
- */
-export async function 桌面端下一步(target: string): Promise<{ ok: true; data: 注册去向 } | { ok: false; error: string }> {
-  if (!本地模式()) return { ok: false, error: "这个入口只有桌面端有" };
-  const t = target.trim();
-  if (!t) return { ok: false, error: "请填邮箱" };
-  if (!t.includes("@")) return { ok: true, data: { 去: "密码" } };
-  const r = await 云端注册开始(t);
-  return r.ok ? { ok: true, data: r.data! } : { ok: false, error: r.error };
-}
-
-/** 输码那一步填满 6 位时先问一句码对不对（只核对、不用掉）。核对不了就当对，最后一步云端还会再验 */
-export async function 桌面端核对码(target: string, code: string): Promise<{ 对: boolean; error?: string }> {
-  if (!本地模式()) return { 对: true };
-  return 云端核对验证码(target.trim(), code, "signup");
-}
-
-/**
- * 在应用里注册，开完号直接登进来——和登录走同一条 桌面端登录()，
- * 换目录、写名字、签会话都在那里，注册不另起一套。
- */
-export async function 桌面端注册(input: { target: string; code?: string; password: string; agreed: boolean }): Promise<LoginResult> {
-  if (!本地模式()) return { ok: false, error: "这个入口只有桌面端有" };
-  const r = await 云端注册({ ...input, target: input.target.trim() });
-  if (!r.ok) return { ok: false, error: r.error };
-  const 登 = await 桌面端登录(input.target, input.password);
-  // 号开好了、这一下没登进去（网络抖了、云端慢）：再点「注册」只会被说「请先获取验证码」，得让人去输密码
-  if (!登.ok) return { ok: false, error: `账号已经开好了，这一下没登进去（${登.error}）。用刚设的密码再登录一次就行。`, 已开号: true };
-  return 登;
 }

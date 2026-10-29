@@ -1,14 +1,7 @@
-import { redirect } from "next/navigation";
-import { headers } from "next/headers";
-import { 是本机地址, 来自壳 } from "@/lib/desktop/local-guard";
 import LoginForm from "./LoginForm";
-import DesktopAuth from "./DesktopAuth";
 import { 能找回密码 } from "@/lib/tenant/password-reset";
 import { multiTenant } from "@/lib/tenant/context";
 import { 自助注册已关闭 } from "@/lib/tenant/signup-policy";
-import { 本地模式, 读 as 读云端凭据, 上次策略, 云端地址 } from "@/lib/desktop/cloud";
-import { 停用了 } from "@/lib/desktop/disabled-text";
-import { 读专属服务器 } from "@/lib/desktop/dedicated-server";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import DemoLogin from "./DemoLogin";
@@ -19,53 +12,7 @@ import DemoLogin from "./DemoLogin";
  */
 export const dynamic = "force-dynamic";
 
-/** 站在登录页上的原因，壳或路由带过来的。有就在表单上方说清，别让人猜自己怎么被退出的 */
-const 原因文案: Record<string, string> = {
-  revoked:
-    "这台机器的云端登录已经失效：要么账号改过密码（改密码会让所有机器退出），要么在桌面端「设置 → 登录与密码」的「已登录的机器」里退出了这一台。本机数据不受影响，重新登录就能接着用。",
-  noadmin: "本机数据库里没有管理员账号，登录进不去。请从「帮助 → 反馈问题」告诉我们。",
-  disabled: 停用了,
-  switched:
-    "换了账号，但这台机器上的数据目录还没跟着换——先把你挡在门口，不然你看到的会是上一个账号的数据。退出应用再打开一次就会切到你自己那份；两个账号的数据都在，一份都不会丢。",
-  changed: "密码已经改好了。改密码会让所有已登录的机器退出，这一台也在内——用新密码重新登录就行，本机数据不受影响。",
-};
-
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ reason?: string }> }) {
-  const sp = await searchParams;
-
-  /**
-   * 桌面端本地模式：这一页就是**云端账号**的门（2026-09-17 起桌面端只有这一套身份）。
-   * 手上有令牌的人不该停在这里——走自动登录那条路，和壳启动时同一个路由。
-   * 画哪几个入口由云端说了算：注册收不收、能不能自助找回，问 /api/account/policy。
-   * 这一问不挡出页（2026-10-21）：国内第一次打开时它常常几秒回不来，原来整扇窗跟着白等。
-   * 先照这次启动问到过的画（没问到过就都开着），DesktopAuth 出来以后在后台再问。
-   */
-  if (本地模式()) {
-    /*
-      只有壳自己的窗口才自动登录（2026-10-04，D-1）：原来对任何没登录的请求都把令牌写进跳转地址，
-      同机别的系统账户、DNS 重绑定过来的网页都能拿到会话。壳给自己的请求带 x-desktop-token（desktop/main.js），见 lib/desktop/local-guard.ts
-    */
-    const 头 = await headers();
-    if (读云端凭据() && process.env.DESKTOP_TOKEN && !sp.reason && 是本机地址(头.get("host")) && 来自壳(头.get("x-desktop-token"))) {
-      redirect(`/api/desktop/session?t=${encodeURIComponent(process.env.DESKTOP_TOKEN)}`);
-    }
-    /*
-      桌面端一律是新的门（毛玻璃原型的登录页，2026-10-03 用户：照原型做，不留原来那张）。
-      云端还没有应用内注册的接口时（托管版没部署到这一版），新邮箱那一步改成开浏览器去注册，不退回老页面
-    */
-    /* 换了专属服务器 / 退回正式服（DedicatedServer 里 router.refresh()）：key 一变整张门重来，策略按新服务器重新问 */
-    const 云 = 云端地址();
-    return (
-      <DesktopAuth
-        key={云}
-        策略={上次策略()}
-        注册地址={`${云}/signup?from=desktop`}
-        提示={sp.reason ? 原因文案[sp.reason] : undefined}
-        专属服务器={读专属服务器()}
-      />
-    );
-  }
-
+export default async function LoginPage() {
   /* 演示部署（CRM_DEMO_SWITCH=1）：不要密码，选人就进。开关关着读出来是 null，走下面的正常登录 */
   const 演示名单 = await 读演示名单();
   if (演示名单) return <DemoLogin 名单={演示名单} 产品名={自定产品名() ?? undefined} />;
