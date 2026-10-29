@@ -376,7 +376,10 @@ test.describe("设置浮层：背后不冒面板、高亮和正文对得上、�
       现在：先等页面 load 完、页签区有且只有一个亮着、页签已被 React 接管，点第一下之前那一刻才开始记；
       只算真正把页面重要一遍的请求：整页文档，或者不是预取的 RSC 请求。
       router.replace / router.push / router.refresh 发的 RSC 请求都不带 next-router-prefetch，照样会被抓到，
-      J-186 要防的回归（换回 router.replace 让 force-dynamic 的整页重拉）一条不漏；放过的只有预取——预取不会让页面重拉
+      J-186 要防的回归（换回 router.replace 让 force-dynamic 的整页重拉）一条不漏；放过的只有预取——预取不会让页面重拉。
+      10-29：只算 /settings 自己的请求。左栏空闲时整页预热首页、客户几项（AppShell + lib/prefetch-full），
+      整页预取不带 next-router-prefetch，什么时候发看空闲时机，CI 上连着两次被算进来（/customers、/dashboard 的 _rsc）；
+      那些是别的页，跟设置切页签重不重拉无关
     */
     await page.waitForLoadState("load");
     await expect(page.getByRole("tablist", { name: "设置分类" }).locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
@@ -387,6 +390,7 @@ test.describe("设置浮层：背后不冒面板、高亮和正文对得上、�
     page.on("request", (r) => {
       if (!开始记) return;
       const u = r.url();
+      if (new URL(u).pathname !== "/settings") return;
       const h = r.headers();
       const 是rsc = /[?&]_rsc=/.test(u) || h["rsc"] === "1";
       if (r.resourceType() === "document" || (是rsc && !h["next-router-prefetch"])) 重拉.push(`${r.method()} ${u}`);
