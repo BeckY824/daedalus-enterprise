@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { 成员选项 } from "@/lib/utils";
 import { 阶段们, 节点们, 结局们, type 阶段 } from "@/lib/project/nodes";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
+import { 项目漏斗of, type 漏斗格 } from "./funnel";
 
 /**
  * 企业版只用项目时「数据」页的数（10-26 用户：「「数据」页改成按项目统计」，线索 / 商机 / 订单是项目的三大阶段）。
@@ -22,6 +23,8 @@ export type 项目现在 = {
   按人: 人行现在[];
   /** 进行中但不是本位币的，金额没算进来 */
   外币: number;
+  /** 全周期漏斗：看得到的全部项目（含已结束的）走到了哪一步（funnel.ts） */
+  漏斗: 漏斗格[];
 };
 
 /** 进行中 = 还没有结局 */
@@ -59,6 +62,7 @@ export async function 项目现在(本位币: string): Promise<项目现在> {
     公海: 进行中.filter((p) => p.pooledAt).length,
     按人: (await 起名(人)).sort((a, b) => b.商机金额 + b.订单金额 - (a.商机金额 + a.订单金额) || b.线索 + b.商机 + b.订单 - (a.线索 + a.商机 + a.订单)),
     外币: 进行中.filter((p) => p.currency !== 本位币 && p.amount > 0).length,
+    漏斗: 项目漏斗of(rows),
   };
 }
 
@@ -76,6 +80,8 @@ export type 项目一段 = {
    * 企业版首页「本月成交」用它（10-28 去遗留 A4），不按客户签约数
    */
   成交: number;
+  /** 漏斗：这一段新建的项目（同「新建」的 createdAt）现在走到了哪一步（funnel.ts） */
+  漏斗: 漏斗格[];
 };
 
 /**
@@ -88,7 +94,7 @@ export type 项目一段 = {
 export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币: string): Promise<项目一段> {
   const 段 = { gte: from, lte: to };
   const [新, 变, 结] = await Promise.all([
-    prisma.project.findMany({ where: { createdAt: 段 }, select: { id: true, ownerId: true, createdAt: true } }),
+    prisma.project.findMany({ where: { createdAt: 段 }, select: { id: true, ownerId: true, createdAt: true, phase: true, result: true } }),
     prisma.projectNodeLog.findMany({
       where: { kind: "node", at: 段, OR: [{ fromPhase: "线索", toPhase: "商机" }, { fromPhase: "商机", toPhase: "订单" }] },
       select: { projectId: true, fromPhase: true, at: true, project: { select: { ownerId: true } } },
@@ -153,6 +159,7 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
     trend: [...桶.values()].sort((a, b) => a.label.localeCompare(b.label)),
     按人: (await 起名(人)).sort((a, b) => b.交付金额 - a.交付金额 || b.成功交付 - a.成功交付 || b.转订单 - a.转订单 || b.转商机 - a.转商机 || b.新建 - a.新建),
     外币,
+    漏斗: 项目漏斗of(新),
   };
 }
 

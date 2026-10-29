@@ -20,6 +20,7 @@ import { 金额, 合计文字 } from "@/lib/currency";
 import { 主题颜色 } from "@/lib/chart-theme";
 import { categorical } from "@/lib/palette";
 import { 收回次数筛们 } from "@/lib/project/recycle-count";
+import { 按预计成交排 } from "@/lib/project/project-fields";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
@@ -163,6 +164,12 @@ export default function ProjectsView({
     { title: "当前进程", key: "node", width: 150, render: (_, r) => <>{节点文字(r, 字典)}{r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
     { title: "金额", key: "amount", width: 120, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
     // 企业版项目公海：被收回过几次（放回、超时回收都算）
+    // 企业版（10-29 P6）：预计成交日期（能排，没填的总在最后）、已立项几天、项目来源（项目没选跟客户来源走）
+    ...(企业版 ? [
+      { title: "预计成交", key: "expectedDealAt", width: 110, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => r.expectedDealAt ?? <span style={{ color: "var(--text-muted)" }}>—</span> },
+      { title: "已立项", key: "age", width: 80, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
+      { title: "项目来源", key: "source", width: 130, render: (_: unknown, r: 项目行) => (r.项目来源 ? <span className="clamp" title={r.项目来源}>{r.项目来源}</span> : <span style={{ color: "var(--text-muted)" }}>—</span>) },
+    ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>公海</Tag> : <UserCell name={r.ownerName} />) }]),
     { title: "最近更新", key: "updatedAt", width: 100, render: (_, r) => fmtDate(r.updatedAt) },

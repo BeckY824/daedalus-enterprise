@@ -50,7 +50,10 @@ const 可写: Record<string, string[]> = {
   EntCommission: ["basePrice"],
   EntCommissionSplit: ["userId", "percent"],
   Customer: ["name", "phone", "school", "grade", "major", "channelId", "referrerCustomerId", "salesOwnerId", "channelOwnerId", "followStatus", "decisionStatus", "custStatus", "expectedSignAt", "remark"],
-  Channel: ["name", "phone", "remark", "channelOwnerId", "active"],
+  // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
+  Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate"],
+  // 企业版渠道投入（2026-10-29）：渠道详情抽屉里录一笔（channels/actions.ts 的 addChannelInvest）
+  EntChannelInvest: ["amount", "currency", "date", "remark"],
   Lead: ["name", "contact", "phone", "email", "industry", "source", "status", "remark", "ownerId"],
   Contract: ["customerId", "amount", "signedAt", "remark"],
   Contact: ["name", "position", "phone", "email", "wechat", "isPrimary", "remark", "customerId"],
@@ -67,7 +70,7 @@ const 可写: Record<string, string[]> = {
   CustomerExtra: ["country", "whatsapp", "wechat", "email", "source", "level", "website", "alibabaId"],
   // 外贸订单 / 供应商整套 7 张表 2026-10-29 删了（迁移 066），这里和 派生 里都不再列
   // 团队版项目模式 1a（2026-10-23）：建档向导、项目详情（编辑项目 / 改节点 / 勾交付 / 项目组）、设置里的「项目模式」一栏
-  Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt"],
+  Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt", "channelId"],
   ProjectMember: ["roleId"],
   ProjectRole: ["name", "active"],
   ProjectExceptionCategory: ["name", "active"],
@@ -93,6 +96,8 @@ const 派生: Record<string, Record<string, string>> = {
     way: "分配方式（字典「分配方式」当时的叫法），按谁点的系统记：手动分=指定分配，自动分=自动分配，不让人填",
   },
   EntLeadQuota: { setById: "最后改配额的人，当前登录账号" },
+  Channel: { createdById: "新建时打上当前登录账号；批量导入时按表里「创建人」对上的员工，对不上留空" },
+  EntChannelInvest: { channelId: "哪个渠道，在那个渠道的详情里录，不改", userId: "录的那个人，当前登录账号" },
   EntFollowUpMark: { followUpId: "主键：标的是哪条沟通（一条沟通只挂一个项目，一行一条）", projectId: "哪个项目，记沟通时跟 FollowUpProject 一起写" },
   EntCommission: {
     projectId: "哪个项目，一个项目一行；存项目底价时按项目定，不改",

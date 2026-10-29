@@ -38,6 +38,8 @@ import UpdateRow from "./UpdateRow";
 import WhatsNew from "./WhatsNew";
 import AiTasks from "./AiTasks";
 import AiDock from "./AiDock";
+import AiFab from "./AiFab";
+import { 浮标显示 } from "@/lib/enterprise/ai-fab";
 import { usePageUnderOverlay } from "@/lib/page-under-overlay";
 import { 整页预取, 省流量 } from "@/lib/prefetch-full";
 import type { ModelOption } from "@/lib/llm";
@@ -253,6 +255,21 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   const 少动 = useReducedMotion();
   // 公海是客户页带 pool=1（P7 之前），只看路径分不出来；企业版项目模式才读
   const pool = useSearchParams()?.get("pool") ?? null;
+  /**
+   * 企业版项目模式右下角的 AI 浮标（定稿 #13 / #14，见 AiFab、lib/enterprise/ai-fab.ts）。
+   * 看的是地址栏：设置浮层开着时地址是 /settings，浮标让开，不压在设置上面。
+   * 手机上原来没有 AI 面板，浮标点开的就是同一块 AiDock 铺满屏。记的是「在哪一页开的」：
+   * 换一页自然就收起，不用「pathname 变了就 setState」的 effect（和 AiDock 里不带上下文的页同一个做法）。
+   */
+  const [手机开在, set手机开在] = useState<string | null>(null);
+  const 手机开着 = 手机开在 === 底下那页;
+  /** 这一次是从浮标点开的：面板从右下角长出来，接上刚才点的那个位置；关掉就清 */
+  const [从浮标开, set从浮标开] = useState(false);
+  const 显示浮标 = 浮标显示(pathname, pool, { 企业版项目, 有AI: Boolean(ai), 面板开着: 小屏 ? 手机开着 : 面板开着 });
+  const 开合面板 = (开: boolean) => {
+    if (!开) set从浮标开(false);
+    记住面板(开);
+  };
   const selectedKey = useMemo(() => {
     // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
     const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
@@ -497,7 +514,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   if (小屏) {
     // 底色走 --page-bg：外观选白底时地面跟着变白（antd 的 bodyBg 是 JS 里写死的色值，读不到外观）
     return (
-      <Layout style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
+      <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         <Header style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", borderBottom: "1px solid var(--line-soft)", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
           <Dropdown
             trigger={["click"]}
@@ -528,13 +545,18 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
         <Content className="app-content" style={{ padding: "22px 26px" }}>
           <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>
         </Content>
+        {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
+        {ai && 企业版项目 && (
+          <AiDock userName={user.name} models={ai.models} 开着={手机开着} set开着={(开) => set手机开在(开 ? 底下那页 : null)} 企业版={企业版} />
+        )}
+        {显示浮标 && <AiFab onClick={() => set手机开在(底下那页)} />}
       </Layout>
     );
   }
 
   return (
     <DockOpenContext.Provider value={面板占着地方}>
-    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}`}>
+    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}`}>
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
       {desktop && <div className="drag-strip" aria-hidden="true" />}
       <nav className="rail" aria-label="主导航">
@@ -667,7 +689,16 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
         它自己决定首页不出现（首页就是宽模式的同一块东西）。
         手机上不出现：390 宽摆不下正文 + 380 的面板。
       */}
-      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={记住面板} 企业版={企业版} />}
+      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={开合面板} 企业版={企业版} />}
+      {/* 面板收着时右下角的入口（企业版项目模式）。面板一开它就让开：两个入口不同时出现，也不压在面板的输入框上 */}
+      {显示浮标 && (
+        <AiFab
+          onClick={() => {
+            set从浮标开(true);
+            记住面板(true);
+          }}
+        />
+      )}
     </div>
     </DockOpenContext.Provider>
   );

@@ -19,6 +19,7 @@ import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
 import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
 import { 查号码, type 查号码结果 } from "../../customers/number-actions";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
+import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 建档向导 } from "../actions";
 
 const 草稿键 = "项目建档向导";
@@ -36,7 +37,8 @@ type 稿 = {
   /** 渠道：企业版新建线索必选（老草稿里没有） */
   客户: { name: string; school: string; remark: string; 渠道?: string };
   /** 分配方式：企业版才有（默认五项的序号，0 指定 / 1 自动 / 2 公海捞取 / 3 暂不分配 / 4 自拓自持）；老草稿里没有 */
-  项目: { name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number };
+  /** 渠道 = 项目来源（企业版，迁移 077）：没另选（空）= 跟客户的渠道；老草稿里没有 */
+  项目: { name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number; 渠道?: string | null };
   /** 下一步时间（YYYY-MM-DD）：开了超时回收时才有这格、必填；老草稿里没有这格 */
   /** 节点、明确回复：企业版首条沟通必选（跟进节点 = 项目落在线索阶段哪一步）；团队版没有 */
   跟进: { type: string; content: string; occurredAt: string; 下一步时间?: string | null; 节点?: string; 明确回复?: boolean | null };
@@ -44,7 +46,7 @@ type 稿 = {
 
 /** 企业版新建线索（10-26）：负责人、渠道必选；只留联系方式、首次沟通记录、跟进节点、客户是否明确回复这几格预设 */
 /** 分配方式们：这个人能用、还启用着的分配方式（10-27 A7：五种都生效，只有「指定分配」要选负责人） */
-export type 企业建档 = { 渠道们: { id: string; name: string }[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[] } | null;
+export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[] } | null;
 
 /** 企业版：这次要不要选负责人。只有「指定分配」要；没有可选的分配方式（老配置）照旧选负责人 */
 const 要选负责人 = (d: 稿, 企业: 企业建档) => !!企业 && (!企业.分配方式们.length || d.项目.分配方式 === 0);
@@ -189,6 +191,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
     set交中(true);
     // 企业版不是「指定分配」的：先建在我名下（服务端也这么改），建好再按分配方式转走
     const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
+    const { 渠道: 项目渠道, ...项目稿 } = d.项目;
     try {
       const r = await 建档向导({
         客户: {
@@ -201,7 +204,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           salesOwnerId: 负责人 || null, channelId: 企业 ? d.客户.渠道 || null : null, referrerCustomerId: null,
         },
         联系人: d.联系人,
-        项目: { ...d.项目, amount: d.项目.amount ?? 0, ownerId: 负责人 || null, 分配方式: 企业 ? d.项目.分配方式 ?? null : undefined },
+        项目: {
+          ...项目稿, amount: d.项目.amount ?? 0, ownerId: 负责人 || null, 分配方式: 企业 ? d.项目.分配方式 ?? null : undefined,
+          // 项目来源：没另选就跟客户的渠道（服务端 项目来源默认 同一个规矩）；团队版不传
+          ...(企业 ? { channelId: 项目渠道 || d.客户.渠道 || null } : {}),
+        },
         跟进: 企业 ? d.跟进 : { type: d.跟进.type, content: d.跟进.content, occurredAt: d.跟进.occurredAt, 下一步时间: d.跟进.下一步时间 },
       });
       if (!r.ok) {
@@ -370,6 +377,23 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
       {步 === 3 && (
         <>
           {一行("项目名称", <Input value={d.项目.name} maxLength={项目名上限} showCount onChange={(e) => 改("项目", { name: e.target.value })} />, true)}
+          {/* 项目来源（迁移 077）：默认带上一步客户的渠道；老客户这一单从别的渠道来就在这改。清掉 = 回到跟客户 */}
+          {企业 && 一行("项目来源", (
+            <>
+              <ChannelPicker
+                aria-label="项目来源"
+                style={{ width: "100%" }}
+                channels={企业.渠道们}
+                value={d.项目.渠道 || d.客户.渠道 || null}
+                allowClear={!!d.项目.渠道 && d.项目.渠道 !== d.客户.渠道}
+                placeholder="这个项目从哪个渠道来"
+                onChange={(v) => 改("项目", { 渠道: v === d.客户.渠道 ? null : v })}
+              />
+              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>
+                {d.项目.渠道 && d.项目.渠道 !== d.客户.渠道 ? "和客户来源不同：渠道统计里这个项目算在这里" : "默认跟客户的渠道；这一单从别的渠道来就改"}
+              </div>
+            </>
+          ))}
           {企业 && 企业.分配方式们.length > 0 && 一行("分配方式", (
             <>
               <Select
