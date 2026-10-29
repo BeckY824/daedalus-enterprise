@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { palette } from "@/lib/palette";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import { 要跟Context } from "./FollowDue";
 import { 我Provider } from "@/lib/me-client";
@@ -27,6 +27,7 @@ import {
   DownOutlined,
   SwapOutlined,
   CheckOutlined,
+  InboxOutlined,
 } from "@ant-design/icons";
 import type { SessionUser } from "@/lib/auth";
 import type { 演示组 } from "@/lib/enterprise/demo-switch";
@@ -37,6 +38,8 @@ import UpdateRow from "./UpdateRow";
 import WhatsNew from "./WhatsNew";
 import AiTasks from "./AiTasks";
 import AiDock from "./AiDock";
+import AiFab from "./AiFab";
+import { 浮标显示 } from "@/lib/enterprise/ai-fab";
 import { usePageUnderOverlay } from "@/lib/page-under-overlay";
 import { 整页预取, 省流量 } from "@/lib/prefetch-full";
 import type { ModelOption } from "@/lib/llm";
@@ -49,6 +52,7 @@ import Shortcut, { useModifierKey } from "./Shortcut";
 import { useBusiness } from "@/lib/business-client";
 import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
 import { useMotionTheme } from "@/components/MotionTheme";
+import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 
 const { Header, Content } = Layout;
 
@@ -121,6 +125,16 @@ type Props = {
  */
 /** 面板常驻要的最小窗口宽度，见 AppShell 里 窄窗 那段 */
 const 面板放不下 = "(max-width: 1599px)";
+
+/** 企业版六个根目录的图标（lib/enterprise/nav.ts 只管名字和去处，不碰界面） */
+const 根目录图标: Record<根目录图, React.ReactNode> = {
+  首页: <HomeOutlined />,
+  看板: <DashboardOutlined />,
+  渠道: <DeploymentUnitOutlined />,
+  公海: <InboxOutlined />,
+  客户: <TeamOutlined />,
+  项目: <ProjectOutlined />,
+};
 
 export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
@@ -207,36 +221,64 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     上次要跟.current = 要跟数;
   }, [要跟数]);
 
-  const nav = useMemo(
-    () => [
-      /*
-        2026-10-02 照毛玻璃原型分成两组：上面是每天都点的（首页、客户、商机、跟进、数据，原型的顺序），
-        下面「更多」是偶尔去一趟的（线索、联系人、渠道）。一个入口都没少，只是不再八项平铺、一样重。
-        沟通、找客做好以后插在商机后面。
-      */
-      { key: "/dashboard", icon: <HomeOutlined />, label: "首页", 组: "主" },
-      { key: "/customers", icon: <TeamOutlined />, label: b.customer, 组: "主" },
-      // 企业版只用项目一条线，没有商机（10-26）；/opportunities 一律转到 /projects，左栏这一项 10-28 删了
-      // 团队版项目模式开着才有（2026-10-23，D-31）；关着时 /projects 是 404
-      ...(b.projectMode ? [{ key: "/projects", icon: <ProjectOutlined />, label: "项目", 组: "主" as const }] : []),
-      { key: "/follow-ups", icon: <InteractionOutlined />, label: "跟进", 组: "主" },
-      { key: "/overview", icon: <DashboardOutlined />, label: "数据", 组: "主" },
-      { key: "/leads", icon: <ShareAltOutlined />, label: 企业版项目 ? "新线索" : "线索", 组: "更多" },
-      { key: "/contacts", icon: <ContactsOutlined />, label: "联系人", 组: "更多" },
-      { key: "/channels", icon: <DeploymentUnitOutlined />, label: "渠道", 组: "更多" },
-      ...(workspace?.billing ? [{ key: "/billing", icon: <DollarOutlined />, label: "开通订阅", 组: "更多" as const }] : []),
-    ],
+  type 导航项 = { key: string; icon: React.ReactNode; label: string; 组: "主" | "更多"; 挂要跟?: true };
+  const nav = useMemo<导航项[]>(
+    () =>
+      企业版项目
+        ? /*
+            企业版项目模式（10-29 客户定稿）：六个根目录，没有「更多」。跟进、新线索、联系人不进左栏，
+            路由都留着、⌘K 搜得到；新线索和跟进的入口在项目页页头，红数跟着挂到「项目」上（lib/enterprise/nav.ts）
+          */
+          企业版根目录(b.customer).map((n) => ({ key: n.key, icon: 根目录图标[n.图], label: n.label, 组: "主" as const, ...(n.挂要跟 ? { 挂要跟: true as const } : {}) }))
+        : [
+            /*
+              2026-10-02 照毛玻璃原型分成两组：上面是每天都点的（首页、客户、商机、跟进、数据，原型的顺序），
+              下面「更多」是偶尔去一趟的（线索、联系人、渠道）。一个入口都没少，只是不再八项平铺、一样重。
+              沟通、找客做好以后插在商机后面。
+            */
+            { key: "/dashboard", icon: <HomeOutlined />, label: "首页", 组: "主" },
+            { key: "/customers", icon: <TeamOutlined />, label: b.customer, 组: "主" },
+            // 企业版只用项目一条线，没有商机（10-26）；/opportunities 一律转到 /projects，左栏这一项 10-28 删了
+            // 团队版项目模式开着才有（2026-10-23，D-31）；关着时 /projects 是 404
+            ...(b.projectMode ? [{ key: "/projects", icon: <ProjectOutlined />, label: "项目", 组: "主" as const }] : []),
+            { key: "/follow-ups", icon: <InteractionOutlined />, label: "跟进", 组: "主", 挂要跟: true },
+            { key: "/overview", icon: <DashboardOutlined />, label: "数据", 组: "主" },
+            { key: "/leads", icon: <ShareAltOutlined />, label: "线索", 组: "更多" },
+            { key: "/contacts", icon: <ContactsOutlined />, label: "联系人", 组: "更多" },
+            { key: "/channels", icon: <DeploymentUnitOutlined />, label: "渠道", 组: "更多" },
+            ...(workspace?.billing ? [{ key: "/billing", icon: <DollarOutlined />, label: "开通订阅", 组: "更多" as const }] : []),
+          ],
     [b.customer, b.projectMode, workspace?.billing, 企业版项目],
   );
 
   // 选中项取最长匹配前缀，/customers/xxx 也算在客户管理下
   const 少动 = useReducedMotion();
+  // 公海是客户页带 pool=1（P7 之前），只看路径分不出来；企业版项目模式才读
+  const pool = useSearchParams()?.get("pool") ?? null;
+  /**
+   * 企业版项目模式右下角的 AI 浮标（定稿 #13 / #14，见 AiFab、lib/enterprise/ai-fab.ts）。
+   * 看的是地址栏：设置浮层开着时地址是 /settings，浮标让开，不压在设置上面。
+   * 手机上原来没有 AI 面板，浮标点开的就是同一块 AiDock 铺满屏。记的是「在哪一页开的」：
+   * 换一页自然就收起，不用「pathname 变了就 setState」的 effect（和 AiDock 里不带上下文的页同一个做法）。
+   */
+  const [手机开在, set手机开在] = useState<string | null>(null);
+  const 手机开着 = 手机开在 === 底下那页;
+  /** 这一次是从浮标点开的：面板从右下角长出来，接上刚才点的那个位置；关掉就清 */
+  const [从浮标开, set从浮标开] = useState(false);
+  const 显示浮标 = 浮标显示(pathname, pool, { 企业版项目, 有AI: Boolean(ai), 面板开着: 小屏 ? 手机开着 : 面板开着 });
+  const 开合面板 = (开: boolean) => {
+    if (!开) set从浮标开(false);
+    记住面板(开);
+  };
   const selectedKey = useMemo(() => {
+    // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
+    const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
+    if (企) return 企;
     const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/follow-ups", "/settings", "/billing"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
-  }, [pathname]);
+  }, [pathname, pool, 企业版项目]);
   /*
     网页版点左栏那一下就亮到新的一项上（10-27）：放到云服务器上，新页的数据要等一趟网络，
     地址栏还没换之前 selectedKey 不动，人会以为没点上又点一次。记下点的是哪一项，
@@ -244,9 +286,11 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     桌面端在本机，换页本来就是即时的，不动
   */
   const [去向, set去向] = useState<string | null>(null);
-  const [上次地址, set上次地址] = useState(pathname);
-  if (上次地址 !== pathname) {
-    set上次地址(pathname);
+  // 企业版的「公海」和「客户」是同一个路径（P7 之前公海 = /customers?pool=1），只比路径的话在两项之间点，去向永远清不掉
+  const 地址 = 企业版项目 && pool ? `${pathname}?pool=${pool}` : pathname;
+  const [上次地址, set上次地址] = useState(地址);
+  if (上次地址 !== 地址) {
+    set上次地址(地址);
     set去向(null);
   }
   const 亮项 = 去向 ?? selectedKey;
@@ -255,7 +299,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     网页版左栏主组几项空闲时整页预热（10-27，lib/prefetch-full）：首页、客户、项目、跟进、数据每天来回切，
     预热过的点下去直接从本地出页，不等服务器。只在页面空下来以后取，不和当前页抢；省流量不取；
     60 秒后过期（staleTimes.static），过期了悬停（unstable_dynamicOnHover）还会再取一次。
-    企业版的新线索虽然摆在「更多」里，却是每天的入口，一起预热（10-27 第二轮：没预热时第一次点要 0.6 秒）。
+    企业版的新线索不在左栏（入口在项目页页头），却是每天的入口，一起预热（10-27 第二轮：没预热时第一次点要 0.6 秒）。
     详情页（客户、项目）没法整页预热——不知道人要点哪一行，行也不许一进视口就取（e2e/row-prefetch）。
     第一次点慢在页面自己的脚本：悬停预取回来才知道要哪几个脚本，再去下一趟，+200ms 往返时要 0.65 秒。
     所以空闲时先把这两页的界面组件 import 进来：打包出来就是同几个脚本文件（Turbopack 按模块分块，
@@ -290,10 +334,11 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   */
   const 当前页名 = useMemo(() => {
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "我的反馈";
+    if (企业版项目) return 企业版页名(pathname, pool, b.customer);
     const 全部 = [...nav, { key: "/settings", label: "设置" }];
     const 中 = 全部.filter((n) => pathname === n.key || pathname.startsWith(n.key + "/")).sort((a, b) => b.key.length - a.key.length)[0];
     return typeof 中?.label === "string" ? 中.label : "";
-  }, [nav, pathname]);
+  }, [nav, pathname, pool, 企业版项目, b.customer]);
   useEffect(() => {
     if (desktop || !当前页名) return;
     const 要 = `${当前页名} · ${产品名}`;
@@ -334,7 +379,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
                 if (n.key !== selectedKey) set去向(n.key);
               }
       }
-      aria-label={n.key === "/follow-ups" && 要跟说法 ? `${n.label}，${要跟说法}` : n.label}
+      aria-label={n.挂要跟 && 要跟说法 ? `${n.label}，${要跟说法}` : n.label}
       className={`rail-item${亮项 === n.key ? " on" : ""}`}
     >
       {/* 选中那块底色是**同一块**在两项之间滑过去的（layoutId），不是这边灭那边亮。
@@ -347,8 +392,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       <b>{n.label}</b>
       {/* 和 Dock 上那个红数字同一个数、同一种红：人从 Dock 看见 1，打开应用第一眼就能对上它在哪。
           点进去是记录页，页头「计划」按钮上还挂着同一个数，再点就是逾期和今天那两组 */}
-      {n.key === "/follow-ups" && 要跟数 > 0 && (
-        <span className="rail-count" title={`${要跟说法}${desktop ? "，和应用图标提示一致" : "，查看跟进计划中的逾期和今天"}`}>{要跟数 > 99 ? "99+" : 要跟数}</span>
+      {n.挂要跟 && 要跟数 > 0 && (
+        <span className="rail-count" title={`${要跟说法}${desktop ? "，和应用图标提示一致" : n.key === "/projects" ? "，项目页「跟进」里看逾期和今天" : "，查看跟进计划中的逾期和今天"}`}>{要跟数 > 99 ? "99+" : 要跟数}</span>
       )}
       {/* 灰的数只是「有多少」，不是「要处理」：和上面那个红的分开，红的才催人 */}
       {(计数[n.key] ?? 0) > 0 && <span className="rail-num">{计数[n.key]}</span>}
@@ -469,13 +514,13 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   if (小屏) {
     // 底色走 --page-bg：外观选白底时地面跟着变白（antd 的 bodyBg 是 JS 里写死的色值，读不到外观）
     return (
-      <Layout style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
+      <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         <Header style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", borderBottom: "1px solid var(--line-soft)", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
           <Dropdown
             trigger={["click"]}
             menu={{
               /* 整行可点：label 里塞 <Link> 的话，点在图标或右边空白上只会把菜单关掉 */
-              items: [...nav, { key: "/settings", icon: <SettingOutlined />, label: "设置" }],
+              items: [...nav.map(({ key, icon, label }) => ({ key, icon, label })), { key: "/settings", icon: <SettingOutlined />, label: "设置" }],
               selectedKeys: [selectedKey],
               onClick: ({ key }) => router.push(key),
             }}
@@ -500,13 +545,18 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
         <Content className="app-content" style={{ padding: "22px 26px" }}>
           <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>
         </Content>
+        {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
+        {ai && 企业版项目 && (
+          <AiDock userName={user.name} models={ai.models} 开着={手机开着} set开着={(开) => set手机开在(开 ? 底下那页 : null)} 企业版={企业版} />
+        )}
+        {显示浮标 && <AiFab onClick={() => set手机开在(底下那页)} />}
       </Layout>
     );
   }
 
   return (
     <DockOpenContext.Provider value={面板占着地方}>
-    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}`}>
+    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}`}>
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
       {desktop && <div className="drag-strip" aria-hidden="true" />}
       <nav className="rail" aria-label="主导航">
@@ -530,10 +580,13 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
         <div className="rail-nav">
           {nav.filter((n) => n.组 === "主").map((n) => 一项(n))}
         </div>
-        <div className="rail-more" aria-label="更多">
-          <div className="rail-fav-h">更多</div>
-          {nav.filter((n) => n.组 === "更多").map((n) => 一项(n))}
-        </div>
+        {/* 企业版项目模式六个根目录都在上面，没有「更多」，空的标题不摆 */}
+        {nav.some((n) => n.组 === "更多") && (
+          <div className="rail-more" aria-label="更多">
+            <div className="rail-fav-h">更多</div>
+            {nav.filter((n) => n.组 === "更多").map((n) => 一项(n))}
+          </div>
+        )}
         {收藏.length > 0 && (
           <div className="rail-fav" aria-label="收藏的客户">
             <div className="rail-fav-h">收藏的{b.customer}</div>
@@ -636,7 +689,16 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
         它自己决定首页不出现（首页就是宽模式的同一块东西）。
         手机上不出现：390 宽摆不下正文 + 380 的面板。
       */}
-      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={记住面板} 企业版={企业版} />}
+      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={开合面板} 企业版={企业版} />}
+      {/* 面板收着时右下角的入口（企业版项目模式）。面板一开它就让开：两个入口不同时出现，也不压在面板的输入框上 */}
+      {显示浮标 && (
+        <AiFab
+          onClick={() => {
+            set从浮标开(true);
+            记住面板(true);
+          }}
+        />
+      )}
     </div>
     </DockOpenContext.Provider>
   );

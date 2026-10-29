@@ -54,6 +54,11 @@ describe("规则猜列", () => {
     expect(m.座机).toBe(进备注);
   });
 
+  it("「客户状态」进客户状态、「跟进状态」进跟进状态，不再混成一格（10-29 修）", () => {
+    expect(规则猜列("customer", ["客户名称", "客户状态", "跟进状态"])).toMatchObject({ 客户状态: "custStatus", 跟进状态: "followStatus" });
+    expect(规则猜列("customer", ["客户名称", "客户状态"]).客户状态).toBe("custStatus");
+  });
+
   it("跟进表的「创建时间」「创建人」当跟进时间和跟进人，不当系统列", () => {
     const m = 规则猜列("followup", ["客户名称", "跟进内容", "创建时间", "创建人"]);
     expect(m).toMatchObject({ 客户名称: "customerName", 跟进内容: "content", 创建时间: "occurredAt", 创建人: "owner" });

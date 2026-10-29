@@ -61,9 +61,11 @@ it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在、可点�
     expect(await cards.nth(1).innerText()).toContain("138****8001");
     expect(await cards.nth(1).getByRole("link").count()).toBe(0);
     expect(await cards.nth(2).innerText()).toContain("没留联系方式");
-    // 客户电话也能拨；旺旺 ID 摆出来
+    // 客户电话也能拨；联系方式子表里的旺旺号摆出来，10-29 起叫「阿里国际站ID」
     expect(await page.getByRole("link", { name: "13800138000" }).getAttribute("href")).toBe("tel:13800138000");
     expect(await page.getByText("ww_buyer").count()).toBe(1);
+    expect(await page.getByText("阿里国际站ID", { exact: true }).count()).toBe(1);
+    expect(await page.getByText("旺旺 ID").count()).toBe(0);
   } finally { await page.close(); }
 });
 it("企业版：空字段收起、「展开更多」能展开；没有签约、推荐关系；1024 宽不横滚", async () => {

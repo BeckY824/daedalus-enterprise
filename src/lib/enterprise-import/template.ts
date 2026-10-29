@@ -98,6 +98,8 @@ export function 读回对照表(文件: { 名: string; bytes: Uint8Array }, 报�
   let 改了 = 0;
   const 实体按名 = new Map(实体顺序.map((e) => [实体名[e], e]));
   const 值按叫法 = new Map((Object.keys(值对照) as 值对照名[]).map((k) => [值叫法(k, 报告.映射.项目), k]));
+  // 10-29 前导出的对照表「阶段」那类写的是「项目节点」，照样认
+  if (报告.映射.项目) 值按叫法.set("项目节点", "阶段");
   const 当前列 = (e: 实体, h: string) => 报告.映射.列[e]?.find((c) => c.表头 === h);
 
   const 认人 = (s: string): { id: string } | { 错: string } => {

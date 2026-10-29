@@ -172,13 +172,13 @@ export default function ChannelsView({
 
   type 数键 = "关联线索" | "有效线索" | "关联商机" | "关联订单" | "关联项目";
   const 数列 = (键: 数键, 说明: string): 列<Row> => ({
-    title: <Tooltip title={说明}>{键}</Tooltip>, key: 键, width: 88, align: "right",
+    title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 108, align: "right",
     sorter: (a, b2) => 统计(a)[键] - 统计(b2)[键],
     render: (_: unknown, r: Row) => (统计(r)[键] > 0 ? <span className="chan-num">{统计(r)[键]}</span> : 无),
   });
   const 本位 = (x: { 币种: string; 合计: number }[]) => x.find((y) => y.币种 === b.currency)?.合计 ?? 0;
   const 钱列 = (键: "累计成交" | "当前投入", 说明: string): 列<Row> => ({
-    title: <Tooltip title={说明}>{键}</Tooltip>, key: 键, width: 132, align: "right",
+    title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 164, align: "right",
     // 排序只看本位币那一份（不换汇）
     sorter: (a, b2) => 本位(统计(a)[键]) - 本位(统计(b2)[键]),
     render: (_: unknown, r: Row) => (统计(r)[键].length ? <span className="chan-num nowrap">{合计文字(统计(r)[键], b.currency)}</span> : 无),

@@ -710,11 +710,11 @@ export default function RecordView({
                 {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
               </>
             )}
-            {/* 企业版：建档第一步选了旺旺时，旺旺 ID 只在联系方式子表里（客户表、档案都没有这一格），只读摆出来 */}
+            {/* 企业版：建档第一步选了阿里国际站ID（类型值、库里 kind 还叫旺旺）时，它只在联系方式子表里（客户表、档案都没有这一格），只读摆出来 */}
             {企业 && 旺旺们.length > 0 && (
               <div className="rec-field" style={{ cursor: "default" }}>
-                <div className="rec-field-k">旺旺 ID</div>
-                <div className="rec-field-v">{旺旺们.join("、")}</div>
+                <div className="rec-field-k">阿里国际站ID</div>
+                <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{旺旺们.join("、")}</div>
               </div>
             )}
             {/* 选项里带上现任：负责人是管理员或已停用时不在候选里，原来下拉直接显示一串 id（排查 D8）。

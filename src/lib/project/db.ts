@@ -84,7 +84,7 @@ export function 往前推不给(me: 谁, ownerId: string, org: 组织 | null, �
   if (!org || (负责人可推 && me.id === ownerId)) return null;
   const 上级 = 直属上级of(org, ownerId);
   if (!上级 || me.id === 上级 || me.role === "ADMIN" || 管理员类别of(org, me.id) === "总管理员") return null;
-  return me.id === ownerId ? "往前推节点要由你的直属上级来推" : "只有负责人的直属上级能往前推节点";
+  return me.id === ownerId ? "往前推进程要由你的直属上级来推" : "只有负责人的直属上级能往前推进程";
 }
 
 /**
@@ -257,7 +257,7 @@ export async function 改节点(
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    if (!能改节点(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改节点" };
+    if (!能改节点(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改进程" };
     const result = 到.result || null;
     const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
     // 旧客户端交上来的旧节点名（企业版 验收交付）按新名存
@@ -329,7 +329,7 @@ export async function 勾交付(me: 谁, projectId: string, 项: 交付项, 勾:
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (!能管项目(me, p)) return { ok: false as const, error: "只有项目负责人、老板或主管能勾" };
     if (p[项] === 勾) return { ok: true as const, 变了: false };
-    if (!勾 && p.result === "成功交付") return { ok: false as const, error: `已经成功交付了；要取消「${交付项们[项]}」，先把节点改回去` };
+    if (!勾 && p.result === "成功交付") return { ok: false as const, error: `已经成功交付了；要取消「${交付项们[项]}」，先把进程改回去` };
     const 谁勾 = 项 === "balanceSettled" ? { balanceSettledById: 勾 ? me.id : null, balanceSettledAt: 勾 ? new Date() : null } : { acceptancePassedById: 勾 ? me.id : null, acceptancePassedAt: 勾 ? new Date() : null };
     await tx.project.update({ where: { id: p.id }, data: { [项]: 勾, ...谁勾 } });
     return { ok: true as const, 变了: true, ...带推进(await 按必填推进(tx, 规则, me, p.id)) };
@@ -625,7 +625,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
   if (收了.length) {
     await recordAudit({
       user: 系统, action: "pool", entity: "Project",
-      summary: `${收了.length} 个项目超过节点处理时长没跟进，自动回到项目公海`,
+      summary: `${收了.length} 个项目超过进程处理时长没跟进，自动回到项目公海`,
       detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数 },
     });
   }

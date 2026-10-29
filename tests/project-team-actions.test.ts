@@ -114,7 +114,7 @@ describe("改组织规则（企业版持有上限）", () => {
     expect((await 读组织规则()).超时回收.开).toBe(false);
     expect(await 改组织规则(改)).toEqual({ ok: true, 收回: 1 });
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).pooledAt).not.toBeNull();
-    expect((await 记录()).map((r) => r.summary)).toContain("组织规则：超时回收开，设了 1 个节点的处理时长");
+    expect((await 记录()).map((r) => r.summary)).toContain("组织规则：超时回收开，设了 1 个进程的处理时长");
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
     expect(await 预览超时回收(改)).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
   });
@@ -125,8 +125,8 @@ describe("改组织规则（企业版持有上限）", () => {
     expect(await 改组织规则({ 节点推进: { 开: false } })).toEqual({ ok: true, 收回: 0 });
     expect(await 改组织规则({ 节点推进: { 必填: { 尾款结算: ["金额"] } } })).toMatchObject({ ok: false, error: expect.stringContaining("不能配必填") });
     expect((await 记录()).map((r) => r.summary)).toEqual([
-      "组织规则：节点推进开，1 个节点配了必填",
-      "组织规则：节点推进关",
+      "组织规则：进程推进开，1 个进程配了必填",
+      "组织规则：进程推进关",
     ]);
   });
 

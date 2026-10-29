@@ -124,15 +124,15 @@ describe("各处按自己那一行拦", () => {
     expect(await 改组织规则({ 公海: { 持有上限开: true } })).toMatchObject({ ok: false, error: "项目持有上限只有老板、销售管理、总管理员能改" });
     当(销售经理);
     expect(await 改组织规则({ 公海: { 持有上限开: true } })).toEqual({ ok: true, 收回: 0 });
-    expect(await 改组织规则({ 公海: { 默认上限: 5 }, 节点推进: { 开: true } })).toMatchObject({ ok: false, error: "节点必填字段只有老板、总管理员能改" });
+    expect(await 改组织规则({ 公海: { 默认上限: 5 }, 节点推进: { 开: true } })).toMatchObject({ ok: false, error: "进程必填字段只有老板、总管理员能改" });
     expect((await prisma.auditLog.count({ where: { summary: { contains: "默认 5 个" } } }))).toBe(0);
     当(销售);
-    expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "各节点时限只有老板、销售管理、市场管理、总管理员能改" });
+    expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "各进程时限只有老板、销售管理、市场管理、总管理员能改" });
     // 老板把节点时限收回成只有自己
     当(老板, "ADMIN");
     expect(await 设改权限({ 节点时限: [] })).toEqual({ ok: true });
     当(市场经理);
-    expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "各节点时限只有老板能改" });
+    expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "各进程时限只有老板能改" });
   });
 
   it("字段权限表：默认总管理员能存、销售管理不能；共享区一律拦", async () => {

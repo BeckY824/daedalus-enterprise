@@ -78,7 +78,7 @@ describe("项目模式", () => {
       ]),
     ]);
     expect(报告.映射.项目).toBe(true);
-    expect(报告.映射.值.filter((v) => v.名 === "阶段").every((v) => v.叫法 === "项目节点")).toBe(true);
+    expect(报告.映射.值.filter((v) => v.名 === "阶段").every((v) => v.叫法 === "当前进程")).toBe(true);
     expect(await prisma.opportunity.count()).toBe(0);
     expect(await prisma.project.count()).toBe(7);
 

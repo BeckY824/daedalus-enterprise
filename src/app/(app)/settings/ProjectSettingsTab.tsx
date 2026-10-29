@@ -344,8 +344,8 @@ function TimeoutCard({
     modal.confirm({
       title: `按新设置，现在会有 ${看.个数} 个项目回到项目公海`,
       content: 看.团队
-        ? "这些项目在节点上已经超过处理时长没跟进。确认后你名下的马上回到公海；别人名下的在他下次打开首页或项目列表时回到公海。负责人都会收到提醒。"
-        : "这些项目在节点上已经超过处理时长没跟进。确认后它们马上回到公海，负责人会收到提醒。",
+        ? "这些项目在进程上已经超过处理时长没跟进。确认后你名下的马上回到公海；别人名下的在他下次打开首页或项目列表时回到公海。负责人都会收到提醒。"
+        : "这些项目在进程上已经超过处理时长没跟进。确认后它们马上回到公海，负责人会收到提醒。",
       okText: "确认保存",
       cancelText: "再想想",
       onOk: () => void 存(),
@@ -368,11 +368,11 @@ function TimeoutCard({
       }
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        开了以后，线索、商机阶段的项目在一个节点上超过处理时长还没跟进，自动回到项目公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的节点按 ${默认天数} 天算` : "没填天数的节点不回收"}，订单阶段不回收。默认关。
+        开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到项目公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
       </div>
       {!挡 && !全能 && (
         <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-          {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他节点和开关由老板、总管理员改。` : "节点时限和开关由老板、总管理员改。"}
+          {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他进程和开关由老板、总管理员改。` : "进程时限和开关由老板、总管理员改。"}
         </div>
       )}
       {规则.开 && (
@@ -424,21 +424,21 @@ function AdvanceCard({
 
   return (
     <Card
-      title="节点推进"
+      title="进程推进"
       extra={
         <Space>
           {挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}
           <Switch
-            aria-label="节点推进"
+            aria-label="进程推进"
             checked={规则.开}
             disabled={!!挡 || 忙}
-            onChange={(开) => void 跑(() => 改组织规则({ 节点推进: { 开 } }), 开 ? "已开节点推进" : "已关节点推进")}
+            onChange={(开) => void 跑(() => 改组织规则({ 节点推进: { 开 } }), 开 ? "已开进程推进" : "已关进程推进")}
           />
         </Space>
       }
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        开了以后，给节点配上必填的几样，项目在这个节点上填齐了自动推到下一个节点，节点变更里记一行「必填齐了，自动推进」。没填齐也能保存，项目页上会列出还差哪几样。配了必填的节点，手动往前推只有老板、主管能点，往后退照旧；没配的节点照原来手动推。改了清单以后，项目下次保存时按新清单走。默认关。
+        开了以后，给进程配上必填的几样，项目在这个进程上填齐了自动推到下一个进程，进程变更里记一行「必填齐了，自动推进」。没填齐也能保存，项目页上会列出还差哪几样。配了必填的进程，手动往前推只有老板、主管能点，往后退照旧；没配的进程照原来手动推。改了清单以后，项目下次保存时按新清单走。默认关。
       </div>
       {规则.开 && (
         <>
@@ -697,9 +697,9 @@ function StageRuleCard({
   return (
     <Card title="阶段规则" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        线索阶段只能走到「转商机」或「流失」，商机阶段只能「赢单」或「丢单」，订单只能从商机进；进了下一个阶段就退不回上一个，阶段里面往后退随便退。每次推进都记在节点变更里。
+        线索阶段只能走到「转商机」或「流失」，商机阶段只能「赢单」或「丢单」，订单只能从商机进；进了下一个阶段就退不回上一个，阶段里面往后退随便退。每次推进都记在进程变更里。
       </div>
-      <div style={{ fontWeight: 500, marginBottom: 8 }}>谁能往前推节点</div>
+      <div style={{ fontWeight: 500, marginBottom: 8 }}>谁能往前推进程</div>
       <Radio.Group
         aria-label="往前推权限"
         disabled={!!挡 || 忙}
@@ -710,7 +710,7 @@ function StageRuleCard({
       />
       <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 16, minWidth: 0 }}>
         <Switch
-          aria-label="前两个节点要沟通"
+          aria-label="前两个进程要沟通"
           size="small"
           style={{ flex: "none", marginTop: 3 }}
           disabled={!!挡 || 忙}
@@ -718,8 +718,8 @@ function StageRuleCard({
           onChange={(v) => void 跑(() => 改组织规则({ 阶段: { 前两节点要沟通: v } }), "已保存")}
         />
         <div style={{ minWidth: 0 }}>
-          <div>线索、商机前两个节点各要一条沟通才能往后推</div>
-          <div style={{ color: "var(--text-muted)" }}>开了：{要沟通的节点().join("、")} 这几个节点上，各记过至少一条沟通才能推到下一个节点（必填齐了的自动推进也一样）。默认关</div>
+          <div>线索、商机前两个进程各要一条沟通才能往后推</div>
+          <div style={{ color: "var(--text-muted)" }}>开了：{要沟通的节点().join("、")} 这几个进程上，各记过至少一条沟通才能推到下一个进程（必填齐了的自动推进也一样）。默认关</div>
         </div>
       </div>
       <div style={{ fontWeight: 500, marginBottom: 8 }}>结束状态叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>

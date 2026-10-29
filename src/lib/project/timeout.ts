@@ -14,7 +14,7 @@ import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
 import { 团队版字典, type 阶段字典 } from "./stage-dict";
 
-export const 超时理由 = "超过节点处理时长没跟进，自动回到项目公海";
+export const 超时理由 = "超过进程处理时长没跟进，自动回到项目公海";
 /** 企业版手动放回公海时选的「回收原因」（字典）记成「回收原因：X」（10-27） */
 export const 回收原因前缀 = "回收原因：";
 

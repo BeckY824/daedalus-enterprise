@@ -61,7 +61,7 @@ export type 通讯录 = { 部门们: 通讯录部门[]; 人们: 通讯录人[] }
  * customerRef / customerName 认客户，opportunityRef / opportunityName 认商机（跟进用）
  */
 export const 标准字段 = {
-  customer: ["id", "name", "phone", "owner", "followStatus", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website"],
+  customer: ["id", "name", "phone", "owner", "followStatus", "custStatus", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website"],
   contact: ["id", "customerRef", "customerName", "name", "position", "phone", "email", "wechat", "isPrimary", "remark"],
   lead: ["id", "name", "contact", "phone", "email", "industry", "source", "status", "owner", "remark"],
   opportunity: ["id", "customerRef", "customerName", "name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "owner", "remark"],
@@ -75,6 +75,7 @@ export const 字段中文: Record<string, string> = {
   phone: "电话",
   owner: "负责人",
   followStatus: "跟进状态",
+  custStatus: "客户状态",
   remark: "备注",
   email: "邮箱",
   wechat: "微信",

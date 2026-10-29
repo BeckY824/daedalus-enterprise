@@ -20,7 +20,7 @@ import { 要下一步时间 } from "@/lib/project/wizard";
 import { 客户在推项目 } from "@/lib/project/active";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
-import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
 import { 认出备注里的号码, AI建档查重 } from "@/lib/enterprise/ai-lead-dedupe";
 import { saveOpportunity } from "../opportunities/actions";
 import { saveChannel } from "../channels/actions";
@@ -242,7 +242,7 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
 /**
  * 企业版只用项目时的新线索卡：走项目的建档向导，建一位客户、主要联系人和一个线索阶段的项目，首条跟进写明从对话来。
  * 不给撤销：向导一笔建了好几样，撤回去要删客户，交给人到项目页处理。
- * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 旺旺，撞了不建、提醒原负责人。
+ * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 阿里国际站ID，撞了不建、提醒原负责人。
  * 不撞：创建人 = 负责人 = 录入人（客户销售负责人、项目负责人都是自己）
  */
 async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处 } | { ok: false; error: string }> {
@@ -254,11 +254,11 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   if (撞了) return { ok: false, error: 撞了 };
   const 邮箱 = 号们.find((h) => h.类型 === "邮箱")?.值 ?? null;
   const 微信 = 号们.find((h) => h.类型 === "微信")?.值 ?? null;
-  // 客户只有一格企业号码：有电话放电话；没电话按邮箱 → 微信 → 旺旺放第一个认出的（新建客户企业号码不是手机号才免填电话）。
-  // 邮箱、微信另有联系人那格；旺旺没占企业号码的话那行留回备注
+  // 客户只有一格企业号码：有电话放电话；没电话按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个认出的（新建客户企业号码不是手机号才免填电话）。
+  // 邮箱、微信另有联系人那格；阿里国际站ID没占企业号码的话那行留回备注（按新叫法写回）
   const 旺旺 = 号们.find((h) => h.类型 === "旺旺ID");
   const 企业号 = 号 ? { 类型: "手机号", 值: 号 } : (["邮箱", "微信", "旺旺ID"] as const).map((t) => 号们.find((h) => h.类型 === t)).find(Boolean);
-  const 备注 = 旺旺 && 企业号?.类型 !== "旺旺ID" ? [剩, `旺旺：${旺旺.值}`].filter(Boolean).join("\n") : 剩;
+  const 备注 = 旺旺 && 企业号?.类型 !== "旺旺ID" ? [剩, `${号码类型叫法("旺旺ID")}：${旺旺.值}`].filter(Boolean).join("\n") : 剩;
   // 企业版新建线索要选渠道：卡上只有来源一格，来源就是某个启用中的渠道名（或只含一个渠道名）才认，认不出不猜
   const 渠道们 = await prisma.channel.findMany({ where: { active: true }, select: { id: true, name: true } });
   const 来源 = p.source.trim();
