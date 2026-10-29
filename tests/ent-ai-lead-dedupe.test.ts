@@ -61,6 +61,15 @@ describe("认出备注里的号码", () => {
     expect(r.号们.map((h) => [h.类型, h.值])).toEqual([["邮箱", "Zhou@Star.com"], ["微信", "zhou_jl88"], ["旺旺ID", "xinghe_shop"]]);
     expect(r.剩).toBe("要样品\n地址：深圳");
   });
+  it("阿里国际站ID（10-29 新叫法）和旧说法、简称都认成同一种；大小写、中间空格不挑", () => {
+    for (const 头 of ["阿里国际站ID", "阿里国际站 id", "阿里国际站", "阿里ID", "国际站 ID", "旺旺ID", "旺旺 ID", "旺旺"]) {
+      const r = 认出备注里的号码(`要样品\n${头}：xinghe_shop`);
+      expect(r.号们.map((h) => [h.类型, h.值]), 头).toEqual([["旺旺ID", "xinghe_shop"]]);
+      expect(r.剩, 头).toBe("要样品");
+    }
+    // 只认第一个：新旧叫法各写一行算同一种，第二行留下
+    expect(认出备注里的号码("阿里国际站ID：shop_a1\n旺旺：shop_b2").剩).toBe("旺旺：shop_b2");
+  });
   it("格式不对的不认、原样留下；同一种只认第一个", () => {
     const r = 认出备注里的号码("邮箱：不是邮箱\n邮箱：a@b.com\n邮箱：c@d.com");
     expect(r.号们.map((h) => h.值)).toEqual(["a@b.com"]);
@@ -115,13 +124,13 @@ describe("撞了：不建、提醒原负责人", () => {
 });
 
 describe("不撞：建成", () => {
-  it("负责人都是我；邮箱、微信进联系人，备注里那几行拿掉；有电话时旺旺留在备注", async () => {
+  it("负责人都是我；邮箱、微信进联系人，备注里那几行拿掉；有电话时阿里国际站ID留在备注（按新叫法写回）", async () => {
     当(乙);
     const r = await applyProposal(卡({ phone: "13700001234", remark: "要样品\n邮箱：zhou@star.com\n微信：zhou_jl88\n旺旺：xinghe_shop" }) as never);
     expect(r).toMatchObject({ ok: true });
     const p = await prisma.project.findFirstOrThrow({ include: { customer: true } });
     expect(p.ownerId).toBe(乙.id);
-    expect(p.customer).toMatchObject({ salesOwnerId: 乙.id, remark: "要样品\n旺旺：xinghe_shop" });
+    expect(p.customer).toMatchObject({ salesOwnerId: 乙.id, remark: "要样品\n阿里国际站ID：xinghe_shop" });
     expect(await prisma.contact.findFirstOrThrow({ where: { customerId: p.customerId } })).toMatchObject({
       name: "周经理", phone: "13700001234", email: "zhou@star.com", wechat: "zhou_jl88",
     });

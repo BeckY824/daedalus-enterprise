@@ -16,7 +16,7 @@
  * 而且忘了密码要靠它收验证码——用户名的话 /forgot 那条路对他是断的。
  */
 
-import bcrypt from "bcryptjs";
+import { 哈希密码, 核对密码串 } from "@/lib/password";
 import { control } from "./control";
 import { checkPassword, findAccountByTarget, parseTarget } from "./accounts";
 import { 记一次改密 } from "./session-cutoff";
@@ -51,7 +51,7 @@ export async function 配账号(input: {
   const account = await control.account.create({
     data: {
       email: t.value,
-      password: await bcrypt.hash(input.password, 10),
+      password: await 哈希密码(input.password),
       name: input.name.trim().slice(0, 20) || "成员",
     },
   });
@@ -79,7 +79,7 @@ export async function 配账号(input: {
 export async function 改密码(accountId: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const pwErr = checkPassword(password);
   if (pwErr) return { ok: false, error: pwErr };
-  await control.account.update({ where: { id: accountId }, data: { password: await bcrypt.hash(password, 10) } });
+  await control.account.update({ where: { id: accountId }, data: { password: await 哈希密码(password) } });
   await 记一次改密(accountId);
   await 吊销全部(accountId);
   return { ok: true };
@@ -89,7 +89,7 @@ export async function 改密码(accountId: string, password: string): Promise<{ 
 export async function 核对密码(accountId: string, password: string): Promise<boolean> {
   const a = await control.account.findUnique({ where: { id: accountId } });
   if (!a) return false;
-  return bcrypt.compare(password, a.password);
+  return 核对密码串(password, a.password);
 }
 
 /**

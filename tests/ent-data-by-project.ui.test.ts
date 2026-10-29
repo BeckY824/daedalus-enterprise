@@ -65,7 +65,7 @@ it("现在：项目的卡片、节点图、按负责人表，外币另说一句"
   const { page, errors } = await 打开("现在");
   const t = await page.locator("body").innerText();
   expect(t).toContain("项目现状与复盘");
-  for (const s of ["新线索", "商机", "订单", "异常状态", "各节点的项目", "按负责人", "公海里还有 2 个进行中的", "另有 1 个进行中的项目不是 CNY"]) expect(t).toContain(s);
+  for (const s of ["新线索", "商机", "订单", "异常状态", "各进程的项目", "按负责人", "公海里还有 2 个进行中的", "另有 1 个进行中的项目不是 CNY"]) expect(t).toContain(s);
   expect(t).toContain("成功交付 5");
   expect(await page.locator("canvas").count()).toBeGreaterThan(0);
   expect(await page.locator('a[href="/leads?ownerId=u1"]').count()).toBe(1);

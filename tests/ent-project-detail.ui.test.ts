@@ -45,7 +45,7 @@ async function open(企业: boolean, width = 1366, 外宽?: number) {
   await page.route("http://proj.test/**", r => r.fulfill({ contentType: "text/html", body: `<meta charset='utf-8'><div id='root'${外宽 ? ` style='width:${外宽}px'` : ""}></div>` }));
   await page.goto("http://proj.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
   await page.evaluate(e => (window as unknown as { __render: (x: boolean) => void }).__render(e), 企业);
-  await page.getByText("节点变更").first().waitFor();
+  await page.getByText("进程变更").first().waitFor();
   return { page, errors };
 }
 const 卡标题 = (page: import("playwright").Page, sel: string) =>
@@ -55,7 +55,7 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
   const { page, errors } = await open(true);
   try {
     expect(await 卡标题(page, ".proj-main")).toEqual(["", "沟通", "卡点（0）"]);
-    expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组", "提成", "节点变更"]);
+    expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组", "提成", "进程变更"]);
     const 记 = page.getByRole("button", { name: "记一条沟通" });
     expect(await 记.getAttribute("class")).toContain("ant-btn-primary");
     const [主, 侧] = await Promise.all([page.locator(".proj-main").boundingBox(), page.locator(".proj-side").boundingBox()]);
@@ -129,7 +129,7 @@ it("开关关闭：照原来一列摆、960 宽，没有两栏；没有提成卡
     expect(await page.getByRole("button", { name: "AI 录入" }).count()).toBe(0);
     expect(await page.getByText("项目来源").count()).toBe(0);
     expect(await page.getByText("提成", { exact: true }).count()).toBe(0);
-    expect(await page.locator(".ant-card-head-title").allTextContents()).toEqual(["项目", "交付", "项目组", "节点变更", "沟通"]);
+    expect(await page.locator(".ant-card-head-title").allTextContents()).toEqual(["项目", "交付", "项目组", "进程变更", "沟通"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

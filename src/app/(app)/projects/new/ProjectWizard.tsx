@@ -18,7 +18,7 @@ import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
 import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
 import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
 import { 查号码, type 查号码结果 } from "../../customers/number-actions";
-import { 向导能选类型, 带进联系人, type 联系人三格 } from "@/lib/enterprise/contact-format";
+import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 建档向导 } from "../actions";
 
@@ -27,7 +27,7 @@ const 步骤们 = ["查重", "联系人", "客户", "项目", "首条沟通"] as
 const 时间格式 = "YYYY-MM-DD HH:mm";
 
 type 稿 = {
-  /** 第一步那个号码。企业版下是选的那种号码（手机号 / 邮箱 / 微信 / 旺旺 ID），不一定是电话 */
+  /** 第一步那个号码。企业版下是选的那种号码（手机号 / 邮箱 / 微信 / 阿里国际站ID，类型值还是「旺旺ID」），不一定是电话 */
   phone: string;
   /** 企业版第一步选的号码类型（lib/enterprise/contact-format.ts）；开关关着没有这格 */
   号码类型?: string;
@@ -80,7 +80,7 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
   if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined ? "请选分配方式" : 要选负责人(d, 企业) && !d.项目.ownerId ? "请选项目负责人" : "";
   if (!d.跟进.content.trim()) return "请填写这次沟通的内容";
   if (企业) {
-    if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选跟进节点（线索阶段的哪一步）";
+    if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选当前进程（线索阶段的哪一步）";
     if (typeof d.跟进.明确回复 !== "boolean") return "请选客户是否明确回复";
     if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点) && !d.跟进.明确回复) return 缺有效沟通;
   }
@@ -263,10 +263,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           {一行("联系方式", (
             <Space.Compact style={{ width: "100%" }}>
               <Select
-                style={{ width: 130 }}
+                style={{ width: 150, flexShrink: 0 }}
                 placeholder="号码类型"
                 value={d.号码类型}
-                options={向导能选类型.map((t) => ({ value: t, label: t === "旺旺ID" ? "旺旺 ID" : t }))}
+                options={向导能选类型.map((t) => ({ value: t, label: 号码类型叫法(t) }))}
                 onChange={(v) => {
                   改("号码类型", v);
                   set企查(null);
@@ -443,7 +443,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
             />
           ), true)}
           {一行("沟通内容", <Input.TextArea rows={4} value={d.跟进.content} onChange={(e) => 改("跟进", { content: e.target.value })} />, true)}
-          {企业 && 一行("跟进节点", (
+          {企业 && 一行("当前进程", (
             <Select style={{ width: "100%" }} value={d.跟进.节点} options={企业.节点们.map((n) => ({ value: n, label: n }))} onChange={(v) => 改("跟进", { 节点: v })} />
           ), true)}
           {企业 && 一行("客户是否明确回复", (

@@ -3,7 +3,7 @@
  * 旺旺 ID 带子账号，+86 / 0086 写法当国内号。纯函数，不碰库
  */
 import { describe, it, expect } from "vitest";
-import { 验号码, 号码提示, 带进联系人 } from "@/lib/enterprise/contact-format";
+import { 验号码, 号码提示, 带进联系人, 号码类型叫法 } from "@/lib/enterprise/contact-format";
 
 const 过 = (类型: string, 值: string) => {
   const r = 验号码(类型, 值);
@@ -68,6 +68,16 @@ describe("微信（B4）", () => {
     for (const s of ["1abcdef", "abc12", "a12345678901234567890", "abc.def", "abc 123", "王力abc123"]) {
       expect(验号码("微信", s)).toMatchObject({ ok: false, 状态: "格式错误", 提示: 号码提示.格式错误.微信 });
     }
+  });
+});
+
+describe("阿里国际站ID 叫法（10-29）", () => {
+  it("给人看的叫阿里国际站ID，类型值还是旺旺ID；格式错误的提示跟着改；别的类型照原名", () => {
+    expect(号码类型叫法("旺旺ID")).toBe("阿里国际站ID");
+    expect(号码类型叫法("手机号")).toBe("手机号");
+    expect(号码提示.格式错误.旺旺ID).toBe("⚠️阿里国际站ID格式错误");
+    expect(验号码("旺旺ID", "a!")).toMatchObject({ ok: false, 状态: "格式错误", 提示: "⚠️阿里国际站ID格式错误" });
+    expect(验号码("旺旺ID", "tbShop88")).toMatchObject({ ok: true, 类型: "旺旺ID" });
   });
 });
 

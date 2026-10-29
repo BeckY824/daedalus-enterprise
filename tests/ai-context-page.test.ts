@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { 认页面 } from "@/lib/ai-context-page";
+import { DEFAULT_BUSINESS } from "@/lib/business-config";
 
 const 参数 = (s: string) => new URLSearchParams(s);
 
@@ -166,6 +167,14 @@ describe("这一页上列着的名字", () => {
     const c = 认页面("/overview", null, null, ["随便"])!;
     expect(c.提示).not.toContain("随便");
     expect(c.范围).toBeUndefined();
+  });
+
+  it("项目模式（企业版 10-29）：/overview 叫「看板」，和左栏、页头对得上；查数的工具指路不变", () => {
+    const 项 = { ...DEFAULT_BUSINESS, projectMode: true };
+    expect(认页面("/overview", null, null, [], 项)?.标签).toBe("看板");
+    expect(认页面("/overview", null, null, [], 项)?.提示).toContain("复盘看板");
+    expect(认页面("/overview", null, null, [], 项)?.提示).toBe(认页面("/overview", null)!.提示.replace("数据概览页", "复盘看板"));
+    expect(认页面("/overview", null)?.标签).toBe("数据");
   });
 
   it("最多带 50 个，上下文是按 token 付钱的", () => {

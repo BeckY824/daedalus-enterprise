@@ -20,6 +20,7 @@ import { 预演, type 预演计数 } from "./apply";
 import { 清洗, 数一数, 名键, type 本地索引, type 清洗结果 } from "./clean";
 import { 成记录, 拆联系人, 拆出的客户ID列, type 读出的表 } from "./excel";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
+import { 可选项 } from "@/lib/enterprise/dict";
 import { 猜映射, 说明键, 值对照, 值叫法, 值说法, 进备注, type 建议器, type 成员, type 表概要 } from "./mapping";
 import { 实体顺序, 字段中文, 实体名, 格式类们, type 格式类, type 来源, type 实体, type 映射, type 原始记录, type 问题, type 待写, type 值对照名, type 列映射 } from "./types";
 
@@ -84,7 +85,7 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
       prisma.entExternalRef.findMany({ where: { source: 源 }, select: { entity: true, externalId: true, targetId: true, fingerprint: true } }),
     ]),
   );
-  const 索引: 本地索引 = { 引用: new Map(), 指纹: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map() };
+  const 索引: 本地索引 = { 引用: new Map(), 指纹: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map(), 客户状态: await 可选项("custStatus") };
   const 加 = (m: Map<string, string[]>, k: string, id: string) => {
     if (!k) return;
     const a = m.get(k);

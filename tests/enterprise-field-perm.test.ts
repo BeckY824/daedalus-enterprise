@@ -133,8 +133,8 @@ describe("项目（10-27 审计：企业版只用项目，金额 / 阶段·节�
     await setSetting(字段权限key, { 商机阶段: { sales: "看" }, 商机金额: { sales: "看" } });
     const id = await 建项目();
     甲.id = 销售;
-    expect(await 改节点(甲, id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: false, error: expect.stringContaining("阶段 / 节点") });
-    expect(await 改节点(甲, id, { phase: "商机", node: "共识方案", result: "丢单" }, { 备注: "价格" })).toMatchObject({ ok: false, error: expect.stringContaining("阶段 / 节点") });
+    expect(await 改节点(甲, id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: false, error: expect.stringContaining("阶段 / 当前进程") });
+    expect(await 改节点(甲, id, { phase: "商机", node: "共识方案", result: "丢单" }, { 备注: "价格" })).toMatchObject({ ok: false, error: expect.stringContaining("阶段 / 当前进程") });
     expect(await 改项目(甲, id, { name: "项目A", amount: 200 })).toMatchObject({ ok: false, error: expect.stringContaining("金额") });
     expect(await 改项目(甲, id, { name: "项目B", amount: 100 })).toMatchObject({ ok: true });
     const 后 = await prisma.project.findUniqueOrThrow({ where: { id } });
