@@ -32,21 +32,6 @@ export function 切更新记录(md: string): 一版[] {
   return 段;
 }
 
-/** 比较两个版本号，a 比 b 新返回正数。只看三段数字 */
-export function 比版本(a: string, b: string): number {
-  const 拆 = (v: string) => v.replace(/^v/, "").split("-")[0].split(".").map((x) => parseInt(x, 10) || 0);
-  const [x, y] = [拆(a), 拆(b)];
-  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
-  return 0;
-}
-
-/** 从「上次看过的版本」（不含）到「现在的版本」（含）之间的那几段，新的在前。一次跳了几版就都列出来 */
-export function 这次新的(全部: 一版[], 看过: string, 现在: string): 一版[] {
-  return 全部
-    .filter((s) => 比版本(s.版本, 看过) > 0 && 比版本(s.版本, 现在) <= 0)
-    .sort((a, b) => 比版本(b.版本, a.版本));
-}
-
 /**
  * 桌面端只看桌面端的那部分：「### 网页团队版…」这一小节（到下一个三级标题或段尾）去掉。
  * 同一份 CHANGELOG 两边都用，网页团队版另外改的那几条写在这一小节里——
@@ -84,30 +69,4 @@ export function 并成段(正文: string): string {
     } else 出.push(行);
   }
   return 出.join("\n");
-}
-
-/** 一版里的一节：「**标题**」那一行起，到下一个这样的行为止 */
-export type 一节 = { 标题: string; 正文: string };
-
-/**
- * 把一版的正文切成一节一节（2026-10-04 用户：更新之后弹一个页面，「里面具体写下结构化的更新」）。
- * CHANGELOG 每一节都以单独成行的「**标题**」开头，下面是一段话或一串要点。
- * 第一个标题前面还有话的，算一节没有标题的（开场白）。没有任何标题的版本整段算一节。
- */
-export function 分节(正文: string): 一节[] {
-  const 节们: 一节[] = [];
-  let 当前: { 标题: string; 行: string[] } = { 标题: "", 行: [] };
-  const 收 = () => {
-    const 文 = 当前.行.join("\n").trim();
-    if (当前.标题 || 文) 节们.push({ 标题: 当前.标题, 正文: 文 });
-  };
-  for (const 行 of 正文.split("\n")) {
-    const m = 行.match(/^\*\*([^*]+)\*\*\s*$/);
-    if (m) {
-      收();
-      当前 = { 标题: m[1].trim(), 行: [] };
-    } else 当前.行.push(行);
-  }
-  收();
-  return 节们;
 }

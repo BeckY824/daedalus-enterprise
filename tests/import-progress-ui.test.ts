@@ -26,7 +26,7 @@ const 桩插件: Plugin = {
     桩(/^\.\/ai$/, `
       export const 粘成表格 = () => new Promise(() => {});
       export const 猜列建议 = () => new Promise(() => {});
-      export const 导入认列状态 = () => Promise.resolve({ 能认列: false, 本机: true });
+      export const 导入认列状态 = () => Promise.resolve({ 能认列: false });
     `);
     桩(/^\.\/import-actions$/, `
       const 记 = (名, 参) => (window.__调用[名] ||= []).push(JSON.parse(JSON.stringify(参)));
