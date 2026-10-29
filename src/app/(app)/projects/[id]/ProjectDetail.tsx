@@ -40,6 +40,8 @@ import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachment
 import type { 提成卡 } from "@/lib/project/commission";
 import PaneToggle from "@/components/PaneToggle";
 import { ProjectAttachmentsCard, ProjectProfileCard, type 项目画像 } from "./ProjectExtras";
+import ProjectRelate from "./ProjectRelate";
+import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
   id: string; name: string; remark: string | null; amount: number; currency: string;
@@ -116,6 +118,8 @@ export type 项目详情 = {
   删前清点: { 留痕: number; 组员: number; 沟通: number };
   /** 企业版项目画像（P11）：不是企业版、公海里没领的不给 */
   画像?: 项目画像;
+  /** 企业版关联客户 / 联系人（P17）：不是企业版、公海里没领的不给 */
+  关联?: 项目关联;
   /** 企业版项目附件（P11）：看得到才有；只读 = 不能改这个项目（api/attachments/access.ts 项目附件入口） */
   项目附件?: { 个数: number; 只读: boolean };
 };
@@ -529,6 +533,7 @@ export default function ProjectDetail({
   );
 
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
+  const 关联卡 = p.关联 && <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} />;
   const 附件卡 = p.项目附件 && <ProjectAttachmentsCard key={p.id} projectId={p.id} 起始个数={p.项目附件.个数} 只读={p.项目附件.只读} />;
 
   const 页头 = (
@@ -596,6 +601,7 @@ export default function ProjectDetail({
             <aside className="proj-side" aria-label="项目资料">
               {项目卡}
               {画像卡}
+              {关联卡}
               {交付卡}
               {项目组卡}
               {提成区}

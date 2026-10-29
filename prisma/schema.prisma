@@ -184,6 +184,8 @@ model Customer {
   claim         CustomerClaim?
   /// 企业版：挂在这位客户名下的联系人（含主客户是别人的，迁移 090）。见 ContactCustomer
   contactLinks  ContactCustomer[]
+  /// 企业版项目关联客户（P17，迁移 094）：这位客户关联在哪些项目上、什么身份
+  projectLinks  ProjectCustomer[]
   /// 外贸档案：国家、WhatsApp、微信、邮箱、来源（2026-10-05）。见 CustomerExtra
   extra         CustomerExtra?
   lead          Lead?
@@ -288,6 +290,8 @@ model Contact {
   contactMethods ContactMethod[]
   /// 企业版：这位联系人挂着的全部客户（主客户那一行也在，迁移 090）。见 ContactCustomer
   customerLinks  ContactCustomer[]
+  /// 企业版项目关联联系人（P17，迁移 095）
+  projectLinks   ProjectContact[]
 
   @@index([customerId])
   @@index([deletedAt])
@@ -308,6 +312,44 @@ model ContactCustomer {
 
   @@unique([contactId, customerId])
   @@index([customerId])
+}
+
+/// 企业版项目关联客户（2026-10-29 P17 第 1 条，迁移 094）：一个项目关联好几位客户，每行带「项目身份」。
+/// 同一位客户在不同项目里身份可以不同，所以身份只在这张表上改，不是客户的字段。
+/// 主客户还是 Project.customerId、意思不变（权限、列表、统计都按它走），主客户不用在这里占一行：
+/// 项目页「关联客户」里主客户总摆第一位；给主客户标身份时才写一行（upsert），没标就没有行。
+/// 所以不回填——回填出来的行全是空身份，只多一份要跟 Project.customerId 对齐的数据。主客户那一位解不掉
+model ProjectCustomer {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// 项目身份（多选）：JSON 数组字符串，存选项名，如 ["业主方","投资方"]；选项在企业字典 projCustRole。空数组存 NULL
+  roles      String?
+  createdAt  DateTime @default(now())
+
+  @@unique([projectId, customerId])
+  @@index([customerId])
+}
+
+/// 企业版项目关联联系人（2026-10-29 P17 第 2 条，迁移 095）：一个项目关联好几位联系人，每行带「项目角色」和「项目立场」。
+/// 同一个人在不同项目里角色、立场可以不同，只在这张表上改，不是联系人的字段。项目的主联系人（Project.contactId）照旧、
+/// 项目页上摆第一位，标了角色 / 立场才写一行（同主客户）
+model ProjectContact {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  /// 项目角色（多选）：JSON 数组字符串，存选项名；选项在企业字典 projContactRole。空数组存 NULL
+  roles     String?
+  /// 项目立场（单选）：存选项名，可空；选项在企业字典 projStance，说的是这个人和我方销售的关系
+  stance    String?
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, contactId])
+  @@index([contactId])
 }
 
 /// 从客户上移出、人留着的联系人（2026-10-01 用户反馈：在客户详情里删联系人，联系人页里也跟着没了）。
@@ -880,6 +922,9 @@ model Project {
   /// 企业版线索有效性验证（2026-10-29，P12）：当前状态一份、每一步一行留痕。见 EntLeadVerify
   entLeadVerify     EntLeadVerify?
   entLeadVerifyLogs EntLeadVerifyLog[]
+  /// 企业版项目关联客户 / 联系人（2026-10-29 P17，迁移 094 / 095）。见 ProjectCustomer / ProjectContact
+  customerLinks ProjectCustomer[]
+  contactLinks  ProjectContact[]
 
   @@index([customerId])
   @@index([ownerId])

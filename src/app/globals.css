@@ -1134,6 +1134,18 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-profile-key { color: var(--text-muted); white-space: nowrap; }
 .proj-profile-val { min-width: 0; overflow-wrap: anywhere; }
 .proj-profile-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 企业版关联客户 / 联系人（P17 ProjectRelate.tsx）：每家 / 每位一块，名字一行超长省略、删除钮不被挤走；下面「身份 / 角色 / 立场」同画像卡的键值排法 */
+.proj-rel { display: grid; gap: 10px; min-width: 0; }
+.proj-rel-row { display: grid; gap: 6px; min-width: 0; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.proj-rel-row:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.proj-rel-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.proj-rel-name { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+.proj-rel-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.proj-rel-field { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0; }
+.proj-rel-key { color: var(--text-muted); white-space: nowrap; font-size: 13px; }
+.proj-rel-val { min-width: 0; }
+.proj-rel-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-rel-add { display: grid; gap: 8px; min-width: 0; padding-top: 4px; }
 
 /* 基本资料「展开更多 N 项」、左栏底部「更多」：文字按钮靠左，和字段左缘对齐 */
 .rec-sec-more { padding: 0 8px; height: auto; }

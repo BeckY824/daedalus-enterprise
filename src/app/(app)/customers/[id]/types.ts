@@ -104,6 +104,8 @@ export type RecordProps = {
   /** 企业版客户状态的可选项（字典 custStatus 启用中的，10-28 去遗留 A1）；不给 = 别的版本，标签行照旧 */
   客户状态选项?: string[];
   项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;
+  /** 企业版项目关联（P17）：这位客户关联在哪些项目上、什么身份（只读；含当主客户、勾了身份的那几个）。不给 = 别的版本 */
+  参与项目们?: import("@/lib/project/relate").参与项目行[] | null;
   customer: CustomerRow;
   contacts: ContactRow[];
   opportunities: {

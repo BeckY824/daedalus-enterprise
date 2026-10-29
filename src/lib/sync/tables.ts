@@ -77,6 +77,9 @@ export const 不同步表 = [
   "EntCustomerLink",
   // 企业版联系人挂多位客户（2026-10-29，migrations/090）：同上
   "ContactCustomer",
+  // 企业版项目关联客户 / 联系人（2026-10-29 P17，migrations/094、095）：同上
+  "ProjectCustomer",
+  "ProjectContact",
 ] as const;
 
 /**

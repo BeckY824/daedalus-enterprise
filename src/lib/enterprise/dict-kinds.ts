@@ -1,5 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -49,6 +49,14 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
   projProduct: { 名: "产品需求", 说明: "客户要哪几类产品或服务，可多选。", 默认: ["常规标品", "内容定制", "部署服务", "运维支持"] },
   // 客户类型（2026-10-29，P13 第 4 条）：客户新建 / 编辑 / 详情 / 列表筛选、导入都用这一份，存在 Customer.customerType
   custType: { 名: "客户类型", 说明: "客户是哪一类买家。", 默认: ["个人买家", "贸易商", "代理商", "经销商"] },
+  /*
+    项目关联客户 / 联系人（2026-10-29，P17）：项目详情页「关联客户」「关联联系人」里给每一位标，存在关联那一行上
+    （ProjectCustomer.roles / ProjectContact.roles、stance，迁移 094 / 095），不是客户、联系人的字段——同一位在不同项目里可以不一样。
+    项目身份、项目角色多选，项目立场单选；都不带「其他」，选项不够就在这里加
+  */
+  projCustRole: { 名: "项目身份", 说明: "客户在这个项目里是哪一方，可多选。", 默认: ["业主方", "总包方", "分包方", "投资方", "垫资方", "运营方", "引荐方", "监理方", "设计方"] },
+  projContactRole: { 名: "项目角色", 说明: "联系人在这个项目里管哪一块，可多选。", 默认: ["决策人", "审批人", "影响人", "使用人", "经办人"] },
+  projStance: { 名: "项目立场", 说明: "联系人和我方销售的关系。", 默认: ["待定", "中立", "对手", "线人", "军师", "盟友"] },
 };
 
 /** 项目画像五项：字段名 → 字典种类、是否多选。界面、校验、测试都按这一份走 */

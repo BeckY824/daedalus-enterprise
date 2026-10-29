@@ -25,6 +25,8 @@ import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系�
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 企业版字典 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 字典of } from "@/lib/project/stage-dict";
+import { 客户参与的项目 } from "@/lib/project/relate";
 
 export const dynamic = "force-dynamic";
 
@@ -135,6 +137,8 @@ export default async function CustomerDetailPage({
             select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
           })
         : null}
+      // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
+      参与项目们={(await 企业版只用项目()) ? await 客户参与的项目(customer.id, 字典of(true, (await 生效组织规则()).阶段.出口叫法)) : null}
       // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
       只读={await 只读客户(defaultClient, customer)}
       // 企业版联系人附件（10-28）：每位联系人挂了几张；附件表不分权限，能看到这位客户就能看到他联系人的附件
