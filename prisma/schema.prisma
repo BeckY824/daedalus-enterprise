@@ -71,14 +71,14 @@ model Lead {
 
 /// 外部推荐渠道（如老师、中介、合作方）。链条最顶端的推荐来源。
 model Channel {
-  id             String    @id @default(cuid())
-  name           String    @unique /// 渠道全称；企业版是「渠道名称|来源」拼成的（2026-10-29），老版本是渠道姓名
+  id             String  @id @default(cuid())
+  name           String  @unique /// 渠道全称；企业版是「渠道名称|来源」拼成的（2026-10-29），老版本是渠道姓名
   phone          String?
   remark         String?
   /// 渠道负责人：内部员工，负责吸纳该渠道带来的所有客户，整条推荐链永久继承
   channelOwnerId String
-  channelOwner   User      @relation("ChannelOwner", fields: [channelOwnerId], references: [id])
-  active         Boolean   @default(true)
+  channelOwner   User    @relation("ChannelOwner", fields: [channelOwnerId], references: [id])
+  active         Boolean @default(true)
   /// 企业版渠道属性（2026-10-29，迁移 067）：字典 channelAttr 的名字，见 lib/enterprise/dict-kinds.ts。别的版本不填
   attr           String?
   /// 企业版渠道名称（迁移 068）：「渠道名称|来源」的前一段。name 存拼好的渠道全称
@@ -94,11 +94,11 @@ model Channel {
   /// 企业版渠道投入（迁移 071）
   invests         EntChannelInvest[]
   /// 由该渠道直接推荐的学员
-  directCustomers Customer[]         @relation("CustomerChannel")
+  directCustomers Customer[] @relation("CustomerChannel")
   /// 渠道归属计算落到该渠道的学员（往上两代命中）
-  attributed      Customer[]         @relation("CustomerAttributionChannel")
+  attributed      Customer[] @relation("CustomerAttributionChannel")
   /// 企业版项目来源落到这个渠道的项目（迁移 077）
-  projects        Project[]          @relation("ProjectChannel")
+  projects        Project[]  @relation("ProjectChannel")
 
   @@index([channelOwnerId])
   @@index([createdById])
@@ -170,32 +170,32 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contacts       Contact[]
-  followUps      FollowUp[]
-  tasks          Task[]
-  plans          FollowPlan[]
-  opportunities  Opportunity[]
-  contracts      Contract[]
+  contacts      Contact[]
+  followUps     FollowUp[]
+  tasks         Task[]
+  plans         FollowPlan[]
+  opportunities Opportunity[]
+  contracts     Contract[]
   /// 在公海里（2026-10-03 第 6 块）。见 CustomerPool
-  pool           CustomerPool?
+  pool          CustomerPool?
   /// 最近一次从公海领走（第 6 块复查）。见 CustomerClaim
-  claim          CustomerClaim?
+  claim         CustomerClaim?
   /// 企业版：挂在这位客户名下的联系人（含主客户是别人的，迁移 090）。见 ContactCustomer
-  contactLinks   ContactCustomer[]
+  contactLinks  ContactCustomer[]
   /// 企业版项目关联客户（P17，迁移 094）：这位客户关联在哪些项目上、什么身份
-  projectLinks   ProjectCustomer[]
+  projectLinks  ProjectCustomer[]
   /// 外贸档案：国家、WhatsApp、微信、邮箱、来源（2026-10-05）。见 CustomerExtra
-  extra          CustomerExtra?
-  lead           Lead?
+  extra         CustomerExtra?
+  lead          Lead?
   /// 团队版项目模式（2026-10-23，1a）。见 Project、CustomerCreator
-  projects       Project[]
-  creator        CustomerCreator?
-  ownerLogs      CustomerOwnerLog[]
+  projects      Project[]
+  creator       CustomerCreator?
+  ownerLogs     CustomerOwnerLog[]
   /// 企业版联系方式子表（migrations/054）。见 ContactMethod
   contactMethods ContactMethod[]
   /// 企业版关联客户（迁移 075）：一对客户一行，小的 id 在 customerId。见 EntCustomerLink
-  linksFrom      EntCustomerLink[]  @relation("EntCustomerLinkFrom")
-  linksTo        EntCustomerLink[]  @relation("EntCustomerLinkTo")
+  linksFrom      EntCustomerLink[] @relation("EntCustomerLinkFrom")
+  linksTo        EntCustomerLink[] @relation("EntCustomerLinkTo")
 
   @@index([phone])
   @@index([salesOwnerId])
@@ -278,9 +278,9 @@ model Contact {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  followUps      FollowUp[]
+  followUps FollowUp[]
   /// 作为主联系人的项目（2026-10-23 项目模式 1a）
-  projects       Project[]
+  projects  Project[]
   /// 企业版联系方式子表里挂在这位身上的号（migrations/054）
   contactMethods ContactMethod[]
   /// 企业版：这位联系人挂着的全部客户（主客户那一行也在，迁移 090）。见 ContactCustomer
@@ -387,15 +387,15 @@ model Opportunity {
   /// 最近业务推进；转交负责人不算推进。老数据为空时沿用原修改时间。
   activityAt     DateTime?
 
-  followUps   FollowUp[]
+  followUps      FollowUp[]
   /// 赢单 / 丢单的那一刻（排查 C6）。见 OpportunityClose
-  closed      OpportunityClose?
+  closed         OpportunityClose?
   /// 币种（2026-10-03）。见 OpportunityMoney
-  money       OpportunityMoney?
+  money          OpportunityMoney?
   /// 报价明细，一次报价一行（2026-10-03）。见 Quote
-  quotes      Quote[]
+  quotes         Quote[]
   /// 是哪笔签约顺手赢下来的（2026-10-04 L-007）。见 ContractWin
-  contractWin ContractWin?
+  contractWin    ContractWin?
 
   @@index([customerId])
   @@index([stage])
@@ -610,7 +610,7 @@ model FollowUp {
   owner   User   @relation(fields: [ownerId], references: [id])
 
   /// 速记解析时粘贴的原始聊天记录 / 口述原文，只有 AI 起草过的记录才有
-  source      FollowUpSource?
+  source    FollowUpSource?
   /// 挂在项目某个节点上（2026-10-23 项目模式 1a）。见 FollowUpProject
   projectNode FollowUpProject?
   /// 企业版：从这条沟通发布的卡点、这条沟通的编号和下次时间（2026-10-26）。见 EntBlocker / EntFollowUpMeta
@@ -660,20 +660,20 @@ model Task {
 
 // 下次跟进计划（每个客户保留最新一条待执行计划）
 model FollowPlan {
-  id             String    @id @default(cuid())
-  subject        String // 跟进主题
-  plannedAt      DateTime // 计划时间
-  plannedOn      String? // 仅日期原日历日，跨时区不漂移
+  id         String   @id @default(cuid())
+  subject    String // 跟进主题
+  plannedAt  DateTime // 计划时间
+  plannedOn  String? // 仅日期原日历日，跨时区不漂移
   plannedHasTime Boolean? // 明确钟点可为00:00；空表示旧未知
-  method         String    @default("电话沟通") // 跟进方式
-  done           Boolean   @default(false)
-  doneAt         DateTime? // 实际完成时间；旧计划未知时为空
-  customerId     String
-  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  ownerId        String
-  owner          User      @relation(fields: [ownerId], references: [id])
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  method     String   @default("电话沟通") // 跟进方式
+  done       Boolean  @default(false)
+  doneAt     DateTime? // 实际完成时间；旧计划未知时为空
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([customerId, done])
 }
@@ -898,22 +898,22 @@ model Project {
   /// 有结局的那一刻；回到进行中就清掉
   closedAt             DateTime?
 
-  members             ProjectMember[]
-  logs                ProjectNodeLog[]
-  followUps           FollowUpProject[]
+  members   ProjectMember[]
+  logs      ProjectNodeLog[]
+  followUps FollowUpProject[]
   /// 企业版卡点（2026-10-26）。见 EntBlocker
-  blockers            EntBlocker[]
+  blockers  EntBlocker[]
   /// 企业版沟通记录编号 / 下次时间（2026-10-26）。见 EntFollowUpMeta
-  followUpMetas       EntFollowUpMeta[]
+  followUpMetas EntFollowUpMeta[]
   /// 企业版提成（2026-10-26）：提成表一份、组长分给组员的比例
   entCommission       EntCommission?
   entCommissionSplits EntCommissionSplit[]
   /// 企业版线索有效性验证（2026-10-29，P12）：当前状态一份、每一步一行留痕。见 EntLeadVerify
-  entLeadVerify       EntLeadVerify?
-  entLeadVerifyLogs   EntLeadVerifyLog[]
+  entLeadVerify     EntLeadVerify?
+  entLeadVerifyLogs EntLeadVerifyLog[]
   /// 企业版项目关联客户 / 联系人（2026-10-29 P17，迁移 094 / 095）。见 ProjectCustomer / ProjectContact
-  customerLinks       ProjectCustomer[]
-  contactLinks        ProjectContact[]
+  customerLinks ProjectCustomer[]
+  contactLinks  ProjectContact[]
 
   @@index([customerId])
   @@index([ownerId])
@@ -1190,18 +1190,18 @@ model EntExternalRef {
 
 /// 同步时发现我们这边改过、原系统也改了：不覆盖，记一笔等人定
 model EntConflict {
-  id             String    @id @default(cuid())
-  source         String
-  entity         String
-  externalId     String
-  targetId       String
-  batchId        String?
+  id           String    @id @default(cuid())
+  source       String
+  entity       String
+  externalId   String
+  targetId     String
+  batchId      String?
   /// 字段 → { 原系统: 新值, 我们: 现值, 上次: 上次写的 } 的 JSON；本地已删时为 {}
-  fields         String
+  fields       String
   /// 原系统这次给的整条清洗后记录 JSON（采用原系统时照它写）
-  incoming       String
+  incoming     String
   /// 本地那条已经被删了
-  localDeleted   Boolean   @default(false)
+  localDeleted Boolean   @default(false)
   /// 待定 | 采用原系统 | 保留我们 | 已撤回（那一批整批撤回了；恢复后回到待定）| 已过时（记下之后原系统又变了 / 我们这边删了或建回了，等下次同步）
   status         String    @default("待定")
   resolvedById   String?
