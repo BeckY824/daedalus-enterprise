@@ -661,12 +661,22 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
     const me = await requireUser();
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
-    const 原 = input.id ? await prisma.contact.findUnique({ where: { id: input.id }, select: { phone: true, contactMethods: { select: { kind: true } } } }) : null;
+    const 原 = input.id ? await prisma.contact.findUnique({ where: { id: input.id }, select: { phone: true, contactMethods: { select: { kind: true, value: true } } } }) : null;
     if (input.id && !原) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
     // 企业版新几格和号码几行：事务外先验（号码类型要读字典）
     const 企 = 企业版() && input.企业 ? 规整企业联系人(input.企业) : null;
     if (企 && !企.ok) return 企;
-    const 号 = 企业版() && input.企业 && input.企业.号码们 != null ? await 验联系人号码们(input.企业.号码们, 原?.contactMethods.map((x) => x.kind) ?? []) : null;
+    /*
+      打了码给人看的号（共享试用区、字段权限里电话「看不到」的角色）原样交回来：认回原号再验（同 联系人电话 的 认回打码号）。
+      子表里还没有行的老联系人，号码几行是拿老三格拼的，电话也从联系人表认回
+    */
+    const 原号们 = [...(原?.contactMethods ?? []), ...(原?.phone ? [{ kind: "phone", value: 原.phone }] : [])];
+    const 交的号们 = 企业版() && input.企业 && Array.isArray(input.企业.号码们)
+      ? input.企业.号码们.map((r) => (r && typeof r.value === "string" && r.value.includes("*")
+          ? { ...r, value: 原号们.find((o) => o.kind === r.kind && 认回打码号(r.value, o.value) === o.value)?.value ?? r.value }
+          : r))
+      : null;
+    const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? []) : null;
     if (号 && !号.ok) return 号;
     const 电话 = 号 ? ({ ok: true, phone: null } as const) : 联系人电话(input.phone, 原?.phone);
     if (!电话.ok) return 电话;

@@ -139,6 +139,21 @@ export async function 附件个数(
 }
 
 /**
+ * 企业版联系人附件分两格（名片 / 相册，2026-10-29 定稿 P5 待定 19）：联系人 id → 每格几张。没分类的老附件算相册（同 分类条件）。
+ * 一张都没有的联系人不在里面
+ */
+export async function 联系人分类附件数(db: PrismaClient, contactIds: string[]): Promise<Record<string, { 名片: number; 相册: number }>> {
+  const 结果: Record<string, { 名片: number; 相册: number }> = {};
+  if (!contactIds.length) return 结果;
+  for (const g of await db.attachment.groupBy({ by: ["contactId", "tag"], where: { contactId: { in: contactIds } }, _count: { _all: true } })) {
+    if (!g.contactId) continue;
+    const x = (结果[g.contactId] ??= { 名片: 0, 相册: 0 });
+    x[g.tag === "名片" ? "名片" : "相册"] += g._count._all;
+  }
+  return 结果;
+}
+
+/**
  * 线索转客户 / 并入客户以后，线索上的附件（名片原图）补挂到联系人上（企业版联系人附件）。
  * leadId 留着：线索页上照样看得到；线索后来删了，图片跟着联系人留下来（清孤儿两列任一在就留）。
  * 已经挂了别的联系人的不动。返回补了几个

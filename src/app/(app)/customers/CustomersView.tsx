@@ -33,6 +33,7 @@ import { 带走说法 } from "@/lib/carry-over";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { WhatsApp网址, 官网网址, 官网短写, 客户等级, 客户等级说明, type 客户等级 as 等级 } from "@/lib/customer-extra";
+import { 企业客户级别, 企业级别说明, 企业级别, 拼地址 } from "@/lib/enterprise/customer-v2";
 import LocalTime from "@/components/LocalTime";
 import { 未分级 } from "./query-shared";
 import { useUrlFilters } from "@/lib/url-filters";
@@ -154,6 +155,8 @@ type Props = {
   企业版?: boolean;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的）；别的版本空 */
   客户状态选项?: string[];
+  /** 企业版分配方式的可选项（字典 custAssign 启用中的，定稿 P5 第 30 条）；别的版本空 */
+  分配方式选项?: string[];
 };
 
 /**
@@ -172,7 +175,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [],
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 分配方式选项 = [],
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -383,6 +386,31 @@ export default function CustomersView({
     },
   ];
 
+  /**
+   * 企业版客户改版（定稿 P5 第 22、23 条）：外贸那几列（国家、WhatsApp、邮箱、微信、阿里 ID、来源）不摆，
+   * 换成级别 S/A/B/C（排序同一个 level 键，S 在 A 前）、地址、官网、分配方式；后三列收在「列」里
+   */
+  const 企业列: 列<CustomerRow>[] = [
+    {
+      title: "级别", key: "level", width: 76,
+      sorter: true,
+      sortOrder: 等级排序 === "level-asc" ? "ascend" : 等级排序 === "level-desc" ? "descend" : null,
+      render: (_: unknown, r) => {
+        const 级 = 企业级别(r.extra?.level);
+        return 级 ? <span className={`cust-level cust-level-${级}`} title={企业级别说明[级]}>{级}</span> : 空;
+      },
+    },
+    { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
+    {
+      title: "官网", key: "website", width: 170, 默认: false,
+      render: (_: unknown, r) => {
+        const 网址 = 官网网址(r.extra?.website);
+        return 网址 ? <a href={网址} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={网址}>{官网短写(r.extra?.website)}</a> : 空;
+      },
+    },
+    { title: "分配方式", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => r.assignWay ?? 空 },
+  ];
+
   const 列表: 列<CustomerRow>[] = [
     {
       title: b.customer,
@@ -422,7 +450,7 @@ export default function CustomersView({
       外贸档案的列（2026-10-05 外贸客户：「增加列：国家，Whatsapp，Wechat，邮箱」）。
       国家、WhatsApp、邮箱默认摆；微信、来源收在「列」里
     */
-    ...(外贸 ? 外贸列 : []),
+    ...(企业 ? 企业列 : 外贸 ? 外贸列 : []),
     ...(不问归属 ? [] : [{
       title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: 140,
       // 在公海里：写「公海（原 X）」——原负责人还挂着，但谁都能领
@@ -640,13 +668,18 @@ export default function CustomersView({
                 options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
             )}
             {/* 外贸：国家是第一眼要分的（时差、市场、报价口径），摆在外面；只给库里真有的国家 */}
-            {外贸 && (国家们.length > 0 || f.country) && (
+            {外贸 && !企业 && (国家们.length > 0 || f.country) && (
               <Select style={{ width: 130 }} placeholder="全部国家" allowClear showSearch
                 value={f.country || undefined} onChange={(v) => apply({ country: v ?? "" })}
                 options={[...new Set([...国家们, ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
             )}
             {/* 客户等级（2026-10-16）：和国家一样摆在外面——按等级挑今天先跟谁 */}
-            {外贸 && (
+            {企业 && (
+              <Select style={{ width: 120 }} placeholder="全部级别" allowClear aria-label="客户级别"
+                value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
+                options={[...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] })), { value: 未分级, label: 未分级 }]} />
+            )}
+            {外贸 && !企业 && (
               <Select style={{ width: 120 }} placeholder="全部等级" allowClear aria-label="客户等级"
                 value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
                 options={[...客户等级.map((x) => ({ value: x, label: 客户等级说明[x] })), { value: 未分级, label: 未分级 }]} />
@@ -819,6 +852,7 @@ export default function CustomersView({
         负责人只能自己={负责人只能自己}
         企业版={企业}
         客户状态选项={客户状态选项}
+        分配方式选项={分配方式选项}
         onClose={(saved) => {
           setFormOpen(false);
           setEditing(null);

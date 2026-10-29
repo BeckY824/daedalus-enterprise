@@ -46,6 +46,9 @@ export type 客户条件 = {
 function 等级条件(level: string | undefined): Prisma.CustomerWhereInput | null {
   if (!level) return null;
   if (level === 未分级) return { OR: [{ extra: { is: null } }, { extra: { is: { level: null } } }] };
+  // 企业版级别多一档 S（定稿 P5 第 23 条）；C 连带还没改过来的 D 一起筛（启动时会把 D 改成 C，这里兜底）
+  if (level === "S") return { extra: { is: { level } } };
+  if (level === "C" && 企业版()) return { extra: { is: { level: { in: ["C", "D"] } } } };
   return /^[ABCD]$/.test(level) ? { extra: { is: { level } } } : null;
 }
 
@@ -152,6 +155,13 @@ export const 客户行字段 = {
   followStatus: true,
   decisionStatus: true,
   custStatus: true,
+  // 企业版客户改版（定稿 P5，迁移 072）：简称、地址、分配方式。别的版本这几格都是空
+  shortName: true,
+  addrCountry: true,
+  addrProvince: true,
+  addrCity: true,
+  addrDistrict: true,
+  assignWay: true,
   expectedSignAt: true,
   expectedSignOn: true,
   lastFollowAt: true,
@@ -267,6 +277,12 @@ export function 成客户行(r: 取到的行, 号: (p: string) => string) {
     followStatus: r.followStatus,
     decisionStatus: r.decisionStatus,
     custStatus: r.custStatus,
+    shortName: r.shortName,
+    addrCountry: r.addrCountry,
+    addrProvince: r.addrProvince,
+    addrCity: r.addrCity,
+    addrDistrict: r.addrDistrict,
+    assignWay: r.assignWay,
     expectedSignAt: scheduleValue(r.expectedSignAt, r.expectedSignOn),
     lastFollowAt: r.lastFollowAt?.toISOString() ?? null,
     remark: r.remark,

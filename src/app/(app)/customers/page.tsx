@@ -189,6 +189,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       }}
       企业版={企业版()}
       客户状态选项={await 可选项("custStatus")}
+      分配方式选项={企业版() ? await 可选项("custAssign") : []}
       部门选项={部门选项}
       // 企业版虚线下属的客户：只能看（10-25 实测 F4）。团队版、没开组织架构可见范围时一律空
       只读ids={await 虚线只读的(defaultClient, rows.map((r) => r.id))}

@@ -4,7 +4,11 @@ import { requiredText, isFormValidationError } from "@/lib/form-validation";
 import CustomerSearchSelect from "@/components/CustomerSearchSelect";
 
 import { useEffect, useState } from "react";
-import { Modal, Form, Input, Switch, Row, Col, App, AutoComplete, Button } from "antd";
+import { Modal, Form, Input, Switch, Row, Col, App, AutoComplete, Button, Select, Space } from "antd";
+import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import DatePicker from "@/components/BusinessDatePicker";
+import { dayjs } from "@/lib/utils";
+import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import { saveContact, saveUnassignedContact } from "./actions";
 import type { ContactRow } from "./types";
 import { useBusiness } from "@/lib/business-client";
@@ -37,6 +41,7 @@ export default function ContactForm({
   record,
   未归属 = false,
   onDelete,
+  号码种类,
 }: {
   open: boolean;
   onClose: () => void;
@@ -53,6 +58,12 @@ export default function ContactForm({
   未归属?: boolean;
   /** 给了就在左下角摆「彻底删除」。联系人页上未归属的人只有这儿能删 */
   onDelete?: () => void;
+  /**
+   * 企业版联系人改版（2026-10-29，定稿 P5 第 24 条）：给了就换成企业版那一套——性别、生日、爱好、地址，
+   * 联系方式是几行「类型 + 号码」（类型来自字典 contactKind；active=false 的停用了，下拉里只给这位原来就用着的）。
+   * 不给 = 手机 / 邮箱 / 微信三格（个人版、团队版、联系人列表页）
+   */
+  号码种类?: { 名: string; kind: string; active: boolean }[];
 }) {
   const [form] = Form.useForm();
   const { message } = App.useApp();
@@ -70,14 +81,31 @@ export default function ContactForm({
     不存: customerId ? [] : ["customerId"],
   });
 
+  const 企业 = !!号码种类;
+  /** 第一种还在用的（一般是手机）：新加一行默认它 */
+  const 默认种类 = 号码种类?.find((x) => x.active)?.kind;
   useEffect(() => {
     if (!open) return;
-    if (record) form.setFieldsValue({ ...record, customerId: undefined });
-    else {
+    if (record) {
+      form.setFieldsValue({
+        ...record,
+        customerId: undefined,
+        ...(企业 ? { birthday: record.birthday ? dayjs(record.birthday) : null, 号码们: record.号码们?.length ? record.号码们 : [{ kind: 默认种类, value: "" }] } : {}),
+      });
+    } else {
       form.resetFields();
-      form.setFieldsValue({ isPrimary: false });
+      form.setFieldsValue({ isPrimary: false, ...(企业 ? { 号码们: [{ kind: 默认种类, value: "" }] } : {}) });
     }
-  }, [open, record, form]);
+  }, [open, record, form, 企业, 默认种类]);
+  /** 下拉里能选的类型：启用中的，加上这位原来就有、后来停用或改名的（原样摆着，不然一编辑就丢了） */
+  const 类型选项 = (() => {
+    if (!号码种类) return [];
+    const 原有 = new Set((record?.号码们 ?? []).map((x) => x.kind));
+    const 叫法 = (kind: string) => 号码种类.find((x) => x.kind === kind)?.名 ?? (kind.startsWith("custom:") ? kind.slice(7) : kind);
+    const 们 = 号码种类.filter((x) => x.active || 原有.has(x.kind)).map((x) => ({ value: x.kind, label: x.active ? x.名 : `${x.名}（已停用）` }));
+    for (const k of 原有) if (!们.some((x) => x.value === k)) 们.push({ value: k, label: 叫法(k) });
+    return 们;
+  })();
 
   /*
     保存中：网慢时连点两下会建出两条一样的记录（跟进带的 AI 待办和计划也各建两份，2026-10-02 排查）。
@@ -108,7 +136,18 @@ export default function ContactForm({
       守.存好了();
       return void onSaved();
     }
-    const r = await saveContact({ id: record?.id, 版本: record?.updatedAt, ...v, isPrimary: Boolean(v.isPrimary), customerId: 归属 });
+    // 企业版：新几格和号码几行另装一包（actions.ts 的 企业联系人资料），老三格由号码几行算，不再单交
+    const { gender, birthday, hobby, address, 号码们, ...其余 } = v as Record<string, unknown> & { birthday?: { format: (f: string) => string } | null; 号码们?: { kind?: string; value?: string }[] };
+    const 企业资料 = 企业
+      ? {
+          gender: (gender as string | undefined) ?? null,
+          birthday: birthday ? birthday.format("YYYY-MM-DD") : null,
+          hobby: (hobby as string | undefined) ?? null,
+          address: (address as string | undefined) ?? null,
+          号码们: (号码们 ?? []).filter((x) => x && x.value && x.value.trim()).map((x) => ({ kind: x.kind ?? "", value: x.value ?? "" })),
+        }
+      : null;
+    const r = await saveContact({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) return void message.error(r.error);
     message.success(record ? "已保存" : "联系人已添加");
@@ -173,21 +212,74 @@ export default function ContactForm({
               <AutoComplete options={关系候选(b).map((v) => ({ value: v }))} placeholder={关系候选(b)[0]} />
             </Form.Item>
           </Col>
-          <Col span={12}>
-            <Form.Item name="phone" label="手机号">
-              <Input placeholder="13800002211" />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="email" label="邮箱">
-              <Input placeholder="name@company.com" />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="wechat" label="微信">
-              <Input placeholder="微信号" />
-            </Form.Item>
-          </Col>
+          {企业 ? (
+            <>
+              <Col span={12}>
+                <Form.Item name="gender" label="性别">
+                  <Select allowClear placeholder="不填" options={性别们.map((g) => ({ value: g, label: g }))} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="birthday" label="生日">
+                  <DatePicker style={{ width: "100%" }} placeholder="选日子" disabledDate={(d) => d.isAfter(dayjs(), "day")} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="hobby" label="爱好">
+                  <Input maxLength={爱好上限} placeholder="如 高尔夫、茶" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="address" label="地址">
+                  <Input maxLength={联系人地址上限} placeholder="住址或办公地址" />
+                </Form.Item>
+              </Col>
+              {/* 联系方式几行（类型 + 号码）：一人可以有好几个手机、座机、微信……类型在「设置 → 字典 → 号码类型」里加 */}
+              <Col span={24}>
+                <div style={{ marginBottom: 8 }}>联系方式</div>
+                <Form.List name="号码们">
+                  {(行们, { add, remove }) => (
+                    <>
+                      {行们.map((行) => (
+                        <Space.Compact key={行.key} style={{ display: "flex", marginBottom: 8 }}>
+                          <Form.Item name={[行.name, "kind"]} noStyle rules={[{ required: true, message: "选类型" }]}>
+                            <Select style={{ width: 130 }} options={类型选项} aria-label="号码类型" />
+                          </Form.Item>
+                          <Form.Item name={[行.name, "value"]} noStyle>
+                            <Input maxLength={号码上限} placeholder="号码或账号" aria-label="号码" />
+                          </Form.Item>
+                          <Button icon={<MinusCircleOutlined />} onClick={() => remove(行.name)} aria-label="去掉这一行" />
+                        </Space.Compact>
+                      ))}
+                      {行们.length < 每人最多号码 && (
+                        <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ kind: 默认种类, value: "" })} style={{ marginBottom: 16 }}>
+                          加一个联系方式
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </Form.List>
+              </Col>
+            </>
+          ) : (
+            <>
+              <Col span={12}>
+                <Form.Item name="phone" label="手机号">
+                  <Input placeholder="13800002211" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="email" label="邮箱">
+                  <Input placeholder="name@company.com" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="wechat" label="微信">
+                  <Input placeholder="微信号" />
+                </Form.Item>
+              </Col>
+            </>
+          )}
           {!还没归属 && (
             <Col span={12}>
               <Form.Item name="isPrimary" label="关键联系人" valuePropName="checked" extra={未归属 && 挑的 === record?.fromCustomerId && record?.wasPrimary == null ? "移出前是否关键未记录，请核对后选择" : undefined}>

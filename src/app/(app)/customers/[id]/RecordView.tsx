@@ -41,6 +41,9 @@ import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
 import AiPanel from "./AiPanel";
+import LinkedCustomers from "./LinkedCustomers";
+import NewProjectModal from "./NewProjectModal";
+import { 客户页摆法, 企业客户级别, 企业级别说明, 企业级别, 拼地址, 简称上限 } from "@/lib/enterprise/customer-v2";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import { toggleTask, deleteTask, deleteFollowUp, restoreFollowUp, completePlan, saveFollowUp } from "./actions";
@@ -98,6 +101,11 @@ function 号码链接({ kind, value }: { kind: "tel" | "mailto"; value: string }
   return <a href={`mailto:${value}`}>{value}</a>;
 }
 
+/** 联系方式那一行的叫法：字典里有就用字典的名字；自定义种类存成 custom:<叫法>，停用了也照样显示 */
+function 号码叫法(种类: { 名: string; kind: string }[] | undefined, kind: string) {
+  return 种类?.find((x) => x.kind === kind)?.名 ?? (kind.startsWith("custom:") ? kind.slice(7) : kind);
+}
+
 function 带上现任(users: { id: string; name: string; email: string }[], 现任: string | null, 现任名: string | null | undefined) {
   const 选项 = 成员选项(users);
   if (现任 && !users.some((u) => u.id === 现任)) 选项.unshift({ value: 现任, label: `${现任名 ?? "（已删除的成员）"}（不在候选里）` });
@@ -127,6 +135,11 @@ export default function RecordView({
   只读: 只读档 = false,
   换负责人记录 = [],
   客户状态选项 = [],
+  联系人分类附件数 = null,
+  关联们 = null,
+  号码种类,
+  分配方式选项 = [],
+  新建项目 = null,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档;
@@ -150,6 +163,9 @@ export default function RecordView({
     推荐关系、签约不摆（纪要：「客户页仅保留 基础信息、联系人、关联项目 三类核心内容」；数据都还在，个人版、团队版不变）
   */
   const 企业 = 项目们 !== null;
+  /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
+  const 摆法 = 客户页摆法(企业);
+  const [建项目开着, set建项目开着] = useState(false);
   /** 记跟进默认挂的项目：没结束、不在公海的，最近动过的排前面（page.tsx 按 updatedAt 倒序给） */
   const 在推项目 = 项目们?.filter((p) => !p.result && !p.pooledAt) ?? null;
   const [资料全开, set资料全开] = useState(false);
@@ -174,14 +190,19 @@ export default function RecordView({
   // 企业版不摆渠道负责人（10-28 去遗留 A3：来源只问渠道，不按推荐链分负责人）
   const 摆渠道负责人 = !外贸 && !企业 && !独自一人(users, customer.channelOwnerId);
   /** 企业版收起了几格没填的：数给「展开更多 N 项」 */
+  const 地址文字 = 拼地址(customer);
+  const 级别值 = 企业级别(档?.level);
   const 没填几项 = 企业
-    ? [
-        customer.phone, customer.school, customer.major, customer.grade,
-        档?.country, 档?.whatsapp, 档?.email, 档?.wechat, 档?.alibabaId, 档?.source, 档?.level, 档?.website,
-        ...(摆渠道负责人 ? [customer.channelOwnerId] : []),
-        ...(!外贸 ? [customer.expectedSignAt] : []),
-        customer.remark,
-      ].filter((v) => v === null || v === undefined || v === "").length
+    ? (摆法.旧字段
+        ? [
+            customer.phone, customer.school, customer.major, customer.grade,
+            档?.country, 档?.whatsapp, 档?.email, 档?.wechat, 档?.alibabaId, 档?.source, 档?.level, 档?.website,
+            ...(摆渠道负责人 ? [customer.channelOwnerId] : []),
+            ...(!外贸 ? [customer.expectedSignAt] : []),
+            customer.remark,
+          ]
+        : [customer.phone, customer.shortName, customer.school, 级别值, 地址文字, 档?.website, customer.assignWay, customer.remark]
+      ).filter((v) => v === null || v === undefined || v === "").length
     : 0;
   /** 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp */
   const 背调档案 = useMemo(
@@ -500,7 +521,11 @@ export default function RecordView({
           </div>
           {/* 副标题是这个人的三个定位：年级 · 专业 · 谁在跟。没填的那项不占位 */}
           <div className="rec-head-sub">
-            {[customer.grade, customer.major, !独自一人(users, customer.salesOwnerId) && customer.salesOwnerName].filter(Boolean).join(" · ")}
+            {/* 企业版项目模式：年级 / 专业那两格不摆了（定稿 P5 第 22 条），换成简称 */}
+            {(摆法.旧字段 ? [customer.grade, customer.major] : [customer.shortName])
+              .concat(!独自一人(users, customer.salesOwnerId) ? [customer.salesOwnerName] : [])
+              .filter(Boolean)
+              .join(" · ")}
           </div>
         </div>
         <span style={{ flex: 1 }} />
@@ -563,22 +588,24 @@ export default function RecordView({
         {/* 来源（照毛玻璃原型的那枚「来源：WhatsApp」）：渠道或推荐人。自然流量不摆——没有来源就不占位 */}
         {/* 企业版只认渠道（10-28 去遗留 A3）：写渠道名，没挂渠道就不摆，不写推荐人 */}
         {企业
-          ? customer.channelName && <span className="rec-tags-n">渠道：{customer.channelName}</span>
+          ? customer.channelName && <span className="rec-tags-n" title="客户来源记第一次带来的渠道，建好之后不改">客户来源：{customer.channelName}</span>
           : 外贸
           ? 档?.source && <span className="rec-tags-n">来源：{档.source}</span>
           : customer.referrerName && <span className="rec-tags-n">来源：{customer.referrerName}</span>}
         {/* 客户等级（2026-10-16）：一枚字母章，放在国家前面——先看这位要花多少力气 */}
-        {外贸 && 档?.level && <span className={`cust-level cust-level-${档.level}`} title={`客户等级：${客户等级说明[档.level as 客户等级值] ?? 档.level}`}>{档.level}</span>}
-        {外贸 && 档?.country && <span className="rec-tags-n">{档.country}</span>}
+        {摆法.新字段
+          ? 级别值 && <span className={`cust-level cust-level-${级别值}`} title={`客户级别：${企业级别说明[级别值]}`}>{级别值}</span>
+          : 外贸 && 档?.level && <span className={`cust-level cust-level-${档.level}`} title={`客户等级：${客户等级说明[档.level as 客户等级值] ?? 档.level}`}>{档.level}</span>}
+        {外贸 && 摆法.旧字段 && 档?.country && <span className="rec-tags-n">{档.country}</span>}
         {/* 对方此刻几点（2026-10-16）：按国家首都的时区；和本机同一钟点时不显示 */}
-        {外贸 && 档?.country && <LocalTime country={档.country} className="rec-tags-n" />}
+        {外贸 && 摆法.旧字段 && 档?.country && <LocalTime country={档.country} className="rec-tags-n" />}
         {/* WhatsApp 点一下打开对话（wa.me）：外贸客户的主沟通渠道，抄号码再去手机上搜太绕 */}
-        {wa && (
+        {wa && 摆法.旧字段 && (
           <a className="rec-tags-n" href={wa} target="_blank" rel="noreferrer" title={`在 WhatsApp 里打开和 ${档?.whatsapp} 的对话`}>
             WhatsApp ↗
           </a>
         )}
-        {外贸 && 官网 && (
+        {(外贸 || 摆法.新字段) && 官网 && (
           <a className="rec-tags-n" href={官网} target="_blank" rel="noreferrer" title={`打开 ${官网}`}>
             官网 ↗
           </a>
@@ -649,10 +676,29 @@ export default function RecordView({
                 <div style={{color:"var(--text-muted)",fontSize:12}}>编号 {sourceLead.id} · 转化时间 {sourceLead.convertedAt ? fmtDateTime(sourceLead.convertedAt) : "未记录"}</div>
               </div>
             </div>}
+            {/* 企业版项目模式（定稿 P5 第 22、23、29、30 条）：简称、公司、级别 S/A/B/C、地址、官网、分配方式；
+                行业、职位、国家、WhatsApp、邮箱、微信、阿里 ID、旧等级、预计签约不摆（库里照留）。地址要分省市区，在「编辑全部」里改 */}
+            {摆法.新字段 && 摆(customer.shortName) && <InlineField customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
             {摆(customer.school) && <InlineField customerId={customer.id} field="school" label={b.fields.school} value={customer.school} />}
-            {摆(customer.major) && <InlineField customerId={customer.id} field="major" label={b.fields.major} value={customer.major} />}
-            {摆(customer.grade) && <InlineField customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />}
-            {摆档案组 && (
+            {摆法.旧字段 && 摆(customer.major) && <InlineField customerId={customer.id} field="major" label={b.fields.major} value={customer.major} />}
+            {摆法.旧字段 && 摆(customer.grade) && <InlineField customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />}
+            {摆法.新字段 && (
+              <>
+                {摆(级别值) && <InlineField customerId={customer.id} field="level" label="客户级别" value={级别值} kind="select" options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} placeholder="没分级" 可清空 />}
+                {摆(地址文字) && (
+                  <div className="rec-field" style={{ cursor: "default" }} title="地址分省市区，点「编辑全部」改">
+                    <div className="rec-field-k">地址</div>
+                    <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{地址文字 || <span className="rec-field-empty">未填</span>}</div>
+                  </div>
+                )}
+                {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
+                {摆(customer.assignWay) && (
+                  <InlineField customerId={customer.id} field="assignWay" label="分配方式" value={customer.assignWay ?? null} kind="select"
+                    options={[...new Set([...分配方式选项, ...(customer.assignWay ? [customer.assignWay] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空 />
+                )}
+              </>
+            )}
+            {摆法.旧字段 && 摆档案组 && (
               <>
                 {摆(档?.country) && <InlineField customerId={customer.id} field="country" label="国家" value={档?.country ?? null} kind="combo" options={国家候选.flatMap((g) => g.国家).map((x) => ({ value: x, label: x }))} />}
                 {摆(档?.whatsapp) && <InlineField customerId={customer.id} field="whatsapp" label="WhatsApp" value={档?.whatsapp ?? null} />}
@@ -673,7 +719,14 @@ export default function RecordView({
             )}
             {/* 选项里带上现任：负责人是管理员或已停用时不在候选里，原来下拉直接显示一串 id（排查 D8）。
                 一个人用（桌面端）时这两格不摆：下拉里只有自己，摆着只是让人多想一下（和客户表单同一个 独自一人 规则） */}
-            {!独自一人(users, customer.salesOwnerId) && (
+            {/* 企业版项目模式：客户页不转让（待定 14 红框），负责人只读；要换人在客户列表里整客户转让（连项目一起） */}
+            {!独自一人(users, customer.salesOwnerId) && !摆法.转让 && (
+              <div className="rec-field" style={{ cursor: "default" }} title="要换负责人：在客户列表里勾上这位，点「转让」">
+                <div className="rec-field-k">销售负责人</div>
+                <div className="rec-field-v">{customer.salesOwnerName ?? <span className="rec-field-empty">未分配</span>}</div>
+              </div>
+            )}
+            {!独自一人(users, customer.salesOwnerId) && 摆法.转让 && (
               <InlineField customerId={customer.id} field="salesOwnerId" label="销售负责人" value={customer.salesOwnerId} kind="select" options={带上现任(users, customer.salesOwnerId, customer.salesOwnerName)} />
             )}
             {/* 历史负责人（企业版 D-36）：换过负责人才摆；悬停看每次谁转的、从谁到谁、什么时候。停用的人名字照旧显示 */}
@@ -699,7 +752,7 @@ export default function RecordView({
             {摆渠道负责人 && 摆(customer.channelOwnerId) && (
               <InlineField customerId={customer.id} field="channelOwnerId" label="渠道负责人" value={customer.channelOwnerId} kind="select" options={带上现任(users, customer.channelOwnerId, customer.channelOwnerName)} placeholder="按推荐链自动确定" 可清空 />
             )}
-            {!外贸 && 摆(customer.expectedSignAt) && <InlineField customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder="未定" />}
+            {!外贸 && 摆法.旧字段 && 摆(customer.expectedSignAt) && <InlineField customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder="未定" />}
             {/* 企业版不摆签约金额（10-28 去遗留 A4） */}
             {!企业 && 摆(customer.signedAmount > 0 ? 1 : null) && (
               <div className="rec-field" style={{ cursor: "default" }}>
@@ -734,11 +787,35 @@ export default function RecordView({
                     {c.isPrimary && <Tag color="blue" style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
                     {c.position && <span className="rec-contact-p">{c.position}</span>}
                   </div>
-                  {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><号码链接 kind="tel" value={c.phone} /></div>}
-                  {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><号码链接 kind="mailto" value={c.email} /></div>}
-                  {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span>{c.wechat}</div>}
-                  {!c.phone && !c.email && !c.wechat && <div className="rec-contact-line rec-field-empty">没留联系方式</div>}
-                  {联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
+                  {c.号码们 && 号码种类 ? (
+                    /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
+                    <>
+                      {c.号码们.map((m, i) => (
+                        <div key={`${m.kind}-${i}`} className="rec-contact-line">
+                          <span className="rec-contact-k">{号码叫法(号码种类, m.kind)}</span>
+                          {m.kind === "phone" || m.kind === "landline" ? <号码链接 kind="tel" value={m.value} /> : m.kind === "email" ? <号码链接 kind="mailto" value={m.value} /> : m.value}
+                        </div>
+                      ))}
+                      {c.号码们.length === 0 && <div className="rec-contact-line rec-field-empty">没留联系方式</div>}
+                      {c.gender && <div className="rec-contact-line"><span className="rec-contact-k">性别</span>{c.gender}</div>}
+                      {c.birthday && <div className="rec-contact-line"><span className="rec-contact-k">生日</span>{c.birthday}</div>}
+                      {c.hobby && <div className="rec-contact-line"><span className="rec-contact-k">爱好</span>{c.hobby}</div>}
+                      {c.address && <div className="rec-contact-line"><span className="rec-contact-k">地址</span>{c.address}</div>}
+                    </>
+                  ) : (
+                    <>
+                      {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><号码链接 kind="tel" value={c.phone} /></div>}
+                      {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><号码链接 kind="mailto" value={c.email} /></div>}
+                      {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span>{c.wechat}</div>}
+                      {!c.phone && !c.email && !c.wechat && <div className="rec-contact-line rec-field-empty">没留联系方式</div>}
+                    </>
+                  )}
+                  {/* 名片、相册分两格（待定 19）；没给分格的个数时照旧一格 */}
+                  {联系人分类附件数
+                    ? (["名片", "相册"] as const).map((分类) => (
+                        <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={只读} 分类={分类} />
+                      ))
+                    : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
                   {联系人操作(c)}
                 </div>
               ) : (
@@ -767,7 +844,11 @@ export default function RecordView({
             <div className="rec-sec">
               <div className="rec-sec-t">
                 <span>项目 {项目们.length > 0 && 项目们.length}</span>
-                <Link href="/projects">全部 ›</Link>
+                <Space size={4}>
+                  {/* 给这位客户再建一个项目（待定 16）：客户自动带上 */}
+                  {摆法.新建项目 && 新建项目 && !只读 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => set建项目开着(true)} aria-label="给这位客户新建项目" />}
+                  <Link href="/projects">全部 ›</Link>
+                </Space>
               </div>
               {项目们.length === 0 && <div className="rec-empty">还没有项目</div>}
               {项目们.map((p) => (
@@ -781,7 +862,9 @@ export default function RecordView({
                 </RowLink>
               ))}
             </div>
-          ) : (
+          ) : null}
+          {摆法.关联客户 && 关联们 && <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} />}
+          {!项目们 && (
             <div className="rec-sec">
               <div className="rec-sec-t">
                 <span>商机 {opportunities.length > 0 && opportunities.length}</span>
@@ -868,7 +951,8 @@ export default function RecordView({
         {/* ================= 中栏：时间线 ================= */}
         <section className="rec-col rec-card">
           {/* 虚线下属的客户：跟进也记不了，速记框不摆，免得写完才被拦（10-25 实测 F4）。顶上那条黄条已说清只能看 */}
-          {!全只读 && <div className="rec-composer">
+          {/* 企业版项目模式：记录输入挪到项目页（定稿 P5 待定 14 黄框），客户页只看时间线 */}
+          {!全只读 && 摆法.记录输入 && <div className="rec-composer">
             <Input.TextArea
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
@@ -892,7 +976,7 @@ export default function RecordView({
             </div>
           </div>}
 
-          {plan && (
+          {plan && 摆法.下次跟进 && (
             <div className="rec-plan" data-focus={`plan:${plan.id}`}>
               <span className="rec-plan-k">下次跟进</span>
               <span className="rec-plan-v">
@@ -971,10 +1055,12 @@ export default function RecordView({
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
               <div className="rec-card">
-                <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} />
+                <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} />
               </div>
             )}
 
+            {/* 企业版项目模式：待办挪到项目页（定稿 P5 待定 14 黄框） */}
+            {摆法.待办 && (
             <div className="rec-card rec-side-card">
               <div className="rec-side-t">
                 <span>待办 {openTasks.length > 0 && openTasks.length}</span>
@@ -1018,8 +1104,10 @@ export default function RecordView({
                 ))}
               </AnimatePresence>
             </div>
+            )}
 
-            {!plan && (
+            {/* 企业版项目模式不排「下次跟进」（定稿 P5 待定 14 红框）：下一步时间记在项目上 */}
+            {!plan && 摆法.下次跟进 && (
               <div className="rec-card rec-side-card">
                 <div className="rec-side-t">
                   <span>下次跟进</span>
@@ -1041,7 +1129,7 @@ export default function RecordView({
           进程内任务表上（lib/ai-jobs），不在组件 state 里，关掉再开还在那儿 */}
       {aiEnabled && AI在抽屉里 && (
         <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${customer.name}`}>
-          <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} />
+          <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={() => openFollow(null)} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} />
         </Drawer>
       )}
 
@@ -1092,7 +1180,7 @@ export default function RecordView({
         record={排新计划 ? null : plan}
         默认天数={排新计划 ? 7 : 2}
       />
-      <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={() => { setContactOpen(false); router.refresh(); }} customerId={customer.id} record={editingContact} />
+      <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={() => { setContactOpen(false); router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} />
       <ContractForm
         open={contractOpen}
         customerId={customer.id}
@@ -1108,11 +1196,28 @@ export default function RecordView({
         editing={customer}
         users={users}
         channels={channels}
+        企业版={企业}
+        客户状态选项={客户状态选项}
+        分配方式选项={分配方式选项}
         onClose={(saved) => {
           setCustOpen(false);
           if (saved) router.refresh();
         }}
       />
+      {/* 客户页「新建项目」（定稿 P5 待定 16）：客户自动带上 */}
+      {新建项目 && (
+        <NewProjectModal
+          open={建项目开着}
+          onClose={() => set建项目开着(false)}
+          customerId={customer.id}
+          customerName={customer.shortName || customer.name}
+          默认负责人={customer.salesOwnerId}
+          users={users}
+          联系人们={contacts.map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
+          节点们={新建项目.节点们}
+          要下一步={新建项目.要下一步}
+        />
+      )}
     </>
   );
 

@@ -22,9 +22,9 @@ export const runtime = "nodejs";
  */
 
 /** 这次请求认的分类：企业版、挂在联系人上、且是 名片 / 相册 之一；否则 null。带了认不出的值 → 错 */
-function 读分类(q: URLSearchParams, 挂在: { contactId?: string }): { 值: string | null } | { 错: string } {
+function 读分类(q: URLSearchParams, 挂在: object): { 值: string | null } | { 错: string } {
   const t = q.get("tag");
-  if (!t || !企业版() || !挂在.contactId) return { 值: null };
+  if (!t || !企业版() || !("contactId" in 挂在)) return { 值: null };
   return 是附件分类(t) ? { 值: t } : { 错: "附件分类不对" };
 }
 

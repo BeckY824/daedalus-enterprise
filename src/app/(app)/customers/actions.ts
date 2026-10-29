@@ -1376,7 +1376,9 @@ export async function deleteContract(
 /* ---------- 记录页的行内编辑 ---------- */
 
 /** 记录页里能直接点着改的字段。姓名、手机（要查重）、推荐关系（要重算归属）仍走完整表单 */
-const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", ...外贸键] as const;
+const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", ...外贸键] as const;
+/** 只有企业版能点着改的几格（迁移 072）：开关关着不收 */
+const 企业版才有的格: readonly string[] = ["shortName", "assignWay"];
 export type PatchableKey = (typeof PATCHABLE)[number];
 
 /**
@@ -1386,7 +1388,7 @@ export type PatchableKey = (typeof PATCHABLE)[number];
 export async function patchCustomer(id: string, key: PatchableKey, value: string | null): Promise<{ ok: true; 带走?: 带走数 } | { ok: false; error: string }> {
   const me = await requireUser();
   const b = await getBusiness();
-  if (!PATCHABLE.includes(key)) return { ok: false, error: "这个字段不能在这里改" };
+  if (!PATCHABLE.includes(key) || (企业版才有的格.includes(key) && !企业版())) return { ok: false, error: "这个字段不能在这里改" };
   // 团队互看：同事的客户读得到、改不了（lib/team-scope.ts），外贸档案那几格也一样
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
   const 挡 = 客户列字段[key] ? await 挡字段(me.id, [客户列字段[key]]) : null;
@@ -1400,7 +1402,10 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   */
   if ((外贸键 as readonly string[]).includes(key)) {
     const k = key as keyof 外贸档案;
-    const r = 规整外贸格(k, k === "country" ? 认国家(v) : v);
+    // 企业版客户级别只有 S / A / B / C（定稿 P5 第 23 条），不走外贸那套 A–D
+    const 企级 = 企业版() && k === "level" ? 认企业级别(v) : null;
+    if (企业版() && k === "level" && 企级 === undefined) return { ok: false, error: "客户级别只能是 S / A / B / C" };
+    const r: { ok: true; v: string | null } | { ok: false; error: string } = 企业版() && k === "level" ? { ok: true, v: 企级 ?? null } : 规整外贸格(k, k === "country" ? 认国家(v) : v);
     if (!r.ok) return r;
     const 人 = await prisma.customer.findUnique({ where: { id }, select: { name: true, extra: true } });
     if (!人) return { ok: false, error: `这条${b.customer}已被删除` };
@@ -1447,6 +1452,15 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
       if (!cur) return { ok: false, error: `这条${b.customer}已被删除` };
       data.channelOwnerId = (await resolveAttribution(cur)).channelOwnerId;
     }
+  } else if (key === "shortName") {
+    const 简 = (v ?? "").replace(/\s+/g, " ") || null;
+    if (简 && 简.length > 简称上限) return { ok: false, error: `客户简称最多 ${简称上限} 个字` };
+    data.shortName = 简;
+  } else if (key === "assignWay") {
+    const 原 = await prisma.customer.findUnique({ where: { id }, select: { assignWay: true } });
+    if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
+    if (v && v !== 原.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `分配方式「${v}」不在可选范围内，请刷新后重选` };
+    data.assignWay = v || null;
   } else if (key === "expectedSignAt") {
     const previous = await prisma.customer.findUnique({ where: { id }, select: { expectedSignAt: true, expectedSignOn: true } });
     const parsed = parseSignDate(v, previous ?? undefined);

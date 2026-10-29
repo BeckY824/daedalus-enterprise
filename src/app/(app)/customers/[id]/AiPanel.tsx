@@ -42,6 +42,7 @@ export default function AiPanel({
   on记跟进,
   简报叫 = "简报",
   企业版,
+  不背调 = false,
 }: {
   customerId: string;
   customerName: string;
@@ -60,6 +61,8 @@ export default function AiPanel({
    * 不给时按 简报叫 认——记录页只在企业版（只用项目）才传「智能总结」，开关关着时一定是「简报」
    */
   企业版?: boolean;
+  /** 企业版项目模式客户页不摆背调按钮（定稿 P5 待定 14 红框）；以前存下的背调摘要照样能看 */
+  不背调?: boolean;
 }) {
   const b = useBusiness();
   const 企业 = 企业版 ?? 简报叫 === "智能总结";
@@ -93,7 +96,7 @@ export default function AiPanel({
   /* 按钮上写「背调 · 剩 N 次」：点按钮本身就是确认（10-16 用户），所以扣费得写在按钮上，不够就点不了 */
   const [背调价, set背调价] = useState<Awaited<ReturnType<typeof 背调价目>> | null>(null);
   /** 自部署 / 企业版网页背调走不通：按钮不摆、价也不问（lib/research/channel.ts 背调有入口）。以前存下的背调照样能看 */
-  const 背调入口 = useResearchEntry();
+  const 背调入口 = useResearchEntry() && !不背调;
   useEffect(() => {
     if (!背调入口) return;
     let 活 = true;

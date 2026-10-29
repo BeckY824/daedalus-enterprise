@@ -24,6 +24,7 @@ import { 带走说法 } from "@/lib/carry-over";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
+import { 企业客户级别, 企业级别说明, 企业级别, 国内叫法, 是国内, 地址每格上限, 简称上限 } from "@/lib/enterprise/customer-v2";
 
 export type CustomerRow = {
   id: string;
@@ -36,6 +37,13 @@ export type CustomerRow = {
   decisionStatus: string;
   /** 客户状态（企业版才有，字典 custStatus）。老调用方没给就当没有 */
   custStatus?: string | null;
+  /** 企业版客户改版（定稿 P5，迁移 072）：简称、地址四格、分配方式。老调用方没给就当没填 */
+  shortName?: string | null;
+  addrCountry?: string | null;
+  addrProvince?: string | null;
+  addrCity?: string | null;
+  addrDistrict?: string | null;
+  assignWay?: string | null;
   expectedSignAt: string | null;
   lastFollowAt: string | null;
   remark: string | null;
@@ -81,6 +89,8 @@ type FormProps = {
   企业版?: boolean;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的） */
   客户状态选项?: string[];
+  /** 企业版分配方式的可选项（字典 custAssign 启用中的，定稿 P5 第 30 条） */
+  分配方式选项?: string[];
 };
 
 /**
@@ -132,10 +142,16 @@ function CustomerFormInner({
   负责人只能自己 = false,
   企业版: 企业 = false,
   客户状态选项 = [],
+  分配方式选项 = [],
 }: FormProps) {
   const b = useBusiness();
   /** 外贸模版：多问国家 / WhatsApp / 微信 / 邮箱 / 来源，不问推荐人、渠道负责人、预计签约（2026-10-05 外贸客户建议） */
   const 外贸 = 外贸精简(b);
+  /**
+   * 外贸档案那一整块（国家、WhatsApp、邮箱、微信、阿里 ID、来源、A–D 等级）只在非企业版的外贸模版摆。
+   * 企业版客户改版（定稿 P5 第 22、23 条）：这些不摆（库里照留），换成简称、级别 S/A/B/C、地址、官网、分配方式
+   */
+  const 外贸档 = 外贸 && !企业;
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const 我 = useMe();
@@ -171,7 +187,7 @@ function CustomerFormInner({
    * 2026-10-21 加阿里国际站 ID，成了五选一（客户反馈：国际站来的询盘很多只有买家 ID）。
    * 几格旁边标同一个记号，不再只红电话一格。原来就有电话的那位改资料时，电话不许清空，照旧标红星
    */
-  const 四选一 = 外贸 && !editing?.phone;
+  const 四选一 = 外贸档 && !editing?.phone;
   const 填了 = (k: "whatsapp" | "email" | "wechat" | "alibabaId") => String(form.getFieldValue(["extra", k]) ?? "").trim() !== "";
   const 锁给自己 = !editing && 负责人只能自己 && 我 ? 我 : null;
   const 负责人选项 = 锁给自己
@@ -198,6 +214,12 @@ function CustomerFormInner({
   if (editing?.channelOwnerId && !渠道负责人选项.some(u => u.value === editing.channelOwnerId)) {
     渠道负责人选项.push({ value: editing.channelOwnerId, label: `${editing.channelOwnerName ?? "原负责人"}（不在当前候选中）` });
   }
+
+  /** 企业版地址：国家是中国（或空着）就问省 / 市 / 区县，国外只问城市 */
+  const 地址国家 = Form.useWatch("addrCountry", form) as string | undefined;
+  const 国内址 = !地址国家 || 是国内(地址国家);
+  /** 企业版客户来源建好就锁（原来没挂渠道的老客户还能补一次） */
+  const 来源锁着 = 企业 && Boolean(editing?.channelId);
 
   /** 就地新建渠道的子弹窗 */
   const [channelModal, setChannelModal] = useState(false);
@@ -239,14 +261,15 @@ function CustomerFormInner({
               channelId: editing.channelId,
               referrerCustomerId: editing.referrerCustomerId,
               channelOwnerId: editing.channelOwnerId,
-              ...(企业 ? { custStatus: editing.custStatus ?? null } : {}),
+              ...(企业 ? { custStatus: editing.custStatus ?? null, ...企业资料基准(editing) } : {}),
             }
           : null,
         name: v.name,
         phone: v.phone ?? "",
         school: v.school ?? null,
-        grade: v.grade ?? null,
-        major: v.major ?? null,
+        // 企业版不摆职位、行业（定稿 P5 第 22 条）：照原样交回，别因为表单里没有就清掉
+        grade: 企业 ? (editing?.grade ?? null) : (v.grade ?? null),
+        major: 企业 ? (editing?.major ?? null) : (v.major ?? null),
         // 企业版不摆跟进 / 决策状态：照原样交回（新建给默认值），改的是客户状态
         followStatus: 企业 ? (editing?.followStatus ?? "待跟进") : v.followStatus,
         decisionStatus: 企业 ? (editing?.decisionStatus ?? "了解中") : v.decisionStatus,
@@ -255,7 +278,7 @@ function CustomerFormInner({
           外贸模版不摆这三格：照原样交回去，别因为表单里没有就清掉（切回通用模版时它们还在）。
           没摆的格子 validateFields 不给值，所以从 editing 取
         */
-        expectedSignAt: 外贸 || (editing && !form.isFieldTouched("expectedSignAt")) ? editing?.expectedSignAt ?? null : v.expectedSignAt ? v.expectedSignAt.format("YYYY-MM-DD") : null,
+        expectedSignAt: 外贸 || 企业 || (editing && !form.isFieldTouched("expectedSignAt")) ? editing?.expectedSignAt ?? null : v.expectedSignAt ? v.expectedSignAt.format("YYYY-MM-DD") : null,
         remark: v.remark ?? null,
         salesOwnerId: v.salesOwnerId,
         /*
@@ -270,7 +293,24 @@ function CustomerFormInner({
           外贸档案只交改过的那几格（2026-10-05 复查）：开着框的这会儿同事在记录页改了国家，我只改名字就保存，
           原来五格全交、把他改的国家冲回旧值
         */
-        ...(外贸 ? { extra: 改过的档案(v.extra, editing?.extra) } : {}),
+        ...(外贸档 ? { extra: 改过的档案(v.extra, editing?.extra) } : {}),
+        /*
+          企业版只摆级别、官网两格档案：只交改过的那格（改过的档案 会把没摆的外贸几格当成清空，不能用）；
+          简称、地址、分配方式走 企业资料
+        */
+        ...(企业 ? 企业档案改动(v.extra, editing?.extra) : {}),
+        ...(企业
+          ? {
+              企业资料: {
+                shortName: v.shortName ?? null,
+                addrCountry: v.addrCountry ?? null,
+                addrProvince: 国内址 ? (v.addrProvince ?? null) : null,
+                addrCity: v.addrCity ?? null,
+                addrDistrict: 国内址 ? (v.addrDistrict ?? null) : null,
+                assignWay: v.assignWay ?? null,
+              },
+            }
+          : {}),
         /*
           新建不传（按推荐链算）。编辑时**只有人动过这一格才传**：选了就钉死，清空就 null（恢复按推荐链）。
           原来每次都传——这一格的初值就是现在的渠道负责人，于是换了推荐渠道，负责人还被当成「手工指定」钉在旧的人身上（排查 A4）
@@ -316,7 +356,12 @@ function CustomerFormInner({
         onValuesChange={守.改了}
         initialValues={
           editing
-            ? { ...editing, expectedSignAt: editing.expectedSignAt ? dayjs(editing.expectedSignAt) : null }
+            ? {
+                ...editing,
+                expectedSignAt: editing.expectedSignAt ? dayjs(editing.expectedSignAt) : null,
+                // 企业版级别只认 S/A/B/C：库里还没改过来的 D 显示成 C
+                ...(企业 ? { extra: { ...editing.extra, level: 企业级别(editing.extra?.level) ?? undefined } } : {}),
+              }
             : { followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 锁给自己 ? 锁给自己.id : 默认负责人(我, users), ...(企业 ? { custStatus: 客户状态选项[0] } : {}) }
         }
       >
@@ -375,8 +420,9 @@ function CustomerFormInner({
         <Row gutter={16}>
           <Col span={8}>
             {/* 跟业务配置的叫法走（2026-10-04 L-003）：改成「学员」后这里原来还写着「客户姓名」 */}
-            <Form.Item label={`${b.customer}姓名`} name="name" rules={[requiredText("请输入姓名")]}>
-              <Input placeholder="如：张三" />
+            {/* 企业版客户是单位：这一格叫「客户全称」，旁边另有一格简称（定稿 P5 第 22 条） */}
+            <Form.Item label={企业 ? "客户全称" : `${b.customer}姓名`} name="name" rules={[requiredText(企业 ? "请输入客户全称" : "请输入姓名")]}>
+              <Input placeholder={企业 ? "营业执照上的全称" : "如：张三"} />
             </Form.Item>
           </Col>
           <Col span={8}>
@@ -386,18 +432,18 @@ function CustomerFormInner({
               label={四选一 ? <>联系电话<认人记号 /></> : "联系电话"}
               name="phone"
               required={电话必填 && !四选一}
-              dependencies={外贸 ? [["extra", "whatsapp"], ["extra", "email"], ["extra", "wechat"], ["extra", "alibabaId"]] : undefined}
+              dependencies={外贸档 ? [["extra", "whatsapp"], ["extra", "email"], ["extra", "wechat"], ["extra", "alibabaId"]] : undefined}
               extra={四选一 ? <span className="cf-any-hint"><认人记号 /> {四选一说法}</span> : undefined}
               rules={[
                 {
                   validator: (_, v: string | undefined) => {
                     // 外贸：电话空着、填了 WhatsApp 就行（服务端拿 WhatsApp 当电话，二审）
-                    if (外贸 && !v?.trim() && 填了("whatsapp")) return Promise.resolve();
+                    if (外贸档 && !v?.trim() && 填了("whatsapp")) return Promise.resolve();
                     // 外贸：电话、WhatsApp 都没有，有邮箱也行——按邮箱认人（2026-10-07，lib/email-dedupe.ts）；邮箱也没有、有微信也行（2026-10-19）
                     // 原来有号码的照旧不许清空（服务端同一条），所以只管新建和原来就没电话的
                     // 再没有，有阿里国际站 ID 也行（2026-10-21）
-                    if (外贸 && !v?.trim() && !editing?.phone && (填了("email") || 填了("wechat") || 填了("alibabaId"))) return Promise.resolve();
-                    if (外贸 && !v?.trim() && 电话必填) return Promise.reject(new Error(四选一说法));
+                    if (外贸档 && !v?.trim() && !editing?.phone && (填了("email") || 填了("wechat") || 填了("alibabaId"))) return Promise.resolve();
+                    if (外贸档 && !v?.trim() && 电话必填) return Promise.reject(new Error(四选一说法));
                     // 共享试用区里号码是打了码给人看的：没动它就放行，服务端会认回原号（排查 A2）
                     if (editing && v && v.includes("*") && v === editing.phone) return Promise.resolve();
                     const r = 查电话(v, { 必填: 电话必填 });
@@ -417,6 +463,19 @@ function CustomerFormInner({
         </Row>
 
         <Row gutter={16}>
+          {企业 ? (<>
+          <Col span={8}>
+            <Form.Item label="简称" name="shortName" rules={[{ max: 简称上限, message: `简称最多 ${简称上限} 个字` }]}>
+              <Input placeholder="列表、项目里显示用，选填" maxLength={简称上限} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            {/* 级别 S/A/B/C（定稿 P5 第 23 条，原来的 D 并进 C）：还是存 extra.level */}
+            <Form.Item label="客户级别" name={["extra", "level"]}>
+              <Select allowClear placeholder="没分级" options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} />
+            </Form.Item>
+          </Col>
+          </>) : (<>
           <Col span={8}>
             <Form.Item label={b.fields.major} name="major">
               {/* 叫「行业」（或「所属行业」这类，2026-10-04 L-016 同一个认法）时给候选，也能直接填；教培的「专业」千变万化，照旧手填 */}
@@ -439,6 +498,7 @@ function CustomerFormInner({
               />
             </Form.Item>
           </Col>
+          </>)}
           {/* 只有一个人时不问归属，见 lib/utils.ts 的 独自一人 */}
           {!独自一人(users, editing?.salesOwnerId) && (
             <Col span={8}>
@@ -458,7 +518,62 @@ function CustomerFormInner({
           外贸档案（2026-10-05 外贸客户建议：「增加列：国家，Whatsapp，Wechat，邮箱」，来源是补的——外贸不摆渠道）。
           国家、来源能选也能填；WhatsApp 和电话常常是同一个号，旁边一键抄过来
         */}
-        {外贸 && (
+        {企业 && (
+          <>
+            {/* 地址（待定 17）：国内到省 / 市 / 区县，国外只要国家 + 城市；国家空着、填了省市的当国内 */}
+            <Row gutter={16}>
+              <Col span={国内址 ? 6 : 8}>
+                <Form.Item label="国家" name="addrCountry" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
+                  <AutoComplete
+                    allowClear
+                    placeholder={国内叫法}
+                    options={[{ value: 国内叫法 }, ...国家候选.map((g) => ({ label: g.组, options: g.国家.filter((x) => x !== 国内叫法).map((x) => ({ value: x })) }))]}
+                    filterOption={(输入, o) => String((o as { value?: string } | undefined)?.value ?? "").toLowerCase().includes(输入.toLowerCase())}
+                  />
+                </Form.Item>
+              </Col>
+              {国内址 && (
+                <Col span={6}>
+                  <Form.Item label="省" name="addrProvince" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
+                    <Input placeholder="如 广东省" />
+                  </Form.Item>
+                </Col>
+              )}
+              <Col span={国内址 ? 6 : 16}>
+                <Form.Item label="城市" name="addrCity" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
+                  <Input placeholder={国内址 ? "如 深圳市" : "如 Los Angeles"} />
+                </Form.Item>
+              </Col>
+              {国内址 && (
+                <Col span={6}>
+                  <Form.Item label="区县" name="addrDistrict" rules={[{ max: 地址每格上限, message: `最多 ${地址每格上限} 个字` }]}>
+                    <Input placeholder="如 南山区" />
+                  </Form.Item>
+                </Col>
+              )}
+            </Row>
+            <Row gutter={16}>
+              <Col span={16}>
+                <Form.Item
+                  label="官网"
+                  name={["extra", "website"]}
+                  rules={[{ validator: (_, v?: string) => { const r = 规整官网(v); return r.ok ? Promise.resolve() : Promise.reject(new Error(r.error)); } }]}
+                >
+                  <Input placeholder="如 www.example.com" />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                {/* 分配方式（定稿 P5 第 30 条）：选项在设置 → 字典「分配方式」，能改能加；原值停用了也照样显示 */}
+                <Form.Item label="分配方式" name="assignWay">
+                  <Select allowClear placeholder="选填"
+                    options={[...new Set([...分配方式选项, ...(editing?.assignWay ? [editing.assignWay] : [])])].map((s) => ({ value: s, label: s }))} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </>
+        )}
+
+        {外贸档 && (
           <>
             <Row gutter={16}>
               <Col span={8}>
@@ -581,8 +696,14 @@ function CustomerFormInner({
 
         {/* 企业版：只问一格必填的渠道（启用中的；原来挂着已停用的照样显示），不摆推荐人三选一、渠道负责人（10-28 去遗留 A3） */}
         {企业 && (
-          <Form.Item label="渠道" name="channelId" rules={[{ required: 渠道必填, message: "请选择渠道" }]}>
-            <Select showSearch placeholder="选择渠道" optionFilterProp="label" options={渠道选项} />
+          /* 客户来源只记第一次带来的渠道（定稿 P5 第 22 条）：建好之后锁住，服务端 saveCustomer 同一条 */
+          <Form.Item
+            label="客户来源"
+            name="channelId"
+            rules={[{ required: 渠道必填, message: "请选择客户来源渠道" }]}
+            extra={来源锁着 ? "客户来源记的是第一次带来的渠道，建好之后不改；后来又从别的渠道来的，记在项目上" : undefined}
+          >
+            <Select showSearch placeholder="选择渠道" optionFilterProp="label" options={渠道选项} disabled={来源锁着} />
           </Form.Item>
         )}
 
@@ -698,7 +819,7 @@ function CustomerFormInner({
             </Form.Item>
           </Col>
           </>)}
-          {!外贸 && (
+          {!外贸 && !企业 && (
             <Col span={8}>
               <Form.Item label="预计签约时间" name="expectedSignAt" extra={editing?.expectedSignAt && !isCalendarDate(editing.expectedSignAt) ? "旧记录未保存原日历日，请核对日期；重新选日期后会保存原日历日。" : undefined}>
                 <DatePicker style={{ width: "100%" }} placeholder="选择日期" />
@@ -826,4 +947,29 @@ function 认人记号() {
       ◆
     </span>
   );
+}
+
+/** 企业版并发比对的基准：简称、地址四格、分配方式（打开表单那一刻的值） */
+function 企业资料基准(e: CustomerRow) {
+  return {
+    shortName: e.shortName ?? null,
+    addrCountry: e.addrCountry ?? null,
+    addrProvince: e.addrProvince ?? null,
+    addrCity: e.addrCity ?? null,
+    addrDistrict: e.addrDistrict ?? null,
+    assignWay: e.assignWay ?? null,
+  };
+}
+
+/** 企业版档案只比级别、官网两格，改了哪格交哪格；都没改 = 不交 extra（不碰档案） */
+export function 企业档案改动(
+  新: { level?: string | null; website?: string | null } | undefined,
+  旧: 外贸档案 | null | undefined,
+): { extra?: { level?: string | null; website?: string | null } } {
+  const 改: { level?: string | null; website?: string | null } = {};
+  const 新级 = 新?.level || null;
+  if (新级 !== 企业级别(旧?.level)) 改.level = 新级;
+  const 新网 = (新?.website ?? "").trim() || null;
+  if (新网 !== ((旧?.website ?? "").trim() || null)) 改.website = 新网;
+  return Object.keys(改).length ? { extra: 改 } : {};
 }
