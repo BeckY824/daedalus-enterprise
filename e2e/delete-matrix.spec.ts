@@ -62,7 +62,7 @@ test.afterAll(async () => {
   await p.$disconnect();
 });
 
-test("删客户（批量 3 位）+ 撤销导入批次：叫「学员」时确认框写学员、列全一起删的；联系人进未归属", async ({ page }) => {
+test("删客户（批量 3 位）+ 撤销导入批次：叫「学员」时确认框写学员、列全一起删的；联系人进未归属（企业版进回收站）", async ({ page }) => {
   const p = 连库();
   const 名 = ["批删甲", "批删乙", "批删丙"].map((n) => `${n}${戳}`);
   for (const [i, n] of 名.entries()) {
@@ -89,18 +89,29 @@ test("删客户（批量 3 位）+ 撤销导入批次：叫「学员」时确认
 
     const 框 = page.getByRole("dialog");
     await expect(框).toContainText(`确认删除 ${名.join("、")} 这 3 位学员？`);
-    await expect(框).toContainText("会一起删掉：3 条跟进记录");
-    await expect(框).toContainText("2 位联系人不删，留在联系人页，写「未归属」");
-    await expect(框).toContainText("删除后不能恢复");
+    if (企业版) {
+      // 企业版（P9）删了进回收站：联系人、沟通记录跟着一起进，照实说能恢复
+      await expect(框).toContainText("2 位联系人、3 条沟通记录一起进回收站");
+      await expect(框).toContainText("30 天内可在 设置 → 回收站 恢复");
+    } else {
+      await expect(框).toContainText("会一起删掉：3 条跟进记录");
+      await expect(框).toContainText("2 位联系人不删，留在联系人页，写「未归属」");
+      await expect(框).toContainText("删除后不能恢复");
+    }
     await expect(框).not.toContainText("客户");
     await 框.getByRole("button", { name: /删\s*除/ }).click();
-    await expect(page.locator(".ant-message")).toContainText("已删除 3 位学员，2 位联系人留在联系人页");
+    await expect(page.locator(".ant-message")).toContainText(
+      企业版 ? "已删除 3 位学员，可在回收站恢复" : "已删除 3 位学员，2 位联系人留在联系人页",
+    );
     for (const n of 名) await expect(page.locator("tr.ant-table-row", { hasText: n })).toHaveCount(0);
     await expect(page.locator("tr.ant-table-row", { hasText: `不删的${戳}` })).toHaveCount(1);
 
     await page.goto("/contacts");
-    await expect(page.locator("tr.ant-table-row", { hasText: `${名[0]}的联系人` })).toContainText("未归属");
-    await expect(page.locator("tr.ant-table-row", { hasText: `${名[1]}的联系人` })).toContainText("未归属");
+    for (const 联系人 of [`${名[0]}的联系人`, `${名[1]}的联系人`]) {
+      const 行 = page.locator("tr.ant-table-row", { hasText: 联系人 });
+      if (企业版) await expect(行).toHaveCount(0);
+      else await expect(行).toContainText("未归属");
+    }
 
     // 撤销导入批次：确认说清删几位、用学员这个叫法
     await page.goto("/settings");
