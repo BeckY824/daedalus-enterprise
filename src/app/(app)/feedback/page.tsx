@@ -1,5 +1,4 @@
 import { multiTenant } from "@/lib/tenant/context";
-import { 本地模式 } from "@/lib/desktop/cloud";
 import MyFeedbackView from "./MyFeedbackView";
 
 export const dynamic = "force-dynamic";
@@ -9,5 +8,5 @@ export const dynamic = "force-dynamic";
  * 带 ?id= 直接落在那一串。数据在云端，页面自己去问（components/feedback/store.ts），服务端这里只定「反馈去哪」。
  */
 export default function MyFeedbackPage() {
-  return <MyFeedbackView 去向={本地模式() || multiTenant() ? "cloud" : "github"} />;
+  return <MyFeedbackView 去向={multiTenant() ? "cloud" : "github"} />;
 }

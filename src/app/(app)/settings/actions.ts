@@ -24,9 +24,6 @@ import { 配账号, 改密码 as 改控制面密码, 核对密码, 撤成员, �
 import { 列出 as 列出设备, 吊销 as 吊销设备 } from "@/lib/tenant/device-token";
 import { 本地模式, 读 as 读云端凭据, 发码 as 云端发码, 重置密码 as 云端重置密码, 清 as 清云端凭据 } from "@/lib/desktop/cloud";
 import { destroySession } from "@/lib/auth";
-import { 本机我 } from "@/lib/desktop/me";
-import { 云端跟着改名 } from "@/lib/desktop/my-name";
-import { 调云 } from "@/lib/sync/client";
 import { isEmail } from "@/lib/tenant/accounts";
 import { createSession } from "@/lib/auth";
 import { saveLlmConfig, clearLlmConfig, resolveLlmConfigForTest, testLlm, type ModelOption } from "@/lib/llm";
@@ -552,8 +549,6 @@ export async function 改我的资料(input: { name: string; title: string }) {
     summary: `改了自己的资料：${旧.name}${旧.title ? `（${旧.title}）` : ""} → ${name}${title ? `（${title}）` : ""}`,
     detail: { from: { name: 旧.name, title: 旧.title }, to: { name, title } },
   });
-  // 桌面端登录着云端：云端账号名一起改（手机「我的」、授权框、运营台显示它）。推不上不拦，下次建团队 / 登录时再对
-  if (本地模式() && 旧.name !== name && 读云端凭据()?.token && (await 本机我(prisma))?.id === me.id) await 云端跟着改名(调云, name).catch(() => false);
   // 名字出现在左栏、署名、业绩榜上，改完整站都要跟着变
   revalidatePath("/", "layout");
   return { ok: true as const };
@@ -689,15 +684,14 @@ export async function 退出这台机器(id: string) {
 const 是网址 = (s: string) => /^https?:\/\//.test(s.trim());
 
 /**
- * 本机的设置（AI 接入、MCP、自动判断）：桌面端本地模式下是这台电脑主人自己的，不同步给团队，
- * 团队版的业务员（SALES）在自己电脑上也能改（2026-10-04 两档权限）。网页版 / 托管版照旧只有管理员
+ * 本机的设置（AI 接入、MCP、自动判断）：只有管理员能改。
+ * 原来桌面端本地模式下业务员在自己电脑上也能改，那条分支死代码第三批删了（企业版里 DESKTOP_LOCAL 恒不为 1）
  */
 async function 能改本机设置() {
-  const me = await requireUser();
-  if (process.env.DESKTOP_LOCAL === "1") return me;
+  await requireUser();
   return requireAdmin();
 }
-const 本机说了算 = (role: string) => role === "ADMIN" || process.env.DESKTOP_LOCAL === "1";
+const 本机说了算 = (role: string) => role === "ADMIN";
 
 /**
  * 保存 AI 接入配置。只有管理员能改；日志只记"改了"，不记任何值——

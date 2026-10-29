@@ -54,17 +54,12 @@ export function 刷新我的反馈({ 新 = false }: { 新?: boolean } = {}): Pro
   return 在问;
 }
 
-/** 点开了一串：本地马上收掉红点（不等回音），再告诉本地服务记下 */
+/** 点开了一串：马上收掉红点。原来还要告诉桌面端本地服务记已读（/api/feedback/mine/seen），那条路死代码第三批删了 */
 export function 标已读(f: 带未读的反馈) {
   const 回 = 最后一条回复(f);
   if (!回 || !f.未读) return;
   const 反馈 = 态.反馈.map((x) => (x.id === f.id ? { ...x, 未读: false } : x));
   设({ ...态, 反馈, 未读数: 反馈.filter((x) => x.未读).length });
-  void fetch("/api/feedback/mine/seen", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ feedbackId: f.id, messageId: 回.id }),
-  }).catch(() => {});
 }
 
 /** 接着说发出去了：把云端回的那条接到串尾，不用等下一次问 */

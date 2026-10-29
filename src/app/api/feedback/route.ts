@@ -4,7 +4,6 @@ import { requireUser } from "@/lib/auth";
 import { control } from "@/lib/tenant/control";
 import { multiTenant, currentTenant } from "@/lib/tenant/context";
 import { 认领, 取Bearer } from "@/lib/tenant/device-token";
-import { 本地模式, 云端地址, 读 as 读云端凭据 } from "@/lib/desktop/cloud";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,8 +14,7 @@ const 上限 = 4000;
 /**
  * 「哪儿不好用」的收件口。**一条路由，三种部署各走各的**：
  *
- *   桌面端（本地模式）—— 库在用户自己机器上，我们读不到，所以这里只做转发：
- *                        带上那枚设备令牌发到云端同名接口，由云端落库
+ *   桌面端转来的      —— 带着设备令牌（下面 Bearer 那段）；本机转发那段在死代码第三批删了
  *   托管版             —— 我们就是云端，直接写控制面库
  *   自部署的开源版     —— **什么都不发**。他的实例连我们的云都不该认识，
  *                        界面在这种部署下压根不发请求，直接把人送去 GitHub issues
@@ -46,23 +44,6 @@ export async function POST(req: Request) {
   const me = await requireUser();
   const 单 = await 读正文(req);
   if ("error" in 单) return NextResponse.json({ error: 单.error }, { status: 400 });
-
-  if (本地模式()) {
-    const 凭据 = 读云端凭据();
-    if (!凭据) return NextResponse.json({ error: "没登录云端账号，暂时发不出去" }, { status: 503 });
-    try {
-      const r = await fetch(`${云端地址()}/api/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${凭据.token}` },
-        body: JSON.stringify(单),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!r.ok) return NextResponse.json({ error: "云端没收下，稍后再试" }, { status: 502 });
-    } catch {
-      return NextResponse.json({ error: "连不上，检查一下网络" }, { status: 502 });
-    }
-    return NextResponse.json({ ok: true });
-  }
 
   if (!multiTenant()) {
     // 自部署：不往我们这儿发，也不假装发成功了

@@ -1,6 +1,6 @@
 /**
  * 「我的反馈」的几样纯规则：串长什么样、哪条算没看过、提醒里那一句怎么截。
- * 云端（lib/feedback-thread.ts）、桌面端本地服务（lib/desktop/feedback.ts）、页面三处都用，所以不引任何库。
+ * 云端（lib/feedback-thread.ts）、页面两处都用（桌面端本地服务那份死代码第三批删了），所以不引任何库。
  * tests/feedback-thread.test.ts 钉着。
  */
 
