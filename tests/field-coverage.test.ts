@@ -68,6 +68,9 @@ const 可写: Record<string, string[]> = {
   EntCustomerLink: ["otherId", "note"],
   // 企业版联系人挂多位客户（2026-10-29，迁移 090）：联系人卡「挂到别的客户」（customers/[id]/contact-link-actions.ts 的 挂到客户 / 改挂靠说明）
   ContactCustomer: ["customerId", "note"],
+  // 企业版项目关联客户 / 联系人（2026-10-29 P17，迁移 094 / 095）：项目页「关联客户」「关联联系人」卡（projects/relate-actions.ts）
+  ProjectCustomer: ["customerId", "roles"],
+  ProjectContact: ["contactId", "roles", "stance"],
   // 未归属联系人：联系人页上点开改资料（saveUnassignedContact）
   UnassignedContact: ["name", "position", "phone", "email", "wechat", "remark"],
   Opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "remark", "customerId", "ownerId"],
@@ -383,6 +386,9 @@ const 派生: Record<string, Record<string, string>> = {
   ContactCustomer: {
     contactId: "挂的是哪位联系人，挂的时候定，不改（换人等于另挂一行）",
   },
+  // 企业版项目关联客户 / 联系人（2026-10-29 P17）
+  ProjectCustomer: { projectId: "关联到哪个项目，在项目页上加的时候定，不改" },
+  ProjectContact: { projectId: "关联到哪个项目，在项目页上加的时候定，不改" },
   // 团队版项目模式 1a（2026-10-23）：系统打上的
   Project: {
     customerId: "建档向导里和客户一起建，不改（改了等于另一单生意）",

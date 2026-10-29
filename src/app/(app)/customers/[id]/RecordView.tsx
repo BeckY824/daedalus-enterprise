@@ -122,6 +122,7 @@ export default function RecordView({
   opportunities,
   报价记录: 报价记录档 = [],
   项目们 = null,
+  参与项目们 = null,
   旺旺们 = [],
   联系人附件数 = null,
   tasks,
@@ -171,6 +172,8 @@ export default function RecordView({
   const [建项目开着, set建项目开着] = useState(false);
   /** 记跟进默认挂的项目：没结束、不在公海的，最近动过的排前面（page.tsx 按 updatedAt 倒序给） */
   const 在推项目 = 项目们?.filter((p) => !p.result && !p.pooledAt) ?? null;
+  // 当主客户的项目上勾过的项目身份（P17）：摆在「项目」那一节每行的小字里
+  const 主项目身份 = new Map((参与项目们 ?? []).filter((x) => x.主).map((x) => [x.projectId, x.身份]));
   const [资料全开, set资料全开] = useState(false);
   /*
     外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」（订单号那几格 2026-10-29 随订单表删了）；
@@ -869,11 +872,28 @@ export default function RecordView({
                     <Tag style={{ margin: 0, borderRadius: 6 }}>{p.phase}</Tag>
                     <span className="rec-mini-m" title={p.result ?? p.node}>{p.result === "异常状态" ? `异常 · ${p.node}` : p.result ?? p.node}</span>
                     <span className="rec-mini-m rec-mini-money">{金额(p.amount, p.currency)}</span>
+                    {主项目身份.get(p.id)?.length ? <span className="rec-mini-m" title={`项目身份：${主项目身份.get(p.id)!.join("、")}`}>{主项目身份.get(p.id)!.join("、")}</span> : null}
                   </span>
                 </RowLink>
               ))}
             </div>
           ) : null}
+          {参与项目们 && 参与项目们.some((x) => !x.主) && (
+            /* 企业版项目关联（P17）：这位作为关联客户（不是主客户）参与的项目和身份。只读，身份在项目页「关联客户」里改 */
+            <div className="rec-sec">
+              <div className="rec-sec-t">
+                <span>参与的项目 {参与项目们.filter((x) => !x.主).length}</span>
+              </div>
+              {参与项目们.filter((x) => !x.主).map((x) => (
+                <RowLink key={x.projectId} href={`/projects/${encodeURIComponent(x.projectId)}`} className="rec-mini rec-mini-2">
+                  <span className="rec-mini-n" title={x.名}>{x.名}</span>
+                  <span className="rec-mini-sub">
+                    {x.身份.length ? x.身份.map((t) => <Tag key={t} style={{ margin: 0, borderRadius: 6 }}>{t}</Tag>) : <span className="rec-mini-m">没勾身份</span>}
+                  </span>
+                </RowLink>
+              ))}
+            </div>
+          )}
           {摆法.关联客户 && 关联们 && <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} />}
           {!项目们 && (
             <div className="rec-sec">

@@ -294,6 +294,9 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false): Rec
     case "ProjectNodeLog":
     case "FollowUpProject":
     case "EntFollowUpMeta":
+    // 企业版项目关联客户 / 联系人（2026-10-29 P17）：跟项目走——看得到项目就看得到关联了谁
+    case "ProjectCustomer":
+    case "ProjectContact":
       return { project: 看得到的项目(我, 客户) };
     // 企业版卡点（10-26）：项目负责人、点了同意的组员、看得到这位客户的、指认给的、发布的；
     // 项目放在公海里时卡点不跟着公开（E11：无关的人直连接口也拿不到）

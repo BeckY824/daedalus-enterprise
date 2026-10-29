@@ -26,6 +26,7 @@ import { 时限提醒of } from "@/lib/project/blocker-rules";
 import { 联系人附件入口, 项目附件入口 } from "@/app/api/attachments/access";
 import { 项目画像项, 其他项, 字典定义 } from "@/lib/enterprise/dict-kinds";
 import { 读产品需求 } from "@/lib/project/profile-rules";
+import { 项目关联们 } from "@/lib/project/relate";
 import type { 项目画像 } from "./ProjectExtras";
 import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 
@@ -133,6 +134,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     值: { budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, demandStatus: p.demandStatus, productNeeds: 存的需求 },
   };
   const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
+  // 企业版关联客户 / 联系人（P17）：同画像，公海里同事客户的项目没领之前不给
+  const 关联 = 企业 && 露 ? await 项目关联们(me, p.id) : null;
   const 详情: 项目详情 = {
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
@@ -172,6 +175,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     提成,
     ...(联系人附件 ? { 联系人附件 } : {}),
     ...(画像 ? { 画像 } : {}),
+    ...(关联 ? { 关联 } : {}),
     ...(项目附件 ? { 项目附件 } : {}),
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };

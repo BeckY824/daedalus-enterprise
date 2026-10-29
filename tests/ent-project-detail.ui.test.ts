@@ -15,6 +15,8 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,指认卡点Action=f,认领卡点Action=f,接受卡点Action=f,转让卡点Action=f,返回卡点Action=f,改卡点进度Action=f,解决卡点Action=f,卡点可选的人Action=async()=>[];`);
   stub(/customers\/\[id\]\/ai$/, `export const parseFollowUpDraft=async()=>({ok:false,error:"未启用"});`);
+  stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=f,解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=f,解除关联联系人Action=f,搜项目联系人=async()=>[];`);
+  stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -36,6 +38,13 @@ beforeAll(async () => {
     const 详情=(企业)=><ProjectDetail p={{...基,企业版:企业,能记沟通:企业,提成:企业?提成:null,...(企业?{项目来源:{name:'渠道'+串,跟客户:true},channelId:null,已立项天数:28,渠道们:[],aiEnabled:true,level:'A',所在地:{addrCountry:'中国',addrProvince:'广东省',addrCity:'深圳市'+'市'.repeat(30),addrDistrict:'南山区',location:'科技园'+串}}:{})}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={企业?{们:[],能发:true,默认:{},人们:[]}:null}/>;
     const 包=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>{x}</BusinessProvider></App></ConfigProvider>;
     window.__render=(企业)=>root.render(包(详情(企业)));
+    /* P17 关联客户 / 联系人：超长客户名、超长联系人显名、选满身份，挂在右栏 */
+    const 关联={客户们:[{customerId:'c1',名:'超长客户名'+串,全称:'某某超长公司名有限公司'.repeat(4),身份:['业主方','总包方','分包方','投资方'],主:true,看得到:true},
+      {customerId:'c2',名:'关联客户'+串,全称:'',身份:['监理方','设计方','引荐方'],主:false,看得到:true},{customerId:'c3',名:'同事的客户 #ABC123',全称:'',身份:[],主:false,看得到:false}],
+      联系人们:[{contactId:'k1',名:'超长客户名'+串+'|张先生',姓名:'张三',customerId:'c1',角色:['决策人','审批人','影响人','使用人','经办人'],立场:'盟友',主:true,看得到:true},
+      {contactId:'k2',名:'关联客户'+串+'|🔥姓名暂未核实',姓名:'王总',customerId:'c2',角色:[],立场:null,主:false,看得到:true}],
+      选项:{身份:['业主方','总包方','分包方','投资方','垫资方','运营方','引荐方','监理方','设计方'],角色:['决策人','审批人','影响人','使用人','经办人'],立场:['待定','中立','对手','线人','军师','盟友']},上限:30};
+    window.__relate=(能改)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,关联}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{},人们:[]}}/>));
     /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
     const 行=(id,name,阶段,进程,x)=>({id,name,阶段,进程,结局:null,pooled:false,customerName:'超长客户名'+串,lastType:'PHONE',lastAt:'2026-10-20T00:00:00.000Z',lastNote:'最近一句'+串,nextAt:null,...x});
     const 名单={取到上限:false,rows:[行('p1',长,'订单','生产备货'+'备'.repeat(20)),行('p2','线索项目'+串,'线索','初次接触'),行('p5','没填阶段的项目',null,null,{lastAt:null,lastNote:null}),行('p3',串,'商机','方案报价',{pooled:true,结局:'输单'}),行('p4','商机二','商机','首款支付',{nextAt:'2026-10-01'})]};
@@ -86,6 +95,46 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
       expect(点中.replace(/\s/g, "")).toBe(name.replace(/\s/g, ""));
     }
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280])("P17 %ipx：右栏关联客户 / 关联联系人跟在画像后；超长名字、选满身份角色不撑出卡片；主客户、主联系人不给解除", async (w) => {
+  const { page, errors } = await open(true, w);
+  try {
+    await page.evaluate(() => (window as unknown as { __relate: (x: boolean) => void }).__relate(true));
+    await page.getByText("关联客户（3）").waitFor();
+    const 标题 = await 卡标题(page, ".proj-side");
+    const 位 = (t: string) => 标题.indexOf(t);
+    expect(位("关联客户（3）")).toBeGreaterThan(位("项目"));
+    expect(位("关联联系人（2）")).toBe(位("关联客户（3）") + 1);
+    expect(位("进程变更")).toBeGreaterThan(位("关联联系人（2）"));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const 伸出 = await page.locator(".proj-side > .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
+    expect(伸出).toEqual([]);
+    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "关联客户（3）" }).first();
+    const 卡框 = (await 卡.boundingBox())!;
+    for (const el of await 卡.locator(".proj-rel-row, .ant-select").all()) {
+      const b = (await el.boundingBox())!;
+      expect(b.x + b.width).toBeLessThanOrEqual(卡框.x + 卡框.width + 1);
+    }
+    // 主客户不给解除；看不到的那家没链接
+    expect(await page.getByRole("button", { name: /^解除和 超长客户名/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^解除和 关联客户/ }).count()).toBe(2);
+    expect(await 卡.locator("a", { hasText: "同事的客户" }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("P17 只读：关联卡只列文字，没有下拉、没有关联 / 解除按钮", async () => {
+  const { page } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __relate: (x: boolean) => void }).__relate(false));
+    await page.getByText("关联客户（3）").waitFor();
+    const 两卡 = page.locator(".proj-side > .ant-card").filter({ hasText: /关联(客户|联系人)（/ });
+    expect(await 两卡.count()).toBe(2);
+    expect(await 两卡.locator(".ant-select").count()).toBe(0);
+    expect(await 两卡.getByRole("button", { name: /关联一|解除和/ }).count()).toBe(0);
+    expect(await 两卡.first().innerText()).toContain("监理方、设计方、引荐方");
   } finally { await page.close(); }
 });
 
