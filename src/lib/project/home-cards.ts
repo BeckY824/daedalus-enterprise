@@ -14,8 +14,10 @@
  *                          回收日和项目页「即将回收」标签同一套算法（timeout.ts 的 超时回收日），只是提前量从 1 天放到 3 天。
  *                          组织规则里「超时回收」没开 = 没有回收日 = 恒为 0
  *   month-won  本月赢单   这个月有一条「商机 → 订单」节点留痕的项目（ProjectNodeLog，和数据看板「转订单」同一口径）
- *   today-todo 今日待办   不是项目筛选：我名下今天到期 + 已经逾期的跟进计划和待办（reminders-db.ts 的 数提醒，
- *                          和欢迎句「今天要跟 N 条」、左栏角标、Dock 同一个数），点了去复盘页「待办」页签、选中「今天到期」、看本人
+ *   today-todo 今日待办   不是项目筛选：我名下今天到期的跟进计划和待办（任务 + 跟进计划两种都算），
+ *                          点了去复盘页「待办」页签、选中「今天到期」、看本人。数用复盘页同一个取数（board-todos-db.ts 的 复盘待办计数），
+ *                          所以大数字 = 落点列表的条数。逾期的不进大数字：有逾期时卡下面另起一行「另有 M 条逾期」，点了去 f=overdue（10-29 总控审）。
+ *                          注意它和左栏角标、Dock（数提醒 = 今天 + 逾期）不是同一个数
  *
  * 「在推」= 没结局、不在项目公海（active.ts 的 在推项目条件）。
  * 看得到哪些不在这里管：取数走带限定的 prisma（lib/team-scope.ts），业务员只数自己看得到的，老板数全员。
@@ -45,8 +47,11 @@ export const 首页卡色: Partial<Record<首页卡键, "good" | "warn">> = {
   "month-won": "good",
 };
 
-/** 摆着的卡各几个（home-cards-db.ts 的 数首页卡 给，首页右侧那一列画）；没摆的卡不数 */
-export type 首页卡数 = Partial<Record<首页卡键, number>>;
+/**
+ * 摆着的卡各几个（home-cards-db.ts 的 数首页卡 给，首页右侧那一列画）；没摆的卡不数。
+ * 逾期待办：摆了今日待办才有，是卡下面那行「另有 M 条逾期」的 M
+ */
+export type 首页卡数 = Partial<Record<首页卡键, number>> & { 逾期待办?: number };
 
 /** 「重点项目」认的客户级别。级别存在 CustomerExtra.level（大写），以后加了 S 级就自动算进来 */
 export const 重点级别 = ["S", "A"] as const;
@@ -61,7 +66,7 @@ export const 首页卡口径: Record<首页卡键, { 名: string; 说明: string
   "no-follow": { 名: "暂未跟进", 说明: "在推的项目里，还没有挂上任何一次沟通的" },
   "due-soon": { 名: "即将逾期", 说明: `在推的线索、商机项目里，${即将逾期天数} 天内会因为没跟进被收回公海的` },
   "month-won": { 名: "本月赢单", 说明: "这个月从商机转成订单的项目" },
-  "today-todo": { 名: "今日待办", 说明: "今天到期和已经过期的跟进计划、待办，逾期的排最前" },
+  "today-todo": { 名: "今日待办", 说明: "今天到期的跟进计划和待办；逾期的另算" },
 };
 
 /**
@@ -70,6 +75,11 @@ export const 首页卡口径: Record<首页卡键, { 名: string; 说明: string
  */
 export function 首页卡链接(键: 首页卡键, 我?: string): string {
   return 键 === "today-todo" ? 复盘地址({ f: "today", ownerId: 我 }) : `/projects?f=${键}`;
+}
+
+/** 今日待办卡下面「另有 M 条逾期」去哪：复盘页待办页签选中「逾期」，同样带 ownerId */
+export function 逾期待办链接(我?: string): string {
+  return 复盘地址({ f: "overdue", ownerId: 我 });
 }
 
 /** 地址栏里的 f：认得的项目卡原样给回，乱传、传数组、传 today-todo（不是项目筛选）都当没筛 */

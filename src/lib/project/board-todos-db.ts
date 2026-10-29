@@ -11,6 +11,15 @@ import { 挑一页, 复盘待办每页, type 复盘待办, type 复盘待办行,
  * 不限定时轻列表走计划页同一个短时缓存（同一个键），30 人同时开复盘页不各查一遍。
  * 分页在服务端：轻列表上挑出当页的 20 条（挑一页），只取这 20 条的详情和它们客户的进行中项目。
  */
+/**
+ * 只要四张卡的条数时（首页「今日待办」卡）：同一份轻列表、同一层限定、同一个 挑一页，
+ * 所以首页卡上的数 = 点进 /overview?f=today（或 f=overdue）列出来的条数。不取详情
+ */
+export async function 复盘待办计数(只看?: string, now: ReturnType<typeof dayjs> = dayjs()): Promise<复盘待办["计数"]> {
+  const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
+  return 挑一页(await 未完成轻列表(prisma, 共用), { 只看, now }).计数;
+}
+
 export async function 复盘待办of(
   只看?: string,
   q: { 类型?: 待办类型; 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number } = {},
