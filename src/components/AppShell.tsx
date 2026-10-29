@@ -273,7 +273,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
     const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
     if (企) return 企;
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/follow-ups", "/settings", "/billing"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/pool", "/follow-ups", "/settings", "/billing"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";

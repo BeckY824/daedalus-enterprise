@@ -29,6 +29,8 @@ import { 像邮件原文, type 邮件信号 } from "@/lib/research/verify/mail";
 import { 是免费邮箱 } from "@/lib/research/verify/domain";
 import { ComposerFoot, ComposerTools, ComposerTop, SendKey } from "./ComposerParts";
 import CardScanKey from "./CardScanKey";
+import DedupeKey from "./DedupeKey";
+import { useNarrow } from "@/lib/roster";
 import type { Suggestion } from "./HomeChat";
 import type { 这一屏 } from "./useHomeTurns";
 
@@ -315,6 +317,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const 摆建议 = empty && !空库 && suggestions.length > 0 && 模式 === "宽";
   const 问这条 = (x: Suggestion) => submit(x.kind === "prep" ? "/prep" : x.kind === "recap" ? "/recap" : x.question);
   const 宽 = 模式 === "宽";
+  /** 手机宽度（和 globals.css 的手机断点同一条线）：企业版项目模式的「附件」在这里改成调相机 */
+  const 手机 = useNarrow("(max-width: 767px)");
 
   return (
     <>
@@ -353,8 +357,13 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
                 摆粘贴键={!背调模式 && !(empty && 空库 && 宽)}
                 on粘贴={() => 粘.去粘贴("")}
                 on预载={预载导入抽屉}
+                附件字={渠道名们 ? "附件" : undefined}
+                摆附件键={!(渠道名们 && 手机)}
               />
-              {渠道名们 && !背调模式 && <CardScanKey 宽={宽} 在跑={running != null} 渠道名们={渠道名们} on出卡={出名片卡} />}
+              {/* 企业版项目模式（只有它传 渠道名们）：背调、查重、附件分开放（10-29 首页改版 待 1）。
+                  桌面：上面的文本附件键带字「附件」+ 查重 + 名片；手机：查重 + 一颗调相机的「附件」，拍的照片走认名片建线索 */}
+              {渠道名们 && !背调模式 && <DedupeKey 宽={宽} />}
+              {渠道名们 && !背调模式 && <CardScanKey 宽={宽} 在跑={running != null} 渠道名们={渠道名们} on出卡={出名片卡} 拍照={手机} />}
             </>
           }
           栏右={<ModelPicker options={models} value={model} />}

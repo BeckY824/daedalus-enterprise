@@ -14,8 +14,12 @@ import type { 背调价目 } from "@/lib/research/actions";
 import type { 邮件信号 } from "@/lib/research/verify/mail";
 import type { Suggestion } from "./HomeChat";
 
-export function ComposerTools({ 宽, 摆背调键, 背调模式, on切背调, files, setFiles, 在跑, 邮件, on开邮件, 摆粘贴键, on粘贴, on预载 }: {
+export function ComposerTools({ 宽, 摆背调键, 背调模式, on切背调, files, setFiles, 在跑, 邮件, on开邮件, 摆粘贴键, on粘贴, on预载, 附件字, 摆附件键 = true }: {
   宽: boolean;
+  /** 附件键上带的字（企业版项目模式叫「附件」，宽屏也带字，和背调、查重并排）；不给 = 只有图标 */
+  附件字?: string;
+  /** 摆不摆选文本附件的键（企业版项目模式手机上换成拍照的「附件」，这颗就不摆） */
+  摆附件键?: boolean;
   /** 这台机器摆不摆背调（自部署 / 企业版网页不摆） */
   摆背调键: boolean;
   背调模式: boolean;
@@ -46,7 +50,7 @@ export function ComposerTools({ 宽, 摆背调键, 背调模式, on切背调, fi
           {宽 && <span>背调</span>}
         </button>
       )}
-      {!背调模式 && <AskFiles files={files} onChange={setFiles} disabled={在跑} />}
+      {!背调模式 && 摆附件键 && <AskFiles files={files} onChange={setFiles} disabled={在跑} 字={宽 ? 附件字 : undefined} />}
       {背调模式 && (
         <button
           type="button"

@@ -6,8 +6,12 @@ import Shortcut from "@/components/Shortcut";
 import Signals from "./Signals";
 import type { 首页信号 } from "./HomeChat";
 
-/** 首页还没问过时的那一屏：问候、日期、三个信号、一句上下文 */
-export default function Welcome({ userName, 信号, context }: { userName: string; 信号?: 首页信号; context: string }) {
+/**
+ * 首页还没问过时的那一屏：问候、日期、三个信号、一句上下文。
+ * 给了 欢迎（企业版项目模式，10-29 首页改版 #9 / #12）：只留按时段的问候和这一句「欢迎使用 {产品名}」，
+ * 日期、信号、上下文、提示词都不出——数字在右边那列指标卡上
+ */
+export default function Welcome({ userName, 信号, context, 欢迎 }: { userName: string; 信号?: 首页信号; context: string; 欢迎?: string }) {
   /*
     问候和日期都得在客户端算：服务端渲染出来的是服务器那台机器的「现在」。
     useSyncExternalStore 的第三个参数是服务端快照——先给一个不带时间的中性值，
@@ -30,6 +34,16 @@ export default function Welcome({ userName, 信号, context }: { userName: strin
     },
     () => "",
   );
+
+  if (欢迎)
+    return (
+      <motion.div className="cli-welcome" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="cli-welcome-t">
+          {greet}，{userName}。
+        </div>
+        <div className="cli-welcome-s cli-welcome-brand">{欢迎}</div>
+      </motion.div>
+    );
 
   return (
     <motion.div className="cli-welcome" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>

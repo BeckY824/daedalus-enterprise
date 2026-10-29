@@ -1378,6 +1378,32 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-welcome-d { margin-top: var(--s1); color: var(--text-muted); font-size: var(--fs-note); }
 .cli-welcome-s { margin-top: 4px; color: var(--text-muted); }
 .cli-welcome-hints { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); color: var(--text-muted); font-size: var(--fs-note); line-height: 1.9; }
+/* 企业版项目模式的「欢迎使用 {产品名}」：产品名可能很长，最多两行，再长省略 */
+.cli-welcome-brand { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+
+/* ---------- 企业版项目模式首页「驾驶舱」（10-29 首页改版 #10 / #11）----------
+   左 2/3 对话、右 1/3 竖排四张指标卡；这一格窄到放不下两列（手机，或左栏 + 对话列表都开着的小窗口）就单列：
+   对话在上、卡在下，手机上卡排成 2×2。量的是这一格的宽（容器查询），不是整个窗口 */
+.cli-ck { container-type: inline-size; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.cli-ck-g { flex: 1; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--s5); }
+.cli-ck .cli-col { max-width: none; margin: 0; min-width: 0; }
+.home-cards { position: sticky; top: var(--s5); align-self: start; display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.cli-empty .home-cards { align-self: center; }
+.home-card { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); color: var(--ink); text-decoration: none; }
+.home-card:hover { border-color: var(--brand-line); color: var(--ink); }
+.home-card-k, .home-card-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-card-k { font-size: var(--fs-note); color: var(--text-muted); }
+.home-card-v { font-family: var(--font-num); font-size: var(--fs-num); font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.home-card:hover .home-card-v { color: var(--brand); }
+.home-card-warn .home-card-v, .home-card-warn:hover .home-card-v { color: var(--danger); }
+@container (max-width: 639px) {
+  .cli-ck-g { grid-template-columns: minmax(0, 1fr); align-content: start; }
+  .home-cards { position: static; align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cli-empty .home-cards { align-self: stretch; }
+}
+@media (max-width: 767px) { .cli:has(.cli-ck) { min-height: 0; } }
+/* 输入框旁「查重」点开的小框 */
+.home-dedupe { display: flex; flex-direction: column; gap: var(--s3); width: 340px; max-width: calc(100vw - 64px); }
 /* 问答贴着输入框往上长。原来是 flex:1 顶在上边，于是只问了一句、答案还在流的时候，
    过程条挂在页顶、输入框钉在页底，中间空一大片（2026-09-18 报上来的那张图）。
    往上长还有一个好处：新的一轮总是出现在眼睛已经在看的地方。 */
@@ -2036,12 +2062,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 }
 /* 卡片式的可点项：悬停抬 3px + 一层浅阴影，按下去回落到 1px。
    1px 那一版量得出来但看不见——抬起要让人看见"它浮起来了"，那才是"能点"的信号 */
-.bill-plan, .cli-q, .cli-sugg, .stat-card-go {
+.bill-plan, .cli-q, .cli-sugg, .stat-card-go, .home-card {
   transition: transform var(--t) var(--ease), box-shadow var(--t) var(--ease),
     scale var(--t-press) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
-.bill-plan:hover, .cli-q:hover, .cli-sugg:hover, .stat-card-go:hover {
+.bill-plan:hover, .cli-q:hover, .cli-sugg:hover, .stat-card-go:hover, .home-card:hover {
   transform: translateY(-3px); box-shadow: 0 8px 22px rgba(17, 24, 39, 0.09); }
-.bill-plan:active, .cli-q:active, .cli-sugg:active, .stat-card-go:active {
+.bill-plan:active, .cli-q:active, .cli-sugg:active, .stat-card-go:active, .home-card:active {
   transform: translateY(-1px); transition-duration: var(--t-press); }
 
 /* 焦点环统一。**只给键盘**：:focus-visible 在鼠标点击时不触发，
@@ -2051,7 +2077,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-ic:focus-visible, .cli-q:focus-visible, .cli-sugg:focus-visible, .cli-cmd:focus-visible,
 .mp-btn:focus-visible, .prop-ok:focus-visible, .prop-no:focus-visible, .bill-plan:focus-visible,
 .set-nav-i:focus-visible, .cmdk-row:focus-visible, .list-sel-x:focus-visible,
-.plan-switch:focus-visible {
+.plan-switch:focus-visible, .home-card:focus-visible {
   outline: 1.5px solid var(--brand);
   outline-offset: 2px;
   border-radius: var(--r-ctl);
@@ -2288,7 +2314,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
      选择器一样的两块也会被它合回去，所以要不一样。tests/reduced-motion.test.ts 锁着 */
   .press:active, .rail-item:active, .cli-q:active, .rail-fb:active, .rail-up:active,
   .pane-ib:active, .set-nav-i:active, .bill-plan:active, .cli-tool:active, .cli-send:active,
-  .ant-btn:active, .ant-dropdown-menu-item:active, .rec-tl-act:active {
+  .ant-btn:active, .ant-dropdown-menu-item:active, .rec-tl-act:active,
+  .home-card:hover, .home-card:active {
     transform: none !important;
   }
   :root .press:active, :root .rail-item:active, :root .cli-q:active, :root .rail-fb:active, :root .rail-up:active,
