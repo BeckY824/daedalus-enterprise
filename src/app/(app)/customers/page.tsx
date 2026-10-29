@@ -20,7 +20,7 @@ import { 客户页签归属 } from "@/lib/pool";
 import { 管全队客户 } from "@/lib/constants";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
-import { 可选项 } from "@/lib/enterprise/dict";
+import { 页面可选项 } from "@/lib/enterprise/dict";
 import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-perm";
 
 export const dynamic = "force-dynamic";
@@ -75,15 +75,14 @@ type SP = Promise<{
 export default async function CustomersPage({ searchParams }: { searchParams: SP }) {
   const me = await requireUser();
   const sp = await searchParams;
-  // 开了「N 天没跟进自动放进公海」的话，一天扫一次；扫出来的这一页就能看到
-  await 自动掉公海(me);
+  // 开了「N 天没跟进自动放进公海」的话，一天扫一次；扫出来的这一页就能看到。业务配置和它互不相干，一起读
+  const [, b] = await Promise.all([自动掉公海(me), getBusiness()]);
 
   const 正整数 = (raw: string | undefined, fallback: number) => {
     const n = Number(raw);
     return Number.isSafeInteger(n) && n > 0 ? n : fallback;
   };
   const pageSize = Math.min(100, Math.max(10, 正整数(sp.pageSize, 20)));
-  const b = await getBusiness();
   // 首页「开始」卡的 ?new=1：项目模式开着时新建走建档向导
   if (b.projectMode && sp.new === "1") redirect("/projects/new");
   // 企业版项目模式：公海统一在 /pool（P7），老链接 ?pool=1 转过去，关键词带上
@@ -97,10 +96,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     带关键词、只筛本表等值的（最常见的「搜一下」）：总数、页码和这一页的 id 一条 SQL 出（P2，query.ts 关键词分页）。
     接不住的组合 快 = null，下面照原来 count + findMany
   */
-  const 快 = sort || 等级排序 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
-  const where = 快 ? null : await 客户筛选条件(sp);
   // URL 参数、删空最后一页都不能使 skip 变成 NaN 或停留在空的越界页。
   const 子集 = 在看子集(sp);
+  // 页签上的数不看筛选，和关键词那条 SQL 一起跑（见下）
+  const 页签数P = 子集 ? Promise.resolve(null) : 客户页签数();
+  // 中间那两步先抛了的话，这条别成「没人接的拒绝」；它自己出错照样在下面 Promise.all 里抛
+  页签数P.catch(() => {});
+  const 快 = sort || 等级排序 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
+  const where = 快 ? null : await 客户筛选条件(sp);
   /*
     两个页签上的数：都不带筛选、和左栏「客户」角标在同一套限定下数（layout.tsx 的 customer.count()），
     所以「我的 / 团队客户 N」+「公海 M」= 角标。子集里不摆页签，不数
@@ -108,7 +111,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 就是页签 = 子集 || !where ? null : 只按页签(where);
   const [筛出, 页签数] = await Promise.all([
     快 ? Promise.resolve(快.total) : 就是页签 ? Promise.resolve(null) : prisma.customer.count({ where: where! }),
-    子集 ? Promise.resolve(null) : 客户页签数(),
+    页签数P,
   ]);
   const 公海总数 = 页签数?.公海 ?? null;
   const 非公海总数 = 页签数?.非公海 ?? null;
@@ -124,8 +127,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     : 0;
   const page = 快?.page ?? Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
 
-  const [rows, users, channels, 用着的职位, 用着的国家] = await Promise.all([
-    快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
+  // 这一页的行和页面上别的几样互不依赖，一次并起来取（10-29 提速：原来行取完以后再一个个 await，十来次往返串着）
+  const 企 = 企业版();
+  const 行P = 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
       where: where!,
       orderBy: 等级排序
         ? [{ extra: { level: { sort: 等级排序 === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }]
@@ -133,13 +137,32 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: 客户行字段,
-    }),
+    });
+  const [
+    rows, users, channels, 用着的职位, 用着的国家,
+    号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
+  ] = await Promise.all([
+    行P,
     负责人候选(),
     可选渠道(),
     // 下拉只要去重后的值：用 groupBy 在库里去重。Prisma 的 distinct 是整列拉回来在 JS 里去重，10 倍数据一次 50–60 ms（2026-10-25）
     prisma.customer.groupBy({ by: ["grade"], where: { grade: { not: null } } }),
     // 国家筛选只给库里真有的（外贸，2026-10-05）：一百多个国家摆一长串，挑到的多半是 0 条
     prisma.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } }),
+    号码脱敏器(),
+    llmEnabled(),
+    // 企业版「交接中」（D10）：等我确认 / 我发起的交接，客户页顶上一条。不是企业版不查、不放
+    企 ? 待确认的交接() : null,
+    能导入导出(me),
+    新建只给自己(me),
+    页面可选项("custStatus"),
+    企 ? 页面可选项("custAssign") : [],
+    企 ? 页面可选项("custType") : [],
+    // 企业版虚线下属的客户：只能看（10-25 实测 F4）。团队版、没开组织架构可见范围时一律空
+    行P.then((rs) => 虚线只读的(defaultClient, rs.map((r) => r.id))),
+    页面可选项("transfer"),
+    sp.directOf ? prisma.channel.findUnique({ where: { id: sp.directOf }, select: { name: true } }).then((c) => c?.name ?? "这个渠道") : null,
+    读的我(defaultClient),
   ]);
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
   const 旧职位 = 用着的职位.map((c) => c.grade!.trim()).filter((g) => g && !b.grades.includes(g)).sort();
@@ -148,18 +171,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 部门选项 = 编制 && new Set(编制.部门.map((d) => d.top).filter(Boolean)).size >= 2
     ? 摊平部门(编制.部门).map(({ d, 层 }) => ({ value: d.id, label: `${"　".repeat(层 - 1)}${d.name}` }))
     : [];
-  const 号 = await 号码脱敏器();
-  const aiEnabled = await llmEnabled();
-
-  // 企业版「交接中」（D10）：等我确认 / 我发起的交接，客户页顶上一条。不是企业版不查、不放
-  const 交接 = 企业版() ? await 待确认的交接() : null;
 
   const 视图 = (
     <CustomersView
       // 公海里的直接分给同事：只给管理员（团队版的老板）。业务员那边不摆（2026-10-20）
       能分配公海={管全队客户(me.role)}
-      能导入导出={await 能导入导出(me)}
-      负责人只能自己={await 新建只给自己(me)}
+      能导入导出={可导入导出}
+      负责人只能自己={只给自己}
       rows={rows.map((r) => 成客户行(r, 号))}
       total={total}
       page={page}
@@ -192,18 +210,17 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "" } : {}),
       }}
       企业版={企业版()}
-      客户状态选项={await 可选项("custStatus")}
-      分配方式选项={企业版() ? await 可选项("custAssign") : []}
-      客户类型选项={企业版() ? await 可选项("custType") : []}
+      客户状态选项={客户状态选项}
+      分配方式选项={分配方式选项}
+      客户类型选项={客户类型选项}
       部门选项={部门选项}
-      // 企业版虚线下属的客户：只能看（10-25 实测 F4）。团队版、没开组织架构可见范围时一律空
-      只读ids={await 虚线只读的(defaultClient, rows.map((r) => r.id))}
+      只读ids={只读ids}
       // 企业版「非原负责人均可领取」（10-26 定稿）：这一页公海里原负责人是我的，领取按钮灰着（接口也拦，pool-actions.ts 领取）
       原负责人领不回ids={拦原负责人() ? rows.filter((r) => r.pool && r.salesOwnerId === me.id).map((r) => r.id) : []}
       // 企业版批量转给别人时可选的转让原因（字典「转让原因」，10-27）；别的版本空 = 不问
-      转让原因={{ 选项: await 可选项("transfer"), 自己: me.id }}
+      转让原因={{ 选项: 转让选项, 自己: me.id }}
       本月新增={sp.createdWithin === "本月"}
-      直接推荐={sp.directOf ? ((await prisma.channel.findUnique({ where: { id: sp.directOf }, select: { name: true } }))?.name ?? "这个渠道") : null}
+      直接推荐={直接推荐}
       本批={sp.batch ? { 几位: total } : null}
       公海数={公海总数}
       客户数={非公海总数}
@@ -211,7 +228,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         第一个页签叫「我的 / 团队客户」：和数据限定同一个来源——读的我() 有值 = 团队业务员、团队没开互看（lib/team-scope.ts，
         按中转名单对出来的本机角色；开了互看列表就是全队的，叫「团队」），读团队() 有 = 进了团队（.team.json）。都是缓存 / 读文件，不多查库
       */
-      客户页签={客户页签归属({ 业务员: !!(await 读的我(defaultClient)), 在团队: !!读团队() })}
+      客户页签={客户页签归属({ 业务员: !!业务员, 在团队: !!读团队() })}
       公海里匹配={公海里匹配}
       aiEnabled={aiEnabled}
       旧职位={[...new Set(旧职位)]}

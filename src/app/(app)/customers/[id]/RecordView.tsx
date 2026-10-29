@@ -55,7 +55,7 @@ import { toggleTask, deleteTask, deleteFollowUp, restoreFollowUp, completePlan, 
 import { useContactRemoval } from "./useContactRemoval";
 import { useTransferConfirm } from "../useTransferConfirm";
 import { 历史负责人们, 换负责人一句 } from "@/lib/owner-log";
-import { useNarrow, useWidth } from "@/lib/roster";
+import { useWidth } from "@/lib/roster";
 import PaneToggle from "@/components/PaneToggle";
 import { 登记详情名 } from "@/lib/page-rows";
 import Heat, { 冷热说法, 要看冷热 } from "@/components/Heat";
@@ -116,6 +116,10 @@ function 带上现任(users: { id: string; name: string; email: string }[], 现�
   if (现任 && !users.some((u) => u.id === 现任)) 选项.unshift({ value: 现任, label: `${现任名 ?? "（已删除的成员）"}（不在候选里）` });
   return 选项;
 }
+
+/** 正文窄于它 AI 栏收进抽屉、窄于它单栏。和 globals.css 里 .rec-page 的几条容器查询是同一对数，改一处要改两处 */
+const AI栏门槛 = 1090;
+const 单栏门槛 = 630;
 
 export default function RecordView({
   customer,
@@ -292,14 +296,17 @@ export default function RecordView({
    * AI 栏收不收看正文实际多宽，不看视口：右边的全局面板开着时视口断点会误判（见 lib/roster.ts）。
    * 1090 = 资料 240 + AI 栏 340 + 两道间距 + 时间线至少 480。原来是 908（视口 1180 减左栏和留白，那时还没有名单），
    * 时间线只剩不到 300：1512 宽的 15 寸、1920 开着面板，「直接记」都折到第二行，最要紧的一栏最窄（2026-10-03 五档窗口走查）。
-   * 收起来的 AI 栏在头部「AI」按钮里，一点就开。630 以下单栏（对应视口 900）。
-   * 量到之前先按视口猜。
+   * 收起来的 AI 栏在头部「AI」按钮里，一点就开。630 以下单栏。
+   *
+   * 量到之前（服务端渲染的那一帧、刚进页还没量）不猜：AI 栏和「AI」按钮都渲染，由 globals.css 里
+   * .rec-page 的容器查询按正文实际宽度只露一个，排版也是容器查询排的。原来按视口猜（≤1673 算窄），
+   * 服务端那帧不知道视口一律当宽、也不知道名单露没露着 / 右边面板开没开，第一帧三栏、一量缩成两栏，整页跳一下（2026-10-29）。
    */
   const recRef = useRef<HTMLDivElement>(null);
   const 正文宽 = useWidth(recRef);
-  const 视口窄 = useNarrow("(max-width: 1673px)");
-  const AI在抽屉里 = 正文宽 === null ? 视口窄 : 正文宽 < 1090;
-  const 单栏 = 正文宽 !== null && 正文宽 < 630;
+  const 量到 = 正文宽 !== null;
+  const AI在抽屉里 = 量到 && 正文宽 < AI栏门槛;
+  const 单栏 = 量到 && 正文宽 < 单栏门槛;
   const [AI抽屉开着, setAI抽屉开着] = useState(false);
 
   const entries = useMemo<Entry[]>(() => {
@@ -585,7 +592,7 @@ export default function RecordView({
   );
 
   return (
-    <>
+    <div className="rec-page">
       <div className="rec-head">
         {/*
           没有「← 返回列表」。左边就是窄名单，换一个人点一下就换（设计稿 12/PAGE：
@@ -612,8 +619,8 @@ export default function RecordView({
           </div>
         </div>
         <span style={{ flex: 1 }} />
-        {aiEnabled && AI在抽屉里 && (
-          <Button size="small" icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)} style={{ marginRight: 8 }}>
+        {aiEnabled && (!量到 || AI在抽屉里) && (
+          <Button size="small" className={量到 ? undefined : "rec-ai-guess-btn"} icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)} style={{ marginRight: 8 }}>
             AI
           </Button>
         )}
@@ -1226,7 +1233,7 @@ export default function RecordView({
         <aside className="rec-right rec-rail">
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
-              <div className="rec-card">
+              <div className={量到 ? "rec-card" : "rec-card rec-ai-guess-col"}>
                 <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
               </div>
             )}
@@ -1321,7 +1328,7 @@ export default function RecordView({
 
       {/* 1180 以下 AI 收进抽屉。面板本身一个字都不用改——它的状态挂在
           进程内任务表上（lib/ai-jobs），不在组件 state 里，关掉再开还在那儿 */}
-      {aiEnabled && AI在抽屉里 && (
+      {aiEnabled && (!量到 || AI在抽屉里) && (
         <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${customer.name}`}>
           <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
         </Drawer>
@@ -1413,7 +1420,7 @@ export default function RecordView({
           要下一步={新建项目.要下一步}
         />
       )}
-    </>
+    </div>
   );
 
   /**

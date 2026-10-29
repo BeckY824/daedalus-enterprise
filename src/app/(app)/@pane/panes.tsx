@@ -13,6 +13,8 @@ import { getBusiness } from "@/lib/business";
 import { 读名单项目 } from "@/lib/project/list";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
+import { 页面字典 } from "@/lib/enterprise/dict";
+import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 
 /**
  * 中栏（312px）的内容。眼下**只有一种**：学员记录页的窄名单。
@@ -49,13 +51,15 @@ import { 字典of } from "@/lib/project/stage-dict";
 export async function 学员名单() {
   const me = await requireUser();
   // 业务员（带范围）先用裸 SQL 挑出那 50 位的编号再按编号取，免得范围那句 OR 把客户表整张扫两遍（lib/scope-sql.ts）
-  const [total, ids] = await Promise.all([看得到的客户数(), 最近跟进的客户(50)]);
+  const 企业 = 企业版();
+  // 企业版按客户状态分组（10-29）：字典和名单一起取，字典走请求内缓存（客户页同一屏也要读它）
+  const [total, ids, 状态字典] = await Promise.all([看得到的客户数(), 最近跟进的客户(50), 企业 ? 页面字典("custStatus") : null]);
   const 取 = await prisma.customer.findMany({
     where: ids ? { id: { in: ids } } : undefined,
     orderBy: ids ? undefined : [{ lastFollowAt: "desc" }, { createdAt: "desc" }],
     take: ids ? undefined : 50,
     select: {
-      id: true, name: true, followStatus: true, lastFollowAt: true, salesOwnerId: true,
+      id: true, name: true, followStatus: true, custStatus: true, lastFollowAt: true, salesOwnerId: true,
       salesOwner: { select: { name: true } },
       channel: { select: { name: true } },
       referrerCustomerId: true,
@@ -65,16 +69,17 @@ export async function 学员名单() {
     },
   });
   const 位 = new Map(ids?.map((id, i) => [id, i]));
-  const 企业 = 企业版();
   const rows = ids ? 取.sort((a, b) => 位.get(a.id)! - 位.get(b.id)!) : 取;
   return (
     <CustomerRoster
       data={{
         total,
+        客户状态: 状态字典 ? { 顺序: 状态字典.filter((x) => x.active).map((x) => x.name), 颜色: 客户状态色表(状态字典) } : null,
         rows: rows.map((c) => {
           const p = earliestScheduled(c.plans, p => scheduleOrder(p.plannedAt, p.plannedOn), 1)[0];
           return {
             id: c.id, name: c.name, followStatus: c.followStatus,
+            ...(企业 ? { custStatus: c.custStatus } : {}),
             lastFollowAt: c.lastFollowAt ? c.lastFollowAt.toISOString() : null,
             ownerName: c.salesOwner.name,
             mine: c.salesOwnerId === me.id,

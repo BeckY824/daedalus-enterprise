@@ -498,7 +498,7 @@ export default function ImportDrawer({
       open={open}
       // 正在写的时候不让关：关了这一段照样写完，后面的就停了，人还以为全导进去了
       closable={!进度}
-      maskClosable={!进度}
+      mask={{ closable: !进度 }}
       keyboard={!进度}
       styles={{ wrapper: { width: 880 } }}
       onClose={() => {
