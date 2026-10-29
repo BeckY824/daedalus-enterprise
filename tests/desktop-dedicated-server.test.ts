@@ -1,11 +1,11 @@
 /**
  * 专属服务器（2026-10-21，客户 Even 的团队连只给他们用的云端）：src/lib/desktop/dedicated-server.ts。
  *
- * 钉四件事：
+ * 钉三件事：
  *   1. 没设专属服务器时一切照旧（正式服 / CRM_CLOUD_URL）
  *   2. 设了以后登录、同步、策略、AI 用的令牌地址全跟着走，重启（重新加载模块）以后还在
  *   3. 地址不对、连不上、太慢、回错都说清原因、不存——**绝不悄悄退回正式服**，设置文件坏了也不退
- *   4. 只有没登录时能换
+ *（「只有没登录时能换」随登录页桌面端分支一起删了：企业版不走桌面端本地模式）
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import fs from "node:fs";
@@ -86,16 +86,6 @@ describe("没设专属服务器：一切照旧", () => {
     const { 设专属服务器 } = await import("@/lib/desktop/dedicated-server");
     expect(await 设专属服务器("https://cn.example.com")).toEqual({ ok: false, error: expect.stringContaining("升级") });
   });
-
-  it("登录页拿到的是「没设」，注册地址还是正式服的", async () => {
-    process.env.CRM_CLOUD_URL = "http://127.0.0.1:9";
-    vi.doMock("next/navigation", () => ({ redirect: () => { throw new Error("不该跳"); } }));
-    const { default: LoginPage } = await import("@/app/login/page");
-    const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { key: string; props: Record<string, unknown> };
-    expect(el.props.专属服务器).toEqual({ 状态: "无" });
-    expect(el.props.注册地址).toBe("http://127.0.0.1:9/signup?from=desktop");
-    vi.doUnmock("next/navigation");
-  });
 });
 
 describe("设了专属服务器：全跟着走", () => {
@@ -135,19 +125,6 @@ describe("设了专属服务器：全跟着走", () => {
     vi.resetModules();
     const { 云端地址 } = await import("@/lib/desktop/cloud");
     expect(云端地址()).toBe(专属.url);
-  });
-
-  it("登录页显示连的是哪台，注册地址跟着换；key 是服务器地址（换了服务器整张门重来）", async () => {
-    const 专属 = await 假云端(像我们的云端);
-    const { 设专属服务器 } = await import("@/lib/desktop/dedicated-server");
-    await 设专属服务器(专属.url);
-    vi.doMock("next/navigation", () => ({ redirect: () => { throw new Error("不该跳"); } }));
-    const { default: LoginPage } = await import("@/app/login/page");
-    const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { key: string; props: Record<string, unknown> };
-    expect(el.key).toBe(专属.url);
-    expect(el.props.专属服务器).toEqual({ 状态: "有", url: 专属.url, name: "" });
-    expect(el.props.注册地址).toBe(`${专属.url}/signup?from=desktop`);
-    vi.doUnmock("next/navigation");
   });
 
   it("专属服务器码：解出地址和名字，照样先认一认", async () => {
@@ -264,7 +241,7 @@ describe("地址不对、连不上：说清原因、不存、不退回正式服"
     expect(正式.问过).toEqual([]);
   });
 
-  it("设置文件坏了（被截断 / 手改坏）：不退回正式服，每个请求都失败，登录页拿到「坏了」", async () => {
+  it("设置文件坏了（被截断 / 手改坏）：不退回正式服，每个请求都失败", async () => {
     const 正式 = await 假云端(像我们的云端);
     process.env.CRM_CLOUD_URL = 正式.url;
     fs.writeFileSync(设置文件, '{"url": "https://cn.exa');
@@ -272,43 +249,9 @@ describe("地址不对、连不上：说清原因、不存、不退回正式服"
     expect(cloud.云端地址()).toBe("https://dedicated-server-unreadable.invalid");
     expect((await cloud.登录("z@even.cn", "pw-123456")).ok).toBe(false);
     expect(正式.问过).toEqual([]);
-    vi.doMock("next/navigation", () => ({ redirect: () => { throw new Error("不该跳"); } }));
-    const { default: LoginPage } = await import("@/app/login/page");
-    const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { props: Record<string, unknown> };
-    expect(el.props.专属服务器).toEqual({ 状态: "坏了" });
-    vi.doUnmock("next/navigation");
     // 坏了也能退回正式服
     const { 退出专属服务器 } = await import("@/lib/desktop/dedicated-server");
     退出专属服务器();
     expect(cloud.云端地址()).toBe(正式.url);
-  });
-});
-
-describe("只有没登录时能换", () => {
-  it("登录着：设、退都拒，文件不动", async () => {
-    const 专属 = await 假云端(像我们的云端);
-    fs.writeFileSync(令牌文件, JSON.stringify({ baseUrl: "https://app.ai-daedalus.com", token: "dk_x", name: "某人", contact: "a@b.c", models: [] }));
-    const { 桌面端设专属服务器, 桌面端退出专属服务器 } = await import("@/app/login/actions");
-    expect(await 桌面端设专属服务器(专属.url)).toEqual({ ok: false, error: "先退出登录，再换服务器" });
-    expect(fs.existsSync(设置文件)).toBe(false);
-    expect(专属.问过).toEqual([]);
-    fs.writeFileSync(设置文件, JSON.stringify({ url: 专属.url, name: "" }));
-    expect(await 桌面端退出专属服务器()).toEqual({ ok: false, error: "先退出登录，再换服务器" });
-    expect(fs.existsSync(设置文件)).toBe(true);
-  });
-
-  it("没登录：能设、能退", async () => {
-    const 专属 = await 假云端(像我们的云端);
-    const { 桌面端设专属服务器, 桌面端退出专属服务器 } = await import("@/app/login/actions");
-    expect((await 桌面端设专属服务器(专属.url)).ok).toBe(true);
-    expect(fs.existsSync(设置文件)).toBe(true);
-    expect(await 桌面端退出专属服务器()).toEqual({ ok: true, 状态: { 状态: "无" } });
-    expect(fs.existsSync(设置文件)).toBe(false);
-  });
-
-  it("不是桌面端本地模式：拒", async () => {
-    delete process.env.DESKTOP_LOCAL;
-    const { 桌面端设专属服务器 } = await import("@/app/login/actions");
-    expect((await 桌面端设专属服务器("https://cn.example.com")).ok).toBe(false);
   });
 });

@@ -1,312 +1,21 @@
 /**
- * 桌面端本地模式的自动登录路由。
+ * 桌面端本地模式下「哪儿都不给进」的那几道闸（lib/desktop/cloud.ts 的 归属对不上、应用壳 layout.tsx）。
  *
- * 这个路由不要密码就能签发一张管理员会话票据，所以它的守卫是安全边界，
- * 必须钉死：托管版和自部署版的构建产物里也有这个文件，只是没开 DESKTOP_LOCAL——
- * 哪天有人手滑把开关打开、或者守卫被改坏，那就是一个公开的免密登录入口。
- *
- * 放行那条路（令牌对 → 建会话 → 跳 /dashboard）要真业务库才跑得起来，
- * 由桌面端的实机验证覆盖：装出来的 app 首次启动确实自动登录成功。
- * 这里只钉「什么情况下不给进」。
+ * 企业版不带桌面端的自动登录路由和云端账号登录门（2026-10-29 删死代码第三批 C），
+ * 这里只钉还留在仓库里的判断：归属和令牌对不上时失败即关，非本地模式一律不管。
  */
-import { describe, it, expect, afterEach, afterAll, beforeEach, vi } from "vitest";
+import { describe, it, expect, afterEach, afterAll, beforeEach } from "vitest";
 import fs from "node:fs";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-
-// 路由引了 auth.ts，它在模块顶层就 import next/headers，vitest 里直接 import 会炸
-/** 登录页读的请求头（D-1，2026-10-04）：默认装成「壳自己的窗口」——本机地址 + 带着对的 x-desktop-token */
-const 请求头 = vi.hoisted(() => ({ 当前: {} as Record<string, string> }));
-vi.mock("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
-  headers: async () => new Headers(请求头.当前),
-}));
-
-const URL_ = "http://127.0.0.1:1234/api/desktop/session";
 
 afterEach(() => {
   delete process.env.DESKTOP_LOCAL;
   delete process.env.DESKTOP_TOKEN;
 });
 
-describe("没开本地模式时这个路由不存在", () => {
-  it("两个开关都没有 → 404", async () => {
-    const { GET } = await import("@/app/api/desktop/session/route");
-    expect((await GET(new Request(`${URL_}?t=x`))).status).toBe(404);
-  });
-
-  it("只有令牌、没开开关 → 404", async () => {
-    process.env.DESKTOP_TOKEN = "abc";
-    const { GET } = await import("@/app/api/desktop/session/route");
-    expect((await GET(new Request(`${URL_}?t=abc`))).status).toBe(404);
-  });
-
-  it("开了开关但没有令牌 → 404，不能退化成谁来都放行", async () => {
-    process.env.DESKTOP_LOCAL = "1";
-    const { GET } = await import("@/app/api/desktop/session/route");
-    expect((await GET(new Request(`${URL_}?t=`))).status).toBe(404);
-  });
-});
-
-describe("开了本地模式，令牌必须对", () => {
-  it("不带令牌、令牌错、长度不同都拒，且不会因为长度不同而抛错", async () => {
-    process.env.DESKTOP_LOCAL = "1";
-    // 刻意用一眼看得出是假的字符串：十六进制那种写法会被密钥扫描当成真 API Key
-    process.env.DESKTOP_TOKEN = "desktop-token-for-tests";
-    const { GET } = await import("@/app/api/desktop/session/route");
-    // 依次是：空、太短、等长但差一个字符、更长、更短——定长比较的每种错法
-    for (const t of ["", "x", "desktop-token-for-testt", "desktop-token-for-testsX", "desktop-token-for-test"]) {
-      const res = await GET(new Request(`${URL_}?t=${t}`));
-      expect(res.status, `令牌 ${JSON.stringify(t)} 不该放行`).toBe(403);
-    }
-  });
-});
-
-/**
- * 本地模式下 /login 是**云端账号**的门（2026-09-17 起桌面端只有这一套身份）。
- *
- * 在那之前 /login 认的是业务库里那个管理员自己的随机密码——用户从没见过它，
- * 于是「退出登录」之后就被锁在自己机器外面。现在：手上有令牌的人不停在这一页
- * （跳回自动登录），没有的人看到的是云端账号的表单，注册、找回密码都在。
- */
-describe("本地模式下 /login 是云端账号的门", () => {
-  const 数据目录 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-login-"));
-  const 令牌文件 = path.join(数据目录, ".cloud.json");
-  afterAll(() => fs.rmSync(数据目录, { recursive: true, force: true }));
-  beforeEach(() => {
-    请求头.当前 = { host: "127.0.0.1:1234", "x-desktop-token": "desktop-token-for-tests" };
-    process.env.DESKTOP_LOCAL = "1";
-    process.env.DESKTOP_TOKEN = "desktop-token-for-tests";
-    process.env.CRM_DATA_DIR = 数据目录;
-    // 策略() 会去问云端；这里不联网，让它立刻连不上
-    process.env.CRM_CLOUD_URL = "http://127.0.0.1:9";
-    fs.rmSync(令牌文件, { force: true });
-    vi.resetModules();
-  });
-  afterEach(() => {
-    delete process.env.CRM_DATA_DIR;
-    delete process.env.CRM_CLOUD_URL;
-    vi.doUnmock("next/navigation");
-  });
-
-  it("手上有令牌：直接跳回自动登录那条路，不停在这一页", async () => {
-    fs.writeFileSync(令牌文件, JSON.stringify({ baseUrl: "http://127.0.0.1:9", token: "dk_x", name: "某人", contact: "a@b.c", models: [] }));
-    const 跳了: string[] = [];
-    vi.doMock("next/navigation", () => ({
-      redirect: (u: string) => {
-        跳了.push(u);
-        throw new Error("NEXT_REDIRECT");
-      },
-    }));
-    const { default: LoginPage } = await import("@/app/login/page");
-    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("NEXT_REDIRECT");
-    expect(跳了).toEqual(["/api/desktop/session?t=desktop-token-for-tests"]);
-  });
-
-  /*
-    D-1（2026-10-04）：原来对谁都把令牌写进跳转地址。同机别的系统账户连 127.0.0.1、DNS 重绑定过来的网页，
-    都能拿到会话。现在只有壳自己的窗口（带对的 x-desktop-token、本机地址）才跳
-  */
-  for (const [谁, 头] of [
-    ["同机别的程序 / 别的系统账户（没带壳的令牌头）", { host: "127.0.0.1:1234" }],
-    ["带错的令牌头", { host: "127.0.0.1:1234", "x-desktop-token": "guess" }],
-    ["DNS 重绑定过来的网页（Host 是别人的域名）", { host: "attacker.example.com:1234", "x-desktop-token": "desktop-token-for-tests" }],
-  ] as const) {
-    it(`手上有令牌文件，但来的是${谁}：不跳、不把令牌写进地址，只画登录门`, async () => {
-      fs.writeFileSync(令牌文件, JSON.stringify({ baseUrl: "http://127.0.0.1:9", token: "dk_x", name: "某人", contact: "a@b.c", models: [] }));
-      请求头.当前 = { ...头 };
-      vi.doMock("next/navigation", () => ({
-        redirect: (u: string) => {
-          throw new Error(`不该跳：${u}`);
-        },
-      }));
-      const { default: LoginPage } = await import("@/app/login/page");
-      const { default: DesktopAuth } = await import("@/app/login/DesktopAuth");
-      const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { type: unknown };
-      expect(el.type).toBe(DesktopAuth);
-    });
-  }
-
-  it("自动登录路由：Host 是别人的域名（DNS 重绑定）→ 404，令牌对也不签", async () => {
-    const { GET } = await import("@/app/api/desktop/session/route");
-    const res = await GET(new Request(`${URL_}?t=desktop-token-for-tests`, { headers: { host: "attacker.example.com:1234" } }));
-    expect(res.status).toBe(404);
-  });
-
-  it("没有令牌：画的是桌面端那张新登录页（云端不支持应用内注册时带着去网页注册的地址）", async () => {
-    vi.doMock("next/navigation", () => ({
-      redirect: () => {
-        throw new Error("没令牌不该跳");
-      },
-    }));
-    const { default: LoginPage } = await import("@/app/login/page");
-    const { default: DesktopAuth } = await import("@/app/login/DesktopAuth");
-    const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { type: unknown; props: Record<string, unknown> };
-    expect(el.type).toBe(DesktopAuth);
-    expect(typeof (el.props.策略 as { inApp: unknown }).inApp).toBe("boolean");
-    expect(el.props.注册地址).toContain("/signup?from=desktop");
-  });
-
-  /*
-    2026-10-21 客户反馈「下载后无法注册，没有注册的按键」：国内第一次打开时问云端 policy 超时，
-    原来按「不收注册」画，新邮箱点继续直接去输密码，只能撞「账号或密码不对」。
-    没问到 ≠ 不收注册：入口照样摆出来，点继续时云端会再答一次。
-    而且登录页不再等这一问才出页：先照这次启动问到过的画，DesktopAuth 出来以后在后台问
-  */
-  const 不该跳 = () =>
-    vi.doMock("next/navigation", () => ({
-      redirect: () => {
-        throw new Error("没令牌不该跳");
-      },
-    }));
-  /** 起一个假云端，回答由 回 决定；不调 res.end 就是一直不回话 */
-  async function 假云端(回: (res: http.ServerResponse) => void) {
-    const 服务 = http.createServer((_req, res) => 回(res));
-    await new Promise<void>((ok) => 服务.listen(0, "127.0.0.1", ok));
-    process.env.CRM_CLOUD_URL = `http://127.0.0.1:${(服务.address() as { port: number }).port}`;
-    return () => {
-      服务.closeAllConnections();
-      服务.close();
-    };
-  }
-  const 回 = (status: number, body: unknown) => (res: http.ServerResponse) => {
-    res.writeHead(status, { "content-type": "application/json" });
-    res.end(JSON.stringify(body));
-  };
-
-  it("问不到云端（连不上）：注册入口照样在，不变成只能登录", async () => {
-    不该跳();
-    const { default: LoginPage } = await import("@/app/login/page");
-    const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { props: Record<string, unknown> };
-    expect(el.props.策略).toEqual({ register: true, reset: true, inApp: true });
-  });
-
-  it("云端一直不回话：登录页、找回密码页不等它，马上出页", async () => {
-    const 关 = await 假云端(() => {});
-    try {
-      不该跳();
-      const { default: LoginPage } = await import("@/app/login/page");
-      const { default: ForgotPage } = await import("@/app/forgot/page");
-      const 起 = Date.now();
-      const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { props: Record<string, unknown> };
-      const 找回 = (await ForgotPage()) as { props: Record<string, unknown> };
-      expect(Date.now() - 起).toBeLessThan(1000);
-      expect(el.props.策略).toEqual({ register: true, reset: true, inApp: true });
-      expect(找回.props.策略).toEqual({ register: true, reset: true, inApp: true });
-    } finally {
-      关();
-    }
-  });
-
-  /*
-    2026-10-21 P0（质量会话核实）：0.46.24 只在「没状态码」时照常摆，云端回 502 / 503 照旧藏注册入口。
-    规则：只有云端正常回了（2xx、JSON）并且明说 false 才藏；任何失败都照常把注册、找回摆出来
-  */
-  const 回HTML = (status: number) => (res: http.ServerResponse) => {
-    res.writeHead(status, { "content-type": "text/html" });
-    res.end("<html><body>Bad Gateway</body></html>");
-  };
-  const 失败的回法: [string, (res: http.ServerResponse) => void][] = [
-    ["500", 回(500, { error: "boom" })],
-    ["502", 回(502, { error: "bad gateway" })],
-    ["503", 回(503, { error: "unavailable" })],
-    ["404", 回(404, { error: "not found" })],
-    ["429", 回(429, { error: "too many" })],
-    ["502 回 HTML", 回HTML(502)],
-    ["200 回 HTML（公司网 / 酒店 Wi-Fi 的登录页）", 回HTML(200)],
-    ["200 回空", (res) => res.writeHead(200).end()],
-    ["200 回 JSON 但不是对象", 回(200, ["register", false])],
-  ];
-  for (const [名, 回法] of 失败的回法) {
-    it(`云端${名}：注册、找回照常摆出来，登录页、找回密码页都是`, async () => {
-      const 关 = await 假云端(回法);
-      try {
-        不该跳();
-        const { 策略 } = await import("@/lib/desktop/cloud");
-        expect(await 策略()).toEqual({ register: true, reset: true, inApp: true });
-        const { default: LoginPage } = await import("@/app/login/page");
-        const { default: ForgotPage } = await import("@/app/forgot/page");
-        const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { props: Record<string, unknown> };
-        const 找回 = (await ForgotPage()) as { props: Record<string, unknown> };
-        expect(el.props.策略).toEqual({ register: true, reset: true, inApp: true });
-        expect(找回.props.策略).toEqual({ register: true, reset: true, inApp: true });
-      } finally {
-        关();
-      }
-    });
-  }
-
-  it("云端正常回了、明说不收注册不能找回：才藏，登录页、找回密码页之后照这份画", async () => {
-    const 关 = await 假云端(回(200, { register: false, reset: false, inApp: true }));
-    try {
-      不该跳();
-      const { 策略 } = await import("@/lib/desktop/cloud");
-      expect(await 策略()).toEqual({ register: false, reset: false, inApp: true });
-      const { default: LoginPage } = await import("@/app/login/page");
-      const { default: ForgotPage } = await import("@/app/forgot/page");
-      const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { props: Record<string, unknown> };
-      const 找回 = (await ForgotPage()) as { props: Record<string, unknown> };
-      expect(el.props.策略).toEqual({ register: false, reset: false, inApp: true });
-      expect((找回.props.策略 as { reset: boolean }).reset).toBe(false);
-    } finally {
-      关();
-    }
-  });
-
-  it("云端正常回了但少了某个字段：没明说 false 的那条照常摆", async () => {
-    const 关 = await 假云端(回(200, { register: true }));
-    try {
-      const { 策略 } = await import("@/lib/desktop/cloud");
-      expect(await 策略()).toEqual({ register: true, reset: true, inApp: true });
-    } finally {
-      关();
-    }
-  });
-
-  it("问到过一次：之后云端再问不到，也照问到的那份，不跳回都开着", async () => {
-    let 第几次 = 0;
-    const 关 = await 假云端((res) => {
-      if (++第几次 === 1) return 回(200, { register: false, reset: true, inApp: true })(res);
-      回(502, { error: "bad gateway" })(res);
-    });
-    try {
-      const { 策略, 上次策略 } = await import("@/lib/desktop/cloud");
-      expect(await 策略()).toEqual({ register: false, reset: true, inApp: true });
-      expect(await 策略()).toEqual({ register: false, reset: true, inApp: true });
-      expect(上次策略()).toEqual({ register: false, reset: true, inApp: true });
-    } finally {
-      关();
-    }
-  });
-
-  it("被吊销送回来的（?reason=revoked）：有令牌也不跳，先把原因说清", async () => {
-    fs.writeFileSync(令牌文件, JSON.stringify({ baseUrl: "http://127.0.0.1:9", token: "dk_x", name: "", contact: "a@b.c", models: [] }));
-    vi.doMock("next/navigation", () => ({
-      redirect: () => {
-        throw new Error("带原因来的不该跳");
-      },
-    }));
-    const { default: LoginPage } = await import("@/app/login/page");
-    const el = (await LoginPage({ searchParams: Promise.resolve({ reason: "revoked" }) })) as { props: Record<string, unknown> };
-    expect(String(el.props.提示)).toContain("改过密码");
-    expect(String(el.props.提示)).toContain("已登录的机器");
-  });
-
-  it("自动登录路由：没有令牌文件就先清 cookie 再回登录页，不签会话", async () => {
-    /**
-     * 直接跳 /login 不行：业务会话 cookie 可能还活着（7 天），proxy.ts 会把 /login 弹回
-     * /dashboard，人就带着一个失效的云端账号进了应用。经 logout 走，原因原样带过去。
-     */
-    const { GET } = await import("@/app/api/desktop/session/route");
-    const res = await GET(new Request(`${URL_}?t=desktop-token-for-tests`));
-    expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("/api/auth/logout");
-    const 带原因 = await GET(new Request(`${URL_}?t=desktop-token-for-tests&reason=revoked`));
-    expect(带原因.headers.get("location")).toBe("/api/auth/logout?reason=revoked");
-  });
-
-  it("应用壳：本地模式下令牌没了就不给进，哪怕业务会话还活着", async () => {
+describe("应用壳：本地模式下令牌没了就不给进", () => {
+  it("哪怕业务会话还活着，也先去清 cookie；原因原样带到登录页", () => {
     const layout = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/layout.tsx"), "utf8");
     expect(layout).toContain('if (本地模式() && !读云端凭据()) redirect("/api/auth/logout?reason=revoked");');
     const logout = fs.readFileSync(path.resolve(__dirname, "../src/app/api/auth/logout/route.ts"), "utf8");
@@ -314,39 +23,10 @@ describe("本地模式下 /login 是云端账号的门", () => {
     expect(logout).toContain("/login?reason=${encodeURIComponent(reason)}");
   });
 
-  it("没开本地模式的部署照常画登录页，一步都不跳", async () => {
-    delete process.env.DESKTOP_LOCAL;
-    vi.doMock("next/navigation", () => ({
-      redirect: () => {
-        throw new Error("自部署和托管版都不该跳");
-      },
-    }));
-    const { default: LoginPage } = await import("@/app/login/page");
-    const el = (await LoginPage({ searchParams: Promise.resolve({}) })) as { props: Record<string, unknown> };
-    expect(el.props.桌面端 ?? false).toBe(false);
-  });
-
-  it("壳里「退出登录」一直在：本地模式下它退的是云端账号", async () => {
+  it("壳里「退出登录」一直在", () => {
     const shell = fs.readFileSync(path.resolve(__dirname, "../src/components/AppShell.tsx"), "utf8");
     expect(shell).toContain('label: "退出登录"');
     expect(shell).not.toMatch(/本机\s*\?\s*\[\]/);
-    const logout = fs.readFileSync(path.resolve(__dirname, "../src/app/api/auth/logout/route.ts"), "utf8");
-    const post = logout.slice(logout.indexOf("export async function POST"), logout.indexOf("export async function GET"));
-    expect(post).toContain("退出云端()");
-  });
-});
-
-describe("回到上一页：next 只认站内的应用路径", () => {
-  it("正常的应用路径原样用，query 一起带", async () => {
-    const { 选落点 } = await import("@/lib/desktop/landing");
-    expect(选落点("/customers/abc")).toBe("/customers/abc");
-    expect(选落点("/customers?status=待跟进")).toBe("/customers?status=待跟进");
-  });
-  it("门口那些页、别的站、协议相对地址、空的：一律回 /dashboard", async () => {
-    const { 选落点 } = await import("@/lib/desktop/landing");
-    for (const v of [null, "", "/", "/login", "/login?x=1", "/api/auth/logout", "/admin", "//evil.com/x", "https://evil.com/x", "customers/abc"]) {
-      expect(选落点(v), String(v)).toBe("/dashboard");
-    }
   });
 });
 
@@ -378,7 +58,6 @@ describe("换了账号但目录还没换：哪儿都不给进", () => {
     fs.writeFileSync(令牌文件, JSON.stringify({ baseUrl: "http://127.0.0.1:9", token: "dk_x", accountId, name: "", contact: "b@b.c", models: [] }));
 
   beforeEach(() => {
-    请求头.当前 = { host: "127.0.0.1:1234", "x-desktop-token": "desktop-token-for-tests" };
     process.env.DESKTOP_LOCAL = "1";
     process.env.DESKTOP_TOKEN = "desktop-token-for-tests";
     process.env.CRM_DATA_DIR = 目录;
@@ -422,48 +101,8 @@ describe("换了账号但目录还没换：哪儿都不给进", () => {
     expect(归属对不上()).toBe(false);
   });
 
-  it("自动登录路由：对不上就不签会话，先清 cookie 再回门口说清原因", async () => {
-    fs.writeFileSync(归属文件, "acc_甲");
-    写令牌("acc_乙");
-    const { GET } = await import("@/app/api/desktop/session/route");
-    const res = await GET(new Request(`${URL_}?t=desktop-token-for-tests`));
-    expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("/api/auth/logout?reason=switched");
-  });
-
   it("应用壳：对不上就把人挡在门口——这会儿进去看到的是上一个账号的库", () => {
     const layout = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/layout.tsx"), "utf8");
     expect(layout).toContain('if (归属对不上()) redirect("/api/auth/logout?reason=switched");');
-  });
-
-  it("登录页把这件事说成人话，并且说清「重开应用就好、数据不丢」", async () => {
-    const page = fs.readFileSync(path.resolve(__dirname, "../src/app/login/page.tsx"), "utf8");
-    const 文案 = page.slice(page.indexOf("switched:"), page.indexOf("changed:"));
-    expect(文案).toContain("退出应用再打开一次");
-    expect(文案).toContain("一份都不会丢");
-  });
-
-  it("登录页换账号那条路上不许有硬跳转——那正是 2026-09-20 那个 bug 的正身", () => {
-    // 2026-10-02 起这段从 LoginForm 抽到 after-login.ts，登录表单和桌面端新的门（DesktopAuth）共用
-    const form = fs.readFileSync(path.resolve(__dirname, "../src/app/login/after-login.ts"), "utf8");
-    for (const f of ["LoginForm.tsx", "DesktopAuth.tsx"]) {
-      expect(fs.readFileSync(path.resolve(__dirname, `../src/app/login/${f}`), "utf8"), f).toContain("await 登录之后(res,");
-    }
-    const 那段 = form.slice(form.indexOf("if (res.换账号)"), form.indexOf("window.location.assign"));
-    expect(那段.length).toBeGreaterThan(0);
-    expect(那段).not.toContain("location.assign");
-    // 壳的回话要等：换不成得把人挡住，不能让他落进上一个账号的库
-    expect(那段).toContain("await 壳.switchAccount()");
-    expect(那段).toContain("报错(");
-  });
-});
-
-describe("设置里的「登录云端账号」要能进得去", () => {
-  it("本地模式下，已在本地 CRM 里的人访问 /login 不会被 proxy 弹回首页", () => {
-    // 0.46.3 的真 bug：账号改成可选之后，第一次打开就有本地会话；设置页那颗按钮 href=/login，
-    // proxy 见「已登录」把它弹回 /dashboard，云端账号永远登不上，送的 30 次也就用不了
-    const proxy = fs.readFileSync(path.resolve(__dirname, "../src/proxy.ts"), "utf8");
-    expect(proxy).toMatch(/const 本地云端门 = process\.env\.DESKTOP_LOCAL === "1" && pathname === "\/login";/);
-    expect(proxy).toMatch(/if \(valid && !本地云端门 && \(pathname === "\/login"/);
   });
 });
