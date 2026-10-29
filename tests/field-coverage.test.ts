@@ -70,7 +70,7 @@ const 可写: Record<string, string[]> = {
   CustomerExtra: ["country", "whatsapp", "wechat", "email", "source", "level", "website", "alibabaId"],
   // 外贸订单 / 供应商整套 7 张表 2026-10-29 删了（迁移 066），这里和 派生 里都不再列
   // 团队版项目模式 1a（2026-10-23）：建档向导、项目详情（编辑项目 / 改节点 / 勾交付 / 项目组）、设置里的「项目模式」一栏
-  Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt"],
+  Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt", "channelId"],
   ProjectMember: ["roleId"],
   ProjectRole: ["name", "active"],
   ProjectExceptionCategory: ["name", "active"],
