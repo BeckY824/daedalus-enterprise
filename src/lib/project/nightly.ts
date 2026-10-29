@@ -7,11 +7,13 @@
  *   - 只在企业版起钟（instrumentation.ts）；项目模式关着不扫
  *   - 每分钟看一眼钟，过了今天 00:05 才扫（服务器停着错过了，开机就补）
  *   - 留痕、操作日志记在「系统」名下（timeout.ts 系统，QA #16）；一个在职老板都没有就不扫，等有人打开页面
+ *   - 同一个钟顺带清回收站（P9）：删了满 30 天的真删掉，每天一遍，不看项目模式（lib/enterprise/soft-delete.ts 每天清一次）
  */
 import { prisma } from "../prisma";
 import { getBusiness } from "../business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海超时收回 } from "./db";
+import { 每天清一次 } from "@/lib/enterprise/soft-delete";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -44,8 +46,12 @@ export function 启动夜扫(间隔毫秒 = 60_000): void {
   if (!企业版() || g.__entNightlyTimer) return;
   g.__entNightlyTimer = setInterval(() => {
     if (g.__entNightlyRun) return;
-    g.__entNightlyRun = 夜里扫超时()
+    const 现在 = new Date();
+    g.__entNightlyRun = 夜里扫超时(现在)
       .then(() => undefined, (e) => console.error("[超时回收] 夜里扫的时候出错，下一分钟再试", e))
+      // 回收站到期清理：和超时回收各管各的，一边出错不拦另一边
+      .then(() => (过了夜扫时刻(现在) ? 每天清一次(现在) : null))
+      .then(() => undefined, (e) => console.error("[回收站] 到期清理出错，下一分钟再试", e))
       .finally(() => { g.__entNightlyRun = undefined; });
   }, 间隔毫秒);
   g.__entNightlyTimer.unref?.();

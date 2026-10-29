@@ -39,6 +39,7 @@ import { 读 as 读云端凭据 } from "./desktop/cloud";
 import { 团队身份id } from "./desktop/me";
 import { 互看可加, 范围父表 } from "./sync/scope-policy";
 import { 企业版 } from "./enterprise/switch";
+import { 去掉已删, 在看已删 } from "./enterprise/soft-delete-core";
 
 const 不限 = new AsyncLocalStorage<true>();
 
@@ -427,8 +428,10 @@ export function 加上限定(db: PrismaClient): PrismaClient {
   const c = db.$extends({
     query: {
       $allModels: {
-        async $allOperations({ model, operation, args, query }) {
+        async $allOperations({ model, operation, args: 原参数, query }) {
           if (写操作.has(operation)) 改完推一下();
+          // 企业版软删（P9）：回收站里的统一滤掉，比业务员范围先算（老板也看不到删了的，除非在 看已删() 里）
+          const args = (企业版() && !在看已删() ? 去掉已删(model, operation, 原参数) : 原参数) as typeof 原参数;
           const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看 } = await 现在的限定(db);
           if (!我) return query(args);
           // 有只读的客户：团队版互看、企业版虚线下属。读谁 / 读互看 = 查、数、带出来的关联按哪个范围放开

@@ -175,7 +175,7 @@ function 沉睡查询(a: { 谁的?: string; now: Dayjs; 边界: number[]; 前几
   const 最近 = `CASE WHEN lastFollowAt IS NOT NULL AND ${毫秒("lastFollowAt")} > ${现在} THEN ${毫秒("createdAt")} ELSE COALESCE(${毫秒("lastFollowAt")}, ${毫秒("createdAt")}) END`;
   const 沉睡 = (只这些 = false) => `SELECT id, CASE followStatus ${状态.map(([k, w]) => `WHEN ${字面(k)} THEN ${w}`).join(" ")} END AS w, t FROM (
       SELECT id, followStatus, ${最近} AS t FROM Customer
-      WHERE followStatus IN (${状态.map(([k]) => 字面(k)).join(",")})${a.谁的 ? " AND salesOwnerId = ?" : ""}${只这些 ? " AND id IN (SELECT value FROM json_each(?))" : ""}
+      WHERE deletedAt IS NULL AND followStatus IN (${状态.map(([k]) => 字面(k)).join(",")})${a.谁的 ? " AND salesOwnerId = ?" : ""}${只这些 ? " AND id IN (SELECT value FROM json_each(?))" : ""}
     ) WHERE t < ${零点[零点.length - 1]}`;
   const 分 = `w * 8 + CASE WHEN t < ${零点[0]} THEN ${封顶} ELSE ${封顶 - 1} - (${第几天("t", 零点)}) END`;
   const 谁 = a.谁的 ? [a.谁的] : [];
