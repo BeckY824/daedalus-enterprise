@@ -1,7 +1,7 @@
 /**
  * 企业版去桌面端遗留（2026-10-28，A2 / B1 / B3 / B5 / B6）：
  *   - A2 记跟进：客户有在推项目时「关联项目」必选、不能清空；一个都没有时照旧能记，只提示先建项目
- *   - B1 渠道页：企业版只留渠道清单，藏掉转介绍雷达、推荐链三列、副标题「外部推荐来源与转介绍」
+ *   - B1 渠道页：只留渠道清单（10-29 渠道改版起两边都没有转介绍雷达、推荐链三列、副标题了）
  *   - B3 「起草转介绍邀请」：企业版和外贸一样不摆（首页 AI 回答里的客户行、记录页 AI 面板、设置 → AI 说明）
  *   - B5 隐私页：企业版写 简报名()，不写「客户简报」
  *   - B6 客户侧栏来源：企业版只认渠道名，没有就留空，不回落成「转介绍」
@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 
 const 读 = (p: string) => readFile(p, "utf8");
 
@@ -55,33 +56,21 @@ describe("A2 记跟进的关联项目", () => {
   });
 });
 
-describe("B1 渠道页", () => {
-  it("页面：企业版不算转介绍雷达，把开关传给 ChannelsView", async () => {
+describe("B1 渠道页（2026-10-29 渠道改版后）", () => {
+  it("页面：不再算转介绍链和雷达，统计走 读渠道统计", async () => {
     const s = await 读("src/app/(app)/channels/page.tsx");
-    expect(s).toContain('import { 企业版 } from "@/lib/enterprise/switch";');
-    expect(s).toMatch(/const radar = 企业 \? \{ topReferrers: \[\], inviteCandidates: \[\] \} : buildReferralRadar\(/);
-    expect(s).toContain("企业版={企业}");
+    expect(s).not.toContain("buildReferralRadar");
+    expect(s).not.toContain("radar");
+    expect(s).toContain('import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";');
+    expect(s).toContain("读渠道统计(channels)");
   });
 
-  it("开着：藏推荐链三列、雷达、副标题，空态只讲渠道清单", async () => {
+  it("列表：推荐链三列、雷达、副标题都没了；空态只讲渠道清单和投入", async () => {
     const s = await 读("src/app/(app)/channels/ChannelsView.tsx");
-    expect(s).toContain("企业版 = false,");
-    expect(s).toContain("...(企业版 ? [] : 推荐链列)");
-    const 推荐链 = s.slice(s.indexOf("const 推荐链列"), s.indexOf("const 列表"));
-    for (const k of ['key: "directCount"', 'key: "chainCount"', 'key: "chainAmount"']) expect(推荐链).toContain(k);
-    // 列表本身不再直接写这三列
-    const 列表 = s.slice(s.indexOf("const 列表"));
-    expect(列表).not.toContain('key: "directCount"');
-    expect(s).toContain('subtitle={企业版 ? undefined : "外部推荐来源与转介绍"}');
-    expect(s).toMatch(/\{!企业版 && \(radar\.topReferrers\.length > 0/);
-    expect(s).toContain("在这里维护渠道清单，新建${b.customer}时从清单里选；不再用的渠道停用即可。");
-  });
-
-  it("关着：原来的副标题、空态说明、负责人提示原样还在", async () => {
-    const s = await 读("src/app/(app)/channels/ChannelsView.tsx");
-    expect(s).toContain('"外部推荐来源与转介绍"');
-    expect(s).toContain("渠道负责人定了之后，这条线上进来的${b.customer}业绩自动归他；转介绍带来的下游也算在这条链上。");
-    expect(s).toContain("之后由该渠道新增的${b.customer}及其下游转介绍归此人；已有${b.customer}的归属不变，个别要改的到其档案里单独改");
+    for (const k of ['key: "directCount"', 'key: "chainCount"', 'key: "chainAmount"', "ReferralRadar", "radar", "外部推荐来源与转介绍"]) expect(s).not.toContain(k);
+    expect(s).toContain("在渠道详情里录投入，这里就算得出投入产出比。不再用的渠道停用即可。");
+    expect(s).toContain("之后由该渠道新增的${b.customer}归此人；已有的归属不变");
+    expect(existsSync("src/app/(app)/channels/ReferralRadar.tsx")).toBe(false);
   });
 });
 

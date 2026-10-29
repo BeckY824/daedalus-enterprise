@@ -45,6 +45,7 @@ export async function resetDb() {
   // 项目、组员、节点变更随客户级联；组员角色、异常类别字典不挂客户，单独清（2026-10-23）
   await prisma.projectRole.deleteMany();
   await prisma.projectExceptionCategory.deleteMany();
+  await prisma.entChannelInvest.deleteMany();
   await prisma.channel.deleteMany();
   // 企业版组织架构（迁移 044）：不建外键，不会被级联带走（2026-10-24）
   await prisma.entMember.deleteMany();
