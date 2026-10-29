@@ -237,7 +237,7 @@ async function 名称(tx: Tx, e: 实体, id: string, written: 值表): Promise<s
 /** 跟进删了 / 建回来了：客户的「最近跟进」按剩下的重算（同合并客户） */
 export async function 重算最近跟进(tx: Tx, 客户们: Set<string>): Promise<void> {
   for (const id of 客户们) {
-    await tx.$executeRawUnsafe('UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ?) WHERE id = ?', id, id);
+    await tx.$executeRawUnsafe('UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ? AND "deletedAt" IS NULL) WHERE id = ?', id, id);
   }
 }
 

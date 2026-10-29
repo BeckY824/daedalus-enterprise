@@ -39,6 +39,35 @@ export function useDeleteCustomers() {
     ].filter(Boolean);
     const 有签约 = 数.签约 > 0;
 
+    // 企业版（P9）：删了进回收站，照实说能恢复，签约不用另勾
+    if (数.进回收站) {
+      const 一起进 = [
+        数.联系人 && `${数.联系人} 位联系人`,
+        数.项目 && `${数.项目} 个项目`,
+        数.跟进 && `${数.跟进} 条沟通记录`,
+      ].filter(Boolean);
+      return void modal.confirm({
+        title: 删除确认标题(rows.map((r) => r.name), rows.length, b.customer),
+        width: 460,
+        content: (
+          <div style={{ lineHeight: 1.8 }}>
+            {一起进.length > 0 && <div>{一起进.join("、")}一起进回收站。</div>}
+            <div style={{ color: "var(--text-muted)" }}>30 天内可在 设置 → 回收站 恢复，过期自动清掉。</div>
+          </div>
+        ),
+        okText: "删除",
+        okButtonProps: { danger: true },
+        cancelText: "取消",
+        async onOk() {
+          const res = await deleteCustomers(ids);
+          if (!res.ok) return void message.error(res.error, 8);
+          删完?.();
+          message.success(`已删除 ${res.deleted} 位${b.customer}，可在回收站恢复`);
+          router.refresh();
+        },
+      });
+    }
+
     const 框 = modal.confirm({
       title: 删除确认标题(rows.map((r) => r.name), rows.length, b.customer),
       width: 460,

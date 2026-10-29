@@ -234,7 +234,8 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
   if (!kw) return null;
   const 公海 = sp.pool === "1";
   const 谁 = await 读的我(defaultClient);
-  const 段 = [kw.sql];
+  // 回收站里的客户（企业版软删，P9）不进列表：裸 SQL 不过 Prisma 扩展，这里自己带上
+  const 段 = [kw.sql, 'c."deletedAt" IS NULL'];
   const 值: unknown[] = [...kw.values];
   if (公海) 段.push('EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
   else {

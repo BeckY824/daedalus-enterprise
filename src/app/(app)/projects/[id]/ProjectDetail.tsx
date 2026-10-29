@@ -129,7 +129,9 @@ const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "cen
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 60px", whiteSpace: "nowrap" };
 
 /** 删项目的确认框：列出一起删掉的几样，说清沟通记录本身不删 */
-function 删除说明(n: 项目详情["删前清点"], 客户叫法: string) {
+function 删除说明(n: 项目详情["删前清点"], 客户叫法: string, 进回收站 = false) {
+  // 企业版（P9）：删了进回收站，留痕、项目组原样留着
+  if (进回收站) return <div style={{ maxWidth: 280 }}>删了进回收站，30 天内可在 设置 → 回收站 恢复</div>;
   const 删 = [`${n.留痕} 条进程留痕`, n.组员 ? `项目组 ${n.组员} 人` : "", n.沟通 ? `${n.沟通} 条沟通和这个项目的关联` : ""].filter(Boolean);
   return (
     <div style={{ maxWidth: 280 }}>
@@ -551,7 +553,7 @@ export default function ProjectDetail({
           {/* 企业版原负责人：按钮摆着、灰着，悬停说为什么（接口也拦，lib/project/db.ts 领取公海项目） */}
           {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
           {能改 && (
-            <Popconfirm title="删除这个项目？" description={删除说明(p.删前清点, b.customer)} okText="删除" okButtonProps={{ danger: true }} onConfirm={() => void 删()}>
+            <Popconfirm title="删除这个项目？" description={删除说明(p.删前清点, b.customer, p.企业版)} okText="删除" okButtonProps={{ danger: true }} onConfirm={() => void 删()}>
               <Button danger disabled={忙}>删除项目</Button>
             </Popconfirm>
           )}

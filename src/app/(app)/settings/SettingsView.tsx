@@ -16,6 +16,7 @@ import AiSettingsTab, { type LlmView } from "./AiSettingsTab";
 import BusinessSettingsTab from "./BusinessSettingsTab";
 import ImportsTab from "./ImportsTab";
 import EnterpriseImportTab from "./EnterpriseImportTab";
+import TrashTab from "./TrashTab";
 import ProfileTab from "./ProfileTab";
 import KeymapTab from "./KeymapTab";
 import AppearanceTab from "./AppearanceTab";
@@ -36,6 +37,7 @@ const 说明表: Record<string, string> = {
   imports: "导进来的那几批，可撤销",
   enterprise: "飞书 / 钉钉 / Excel 导进来、同步、切换",
   audit: "每一次改动的记录",
+  trash: "删了的 30 天内能恢复",
   project: "项目组员角色、成员的上级",
   org: "部门、角色、直属和虚线上级",
 };
@@ -56,6 +58,7 @@ export default function SettingsView({
   组织架构 = null,
   企业版导入 = false,
   导入记录 = true,
+  回收站 = false,
   下属可停用 = [],
 }: {
   users: Row[];
@@ -87,6 +90,8 @@ export default function SettingsView({
   企业版导入?: boolean;
   /** 「导入记录」那一栏：企业版只给能导入的人（老板、总管理员），其余照旧都有 */
   导入记录?: boolean;
+  /** 企业版：老板、主管、管理员多一栏「回收站」（删了的客户 / 项目 / 联系人 / 沟通记录，30 天内能恢复） */
+  回收站?: boolean;
   /** 企业版：我是直属上级、能给他们办离职的人 */
   下属可停用?: string[];
 }) {
@@ -119,6 +124,7 @@ export default function SettingsView({
     ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={持有成员} /> }] : []),
     ...(导入记录 ? [{ key: "imports", label: "导入记录", children: <ImportsTab /> }] : []),
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
+    ...(回收站 ? [{ key: "trash", label: "回收站", children: <TrashTab /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
   ]
     // 共享试用区：账号是几个团队共用的，名字和密码不给改（排查 A3）
@@ -132,7 +138,7 @@ export default function SettingsView({
    */
   const 分组表: [string, string[]][] = [
     ["个人", ["profile", "password", "keymap", "appearance"]],
-    ["工作区", ["members", "org", "business", "project", "ai", "imports", "enterprise", "audit"]],
+    ["工作区", ["members", "org", "business", "project", "ai", "imports", "enterprise", "trash", "audit"]],
   ];
 
   /**
