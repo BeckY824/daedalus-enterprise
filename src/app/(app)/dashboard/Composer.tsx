@@ -340,7 +340,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
           }
           栏左={
             <>
-              {/* 企业版项目模式（只有它传 渠道名们）：附件、名片、查重、粘一段聊天、背调收进一颗「+」（P15）；
+              {/* 企业版项目模式（只有它传 渠道名们）：附件、名片、查重、背调收进一颗「+」（P15；粘一段聊天 10-29 拿掉了，粘贴时的提示还在）；
                   背调模式下照原样摆退出背调和粘询盘邮件两颗。别的版本照旧并排 */}
               {渠道名们 && !背调模式 ? (
                 <ComposerPlus
@@ -349,9 +349,6 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
                   在跑={running != null}
                   files={files}
                   setFiles={setFiles}
-                  摆粘贴键={!(empty && 空库 && 宽)}
-                  on粘贴={() => 粘.去粘贴("")}
-                  on预载={预载导入抽屉}
                   摆背调键={调.入口}
                   on切背调={() => {
                     调.set背调模式((v) => !v);

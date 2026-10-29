@@ -1497,14 +1497,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .home-card-v { font-family: var(--font-num); font-size: var(--fs-num); font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .home-card:hover .home-card-v { color: var(--brand); }
 .home-card-warn .home-card-v, .home-card-warn:hover .home-card-v { color: var(--danger); }
-/* 正向卡（今日待办、本月赢单，10-29 会议二2）：有数就标绿，悬停边框也走绿，不和品牌色抢 */
+/* 正向卡（本月赢单；首页现在不摆，项目页能筛）：有数就标绿，悬停边框也走绿，不和品牌色抢 */
 .home-card-good .home-card-v, .home-card-good:hover .home-card-v { color: var(--success-text); }
 .home-card-good:hover { border-color: var(--success-line); }
-/* 今日待办卡下面那行「另有 M 条逾期」：小字、危险色，贴着卡的左边，点了去复盘页「逾期」 */
-.home-card-stack { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
-.home-card-more { align-self: flex-start; max-width: 100%; padding: 0 var(--s4); font-size: var(--fs-note); color: var(--danger-text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-card-more:hover { color: var(--danger-text); text-decoration: underline; }
-.home-card-more:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; border-radius: var(--r-ctl); }
 @container (max-width: 639px) {
   .cli-ck-g { grid-template-columns: minmax(0, 1fr); align-content: start; }
   .home-cards { position: static; align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
