@@ -51,6 +51,8 @@
   /* 头像底色：八个淡色，按名字哈希选 */
   --avatar-1: #dbeafe; --avatar-2: #dcfce7; --avatar-3: #fef3c7; --avatar-4: #fde2e2;
   --avatar-5: #ede9fe; --avatar-6: #e0f2fe; --avatar-7: #fce7f3; --avatar-8: #e2e8f0;
+  /* 标的两色（components/Logo.tsx）：浅底深框蓝线，暗底由 dark.css / tech.css 换成浅框亮蓝 */
+  --logo-frame: #0b1b33; --logo-line: #1554e8;
 
   /* ---------- 字号：四级，外加一个下限 ----------
      方案里原写「正文 9pt、说明 7pt」，那是印刷品的尺寸，1440 屏上读不了。
@@ -164,6 +166,10 @@
 .appr-mini { display: flex; gap: 6px; width: 100%; height: 64px; padding: 6px; margin-bottom: 4px; border-radius: var(--r-ctl); border: 1px solid var(--line-soft); }
 .appr-mini-tone { background: var(--workbench); }
 .appr-mini-white { background: var(--panel); }
+/* 明暗那一行的小样：挂着 data-mode-preview，读 dark.css 里那份暗底或明亮小样那份浅底；「跟随系统」左右各半 */
+.appr-mini-mode { background: var(--workbench); }
+.appr-mini-split { padding: 0; gap: 0; overflow: hidden; }
+.appr-mini-half { flex: 1; display: flex; gap: 6px; padding: 6px; background: var(--workbench); }
 .appr-mini-rail { width: 22%; border-radius: 3px; background: color-mix(in srgb, var(--line) 60%, transparent); }
 .appr-mini-card { flex: 1; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); }
 /* 主题的小样：挂着 data-skin-preview，读的是那套主题自己的 token——地面、纸、线、标题字、主色都是真的 */
@@ -1287,7 +1293,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 对话框里只能有一个框：内层 textarea 不许再画边框、聚焦环、投影 *
 .rec-composer .ant-input:focus,
 .rec-composer .ant-input-outlined:focus,
-.rec-composer .ant-input-outlined:focus-within { box-shadow: 0 0 0 3px rgba(47, 107, 255, 0.08) !important; border-color: var(--brand-line) !important; }
+.rec-composer .ant-input-outlined:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 8%, transparent) !important; border-color: var(--brand-line) !important; }
 
 /* ---------- AI 过程条（命令行式的思考轨迹） ---------- */
 .trace { font-family: var(--font-mono); font-size: var(--fs-note); color: var(--text-muted); padding: 2px 0; }
@@ -1530,7 +1536,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-draft { flex-basis: 100%; margin-top: 4px; padding: 10px 12px; background: var(--workbench); border: 1px solid var(--line); border-radius: var(--r-card); white-space: pre-wrap; line-height: 1.7; color: var(--ink); }
 .cli-draft > div:last-child { margin-top: 6px; display: flex; gap: 12px; }
 .cli-composer { padding-top: 8px; }
-.cli-composer-sticky { position: sticky; bottom: 0; background: linear-gradient(to bottom, rgba(250, 250, 250, 0), var(--page-bg) 28%); padding-top: 22px; padding-bottom: 6px; }
+.cli-composer-sticky { position: sticky; bottom: 0; background: linear-gradient(to bottom, transparent, var(--page-bg) 28%); padding-top: 22px; padding-bottom: 6px; }
 .cli-input { display: flex; align-items: flex-end; gap: 10px; min-height: var(--field-h); padding: 10px 14px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-card); transition: border-color var(--t-fast) var(--ease); }
 .cli-input:focus-within { border-color: var(--text-faint); }
 .cli-input .cli-prompt { line-height: 22px; color: var(--ink); }
@@ -2276,10 +2282,18 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   /* 时长归零挡不住位移本身：按下去仍然会缩一下，只是缩得很快——
      对开了这个开关的人来说，那正是他不想看到的那种跳。所以把位移也撤掉，
      按下的回应交给颜色（:active 那条规则里的底色仍然生效）。 */
+  /* transform 和 scale / translate 分成两条、选择器还得不一样（下面那条每个前面加 :root）：
+     写在同一块里，CSS 压缩（lightningcss）会把三条并成一条 transform:scale(1)translate(0,0)，
+     独立的 scale / translate 属性就没被关掉，按下照样缩、像素照样沉（和下面浮标那条同一个坑）。
+     选择器一样的两块也会被它合回去，所以要不一样。tests/reduced-motion.test.ts 锁着 */
   .press:active, .rail-item:active, .cli-q:active, .rail-fb:active, .rail-up:active,
   .pane-ib:active, .set-nav-i:active, .bill-plan:active, .cli-tool:active, .cli-send:active,
   .ant-btn:active, .ant-dropdown-menu-item:active, .rec-tl-act:active {
     transform: none !important;
+  }
+  :root .press:active, :root .rail-item:active, :root .cli-q:active, :root .rail-fb:active, :root .rail-up:active,
+  :root .pane-ib:active, :root .set-nav-i:active, :root .bill-plan:active, :root .cli-tool:active, :root .cli-send:active,
+  :root .ant-btn:active, :root .ant-dropdown-menu-item:active, :root .rec-tl-act:active {
     scale: none !important;
     translate: none !important;  /* 像素主题按下是「沉下去 2px」，走的是 translate，也算位移 */
   }
@@ -2472,7 +2486,7 @@ html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding
 .att-pic { position: relative; width: 96px; }
 .att-pic .ant-image, .att-pic .ant-image-img { border-radius: 6px; display: block; }
 .att-pic-name { font-size: var(--fs-note); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.att-pic > .ant-btn { position: absolute; top: 2px; right: 2px; background: rgba(255,255,255,.85); }
+.att-pic > .ant-btn { position: absolute; top: 2px; right: 2px; background: color-mix(in srgb, var(--panel) 85%, transparent); }
 .att-missing { width: 96px; height: 96px; border: 1px dashed var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: var(--fs-note); color: var(--text-muted); padding: 6px; }
 .att-files { list-style: none; margin: 12px 0 0; padding: 0; }
 .att-files li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); min-width: 0; }

@@ -13,10 +13,13 @@
  *   - 覆盖的 --ant-* 名字必须是 antd 真有的（tests/skins.test.ts 对着 antd 的 token 表查，拼错就红）
  *   - 选择器权重：antd 的全局变量在 `.css-var-dd`（0,1,0），组件变量在 `.css-var-dd:is(.ant-xxx, .ant-xxx-css-var)`（0,2,0）；
  *     这里前面多一个 :root[data-skin]:not(...)，总压得过它们
+ *   - 暗黑（P10）：「现状」在暗黑下也得接这一层，不然 antd 还是 lib/theme.ts 那套浅色字面量。
+ *     所以接色的块前缀是 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"])，权重和原来一样是 (0,3,0)；
+ *     纯形状的（下拉圆角、下面两条头像/时间线）仍只给四套换皮，现状暗黑下形状不动
  */
 
 /* ---------- 全局：色、字、形、动 ---------- */
-:root[data-skin]:not([data-skin="now"]) .css-var-dd {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd {
   --ant-color-primary: var(--brand);
   --ant-color-primary-hover: color-mix(in srgb, var(--brand) 80%, var(--panel));
   --ant-color-primary-active: var(--brand-deep);
@@ -163,7 +166,7 @@
 }
 
 /* ---------- 组件：lib/theme.ts 里单独给过值的那些（它们写成了字面量，不跟全局变量走） ---------- */
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-table, .ant-table-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-table, .ant-table-css-var) {
   --ant-table-header-bg: var(--workbench);
   --ant-table-header-color: var(--text-muted);
   --ant-table-header-sort-active-bg: var(--hover);
@@ -186,7 +189,7 @@
   --ant-table-header-icon-hover-color: var(--ink);
   --ant-table-sticky-scroll-bar-bg: var(--text-faint);
 }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-input, .ant-input-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-input, .ant-input-css-var) {
   --ant-input-active-border-color: var(--brand);
   --ant-input-hover-border-color: var(--line-strong);
   --ant-input-active-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent);
@@ -194,7 +197,7 @@
   --ant-input-active-bg: var(--panel);
   --ant-input-addon-bg: var(--workbench);
 }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-select, .ant-select-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-select, .ant-select-css-var) {
   --ant-select-option-selected-color: var(--ink);
   --ant-select-option-selected-bg: var(--brand-bg);
   --ant-select-option-active-bg: var(--hover);
@@ -207,17 +210,17 @@
 }
 /* 顶上那条提示（message）：antd 把它的底色算成组件变量写死 #fff，全局的 --ant-color-bg-elevated 管不到它——
    科技那种深色主题下就成了白底浅字，一个字都看不清（2026-09-29 查出来的，所有保存/撤销提示都是它） */
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-message, .ant-message-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-message, .ant-message-css-var) {
   --ant-message-content-bg: var(--panel);
 }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-modal, .ant-modal-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-modal, .ant-modal-css-var) {
   --ant-modal-content-bg: var(--panel);
   --ant-modal-header-bg: var(--panel);
   --ant-modal-footer-bg: transparent;
   --ant-modal-title-color: var(--ink);
   --ant-border-radius-lg: var(--r-pop);   /* 组件里重设全局名：只在弹窗这一层生效 */
 }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-btn, .ant-btn-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-btn, .ant-btn-css-var) {
   /* 按钮的组件变量叫 --ant-button-*（不是 --ant-btn-*，那一套是它每个按钮自己算的局部变量） */
   --ant-button-primary-color: var(--on-ink);
   --ant-button-danger-color: var(--on-ink);
@@ -243,7 +246,7 @@
   --ant-button-text-text-active-color: var(--ink);
   --ant-button-text-hover-bg: color-mix(in srgb, var(--ink) 6%, transparent);
 }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-pagination, .ant-pagination-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-pagination, .ant-pagination-css-var) {
   --ant-pagination-item-bg: var(--panel);
   --ant-pagination-item-active-bg: var(--panel);
   --ant-pagination-item-active-color: var(--brand);
@@ -258,24 +261,24 @@
   --ant-pagination-hover-bg: var(--hover);
   --ant-pagination-active-bg: var(--panel);
 }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-skeleton, .ant-skeleton-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-skeleton, .ant-skeleton-css-var) {
   --ant-skeleton-color: var(--hover);
   --ant-skeleton-color-gradient-end: color-mix(in srgb, var(--ink) 10%, var(--hover));
   --ant-skeleton-gradient-from-color: var(--hover);
   --ant-skeleton-gradient-to-color: color-mix(in srgb, var(--ink) 10%, var(--hover));
 }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-avatar, .ant-avatar-css-var) { --ant-avatar-group-border-color: var(--panel); }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-tabs, .ant-tabs-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-avatar, .ant-avatar-css-var) { --ant-avatar-group-border-color: var(--panel); }
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-tabs, .ant-tabs-css-var) {
   --ant-tabs-ink-bar-color: var(--ink);
   --ant-tabs-item-selected-color: var(--ink);
   --ant-tabs-item-hover-color: var(--ink);
 }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-track-bg: var(--hover); --ant-segmented-item-selected-bg: var(--panel); }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-card, .ant-card-css-var) { --ant-color-border-secondary: var(--line); --ant-card-actions-bg: var(--panel); --ant-card-extra-color: var(--ink); }
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-track-bg: var(--hover); --ant-segmented-item-selected-bg: var(--panel); }
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-card, .ant-card-css-var) { --ant-color-border-secondary: var(--line); --ant-card-actions-bg: var(--panel); --ant-card-extra-color: var(--ink); }
 :root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-dropdown, .ant-dropdown-css-var) { --ant-border-radius-lg: var(--r-pop); }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-tag, .ant-tag-css-var) { --ant-tag-default-bg: var(--hover); --ant-tag-default-color: var(--ink-soft); --ant-tag-solid-text-color: var(--on-ink); }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-form, .ant-form-css-var) { --ant-form-label-color: var(--text-muted); }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-menu, .ant-menu-css-var) {
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-tag, .ant-tag-css-var) { --ant-tag-default-bg: var(--hover); --ant-tag-default-color: var(--ink-soft); --ant-tag-solid-text-color: var(--on-ink); }
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-form, .ant-form-css-var) { --ant-form-label-color: var(--text-muted); }
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-menu, .ant-menu-css-var) {
   --ant-menu-item-color: var(--ink-soft);
   --ant-menu-item-hover-bg: var(--hover);
   --ant-menu-item-hover-color: var(--ink);

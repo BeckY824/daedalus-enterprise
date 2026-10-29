@@ -1,5 +1,5 @@
 import { businessDayjs as dayjs } from "./business-clock";
-import { palette, avatarBg } from "./palette";
+import { avatarBg } from "./palette";
 import relativeTime from "dayjs/plugin/relativeTime";
 import "dayjs/locale/zh-cn";
 import { isCalendarDate } from "./schedule-date";
@@ -154,12 +154,11 @@ export function companyInitial(name: string): string {
   return /[一-龥]/.test(s) ? s[0] : s[0].toUpperCase();
 }
 
-/** 由姓名稳定生成一个头像底色 */
-const AVATAR_COLORS = avatarBg;
+/** 由姓名稳定生成一个头像底色：返回 var(--avatar-1…8)，明暗两套都在 token 里（下标和 palette.avatarBg 一一对应，同一个名字换主题不换色相） */
 export function avatarColor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  return `var(--avatar-${(h % avatarBg.length) + 1})`;
 }
 
 export type 可选成员 = { id: string; name: string; email: string };
@@ -199,5 +198,5 @@ export function 独自一人(users: 可选成员[], 现负责人?: string | null
   return !现负责人 || users[0]?.id === 现负责人;
 }
 
-/** 头像底色都是浅色，字一律深灰；配 avatarColor 用 */
-export const AVATAR_TEXT = palette.inkSoft;
+/** 头像字：次级正文色。明亮下头像底是浅色、字深灰，暗黑下底深字浅；配 avatarColor 用 */
+export const AVATAR_TEXT = "var(--ink-soft)";
