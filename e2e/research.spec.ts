@@ -8,6 +8,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 配好AI, 拆掉假模型 } from "./fake-llm";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 import { 起假模型 } from "../scripts/research-fake-llm";
 
 const 账号 = { 用户名: "admin", 密码: "admin123" };
@@ -242,6 +243,7 @@ test.describe("客户页的背调按钮", () => {
   });
 
   test("有公司：按钮提示写清查谁，卡片抬头是公司、联系人是客户名，存进这位客户的跟进", async ({ page }) => {
+    test.skip(企业版, "企业版客户页不摆背调按钮（客户页摆法 背调）");
     test.setTimeout(120_000);
     const id = await 造客户({ name: "ZEESHAN AFZAL", phone: "+33616988559", school: "ISHA.A SAS", extra: { country: "法国", whatsapp: "+33616988559" } });
     await 登录(page);
@@ -268,6 +270,7 @@ test.describe("客户页的背调按钮", () => {
   });
 
   test("没公司有国际号码：先找公司（按钮就是确认，不再出确认卡），点选候选接着背调那家", async ({ page }) => {
+    test.skip(企业版, "企业版客户页不摆背调按钮（客户页摆法 背调）");
     test.setTimeout(150_000);
     const id = await 造客户({ name: "Anna Beispiel 客户页", phone: "+49 40 0000 0000" });
     await 登录(page);
@@ -284,6 +287,7 @@ test.describe("客户页的背调按钮", () => {
   });
 
   test("公司、官网、国际号码都没有：点了就地说清补哪样，不开跑", async ({ page }) => {
+    test.skip(企业版, "企业版客户页不摆背调按钮（客户页摆法 背调）");
     const id = await 造客户({ name: "只有名字的客户", phone: "13800138222" });
     await 登录(page);
     await page.goto(`/customers/${id}`);

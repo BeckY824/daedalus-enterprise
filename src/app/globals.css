@@ -51,6 +51,8 @@
   /* 头像底色：八个淡色，按名字哈希选 */
   --avatar-1: #dbeafe; --avatar-2: #dcfce7; --avatar-3: #fef3c7; --avatar-4: #fde2e2;
   --avatar-5: #ede9fe; --avatar-6: #e0f2fe; --avatar-7: #fce7f3; --avatar-8: #e2e8f0;
+  /* 标的两色（components/Logo.tsx）：浅底深框蓝线，暗底由 dark.css / tech.css 换成浅框亮蓝 */
+  --logo-frame: #0b1b33; --logo-line: #1554e8;
 
   /* ---------- 字号：四级，外加一个下限 ----------
      方案里原写「正文 9pt、说明 7pt」，那是印刷品的尺寸，1440 屏上读不了。
@@ -164,6 +166,10 @@
 .appr-mini { display: flex; gap: 6px; width: 100%; height: 64px; padding: 6px; margin-bottom: 4px; border-radius: var(--r-ctl); border: 1px solid var(--line-soft); }
 .appr-mini-tone { background: var(--workbench); }
 .appr-mini-white { background: var(--panel); }
+/* 明暗那一行的小样：挂着 data-mode-preview，读 dark.css 里那份暗底或明亮小样那份浅底；「跟随系统」左右各半 */
+.appr-mini-mode { background: var(--workbench); }
+.appr-mini-split { padding: 0; gap: 0; overflow: hidden; }
+.appr-mini-half { flex: 1; display: flex; gap: 6px; padding: 6px; background: var(--workbench); }
 .appr-mini-rail { width: 22%; border-radius: 3px; background: color-mix(in srgb, var(--line) 60%, transparent); }
 .appr-mini-card { flex: 1; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); }
 /* 主题的小样：挂着 data-skin-preview，读的是那套主题自己的 token——地面、纸、线、标题字、主色都是真的 */
@@ -1287,7 +1293,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 对话框里只能有一个框：内层 textarea 不许再画边框、聚焦环、投影 *
 .rec-composer .ant-input:focus,
 .rec-composer .ant-input-outlined:focus,
-.rec-composer .ant-input-outlined:focus-within { box-shadow: 0 0 0 3px rgba(47, 107, 255, 0.08) !important; border-color: var(--brand-line) !important; }
+.rec-composer .ant-input-outlined:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 8%, transparent) !important; border-color: var(--brand-line) !important; }
 
 /* ---------- AI 过程条（命令行式的思考轨迹） ---------- */
 .trace { font-family: var(--font-mono); font-size: var(--fs-note); color: var(--text-muted); padding: 2px 0; }
@@ -1372,6 +1378,32 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-welcome-d { margin-top: var(--s1); color: var(--text-muted); font-size: var(--fs-note); }
 .cli-welcome-s { margin-top: 4px; color: var(--text-muted); }
 .cli-welcome-hints { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); color: var(--text-muted); font-size: var(--fs-note); line-height: 1.9; }
+/* 企业版项目模式的「欢迎使用 {产品名}」：产品名可能很长，最多两行，再长省略 */
+.cli-welcome-brand { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+
+/* ---------- 企业版项目模式首页「驾驶舱」（10-29 首页改版 #10 / #11）----------
+   左 2/3 对话、右 1/3 竖排四张指标卡；这一格窄到放不下两列（手机，或左栏 + 对话列表都开着的小窗口）就单列：
+   对话在上、卡在下，手机上卡排成 2×2。量的是这一格的宽（容器查询），不是整个窗口 */
+.cli-ck { container-type: inline-size; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.cli-ck-g { flex: 1; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--s5); }
+.cli-ck .cli-col { max-width: none; margin: 0; min-width: 0; }
+.home-cards { position: sticky; top: var(--s5); align-self: start; display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.cli-empty .home-cards { align-self: center; }
+.home-card { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); color: var(--ink); text-decoration: none; }
+.home-card:hover { border-color: var(--brand-line); color: var(--ink); }
+.home-card-k, .home-card-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-card-k { font-size: var(--fs-note); color: var(--text-muted); }
+.home-card-v { font-family: var(--font-num); font-size: var(--fs-num); font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.home-card:hover .home-card-v { color: var(--brand); }
+.home-card-warn .home-card-v, .home-card-warn:hover .home-card-v { color: var(--danger); }
+@container (max-width: 639px) {
+  .cli-ck-g { grid-template-columns: minmax(0, 1fr); align-content: start; }
+  .home-cards { position: static; align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cli-empty .home-cards { align-self: stretch; }
+}
+@media (max-width: 767px) { .cli:has(.cli-ck) { min-height: 0; } }
+/* 输入框旁「查重」点开的小框 */
+.home-dedupe { display: flex; flex-direction: column; gap: var(--s3); width: 340px; max-width: calc(100vw - 64px); }
 /* 问答贴着输入框往上长。原来是 flex:1 顶在上边，于是只问了一句、答案还在流的时候，
    过程条挂在页顶、输入框钉在页底，中间空一大片（2026-09-18 报上来的那张图）。
    往上长还有一个好处：新的一轮总是出现在眼睛已经在看的地方。 */
@@ -1530,7 +1562,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-draft { flex-basis: 100%; margin-top: 4px; padding: 10px 12px; background: var(--workbench); border: 1px solid var(--line); border-radius: var(--r-card); white-space: pre-wrap; line-height: 1.7; color: var(--ink); }
 .cli-draft > div:last-child { margin-top: 6px; display: flex; gap: 12px; }
 .cli-composer { padding-top: 8px; }
-.cli-composer-sticky { position: sticky; bottom: 0; background: linear-gradient(to bottom, rgba(250, 250, 250, 0), var(--page-bg) 28%); padding-top: 22px; padding-bottom: 6px; }
+.cli-composer-sticky { position: sticky; bottom: 0; background: linear-gradient(to bottom, transparent, var(--page-bg) 28%); padding-top: 22px; padding-bottom: 6px; }
 .cli-input { display: flex; align-items: flex-end; gap: 10px; min-height: var(--field-h); padding: 10px 14px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-card); transition: border-color var(--t-fast) var(--ease); }
 .cli-input:focus-within { border-color: var(--text-faint); }
 .cli-input .cli-prompt { line-height: 22px; color: var(--ink); }
@@ -2030,12 +2062,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 }
 /* 卡片式的可点项：悬停抬 3px + 一层浅阴影，按下去回落到 1px。
    1px 那一版量得出来但看不见——抬起要让人看见"它浮起来了"，那才是"能点"的信号 */
-.bill-plan, .cli-q, .cli-sugg, .stat-card-go {
+.bill-plan, .cli-q, .cli-sugg, .stat-card-go, .home-card {
   transition: transform var(--t) var(--ease), box-shadow var(--t) var(--ease),
     scale var(--t-press) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
-.bill-plan:hover, .cli-q:hover, .cli-sugg:hover, .stat-card-go:hover {
+.bill-plan:hover, .cli-q:hover, .cli-sugg:hover, .stat-card-go:hover, .home-card:hover {
   transform: translateY(-3px); box-shadow: 0 8px 22px rgba(17, 24, 39, 0.09); }
-.bill-plan:active, .cli-q:active, .cli-sugg:active, .stat-card-go:active {
+.bill-plan:active, .cli-q:active, .cli-sugg:active, .stat-card-go:active, .home-card:active {
   transform: translateY(-1px); transition-duration: var(--t-press); }
 
 /* 焦点环统一。**只给键盘**：:focus-visible 在鼠标点击时不触发，
@@ -2045,7 +2077,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-ic:focus-visible, .cli-q:focus-visible, .cli-sugg:focus-visible, .cli-cmd:focus-visible,
 .mp-btn:focus-visible, .prop-ok:focus-visible, .prop-no:focus-visible, .bill-plan:focus-visible,
 .set-nav-i:focus-visible, .cmdk-row:focus-visible, .list-sel-x:focus-visible,
-.plan-switch:focus-visible {
+.plan-switch:focus-visible, .home-card:focus-visible {
   outline: 1.5px solid var(--brand);
   outline-offset: 2px;
   border-radius: var(--r-ctl);
@@ -2276,10 +2308,19 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   /* 时长归零挡不住位移本身：按下去仍然会缩一下，只是缩得很快——
      对开了这个开关的人来说，那正是他不想看到的那种跳。所以把位移也撤掉，
      按下的回应交给颜色（:active 那条规则里的底色仍然生效）。 */
+  /* transform 和 scale / translate 分成两条、选择器还得不一样（下面那条每个前面加 :root）：
+     写在同一块里，CSS 压缩（lightningcss）会把三条并成一条 transform:scale(1)translate(0,0)，
+     独立的 scale / translate 属性就没被关掉，按下照样缩、像素照样沉（和下面浮标那条同一个坑）。
+     选择器一样的两块也会被它合回去，所以要不一样。tests/reduced-motion.test.ts 锁着 */
   .press:active, .rail-item:active, .cli-q:active, .rail-fb:active, .rail-up:active,
   .pane-ib:active, .set-nav-i:active, .bill-plan:active, .cli-tool:active, .cli-send:active,
-  .ant-btn:active, .ant-dropdown-menu-item:active, .rec-tl-act:active {
+  .ant-btn:active, .ant-dropdown-menu-item:active, .rec-tl-act:active,
+  .home-card:hover, .home-card:active {
     transform: none !important;
+  }
+  :root .press:active, :root .rail-item:active, :root .cli-q:active, :root .rail-fb:active, :root .rail-up:active,
+  :root .pane-ib:active, :root .set-nav-i:active, :root .bill-plan:active, :root .cli-tool:active, :root .cli-send:active,
+  :root .ant-btn:active, :root .ant-dropdown-menu-item:active, :root .rec-tl-act:active {
     scale: none !important;
     translate: none !important;  /* 像素主题按下是「沉下去 2px」，走的是 translate，也算位移 */
   }
@@ -2472,7 +2513,7 @@ html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding
 .att-pic { position: relative; width: 96px; }
 .att-pic .ant-image, .att-pic .ant-image-img { border-radius: 6px; display: block; }
 .att-pic-name { font-size: var(--fs-note); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.att-pic > .ant-btn { position: absolute; top: 2px; right: 2px; background: rgba(255,255,255,.85); }
+.att-pic > .ant-btn { position: absolute; top: 2px; right: 2px; background: color-mix(in srgb, var(--panel) 85%, transparent); }
 .att-missing { width: 96px; height: 96px; border: 1px dashed var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: var(--fs-note); color: var(--text-muted); padding: 6px; }
 .att-files { list-style: none; margin: 12px 0 0; padding: 0; }
 .att-files li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); min-width: 0; }

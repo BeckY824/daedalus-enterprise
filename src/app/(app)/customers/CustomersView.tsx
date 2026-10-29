@@ -284,6 +284,11 @@ export default function CustomersView({
   }
   const b = useBusiness();
   // 项目模式开着：新建一律走建档向导（客户、联系人、项目、首条沟通一次建好）
+  /**
+   * 企业版项目模式（统一公海 P7，2026-10-29）：公海挪去 /pool 一页看，这里不摆「客户 / 公海」页签。
+   * 「新建客户」照旧在（项目模式下走建档向导）。?pool=1 的老链接服务端直接转去 /pool
+   */
+  const 统一公海 = 企业 && b.projectMode === true;
   const 新建 = () => {
     if (b.projectMode) return router.push("/projects/new");
     setEditing(null);
@@ -330,7 +335,7 @@ export default function CustomersView({
   }, []);
 
   /** 收起来的那三个里还筛着几个。收起来不等于可以不告诉人 */
-  const 更多筛了 = [f.grade, f.decisionStatus, f.channelOwnerId, f.source].filter(Boolean).length;
+  const 更多筛了 = [f.grade, f.decisionStatus, f.channelOwnerId, f.source, 企业 ? f.level : ""].filter(Boolean).length;
   /** 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选 */
   const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v).length;
   /** 重置留在当前页签：在「公海」里点重置，回到的是全部公海，不是跳回「客户」 */
@@ -543,7 +548,7 @@ export default function CustomersView({
           页签记在地址上（pool=1），翻页、搜索、筛选都留在这一页签里。
           一个人用、公海里也没人时不摆——那时公海就是个空抽屉；空库不摆；子集（筛选行上那三种标记）里不摆：那几个数本来就含公海
         */
-        titleAside={!空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
+        titleAside={!统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
           <Segmented
             aria-label={`${b.customer} / 公海`}
             value={f.pool ? "公海" : "客户"}
@@ -602,7 +607,9 @@ export default function CustomersView({
           公海里匹配 > 0 ? (
             <div className="list-none">
               这里没有符合条件的；
-              <Button type="link" size="small" style={{ padding: 0 }} onClick={() => apply({ pool: "1", salesOwnerId: "" })}>
+              <Button type="link" size="small" style={{ padding: 0 }} onClick={() => (统一公海
+                ? router.push(f.keyword ? `/pool?${new URLSearchParams({ keyword: f.keyword })}` : "/pool")
+                : apply({ pool: "1", salesOwnerId: "" }))}>
                 公海里有 {公海里匹配} 位匹配 ›
               </Button>
             </div>
@@ -674,11 +681,6 @@ export default function CustomersView({
                 options={[...new Set([...国家们, ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
             )}
             {/* 客户等级（2026-10-16）：和国家一样摆在外面——按等级挑今天先跟谁 */}
-            {企业 && (
-              <Select style={{ width: 120 }} placeholder="全部级别" allowClear aria-label="客户级别"
-                value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
-                options={[...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] })), { value: 未分级, label: 未分级 }]} />
-            )}
             {外贸 && !企业 && (
               <Select style={{ width: 120 }} placeholder="全部等级" allowClear aria-label="客户等级"
                 value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
@@ -706,6 +708,12 @@ export default function CustomersView({
                   <Select style={{ width: "100%" }} placeholder={`全部${b.fields.grade}`} allowClear
                     value={f.grade || undefined} onChange={(v) => apply({ grade: v ?? "" })}
                     options={[...b.grades.map((g) => ({ value: g, label: g })), ...旧职位.map((g) => ({ value: g, label: `${g}（已不在选项里）` }))]} />
+                  {/* 企业版级别收在这里：摆外面 1024 宽会把筛选行挤成两行；列表里「级别」一列默认摆着 */}
+                  {企业 && (
+                    <Select style={{ width: "100%" }} placeholder="全部级别" allowClear aria-label="客户级别"
+                      value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
+                      options={[...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] })), { value: 未分级, label: 未分级 }]} />
+                  )}
                   {!企业 && (
                     <Select style={{ width: "100%" }} placeholder="全部决策状态" allowClear
                       value={f.decisionStatus || undefined} onChange={(v) => apply({ decisionStatus: v ?? "" })}

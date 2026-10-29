@@ -4,6 +4,7 @@ import { ConfigProvider, App as AntdApp } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { themeConfig } from "@/lib/theme";
 import MotionTheme from "@/components/MotionTheme";
+import ModeFollow from "@/components/ModeFollow";
 import { 外观预设脚本, 默认外观 } from "@/lib/appearance";
 import "./globals.css";
 import { 自定产品名 } from "@/lib/enterprise/brand";
@@ -15,6 +16,8 @@ import "./skins/pixel.css";
 import "./skins/tech.css";
 import "./skins/luxe.css";
 import "./skins/ledger.css";
+/* 暗色（设置 → 外观 → 明暗）：一层中性 token 叠在上面几套主题上，必须排在所有主题之后（tests/dark-mode.test.ts） */
+import "./dark.css";
 import "@fontsource/pixelify-sans/latin-500.css";
 import "@fontsource/pixelify-sans/latin-700.css";
 import "@fontsource/silkscreen/latin-400.css";
@@ -35,13 +38,14 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    /* data-paper / data-skin 是外观（lib/appearance.ts）。服务端先按默认渲染，
-       <head> 里那段在第一次绘制前换成这台电脑存的——所以 html 上这两个属性和服务端对不上是预期的 */
-    <html lang="zh-CN" data-paper={默认外观.paper} data-skin={默认外观.skin} suppressHydrationWarning>
+    /* data-paper / data-skin / data-mode 是外观（lib/appearance.ts）。服务端先按默认渲染，
+       <head> 里那段在第一次绘制前换成这台电脑存的——所以 html 上这几个属性和服务端对不上是预期的 */
+    <html lang="zh-CN" data-paper={默认外观.paper} data-skin={默认外观.skin} data-mode={默认外观.mode} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: 外观预设脚本 }} />
       </head>
       <body>
+        <ModeFollow />
         <AntdRegistry>
           {/* 两个字的按钮 antd 默认中间插空格（「客 户」「确 定」），全站不插（10-27 界面统一） */}
           <ConfigProvider locale={zhCN} theme={themeConfig} button={{ autoInsertSpace: false }}>

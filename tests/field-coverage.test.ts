@@ -127,6 +127,8 @@ const 派生: Record<string, Record<string, string>> = {
     attributionCustomerId: "同上",
     lastFollowAt: "最近一条跟进的时间，记跟进时自动维护",
     deletedAt: "企业版删除时打上（进回收站），恢复时清掉；30 天后连行真删，不给改（lib/enterprise/soft-delete.ts）",
+    poolInvalidAt: "企业版统一公海：pool/actions.ts 的 标无效客户 / 恢复有效客户打上和清掉，不随客户资料编辑",
+    poolReturns: "企业版统一公海：主动退回公海时系统累加（放进公海 / 放回项目公海），撤销放进时减回，不许手工改",
   },
   Lead: {
     convertedAt: "convertLead 转化时打上",

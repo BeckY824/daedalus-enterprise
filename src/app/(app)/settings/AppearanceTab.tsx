@@ -2,12 +2,13 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useLocalPref } from "@/lib/local-pref";
-import { 外观键, 底色表, 主题表, 默认外观, 读外观, 挂外观, 网页玻璃键, 是桌面端, 挂网页玻璃, type 外观 } from "@/lib/appearance";
+import { 外观键, 底色表, 主题表, 明暗表, 默认外观, 读外观, 挂外观, 网页玻璃键, 是桌面端, 挂网页玻璃, type 外观 } from "@/lib/appearance";
 
 /**
  * 外观：这台电脑上的样子。只换值，不动数据，也不影响同事（规则见 lib/appearance.ts）。
  *
- * 两行：底色（原底 / 白底）和主题（现状 / 像素 / 科技 / 高级 / 账簿），两行互不影响、可以任意组合。
+ * 三行：明暗（明亮 / 暗黑 / 跟随系统）、底色（原底 / 白底）和主题（现状 / 像素 / 科技 / 高级 / 账簿），互不影响、可以任意组合。
+ * 跟随系统时系统一换就跟着换，那个监听挂在根布局上（components/ModeFollow.tsx），不只在这一页。
  * 主题那一行只在主题多于一套时出现——一个只有一个选项的选择器是在让人找一个不存在的东西。
  * 每个选项带一张小样：看得见选了以后长什么样，比一句说明管用。主题的小样挂 data-skin-preview，
  * 主题样式表对它也生效（skins/*.css 的 token 块同时写在 [data-skin-preview="x"] 上），所以小样就是那套主题本身的值。
@@ -16,11 +17,45 @@ export default function AppearanceTab() {
   const [存的, 存] = useLocalPref<Partial<外观>>(外观键, 默认外观);
   const 当前 = 读外观(JSON.stringify(存的));
   // 选完当场生效：<html> 上的属性一换，整页的 token 跟着换，不用刷新
-  useEffect(() => 挂外观(当前), [当前.paper, 当前.skin]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => 挂外观(当前), [当前.paper, 当前.skin, 当前.mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="appr">
       <p className="appr-note">只改这台电脑上的样子，不动数据，也不影响同事。</p>
+      <section className="appr-row" aria-labelledby="appr-mode">
+        <div className="appr-h" id="appr-mode">明暗</div>
+        <div className="appr-opts" role="radiogroup" aria-labelledby="appr-mode">
+          {明暗表.map((x) => (
+            <button
+              key={x.key}
+              type="button"
+              role="radio"
+              aria-checked={当前.mode === x.key}
+              className={`appr-opt${当前.mode === x.key ? " on" : ""}`}
+              onClick={() => 存({ ...当前, mode: x.key })}
+            >
+              {/* 小样读的是那一档自己的值（dark.css 的 [data-mode-preview]）；跟随系统左明右暗各半 */}
+              {x.key === "system" ? (
+                <span className="appr-mini appr-mini-split" aria-hidden="true">
+                  {(["light", "dark"] as const).map((半) => (
+                    <span key={半} className="appr-mini-half" data-mode-preview={半}>
+                      <i className="appr-mini-rail" />
+                      <i className="appr-mini-card" />
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="appr-mini appr-mini-mode" data-mode-preview={x.key} aria-hidden="true">
+                  <i className="appr-mini-rail" />
+                  <i className="appr-mini-card" />
+                </span>
+              )}
+              <b>{x.名}</b>
+              <span>{x.说明}</span>
+            </button>
+          ))}
+        </div>
+      </section>
       <section className="appr-row" aria-labelledby="appr-paper">
         <div className="appr-h" id="appr-paper">底色</div>
         <div className="appr-opts" role="radiogroup" aria-labelledby="appr-paper">

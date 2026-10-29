@@ -10,7 +10,8 @@
  * 两条：
  *   1. :root 和 palette.ts 之外不许有 hex——散一个就红，红的那行告诉你该用哪个 token
  *   2. palette.ts 里的每个值都必须在 :root 里有同样的值——两份镜像不许漂
- * Logo 是品牌图形不是界面色，放行。
+ * Logo 原来是品牌图形放行；P10 起它的两色走 --logo-frame / --logo-line（暗黑要换），不再放行。
+ * 暗黑（app/dark.css）和主题文件一样：色值只许在 token 块里。
  *
  * 运营台（/admin）有意另用一套蓝白色板，不进 globals.css（和产品长得一样，人会以为还在自己工作区里）。
  * 它照同一个规矩来：色值只写在 ops.css 的 `.opx { … }` 变量块，和给 echarts 用的镜像 ui.tsx 的 `色`；
@@ -38,7 +39,7 @@ function 所有源文件(dir: string): string[] {
   return out;
 }
 
-const 放行 = new Set(["app/globals.css", "lib/palette.ts", "components/Logo.tsx"]);
+const 放行 = new Set(["app/globals.css", "lib/palette.ts"]);
 
 /** 运营台那一对：只放行这两个块本身，块外照查。块抹成同样多的换行，行号不乱 */
 const 运营台块: Record<string, (s: string) => [number, number]> = {
@@ -70,7 +71,7 @@ describe("色值只在 :root 和 palette.ts 里写死", () => {
         expect(a, `${rel} 里找不到色值块`).toBeGreaterThanOrEqual(0);
         文 = 文.slice(0, a) + 文.slice(a, b).replace(/[^\n]/g, "") + 文.slice(b);
       }
-      if (rel.startsWith("app/skins/")) 文 = 抹主题token块(文);
+      if (rel.startsWith("app/skins/") || rel === "app/dark.css") 文 = 抹主题token块(文);
       const 行 = 文.split("\n");
       行.forEach((l, i) => {
         for (const m of l.match(HEX) ?? []) 散的.push(`${rel}:${i + 1} ${m}`);

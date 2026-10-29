@@ -2,7 +2,7 @@
  * 团队版项目模式 1a 的读写（2026-10-23，D-31）。取值规矩在 lib/project/nodes.ts，界面的写在 app/(app)/projects/actions.ts。
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
-import type { Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 下一步, 节点序号, 字典of, 本套位置, type 位置 } from "./nodes";
@@ -513,6 +513,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown)
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason);
     // 企业版：客户名下只有这一个项目，客户也一起进客户公海（pool-link.ts）
     await 单项目客户跟进公海(tx, p, me.id, 现在);
+    // 企业版统一公海（P7，迁移 080）：客户累计主动退回 +1（超时回收、离职交接不走这里，不算）。裸 SQL 不顶 updatedAt
+    if (企业版()) await tx.$executeRaw(Prisma.sql`UPDATE "Customer" SET "poolReturns" = "poolReturns" + 1 WHERE "id" = ${p.customerId}`);
     return { ok: true as const };
   });
 }
@@ -534,6 +536,11 @@ export async function 领取公海项目(me: 谁, projectId: string): Promise<�
       ? 领走了 : { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (!p.pooledAt) return 领走了;
     if (!(await 在职(tx, me.id))) return { ok: false as const, error: "账号已停用" };
+    // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了（领项目会把客户一起带走）
+    if (企业版()) {
+      const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } }));
+      if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要老板先恢复" };
+    }
     // 原负责人领不回：企业版看 公海规则（10-26 定稿「非原负责人均可领取」），别的版本照旧
     if (me.id === p.ownerId && !(企业版() && 公海规则.原负责人能领回)) return { ok: false as const, error: 企业版() ? 原负责人不能领回提示 : "自己放回公海的项目不能自己领回" };
     const 超 = await 超上限(tx, 规则, me.id, p);

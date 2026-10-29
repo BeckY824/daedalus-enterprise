@@ -9,6 +9,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 const 客户名 = "计划待办测试位";
@@ -56,6 +57,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("D-044 到点提醒点进来（?focus=plan:第二条）：记录页摆的是叫你的那条、闪一下，地址上的 focus 随即抹掉", async ({ page }) => {
+  test.skip(企业版, "企业版客户页不摆「下次跟进」（10-29 会议待定 14：项目跟进已要求填下一步）");
   await page.goto(`/customers/${客户id}?focus=plan:${计划.晚}`);
   // 只认 main 里那份：整页加载时 React 流式渲染会先把内容放在 <div hidden id="S:1"> 里、随后才换进来，那一瞬页面上有两份（看不见的那份不算）
   const 那条 = page.getByRole("main").locator(`.rec-plan[data-focus="plan:${计划.晚}"]`);
@@ -73,6 +75,7 @@ test("D-044 到点提醒点进来（?focus=plan:第二条）：记录页摆的�
 });
 
 test("D-044 叫你的那条已经做完了：照旧摆最早那条没做完的，不是空着", async ({ page }) => {
+  test.skip(企业版, "企业版客户页不摆「下次跟进」（10-29 会议待定 14：项目跟进已要求填下一步）");
   const p = 连库();
   await p.followPlan.update({ where: { id: 计划.晚 }, data: { done: true } });
   await p.$disconnect();
@@ -87,6 +90,7 @@ test("D-044 叫你的那条已经做完了：照旧摆最早那条没做完的�
 });
 
 test("D-045 记录页上改计划的时间：保存后刷新，库里和页面上都是新时间", async ({ page }) => {
+  test.skip(企业版, "企业版客户页不摆「下次跟进」（10-29 会议待定 14：项目跟进已要求填下一步）");
   await page.goto(`/customers/${客户id}`);
   const 计划条 = page.getByRole("main").locator(".rec-plan:visible");
   await expect(计划条).toContainText("早的那条计划");
