@@ -9,8 +9,14 @@
  * 加了新表就改这一处。
  */
 import { prisma } from "@/lib/prisma";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 
-export async function resetDb() {
+/** 企业版软删（P9）：deleteMany 默认只删没进回收站的，清库要连回收站里的一起清 */
+export function resetDb() {
+  return 看已删(清空);
+}
+
+async function 清空() {
   // 对话与消息（消息随对话级联删，先删对话就够；项目单列）
   await prisma.aiConversation.deleteMany();
   await prisma.aiProject.deleteMany();
