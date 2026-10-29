@@ -681,7 +681,7 @@ export const TOOLS: Tool[] = [
 问「有哪些新线索」用 phase=线索，「手上的商机」用 phase=商机，「在交付的订单」用 phase=订单。\
 默认只列进行中的（没结局）；问「流失的 / 丢的 / 交付完的 / 异常的」用 result（${结局们.join(" / ")}，或「全部」）。\
 「多久没动的」用 idleDays，「公海里的」用 pooled。按最近改过排，给总数和各阶段个数。`,
-    args: `{"phase": "${阶段们.join("/")}，可空", "node": "节点名，可空", "result": "${结局们.join("/")}/全部，可空，默认只看进行中", "ownerName": "负责人姓名，可空", "keyword": "项目名或客户名里的关键词，可空", "idleDays": 至少几天没动，可空, "pooled": 只看公海里的，可空}`,
+    args: `{"phase": "${阶段们.join("/")}，可空", "node": "当前进程名，可空", "result": "${结局们.join("/")}/全部，可空，默认只看进行中", "ownerName": "负责人姓名，可空", "keyword": "项目名或客户名里的关键词，可空", "idleDays": 至少几天没动，可空, "pooled": 只看公海里的，可空}`,
     async run(args, ctx) {
       const phase = 是阶段(args.phase) ? args.phase : null;
       const node = str(args.node, 20);

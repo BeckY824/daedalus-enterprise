@@ -133,9 +133,9 @@ describe("表单（saveCustomer）", () => {
 });
 
 describe("导入", () => {
-  it("认得这些表头：阿里 ID / 国际站 ID / 阿里国际站 ID / Alibaba ID / Buyer ID / 国际站买家ID", () => {
+  it("认得这些表头：阿里 ID / 国际站 ID / 阿里国际站 ID / Alibaba ID / Buyer ID / 国际站买家ID；旧叫法旺旺 / 旺旺ID（10-29）", () => {
     const 表 = 字段表(外贸配置);
-    for (const 头 of ["阿里 ID", "国际站ID", "阿里国际站 ID", "Alibaba ID", "Buyer ID", "buyer_id", "国际站买家ID", "阿里巴巴ID"]) {
+    for (const 头 of ["阿里 ID", "国际站ID", "阿里国际站 ID", "Alibaba ID", "Buyer ID", "buyer_id", "国际站买家ID", "阿里巴巴ID", "阿里国际站ID", "旺旺ID", "旺旺 ID", "旺旺", "旺旺号"]) {
       expect(猜列(["姓名", 头], 表)[1], 头).toBe("alibabaId");
     }
     // 通用模版没有这一格

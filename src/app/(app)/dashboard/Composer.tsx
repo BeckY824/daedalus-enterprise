@@ -49,7 +49,7 @@ const COMMANDS: { cmd: string; hint: string; question: string }[] = [
   { cmd: "/recap", hint: "回顾上次沟通：上次跟的那位聊到哪了", question: "找我最近一次跟进的那位，读记录，告诉我上次聊到哪、有什么没接住" },
   { cmd: "/watch", hint: "盯盘：正在被遗忘的人，各自该从哪接上", question: "看盯盘清单，对前几位各给一句现在该从哪接上" },
   { cmd: "/model", hint: "换个模型", question: "" },
-  // 左栏那一项叫「数据」，这里也叫「数据」（审查 D3）
+  // 左栏那一项叫「数据」，这里也叫「数据」（审查 D3）；企业版项目模式叫「看板」，在下面换
   { cmd: "/board", hint: "打开数据", question: "" },
   { cmd: "/clear", hint: "清空这一屏", question: "" },
 ];
@@ -304,7 +304,10 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
 
   const empty = turns.length === 0;
   const showCmds = q.startsWith("/") && !q.includes(" ");
-  const cmdMatches = showCmds ? 命令表(models.length).filter((c) => c.cmd.startsWith(q.trim())) : [];
+  // 企业版项目模式左栏那一项叫「看板」（10-29），/board 的说明跟着叫
+  const cmdMatches = showCmds
+    ? 命令表(models.length).filter((c) => c.cmd.startsWith(q.trim())).map((c) => (c.cmd === "/board" && b.projectMode ? { ...c, hint: "打开复盘看板" } : c))
+    : [];
   /** 打了一个斜杠开头、却一条命令都对不上：就地说一句，不再回车后整行静默清空 */
   const 没这个命令 = showCmds && q.trim().length > 1 && cmdMatches.length === 0;
   const canSend = q.trim().length > 0 && (背调模式 ? 调.背调能发 : !AI已用完);

@@ -162,7 +162,7 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
-    if (!到 || typeof 到 !== "object") return { ok: false as const, error: "要改到哪个节点？" };
+    if (!到 || typeof 到 !== "object") return { ok: false as const, error: "要改到哪个进程？" };
     const 异 = 异常 && typeof 异常 === "object" ? { categoryId: 异常.categoryId ?? null, 备注: 异常.备注 ?? null } : undefined;
     const r = await 改节点(me, projectId, 到, 异);
     if (r.ok && r.变了) {
@@ -417,7 +417,7 @@ export async function 移出项目组员(memberId: string) {
  * （「后台设置谁能改」，lib/enterprise/edit-perm-table.ts；老板总能改）
  */
 async function 挡组织规则(me: { id: string; role: string }, 改: 规则改动): Promise<string | null> {
-  const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各节点时限"], ["节点推进", "必填字段", "节点必填字段"], ["阶段", "阶段规则", "阶段结束状态叫法和往前推权限"]];
+  const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各进程时限"], ["节点推进", "必填字段", "进程必填字段"], ["阶段", "阶段规则", "阶段结束状态叫法和往前推权限"]];
   // 一块都没传就不过任何门，不能当「允许」放过去（10-29 权限枚举表扫出：空改动谁都能存一次规则、留审计）
   if (!块.some(([k]) => 改?.[k] !== undefined)) return "没有要改的规则";
   for (const [k, 项, 叫法] of 块) {
@@ -450,9 +450,9 @@ export async function 改组织规则(改: 规则改动) {
     const 说 = 改.阶段 !== undefined
       ? `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的结束状态叫法`
       : 改.节点推进 !== undefined
-      ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个节点配了必填` : "组织规则：节点推进关"
+      ? 推.开 ? `组织规则：进程推进开，${Object.keys(推.必填).length} 个进程配了必填` : "组织规则：进程推进关"
       : 改.超时回收 !== undefined
-      ? t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个节点的处理时长` : "组织规则：超时回收关"
+      ? t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长` : "组织规则：超时回收关"
       : 改.公海?.多项目客户 !== undefined
       ? `组织规则：多项目客户公海走法 ${g.多项目客户}`
       : g.持有上限开 ? `组织规则：项目持有上限开，默认 ${是不限(g.默认上限) ? "不限" : `${g.默认上限} 个`}，单独设了 ${Object.keys(g.每人上限).length} 人` : "组织规则：项目持有上限关";

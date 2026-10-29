@@ -162,8 +162,8 @@ describe("建档向导", () => {
       await prisma.channel.updateMany({ data: { active: false } });
       expect(await 建档向导(好)).toMatchObject({ ok: false, error: "这个渠道不存在或已停用，换一个" });
       await prisma.channel.updateMany({ data: { active: true } });
-      expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 节点: undefined } })).toMatchObject({ ok: false, error: expect.stringContaining("跟进节点") });
-      expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 节点: "明确需求" } })).toMatchObject({ ok: false, error: expect.stringContaining("跟进节点") });
+      expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 节点: undefined } })).toMatchObject({ ok: false, error: expect.stringContaining("当前进程") });
+      expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 节点: "明确需求" } })).toMatchObject({ ok: false, error: expect.stringContaining("当前进程") });
       expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 明确回复: undefined } })).toMatchObject({ ok: false, error: "请选客户是否明确回复" });
       // 落在线索验证之后却没有明确回复：不算有效线索
       expect(await 建档向导({ ...好, 跟进: { ...好.跟进, 节点: "线索推进", 明确回复: false } })).toMatchObject({ ok: false, error: expect.stringContaining("明确回复") });
