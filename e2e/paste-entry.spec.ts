@@ -56,6 +56,12 @@ test.afterAll(async ({ browser }) => {
 
 /** 输入框那一条里的入口。**要和「开始」卡上那个分开**：两处都有，同名 */
 const 框内入口 = (page: Page) => page.locator(".cli-bar2-l").getByRole("button", { name: "粘一段聊天" });
+/** 企业版项目模式首页这几颗键收进了「+」（P15，lib/enterprise/composer-plus.ts）：先点开「+」，入口是菜单里那一项 */
+async function 找框内入口(page: Page) {
+  if (!企业版) return 框内入口(page);
+  await page.locator(".cli-bar2-l").getByRole("button", { name: "更多入口" }).click();
+  return page.getByRole("menuitem", { name: "粘一段聊天" });
+}
 
 /** 三行、六十字以上——「像一段记录」的最低门槛，比这短的不该被拦下来问 */
 const 一段聊天 = [
@@ -102,7 +108,7 @@ test.beforeEach(async ({ page, context }) => {
 });
 
 test("首页输入框里一直摆着「粘一段聊天」", async ({ page }) => {
-  await expect(框内入口(page)).toBeVisible();
+  await expect(await 找框内入口(page)).toBeVisible();
 });
 
 test("空库时那张「开始」卡的主按钮也是「粘」，不是手敲第一位", async ({ page }) => {
@@ -114,7 +120,7 @@ test("空库时那张「开始」卡的主按钮也是「粘」，不是手敲�
 });
 
 test("点它就开在「粘一段文本」那一栏，不用先点导入再找栏位", async ({ page }) => {
-  await 框内入口(page).click();
+  await (await 找框内入口(page)).click();
   const 抽屉 = page.locator(".ant-drawer");
   await expect(抽屉).toBeVisible();
   // Segmented 停在「粘一段文本」上

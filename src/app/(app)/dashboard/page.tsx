@@ -53,7 +53,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 对话 = sp0.c ? await 读对话(sp0.c) : null;
   // 企业版自动分配因都已满额没分出去的提醒：首页顶部也摆一份，和线索页同一份数据，哪边关了两边都没了
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
-  // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「看板」页
+  // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「复盘」页
   const 只用项目 = await 企业版只用项目();
   if (!(await llmEnabled())) {
     /*
@@ -72,7 +72,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   if (只用项目) {
     /*
       企业版项目模式（10-29 首页改版 #9–#12）：左边对话、右边四张指标卡。欢迎屏只有问候和「欢迎使用 {产品名}」，
-      不摆信号、上下文、建议问题，所以这条路只取要用的：卡上的四个数（口径在 lib/project/home-cards.ts）、
+      不摆信号、上下文、建议问题，所以这条路只取要用的：卡上的四个数（摆哪四张、口径都在 lib/project/home-cards.ts）、
       空库判断要的几个 count、新线索卡要的渠道名和「下一步必填」
     */
     const [models, 学员数, 线索数, myPlans, 没做完的待办, 卡, 渠道, 规则] = await Promise.all([
@@ -81,7 +81,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       数新线索(),
       prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
       prisma.task.count({ where: { ownerId: user.id, done: false } }),
-      数首页卡(),
+      数首页卡(user.id),
       prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } }),
       生效组织规则(),
     ]);
@@ -101,6 +101,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         要下一步={规则.超时回收.开}
         空库={学员数 === 0 && 线索数 === 0 && myPlans === 0 && 没做完的待办 === 0}
         指标卡={卡}
+        我={user.id}
       />
     );
   }

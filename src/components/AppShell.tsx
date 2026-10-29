@@ -128,7 +128,7 @@ const 面板放不下 = "(max-width: 1599px)";
 /** 企业版六个根目录的图标（lib/enterprise/nav.ts 只管名字和去处，不碰界面） */
 const 根目录图标: Record<根目录图, React.ReactNode> = {
   首页: <HomeOutlined />,
-  看板: <DashboardOutlined />,
+  复盘: <DashboardOutlined />,
   渠道: <DeploymentUnitOutlined />,
   公海: <InboxOutlined />,
   客户: <TeamOutlined />,

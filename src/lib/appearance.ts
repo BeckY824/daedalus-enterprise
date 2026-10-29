@@ -33,8 +33,8 @@ export const 主题表 = [
 export type 主题 = (typeof 主题表)[number]["key"];
 
 export const 明暗表 = [
-  { key: "light", 名: "明亮", 说明: "浅底深字" },
-  { key: "dark", 名: "暗黑", 说明: "深底浅字，夜里不晃眼" },
+  { key: "light", 名: "浅色", 说明: "浅底深字" },
+  { key: "dark", 名: "深色", 说明: "深底浅字，夜里不晃眼" },
   { key: "system", 名: "跟随系统", 说明: "系统换了这里跟着换" },
 ] as const;
 export type 明暗 = (typeof 明暗表)[number]["key"];

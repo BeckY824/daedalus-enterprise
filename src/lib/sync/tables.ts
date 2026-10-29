@@ -71,6 +71,8 @@ export const 不同步表 = [
   "EntDictItem",
   // 企业版渠道投入（2026-10-29，migrations/071）：同上
   "EntChannelInvest",
+  // 企业版线索有效性验证、配额加额（2026-10-29，migrations/088、089）：同上
+  "EntLeadVerify", "EntLeadVerifyLog", "EntLeadQuotaBonus",
   // 企业版关联客户（2026-10-29，migrations/075）：同上
   "EntCustomerLink",
   // 企业版联系人挂多位客户（2026-10-29，migrations/090）：同上
@@ -168,6 +170,12 @@ export const 指向人的列: [string, string][] = [
   ["EntHandover", "toUserId"],
   ["EntHandover", "byUserId"],
   ["EntHandover", "doneById"],
+  // 企业版线索有效性验证、配额加额（2026-10-29）：不建外键
+  ["EntLeadVerify", "verifiedById"],
+  ["EntLeadVerify", "reviewedById"],
+  ["EntLeadVerify", "finalById"],
+  ["EntLeadVerifyLog", "userId"],
+  ["EntLeadQuotaBonus", "userId"],
 ];
 
 /**

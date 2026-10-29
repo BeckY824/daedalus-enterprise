@@ -36,7 +36,7 @@
   --page-pattern: none;
 }
 
-/* 明暗那一行「明亮」的小样：暗黑下也要画成浅的，值和 :root 那块一样（守卫比对） */
+/* 明暗那一行「浅色」的小样：暗黑下也要画成浅的，值和 :root 那块一样（守卫比对） */
 [data-mode-preview="light"] {
   color-scheme: light;
   --workbench: #fafafa; --panel: #ffffff; --line: #e5e7eb; --line-soft: #eceef2;

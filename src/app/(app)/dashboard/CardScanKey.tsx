@@ -13,7 +13,7 @@
  * 拍照（10-29 首页改版 待 1）：手机上这颗键叫「附件」，点了直接调后置相机（capture="environment"），
  * 拍到的照片照样走上面这一套认名片；桌面上还是选文件、叫「名片」
  */
-import { useRef, useState } from "react";
+import { useImperativeHandle, useRef, useState } from "react";
 import { App } from "antd";
 import { CameraOutlined, IdcardOutlined, LoadingOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
@@ -31,7 +31,7 @@ const 预热 = () => {
   void import("@/lib/card-scan/ocr");
 };
 
-export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍照 = false }: {
+export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍照 = false, 藏键 = false, 开 }: {
   宽: boolean;
   /** 手机上：键叫「附件」，点了调相机，一次拍一张 */
   拍照?: boolean;
@@ -39,11 +39,15 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍�
   渠道名们: readonly string[];
   /** 认好了：摆这张卡（Composer 里新开一轮） */
   on出卡: (p: Proposal, 摘要: string) => void;
+  /** 不摆自己的键（收进「+」菜单，P15），由 开 去打开选图 / 相机 */
+  藏键?: boolean;
+  开?: React.Ref<{ 打开: () => void }>;
 }) {
   const b = useBusiness();
   const { message } = App.useApp();
   const 选 = useRef<HTMLInputElement>(null);
   const [认着, set认着] = useState(false);
+  useImperativeHandle(开, () => ({ 打开: () => { if (!在跑 && !认着) 选.current?.click(); } }), [在跑, 认着]);
 
   async function 认(图们: File[]) {
     set认着(true);
@@ -84,7 +88,7 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍�
 
   return (
     <>
-      <button
+      {!藏键 && <button
         type="button"
         className={`cli-tool${宽 ? " cli-tool-t" : ""}`}
         onClick={() => 选.current?.click()}
@@ -96,7 +100,7 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍�
       >
         {认着 ? <LoadingOutlined /> : 拍照 ? <CameraOutlined /> : <IdcardOutlined />}
         {宽 && <span>{拍照 ? "附件" : "名片"}</span>}
-      </button>
+      </button>}
       <input
         ref={选}
         type="file"

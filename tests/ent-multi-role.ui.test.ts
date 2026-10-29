@@ -31,7 +31,7 @@ beforeAll(async () => {
     const 人=(id,name,bizRole)=>({id,name,deptId:null,bizRole,line:null,managerId:null,dottedManagerId:null,自动上级:null});
     window.__render=({是老板})=>root.render(<App><div style={{maxWidth:1100}}><OrgTab value={{
       部门:[],成员:[人('a',长,'sales_mgr,marketing_mgr'),人('b','小王','sales')],能改:true,是老板,
-      规则开着:{按组织看客户:false,线索分配:false,字段权限:false,交接要确认:false},字段权限:{},字段权限挡:null,改权限:{},线索分配:null}}/></div></App>);
+      规则开着:{按组织看客户:false,线索分配:false,字段权限:false,交接要确认:false,市场复核:true},字段权限:{},字段权限挡:null,改权限:{},线索分配:null}}/></div></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
