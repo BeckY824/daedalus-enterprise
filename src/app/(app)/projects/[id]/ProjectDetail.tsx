@@ -494,6 +494,8 @@ export default function ProjectDetail({
   );
   const 沟通卡 = (
     <Card
+      // 客户页「跟进」菜单跳过来的落点（/projects/<id>#project-follow，P14 第 3 条）
+      id="project-follow"
       title="沟通"
       extra={
         p.能记沟通 ? (
