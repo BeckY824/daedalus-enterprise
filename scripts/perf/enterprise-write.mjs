@@ -108,6 +108,9 @@ if (做 === "数") {
     导入行: 数("SELECT count(*) n FROM ImportRow"),
     操作日志: 数("SELECT count(*) n FROM AuditLog"),
   }));
+} else if (做 === "记号") {
+  const 有 = (k) => !!db.prepare("SELECT 1 n FROM Setting WHERE key = ?").get(k);
+  console.log(JSON.stringify({ 清理: 有("entLegacyCleanup.v2"), 回填: 有("projectExpectedDealBackfilled") }));
 } else {
   const t = Date.now();
   db.exec("VACUUM INTO '" + 去.replaceAll("'", "''") + "'");
@@ -180,6 +183,18 @@ for (let i = 0; ; i++) {
   if (i > 120) throw new Error("服务 60 秒没起来，看 server.log");
   try { if ((await fetch(`${站}/login`)).ok) break; } catch { /* 还没起来 */ }
   await 等(500);
+}
+/* 等启动时那几件只做一次的老数据活做完再热身：清理 3000 条老商机的事务占着写锁，这时候热身的写全超时（10-29 3 倍首跑撞上）。
+   它们排着跑、回填排最后（instrumentation.ts），清理和回填两个记号都在就是做完了 */
+{
+  const 计 = 秒表();
+  for (let i = 0; ; i++) {
+    const 记 = await 走SQL("记号", 库);
+    if (记.清理 && 记.回填) break;
+    if (i > 600) throw new Error(`启动任务 5 分钟没做完（${JSON.stringify(记)}），看 server.log`);
+    await 等(500);
+  }
+  结果.bootJobsSec = 计();
 }
 
 /* ---------- 3. 会话票据 ---------- */
@@ -416,7 +431,7 @@ const 导 = 结果.import, 备 = 结果.backup;
 const md = [
   `# 企业版写入压测：30 人 × ${SCALE} 倍数据`,
   "",
-  `${结果.at}，${结果.platform}，Node ${结果.node}。数据：${目标.org ? `带组织架构（公海 ${目标.pool} 位）` : "不带组织架构"}，项目 ${名单.reduce((s, u) => s + u.projects.length, 0)} 个。库 ${结果.dbMB} MB；压测 ${时长 / 1000} 秒，${结果.write.rps} 次写/秒；服务端内存峰值 ${结果.serverRssMB.max} MB。`,
+  `${结果.at}，${结果.platform}，Node ${结果.node}。数据：${目标.org ? `带组织架构（公海 ${目标.pool} 位）` : "不带组织架构"}，项目 ${名单.reduce((s, u) => s + u.projects.length, 0)} 个。库 ${结果.dbMB} MB；压测 ${时长 / 1000} 秒，${结果.write.rps} 次写/秒；服务端内存峰值 ${结果.serverRssMB.max} MB；启动后等老数据活做完 ${结果.bootJobsSec} 秒才热身。`,
   "",
   `**裁判：每类写 p95 < ${门槛.p95} ms、p99 < ${门槛.p99} ms、不出错；0 个 5xx；0 个 SQLITE_BUSY；登录 p95 < ${门槛.登录p95} ms；导入、备份都成 → ${结果.pass ? "绿" : "红"}**${不达标.length ? `（${不达标.join("；")}）` : ""}`,
   ...(结果.skipped.length ? ["", ...结果.skipped.map((s) => `- 跳过：${s}`)] : []),
