@@ -1,9 +1,8 @@
 /**
- * 三处「函数本身不查人、靠调用方挡」的补上自己挡（2026-10-28）：绕过入口、直接调函数。
+ * 两处「函数本身不查人、靠调用方挡」的补上自己挡（2026-10-28）：绕过入口、直接调函数。
  * 企业版规矩：业务员只看自己 + 公海，老板 / 销售管理看全队（按组织看客户开着）。
  *   - 记号码：往「已有」客户上记号，业务员记到同事的客户上被拒、一行不写；自己的照记；
  *     「刚建的」（同一笔事务里刚建、可能建给了别人）照记
- *   - 标不是同一个人：业务员直接调被拒、一行不写；老板照标
  *   - 了结：业务员直接调，撤回 / 确认 / 拒收别人的交接都不成、仍是待确认；接手人确认、发起人撤回、管理员撤回照成
  *   - 交接中的客户：业务员只看得到自己看得到的那几位；老板全看得到
  * 数据照 tests/ent-undo-owner-scope.test.ts 搭：老板、组长（销售管理）、小王 / 小李（组长的实线下属）
@@ -21,7 +20,6 @@ import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 记号码, type 验好的号 } from "@/lib/enterprise/contact-dedupe";
-import { 标不是同一个人, 不重复编号 } from "@/lib/customer-merge";
 import { 了结, 交接中的客户 } from "@/lib/enterprise/handover-db";
 
 type 人 = { id: string; role: string };
@@ -79,20 +77,6 @@ describe("记号码", () => {
       return c.id;
     }));
     expect(await 号数(id)).toBe(1);
-  });
-});
-
-describe("标不是同一个人", () => {
-  it("业务员直接调：被拒，一行不写", async () => {
-    const a = await 客户(小李.id), b = await 客户(小李.id);
-    await expect(以谁的身份(小王.id, () => 标不是同一个人([a.id, b.id], 小王))).rejects.toThrow(/老板或主管/);
-    expect(await prisma.customerNotDupe.count()).toBe(0);
-  });
-
-  it("老板照标", async () => {
-    const a = await 客户(小李.id), b = await 客户(小王.id);
-    expect(await 以谁的身份(老板.id, () => 标不是同一个人([a.id, b.id], 老板))).toBe(1);
-    expect(await prisma.customerNotDupe.findUniqueOrThrow({ where: { id: 不重复编号(a.id, b.id) } })).toMatchObject({ userId: 老板.id });
   });
 });
 

@@ -29,7 +29,6 @@ import { 字段表, 猜列 } from "@/lib/import/fields";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import { 号键, 规整手机号 } from "@/lib/phone";
 import { 号键SQL, 号键索引名, 按号键找SQL, 认人表 } from "@/lib/phone-dedupe";
-import { 疑似重复 } from "@/lib/sync/dupes";
 
 const 一天前 = new Date(Date.now() - 86400_000);
 
@@ -159,11 +158,6 @@ describe("R-069 老库里只 trim 过的「138 0000 1111」", () => {
     const 王 = await prisma.customer.findFirstOrThrow({ where: { name: "老王" } });
     const r = await 编辑(王, { remark: "改一下" });
     expect(r, JSON.stringify(r)).toMatchObject({ ok: true });
-  });
-  it("团队同步后的疑似重复：「138 0000 1111」和「13800001111」算一组", async () => {
-    await 老客户("同步来的王", "13800001111");
-    const 组 = (await 疑似重复()).filter((g) => g.种类 === "客户");
-    expect(组.map((g) => g.记录.map((r) => r.name).sort())).toEqual([["同步来的王", "老王"]]);
   });
 });
 

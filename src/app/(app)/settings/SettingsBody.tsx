@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import SettingsView from "./SettingsView";
 import { 我的机器 } from "./actions";
-import { 本地模式, 读 as 读云端凭据 } from "@/lib/desktop/cloud";
 import { describeLlmConfig } from "@/lib/llm";
 import { getBusiness } from "@/lib/business";
 import { 角色字典, 异常类别字典, 能进公海的阶段 } from "@/lib/project/db";
@@ -49,13 +48,6 @@ export default async function SettingsBody() {
   const [llm, business, aiUsage, 共享区, 机器] = await Promise.all([
     describeLlmConfig(), getBusiness(), aiUsageThisMonth(), 当前是共享区(), 我的机器(),
   ]);
-  /**
-   * 桌面端本地模式才有的一栏：账号、备份、更新。网页版传 null，整栏不出现。
-   * 余额直接用 describeLlmConfig 刚问过的那一次（它在本地模式下就是去云端问的），
-   * 不再单独问第二遍——这一页每次打开去云端一趟就够了。
-   */
-  const 云端 = 本地模式() ? 读云端凭据() : null;
-  const 桌面端 = 云端 ? { 账号: 云端.contact || 云端.name, 余额: llm.source === "cloud" ? (llm.credits ?? null) : null } : null;
 
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "asc" },
@@ -216,7 +208,6 @@ export default async function SettingsBody() {
       business={business}
       aiUsage={aiUsage}
       机器={机器}
-      桌面端={桌面端}
       /* 共享试用区：留痕里记的是原号，别的团队也翻得到——号码在这儿打掉再交给浏览器（2026-10-01 排查 A5） */
       logs={logs.map((l) => ({
         id: l.id,

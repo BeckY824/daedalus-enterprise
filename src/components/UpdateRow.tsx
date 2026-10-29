@@ -46,6 +46,18 @@ declare global {
       openDownload(): Promise<void>;
       onState(cb: (s: 更新状态) => void): () => void;
     };
+    /**
+     * 壳的另外两座桥。原来声明在设置的「桌面端」页签里（死代码第三批随页签删了），这里只留还有人调的那几个口子：
+     * 版本号（这一行、更新记录）、换账号（登录后）、毛玻璃（外观）、提醒刷新（记完跟进 / 改计划后让 Dock 数跟上）。
+     * 浏览器里都是 undefined，调用处一律可选链。
+     */
+    desktopShell?: {
+      version(): Promise<string>;
+      switchAccount(): Promise<{ ok: boolean; error?: string }>;
+      glass?(): Promise<{ 可用: boolean; 开: boolean; 系统关了?: boolean }>;
+      setGlass?(开: boolean): Promise<{ 可用: boolean; 开: boolean; 系统关了?: boolean }>;
+    };
+    desktopReminders?: { 刷新(): Promise<boolean> };
   }
 }
 

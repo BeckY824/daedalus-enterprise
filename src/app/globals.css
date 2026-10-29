@@ -340,17 +340,6 @@ a {
 
 /* ---------- 登录页：网页版和桌面端同一扇门，样式见上面 .auth（2026-10-04 起旧的 .login-card 删了） ---------- */
 
-/* 设置 → 桌面端 → 本机数据 → 自动备份（AutoBackups.tsx） */
-.auto-backups { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line-soft); }
-.auto-backups-h { font-size: var(--fs-note); font-weight: 500; color: var(--ink-soft); margin-bottom: var(--s2); }
-.auto-backups-empty { margin: 0; font-size: var(--fs-note); color: var(--text-muted); }
-.auto-backups-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.auto-backups-list li { display: flex; align-items: center; gap: var(--s3); padding: 6px 0; font-size: var(--fs-note); color: var(--ink-soft); }
-.auto-backups-list li + li { border-top: 1px solid var(--line-soft); }
-.auto-backups-kind { flex: none; width: 3.5em; color: var(--text-muted); }
-.auto-backups-when { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
-.auto-backups-size { flex: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-
 /* ---------- 三栏壳（2026-09-15）：图标栏 76 / 中栏 352 / 右栏 ---------- */
 .shell { display: flex; min-height: 100vh; }
 /* 侧栏：图标和文字排在同一行，像正常的应用侧栏。
@@ -507,33 +496,12 @@ html.glass .rail-fb { background: color-mix(in srgb, var(--brand-bg) 85%, transp
 .rail-fb:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 /* 侧栏里它和更新键并排，一起往下让 6px；手机顶栏里要和铃铛一样大、一样高 */
 .rail-account .rail-fb { margin-top: 6px; }
-/* 左栏「更新记录」那一行（在「检查更新」上面，形状同它）。有没看过的新版时右端挂一枚「新」：
-   浅蓝底小字 + 右上角一个红点说「这儿有没看过的」；不闪不跳——不是要你马上处理的事，看过就收 */
-.rail-wn-new { position: relative; flex: none; padding: 1px 6px; border-radius: 999px; background: var(--brand-bg); color: var(--brand);
-  font-size: var(--fs-min); font-weight: 600; line-height: 1.5; }
-.rail-wn-new::after { content: ""; position: absolute; top: -2px; right: -2px; width: 6px; height: 6px; border-radius: 999px;
-  background: var(--danger); box-shadow: 0 0 0 2px var(--page-bg); }
 /* 「更新内容」框里一版一段：版本号做小标题，日期淡在后面 */
 .wn-list { display: flex; flex-direction: column; gap: 20px; }
 .wn-ver h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; font-size: var(--fs-body, 14px); font-weight: 600; color: var(--ink); }
 .wn-ver h3 span { font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); }
 .wn-ver + .wn-ver { padding-top: 16px; border-top: 1px solid var(--line-soft); }
 .wn-empty { margin: 8px 0; color: var(--text-muted); }
-/* 刚更新完弹出来的那一页（2026-10-04）：一节一张卡，顶上一排节标题当目录；中间滚，标题和「知道了」钉住 */
-.wn-modal .ant-modal-body { max-height: min(64vh, 640px); overflow-y: auto; }
-.wn-title { display: flex; align-items: baseline; gap: 10px; }
-.wn-title small { font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); }
-.wn-page { display: flex; flex-direction: column; gap: 20px; }
-.wn-pver-h { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: var(--fs-body, 14px); font-weight: 600; color: var(--ink); }
-.wn-pver-h span { font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); }
-.wn-toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 14px; }
-.wn-toc button { border: 1px solid var(--line-soft); background: transparent; border-radius: 999px; padding: 3px 10px; font-size: var(--fs-note); color: var(--ink-soft); cursor: pointer; }
-.wn-toc button:hover { color: var(--ink); border-color: var(--line, var(--line-soft)); }
-.wn-toc button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.wn-cards { display: flex; flex-direction: column; gap: 10px; }
-.wn-card { border: 1px solid var(--line-soft); border-radius: 10px; padding: 12px 14px; scroll-margin-top: 8px; }
-.wn-card h4 { margin: 0 0 6px; font-size: var(--fs-body, 14px); font-weight: 600; color: var(--ink); }
-.wn-card > :last-child { margin-bottom: 0; }
 .ant-layout-header .rail-fb { width: 34px; height: 34px; border-radius: var(--r-ctl); }
 /* 反馈弹窗里那两行 */
 .fb-note { margin: 10px 0 0; font-size: var(--fs-note); color: var(--text-muted); line-height: 1.6; }
@@ -1747,70 +1715,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 空库首页的「开始」卡（设计稿 05/HOME·EMPTY）：
    一句欢迎在卡外，卡里是「第 1 步」→ 标题 → 三步一行 → 说明 → 按钮 → 脚注。
    三步是横着的路标，不是三张说明卡，所以不给边框，用一条细线把它们连起来。 */
-/* 新用户选模版（2026-10-03）：两张卡二选一，整张卡是按钮 */
-/* 设置 → 团队（2026-10-03 团队同步） */
-.team-intro { margin: 0 0 var(--s4); line-height: 1.8; color: var(--ink-soft); max-width: 640px; }
-.team-card { padding: var(--s4) 0; border-top: 1px solid var(--line-soft); }
-.team-card h3, .team-head h3 { margin: 0 0 var(--s2); font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
-.team-card p { margin: 0 0 var(--s3); font-size: var(--fs-note); }
-.team-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s3); }
-.team-head h3 { margin: 0; font-size: var(--fs-title); }
-.team-sync { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); font-size: var(--fs-note); }
-.team-members { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
-.team-members li { display: flex; align-items: baseline; gap: var(--s2); }
-.team-members li { flex-wrap: wrap; }
-/* 老板那台每人一行概况：客户数 · 近 7 天跟进，靠右，点进去是这个人的客户 / 跟进 */
-.team-member-stat { margin-left: auto; display: inline-flex; gap: var(--s3); font-size: 13px; }
-.team-dupes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-note); }
-/* 团队版价格（2026-10-15）和有效期那一行 */
-.team-prices { margin: 0 0 var(--s3); padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s2); max-width: 680px; }
-.team-prices li { display: flex; flex-direction: column; gap: 2px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); font-size: var(--fs-min); }
-.team-price-k { color: var(--ink-soft); font-size: var(--fs-note); }
-.team-price-v { font-family: var(--font-num); font-size: 20px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.team-price-v small { font-family: inherit; font-size: var(--fs-min); font-weight: 400; color: var(--text-muted); }
-.team-card p.team-price-how { margin: 0; }
-.team-plan { margin: calc(-1 * var(--s2)) 0 var(--s3); font-size: var(--fs-note); font-variant-numeric: tabular-nums; }
 /* 人员头像 + 姓名（components/ui.tsx UserCell）：头像不缩，名字那一项可以缩到省略号 */
 .user-cell > .ant-space-item:last-child { min-width: 0; }
-/* 同事之间互相看得到客户（2026-10-20）：标题和开关一行，说明在下面；「收不回」那句单独一行、用提醒色 */
-.team-share-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); max-width: 640px; margin-bottom: var(--s2); }
-.team-share p { max-width: 640px; }
-.team-card p.team-share-warn { color: var(--warning-text); }
-/* 疑似重复：合并成一份（2026-10-20）。每组一块：头一行勾选 + 依据 + 合并 / 不是同一个人；下面几份的对比表，窄窗口里表在块里横向滚，不撑出页面 */
-.dupe-undo { margin-bottom: var(--s3); max-width: 760px; }
-.dupe-bar { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s2); }
-.dupe-groups { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); max-width: 760px; }
-.dupe-group { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); padding: var(--s2) var(--s3); min-width: 0; }
-.dupe-group-head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; font-size: var(--fs-note); }
-.dupe-basis { color: var(--ink-soft); min-width: 0; overflow-wrap: anywhere; }
-.dupe-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
-.dupe-compare-wrap { overflow-x: auto; margin-top: 6px; }
-.dupe-compare { width: 100%; border-collapse: collapse; font-size: var(--fs-note); font-variant-numeric: tabular-nums; }
-.dupe-compare th { text-align: left; font-weight: 400; color: var(--text-muted); padding: 4px 8px; white-space: nowrap; }
-.dupe-compare td { padding: 4px 8px; border-top: 1px solid var(--line-soft); white-space: nowrap; }
-.dupe-compare th:first-child, .dupe-compare td:first-child { width: 40px; padding-left: 0; }
-.dupe-compare td.dupe-name, .dupe-compare td.dupe-owner { white-space: normal; overflow-wrap: anywhere; max-width: 220px; }
-.dupe-compare tr.is-keep td { color: var(--ink); font-weight: 500; }
 
-/* 选模版：在登录页右半边（app/start），两张卡并排，窗口窄了上下排 */
-.tpl { width: min(640px, 100%); display: flex; flex-direction: column; }
-.tpl-h { margin: 0 0 var(--s3); font-family: var(--font-display); font-weight: var(--fw-display); font-size: var(--fs-title); color: var(--ink); }
-.tpl-s { margin: calc(-1 * var(--s2)) 0 var(--s5); color: var(--text-muted); font-size: var(--fs-note); }
-.tpl-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--s4); }
-.tpl-card { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); text-align: left; font: inherit; color: inherit; cursor: pointer;
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-pop); padding: var(--s5);
-  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), transform var(--t-press) var(--ease); }
-.tpl-card:hover:not(:disabled) { border-color: var(--brand-line); box-shadow: var(--shadow-pop); }
-.tpl-card:active:not(:disabled) { transform: scale(0.99); }
-.tpl-card:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.tpl-card:disabled { cursor: default; }
-.tpl-card:disabled:not(.on) { opacity: 0.55; }
-.tpl-card.on { border-color: var(--brand); }
-.tpl-n { font-size: var(--fs-title); font-weight: 600; color: var(--ink); }
-.tpl-1 { font-size: var(--fs-body); color: var(--text); }
-.tpl-has { margin: var(--s2) 0 0; padding-left: 18px; font-size: var(--fs-note); line-height: 1.8; color: var(--text-muted); }
-.tpl-go { margin-top: auto; padding-top: var(--s3); font-size: var(--fs-note); font-weight: 500; color: var(--brand); }
-@media (prefers-reduced-motion: reduce) { .tpl-card:active:not(:disabled) { transform: none; } }
 .start-h { font-size: var(--fs-title); font-weight: 600; color: var(--ink); margin: 0 0 var(--s4); letter-spacing: -0.2px; }
 /* 三句介绍：三格并排，窄了就竖着排；不加框，和下面那张「开始」卡分出主次 */
 .start-intro { list-style: none; margin: 0 0 var(--s5); padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s4); max-width: 640px; }
@@ -2498,18 +2405,14 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .import-dup-policy .ant-radio-wrapper { align-items: flex-start; }
 .import-dup-policy .ant-radio-wrapper .ant-radio { align-self: flex-start; margin-top: 3px; }
 
-/* 手机授权框里的配对数字（components/MobileAuthPrompt）：大、等宽，和手机屏幕上的对一眼 */
-.mobile-pair { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: var(--s4); padding: var(--s4); background: var(--workbench); border: 1px solid var(--line); border-radius: var(--r-card); text-align: center; }
-.mobile-pair b { font-family: var(--font-num); font-size: 30px; font-weight: 600; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; color: var(--ink); }
-
-/* 设置 → 团队 → 部门与权限（团队版 1b）：窄窗口下每行折行，不横向撑开 */
+/* 设置 → 组织架构 → 部门（团队版 1b 起）：窄窗口下每行折行，不横向撑开 */
 .team-dept-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; min-height: 28px; }
 .team-dept-acts { display: inline-flex; flex-wrap: wrap; }
 .member-roles { display: flex; flex-wrap: wrap; gap: 4px; }
 .team-dept-name { display: inline-flex; align-items: center; gap: 6px; min-width: 200px; overflow-wrap: anywhere; }
 .team-dept-branch { color: var(--text-faint); line-height: 1; }
-.team-dept-members, .team-dept-scopes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
-.team-dept-members li, .team-dept-scopes li { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.team-dept-members { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
+.team-dept-members li { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
 .team-dept-members li > b { min-width: 72px; }
 .org-field-perm { border-collapse: collapse; }
 .org-field-perm th, .org-field-perm td { padding: 4px 6px; text-align: left; white-space: nowrap; }
@@ -2528,4 +2431,3 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .lead-auto-assign-list li { display: flex; gap: 8px; padding: 4px 0; min-width: 0; }
 .lead-auto-assign-name { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .lead-auto-assign-list li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
-.team-dept-role { min-width: 72px; }

@@ -20,7 +20,6 @@ import { 执行导入, 预览导入, 撤销批次 } from "@/app/(app)/customers/
 import { convertLead, mergeLeadInto } from "@/app/(app)/leads/actions";
 import { 字段表, 猜列 } from "@/lib/import/fields";
 import { 摊开, 并重复行 } from "@/lib/import/plan";
-import { 疑似重复 } from "@/lib/sync/dupes";
 
 let jia: { id: string };
 const 外贸配置 = BUSINESS_PRESETS["外贸出口"];
@@ -235,14 +234,5 @@ describe("线索转客户", () => {
     const l2 = await prisma.lead.create({ data: { name: "y", email: "y@x.com", ownerId: jia.id } });
     const r2 = await convertLead(l2.id);
     expect(!r2.ok && r2.error).toBe("该线索没有联系电话，请先补充后再转化");
-  });
-});
-
-describe("团队同步后的疑似重复", () => {
-  it("两位没电话、同邮箱的列出来；有电话的几位共用 info@ 不算", async () => {
-    for (const n of ["A", "B"]) await prisma.customer.create({ data: { name: n, phone: "", salesOwnerId: jia.id, extra: { create: { email: n === "A" ? "anna@x.de" : "Anna@X.de" } } } });
-    for (const [n, p] of [["C", "14089961010"], ["D", "14089962020"]]) await prisma.customer.create({ data: { name: n, phone: p, salesOwnerId: jia.id, extra: { create: { email: "info@acme.com" } } } });
-    const 组 = await 疑似重复();
-    expect(组.map((g) => [g.依据, g.记录.map((r) => r.name)])).toEqual([["邮箱 anna@x.de", ["A", "B"]]]);
   });
 });

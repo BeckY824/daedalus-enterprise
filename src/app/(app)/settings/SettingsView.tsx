@@ -14,8 +14,6 @@ import PasswordTab from "./PasswordTab";
 import AuditTab, { type AuditRow } from "./AuditTab";
 import AiSettingsTab, { type LlmView } from "./AiSettingsTab";
 import BusinessSettingsTab from "./BusinessSettingsTab";
-import DesktopTab, { type 桌面端信息 } from "./DesktopTab";
-import TeamTab from "./TeamTab";
 import ImportsTab from "./ImportsTab";
 import EnterpriseImportTab from "./EnterpriseImportTab";
 import ProfileTab from "./ProfileTab";
@@ -33,8 +31,6 @@ const 说明表: Record<string, string> = {
   appearance: "底色和主题",
   members: "谁能进、谁是管理员",
   password: "改密码、看哪几台机器登录着",
-  desktop: "账号、备份、更新",
-  team: "和同事同步客户、跟进、商机",
   ai: "走哪把 Key、还剩几次",
   business: "客户 / 学员 这些叫法",
   imports: "导进来的那几批，可撤销",
@@ -53,7 +49,6 @@ export default function SettingsView({
   business,
   aiUsage,
   机器,
-  桌面端 = null,
   用邮箱登录 = false,
   共享区 = false,
   项目设置 = null,
@@ -75,12 +70,6 @@ export default function SettingsView({
    * 空数组表示一台都没有。见 actions.ts 的 我的控制面账号。
    */
   机器: 机器[] | null;
-  /**
-   * 桌面端本地模式：多一栏「桌面端」（账号、备份、更新），同时**不摆「登录与密码」**——
-   * 那一栏改的是本机业务账号的密码，而桌面端只有云端账号这一套身份（2026-09-17 起），
-   * 本机那把密码用户永远用不到，摆着只会再造出两把密码对不上的局面。null 表示不是桌面端。
-   */
-  桌面端?: 桌面端信息 | null;
   /** 托管版：成员的登录标识是邮箱，不是用户名。见 MembersTab 表单里那段注释 */
   用邮箱登录?: boolean;
   /** 网页试用版那个共享工作区：个人资料、登录与密码两栏不摆 */
@@ -118,16 +107,13 @@ export default function SettingsView({
      * 而不是「管别人」。改名以前只在「团队成员」那个只有管理员打得开的弹窗里，
      * 于是销售想改自己的名字得去求管理员。
      */
-    { key: "profile", label: "个人资料", children: <ProfileTab me={{ name: me.name, title: me.title, email: me.email }} 云端账号={桌面端?.账号 ?? null} /> },
+    { key: "profile", label: "个人资料", children: <ProfileTab me={{ name: me.name, title: me.title, email: me.email }} /> },
     { key: "members", label: "团队成员", children: <MembersTab users={users} me={me} isAdmin={isAdmin} 用邮箱登录={用邮箱登录} 企业版={企业版} 下属可停用={下属可停用} /> },
-    { key: "keymap", label: "快捷键", children: <KeymapTab 桌面端={Boolean(桌面端)} 企业版={企业版} /> },
+    { key: "keymap", label: "快捷键", children: <KeymapTab /> },
     { key: "appearance", label: "外观", children: <AppearanceTab /> },
     { key: "password", label: "登录与密码", children: <PasswordTab 机器={机器} /> },
-    ...(桌面端 ? [{ key: "desktop", label: "桌面端", children: <DesktopTab 信息={桌面端} /> }] : []),
-    // 团队同步（2026-10-03）：几个人各用桌面端时互相同步。只在桌面端本地模式有——网页版本来就是一份库
-    ...(桌面端 ? [{ key: "team", label: "团队", children: <TeamTab /> }] : []),
-    // AI 接入是本机的（桌面端团队版的业务员在自己电脑上也能配）；业务配置全团队一份，只有管理员 / 老板改
-    ...(isAdmin || 桌面端 ? [{ key: "ai", label: "AI 接入", children: <AiSettingsTab llm={llm} usage={aiUsage} 企业版={企业版} /> }] : []),
+    // AI 接入、业务配置全团队一份，只有管理员 / 老板改
+    ...(isAdmin ? [{ key: "ai", label: "AI 接入", children: <AiSettingsTab llm={llm} usage={aiUsage} 企业版={企业版} /> }] : []),
     ...(isAdmin ? [{ key: "business", label: "业务配置", children: <BusinessSettingsTab value={business} 多人={users.filter((u) => u.active).length > 1} 企业版={企业版} /> }] : []),
     ...(组织架构 ? [{ key: "org", label: "组织架构", children: <OrgTab value={组织架构} /> }] : []),
     ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={持有成员} /> }] : []),
@@ -135,15 +121,6 @@ export default function SettingsView({
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
   ]
-    /**
-     * 桌面端是**一个人用的**：数据在他自己机器上，登录的是他自己的云端账号，
-     * 「团队成员」那一栏只会列出他一个人，还摆着「新增成员」——那是个会骗人的入口：
-     * 在本机库里加出来的人没有云端账号，登不进任何地方（2026-09-18 用户指出）。
-     * 要多人一起用，是「连接服务器」那条路，不是在这台机器上加账号。
-     *
-     * 「登录与密码」不摆的理由同源：桌面端只有云端账号这一套身份，本机那把密码用不到。
-     */
-    .filter((x) => !(桌面端 && (x.key === "password" || x.key === "members")))
     // 共享试用区：账号是几个团队共用的，名字和密码不给改（排查 A3）
     .filter((x) => !(共享区 && (x.key === "password" || x.key === "profile")))
     .map((x) => ({ ...x, 说明: 说明表[x.key] ?? "" })) as { key: string; label: string; 说明: string; children: React.ReactNode }[];
@@ -156,12 +133,11 @@ export default function SettingsView({
   const 分组表: [string, string[]][] = [
     ["个人", ["profile", "password", "keymap", "appearance"]],
     ["工作区", ["members", "org", "business", "project", "ai", "imports", "enterprise", "audit"]],
-    ["应用", ["desktop", "team"]],
   ];
 
   /**
    * **真正摆出来的是哪一栏**。地址栏没带 ?tab= 时默认是 members，
-   * 但桌面端不摆「团队成员」，网页版的普通成员也看不到它——这时正文落到第一栏（个人资料），
+   * 但网页版的普通成员看不到它——这时正文落到第一栏（个人资料），
    * 而左边目录还在找 members，于是**哪一项都不亮**，看上去像选中了鼠标停着的那项
    * （2026-09-28 用户截图：「桌面端」发灰、正文是个人资料）。
    * 左边亮哪项、正文画哪栏、读屏的 aria 指向，三处都只认这一个值。
