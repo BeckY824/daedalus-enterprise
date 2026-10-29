@@ -17,12 +17,15 @@ import { 外贸精简 } from "@/lib/business-config";
 import { 金额 } from "@/lib/currency";
 import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
-import type { 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通, 培育计划上限 } from "@/lib/project/stage-gates";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
 import type { 可选渠道 } from "@/components/ChannelPicker";
+import { 拼地址, 企业级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 级别星 } from "@/lib/enterprise/level-stars";
+import { 项目区域 } from "@/lib/project/profile-rules";
 import { 项目沟通预填, 沟通时间格式 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
 import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 判MQLAction } from "../actions";
@@ -33,6 +36,8 @@ import type { 卡点默认 } from "@/lib/project/blocker-rules";
 import { ProjectCommissionCard } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
+import PaneToggle from "@/components/PaneToggle";
+import { ProjectAttachmentsCard, ProjectProfileCard, type 项目画像 } from "./ProjectExtras";
 
 export type 项目详情 = {
   id: string; name: string; remark: string | null; amount: number; currency: string;
@@ -76,6 +81,11 @@ export type 项目详情 = {
    */
   项目来源?: { name: string; 跟客户: boolean } | null; channelId?: string | null; 已立项天数?: number; 渠道们?: 可选渠道[]; aiEnabled?: boolean;
   /**
+   * 企业版（P11 定稿 -2 版，迁移 093）：项目级别 S / A / B / C（null = 没分级），显示成星；
+   * 所在地 = 地址四格 + 详细地址，跟客户资料一样公海里同事客户的项目没领之前是 null（不摆）。不是企业版都不传
+   */
+  level?: string | null; 所在地?: (客户地址 & { location: string | null }) | null;
+  /**
    * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推；
    * 只能靠填齐 = 不是老板、主管，手动往前推不给（往后退、点结局照旧）
    */
@@ -100,6 +110,10 @@ export type 项目详情 = {
   提成: 提成卡 | null;
   /** 删项目时一起删掉的：节点留痕（含转让痕）、项目组、沟通和项目的关联 */
   删前清点: { 留痕: number; 组员: number; 沟通: number };
+  /** 企业版项目画像（P11）：不是企业版、公海里没领的不给 */
+  画像?: 项目画像;
+  /** 企业版项目附件（P11）：看得到才有；只读 = 不能改这个项目（api/attachments/access.ts 项目附件入口） */
+  项目附件?: { 个数: number; 只读: boolean };
 };
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
@@ -183,6 +197,19 @@ function 换人文字(l: 项目详情["logs"][number]): string {
 }
 
 /** 负责人那一行括号里：怎么进的公海 */
+/** 项目级别格（企业版 P11）：星 + 档名（「★★★☆ A 重点」）；没分级写「没分级」，认不出的原样给 */
+function 级别格(v: string | null) {
+  if (!v) return <span style={{ color: "var(--text-muted)" }}>没分级</span>;
+  const 档 = 企业级别(v);
+  if (!档) return <span>{v}</span>;
+  return (
+    <span title={企业级别说明[档]}>
+      <span aria-hidden style={{ color: "var(--warning-text)", letterSpacing: 1 }}>{级别星(档)}</span>
+      <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>{企业级别说明[档]}</span>
+    </span>
+  );
+}
+
 function 进公海说法(进: 项目详情["进公海"], 原负责人: string): string {
   if (!进) return "";
   if (进.方式 === "超时") return " · 超时没跟进，系统自动收回";
@@ -308,14 +335,22 @@ export default function ProjectDetail({
   };
 
   // 各张卡先摆成常量：企业版两栏、别的版本照原来一栏，摆法不同、卡是同一份
+  const 位 = 阶段与进程(p, 字典);
   const 节点卡 = (
     <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>现在在</div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>
-            {p.phase} · {p.node}
-            {p.result && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}>{结局叫法(p.result, 字典)}</Tag>}
+        {/* P11：阶段（线索/商机/订单）和进程（节点）分两格摆，不拼成一串；成功交付、异常状态的阶段算订单 */}
+        <div className="proj-where">
+          <div>
+            <div className="proj-where-label">阶段</div>
+            <div className="proj-where-value">{位.阶段}</div>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div className="proj-where-label">进程</div>
+            <div className="proj-where-value">
+              <span className="proj-where-node" title={位.进程}>{位.进程}</span>
+              {位.结局 && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}>{位.结局}</Tag>}
+            </div>
           </div>
         </div>
         <Space wrap>
@@ -381,11 +416,22 @@ export default function ProjectDetail({
       {/* 联系人名字、职位可能很长：在 1024 宽的项目卡里折行，不顶出卡片 */}
       {p.contact && <div style={行样}><span style={键样}>联系人</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>}
       {p.contact && p.联系人附件 && <div style={行样}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
+      {p.企业版 && p.level !== undefined && (
+        <div style={行样}><span style={键样}>级别</span>{级别格(p.level)}</div>
+      )}
       <div style={行样}><span style={键样}>金额</span>{金额(p.amount, p.currency)}</div>
       {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
         <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : <span style={{ color: "var(--text-muted)" }}>没填</span>}</span></div>
+      )}
+      {p.企业版 && p.所在地 && (
+        <>
+          <div style={行样}><span style={键样}>区域</span>{项目区域(p.所在地) || <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>
+          {(拼地址(p.所在地) || p.所在地.location) && (
+            <div style={行样}><span style={键样}>地址</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{[拼地址(p.所在地), p.所在地.location].filter(Boolean).join(" ")}</span></div>
+          )}
+        </>
       )}
       {/* 在公海里时 ownerName 是原负责人：不写成「负责人 X」，也不把系统收回说成 X 放回的（QA #14） */}
       <div style={行样}><span style={键样}>负责人</span>{p.pooled ? <span>在公海里<span style={{ color: "var(--text-muted)" }}>（原负责人 {p.ownerName}{进公海说法(p.进公海, p.ownerName)}）</span></span> : p.ownerName}</div>
@@ -491,31 +537,47 @@ export default function ProjectDetail({
     </Card>
   );
 
-  return (
+  const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
+  const 附件卡 = p.项目附件 && <ProjectAttachmentsCard key={p.id} projectId={p.id} 起始个数={p.项目附件.个数} 只读={p.项目附件.只读} />;
+
+  const 页头 = (
+    <PageHead
+      title={p.name}
+      subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
+      extra={
+        <Space wrap>
+          {/* 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认 */}
+          {p.能放公海 && p.企业版 && <Button disabled={忙} onClick={() => { set回收原因(null); set放回框(true); }}>放回公海</Button>}
+          {p.能放公海 && !p.企业版 && (
+            <Popconfirm title="放回项目公海？" description={p.企业版 ? "放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人" : "放回去以后谁都能领，你自己不能再领回来"} okText="放回公海" onConfirm={() => void 跑(() => 放回项目公海(p.id), "已放回项目公海")}>
+              <Button disabled={忙}>放回公海</Button>
+            </Popconfirm>
+          )}
+          {p.能领取 && <Button type="primary" disabled={忙} onClick={() => void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了")}>领取</Button>}
+          {/* 企业版原负责人：按钮摆着、灰着，悬停说为什么（接口也拦，lib/project/db.ts 领取公海项目） */}
+          {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
+          {能改 && (
+            <Popconfirm title="删除这个项目？" description={删除说明(p.删前清点, b.customer)} okText="删除" okButtonProps={{ danger: true }} onConfirm={() => void 删()}>
+              <Button danger disabled={忙}>删除项目</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      }
+    />
+  );
+
+  const 正文 = (
     <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
-      <PageHead
-        title={p.name}
-        subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
-        extra={
-          <Space wrap>
-            {/* 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认 */}
-            {p.能放公海 && p.企业版 && <Button disabled={忙} onClick={() => { set回收原因(null); set放回框(true); }}>放回公海</Button>}
-            {p.能放公海 && !p.企业版 && (
-              <Popconfirm title="放回项目公海？" description={p.企业版 ? "放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人" : "放回去以后谁都能领，你自己不能再领回来"} okText="放回公海" onConfirm={() => void 跑(() => 放回项目公海(p.id), "已放回项目公海")}>
-                <Button disabled={忙}>放回公海</Button>
-              </Popconfirm>
-            )}
-            {p.能领取 && <Button type="primary" disabled={忙} onClick={() => void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了")}>领取</Button>}
-            {/* 企业版原负责人：按钮摆着、灰着，悬停说为什么（接口也拦，lib/project/db.ts 领取公海项目） */}
-            {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
-            {能改 && (
-              <Popconfirm title="删除这个项目？" description={删除说明(p.删前清点, b.customer)} okText="删除" okButtonProps={{ danger: true }} onConfirm={() => void 删()}>
-                <Button danger disabled={忙}>删除项目</Button>
-              </Popconfirm>
-            )}
-          </Space>
-        }
-      />
+      {p.企业版 ? (
+        /* 企业版（P11）：项目名单在中栏（@pane/projects/[id]，components/ProjectRoster.tsx）。
+           它收起或收成抽屉时，标题最左边补一颗侧栏图标把它叫回来，和客户详情页同一颗（components/PaneToggle.tsx） */
+        <div className="proj-head">
+          <PaneToggle 栏="roster" 位置="主区" 名="项目列表" />
+          {页头}
+        </div>
+      ) : (
+        页头
+      )}
 
       {p.pooled && (
         <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在项目公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
@@ -538,9 +600,11 @@ export default function ProjectDetail({
               {节点卡}
               {沟通卡}
               {卡点区}
+              {附件卡}
             </div>
             <aside className="proj-side" aria-label="项目资料">
               {项目卡}
+              {画像卡}
               {交付卡}
               {项目组卡}
               {提成区}
@@ -574,7 +638,7 @@ export default function ProjectDetail({
           open
           onClose={() => set编辑开着(false)}
           跑={跑}
-          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null } : {}) }}
+          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, 所在地: p.所在地 ?? null } : {}) }}
           候选={候选}
           联系人们={联系人们}
           渠道们={p.企业版 ? p.渠道们 : undefined}
@@ -676,6 +740,7 @@ export default function ProjectDetail({
       </Modal>
     </div>
   );
+  return 正文;
 }
 
 /** 回收日在两天内（含已到）：提示变成警示色 */
