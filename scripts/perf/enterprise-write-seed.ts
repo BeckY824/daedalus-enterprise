@@ -5,7 +5,7 @@
  *   DATABASE_URL=file:<crm.db> OUT_DIR=<输出目录> npx tsx scripts/perf/enterprise-write-seed.ts
  *
  * 做三件事，每次压测前都跑一遍（--reuse-db 时库里可能已经被上一轮写过，按库里现在的样子重算）：
- *   1. 给 30 个 perf 用户设同一个随机测试密码（bcrypt 10 轮，和 settings 里改密码同一个强度）。
+ *   1. 给 30 个 perf 用户设同一个随机测试密码（scrypt，和 settings 里改密码同一个写法，见 src/lib/password.ts）。
  *      种子里的密码是 "!"，永远比对不上，S6 登录要一个真能登进去的。明文只写进 <输出目录>/.perf-password（600），不打印
  *   2. 每人在自己名下、不在公海的客户上建 2 个项目，停在 商机·明确需求（已经建过的就复用）。
  *      企业版锁死项目模式（business-config 的 企业版锁定：projectMode = true），不用另开；
@@ -17,7 +17,7 @@
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import bcrypt from "bcryptjs";
+import { 哈希密码 } from "../../src/lib/password";
 import { PrismaClient } from "../../src/generated/prisma";
 
 const p = new PrismaClient();
@@ -34,7 +34,7 @@ async function main() {
 
   // 1. 测试密码
   const 密码 = randomBytes(12).toString("base64url");
-  const 哈希 = await bcrypt.hash(密码, 10);
+  const 哈希 = await 哈希密码(密码);
   await p.user.updateMany({ where: { id: { in: 人们.map((u) => u.id) } }, data: { password: 哈希 } });
   writeFileSync(join(OUT_DIR, ".perf-password"), 密码, { mode: 0o600 });
 
