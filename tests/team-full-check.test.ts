@@ -7,7 +7,7 @@
  *   → 本人新电脑配对（首页 / 设置页同一个申请，电脑批、手机批、老板第二台的管理权限）→ 每人 3 台上限 → 我的设备 / 移除设备
  *   → 公海领取、交接、转走后的推送被拒不丢 → 断网时两边改同一位客户 → 手机离线记跟进再联网
  *   → 快到期提醒 / 到期暂停 / 续费恢复 → 改名 → 移除同事（换钥匙）→ 退出团队 / 重新加入
- *   → 0.46.16 时建的单设备团队升级后再加设备；一路核「没同步上」「疑似重复」「待老板核对」这几张清单。
+ *   → 0.46.16 时建的单设备团队升级后再加设备；一路核「没同步上」「待老板核对」这几张清单。
  * 每一步除了数据对不对，还核给人看的那句话（界面原样显示的 error / lastError）说得清、知道下一步做什么。
  *
  * 台子照抄 sync-device-link-merge.test.ts：真实桌面端 lib/sync/client.ts + 真实中转（临时控制库、令牌真签发、路由顺序照 route.ts），
@@ -59,7 +59,6 @@ import * as 新机 from "@/lib/sync/device-link";
 import * as 密 from "@/lib/sync/crypto-web";
 import * as 手机 from "@/lib/mobile/sync";
 import * as 连 from "@/lib/mobile/link";
-import { 疑似重复 } from "@/lib/sync/dupes";
 import { 没同步上 } from "@/lib/sync/local";
 import { 列出范围冲突 } from "@/lib/sync/scoped-local";
 import { 列出被盖, 看过被盖 } from "@/lib/sync/overwritten";
@@ -284,7 +283,7 @@ describe("1. 建团队 → 待开通 → 运营台按时长开通", () => {
     expect(一轮).toEqual({ ok: false, error: "团队同步还没开通" });
     const s = await 在团队的状态("boss");
     expect(s).toMatchObject({ active: false, 已到期: false, 我是建的人: true, 能管理: true });
-    // 界面：黄条「团队还没开通，暂不同步」，红条里不重复这句（TeamTab 过滤 /没开通|已到期/）
+    // 界面：黄条「团队还没开通，暂不同步」，红条里不重复这句
     expect(s.lastError).toMatch(/没开通/);
   });
 
@@ -293,7 +292,7 @@ describe("1. 建团队 → 待开通 → 运营台按时长开通", () => {
     await d.setting.create({ data: { key: "business", value: 业务配置("USD") } });
     await d.customer.create({ data: { id: "c-li-own", name: "李的老客户", phone: "+8613900000002", salesOwnerId: 模板.管理员 } });
     await d.followUp.create({ data: { id: "f-li-own", customerId: "c-li-own", ownerId: 模板.管理员, type: "PHONE", title: "", content: "加入前记的" } });
-    // 和老板那位是同一个号码：加入后进「疑似重复」
+    // 和老板那位是同一个号码：加入后两份都留着
     await d.customer.create({ data: { id: "c-li-dup", name: "老板的老客户（李录的）", phone: "+8613900000001", salesOwnerId: 模板.管理员 } });
     当("li");
     expect(await client.加入团队(邀请码)).toEqual({ ok: true, teamName: "明亮贸易", active: false });
@@ -346,12 +345,9 @@ describe("2. 加入前本机已有的客户、模版币种、范围同步", () =
     expect(await 客户们("zhao")).toEqual(["c-pool-1", "c-zhao-1"]);
   });
 
-  it("「疑似重复」：老板那台有（老板的老客户和李录的同一个号码）；李那台看不到老板那份，也就不提示", async () => {
-    当("boss");
-    const 组 = (await 疑似重复()).find((g) => g.记录.some((r) => r.id === "c-boss-1"));
-    expect(组?.记录.map((r) => r.id).sort()).toEqual(["c-boss-1", "c-li-dup"]);
-    当("li");
-    expect((await 疑似重复()).find((g) => g.记录.some((r) => r.id === "c-li-dup"))).toBeUndefined();
+  it("同一个号码两份：老板那台两份都在（老板的老客户和李录的）；李那台看不到老板那份", async () => {
+    for (const id of ["c-boss-1", "c-li-dup"]) expect(await db("boss").customer.findUnique({ where: { id } }), id).toBeTruthy();
+    expect(await db("li").customer.findUnique({ where: { id: "c-boss-1" } })).toBeNull();
     await 都干净("boss", "li", "zhao");
   });
 });

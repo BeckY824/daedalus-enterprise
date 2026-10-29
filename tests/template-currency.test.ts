@@ -2,7 +2,7 @@
  * 选模版 + 币种（2026-10-03）。
  *   - 币种：内置 25 种、Intl 全量兜底、显示不混 $、合计不换汇
  *   - 模版：业务配置多了 template / currency；老库没存时按来源推断，不弹窗、不改它
- *   - 新用户选模版：只对桌面端的新库弹；选了整组套预设；绕过页面直接调也拦
+ *   - 新用户选模版：只对桌面端的新库弹（选模版页和它的 Server Action 企业版跑不到，死代码第三批删了）
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
@@ -16,10 +16,8 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 金额, 是币种, 规整币种, 币种选项, 按币种合计, 合计文字, 内置币种, 币种名 } from "@/lib/currency";
 import { mergeBusiness, BUSINESS_PRESETS, DEFAULT_BUSINESS, 推断模版 } from "@/lib/business-config";
-import { invalidateSettingsCache, setSetting, getSetting } from "@/lib/settings";
-import { 要选模版, 选过模版键 } from "@/lib/onboarding";
-import { 选模版 } from "@/app/start/actions";
-import { getBusiness } from "@/lib/business";
+import { invalidateSettingsCache, setSetting } from "@/lib/settings";
+import { 要选模版 } from "@/lib/onboarding";
 
 const 原值 = process.env.DESKTOP_LOCAL;
 
@@ -122,29 +120,5 @@ describe("新用户选模版", () => {
     await prisma.customer.deleteMany();
     await setSetting("business", BUSINESS_PRESETS["通用销售"]);
     expect(await 要选模版()).toBe(false);
-  });
-
-  it("选外贸：整组套外贸预设、本位币美元、记一笔，之后不再弹", async () => {
-    expect((await 选模版("trade")).ok).toBe(true);
-    const b = await getBusiness();
-    expect(b).toMatchObject({ template: "trade", currency: "USD" });
-    expect(b.sources).toContain("阿里国际站");
-    expect(await getSetting(选过模版键)).toBeTruthy();
-    expect(await 要选模版()).toBe(false);
-  });
-
-  it("绕过页面直接调：已经不该选了就什么都不改（不是一个跳过保存直接改全站措辞的口子）", async () => {
-    await setSetting("business", { ...BUSINESS_PRESETS["通用销售"], customer: "会员" });
-    expect((await 选模版("trade")).ok).toBe(true);
-    const b = await getBusiness();
-    expect(b.customer).toBe("会员");
-    expect(b.template).toBe("general");
-  });
-
-  it("不是管理员不让选；乱传的模版名拒绝", async () => {
-    mocks.user = { ...mocks.user, role: "SALES" };
-    expect((await 选模版("trade")).ok).toBe(false);
-    mocks.user = { ...mocks.user, role: "ADMIN" };
-    expect((await 选模版("edu" as never)).ok).toBe(false);
   });
 });

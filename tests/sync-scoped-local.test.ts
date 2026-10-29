@@ -8,7 +8,6 @@ import { PrismaClient } from "@/generated/prisma";
 import { 新钥匙, 封范围 } from "@/lib/sync/crypto";
 import { 提取范围, 合并范围, 行键 } from "@/lib/sync/scope-policy";
 import { 验收范围包, 范围包错误, 清理失权副本, 范围冲突数, 列出范围冲突, 确认范围冲突, 导出范围冲突, 擦净删除残留, 擦净等锁毫秒 } from "@/lib/sync/scoped-local";
-import { 冲突导出文件名 } from "@/app/(app)/settings/scope-conflicts-file";
 import { 建同步表, 装触发器, 待推, 回放 } from "@/lib/sync/local";
 import type { 改动 } from "@/lib/sync/local";
 
@@ -140,7 +139,6 @@ describe("清理失权副本", () => {
     expect(out.条目[0]).toMatchObject({ 编号: "lost2", 改动内容: { remark: "我的改动" } });
     expect(out.条目[0].已确认).not.toBeNull();
     expect(Number((await db.$queryRawUnsafe<{ n: bigint }[]>("SELECT COUNT(*) AS n FROM _sync_scope_conflict"))[0].n)).toBe(1);
-    expect(冲突导出文件名(new Date(2026, 9, 13))).toBe("同步权限冲突-20261013.json");
   });
   it("回放删除（含照目录补删除）：编完本机字段钟到开事务之间人又写的那一笔，不被更早的删除删掉（2026-10-14 安全复查 low #1）", async () => {
     await db.customerPool.deleteMany({ where: { customerId: "mine" } });

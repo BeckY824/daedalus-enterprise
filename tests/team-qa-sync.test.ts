@@ -62,7 +62,6 @@ import * as 密 from "@/lib/sync/crypto-web";
 import * as 手机 from "@/lib/mobile/sync";
 import * as 连 from "@/lib/mobile/link";
 import { 要清掉 } from "@/lib/mobile/view";
-import { 疑似重复 } from "@/lib/sync/dupes";
 import { 没同步上 } from "@/lib/sync/local";
 import { 列出范围冲突 } from "@/lib/sync/scoped-local";
 import { 忘掉限定 } from "@/lib/team-scope";
@@ -488,7 +487,7 @@ describe("D5. 一边删、一边改同一条计划", () => {
 });
 
 describe("F. 手机断网新建客户，同事这期间录了同一个号码", () => {
-  it("两位都留下、各归各的，没有谁的悄悄没了；录的两个人各自看不到对方那份；老板那台「疑似重复」里列出这一对", async () => {
+  it("两位都留下、各归各的，没有谁的悄悄没了；录的两个人各自看不到对方那份；老板那台两份都在", async () => {
     断网.add("li-m");
     const 机 = 手机们["li-m"];
     const { id } = await 手机.新建客户(机.团, 机.库, 机.态, { name: "撞号客户（李手机录）", phone: "13900005555" });
@@ -505,16 +504,13 @@ describe("F. 手机断网新建客户，同事这期间录了同一个号码", (
     expect(await db("zhao").customer.findUnique({ where: { id } })).toBeNull();
     expect(手机有("zhao-m", "Customer", id)).toBeUndefined();
     expect(await db("li").customer.findUnique({ where: { id: "c-f-zhao" } })).toBeNull();
-    当("boss");
-    const 组 = (await 疑似重复()).find((g) => g.记录.some((r) => r.id === id));
-    expect(组?.记录.map((r) => r.id).sort()).toEqual([id, "c-f-zhao"].sort());
   });
 });
 
 describe("F2. 联网时在电脑上 / 手机上录同事已有的号码（2026-10-19 跨成员查重）", () => {
   /*
     原来是 BUG（it.fails 记着）：正式服开着范围同步，业务员电脑上只有本人 + 公海，同事的客户根本不在本机库里——
-    checkDuplicate 查不出来，同一个号码照样存成两份，只有老板那台「疑似重复」里看得到。
+    checkDuplicate 查不出来，同一个号码照样存成两份，只有老板那台看得到两份。
     10-19 用户拍板做服务端查重（lib/sync/dedupe.ts）：各台报号码哈希，录入前问一下；只露同事名 + 客户名
   */
   it("李在电脑上（联网、刚同步完）录一个赵已有的号码：查重提醒「这号赵业务在跟、客户叫什么」，打不开、看不到别的", async () => {
@@ -541,7 +537,7 @@ describe("F2. 联网时在电脑上 / 手机上录同事已有的号码（2026-1
     expect(await db("li").customer.count({ where: { name: "李又录了一遍" } })).toBe(0);
   });
 
-  it("李的手机联网新建同一个号码：同一句话挡下（断网时照样建、老板那台「疑似重复」兜底，见 F）", async () => {
+  it("李的手机联网新建同一个号码：同一句话挡下（断网时照样建、老板那台两份都在，见 F）", async () => {
     await 手机都轮("li-m");
     const 机 = 手机们["li-m"];
     await expect(手机.新建客户(机.团, 机.库, 机.态, { name: "李手机又录了一遍", phone: "13900009100" }, Date.now(), 机.云)).rejects.toThrow(/同事 赵业务.*赵的老客户（查重用）/);

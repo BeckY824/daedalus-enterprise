@@ -1,17 +1,12 @@
 /**
- * 桌面端提醒那份摘要（lib/reminders.ts）和它的接口（/api/desktop/reminders）。
+ * 提醒那份摘要（lib/reminders.ts）。原来给桌面端壳的接口 /api/desktop/reminders 在死代码第三批删了（企业版没有壳）。
  *
- * 钉三件事：
- *   1. **口径和「跟进计划」页一致**——Dock 写 5、点进去只看见 3 个，人就再也不信那个数了
+ * 钉两件事：
+ *   1. **口径和「跟进计划」页一致**——数写 5、点进去只看见 3 个，人就再也不信那个数了
  *   2. 只选了日期（零点）的不算「定了钟点」，不会在半夜十二点叫人
- *   3. 接口只认壳的启动令牌：它不要会话就吐出人名和计划，门必须钉死（同 desktop-session 那组）
  */
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { 算提醒, 定了时刻, type 提醒项 } from "@/lib/reminders";
-
-vi.mock("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
-}));
 
 /** 2026-09-28（周一）下午 3 点，本机时区 */
 const 现在 = new Date(2026, 8, 28, 15, 0);
@@ -79,42 +74,5 @@ describe("定了钟点的才到点提醒", () => {
       现在,
     );
     expect(r.错过.map((x) => x.key)).toEqual(["plan:昨晚", "plan:早过了"]);
-  });
-});
-
-describe("接口的门：只认壳的启动令牌", () => {
-  const URL_ = "http://127.0.0.1:1234/api/desktop/reminders";
-  afterEach(() => {
-    delete process.env.DESKTOP_LOCAL;
-    delete process.env.DESKTOP_TOKEN;
-  });
-
-  it("不是桌面端本地模式 → 404（自部署、托管版的构建里也有这个文件）", async () => {
-    const { GET } = await import("@/app/api/desktop/reminders/route");
-    process.env.DESKTOP_TOKEN = "desktop-token-for-tests";
-    expect((await GET(new Request(URL_, { headers: { "x-desktop-token": "desktop-token-for-tests" } }))).status).toBe(404);
-  });
-
-  it("开了开关没有令牌 → 404，不能退化成谁来都给", async () => {
-    process.env.DESKTOP_LOCAL = "1";
-    const { GET } = await import("@/app/api/desktop/reminders/route");
-    expect((await GET(new Request(URL_))).status).toBe(404);
-  });
-
-  it("令牌不对、不带、长度不同都是 403，且不会因为长度不同而抛错", async () => {
-    process.env.DESKTOP_LOCAL = "1";
-    process.env.DESKTOP_TOKEN = "desktop-token-for-tests";
-    const { GET } = await import("@/app/api/desktop/reminders/route");
-    for (const t of [null, "", "x", "desktop-token-for-testt", "desktop-token-for-testsX"]) {
-      const res = await GET(new Request(URL_, { headers: t === null ? {} : { "x-desktop-token": t } }));
-      expect(res.status, `令牌 ${JSON.stringify(t)} 不该放行`).toBe(403);
-    }
-  });
-
-  it("令牌放在网址上不认：会话那条路是 ?t=，这条只认请求头——网址会进日志", async () => {
-    process.env.DESKTOP_LOCAL = "1";
-    process.env.DESKTOP_TOKEN = "desktop-token-for-tests";
-    const { GET } = await import("@/app/api/desktop/reminders/route");
-    expect((await GET(new Request(`${URL_}?t=desktop-token-for-tests`))).status).toBe(403);
   });
 });

@@ -12,11 +12,9 @@ import path from "node:path";
 const 读 = (rel: string) => fs.readFileSync(path.resolve(__dirname, "..", rel), "utf8");
 
 describe("要跟的数：一个口径、处处一样", () => {
-  it("Dock 的接口和页面布局取的是同一份（取提醒项 → 算提醒 / 数提醒，同一条今天界线），不再各数各的", () => {
-    const 接口 = 读("src/app/api/desktop/reminders/route.ts");
+  // Dock 的接口 api/desktop/reminders 在死代码第三批删了（只有桌面端的壳会问，企业版没有壳）
+  it("页面布局和计划页取的是同一份（取提醒项 → 算提醒 / 数提醒，同一条今天界线），不再各数各的", () => {
     const 布局 = 读("src/app/(app)/layout.tsx");
-    expect(接口).toContain("取提醒项(");
-    expect(接口).toContain("算提醒(");
     expect(布局).toContain("数提醒(user.id)");
     const 库 = 读("src/lib/reminders-db.ts");
     expect(库).toMatch(/export async function 数提醒[\s\S]*今天界线\(now\)/);

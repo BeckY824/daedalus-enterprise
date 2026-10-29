@@ -36,7 +36,6 @@ import { prisma as db, defaultClient as raw } from "@/lib/prisma";
 import { 领取 } from "@/app/(app)/customers/pool-actions";
 import { convertLead, mergeLeadInto } from "@/app/(app)/leads/actions";
 import { checkDuplicate, saveCustomer } from "@/app/(app)/customers/actions";
-import { 疑似重复 } from "@/lib/sync/dupes";
 import { 看全部, 忘掉限定, 限定的我 } from "@/lib/team-scope";
 import { 设传输, 对齐角色, 退出团队, 同步一轮, 建团队, 加入团队, 读团队, type 传输 } from "@/lib/sync/client";
 import { 建同步表, 装触发器, 卸触发器, 回放, 只留自己的 } from "@/lib/sync/local";
@@ -778,7 +777,6 @@ describe("线索撞了已有客户的号：说清是谁、能并过去（J-024�
 /*
   10-04 用户拍板：业务员录到同事名下已有的号码，提示里**不露那位客户是谁**（原来给名字和负责人），只说是哪位同事在跟。
   一起查出来的两处：编辑时把号码改成同事客户的号，原来只看得到自己的、查不出来，悄悄存成两份同号档案；
-  团队设置里的「疑似重复」号码是裸 SQL 查的、不过限定，两条都是同事的那组记录是空的、号码却摆给了业务员。
 */
 describe("撞号只露同事名 + 客户名（10-04 起不露资料；10-19 跨成员查重时用户改成给客户名）", () => {
   const 号 = async (客户: string) => (await raw.customer.findUniqueOrThrow({ where: { id: ids[客户] } })).phone;
@@ -820,17 +818,5 @@ describe("撞号只露同事名 + 客户名（10-04 起不露资料；10-19 跨�
     if (r.ok) return;
     expect(r.error).toContain("同事 小李 名下");
     expect((await raw.customer.findUniqueOrThrow({ where: { id: 我的.id } })).phone).toBe(我的.phone);
-  });
-
-  it("疑似重复：两条都是同事的那组，业务员这里不列（号码也不露）；老板照样看得到", async () => {
-    const 李的号 = await 号("小李的客户");
-    await raw.customer.create({ data: { name: "小李又录了一次", phone: 李的号, salesOwnerId: 小李 } });
-    expect((await 疑似重复()).filter((g) => g.依据.includes(李的号))).toEqual([]);
-    当("boss");
-    进团队();
-    await 对齐角色();
-    const 老板看 = (await 疑似重复()).filter((g) => g.依据.includes(李的号));
-    expect(老板看).toHaveLength(1);
-    expect(老板看[0].记录.map((r) => r.name).sort()).toEqual(["小李又录了一次", "小李的客户"]);
   });
 });

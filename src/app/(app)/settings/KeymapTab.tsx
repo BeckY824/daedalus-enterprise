@@ -10,14 +10,12 @@ import Shortcut, { useModifierKey } from "@/components/Shortcut";
  *
  * 加新快捷键时**记得回来加一行**：一份对不上的清单比没有清单更坏。
  */
-const 组: { 名: string; 项: { 键: string[]; 说明: string; 仅桌面端?: boolean }[] }[] = [
+const 组: { 名: string; 项: { 键: string[]; 说明: string }[] }[] = [
   {
     名: "到处走",
     项: [
       { 键: ["⌘", "K"], 说明: "跳到任意一页；已经在有输入框的页面上时，光标回到输入框" },
       { 键: ["⌘", "N"], 说明: "在当前页新建——它点的就是页头右上角那个主按钮" },
-      { 键: ["⌘", "1"], 说明: "到 ⌘9：跳左栏那几项", 仅桌面端: true },
-      { 键: ["⌘", ","], 说明: "打开设置", 仅桌面端: true },
     ],
   },
   {
@@ -32,14 +30,12 @@ const 组: { 名: string; 项: { 键: string[]; 说明: string; 仅桌面端?: b
   },
 ];
 
-/** 企业版只有网页版，没有桌面端可去，「仅桌面端可用」那半句不说 */
-export default function KeymapTab({ 桌面端, 企业版 = false }: { 桌面端: boolean; 企业版?: boolean }) {
+export default function KeymapTab() {
   const modifier = useModifierKey();
   return (
     <div className="set-body">
       {组.map((g) => {
-        const 项 = g.项.filter((x) => !x.仅桌面端 || 桌面端);
-        if (!项.length) return null;
+        const 项 = g.项;
         return (
           <div key={g.名} style={{ marginBottom: 22 }}>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{g.名}</div>
@@ -59,7 +55,7 @@ export default function KeymapTab({ 桌面端, 企业版 = false }: { 桌面端:
         );
       })}
       <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-        {modifier === "⌘" ? "⌘ 是 Command 键。" : "Ctrl 是 Control 键。"}{企业版 ? "" : " 模块切换和设置快捷键仅桌面端可用。"}
+        {modifier === "⌘" ? "⌘ 是 Command 键。" : "Ctrl 是 Control 键。"}
       </p>
     </div>
   );

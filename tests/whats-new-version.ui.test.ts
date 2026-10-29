@@ -12,7 +12,6 @@ beforeAll(async () => {
     define: { "process.env.NODE_ENV": '"production"' }, logLevel: "silent",
     plugins: [{ name: "server-actions", setup(b) {
       b.onLoad({ filter: /whats-new-actions\.ts$/ }, () => ({ loader: "js", contents: `
-        export async function 有没有新内容(){return null}export async function 看过了(){}
         export async function 全部更新记录(){return {现在:window.__serverVersion||'0.46.15',段:[{版本:'0.46.15',正文:'这一版的说明',日期:null},{版本:'0.46.14',正文:'上一版的说明',日期:null}]}}` }));
     } }],
   })).outputFiles[0].text;

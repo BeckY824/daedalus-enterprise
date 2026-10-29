@@ -24,7 +24,7 @@ export default function StartCard({ 自己服务器 = false, 去导入 = false, 
   /**
    * 跑在客户自己部署的服务器上（企业版私有部署、自部署的网页版，2026-10-25）：
    * 第三句不能再说「数据只在你的电脑上」「账号用来记 AI 次数和团队版同步」——
-   * 那是桌面端的话，企业版没有我们的云端账号、AI 也不计次。page.tsx 按 !本地模式() && !multiTenant() 传
+   * 那是桌面端的话，企业版没有我们的云端账号、AI 也不计次。page.tsx 按 !multiTenant() 传
    */
   自己服务器?: boolean;
   /**

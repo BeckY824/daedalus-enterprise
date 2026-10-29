@@ -6,7 +6,6 @@ import { requireUser } from "@/lib/auth";
 import { multiTenant } from "@/lib/tenant/context";
 import { recordAudit } from "@/lib/audit";
 import { 灌演示数据 } from "@/lib/shared-ws/dataset";
-import { 本地模式 } from "@/lib/desktop/cloud";
 import { 企业版 } from "@/lib/enterprise/switch";
 
 /**
@@ -66,13 +65,12 @@ export async function 查演示数据状态(): Promise<演示数据状态> {
     业务数据条数(),
     prisma.setting.findUnique({ where: { key: 标记 }, select: { value: true } }),
   ]);
-  return { 可用: true, 可灌: !本地模式() && !企业版(), 有权限: me.role === "ADMIN", 空库: 条数 === 0, 已灌: !!记号 };
+  return { 可用: true, 可灌: !企业版(), 有权限: me.role === "ADMIN", 空库: 条数 === 0, 已灌: !!记号 };
 }
 
 export async function 灌一套演示数据(): Promise<{ ok: true } | { ok: false; error: string; status?: 403 }> {
   const me = await requireUser();
   if (multiTenant()) return { ok: false, error: "托管版不支持从界面灌演示数据" };
-  if (本地模式()) return { ok: false, error: "桌面端不提供演示数据" };
   // 企业版：客户的正式库，管理员也不给灌。这是服务端动作，没有 HTTP 状态码可回，拒绝原因用 status 标出来
   if (企业版()) return { ok: false, status: 403, error: "企业版不提供演示数据，请在「设置 → 企业版导入」导入真实数据" };
   if (me.role !== "ADMIN") return { ok: false, error: "只有管理员能灌演示数据" };

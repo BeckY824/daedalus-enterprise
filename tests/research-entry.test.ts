@@ -1,6 +1,6 @@
 /**
  * 背调入口摆不摆（lib/research/channel.ts 背调有入口，10-24）：自部署 / 企业版网页上背调永远走不通，
- * 以前「背调」键照摆，一点就是「背调目前只在桌面端可用」。现在那里不摆；桌面端、开发、mock 照旧摆。
+ * 以前「背调」键照摆，一点就是「背调目前只在桌面端可用」。现在那里不摆；开发、mock 照旧摆（桌面端那条死代码第三批删了）。
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createElement } from "react";
@@ -22,11 +22,6 @@ describe("背调有入口", () => {
   it("自部署 / 企业版网页（正式环境、不在桌面端、不是 mock）：不摆", () => {
     环境({ NODE_ENV: "production", CRM_ENTERPRISE: "1" });
     expect(背调有入口()).toBe(false);
-  });
-
-  it("桌面端：摆（没登录也摆，点了说请先登录）", () => {
-    环境({ NODE_ENV: "production", DESKTOP_LOCAL: "1" });
-    expect(背调有入口()).toBe(true);
   });
 
   it("开发环境：摆（走模拟通道）", () => {
