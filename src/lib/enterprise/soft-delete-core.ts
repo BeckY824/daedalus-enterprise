@@ -16,7 +16,7 @@
  * 裸 SQL（$queryRaw）不经过扩展：读这四张表的那几句各自带了 "deletedAt" IS NULL（客户列表、范围计数、同号查重……）。
  * 不是企业版这里什么都不做：deletedAt 一直是空，加了条件也只是白查。
  */
-import { AsyncLocalStorage } from "node:async_hooks";
+import { 全进程上下文 } from "@/lib/process-als";
 import { Prisma } from "@/generated/prisma";
 
 /** 有 deletedAt 的四张表 */
@@ -39,7 +39,7 @@ const 关系们 = new Map<string, Map<string, 关系字段>>(
   ]),
 );
 
-const 看删 = new AsyncLocalStorage<true>();
+const 看删 = 全进程上下文<true>("看已删");
 /** 这一段里的查询连回收站里的一起看（恢复、彻底删除、到期清理、回收站列表） */
 export function 看已删<T>(fn: () => Promise<T>): Promise<T> {
   // 和 看全部 一样在 run 里 await：Prisma 的查询是懒的

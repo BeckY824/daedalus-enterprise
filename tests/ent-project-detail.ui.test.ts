@@ -11,7 +11,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=f,勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=f,改项目画像Action=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=f,勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=f,改项目画像Action=f,改项目沟通=f,删项目沟通=f,撤销删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,指认卡点Action=f,认领卡点Action=f,接受卡点Action=f,转让卡点Action=f,返回卡点Action=f,改卡点进度Action=f,解决卡点Action=f,卡点可选的人Action=async()=>[];`);
   stub(/customers\/\[id\]\/ai$/, `export const parseFollowUpDraft=async()=>({ok:false,error:"未启用"});`);
@@ -38,6 +38,8 @@ beforeAll(async () => {
     const 详情=(企业)=><ProjectDetail p={{...基,企业版:企业,能记沟通:企业,提成:企业?提成:null,...(企业?{项目来源:{name:'渠道'+串,跟客户:true},channelId:null,已立项天数:28,渠道们:[],aiEnabled:true,level:'A',所在地:{addrCountry:'中国',addrProvince:'广东省',addrCity:'深圳市'+'市'.repeat(30),addrDistrict:'南山区',location:'科技园'+串}}:{})}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={企业?{们:[],能发:true,默认:{},人们:[]}:null}/>;
     const 包=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>{x}</BusinessProvider></App></ConfigProvider>;
     window.__render=(企业)=>root.render(包(详情(企业)));
+    /* 10-29 沟通「…」→ 修改 / 删除；下一步 = 一句话 + 可选时间 */
+    window.__over=(x)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,...x}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{},人们:[]}}/>));
     /* P17 关联客户 / 联系人：超长客户名、超长联系人显名、选满身份，挂在右栏 */
     const 关联={客户们:[{customerId:'c1',名:'超长客户名'+串,全称:'某某超长公司名有限公司'.repeat(4),身份:['业主方','总包方','分包方','投资方'],主:true,看得到:true},
       {customerId:'c2',名:'关联客户'+串,全称:'',身份:['监理方','设计方','引荐方'],主:false,看得到:true},{customerId:'c3',名:'同事的客户 #ABC123',全称:'',身份:[],主:false,看得到:false}],
@@ -288,6 +290,72 @@ it("三栏 1024px：名单收成抽屉（和客户中栏同一条线），页头
     await 抽屉.waitFor();
     expect(await page.locator(".pane-drawer .roster-row").count()).toBe(5);
     expect(await 不伸出(page, ".pane-drawer .pane-rows, .pane-drawer .roster-row, .pane-drawer .roster-m")).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+async function 覆盖(width: number, x: Record<string, unknown>) {
+  const { page, errors } = await open(true, width);
+  await page.evaluate(v => (window as unknown as { __over: (x: unknown) => void }).__over(v), x);
+  await page.getByText("进程变更").first().waitFor().catch(() => { throw new Error(errors.join("\n") || "没渲染出来"); });
+  return { page, errors };
+}
+
+for (const 宽 of [1280, 1024]) {
+  it(`${宽}px：每条沟通有「…」，修改 / 删除菜单不出屏；修改弹窗带上原内容；删除先就地确认`, async () => {
+    const { page, errors } = await 覆盖(宽, { 可改沟通: true, followUps: [{ id: "f1", type: "PHONE", content: "沟通内容" + "X".repeat(90), occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "2026-10-03T00:00:00.000Z" }] });
+    try {
+      const 点 = page.getByRole("button", { name: "这条沟通的更多操作" });
+      expect(await 点.count()).toBe(1);
+      expect(await 不伸出(page, ".proj-main")).toEqual([]);
+      await 点.click();
+      const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
+      await 菜单.waitFor();
+      expect((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim())).toEqual(["修改", "删除"]);
+      const 盒 = (await 菜单.boundingBox())!;
+      expect(盒.x).toBeGreaterThanOrEqual(0);
+      expect(盒.x + 盒.width).toBeLessThanOrEqual(宽);
+      await 菜单.getByText("修改").click();
+      const 窗 = page.getByRole("dialog").filter({ hasText: "修改这条沟通" });
+      await 窗.waitFor();
+      expect(await 窗.getByRole("textbox").last().inputValue()).toContain("沟通内容");
+      await 窗.getByRole("button", { name: "取 消" }).or(窗.getByRole("button", { name: "取消" })).first().click();
+      await 窗.waitFor({ state: "hidden" });
+      await 点.click();
+      await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText("删除").click();
+      const 问 = page.locator(".inlc-ask");
+      await 问.waitFor();
+      expect(await 问.innerText()).toContain("回收站");
+      const 问盒 = (await 问.boundingBox())!;
+      expect(问盒.x + 问盒.width).toBeLessThanOrEqual(宽);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("没有改沟通的权限：不摆「…」", async () => {
+  const { page, errors } = await 覆盖(1280, { 可改沟通: false });
+  try {
+    expect(await page.getByRole("button", { name: "这条沟通的更多操作" }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("下一步：有文字写文字、有时间跟在后面；老数据只有时间就只摆时间；记一条沟通要写下一步做什么", async () => {
+  const { page, errors } = await 覆盖(1280, { nextStepText: "周五前发报价单给对方采购", nextStepAt: "2026-11-01" });
+  try {
+    const 行 = page.locator(".proj-side").getByText("下一步", { exact: true }).locator("..");
+    expect((await 行.innerText()).replace(/\s+/g, " ")).toContain("周五前发报价单给对方采购 · 2026-11-01");
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ nextStepText: null, nextStepAt: "2026-11-01" }));
+    await page.waitForFunction(() => !document.body.innerText.includes("周五前发报价单"));
+    expect((await 行.innerText()).replace(/\s+/g, " ")).toContain("下一步 2026-11-01");
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ nextStepText: "只写了一句", nextStepAt: null }));
+    await page.getByText("只写了一句").waitFor();
+    await page.getByRole("button", { name: "记一条沟通" }).click();
+    const 窗 = page.getByRole("dialog");
+    await 窗.getByLabel("下一步做什么").waitFor();
+    expect(await 窗.getByLabel("下一步做什么").getAttribute("maxlength")).toBe("100");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

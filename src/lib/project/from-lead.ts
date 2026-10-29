@@ -32,7 +32,7 @@ export async function 线索建项目(
     data: {
       name: a.线索名.trim().slice(0, 项目名上限), customerId: a.customerId, contactId: 联系人?.id ?? null,
       ownerId: a.ownerId, creatorId: a.creatorId, amount: 0, currency: 默认币种,
-      phase: 第一个节点.phase, node: 第一个节点.node, nextStepAt: a.跟进?.nextStepAt ?? null, sourceLeadId: a.leadId,
+      phase: 第一个节点.phase, node: 第一个节点.node, nextStepAt: a.跟进?.nextStepAt ?? null, nextStepText: a.跟进?.nextStepText ?? null, sourceLeadId: a.leadId,
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: a.creatorId, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });

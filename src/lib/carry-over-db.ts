@@ -53,7 +53,7 @@ export async function 转项目(tx: Prisma.TransactionClient, where: Prisma.Proj
   const 们 = await tx.project.findMany({ where: { AND: [where, { ownerId: { not: 新 } }] }, select: { id: true, ownerId: true, phase: true, node: true, result: true } });
   if (!们.length) return [];
   const ids = 们.map((p) => p.id);
-  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, nextStepAt: null } });
+  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, nextStepAt: null, nextStepText: null } });
   await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, p.ownerId, 新)) });
   return ids;
 }

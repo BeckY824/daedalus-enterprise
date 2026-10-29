@@ -79,7 +79,7 @@ export async function 领客户带走公海项目(customerIds: string[], 新: st
     });
     if (!们.length) return [];
     const ids = 们.map((p) => p.id);
-    await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, pooledAt: null, nextStepAt: null } });
+    await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, pooledAt: null, nextStepAt: null, nextStepText: null } });
     await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, p.ownerId, 新, "pool-claim")) });
     return ids;
   }));

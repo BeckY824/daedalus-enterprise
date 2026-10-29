@@ -122,6 +122,8 @@ export type 名单项目 = {
   lastNote: string | null;
   /** 项目的下一步日期：「本周要跟」和右下角圆点看它（计划是挂在客户上的，按项目只有这一格）；有结局或在公海就不算 */
   nextAt: string | null;
+  /** 项目的下一步做什么（10-29，一句话）；老数据、有结局或在公海是空 */
+  nextText: string | null;
 };
 
 /**
@@ -133,7 +135,7 @@ export async function 读名单项目(me: { id: string }, 字典: 阶段字典):
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
     select: {
-      id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, nextStepAt: true,
+      id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, nextStepAt: true, nextStepText: true,
       customer: { select: { name: true } },
       followUps: { orderBy: { followUp: { occurredAt: "desc" } }, take: 1, select: { followUp: { select: { type: true, content: true, occurredAt: true } } } },
     },
@@ -151,6 +153,7 @@ export async function 读名单项目(me: { id: string }, 字典: 阶段字典):
         lastAt: f ? f.occurredAt.toISOString() : null,
         lastNote: f?.content?.trim().slice(0, 60) || null,
         nextAt: r.nextStepAt && !r.result && !r.pooledAt ? dayjs(r.nextStepAt).format("YYYY-MM-DD") : null,
+        nextText: !r.result && !r.pooledAt ? r.nextStepText : null,
       };
     }),
   };

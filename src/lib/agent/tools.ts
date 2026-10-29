@@ -297,7 +297,7 @@ export const TOOLS: Tool[] = [
             where: { customerId: c.id },
             orderBy: { updatedAt: "desc" },
             take: 项目最多 + 1,
-            select: { id: true, name: true, phase: true, node: true, result: true, nextStepAt: true, ownerId: true, pooledAt: true },
+            select: { id: true, name: true, phase: true, node: true, result: true, nextStepAt: true, nextStepText: true, ownerId: true, pooledAt: true },
           })
         : [];
       const 项目负责人 = 项目行.length
@@ -309,7 +309,7 @@ export const TOOLS: Tool[] = [
         阶段: p.phase,
         节点: p.node,
         结局: p.result ?? "进行中",
-        下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
+        下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
         负责人: p.pooledAt ? "在公海" : (项目负责人.get(p.ownerId) ?? "已不在的成员"),
       }));
       const data = {
@@ -705,7 +705,7 @@ export const TOOLS: Tool[] = [
           where, orderBy: { updatedAt: "desc" }, take: 30,
           select: {
             id: true, name: true, customerId: true, ownerId: true, phase: true, node: true, result: true, amount: true, currency: true,
-            nextStepAt: true, updatedAt: true, pooledAt: true, customer: { select: { name: true } }, exceptionCategory: { select: { name: true } },
+            nextStepAt: true, nextStepText: true, updatedAt: true, pooledAt: true, customer: { select: { name: true } }, exceptionCategory: { select: { name: true } },
           },
         }),
       ]);
@@ -736,7 +736,7 @@ export const TOOLS: Tool[] = [
             金额: p.amount,
             币种: p.currency,
             负责人: p.pooledAt ? "在公海" : (名字.get(p.ownerId) ?? "已不在的成员"),
-            下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
+            下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
             多久没动: `${dayjs().diff(p.updatedAt, "day")} 天`,
           })),
         },

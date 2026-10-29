@@ -1,6 +1,6 @@
 /**
  * 企业版只用项目时 get_customer 带上这位客户名下的项目（10-28，lib/agent/tools.ts）。
- * 钉的是：最近动过的排前面、最多 10 个、多出来的给一句说明；每个项目只带 id / 名称 / 阶段 / 节点 / 结局 / 下一步时间 / 负责人；
+ * 钉的是：最近动过的排前面、最多 10 个、多出来的给一句说明；每个项目只带 id / 名称 / 阶段 / 节点 / 结局 / 下一步（文字）/ 下一步时间 / 负责人；
  * 在公海的负责人写「在公海」；不是企业版 → 没有「项目」这个键；看不到这位客户的人拿不到客户，项目也带不出来。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -32,7 +32,7 @@ async function 项目(ownerId: string, customerId: string, 补: Record<string, u
 }
 const 读客户 = (id: string, me: 人, projectMode = true) =>
   TOOLS.find((t) => t.name === "get_customer")!.run({ id }, { userId: me.id, userName: me.name, b: { ...DEFAULT_BUSINESS, projectMode }, recordOffset: 0, proposals: [] } as never);
-type 行 = { id: string; 名称: string; 阶段: string; 节点: string; 结局: string; 下一步时间: string | null; 负责人: string };
+type 行 = { id: string; 名称: string; 阶段: string; 节点: string; 结局: string; 下一步: string | null; 下一步时间: string | null; 负责人: string };
 const 项目们 = (r: { data?: unknown }) => (r.data as { 项目?: 行[] }).项目;
 
 beforeEach(async () => {
@@ -54,7 +54,7 @@ describe("get_customer 带项目", () => {
   it("字段齐、结局 / 下一步时间 / 在公海的负责人照 list_projects 的写法", async () => {
     const c = await 客户(乙.id);
     const 下一步 = dayjs().add(3, "day").startOf("day").toDate();
-    const 推 = await 项目(乙.id, c, { nextStepAt: 下一步, updatedAt: dayjs().subtract(3, "minute").toDate() });
+    const 推 = await 项目(乙.id, c, { nextStepAt: 下一步, nextStepText: "发报价单", updatedAt: dayjs().subtract(3, "minute").toDate() });
     const 丢 = await 项目(乙.id, c, { phase: "线索", node: "潜客培育", result: "线索流失", updatedAt: dayjs().subtract(2, "minute").toDate() });
     const 海 = await 项目(乙.id, c, { pooledAt: new Date(), updatedAt: dayjs().subtract(1, "minute").toDate() });
 
@@ -62,7 +62,7 @@ describe("get_customer 带项目", () => {
     expect(r.summary).toContain("3 个项目");
     const 列 = 项目们(r)!;
     expect(列.map((p) => p.id)).toEqual([海.id, 丢.id, 推.id]);
-    expect(列[2]).toEqual({ id: 推.id, 名称: 推.name, 阶段: "商机", 节点: "明确需求", 结局: "进行中", 下一步时间: dayjs(下一步).format("YYYY-MM-DD"), 负责人: "乙" });
+    expect(列[2]).toEqual({ id: 推.id, 名称: 推.name, 阶段: "商机", 节点: "明确需求", 结局: "进行中", 下一步: "发报价单", 下一步时间: dayjs(下一步).format("YYYY-MM-DD"), 负责人: "乙" });
     expect(列[1]).toMatchObject({ 阶段: "线索", 节点: "潜客培育", 结局: "线索流失", 下一步时间: null, 负责人: "乙" });
     expect(列[0].负责人).toBe("在公海");
     expect((r.data as Record<string, unknown>).项目说明).toBeUndefined();

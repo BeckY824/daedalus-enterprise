@@ -147,7 +147,7 @@ async function 分项目给(
     }
     const 超 = await 超上限(tx, 规则, input.toUserId, p);
     if (超) return { ok: false, 满: true, error: 超 };
-    await tx.project.update({ where: { id: p.id }, data: { ownerId: input.toUserId, nextStepAt: null, pooledAt: null } });
+    await tx.project.update({ where: { id: p.id }, data: { ownerId: input.toUserId, nextStepAt: null, nextStepText: null, pooledAt: null } });
     await 记转让(tx, p, me.id, p.ownerId, input.toUserId, "transfer", `分配方式：${input.way}`);
     // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId);

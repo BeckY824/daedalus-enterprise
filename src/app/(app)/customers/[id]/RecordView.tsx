@@ -312,9 +312,9 @@ export default function RecordView({
   }, [history.rows, contracts, filter, 摆法.沟通汇总]);
 
   const openTasks = tasks.filter((t) => !t.done);
-  /** 企业版待办卡多摆的两样（P14 第 2 条）：没完成的跟进计划、进行中项目的下一步（项目下一步只有时间，没有事项） */
+  /** 企业版待办卡多摆的两样（P14 第 2 条）：没完成的跟进计划、进行中项目的下一步（10-29 起有一句「做什么」+ 可空的时间；老数据只有时间） */
   const 计划行 = 去项目跟进 ? 待办计划 : [];
-  const 下一步行 = 去项目跟进 ? (跟进去处 ?? []).filter((p) => !p.结束 && p.下一步) : [];
+  const 下一步行 = 去项目跟进 ? (跟进去处 ?? []).filter((p) => !p.结束 && (p.下一步 || p.下一步文字)) : [];
   const 待办数 = openTasks.length + 计划行.length + 下一步行.length;
 
   /**
@@ -1259,10 +1259,14 @@ export default function RecordView({
               {下一步行.map((p) => (
                 <div key={`next-${p.id}`} className="rec-task">
                   <span className="rec-task-k">项目</span>
-                  <Link className="rec-task-t" href={`/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步`}>{p.名}</Link>
-                  <span className="rec-task-due" title={p.下一步 ? fmtDateTime(p.下一步) : undefined} style={{ color: 已过期(p.下一步) ? "var(--danger)" : undefined }}>
-                    {截止说法(p.下一步)}
-                  </span>
+                  <Link className="rec-task-t" href={`/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
+                    {p.下一步文字 ? `${p.名} · ${p.下一步文字}` : p.名}
+                  </Link>
+                  {p.下一步 && (
+                    <span className="rec-task-due" title={fmtDateTime(p.下一步)} style={{ color: 已过期(p.下一步) ? "var(--danger)" : undefined }}>
+                      {截止说法(p.下一步)}
+                    </span>
+                  )}
                 </div>
               ))}
               {/* 收起只淡出、不收高度：减弱动态时不许有位移，淡出在两种设置下都一样 */}

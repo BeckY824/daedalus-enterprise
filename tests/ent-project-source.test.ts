@@ -195,11 +195,11 @@ describe("小算法", () => {
       tasks: [], plan: null, followStatusSuggestion: null, decisionStatusSuggestion: null, ...外,
     });
     expect(项目沟通预填(稿({}, { plan: { subject: "再聊报价", plannedAt: "2026-11-04T10:00:00", method: "PHONE" } }), ["PHONE", "WECHAT"], 现在))
-      .toEqual({ type: "PHONE", content: "聊了交期", occurredAt: "2026-10-29 10:30", 下一步时间: "2026-11-04" });
+      .toEqual({ type: "PHONE", content: "聊了交期", occurredAt: "2026-10-29 10:30", 下一步: "再聊报价", 下一步时间: "2026-11-04" });
     expect(项目沟通预填(稿({ type: "TASK", content: "", occurredAt: "2026-10-30T10:00:00" }, { tasks: [{ title: "回电", dueAt: "2026-10-01T00:00:00" }] }), ["PHONE"], 现在))
-      .toEqual({ content: "电话" });
+      .toEqual({ content: "电话", 下一步: "回电" });
     expect(项目沟通预填(稿({ occurredAt: null }, { tasks: [{ title: "x", dueAt: null }, { title: "回电", dueAt: "2026-10-29T18:00:00" }] }), ["PHONE"], 现在))
-      .toEqual({ type: "PHONE", content: "聊了交期", 下一步时间: "2026-10-29" });
+      .toEqual({ type: "PHONE", content: "聊了交期", 下一步: "回电", 下一步时间: "2026-10-29" });
   });
 
   it("AI 解析只出草稿：没配模型给一句「未启用」，不写任何沟通", async () => {
