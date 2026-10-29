@@ -18,7 +18,7 @@ import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
 import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
 import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
 import { 查号码, type 查号码结果 } from "../../customers/number-actions";
-import { 向导能选类型, 带进联系人, type 联系人三格 } from "@/lib/enterprise/contact-format";
+import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import { 建档向导 } from "../actions";
 
 const 草稿键 = "项目建档向导";
@@ -26,7 +26,7 @@ const 步骤们 = ["查重", "联系人", "客户", "项目", "首条沟通"] as
 const 时间格式 = "YYYY-MM-DD HH:mm";
 
 type 稿 = {
-  /** 第一步那个号码。企业版下是选的那种号码（手机号 / 邮箱 / 微信 / 旺旺 ID），不一定是电话 */
+  /** 第一步那个号码。企业版下是选的那种号码（手机号 / 邮箱 / 微信 / 阿里国际站ID，类型值还是「旺旺ID」），不一定是电话 */
   phone: string;
   /** 企业版第一步选的号码类型（lib/enterprise/contact-format.ts）；开关关着没有这格 */
   号码类型?: string;
@@ -256,10 +256,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           {一行("联系方式", (
             <Space.Compact style={{ width: "100%" }}>
               <Select
-                style={{ width: 130 }}
+                style={{ width: 150, flexShrink: 0 }}
                 placeholder="号码类型"
                 value={d.号码类型}
-                options={向导能选类型.map((t) => ({ value: t, label: t === "旺旺ID" ? "旺旺 ID" : t }))}
+                options={向导能选类型.map((t) => ({ value: t, label: 号码类型叫法(t) }))}
                 onChange={(v) => {
                   改("号码类型", v);
                   set企查(null);
