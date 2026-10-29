@@ -128,6 +128,7 @@ async function 看一遍() {
     import("@/app/(app)/contacts/page").then((m) => m.default(sp())),
     import("@/app/(app)/follow-ups/page").then((m) => m.default(sp())),
     // 只校验级联（不是页面）：进行中的 + 赢下的，沿用原来管道页的取法（本测试里赢单都是刚赢的，落在原来的 30 天里）
+    // 这列只核级联，可见性另有用例
     prisma.opportunity.findMany({ where: { status: { in: ["OPEN", "WON"] } }, include: { customer: { select: { name: true } } } }),
     import("@/app/(app)/follow-ups/plans/page").then((m) => m.default(sp())),
     import("@/app/(app)/customers/page").then((m) => m.default(sp({ pool: "1" }))),
