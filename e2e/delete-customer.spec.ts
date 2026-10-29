@@ -4,6 +4,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -40,6 +41,23 @@ test("确认框列出会一起删掉的东西；有签约要先勾一下；联�
   await page.getByRole("button", { name: "删除 删除测试甲" }).click();
 
   const 框 = page.getByRole("dialog");
+  if (企业版) {
+    // 企业版（P9）删了进回收站：照实说能恢复，签约不用另勾；联系人跟着客户一起进回收站
+    await expect(框).toContainText("1 位联系人、1 条沟通记录一起进回收站");
+    await expect(框).toContainText("30 天内可在 设置 → 回收站 恢复");
+    await 框.getByRole("button", { name: /删\s*除/ }).click();
+    await expect(page.locator(".ant-message")).toContainText("可在回收站恢复");
+    await expect(page.locator("tr.ant-table-row", { hasText: "删除测试甲" })).toHaveCount(0);
+    const p = 连库();
+    try {
+      expect((await p.customer.findFirstOrThrow({ where: { name: "删除测试甲" } })).deletedAt).not.toBeNull();
+      expect((await p.contact.findFirstOrThrow({ where: { name: "甲的妈妈" } })).deletedAt).not.toBeNull();
+      expect(await p.unassignedContact.count()).toBe(0);
+    } finally {
+      await p.$disconnect();
+    }
+    return;
+  }
   await expect(框).toContainText("1 条跟进记录");
   await expect(框).toContainText("1 笔签约");
   await expect(框).toContainText("8,800");

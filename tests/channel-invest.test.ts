@@ -1,7 +1,7 @@
 /**
  * 企业版渠道（2026-10-29 渠道改版）的服务端：
- * - saveChannel 的企业表单：渠道属性 / 渠道名称 / 来源必填，全称不填拼成「名称|来源」，属性要在字典里；不交 attr 的老调用照旧。
- * - 渠道投入：负责人、管理员总能录，别人看设置里「录入渠道投入」（默认市场管理、总管理员）；录了投入的渠道不能删。
+ * - saveChannel 的企业表单：渠道属性 / 渠道名称 / 来源必填，全称一律拼成「名称|来源」（P16 不让手填），属性要在字典里；不交 attr 的老调用照旧。
+ * - 渠道投入：只有老板、总管理员、市场管理能录、能删（10-29 P16 写死），渠道负责人、销售管理、销售只能看；录了投入的渠道不能删。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -21,6 +21,8 @@ import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
 let 老板: string;
 let 负责人: string;
 let 市场经理: string;
+let 总管: string;
+let 销售经理: string;
 let 销售: string;
 let 渠道: string;
 
@@ -38,6 +40,8 @@ beforeEach(async () => {
   老板 = await 建人("boss", "老板", "ADMIN");
   负责人 = await 建人("own", "渠道运营", "SALES", "channel_ops");
   市场经理 = await 建人("mm", "市场经理", "SALES", "marketing_mgr");
+  总管 = await 建人("dir", "总管", "SALES", "director");
+  销售经理 = await 建人("sm", "销售经理", "SALES", "sales_mgr");
   销售 = await 建人("s1", "小王", "SALES", "sales");
   渠道 = (await prisma.channel.create({ data: { name: "抖音|官方号", attr: "公域引流", platform: "抖音", channelOwnerId: 负责人 } })).id;
   当(老板, "ADMIN");
@@ -56,10 +60,13 @@ describe("saveChannel 企业表单", () => {
     expect(c.endDate?.getFullYear()).toBe(2026);
   });
 
-  it("全称手改了就用手改的", async () => {
+  it("全称不让手填：交来的 name 不看，一律拼；编辑时改了来源，全称跟着换", async () => {
     const r = await 交({ name: "小红书旗舰店" });
     expect(r.ok).toBe(true);
-    expect((await prisma.channel.findFirst({ where: { platform: "小红书" } }))?.name).toBe("小红书旗舰店");
+    const id = (r as { id: string }).id;
+    expect((await prisma.channel.findUniqueOrThrow({ where: { id } })).name).toBe("小红书|店铺");
+    expect((await 交({ id, name: "小红书|店铺", source: "某店" })).ok).toBe(true);
+    expect((await prisma.channel.findUniqueOrThrow({ where: { id } })).name).toBe("小红书|某店");
   });
 
   it("三样必填、属性要在字典里、全称不能重复、不能太长", async () => {
@@ -68,7 +75,8 @@ describe("saveChannel 企业表单", () => {
     expect(await 交({ source: "" })).toEqual({ ok: false, error: "请填写来源" });
     expect((await 交({ attr: "瞎写的" })).ok).toBe(false);
     expect(await 交({ platform: "抖音", source: "官方号" })).toEqual({ ok: false, error: "渠道「抖音|官方号」已存在" });
-    expect(await 交({ name: "长".repeat(81) })).toEqual({ ok: false, error: "渠道全称最多 80 个字" });
+    expect(await 交({ platform: "长".repeat(40), source: "短".repeat(40) })).toEqual({ ok: false, error: "渠道名称加来源拼成的全称最多 80 个字，请缩短" });
+    expect((await 交({ platform: "长".repeat(40), source: "短".repeat(39) })).ok).toBe(true);
     expect((await 交({ endDate: "不是日期" })).ok).toBe(false);
   });
 
@@ -92,28 +100,33 @@ describe("渠道投入", () => {
   const 录 = (amount = 300, x: Partial<Parameters<typeof addChannelInvest>[0]> = {}) =>
     addChannelInvest({ channelId: 渠道, amount, currency: "CNY", date: "2026-10-20", remark: "十月投流", ...x });
 
-  it("管理员、负责人、市场管理能录；销售不能录但能看", async () => {
+  it("只有老板、总管理员、市场管理能录；渠道负责人、销售管理、销售不能录但能看", async () => {
     expect((await 录(100)).ok).toBe(true);
-    当(负责人);
+    当(总管);
     expect((await 录(200)).ok).toBe(true);
     当(市场经理);
     expect((await 录(50)).ok).toBe(true);
-    当(销售);
-    const 挡 = await 录(1);
-    expect(挡.ok).toBe(false);
-    expect((挡 as { error: string }).error).toMatch(/^录入渠道投入只有老板、市场管理、总管理员能改/);
-    const 看 = await listChannelInvests(渠道);
-    expect(看).toMatchObject({ ok: true, 能录: false });
-    expect((看 as { rows: unknown[] }).rows).toHaveLength(3);
+    for (const 谁 of [负责人, 销售经理, 销售]) {
+      当(谁);
+      expect(await 录(1)).toEqual({ ok: false, error: "渠道投入只有老板、总管理员、市场管理能录，别的角色只能看" });
+      const 看 = await listChannelInvests(渠道);
+      expect(看).toMatchObject({ ok: true, 能录: false, 不能录因: "渠道投入只有老板、总管理员、市场管理能录，别的角色只能看" });
+      expect((看 as { rows: unknown[] }).rows).toHaveLength(3);
+    }
+    当(市场经理);
+    expect(await listChannelInvests(渠道)).toMatchObject({ ok: true, 能录: true });
+    expect(await listChannelInvests(渠道)).not.toHaveProperty("不能录因");
   });
 
-  it("设置里把市场管理去掉：市场经理就不能录，负责人照旧能录", async () => {
-    await setSetting(改权限key, { 渠道投入: ["总管理员"] });
+  it("老配置里存过「录入渠道投入」也不管用：负责人加进去照样不能录，市场管理去掉照样能录", async () => {
+    await setSetting(改权限key, { 渠道投入: ["总管理员", "销售管理"] });
     invalidateSettingsCache();
     当(市场经理);
+    expect((await 录()).ok).toBe(true);
+    当(销售经理);
     expect((await 录()).ok).toBe(false);
     当(负责人);
-    expect((await 录()).ok).toBe(true);
+    expect((await 录()).ok).toBe(false);
   });
 
   it("金额、日期、币种、备注都挡；录了留记录；列表新的在前、带录入人", async () => {
@@ -142,6 +155,8 @@ describe("渠道投入", () => {
     当(销售);
     expect((await deleteChannelInvest(id)).ok).toBe(false);
     当(负责人);
+    expect((await deleteChannelInvest(id)).ok).toBe(false);
+    当(市场经理);
     expect(await deleteChannelInvest(id)).toEqual({ ok: true });
     expect(await deleteChannelInvest(id)).toMatchObject({ ok: false, error: expect.stringMatching(/不在了/) });
     expect(await prisma.auditLog.count({ where: { summary: { startsWith: "删除渠道「抖音|官方号」的一笔投入" } } })).toBe(1);

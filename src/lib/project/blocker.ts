@@ -18,6 +18,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
+import { 看已删 } from "../enterprise/soft-delete-core";
 import { 看全部 } from "../team-scope";
 import { getSetting, setSetting } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -109,7 +110,8 @@ function 记(tx: Prisma.TransactionClient, blockerId: string, userId: string, ac
 
 async function 下一个卡点编号(tx: Prisma.TransactionClient, now: Date): Promise<string> {
   const 头 = `${卡点编号前缀}${编号日(now)}`;
-  const 最大 = await tx.entBlocker.findFirst({ where: { code: { startsWith: 头 } }, orderBy: { code: "desc" }, select: { code: true } });
+  // 项目 / 沟通记录在回收站里的卡点也占着编号（code 唯一），取最大号要连它们一起看
+  const 最大 = await 看已删(() => tx.entBlocker.findFirst({ where: { code: { startsWith: 头 } }, orderBy: { code: "desc" }, select: { code: true } }));
   return 拼编号(卡点编号前缀, now, 下一个流水(最大?.code, 卡点编号前缀, now), 3);
 }
 

@@ -2,7 +2,7 @@
 
 /**
  * 渠道详情抽屉（2026-10-29 渠道改版）：上面是渠道的资料和那一排统计，下面是投入记录。
- * 投入一笔一行，由这个渠道的负责人或管理员录（设置 → 编辑权限 →「渠道投入」可以再放给别的角色）；
+ * 投入一笔一行，只有老板、总管理员、市场管理能录、能删（10-29 P16，channel-stats.ts 的 能录投入），别人只看；
  * 录完 / 删完刷新页面，列表上的「当前投入」「投入产出比」跟着变。
  */
 import { useCallback, useEffect, useState } from "react";
@@ -17,19 +17,30 @@ import { useBusiness } from "@/lib/business-client";
 import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
-import { 拆来源, type 渠道统计 } from "@/lib/enterprise/channel-stats";
+import { 拆来源, type 渠道统计, type 产出比分布 } from "@/lib/enterprise/channel-stats";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
 import type { 渠道行 } from "./ChannelsView";
 
 const 投入备注上限 = 200;
 const 无 = <span className="muted">—</span>;
 
-export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { row: 渠道行; 不问归属: boolean; onClose: () => void; onEdit: () => void }) {
+/**
+ * 同名分布：同一个渠道名称下各来源的产出比平均值 / 最高值 / 最低值（列表那三列算好的，传进来跟着「投入产出比」摆）；
+ * undefined = 开关关着不摆，null = 开着但一个来源都算不了
+ */
+export default function ChannelDrawer({ row, 同名分布, 不问归属, onClose, onEdit }: {
+  row: 渠道行;
+  同名分布?: ReturnType<typeof 产出比分布>;
+  不问归属: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
   const router = useRouter();
   const { message } = App.useApp();
   const b = useBusiness();
   const [投入, set投入] = useState<投入行[] | null>(null);
   const [能录, set能录] = useState(false);
+  const [不能录因, set不能录因] = useState<string | null>(null);
   const [错, set错] = useState<string | null>(null);
   const [录, set录] = useState(false);
   const [忙, set忙] = useState(false);
@@ -46,6 +57,7 @@ export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { 
     set错(null);
     set投入(res.rows);
     set能录(res.能录);
+    set不能录因(res.不能录因 ?? null);
   }, [row.id]);
 
   useEffect(() => {
@@ -61,6 +73,7 @@ export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { 
       set错(null);
       set投入(res.rows);
       set能录(res.能录);
+      set不能录因(res.不能录因 ?? null);
     });
     return () => {
       作废 = true;
@@ -139,6 +152,21 @@ export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { 
           { key: "订单", label: "关联订单", children: s?.关联订单 ?? 0 },
           { key: "项目", label: "关联项目", children: s?.关联项目 ?? 0 },
           { key: "比", label: "投入产出比", children: s?.产出比 ?? <span className="muted" title={s?.产出比说明 ?? undefined}>{s?.产出比说明 ?? "—"}</span> },
+          ...(同名分布 !== undefined
+            ? [{
+                key: "分布",
+                label: "同名渠道产出比",
+                span: "filled" as const,
+                children: 同名分布 ? (
+                  <span style={{ overflowWrap: "anywhere" }}>
+                    平均值 {同名分布.平均} · 最高值 {同名分布.最高} · 最低值 {同名分布.最低}
+                    <span className="muted">（「{row.platform ?? row.name}」下 {同名分布.个数} 个来源能算）</span>
+                  </span>
+                ) : (
+                  <span className="muted">「{row.platform ?? row.name}」下的来源都还算不了产出比</span>
+                ),
+              }]
+            : []),
           { key: "成交", label: "累计成交", span: "filled", children: 钱(s?.累计成交) },
           { key: "投入", label: "当前投入", span: "filled", children: 钱(s?.当前投入) },
         ]}
@@ -152,6 +180,8 @@ export default function ChannelDrawer({ row, 不问归属, onClose, onEdit }: { 
           </Button>
         )}
       </div>
+      {/* 只能看的人说一句为什么没有「录一笔投入」，免得以为按钮丢了 */}
+      {!能录 && 不能录因 && 投入 !== null && <div className="muted" style={{ margin: "4px 0 8px", fontSize: 12 }}>{不能录因}</div>}
 
       {能录 && 录 && (
         <Form

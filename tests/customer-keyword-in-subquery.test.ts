@@ -11,8 +11,9 @@ import { 客户关键词条件 } from "@/lib/search-keyword";
 const 原来 = [
   ['c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE e.whatsapp GLOB ? OR e.whatsapp GLOB ? OR e.email GLOB ? OR e.wechat GLOB ? OR e.country GLOB ? OR e.website GLOB ? OR e."alibabaId" GLOB ?)',
     'EXISTS (SELECT 1 FROM "CustomerExtra" e WHERE e."customerId"=c.id AND (e.whatsapp GLOB ? OR e.whatsapp GLOB ? OR e.email GLOB ? OR e.wechat GLOB ? OR e.country GLOB ? OR e.website GLOB ? OR e."alibabaId" GLOB ?))'],
-  ['c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t.name GLOB ? OR t.phone GLOB ? OR t.phone GLOB ? OR t.email GLOB ? OR t.wechat GLOB ?)',
-    'EXISTS (SELECT 1 FROM "Contact" t WHERE t."customerId"=c.id AND (t.name GLOB ? OR t.phone GLOB ? OR t.phone GLOB ? OR t.email GLOB ? OR t.wechat GLOB ?))'],
+  // 联系人这句带着「不在回收站里」（企业版软删，P9）；换回 EXISTS 时同样带上
+  ['c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND (t.name GLOB ? OR t.phone GLOB ? OR t.phone GLOB ? OR t.email GLOB ? OR t.wechat GLOB ?))',
+    'EXISTS (SELECT 1 FROM "Contact" t WHERE t."customerId"=c.id AND t."deletedAt" IS NULL AND (t.name GLOB ? OR t.phone GLOB ? OR t.phone GLOB ? OR t.email GLOB ? OR t.wechat GLOB ?))'],
 ] as const;
 
 let owner = "";
