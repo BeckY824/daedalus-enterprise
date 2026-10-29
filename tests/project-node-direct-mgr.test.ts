@@ -67,9 +67,9 @@ describe("企业版推节点只给直属上级", () => {
   it("本人、隔级经理、虚线上级往前推：拦下，节点不动", async () => {
     const p = await 项目(销售.id);
     const 本人 = await 改节点(销售, p.id, 往前);
-    expect(本人).toEqual({ ok: false, error: "往前推节点要由你的直属上级来推" });
+    expect(本人).toEqual({ ok: false, error: "往前推进程要由你的直属上级来推" });
     for (const 谁 of [经理, 虚]) {
-      expect(await 改节点(谁, p.id, 往前)).toEqual({ ok: false, error: "只有负责人的直属上级能往前推节点" });
+      expect(await 改节点(谁, p.id, 往前)).toEqual({ ok: false, error: "只有负责人的直属上级能往前推进程" });
     }
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).node).toBe("潜客培育");
     expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(0);
@@ -129,7 +129,7 @@ describe("企业版推节点只给直属上级", () => {
     expect(await 改节点(组长2, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
     // 不是他下属的项目：还是改不了
     const 别人的 = await 项目(散.id);
-    expect(await 改节点(组长2, 别人的.id, 往前)).toEqual({ ok: false, error: "只有项目负责人、老板或主管能改节点" });
+    expect(await 改节点(组长2, 别人的.id, 往前)).toEqual({ ok: false, error: "只有项目负责人、老板或主管能改进程" });
   });
 
   it("总管理员（账号 MANAGER）：谁的项目都能往前推，必填节点也能先推", async () => {
@@ -179,7 +179,7 @@ describe("企业版推节点只给直属上级", () => {
     expect(await 改节点(销售, p.id, 往前)).toMatchObject({ ok: true });
     expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, toNode: "线索验证" } })).toMatchObject({ userId: 销售.id });
     for (const 谁 of [经理, 虚]) {
-      expect(await 改节点(谁, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: "只有负责人的直属上级能往前推节点" });
+      expect(await 改节点(谁, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: "只有负责人的直属上级能往前推进程" });
     }
     // 本人越过线索验证：还要先有一条有效沟通
     expect(await 改节点(销售, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: false, error: expect.stringContaining("明确回复") });

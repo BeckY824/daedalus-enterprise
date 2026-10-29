@@ -20,7 +20,7 @@ function 位置(v: 值表): { phase: 阶段; node: string; result: string | null
   const result = 是结局(v.status) ? String(v.status) : null;
   const node = String(v.stage ?? "");
   const phase = 节点所在阶段(node);
-  if (!phase) throw new 写不进(`「${node}」不是项目的节点`);
+  if (!phase) throw new 写不进(`「${node}」不是项目的进程`);
   return { phase, node, result };
 }
 

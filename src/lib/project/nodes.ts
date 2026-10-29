@@ -92,14 +92,14 @@ export function 改节点问题(
   到 = 本套位置(到, 字典);
   项目 = 本套位置(项目, 字典);
   if (!是阶段(到.phase)) return `没有「${到.phase}」这个阶段`;
-  if (!字典.节点们[到.phase].includes(到.node)) return `「${到.phase}」阶段没有「${到.node}」这个节点`;
+  if (!字典.节点们[到.phase].includes(到.node)) return `「${到.phase}」阶段没有「${到.node}」这个进程`;
   // 企业版跨阶段单向（10-26）：进了商机不能回线索，进了订单不能回商机；有结局的（流失 / 异常）恢复也一样
   if (!字典.跨阶段能退 && 是阶段(项目.phase) && 阶段们.indexOf(到.phase) < 阶段们.indexOf(项目.phase)) {
     return `项目已经进了${项目.phase}阶段，不能退回${到.phase}阶段`;
   }
   if (节点序号(到, 字典) > 节点序号(项目, 字典) + 1) {
     const 下 = 下一步({ phase: 项目.phase, node: 项目.node }, 字典);
-    return 下 ? `节点不能往前跳，只能先推到「${下.node}」` : "节点不能往前跳";
+    return 下 ? `进程不能往前跳，只能先推到「${下.node}」` : "进程不能往前跳";
   }
   const r = 到.result ?? null;
   if (r == null) return null;

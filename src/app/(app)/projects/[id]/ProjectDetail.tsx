@@ -96,7 +96,7 @@ const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 60p
 
 /** 删项目的确认框：列出一起删掉的几样，说清沟通记录本身不删 */
 function 删除说明(n: 项目详情["删前清点"], 客户叫法: string) {
-  const 删 = [`${n.留痕} 条节点留痕`, n.组员 ? `项目组 ${n.组员} 人` : "", n.沟通 ? `${n.沟通} 条沟通和这个项目的关联` : ""].filter(Boolean);
+  const 删 = [`${n.留痕} 条进程留痕`, n.组员 ? `项目组 ${n.组员} 人` : "", n.沟通 ? `${n.沟通} 条沟通和这个项目的关联` : ""].filter(Boolean);
   return (
     <div style={{ maxWidth: 280 }}>
       <div>一起删掉：{删.join("、")}</div>
@@ -309,7 +309,7 @@ export default function ProjectDetail({
         <Space wrap>
           <Select
             style={{ width: 200 }}
-            placeholder={异常 ? "改到某个节点就算恢复" : "改到…"}
+            placeholder={异常 ? "改到某个进程就算恢复" : "改到…"}
             value={null}
             disabled={!节点可改 || 忙}
             title={节点不能改}
@@ -321,7 +321,7 @@ export default function ProjectDetail({
             }}
           />
           {/* 灰掉的按钮收不到鼠标事件，外面包一层 span 才能悬停出原因 */}
-          <Tooltip title={节点不能改 ?? p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined) ?? (p.必填?.只能靠填齐 ? "这个节点填齐必填后自动往前推；要先推请找老板或主管" : 下 ? undefined : p.result ? "先改回某个节点再往前推" : "这是最后一个节点了，接下来点结局")}>
+          <Tooltip title={节点不能改 ?? p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined) ?? (p.必填?.只能靠填齐 ? "这个进程填齐必填后自动往前推；要先推请找老板或主管" : 下 ? undefined : p.result ? "先改回某个进程再往前推" : "这是最后一个进程了，接下来点结局")}>
             <span>
               <Button type="primary" disabled={!节点可改 || 忙 || !下 || !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通} onClick={() => 下 && 改到(下)}>
                 {下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步"}
@@ -335,7 +335,7 @@ export default function ProjectDetail({
         percent={Math.round(((p.result === "成功交付" ? 节点总数 : 节点序号(当前, 字典)) / 节点总数) * 100)}
         showInfo={false}
         status={异常 ? "exception" : p.result === "成功交付" ? "success" : "active"}
-        aria-label={`第 ${节点序号(当前, 字典) + 1} 个节点，共 ${节点总数} 个`}
+        aria-label={`第 ${节点序号(当前, 字典) + 1} 个进程，共 ${节点总数} 个`}
       />
       {判MQL && (
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -354,8 +354,8 @@ export default function ProjectDetail({
       {p.必填 && (
         <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
           {p.必填.还差.length
-            ? `这个节点填齐必填后自动往前推，还差：${p.必填.还差.map(必填叫法).join("、")}`
-            : "这个节点的必填都齐了"}
+            ? `这个进程填齐必填后自动往前推，还差：${p.必填.还差.map(必填叫法).join("、")}`
+            : "这个进程的必填都齐了"}
         </div>
       )}
     </Card>
@@ -392,7 +392,7 @@ export default function ProjectDetail({
             <Checkbox
               checked={勾了}
               disabled={!可改 || 忙 || (勾了 && p.result === "成功交付")}
-              title={不能改 ?? (勾了 && p.result === "成功交付" ? "已经成功交付了；要取消先把节点改回去" : undefined)}
+              title={不能改 ?? (勾了 && p.result === "成功交付" ? "已经成功交付了；要取消先把进程改回去" : undefined)}
               onChange={(e) => void 跑(() => 勾项目交付(p.id, k, e.target.checked))}
             >
               {k === "balanceSettled" ? "尾款结清" : "验收通过"}
@@ -419,7 +419,7 @@ export default function ProjectDetail({
   const 项目组卡 = <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />;
   const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑} />;
   const 变更卡 = (
-    <Card title="节点变更">
+    <Card title="进程变更">
       <Timeline
         items={p.logs.map((l) => ({
           color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : l.to.result === "成功交付" ? "green" : "blue",
@@ -496,7 +496,7 @@ export default function ProjectDetail({
       />
 
       {p.pooled && (
-        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在项目公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推节点" : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在项目公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
       )}
 
       {异常 && (
@@ -574,7 +574,7 @@ export default function ProjectDetail({
           if (ok) set异常框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把节点改回去就算恢复，类别和备注留在节点变更里。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把进程改回去就算恢复，类别和备注留在进程变更里。</div>
         <Select
           style={{ width: "100%", marginBottom: 12 }}
           placeholder={类别们.length ? "选异常类别" : "没有在用的异常类别，请老板在设置里加"}
@@ -630,7 +630,7 @@ export default function ProjectDetail({
           if (ok) set没成框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? "选一个无效原因，或写一句为什么没成（至少一样），会记在节点变更里；以后捡回来把节点改回去就行。" : "写一句为什么没成，会记在节点变更里；以后捡回来把节点改回去就行。"}</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? "选一个无效原因，或写一句为什么没成（至少一样），会记在进程变更里；以后捡回来把进程改回去就行。" : "写一句为什么没成，会记在进程变更里；以后捡回来把进程改回去就行。"}</div>
         {选无效原因 && (
           <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={p.原因选项.无效} />
         )}

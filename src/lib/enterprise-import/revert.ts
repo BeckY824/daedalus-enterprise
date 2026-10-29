@@ -156,7 +156,7 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
   if (!f) return null;
   // 导入时自己挂上的项目（父商机建成了项目）不算；挂到了别的项目才是外面动过
   const 自己挂的 = !!f.projectNode && 写过.projectId === f.projectNode.projectId;
-  if (f.projectNode && !自己挂的) return "这条跟进挂到了项目的节点上";
+  if (f.projectNode && !自己挂的) return "这条跟进挂到了项目的进程上";
   if (f.source) return "这条跟进有 AI 整理的原文";
   return [f.duration, f.dueAt, f.dueOn, f.dueHasTime, f.participants, f.contactId].some((v) => v !== null) ? "导入之后又补过这条跟进（时长、提醒、联系人等）" : null;
 }

@@ -92,6 +92,45 @@ describe("清洗：客户", () => {
     expect(问题[0]).toMatchObject({ 级别: "提醒", 行号: expect.any(Number), 出处: "测试.xlsx" });
   });
 
+  it("客户状态单独一格（10-29 修）：和字典启用项一字不差才落 custStatus，对不上进备注；不再混进跟进状态", () => {
+    const 列 = { ...映射样().列, customer: { ...映射样().列.customer, 客户状态: "custStatus" } };
+    const 本地: 本地索引 = { ...空索引(), 客户状态: ["潜在", "意向", "成交"] };
+    const { 待写, 问题 } = 清洗(
+      [
+        条("customer", { 外部: "c1", 名称: "甲公司", 电话: "13800000001", 状态: "待跟进", 客户状态: " 意向 " }),
+        条("customer", { 外部: "c2", 名称: "乙公司", 电话: "13800000002", 客户状态: "老客户" }),
+        条("customer", { 外部: "c3", 名称: "丙公司", 电话: "13800000003" }),
+      ],
+      映射样({ 列 }),
+      本地,
+    );
+    const [甲, 乙, 丙] = 待写;
+    expect(甲.值).toMatchObject({ followStatus: "待跟进", custStatus: "意向" });
+    // 对不上：不带这一格（以前导过的不会被清空），原样进备注，提醒一笔
+    expect("custStatus" in 乙.值).toBe(false);
+    expect(乙.值).toMatchObject({ remark: "客户状态：老客户" });
+    expect(问题.filter((p) => p.外部ID === "c2").map((p) => p.说明)).toEqual([expect.stringContaining("客户状态「老客户」")]);
+    expect("custStatus" in 丙.值).toBe(false);
+    // 没给字典（不认）：一律进备注
+    const 无字典 = 清洗([条("customer", { 外部: "c4", 名称: "丁公司", 电话: "13800000004", 客户状态: "意向" })], 映射样({ 列 }));
+    expect(无字典.待写[0].值).toMatchObject({ remark: "客户状态：意向" });
+    expect("custStatus" in 无字典.待写[0].值).toBe(false);
+  });
+
+  it("同号并进前一条：前一条没客户状态就拿后一条的", () => {
+    const 列 = { ...映射样().列, customer: { ...映射样().列.customer, 客户状态: "custStatus" } };
+    const { 待写 } = 清洗(
+      [
+        条("customer", { 外部: "c1", 名称: "甲公司", 电话: "13800000001" }),
+        条("customer", { 外部: "c2", 名称: "甲公司", 电话: "13800000001", 客户状态: "成交" }),
+      ],
+      映射样({ 列 }),
+      { ...空索引(), 客户状态: ["成交"] },
+    );
+    expect(待写[0].值.custStatus).toBe("成交");
+    expect(待写[1].并入).toBe("c1");
+  });
+
   it("负责人空着：落到默认负责人名下，每条都提醒（客户、线索、商机、跟进一样）；写了的不提醒", () => {
     const { 待写, 问题 } = 清洗(
       [

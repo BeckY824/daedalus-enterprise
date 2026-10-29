@@ -60,7 +60,7 @@ describe("改节点", () => {
 
   it("老板也不能往前跳", async () => {
     const p = await 项目(乙.id, 客户甲, { phase: "订单", node: "合同签订" });
-    expect(await 改节点(老板, p.id, { phase: "订单", node: "尾款结算" })).toMatchObject({ ok: false, error: expect.stringContaining("节点不能往前跳") });
+    expect(await 改节点(老板, p.id, { phase: "订单", node: "尾款结算" })).toMatchObject({ ok: false, error: expect.stringContaining("进程不能往前跳") });
     expect(await prisma.projectNodeLog.count()).toBe(0);
   });
 
@@ -125,7 +125,7 @@ describe("改节点", () => {
     await 勾交付(乙, p.id, "acceptancePassed", true);
     expect(await 改节点(乙, p.id, 到)).toMatchObject({ ok: true });
 
-    expect(await 勾交付(乙, p.id, "acceptancePassed", false)).toMatchObject({ ok: false, error: expect.stringContaining("先把节点改回去") });
+    expect(await 勾交付(乙, p.id, "acceptancePassed", false)).toMatchObject({ ok: false, error: expect.stringContaining("先把进程改回去") });
     await 改节点(乙, p.id, { phase: "订单", node: "尾款结算" });
     expect(await 勾交付(乙, p.id, "acceptancePassed", false)).toEqual({ ok: true, 变了: true });
     const 现在 = await prisma.project.findUniqueOrThrow({ where: { id: p.id } });
