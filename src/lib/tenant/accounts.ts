@@ -1,4 +1,4 @@
-import bcrypt from "bcryptjs";
+import { 哈希密码, 核对密码串, 要升级 } from "@/lib/password";
 import { control } from "./control";
 
 /**
@@ -55,7 +55,7 @@ export function parseTarget(v: string): { kind: "phone" | "email"; value: string
 export function checkPassword(v: string): string | null {
   if (v.length < 8) return "密码至少 8 位";
   if (v.length > 72) return "密码太长了";
-  // bcrypt 只看前 72 字节，更长的部分被静默忽略，会让人误以为设了很强的密码
+  // 老的 bcrypt 串只看前 72 字节，更长的部分被静默忽略；换成 scrypt 后上限照留，老账号的规矩不变
   if (!/[a-zA-Z]/.test(v) || !/\d/.test(v)) return "密码要同时含字母和数字";
   return null;
 }
@@ -157,7 +157,7 @@ export async function createAccount(input: {
   password: string;
   name: string;
 }): Promise<AccountView> {
-  const hash = await bcrypt.hash(input.password, 10);
+  const hash = await 哈希密码(input.password);
   const a = await control.account.create({
     data: {
       phone: input.target.kind === "phone" ? input.target.value : null,
@@ -173,9 +173,12 @@ export async function createAccount(input: {
 export async function verifyAccount(target: string, password: string): Promise<AccountView | null> {
   const a = await findAccountByTarget(target);
   if (!a || !a.active) return null;
-  const ok = await bcrypt.compare(password, a.password);
+  const ok = await 核对密码串(password, a.password);
   if (!ok) return null;
   await control.account.update({ where: { id: a.id }, data: { lastLoginAt: new Date() } });
+  if (要升级(a.password)) {
+    await control.account.updateMany({ where: { id: a.id, password: a.password }, data: { password: await 哈希密码(password) } });
+  }
   return { id: a.id, name: a.name, phone: a.phone, email: a.email };
 }
 
@@ -190,6 +193,6 @@ export async function verifyAccount(target: string, password: string): Promise<A
  * 平白依赖一套会话机制。
  */
 export async function updatePassword(accountId: string, password: string): Promise<void> {
-  const hash = await bcrypt.hash(password, 10);
+  const hash = await 哈希密码(password);
   await control.account.update({ where: { id: accountId }, data: { password: hash } });
 }
