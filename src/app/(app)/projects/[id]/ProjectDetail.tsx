@@ -18,7 +18,9 @@ import { 金额 } from "@/lib/currency";
 import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
-import { 有效线索节点, 缺有效沟通, 培育计划上限 } from "@/lib/project/stage-gates";
+import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
+import type { 线索验证 } from "@/lib/project/lead-verify";
+import LeadVerifyPanel from "./LeadVerifyPanel";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
@@ -28,7 +30,7 @@ import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 项目区域 } from "@/lib/project/profile-rules";
 import { 项目沟通预填, 沟通时间格式 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 判MQLAction } from "../actions";
+import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, type 卡点卡, type 可选人 } from "../BlockerPanel";
@@ -50,6 +52,8 @@ export type 项目详情 = {
   来源线索: { name: string | null; convertedAt: string | null } | null;
   /** 企业版字典下拉（10-27）：放回公海选「回收原因」、线索流失选「无效原因」；不是企业版两个都是空的，界面照旧 */
   原因选项: { 回收: string[]; 无效: string[] };
+  /** 企业版线索阶段：线索有效性验证（P12）的判定、待哪步、时间线 */
+  线索验证?: 线索验证;
   ownerId: string; ownerName: string; creatorName: string; createdAt: string;
   /** 历史负责人（只企业版有，别的版本是空的）：把这个项目放回过公海的人，最近放回的在前，同一个人只列一次 */
   historyOwners: string[];
@@ -257,9 +261,6 @@ export default function ProjectDetail({
   const [编辑开着, set编辑开着] = useState(false);
   const [记一条开着, set记一条开着] = useState<false | "手填" | "AI">(false);
   const [发卡点于, set发卡点于] = useState<string | null>(null);
-  const [不合格框, set不合格框] = useState(false);
-  const [培育日, set培育日] = useState<string | null>(null);
-  const [培育计划, set培育计划] = useState("");
   const 当前: 位置 = { phase: p.phase, node: p.node, result: p.result };
   const 字典 = 字典of(p.企业版, p.出口叫法);
   const 节点总数 = 节点总数of(字典);
@@ -273,8 +274,6 @@ export default function ProjectDetail({
   // 企业版：线索阶段还没有客户明确回复的沟通，推不过「线索验证」（服务端 lib/project/stage-gates.ts 同一条）
   const 没有效沟通 = p.企业版 && p.phase === "线索" && !p.result && p.有效沟通 === 0;
   const 卡有效沟通 = 没有效沟通 && !!下 && 节点序号(下, 字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 字典);
-  // 企业版 MQL 人工判：在线索验证这个节点，合格往前推，不合格回潜客培育、排一条跟进计划
-  const 判MQL = p.企业版 && p.phase === "线索" && p.node === 有效线索节点 && !p.result && 节点可改 && !p.不给推;
   // 企业版线索阶段不显示交付（QA #5）：只有订单阶段才有尾款、验收
   const 显示交付 = !p.企业版 || p.phase === "订单";
 
@@ -386,18 +385,8 @@ export default function ProjectDetail({
         status={异常 ? "exception" : p.result === "成功交付" ? "success" : "active"}
         aria-label={`第 ${节点序号(当前, 字典) + 1} 个进程，共 ${节点总数} 个`}
       />
-      {判MQL && (
-        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <span style={{ color: "var(--text-muted)" }}>MQL 判断：</span>
-          <Tooltip title={没有效沟通 ? 缺有效沟通 : undefined}>
-            <span>
-              <Button size="small" type="primary" disabled={忙 || 没有效沟通} onClick={() => void 跑(() => 判MQLAction(p.id, true), "判为合格，已推到线索推进")}>合格</Button>
-            </span>
-          </Tooltip>
-          <Button size="small" disabled={忙} onClick={() => { set培育日(null); set培育计划(""); set不合格框(true); }}>不合格，回潜客培育</Button>
-        </div>
-      )}
-      {没有效沟通 && !判MQL && (
+      {p.线索验证 && <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 跑={跑} 忙={忙} 没有效沟通={没有效沟通} 不给推={p.不给推} />}
+      {没有效沟通 && !p.线索验证?.我能 && (
         <div style={{ marginTop: 12, color: "var(--text-muted)" }}>还没有客户明确回复的沟通：记一条、选「客户明确回复了」，才能推过线索验证</div>
       )}
       {p.必填 && (
@@ -673,38 +662,6 @@ export default function ProjectDetail({
           aria-label="异常类别"
         />
         <Input.TextArea rows={4} maxLength={原因上限} showCount value={原因} onChange={(e) => set原因(e.target.value)} placeholder="备注（可不写）" />
-      </Modal>
-
-      <Modal
-        open={不合格框}
-        title="MQL 不合格：回潜客培育"
-        okText="确定"
-        okButtonProps={{ disabled: !培育日 || !培育计划.trim(), loading: 忙 }}
-        onCancel={() => set不合格框(false)}
-        onOk={async () => {
-          if (!培育日 || !培育计划.trim()) return;
-          const ok = await 跑(() => 判MQLAction(p.id, false, 培育日, 培育计划), `已回到潜客培育，${培育日} 再跟进`);
-          if (ok) set不合格框(false);
-        }}
-      >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>项目回到「线索·潜客培育」，按你选的日子排一条跟进计划，到时候提醒负责人再聊。</div>
-        <DatePicker
-          aria-label="下次跟进日期"
-          style={{ width: "100%" }}
-          value={培育日 ? dayjs(培育日) : null}
-          disabledDate={(x) => x.isBefore(dayjs(), "day")}
-          onChange={(v) => set培育日(v ? v.format("YYYY-MM-DD") : null)}
-        />
-        <Input.TextArea
-          rows={3}
-          maxLength={培育计划上限}
-          showCount
-          style={{ marginTop: 8 }}
-          value={培育计划}
-          onChange={(e) => set培育计划(e.target.value)}
-          placeholder="下一步计划内容（必填），比如：下月再问一次预算"
-          aria-label="下一步计划内容"
-        />
       </Modal>
 
       <Modal

@@ -53,7 +53,7 @@ export default function LeadAssignCard({ rows }: { rows: 分配情况 }) {
   const 存配额 = (r: 分配情况[number]) => {
     if (忙 || 刷新中 || !(r.userId in 草稿)) return;
     const v = 草稿[r.userId];
-    if (v === r.配额) return set草稿(({ [r.userId]: _, ...别的 }) => 别的);
+    if (v === r.设的配额) return set草稿(({ [r.userId]: _, ...别的 }) => 别的);
     void 跑(r.userId, () => 设配额(r.userId, v), v === null ? `${r.name} 的配额清空了，不再参与自动分配` : `${r.name} 的配额改成每月 ${v} 条`);
   };
 
@@ -63,6 +63,7 @@ export default function LeadAssignCard({ rows }: { rows: 分配情况 }) {
       <p className="muted">
         自动分配在 线索 页点「自动分配」：挑参与的、填了配额、本月没分满的人里「本月已分 / 配额」比例最低的，比例一样先给最早进分配池的。
         没填配额（或填 0）的人不参与自动分配；「参与」选暂停（暂时不参与、可随时恢复）或禁止（不参与）也不再自动分给他。手动分配不受这几条影响。分配数每月 1 日清零，持有数不清。
+        线索最终判成无效的，负责人本月配额多给 1 条（配额后面的 +N），也是每月清零；没填配额的人不加。
       </p>
       <div style={{ overflowX: "auto" }}>
         <table className="org-field-perm org-lead-assign">
@@ -88,11 +89,16 @@ export default function LeadAssignCard({ rows }: { rows: 分配情况 }) {
                       {r.能设配额 ? (
                         <InputNumber size="small" min={0} max={10000} precision={0} placeholder="没填" style={{ width: 84 }}
                           aria-label={`${r.name} 的每月配额`} disabled={忙 === r.userId || 刷新中}
-                          value={r.userId in 草稿 ? 草稿[r.userId] : r.配额}
+                          value={r.userId in 草稿 ? 草稿[r.userId] : r.设的配额}
                           onChange={(v) => set草稿((d) => ({ ...d, [r.userId]: typeof v === "number" ? v : null }))}
                           onBlur={() => 存配额(r)} onPressEnter={() => 存配额(r)} />
                       ) : (
-                        <span>{r.配额 ?? "没填"}</span>
+                        <span>{r.设的配额 ?? "没填"}</span>
+                      )}
+                      {r.加额 > 0 && (
+                        <span className="muted" title={`本月有 ${r.加额} 条线索最终判成无效，配额多给 ${r.加额} 条，下月清零`} data-testid={`org-lead-bonus-${r.userId}`}>
+                          +{r.加额}
+                        </span>
                       )}
                       {满 && <Tag color="warning" style={{ marginInlineEnd: 0 }}>满额</Tag>}
                     </span>

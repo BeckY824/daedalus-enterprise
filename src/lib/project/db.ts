@@ -10,6 +10,7 @@ import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, t
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记 } from "./stage-gates";
+import { 等复核拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 读组织, 直属上级of, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
@@ -249,6 +250,7 @@ const 带推进 = (到: string[]) => (到.length ? { 自动推到: 到 } : {});
  */
 export async function 改节点(
   me: 谁, projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null },
+  选项?: { 验证放行?: boolean },
 ): Promise<结果 & { 变了?: boolean; 自动推到?: string[] }> {
   const 规则 = await 生效组织规则();
   const org = 企业版() ? await 读组织() : null;
@@ -259,6 +261,9 @@ export async function 改节点(
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (!能改节点(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改进程" };
+    // 企业版线索验证（P12）在等复核 / 等销售处理：别从这里绕过去（lead-verify.ts 带 验证放行 进来）
+    const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
+    if (等着) return { ok: false as const, error: 等着 };
     const result = 到.result || null;
     const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
     // 旧客户端交上来的旧节点名（企业版 验收交付）按新名存
@@ -502,7 +507,7 @@ export async function 超上限(
  * 放回公海：只有负责人本人能放，线索 / 商机阶段才行。ownerId 留着放回去的人（他就是「历史负责人」；原负责人不能自己领回，企业版和别的版本一样，见 lib/enterprise/pool-rules.ts），
  * 记一行 pool-release。项目组、节点、交付两项都不动
  */
-export async function 放回公海(me: 谁, projectId: string, 原因?: unknown): Promise<结果> {
+export async function 放回公海(me: 谁, projectId: string, 原因?: unknown, 选项?: { 验证放行?: boolean }): Promise<结果> {
   // 企业版可选「回收原因」（字典），事务外先核；记在 pool-release 那行的 reason
   const 选 = await 选的原因("recycle", 原因);
   if (!选.ok) return 选;
@@ -513,6 +518,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown)
     if (p.pooledAt) return { ok: false as const, error: "这个项目已经在公海里了" };
     if (me.id !== p.ownerId) return { ok: false as const, error: "只有项目负责人能放回公海" };
     if (!(能进公海的阶段 as readonly string[]).includes(p.phase)) return { ok: false as const, error: "订单阶段的项目不能放回公海" };
+    const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
+    if (等着) return { ok: false as const, error: 等着 };
     const 现在 = new Date();
     await tx.project.update({ where: { id: p.id }, data: { pooledAt: 现在, nextStepAt: null } });
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason);

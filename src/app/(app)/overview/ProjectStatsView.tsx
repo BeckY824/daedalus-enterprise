@@ -12,6 +12,7 @@ import { palette, categorical } from "@/lib/palette";
 import { 金额 } from "@/lib/currency";
 import type { 项目现在, 项目一段, 人行现在, 人行一段 } from "./project-stats";
 import ProjectFunnel from "./ProjectFunnel";
+import LeadWaterfall from "./LeadWaterfall";
 
 /**
  * 企业版只用项目时「数据」页的正文（10-26 用户：「「数据」页改成按项目统计」）。
@@ -49,6 +50,20 @@ const 名字列 = (去: (id: string) => string) => ({
     );
   },
 });
+
+/** 漏斗（矮）和线索瀑布并排一行（P15）；1280 以下（xl 以下）上下摆，各占一整行 */
+function 漏斗与瀑布({ 数, 漏斗说明, 瀑布说明, 空 }: { 数: { 漏斗: 项目现在["漏斗"]; 线索节点: 项目现在["线索节点"] }; 漏斗说明: string; 瀑布说明: string; 空: { title: string; hint: string } }) {
+  return (
+    <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+      <Col xs={24} xl={12}>
+        <ProjectFunnel 矮 漏斗={数.漏斗} 说明={漏斗说明} 空={空} />
+      </Col>
+      <Col xs={24} xl={12}>
+        <LeadWaterfall 节点={数.线索节点} 说明={瀑布说明} />
+      </Col>
+    </Row>
+  );
+}
 
 export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 本位币: string; 单人: boolean }) {
   const money = (n: number) => 金额(n, 本位币);
@@ -118,9 +133,10 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
         </Col>
       </Row>
 
-      <ProjectFunnel
-        漏斗={数.漏斗}
-        说明="看得到的全部项目走到了哪一步，含已结束的"
+      <漏斗与瀑布
+        数={数}
+        漏斗说明="看得到的全部项目走到了哪一步，含已结束的"
+        瀑布说明="进行中、还在线索阶段的项目，按节点垒到合计"
         空={{ title: "还没有项目", hint: "新建一条线索，或者从飞书 / Excel 导入，这里会按线索 → 商机 → 订单 → 交付数出来。" }}
       />
 
@@ -152,6 +168,7 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
           </Col>
         )}
       </Row>
+
 
       <p className="muted" style={{ marginTop: 12 }}>
         已经结束的：{数.结局.filter((r) => r.result !== "异常状态").map((r) => `${r.result} ${r.count}`).join(" · ")}
@@ -212,9 +229,10 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
         </Col>
       </Row>
 
-      <ProjectFunnel
-        漏斗={数.漏斗}
-        说明={`${口径}新建的项目，现在走到了哪一步`}
+      <漏斗与瀑布
+        数={数}
+        漏斗说明={`${口径}新建的项目，现在走到了哪一步`}
+        瀑布说明={`${口径}新建、现在还在线索阶段的，按节点垒到合计`}
         空={{ title: "这一段没有新建项目", hint: "漏斗从这段时间新建的项目往下数。换一个时间段看看。" }}
       />
 
@@ -240,6 +258,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
           />
         </Card>
       )}
+
     </>
   );
 }

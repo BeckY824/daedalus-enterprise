@@ -24,7 +24,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限, 记转让 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import {
-  企划线索计数key, 我分出去的, 月份, 本月已分, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
+  企划线索计数key, 我分出去的, 月份, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
   认参与状态, 参与状态of, 是参与状态, type 参与状态,
   type 分出去的线索, type 线,
 } from "@/lib/enterprise/lead-assign";
@@ -256,15 +256,17 @@ async function 自动分给(me: SessionUser, org: 组织, 哪条: 目标, line: 
 
   const 人们 = [...org.成员.keys()].filter((id) => id !== 看.ownerId && 接手问题(org, id, line) === null);
   const 月 = 月份();
-  const [计数, 配额, 建号, 不参与, 企划算数] = await Promise.all([
+  const [计数, 配额, 加额, 建号, 不参与, 企划算数] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: 人们 } }, _count: { _all: true } }),
     prisma.entLeadQuota.findMany({ where: { userId: { in: 人们 } } }),
+    本月加额们(人们, 月),
     prisma.user.findMany({ where: { id: { in: 人们 } }, select: { id: true, name: true, createdAt: true } }),
     不参与名单(),
     getSetting<boolean>(企划线索计数key),
   ]);
   const 数 = new Map(计数.map((c) => [c.toUserId, c._count._all]));
-  const 额 = new Map(配额.map((q) => [q.userId, q.quota]));
+  // 生效配额 = 设的 + 本月加的额（线索最终判无效 +1）
+  const 额 = new Map(配额.map((q) => [q.userId, 生效配额(q.quota, 加额.get(q.userId) ?? 0)]));
   const 候选 = 建号.map((u) => ({ userId: u.id, 已分: 数.get(u.id) ?? 0, 配额: 额.get(u.id) ?? null, 进池: u.createdAt }));
   const 跳过 = new Set(不参与);
   const 查满 = 计不计数(kind, 企划算数);
@@ -442,7 +444,12 @@ export type 分配情况 = {
   name: string;
   line: string | null;
   已分: number;
+  /** 生效配额 = 设的每月配额 + 本月加额；没设 = null */
   配额: number | null;
+  /** 设的每月配额（改配额的输入框改的是它） */
+  设的配额: number | null;
+  /** 本月因线索最终判无效加的额，月初清零；没设配额的人不加 */
+  加额: number;
   /** 当前持有：他名下待跟进、跟进中的线索（企业版只用项目：线索阶段、没结局、不在公海的项目），月初不清 */
   持有: number;
   /** 允许才进自动分配轮转；暂停、禁止都不进 */
@@ -466,9 +473,10 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
   const 人们 = [...org.成员.values()].filter((m) => 接手问题(org, m.userId, null) === null && (全看 || 能设配额(org, me, m.userId, 改权限)));
   const ids = 人们.map((m) => m.userId);
   const 月 = 月份();
-  const [计数, 配额, 持有, 名字, 状态表] = await Promise.all([
+  const [计数, 配额, 加额, 持有, 名字, 状态表] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: ids } }, _count: { _all: true } }),
     prisma.entLeadQuota.findMany({ where: { userId: { in: ids } } }),
+    本月加额们(ids, 月),
     // 持有数不受「按组织架构看客户」限定：上级看下属手上几条，本来就该看得到这个数。不限定的连接不过软删扩展，回收站里的（P9）自己排掉
     (await 企业版只用项目())
       ? defaultClient.project.groupBy({ by: ["ownerId"], where: { ownerId: { in: ids }, phase: "线索", result: null, pooledAt: null, deletedAt: null, customer: { deletedAt: null } }, _count: { _all: true } })
@@ -486,7 +494,11 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
     .sort((a, b) => 人.get(a.userId)!.createdAt.getTime() - 人.get(b.userId)!.createdAt.getTime())
     .map((m) => ({
       userId: m.userId, name: 人.get(m.userId)!.name, line: m.line,
-      已分: 数.get(m.userId) ?? 0, 配额: 额.get(m.userId) ?? null, 持有: 持.get(m.userId) ?? 0,
+      已分: 数.get(m.userId) ?? 0,
+      配额: 生效配额(额.get(m.userId) ?? null, 加额.get(m.userId) ?? 0),
+      设的配额: 额.get(m.userId) ?? null,
+      加额: 额.has(m.userId) ? (加额.get(m.userId) ?? 0) : 0,
+      持有: 持.get(m.userId) ?? 0,
       参与: 参与状态of(状态表, m.userId) === "允许", 参与状态: 参与状态of(状态表, m.userId), 能设配额: 能设配额(org, me, m.userId, 改权限), 能改参与: 改参与,
     }));
 }

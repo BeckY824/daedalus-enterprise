@@ -6,9 +6,9 @@ import { describe, it, expect } from "vitest";
 import { 企业版根目录, 企业版亮项, 企业版页名, 公海入口 } from "@/lib/enterprise/nav";
 
 describe("企业版根目录", () => {
-  it("六项：首页 / 看板 / 渠道 / 公海 / 客户 / 项目，客户跟着业务叫法", () => {
+  it("六项：首页 / 复盘 / 渠道 / 公海 / 客户 / 项目，客户跟着业务叫法", () => {
     const r = 企业版根目录("学员");
-    expect(r.map((x) => x.label)).toEqual(["首页", "看板", "渠道", "公海", "学员", "项目"]);
+    expect(r.map((x) => x.label)).toEqual(["首页", "复盘", "渠道", "公海", "学员", "项目"]);
     expect(r.map((x) => x.key)).toEqual(["/dashboard", "/overview", "/channels", 公海入口, "/customers", "/projects"]);
   });
 
@@ -61,7 +61,7 @@ describe("企业版页名", () => {
     expect(企业版页名("/leads", null, "客户")).toBe("新线索");
     expect(企业版页名("/follow-ups/plans", null, "客户")).toBe("跟进");
     expect(企业版页名("/contacts", null, "客户")).toBe("联系人");
-    expect(企业版页名("/overview", null, "客户")).toBe("看板");
+    expect(企业版页名("/overview", null, "客户")).toBe("复盘");
     expect(企业版页名("/settings", null, "客户")).toBe("设置");
     expect(企业版页名("/admin", null, "客户")).toBe("");
   });

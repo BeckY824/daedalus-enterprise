@@ -1276,7 +1276,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 数据页按负责人：名字不截断，同名的邮箱小字另起一行 */
 .stat-who { word-break: break-word; }
 .stat-who-sub { display: block; font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); word-break: break-all; }
-/* 复盘看板 · 全周期漏斗（ProjectFunnel）：四条横条往下递减；个数写在条上、转化率写在右边，含义靠字不靠颜色。
+/* 复盘 · 全周期漏斗（ProjectFunnel）：四条横条往下递减；个数写在条上、转化率写在右边，含义靠字不靠颜色。
    条只用一种色（--brand 调淡、压在 --panel 上），主题换了、暗色主题下跟着变，字用 --ink 保证看得清 */
 .pfun-note { margin: 0 0 var(--s3); font-size: var(--fs-note); color: var(--text-muted); }
 .pfun { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
@@ -1294,6 +1294,51 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .pfun-rate { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
 .pfun-rate-v { font-size: var(--fs-body); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .pfun-rate-k { font-size: var(--fs-min); color: var(--text-muted); }
+/* 复盘 · 漏斗矮版（P15）：和右边线索瀑布并排，条矮一点、行距小一点，两张卡等高 */
+.pfun-low { gap: 6px; }
+.pfun-low .pfun-bar { height: 24px; }
+.pfun-card { height: 100%; }
+/* 复盘 · 待办（BoardTodos）：内容、客户名省略号截断，窄了在卡片里横滚；逾期字标红，含义靠字不靠颜色（状态列写着「逾期」）。
+   行按下只变底色（90ms），不位移，减弱动态下也一样 */
+/* 复盘页：视图切换 + 看谁的（P15）。窄了下拉换到下一行，名字长的省略，不撑宽 */
+/* 首页「+」里的查重：小框挂在这个看不见的锚上（P15） */
+.cli-anchor { display: inline-block; width: 0; height: 28px; vertical-align: middle; }
+.data-shell-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 16px; }
+.data-shell-who { width: 200px; max-width: 100%; }
+.data-shell-who .ant-select-selection-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 复盘页两个页签（P15）：人员选择在页签上面；Tabs 只当导航，内容由服务端给、摆在 .data-shell-body 里 */
+.data-shell-bar-who { margin-bottom: var(--s2); }
+.data-shell-tabs { margin-bottom: var(--s4); }
+.data-shell-tabs > .ant-tabs-nav { margin-bottom: 0; }
+.data-shell-tabs > .ant-tabs-content-holder { display: none; }
+/* 点了页签 / 换了人、服务端那一屏还没回来：旧内容留在原地淡一点，不挪位置 */
+.data-shell-body { transition: opacity var(--t) var(--ease); }
+.data-shell-pending { opacity: 0.55; }
+/* 「待办」页签：四张指标卡就是筛选（借首页指标卡的样子和悬停、按下），选中描主色边 */
+.btodo-wrap { container-type: inline-size; min-width: 0; }
+.btodo-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); margin-bottom: var(--s4); }
+.btodo-card { font: inherit; text-align: left; cursor: pointer; }
+.btodo-card.is-on, .btodo-card.is-on:hover { border-color: var(--brand); background: var(--brand-bg); box-shadow: inset 0 0 0 1px var(--brand); }
+.btodo-card.is-on .home-card-k { color: var(--ink); font-weight: 500; }
+/* 手机、或者 1024 宽 + AI 栏常驻挤到四百多：2×2 */
+@container (max-width: 480px) { .btodo-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.btodo-list { min-width: 0; padding: var(--s3) var(--s4) var(--s4); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }
+.btodo-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); margin-bottom: var(--s3); min-width: 0; }
+.btodo-head-r { display: flex; align-items: center; gap: var(--s3); min-width: 0; max-width: 100%; }
+.btodo-head-r .ant-segmented { max-width: 100%; overflow-x: auto; }
+.btodo-kind { color: var(--text-muted); font-size: var(--fs-note); }
+.btodo-proj { color: var(--text-muted); }
+.btodo .btodo-row { cursor: pointer; }
+.btodo .btodo-row > td { transition: background var(--t-press) var(--ease); }
+.btodo .ant-table-tbody > tr.btodo-row.ant-table-row:active > td { background: var(--hover); }
+.btodo .btodo-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.btodo-row-done { opacity: 0.45; transition: opacity var(--t) var(--ease); }
+.btodo-row-done .btodo-t { text-decoration: line-through; }
+.btodo-row-late .btodo-time { color: var(--danger-text); }
+.btodo-s { white-space: nowrap; font-size: var(--fs-note); }
+.btodo-s-late { color: var(--danger-text); font-weight: 600; }
+.btodo-s-today { color: var(--ink); font-weight: 500; }
+.btodo-s-later { color: var(--text-muted); }
 /* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
 .member-who { min-width: 0; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
@@ -1419,6 +1464,14 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .home-card-v { font-family: var(--font-num); font-size: var(--fs-num); font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .home-card:hover .home-card-v { color: var(--brand); }
 .home-card-warn .home-card-v, .home-card-warn:hover .home-card-v { color: var(--danger); }
+/* 正向卡（今日待办、本月赢单，10-29 会议二2）：有数就标绿，悬停边框也走绿，不和品牌色抢 */
+.home-card-good .home-card-v, .home-card-good:hover .home-card-v { color: var(--success-text); }
+.home-card-good:hover { border-color: var(--success-line); }
+/* 今日待办卡下面那行「另有 M 条逾期」：小字、危险色，贴着卡的左边，点了去复盘页「逾期」 */
+.home-card-stack { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.home-card-more { align-self: flex-start; max-width: 100%; padding: 0 var(--s4); font-size: var(--fs-note); color: var(--danger-text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-card-more:hover { color: var(--danger-text); text-decoration: underline; }
+.home-card-more:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; border-radius: var(--r-ctl); }
 @container (max-width: 639px) {
   .cli-ck-g { grid-template-columns: minmax(0, 1fr); align-content: start; }
   .home-cards { position: static; align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2322,6 +2375,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   .ant-cascader-dropdown, .ant-mentions-dropdown, .ant-tour {
     transition: none !important;
   }
+  /* 复盘页页签（P15）：下划线换页签时是横着滑过去的，减弱动态下直接跳到位，也不淡入淡出 */
+  .data-shell-tabs .ant-tabs-ink-bar, .data-shell-body { transition: none !important; }
   /* 同一个坑：自动长高的输入框（autoSize）靠 body 底下一个隐藏 textarea 量行高，抄好字号、内边距马上同步量，
      带着过渡量到的是浏览器默认的 13.33px 字、2px 边距，两行的框就矮成 44px（该是 56px）；
      之后要等它碰巧再量一次才对，有时一直不量（Windows 上常见），页面高度跟着差一截 */

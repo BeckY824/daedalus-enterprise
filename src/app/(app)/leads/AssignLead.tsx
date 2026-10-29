@@ -14,7 +14,7 @@ import { smartTime } from "@/lib/utils";
 import { 分配线索, 本月分配情况, 我分出去的线索, type 分配情况 } from "./assign-actions";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 
-const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}`;
+const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}${p.加额 > 0 ? `（含无效补 ${p.加额}）` : ""}`;
 
 /** 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的 */
 export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void }) {
