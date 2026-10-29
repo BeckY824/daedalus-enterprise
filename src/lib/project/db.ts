@@ -391,7 +391,7 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 }
 
 /**
- * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期。规矩同向导第四步（规整项目）；
+ * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期、项目来源。规矩同向导第四步（规整项目）；
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
  * 换负责人 = 转让：能管项目的人（负责人本人、老板、主管）能转，只改这一个项目，记谁、何时、从谁到谁。
  * 公海里的项目老板 / 主管指了新负责人 = 出公海。建档人（creatorId）不在这里、哪里都不给改
@@ -414,7 +414,12 @@ export async function 改项目(me: 谁, projectId: string, patch: 向导项目 
     }
     const 日 = 预计成交日(patch.expectedDealAt, p.expectedDealAt);
     if (日 === undefined) return { ok: false as const, error: "预计成交日期格式不对，请选一个日期" };
-    const 新 = { ...好, contactId };
+    const 来源 = 项目来源改成(patch.channelId, p.channelId);
+    if (来源 !== p.channelId && 来源) {
+      const 渠道 = await tx.channel.findUnique({ where: { id: 来源 }, select: { active: true } });
+      if (!渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
+    }
+    const 新 = { ...好, contactId, channelId: 来源 };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
@@ -443,6 +448,15 @@ function 预计成交日(v: string | null | undefined, 原: Date | null): Date |
   if (v === undefined || !企业版()) return 原;
   if (v === null || (typeof v === "string" && !v.trim())) return null;
   return parseDateInput(v) ?? undefined;
+}
+
+/**
+ * 项目来源（企业版，迁移 077）：没传 = 不动；空 = 清掉（渠道统计回落到客户来源）；传了 id 就换（调用方查渠道在不在、启用没）。
+ * 不是企业版界面上没有这格，传了也不动
+ */
+function 项目来源改成(v: string | null | undefined, 原: string | null): string | null {
+  if (v === undefined || !企业版()) return 原;
+  return (typeof v === "string" && v.trim()) || null;
 }
 
 /** 能进公海的阶段：线索、商机；订单阶段不能放 */

@@ -14,7 +14,7 @@ import { 读的我 } from "@/lib/team-scope";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了 } from "@/lib/enterprise/contact-dedupe";
 import { 登记接着建 } from "@/lib/project/hook";
-import { 规整向导, 向导接着建, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 改节点, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
@@ -70,6 +70,13 @@ export async function 建档向导(输入: 建档向导输入) {
     if (企业版()) {
       const 渠道 = input.客户.channelId ? await prisma.channel.findUnique({ where: { id: String(input.客户.channelId) }, select: { active: true } }) : null;
       if (!渠道?.active) return { ok: false as const, error: input.客户.channelId ? "这个渠道不存在或已停用，换一个" : "请选渠道" };
+      // 项目来源（迁移 077）：没另选 = 跟客户来源；另选了也得是还启用着的渠道
+      const 来源 = 项目来源默认(input.项目?.channelId, String(input.客户.channelId));
+      if (来源 !== String(input.客户.channelId)) {
+        const 项目渠道 = await prisma.channel.findUnique({ where: { id: 来源! }, select: { active: true } });
+        if (!项目渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
+      }
+      if (好.企业) 好.企业.项目来源 = 来源;
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
@@ -304,9 +311,9 @@ export async function 改项目异常类别(id: string, patch: { name?: string; 
   } catch (e) { return 不在了(e); }
 }
 
-const 项目字段名: Record<string, string> = { name: "名称", ownerId: "负责人", amount: "金额", currency: "币种", remark: "备注", contactId: "主联系人", expectedDealAt: "预计成交日期" };
+const 项目字段名: Record<string, string> = { name: "名称", ownerId: "负责人", amount: "金额", currency: "币种", remark: "备注", contactId: "主联系人", expectedDealAt: "预计成交日期", channelId: "项目来源" };
 
-/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期 */
+/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源 */
 export async function 编辑项目(projectId: string, patch: 向导项目 & { contactId?: string | null; expectedDealAt?: string | null }) {
   try {
     const me = await requireUser();

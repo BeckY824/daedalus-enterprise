@@ -13,6 +13,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=f,勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,编辑项目=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,指认卡点Action=f,认领卡点Action=f,接受卡点Action=f,转让卡点Action=f,返回卡点Action=f,改卡点进度Action=f,解决卡点Action=f,卡点可选的人Action=async()=>[];`);
+  stub(/customers\/\[id\]\/ai$/, `export const parseFollowUpDraft=async()=>({ok:false,error:"未启用"});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -32,7 +33,7 @@ beforeAll(async () => {
     const 提成={币种:'CNY',成交金额:1234567.89,项目底价:1000000,比例:{底价比例:2,溢价比例:30},范围:'外贸',预估:{成交金额:1234567.89,项目底价:1000000,项目溢价:234567.89,底价提成:20000,溢价提成:70370.37,合计:90370.37},实际:null,
       每人:[{userId:'qa',比例:60,金额:54222.22,组长:true,name:'组长甲'},{userId:'u2',比例:40,金额:36148.15,组长:false,name:'组员'+串}],能改:true,能填底价:true,能更正:false,组员:[{userId:'u2',name:'组员'+串}],分配:{u2:40}};
     window.__render=(企业)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <ProjectDetail p={{...基,企业版:企业,能记沟通:企业,提成:企业?提成:null}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={企业?{们:[],能发:true,默认:{},人们:[]}:null}/>
+      <ProjectDetail p={{...基,企业版:企业,能记沟通:企业,提成:企业?提成:null,...(企业?{项目来源:{name:'渠道'+串,跟客户:true},channelId:null,已立项天数:28,渠道们:[],aiEnabled:true}:{})}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={企业?{们:[],能发:true,默认:{},人们:[]}:null}/>
     </BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -73,12 +74,39 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     // 右栏里的卡片内容不能伸出卡片（右栏窄，最容易被长串撑开）
     const 伸出 = await page.locator(".proj-side > .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    for (const name of ["记一条沟通", "编辑"]) {
+    for (const name of ["记一条沟通", "AI 录入", "编辑"]) {
       const box = await page.getByRole("button", { name }).first().boundingBox();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
-      expect(点中.replace(/\s/g, "")).toBe(name);
+      expect(点中.replace(/\s/g, "")).toBe(name.replace(/\s/g, ""));
     }
+  } finally { await page.close(); }
+});
+
+it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注明）；「AI 录入」打开记一条、AI 那格先摆出来，只预填不写", async () => {
+  const { page, errors } = await open(true);
+  try {
+    const 项目卡 = await page.locator(".proj-side > .ant-card").filter({ hasText: "项目来源" }).first().innerText();
+    expect(项目卡).toContain("28 天");
+    expect(项目卡).toMatch(/同.+来源/);
+    await page.getByRole("button", { name: "AI 录入" }).click();
+    const 原话 = page.getByRole("textbox", { name: "沟通原话" });
+    await 原话.waitFor();
+    expect(await 原话.evaluate(e => e === document.activeElement)).toBe(true);
+    await page.getByRole("button", { name: /AI 解析填表/ }).click();
+    await page.getByText("先把沟通过程随手写几句").waitFor();
+    await 原话.fill("刚和王经理通了电话，下周三再聊报价");
+    await page.getByRole("button", { name: /AI 解析填表/ }).click();
+    await page.getByText("未启用").waitFor();
+    // 「记下」照旧要内容、要选是否明确回复，AI 没填出东西就点不了
+    expect(await page.getByRole("button", { name: "记 下" }).or(page.getByRole("button", { name: "记下" })).first().isDisabled()).toBe(true);
+    await page.getByRole("button", { name: /取\s*消/ }).click();
+    await 原话.waitFor({ state: "detached" });
+    // 手填入口：AI 那格收着，只给一个「用 AI 从原话预填」
+    await page.getByRole("button", { name: "记一条沟通" }).click();
+    await page.getByRole("button", { name: "用 AI 从原话预填" }).waitFor();
+    expect(await page.getByRole("textbox", { name: "沟通原话" }).count()).toBe(0);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
@@ -98,6 +126,8 @@ it("开关关闭：照原来一列摆、960 宽，没有两栏；没有提成卡
     expect(await page.locator(".proj-2col, .proj-wrap").count()).toBe(0);
     expect(await page.locator("#root [style*=\"max-width\"]").first().evaluate(d => getComputedStyle(d).maxWidth)).toBe("960px");
     expect(await page.getByRole("button", { name: "记一条沟通" }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: "AI 录入" }).count()).toBe(0);
+    expect(await page.getByText("项目来源").count()).toBe(0);
     expect(await page.getByText("提成", { exact: true }).count()).toBe(0);
     expect(await page.locator(".ant-card-head-title").allTextContents()).toEqual(["项目", "交付", "项目组", "节点变更", "沟通"]);
     expect(errors).toEqual([]);

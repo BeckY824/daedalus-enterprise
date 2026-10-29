@@ -7,6 +7,8 @@ import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 
 import { 即将回收 } from "./timeout";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 生效组织规则 } from "./org-rules-store";
+import { dayjs } from "@/lib/utils";
+import { 已立项天数 } from "./project-fields";
 import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 
@@ -42,8 +44,9 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
     include: {
-      customer: { select: { name: true, lastFollowAt: true, pool: { select: { customerId: true } } } },
+      customer: { select: { name: true, lastFollowAt: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
       exceptionCategory: { select: { name: true } },
+      channel: { select: { name: true } },
       logs: 算超时要的.logs,
     },
   });
@@ -73,6 +76,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     phase: p.phase, node: p.node, result: p.result, exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
     ...(企 ? { 即将回收: 将收(p) } : {}),
+    // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
+    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(),
   }));

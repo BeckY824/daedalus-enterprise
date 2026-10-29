@@ -8,6 +8,7 @@ import { 币种选项 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { 成员选项, 独自一人, type 可选成员 } from "@/lib/utils";
 import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
+import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
@@ -26,18 +27,20 @@ const 邀请说法: Record<string, string> = { INVITED: "已邀请", DECLINED: "
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩和建档向导第四步一样（服务端 规整项目）
  */
 export function ProjectEditModal({
-  open, onClose, 跑, p, 候选, 联系人们,
+  open, onClose, 跑, p, 候选, 联系人们, 渠道们,
 }: {
   open: boolean;
   onClose: () => void;
   跑: 跑法;
   /** expectedDealAt：企业版才传（YYYY-MM-DD 或 null）；不传 = 不摆这格、不交 */
-  p: { id: string; name: string; ownerId: string; amount: number; currency: string; remark: string | null; contactId: string | null; expectedDealAt?: string | null };
+  p: { id: string; name: string; ownerId: string; amount: number; currency: string; remark: string | null; contactId: string | null; expectedDealAt?: string | null; channelId?: string | null };
   候选: 可选成员[];
   联系人们: 联系人[];
+  /** 企业版项目来源可选的渠道；不传 = 不摆「项目来源」、不交 channelId */
+  渠道们?: 可选渠道[];
 }) {
   // 父组件每次打开时才挂上，初值就是最新的
-  const [d, setD] = useState({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contactId, expectedDealAt: p.expectedDealAt });
+  const [d, setD] = useState({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contactId, expectedDealAt: p.expectedDealAt, channelId: 渠道们 ? (p.channelId ?? null) : undefined });
   const [忙, set忙] = useState(false);
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
   const 行 = (label: string, el: React.ReactNode) => (
@@ -86,6 +89,17 @@ export function ProjectEditModal({
           value={d.expectedDealAt ? dayjs(d.expectedDealAt) : null}
           onChange={(v) => 改({ expectedDealAt: v ? v.format("YYYY-MM-DD") : null })}
           placeholder="选一天"
+        />
+      ))}
+      {渠道们 && 行("项目来源", (
+        <ChannelPicker
+          channels={渠道们}
+          value={d.channelId ?? null}
+          onChange={(v) => 改({ channelId: v })}
+          allowClear
+          placeholder="不填 = 渠道统计跟客户来源走"
+          style={{ width: "100%" }}
+          aria-label="项目来源"
         />
       ))}
       {行("备注", <Input.TextArea rows={3} maxLength={备注上限} showCount value={d.remark} onChange={(e) => 改({ remark: e.target.value })} />)}

@@ -97,6 +97,8 @@ model Channel {
   directCustomers Customer[] @relation("CustomerChannel")
   /// 渠道归属计算落到该渠道的学员（往上两代命中）
   attributed      Customer[] @relation("CustomerAttributionChannel")
+  /// 企业版项目来源落到这个渠道的项目（迁移 077）
+  projects        Project[]  @relation("ProjectChannel")
 
   @@index([channelOwnerId])
   @@index([createdById])
@@ -768,6 +770,11 @@ model Project {
   remark               String?
   /// 预计成交日期（企业版）：这个项目预计哪天签。老数据从客户的 expectedSignAt 搬过来，只搬客户名下只有一个进行中项目的，见 lib/project/expected-deal.ts
   expectedDealAt       DateTime?
+  /// 项目来源（企业版，迁移 077）：这个项目是哪个渠道带来的，存渠道 id，界面写渠道全称。
+  /// 客户来源（Customer.channelId）记第一次的渠道、不再改；每个项目各记各的。新建项目时默认带客户来源，可以改。
+  /// 渠道统计按它算；老项目没填的退回去用客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）
+  channelId            String?
+  channel              Channel?                  @relation("ProjectChannel", fields: [channelId], references: [id], onDelete: SetNull)
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 有结局的那一刻；回到进行中就清掉
@@ -788,6 +795,8 @@ model Project {
   @@index([ownerId])
   @@index([sourceLeadId])
   @@index([pooledAt])
+  /// 渠道统计按项目来源取数（迁移 077）
+  @@index([channelId])
   /// 企业版新线索页按阶段筛、按最近更新倒序取前 500（迁移 065）
   @@index([phase, updatedAt])
   /// 项目页不筛阶段时按最近更新倒序取前 500（迁移 065）

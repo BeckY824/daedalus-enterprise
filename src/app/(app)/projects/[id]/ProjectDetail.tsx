@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ThunderboltOutlined } from "@ant-design/icons";
 import { App, Alert, Button, Card, Checkbox, Input, Modal, Popconfirm, Progress, Radio, Select, Space, Tag, Timeline, Tooltip } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
@@ -18,6 +19,12 @@ import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原�
 import { 超时理由 } from "@/lib/project/timeout";
 import type { 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通, 培育计划上限 } from "@/lib/project/stage-gates";
+import AiWait from "@/components/AiWait";
+import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
+import { clearJob, runJob } from "@/lib/ai-jobs";
+import type { 可选渠道 } from "@/components/ChannelPicker";
+import { 项目沟通预填, 沟通时间格式 } from "@/lib/project/project-fields";
+import { parseFollowUpDraft } from "../../customers/[id]/ai";
 import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 判MQLAction } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
@@ -63,6 +70,11 @@ export type 项目详情 = {
   nextStepAt: string | null; 回收日: string | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
+  /**
+   * 企业版（10-29 P6）：项目来源 = 项目自己选的渠道（没选 = 跟客户来源走，null = 客户也没有）；已立项天数从建项目那天按自然日数；
+   * 渠道们 = 能改时编辑框里选项目来源用的；aiEnabled = 「记一条沟通」里给不给 AI 解析（没配模型不给）。不是企业版都不传
+   */
+  项目来源?: { name: string; 跟客户: boolean } | null; channelId?: string | null; 已立项天数?: number; 渠道们?: 可选渠道[]; aiEnabled?: boolean;
   /**
    * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推；
    * 只能靠填齐 = 不是老板、主管，手动往前推不给（往后退、点结局照旧）
@@ -214,7 +226,7 @@ export default function ProjectDetail({
   const [原因, set原因] = useState("");
   const [类别, set类别] = useState<string | null>(null);
   const [编辑开着, set编辑开着] = useState(false);
-  const [记一条开着, set记一条开着] = useState(false);
+  const [记一条开着, set记一条开着] = useState<false | "手填" | "AI">(false);
   const [发卡点于, set发卡点于] = useState<string | null>(null);
   const [不合格框, set不合格框] = useState(false);
   const [培育日, set培育日] = useState<string | null>(null);
@@ -371,6 +383,10 @@ export default function ProjectDetail({
       {p.contact && p.联系人附件 && <div style={行样}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       <div style={行样}><span style={键样}>金额</span>{金额(p.amount, p.currency)}</div>
       {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>}
+      {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
+      {p.企业版 && p.项目来源 !== undefined && (
+        <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : <span style={{ color: "var(--text-muted)" }}>没填</span>}</span></div>
+      )}
       {/* 在公海里时 ownerName 是原负责人：不写成「负责人 X」，也不把系统收回说成 X 放回的（QA #14） */}
       <div style={行样}><span style={键样}>负责人</span>{p.pooled ? <span>在公海里<span style={{ color: "var(--text-muted)" }}>（原负责人 {p.ownerName}{进公海说法(p.进公海, p.ownerName)}）</span></span> : p.ownerName}</div>
       {p.historyOwners.length > 0 && (
@@ -443,7 +459,13 @@ export default function ProjectDetail({
       extra={
         p.能记沟通 ? (
           // 企业版：沟通是这一页最常做的事，主按钮（10-27 会后排版）
-          p.企业版 ? <Button type="primary" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条沟通</Button> : <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>
+          p.企业版 ? (
+            <Space size={4}>
+              {/* AI 录入（10-29 P6）：同一个弹窗，打开就是「粘原话 → AI 预填」那一格；没配模型不摆 */}
+              {p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
+              <Button type="primary" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条沟通</Button>
+            </Space>
+          ) : <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
         ) : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>
       }
     >
@@ -552,15 +574,16 @@ export default function ProjectDetail({
           open
           onClose={() => set编辑开着(false)}
           跑={跑}
-          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null } : {}) }}
+          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null } : {}) }}
           候选={候选}
           联系人们={联系人们}
+          渠道们={p.企业版 ? p.渠道们 : undefined}
         />
       )}
 
       {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 人们={卡点.人们} onClose={() => set发卡点于(null)} />}
 
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} onClose={() => set记一条开着(false)} 跑={跑} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} onClose={() => set记一条开着(false)} 跑={跑} />}
 
       <Modal
         open={!!异常框}
@@ -660,15 +683,15 @@ function 回收临近(回收日: string): boolean {
   return dayjs(回收日).diff(dayjs().startOf("day"), "day") <= 2;
 }
 
-const 沟通时间格式 = "YYYY-MM-DD HH:mm";
-
 /**
  * 在项目上记一条沟通：方式、时间、内容，加下一步时间（开了超时回收、线索 / 商机阶段必填）。
  * 记了会挂在客户上（客户页也看得到）和项目当时的节点上；填的下一步时间决定这个项目哪天没跟进会回公海
  */
-function RecordFollowModal({ p, 外贸, onClose, 跑 }: {
+function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
   p: 项目详情;
   外贸: boolean;
+  /** 从「AI 录入」点进来的：AI 那一格先摆出来、光标先落在那 */
+  AI先?: boolean;
   onClose: () => void;
   跑: (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
 }) {
@@ -679,13 +702,59 @@ function RecordFollowModal({ p, 外贸, onClose, 跑 }: {
   const [下一步时间, set下一步时间] = useState<string | null>(null);
   const [明确回复, set明确回复] = useState<boolean | null>(null);
   const [交中, set交中] = useState(false);
+  // ---- AI 录入（10-29 P6）：粘原话 → 复用客户页「跟进速记」那条解析（parseFollowUpDraft，同一个模型、同一份额度）→ 只往格子里预填，
+  // 人核对后点「记下」才写库；解析本身不写任何业务表。企业版、配了模型、看得到客户才给
+  const 给AI = !!(p.企业版 && p.aiEnabled && p.customer);
+  const [AI开, setAI开] = useState(AI先);
+  const [原话, set原话] = useState("");
+  const [解析, set解析] = useState<{ 起: number; 结果?: string; 出错?: string } | null>(null);
+  const 解析中 = Boolean(解析 && !解析.结果 && !解析.出错);
+  const AI已用完 = useAiOutOfCredits();
+  const 任务键 = `project-followup-parse:${p.id}`;
+  /** 解析途中弹窗关了 / 又点了一次：旧的那轮回来不许再往格子里填 */
+  const 这一次 = useRef(0);
+  const 关 = () => {
+    这一次.current++;
+    clearJob(任务键);
+    onClose();
+  };
+  const AI解析 = async () => {
+    if (!p.customer || AI已用完) return;
+    if (原话.trim().length < 5) {
+      set解析({ 起: Date.now(), 出错: "先把沟通过程随手写几句" });
+      return;
+    }
+    const 轮 = ++这一次.current;
+    const 起 = Date.now();
+    set解析({ 起 });
+    const 请求 = parseFollowUpDraft({ customerId: p.customer.id, text: 原话 });
+    runJob<null>(任务键, () => 请求.then((r) => (r.ok ? { ok: true as const, value: null } : { ok: false as const, error: r.error })), undefined, { 名: "解析项目沟通", 去: `/projects/${p.id}` });
+    let r: Awaited<typeof 请求>;
+    try {
+      r = await 请求;
+    } catch (e) {
+      r = { ok: false, error: e instanceof Error ? e.message : "解析失败，请重试" };
+    }
+    if (轮 !== 这一次.current) return;
+    if (!r.ok) {
+      set解析({ 起, 出错: r.error });
+      return;
+    }
+    const 填 = 项目沟通预填(r.draft, 能选类型.map((t) => t.value));
+    if (填.type) setType(填.type);
+    if (填.content) setContent(填.content);
+    if (填.occurredAt) setOccurredAt(填.occurredAt);
+    if (填.下一步时间) set下一步时间(填.下一步时间);
+    const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步时间 && "下一步时间"].filter(Boolean);
+    set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
+  };
   const 差 = !content.trim() ? "请填写这次沟通的内容" : p.企业版 && 明确回复 === null ? "请选客户这次有没有明确回复" : p.要下一步 && !下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到项目公海" : "";
 
   const 交 = async () => {
     set交中(true);
     const ok = await 跑(() => 记项目沟通Action(p.id, { type, content, occurredAt, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }), "已记下这条沟通");
     set交中(false);
-    if (ok) onClose();
+    if (ok) 关();
   };
 
   return (
@@ -694,10 +763,37 @@ function RecordFollowModal({ p, 外贸, onClose, 跑 }: {
       title="记一条沟通"
       okText="记下"
       okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }}
-      onCancel={onClose}
+      onCancel={关}
       onOk={() => void 交()}
     >
       <div style={{ display: "grid", gap: 12 }}>
+        {给AI && !AI开 && (
+          <Button size="small" icon={<ThunderboltOutlined />} style={{ justifySelf: "start" }} onClick={() => setAI开(true)}>用 AI 从原话预填</Button>
+        )}
+        {给AI && AI开 && (
+          <div style={{ border: "1px solid var(--brand-line)", borderRadius: 8, padding: "10px 12px" }}>
+            <Input.TextArea
+              aria-label="沟通原话"
+              autoFocus={AI先}
+              value={原话}
+              onChange={(e) => set原话(e.target.value)}
+              autoSize={{ minRows: 2, maxRows: 6 }}
+              maxLength={5000}
+              placeholder="把这次沟通随手倒出来，或粘贴聊天记录、语音转的文字，AI 帮你填下面的格子"
+            />
+            <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
+                  : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>只是预填，核对无误再记下；「客户是否明确回复」要你自己选</span>}
+              </div>
+              <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
+                {解析?.结果 ? "重新解析" : "AI 解析填表"}
+                <AiCost />
+              </Button>
+            </div>
+            {AI已用完 && <AiRemaining />}
+          </div>
+        )}
         <Select aria-label="沟通方式" value={type} options={能选类型.map((t) => ({ value: t.value, label: t.label }))} onChange={(v: string) => setType(v)} />
         <DatePicker
           aria-label="沟通时间"
