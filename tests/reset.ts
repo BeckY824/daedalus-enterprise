@@ -45,6 +45,8 @@ async function 清空() {
   await prisma.customerClaim.deleteMany();
   // 企业版关联客户随客户级联，先清掉省得删客户时多一层（2026-10-29）
   await prisma.entCustomerLink.deleteMany();
+  // 企业版联系人挂多位客户：随联系人 / 客户级联，同上（2026-10-29）
+  await prisma.contactCustomer.deleteMany();
   // 自引用先断开，否则删学员时互相牵制
   await prisma.customer.updateMany({
     data: { referrerCustomerId: null, attributionCustomerId: null },

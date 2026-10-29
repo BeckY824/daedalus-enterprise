@@ -75,6 +75,8 @@ export const 不同步表 = [
   "EntLeadVerify", "EntLeadVerifyLog", "EntLeadQuotaBonus",
   // 企业版关联客户（2026-10-29，migrations/075）：同上
   "EntCustomerLink",
+  // 企业版联系人挂多位客户（2026-10-29，migrations/090）：同上
+  "ContactCustomer",
 ] as const;
 
 /**

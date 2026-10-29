@@ -49,6 +49,13 @@ export type ContactRow = {
   address?: string | null;
   /** 联系方式几行（类型 kind + 号码）；子表里没有的拿老三格拼（customer-v2-db.ts 的 联系人号码们）。不给 = 别的版本 */
   号码们?: { kind: string; value: string }[];
+  /**
+   * 企业版联系人挂多位客户（2026-10-29 P13，迁移 090）：给了 = 这位是挂到这位客户上的、主客户是别人。
+   * 能改 = 主客户那一头我能改（编辑资料、换主客户只在能改时摆）；解除挂靠看的是这位客户能不能改
+   */
+  挂靠?: { linkId: string; note: string | null; 主客户Id: string; 主客户名: string; 主客户看得到: boolean; 能改: boolean } | null;
+  /** 主客户是这位的联系人另外还挂在哪几位客户上（看不到的只给名字） */
+  另挂?: { id: string; name: string; 看得到: boolean }[];
 };
 
 export type RecordProps = {
@@ -90,6 +97,8 @@ export type RecordProps = {
   号码种类?: { 名: string; kind: string; active: boolean }[];
   /** 企业版客户分配方式的可选项（字典 custAssign 启用中的） */
   分配方式选项?: string[];
+  /** 企业版客户类型的可选项（字典 custType 启用中的，2026-10-29 P13 第 4 条） */
+  客户类型选项?: string[];
   /** 企业版项目模式客户页「新建项目」（待定 16）：线索阶段的节点、要不要必填下一步时间。不给 = 不摆这个按钮 */
   新建项目?: { 节点们: string[]; 要下一步: boolean } | null;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的，10-28 去遗留 A1）；不给 = 别的版本，标签行照旧 */

@@ -131,8 +131,8 @@ export type CustomerInput = {
   企业资料?: Partial<企业客户资料> | null;
 };
 
-/** 企业版客户主表上新加的几格（迁移 072） */
-export type 企业客户资料 = 客户地址 & { shortName: string | null; assignWay: string | null };
+/** 企业版客户主表上新加的几格（迁移 072；客户类型 customerType 是 2026-10-29 P13 迁移 092，取自字典 custType） */
+export type 企业客户资料 = 客户地址 & { shortName: string | null; assignWay: string | null; customerType: string | null };
 
 /** 编辑框里可改的那部分字段，用作并发比对的基准快照 */
 export type CustomerSnapshot = Pick<
@@ -408,6 +408,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       const v = (交.assignWay ?? "").trim() || null;
       if (v && v !== 改前?.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `分配方式「${v}」不在可选范围内，请刷新后重选` };
       企资料.assignWay = v;
+    }
+    // 客户类型（迁移 092）：同分配方式，得是字典 custType 里启用中的一项（原值停用了原样交回也认）
+    if (交.customerType !== undefined) {
+      const v = (交.customerType ?? "").trim() || null;
+      if (v && v !== 改前?.customerType && !(await 可选项("custType")).includes(v)) return { ok: false, error: `客户类型「${v}」不在可选范围内，请刷新后重选` };
+      企资料.customerType = v;
     }
   }
 
@@ -1407,9 +1413,9 @@ export async function deleteContract(
 /* ---------- 记录页的行内编辑 ---------- */
 
 /** 记录页里能直接点着改的字段。姓名、手机（要查重）、推荐关系（要重算归属）仍走完整表单 */
-const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", ...外贸键] as const;
+const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", "customerType", ...外贸键] as const;
 /** 只有企业版能点着改的几格（迁移 072）：开关关着不收 */
-const 企业版才有的格: readonly string[] = ["shortName", "assignWay"];
+const 企业版才有的格: readonly string[] = ["shortName", "assignWay", "customerType"];
 export type PatchableKey = (typeof PATCHABLE)[number];
 
 /**
@@ -1492,6 +1498,11 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
     if (v && v !== 原.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `分配方式「${v}」不在可选范围内，请刷新后重选` };
     data.assignWay = v || null;
+  } else if (key === "customerType") {
+    const 原 = await prisma.customer.findUnique({ where: { id }, select: { customerType: true } });
+    if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
+    if (v && v !== 原.customerType && !(await 可选项("custType")).includes(v)) return { ok: false, error: `客户类型「${v}」不在可选范围内，请刷新后重选` };
+    data.customerType = v || null;
   } else if (key === "expectedSignAt") {
     const previous = await prisma.customer.findUnique({ where: { id }, select: { expectedSignAt: true, expectedSignOn: true } });
     const parsed = parseSignDate(v, previous ?? undefined);

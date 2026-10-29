@@ -262,6 +262,8 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false): Rec
     case "CustomerPool":
     case "CustomerClaim":
     case "CustomerOwnerLog":
+    // 企业版联系人挂靠（2026-10-29 P13）：跟挂到的那位客户走
+    case "ContactCustomer":
       return { customer: 客户 };
     case "Task":
     case "FollowPlan":

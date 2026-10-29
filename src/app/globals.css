@@ -1037,6 +1037,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .country-cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .country-cell-t { font-size: 12px; font-variant-numeric: tabular-nums; }
 .cust-level-B { border-color: var(--warning-line); color: var(--warning-text); background: var(--warning-bg); }
+/* 企业版级别画成星（P13 第 5 条，components/LevelStars.tsx）：满格 4 颗，没亮的淡色；不换行、等宽，列表 76 宽放得下 */
+.cust-stars { display: inline-block; white-space: nowrap; color: var(--warning-text); font-size: 12px; line-height: 1; letter-spacing: 1px; }
+.cust-stars-off { color: var(--line); }
 .rec-sec { padding: 6px 12px 10px; border-top: 1px solid var(--border); }
 .rec-sec:first-of-type { border-top: none; }
 .rec-sec-t {
@@ -1097,6 +1100,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-contact-k { margin-right: var(--s2); color: var(--text-muted); }
 .rec-contact .rec-mini-acts { top: 4px; translate: none; }
 .rec-contact:hover .rec-mini-acts { opacity: 1; pointer-events: auto; }
+/* 联系人挂多位客户（P13）：挂到别的 / 换主客户那排是小号文字键；挑客户的格子跟号码行对齐 */
+.rec-contact-note { margin-left: var(--s1); color: var(--text-muted); }
+.rec-contact-links { display: flex; flex-wrap: wrap; gap: 0 var(--s2); }
+.rec-contact-links .ant-btn { padding: 0; height: 20px; font-size: var(--fs-note); }
+.rec-contact-form { margin: 4px 0 2px 34px; max-width: calc(100% - 34px); }
 
 /* 企业版项目详情两栏（10-27 会后排版，ProjectDetail）：左边节点 / 沟通 / 卡点，右边资料 320px。
    按容器宽不按视口：中栏项目名单摊开、或桌面端开着 AI 侧栏时主区变窄，视口量不准。

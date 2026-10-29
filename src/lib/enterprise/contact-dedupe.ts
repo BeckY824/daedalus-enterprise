@@ -195,3 +195,83 @@ export function 验联系人号码(联系人: { phone?: string | null; email?: s
 export class 联系人号码撞了 extends Error {
   constructor(readonly ids: string[], readonly 格: string) { super(`${格}撞号`); }
 }
+
+// ---------- 联系人号码查重（2026-10-29 P13 第 2 条） ----------
+
+/** 撞到的那位联系人：客户看得到的给 id、名字（界面上点得进去）；看不到的只给负责人名字（同 撞号结论 的口径） */
+export type 撞到的联系人 = {
+  contactId: string | null;
+  name: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  /** 主客户的销售负责人（看不到时提示「可与 X 沟通核实」） */
+  同事: string;
+  /** 撞的是哪一行：交上来的那行的 kind + 规整后的号 */
+  kind: string;
+  value: string;
+};
+
+/**
+ * 联系人的几行号码（kind + 规整值，验联系人号码们 验好的）在全公司联系人里撞没撞：同类型同规整值算撞，不分谁名下。
+ * 比两处：联系方式子表里挂在联系人身上的行（kind + numberKey，所有类型含自己加的）；子表回填之前的联系人老三格
+ * （手机按号键、国内号顺带认带 86 的；邮箱 / 微信去空格不分大小写）。除了 = 编辑时排除自己。
+ * 一位联系人只报一次（撞了好几个号的报第一个撞的号），按建档早的在前。不合并、不挡：拿到结果怎么办由调用方定
+ */
+export async function 联系人查重(
+  db: 库,
+  行们: readonly { kind: string; value: string; numberKey: string }[],
+  读的我: 谁 | null,
+  除了?: string,
+): Promise<撞到的联系人[]> {
+  const 们 = 行们.filter((x) => x.numberKey);
+  if (!们.length) return [];
+  const 撞 = new Map<string, { kind: string; value: string }>();
+  const 记 = (contactId: string | null | undefined, 行: { kind: string; value: string }) => {
+    if (contactId && contactId !== 除了 && !撞.has(contactId)) 撞.set(contactId, { kind: 行.kind, value: 行.value });
+  };
+  const 子表 = await db.contactMethod.findMany({
+    where: { contactId: { not: null }, OR: 们.map((x) => ({ kind: x.kind, numberKey: x.numberKey })) },
+    select: { contactId: true, kind: true, numberKey: true },
+  });
+  for (const 行 of 们) for (const r of 子表) if (r.kind === 行.kind && r.numberKey === 行.numberKey) 记(r.contactId, 行);
+  for (const 行 of 们) {
+    if (行.kind === "phone") {
+      const 键们 = /^\d{11}$/.test(行.numberKey) ? [行.numberKey, `86${行.numberKey}`] : [行.numberKey];
+      const rs = await db.$queryRawUnsafe<{ id: string }[]>(
+        `SELECT "id" FROM "Contact" WHERE ${号键SQL('"phone"')} IN (${键们.map(() => "?").join(", ")})`, ...键们);
+      for (const r of rs) 记(r.id, 行);
+    } else if (行.kind === "email" || 行.kind === "wechat") {
+      const rs = await db.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "Contact" WHERE lower(trim("${行.kind}")) = ?`, 行.numberKey);
+      for (const r of rs) 记(r.id, 行);
+    }
+  }
+  if (!撞.size) return [];
+  const 人们 = await 看全部(async () => db.contact.findMany({
+    where: { id: { in: [...撞.keys()] } },
+    select: {
+      id: true, name: true, createdAt: true,
+      customer: { select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } } },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  }));
+  return 人们.map((p) => {
+    const 见 = 看得到(p.customer, 读的我);
+    const 号 = 撞.get(p.id)!;
+    return {
+      contactId: 见 ? p.id : null,
+      name: 见 ? p.name : null,
+      customerId: 见 ? p.customer.id : null,
+      customerName: 见 ? p.customer.name : null,
+      同事: p.customer.salesOwner?.name ?? "同事",
+      kind: 号.kind,
+      value: 号.value,
+    };
+  });
+}
+
+/** 撞到的联系人 → 一句话（保存被拦时的那一句；界面另按 撞了 摆成能点的链接） */
+export function 联系人撞号话(撞: readonly 撞到的联系人[], 叫法: (kind: string) => string): string {
+  const 头 = 撞[0];
+  const 谁 = 头.name ? `「${头.name}」（${头.customerName}）` : `${头.同事}名下的一位联系人`;
+  return `${叫法(头.kind)} ${头.value} 已经记在${谁}身上${撞.length > 1 ? `等 ${撞.length} 位` : ""}，本次没保存。可以把那位挂到这位客户上，或核对后改号码`;
+}

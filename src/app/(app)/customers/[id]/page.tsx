@@ -21,7 +21,7 @@ import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户 } from "@/lib/team-scope";
 import { 管全队客户 } from "@/lib/constants";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
-import { 关联客户们, 号码种类表, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
+import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 企业版字典 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -86,6 +86,30 @@ export default async function CustomerDetailPage({
   const 企 = 企业版();
   // 号码类的几种（手机、座机、WhatsApp）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
   const 打码种类 = new Set(["phone", "landline", "whatsapp"]);
+  // 企业版联系人挂多位客户（P13 第 1 条）：挂到这位的别人家联系人排在自家的后面；自家的另外挂在哪也带上
+  const 挂来的 = 企 ? await 客户的联系人们(customer.id) : [];
+  const 另挂 = 企 ? await 联系人另挂(customer.contacts.map((c) => c.id)) : {};
+  const 全部联系人id = [...customer.contacts.map((c) => c.id), ...挂来的.map((x) => x.contact.id)];
+  const 联系人一行 = (c: (typeof customer.contacts)[number]) => ({
+    id: c.id,
+    name: c.name,
+    position: c.position,
+    phone: 号(c.phone),
+    email: c.email,
+    wechat: c.wechat,
+    isPrimary: c.isPrimary,
+    remark: c.remark,
+    updatedAt: c.updatedAt.toISOString(),
+    ...(企
+      ? {
+          gender: c.gender,
+          birthday: c.birthday,
+          hobby: c.hobby,
+          address: c.address,
+          号码们: 联系人号码们(c, c.contactMethods).map((x) => ({ kind: x.kind, value: 打码种类.has(x.kind) ? 号(x.value) : x.value })),
+        }
+      : {}),
+  });
 
   return (
     <RecordView
@@ -116,14 +140,15 @@ export default async function CustomerDetailPage({
       // 企业版联系人附件（10-28）：每位联系人挂了几张；附件表不分权限，能看到这位客户就能看到他联系人的附件
       // 企业版客户状态（字典 custStatus，10-28 去遗留 A1）：标签行一枚章点了能改
       客户状态选项={企业版() ? await 可选项("custStatus") : []}
-      联系人分类附件数={企 ? await 联系人分类附件数(defaultClient, customer.contacts.map((c) => c.id)) : null}
+      联系人分类附件数={企 ? await 联系人分类附件数(defaultClient, 全部联系人id) : null}
       // 企业版客户改版（定稿 P5）：关联客户卡片、联系人号码类型、分配方式
       关联们={企 ? await 关联客户们(customer.id) : null}
       号码种类={企 ? (await 号码种类表()).map((x) => ({ 名: x.名, kind: x.kind, active: x.active })) : undefined}
       分配方式选项={企 ? await 可选项("custAssign") : undefined}
+      客户类型选项={企 ? await 可选项("custType") : undefined}
       // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/screen.tsx）
       新建项目={企 && (await 企业版只用项目()) ? { 节点们: [...企业版字典.节点们.线索], 要下一步: (await 生效组织规则()).超时回收.开 } : null}
-      联系人附件数={企业版() ? Object.fromEntries((await 附件个数(defaultClient, { contactIds: customer.contacts.map((c) => c.id) })).联系人) : null}
+      联系人附件数={企业版() ? Object.fromEntries((await 附件个数(defaultClient, { contactIds: 全部联系人id })).联系人) : null}
       customer={{
         id: customer.id,
         name: customer.name,
@@ -140,6 +165,7 @@ export default async function CustomerDetailPage({
         addrCity: customer.addrCity,
         addrDistrict: customer.addrDistrict,
         assignWay: customer.assignWay,
+        customerType: customer.customerType,
         expectedSignAt: scheduleValue(customer.expectedSignAt, customer.expectedSignOn),
         lastFollowAt: customer.lastFollowAt?.toISOString() ?? null,
         remark: customer.remark,
@@ -159,26 +185,15 @@ export default async function CustomerDetailPage({
         extra: (() => { const x = 取档案(customer.extra); return { ...x, whatsapp: x.whatsapp && 号(x.whatsapp) }; })(),
         updatedAt: customer.updatedAt.toISOString(),
       }}
-      contacts={customer.contacts.map((c) => ({
-        id: c.id,
-        name: c.name,
-        position: c.position,
-        phone: 号(c.phone),
-        email: c.email,
-        wechat: c.wechat,
-        isPrimary: c.isPrimary,
-        remark: c.remark,
-        updatedAt: c.updatedAt.toISOString(),
-        ...(企
-          ? {
-              gender: c.gender,
-              birthday: c.birthday,
-              hobby: c.hobby,
-              address: c.address,
-              号码们: 联系人号码们(c, c.contactMethods).map((x) => ({ kind: x.kind, value: 打码种类.has(x.kind) ? 号(x.value) : x.value })),
-            }
-          : {}),
-      }))}
+      contacts={[
+        ...customer.contacts.map((c) => ({ ...联系人一行(c), ...(另挂[c.id] ? { 另挂: 另挂[c.id] } : {}) })),
+        // 挂来的：主要联系人说的是主客户那边的，在这位客户上不算
+        ...挂来的.map((x) => ({
+          ...联系人一行(x.contact),
+          isPrimary: false,
+          挂靠: { linkId: x.linkId, note: x.note, 主客户Id: x.主客户.id, 主客户名: x.主客户.name, 主客户看得到: x.主客户.看得到, 能改: x.主客户.能改 },
+        })),
+      ]}
       报价记录={报价明细 ? await 客户报价记录(customer.id) : []}
       contracts={customer.contracts.map((c) => ({
         id: c.id,

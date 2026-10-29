@@ -41,7 +41,7 @@ type 结果 = "新建" | "更新" | "跳过" | "冲突";
 
 /** 每类拿来比对、记进对照表的格子（落库的列名；客户的外贸几格、商机的结单日期在附表里） */
 export const 比对字段: Record<实体, readonly string[]> = {
-  customer: ["name", "phone", "salesOwnerId", "followStatus", "custStatus", "remark", ...客户附加列, ...客户新列, "channelId"],
+  customer: ["name", "phone", "salesOwnerId", "followStatus", "custStatus", "customerType", "remark", ...客户附加列, ...客户新列, "channelId"],
   lead: ["name", "contact", "phone", "email", "industry", "source", "status", "ownerId", "remark"],
   contact: ["name", "position", "phone", "email", "wechat", "isPrimary", "remark", "customerId", ...联系人新列],
   opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "ownerId", "remark", "customerId"],
@@ -49,7 +49,7 @@ export const 比对字段: Record<实体, readonly string[]> = {
 };
 const 负责人列: Record<实体, string> = { customer: "salesOwnerId", lead: "ownerId", contact: "", opportunity: "ownerId", followup: "ownerId" };
 /** 同号连上已有客户时只补这几格（渠道还要归属没定才补，见 可挂渠道） */
-const 补空格 = ["custStatus", "remark", ...客户附加列, ...客户新列, "channelId"] as const;
+const 补空格 = ["custStatus", "customerType", "remark", ...客户附加列, ...客户新列, "channelId"] as const;
 /**
  * 企业版的新几格和渠道（P8）：原系统认得出才带这一格（清洗时逐格留空），没带 = 这次不碰，不算原系统清空了、也不算冲突。
  * 渠道只补空：我们这边已经挂了渠道 / 定了归属的不动、不记冲突（归属固化）
@@ -130,6 +130,7 @@ export async function 读现值(tx: Tx, e: 实体, id: string): Promise<值表 |
         salesOwnerId: true,
         followStatus: true,
         custStatus: true,
+        customerType: true,
         remark: true,
         extra: true,
         shortName: true,
@@ -302,6 +303,7 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
         salesOwnerId: String(v.salesOwnerId),
         followStatus: 串(v.followStatus) ?? "待跟进",
         custStatus: 串(v.custStatus ?? null),
+        customerType: 串(v.customerType ?? null),
         remark: 串(v.remark),
         ...Object.fromEntries(客户新列.map((k) => [k, 串(v[k] ?? null)])),
         ...(v.channelId ? await 渠道格(tx, String(v.channelId)) : {}),
@@ -404,6 +406,7 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     if (有("salesOwnerId")) data.salesOwnerId = String(改动.salesOwnerId);
     if (有("followStatus")) data.followStatus = 串(改动.followStatus) ?? "待跟进";
     if (有("custStatus")) data.custStatus = 串(改动.custStatus);
+    if (有("customerType")) data.customerType = 串(改动.customerType);
     if (有("remark")) data.remark = 串(改动.remark);
     for (const k of 客户新列) if (有(k)) data[k] = 串(改动[k]);
     if (有("channelId")) Object.assign(data, await 渠道格(tx, 串(改动.channelId)));
