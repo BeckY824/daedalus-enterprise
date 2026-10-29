@@ -162,6 +162,8 @@ model Customer {
   addrProvince String?
   addrCity     String?
   addrDistrict String?
+  /// 客户地址第五格「客户地址」（迁移 091，2026-10-29 P14 第 7 条）：公司详细地址，国内国外都收，可空
+  addrDetail   String?
   /// 分配方式：自持 / 非自持 / 公海领取（企业版字典 custAssign）
   assignWay    String?
   /// 企业版客户类型（迁移 092，2026-10-29 P13 第 4 条）：个人买家 / 贸易商 / 代理商 / 经销商……（企业版字典 custType）。别的版本一直是空

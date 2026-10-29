@@ -52,7 +52,7 @@ import { 客户的项目数 } from "@/lib/project/db";
 import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整外贸档案, 规整阿里ID, 认国家, type 外贸档案 } from "@/lib/customer-extra";
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
-import { 认企业级别, 规整地址, 简称上限, type 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
 
 
@@ -131,7 +131,9 @@ export type CustomerInput = {
 };
 
 /** 企业版客户主表上新加的几格（迁移 072；客户类型 customerType 是 2026-10-29 P13 迁移 092，取自字典 custType） */
-export type 企业客户资料 = 客户地址 & { shortName: string | null; assignWay: string | null; customerType: string | null };
+export type 企业客户资料 = 客户地址 & { shortName: string | null; assignWay: string | null; customerType: string | null;
+  /** 地址第五格「客户地址」（迁移 091，P14 第 7 条）：公司详细地址，国内国外都收 */
+  addrDetail: string | null };
 
 /** 编辑框里可改的那部分字段，用作并发比对的基准快照 */
 export type CustomerSnapshot = Pick<
@@ -402,6 +404,11 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       const 址 = 规整地址(交);
       if (!址.ok) return { ok: false, error: 址.error };
       企资料 = { ...企资料, ...址.值 };
+    }
+    if (交.addrDetail !== undefined) {
+      const 详 = 规整详细地址(交.addrDetail);
+      if (!详.ok) return { ok: false, error: 详.error };
+      企资料.addrDetail = 详.值;
     }
     if (交.assignWay !== undefined) {
       const v = (交.assignWay ?? "").trim() || null;

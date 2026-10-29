@@ -168,6 +168,7 @@ export default async function CustomerDetailPage({
         addrProvince: customer.addrProvince,
         addrCity: customer.addrCity,
         addrDistrict: customer.addrDistrict,
+        addrDetail: customer.addrDetail,
         assignWay: customer.assignWay,
         customerType: customer.customerType,
         expectedSignAt: scheduleValue(customer.expectedSignAt, customer.expectedSignOn),

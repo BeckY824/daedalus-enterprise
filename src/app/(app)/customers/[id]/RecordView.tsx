@@ -44,7 +44,7 @@ import InlineField from "./InlineField";
 import AiPanel from "./AiPanel";
 import LinkedCustomers from "./LinkedCustomers";
 import NewProjectModal from "./NewProjectModal";
-import { 客户页摆法, 级别选项, 企业级别, 拼地址, 简称上限 } from "@/lib/enterprise/customer-v2";
+import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
 import LevelStars from "@/components/LevelStars";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
@@ -696,10 +696,17 @@ export default function RecordView({
                   <InlineField customerId={customer.id} field="customerType" label="客户类型" value={customer.customerType ?? null} kind="select"
                     options={[...new Set([...客户类型选项, ...(customer.customerType ? [customer.customerType] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空 />
                 )}
+                {/* 地址五格（P14 第 7 条）：前四格拼成一行「所在地区」，第五格「客户地址」（公司详细地址）单独一行；都点「编辑全部」改 */}
                 {摆(地址文字) && (
-                  <div className="rec-field" style={{ cursor: "default" }} title="地址分省市区，点「编辑全部」改">
-                    <div className="rec-field-k">地址</div>
+                  <div className="rec-field" style={{ cursor: "default" }} title="国家地区 / 省 / 市 / 区县级市，点「编辑全部」改">
+                    <div className="rec-field-k">所在地区</div>
                     <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{地址文字 || <span className="rec-field-empty">未填</span>}</div>
+                  </div>
+                )}
+                {摆(customer.addrDetail) && (
+                  <div className="rec-field" style={{ cursor: "default" }} title="公司详细地址，点「编辑全部」改">
+                    <div className="rec-field-k">{地址叫法.addrDetail}</div>
+                    <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{customer.addrDetail || <span className="rec-field-empty">未填</span>}</div>
                   </div>
                 )}
                 {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
