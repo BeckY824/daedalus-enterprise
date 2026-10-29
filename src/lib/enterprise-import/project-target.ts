@@ -126,6 +126,7 @@ export async function 项目挂件(tx: Tx, id: string, 批次Id: string): Promis
       contactId: true,
       pooledAt: true,
       nextStepAt: true,
+      nextStepText: true,
       balanceSettled: true,
       acceptancePassed: true,
       exceptionCategoryId: true,
@@ -140,7 +141,7 @@ export async function 项目挂件(tx: Tx, id: string, 批次Id: string): Promis
   // 导入的线索建项目时挂的是同一批建的联系人（apply.ts 线索落项目），那不算导入后补的
   const 自己的联系人 =
     !!p.contactId && !!(await tx.entImportRow.findFirst({ where: { batchId: 批次Id, entity: "contact", targetId: p.contactId, kind: "create" }, select: { id: true } }));
-  if ((p.contactId && !自己的联系人) || p.nextStepAt || p.exceptionCategoryId) return "导入之后又补过项目（联系人、下一步、异常类别）";
+  if ((p.contactId && !自己的联系人) || p.nextStepAt || p.nextStepText || p.exceptionCategoryId) return "导入之后又补过项目（联系人、下一步、异常类别）";
   if (p.balanceSettled || p.acceptancePassed) return "项目勾过尾款结清或验收通过";
   return null;
 }

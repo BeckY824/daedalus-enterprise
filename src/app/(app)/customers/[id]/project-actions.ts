@@ -82,7 +82,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
 
     const projectId = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
-        data: { ...项目, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点, nextStepAt: 跟进.nextStepAt },
+        data: { ...项目, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点, nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText },
       });
       await tx.projectNodeLog.create({ data: { projectId: p.id, userId: me.id, toPhase: "线索", toNode: 落.节点 } });
       const f = await tx.followUp.create({

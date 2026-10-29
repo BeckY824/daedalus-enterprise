@@ -21,7 +21,7 @@ export const 汇总每页 = 50;
 /** 一位客户最多汇总多少个项目（查询里 in 的上限；正常远到不了） */
 const 项目上限 = 500;
 
-type 项目行 = { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null; result: string | null; nextStepAt: Date | null; updatedAt: Date };
+type 项目行 = { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null; result: string | null; nextStepAt: Date | null; nextStepText: string | null; updatedAt: Date };
 
 /** 这位客户、当前这位看得到沟通内容的项目（主客户是它的 + 关联进来的；连挂过 = 再加历史上挂过这位跟进的） */
 async function 看得到的项目们(me: { id: string }, customerId: string, 连挂过: boolean): Promise<{ 行: 项目行; 主: boolean }[]> {
@@ -35,7 +35,7 @@ async function 看得到的项目们(me: { id: string }, customerId: string, 连
   if (ids.length === 0) return [];
   const ps = await prisma.project.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, nextStepAt: true, updatedAt: true },
+    select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, nextStepAt: true, nextStepText: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
   });
   const 看得到 = await 看得到的客户(ps.map((p) => p.customerId));
@@ -58,6 +58,8 @@ export type 跟进去处 = {
   说明: "已结束" | "在公海" | null;
   /** 项目下一步时间（ISO）；待办里摆一行只读的（第 2 条） */
   下一步: string | null;
+  /** 项目下一步做什么（10-29 起记沟通时自己写的一句话）；老数据只有时间、这里是空 */
+  下一步文字: string | null;
 };
 export async function 跟进去处们(me: { id: string }, customerId: string): Promise<跟进去处[]> {
   const 行们 = (await 看得到的项目们(me, customerId, false)).map(({ 行, 主 }) => ({
@@ -67,6 +69,7 @@ export async function 跟进去处们(me: { id: string }, customerId: string): P
     结束: !!行.result || !!行.pooledAt,
     说明: 行.result ? ("已结束" as const) : 行.pooledAt ? ("在公海" as const) : null,
     下一步: 行.nextStepAt?.toISOString() ?? null,
+    下一步文字: 行.nextStepText,
   }));
   return [...行们.filter((x) => !x.结束), ...行们.filter((x) => x.结束)];
 }

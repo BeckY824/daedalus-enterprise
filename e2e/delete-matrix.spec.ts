@@ -154,7 +154,7 @@ test("删商机：确认框说关联几条跟进、是赢单的；删了点撤�
 });
 
 test("删跟进（顺带建了待办的提醒）：就地确认说「连同它的待办」；删了待办也没了，点撤销都回来", async ({ page }) => {
-  test.skip(企业版, "企业版客户页的沟通记录只读（各项目跟进的汇总），跟进页、项目沟通卡也没有删除键");
+  test.skip(企业版, "企业版客户页的沟通记录只读（各项目跟进的汇总）；企业版删沟通走项目详情的「…」，见下一条");
   const p = 连库();
   const c = await p.customer.create({ data: { name: `跟进客户${戳}`, phone: `1385${戳}0`.slice(0, 11), salesOwnerId: 我 } });
   const 到点 = new Date(Date.now() + 2 * 86400000);
@@ -182,6 +182,51 @@ test("删跟进（顺带建了待办的提醒）：就地确认说「连同它�
   await expect(page.locator(".ant-message")).toContainText("这条跟进回来了");
   await expect(那条).toHaveCount(1);
   await expect(待办).toHaveCount(1);
+});
+
+test("企业版删项目上的一条沟通：「…」→ 删除，就地确认说进回收站；提示条撤销能拿回来，再删一次去回收站恢复", async ({ page }) => {
+  test.skip(!企业版, "项目详情的「…」只在企业版（软删进回收站）；开关关着那套删跟进在上一条");
+  const p = 连库();
+  const c = await p.customer.create({ data: { name: `项目沟通客户${戳}`, phone: `1389${戳}0`.slice(0, 11), salesOwnerId: 我 } });
+  const 项目 = await p.project.create({ data: { name: `示例项目${戳}`, customerId: c.id, ownerId: 我, creatorId: 我 } });
+  const f = await p.followUp.create({ data: { customerId: c.id, ownerId: 我, type: "PHONE", title: "", content: `电话聊了报价${戳}`, status: "已完成", occurredAt: new Date() } });
+  await p.followUpProject.create({ data: { followUpId: f.id, projectId: 项目.id, node: 项目.node } });
+  await p.$disconnect();
+
+  await 登录(page);
+  await page.goto(`/projects/${项目.id}`);
+  const 那条 = page.getByRole("main").getByText(`电话聊了报价${戳}`);
+  await expect(那条).toBeVisible();
+
+  const 删一次 = async () => {
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).click();
+    await page.getByRole("menuitem", { name: "删除" }).click();
+    await expect(就地确认(page)).toContainText("删了进回收站");
+    await 就地确认(page).getByRole("button", { name: "删除" }).click();
+    const 提示 = page.locator(".ant-message", { hasText: "设置 → 回收站" });
+    await expect(提示).toBeVisible();
+    await expect(那条).toHaveCount(0);
+    return 提示;
+  };
+
+  // 删了点撤销：回来了
+  const 提示 = await 删一次();
+  await 提示.getByRole("button", { name: /撤\s*销/ }).click();
+  await expect(page.locator(".ant-message")).toContainText("这条沟通回来了");
+  await expect(那条).toBeVisible();
+
+  // 再删一次，这回去设置 → 回收站 恢复
+  await 删一次();
+  const q = 连库();
+  expect((await q.followUp.findUnique({ where: { id: f.id }, select: { deletedAt: true } }))?.deletedAt).toBeInstanceOf(Date);
+  await q.$disconnect();
+  await page.goto("/settings?tab=trash");
+  const 行 = page.locator("tr.ant-table-row", { hasText: `电话聊了报价${戳}` });
+  await expect(行).toContainText("沟通记录");
+  await 行.getByRole("button", { name: /恢\s*复/ }).click();
+  await expect(page.locator(".ant-message")).toContainText("已恢复沟通记录");
+  await page.goto(`/projects/${项目.id}`);
+  await expect(那条).toBeVisible();
 });
 
 test("删签约：确认框说清金额、会退回哪个赢单商机、状态退到哪一档；删完提示退回了几个商机", async ({ page }) => {

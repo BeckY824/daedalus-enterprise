@@ -28,6 +28,10 @@ import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
 import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, type 初判 } from "@/lib/project/lead-verify";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
+import { saveFollowUp, deleteFollowUp, restoreFollowUp, type 删掉的跟进 } from "../customers/[id]/actions";
+import { 只读客户 } from "@/lib/team-scope";
+import { 虚线只读话 } from "@/lib/enterprise/visibility";
+import { scheduleValue } from "@/lib/schedule-date";
 import { 向导自动分配 } from "../leads/assign-actions";
 import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, type 分配方式序号 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
@@ -566,13 +570,13 @@ export async function 预览超时回收(改: 规则改动) {
   } catch (e) { return 不在了(e); }
 }
 
-/** 在项目上记一条沟通（项目详情「记一条」）。开了超时回收的线索 / 商机阶段要带下一步时间 */
+/** 在项目上记一条沟通（项目详情「记一条」）。下一步做什么必填一句话；开了超时回收的线索 / 商机阶段还要带下一步时间 */
 export async function 记项目沟通Action(projectId: string, input: 向导跟进) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
     if (!企业版()) return { ok: false as const, error: "在项目上记沟通是企业版的功能，请去客户页记" };
-    const r = await 记项目沟通(me, projectId, input);
+    const r = await 记项目沟通(me, projectId, input, new Date(), { 要下一步文字: true });
     if (r.ok) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
       await recordAudit({
@@ -584,5 +588,76 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       revalidatePath("/follow-ups");
     }
     return r.ok ? { ok: true as const, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
+  } catch (e) { return 不在了(e); }
+}
+
+/**
+ * 项目详情里一条沟通的「…」菜单（10-29）。改、删都走客户页那一套（saveFollowUp / deleteFollowUp），规矩不另写：
+ * 只认挂在这个项目上的沟通；同事的客户 / 虚线下属的客户（只读客户）改不了、删不了，和客户页不摆编辑删除一致。
+ * 删 = 企业版软删，进「设置 → 回收站」，30 天内老板能恢复
+ */
+async function 项目上的沟通(projectId: string, followUpId: string) {
+  if (typeof projectId !== "string" || typeof followUpId !== "string" || !projectId || !followUpId) return { ok: false as const, error: "这条沟通的信息不完整，刷新看看" };
+  const 挂 = await prisma.followUpProject.findUnique({ where: { followUpId }, select: { projectId: true } });
+  if (!挂 || 挂.projectId !== projectId) return { ok: false as const, error: "这条沟通不在这个项目上了，刷新看看" };
+  const f = await prisma.followUp.findUnique({ where: { id: followUpId } });
+  if (!f) return { ok: false as const, error: "这条沟通已经不在了（可能在别处删了），刷新看看" };
+  const c = await prisma.customer.findUnique({ where: { id: f.customerId }, select: { salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
+  if (!c) return { ok: false as const, error: "这位客户已经不在了，刷新看看" };
+  const 只读档 = await 只读客户(defaultClient, c);
+  if (只读档 === "全") return { ok: false as const, error: 虚线只读话 };
+  if (只读档) return { ok: false as const, error: "这是同事的客户：只能新加沟通，改、删已有的请找负责人" };
+  return { ok: true as const, f };
+}
+
+export type 改沟通输入 = { type: string; content: string; occurredAt: string; 版本?: string };
+
+/** 改项目上的一条沟通：只改沟通方式、时间、内容，别的格子（状态、时长、提醒、联系人、与会人）原样带回去 */
+export async function 改项目沟通(projectId: string, followUpId: string, input: 改沟通输入) {
+  try {
+    await requireUser();
+    if (!(await 开着())) return 没开;
+    if (!企业版()) return { ok: false as const, error: "在项目上改沟通是企业版的功能，请去客户页改" };
+    if (!input || typeof input !== "object") return { ok: false as const, error: "沟通信息格式不正确" };
+    const 查 = await 项目上的沟通(projectId, followUpId);
+    if (!查.ok) return 查;
+    const f = 查.f;
+    const r = await saveFollowUp({
+      id: f.id, customerId: f.customerId, type: input.type, content: input.content, occurredAt: input.occurredAt,
+      title: f.title, status: f.status, durationMinutes: f.duration != null ? f.duration / 60 : null,
+      dueAt: scheduleValue(f.dueAt, f.dueOn), dueHasTime: f.dueHasTime ?? undefined,
+      contactId: f.contactId, opportunityId: f.opportunityId, participants: f.participants,
+      版本: input.版本 ?? f.updatedAt.toISOString(),
+    });
+    if (!r.ok) return r;
+    刷新项目(projectId, f.customerId);
+    return { ok: true as const };
+  } catch (e) { return 不在了(e); }
+}
+
+/** 删项目上的一条沟通：企业版软删进回收站。回给前端快照，提示条上的「撤销」拿它调 restoreFollowUp */
+export async function 删项目沟通(projectId: string, followUpId: string) {
+  try {
+    await requireUser();
+    if (!(await 开着())) return 没开;
+    if (!企业版()) return { ok: false as const, error: "在项目上删沟通是企业版的功能，请去客户页删" };
+    const 查 = await 项目上的沟通(projectId, followUpId);
+    if (!查.ok) return 查;
+    const r = await deleteFollowUp(followUpId, 查.f.customerId);
+    if (!r.ok) return r;
+    刷新项目(projectId, 查.f.customerId);
+    return { ok: true as const, 快照: r.快照 };
+  } catch (e) { return 不在了(e); }
+}
+
+/** 撤销刚删的那条项目沟通：企业版就是把 deletedAt 清掉（restoreFollowUp 里走 撤销软删），再刷项目页 */
+export async function 撤销删项目沟通(projectId: string, 快照: 删掉的跟进) {
+  try {
+    await requireUser();
+    if (!(await 开着())) return 没开;
+    const r = await restoreFollowUp(快照);
+    if (!r.ok) return r;
+    刷新项目(projectId, 快照.customerId);
+    return { ok: true as const };
   } catch (e) { return 不在了(e); }
 }

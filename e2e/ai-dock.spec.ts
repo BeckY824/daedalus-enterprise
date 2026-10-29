@@ -367,7 +367,8 @@ test.describe("面板里的回答和建议卡", () => {
 
       await 回执.getByRole("button", { name: "撤销" }).click();
       await expect(page.locator(".ant-message")).toContainText("已撤销");
-      await expect.poll(() => p.followUp.count({ where: { customerId: c.id } })).toBe(0);
+      // 企业版撤销是软删进回收站（10-29 起），开关关着是真删：两种都只数没删的
+      await expect.poll(() => p.followUp.count({ where: { customerId: c.id, deletedAt: null } })).toBe(0);
       // 撤销完卡片回到「等你确认」，还能再确认或忽略
       await expect(page.locator("aside.dock .prop .prop-ok").first()).toBeVisible();
     } finally {

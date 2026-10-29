@@ -81,7 +81,7 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
   const 今天末 = dayjs().endOf("day");
   const 点 = (r: 名单项目) =>
     r.nextAt && dayjs(r.nextAt).isBefore(今天末)
-      ? { cls: "due", 说: "下一步到期了" }
+      ? { cls: "due", 说: r.nextText ? `下一步到期了：${r.nextText}` : "下一步到期了" }
       : !r.lastAt || dayjs().diff(dayjs(r.lastAt), "day") >= 30
         ? { cls: "cold", 说: "一个月没沟通了" }
         : { cls: "ok", 说: "最近沟通过" };

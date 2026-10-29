@@ -14,6 +14,7 @@ import { 第一个节点, 企业版字典, 节点序号 } from "./nodes";
 import { 有效线索节点, 缺有效沟通, 记沟通标记 } from "./stage-gates";
 import { 登记接着建, type 接着建 } from "./hook";
 import { 记沟通编号 } from "./followup-meta";
+import { 下一步文字上限 } from "./project-fields";
 
 export const 项目名上限 = 60;
 export const 备注上限 = 500;
@@ -28,6 +29,8 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
  * 阶段、明确回复：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看
  */
 export type 向导跟进 = { type: string; content: string; occurredAt: string; 下一步时间?: string | null; 阶段?: string; 明确回复?: boolean | null;
+  /** 下一步做什么（一句话，10-29）：项目详情记沟通必填（要下一步文字），向导 / 别的入口可不传；时间可空 */
+  下一步?: string | null;
   /** 企业版建档向导：项目建在线索阶段的哪个节点（跟进节点，必选）；团队版不传，一律潜客培育 */
   节点?: string | null };
 
@@ -47,9 +50,10 @@ export function 项目来源默认(项目选的: string | null | undefined, 客�
   return 文字(项目选的) || 文字(客户来源) || null;
 }
 
-export type 规整好的沟通 = { type: string; content: string; occurredAt: Date; nextStepAt: Date | null };
+export type 规整好的沟通 = { type: string; content: string; occurredAt: Date; nextStepAt: Date | null; nextStepText: string | null };
 
 export const 要下一步时间 = "开了超时回收：线索、商机阶段的项目记沟通要填下一步时间";
+export const 要下一步文字 = "请写下一步做什么";
 
 /** 首条跟进记的是一次沟通；待办、提醒要带时间，进了项目页再排 */
 const 首条能记的 = FOLLOW_TYPES.filter((t) => t.value !== "TASK" && t.value !== "REMIND").map((t) => t.value as string);
@@ -71,11 +75,12 @@ export function 规整项目(p: 向导项目, 默认负责人: string): 规整�
 
 /**
  * 一条项目沟通规整一遍：向导的首条跟进、项目详情里「记一条」共用。
- * 要下一步 = 开了超时回收、项目在线索 / 商机阶段（调用方判断）；下一步时间填了就得是今天或以后
+ * 要下一步 = 开了超时回收、项目在线索 / 商机阶段（调用方判断）；下一步时间填了就得是今天或以后。
+ * 要下一步文字 = 项目详情「记一条」（10-29）：下一步做什么必填一句话，时间照旧按要下一步
  */
 export function 规整沟通(
   f: 向导跟进,
-  opt: { 要下一步: boolean; now?: Date; 叫法?: string },
+  opt: { 要下一步: boolean; now?: Date; 叫法?: string; 要下一步文字?: boolean },
 ): 规整好的沟通 | { error: string } {
   const now = opt.now ?? new Date(), 叫 = opt.叫法 ?? "";
   if (!首条能记的.includes(f.type)) return { error: `${叫}跟进的类型「${f.type}」不能选` };
@@ -89,7 +94,10 @@ export function 规整沟通(
     if (!nextStepAt) return { error: "下一步时间格式不正确" };
     if (dayjs(nextStepAt).format("YYYY-MM-DD") < dayjs(now).format("YYYY-MM-DD")) return { error: "下一步时间不能早于今天" };
   } else if (opt.要下一步) return { error: 要下一步时间 };
-  return { type: f.type, content: 文字(f.content), occurredAt, nextStepAt };
+  const nextStepText = 文字(f.下一步) || null;
+  if (!nextStepText && opt.要下一步文字) return { error: 要下一步文字 };
+  if (nextStepText && nextStepText.length > 下一步文字上限) return { error: `下一步请控制在 ${下一步文字上限} 字以内` };
+  return { type: f.type, content: 文字(f.content), occurredAt, nextStepAt, nextStepText };
 }
 
 /** 后四步交上来的规整一遍。负责人没选 = 自己；在不在职由调用方查库。要下一步 = 开了超时回收（项目建在线索阶段） */
@@ -148,7 +156,7 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
     const 项目 = await tx.project.create({
       data: {
         ...好.项目, customerId, contactId: 联系人.id, creatorId: me.id,
-        phase: 落.phase, node: 落.node, nextStepAt: 好.跟进.nextStepAt,
+        phase: 落.phase, node: 落.node, nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText,
         // 项目来源只有企业版建档才写（建档向导里查过库）；团队版一律空，渠道统计回落到客户来源
         ...(好.企业?.项目来源 ? { channelId: 好.企业.项目来源 } : {}),
       },

@@ -446,7 +446,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       if (超) return { ok: false as const, error: 超 };
     }
     // 换了人，上一位填的下一步时间不替新负责人算（超时回收从接手那天重新算）
-    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 ? { nextStepAt: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
+    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
     if (换人) await 记转让(tx, p, me.id, p.ownerId, 新.ownerId);
     return { ok: true as const, 变了, ...带推进(await 按必填推进(tx, 规则, me, p.id)) };
   });
@@ -521,7 +521,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
     const 现在 = new Date();
-    await tx.project.update({ where: { id: p.id }, data: { pooledAt: 现在, nextStepAt: null } });
+    await tx.project.update({ where: { id: p.id }, data: { pooledAt: 现在, nextStepAt: null, nextStepText: null } });
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason);
     // 企业版：客户名下只有这一个项目，客户也一起进客户公海（pool-link.ts）
     await 单项目客户跟进公海(tx, p, me.id, 现在);
@@ -642,7 +642,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     const 收 = await 查完再写(async (tx) => {
       const 现 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
       if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今)) return false;
-      await tx.project.update({ where: { id: p.id }, data: { pooledAt: 今, nextStepAt: null } });
+      await tx.project.update({ where: { id: p.id }, data: { pooledAt: 今, nextStepAt: null, nextStepText: null } });
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由);
       await 单项目客户跟进公海(tx, p, null, 今);
@@ -689,9 +689,10 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 只扫?: string)
 /**
  * 在项目上记一条沟通：负责人、老板、主管、项目组成员能记；在公海里的先领取。
  * 开了超时回收、项目在线索 / 商机阶段（还没结局）时必须填下一步时间。
- * 跟进挂在客户上（客户页也看得到）+ 挂上项目当时的节点；客户的最近跟进往后推；填了下一步时间写到项目上
+ * 跟进挂在客户上（客户页也看得到）+ 挂上项目当时的节点；客户的最近跟进往后推；填了下一步（文字 / 时间）写到项目上。
+ * 要下一步文字 = 项目详情「记一条」那条路（10-29）：下一步做什么必填一句话
  */
-export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date()): Promise<结果 & { followUpId?: string; 自动推到?: string[] }> {
+export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(), opt: { 要下一步文字?: boolean } = {}): Promise<结果 & { followUpId?: string; 自动推到?: string[] }> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
   const 规则 = await 生效组织规则();
   return 查完再写(async (tx) => {
@@ -703,7 +704,7 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
       if (组员?.inviteStatus !== "JOINED") return { ok: false as const, error: "只有项目负责人、项目组成员、老板或主管能记沟通" };
     }
     const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
-    const 好 = 规整沟通(input, { 要下一步, now });
+    const 好 = 规整沟通(input, { 要下一步, now, 要下一步文字: opt.要下一步文字 });
     if ("error" in 好) return { ok: false as const, error: 好.error };
     const 阶段问题 = 记沟通阶段问题(input, p);
     if (阶段问题) return { ok: false as const, error: 阶段问题 };
@@ -716,7 +717,9 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     // 企业版组员不一定看得到这位客户（客户是负责人的）：最近跟进时间只是跟着记一笔，不按范围拦
     const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
     if (!c?.lastFollowAt || c.lastFollowAt < 好.occurredAt) await 看全部(() => tx.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 好.occurredAt } }));
-    if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
+    // 下一步：写了文字就文字 + 时间一起换（时间可空，空就清掉上一次的时间）；老入口只给时间，照旧只改时间、文字不动
+    if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
+    else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
     await 勾掉将回收提醒(tx, 规则, p, now);
     return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };

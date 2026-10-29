@@ -22,16 +22,20 @@ export function 按预计成交排(a: string | null | undefined, b: string | nul
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** 项目「下一步做什么」最多几个字（10-29：下一步改成自己写的一句话 + 可选时间；向导、项目详情、服务端校验同一个数） */
+export const 下一步文字上限 = 100;
+
 /** 项目「记一条沟通」弹窗的时间格式（和弹窗里的输入框同一个） */
 export const 沟通时间格式 = "YYYY-MM-DD HH:mm";
 
-export type 沟通预填 = { type?: string; content?: string; occurredAt?: string; 下一步时间?: string };
+export type 沟通预填 = { type?: string; content?: string; occurredAt?: string; 下一步?: string; 下一步时间?: string };
 
 /**
  * AI 解析出来的草稿 → 项目「记一条沟通」弹窗要预填的格子。只是预填，人核对后点「记下」才写库。
  * - 类型：弹窗能选的才填（项目沟通不收待办 / 提醒），不认识的留着人选
  * - 内容：用整理好的正文，没有就用标题
  * - 沟通时间：模型给的且不晚于现在才填（项目沟通不记将来的时间）
+ * - 下一步（做什么，10-29）：约定的下次跟进的主题优先，没有就取带日子的那条待办、再没有就第一条待办的标题；超过 100 字截掉
  * - 下一步时间：约定的下次跟进（plan）优先，没有就第一条带日子的待办；只填今天及以后的日子
  * - 「客户明确回复了吗」不猜，留给人选（线索验证往后推看这一格）
  */
@@ -45,6 +49,8 @@ export function 项目沟通预填(草稿: FollowUpDraft, 能选类型: readonly
     const t = dayjs(f.occurredAt);
     if (t.isValid() && !t.isAfter(现在)) 填.occurredAt = t.format(沟通时间格式);
   }
+  const 做什么 = (草稿.plan?.subject || (草稿.tasks.find((x) => x.dueAt) ?? 草稿.tasks[0])?.title || "").trim().slice(0, 下一步文字上限);
+  if (做什么) 填.下一步 = 做什么;
   const 下次 = 草稿.plan?.plannedAt || 草稿.tasks.find((x) => x.dueAt)?.dueAt || null;
   if (下次) {
     const t = dayjs(下次);

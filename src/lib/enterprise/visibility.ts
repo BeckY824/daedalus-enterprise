@@ -15,7 +15,7 @@
  * 缓存 10 秒，按会话票分开；到期先用旧的、后台再认一次——理由同 team-scope 现在的限定：
  * 这一句常落在交互式事务里，SQLite 只开一个连接，现查要等事务放连接。改组织、拨开关后 忘掉企业版范围()。
  */
-import { AsyncLocalStorage } from "node:async_hooks";
+import { 全进程上下文 } from "@/lib/process-als";
 import { jwtVerify } from "jose";
 import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
@@ -42,7 +42,7 @@ export function 组织范围of(org: 组织, 账号角色: string | null, 我: st
   return 读.size > 写.size ? { 写: [...写], 读: [...读] } : { 写: [...写] };
 }
 
-const 身份 = new AsyncLocalStorage<string>();
+const 身份 = 全进程上下文<string>("以谁的身份");
 
 /** 不走 cookie 的入口（MCP 用令牌认人）：这一段里的查询按这个人算范围 */
 export function 以谁的身份<T>(userId: string, fn: () => Promise<T>): Promise<T> {

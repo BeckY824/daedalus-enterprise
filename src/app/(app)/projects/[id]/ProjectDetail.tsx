@@ -3,10 +3,11 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ThunderboltOutlined } from "@ant-design/icons";
-import { App, Alert, Button, Card, Checkbox, Input, Modal, Popconfirm, Progress, Radio, Select, Space, Tag, Timeline, Tooltip } from "antd";
+import { MoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { App, Alert, Button, Card, Checkbox, Dropdown, Input, Modal, Popconfirm, Progress, Radio, Select, Space, Tag, Timeline, Tooltip } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
+import InlineConfirm from "@/components/InlineConfirm";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { 必填叫法 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
@@ -28,9 +29,9 @@ import type { 可选渠道 } from "@/components/ChannelPicker";
 import { 拼地址, 企业级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 项目区域 } from "@/lib/project/profile-rules";
-import { 项目沟通预填, 沟通时间格式 } from "@/lib/project/project-fields";
+import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action } from "../actions";
+import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, type 卡点卡, type 可选人 } from "../BlockerPanel";
@@ -77,10 +78,13 @@ export type 项目详情 = {
   /**
    * 企业版超时回收：nextStepAt 是最近一次沟通填的下一步时间（服务端排好的 YYYY-MM-DD）；回收日 = 哪天没人跟进就自动回公海（null = 不会）；
    * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人、老板、主管、项目组成员，且不在公海（不是企业版照原来去客户页记）
+   * nextStepText = 下一步做什么（10-29 起记沟通时自己写一句话，时间可空）；老数据只有时间没有这句，就只摆时间
    */
-  nextStepAt: string | null; 回收日: string | null;
+  nextStepAt: string | null; nextStepText?: string | null; 回收日: string | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
+  /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户 */
+  可改沟通?: boolean;
   /**
    * 企业版（10-29 P6）：项目来源 = 项目自己选的渠道（没选 = 跟客户来源走，null = 客户也没有）；已立项天数从建项目那天按自然日数；
    * 渠道们 = 能改时编辑框里选项目来源用的；aiEnabled = 「记一条沟通」里给不给 AI 解析（没配模型不给）。不是企业版都不传
@@ -110,7 +114,7 @@ export type 项目详情 = {
     放回方式?: 放回方式;
   }[];
   /** 企业版：code 是沟通编号（FUL…），提醒按下一步时间算（blocker-rules.ts 时限提醒of），没填下一步时间不给 */
-  followUps: { id: string; type: string; content: string; occurredAt: string; who: string; node: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null }[];
+  followUps: { id: string; type: string; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null }[];
   members: 组员[];
   /** 企业版提成卡：不是企业版、我看不了（不是组长 / 组员 / 管理员 / 上级）= null，卡片不出 */
   提成: 提成卡 | null;
@@ -265,6 +269,9 @@ export default function ProjectDetail({
   const [编辑开着, set编辑开着] = useState(false);
   const [记一条开着, set记一条开着] = useState<false | "手填" | "AI">(false);
   const [发卡点于, set发卡点于] = useState<string | null>(null);
+  /** 沟通的「…」菜单：正在改哪一条 / 删除问句开在哪一条上 */
+  const [改沟通于, set改沟通于] = useState<项目详情["followUps"][number] | null>(null);
+  const [删问于, set删问于] = useState<string | null>(null);
   const 当前: 位置 = { phase: p.phase, node: p.node, result: p.result };
   const 字典 = 字典of(p.企业版, p.出口叫法);
   const 节点总数 = 节点总数of(字典);
@@ -299,6 +306,42 @@ export default function ProjectDetail({
     } finally {
       set忙(false);
     }
+  };
+
+  /** 删项目上的一条沟通：企业版软删进回收站；提示条上给一次撤销（和客户页删跟进一样 6 秒） */
+  const 删沟通 = async (id: string) => {
+    set忙(true);
+    let r: Awaited<ReturnType<typeof 删项目沟通>>;
+    try {
+      r = await 删项目沟通(p.id, id);
+    } catch {
+      r = { ok: false, error: "没删成，请稍后再试" };
+    } finally {
+      set忙(false);
+    }
+    if (!r.ok) return void message.error(r.error);
+    router.refresh();
+    const 快照 = r.快照;
+    const key = `project-follow-${id}`;
+    message.success({
+      key,
+      duration: 6,
+      content: (
+        <span>
+          已删除，30 天内可在「设置 → 回收站」恢复
+          <Button
+            type="link"
+            size="small"
+            onClick={async () => {
+              message.destroy(key);
+              await 跑(() => 撤销删项目沟通(p.id, 快照), "这条沟通回来了");
+            }}
+          >
+            撤销
+          </Button>
+        </span>
+      ),
+    });
   };
 
   const 改到 = (到: 位置) => {
@@ -433,7 +476,16 @@ export default function ProjectDetail({
       {p.historyOwners.length > 0 && (
         <div style={行样}><span style={键样}>历史</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }} title="历史负责人：把这个项目放回过公海的人">{p.historyOwners.join("、")}</span></div>
       )}
-      {p.nextStepAt && !p.pooled && <div style={行样}><span style={键样}>下一步</span>{p.nextStepAt}</div>}
+      {(p.nextStepText || p.nextStepAt) && !p.pooled && (
+        <div style={行样}>
+          <span style={键样}>下一步</span>
+          <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+            {p.nextStepText}
+            {p.nextStepText && p.nextStepAt && <span style={{ color: "var(--text-muted)" }}> · </span>}
+            {p.nextStepAt && <span style={p.nextStepText ? { color: "var(--text-muted)", whiteSpace: "nowrap" } : undefined}>{p.nextStepAt}</span>}
+          </span>
+        </div>
+      )}
       {p.回收日 && <div style={{ ...行样, color: 回收临近(p.回收日) ? "var(--warning-text)" : "var(--text-muted)" }}>{p.回收日} 前没人跟进，会自动回到项目公海</div>}
       {p.remark && <div style={{ marginTop: 8, whiteSpace: "pre-wrap", color: "var(--text-muted)" }}>{p.remark}</div>}
     </Card>
@@ -522,6 +574,24 @@ export default function ProjectDetail({
             {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
             <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
             {卡点?.能发 && <Button type="link" size="small" style={{ padding: 0 }} onClick={() => set发卡点于(f.id)}>发卡点</Button>}
+            {p.可改沟通 && (
+              // 「…」放在这一行最右；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
+              <span style={{ marginLeft: "auto" }}>
+                <InlineConfirm 问="删了进回收站，30 天内可恢复" 开={删问于 === f.id} set开={(v) => set删问于(v ? f.id : null)} 做={() => 删沟通(f.id)}>
+                  <Dropdown
+                    trigger={["click"]}
+                    placement="bottomRight"
+                    disabled={忙}
+                    menu={{
+                      items: [{ key: "edit", label: "修改" }, { key: "delete", label: "删除", danger: true }],
+                      onClick: ({ key }) => (key === "edit" ? set改沟通于(f) : set删问于(f.id)),
+                    }}
+                  >
+                    <Button type="text" size="small" icon={<MoreOutlined />} aria-label="这条沟通的更多操作" />
+                  </Dropdown>
+                </InlineConfirm>
+              </span>
+            )}
           </div>
           <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{f.content}</div>
         </div>
@@ -646,6 +716,8 @@ export default function ProjectDetail({
 
       {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 人们={卡点.人们} onClose={() => set发卡点于(null)} />}
 
+      {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
+
       {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} onClose={() => set记一条开着(false)} 跑={跑} />}
 
       <Modal
@@ -710,13 +782,59 @@ export default function ProjectDetail({
   return 正文;
 }
 
+/**
+ * 改项目上的一条沟通（「…」→ 修改，10-29）：沟通方式、时间、内容三格，别的（阶段、明确回复、下一步）不在这里改。
+ * 打开时的 updatedAt 一起交回去，别人先改了就报版本冲突，不悄悄盖掉
+ */
+function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
+  projectId: string;
+  f: 项目详情["followUps"][number];
+  外贸: boolean;
+  onClose: () => void;
+  跑: (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
+}) {
+  const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
+  // 老数据可能是待办 / 提醒类型：下拉里补上它自己，不改类型就原样存回
+  const 类型们 = 能选类型.some((t) => t.value === f.type) ? 能选类型 : [...能选类型, ...跟进类型们(外贸).filter((t) => t.value === f.type)];
+  const [type, setType] = useState(f.type);
+  const [occurredAt, setOccurredAt] = useState(() => dayjs(f.occurredAt).format(沟通时间格式));
+  const [content, setContent] = useState(f.content);
+  const [交中, set交中] = useState(false);
+  const 差 = !content.trim() ? "请填写这次沟通的内容" : "";
+  const 交 = async () => {
+    set交中(true);
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, content, occurredAt, 版本: f.版本 }), "已保存修改");
+    set交中(false);
+    if (ok) onClose();
+  };
+  return (
+    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }} onCancel={onClose} onOk={() => void 交()}>
+      <div style={{ display: "grid", gap: 12 }}>
+        <Select aria-label="沟通方式" value={type} options={类型们.map((t) => ({ value: t.value, label: t.label }))} onChange={(v: string) => setType(v)} />
+        <DatePicker
+          aria-label="沟通时间"
+          showTime={{ format: "HH:mm" }}
+          format={沟通时间格式}
+          allowClear={false}
+          style={{ width: "100%" }}
+          value={dayjs(occurredAt, 沟通时间格式)}
+          disabledDate={(x) => x.isAfter(dayjs(), "day")}
+          onChange={(v) => v && setOccurredAt(v.format(沟通时间格式))}
+        />
+        <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
+        {差 && <div style={{ color: "var(--text-muted)" }}>{差}</div>}
+      </div>
+    </Modal>
+  );
+}
+
 /** 回收日在两天内（含已到）：提示变成警示色 */
 function 回收临近(回收日: string): boolean {
   return dayjs(回收日).diff(dayjs().startOf("day"), "day") <= 2;
 }
 
 /**
- * 在项目上记一条沟通：方式、时间、内容，加下一步时间（开了超时回收、线索 / 商机阶段必填）。
+ * 在项目上记一条沟通：方式、时间、内容，加下一步做什么（必填一句话，10-29）和下一步时间（开了超时回收、线索 / 商机阶段必填，别的时候可空）。
  * 记了会挂在客户上（客户页也看得到）和项目当时的节点上；填的下一步时间决定这个项目哪天没跟进会回公海
  */
 function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
@@ -731,6 +849,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
   const [type, setType] = useState<string>(能选类型[0]?.value ?? "PHONE");
   const [occurredAt, setOccurredAt] = useState(() => dayjs().format(沟通时间格式));
   const [content, setContent] = useState("");
+  const [下一步文字, set下一步文字] = useState("");
   const [下一步时间, set下一步时间] = useState<string | null>(null);
   const [明确回复, set明确回复] = useState<boolean | null>(null);
   const [交中, set交中] = useState(false);
@@ -776,15 +895,17 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
     if (填.type) setType(填.type);
     if (填.content) setContent(填.content);
     if (填.occurredAt) setOccurredAt(填.occurredAt);
+    if (填.下一步) set下一步文字(填.下一步);
     if (填.下一步时间) set下一步时间(填.下一步时间);
-    const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步时间 && "下一步时间"].filter(Boolean);
+    const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步 && "下一步", 填.下一步时间 && "下一步时间"].filter(Boolean);
     set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
   };
-  const 差 = !content.trim() ? "请填写这次沟通的内容" : p.企业版 && 明确回复 === null ? "请选客户这次有没有明确回复" : p.要下一步 && !下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到项目公海" : "";
+  const 差 = !content.trim() ? "请填写这次沟通的内容" : p.企业版 && 明确回复 === null ? "请选客户这次有没有明确回复"
+    : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到项目公海" : "";
 
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 记项目沟通Action(p.id, { type, content, occurredAt, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }), "已记下这条沟通");
+    const ok = await 跑(() => 记项目沟通Action(p.id, { type, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }), "已记下这条沟通");
     set交中(false);
     if (ok) 关();
   };
@@ -795,6 +916,8 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
       title="记一条沟通"
       okText="记下"
       okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }}
+      // 写了字就别让点到框外把草稿关掉（10-29 实点：点日历时手一偏，整段没了）
+      mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() }}
       onCancel={关}
       onOk={() => void 交()}
     >
@@ -850,6 +973,17 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
           </div>
         )}
         <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
+        <div>
+          <div style={{ marginBottom: 4 }}>下一步做什么<span style={{ color: "var(--danger-text)" }}> *</span></div>
+          <Input
+            aria-label="下一步做什么"
+            value={下一步文字}
+            onChange={(e) => set下一步文字(e.target.value)}
+            maxLength={下一步文字上限}
+            showCount
+            placeholder="比如：周五前发报价单给对方采购"
+          />
+        </div>
         <div>
           <div style={{ marginBottom: 4 }}>
             下一步时间{p.要下一步 ? <span style={{ color: "var(--danger-text)" }}> *</span> : <span style={{ color: "var(--text-muted)" }}>（可不填）</span>}

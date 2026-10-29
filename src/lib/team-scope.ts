@@ -33,7 +33,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { AsyncLocalStorage } from "node:async_hooks";
+import { 全进程上下文 } from "@/lib/process-als";
 import { Prisma, type PrismaClient } from "@/generated/prisma";
 import { 读 as 读云端凭据 } from "./desktop/cloud";
 import { 团队身份id } from "./desktop/me";
@@ -41,7 +41,7 @@ import { 互看可加, 范围父表 } from "./sync/scope-policy";
 import { 企业版 } from "./enterprise/switch";
 import { 去掉已删, 在看已删 } from "./enterprise/soft-delete-core";
 
-const 不限 = new AsyncLocalStorage<true>();
+const 不限 = 全进程上下文<true>("看全部");
 
 /** 这一段里的查询不加限定（同步、查重、角色对齐） */
 export function 看全部<T>(fn: () => Promise<T>): Promise<T> {
@@ -406,7 +406,7 @@ const 推 = globalThis as unknown as { __推送计时?: ReturnType<typeof setTim
  * 同步那一轮跑着的时候，**用户自己**写的也被当成回放、一条推送都不排——同事最长十几秒才看到。
  * 换成异步上下文：只有在 在同步里() 里面发生的写才不算（lib/sync/client.ts 同步一轮 用它包住 跑一轮）
  */
-const 同步这一轮 = new AsyncLocalStorage<true>();
+const 同步这一轮 = 全进程上下文<true>("在同步里");
 export function 在同步里<T>(fn: () => Promise<T>): Promise<T> {
   return 同步这一轮.run(true, async () => await fn());
 }
