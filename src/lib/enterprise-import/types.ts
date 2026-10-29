@@ -61,7 +61,7 @@ export type 通讯录 = { 部门们: 通讯录部门[]; 人们: 通讯录人[] }
  * customerRef / customerName 认客户，opportunityRef / opportunityName 认商机（跟进用）
  */
 export const 标准字段 = {
-  customer: ["id", "name", "phone", "owner", "followStatus", "custStatus", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website", "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay"],
+  customer: ["id", "name", "phone", "owner", "followStatus", "custStatus", "customerType", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website", "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay"],
   contact: ["id", "customerRef", "customerName", "name", "position", "phone", "email", "wechat", "isPrimary", "remark", "gender", "birthday", "hobby", "address"],
   lead: ["id", "name", "contact", "phone", "email", "industry", "source", "status", "owner", "remark"],
   opportunity: ["id", "customerRef", "customerName", "name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "owner", "remark"],
@@ -76,6 +76,7 @@ export const 字段中文: Record<string, string> = {
   owner: "负责人",
   followStatus: "跟进状态",
   custStatus: "客户状态",
+  customerType: "客户类型",
   remark: "备注",
   email: "邮箱",
   wechat: "微信",
@@ -165,12 +166,14 @@ export type 值对照名 = keyof 映射["值"];
 /** 清洗时发现的问题。跳过 = 这一条不写；提醒 = 照写，但要人看一眼 */
 export type 问题 = {
   级别: "跳过" | "提醒";
-  类别: "缺必填" | "重名" | "疑似重名" | "负责人对不上" | "负责人空着" | "负责人有几个" | "阶段对不上" | "值对不上" | "找不到客户" | "客户不唯一" | "找不到商机" | "格式不对" | "缺日期" | "ID 重复";
+  类别: "缺必填" | "重名" | "疑似重名" | "负责人对不上" | "负责人空着" | "负责人有几个" | "阶段对不上" | "值对不上" | "找不到客户" | "客户不唯一" | "找不到商机" | "格式不对" | "缺日期" | "ID 重复" | "号码重复";
   实体: 实体;
   外部ID: string;
   行号?: number;
   出处?: string;
   说明: string;
+  /** 号码重复：撞到的我们这边已有的联系人，报告里摆成能点进去的客户页链接（导入只给老板 / 总管理员，都看得到） */
+  链接?: { 名: string; 客户Id: string }[];
 };
 
 /** 清洗后、待写的一条。值里的键是落库的列名（customer 的外贸几格也在里面，写的时候分开） */

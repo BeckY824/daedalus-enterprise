@@ -4,12 +4,15 @@ import { requiredText, isFormValidationError } from "@/lib/form-validation";
 import CustomerSearchSelect from "@/components/CustomerSearchSelect";
 
 import { useEffect, useState } from "react";
-import { Modal, Form, Input, Switch, Row, Col, App, AutoComplete, Button, Select, Space } from "antd";
+import Link from "next/link";
+import { Modal, Form, Input, Switch, Row, Col, App, AutoComplete, Button, Select, Space, Alert } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
 import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import { saveContact, saveUnassignedContact } from "./actions";
+import { 挂到客户 } from "./contact-link-actions";
+import type { 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import type { ContactRow } from "./types";
 import { useBusiness } from "@/lib/business-client";
 import { 关系候选 } from "@/lib/business-config";
@@ -106,17 +109,43 @@ export default function ContactForm({
     for (const k of 原有) if (!们.some((x) => x.value === k)) 们.push({ value: k, label: 叫法(k) });
     return 们;
   })();
+  const 叫法 = (kind: string) => 号码种类?.find((x) => x.kind === kind)?.名 ?? (kind.startsWith("custom:") ? kind.slice(7) : kind);
+  /** 撞到的那位直接挂到本客户上（不新建），关框 */
+  async function 挂过来(contactId: string) {
+    if (!customerId || 存着) return;
+    set存着(true);
+    try {
+      const r = await 挂到客户(contactId, customerId);
+      if (!r.ok) return void message.error(r.error);
+      message.success(`已挂到本${b.customer}`);
+      守.存好了();
+      onSaved();
+    } finally {
+      set存着(false);
+    }
+  }
 
   /*
     保存中：网慢时连点两下会建出两条一样的记录（跟进带的 AI 待办和计划也各建两份，2026-10-02 排查）。
     校验没过（validateFields 抛出）也会走 finally 放开
   */
   const [存着, set存着] = useState(false);
-  async function 保存() {
+  /**
+   * 企业版号码查重撞了（P13 第 2 条）：不静默合并，框顶上摆撞到的那几位（看得到的能点进去）。
+   * 人核对后可以「仍然保存」（同一个号两个人用），或在客户页上直接把那位挂到这位客户上
+   */
+  const [撞号, set撞号] = useState<撞到的联系人[] | null>(null);
+  // 重新打开框时收起上次的黄条（渲染时比对，不放进 effect 里 setState）
+  const [上次开着, set上次开着] = useState(open);
+  if (上次开着 !== open) {
+    set上次开着(open);
+    if (open) set撞号(null);
+  }
+  async function 保存(照存 = false) {
     if (存着) return;
     set存着(true);
     try {
-      await onOk();
+      await onOk(照存);
     } catch (error) {
       if (!isFormValidationError(error)) message.error("保存失败，请刷新确认结果后重试");
     } finally {
@@ -124,7 +153,7 @@ export default function ContactForm({
     }
   }
 
-  async function onOk() {
+  async function onOk(照存 = false) {
     const v = await form.validateFields();
     // 记录页给的 customerId 说了算；列表页上它在表单里
     const 归属 = customerId ?? (v.customerId as string);
@@ -147,9 +176,12 @@ export default function ContactForm({
           号码们: (号码们 ?? []).filter((x) => x && x.value && x.value.trim()).map((x) => ({ kind: x.kind ?? "", value: x.value ?? "" })),
         }
       : null;
-    const r = await saveContact({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}) } as Parameters<typeof saveContact>[0]);
+    const r = await saveContact({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
-    if (!r.ok) return void message.error(r.error);
+    if (!r.ok) {
+      if ("撞了" in r && r.撞了?.length) return void set撞号(r.撞了);
+      return void message.error(r.error);
+    }
     message.success(record ? "已保存" : "联系人已添加");
     守.存好了();
     onSaved();
@@ -160,7 +192,7 @@ export default function ContactForm({
       {...守.弹窗}
       open={open}
       title={record ? `编辑联系人 · ${record.name}` : "添加联系人"}
-      onOk={保存}
+      onOk={() => void 保存()}
       confirmLoading={存着}
       okText="保存"
       cancelText="取消"
@@ -179,7 +211,45 @@ export default function ContactForm({
         )
       }
     >
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={守.改了}>
+      {撞号 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginTop: 8 }}
+          message="这些号码已经记在别的联系人身上，本次没保存"
+          description={
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {撞号.map((x, i) => (
+                <div key={`${x.kind}-${x.value}-${i}`} style={{ overflowWrap: "anywhere" }}>
+                  {叫法(x.kind)} {x.value}：
+                  {x.contactId && x.customerId ? (
+                    <>
+                      <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">
+                        {x.name}（{x.customerName}）
+                      </Link>
+                      {/* 客户页上新建：多半就是同一个人，直接挂过来比再建一位好 */}
+                      {!record && customerId && x.customerId !== customerId && (
+                        <Button type="link" size="small" style={{ padding: "0 4px", height: "auto" }} disabled={存着} onClick={() => void 挂过来(x.contactId!)}>
+                          挂到本{b.customer}
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    `${x.同事}名下的一位联系人（不在你的范围，可与他核实）`
+                  )}
+                </div>
+              ))}
+              <div>
+                确认是另一个人（比如共用的总机）：
+                <Button type="link" size="small" style={{ padding: 0, height: "auto" }} disabled={存着} onClick={() => void 保存(true)}>
+                  仍然保存
+                </Button>
+              </div>
+            </div>
+          }
+        />
+      )}
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); if (撞号) set撞号(null); }}>
         <Row gutter={16}>
           {/* 从联系人列表进来时先选人：联系人挂在某一位学员下面，没有归属的联系人没有意义 */}
           {!customerId && (
@@ -231,7 +301,7 @@ export default function ContactForm({
               </Col>
               <Col span={12}>
                 <Form.Item name="address" label="地址">
-                  <Input maxLength={联系人地址上限} placeholder="住址或办公地址" />
+                  <Input maxLength={联系人地址上限} placeholder="可收件的真实地址" />
                 </Form.Item>
               </Col>
               {/* 联系方式几行（类型 + 号码）：一人可以有好几个手机、座机、微信……类型在「设置 → 字典 → 号码类型」里加 */}

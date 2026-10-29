@@ -4,13 +4,15 @@
  *
  * 能改的口子都在这里（对方定稿再细化时只改这几处）：
  *   企业客户级别 / 企业级别说明 —— S / A / B / C，老的 D 一律当 C（customer-v2-db.ts 的 级别D改C 只做一次）
+ *   级别星数 —— 级别显示成几颗星（P13 第 5 条：S 4 星 … C 1 星），列表、客户页、下拉都走 级别显示
  *   国内叫法 —— 地址里算「国内」的国家名：国内选到区县，国外只记国家和城市
  *   附件分类们 —— 联系人附件的两格：名片 / 相册
  *   内置号码种类 —— 号码类型字典（contactKind）默认几项分别记成 ContactMethod 的哪种 kind、按什么规矩验
  *   客户页摆法 —— 企业版项目模式下客户页留哪几块（待定 14：蓝留、黄移到项目、红不放）
- * 分配方式、号码类型的选项本身在企业版字典（dict-kinds.ts 的 custAssign / contactKind），设置里能改能加。
+ * 分配方式、号码类型、客户类型的选项本身在企业版字典（dict-kinds.ts 的 custAssign / contactKind / custType），设置里能改能加。
  */
 import { 验号码, type 号码类型 } from "./contact-format";
+import { 号键 } from "../phone";
 
 // ---------- 客户级别 ----------
 
@@ -34,6 +36,25 @@ export function 认企业级别(v: unknown): 企业客户级别 | null | undefin
   if (v == null || String(v).trim() === "") return null;
   const t = String(v).trim().toUpperCase();
   return (企业客户级别 as readonly string[]).includes(t) ? (t as 企业客户级别) : undefined;
+}
+
+/**
+ * 级别显示成星（2026-10-29，P13 第 5 条）：存的还是 S / A / B / C，只换显示。满格 4 颗，亮几颗 = 级别。
+ * 改星数只改这一处；列表、客户页角标、表单 / 行内改 / 筛选的下拉都读 级别显示、级别选项
+ */
+export const 级别星数: Record<企业客户级别, number> = { S: 4, A: 3, B: 2, C: 1 };
+export const 满星 = 4;
+export type 级别显示结果 = { 级: 企业客户级别; 星数: number; 亮: string; 暗: string; 说明: string; 读法: string };
+/** 库里存的级别（含老的 D）→ 几颗星；没分级 = null。亮 / 暗是实心星的串（暗的那几颗界面上淡色画，列宽不跟着级别变） */
+export function 级别显示(v: unknown): 级别显示结果 | null {
+  const 级 = 企业级别(v);
+  if (!级) return null;
+  const n = 级别星数[级];
+  return { 级, 星数: n, 亮: "★".repeat(n), 暗: "★".repeat(满星 - n), 说明: 企业级别说明[级], 读法: `${n} 星（${企业级别说明[级]}）` };
+}
+/** 下拉选项：值是 S / A / B / C，字是「★★★☆ A 重点」（空心星补满 4 格，下拉里字一样宽） */
+export function 级别选项(): { value: 企业客户级别; label: string }[] {
+  return 企业客户级别.map((级) => ({ value: 级, label: `${"★".repeat(级别星数[级])}${"☆".repeat(满星 - 级别星数[级])} ${企业级别说明[级]}` }));
 }
 
 // ---------- 客户地址 ----------
@@ -87,6 +108,11 @@ export function 关联对(a: string, b: string): { customerId: string; otherId: 
 }
 /** 从这位客户这一头看，一行关联的「另一位」是谁 */
 export const 另一头 = (行: { customerId: string; otherId: string }, 我: string): string => (行.customerId === 我 ? 行.otherId : 行.customerId);
+
+// ---------- 联系人挂多位客户 ----------
+
+/** 联系人挂到别的客户时填的「在这家的职位 / 关系」（P13 第 1 条），跟关联客户的说明一样长 */
+export const 挂靠说明上限 = 关联说明上限;
 
 // ---------- 联系人 ----------
 
@@ -155,7 +181,33 @@ export function 验一行号码(种: 号码种类, 原: unknown): { ok: true; �
     if (!/^[\d+\-()（）\s#]+$/.test(s.replace(/[０-９]/g, "0")) || 数字.length < 5 || 数字.length > 20) return { ok: false, error: `${种.名}「${s}」格式不对：只填数字（可以带 + - 和括号）` };
     return { ok: true, 值: s, 键: 数字 };
   }
-  return { ok: true, 值: s, 键: s.toLowerCase().replace(/\s+/g, "") };
+  return { ok: true, 值: s, 键: 自定号码键(s) };
+}
+
+/**
+ * 自己加的号码类型的查重键（P13 第 2 条）：不分大小写，空格、横杠、括号、点这些分隔符去掉（「Ab-C (1)」和「abc1」算同一个）。
+ * 去完什么都不剩的（整格都是符号）退回只去空格的样子，免得一串符号全撞在一起
+ */
+export function 自定号码键(s: string): string {
+  const 去空 = s.toLowerCase().replace(/\s+/g, "");
+  return 去空.replace(/[-－—–‐‑‒―_.。．·()（）[\]【】/\\]/g, "") || 去空;
+}
+
+/**
+ * 联系人号码的查重键（导入用，P13 第 2 条）：库里存的是原样，导入那边拿不到 验号码 的结果，这里按 kind 把一个号算成
+ * 和 联系人查重 同一个口径的键：手机去分隔符、去 +86 / 0086 / 00；邮箱、微信、旺旺去空格不分大小写；座机、WhatsApp 只留数字；
+ * 自己加的走 自定号码键。算不出（空的、全是符号）返回 ""，不拿来比
+ */
+export function 联系人号查重键(kind: string, v: string | null | undefined): string {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  if (kind === "phone") return 号键(s).replace(/\./g, "").replace(/^00(?=\d)/, "").replace(/^86(?=1\d{10}$)/, "");
+  if (kind === "email" || kind === "wechat" || kind === "wangwang") return s.toLowerCase().replace(/\s+/g, "");
+  if (kind === "landline" || kind === "whatsapp") {
+    const 数字 = s.replace(/\D/g, "");
+    return 数字.length >= 5 ? 数字 : "";
+  }
+  return 自定号码键(s).replace(/^[\p{P}\p{S}]+$/u, "");
 }
 
 /** 号码们里第一个手机 / 邮箱 / 微信 → 联系人老三格（列表、查重、导出还读这三格，企业版照填上，老的版本读得懂） */

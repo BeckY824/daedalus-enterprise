@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Space, Avatar, Tag, Select } from "antd";
+import { Button, Space, Avatar, Tag, Select, Tooltip } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import ResetFilters from "@/components/ResetFilters";
 import { 列表不问归属ID } from "@/lib/solo";
@@ -35,6 +35,8 @@ type Row = {
   ownerName: string;
   ownerId: string;
   ownerEmail: string;
+  /** 企业版联系人挂多位客户（P13）：主客户之外另外挂着的几位客户名（没有就不给） */
+  也挂在?: string[];
 };
 
 export default function ContactsView({
@@ -117,7 +119,16 @@ export default function ContactsView({
             未归属
           </span>
         ) : (
-          <CustomerLink id={r.customerId} name={v} company={r.school} />
+          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            <span style={{ minWidth: 0, flex: "0 1 auto", overflow: "hidden" }}>
+              <CustomerLink id={r.customerId} name={v} company={r.school} />
+            </span>
+            {r.也挂在 && r.也挂在.length > 0 && (
+              <Tooltip title={`也挂在：${r.也挂在.join("、")}`}>
+                <span className="muted nowrap" style={{ flex: "none" }} aria-label={`另外挂在 ${r.也挂在.length} 位${b.customer}上`}>+{r.也挂在.length}</span>
+              </Tooltip>
+            )}
+          </span>
         ),
     },
     // 「关系」就是他和这位的关系（本人、采购、财务；教培里是母亲、父亲），候选跟着业务配置走
