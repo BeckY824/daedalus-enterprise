@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { App, Button, Select, Space, Segmented, Tag } from "antd";
-import { PlusOutlined, ThunderboltOutlined, UserSwitchOutlined } from "@ant-design/icons";
+import { App, Badge, Button, Select, Space, Segmented, Tag } from "antd";
+import { InteractionOutlined, PlusOutlined, ShareAltOutlined, ThunderboltOutlined, UserSwitchOutlined } from "@ant-design/icons";
+import { useFollowDue } from "@/components/FollowDue";
+import { useNarrow } from "@/lib/roster";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
@@ -95,6 +97,10 @@ export default function ProjectsView({
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
+  const 要跟 = useFollowDue();
+  const 要跟数 = 要跟.逾期 + 要跟.今天;
+  // 手机上页头右边四颗键摆不下（页头那组不换行），新线索、跟进只留图标，名字在 aria-label / 悬停说明里
+  const 小屏 = useNarrow("(max-width: 767px)");
   // 分配只在新线索页：线索阶段的项目按配额分给销售（老的 Lead 分配搬过来，见 leads/assign-actions.ts 的 项目 选项）
   const 可分 = 新线索 && 能自动分配;
   const [分配中, set分配中] = useState<项目行 | null>(null);
@@ -221,7 +227,32 @@ export default function ProjectsView({
               : "从线索到交付，一个项目一条线"
         }
         extra={
-          <Space>
+          // 窄屏（手机、Windows 1024）按钮多了换行，不撑出页宽
+          <Space wrap>
+            {/*
+              企业版左栏只剩六个根目录（10-29，lib/enterprise/nav.ts）：新线索、跟进不在左栏了，入口摆在这里。
+              跟进的红数（逾期 + 今天要跟）左栏挂在「项目」上，点进来在这颗键上找得到同一个数。
+              仓库里没有「待分配几条」的计数，新线索只放链接
+            */}
+            {企业版 && !新线索 && (
+              <Button icon={<ShareAltOutlined />} aria-label="新线索" title={小屏 ? "新线索" : undefined} onClick={() => router.push("/leads")} onMouseEnter={() => 预取.进("/leads")} onMouseLeave={预取.出}>
+                {小屏 ? null : "新线索"}
+              </Button>
+            )}
+            {企业版 && !新线索 && (
+              <Badge count={要跟数} size="small" overflowCount={99} color={要跟.逾期 > 0 ? "var(--danger)" : undefined}>
+                <Button
+                  icon={<InteractionOutlined />}
+                  aria-label={要跟数 > 0 ? `跟进，要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}` : "跟进"}
+                  onClick={() => router.push("/follow-ups")}
+                  onMouseEnter={() => 预取.进("/follow-ups")}
+                  onMouseLeave={预取.出}
+                  title={小屏 ? "跟进" : undefined}
+                >
+                  {小屏 ? null : "跟进"}
+                </Button>
+              </Badge>
+            )}
             {新线索 && 线索分配开着 && <AssignedOutButton />}
             {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />}
             <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新建新线索" : "新建项目"}</Button>
