@@ -24,6 +24,8 @@ import { dayjs } from "@/lib/utils";
 import { parseScheduleDate } from "@/lib/schedule-date";
 import { 是逾期 } from "@/lib/overdue";
 import { parseDateInput } from "@/lib/date-input";
+import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "@/lib/enterprise/customer-v2";
+import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, type 交上来的号 } from "@/lib/enterprise/customer-v2-db";
 
 /**
  * 这一页上的写操作也要留痕。
@@ -614,16 +616,61 @@ function 规整(input: 联系人字段) {
   };
 }
 
-export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null }) {
+/**
+ * 企业版联系人新几格（2026-10-29，定稿 P5 第 24 条，迁移 073）：性别、生日、爱好、地址，外加联系方式几行（类型 + 号码）。
+ * 开关关着一律不看
+ */
+export type 企业联系人资料 = {
+  gender?: string | null;
+  birthday?: string | null;
+  hobby?: string | null;
+  address?: string | null;
+  /** 联系方式几行：kind 是存库的那种（号码种类表 的 kind）。给了就整组换掉；不给 = 不碰 */
+  号码们?: 交上来的号[] | null;
+};
+
+/** 企业联系人资料 → 存库的四格（给了的才出现）。错了给一句话 */
+function 规整企业联系人(x: 企业联系人资料): { ok: true; data: { gender?: string | null; birthday?: string | null; hobby?: string | null; address?: string | null } } | { ok: false; error: string } {
+  const data: { gender?: string | null; birthday?: string | null; hobby?: string | null; address?: string | null } = {};
+  const 格 = (v: unknown) => (typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "") || null;
+  if (x.gender !== undefined) {
+    const g = 格(x.gender);
+    if (g && !(性别们 as readonly string[]).includes(g)) return { ok: false, error: "性别只能选男或女" };
+    data.gender = g;
+  }
+  if (x.birthday !== undefined) {
+    const d = 认生日(x.birthday);
+    if (d === undefined) return { ok: false, error: "生日格式不对（要年-月-日，且是真实的日子）" };
+    data.birthday = d;
+  }
+  if (x.hobby !== undefined) {
+    const h = 格(x.hobby);
+    if (h && h.length > 爱好上限) return { ok: false, error: `爱好最多 ${爱好上限} 个字` };
+    data.hobby = h;
+  }
+  if (x.address !== undefined) {
+    const a = 格(x.address);
+    if (a && a.length > 联系人地址上限) return { ok: false, error: `地址最多 ${联系人地址上限} 个字` };
+    data.address = a;
+  }
+  return { ok: true, data };
+}
+
+export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null }) {
   try {
     const me = await requireUser();
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
-    const 原 = input.id ? await prisma.contact.findUnique({ where: { id: input.id }, select: { phone: true } }) : null;
+    const 原 = input.id ? await prisma.contact.findUnique({ where: { id: input.id }, select: { phone: true, contactMethods: { select: { kind: true } } } }) : null;
     if (input.id && !原) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
-    const 电话 = 联系人电话(input.phone, 原?.phone);
+    // 企业版新几格和号码几行：事务外先验（号码类型要读字典）
+    const 企 = 企业版() && input.企业 ? 规整企业联系人(input.企业) : null;
+    if (企 && !企.ok) return 企;
+    const 号 = 企业版() && input.企业 && input.企业.号码们 != null ? await 验联系人号码们(input.企业.号码们, 原?.contactMethods.map((x) => x.kind) ?? []) : null;
+    if (号 && !号.ok) return 号;
+    const 电话 = 号 ? ({ ok: true, phone: null } as const) : 联系人电话(input.phone, 原?.phone);
     if (!电话.ok) return 电话;
-    const data = { ...规整(input), phone: 电话.phone, isPrimary: input.isPrimary, customerId: input.customerId };
+    const data = { ...规整(input), phone: 电话.phone, ...(企?.ok ? 企.data : {}), isPrimary: input.isPrimary, customerId: input.customerId };
     const 落库id = await prisma.$transaction(async (tx) => {
       // 编辑走版本闸门（排查 D3）：期间有人改过就一行不写
       if (input.id) {
@@ -631,14 +678,31 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         if (写了.count === 0) return null;
       }
       const savedId = input.id ?? (await tx.contact.create({ data })).id;
+      /*
+        企业版交了号码几行：整组换掉，第一个手机 / 邮箱 / 微信写回联系人老三格（列表、查重、导出、老版本还读这三格）。
+        老三格按号码几行算，表单上的 phone / email / wechat 这时不看
+      */
+      if (号) {
+        const 三 = await 存联系人号码(tx, input.customerId, savedId, 号.行们);
+        await tx.contact.update({ where: { id: savedId }, data: 三 });
+        Object.assign(data, 三);
+      }
       if (input.isPrimary) await 只留这一个关键(tx, input.customerId, savedId);
       return savedId;
     });
     if (!落库id) return { ok: false as const, error: 版本冲突 };
+    const 号码说 = 号 ? await (async () => {
+      const 表 = await 号码种类表();
+      return 号.行们.map((x) => `${种类叫法(表, x.kind)} ${x.value}`).join("；") || "（空）";
+    })() : undefined;
     await recordAudit({
       user: me, action: input.id ? "update" : "create", entity: "Contact", entityId: 落库id,
       summary: `${input.id ? "修改" : "新建"}${await 客户名(input.customerId)}的联系人「${data.name}」${input.isPrimary ? "（主要联系人）" : ""}`,
-      detail: { 姓名: data.name, 职位: data.position, 电话: data.phone, 微信: data.wechat, 主要联系人: data.isPrimary },
+      detail: {
+        姓名: data.name, 职位: data.position, 电话: data.phone, 微信: data.wechat, 主要联系人: data.isPrimary,
+        ...(企?.ok ? { 性别: 企.data.gender, 生日: 企.data.birthday, 爱好: 企.data.hobby, 地址: 企.data.address } : {}),
+        ...(号码说 !== undefined ? { 联系方式: 号码说 } : {}),
+      },
     });
   
     刷新联系人(input.customerId);

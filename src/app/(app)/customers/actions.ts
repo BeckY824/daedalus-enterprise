@@ -52,6 +52,7 @@ import { 客户的项目数 } from "@/lib/project/db";
 import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整外贸档案, 规整阿里ID, 认国家, type 外贸档案 } from "@/lib/customer-extra";
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
+import { 认企业级别, 规整地址, 简称上限, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
 
 
@@ -122,7 +123,15 @@ export type CustomerInput = {
    * 开关关着、编辑时一律不看
    */
   企业号码?: { 类型: string; 值: string } | null;
+  /**
+   * 企业版客户改版（2026-10-29，定稿 P5 第 22、23 条，迁移 072）：简称、地址、分配方式。不给 = 不碰；开关关着一律不看。
+   * 级别（S / A / B / C）和官网照旧走 extra.level / extra.website（存在 CustomerExtra），企业版下级别按 认企业级别 验
+   */
+  企业资料?: Partial<企业客户资料> | null;
 };
+
+/** 企业版客户主表上新加的几格（迁移 072） */
+export type 企业客户资料 = 客户地址 & { shortName: string | null; assignWay: string | null };
 
 /** 编辑框里可改的那部分字段，用作并发比对的基准快照 */
 export type CustomerSnapshot = Pick<
@@ -130,7 +139,7 @@ export type CustomerSnapshot = Pick<
   | "name" | "phone" | "school" | "grade" | "major"
   | "followStatus" | "decisionStatus" | "custStatus" | "expectedSignAt" | "remark"
   | "salesOwnerId" | "channelId" | "referrerCustomerId"
-> & { channelOwnerId?: string | null };
+> & { channelOwnerId?: string | null } & Partial<企业客户资料>;
 
 /**
  * 撞号时给界面的那位。业务员撞到同事名下、自己看不到的（团队版两档权限）：**只给负责人 + 客户名**，
@@ -354,6 +363,13 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (企业版() && 改前 && 改前.channelId && !input.channelId && !input.referrerCustomerId) {
     return { ok: false, error: "请选择渠道" };
   }
+  /*
+    客户来源 = 第一次的渠道（定稿 P5 第 22 条：「客户来源只记第一个渠道，之后不变」）：原来有渠道的，换成别的渠道不收。
+    后来又从别的渠道来的，记在项目的来源上（P6），客户这一格不跟着变
+  */
+  if (企业版() && 改前?.channelId && input.channelId && input.channelId !== 改前.channelId) {
+    return { ok: false, error: "客户来源记的是第一次带来的渠道，建好之后不能改" };
+  }
   if (企业版() && input.channelId && input.channelId !== 改前?.channelId) {
     const 渠道 = await prisma.channel.findUnique({ where: { id: input.channelId }, select: { active: true } });
     if (!渠道?.active) return { ok: false, error: "这个渠道不存在或已停用，请换一个" };
@@ -361,9 +377,38 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   /*
     共享试用区里 WhatsApp 和电话一样是打了码给人看的：交回来还带着 * 就是没动它，不碰这一格（同电话的 认回打码号）
   */
-  const 交的档案 = input.extra && typeof input.extra.whatsapp === "string" && input.extra.whatsapp.includes("*") ? { ...input.extra, whatsapp: undefined } : input.extra;
-  const 档案 = 规整外贸档案(交的档案 ? { ...交的档案, ...(交的档案.country !== undefined ? { country: 认国家(交的档案.country) } : {}) } : null);
-  if (!档案.ok) return { ok: false, error: 档案.error };
+  const 交的档案原 = input.extra && typeof input.extra.whatsapp === "string" && input.extra.whatsapp.includes("*") ? { ...input.extra, whatsapp: undefined } : input.extra;
+  /*
+    企业版客户级别只剩 S / A / B / C（定稿 P5 第 23 条）：还是存 CustomerExtra.level，但不走外贸那套 A–D 的校验，
+    先在这里按企业版的四档认好，再并回档案
+  */
+  const 企级别 = 企业版() && 交的档案原 && 交的档案原.level !== undefined ? 认企业级别(交的档案原.level) : undefined;
+  if (企业版() && 交的档案原 && 交的档案原.level !== undefined && 企级别 === undefined) return { ok: false, error: "客户级别只能是 S / A / B / C" };
+  const 交的档案 = 企业版() && 交的档案原 && 交的档案原.level !== undefined ? { ...交的档案原, level: undefined } : 交的档案原;
+  const 档案原 = 规整外贸档案(交的档案 ? { ...交的档案, ...(交的档案.country !== undefined ? { country: 认国家(交的档案.country) } : {}) } : null);
+  if (!档案原.ok) return { ok: false, error: 档案原.error };
+  const 档案 = 企级别 !== undefined ? { ...档案原, data: { ...档案原.data, level: 企级别 } } : 档案原;
+
+  // 企业版主表新几格（迁移 072）：简称、地址、分配方式。分配方式要是字典 custAssign 里启用中的（原值停用了原样交回也认）
+  let 企资料: Partial<企业客户资料> = {};
+  if (企业版() && input.企业资料) {
+    const 交 = input.企业资料;
+    if (交.shortName !== undefined) {
+      const 简 = (交.shortName ?? "").trim().replace(/\s+/g, " ") || null;
+      if (简 && 简.length > 简称上限) return { ok: false, error: `客户简称最多 ${简称上限} 个字` };
+      企资料.shortName = 简;
+    }
+    if ((["addrCountry", "addrProvince", "addrCity", "addrDistrict"] as const).some((k) => 交[k] !== undefined)) {
+      const 址 = 规整地址(交);
+      if (!址.ok) return { ok: false, error: 址.error };
+      企资料 = { ...企资料, ...址.值 };
+    }
+    if (交.assignWay !== undefined) {
+      const v = (交.assignWay ?? "").trim() || null;
+      if (v && v !== 改前?.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `分配方式「${v}」不在可选范围内，请刷新后重选` };
+      企资料.assignWay = v;
+    }
+  }
 
   /**
    * 归属字段什么时候重算。
@@ -418,6 +463,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     decisionStatus: input.decisionStatus,
     // 开关关着这一格不进 data：不写、也不参与比对和留痕
     ...(企客状态 ? { custStatus: 企客状态.值 } : {}),
+    ...企资料,
     expectedSignAt: sign.at,
     expectedSignOn: sign.on,
     remark: input.remark?.trim() || null,

@@ -33,8 +33,9 @@ export const 客户等级 = ["A", "B", "C", "D"] as const;
 export type 客户等级 = (typeof 客户等级)[number];
 /** 下拉里的说法：等级本身只存一个字母 */
 export const 客户等级说明: Record<客户等级, string> = { A: "A 重点", B: "B 常规", C: "C 培育", D: "D 唤醒" };
-/** 列表排序用：A 在前，没分级的最后 */
+/** 列表排序用：A 在前，没分级的最后。企业版多一档 S（lib/enterprise/customer-v2.ts 企业客户级别），排在 A 前 */
 export const 等级序 = (v: string | null | undefined): number => {
+  if (v === "S") return -1;
   const i = (客户等级 as readonly string[]).indexOf(String(v ?? ""));
   return i < 0 ? 客户等级.length : i;
 };

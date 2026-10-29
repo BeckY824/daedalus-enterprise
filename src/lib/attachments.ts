@@ -58,15 +58,23 @@ export function 给界面(r: 行, 目录 = 附件目录()): 附件 {
 
 const 选列 = { id: true, name: true, mime: true, size: true, width: true, height: true, createdAt: true } as const;
 
-export async function 列附件(db: PrismaClient, 挂在: 归属, 目录 = 附件目录()): Promise<附件[]> {
-  const 行们 = await db.attachment.findMany({ where: 挂在, orderBy: { createdAt: "asc" }, select: 选列 });
+/**
+ * 分类：企业版联系人附件的 名片 / 相册（迁移 074）。给了就只列这一类；相册连没分类的老附件一起算（customer-v2.ts 附件分类们）
+ */
+export function 分类条件(分类: string | null | undefined) {
+  if (!分类) return {};
+  return 分类 === "相册" ? { OR: [{ tag: "相册" }, { tag: null }] } : { tag: 分类 };
+}
+
+export async function 列附件(db: PrismaClient, 挂在: 归属, 目录 = 附件目录(), 分类?: string | null): Promise<附件[]> {
+  const 行们 = await db.attachment.findMany({ where: { ...挂在, ...分类条件(分类) }, orderBy: { createdAt: "asc" }, select: 选列 });
   return 行们.map((r) => 给界面(r, 目录));
 }
 
 /** 先写临时文件、改名到位，再插行；插行失败把文件删掉 */
 export async function 存附件(
   db: PrismaClient,
-  x: { 挂在: 归属; name: string; mime: string; 字节: Uint8Array; width?: number | null; height?: number | null; userId?: string | null },
+  x: { 挂在: 归属; name: string; mime: string; 字节: Uint8Array; width?: number | null; height?: number | null; userId?: string | null; tag?: string | null },
   目录 = 附件目录(),
 ): Promise<附件> {
   fs.mkdirSync(目录, { recursive: true });
@@ -87,6 +95,7 @@ export async function 存附件(
         height: x.height ?? null,
         sha256: crypto.createHash("sha256").update(x.字节).digest("hex"),
         userId: x.userId ?? null,
+        tag: x.tag ?? null,
       },
       select: 选列,
     });

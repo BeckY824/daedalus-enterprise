@@ -11,7 +11,8 @@ export function 归属查询(挂在: 归属): string {
   return `${k}=${encodeURIComponent(v)}`;
 }
 
-export async function 传附件(挂在: 归属, f: File): Promise<{ ok: true; 附件?: 附件 } | { ok: false; error: string }> {
+/** 分类：企业版联系人附件的 名片 / 相册（api/attachments 只在挂联系人时认） */
+export async function 传附件(挂在: 归属, f: File, 分类?: string | null): Promise<{ ok: true; 附件?: 附件 } | { ok: false; error: string }> {
   const 名 = 规整文件名(f.name);
   const 不收 = 不收说明(名, f.type);
   if (不收) return { ok: false, error: 不收 };
@@ -21,6 +22,7 @@ export async function 传附件(挂在: 归属, f: File): Promise<{ ok: true; �
     if (超) return { ok: false, error: 超 };
     const q = new URLSearchParams({ name: 好.名 });
     if (好.w && 好.h) { q.set("w", String(好.w)); q.set("h", String(好.h)); }
+    if (分类) q.set("tag", 分类);
     const r = await fetch(`/api/attachments?${归属查询(挂在)}&${q}`, {
       method: "POST",
       body: 好.体,
