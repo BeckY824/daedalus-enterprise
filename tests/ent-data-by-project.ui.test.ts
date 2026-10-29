@@ -26,6 +26,7 @@ beforeAll(async () => {
     import {ProjectNowView, ProjectPeriodView} from '@/app/(app)/overview/ProjectStatsView';
     import {阶段们, 节点们} from '@/lib/project/nodes';
     import {BusinessProvider} from '@/lib/business-client';
+    import {项目漏斗of} from '@/app/(app)/overview/funnel';
     import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const 长='某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域销售总监';
     const 现在={
@@ -33,6 +34,7 @@ beforeAll(async () => {
       节点:阶段们.flatMap(p=>节点们[p].map((node,i)=>({phase:p,node,count:i+1,amount:1000000*i}))),
       结局:[{result:'线索流失',count:2},{result:'丢单',count:1},{result:'成功交付',count:5},{result:'异常状态',count:1}],
       公海:2,外币:1,
+      漏斗:项目漏斗of([...Array(12)].map(()=>({phase:'线索',result:null})).concat([...Array(8)].map(()=>({phase:'商机',result:null})),[...Array(5)].map(()=>({phase:'订单',result:'成功交付'})))),
       按人:[1,2,3].map(i=>({id:'u'+i,name:长+i,线索:4,商机:3,订单:1,商机金额:98765432,订单金额:12345678})),
     };
     const 一段={
@@ -40,6 +42,7 @@ beforeAll(async () => {
       trend:Array.from({length:26},(_,i)=>({label:'10-'+String(i+1).padStart(2,'0'),新建:i%3,转商机:i%2,转订单:i%4===0?1:0,成功交付:i%5===0?1:0})),
       按人:[1,2].map(i=>({id:'u'+i,name:长+i,新建:3,转商机:2,转订单:1,成功交付:1,交付金额:23456789,没成:1})),
       外币:0,
+      漏斗:项目漏斗of([...Array(6)].map((_,i)=>({phase:i<4?'商机':'线索',result:i<3?'成功交付':null}))),
     };
     window.__画=(view,项目,单人)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:项目}}>
       <DataShell view={view} 项目={项目}>
@@ -65,7 +68,7 @@ it("现在：项目的卡片、节点图、按负责人表，外币另说一句"
   const { page, errors } = await 打开("现在");
   const t = await page.locator("body").innerText();
   expect(t).toContain("项目现状与复盘");
-  for (const s of ["新线索", "商机", "订单", "异常状态", "各进程的项目", "按负责人", "公海里还有 2 个进行中的", "另有 1 个进行中的项目不是 CNY"]) expect(t).toContain(s);
+  for (const s of ["新线索", "商机", "订单", "异常状态", "各进程的项目", "按负责人", "公海里还有 2 个进行中的", "全周期漏斗", "另有 1 个进行中的项目不是 CNY"]) expect(t).toContain(s);
   expect(t).toContain("成功交付 5");
   expect(await page.locator("canvas").count()).toBeGreaterThan(0);
   expect(await page.locator('a[href="/leads?ownerId=u1"]').count()).toBe(1);
@@ -76,7 +79,7 @@ it("现在：项目的卡片、节点图、按负责人表，外币另说一句"
 it("本月：新建 / 转商机 / 成功交付 / 没成，走势图，按负责人表", async () => {
   const { page, errors } = await 打开("本月");
   const t = await page.locator("body").innerText();
-  for (const s of ["新建项目", "转商机", "成功交付", "没成", "项目走势", "按负责人", "线索流失 1 · 丢单 1"]) expect(t).toContain(s);
+  for (const s of ["新建项目", "转商机", "成功交付", "没成", "项目走势", "全周期漏斗", "按负责人", "线索流失 1 · 丢单 1"]) expect(t).toContain(s);
   expect(t).not.toContain("不是 CNY");
   expect(await page.locator("canvas").count()).toBe(1);
   expect(errors).toEqual([]); await page.close();

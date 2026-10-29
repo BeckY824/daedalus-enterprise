@@ -11,6 +11,7 @@ import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import { palette, categorical } from "@/lib/palette";
 import { 金额 } from "@/lib/currency";
 import type { 项目现在, 项目一段, 人行现在, 人行一段 } from "./project-stats";
+import ProjectFunnel from "./ProjectFunnel";
 
 /**
  * 企业版只用项目时「数据」页的正文（10-26 用户：「「数据」页改成按项目统计」）。
@@ -117,6 +118,12 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
         </Col>
       </Row>
 
+      <ProjectFunnel
+        漏斗={数.漏斗}
+        说明="看得到的全部项目走到了哪一步，含已结束的"
+        空={{ title: "还没有项目", hint: "新建一条线索，或者从飞书 / Excel 导入，这里会按线索 → 商机 → 订单 → 交付数出来。" }}
+      />
+
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} xxl={单人 ? 24 : 12}>
           <Card title={<span className="section-title">各进程的项目</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>只数进行中的</Typography.Text>}>
@@ -204,6 +211,12 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
           <StatCard icon={<StopOutlined />} color={categorical.orange} label="没成" value={t.线索流失 + t.丢单} note={`线索流失 ${t.线索流失} · 丢单 ${t.丢单}${t.异常状态 ? `；另有异常 ${t.异常状态}，不算在没成里` : ""}`} />
         </Col>
       </Row>
+
+      <ProjectFunnel
+        漏斗={数.漏斗}
+        说明={`${口径}新建的项目，现在走到了哪一步`}
+        空={{ title: "这一段没有新建项目", hint: "漏斗从这段时间新建的项目往下数。换一个时间段看看。" }}
+      />
 
       <Card style={{ marginTop: 16 }} title={<span className="section-title">项目走势</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>一个项目来回改进程只数一次</Typography.Text>}>
         {有事 ? (
