@@ -1,10 +1,9 @@
 /**
  * 桌面端本地服务的两道门（lib/desktop/local-guard.ts，2026-10-04，D-1）。
- * 原来本地 /login 对谁都 307 到 /api/desktop/session?t=<令牌>：同机别的系统账户、DNS 重绑定过来的网页都能拿到会话
+ * 原来本地 /login 对谁都 307 到 /api/desktop/session?t=<令牌>：同机别的系统账户、DNS 重绑定过来的网页都能拿到会话。
+ * 企业版删掉了那条自动登录路由（2026-10-29），两道门本身还给 api/desktop/ready 用，这里只钉判断。
  */
 import { describe, it, expect } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
 import { 是本机地址, 来自壳 } from "@/lib/desktop/local-guard";
 
 describe("是本机地址", () => {
@@ -29,16 +28,3 @@ describe("来自壳", () => {
   });
 });
 
-describe("接上了", () => {
-  const 读 = (f: string) => fs.readFileSync(path.resolve(__dirname, "..", f), "utf8");
-  it("本地 /login 自动登录前要 来自壳 + 是本机地址", () => {
-    const src = 读("src/app/login/page.tsx");
-    const 段 = src.slice(src.indexOf("if (本地模式())"), src.indexOf("redirect(`/api/desktop/session"));
-    expect(段).toContain("来自壳(");
-    expect(段).toContain("是本机地址(");
-  });
-  it("session 路由拒非本机 Host；proxy 在本地模式下也拒", () => {
-    expect(读("src/app/api/desktop/session/route.ts")).toMatch(/if \(!是本机地址\(req\.headers\.get\("host"\)/);
-    expect(读("src/proxy.ts")).toMatch(/DESKTOP_LOCAL === "1" && !本机地址\(request\.headers\.get\("host"\)\)/);
-  });
-});

@@ -19,16 +19,13 @@ const 请求超时毫秒 = 20000;
  * 由它读运行时环境决定要不要画「忘记密码」：这个部署发不出信时，
  * 那个链接点进去只能看到「请联系我们」，不如不摆。
  *
- * 2026-10-04 起和桌面端同一扇门（左栏品牌 + 右边一张表，见 DesktopAuth / AuthSide）：
- * 用户发现网页版还是老卡片。桌面端那张走的是云端账号的「一个邮箱框走到底」，
- * 网页版没有那条路（托管版是共享工作区的固定账号、自部署是管理员建的用户名），所以只换样子、不换流程。
+ * 左栏品牌 + 右边一张表（见 AuthSide）。托管版是共享工作区的固定账号、自部署是管理员建的用户名。
  */
 export default function LoginForm({
   可找回密码,
   用邮箱,
   可注册 = false,
   注册地址,
-  提示,
   产品名,
 }: {
   可找回密码: boolean;
@@ -36,8 +33,6 @@ export default function LoginForm({
   /** 托管版收不收新注册。收就摆一条注册入口（开的是桌面端用的云端账号） */
   可注册?: boolean;
   注册地址?: string;
-  /** 为什么会站在这一页。有就先说清，再让人登 */
-  提示?: string;
   /** 左栏的产品名。企业版部署可换（CRM_PRODUCT_NAME，lib/enterprise/brand.ts），不传是默认名 */
   产品名?: string;
 }) {
@@ -191,7 +186,6 @@ export default function LoginForm({
             )}
           </div>
 
-          {提示 && <Alert type="warning" showIcon title={提示} className="auth-alert" />}
           {/* 错误条撑开、收起，而不是砸下来又消失 */}
           <AnimatePresence initial={false}>
             {error && (
