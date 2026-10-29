@@ -112,7 +112,7 @@ export async function 取详情(db: Db, keys: readonly string[] | "全部", 稳�
   return { plans: plans.map(成计划), tasks: tasks.map(成待办) };
 }
 
-type 轻项 = { key: string; 时间: string | null; ownerId: string };
+export type 轻项 = { key: string; 时间: string | null; ownerId: string };
 /**
  * 轻列表一份：全部未完成事项，和压成 轻 / 负责人 的样子（要给页面时才压，压一次记在这份上）；
  * 分好：分好的组，键是 分组日键 + 谁的（"" 是全部成员），只摆前 N 条用、别改
@@ -130,6 +130,14 @@ async function 取轻份(db: Db): Promise<轻份> {
       ...轻待办.map((t) => ({ key: `task:${t.id}`, 时间: scheduleValue(t.dueAt, t.dueOn), ownerId: t.ownerId })),
     ],
   };
+}
+
+/**
+ * 全部未完成事项的轻列表（企业版复盘页「待办」用，P15）：和计划页同一句查询、同一个缓存键，口径不另起一套。
+ * 共用时给出的是共用的那份，只读，别改
+ */
+export async function 未完成轻列表(db: Db, 共用?: <T>(key: string, 算: () => Promise<T>) => Promise<T>): Promise<readonly 轻项[]> {
+  return (共用 ? await 共用("计划页轻列表", () => 取轻份(db)) : await 取轻份(db)).全部;
 }
 
 /**

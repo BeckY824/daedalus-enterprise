@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useImperativeHandle, useRef, useState } from "react";
 import { PaperClipOutlined, CloseOutlined } from "@ant-design/icons";
 import { App } from "antd";
 
@@ -26,16 +26,22 @@ export default function AskFiles({
   onChange,
   disabled,
   字,
+  藏键 = false,
+  开,
 }: {
   files: 附件[];
   onChange: (f: 附件[]) => void;
   disabled?: boolean;
   /** 键上带的字（企业版项目模式首页叫「附件」，和背调、查重并排）；不给 = 只有图标 */
   字?: string;
+  /** 不摆自己的键（企业版首页收进「+」菜单，P15）：只留选好的文件小签，由 开 去打开选文件框 */
+  藏键?: boolean;
+  开?: React.Ref<{ 打开: () => void }>;
 }) {
   const { message } = App.useApp();
   const input = useRef<HTMLInputElement>(null);
   const [读取中, set读取中] = useState(false);
+  useImperativeHandle(开, () => ({ 打开: () => { if (!disabled && !读取中) input.current?.click(); } }), [disabled, 读取中]);
 
   async function 选好了(list: FileList | null) {
     if (!list?.length) return;
@@ -71,7 +77,7 @@ export default function AskFiles({
         style={{ display: "none" }}
         onChange={(e) => 选好了(e.target.files)}
       />
-      <button
+      {!藏键 && <button
         type="button"
         className={`cli-tool${字 ? " cli-tool-t" : ""}`}
         disabled={disabled || 读取中}
@@ -81,7 +87,7 @@ export default function AskFiles({
       >
         <PaperClipOutlined />
         {字 && <span>{字}</span>}
-      </button>
+      </button>}
       {files.map((f) => (
         <span key={f.name} className="cli-file" title={`${f.name} · ${Math.round(f.size / 1024) || 1} KB · 只随这一问发出，不会存下来`}>
           <span className="cli-file-n">{f.name}</span>

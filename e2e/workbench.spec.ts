@@ -154,9 +154,9 @@ test("有数据的首页：一行三个信号，不是三张卡（企业版：�
     await page.waitForSelector(".home-cards");
     await expect(page.locator(".signals")).toHaveCount(0);
     await expect(page.locator(".home-cards .home-card")).toHaveCount(4);
-    // 每张卡点进去是项目页按同一口径筛好的那批，且都带口径
+    // 每张卡点进去是项目页按同一口径筛好的那批（今日待办去复盘页待办页签的「今天到期」），且都带口径
     for (const 卡 of await page.locator(".home-cards .home-card").all()) {
-      expect(await 卡.getAttribute("href")).toMatch(/^\/projects\?f=/);
+      expect(await 卡.getAttribute("href")).toMatch(/^\/(projects\?f=|overview\?(ownerId=[^&]+&)?f=today$)/);
       expect((await 卡.getAttribute("title")) ?? "").not.toBe("");
     }
     return;
@@ -541,9 +541,10 @@ test("1024 下项目看板和页面都不横滚", async ({ page }) => {
 
 test("数据：三处看数并成一页，/reports 这条 URL 还在", async ({ page }) => {
   await 登录(page);
-  await page.goto("/overview");
-  // 企业版项目模式页头叫「复盘看板」（10-29），别的照旧叫「数据」
-  await expect(page.getByRole("heading", { name: /^(数据|复盘看板)$/ })).toBeVisible();
+  // 企业版项目模式复盘页默认开「待办」页签（P15），视图切换在「数据」页签里
+  await page.goto("/overview?tab=data");
+  // 企业版项目模式页头叫「复盘」（定稿 -2 版，原来叫「复盘看板」），别的照旧叫「数据」
+  await expect(page.getByRole("heading", { name: /^(数据|复盘)$/ })).toBeVisible();
 
   // 三个视图，切过去地址跟着变
   // 页头那个视图切换是第一个；面板收着、正文够宽时，下面图表的时间窗也是一个 segmented，也有「本月」

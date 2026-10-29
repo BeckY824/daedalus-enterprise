@@ -12,6 +12,17 @@ import { 企业版 } from "./owner-pick";
 import { 起假模型 } from "../scripts/research-fake-llm";
 
 const 账号 = { 用户名: "admin", 密码: "admin123" };
+
+/**
+ * 进背调模式。企业版项目模式首页的几颗键收进了左下角的「+」（P15，lib/enterprise/composer-plus.ts）：
+ * 先点「+」再点菜单里的「背调」；进了背调模式「+」收起，摆回那颗带 aria-pressed 的「背调」键（点它退出）
+ */
+async function 进背调(page: Page) {
+  if (企业版) {
+    await page.getByRole("button", { name: "更多入口" }).click();
+    await page.getByRole("menuitem", { name: "背调" }).click();
+  } else await page.getByRole("button", { name: "背调", exact: true }).click();
+}
 let 假模型: { url: string; close: () => Promise<void> };
 
 async function 登录(page: Page) {
@@ -120,8 +131,10 @@ test("背调模式：选中有明显状态，发出去直接开跑；认不准�
   test.setTimeout(120_000);
   await 登录(page);
   const 开关 = page.getByRole("button", { name: "背调", exact: true });
-  await expect(开关).toHaveAttribute("aria-pressed", "false");
-  await 开关.click();
+  // 企业版没进背调时这颗键不摆（收在「+」里）
+  if (企业版) await expect(开关).toHaveCount(0);
+  else await expect(开关).toHaveAttribute("aria-pressed", "false");
+  await 进背调(page);
   await expect(开关).toHaveAttribute("aria-pressed", "true");
   const 框 = page.getByPlaceholder("输入公司名、官网或一句需求，比如：帮我查 Rexel 适不适合我们");
   await expect(框).toBeVisible();
@@ -145,14 +158,15 @@ test("背调模式：选中有明显状态，发出去直接开跑；认不准�
 
   // 3. 再点一下：回到普通问答
   await 开关.click();
-  await expect(开关).toHaveAttribute("aria-pressed", "false");
+  if (企业版) await expect(page.getByRole("button", { name: "更多入口" })).toBeVisible();
+  else await expect(开关).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByPlaceholder("输入公司名、官网或一句需求，比如：帮我查 Rexel 适不适合我们")).toHaveCount(0);
 });
 
 test("背调模式里粘贴询盘邮件（第二期）：本机认出发件人和 IP，带着它开跑，真实性里「邮件头」一项按 IP 国家定灯", async ({ page }) => {
   test.setTimeout(120_000);
   await 登录(page);
-  await page.getByRole("button", { name: "背调", exact: true }).click();
+  await 进背调(page);
   await page.getByRole("button", { name: "粘贴询盘邮件" }).click();
   const 原文 = [
     "Received: from mail.lumora-trading.example (mail.lumora-trading.example [94.200.1.10]) by mx.ourfactory.cn with ESMTP id 1",
@@ -182,7 +196,7 @@ test("背调模式里粘贴询盘邮件（第二期）：本机认出发件人�
 test("只有人名 + 电话（10-18）：先判号码，找公司出候选，点选接着背调（同一次、不另扣）；号码搜不到出「只有人」简版", async ({ page }) => {
   test.setTimeout(150_000);
   await 登录(page);
-  await page.getByRole("button", { name: "背调", exact: true }).click();
+  await 进背调(page);
   const 框 = page.getByPlaceholder("输入公司名、官网或一句需求，比如：帮我查 Rexel 适不适合我们");
 
   // 1. 名字 + 号码：模拟搜索里这个号码出现在 Lumora 的名录页上 → 候选 → 点选 → 背调这家

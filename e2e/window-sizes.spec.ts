@@ -87,7 +87,8 @@ test("最小窗口 1024：列表筛选行一行摆下，「列」不被挤到第
 test("外接屏 2560：数据页四张指标卡一排；直接打开设置不铺满", async ({ page }) => {
   await page.setViewportSize({ width: 2560, height: 1440 });
   await 登录(page);
-  await page.goto("/overview");
+  // 企业版项目模式复盘页默认开「待办」页签（P15），指标卡在「数据」页签里
+  await page.goto("/overview?tab=data");
   const 卡 = page.locator(".ant-col-xl-6");
   await expect(卡.first()).toBeVisible();
   const 顶 = await 卡.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
