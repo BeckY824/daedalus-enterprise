@@ -19,7 +19,6 @@ beforeEach(async()=>{
  vi.stubEnv("DESKTOP_LOCAL","0");vi.stubEnv("MULTI_TENANT","0");忘掉限定();state.user.role="ADMIN";await resetDb();await db.user.create({data:{...state.user,password:"qa"}});
  await db.customer.createMany({data:[{id:"german",name:"MÜLLER",school:"STRAẞE"},{id:"russian",name:"МОСКВА"},{id:"literal",name:"字面档案"},{id:"decoy",name:"另一个档案"}].map(row=>({...row,phone:"",salesOwnerId:state.user.id}))});
  await db.contact.create({data:{customerId:"literal",name:"ЖАН_100%[A]*?",phone:"",isPrimary:true}});
- await db.tradeOrder.create({data:{customerId:"literal",ownerId:state.user.id,no:"PI_100%[A]*?",amount:10}});
  await db.customerExtra.create({data:{customerId:"literal",country:"ÖSTERREICH"}});
  await db.contact.create({data:{customerId:"decoy",name:"ЖАНx100分Axyz",phone:""}});
 });
@@ -32,8 +31,8 @@ it("德文、俄文及大写ẞ小写ß双向一致，导出和AI沿用同一搜
  const ctx:ToolContext={userId:state.user.id,userName:"QA",b:DEFAULT_BUSINESS,recordOffset:0,proposals:[]};
  const ai=await TOOLS.find(t=>t.name==="search_customers")!.run({query:"москва"},ctx);expect(JSON.stringify(ai.data)).toContain("МОСКВА");
 });
-it("联系人、外贸资料、订单号的百分号下划线和GLOB字符均按字面，不漏关联也不误匹配",async()=>{
- for(const keyword of ["жан_100%[a]*?","pi_100%[a]*?","österreich","[A]","*?","100%"]){expect(await search(keyword),keyword).toEqual([{id:"literal"}])}
+it("联系人、外贸资料的百分号下划线和GLOB字符均按字面，不漏关联也不误匹配",async()=>{
+ for(const keyword of ["жан_100%[a]*?","österreich","[A]","*?","100%"]){expect(await search(keyword),keyword).toEqual([{id:"literal"}])}
  expect(await search("x' OR 1=1 --")).toEqual([]);expect(await db.customer.count()).toBe(4);
 });
 it("按需选择也支持Unicode大小写、规整号码和百分号字面，不扩大到关联联系人",async()=>{

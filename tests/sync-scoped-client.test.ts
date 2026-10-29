@@ -80,7 +80,7 @@ const 模板 = [{ id: "cmusc55660000dulko96ek8kr", email: "admin", name: "管理
 async function 清空(d: PrismaClient) {
   for (const t of ["AiMessage", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   for (const u of 模板) await d.user.create({ data: { ...u, password: "x", title: "管理员", createdAt: new Date("2026-10-01T00:00:00Z") } });
 }
 /** 直接读整个 SQLite 文件（含同步日志、导入撤销快照）找敏感串：等同 Sam 用只读工具打开 crm.db */

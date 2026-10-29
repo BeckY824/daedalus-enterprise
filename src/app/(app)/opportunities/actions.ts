@@ -52,12 +52,15 @@ async function 记结单(id: string, 原状态: string | null, 新状态: string
 }
 
 /**
- * 这个商机已经转成订单了（外贸「订单 = 签约」）：不许直接改回进行中 / 丢单（二审）——订单和签约还在，
- * 再转一次就是两张单。要改先到客户页删掉那张订单（删订单时商机会自己退回进行中）。返回拦下的那句话，没订单返回 null
+ * 这个商机已经转成订单了（外贸「订单 = 签约」）：不许直接改回进行中 / 丢单（二审）——那笔签约还在，
+ * 再转一次就是两张单。要改先到客户页删掉那张订单（删时商机会自己退回进行中）。返回拦下的那句话，没转过返回 null。
+ * 2026-10-29 订单表（TradeOrder）删了：「转过」改认签约联动赢下它的那一行（ContractWin），只在外贸模版下认——
+ * 原来只有外贸会有订单，通用模版照旧能直接改回
  */
-async function 转过订单的话(商机id: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<string | null> {
-  const 单 = await db.tradeOrder.findFirst({ where: { opportunityId: 商机id }, select: { no: true } });
-  return 单 ? `这个商机已经转成订单 ${单.no} 了：要改回去，先到客户页的「订单」里删掉那张订单` : null;
+async function 转过订单的话(商机id: string, db: Prisma.TransactionClient | typeof prisma = prisma, 是外贸?: boolean): Promise<string | null> {
+  if (!(是外贸 ?? 外贸订单(await getBusiness()))) return null;
+  const 赢 = await db.contractWin.findUnique({ where: { opportunityId: 商机id }, select: { contractId: true } });
+  return 赢 ? "这个商机已经转成订单了：要改回去，先到客户页的「订单」里删掉那张订单" : null;
 }
 
 export async function saveOpportunity(input: {
@@ -251,10 +254,10 @@ export async function moveStage(id: string, stage: string, 还原概率?: number
       if (期望版本 && before.updatedAt.toISOString() !== 期望版本) return { ok: false as const, error: "商机后来又变过了，不能撤销旧操作，请查看最新内容" };
       const status = stage === "赢单成交" ? "WON" : before.status === "LOST" ? "LOST" : "OPEN";
       if (before.status === "WON" && status !== "WON") {
-        const 挡 = await 转过订单的话(id, tx);
+        const 挡 = await 转过订单的话(id, tx, 是外贸);
         if (挡) return { ok: false as const, error: 挡 };
       }
-      if (status === "WON" && 是外贸 && !(await 转过订单的话(id, tx))) return { ok: false as const, error: "请通过「转为订单」登记订单，不能直接标为已转订单" };
+      if (status === "WON" && 是外贸 && !(await 转过订单的话(id, tx, 是外贸))) return { ok: false as const, error: "请通过「转为订单」登记订单，不能直接标为已转订单" };
       const probability = status === "WON" ? 100 : status === "LOST" ? 0
         : 还原概率 !== undefined ? 还原概率
         : before.probability === (STAGE_PROBABILITY[before.stage] ?? 20) ? STAGE_PROBABILITY[stage] ?? 20 : before.probability;
@@ -293,10 +296,10 @@ export async function setOppStatus(
       if (!原) return { ok: false as const, error: "商机不存在（可能已删除）" };
       if (还原?.版本 && 原.updatedAt.toISOString() !== 还原.版本) return { ok: false as const, error: "商机后来又变过了，不能撤销旧操作，请查看最新内容" };
       if (原.status === "WON" && status !== "WON") {
-        const 挡 = await 转过订单的话(id, tx);
+        const 挡 = await 转过订单的话(id, tx, 是外贸);
         if (挡) return { ok: false as const, error: 挡 };
       }
-      if (status === "WON" && 是外贸 && !(await 转过订单的话(id, tx))) return { ok: false as const, error: "请通过「转为订单」登记订单，不能直接标为已转订单" };
+      if (status === "WON" && 是外贸 && !(await 转过订单的话(id, tx, 是外贸))) return { ok: false as const, error: "请通过「转为订单」登记订单，不能直接标为已转订单" };
       const stage = status === "WON" ? "赢单成交" : 还原?.stage ?? (原.stage === "赢单成交" ? "谈判审核" : 原.stage);
       const probability = status === "WON" ? 100 : status === "LOST" ? 0 : 还原?.probability ?? (原.status !== "OPEN" ? STAGE_PROBABILITY[stage] ?? 20 : 原.probability);
       if (原.status === status && 原.stage === stage && 原.probability === probability) return { ok: true as const, o: 原, changed: false };

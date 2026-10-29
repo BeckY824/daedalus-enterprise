@@ -3,8 +3,6 @@
  * 只有企业版部署认这个变量；别的版本设了也不换名（开关关闭照旧）。
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -34,11 +32,5 @@ describe("自定产品名", () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
     vi.stubEnv("CRM_PRODUCT_NAME", "名".repeat(60));
     expect(自定产品名()).toBe("名".repeat(40));
-  });
-
-  it("部署包把 CRM_PRODUCT_NAME 从 .env 传进容器，样例里留空", () => {
-    const 包 = path.join(process.cwd(), "deploy/enterprise");
-    expect(readFileSync(path.join(包, "docker-compose.yml"), "utf8")).toMatch(/CRM_PRODUCT_NAME: "\$\{CRM_PRODUCT_NAME:-\}"/);
-    expect(readFileSync(path.join(包, ".env.example"), "utf8")).toMatch(/^CRM_PRODUCT_NAME=$/m);
   });
 });

@@ -24,7 +24,7 @@ describe("企业版()", () => {
     expect(企业版()).toBe(true);
   });
 
-  it("自部署 / 云端的 compose 都没开（只有 deploy/enterprise/ 那份开）", () => {
+  it("根目录各 compose 都没开（企业版私有部署走 systemd，开关写在服务器的 .env 里）", () => {
     const 根 = path.resolve(__dirname, "..");
     const 文件 = readdirSync(根).filter((f) => /^docker-compose.*\.yml$/.test(f));
     expect(文件.length).toBeGreaterThan(0);

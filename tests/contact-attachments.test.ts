@@ -156,9 +156,9 @@ describe("企业版：转客户、并进老客户", () => {
     expect((await 列出(`contactId=${联系人.id}`)).附件).toHaveLength(2);
     expect((await 列出(`leadId=${l.id}`)).附件).toHaveLength(2);
 
-    const 数 = await 客户附件个数(prisma, [r.customerId], true, true);
-    expect(数.get(r.customerId)).toEqual({ 商机: 0, 订单: 0, 联系人: 2 });
-    expect((await 客户附件个数(prisma, [r.customerId], true, false)).get(r.customerId)).toBeUndefined();
+    const 数 = await 客户附件个数(prisma, [r.customerId], true);
+    expect(数.get(r.customerId)).toEqual({ 商机: 0, 联系人: 2 });
+    expect((await 客户附件个数(prisma, [r.customerId], false)).get(r.customerId)).toBeUndefined();
   });
 
   it("线索没写联系人就转：附件只留在线索上，导出按客户照样数到", async () => {
@@ -167,7 +167,7 @@ describe("企业版：转客户、并进老客户", () => {
     const r = await convertLead(l.id);
     if (!r.ok) throw Error(r.error);
     expect((await prisma.attachment.findFirstOrThrow({ where: { leadId: l.id } })).contactId).toBeNull();
-    expect((await 客户附件个数(prisma, [r.customerId], true, true)).get(r.customerId)?.联系人).toBe(1);
+    expect((await 客户附件个数(prisma, [r.customerId], true)).get(r.customerId)?.联系人).toBe(1);
   });
 
   it("并进老客户：挂到电话对得上的那位联系人，不挂关键联系人", async () => {
@@ -217,8 +217,8 @@ describe("清孤儿", () => {
 
 describe("导出", () => {
   it("附件个数说法带上联系人", () => {
-    expect(附件个数说法({ 商机: 1, 订单: 0, 联系人: 2 })).toBe("商机 1 张、联系人 2 张");
-    expect(附件个数说法({ 商机: 0, 订单: 0 })).toBe("");
+    expect(附件个数说法({ 商机: 1, 联系人: 2 })).toBe("商机 1 张、联系人 2 张");
+    expect(附件个数说法({ 商机: 0 })).toBe("");
   });
 });
 
@@ -264,6 +264,6 @@ describe("开关关着（个人版、团队版）", () => {
     if (!r.ok) throw Error(r.error);
     expect((await prisma.attachment.findUniqueOrThrow({ where: { id } })).contactId).toBeNull();
     // 导出也不数
-    expect((await 客户附件个数(prisma, [r.customerId], true, false)).get(r.customerId)).toBeUndefined();
+    expect((await 客户附件个数(prisma, [r.customerId], false)).get(r.customerId)).toBeUndefined();
   });
 });

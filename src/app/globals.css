@@ -1078,10 +1078,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-mini-sub > .rec-mini-m { overflow: hidden; text-overflow: ellipsis; }
 /* 金额不许被截：它折到下一行也整段显示 */
 .rec-mini-sub > .rec-mini-money { flex: none; overflow: visible; }
-/* 订单那行第一行：订单号是认单的那半截，放不下时金额折到下一行；订单号比整行还长才省略。金额整段留着 */
-.rec-mini-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; }
-.rec-mini-line > .rec-mini-cut { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rec-mini-line > .rec-mini-amt { flex: none; }
 .rec-empty { padding: 4px 8px 8px; font-size: var(--fs-note); color: var(--text-faint); }
 /* 企业版联系人小卡（10-27 会议：联系方式完整展示）：姓名 / 关键 / 职位一行，下面电话 / 邮箱 / 微信各一行，长了换行不截断 */
 .rec-contact { position: relative; padding: 6px 8px; border-radius: var(--r-card); font-size: var(--fs-body); }
@@ -1139,7 +1135,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-tl-head { display: flex; align-items: center; gap: 8px; }
 .rec-tl-type { flex: none; font-weight: 600; font-size: var(--fs-section); color: var(--ink); }
 .rec-tl-title { color: var(--ink-soft); font-size: var(--fs-body); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 跟进挂着的订单号（2026-10-05）、关联商机：小一号的链接，不和标题抢。
+/* 跟进的关联商机（原来还有挂着的订单号，2026-10-29 删了）：小一号的链接，不和标题抢。
    2026-10-19 客户截图：商机名一长（「chicken breast BFQ. Exw. 10kg/Box. … 500 tons」），原来 flex:none 不让缩，
    时间和编辑 / 删除被推出中栏、压到右边 AI 栏底下，点铅笔点到的是 AI 栏。现在它跟着缩、一行省略，悬停看全文 */
 .rec-tl-order { font-size: var(--fs-note); white-space: nowrap; flex: 0 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
@@ -1158,7 +1154,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-tl-content { margin: 6px 0 4px; color: var(--ink-soft); font-size: var(--fs-section); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; } /* 长网址一口气不断，会撑出整页横滚 */
 .rec-tl-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--fs-note); color: var(--text-muted); margin-top: 4px; }
 .rec-tl-contract { background: var(--success-bg); border: 1px solid var(--success-line); border-radius: var(--r-card); padding: 10px 14px; }
-/* 签约 / 订单卡片：订单号 + 金额长的时候日期折到下一行靠右，不再越出卡片（2026-10-19 排查） */
+/* 签约 / 订单卡片：金额长的时候日期折到下一行靠右，不再越出卡片（2026-10-19 排查） */
 .rec-tl-contract .rec-tl-head { flex-wrap: wrap; row-gap: 2px; }
 .rec-tl-contract .rec-tl-type { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .rec-nowrap { white-space: nowrap; }

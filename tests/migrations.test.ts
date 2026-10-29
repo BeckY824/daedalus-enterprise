@@ -5,6 +5,7 @@
  * 因为容器**每次启动都会把整个目录重跑一遍**，不记录执行进度。
  * 一旦有人往里面塞了 DROP / INSERT / UPDATE，第二次启动就会炸在生产环境，
  * 而那时才发现就太晚了。所以在这里挡住。
+ * 唯一放过的是 066 那 7 张外贸订单 / 供应商表的 `DROP TABLE IF EXISTS`（2026-10-29，见 许可删除的表）。
  *
  * ---
  *
@@ -26,6 +27,7 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { 许可删除的表, 许可删除的文件 } from "./migration-allowed-drops";
 
 const ROOT = path.resolve(__dirname, "..");
 const DIR = path.join(ROOT, "migrations");
@@ -40,6 +42,11 @@ const 去注释 = (f: string) => readFileSync(path.join(DIR, f), "utf8").replace
  */
 const 容错 = /duplicate column name\|already exists/;
 const 可跳过 = (e: unknown) => /duplicate column name|already exists/i.test(String((e as Error)?.message ?? e));
+
+/** 唯一许可的删除（066 那 7 张表，见 migration-allowed-drops.ts）：只认一行一整句的 DROP TABLE IF EXISTS */
+const 许可的删除 = new RegExp(`^\\s*DROP\\s+TABLE\\s+IF\\s+EXISTS\\s+"(${许可删除的表.join("|")})"\\s*;\\s*$`, "gim");
+/** 把白名单里的 DROP TABLE IF EXISTS 整句拿掉，剩下的再过 禁止的语句 */
+const 去许可删除 = (sql: string) => sql.replace(许可的删除, "");
 
 /**
  * 不许出现的语句。按「语句」认，不按子串：外键的 ON UPDATE / ON DELETE CASCADE 是建表的一部分，不是改数据（R-064）
@@ -57,9 +64,9 @@ describe("迁移文件", () => {
     for (const f of 文件) expect(f, `${f} 不符合 NNN-说明.sql 的命名`).toMatch(/^\d{3}-[a-z0-9-]+\.sql$/);
   });
 
-  it("只能加东西：不允许 DROP / DELETE / UPDATE / INSERT", () => {
+  it("只能加东西：不允许 DROP / DELETE / UPDATE / INSERT（只放过 066 那 7 张表的 DROP TABLE IF EXISTS）", () => {
     for (const f of 文件) {
-      const sql = 去注释(f);
+      const sql = 去许可删除(去注释(f));
       for (const [禁, re] of 禁止的语句) {
         expect(re.test(sql), `${f} 含有不允许的语句：${禁}`).toBe(false);
       }
@@ -79,6 +86,19 @@ describe("迁移文件", () => {
     expect(拦(`DELETE FROM "A";`)).toEqual(["DELETE"]);
     expect(拦(`DROP TABLE "A";`)).toEqual(["DROP"]);
     expect(拦(`INSERT INTO "A" VALUES (1);`)).toEqual(["INSERT"]);
+  });
+
+  it("2026-10-29 白名单只放过那 7 张表的 DROP TABLE IF EXISTS；别的表、不带 IF EXISTS、删索引照样拦", () => {
+    const 拦 = (sql: string) => 禁止的语句.filter(([, re]) => re.test(去许可删除(sql))).map(([禁]) => 禁);
+    expect(拦(`DROP TABLE IF EXISTS "TradeOrder";\nDROP TABLE IF EXISTS "Supplier";`)).toEqual([]);
+    expect(拦(`DROP TABLE "TradeOrder";`)).toEqual(["DROP"]);
+    expect(拦(`DROP TABLE IF EXISTS "Customer";`)).toEqual(["DROP"]);
+    expect(拦(`DROP TABLE IF EXISTS "TradeOrderX";`)).toEqual(["DROP"]);
+    expect(拦(`DROP INDEX IF EXISTS "TradeOrder_contractId_key";`)).toEqual(["DROP"]);
+    expect(拦(`DROP TABLE IF EXISTS "TradeOrder"; DROP TABLE IF EXISTS "Customer";`)).toEqual(["DROP"]);
+    // 真有 DROP 的只有 066 这一个文件
+    const 带删除 = 文件.filter((f) => /\bDROP\b/i.test(去注释(f)));
+    expect(带删除).toEqual([许可删除的文件]);
   });
 
   it("ALTER TABLE 只许 ADD COLUMN——改列、改约束、改名都得走 REBUILD_DB=1", () => {
@@ -156,6 +176,8 @@ describe("迁移文件", () => {
       // 跑完确实建出了表，加的列也真的在
       const 表 = db.prepare("select name from sqlite_master where type='table'").all() as { name: string }[];
       expect(表.map((t) => t.name)).toContain("AuditLog");
+      // 016 / 017 每遍先把订单 / 供应商建回空表，066 再删：跑完一张都不剩
+      for (const t of 许可删除的表) expect(表.map((x) => x.name), `${t} 跑完还在`).not.toContain(t);
       expect(db.prepare('SELECT * FROM "FollowPlan" WHERE id = ?').get("old-plan")).toMatchObject({ id: "old-plan", done: 1, plannedAt: 123456, doneAt: null });
       db.close();
     } finally {

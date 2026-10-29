@@ -154,7 +154,7 @@ export default function RecordView({
   const 在推项目 = 项目们?.filter((p) => !p.result && !p.pooledAt) ?? null;
   const [资料全开, set资料全开] = useState(false);
   /*
-    外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」、多出订单号；
+    外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」（订单号那几格 2026-10-29 随订单表删了）；
     不摆预计签约、推荐关系、渠道负责人；档案里多国家 / WhatsApp / 微信 / 邮箱 / 来源
   */
   const 外贸 = 外贸精简(b);
@@ -849,37 +849,18 @@ export default function RecordView({
               {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContract(null); setContractOpen(true); }}>{是订单 ? "新建订单" : "登记签约"}</Button>}
             </div>
             {contracts.length === 0 && <div className="rec-empty">{是订单 ? "还没有订单。商机点「转为订单」，或在这里新建" : "还没有签约"}</div>}
-            {contracts.map((c) =>
-              是订单 ? (
-                // 外贸：一笔签约就是一张订单。两行：订单号 + 金额；确认日 · 付款方式 · 供应商（订单页 10-28 已删，订单号只显示不跳）
-                <div key={c.id} className="rec-mini rec-mini-2">
-                  <span className="rec-mini-n rec-mini-line">
-                    {c.order ? <span className="rec-mini-cut" title={c.order.no}>{c.order.no}</span> : <span className="muted rec-mini-cut" title="切到外贸之前登记的。点右边的编辑，填上订单号（或付款方式、供应商）就补成一张订单">（还没有订单号，点编辑补上）</span>}
-                    <span className="rec-mini-amt">{金额(c.amount, c.currency)}</span>
-                  </span>
-                  {/* 确认日、付款方式、供应商各一段，挤不下就折行（原来拼成一串 nowrap，长供应商名直接越出卡片） */}
-                  <span className="rec-mini-sub">
-                    {[fmtDate(c.signedAt), c.order?.payment, c.order?.supplier].filter(Boolean).map((段, k) => (
-                      <span key={k} className="rec-mini-m" title={段 ?? undefined}>{段}</span>
-                    ))}
-                  </span>
-                  {!只读 && <span className="rec-mini-acts">
-                    <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑订单 ${c.order?.no ?? ""}`} onClick={() => { setEditingContract(c); setContractOpen(true); }} />
-                    <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label={`删除订单 ${c.order?.no ?? ""}`} onClick={() => void confirmDeleteContract(c)} />
-                  </span>}
-                </div>
-              ) : (
+            {/* 外贸叫「订单」，其余叫「签约」：同一行样式（订单号 / 付款方式 / 供应商那几格随订单表 2026-10-29 删了，写在备注里） */}
+            {contracts.map((c) => (
               <div key={c.id} className="rec-mini">
                 <DollarOutlined style={{ color: "var(--success)" }} />
                 <span className="rec-mini-n rec-mini-amt">{金额(c.amount, c.currency)}</span>
                 <span className="rec-mini-m">{fmtDate(c.signedAt)}</span>
                 {!只读 && <span className="rec-mini-acts">
-                  <Button type="text" size="small" icon={<EditOutlined />} aria-label="编辑这笔签约" onClick={() => { setEditingContract(c); setContractOpen(true); }} />
-                  <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label="删除这笔签约" onClick={() => void confirmDeleteContract(c)} />
+                  <Button type="text" size="small" icon={<EditOutlined />} aria-label={是订单 ? "编辑这张订单" : "编辑这笔签约"} onClick={() => { setEditingContract(c); setContractOpen(true); }} />
+                  <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label={是订单 ? "删除这张订单" : "删除这笔签约"} onClick={() => void confirmDeleteContract(c)} />
                 </span>}
               </div>
-              ),
-            )}
+            ))}
           </div>
           )}
         </aside>
@@ -963,7 +944,7 @@ export default function RecordView({
                     <div className="rec-tl-body">
                       <div className="rec-tl-contract">
                         <div className="rec-tl-head">
-                          <span className="rec-tl-type">{是订单 && e.c.order ? `订单 ${e.c.order.no}` : 叫} <span className="rec-nowrap">{金额(e.c.amount, e.c.currency)}</span></span>
+                          <span className="rec-tl-type">{叫} <span className="rec-nowrap">{金额(e.c.amount, e.c.currency)}</span></span>
                           {e.c.remark && <span className="rec-tl-title" title={e.c.remark}>· {e.c.remark}</span>}
                           <span className="rec-tl-time">{fmtDate(e.c.signedAt)}</span>
                         </div>
@@ -1084,7 +1065,6 @@ export default function RecordView({
         contacts={contacts}
         opportunities={项目们 ? [] : opportunities}
         projects={在推项目}
-        orders={contracts.flatMap((c) => (c.order ? [{ id: c.order.id, no: c.order.no }] : []))}
         aiEnabled={aiEnabled}
         只读={只读}
       />
@@ -1181,10 +1161,10 @@ export default function RecordView({
       <div style={{ marginTop: 8 }}>{是订单 ? "转成这张订单的商机" : "登记这笔时一起标成赢单的商机"}{退回.map((n) => `「${n}」`).join("")}会退回进行中。</div>
     ) : null;
     modal.confirm({
-      title: 是订单 ? `删除订单${r.order ? ` ${r.order.no}` : ""}？` : "删除这条签约记录？",
+      title: 是订单 ? "删除这张订单？" : "删除这条签约记录？",
       content: !是最后一笔 ? (
         <>
-          <div>金额 {金额(r.amount, r.currency)}，删除后统计数据会同步变化。{是订单 && "挂在这张订单上的跟进记录留在时间线里，不会删。"}</div>
+          <div>金额 {金额(r.amount, r.currency)}，删除后统计数据会同步变化。</div>
           {商机那句}
         </>
       ) : (
@@ -1286,10 +1266,6 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 不�
         <div className="rec-tl-head">
           <span className="rec-tl-type">{meta.label}</span>
           {f.title?.trim() && <span className="rec-tl-title" title={f.title}>· {f.title}</span>}
-          {/* 挂在订单上的（2026-10-05）：标出订单号（订单页 10-28 已删，只显示不跳）。标题已经写着这个订单号就不重复 */}
-          {f.order && !f.title?.includes(f.order.no) && (
-            <span className="rec-tl-order" title={`订单 ${f.order.no}`}>订单 {f.order.no}</span>
-          )}
           {f.opportunity && !不挂商机 && <RowLink href={`/opportunities?opportunity=${encodeURIComponent(f.opportunity.id)}`} className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</RowLink>}
           {f.status !== "已完成" && (
             <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>

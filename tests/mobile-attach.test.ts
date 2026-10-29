@@ -87,8 +87,8 @@ describe("客户详情的产品图片", () => {
     行("Customer", { id: "c2", name: "Nordlicht", salesOwnerId: "acct_li" }),
     行("Opportunity", { id: "o1", customerId: "c1", name: "春季", status: "OPEN" }),
     行("Opportunity", { id: "o2", customerId: "c2", name: "别家的", status: "OPEN" }),
-    行("TradeOrder", { id: "t1", customerId: "c1", no: "PI-001" }),
     行("Attachment", { id: "a1", opportunityId: "o1", name: "样品.jpg", mime: "image/jpeg", size: 1200, sha256: "s1", createdAt: 1000 }),
+    // 老库里挂在订单上的图（订单表 2026-10-29 删了）：挂不上客户，不列
     行("Attachment", { id: "a2", orderId: "t1", name: "包装.png", mime: "image/png", size: 800, sha256: "s2", createdAt: 2000 }),
     行("Attachment", { id: "a3", opportunityId: "o1", name: "合同.pdf", mime: "application/pdf", size: 10, sha256: "s3", createdAt: 3000 }),
     行("Attachment", { id: "a4", opportunityId: "o2", name: "别家.jpg", mime: "image/jpeg", size: 10, sha256: "s4", createdAt: 4000 }),
@@ -97,10 +97,10 @@ describe("客户详情的产品图片", () => {
   ];
   const 视图 = 客户们(分表(数据), "acct_li", new Set());
 
-  it("只列这位客户商机、订单上的图片，新传的在前，带上挂在哪", () => {
+  it("只列这位客户商机上的图片（不列 pdf），带上挂在哪", () => {
     const c1 = 视图.find((c) => c.id === "c1")!;
-    expect(c1.图片.map((x) => [x.id, x.关联])).toEqual([["a2", "订单 PI-001"], ["a1", "春季"]]);
-    expect(c1.图片[1]).toMatchObject({ name: "样品.jpg", mime: "image/jpeg", size: 1200, sha256: "s1" });
+    expect(c1.图片.map((x) => [x.id, x.关联])).toEqual([["a1", "春季"]]);
+    expect(c1.图片[0]).toMatchObject({ name: "样品.jpg", mime: "image/jpeg", size: 1200, sha256: "s1" });
     expect(视图.find((c) => c.id === "c2")!.图片.map((x) => x.id)).toEqual(["a4"]);
   });
 });

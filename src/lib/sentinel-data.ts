@@ -229,10 +229,5 @@ export async function loadWatchlistPage(now = dayjs(), 范围: { ownerId?: strin
   return { items: all.slice(start, start + size), total, offset: start };
 }
 
-/** 兼容既有小卡片调用方。需要总数/更多记录时使用分页入口。 */
-export async function loadWatchlist(now = dayjs(), 范围: { ownerId?: string } = {}): Promise<WatchItem[]> {
-  return (await loadWatchlistPage(now, 范围)).items;
-}
-
 /** 测试用 */
 export const _内部 = { 沉睡边界, 沉睡前几名, 合并 };

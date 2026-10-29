@@ -76,7 +76,8 @@ describe("R-026 镜像构建不烤 ASSET_PREFIX", () => {
   it("Dockerfile 和 CI 工作流里都没有 ASSET_PREFIX：同一个镜像给托管版、自部署、桌面端三种人用", () => {
     // next.config.ts 只在构建时环境变量给了才用；谁在构建流程里设了它，所有人的静态资源就指向那一台服务器
     const 文件们 = ["Dockerfile", ...fs.readdirSync(path.join(ROOT, ".github/workflows")).map((f) => `.github/workflows/${f}`)];
-    expect(文件们.length).toBeGreaterThan(2);
+    // 防目录读空整条变空：2026-10-29 删了 release.yml / enterprise-deploy-verify.yml，剩 ci.yml 一份
+    expect(文件们).toContain(".github/workflows/ci.yml");
     const 坏的 = 文件们.filter((f) => /ASSET_PREFIX/.test(读(f)));
     expect(坏的).toEqual([]);
     // 另一头：next.config.ts 真的只在给了的时候用（不是写死一个默认地址）

@@ -92,7 +92,7 @@ const 手机传: 手机.传输 = (方法, 路径, body) => 调中转(账号.li, 
 async function 清空(d: PrismaClient) {
   for (const t of ["AiMessage", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerClaim", "CustomerPool"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.user.create({ data: { id: "cmusc55660000dulko96ek8kr", email: "admin", name: "管理员", role: "ADMIN", password: "x", title: "管理员", createdAt: new Date("2026-10-01T00:00:00Z") } });
 }
 const 轮 = async (w: 谁) => { 当(w); return client.同步一轮(); };
@@ -282,30 +282,27 @@ describe("老板提醒 + 手机新建客户 / 商机（两台电脑 + 手机）"
     expect(取走新插()).toEqual([]);
   });
 
-  it("手机记跟进挂订单 / 商机、用「微信沟通」：li 和老板的电脑上打开这条跟进看得到挂的是哪张订单 / 哪个商机，类型存 WECHAT（还不认识它的电脑照样落库）", async () => {
+  it("手机记跟进挂商机 / 不挂、用「微信沟通」：li 和老板的电脑上打开这条跟进看得到挂的是哪个商机，类型存 WECHAT（还不认识它的电脑照样落库；挂订单那种 2026-10-29 随订单表删了）", async () => {
     const 客户 = [...库.表("Customer")].find((r) => r.name === "Nordlicht Leuchten GmbH")!.id as string;
-    // li 在电脑上给这位客户开了一张订单（外贸模版）
     当("li");
-    const 单 = await db("li").tradeOrder.create({ data: { no: "PI-20261019-1", customerId: 客户, ownerId: A("li"), amount: 36000, currency: "USD" } });
     expect(await 轮取("li")).toEqual([]);
     await 手机轮();
     const c = 客户们(分表(库.行.values()), A("li"), new Set()).find((x) => x.id === 客户)!;
-    expect(c.可关联.订单).toEqual([{ id: 单.id, no: "PI-20261019-1" }]);
+    expect(Object.keys(c.可关联)).toEqual(["商机"]);
     const 商机 = c.可关联.商机[0].id;
 
-    const { id: 挂单 } = await 手机.记跟进(机, 库, 状态, { customerId: 客户, type: "WECHAT", content: "微信上确认了唛头", 关联: `订单:${单.id}` });
+    const { id: 不挂 } = await 手机.记跟进(机, 库, 状态, { customerId: 客户, type: "WECHAT", content: "微信上确认了唛头" });
     const { id: 挂商机 } = await 手机.记跟进(机, 库, 状态, { customerId: 客户, type: "WHATSAPP", content: "问了交期", 关联: 商机 });
-    expect((await 手机轮()).推).toBe(5);
+    expect((await 手机轮()).推).toBe(4);
     expect(状态.被拒).toEqual([]);
     await 都同步();
     for (const w of ["li", "boss"] as const) {
-      const a = await db(w).followUp.findUnique({ where: { id: 挂单 }, include: { orderNode: true } });
+      const a = await db(w).followUp.findUnique({ where: { id: 不挂 } });
       expect(a).toMatchObject({ type: "WECHAT", content: "微信上确认了唛头", opportunityId: null, ownerId: A("li") });
-      expect(a!.orderNode).toMatchObject({ orderId: 单.id, nodeIdx: 0 });
-      const b = await db(w).followUp.findUnique({ where: { id: 挂商机 }, include: { orderNode: true } });
-      expect(b).toMatchObject({ type: "WHATSAPP", opportunityId: 商机, orderNode: null });
-      expect(await db(w).auditLog.findFirst({ where: { entityId: 挂单 } })).toMatchObject({ summary: expect.stringContaining("一条微信沟通跟进") });
+      const b = await db(w).followUp.findUnique({ where: { id: 挂商机 } });
+      expect(b).toMatchObject({ type: "WHATSAPP", opportunityId: 商机 });
+      expect(await db(w).auditLog.findFirst({ where: { entityId: 不挂 } })).toMatchObject({ summary: expect.stringContaining("一条微信沟通跟进") });
     }
-    expect(await db("zhao").followUp.findUnique({ where: { id: 挂单 } })).toBeNull();
+    expect(await db("zhao").followUp.findUnique({ where: { id: 不挂 } })).toBeNull();
   });
 });

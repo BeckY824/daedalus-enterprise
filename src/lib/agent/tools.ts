@@ -117,10 +117,10 @@ export const TOOLS: Tool[] = [
   {
     name: "search_customers",
     description:
-      "按关键词或条件找一批客户，返回总数和名单。query 同时匹配姓名、学校、年级、专业、备注，外贸的 WhatsApp / 邮箱 / 微信 / 国家、联系人和订单号（「PI-2026 是哪位客户」→ query=\"PI-2026\"；「武汉大学的有几位」→ query=\"武汉大学\"）。" +
+      "按关键词或条件找一批客户，返回总数和名单。query 同时匹配姓名、学校、年级、专业、备注，外贸的 WhatsApp / 邮箱 / 微信 / 国家、联系人（「武汉大学的有几位」→ query=\"武汉大学\"）。" +
       "「小红这个渠道里有谁」用 channelName（先用 list_channels 看渠道叫什么），「李四手上有哪些客户」用 ownerName，「这周新增了哪些」用 createdFrom/To，" +
       "「这个月预计能签哪几个」用 expectedSignFrom/To（按预计签约日从近到远）。找到某一位后用 get_customer 读记录。",
-    args: '{"query": "姓名 / 学校 / 年级 / 专业 / 备注 / WhatsApp / 邮箱 / 订单号里的关键词，可为空", "channelName": "渠道名称，可选", "ownerName": "销售负责人姓名，可选", "followStatus": "跟进状态，可选", "decisionStatus": "决策状态，可选", "createdFrom": "建档起始 YYYY-MM-DD，可选", "createdTo": "建档截止，可选", "expectedSignFrom": "预计签约起始，可选", "expectedSignTo": "预计签约截止，可选", "mine": true|false 可选}',
+    args: '{"query": "姓名 / 学校 / 年级 / 专业 / 备注 / WhatsApp / 邮箱里的关键词，可为空", "channelName": "渠道名称，可选", "ownerName": "销售负责人姓名，可选", "followStatus": "跟进状态，可选", "decisionStatus": "决策状态，可选", "createdFrom": "建档起始 YYYY-MM-DD，可选", "createdTo": "建档截止，可选", "expectedSignFrom": "预计签约起始，可选", "expectedSignTo": "预计签约截止，可选", "mine": true|false 可选}',
     async run(args, ctx) {
       const q = str(args.query, 20);
       const channel = str(args.channelName, 20);
@@ -259,7 +259,7 @@ export const TOOLS: Tool[] = [
           salesOwner: { select: { name: true } },
           referrerCustomer: { select: { name: true } },
           channel: { select: { name: true } },
-          contracts: { select: { amount: true, signedAt: true, ...带币种.签约, order: { select: { no: true, payment: true } } } },
+          contracts: { select: { amount: true, signedAt: true, ...带币种.签约 } },
           // 外贸档案（2026-10-05）：国家、WhatsApp、微信、邮箱、来源。问「他 WhatsApp 多少」「哪国的」时要看得到
           extra: true,
           // 联系人是另一张表。不给的话，问「张三家长的微信是多少」时模型只能说没有——
@@ -321,8 +321,8 @@ export const TOOLS: Tool[] = [
         // 它是在向用户断言 CRM 丢了东西
         profile: `${[c.school, c.grade, c.major].filter(Boolean).join(" / ") || "档案未填"}；电话 ${号(c.phone) || "未填"}；${外贸说法(c.extra && { ...c.extra, whatsapp: c.extra.whatsapp && 号(c.extra.whatsapp) })}跟进状态「${statusLabel(b, c.followStatus)}」，决策状态「${statusLabel(b, c.decisionStatus)}」；负责人 ${c.salesOwner.name}；${
           外贸精简(b)
-            ? // 外贸模版（2026-10-05）：不说推荐来源、预计签约（界面上没有）；签约就是订单，带上订单号
-              `订单 ${c.contracts.length ? `${合计文字(签约合计(c.contracts))}（${c.contracts.map((k) => k.order?.no).filter(Boolean).join("、") || "老签约，没有订单号"}）` : "无"}`
+            ? // 外贸模版（2026-10-05）：不说推荐来源、预计签约（界面上没有）；签约就叫订单（订单号那张表 2026-10-29 删了）
+              `订单 ${c.contracts.length ? 合计文字(签约合计(c.contracts)) : "无"}`
             : `推荐来源 ${c.referrerCustomer?.name ?? c.channel?.name ?? "无"}；预计签约 ${c.expectedSignOn ?? (c.expectedSignAt ? dayjs(c.expectedSignAt).format("YYYY-MM-DD") : "未定")}；已签约 ${c.contracts.length ? 合计文字(签约合计(c.contracts)) : "无"}`
         }；备注：${c.remark || "无"}`,
         contacts: c.contacts.map((p) => `${p.name}${p.position ? `（${p.position}）` : ""}${p.isPrimary ? " 主要联系人" : ""}：${[p.phone && `电话 ${号(p.phone)}`, p.wechat && `微信 ${p.wechat}`, p.email && `邮箱 ${p.email}`].filter(Boolean).join("、") || "没留联系方式"}`),

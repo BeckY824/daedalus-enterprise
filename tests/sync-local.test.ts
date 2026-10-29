@@ -66,7 +66,7 @@ async function 一台(名: string): Promise<PrismaClient> {
     await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
   }
   await db.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
   const 那时 = new Date("2026-10-01T00:00:00Z");
   for (const u of 模板账号) await db.user.create({ data: { ...u, password: "x", title: "管理员", createdAt: 那时 } });
   return db;
@@ -160,7 +160,6 @@ describe("改身份（探针场景 ①）", () => {
     const mine = await db.customer.create({ data: { name: "本人的客户", phone: "13900001801", salesOwnerId: "acct_me" } });
     const theirs = await db.customer.create({ data: { name: "旧老板的客户", phone: "13900001802", salesOwnerId: "acct_old_boss" } });
     await db.followUp.create({ data: { type: "PHONE", title: "本人跟进", content: "留在本机", customerId: mine.id, ownerId: "acct_me" } });
-    await db.tradeOrder.create({ data: { no: "REJOIN-USD-900", customerId: mine.id, ownerId: "acct_me", amount: 900, currency: "USD" } });
     for (let i = 0; i < 2; i++) await 改身份(db, "acct_me", { email: "me@example.invalid", name: "更新本人姓名" });
     // 本机的名字是人自己的（不是模板的「管理员」）：不拿云端名盖掉（2026-10-15 先改名再建团队被改回注册名）
     expect(await db.user.findUniqueOrThrow({ where: { id: "acct_me" } })).toMatchObject({ name: "本人", role });
@@ -168,7 +167,6 @@ describe("改身份（探针场景 ①）", () => {
     expect((await db.customer.findUniqueOrThrow({ where: { id: mine.id } })).salesOwnerId).toBe("acct_me");
     expect((await db.customer.findUniqueOrThrow({ where: { id: theirs.id } })).salesOwnerId).toBe("acct_old_boss");
     expect(await db.followUp.findFirstOrThrow({ where: { customerId: mine.id } })).toMatchObject({ ownerId: "acct_me" });
-    expect(await db.tradeOrder.findFirstOrThrow({ where: { customerId: mine.id } })).toMatchObject({ ownerId: "acct_me", amount: 900, currency: "USD" });
     expect(await db.$queryRawUnsafe<unknown[]>("PRAGMA foreign_key_check")).toEqual([]);
   });
 
@@ -269,25 +267,6 @@ describe("推拉合并", () => {
     await 回放(丙, [晚插入], "C");
     await 回放(丙, 拆(客!, 钥匙).filter((e) => e.t === "CustomerExtra"), "C");
     expect(await 丙.customerExtra.findUniqueOrThrow({ where: { customerId: "c1" }, select: { country: true, whatsapp: true } })).toEqual({ country: "乌兹别克斯坦", whatsapp: "+998 90 123 4567" });
-  });
-
-  it("订单跟着签约删：甲删了订单和签约、乙同时改了这张订单，同步后两台都没有这张单（不留没有签约的空壳）", async () => {
-    const { 甲, 乙 } = await 一对();
-    await 甲.customer.create({ data: { id: "c1", name: "Acme", phone: "13800000001", salesOwnerId: "acct_jia" } });
-    await 甲.contract.create({ data: { id: "k1", customerId: "c1", amount: 100, signedAt: new Date() } });
-    await 甲.tradeOrder.create({ data: { id: "o1", no: "PI-1", customerId: "c1", ownerId: "acct_jia", contractId: "k1" } });
-    await 同步(甲, 乙);
-    expect(await 乙.tradeOrder.count()).toBe(1);
-    await 甲.tradeOrder.delete({ where: { id: "o1" } });
-    await 甲.contract.delete({ where: { id: "k1" } });
-    await 睡(5);
-    await 乙.tradeOrder.update({ where: { id: "o1" }, data: { payment: "T/T" } });
-    await 同步(甲, 乙);
-    await 同步(甲, 乙);
-    for (const db of [甲, 乙]) {
-      expect(await db.contract.count()).toBe(0);
-      expect(await db.tradeOrder.count()).toBe(0);
-    }
   });
 
   it("回归核对 W-053：同一条放不进来的改动回放两遍（升级后从头重拉），「没同步上」只记一条", async () => {
@@ -396,21 +375,14 @@ describe("推拉合并", () => {
     expect((await 乙.setting.findMany()).map((s) => s.key)).toEqual(["business"]);
   });
 
-  it("外贸那几张新表（报价、订单节点、比价）也同步；节点上一人改状态一人改日期都留下", async () => {
+  it("外贸报价和报价行也同步（订单节点、比价表 2026-10-29 删了，迁移 066）", async () => {
     const { 甲, 乙 } = await 一对();
     await 甲.customer.create({ data: { id: "c6", name: "Acme", phone: "13800000006", salesOwnerId: "acct_jia" } });
     await 甲.opportunity.create({ data: { id: "o1", name: "面板灯", amount: 7100, customerId: "c6", ownerId: "acct_jia" } });
     await 甲.quote.create({ data: { id: "q1", opportunityId: "o1", currency: "USD", lines: { create: [{ id: "l1", product: "LED", qty: 2000, unitPrice: 3.2 }] } } });
-    await 甲.tradeOrder.create({ data: { id: "t1", no: "J-1", customerId: "c6", ownerId: "acct_jia", amount: 7100, nodes: { create: [{ id: "n5", idx: 5, name: "收定金" }] } } });
-    await 甲.supplier.create({ data: { id: "s1", name: "明亮厂", quotes: { create: [{ opportunityId: "o1", product: "LED", unitPrice: 21.3 }] } } });
-    await 同步(甲, 乙);
-    await 乙.tradeOrderNode.update({ where: { id: "n5" }, data: { status: "已完成" } });
-    await 甲.tradeOrderNode.update({ where: { id: "n5" }, data: { dueAt: new Date("2026-10-20T00:00:00Z") } });
     await 同步(甲, 乙);
     for (const db of [甲, 乙]) {
       expect(await db.quoteLine.count()).toBe(1);
-      expect(await db.supplierQuote.count()).toBe(1);
-      expect(await db.tradeOrderNode.findUniqueOrThrow({ where: { id: "n5" }, select: { status: true, dueAt: true } })).toEqual({ status: "已完成", dueAt: new Date("2026-10-20T00:00:00Z") });
     }
   });
 

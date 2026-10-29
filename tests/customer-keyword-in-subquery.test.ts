@@ -1,7 +1,7 @@
 /**
- * 客户关键词搜索：三张子表的 EXISTS 改成不相关的 IN 子查询（2026-10-26）。
+ * 客户关键词搜索：子表的 EXISTS 改成不相关的 IN 子查询（2026-10-26）。订单表 2026-10-29 删了（迁移 066），剩扩展资料、联系人两张。
  * 对拍：同一个关键词，抓下新写法真发出去的 SQL 和参数，把三段子查询换回原来的 EXISTS 原文、参数原样再跑一遍，
- * 两边命中的客户 id 逐个一致。数据里每张子表都有命中、有不命中、有一位客户多条联系人/订单、有完全没有子表行的客户。
+ * 两边命中的客户 id 逐个一致。数据里每张子表都有命中、有不命中、有一位客户多条联系人、有完全没有子表行的客户。
  */
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { defaultClient as db, prisma } from "@/lib/prisma";
@@ -13,8 +13,6 @@ const 原来 = [
     'EXISTS (SELECT 1 FROM "CustomerExtra" e WHERE e."customerId"=c.id AND (e.whatsapp GLOB ? OR e.whatsapp GLOB ? OR e.email GLOB ? OR e.wechat GLOB ? OR e.country GLOB ? OR e.website GLOB ? OR e."alibabaId" GLOB ?))'],
   ['c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t.name GLOB ? OR t.phone GLOB ? OR t.phone GLOB ? OR t.email GLOB ? OR t.wechat GLOB ?)',
     'EXISTS (SELECT 1 FROM "Contact" t WHERE t."customerId"=c.id AND (t.name GLOB ? OR t.phone GLOB ? OR t.phone GLOB ? OR t.email GLOB ? OR t.wechat GLOB ?))'],
-  ['c.id IN (SELECT o."customerId" FROM "TradeOrder" o WHERE o.no GLOB ?)',
-    'EXISTS (SELECT 1 FROM "TradeOrder" o WHERE o."customerId"=c.id AND o.no GLOB ?)'],
 ] as const;
 
 let owner = "";
@@ -57,13 +55,6 @@ beforeAll(async () => {
     });
   }
   await db.contact.createMany({ data: 联系人 });
-  // 订单：每 3 位一位，有的两张
-  const 订单 = [];
-  for (let i = 0; i < 60; i += 3) {
-    订单.push({ customerId: `kw-${String(i).padStart(2, "0")}`, ownerId: owner, no: `PI-2026-${String(i).padStart(3, "0")}` });
-    if (i % 2 === 0) 订单.push({ customerId: `kw-${String(i).padStart(2, "0")}`, ownerId: owner, no: `PO_${i}[x]` });
-  }
-  await db.tradeOrder.createMany({ data: 订单 });
 });
 afterAll(async () => { await db.$disconnect(); });
 
@@ -92,8 +83,6 @@ const 关键词 = [
   "美国", "德国", "acme-mail", "buyer12@", "wx_buyer", "www.shop10.co.uk", "https://www.shop15.co.uk/contact", "ali-", "+44 7700", "7700 900003",
   // 联系人各列
   "采购经理", "assistant", "1399876", "139 9876 0002", "asst", "wx_contact",
-  // 订单号
-  "PI-2026", "PI-2026-009", "PO_", "[x]",
   // 多处同时命中、谁也不命中
   "buyer", "2", "0", "没有这个人",
 ];
@@ -107,7 +96,5 @@ it("对拍不是空对空：子表各自真有命中，且有只靠子表才命�
   const 只看子表 = async (k: string) => (await 两边(k)).新;
   expect((await 只看子表("美国")).length).toBeGreaterThan(0);
   expect((await 只看子表("采购经理")).length).toBe(30);
-  expect((await 只看子表("PI-2026")).length).toBe(20);
-  expect(await 只看子表("PI-2026-009")).toEqual(["kw-09"]);
   expect(await 只看子表("没有这个人")).toEqual([]);
 });

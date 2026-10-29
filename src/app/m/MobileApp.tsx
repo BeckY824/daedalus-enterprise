@@ -18,8 +18,7 @@ import { 分表, 客户们 as 算客户们, 今天要跟, 搜, 国旗, 简称, �
 import { Avatar, BaseLayer, InstallHint, Page, Sheet, StatusTag, SyncChip, TabBar, TopLayer, 已装到主屏幕, 认浏览器, 弹簧, 猜系统, 震一下, type 标签, type 系统 } from "./ui";
 import { 现状动效 } from "@/lib/motion";
 import { useSystemReducedMotion } from "@/lib/reduced-motion";
-import { stageLabel, statusLabel, 外贸订单, type BusinessConfig } from "@/lib/business-config";
-import { 订单前缀 } from "@/lib/follow-link";
+import { stageLabel, statusLabel, type BusinessConfig } from "@/lib/business-config";
 import { 国家候选, 客户等级, 客户等级说明 } from "@/lib/customer-extra";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
 import { DECISION_STATUSES, FOLLOW_STATUSES } from "@/lib/constants";
@@ -64,8 +63,7 @@ const 跟着它 = (它: 同步.改动, e: 同步.改动) =>
   e === 它
   || (e.t === "AuditLog" && `${String(e.r?.entity ?? "")}:${String(e.r?.entityId ?? "")}` === `${它.t}:${它.k}`)
   || (它.t === "Customer" && e.t === "CustomerExtra" && e.k === 它.k)
-  || (它.t === "Opportunity" && e.t === "OpportunityMoney" && e.k === 它.k)
-  || (它.t === "FollowUp" && e.t === "FollowUpOrder" && e.k === 它.k);
+  || (它.t === "Opportunity" && e.t === "OpportunityMoney" && e.k === 它.k);
 const 拍 = (s: 同步.同步状态): 快照 => ({
   待推跟进: s.待推.filter((e) => e.t === "FollowUp").map((e) => e.k),
   待推新建: s.待推.filter((e) => e.t === "Customer" || e.t === "Opportunity").map((e) => e.k),
@@ -524,7 +522,7 @@ export default function MobileApp() {
             {面板.kind === "record" && (() => {
               const c = 客户们.find((x) => x.id === 面板.id);
               if (!c) return null;
-              return <RecordSheet c={c} os={os} 我={我} 断网={断网} 业务={业务} onCancel={返回} onSave={(输入) => { void 记(c.id, 输入); 返回(); }} />;
+              return <RecordSheet c={c} os={os} 我={我} 断网={断网} onCancel={返回} onSave={(输入) => { void 记(c.id, 输入); 返回(); }} />;
             })()}
             {面板.kind === "newCustomer" && (
               <NewCustomerSheet os={os} 业务={业务} 图={面板.图} 来源={上次来源} 找老={找老客户} onCancel={返回}
@@ -886,12 +884,10 @@ function 计划标题(字: string) {
   return 首句 ? `接着跟进：${首句}` : "接着跟进";
 }
 
-function RecordSheet({ c, os, 我, 断网, 业务, onCancel, onSave }: { c: 客户视图; os: 系统; 我: string; 断网: boolean; 业务: BusinessConfig; onCancel: () => void; onSave: (x: Omit<同步.记跟进输入, "customerId">) => void }) {
+function RecordSheet({ c, os, 我, 断网, onCancel, onSave }: { c: 客户视图; os: 系统; 我: string; 断网: boolean; onCancel: () => void; onSave: (x: Omit<同步.记跟进输入, "customerId">) => void }) {
   // 有 WhatsApp 号的（外贸客户多半是）默认记成 WhatsApp；只有微信号的默认微信沟通；都没有的照旧默认消息（2026-10-16 / 10-19）
   const [t, setT] = useState<(typeof 同步.手机跟进类型)[number]>(c.whatsapp ? "WHATSAPP" : c.wechat ? "WECHAT" : "SMS");
-  // 关联商机 / 订单（2026-10-19 客户反馈第 8 条）：和电脑上那一格一样，外贸模版商机、订单两组都列，通用模版只有商机
-  const 挂订单 = 外贸订单(业务);
-  const 订单们 = 挂订单 ? c.可关联.订单 : [];
+  // 关联商机（2026-10-19 客户反馈第 8 条）：和电脑上那一格一样。订单那组 2026-10-29 随订单表删了
   const 商机们 = c.可关联.商机;
   const [关联, set关联] = useState("");
   const [字, set字] = useState("");
@@ -932,15 +928,12 @@ function RecordSheet({ c, os, 我, 断网, 业务, onCancel, onSave }: { c: 客�
         <textarea ref={框} value={字} onChange={(e) => set字(e.target.value)} rows={5} maxLength={5000} placeholder="聊了什么？结果怎样？" />
         <div className="m-textarea-tip"><AudioOutlined /> 懒得打字？按键盘上的话筒说</div>
       </div>
-      {(商机们.length > 0 || 订单们.length > 0) && (
+      {商机们.length > 0 && (
         <>
-          <div className="m-field-l">{挂订单 ? "关联商机 / 订单" : "关联商机"}</div>
-          <select className="m-date m-select" value={关联} onChange={(e) => set关联(e.target.value)} aria-label={挂订单 ? "关联商机 / 订单" : "关联商机"} data-testid="m-record-link">
+          <div className="m-field-l">关联商机</div>
+          <select className="m-date m-select" value={关联} onChange={(e) => set关联(e.target.value)} aria-label="关联商机" data-testid="m-record-link">
             <option value="">不关联</option>
-            {订单们.length > 0 && <optgroup label="订单">{订单们.map((o) => <option key={o.id} value={`${订单前缀}${o.id}`}>订单 {o.no}</option>)}</optgroup>}
-            {订单们.length > 0
-              ? 商机们.length > 0 && <optgroup label="商机">{商机们.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</optgroup>
-              : 商机们.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            {商机们.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </>
       )}

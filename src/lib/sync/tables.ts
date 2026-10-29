@@ -39,14 +39,8 @@ export const 同步表 = [
   "AuditLog",
   "Quote",
   "QuoteLine",
-  "Supplier",
-  "SupplierQuote",
-  "TradeOrder",
-  "TradeOrderNode",
-  "TradeOrderDoc",
-  "TradeOrderPurchase",
-  "FollowUpOrder",
-  // 商机 / 订单的产品图片（2026-10-22 D-24）：同步的只是这一行（名字、大小、sha256），文件走单独的密文通道（sync/attach-client.ts）
+  // 外贸订单 / 供应商整套（TradeOrder、Supplier 等 7 张）2026-10-29 连表删了（迁移 066）
+  // 商机的产品图片（2026-10-22 D-24）：同步的只是这一行（名字、大小、sha256），文件走单独的密文通道（sync/attach-client.ts）
   "Attachment",
 ] as const;
 
@@ -96,7 +90,7 @@ export const 同步的设置 = ["business"];
 
 /**
  * 指向人（User.id）的列。改身份时一列不漏地改过去。
- * **有一半没有外键**（ContractOwner、TradeOrder、AuditLog…），光靠 PRAGMA foreign_key_list 找不全（探针场景 ①）。
+ * **有一半没有外键**（ContractOwner、AuditLog、Project…），光靠 PRAGMA foreign_key_list 找不全（探针场景 ①）。
  */
 export const 指向人的列: [string, string][] = [
   ["UnassignedContact", "ownerId"],
@@ -118,7 +112,6 @@ export const 指向人的列: [string, string][] = [
   ["AiConversation", "ownerId"],
   ["AiProject", "ownerId"],
   ["ImportBatch", "userId"],
-  ["TradeOrder", "ownerId"],
   ["WorkspaceAccount", "userId"],
   ["Attachment", "userId"],
   // 项目模式 1a（2026-10-23）：都不建外键，靠这里改身份
@@ -182,7 +175,6 @@ export const 指向客户的列: [string, string][] = [
   ["Lead", "customerId"],
   ["Opportunity", "customerId"],
   ["Contract", "customerId"],
-  ["TradeOrder", "customerId"],
   ["FollowUp", "customerId"],
   ["Task", "customerId"],
   ["FollowPlan", "customerId"],

@@ -33,7 +33,7 @@ import { 唯一负责人 } from "@/lib/owners";
 import { getBusiness } from "@/lib/business";
 import { 写签约金额, 带币种, 商机币种, 签约币种, 签约金额, 签约合计 } from "@/lib/money-db";
 import { 金额 as 显示金额, 是币种, 规整币种 } from "@/lib/currency";
-import { statusLabel, 外贸订单 } from "@/lib/business-config";
+import { statusLabel, 签约叫 } from "@/lib/business-config";
 import { 查电话, 规整手机号, 认回打码号 } from "@/lib/phone";
 import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
@@ -49,13 +49,9 @@ import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/
 import { setOppStatus } from "../opportunities/actions";
 import { 认得 } from "@/lib/project/hook";
 import { 客户的项目数 } from "@/lib/project/db";
-import { 写签约的订单, 订单说不通, type 订单附加 } from "@/lib/order-contract";
 import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整外贸档案, 规整阿里ID, 认国家, type 外贸档案 } from "@/lib/customer-extra";
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
-import { 团队订单前缀 } from "@/lib/order";
-import { 订单 as 订单开着 } from "@/lib/features";
-import { 读团队 } from "@/lib/sync/client";
 import type { Prisma } from "@/generated/prisma";
 
 
@@ -1046,7 +1042,7 @@ export type ContractDuplicate = {
 };
 
 export type SaveContractResult =
-  | { ok: true; 联动?: 签约联动结果; 订单?: { id: string; no: string } }
+  | { ok: true; 联动?: 签约联动结果 }
   | { ok: false; error: string }
   | { ok: false; duplicate: ContractDuplicate };
 
@@ -1099,11 +1095,6 @@ export async function saveContract(input: {
   force?: boolean;
   /** 一起收尾的商机 / 计划 / 待办（弹窗里勾上的）。只在新登记时生效，编辑一笔旧签约不牵动别的 */
   联动?: 签约联动;
-  /**
-   * 外贸模版：这笔签约同时是一张订单（2026-10-05，lib/order-contract.ts）。给了就在同一个事务里建 / 改那张订单；
-   * 从商机转来（联动里只勾了一个商机）的订单挂上那个商机
-   */
-  订单?: 订单附加;
 }): Promise<SaveContractResult> {
   try {
     const me = await requireUser();
@@ -1129,14 +1120,7 @@ export async function saveContract(input: {
     // 事务里只用 tx（lib/check-then-write.ts），本位币先在外面读好
     const 业务 = await getBusiness();
     const 本位币 = 业务.currency;
-    /*
-      外贸模版下一笔签约就是一张订单：**按模版定，不按调用方给没给**（2026-10-05 复查）。
-      AI 建议卡登记签约、旧调用方不带「订单」那几格，原来就只有签约、订单一览里没有这一单。
-      新登记一律建订单；编辑只改它已有的那张、不顺手补建。其它模版不碰订单
-    */
-    const 订单附加 = 外贸订单(业务) ? input.订单 ?? {} : undefined;
-    // 团队里订单号带上下单人的第一个字（几台电脑各编各的不撞号）。事务外先读好
-    const 订单前缀 = 订单附加 && 读团队() ? 团队订单前缀(me.name) : "";
+    // 外贸模版下签约界面上叫订单；原来同一个事务里另写一张 TradeOrder（订单号 / 付款方式 / 供应商），2026-10-29 连表删了，只记签约
 
     const data = {
       customerId: input.customerId,
@@ -1153,7 +1137,7 @@ export async function saveContract(input: {
       查重和落库在同一个事务里（2026-10-04 J-104）：原来两步分开，两个窗口同时点「登记」，
       两边都查不到对方、都写进去，业绩翻倍。现在后进来的那次查的时候前一笔已经在库里了，照样弹「可能重复」
     */
-    const 落库 = await 查完再写(async (tx): Promise<{ duplicate: ContractDuplicate } | { 签约id: string; 币: string; 订单?: { id: string; no: string }; 收尾?: Awaited<ReturnType<typeof 签约收尾>> }> => {
+    const 落库 = await 查完再写(async (tx): Promise<{ duplicate: ContractDuplicate } | { 签约id: string; 币: string; 收尾?: Awaited<ReturnType<typeof 签约收尾>> }> => {
       if (!input.force) {
         // 同额要连币种一起比：同一天 US$ 100 和 ¥ 100 不是同一笔
         const 原币 = input.id && input.currency == null ? await tx.contractMoney.findUnique({ where: { contractId: input.id }, select: { currency: true } }) : null;
@@ -1196,21 +1180,6 @@ export async function saveContract(input: {
       }
       // 编辑一笔老签约（没有 ContractMoney）也补上这一行：金额刚被重写过，精确值以这次为准
       await 写签约金额(tx, 签约id, 币, 精确);
-      let 单: { id: string; no: string } | null = null;
-      if (订单附加) {
-        // 只挂还在谈的那一单：已经转过订单、又被「重新打开」的商机另说（status 不是 OPEN 的不挂）
-        const 赢的 = !input.id && input.联动?.赢单?.length === 1
-          ? await tx.opportunity.findFirst({ where: { id: input.联动.赢单[0], customerId: input.customerId, status: "OPEN" }, select: { id: true } })
-          : null;
-        单 = await 写签约的订单(tx, {
-          签约id, customerId: input.customerId, ownerId: 学员?.salesOwnerId ?? me.id, amount: 精确, currency: 规整币种(币),
-          附加: 订单附加, opportunityId: 赢的?.id ?? null, 前缀: 订单前缀, 只改不建: !!input.id,
-          // 给老签约补建的订单：号按签约那天编（不是今天）
-          ...(input.id ? { 现在: input.signedAt } : {}),
-        });
-      }
-      // 不是外贸模版（切回了通用）也改金额：这笔签约有订单的话，订单上抄的那份跟着改，切回外贸时不会对不上（二审）
-      if (!订单附加 && input.id) await tx.tradeOrder.updateMany({ where: { contractId: 签约id }, data: { amount: 精确, currency: 规整币种(币) } });
       // 客户状态与勾选的收尾也属于这一笔签约，中途失败必须一起回滚。
       if (!input.id) await tx.customer.update({
         where: { id: input.customerId }, data: { followStatus: "已签约", decisionStatus: "已决定报名" },
@@ -1218,14 +1187,15 @@ export async function saveContract(input: {
       const 收尾 = !input.id && input.联动
         ? await 签约收尾(tx, input.customerId, 签约id, input.联动, me, 学员?.name ?? input.customerId)
         : undefined;
-      return { 签约id, 币, ...(单 ? { 订单: 单 } : {}), 收尾 };
+      return { 签约id, 币, 收尾 };
     });
     if ("duplicate" in 落库) return { ok: false, duplicate: 落库.duplicate };
-    const { 签约id, 币, 订单: 单, 收尾 } = 落库;
+    const { 签约id, 币, 收尾 } = 落库;
   
     await recordAudit({
       user: me, action: input.id ? "update" : "create", entity: "Contract", entityId: 签约id,
-      summary: (单 ? `${input.id ? "修改" : "新建"}「${学员?.name ?? input.customerId}」的订单 ${单.no} ${显示金额(精确, 币)}` : `${input.id ? "修改" : "登记"}「${学员?.name ?? input.customerId}」的签约 ${显示金额(精确, 币)}`) +
+      // 外贸模版下日志照旧说「订单」（界面上就这么叫），只是不再带订单号
+      summary: `${input.id ? "修改" : "登记"}「${学员?.name ?? input.customerId}」的${签约叫(业务)} ${显示金额(精确, 币)}` +
         (input.force ? "（已确认不是重复录入）" : ""),
       detail: { customerId: input.customerId, amount: 精确, currency: 币, signedAt: input.signedAt, force: !!input.force },
     });
@@ -1236,9 +1206,8 @@ export async function saveContract(input: {
     if (联动) for (const path of ["/opportunities", "/opportunities/pipeline", "/follow-ups/plans", "/dashboard"]) revalidatePath(path);
 
     revalidateCustomer(input.customerId);
-    return { ok: true, ...(联动 ? { 联动 } : {}), ...(单 ? { 订单: 单 } : {}) };
+    return { ok: true, ...(联动 ? { 联动 } : {}) };
   } catch (e) {
-    if (e instanceof 订单说不通) return { ok: false, error: e.message };
     return 不在了(e);
   }
 }
@@ -1314,24 +1283,8 @@ export async function deleteContract(
     const 待删 = await prisma.contract.findUnique({ where: { id }, select: { amount: true, signedAt: true, ...带币种.签约 } });
     // 这笔签约顺手赢下的商机（2026-10-04 L-007）。签约一删这几行跟着级联没了，先取出来
     const 赢下的 = await prisma.contractWin.findMany({ where: { contractId: id }, include: { opportunity: { select: { status: true } } } });
-    /*
-      这笔签约是一张订单（外贸，2026-10-05）：先明着删订单再删签约，不只靠外键级联——
-      操作日志要写清删的是哪张单，同步回放也是先订单后签约，不依赖对方库里外键开没开
-    */
-    const 订单 = await prisma.tradeOrder.findFirst({ where: { contractId: id, customerId }, select: { id: true, no: true } });
-    // 同一个事务：删签约那步失败（已经被删、权限不够）时订单不能已经没了。函数式事务（托管版不认数组式，见 tests/no-array-transaction）
-    const gone = await prisma
-      .$transaction(async (tx) => {
-        if (订单) await tx.tradeOrder.deleteMany({ where: { id: 订单.id } });
-        const r = await tx.contract.deleteMany({ where: { id, customerId } });
-        // 签约没删着（已经不在、看不到）：整个事务退回，订单也不删（二审：deleteMany 删 0 条不会自己抛）
-        if (r.count === 0) throw new 签约没删着();
-        return r;
-      })
-      .catch((e) => {
-        if (e instanceof 签约没删着) return { count: 0 };
-        throw e;
-      });
+    // 原来外贸签约先在同一事务里明着删它那张 TradeOrder，2026-10-29 订单表删了，只删签约
+    const gone = await prisma.contract.deleteMany({ where: { id, customerId } });
     if (gone.count === 0) {
       return { ok: false, error: "这条签约记录已经不在了（可能已删除）" };
     }
@@ -1360,7 +1313,7 @@ export async function deleteContract(
   
     await recordAudit({
       user: me, action: "delete", entity: "Contract", entityId: id,
-      summary: `删除${订单 ? `订单 ${订单.no}` : "签约"} ${待删 ? 显示金额(签约金额(待删), 签约币种(待删)) : 显示金额(0)}` +
+      summary: `删除签约 ${待删 ? 显示金额(签约金额(待删), 签约币种(待删)) : 显示金额(0)}` +
         (revertTo && remaining === 0 ? `，跟进状态退回「${statusLabel(b, revertTo.followStatus)}」` : "") +
         (remaining ? `，该${b.customer}还剩 ${remaining} 笔` : "") +
         (退回商机 ? `，${退回商机} 个当初顺手标成赢单的商机退回进行中` : ""),
@@ -1373,9 +1326,6 @@ export async function deleteContract(
     return 不在了(e);
   }
 }
-
-/** deleteContract 事务里「签约没删着」：抛它让订单那一删也退回 */
-class 签约没删着 extends Error {}
 
 /* ---------- 记录页的行内编辑 ---------- */
 
@@ -1494,9 +1444,3 @@ export async function 推荐人候选(): Promise<{ id: string; name: string }[]>
   return 可选客户();
 }
 
-/** 外贸签约框里选供应商的候选（原在订单页 actions，2026-10-28 订单页删后挪来）：含稳定ID，同名档案仍分别可选。 */
-export async function 供应商候选(): Promise<{ id: string; name: string }[]> {
-  await requireUser();
-  if (!订单开着) return [];
-  return prisma.supplier.findMany({ orderBy: [{ name: "asc" }, { id: "asc" }], take: 500, select: { id: true, name: true } });
-}

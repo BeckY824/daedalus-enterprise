@@ -161,7 +161,7 @@ const 模板 = { 管理员: "cmusc55660000dulko96ek8kr", 张三: "cmusc55680001d
 async function 清空种模板(d: PrismaClient) {
   for (const t of ["AiMessage", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerClaim", "CustomerPool"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   const 起 = new Date("2026-10-01T00:00:00Z");
   await d.user.create({ data: { id: 模板.管理员, email: "admin", name: "管理员", role: "ADMIN", password: "x", title: "管理员", createdAt: 起 } });
   await d.user.create({ data: { id: 模板.张三, email: "zhangsan", name: "张三", role: "SALES", password: "x", title: "销售", createdAt: 起 } });

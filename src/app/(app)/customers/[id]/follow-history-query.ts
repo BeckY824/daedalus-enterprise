@@ -7,7 +7,6 @@ export const followHistoryInclude = {
   contact: { select: { name: true, position: true } },
   source: { select: { text: true } },
   opportunity: { select: { id: true, name: true, customerId: true } },
-  orderNode: { select: { order: { select: { id: true, no: true } } } },
 } satisfies Prisma.FollowUpInclude;
 export const followHistoryOrder = [{ occurredAt: "desc" }, { id: "desc" }] satisfies Prisma.FollowUpOrderByWithRelationInput[];
 
@@ -19,7 +18,6 @@ export function serializeFollowHistory(f: Prisma.FollowUpGetPayload<{ include: t
     contactName: f.contact?.name ?? null, contactPosition: f.contact?.position ?? null, contactId: f.contactId,
     opportunityId: f.opportunityId,
     opportunity: f.opportunity?.customerId === f.customerId ? { id: f.opportunity.id, name: f.opportunity.name } : null,
-    orderId: f.orderNode?.order.id ?? null, order: f.orderNode?.order ?? null,
     updatedAt: f.updatedAt.toISOString(),
   };
 }

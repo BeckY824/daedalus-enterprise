@@ -7,7 +7,7 @@
  *
  * 流程：
  *   1. <输出目录>/crm.db 新建一份空库（prisma db push），enterprise-seed.ts 造 30 人 + SCALE 倍数据；
- *      --extra 再加一组逾期跟进计划和带节点的订单（见 enterprise-seed.ts，2026-10-25 起），不加就和原来一样、旧基线能比。
+ *      --extra 再加一组逾期跟进计划（带节点的订单 2026-10-29 随订单表删了）（见 enterprise-seed.ts，2026-10-25 起），不加就和原来一样、旧基线能比。
  *      --reuse-db 时库里是哪种数据看 <输出目录>/seed.json（没有就是不加的那种），和这次要的对不上就报错
  *   2. next build + next start，按企业版部署包的样子起：CRM_ENTERPRISE=1，不设 DESKTOP_DATA / MULTI_TENANT，TZ=Asia/Shanghai
  *   3. 用同一个 AUTH_SECRET 给 30 个人各签一张会话票据（和 createSession 一样的 HS256 + {sub, ims}），不走登录、不碰密码
@@ -198,7 +198,7 @@ const 行 = (k, v) => `| ${k} | ${v.n} | ${v.p50} | **${v.p95}** | ${v.p99} | ${
 const md = [
   `# 企业版压测：30 人 × ${SCALE} 倍数据`,
   "",
-  `${结果.at}，${结果.platform}，Node ${结果.node}。数据：${种子.extra ? "原来那些 + 加的一组（逾期跟进计划、带节点的订单，--extra）" : "原来那些（不带 --extra）"}${种子.plans ? `，跟进计划 ${种子.plans} 条、订单 ${种子.orders} 张、订单节点 ${种子.orderNodes} 个` : ""}。库 ${结果.dbMB} MB；压测 ${时长 / 1000} 秒，${结果.load.rps} 次/秒；服务端内存峰值 ${结果.serverRssMB.max} MB。`,
+  `${结果.at}，${结果.platform}，Node ${结果.node}。数据：${种子.extra ? "原来那些 + 加的一组（逾期跟进计划，--extra）" : "原来那些（不带 --extra）"}${种子.plans ? `，跟进计划 ${种子.plans} 条` : ""}。库 ${结果.dbMB} MB；压测 ${时长 / 1000} 秒，${结果.load.rps} 次/秒；服务端内存峰值 ${结果.serverRssMB.max} MB。`,
   "",
   `**裁判：各页 p95 < ${门槛} ms 且没有出错 → ${结果.pass ? "绿" : "红"}**${超.length ? `（超了：${超.join("；")}）` : ""}${结果.load.all.errors ? `（出错 ${结果.load.all.errors} 次：${结果.errorsSample.join("；")}）` : ""}`,
   "",

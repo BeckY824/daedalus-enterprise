@@ -53,9 +53,9 @@ const 负责人 = [老板, 经理, 小王, 小张, 小赵, 外人];
 beforeAll(async () => {
   process.env.CRM_ENTERPRISE = "1";
   delete process.env.DESKTOP_LOCAL;
-  for (const t of ["ProjectNodeLog", "Project", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "TradeOrder", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerExtra", "CustomerPool", "CustomerClaim", "EntMember", "EntDept"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["ProjectNodeLog", "Project", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerExtra", "CustomerPool", "CustomerClaim", "EntMember", "EntDept"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["Customer", "Channel", "Supplier", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   const 人 = (id: string, name: string, role = "SALES") => raw.user.create({ data: { id, email: `${id}@x.com`, name, password: "x", role } });
   await 人(老板, "老板", "ADMIN");
   for (const [id, n] of [[总管, "总管"], [经理, "经理"], [小王, "小王"], [小张, "小张"], [小赵, "小赵"], [外人, "外人"]]) await 人(id, n);
@@ -86,7 +86,6 @@ beforeAll(async () => {
     if (i % 5 === 0) await raw.customerPool.create({ data: { customerId: c.id } });
     if (i % 9 === 0) await raw.customerExtra.create({ data: { customerId: c.id, email: `kwmail${i}@x.com` } });
     if (i % 11 === 0) await raw.contact.create({ data: { customerId: c.id, name: `联系人丙${i}` } });
-    if (i % 13 === 0) await raw.tradeOrder.create({ data: { customerId: c.id, no: `ORD-77${i}`, ownerId: 负责人[i % 负责人.length] } });
   }
   await raw.setting.create({ data: { key: 规则.按组织看客户.key, value: JSON.stringify(true) } });
 });
@@ -109,7 +108,7 @@ async function 老路(sp: 客户条件, 请求页: number, pageSize: number) {
   return { total, page, ids };
 }
 
-const 关键词 = ["甲", "138", "kwmail", "联系人丙", "ORD-77", "客户1", "没有这个人"];
+const 关键词 = ["甲", "138", "kwmail", "联系人丙", "客户1", "没有这个人"];
 const 筛选: 客户条件[] = [{}, { grade: "高一" }, { followStatus: "跟进中" }, { salesOwnerId: 小王 }, { channelOwnerId: 经理 }];
 
 describe("关键词分页 = 老路", () => {

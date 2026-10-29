@@ -251,7 +251,6 @@ export const FOLLOW_STATUSES = [
   "已签约",
   "已流失",
 ] as const;
-export type FollowStatus = (typeof FOLLOW_STATUSES)[number];
 
 export const FOLLOW_STATUS_COLOR: Record<string, string> = {
   待跟进: "default",
@@ -273,7 +272,6 @@ export const DECISION_STATUSES = [
   "已决定报名",
   "暂不考虑",
 ] as const;
-export type DecisionStatus = (typeof DECISION_STATUSES)[number];
 
 export const DECISION_STATUS_COLOR: Record<string, string> = {
   了解中: "default",

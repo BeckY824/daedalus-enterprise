@@ -85,12 +85,17 @@ const nextConfig: NextConfig = {
   /**
    * 商机列表和商机管道两页 10-28 删了（企业版只用项目，lib/enterprise/project-only.ts）。
    * 旧书签、跟进里存着的老链接（/opportunities?opportunity=…、/opportunities/pipeline）都转到项目，不落 404。
-   * 不永久：浏览器不记死，哪天这个地址另有用处不用等缓存过期
+   * 不永久：浏览器不记死，哪天这个地址另有用处不用等缓存过期。
+   * 外贸订单、供应商两页 10-28 删了、表 10-29 也删了（迁移 066）：老书签同样转到项目
    */
   async redirects() {
     return [
       { source: "/opportunities", destination: "/projects", permanent: false },
       { source: "/opportunities/:path*", destination: "/projects", permanent: false },
+      { source: "/orders", destination: "/projects", permanent: false },
+      { source: "/orders/:path*", destination: "/projects", permanent: false },
+      { source: "/suppliers", destination: "/projects", permanent: false },
+      { source: "/suppliers/:path*", destination: "/projects", permanent: false },
     ];
   },
 

@@ -25,7 +25,9 @@ const ACTION_LABEL: Record<string, string> = {
 };
 const ENTITY_LABEL: Record<string, string> = {
   Customer: "学员", Contract: "签约", Lead: "线索", User: "成员", Channel: "渠道", Setting: "系统设置", Ai: "AI 功能", Device: "机器",
-  Opportunity: "商机", Contact: "联系人", FollowUp: "跟进记录", Task: "待办", FollowPlan: "跟进计划", TradeOrder: "订单", Supplier: "供应商",
+  Opportunity: "商机", Contact: "联系人", FollowUp: "跟进记录", Task: "待办", FollowPlan: "跟进计划",
+  // 订单 / 供应商表 2026-10-29 删了，老日志里还有这两类对象，叫法留着
+  TradeOrder: "订单", Supplier: "供应商",
   // 企业版（2026-10-26 验收 #17：对象一栏露出英文 Project）
   Project: "项目", ProjectMember: "项目组成员", ProjectRole: "项目角色", ProjectExceptionCategory: "异常分类", Attachment: "附件", followup: "跟进记录",
   EntImportBatch: "企业版导入", EntDept: "部门", EntSnapshot: "数据快照", EntMember: "成员", EntLeadQuota: "分配上限", EntLeadAssign: "线索分配", EntBlocker: "卡点",

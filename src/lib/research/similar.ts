@@ -25,7 +25,6 @@ export async function 老客户清单(b: Pick<BusinessConfig, "fields">): Promis
       OR: [
         { followStatus: { in: ["已签约", "意向较高"] } },
         { contracts: { some: {} } },
-        { tradeOrders: { some: {} } },
         { opportunities: { some: {} } },
       ],
     },
@@ -37,13 +36,13 @@ export async function 老客户清单(b: Pick<BusinessConfig, "fields">): Promis
       major: true,
       followStatus: true,
       extra: { select: { country: true } },
-      _count: { select: { contracts: true, tradeOrders: true } },
+      _count: { select: { contracts: true } },
     },
     orderBy: { updatedAt: "desc" },
     take: 老客户上限,
   });
   return rows.map((r) => {
-    const 成交 = r.followStatus === "已签约" || r._count.contracts > 0 || r._count.tradeOrders > 0;
+    const 成交 = r.followStatus === "已签约" || r._count.contracts > 0;
     const 档案 = [
       r.school && `${b.fields.school}：${r.school}`,
       r.grade && `${b.fields.grade}：${r.grade}`,

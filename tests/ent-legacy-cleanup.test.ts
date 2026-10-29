@@ -1,7 +1,7 @@
 /**
  * 企业版清掉用不到的老数据（src/lib/enterprise/legacy-cleanup.ts）。
  *
- *   开关开：商机 / 合同 / 订单 / 供应商连子表删干净，挂商机 / 订单的附件连文件删；
+ *   开关开：商机 / 合同连子表删干净，挂商机 / 老订单（orderId 那格还在，订单表 066 已删）的附件连文件删；
  *          客户、项目、跟进、联系人、线索一条不少，跟进只是不再挂商机
  *   跑第二次不动（记号）；不是企业版一行不动（个人版 / 团队版行为不变）
  *   数据接入对照行只删指向商机的
@@ -61,7 +61,7 @@ async function 附件(挂: { opportunityId?: string; orderId?: string; leadId?: 
   return a.id;
 }
 
-/** 一整套：客户、联系人、线索、项目、两条跟进（一条挂商机）、商机 + 成交 + 供应商报价、合同 + 订单、附件、对照行 */
+/** 一整套：客户、联系人、线索、项目、两条跟进（一条挂商机）、商机 + 成交、合同、附件（含只挂老订单 id 的）、对照行 */
 async function 种一套() {
   const c = await prisma.customer.create({ data: { name: "测试客户甲", phone: "13900000001", salesOwnerId: 我.id } });
   const 联系人 = await prisma.contact.create({ data: { name: "联系人甲", customerId: c.id, isPrimary: true } });
@@ -69,11 +69,7 @@ async function 种一套() {
   const 项目 = await prisma.project.create({ data: { name: "项目甲", customerId: c.id, ownerId: 我.id, creatorId: 我.id } });
   const 商机 = await prisma.opportunity.create({ data: { name: "商机甲", customerId: c.id, ownerId: 我.id } });
   await prisma.opportunityClose.create({ data: { opportunityId: 商机.id } });
-  const 供应商 = await prisma.supplier.create({ data: { name: "供应商甲" } });
-  await prisma.supplierQuote.create({ data: { opportunityId: 商机.id, supplierId: 供应商.id, product: "零件" } });
-  const 合同 = await prisma.contract.create({ data: { customerId: c.id, amount: 1000, signedAt: new Date("2026-01-01") } });
-  const 订单 = await prisma.tradeOrder.create({ data: { no: "PO-1", customerId: c.id, ownerId: 我.id, contractId: 合同.id, opportunityId: 商机.id } });
-  await prisma.tradeOrder.create({ data: { no: "PO-2", customerId: c.id, ownerId: 我.id } });
+  await prisma.contract.create({ data: { customerId: c.id, amount: 1000, signedAt: new Date("2026-01-01") } });
   const 挂商机跟进 = await prisma.followUp.create({
     data: { type: "PHONE", title: "电话", content: "聊了", customerId: c.id, ownerId: 我.id, opportunityId: 商机.id },
   });
@@ -81,7 +77,8 @@ async function 种一套() {
 
   const 附件们 = {
     商机: await 附件({ opportunityId: 商机.id }),
-    订单: await 附件({ orderId: 订单.id }),
+    // 订单表删了，orderId 那一格没外键约束（041），老库里还可能留着这种附件
+    订单: await 附件({ orderId: "old-order-id" }),
     线索: await 附件({ leadId: 线索.id }),
     联系人: await 附件({ contactId: 联系人.id }),
     商机兼线索: await 附件({ opportunityId: 商机.id, leadId: 线索.id }),
@@ -105,10 +102,7 @@ const 留着的 = async () => ({
 const 老表 = async () => ({
   商机: await prisma.opportunity.count(),
   成交: await prisma.opportunityClose.count(),
-  供应商报价: await prisma.supplierQuote.count(),
-  供应商: await prisma.supplier.count(),
   合同: await prisma.contract.count(),
-  订单: await prisma.tradeOrder.count(),
   附件: await prisma.attachment.count(),
   对照: await prisma.entExternalRef.count(),
 });
@@ -120,9 +114,9 @@ describe("企业版清老数据", () => {
     const 日志 = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const r = await 清理老数据();
-    expect(r).toEqual({ 附件: 2, 订单: 2, 合同: 1, 商机: 1, 供应商: 1, 对照: 1, 跟进解挂: 1 });
+    expect(r).toEqual({ 附件: 2, 合同: 1, 商机: 1, 对照: 1, 跟进解挂: 1 });
     expect(await 留着的()).toEqual(之前);
-    expect(await 老表()).toEqual({ 商机: 0, 成交: 0, 供应商报价: 0, 供应商: 0, 合同: 0, 订单: 0, 附件: 3, 对照: 3 });
+    expect(await 老表()).toEqual({ 商机: 0, 成交: 0, 合同: 0, 附件: 3, 对照: 3 });
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: 挂商机跟进.id } })).opportunityId).toBeNull();
     expect((await prisma.entExternalRef.findMany({ select: { externalId: true }, orderBy: { externalId: "asc" } })).map((x) => x.externalId)).toEqual(["C1", "L1", "O2"]);
     // 文件：挂商机 / 订单的删了，挂线索 / 联系人的（含既挂商机又挂线索的）留着
@@ -168,7 +162,7 @@ describe("企业版清老数据", () => {
 
   it("清空的库也照样记记号，计数全 0", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    expect(await 清理老数据()).toEqual({ 附件: 0, 订单: 0, 合同: 0, 商机: 0, 供应商: 0, 对照: 0, 跟进解挂: 0 });
+    expect(await 清理老数据()).toEqual({ 附件: 0, 合同: 0, 商机: 0, 对照: 0, 跟进解挂: 0 });
     expect(await getSetting<boolean>(清理记号键)).toBe(true);
     vi.restoreAllMocks();
   });

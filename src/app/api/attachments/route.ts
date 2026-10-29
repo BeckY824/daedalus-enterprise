@@ -11,9 +11,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * 商机 / 订单的附件（2026-10-22 D-24），企业版还有线索 / 联系人（联系人附件 10-28）。这一版只收图片（不是图片回 415，见 attachment-rules 只收图片）。
- *   GET  ?opportunityId=|orderId=|leadId=|contactId=  → { 附件: [...] }
- *   POST ?opportunityId=|orderId=|leadId=|contactId=&name=&w=&h=  body = 文件原始字节（图片在界面上已经压过），Content-Type = 文件类型
+ * 商机的附件（2026-10-22 D-24），企业版还有线索 / 联系人（联系人附件 10-28）。这一版只收图片（不是图片回 415，见 attachment-rules 只收图片）。
+ *   GET  ?opportunityId=|leadId=|contactId=  → { 附件: [...] }
+ *   POST ?opportunityId=|leadId=|contactId=&name=&w=&h=  body = 文件原始字节（图片在界面上已经压过），Content-Type = 文件类型
  * 取文件、删除在 [id]/route.ts。
  */
 

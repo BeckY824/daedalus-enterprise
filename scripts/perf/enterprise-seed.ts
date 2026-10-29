@@ -17,7 +17,6 @@
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { PrismaClient } from "../../src/generated/prisma";
-import { 节点名们 } from "../../src/lib/order";
 
 const p = new PrismaClient();
 const SCALE = Number(process.env.SCALE ?? 10);
@@ -65,7 +64,6 @@ async function main() {
     await p.opportunity.createMany({ data: 本批.filter((c) => c.i % 10 === 0).map((c) => ({ name: `年度采购 ${c.i}`, amount: 10_000 + c.i * 137, customerId: c.id, ownerId: c.owner })) });
     await p.task.createMany({ data: 本批.filter((c) => c.i % 20 === 0).map((c) => ({ title: `回访 ${c.i} 号客户确认报价`, dueAt: new Date(现在 + ((c.i % 30) - 10) * 天), customerId: c.id, ownerId: c.owner })) });
     await p.followPlan.createMany({ data: 本批.filter((c) => c.i % 10 === 5).map((c) => ({ subject: `催 ${c.i} 号客户回签 PI`, plannedAt: new Date(现在 + ((c.i % 20) - 5) * 天), method: "电话沟通", customerId: c.id, ownerId: c.owner })) });
-    await p.tradeOrder.createMany({ data: 本批.filter((c) => c.i % 50 === 0).map((c) => ({ no: `PI-PERF-${c.i}`, amount: 50_000 + c.i, currency: "USD", payment: "T/T 30/70", customerId: c.id, ownerId: c.owner })) });
   }
 
   if (EXTRA) await 加一组(人们, 现在);
@@ -73,14 +71,14 @@ async function main() {
   // 每人挑 5 位自己名下的客户，压测时打开详情页
   const 名单 = 人们.map((u, k) => ({ id: u.id, role: u.role, customers: [0, 1, 2, 3, 4].map((j) => `perf-c${k + 30 * ((j * 97 + 11) % Math.floor(N / 30))}`) }));
   writeFileSync(OUT, JSON.stringify(名单));
-  const 造了 = { scale: SCALE, extra: EXTRA, users: 人们.length, customers: await p.customer.count(), followUps: await p.followUp.count(), opportunities: await p.opportunity.count(), tasks: await p.task.count(), plans: await p.followPlan.count(), orders: await p.tradeOrder.count(), orderNodes: await p.tradeOrderNode.count() };
+  const 造了 = { scale: SCALE, extra: EXTRA, users: 人们.length, customers: await p.customer.count(), followUps: await p.followUp.count(), opportunities: await p.opportunity.count(), tasks: await p.task.count(), plans: await p.followPlan.count() };
   writeFileSync(join(dirname(OUT), "seed.json"), JSON.stringify(造了));
   console.log(JSON.stringify(造了));
 }
 
 /**
- * EXTRA=1：逾期跟进计划 + 带 12 个节点的订单。挂在原来的客户上，负责人跟客户走（客户 i 归第 i % 30 个人）。
- * 第 k 条挑哪位客户是算好的，30 个人都分得到，每人的逾期天数、节点进度也都是散开的
+ * EXTRA=1：逾期跟进计划（原来还有带 12 个节点的订单，订单表 2026-10-29 删了）。挂在原来的客户上，负责人跟客户走（客户 i 归第 i % 30 个人）。
+ * 第 k 条挑哪位客户是算好的，30 个人都分得到，每人的逾期天数也都是散开的
  */
 async function 加一组(人们: { id: string }[], 现在: number) {
   const 批 = 1000;
@@ -96,31 +94,7 @@ async function 加一组(人们: { id: string }[], 现在: number) {
       }),
     });
   }
-  // 带节点的订单：第 k 张挂在客户 100k + k % 30 上
-  const 订单数 = Math.floor(N / 100);
-  for (let b = 0; b < 订单数; b += 批) {
-    const 订单们 = Array.from({ length: Math.min(订单数, b + 批) - b }, (_, j) => {
-      const k = b + j;
-      const i = 100 * k + (k % 30);
-      return { i, h: k + Math.floor(k / 30), owner: 人们[i % 30].id };
-    });
-    await p.tradeOrder.createMany({
-      data: 订单们.map((c) => ({ id: `perf-o${c.i}`, no: `PI-PERF-N${c.i}`, amount: 30_000 + c.i, currency: c.h % 4 ? "USD" : "EUR", incoterm: c.h % 7 ? "FOB" : "EXW", payment: "T/T 30/70", depositDue: (30_000 + c.i) * 0.3, depositPaid: c.h % 3 ? (30_000 + c.i) * 0.3 : 0, customerId: `perf-c${c.i}`, ownerId: c.owner })),
-    });
-    // 节点：前 走完 个已完成（4–12），下一个进行中 / 卡住 / 未开始轮着来，EXW 不订舱（不适用）；
-    // 截止日从「起」起每步 5 天，起 在过去 0–39 天：有超期的、3 天内到期的、还早的
-    await p.tradeOrderNode.createMany({
-      data: 订单们.flatMap((c) => {
-        const 走完 = 4 + (c.h % 9);
-        const 起 = 现在 - (c.h % 40) * 天;
-        return 节点名们.map((name, n) => {
-          const dueAt = new Date(起 + n * 5 * 天);
-          const status = n < 走完 ? "已完成" : name === "订舱" && c.h % 7 === 0 ? "不适用" : n === 走完 ? ["进行中", "卡住", "未开始"][Math.floor(c.h / 9) % 3] : "未开始";
-          return { orderId: `perf-o${c.i}`, idx: n + 1, name, dueAt, status, doneAt: status === "已完成" ? new Date(Math.min(dueAt.getTime(), 现在) - 3_600_000) : null };
-        });
-      }),
-    });
-  }
+  // 带节点的订单那一组 2026-10-29 随订单表（迁移 066）删了
 }
 
 main().finally(() => p.$disconnect());

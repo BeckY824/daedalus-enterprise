@@ -18,7 +18,7 @@ import { 列的叫法, 表的叫法 } from "./labels";
 type Db = PrismaClient | Prisma.TransactionClient;
 
 /** 这几张表的改动才提示（人在界面上改的业务资料）；账号、设置、渠道这些不提 */
-const 提示的表 = new Set(["Customer", "CustomerExtra", "Contact", "FollowUp", "Opportunity", "Contract", "Task", "FollowPlan", "Lead", "UnassignedContact", "TradeOrder"]);
+const 提示的表 = new Set(["Customer", "CustomerExtra", "Contact", "FollowUp", "Opportunity", "Contract", "Task", "FollowPlan", "Lead", "UnassignedContact"]);
 const 不算的列 = new Set(["updatedAt", "createdAt", "activityAt", "lastFollowAt", "plannedHasTime", "dueHasTime"]);
 const 最多存 = 500;
 

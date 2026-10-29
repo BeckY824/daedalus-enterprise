@@ -12,7 +12,6 @@ import { calendarDay, calendarDaysBetween } from "@/lib/schedule-date";
 import { 算提醒, 定了时刻 } from "@/lib/reminders";
 import { 截止说法 } from "@/lib/deadline";
 import { parseDateInput } from "@/lib/date-input";
-import { 默认订单号 } from "@/lib/order";
 import { defaultClient as db } from "@/lib/prisma";
 import { resetDb } from "./reset";
 const originalTZ = process.env.TZ;
@@ -43,7 +42,7 @@ it("托管版在纽约主机仍以北京决定今天/月边界、日期解析和
   expect(parseDateInput("2026-11-01T02:30:00-05:00")!.toISOString()).toBe("2026-11-01T07:30:00.000Z");
   configureBrowserBusinessTimeZone(null); expect(businessDayjs().format("YYYY-MM-DD")).toBe("2026-11-01");
 });
-it("逾期/日历天/Dock汇总/显示/订单和供应报价采用同一业务日", () => {
+it("逾期/日历天/Dock汇总/显示采用同一业务日", () => {
   expect(是逾期("2026-10-31", now)).toBe(true); expect(是逾期("2026-11-01", now)).toBe(false);
   expect(是逾期("2026-10-31T15:59:59Z", now)).toBe(true); expect(是逾期("2026-10-31T16:00:00Z", now)).toBe(false);
   const summary = 算提醒([
@@ -57,7 +56,6 @@ it("逾期/日历天/Dock汇总/显示/订单和供应报价采用同一业务�
   expect(fmtDateTime("2026-11-01")).toBe("2026-11-01");
   expect(截止说法("2026-11-01")).toBe("今天"); expect(截止说法("2026-10-31")).toBe("逾期 1 天");
   expect(冷热("2026-10-31T15:59:59Z").天).toBe(1);
-  expect(默认订单号([], now)).toBe("20261101-1");
 });
 it("数据库逾期计数与同日摘要一致，日期元数据和旧瞬间分别查", async () => {
   vi.useRealTimers(); vi.stubEnv("MULTI_TENANT", "0"); await resetDb();
