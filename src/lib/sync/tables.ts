@@ -69,6 +69,8 @@ export const 不同步表 = [
   "EntBlocker", "EntBlockerLog", "EntFollowUpMeta",
   // 企业版选项字典（2026-10-26，migrations/057）：同上
   "EntDictItem",
+  // 企业版渠道投入（2026-10-29，migrations/071）：同上
+  "EntChannelInvest",
 ] as const;
 
 /**
@@ -96,6 +98,8 @@ export const 指向人的列: [string, string][] = [
   ["UnassignedContact", "ownerId"],
   ["Lead", "ownerId"],
   ["Channel", "channelOwnerId"],
+  // 渠道创建人（2026-10-29，migrations/070）：不建外键
+  ["Channel", "createdById"],
   ["Customer", "salesOwnerId"],
   ["Customer", "channelOwnerId"],
   ["CustomerPool", "userId"],
@@ -127,6 +131,8 @@ export const 指向人的列: [string, string][] = [
   ["EntBlockerLog", "userId"],
   ["EntBlockerLog", "fromUserId"],
   ["EntBlockerLog", "toUserId"],
+  // 企业版渠道投入是谁录的（2026-10-29）
+  ["EntChannelInvest", "userId"],
   ["ProjectNodeLog", "fromOwnerId"],
   ["ProjectNodeLog", "toOwnerId"],
   ["CustomerCreator", "userId"],

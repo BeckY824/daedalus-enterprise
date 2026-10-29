@@ -1,6 +1,6 @@
 /**
  * 回归总表「L-联动」里修了但没测试钉着的几条（2026-10-04 上线前第 2 期补测）。每条一句话说清钉的是什么：
- *   L-039 渠道页「直接推荐 N 人」点进客户列表，筛出来的也是 N 人
+ *   L-039 客户列表 directOf 只筛直接从这个渠道来的（渠道页的「直接推荐」列 2026-10-29 渠道改版已去掉，筛选本身还在）
  *   L-043 首页欢迎句「今天要跟 N 条」和左栏角标、Dock 同一个函数
  *   L-045 商机页汇总按全量算，不是取回来的前 300 行
  *   L-053 通用预设的来源列表是现在这一套（微信 / 小红书 / 抖音 / 视频号…）
@@ -57,22 +57,20 @@ afterAll(async () => {
 const sp = (x: Record<string, string> = {}) => ({ searchParams: Promise.resolve(x) }) as never;
 const 属性 = (el: unknown) => (el as { props: Record<string, unknown> }).props;
 
-describe("L-039 渠道页「直接推荐 N 人」= 点进去客户列表筛出来的人数", () => {
-  it("两位直接来的、一位转介绍来的（只算进整条链）：渠道页写 2，客户列表 directOf 筛出 2 位，正是那两位", async () => {
+describe("L-039 客户列表 directOf = 直接从这个渠道来的那几位", () => {
+  it("两位直接来的、一位转介绍来的（只算进整条链）：directOf 筛出 2 位，正是那两位", async () => {
     const ch = await prisma.channel.create({ data: { name: "林老师", channelOwnerId: 我 } });
     const 甲 = await prisma.customer.create({ data: { name: "甲", phone: "13800000001", salesOwnerId: 我, channelId: ch.id, attributionChannelId: ch.id } });
     await prisma.customer.create({ data: { name: "乙", phone: "13800000002", salesOwnerId: 我, channelId: ch.id, attributionChannelId: ch.id } });
     await prisma.customer.create({ data: { name: "甲推荐的", phone: "13800000003", salesOwnerId: 我, referrerCustomerId: 甲.id, attributionChannelId: ch.id } });
     await prisma.customer.create({ data: { name: "名字里带林老师的", phone: "13800000004", salesOwnerId: 我 } });
 
-    const 渠道页 = 属性(await (await import("@/app/(app)/channels/page")).default()).rows as { name: string; directCount: number; chainCount: number }[];
-    expect(渠道页.find((r) => r.name === "林老师")).toMatchObject({ directCount: 2 });
     const 列表 = 属性(await (await import("@/app/(app)/customers/page")).default(sp({ directOf: ch.id }))) as { total: number; rows: { name: string }[]; 直接推荐: string };
     expect(列表.total).toBe(2);
     expect(列表.rows.map((r) => r.name).sort()).toEqual(["乙", "甲"]);
     expect(列表.直接推荐).toBe("林老师");
-    // 渠道页那个链接用的就是 directOf（不是拿渠道名当关键词搜——那样会搜出「名字里带林老师的」，或者 0 条）
-    expect(readFileSync(path.join(ROOT, "src/app/(app)/channels/ChannelsView.tsx"), "utf8")).toMatch(/directOf=\$\{/);
+    // 渠道页不再摆推荐链那几列，也就不再往客户列表带 directOf
+    expect(readFileSync(path.join(ROOT, "src/app/(app)/channels/ChannelsView.tsx"), "utf8")).not.toMatch(/directOf/);
   });
 });
 

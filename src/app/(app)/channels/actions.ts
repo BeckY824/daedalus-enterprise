@@ -11,6 +11,12 @@ import { recordAudit } from "@/lib/audit";
 import { 唯一负责人 } from "@/lib/owners";
 import { getBusiness } from "@/lib/business";
 import { 不在了 } from "@/lib/not-there";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 选的原因 } from "@/lib/enterprise/dict";
+import { 挡改设置 } from "@/lib/enterprise/edit-perm";
+import { 拼全称, 全称上限 } from "@/lib/enterprise/channel-stats";
+import { parseDateInput } from "@/lib/date-input";
+import { 规整币种, 是币种 } from "@/lib/currency";
 
 /**
  * 成功时回传渠道 id（新建是新 id，编辑是原 id）。
@@ -25,8 +31,41 @@ export async function saveChannel(input: {
   channelOwnerId?: string | null;
   /** 打开编辑框那一刻的 updatedAt。给了就当闸门：期间有人改过不盖掉（排查 D3） */
   版本?: string | null;
+  /**
+   * 企业版渠道表单（2026-10-29）交这几样：渠道属性、渠道名称、来源必填，name（渠道全称）不填就拼成「渠道名称|来源」。
+   * 不交 attr（客户表单里就地建渠道、首页 AI 建渠道、老测试）照原来只要 name，这几列不动
+   */
+  attr?: string | null;
+  platform?: string | null;
+  source?: string | null;
+  /** YYYY-MM-DD，空 = 没有结束日期 */
+  endDate?: string | null;
+  active?: boolean;
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const me = await requireUser();
+  const 企业表单 = input.attr !== undefined;
+  let 企业列: { attr: string | null; platform: string; endDate: Date | null } | null = null;
+  if (企业表单) {
+    const 原 = input.id ? await prisma.channel.findUnique({ where: { id: input.id }, select: { attr: true } }) : null;
+    const 属性 = (input.attr ?? "").trim();
+    if (!属性) return { ok: false, error: "请选择渠道属性" };
+    // 编辑老渠道时属性没动：那一项后来停用了也照旧收
+    let attr: string | null = 属性;
+    if (属性 !== 原?.attr) {
+      const 查 = await 选的原因("channelAttr", 属性);
+      if (!查.ok) return 查;
+      attr = 查.值 ?? (企业版() ? null : 属性);
+    }
+    const platform = (input.platform ?? "").trim();
+    if (!platform) return { ok: false, error: "请填写渠道名称" };
+    const 来源 = (input.source ?? "").trim();
+    if (!来源) return { ok: false, error: "请填写来源" };
+    const 结束 = input.endDate ? parseDateInput(input.endDate) : null;
+    if (input.endDate && !结束) return { ok: false, error: "结束日期不对，请重新选" };
+    if (!hasVisibleText(input.name)) input = { ...input, name: 拼全称(platform, 来源) };
+    if (input.name.trim().length > 全称上限) return { ok: false, error: `渠道全称最多 ${全称上限} 个字` };
+    企业列 = { attr, platform, endDate: 结束 };
+  }
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false, error: "请填写渠道名称" };
   const b = await getBusiness();
@@ -55,6 +94,8 @@ export async function saveChannel(input: {
     phone: 电话.phone || null,
     remark: remark || null,
     channelOwnerId,
+    ...(企业列 ?? {}),
+    ...(typeof input.active === "boolean" ? { active: input.active } : {}),
   };
 
   let 新建id: string | undefined;
@@ -82,7 +123,7 @@ export async function saveChannel(input: {
       detail: { name, 原负责人: 改前?.channelOwnerId, 新负责人: channelOwnerId, 已有学员不受影响: 已有 },
     });
   } else {
-    const c = await prisma.channel.create({ data });
+    const c = await prisma.channel.create({ data: { ...data, createdById: me.id } });
     新建id = c.id;
     await recordAudit({
       user: me, action: "create", entity: "Channel", entityId: c.id,
@@ -126,6 +167,9 @@ export async function deleteChannel(id: string): Promise<{ ok: true } | { ok: fa
   if (used > 0) {
     return { ok: false, error: `该渠道名下已有 ${used} 名${b.customer}，不能删除。如需停用请点「停用」` };
   }
+  // 录过投入的也不删：投入跟着渠道级联删掉，钱的记录就没了
+  const 投入 = await prisma.entChannelInvest.count({ where: { channelId: id } });
+  if (投入 > 0) return { ok: false, error: `该渠道已录了 ${投入} 笔投入，不能删除。如需停用请点「停用」` };
   const 待删 = await prisma.channel.findUnique({ where: { id }, select: { name: true } });
   // 另一个窗口已经删了：说一句，不抛（2026-10-04 第 2 期 2a）。查完到删之间又被删的那一下也接住
   if (!待删) return { ok: false, error: "这个渠道已经不在了（可能在别处删了），刷新看看" };
@@ -137,6 +181,84 @@ export async function deleteChannel(id: string): Promise<{ ok: true } | { ok: fa
   await recordAudit({
     user: me, action: "delete", entity: "Channel", entityId: id,
     summary: `删除渠道「${待删.name}」`,
+  });
+  revalidatePath("/channels");
+  return { ok: true };
+}
+
+/* ───────────── 企业版渠道投入（2026-10-29） ───────────── */
+
+export type 投入行 = { id: string; amount: number; currency: string; date: string; remark: string | null; userName: string | null; createdAt: string };
+
+/** 能不能给这个渠道录 / 删投入：管理员、这个渠道的负责人、设置里「录入渠道投入」勾了的那几类人 */
+async function 挡投入(me: { id: string; role: string }, channelId: string): Promise<{ 名: string } | { error: string; 不在?: true }> {
+  const c = await prisma.channel.findUnique({ where: { id: channelId }, select: { name: true, channelOwnerId: true } });
+  if (!c) return { error: "这个渠道已经不在了（可能在别处删了），刷新看看", 不在: true };
+  if (me.role === "ADMIN" || c.channelOwnerId === me.id) return { 名: c.name };
+  const 挡 = await 挡改设置(me, "渠道投入");
+  return 挡 ? { error: `录入渠道投入${挡}，或由这个渠道的负责人录` } : { 名: c.name };
+}
+
+/** 渠道详情抽屉里的投入记录，新的在前。谁都能看（列表上的投入合计本来就人人看得到）；能不能录一并带回去 */
+export async function listChannelInvests(channelId: string): Promise<{ ok: true; rows: 投入行[]; 能录: boolean } | { ok: false; error: string }> {
+  const me = await requireUser();
+  if (typeof channelId !== "string" || !channelId) return { ok: false, error: "缺渠道" };
+  const 查 = await 挡投入(me, channelId);
+  if ("error" in 查 && 查.不在) return { ok: false, error: 查.error };
+  const 行 = await prisma.entChannelInvest.findMany({ where: { channelId }, orderBy: [{ date: "desc" }, { createdAt: "desc" }] });
+  const 人 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(行.map((r) => r.userId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  return {
+    ok: true,
+    能录: !("error" in 查),
+    rows: 行.map((r) => ({ id: r.id, amount: r.amount, currency: r.currency, date: r.date.toISOString(), remark: r.remark, userName: 人.get(r.userId) ?? null, createdAt: r.createdAt.toISOString() })),
+  };
+}
+
+// "use server" 文件只许导出 async 函数，上限不导出；表单那边写同一个数
+const 投入备注上限 = 200;
+
+export async function addChannelInvest(input: { channelId: string; amount: number; currency?: string | null; date: string; remark?: string | null }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const me = await requireUser();
+  if (!input || typeof input.channelId !== "string" || !input.channelId) return { ok: false, error: "缺渠道" };
+  const 查 = await 挡投入(me, input.channelId);
+  if ("error" in 查) return { ok: false, error: 查.error };
+  const amount = Number(input.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "投入金额要大于 0" };
+  if (amount >= 1e12) return { ok: false, error: "投入金额太大了，检查一下位数" };
+  const date = parseDateInput(input.date);
+  if (!date) return { ok: false, error: "请选投入日期" };
+  if (input.currency && !是币种(input.currency)) return { ok: false, error: "币种不对" };
+  const currency = 规整币种(input.currency, (await getBusiness()).currency);
+  const remark = typeof input.remark === "string" ? input.remark.trim() : "";
+  if (remark.length > 投入备注上限) return { ok: false, error: `备注最多 ${投入备注上限} 个字` };
+  const r = await prisma.entChannelInvest.create({
+    data: { channelId: input.channelId, amount: Math.round(amount * 100) / 100, currency, date, remark: remark || null, userId: me.id },
+  });
+  await recordAudit({
+    user: me, action: "update", entity: "Channel", entityId: input.channelId,
+    summary: `给渠道「${查.名}」录入投入 ${currency} ${r.amount}`,
+    detail: { 投入id: r.id, 金额: r.amount, 币种: currency, 日期: input.date, 备注: remark || null },
+  });
+  revalidatePath("/channels");
+  return { ok: true, id: r.id };
+}
+
+export async function deleteChannelInvest(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await requireUser();
+  if (typeof id !== "string" || !id) return { ok: false, error: "缺投入记录" };
+  const r = await prisma.entChannelInvest.findUnique({ where: { id } });
+  if (!r) return { ok: false, error: "这笔投入已经不在了（可能在别处删了），刷新看看" };
+  const 查 = await 挡投入(me, r.channelId);
+  if ("error" in 查) return { ok: false, error: 查.error };
+  try {
+    await prisma.entChannelInvest.delete({ where: { id } });
+  } catch (e) {
+    return 不在了(e);
+  }
+  await recordAudit({
+    user: me, action: "update", entity: "Channel", entityId: r.channelId,
+    summary: `删除渠道「${查.名}」的一笔投入 ${r.currency} ${r.amount}`,
+    detail: { 投入id: id, 金额: r.amount, 币种: r.currency, 日期: r.date.toISOString(), 备注: r.remark },
   });
   revalidatePath("/channels");
   return { ok: true };
