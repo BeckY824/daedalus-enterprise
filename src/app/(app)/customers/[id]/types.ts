@@ -105,6 +105,10 @@ export type RecordProps = {
   新建项目?: { 节点们: string[]; 要下一步: boolean } | null;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的，10-28 去遗留 A1）；不给 = 别的版本，标签行照旧 */
   客户状态选项?: string[];
+  /** 企业版客户状态 名字 → 标签颜色（cust-status-color.ts 客户状态色表）；没给按名字散 */
+  客户状态色?: Record<string, string>;
+  /** 企业版项目模式：客户状态按名下项目自动算（10-30），标签行那枚章只读、点不开 */
+  客户状态自动?: boolean;
   项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;
   /** 企业版项目关联（P17）：这位客户关联在哪些项目上、什么身份（只读；含当主客户、勾了身份的那几个）。不给 = 别的版本 */
   参与项目们?: import("@/lib/project/relate").参与项目行[] | null;

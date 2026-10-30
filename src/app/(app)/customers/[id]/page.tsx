@@ -22,7 +22,8 @@ import { 只读客户 } from "@/lib/team-scope";
 import { 管全队客户 } from "@/lib/constants";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
-import { 页面可选项 } from "@/lib/enterprise/dict";
+import { 页面可选项, 页面字典 } from "@/lib/enterprise/dict";
+import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 企业版字典 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -187,6 +188,9 @@ export default async function CustomerDetailPage({
       参与项目们={参与项目们}
       只读={只读}
       客户状态选项={客户状态选项}
+      // 客户状态按字典项上色；项目模式开着按项目自动算（10-30，lib/enterprise/cust-status-auto-db.ts），章只读
+      客户状态色={企 ? 客户状态色表(await 页面字典("custStatus")) : undefined}
+      客户状态自动={只项目}
       联系人分类附件数={联系人分类附件}
       关联们={关联们}
       号码种类={号码种类}

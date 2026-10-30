@@ -30,6 +30,7 @@ import { 规整沟通, type 向导跟进, type 规整好的沟通 } from "@/lib/
 import { 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
+import { 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
@@ -174,6 +175,8 @@ async function 转项目之后(user: Actor, lead: { name: string }, customerId: 
     summary: `线索「${lead.name}」转化时新建项目，连同首条跟进`,
     detail: { 项目: lead.name, customerId },
   });
+  // 企业版客户状态跟着项目算：多了一个线索阶段的项目
+  await 项目变了重算([customerId]);
   await 客户存了推项目(user, customerId);
   revalidatePath("/projects");
   revalidatePath("/follow-ups");

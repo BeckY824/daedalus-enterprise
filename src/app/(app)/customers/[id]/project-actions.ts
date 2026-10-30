@@ -24,6 +24,7 @@ import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
+import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -80,6 +81,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       : await prisma.contact.findFirst({ where: { customerId, isPrimary: true }, select: { id: true } });
     if (输入.联系人Id && !联系人) return { ok: false, error: "选的联系人已经不在这位客户名下了，刷新后再选" };
 
+    const 状态开 = await 客户状态自动();
     const projectId = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
         data: { ...项目, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点, nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText },
@@ -96,6 +98,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
         where: { id: customerId, OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: 跟进.occurredAt } }] },
         data: { lastFollowAt: 跟进.occurredAt },
       });
+      // 企业版客户状态跟着项目算：多了一个项目（没项目的客户从空变潜在）
+      await 跟着项目重算(tx, 状态开, [customerId]);
       return p.id;
     });
 

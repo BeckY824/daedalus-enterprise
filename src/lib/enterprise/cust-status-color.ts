@@ -21,6 +21,11 @@ export function 客户状态色(项: { id?: string | null; name: string }): stri
   return i >= 0 && i < 默认色.length ? 默认色[i] : 散(项.name);
 }
 
+/** 名字 → 颜色：先查页面传来的表（字典几项按 id 定的色），表里没有按名字散 */
+export function 客户状态色of(表: Readonly<Record<string, string>> | null | undefined, name: string): string {
+  return 表?.[name] ?? 客户状态色({ name });
+}
+
 /** 字典几项 → 名字到颜色的表；表里没有的名字调 客户状态色({ name }) 兜底 */
 export function 客户状态色表(项们: readonly { id: string; name: string }[]): Record<string, string> {
   return Object.fromEntries(项们.map((x) => [x.name, 客户状态色(x)]));

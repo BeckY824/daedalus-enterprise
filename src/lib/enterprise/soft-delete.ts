@@ -18,6 +18,7 @@ import { 企业版 } from "./switch";
 import { 管理员类别 } from "./org";
 import { 最高管理 } from "./import-perm";
 import { 看已删, 回收站保留天数, 客户连带, type 软删表名 } from "./soft-delete-core";
+import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
 
 export { 看已删, 回收站保留天数, 客户连带, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -87,6 +88,8 @@ async function 重算最近跟进(tx: Tx, customerId: string) {
  */
 export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结果<{ 连带: number; customerId: string | null }>> {
   if (!(await 能管回收站(me))) return { ok: false, error: "只有老板和管理员能恢复" };
+  // 客户状态跟着项目算：项目回来了（单条或随客户连带）要重算，开关事务外读
+  const 状态开 = (t === "Customer" || t === "Project") && (await 客户状态自动());
   return prisma.$transaction((tx) => 看已删(async () => {
     const 行 = await 表(tx, t).findUnique({ where: { id }, select: t === "Customer" ? { id: true, deletedAt: true } : { id: true, deletedAt: true, customerId: true } });
     const 时刻 = 行?.deletedAt as Date | null | undefined;
@@ -104,6 +107,7 @@ export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结�
     }
     if (t === "Customer" || t === "Contact") await 只留一个关键(tx, customerId, t === "Contact" ? id : null);
     if (t === "Customer" || t === "FollowUp") await 重算最近跟进(tx, customerId);
+    await 跟着项目重算(tx, 状态开, [customerId]);
     return { ok: true as const, 连带, customerId };
   }));
 }

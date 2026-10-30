@@ -2,16 +2,23 @@
  * 企业版客户侧清桌面端遗留（2026-10-28）：
  *   - 客户状态（字典 custStatus）：九个新默认；老库还叫旧名的默认项改一次新名，人改过的不动
  *   - 保存 / 行内改：新建给第一项、乱给的拒、清空可以；开关关着不收这个字段
+ *     （10-30 起项目模式开着客户状态按项目自动算、不手选，见 ent-cust-status-auto-db.test.ts；这一组测项目模式关着的手选）
  *   - 渠道：编辑时原来有渠道的不许清空；换的渠道得是启用中的
  *   - 本月成交：一个项目转订单又成功交付，只数一次
  *   - 列表按客户状态筛：开关关着地址栏带了也当没带
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
+const 开关 = vi.hoisted(() => ({ 项目模式关: false }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", () => ({
   requireUser: async () => ({ id: "tester-id", name: "测试员", email: "t", role: "ADMIN", title: "" }),
 }));
+// 企业版锁死项目模式开着；手选客户状态只在项目模式关着时有，这里改 getBusiness 的结果
+vi.mock("@/lib/business", async (orig) => {
+  const m = await orig<typeof import("@/lib/business")>();
+  return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), ...(开关.项目模式关 ? { projectMode: false } : {}) }) };
+});
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -33,7 +40,7 @@ beforeEach(async () => {
   await prisma.user.create({ data: { id: "tester-id", email: "t@t", name: "测试员", role: "ADMIN", password: "x" } });
   销售 = (await prisma.user.create({ data: { email: "s@t", name: "销售", role: "SALES", password: "x" } })).id;
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); 开关.项目模式关 = false; });
 afterAll(() => prisma.$disconnect());
 
 const 新建 = (改: Record<string, unknown> = {}) =>
@@ -83,7 +90,9 @@ describe("客户状态字典", () => {
   });
 });
 
-describe("保存客户状态", () => {
+describe("保存客户状态（项目模式关着手选）", () => {
+  beforeEach(() => { 开关.项目模式关 = true; });
+
   it("新建没给：第一项「潜在」；给了合法的照存；乱给的拒", async () => {
     const a = await 新建();
     expect(a.ok).toBe(true);
