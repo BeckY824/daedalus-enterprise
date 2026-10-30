@@ -11,9 +11,9 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { requireUser, type SessionUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
-import { getSetting, invalidateSettingsCache } from "@/lib/settings";
+import { getSetting, setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
-import { 读组织, type 组织 } from "@/lib/enterprise/org";
+import { 读组织, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -25,7 +25,7 @@ import { 超上限, 记转让 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import {
   企划线索计数key, 我分出去的, 月份, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
-  认参与状态, 参与状态of, 是参与状态, type 参与状态,
+  认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们,
   type 分出去的线索, type 线,
 } from "@/lib/enterprise/lead-assign";
 
@@ -46,6 +46,11 @@ async function 进门() {
 }
 
 const 是线 = (x: unknown): x is 线 => x === "内贸" || x === "外贸";
+
+/** 规则里的「不设配额（人人参与、不限额）」开着没（10-30）：开着时配额整个不起作用 */
+async function 不设配额开着(): Promise<boolean> {
+  return (await getSetting<boolean>(不设配额key)) === true;
+}
 
 export async function 分配线索(input: { leadId?: string; projectId?: string; toUserId: string; line?: 线 | null; kind?: 线索种类 }): Promise<结果> {
   const me = await 进门();
@@ -88,6 +93,8 @@ async function 分给(
   if (!lead) return { ok: false, error: "这条线索已经不在了（或者你看不到它），刷新看看" };
 
   const counted = 计不计数(input.kind, await getSetting<boolean>(企划线索计数key));
+  // 不设配额开着：照样记数（算不算数不变），只是不查满额
+  const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
   const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | { ok: false; error: string; 满?: true }> => {
     // 负责人、状态在事务里再读一次：同一条线索两边同时分，后到的看到的是先到的写完的
@@ -95,7 +102,7 @@ async function 分给(
     if (!现在) return { ok: false, error: "这条线索已经不在了（或者你看不到它），刷新看看" };
     if (现在.status === "已转化") return { ok: false, error: "已转化的线索不用再分" };
     if (现在.ownerId === input.toUserId) return { ok: false, error: "这条线索已经在他名下了" };
-    if (counted) {
+    if (查额) {
       const 已分 = await 本月已分(input.toUserId, 月, tx);
       const 配额 = await 配额of(input.toUserId, tx);
       if (满了(已分, 配额)) return { ok: false, 满: true, error: `他这个月已经分了 ${已分} 条，配额 ${配额} 条，分满了：找他的上级调配额，或者分给别人` };
@@ -133,6 +140,7 @@ async function 分项目给(
   const counted = 计不计数(input.kind, await getSetting<boolean>(企划线索计数key));
   // 规则在进事务前读好：事务占着库的唯一连接，事务里再读设置会等到超时
   const 规则 = await 生效组织规则();
+  const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
   const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string } | { ok: false; error: string; 满?: true }> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
@@ -140,7 +148,7 @@ async function 分项目给(
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分：去「项目」里转让负责人" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
     if (p.ownerId === input.toUserId && !p.pooledAt) return { ok: false, error: "这条新线索已经在他名下了" };
-    if (counted) {
+    if (查额) {
       const 已分 = await 本月已分(input.toUserId, 月, tx);
       const 配额 = await 配额of(input.toUserId, tx);
       if (满了(已分, 配额)) return { ok: false, 满: true, error: `他这个月已经分了 ${已分} 条，配额 ${配额} 条，分满了：找他的上级调配额，或者分给别人` };
@@ -201,6 +209,7 @@ async function 不参与名单(): Promise<string[]> {
 
 /**
  * 自动分配（D-38）：在职、能接这条线、参与自动分配、填了配额（不是 0）、本月没分满的人里，挑「本月已分 / 配额」比例最低的；并列给最早进池的。
+ * 规则里选了「不设配额」（10-30）：不看配额，在职、能接、参与的人里挑本月已分最少的，并列同样给最早进池的。
  * 挑中以后走 分给()，配额、留痕和手动分一样；挑完到落库之间他被别人分满了，就顺延到下一个人。
  * 成了带上接手人、分完以后本月已分几条、配额、为什么挑他，界面直接拿去提示
  */
@@ -254,15 +263,16 @@ async function 自动分给(me: SessionUser, org: 组织, 哪条: 目标, line: 
   const 看 = await 分前看(哪条);
   if (!看.ok) return 看;
 
-  const 人们 = [...org.成员.keys()].filter((id) => id !== 看.ownerId && 接手问题(org, id, line) === null);
+  const 人们 = 自动候选人们(org, 看.ownerId, line);
   const 月 = 月份();
-  const [计数, 配额, 加额, 建号, 不参与, 企划算数] = await Promise.all([
+  const [计数, 配额, 加额, 建号, 不参与, 企划算数, 不限额] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: 人们 } }, _count: { _all: true } }),
     prisma.entLeadQuota.findMany({ where: { userId: { in: 人们 } } }),
     本月加额们(人们, 月),
     prisma.user.findMany({ where: { id: { in: 人们 } }, select: { id: true, name: true, createdAt: true } }),
     不参与名单(),
     getSetting<boolean>(企划线索计数key),
+    不设配额开着(),
   ]);
   const 数 = new Map(计数.map((c) => [c.toUserId, c._count._all]));
   // 生效配额 = 设的 + 本月加的额（线索最终判无效 +1）
@@ -272,8 +282,17 @@ async function 自动分给(me: SessionUser, org: 组织, 哪条: 目标, line: 
   const 查满 = 计不计数(kind, 企划算数);
   // 每轮要么分成、要么把挑中的人加进跳过，挑接手人不会再挑他：最多轮完一遍候选
   for (;;) {
-    const 谁 = 挑接手人(候选, 跳过, 查满);
+    const 谁 = 挑接手人(候选, 跳过, 查满, 不限额);
     if (!谁) {
+      // 不设配额：没有满额一说。参与的人都被跳过了 = 都到了项目持有上限
+      if (不限额) {
+        return {
+          ok: false,
+          error: 跳过.size > 不参与.length
+            ? "没有能接的人：参与的人手上都到了持有上限，线索留在原处：先让他们推进或放回一些，或者手动分"
+            : "没有能接的人：都不参与自动分配，或者业务线对不上",
+        };
+      }
       // 参与的人里有填了配额的（含 0）、只是都分满了 →「都已满额」，提醒去调配额；
       // 参与的人都没填配额、一个参与的都没有，各是另一回事
       const 参与的 = 候选.filter((c) => !不参与.includes(c.userId));
@@ -287,10 +306,10 @@ async function 自动分给(me: SessionUser, org: 组织, 哪条: 目标, line: 
             : "没有能接的人：都不参与自动分配，或者业务线对不上",
       };
     }
-    const 为什么 = 挑的理由(候选, 跳过, 查满, 谁);
+    const 为什么 = 挑的理由(候选, 跳过, 查满, 谁, 不限额);
     const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, kind, 自动: true });
     if (r.ok) {
-      return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 额.get(谁) ?? null, 为什么 };
+      return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 不限额 ? null : (额.get(谁) ?? null), 为什么 };
     }
     if (!r.满) return { ok: false, error: r.error };
     跳过.add(谁);
@@ -407,6 +426,37 @@ export async function 设自动分配参与(userId: string, 状态: 参与状态
   }
 }
 
+/** 「不设配额（人人参与、不限额）」现在开着没：规则关着返回 null（设置页那一块不出现） */
+export async function 读不设配额(): Promise<boolean | null> {
+  if (!(await 规则开着("线索分配"))) return null;
+  return 不设配额开着();
+}
+
+/**
+ * 拨规则「线索分配和配额」里的选项「不设配额（人人参与、不限额）」（10-30）。和拨规则开关同一道门：老板、总管理员。
+ * 开了以后自动分配在参与的人里挑本月已分最少的，手动分不查满额；设过的配额留着不删，关掉就照旧生效
+ */
+export async function 设不设配额(on: boolean): Promise<结果> {
+  const me = await 进门();
+  if (!me) return 没开;
+  if (typeof on !== "boolean") return { ok: false, error: "开关只能开或关" };
+  try {
+    const org = await 读组织();
+    if (me.role !== "ADMIN" && 管理员类别of(org, me.id) !== "总管理员") return { ok: false, error: "只有老板或总管理员能改这个选项" };
+    if ((await 不设配额开着()) === on) return { ok: true };
+    await setSetting(不设配额key, on);
+    await recordAudit({
+      user: me, action: "update", entity: "Setting", entityId: 不设配额key,
+      summary: on ? `规则「${规则.线索分配.名}」改成不设配额：人人参与自动分配、不限额` : `规则「${规则.线索分配.名}」改回按配额分配`,
+    });
+    revalidatePath("/leads");
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
 /** 设每月配额；quota = null 是清空配额（手动分不限，自动分配不再挑他） */
 export async function 设配额(userId: string, quota: number | null): Promise<结果> {
   const me = await 进门();
@@ -444,7 +494,7 @@ export type 分配情况 = {
   name: string;
   line: string | null;
   已分: number;
-  /** 生效配额 = 设的每月配额 + 本月加额；没设 = null */
+  /** 生效配额 = 设的每月配额 + 本月加额；没设 = null。规则里选了「不设配额」也是 null（不限） */
   配额: number | null;
   /** 设的每月配额（改配额的输入框改的是它） */
   设的配额: number | null;
@@ -473,7 +523,7 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
   const 人们 = [...org.成员.values()].filter((m) => 接手问题(org, m.userId, null) === null && (全看 || 能设配额(org, me, m.userId, 改权限)));
   const ids = 人们.map((m) => m.userId);
   const 月 = 月份();
-  const [计数, 配额, 加额, 持有, 名字, 状态表] = await Promise.all([
+  const [计数, 配额, 加额, 持有, 名字, 状态表, 不限额] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: ids } }, _count: { _all: true } }),
     prisma.entLeadQuota.findMany({ where: { userId: { in: ids } } }),
     本月加额们(ids, 月),
@@ -483,6 +533,7 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
       : defaultClient.lead.groupBy({ by: ["ownerId"], where: { ownerId: { in: ids }, status: { in: ["待跟进", "跟进中"] } }, _count: { _all: true } }),
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, createdAt: true } }),
     参与状态表(),
+    不设配额开着(),
   ]);
   const 数 = new Map(计数.map((c) => [c.toUserId, c._count._all]));
   const 额 = new Map(配额.map((q) => [q.userId, q.quota]));
@@ -495,7 +546,7 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
     .map((m) => ({
       userId: m.userId, name: 人.get(m.userId)!.name, line: m.line,
       已分: 数.get(m.userId) ?? 0,
-      配额: 生效配额(额.get(m.userId) ?? null, 加额.get(m.userId) ?? 0),
+      配额: 不限额 ? null : 生效配额(额.get(m.userId) ?? null, 加额.get(m.userId) ?? 0),
       设的配额: 额.get(m.userId) ?? null,
       加额: 额.has(m.userId) ? (加额.get(m.userId) ?? 0) : 0,
       持有: 持.get(m.userId) ?? 0,

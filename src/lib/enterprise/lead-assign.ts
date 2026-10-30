@@ -6,6 +6,8 @@
  *   销售自己拓的线索没有分配记录，自然不算。
  * - 直属上级、虚线上级（以及总管理员、老板）能给个人设每月配额，不设固定复核周期。
  *   没设：手动分不限；自动分配不挑他（10-25 用户定「没填的不参与」），配额 0 也不挑。
+ * - 10-30 客户定「开着，每人都不限额」：规则里多一个选项「不设配额」（不设配额key，默认关）。开了以后配额整个不起作用：
+ *   自动分配在规则范围内（在职、能接这条线、参与自动分配）的人里挑本月已分最少的，手动分也不查满额；关着和以前一样。
  * - 线索分出去以后，原来的负责人（市场人员）仍能看到转化情况：记录里留了 fromUserId，
  *   「我分出去的线索」按它查，不受「按组织架构看客户」限定。
  * - **还没定的留口子**：营销企划线索走哪边、算不算数——kind 记下来，算不算数走 计不计数()，
@@ -103,24 +105,46 @@ export function 认参与状态(v: unknown): Record<string, Exclude<参与状态
 /** 这个人现在的状态 */
 export const 参与状态of = (表: Record<string, 参与状态>, userId: string): 参与状态 => 表[userId] ?? "允许";
 
+/**
+ * 规则「线索分配和配额」里的选项「不设配额（人人参与、不限额）」（10-30 客户定「开着，每人都不限额」）：
+ * Setting 里存 JSON true / false，没存 = 关（和以前一样按配额）。开了以后自动分配不看配额、手动分配不查满额
+ */
+export const 不设配额key = "enterprise.lead_assign.no_quota";
+
 export type 候选人 = { userId: string; 已分: number; 配额: number | null; 进池: Date };
 
-/** 挑接手人、挑的理由 同一套筛法：去掉不参与的、没填配额 / 配额 0 的、（这一条算数时）分满的 */
-function 可挑(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean): 候选人[] {
+/**
+ * 自动分配的候选人：组织里在职的（读组织时已去掉停用 / 离职的）、能接这条线的，去掉线索现在的负责人。
+ * 参不参与、配额由 挑接手人 再筛
+ */
+export function 自动候选人们(org: 组织, 现负责人: string | null, line: 线 | null): string[] {
+  return [...org.成员.keys()].filter((id) => id !== 现负责人 && 接手问题(org, id, line) === null);
+}
+
+/**
+ * 挑接手人、挑的理由 同一套筛法：去掉不参与的、没填配额 / 配额 0 的、（这一条算数时）分满的。
+ * 不限额（不设配额开着）时只去掉不参与的，配额不起作用
+ */
+function 可挑(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean, 不限额: boolean): 候选人[] {
+  if (不限额) return 候选.filter((c) => !不参与.has(c.userId));
   return 候选.filter((c) => !不参与.has(c.userId) && 有配额(c.配额) && !(查满 && 满了(c.已分, c.配额)));
 }
 
 /** 本月已分 / 配额 谁的比例低：交叉相乘比，不做除法，3/9 和 1/3 判成一样。可挑的人配额都 > 0 */
 const 比例差 = (a: 候选人, b: 候选人) => a.已分 * b.配额! - b.已分 * a.配额!;
+/** 不限额时比本月已分谁少 */
+const 已分差 = (a: 候选人, b: 候选人) => a.已分 - b.已分;
 
 /**
  * 自动分配挑谁（D-38，10-26 定成 A7 默认）：去掉不参与的、没填配额的、（这一条算数时）分满的，
  * 挑「本月已分 / 配额」比例最低的；比例一样给最早进分配池的。EntMember 没记进池时间，先按建号时间算；
- * 再一样按 id，结果不随查询顺序变
+ * 再一样按 id，结果不随查询顺序变。
+ * 不限额（10-30）：参与的人都能挑，比本月已分条数（最少优先），并列的同样给最早进分配池的
  */
-export function 挑接手人(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean): string | null {
-  const 可 = 可挑(候选, 不参与, 查满);
-  可.sort((a, b) => 比例差(a, b) || a.进池.getTime() - b.进池.getTime() || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+export function 挑接手人(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean, 不限额 = false): string | null {
+  const 可 = 可挑(候选, 不参与, 查满, 不限额);
+  const 差 = 不限额 ? 已分差 : 比例差;
+  可.sort((a, b) => 差(a, b) || a.进池.getTime() - b.进池.getTime() || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
   return 可[0]?.userId ?? null;
 }
 
@@ -128,10 +152,16 @@ export function 挑接手人(候选: 候选人[], 不参与: ReadonlySet<string>
  * 挑中 谁 的理由，给界面上的结果提示用（「为什么是他」）。和 挑接手人 用同一套筛法：
  * 这一条不算数时不看满没满（没填配额的照样不挑）；比例并列时说明是按进池先后给的
  */
-export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean, 谁: string): string {
-  const 可 = 可挑(候选, 不参与, 查满);
+export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean, 谁: string, 不限额 = false): string {
+  const 可 = 可挑(候选, 不参与, 查满, 不限额);
   const 他 = 可.find((c) => c.userId === 谁);
   if (!他) return "";
+  if (不限额) {
+    const 并列 = 可.filter((c) => c.已分 === 他.已分).length;
+    return 并列 > 1
+      ? `本月已分最少（${他.已分} 条，和 ${并列 - 1} 人并列，先给最早进分配池的）；不设配额，不限额`
+      : `本月已分最少（${他.已分} 条）；不设配额，不限额`;
+  }
   const 并列 = 可.filter((c) => 比例差(c, 他) === 0).length;
   const 比 = `${他.已分}/${他.配额}`;
   const 理由 = 并列 > 1 ? `本月已分 / 配额比例最低（${比}，和 ${并列 - 1} 人并列，先给最早进分配池的）` : `本月已分 / 配额比例最低（${比}）`;

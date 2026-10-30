@@ -20,6 +20,8 @@ const plugin: Plugin = { name: "multi-role-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^\.\/OrgSyncCard$|^\.\/LeadAssignCard$/, "export default function C(){return null}");
   stub(/^\.\/org-actions$/, `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设成员=async(id,改)=>{(window.__交??=[]).push([id,改]);return{ok:true}};`);
+  // 规则「线索分配」里的「不设配额」开关（10-30）：OrgTab 直接调 设不设配额
+  stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
