@@ -156,7 +156,7 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
         </span>
         <span className="roster-m">
           <span className="roster-l0">
-            <span className="roster-src">
+            <span className="roster-src" title={r.source ?? undefined}>
               {带状态 && (
                 <Tag color={状态色(行状态(r))} style={{ margin: "0 6px 0 0", borderRadius: 5, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
                   {状态名(行状态(r))}
@@ -168,7 +168,8 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
           </span>
           <span className="roster-n">{r.name}</span>
           <span className="roster-l2">
-            <span className="roster-note">{r.lastNote ?? `还没跟进 · ${r.ownerName}`}</span>
+            {/* 名字整段显示（.roster-n 不截）；最近一句是辅助，最多两行，悬停看全 */}
+            <span className="roster-note" title={r.lastNote ?? undefined}>{r.lastNote ?? `还没跟进 · ${r.ownerName}`}</span>
             <span className={`roster-dot ${d.cls}`} title={d.说} aria-label={d.说} />
           </span>
         </span>

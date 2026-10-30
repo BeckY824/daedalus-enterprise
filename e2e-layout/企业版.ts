@@ -154,6 +154,11 @@ async function 灌数据(db: PrismaClient, 密码: string): Promise<Omit<种子,
     data: { name: "Dubai Jebel Ali Free Zone 华人商会 · 冷链食品进口采购联盟（含阿布扎比 / 沙迦分会）", phone: "+971 4 555 0199", remark: "每季度带一批采购商来厂；佣金 3%，到账后 30 天内结", channelOwnerId: 我 },
   });
   await db.customer.updateMany({ where: { id: { in: ["gate-scandi", "gate-long-uk"] } }, data: { channelId: 渠道.id } });
+  // 带属性标签的超长渠道（10-30「渠道名要显示完整」）：名字折行、属性 / 已停用标签钉在第一行右边，不许压字、不许把表撑宽
+  await db.channel.create({ data: { name: "Facebook｜VR STAR SPACE 某某某超长渠道名测试测试测试", attr: "公域引流", channelOwnerId: 我 } });
+  await db.channel.create({
+    data: { name: "视频号|星际空间 InterstellarSpaceOfficialChannel 超长渠道名测试测试测试", platform: "视频号", attr: "个人自拓", active: false, channelOwnerId: 我 },
+  });
   return { 项目: 第一个项目, 公海项目: 公海.id };
 }
 

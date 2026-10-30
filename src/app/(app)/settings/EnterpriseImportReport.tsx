@@ -194,7 +194,7 @@ export default function EnterpriseImportReport({
             ),
           },
           { title: "谁认的", width: 80, render: (_, c) => (改.列?.[e]?.[c.表头] !== undefined ? <Tag color="blue">手动</Tag> : c.说明 ? <Tag color={说明色[c.说明]}>{c.说明}</Tag> : null) },
-          { title: "样例", render: (_, c) => <Typography.Text type="secondary" ellipsis>{c.样例.filter(Boolean).slice(0, 3).join(" / ") || "—"}</Typography.Text> },
+          { title: "样例", render: (_, c) => <Typography.Text type="secondary" ellipsis={{ tooltip: true }}>{c.样例.filter(Boolean).slice(0, 3).join(" / ") || "—"}</Typography.Text> },
         ]}
       />
     );
@@ -427,7 +427,7 @@ export default function EnterpriseImportReport({
                           title={() => <b>格子认作什么</b>}
                           columns={[
                             { title: "", width: 64, dataIndex: "类" },
-                            { title: "原来写的", render: (_, f) => <Typography.Text ellipsis>{f.原值}</Typography.Text> },
+                            { title: "原来写的", render: (_, f) => <Typography.Text ellipsis={{ tooltip: true }}>{f.原值}</Typography.Text> },
                             {
                               title: "认作",
                               width: 220,
@@ -454,8 +454,8 @@ export default function EnterpriseImportReport({
                           dataSource={清洗.同一家}
                           title={() => <b>名字很像的两家</b>}
                           columns={[
-                            { title: "前一家", render: (_, g) => <Typography.Text ellipsis>{g.前}</Typography.Text> },
-                            { title: "后一家", render: (_, g) => <Typography.Text ellipsis>{g.后}</Typography.Text> },
+                            { title: "前一家", render: (_, g) => <Typography.Text ellipsis={{ tooltip: true }}>{g.前}</Typography.Text> },
+                            { title: "后一家", render: (_, g) => <Typography.Text ellipsis={{ tooltip: true }}>{g.后}</Typography.Text> },
                             {
                               title: "是不是同一家",
                               width: 160,

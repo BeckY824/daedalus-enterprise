@@ -443,11 +443,11 @@ export default function CustomersView({
       title: b.customer,
       key: "name",
       dataIndex: "name",
-      width: 160,
+      // 企业版公司名常常很长：原来一行截断、悬停看全（P13）；10-30 用户要「显示完整」，改成整段折行，列放宽到 200 少折几行
+      width: 企业 ? 200 : 160,
       常驻: true,
-      // 企业版公司名常常很长：一行截断、悬停看全，不把行撑成三四行（P13）。别的版本照旧折行
       render: (v, r) => 企业
-        ? <RowLink href={`/customers/${r.id}`} className="link-strong clamp-1" style={{ display: "block" }} title={v}>{v}</RowLink>
+        ? <RowLink href={`/customers/${r.id}`} className="link-strong fulltext" style={{ display: "block" }} title={v}>{v}</RowLink>
         : <RowLink href={`/customers/${r.id}`} className="link-strong">{v}</RowLink>,
     },
     // 企业版不摆院校·专业（10-28 去遗留 B2）

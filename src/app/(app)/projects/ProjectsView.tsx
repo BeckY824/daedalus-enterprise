@@ -188,7 +188,8 @@ export default function ProjectsView({
   const 收起 = 企业版 ? { 默认: false } : {};
   const 列表: 列<项目行>[] = [
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「进程」挤成两个字一行
-    { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string) => <span className="clamp" title={v}>{v}</span> },
+    // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）
+    { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string) => <span className="fulltext" title={v}>{v}</span> },
     { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
     // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列
     ...(新线索 ? [] : [{ title: "阶段", key: "phase", width: 72, ...收起, render: (_: unknown, r: 项目行) => 阶段与进程(r, 字典).阶段 }]),
@@ -202,7 +203,7 @@ export default function ProjectsView({
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
       { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => r.expectedDealAt ?? 无 },
       { title: "已立项", key: "age", width: 80, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
-      { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (r.项目来源 ? <span className="clamp" title={r.项目来源}>{r.项目来源}</span> : 无) },
+      { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (r.项目来源 ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : <UserCell name={r.ownerName} />) }]),
@@ -419,7 +420,7 @@ export default function ProjectsView({
                             }
                           }}
                         >
-                          <div className="pipe-card-t clamp" title={r.name}>{r.name}</div>
+                          <div className="pipe-card-t fulltext" title={r.name}>{r.name}</div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看}</span>
                           </div>
