@@ -204,4 +204,22 @@ describe("B5 两个转化率", () => {
     expect(统.线索转商机).toEqual({ 分子: 3, 分母: 4, 比例: 0.75 });
     expect(统.商机转订单).toEqual({ 分子: 2, 分母: 4, 比例: 0.5 });
   });
+
+  it("读库：项目过千不崩（Prisma 嵌套 orderBy 的坑），日志乱序写入也按时间算", async () => {
+    const 客户 = (await prisma.customer.create({ data: { name: "客户一", phone: "13800000042", salesOwnerId: 销售, channelId: 渠道 } })).id;
+    const 项目们 = await prisma.project.createManyAndReturn({
+      data: Array.from({ length: 1200 }, (_, i) => ({ name: `p${i}`, customerId: 客户, ownerId: 销售, creatorId: 销售, phase: "线索" })),
+      select: { id: true },
+    });
+    const t0 = Date.parse("2026-10-01T00:00:00");
+    // 先写后一步、再写建项目那条，库里顺序和时间顺序反着
+    await prisma.projectNodeLog.createMany({
+      data: 项目们.flatMap(({ id }, i) => [
+        ...(i < 300 ? [{ projectId: id, userId: 销售, at: new Date(t0 + 120_000), fromPhase: "线索", toPhase: "商机", toNode: "x", kind: "node" }] : []),
+        { projectId: id, userId: 销售, at: new Date(t0 + 60_000), fromPhase: null, toPhase: "线索", toNode: "x", kind: "node" },
+      ]),
+    });
+    const 统 = (await 读渠道统计([{ id: 渠道, createdAt: new Date("2026-10-01T00:00:00"), endDate: null }], new Date("2026-10-30T12:00:00")))[渠道];
+    expect(统.线索转商机).toEqual({ 分子: 300, 分母: 1200, 比例: 0.25 });
+  });
 });

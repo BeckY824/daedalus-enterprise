@@ -22,9 +22,11 @@ async function 取项目(渠道ids: string[]): Promise<统计用项目[]> {
     select: {
       channelId: true, phase: true, result: true, amount: true, currency: true,
       customer: { select: { channelId: true } },
-      logs: { where: { kind: "node" }, select: { fromPhase: true, toPhase: true }, orderBy: { at: "asc" } },
+      // 不在这里 orderBy：Prisma 6.16 父行过千时嵌套关系带 orderBy 会让查询引擎崩（record.rs「no entry found for key」），取回来再排
+      logs: { where: { kind: "node" }, select: { fromPhase: true, toPhase: true, at: true } },
     },
   });
+  for (const p of 行) p.logs.sort((a, b) => a.at.getTime() - b.at.getTime());
   return 行.map((p) => ({
     channelId: 项目算哪个渠道(p.channelId, p.customer.channelId), phase: p.phase, result: p.result, amount: p.amount, currency: p.currency,
     // 没有建项目那条日志的（很老的数据）当从线索起
