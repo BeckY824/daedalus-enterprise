@@ -23,6 +23,15 @@ const 默认id = (kind: 字典种类, i: number) => `dict-${kind}-${i}`;
 
 type 结果 = { ok: true } | { ok: false; error: string };
 
+/** 几个人同时第一次读同一类时，别人刚建好的那项会撞唯一键 = 已经有了，跳过（10-30 CI 压测撞出来的） */
+async function 建了就算(建: PromiseLike<unknown>) {
+  try {
+    await 建;
+  } catch (e) {
+    if ((e as { code?: string })?.code !== "P2002") throw e;
+  }
+}
+
 /** 一类的选项：按排序列出（停用的也列，界面自己挑）；这一类一行都没有就先建默认的 */
 export async function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
   const 停用 = 字典定义[kind].默认停用 ?? [];
@@ -30,7 +39,7 @@ export async function 企业字典(kind: 字典种类, db: Prisma.TransactionCli
   if (字典定义[kind].旧默认) await 补换默认(kind, db);
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
-      await db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name) } });
+      await 建了就算(db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name) } }));
     }
     if (停用.length) await 记下补停过(kind, db);
     if (默认顺序) await 记下(换顺序记号(kind), db);
@@ -83,7 +92,7 @@ async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
 /**
  * 默认项后来往末尾加过（10-30：号码类型加传真、Telegram，客户类型加专业运营商、一般客户）：之前建好的库里缺哪个默认 id 就建哪个，
  * 排在序号位置上；原来排在这些位置及以后的（自己加的项）整体往后让，还在新默认后面。名字已经被别的项占了的跳过（不和人加的重名）。
- * 记号存的是补到第几项，以后默认再往后加还会补；默认停用的建出来就停着
+ * 记号存的是补到第几项，以后默认再往后加还会补；默认停用的建出来就停着。几个人同时补时自己加的会多让几格，相对顺序不变
  */
 const 补新记号 = (kind: 字典种类) => `entDict.defaultAdded.${kind}`;
 async function 记下补新过(kind: 字典种类, db: Prisma.TransactionClient) {
@@ -98,7 +107,7 @@ async function 补新默认(kind: 字典种类, 停用: readonly string[], db: P
   const 缺 = 默认.flatMap((name, i) => (现有.some((x) => x.id === 默认id(kind, i)) || 现有.some((x) => x.name === name) ? [] : [{ name, i }]));
   if (缺.length) {
     await db.entDictItem.updateMany({ where: { kind, sort: { gte: 缺[0].i } }, data: { sort: { increment: 缺.length } } });
-    for (const { name, i } of 缺) await db.entDictItem.create({ data: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } });
+    for (const { name, i } of 缺) await 建了就算(db.entDictItem.create({ data: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } }));
   }
   await 记下补新过(kind, db);
 }
