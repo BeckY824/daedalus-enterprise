@@ -16,6 +16,7 @@ import { getSetting, setSetting } from "../settings";
 import { 分机留存起, 同号条件 } from "../phone-dedupe";
 import { 线索建项目 } from "../project/from-lead";
 import { 企业版只用项目 } from "./project-only";
+import { 重算客户状态 } from "./cust-status-auto-db";
 
 export const 转项目记号键 = "entLeadToProject.v1";
 
@@ -40,6 +41,7 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
       ).filter((l) => !已有.has(l.id));
       if (!线索们.length) return 计;
       const 兜底 = await tx.user.findFirst({ where: { role: "ADMIN" }, orderBy: { createdAt: "asc" }, select: { id: true } });
+      const 挂了项目的客户 = new Set<string>();
 
       for (const l of 线索们) {
         const 负责人 = l.ownerId ?? 兜底?.id;
@@ -66,8 +68,11 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
         }
         // 挂老客户时 联系人Id 不给：照转化那样挂客户的主要联系人
         await 线索建项目(tx, { 线索名: l.name, leadId: l.id, customerId, ownerId: 负责人, creatorId: 负责人, 联系人Id });
+        挂了项目的客户.add(customerId);
         计.项目++;
       }
+      // 客户状态跟着项目算（cust-status-auto-db.ts；开头已经确认是企业版只用项目）
+      await 重算客户状态(tx, 挂了项目的客户);
       return 计;
     },
     { timeout: 120_000 },

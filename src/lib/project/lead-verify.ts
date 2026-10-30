@@ -18,6 +18,7 @@ import { 读组织, 管理员类别们of, type 组织 } from "@/lib/enterprise/o
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 加一条配额 } from "@/lib/enterprise/lead-assign";
+import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 改节点, 能改节点, 放回公海 } from "./db";
 import { 判MQL, MQL合格去 } from "./mql";
 import { 有效线索节点, 无效原因上限 } from "./stage-gates";
@@ -100,6 +101,7 @@ async function 写状态(projectId: string, data: Record<string, unknown>, 痕: 
 
 /** 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、负责人本月配额 +1。都在一个事务里，项目先被人动了就作废 */
 async function 判死(me: 谁, projectId: string, 步: "市场复核" | "总管理终判", 说明: string, 段: Record<string, unknown>): Promise<结果> {
+  const 状态开 = await 客户状态自动();
   return 看全部(() => 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: projectId }, select: 项目列 });
     if (!p || !在验证(p)) return 作废;
@@ -118,6 +120,7 @@ async function 判死(me: 谁, projectId: string, 步: "市场复核" | "总管�
     await tx.entLeadVerify.upsert({ where: { projectId }, create: { projectId, ...data }, update: data });
     await tx.entLeadVerifyLog.create({ data: { projectId, step: 步, verdict: "无效", note: 说明 || null, userId: me.id } });
     await 加一条配额(tx, p.ownerId);
+    await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const };
   }));
 }

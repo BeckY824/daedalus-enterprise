@@ -20,7 +20,9 @@ import { 客户页签归属 } from "@/lib/pool";
 import { 管全队客户 } from "@/lib/constants";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
-import { 页面可选项, 页面客户释义 } from "@/lib/enterprise/dict";
+import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
+import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
+import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-perm";
 
 export const dynamic = "force-dynamic";
@@ -211,6 +213,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       }}
       企业版={企业版()}
       客户状态选项={客户状态选项}
+      // 客户状态标签按字典项上色（cust-status-color.ts）；项目模式开着按项目自动算，新建 / 编辑表单只读（10-30）
+      客户状态色={企 ? 客户状态色表(await 页面字典("custStatus")) : undefined}
+      客户状态自动={企 && (await 客户状态自动())}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
       字典释义={企 ? await 页面客户释义() : undefined}

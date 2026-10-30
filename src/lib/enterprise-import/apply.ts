@@ -35,6 +35,7 @@ import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
 import { 线索建项目 } from "../project/from-lead";
+import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-status-auto-db";
 
 type Tx = Prisma.TransactionClient;
 export type 标量 = string | number | boolean | null;
@@ -877,8 +878,9 @@ function 原因(e: unknown): string {
   return `写库出错：${msg.trim().split("\n").pop()?.slice(0, 200) ?? ""}`;
 }
 
-/** 写完：给碰过的客户补「最近跟进」，批次记 done，记操作日志 */
+/** 写完：给碰过的客户补「最近跟进」，项目动过的客户重算客户状态，批次记 done，记操作日志 */
 async function 收尾(批次Id: string, 用户: Actor): Promise<void> {
+  await 项目客户重算状态(批次Id);
   const 跟进 = await prisma.entImportRow.findMany({ where: { batchId: 批次Id, entity: "followup" }, select: { targetId: true } });
   const ids = [...new Set(跟进.map((r) => r.targetId))];
   await 看全部(async () => {
@@ -904,6 +906,27 @@ async function 收尾(批次Id: string, 用户: Actor): Promise<void> {
     detail: { batchId: 批次Id, source: 批.source, kind: 批.kind, created: 批.created, updated: 批.updated, skipped: 批.skipped, conflicts: 批.conflicts, failed: 批.failed },
   });
   for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
+}
+
+/**
+ * 企业版客户状态跟着项目算（cust-status-auto-db.ts）：这一批建了 / 改了项目（含线索落的项目），项目现在挂的客户和改之前挂的客户都重算。
+ * 只导客户、没碰项目的客户不动（导进来的客户状态原样留着）
+ */
+async function 项目客户重算状态(批次Id: string): Promise<void> {
+  if (!(await 客户状态自动())) return;
+  const 行们 = await prisma.entImportRow.findMany({ where: { batchId: 批次Id, entity: "opportunity" }, select: { targetId: true, before: true } });
+  if (!行们.length) return;
+  const 客户们 = new Set<string>();
+  for (const r of 行们) {
+    const 原 = r.before ? (JSON.parse(r.before) as 值表).customerId : null;
+    if (typeof 原 === "string" && 原) 客户们.add(原);
+  }
+  const ids = 行们.map((r) => r.targetId);
+  for (let i = 0; i < ids.length; i += 500) {
+    const 项目们 = await 看全部(() => prisma.project.findMany({ where: { id: { in: ids.slice(i, i + 500) } }, select: { customerId: true } }));
+    for (const p of 项目们) 客户们.add(p.customerId);
+  }
+  await 项目变了重算(客户们);
 }
 
 async function 结果(批次Id: string): Promise<写入结果> {
