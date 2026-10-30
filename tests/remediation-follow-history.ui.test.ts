@@ -6,7 +6,7 @@ let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div data-field={p.field}>{p.label}: {p.value}</div>}");
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh++},push(){}});");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh++},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick)$/, "export default function Empty(){return null}");
   stub(/^\.\/(LinkedCustomers|NewProjectModal|ContactLinks)$/, "export default function Empty(){return null}");

@@ -302,7 +302,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       <PageHead
         title="公海"
         subtitle="没人负责的客户和项目都在这里：领了就归你"
-        extra={持有 ? <span className={到上限 ? "nowrap" : "muted nowrap"} style={到上限 ? { color: "var(--warning-text, #b45309)" } : undefined}>我手上 {持有.有} / 上限 {持有.上限}</span> : undefined}
+        extra={持有 ? <span className={到上限 ? "nowrap" : "muted nowrap"} style={到上限 ? { color: "var(--warning-text)" } : undefined}>我手上 {持有.有} / 上限 {持有.上限}</span> : undefined}
       />
       <DataList<公海行>
         页="pool"
