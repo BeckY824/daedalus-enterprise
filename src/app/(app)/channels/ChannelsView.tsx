@@ -5,8 +5,8 @@ import { isFormValidationError } from "@/lib/form-validation";
 import { useMe, 默认负责人 } from "@/lib/me-client";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Space, Tag, Modal, Form, Input, Select, App, Tooltip, Row as 行, Col, Radio } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined, StopOutlined, CheckCircleOutlined, SearchOutlined, AccountBookOutlined } from "@ant-design/icons";
+import { Button, Space, Tag, Modal, Form, Input, Select, App, Tooltip, Row as 行, Col, Radio, Dropdown, type MenuProps } from "antd";
+import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import ResetFilters from "@/components/ResetFilters";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -42,6 +42,10 @@ export type 渠道行 = {
   channelOwnerId: string;
   channelOwnerName: string;
   统计?: 渠道统计;
+  /** 名下客户数（来源或归属落在这个渠道），删除项变不变灰看它；口径同 deleteChannel */
+  客户数?: number;
+  /** 录过几笔投入，同上 */
+  投入数?: number;
 };
 type Row = 渠道行;
 
@@ -92,11 +96,14 @@ export default function ChannelsView({
   rows: 全部行,
   users,
   属性选项 = [],
+  能录 = false,
 }: {
   rows: Row[];
   users: 可选成员[];
   /** 字典里启用着的渠道属性（设置 → 字典 → 渠道属性） */
   属性选项?: string[];
+  /** 能录投入的才在行上摆「录投入」（老板、总管理员、市场管理，channel-stats.ts 的 能录投入），别人摆「详情」 */
+  能录?: boolean;
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -122,6 +129,12 @@ export default function ChannelsView({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [详情id, set详情id] = useState<string | null>(null);
+  /** 从行上「录投入」打开的：抽屉一开就展开录入表单 */
+  const [先录, set先录] = useState(false);
+  function 看详情(id: string, 录 = false) {
+    set先录(录);
+    set详情id(id);
+  }
   const 详情 = 详情id ? 全部行.find((r) => r.id === 详情id) ?? null : null;
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -176,14 +189,14 @@ export default function ChannelsView({
   }
 
   type 数键 = "关联线索" | "有效线索" | "关联商机" | "关联订单" | "关联项目";
-  const 数列 = (键: 数键, 说明: string): 列<Row> => ({
-    title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 108, align: "right",
+  const 数列 = (键: 数键, 说明: string, 标题: string = 键): 列<Row> => ({
+    title: <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 88, align: "right",
     sorter: (a, b2) => 统计(a)[键] - 统计(b2)[键],
     render: (_: unknown, r: Row) => (统计(r)[键] > 0 ? <span className="chan-num">{统计(r)[键]}</span> : 无),
   });
   const 本位 = (x: { 币种: string; 合计: number }[]) => x.find((y) => y.币种 === b.currency)?.合计 ?? 0;
   const 钱列 = (键: "累计成交" | "当前投入", 说明: string): 列<Row> => ({
-    title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 164, align: "right",
+    title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 132, align: "right",
     // 排序只看本位币那一份（不换汇）
     sorter: (a, b2) => 本位(统计(a)[键]) - 本位(统计(b2)[键]),
     render: (_: unknown, r: Row) => (统计(r)[键].length ? <span className="chan-num nowrap">{合计文字(统计(r)[键], b.currency)}</span> : 无),
@@ -225,37 +238,45 @@ export default function ChannelsView({
       }))
     : [];
 
+  /** 每一行关联线索、有效线索都一样（现在还没有判无效的记号）：合成一列，差别写在表头的悬停里 */
+  const 线索一样 = 全部行.every((r) => 统计(r).关联线索 === 统计(r).有效线索);
+  const 线索说明 = `这个渠道的${b.customer}名下，眼下还在线索阶段的项目`;
+
+  /** 行上「⋯ → 删除」变灰的原因（交互规则 A）：有关联数据的删不了，口径同 deleteChannel */
+  function 删不了(r: Row): string | null {
+    const 因 = [r.客户数 ? `名下有 ${r.客户数} 位${b.customer}` : "", r.投入数 ? `录过 ${r.投入数} 笔投入` : ""].filter(Boolean);
+    return 因.length ? `${因.join("、")}，不能删；不用了就停用` : null;
+  }
+  async function 切停用(r: Row) {
+    const res = await toggleChannel(r.id, !r.active);
+    if (!res.ok) return void message.error(res.error);
+    message.success(r.active ? `「${r.name}」已停用` : `「${r.name}」已启用`);
+    router.refresh();
+    亮一下(r.id);
+  }
+
   const 列表: 列<Row>[] = [
     {
       /*
-        全称放第一列、钉在左边：后面一长排统计数横滚出去时，还认得出是哪一行（Windows 1024 宽时尤其）。
-        属性、名称紧跟在后面。名字再长也只占一行，鼠标停上去看全
+        只留「渠道」一列（10-30）：全称后面跟着属性标签；原来的「渠道属性」「渠道名称」两列名字差不多、名称几乎都是「—」，去掉了
+        （名称照旧能搜）。停用的再跟一个「已停用」，原来那列「渠道状态」也就不要了。名字再长也只占一行，鼠标停上去看全
       */
-      title: "渠道全称", key: "name", dataIndex: "name", width: 220, 常驻: true,
+      title: "渠道", key: "name", dataIndex: "name", width: 220, 常驻: true,
       render: (v: string, r) => (
         <span className="chan-full">
-          <button type="button" className="link-plain link-strong" title={v} onClick={() => set详情id(r.id)}>{v}</button>
+          <button type="button" className="link-plain link-strong" title={v} onClick={() => 看详情(r.id)}>{v}</button>
+          {r.attr && <Tag style={{ margin: 0, borderRadius: 6, flex: "none" }}>{r.attr}</Tag>}
           {!r.active && <Tag style={{ margin: 0, borderRadius: 6, flex: "none" }}>已停用</Tag>}
         </span>
       ),
     },
-    { title: "渠道属性", key: "attr", dataIndex: "attr", width: 104, ellipsis: true, render: (v: string | null) => (v ? <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : 无) },
-    { title: "渠道名称", key: "platform", dataIndex: "platform", width: 120, ellipsis: true, render: (v: string | null) => v ?? 无 },
-    {
-      // 1280 以下收起这一列：停用的在全称旁边已经写着
-      title: "渠道状态", key: "active", dataIndex: "active", width: 92, responsive: ["xl"],
-      render: (v: boolean) =>
-        v ? (
-          <Tag color="success" style={{ margin: 0, borderRadius: 6 }}><CheckCircleOutlined /> 启用</Tag>
-        ) : (
-          <Tag style={{ margin: 0, borderRadius: 6 }}><StopOutlined /> 停用</Tag>
-        ),
-    },
-    数列("关联线索", `这个渠道的${b.customer}名下，眼下还在线索阶段的项目`),
-    数列("有效线索", "关联线索里有效的那些（现在还没有判无效的记号，和关联线索一样）"),
+    ...(线索一样
+      ? [数列("关联线索", `${线索说明}。有效线索是其中有效的那些，现在还没有判无效的记号、两个数一样，合成这一列`, "线索")]
+      : [数列("关联线索", 线索说明), 数列("有效线索", "关联线索里有效的那些")]),
     数列("关联商机", "眼下在商机阶段的项目"),
     数列("关联订单", "眼下在订单阶段的项目"),
-    数列("关联项目", "这个渠道带来的全部项目，各阶段都算"),
+    // 1366 宽放得下（规则 G）：关联项目、创建日期、累计运营天数默认收进「列」里，要看再勾
+    { ...数列("关联项目", "这个渠道带来的全部项目，各阶段都算"), 默认: false },
     钱列("累计成交", "订单阶段、不是异常状态的项目金额；按币种分开写，不换汇"),
     钱列("当前投入", "在渠道详情里录的投入合计"),
     {
@@ -267,49 +288,50 @@ export default function ChannelsView({
       },
     },
     ...分布列,
-    { title: "创建日期", key: "createdAt", dataIndex: "createdAt", width: 112, sorter: (a, b2) => a.createdAt.localeCompare(b2.createdAt), render: (v: string) => <span className="muted nowrap">{fmtDate(v)}</span> },
+    { title: "创建日期", key: "createdAt", dataIndex: "createdAt", width: 112, 默认: false, sorter: (a, b2) => a.createdAt.localeCompare(b2.createdAt), render: (v: string) => <span className="muted nowrap">{fmtDate(v)}</span> },
     {
-      title: <Tooltip title="从创建日期到结束日期；没填结束日期就算到今天">累计运营天数</Tooltip>, key: "累计运营天数", width: 116, align: "right",
+      title: <Tooltip title="从创建日期到结束日期；没填结束日期就算到今天">累计运营天数</Tooltip>, key: "累计运营天数", width: 116, align: "right", 默认: false,
       sorter: (a, b2) => 统计(a).累计运营天数 - 统计(b2).累计运营天数,
       render: (_: unknown, r: Row) => <span className="chan-num nowrap">{统计(r).累计运营天数} 天</span>,
     },
-    ...(不问归属 ? [] : [{ title: "负责人", key: "channelOwnerName", dataIndex: "channelOwnerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "channelOwnerName", dataIndex: "channelOwnerName", width: 112, render: (v: string) => <UserCell name={v} size={24} /> }]),
     { title: "结束日期", key: "endDate", dataIndex: "endDate", width: 112, 默认: false, render: (v: string | null) => (v ? <span className="nowrap">{fmtDate(v)}</span> : 无) },
     { title: "创建人", key: "createdByName", dataIndex: "createdByName", width: 110, 默认: false, ellipsis: true, render: (v: string | null) => v ?? 无 },
     { title: "备注", key: "remark", dataIndex: "remark", width: 200, 默认: false, ellipsis: true, render: (v: string | null) => v ?? 无 },
     {
-      title: "", key: "act", width: 136, 常驻: true, fixed: "right",
-      render: (_, r) => (
-        <Space size={2}>
-          <Button aria-label={`${r.name} 的详情和投入`} title="详情和投入" type="text" size="small" icon={<AccountBookOutlined />} onClick={() => set详情id(r.id)} />
-          <Button aria-label={`编辑 ${r.name}`} title="编辑" type="text" size="small" icon={<EditOutlined />} onClick={() => openForm(r)} />
-          <Tooltip title={r.active ? "停用" : "启用"}>
-            <Button
-              aria-label={`${r.active ? "停用" : "启用"} ${r.name}`}
-              type="text"
-              size="small"
-              icon={r.active ? <StopOutlined /> : <CheckCircleOutlined />}
-              onClick={async () => {
-                const res = await toggleChannel(r.id, !r.active);
-                if (!res.ok) return void message.error(res.error);
-                message.success(r.active ? `「${r.name}」已停用` : `「${r.name}」已启用`);
-                router.refresh();
-                亮一下(r.id);
-              }}
-            />
-          </Tooltip>
-          <Button
-            aria-label={`删除 ${r.name}`}
-            title="删除"
-            type="text"
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() =>
+      /* 行上只留一个带字的按钮（规则 D）：能录投入的是「录投入」，别人是「详情」；编辑、停用、删除收进「⋯」，删除不标红 */
+      title: "", key: "act", width: 108, 常驻: true, fixed: "right",
+      render: (_, r) => {
+        const 删因 = 删不了(r);
+        const 菜单: NonNullable<MenuProps["items"]> = [
+          { key: "edit", label: "编辑", onClick: () => openForm(r) },
+          {
+            key: "toggle",
+            label: r.active ? "停用" : "启用",
+            onClick: () =>
+              r.active
+                ? modal.confirm({
+                    title: `停用渠道「${r.name}」？`,
+                    content: "停用后新线索里选不到。",
+                    okText: "停用",
+                    cancelText: "取消",
+                    onOk: () => 切停用(r),
+                  })
+                : void 切停用(r),
+          },
+          {
+            key: "delete",
+            disabled: Boolean(删因),
+            label: 删因 ? (
+              <div>
+                <div>删除</div>
+                <div className="muted" style={{ fontSize: 12, lineHeight: "16px", whiteSpace: "normal", maxWidth: 220 }}>{删因}</div>
+              </div>
+            ) : "删除",
+            onClick: () =>
               modal.confirm({
                 title: `删除渠道「${r.name}」？`,
                 okText: "删除",
-                okButtonProps: { danger: true },
                 cancelText: "取消",
                 async onOk() {
                   const res = await deleteChannel(r.id);
@@ -317,11 +339,22 @@ export default function ChannelsView({
                   message.success("已删除");
                   router.refresh();
                 },
-              })
-            }
-          />
-        </Space>
-      ),
+              }),
+          },
+        ];
+        return (
+          <Space size={2}>
+            {能录 ? (
+              <Button className="row-act" aria-label={`给 ${r.name} 录投入`} size="small" onClick={() => 看详情(r.id, true)}>录投入</Button>
+            ) : (
+              <Button className="row-act" aria-label={`${r.name} 的详情`} size="small" onClick={() => 看详情(r.id)}>详情</Button>
+            )}
+            <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
+              <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} />
+            </Dropdown>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -393,7 +426,7 @@ export default function ChannelsView({
         }
       />
 
-      {详情 && <ChannelDrawer key={详情.id} row={详情} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={() => openForm(详情)} />}
+      {详情 && <ChannelDrawer key={详情.id} row={详情} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={() => openForm(详情)} />}
 
       {open && (
         <Modal

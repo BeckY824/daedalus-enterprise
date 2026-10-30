@@ -61,7 +61,8 @@ const 展开 = async (page: import("playwright").Page, name: string) => {
   await expect.poll(async () => {
     if ((await 框.getAttribute("aria-expanded")) !== "true") await 框.click();
     await 选项.first().waitFor({ timeout: 3_000 }).catch(() => {});
-    字 = await 选项.allInnerTexts();
+    // 每项第二行是「能做什么」（10-30），只取第一行的角色名
+    字 = (await 选项.allInnerTexts()).map((t) => t.split("\n")[0]);
     return 字;
   }, { timeout: 30_000, interval: 300 }).toContain("市场管理");
   return 字;
@@ -74,7 +75,7 @@ it("兼两个角色显示两个标签；再加一个，交上去是规整的逗�
     const 框 = 角色框(page, "a");
     expect(await 框.locator(".ant-select-selection-item").allInnerTexts()).toEqual(["销售管理", "市场管理"]);
     await 展开(page, 长名);
-    await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: /^销售成员$/ }).click();
+    await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: /^销售成员/ }).click();
     await page.waitForFunction(() => Reflect.get(window, "__交"));
     expect(await 交了(page)).toEqual([["a", { bizRole: "sales_mgr,sales,marketing_mgr" }]]);
     expect(errors).toEqual([]);

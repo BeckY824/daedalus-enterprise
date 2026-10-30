@@ -394,8 +394,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       {n.挂要跟 && 要跟数 > 0 && (
         <span className="rail-count" title={`${要跟说法}${desktop ? "，和应用图标提示一致" : n.key === "/projects" ? "，项目页「跟进」里看逾期和今天" : "，查看跟进计划中的逾期和今天"}`}>{要跟数 > 99 ? "99+" : 要跟数}</span>
       )}
-      {/* 灰的数只是「有多少」，不是「要处理」：和上面那个红的分开，红的才催人 */}
-      {(计数[n.key] ?? 0) > 0 && <span className="rail-num">{计数[n.key]}</span>}
+      {/* 灰的数只是「有多少」，不是「要处理」：和上面那个红的分开，红的才催人。企业版不摆（10-30：几千个客户的总数没人看，只占地方） */}
+      {!企业版 && (计数[n.key] ?? 0) > 0 && <span className="rail-num">{计数[n.key]}</span>}
     </Link>
   );
 

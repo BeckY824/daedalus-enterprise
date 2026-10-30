@@ -38,6 +38,20 @@ const 总管级 = (r: string) => r === "director" || r === "admin";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
 const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 交接要确认: "org-rule-handover-confirm", 市场复核: "org-rule-market-review" };
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
+/**
+ * 角色下拉每项下面那行「能做什么」（10-30）：只写代码里按角色写死的那几样——总管理员看全部（lib/enterprise/visibility.ts）、
+ * 改组织架构（org-actions）、分配线索 / 录渠道投入 / 改谁参与自动分配（lead-assign、channel-stats）、复核和终判无效线索（lead-verify）。
+ * 字段权限、分配方式谁能用那两张表按角色配，不写在这里
+ */
+const 角色能做: Record<业务角色, string> = {
+  director: "看全部客户；改组织架构；分配线索、录渠道投入；终判无效线索",
+  admin: "看全部客户；改组织架构；分配线索、录渠道投入；终判无效线索",
+  sales_mgr: "能分到线索；改谁参与自动分配",
+  sales: "能分到线索",
+  marketing_mgr: "分配线索、录渠道投入；复核被判无效的线索",
+  channel_ops: "没有额外的管理权限",
+  project_ops: "没有额外的管理权限",
+};
 /** 「后台设置谁能改」表的列 */
 const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场管理", "直属上级", "虚线上级"];
 
@@ -320,7 +334,14 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                 {/* 业务角色可多选（10-27）：一个人兼销售管理和市场管理之类；至少留一个，清空不交 */}
                 <Select size="small" mode="multiple" style={{ minWidth: 150, maxWidth: 320 }} aria-label={`${m.name} 的角色`} disabled={!改他 || 忙}
                   value={他的角色} onChange={(v: string[]) => { if (v.length) 设(m.id, { bizRole: 合角色(v) }); }}
-                  options={业务角色.filter((r) => 是老板 || !总管级(r) || 他的角色.includes(r)).map((r) => ({ value: r, label: 角色名[r] }))} />
+                  popupMatchSelectWidth={280}
+                  options={业务角色.filter((r) => 是老板 || !总管级(r) || 他的角色.includes(r)).map((r) => ({ value: r, label: 角色名[r] }))}
+                  optionRender={(o) => (
+                    <div>
+                      <div>{o.label}</div>
+                      <div className="muted" style={{ fontSize: 12, whiteSpace: "normal" }}>{角色能做[o.value as 业务角色]}</div>
+                    </div>
+                  )} />
                 <Select size="small" style={{ minWidth: 110 }} aria-label={`${m.name} 的业务线`} disabled={!改他 || 忙}
                   value={m.line ?? "__都"} onChange={(v) => 设(m.id, { line: v === "__都" ? null : v })}
                   options={[{ value: "__都", label: "两边都做" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />

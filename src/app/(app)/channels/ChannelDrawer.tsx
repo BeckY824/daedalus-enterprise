@@ -28,8 +28,10 @@ const 无 = <span className="muted">—</span>;
  * 同名分布：同一个渠道名称下各来源的产出比平均值 / 最高值 / 最低值（列表那三列算好的，传进来跟着「投入产出比」摆）；
  * undefined = 开关关着不摆，null = 开着但一个来源都算不了
  */
-export default function ChannelDrawer({ row, 同名分布, 不问归属, onClose, onEdit }: {
+export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 = false, onClose, onEdit }: {
   row: 渠道行;
+  /** 从列表行上「录投入」打开：一开就展开录入表单（不能录的照旧不摆，见 能录） */
+  先录?: boolean;
   同名分布?: ReturnType<typeof 产出比分布>;
   不问归属: boolean;
   onClose: () => void;
@@ -42,7 +44,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, onClose
   const [能录, set能录] = useState(false);
   const [不能录因, set不能录因] = useState<string | null>(null);
   const [错, set错] = useState<string | null>(null);
-  const [录, set录] = useState(false);
+  const [录, set录] = useState(先录);
   const [忙, set忙] = useState(false);
   const [form] = Form.useForm();
   const s: 渠道统计 | undefined = row.统计;

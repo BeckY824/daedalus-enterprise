@@ -6,11 +6,13 @@ import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
+import { 能录投入 } from "@/lib/enterprise/channel-stats";
+import { 读组织 } from "@/lib/enterprise/org";
 
 export const dynamic = "force-dynamic";
 
 export default async function ChannelsPage() {
-  await requireUser();
+  const me = await requireUser();
 
   const [channels, users] = await Promise.all([
     prisma.channel.findMany({
@@ -36,7 +38,11 @@ export default async function ChannelsPage() {
     口径全在 lib/enterprise/channel-stats.ts 的 算渠道统计。原来的转介绍链汇总、雷达整个不算了——
     企业版的渠道是预设的来源清单，没有推荐链
   */
-  const [统计, 创建人们, 属性选项] = await Promise.all([
+  /*
+    行上「⋯ → 删除」有没有关联数据（10-30 交互规则 A）：口径照 deleteChannel——名下客户（来源或归属落在这个渠道）、录过的投入，
+    有就把删除项变灰、原因写在旁边，不等点了确认才说删不了。只读，删不删照旧由 deleteChannel 判
+  */
+  const [统计, 创建人们, 属性选项, 挂客户, 投入笔数, 能录] = await Promise.all([
     读渠道统计(channels),
     prisma.user.findMany({
       where: { id: { in: [...new Set(channels.map((c) => c.createdById).filter((x): x is string => Boolean(x)))] } },
@@ -44,14 +50,28 @@ export default async function ChannelsPage() {
     }),
     // 不是企业版（单测里）字典是空的，退回默认那五项，表单照样能选
     企业版() ? 可选项("channelAttr") : Promise.resolve([...字典定义.channelAttr.默认]),
+    prisma.customer.findMany({
+      where: { OR: [{ channelId: { not: null } }, { attributionChannelId: { not: null } }] },
+      select: { channelId: true, attributionChannelId: true },
+    }),
+    prisma.entChannelInvest.groupBy({ by: ["channelId"], _count: { _all: true } }),
+    // 行上「录投入」给谁摆：和 挡投入 同一个口径
+    (async () => me.role === "ADMIN" || (企业版() && 能录投入(await 读组织(), me)))(),
   ]);
   const 创建人 = new Map(创建人们.map((u) => [u.id, u.name]));
+  const 客户数 = new Map<string, number>();
+  for (const c of 挂客户) {
+    // 来源和归属是同一个渠道的只算一位（deleteChannel 那条 OR 也是按人数）
+    for (const id of new Set([c.channelId, c.attributionChannelId])) if (id) 客户数.set(id, (客户数.get(id) ?? 0) + 1);
+  }
+  const 投入数 = new Map(投入笔数.map((x) => [x.channelId, x._count._all]));
 
   const 号 = await 号码脱敏器();
   return (
     <ChannelsView
       users={users}
       属性选项={属性选项}
+      能录={能录}
       rows={channels.map((c) => ({
         id: c.id,
         name: c.name,
@@ -68,6 +88,8 @@ export default async function ChannelsPage() {
         channelOwnerId: c.channelOwnerId,
         channelOwnerName: c.channelOwner.name,
         统计: 统计[c.id],
+        客户数: 客户数.get(c.id) ?? 0,
+        投入数: 投入数.get(c.id) ?? 0,
       }))}
     />
   );
