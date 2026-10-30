@@ -120,13 +120,13 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
       <外币提示 n={数.外币} 本位币={本位币} 说="进行中的项目" />
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<FunnelPlotOutlined />} color={阶段色.线索} label="新线索" value={段.线索?.count ?? 0} note="线索阶段、还没流失的" href="/leads" />
+          <StatCard icon={<FunnelPlotOutlined />} color={阶段色.线索} label="新线索" value={段.线索?.count ?? 0} note="线索阶段、进行中的" href="/leads" />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<ProjectOutlined />} color={阶段色.商机} label="商机" value={段.商机?.count ?? 0} note={money(段.商机?.amount ?? 0)} href="/projects" />
+          <StatCard icon={<ProjectOutlined />} color={阶段色.商机} label="商机阶段" value={段.商机?.count ?? 0} note={`进行中的 · ${money(段.商机?.amount ?? 0)}`} href="/projects" />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<ShoppingOutlined />} color={阶段色.订单} label="订单" value={段.订单?.count ?? 0} note={money(段.订单?.amount ?? 0)} href="/projects" />
+          <StatCard icon={<ShoppingOutlined />} color={阶段色.订单} label="订单阶段" value={段.订单?.count ?? 0} note={`进行中的 · ${money(段.订单?.amount ?? 0)}`} href="/projects" />
         </Col>
         <Col xs={24} sm={12} xl={6}>
           <StatCard icon={<WarningOutlined />} color={categorical.orange} label="异常状态" value={异常} note={数.公海 ? `公海里还有 ${数.公海} 个进行中的` : "订单阶段停住的"} href="/projects" />
@@ -215,13 +215,13 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
       <外币提示 n={数.外币} 本位币={本位币} 说="这一段交付的项目" />
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<PlusCircleOutlined />} color={阶段色.线索} label="新建项目" value={t.新建} note={口径} />
+          <StatCard icon={<PlusCircleOutlined />} color={阶段色.线索} label="新建项目" value={t.新建} note={`${口径}新建的，含已结束`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<RiseOutlined />} color={阶段色.商机} label="转商机" value={t.转商机} note={`转订单 ${t.转订单}`} />
+          <StatCard icon={<RiseOutlined />} color={阶段色.商机} label="转商机阶段" value={t.转商机} note={`来回改只数一次 · 转订单 ${t.转订单}`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<TrophyOutlined />} color={阶段色.订单} label="成功交付" value={t.成功交付} note={money(t.交付金额)} />
+          <StatCard icon={<TrophyOutlined />} color={阶段色.订单} label="成功交付" value={t.成功交付} note={`${口径}结束的 · ${money(t.交付金额)}`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
           {/* 没成 = 流失 + 丢单；异常还在处理，不算没成。原来三个数并排写，看着像加不平（10-27） */}

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Button, Card, Input, Modal, Select, Space, Tag, Timeline } from "antd";
+import { App, Button, Card, Dropdown, Input, Modal, Select, Space, Tag, Timeline } from "antd";
+import { MoreOutlined } from "@ant-design/icons";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
 import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 理由上限, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -169,13 +170,30 @@ export function BlockerList({ 们, 人们, 带项目 = false, 空 = "还没有�
           {b.solution && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决方案：{b.solution}</div>}
           {b.result && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决结果：{b.result}</div>}
           <Space wrap size={4} style={{ marginTop: 6 }}>
-            {b.能.接受 && <Button size="small" type="primary" disabled={忙} onClick={() => void 跑(() => 接受卡点Action(b.id), "已接受，开始处理")}>接受</Button>}
-            {b.能.认领 && <Button size="small" type="primary" disabled={忙} onClick={() => void 跑(() => 认领卡点Action(b.id), "已认领，开始处理")}>认领</Button>}
-            {b.能.指认 && <Button size="small" disabled={忙} onClick={() => void 打开("指认", b)}>指认</Button>}
-            {b.能.转让 && <Button size="small" disabled={忙} onClick={() => void 打开("转让", b)}>转让</Button>}
-            {b.能.返回 && <Button size="small" disabled={忙} onClick={() => void 打开("返回", b)}>返回看板</Button>}
-            {b.能.改进度 && <Button size="small" disabled={忙} onClick={() => void 打开("进度", b)}>更新进度</Button>}
-            {b.能.解决 && <Button size="small" disabled={忙} onClick={() => void 打开("解决", b)}>标为已解决</Button>}
+            {(() => {
+              // 一行最多两个文字按钮，其余收进「⋯」（规则 D）；按常用排：接手的 → 解决 → 进度 → 转人 → 退回
+              type 动作 = { key: string; label: string; 主?: boolean; 做: () => void };
+              const 们动作 = ([
+                b.能.接受 && { key: "接受", label: "接受", 主: true, 做: () => void 跑(() => 接受卡点Action(b.id), "已接受，开始处理") },
+                b.能.认领 && { key: "认领", label: "认领", 主: true, 做: () => void 跑(() => 认领卡点Action(b.id), "已认领，开始处理") },
+                b.能.解决 && { key: "解决", label: "标为已解决", 做: () => void 打开("解决", b) },
+                b.能.改进度 && { key: "进度", label: "更新进度", 做: () => void 打开("进度", b) },
+                b.能.指认 && { key: "指认", label: "指认", 做: () => void 打开("指认", b) },
+                b.能.转让 && { key: "转让", label: "转让", 做: () => void 打开("转让", b) },
+                b.能.返回 && { key: "返回", label: "返回看板", 做: () => void 打开("返回", b) },
+              ] as (动作 | false)[]).filter((x): x is 动作 => !!x);
+              const 摆 = 们动作.slice(0, 2), 收 = 们动作.slice(2);
+              return (
+                <>
+                  {摆.map((x) => <Button key={x.key} size="small" type={x.主 ? "primary" : "default"} disabled={忙} onClick={x.做}>{x.label}</Button>)}
+                  {收.length > 0 && (
+                    <Dropdown trigger={["click"]} disabled={忙} menu={{ items: 收.map((x) => ({ key: x.key, label: x.label, onClick: x.做 })) }}>
+                      <Button size="small" icon={<MoreOutlined />} aria-label="这个卡点的更多操作" />
+                    </Dropdown>
+                  )}
+                </>
+              );
+            })()}
             <Button size="small" type="link" onClick={() => set展开((s) => { const n = new Set(s); if (n.has(b.id)) n.delete(b.id); else n.add(b.id); return n; })}>
               {展开.has(b.id) ? "收起流转" : `流转（${b.流转.length}）`}
             </Button>

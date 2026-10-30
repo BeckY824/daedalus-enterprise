@@ -73,7 +73,7 @@ const 查过键 = (d: 稿, 企: boolean) => (企 ? `${d.号码类型 ?? ""}|${d.
 
 function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: boolean, 企业: 企业建档 = null): string {
   const 企 = !!企业;
-  if (步 === 0 && 企) return !d.号码类型 ? "🔀请选择号码类型" : !d.phone.trim() ? "先填号码再查" : 已查 !== 查过键(d, 企) ? "点「查重」看看这个号码有没有人录过" : "";
+  if (步 === 0 && 企) return !d.号码类型 ? "请选择号码类型" : !d.phone.trim() ? "先填号码再查" : 已查 !== 查过键(d, 企) ? "点「查重」看看这个号码有没有人录过" : "";
   if (步 === 0) return !d.phone.trim() ? "先填电话再查" : 已查 !== d.phone.trim() ? "点「查重」看看这个号码有没有人录过" : "";
   if (步 === 1) return d.联系人.name.trim() ? "" : "请填写联系人姓名";
   if (步 === 2) return !d.客户.name.trim() ? "请填写名称" : 企业 && !d.客户.渠道 ? "请选渠道" : "";
@@ -84,7 +84,7 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
     if (typeof d.跟进.明确回复 !== "boolean") return "请选客户是否明确回复";
     if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点) && !d.跟进.明确回复) return 缺有效沟通;
   }
-  return 要下一步 && !d.跟进.下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到项目公海" : "";
+  return 要下一步 && !d.跟进.下一步时间 ? "请填下一步时间：到那天还没有新的沟通，项目会自动回到公海" : "";
 }
 
 /**
@@ -227,6 +227,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
     }
   };
 
+  // 草稿每改一格就存了（存草稿），这里只是走开并说清在哪找回
+  const 离开 = () => {
+    if (有内容(d)) message.info(`草稿存在这台电脑的浏览器里，下次点「${新线索 || 企业版 ? "新线索" : "新建项目"}」会接着填`);
+    router.push(新线索 || 企业版 ? "/leads" : "/projects");
+  };
+
   const 重来 = () => {
     清草稿(全名);
     setD(新稿());
@@ -246,7 +252,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
 
   return (
     <div style={{ maxWidth: 720 }}>
-      <PageHead title={新线索 ? "新建新线索" : "新建项目"} subtitle={`一次建好${b.customer}、联系人、项目和第一次沟通；中途离开会存成草稿`} />
+      <PageHead
+        title={新线索 || 企业版 ? "新线索" : "新建项目"}
+        subtitle={新线索 || 企业版 ? "建好后是一个线索阶段的项目" : `一次建好${b.customer}、联系人、项目和第一次沟通；中途离开会存成草稿`}
+      />
       {接着填 && (
         <Alert
           type="info"
@@ -256,7 +265,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           action={<Button size="small" onClick={重来}>清空重来</Button>}
         />
       )}
-      <Steps current={步} size="small" style={{ marginBottom: 24 }} items={步骤们.map((t) => ({ title: t }))} />
+      <Steps current={步} size="small" style={{ marginBottom: 企业 ? 8 : 24 }} items={步骤们.map((t) => ({ title: t }))} />
+      {企业 && <div style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 12 }}>首条沟通里勾了「客户明确回复了」，项目才会进入线索推进。</div>}
 
       {步 === 0 && 企业版 && (
         <>
@@ -285,22 +295,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
             </Space.Compact>
           ), true)}
           {企查 && 已查 === 查过键(d, true) && (
-            企查.ok && 企查.状态 === "首次录入" ? <Alert type="success" showIcon title={企查.提示} description={企查.归属地 ? `归属地：${企查.归属地}` : undefined} />
-            : !企查.ok ? <Alert type="warning" showIcon title={企查.提示} />
-            : (
-              <Alert
-                type="error"
-                showIcon
-                title={企查.提示}
-                description={企查.撞?.id || 企查.归属地 ? (
-                  <span>
-                    {企查.撞?.id && <><Link href={`/customers/${企查.撞.id}`}>{企查.撞.name}</Link>{企查.撞.school ? ` · ${企查.撞.school}` : ""} · 在 {企查.撞.salesOwnerName} 名下</>}
-                    {企查.撞?.id && 企查.归属地 ? " · " : ""}
-                    {企查.归属地 ? `归属地：${企查.归属地}` : ""}
-                  </span>
-                ) : undefined}
-              />
-            )
+            企查.ok && 企查.状态 === "首次录入" ? <Alert type="success" showIcon title={去符号(企查.提示)} description={企查.归属地 ? `归属地：${企查.归属地}` : undefined} />
+            : !企查.ok ? <Alert type="warning" showIcon title={去符号(企查.提示)} />
+            : <撞号面板 查={企查} users={users} />
           )}
         </>
       )}
@@ -379,10 +376,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
         <>
           {一行("项目名称", <Input value={d.项目.name} maxLength={项目名上限} showCount onChange={(e) => 改("项目", { name: e.target.value })} />, true)}
           {/* 项目来源（迁移 077）：默认带上一步客户的渠道；老客户这一单从别的渠道来就在这改。清掉 = 回到跟客户 */}
-          {企业 && 一行("项目来源", (
+          {企业 && 一行("渠道", (
             <>
               <ChannelPicker
-                aria-label="项目来源"
+                aria-label="渠道"
                 层级="两级"
                 style={{ width: "100%" }}
                 channels={企业.渠道们}
@@ -392,7 +389,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
                 onChange={(v) => 改("项目", { 渠道: v === d.客户.渠道 ? null : v })}
               />
               <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>
-                {d.项目.渠道 && d.项目.渠道 !== d.客户.渠道 ? "和客户来源不同：渠道统计里这个项目算在这里" : "默认跟客户的渠道；这一单从别的渠道来就改"}
+                {d.项目.渠道 && d.项目.渠道 !== d.客户.渠道 ? "和客户的渠道不同：渠道统计里这个项目算在这里" : "默认跟客户的渠道；这一单从别的渠道来就改"}
               </div>
             </>
           ))}
@@ -450,7 +447,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           ), true)}
           {企业 && 一行("客户是否明确回复", (
             <Radio.Group value={d.跟进.明确回复 ?? undefined} onChange={(e) => 改("跟进", { 明确回复: e.target.value as boolean })}>
-              <Radio value={true}>明确回复了</Radio>
+              <Radio value={true}>客户明确回复了</Radio>
               <Radio value={false}>没有明确回复</Radio>
             </Radio.Group>
           ), true)}
@@ -463,7 +460,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
                 onChange={(v) => 改("跟进", { 下一步时间: v ? v.format("YYYY-MM-DD") : null })}
                 placeholder="选一天"
               />
-              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "到那天还没人跟进，项目会自动回到项目公海" : "选填：打算哪天再跟进，项目上会显示"}</div>
+              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "到那天还没有新的沟通，项目会自动回到公海" : "选填：打算哪天再沟通，项目上会显示"}</div>
             </>
           ), 要下一步)}
         </>
@@ -476,9 +473,52 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
         ) : (
           <Button type="primary" disabled={!!差} title={差 || undefined} loading={交中} onClick={() => void 提交()}>建好项目</Button>
         )}
-        <Button type="text" onClick={() => router.push("/projects")}>先不建了</Button>
+        <Button onClick={离开}>存草稿离开</Button>
       </Space>
       {差 && !拦着 && <div style={{ marginTop: 8, color: "var(--text-muted)" }}>{差}</div>}
     </div>
+  );
+}
+
+/** 对方系统原样的查重提示带着开头的符号（✅⛔📒 这类）；界面上不摆符号（规则 E），字照旧 */
+function 去符号(s: string): string {
+  return s.replace(/^[\p{Extended_Pictographic}\uFE0F]+/u, "");
+}
+
+/**
+ * 企业版查重撞了（P0-7）：把撞到的那条摆出来，并给出口，而不是只说「已存在」。
+ * 看不到的客户不给名字（撞号结论 按 看得到 收），写「领取后可见」；在公海的给「去领取」，在同事名下的给「联系负责人」
+ */
+function 撞号面板({ 查, users }: { 查: Extract<查号码结果, { ok: true }>; users: 可选成员[] }) {
+  const 撞 = 查.撞;
+  const 在公海 = 查.状态 === "公海待捞";
+  const 负责人 = 撞?.salesOwnerName ?? "";
+  // 同名同事不止一位时不猜是谁，只写名字
+  const 同名 = users.filter((u) => u.name === 负责人);
+  const 邮箱 = 同名.length === 1 ? 同名[0].email : "";
+  return (
+    <Alert
+      type={在公海 ? "warning" : "error"}
+      showIcon
+      title={去符号(查.提示)}
+      description={
+        <div>
+          <div>
+            {撞?.name ?? "领取后可见"}
+            {撞?.school ? ` · ${撞.school}` : ""}
+            {" · "}
+            {在公海 ? "在公海" : 查.状态 === "我的通讯录已有" ? "在你名下" : `负责人：${负责人}`}
+            {查.归属地 ? ` · 归属地：${查.归属地}` : ""}
+          </div>
+          <Space size={8} style={{ marginTop: 8 }} wrap>
+            {撞?.id && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button></Link>}
+            {在公海 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
+            {查.状态 === "重复" && 负责人 && (邮箱
+              ? <Button size="small" href={`mailto:${邮箱}`}>联系负责人：{负责人}</Button>
+              : <span style={{ color: "var(--text-muted)" }}>联系负责人：{负责人}</span>)}
+          </Space>
+        </div>
+      }
+    />
   );
 }
