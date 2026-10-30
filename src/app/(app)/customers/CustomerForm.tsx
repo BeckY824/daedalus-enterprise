@@ -26,6 +26,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 地址叫法, 详细地址上限, 简称上限 } from "@/lib/enterprise/customer-v2";
+import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 
 export type CustomerRow = {
   id: string;
@@ -102,6 +103,8 @@ type FormProps = {
   分配方式选项?: string[];
   /** 企业版客户类型的可选项（字典 custType 启用中的，P13 第 4 条） */
   客户类型选项?: string[];
+  /** 企业版客户状态、客户类型每项的释义（下拉里一行灰字，10-30）；不给就和原来一样 */
+  字典释义?: 客户字典释义;
 };
 
 /**
@@ -157,6 +160,7 @@ function CustomerFormInner({
   客户状态自动 = false,
   分配方式选项 = [],
   客户类型选项 = [],
+  字典释义,
 }: FormProps) {
   /** 客户状态还能不能手选：企业版、且没开按项目自动算 */
   const 手选状态 = 企业 && !客户状态自动;
@@ -497,7 +501,7 @@ function CustomerFormInner({
           <Col span={8}>
             {/* 客户类型（P13 第 4 条）：选项在设置 → 字典「客户类型」，能改能停用；原值停用了也照样显示 */}
             <Form.Item label="客户类型" name="customerType">
-              <Select allowClear placeholder="选填"
+              <Select allowClear placeholder="选填" {...释义下拉(字典释义?.类型)}
                 options={[...new Set([...客户类型选项, ...(editing?.customerType ? [editing.customerType] : [])])].map((s) => ({ value: s, label: s }))} />
             </Form.Item>
           </Col>
@@ -843,7 +847,7 @@ function CustomerFormInner({
                 </Form.Item>
               ) : (
                 <Form.Item label="客户状态" name="custStatus">
-                  <Select allowClear placeholder="选择客户状态"
+                  <Select allowClear placeholder="选择客户状态" {...释义下拉(字典释义?.状态)}
                     options={[...new Set([...客户状态选项, ...(editing?.custStatus ? [editing.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
                 </Form.Item>
               )}

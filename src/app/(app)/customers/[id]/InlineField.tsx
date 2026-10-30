@@ -11,6 +11,7 @@ import { patchCustomer, type PatchableKey } from "../actions";
 import { 带走说法 } from "@/lib/carry-over";
 import { useTransferConfirm } from "../useTransferConfirm";
 import Shortcut from "@/components/Shortcut";
+import { 释义下拉 } from "@/components/DictNote";
 
 type Option = { value: string; label: string };
 
@@ -33,6 +34,7 @@ export default function InlineField({
   options,
   placeholder = "点击填写",
   可清空 = false,
+  释义,
 }: {
   customerId: string;
   field: PatchableKey;
@@ -47,6 +49,8 @@ export default function InlineField({
    * 一旦手工指定过就回不去了
    */
   可清空?: boolean;
+  /** 下拉每项下面一行灰字（企业版客户类型，10-30）：名字 → 释义；框里选中后还是只显示名字 */
+  释义?: Record<string, string>;
 }) {
   const router = useRouter();
   const { message } = App.useApp();
@@ -137,6 +141,7 @@ export default function InlineField({
           defaultOpen
           value={draft ?? undefined}
           options={options}
+          {...释义下拉(释义)}
           allowClear={可清空}
           onChange={(v) => {
             setDraft(v ?? null);

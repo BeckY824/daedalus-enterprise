@@ -71,6 +71,7 @@ import { 带走说法 } from "@/lib/carry-over";
 import { 滚法 } from "@/lib/reduced-motion";
 import { 放进公海, 领取, 撤销公海 } from "../pool-actions";
 import { useDeleteCustomers } from "../useDeleteCustomers";
+import { 释义下拉宽 } from "@/components/DictNote";
 
 /**
  * 记录页（v0.4）：三栏。
@@ -153,6 +154,7 @@ export default function RecordView({
   号码种类,
   分配方式选项 = [],
   客户类型选项 = [],
+  字典释义,
   新建项目 = null,
   跟进去处 = null,
   转让原因,
@@ -734,7 +736,7 @@ export default function RecordView({
             <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{customer.custStatus ?? "暂无项目"}</Tag>
           </Tooltip>
         ) : (
-          <StatusPicker customerId={customer.id} field="custStatus" value={customer.custStatus ?? ""}
+          <StatusPicker customerId={customer.id} field="custStatus" value={customer.custStatus ?? ""} 释义={字典释义?.状态}
             options={[...new Set([...客户状态选项, ...(customer.custStatus ? [customer.custStatus] : [])])].map((s) => ({ value: s, label: s }))}>
             <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{customer.custStatus ?? "未设客户状态"}</Tag>
           </StatusPicker>
@@ -841,7 +843,8 @@ export default function RecordView({
                 {摆(级别值) && <InlineField customerId={customer.id} field="level" label="客户级别" value={级别值} kind="select" options={级别选项()} placeholder="没分级" 可清空 />}
                 {摆(customer.customerType) && (
                   <InlineField customerId={customer.id} field="customerType" label="客户类型" value={customer.customerType ?? null} kind="select"
-                    options={[...new Set([...客户类型选项, ...(customer.customerType ? [customer.customerType] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空 />
+                    options={[...new Set([...客户类型选项, ...(customer.customerType ? [customer.customerType] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空
+                    释义={字典释义?.类型} />
                 )}
                 {/* 地址五格（P14 第 7 条）：前四格拼成一行「所在地区」，第五格「客户地址」（公司详细地址）单独一行；都点「编辑全部」改 */}
                 {摆(地址文字) && (
@@ -1427,6 +1430,7 @@ export default function RecordView({
         客户状态自动={客户状态自动}
         分配方式选项={分配方式选项}
         客户类型选项={客户类型选项}
+        字典释义={字典释义}
         onClose={(saved) => {
           setCustOpen(false);
           if (saved) router.refresh();
@@ -1550,12 +1554,15 @@ function StatusPicker({
   value,
   options,
   children,
+  释义,
 }: {
   customerId: string;
   field: "followStatus" | "decisionStatus" | "custStatus";
   value: string;
   options: { value: string; label: string }[];
   children: React.ReactNode;
+  /** 菜单里每项下面一行灰字（企业版客户状态，10-30）：名字 → 释义；不给就是一行名字 */
+  释义?: Record<string, string>;
 }) {
   const router = useRouter();
   const { message } = App.useApp();
@@ -1567,7 +1574,9 @@ function StatusPicker({
       trigger={["click"]}
       menu={{
         selectedKeys: [value],
-        items: options.map((o) => ({ key: o.value, label: o.label })),
+        items: options.map((o) => ({ key: o.value, label: 释义?.[o.value] ? <div><div>{o.label}</div><div className="muted" style={{ fontSize: 12, lineHeight: 1.4, whiteSpace: "normal" }}>{释义[o.value]}</div></div> : o.label })),
+        // 有释义时菜单限宽，长释义折行（Windows 1024 宽也不出屏）
+        ...(释义 ? { style: { maxWidth: 释义下拉宽 } } : {}),
         onClick: async ({ key }) => {
           if (key === value) return;
           setSaving(true);

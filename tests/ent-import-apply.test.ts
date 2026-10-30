@@ -152,6 +152,34 @@ describe("首次导入", () => {
   });
 });
 
+describe("企业版客户类型（10-30 暂不确认）", () => {
+  const 类型表 = (行: string[][]) => 表("客户.xlsx", "customer", ["记录ID", "客户名称", "手机号码", "客户负责人", "客户类型"], 行);
+
+  it("空着 / 意向客户落暂不确认、意向客户补 B 级；我们这边定了类型的，原系统还是暂不确认不算冲突不覆盖；原系统给了真类型照三方比对改", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    try {
+      await 导([类型表([["C1", "示例甲", "13800005001", "张伟", "意向客户"], ["C2", "示例乙", "13800005002", "张伟", ""]])]);
+      const 甲 = await prisma.customer.findFirstOrThrow({ where: { name: "示例甲" }, include: { extra: true } });
+      const 乙 = await prisma.customer.findFirstOrThrow({ where: { name: "示例乙" }, include: { extra: true } });
+      expect([甲.customerType, 乙.customerType]).toEqual(["暂不确认", "暂不确认"]);
+      expect([甲.extra?.level ?? null, 乙.extra?.level ?? null]).toEqual(["B", null]);
+
+      // 改版前导过的（对照里记的是没落类型），之后我们这边定了类型：再同步原系统还是空着 → 不冲突、不动
+      const ref = await 对照("customer", "C1");
+      await prisma.entExternalRef.update({ where: { id: ref.id }, data: { written: JSON.stringify({ ...JSON.parse(ref.written), customerType: null }) } });
+      await prisma.customer.update({ where: { id: 甲.id }, data: { customerType: "个人买家" } });
+      const { r } = await 导([类型表([["C1", "示例甲", "13800005001", "张伟", ""], ["C2", "示例乙", "13800005002", "张伟", "贸易商"]])]);
+      expect(r.冲突).toBe(0);
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id: 甲.id } })).customerType).toBe("个人买家");
+      expect(JSON.parse((await 对照("customer", "C1")).written).customerType).toBe("暂不确认");
+      // 乙我们没动过：原系统改成贸易商 → 照改成中间贸易商
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id: 乙.id } })).customerType).toBe("中间贸易商");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe("同号", () => {
   it("我们这边早有同号客户：连上它，只补空格，负责人和名字不动", async () => {
     const 老 = await prisma.customer.create({ data: { name: "云帆（老档）", phone: "13800000001", salesOwnerId: 李娜, followStatus: "跟进中" } });

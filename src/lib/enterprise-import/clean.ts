@@ -7,7 +7,7 @@
  *   - 按列映射把原列落到标准字段；映射成「进备注」的列拼成「表头：值」进备注（跟进进内容），一格不丢
  *   - 负责人、阶段、线索状态、跟进方式、跟进状态按映射换成我们的值；对不上的用默认值 + 记一笔「提醒」
  *   - 客户状态、客户类型（企业版字典）和启用的选项一字不差才落，对不上原样进备注；客户类型先过 客户类型对照（mapping.ts），
- *     对成空的（原表写的是意向客户这类阶段）不落也不进备注
+ *     原表空着、写的是意向客户这类阶段的都落「暂不确认」（字典里没启用这项就不落）；意向客户顺带补 B 级（级别那格空着才补）
  *   - 电话、日期、金额、赢率按我们的格式认；认不出的原样进备注 + 提醒，不硬塞
  *   - 同一批里同号、外部 ID 不同 → 认作同一家，后一条并进前一条（名字不同另提醒）；名字很像但号不同 → 疑似重名，照写、提醒
  *   - 联系人 / 商机 / 跟进挂客户：先认所属客户 ID，再认客户名（本批里唯一、或我们这边唯一）；认不出整条跳过
@@ -24,7 +24,7 @@ import { 国家候选 } from "../customer-extra";
 import { 联系人号查重键 } from "../enterprise/customer-v2";
 import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
-import { 拆多人, 进备注, 输单, 对客户类型 } from "./mapping";
+import { 拆多人, 进备注, 输单, 对客户类型, 客户类型空着, 客户类型等级 } from "./mapping";
 import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
 import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
@@ -388,10 +388,14 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     return null;
   };
 
-  /** 客户类型：先过对照表，对上的（还启用着）就落、对成空的不落不提醒；其余照 认字典，原值进备注 */
+  /**
+   * 客户类型：空着的落「暂不确认」；先过对照表，对上的（还启用着）就落；其余照 认字典，原值进备注。
+   * 「暂不确认」被管理员停用 / 改名了就不落、也不提醒（空格本来就没什么可进备注的）
+   */
   const 认客户类型 = (r: 原始记录, v: string | undefined, 附加: string[]): string | null => {
+    if (!v?.trim()) return 本地.客户类型?.includes(客户类型空着) ? 客户类型空着 : null;
     const 对 = 对客户类型(v);
-    if (对 === "") return null;
+    if (对 === 客户类型空着 && !本地.客户类型?.includes(对)) return null;
     if (对 && 本地.客户类型?.includes(对)) return 对;
     return 认字典(r, v, 附加, "客户类型", 本地.客户类型);
   };
@@ -566,8 +570,11 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     else if (b.phone && 号键(String(b.phone)) !== 号键(String(a.phone))) 段.push(`另一个电话：${b.phone}`);
     if (b.custStatus && !a.custStatus) a.custStatus = b.custStatus;
     else if (b.custStatus && a.custStatus !== b.custStatus) 段.push(`客户状态：${b.custStatus}`);
-    if (b.customerType && !a.customerType) a.customerType = b.customerType;
-    else if (b.customerType && a.customerType !== b.customerType) 段.push(`客户类型：${b.customerType}`);
+    // 「暂不确认」是原表空着 / 写的阶段落的（10-30）：当空的看，后一条有真类型就换上，后一条是暂不确认的不进备注
+    const 未定 = (v: unknown) => !v || v === 客户类型空着;
+    if (!未定(b.customerType) && 未定(a.customerType)) a.customerType = b.customerType;
+    else if (b.customerType && !a.customerType) a.customerType = b.customerType;
+    else if (!未定(b.customerType) && a.customerType !== b.customerType) 段.push(`客户类型：${b.customerType}`);
     if (b.channelId && !a.channelId) a.channelId = b.channelId;
     for (const k of [...客户附加列, ...客户新列]) {
       if (b[k] == null || b[k] === "") continue;
@@ -604,7 +611,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const 号 = 认电话(r, s.值.phone, 附加);
         const phone = 号.phone;
         附加.push(...号.另.map((x) => `另一个电话：${x}`));
-        const level = s.值.level ? 认等级(s.值.level) : null;
+        // 级别那格空着、原表客户类型写的是意向客户 → B 级（10-30 对方给的对照）
+        const level = s.值.level ? 认等级(s.值.level) : (客户类型等级(s.值.customerType) ?? null);
         if (s.值.level && !level) 附加.push(`客户等级：${s.值.level}`);
         const email = 补格(s.值.email, 号.email, "邮箱", 附加);
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);

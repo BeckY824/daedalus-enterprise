@@ -46,13 +46,14 @@ import { 放进公海, 领取, 分配公海, 撤销公海, type 公海结果 } f
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import ResetFilters from "@/components/ResetFilters";
 import CurrencySelect from "@/components/CurrencySelect";
+import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 
 /**
  * 批量操作的结果文案。
  * 原本无论实际改了几条都提示「已变更」——选错页、行被别人删掉都看不出来。
  * 只有真改了才说改了几条；没改动和已消失的分开讲，否则人对不上自己勾了几条。
  */
-/** 筛选下拉顶上一行：这一项筛的是什么（交互方案 P2，10-30）。每个值各自的含义等字典里补了说明再加 */
+/** 筛选下拉顶上一行：这一项筛的是什么（交互方案 P2，10-30）。每个值各自的含义在选项下面一行灰字（components/DictNote.tsx） */
 function 下拉说明(话: string) {
   return <div className="muted" style={{ padding: "4px 12px 6px", fontSize: "var(--fs-note)", borderBottom: "1px solid var(--line)", marginBottom: 4 }}>{话}</div>;
 }
@@ -173,6 +174,8 @@ type Props = {
   分配方式选项?: string[];
   /** 企业版客户类型的可选项（字典 custType 启用中的，2026-10-29 P13 第 4 条）；别的版本空 */
   客户类型选项?: string[];
+  /** 企业版客户状态、客户类型每项的释义（名字 → 一行灰字，10-30）；别的版本不给 */
+  字典释义?: 客户字典释义;
 };
 
 /**
@@ -191,7 +194,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [],
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 字典释义,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -688,6 +691,7 @@ export default function CustomersView({
             {企业 ? (
               <Select style={{ width: 140 }} placeholder="全部客户状态" allowClear aria-label="客户状态"
                 popupRender={(menu) => <>{下拉说明(字典定义.custStatus.说明)}{menu}</>} popupMatchSelectWidth={false}
+                {...释义下拉(字典释义?.状态)}
                 value={f.custStatus || undefined} onChange={(v) => apply({ custStatus: v ?? "" })}
                 options={[...new Set([...客户状态选项, ...(f.custStatus ? [f.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
             ) : (
@@ -738,6 +742,7 @@ export default function CustomersView({
                   {企业 && (
                     <Select style={{ width: "100%" }} placeholder="全部客户类型" allowClear aria-label="客户类型"
                       popupRender={(menu) => <>{下拉说明(字典定义.custType.说明)}{menu}</>}
+                      {...释义下拉(字典释义?.类型)}
                       value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
                       options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
                   )}
@@ -902,6 +907,7 @@ export default function CustomersView({
         客户状态自动={客户状态自动}
         分配方式选项={分配方式选项}
         客户类型选项={客户类型选项}
+        字典释义={字典释义}
         onClose={(saved) => {
           setFormOpen(false);
           setEditing(null);

@@ -15,8 +15,9 @@ const 参与选项: 参与状态[] = ["允许", "暂停", "禁止"];
  * - 配额：默认他的直属上级、虚线上级和老板能改，「后台设置谁能改」里可以再勾总管理员等（B2 第 6 条）；空着 = 手动分不限，但不参与自动分配（10-25），0 也不分。
  * - 参与：允许 / 暂停 / 禁止三态（10-26），老板、总管理员、销售管理能改（Q-12 默认）；暂停 = 暂时不参与、可随时恢复（一键恢复为允许），禁止 = 不参与；
  *   两种都不进自动分配轮转，手动分配照常。
+ * - 不限额（10-30）：规则里选了「不设配额」，配额不起作用：配额框灰掉、不显示满额，设过的数留着，关掉照旧。
  */
-export default function LeadAssignCard({ rows }: { rows: 分配情况 }) {
+export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分配情况; 不限额?: boolean }) {
   const router = useRouter();
   const { message } = App.useApp();
   const [忙, set忙] = useState<string | null>(null);
@@ -60,11 +61,18 @@ export default function LeadAssignCard({ rows }: { rows: 分配情况 }) {
   return (
     <Card id="lead-assign" title="线索分配" data-testid="org-lead-assign"
       extra={!能改参与 && <span style={{ color: "var(--text-muted)" }}>参与只有老板、总管理员、销售管理能改</span>}>
+      {不限额 ? (
+        <p className="muted" data-testid="org-lead-no-quota-note">
+          现在是「不设配额」：自动分配在 线索 页点「自动分配」，挑参与的人里本月已分最少的，一样多先给最早进分配池的；配额不起作用，手动分也不查满额。
+          「参与」选暂停或禁止的人照样不自动分给他。下面的配额先灰着、数留着，在上面规则里关掉「不设配额」就照旧按配额分。分配数每月 1 日清零，持有数不清。
+        </p>
+      ) : (
       <p className="muted">
         自动分配在 线索 页点「自动分配」：挑参与的、填了配额、本月没分满的人里「本月已分 / 配额」比例最低的，比例一样先给最早进分配池的。
         没填配额（或填 0）的人不参与自动分配；「参与」选暂停（暂时不参与、可随时恢复）或禁止（不参与）也不再自动分给他。手动分配不受这几条影响。分配数每月 1 日清零，持有数不清。
         线索最终判成无效的，负责人本月配额多给 1 条（配额后面的 +N），也是每月清零；没填配额的人不加。
       </p>
+      )}
       <div style={{ overflowX: "auto" }}>
         <table className="org-field-perm org-lead-assign">
           <thead>
@@ -78,7 +86,7 @@ export default function LeadAssignCard({ rows }: { rows: 分配情况 }) {
           </thead>
           <tbody>
             {rows.map((r) => {
-              const 满 = r.配额 !== null && r.已分 >= r.配额;
+              const 满 = !不限额 && r.配额 !== null && r.已分 >= r.配额;
               return (
                 <tr key={r.userId} data-testid={`org-lead-assign-${r.userId}`}>
                   <th scope="row"><span className="org-lead-assign-name" title={r.name}>{r.name}</span></th>
@@ -88,14 +96,15 @@ export default function LeadAssignCard({ rows }: { rows: 分配情况 }) {
                       <span>{r.已分} /</span>
                       {r.能设配额 ? (
                         <InputNumber size="small" min={0} max={10000} precision={0} placeholder="没填" style={{ width: 84 }}
-                          aria-label={`${r.name} 的每月配额`} disabled={忙 === r.userId || 刷新中}
+                          aria-label={`${r.name} 的每月配额`} disabled={不限额 || 忙 === r.userId || 刷新中}
+                          title={不限额 ? "现在不设配额，配额不起作用" : undefined}
                           value={r.userId in 草稿 ? 草稿[r.userId] : r.设的配额}
                           onChange={(v) => set草稿((d) => ({ ...d, [r.userId]: typeof v === "number" ? v : null }))}
                           onBlur={() => 存配额(r)} onPressEnter={() => 存配额(r)} />
                       ) : (
-                        <span>{r.设的配额 ?? "没填"}</span>
+                        <span className={不限额 ? "muted" : undefined}>{r.设的配额 ?? "没填"}</span>
                       )}
-                      {r.加额 > 0 && (
+                      {!不限额 && r.加额 > 0 && (
                         <span className="muted" title={`本月有 ${r.加额} 条线索最终判成无效，配额多给 ${r.加额} 条，下月清零`} data-testid={`org-lead-bonus-${r.userId}`}>
                           +{r.加额}
                         </span>
@@ -131,7 +140,7 @@ export default function LeadAssignCard({ rows }: { rows: 分配情况 }) {
                         </span>
                       );
                     })()}
-                    {r.参与 && r.配额 === null && (
+                    {!不限额 && r.参与 && r.配额 === null && (
                       <span className="muted" style={{ marginInlineStart: 8 }} data-testid={`org-lead-noquota-${r.userId}`}>没填配额，不参与自动分配</span>
                     )}
                   </td>

@@ -22,7 +22,7 @@ import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm
 import { getSetting } from "@/lib/settings";
 import { 读改权限, 能改设置, 谁能改的话, 能改时限的节点, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import type { 组织架构 } from "./OrgTab";
-import { 本月分配情况 } from "../leads/assign-actions";
+import { 本月分配情况, 读不设配额 } from "../leads/assign-actions";
 import { 读提成比例, 读按人提成比例, 能改提成比例 } from "@/lib/project/commission-db";
 import { 提成范围of } from "@/lib/project/commission";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
@@ -101,7 +101,7 @@ export default async function SettingsBody() {
     : null;
 
   // 企业版才多一栏「组织架构」：部门树、每个人的部门 / 角色 / 业务线 / 上级。老板和总管理员能改（字段权限、谁能改按「后台设置谁能改」）
-  const [org, 开关, 字段权限, 线索分配, 改权限] = 企业版()
+  const [org, 开关, 字段权限, 线索分配, 改权限, 不设配额] = 企业版()
     ? await Promise.all([
         读组织(),
         Promise.all(规则名们.map(async (n) => [n, await 规则开着(n)] as const)).then((xs) => Object.fromEntries(xs) as Record<(typeof 规则名们)[number], boolean>),
@@ -109,8 +109,10 @@ export default async function SettingsBody() {
         // 「线索分配」规则关着时是 null，那一块不出现
         本月分配情况(),
         读改权限(),
+        // 规则里的「不设配额」选项：规则关着是 null
+        读不设配额(),
       ])
-    : [null, null, null, null, null];
+    : [null, null, null, null, null, null];
   /**
    * 每样后台设置这个人能不能改：null = 能改，否则是挡住的那句（卡片右上角显示，控件灰掉）。
    * 企业版按「后台设置谁能改」表（B2 第 6 条），别的版本照旧只有老板。和服务端 挡改设置 同一套。
@@ -173,6 +175,7 @@ export default async function SettingsBody() {
           字段权限挡: 挡("字段权限"),
           改权限,
           线索分配: 线索分配?.length ? 线索分配 : null,
+          线索不设配额: 不设配额,
         };
       })()
     : null;

@@ -10,7 +10,7 @@ import { 规则, 规则名们, type 规则名 } from "@/lib/enterprise/rules-tab
 import { 字段, 字段名们, 字段级别of, 推荐字段配置, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
 import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, type 成员改动 } from "./org-actions";
-import type { 分配情况 } from "../leads/assign-actions";
+import { 设不设配额, type 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
 import OrgSyncCard from "./OrgSyncCard";
 
@@ -31,6 +31,8 @@ export type 组织架构 = {
   改权限: 改权限配置;
   /** 「线索分配」那一屏：规则关着、或者这个人什么都看不到 = null */
   线索分配: 分配情况 | null;
+  /** 规则「线索分配和配额」里的「不设配额（人人参与、不限额）」开着没（10-30）；规则关着 = null */
+  线索不设配额?: boolean | null;
 };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
 
@@ -167,6 +169,15 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     const { [f]: _旧, ...别的 } = 表;
     set草稿({ 基于: 页面表, 表: Object.keys(行).length ? { ...别的, [f]: 行 } : 别的 });
   };
+  // 「不设配额」选项：同 拨了，先按拨的显示，页面数据变了听页面的
+  const [拨了不设, set拨了不设] = useState<{ 基于: boolean | null | undefined; 开: boolean } | null>(null);
+  const 不设配额 = 拨了不设 && 拨了不设.基于 === value.线索不设配额 ? 拨了不设.开 : value.线索不设配额 === true;
+  const 拨不设 = async (v: boolean) => {
+    if (忙) return;
+    set拨了不设({ 基于: value.线索不设配额, 开: v });
+    const ok = await 跑(() => 设不设配额(v), v ? "已改成不设配额：人人参与自动分配、不限额" : "已改回按配额分配");
+    if (!ok) set拨了不设(null);
+  };
   const 拨 = async (名: 规则名, v: boolean) => {
     if (忙) return;
     set拨了((x) => ({ ...x, [名]: { 基于: value.规则开着[名], 开: v } }));
@@ -197,13 +208,26 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
               <div>
                 <b>{规则[名].名}</b>
                 <p className="muted" style={{ margin: 0 }}>{规则[名].说明}</p>
+                {/* 规则开着才有这个选项（10-30）：开了以后配额不起作用，下面「线索分配」里配额框灰掉 */}
+                {名 === "线索分配" && 开着(名) && value.线索不设配额 != null && (
+                  <Space align="start" style={{ marginTop: 8 }}>
+                    <Switch size="small" checked={不设配额} disabled={!能改 || 忙} aria-label="不设配额（人人参与、不限额）"
+                      data-testid="org-rule-lead-no-quota" onChange={(v) => void 拨不设(v)} />
+                    <div>
+                      <span>不设配额（人人参与、不限额）</span>
+                      <p className="muted" style={{ margin: 0 }}>
+                        开了以后：自动分配在参与的销售里挑本月已分最少的，一样多先给最早进分配池的；手动分也不查满额。设过的配额留着，关掉就照旧按配额分。
+                      </p>
+                    </div>
+                  </Space>
+                )}
               </div>
             </Space>
           ))}
         </div>
       </Card>
 
-      {value.线索分配 && <LeadAssignCard rows={value.线索分配} />}
+      {value.线索分配 && <LeadAssignCard rows={value.线索分配} 不限额={不设配额} />}
 
       <Card title="字段权限" extra={字段权限挡 && <span style={{ color: "var(--text-muted)" }}>{字段权限挡}</span>}>
         <p className="muted">

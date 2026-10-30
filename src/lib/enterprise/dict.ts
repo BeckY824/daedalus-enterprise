@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 挡改设置 } from "./edit-perm";
-import { 字典种类们, 字典定义, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, type 字典种类 } from "./dict-kinds";
+import { 字典种类们, 字典定义, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, 字典项释义, type 字典种类 } from "./dict-kinds";
 import { 分配谁能用key, 规整分配谁能用, 能用分配方式, 谁能用的话, type 分配谁能用配置 } from "./assign-use";
 import { 读组织 } from "./org";
 
@@ -69,24 +69,32 @@ async function 补停用(kind: 字典种类, 停用: readonly string[], db: Pris
 }
 
 /**
- * 整套默认换过（客户状态，10-28）：之前建好的库里，还叫旧名的默认项（固定 id、名字没被人改过）改成同序号的新名，只改一次。
- * 新名已经被别的项占了的那一个跳过；人改过名、自己加的不动。改完记一笔，以后不再碰
+ * 默认项改过名（客户状态 10-28 整套换；客户类型 10-30 换两轮：先贸易商→中间贸易商等，再一般客户→暂不确认）：
+ * 之前建好的库里，还叫某一轮旧名的默认项（固定 id、名字没被人改过）改成同序号的新名，每轮只改一次，按先后一轮一轮来
+ * （很老的库先过第一轮再过第二轮）。新名已经被别的项占了的那一个跳过；人改过名、自己加的不动。每轮改完记一笔，以后不再碰。
+ * 第一轮的记号沿用原来的 key（已经改过的库不会重来），第二轮起 key 后面带轮次
  */
-const 换默认记号 = (kind: 字典种类) => `entDict.defaultRenamed.${kind}`;
+const 换默认记号 = (kind: 字典种类, 轮: number) => (轮 === 0 ? `entDict.defaultRenamed.${kind}` : `entDict.defaultRenamed.${kind}.${轮 + 1}`);
 async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
-  if (await db.setting.findUnique({ where: { key: 换默认记号(kind) } })) return;
   const { 默认, 旧默认 = [] } = 字典定义[kind];
+  const 记号们 = 旧默认.map((_, 轮) => 换默认记号(kind, 轮));
+  const 记过 = new Set((await db.setting.findMany({ where: { key: { in: 记号们 } }, select: { key: true } })).map((x) => x.key));
+  if (记号们.every((k) => 记过.has(k))) return;
   const 现有 = await db.entDictItem.findMany({ where: { kind }, select: { id: true, name: true } });
   const 占着 = new Set(现有.map((x) => x.name));
-  for (const [i, 旧名] of 旧默认.entries()) {
-    const 新名 = 默认[i];
-    const 那项 = 现有.find((x) => x.id === 默认id(kind, i) && x.name === 旧名);
-    if (!那项 || !新名 || 占着.has(新名)) continue;
-    await db.entDictItem.update({ where: { id: 那项.id }, data: { name: 新名 } });
-    占着.delete(旧名);
-    占着.add(新名);
+  for (const [轮, 这轮旧名] of 旧默认.entries()) {
+    if (记过.has(记号们[轮])) continue;
+    for (const [i, 旧名] of 这轮旧名.entries()) {
+      const 新名 = 默认[i];
+      const 那项 = 现有.find((x) => x.id === 默认id(kind, i) && x.name === 旧名);
+      if (!那项 || !新名 || 新名 === 旧名 || 占着.has(新名)) continue;
+      await db.entDictItem.update({ where: { id: 那项.id }, data: { name: 新名 } });
+      那项.name = 新名;
+      占着.delete(旧名);
+      占着.add(新名);
+    }
+    await 记下(记号们[轮], db);
   }
-  await db.setting.upsert({ where: { key: 换默认记号(kind) }, update: {}, create: { key: 换默认记号(kind), value: "true" } });
 }
 
 /**
@@ -157,6 +165,25 @@ export const 页面字典 = cache((kind: 字典种类): Promise<EntDictItem[]> =
 export const 页面可选项 = cache(async (kind: 字典种类): Promise<string[]> => {
   if (!企业版()) return [];
   return (await 页面字典(kind)).filter((x) => x.active).map((x) => x.name);
+});
+
+/**
+ * 下拉里每项下面那行灰字（10-30，客户状态、客户类型）：名字 → 释义，只列有释义的（停用的也列：客户身上的原值可能是停用项）。
+ * 按默认 id 认（字典项释义），所以管理员改了名的还带着原释义，自己加的没有。界面只拿得到名字，所以按名字给
+ */
+export const 页面释义 = cache(async (kind: 字典种类): Promise<Record<string, string>> => {
+  if (!企业版() || !字典定义[kind].释义) return {};
+  const 表: Record<string, string> = {};
+  for (const x of await 页面字典(kind)) {
+    const 释 = 字典项释义(kind, x.id);
+    if (释) 表[x.name] = 释;
+  }
+  return 表;
+});
+/** 客户页、客户列表用的两类释义一次给（字典已经被 页面可选项 读过，走请求内缓存，不多查库） */
+export const 页面客户释义 = cache(async (): Promise<{ 状态: Record<string, string>; 类型: Record<string, string> }> => {
+  const [状态, 类型] = await Promise.all([页面释义("custStatus"), 页面释义("custType")]);
+  return { 状态, 类型 };
 });
 
 /**

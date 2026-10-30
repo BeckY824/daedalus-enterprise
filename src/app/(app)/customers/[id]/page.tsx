@@ -22,7 +22,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import { 管全队客户 } from "@/lib/constants";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
-import { 页面可选项, 页面字典 } from "@/lib/enterprise/dict";
+import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 企业版字典 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -196,6 +196,8 @@ export default async function CustomerDetailPage({
       号码种类={号码种类}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
+      // 下拉里客户状态、客户类型每项的灰字释义（10-30）；字典上面已读过，走请求内缓存
+      字典释义={企 ? await 页面客户释义() : undefined}
       // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/screen.tsx）
       新建项目={企 && 规则 ? { 节点们: [...企业版字典.节点们.线索], 要下一步: 规则.超时回收.开 } : null}
       联系人附件数={联系人附件数}

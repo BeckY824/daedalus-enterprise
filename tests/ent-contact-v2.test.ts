@@ -6,7 +6,9 @@
  *     编辑只查新出现的号；导入照写 + 提醒「号码重复」（本批前后、和我们这边已有的）
  *   - 客户类型（迁移 092，字典 custType）：保存 / 单格改只收启用的、原值停用了原样交回也认；导入认得上才落，对不上进备注
  *     10-30 换了一套默认（贸易商→中间贸易商、代理商→国家代理商、经销商默认停用、加专业运营商 / 一般客户），老库第一次读时改名、补项、换顺序；
- *     导入原表的客户类型先过对照表（意向客户这类阶段写法对成空，不落不进备注）
+ *     同日第二轮：一般客户改叫暂不确认（旧默认第二轮，上一轮的库、更老的库都改到）；
+ *     导入原表的客户类型先过对照表（一般客户、空着、意向客户这类阶段写法都落暂不确认，意向客户顺带补 B 级）
+ *   - 客户状态 / 客户类型下拉的释义：按默认 id 认，改了名的带着、自己加的没有、级别没有
  *   - 号码类型加了传真、Telegram：传真同座机只比数字，Telegram 用户名去 @ 不分大小写，都参与查重
  *   - 级别星级：S/A/B/C = 4/3/2/1 颗，一个映射一处显示
  * 只读同事客户、看不到的客户这两种权限在 ent-contact-link-scope.test.ts（真组织架构）
@@ -21,12 +23,13 @@ vi.mock("@/lib/auth", () => ({
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 可选项, 字典定义, 企业字典 } from "@/lib/enterprise/dict";
+import { 可选项, 字典定义, 企业字典, 页面释义 } from "@/lib/enterprise/dict";
+import { 字典项释义 } from "@/lib/enterprise/dict-kinds";
 import { 级别显示, 级别选项, 级别星数, 满星, 联系人号查重键, 自定号码键 } from "@/lib/enterprise/customer-v2";
 import { 客户的联系人们, 联系人另挂, 联系人挂靠回填 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 清洗, 空索引, type 已有联系人 } from "@/lib/enterprise-import/clean";
-import { 客户类型对照, 对客户类型 } from "@/lib/enterprise-import/mapping";
+import { 客户类型对照, 对客户类型, 客户类型等级 } from "@/lib/enterprise-import/mapping";
 import { 读本地索引 } from "@/lib/enterprise-import/report";
 import type { 原始记录, 映射 } from "@/lib/enterprise-import/types";
 import { saveCustomer, patchCustomer } from "@/app/(app)/customers/actions";
@@ -126,10 +129,10 @@ describe("纯函数：级别星级、查重键", () => {
   });
 
   it("客户类型新库：按默认顺序排，经销商建出来就停着", async () => {
-    expect(await 可选项("custType")).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "一般客户"]);
+    expect(await 可选项("custType")).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "暂不确认"]);
     const 全 = await 企业字典("custType");
     expect(全.map((x) => [x.name, x.active])).toEqual([
-      ["个人买家", true], ["中间贸易商", true], ["国家代理商", true], ["专业运营商", true], ["一般客户", true], ["经销商", false],
+      ["个人买家", true], ["中间贸易商", true], ["国家代理商", true], ["专业运营商", true], ["暂不确认", true], ["经销商", false],
     ]);
     expect(全.map((x) => x.id)).toEqual([0, 1, 2, 4, 5, 3].map((i) => `dict-custType-${i}`));
   });
@@ -148,13 +151,13 @@ describe("纯函数：级别星级、查重键", () => {
       ["dict-custType-1", "中间贸易商", true],
       ["dict-custType-2", "国家代理商", true],
       ["dict-custType-4", "专业运营商", true],
-      ["dict-custType-5", "一般客户", true],
+      ["dict-custType-5", "暂不确认", true],
       ["dict-custType-3", "经销商", false],
       [expect.any(String), "示例类型", true],
     ];
     expect(await 看()).toEqual(期望);
     expect(await 看()).toEqual(期望);
-    expect(await 可选项("custType")).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "一般客户", "示例类型"]);
+    expect(await 可选项("custType")).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "暂不确认", "示例类型"]);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 老客户 } })).customerType).toBe("贸易商");
   });
 
@@ -162,15 +165,89 @@ describe("纯函数：级别星级、查重键", () => {
     for (const [i, name] of ["个人买家", "批发商", "代理商", "经销商"].entries()) {
       await prisma.entDictItem.create({ data: { id: `dict-custType-${i}`, kind: "custType", name, sort: i } });
     }
-    await prisma.entDictItem.create({ data: { kind: "custType", name: "一般客户", sort: 4 } });
+    await prisma.entDictItem.create({ data: { kind: "custType", name: "暂不确认", sort: 4 } });
     const 全 = await 企业字典("custType");
-    expect(全.filter((x) => x.name === "一般客户")).toHaveLength(1);
+    expect(全.filter((x) => x.name === "暂不确认")).toHaveLength(1);
     expect(全.some((x) => x.id === "dict-custType-5")).toBe(false);
     expect(全.find((x) => x.id === "dict-custType-1")?.name).toBe("批发商");
     expect(全.find((x) => x.id === "dict-custType-2")?.name).toBe("国家代理商");
     expect(全.find((x) => x.id === "dict-custType-4")?.name).toBe("专业运营商");
-    // 一般客户（-5）没建，补换顺序看到缺项整类不挪：新补的专业运营商排在序号 4 上，自己加的往后让
-    expect(全.map((x) => x.name)).toEqual(["个人买家", "批发商", "国家代理商", "经销商", "专业运营商", "一般客户"]);
+    // 暂不确认（-5）没建，补换顺序看到缺项整类不挪：新补的专业运营商排在序号 4 上，自己加的往后让
+    expect(全.map((x) => x.name)).toEqual(["个人买家", "批发商", "国家代理商", "经销商", "专业运营商", "暂不确认"]);
+  });
+
+  /** 上一轮（10-30 第一套）新库的样子：六项、经销商停着、按那时的默认顺序排、三个记号都记过 */
+  async function 上一轮客户类型库(改: Record<number, string> = {}) {
+    const 名 = ["个人买家", "中间贸易商", "国家代理商", "经销商", "专业运营商", "一般客户"];
+    const 序号 = [0, 1, 2, 5, 3, 4];
+    for (const [i, name] of 名.entries()) {
+      await prisma.entDictItem.create({ data: { id: `dict-custType-${i}`, kind: "custType", name: 改[i] ?? name, sort: 序号[i], active: i !== 3 } });
+    }
+    for (const k of ["entDict.defaultRenamed.custType", "entDict.defaultAdded.custType", "entDict.defaultOrder.custType", "entDict.defaultOff.custType"]) {
+      await prisma.setting.create({ data: { key: k, value: "true" } });
+    }
+  }
+
+  it("客户类型上一轮的库：一般客户改叫暂不确认，位置不变、记下第二轮记号；再读不变；客户上存的一般客户不跟着改（总控另跑脚本）", async () => {
+    await 上一轮客户类型库();
+    const 老客户 = await 新建id();
+    await prisma.customer.update({ where: { id: 老客户 }, data: { customerType: "一般客户" } });
+    const 看 = async () => (await 企业字典("custType")).map((x) => [x.id, x.name, x.active]);
+    const 期望 = [
+      ["dict-custType-0", "个人买家", true],
+      ["dict-custType-1", "中间贸易商", true],
+      ["dict-custType-2", "国家代理商", true],
+      ["dict-custType-4", "专业运营商", true],
+      ["dict-custType-5", "暂不确认", true],
+      ["dict-custType-3", "经销商", false],
+    ];
+    expect(await 看()).toEqual(期望);
+    expect(await prisma.setting.findUnique({ where: { key: "entDict.defaultRenamed.custType.2" } })).not.toBeNull();
+    expect(await 看()).toEqual(期望);
+    expect(await 可选项("custType")).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "暂不确认"]);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 老客户 } })).customerType).toBe("一般客户");
+  });
+
+  it("客户类型上一轮的库：管理员已把一般客户改了名的不动；第二轮记号记过就不再改（之后管理员改回一般客户也不动）", async () => {
+    await 上一轮客户类型库({ 5: "待定客户" });
+    expect((await 企业字典("custType")).find((x) => x.id === "dict-custType-5")?.name).toBe("待定客户");
+    await prisma.entDictItem.update({ where: { id: "dict-custType-5" }, data: { name: "一般客户" } });
+    expect((await 企业字典("custType")).find((x) => x.id === "dict-custType-5")?.name).toBe("一般客户");
+  });
+
+  it("客户类型上一轮的库：自己加过「暂不确认」，第 6 项的一般客户不改名（不撞名）", async () => {
+    await 上一轮客户类型库();
+    await prisma.entDictItem.create({ data: { kind: "custType", name: "暂不确认", sort: 6 } });
+    const 全 = await 企业字典("custType");
+    expect(全.find((x) => x.id === "dict-custType-5")?.name).toBe("一般客户");
+    expect(全.filter((x) => x.name === "暂不确认")).toHaveLength(1);
+  });
+
+  it("客户类型最老的库（贸易商那四项）连着两轮改：第一轮改名 / 补项，第二轮没有一般客户可改，两个记号都记下", async () => {
+    for (const [i, name] of ["个人买家", "贸易商", "代理商", "经销商"].entries()) {
+      await prisma.entDictItem.create({ data: { id: `dict-custType-${i}`, kind: "custType", name, sort: i } });
+    }
+    expect(await 可选项("custType")).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "暂不确认"]);
+    const 记号 = (await prisma.setting.findMany({ where: { key: { startsWith: "entDict.defaultRenamed.custType" } } })).map((x) => x.key).sort();
+    expect(记号).toEqual(["entDict.defaultRenamed.custType", "entDict.defaultRenamed.custType.2"]);
+  });
+
+  it("下拉释义：按默认 id 认，管理员改了名的带着原释义、自己加的没有、经销商没有（级别不是字典，不带释义）", async () => {
+    await 上一轮客户类型库({ 1: "转卖商" });
+    await prisma.entDictItem.create({ data: { kind: "custType", name: "示例类型", sort: 6 } });
+    const 类型 = await 页面释义("custType");
+    expect(类型["转卖商"]).toBe(字典定义.custType.释义![1]);
+    expect(类型["暂不确认"]).toContain("还没判断出");
+    expect(类型["示例类型"]).toBeUndefined();
+    expect(类型["经销商"]).toBeUndefined();
+    const 状态 = await 页面释义("custStatus");
+    expect(Object.keys(状态)).toHaveLength(9);
+    expect(状态["复购"]).toContain("2 个项目");
+    expect(字典项释义("custType", "dict-custStatus-1")).toBeNull();
+    expect(字典项释义("custStatus", "dict-custStatus-9")).toBeNull();
+    expect(字典项释义("custStatus", "自己加的id")).toBeNull();
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect(await 页面释义("custType")).toEqual({});
   });
 
   it("号码类型老库（只有前六项 + 自己加的）：补上传真、Telegram，自己加的排在后面；Telegram 被自己加的占了名就不重建", async () => {
@@ -400,27 +477,69 @@ describe("导入", () => {
     expect(问题.some((p) => p.外部ID === "c2" && p.说明.includes("客户类型「批发」"))).toBe(true);
   });
 
-  it("客户类型对照表：原表写法换成我们的；阶段写法对成空（不落、不进备注、不提醒）；表外的照老规矩", () => {
+  it("客户类型对照表：原表写法换成我们的；一般客户、阶段写法都落暂不确认（不进备注、不提醒）；表外的照老规矩", () => {
     expect(客户类型对照).toEqual({
-      终端客户: "专业运营商", 一般客户: "一般客户", 经销商: "中间贸易商", 贸易商: "中间贸易商",
+      终端客户: "专业运营商", 一般客户: "暂不确认", 经销商: "中间贸易商", 贸易商: "中间贸易商",
       代理: "国家代理商", 代理商: "国家代理商", "代理(采购商)": "国家代理商",
-      意向客户: "", 成交客户: "", 新客户: "",
+      意向客户: "暂不确认", 成交客户: "暂不确认", 新客户: "暂不确认",
     });
     expect([对客户类型(" 代理（采购商） "), 对客户类型("代理 (采购商)"), 对客户类型("个人买家"), 对客户类型(""), 对客户类型(null)])
       .toEqual(["国家代理商", "国家代理商", undefined, undefined, undefined]);
+    expect([客户类型等级(" 意向客户 "), 客户类型等级("成交客户"), 客户类型等级(undefined)]).toEqual(["B", undefined, undefined]);
 
-    const 原值们 = ["终端客户", "一般客户", "经销商", "贸易商", "代理", "代理商", "代理（采购商）", "意向客户", "成交客户", "新客户", "个人买家", "批发"];
+    const 原值们 = ["终端客户", "一般客户", "经销商", "贸易商", "代理", "代理商", "代理（采购商）", "意向客户", "成交客户", "新客户", "个人买家", "批发", ""];
     const { 待写, 问题 } = 清洗(
       原值们.map((类型, i) => 条("customer", { 外部: `t${i}`, 名称: `示例公司${i}`, 电话: `1380000${String(2000 + i)}`, 负责人: "张伟", 类型 })),
       映射样(),
-      { ...空索引(), 客户类型: ["个人买家", "中间贸易商", "国家代理商", "专业运营商", "一般客户"] },
+      { ...空索引(), 客户类型: ["个人买家", "中间贸易商", "国家代理商", "专业运营商", "暂不确认"] },
     );
     expect(待写.map((w) => w.值.customerType ?? null)).toEqual([
-      "专业运营商", "一般客户", "中间贸易商", "中间贸易商", "国家代理商", "国家代理商", "国家代理商", null, null, null, "个人买家", null,
+      "专业运营商", "暂不确认", "中间贸易商", "中间贸易商", "国家代理商", "国家代理商", "国家代理商", "暂不确认", "暂不确认", "暂不确认", "个人买家", null, "暂不确认",
     ]);
-    for (const i of [7, 8, 9]) expect(String(待写[i].值.remark ?? "")).not.toContain("客户类型");
+    for (const i of [1, 7, 8, 9, 12]) expect(String(待写[i].值.remark ?? "")).not.toContain("客户类型");
     expect(String(待写[11].值.remark)).toContain("客户类型：批发");
     expect(问题.filter((p) => p.说明.includes("客户类型")).map((p) => p.外部ID)).toEqual(["t11"]);
+    // 只有意向客户顺带补 B 级；别的（一般客户、成交客户、空着）级别照旧空着
+    expect(待写.map((w) => w.值.level ?? null)).toEqual(原值们.map((x) => (x === "意向客户" ? "B" : null)));
+  });
+
+  it("客户类型空着 / 意向客户：暂不确认被停用了就不落也不提醒；级别那格给了的照给的，不被意向客户的 B 盖掉", () => {
+    const 映 = 映射样();
+    (映.列 as Record<string, Record<string, string>>).customer.级别 = "level";
+    const { 待写, 问题 } = 清洗(
+      [
+        条("customer", { 外部: "e1", 名称: "示例甲", 电话: "13800003001", 负责人: "张伟", 类型: "" }),
+        条("customer", { 外部: "e2", 名称: "示例乙", 电话: "13800003002", 负责人: "张伟", 类型: "意向客户", 级别: "A级" }),
+        条("customer", { 外部: "e3", 名称: "示例丙", 电话: "13800003003", 负责人: "张伟", 类型: "意向客户", 级别: "" }),
+        条("customer", { 外部: "e4", 名称: "示例丁", 电话: "13800003004", 负责人: "张伟", 类型: "一般客户" }),
+      ],
+      映,
+      { ...空索引(), 客户类型: ["个人买家"] },
+    );
+    for (const w of 待写) expect("customerType" in w.值).toBe(false);
+    for (const w of 待写) expect(String(w.值.remark ?? "")).not.toContain("客户类型");
+    expect(问题.filter((p) => p.说明.includes("客户类型"))).toEqual([]);
+    expect(待写.map((w) => w.值.level ?? null)).toEqual([null, "A", "B", null]);
+  });
+
+  it("同号并成一条：暂不确认当空的看，后一条有真类型就换上；后一条是暂不确认的不进备注", () => {
+    const 索引 = { ...空索引(), 客户类型: ["个人买家", "中间贸易商", "暂不确认"] };
+    const { 待写 } = 清洗(
+      [
+        条("customer", { 外部: "m1", 名称: "示例甲", 电话: "13800004001", 负责人: "张伟", 类型: "" }),
+        条("customer", { 外部: "m2", 名称: "示例甲", 电话: "13800004001", 负责人: "张伟", 类型: "个人买家" }),
+        条("customer", { 外部: "m3", 名称: "示例乙", 电话: "13800004002", 负责人: "张伟", 类型: "贸易商" }),
+        条("customer", { 外部: "m4", 名称: "示例乙", 电话: "13800004002", 负责人: "张伟", 类型: "意向客户" }),
+      ],
+      映射样(),
+      索引,
+    );
+    const 甲 = 待写.find((w) => w.外部ID === "m1")!;
+    const 乙 = 待写.find((w) => w.外部ID === "m3")!;
+    expect(甲.值.customerType).toBe("个人买家");
+    expect(String(甲.值.remark ?? "")).not.toContain("客户类型");
+    expect(乙.值.customerType).toBe("中间贸易商");
+    expect(String(乙.值.remark ?? "")).not.toContain("客户类型");
   });
 
   it("客户类型对照到的那一项被停用了：照老规矩，原值进备注", () => {
@@ -452,6 +571,6 @@ describe("导入", () => {
     const 索引 = await 读本地索引("excel");
     expect(索引.联系人号?.get("phone|13900000041")).toEqual([{ id: 人, name: "周九", customerId: 甲, customerName: expect.any(String) }]);
     expect(索引.联系人号?.get("email|zhou@x.com")).toHaveLength(1);
-    expect(索引.客户类型).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "一般客户"]);
+    expect(索引.客户类型).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "暂不确认"]);
   });
 });
