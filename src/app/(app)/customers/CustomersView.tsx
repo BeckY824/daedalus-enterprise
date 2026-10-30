@@ -275,7 +275,7 @@ export default function CustomersView({
             size="small"
             onClick={async () => {
               message.destroy(key);
-              const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined);
+              const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined, res.ok ? res.公海项目 : undefined);
               router.refresh();
               if (!r.ok) return void message.error(`没能撤销：${r.error}`);
               message.success(`已撤销，${r.updated} 位改回原样`);
