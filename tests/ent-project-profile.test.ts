@@ -7,6 +7,7 @@
  *   - 读 / 存产品需求：存 JSON 数组、去重保序、空数组存 null；坏数据读成 []
  *   - 改项目画像（真库 + 企业字典）：单选只认启用着的项；已存的项停用了，不改它照留、别的项照改；多选同理；
  *     负责人、老板能改，同事、公海里的改不了；没变不写；不是企业版不认（所在地不再是画像的一项，传了不认）
+ *   - 需求状态、产品需求 10-30 换成客户原表的取值：老库第一次读时按序号改名，需求状态多出的第五项停用，产品需求补齐八项；项目上存的原值不动
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
@@ -91,19 +92,19 @@ describe("改项目画像（真库、企业字典）", () => {
     await 改项目画像(乙, 项目id, { budgetLevel: "预算充足" });
     await 停用("projBudget", "预算充足");
     // 界面上改别的项时整卡的值都可能带上：没换的那项不再对字典
-    expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算充足", demandStatus: "商机跟进" })).toEqual({ ok: true, 变了: ["demandStatus"] });
-    expect(await 读()).toMatchObject({ budgetLevel: "预算充足", demandStatus: "商机跟进" });
+    expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算充足", demandStatus: "明确需求" })).toEqual({ ok: true, 变了: ["demandStatus"] });
+    expect(await 读()).toMatchObject({ budgetLevel: "预算充足", demandStatus: "明确需求" });
     await 改项目画像(乙, 项目id, { budgetLevel: "预算匹配" });
     expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算充足" })).toMatchObject({ ok: false, error: expect.stringContaining("可能刚被停用") });
     expect((await 读()).budgetLevel).toBe("预算匹配");
   });
 
   it("多选：存成 JSON 数组；新加的得启用着，已存的停用了照留；清空存 null", async () => {
-    expect(await 改项目画像(乙, 项目id, { productNeeds: ["常规标品", "部署服务"] })).toEqual({ ok: true, 变了: ["productNeeds"] });
-    expect(读产品需求((await 读()).productNeeds)).toEqual(["常规标品", "部署服务"]);
-    await 停用("projProduct", "部署服务");
-    expect(await 改项目画像(乙, 项目id, { productNeeds: ["常规标品", "部署服务", "运维支持"] })).toMatchObject({ ok: true });
-    expect(读产品需求((await 读()).productNeeds)).toEqual(["常规标品", "部署服务", "运维支持"]);
+    expect(await 改项目画像(乙, 项目id, { productNeeds: ["常规标品", "硬件标品"] })).toEqual({ ok: true, 变了: ["productNeeds"] });
+    expect(读产品需求((await 读()).productNeeds)).toEqual(["常规标品", "硬件标品"]);
+    await 停用("projProduct", "硬件标品");
+    expect(await 改项目画像(乙, 项目id, { productNeeds: ["常规标品", "硬件标品", "内容定制"] })).toMatchObject({ ok: true });
+    expect(读产品需求((await 读()).productNeeds)).toEqual(["常规标品", "硬件标品", "内容定制"]);
     expect(await 改项目画像(乙, 项目id, { productNeeds: ["常规标品", "瞎编的"] })).toMatchObject({ ok: false, error: expect.stringContaining("「瞎编的」不在产品需求里") });
     expect(await 改项目画像(乙, 项目id, { productNeeds: "常规标品" as unknown as string[] })).toMatchObject({ ok: false });
     expect(await 改项目画像(乙, 项目id, { productNeeds: [] })).toEqual({ ok: true, 变了: ["productNeeds"] });
@@ -127,5 +128,66 @@ describe("改项目画像（真库、企业字典）", () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算匹配" })).toMatchObject({ ok: false, error: "此版本没有项目画像" });
     expect((await 读()).budgetLevel).toBe("预算充足");
+  });
+});
+
+describe("需求状态、产品需求换成原表取值（10-30）", () => {
+  beforeEach(async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    await resetDb();
+  });
+  afterEach(() => vi.unstubAllEnvs());
+  const 看 = async (kind: Parameters<typeof 企业字典>[0]) => (await 企业字典(kind)).map((x) => [x.id, x.name, x.active]);
+  /** 模拟老库：按老默认建好、补新记号也记过（线上 8702 / 客户服务器就是这样） */
+  async function 老库(kind: string, 名们: string[]) {
+    for (const [i, name] of 名们.entries()) await prisma.entDictItem.create({ data: { id: `dict-${kind}-${i}`, kind, name, sort: i } });
+    await prisma.setting.create({ data: { key: `entDict.defaultAdded.${kind}`, value: String(名们.length) } });
+  }
+
+  it("新库：需求状态四项、产品需求八项", async () => {
+    expect((await 看("projDemand")).map((x) => x[1])).toEqual(["表面触达", "方向明晰", "明确需求", "共识痛点"]);
+    expect((await 看("projProduct")).map((x) => x[1])).toEqual(["常规标品", "硬件标品", "内容标品", "硬件定制", "内容定制", "软件定制", "区域规划", "全案设计"]);
+  });
+
+  it("需求状态老库：前四项按序号改名，订单交付停用不删，自己加的不动；再读不变", async () => {
+    await 老库("projDemand", ["潜客培育", "线索验证", "线索推进", "商机跟进", "订单交付"]);
+    await prisma.entDictItem.create({ data: { kind: "projDemand", name: "自己加的", sort: 5 } });
+    const 期望 = [
+      ["dict-projDemand-0", "表面触达", true],
+      ["dict-projDemand-1", "方向明晰", true],
+      ["dict-projDemand-2", "明确需求", true],
+      ["dict-projDemand-3", "共识痛点", true],
+      ["dict-projDemand-4", "订单交付", false],
+      [expect.any(String), "自己加的", true],
+    ];
+    expect(await 看("projDemand")).toEqual(期望);
+    expect(await 看("projDemand")).toEqual(期望);
+  });
+
+  it("需求状态老库：管理员改过名的第五项不停用", async () => {
+    await 老库("projDemand", ["潜客培育", "线索验证", "线索推进", "商机跟进", "已改名"]);
+    expect((await 看("projDemand"))[4]).toEqual(["dict-projDemand-4", "已改名", true]);
+  });
+
+  it("产品需求老库：后三项按序号改名，内容定制补在第五项，再补后三项；自己加的排最后；项目上存的旧值不动", async () => {
+    await 老库("projProduct", ["常规标品", "内容定制", "部署服务", "运维支持"]);
+    await prisma.entDictItem.create({ data: { kind: "projProduct", name: "自己加的", sort: 4 } });
+    const 人 = await prisma.user.create({ data: { email: "p-dict", name: "p-dict", title: "", role: "SALES", password: "x" } });
+    const 客户 = await prisma.customer.create({ data: { name: "QA-字典客户", phone: "13800001099", salesOwnerId: 人.id } });
+    const 项目 = await prisma.project.create({ data: { name: "QA-字典项目", customerId: 客户.id, ownerId: 人.id, creatorId: 人.id, productNeeds: '["部署服务","内容定制"]' } });
+    const 期望 = [
+      ["dict-projProduct-0", "常规标品", true],
+      ["dict-projProduct-1", "硬件标品", true],
+      ["dict-projProduct-2", "内容标品", true],
+      ["dict-projProduct-3", "硬件定制", true],
+      ["dict-projProduct-4", "内容定制", true],
+      ["dict-projProduct-5", "软件定制", true],
+      ["dict-projProduct-6", "区域规划", true],
+      ["dict-projProduct-7", "全案设计", true],
+      [expect.any(String), "自己加的", true],
+    ];
+    expect(await 看("projProduct")).toEqual(期望);
+    expect(await 看("projProduct")).toEqual(期望);
+    expect(读产品需求((await prisma.project.findUniqueOrThrow({ where: { id: 项目.id } })).productNeeds)).toEqual(["部署服务", "内容定制"]);
   });
 });
