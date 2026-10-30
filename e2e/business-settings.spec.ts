@@ -122,7 +122,7 @@ test.describe.serial("业务配置", () => {
       await page.getByRole("main").getByRole("button", { name: /^更多操作 / }).first().click();
       await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
       await expect(page.getByRole("dialog").getByLabel("所属机构")).toBeVisible();
-      await page.keyboard.press("Escape");
+      await page.getByRole("dialog").getByRole("button", { name: /取\s*消/ }).click();
       await expect(page.getByRole("dialog")).toBeHidden();
     } else {
       await page.goto("/customers");

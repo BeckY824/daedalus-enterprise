@@ -129,7 +129,7 @@ export default function ProjectsView({
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
   // 企业版看板：空列收窄（规则 H）
-  const 有空列 = 企业版 && 看板.some((c) => c.数 === 0);
+  const 有空列 = 企业版 && 看板.some((c) => c.数 === 0) && 看板.some((c) => c.数 > 0); // 全空时不收，留着各列的空态说明
   // 企业版新客户一律走「新线索」向导（先查重）；老客户再开一单走页头下拉里的「给老客户开项目」
   const 新建 = () => router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new");
   // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批

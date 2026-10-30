@@ -285,12 +285,15 @@ test("删渠道 / 删线索：有客户挂着的渠道拦下说清；没转化�
 
   await 登录(page);
   await page.goto("/channels");
-  await page.getByRole("button", { name: `删除 有人渠道${戳}` }).click();
-  await expect(page.getByRole("dialog")).toContainText(`删除渠道「有人渠道${戳}」？`);
-  await page.getByRole("dialog").getByRole("button", { name: /删\s*除/ }).click();
-  await expect(page.locator(".ant-message")).toContainText("名下已有 1 名客户，不能删除");
+  // 删除收进行尾「⋯」（交互规则 D）；有关联数据的直接灰着、写明原因（规则 A），点不出确认框
+  await page.getByRole("button", { name: `更多操作 有人渠道${戳}` }).click();
+  const 灰的删除 = page.getByRole("menuitem", { name: /^删除/ });
+  await expect(灰的删除).toHaveAttribute("aria-disabled", "true");
+  await expect(灰的删除).toContainText("名下有 1 位");
+  await page.keyboard.press("Escape");
   await expect(page.locator("tr.ant-table-row", { hasText: `有人渠道${戳}` })).toHaveCount(1);
-  await page.getByRole("button", { name: `删除 空渠道${戳}` }).click();
+  await page.getByRole("button", { name: `更多操作 空渠道${戳}` }).click();
+  await page.getByRole("menuitem", { name: "删除", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: /删\s*除/ }).click();
   await expect(page.locator("tr.ant-table-row", { hasText: `空渠道${戳}` })).toHaveCount(0);
 
