@@ -71,8 +71,9 @@ test("跟进记录：所属客户下面一行公司，没公司只一行；按�
   const 名框 = (await 有.getByRole("link", { name: `${前缀}·王建国` }).boundingBox())!;
   const 公司框 = (await 公司行.boundingBox())!;
   expect(公司框.y).toBeGreaterThanOrEqual(名框.y + 名框.height - 1);
-  // 长公司名一行省略，不撑破这一格
-  expect(await 公司行.evaluate((e) => getComputedStyle(e).whiteSpace)).toBe("nowrap");
+  // 长公司名折行显示完整（10-30 改，原来一行省略），不撑破这一格
+  expect(await 公司行.evaluate((e) => getComputedStyle(e).overflowWrap)).toBe("anywhere");
+  expect(await 公司行.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
   await expect(没.locator(".cust-link-co")).toHaveCount(0);
 
   // 只按公司名搜：只剩有公司的那位
