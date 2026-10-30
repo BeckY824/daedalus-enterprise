@@ -125,7 +125,7 @@ export default function ChannelPicker({
       expandTrigger="hover"
       notFoundContent="没有对得上的渠道"
       onChange={(v) => onChange?.(选中的渠道(v))}
-      // 窄屏两三列并排会顶出屏幕：每列收窄、长名字省略（格子上有 title 看全）
+      // 每列收窄、长名字折行显示完整（globals.css .chan-picker-pop；格子上也有 title）
       classNames={{ popup: { root: "chan-picker-pop" } }}
       // 框里只写全称：三级都写出来太长，全称里本来就带着渠道名称和来源
       displayRender={(labels, sel) => {

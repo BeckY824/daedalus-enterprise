@@ -206,15 +206,15 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     {
       title: "客户名称", key: "客户", width: 168,
       render: (_, r) => r.客户名
-        ? <RowLink href={`/customers/${r.customerId}`} className="link-strong clamp" title={r.客户名}>{r.客户名}</RowLink>
+        ? <RowLink href={`/customers/${r.customerId}`} className="link-strong fulltext" title={r.客户名}>{r.客户名}</RowLink>
         : <span className="muted">领取后可见</span>,
     },
     {
       title: "项目名称", key: "项目", width: 168,
       render: (_, r) => r.项目名
         ? (r.projectId && r.种 === "项目"
-          ? <RowLink href={`/projects/${r.projectId}`} className="clamp" title={r.项目名}>{r.项目名}</RowLink>
-          : <span className="clamp" title={r.项目名}>{r.项目名}</span>)
+          ? <RowLink href={`/projects/${r.projectId}`} className="fulltext" title={r.项目名}>{r.项目名}</RowLink>
+          : <span className="fulltext" title={r.项目名}>{r.项目名}</span>)
         : <span className="muted">还没有项目</span>,
     },
     {

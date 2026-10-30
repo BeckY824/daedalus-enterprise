@@ -69,6 +69,9 @@ describe("客户状态配色：稳定，改名不变色", () => {
     expect(客户状态色({ id: "dict-custStatus-2", name: "成交" })).toBe("green");
     expect(客户状态色({ id: "dict-custStatus-2", name: "已成交" })).toBe("green");
     expect(客户状态色({ id: "dict-custStatus-8", name: "异常" })).toBe("red");
+    // 10-30 客户：状态用颜色区分——九个默认项两两不同色（原来潜在 blue、意向 geekblue 看着一样）
+    expect(new Set(Array.from({ length: 9 }, (_, i) => 客户状态色({ id: `dict-custStatus-${i}`, name: "" }))).size).toBe(9);
+    expect(客户状态色({ id: "dict-custStatus-1", name: "意向" })).toBe("purple");
   });
   it("自己加的按名字散，同名同色，表里一项一色", () => {
     const a = 客户状态色({ id: "x1", name: "待回访" });

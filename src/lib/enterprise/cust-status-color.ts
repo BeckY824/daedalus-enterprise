@@ -1,11 +1,11 @@
 /**
  * 企业版客户状态的标签配色（10-29，中栏名单按客户状态分组）。字典表没有颜色列（不加迁移），配色在这里定死：
- * - 默认九项按固定 id 认（dict-custStatus-<序号>），改了名颜色不变：前段蓝青、成交交付绿、复购忠诚紫金、流失灰、丢单橙红、异常红；
+ * - 默认九项按固定 id 认（dict-custStatus-<序号>），改了名颜色不变：潜在蓝、意向紫（10-30：原来意向是深蓝，和潜在分不开）、成交绿、交付青、复购品红、忠诚金、丢单橙红、流失灰、异常红；
  * - 管理员自己加的按名字散到一组备用色上，同一个名字永远同一个颜色；
  * - 字典里已经没有的旧值（停用后删不掉的老数据）同样按名字散。
  * 纯函数，客户端、服务端都能用。
  */
-const 默认色 = ["blue", "geekblue", "green", "cyan", "purple", "gold", "volcano", "default", "red"] as const;
+const 默认色 = ["blue", "purple", "green", "cyan", "magenta", "gold", "volcano", "default", "red"] as const;
 const 备用色 = ["magenta", "lime", "orange", "geekblue", "purple", "cyan", "gold", "blue"] as const;
 
 function 散(name: string): string {

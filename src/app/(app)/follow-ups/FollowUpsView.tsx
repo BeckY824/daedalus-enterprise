@@ -126,7 +126,7 @@ export default function FollowUpsView({
       ? [{
           title: "项目", key: "project", dataIndex: "project", width: 120, responsive: ["xl"],
           render: (v: Row["project"]) =>
-            v ? <RowLink href={`/projects/${v.id}`} className="clamp" title={v.name}>{v.name}</RowLink> : <span className="muted">—</span>,
+            v ? <RowLink href={`/projects/${v.id}`} className="fulltext" title={v.name}>{v.name}</RowLink> : <span className="muted">—</span>,
         } satisfies 列<Row>]
       : []),
     // 1024 宽时先收对接人，整张表不用左右拖；1200 以上才出（10-27）
