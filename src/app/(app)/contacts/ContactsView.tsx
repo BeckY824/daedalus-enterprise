@@ -131,8 +131,8 @@ export default function ContactsView({
           </span>
         ),
     },
-    // 「关系」就是他和这位的关系（本人、采购、财务；教培里是母亲、父亲），候选跟着业务配置走
-    { title: "关系", key: "position", dataIndex: "position", width: 120, render: (v) => v ?? <span className="muted">—</span> },
+    // 他在客户那边是什么人（本人、采购、财务；教培里是母亲、父亲），候选跟着业务配置走。列名原叫「关系」，看不出指什么（交互方案 P2，10-30）
+    { title: "职位 / 角色", key: "position", dataIndex: "position", width: 120, render: (v) => v ?? <span className="muted">—</span> },
     {
       title: "电话 · 微信", 列名: "电话 · 微信", key: "phone", width: 220,
       render: (_, r) =>
@@ -197,7 +197,7 @@ export default function ContactsView({
             <ListSearch width={300} placeholder={`姓名 / 电话 / 微信 / ${b.customer} / ${b.fields.school}`} value={kw} onChange={setKw} onSearch={search} />
             <Select
               style={{ width: 140 }}
-              placeholder="全部关系"
+              placeholder="全部职位 / 角色"
               allowClear
               value={关系 || undefined}
               onChange={(v) => set关系(v ?? "")}

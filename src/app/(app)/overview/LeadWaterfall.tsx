@@ -35,7 +35,7 @@ export default function LeadWaterfall({ 节点, 转商机, 说明 }: { 节点: �
   const 合计 = 条数.reduce((s, v) => s + v, 0) + 转商机;
 
   const option: EChartsCoreOption = useMemo(() => {
-    const 名 = [...节点.map((n) => n.node), "已转商机", "线索合计"];
+    const 名 = [...节点.map((n) => n.node), "已转商机阶段", "线索合计"];
     const 末 = [...条数, 转商机, 合计];
     // 每条的底座 = 前面几条加起来；合计从 0 起
     const 底 = [...条数.map((_, i) => 条数.slice(0, i).reduce((s, v) => s + v, 0)), 条数.reduce((s, v) => s + v, 0), 0];
@@ -62,7 +62,7 @@ export default function LeadWaterfall({ 节点, 转商机, 说明 }: { 节点: �
           return `${名[i]} · 共 ${末[i]} 个<br/>${行.join("<br/>")}`;
         },
       },
-      legend: { top: 0, left: 0, itemWidth: 10, itemHeight: 10, textStyle: 轴字, data: [...段们.map((d) => d.名), "已转商机"] },
+      legend: { top: 0, left: 0, itemWidth: 10, itemHeight: 10, textStyle: 轴字, data: [...段们.map((d) => d.名), "已转商机阶段"] },
       grid: { left: 8, right: 36, top: 30, bottom: 4, containLabel: true },
       xAxis: { type: "value", minInterval: 1, splitLine: { lineStyle: { color: palette.lineSoft } }, axisLabel: 轴字 },
       yAxis: {
@@ -76,7 +76,7 @@ export default function LeadWaterfall({ 节点, 转商机, 说明 }: { 节点: �
       series: [
         { name: "底", type: "bar", stack: "瀑布", silent: true, itemStyle: { color: "transparent" }, data: 底, tooltip: { show: false } },
         ...段们.map((d) => 列(补(节点.map((n) => n[d.键])), d.色, d.名)),
-        列([...节点.map(() => 0), 转商机, 0], palette.success, "已转商机"),
+        列([...节点.map(() => 0), 转商机, 0], palette.success, "已转商机阶段"),
         列([...节点.map(() => 0), 0, 合计], palette.brand, "线索合计"),
         // 条尾的数：一段看不见的 0 长柱子，只负责把这一条一共几个写在右边
         {

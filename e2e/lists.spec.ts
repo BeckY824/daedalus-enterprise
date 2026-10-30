@@ -287,7 +287,7 @@ test("J-015 联系人页按关系本地筛完：不冒「只有最近 N 条，�
   await 登录(page);
   await page.goto("/contacts");
   await expect(page.locator(".ant-table-row", { hasText: "财务丙" })).toBeVisible();
-  const 关系 = page.locator(".ant-select", { hasText: "全部关系" });
+  const 关系 = page.locator(".ant-select", { hasText: "全部职位 / 角色" });
   await expect(async () => {
     await 关系.click();
     await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "采购" })).toBeVisible({ timeout: 2_000 });

@@ -67,7 +67,7 @@ it("新线索页：标题「新线索」，只有列表，三个线索节点都�
   expect(await page.getByRole("columnheader", { name: "阶段", exact: true }).count()).toBe(0);
   expect(t).toContain("线索流失");
   expect(t).toContain("转了商机到「项目」里接着走");
-  await page.getByRole("button", { name: "新线索", exact: true }).click();
+  await page.getByRole("button", { name: /新线索$/ }).click();
   expect(await 去了(page)).toEqual(["/leads/new"]);
   expect(errors).toEqual([]); await page.close();
 });
@@ -76,7 +76,7 @@ it("开关关（项目页本身）：标题「项目」，有看板/列表切换
   const { page, errors } = await 打开(false);
   expect(await page.getByRole("heading").first().innerText()).toBe("项目");
   expect(await page.locator(".ant-segmented").count()).toBe(1);
-  expect(await page.getByRole("button", { name: "新线索", exact: true }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: /新线索$/ }).count()).toBe(0);
   await page.getByRole("button", { name: "新建项目" }).click();
   expect(await 去了(page)).toEqual(["/projects/new"]);
   expect(errors).toEqual([]); await page.close();
@@ -85,7 +85,7 @@ it("开关关（项目页本身）：标题「项目」，有看板/列表切换
 it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：不横向溢出，新建按钮在可视区、点得中", async (w) => {
   const { page } = await 打开(true, w);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  const box = await page.getByRole("button", { name: "新线索", exact: true }).boundingBox();
+  const box = await page.getByRole("button", { name: /新线索$/ }).boundingBox();
   expect(box).not.toBeNull();
   expect(box!.x + box!.width).toBeLessThanOrEqual(w);
   const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);

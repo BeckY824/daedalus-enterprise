@@ -34,6 +34,7 @@ import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { WhatsApp网址, 官网网址, 官网短写, 客户等级, 客户等级说明, type 客户等级 as 等级 } from "@/lib/customer-extra";
 import { 级别选项, 拼地址 } from "@/lib/enterprise/customer-v2";
+import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import LevelStars from "@/components/LevelStars";
 import LocalTime from "@/components/LocalTime";
 import { 未分级 } from "./query-shared";
@@ -50,6 +51,11 @@ import CurrencySelect from "@/components/CurrencySelect";
  * 原本无论实际改了几条都提示「已变更」——选错页、行被别人删掉都看不出来。
  * 只有真改了才说改了几条；没改动和已消失的分开讲，否则人对不上自己勾了几条。
  */
+/** 筛选下拉顶上一行：这一项筛的是什么（交互方案 P2，10-30）。每个值各自的含义等字典里补了说明再加 */
+function 下拉说明(话: string) {
+  return <div className="muted" style={{ padding: "4px 12px 6px", fontSize: "var(--fs-note)", borderBottom: "1px solid var(--line)", marginBottom: 4 }}>{话}</div>;
+}
+
 function bulkSummary(res: Extract<BulkResult, { ok: true }>, action: string): string {
   const parts = [`${action}：${res.updated} 条`];
   if (res.unchanged) parts.push(`${res.unchanged} 条本来就是`);
@@ -676,6 +682,7 @@ export default function CustomersView({
             />
             {企业 ? (
               <Select style={{ width: 140 }} placeholder="全部客户状态" allowClear aria-label="客户状态"
+                popupRender={(menu) => <>{下拉说明(字典定义.custStatus.说明)}{menu}</>} popupMatchSelectWidth={false}
                 value={f.custStatus || undefined} onChange={(v) => apply({ custStatus: v ?? "" })}
                 options={[...new Set([...客户状态选项, ...(f.custStatus ? [f.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
             ) : (
@@ -725,6 +732,7 @@ export default function CustomersView({
                   )}
                   {企业 && (
                     <Select style={{ width: "100%" }} placeholder="全部客户类型" allowClear aria-label="客户类型"
+                      popupRender={(menu) => <>{下拉说明(字典定义.custType.说明)}{menu}</>}
                       value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
                       options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
                   )}

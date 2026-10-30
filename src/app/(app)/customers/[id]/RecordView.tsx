@@ -930,7 +930,13 @@ export default function RecordView({
           <div className="rec-sec">
             <div className="rec-sec-t">
               <span>联系人 {contacts.length > 0 && contacts.length}</span>
-              {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
+              {/* 企业版：一键看这个客户的全部联系人（联系人页按客户名筛） */}
+              {(企业 || !只读) && (
+                <Space size={12}>
+                  {企业 && <Link href={`/contacts?keyword=${encodeURIComponent(customer.name)}`}>全部联系人</Link>}
+                  {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
+                </Space>
+              )}
             </div>
             {contacts.length === 0 && <div className="rec-empty">还没有联系人</div>}
             {contacts.map((c) =>

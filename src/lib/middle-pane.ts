@@ -11,8 +11,9 @@
  * 快捷键 ⌘\（Windows 是 Ctrl+\）切换；记录页的 ⌘K「换一位」照旧，名单不在时打开抽屉、光标进搜索框。
  */
 import { useCallback, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useLocalPref } from "@/lib/local-pref";
-import { useNarrow, useDrawerOpen, useRosterInDrawer, 设抽屉, type 中栏 } from "@/lib/roster";
+import { useNarrow, useDrawerOpen, useRosterInDrawer, 设抽屉, 名单门槛, 项目名单门槛, type 中栏 } from "@/lib/roster";
 
 export type { 中栏 };
 
@@ -24,7 +25,9 @@ export const 对话列表门槛 = 220 + 232 + 640;
 
 export function useMiddlePane(栏: 中栏) {
   const [收着, set收着] = useLocalPref<boolean>(`pane.${栏}.collapsed`, false);
-  const 名单太窄 = useRosterInDrawer();
+  // 项目详情页的名单收得更早（见 lib/roster.ts 项目名单门槛）；名单、主区那颗按钮都走这里，两边口径一致
+  const 项目页 = (usePathname() ?? "").startsWith("/projects/");
+  const 名单太窄 = useRosterInDrawer(项目页 ? 项目名单门槛 : 名单门槛);
   const 列表太窄 = useNarrow(`(max-width: ${对话列表门槛 - 1}px)`);
   const 太窄 = 栏 === "roster" ? 名单太窄 : 列表太窄;
   const 抽屉开着 = useDrawerOpen(栏);
