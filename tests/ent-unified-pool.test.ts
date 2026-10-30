@@ -255,3 +255,16 @@ describe("项目行", () => {
     expect(页.属性数.公海商机).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe("公海客户过 999 个", () => {
+  it("每个都带项目也能读：Prisma 把 IN 拆批再合，orderBy 字段没 select 会 panic（10-30 8702）", async () => {
+    const 数 = 1005;
+    const ids = Array.from({ length: 数 }, (_, i) => `big-${String(i).padStart(4, "0")}`);
+    await prisma.customer.createMany({ data: ids.map((id, i) => ({ id, name: `大客户${i}`, phone: `1380000${String(i).padStart(4, "0")}`, salesOwnerId: 老板.id })) });
+    await prisma.customerPool.createMany({ data: ids.map((customerId) => ({ customerId, reason: "手动" })) });
+    await prisma.project.createMany({ data: ids.map((customerId, i) => ({ name: `大项目${i}`, customerId, ownerId: 老板.id, creatorId: 老板.id, phase: "线索", node: "潜客培育" })) });
+    const 页 = await 读公海页(老板, {}, 1, 20);
+    expect(页.行.length).toBe(20);
+    expect(页.属性数.公海线索).toBe(数);
+  });
+});

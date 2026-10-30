@@ -13,11 +13,31 @@ import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 import { 认首页卡, 首页卡条件, 即将逾期 } from "./home-cards";
 import { 首页卡的人 } from "./home-cards-db";
-import { 字典of, 阶段与进程, type 阶段字典 } from "./stage-dict";
+import { 字典of, 阶段与进程, 阶段们, 结局们, type 阶段字典 } from "./stage-dict";
+import type { Prisma } from "@/generated/prisma";
 import { 待我复核的 } from "./lead-verify";
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
-export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string };
+export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string };
+
+/**
+ * 按阶段、进程筛（10-30 用户：「项目页面没有关于进程，阶段的筛选选项」）。和列表上的显示同一套认法（阶段与进程）：
+ * 有结局的按结局认阶段（线索流失归线索、丢单归商机…），进程选结局 = 筛这个结局，选节点 = 停在这个节点、还没结局的。
+ * 认不出的值当没筛。
+ */
+export function 阶段进程条件(sp: { phase?: string; node?: string }, 字典: 阶段字典): { 阶段: 阶段 | ""; 进程: string; where: Prisma.ProjectWhereInput[] } {
+  const 阶段 = (阶段们 as readonly string[]).includes(sp.phase ?? "") ? (sp.phase as 阶段) : "";
+  const 是结局 = (结局们 as readonly string[]).includes(sp.node ?? "");
+  const 是节点 = 阶段们.some((s) => 字典.节点们[s].includes(sp.node ?? ""));
+  const 进程 = 是结局 || 是节点 ? (sp.node as string) : "";
+  const where: Prisma.ProjectWhereInput[] = [];
+  if (阶段) {
+    const 归它的结局 = 字典.出口们[阶段].flatMap((o) => (o.结局 ? [o.结局] : []));
+    where.push({ OR: [{ phase: 阶段, result: null }, { result: { in: 归它的结局 } }] });
+  }
+  if (进程) where.push(是结局 ? { result: 进程 } : { node: 进程, result: null });
+  return { 阶段, 进程, where };
+}
 
 /** 一页最多列这么多个项目（按最近改过排），更早的靠搜索 */
 export const 项目上限 = 500;
@@ -46,14 +66,19 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 卡 = 规则 ? 认首页卡(sp.f) : "";
   // 点卡进来的，和卡上的数同一圈人（首页卡的人：业务员只看自己，上级看自己 + 下属，老板全看），数对得上
   const 卡的人 = 卡 ? await 首页卡的人(me) : undefined;
+  const 阶进 = 阶段进程条件(sp, 字典of(企));
+  const 并且 = [
+    ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的人 ? [{ ownerId: { in: [...卡的人] } }] : [])] : []),
+    ...阶进.where,
+  ];
   const rows = await prisma.project.findMany({
     where: {
       ...(只看阶段 ? { phase: 只看阶段 } : {}),
       ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }] } : {}),
       ...(typeof sp.ownerId === "string" && sp.ownerId ? { ownerId: sp.ownerId } : {}),
       ...(sp.pool === "1" ? { pooledAt: { not: null } } : {}),
-      // 卡的条件里也可能有 OR（即将逾期的粗筛），放进 AND 里不和搜索词的 OR 打架
-      ...(卡 && 规则 ? { AND: [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的人 ? [{ ownerId: { in: [...卡的人] } }] : [])] } : {}),
+      // 卡的条件、阶段筛里也有 OR（即将逾期的粗筛、按结局认阶段），放进 AND 里不和搜索词的 OR 打架
+      ...(并且.length ? { AND: 并且 } : {}),
     },
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
@@ -103,7 +128,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     // 企业版线索验证（P12）：等我复核 / 终验 / 认领的线索
     待复核们: 待复核.map((r) => ({ ...r, 更新于: r.更新于.toISOString() })),
-    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡 },
+    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程 },
   };
 }
 
