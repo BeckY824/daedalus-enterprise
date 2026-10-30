@@ -122,6 +122,24 @@ describe("纯函数", () => {
     expect(验一行号码({ 名: "钉钉", kind: "custom:钉钉" }, " Ab C ")).toEqual({ ok: true, 值: "Ab C", 键: "abc" });
   });
 
+  it("传真同座机；Telegram 认用户名（可带 @，5–32 位字母数字下划线）或 + 开头的手机号", () => {
+    expect(认号码种类({ id: "dict-contactKind-6", name: "传真" }).kind).toBe("fax");
+    expect(认号码种类({ id: "dict-contactKind-7", name: "Telegram" }).kind).toBe("telegram");
+    const 传真 = { 名: "传真", kind: "fax" };
+    expect(验一行号码(传真, "+86 (21) 1234-5678")).toEqual({ ok: true, 值: "+86 (21) 1234-5678", 键: "862112345678" });
+    for (const 坏 of ["fax123", "12-3", "1".repeat(21)]) expect(验一行号码(传真, 坏)).toMatchObject({ ok: false, error: expect.stringContaining("传真") });
+
+    const tg = { 名: "Telegram", kind: "telegram" };
+    expect(验一行号码(tg, "@Shi_Li01")).toEqual({ ok: true, 值: "@Shi_Li01", 键: "shi_li01" });
+    expect(验一行号码(tg, "shili")).toEqual({ ok: true, 值: "shili", 键: "shili" });
+    expect(验一行号码(tg, "a".repeat(32)).ok).toBe(true);
+    expect(验一行号码(tg, "+44 7911 123456")).toEqual({ ok: true, 值: "+447911123456", 键: "447911123456" });
+    expect(验一行号码(tg, "＋86 139 0000 0001")).toEqual({ ok: true, 值: "13900000001", 键: "13900000001" });
+    for (const 坏 of ["abcd", "@abcd", "a".repeat(33), "shi-li", "shi li", "@@shili", "示例用户名", "+12", "+86 1390000"]) {
+      expect(验一行号码(tg, 坏)).toMatchObject({ ok: false, error: expect.stringContaining(`Telegram「${坏}」`) });
+    }
+  });
+
   it("老三格取第一个手机 / 邮箱 / 微信；老联系人没有子表时拿老三格拼号码几行", () => {
     expect(老三格([{ kind: "landline", value: "1" }, { kind: "phone", value: "13800000001" }, { kind: "phone", value: "13800000002" }, { kind: "email", value: "a@b.c" }]))
       .toEqual({ phone: "13800000001", email: "a@b.c", wechat: null });
@@ -165,9 +183,10 @@ describe("级别 D 改 C", () => {
 describe("字典默认", () => {
   it("分配方式、号码类型", async () => {
     expect(await 可选项("custAssign")).toEqual(["自持", "非自持", "公海领取"]);
-    expect(字典定义.contactKind.默认).toEqual(["手机", "座机", "微信", "邮箱", "WhatsApp", "阿里国际站ID"]);
+    expect(字典定义.contactKind.默认).toEqual(["手机", "座机", "微信", "邮箱", "WhatsApp", "阿里国际站ID", "传真", "Telegram"]);
     const 表 = await 号码种类表();
-    expect(表.map((x) => x.kind)).toEqual(["phone", "landline", "wechat", "email", "whatsapp", "wangwang"]);
+    expect(表.map((x) => x.kind)).toEqual(["phone", "landline", "wechat", "email", "whatsapp", "wangwang", "fax", "telegram"]);
+    expect(种类叫法(表, "telegram")).toBe("Telegram");
     expect(种类叫法(表, "custom:钉钉")).toBe("钉钉");
     expect(种类叫法(表, "landline")).toBe("座机");
   });

@@ -6,7 +6,8 @@
  * 清洗做的事：
  *   - 按列映射把原列落到标准字段；映射成「进备注」的列拼成「表头：值」进备注（跟进进内容），一格不丢
  *   - 负责人、阶段、线索状态、跟进方式、跟进状态按映射换成我们的值；对不上的用默认值 + 记一笔「提醒」
- *   - 客户状态、客户类型（企业版字典）和启用的选项一字不差才落，对不上原样进备注
+ *   - 客户状态、客户类型（企业版字典）和启用的选项一字不差才落，对不上原样进备注；客户类型先过 客户类型对照（mapping.ts），
+ *     对成空的（原表写的是意向客户这类阶段）不落也不进备注
  *   - 电话、日期、金额、赢率按我们的格式认；认不出的原样进备注 + 提醒，不硬塞
  *   - 同一批里同号、外部 ID 不同 → 认作同一家，后一条并进前一条（名字不同另提醒）；名字很像但号不同 → 疑似重名，照写、提醒
  *   - 联系人 / 商机 / 跟进挂客户：先认所属客户 ID，再认客户名（本批里唯一、或我们这边唯一）；认不出整条跳过
@@ -23,7 +24,7 @@ import { 国家候选 } from "../customer-extra";
 import { 联系人号查重键 } from "../enterprise/customer-v2";
 import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
-import { 拆多人, 进备注, 输单 } from "./mapping";
+import { 拆多人, 进备注, 输单, 对客户类型 } from "./mapping";
 import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
 import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
@@ -326,6 +327,14 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     return null;
   };
 
+  /** 客户类型：先过对照表，对上的（还启用着）就落、对成空的不落不提醒；其余照 认字典，原值进备注 */
+  const 认客户类型 = (r: 原始记录, v: string | undefined, 附加: string[]): string | null => {
+    const 对 = 对客户类型(v);
+    if (对 === "") return null;
+    if (对 && 本地.客户类型?.includes(对)) return 对;
+    return 认字典(r, v, 附加, "客户类型", 本地.客户类型);
+  };
+
   /**
    * 联系人号码查重：每格算查重键，先比本批前面的（报一次就够），再比我们这边已有的（以前导过、落到同一位的不算）。
    * 只提醒不拦：照写，说清撞了谁
@@ -540,7 +549,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);
         const whatsapp = 补格(s.值.whatsapp, 号.whatsapp, "WhatsApp", 附加);
         const custStatus = 认字典(r, s.值.custStatus, 附加, "客户状态", 本地.客户状态);
-        const customerType = 认字典(r, s.值.customerType, 附加, "客户类型", 本地.客户类型);
+        const customerType = 认客户类型(r, s.值.customerType, 附加);
         const source = s.值.source ? (查格式("来源", s.值.source) ?? s.值.source) : null;
         const channelId = 认渠道(r, s.值.source, source, 附加);
         const 新 = 客户新格(r, s.值, 附加);

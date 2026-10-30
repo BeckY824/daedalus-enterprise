@@ -34,8 +34,11 @@ export async function 企业字典(kind: 字典种类, db: Prisma.TransactionCli
     }
     if (停用.length) await 记下补停过(kind, db);
     if (默认顺序) await 记下(换顺序记号(kind), db);
+    await 记下补新过(kind, db);
   } else {
     if (停用.length) await 补停用(kind, 停用, db);
+    // 先补新加的默认项（排在原序号上），补换顺序 才看得到它们
+    await 补新默认(kind, 停用, db);
     if (默认顺序) await 补换顺序(kind, db);
   }
   return db.entDictItem.findMany({ where: { kind }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
@@ -75,6 +78,29 @@ async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
     占着.add(新名);
   }
   await db.setting.upsert({ where: { key: 换默认记号(kind) }, update: {}, create: { key: 换默认记号(kind), value: "true" } });
+}
+
+/**
+ * 默认项后来往末尾加过（10-30：号码类型加传真、Telegram，客户类型加专业运营商、一般客户）：之前建好的库里缺哪个默认 id 就建哪个，
+ * 排在序号位置上；原来排在这些位置及以后的（自己加的项）整体往后让，还在新默认后面。名字已经被别的项占了的跳过（不和人加的重名）。
+ * 记号存的是补到第几项，以后默认再往后加还会补；默认停用的建出来就停着
+ */
+const 补新记号 = (kind: 字典种类) => `entDict.defaultAdded.${kind}`;
+async function 记下补新过(kind: 字典种类, db: Prisma.TransactionClient) {
+  const value = String(字典定义[kind].默认.length);
+  await db.setting.upsert({ where: { key: 补新记号(kind) }, update: { value }, create: { key: 补新记号(kind), value } });
+}
+async function 补新默认(kind: 字典种类, 停用: readonly string[], db: Prisma.TransactionClient) {
+  const { 默认 } = 字典定义[kind];
+  const 记 = await db.setting.findUnique({ where: { key: 补新记号(kind) } });
+  if (记 && Number(记.value) >= 默认.length) return;
+  const 现有 = await db.entDictItem.findMany({ where: { kind }, select: { id: true, name: true } });
+  const 缺 = 默认.flatMap((name, i) => (现有.some((x) => x.id === 默认id(kind, i)) || 现有.some((x) => x.name === name) ? [] : [{ name, i }]));
+  if (缺.length) {
+    await db.entDictItem.updateMany({ where: { kind, sort: { gte: 缺[0].i } }, data: { sort: { increment: 缺.length } } });
+    for (const { name, i } of 缺) await db.entDictItem.create({ data: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } });
+  }
+  await 记下补新过(kind, db);
 }
 
 /** 第 i 个默认项排第几：有 默认顺序 按它，没有就是 i */

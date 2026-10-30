@@ -152,7 +152,8 @@ export const 是附件分类 = (v: unknown): v is 附件分类 => (附件分类�
 /**
  * 号码类型字典（contactKind）的默认几项 → ContactMethod.kind 和验法（下标 = 字典默认项的序号，dict-kinds.ts 的默认顺序）。
  * 按序号认，不按名字认：设置里把「手机」改叫「手机号」，存的 kind 还是 phone。
- * 验：能用建档那套格式规矩的（手机 / 邮箱 / 微信 / 旺旺）按 验号码；座机、WhatsApp 和自己加的只做轻校验（号码格式没有定稿）
+ * 验：能用建档那套格式规矩的（手机 / 邮箱 / 微信 / 旺旺）按 验号码；座机、WhatsApp、传真和自己加的只做轻校验（号码格式没有定稿），
+ * Telegram 认用户名或 + 开头的号码（验一行号码）。只能往末尾加：下标对着字典默认项的 id
  */
 export const 内置号码种类: readonly { kind: string; 验?: 号码类型 }[] = [
   { kind: "phone", 验: "手机号" },
@@ -161,6 +162,8 @@ export const 内置号码种类: readonly { kind: string; 验?: 号码类型 }[]
   { kind: "email", 验: "邮箱" },
   { kind: "whatsapp" },
   { kind: "wangwang", 验: "旺旺ID" },
+  { kind: "fax" },
+  { kind: "telegram" },
 ];
 /** 自己加的号码类型存成 custom:<叫法> */
 export const 自定种类前缀 = "custom:";
@@ -179,7 +182,7 @@ export function 认号码种类(项: { id: string; name: string }): 号码种类
 
 /**
  * 验一个号（联系人表单交上来的一行）。按种类：有 验 的走 验号码；其余去首尾空格、压空白，长度不超；
- * 座机 / WhatsApp 要有至少 5 位数字、只许数字和 + - ( ) 空格 #（分机）。键 = 查重 / 去重比的规整值
+ * 座机 / WhatsApp / 传真要有至少 5 位数字、只许数字和 + - ( ) 空格 #（分机）；Telegram 见 验Telegram。键 = 查重 / 去重比的规整值
  */
 export function 验一行号码(种: 号码种类, 原: unknown): { ok: true; 值: string; 键: string } | { ok: false; error: string } {
   const s = typeof 原 === "string" ? 原.trim().replace(/\s+/g, " ") : "";
@@ -189,12 +192,33 @@ export function 验一行号码(种: 号码种类, 原: unknown): { ok: true; �
     const r = 验号码(种.验, s);
     return r.ok ? { ok: true, 值: r.值, 键: r.键 } : { ok: false, error: `${种.名}「${s}」：${r.提示}` };
   }
-  if (种.kind === "landline" || 种.kind === "whatsapp") {
+  if (种.kind === "telegram") return 验Telegram(种.名, s);
+  if (数字类.has(种.kind)) {
     const 数字 = s.replace(/\D/g, "");
     if (!/^[\d+\-()（）\s#]+$/.test(s.replace(/[０-９]/g, "0")) || 数字.length < 5 || 数字.length > 20) return { ok: false, error: `${种.名}「${s}」格式不对：只填数字（可以带 + - 和括号）` };
     return { ok: true, 值: s, 键: 数字 };
   }
   return { ok: true, 值: s, 键: 自定号码键(s) };
+}
+
+/** 只认数字的几类：座机、WhatsApp、传真（查重键只留数字） */
+const 数字类 = new Set(["landline", "whatsapp", "fax"]);
+/** Telegram 用户名：开头可带一个 @，5–32 位字母、数字、下划线 */
+const Telegram用户名 = /^@?([A-Za-z0-9_]{5,32})$/;
+const 加号开头 = (s: string) => /^[+＋]/.test(s);
+
+/**
+ * Telegram（10-30）：+ 开头的当手机号验（国际号码规矩，+86 后 11 位存成国内号）；其余当用户名，存原样，
+ * 键 = 去掉 @、转小写（Telegram 用户名不分大小写）
+ */
+function 验Telegram(名: string, s: string): { ok: true; 值: string; 键: string } | { ok: false; error: string } {
+  if (加号开头(s)) {
+    const r = 验号码("手机号", s);
+    return r.ok ? { ok: true, 值: r.值, 键: r.键 } : { ok: false, error: `${名}「${s}」：${r.提示}` };
+  }
+  const m = Telegram用户名.exec(s);
+  if (!m) return { ok: false, error: `${名}「${s}」格式不对：填用户名（5–32 位字母、数字、下划线，可带 @），或 + 开头的号码` };
+  return { ok: true, 值: s, 键: m[1].toLowerCase() };
 }
 
 /**
@@ -208,15 +232,16 @@ export function 自定号码键(s: string): string {
 
 /**
  * 联系人号码的查重键（导入用，P13 第 2 条）：库里存的是原样，导入那边拿不到 验号码 的结果，这里按 kind 把一个号算成
- * 和 联系人查重 同一个口径的键：手机去分隔符、去 +86 / 0086 / 00；邮箱、微信、旺旺去空格不分大小写；座机、WhatsApp 只留数字；
- * 自己加的走 自定号码键。算不出（空的、全是符号）返回 ""，不拿来比
+ * 和 联系人查重 同一个口径的键：手机去分隔符、去 +86 / 0086 / 00；邮箱、微信、旺旺去空格不分大小写；座机、WhatsApp、传真只留数字；
+ * Telegram 号码同手机、用户名去 @ 转小写；自己加的走 自定号码键。算不出（空的、全是符号）返回 ""，不拿来比
  */
 export function 联系人号查重键(kind: string, v: string | null | undefined): string {
   const s = String(v ?? "").trim();
   if (!s) return "";
+  if (kind === "telegram") return 加号开头(s) ? 联系人号查重键("phone", s.replace(/^＋/, "+")) : (Telegram用户名.exec(s)?.[1].toLowerCase() ?? "");
   if (kind === "phone") return 号键(s).replace(/\./g, "").replace(/^00(?=\d)/, "").replace(/^86(?=1\d{10}$)/, "");
   if (kind === "email" || kind === "wechat" || kind === "wangwang") return s.toLowerCase().replace(/\s+/g, "");
-  if (kind === "landline" || kind === "whatsapp") {
+  if (数字类.has(kind)) {
     const 数字 = s.replace(/\D/g, "");
     return 数字.length >= 5 ? 数字 : "";
   }

@@ -5,6 +5,9 @@
  *   - 联系方式全部查重：各种类型（含自己加的）同类型 + 规整值算撞，+86 / 0086、大小写、分隔符不算不同；saveContact 撞了不存、照存放行、
  *     编辑只查新出现的号；导入照写 + 提醒「号码重复」（本批前后、和我们这边已有的）
  *   - 客户类型（迁移 092，字典 custType）：保存 / 单格改只收启用的、原值停用了原样交回也认；导入认得上才落，对不上进备注
+ *     10-30 换了一套默认（贸易商→中间贸易商、代理商→国家代理商、经销商默认停用、加专业运营商 / 一般客户），老库第一次读时改名、补项、换顺序；
+ *     导入原表的客户类型先过对照表（意向客户这类阶段写法对成空，不落不进备注）
+ *   - 号码类型加了传真、Telegram：传真同座机只比数字，Telegram 用户名去 @ 不分大小写，都参与查重
  *   - 级别星级：S/A/B/C = 4/3/2/1 颗，一个映射一处显示
  * 只读同事客户、看不到的客户这两种权限在 ent-contact-link-scope.test.ts（真组织架构）
  */
@@ -23,6 +26,7 @@ import { 级别显示, 级别选项, 级别星数, 满星, 联系人号查重键
 import { 客户的联系人们, 联系人另挂, 联系人挂靠回填 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 清洗, 空索引, type 已有联系人 } from "@/lib/enterprise-import/clean";
+import { 客户类型对照, 对客户类型 } from "@/lib/enterprise-import/mapping";
 import { 读本地索引 } from "@/lib/enterprise-import/report";
 import type { 原始记录, 映射 } from "@/lib/enterprise-import/types";
 import { saveCustomer, patchCustomer } from "@/app/(app)/customers/actions";
@@ -90,6 +94,14 @@ describe("纯函数：级别星级、查重键", () => {
     expect(联系人号查重键("custom:QQ", "Ab-C (1)")).toBe(联系人号查重键("custom:QQ", "abc1"));
     expect([联系人号查重键("custom:QQ", "---"), 联系人号查重键("phone", "  ")]).toEqual(["", ""]);
     expect(自定号码键("A-B")).toBe("ab");
+    // 传真同座机只留数字；Telegram 用户名去 @ 不分大小写，+ 开头的同手机
+    expect(联系人号查重键("fax", "+86 21-1234 5678")).toBe("862112345678");
+    expect(联系人号查重键("fax", "12-3")).toBe("");
+    expect(联系人号查重键("telegram", " @Shi_Li01 ")).toBe("shi_li01");
+    expect(联系人号查重键("telegram", "shi_li01")).toBe("shi_li01");
+    expect(联系人号查重键("telegram", "+86 139-0000-0001")).toBe("13900000001");
+    expect(联系人号查重键("telegram", "＋44 7911 123456")).toBe("447911123456");
+    expect(联系人号查重键("telegram", "shi li")).toBe("");
   });
 
   it("客户状态默认顺序：流失排在丢单前面（id 不动）", async () => {
@@ -113,8 +125,73 @@ describe("纯函数：级别星级、查重键", () => {
     expect((await 可选项("custStatus")).slice(6, 8)).toEqual(["丢单", "流失客户"]);
   });
 
-  it("客户类型字典默认四项", async () => {
-    expect(await 可选项("custType")).toEqual(["个人买家", "贸易商", "代理商", "经销商"]);
+  it("客户类型新库：按默认顺序排，经销商建出来就停着", async () => {
+    expect(await 可选项("custType")).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "一般客户"]);
+    const 全 = await 企业字典("custType");
+    expect(全.map((x) => [x.name, x.active])).toEqual([
+      ["个人买家", true], ["中间贸易商", true], ["国家代理商", true], ["专业运营商", true], ["一般客户", true], ["经销商", false],
+    ]);
+    expect(全.map((x) => x.id)).toEqual([0, 1, 2, 4, 5, 3].map((i) => `dict-custType-${i}`));
+  });
+
+  it("客户类型老库（只有旧四项 + 自己加的）：改名、经销商停用、补两项、换顺序，自己加的排最后；再读不变；客户上存的旧名不跟着改", async () => {
+    for (const [i, name] of ["个人买家", "贸易商", "代理商", "经销商"].entries()) {
+      await prisma.entDictItem.create({ data: { id: `dict-custType-${i}`, kind: "custType", name, sort: i } });
+    }
+    await prisma.entDictItem.create({ data: { kind: "custType", name: "示例类型", sort: 4 } });
+    // 老客户在改名前就存了「贸易商」（直接写库，模拟改名前的数据）
+    const 老客户 = await 新建id();
+    await prisma.customer.update({ where: { id: 老客户 }, data: { customerType: "贸易商" } });
+    const 看 = async () => (await 企业字典("custType")).map((x) => [x.id, x.name, x.active]);
+    const 期望 = [
+      ["dict-custType-0", "个人买家", true],
+      ["dict-custType-1", "中间贸易商", true],
+      ["dict-custType-2", "国家代理商", true],
+      ["dict-custType-4", "专业运营商", true],
+      ["dict-custType-5", "一般客户", true],
+      ["dict-custType-3", "经销商", false],
+      [expect.any(String), "示例类型", true],
+    ];
+    expect(await 看()).toEqual(期望);
+    expect(await 看()).toEqual(期望);
+    expect(await 可选项("custType")).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "一般客户", "示例类型"]);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 老客户 } })).customerType).toBe("贸易商");
+  });
+
+  it("客户类型老库：人改过名的旧默认不动；新项的名字已被自己加的占了不重建", async () => {
+    for (const [i, name] of ["个人买家", "批发商", "代理商", "经销商"].entries()) {
+      await prisma.entDictItem.create({ data: { id: `dict-custType-${i}`, kind: "custType", name, sort: i } });
+    }
+    await prisma.entDictItem.create({ data: { kind: "custType", name: "一般客户", sort: 4 } });
+    const 全 = await 企业字典("custType");
+    expect(全.filter((x) => x.name === "一般客户")).toHaveLength(1);
+    expect(全.some((x) => x.id === "dict-custType-5")).toBe(false);
+    expect(全.find((x) => x.id === "dict-custType-1")?.name).toBe("批发商");
+    expect(全.find((x) => x.id === "dict-custType-2")?.name).toBe("国家代理商");
+    expect(全.find((x) => x.id === "dict-custType-4")?.name).toBe("专业运营商");
+    // 一般客户（-5）没建，补换顺序看到缺项整类不挪：新补的专业运营商排在序号 4 上，自己加的往后让
+    expect(全.map((x) => x.name)).toEqual(["个人买家", "批发商", "国家代理商", "经销商", "专业运营商", "一般客户"]);
+  });
+
+  it("号码类型老库（只有前六项 + 自己加的）：补上传真、Telegram，自己加的排在后面；Telegram 被自己加的占了名就不重建", async () => {
+    for (const [i, name] of 字典定义.contactKind.默认.slice(0, 6).entries()) {
+      await prisma.entDictItem.create({ data: { id: `dict-contactKind-${i}`, kind: "contactKind", name, sort: i } });
+    }
+    await prisma.entDictItem.create({ data: { kind: "contactKind", name: "QQ", sort: 6 } });
+    const 全 = await 企业字典("contactKind");
+    expect(全.map((x) => x.name)).toEqual([...字典定义.contactKind.默认, "QQ"]);
+    expect(全.slice(6, 8).map((x) => x.id)).toEqual(["dict-contactKind-6", "dict-contactKind-7"]);
+    expect(await 企业字典("contactKind")).toHaveLength(9);
+
+    await prisma.entDictItem.deleteMany();
+    await prisma.setting.deleteMany({ where: { key: "entDict.defaultAdded.contactKind" } });
+    for (const [i, name] of 字典定义.contactKind.默认.slice(0, 6).entries()) {
+      await prisma.entDictItem.create({ data: { id: `dict-contactKind-${i}`, kind: "contactKind", name, sort: i } });
+    }
+    await prisma.entDictItem.create({ data: { kind: "contactKind", name: "Telegram", sort: 6 } });
+    const 再 = await 企业字典("contactKind");
+    expect(再.map((x) => x.name)).toEqual(["手机", "座机", "微信", "邮箱", "WhatsApp", "阿里国际站ID", "传真", "Telegram"]);
+    expect(再.some((x) => x.id === "dict-contactKind-7")).toBe(false);
   });
 });
 
@@ -250,6 +327,22 @@ describe("联系方式查重", () => {
     expect((await saveContact({ id: 张, customerId: 甲, name: "张二", isPrimary: false, 企业: { 号码们: [{ kind: "phone", value: "13900000031" }, { kind: "email", value: "z2@x.com" }] }, 版本: 张本.updatedAt.toISOString() })).ok).toBe(true);
   });
 
+  it("传真、Telegram 也查重：传真只比数字，Telegram 用户名去 @ 不分大小写；saveContact 撞了不存", async () => {
+    const 甲 = await 新建id();
+    const 乙 = await 新建id();
+    const 张 = await 建联系人(甲, "张三示例", [{ kind: "fax", value: "021-1234 5678" }, { kind: "telegram", value: "@Shi_Li01" }]);
+    const 存 = (号: { kind: string; value: string }) => saveContact({ customerId: 乙, name: "李四示例", isPrimary: false, 企业: { 号码们: [号] } });
+    expect(await 存({ kind: "fax", value: "(021) 12345678" })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "fax" }] });
+    expect(await 存({ kind: "telegram", value: "shi_li01" })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "telegram" }] });
+    // 同一个号换了类型不算撞
+    expect((await 存({ kind: "landline", value: "021-12345678" })).ok).toBe(true);
+    expect(await prisma.contactMethod.findMany({ where: { contactId: 张 }, select: { kind: true, numberKey: true }, orderBy: { kind: "asc" } }))
+      .toEqual([{ kind: "fax", numberKey: "02112345678" }, { kind: "telegram", numberKey: "shi_li01" }]);
+    // Telegram 写号码的，和手机一样去 +86
+    await 建联系人(甲, "王五示例", [{ kind: "telegram", value: "+86 139 0000 0051" }]);
+    expect(await 存({ kind: "telegram", value: "13900000051" })).toMatchObject({ ok: false });
+  });
+
   it("撞号那一句：看得到说名字和客户，看不到只说负责人", () => {
     const 叫 = (k: string) => (k === "phone" ? "手机" : k);
     const 见 = { contactId: "c1", name: "张三", customerId: "u1", customerName: "某客户", 同事: "销售", kind: "phone", value: "139" };
@@ -261,17 +354,19 @@ describe("联系方式查重", () => {
 describe("客户类型", () => {
   it("新建 / 整表改只收字典里启用的；单格改同样；原值停用了原样交回也认", async () => {
     expect(await 新建({ 企业资料: { customerType: "乱写" } })).toMatchObject({ ok: false, error: expect.stringContaining("客户类型「乱写」") });
-    const id = await 新建id({ 企业资料: { customerType: "贸易商" } });
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id } })).customerType).toBe("贸易商");
-    expect((await patchCustomer(id, "customerType", "代理商")).ok).toBe(true);
+    const id = await 新建id({ 企业资料: { customerType: "中间贸易商" } });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id } })).customerType).toBe("中间贸易商");
+    expect((await patchCustomer(id, "customerType", "国家代理商")).ok).toBe(true);
     expect((await patchCustomer(id, "customerType", "乱写")).ok).toBe(false);
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id } })).customerType).toBe("代理商");
-    await prisma.entDictItem.updateMany({ where: { kind: "custType", name: "代理商" }, data: { active: false } });
-    expect((await patchCustomer(id, "customerType", "代理商")).ok).toBe(true);
+    // 经销商默认停用：不能新选
+    expect((await patchCustomer(id, "customerType", "经销商")).ok).toBe(false);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id } })).customerType).toBe("国家代理商");
+    await prisma.entDictItem.updateMany({ where: { kind: "custType", name: "国家代理商" }, data: { active: false } });
+    expect((await patchCustomer(id, "customerType", "国家代理商")).ok).toBe(true);
     expect((await patchCustomer(id, "customerType", "")).ok).toBe(true);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id } })).customerType).toBeNull();
     vi.stubEnv("CRM_ENTERPRISE", "");
-    expect(await patchCustomer(id, "customerType", "贸易商")).toMatchObject({ ok: false });
+    expect(await patchCustomer(id, "customerType", "中间贸易商")).toMatchObject({ ok: false });
   });
 });
 
@@ -293,16 +388,45 @@ describe("导入", () => {
   it("客户类型：和字典一字不差才落，对不上进备注提醒；没认出不带这一格", () => {
     const { 待写, 问题 } = 清洗(
       [
-        条("customer", { 外部: "c1", 名称: "甲公司", 电话: "13800000001", 负责人: "张伟", 类型: "贸易商" }),
+        条("customer", { 外部: "c1", 名称: "甲公司", 电话: "13800000001", 负责人: "张伟", 类型: "中间贸易商" }),
         条("customer", { 外部: "c2", 名称: "乙公司", 电话: "13800000002", 负责人: "张伟", 类型: "批发" }),
       ],
       映射样(),
-      { ...空索引(), 客户类型: ["贸易商", "代理商"] },
+      { ...空索引(), 客户类型: ["中间贸易商", "国家代理商"] },
     );
-    expect(待写[0].值.customerType).toBe("贸易商");
+    expect(待写[0].值.customerType).toBe("中间贸易商");
     expect("customerType" in 待写[1].值).toBe(false);
     expect(待写[1].值.remark).toContain("客户类型：批发");
     expect(问题.some((p) => p.外部ID === "c2" && p.说明.includes("客户类型「批发」"))).toBe(true);
+  });
+
+  it("客户类型对照表：原表写法换成我们的；阶段写法对成空（不落、不进备注、不提醒）；表外的照老规矩", () => {
+    expect(客户类型对照).toEqual({
+      终端客户: "专业运营商", 一般客户: "一般客户", 经销商: "中间贸易商", 贸易商: "中间贸易商",
+      代理: "国家代理商", 代理商: "国家代理商", "代理(采购商)": "国家代理商",
+      意向客户: "", 成交客户: "", 新客户: "",
+    });
+    expect([对客户类型(" 代理（采购商） "), 对客户类型("代理 (采购商)"), 对客户类型("个人买家"), 对客户类型(""), 对客户类型(null)])
+      .toEqual(["国家代理商", "国家代理商", undefined, undefined, undefined]);
+
+    const 原值们 = ["终端客户", "一般客户", "经销商", "贸易商", "代理", "代理商", "代理（采购商）", "意向客户", "成交客户", "新客户", "个人买家", "批发"];
+    const { 待写, 问题 } = 清洗(
+      原值们.map((类型, i) => 条("customer", { 外部: `t${i}`, 名称: `示例公司${i}`, 电话: `1380000${String(2000 + i)}`, 负责人: "张伟", 类型 })),
+      映射样(),
+      { ...空索引(), 客户类型: ["个人买家", "中间贸易商", "国家代理商", "专业运营商", "一般客户"] },
+    );
+    expect(待写.map((w) => w.值.customerType ?? null)).toEqual([
+      "专业运营商", "一般客户", "中间贸易商", "中间贸易商", "国家代理商", "国家代理商", "国家代理商", null, null, null, "个人买家", null,
+    ]);
+    for (const i of [7, 8, 9]) expect(String(待写[i].值.remark ?? "")).not.toContain("客户类型");
+    expect(String(待写[11].值.remark)).toContain("客户类型：批发");
+    expect(问题.filter((p) => p.说明.includes("客户类型")).map((p) => p.外部ID)).toEqual(["t11"]);
+  });
+
+  it("客户类型对照到的那一项被停用了：照老规矩，原值进备注", () => {
+    const { 待写 } = 清洗([条("customer", { 外部: "c1", 名称: "示例公司", 电话: "13800000009", 负责人: "张伟", 类型: "终端客户" })], 映射样(), { ...空索引(), 客户类型: ["个人买家"] });
+    expect("customerType" in 待写[0].值).toBe(false);
+    expect(待写[0].值.remark).toContain("客户类型：终端客户");
   });
 
   it("联系人号码：本批前后撞、和我们这边已有的撞都提醒「号码重复」，照写不并", () => {
@@ -328,6 +452,6 @@ describe("导入", () => {
     const 索引 = await 读本地索引("excel");
     expect(索引.联系人号?.get("phone|13900000041")).toEqual([{ id: 人, name: "周九", customerId: 甲, customerName: expect.any(String) }]);
     expect(索引.联系人号?.get("email|zhou@x.com")).toHaveLength(1);
-    expect(索引.客户类型).toEqual(["个人买家", "贸易商", "代理商", "经销商"]);
+    expect(索引.客户类型).toEqual(["个人买家", "中间贸易商", "国家代理商", "专业运营商", "一般客户"]);
   });
 });
