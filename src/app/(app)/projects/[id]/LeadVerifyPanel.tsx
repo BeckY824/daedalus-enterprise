@@ -14,23 +14,27 @@ import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理�
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string; 自动推到?: string[] }>, 成了?: string) => Promise<boolean>;
 
 const 判定色: Record<string, string> = { 有效线索: "green", 初验无效: "orange", 无效线索: "red", 暂未判定: "default" };
+// 界面上不露内部岗位名（市场管理 / 总管理）：复核两步都说「管理员」，销售那几步说「负责人」（10-30 交互调整，术语表）
 const 等谁: Record<string, string> = {
-  市场复核: "等市场管理复核",
-  总管理终判: "等总管理终判",
-  销售终验: "复核判有效，等负责人终验",
-  销售认领: "总管理判有效，等负责人认领",
+  市场复核: "等管理员复核",
+  总管理终判: "等管理员最终确认",
+  销售终验: "管理员判有效，等负责人确认",
+  销售认领: "管理员判有效，等负责人认领",
+};
+const 步叫法: Record<string, string> = {
+  销售初判: "负责人初判", 市场复核: "管理员复核", 销售终验: "负责人确认", 总管理终判: "管理员最终确认", 销售认领: "负责人认领",
 };
 
 /** 一条痕在时间线上的说法 */
 function 痕说法(l: 线索验证["痕"][number]): string {
-  const 头 = `${l.谁} · ${l.step} · ${l.verdict}`;
+  const 头 = `${l.谁} · ${步叫法[l.step] ?? l.step} · ${l.verdict}`;
   const 尾 = [l.reason ? `无效原因：${l.reason}` : null, l.note].filter(Boolean).join("；");
   return 尾 ? `${头}（${尾}）` : 头;
 }
 
 /**
  * 企业版线索有效性验证（P12）：详情页「线索验证」节点上的判定 + 下一步按钮 + 小时间线。
- * 四步：销售初判 → 市场复核 → 销售终验 → 总管理终判；谁能做哪步服务端已经算好放在 v.我能
+ * 四步：销售初判 → 市场复核 → 销售终验 → 总管理终判（界面上说成 负责人初判 → 管理员复核 → 负责人确认 → 管理员最终确认）；谁能做哪步服务端已经算好放在 v.我能
  */
 export default function LeadVerifyPanel({
   projectId,
@@ -128,10 +132,10 @@ export default function LeadVerifyPanel({
       return {
         title: "提交异议",
         ok: !!说明.trim(),
-        做: () => 跑(() => 销售终验Action(projectId, false, 说明), "已提交异议，等总管理终判"),
+        做: () => 跑(() => 销售终验Action(projectId, false, 说明), "已提交异议，等管理员最终确认"),
         身: (
           <>
-            <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>你仍认为这条线索无效：写清理由，交给总管理终判。</div>
+            <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>你仍认为这条线索无效：写清理由，交给管理员最终确认。</div>
             <Input.TextArea rows={4} maxLength={原因上限} showCount value={说明} onChange={(e) => set说明(e.target.value)} placeholder="异议说明（必填）" aria-label="异议说明" />
           </>
         ),
@@ -141,7 +145,7 @@ export default function LeadVerifyPanel({
       const 有效 = 框 === "复核有效";
       const act = 复核步 === "总管理终判" ? 总管理终判Action : 市场复核Action;
       return {
-        title: `${复核步 ?? "复核"}：判${有效 ? "有效" : "无效"}`,
+        title: `${复核步 ? 步叫法[复核步] : "复核"}：判${有效 ? "有效" : "无效"}`,
         ok: true,
         danger: !有效,
         做: () => 跑(() => act(projectId, 有效, 说明), 有效 ? "已判有效，交回负责人" : "已判无效线索"),
@@ -198,6 +202,9 @@ export default function LeadVerifyPanel({
             </>
           )}
         </div>
+      )}
+      {推不了 && (v.我能 === "初判" || v.我能 === "销售终验" || v.我能 === "销售认领") && (
+        <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{推不了}</div>
       )}
       {v.我能 === "销售终验" && 最后说明 && (
         <div style={{ marginTop: 8, color: "var(--text-muted)", overflowWrap: "anywhere" }}>复核说明：{最后说明}</div>

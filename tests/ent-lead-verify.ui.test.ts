@@ -67,8 +67,8 @@ it.each([1024, 1280, 1366])("Windows %ipx：长无效原因、长说明、长名
     const 右界 = 主栏 + 16;
     expect((await 点得中(page, "判有效", 右界)).replace(/\s/g, "")).toBe("判有效");
     expect((await 点得中(page, "判无效", 右界)).replace(/\s/g, "")).toBe("判无效");
-    expect(await page.getByTestId("lead-verify-trail").innerText()).toContain("市场复核 · 有效");
-    expect(await page.getByTestId("lead-verify-pending").innerText()).toBe("等市场管理复核");
+    expect(await page.getByTestId("lead-verify-trail").innerText()).toContain("管理员复核 · 有效");
+    expect(await page.getByTestId("lead-verify-pending").innerText()).toBe("等管理员复核");
     // 列表里的销售终验行只给链接，不给判
     const 行 = page.getByTestId("verify-row-p2");
     expect(await 行.getByRole("button").allInnerTexts()).toEqual(["去处理"]);

@@ -6,6 +6,8 @@
  *   编辑：不摆这一格，交上去不带 projectId
  *   开关关闭（页面不给 projects）：和原来一样是「关联商机」，交上去不带 projectId
  *   Windows 1024 / 1280 / 1366：超长项目名不横向撑出，「保存」点得中
+ *   选了项目且项目能记（2026-10-30 P0-3）：多出「客户明确回复了吗」「下一步」，走项目详情同一个 记项目沟通Action；
+ *     选下一步时间时预演回收日（选这天 → 回收日变为 MM-DD）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -16,7 +18,8 @@ let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "followup-project-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
-  stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1'}},completePlan=async()=>({ok:true});");
+  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
+  stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1'}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -38,13 +41,13 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 参数 = { 项目?: "有" | "空" | null; 编辑?: boolean };
+type 参数 = { 项目?: "有" | "空" | null; 编辑?: boolean; 须知?: unknown };
 async function open(p: 参数, width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://fup.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://fup.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(x => (window as unknown as { __render: (x: 参数) => void }).__render(x), p);
+  await page.evaluate(x => { Reflect.set(window, "__须知", x.须知); (window as unknown as { __render: (x: 参数) => void }).__render(x); }, p);
   await page.getByRole("button", { name: /保\s*存/ }).waitFor();
   return { page, errors };
 }
@@ -121,4 +124,50 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名不横向撑出，「
     const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box.x + box.width / 2, box.y + box.height / 2]);
     expect(点中).toBe(await btn.textContent());
   } finally { await page.close(); }
+});
+
+const 须知 = (底子: { 起点日: string; 天数: number } | null) => ({ ok: true, 能记: true, phase: "线索", 要下一步: true, 回收预演: 底子, contactId: "k1" });
+const 今天 = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date());
+
+it("项目能记：问「客户明确回复了吗」，走项目同一个 action，选明天预演回收日", async () => {
+  const { page, errors } = await open({ 项目: "有", 须知: 须知({ 起点日: 今天(), 天数: 7 }) });
+  try {
+    const 问 = 格(page, "客户明确回复了吗");
+    await 问.waitFor();
+    expect(await 问.innerText()).toContain("线索");
+    await page.locator("#content").fill("聊了报价");
+    // 没选就存：拦在「客户明确回复了吗」
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => 问.innerText()).toContain("请选客户明确回复了吗");
+    await 问.getByText("客户明确回复了", { exact: true }).click();
+    await 格(page, "下一步做什么").locator("input").fill("周五前发报价单");
+    const 时 = page.locator(".ant-form-item").filter({ has: page.locator('label:text-is("下一步时间")') });
+    expect(await 时.innerText()).not.toContain("回收日变为");
+    await 时.getByRole("button", { name: /明\s*天/ }).click();
+    const 明 = new Date(Date.parse(今天() + "T00:00:00Z") + 86400_000).toISOString().slice(0, 10);
+    const 后 = new Date(Date.parse(今天() + "T00:00:00Z") + 2 * 86400_000).toISOString().slice(5, 10);
+    await expect.poll(() => 时.innerText()).toContain(`选这天 → 回收日变为 ${后}`);
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => Reflect.get(window, "__项目存"));
+    const 交 = await page.evaluate(() => Reflect.get(window, "__项目存") as Record<string, unknown>);
+    expect(交).toMatchObject({ id: "p1", 阶段: "线索", 明确回复: true, 下一步: "周五前发报价单", 下一步时间: 明, content: "聊了报价" });
+    // 没填标题、状态默认已完成：不用再补一刀 saveFollowUp
+    expect(await page.evaluate(() => Reflect.get(window, "__存"))).toBeUndefined();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("项目不能记（比如已结束）、规则关着：照旧走 saveFollowUp；不显示回收日预演", async () => {
+  const { page, errors } = await open({ 项目: "有", 须知: { ok: true, 能记: false } });
+  try {
+    expect(await 格(page, "客户明确回复了吗").count()).toBe(0);
+    expect((await 存(page)).projectId).toBe("p1");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const b = await open({ 项目: "有", 须知: 须知(null) });
+  try {
+    const 时 = b.page.locator(".ant-form-item").filter({ has: b.page.locator('label:text-is("下一步时间")') });
+    await 时.getByRole("button", { name: "3 天后" }).click();
+    expect(await 时.innerText()).not.toContain("回收日变为");
+  } finally { await b.page.close(); }
 });

@@ -21,10 +21,12 @@ const plugin: Plugin = { name: "trade-basics-ui", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>'/follow-ups/plans';");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
+  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
   stub(/(customers\/\[id\]\/|^\.\/)actions$/, `
     const 记=(名,参)=>{(window.__calls??=[]).push({名,参});return {ok:true,id:'f1'}};
     export const 撤销记一笔=async(x)=>记('撤销记一笔',x);
-    export const saveFollowUp=async(x)=>({...记('saveFollowUp',x),...(x.附带?.plan?{下次计划id:'n1'}:{})}),completePlan=async(id,完成=true)=>记('completePlan',{id,完成}),toggleTask=async(id,v)=>记('toggleTask',{id,v}),deletePlan=async()=>({ok:true}),deleteTask=deletePlan;`);
+    export const saveFollowUp=async(x)=>({...记('saveFollowUp',x),...(x.附带?.plan?{下次计划id:'n1'}:{})}),completePlan=async(id,完成=true)=>记('completePlan',{id,完成}),toggleTask=async(id,v)=>记('toggleTask',{id,v}),deletePlan=async()=>({ok:true}),deleteTask=deletePlan;
+    export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
   stub(/customers\/\[id\]\/(PlanForm|TaskForm)$/, "export default function C(){return null}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -50,7 +52,8 @@ beforeAll(async () => {
   const 表单插件: Plugin = { name: "trade-basics-forms", setup(b) {
     const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub", pluginData: code }));
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
-    stub(/^\.\/actions$/, "export const saveFollowUp=async()=>({ok:true,id:'f1'}),completePlan=saveFollowUp,savePlan=saveFollowUp;");
+    stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
+    stub(/^\.\/actions$/, "export const saveFollowUp=async()=>({ok:true,id:'f1'}),completePlan=saveFollowUp,savePlan=saveFollowUp;export const saveTask=async()=>({ok:true,id:'t1'});");
     stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
     stub(/^\.\/CustomerPick$/, `const 人=(id,name,有WhatsApp)=>({id,name,上次跟进:null,未完成计划:null,未完成计划数:0,contacts:[],opportunities:[],orders:[],有WhatsApp});
       export default function C(p){return <><button type='button' onClick={()=>p.on近况(人('c9','Zeta',true))}>挑 Zeta</button><button type='button' onClick={()=>p.on近况(人('c8','Bright',false))}>挑 Bright</button></>}`);
@@ -212,21 +215,21 @@ async function 开表单(哪个: string) {
   await page.getByRole("dialog").waitFor();
   return { page, errors };
 }
-/** 「跟进类型」那一格：读整格的字（标签 + 选中的那一项），下拉不展开时只有选中的那一项 */
-const 类型格 = (page: Page) => page.getByRole("dialog").locator(".ant-form-item", { hasText: "跟进类型" }).first();
+/** 「沟通方式」那一格：读整格的字（标签 + 选中的那一项），下拉不展开时只有选中的那一项 */
+const 类型格 = (page: Page) => page.getByRole("dialog").locator(".ant-form-item", { hasText: "沟通方式" }).first();
 const 方式格 = (page: Page) => page.getByRole("dialog").locator(".ant-form-item", { hasText: "跟进方式" }).locator("input");
 
 it("记录跟进：有 WhatsApp 号默认 WhatsApp，没号照旧电话沟通；挑人时挑中有号的那位也跟着变", async () => {
   for (const [哪个, 应是] of [["跟进有号", "WhatsApp"], ["跟进没号", "电话沟通"]] as const) {
     const { page, errors } = await 开表单(哪个);
-    await expect.poll(() => 类型格(page).innerText()).toMatch(new RegExp(`跟进类型\\s+${应是}$`));
+    await expect.poll(() => 类型格(page).innerText()).toMatch(new RegExp(`沟通方式\\s+${应是}$`));
     expect(errors).toEqual([]);
     await page.close();
   }
   const { page } = await 开表单("跟进挑人");
-  await expect.poll(() => 类型格(page).innerText()).toMatch(/跟进类型\s+电话沟通$/);
+  await expect.poll(() => 类型格(page).innerText()).toMatch(/沟通方式\s+电话沟通$/);
   await page.getByRole("button", { name: "挑 Zeta" }).click();
-  await expect.poll(() => 类型格(page).innerText()).toMatch(/跟进类型\s+WhatsApp$/);
+  await expect.poll(() => 类型格(page).innerText()).toMatch(/沟通方式\s+WhatsApp$/);
   await page.close();
 });
 
@@ -262,9 +265,9 @@ it("新建计划：人亲手改过方式（邮件）之后再换人，方式不�
 it("记录跟进：有号 → 没号回电话沟通；人亲手改过类型（邮件）之后再换人，类型不动", async () => {
   const { page } = await 开表单("跟进挑人");
   await page.getByRole("button", { name: "挑 Zeta" }).click();
-  await expect.poll(() => 类型格(page).innerText()).toMatch(/跟进类型\s+WhatsApp$/);
+  await expect.poll(() => 类型格(page).innerText()).toMatch(/沟通方式\s+WhatsApp$/);
   await page.getByRole("button", { name: "挑 Bright" }).click();
-  await expect.poll(() => 类型格(page).innerText()).toMatch(/跟进类型\s+电话沟通$/);
+  await expect.poll(() => 类型格(page).innerText()).toMatch(/沟通方式\s+电话沟通$/);
   await 类型格(page).locator(".ant-select").click();
   await page.locator(".ant-select-dropdown:visible").getByText("邮件沟通", { exact: true }).click();
   // 下拉开过之后它挂在这一格里，整格 innerText 会多带选项文字（快慢不定，全量并发跑时常撞上）：只看选中的那一项

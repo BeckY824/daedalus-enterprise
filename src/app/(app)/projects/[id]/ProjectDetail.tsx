@@ -3,8 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { App, Alert, Button, Card, Checkbox, Dropdown, Input, Modal, Popconfirm, Progress, Radio, Select, Space, Tag, Timeline, Tooltip } from "antd";
+import { DownOutlined, MoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { App, Alert, Button, Card, Checkbox, Dropdown, Input, Modal, Progress, Radio, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -12,7 +12,8 @@ import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { 必填叫法 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
-import { dayjs, fmtDateTime } from "@/lib/utils";
+import { dayjs, fmtDateTime, 成员选项, 独自一人 } from "@/lib/utils";
+import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
 import { 外贸精简 } from "@/lib/business-config";
 import { 金额 } from "@/lib/currency";
@@ -31,7 +32,7 @@ import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 项目区域 } from "@/lib/project/profile-rules";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通 } from "../actions";
+import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, type 卡点卡, type 可选人 } from "../BlockerPanel";
@@ -81,6 +82,8 @@ export type 项目详情 = {
    * nextStepText = 下一步做什么（10-29 起记沟通时自己写一句话，时间可空）；老数据只有时间没有这句，就只摆时间
    */
   nextStepAt: string | null; nextStepText?: string | null; 回收日: string | null;
+  /** 企业版记沟通时预演回收日的底子（page.tsx，lib/enterprise/recycle-text.ts 预演回收日）；算不准（规则关着、配了必填会自动推）= null，弹窗里不写那一句 */
+  回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户 */
@@ -113,7 +116,7 @@ export type 项目详情 = {
     /** pool-release 才有：超时系统收的、办停用时放的（who 是办的那位）、手动放回 */
     放回方式?: 放回方式;
   }[];
-  /** 企业版：code 是沟通编号（FUL…），提醒按下一步时间算（blocker-rules.ts 时限提醒of），没填下一步时间不给 */
+  /** 企业版：code 是沟通编号（只在服务端用，界面不摆），提醒按下一步时间写事实（page.tsx 时限标签），没填下一步时间不给 */
   followUps: { id: string; type: string; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null }[];
   members: 组员[];
   /** 企业版提成卡：不是企业版、我看不了（不是组长 / 组员 / 管理员 / 上级）= null，卡片不出 */
@@ -134,9 +137,14 @@ const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 60p
 
 /** 删项目的确认框：列出一起删掉的几样，说清沟通记录本身不删 */
 function 删除说明(n: 项目详情["删前清点"], 客户叫法: string, 进回收站 = false) {
-  // 企业版（P9）：删了进回收站，留痕、项目组原样留着
-  if (进回收站) return <div style={{ maxWidth: 280 }}>删了进回收站，30 天内可在 设置 → 回收站 恢复</div>;
   const 删 = [`${n.留痕} 条进程留痕`, n.组员 ? `项目组 ${n.组员} 人` : "", n.沟通 ? `${n.沟通} 条沟通和这个项目的关联` : ""].filter(Boolean);
+  // 企业版（P9）：删了进回收站，留痕、项目组原样留着，恢复时一起回来
+  if (进回收站) return (
+    <div style={{ maxWidth: 320 }}>
+      <div>删了进回收站，30 天内可在 设置 → 回收站 恢复。</div>
+      <div>一起收起来：{删.join("、")}，恢复时原样回来；沟通记录本身留在{客户叫法}下</div>
+    </div>
+  );
   return (
     <div style={{ maxWidth: 280 }}>
       <div>一起删掉：{删.join("、")}</div>
@@ -240,7 +248,57 @@ export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点�
 
 const 无效原因前缀 = "无效原因：";
 
-const 提醒色 = { 稳: "green", 拿捏: "gold", 超时: "red" } as const;
+// 规则 E：红只给已经过了的，当天橙，还早的不上色
+const 提醒色 = { 稳: undefined, 拿捏: "gold", 超时: "red" } as const;
+
+/** 菜单项两行：上面是名字，下面一行淡色小字说明（会跳过哪几步、到此结束…） */
+function 两行(名: string, 注?: string) {
+  return (
+    <div style={{ lineHeight: 1.4, padding: "2px 0", maxWidth: 280, whiteSpace: "normal" }}>
+      <div>{名}</div>
+      {注 && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{注}</div>}
+    </div>
+  );
+}
+
+/**
+ * 节点卡「更多」里的去处（10-30 P0-8 / P2）：按 往前 / 退回 / 结束 分组，每项写明会跳过哪几步。
+ * 能不能点还是 去处们 那一套（往前只能一步、企业版不能退回前面的阶段）；紧挨着的下一步就是主按钮，菜单里不重复。
+ * 已经有结局（流失 / 异常 / 成功交付）的：改回某个进程、或换个结局
+ */
+function 更多去处(当前: 位置, 组们: ReturnType<typeof 去处们>, 字典: 阶段字典): NonNullable<MenuProps["items"]> {
+  const 序 = 节点序号(当前, 字典);
+  const 全路 = 阶段们.flatMap((s) => 字典.节点们[s].map((n) => ({ phase: s as string, node: n })));
+  const 叫 = (到: 位置) => (到.phase === 当前.phase ? 到.node : `${到.phase}·${到.node}`);
+  const 项们 = 组们.flatMap((g) => g.options.map((o) => {
+    const v = JSON.parse(o.value) as 位置 & { 出口?: string };
+    return { key: o.value, 到: { phase: v.phase, node: v.node, ...(v.result ? { result: v.result } : {}) } as 位置, 出口: v.出口, disabled: o.disabled };
+  }));
+  const 结束注 = (r: string) => (r === "异常状态" ? "标成异常，处理好了改回进程就恢复" : "项目到此结束，以后可以改回进程");
+  const 结束们 = 项们.filter((x) => x.到.result && !x.disabled && x.到.result !== 当前.result)
+    .map((x) => ({ key: x.key, label: 两行(结局叫法(x.到.result!, 字典), 结束注(x.到.result!)) }));
+  const 组 = (key: string, label: string, children: NonNullable<MenuProps["items"]>) => (children.length ? [{ type: "group" as const, key, label, children }] : []);
+  if (当前.result) {
+    const 回 = 项们.filter((x) => !x.到.result && !x.出口 && !x.disabled).map((x) => ({ key: x.key, label: 两行(叫(x.到)) }));
+    return [...组("back", "改回进程", 回), ...组("end", "结束", 结束们)];
+  }
+  // 走成那条（转商机 / 赢单）和下一阶段第一个节点是同一个去处：留有名字的那条
+  const 走成到 = new Set(项们.filter((x) => x.出口).map((x) => `${x.到.phase}|${x.到.node}`));
+  const 节点们 = 项们.filter((x) => !x.到.result && !(!x.出口 && 走成到.has(`${x.到.phase}|${x.到.node}`)));
+  const 往前 = 节点们
+    .map((x) => ({ ...x, n: 节点序号(x.到, 字典) }))
+    .filter((x) => x.n > 序 + 1 && x.n <= 序 + 4)
+    .map((x) => {
+      const 跳 = 全路.slice(序 + 1, x.n).map(叫);
+      return { key: x.key, disabled: x.disabled, label: 两行(x.出口 ?? 叫(x.到), `会跳过 ${跳.join("、")}${x.disabled ? "（只能一步步推）" : ""}`) };
+    });
+  const 退回 = 节点们
+    .map((x) => ({ ...x, n: 节点序号(x.到, 字典) }))
+    .filter((x) => x.n < 序 && !x.disabled)
+    .sort((a, b) => b.n - a.n)
+    .map((x) => ({ key: x.key, label: 两行(叫(x.到), `退回 ${序 - x.n} 步`) }));
+  return [...组("forward", "往前", 往前), ...组("back", "退回", 退回), ...组("end", "结束", 结束们)];
+}
 
 export default function ProjectDetail({
   p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null,
@@ -256,7 +314,7 @@ export default function ProjectDetail({
   卡点?: 项目卡点 | null;
 }) {
   const router = useRouter();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const b = useBusiness();
   const [忙, set忙] = useState(false);
   const [异常框, set异常框] = useState<位置 | null>(null);
@@ -272,6 +330,11 @@ export default function ProjectDetail({
   /** 沟通的「…」菜单：正在改哪一条 / 删除问句开在哪一条上 */
   const [改沟通于, set改沟通于] = useState<项目详情["followUps"][number] | null>(null);
   const [删问于, set删问于] = useState<string | null>(null);
+  /** 转给…（10-30）：弹窗开着、选了谁、点了转给以后 6 秒等撤销的那位 */
+  const [转给框, set转给框] = useState(false);
+  const [转给谁, set转给谁] = useState<string | null>(null);
+  const [待转给, set待转给] = useState<string | null>(null);
+  const 转给计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const 当前: 位置 = { phase: p.phase, node: p.node, result: p.result };
   const 字典 = 字典of(p.企业版, p.出口叫法);
   const 节点总数 = 节点总数of(字典);
@@ -287,6 +350,16 @@ export default function ProjectDetail({
   const 卡有效沟通 = 没有效沟通 && !!下 && 节点序号(下, 字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 字典);
   // 企业版线索阶段不显示交付（QA #5）：只有订单阶段才有尾款、验收
   const 显示交付 = !p.企业版 || p.phase === "订单";
+  // 线索在等复核：服务端这时不给改进程、点结局、放回公海（lib/project/lead-verify-guard.ts），界面直接灰着说清在等谁
+  const 等复核文字 = p.线索验证?.待 === "市场复核" ? "等管理员复核" : p.线索验证?.待 === "总管理终判" ? "等管理员最终确认" : undefined;
+  const 等复核 = !!等复核文字;
+  // 「下一步」灰着的原因写在按钮下面（规则：灰按钮要写为什么），不靠悬停
+  const 推不了 = (节点可改 ? undefined : 节点不能改 ?? "只有项目负责人、老板或主管能改")
+    ?? 等复核文字
+    ?? p.不给推
+    ?? (卡有效沟通 ? 缺有效沟通 : undefined)
+    ?? (p.必填?.只能靠填齐 ? "这个进程填齐必填后自动往前推；要先推请找老板或主管" : undefined)
+    ?? (下 ? undefined : p.result ? "先改回某个进程再往前推" : "这是最后一个进程了，接下来点结局");
 
   const 跑 = async (f: () => Promise<{ ok: boolean; error?: string; 自动推到?: string[] }>, 成了?: string) => {
     set忙(true);
@@ -364,6 +437,56 @@ export default function ProjectDetail({
     void 跑(() => 改项目节点(p.id, 到), `已改到 ${位置文字(到, 字典)}`);
   };
 
+  /** 结束类（结局）的去处要二次确认（10-30 P2）；异常、要写原因的本来就有自己的框，成功交付没勾齐的 改到 会直接提示 */
+  const 结束确认 = (到: 位置) => {
+    if (!到.result || 到.result === "异常状态" || (p.企业版 && 要写原因(到.result)) || (到.result === "成功交付" && 差.length)) return 改到(到);
+    modal.confirm({
+      title: `改到「${结局叫法(到.result, 字典)}」？`,
+      content: 到.result === "成功交付" ? "项目算成功交付、到此结束；以后要改可以把进程改回去" : "项目到此结束；以后要捡回来可以把进程改回去",
+      okText: "确定",
+      onOk: () => 改到(到),
+    });
+  };
+  const 更多去处项 = 节点可改 && !等复核 ? 更多去处(当前, 去处们(当前, !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通, 字典), 字典) : [];
+
+  /** 转给…：点了先等 6 秒（提示条上能撤销），到点才真的换负责人；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
+  const 开始转给 = (新: string) => {
+    const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
+    const key = `project-transfer-${p.id}`;
+    set转给框(false);
+    set待转给(新);
+    转给计时.current = setTimeout(async () => {
+      转给计时.current = null;
+      message.destroy(key);
+      const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }), `已转给 ${名}`);
+      set待转给(null);
+      if (ok) router.push("/projects");
+    }, 6000);
+    message.info({
+      key,
+      duration: 6,
+      content: (
+        <span>
+          6 秒后转给 {名}
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              if (转给计时.current) clearTimeout(转给计时.current);
+              转给计时.current = null;
+              set待转给(null);
+              message.destroy(key);
+              message.info("已撤销，没有转");
+            }}
+          >
+            撤销
+          </Button>
+        </span>
+      ),
+    });
+  };
+  const 转给名 = 转给谁 ? (候选.find((m) => m.id === 转给谁)?.name ?? "TA") : null;
+
   // 线索流失（企业版、字典里有启用的无效原因）：选一个或写一句，至少一样；合成「无效原因：X」+ 补充说明记进节点变更
   const 选无效原因 = 没成框?.result === "线索流失" && p.原因选项.无效.length > 0;
   const 没成备注 = 选无效原因 && 无效原因 ? [`${无效原因前缀}${无效原因}`, 原因.trim()].filter(Boolean).join("\n") : 原因.trim();
@@ -400,30 +523,31 @@ export default function ProjectDetail({
               {位.结局 && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}>{位.结局}</Tag>}
             </div>
           </div>
+          {/* 企业版：哪天回公海写在阶段、进程旁边（10-30 P0-1），3 天内橙、当天红 */}
+          {p.企业版 && p.回收日 && !p.pooled && !p.result && (() => {
+            const 回 = 回公海文案(p.回收日);
+            return (
+              <div style={{ minWidth: 0 }}>
+                <div className="proj-where-label">回收日</div>
+                <div style={{ lineHeight: "28px", color: 回公海颜色[回.级别], fontWeight: 回.级别 === "常" ? undefined : 600 }}>{回.文字}</div>
+              </div>
+            );
+          })()}
         </div>
-        <Space wrap>
-          <Select
-            style={{ width: 200 }}
-            placeholder={异常 ? "改到某个进程就算恢复" : "改到…"}
-            value={null}
-            disabled={!节点可改 || 忙}
-            title={节点不能改}
-            options={去处们(当前, !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通, 字典)}
-            onChange={(v: string | null) => {
-              if (!v) return;
-              const { phase, node, result } = JSON.parse(v) as 位置;
-              改到({ phase, node, ...(result ? { result } : {}) });
-            }}
-          />
-          {/* 灰掉的按钮收不到鼠标事件，外面包一层 span 才能悬停出原因 */}
-          <Tooltip title={节点不能改 ?? p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined) ?? (p.必填?.只能靠填齐 ? "这个进程填齐必填后自动往前推；要先推请找老板或主管" : 下 ? undefined : p.result ? "先改回某个进程再往前推" : "这是最后一个进程了，接下来点结局")}>
-            <span>
-              <Button type="primary" disabled={!节点可改 || 忙 || !下 || !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通} onClick={() => 下 && 改到(下)}>
-                {下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步"}
-              </Button>
-            </span>
-          </Tooltip>
-        </Space>
+        {/* 只留「下一步」一个主按钮（10-30 P0-8）；改到别的进程、点结局收进「更多」。灰着的原因写在按钮下面 */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, maxWidth: 320, marginLeft: "auto" }}>
+          <Space wrap>
+            {更多去处项.length > 0 && (
+              <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 更多去处项, onClick: ({ key }) => 结束确认(JSON.parse(key) as 位置) }}>
+                <Button aria-label="改到别的进程或结局">更多 <DownOutlined /></Button>
+              </Dropdown>
+            )}
+            <Button type="primary" disabled={忙 || !!推不了} onClick={() => 下 && 改到(下)}>
+              {下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步"}
+            </Button>
+          </Space>
+          {推不了 && <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "right" }}>{推不了}</div>}
+        </div>
       </div>
       <Progress
         style={{ marginTop: 12, marginBottom: 0 }}
@@ -447,7 +571,7 @@ export default function ProjectDetail({
   );
   const 项目卡 = (
     <Card title="项目" extra={可改 && <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>}>
-      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后显示</span>}</div>
+      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后可见</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
@@ -486,7 +610,6 @@ export default function ProjectDetail({
           </span>
         </div>
       )}
-      {p.回收日 && <div style={{ ...行样, color: 回收临近(p.回收日) ? "var(--warning-text)" : "var(--text-muted)" }}>{p.回收日} 前没人跟进，会自动回到项目公海</div>}
       {p.remark && <div style={{ marginTop: 8, whiteSpace: "pre-wrap", color: "var(--text-muted)" }}>{p.remark}</div>}
     </Card>
   );
@@ -518,7 +641,7 @@ export default function ProjectDetail({
           style={{ marginTop: 8 }}
           disabled={!可改 || 忙 || 差.length > 0}
           title={不能改 ?? (差.length ? `还差${差.join("、")}` : undefined)}
-          onClick={() => 改到({ phase: "订单", node: p.phase === "订单" ? p.node : 字典.节点们.订单[字典.节点们.订单.length - 1], result: "成功交付" })}
+          onClick={() => 结束确认({ phase: "订单", node: p.phase === "订单" ? p.node : 字典.节点们.订单[字典.节点们.订单.length - 1], result: "成功交付" })}
         >
           成功交付
         </Button>
@@ -564,18 +687,16 @@ export default function ProjectDetail({
         ) : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>
       }
     >
-      {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后显示"}</div>}
+      {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后可见"}</div>}
       {p.followUps.map((f) => (
         <div key={f.id} style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <FollowTypeCell type={f.type} />
             <Tag>{f.node}</Tag>
-            {f.code && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{f.code}</span>}
             {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
             <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-            {卡点?.能发 && <Button type="link" size="small" style={{ padding: 0 }} onClick={() => set发卡点于(f.id)}>发卡点</Button>}
-            {p.可改沟通 && (
-              // 「…」放在这一行最右；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
+            {(p.可改沟通 || 卡点?.能发) && (
+              // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
               <span style={{ marginLeft: "auto" }}>
                 <InlineConfirm 问="删了进回收站，30 天内可恢复" 开={删问于 === f.id} set开={(v) => set删问于(v ? f.id : null)} 做={() => 删沟通(f.id)}>
                   <Dropdown
@@ -583,8 +704,11 @@ export default function ProjectDetail({
                     placement="bottomRight"
                     disabled={忙}
                     menu={{
-                      items: [{ key: "edit", label: "修改" }, { key: "delete", label: "删除", danger: true }],
-                      onClick: ({ key }) => (key === "edit" ? set改沟通于(f) : set删问于(f.id)),
+                      items: [
+                        ...(卡点?.能发 ? [{ key: "blocker", label: "发卡点" }] : []),
+                        ...(p.可改沟通 ? [{ key: "edit", label: "修改" }, { key: "delete", label: "删除", danger: true }] : []),
+                      ],
+                      onClick: ({ key }) => (key === "blocker" ? set发卡点于(f.id) : key === "edit" ? set改沟通于(f) : set删问于(f.id)),
                     }}
                   >
                     <Button type="text" size="small" icon={<MoreOutlined />} aria-label="这条沟通的更多操作" />
@@ -599,7 +723,16 @@ export default function ProjectDetail({
     </Card>
   );
   const 卡点区 = 卡点 && (
-    <Card title={`卡点（${卡点.们.length}）`} extra={卡点.能发 && <span style={{ color: "var(--text-muted)", fontSize: 12 }}>在沟通记录上点「发卡点」</span>}>
+    <Card
+      title={`卡点（${卡点.们.length}）`}
+      // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）
+      extra={卡点.能发 && (
+        <Space size={8}>
+          {!p.followUps.length && <span style={{ color: "var(--text-muted)", fontSize: 12 }}>先记一条沟通</span>}
+          <Button type="primary" size="small" disabled={!p.followUps.length} onClick={() => p.followUps[0] && set发卡点于(p.followUps[0].id)}>发卡点</Button>
+        </Space>
+      )}
+    >
       <BlockerList 们={卡点.们} 人们={卡点.人们} 空="还没有卡点" />
     </Card>
   );
@@ -614,20 +747,37 @@ export default function ProjectDetail({
       subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
       extra={
         <Space wrap>
-          {/* 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认 */}
-          {p.能放公海 && p.企业版 && <Button disabled={忙} onClick={() => { set回收原因(null); set放回框(true); }}>放回公海</Button>}
-          {p.能放公海 && !p.企业版 && (
-            <Popconfirm title="放回项目公海？" description={p.企业版 ? "放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人" : "放回去以后谁都能领，你自己不能再领回来"} okText="放回公海" onConfirm={() => void 跑(() => 放回项目公海(p.id), "已放回项目公海")}>
-              <Button disabled={忙}>放回公海</Button>
-            </Popconfirm>
-          )}
           {p.能领取 && <Button type="primary" disabled={忙} onClick={() => void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了")}>领取</Button>}
           {/* 企业版原负责人：按钮摆着、灰着，悬停说为什么（接口也拦，lib/project/db.ts 领取公海项目） */}
           {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
-          {能改 && (
-            <Popconfirm title="删除这个项目？" description={删除说明(p.删前清点, b.customer, p.企业版)} okText="删除" okButtonProps={{ danger: true }} onConfirm={() => void 删()}>
-              <Button danger disabled={忙}>删除项目</Button>
-            </Popconfirm>
+          {/* 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样，点了 6 秒内能撤销 */}
+          {p.企业版 && 可改 && !独自一人(候选, p.ownerId) && (
+            <Button disabled={忙 || !!待转给} onClick={() => { set转给谁(null); set转给框(true); }}>转给…</Button>
+          )}
+          {/* 放回公海、删除项目少用、后果重：收进「更多」（10-30） */}
+          {(p.能放公海 || 能改) && (
+            <Dropdown
+              trigger={["click"]}
+              placement="bottomRight"
+              disabled={忙}
+              menu={{
+                items: [
+                  ...(p.能放公海 ? [{ key: "pool", disabled: 等复核, label: 两行("放回公海", 等复核 ? `${等复核文字}，暂时不能放回` : undefined) }] : []),
+                  ...(能改 ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
+                ],
+                onClick: ({ key }) => {
+                  if (key === "pool") {
+                    // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
+                    if (p.企业版) { set回收原因(null); set放回框(true); return; }
+                    modal.confirm({ title: "放回项目公海？", content: "放回去以后谁都能领，你自己不能再领回来", okText: "放回公海", onOk: () => 跑(() => 放回项目公海(p.id), "已放回项目公海") });
+                    return;
+                  }
+                  modal.confirm({ title: "删除这个项目？", content: 删除说明(p.删前清点, b.customer, p.企业版), okText: "删除", okButtonProps: { danger: true }, onOk: 删 });
+                },
+              }}
+            >
+              <Button icon={<MoreOutlined />} aria-label="项目的更多操作">更多</Button>
+            </Dropdown>
           )}
         </Space>
       }
@@ -711,6 +861,7 @@ export default function ProjectDetail({
           候选={候选}
           联系人们={联系人们}
           渠道们={p.企业版 ? p.渠道们 : undefined}
+          改负责人={!p.企业版}
         />
       )}
 
@@ -777,6 +928,29 @@ export default function ProjectDetail({
         <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来；你会记成这个项目的历史负责人。</div>
         <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
       </Modal>
+
+      <Modal
+        open={转给框}
+        title="转给…"
+        okText="转给"
+        okButtonProps={{ disabled: !转给谁 }}
+        onCancel={() => set转给框(false)}
+        onOk={() => 转给谁 && 开始转给(转给谁)}
+      >
+        <Select
+          showSearch
+          optionFilterProp="label"
+          style={{ width: "100%", marginBottom: 8 }}
+          placeholder="选接手的人"
+          aria-label="转给谁"
+          value={转给谁}
+          onChange={(v: string) => set转给谁(v)}
+          options={成员选项(候选).filter((o) => o.value !== p.ownerId)}
+        />
+        <div style={{ color: "var(--text-muted)" }}>
+          {转给名 ? `转给 ${转给名} 以后，你看不到这个项目；6 秒内可撤销。原来填的下一步会清掉，由 ${转给名} 重新安排。` : "选好人以后，6 秒内可撤销。"}
+        </div>
+      </Modal>
     </div>
   );
   return 正文;
@@ -826,11 +1000,6 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
       </div>
     </Modal>
   );
-}
-
-/** 回收日在两天内（含已到）：提示变成警示色 */
-function 回收临近(回收日: string): boolean {
-  return dayjs(回收日).diff(dayjs().startOf("day"), "day") <= 2;
 }
 
 /**
@@ -900,8 +1069,10 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
     const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步 && "下一步", 填.下一步时间 && "下一步时间"].filter(Boolean);
     set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
   };
-  const 差 = !content.trim() ? "请填写这次沟通的内容" : p.企业版 && 明确回复 === null ? "请选客户这次有没有明确回复"
-    : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到项目公海" : "";
+  const 差 = !content.trim() ? "请填写这次沟通的内容" : p.企业版 && 明确回复 === null ? "请选客户明确回复了吗"
+    : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
+  // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
+  const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
 
   const 交 = async () => {
     set交中(true);
@@ -916,6 +1087,13 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
       title="记一条沟通"
       okText="记下"
       okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }}
+      // 还差哪一格写在「记下」旁边，不用悬停
+      footer={(按钮) => (
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+          {差 && <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{差}</span>}
+          <span>{按钮}</span>
+        </div>
+      )}
       // 写了字就别让点到框外把草稿关掉（10-29 实点：点日历时手一偏，整段没了）
       mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() }}
       onCancel={关}
@@ -939,7 +1117,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
             <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
-                  : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>只是预填，核对无误再记下；「客户是否明确回复」要你自己选</span>}
+                  : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>只是预填，核对无误再记下；「客户明确回复了吗」要你自己选</span>}
               </div>
               <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
                 {解析?.结果 ? "重新解析" : "AI 解析填表"}
@@ -968,8 +1146,8 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
         )}
         {p.企业版 && (
           <div>
-            <div style={{ marginBottom: 4 }}>客户是否明确回复<span style={{ color: "var(--danger-text)" }}> *</span></div>
-            <Radio.Group aria-label="客户是否明确回复" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "明确回复了" }, { value: false, label: "没有明确回复" }]} />
+            <div style={{ marginBottom: 4 }}>客户明确回复了吗<span style={{ color: "var(--danger-text)" }}> *</span></div>
+            <Radio.Group aria-label="客户明确回复了吗" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
           </div>
         )}
         <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
@@ -995,9 +1173,16 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
             disabledDate={(x) => x.isBefore(dayjs(), "day")}
             onChange={(v) => set下一步时间(v ? v.format("YYYY-MM-DD") : null)}
           />
-          {p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>到那天还没人跟进，项目会自动回到项目公海</div>}
+          <Space size={4} wrap style={{ marginTop: 6 }}>
+            {([["明天", 1], ["3 天后", 3], ["1 周后", 7]] as const).map(([名, 天]) => {
+              const 日 = dayjs().add(天, "day").format("YYYY-MM-DD");
+              return <Button key={名} size="small" type={下一步时间 === 日 ? "primary" : "default"} ghost={下一步时间 === 日} onClick={() => set下一步时间(日)}>{名}</Button>;
+            })}
+          </Space>
+          {预演 ? (
+            <div style={{ marginTop: 4, fontSize: 12, color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>选这天 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
+          ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>到那天还没人跟进，项目会自动回到项目公海</div>}
         </div>
-        {差 && <div style={{ color: "var(--text-muted)" }}>{差}</div>}
       </div>
     </Modal>
   );

@@ -26,6 +26,7 @@ import { 认首页卡, 首页卡口径 } from "@/lib/project/home-cards";
 import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 企业级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
+import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
@@ -405,7 +406,7 @@ export default function ProjectsView({
                           tabIndex={0}
                           role="link"
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看} · ${r.node}`}
-                          aria-label={`${r.name}，${r.customerName ?? 领了再看}，${异常 ? "异常 · " : ""}${r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回收日文案(r.即将回收)}` : ""}`}
+                          aria-label={`${r.name}，${r.customerName ?? 领了再看}，${异常 ? "异常 · " : ""}${r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}`}
                           onClick={() => router.push(`/projects/${r.id}`)}
                           onMouseEnter={() => 预取.进(`/projects/${r.id}`)}
                           onMouseLeave={预取.出}
@@ -454,18 +455,10 @@ export default function ProjectsView({
   );
 }
 
-/** 企业版超时回收：明天（或今天）没人沟通就回到公海（10-27）。标签直接写哪天，不用悬停 */
+/** 企业版超时回收：快到回收日的项目标一下（10-27）。标签直接写哪天，不用悬停；文字和项目详情同一套（recycle-text.ts） */
 function 将收标({ 日 }: { 日: string }) {
-  return <Tag color="warning" style={{ marginInlineEnd: 0, flexShrink: 0 }}>{回收日文案(日)}</Tag>;
-}
-
-/** 回收日 → 「今天回公海」「明天回公海（11-06）」「11-06 回公海」 */
-export function 回收日文案(日: string, 今: Date | string = new Date()): string {
-  const 差 = dayjs(日).diff(dayjs(今).startOf("day"), "day");
-  const 月日 = dayjs(日).format("MM-DD");
-  if (差 <= 0) return "今天回公海";
-  if (差 === 1) return `明天回公海（${月日}）`;
-  return `${月日} 回公海`;
+  const { 短文字, 级别 } = 回公海文案(日);
+  return <Tag color={级别 === "当天" || 级别 === "已过" ? "error" : "warning"} style={{ marginInlineEnd: 0, flexShrink: 0 }}>{短文字}</Tag>;
 }
 
 /** 下拉菜单里的一项：名字 + 一行小字说明 */
