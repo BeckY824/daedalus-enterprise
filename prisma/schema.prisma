@@ -877,6 +877,14 @@ model Project {
   amount               Float                     @default(0)
   currency             String                    @default("CNY")
   remark               String?
+  /// 成交需求、合同金额、定金金额（企业版，迁移 097）：客户原表的「意向产品」「合同金额」「定金金额 + 定金币种」三列照原样进来，界面上可编辑。
+  /// 都可空；两个金额各带一个币种（取值同 currency，lib/currency.ts 是币种），金额空时币种也存空。
+  /// 和上面的 amount（「金额」：看板合计、提成的成交金额都用它）各是各的，不互相抄
+  dealDemand           String?
+  contractAmount       Float?
+  contractCurrency     String?
+  depositAmount        Float?
+  depositCurrency      String?
   /// 预计成交日期（企业版）：这个项目预计哪天签。老数据从客户的 expectedSignAt 搬过来，只搬客户名下只有一个进行中项目的，见 lib/project/expected-deal.ts
   expectedDealAt       DateTime?
   /// 项目来源（企业版，迁移 077）：这个项目是哪个渠道带来的，存渠道 id，界面写渠道全称。

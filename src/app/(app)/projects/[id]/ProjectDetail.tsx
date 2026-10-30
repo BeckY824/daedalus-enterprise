@@ -16,7 +16,7 @@ import { dayjs, fmtDateTime, 成员选项, 独自一人 } from "@/lib/utils";
 import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
 import { 外贸精简 } from "@/lib/business-config";
-import { 金额 } from "@/lib/currency";
+import { 金额, 默认币种 } from "@/lib/currency";
 import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -29,7 +29,7 @@ import { clearJob, runJob } from "@/lib/ai-jobs";
 import type { 可选渠道 } from "@/components/ChannelPicker";
 import { 拼地址, 企业级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
-import { 项目区域 } from "@/lib/project/profile-rules";
+import { 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
 import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
@@ -98,6 +98,8 @@ export type 项目详情 = {
    * 所在地 = 地址四格 + 详细地址，跟客户资料一样公海里同事客户的项目没领之前是 null（不摆）。不是企业版都不传
    */
   level?: string | null; 所在地?: (客户地址 & { location: string | null }) | null;
+  /** 企业版成交需求、合同金额 + 币种、定金金额 + 币种（迁移 097）；不是企业版不传 */
+  成交钱?: 项目成交钱;
   /**
    * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推；
    * 只能靠填齐 = 不是老板、主管，手动往前推不给（往后退、点结局照旧）
@@ -582,6 +584,13 @@ export default function ProjectDetail({
         <div style={行样}><span style={键样}>级别</span>{级别格(p.level)}</div>
       )}
       <div style={行样}><span style={键样}>金额</span>{金额(p.amount, p.currency)}</div>
+      {p.企业版 && p.成交钱 && (
+        <>
+          <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>
+          <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>
+          <div style={行样}><span style={键样}>成交需求</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.成交钱.dealDemand ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</span></div>
+        </>
+      )}
       {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
@@ -857,7 +866,7 @@ export default function ProjectDetail({
           open
           onClose={() => set编辑开着(false)}
           跑={跑}
-          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, 所在地: p.所在地 ?? null } : {}) }}
+          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, 所在地: p.所在地 ?? null, ...(p.成交钱 ? { 成交钱: p.成交钱 } : {}) } : {}) }}
           候选={候选}
           联系人们={联系人们}
           渠道们={p.企业版 ? p.渠道们 : undefined}

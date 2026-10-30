@@ -29,7 +29,7 @@ import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
-import { 项目级别和地址改成, type 项目级别和地址 } from "./profile-rules";
+import { 项目级别和地址改成, 项目成交钱改成, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -400,12 +400,13 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 
 /**
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期、项目来源、项目级别、所在地（地址四格 + 详细地址）。
- * 规矩同向导第四步（规整项目）；级别和所在地见 profile-rules.ts 项目级别和地址改成（不是企业版传了也不动）；
+ * 规矩同向导第四步（规整项目）；级别和所在地见 profile-rules.ts 项目级别和地址改成，成交需求 / 合同金额 / 定金金额见 项目成交钱改成（都是不是企业版传了也不动）；
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
  * 换负责人 = 转让：能管项目的人（负责人本人、老板、主管）能转，只改这一个项目，记谁、何时、从谁到谁。
  * 公海里的项目老板 / 主管指了新负责人 = 出公海。建档人（creatorId）不在这里、哪里都不给改
  */
-export type 编辑项目改动 = 向导项目 & { contactId?: string | null; expectedDealAt?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>;
+export type 编辑项目改动 = 向导项目 & { contactId?: string | null; expectedDealAt?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>
+  & Partial<{ [K in keyof 项目成交钱]: 项目成交钱[K] }>;
 export async function 改项目(me: 谁, projectId: string, patch: 编辑项目改动): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const 规则 = await 生效组织规则();
@@ -431,12 +432,14 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     }
     const 位置 = 企业版() ? 项目级别和地址改成(patch, p) : null;
     if (位置 && !位置.ok) return { ok: false as const, error: 位置.error };
-    const 新 = { ...好, contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}) };
+    const 钱 = 企业版() ? 项目成交钱改成(patch, p) : null;
+    if (钱 && !钱.ok) return { ok: false as const, error: 钱.error };
+    const 新 = { ...好, contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
     if (!变了.length) return { ok: true as const, 变了 };
-    // 企业版字段权限：动了「只能看」的金额 / 负责人 / 预计成交日期就拒（名称、备注、联系人不在表里，照旧能改）
+    // 企业版字段权限：动了「只能看」的金额（含合同金额、定金金额、成交需求）/ 负责人 / 预计成交日期就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
     if (挡) return { ok: false as const, error: 挡 };
     const 换人 = 新.ownerId !== p.ownerId;

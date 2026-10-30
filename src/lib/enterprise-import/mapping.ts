@@ -123,6 +123,12 @@ export const 别名: Record<实体, Record<string, string[]>> = {
     closedAt: ["成交日期", "赢单日期", "输单日期", "结单日期", "关闭日期", "签约日期"],
     owner: ["负责人", "商机负责人", "销售", "owner"],
     remark: ["备注", "说明", "描述", "remark"],
+    // 原表的「意向产品」就是项目上的成交需求；合同金额、定金金额各带一格币种（迁移 097）
+    dealDemand: ["成交需求", "意向产品"],
+    contractAmount: ["合同金额"],
+    contractCurrency: ["合同币种"],
+    depositAmount: ["定金金额", "定金"],
+    depositCurrency: ["定金币种"],
   },
   followup: {
     id: ["跟进ID", "跟进记录ID", ...通用ID],

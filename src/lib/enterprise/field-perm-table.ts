@@ -58,10 +58,16 @@ export const 客户列字段: Record<string, 字段名> = {
   remark: "客户备注",
 };
 
-/** 项目的列 → 字段权限里的字段（改项目用）；改节点 / 结局另按「商机阶段」查。预计成交日期 10-27 从客户挪来，沿用客户那行「预计签约」 */
+/** 项目的列 → 字段权限里的字段（改项目用；合同金额、定金金额、成交需求跟「金额」走）；改节点 / 结局另按「商机阶段」查。预计成交日期 10-27 从客户挪来，沿用客户那行「预计签约」 */
 export const 项目列字段: Record<string, 字段名> = {
   amount: "商机金额",
   currency: "商机金额",
+  // 成交需求、合同金额、定金金额（迁移 097）和金额同一级：不另开权限开关，「金额」只能看的角色这几格也改不了
+  dealDemand: "商机金额",
+  contractAmount: "商机金额",
+  contractCurrency: "商机金额",
+  depositAmount: "商机金额",
+  depositCurrency: "商机金额",
   ownerId: "商机负责人",
   expectedDealAt: "预计签约",
 };

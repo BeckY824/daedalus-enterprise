@@ -140,6 +140,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     // 项目级别、所在地（P11 定稿 -2 版，迁移 093）：级别是项目自己的，都给看；所在地跟客户资料一样，公海里同事客户的项目没领之前不给
     level: p.level,
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
+    // 成交需求、合同金额、定金金额（迁移 097）：和金额一样是项目自己的，都给看
+    成交钱: { dealDemand: p.dealDemand, contractAmount: p.contractAmount, contractCurrency: p.contractCurrency, depositAmount: p.depositAmount, depositCurrency: p.depositCurrency },
   };
   // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查
   const 线索验证 = 企业 && p.phase === "线索" ? await 读线索验证(me, p) : null;

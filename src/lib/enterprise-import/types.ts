@@ -64,7 +64,7 @@ export const 标准字段 = {
   customer: ["id", "name", "phone", "owner", "followStatus", "custStatus", "customerType", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website", "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay"],
   contact: ["id", "customerRef", "customerName", "name", "position", "phone", "email", "wechat", "isPrimary", "remark", "gender", "birthday", "hobby", "address"],
   lead: ["id", "name", "contact", "phone", "email", "industry", "source", "status", "owner", "remark"],
-  opportunity: ["id", "customerRef", "customerName", "name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "owner", "remark"],
+  opportunity: ["id", "customerRef", "customerName", "name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "owner", "remark", "dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"],
   followup: ["id", "customerRef", "customerName", "opportunityRef", "opportunityName", "type", "title", "content", "occurredAt", "owner", "status"],
 } as const satisfies Record<实体, readonly string[]>;
 export type 标准字段名<E extends 实体 = 实体> = (typeof 标准字段)[E][number];
@@ -114,6 +114,12 @@ export const 字段中文: Record<string, string> = {
   title: "标题",
   content: "内容",
   occurredAt: "跟进时间",
+  // 项目的成交需求 / 合同金额 / 定金金额（迁移 097，只在项目模式落库）
+  dealDemand: "成交需求",
+  contractAmount: "合同金额",
+  contractCurrency: "合同币种",
+  depositAmount: "定金金额",
+  depositCurrency: "定金币种",
 };
 
 /** 每类必填的标准字段：缺了这一格整条跳过（跟进的标题 / 内容缺一个能拿另一个补，不在这里） */

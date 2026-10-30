@@ -92,7 +92,9 @@ const 可写: Record<string, string[]> = {
     // 企业版项目画像（P11，迁移 087）：详情页「项目画像」卡改一项存一项（projects/actions.ts 改项目画像Action → lib/project/profile.ts）
     "budgetLevel", "priceSense", "decisionChain", "demandStatus", "productNeeds",
     // 企业版项目级别、所在地四格 + 详细地址（P11 定稿 -2 版，迁移 093；location 是 087 加的，现在当详细地址）：编辑项目框（编辑项目 → lib/project/db.ts 改项目）
-    "level", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "location"],
+    "level", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "location",
+    // 企业版成交需求、合同金额 + 币种、定金金额 + 币种（迁移 097）：编辑项目框（编辑项目 → lib/project/db.ts 改项目），导入（enterprise-import/project-target.ts 建项目 / 改项目）
+    "dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"],
   ProjectMember: ["roleId"],
   ProjectRole: ["name", "active"],
   ProjectExceptionCategory: ["name", "active"],
