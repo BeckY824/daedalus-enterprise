@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
-import { 上限最大, 时长最大, 是不限, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+import { 上限最大, 时长最大, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
 import { 要沟通的节点 } from "@/lib/project/stage-gates";
@@ -262,6 +262,20 @@ function HoldCapCard({
   const [每人, set每人] = useState<Record<string, number | null>>(规则.每人上限);
   const 改了 = 默认 !== 规则.默认上限 || 成员.some((u) => (每人[u.id] ?? null) !== (规则.每人上限[u.id] ?? null));
   const 保存 = () => 跑(() => 改组织规则({ 公海: { 默认上限: 默认 ?? undefined, 每人上限: 每人 } }), "已保存");
+  const { modal } = App.useApp();
+  const 拨 = (开: boolean) => 跑(() => 改组织规则({ 公海: { 持有上限开: 开 } }), 开 ? "已开持有上限" : "已关持有上限");
+  // 开之前先说会挡住谁（10-30）：一开就生效，按存着的上限数一遍现在已经到了的人；关不用问
+  const 开前预览 = () => {
+    const n = 到上限的人数(规则, 持有, 成员.map((u) => u.id));
+    const 按 = `按${是不限(规则.默认上限) ? "不限" : ` ${规则.默认上限} 个`}${Object.keys(规则.每人上限).length ? "（单独设过的按各自的）" : ""}算`;
+    modal.confirm({
+      title: "开持有上限？",
+      content: n ? `${按}，现在有 ${n} 人已经到了上限，他们暂时领不了公海。` : `${按}，现在没有人到上限。`,
+      okText: "开",
+      cancelText: "取消",
+      onOk: () => void 拨(true),
+    });
+  };
 
   return (
     <Card
@@ -273,7 +287,7 @@ function HoldCapCard({
             aria-label="项目持有上限"
             checked={规则.持有上限开}
             disabled={!!挡 || 忙}
-            onChange={(开) => void 跑(() => 改组织规则({ 公海: { 持有上限开: 开 } }), 开 ? "已开持有上限" : "已关持有上限")}
+            onChange={(开) => (开 ? 开前预览() : void 拨(false))}
           />
         </Space>
       }

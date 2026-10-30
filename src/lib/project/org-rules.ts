@@ -294,3 +294,14 @@ export function 持有上限of(规则: 组织规则, userId: string): number | n
   const n = 规则.公海.每人上限[userId] ?? 规则.公海.默认上限;
   return 是不限(n) ? null : n;
 }
+
+/**
+ * 开持有上限之前的预览（设置页开关，10-30）：照现在存的默认 / 每人上限算，已经到了上限的有几位（到了就领不了公海、不能再被指派，同 超上限）。
+ * 持有 = 每人手上线索 / 商机阶段、还在跟的项目数（设置页给的那份）
+ */
+export function 到上限的人数(公海: 组织规则["公海"], 持有: Record<string, number>, 人们: readonly string[]): number {
+  return 人们.filter((id) => {
+    const n = 公海.每人上限[id] ?? 公海.默认上限;
+    return !是不限(n) && (持有[id] ?? 0) >= n;
+  }).length;
+}

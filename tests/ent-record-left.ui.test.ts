@@ -108,11 +108,10 @@ it("开关关闭：左栏照旧——一行一个联系人、空字段都在、�
     expect(await page.getByText("ww_buyer").count()).toBe(0);
   } finally { await page.close(); }
 });
-it("企业版项目模式（P14）：没有记录输入、头上是「跟进」；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
+it("企业版项目模式（P14）：没有记录输入、头上是「记一条沟通…」（两个项目先挑）；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
   const page = await open(true, 1024, true);
   try {
-    // antd 两个汉字的按钮中间自动加空格
-    expect(await page.getByRole("button", { name: /^跟\s?进$/ }).count()).toBe(1);
+    expect(await page.getByRole("button", { name: "记一条沟通…" }).count()).toBe(1);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
     expect(await page.getByText("沟通记录", { exact: true }).count()).toBe(1);
@@ -124,9 +123,9 @@ it("企业版项目模式（P14）：没有记录输入、头上是「跟进」�
     expect(await page.getByText("回访报价").count()).toBe(1);
     expect(await page.locator(".rec-task-k").allInnerTexts()).toEqual(["计划", "项目"]);
     expect(await page.getByText("下次跟进").count()).toBe(0);
-    // 两个项目：点「跟进」打开菜单，长名字不把菜单撑出屏
-    await page.getByRole("button", { name: /^跟\s?进$/ }).click();
-    await page.getByText("去项目里跟进").waitFor();
+    // 两个项目：点「记一条沟通…」打开菜单挑项目，长名字不把菜单撑出屏
+    await page.getByRole("button", { name: "记一条沟通…" }).click();
+    await page.getByText("记到哪个项目").waitFor();
     expect(await page.getByText("关联进来的项目").count()).toBe(1);
     const 菜单宽 = await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first().evaluate(el => el.getBoundingClientRect().right);
     expect(菜单宽).toBeLessThanOrEqual(1024);
