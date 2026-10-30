@@ -471,7 +471,7 @@ export default function CustomersView({
       title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: 140,
       // 在公海里：写「公海（原 X）」——原负责人还挂着，但谁都能领
       render: (v: string, r: CustomerRow) => r.pool
-        ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放进公海" : r.pool.reason}`}>{公海标签(v)}</Tag>
+        ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : r.pool.reason}`}>{公海标签(v)}</Tag>
         : <UserCell name={v} size={24} />,
     }]),
     // 三列各收一点，1366 宽时默认列和公海列都不用左右拖（10-27）；负责人不收，「公海（原 X）」要放得下
@@ -633,7 +633,7 @@ export default function CustomersView({
         空态={{
           title: `还没有${b.customer}`,
           hint: 企业
-            ? `${b.customer}是这套系统的中心：跟进记录和项目都挂在他身上。`
+            ? `${b.customer}是这套系统的中心：沟通记录和项目都挂在他身上。`
             : 外贸
             ? `${b.customer}是这套系统的中心：跟进记录、商机、订单都挂在他身上。`
             : `${b.customer}是这套系统的中心：跟进记录、商机、签约都挂在他身上，推荐归属也按他这条线往上算。`,

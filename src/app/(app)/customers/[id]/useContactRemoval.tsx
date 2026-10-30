@@ -91,7 +91,7 @@ export function useContactRemoval() {
         <div style={{ lineHeight: 1.7 }}>
           <div>只移出：联系人页里还留着，写「未归属」，以后能挂到别的{b.customer}下面。</div>
           <div>彻底删除：联系人页里也一起删掉。</div>
-          <div className="muted">两种都不会删他的跟进记录。</div>
+          <div className="muted">两种都不会删他的沟通记录。</div>
         </div>
       ),
       footer: (

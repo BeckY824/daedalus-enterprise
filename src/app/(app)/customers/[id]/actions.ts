@@ -170,7 +170,7 @@ export async function saveFollowUp(input: FollowUpInput) {
     if (同事的) {
       if (input.id) return { ok: false as const, error: "这是同事的客户：只能新加跟进，改已有的跟进请找负责人" };
       if (extra?.tasks?.length || extra?.plan || extra?.完成计划 || ((input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成"))
-        return { ok: false as const, error: "这是同事的客户：只能记跟进，待办、提醒和下一步计划请找负责人安排" };
+        return { ok: false as const, error: "这是同事的客户：只能记沟通，待办、提醒和下一步计划请找负责人安排" };
     }
     const data = {
       type: input.type, title: input.title?.trim() ?? "", content: input.content.trim(), status: input.status,

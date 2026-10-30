@@ -229,8 +229,8 @@ export default function MembersTab({
         if (res.ok) {
           // 企业版「交接中」：给接手人的那部分等他确认（D10）
           message.success("交接中" in res
-            ? (方式 === "公海" ? "已停用，该进公海的已放进公海；其余等接手人在客户页确认后才转过去" : "已停用，名下的等接手人在客户页确认后才转过去")
-            : 方式 === "公海" ? "已停用，名下的放进了公海" : "已停用并转交");
+            ? (方式 === "公海" ? "已停用，该进公海的已放回公海；其余等接手人在客户页确认后才转过去" : "已停用，名下的等接手人在客户页确认后才转过去")
+            : 方式 === "公海" ? "已停用，名下的放回了公海" : "已停用并转交");
           router.refresh();
         } else message.error(res.error);
       },
@@ -560,7 +560,7 @@ function OffboardForm({ name, 点, others, defaultTarget, onChange }: {
         style={{ marginBottom: 12 }}
         options={[
           { value: "转交", label: "全部转交给一个人" },
-          { value: "公海", label: "放进公海，谁领谁接" },
+          { value: "公海", label: "放回公海，谁领谁接" },
         ]}
       />
       {方式 === "转交" ? (
@@ -618,13 +618,13 @@ function BatchOffboardForm({ names, others, defaultTarget, onChange }: {
         style={{ marginBottom: 12 }}
         options={[
           { value: "转交", label: "全部转交给一个人" },
-          { value: "公海", label: "放进公海，谁领谁接" },
+          { value: "公海", label: "放回公海，谁领谁接" },
         ]}
       />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 8 }}>
         {方式 === "转交"
           ? `他们名下的${b.customer}、项目，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：`
-          : `能放公海的${b.customer}和项目放进公海；已签约、已流失、订单阶段的，和线索、渠道，交给：`}
+          : `能放公海的${b.customer}和项目放回公海；已签约、已流失、订单阶段的，和线索、渠道，交给：`}
       </Typography.Paragraph>
       <Select
         value={target}

@@ -180,7 +180,7 @@ export async function 加载复盘(from: Date, to: Date, 粒: 粒度, 币: { 想
     明细: Object.fromEntries(明细),
     bySales: 成员agg(签约销售, "—"),
     byChannelOwner: 成员agg(签约渠道负责人, "无渠道负责人"),
-    byChannel: agg((c) => c.customer.channel, "无来源渠道"),
+    byChannel: agg((c) => c.customer.channel, "无渠道"),
     byAttribution: agg((c) => c.customer.attributionChannel ?? c.customer.attributionCustomer, "无归属"),
     未来: { amount: 未到.reduce((s, c) => s + c.amount, 0), count: 未到.length },
     total: { amount: contracts.reduce((s, c) => s + c.amount, 0), count: contracts.length },

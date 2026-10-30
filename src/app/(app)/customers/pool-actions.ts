@@ -84,7 +84,7 @@ export async function 放进公海(ids: string[]): Promise<公海结果> {
   const 能放 = 这些.filter((c) => !c.pool && (管全队客户(me.role) || c.salesOwnerId === me.id));
   const 没权限 = 这些.length - 已在.length - 能放.length;
   if (!能放.length) {
-    return 没权限 ? { ok: false, error: `只有负责人或管理员能把${b.customer}放进公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
+    return 没权限 ? { ok: false, error: `只有负责人或管理员能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
   }
   await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason: "手动" })) });
   await 记退回(能放.map((c) => c.id), 1);

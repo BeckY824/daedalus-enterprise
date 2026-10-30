@@ -65,8 +65,10 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   const 行 = 张.page.getByRole("row", { name: new RegExp(客户名) });
   await expect(行).toBeVisible();
   await 行.getByRole("checkbox").check();
-  await 张.page.getByRole("button", { name: "放进公海" }).click();
-  await expect(张.page.getByText("已放进公海 1 位")).toBeVisible();
+  await 张.page.getByRole("button", { name: "放回公海" }).click();
+  // 放回前确认一次（交互规则 B）
+  await 张.page.getByRole("dialog").getByRole("button", { name: "放回公海" }).click();
+  await expect(张.page.getByText("已放回公海 1 位")).toBeVisible();
   // 客户页不含公海：放进去就从这一页走了；搜不到时指一条去公海的路，关键词带上
   await expect(行).toHaveCount(0);
   await expect(张.page.locator(".page-head .ant-segmented")).toHaveCount(0);

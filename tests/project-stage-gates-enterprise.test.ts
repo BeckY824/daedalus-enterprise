@@ -49,8 +49,8 @@ describe("企业版三大阶段的门", () => {
       expect(记沟通阶段问题({}, { phase: "线索" })).toBe("记沟通要选项目当前所在的阶段");
       expect(记沟通阶段问题({ 阶段: "随便" }, { phase: "线索" })).toBe("记沟通要选项目当前所在的阶段");
       expect(记沟通阶段问题({ 阶段: "商机" }, { phase: "线索" })).toBe("项目现在在线索阶段，沟通只能记在线索阶段");
-      expect(记沟通阶段问题({ 阶段: "线索" }, { phase: "线索" })).toBe("请选客户是否明确回复");
-      expect(记沟通阶段问题({ 阶段: "线索", 明确回复: "是" }, { phase: "线索" })).toBe("请选客户是否明确回复");
+      expect(记沟通阶段问题({ 阶段: "线索" }, { phase: "线索" })).toBe("请选：客户明确回复了吗");
+      expect(记沟通阶段问题({ 阶段: "线索", 明确回复: "是" }, { phase: "线索" })).toBe("请选：客户明确回复了吗");
       expect(记沟通阶段问题({ 阶段: "线索", 明确回复: false }, { phase: "线索" })).toBeNull();
       vi.stubEnv("CRM_ENTERPRISE", "");
       expect(记沟通阶段问题({}, { phase: "线索" })).toBeNull();
@@ -60,7 +60,7 @@ describe("企业版三大阶段的门", () => {
       const p = await 项目({ phase: "商机", node: "明确需求" });
       expect(await 记项目沟通(乙, p.id, 沟通())).toEqual({ ok: false, error: "记沟通要选项目当前所在的阶段" });
       expect(await 记项目沟通(乙, p.id, 沟通({ 阶段: "线索", 明确回复: true }))).toEqual({ ok: false, error: "项目现在在商机阶段，沟通只能记在商机阶段" });
-      expect(await 记项目沟通(乙, p.id, 沟通({ 阶段: "商机" }))).toEqual({ ok: false, error: "请选客户是否明确回复" });
+      expect(await 记项目沟通(乙, p.id, 沟通({ 阶段: "商机" }))).toEqual({ ok: false, error: "请选：客户明确回复了吗" });
       expect(await prisma.followUp.count()).toBe(0);
       expect(await prisma.entFollowUpMark.count()).toBe(0);
 

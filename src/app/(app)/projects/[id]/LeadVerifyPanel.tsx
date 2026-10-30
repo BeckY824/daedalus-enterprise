@@ -191,7 +191,7 @@ export default function LeadVerifyPanel({
             <>
               {推按钮("认领继续", () => void 跑(() => 销售认领Action(projectId, true), "已认领，推到线索推进"), "lead-verify-claim")}
               <Popconfirm title="退回项目公海？" description="算你主动退回，别人可以领走" okText="退回" cancelText="再想想" onConfirm={() => void 跑(() => 销售认领Action(projectId, false), "已退回项目公海")}>
-                <Button size="small" disabled={忙} data-testid="lead-verify-return">退回公海</Button>
+                <Button size="small" disabled={忙} data-testid="lead-verify-return">放回公海</Button>
               </Popconfirm>
             </>
           )}

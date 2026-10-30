@@ -81,7 +81,7 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
   if (!d.跟进.content.trim()) return "请填写这次沟通的内容";
   if (企业) {
     if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选当前进程（线索阶段的哪一步）";
-    if (typeof d.跟进.明确回复 !== "boolean") return "请选客户是否明确回复";
+    if (typeof d.跟进.明确回复 !== "boolean") return "请选：客户明确回复了吗";
     if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点) && !d.跟进.明确回复) return 缺有效沟通;
   }
   return 要下一步 && !d.跟进.下一步时间 ? "请填下一步时间：到那天还没有新的沟通，项目会自动回到公海" : "";
@@ -445,7 +445,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           {企业 && 一行("当前进程", (
             <Select style={{ width: "100%" }} value={d.跟进.节点} options={企业.节点们.map((n) => ({ value: n, label: n }))} onChange={(v) => 改("跟进", { 节点: v })} />
           ), true)}
-          {企业 && 一行("客户是否明确回复", (
+          {企业 && 一行("客户明确回复了吗", (
             <Radio.Group value={d.跟进.明确回复 ?? undefined} onChange={(e) => 改("跟进", { 明确回复: e.target.value as boolean })}>
               <Radio value={true}>客户明确回复了</Radio>
               <Radio value={false}>没有明确回复</Radio>

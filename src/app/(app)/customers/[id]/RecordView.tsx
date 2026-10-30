@@ -759,7 +759,7 @@ export default function RecordView({
         {/* 在公海里（第 6 块）：标签写原负责人，旁边就是「领取」——看到就能接手 */}
         {customer.pool && (
           <span className="rec-tags-n rec-pool">
-            <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放进公海" : customer.pool.reason}>{公海标签(customer.salesOwnerName)}</Tag>
+            <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放回公海" : customer.pool.reason}>{公海标签(customer.salesOwnerName)}</Tag>
             {原负责人领不回
               ? <Tooltip title={原负责人不能领回提示}><Button size="small" type="link" icon={<UserAddOutlined />} disabled>领取</Button></Tooltip>
               : <Button size="small" type="link" icon={<UserAddOutlined />} onClick={() => void 公海动作("领取")}>领取</Button>}
@@ -1139,7 +1139,7 @@ export default function RecordView({
             />
             <div className="rec-composer-bar">
               <span className="rec-composer-hint">
-                {aiEnabled ? "「AI 解析」会把它整理成跟进记录并留存原文；「直接记」原样存为一条记录" : "Enter 换行，写完点「直接记」"}
+                {aiEnabled ? "「AI 解析」会把它整理成沟通记录并留存原文；「直接记」原样存为一条记录" : "Enter 换行，写完点「直接记」"}
               </span>
               {aiEnabled && (
                 <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={memo.trim().length < 5 || AI已用完} onClick={() => openFollow(null, memo)}>

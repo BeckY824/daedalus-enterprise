@@ -53,7 +53,7 @@ export function 记沟通阶段问题(input: { 阶段?: unknown; 明确回复?: 
   if (!企业版()) return null;
   if (!是阶段(input.阶段)) return "记沟通要选项目当前所在的阶段";
   if (input.阶段 !== p.phase) return `项目现在在${p.phase}阶段，沟通只能记在${p.phase}阶段`;
-  if (typeof input.明确回复 !== "boolean") return "请选客户是否明确回复";
+  if (typeof input.明确回复 !== "boolean") return "请选：客户明确回复了吗";
   return null;
 }
 

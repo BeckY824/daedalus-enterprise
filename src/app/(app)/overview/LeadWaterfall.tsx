@@ -27,7 +27,7 @@ const 段们 = [
   { 键: "count", 名: "停在这里", 色: categorical.cyan },
   { 键: "流失", 名: "线索流失", 色: palette.danger },
   { 键: "判无效", 名: "判无效", 色: palette.warning },
-  { 键: "退回公海", 名: "退回公海", 色: palette.textFaint },
+  { 键: "退回公海", 名: "放回公海", 色: palette.textFaint },
 ] as const;
 
 export default function LeadWaterfall({ 节点, 转商机, 说明 }: { 节点: 线索节点格[]; 转商机: number; 说明: string }) {
@@ -99,7 +99,7 @@ export default function LeadWaterfall({ 节点, 转商机, 说明 }: { 节点: �
       {合计 > 0 ? (
         <Chart option={option} height={(节点.length + 2) * 30 + 42} />
       ) : (
-        <EmptyState title="没有线索阶段的项目" hint="新建一条线索，这里按潜客培育、线索验证、线索推进垒出来，流失、判无效、退回公海也拆开看。" demo={false} />
+        <EmptyState title="没有线索阶段的项目" hint="新建一条线索，这里按潜客培育、线索验证、线索推进垒出来，流失、判无效、放回公海也拆开看。" demo={false} />
       )}
     </Card>
   );

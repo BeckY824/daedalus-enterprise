@@ -38,8 +38,8 @@ type 结果 = { ok: true; projectId: string } | { ok: false; error: string };
 /** 跟进节点、明确回复两格（和 规整向导 企业版那段同一套口径） */
 function 认节点和回复(f: 向导跟进): { 节点: string; 明确回复: boolean } | { error: string } {
   const 节点 = typeof f?.节点 === "string" ? f.节点.trim() : "";
-  if (!企业版字典.节点们.线索.includes(节点)) return { error: "请选跟进节点（线索阶段的哪一步）" };
-  if (typeof f.明确回复 !== "boolean") return { error: "请选客户是否明确回复" };
+  if (!企业版字典.节点们.线索.includes(节点)) return { error: "请选当前进程（线索阶段的哪一步）" };
+  if (typeof f.明确回复 !== "boolean") return { error: "请选：客户明确回复了吗" };
   if (节点序号({ phase: "线索", node: 节点 }, 企业版字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 企业版字典) && !f.明确回复) {
     return { error: 缺有效沟通 };
   }

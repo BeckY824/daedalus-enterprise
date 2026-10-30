@@ -24,7 +24,7 @@ export type Metric = keyof typeof METRICS;
 export const GROUP_BYS = {
   month: "按月",
   sales: "按销售负责人",
-  channel: "按来源渠道",
+  channel: "按渠道",
   source: "按线索来源",
   grade: "按年级",
   followStatus: "按跟进状态",

@@ -437,7 +437,7 @@ export async function 总管理终判Action(projectId: string, 有效: boolean, 
 
 /** 总管理判有效后，销售认领继续推，或自己退回公海（算主动退回） */
 export async function 销售认领Action(projectId: string, 继续: boolean) {
-  return 验证一步(projectId, (名) => `项目「${名}」终判有效后${继续 ? "认领继续推进" : "退回公海"}`,
+  return 验证一步(projectId, (名) => `项目「${名}」终判有效后${继续 ? "认领继续推进" : "放回公海"}`,
     (me) => 销售认领(me, projectId, 继续 === true));
 }
 
