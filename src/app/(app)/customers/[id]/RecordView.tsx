@@ -932,9 +932,10 @@ export default function RecordView({
               <span>联系人 {contacts.length > 0 && contacts.length}</span>
               {/* 企业版：一键看这个客户的全部联系人（联系人页按客户名筛） */}
               {(企业 || !只读) && (
-                <Space size={12}>
-                  {企业 && <Link href={`/contacts?keyword=${encodeURIComponent(customer.name)}`}>全部联系人</Link>}
+                <Space size={12} style={{ whiteSpace: "nowrap" }}>
                   {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
+                  {/* 和下面「项目」那栏同一个写法；1366 下右栏窄，写全「全部联系人」会折行 */}
+                  {企业 && <Link href={`/contacts?keyword=${encodeURIComponent(customer.name)}`} aria-label="全部联系人">全部 ›</Link>}
                 </Space>
               )}
             </div>
