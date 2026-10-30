@@ -22,6 +22,7 @@ import { 跟进类型们, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LE
 import { dayjs } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
+import { 企业版字典 } from "@/lib/project/stage-dict";
 
 /**
  * AI 建议卡：唯一一条让模型的输出进到数据库的路。
@@ -53,6 +54,8 @@ export const 新线索来源 = createContext<readonly string[] | null>(null);
 /** 同一处：开了超时回收，新线索卡的「下一步时间」也必填（和 dashboard/apply.ts 的拦截同一份 missingFields） */
 export const 新线索要下一步 = createContext(false);
 
+type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string };
+
 export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal; 记号?: string }) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
@@ -69,8 +72,11 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
     if (记号 && (s === "done" || s === "denied")) 记下建议结果(记号, s);
   };
   const [err, setErr] = useState("");
-  /** 确认之后的回执：几点写入、怎么撤。存在任务表里（lib/ai-jobs 的 落印回执），卡片重挂也还在，刷新页面才没 */
-  const [落印, set落印] = useState<{ at: string; 撤销?: 撤销凭据 } | null>(() => (记号 ? (读回执(记号) as { at: string; 撤销?: 撤销凭据 } | undefined) ?? null : null));
+  /**
+   * 确认之后的回执：几点写入、怎么撤、建成的项目（企业版新线索卡，「查看」直接打开它）。
+   * 存在任务表里（lib/ai-jobs 的 落印回执），卡片重挂也还在，刷新页面才没
+   */
+  const [落印, set落印] = useState<落印回执 | null>(() => (记号 ? (读回执(记号) as 落印回执 | undefined) ?? null : null));
   /** 这一下刚发生：只有刚点的那次落印才「盖下去」、刚撤销的那次才「褪回去」；重挂时都是静止的结果 */
   const [刚, set刚] = useState<"落印" | "撤销" | null>(null);
   const [撤销中, set撤销中] = useState(false);
@@ -82,7 +88,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   /** 真正要提交的那张卡：逐项时只带勾上的那几项 */
   const 要提交的 = useMemo<Proposal>(() => 只留选中的改动(draft, 勾了), [draft, 勾了]);
   // 模型不知道的字段留空，人在卡片上补齐才能确认
-  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步 } : undefined);
+  // 企业版卡上那一格叫「渠道」（术语表），提示里跟着叫；lib 里那句「来源（渠道）」AI 的提示词也在用，不动
+  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步 } : undefined).map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m));
   const 能确认 = state !== "saving" && missing.length === 0 && 勾了.length > 0;
 
   async function confirm() {
@@ -94,7 +101,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
     const 对话框 = 找对话框(根.current);
     const r = await applyProposal(要提交的);
     if (r.ok) {
-      const 回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销 };
+      const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}) };
       set落印(回执);
       if (记号) 记下回执(记号, 回执);
       set刚("落印");
@@ -180,7 +187,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
               {撤销中 ? "撤销中…" : "撤销"}
             </button>
           )}
-          <Link href={draft.kind === "add_lead" ? "/leads" : draft.kind === "update_channel" ? "/channels" : `/customers/${draft.customerId}`} className="cli-link">
+          <Link href={draft.kind === "add_lead" ? (落印?.项目 ? `/projects/${落印.项目}` : "/leads") : draft.kind === "update_channel" ? "/channels" : `/customers/${draft.customerId}`} className="cli-link">
             查看 <RightOutlined style={{ fontSize: 10 }} />
           </Link>
         </span>
@@ -396,7 +403,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
             <Field label="电话">
               <Input size="small" style={{ width: 150 }} placeholder="可留空" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
             </Field>
-            <Field label="来源">
+            <Field label={渠道名们 ? "渠道" : "来源"}>
               <OptionInput size="small" style={{ width: 130 }} allowClear={false} value={draft.source} options={渠道名们 ? [...渠道名们] : b.sources} onChange={(v) => setDraft({ ...draft, source: v })} />
             </Field>
             {/* 企业版建成项目：首条沟通的下一步时间（开了超时回收必填）；别的版本不显示 */}
@@ -412,15 +419,22 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
                 />
               </Field>
             )}
-            <Field label="状态">
-              <Select
-                size="small"
-                style={{ width: 120 }}
-                value={draft.status}
-                options={LEAD_STATUSES.map((v) => ({ value: v, label: v }))}
-                onChange={(v) => setDraft({ ...draft, status: v })}
-              />
-            </Field>
+            {/* 企业版建成项目时不读「状态」（dashboard/apply.ts 的 建成项目），选了也没用：不摆下拉，直接写明会建成什么（10-30 交互审核 P0-4） */}
+            {渠道名们 ? (
+              <Field label="建成" block>
+                <span className="muted">负责人：我 · 阶段：线索 · {企业版字典.节点们.线索[0]} · 金额 0</span>
+              </Field>
+            ) : (
+              <Field label="状态">
+                <Select
+                  size="small"
+                  style={{ width: 120 }}
+                  value={draft.status}
+                  options={LEAD_STATUSES.map((v) => ({ value: v, label: v }))}
+                  onChange={(v) => setDraft({ ...draft, status: v })}
+                />
+              </Field>
+            )}
             <Field label="备注" block>
               <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 5 }} placeholder="可留空" value={draft.remark} onChange={(e) => setDraft({ ...draft, remark: e.target.value })} />
             </Field>

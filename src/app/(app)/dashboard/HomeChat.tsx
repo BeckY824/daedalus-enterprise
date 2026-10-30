@@ -19,7 +19,8 @@ import { 新线索来源, 新线索要下一步 } from "@/components/ProposalCar
 import HomeCards from "./HomeCards";
 import type { 首页卡数 } from "@/lib/project/home-cards";
 
-export type Suggestion = { label: string; question: string; kind?: "ask" | "prep" | "recap" };
+/** kind "fill"：点了只把 question 填进输入框、光标放到末尾，等人自己改完按回车（企业版首页的示例问题） */
+export type Suggestion = { label: string; question: string; kind?: "ask" | "prep" | "recap" | "fill" };
 
 /**
  * 首页 = 一个对话面，交互照 Claude Code / Codex：

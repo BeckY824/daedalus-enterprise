@@ -145,6 +145,8 @@ describe("确认新线索卡", () => {
     expect(await prisma.lead.count()).toBe(0);
     const p = await prisma.project.findFirstOrThrow({ include: { customer: true } });
     expect(p).toMatchObject({ name: "星河电子", phase: "线索", node: "潜客培育", result: null, ownerId: 乙.id });
+    // 卡上「查看」直接打开刚建的项目
+    expect(r).toMatchObject({ 项目: p.id });
     expect(p.customer).toMatchObject({ name: "星河电子", salesOwnerId: 乙.id, remark: "要样品", channelId: 展会 });
     expect(await prisma.contact.findFirst({ where: { customerId: p.customerId } })).toMatchObject({ name: "周经理", phone: "13700001234" });
     const 跟进 = await prisma.followUp.findFirstOrThrow({ where: { customerId: p.customerId } });
@@ -158,7 +160,7 @@ describe("确认新线索卡", () => {
     await prisma.channel.update({ where: { id: 展会 }, data: { active: false } });
     for (const source of ["展会", "其他"]) {
       expect(await applyProposal(线索卡({ id: `p-${source}`, name: `星河${source}`, phone: "", source }) as never)).toEqual({
-        ok: false, error: `卡上的来源「${source}」对不上启用中的渠道：请在卡上重新选来源（渠道）`,
+        ok: false, error: `卡上的渠道「${source}」对不上启用中的渠道：请在卡上重新选渠道`,
       });
     }
     expect(await prisma.project.count()).toBe(1);

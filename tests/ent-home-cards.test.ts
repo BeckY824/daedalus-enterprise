@@ -43,7 +43,9 @@ const 数首页卡 = (id: string, 今?: Date, 摆的?: readonly 首页卡键[]) 
 describe("口径（纯函数）", () => {
   it("卡的键、名字固定，乱传 f 当没筛", () => {
     expect([...首页卡键们]).toEqual(["month-new", "key", "no-follow", "due-soon", "month-won"]);
-    expect(首页卡键们.map((k) => 首页卡口径[k].名)).toEqual(["本月新增", "重点项目", "暂未跟进", "即将逾期", "本月赢单"]);
+    expect(首页卡键们.map((k) => 首页卡口径[k].名)).toEqual(["本月新增", "重点项目", "暂未跟进", "3 天内回公海", "本月赢单"]);
+    // 口径写在卡下面：本月新增连已结束的也算，写明
+    expect(首页卡口径["month-new"].说明).toContain("含已结束");
     expect(认首页卡("key")).toBe("key");
     expect(认首页卡("due-soon")).toBe("due-soon");
     expect(认首页卡("month-won")).toBe("month-won");
@@ -56,7 +58,7 @@ describe("口径（纯函数）", () => {
 
   it("首页摆的卡：本月新增、重点项目、暂未跟进、即将逾期；每张点进项目页对应的筛选", () => {
     expect([...首页摆的卡]).toEqual(老四张);
-    expect(首页摆的卡.map((k) => 首页卡色[k])).toEqual([undefined, undefined, "warn", "warn"]);
+    expect(首页摆的卡.map((k) => 首页卡色[k])).toEqual([undefined, undefined, "soon", "soon"]);
     expect(首页摆的卡.map(首页卡链接)).toEqual(["/projects?f=month-new", "/projects?f=key", "/projects?f=no-follow", "/projects?f=due-soon"]);
     expect(首页卡链接("month-won")).toBe("/projects?f=month-won");
   });

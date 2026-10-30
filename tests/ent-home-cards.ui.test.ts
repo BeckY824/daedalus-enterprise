@@ -1,7 +1,7 @@
 /**
- * 企业版首页四张指标卡（10-29 定稿：本月新增、重点项目、暂未跟进、即将逾期）：
+ * 企业版首页四张指标卡（10-29 定稿：本月新增、重点项目、暂未跟进、3 天内回公海）：
  *   竖排四张，每张点进项目页对应的筛选 /projects?f=…；今日待办不再是卡（数在 数提醒，见 tests/ent-home-cards.test.ts）；
- *   暂未跟进、即将逾期有数时标危险色，0 是灰数。
+ *   暂未跟进、3 天内回公海有数时标橙色，0 是灰数；口径写在卡下面一行小字。
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -39,7 +39,9 @@ it("四张卡、顺序、链接；不再有今日待办和「另有 M 条逾期�
   const { page, errors } = await 打开({ "month-new": 1, key: 2, "no-follow": 3, "due-soon": 4 });
   const 卡 = page.locator(".home-cards .home-card");
   await expect.poll(() => 卡.count()).toBe(4);
-  expect(await 卡.locator(".home-card-k").allInnerTexts()).toEqual(["本月新增", "重点项目", "暂未跟进", "即将逾期"]);
+  expect(await 卡.locator(".home-card-k").allInnerTexts()).toEqual(["本月新增", "重点项目", "暂未跟进", "3 天内回公海"]);
+  // 口径直接写在卡下面（不只在悬停里）
+  expect(await 卡.first().innerText()).toContain("含已结束");
   expect(await 卡.evaluateAll((els) => els.map((e) => e.getAttribute("href")))).toEqual(["/projects?f=month-new", "/projects?f=key", "/projects?f=no-follow", "/projects?f=due-soon"]);
   expect(await page.locator(".home-card-more").count()).toBe(0);
   expect(await page.getByText("今日待办").count()).toBe(0);
@@ -47,11 +49,11 @@ it("四张卡、顺序、链接；不再有今日待办和「另有 M 条逾期�
   await page.close();
 });
 
-it("暂未跟进、即将逾期有数才标危险色；0 不着色", async () => {
+it("暂未跟进、3 天内回公海有数才标橙色（红色只留给已过期的）；0 不着色", async () => {
   const { page, errors } = await 打开({ "month-new": 1, key: 2, "no-follow": 3, "due-soon": 0 });
   await expect.poll(() => page.locator(".home-cards .home-card").count()).toBe(4);
-  expect(await page.locator(".home-card-warn").count()).toBe(1);
-  expect(await page.locator(".home-card-warn .home-card-k").innerText()).toBe("暂未跟进");
+  expect(await page.locator(".home-card-soon").count()).toBe(1);
+  expect(await page.locator(".home-card-soon .home-card-k").innerText()).toBe("暂未跟进");
   expect(await page.locator(".home-card-good").count()).toBe(0);
   expect(errors).toEqual([]);
   await page.close();

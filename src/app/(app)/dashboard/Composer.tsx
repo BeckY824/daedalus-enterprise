@@ -314,7 +314,19 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const canSend = q.trim().length > 0 && (背调模式 ? 调.背调能发 : !AI已用完);
   /** 输入框底下摆不摆那排建议问题：只在还没问过、且库里有东西的时候 */
   const 摆建议 = empty && !空库 && suggestions.length > 0 && 模式 === "宽";
-  const 问这条 = (x: Suggestion) => submit(x.kind === "prep" ? "/prep" : x.kind === "recap" ? "/recap" : x.question);
+  const 问这条 = (x: Suggestion) => {
+    if (x.kind === "fill") {
+      setQ(x.question);
+      requestAnimationFrame(() => {
+        const ta = taRef.current;
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(x.question.length, x.question.length);
+      });
+      return;
+    }
+    submit(x.kind === "prep" ? "/prep" : x.kind === "recap" ? "/recap" : x.question);
+  };
   const 宽 = 模式 === "宽";
   /** 手机宽度（和 globals.css 的手机断点同一条线）：企业版项目模式的「附件」在这里改成调相机 */
   const 手机 = useNarrow("(max-width: 767px)");
