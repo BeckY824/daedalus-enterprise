@@ -429,6 +429,7 @@ export async function 设自动分配参与(userId: string, 状态: 参与状态
 /** 「不设配额（人人参与、不限额）」现在开着没：规则关着返回 null（设置页那一块不出现） */
 export async function 读不设配额(): Promise<boolean | null> {
   if (!(await 规则开着("线索分配"))) return null;
+  await requireUser();
   return 不设配额开着();
 }
 
@@ -439,10 +440,11 @@ export async function 读不设配额(): Promise<boolean | null> {
 export async function 设不设配额(on: boolean): Promise<结果> {
   const me = await 进门();
   if (!me) return 没开;
-  if (typeof on !== "boolean") return { ok: false, error: "开关只能开或关" };
   try {
     const org = await 读组织();
     if (me.role !== "ADMIN" && 管理员类别of(org, me.id) !== "总管理员") return { ok: false, error: "只有老板或总管理员能改这个选项" };
+    // 先认人再验参数：业务员拿到的是「只有…能改」，不是参数错
+    if (typeof on !== "boolean") return { ok: false, error: "开关只能开或关" };
     if ((await 不设配额开着()) === on) return { ok: true };
     await setSetting(不设配额key, on);
     await recordAudit({
