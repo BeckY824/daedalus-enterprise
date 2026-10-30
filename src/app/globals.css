@@ -1836,13 +1836,17 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .row-off .link-strong { color: var(--text-muted); }
 /* 渠道全称（2026-10-30 改：原来一行省略号，「Facebook｜VR S…」看不出是哪个，用户要显示完整）：
    名字整段显示、放不下就折行，从任意处断（「｜」两边常常没空格）；属性 / 「已停用」标签不缩、
-   和名字第一行顶齐，名字折几行它们都钉在右上，不压字 */
+   和名字第一行顶齐，名字折几行它们都钉在右上，不压字。两个标签上下叠（.chan-tags），
+   横着排会把名字挤成一指宽、折七八行 */
 .chan-full { display: flex; align-items: flex-start; gap: var(--s2); min-width: 0; max-width: 100%; }
 .chan-full > :first-child { min-width: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-/* 选渠道的级联（ChannelPicker）：手机宽两三列并排会顶出屏幕，每列收窄；
-   长名字在格子里折行显示完整（10-30，原来省略号），格子 title 里也有全称 */
-.chan-picker-pop .ant-cascader-menu-item { max-width: min(400px, 44vw); white-space: normal; overflow-wrap: anywhere; }
-.chan-picker-pop .ant-cascader-menu-item-content { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.chan-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+/* 选渠道的级联（ChannelPicker）：长名字在格子里折行显示完整（10-30，原来省略号；格子 title 里也有全称）。
+   每列最宽 min(300px, 30vw)：属性 / 名称 / 来源三列并排在 1024 宽的弹窗里也放得下，
+   原来 44vw 不折行，三列加起来比屏幕宽，弹层被推出左边、第一列看不见。
+   antd 自己的「最宽 400 + 不折行 + 省略号」选择器更重，这两条都叠上 .ant-cascader-dropdown .ant-cascader-menu 压过它 */
+.chan-picker-pop.ant-cascader-dropdown .ant-cascader-menu .ant-cascader-menu-item { max-width: min(300px, 30vw); white-space: normal; overflow-wrap: anywhere; }
+.chan-picker-pop.ant-cascader-dropdown .ant-cascader-menu .ant-cascader-menu-item-content { min-width: 0; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .chan-num { font-variant-numeric: tabular-nums; }
 /* 渠道详情里的投入记录：一笔一行，删除钮靠右 */
 .chan-invest { list-style: none; margin: 0; padding: 0; }

@@ -277,14 +277,18 @@ export default function ChannelsView({
       /*
         只留「渠道」一列（10-30）：全称后面跟着属性标签；原来的「渠道属性」「渠道名称」两列名字差不多、名称几乎都是「—」，去掉了
         （名称照旧能搜）。停用的再跟一个「已停用」，原来那列「渠道状态」也就不要了。
-        名字整段显示（10-30 用户：「要显示完整」）：放不下折行，标签钉在第一行右边（.chan-full）；列宽 240，1024 宽也够折成两三行
+        名字整段显示（10-30 用户：「要显示完整」）：放不下折行，标签钉在第一行右边、两个就上下叠（.chan-full / .chan-tags）；列宽 240，1024 宽也够折成两三行
       */
       title: "渠道", key: "name", dataIndex: "name", width: 240, 常驻: true,
       render: (v: string, r) => (
         <span className="chan-full">
           <button type="button" className="link-plain link-strong" title={v} onClick={() => 看详情(r.id)}>{v}</button>
-          {r.attr && <Tag style={{ margin: 0, borderRadius: 6, flex: "none" }}>{r.attr}</Tag>}
-          {!r.active && <Tag style={{ margin: 0, borderRadius: 6, flex: "none" }}>已停用</Tag>}
+          {(r.attr || !r.active) && (
+            <span className="chan-tags">
+              {r.attr && <Tag style={{ margin: 0, borderRadius: 6 }}>{r.attr}</Tag>}
+              {!r.active && <Tag style={{ margin: 0, borderRadius: 6 }}>已停用</Tag>}
+            </span>
+          )}
         </span>
       ),
     },
