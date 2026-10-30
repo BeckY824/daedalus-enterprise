@@ -32,7 +32,7 @@ const 邀请说法: Record<string, string> = { INVITED: "已邀请", DECLINED: "
  * 企业版另有项目级别（S / A / B / C，显示成星）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）
  */
 export function ProjectEditModal({
-  open, onClose, 跑, p, 候选, 联系人们, 渠道们,
+  open, onClose, 跑, p, 候选, 联系人们, 渠道们, 改负责人 = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -49,6 +49,8 @@ export function ProjectEditModal({
   联系人们: 联系人[];
   /** 企业版项目来源可选的渠道；不传 = 不摆「项目来源」、不交 channelId */
   渠道们?: 可选渠道[];
+  /** false = 不摆「负责人」这格（企业版换负责人走详情页的「转给…」，带 6 秒撤销） */
+  改负责人?: boolean;
 }) {
   // 父组件每次打开时才挂上，初值就是最新的
   const [d, setD] = useState({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contactId, expectedDealAt: p.expectedDealAt, channelId: 渠道们 ? (p.channelId ?? null) : undefined });
@@ -94,7 +96,7 @@ export function ProjectEditModal({
           onChange={(v?: string) => set级别(v ?? null)}
         />
       ))}
-      {!独自一人(候选, d.ownerId) && 行("负责人", (
+      {改负责人 && !独自一人(候选, d.ownerId) && 行("负责人", (
         <Select style={{ width: "100%" }} value={d.ownerId} options={成员选项(候选)} onChange={(v) => 改({ ownerId: v })} />
       ))}
       {行("主联系人", (

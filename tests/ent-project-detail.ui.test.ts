@@ -311,7 +311,7 @@ for (const 宽 of [1280, 1024]) {
       await 点.click();
       const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
       await 菜单.waitFor();
-      expect((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim())).toEqual(["修改", "删除"]);
+      expect((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim())).toEqual(["发卡点", "修改", "删除"]);
       const 盒 = (await 菜单.boundingBox())!;
       expect(盒.x).toBeGreaterThanOrEqual(0);
       expect(盒.x + 盒.width).toBeLessThanOrEqual(宽);
@@ -334,10 +334,13 @@ for (const 宽 of [1280, 1024]) {
   });
 }
 
-it("没有改沟通的权限：不摆「…」", async () => {
+it("没有改沟通的权限：「…」里只剩发卡点（10-30 发卡点从行上收进来）", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: false });
   try {
-    expect(await page.getByRole("button", { name: "这条沟通的更多操作" }).count()).toBe(0);
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+    const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
+    await 菜单.waitFor();
+    expect(new Set((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim()))).toEqual(new Set(["发卡点"]));
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
