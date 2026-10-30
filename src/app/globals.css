@@ -2535,13 +2535,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    圆的、贴右下角，一圈渐变光晕在呼吸、里面一层慢慢转（类 Siri）。颜色全走变量：暗色主题下光晕跟着主题色变。
    z-index 25：在正文和顶栏（10）之上、在反馈提示（30）和所有浮层（Modal 1000）之下，弹出来的东西都盖得住它。
    **面板开着就不出现**（AppShell 里那个判断），所以它永远不会压在面板的输入框上。 */
-/* 平时贴着窗口右边只露半个圆（26px，正好是正文右边的留白），不压行尾的按钮；鼠标移上去、键盘停上去才整颗滑出来（P0 #9，2026-10-30） */
 .ai-fab {
-  position: fixed; z-index: 25; right: 0; bottom: calc(24px + env(safe-area-inset-bottom));
+  position: fixed; z-index: 25; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom));
   width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer;
-  isolation: isolate; translate: 50% 0; transition: scale var(--t-fast) var(--ease), translate var(--t-fast) var(--ease);
+  isolation: isolate; transition: scale var(--t-fast) var(--ease);
 }
-.ai-fab:hover, .ai-fab:focus-visible { translate: -24px 0; }
 .ai-fab > span { position: absolute; border-radius: 50%; pointer-events: none; }
 .ai-fab-halo {
   inset: -6px; z-index: -1; filter: blur(10px); opacity: .55;
@@ -2577,8 +2575,7 @@ html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding
 @keyframes dock-from-fab { from { opacity: 0; scale: .96; } to { opacity: 1; scale: 1; } }
 
 @media (max-width: 767px) {
-  /* 手机没有悬停：整颗摆着，照原样 */
-  .ai-fab, .ai-fab:hover, .ai-fab:focus-visible { width: 48px; height: 48px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); translate: none; }
+  .ai-fab { width: 48px; height: 48px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
   /* 手机上反馈提示是一整条横在底下：浮标抬到它上面 */
   html.fbt-room .ai-fab { bottom: calc(var(--fbt-room) + 6px + env(safe-area-inset-bottom)); }
   html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: calc(var(--fbt-room) + 72px) !important; }
@@ -2596,8 +2593,6 @@ html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding
      scale / rotate 两条被吞掉，悬停照样放大（10-29 实点量出来的）。浮标本来就不用 transform */
   .ai-fab, .ai-fab > span { animation: none !important; scale: none !important; rotate: none !important; }
   .ai-fab:active { opacity: .8; }
-  /* 半圆滑出来不走动画，直接到位（减弱动态不许位移） */
-  .ai-fab { transition: none !important; }
   .shell-fab-opened .dock { animation: none !important; }
 }
 

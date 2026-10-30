@@ -79,9 +79,8 @@ const 页们 = (种子 = 企业版种子()): { 名: string; 址: string; 存?: R
   { 名: "设置-企业版导入", 址: "/settings?tab=enterprise" },
 ];
 
-/** antd 的提示、通知是浮在最上面一会儿就走的；水合时 Next 的开发提示也不算；
- *  AI 浮标是有意贴边露半个圆、悬停才整颗滑出来的（10-30 交互审核），不算出界 */
-const 忽略 = [".ant-message", ".ant-notification", "nextjs-portal", ".ai-fab"];
+/** antd 的提示、通知是浮在最上面一会儿就走的；水合时 Next 的开发提示也不算 */
+const 忽略 = [".ant-message", ".ant-notification", "nextjs-portal"];
 
 /** 「已更新到 …」那个弹窗盖在页面上会把量出来的东西全搅乱，出现就点「知道了」关掉（等 = 0 时只看一眼不等） */
 export async function 关掉弹窗(page: Page, 等 = 0) {
