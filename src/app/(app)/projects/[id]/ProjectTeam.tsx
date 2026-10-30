@@ -4,7 +4,7 @@ import { useState } from "react";
 import dayjs from "dayjs";
 import { Button, Card, Input, InputNumber, Modal, Popconfirm, Select, Space, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
-import { 币种选项 } from "@/lib/currency";
+import { 币种选项, 默认币种 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { 成员选项, 独自一人, type 可选成员 } from "@/lib/utils";
 import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
@@ -12,7 +12,7 @@ import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
-import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
+import { 详细地址上限, 详细地址提示, 成交需求上限, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
@@ -29,7 +29,8 @@ const 邀请说法: Record<string, string> = { INVITED: "已邀请", DECLINED: "
 
 /**
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩和建档向导第四步一样（服务端 规整项目）。
- * 企业版另有项目级别（S / A / B / C，显示成星）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）
+ * 企业版另有项目级别（S / A / B / C，显示成星）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）；
+ * 成交需求、合同金额、定金金额（迁移 097）：两个金额和上面「金额」一样，左边币种下拉、右边数字连成一格（Space.Compact）
  */
 export function ProjectEditModal({
   open, onClose, 跑, p, 候选, 联系人们, 渠道们, 改负责人 = true,
@@ -44,6 +45,8 @@ export function ProjectEditModal({
     level?: string | null;
     /** 企业版、看得到客户资料才传（公海里同事客户的项目不给）；不传或 null = 不摆、不交 */
     所在地?: (客户地址 & { location: string | null }) | null;
+    /** 企业版才传；不传 = 不摆、不交 */
+    成交钱?: 项目成交钱;
   };
   候选: 可选成员[];
   联系人们: 联系人[];
@@ -57,12 +60,16 @@ export function ProjectEditModal({
   const [级别, set级别] = useState(p.level ?? null);
   const [地址, set地址] = useState<客户地址>(p.所在地 ? { addrCountry: p.所在地.addrCountry, addrProvince: p.所在地.addrProvince, addrCity: p.所在地.addrCity, addrDistrict: p.所在地.addrDistrict } : 空地址);
   const [详细, set详细] = useState(p.所在地?.location ?? "");
+  // 金额空着时币种下拉先摆人民币；金额没填交上去币种服务端会存空（项目成交钱改成）
+  const [钱, set钱] = useState(p.成交钱 ? { ...p.成交钱, dealDemand: p.成交钱.dealDemand ?? "", contractCurrency: p.成交钱.contractCurrency ?? 默认币种, depositCurrency: p.成交钱.depositCurrency ?? 默认币种 } : null);
   const [忙, set忙] = useState(false);
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
+  const 改钱 = (x: Partial<NonNullable<typeof 钱>>) => set钱((o) => (o ? { ...o, ...x } : o));
   // 没传的不交：服务端按「没传 = 不动」处理（项目级别和地址改成）
   const 附带 = {
     ...(p.level !== undefined ? { level: 级别 } : {}),
     ...(p.所在地 ? { ...地址, location: 详细.trim() || null } : {}),
+    ...(钱 ? { ...钱, dealDemand: 钱.dealDemand.trim() || null } : {}),
   };
   const 行 = (label: string, el: React.ReactNode) => (
     <div style={{ marginBottom: 12 }}>
@@ -115,6 +122,19 @@ export function ProjectEditModal({
           <InputNumber<number> style={{ width: "100%" }} min={0} value={d.amount} formatter={金额格式} onChange={(v) => 改({ amount: v ?? 0 })} />
         </Space.Compact>
       ))}
+      {钱 && 行("合同金额", (
+        <Space.Compact style={{ width: "100%" }}>
+          <Select style={{ width: 140 }} aria-label="合同金额币种" value={钱.contractCurrency} options={币种选项()} onChange={(v) => 改钱({ contractCurrency: v })} showSearch optionFilterProp="label" />
+          <InputNumber<number> style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="不填" value={钱.contractAmount} formatter={金额格式} onChange={(v) => 改钱({ contractAmount: v ?? null })} />
+        </Space.Compact>
+      ))}
+      {钱 && 行("定金金额", (
+        <Space.Compact style={{ width: "100%" }}>
+          <Select style={{ width: 140 }} aria-label="定金金额币种" value={钱.depositCurrency} options={币种选项()} onChange={(v) => 改钱({ depositCurrency: v })} showSearch optionFilterProp="label" />
+          <InputNumber<number> style={{ width: "100%" }} aria-label="定金金额" min={0} placeholder="不填" value={钱.depositAmount} formatter={金额格式} onChange={(v) => 改钱({ depositAmount: v ?? null })} />
+        </Space.Compact>
+      ))}
+      {钱 && 行("成交需求", <Input.TextArea aria-label="成交需求" rows={2} maxLength={成交需求上限} placeholder="客户想买什么、要多少" value={钱.dealDemand} onChange={(e) => 改钱({ dealDemand: e.target.value })} />)}
       {p.expectedDealAt !== undefined && 行("预计成交日期", (
         <DatePicker
           style={{ width: "100%" }}

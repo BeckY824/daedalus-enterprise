@@ -19,7 +19,8 @@ import { saveChannel, toggleChannel, deleteChannel } from "./actions";
 import { useBusiness } from "@/lib/business-client";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
-import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, type 渠道统计 } from "@/lib/enterprise/channel-stats";
+import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 转化率字 } from "../overview/funnel";
 import ChannelDrawer from "./ChannelDrawer";
 
 export type 渠道行 = {
@@ -49,7 +50,8 @@ export type 渠道行 = {
 };
 type Row = 渠道行;
 
-const 空统计: 渠道统计 = { 关联线索: 0, 有效线索: 0, 关联商机: 0, 关联订单: 0, 关联项目: 0, 累计成交: [], 当前投入: [], 产出比: null, 产出比说明: "还没录投入", 累计运营天数: 0 };
+const 空转化: 转化 = { 分子: 0, 分母: 0, 比例: null };
+const 空统计: 渠道统计 = { 关联线索: 0, 有效线索: 0, 关联商机: 0, 关联订单: 0, 关联项目: 0, 累计成交: [], 当前投入: [], 产出比: null, 产出比说明: "还没录投入", 累计运营天数: 0, 线索转商机: 空转化, 商机转订单: 空转化 };
 const 统计 = (r: { 统计?: 渠道统计 }) => r.统计 ?? 空统计;
 const 无 = <span className="muted">—</span>;
 
@@ -97,6 +99,7 @@ export default function ChannelsView({
   users,
   属性选项 = [],
   能录 = false,
+  能管 = true,
 }: {
   rows: Row[];
   users: 可选成员[];
@@ -104,6 +107,11 @@ export default function ChannelsView({
   属性选项?: string[];
   /** 能录投入的才在行上摆「录投入」（老板、总管理员、市场管理，channel-stats.ts 的 能录投入），别人摆「详情」 */
   能录?: boolean;
+  /**
+   * 能不能新建、编辑、停用、删除渠道（10-30 B1）：企业版只有老板、总管理员、市场管理（channel-stats.ts 的 能管渠道），
+   * 别人只读——「新建渠道」、空态的新建、行上「⋯」、抽屉里的「编辑」都不出。服务端 挡管 再挡一道
+   */
+  能管?: boolean;
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -194,6 +202,15 @@ export default function ChannelsView({
     sorter: (a, b2) => 统计(a)[键] - 统计(b2)[键],
     render: (_: unknown, r: Row) => (统计(r)[键] > 0 ? <span className="chan-num">{统计(r)[键]}</span> : 无),
   });
+  /** 两个转化率列（10-30 B5）：分母 0 显示「—」，鼠标停上去看几个里有几个；口径见 channel-stats.ts 的 算转化 */
+  const 转化列 = (键: "线索转商机" | "商机转订单", 标题: string, 说明: string): 列<Row> => ({
+    title: <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 112, align: "right",
+    sorter: (a, b2) => (统计(a)[键].比例 ?? -1) - (统计(b2)[键].比例 ?? -1),
+    render: (_: unknown, r: Row) => {
+      const z = 统计(r)[键];
+      return z.比例 === null ? 无 : <Tooltip title={`${z.分母} 个里 ${z.分子} 个`}><span className="chan-num">{转化率字(z.比例)}</span></Tooltip>;
+    },
+  });
   const 本位 = (x: { 币种: string; 合计: number }[]) => x.find((y) => y.币种 === b.currency)?.合计 ?? 0;
   const 钱列 = (键: "累计成交" | "当前投入", 说明: string): 列<Row> => ({
     title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 144, align: "right",
@@ -275,6 +292,8 @@ export default function ChannelsView({
       : [数列("关联线索", 线索说明), 数列("有效线索", "关联线索里有效的那些")]),
     数列("关联商机", "眼下在商机阶段的项目"),
     数列("关联订单", "眼下在订单阶段的项目"),
+    转化列("线索转商机", "线索→商机", "从线索起步的项目里，后来到过商机（含已进订单）的占几成；退回去的也算到过。导入时直接落在商机、订单的不算在里面"),
+    转化列("商机转订单", "商机→订单", "到过商机的项目里，后来到过订单的占几成；导入时直接落在订单的不算在里面"),
     // 1366 宽放得下（规则 G）：关联项目、创建日期、累计运营天数默认收进「列」里，要看再勾
     { ...数列("关联项目", "这个渠道带来的全部项目，各阶段都算"), 默认: false },
     钱列("累计成交", "订单阶段、不是异常状态的项目金额；按币种分开写，不换汇"),
@@ -349,9 +368,11 @@ export default function ChannelsView({
             ) : (
               <Button className="row-act" aria-label={`${r.name} 的详情`} size="small" onClick={() => 看详情(r.id)}>详情</Button>
             )}
-            <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
-              <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} />
-            </Dropdown>
+            {能管 && (
+              <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
+                <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} />
+              </Dropdown>
+            )}
           </Space>
         );
       },
@@ -366,9 +387,11 @@ export default function ChannelsView({
       <PageHead
         title="渠道"
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
-            新建渠道
-          </Button>
+          能管 && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
+              新建渠道
+            </Button>
+          )
         }
       />
 
@@ -382,7 +405,7 @@ export default function ChannelsView({
         空态={{
           title: "还没有渠道",
           hint: `渠道是${b.customer}从哪来的：按「渠道属性 → 渠道名称 → 来源」建一条，新建${b.customer}时从清单里选；在渠道详情里录投入，这里就算得出投入产出比。不再用的渠道停用即可。`,
-          primary: { label: "新建第一个渠道", onClick: () => openForm(null) },
+          primary: 能管 ? { label: "新建第一个渠道", onClick: () => openForm(null) } : undefined,
         }}
         筛选={
           /* 渠道页一次就把行全拿下来了（没有服务端分页），所以筛在本地做 */
@@ -426,7 +449,7 @@ export default function ChannelsView({
         }
       />
 
-      {详情 && <ChannelDrawer key={详情.id} row={详情} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={() => openForm(详情)} />}
+      {详情 && <ChannelDrawer key={详情.id} row={详情} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={能管 ? () => openForm(详情) : undefined} />}
 
       {open && (
         <Modal

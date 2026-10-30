@@ -24,6 +24,29 @@ export const 进备注 = "+remark";
 /** 输单不是我们的一个阶段，是商机状态 LOST；阶段对照里用这个词表示 */
 export const 输单 = "输单";
 
+/**
+ * 原表「客户类型」的值 → 我们的客户类型（10-30 对方给的对照）。值 "" = 不落、不进备注（原表把阶段写在了这一格，
+ * 我们有客户状态管这个）。表里没有的照 清洗 的老规矩：和字典一字不差才落，对不上进备注
+ */
+export const 客户类型对照: Readonly<Record<string, string>> = {
+  终端客户: "专业运营商",
+  一般客户: "一般客户",
+  经销商: "中间贸易商",
+  贸易商: "中间贸易商",
+  代理: "国家代理商",
+  代理商: "国家代理商",
+  "代理(采购商)": "国家代理商",
+  意向客户: "",
+  成交客户: "",
+  新客户: "",
+};
+
+/** 查 客户类型对照：去空白、全角括号当半角；没在表里 = undefined */
+export function 对客户类型(原值: string | null | undefined): string | undefined {
+  const k = String(原值 ?? "").replace(/\s+/g, "").replace(/（/g, "(").replace(/）/g, ")");
+  return Object.hasOwn(客户类型对照, k) ? 客户类型对照[k] : undefined;
+}
+
 type 业务 = Pick<BusinessConfig, "template" | "stageLabels" | "statusLabels"> | null | undefined;
 
 /**
@@ -40,7 +63,7 @@ export const 别名: Record<实体, Record<string, string[]>> = {
     followStatus: ["跟进状态"],
     // 「客户状态」是另一样东西（企业版字典 custStatus：潜在 / 意向 / 成交…），以前错并进跟进状态，10-29 拆开
     custStatus: ["客户状态"],
-    // 企业版字典 custType（个人买家 / 贸易商…，2026-10-29 P13 第 4 条）
+    // 企业版字典 custType（个人买家 / 中间贸易商…，2026-10-29 P13 第 4 条）；原表的值先过 客户类型对照
     customerType: ["客户类型", "客户类别", "客户分类"],
     remark: ["备注", "说明", "描述", "remark", "note"],
     email: ["邮箱", "电子邮箱", "email"],
@@ -100,6 +123,12 @@ export const 别名: Record<实体, Record<string, string[]>> = {
     closedAt: ["成交日期", "赢单日期", "输单日期", "结单日期", "关闭日期", "签约日期"],
     owner: ["负责人", "商机负责人", "销售", "owner"],
     remark: ["备注", "说明", "描述", "remark"],
+    // 原表的「意向产品」就是项目上的成交需求；合同金额、定金金额各带一格币种（迁移 097）
+    dealDemand: ["成交需求", "意向产品"],
+    contractAmount: ["合同金额"],
+    contractCurrency: ["合同币种"],
+    depositAmount: ["定金金额", "定金"],
+    depositCurrency: ["定金币种"],
   },
   followup: {
     id: ["跟进ID", "跟进记录ID", ...通用ID],

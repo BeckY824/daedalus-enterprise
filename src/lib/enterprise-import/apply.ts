@@ -30,6 +30,7 @@ import { 看全部 } from "../team-scope";
 import { 记号码, 号码库类型, type 验好的号 } from "../enterprise/contact-dedupe";
 import { 验号码 } from "../enterprise/contact-format";
 import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
+import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
 import { 线索建项目 } from "../project/from-lead";
@@ -44,17 +45,17 @@ export const 比对字段: Record<实体, readonly string[]> = {
   customer: ["name", "phone", "salesOwnerId", "followStatus", "custStatus", "customerType", "remark", ...客户附加列, ...客户新列, "channelId"],
   lead: ["name", "contact", "phone", "email", "industry", "source", "status", "ownerId", "remark"],
   contact: ["name", "position", "phone", "email", "wechat", "isPrimary", "remark", "customerId", ...联系人新列],
-  opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "ownerId", "remark", "customerId"],
+  opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "ownerId", "remark", "customerId", ...项目成交钱列],
   followup: ["type", "title", "content", "status", "occurredAt", "ownerId", "customerId", "opportunityId", "projectId"],
 };
 const 负责人列: Record<实体, string> = { customer: "salesOwnerId", lead: "ownerId", contact: "", opportunity: "ownerId", followup: "ownerId" };
 /** 同号连上已有客户时只补这几格（渠道还要归属没定才补，见 可挂渠道） */
 const 补空格 = ["custStatus", "customerType", "remark", ...客户附加列, ...客户新列, "channelId"] as const;
 /**
- * 企业版的新几格和渠道（P8）：原系统认得出才带这一格（清洗时逐格留空），没带 = 这次不碰，不算原系统清空了、也不算冲突。
+ * 企业版的新几格和渠道（P8）、项目的成交需求 / 合同金额 / 定金金额（迁移 097）：原系统认得出才带这一格（清洗时逐格留空），没带 = 这次不碰，不算原系统清空了、也不算冲突。
  * 渠道只补空：我们这边已经挂了渠道 / 定了归属的不动、不记冲突（归属固化）
  */
-const 只补的格 = new Set<string>([...客户新列, ...联系人新列, "channelId"]);
+const 只补的格 = new Set<string>([...客户新列, ...联系人新列, "channelId", ...项目成交钱列]);
 
 const 段长 = () => Number(process.env.ENT_IMPORT_SEGMENT_MS) || 20_000;
 const 每趟条数 = 25;

@@ -47,6 +47,26 @@ export function 规整币种(v: unknown, 兜底 = 默认币种): string {
   return 是币种(s) ? s : 兜底;
 }
 
+/** 中文叫法 → 代码：内置 25 种的中文名反查，外加几个常见别称（原系统表格里「币种」一列常写中文） */
+const 中文别称: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(中文名表).map(([码, 名]) => [名, 码])),
+  RMB: "CNY", 元: "CNY", 人民币元: "CNY", 美金: "USD", 美圆: "USD", 港元: "HKD", 港幣: "HKD", 歐元: "EUR",
+  日币: "JPY", 日圆: "JPY", 澳币: "AUD", 加币: "CAD", 新币: "SGD", 韩币: "KRW", 迪拉姆: "AED",
+};
+
+/**
+ * 导入用：一格「币种」认成代码。代码大小写都认（usd → USD）、内置中文名（美元 / 人民币）和常见别称（RMB / 美金 / 港元）也认，
+ * 认不出 = null（调用方决定兜底到哪种、要不要提醒）。空格子也是 null
+ */
+export function 认币种(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim().replace(/\s+/g, "");
+  if (!s) return null;
+  const 码 = s.toUpperCase();
+  if (是币种(码)) return 码;
+  return 中文别称[s] ?? 中文别称[码] ?? null;
+}
+
 let 全量缓存: string[] | null = null;
 /** 浏览器 / Node 认得的全部 ISO 4217 币种（「其他币种…」那一组用）。老环境没有这个 API 就只给内置的 */
 export function 全部币种(): string[] {

@@ -2,7 +2,8 @@
  * 企业版只用项目时，导入的「商机」行落成项目（2026-10-26 用户：「把线索，商机，订单都放到项目里，是三大阶段」）。
  *
  * 对照表、冲突、报告都还按 opportunity 这一类记，只是目标 id 指向 Project：
- *   - 比对字段沿用商机那几格：stage = 项目节点、status = 结局（没结局 = "OPEN"）；probability 项目没有，恒为空；expectedDealAt 落项目上的预计成交日期（10-27 从客户挪过来）
+ *   - 比对字段沿用商机那几格：stage = 项目节点、status = 结局（没结局 = "OPEN"）；probability 项目没有，恒为空；expectedDealAt 落项目上的预计成交日期（10-27 从客户挪过来）；
+ *     另带项目的成交需求 / 合同金额 / 定金金额五格（迁移 097，原表空着的格子不带）
  *   - 读现值 / 改 / 撤回 先找商机、找不到再找项目，所以不用知道当时是不是项目模式
  *   - 原系统的节点名先认 2.0 的节点和结局，再认新版的叫法（旧名 表，草案，待对方确认）
  * 导入只认原系统：节点可以往回走（包括已转商机的退回线索），这一点和手动改节点不同；异常状态导进来没有类别。
@@ -26,12 +27,28 @@ function 位置(v: 值表): { phase: 阶段; node: string; result: string | null
 
 const 日 = (v: 标量): Date | null => (v ? new Date(String(v)) : null);
 const 串 = (v: 标量): string | null => (v === null ? null : String(v));
+const 数 = (v: 标量): number | null => (v === null || v === "" ? null : Number(v));
 
 /** 项目现在的样子，换成商机那几格 */
 export async function 读项目(tx: Tx, id: string): Promise<值表 | null> {
   const p = await tx.project.findUnique({
     where: { id },
-    select: { name: true, amount: true, node: true, result: true, closedAt: true, ownerId: true, remark: true, customerId: true, expectedDealAt: true },
+    select: {
+      name: true,
+      amount: true,
+      node: true,
+      result: true,
+      closedAt: true,
+      ownerId: true,
+      remark: true,
+      customerId: true,
+      expectedDealAt: true,
+      dealDemand: true,
+      contractAmount: true,
+      contractCurrency: true,
+      depositAmount: true,
+      depositCurrency: true,
+    },
   });
   if (!p) return null;
   return Object.fromEntries(
@@ -46,6 +63,11 @@ export async function 读项目(tx: Tx, id: string): Promise<值表 | null> {
       ownerId: p.ownerId,
       remark: p.remark,
       customerId: p.customerId,
+      dealDemand: p.dealDemand,
+      contractAmount: p.contractAmount,
+      contractCurrency: p.contractCurrency,
+      depositAmount: p.depositAmount,
+      depositCurrency: p.depositCurrency,
     }).map(([k, x]) => [k, 规(x)]),
   );
 }
@@ -71,6 +93,11 @@ export async function 建项目(tx: Tx, v: 值表, 现在: string): Promise<stri
       remark: 串(v.remark),
       expectedDealAt: 日(v.expectedDealAt),
       closedAt: 位.result ? (日(v.closedAt) ?? new Date(现在)) : null,
+      dealDemand: 串(v.dealDemand ?? null),
+      contractAmount: 数(v.contractAmount ?? null),
+      contractCurrency: 串(v.contractCurrency ?? null),
+      depositAmount: 数(v.depositAmount ?? null),
+      depositCurrency: 串(v.depositCurrency ?? null),
     },
     select: { id: true },
   });
@@ -87,6 +114,12 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
   if (有("amount")) data.amount = Number(改动.amount ?? 0);
   if (有("remark")) data.remark = 串(改动.remark);
   if (有("expectedDealAt")) data.expectedDealAt = 日(改动.expectedDealAt);
+  // 成交需求 / 合同金额 / 定金金额（迁移 097）：清洗时金额和币种成对带，这里照落
+  if (有("dealDemand")) data.dealDemand = 串(改动.dealDemand);
+  if (有("contractAmount")) data.contractAmount = 数(改动.contractAmount);
+  if (有("contractCurrency")) data.contractCurrency = 串(改动.contractCurrency);
+  if (有("depositAmount")) data.depositAmount = 数(改动.depositAmount);
+  if (有("depositCurrency")) data.depositCurrency = 串(改动.depositCurrency);
   // 换了客户，原来选的联系人就不是这家的了
   if (有("customerId")) Object.assign(data, { customerId: String(改动.customerId), contactId: null });
   const 原 = await tx.project.findUnique({ where: { id }, select: { phase: true, node: true, result: true, closedAt: true, ownerId: true } });

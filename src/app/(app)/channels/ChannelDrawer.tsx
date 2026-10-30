@@ -4,6 +4,7 @@
  * 渠道详情抽屉（2026-10-29 渠道改版）：上面是渠道的资料和那一排统计，下面是投入记录。
  * 投入一笔一行，只有老板、总管理员、市场管理能录、能删（10-29 P16，channel-stats.ts 的 能录投入），别人只看；
  * 录完 / 删完刷新页面，列表上的「当前投入」「投入产出比」跟着变。
+ * 右上「编辑」只给能管渠道的人（10-30 B1，channel-stats.ts 的 能管渠道）：不给 onEdit 就不摆。
  */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -17,7 +18,8 @@ import { useBusiness } from "@/lib/business-client";
 import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
-import { 拆来源, type 渠道统计, type 产出比分布 } from "@/lib/enterprise/channel-stats";
+import { 拆来源, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
 import type { 渠道行 } from "./ChannelsView";
 
@@ -35,7 +37,8 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
   同名分布?: ReturnType<typeof 产出比分布>;
   不问归属: boolean;
   onClose: () => void;
-  onEdit: () => void;
+  /** 不能管渠道的人不给，右上的「编辑」就不出 */
+  onEdit?: () => void;
 }) {
   const router = useRouter();
   const { message } = App.useApp();
@@ -115,6 +118,9 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
     router.refresh();
   }
 
+  /** 转化率：分母 0 是「—」，有数的后面带上几个里几个 */
+  const 转 = (z: 转化 | undefined) =>
+    z && z.比例 !== null ? <span>{转化率字(z.比例)}<span className="muted">（{z.分母} 个里 {z.分子} 个）</span></span> : 无;
   const 钱 = (x: { 币种: string; 合计: number }[] | undefined) => (x && x.length ? 合计文字(x, b.currency) : "—");
 
   return (
@@ -123,7 +129,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
       onClose={onClose}
       title={<span className="chan-full" title={row.name}><span>{row.name}</span>{!row.active && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}</span>}
       styles={{ wrapper: { width: "min(560px, 100vw)" } }}
-      extra={<Button size="small" icon={<EditOutlined />} onClick={onEdit}>编辑</Button>}
+      extra={onEdit && <Button size="small" icon={<EditOutlined />} onClick={onEdit}>编辑</Button>}
       destroyOnHidden
     >
       <Descriptions
@@ -153,6 +159,8 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
           { key: "商机", label: "关联商机", children: s?.关联商机 ?? 0 },
           { key: "订单", label: "关联订单", children: s?.关联订单 ?? 0 },
           { key: "项目", label: "关联项目", children: s?.关联项目 ?? 0 },
+          { key: "线索转商机", label: "线索→商机", children: 转(s?.线索转商机) },
+          { key: "商机转订单", label: "商机→订单", children: 转(s?.商机转订单) },
           { key: "比", label: "投入产出比", children: s?.产出比 ?? <span className="muted" title={s?.产出比说明 ?? undefined}>{s?.产出比说明 ?? "—"}</span> },
           ...(同名分布 !== undefined
             ? [{

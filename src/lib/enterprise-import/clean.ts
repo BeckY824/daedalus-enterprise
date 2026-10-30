@@ -6,7 +6,8 @@
  * 清洗做的事：
  *   - 按列映射把原列落到标准字段；映射成「进备注」的列拼成「表头：值」进备注（跟进进内容），一格不丢
  *   - 负责人、阶段、线索状态、跟进方式、跟进状态按映射换成我们的值；对不上的用默认值 + 记一笔「提醒」
- *   - 客户状态、客户类型（企业版字典）和启用的选项一字不差才落，对不上原样进备注
+ *   - 客户状态、客户类型（企业版字典）和启用的选项一字不差才落，对不上原样进备注；客户类型先过 客户类型对照（mapping.ts），
+ *     对成空的（原表写的是意向客户这类阶段）不落也不进备注
  *   - 电话、日期、金额、赢率按我们的格式认；认不出的原样进备注 + 提醒，不硬塞
  *   - 同一批里同号、外部 ID 不同 → 认作同一家，后一条并进前一条（名字不同另提醒）；名字很像但号不同 → 疑似重名，照写、提醒
  *   - 联系人 / 商机 / 跟进挂客户：先认所属客户 ID，再认客户名（本批里唯一、或我们这边唯一）；认不出整条跳过
@@ -23,10 +24,12 @@ import { 国家候选 } from "../customer-extra";
 import { 联系人号查重键 } from "../enterprise/customer-v2";
 import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
-import { 拆多人, 进备注, 输单 } from "./mapping";
+import { 拆多人, 进备注, 输单, 对客户类型 } from "./mapping";
 import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
 import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
+import { 默认币种, 认币种 } from "../currency";
+import { 成交需求上限 } from "../project/profile-rules";
 import { 实体顺序, 必填, 实体名, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
@@ -102,6 +105,17 @@ function 指纹(x: unknown): string {
 function 拼备注(...段: (string | undefined | null)[]): string | null {
   const s = 段.filter((x) => x && x.trim()).join("\n");
   return s || null;
+}
+
+/** 项目成交钱那五格（迁移 097），非项目模式进备注的顺序 */
+const 成交钱列 = ["dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"] as const;
+
+/** 金额前面带的货币符号认得出就用它（认金额会把符号去掉）；没有 = null */
+function 符号币种(v: string): string | null {
+  const s = v.trim();
+  if (/^(US\$|USD|\$)/i.test(s) || /usd$/i.test(s)) return "USD";
+  if (/^(¥|￥|RMB|CNY)/i.test(s) || /(元|人民币|rmb|cny)$/i.test(s)) return "CNY";
+  return null;
 }
 
 /** 是 / 否：关键联系人这种格子 */
@@ -289,6 +303,54 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     return t ? (类 === "日期" ? 认日期(t) : 认时间(t)) : null;
   };
 
+  /**
+   * 项目的成交需求 / 合同金额 / 定金金额（迁移 097）。项目模式才落这几格，否则原样进备注。
+   * 和客户新几格一样逐格留空：原表这一格空着就不带这个键（apply 只补的格，不算原系统清空）。
+   * 金额带的币种：币种列 → 金额前面的符号（$ / US$ / USD 算美元）→ 默认人民币；币种列认不出就按后两步定的写，提醒一笔、原样进备注
+   */
+  const 项目成交钱格 = (r: 原始记录, v: Record<string, string>, 项目: boolean, 附加: string[]): 待写["值"] => {
+    const 出: 待写["值"] = {};
+    if (!项目) {
+      for (const k of 成交钱列) if (v[k]) 附加.push(`${字段中文[k]}：${v[k]}`);
+      return 出;
+    }
+    if (v.dealDemand) {
+      const 字 = [...v.dealDemand.trim()];
+      if (字.length > 成交需求上限) {
+        出问题(r, "提醒", "格式不对", `成交需求超过 ${成交需求上限} 字，截到 ${成交需求上限} 字，全文放进了备注`);
+        附加.push(`成交需求：${字.join("")}`);
+      }
+      出.dealDemand = 字.slice(0, 成交需求上限).join("");
+    }
+    for (const [金额键, 币种键] of [["contractAmount", "contractCurrency"], ["depositAmount", "depositCurrency"]] as const) {
+      const 名 = 字段中文[金额键];
+      const 原 = v[金额键];
+      if (!原) {
+        if (v[币种键]) 附加.push(`${字段中文[币种键]}：${v[币种键]}`);
+        continue;
+      }
+      const 补 = 查格式("金额", 原);
+      const a = 认金额(原) ?? (补 === null ? null : Number(补));
+      if (a === null || !Number.isFinite(a) || a < 0) {
+        附加.push(`${名}：${原}${v[币种键] ? ` ${v[币种键]}` : ""}`);
+        出问题(r, "提醒", "格式不对", `${名}「${原}」认不出，没写，原样放进了备注`);
+        continue;
+      }
+      let 币 = 符号币种(原) ?? 默认币种;
+      if (v[币种键]) {
+        const c = 认币种(v[币种键]);
+        if (c) 币 = c;
+        else {
+          附加.push(`${字段中文[币种键]}：${v[币种键]}`);
+          出问题(r, "提醒", "格式不对", `${字段中文[币种键]}「${v[币种键]}」认不出，按 ${币} 写，原样放进了备注`);
+        }
+      }
+      出[金额键] = a;
+      出[币种键] = 币;
+    }
+    return 出;
+  };
+
   /** m.同一家 认作同一家的：后一家名键 → 前一家名键们 */
   const 同家前 = new Map<string, string[]>();
   for (const [k, 是] of Object.entries(m.同一家 ?? {})) {
@@ -324,6 +386,14 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     附加.push(`${叫法}：${t}`);
     出问题(r, "提醒", "值对不上", `${叫法}「${t}」不在我们的${叫法}选项里，原样放进了备注`);
     return null;
+  };
+
+  /** 客户类型：先过对照表，对上的（还启用着）就落、对成空的不落不提醒；其余照 认字典，原值进备注 */
+  const 认客户类型 = (r: 原始记录, v: string | undefined, 附加: string[]): string | null => {
+    const 对 = 对客户类型(v);
+    if (对 === "") return null;
+    if (对 && 本地.客户类型?.includes(对)) return 对;
+    return 认字典(r, v, 附加, "客户类型", 本地.客户类型);
   };
 
   /**
@@ -540,7 +610,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);
         const whatsapp = 补格(s.值.whatsapp, 号.whatsapp, "WhatsApp", 附加);
         const custStatus = 认字典(r, s.值.custStatus, 附加, "客户状态", 本地.客户状态);
-        const customerType = 认字典(r, s.值.customerType, 附加, "客户类型", 本地.客户类型);
+        const customerType = 认客户类型(r, s.值.customerType, 附加);
         const source = s.值.source ? (查格式("来源", s.值.source) ?? s.值.source) : null;
         const channelId = 认渠道(r, s.值.source, source, 附加);
         const 新 = 客户新格(r, s.值, 附加);
@@ -739,6 +809,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
             );
           }
         }
+        const 钱 = 项目成交钱格(r, s.值, 项目, 附加);
         const w = 收(
           r,
           {
@@ -751,6 +822,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
             closedAt,
             ownerId: 负责人(r, s.值.owner),
             remark: 拼备注(s.值.remark, ...附加),
+            ...钱,
           },
           { 父客户, 目标 },
         );

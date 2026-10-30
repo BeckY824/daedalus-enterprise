@@ -6,6 +6,7 @@
  * 外加一格详细地址（定位），存 087 加的 location 列；都不必填
  */
 import { 是国内, 联系人地址上限, 规整地址, 认企业级别, type 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 默认币种, 是币种 } from "@/lib/currency";
 
 /** 详细地址（定位）最多几个字：和联系人地址一个上限 */
 export const 详细地址上限 = 联系人地址上限;
@@ -86,4 +87,65 @@ export function 项目级别和地址改成(
     location = r.值;
   }
   return { ok: true, 值: { level, ...地址, location } };
+}
+
+/**
+ * 成交需求、合同金额、定金金额（企业版，迁移 097）：客户原表三列照原样进来，编辑项目里可改。
+ * 和 amount（「金额」：看板合计、提成的成交金额）各是各的，不互相抄
+ */
+export type 项目成交钱 = {
+  dealDemand: string | null;
+  contractAmount: number | null;
+  contractCurrency: string | null;
+  depositAmount: number | null;
+  depositCurrency: string | null;
+};
+export const 成交钱键 = ["dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"] as const;
+/** 成交需求最多几个字：和项目备注一个上限 */
+export const 成交需求上限 = 500;
+
+/** 金额一格：空 = null；要是不小于 0 的数（界面交的是数字；导入那边先用 认金额 认好再来） */
+function 认这格金额(v: unknown, 名: string): { ok: true; 值: number | null } | { ok: false; error: string } {
+  if (v === null || v === undefined || v === "") return { ok: true, 值: null };
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/,/g, "").trim()) : NaN;
+  if (!Number.isFinite(n) || n < 0) return { ok: false, error: `${名}要填不小于 0 的数字` };
+  return { ok: true, 值: n };
+}
+
+/**
+ * 编辑项目交上来的成交需求和两个金额 → 要存的值（改项目 合进 新 里比变没变）。
+ *   成交需求：没传 = 原样；去首尾空白，空 = 清掉；超长报错（不悄悄截断）
+ *   金额：没传 = 原样；空 = 清掉（币种跟着清）；负数、认不出的数报错
+ *   币种：没传 = 原样，原来也没有就落人民币；认不出报错；金额是空的币种一律存空（只有币种没有数没意义）
+ */
+export function 项目成交钱改成(
+  patch: Partial<Record<keyof 项目成交钱, unknown>>,
+  原: 项目成交钱,
+): { ok: true; 值: 项目成交钱 } | { ok: false; error: string } {
+  let dealDemand = 原.dealDemand;
+  if (patch.dealDemand !== undefined) {
+    if (patch.dealDemand !== null && typeof patch.dealDemand !== "string") return { ok: false, error: "成交需求要写文字" };
+    const t = (patch.dealDemand ?? "").trim();
+    if ([...t].length > 成交需求上限) return { ok: false, error: `成交需求最多 ${成交需求上限} 个字` };
+    dealDemand = t || null;
+  }
+  const 一项 = (金额键: "contractAmount" | "depositAmount", 币种键: "contractCurrency" | "depositCurrency", 名: string) => {
+    let 数 = 原[金额键];
+    if (patch[金额键] !== undefined) {
+      const r = 认这格金额(patch[金额键], 名);
+      if (!r.ok) return r;
+      数 = r.值;
+    }
+    let 币 = 原[币种键];
+    if (patch[币种键] !== undefined && patch[币种键] !== null && patch[币种键] !== "") {
+      if (!是币种(patch[币种键])) return { ok: false as const, error: `${名}的币种「${String(patch[币种键])}」认不出来` };
+      币 = patch[币种键] as string;
+    }
+    return { ok: true as const, 数, 币: 数 === null ? null : (币 ?? 默认币种) };
+  };
+  const 合同 = 一项("contractAmount", "contractCurrency", "合同金额");
+  if (!合同.ok) return 合同;
+  const 定金 = 一项("depositAmount", "depositCurrency", "定金金额");
+  if (!定金.ok) return 定金;
+  return { ok: true, 值: { dealDemand, contractAmount: 合同.数, contractCurrency: 合同.币, depositAmount: 定金.数, depositCurrency: 定金.币 } };
 }

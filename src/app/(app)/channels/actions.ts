@@ -14,7 +14,8 @@ import { 不在了 } from "@/lib/not-there";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 选的原因 } from "@/lib/enterprise/dict";
 import { 读组织 } from "@/lib/enterprise/org";
-import { 拼全称, 全称上限, 能录投入, 不能录投入 } from "@/lib/enterprise/channel-stats";
+import { 拼全称, 全称上限, 能录投入, 不能录投入, 能管渠道, 不能管渠道 } from "@/lib/enterprise/channel-stats";
+import { 看全部 } from "@/lib/team-scope";
 import { parseDateInput } from "@/lib/date-input";
 import { 规整币种, 是币种 } from "@/lib/currency";
 
@@ -22,6 +23,15 @@ import { 规整币种, 是币种 } from "@/lib/currency";
  * 成功时回传渠道 id（新建是新 id，编辑是原 id）。
  * 「新建学员」里就地建渠道后要立刻把它选中，没有 id 就选不上。
  */
+/**
+ * 企业版里谁能新建、编辑、停用、删除渠道（10-30 B1）：只有老板、总管理员、市场管理（channel-stats.ts 的 能管渠道）。
+ * 界面上别人看不到按钮，这里再挡直调；排在校验前面，没权限的人先听到这一句。团队版照旧不挡
+ */
+async function 挡管(me: { id: string; role: string }): Promise<string | null> {
+  if (!企业版()) return null;
+  return 能管渠道(await 读组织(), me) ? null : 不能管渠道;
+}
+
 export async function saveChannel(input: {
   id?: string;
   name: string;
@@ -44,6 +54,8 @@ export async function saveChannel(input: {
   active?: boolean;
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const me = await requireUser();
+  const 挡 = await 挡管(me);
+  if (挡) return { ok: false, error: 挡 };
   const 企业表单 = input.attr !== undefined;
   let 企业列: { attr: string | null; platform: string; endDate: Date | null } | null = null;
   if (企业表单) {
@@ -116,7 +128,8 @@ export async function saveChannel(input: {
      * 新负责人只对**之后新增**的学员生效；个别登记错的学员，到他档案里单独改。
      */
     const 换人 = Boolean(改前 && 改前.channelOwnerId !== channelOwnerId);
-    const 已有 = 换人 ? await prisma.customer.count({ where: { channelId: input.id } }) : 0;
+    // 审计里记的是渠道下的全部客户，不按「按组织看客户」只数自己看得见的
+    const 已有 = 换人 ? await 看全部(() => prisma.customer.count({ where: { channelId: input.id } })) : 0;
     await recordAudit({
       user: me, action: "update", entity: "Channel", entityId: input.id,
       summary: `修改渠道「${name}」` +
@@ -139,6 +152,8 @@ export async function saveChannel(input: {
 
 export async function toggleChannel(id: string, active: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await requireUser();
+  const 挡 = await 挡管(me);
+  if (挡) return { ok: false, error: 挡 };
   /*
     另一个窗口已经删了这个渠道：原来 update 直接抛 P2025，界面上点了没反应（2026-10-04 第 2 期 2a，r2-data 那条【下一版】）。
     说一句「已经不在了」
@@ -159,12 +174,15 @@ export async function toggleChannel(id: string, active: boolean): Promise<{ ok: 
 
 export async function deleteChannel(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await requireUser();
+  const 挡 = await 挡管(me);
+  if (挡) return { ok: false, error: 挡 };
   const b = await getBusiness();
   // 已带来学员的渠道不能删，否则推荐链会断、归属数据变成孤儿。
   // attributionChannelId 也要算进来：归属落在该渠道上的学员同样会被置空。
-  const used = await prisma.customer.count({
+  // 要数全部客户：开了「按组织看客户」只数自己看得见的，别人名下有客户也会被当成空渠道删掉
+  const used = await 看全部(() => prisma.customer.count({
     where: { OR: [{ channelId: id }, { attributionChannelId: id }] },
-  });
+  }));
   if (used > 0) {
     return { ok: false, error: `该渠道名下已有 ${used} 名${b.customer}，不能删除。如需停用请点「停用」` };
   }

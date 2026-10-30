@@ -148,8 +148,8 @@ export default async function CustomerDetailPage({
     报价明细 ? 客户报价记录(customer.id) : [],
   ]);
   const [汇总, 跟进去处, 转让选项, 待办计划] = 只项目四样 ?? [null, null, null, null];
-  // 号码类的几种（手机、座机、WhatsApp）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
-  const 打码种类 = new Set(["phone", "landline", "whatsapp"]);
+  // 号码类的几种（手机、座机、WhatsApp、传真）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
+  const 打码种类 = new Set(["phone", "landline", "whatsapp", "fax"]);
   const 联系人一行 = (c: (typeof customer.contacts)[number]) => ({
     id: c.id,
     name: c.name,

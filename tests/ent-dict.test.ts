@@ -52,6 +52,23 @@ describe("企业版选项字典", () => {
     expect(全部!.projTag.map((x) => x.name)).toEqual(["A 重点推进", "B 潜力跟进", "C 正常培育"]);
   });
 
+  it("几个人同时第一次读（空库 / 老库补新默认）：不撞唯一键、不多建", async () => {
+    for (let 轮 = 0; 轮 < 3; 轮++) {
+      await prisma.entDictItem.deleteMany({});
+      await prisma.setting.deleteMany({ where: { key: { startsWith: "entDict." } } });
+      for (const k of 字典种类们) await Promise.all(Array.from({ length: 5 }, () => 企业字典(k)));
+      for (const k of 字典种类们) expect(await prisma.entDictItem.count({ where: { kind: k } })).toBe(字典定义[k].默认.length);
+      // 老库：每类只剩前一半默认项、补新记号没了，几个人同时读
+      for (const k of 字典种类们) {
+        const n = 字典定义[k].默认.length;
+        await prisma.entDictItem.deleteMany({ where: { kind: k, id: { in: Array.from({ length: n }, (_, i) => `dict-${k}-${i}`).slice(Math.ceil(n / 2)) } } });
+      }
+      await prisma.setting.deleteMany({ where: { key: { startsWith: "entDict.defaultAdded." } } });
+      for (const k of 字典种类们) await Promise.all(Array.from({ length: 5 }, () => 企业字典(k)));
+      for (const k of 字典种类们) expect(await prisma.entDictItem.count({ where: { kind: k } })).toBe(字典定义[k].默认.length);
+    }
+  });
+
   it("加：排最后、同名回错、停用过的同名重新启用、空 / 太长 / 没有的种类回错", async () => {
     const r = await 加字典项(老板, "recycle", "  客户搬迁 ");
     expect(r.ok).toBe(true);
