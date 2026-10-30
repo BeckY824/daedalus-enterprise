@@ -14,6 +14,9 @@ export const SECRET = new TextEncoder().encode(
 
 export const COOKIE = "crm_session";
 
+/** 会话天数（2026-10-30 由 7 天改 30 天，保持登录）。src/proxy.ts 每天顺延一次，两边要一致 */
+export const SESSION_DAYS = 30;
+
 /**
  * 是否要求 HTTPS 才下发会话 cookie。
  * 用域名 + HTTPS 部署时设为 true；用 IP + HTTP 临时访问时必须为 false，
@@ -50,7 +53,7 @@ export async function createSession(userId: string, workspaceId?: string) {
   const token = await new SignJWT(workspaceId ? { sub: userId, ws: workspaceId, ims, sc: cutoff?.since.toISOString() ?? null } : { sub: userId, ims })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime(`${SESSION_DAYS}d`)
     .sign(SECRET);
 
   const store = await cookies();
@@ -59,7 +62,7 @@ export async function createSession(userId: string, workspaceId?: string) {
     sameSite: "lax",
     secure: COOKIE_SECURE,
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: 60 * 60 * 24 * SESSION_DAYS,
   });
 }
 

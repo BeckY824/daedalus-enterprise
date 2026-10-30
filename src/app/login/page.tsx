@@ -5,6 +5,19 @@ import { 自助注册已关闭 } from "@/lib/tenant/signup-policy";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import DemoLogin from "./DemoLogin";
+import { 飞书登录凭据, type 飞书登录失败 } from "@/lib/enterprise/feishu-login";
+
+/** 飞书登录没成时，回调带回来的原因（/login?reason=feishu-<原因>）怎么跟人说 */
+const 飞书原因: Record<飞书登录失败, string> = {
+  off: "这个部署没有接飞书登录，请用用户名和密码登录。",
+  state: "飞书登录超时或被打断了，请再点一次「用飞书登录」。",
+  denied: "你在飞书里取消了授权，没有登录。",
+  exchange: "没能从飞书取到你的身份，请稍后再试；一直不行请联系管理员。",
+  nomatch: "CRM 里没有和你飞书姓名相同的账号。请管理员把 CRM 账号的姓名改成和飞书一致，或先用用户名和密码登录。",
+  dup: "CRM 里有不止一个和你飞书姓名相同的账号，认不出是哪个。请管理员改掉重名账号的姓名。",
+  taken: "和你飞书姓名相同的 CRM 账号已经绑定了别的飞书身份。请管理员在「设置 → 成员」里解绑后再试。",
+  inactive: "你的 CRM 账号已停用，请联系管理员。",
+};
 
 /**
  * 必须动态渲染：要不要画「忘记密码」取决于运行时的 MULTI_TENANT 和 SMTP_*。
@@ -12,7 +25,7 @@ import DemoLogin from "./DemoLogin";
  */
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ reason?: string | string[] }> }) {
   /* 演示部署（CRM_DEMO_SWITCH=1）：不要密码，选人就进。开关关着读出来是 null，走下面的正常登录 */
   const 演示名单 = await 读演示名单();
   if (演示名单) return <DemoLogin 名单={演示名单} 产品名={自定产品名() ?? undefined} />;
@@ -23,8 +36,13 @@ export default async function LoginPage() {
       自部署  —— 管理员在设置里建的成员，登录名是 admin、zhangsan 这样的用户名
     写死一个的话，另一半人会对着一个填不进去的框反复试。
   */
+  const reason = (await searchParams).reason;
+  const 飞书没成 = typeof reason === "string" && reason.startsWith("feishu-") ? 飞书原因[reason.slice(7) as 飞书登录失败] : undefined;
   return (
     <LoginForm
+      /* 企业版配了飞书应用才有「用飞书登录」（lib/enterprise/feishu-login.ts） */
+      飞书登录={(await 飞书登录凭据()) !== null}
+      初始错误={飞书没成}
       可找回密码={能找回密码()}
       用邮箱={multiTenant()}
       /* 注册入口两端一致（2026-09-20）。托管版才有自助注册这回事：

@@ -27,6 +27,8 @@ export default function LoginForm({
   可注册 = false,
   注册地址,
   产品名,
+  飞书登录 = false,
+  初始错误,
 }: {
   可找回密码: boolean;
   用邮箱: boolean;
@@ -35,6 +37,10 @@ export default function LoginForm({
   注册地址?: string;
   /** 左栏的产品名。企业版部署可换（CRM_PRODUCT_NAME，lib/enterprise/brand.ts），不传是默认名 */
   产品名?: string;
+  /** 企业版配了飞书应用：摆「用飞书登录」，点了走 /api/auth/feishu */
+  飞书登录?: boolean;
+  /** 打开登录页时就要显示的错（飞书登录没成带回来的原因，见 page.tsx） */
+  初始错误?: string;
 }) {
   const { 曲线, 时长 } = useMotionTheme();
   /** 托管版的账号是邮箱，自部署是管理员建的登录名。见 page.tsx */
@@ -42,7 +48,7 @@ export default function LoginForm({
   const [账号, set账号] = useLoginEmail(用邮箱);
   const [密码, set密码] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(初始错误 ?? null);
   const 账号框 = useRef<HTMLInputElement>(null);
   const 密码框 = useRef<HTMLInputElement>(null);
   /**
@@ -134,6 +140,15 @@ export default function LoginForm({
                 "使用此部署中的账号登录。"
               )}
             </p>
+            {飞书登录 && (
+              <>
+                {/* 整页跳走（不是客户端路由）：去的是接口，它再跳飞书授权页 */}
+                <Button size="large" block href="/api/auth/feishu">
+                  用飞书登录
+                </Button>
+                <p className="auth-or">或用用户名和密码</p>
+              </>
+            )}
             <label className="auth-label" htmlFor="auth-account">
               {账号名}
             </label>

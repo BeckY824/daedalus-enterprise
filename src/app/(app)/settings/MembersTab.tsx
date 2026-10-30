@@ -10,7 +10,7 @@ import { ROLES } from "@/lib/constants";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸订单 } from "@/lib/business-config";
 import type { SessionUser } from "@/lib/auth";
-import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用 } from "./actions";
+import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用, 解绑飞书身份 } from "./actions";
 import type { 停用方式 } from "@/lib/offboard-db";
 import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
@@ -31,6 +31,8 @@ export type Row = {
   /** 企业版：组织架构里的业务角色（可多个，按固定顺序）；有它角色列就摆它，账号角色退到编辑框里叫「账号权限」 */
   业务角色?: 业务角色[];
   followCount: number;
+  /** 企业版飞书登录：第一次用飞书登录时按姓名绑上了飞书身份 */
+  飞书已绑?: boolean;
 };
 
 /** 管人的红、带团队的蓝，其余默认灰——跟账号角色那套颜色同一个意思 */
@@ -62,6 +64,9 @@ export default function MembersTab({
   const b = useBusiness();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
+  const [解绑中, set解绑中] = useState(false);
+  // 解绑后这一行就收起；不改 editing——改了会触发上面的回填，把弹窗里没保存的改动冲掉
+  const [刚解绑, set刚解绑] = useState<string | null>(null);
   const [恢复中, set恢复中] = useState<string | null>(null);
   const [form] = Form.useForm();
   const 按业务角色 = users.some((u) => u.业务角色);
@@ -522,6 +527,31 @@ export default function MembersTab({
               </Form.Item>
             </Col>
           </行>
+          {editing?.飞书已绑 && 刚解绑 !== editing.id && (
+            <div className="member-feishu">
+              <Typography.Text type="secondary">已绑定飞书：他用飞书登录会直接进这个账号。换了飞书号或绑错了人，解绑后下次按姓名重新认。</Typography.Text>
+              <Button
+                size="small"
+                loading={解绑中}
+                onClick={async () => {
+                  set解绑中(true);
+                  try {
+                    const r = await 解绑飞书身份(editing.id);
+                    if (!r.ok) { message.error(r.error); return; }
+                    message.success("已解绑飞书");
+                    set刚解绑(editing.id);
+                    router.refresh();
+                  } catch {
+                    message.error("解绑失败，请稍后重试");
+                  } finally {
+                    set解绑中(false);
+                  }
+                }}
+              >
+                解绑飞书
+              </Button>
+            </div>
+          )}
         </Form>
       </Modal>
     </>

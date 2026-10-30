@@ -4,6 +4,7 @@ import { 补来源 } from "@/lib/customer-extra-db";
 
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 解绑飞书 } from "@/lib/enterprise/feishu-login";
 import { 读组织, 直属上级of } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
@@ -515,6 +516,24 @@ export async function reactivateUser(id: string) {
   await recordAudit({
     user: me, action: "reactivate", entity: "User", entityId: id,
     summary: `恢复成员「${u.name}」`,
+  });
+  revalidatePath("/settings");
+  return { ok: true as const };
+}
+
+/**
+ * 企业版飞书登录：解绑这个成员记下的飞书身份（换了飞书号、第一次按姓名绑错了人）。
+ * 解了之后他下次用飞书登录，重新按姓名认。只有管理员能解。
+ */
+export async function 解绑飞书身份(id: string) {
+  const me = await requireAdmin();
+  const u = typeof id === "string" && id ? await prisma.user.findUnique({ where: { id }, select: { name: true, feishuOpenId: true } }) : null;
+  if (!u) return { ok: false as const, error: "这个成员已不存在，请刷新重试" };
+  if (!u.feishuOpenId) return { ok: true as const };
+  await 解绑飞书(id);
+  await recordAudit({
+    user: me, action: "update", entity: "User", entityId: id,
+    summary: `解绑成员「${u.name}」的飞书身份`,
   });
   revalidatePath("/settings");
   return { ok: true as const };
