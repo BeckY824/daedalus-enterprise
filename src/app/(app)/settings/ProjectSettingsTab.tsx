@@ -159,7 +159,7 @@ function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
   return (
     <Card title="分配方式 · 谁能用" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。新建线索时只能选自己能用的方式：指定分配要选负责人，自动分配建好就分给销售，公海捞取建好放进项目公海，暂不分配、自拓自持先记在自己名下。从公海领不看这里，非原负责人都能领。
+        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。新建线索时只能选自己能用的方式：指定分配要选负责人，自动分配建好就分给销售，公海捞取建好放进项目公海，暂不分配、个人自拓先记在自己名下。从公海领不看这里，非原负责人都能领。
       </div>
       {项们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8, minWidth: 0 }}>

@@ -204,7 +204,7 @@ export async function 选的原因(kind: 字典种类, v: unknown): Promise<{ ok
   return { ok: true, 值: 选 === 其他项 ? `${其他前缀}${写.trim()}` : n };
 }
 
-/** 分配方式默认五项的序号：0 指定分配、1 自动分配、2 公海捞取、3 暂不分配、4 自拓自持（默认id("assign", i)） */
+/** 分配方式默认五项的序号：0 指定分配、1 自动分配、2 公海捞取、3 暂不分配、4 个人自拓（默认id("assign", i)） */
 export type 分配方式序号 = 0 | 1 | 2 | 3 | 4;
 export const 是分配方式序号 = (x: unknown): x is 分配方式序号 => x === 0 || x === 1 || x === 2 || x === 3 || x === 4;
 

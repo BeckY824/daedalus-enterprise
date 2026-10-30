@@ -8,6 +8,7 @@
  *   - 改项目画像（真库 + 企业字典）：单选只认启用着的项；已存的项停用了，不改它照留、别的项照改；多选同理；
  *     负责人、老板能改，同事、公海里的改不了；没变不写；不是企业版不认（所在地不再是画像的一项，传了不认）
  *   - 需求状态、产品需求 10-30 换成客户原表的取值：老库第一次读时按序号改名，需求状态多出的第五项停用，产品需求补齐八项；项目上存的原值不动
+ *   - 同天：价格感知照原表换顺序；分配方式「自拓自持」改叫「个人自拓」
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
@@ -189,5 +190,21 @@ describe("需求状态、产品需求换成原表取值（10-30）", () => {
     expect(await 看("projProduct")).toEqual(期望);
     expect(await 看("projProduct")).toEqual(期望);
     expect(读产品需求((await prisma.project.findUniqueOrThrow({ where: { id: 项目.id } })).productNeeds)).toEqual(["部署服务", "内容定制"]);
+  });
+
+  it("价格感知照原表排（犹豫比价挪到暂无异议前）；老库没动过的跟着挪，id 不变", async () => {
+    const 新 = ["闻价止步", "犹豫比价", "暂无异议", "先验后定", "价格认可"];
+    expect((await 看("projPrice")).map((x) => x[1])).toEqual(新);
+    await resetDb();
+    await 老库("projPrice", ["闻价止步", "暂无异议", "犹豫比价", "先验后定", "价格认可"]);
+    expect(await 看("projPrice")).toEqual(新.map((n) => [expect.stringMatching(/^dict-projPrice-\d$/), n, true]));
+    expect((await 看("projPrice"))[1][0]).toBe("dict-projPrice-2");
+  });
+
+  it("分配方式：自拓自持改叫个人自拓（原表叫法），id 不变；再读不变", async () => {
+    await 老库("assign", ["指定分配", "自动分配", "公海捞取", "暂不分配", "自拓自持"]);
+    const 期望 = ["指定分配", "自动分配", "公海捞取", "暂不分配", "个人自拓"].map((n, i) => [`dict-assign-${i}`, n, true]);
+    expect(await 看("assign")).toEqual(期望);
+    expect(await 看("assign")).toEqual(期望);
   });
 });
