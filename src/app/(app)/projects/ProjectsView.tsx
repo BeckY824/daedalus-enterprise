@@ -3,7 +3,7 @@
 import { useContext, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { App, Badge, Button, Select, Space, Segmented, Tag } from "antd";
+import { App, Badge, Button, Select, Space, Segmented, Tag, type SelectProps } from "antd";
 import { CloseOutlined, InteractionOutlined, PlusOutlined, ShareAltOutlined, ThunderboltOutlined, UserSwitchOutlined } from "@ant-design/icons";
 import { useFollowDue } from "@/components/FollowDue";
 import { DOCK_W, DockOpenContext, useNarrow } from "@/lib/roster";
@@ -27,7 +27,7 @@ import { 级别星 } from "@/lib/enterprise/level-stars";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
-import { 字典of, 结局叫法, 阶段与进程, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
@@ -80,7 +80,7 @@ export default function ProjectsView({
   取到上限: boolean;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string };
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string };
   /** 服务端的 企业版()：结局叫法跟着字典 */
   企业版?: boolean;
   /** 企业版组织规则里改过的出口叫法 */
@@ -204,6 +204,16 @@ export default function ProjectsView({
     }] : []),
   ];
 
+  // 进程下拉：选了阶段只列这一阶段的节点 + 没走成的出口（线索流失 / 丢单 / 异常状态；成功交付也算结局列上）；没选阶段按阶段分组。
+  // 新线索页只有线索阶段。值：节点名 / 结局值（服务端 阶段进程条件 认），显示用字典的叫法
+  const 进程组 = (s: 阶段) => ({
+    label: s,
+    options: [
+      ...字典.节点们[s].map((n) => ({ value: n, label: n })),
+      ...字典.出口们[s].flatMap((o) => (o.结局 ? [{ value: o.结局, label: o.叫法 }] : [])),
+    ],
+  });
+  const 进程选项: SelectProps["options"] = 新线索 ? 进程组("线索").options : f.phase ? 进程组(f.phase as 阶段).options : 阶段们.map(进程组);
   const 筛选 = (
     <Space wrap size={[10, 10]}>
       <ListSearch
@@ -223,6 +233,25 @@ export default function ProjectsView({
           options={成员选项(users)}
         />
       )}
+      {!新线索 && (
+        <Select
+          style={{ width: 110 }}
+          aria-label="阶段"
+          value={f.phase || ""}
+          onChange={(v: string) => apply({ phase: v, node: "" })}
+          options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]}
+        />
+      )}
+      <Select
+        style={{ width: 130 }}
+        aria-label="进程"
+        placeholder="全部进程"
+        allowClear
+        value={f.node || undefined}
+        onChange={(v?: string | null) => apply({ node: v ?? "" })}
+        options={进程选项}
+        popupMatchSelectWidth={false}
+      />
       <Select
         style={{ width: 120 }}
         aria-label="项目公海"

@@ -44,7 +44,9 @@ export async function 读公海行(me: { id: string; name: string }): Promise<{ 
       select: {
         id: true, name: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true,
         pool: { select: { userId: true, reason: true, at: true } },
-        projects: { select: { id: true, name: true, phase: true, node: true, result: true }, orderBy: { createdAt: "asc" } },
+        // orderBy 用到的字段必须一起 select：公海客户过 999 个时 Prisma（6.16，SQLite）把子查询的 IN 拆成几批再合，
+        // 合的时候要按 orderBy 字段排，没 select 就 panic「no entry found for key」，整页打不开（10-30 8702 导入 4882 个客户后）
+        projects: { select: { id: true, name: true, phase: true, node: true, result: true, createdAt: true }, orderBy: { createdAt: "asc" } },
       },
     }),
     // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）
@@ -55,7 +57,7 @@ export async function 读公海行(me: { id: string; name: string }): Promise<{ 
       select: {
         id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, createdAt: true,
         customer: { select: { name: true, lastFollowAt: true, poolReturns: true } },
-        logs: { where: { kind: "pool-release" }, orderBy: { at: "desc" }, take: 1, select: { userId: true, reason: true } },
+        logs: { where: { kind: "pool-release" }, orderBy: { at: "desc" }, take: 1, select: { userId: true, reason: true, at: true } },
       },
     }),
     生效组织规则(),
