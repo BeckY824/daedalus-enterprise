@@ -30,6 +30,7 @@ import { 看全部 } from "../team-scope";
 import { 记号码, 号码库类型, type 验好的号 } from "../enterprise/contact-dedupe";
 import { 验号码 } from "../enterprise/contact-format";
 import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
+import { 客户类型空着 } from "./mapping";
 import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
@@ -684,6 +685,11 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
         改动[k] = n;
         before[k] = c;
       }
+      新上次[k] = n;
+      continue;
+    }
+    if (k === "customerType" && n === 客户类型空着 && c !== null && !同(c, l)) {
+      // 原系统这格空着 / 写的是阶段，落的是「暂不确认」（10-30）：我们这边已经定了类型的不算冲突，不动
       新上次[k] = n;
       continue;
     }

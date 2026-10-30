@@ -25,26 +25,42 @@ export const 进备注 = "+remark";
 export const 输单 = "输单";
 
 /**
- * 原表「客户类型」的值 → 我们的客户类型（10-30 对方给的对照）。值 "" = 不落、不进备注（原表把阶段写在了这一格，
- * 我们有客户状态管这个）。表里没有的照 清洗 的老规矩：和字典一字不差才落，对不上进备注
+ * 原表「客户类型」的值 → 我们的客户类型（10-30 对方给的对照）。表里没有的照 清洗 的老规矩：和字典一字不差才落，对不上进备注。
+ * 10-30 第二轮：一般客户改叫「暂不确认」；原表把阶段写在这一格的（意向客户 / 成交客户 / 新客户，客户状态管阶段）和空着的
+ * 也都落「暂不确认」（还没判断出是哪类买家）；空格在 清洗 里认（见 客户类型空着）
  */
 export const 客户类型对照: Readonly<Record<string, string>> = {
   终端客户: "专业运营商",
-  一般客户: "一般客户",
+  一般客户: "暂不确认",
   经销商: "中间贸易商",
   贸易商: "中间贸易商",
   代理: "国家代理商",
   代理商: "国家代理商",
   "代理(采购商)": "国家代理商",
-  意向客户: "",
-  成交客户: "",
-  新客户: "",
+  意向客户: "暂不确认",
+  成交客户: "暂不确认",
+  新客户: "暂不确认",
 };
 
-/** 查 客户类型对照：去空白、全角括号当半角；没在表里 = undefined */
+/** 原表客户类型空着落这个（和 客户类型对照 的阶段值一样，字典第 6 项的默认名） */
+export const 客户类型空着 = "暂不确认";
+
+/** 原表客户类型顺带说了等级的：意向客户 → B 级（客户级别那格空着才补，给了的照给的） */
+export const 客户类型带等级: Readonly<Record<string, string>> = { 意向客户: "B" };
+
+/** 对照表的键：去空白、全角括号当半角 */
+const 客户类型键 = (原值: string | null | undefined) => String(原值 ?? "").replace(/\s+/g, "").replace(/（/g, "(").replace(/）/g, ")");
+
+/** 查 客户类型对照：没在表里 = undefined */
 export function 对客户类型(原值: string | null | undefined): string | undefined {
-  const k = String(原值 ?? "").replace(/\s+/g, "").replace(/（/g, "(").replace(/）/g, ")");
+  const k = 客户类型键(原值);
   return Object.hasOwn(客户类型对照, k) ? 客户类型对照[k] : undefined;
+}
+
+/** 查 客户类型带等级：没有 = undefined */
+export function 客户类型等级(原值: string | null | undefined): string | undefined {
+  const k = 客户类型键(原值);
+  return Object.hasOwn(客户类型带等级, k) ? 客户类型带等级[k] : undefined;
 }
 
 type 业务 = Pick<BusinessConfig, "template" | "stageLabels" | "statusLabels"> | null | undefined;

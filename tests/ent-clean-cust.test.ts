@@ -64,7 +64,7 @@ describe("客户状态字典", () => {
   });
 
   it("老库还叫旧名的默认项改成同序号新名；人改过名的、自己加的不动；只改一次", async () => {
-    const 旧 = 字典定义.custStatus.旧默认!;
+    const 旧 = 字典定义.custStatus.旧默认![0];
     for (const [i, name] of 旧.entries()) {
       await prisma.entDictItem.create({ data: { id: `dict-custStatus-${i}`, kind: "custStatus", name: i === 1 ? "我们改过的" : name, sort: i } });
     }

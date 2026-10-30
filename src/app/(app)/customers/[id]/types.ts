@@ -105,6 +105,8 @@ export type RecordProps = {
   新建项目?: { 节点们: string[]; 要下一步: boolean } | null;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的，10-28 去遗留 A1）；不给 = 别的版本，标签行照旧 */
   客户状态选项?: string[];
+  /** 企业版客户状态、客户类型每项的释义（下拉里一行灰字，10-30）；不给就和原来一样 */
+  字典释义?: import("@/components/DictNote").客户字典释义;
   项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;
   /** 企业版项目关联（P17）：这位客户关联在哪些项目上、什么身份（只读；含当主客户、勾了身份的那几个）。不给 = 别的版本 */
   参与项目们?: import("@/lib/project/relate").参与项目行[] | null;

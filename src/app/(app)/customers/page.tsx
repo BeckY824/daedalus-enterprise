@@ -20,7 +20,7 @@ import { 客户页签归属 } from "@/lib/pool";
 import { 管全队客户 } from "@/lib/constants";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
-import { 页面可选项 } from "@/lib/enterprise/dict";
+import { 页面可选项, 页面客户释义 } from "@/lib/enterprise/dict";
 import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-perm";
 
 export const dynamic = "force-dynamic";
@@ -213,6 +213,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       客户状态选项={客户状态选项}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
+      字典释义={企 ? await 页面客户释义() : undefined}
       部门选项={部门选项}
       只读ids={只读ids}
       // 企业版「非原负责人均可领取」（10-26 定稿）：这一页公海里原负责人是我的，领取按钮灰着（接口也拦，pool-actions.ts 领取）
