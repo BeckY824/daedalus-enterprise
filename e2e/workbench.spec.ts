@@ -154,10 +154,11 @@ test("有数据的首页：一行三个信号，不是三张卡（企业版：�
     await page.waitForSelector(".home-cards");
     await expect(page.locator(".signals")).toHaveCount(0);
     await expect(page.locator(".home-cards .home-card")).toHaveCount(4);
-    // 每张卡点进去是项目页按同一口径筛好的那批（今日待办去复盘页待办页签的「今天到期」），且都带口径
+    // 每张卡点进去是项目页按同一口径筛好的那批（今日待办去复盘页待办页签的「今天到期」），且都带口径——
+    // 口径写在卡下面一行小字里，不藏在悬停里（10-30 交互审核规则 C）
     for (const 卡 of await page.locator(".home-cards .home-card").all()) {
       expect(await 卡.getAttribute("href")).toMatch(/^\/(projects\?f=|overview\?(ownerId=[^&]+&)?f=today$)/);
-      expect((await 卡.getAttribute("title")) ?? "").not.toBe("");
+      expect(((await 卡.locator(".muted").first().textContent()) ?? "").trim()).not.toBe("");
     }
     return;
   }

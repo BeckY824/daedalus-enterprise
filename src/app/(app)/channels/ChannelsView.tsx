@@ -190,13 +190,13 @@ export default function ChannelsView({
 
   type 数键 = "关联线索" | "有效线索" | "关联商机" | "关联订单" | "关联项目";
   const 数列 = (键: 数键, 说明: string, 标题: string = 键): 列<Row> => ({
-    title: <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 88, align: "right",
+    title: <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 104, align: "right",
     sorter: (a, b2) => 统计(a)[键] - 统计(b2)[键],
     render: (_: unknown, r: Row) => (统计(r)[键] > 0 ? <span className="chan-num">{统计(r)[键]}</span> : 无),
   });
   const 本位 = (x: { 币种: string; 合计: number }[]) => x.find((y) => y.币种 === b.currency)?.合计 ?? 0;
   const 钱列 = (键: "累计成交" | "当前投入", 说明: string): 列<Row> => ({
-    title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 132, align: "right",
+    title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 144, align: "right",
     // 排序只看本位币那一份（不换汇）
     sorter: (a, b2) => 本位(统计(a)[键]) - 本位(统计(b2)[键]),
     render: (_: unknown, r: Row) => (统计(r)[键].length ? <span className="chan-num nowrap">{合计文字(统计(r)[键], b.currency)}</span> : 无),
@@ -222,7 +222,7 @@ export default function ChannelsView({
             <span className="nowrap">产出比{k}值</span>
           </Tooltip>
         ),
-        key: `产出比${k}`, width: 116, align: "right" as const,
+        key: `产出比${k}`, width: 128, align: "right" as const,
         sorter: (a: Row, b2: Row) => (分布.get(a.platform ?? a.name)?.[k] ?? -1) - (分布.get(b2.platform ?? b2.name)?.[k] ?? -1),
         render: (_: unknown, r: Row) => {
           const 名 = r.platform ?? r.name;
@@ -280,7 +280,7 @@ export default function ChannelsView({
     钱列("累计成交", "订单阶段、不是异常状态的项目金额；按币种分开写，不换汇"),
     钱列("当前投入", "在渠道详情里录的投入合计"),
     {
-      title: <Tooltip title="累计成交 ÷ 当前投入">投入产出比</Tooltip>, key: "产出比", width: 104, align: "right",
+      title: <Tooltip title="累计成交 ÷ 当前投入"><span className="nowrap">投入产出比</span></Tooltip>, key: "产出比", width: 116, align: "right",
       sorter: (a, b2) => (统计(a).产出比 ?? -1) - (统计(b2).产出比 ?? -1),
       render: (_: unknown, r: Row) => {
         const s = 统计(r);
