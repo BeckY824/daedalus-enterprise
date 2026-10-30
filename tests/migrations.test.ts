@@ -164,6 +164,8 @@ describe("迁移文件", () => {
       db.exec('CREATE TABLE "Channel" ("id" TEXT PRIMARY KEY, "name" TEXT)');
       // 073 给联系人加列，Contact 也是第一版就有
       db.exec('CREATE TABLE "Contact" ("id" TEXT PRIMARY KEY, "name" TEXT)');
+      // 098 给用户加飞书身份列，User 也是第一版就有
+      db.exec('CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "name" TEXT)');
       db.prepare('INSERT INTO "FollowPlan" VALUES (?, ?, ?)').run("old-plan", 1, 123456);
       // 第一遍：一个都不许抛。全新库上 ADD COLUMN 也是真的在加列
       for (const f of 文件) {

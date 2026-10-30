@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtVerify } from "jose";
+import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 企业版跳转 } from "@/lib/enterprise/web-paths";
 
@@ -21,19 +21,42 @@ const SECRET = new TextEncoder().encode(readSecret());
 
 const COOKIE = "crm_session";
 
+/** 与 lib/auth.ts 的 COOKIE_SECURE 一致（那边连着数据库，Edge 里引不进来） */
+const COOKIE_SECURE =
+  process.env.COOKIE_SECURE === "true" ||
+  (process.env.COOKIE_SECURE === undefined && process.env.NODE_ENV === "production");
+
+/**
+ * 保持登录（2026-10-30）：会话 30 天（lib/auth.ts SESSION_DAYS），每天第一次打开页面时顺延成从今天起再 30 天。
+ * 天天用的人永远不用再登录；连着 30 天没打开才要重新登。
+ */
+const SESSION_DAYS = 30;
+const 顺延间隔秒 = 24 * 60 * 60;
+
 /**
  * 校验 JWT 的签名与有效期。这里跑在 Edge 运行时，连不了数据库，
  * 所以"用户是否仍然存在/在职"由 (app)/layout.tsx 的 getCurrentUser 复查。
  */
-async function hasValidSession(request: NextRequest): Promise<boolean> {
+async function readSession(request: NextRequest): Promise<JWTPayload | null> {
   const token = request.cookies.get(COOKIE)?.value;
-  if (!token) return false;
+  if (!token) return null;
   try {
-    await jwtVerify(token, SECRET);
-    return true;
+    return (await jwtVerify(token, SECRET)).payload;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * 签发够一天了就换一张新票：内容原样（sub、ims、托管版的 ws / sc），只换 iat 和到期。
+ * ims（首次签发的毫秒时刻）不动，改密码作废照样认得出这是旧会话（lib/tenant/session-cutoff.ts）；
+ * 没有 ims 的老票不顺延——它们作废要按 iat 比，顺延等于把它洗白。
+ */
+async function 顺延(payload: JWTPayload): Promise<string | null> {
+  if (typeof payload.ims !== "number" || typeof payload.iat !== "number") return null;
+  if (Date.now() / 1000 - payload.iat < 顺延间隔秒) return null;
+  const { iat, exp, nbf, ...留 } = payload;
+  return new SignJWT(留).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${SESSION_DAYS}d`).sign(SECRET);
 }
 
 export async function proxy(request: NextRequest) {
@@ -48,7 +71,8 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url);
     }
   }
-  const valid = await hasValidSession(request);
+  const session = await readSession(request);
+  const valid = session !== null;
 
   // 未登录也能看的页面。注册页只在托管版有内容，自部署版进去会被服务端动作拒绝；
   // /admin 是我们的运营台，不属于任何工作区，用它自己的 ADMIN_TOKEN 保护；
@@ -98,7 +122,12 @@ export async function proxy(request: NextRequest) {
    */
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  const 新票 = session ? await 顺延(session) : null;
+  if (新票) {
+    res.cookies.set(COOKIE, 新票, { httpOnly: true, sameSite: "lax", secure: COOKIE_SECURE, path: "/", maxAge: SESSION_DAYS * 24 * 60 * 60 });
+  }
+  return res;
 }
 
 export const config = {

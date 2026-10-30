@@ -237,6 +237,7 @@ export default async function SettingsBody() {
         ...(项目数 ? { 项目阶段: 阶段数of(u.id) } : {}),
         ...(业务角色of ? { 业务角色: 业务角色of(u) } : {}),
         followCount: u._count.followUps,
+        ...(u.feishuOpenId ? { 飞书已绑: true } : {}),
       }))}
     />
   );

@@ -249,6 +249,24 @@ html.glass.web-glass {
 .auth-hint .auth-link { margin-left: var(--s2); }
 .auth-hint b { color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
 .auth-label { margin-top: var(--s1); margin-bottom: calc(-1 * var(--s2)); font-size: var(--fs-note); color: var(--ink-soft); }
+/* 「用飞书登录」和账号密码之间的分隔：两边一道细线，中间一句话 */
+/* 成员编辑弹窗：飞书绑定那一行，字在左、按钮在右，窄了按钮折到下一行 */
+.member-feishu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.member-feishu > .ant-typography {
+  flex: 1 1 260px;
+  font-size: 13px;
+}
+
+.auth-or { display: flex; align-items: center; gap: var(--s3); margin: var(--s1) 0 0; font-size: var(--fs-note); color: var(--text-muted); }
+.auth-or::before, .auth-or::after { content: ""; flex: 1; border-top: 1px solid var(--line-soft); }
 .auth-alt { margin: 0; font-size: var(--fs-note); color: var(--text-muted); }
 .auth-link { padding: 0; border: 0; background: none; font: inherit; color: var(--brand); cursor: pointer; }
 .auth-link:hover { text-decoration: underline; }
