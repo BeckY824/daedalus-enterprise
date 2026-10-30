@@ -8,7 +8,7 @@ import { CalendarOutlined, PlusOutlined } from "@ant-design/icons";
 import ResetFilters from "@/components/ResetFilters";
 import { 列表不问归属ID } from "@/lib/solo";
 import ListSearch from "@/components/ListSearch";
-import { PageHead, CustomerLink, UserCell, FollowTypeCell } from "@/components/ui";
+import { PageHead, CustomerLink, UserCell, FollowTypeCell, RowLink } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸精简 } from "@/lib/business-config";
@@ -35,7 +35,15 @@ type Row = {
   contactName: string | null;
   ownerName: string;
   ownerId: string;
+  /** 这条沟通挂在哪个项目上；没挂 = null */
+  project: { id: string; name: string } | null;
 };
+
+/** 标题和正文开头一样（AI 速记常把正文头一句当标题）：只写一遍正文 */
+function 标题重复(title: string, content: string): boolean {
+  const t = title.trim();
+  return !!t && content.trim().startsWith(t);
+}
 
 export default function FollowUpsView({
   rows,
@@ -51,7 +59,7 @@ export default function FollowUpsView({
   总数: number;
   users: 可选成员[];
   filters: { keyword: string; type: string; ownerId: string };
-  /** 从某位客户带过来的（?customer=）：「记录跟进」预填这一位 */
+  /** 从某位客户带过来的（?customer=）：「记一条沟通」预填这一位 */
   预选客户: { id: string; name: string } | null;
   /** ?new=1：进来就把框打开 */
   直接新建: boolean;
@@ -62,16 +70,20 @@ export default function FollowUpsView({
   const 要跟 = useFollowDue();
   const b = useBusiness();
   const { f, setF, apply, reset, pending } = useUrlFilters("/follow-ups", filters);
-  /** 只有一个人：跟进人那一列、「全部成员」筛选都不摆（审查 D2），见 lib/solo.ts */
+  /** 只有一个人：记录人那一列、「全部成员」筛选都不摆（审查 D2），见 lib/solo.ts */
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, rows.map((r) => r.ownerId));
   /**
-   * 「记录跟进」就地弹框（2026-09-29）。原来它跳去客户列表让人自己挑一位——按钮写着「记录」
+   * 「记一条沟通」就地弹框（2026-09-29）。原来它跳去客户列表让人自己挑一位——按钮写着「记录」
    * 却把人带走了，被当成 bug 报上来。现在框里第一格挑人（CustomerPick），保存后留在这一页：
    * 列表刷新，新的那行由 DataList 自己认出来亮两秒
    */
   const [新建开着, set新建开着] = useState(直接新建);
   /** ?new=1 进来就开：等水合完再开。服务端先画一个开着的弹窗，会和客户端那一版对不上 */
   const 已水合 = useSyncExternalStore(无订阅, () => true, () => false);
+
+  /** 整列都是「—」就不摆（规则 F）：这一页没有一条挂了项目 / 写了对接人 */
+  const 有项目 = rows.some((r) => r.project);
+  const 有对接人 = rows.some((r) => r.contactName);
 
   const 列表: 列<Row>[] = [
     {
@@ -96,17 +108,32 @@ export default function FollowUpsView({
       // 最多两行（10-27 改）：一行省略号太多字看不到；再长的悬停看全文，读全文去记录页。
       // 宽度放 232：13 寸窗口下整张表不用左右拖（类型列加的 8 从这里扣）
       title: "内容", key: "content", dataIndex: "title", width: 232,
-      render: (v, r) => (
-        <span className="clamp" title={`${v ? v + " · " : ""}${r.content}`}>
-          {v && <b style={{ fontWeight: 500 }}>{v}</b>}
-          {v && r.content && <span className="muted"> · </span>}
-          <span className="muted">{r.content}</span>
-        </span>
-      ),
+      // 标题就是正文开头那几个字时只写一遍（2026-10-30），省下的位置给正文
+      render: (v, r) => {
+        const 标题 = v && !标题重复(v, r.content) ? v : "";
+        return (
+          <span className="clamp" title={`${标题 ? 标题 + " · " : ""}${r.content}`}>
+            {标题 && <b style={{ fontWeight: 500 }}>{标题}</b>}
+            {标题 && r.content && <span className="muted"> · </span>}
+            <span className="muted">{r.content}</span>
+          </span>
+        );
+      },
     },
+    // 挂了项目的沟通，点项目名去项目详情（2026-10-30）；行的其余地方照旧去客户。
+    // 和对接人一样 1200 以上才出：1024 宽时整张表不用左右拖
+    ...(有项目
+      ? [{
+          title: "项目", key: "project", dataIndex: "project", width: 120, responsive: ["xl"],
+          render: (v: Row["project"]) =>
+            v ? <RowLink href={`/projects/${v.id}`} className="clamp" title={v.name}>{v.name}</RowLink> : <span className="muted">—</span>,
+        } satisfies 列<Row>]
+      : []),
     // 1024 宽时先收对接人，整张表不用左右拖；1200 以上才出（10-27）
-    { title: "对接人", key: "contactName", dataIndex: "contactName", width: 96, responsive: ["xl"], render: (v) => v ?? <span className="muted">—</span> },
-    ...(不问归属 ? [] : [{ title: "跟进人", key: "ownerName", dataIndex: "ownerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
+    ...(有对接人
+      ? [{ title: "对接人", key: "contactName", dataIndex: "contactName", width: 96, responsive: ["xl"], render: (v: string | null) => v ?? <span className="muted">—</span> } satisfies 列<Row>]
+      : []),
+    ...(不问归属 ? [] : [{ title: "记录人", key: "ownerName", dataIndex: "ownerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
 
     { title: "时长", key: "duration", dataIndex: "duration", width: 90, 默认: false, render: (v) => (v ? duration(v) : <span className="muted">—</span>) },
     {
@@ -124,8 +151,8 @@ export default function FollowUpsView({
       {/* 记录和计划是同一件事的两头（发生过的 / 排好还没做的），
           所以「计划」是页头上的次动作，不再为它常驻一列中栏 */}
       <PageHead
-        title="跟进记录"
-        subtitle="全部跟进记录"
+        title="沟通记录"
+        subtitle="全部沟通记录"
         extra={
           <Space>
             {/* 左栏「跟进」上那个红数字到了这一页，就挂在「计划」上：它数的正是计划页里逾期和今天那两组 */}
@@ -139,7 +166,7 @@ export default function FollowUpsView({
               </Button>
             </Badge>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => set新建开着(true)}>
-              记录跟进
+              记一条沟通
             </Button>
           </Space>
         }
@@ -154,9 +181,9 @@ export default function FollowUpsView({
         加载中={pending}
         行链接={(r) => `/customers/${r.customerId}`}
         空态={{
-          title: "还没有跟进记录",
-          hint: `一条跟进记录就是一次真实发生过的沟通：随手记一笔，或粘一段聊天记录让 AI 整理；${不问归属 ? "在这里按时间、类型查找自己的记录。" : "在这里汇总当前可见成员的记录，也可按成员筛选。"}`,
-          primary: { label: "记第一条跟进", onClick: () => set新建开着(true) },
+          title: "还没有沟通记录",
+          hint: `一条沟通记录就是一次真实发生过的沟通：随手记一笔，或粘一段聊天记录让 AI 整理；${不问归属 ? "在这里按时间、类型查找自己的记录。" : "在这里汇总当前可见成员的记录，也可按成员筛选。"}`,
+          primary: { label: "记第一条沟通", onClick: () => set新建开着(true) },
         }}
         筛选={
           <Space wrap size={[10, 10]}>

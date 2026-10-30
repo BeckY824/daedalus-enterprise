@@ -48,7 +48,7 @@ async function 连点保存(page: Page, 框: ReturnType<Page["getByRole"]>, 钮:
 /**
  * 点开弹框。dev server 下页面刚出来时可能还没水合完，第一下点了没反应——没开就再点，别把它当成用例失败
  */
-async function 打开(page: Page, 按钮: string, 框名: string) {
+async function 打开(page: Page, 按钮: string | RegExp, 框名: string) {
   const 框 = page.getByRole("dialog", { name: 框名 });
   await expect(async () => {
     if (!(await 框.isVisible())) await page.getByRole("button", { name: 按钮 }).click();
@@ -96,11 +96,11 @@ test("制定跟进计划：连点两次保存 → 只多一条计划", async ({ 
 
 test("记录跟进（带截止时间、连带建待办）：连点两次保存 → 跟进和连带的待办都只一份", async ({ page }) => {
   await 登录(page);
-  // 企业版客户页的「跟进」去项目里记；带着这位到跟进页，页头「记录跟进」是同一个框
+  // 企业版客户页的「跟进」去项目里记；带着这位到沟通记录页，页头「记一条沟通」是同一个框
   await page.goto(企业版 ? `/follow-ups?customer=${客户id}` : `/customers/${客户id}`);
-  const 框 = await 打开(page, "记录跟进", "新建跟进");
+  const 框 = await 打开(page, /^(plus )?记一条沟通$/, "记一条沟通");
   // 换成「跟进任务」才有截止时间；填了截止时间、状态没做完，保存时顺带建一条待办
-  await 框.getByLabel("跟进类型").click();
+  await 框.getByLabel("沟通方式").click();
   await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-content", { hasText: "跟进任务" }).click();
   // 还没做完（待处理）的才连带建待办，见 saveFollowUp
   await 框.getByLabel("状态").click();

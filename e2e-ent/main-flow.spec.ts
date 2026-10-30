@@ -215,7 +215,9 @@ test("字段权限：销售的备注只能看就改不了；电话看不到就�
   };
   const 编辑 = async () => {
     await page.goto("/customers");
-    await 正文.getByRole("button", { name: "编辑 销售甲的客户", exact: true }).click();
+    // 行上的编辑、删除收进「⋯」（交互规则 D，10-30）
+    await 正文.getByRole("button", { name: "更多操作 销售甲的客户", exact: true }).click();
+    await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
     return page.getByRole("dialog", { name: "编辑客户" });
   };
   const 换人 = async (谁: keyof typeof 账号) => {
@@ -293,13 +295,13 @@ test("项目公海：原负责人领取灰着；别的销售领了，项目、�
   await 登录(page, "销售1");
   await page.goto(`/projects/${种.项目1}`);
   const 正文 = page.getByRole("main");
-  await expect(正文.getByText("这个项目在项目公海里")).toBeVisible();
+  await expect(正文.getByText("这个项目在项目公海里", { exact: true })).toBeVisible();
   await expect(正文.getByRole("button", { name: /领\s*取/ })).toBeDisabled();
 
   await page.context().clearCookies();
   await 登录(page, "销售2");
   await page.goto(`/projects/${种.项目1}`);
-  await expect(正文.getByText("这个项目在项目公海里")).toBeVisible();
+  await expect(正文.getByText("这个项目在项目公海里", { exact: true })).toBeVisible();
   await 正文.getByRole("button", { name: /领\s*取/ }).click();
   await expect(page.locator(".ant-message-notice", { hasText: "已领取，你是这个项目的负责人了" })).toBeVisible();
   await expect(正文.getByText("这个项目在项目公海里")).toHaveCount(0);

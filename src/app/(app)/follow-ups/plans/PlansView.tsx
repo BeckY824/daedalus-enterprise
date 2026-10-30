@@ -4,7 +4,7 @@ import { useBusinessTimeZone } from "@/lib/business-client";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Segmented, Space, Button, App, Tag } from "antd";
-import { PlusOutlined, UnorderedListOutlined, CheckCircleOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
+import { PlusOutlined, UnorderedListOutlined, CheckCircleOutlined, EditOutlined, DeleteOutlined, ProjectOutlined } from "@ant-design/icons";
 import { PageHead, UserCell } from "@/components/ui";
 import EmptyState from "@/components/EmptyState";
 import { fmtDateTime } from "@/lib/utils";
@@ -86,6 +86,9 @@ type 事项 = {
   ownerName: string;
 };
 
+/** 企业版：项目上填的下一步时间（page.tsx 只读取来），和计划按同一套时间分组，只能点进项目去改 */
+export type 项目下一步 = { key: string; id: string; 项目名: string; 下一步: string | null; 时间: string; ownerId: string; ownerName: string };
+
 /** 分组只要这三样：分批时页面手里只有「全部」的这三样，详情只有要摆出来的那些（lib/plans-page.ts） */
 type 轻事项 = { key: string; 时间: string | null; ownerId: string };
 
@@ -111,6 +114,7 @@ const 待办成事项 = (t: Task): 事项 => ({
 export default function PlansView({
   plans,
   tasks,
+  项目下一步 = [],
   done,
   meId,
   预选客户,
@@ -124,6 +128,7 @@ export default function PlansView({
 }: {
   plans: Plan[];
   tasks: Task[];
+  项目下一步?: 项目下一步[];
   done: 已完成[];
   meId: string;
   /** 从某位客户带过来的（?customer=）：「新建计划」预填这一位 */
@@ -220,7 +225,7 @@ export default function PlansView({
    * 这一页上的事全是我的（一个人的库就是这样）：「我的 / 全部成员」这一层不摆（审查 D2）——
    * 两边永远一样，摆着只是让人多想一下「全部成员」里会不会还有别的
    */
-  const 只有我 = 全部.every((x) => x.ownerId === meId) && done.every((d) => d.ownerId === meId);
+  const 只有我 = 全部.every((x) => x.ownerId === meId) && done.every((d) => d.ownerId === meId) && 项目下一步.every((x) => x.ownerId === meId);
 
   const 我的 = useMemo(() => 全部.filter((x) => (scope === "我的" ? x.ownerId === meId : true)), [全部, scope, meId]);
 
@@ -232,6 +237,7 @@ export default function PlansView({
    * 每条重算一遍今天零点，几千条时服务端渲染这一页要多花上百毫秒）
    */
   const 组 = useMemo(() => 分组(我的), [我的]);
+  const 项目组 = useMemo(() => 分组(项目下一步.filter((x) => (scope === "我的" ? x.ownerId === meId : true))), [项目下一步, scope, meId]);
 
   /** 每组摆出来的：前 N 条（分批时），加上这一页新建过的；没详情的先占一行「正在取」 */
   const 摆 = useMemo(() => {
@@ -345,7 +351,7 @@ export default function PlansView({
   );
 
   // 待办空、但做完的有一堆时，不该说「还没有排任何跟进」——那是句不对的话
-  const 空了 = 全部.length === 0 && done.length === 0;
+  const 空了 = 全部.length === 0 && done.length === 0 && 项目下一步.length === 0;
 
   return (
     <>
@@ -423,11 +429,11 @@ export default function PlansView({
           <div className="plans">
             {/* 三组的空文案各不相同：全写「这一组是空的」，人分不出
                 「今天没排」和「已经全做完了」——那是两件完全不同的事 */}
-            <组块 名="逾期" 说明="计划时间已经过去了，先处理这些" 空话="没有逾期的，都跟上了" 行={摆.逾期.行} 共={组.逾期.length} 还有={摆.逾期.还有} 再看={() => 再看(0)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 危险 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
-            <组块 名="今天" 说明="今天之内要做的" 空话="今天没有排计划" 行={摆.今天.行} 共={组.今天.length} 还有={摆.今天.还有} 再看={() => 再看(1)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
-            <组块 名="本周" 说明="这周剩下的几天" 空话="这周剩下的几天还没排" 行={摆.本周.行} 共={组.本周.length} 还有={摆.本周.还有} 再看={() => 再看(2)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
-            {组.以后.length > 0 && (
-              <组块 名="以后" 说明="更远的，和还没定时间的" 空话="没有更远的" 行={摆.以后.行} 共={组.以后.length} 还有={摆.以后.还有} 再看={() => 再看(3)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+            <组块 名="逾期" 说明="计划时间已经过去了，先处理这些" 空话="没有逾期的，都跟上了" 行={摆.逾期.行} 项目={项目组.逾期} 共={组.逾期.length} 还有={摆.逾期.还有} 再看={() => 再看(0)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 危险 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+            <组块 名="今天" 说明="今天之内要做的" 空话="今天没有排计划" 行={摆.今天.行} 项目={项目组.今天} 共={组.今天.length} 还有={摆.今天.还有} 再看={() => 再看(1)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+            <组块 名="本周" 说明="这周剩下的几天" 空话="这周剩下的几天还没排" 行={摆.本周.行} 项目={项目组.本周} 共={组.本周.length} 还有={摆.本周.还有} 再看={() => 再看(2)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+            {组.以后.length + 项目组.以后.length > 0 && (
+              <组块 名="以后" 说明="更远的，和还没定时间的" 空话="没有更远的" 行={摆.以后.行} 项目={项目组.以后} 共={组.以后.length} 还有={摆.以后.还有} 再看={() => 再看(3)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
             )}
           </div>
           )}
@@ -489,7 +495,7 @@ export default function PlansView({
 type 待取 = { key: string; 待取: true };
 
 function 组块({
-  名, 说明, 空话, 行, 共, 还有, 再看, 翻着, 没取到, 危险, 完成, 刚完成, 刚建, 刚建那行, scope, 只有我, 改, 删,
+  名, 说明, 空话, 行, 项目, 共, 还有, 再看, 翻着, 没取到, 危险, 完成, 刚完成, 刚建, 刚建那行, scope, 只有我, 改, 删,
 }: {
   /** 改这一条：计划开计划表单，待办开待办表单（2026-10-02 排查 3-4：原来计划页上只能「完成」） */
   改: (x: 事项) => void;
@@ -500,7 +506,9 @@ function 组块({
   空话: string;
   /** 摆出来的那些（不分批时就是这一组全部） */
   行: (事项 | 待取)[];
-  /** 这一组一共多少条：组头上写的数 */
+  /** 企业版：项目上填的下一步时间落在这一组的，摆在计划后面，只读 */
+  项目: 项目下一步[];
+  /** 这一组一共多少条计划和待办（不含 项目）：组头上的数是两样加起来 */
   共: number;
   /** 还没摆出来的条数：大于 0 时底下给「再看 50 条」 */
   还有: number;
@@ -521,10 +529,10 @@ function 组块({
     <section className={`plan-g${危险 ? " plan-g-warn" : ""}`}>
       <div className="plan-g-h">
         <b>{名}</b>
-        <span className="plan-g-n">{共}</span>
+        <span className="plan-g-n">{共 + 项目.length}</span>
         <span className="plan-g-s">{说明}</span>
       </div>
-      {共 === 0 ? (
+      {共 + 项目.length === 0 ? (
         <div className="plan-empty">{空话}</div>
       ) : (
         行.map((x) => {
@@ -577,6 +585,20 @@ function 组块({
           );
         })
       )}
+      {项目.map((x) => (
+        <div key={x.key} className="plan-row">
+          <ProjectOutlined aria-hidden style={{ width: 24, display: "inline-flex", justifyContent: "center", color: "var(--text-muted)" }} />
+          <span className="plan-row-m">
+            <span className="plan-row-t">{x.下一步 || "下一步"}</span>
+            <span className="plan-row-s">
+              <a href={`/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>
+              <Tag style={{ margin: 0, borderRadius: 6 }}>来自项目</Tag>
+            </span>
+          </span>
+          {!只有我 && scope === "全部成员" && <UserCell name={x.ownerName} size={22} />}
+          <span className="plan-row-d">{截止说法(x.时间)}</span>
+        </div>
+      ))}
       {还有 > 0 && (
         <Button block type="text" size="small" className="pipe-more" loading={翻着} onClick={再看}>
           {还有 > 每批 ? `再看 ${每批} 条` : `再看剩下 ${还有} 条`}

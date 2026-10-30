@@ -15,7 +15,7 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
-import { 超时回收日, 超时起点, 超时理由, 系统 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 超时理由, 系统, 节点超时天数 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -23,7 +23,6 @@ import { 有效沟通数 } from "@/lib/project/stage-gates";
 import { 读线索验证 } from "@/lib/project/lead-verify";
 import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 卡点可选的人, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
-import { 时限提醒of } from "@/lib/project/blocker-rules";
 // 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
 import { 联系人附件入口, 项目附件入口 } from "@/app/api/attachments/access";
 import { 项目画像项, 其他项, 字典定义 } from "@/lib/enterprise/dict-kinds";
@@ -33,6 +32,17 @@ import type { 项目画像 } from "./ProjectExtras";
 import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * 沟通行的时限标签只写事实（10-30 规则 E：不用「步步为营」那类口号，blocker-rules.ts 时限提醒of 的文字不再上界面）：
+ * 写下一步哪天、过了几天；「逾期」只用在已经过了的，红色也只给它，当天橙色
+ */
+function 时限标签(nextAt: Date) {
+  const 过 = dayjs().startOf("day").diff(dayjs(nextAt).startOf("day"), "day");
+  const 日 = dayjs(nextAt).format("MM-DD");
+  if (过 > 0) return { 级别: "超时" as const, 文字: `下一步已逾期 ${过} 天（${日}）` };
+  return 过 === 0 ? { 级别: "拿捏" as const, 文字: `下一步是今天（${日}）` } : { 级别: "稳" as const, 文字: `下一步 ${日}` };
+}
 
 /** 项目详情（团队版项目模式 1a）：改节点、勾尾款 / 验收、节点变更和挂在项目上的沟通。开关关着时不存在 */
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -88,7 +98,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   // 企业版超时回收：线索 / 商机阶段记沟通要填下一步时间；算出哪天会自动回公海（和 lib/project/db.ts 公海超时收回 同一个起点）
   const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
-  const 回收日 = 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null));
+  const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
+  const 回收起点 = 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt);
+  const 回收日 = 超时回收日(规则, p, 回收起点, 字典);
   const 能记沟通 = 企业 && !公海 && (能改 || p.members.some((m) => m.userId === me.id && m.inviteStatus === "JOINED"));
   // 沟通的「…」菜单（改 / 删，10-29）：能记沟通、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）
   const 可改沟通 = 能记沟通 && 露 && !(await 只读客户(defaultClient, p.customer));
@@ -99,6 +111,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 必填 = !公海 && !p.result && 按必填走(规则, p.node)
     ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p)), 只能靠填齐: me.role !== "ADMIN" && me.role !== "MANAGER" && !代管节点(me, p.ownerId, org) }
     : null;
+  // 记沟通时预演回收日（10-30 P0-2，lib/enterprise/recycle-text.ts 预演回收日）：给起点日和这个进程的天数，浏览器按同一个算法算。
+  // 配了必填的进程记完可能自动推到下一个进程（天数跟着换），算不准就不给，界面不显示那一句
+  const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 ? 节点超时天数(规则, p.node, 字典) : null;
+  const 回收预演 = 回收天数 ? { 起点日: dayjs(回收起点).format("YYYY-MM-DD"), 天数: 回收天数 } : null;
   const 不给推 = 企业 && !公海 && !p.result ? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
   // 企业版：线索验证往后推要先有一条客户明确回复的沟通（lib/project/stage-gates.ts）
   const 有效沟通 = 企业 && p.phase === "线索" ? await 有效沟通数(prisma, p.id) : 0;
@@ -150,7 +166,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     pooled: 公海, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
-    nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日,
+    nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 回收预演,
     ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 必填, 不给推, 能改节点: 节点能改,
     能放公海: !公海 && me.id === p.ownerId && (能进公海的阶段 as readonly string[]).includes(p.phase),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
@@ -173,7 +189,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         const 编 = 编号.get(f.followUp.id);
         return {
           id: f.followUp.id, type: f.followUp.type, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
-          ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限提醒of(编.nextAt) : null } : {}),
+          ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
         };
       })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),

@@ -18,6 +18,7 @@ import { 记换负责人, 是我刚换的, 撤销时限毫秒 } from "@/lib/owne
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
+import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { Prisma } from "@/generated/prisma";
 
@@ -38,6 +39,8 @@ export type 公海结果 =
       带过来?: 带走的;
       /** 老板分配：分给了谁（id、名字），撤销时按他认「还归他」 */
       给谁?: { id: string; name: string };
+      /** 企业版：跟着客户一起领 / 分过来的项目公海里的项目，撤销时放回项目公海（交互规则 B，10-30） */
+      公海项目?: string[];
     }
   | { ok: false; error: string };
 
@@ -81,7 +84,7 @@ export async function 放进公海(ids: string[]): Promise<公海结果> {
   const 能放 = 这些.filter((c) => !c.pool && (管全队客户(me.role) || c.salesOwnerId === me.id));
   const 没权限 = 这些.length - 已在.length - 能放.length;
   if (!能放.length) {
-    return 没权限 ? { ok: false, error: `只有负责人或管理员能把${b.customer}放进公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
+    return 没权限 ? { ok: false, error: `只有负责人或管理员能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
   }
   await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason: "手动" })) });
   await 记退回(能放.map((c) => c.id), 1);
@@ -157,7 +160,7 @@ export async function 领取(ids: string[]): Promise<公海结果> {
     detail: { ids: 领到.map((x) => x.id), 原负责人: 领到.map((x) => ({ id: x.id, salesOwnerId: x.值 })) },
   });
   刷新(ids);
-  return { ok: true, updated: 领到.length, unchanged: ids.length - 领到.length - 不能领.size, 没权限: 不能领.size, 带走, 原负责人: 领到, 带过来 };
+  return { ok: true, updated: 领到.length, unchanged: ids.length - 领到.length - 不能领.size, 没权限: 不能领.size, 带走, 原负责人: 领到, 带过来, 公海项目 };
 }
 
 /**
@@ -205,7 +208,7 @@ export async function 分配公海(ids: string[], userId: string): Promise<公�
     detail: { ids: 分到.map((x) => x.id), 给: 给.id, 原负责人: 分到.map((x) => ({ id: x.id, salesOwnerId: x.值 })) },
   });
   刷新(ids);
-  return { ok: true, updated: 分到.length, unchanged: ids.length - 分到.length - 无效.size, 没权限: 无效.size, 带走, 原负责人: 分到, 带过来, 给谁: 给 };
+  return { ok: true, updated: 分到.length, unchanged: ids.length - 分到.length - 无效.size, 没权限: 无效.size, 带走, 原负责人: 分到, 带过来, 给谁: 给, 公海项目 };
 }
 
 /**
@@ -216,8 +219,9 @@ export async function 分配公海(ids: string[], userId: string): Promise<公�
  * 撤销分配（老板）：同撤销领取，「我」换成分到的那位（给谁）——只认现在还归他、不在公海的，他名下带过去的活还回去
  * 负责人真换过的还要对上换负责人记录（2026-10-28）：最近一条得是我把他从原负责人换到现在这位的。
  * 不然业务员把自己的客户当「刚领的」撤，原负责人随手填个同事，就绕过交接把客户塞到同事名下
+ * 企业版跟着客户一起领 / 分过来的项目公海里的项目（公海项目）放回项目公海，认不认由 撤回项目公海 看留痕（10-30）
  */
-export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: { id: string; 值: string }[], 带过来?: 带走的, 给谁?: string): Promise<公海结果> {
+export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: { id: string; 值: string }[], 带过来?: 带走的, 给谁?: string, 公海项目?: string[]): Promise<公海结果> {
   const me = await requireUser();
   const ids = 原.map((x) => x.id);
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
@@ -261,6 +265,13 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
         await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: x.id, ownerId: 现, done: false }, data: { ownerId: x.值 } });
         await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: x.id, ownerId: 现, status: "OPEN" }, x.值);
         await 还项目(tx, 带过来.项目, x.id, 现, x.值, me.id);
+      }
+      if (企业版() && Array.isArray(公海项目) && 公海项目.length) {
+        // 包 看全部：客户刚放回公海，限定着查不到它下面的项目
+        await 看全部(async () => {
+          const 们 = await tx.project.findMany({ where: { id: { in: 公海项目.filter((p) => typeof p === "string") }, customerId: x.id }, select: { id: true } });
+          for (const p of 们) await 撤回项目公海(tx, p.id, 现, me.id);
+        });
       }
     });
   }

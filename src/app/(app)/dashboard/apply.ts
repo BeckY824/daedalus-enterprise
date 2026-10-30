@@ -45,7 +45,8 @@ export type 撤销凭据 =
  */
 export type 附件去处 = { contactId: string } | { leadId: string };
 
-export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处 } | { ok: false; error: string };
+/** 项目：企业版新线索卡建成的项目 id，卡上「查看」直接打开它（10-30 交互审核） */
+export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string } | { ok: false; error: string };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -245,7 +246,7 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
  * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 阿里国际站ID，撞了不建、提醒原负责人。
  * 不撞：创建人 = 负责人 = 录入人（客户销售负责人、项目负责人都是自己）
  */
-async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处 } | { ok: false; error: string }> {
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string } | { ok: false; error: string }> {
   const meId = me.id;
   const 号 = p.phone.trim();
   const { 号们, 剩 } = 认出备注里的号码(p.remark || "");
@@ -264,7 +265,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 来源 = p.source.trim();
   const 含 = 渠道们.filter((c) => 来源.includes(c.name));
   const 渠道 = 渠道们.find((c) => c.name === 来源) ?? (含.length === 1 ? 含[0] : null);
-  if (!渠道) return { ok: false, error: `卡上的来源「${p.source}」对不上启用中的渠道：请在卡上重新选来源（渠道）` };
+  if (!渠道) return { ok: false, error: `卡上的渠道「${p.source}」对不上启用中的渠道：请在卡上重新选渠道` };
   const r = await 建档向导({
     客户: {
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
@@ -280,7 +281,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       节点: 企业版字典.节点们.线索[0], 明确回复: false,
     },
   });
-  if (r.ok) return { ok: true, ...(r.contactId ? { 附件去处: { contactId: r.contactId } } : {}) };
+  if (r.ok) return { ok: true, 项目: r.projectId, ...(r.contactId ? { 附件去处: { contactId: r.contactId } } : {}) };
   // 开了超时回收：首条跟进要填下一步时间（卡上「下一步」那格）
   if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填「下一步」时间" };
   return { ok: false, error: r.error };
@@ -355,7 +356,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (只用项目 && p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
   if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
-  let done: { ok: true; 附件去处?: 附件去处 } | { ok: false; error: string };
+  let done: { ok: true; 附件去处?: 附件去处; 项目?: string } | { ok: false; error: string };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
     done = await 建成项目(p, me);
@@ -421,7 +422,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
 
   const summary = summarizeApplied(p, b.customer, b);
   await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason } });
-  return { ok: true, message: summary.replace("确认 AI 建议：", "已"), 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}) };
+  return { ok: true, message: summary.replace("确认 AI 建议：", "已"), 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}) };
 }
 
 /**

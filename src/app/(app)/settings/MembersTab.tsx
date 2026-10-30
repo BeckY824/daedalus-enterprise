@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Radio, Grid } from "antd";
+import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Radio, Grid, Popover } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined } from "@ant-design/icons";
 import { UserCell } from "@/components/ui";
@@ -12,7 +12,7 @@ import { 外贸订单 } from "@/lib/business-config";
 import type { SessionUser } from "@/lib/auth";
 import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用 } from "./actions";
 import type { 停用方式 } from "@/lib/offboard-db";
-import { 按阶段说 } from "@/lib/project/member-count";
+import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 
 /** 设置 · 团队成员：谁能进、谁是管理员。新增、编辑、停用（停用要先把名下的客户转交出去） */
@@ -229,8 +229,8 @@ export default function MembersTab({
         if (res.ok) {
           // 企业版「交接中」：给接手人的那部分等他确认（D10）
           message.success("交接中" in res
-            ? (方式 === "公海" ? "已停用，该进公海的已放进公海；其余等接手人在客户页确认后才转过去" : "已停用，名下的等接手人在客户页确认后才转过去")
-            : 方式 === "公海" ? "已停用，名下的放进了公海" : "已停用并转交");
+            ? (方式 === "公海" ? "已停用，该进公海的已放回公海；其余等接手人在客户页确认后才转过去" : "已停用，名下的等接手人在客户页确认后才转过去")
+            : 方式 === "公海" ? "已停用，名下的放回了公海" : "已停用并转交");
           router.refresh();
         } else message.error(res.error);
       },
@@ -239,19 +239,23 @@ export default function MembersTab({
 
   const 屏 = Grid.useBreakpoint();
   const columns: ColumnsType<Row> = [
-    // 姓名、登录名、职位并成一列（10-27）：设置弹窗里九列铺开要左右拖，登录名和职位小字放名字下面
+    // 姓名、登录名、职位并成一列（10-27）：设置弹窗里九列铺开要左右拖，登录名和职位小字放名字下面。
+    // 导入 / 同步时没给邮箱的人记的是 .invalid 占位邮箱（保留域名，不会是真的），不显示（10-30 交互规则 F）
     {
       title: "姓名",
       dataIndex: "name",
-      width: 220,
-      render: (v, r) => (
-        <div className="member-who">
-          <UserCell name={v} size={30} />
-          <span className="member-who-sub" title={用邮箱登录 ? "登录邮箱" : "登录用户名"}>
-            {[r.email, r.title].filter(Boolean).join(" · ")}
-          </span>
-        </div>
-      ),
+      width: 190,
+      render: (v, r) => {
+        const 邮箱 = r.email && !/\.invalid$/i.test(r.email) ? r.email : null;
+        return (
+          <div className="member-who">
+            <UserCell name={v} size={30} />
+            <span className="member-who-sub" title={邮箱 ? (用邮箱登录 ? "登录邮箱" : "登录用户名") : undefined}>
+              {[邮箱, r.title].filter(Boolean).join(" · ")}
+            </span>
+          </div>
+        );
+      },
     },
     按业务角色
       ? {
@@ -281,7 +285,20 @@ export default function MembersTab({
     // 1024 宽时设置页右边只剩约 490，两个次要的数先收起，1200 以上才出（10-27）
     { title: `负责${b.customer}`, dataIndex: "customerCount", width: 80, responsive: ["xl"] },
     users.some((u) => u.项目阶段)
-      ? { title: "项目数", key: "项目数", width: 120, render: (_: unknown, r: Row) => 按阶段说(r.项目阶段 ?? {}) }
+      ? {
+          // 只摆总数，点开看各阶段（10-30）：三个数挤一格在 1366 宽时折两行
+          title: "项目数",
+          key: "项目数",
+          width: 72,
+          render: (_: unknown, r: Row) => {
+            const 总 = 三阶段.reduce((a, ph) => a + (r.项目阶段?.[ph] ?? 0), 0);
+            return 总 ? (
+              <Popover trigger="click" content={按阶段说(r.项目阶段 ?? {})}>
+                <Button type="link" size="small" style={{ padding: 0 }} aria-label={`${r.name} 的项目分阶段`}>{总}</Button>
+              </Popover>
+            ) : 0;
+          },
+        }
       : { title: "商机数", dataIndex: "oppCount", width: 80 },
     { title: "跟进数", dataIndex: "followCount", width: 70, responsive: ["xl"] },
     {
@@ -297,13 +314,15 @@ export default function MembersTab({
     {
       title: "",
       key: "act",
-      width: 120,
+      // 两个图标按钮（手机上各撑到 44，globals.css .row-act）；120 时 1366 宽下整张表比设置页宽，最右这列被截（10-30 交互规则 G）
+      width: 96,
+      // 行上不标红（10-30 交互规则 D）：停用要先清点、再在弹窗里确认，红色留给弹窗
       render: (_, r) =>
         !isAdmin && 能停(r) ? (
           <Button
             type="text"
+            className="row-act"
             size="small"
-            danger
             icon={<StopOutlined />}
             aria-label={`给 ${r.name} 办离职`}
             loading={清点中 === r.id}
@@ -313,6 +332,7 @@ export default function MembersTab({
           <Space size={2}>
             <Button
               type="text"
+              className="row-act"
               size="small"
               icon={<EditOutlined />}
               onClick={() => {
@@ -323,8 +343,8 @@ export default function MembersTab({
             {r.active ? (
               <Button
                 type="text"
+                className="row-act"
                 size="small"
-                danger
                 icon={<StopOutlined />}
                 disabled={r.id === me.id}
                 loading={清点中 === r.id}
@@ -333,6 +353,7 @@ export default function MembersTab({
             ) : (
               <Button
                 type="text"
+                className="row-act"
                 size="small"
                 icon={<UndoOutlined />}
                 aria-label={`恢复成员 ${r.name}`}
@@ -539,7 +560,7 @@ function OffboardForm({ name, 点, others, defaultTarget, onChange }: {
         style={{ marginBottom: 12 }}
         options={[
           { value: "转交", label: "全部转交给一个人" },
-          { value: "公海", label: "放进公海，谁领谁接" },
+          { value: "公海", label: "放回公海，谁领谁接" },
         ]}
       />
       {方式 === "转交" ? (
@@ -597,13 +618,13 @@ function BatchOffboardForm({ names, others, defaultTarget, onChange }: {
         style={{ marginBottom: 12 }}
         options={[
           { value: "转交", label: "全部转交给一个人" },
-          { value: "公海", label: "放进公海，谁领谁接" },
+          { value: "公海", label: "放回公海，谁领谁接" },
         ]}
       />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 8 }}>
         {方式 === "转交"
           ? `他们名下的${b.customer}、项目，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：`
-          : `能放公海的${b.customer}和项目放进公海；已签约、已流失、订单阶段的，和线索、渠道，交给：`}
+          : `能放公海的${b.customer}和项目放回公海；已签约、已流失、订单阶段的，和线索、渠道，交给：`}
       </Typography.Paragraph>
       <Select
         value={target}

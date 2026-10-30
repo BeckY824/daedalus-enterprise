@@ -3,7 +3,7 @@
 import Heat from "@/components/Heat";
 import { useEffect, useState, useSyncExternalStore, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Select, Space, Dropdown, App, Tag, Popover, Segmented } from "antd";
+import { Button, Select, Space, Dropdown, App, Tag, Popover, Segmented, type MenuProps } from "antd";
 import {
   PlusOutlined,
   ExportOutlined,
@@ -11,7 +11,7 @@ import {
   UserSwitchOutlined,
   TagsOutlined,
   DeleteOutlined,
-  EditOutlined,
+  MoreOutlined,
   FilterOutlined,
   InboxOutlined,
   UserAddOutlined,
@@ -34,6 +34,7 @@ import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { WhatsApp网址, 官网网址, 官网短写, 客户等级, 客户等级说明, type 客户等级 as 等级 } from "@/lib/customer-extra";
 import { 级别选项, 拼地址 } from "@/lib/enterprise/customer-v2";
+import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import LevelStars from "@/components/LevelStars";
 import LocalTime from "@/components/LocalTime";
 import { 未分级 } from "./query-shared";
@@ -50,6 +51,11 @@ import CurrencySelect from "@/components/CurrencySelect";
  * 原本无论实际改了几条都提示「已变更」——选错页、行被别人删掉都看不出来。
  * 只有真改了才说改了几条；没改动和已消失的分开讲，否则人对不上自己勾了几条。
  */
+/** 筛选下拉顶上一行：这一项筛的是什么（交互方案 P2，10-30）。每个值各自的含义等字典里补了说明再加 */
+function 下拉说明(话: string) {
+  return <div className="muted" style={{ padding: "4px 12px 6px", fontSize: "var(--fs-note)", borderBottom: "1px solid var(--line)", marginBottom: 4 }}>{话}</div>;
+}
+
 function bulkSummary(res: Extract<BulkResult, { ok: true }>, action: string): string {
   const parts = [`${action}：${res.updated} 条`];
   if (res.unchanged) parts.push(`${res.unchanged} 条本来就是`);
@@ -195,7 +201,7 @@ export default function CustomersView({
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   }, [page, requestedPage]);
 
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { 问删除 } = useDeleteCustomers();
   const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
 
@@ -253,7 +259,7 @@ export default function CustomersView({
   function 公海提示(res: 公海结果, 动作: "放进" | "领取" | "分配", ids: string[]) {
     router.refresh();
     if (!res.ok) return void message.error(res.error);
-    const 名 = 动作 === "放进" ? "放进公海" : 动作 === "分配" ? `分给「${res.给谁?.name ?? "同事"}」` : "领取";
+    const 名 = 动作 === "放进" ? "放回公海" : 动作 === "分配" ? `分给「${res.给谁?.name ?? "同事"}」` : "领取";
     if (!res.updated) {
       return void message.info(动作 === "放进" ? "选中的已经都在公海里了" : 动作 === "分配" ? "选中的已经被领走了，没有可分的" : "选中的已经被领走了，没有可领的");
     }
@@ -275,7 +281,7 @@ export default function CustomersView({
             size="small"
             onClick={async () => {
               message.destroy(key);
-              const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined);
+              const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined, res.ok ? res.公海项目 : undefined);
               router.refresh();
               if (!r.ok) return void message.error(`没能撤销：${r.error}`);
               message.success(`已撤销，${r.updated} 位改回原样`);
@@ -471,7 +477,7 @@ export default function CustomersView({
       title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: 140,
       // 在公海里：写「公海（原 X）」——原负责人还挂着，但谁都能领
       render: (v: string, r: CustomerRow) => r.pool
-        ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放进公海" : r.pool.reason}`}>{公海标签(v)}</Tag>
+        ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : r.pool.reason}`}>{公海标签(v)}</Tag>
         : <UserCell name={v} size={24} />,
     }]),
     // 三列各收一点，1366 宽时默认列和公海列都不用左右拖（10-27）；负责人不收，「公海（原 X）」要放得下
@@ -510,41 +516,39 @@ export default function CustomersView({
       render: (v: string | null) => (v ? <UserCell name={v} size={24} /> : <span className="muted">—</span>),
     }]),
     {
-      // 这一页有公海里的才多一个「领取」、才加宽：表格本来就比 13 寸窗口宽一点，不为用不上的按钮再挤 30px
-      title: "", key: "action", width: !不问归属 && rows.some((r) => r.pool) ? (能分配公海 ? 138 : 108) : 78, 常驻: true, fixed: "right",
-      render: (_, r) => (
-        // 纯图标按钮必须自带可访问名称：没有它，屏幕阅读器只会读出「按钮」，
-        // 自动化也只能按位置取第一个——这类选择器一改动就漂。
-        // 原来还有个「详情」按钮，去掉了：整行点进去就是详情，一行里不摆两条同样的路
-        <Space size={2}>
-          {r.pool && !不问归属 && (
-            <Button aria-label={`领取 ${r.name}`} title={领不回.has(r.id) ? 原负责人不能领回提示 : "领取：负责人改成我"} disabled={领不回.has(r.id)}
-              type="text" size="small" icon={<UserAddOutlined />} onClick={async () => 公海提示(await 领取([r.id]), "领取", [r.id])} />
-          )}
-          {/* 老板直接分给某位同事（2026-10-20）：规矩同领取，只是领的人换成选中的那位 */}
-          {r.pool && !不问归属 && 能分配公海 && (
-            // 菜单画在 body 上，但 React 事件照组件树冒泡到这一行：不拦住，点完名字就跟着进了记录页
-            <Dropdown trigger={["click"]} menu={{ items: 成员选项(users).map((o) => ({ key: o.value, label: o.label, onClick: async ({ domEvent }) => { domEvent.stopPropagation(); 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]); } })) }}>
-              <Button aria-label={`分配 ${r.name} 给…`} title="分配给…：从公海直接分给一位同事" type="text" size="small" icon={<UserSwitchOutlined />} />
-            </Dropdown>
-          )}
-          {只读的.has(r.id) ? (
-            // 虚线下属的客户：编辑、删除点了也会被拦，不摆按钮，直接说只能看
-            <span className="muted nowrap" title="这是虚线下属的客户：只能看，不能改、不能转">只能看</span>
-          ) : (
-            <>
-              <Button aria-label={`编辑 ${r.name}`} title="编辑"
-                type="text" size="small" icon={<EditOutlined />} onClick={() => { setEditing(r); setFormOpen(true); }} />
-              <Button
-                aria-label={`删除 ${r.name}`} title="删除"
-                type="text" size="small" danger icon={<DeleteOutlined />}
-                // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）
-                onClick={() => void 问删除([{ id: r.id, name: r.name }])}
-              />
-            </>
-          )}
-        </Space>
-      ),
+      // 这一页有公海里的才多一个「领取」、才加宽：表格本来就比 13 寸窗口宽一点，不为用不上的按钮再挤
+      // 一行只摆一个字按钮（领取），分配、编辑、删除收进「⋯」（交互规则 D，2026-10-30）；领不了的原因写在按钮下面，不靠悬停
+      title: "", key: "action", width: !不问归属 && rows.some((r) => r.pool) ? 132 : 56, 常驻: true, fixed: "right",
+      render: (_, r) => {
+        // 虚线下属的客户：编辑、删除点了也会被拦，不摆按钮，直接说只能看
+        if (只读的.has(r.id)) return <span className="muted nowrap">只能看</span>;
+        const 公海里 = r.pool && !不问归属;
+        const 菜单: NonNullable<MenuProps["items"]> = [
+          // 老板直接分给某位同事（2026-10-20）：规矩同领取，只是领的人换成选中的那位
+          ...(公海里 && 能分配公海 && 成员选项(users).length ? [{
+            key: "assign", label: "分配给…",
+            children: 成员选项(users).map((o) => ({ key: `assign:${o.value}`, label: o.label, onClick: async () => 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]) })),
+          }] : []),
+          { key: "edit", label: "编辑", onClick: () => { setEditing(r); setFormOpen(true); } },
+          // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）
+          { key: "delete", label: "删除", onClick: () => void 问删除([{ id: r.id, name: r.name }]) },
+        ];
+        return (
+          <div>
+            <Space size={2}>
+              {公海里 && (
+                <Button className="row-act" aria-label={`领取 ${r.name}`} disabled={领不回.has(r.id)} size="small"
+                  onClick={async () => 公海提示(await 领取([r.id]), "领取", [r.id])}>领取</Button>
+              )}
+              {/* 菜单画在 body 上，但 React 事件照组件树冒泡到这一行：不拦住，点完就跟着进了记录页 */}
+              <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
+                <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} />
+              </Dropdown>
+            </Space>
+            {公海里 && 领不回.has(r.id) && <div className="muted" style={{ fontSize: 12, lineHeight: "16px" }}>{原负责人不能领回提示}</div>}
+          </div>
+        );
+      },
     },
   ];
 
@@ -635,7 +639,7 @@ export default function CustomersView({
         空态={{
           title: `还没有${b.customer}`,
           hint: 企业
-            ? `${b.customer}是这套系统的中心：跟进记录和项目都挂在他身上。`
+            ? `${b.customer}是这套系统的中心：沟通记录和项目都挂在他身上。`
             : 外贸
             ? `${b.customer}是这套系统的中心：跟进记录、商机、订单都挂在他身上。`
             : `${b.customer}是这套系统的中心：跟进记录、商机、签约都挂在他身上，推荐归属也按他这条线往上算。`,
@@ -678,6 +682,7 @@ export default function CustomersView({
             />
             {企业 ? (
               <Select style={{ width: 140 }} placeholder="全部客户状态" allowClear aria-label="客户状态"
+                popupRender={(menu) => <>{下拉说明(字典定义.custStatus.说明)}{menu}</>} popupMatchSelectWidth={false}
                 value={f.custStatus || undefined} onChange={(v) => apply({ custStatus: v ?? "" })}
                 options={[...new Set([...客户状态选项, ...(f.custStatus ? [f.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
             ) : (
@@ -727,6 +732,7 @@ export default function CustomersView({
                   )}
                   {企业 && (
                     <Select style={{ width: "100%" }} placeholder="全部客户类型" allowClear aria-label="客户类型"
+                      popupRender={(menu) => <>{下拉说明(字典定义.custType.说明)}{menu}</>}
                       value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
                       options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
                   )}
@@ -756,7 +762,9 @@ export default function CustomersView({
             <ResetFilters 显示={筛了 > 0} onClick={重置} />
           </Space>
         }
-        批量={(selected, 清空, 选中行) => (
+        批量={(selected, 清空, 选中行) => {
+          const 全领不回 = 选中行.some((r) => r.pool) && 选中行.filter((r) => r.pool).every((r) => 领不回.has(r.id));
+          return (
           <>
             {/* 公海页签的老板：「分配给…」= 从公海直接分出去（出公海、记领取时间）；批量分配只换负责人、人还在公海里，这里不摆 */}
             {!不问归属 && 公海页 && 能分配公海 && <Dropdown
@@ -804,21 +812,30 @@ export default function CustomersView({
             </Dropdown>}
             {/* 「公海」页签只有领取，「客户」页签只有放进公海；子集里两种混着，看勾的是什么 */}
             {!不问归属 && (公海页 || (子集 && 选中行.some((r) => r.pool)) ? (
-              <Button size="small" icon={<UserAddOutlined />}
-                // 勾的全是自己当原负责人的公海客户：领不了，灰着
-                disabled={选中行.some((r) => r.pool) && 选中行.filter((r) => r.pool).every((r) => 领不回.has(r.id))}
-                title={选中行.some((r) => r.pool) && 选中行.filter((r) => r.pool).every((r) => 领不回.has(r.id)) ? 原负责人不能领回提示 : undefined}
-                onClick={async () => {
-                  const ids = 选中行.filter((r) => r.pool).map((r) => r.id);
-                  if (!(await 先问转走的项目(ids))) return;
-                  公海提示(await 领取(ids), "领取", ids); 清空();
-                }}>
-                领取
-              </Button>
+              <>
+                <Button size="small" icon={<UserAddOutlined />}
+                  // 勾的全是自己当原负责人的公海客户：领不了，灰着，原因写在旁边
+                  disabled={全领不回}
+                  onClick={async () => {
+                    const ids = 选中行.filter((r) => r.pool).map((r) => r.id);
+                    if (!(await 先问转走的项目(ids))) return;
+                    公海提示(await 领取(ids), "领取", ids); 清空();
+                  }}>
+                  领取
+                </Button>
+                {全领不回 && <span className="muted" style={{ fontSize: 12 }}>{原负责人不能领回提示}</span>}
+              </>
             ) : (
               <Button size="small" icon={<InboxOutlined />}
-                onClick={async () => { 公海提示(await 放进公海(selected), "放进", selected); 清空(); }}>
-                放进公海
+                // 一批转出去先问一声（交互规则 B），放完照旧 6 秒内能撤
+                onClick={() => modal.confirm({
+                  title: `把 ${selected.length} 位放回公海？`,
+                  content: "放回后谁都能领；6 秒内可以撤销。",
+                  okText: "放回公海",
+                  cancelText: "取消",
+                  onOk: async () => { 公海提示(await 放进公海(selected), "放进", selected); 清空(); },
+                })}>
+                放回公海
               </Button>
             ))}
             {/* 批量改跟进状态：企业版不用跟进状态，不摆（10-28 去遗留 A1） */}
@@ -841,7 +858,6 @@ export default function CustomersView({
             </Dropdown>}
             <Button
               size="small"
-              danger
               icon={<DeleteOutlined />}
               // 写出是谁、会一起删掉什么（排查 B1）：人得对得上自己勾的是哪几位
               onClick={() =>
@@ -854,7 +870,8 @@ export default function CustomersView({
               删除
             </Button>
           </>
-        )}
+          );
+        }}
         排序={(key, order) => {
           if (key === "signedAmount") apply({ sort: order === "ascend" ? "amount-asc" : order === "descend" ? "amount-desc" : "", sortCurrency: f.sortCurrency || b.currency });
           if (key === "level") apply({ sort: order === "ascend" ? "level-asc" : order === "descend" ? "level-desc" : "" });

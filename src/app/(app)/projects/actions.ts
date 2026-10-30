@@ -15,7 +15,7 @@ import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了 } from "@/lib/enterprise/contact-dedupe";
 import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
-import { 改节点, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, type 交付项 } from "@/lib/project/db";
+import { 改节点, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -23,6 +23,11 @@ import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
+import { 超时回收日, 超时起点, 节点超时天数 } from "@/lib/project/timeout";
+import { 按必填走 } from "@/lib/project/required";
+import { 字典of } from "@/lib/project/stage-dict";
+import { dayjs } from "@/lib/utils";
+import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
@@ -432,7 +437,7 @@ export async function 总管理终判Action(projectId: string, 有效: boolean, 
 
 /** 总管理判有效后，销售认领继续推，或自己退回公海（算主动退回） */
 export async function 销售认领Action(projectId: string, 继续: boolean) {
-  return 验证一步(projectId, (名) => `项目「${名}」终判有效后${继续 ? "认领继续推进" : "退回公海"}`,
+  return 验证一步(projectId, (名) => `项目「${名}」终判有效后${继续 ? "认领继续推进" : "放回公海"}`,
     (me) => 销售认领(me, projectId, 继续 === true));
 }
 
@@ -587,7 +592,41 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       刷新项目(projectId, p?.customerId);
       revalidatePath("/follow-ups");
     }
-    return r.ok ? { ok: true as const, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
+    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
+  } catch (e) { return 不在了(e); }
+}
+
+export type 项目沟通须知结果 =
+  | { ok: true; 能记: true; phase: string; 要下一步: boolean; 回收预演: 回收预演底子 | null; contactId: string | null }
+  | { ok: true; 能记: false }
+  | { ok: false; error: string };
+
+/**
+ * 客户页记沟通时选了关联项目（10-30 P0-3）：只读，告诉表单这条能不能走「记项目沟通Action」那条路、
+ * 要不要填下一步时间、回收日怎么预演。谁能记和 lib/project/db.ts 记项目沟通 同一个判断；
+ * 回收预演和项目详情 page.tsx 同一套（配了必填的进程记完可能自动推走，算不准就给 null）
+ */
+export async function 项目沟通须知(projectId: string): Promise<项目沟通须知结果> {
+  try {
+    const me = await requireUser();
+    if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
+    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
+    if (!p || p.pooledAt) return { ok: true, 能记: false };
+    if (!能管项目(me, p)) {
+      const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+      if (组员?.inviteStatus !== "JOINED") return { ok: true, 能记: false };
+    }
+    const 规则 = await 生效组织规则();
+    const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+    let 回收预演: 回收预演底子 | null = null;
+    if (要下一步 && !按必填走(规则, p.node)) {
+      const 字典 = 字典of(true, 规则.阶段.出口叫法);
+      const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
+      const 起点 = 超时起点(p.createdAt, p.logs[0]?.at, c?.lastFollowAt);
+      const 天数 = 超时回收日(规则, p, 起点, 字典) ? 节点超时天数(规则, p.node, 字典) : null;
+      if (天数) 回收预演 = { 起点日: dayjs(起点).format("YYYY-MM-DD"), 天数 };
+    }
+    return { ok: true, 能记: true, phase: p.phase, 要下一步, 回收预演, contactId: p.contactId ?? null };
   } catch (e) { return 不在了(e); }
 }
 

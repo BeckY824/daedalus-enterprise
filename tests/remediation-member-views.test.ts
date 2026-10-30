@@ -52,5 +52,5 @@ it("无历史其他归属仍隐藏冗余单人表；来源与负责人空值明�
   const props = (await DataPage({ searchParams: Promise.resolve({ view: "本月" }) })).props.children.props;
   expect(props.单人).toBe(true);
   const data = await 加载复盘(new Date("2026-10-01"), new Date("2026-11-01"), "day");
-  expect(data.byChannelOwner[0].name).toBe("无渠道负责人"); expect(data.byChannel[0].name).toBe("无来源渠道");
+  expect(data.byChannelOwner[0].name).toBe("无渠道负责人"); expect(data.byChannel[0].name).toBe("无渠道");
 });

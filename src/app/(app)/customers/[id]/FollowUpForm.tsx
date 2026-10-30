@@ -8,11 +8,14 @@ import { requiredText } from "@/lib/form-validation";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Modal, Form, Input, Select, InputNumber, Row, Col, App, Button, Checkbox, Space, Typography } from "antd";
+import { Modal, Form, Input, Select, InputNumber, Row, Col, App, Button, Checkbox, Space, Typography, Radio } from "antd";
 import { ThunderboltOutlined } from "@ant-design/icons";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES, 跟进类型们 } from "@/lib/constants";
 import { dayjs, fmtDateTime } from "@/lib/utils";
-import { saveFollowUp, completePlan } from "./actions";
+import { saveFollowUp, completePlan, saveTask, savePlan } from "./actions";
+import { 项目沟通须知, 记项目沟通Action, type 项目沟通须知结果 } from "../../projects/actions";
+import { 回公海文案, 回公海颜色, 预演回收日 } from "@/lib/enterprise/recycle-text";
+import { 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "./ai";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸精简 } from "@/lib/business-config";
@@ -133,6 +136,33 @@ export default function FollowUpForm({
   const dueHasTime = Form.useWatch("dueHasTime", form) ?? true;
   const status = Form.useWatch("status", form);
   const 创建过期待办 = !record?.id && (type === "TASK" || type === "REMIND") && status !== "已完成" && dueAt && (dueHasTime ? dueAt.valueOf() < Date.now() - 60_000 : 是逾期(dueAt.format("YYYY-MM-DD")));
+
+  const projectId = Form.useWatch("projectId", form) as string | undefined;
+  const 沟通时刻 = Form.useWatch("occurredAt", form) as ReturnType<typeof dayjs> | undefined;
+  const 下一步时刻 = Form.useWatch("下一步时间", form) as ReturnType<typeof dayjs> | null | undefined;
+  /*
+    选了关联项目（10-30 P0-3）：和项目详情「记一条沟通」走同一条路（记项目沟通Action）——
+    要选「客户明确回复了吗」、写下一步，阶段记在项目现在的阶段上。能不能走这条路问服务端（项目沟通须知，只读）：
+    不是组员、项目在公海、类型是待办 / 提醒，都照旧走 saveFollowUp
+  */
+  const 要须知 = open && !!projects && !record?.id;
+  const [须知存, set须知存] = useState<{ id: string; r: 项目沟通须知结果 } | null>(null);
+  useEffect(() => {
+    if (!要须知 || !projectId) return;
+    let 作废 = false;
+    项目沟通须知(projectId).then(
+      (r) => { if (!作废) set须知存({ id: projectId, r }); },
+      () => { if (!作废) set须知存({ id: projectId, r: { ok: false, error: "" } }); },
+    );
+    return () => { 作废 = true; };
+  }, [要须知, projectId]);
+  const 须知r = 须知存 && 须知存.id === projectId ? 须知存.r : null;
+  const 须知 = 要须知 && 须知r && 须知r.ok && 须知r.能记 ? 须知r : null;
+  /** 还在问：先别让保存，免得走错路 */
+  const 须知问着 = 要须知 && !!projectId && !须知r;
+  const 项目模式 = !!须知 && type !== "TASK" && type !== "REMIND";
+  // 选了下一步时间就预演回收日：和项目详情同一个算法，算不准（没底子）就不写
+  const 预演 = 项目模式 && 须知 ? 预演回收日(须知.回收预演, 沟通时刻?.format("YYYY-MM-DD"), 下一步时刻 ? 下一步时刻.format("YYYY-MM-DD") : null) : null;
 
   const 挑人 = !给定客户;
   /** 挑中那位的近况：联系人、商机、到期计划都从这儿来。关框、保存时清掉 */
@@ -347,6 +377,7 @@ export default function FollowUpForm({
     const 谁 = 给定客户 ?? (v.customerId as string);
     const 名 = 近况?.name;
     const 要收口 = !record?.id && 收口计划 && 收口 ? 收口计划 : null;
+    if (项目模式 && 须知 && v.projectId) return 记到项目(v, 谁, 要收口);
     const res = await saveFollowUp({
       id: record?.id,
       版本: record?.id ? record.updatedAt : null,
@@ -382,16 +413,16 @@ export default function FollowUpForm({
     resetAi();
     守.存好了();
     onSaved();
-    // 顺手完成那条到期计划：记录页上提示由它出（带撤销、排下一次），这里就不再单说一句「跟进已记录」
+    // 顺手完成那条到期计划：记录页上提示由它出（带撤销、排下一次），这里就不再单说一句「沟通已记下」
     if (要收口 && 完成了计划) return void 完成了计划(要收口, true);
     if (!挑人 || !名) {
       if (要收口) void window.desktopReminders?.刷新();
       if ("待办id" in res && res.待办id) {
         // 顺带建了待办：Dock 数和到点提醒要马上跟上
         void window.desktopReminders?.刷新();
-        return void message.success("跟进已记录，也加进了待办——到点会提醒你");
+        return void message.success("沟通已记下，也加进了待办——到点会提醒你");
       }
-      return void message.success(record?.id ? "已保存" : "领取了" in res && res.领取了 ? "已领取并记下跟进，这位现在归你跟进" : "跟进已记录");
+      return void message.success(record?.id ? "已保存" : "领取了" in res && res.领取了 ? "已领取并记下这条沟通，这位现在归你了" : "沟通已记下");
     }
 
     // 跟进页上挑人记的：人留在原地（新的那行会亮一下），提示里给撤销和去他记录页的路
@@ -404,7 +435,7 @@ export default function FollowUpForm({
       duration: 6,
       content: (
         <span>
-          {要收口 ? `跟进已记录，计划「${要收口.subject}」一并完成` : `已记下和${名}的这次跟进`}
+          {要收口 ? `沟通已记下，计划「${要收口.subject}」一并完成` : `已记下和${名}的这次沟通`}
           {要收口 && (
             <Button
               type="link"
@@ -428,6 +459,51 @@ export default function FollowUpForm({
     });
   }
 
+  /**
+   * 项目模式保存：先走项目那条（记项目沟通Action，和项目详情一样建这条沟通、记阶段标记、可能自动推进），
+   * 再把项目那条不收的格子（标题、另选的联系人、状态、时长、参与人）补上，最后做顺带的（完成到期计划、AI 拆出的待办和计划）。
+   * 后两步各自是一次请求，不和第一步同一个事务：第一步成了就算记下了，后面哪步没成单独说
+   */
+  async function 记到项目(v: Awaited<ReturnType<typeof form.validateFields>>, 谁: string, 要收口: typeof 收口计划) {
+    if (!须知) return;
+    const r = await 记项目沟通Action(v.projectId, {
+      type: v.type, content: v.content, occurredAt: v.occurredAt.toISOString(),
+      阶段: 须知.phase, 明确回复: v.明确回复 === true,
+      下一步: v.下一步, 下一步时间: v.下一步时间 ? v.下一步时间.format("YYYY-MM-DD") : null,
+    });
+    if (!r.ok) return void message.error("error" in r ? r.error : "没记上，请刷新后重试");
+    const 没存上: string[] = [];
+    const 另选联系人 = v.contactId && v.contactId !== 须知.contactId;
+    const 要补 = Boolean(v.title?.trim() || 另选联系人 || (v.status && v.status !== "已完成") || v.durationMinutes || v.participants?.trim());
+    if (要补 && r.followUpId && !只读) {
+      const 补 = await saveFollowUp({
+        id: r.followUpId, customerId: 谁, type: v.type, title: v.title, content: v.content, status: v.status ?? "已完成",
+        durationMinutes: v.durationMinutes ?? null, occurredAt: v.occurredAt.toISOString(),
+        contactId: v.contactId ?? 须知.contactId ?? null, participants: v.participants ?? null,
+      });
+      if (!补.ok) 没存上.push("标题、联系人等");
+    }
+    if (!只读) {
+      for (const t of extras?.tasks.filter((x) => x.checked) ?? []) {
+        const x = await saveTask({ customerId: 谁, title: t.title, dueAt: t.dueAt });
+        if (!x.ok) 没存上.push(`待办「${t.title}」`);
+      }
+      if (extras?.plan?.checked) {
+        const x = await savePlan({ customerId: 谁, subject: extras.plan.subject, plannedAt: extras.plan.plannedAt, method: extras.plan.method });
+        if (!x.ok) 没存上.push("下次跟进计划");
+      }
+      if (要收口) await completePlan(要收口.id);
+      if (要收口 || extras?.tasks.some((x) => x.checked)) void window.desktopReminders?.刷新();
+    }
+    resetAi();
+    守.存好了();
+    onSaved();
+    if (没存上.length) message.warning(`沟通已记下，${没存上.join("、")}没存上，请到记录页补一下`);
+    if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+    if (要收口 && !只读 && 完成了计划) return void 完成了计划(要收口, true);
+    message.success(要收口 && !只读 ? `沟通已记下，计划「${要收口.subject}」一并完成` : "沟通已记下");
+  }
+
   const showDuration = type === "PHONE" || type === "MEETING";
   const showDue = type === "TASK" || type === "REMIND";
   const showAi = aiEnabled && !record?.id;
@@ -442,9 +518,9 @@ export default function FollowUpForm({
     <Modal
       {...守.弹窗}
       open={open}
-      title={record?.id ? "编辑跟进记录" : "新建跟进"}
+      title={record?.id ? "编辑沟通记录" : "记一条沟通"}
       onOk={保存}
-      confirmLoading={存着}
+      confirmLoading={存着 || 须知问着}
       okText="保存"
       cancelText="取消"
       width={640}
@@ -473,7 +549,7 @@ export default function FollowUpForm({
             <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               {解析 ? (
                 <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
-                  <AiWait 在做="从这段话里认出跟进方式、结果和下次时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
+                  <AiWait 在做="从这段话里认出沟通方式、结果和下次时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
                 </div>
               ) : (
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -491,7 +567,7 @@ export default function FollowUpForm({
         )}
         <Row gutter={16}>
           <Col span={8}>
-            <Form.Item name="type" label="跟进类型" rules={[{ required: true }]}>
+            <Form.Item name="type" label="沟通方式" rules={[{ required: true }]}>
               <Select options={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND")).map((t) => ({ value: t.value, label: t.label }))} />
             </Form.Item>
           </Col>
@@ -508,7 +584,7 @@ export default function FollowUpForm({
 
           <Col span={24}>
             {/* 选填：时间线上已有跟进类型，标题只在需要一句话概括时才有意义 */}
-            <Form.Item name="title" label="标题" extra="选填，填了会显示在跟进记录上">
+            <Form.Item name="title" label="标题" extra="选填，填了会显示在沟通记录上">
               <Input placeholder="如：与周总沟通试单与报价" />
             </Form.Item>
           </Col>
@@ -517,6 +593,54 @@ export default function FollowUpForm({
               <Input.TextArea rows={4} placeholder="记录沟通要点、客户反馈、下一步动作…" />
             </Form.Item>
           </Col>
+          {项目模式 && 须知 && (
+            <>
+              <Col span={24}>
+                <Form.Item name="明确回复" preserve={false} label="客户明确回复了吗" extra={`记在项目现在的阶段（${须知.phase}）上`} rules={[{ required: true, message: "请选客户明确回复了吗" }]}>
+                  <Radio.Group options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="下一步" preserve={false} label="下一步做什么" rules={[requiredText("请写下一步做什么")]}>
+                  <Input maxLength={下一步文字上限} showCount placeholder="比如：周五前发报价单给对方采购" />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item
+                  label="下一步时间"
+                  required={须知.要下一步}
+                  extra={预演 ? (
+                    <span style={{ color: 回公海颜色[回公海文案(预演).级别] }}>选这天 → 回收日变为 {dayjs(预演).format("MM-DD")}</span>
+                  ) : 须知.要下一步 ? "那天过完还没有新的沟通，项目会回公海" : "可不填"}
+                >
+                  <Form.Item name="下一步时间" preserve={false} noStyle rules={须知.要下一步 ? [{ required: true, message: "请填下一步时间" }] : []}>
+                    <DatePicker aria-label="下一步时间" style={{ width: 200 }} disabledDate={(x) => x.isBefore(dayjs(), "day")} />
+                  </Form.Item>
+                  <Space size={4} wrap style={{ marginLeft: 8 }}>
+                    {([["明天", 1], ["3 天后", 3], ["1 周后", 7]] as const).map(([名, 天]) => {
+                      const 日 = dayjs().add(天, "day");
+                      const 选着 = 下一步时刻?.isSame(日, "day") ?? false;
+                      return (
+                        <Button
+                          key={名}
+                          size="small"
+                          type={选着 ? "primary" : "default"}
+                          ghost={选着}
+                          onClick={() => {
+                            form.setFieldsValue({ 下一步时间: 日 });
+                            void form.validateFields(["下一步时间"]).catch(() => {});
+                            守.改了();
+                          }}
+                        >
+                          {名}
+                        </Button>
+                      );
+                    })}
+                  </Space>
+                </Form.Item>
+              </Col>
+            </>
+          )}
 
           <Col span={12}>
             <Form.Item name="contactId" label="对接联系人">

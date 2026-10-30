@@ -8,7 +8,7 @@ let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectModal|ContactLinks)$/, "export default function Empty(){return null}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
@@ -17,11 +17,13 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false});");
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
+  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({}),deleteCustomers=async()=>({ok:false});
     export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,saveFollowUp=toggleTask,deleteFollowUp=toggleTask,restoreFollowUp=toggleTask;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
-  `);
+  
+    export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -108,11 +110,10 @@ it("开关关闭：左栏照旧——一行一个联系人、空字段都在、�
     expect(await page.getByText("ww_buyer").count()).toBe(0);
   } finally { await page.close(); }
 });
-it("企业版项目模式（P14）：没有记录输入、头上是「跟进」；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
+it("企业版项目模式（P14）：没有记录输入、头上是「记一条沟通…」（两个项目先挑）；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
   const page = await open(true, 1024, true);
   try {
-    // antd 两个汉字的按钮中间自动加空格
-    expect(await page.getByRole("button", { name: /^跟\s?进$/ }).count()).toBe(1);
+    expect(await page.getByRole("button", { name: "记一条沟通…" }).count()).toBe(1);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
     expect(await page.getByText("沟通记录", { exact: true }).count()).toBe(1);
@@ -124,9 +125,9 @@ it("企业版项目模式（P14）：没有记录输入、头上是「跟进」�
     expect(await page.getByText("回访报价").count()).toBe(1);
     expect(await page.locator(".rec-task-k").allInnerTexts()).toEqual(["计划", "项目"]);
     expect(await page.getByText("下次跟进").count()).toBe(0);
-    // 两个项目：点「跟进」打开菜单，长名字不把菜单撑出屏
-    await page.getByRole("button", { name: /^跟\s?进$/ }).click();
-    await page.getByText("去项目里跟进").waitFor();
+    // 两个项目：点「记一条沟通…」打开菜单挑项目，长名字不把菜单撑出屏
+    await page.getByRole("button", { name: "记一条沟通…" }).click();
+    await page.getByText("记到哪个项目").waitFor();
     expect(await page.getByText("关联进来的项目").count()).toBe(1);
     const 菜单宽 = await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first().evaluate(el => el.getBoundingClientRect().right);
     expect(菜单宽).toBeLessThanOrEqual(1024);

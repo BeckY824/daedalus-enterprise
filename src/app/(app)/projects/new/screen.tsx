@@ -9,7 +9,7 @@ import { 企业版字典 } from "@/lib/project/nodes";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import ProjectWizard from "./ProjectWizard";
 
-/** 企业版从「新线索」页进来走 /leads/new（10-27）：同一个向导，标题叫新建新线索、左栏亮「新线索」 */
+/** 企业版从「新线索」页进来走 /leads/new（10-27）：同一个向导，标题叫「新线索」、左栏亮「新线索」 */
 export async function 建档页(新线索 = false) {
   const me = await requireUser();
   if ((await getBusiness()).projectMode !== true) notFound();

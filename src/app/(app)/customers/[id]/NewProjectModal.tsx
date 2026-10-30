@@ -142,10 +142,10 @@ export default function NewProjectModal({
         <Form.Item name="content" label="沟通内容" rules={[{ required: true, whitespace: true, message: "请填写首条跟进的沟通内容" }]}>
           <Input.TextArea rows={4} />
         </Form.Item>
-        <Form.Item name="节点" label="跟进节点" rules={[{ required: true, message: "请选跟进节点（线索阶段的哪一步）" }]}>
+        <Form.Item name="节点" label="当前进程" rules={[{ required: true, message: "请选当前进程（线索阶段的哪一步）" }]}>
           <Select options={节点们.map((n) => ({ value: n, label: n }))} />
         </Form.Item>
-        <Form.Item name="明确回复" label="客户是否明确回复" rules={[{ required: true, message: "请选客户是否明确回复" }]}>
+        <Form.Item name="明确回复" label="客户明确回复了吗" rules={[{ required: true, message: "请选：客户明确回复了吗" }]}>
           <Radio.Group>
             <Radio value={true}>明确回复了</Radio>
             <Radio value={false}>没有明确回复</Radio>

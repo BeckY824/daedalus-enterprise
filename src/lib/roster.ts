@@ -134,9 +134,14 @@ export const DOCK_W = 380;
  * 1214 = 左栏 220 + 名单 312 + 正文留白 52 + 记录页两栏的下限 630（再窄就成单栏）。
  */
 export const 名单门槛 = 220 + 312 + 52 + 630;
-export function useRosterInDrawer() {
+/**
+ * 项目详情页的名单门槛（交互方案 P2，2026-10-30）：项目页主栏是沟通内容，1366 宽时三栏并排一行只剩二十来个字。
+ * 所以 1366 及以下项目名单默认收进抽屉，点主区页头那颗再拉出来
+ */
+export const 项目名单门槛 = 1367;
+export function useRosterInDrawer(门槛 = 名单门槛) {
   const 面板开着 = useContext(DockOpenContext);
-  return useNarrow(`(max-width: ${名单门槛 - 1 + (面板开着 ? DOCK_W : 0)}px)`);
+  return useNarrow(`(max-width: ${门槛 - 1 + (面板开着 ? DOCK_W : 0)}px)`);
 }
 
 /**

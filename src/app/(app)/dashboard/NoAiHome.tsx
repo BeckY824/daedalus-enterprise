@@ -12,6 +12,7 @@ import LeadFullNotices from "../leads/LeadFullNotices";
  * 原来没配 AI 时首页是老数据看板（Board，10-28 删了）：它和「数据」页是同一份东西，
  * 用户说过两处重复。首页的位置留给对话，
  * 这里只说一句「AI 还没配，配好就能问」，再给三个最常去的入口。
+ * 左栏没有「新线索」这一项（10-29 左栏定稿），所以文案指到项目页右上角，并直接放一个「新线索」按钮进向导（10-30 交互审核）。
  */
 export default function NoAiHome({ 管理员, 满额提醒 = [] }: { 管理员: boolean; 满额提醒?: 满额提醒[] }) {
   const router = useRouter();
@@ -24,8 +25,8 @@ export default function NoAiHome({ 管理员, 满额提醒 = [] }: { 管理员: 
         <div className="start-t">配好 AI，这里就能直接问项目进展</div>
         <p className="start-s">
           {管理员
-            ? "在 设置 → AI 接入 填好模型，首页就是对话框：问哪些项目卡住了、让它记一笔跟进。"
-            : "请找管理员在 设置 → AI 接入 填好模型。配好之前，项目、新线索、客户照常在左栏里用。"}
+            ? "在 设置 → AI 接入 填好模型，首页就是对话框：问哪些项目卡住了、让它记一条沟通。新客户从项目页右上角的「新线索」建。"
+            : "请找管理员在 设置 → AI 接入 填好模型。配好之前，新客户从项目页右上角的「新线索」建，项目、客户照常在左栏里用。"}
         </p>
         <div className="start-a">
           {管理员 && (
@@ -36,7 +37,7 @@ export default function NoAiHome({ 管理员, 满额提醒 = [] }: { 管理员: 
           <Button type={管理员 ? "default" : "primary"} onClick={() => router.push("/projects")}>
             看项目
           </Button>
-          <Button onClick={() => router.push("/leads")}>新线索</Button>
+          <Button onClick={() => router.push("/leads/new")}>新线索</Button>
           <Button onClick={() => router.push("/customers")}>客户</Button>
         </div>
       </div>

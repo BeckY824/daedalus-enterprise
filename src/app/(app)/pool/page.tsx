@@ -1,10 +1,15 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 管全队客户 } from "@/lib/constants";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 是公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
+import { 负责人候选 } from "@/lib/owners";
+import { 持有数 } from "@/lib/project/db";
+import { 持有上限of } from "@/lib/project/org-rules";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import PoolView from "./PoolView";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +39,16 @@ export default async function PoolPage({
     // 默认排序不写进地址：筛选栏的「重置」看得出没在筛
     sort: sp.sort && 规整排序(sp.sort) === sp.sort ? sp.sort : "",
   };
-  const d = await 读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword }, 正整数(sp.page, 1), pageSize);
+  const 能分配 = 管全队客户(me.role);
+  const [d, users, 规则, 有] = await Promise.all([
+    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword }, 正整数(sp.page, 1), pageSize),
+    // 分配给谁：老板、主管才用得上，同客户页的负责人下拉
+    能分配 ? 负责人候选() : Promise.resolve([]),
+    生效组织规则(),
+    持有数(prisma, me.id),
+  ]);
+  // 持有上限开着（且我不是不限）才在页头写「我手上 N / 上限 M」，领取按钮到上限时灰着写原因（交互规则 A、C）
+  const 上限 = 持有上限of(规则, me.id);
   return (
     <PoolView
       {...d}
@@ -42,6 +56,9 @@ export default async function PoolPage({
       filters={筛}
       能标无效={管全队客户(me.role)}
       能恢复={me.role === "ADMIN"}
+      能分配={能分配}
+      users={users}
+      持有={上限 === null ? null : { 有, 上限 }}
     />
   );
 }

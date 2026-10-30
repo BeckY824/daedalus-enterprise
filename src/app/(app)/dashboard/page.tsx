@@ -31,6 +31,17 @@ export const dynamic = "force-dynamic";
 const 自己服务器 = () => !multiTenant();
 /** 企业版能导入的人（import-perm.ts，和设置里「导入记录」同一个口径）：空库「开始」卡的主按钮是去企业版导入（企业版不给灌演示数据，见 demo-data.ts） */
 const 去导入 = async (user: { id: string; role: string }) => 企业版() && !multiTenant() && (await 能导入导出(user));
+/** 企业版首页输入框底下的示例：点了只填进输入框（kind "fill"），不直接发、不扣次数 */
+const 业务员示例: Suggestion[] = [
+  { label: "今天该跟谁", question: "今天该跟谁", kind: "fill" },
+  { label: "帮我记一条：…", question: "帮我记一条：", kind: "fill" },
+  { label: "哪些项目 3 天内回公海", question: "我手上哪些项目 3 天内回公海", kind: "fill" },
+];
+const 管理员示例: Suggestion[] = [
+  { label: "这个月各渠道新增多少", question: "这个月各渠道新增多少", kind: "fill" },
+  { label: "今天该跟谁", question: "今天该跟谁", kind: "fill" },
+  { label: "哪些项目 3 天内回公海", question: "哪些项目 3 天内回公海", kind: "fill" },
+];
 /** 首页「有 N 条新线索」：企业版只用项目数线索阶段的项目（和 /leads 同一张表），其余照旧数 Lead 表 */
 const 数线索 = (只用项目: boolean) => (只用项目 ? 数新线索() : prisma.lead.count());
 
@@ -71,7 +82,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   if (只用项目) {
     /*
       企业版项目模式（10-29 首页改版 #9–#12）：左边对话、右边四张指标卡。欢迎屏只有问候和「欢迎使用 {产品名}」，
-      不摆信号、上下文、建议问题，所以这条路只取要用的：卡上的四个数（摆哪四张、口径都在 lib/project/home-cards.ts）、
+      不摆信号、上下文；输入框底下按角色摆 3 个示例，点了只填进输入框不发（10-30 交互审核），所以这条路只取要用的：卡上的四个数（摆哪四张、口径都在 lib/project/home-cards.ts）、
       空库判断要的几个 count、新线索卡要的渠道名和「下一步必填」
     */
     const [models, 学员数, 线索数, myPlans, 没做完的待办, 卡, 渠道, 规则] = await Promise.all([
@@ -88,7 +99,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <HomeChat
         会话={对话}
         userName={user.name}
-        suggestions={[]}
+        suggestions={user.role === "ADMIN" ? 管理员示例 : 业务员示例}
         context=""
         models={models}
         自己服务器={自己服务器()}

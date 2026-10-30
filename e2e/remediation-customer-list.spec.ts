@@ -49,6 +49,6 @@ test("B6 超界地址归一后继续删除末页，路由刷新仍退回有效�
  const db=连库();try{const owner=(await db.user.findUniqueOrThrow({where:{email:'zhangsan'}})).id;await db.customer.createMany({data:Array.from({length:11},(_,i)=>({id:'b6-refresh-'+i,name:'B6连续删页'+i,phone:'139001'+String(i).padStart(5,'0'),salesOwnerId:owner}))})}finally{await db.$disconnect()}
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await login(page);await page.goto('/customers?keyword=B6连续删页&pageSize=10&page=999');
  await expect.poll(()=>new URL(page.url()).searchParams.get('page')).toBe('2');await expect(page.getByRole('main').locator('tbody tr[data-row-key]')).toHaveCount(1);
- await page.getByRole('main').getByRole('button',{name:/^删除 B6连续删页/}).click();await page.getByRole('dialog').getByRole('button',{name:/^删\s*除$/}).click();
+ await page.getByRole('main').getByRole('button',{name:/^更多操作 B6连续删页/}).click();await page.getByRole('menuitem',{name:'删除',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:/^删\s*除$/}).click();
  await expect(page.getByRole('main').locator('tbody tr[data-row-key]')).toHaveCount(10);await expect.poll(()=>new URL(page.url()).searchParams.get('page')).toBe('1');expect(new URL(page.url()).searchParams.get('keyword')).toBe('B6连续删页');expect(errors).toEqual([]);
 });

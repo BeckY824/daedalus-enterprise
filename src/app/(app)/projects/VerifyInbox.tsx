@@ -13,7 +13,8 @@ export type 待复核行 = {
   无效原因: string | null; 初判说明: string | null; 复核说明: string | null; 异议说明: string | null; 更新于: string;
 };
 
-const 步叫法: Record<待复核行["步"], string> = { 市场复核: "市场复核", 总管理终判: "总管理终判", 销售终验: "复核判有效，等你终验", 销售认领: "总管理判有效，等你认领" };
+// 只写这一步要你做什么，不露内部步骤名（终验、终判这类，规则 F）
+const 步叫法: Record<待复核行["步"], string> = { 市场复核: "等你复核", 总管理终判: "有异议，等你判定", 销售终验: "复核判有效，等你确认", 销售认领: "已判有效，等你认领" };
 
 /**
  * 企业版线索验证（P12）：项目列表 / 新线索页顶上「待复核的线索」，和项目组邀请放一块。
@@ -70,14 +71,14 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
       })}
       <Modal
         open={!!框}
-        title={框 ? `${框.r.步}：判${框.有效 ? "有效" : "无效"}` : ""}
+        title={框 ? `判${框.有效 ? "有效" : "无效"}` : ""}
         okText="确定"
         okButtonProps={{ loading: 忙, danger: !!框 && !框.有效 }}
         onCancel={() => set框(null)}
         onOk={() => void 判()}
       >
         <div style={{ marginBottom: 8, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
-          「{框?.r.项目}」{框?.有效 ? "判有效会交回负责人继续跟。" : "判无效后这条线索结束（记为线索流失），负责人本月自动分配名额 +1。"}
+          「{框?.r.项目}」{框?.有效 ? "判有效会交回负责人继续推进。" : "判无效后这条线索结束（记为线索流失），负责人本月自动分配名额 +1。"}
         </div>
         <Input.TextArea rows={4} maxLength={原因上限} showCount value={说明} onChange={(e) => set说明(e.target.value)} placeholder="复核说明（可不写）" aria-label="复核说明" />
       </Modal>

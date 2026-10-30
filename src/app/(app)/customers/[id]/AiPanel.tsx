@@ -137,7 +137,7 @@ export default function AiPanel({
   // 有追问就显示追问的结果，否则显示简报本身
   const shown = askJob ?? briefJob;
   const loading = shown?.status === "loading";
-  const error = !hasRecords ? `该${b.customer}还没有任何跟进记录，暂时没有可提炼的内容` : shown?.status === "error" ? shown.error : null;
+  const error = !hasRecords ? `该${b.customer}还没有任何沟通记录，暂时没有可提炼的内容` : shown?.status === "error" ? shown.error : null;
   const result = shown?.status === "done" ? shown.value?.answer : undefined;
   const steps = shown?.value?.steps ?? [];
 

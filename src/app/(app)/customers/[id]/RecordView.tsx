@@ -452,10 +452,10 @@ export default function RecordView({
       duration: 6,
       content: (
         <span>
-          {动作 === "放进" ? "已放进公海，谁都能领" : `已领取，负责人改成你${带走说法(res.带走)}`}
+          {动作 === "放进" ? "已放回公海，谁都能领" : `已领取，负责人改成你${带走说法(res.带走)}`}
           <Button type="link" size="small" onClick={async () => {
             message.destroy(key);
-            const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined);
+            const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, undefined, res.ok ? res.公海项目 : undefined);
             router.refresh();
             if (!r.ok) return void message.error(`没能撤销：${r.error}`);
             message.success("已撤销");
@@ -481,6 +481,11 @@ export default function RecordView({
    * 「跟进」主按钮（P14 第 3 条）：只有一个项目直接跳过去；不止一个打开菜单挑；一个都没有就新建项目（自动带上这位）。
    * 别的版本照旧就地记一笔
    */
+  /**
+   * 主按钮的字跟着项目数走（10-30 交互改版 8.客户详情）：没项目「给他开项目」；一个「记一条沟通」直接去那个项目记；
+   * 不止一个「记一条沟通…」先挑项目
+   */
+  const 跟进按钮字 = !(跟进去处 ?? []).length ? (能建项目 ? "给他开项目" : "记一条沟通") : (跟进去处 ?? []).length === 1 ? "记一条沟通" : "记一条沟通…";
   function 点跟进() {
     if (!去项目跟进) return void openFollow(null);
     const 去处 = 跟进去处 ?? [];
@@ -627,7 +632,7 @@ export default function RecordView({
         {/* 企业版只用项目：「跟进」跳到项目，菜单里列项目、新建项目、转让（P14 第 3 条）。虚线下属的客户也能点进项目看 */}
         {去项目跟进 && <Space.Compact>
           <Button type="primary" onClick={点跟进}>
-            跟进
+            {跟进按钮字}
           </Button>
           <Dropdown
             open={跟进菜单开}
@@ -638,7 +643,7 @@ export default function RecordView({
                 ...((跟进去处 ?? []).length
                   ? [{
                       type: "group" as const,
-                      label: "去项目里跟进",
+                      label: "记到哪个项目",
                       children: (跟进去处 ?? []).map((p) => ({
                         key: `p:${p.id}`,
                         label: (
@@ -651,7 +656,7 @@ export default function RecordView({
                       })),
                     }]
                   : []),
-                ...(能建项目 ? [{ key: "new-project", icon: <PlusOutlined />, label: "新建项目", onClick: () => { set跟进菜单开(false); set建项目开着(true); } }] : []),
+                ...(能建项目 ? [{ key: "new-project", icon: <PlusOutlined />, label: "给他开项目", onClick: () => { set跟进菜单开(false); set建项目开着(true); } }] : []),
                 ...(能转让
                   ? [{
                       key: "transfer",
@@ -664,9 +669,9 @@ export default function RecordView({
                 ...(只读 ? [] : [
                 { type: "divider" as const },
                 { key: "edit", icon: <EditOutlined />, label: `编辑${b.customer}资料`, onClick: () => { set跟进菜单开(false); setCustOpen(true); } },
-                { key: "delete", icon: <DeleteOutlined />, danger: true, label: `删除这位${b.customer}`, onClick: () => { set跟进菜单开(false); void 问删除([{ id: customer.id, name: customer.name }], () => router.push("/customers")); } },
+                { key: "delete", icon: <DeleteOutlined />, label: `删除这位${b.customer}`, onClick: () => { set跟进菜单开(false); void 问删除([{ id: customer.id, name: customer.name }], () => router.push("/customers")); } },
                 ...(!独自一人(users) && 能放公海 && !customer.pool
-                  ? [{ key: "pool", icon: <InboxOutlined />, label: "放进公海", onClick: () => { set跟进菜单开(false); void 公海动作("放进"); } }]
+                  ? [{ key: "pool", icon: <InboxOutlined />, label: "放回公海", onClick: () => { set跟进菜单开(false); void 公海动作("放进"); } }]
                   : []),
                 ]),
               ],
@@ -690,7 +695,7 @@ export default function RecordView({
                 { key: "delete", icon: <DeleteOutlined />, danger: true, label: `删除这位${b.customer}`, onClick: () => void 问删除([{ id: customer.id, name: customer.name }], () => router.push("/customers")) },
                 // 公海（第 6 块）：多人时、我是负责人或管理员、还不在公海里
                 ...(!独自一人(users) && 能放公海 && !customer.pool
-                  ? [{ key: "pool", icon: <InboxOutlined />, label: "放进公海", onClick: () => void 公海动作("放进") }]
+                  ? [{ key: "pool", icon: <InboxOutlined />, label: "放回公海", onClick: () => void 公海动作("放进") }]
                   : []),
                 ]),
               ],
@@ -754,7 +759,7 @@ export default function RecordView({
         {/* 在公海里（第 6 块）：标签写原负责人，旁边就是「领取」——看到就能接手 */}
         {customer.pool && (
           <span className="rec-tags-n rec-pool">
-            <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放进公海" : customer.pool.reason}>{公海标签(customer.salesOwnerName)}</Tag>
+            <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放回公海" : customer.pool.reason}>{公海标签(customer.salesOwnerName)}</Tag>
             {原负责人领不回
               ? <Tooltip title={原负责人不能领回提示}><Button size="small" type="link" icon={<UserAddOutlined />} disabled>领取</Button></Tooltip>
               : <Button size="small" type="link" icon={<UserAddOutlined />} onClick={() => void 公海动作("领取")}>领取</Button>}
@@ -925,7 +930,14 @@ export default function RecordView({
           <div className="rec-sec">
             <div className="rec-sec-t">
               <span>联系人 {contacts.length > 0 && contacts.length}</span>
-              {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
+              {/* 企业版：一键看这个客户的全部联系人（联系人页按客户名筛） */}
+              {(企业 || !只读) && (
+                <Space size={12} style={{ whiteSpace: "nowrap" }}>
+                  {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
+                  {/* 和下面「项目」那栏同一个写法；1366 下右栏窄，写全「全部联系人」会折行 */}
+                  {企业 && <Link href={`/contacts?keyword=${encodeURIComponent(customer.name)}`} aria-label="全部联系人">全部 ›</Link>}
+                </Space>
+              )}
             </div>
             {contacts.length === 0 && <div className="rec-empty">还没有联系人</div>}
             {contacts.map((c) =>
@@ -1001,7 +1013,7 @@ export default function RecordView({
                 <span>项目 {项目们.length > 0 && 项目们.length}</span>
                 <Space size={4}>
                   {/* 给这位客户再建一个项目（待定 16）：客户自动带上 */}
-                  {摆法.新建项目 && 新建项目 && !只读 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => set建项目开着(true)} aria-label="给这位客户新建项目" />}
+                  {摆法.新建项目 && 新建项目 && !只读 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => set建项目开着(true)}>开项目</Button>}
                   <Link href="/projects">全部 ›</Link>
                 </Space>
               </div>
@@ -1134,7 +1146,7 @@ export default function RecordView({
             />
             <div className="rec-composer-bar">
               <span className="rec-composer-hint">
-                {aiEnabled ? "「AI 解析」会把它整理成跟进记录并留存原文；「直接记」原样存为一条记录" : "Enter 换行，写完点「直接记」"}
+                {aiEnabled ? "「AI 解析」会把它整理成沟通记录并留存原文；「直接记」原样存为一条记录" : "Enter 换行，写完点「直接记」"}
               </span>
               {aiEnabled && (
                 <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={memo.trim().length < 5 || AI已用完} onClick={() => openFollow(null, memo)}>
@@ -1175,7 +1187,7 @@ export default function RecordView({
           {摆法.沟通汇总 && (
             <div className="rec-tl-cap">
               <span>沟通记录</span>
-              <span className="rec-tl-cap-hint">汇总各项目的跟进，去项目里记</span>
+              <span className="rec-tl-cap-hint">汇总各项目的沟通；点右上「{跟进按钮字}」记一条</span>
             </div>
           )}
           <div className="rec-filters">
@@ -1192,7 +1204,7 @@ export default function RecordView({
           <div className="rec-tl">
             {entries.length === 0 && (
               <div style={{ padding: "36px 0", textAlign: "center", color: "var(--text-muted)" }}>
-                {filter !== "CONTRACT" && history.hasMore ? "已加载的记录中暂无此类型，可继续加载更早的跟进。" : filter === "全部" ? (摆法.沟通汇总 ? "还没有沟通记录。点右上「跟进」去项目里记一笔" : "还没有任何记录。上面随手记一笔，或粘一段聊天记录让 AI 整理。") : "这个类型下还没有记录"}
+                {filter !== "CONTRACT" && history.hasMore ? "已加载的记录中暂无此类型，可继续加载更早的跟进。" : filter === "全部" ? (摆法.沟通汇总 ? `还没有沟通记录。点右上「${跟进按钮字}」记一条` : "还没有任何记录。上面随手记一笔，或粘一段聊天记录让 AI 整理。") : "这个类型下还没有记录"}
               </div>
             )}
             {/* 打开一位的记录时逐条进场（间隔 70ms、八条以后一起）——原来 initial={false}，

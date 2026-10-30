@@ -198,7 +198,7 @@ async function 生成简报(input: {
   });
   if (!customer) return { ok: false, error: `${b.customer}不存在` };
   if (customer.followUps.length === 0) {
-    return { ok: false, error: `该${b.customer}还没有任何跟进记录，暂时没有可提炼的内容` };
+    return { ok: false, error: `该${b.customer}还没有任何沟通记录，暂时没有可提炼的内容` };
   }
 
   // 时间线倒序给太多没意义，取最近 30 条、每条内容截断，控制 prompt 体量。

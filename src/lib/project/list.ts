@@ -112,7 +112,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     ownerId: p.ownerId, ownerName: 名字.get(p.ownerId) ?? "已不在的成员",
     phase: p.phase, node: p.node, result: p.result, exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
-    ...(企 ? { 即将回收: 将收(p) } : {}),
+    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
     ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
@@ -124,6 +124,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     // 结局叫法跟着字典：企业版组织规则里改过的出口叫法
     企业版: 企,
     出口叫法: 规则?.阶段.出口叫法,
+    // 「给老客户开项目」弹窗：开了超时回收，首条沟通要填下一步时间（同客户页 customers/[id]/page.tsx）
+    要下一步: !!规则?.超时回收.开,
     users,
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     // 企业版线索验证（P12）：等我复核 / 终验 / 认领的线索

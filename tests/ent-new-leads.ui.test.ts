@@ -1,7 +1,7 @@
 /**
  * 企业版「新线索」页 = 项目的线索阶段（2026-10-26 用户：「线索也要去项目里面作为三阶段」）。
  *
- *   阶段="线索"：标题「新线索」、只有列表没有看板切换、按钮「新建新线索」去项目向导
+ *   阶段="线索"：标题「新线索」、只有列表没有看板切换、按钮「新线索」去项目向导
  *   开关关（项目页本身）：照旧「项目」、有看板/列表切换、「新建项目」
  *   Windows 1024 / 1280 / 1366 宽度 + 超长项目名、客户名：页面不横向溢出，新建按钮在可视区、点得中
  */
@@ -21,6 +21,9 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒');");
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,指认卡点Action=好,认领卡点Action=好,接受卡点Action=好,转让卡点Action=好,返回卡点Action=好,改卡点进度Action=好,解决卡点Action=好,卡点可选的人Action=async()=>[];");
+  // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
+  stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>[],取客户近况=async()=>null;");
+  stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -64,7 +67,7 @@ it("新线索页：标题「新线索」，只有列表，三个线索节点都�
   expect(await page.getByRole("columnheader", { name: "阶段", exact: true }).count()).toBe(0);
   expect(t).toContain("线索流失");
   expect(t).toContain("转了商机到「项目」里接着走");
-  await page.getByRole("button", { name: "新建新线索" }).click();
+  await page.getByRole("button", { name: /新线索$/ }).click();
   expect(await 去了(page)).toEqual(["/leads/new"]);
   expect(errors).toEqual([]); await page.close();
 });
@@ -73,7 +76,7 @@ it("开关关（项目页本身）：标题「项目」，有看板/列表切换
   const { page, errors } = await 打开(false);
   expect(await page.getByRole("heading").first().innerText()).toBe("项目");
   expect(await page.locator(".ant-segmented").count()).toBe(1);
-  expect(await page.getByRole("button", { name: "新建新线索" }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: /新线索$/ }).count()).toBe(0);
   await page.getByRole("button", { name: "新建项目" }).click();
   expect(await 去了(page)).toEqual(["/projects/new"]);
   expect(errors).toEqual([]); await page.close();
@@ -82,11 +85,11 @@ it("开关关（项目页本身）：标题「项目」，有看板/列表切换
 it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：不横向溢出，新建按钮在可视区、点得中", async (w) => {
   const { page } = await 打开(true, w);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  const box = await page.getByRole("button", { name: "新建新线索" }).boundingBox();
+  const box = await page.getByRole("button", { name: /新线索$/ }).boundingBox();
   expect(box).not.toBeNull();
   expect(box!.x + box!.width).toBeLessThanOrEqual(w);
   const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
-  expect(点中).toContain("新建新线索");
+  expect(点中).toContain("新线索");
   await page.close();
 });
 

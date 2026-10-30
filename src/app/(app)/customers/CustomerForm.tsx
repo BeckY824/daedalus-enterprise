@@ -722,7 +722,7 @@ function CustomerFormInner({
           <Form.Item
             label="客户来源"
             name="channelId"
-            rules={[{ required: 渠道必填, message: "请选择客户来源渠道" }]}
+            rules={[{ required: 渠道必填, message: "请选择渠道" }]}
             extra={来源锁着 ? "客户来源记的是第一次带来的渠道，建好之后不改；后来又从别的渠道来的，记在项目上" : undefined}
           >
             <Select showSearch placeholder="选择渠道" optionFilterProp="label" options={渠道选项} disabled={来源锁着} />

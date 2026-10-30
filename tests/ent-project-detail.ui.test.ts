@@ -231,7 +231,8 @@ it.each([1024, 1280, 1366])("P11 定稿 -2 版 %ipx：项目卡有级别星、�
 const 不伸出 = (page: import("playwright").Page, sel: string) =>
   page.locator(sel).evaluateAll(es => es.filter(e => e.scrollWidth > e.clientWidth + 1).map(e => `${e.className}:${e.scrollWidth}>${e.clientWidth}`));
 
-it.each([1280, 1366])("三栏 %ipx：应用导航 | 项目名单 | 详情三个竖条，详情里主区 + 右栏 280；超长项目名、客户名不横向溢出", async (w) => {
+// 10-30 交互方案 P2：1366 及以下项目名单默认收进抽屉（lib/roster.ts 项目名单门槛），三栏从 1367 起
+it.each([1367, 1440])("三栏 %ipx：应用导航 | 项目名单 | 详情三个竖条，详情里主区 + 右栏 280；超长项目名、客户名不横向溢出", async (w) => {
   const { page, errors } = await open(true, w, undefined, true);
   try {
     const [导航, 名单, 主, 主区, 侧] = await Promise.all(["nav.rail", ".pane-roster", "main.main", ".proj-main", ".proj-side"].map(s => page.locator(s).boundingBox()));
@@ -273,8 +274,8 @@ it.each([1280, 1366])("三栏 %ipx：应用导航 | 项目名单 | 详情三个�
   } finally { await page.close(); }
 });
 
-it("三栏 1024px：名单收成抽屉（和客户中栏同一条线），页头最左边「显示项目列表」打开；抽屉里不横向溢出", async () => {
-  const { page, errors } = await open(true, 1024, undefined, true);
+it.each([1024, 1280, 1366])("三栏 %ipx：名单收成抽屉，页头最左边「显示项目列表」打开；抽屉里不横向溢出", async (w) => {
+  const { page, errors } = await open(true, w, undefined, true);
   try {
     expect(await page.locator(".pane-roster").count()).toBe(0);
     const 开 = page.getByRole("button", { name: "显示项目列表" });
@@ -311,7 +312,7 @@ for (const 宽 of [1280, 1024]) {
       await 点.click();
       const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
       await 菜单.waitFor();
-      expect((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim())).toEqual(["修改", "删除"]);
+      expect((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim())).toEqual(["发卡点", "修改", "删除"]);
       const 盒 = (await 菜单.boundingBox())!;
       expect(盒.x).toBeGreaterThanOrEqual(0);
       expect(盒.x + 盒.width).toBeLessThanOrEqual(宽);
@@ -334,10 +335,13 @@ for (const 宽 of [1280, 1024]) {
   });
 }
 
-it("没有改沟通的权限：不摆「…」", async () => {
+it("没有改沟通的权限：「…」里只剩发卡点（10-30 发卡点从行上收进来）", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: false });
   try {
-    expect(await page.getByRole("button", { name: "这条沟通的更多操作" }).count()).toBe(0);
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+    const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
+    await 菜单.waitFor();
+    expect(new Set((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim()))).toEqual(new Set(["发卡点"]));
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

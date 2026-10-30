@@ -260,11 +260,11 @@ export default function ReportsView({
         )}
         {!外贸 && <><Col xs={24} xl={12}>
           <Card
-            title={<span className="section-title">按来源渠道</span>}
+            title={<span className="section-title">按渠道</span>}
             extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>客户当前归属 · 推荐链最顶端的渠道</Typography.Text>}
             styles={{ body: { paddingTop: 8 } }}
           >
-            <Table size="small" rowKey="id" dataSource={byChannel} columns={cols("来源渠道")} pagination={false} locale={empty} />
+            <Table size="small" rowKey="id" dataSource={byChannel} columns={cols("渠道")} pagination={false} locale={empty} />
           </Card>
         </Col>
         <Col xs={24} xl={12}>

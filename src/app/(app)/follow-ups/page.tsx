@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function FollowUpsPage({
   searchParams,
 }: {
-  /** customer：从某位客户带过来的，「记录跟进」预填他；new=1：进来就把框打开 */
+  /** customer：从某位客户带过来的，「记一条沟通」预填他；new=1：进来就把框打开 */
   searchParams: Promise<{ keyword?: string; type?: string; ownerId?: string; customer?: string; new?: string }>;
 }) {
   await requireUser();
@@ -49,12 +49,14 @@ export default async function FollowUpsPage({
         customer: { select: { id: true, name: true, school: true } },
         owner: { select: { name: true } },
         contact: { select: { name: true } },
+        // 「项目」列（2026-10-30 交互调整）：只读项目名，点过去由项目页自己按权限判
+        projectNode: { select: { project: { select: { id: true, name: true } } } },
       },
     }),
     // 历史筛选包括管理员及留有记录的停用成员；与新指派候选分开。
     跟进筛选成员(),
     带过来的客户(sp.customer),
-    // 「记录跟进」框里的 AI 速记和记录页同一个开关
+    // 「记一条沟通」框里的 AI 速记和记录页同一个开关
     llmEnabled(),
   ]);
 
@@ -80,6 +82,7 @@ export default async function FollowUpsPage({
         contactName: f.contact?.name ?? null,
         ownerName: f.owner.name,
         ownerId: f.ownerId,
+        project: f.projectNode ? { id: f.projectNode.project.id, name: f.projectNode.project.name } : null,
       }))}
     />
   );

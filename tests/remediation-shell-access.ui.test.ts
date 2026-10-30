@@ -73,7 +73,7 @@ it("J-209 没接AI回车保留问题不跳页；接入后同一句可交给首�
 });
 it("J-181 操作日志真实表格显示全部业务对象中文，导入不再显示import", async () => {
   const page = await open(); const table = page.getByRole("table"); const text = await table.innerText();
-  for (const name of ["商机", "联系人", "跟进记录", "待办", "跟进计划", "订单", "供应商", "客户", "导入"]) expect(text).toContain(name);
+  for (const name of ["商机", "联系人", "沟通记录", "待办", "跟进计划", "订单", "供应商", "客户", "导入"]) expect(text).toContain(name);
   expect(text).not.toMatch(/Opportunity|Contact|FollowUp|FollowPlan|TradeOrder|Supplier|import/); expect(await page.locator("body").innerText()).not.toContain("所有人都能查看和修改全部"); await page.close();
 });
 it.each([false, true])("H-097 跟进角标说明符合desktop=%s", async desktop => {
