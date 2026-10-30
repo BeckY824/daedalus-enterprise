@@ -118,7 +118,9 @@ test.describe.serial("业务配置", () => {
       // 企业版列表不摆档案字段那一列（10-28 去遗留），新建又走 /projects/new 整页，改名看编辑框里的字段名
       await 确保有一位客户(page);
       await page.goto("/customers");
-      await page.getByRole("main").getByRole("button", { name: /^编辑 / }).first().click();
+      // 行上的编辑、删除收进「⋯」（交互规则 D，10-30）
+      await page.getByRole("main").getByRole("button", { name: /^更多操作 / }).first().click();
+      await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
       await expect(page.getByRole("dialog").getByLabel("所属机构")).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toBeHidden();

@@ -215,7 +215,9 @@ test("字段权限：销售的备注只能看就改不了；电话看不到就�
   };
   const 编辑 = async () => {
     await page.goto("/customers");
-    await 正文.getByRole("button", { name: "编辑 销售甲的客户", exact: true }).click();
+    // 行上的编辑、删除收进「⋯」（交互规则 D，10-30）
+    await 正文.getByRole("button", { name: "更多操作 销售甲的客户", exact: true }).click();
+    await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
     return page.getByRole("dialog", { name: "编辑客户" });
   };
   const 换人 = async (谁: keyof typeof 账号) => {

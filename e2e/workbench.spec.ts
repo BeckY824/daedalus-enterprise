@@ -457,11 +457,11 @@ test("计划页「新建计划」就地弹框：挑人、说清另加不替换�
   await expect(page.getByRole("dialog").locator(".pick-ctx")).not.toContainText("上次跟进");
 });
 
-test("跟进页「记录跟进」就地弹框：挑人后到期计划默认一并完成，保存后留在原页并点亮新行", async ({ page }) => {
+test("沟通记录页「记一条沟通」就地弹框：挑人后到期计划默认一并完成，保存后留在原页并点亮新行", async ({ page }) => {
   const 客 = await 造一位要跟的();
   await 登录(page);
   await page.goto("/follow-ups");
-  await page.getByRole("button", { name: "记录跟进" }).click();
+  await page.getByRole("button", { name: /^(plus )?记一条沟通$/ }).click();
   const 弹窗 = await 挑(page, 客.名);
   await expect(弹窗.getByText("同时完成计划「发二版报价」")).toBeVisible();
   await 弹窗.getByLabel("沟通内容").fill("电话里对了交期");

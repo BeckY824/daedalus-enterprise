@@ -207,7 +207,8 @@ test("8. 两个人同时改同一条客户：改不同字段自动合并，改�
 
   async function 打开编辑框(page: Page) {
     await page.goto("/customers");
-    await page.getByRole("row", { name: new RegExp(客户名) }).getByRole("button").first().click();
+    await page.getByRole("row", { name: new RegExp(客户名) }).getByRole("button", { name: /^更多操作 / }).click(); // 编辑收进「⋯」（10-30）
+    await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
   }
 
@@ -282,7 +283,8 @@ test("9. 筛选后导出：行数对得上、中文原样、公式不会被带�
     await page.goto("/customers");
   } else {
     await page.goto("/customers");
-    await page.getByRole("row", { name: new RegExp(客户名) }).getByRole("button").first().click();
+    await page.getByRole("row", { name: new RegExp(客户名) }).getByRole("button", { name: /^更多操作 / }).click(); // 编辑收进「⋯」（10-30）
+    await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
     const 编辑框 = page.getByRole("dialog");
     await 编辑框.getByLabel("行业").fill("=1+1");
     await 编辑框.getByRole("button", { name: /保\s*存/ }).click();

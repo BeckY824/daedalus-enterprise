@@ -38,7 +38,9 @@ test.afterAll(async () => {
 test("确认框列出会一起删掉的东西；有签约要先勾一下；联系人留在联系人页", async ({ page }) => {
   await 登录(page);
   await page.goto("/customers");
-  await page.getByRole("button", { name: "删除 删除测试甲" }).click();
+  // 行上的编辑、删除收进「⋯」（交互规则 D，10-30）
+  await page.getByRole("button", { name: "更多操作 删除测试甲" }).click();
+  await page.getByRole("menuitem", { name: "删除", exact: true }).click();
 
   const 框 = page.getByRole("dialog");
   if (企业版) {
