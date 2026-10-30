@@ -4,6 +4,7 @@ import Heat from "@/components/Heat";
 import { useEffect, useState, useSyncExternalStore, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Select, Space, Dropdown, App, Tag, Popover, Segmented, type MenuProps } from "antd";
+import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
   PlusOutlined,
   ExportOutlined,
@@ -164,6 +165,10 @@ type Props = {
   企业版?: boolean;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的）；别的版本空 */
   客户状态选项?: string[];
+  /** 企业版客户状态 名字 → 标签颜色（cust-status-color.ts 客户状态色表）；没给按名字散 */
+  客户状态色?: Record<string, string>;
+  /** 企业版项目模式：客户状态按项目自动算（10-30），表单里只读 */
+  客户状态自动?: boolean;
   /** 企业版分配方式的可选项（字典 custAssign 启用中的，定稿 P5 第 30 条）；别的版本空 */
   分配方式选项?: string[];
   /** 企业版客户类型的可选项（字典 custType 启用中的，2026-10-29 P13 第 4 条）；别的版本空 */
@@ -186,7 +191,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 分配方式选项 = [], 客户类型选项 = [],
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [],
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -461,7 +466,7 @@ export default function CustomersView({
     } satisfies 列<CustomerRow>]),
     // 企业版：跟进状态换成客户状态（字典 custStatus，10-28 去遗留 A1）
     企业
-      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 110, render: (v: string | null) => (v ? <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : <span className="muted">—</span>) }
+      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 110, render: (v: string | null) => (v ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : <span className="muted">—</span>) }
       : { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v: string) => <FollowStatusTag status={v} /> },
     // 外贸不摆预计签约（2026-10-05 外贸客户：「没有意义」——采购时间点看商机的询盘时间）
     ...(外贸 ? [] : [{
@@ -893,6 +898,8 @@ export default function CustomersView({
         负责人只能自己={负责人只能自己}
         企业版={企业}
         客户状态选项={客户状态选项}
+        客户状态色={客户状态色}
+        客户状态自动={客户状态自动}
         分配方式选项={分配方式选项}
         客户类型选项={客户类型选项}
         onClose={(saved) => {

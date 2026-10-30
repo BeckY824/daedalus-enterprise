@@ -10,6 +10,7 @@ import { 只读上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Alert, Button, Drawer, Dropdown, Input, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography } from "antd";
+import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import {
   DownOutlined,
@@ -145,6 +146,8 @@ export default function RecordView({
   只读: 只读档 = false,
   换负责人记录 = [],
   客户状态选项 = [],
+  客户状态色,
+  客户状态自动 = false,
   联系人分类附件数 = null,
   关联们 = null,
   号码种类,
@@ -725,12 +728,17 @@ export default function RecordView({
           </>
         )}
         {/* 企业版：客户状态一枚章（字典 custStatus，10-28 去遗留 A1），点一下就能改；原值停用了也照样在选项里 */}
-        {企业 && (
+        {/* 项目模式按名下项目自动算（10-30）：章只读，不套 StatusPicker */}
+        {企业 && (客户状态自动 ? (
+          <Tooltip title="按这位客户名下的项目自动算">
+            <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{customer.custStatus ?? "暂无项目"}</Tag>
+          </Tooltip>
+        ) : (
           <StatusPicker customerId={customer.id} field="custStatus" value={customer.custStatus ?? ""}
             options={[...new Set([...客户状态选项, ...(customer.custStatus ? [customer.custStatus] : [])])].map((s) => ({ value: s, label: s }))}>
-            <Tag style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{customer.custStatus ?? "未设客户状态"}</Tag>
+            <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{customer.custStatus ?? "未设客户状态"}</Tag>
           </StatusPicker>
-        )}
+        ))}
         {/* 来源（照毛玻璃原型的那枚「来源：WhatsApp」）：渠道或推荐人。自然流量不摆——没有来源就不占位 */}
         {/* 企业版只认渠道（10-28 去遗留 A3）：写渠道名，没挂渠道就不摆，不写推荐人 */}
         {企业
@@ -1415,6 +1423,8 @@ export default function RecordView({
         channels={channels}
         企业版={企业}
         客户状态选项={客户状态选项}
+        客户状态色={客户状态色}
+        客户状态自动={客户状态自动}
         分配方式选项={分配方式选项}
         客户类型选项={客户类型选项}
         onClose={(saved) => {

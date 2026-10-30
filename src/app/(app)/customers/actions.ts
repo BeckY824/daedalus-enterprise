@@ -55,6 +55,7 @@ import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
 import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
+import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 
 
 /** 状态不在取值表里就给那句报错，合法给 null。建客户、批量改、撤销、行内改四处共用，报错文案一字不改 */
@@ -101,7 +102,7 @@ export type CustomerInput = {
   decisionStatus: string;
   /**
    * 客户状态（企业版，2026-10-28，取自字典 custStatus）。undefined = 不碰（新建时企业版给字典第一项）；
-   * 开关关着一律不看、不写
+   * 开关关着一律不看、不写；项目模式开着按项目自动算，交来的不认（10-30）
    */
   custStatus?: string | null;
   expectedSignAt: Date | string | null;
@@ -357,7 +358,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
 
   const 状态错 = 跟进不对(input.followStatus) ?? 决策不对(input.decisionStatus);
   if (状态错) return { ok: false, error: 状态错 };
-  const 企客状态 = 企业版() ? await 定客户状态(input.custStatus, 改前?.custStatus ?? null, !改前) : null;
+  /*
+    客户状态跟着项目自动算（10-30，lib/enterprise/cust-status-auto-db.ts，企业版 + 项目模式）：表单交来的不认。
+    新建先空着（建档向导建好项目后同一笔事务里算），编辑不进 data（不写、不比对、不留痕）
+  */
+  const 状态自动 = 企业版() && (await 客户状态自动());
+  const 企客状态 = 状态自动 ? (改前 ? null : { 值: null }) : 企业版() ? await 定客户状态(input.custStatus, 改前?.custStatus ?? null, !改前) : null;
   if (企客状态 && "error" in 企客状态) return { ok: false, error: 企客状态.error };
   /*
     企业版来源只认渠道（2026-10-28）：原来有渠道的不许清空；换了渠道，新渠道得是启用中的。
@@ -1478,6 +1484,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   } else if (key === "custStatus") {
     // 客户状态只有企业版有（字典 custStatus）；开关关着不收
     if (!企业版()) return { ok: false, error: "这个字段不能在这里改" };
+    if (await 客户状态自动()) return { ok: false, error: "客户状态按项目自动算，不能手改" };
     const 原 = await prisma.customer.findUnique({ where: { id }, select: { custStatus: true } });
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
     const r = await 定客户状态(v ?? null, 原.custStatus, false);

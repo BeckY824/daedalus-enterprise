@@ -30,6 +30,7 @@ import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/p
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
+import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -257,6 +258,8 @@ export async function 改节点(
   const 推的组织 = await 直属才推(org);
   // 企业版字段权限（规则没开 = 全能改，不读库）：「阶段 / 节点」只能看的角色改不了节点和结局
   const 级别 = await 字段权限of(me.id);
+  // 企业版客户状态跟着项目算（cust-status-auto-db.ts）：开关事务外读
+  const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -319,7 +322,9 @@ export async function 改节点(
       },
     });
     // 老板、主管往前推到的节点也配了、也齐了：接着推
-    return { ok: true as const, 变了: true, ...带推进(往前 ? await 按必填推进(tx, 规则, me, p.id, true) : []) };
+    const 推进 = 往前 ? await 按必填推进(tx, 规则, me, p.id, true) : [];
+    await 跟着项目重算(tx, 状态开, [p.customerId]);
+    return { ok: true as const, 变了: true, ...带推进(推进) };
   });
 }
 
@@ -330,6 +335,7 @@ export type 交付项 = keyof typeof 交付项们;
 export async function 勾交付(me: 谁, projectId: string, 项: 交付项, 勾: boolean): Promise<结果 & { 变了?: boolean; 自动推到?: string[] }> {
   if (!(项 in 交付项们)) return { ok: false, error: "没有这一项" };
   const 规则 = await 生效组织规则();
+  const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -338,7 +344,9 @@ export async function 勾交付(me: 谁, projectId: string, 项: 交付项, 勾:
     if (!勾 && p.result === "成功交付") return { ok: false as const, error: `已经成功交付了；要取消「${交付项们[项]}」，先把进程改回去` };
     const 谁勾 = 项 === "balanceSettled" ? { balanceSettledById: 勾 ? me.id : null, balanceSettledAt: 勾 ? new Date() : null } : { acceptancePassedById: 勾 ? me.id : null, acceptancePassedAt: 勾 ? new Date() : null };
     await tx.project.update({ where: { id: p.id }, data: { [项]: 勾, ...谁勾 } });
-    return { ok: true as const, 变了: true, ...带推进(await 按必填推进(tx, 规则, me, p.id)) };
+    const 推进 = await 按必填推进(tx, 规则, me, p.id);
+    if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
+    return { ok: true as const, 变了: true, ...带推进(推进) };
   });
 }
 
@@ -347,6 +355,7 @@ export async function 勾交付(me: 谁, projectId: string, 项: 交付项, 勾:
  * 删客户前要先删光它的项目（customers/actions 删除依赖错误）
  */
 export async function 删项目(me: 谁, projectId: string): Promise<结果 & { name?: string; customerId?: string }> {
+  const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, ownerId: true, pooledAt: true, customerId: true } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -354,6 +363,8 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
     // 企业版（P9）：只记 deletedAt，进设置 → 回收站，节点留痕、项目组都留着，恢复时原样回来
     if (企业版()) await tx.project.update({ where: { id: p.id }, data: { deletedAt: new Date() } });
     else await tx.project.delete({ where: { id: p.id } });
+    // 删掉的项目不算进客户状态（删光了 = 清空）
+    await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, name: p.name, customerId: p.customerId };
   });
 }
@@ -411,6 +422,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const 规则 = await 生效组织规则();
   const 级别 = await 字段权限of(me.id);
+  const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -451,7 +463,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     // 换了人，上一位填的下一步时间不替新负责人算（超时回收从接手那天重新算）
     await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
     if (换人) await 记转让(tx, p, me.id, p.ownerId, 新.ownerId);
-    return { ok: true as const, 变了, ...带推进(await 按必填推进(tx, 规则, me, p.id)) };
+    const 推进 = await 按必填推进(tx, 规则, me, p.id);
+    if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
+    return { ok: true as const, 变了, ...带推进(推进) };
   });
 }
 
@@ -698,6 +712,7 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 只扫?: string)
 export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(), opt: { 要下一步文字?: boolean } = {}): Promise<结果 & { followUpId?: string; 自动推到?: string[] }> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
   const 规则 = await 生效组织规则();
+  const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -724,6 +739,7 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
     else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
+    if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
     await 勾掉将回收提醒(tx, 规则, p, now);
     return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
   });
@@ -923,5 +939,7 @@ export async function 客户项目按必填推进(me: { id: string }, customerId
     const 到 = await 查完再写((tx) => 按必填推进(tx, 规则, me, p.id));
     if (到.length) 推了.push({ ...p, 到 });
   }
+  // 推了节点（可能进了商机 / 首款支付）：客户状态跟着重算一次
+  if (推了.length) await 项目变了重算([customerId]);
   return 推了;
 }

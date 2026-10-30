@@ -7,7 +7,7 @@ import { requiredText } from "@/lib/form-validation";
 
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useState } from "react";
-import { Alert, App, AutoComplete, Button, Col, Divider, Form, Input, Modal, Radio, Row, Select, Space, Spin, Typography } from "antd";
+import { Alert, App, AutoComplete, Button, Col, Divider, Form, Input, Modal, Radio, Row, Select, Space, Spin, Tag, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { FOLLOW_STATUSES, DECISION_STATUSES } from "@/lib/constants";
 import { dayjs, 成员选项, 独自一人, 可选成员 } from "@/lib/utils";
@@ -24,6 +24,7 @@ import { 带走说法 } from "@/lib/carry-over";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
+import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 地址叫法, 详细地址上限, 简称上限 } from "@/lib/enterprise/customer-v2";
 
 export type CustomerRow = {
@@ -93,6 +94,10 @@ type FormProps = {
   企业版?: boolean;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的） */
   客户状态选项?: string[];
+  /** 企业版客户状态 名字 → 标签颜色（cust-status-color.ts）；没给按名字散 */
+  客户状态色?: Record<string, string>;
+  /** 企业版项目模式：客户状态按名下项目自动算（10-30，cust-status-auto.ts），这里只读、不交 */
+  客户状态自动?: boolean;
   /** 企业版分配方式的可选项（字典 custAssign 启用中的，定稿 P5 第 30 条） */
   分配方式选项?: string[];
   /** 企业版客户类型的可选项（字典 custType 启用中的，P13 第 4 条） */
@@ -148,9 +153,13 @@ function CustomerFormInner({
   负责人只能自己 = false,
   企业版: 企业 = false,
   客户状态选项 = [],
+  客户状态色,
+  客户状态自动 = false,
   分配方式选项 = [],
   客户类型选项 = [],
 }: FormProps) {
+  /** 客户状态还能不能手选：企业版、且没开按项目自动算 */
+  const 手选状态 = 企业 && !客户状态自动;
   const b = useBusiness();
   /** 外贸模版：多问国家 / WhatsApp / 微信 / 邮箱 / 来源，不问推荐人、渠道负责人、预计签约（2026-10-05 外贸客户建议） */
   const 外贸 = 外贸精简(b);
@@ -268,7 +277,8 @@ function CustomerFormInner({
               channelId: editing.channelId,
               referrerCustomerId: editing.referrerCustomerId,
               channelOwnerId: editing.channelOwnerId,
-              ...(企业 ? { custStatus: editing.custStatus ?? null, ...企业资料基准(editing) } : {}),
+              // 自动算的客户状态不交、也不进比对基准：项目一动它就变，别算成「别人改了」
+              ...(企业 ? { ...(手选状态 ? { custStatus: editing.custStatus ?? null } : {}), ...企业资料基准(editing) } : {}),
             }
           : null,
         name: v.name,
@@ -280,7 +290,7 @@ function CustomerFormInner({
         // 企业版不摆跟进 / 决策状态：照原样交回（新建给默认值），改的是客户状态
         followStatus: 企业 ? (editing?.followStatus ?? "待跟进") : v.followStatus,
         decisionStatus: 企业 ? (editing?.decisionStatus ?? "了解中") : v.decisionStatus,
-        ...(企业 ? { custStatus: v.custStatus ?? null } : {}),
+        ...(手选状态 ? { custStatus: v.custStatus ?? null } : {}),
         /*
           外贸模版不摆这三格：照原样交回去，别因为表单里没有就清掉（切回通用模版时它们还在）。
           没摆的格子 validateFields 不给值，所以从 editing 取
@@ -371,7 +381,7 @@ function CustomerFormInner({
                 // 企业版级别只认 S/A/B/C：库里还没改过来的 D 显示成 C
                 ...(企业 ? { extra: { ...editing.extra, level: 企业级别(editing.extra?.level) ?? undefined } } : {}),
               }
-            : { followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 锁给自己 ? 锁给自己.id : 默认负责人(我, users), ...(企业 ? { custStatus: 客户状态选项[0] } : {}) }
+            : { followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 锁给自己 ? 锁给自己.id : 默认负责人(我, users), ...(手选状态 ? { custStatus: 客户状态选项[0] } : {}) }
         }
       >
         {conflict && (
@@ -824,10 +834,19 @@ function CustomerFormInner({
           {企业 ? (
             <Col span={8}>
               {/* 企业版：跟进状态、决策状态换成客户状态（字典 custStatus，10-28 去遗留 A1）；原值停用了也照样显示 */}
-              <Form.Item label="客户状态" name="custStatus">
-                <Select allowClear placeholder="选择客户状态"
-                  options={[...new Set([...客户状态选项, ...(editing?.custStatus ? [editing.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
-              </Form.Item>
+              {/* 项目模式按名下项目自动算（10-30）：只摆一枚章，不让选 */}
+              {客户状态自动 ? (
+                <Form.Item label="客户状态" tooltip="按这位客户名下的项目自动算，不能手改">
+                  {editing?.custStatus
+                    ? <Tag color={客户状态色of(客户状态色, editing.custStatus)} style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{editing.custStatus}</Tag>
+                    : <Typography.Text type="secondary">建了项目后自动算</Typography.Text>}
+                </Form.Item>
+              ) : (
+                <Form.Item label="客户状态" name="custStatus">
+                  <Select allowClear placeholder="选择客户状态"
+                    options={[...new Set([...客户状态选项, ...(editing?.custStatus ? [editing.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
+                </Form.Item>
+              )}
             </Col>
           ) : (<>
           <Col span={8}>

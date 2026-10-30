@@ -15,6 +15,7 @@ import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了 } from "@/lib/enterprise/contact-dedupe";
 import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 改节点, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
@@ -114,6 +115,8 @@ export async function 建档向导(输入: 建档向导输入) {
 
     const 建了: Partial<建好的> = {};
     const 向导 = 向导接着建(me, 好, 建了);
+    // 企业版客户状态跟着项目算（cust-status-auto-db.ts）：开关事务外读，建好项目后在同一笔事务里算
+    const 状态开 = 企 && (await 客户状态自动());
     const 接着 = !企 ? 向导 : 登记接着建(async (tx, customerId) => {
       for (const 号 of 要查) {
         const ids = await 全公司查号(tx, 号.类型, 号.值, 号.键, customerId);
@@ -121,6 +124,7 @@ export async function 建档向导(输入: 建档向导输入) {
       }
       await 向导(tx, customerId);
       for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
+      await 跟着项目重算(tx, 状态开, [customerId]);
     });
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {

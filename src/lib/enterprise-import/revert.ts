@@ -25,6 +25,7 @@ import { 外贸键 } from "../customer-extra";
 import { 读现值, 改, 规, 引用键, 摘联系人号, 记客户号, 记联系人号, type 值表 } from "./apply";
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
 import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-target";
+import { 客户状态自动, 跟着项目重算 } from "../enterprise/cust-status-auto-db";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -261,7 +262,8 @@ const 叫法 = (kind: string) => (kind === "sync" ? "同步" : kind === "resolve
 
 type 一行结果 = "删掉" | "还原" | "无";
 
-async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 碰过: Set<string>): Promise<一行结果> {
+/** 项目碰过：这一趟删掉 / 改回的项目挂的客户（改了客户的，改前改后两位都记），企业版客户状态跟着重算 */
+async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 碰过: Set<string>, 项目碰过: Set<string>): Promise<一行结果> {
   const e = row.entity as 实体;
   const ref = await tx.entExternalRef.findUnique({ where: 引用键(源, e, row.externalId) });
   const 写过 = 解<值表>(row.written, {});
@@ -286,6 +288,7 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
     if (连着) await 退对照(tx, 连着, 原对照);
     await 删(tx, e, row.targetId);
     if (e === "followup" && 现值.customerId) 碰过.add(String(现值.customerId));
+    if (e === "opportunity" && 现值.customerId) 项目碰过.add(String(现值.customerId));
     return "删掉";
   }
 
@@ -302,6 +305,10 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
       碰过.add(String(现值.customerId));
       if ("customerId" in 原 && 原.customerId) 碰过.add(String(原.customerId));
     }
+    if (e === "opportunity") {
+      if (现值.customerId) 项目碰过.add(String(现值.customerId));
+      if ("customerId" in 原 && 原.customerId) 项目碰过.add(String(原.customerId));
+    }
   }
   if (ref) await 退对照(tx, ref, 原对照);
   await tx.entTrash.create({
@@ -314,7 +321,7 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
 
 type 回收行 = Prisma.EntTrashGetPayload<object>;
 
-async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过: Set<string>): Promise<boolean> {
+async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过: Set<string>, 项目碰过: Set<string>): Promise<boolean> {
   if (!row) throw new 不动("对应的导入记录不在了");
   const e = t.entity as 实体;
   const 存的对照 = 解<引用行 | null>(t.ref, null);
@@ -334,6 +341,7 @@ async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过:
       else await tx.entExternalRef.create({ data: { source: 存的对照.source, entity: e, externalId: 存的对照.externalId, ...对照数据(存的对照) } });
     }
     if (e === "followup") 碰过.add(String(data.customerId));
+    if (e === "opportunity" && data.customerId) 项目碰过.add(String(data.customerId));
     return true;
   }
 
@@ -348,6 +356,11 @@ async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过:
       if (!一致(现值, 改回)) throw new 不动("撤回之后又改过");
       await 改(tx, e, t.targetId, 拣(解<值表>(row.written, {}), 键), 现值, new Date().toISOString());
       if (e === "followup") 碰过.add(String(现值.customerId));
+      if (e === "opportunity") {
+        const 写的 = 解<值表>(row.written, {}).customerId;
+        if (现值.customerId) 项目碰过.add(String(现值.customerId));
+        if (写的) 项目碰过.add(String(写的));
+      }
       恢复了 = true;
     }
   }
@@ -435,11 +448,14 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
   else if (批.status !== "reverting") return 结果(批次Id);
   const 源 = 批.source as 来源;
   const 截止 = 开始 + (opts.段长毫秒 ?? 段长());
+  // 企业版客户状态跟着项目算：开关事务外读
+  const 状态开 = await 客户状态自动();
 
   const 一趟 = (段: 记的行[]) =>
     查完再写((tx) =>
       看全部(async () => {
         const 碰过 = new Set<string>();
+        const 项目碰过 = new Set<string>();
         const 加 = { 删掉: 0, 还原: 0 };
         const 留: 留下明细[] = [];
         for (const row of 段) {
@@ -447,7 +463,7 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
           const n = await tx.entImportRow.updateMany({ where: { id: row.id, undo: null }, data: { undo: "撤了" } });
           if (n.count !== 1) throw new 让位();
           try {
-            const r = await 撤一行(tx, 源, 批次Id, row, 碰过);
+            const r = await 撤一行(tx, 源, 批次Id, row, 碰过, 项目碰过);
             if (r !== "无") 加[r]++;
           } catch (e) {
             if (!(e instanceof 不动)) throw e;
@@ -456,6 +472,7 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
           }
         }
         await 重算最近跟进(tx, 碰过);
+        await 跟着项目重算(tx, 状态开, 项目碰过);
         await 入账(tx, 批次Id, "reverting", "撤回", 加, 留);
       }),
     );
@@ -519,11 +536,13 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
   } else if (批.status === "done" && 解<账 | null>(批.revertNote, null)?.动作 === "恢复") return 结果(批次Id); // 已经恢复完了（两边同时点）
   else if (批.status !== "restoring") throw new Error("这一批没有撤回，不用恢复");
   const 截止 = 开始 + (opts.段长毫秒 ?? 段长());
+  const 状态开 = await 客户状态自动();
 
   const 一趟 = (段: 回收行[]) =>
     查完再写((tx) =>
       看全部(async () => {
         const 碰过 = new Set<string>();
+        const 项目碰过 = new Set<string>();
         let 恢复 = 0;
         const 留: 留下明细[] = [];
         for (const t of 段) {
@@ -531,7 +550,7 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
           if (n.count !== 1) throw new 让位();
           const row = t.rowId ? await tx.entImportRow.findUnique({ where: { id: t.rowId } }) : null;
           try {
-            if (await 恢复一条(tx, t, row, 碰过)) 恢复++;
+            if (await 恢复一条(tx, t, row, 碰过, 项目碰过)) 恢复++;
             if (row) await tx.entImportRow.update({ where: { id: row.id }, data: { undo: null } });
           } catch (e) {
             if (!(e instanceof 不动)) throw e;
@@ -540,6 +559,7 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
           }
         }
         await 重算最近跟进(tx, 碰过);
+        await 跟着项目重算(tx, 状态开, 项目碰过);
         await 入账(tx, 批次Id, "restoring", "恢复", { 恢复 }, 留);
       }),
     );
