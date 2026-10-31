@@ -153,6 +153,9 @@ it("企业版项目模式页头：能做的事摆成具名按钮，只有一颗�
     expect(await page.locator(".rec-acts .ant-btn-primary").count()).toBe(1);
     expect(await page.locator(".rec-acts .ant-btn-dangerous").innerText()).toMatch(/删除客户/);
     expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(0);
+    // 卡上和页头同名的入口不再重复摆（10-31）：编辑全部、添加联系人、开项目、新建任务、关联「+」只在页头
+    const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
+    expect(卡上钮.filter(t => /编辑全部|添加联系人|开项目|新建任务|关联一位客户/.test(t))).toEqual([]);
     // 宽屏：按钮靠右，和名字同一行
     const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-acts").boundingBox()]);
     expect(Math.abs(名!.y - 排!.y)).toBeLessThan(40);

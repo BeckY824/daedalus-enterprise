@@ -621,9 +621,10 @@ export default function ProjectDetail({
             );
           })()}
         </div>
-        {/* 只留「下一步」一个主按钮（10-30 P0-8）；改到别的进程、点结局收进「更多」。灰着的原因写在按钮下面 */}
+        {/* 只留「下一步」一个主按钮（10-30 P0-8）；改到别的进程、点结局收进「更多」。灰着的原因写在按钮下面。
+            企业版页头有「推进进程」（框里就是这两个按钮），卡上不再重复摆，只留推不了的原因（10-31） */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, maxWidth: 320, marginLeft: "auto" }}>
-          <Space wrap>
+          {!p.企业版 && <Space wrap>
             {更多去处项.length > 0 && (
               <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 更多去处项, onClick: ({ key }) => 结束确认(JSON.parse(key) as 位置) }}>
                 <Button aria-label="改到别的进程或结局">更多 <DownOutlined /></Button>
@@ -632,7 +633,7 @@ export default function ProjectDetail({
             <Button type="primary" disabled={忙 || !!推不了} onClick={() => 下 && 改到(下)}>
               {下一步字}
             </Button>
-          </Space>
+          </Space>}
           {推不了 && <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", textAlign: "right" }}>{推不了}</div>}
         </div>
       </div>
@@ -646,9 +647,6 @@ export default function ProjectDetail({
           结局={位.结局}
           结局色={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}
           成功交付={p.result === "成功交付"}
-          不能结束={不能结束}
-          忙={忙}
-          on结束={开结束}
         />
       ) : (
         <Progress
@@ -673,7 +671,7 @@ export default function ProjectDetail({
     </Card>
   );
   const 项目卡 = (
-    <Card title="项目" extra={可改 && <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>}>
+    <Card title="项目" extra={可改 && !p.企业版 && <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>}>
       <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后可见</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
@@ -760,7 +758,7 @@ export default function ProjectDetail({
     </Card>
   );
   const 项目组卡 = <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />;
-  const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑} />;
+  const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑} 不摆改={p.企业版} />;
   const 变更卡 = (
     <Card title="进程变更">
       <Timeline
@@ -787,14 +785,8 @@ export default function ProjectDetail({
       title="沟通"
       extra={
         p.能记沟通 ? (
-          // 企业版：沟通是这一页最常做的事，主按钮（10-27 会后排版）
-          p.企业版 ? (
-            <Space size={4}>
-              {/* AI 录入（10-29 P6）：同一个弹窗，打开就是「粘原话 → AI 预填」那一格；没配模型不摆 */}
-              {p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-              <Button type="primary" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条沟通</Button>
-            </Space>
-          ) : <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
+          // 企业版：「记一条沟通」「AI 录入」在页头（10-31 起卡上不再重复摆）
+          p.企业版 ? null : <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
         ) : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>
       }
     >
@@ -837,7 +829,7 @@ export default function ProjectDetail({
     <Card
       title={`卡点（${卡点.们.length}）`}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）
-      extra={卡点.能发 && (
+      extra={卡点.能发 && !p.企业版 && (
         <Space size={8}>
           {!p.followUps.length && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>先记一条沟通</span>}
           <Button type="primary" size="small" disabled={!p.followUps.length} onClick={() => p.followUps[0] && set发卡点于(p.followUps[0].id)}>发卡点</Button>
@@ -879,7 +871,8 @@ export default function ProjectDetail({
   const 开框 = (k: 头部框) => () => set头部框(k);
   const 能管沟通 = p.followUps.length > 0 && (p.可改沟通 || !!卡点?.能发);
 
-  // 企业版页头（10-31 R6）：这一页能做的事摆成具名按钮，要填的进弹窗；卡上原来的入口照旧，同一个动作、同一套校验。
+  // 企业版页头（10-31 R6）：这一页能做的事摆成具名按钮，要填的进弹窗，同一个动作、同一套校验。
+  // 卡上和这里同名的按钮（编辑、记一条沟通、AI 录入、下一步 / 更多、结束当前进程、发卡点、关联 +、改分配）企业版不再摆，只留页头这一处（10-31）
   // 「记一条沟通」是这一排唯一的主按钮，⌘N 点的就是它（components/CommandBar.tsx 找 .page-head-a 里的主按钮）；公海里的项目主按钮是「领取」
   const 企业版动作 = (
     <div className="proj-acts">
@@ -1061,7 +1054,8 @@ export default function ProjectDetail({
             <aside className="proj-side" aria-label="项目资料">
               {项目卡}
               {画像卡}
-              {关联卡}
+              {/* 卡上不摆「关联」，页头有；「管理关联」框里的照旧能加 */}
+              {p.关联 && <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 不摆加 />}
               {交付卡}
               {项目组卡}
               {提成区}

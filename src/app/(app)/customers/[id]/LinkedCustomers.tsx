@@ -15,8 +15,11 @@ import type { 关联一行 } from "@/lib/enterprise/customer-v2-db";
 import { 搜客户, type 可挑客户 } from "./pick";
 import { 关联客户, 改关联说明, 取消关联 } from "./link-actions";
 
-/** 起手：页头「关联客户」开的框里挂上时直接打开挑人那一行，和点卡上的「+」一样（10-31 R6） */
-export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 = false }: { customerId: string; 关联们: 关联一行[]; 只读: boolean; 起手?: boolean }) {
+/**
+ * 起手：页头「关联客户」开的框里挂上时直接打开挑人那一行（10-31 R6）。
+ * 不摆加：企业版客户页头已有「关联客户」，卡上不再摆「+」（10-31）
+ */
+export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 = false, 不摆加 = false }: { customerId: string; 关联们: 关联一行[]; 只读: boolean; 起手?: boolean; 不摆加?: boolean }) {
   const { message } = App.useApp();
   const router = useRouter();
   const [加着, set加着] = useState(false);
@@ -74,7 +77,7 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
     <div className="rec-sec">
       <div className="rec-sec-t">
         <span>关联客户 {关联们.length > 0 && 关联们.length}</span>
-        {!只读 && !加着 && (
+        {!只读 && !加着 && !不摆加 && (
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一位客户" />
         )}
       </div>

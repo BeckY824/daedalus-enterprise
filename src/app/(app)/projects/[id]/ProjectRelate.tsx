@@ -67,13 +67,14 @@ function useRelateSearch<T>(搜: (词: string) => Promise<T[]>) {
 }
 
 /**
- * 只：只摆一张（项目页头「关联客户」「关联联系人」弹框，10-31 R6）；起手：一打开就是「关联一家 / 一位」那一格（同点卡上的「关联」）
+ * 只：只摆一张（项目页头「关联客户」「关联联系人」弹框，10-31 R6）；起手：一打开就是「关联一家 / 一位」那一格（同点卡上的「关联」）。
+ * 不摆加：企业版项目页头已有「关联客户」「关联联系人」，右栏卡上不再摆「关联」（10-31）
  */
-export default function ProjectRelate({ projectId, 关联, 能改, 只, 起手 = false }: { projectId: string; 关联: 项目关联; 能改: boolean; 只?: "客户" | "联系人"; 起手?: boolean }) {
+export default function ProjectRelate({ projectId, 关联, 能改, 只, 起手 = false, 不摆加 = false }: { projectId: string; 关联: 项目关联; 能改: boolean; 只?: "客户" | "联系人"; 起手?: boolean; 不摆加?: boolean }) {
   return (
     <>
-      {只 !== "联系人" && <RelateCustomers projectId={projectId} 关联={关联} 能改={能改} 起手={起手} />}
-      {只 !== "客户" && <RelateContacts projectId={projectId} 关联={关联} 能改={能改} 起手={起手} />}
+      {只 !== "联系人" && <RelateCustomers projectId={projectId} 关联={关联} 能改={能改} 起手={起手} 不摆加={不摆加} />}
+      {只 !== "客户" && <RelateContacts projectId={projectId} 关联={关联} 能改={能改} 起手={起手} 不摆加={不摆加} />}
     </>
   );
 }
@@ -99,7 +100,7 @@ function 名字({ 名, 全称, href, 主, 主叫 }: { 名: string; 全称: strin
   );
 }
 
-function RelateCustomers({ projectId, 关联, 能改, 起手 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean }) {
+function RelateCustomers({ projectId, 关联, 能改, 起手, 不摆加 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean; 不摆加: boolean }) {
   const { 忙, 跑 } = useRelateRun();
   const [加着, set加着] = useState(false);
   const [挑中, set挑中] = useState<string | undefined>();
@@ -119,7 +120,7 @@ function RelateCustomers({ projectId, 关联, 能改, 起手 }: { projectId: str
   return (
     <Card
       title={`关联客户（${关联.客户们.length}）`}
-      extra={能改 && !加着 && 非主 < 关联.上限 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一家客户">关联</Button> : null}
+      extra={能改 && !加着 && !不摆加 && 非主 < 关联.上限 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一家客户">关联</Button> : null}
     >
       <div className="proj-rel">
         {关联.客户们.length === 0 && !加着 && <div className="rec-empty">还没有关联客户</div>}
@@ -197,7 +198,7 @@ function CustomerRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: st
   );
 }
 
-function RelateContacts({ projectId, 关联, 能改, 起手 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean }) {
+function RelateContacts({ projectId, 关联, 能改, 起手, 不摆加 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean; 不摆加: boolean }) {
   const { 忙, 跑 } = useRelateRun();
   const [加着, set加着] = useState(false);
   const [挑中, set挑中] = useState<string | undefined>();
@@ -218,7 +219,7 @@ function RelateContacts({ projectId, 关联, 能改, 起手 }: { projectId: stri
   return (
     <Card
       title={`关联联系人（${关联.联系人们.length}）`}
-      extra={能改 && !加着 && 非主 < 关联.上限 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一位联系人">关联</Button> : null}
+      extra={能改 && !加着 && !不摆加 && 非主 < 关联.上限 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一位联系人">关联</Button> : null}
     >
       <div className="proj-rel">
         {关联.联系人们.length === 0 && !加着 && <div className="rec-empty">还没有关联联系人</div>}

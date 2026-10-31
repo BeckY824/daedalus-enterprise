@@ -82,6 +82,10 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     expect(Math.round(侧!.width)).toBe(320);
     // 提成预估写明按哪一套比例（10-27：内贸 / 外贸 / 不限）
     expect(await page.locator(".proj-side > .ant-card").filter({ hasText: "提成" }).first().innerText()).toContain("按外贸比例");
+    // 和页头同名的按钮卡上不再摆（10-31）：编辑、记一条沟通、AI 录入、下一步 / 更多、结束当前进程、发卡点、改分配只在页头
+    const 卡上钮 = (await page.locator(".proj-main button, .proj-side button").allInnerTexts()).map(t => t.replace(/\s/g, ""));
+    expect(卡上钮.filter(t => /^(编辑|记一条沟通|AI录入|更多|结束当前进程|发卡点|改分配|关联)$|^下一步/.test(t))).toEqual([]);
+    expect(await 页头钮(page)).toEqual(expect.arrayContaining(["记一条沟通", "AI录入", "编辑项目", "推进进程", "结束当前进程", "发卡点", "改分配"]));
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -121,6 +125,8 @@ it.each([1024, 1280])("P17 %ipx：右栏关联客户 / 关联联系人跟在画�
       const b = (await el.boundingBox())!;
       expect(b.x + b.width).toBeLessThanOrEqual(卡框.x + 卡框.width + 1);
     }
+    // 「关联」在页头，卡上不摆（10-31）
+    expect(await page.locator(".proj-side").getByRole("button", { name: /^关联一/ }).count()).toBe(0);
     // 主客户不给解除；看不到的那家没链接
     expect(await page.getByRole("button", { name: /^解除和 超长客户名/ }).count()).toBe(0);
     expect(await page.getByRole("button", { name: /^解除和 关联客户/ }).count()).toBe(2);
@@ -260,7 +266,9 @@ it.each([1024, 1280, 1366])("P11 定稿 -2 版 %ipx：项目卡有级别星、�
     expect(await 卡.evaluate(c => c.scrollWidth <= c.clientWidth + 1)).toBe(true);
     // 级别在金额前面
     expect(字.indexOf("级别")).toBeLessThan(字.indexOf("金额"));
-    await 卡.locator(".ant-card-extra button").click(); // antd 两字按钮中间会插空格（「编 辑」），按卡头的按钮点
+    // 企业版卡上不摆「编辑」（10-31 起只在页头）
+    expect(await 卡.locator(".ant-card-extra button").count()).toBe(0);
+    await page.locator(".page-head-a").getByRole("button", { name: "编辑项目" }).click();
     const 框 = page.locator(".ant-modal-container"); // 这版 antd 的弹框外壳叫 container（没有 .ant-modal-content）
     await 框.getByText("项目级别").waitFor();
     for (const 名 of ["国家/地区", "省", "市", "区县", "详细地址"]) expect(await 框.getByLabel(名, { exact: true }).count()).toBeGreaterThan(0);
@@ -558,14 +566,12 @@ it("R5 阶段页签：三个页签、默认选所在阶段；进程按字典列�
     expect(await 阶段签(page)).toEqual(["线索", "商机", "*订单当前阶段"]);
     expect(await 节点们(page)).toEqual(["cur:生产备货", "todo:物流运输", "todo:安装实施", "todo:验收交付", "todo:尾款结算"]);
     expect(await page.locator(".proj-stage-node[aria-current=step]").innerText()).toContain("当前");
-    const 结束 = page.locator(".proj-stage-foot").getByRole("button", { name: "结束当前进程" });
-    expect(await 结束.isDisabled()).toBe(false);
+    // 「结束当前进程」只在页头，页签面板里不摆（10-31）
+    expect(await page.locator(".proj-stages button", { hasText: "结束当前进程" }).count()).toBe(0);
     await page.getByRole("tab", { name: "商机" }).click();
     expect(await 阶段签(page)).toEqual(["线索", "*商机", "订单当前阶段"]);
     expect(await 节点们(page)).toEqual(["明确需求", "共识方案", "成交推进", "签约审批", "签订合同", "首款支付"].map(n => `done:${n}✓`));
     expect(await page.locator(".proj-stage-note").innerText()).toBe("「商机」阶段已经走完，只能看，不能改");
-    expect(await 结束.isDisabled()).toBe(true);
-    expect(await page.locator(".proj-stage-why").innerText()).toContain("回到那个页签才能结束当前进程");
     // 键盘：Home 到线索，End 回订单
     await page.getByRole("tab", { name: "商机" }).press("Home");
     expect((await 阶段签(page))[0]).toBe("*线索");
@@ -583,7 +589,7 @@ it("R5 阶段页签：三个页签、默认选所在阶段；进程按字典列�
   } finally { await page.close(); }
 });
 
-it("R5 结束当前进程：卡上、页头都开同一个框；订单没有下一阶段，默认下一进程；成功交付缺交付项灰着说还差什么；取消不动", async () => {
+it("R5 结束当前进程：页头开框；订单没有下一阶段，默认下一进程；成功交付缺交付项灰着说还差什么；取消不动", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     const 开 = async (从: string) => {
@@ -592,8 +598,8 @@ it("R5 结束当前进程：卡上、页头都开同一个框；订单没有下�
       await 窗.waitFor();
       return 窗;
     };
-    for (const 从 of [".proj-stage-foot", ".page-head-a"]) {
-      const 窗 = await 开(从);
+    {
+      const 窗 = await 开(".page-head-a");
       expect(await 窗.innerText()).toContain("订单 · 生产备货");
       const 项 = await 窗.locator(".ant-radio-wrapper").evaluateAll(rs => rs.map(r => `${r.classList.contains("ant-radio-wrapper-disabled") ? "灰" : ""}${r.classList.contains("ant-radio-wrapper-checked") ? "*" : ""}${r.querySelector(".proj-end-name")!.textContent}`));
       expect(项).toEqual(["*进入下一进程：物流运输", "灰成功交付", "异常状态"]);
@@ -645,21 +651,21 @@ it("R5 线索没走完：进入下一阶段灰着、写清还差哪几个进程�
   } finally { await page.close(); }
 });
 
-it("R5 有结局 / 不能改进程：页头不摆结束按钮，卡上的灰着写原因", async () => {
+it("R5 有结局 / 不能改进程：页头不摆结束按钮，卡上也没有；不能改进程时节点卡写原因、不摆下一步", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ result: "异常状态", exceptionReason: "客户暂停" }));
     await page.locator(".proj-stage-node.is-cur .ant-tag").waitFor();
     expect(await page.locator(".page-head-a").getByRole("button", { name: "结束当前进程" }).count()).toBe(0);
-    expect(await page.locator(".proj-stage-foot button").isDisabled()).toBe(true);
-    expect(await page.locator(".proj-stage-why").innerText()).toBe("项目已经有结局，先改回某个进程");
+    expect(await page.getByRole("button", { name: "结束当前进程" }).count()).toBe(0);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ result: "成功交付" }));
     await page.waitForFunction(() => document.querySelectorAll(".proj-stage-node.is-done").length === 5);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能改节点: false }));
     await page.waitForFunction(() => !document.querySelector(".page-head-a")?.textContent?.includes("推进进程"));
     expect(await page.locator(".page-head-a").getByRole("button", { name: "结束当前进程" }).count()).toBe(0);
-    expect(await page.locator(".proj-stage-foot button").isDisabled()).toBe(true);
-    expect((await page.locator(".proj-stage-why").innerText()).length).toBeGreaterThan(0);
+    expect(await page.getByRole("button", { name: "结束当前进程" }).count()).toBe(0);
+    expect(await page.locator(".proj-main").getByRole("button", { name: /^下一步/ }).count()).toBe(0);
+    expect(await page.locator(".proj-main").innerText()).toContain("只有项目负责人、老板或主管能改");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

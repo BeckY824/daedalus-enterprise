@@ -813,7 +813,8 @@ export default function RecordView({
           <div className="rec-sec">
             <div className="rec-sec-t">
               <span>基本资料</span>
-              {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => setCustOpen(true)}>编辑全部</Button>}
+              {/* 企业版项目模式页头有「编辑资料」，卡上不再重复摆（10-31） */}
+              {!只读 && !去项目跟进 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => setCustOpen(true)}>编辑全部</Button>}
             </div>
             {摆(customer.phone) && (
               <div className="rec-field" style={{ cursor: "default" }}>
@@ -940,7 +941,7 @@ export default function RecordView({
               {/* 企业版：一键看这个客户的全部联系人（联系人页按客户名筛） */}
               {(企业 || !只读) && (
                 <Space size={12} style={{ whiteSpace: "nowrap" }}>
-                  {!只读 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
+                  {!只读 && !去项目跟进 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
                   {/* 和下面「项目」那栏同一个写法；1366 下右栏窄，写全「全部联系人」会折行 */}
                   {企业 && <Link href={`/contacts?keyword=${encodeURIComponent(customer.name)}`} aria-label="全部联系人">全部 ›</Link>}
                 </Space>
@@ -1020,7 +1021,7 @@ export default function RecordView({
                 <span>项目 {项目们.length > 0 && 项目们.length}</span>
                 <Space size={4}>
                   {/* 给这位客户再建一个项目（待定 16）：客户自动带上 */}
-                  {摆法.新建项目 && 新建项目 && !只读 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => set建项目开着(true)}>开项目</Button>}
+                  {摆法.新建项目 && 新建项目 && !只读 && !去项目跟进 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => set建项目开着(true)}>开项目</Button>}
                   <Link href="/projects">全部 ›</Link>
                 </Space>
               </div>
@@ -1054,7 +1055,7 @@ export default function RecordView({
               ))}
             </div>
           )}
-          {摆法.关联客户 && 关联们 && <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} />}
+          {摆法.关联客户 && 关联们 && <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} 不摆加={去项目跟进} />}
           {!项目们 && (
             <div className="rec-sec">
               <div className="rec-sec-t">
@@ -1266,7 +1267,7 @@ export default function RecordView({
             <div className="rec-card rec-side-card">
               <div className="rec-side-t">
                 <span>待办 {待办数 > 0 && 待办数}</span>
-                {!只读 && (
+                {!只读 && !去项目跟进 && (
                   <Button type="link" size="small" style={{ padding: 0, height: "auto", fontWeight: 400 }} icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
                     新建任务
                   </Button>

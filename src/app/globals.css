@@ -1251,8 +1251,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 @media (prefers-reduced-motion: reduce) {
   .proj-stage-node.is-cur .proj-stage-mark { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--stage-c) 25%, transparent); }
 }
-.proj-stage-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-.proj-stage-why { color: var(--text-muted); font-size: var(--fs-note, 12px); min-width: 0; overflow-wrap: anywhere; }
 /* 「结束当前进程」框：一行一个去处，灰着的写清为什么 */
 .proj-end-opts.ant-radio-group { display: flex; flex-direction: column; gap: 10px; }
 .proj-end-name { font-weight: 600; }

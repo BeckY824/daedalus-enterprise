@@ -108,7 +108,7 @@ test("页面数据里不再带全部客户", async ({ page }) => {
   const 详情 = await page.request.get(`/customers/${路人.id}`);
   expect(详情.ok()).toBe(true);
   const 详情页 = await 详情.text();
-  expect(详情页).toContain("编辑全部");
+  expect(详情页).toContain(路人.name);
   expect(详情页).not.toContain(推荐人.name);
 });
 

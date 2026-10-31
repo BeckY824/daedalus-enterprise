@@ -2,7 +2,7 @@
 
 import { useRef, useState, type KeyboardEvent } from "react";
 import { CheckOutlined } from "@ant-design/icons";
-import { Button, Tag } from "antd";
+import { Tag } from "antd";
 import { categorical, palette } from "@/lib/palette";
 import { 阶段们 } from "@/lib/project/nodes";
 import type { 阶段字典 } from "@/lib/project/stage-dict";
@@ -13,20 +13,16 @@ const 阶段色: Record<string, string> = { 线索: categorical.cyan, 商机: pa
 /**
  * 企业版项目详情节点卡里的阶段页签（10-31 改版 R5）：线索 / 商机 / 订单三个页签，默认选项目所在的阶段；
  * 面板只列选中那个阶段的进程（按字典，不写死），走过的打勾、当前的标「当前」带一圈、没走到的空心。结局不当阶段摆，跟在当前进程后面。
- * 「结束当前进程」只在看项目所在阶段、而且能结束时能点；看别的阶段只能看，不能动。页头那个同名按钮开的是同一个框。
+ * 看别的阶段只能看，不能动。「结束当前进程」只在页头（10-31 起卡上不再重复摆）。
  * 父组件用 key={所在阶段} 挂：阶段变了，页签跟着回到新的所在阶段
  */
-export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结局, 结局色, 成功交付, 不能结束, 忙, on结束 }: {
+export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结局, 结局色, 成功交付 }: {
   字典: 阶段字典;
   所在阶段: string;
   所在进程: string;
   结局: string | null;
   结局色?: string;
   成功交付: boolean;
-  /** 为什么不能结束（undefined = 能） */
-  不能结束?: string;
-  忙: boolean;
-  on结束: () => void;
 }) {
   const [看, set看] = useState(所在阶段);
   const 签们 = useRef<(HTMLButtonElement | null)[]>([]);
@@ -44,7 +40,6 @@ export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结�
     set看(阶段们[到]);
     签们.current[到]?.focus();
   };
-  const 原因 = 看 !== 所在阶段 ? `项目现在在「${所在阶段}」阶段，回到那个页签才能结束当前进程` : 不能结束;
   return (
     <div className="proj-stages">
       <div className="proj-stage-tabs" role="tablist" aria-label="项目阶段">
@@ -87,10 +82,6 @@ export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结�
           })}
         </ol>
         {成功交付 && 看 === 所在阶段 && 结局 && <div className="proj-stage-note"><Tag color={结局色}>{结局}</Tag></div>}
-        <div className="proj-stage-foot">
-          <Button disabled={忙 || !!原因} onClick={on结束}>结束当前进程</Button>
-          {原因 && <span className="proj-stage-why">{原因}</span>}
-        </div>
       </div>
     </div>
   );

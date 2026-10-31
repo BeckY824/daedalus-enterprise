@@ -18,7 +18,8 @@ const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "bas
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 64px" };
 const 淡: React.CSSProperties = { color: "var(--text-muted)" };
 
-export function ProjectCommissionCard({ projectId, t, 忙, 跑 }: { projectId: string; t: 提成卡; 忙: boolean; 跑: 跑法 }) {
+/** 不摆改：企业版项目页头已有「改分配」，卡上不再摆（10-31） */
+export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = false }: { projectId: string; t: 提成卡; 忙: boolean; 跑: 跑法; 不摆改?: boolean }) {
   const [底价, set底价] = useState<number | null>(t.项目底价);
   const [分开着, set分开着] = useState(false);
   const [更正开着, set更正开着] = useState(false);
@@ -58,7 +59,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑 }: { projectId: s
 
       <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <strong>分配</strong>
-        {t.能改 && <Button type="link" size="small" disabled={忙} onClick={() => set分开着(true)}>改分配</Button>}
+        {t.能改 && !不摆改 && <Button type="link" size="small" disabled={忙} onClick={() => set分开着(true)}>改分配</Button>}
       </div>
       {t.每人.map((x) => (
         <div key={x.userId} style={{ ...行样, marginBottom: 4 }}>
