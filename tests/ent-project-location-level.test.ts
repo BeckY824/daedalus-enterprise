@@ -59,11 +59,11 @@ describe("级别星", () => {
     expect(满星).toBe(4);
   });
 
-  it("补齐空心到满星；不补只给实心；没分级、认不出的空串", () => {
-    expect(级别星("S")).toBe("★★★★");
-    expect(级别星("A")).toBe("★★★☆");
-    expect(级别星("C")).toBe("★☆☆☆");
-    expect(级别星("B", false)).toBe("★★");
+  it("F-客户-01：去星标只给字母（第二个参数留着兼容、不起作用）；没分级、认不出的空串", () => {
+    expect(级别星("S")).toBe("S");
+    expect(级别星("A")).toBe("A");
+    expect(级别星("C")).toBe("C");
+    expect(级别星("B", false)).toBe("B");
     expect(级别星(null)).toBe("");
     expect(级别星("")).toBe("");
     expect(级别星("D")).toBe("");

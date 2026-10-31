@@ -1075,9 +1075,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .country-cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .country-cell-t { font-size: 12px; font-variant-numeric: tabular-nums; }
 .cust-level-B { border-color: var(--warning-line); color: var(--warning-text); background: var(--warning-bg); }
-/* 企业版级别画成星（P13 第 5 条，components/LevelStars.tsx）：满格 4 颗，没亮的淡色；不换行、等宽，列表 76 宽放得下 */
-.cust-stars { display: inline-block; white-space: nowrap; color: var(--warning-text); font-size: 12px; line-height: 1; letter-spacing: 1px; }
-.cust-stars-off { color: var(--line); }
+/* 企业版级别只显示字母（F-客户-01，components/LevelStars.tsx 复用 .cust-level 方块）：S 最重，A 红、B 黄、C 灰同外贸等级 */
+.cust-level-S { border-color: var(--danger); color: #fff; background: var(--danger); }
 .rec-sec { padding: 6px 12px 10px; border-top: 1px solid var(--border); }
 .rec-sec:first-of-type { border-top: none; }
 .rec-sec-t {
@@ -1605,6 +1604,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-s-late { color: var(--danger-text); font-weight: 600; }
 .btodo-s-today { color: var(--ink); font-weight: 500; }
 .btodo-s-later { color: var(--text-muted); }
+/* 复盘页「卡点」「沟通」页签（P7）：沿用待办列表的样子，只补卡点类型的颜色和长内容的浮层 */
+.rblk-type { font-size: var(--fs-note); color: var(--text-muted); }
+.rblk-type-hot { color: var(--danger-text); font-weight: 600; }
+.rtalk-tip { display: block; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
 .member-who { min-width: 0; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
@@ -2090,6 +2093,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .chan-invest-who { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chan-invest-remark { margin-top: 2px; overflow-wrap: anywhere; }
 .chan-invest-del { position: absolute; right: 0; top: var(--s2); }
+/* 渠道详情（U-渠道-01）：基本信息 / 统计 / 投入记录各成一块、单列排；标签列定宽，值列可折行，1024 宽抽屉里不溢出 */
+.chan-block { border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-width: 0; }
+.chan-block + .chan-block { margin-top: var(--s3); }
+.chan-block > .section-title { margin-bottom: var(--s2); }
+.chan-desc .ant-descriptions-item-label { width: 7.5em; flex: none; }
+.chan-desc .ant-descriptions-item-content { min-width: 0; overflow-wrap: anywhere; }
 /* 「重置」一直占着位置，没筛时只是看不见（审查 M17）：原来它一出现就把「列」挤到第二行，
    整张表往下跳一截。出现消失只淡入淡出，不位移。visibility 晚一拍再收，淡出才看得见 */
 .list-reset { transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s; }

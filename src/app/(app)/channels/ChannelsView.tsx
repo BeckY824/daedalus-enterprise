@@ -477,23 +477,24 @@ export default function ChannelsView({
             // 新建时渠道负责人默认是我（团队同步之后候选里有同事）
             initialValues={editing ? 编辑初值(editing) : { active: true, channelOwnerId: 默认负责人(我, users) }}
           >
+            {/* U-渠道-01：表单单列排，一行一项，不分两栏 */}
             <行 gutter={16}>
-              <Col xs={24} sm={12}>
+              <Col span={24}>
                 <Form.Item label="渠道属性" name="attr" rules={[{ required: true, message: "请选择渠道属性" }]}>
                   <Select placeholder="请选择" options={表单属性.map((x) => ({ value: x, label: x }))} notFoundContent="字典里还没有渠道属性，到 设置 → 字典 里加" />
                 </Form.Item>
               </Col>
-              <Col xs={24} sm={12}>
+              <Col span={24}>
                 <Form.Item label="渠道状态" name="active">
                   <Radio.Group optionType="button" options={[{ value: true, label: "启用" }, { value: false, label: "停用" }]} />
                 </Form.Item>
               </Col>
-              <Col xs={24} sm={12}>
+              <Col span={24}>
                 <Form.Item label="渠道名称" name="platform" rules={[{ required: true, whitespace: true, message: "请填写渠道名称" }]}>
                   <Input placeholder="如：短视频平台" maxLength={全称上限} />
                 </Form.Item>
               </Col>
-              <Col xs={24} sm={12}>
+              <Col span={24}>
                 <Form.Item
                   label="来源"
                   name="source"
@@ -514,7 +515,7 @@ export default function ChannelsView({
               <Col span={24}>
                 <FullNamePreview 原名={editing?.name ?? null} />
               </Col>
-              <Col xs={24} sm={12}>
+              <Col span={24}>
                 <Form.Item label="结束日期" name="endDate" extra="不填 = 还在运营，天数算到今天">
                   <DatePicker style={{ width: "100%" }} format="YYYY-MM-DD" />
                 </Form.Item>
@@ -525,7 +526,7 @@ export default function ChannelsView({
                 编辑一条挂在别人名下的旧记录时照样问。
               */}
               {!独自一人(users, editing?.channelOwnerId) && (
-                <Col xs={24} sm={12}>
+                <Col span={24}>
                   <Form.Item
                     label="负责人"
                     name="channelOwnerId"

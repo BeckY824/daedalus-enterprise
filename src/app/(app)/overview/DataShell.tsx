@@ -7,10 +7,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Segmented, Select, Tabs } from "antd";
 import { PageHead } from "@/components/ui";
 import { 视图们, type 视图 } from "./views";
-import { 读页签, type 复盘页签 } from "@/lib/project/board-todos";
+import { 读页签, 复盘页签们, 复盘页签叫法, type 复盘页签 } from "@/lib/project/board-todos";
 
 /**
- * 「数据」页的壳：标题 + 三视图切换；企业版按项目时是「复盘」页：人员选择 + 「待办 | 数据」两个页签（P15）。
+ * 「数据」页的壳：标题 + 三视图切换；企业版按项目时是「复盘」页：人员选择 + 「任务 | 卡点 | 沟通 | 数据」四个页签（P15 → P7）。
  *
  * **这儿原来还有一个「问一个数」的输入框**（reports/AskData），2026-09-19 撤掉。
  * 0.38 之后右边那条 AI 面板在每一页都常驻着，这一页于是同屏摆了两个长得一样的框：
@@ -35,7 +35,7 @@ export default function DataShell({
   /** 企业版管理层看谁（P15，lib/project/board-member.ts）：当前 "" = 全部成员；不给 = 不摆下拉（业务员只看自己） */
   选人?: { 选项: { value: string; label: string }[]; 当前: string };
   /**
-   * 企业版复盘页的两个页签（P15，10-29 用户定）：「待办」（默认）｜「数据」，记在地址栏 tab=。
+   * 企业版复盘页的四个页签（P7 U-复盘-01，10-31）：「任务」（默认）｜「卡点」｜「沟通」｜「数据」，记在地址栏 tab=。
    * 不给 = 没有页签（不按项目的老「数据」页），三视图切换照旧摆在最上面
    */
   页签?: 复盘页签;
@@ -93,19 +93,17 @@ export default function DataShell({
       <PageHead title={项目 ? "复盘" : "数据"} subtitle={项目 ? "项目现状与复盘" : `业务现状与${签约叫(b)}复盘`} />
       {页签 ? (
         <>
-          {/* 人员选择器在页签上面：两个页签共用，切页签不丢 */}
+          {/* 人员选择器在页签上面：四个页签共用，切页签不丢（沟通页签的「按负责人筛」就是它） */}
           {选人 && <div className="data-shell-bar data-shell-bar-who">{人下拉()}</div>}
           <Tabs
             className="data-shell-tabs"
             activeKey={显签}
-            // 「待办」也明写 tab=todo：地址栏里留着 view= 时，不写会被当成要看数（读页签）
-            onChange={(k) => 改({ tab: k === "data" ? "data" : "todo" })}
+            // 「任务」也明写 tab=todo：地址栏里留着 view= 时，不写会被当成要看数（读页签）。
+            // 换页签从第一页看起（p 几个页签共用）；各页签自己的筛选（f / kind / bs / t）留着，切回来还在
+            onChange={(k) => 改({ tab: 读页签(k), p: undefined })}
             // 内容在下面由服务端给，Tabs 只当导航；面板不滑（crm-motion-rules：减弱动态不许位移），下划线的移动在 globals.css 里按减弱动态关掉
             animated={{ inkBar: true, tabPane: false }}
-            items={[
-              { key: "todo", label: "待办" },
-              { key: "data", label: "数据" },
-            ]}
+            items={复盘页签们.map((k) => ({ key: k, label: 复盘页签叫法[k] }))}
           />
           <div className={`data-shell-body${切着 ? " data-shell-pending" : ""}`} aria-busy={切着 || undefined}>
             {/* 乐观切过去、服务端那一屏还没回来时，旧内容留在原地淡一点（不清空，下面不塌一截再撑开） */}

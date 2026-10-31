@@ -351,12 +351,12 @@ it("开关关闭：照原来一列摆、960 宽，没有两栏；没有提成卡
   } finally { await page.close(); }
 });
 
-it.each([1024, 1280, 1366])("P11 定稿 -2 版 %ipx：项目卡有级别星、区域、地址（长地址折行不撑卡）；编辑框里有项目级别、所在地四格、详细地址，不横向溢出", async (w) => {
+it.each([1024, 1280, 1366])("P11 定稿 -2 版 %ipx：项目卡有级别（F-客户-01 起只显示字母不带星）、区域、地址（长地址折行不撑卡）；编辑框里有项目级别、所在地四格、详细地址，不横向溢出", async (w) => {
   const { page, errors } = await open(true, w);
   try {
     const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "项目来源" }).first();
     const 字 = await 卡.innerText();
-    expect(字).toContain("★★★☆");
+    expect(字).not.toMatch(/[★☆]/);
     expect(字).toContain("A 重点");
     expect(字).toMatch(/区域\s*深圳市/);
     expect(字).toContain("广东省 深圳市");
