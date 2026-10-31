@@ -1154,6 +1154,33 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-side .cust-link-t { overflow-wrap: anywhere; }
 @container (max-width: 1000px) { .proj-2col { grid-template-columns: minmax(0, 1fr) 280px; } }
 @container (max-width: 629px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
+/* 企业版左栏瀑布流（U-项目-01/04）：沟通、卡点与任务各一块，标题那一行是展开 / 收起的按钮，收着只剩标题；
+   块里定高、自己滚（外层左栏照旧上下滚看全部块）；上面一格搜索 */
+.proj-mod .ant-card-head-title { overflow: visible; }
+.proj-mod-h {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0;
+  padding: 0; border: none; background: none; font: inherit; color: inherit; cursor: pointer;
+}
+.proj-mod-h:disabled { cursor: default; }
+.proj-mod-h:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 2px; }
+.proj-mod-h > .anticon { color: var(--text-muted); font-size: 12px; }
+.proj-mod-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-mod.is-closed > .ant-card-body { display: none; }
+.proj-mod.is-closed > .ant-card-head { border-bottom: none; }
+.proj-mod-body { max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior-y: contain; min-width: 0; scrollbar-width: thin; }
+.proj-search { min-width: 0; }
+/* 项目附件一块（F-项目-18）：合同附件 / 项目方案 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
+.proj-att-sec { min-width: 0; }
+.proj-att-sec + .proj-att-sec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.proj-att-h { font-weight: 600; margin-bottom: 8px; }
+.proj-att-from { min-width: 0; }
+.proj-att-from + .proj-att-from { margin-top: 10px; }
+.proj-att-src { display: flex; align-items: center; min-width: 0; color: var(--text-muted); font-size: var(--fs-note, 12px); }
+.proj-att-src > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-att-link.ant-btn { padding-inline: 0; height: auto; font-size: inherit; max-width: 100%; }
+.proj-att-link.ant-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.att-compact > .muted { font-size: var(--fs-note, 12px); }
 /* 页头最左边那颗「显示项目列表」（PaneToggle，名单收起或在抽屉里时才有），照客户记录页 .rec-head */
 .proj-head { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
 .proj-head > .page-head { flex: 1; min-width: 0; }
@@ -1207,14 +1234,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    当前进程一圈慢呼吸；系统开了「减少动态效果」就不动。名字长了折行，不撑开节点卡 */
 .proj-stages { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .proj-stage-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
-.proj-stage-tabs { display: flex; gap: 4px; align-self: stretch; }
+/* U-项目-01：当前进程块里页签、节点都一行排开，太长左右滑、不折行 */
+.proj-stage-tabs { display: flex; gap: 4px; align-self: stretch; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
 /* 「完成节点 ▼」「新增沟通」（M-节点-04 / U-项目-06）：和页签同一行靠右；窄了整组换到下一行，不挤页签 */
 .proj-stage-acts { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; min-width: 0; }
 .proj-stage-tip { display: inline-flex; }
 .proj-stage-tip > .ant-btn:disabled { pointer-events: none; }
 .proj-stage-why { min-width: 0; overflow-wrap: anywhere; }
 .proj-stage-tab {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap;
   padding: 6px 10px; margin-bottom: -1px; border: none; border-bottom: 2px solid transparent;
   background: none; color: var(--text-muted); font: inherit; cursor: pointer; border-radius: var(--r-ctl) var(--r-ctl) 0 0;
 }
@@ -1228,38 +1256,66 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-tab.is-away.is-on { color: var(--text-muted); }
 .proj-stage-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .proj-stage-note { color: var(--text-muted); font-size: var(--fs-note, 12px); }
-.proj-stage-nodes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 6px; }
-.proj-stage-node {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
-  padding: 4px 10px 4px 6px; border-radius: 14px; border: 1px solid var(--line-soft); color: var(--text-muted);
+/* 10-31 箭头步骤条：每个进程一块定宽的箭头（左凹右尖、首尾相接），块里居中「圆点 + 名字」。
+   一排放不下就横向滚（触控板 / 滚轮 / 两头小箭头），打开时 ProjectStages 把「当前」滚到中间。
+   当前：浅蓝底 + 蓝描边 + 橙点；其余：浅灰底、灰点；走过的：灰底 + 绿底白勾。
+   描边靠两层：块本身是描边色、::before 缩进 2px 是底色（clip-path 会把 border 一起切掉）。 */
+.proj-stage-strip { position: relative; min-width: 0; }
+.proj-stage-nodes {
+  list-style: none; margin: 0; padding: 2px 0 8px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
+  min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
 }
-.proj-stage-name { min-width: 0; overflow-wrap: anywhere; }
+.proj-stage-node, .proj-stage-exit {
+  --chev: 14px;
+  --chev-shape: polygon(0 0, calc(100% - var(--chev)) 0, 100% 50%, calc(100% - var(--chev)) 100%, 0 100%, var(--chev) 50%);
+  position: relative; isolation: isolate; box-sizing: border-box;
+  flex: 0 0 190px; width: 190px; height: 36px; margin-left: calc(3px - var(--chev));
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+  padding: 0 calc(var(--chev) + 6px); color: var(--text-muted); background: transparent;
+  clip-path: var(--chev-shape);
+}
+.proj-stage-node:first-child {
+  margin-left: 0;
+  --chev-shape: polygon(0 0, calc(100% - var(--chev)) 0, 100% 50%, calc(100% - var(--chev)) 100%, 0 100%);
+}
+.proj-stage-node::before, .proj-stage-exit::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; background: var(--hover); clip-path: var(--chev-shape);
+}
+/* 单个节点名太长：块里放不下就省略号，悬停看全名（title） */
+.proj-stage-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .proj-stage-mark {
-  width: 16px; height: 16px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
-  font-size: 10px; border: 1.5px solid var(--line-strong); color: var(--on-ink);
+  width: 8px; height: 8px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9px; background: var(--line-strong); color: var(--on-ink);
 }
 .proj-stage-node.is-done { color: var(--ink-soft); }
-.proj-stage-node.is-done .proj-stage-mark { background: var(--stage-c); border-color: var(--stage-c); }
-.proj-stage-node.is-cur {
-  color: var(--ink); font-weight: 600; border-color: var(--stage-c);
-  background: color-mix(in srgb, var(--stage-c) 8%, transparent);
-}
-.proj-stage-node.is-cur .proj-stage-mark { border-color: var(--stage-c); animation: proj-stage-ring 2.4s ease-in-out infinite; }
-.proj-stage-cur { font-size: var(--fs-min, 11px); font-weight: 400; color: var(--stage-c); }
+.proj-stage-node.is-done .proj-stage-mark, .proj-stage-exit.is-done .proj-stage-mark { width: 14px; height: 14px; background: var(--success); }
+.proj-stage-node.is-cur { color: var(--ink); font-weight: 600; background: var(--brand); }
+.proj-stage-node.is-cur::before { inset: 2px; background: var(--brand-bg); }
+.proj-stage-node.is-cur .proj-stage-mark { background: var(--warning); animation: proj-stage-ring 2.4s ease-in-out infinite; }
+.proj-stage-node.is-cur .ant-tag { flex: none; }
+.proj-stage-cur { flex: none; font-size: var(--fs-min, 11px); font-weight: 400; color: var(--brand); }
 @keyframes proj-stage-ring {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--stage-c) 35%, transparent); }
-  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--stage-c) 0%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 45%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 0%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .proj-stage-node.is-cur .proj-stage-mark { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--stage-c) 25%, transparent); }
+  .proj-stage-node.is-cur .proj-stage-mark { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 30%, transparent); }
 }
-/* A-12：线索/商机列表末尾的出口（已转商机 / 商机赢单）：虚线框，和节点区分开 */
-.proj-stage-exit {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
-  padding: 4px 10px 4px 6px; border-radius: 14px; border: 1px dashed var(--line-strong); color: var(--text-faint);
+/* A-12：线索/商机列表末尾的出口（已转商机 / 商机赢单）：细灰描边、白底，和进程块区分开；走过了换绿描边 */
+.proj-stage-exit { color: var(--text-faint); background: var(--line-strong); }
+.proj-stage-exit::before { inset: 1.5px; background: var(--panel); }
+.proj-stage-exit.is-done { color: var(--ink-soft); background: var(--success); }
+.proj-stage-exit.is-done::before { background: var(--success-bg); }
+/* 两头的小箭头：只在那一侧还有没露出来的块时出现，叠在这排上面，不挤占宽度 */
+.proj-stage-scroll {
+  position: absolute; top: 2px; z-index: 1; width: 26px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text-muted); cursor: pointer;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 12%, transparent);
 }
-.proj-stage-exit.is-done { color: var(--ink-soft); border-style: solid; border-color: var(--stage-c); }
-.proj-stage-exit.is-done .proj-stage-mark { background: var(--stage-c); border-color: var(--stage-c); }
+.proj-stage-scroll.is-l { left: 0; }
+.proj-stage-scroll.is-r { right: 0; }
+.proj-stage-scroll:hover { color: var(--ink); background: var(--hover); }
+.proj-stage-scroll:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 /* 「完成节点」框里缺的必填 */
 .proj-miss-list { margin: 4px 0 0; padding-left: 20px; overflow-wrap: anywhere; }
 
