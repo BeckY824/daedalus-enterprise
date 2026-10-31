@@ -26,7 +26,7 @@ import { dayjs } from "../utils";
 import { 看全部 } from "../team-scope";
 import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
-import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
@@ -579,6 +579,8 @@ export async function 领取公海项目(me: 谁, projectId: string): Promise<�
     }
     // 原负责人领不回：企业版看 公海规则（10-26 定稿「非原负责人均可领取」），别的版本照旧
     if (me.id === p.ownerId && !(企业版() && 公海规则.原负责人能领回)) return { ok: false as const, error: 企业版() ? 原负责人不能领回提示 : "自己放回公海的项目不能自己领回" };
+    // 企业版项目不单独领（10-31 晚定；无效客户、原负责人先说更具体的原因），只能随客户一起领（pool-actions 领取）或主管分配
+    if (拦单独领项目()) return { ok: false as const, error: 项目不能单独领提示 };
     const 超 = await 超上限(tx, 规则, me.id, p);
     if (超) return { ok: false as const, error: 超 };
     await tx.project.update({ where: { id: p.id }, data: { ownerId: me.id, pooledAt: null } });

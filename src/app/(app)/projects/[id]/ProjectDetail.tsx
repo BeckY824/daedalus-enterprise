@@ -9,6 +9,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
+import { 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -1077,7 +1078,7 @@ export default function ProjectDetail({
       {p.企业版 && 企业版动作}
 
       {p.pooled && (
-        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在项目公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在项目公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 ? 项目不能单独领提示 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
       )}
 
       {异常 && (

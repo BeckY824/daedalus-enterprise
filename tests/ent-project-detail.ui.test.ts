@@ -687,7 +687,7 @@ it("R5 阶段页签：三个页签、默认选所在阶段；进程按字典列�
     expect(await page.locator(".proj-stage-acts button").allInnerTexts()).toEqual(["推进进程", "结束当前进程"]);
     await page.getByRole("tab", { name: "商机" }).click();
     expect(await 阶段签(page)).toEqual(["线索", "*商机", "订单当前阶段"]);
-    expect(await 节点们(page)).toEqual(["痛点挖掘", "方案确认", "成交推进", "合同审批", "签订合同", "首款到账"].map(n => `done:${n}✓`));
+    expect(await 节点们(page)).toEqual(["痛点挖掘", "方案敲定", "成交推进", "合同审批", "签订合同", "首款到账"].map(n => `done:${n}✓`));
     expect(await page.locator(".proj-stage-note").innerText()).toBe("「商机」阶段已经走完，只能看，不能改");
     // 键盘：Home 到线索，End 回订单
     await page.getByRole("tab", { name: "商机" }).press("Home");
@@ -699,7 +699,7 @@ it("R5 阶段页签：三个页签、默认选所在阶段；进程按字典列�
     await page.getByRole("tab", { name: "线索" }).click();
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "商机", node: "合同审批" }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("商机"));
-    expect(await 节点们(page)).toEqual(["done:痛点挖掘✓", "done:方案确认✓", "done:成交推进✓", "cur:合同审批", "todo:签订合同", "todo:首款到账"]);
+    expect(await 节点们(page)).toEqual(["done:痛点挖掘✓", "done:方案敲定✓", "done:成交推进✓", "cur:合同审批", "todo:签订合同", "todo:首款到账"]);
     await page.getByRole("tab", { name: "订单" }).click();
     expect(await page.locator(".proj-stage-note").innerText()).toBe("还没到「订单」阶段，只能看，不能改");
     expect(errors).toEqual([]);

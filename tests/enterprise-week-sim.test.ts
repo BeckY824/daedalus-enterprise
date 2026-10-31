@@ -40,6 +40,7 @@ import { 建档向导, 改项目节点, 放回项目公海, 领取项目, 编辑
 import { saveLead, convertLead } from "@/app/(app)/leads/actions";
 import { dayjs } from "@/lib/utils";
 import { 收回提醒尾 } from "@/lib/project/db";
+import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
 import { 建公司, type 公司 } from "./sim/公司";
@@ -311,6 +312,8 @@ async function 扫(时刻: string): Promise<number> {
 /** 开关开：每条第四节规则一个检查点 */
 async function 剧本开() {
   P3领到的人 = null;
+  // 剧本按 10-26 规则写了从项目公海单独领（D3 / D4 / D7）；10-31 晚起默认只随客户领（ent-pool-rules 末组测），这里开着测领取这条路
+  公海规则.项目能单独领 = true;
   await 开局(true);
   const 分配 = await 要("app/(app)/leads/assign-actions", "分配线索", "D-38");
   const 设配额 = await 要("app/(app)/leads/assign-actions", "设配额", "D-38");
@@ -676,7 +679,7 @@ async function 剧本关() {
 
 describe.skipIf(!开关开能跑)("一周模拟 · 开关开（第四节规则）", () => {
   beforeAll(async () => { await 剧本开(); }, 120_000);
-  afterAll(() => { 停掉假时间(); vi.unstubAllEnvs(); });
+  afterAll(() => { 停掉假时间(); vi.unstubAllEnvs(); 公海规则.项目能单独领 = false; });
 
   for (const [id, 说] of Object.entries(检查点)) {
     const 红 = 红清单[id];

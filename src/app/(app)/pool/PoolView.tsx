@@ -2,7 +2,8 @@
 
 /**
  * 企业版统一公海（2026-10-29，P7）：客户公海 + 项目公海一张表。
- * 上面一排：公海属性（全部 / 线索 / 商机 / 其他，带数，全部 = 三者之和；一排不折行，窄了横向滚）、入池原因下拉（带数和一行说明）、排序、搜索。
+ * 上面一排（10-31 晚定：入池原因、排序、搜索和属性放同一行）：公海属性（全部 / 线索池 / 商机池 / 其他，带数，全部 = 三者之和；
+ * 属性块自己不折行，窄了横向滚）、入池原因下拉（带数和一行说明）、排序、搜索；整排太窄才把后面几个挤到下一行
  * 条件都在地址栏（useUrlFilters），服务端筛排分页；规矩见 lib/enterprise/unified-pool.ts
  *
  * 10-30 交互改版：领取、分配都带 6 秒撤销（规则 B）；老板、主管行内「⋯」和批量里有「分配给…」，业务员没有；
@@ -20,7 +21,7 @@ import { PageHead, RowLink } from "@/components/ui";
 import { smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
 import { useUrlFilters } from "@/lib/url-filters";
 import { 带走说法 } from "@/lib/carry-over";
-import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
 import { 领取项目 } from "../projects/actions";
@@ -48,7 +49,7 @@ type Props = {
   持有: { 有: number; 上限: number } | null;
 };
 
-const 属性色: Record<公海属性, string> = { 线索: "green", 商机: "blue", 其他: "default" };
+const 属性色: Record<公海属性, string> = { 线索池: "green", 商机池: "blue", 其他: "default" };
 
 /** 入池原因下拉里每一项的一行说明（规则 C）：「多次退回」的门槛是常量，跟着改 */
 const 快捷说明: Record<快捷, string> = {
@@ -95,6 +96,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   function 领不了(r: 公海行): string | null {
     if (r.类 === "无效") return 无效原因;
     if (r.原负责人是我) return 原负责人不能领回提示;
+    // 项目只能随客户一起领（10-31 晚定，pool-rules.ts）；主管照样能分配
+    if (r.种 === "项目" && !公海规则.项目能单独领) return 项目不能单独领提示;
     if (r.种 === "项目" && 到上限) return `你已持有 ${持有!.有} / ${持有!.上限}`;
     return null;
   }
@@ -259,7 +262,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   ];
 
   const 筛选 = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 8px", minWidth: 0 }}>
       <div style={{ overflowX: "auto", maxWidth: "100%" }}>
         <Segmented
           aria-label="公海属性"
@@ -269,33 +272,31 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
           options={(["全部", ...公海属性们] as const).map((k) => ({ value: k, label: `${k} ${属性数[k]}` }))}
         />
       </div>
-      <Space wrap size={[6, 6]}>
-        <Select size="small" style={{ width: 150 }} aria-label="入池原因" placeholder="入池原因" allowClear
-          popupMatchSelectWidth={260}
-          value={f.quick || undefined}
-          onChange={(v) => apply({ quick: v ?? "" })}
-          options={快捷们.map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
-          optionRender={(o) => (
-            <div>
-              <div>{o.label}</div>
-              <div className="muted" style={{ fontSize: 12, whiteSpace: "normal" }}>{快捷说明[o.value as 快捷]}</div>
-            </div>
-          )}
-        />
-        <Select size="small" style={{ width: 132 }} aria-label="排序"
-          value={f.sort || 默认排序}
-          onChange={(v) => apply({ sort: v === 默认排序 ? "" : v })}
-          options={排序们.map((o) => ({ value: o.value, label: `按${o.label}` }))}
-        />
-        <ListSearch
-          value={f.keyword}
-          onChange={(v) => setF({ ...f, keyword: v })}
-          onSearch={(v) => apply({ keyword: v })}
-          placeholder="搜客户名 / 项目名"
-          width={200}
-        />
-        <ResetFilters 显示={在筛} onClick={reset} />
-      </Space>
+      <Select style={{ width: 150 }} aria-label="入池原因" placeholder="入池原因" allowClear
+        popupMatchSelectWidth={260}
+        value={f.quick || undefined}
+        onChange={(v) => apply({ quick: v ?? "" })}
+        options={快捷们.map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
+        optionRender={(o) => (
+          <div>
+            <div>{o.label}</div>
+            <div className="muted" style={{ fontSize: 12, whiteSpace: "normal" }}>{快捷说明[o.value as 快捷]}</div>
+          </div>
+        )}
+      />
+      <Select style={{ width: 132 }} aria-label="排序"
+        value={f.sort || 默认排序}
+        onChange={(v) => apply({ sort: v === 默认排序 ? "" : v })}
+        options={排序们.map((o) => ({ value: o.value, label: `按${o.label}` }))}
+      />
+      <ListSearch
+        value={f.keyword}
+        onChange={(v) => setF({ ...f, keyword: v })}
+        onSearch={(v) => apply({ keyword: v })}
+        placeholder="搜客户名 / 项目名"
+        width={200}
+      />
+      <ResetFilters 显示={在筛} onClick={reset} />
     </div>
   );
 

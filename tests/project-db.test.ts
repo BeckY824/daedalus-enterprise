@@ -16,6 +16,7 @@ import {
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 限定条件 } from "@/lib/team-scope";
 import { dayjs } from "@/lib/utils";
+import { 公海规则 } from "@/lib/enterprise/pool-rules";
 
 let 老板: { id: string; role: string };
 let 乙: { id: string; role: string };
@@ -249,9 +250,9 @@ describe("异常类别字典", () => {
 });
 
 describe("项目公海", () => {
-  // 下面默认按企业版跑；「不是企业版」那条自己关掉
-  beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", "1"); });
-  afterEach(() => { vi.unstubAllEnvs(); });
+  // 下面默认按企业版跑；「不是企业版」那条自己关掉。测领取这条路，项目能单独领开着（10-31 起默认关，见 ent-pool-rules）
+  beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", "1"); 公海规则.项目能单独领 = true; });
+  afterEach(() => { vi.unstubAllEnvs(); 公海规则.项目能单独领 = false; });
 
   it("负责人在线索 / 商机阶段能放回；订单阶段、别人、已在公海都拦", async () => {
     const 线索 = await 项目(乙.id);
