@@ -21,6 +21,7 @@ import { 管全队客户 } from "@/lib/constants";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
+import { 建档向导数据 } from "../projects/new/screen";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-perm";
@@ -85,8 +86,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     return Number.isSafeInteger(n) && n > 0 ? n : fallback;
   };
   const pageSize = Math.min(100, Math.max(10, 正整数(sp.pageSize, 20)));
-  // 首页「开始」卡的 ?new=1：项目模式开着时新建走建档向导
-  if (b.projectMode && sp.new === "1") redirect("/projects/new");
+  // 首页「开始」卡的 ?new=1：项目模式开着时新建走建档向导（企业版在本页弹「新增客户」向导框，U-新建-01）
+  if (b.projectMode && sp.new === "1" && !企业版()) redirect("/projects/new");
   // 企业版项目模式：公海统一在 /pool（P7），老链接 ?pool=1 转过去，关键词带上
   if (企业版() && b.projectMode && sp.pool === "1") redirect(sp.keyword ? `/pool?${new URLSearchParams({ keyword: sp.keyword })}` : "/pool");
   const sort = sp.sort === "amount-asc" || sp.sort === "amount-desc" ? sp.sort : "";
@@ -191,6 +192,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       users={users}
       channels={channels}
       直接新建={sp.new === "1"}
+      // 企业版项目模式：「新建客户」在本页弹向导框「新增客户」（U-新建-01），向导要的数据一起给
+      建档={企 && b.projectMode ? await 建档向导数据(me) : null}
       /* ?import=paste：直接把导入抽屉开在「粘一段文本」那一栏（首页那张「开始」卡指过来） */
       直接粘贴={sp.import === "paste"}
       filters={{
@@ -218,6 +221,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       客户状态自动={企 && (await 客户状态自动())}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
+      // 客户属性（A-17，字典 custAttr）：表单下拉、列表一列、看板按它分列；看板要整份字典（含停用）排旧值的位置
+      客户属性选项={企 ? await 页面可选项("custAttr") : []}
+      客户属性字典={企 ? (await 页面字典("custAttr")).map((x) => ({ name: x.name, active: x.active })) : []}
       字典释义={企 ? await 页面客户释义() : undefined}
       部门选项={部门选项}
       只读ids={只读ids}

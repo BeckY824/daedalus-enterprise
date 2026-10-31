@@ -3,7 +3,7 @@
 import Heat from "@/components/Heat";
 import { useEffect, useState, useSyncExternalStore, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Select, Space, Dropdown, App, Tag, Popover, Segmented, type MenuProps } from "antd";
+import { Button, Select, Space, Dropdown, App, Tag, Popover, Segmented, Pagination, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
   PlusOutlined,
@@ -37,7 +37,9 @@ import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { WhatsApp网址, 官网网址, 官网短写, 客户等级, 客户等级说明, type 客户等级 as 等级 } from "@/lib/customer-extra";
 import { 级别选项, 拼地址 } from "@/lib/enterprise/customer-v2";
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
-import LevelStars from "@/components/LevelStars";
+import LevelLetter from "@/components/LevelLetter";
+import { useLocalPref } from "@/lib/local-pref";
+import { 客户看板分列 } from "@/lib/enterprise/cust-attr";
 import LocalTime from "@/components/LocalTime";
 import { 未分级 } from "./query-shared";
 import { useUrlFilters } from "@/lib/url-filters";
@@ -48,6 +50,7 @@ import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import ResetFilters from "@/components/ResetFilters";
 import CurrencySelect from "@/components/CurrencySelect";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
+import { 建档弹窗, type 建档数据 } from "../projects/new/ProjectWizard";
 
 /**
  * 批量操作的结果文案。
@@ -89,6 +92,8 @@ type Props = {
   channels: Option[];
   /** 进来就把新建表单打开（首页空库那张「开始」卡的落点） */
   直接新建?: boolean;
+  /** 企业版项目模式：「新建客户」弹建档向导框（U-新建-01）要的数据；null = 照旧（项目模式跳 /projects/new） */
+  建档?: 建档数据 | null;
   /** 进来就把导入抽屉开在「粘一段文本」那一栏。主线入口，见 dashboard/HomeChat.tsx */
   直接粘贴?: boolean;
   /**
@@ -175,6 +180,10 @@ type Props = {
   分配方式选项?: string[];
   /** 企业版客户类型的可选项（字典 custType 启用中的，2026-10-29 P13 第 4 条）；别的版本空 */
   客户类型选项?: string[];
+  /** 企业版客户属性的可选项（字典 custAttr 启用中的，A-17）；别的版本空 */
+  客户属性选项?: string[];
+  /** 企业版客户属性整份字典（含停用，按字典顺序）：看板分列、旧值排位置用（U-客户-06）；别的版本空 = 不摆看板 */
+  客户属性字典?: { name: string; active: boolean }[];
   /** 企业版客户状态、客户类型每项的释义（名字 → 一行灰字，10-30）；别的版本不给 */
   字典释义?: 客户字典释义;
 };
@@ -195,7 +204,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 字典释义,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -311,6 +320,7 @@ export default function CustomersView({
    */
   const 统一公海 = 企业 && b.projectMode === true;
   const 新建 = () => {
+    if (b.projectMode && 建档) return set建档开着(true);
     if (b.projectMode) return router.push("/projects/new");
     setEditing(null);
     setFormOpen(true);
@@ -332,11 +342,20 @@ export default function CustomersView({
   /** 「公海」页签（按服务端这次查询的条件判，不按草稿） */
   const 公海页 = filters.pool === "1";
   const [editing, setEditing] = useState<CustomerRow | null>(null);
+  /**
+   * 企业版客户页「列表 / 看板」（U-客户-06，10-31 会议）：看板按客户属性（字典 custAttr）分列，交互同项目页。
+   * 公海页签、子集里不摆看板；看板分的是这一页取回来的客户（分页照旧在看板下面）
+   */
+  const 能看板 = 企业 && 客户属性字典.length > 0 && !公海页;
+  const [存的看法, set看法] = useLocalPref<"列表" | "看板">("customers-view", "列表");
+  const 看法 = 能看板 ? 存的看法 : "列表";
   const [导出中, set导出中] = useState(false);
   const [导出进度, set导出进度] = useState("");
   const 导出取消 = useRef<AbortController | null>(null);
   useEffect(() => () => 导出取消.current?.abort(), []);
-  const [formOpen, setFormOpen] = useState(Boolean(直接新建));
+  const [formOpen, setFormOpen] = useState(Boolean(直接新建) && !建档);
+  /** 「新增客户」向导框（U-新建-01）：和 /projects/new 同一个向导，弹在本页 */
+  const [建档开着, set建档开着] = useState(Boolean(直接新建 && 建档));
   const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出);
   /** ?new=1 / ?import=paste 进来就开：等水合完再开。服务端先画一个开着的弹窗，会和客户端那一版对不上（跟进页同一写法） */
   const 已水合 = useSyncExternalStore(无订阅, () => true, () => false);
@@ -415,7 +434,7 @@ export default function CustomersView({
   /**
    * 企业版客户改版（定稿 P5 第 22、23 条）：外贸那几列（国家、WhatsApp、邮箱、微信、阿里 ID、来源）不摆，
    * 换成级别 S/A/B/C（排序同一个 level 键，S 在 A 前）、地址、官网、分配方式；后三列收在「列」里。
-   * P13（2026-10-29）：级别画成星（components/LevelStars.tsx，4 格等宽，76 宽放得下）；加「客户类型」一列，
+   * P13（2026-10-29）：级别画成星；10-31 会议 F-客户-01 改回只显示字母（components/LevelLetter.tsx）；加「客户类型」一列，
    * 字典项可以改成很长的字，超出 96 宽省略、悬停看全；默认收在「列」里，列表还是六列（1024 宽排得下）
    */
   const 企业列: 列<CustomerRow>[] = [
@@ -423,12 +442,16 @@ export default function CustomersView({
       title: "级别", key: "level", width: 76,
       sorter: true,
       sortOrder: 等级排序 === "level-asc" ? "ascend" : 等级排序 === "level-desc" ? "descend" : null,
-      render: (_: unknown, r) => <LevelStars level={r.extra?.level} 空={空} />,
+      render: (_: unknown, r) => <LevelLetter level={r.extra?.level} 空={空} />,
     },
     {
       title: "客户类型", key: "customerType", width: 96, 默认: false,
       render: (_: unknown, r) => (r.customerType ? <span className="clamp-1" style={{ display: "block" }} title={r.customerType}>{r.customerType}</span> : 空),
     },
+    ...(企业 ? [{
+      title: "客户属性", key: "customerAttr", width: 112, 默认: false,
+      render: (_: unknown, r: CustomerRow) => (r.customerAttr ? <span className="clamp-1" style={{ display: "block" }} title={r.customerAttr}>{r.customerAttr}</span> : 空),
+    }] : []),
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
     {
       title: "官网", key: "website", width: 170, 默认: false,
@@ -589,6 +612,7 @@ export default function CustomersView({
           /* 主动作在页头右上角，全站六张列表页同一个位置（设计稿 11/PAGE）。
              导出是次动作，排在它左边，空库时没什么可导，不出现 */
           <Space>
+            {能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />}
             {/* 导入和导出都是次动作，排在主动作左边。导入空库时也要在——
                 第一次进来的人手上那份 Excel 正是他不想一条条录的原因 */}
             {能导入导出 && <Button icon={<ImportOutlined />} onClick={() => set导入开着(true)}>导入</Button>}
@@ -897,6 +921,7 @@ export default function CustomersView({
           if (key === "signedAmount") apply({ sort: order === "ascend" ? "amount-asc" : order === "descend" ? "amount-desc" : "", sortCurrency: f.sortCurrency || b.currency });
           if (key === "level") apply({ sort: order === "ascend" ? "level-asc" : order === "descend" ? "level-desc" : "" });
         }}
+        替表格={看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
         汇总={金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}
         分页={{
           当前页: page,
@@ -905,6 +930,8 @@ export default function CustomersView({
           翻页,
         }}
       />
+
+      {建档 && <建档弹窗 open={建档开着 && 已水合} 标题="新增客户" 数据={建档} onClose={() => set建档开着(false)} />}
 
       <CustomerForm
         open={formOpen && 已水合}
@@ -918,6 +945,7 @@ export default function CustomersView({
         客户状态自动={客户状态自动}
         分配方式选项={分配方式选项}
         客户类型选项={客户类型选项}
+        客户属性选项={客户属性选项}
         字典释义={字典释义}
         onClose={(saved) => {
           setFormOpen(false);
@@ -937,5 +965,70 @@ export default function CustomersView({
         有别的成员={users.length > 1}
       />}
     </>
+  );
+}
+
+/**
+ * 客户看板（U-客户-06）：一列一个客户属性（lib/enterprise/cust-attr.ts 客户看板分列），没填的进「未设置」、没人时不摆。
+ * 列多（10 项起），沿用项目看板的 .pipe：等宽排、放不下折行，不横滚；有空列时空列收成 88 宽的窄条把地方让给有客户的列。
+ * 卡片：客户名（整段显示，同项目看板 10-30）、级别字母、客户状态、负责人
+ */
+function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 总数, 翻页, 去 }: {
+  行们: CustomerRow[];
+  字典: { name: string; active: boolean }[];
+  加载中: boolean;
+  页: number;
+  每页: number;
+  总数: number;
+  翻页: (页: number, 每页: number) => void;
+  去: (id: string) => void;
+}) {
+  const 列们 = 客户看板分列(行们, (r) => r.customerAttr, 字典);
+  const 有空列 = 列们.some((c) => c.行们.length === 0) && 列们.some((c) => c.行们.length > 0);
+  return (
+    <div className="pipe-wrap cust-board" aria-busy={加载中}>
+      <div className="pipe" style={有空列 ? { display: "flex", flexWrap: "wrap", gap: "var(--s3)", alignItems: "start" } : undefined}>
+        {列们.map((c) => {
+          const 收 = 有空列 && c.行们.length === 0;
+          return (
+            <div key={c.key ?? "\u0000未设置"} className="pipe-col" aria-label={`${c.名}${c.停用 ? "（已停用）" : ""}，${c.行们.length} 位客户`}
+              style={有空列 ? (收 ? { flex: "0 0 88px" } : { flex: "1 1 184px", minWidth: 0 }) : undefined}>
+              <div className="pipe-h">
+                <b className="clamp-1" title={c.名}>{c.名}</b>
+                <span className="pipe-n">{c.行们.length}</span>
+                {c.停用 && !收 && <Tag style={{ marginInlineEnd: 0 }}>停用</Tag>}
+              </div>
+              <div className="pipe-bar" style={{ background: c.key === null ? "var(--line-strong)" : "var(--brand)" }} />
+              {c.行们.map((r) => (
+                <div key={r.id} className="pipe-card" tabIndex={0} role="link" title={r.name} aria-label={`${r.name}，${r.salesOwnerName}`}
+                  onClick={() => 去(r.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      去(r.id);
+                    }
+                  }}
+                >
+                  <div className="pipe-card-t fulltext">{r.name}</div>
+                  <div className="pipe-card-m">
+                    <span className="pipe-card-o cust-board-meta">
+                      <LevelLetter level={r.extra?.level} 空={null} />
+                      {r.custStatus && <span className="clamp-1" title={r.custStatus}>{r.custStatus}</span>}
+                    </span>
+                    <span className="pipe-card-o clamp-1" title={r.salesOwnerName}>{r.pool ? "公海" : r.salesOwnerName}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      {总数 > 每页 && (
+        <div className="cust-board-page">
+          <Pagination size="small" current={页} pageSize={每页} total={总数} showSizeChanger={false} onChange={(p) => 翻页(p, 每页)}
+            showTotal={(t) => `共 ${t} 位，看板分的是这一页的 ${行们.length} 位`} />
+        </div>
+      )}
+    </div>
   );
 }

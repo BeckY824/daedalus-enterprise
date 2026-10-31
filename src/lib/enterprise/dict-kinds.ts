@@ -1,5 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance", "followMethod", "projCycle", "projFit", "projValue", "projReach", "projRival", "projDeploy", "projSite", "contactTitle"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance", "followMethod", "projCycle", "projFit", "projValue", "projReach", "projRival", "projDeploy", "projSite", "contactTitle", "custAttr"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -103,6 +103,16 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
       "景区、商场、场馆、文旅企业这类单位，买来自己运营",
       "还没判断出是哪类买家",
     ],
+  },
+  /*
+    客户属性（2026-10-31 会议，F-客户-04 / A-17）：客户看板按它分组，存在 Customer.customerAttr（迁移 104）。
+    默认这 10 项、按这个顺序；管理员能在设置里自己加。已部署的库里旧的那几项用 scripts/sync-cust-attr.ts 停用（不删），
+    已经用了旧值的客户原值留着
+  */
+  custAttr: {
+    名: "客户属性",
+    说明: "客户是哪一类主体，客户看板按它分列。",
+    默认: ["自用非商用", "个人投资者", "个体工商户", "商贸代理公司", "文旅商业公司", "文旅主管单位", "科教文体单位", "国企国资平台", "园区管委会", "招标代理商"],
   },
   /*
     项目关联客户 / 联系人（2026-10-29，P17）：项目详情页「关联客户」「关联联系人」里给每一位标，存在关联那一行上

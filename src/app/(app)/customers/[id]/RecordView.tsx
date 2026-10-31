@@ -2,7 +2,7 @@
 
 import { useFollowHistory } from "./useFollowHistory";
 import { loadCustomerFeed } from "./follow-history-actions";
-import { CustomerResearchCard } from "./useCustomerResearch";
+import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch";
 
 
 import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -49,7 +49,7 @@ import AiPanel from "./AiPanel";
 import LinkedCustomers from "./LinkedCustomers";
 import NewProjectModal from "./NewProjectModal";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
-import LevelStars from "@/components/LevelStars";
+import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import { toggleTask, deleteTask, deleteFollowUp, restoreFollowUp, completePlan, saveFollowUp } from "./actions";
@@ -177,6 +177,7 @@ export default function RecordView({
   职务选项,
   分配方式选项 = [],
   客户类型选项 = [],
+  客户属性选项 = [],
   字典释义,
   新建项目 = null,
   跟进去处 = null,
@@ -253,7 +254,7 @@ export default function RecordView({
             ...(!外贸 ? [customer.expectedSignAt] : []),
             customer.remark,
           ]
-        : [customer.phone, customer.shortName, customer.school, 级别值, customer.customerType, 地址文字, 档?.website, customer.assignWay, customer.remark]
+        : [customer.phone, customer.shortName, customer.school, 级别值, customer.customerType, customer.customerAttr, 地址文字, 档?.website, customer.assignWay, customer.remark]
       ).filter((v) => v === null || v === undefined || v === "").length
     : 0;
   /** 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp */
@@ -569,9 +570,9 @@ export default function RecordView({
   /** 转给谁：在职成员里去掉现任 */
   const 转让候选 = 成员选项(users).filter((o) => o.value !== customer.salesOwnerId);
   const 能转让 = 去项目跟进 && !只读 && !customer.pool && 转让候选.length > 0;
+  const 能退回公海 = 去项目跟进 && !只读 && !独自一人(users) && 能放公海 && !customer.pool;
   /** 「管理联系人」框里列谁：和联系人卡上露编辑 / 删除的是同一拨（见 联系人操作） */
   const 可管联系人 = 只读 ? [] : contacts.filter((c) => !c.挂靠 || c.挂靠.能改);
-  const 能管关联 = !!(摆法.关联客户 && 关联们 && !只读);
   /** 先关框、再开下一个（表单、确认框），不叠两层（同项目详情） */
   const 换框 = (f: () => void) => () => { set头部框(null); f(); };
 
@@ -623,7 +624,8 @@ export default function RecordView({
   const 联系人操作 = (c: ContactRow) => !只读 && (!c.挂靠 || c.挂靠.能改) && (
     <span className="rec-mini-acts">
       <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${c.name}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
-      {!c.挂靠 && <Button
+      {/* 企业版项目模式去掉「管理联系人」后，删联系人不再给入口（U-客户-03）；编辑照旧给有权限的人 */}
+      {!c.挂靠 && !去项目跟进 && <Button
         type="text"
         size="small"
         danger
@@ -634,6 +636,76 @@ export default function RecordView({
       />}
     </span>
   );
+
+  /* 待办两处都留（P14 第 2 条）：这位客户的任务；企业版再摆没完成的跟进计划、各项目的下一步（只读，点了去办）。
+     企业版项目模式挪到页面底部、占满宽（U-客户-03）；其余照旧在右栏 */
+  const 待办卡 = 摆法.待办 ? (
+    <div className={`rec-card rec-side-card${去项目跟进 ? " rec-todo-bottom" : ""}`} aria-label="待办">
+      <div className="rec-side-t">
+        <span>待办 {待办数 > 0 && 待办数}</span>
+        {!只读 && (
+          <Button type="link" size="small" style={{ padding: 0, height: "auto", fontWeight: 400 }} icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
+            新建任务
+          </Button>
+        )}
+      </div>
+      {待办行.length === 0 && 计划行.length === 0 && 下一步行.length === 0 && <Typography.Text type="secondary" style={{ fontSize: 13 }}>暂无待办</Typography.Text>}
+      {计划行.map((p) => (
+        <div key={`plan-${p.id}`} data-focus={`plan:${p.id}`} className="rec-task">
+          <span className="rec-task-k">计划</span>
+          <Link className="rec-task-t" href="/follow-ups/plans" title="到「跟进计划」里办">{p.subject}</Link>
+          <span className="rec-task-due" title={p.plannedAt ? fmtDateTime(p.plannedAt) : undefined} style={{ color: 已过期(p.plannedAt) ? "var(--danger)" : undefined }}>
+            {p.plannedAt ? 截止说法(p.plannedAt) : ""}
+          </span>
+        </div>
+      ))}
+      {下一步行.map((p) => (
+        <div key={`next-${p.id}`} className="rec-task">
+          <span className="rec-task-k">项目</span>
+          <Link className="rec-task-t" href={`/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
+            {p.下一步文字 ? `${p.名} · ${p.下一步文字}` : p.名}
+          </Link>
+          {p.下一步 && (
+            <span className="rec-task-due" title={fmtDateTime(p.下一步)} style={{ color: 已过期(p.下一步) ? "var(--danger)" : undefined }}>
+              {截止说法(p.下一步)}
+            </span>
+          )}
+        </div>
+      ))}
+      {/* 收起只淡出、不收高度：减弱动态时不许有位移，淡出在两种设置下都一样 */}
+      <AnimatePresence initial={false}>
+        {待办行.map((t) => (
+          <motion.div
+            key={t.id}
+            data-focus={`task:${t.id}`}
+            className={`rec-task${已完成(t) ? " is-done" : ""}`}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 时长.base, ease: 曲线.ease }}
+          >
+            <Checkbox checked={已完成(t)} disabled={只读} onChange={(e) => void 勾待办(t, e.target.checked)} aria-label={`完成 ${t.title}`} />
+            <span className="rec-task-t">{t.title}</span>
+            {/* 「逾期 2 天」而不是「2 天前」（审查 D1）：欠着没做的事，不是发生过的事 */}
+            <span className="rec-task-due" title={t.dueAt ? fmtDateTime(t.dueAt) : undefined} style={{ color: !已完成(t) && 已过期(t.dueAt) ? "var(--danger)" : undefined }}>
+              {t.dueAt ? 截止说法(t.dueAt) : ""}
+            </span>
+            {/* 就地确认：一条待办删了还能再建，一句话说得完，不值得弹框（见 components/InlineConfirm.tsx） */}
+            {!只读 && (
+              <InlineConfirm
+                问="删除这条？"
+                做={async () => {
+                  await deleteTask(t.id);
+                  message.success("待办已删除");
+                  router.refresh();
+                }}
+              >
+                <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label="删除待办" />
+              </InlineConfirm>
+            )}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  ) : null;
 
   return (
     <div className="rec-page">
@@ -695,47 +767,26 @@ export default function RecordView({
       </div>
 
       {/*
-        企业版页头按钮（10-31 改版 R6，照项目详情那排）：这一页能做的事摆成具名按钮，不再收进「跟进」旁边的下拉；要挑、要管的进弹窗。
-        不放名字右边，单独一行摆在名字下面，按下面三栏分组、各自对齐那一栏的左边（10-31 用户定；列宽、断点和 .rec 一样）：
-        左组管资料栏（资料、联系人、关联、开项目），中组管沟通栏（记一条沟通、AI），右组管右栏（新建任务）；
-        整个客户的事（转让、放回公海、删除）跟在中组最后、靠右。两栏时中组、右组并进第 2 栏，一栏时叠起来。
-        「记一条沟通」是唯一的主按钮：一个项目直接去、几个先挑、没有就开项目（P14 第 3 条）。虚线下属的客户只读：只摆主按钮，点进项目看
+        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简）：只留开项目、转让、退回公海。
+        编辑资料、添加 / 管理联系人、删除客户、AI、新建任务都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
+        「新建沟通」挪进沟通记录的标题上，「新建任务」跟着待办挪到页面底部，删除客户属权限限制不再给入口。
+        列宽、断点和 .rec 一样：左组对齐资料栏，整个客户的事（转让、退回公海）在中组最后、靠右
       */}
-      {去项目跟进 && (
+      {去项目跟进 && (能建项目 || 能转让 || 能退回公海) && (
         <div className="rec-acts">
           <div className="acts-g">
-            {!只读 && <Button onClick={() => setCustOpen(true)}>编辑{b.customer}资料</Button>}
-            {!只读 && <Button onClick={() => { setEditingContact(null); setContactOpen(true); }}>添加联系人</Button>}
-            {可管联系人.length > 0 && <Button onClick={() => set头部框("管理联系人")}>管理联系人</Button>}
-            {能管关联 && <Button onClick={() => set头部框("关联客户")}>关联客户</Button>}
-            {能管关联 && (关联们 ?? []).length > 0 && <Button onClick={() => set头部框("管理关联")}>管理关联</Button>}
-            {能建项目 && (跟进去处 ?? []).length > 0 && <Button onClick={() => set建项目开着(true)}>开项目</Button>}
+            {能建项目 && <Button onClick={() => set建项目开着(true)}>开项目</Button>}
           </div>
           <div className="rec-acts-r">
             <div className="acts-g">
-              <Button type="primary" onClick={点跟进}>
-                {跟进按钮字}
-              </Button>
-              {aiEnabled && (!量到 || AI在抽屉里) && (
-                <Button className={量到 ? undefined : "rec-ai-guess-btn"} icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)}>
-                  AI
-                </Button>
-              )}
-              {(能转让 || !只读) && (
+              {(能转让 || 能退回公海) && (
                 <span className="acts-whole">
                   {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>转让</Button>}
-                  {!只读 && !独自一人(users) && 能放公海 && !customer.pool && <Button onClick={() => void 公海动作("放进")}>放回公海</Button>}
-                  {!只读 && (
-                    <Button type="text" danger onClick={() => void 问删除([{ id: customer.id, name: customer.name }], () => router.push("/customers"))}>
-                      删除{b.customer}
-                    </Button>
-                  )}
+                  {能退回公海 && <Button onClick={() => void 公海动作("放进")}>退回公海</Button>}
                 </span>
               )}
             </div>
-            <div className="acts-g">
-              {摆法.待办 && !只读 && <Button onClick={() => setTaskOpen(true)}>新建任务</Button>}
-            </div>
+            <div className="acts-g" />
           </div>
         </div>
       )}
@@ -779,7 +830,7 @@ export default function RecordView({
           : customer.referrerName && <span className="rec-tags-n">来源：{customer.referrerName}</span>}
         {/* 客户等级（2026-10-16）：一枚字母章，放在国家前面——先看这位要花多少力气 */}
         {摆法.新字段
-          ? 级别值 && <span className="rec-tags-n"><LevelStars level={级别值} /></span>
+          ? 级别值 && <LevelLetter level={级别值} />
           : 外贸 && 档?.level && <span className={`cust-level cust-level-${档.level}`} title={`客户等级：${客户等级说明[档.level as 客户等级值] ?? 档.level}`}>{档.level}</span>}
         {外贸 && 摆法.旧字段 && 档?.country && <span className="rec-tags-n">{档.country}</span>}
         {/* 对方此刻几点（2026-10-16）：按国家首都的时区；和本机同一钟点时不显示 */}
@@ -840,7 +891,7 @@ export default function RecordView({
       <只读上下文.Provider value={只读}>
       <div ref={recRef} className={`rec${AI在抽屉里 ? " rec-2col" : ""}${单栏 ? " rec-1col" : ""}`}>
         {/* ================= 左栏：档案 ================= */}
-        <aside className="rec-rail rec-card">
+        <aside className={`rec-rail rec-card${去项目跟进 ? " rec-rail-blocks" : ""}`}>
           {/* 名字和头像不在这儿重画一遍：页头上已经有了（设计稿 12/PAGE 的「基本资料」卡
               第一行就是电话）。电话是只读的——改手机号要查重，走完整表单 */}
           <div className="rec-sec">
@@ -875,6 +926,10 @@ export default function RecordView({
                   <InlineField customerId={customer.id} field="customerType" label="客户类型" value={customer.customerType ?? null} kind="select"
                     options={[...new Set([...客户类型选项, ...(customer.customerType ? [customer.customerType] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空
                     释义={字典释义?.类型} />
+                )}
+                {摆(customer.customerAttr) && (
+                  <InlineField customerId={customer.id} field="customerAttr" label="客户属性" value={customer.customerAttr ?? null} kind="select"
+                    options={[...new Set([...客户属性选项, ...(customer.customerAttr ? [customer.customerAttr] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空 />
                 )}
                 {/* 地址五格（P14 第 7 条）：前四格拼成一行「所在地区」，第五格「客户地址」（公司详细地址）单独一行；都点「编辑全部」改 */}
                 {摆(地址文字) && (
@@ -1090,7 +1145,9 @@ export default function RecordView({
               ))}
             </div>
           )}
-          {摆法.关联客户 && 关联们 && <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} 不摆加={去项目跟进} />}
+          {摆法.关联客户 && 关联们 && <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} />}
+          {/* 企业版项目模式：客户背调挪到左栏，只摆状态标签，点开弹详情（U-客户-03；AI 改进后再挪显眼处） */}
+          {去项目跟进 && 摆法.背调卡 && aiEnabled && <CustomerResearchTag customerId={customer.id} customerName={customer.name} 档案={背调档案} on记跟进={点跟进} />}
           {!项目们 && (
             <div className="rec-sec">
               <div className="rec-sec-t">
@@ -1229,7 +1286,24 @@ export default function RecordView({
           {/* 企业版只用项目（P14 第 6 条）：只读的「沟通记录」，各项目的跟进汇总在这里，每条标出属于哪个项目 */}
           {/* 10-31 照图 04：模块标题放卡里、和别的模块标题一样大；原来那句「汇总各项目的沟通；点右上…」去掉——
               按钮已经挪到名字下面，每条也标了项目 */}
-          {摆法.沟通汇总 && <div className="rec-sec-t rec-tl-cap">沟通记录</div>}
+          {/* 「新建沟通」从页头挪到这里（U-客户-03）：一个项目直接去、几个先挑、没有就开项目。窄屏 AI 收进抽屉时，入口也摆在这 */}
+          {摆法.沟通汇总 && (
+            <div className="rec-sec-t rec-tl-cap">
+              <span>沟通记录</span>
+              {去项目跟进 && (
+                <Space size={4}>
+                  {aiEnabled && AI在抽屉里 && (
+                    <Button type="text" size="small" icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)}>
+                      AI
+                    </Button>
+                  )}
+                  <Button type="link" size="small" icon={<PlusOutlined />} onClick={点跟进}>
+                    新建沟通{(跟进去处 ?? []).length > 1 ? "…" : ""}
+                  </Button>
+                </Space>
+              )}
+            </div>
+          )}
           <div className="rec-filters">
             {["全部", ...跟进类型们(外贸).map((t) => t.value), ...(摆法.沟通汇总 ? [] : ["CONTRACT"])].map((k) => {
               const label = k === "全部" ? "全部" : k === "CONTRACT" ? 叫 : FOLLOW_TYPE_MAP[k]?.label ?? k;
@@ -1244,7 +1318,7 @@ export default function RecordView({
           <div className="rec-tl">
             {entries.length === 0 && (
               <div style={{ padding: "36px 0", textAlign: "center", color: "var(--text-muted)" }}>
-                {filter !== "CONTRACT" && history.hasMore ? "已加载的记录中暂无此类型，可继续加载更早的跟进。" : filter === "全部" ? (摆法.沟通汇总 ? `还没有沟通记录。点上方「${跟进按钮字}」记一条` : "还没有任何记录。上面随手记一笔，或粘一段聊天记录让 AI 整理。") : "这个类型下还没有记录"}
+                {filter !== "CONTRACT" && history.hasMore ? "已加载的记录中暂无此类型，可继续加载更早的跟进。" : filter === "全部" ? (摆法.沟通汇总 ? 去项目跟进 ? "还没有沟通记录。点右上「新建沟通」记一条" : `还没有沟通记录。点上方「${跟进按钮字}」记一条` : "还没有任何记录。上面随手记一笔，或粘一段聊天记录让 AI 整理。") : "这个类型下还没有记录"}
               </div>
             )}
             {/* 打开一位的记录时逐条进场（间隔 70ms、八条以后一起）——原来 initial={false}，
@@ -1292,76 +1366,9 @@ export default function RecordView({
 
             {/* 企业版：客户背调单独一张卡（P14 第 5 条），不挂在 AI 面板、「跟进」菜单里；AI 收进抽屉时它照样在右栏。
                 背调是 AI 的活，同 AI 面板一样只在开了 AI 时摆 */}
-            {摆法.背调卡 && aiEnabled && <CustomerResearchCard customerId={customer.id} customerName={customer.name} 档案={背调档案} on记跟进={点跟进} />}
+            {摆法.背调卡 && aiEnabled && !去项目跟进 && <CustomerResearchCard customerId={customer.id} customerName={customer.name} 档案={背调档案} on记跟进={点跟进} />}
 
-            {/* 待办两处都留（P14 第 2 条）：这位客户的任务；企业版再摆没完成的跟进计划、各项目的下一步（只读，点了去办） */}
-            {摆法.待办 && (
-            <div className="rec-card rec-side-card">
-              <div className="rec-side-t">
-                <span>待办 {待办数 > 0 && 待办数}</span>
-                {!只读 && !去项目跟进 && (
-                  <Button type="link" size="small" style={{ padding: 0, height: "auto", fontWeight: 400 }} icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
-                    新建任务
-                  </Button>
-                )}
-              </div>
-              {待办行.length === 0 && 计划行.length === 0 && 下一步行.length === 0 && <Typography.Text type="secondary" style={{ fontSize: 13 }}>暂无待办</Typography.Text>}
-              {计划行.map((p) => (
-                <div key={`plan-${p.id}`} data-focus={`plan:${p.id}`} className="rec-task">
-                  <span className="rec-task-k">计划</span>
-                  <Link className="rec-task-t" href="/follow-ups/plans" title="到「跟进计划」里办">{p.subject}</Link>
-                  <span className="rec-task-due" title={p.plannedAt ? fmtDateTime(p.plannedAt) : undefined} style={{ color: 已过期(p.plannedAt) ? "var(--danger)" : undefined }}>
-                    {p.plannedAt ? 截止说法(p.plannedAt) : ""}
-                  </span>
-                </div>
-              ))}
-              {下一步行.map((p) => (
-                <div key={`next-${p.id}`} className="rec-task">
-                  <span className="rec-task-k">项目</span>
-                  <Link className="rec-task-t" href={`/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
-                    {p.下一步文字 ? `${p.名} · ${p.下一步文字}` : p.名}
-                  </Link>
-                  {p.下一步 && (
-                    <span className="rec-task-due" title={fmtDateTime(p.下一步)} style={{ color: 已过期(p.下一步) ? "var(--danger)" : undefined }}>
-                      {截止说法(p.下一步)}
-                    </span>
-                  )}
-                </div>
-              ))}
-              {/* 收起只淡出、不收高度：减弱动态时不许有位移，淡出在两种设置下都一样 */}
-              <AnimatePresence initial={false}>
-                {待办行.map((t) => (
-                  <motion.div
-                    key={t.id}
-                    data-focus={`task:${t.id}`}
-                    className={`rec-task${已完成(t) ? " is-done" : ""}`}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 时长.base, ease: 曲线.ease }}
-                  >
-                    <Checkbox checked={已完成(t)} disabled={只读} onChange={(e) => void 勾待办(t, e.target.checked)} aria-label={`完成 ${t.title}`} />
-                    <span className="rec-task-t">{t.title}</span>
-                    {/* 「逾期 2 天」而不是「2 天前」（审查 D1）：欠着没做的事，不是发生过的事 */}
-                    <span className="rec-task-due" title={t.dueAt ? fmtDateTime(t.dueAt) : undefined} style={{ color: !已完成(t) && 已过期(t.dueAt) ? "var(--danger)" : undefined }}>
-                      {t.dueAt ? 截止说法(t.dueAt) : ""}
-                    </span>
-                    {/* 就地确认：一条待办删了还能再建，一句话说得完，不值得弹框（见 components/InlineConfirm.tsx） */}
-                    {!只读 && (
-                      <InlineConfirm
-                        问="删除这条？"
-                        做={async () => {
-                          await deleteTask(t.id);
-                          message.success("待办已删除");
-                          router.refresh();
-                        }}
-                      >
-                        <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label="删除待办" />
-                      </InlineConfirm>
-                    )}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-            )}
+            {!去项目跟进 && 待办卡}
 
             {/* 企业版项目模式不排「下次跟进」（定稿 P5 待定 14 红框）：下一步时间记在项目上 */}
             {!plan && 摆法.下次跟进 && (
@@ -1380,6 +1387,7 @@ export default function RecordView({
           </Space>
         </aside>
       </div>
+      {去项目跟进 && 待办卡}
       </只读上下文.Provider>
 
       {/* 1180 以下 AI 收进抽屉。面板本身一个字都不用改——它的状态挂在
@@ -1459,6 +1467,7 @@ export default function RecordView({
         客户状态自动={客户状态自动}
         分配方式选项={分配方式选项}
         客户类型选项={客户类型选项}
+        客户属性选项={客户属性选项}
         字典释义={字典释义}
         onClose={(saved) => {
           setCustOpen(false);
