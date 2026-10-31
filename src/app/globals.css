@@ -1605,6 +1605,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-s-late { color: var(--danger-text); font-weight: 600; }
 .btodo-s-today { color: var(--ink); font-weight: 500; }
 .btodo-s-later { color: var(--text-muted); }
+/* 复盘页「卡点」「沟通」页签（P7）：沿用待办列表的样子，只补卡点类型的颜色和长内容的浮层 */
+.rblk-type { font-size: var(--fs-note); color: var(--text-muted); }
+.rblk-type-hot { color: var(--danger-text); font-weight: 600; }
+.rtalk-tip { display: block; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
 .member-who { min-width: 0; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */

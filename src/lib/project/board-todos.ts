@@ -10,17 +10,22 @@ import type { 轻项 } from "@/lib/plans-page";
  * 看谁跟着复盘页的人员选择走（board-member.ts 的 看板的人）；看得到哪些客户的事项由外面那层 prisma 限定。
  *
  * 顶上四张指标卡本身就是筛选，列表上方的分段是「待办类型」；都记在地址栏，刷新、返回不丢：
- *   tab=todo|data  f=overdue|today|week|all  kind=all|task|plan  p=页码（从 1 起）
+ *   tab=todo|block|talk|data  f=overdue|today|week|all  kind=all|task|plan  p=页码（从 1 起）
  * 分页在服务端：轻列表上筛人、筛类型、分组排好，只取当页 20 条的详情。
  *
  * 本文件不碰库，页面和测试都直接用；取数在 board-todos-db.ts。
  */
 
-export const 复盘页签们 = ["todo", "data"] as const;
+/**
+ * 复盘页四个页签（P7 U-复盘-01，10-31 改）：任务（todo，默认）｜卡点（block）｜沟通（talk）｜数据（data）。
+ * 「任务」的键还叫 todo：首页「今日待办」等链接（/overview?f=today）照旧落到这里
+ */
+export const 复盘页签们 = ["todo", "block", "talk", "data"] as const;
 export type 复盘页签 = (typeof 复盘页签们)[number];
-/** 地址栏没写 tab 但带了 view（首页信号「本月」、/reports 跳过来的「本年」，都是要看数）→「数据」；都没写 →「待办」 */
+export const 复盘页签叫法: Record<复盘页签, string> = { todo: "任务", block: "卡点", talk: "沟通", data: "数据" };
+/** 地址栏没写 tab 但带了 view（首页信号「本月」、/reports 跳过来的「本年」，都是要看数）→「数据」；都没写 →「任务」 */
 export const 读页签 = (tab?: string, view?: string): 复盘页签 =>
-  tab === "data" || tab === "todo" ? tab : view ? "data" : "todo";
+  (复盘页签们 as readonly string[]).includes(tab ?? "") ? (tab as 复盘页签) : view ? "data" : "todo";
 
 /** 四张指标卡，也是四个筛选；值是地址栏 f= 的取值 */
 export const 待办卡们 = ["overdue", "today", "week", "all"] as const;
@@ -105,17 +110,25 @@ export function 计划页链接(范围: "自己" | "全员"): string {
   return `/follow-ups/plans${范围 === "全员" ? "?scope=all" : ""}`;
 }
 
-/** 复盘页地址：页签、卡、类型、页码、看谁；默认值不写进地址栏 */
-export function 复盘地址(q: { tab?: 复盘页签; view?: string; ownerId?: string; f?: 待办卡; kind?: 待办类型; p?: number }): string {
+/**
+ * 复盘页地址：页签、看谁、各页签自己的筛选、页码；默认值不写进地址栏。
+ * 每个页签只带自己的筛选（待办 f / kind，卡点 bs，沟通 t）；「数据」不带页码
+ */
+export function 复盘地址(q: {
+  tab?: 复盘页签; view?: string; ownerId?: string; f?: 待办卡; kind?: 待办类型; bs?: string; t?: string; p?: number;
+}): string {
   const s = new URLSearchParams();
-  if (q.tab === "data" || (q.tab === "todo" && q.view)) s.set("tab", q.tab);
+  const 签 = q.tab ?? "todo";
+  if (签 !== "todo" || q.view) s.set("tab", 签);
   if (q.view) s.set("view", q.view);
   if (q.ownerId) s.set("ownerId", q.ownerId);
-  if (q.tab !== "data") {
+  if (签 === "todo") {
     if (q.f && q.f !== "all") s.set("f", q.f);
     if (q.kind && q.kind !== "all") s.set("kind", q.kind);
-    if (q.p && q.p > 1) s.set("p", String(q.p));
   }
+  if (签 === "block" && q.bs && q.bs !== "open") s.set("bs", q.bs);
+  if (签 === "talk" && q.t && q.t !== "all") s.set("t", q.t);
+  if (签 !== "data" && q.p && q.p > 1) s.set("p", String(q.p));
   const t = s.toString();
   return `/overview${t ? `?${t}` : ""}`;
 }
