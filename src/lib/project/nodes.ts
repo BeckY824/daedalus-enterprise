@@ -75,6 +75,15 @@ export function 要写原因(r: unknown): r is "线索流失" | "丢单" {
   return r === "线索流失" || r === "丢单";
 }
 
+/**
+ * 「终止进程」落到哪个结局（M-节点-04）：按当前阶段取字典里「没走成」那个出口——线索→线索流失、商机→丢单、订单→异常状态。
+ * 有结局的、认不出阶段的给 null
+ */
+export function 终止结局(当前: { phase: string; result?: string | null }, 字典: 阶段字典): string | null {
+  if (当前.result || !是阶段(当前.phase)) return null;
+  return 字典.出口们[当前.phase][1].结局;
+}
+
 /** 成功交付还差哪几项；空 = 能点 */
 export function 交付还差(p: { balanceSettled: boolean; acceptancePassed: boolean }): string[] {
   return [...(p.balanceSettled ? [] : ["尾款结清"]), ...(p.acceptancePassed ? [] : ["验收通过"])];

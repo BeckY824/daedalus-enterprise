@@ -12,7 +12,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=f,撤销删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=f,撤销删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,指认卡点Action=f,认领卡点Action=f,接受卡点Action=f,转让卡点Action=f,返回卡点Action=f,改卡点进度Action=f,解决卡点Action=f,卡点可选的人Action=async()=>[];`);
@@ -87,13 +87,15 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     // 提成预估写明按哪一套比例（10-27：内贸 / 外贸 / 不限）
     expect(await page.locator(".proj-side > .ant-card").filter({ hasText: "提成" }).first().innerText()).toContain("按外贸比例");
     // 和页头同名的按钮卡上不再摆（10-31）：编辑、记一条沟通、AI 录入、下一步 / 更多、发卡点、改分配只在页头；
-    // 推进进程、结束当前进程只在阶段页签那一行（10-31 用户：「和线索商机订单放一行」），页头不重复摆
-    const 卡上钮 = (await page.locator(".proj-main button:not(.proj-stage-act), .proj-side button").allInnerTexts()).map(t => t.replace(/\s/g, ""));
+    // 「完成节点 ▼」「新增沟通」只在阶段页签那一行（M-节点-04 / U-项目-06），页头不重复摆
+    const 卡上钮 = (await page.locator(".proj-main button, .proj-side button").allInnerTexts()).map(t => t.replace(/\s/g, ""));
     expect(卡上钮.filter(t => /^(编辑|记一条沟通|AI录入|更多|推进进程|结束当前进程|发卡点|改分配|关联)$|^下一步/.test(t))).toEqual([]);
-    expect(await page.locator(".proj-stage-acts button").allInnerTexts()).toEqual(["推进进程", "结束当前进程"]);
+    expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["完成节点", "", "新增沟通"]);
+    expect(await page.locator(".proj-stage-acts button").nth(1).getAttribute("aria-label")).toBe("终止进程或改到别的进程");
+    expect(await page.locator(".proj-stage-acts .ant-btn-primary").allInnerTexts()).toEqual(["新增沟通"]);
     expect(await 页头钮(page)).toEqual(expect.arrayContaining(["记一条沟通", "AI录入", "编辑项目", "转让项目", "发卡点", "改分配"]));
-    expect(await 页头钮(page)).not.toEqual(expect.arrayContaining(["推进进程"]));
-    expect(await 页头钮(page)).not.toEqual(expect.arrayContaining(["结束当前进程"]));
+    expect(await 页头钮(page)).not.toEqual(expect.arrayContaining(["完成节点"]));
+    expect(await 页头钮(page)).not.toEqual(expect.arrayContaining(["新增沟通"]));
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -637,7 +639,7 @@ it("R6 页头跟着权限：公海里能领的主按钮是「领取」；只读�
   } finally { await page.close(); }
 });
 
-it("R6 弹窗：推进进程、项目组成员、改分配、管理沟通都能打开，标题带项目名；管理沟通里修改换到修改框", async () => {
+it("R6 弹窗：完成节点、改进程、项目组成员、改分配、管理沟通都能打开，标题带项目名；管理沟通里修改换到修改框", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: true });
   try {
     const 头 = page.locator(".page-head-a");
@@ -651,11 +653,18 @@ it("R6 弹窗：推进进程、项目组成员、改分配、管理沟通都能�
       await 窗.getByRole("button", { name: /Close|关闭/ }).first().click();
       await 窗.waitFor({ state: "hidden" });
     };
-    // 推进进程在阶段页签那一行
-    await page.locator(".proj-stage-acts").getByRole("button", { name: "推进进程" }).click();
-    let 窗 = page.getByRole("dialog").filter({ hasText: "推进进程 · 超长项目名字" });
+    // 完成节点在阶段页签那一行；▼ 里「改到别的进程或结局…」开改进程框
+    await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+    let 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · 超长项目名字" });
     await 窗.waitFor();
     expect(await 窗.innerText()).toContain("订单 · 生产备货");
+    expect(await 窗.innerText()).toContain("下一节点：物流运输");
+    expect(await 窗.getByRole("button", { name: "确认推进" }).count()).toBe(1);
+    await 关(窗);
+    await page.getByRole("button", { name: "终止进程或改到别的进程" }).click();
+    await page.getByRole("menuitem", { name: /改到别的进程或结局/ }).click();
+    窗 = page.getByRole("dialog").filter({ hasText: "改进程 · 超长项目名字" });
+    await 窗.waitFor();
     expect(await 窗.getByRole("button", { name: /^下一步：/ }).count()).toBe(1);
     await 关(窗);
     窗 = await 开("邀请成员", "项目组成员 · ");
@@ -673,7 +682,8 @@ it("R6 弹窗：推进进程、项目组成员、改分配、管理沟通都能�
   } finally { await page.close(); }
 });
 
-/* 10-31 改版 R5：节点卡里三个阶段页签 + 「结束当前进程」。节点按字典来，能去哪照 去处们 那一套 */
+/* 10-31 改版 R5：节点卡里三个阶段页签 + 「完成节点 ▼」「新增沟通」（M-节点-04）。节点按字典来，能去哪照 去处们 那一套。
+   F-项目-19：页签不挂「当前阶段」，不在的阶段字灰着（is-away）；A-12：线索末尾「已转商机」、商机末尾「商机赢单」 */
 const 阶段签 = (page: import("playwright").Page) =>
   page.locator(".proj-stage-tab").evaluateAll(ts => ts.map(t => `${t.getAttribute("aria-selected") === "true" ? "*" : ""}${t.textContent}`));
 const 节点们 = (page: import("playwright").Page) =>
@@ -684,107 +694,119 @@ it("R5 阶段页签：三个页签、默认选所在阶段；进程按字典列�
   const { page, errors } = await open(true, 1280);
   try {
     expect(await page.locator(".proj-main .ant-progress").count()).toBe(0);
-    expect(await 阶段签(page)).toEqual(["线索", "商机", "*订单当前阶段"]);
+    expect(await 阶段签(page)).toEqual(["线索", "商机", "*订单"]);
+    expect(await page.locator(".proj-stage-tab.is-away").count()).toBe(2);
+    expect(await page.locator(".proj-stage-exit").count()).toBe(0);
     expect(await 节点们(page)).toEqual(["cur:生产备货", "todo:物流运输", "todo:安装实施", "todo:交付验收", "todo:尾款结算"]);
     expect(await page.locator(".proj-stage-node[aria-current=step]").innerText()).toContain("当前");
-    // 「推进进程」「结束当前进程」摆在页签那一行右边，先推进后结束（10-31）
-    expect(await page.locator(".proj-stage-acts button").allInnerTexts()).toEqual(["推进进程", "结束当前进程"]);
+    // 「完成节点 ▼」「新增沟通」摆在页签那一行右边
+    expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["完成节点", "", "新增沟通"]);
     await page.getByRole("tab", { name: "商机" }).click();
-    expect(await 阶段签(page)).toEqual(["线索", "*商机", "订单当前阶段"]);
+    expect(await 阶段签(page)).toEqual(["线索", "*商机", "订单"]);
     expect(await 节点们(page)).toEqual(["痛点挖掘", "方案敲定", "成交推进", "合同审批", "签订合同", "首款到账"].map(n => `done:${n}✓`));
+    expect(await page.locator(".proj-stage-exit.is-done").innerText()).toBe("商机赢单");
+    expect(await page.locator(".proj-stage-exit svg").count()).toBe(1);
     expect(await page.locator(".proj-stage-note").innerText()).toBe("「商机」阶段已经走完，只能看，不能改");
     // 键盘：Home 到线索，End 回订单
     await page.getByRole("tab", { name: "商机" }).press("Home");
     expect((await 阶段签(page))[0]).toBe("*线索");
+    expect(await page.locator(".proj-stage-exit.is-done").innerText()).toBe("已转商机");
     await page.keyboard.press("End");
-    expect((await 阶段签(page))[2]).toBe("*订单当前阶段");
-    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("订单当前阶段");
+    expect((await 阶段签(page))[2]).toBe("*订单");
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("订单");
     // 推进到下一阶段，页签跟着回到新的所在阶段
     await page.getByRole("tab", { name: "线索" }).click();
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "商机", node: "合同审批" }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("商机"));
     expect(await 节点们(page)).toEqual(["done:痛点挖掘✓", "done:方案敲定✓", "done:成交推进✓", "cur:合同审批", "todo:签订合同", "todo:首款到账"]);
+    expect(await page.locator(".proj-stage-exit.is-todo").innerText()).toBe("商机赢单");
     await page.getByRole("tab", { name: "订单" }).click();
     expect(await page.locator(".proj-stage-note").innerText()).toBe("还没到「订单」阶段，只能看，不能改");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("R5 结束当前进程：页签那一行开框；订单没有下一阶段，默认下一进程；交付结清缺交付项灰着说还差什么；取消不动", async () => {
+it("R5 完成节点 / 终止进程（M-节点-04/05）：完成先开框、取消不动、确认推一个节点；终止先确认，订单落到异常框、走终止项目进程", async () => {
   const { page, errors } = await open(true, 1280);
   try {
-    const 开 = async (从: string) => {
-      await page.locator(从).getByRole("button", { name: "结束当前进程" }).click();
-      const 窗 = page.getByRole("dialog").filter({ hasText: "结束当前进程 · " });
+    const 开完成 = async () => {
+      await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+      const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
       await 窗.waitFor();
       return 窗;
     };
     {
-      const 窗 = await 开(".proj-stage-acts");
-      expect(await 窗.innerText()).toContain("订单 · 生产备货");
-      const 项 = await 窗.locator(".ant-radio-wrapper").evaluateAll(rs => rs.map(r => `${r.classList.contains("ant-radio-wrapper-disabled") ? "灰" : ""}${r.classList.contains("ant-radio-wrapper-checked") ? "*" : ""}${r.querySelector(".proj-end-name")!.textContent}`));
-      expect(项).toEqual(["*进入下一进程：物流运输", "灰交付结清", "异常状态"]);
-      expect(await 窗.locator(".ant-radio-wrapper").filter({ hasText: "交付结清" }).innerText()).toMatch(/还差.+勾上才能点交付结清/);
-      expect(await 窗.innerText()).toContain("流转到");
+      const 窗 = await 开完成();
+      expect(await 窗.innerText()).toContain("这个节点没有配必填，可以推进");
       await 窗.getByRole("button", { name: /取\s*消/ }).click();
       await 窗.waitFor({ state: "hidden" });
     }
     expect(await 改节点记录(page)).toBe("[]");
-    const 窗 = await 开(".proj-stage-acts");
-    await 窗.getByRole("button", { name: "确认流转" }).click();
+    const 窗 = await 开完成();
+    await 窗.getByRole("button", { name: "确认推进" }).click();
     await 窗.waitFor({ state: "hidden" });
     expect(await 改节点记录(page)).toContain("物流运输");
-    // 选异常状态：确认后走原来的异常框，不直接改
+    // 终止：▼ → 终止进程（写着落到哪）→ 确认 → 订单进异常框；这一步还没改节点
     await page.evaluate(() => { (window as unknown as { __改节点: unknown[] }).__改节点 = []; });
-    const 窗2 = await 开(".proj-stage-acts");
-    await 窗2.getByText("异常状态").click();
-    await 窗2.getByRole("button", { name: "确认流转" }).click();
-    await page.getByRole("dialog").filter({ hasText: "异常" }).first().waitFor();
+    await page.getByRole("button", { name: "终止进程或改到别的进程" }).click();
+    const 项 = page.getByRole("menuitem", { name: /终止进程/ });
+    expect(await 项.innerText()).toContain("落到「异常状态」");
+    await 项.click();
+    const 问 = page.getByRole("dialog").filter({ hasText: "终止进程？" });
+    await 问.waitFor();
+    await 问.getByRole("button", { name: "继续" }).click();
+    await page.getByRole("dialog").filter({ hasText: "终止进程：进异常状态" }).waitFor();
     expect(await 改节点记录(page)).toBe("[]");
+    expect(await page.evaluate(() => JSON.stringify((window as unknown as { __终止?: unknown[] }).__终止 ?? []))).toBe("[]");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("R5 线索没走完：进入下一阶段灰着、写清还差哪几个进程；走到最后一个进程才默认下一阶段", async () => {
+it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一个节点完成写「已转商机，进到 商机·痛点挖掘」；终止落到线索流失；缺必填列出来", async () => {
   const { page, errors } = await open(true, 1280);
   try {
-    const 选项 = async () => {
-      await page.locator(".proj-stage-acts").getByRole("button", { name: "结束当前进程" }).click();
-      const 窗 = page.getByRole("dialog").filter({ hasText: "结束当前进程 · " });
+    const 框字 = async () => {
+      await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+      const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
       await 窗.waitFor();
-      const 项 = await 窗.locator(".ant-radio-wrapper").evaluateAll((rs: HTMLElement[]) => rs.map(r => `${r.classList.contains("ant-radio-wrapper-disabled") ? "灰" : ""}${r.classList.contains("ant-radio-wrapper-checked") ? "*" : ""}${r.innerText.replace(/\s+/g, " ").trim()}`));
-      await 窗.getByRole("button", { name: /取\s*消/ }).click();
+      const 字 = (await 窗.innerText()).replace(/\s+/g, " ");
+      await 窗.getByRole("button", { name: /取\s*消|去补齐/ }).click();
       await 窗.waitFor({ state: "hidden" });
-      return 项;
+      return 字;
     };
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育" }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
-    const 项 = await 选项();
-    expect(项[0]).toBe("灰进入下一阶段：商机 本阶段还有 线索验证、线索推进 没走，进程只能一步步推");
-    expect(项[1]).toMatch(/^\*进入下一进程：线索验证/);
-    expect(项.some(x => x.includes("线索流失"))).toBe(true);
+    expect(await page.locator(".proj-stage-exit.is-todo").innerText()).toBe("已转商机");
+    expect(await 框字()).toContain("下一节点：线索验证");
+    await page.getByRole("button", { name: "终止进程或改到别的进程" }).click();
+    expect(await page.getByRole("menuitem", { name: /终止进程/ }).innerText()).toContain("落到「线索流失」");
+    await page.keyboard.press("Escape");
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进" }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith("线索推进"));
-    const 末 = await 选项();
-    expect(末[0]).toMatch(/^\*进入下一阶段：商机 本阶段算「已转商机」，进到 商机·痛点挖掘/);
-    expect(末.some(x => x.startsWith("进入下一进程"))).toBe(false);
+    expect(await 框字()).toContain("已转商机，进到 商机·痛点挖掘");
+    // 销售缺必填：框里列出来，没有推进按钮
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: true } }));
+    await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
+    await 窗.waitFor();
+    expect(await 窗.locator(".proj-miss-list li").count()).toBe(1);
+    expect(await 窗.getByRole("button", { name: /确认推进|仍要推进/ }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("R5 有结局 / 不能改进程：页头不摆结束按钮，卡上也没有；不能改进程时节点卡写原因、不摆下一步", async () => {
+it("R5 有结局 / 不能改进程：有结局换成「改回进程」、没有完成节点；不能改进程时节点卡写原因、只剩新增沟通", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ result: "异常状态", exceptionReason: "客户暂停" }));
     await page.locator(".proj-stage-node.is-cur .ant-tag").waitFor();
-    expect(await page.locator(".page-head-a").getByRole("button", { name: "结束当前进程" }).count()).toBe(0);
-    expect(await page.getByRole("button", { name: "结束当前进程" }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: "完成节点" }).count()).toBe(0);
+    expect(await page.locator(".proj-stage-acts").getByRole("button", { name: "改回进程" }).count()).toBe(1);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ result: "交付结清" }));
     await page.waitForFunction(() => document.querySelectorAll(".proj-stage-node.is-done").length === 5);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能改节点: false }));
-    await page.waitForFunction(() => !document.querySelector(".proj-stage-acts"));
-    expect(await page.locator(".page-head-a").getByRole("button", { name: "结束当前进程" }).count()).toBe(0);
-    expect(await page.getByRole("button", { name: "结束当前进程" }).count()).toBe(0);
+    await page.waitForFunction(() => ![...document.querySelectorAll(".proj-stage-acts button")].some(b => b.textContent === "改回进程"));
+    expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["新增沟通"]);
     expect(await page.locator(".proj-main").getByRole("button", { name: /^下一步/ }).count()).toBe(0);
     expect(await page.locator(".proj-main").innerText()).toContain("只有项目负责人、老板或主管能改");
     expect(errors).toEqual([]);

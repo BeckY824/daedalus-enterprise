@@ -133,7 +133,7 @@ describe("节点必填自动推进", () => {
     await 记有效沟通(p.id);
     const r = await 改节点(乙, p.id, { phase: "线索", node: "线索推进" });
     expect(r.ok).toBe(false);
-    expect(!r.ok && r.error).toContain("还差：金额、国家");
+    expect(!r.ok && r.error).toContain("还差必填：金额、国家");
     expect(await 改节点(乙, p.id, { phase: "线索", node: "潜客培育" })).toMatchObject({ ok: true });
     没推(await 改节点(老板, p.id, { phase: "线索", node: "线索验证" }));
     const 主管 = await 人("mgr", "MANAGER");
