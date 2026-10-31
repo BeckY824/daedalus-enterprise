@@ -871,7 +871,7 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
 export async function 读必填数据(
   tx: Prisma.TransactionClient,
   p: { id: string; customerId: string; node: string; contactId: string | null; nextStepAt: Date | null; expectedDealAt: Date | null; amount: number; remark: string | null; acceptancePassed: boolean;
-    painPoints: string | null; contractStatus: string | null },
+    painPoints: string | null; contractStatus: string | null; demandStatus?: string | null },
 ): Promise<必填数据> {
   const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数] = await Promise.all([
     tx.customer.findUnique({
@@ -885,7 +885,7 @@ export async function 读必填数据(
     tx.attachment.count({ where: { projectId: p.id, tag: "方案" } }),
   ]);
   return {
-    项目: { node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed },
+    项目: { node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed, demandStatus: p.demandStatus ?? null },
     客户: { phone: c?.phone ?? null, extra: c?.extra ?? null },
     联系人们,
     沟通节点们: 沟通.map((x) => x.node),

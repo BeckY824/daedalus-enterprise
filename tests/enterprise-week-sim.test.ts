@@ -36,7 +36,7 @@ vi.mock("@/generated/prisma", async (orig) => (await import("./sim/时钟")).补
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
-import { 建档向导, 改项目节点, 放回项目公海, 领取项目, 编辑项目 } from "@/app/(app)/projects/actions";
+import { 建档向导, 改项目节点, 放回项目公海, 领取项目, 编辑项目, 改项目画像Action } from "@/app/(app)/projects/actions";
 import { saveLead, convertLead } from "@/app/(app)/leads/actions";
 import { dayjs } from "@/lib/utils";
 import { 收回提醒尾 } from "@/lib/project/db";
@@ -547,7 +547,10 @@ async function 补查() {
   await 查("补-必填节点销售推不动", async () =>
     拒(await 作为("内销2", () => 改项目节点(项目id["P20"], { phase: "线索", node: "线索验证" })), /直属上级/));
   await 查("补-必填填齐自动推", async () => {
-    const r = 得(await 作为("内销2", () => 编辑项目(项目id["P20"], { name: "P20", amount: 10000, currency: "CNY", remark: "要 200 套" } as Parameters<typeof 编辑项目>[1])), "内销2 填需求") as { 自动推到?: string[] };
+    // 10-31 起「需求」看需求状态：只写备注不推，选了需求状态才推
+    const 备注 = 得(await 作为("内销2", () => 编辑项目(项目id["P20"], { name: "P20", amount: 10000, currency: "CNY", remark: "要 200 套" } as Parameters<typeof 编辑项目>[1])), "内销2 写备注") as { 自动推到?: string[] };
+    expect(备注.自动推到).toBeUndefined();
+    const r = 得(await 作为("内销2", () => 改项目画像Action(项目id["P20"], { demandStatus: "明确需求" })), "内销2 选需求状态") as { 自动推到?: string[] };
     expect(r.自动推到).toEqual(["线索验证"]);
     expect((await 项目("P20")).node).toBe("线索验证");
     const l = await 作为("老板", () => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 项目id["P20"], kind: "node", toNode: "线索验证" } }));

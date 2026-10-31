@@ -3,7 +3,9 @@ import { 查完再写 } from "../check-then-write";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 项目画像项, 去不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
-import { 能管项目 } from "./db";
+import { 能管项目, 按必填推进 } from "./db";
+import { 生效组织规则 } from "./org-rules-store";
+import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 读产品需求, 存产品需求 } from "./profile-rules";
 
 type 谁 = { id: string; role: string };
@@ -23,7 +25,7 @@ export type 画像字段 = 项目画像键;
  * 选项来自企业字典（设置 → 项目模式 里改）：新选的得是启用着的；已经存着、后来停用的那项不动它就留着（多选里也是），
  * 免得别人改了一项把停用的那项顺手抹掉。字典校验要读库，放在事务外（同 改项目 的 字段权限of）
  */
-export async function 改项目画像(me: 谁, projectId: string, patch: 画像改动): Promise<{ ok: true; 变了: 画像字段[] } | { ok: false; error: string }> {
+export async function 改项目画像(me: 谁, projectId: string, patch: 画像改动): Promise<{ ok: true; 变了: 画像字段[]; 自动推到?: string[] } | { ok: false; error: string }> {
   if (!企业版()) return { ok: false, error: "此版本没有项目画像" };
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const id = String(projectId ?? "");
@@ -57,11 +59,17 @@ export async function 改项目画像(me: 谁, projectId: string, patch: 画像�
   const 变了 = (Object.keys(新) as 画像字段[]).filter((k) => (新[k] ?? null) !== (原[k] ?? null));
   if (!变了.length) return { ok: true, 变了 };
 
+  // 需求状态是「需求」这项必填的依据（lib/project/required.ts）：选好了可能就够推下一节点
+  const 推 = 变了.includes("demandStatus");
+  const 规则 = 推 ? await 生效组织规则() : null;
+  const 状态开 = 推 ? await 客户状态自动() : false;
   return 查完再写(async (tx) => {
-    const p = await tx.project.findUnique({ where: { id }, select: { id: true, ownerId: true, pooledAt: true } });
+    const p = await tx.project.findUnique({ where: { id }, select: { id: true, ownerId: true, pooledAt: true, customerId: true } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (!能管项目(me, p)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改" };
     await tx.project.update({ where: { id }, data: Object.fromEntries(变了.map((k) => [k, 新[k] ?? null])) });
-    return { ok: true as const, 变了 };
+    const 推进 = 规则 ? await 按必填推进(tx, 规则, me, p.id) : [];
+    if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
+    return { ok: true as const, 变了, ...(推进.length ? { 自动推到: 推进 } : {}) };
   });
 }
