@@ -3,7 +3,7 @@
  *
  *   设置 → 「多项目客户的公海走法」只读说明，没有二选一的单选
  *   Windows 1024 / 1280 / 1366：设置页不横向撑出
- *   公海页的属性筛选（10-31）：全部 / 线索 / 商机 / 其他，1024 宽（左边留出导航）一排不折行、页面不横向撑出
+ *   公海页的属性筛选（10-31）：全部 / 线索池 / 商机池 / 其他，1024 宽（左边留出导航）一排不折行、页面不横向撑出；1280 宽入池原因 / 排序 / 搜索在同一行
  * 开关关闭时组织规则是 null，这张卡不出现。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -51,7 +51,7 @@ beforeAll(async () => {
     // 1024 宽：左边 220 的导航 + 内容区 24 内边距，同 app 外框
     window.__render=()=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
-        <Pool 行={行} 总数={1} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:99999,线索:33333,商机:33333,其他:33333}} 截断={false} 库里有 filters={{keyword:'',attr:'其他',quick:'',sort:''}} 能标无效 能恢复 能分配 users={[]} 持有={null}/>
+        <Pool 行={行} 总数={1} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:99999,线索池:33333,商机池:33333,其他:33333}} 截断={false} 库里有 filters={{keyword:'',attr:'其他',quick:'',sort:''}} 能标无效 能恢复 能分配 users={[]} 持有={null}/>
       </main></div></BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [公海插件], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -95,7 +95,7 @@ it.each([1024, 1280, 1366])("Windows %ipx：设置页不横向撑出", async (w)
   } finally { await page.close(); }
 });
 
-it.each([1024, 1280])("公海页 %ipx：属性筛选 全部 / 线索 / 商机 / 其他 一排不折行，页面不横向撑出", async (w) => {
+it.each([1024, 1280])("公海页 %ipx：属性筛选 全部 / 线索池 / 商机池 / 其他 一排不折行，页面不横向撑出", async (w) => {
   const page = await browser.newPage({ viewport: { width: w, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   try {
@@ -105,12 +105,17 @@ it.each([1024, 1280])("公海页 %ipx：属性筛选 全部 / 线索 / 商机 / 
     const 筛 = page.locator(".ant-segmented").first();
     await 筛.waitFor();
     const 项 = await 筛.locator(".ant-segmented-item").evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return { 字: (e.textContent ?? "").trim(), 顶: Math.round(r.top), 高: Math.round(r.height), 选中: e.classList.contains("ant-segmented-item-selected") }; }));
-    expect(项.map(x => x.字)).toEqual(["全部 99999", "线索 33333", "商机 33333", "其他 33333"]);
+    expect(项.map(x => x.字)).toEqual(["全部 99999", "线索池 33333", "商机池 33333", "其他 33333"]);
     // 一排：顶对齐，每一项都是单行高（不在格子里折成两行）
     expect(new Set(项.map(x => x.顶)).size).toBe(1);
     const 单行 = Math.min(...项.map(x => x.高));
     for (const x of 项) expect(x.高, x.字).toBeLessThanOrEqual(单行 + 1);
     expect(项.find(x => x.选中)?.字).toBe("其他 33333");
+    // 10-31 晚：入池原因、排序、搜索和属性同一行（1280 放得下；1024 允许挤到下一行）
+    if (w >= 1280) {
+      const 中 = await page.evaluate(() => [".ant-segmented", ".ant-select", ".ant-input-affix-wrapper"].map(q => { const r = document.querySelector(q)!.getBoundingClientRect(); return Math.round(r.top + r.height / 2); }));
+      expect(Math.max(...中) - Math.min(...中)).toBeLessThanOrEqual(3);
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

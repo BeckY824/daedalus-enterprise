@@ -132,7 +132,7 @@ describe("企业版 10-31 改名：库里存着旧名的照新名数", () => {
 
     const 数 = await 项目现在("CNY");
     expect(数.节点.find((n) => n.node === "痛点挖掘")).toMatchObject({ count: 2, amount: 30 });
-    expect(数.节点.find((n) => n.node === "方案确认")?.count).toBe(1);
+    expect(数.节点.find((n) => n.node === "方案敲定")?.count).toBe(1);
     expect(数.节点.find((n) => n.node === "交付验收")?.count).toBe(1);
     expect(数.节点.map((n) => n.node)).not.toContain("明确需求");
     expect(数.节点.map((n) => n.node)).not.toContain("验收交付");

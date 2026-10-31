@@ -83,13 +83,13 @@ describe("项目模式", () => {
     expect(await prisma.project.count()).toBe(7);
 
     const 一 = await 项目("服务器采购");
-    expect([一.phase, 一.node, 一.result, 一.amount]).toEqual(["商机", "方案确认", null, 120000]);
+    expect([一.phase, 一.node, 一.result, 一.amount]).toEqual(["商机", "方案敲定", null, 120000]);
     expect(一.closedAt).toBeNull();
     // 预计成交日期落项目上（10-27 从客户挪到项目），不再塞备注
     expect(一.expectedDealAt).toEqual(new Date("2025-09-01T00:00:00"));
     expect(一.remark ?? "").not.toContain("预计成交");
     expect(一.logs).toHaveLength(1);
-    expect(一.logs[0]).toMatchObject({ toPhase: "商机", toNode: "方案确认", toResult: null });
+    expect(一.logs[0]).toMatchObject({ toPhase: "商机", toNode: "方案敲定", toResult: null });
     expect([(await 项目("样品单")).node, (await 项目("外贸展会")).node]).toEqual(["签订合同", "痛点挖掘"]);
 
     const 流失 = await 项目("老客户回访");
@@ -112,7 +112,7 @@ describe("项目模式", () => {
     const { 批次Id } = await 导([客户表(), 商机表([["O1", "C1", "服务器采购", "解决方案", "", "12万", "", ""]]), 跟进表()]);
     const p = await 项目("服务器采购");
     expect(p.followUps).toHaveLength(1);
-    expect(p.followUps[0].node).toBe("方案确认");
+    expect(p.followUps[0].node).toBe("方案敲定");
     const F1 = await prisma.followUp.findFirstOrThrow({ where: { content: "聊了方案" } });
     expect(F1.opportunityId).toBeNull();
     expect(p.followUps[0].followUpId).toBe(F1.id);
@@ -130,7 +130,7 @@ describe("项目模式", () => {
     expect(回.留下数).toBe(0);
     const p2 = await 项目("服务器采购");
     expect(p2.id).toBe(p.id);
-    expect([p2.node, p2.logs.length]).toEqual(["方案确认", 1]);
+    expect([p2.node, p2.logs.length]).toEqual(["方案敲定", 1]);
     expect(p2.followUps.map((f) => f.followUpId)).toEqual([F1.id]);
 
     // 恢复后还能再撤

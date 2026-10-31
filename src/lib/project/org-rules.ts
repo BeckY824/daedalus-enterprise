@@ -5,7 +5,7 @@
  * 这里只管规整，界面也引（不能碰 prisma）；读写库在 org-rules-store.ts，规矩在 lib/project/db.ts 里用
  */
 import { 阶段们 } from "./nodes";
-import { 出口叫法上限, 团队版字典, 企业版字典, 按本套名, type 出口叫法改动, type 阶段字典 } from "./stage-dict";
+import { 出口叫法上限, 团队版字典, 企业版字典, 企业版旧名换新名, 按本套名, type 出口叫法改动, type 阶段字典 } from "./stage-dict";
 import { 必填项名们, 能配必填的节点 } from "./required";
 
 /** 持有上限最多填多少：防手滑多打几个 0。填满 999 = 不限（10-26 用户定）：分配、领取、指派都不再卡这个人 */
@@ -18,6 +18,9 @@ export const 时长最大 = 365;
 export const 能设时长的节点: readonly string[] = [
   ...new Set([...团队版字典.节点们.线索, ...团队版字典.节点们.商机, ...企业版字典.节点们.线索, ...企业版字典.节点们.商机]),
 ];
+/** 再加改名表里的旧名（库里存过的 key，如当天上线版本存的 方案确认）：读配置时别被丢掉，读出来再按本套名换新名 */
+const 时长旧名们 = Object.keys(企业版旧名换新名).filter((k) => 能设时长的节点.includes(企业版旧名换新名[k]) && !能设时长的节点.includes(k));
+const 认得的时长节点: readonly string[] = [...能设时长的节点, ...时长旧名们];
 /** 两套字典里的全部节点 */
 const 全部节点们: readonly string[] = [团队版字典, 企业版字典].flatMap((d) => [...d.节点们.线索, ...d.节点们.商机, ...d.节点们.订单]);
 
@@ -150,7 +153,7 @@ export function 规整组织规则(raw: unknown, 字典: 阶段字典 = 团队�
   if (超时.节点天数 && typeof 超时.节点天数 === "object") {
     for (const [node, v] of Object.entries(超时.节点天数 as Record<string, unknown>)) {
       const n = 整数(v, 1, 时长最大);
-      if (能设时长的节点.includes(node) && n !== null) 天数[node] = n;
+      if (认得的时长节点.includes(node) && n !== null) 天数[node] = n;
     }
   }
   const 推进 = (r.节点推进 && typeof r.节点推进 === "object" ? r.节点推进 : {}) as Record<string, unknown>;

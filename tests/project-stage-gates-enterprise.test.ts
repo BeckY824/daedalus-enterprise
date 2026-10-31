@@ -121,8 +121,8 @@ describe("企业版三大阶段的门", () => {
   describe("后台开关：线索、商机前两个节点各要一条沟通", () => {
     const 开 = () => setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 前两节点要沟通: true } });
 
-    it("管的是 潜客培育 / 线索验证 / 痛点挖掘 / 方案确认（企业版 10-31 改名）", () => {
-      expect(要沟通的节点()).toEqual(["潜客培育", "线索验证", "痛点挖掘", "方案确认"]);
+    it("管的是 潜客培育 / 线索验证 / 痛点挖掘 / 方案敲定（企业版 10-31 改名）", () => {
+      expect(要沟通的节点()).toEqual(["潜客培育", "线索验证", "痛点挖掘", "方案敲定"]);
     });
 
     it("默认关：潜客培育、明确需求没沟通也能往后推", async () => {
@@ -131,7 +131,7 @@ describe("企业版三大阶段的门", () => {
       const q = await 项目({ phase: "商机", node: "明确需求" });
       expect(await 改节点(乙, q.id, { phase: "商机", node: "共识方案" })).toMatchObject({ ok: true });
       // 传旧名（改名前打开的页面）也认，存进库的是新名；节点变更记录照写新名
-      expect((await 现(q.id)).node).toBe("方案确认");
+      expect((await 现(q.id)).node).toBe("方案敲定");
     });
 
     it("开了：本节点没沟通拦下，记了一条（在本节点记的）才放行；别的节点记的不算", async () => {
@@ -145,10 +145,10 @@ describe("企业版三大阶段的门", () => {
 
       // 库里存旧名 明确需求 的项目：按新名 痛点挖掘 认、报错也说新名
       const q = await 项目({ phase: "商机", node: "明确需求" });
-      expect(await 改节点(乙, q.id, { phase: "商机", node: "方案确认" })).toEqual({ ok: false, error: 缺本节点沟通("痛点挖掘") });
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "方案敲定" })).toEqual({ ok: false, error: 缺本节点沟通("痛点挖掘") });
       await 记有效沟通(q.id, false, "商机");
-      expect(await 改节点(乙, q.id, { phase: "商机", node: "方案确认" })).toMatchObject({ ok: true });
-      expect(await 改节点(乙, q.id, { phase: "商机", node: "成交推进" })).toEqual({ ok: false, error: 缺本节点沟通("方案确认") });
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "方案敲定" })).toMatchObject({ ok: true });
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "成交推进" })).toEqual({ ok: false, error: 缺本节点沟通("方案敲定") });
       await 记有效沟通(q.id, true, "商机");
       expect(await 改节点(乙, q.id, { phase: "商机", node: "成交推进" })).toMatchObject({ ok: true });
       // 第三个节点起不管
@@ -167,7 +167,7 @@ describe("企业版三大阶段的门", () => {
       const q = await 项目({ phase: "商机", node: "明确需求" });
       expect(await 改项目(乙, q.id, { name: "一号项目", amount: 5 })).not.toHaveProperty("自动推到");
       expect((await 现(q.id)).node).toBe("明确需求");
-      expect(await 记项目沟通(乙, q.id, 沟通({ 阶段: "商机", 明确回复: false }))).toMatchObject({ ok: true, 自动推到: ["方案确认"] });
+      expect(await 记项目沟通(乙, q.id, 沟通({ 阶段: "商机", 明确回复: false }))).toMatchObject({ ok: true, 自动推到: ["方案敲定"] });
     });
 
     it("不是企业版：存了开也不拦", async () => {

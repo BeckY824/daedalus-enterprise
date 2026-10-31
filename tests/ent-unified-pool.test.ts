@@ -32,10 +32,10 @@ import {
 // ---------- 纯规矩 ----------
 describe("公海属性", () => {
   it("正好一个线索 / 商机阶段、没结局的项目才是线索 / 商机", () => {
-    expect(客户公海属性([{ phase: "线索", result: null }])).toBe("线索");
-    expect(客户公海属性([{ phase: "商机", result: null }])).toBe("商机");
-    expect(项目公海属性({ phase: "线索", result: null })).toBe("线索");
-    expect(项目公海属性({ phase: "商机", result: null })).toBe("商机");
+    expect(客户公海属性([{ phase: "线索", result: null }])).toBe("线索池");
+    expect(客户公海属性([{ phase: "商机", result: null }])).toBe("商机池");
+    expect(项目公海属性({ phase: "线索", result: null })).toBe("线索池");
+    expect(项目公海属性({ phase: "商机", result: null })).toBe("商机池");
   });
   it("没有项目、多个项目、订单阶段、有结局的都是其他", () => {
     expect(客户公海属性([])).toBe("其他");
@@ -52,12 +52,14 @@ describe("公海属性", () => {
     expect(项目公海属性({ phase: "线索", result: null })).not.toBe("其他");
     expect(项目公海属性({ phase: "商机", result: null })).not.toBe("其他");
   });
-  it("筛选顺序 线索 / 商机 / 其他；老链接的 attr（公海线索 / 公海商机 / 公海客户）认回来，认不出的当全部", () => {
-    expect(公海属性们).toEqual(["线索", "商机", "其他"]);
+  it("筛选顺序 线索池 / 商机池 / 其他；老链接的 attr（公海线索 / 公海商机 / 公海客户、线索 / 商机）认回来，认不出的当全部", () => {
+    expect(公海属性们).toEqual(["线索池", "商机池", "其他"]);
     expect(规整公海属性("其他")).toBe("其他");
     expect(规整公海属性("公海客户")).toBe("其他");
-    expect(规整公海属性("公海线索")).toBe("线索");
-    expect(规整公海属性("公海商机")).toBe("商机");
+    expect(规整公海属性("公海线索")).toBe("线索池");
+    expect(规整公海属性("公海商机")).toBe("商机池");
+    expect(规整公海属性("线索")).toBe("线索池");
+    expect(规整公海属性("商机")).toBe("商机池");
     expect(规整公海属性("乱写")).toBe("");
     expect(规整公海属性(undefined)).toBe("");
   });
@@ -106,13 +108,13 @@ describe("筛排", () => {
     类: "主动退回", 累计: 1, 入池原因: "", 快捷: "首次退回", 原负责人是我: false, ...补,
   });
   const 全部 = [
-    行("甲", { 属性: "线索", 快捷: "超时回收", 入池时间: "2026-10-03T00:00:00Z", 最后跟进: "2026-09-01T00:00:00Z" }),
-    行("乙", { 属性: "线索", 快捷: "首次退回", 入池时间: "2026-10-02T00:00:00Z", 最后跟进: "2026-09-20T00:00:00Z" }),
-    行("丙", { 属性: "商机", 快捷: "无效客户", 入池时间: "2026-10-01T00:00:00Z", 项目名: "大单" }),
+    行("甲", { 属性: "线索池", 快捷: "超时回收", 入池时间: "2026-10-03T00:00:00Z", 最后跟进: "2026-09-01T00:00:00Z" }),
+    行("乙", { 属性: "线索池", 快捷: "首次退回", 入池时间: "2026-10-02T00:00:00Z", 最后跟进: "2026-09-20T00:00:00Z" }),
+    行("丙", { 属性: "商机池", 快捷: "无效客户", 入池时间: "2026-10-01T00:00:00Z", 项目名: "大单" }),
   ];
   it("属性数按关键词数，快捷数按属性数，不受快捷本身影响", () => {
-    const r = 筛排(全部, { 属性: "线索", 快捷: "超时回收" });
-    expect(r.属性数).toEqual({ 全部: 3, 线索: 2, 商机: 1, 其他: 0 });
+    const r = 筛排(全部, { 属性: "线索池", 快捷: "超时回收" });
+    expect(r.属性数).toEqual({ 全部: 3, 线索池: 2, 商机池: 1, 其他: 0 });
     expect(r.快捷数.超时回收).toBe(1);
     expect(r.快捷数.首次退回).toBe(1);
     expect(r.快捷数.无效客户).toBe(0);
@@ -123,11 +125,11 @@ describe("筛排", () => {
     const r = 筛排(带其他, { 属性: "其他" });
     expect(r.行.map((x) => x.id).sort()).toEqual(["丁", "戊"]);
     expect(筛排(带其他, { 属性: "公海客户" }).行.map((x) => x.id).sort()).toEqual(["丁", "戊"]);
-    expect(r.属性数).toEqual({ 全部: 5, 线索: 2, 商机: 1, 其他: 2 });
-    expect(r.属性数.全部).toBe(r.属性数.线索 + r.属性数.商机 + r.属性数.其他);
+    expect(r.属性数).toEqual({ 全部: 5, 线索池: 2, 商机池: 1, 其他: 2 });
+    expect(r.属性数.全部).toBe(r.属性数.线索池 + r.属性数.商机池 + r.属性数.其他);
     // 带关键词也一样相加
     const 搜 = 筛排(带其他, { keyword: "丁" }).属性数;
-    expect(搜).toEqual({ 全部: 1, 线索: 0, 商机: 0, 其他: 1 });
+    expect(搜).toEqual({ 全部: 1, 线索池: 0, 商机池: 0, 其他: 1 });
   });
   it("关键词搜客户名和项目名", () => {
     expect(筛排(全部, { keyword: "大单" }).行.map((x) => x.id)).toEqual(["丙"]);
@@ -199,7 +201,7 @@ describe("退回次数", () => {
     const 页 = await 读公海页(丙, {}, 1, 20);
     // 单项目客户：客户跟着进客户公海，只列一行客户行（领客户即领项目）
     expect(页.行).toHaveLength(1);
-    expect(页.行[0]).toMatchObject({ 种: "客户", customerId: c, 属性: "线索", 入池原因: "主动退回（第 1 次）", 快捷: "首次退回" });
+    expect(页.行[0]).toMatchObject({ 种: "客户", customerId: c, 属性: "线索池", 入池原因: "主动退回（第 1 次）", 快捷: "首次退回" });
     expect(页.快捷数.首次退回).toBe(1);
     // 丙领了、又放回：第二次
     expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
@@ -282,8 +284,8 @@ describe("项目行", () => {
     expect(await 放回公海(乙, p)).toEqual({ ok: true });
     const 页 = await 读公海页(丙, {}, 1, 20);
     const 项目行 = 页.行.find((r) => r.种 === "项目");
-    expect(项目行).toMatchObject({ projectId: p, 属性: "商机", 入池原因: "主动退回（第 1 次）" });
-    expect(页.属性数.商机).toBeGreaterThanOrEqual(1);
+    expect(项目行).toMatchObject({ projectId: p, 属性: "商机池", 入池原因: "主动退回（第 1 次）" });
+    expect(页.属性数.商机池).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -301,14 +303,14 @@ describe("「其他」在库里走一遍", () => {
     for (const c of 其他们) await 放(c);
     当(丙);
     const 全 = await 读公海页(丙, {}, 1, 50);
-    expect(全.属性数).toEqual({ 全部: 8, 线索: 1, 商机: 1, 其他: 6 });
-    expect(全.属性数.全部).toBe(全.属性数.线索 + 全.属性数.商机 + 全.属性数.其他);
+    expect(全.属性数).toEqual({ 全部: 8, 线索池: 1, 商机池: 1, 其他: 6 });
+    expect(全.属性数.全部).toBe(全.属性数.线索池 + 全.属性数.商机池 + 全.属性数.其他);
     const 其他 = await 读公海页(丙, { 属性: "其他" }, 1, 50);
     expect(其他.行.map((r) => r.customerId).sort()).toEqual([...其他们].sort());
     expect(其他.行.map((r) => r.customerId)).not.toContain(线索客户);
     expect(其他.行.map((r) => r.customerId)).not.toContain(商机客户);
-    expect((await 读公海页(丙, { 属性: "线索" }, 1, 50)).行.map((r) => r.customerId)).toEqual([线索客户]);
-    expect((await 读公海页(丙, { 属性: "商机" }, 1, 50)).行.map((r) => r.customerId)).toEqual([商机客户]);
+    expect((await 读公海页(丙, { 属性: "线索池" }, 1, 50)).行.map((r) => r.customerId)).toEqual([线索客户]);
+    expect((await 读公海页(丙, { 属性: "商机池" }, 1, 50)).行.map((r) => r.customerId)).toEqual([商机客户]);
   });
 });
 
@@ -321,6 +323,6 @@ describe("公海客户过 999 个", () => {
     await prisma.project.createMany({ data: ids.map((customerId, i) => ({ name: `大项目${i}`, customerId, ownerId: 老板.id, creatorId: 老板.id, phase: "线索", node: "潜客培育" })) });
     const 页 = await 读公海页(老板, {}, 1, 20);
     expect(页.行.length).toBe(20);
-    expect(页.属性数.线索).toBe(数);
+    expect(页.属性数.线索池).toBe(数);
   });
 });

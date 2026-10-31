@@ -35,6 +35,7 @@ import {
 import { 分配线索, 自动分配线索 } from "@/app/(app)/leads/assign-actions";
 import { 领取项目, 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
 import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
+import { 公海规则 } from "@/lib/enterprise/pool-rules";
 
 let 老板: string, 总管: string, 市场: string, 销售经理: string, 销售: string, 另一销售: string, 渠道: string, 项运: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
@@ -146,10 +147,15 @@ describe("动作照着拦", () => {
     expect(await 自动分配线索(L)).toMatchObject({ ok: true, toUserId: 销售 });
   });
 
-  it("公海捞取不管领：默认表里没有销售，销售照旧能从公海领线索阶段的项目", async () => {
+  it("公海捞取不管领：默认表里没有销售，销售照旧能从公海领线索阶段的项目（项目能单独领开着时；10-31 起默认只随客户领）", async () => {
     const p = await 公海项目("线索", 另一销售);
     当(销售);
-    expect(await 领取项目(p)).toMatchObject({ ok: true });
+    公海规则.项目能单独领 = true;
+    try {
+      expect(await 领取项目(p)).toMatchObject({ ok: true });
+    } finally {
+      公海规则.项目能单独领 = false;
+    }
   });
 });
 

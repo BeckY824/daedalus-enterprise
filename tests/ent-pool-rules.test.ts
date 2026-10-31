@@ -26,7 +26,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
-import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 系统, 超时理由 } from "@/lib/project/timeout";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 放回公海, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
@@ -75,6 +75,8 @@ beforeEach(async () => {
   invalidateSettingsCache();
   忘掉企业版范围();
   Object.assign(公海规则, 原规则);
+  // 下面多数用例测「领项目」这条路的连带（带走客户、名下别的公海项目……），开关打开测；默认不让单独领见末尾一组
+  公海规则.项目能单独领 = true;
   vi.stubEnv("CRM_ENTERPRISE", "1");
   mocks.团队 = null;
   老板 = await 造人("boss", "老板", "ADMIN");
@@ -582,5 +584,41 @@ describe("开关关着照旧", () => {
     expect(await 在客户公海(乙的)).toBe(true);
     expect(await 在客户公海(丙的)).toBe(true);
     expect(await 自动掉公海(乙, 今)).toBe(0);
+  });
+});
+
+describe("项目不能单独领，只能随客户一起领（10-31 晚定）", () => {
+  beforeEach(() => { 公海规则.项目能单独领 = false; });
+
+  it("默认：丙从项目公海单独领被拒、项目留在公海；丙领客户，项目跟着一起过来", async () => {
+    Object.assign(公海规则, 原规则);
+    expect(公海规则.项目能单独领).toBe(false);
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await 放回公海(乙, p);
+    expect(await 在客户公海(c)).toBe(true);
+    expect(await 领取公海项目(丙, p)).toEqual({ ok: false, error: 项目不能单独领提示 });
+    expect(await 项目在公海(p)).toBe(true);
+    当(丙);
+    expect(await 领取([c])).toMatchObject({ ok: true });
+    expect(await 负责人(c)).toBe(丙.id);
+    expect(await 项目在公海(p)).toBe(false);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
+  });
+
+  it("主管分配照样能把项目单独分出去（分配不算领）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await 放回公海(乙, p);
+    当(经理);
+    expect(await 分配公海项目([p], 丙.id)).toMatchObject({ ok: true });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
+  });
+
+  it("原负责人先看到「原负责人不能领回」（更具体的原因先说）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await 放回公海(乙, p);
+    expect(await 领取公海项目(乙, p)).toEqual({ ok: false, error: 原负责人不能领回提示 });
   });
 });
