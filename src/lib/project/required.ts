@@ -22,7 +22,7 @@ export const 必填项们 = [
   { key: "国家", 说明: "国家 / 地区" },
   { key: "客户等级", 说明: "A / B / C / D" },
   { key: "主联系人", 说明: "项目上选了主联系人" },
-  { key: "需求", 说明: "写在项目的「备注」那一格（备注里写了需求就算）" },
+  { key: "需求", 说明: "项目画像的「需求状态」选了（「暂未确认」不算）" },
   { key: "金额", 说明: "项目金额大于 0" },
   { key: "预计成交日期", 说明: "项目的预计成交日期" },
   { key: "下一步时间", 说明: "项目的下一步时间" },
@@ -36,8 +36,10 @@ export const 必填项们 = [
 ] as const;
 export type 必填项 = (typeof 必填项们)[number]["key"];
 export const 必填项名们: readonly string[] = 必填项们.map((x) => x.key);
-/** 界面上的叫法：「需求」查的是项目备注，不写明白销售找不到在哪填；「本节点沟通」10-29 起叫「当前进程沟通」（键名照旧，存在组织规则里） */
-export const 必填叫法 = (k: string) => (k === "需求" ? "需求（项目备注）" : k === "本节点沟通" ? "当前进程沟通" : k);
+/** 界面上的叫法：「需求」查的是项目画像的需求状态（10-31 前查项目备注），不写明白销售找不到在哪填；「本节点沟通」10-29 起叫「当前进程沟通」（键名照旧，存在组织规则里） */
+export const 必填叫法 = (k: string) => (k === "需求" ? "需求（需求状态）" : k === "本节点沟通" ? "当前进程沟通" : k);
+/** 需求状态的过渡值（字典 projDemand 第五项）：选了它不算需求填了 */
+export const 需求未确认 = "暂未确认";
 
 /**
  * 能配必填的节点：除了最后一个（尾款结算后面只剩点结局，由人点成功交付 / 交付结清）。
@@ -52,14 +54,14 @@ export const 能配必填的节点: readonly string[] = [...new Set([...去尾(�
 /**
  * 待确认清单① 的默认建议里、系统已有字段能对上的那几样；设置页「用建议清单」一键填上（部署手册写的默认配置就是这张）。
  * key 用团队版节点名，设置页按 本套节点名 对到企业版新名（明确需求 = 痛点挖掘、共识方案 = 方案敲定、首款支付 = 首款到账）。
- * 10-31 按机制字段回复改：痛点挖掘要痛点标注；方案敲定要项目方案；成交推进只要当前进程沟通（金额、预计成交日期不再配）；
+ * 10-31 按机制字段回复改：线索验证不再要客户等级、「需求」改看需求状态；痛点挖掘要痛点标注；方案敲定要项目方案；成交推进只要当前进程沟通（金额、预计成交日期不再配）；
  * 首款到账要当前回款不为 0（回款每笔 > 0，记了一笔就不为 0）。
  * 签约审批（合同审批）要合同状态到「已生效」（10-31 晚回问清单定）；安装实施故意不设（不需要安装的订单也得能过）；
  * 签订合同要合同附件；生产备货、物流运输要的采购单、物流单据系统里还没有，等清单定了加字段再配
  */
 export const 建议必填: Record<string, 必填项[]> = {
   潜客培育: ["联系方式", "来源", "本节点沟通", "下一步时间"],
-  线索验证: ["主联系人", "国家", "客户等级", "需求"],
+  线索验证: ["主联系人", "国家", "需求"],
   线索推进: ["金额"],
   明确需求: ["痛点标注"],
   共识方案: ["项目方案"],
@@ -72,7 +74,7 @@ export const 建议必填: Record<string, 必填项[]> = {
 
 /** 算还差时要的数据（db.ts 读好传进来） */
 export type 必填数据 = {
-  项目: { node: string; contactId: string | null; nextStepAt: Date | string | null; expectedDealAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean };
+  项目: { node: string; contactId: string | null; nextStepAt: Date | string | null; expectedDealAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean; demandStatus?: string | null };
   客户: {
     phone: string | null;
     extra: { country?: string | null; whatsapp?: string | null; wechat?: string | null; email?: string | null; source?: string | null; level?: string | null; alibabaId?: string | null } | null;
@@ -101,7 +103,8 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "国家": return 有(x?.country);
     case "客户等级": return 有(x?.level);
     case "主联系人": return !!d.项目.contactId;
-    case "需求": return 有(d.项目.remark);
+    // 10-31 客户定：需求 = 需求状态选了表面触达 / 方向明晰 / 明确需求 / 共识痛点（字典可改名，按「选了、不是暂未确认」认），备注不再算
+    case "需求": return 有(d.项目.demandStatus) && d.项目.demandStatus!.trim() !== 需求未确认;
     case "金额": return d.项目.amount > 0;
     case "预计成交日期": return !!d.项目.expectedDealAt;
     case "下一步时间": return !!d.项目.nextStepAt;

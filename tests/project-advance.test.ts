@@ -17,6 +17,7 @@ import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
 import { 记有效沟通 } from "./helpers/ent-valid-followup";
+import { 改项目画像 } from "@/lib/project/profile";
 
 const 开着 = (必填: Record<string, string[]>): 组织规则 => ({ ...默认组织规则, 节点推进: { 开: true, 必填 } });
 const 现在 = () => dayjs().format("YYYY-MM-DD HH:mm");
@@ -59,7 +60,11 @@ describe("节点必填自动推进", () => {
     没推(半);
     expect((await 现(p.id)).node).toBe("潜客培育");
 
-    const r = await 改项目(乙, p.id, { name: "一号项目", amount: 100, remark: "要 200 台" });
+    // 「需求」看需求状态（10-31）：只写备注不算；选「暂未确认」也不算
+    没推(await 改项目(乙, p.id, { name: "一号项目", amount: 100, remark: "要 200 台" }));
+    没推(await 改项目画像(乙, p.id, { demandStatus: "暂未确认" }));
+    expect((await 现(p.id)).node).toBe("潜客培育");
+    const r = await 改项目画像(乙, p.id, { demandStatus: "明确需求" });
     expect(r).toMatchObject({ ok: true, 自动推到: ["线索验证"] });
     expect(await 现(p.id)).toMatchObject({ phase: "线索", node: "线索验证" });
     const log = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, reason: 自动推进理由 } });

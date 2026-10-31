@@ -371,9 +371,10 @@ export async function 改项目画像Action(projectId: string, patch: 画像改�
         user: me, action: "update", entity: "Project", entityId: projectId,
         summary: `编辑项目「${p?.name ?? ""}」：改了${r.变了.map(画像字段名).join("、")}`,
       });
+      await 记这个项目的自动推进(me, projectId, r.自动推到);
       刷新项目(projectId, p?.customerId);
     }
-    return r.ok ? { ok: true as const } : r;
+    return r.ok ? { ok: true as const, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
   } catch (e) { return 不在了(e); }
 }
 

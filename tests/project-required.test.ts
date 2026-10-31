@@ -68,7 +68,7 @@ describe("还差", () => {
 
   it("都填了：空", () => {
     const d: 必填数据 = {
-      项目: { node: "潜客培育", contactId: "c1", nextStepAt: new Date(), expectedDealAt: "2026-11-30", amount: 100, remark: "要 200 台", acceptancePassed: true },
+      项目: { node: "潜客培育", contactId: "c1", nextStepAt: new Date(), expectedDealAt: "2026-11-30", amount: 100, remark: "要 200 台", demandStatus: "明确需求", acceptancePassed: true },
       客户: { phone: null, extra: { country: "德国", source: "展会", level: "A" } },
       联系人们: [{ email: "a@b.com" }],
       沟通节点们: ["潜客培育"],
@@ -98,21 +98,24 @@ describe("还差", () => {
     expect(还差(r, { ...空数据(), 项目: { ...空数据().项目, expectedDealAt: new Date("2026-12-01") } })).toEqual([]);
   });
 
-  it("金额要大于 0；需求空白不算；本节点沟通只认这个节点记的", () => {
+  it("金额要大于 0；需求看需求状态（空白、暂未确认都不算，备注不算）；本节点沟通只认这个节点记的", () => {
     const r = 规则({ 线索验证: ["金额", "需求", "本节点沟通"] });
     const d = 空数据("线索验证");
-    d.项目.remark = "   ";
+    d.项目.remark = "要样品";
+    d.项目.demandStatus = "   ";
     d.沟通节点们 = ["潜客培育"];
     expect(还差(r, d)).toEqual(["金额", "需求", "本节点沟通"]);
+    d.项目.demandStatus = "暂未确认";
+    expect(还差(r, d)).toContain("需求");
     d.项目.amount = 1;
-    d.项目.remark = "要样品";
+    d.项目.demandStatus = "表面触达";
     d.沟通节点们.push("线索验证");
     expect(还差(r, d)).toEqual([]);
   });
 
-  it("给人看的叫法（10-29）：本节点沟通叫「当前进程沟通」，需求写明是项目备注，别的原样；键不变", () => {
+  it("给人看的叫法（10-29）：本节点沟通叫「当前进程沟通」，需求写明看需求状态（10-31），别的原样；键不变", () => {
     expect(必填叫法("本节点沟通")).toBe("当前进程沟通");
-    expect(必填叫法("需求")).toBe("需求（项目备注）");
+    expect(必填叫法("需求")).toBe("需求（需求状态）");
     expect(必填叫法("金额")).toBe("金额");
     expect(必填项名们).toContain("本节点沟通");
   });

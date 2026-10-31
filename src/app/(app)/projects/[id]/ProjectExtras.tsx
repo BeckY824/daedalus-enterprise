@@ -45,7 +45,10 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
       if (!r.ok) {
         message.error(r.error);
         回退();
-      } else router.refresh();
+      } else {
+        if ("自动推到" in r && r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+        router.refresh();
+      }
     } finally {
       set忙(false);
     }
