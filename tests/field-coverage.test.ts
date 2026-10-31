@@ -100,7 +100,7 @@ const 可写: Record<string, string[]> = {
   ProjectExceptionCategory: ["name", "active"],
   // 企业版选项字典（2026-10-26）：设置 → 项目模式 → 企业选项（settings/ent-dict-actions.ts）
   EntDictItem: ["name", "active"],
-  FollowUp: ["type", "title", "content", "status", "duration", "occurredAt", "dueAt", "participants", "customerId", "contactId", "opportunityId"],
+  FollowUp: ["type", "title", "content", "status", "duration", "occurredAt", "dueAt", "participants", "customerId", "contactId", "opportunityId", "method"],
   Task: ["title", "dueAt", "done", "customerId"],
   FollowPlan: ["subject", "plannedAt", "method", "done", "customerId"],
   // 对话历史：人能改的只有标题（重命名）。其余是系统打的，见下面「派生」
