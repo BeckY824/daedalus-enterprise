@@ -42,7 +42,7 @@ beforeEach(async () => {
   市场经理 = await 建人("mm", "市场经理", "SALES", "marketing_mgr");
   销售 = await 建人("s1", "小王", "SALES", "sales");
   当(老板, "ADMIN");
-  expect(await 改组织规则({ 超时回收: { 开: true, 节点天数: { 潜客培育: 7, 线索验证: 5, 明确需求: 10 } } })).toMatchObject({ ok: true });
+  expect(await 改组织规则({ 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 7, 线索验证: 5, 明确需求: 10 } } })).toMatchObject({ ok: true });
 });
 afterEach(() => { vi.unstubAllEnvs(); });
 
@@ -68,6 +68,15 @@ describe("能改哪几个节点", () => {
     expect(挡时限改动(["潜客培育"], 现在, { 开: false })).toBe("超时回收的开关只有老板、总管理员能动");
     expect(挡时限改动("全部", 现在, { 开: false, 节点天数: {} })).toBeNull();
   });
+
+  it("起算日（10-31）：真改了只给全权的人；没变（含 null 和空串）不拦", () => {
+    const 现在 = { 开: true, 节点天数: { 潜客培育: 7 }, 起算日: "2026-11-01" };
+    expect(挡时限改动(["潜客培育"], 现在, { 起算日: "2026-12-01" })).toBe("超时回收的起算日只有老板、总管理员能动");
+    expect(挡时限改动(["潜客培育"], 现在, { 起算日: null })).toBe("超时回收的起算日只有老板、总管理员能动");
+    expect(挡时限改动(["潜客培育"], 现在, { 起算日: "2026-11-01" })).toBeNull();
+    expect(挡时限改动(["潜客培育"], { ...现在, 起算日: null }, { 起算日: "" })).toBeNull();
+    expect(挡时限改动("全部", 现在, { 起算日: null })).toBeNull();
+  });
 });
 
 describe("改组织规则按节点拦", () => {
@@ -81,7 +90,10 @@ describe("改组织规则按节点拦", () => {
     expect(await 预览超时回收(整张({ 明确需求: 2 }))).toMatchObject({ ok: false });
     expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "超时回收的开关只有老板、总管理员能动" });
     const 规则 = (await 读组织规则()).超时回收;
-    expect(规则).toEqual({ 开: true, 节点天数: { 潜客培育: 3, 线索验证: 5, 明确需求: 10 } });
+    expect(规则).toEqual({ 开: true, 起算日: null, 节点天数: { 潜客培育: 3, 线索验证: 5, 明确需求: 10 } });
+    // 起算日（10-31）和开关一样只给老板、总管理员
+    expect(await 改组织规则({ 超时回收: { 起算日: "2026-12-01" } })).toMatchObject({ ok: false, error: "超时回收的起算日只有老板、总管理员能动" });
+    expect((await 读组织规则()).超时回收.起算日).toBeNull();
   });
 
   it("市场管理能改潜客培育、线索验证，商机节点拦；总管理员全能改、能关", async () => {
@@ -91,7 +103,9 @@ describe("改组织规则按节点拦", () => {
     当(总管);
     expect(await 改组织规则(整张({ 潜客培育: 4, 线索验证: null, 明确需求: 9 }))).toEqual({ ok: true, 收回: 0 });
     expect(await 改组织规则({ 超时回收: { 开: false } })).toEqual({ ok: true, 收回: 0 });
-    expect((await 读组织规则()).超时回收).toEqual({ 开: false, 节点天数: { 潜客培育: 4, 明确需求: 9 } });
+    expect((await 读组织规则()).超时回收).toEqual({ 开: false, 起算日: null, 节点天数: { 潜客培育: 4, 明确需求: 9 } });
+    expect(await 改组织规则({ 超时回收: { 起算日: "2026-12-01" } })).toEqual({ ok: true, 收回: 0 });
+    expect((await 读组织规则()).超时回收.起算日).toBe("2026-12-01");
   });
 
   it("不是企业版：组织规则整块不能改（照旧）", async () => {

@@ -167,7 +167,7 @@ describe("确认新线索卡", () => {
   });
 
   it("只用项目、开了超时回收：卡上没填下一步不建，说要填；填了就建，下一步时间记在项目上", async () => {
-    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 节点天数: { 潜客培育: 3 } } });
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
     invalidateSettingsCache();
     const r = await applyProposal(线索卡() as never);
     expect(r).toEqual({ ok: false, error: "还差下一步时间，填好再确认" });

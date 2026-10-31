@@ -54,6 +54,11 @@ export type 组织规则 = {
     开: boolean;
     /** 节点名 → 最长处理天数；没设的节点不回收 */
     节点天数: Record<string, number>;
+    /**
+     * 计时起算日（YYYY-MM-DD，10-31）：所有项目从这天起才开始计超时，之前的日子不算。
+     * 实际起点 = max(原来的起点, 起算日)；null = 不设，照原来的起点算
+     */
+    起算日: string | null;
   };
   节点推进: {
     /** 开了、节点配了必填才按必填自动推进（lib/project/required.ts）；关着时配的清单存着不用 */
@@ -71,9 +76,20 @@ export type 组织规则 = {
   };
 };
 
+/** 超时计时的默认起算日：这天之前的日子不计入超时（10-31） */
+export const 默认起算日 = "2026-11-01";
+
+/** 起算日只认 YYYY-MM-DD 且是真日子 */
+export function 是起算日(v: unknown): v is string {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const [y, m, d] = v.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
 export const 默认组织规则: 组织规则 = {
   公海: { 持有上限开: false, 默认上限: 30, 每人上限: {}, 多项目客户: "客户可转让" },
-  超时回收: { 开: false, 节点天数: {} },
+  超时回收: { 开: false, 节点天数: {}, 起算日: 默认起算日 },
   节点推进: { 开: false, 必填: {} },
   阶段: { 推进权限: "负责人可推", 出口叫法: {}, 前两节点要沟通: false },
 };
@@ -148,7 +164,12 @@ export function 规整组织规则(raw: unknown): 组织规则 {
       // 固定路线 2：存着的旧值不认
       多项目客户: 默认组织规则.公海.多项目客户,
     },
-    超时回收: { 开: 超时.开 === true, 节点天数: 天数 },
+    超时回收: {
+      开: 超时.开 === true,
+      节点天数: 天数,
+      // 没存过 / 存坏了 = 默认起算日；存过 null / "" = 管理员清掉了，不设
+      起算日: 超时.起算日 === null || 超时.起算日 === "" ? null : 是起算日(超时.起算日) ? 超时.起算日 : 默认起算日,
+    },
     节点推进: { 开: 推进.开 === true, 必填 },
     阶段: 规整阶段块(r.阶段),
   };
@@ -175,7 +196,7 @@ export type 规则改动 = {
   /** 每人上限里传 null = 这个人不单独设了 */
   公海?: Partial<Omit<组织规则["公海"], "每人上限">> & { 每人上限?: Record<string, number | null> };
   /** 节点天数整份替换（界面每次带全），传 null / 空的节点 = 不设、不回收 */
-  超时回收?: { 开?: boolean; 节点天数?: Record<string, number | string | null> };
+  超时回收?: { 开?: boolean; 节点天数?: Record<string, number | string | null>; 起算日?: string | null };
   /** 必填整份替换（界面每次带全），传 null / 空的节点 = 不配、照原来手动推 */
   节点推进?: { 开?: boolean; 必填?: Record<string, string[] | null> };
   /** 出口叫法整份替换（界面每次带全） */
@@ -235,6 +256,11 @@ export function 合上改动(现在: 组织规则, 改: 规则改动): 组织规
         天数[node] = n;
       }
       超时回收.节点天数 = 天数;
+    }
+    if (t.起算日 !== undefined) {
+      if (t.起算日 === null || t.起算日 === "") 超时回收.起算日 = null;
+      else if (!是起算日(t.起算日)) return { error: "起算日请填 YYYY-MM-DD 的日期" };
+      else 超时回收.起算日 = t.起算日;
     }
   }
   const 节点推进 = { ...现在.节点推进 };

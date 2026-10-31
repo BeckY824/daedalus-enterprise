@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
-import { 上限最大, 时长最大, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+import { 上限最大, 时长最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+import BusinessDatePicker from "@/components/BusinessDatePicker";
+import { dayjs } from "@/lib/utils";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
 import { 要沟通的节点 } from "@/lib/project/stage-gates";
@@ -384,9 +386,25 @@ function TimeoutCard({
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到项目公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
       </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <span>计时起算日</span>
+        <BusinessDatePicker
+          aria-label="超时计时起算日"
+          format="YYYY-MM-DD"
+          style={{ width: 160 }}
+          placeholder="不设"
+          disabled={!!挡 || !全能 || 忙}
+          value={规则.起算日 ? dayjs(规则.起算日) : null}
+          onChange={(d) => {
+            const 起算日 = d ? d.format("YYYY-MM-DD") : null;
+            if (起算日 !== 规则.起算日) void 确认后存({ 超时回收: { 起算日 } }, "已改起算日");
+          }}
+        />
+        <span style={{ color: "var(--text-muted)" }}>所有项目从这天起才开始计超时，之前的日子不算；默认 {默认起算日}。清空 = 不设，照原来的起点算。</span>
+      </div>
       {!挡 && !全能 && (
         <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-          {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他进程和开关由老板、总管理员改。` : "进程时限和开关由老板、总管理员改。"}
+          {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他进程、开关和起算日由老板、总管理员改。` : "进程时限、开关和起算日由老板、总管理员改。"}
         </div>
       )}
       {规则.开 && (

@@ -130,7 +130,7 @@ describe("企业版 + 项目模式", () => {
   });
 
   it("开了超时回收：没填下一步时间不转，并到已有客户也不并", async () => {
-    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 节点天数: {} } });
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: {} } });
     invalidateSettingsCache();
     const l = await 线索();
     expect(await convertLead(l.id, 首条())).toMatchObject({ ok: false, error: expect.stringContaining("下一步时间") });

@@ -5,7 +5,7 @@ import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 管全队客户 } from "@/lib/constants";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
-import { 是公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
+import { 规整公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
 import { 负责人候选 } from "@/lib/owners";
 import { 持有数 } from "@/lib/project/db";
 import { 持有上限of } from "@/lib/project/org-rules";
@@ -34,7 +34,7 @@ export default async function PoolPage({
   const pageSize = Math.min(100, Math.max(10, 正整数(sp.pageSize, 20)));
   const 筛 = {
     keyword: (sp.keyword ?? "").trim(),
-    attr: 是公海属性(sp.attr) ? sp.attr : "",
+    attr: 规整公海属性(sp.attr),
     quick: 是快捷(sp.quick) ? sp.quick : "",
     // 默认排序不写进地址：筛选栏的「重置」看得出没在筛
     sort: sp.sort && 规整排序(sp.sort) === sp.sort ? sp.sort : "",

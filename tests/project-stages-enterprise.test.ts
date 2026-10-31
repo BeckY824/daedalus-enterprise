@@ -25,7 +25,7 @@ import { 记有效沟通 } from "./helpers/ent-valid-followup";
 
 const 企 = 企业版字典;
 const 在 = (phase: string, node: string, result: string | null = null) => ({ phase, node, result, balanceSettled: false, acceptancePassed: false });
-const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 节点天数 } });
+const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数 } });
 
 describe("企业版字典：按对方阶段值做种子", () => {
   it("线索 5 / 商机 8 / 订单 7，含出口，值和对方表一致", () => {
