@@ -22,6 +22,7 @@ import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from
 import { 企业版字典, 节点序号 } from "@/lib/project/nodes";
 import { 有效线索节点, 缺有效沟通, 记沟通标记 } from "@/lib/project/stage-gates";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
+import { 新项目默认值 } from "@/lib/project/proj-fields";
 import { 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
@@ -87,7 +88,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 状态开 = await 客户状态自动();
     const projectId = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
-        data: { ...项目, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点, nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText },
+        data: { ...项目, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点, nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText, ...新项目默认值(true) },
       });
       await tx.projectNodeLog.create({ data: { projectId: p.id, userId: me.id, toPhase: "线索", toNode: 落.节点 } });
       const f = await tx.followUp.create({

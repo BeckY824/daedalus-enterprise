@@ -19,6 +19,8 @@ import type { Prisma } from "@/generated/prisma";
 import { 默认币种 } from "../currency";
 import { 第一个节点 } from "./nodes";
 import { 项目名上限, type 规整好的沟通 } from "./wizard";
+import { 新项目默认值 } from "./proj-fields";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 export async function 线索建项目(
   tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog" | "followUp" | "followUpProject" | "customer">,
@@ -33,6 +35,7 @@ export async function 线索建项目(
       name: a.线索名.trim().slice(0, 项目名上限), customerId: a.customerId, contactId: 联系人?.id ?? null,
       ownerId: a.ownerId, creatorId: a.creatorId, amount: 0, currency: 默认币种,
       phase: 第一个节点.phase, node: 第一个节点.node, nextStepAt: a.跟进?.nextStepAt ?? null, nextStepText: a.跟进?.nextStepText ?? null, sourceLeadId: a.leadId,
+      ...新项目默认值(企业版()),
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: a.creatorId, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });

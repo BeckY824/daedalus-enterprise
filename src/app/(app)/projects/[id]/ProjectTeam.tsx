@@ -13,6 +13,7 @@ import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 详细地址上限, 详细地址提示, 成交需求上限, type 项目成交钱 } from "@/lib/project/profile-rules";
+import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
@@ -30,7 +31,8 @@ const 邀请说法: Record<string, string> = { INVITED: "已邀请", DECLINED: "
 /**
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩和建档向导第四步一样（服务端 规整项目）。
  * 企业版另有项目级别（S / A / B / C，显示成星）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）；
- * 需求描述（原成交需求）、合同金额、定金金额（迁移 097）：两个金额和上面「金额」一样，左边币种下拉、右边数字连成一格（Space.Compact）
+ * 需求描述（原成交需求）、合同金额、定金金额（迁移 097）：两个金额和上面「金额」一样，左边币种下拉、右边数字连成一格（Space.Compact）；
+ * 痛点标注（多行）、合同状态（七项单选）（迁移 101）：哪一项没传（不是企业版 / 字段权限藏了）就不摆、不交
  */
 export function ProjectEditModal({
   open, onClose, 跑, p, 候选, 联系人们, 渠道们, 改负责人 = true,
@@ -47,6 +49,8 @@ export function ProjectEditModal({
     所在地?: (客户地址 & { location: string | null }) | null;
     /** 企业版才传；不传 = 不摆、不交 */
     成交钱?: 项目成交钱;
+    /** 企业版才传；里面哪个键没有 = 那一项不摆、不交 */
+    项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 };
   };
   候选: 可选成员[];
   联系人们: 联系人[];
@@ -62,6 +66,9 @@ export function ProjectEditModal({
   const [详细, set详细] = useState(p.所在地?.location ?? "");
   // 金额空着时币种下拉先摆人民币；金额没填交上去币种服务端会存空（项目成交钱改成）
   const [钱, set钱] = useState(p.成交钱 ? { ...p.成交钱, dealDemand: p.成交钱.dealDemand ?? "", contractCurrency: p.成交钱.contractCurrency ?? 默认币种, depositCurrency: p.成交钱.depositCurrency ?? 默认币种 } : null);
+  const 新 = p.项目新字段;
+  const [痛点, set痛点] = useState(新?.painPoints ?? "");
+  const [合同, set合同] = useState<合同状态 | undefined>(新?.contractStatus);
   const [忙, set忙] = useState(false);
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
   const 改钱 = (x: Partial<NonNullable<typeof 钱>>) => set钱((o) => (o ? { ...o, ...x } : o));
@@ -70,6 +77,8 @@ export function ProjectEditModal({
     ...(p.level !== undefined ? { level: 级别 } : {}),
     ...(p.所在地 ? { ...地址, location: 详细.trim() || null } : {}),
     ...(钱 ? { ...钱, dealDemand: 钱.dealDemand.trim() || null } : {}),
+    ...(新 && "painPoints" in 新 ? { painPoints: 痛点.trim() || null } : {}),
+    ...(新?.contractStatus ? { contractStatus: 合同 } : {}),
   };
   const 行 = (label: string, el: React.ReactNode) => (
     <div style={{ marginBottom: 12 }}>
@@ -134,7 +143,9 @@ export function ProjectEditModal({
           <InputNumber<number> style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="待填写合同金额" value={钱.contractAmount} formatter={金额格式} onChange={(v) => 改钱({ contractAmount: v ?? null })} />
         </Space.Compact>
       ))}
+      {新?.contractStatus && 行("合同状态", <Select style={{ width: "100%" }} aria-label="合同状态" value={合同} options={合同状态们.map((v) => ({ value: v, label: v }))} onChange={(v) => set合同(v)} />)}
       {钱 && 行("需求描述", <Input.TextArea aria-label="需求描述" rows={2} maxLength={成交需求上限} placeholder="客户想买什么、要多少" value={钱.dealDemand} onChange={(e) => 改钱({ dealDemand: e.target.value })} />)}
+      {新 && "painPoints" in 新 && 行("痛点标注", <Input.TextArea aria-label="痛点标注" rows={3} maxLength={痛点标注上限} placeholder="客户现在卡在哪、最着急解决什么" value={痛点} onChange={(e) => set痛点(e.target.value)} />)}
       {p.expectedDealAt !== undefined && 行("预计成交日期", (
         <DatePicker
           style={{ width: "100%" }}

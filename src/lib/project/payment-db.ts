@@ -84,7 +84,7 @@ export async function 删回款(me: 谁, paymentId: string): Promise<写结果 &
   });
 }
 
-/** 传了一个合同附件：项目配了节点必填就按必填推一次。返回推到的节点（没推 = 空） */
+/** 传了一个合同附件或项目方案（10-31）：项目配了节点必填就按必填推一次。返回推到的节点（没推 = 空） */
 export async function 合同附件后推进(me: 谁, projectId: string): Promise<string[]> {
   const 规则 = await 生效组织规则();
   const 状态开 = await 客户状态自动();

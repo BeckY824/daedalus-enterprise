@@ -33,6 +33,7 @@ import type { 可选渠道 } from "@/components/ChannelPicker";
 import { 拼地址, 企业级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
+import type { 合同状态 } from "@/lib/project/proj-fields";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
 import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
@@ -105,6 +106,11 @@ export type 项目详情 = {
   /** 企业版需求描述（10-31 前叫成交需求）、合同金额 + 币种、定金金额 + 币种（迁移 097）；不是企业版不传 */
   成交钱?: 项目成交钱;
   /**
+   * 企业版痛点标注、合同状态（迁移 101）：不是企业版不传；某一项字段权限是「藏」就没有那个键（不摆那一行、编辑框不交）。
+   * 合同状态老项目库里空的，page.tsx 已经按「起草中」兜底
+   */
+  项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 };
+  /**
    * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推；
    * 只能靠填齐 = 不是老板、主管，手动往前推不给（往后退、点结局照旧）
    */
@@ -134,7 +140,7 @@ export type 项目详情 = {
   /** 企业版关联客户 / 联系人（P17）：不是企业版、公海里没领的不给 */
   关联?: 项目关联;
   /** 企业版项目附件（P11）：看得到才有；只读 = 不能改这个项目（api/attachments/access.ts 项目附件入口） */
-  项目附件?: { 合同: number; 其它: number; 只读: boolean };
+  项目附件?: { 合同: number; 方案: number; 其它: number; 只读: boolean };
   /** 企业版项目回款（10-31，迁移 100）：一笔一行；项目卡上写「当前回款」= 按币种加 */
   回款们?: 回款[];
 };
@@ -715,8 +721,12 @@ export default function ProjectDetail({
         <>
           <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : 待填("定金金额")}</div>
           <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : 待填("合同金额")}</div>
+          {p.项目新字段?.contractStatus && <div style={行样}><span style={键样}>合同状态</span><span>{p.项目新字段.contractStatus}</span></div>}
           {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : <span style={{ color: "var(--text-muted)" }}>没有</span>}</span></div>}
           <div style={行样}><span style={键样}>需求描述</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.成交钱.dealDemand ?? 待填("需求描述")}</span></div>
+          {p.项目新字段 && "painPoints" in p.项目新字段 && (
+            <div style={行样}><span style={键样}>痛点标注</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.项目新字段.painPoints ?? (p.必填?.还差.includes("痛点标注") ? 占位确认("痛点标注") : 待填("痛点标注"))}</span></div>
+          )}
         </>
       )}
       {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期", "选择"))}</div>}
@@ -870,10 +880,11 @@ export default function ProjectDetail({
 
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
   const 关联卡 = p.关联 && <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} />;
-  // 合同附件单独一格（10-31）：节点必填「合同附件」看这一格；没分格的老附件算在「附件」里
+  // 合同附件、项目方案各单独一格（10-31）：节点必填「合同附件」「项目方案」各看自己那一格；没分格的老附件算在「附件」里
   const 附件卡 = p.项目附件 && (
     <>
       <ProjectAttachmentsCard key={`${p.id}-合同-${附件版}`} projectId={p.id} 分类="合同" 标题="合同附件" 起始个数={p.项目附件.合同} 只读={p.项目附件.只读} />
+      <ProjectAttachmentsCard key={`${p.id}-方案-${附件版}`} projectId={p.id} 分类="方案" 标题="项目方案" 起始个数={p.项目附件.方案} 只读={p.项目附件.只读} />
       <ProjectAttachmentsCard key={`${p.id}-其它-${附件版}`} projectId={p.id} 分类="其它" 标题="附件" 起始个数={p.项目附件.其它} 只读={p.项目附件.只读} />
     </>
   );
@@ -1127,7 +1138,7 @@ export default function ProjectDetail({
           open
           onClose={() => set编辑开着(false)}
           跑={跑}
-          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, 所在地: p.所在地 ?? null, ...(p.成交钱 ? { 成交钱: p.成交钱 } : {}) } : {}) }}
+          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, 所在地: p.所在地 ?? null, ...(p.成交钱 ? { 成交钱: p.成交钱 } : {}), ...(p.项目新字段 ? { 项目新字段: p.项目新字段 } : {}) } : {}) }}
           候选={候选}
           联系人们={联系人们}
           渠道们={p.企业版 ? p.渠道们 : undefined}

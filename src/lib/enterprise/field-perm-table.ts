@@ -18,6 +18,9 @@ export const 字段 = {
   商机金额: { 名: "金额", 用在: "项目", 能藏: false },
   商机阶段: { 名: "阶段 / 当前进程", 用在: "项目（含结局）", 能藏: false },
   商机负责人: { 名: "负责人", 用在: "项目", 能藏: false },
+  // 痛点标注、合同状态（企业版，迁移 101）：各自一行，能藏。这两格只在项目详情页（和编辑项目框）出现，藏 = page.tsx 不给值、界面不摆这一行
+  痛点标注: { 名: "痛点标注", 用在: "项目", 能藏: true },
+  合同状态: { 名: "合同状态", 用在: "项目", 能藏: true },
 } as const;
 export type 字段名 = keyof typeof 字段;
 export const 字段名们 = Object.keys(字段) as 字段名[];
@@ -70,6 +73,8 @@ export const 项目列字段: Record<string, 字段名> = {
   depositCurrency: "商机金额",
   ownerId: "商机负责人",
   expectedDealAt: "预计签约",
+  painPoints: "痛点标注",
+  contractStatus: "合同状态",
 };
 
 /** 存的、交来的配置都过一遍：不认识的字段、角色、级别丢掉；不能藏的字段写了「藏」按「看」 */
