@@ -82,6 +82,9 @@ for (const width of [1024, 1280, 1366]) {
     expect(await page.locator(".home-cards").isVisible()).toBe(true);
     expect(卡.l).toBeGreaterThan(外.r);
     expect(外.w).toBeLessThan((卡.r - 外.l) * 0.75);
+    // 等高对齐（U-首页-01）：框和右边四张卡这一列上下边齐
+    expect(Math.abs(卡.t - 外.t)).toBeLessThan(2);
+    expect(Math.abs(卡.b - 外.b)).toBeLessThan(2);
 
     // 第一行在左上角
     const 问候 = await 字(page, ".cli-frame .cli-welcome-t");

@@ -1722,7 +1722,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-ck-g { flex: 1; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--s5); }
 .cli-ck .cli-col { max-width: none; margin: 0; min-width: 0; }
 .home-cards { position: sticky; top: var(--s5); align-self: start; display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
-.cli-empty .home-cards { align-self: center; }
+/* 还没问（U-首页-01，10-31）：左边对话框和右边四张卡等高、上下对齐——卡这一列撑满这一格的高，四张平分，字在卡里竖直居中。
+   卡的最小高 = 内容高（flex 基准 0、min-height 走内容），窗口矮也不会叠出去 */
+.cli-empty .home-cards { align-self: stretch; position: static; }
+.cli-empty .home-card { flex: 1 1 0; justify-content: center; }
 /* 问过之后（10-31 改版 R1）：右边四张卡收起，对话铺满这一格——你的话贴着右边、回答占满，右侧不再空一大片（照 Codex / Claude Code）。
    只打了字没发、点「新对话」回到空白：卡照摆（.cli-empty 只看这段对话有没有问过） */
 .cli:not(.cli-empty) .cli-ck-g { grid-template-columns: minmax(0, 1fr); }
