@@ -19,7 +19,8 @@ export type 项目画像 = {
   值: Partial<Record<Exclude<项目画像键, "productNeeds">, string | null>> & { productNeeds: string[] };
 };
 
-const 空 = <span style={{ color: "var(--text-muted)" }}>—</span>;
+/** 没选的项写「待选择X」（浅灰，和输入框占位同色），只是显示 */
+const 空 = (名: string) => <span style={{ color: "var(--text-faint)" }}>待选择{名}</span>;
 
 /**
  * 「项目画像」卡：能改的人改一项存一项（下拉选了就存），不能改的只看。
@@ -58,13 +59,13 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
             <span className="proj-profile-key">{项.名}</span>
             <div className="proj-profile-val">
               {!能改 ? (
-                项.多选 ? (值.productNeeds.length ? 值.productNeeds.join("、") : 空) : (值[项.键 as Exclude<项目画像键, "productNeeds">] ?? 空)
+                项.多选 ? (值.productNeeds.length ? 值.productNeeds.join("、") : 空(项.名)) : (值[项.键 as Exclude<项目画像键, "productNeeds">] ?? 空(项.名))
               ) : 项.多选 ? (
                 <Select
                   mode="multiple"
                   aria-label={项.名}
                   style={{ width: "100%" }}
-                  placeholder="可多选"
+                  placeholder={`待选择${项.名}（可多选）`}
                   allowClear
                   disabled={忙}
                   value={值.productNeeds}
@@ -79,7 +80,7 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
                 <Select
                   aria-label={项.名}
                   style={{ width: "100%" }}
-                  placeholder="选一项"
+                  placeholder={`待选择${项.名}`}
                   allowClear
                   showSearch
                   optionFilterProp="label"
