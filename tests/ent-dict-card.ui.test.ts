@@ -30,7 +30,7 @@ it("切换种类、加选项、停用；375 宽不横向撑出", async () => {
   await page.goto("http://dict.test");
   await page.addScriptTag({ content: bundle });
   await page.getByText("企业选项 · 分配方式").waitFor();
-  expect(await page.getByText("个人自拓", { exact: true }).count()).toBe(2);
+  expect(await page.getByText("个人自持", { exact: true }).count()).toBe(2);
   // 谁能用：「公海捞取」默认销售成员没勾、其他角色勾着（10-28），勾上销售成员存，交上去的是整张表
   await page.getByText("分配方式 · 谁能用").waitFor();
   const 捞取 = page.getByRole("group", { name: "「公海捞取」谁能用" });

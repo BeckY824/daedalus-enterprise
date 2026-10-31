@@ -1,10 +1,10 @@
 /**
  * 分配方式「谁能用」（10-27 批注，lib/enterprise/assign-use.ts + dict.ts 挡分配方式 / 改分配谁能用）。
- * 钉的是：默认表（指定 = 市场 + 销售 + 其他，自动 / 公海捞取 = 市场 + 其他，暂不分配 = 市场，个人自拓 = 销售 + 其他）；
+ * 钉的是：默认表（指定 = 市场 + 销售 + 其他，自动 / 公海捞取 = 市场 + 其他，暂不分配 = 市场，个人自持 = 销售 + 其他）；
  * 老板、总管理、管理员每样都能用；后加的项默认所有人；存坏了当没存；
  * 改了以后 分配线索 / 自动分配线索 照着拦；「公海捞取」= 谁能把线索放去公海分，不管领：从公海领照旧非原负责人都能领（10-26）；
  * 谁能改同字典一行、只认字典里有的项；不是企业版一条都不管。
- * 新建线索向导（10-27 A7）：五种都生效——只能选自己能用、还启用着的；自动分配建好分给销售、公海捞取建好进项目公海、暂不分配 / 个人自拓记在自己名下；
+ * 新建线索向导（10-27 A7）：五种都生效——只能选自己能用、还启用着的；自动分配建好分给销售、公海捞取建好进项目公海、暂不分配 / 个人自持记在自己名下；
  * 没传分配方式（老草稿）照负责人推。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -80,7 +80,7 @@ describe("纯函数", () => {
     expect(分配默认谁能用[分配方式id.自动]).toEqual(["marketing_mgr"]);
     expect(分配默认谁能用[分配方式id.公海捞取]).toEqual(["marketing_mgr", "channel_ops", "project_ops"]);
     expect(分配默认谁能用[分配方式id.暂不分配]).toEqual(["marketing_mgr"]);
-    expect(分配默认谁能用[分配方式id.个人自拓]).toEqual(["sales_mgr", "sales"]);
+    expect(分配默认谁能用[分配方式id.个人自持]).toEqual(["sales_mgr", "sales"]);
     // 按角色看：其他角色（渠道运营、项目运营）默认只有指定、公海捞取
     for (const r of ["channel_ops", "project_ops"] as const) expect(Object.entries(分配默认谁能用).filter(([, v]) => v.includes(r)).map(([id]) => id)).toEqual([分配方式id.指定, 分配方式id.公海捞取]);
     expect(谁能用("dict-assign-9", {})).toBe("所有人");
@@ -106,9 +106,9 @@ describe("纯函数", () => {
     expect(能(分配方式id.公海捞取, 销售)).toBe(false);
     expect(能(分配方式id.公海捞取, 渠道)).toBe(true);
     expect(能(分配方式id.公海捞取, 市场)).toBe(true);
-    expect(能(分配方式id.个人自拓, 市场)).toBe(false);
-    expect(能(分配方式id.个人自拓, 销售)).toBe(true);
-    expect(能(分配方式id.个人自拓, 项运)).toBe(false);
+    expect(能(分配方式id.个人自持, 市场)).toBe(false);
+    expect(能(分配方式id.个人自持, 销售)).toBe(true);
+    expect(能(分配方式id.个人自持, 项运)).toBe(false);
     expect(能(分配方式id.指定, 渠道)).toBe(true);
     expect(能(分配方式id.自动, 渠道)).toBe(false);
     expect(能(分配方式id.暂不分配, 项运)).toBe(false);
@@ -196,7 +196,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
   };
   const 项目of = (id: string) => prisma.project.findUniqueOrThrow({ where: { id }, include: { customer: { select: { salesOwnerId: true } } } });
 
-  it("下拉只给能用、还启用着的：市场 = 指定 / 自动 / 公海捞取 / 暂不分配，销售 = 指定 / 个人自拓；停用的不出", async () => {
+  it("下拉只给能用、还启用着的：市场 = 指定 / 自动 / 公海捞取 / 暂不分配，销售 = 指定 / 个人自持；停用的不出", async () => {
     expect((await 我能用的分配方式({ id: 市场, role: "SALES" })).map((x) => x.i)).toEqual([0, 1, 2, 3]);
     expect((await 我能用的分配方式({ id: 销售, role: "SALES" })).map((x) => x.i)).toEqual([0, 4]);
     expect((await 我能用的分配方式({ id: 老板, role: "ADMIN" })).map((x) => x.i)).toEqual([0, 1, 2, 3, 4]);
@@ -206,7 +206,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect(await 向导({ 分配方式: 3 })).toMatchObject({ ok: false, error: "这种分配方式已停用，换一种" });
   });
 
-  it("用不了的拦下、一行不写：销售选暂不分配、市场选个人自拓", async () => {
+  it("用不了的拦下、一行不写：销售选暂不分配、市场选个人自持", async () => {
     当(销售);
     expect(await 向导({ 分配方式: 3 })).toMatchObject({ ok: false });
     当(市场);
@@ -225,7 +225,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect("转走" in r).toBe(false);
   });
 
-  it("暂不分配 / 个人自拓：选了别人也记在自己名下", async () => {
+  it("暂不分配 / 个人自持：选了别人也记在自己名下", async () => {
     当(市场);
     const a = await 向导({ 分配方式: 3, ownerId: 销售 });
     当(销售);
@@ -274,7 +274,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect(await 向导({ 分配方式: 1 })).toMatchObject({ ok: false });
   });
 
-  it("没传分配方式（老草稿）：选了别人 = 指定，建给自己 = 个人自拓，用不了个人自拓的 = 暂不分配", async () => {
+  it("没传分配方式（老草稿）：选了别人 = 指定，建给自己 = 个人自持，用不了个人自持的 = 暂不分配", async () => {
     当(销售);
     const a = await 向导({ ownerId: 另一销售 });
     const b = await 向导({});
@@ -285,7 +285,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
       if (r.ok) expect((await 项目of(r.projectId)).ownerId).toBe(谁);
     }
     const 审计 = await prisma.auditLog.findMany({ where: { entity: "Project", action: "create" }, select: { summary: true }, orderBy: { at: "asc" } });
-    expect(审计.map((x) => x.summary.match(/分配方式「(.+?)」/)?.[1])).toEqual(["指定分配", "个人自拓", "暂不分配"]);
+    expect(审计.map((x) => x.summary.match(/分配方式「(.+?)」/)?.[1])).toEqual(["指定分配", "个人自持", "暂不分配"]);
   });
 
   it("不是企业版：不看分配方式，照负责人建", async () => {

@@ -36,7 +36,7 @@ type 稿 = {
   带过?: Partial<联系人三格>;
   /** 渠道：企业版新建线索必选（老草稿里没有） */
   客户: { name: string; school: string; remark: string; 渠道?: string };
-  /** 分配方式：企业版才有（默认五项的序号，0 指定 / 1 自动 / 2 公海捞取 / 3 暂不分配 / 4 个人自拓）；老草稿里没有 */
+  /** 分配方式：企业版才有（默认五项的序号，0 指定 / 1 自动 / 2 公海捞取 / 3 暂不分配 / 4 个人自持）；老草稿里没有 */
   /** 渠道 = 项目来源（企业版，迁移 077）：没另选（空）= 跟客户的渠道；老草稿里没有 */
   项目: { name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number; 渠道?: string | null };
   /** 下一步时间（YYYY-MM-DD）：开了超时回收时才有这格、必填；老草稿里没有这格 */
