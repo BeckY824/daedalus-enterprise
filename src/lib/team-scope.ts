@@ -30,6 +30,7 @@
  *
  * **企业版**（2026-10-24，私有部署网页）：「按组织架构看客户」规则开着时也走这一层，范围由 lib/enterprise/visibility.ts 按请求算——
  * 我 是一组人（自己 + 实线下属），读 比 我 多出虚线下属那几位；他们的客户只能看，下面什么都不能建（全拦）。
+ * 10-31 加「市场成员」：市场 = 按哪几位市场成员放开读（lib/enterprise/market.ts）；他们建的、负责的客户和项目也只能看，同样全拦。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -40,6 +41,7 @@ import { 团队身份id } from "./desktop/me";
 import { 互看可加, 范围父表 } from "./sync/scope-policy";
 import { 企业版 } from "./enterprise/switch";
 import { 去掉已删, 在看已删 } from "./enterprise/soft-delete-core";
+import { 市场相关客户 } from "./enterprise/market";
 
 const 不限 = 全进程上下文<true>("看全部");
 
@@ -57,9 +59,10 @@ const 等于 = (w: 谁) => (typeof w === "string" ? w : { in: [...w] });
  * 我：业务员本机的 id（老板等 = null）；互看：团队开了同事互看；别人的：只能看的客户（互看时同事负责、不在公海的；
  * 企业版是虚线下属的），拦在它们下面新建。
  * 企业版另有：读 = 看得到谁的客户（比 我 多出虚线下属）；全拦 = 只能看的客户下面跟进也不许建；话 = 挡下时给人看的那句；
- * 线索全看 = 线索不限定（市场管理开着线索分配时要看、要分全部线索，F9 10-25），客户那条线照旧
+ * 线索全看 = 线索不限定（市场管理开着线索分配时要看、要分全部线索，F9 10-25），客户那条线照旧；
+ * 市场 = 市场成员（10-31）：读另外放开这几位市场成员相关的客户（创建人、负责人、建过 / 负责项目），只读，别人的 里也有它们
  */
-export type 限定 = { 我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean };
+export type 限定 = { 我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean; 市场?: readonly string[] };
 const 不限定: 限定 = { 我: null, 互看: false, 别人的: new Set() };
 const g = globalThis as unknown as { __限定?: 限定 & { 到: number }; __限定刷新?: Promise<限定> };
 
@@ -107,28 +110,30 @@ export async function 读的我(db: PrismaClient): Promise<谁 | null> {
 
 /**
  * 这位客户只能看、不能改：「加跟进」= 团队版互看时同事负责、不在公海的（还能加跟进）；
- * 「全」= 企业版虚线下属的（跟进也不能加）。老板、没进团队、自己的、公海的都是 false
+ * 「全」= 企业版虚线下属的（跟进也不能加）、市场成员相关的（10-31，按 别人的 认，要带 id）。老板、没进团队、自己的、公海的都是 false
  */
-export async function 只读客户(db: PrismaClient, c: { salesOwnerId: string | null; channelOwnerId?: string | null; pool?: unknown }): Promise<false | "加跟进" | "全"> {
-  const { 我, 互看, 读 } = await 现在的限定(db);
+export async function 只读客户(db: PrismaClient, c: { id?: string; salesOwnerId: string | null; channelOwnerId?: string | null; pool?: unknown }): Promise<false | "加跟进" | "全"> {
+  const { 我, 互看, 读, 市场, 别人的 } = await 现在的限定(db);
   if (!我 || 看得到(c, 我)) return false;
   if (读) return "全";
+  // 市场成员相关的：只认 别人的（自己负责 / 进了组的项目挂着的客户不算只读，原来能在项目下记沟通）
+  if (市场) return c.id && 别人的.has(c.id) ? "全" : false;
   return 互看 ? "加跟进" : false;
 }
 
 /** 按编号认「这是同事的客户」（互看时只读）：用缓存里的名单，不现查。保存、改一格之前先问，给人话而不是等数据库回找不到 */
 export async function 同事的客户(db: PrismaClient, id: string): Promise<boolean> {
   const x = await 现在的限定(db);
-  return (x.互看 || !!x.读) && x.别人的.has(id);
+  return (x.互看 || !!x.读 || !!x.市场) && x.别人的.has(id);
 }
 
-/** 只读客户被挡时那一句：企业版虚线下属用 虚线只读话，团队版互看用 只读错误 的默认话 */
+/** 只读客户被挡时那一句：企业版虚线下属用 虚线只读话、市场成员相关用 市场只读话，团队版互看用 只读错误 的默认话 */
 export async function 只读话(db: PrismaClient): Promise<string> {
   return (await 现在的限定(db)).话 ?? new 只读错误().message;
 }
 
 /**
- * 企业版虚线下属的客户（只能看，全拦）里，这一批中了哪几位。批量改、删之前先问：
+ * 企业版虚线下属的、市场成员相关的客户（只能看，全拦）里，这一批中了哪几位。批量改、删之前先问：
  * 不问的话限定层把它们静静滤掉，界面上报「已不存在 / 已经在别处删掉了」，原因说错（10-25 实测 F4）。
  * 团队版互看不走这里，照原样
  */
@@ -139,20 +144,30 @@ export async function 虚线只读的(db: PrismaClient, ids: string[]): Promise<
 
 /**
  * 企业版虚线上级看得到虚线下属没转客户的线索（读按负责人放开），改线索却走写的范围、改不动：
- * 线索上的附件（联系人附件 10-28）按同一个口径挡传、删。挂了客户的线索照旧按 同事的客户 认；市场管理全看线索时不挡
+ * 线索上的附件（联系人附件 10-28）按同一个口径挡传、删。挂了客户的线索照旧按 同事的客户 认；市场管理全看线索时不挡。
+ * 只看 读（虚线）：市场成员那条（10-31）不放开线索，没挂客户的线索照旧只看自己的
  */
 export async function 虚线只读线索(db: PrismaClient, l: { ownerId: string | null; customerId: string | null }): Promise<boolean> {
   const x = await 现在的限定(db);
-  if (!x.全拦 || x.线索全看 || !x.我 || l.customerId) return false;
+  if (!x.读 || x.线索全看 || !x.我 || l.customerId) return false;
   return !l.ownerId || !(typeof x.我 === "string" ? l.ownerId === x.我 : x.我.includes(l.ownerId));
 }
 
-/** 选中的里有虚线下属的客户：挡下时给人看的那句；没有回 null */
+/** 选中的里有虚线下属的、市场成员相关的客户：挡下时给人看的那句；没有回 null */
 export async function 虚线只读挡(db: PrismaClient, ids: string[]): Promise<string | null> {
   const 中 = await 虚线只读的(db, ids);
   if (!中.length) return null;
-  const 话 = (await 现在的限定(db)).话 ?? "";
-  return ids.length === 1 ? 话 : `选中的有 ${中.length} 位是虚线下属的客户：只能看，不能改、不能转、不能删。去掉${中.length > 1 ? "这几位" : "这位"}再试`;
+  const x = await 现在的限定(db);
+  const 是 = x.读 && x.市场 ? "虚线下属或市场成员相关的客户" : x.市场 ? "市场成员相关的客户" : "虚线下属的客户";
+  return ids.length === 1 ? x.话 ?? "" : `选中的有 ${中.length} 位是${是}：只能看，不能改、不能转、不能删。去掉${中.length > 1 ? "这几位" : "这位"}再试`;
+}
+
+/**
+ * 这个请求有没有「市场成员相关」的只读放开（10-31）。裸 SQL 的快路（scope-sql.ts、客户关键词分页）只会按负责人算范围，
+ * 有它时回 null 让调用方走 Prisma（限定层带着市场那一段）
+ */
+export async function 有市场只读(db: PrismaClient): Promise<boolean> {
+  return !!(await 现在的限定(db)).市场?.length;
 }
 
 async function 现在的限定(db: PrismaClient): Promise<限定> {
@@ -231,7 +246,7 @@ export function 看得到(c: { salesOwnerId: string | null; channelOwnerId?: str
  * 每个要限定的模型加的那一句 where。互看读 = 开了互看时的读（查、数、汇总）：客户这条线不再限定，
  * 计划 / 待办都挂在客户上、全放开；线索只放开挂了客户的；未归属联系人、操作日志照旧只看自己的
  */
-export function 限定条件(model: string, 谁们: 谁, 互看读 = false): Record<string, unknown> | null {
+export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市场?: readonly string[]): Record<string, unknown> | null {
   const 我 = 等于(谁们);
   if (互看读) {
     switch (model) {
@@ -250,7 +265,8 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false): Rec
         return null;
     }
   }
-  const 客户 = 可见客户(谁们);
+  // 市场成员（10-31）：读另外放开他们相关的客户，客户下面挂的（项目、跟进、联系人……）跟着放开；只在读时传进来，写照旧只按 我
+  const 客户 = 市场?.length ? { OR: [可见客户(谁们), 市场相关客户(市场)] } : 可见客户(谁们);
   switch (model) {
     case "Customer":
       return 客户;
@@ -268,8 +284,9 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false): Rec
     case "Task":
     case "FollowPlan":
       return { OR: [{ ownerId: 我 }, { customer: 客户 }] };
+    // 线索照旧（10-31 市场成员不放开线索）
     case "Lead":
-      return { OR: [{ ownerId: 我 }, { customer: 客户 }] };
+      return { OR: [{ ownerId: 我 }, { customer: 可见客户(谁们) }] };
     case "AuditLog":
       return { userId: 我 };
     case "FollowUpSource":
@@ -337,7 +354,7 @@ function 并限定(where: unknown, 条件: 查询参数): 查询参数 {
 }
 
 /** Prisma 扩展只拦顶层操作：关联列表、可空关联和关联计数也必须补同一范围。互看时带出来的关联都是读，按读放开 */
-function 限定关联(model: string, args: 查询参数, 我: 谁, 互看 = false): 查询参数 {
+function 限定关联(model: string, args: 查询参数, 我: 谁, 互看 = false, 市场?: readonly string[]): 查询参数 {
   const 关系 = 关系们.get(model) ?? [];
   const out = { ...args };
   for (const 模式 of ["include", "select"] as const) {
@@ -347,8 +364,8 @@ function 限定关联(model: string, args: 查询参数, 我: 谁, 互看 = fals
     for (const f of 关系) {
       const v = 选[f.name];
       if (!v) continue;
-      let a = 限定关联(f.type, v === true ? {} : v as 查询参数, 我, 互看);
-      const 条件 = 限定条件(f.type, 我, 互看);
+      let a = 限定关联(f.type, v === true ? {} : v as 查询参数, 我, 互看, 市场);
+      const 条件 = 限定条件(f.type, 我, 互看, 市场);
       // Prisma 允许列表与可空单关联带 where；必填关联由父模型的限定保证。
       if (条件 && (f.isList || !f.isRequired)) a = { ...a, where: 并限定(a.where, 条件) };
       选[f.name] = a;
@@ -360,7 +377,7 @@ function 限定关联(model: string, args: 查询参数, 我: 谁, 互看 = fals
       const 数 = { ...列 };
       for (const f of 关系.filter((f) => f.isList)) {
         const v = 数[f.name];
-        const 条件 = 限定条件(f.type, 我, 互看);
+        const 条件 = 限定条件(f.type, 我, 互看, 市场);
         if (!v || !条件) continue;
         const a = v === true ? {} : v as 查询参数;
         数[f.name] = { ...a, where: 并限定(a.where, 条件) };
@@ -435,10 +452,10 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           if (写操作.has(operation)) 改完推一下();
           // 企业版软删（P9）：回收站里的统一滤掉，比业务员范围先算（老板也看不到删了的，除非在 看已删() 里）
           const args = (企业版() && !在看已删() ? 去掉已删(model, operation, 原参数) : 原参数) as typeof 原参数;
-          const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看 } = await 现在的限定(db);
+          const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看, 市场 } = await 现在的限定(db);
           if (!我) return query(args);
-          // 有只读的客户：团队版互看、企业版虚线下属。读谁 / 读互看 = 查、数、带出来的关联按哪个范围放开
-          const 有只读 = 互看 || !!读;
+          // 有只读的客户：团队版互看、企业版虚线下属、市场成员相关（10-31）。读谁 / 读互看 = 查、数、带出来的关联按哪个范围放开
+          const 有只读 = 互看 || !!读 || !!市场;
           const 读谁 = 读 ?? 我;
           const 读互看 = !读 && 互看;
           if (有只读 && 新建操作.has(operation)) 拦同事客户下新建(model, operation, (args ?? {}) as 查询参数, 别人的, 全拦, 话);
@@ -447,8 +464,9 @@ export function 加上限定(db: PrismaClient): PrismaClient {
             const id = ((args ?? {}) as { where?: { id?: unknown } }).where?.id;
             if (typeof id === "string" && 别人的.has(id)) throw new 只读错误(话);
           }
-          const a = 限定关联(model, (args ?? {}) as 查询参数, 读谁, 读互看);
-          const 条件 = !限定的操作.has(operation) || (线索全看 && model === "Lead") ? null : 写操作.has(operation) ? 限定条件(model, 我, false) : 限定条件(model, 读谁, 读互看);
+          // 带出来的关联都是读：市场那段跟着放开。写（改、删）照旧只按 我，市场相关的改不到
+          const a = 限定关联(model, (args ?? {}) as 查询参数, 读谁, 读互看, 市场);
+          const 条件 = !限定的操作.has(operation) || (线索全看 && model === "Lead") ? null : 写操作.has(operation) ? 限定条件(model, 我, false) : 限定条件(model, 读谁, 读互看, 市场);
           // 原来的 where 原样摊开、条件并进 AND：findUnique / update / delete 要求唯一键留在最外层
           const q = query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
           if (!有只读 || !条件 || !单条改删.has(operation)) return q;
@@ -457,7 +475,11 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           } catch (e) {
             // 读得到、改不到：多半是只读客户下面的那一条（也可能真在别处删了）
             if ((e as { code?: string } | null)?.code === "P2025") {
-              throw new 只读错误(话 ? "改不了：这一条在虚线下属的客户下面（只能看），或者已经在别处删了，刷新看看" : "改不了：这一条在同事的客户下面（只能看和加跟进），或者已经在别处删了，刷新看看");
+              throw new 只读错误(
+                市场 ? "改不了：这一条在只读的客户下面（虚线下属或市场成员相关的，只能看），或者已经在别处删了，刷新看看"
+                : 话 ? "改不了：这一条在虚线下属的客户下面（只能看），或者已经在别处删了，刷新看看"
+                : "改不了：这一条在同事的客户下面（只能看和加跟进），或者已经在别处删了，刷新看看",
+              );
             }
             throw e;
           }

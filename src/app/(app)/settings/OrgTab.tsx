@@ -9,7 +9,8 @@ import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
 import { 规则, 规则名们, type 规则名 } from "@/lib/enterprise/rules-table";
 import { 字段, 字段名们, 字段级别of, 推荐字段配置, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
-import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, type 成员改动 } from "./org-actions";
+import { 市场部门们 } from "@/lib/enterprise/market";
+import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, type 成员改动 } from "./org-actions";
 import { 设不设配额, type 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
 import OrgSyncCard from "./OrgSyncCard";
@@ -33,6 +34,8 @@ export type 组织架构 = {
   线索分配: 分配情况 | null;
   /** 规则「线索分配和配额」里的「不设配额（人人参与、不限额）」开着没（10-30）；规则关着 = null */
   线索不设配额?: boolean | null;
+  /** 组织规则「市场部门」（10-31）：设了的部门编号；null = 没设，按名字带「市场」的部门和下级 */
+  市场部门?: string[] | null;
 };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
 
@@ -190,6 +193,14 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     const 新 = 可选.filter((p) => (p === 人 ? v : 现在.includes(p)));
     set权限草稿({ 基于: 页面改权限, 表: { ...改权限, [项]: 新 } });
   };
+  // 市场部门的草稿（10-31）：同上，页面上的值变了就作废
+  const 页面市场 = JSON.stringify(value.市场部门 ?? null);
+  const [市场草稿, set市场草稿] = useState<{ 基于: string; 选: string[] } | null>(null);
+  const 市场选 = 市场草稿 && 市场草稿.基于 === 页面市场 ? 市场草稿.选 : (value.市场部门 ?? []);
+  const 市场改了 = 市场草稿 != null && 市场草稿.基于 === 页面市场 && JSON.stringify(市场选) !== JSON.stringify(value.市场部门 ?? []);
+  // 按页面上存着的算（不按草稿）：保存后才算数
+  const 市场部门现在 = 市场部门们(new Map(value.部门.map((d) => [d.id, d])), value.市场部门 ?? null);
+  const 市场成员 = value.成员.filter((m) => m.deptId && 市场部门现在.has(m.deptId)).map((m) => m.name);
   const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>只有老板和总管理员能改</span>;
 
   return (
@@ -339,6 +350,27 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
             </Space.Compact>
           )}
         </div>
+      </Card>
+
+      <Card title="市场部门" extra={只看} data-testid="org-market-depts">
+        <p className="muted">
+          打开「{规则.按组织看客户.名}」才生效。这几个部门（连下级部门）的人算市场成员：自己建的、建过项目的、负责过的客户，转给销售以后还看得到这位客户和它的项目，只能看，不能改、不能记沟通、不能转。
+          市场管理看得到所有市场成员看得到的。没设 = 名字带「市场」的部门和下级。
+        </p>
+        <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="市场部门" disabled={!能改 || 忙}
+          placeholder="没设：名字带「市场」的部门和下级" optionFilterProp="label"
+          value={市场选} onChange={(v: string[]) => set市场草稿({ 基于: 页面市场, 选: v })}
+          options={部门选项} />
+        <p className="muted" style={{ margin: "8px 0 0" }} data-testid="org-market-members">
+          现在算市场成员的：{市场成员.length ? 市场成员.join("、") : "没有"}
+        </p>
+        {能改 && (
+          <Space wrap style={{ marginTop: 12 }}>
+            <Button type="primary" disabled={!市场改了 || 忙} data-testid="org-market-depts-save" onClick={() => void 跑(() => 设市场部门(市场选), "市场部门已保存")}>保存</Button>
+            <Button disabled={!市场改了 || 忙} onClick={() => set市场草稿(null)}>放弃修改</Button>
+            <Button disabled={value.市场部门 == null || 忙} onClick={() => void 跑(() => 设市场部门([]), "已恢复默认：名字带「市场」的部门")}>恢复默认</Button>
+          </Space>
+        )}
       </Card>
 
       <Card title="每个人的部门、角色和上级" extra={只看}>

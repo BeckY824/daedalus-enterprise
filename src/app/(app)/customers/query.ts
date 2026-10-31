@@ -4,7 +4,7 @@ import type { Prisma } from "@/generated/prisma";
 import { dayjs } from "@/lib/utils";
 import { 带币种, 签约金额, 签约合计, 签约币种 } from "@/lib/money-db";
 import { 客户关键词条件, 客户关键词SQL, 客户id集合 } from "@/lib/search-keyword";
-import { 读的我 } from "@/lib/team-scope";
+import { 读的我, 有市场只读 } from "@/lib/team-scope";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 未分级 } from "./query-shared";
 import { 读团队 } from "@/lib/sync/client";
@@ -240,6 +240,8 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
   const 值: unknown[] = [...kw.values];
   if (公海) 段.push('EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
   else {
+    // 企业版市场成员（10-31）另外看得到他们相关的客户：裸 SQL 只按负责人算不全，走老路（Prisma 限定层带着那一段）
+    if (谁 && (await 有市场只读(defaultClient))) return null;
     if (谁) {
       const ids = typeof 谁 === "string" ? [谁] : [...谁];
       const q = ids.map(() => "?").join(", ");

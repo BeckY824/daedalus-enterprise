@@ -35,8 +35,7 @@ import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
 import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, type 初判 } from "@/lib/project/lead-verify";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { saveFollowUp, deleteFollowUp, restoreFollowUp, type 删掉的跟进 } from "../customers/[id]/actions";
-import { 只读客户 } from "@/lib/team-scope";
-import { 虚线只读话 } from "@/lib/enterprise/visibility";
+import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 向导自动分配 } from "../leads/assign-actions";
 import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, 认跟进方式, type 分配方式序号 } from "@/lib/enterprise/dict";
@@ -650,10 +649,10 @@ async function 项目上的沟通(projectId: string, followUpId: string) {
   if (!挂 || 挂.projectId !== projectId) return { ok: false as const, error: "这条沟通不在这个项目上了，刷新看看" };
   const f = await prisma.followUp.findUnique({ where: { id: followUpId } });
   if (!f) return { ok: false as const, error: "这条沟通已经不在了（可能在别处删了），刷新看看" };
-  const c = await prisma.customer.findUnique({ where: { id: f.customerId }, select: { salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
+  const c = await prisma.customer.findUnique({ where: { id: f.customerId }, select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
   if (!c) return { ok: false as const, error: "这位客户已经不在了，刷新看看" };
   const 只读档 = await 只读客户(defaultClient, c);
-  if (只读档 === "全") return { ok: false as const, error: 虚线只读话 };
+  if (只读档 === "全") return { ok: false as const, error: await 只读话(defaultClient) };
   if (只读档) return { ok: false as const, error: "这是同事的客户：只能新加沟通，改、删已有的请找负责人" };
   return { ok: true as const, f };
 }

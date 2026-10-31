@@ -1,5 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 读的我 } from "@/lib/team-scope";
+import { 读的我, 有市场只读 } from "@/lib/team-scope";
 
 /**
  * 业务员（企业版按组织看、团队版没开互看）看得到的客户，用裸 SQL 数和挑，不走 Prisma 那层 where。
@@ -16,7 +16,8 @@ import { 读的我 } from "@/lib/team-scope";
  */
 async function 看得到的(): Promise<{ where: string; 参数: string[] } | null> {
   const 我 = await 读的我(defaultClient);
-  if (!我) return null;
+  // 企业版市场成员（10-31）另外看得到他们相关的客户：这里只按负责人算不全，回 null 让调用方走 Prisma（限定层带着那一段）
+  if (!我 || (await 有市场只读(defaultClient))) return null;
   const 们 = typeof 我 === "string" ? [我] : [...我];
   if (!们.length) 们.push("__无");
   const 占 = 们.map(() => "?").join(",");
