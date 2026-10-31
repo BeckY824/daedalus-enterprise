@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 挡改设置 } from "./edit-perm";
-import { 字典种类们, 字典定义, 项目画像项, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, 字典项释义, type 字典种类 } from "./dict-kinds";
+import { 字典种类们, 字典定义, 项目画像项, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, 字典项释义, 默认号of, 默认序号of, type 字典种类 } from "./dict-kinds";
 import { 分配谁能用key, 规整分配谁能用, 能用分配方式, 谁能用的话, type 分配谁能用配置 } from "./assign-use";
 import { 读组织 } from "./org";
 
@@ -18,8 +18,10 @@ export * from "./dict-kinds";
 export * from "./assign-use";
 
 const 是种类 = (k: unknown): k is 字典种类 => typeof k === "string" && (字典种类们 as readonly string[]).includes(k);
-/** 默认项的固定 id：dict-<种类>-<序号>，改名不变 */
-const 默认id = (kind: 字典种类, i: number) => `dict-${kind}-${i}`;
+/** 默认项的固定 id：dict-<种类>-<号>，改名不变；号一般就是序号，拿掉过一项的那一类见 默认号 */
+const 号id = (kind: 字典种类, n: number) => `dict-${kind}-${n}`;
+/** 第 i 个默认项的 id */
+const 默认id = (kind: 字典种类, i: number) => 号id(kind, 默认号of(kind, i));
 
 type 结果 = { ok: true } | { ok: false; error: string };
 
@@ -75,7 +77,7 @@ async function 补停用(kind: 字典种类, 停用: readonly string[], db: Pris
  * 默认项改过名（客户状态 10-28 整套换；客户类型 10-30 换两轮：先贸易商→中间贸易商等，再一般客户→暂不确认）：
  * 之前建好的库里，还叫某一轮旧名的默认项（固定 id、名字没被人改过）改成同序号的新名，每轮只改一次，按先后一轮一轮来
  * （很老的库先过第一轮再过第二轮）。新名已经被别的项占了的那一个跳过；人改过名、自己加的不动。每轮改完记一笔，以后不再碰。
- * 新默认比这一轮短（需求状态 10-30 五项变四项）：多出来的、还叫旧名的那几项先停用，删不删看下面 删多出的旧默认。
+ * 旧的第 i 项按号对（号是 i 的那个新默认，见 默认号）；对不上的（需求状态 4 号订单交付）还叫旧名就先停用，删不删看下面 删多出的旧默认。
  * 第一轮的记号沿用原来的 key（已经改过的库不会重来），第二轮起 key 后面带轮次
  */
 const 换默认记号 = (kind: 字典种类, 轮: number) => (轮 === 0 ? `entDict.defaultRenamed.${kind}` : `entDict.defaultRenamed.${kind}.${轮 + 1}`);
@@ -89,9 +91,9 @@ async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
   for (const [轮, 这轮旧名] of 旧默认.entries()) {
     if (记过.has(记号们[轮])) continue;
     for (const [i, 旧名] of 这轮旧名.entries()) {
-      const 新名 = 默认[i];
-      const 那项 = 现有.find((x) => x.id === 默认id(kind, i) && x.name === 旧名);
-      if (那项 && i >= 默认.length) await db.entDictItem.update({ where: { id: 那项.id }, data: { active: false } });
+      const 新名 = 默认[默认序号of(kind, i)];
+      const 那项 = 现有.find((x) => x.id === 号id(kind, i) && x.name === 旧名);
+      if (那项 && !新名) await db.entDictItem.update({ where: { id: 那项.id }, data: { active: false } });
       if (!那项 || !新名 || 新名 === 旧名 || 占着.has(新名)) continue;
       await db.entDictItem.update({ where: { id: 那项.id }, data: { name: 新名 } });
       那项.name = 新名;
@@ -103,19 +105,19 @@ async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
 }
 
 /**
- * 新默认比旧默认短、多出来的那几项（需求状态的订单交付，10-31 用户：「清除掉需求状态里的订单交付，这个是没对齐的」）：
+ * 旧默认里对不上新默认号的那几项（需求状态的订单交付，10-31 用户：「清除掉需求状态里的订单交付，这个是没对齐的」）：
  * 固定 id、还叫旧名（停没停用都算）的，没有项目在用就删掉；有项目存着这个值就留着停用（项目上照常显示原值）。
  * 只看项目画像里的单选项（项目画像项），别的种类不删。做完记一笔，以后不再碰
  */
 const 删旧默认记号 = (kind: 字典种类) => `entDict.defaultDropped.${kind}`;
 async function 删多出的旧默认(kind: 字典种类, db: Prisma.TransactionClient) {
-  const { 默认, 旧默认 = [] } = 字典定义[kind];
-  const 多出的 = 旧默认.flatMap((这轮) => 这轮.slice(默认.length).map((旧名, j) => [默认.length + j, 旧名] as const));
+  const { 旧默认 = [] } = 字典定义[kind];
+  const 多出的 = 旧默认.flatMap((这轮) => 这轮.flatMap((旧名, j) => (默认序号of(kind, j) < 0 ? [[j, 旧名] as const] : [])));
   const 画像 = 项目画像项.find((x) => x.种类 === kind && !x.多选);
   if (!多出的.length || !画像) return;
   if (await db.setting.findUnique({ where: { key: 删旧默认记号(kind) } })) return;
   for (const [序, 旧名] of 多出的) {
-    const 那项 = await db.entDictItem.findFirst({ where: { id: 默认id(kind, 序), kind, name: 旧名 }, select: { id: true } });
+    const 那项 = await db.entDictItem.findFirst({ where: { id: 号id(kind, 序), kind, name: 旧名 }, select: { id: true } });
     if (!那项) continue;
     const 在用 = await db.project.count({ where: { [画像.键]: 旧名 } });
     if (在用) await db.entDictItem.update({ where: { id: 那项.id }, data: { active: false } });
@@ -127,17 +129,18 @@ async function 删多出的旧默认(kind: 字典种类, db: Prisma.TransactionC
 /**
  * 默认项后来往末尾加过（10-30：号码类型加传真、Telegram，客户类型加专业运营商、一般客户）：之前建好的库里缺哪个默认 id 就建哪个，
  * 排在序号位置上；原来排在这些位置及以后的（自己加的项）整体往后让，还在新默认后面。名字已经被别的项占了的跳过（不和人加的重名）。
- * 记号存的是补到第几项，以后默认再往后加还会补；默认停用的建出来就停着。几个人同时补时自己加的会多让几格，相对顺序不变
+ * 记号存的是补到第几号（最大的默认号 + 1，一般 = 项数），以后默认再往后加还会补；默认停用的建出来就停着。几个人同时补时自己加的会多让几格，相对顺序不变
  */
 const 补新记号 = (kind: 字典种类) => `entDict.defaultAdded.${kind}`;
+const 补到 = (kind: 字典种类) => Math.max(...字典定义[kind].默认.map((_, i) => 默认号of(kind, i) + 1));
 async function 记下补新过(kind: 字典种类, db: Prisma.TransactionClient) {
-  const value = String(字典定义[kind].默认.length);
+  const value = String(补到(kind));
   await db.setting.upsert({ where: { key: 补新记号(kind) }, update: { value }, create: { key: 补新记号(kind), value } });
 }
 async function 补新默认(kind: 字典种类, 停用: readonly string[], db: Prisma.TransactionClient) {
   const { 默认 } = 字典定义[kind];
   const 记 = await db.setting.findUnique({ where: { key: 补新记号(kind) } });
-  if (记 && Number(记.value) >= 默认.length) return;
+  if (记 && Number(记.value) >= 补到(kind)) return;
   const 现有 = await db.entDictItem.findMany({ where: { kind }, select: { id: true, name: true } });
   const 缺 = 默认.flatMap((name, i) => (现有.some((x) => x.id === 默认id(kind, i)) || 现有.some((x) => x.name === name) ? [] : [{ name, i }]));
   if (缺.length) {
@@ -229,7 +232,7 @@ export async function 选的原因(kind: 字典种类, v: unknown): Promise<{ ok
   return { ok: true, 值: 选 === 其他项 ? `${其他前缀}${写.trim()}` : n };
 }
 
-/** 分配方式默认五项的序号：0 指定分配、1 自动分配、2 公海捞取、3 暂不分配、4 个人自拓（默认id("assign", i)） */
+/** 分配方式默认五项的序号：0 指定分配、1 自动分配、2 公海捞取、3 暂不分配、4 个人自持（默认id("assign", i)） */
 export type 分配方式序号 = 0 | 1 | 2 | 3 | 4;
 export const 是分配方式序号 = (x: unknown): x is 分配方式序号 => x === 0 || x === 1 || x === 2 || x === 3 || x === 4;
 
