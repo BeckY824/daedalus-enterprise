@@ -1,5 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance", "followMethod"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance", "followMethod", "projCycle", "projFit", "projValue", "projReach", "projRival", "projDeploy", "projSite", "contactTitle"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -121,9 +121,40 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
     说明: "这次沟通是通过什么方式。",
     默认: ["手机通话", "微信沟通", "邮件沟通", "WhatsApp", "旺旺私信", "Telegram", "Skype", "LinkedIn", "Line", "线下拜访", "线上会议", "书面函件", "内部研讨", "手机短信", "客户来访", "展会面聊", "其他方式", "Facebook", "Instagram"],
   },
+  /*
+    项目画像又加七项（10-31）：都单选、可不填，存在 Project 的七列上（迁移 102），和前五项一样存选项名。
+    取值从「差」排到「好」；不带「其他」，选项不够就在设置里加。
+    「场地现状」这个叫法还没定（可能叫「现场现状」）：要改只改下面 projSite 的 名，别处都按种类认
+  */
+  projCycle: { 名: "采购周期", 说明: "客户预计多久下单。", 默认: ["一年", "半年", "三月", "次月", "本月成交"] },
+  projFit: { 名: "产品匹配", 说明: "我方产品和客户需求对得上多少。", 默认: ["无法匹配", "部分匹配", "高度匹配", "完全匹配"] },
+  projValue: { 名: "价值认同", 说明: "客户认不认我方方案的价值。", 默认: ["价值否定", "权衡观望", "价值认同", "高度契合"] },
+  projReach: { 名: "决策触达", 说明: "我方接触到客户决策人的程度。", 默认: ["决策链不明", "仅触达执行层", "决策人已初步接触", "决策人已深度沟通"] },
+  projRival: { 名: "竞品信息", 说明: "这个项目上竞品的情况。", 默认: ["竞品已进入终审", "竞品有明确优势", "竞品存在但无优势", "无竞品·我方独家"] },
+  projDeploy: { 名: "部署条件", 说明: "客户现场是否满足部署要求。", 默认: ["无法符合", "部分符合", "基本符合", "完全符合"] },
+  projSite: { 名: "场地现状", 说明: "客户的场地落实到哪一步。", 默认: ["暂无场地", "正在选址", "已定待签", "已有场地"] },
+  /*
+    联系人职务（10-31）：企业版联系人表单「职务」下拉的候选，也能手填字典外的叫法。存在 Contact.position（纯文本），
+    库里已有的职务原样保留、原样显示，不按字典校验
+  */
+  contactTitle: {
+    名: "职务",
+    说明: "联系人的职务，下拉里挑，也能手填。",
+    默认: ["董事长", "总经理", "CEO", "董事长秘书", "总经理助理", "分管副总", "部门总监", "业务负责人", "项目经理", "项目设计负责人", "采购", "财务", "法务", "技术", "国企高管", "店长", "店员", "运营主管", "场馆经理"],
+  },
 };
 
-/** 项目画像五项：字段名 → 字典种类、是否多选。界面、校验、测试都按这一份走 */
+/**
+ * 画像、需求状态这些选项没填时显示的灰字（10-31）：只是显示，库里照旧是空，统计、筛选也照旧按空算。
+ * 需求状态字典里另有一个叫「暂未确认」的选项（过渡值），那个是真存进库的值，和这里不是一回事
+ */
+export const 暂未确认 = "暂未确认";
+/** 单选下拉里「不填」那一项的值：选了它 = 清空（提交 null）。选项名最多 20 字、不会叫这个 */
+export const 不填值 = "__none__";
+export const 不填项 = { value: 不填值, label: "不填" } as const;
+/** 下拉的值 → 提交的值：「不填」和没选都算 null */
+export const 去不填 = (v: string | null | undefined): string | null => (!v || v === 不填值 ? null : v);
+
 /** 一项字典的释义：只认默认 id（dict-<类>-<序号>），自己加的、没写释义的 = null。纯函数，界面和服务端都能用 */
 export function 字典项释义(kind: 字典种类, id: string): string | null {
   const m = /^dict-([A-Za-z]+)-(\d+)$/.exec(id);
@@ -140,12 +171,20 @@ export function 默认序号of(kind: 字典种类, n: number): number {
   return 默认号 ? 默认号.indexOf(n) : n < 默认.length ? n : -1;
 }
 
+/** 项目画像各项：字段名 → 字典种类、是否多选。界面、校验、测试都按这一份走（10-31 加了后七项） */
 export const 项目画像项 = [
   { 键: "budgetLevel", 种类: "projBudget", 多选: false },
   { 键: "priceSense", 种类: "projPrice", 多选: false },
   { 键: "decisionChain", 种类: "projDecision", 多选: false },
   { 键: "demandStatus", 种类: "projDemand", 多选: false },
   { 键: "productNeeds", 种类: "projProduct", 多选: true },
+  { 键: "purchaseCycle", 种类: "projCycle", 多选: false },
+  { 键: "productFit", 种类: "projFit", 多选: false },
+  { 键: "valueFit", 种类: "projValue", 多选: false },
+  { 键: "decisionReach", 种类: "projReach", 多选: false },
+  { 键: "competitor", 种类: "projRival", 多选: false },
+  { 键: "deployFit", 种类: "projDeploy", 多选: false },
+  { 键: "siteStatus", 种类: "projSite", 多选: false },
 ] as const satisfies readonly { 键: string; 种类: 字典种类; 多选: boolean }[];
 export type 项目画像键 = (typeof 项目画像项)[number]["键"];
 

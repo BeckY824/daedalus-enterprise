@@ -48,7 +48,7 @@ beforeAll(async () => {
         {id:'f1',type:'EMAIL',title:'客户本身的老跟进',content:'老记录',status:'已完成',duration:null,occurredAt:'2026-10-01T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-01T02:00:00.000Z',项目:null},
       ],
     };
-    window.__render=(企业,项目模式,加)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})} {...(加??{})}/></BusinessProvider></App></ConfigProvider>);
+    window.__render=(企业,项目模式,加)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',...(加?.客户改??{})}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})} {...(加??{})}/></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -228,4 +228,29 @@ it("窄宽：700 / 800 / 1024 按钮一行在名字下面、从左排起、折�
       expect(Math.abs(框!.x - 头!.x)).toBeLessThan(2);
     } finally { await page.close(); }
   }
+});
+/* 10-31：企业版联系人卡上的「号码保护」小标签——只展示，不能点；判定见 tests/ent-contact-guard.test.ts */
+const 保护 = (page: import("playwright").Page) => page.locator(".rec-contact .rec-contact-guard").evaluateAll((ts: HTMLElement[]) => ts.map(t => [t.innerText, t.getAttribute("title"), t.tagName, t.querySelector("button, a, input") ? "可点" : ""]));
+it("号码保护：每张卡一枚；有电话 + 客户有负责人 → 已开启，没电话 → 已关闭；公海 / 没负责人都关；不能点；开关关闭不摆", async () => {
+  const page = await open(true);
+  try {
+    expect(await 保护(page)).toEqual([
+      ["号码保护：已开启", "有电话、客户有负责人", "SPAN", ""],
+      ["号码保护：已开启", "有电话、客户有负责人", "SPAN", ""],
+      ["号码保护：已关闭", "这位联系人没留电话", "SPAN", ""],
+    ]);
+    expect(await page.locator(".rec-contact-guard").evaluateAll((ts: HTMLElement[]) => ts.map(t => getComputedStyle(t).cursor))).not.toContain("pointer");
+  } finally { await page.close(); }
+  const 公海 = await open(true, 1366, false, { 客户改: { pool: { reason: "手动" } } });
+  try {
+    expect((await 保护(公海)).map(x => x[0] + "|" + x[1])).toEqual(Array(2).fill("号码保护：已关闭|客户在公海里").concat("号码保护：已关闭|这位联系人没留电话"));
+  } finally { await 公海.close(); }
+  const 没负责人 = await open(true, 1366, false, { 客户改: { salesOwnerId: null, salesOwnerName: null } });
+  try {
+    expect((await 保护(没负责人)).slice(0, 2).map(x => x[1])).toEqual(["客户还没有负责人", "客户还没有负责人"]);
+  } finally { await 没负责人.close(); }
+  const 关 = await open(false);
+  try {
+    expect(await 关.locator(".rec-contact-guard").count()).toBe(0);
+  } finally { await 关.close(); }
 });

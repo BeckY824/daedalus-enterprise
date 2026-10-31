@@ -5,7 +5,8 @@ import { chromium, type Browser } from "playwright";
 /* 2026-10-29 P13：企业版联系人第二轮的三处界面——
    1. 级别星：四档一样宽（亮的实心 + 暗的淡色补满 4 格），读屏念「3 星（A 重点）」
    2. 联系人表单号码撞了：框顶黄条列出撞到的那位（看得到的可点进客户页、客户页上新建能「挂到本客户」），「仍然保存」照存；改了表单黄条收起
-   3. 客户页联系人卡的挂靠一段：挂来的摆主客户 + 说明、能解除；自家的摆「也挂在」、看不到的客户不给链接 */
+   3. 客户页联系人卡的挂靠一段：挂来的摆主客户 + 说明、能解除；自家的摆「也挂在」、看不到的客户不给链接
+   4. 10-31：企业版联系人「职务」下拉 19 项、也能手填；字典外的老职务原样显示；非企业版照旧「与客户关系」 */
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "contact-v2-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
@@ -40,6 +41,11 @@ beforeAll(async () => {
     const 人={id:'c1',name:'王五',position:null,phone:null,email:null,wechat:null,isPrimary:false,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'};
     window.__星=()=>root.render(壳(<div>{['S','A','B','C'].map(l=><div key={l} data-l={l}><LevelStars level={l}/></div>)}<div data-l='无'><LevelStars level={null} 空='—'/></div></div>));
     window.__表单=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}/>));
+    // 10-31：企业版「职务」下拉（字典 contactTitle 的 19 项），也能手填；库里已有的字典外职务原样显示
+    const 职务=['董事长','总经理','CEO','董事长秘书','总经理助理','分管副总','部门总监','业务负责人','项目经理','项目设计负责人','采购','财务','法务','技术','国企高管','店长','店员','运营主管','场馆经理'];
+    window.__职务=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={null} 号码种类={种类} 职务选项={职务}/>));
+    window.__职务老=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={{...人,position:'字典外的老职务'}} 号码种类={种类} 职务选项={职务}/>));
+    window.__非企业=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={null}/>));
     window.__挂靠=()=>root.render(壳(<div style={{width:300}}>
       <div data-t='挂来的'><ContactLinks customerId='k0' 只读={false} c={{...人,挂靠:{linkId:'L1',note:'采购对接',主客户Id:'k1',主客户名:'主客户甲',主客户看得到:true,能改:false}}}/></div>
       <div data-t='自家的'><ContactLinks customerId='k0' 只读={false} c={{...人,id:'c2',另挂:[{id:'k2',name:'看得到的',看得到:true},{id:'k3',name:'看不到的',看得到:false}]}}/></div>
@@ -49,7 +55,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(画: "__星" | "__表单" | "__挂靠", width = 1024) {
+async function open(画: "__星" | "__表单" | "__挂靠" | "__职务" | "__职务老" | "__非企业", width = 1024) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://cv2.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://cv2.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
@@ -150,4 +156,38 @@ it("挂靠一段：挂来的摆主客户和说明、能解除不能换；自家�
     await page.waitForFunction(() => (window as unknown as { __挂: unknown[] }).__挂.length === 2);
     expect(await page.evaluate(() => (window as unknown as { __挂: unknown[] }).__挂[1])).toEqual(["挂", "c2", "k9", "顾问"]);
   } finally { await page.close(); }
+});
+
+it("企业版「职务」：下拉给字典 19 项（打字筛）、选得上；也能手填字典外的；老职务原样显示；非企业版照旧", async () => {
+  const page = await open("__职务");
+  try {
+    const 格 = page.getByRole("combobox", { name: "职务" });
+    await 格.click();
+    const 项 = page.locator(".ant-select-item-option");
+    await 项.first().waitFor();
+    expect(await 项.first().innerText()).toBe("董事长");
+    // 下拉是虚拟列表，只渲染看得见的几行：打字筛到最后一项，证明 19 项都在
+    await 格.fill("场馆");
+    await page.locator(".ant-select-item-option", { hasText: "场馆经理" }).click();
+    expect(await 格.inputValue()).toBe("场馆经理");
+    // 手填字典外的叫法，提交时原样带上
+    await 格.fill("外聘顾问");
+    await page.keyboard.press("Escape");
+    await page.getByLabel("姓名").fill("李四");
+    await page.getByRole("button", { name: /^保\s?存$/ }).click();
+    await page.waitForFunction(() => ((window as unknown as { __存?: unknown[] }).__存 ?? []).length > 0);
+    expect(await page.evaluate(() => (window as unknown as { __存: { position?: string }[] }).__存[0].position)).toBe("外聘顾问");
+  } finally { await page.close(); }
+
+  const p2 = await open("__职务老");
+  try {
+    expect(await p2.getByRole("combobox", { name: "职务" }).inputValue()).toBe("字典外的老职务");
+  } finally { await p2.close(); }
+
+  const p3 = await open("__非企业");
+  try {
+    await p3.getByLabel("姓名").waitFor();
+    expect(await p3.getByText("职务", { exact: true }).count()).toBe(0);
+    expect(await p3.getByText(/^与.+关系$/).count()).toBe(1);
+  } finally { await p3.close(); }
 });
