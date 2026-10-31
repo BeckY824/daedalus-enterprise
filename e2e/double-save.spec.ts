@@ -68,6 +68,7 @@ async function 数(查: (p: ReturnType<typeof 连库>) => Promise<number>) {
 }
 
 test("添加联系人：连点两次保存 → 只多一位联系人", async ({ page }) => {
+  test.skip(企业版, "企业版客户页不摆「添加联系人」（U-客户-03，联系人随项目沟通补）");
   await 登录(page);
   await page.goto(`/customers/${客户id}`);
   const 框 = await 打开(page, "添加联系人", "添加联系人");

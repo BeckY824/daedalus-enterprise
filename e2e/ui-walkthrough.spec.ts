@@ -360,8 +360,8 @@ test("浏览器后退在各页面之间表现正常", async ({ page }) => {
   // 企业版项目模式新线索不在左栏了（10-29），走项目页页头的入口
   if (企业版) {
     await page.goto("/projects");
-    // 页头「新线索」10-30 起直接进向导，列表走「新线索列表」
-    await page.getByRole("main").getByRole("link", { name: "新线索列表", exact: true }).click();
+    // 10-31 起项目页只留看板和列表（U-项目-01），没有「新线索列表」入口了，直接开地址
+    await page.goto("/leads");
   } else await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "线索", exact: true }).click();
   await expect(page).toHaveURL(/\/leads/);
   await page.goBack();

@@ -1278,7 +1278,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    一排放不下就横向滚（触控板 / 滚轮 / 两头小箭头），打开时 ProjectStages 把「当前」滚到中间。
    当前：浅蓝底 + 蓝描边 + 橙点；其余：浅灰底、灰点；走过的：灰底 + 绿底白勾。
    描边靠两层：块本身是描边色、::before 缩进 2px 是底色（clip-path 会把 border 一起切掉）。 */
-.proj-stage-strip { position: relative; min-width: 0; }
+.proj-stage-strip { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
+.proj-stage-strip > .proj-stage-nodes { flex: 1 1 auto; }
 .proj-stage-nodes {
   list-style: none; margin: 0; padding: 2px 0 8px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
   min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
@@ -1324,14 +1325,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-exit::before { inset: 1.5px; background: var(--panel); }
 .proj-stage-exit.is-done { color: var(--ink-soft); background: var(--success); }
 .proj-stage-exit.is-done::before { background: var(--success-bg); }
-/* 两头的小箭头：只在那一侧还有没露出来的块时出现，叠在这排上面，不挤占宽度 */
+/* 两头的小箭头：只在那一侧还有没露出来的块时出现。摆在这排两边、占自己的宽度，不叠在块上（叠上去会盖住节点名，排版闸门 10-31 拦过） */
 .proj-stage-scroll {
-  position: absolute; top: 2px; z-index: 1; width: 26px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  flex: none; margin-top: 2px; width: 26px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text-muted); cursor: pointer;
   box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 12%, transparent);
 }
-.proj-stage-scroll.is-l { left: 0; }
-.proj-stage-scroll.is-r { right: 0; }
 .proj-stage-scroll:hover { color: var(--ink); background: var(--hover); }
 .proj-stage-scroll:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 /* 「完成节点」框里缺的必填 */

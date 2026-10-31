@@ -25,11 +25,13 @@ async function ask(page:Page){
  await item.click();
 }
 test("详情删除入口先提示推荐依赖，不弹不可执行的最终确认且没有写库",async({page})=>{
+ test.skip(企业版,"企业版客户详情不给删除入口（U-客户-03，删客户属权限限制）");
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));await login(page);await page.goto("/customers/delete-parent");await ask(page);
  await expect(page.getByText(/整批已阻止：被依赖客户/)).toBeVisible();expect(await page.getByRole("dialog").count()).toBe(0);
  const db=连库();try{expect(await db.customer.count()).toBe(3);expect(await db.unassignedContact.count()).toBe(0)}finally{await db.$disconnect()}expect(errors).toEqual([]);
 });
 test("详情删除取消不写入，确认后回列表且联系人进入未归属",async({page})=>{
+ test.skip(企业版,"企业版客户详情不给删除入口（U-客户-03，删客户属权限限制）");
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));await login(page);await page.goto("/customers/delete-free");await ask(page);
  const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();// 企业版（P9）：删了进回收站，联系人跟着客户一起进，不进未归属
  if(企业版){await expect(dialog.getByText(/1 位联系人一起进回收站/)).toBeVisible();}else{await expect(dialog.getByText("删除后不能恢复。")).toBeVisible();await expect(dialog.getByText(/1 位联系人不删/)).toBeVisible();}

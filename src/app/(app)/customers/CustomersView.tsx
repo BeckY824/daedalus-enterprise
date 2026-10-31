@@ -50,7 +50,11 @@ import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import ResetFilters from "@/components/ResetFilters";
 import CurrencySelect from "@/components/CurrencySelect";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
-import { 建档弹窗, type 建档数据 } from "../projects/new/ProjectWizard";
+import dynamic from "next/dynamic";
+import type { 建档数据 } from "../projects/new/ProjectWizard";
+
+/** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
+const 建档弹窗 = dynamic(() => import("../projects/new/ProjectWizard").then(m => m.建档弹窗), { ssr: false });
 
 /**
  * 批量操作的结果文案。

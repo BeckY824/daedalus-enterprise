@@ -5,6 +5,7 @@
  * 量到的还是归零前的 -1000vw，菜单整个落到屏幕外——用户看到的是「点了没反应」。
  */
 import { test, expect, type Page } from "@playwright/test";
+import { 企业版 } from "./owner-pick";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
@@ -73,6 +74,7 @@ test.describe("水合前", () => {
 
   for (const 少动 of [true, false]) {
     test(`登录页名字：${少动 ? "开了减弱动态直接全显示、没有光标" : "没开时照旧先藏着等打字"}`, async ({ page }) => {
+      test.skip(企业版, "企业版登录页只留正中一张卡、没有左栏的打字名字（U-登录-01）");
       await page.emulateMedia({ reducedMotion: 少动 ? "reduce" : "no-preference" });
       await page.goto("/login");
       const 名字 = page.locator(".auth-brand").first();
