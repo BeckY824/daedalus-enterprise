@@ -30,6 +30,7 @@ import ImportDrawer from "./ImportDrawer";
 import { assignSalesOwner, bulkFollowStatus, 撤销改负责人, type BulkResult } from "./actions";
 import { useDeleteCustomers } from "./useDeleteCustomers";
 import { useTransferConfirm } from "./useTransferConfirm";
+import { usePoolReturnConfirm } from "./usePoolReturnConfirm";
 import { 带走说法 } from "@/lib/carry-over";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
@@ -212,6 +213,7 @@ export default function CustomersView({
   const { message, modal } = App.useApp();
   const { 问删除 } = useDeleteCustomers();
   const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
+  const { 问放回公海 } = usePoolReturnConfirm();
 
   /**
    * 批量改完给一次撤销（排查 D1）。原来点一下就写库、没有退路，选错一页就是一批数据改错。
@@ -837,14 +839,23 @@ export default function CustomersView({
               </>
             ) : (
               <Button size="small" icon={<InboxOutlined />}
-                // 一批转出去先问一声（交互规则 B），放完照旧 6 秒内能撤
-                onClick={() => modal.confirm({
-                  title: `把 ${selected.length} 位放回公海？`,
-                  content: "放回后谁都能领；6 秒内可以撤销。",
-                  okText: "放回公海",
-                  cancelText: "取消",
-                  onOk: async () => { 公海提示(await 放进公海(selected), "放进", selected); 清空(); },
-                })}>
+                // 一批转出去先问一声（交互规则 B），放完照旧 6 秒内能撤；企业版还要选退回原因、写明联系人和项目一起退（U-客户-04）
+                onClick={async () => {
+                  if (企业) {
+                    const ids = [...selected];
+                    const 问 = await 问放回公海(`把 ${ids.length} 位放回公海？`, true);
+                    if (!问) return;
+                    公海提示(await 放进公海(ids, 问.原因), "放进", ids); 清空();
+                    return;
+                  }
+                  modal.confirm({
+                    title: `把 ${selected.length} 位放回公海？`,
+                    content: "放回后谁都能领；6 秒内可以撤销。",
+                    okText: "放回公海",
+                    cancelText: "取消",
+                    onOk: async () => { 公海提示(await 放进公海(selected), "放进", selected); 清空(); },
+                  });
+                }}>
                 放回公海
               </Button>
             ))}

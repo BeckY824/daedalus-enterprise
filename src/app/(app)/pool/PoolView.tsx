@@ -2,8 +2,9 @@
 
 /**
  * 企业版统一公海（2026-10-29，P7）：客户公海 + 项目公海一张表。
- * 上面一排（10-31 晚定：入池原因、排序、搜索和属性放同一行）：公海属性（全部 / 线索池 / 商机池 / 其他，带数，全部 = 三者之和；
- * 属性块自己不折行，窄了横向滚）、入池原因下拉（带数和一行说明）、排序、搜索；整排太窄才把后面几个挤到下一行
+ * 上面一排（10-31 晚定：入池方式、排序、搜索和属性放同一行）：公海属性（全部 / 线索池 / 商机池 / 其他，带数，全部 = 三者之和；
+ * 属性块自己不折行，窄了横向滚）、入池方式下拉（带数和一行说明，M-公海-09 原「入池原因」改名）、排序、搜索；整排太窄才把后面几个挤到下一行
+ * 表里「入池原因」一列 = 退回时选的原因（M-公海-09）；「当前进程」一列 = 节点 · 状态，「其他」类前面带阶段（U-公海-04）
  * 条件都在地址栏（useUrlFilters），服务端筛排分页；规矩见 lib/enterprise/unified-pool.ts
  *
  * 10-30 交互改版：领取、分配都带 6 秒撤销（规则 B）；老板、主管行内「⋯」和批量里有「分配给…」，业务员没有；
@@ -22,7 +23,7 @@ import { smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
 import { useUrlFilters } from "@/lib/url-filters";
 import { 带走说法 } from "@/lib/carry-over";
 import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
-import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
+import { 公海属性们, 快捷们, 有数才出的快捷, 排序们, 默认排序, 多次退回起, 没原因, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
 import { 领取项目 } from "../projects/actions";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目 } from "./actions";
@@ -54,7 +55,7 @@ const 项目不能单独领短说 = "要连客户一起领";
 
 const 属性色: Record<公海属性, string> = { 线索池: "green", 商机池: "blue", 其他: "default" };
 
-/** 入池原因下拉里每一项的一行说明（规则 C）：「多次退回」的门槛是常量，跟着改 */
+/** 入池方式下拉里每一项的一行说明（规则 C）：「多次退回」的门槛是常量，跟着改 */
 const 快捷说明: Record<快捷, string> = {
   超时回收: "太久没跟进，系统自动收回来的",
   首次退回: "被同事主动放回公海，累计第 1 次",
@@ -62,6 +63,7 @@ const 快捷说明: Record<快捷, string> = {
   三次退回: "被同事主动放回公海，累计第 3 次",
   多次退回: `被同事主动放回公海，累计 ${多次退回起} 次及以上`,
   无效客户: "老板或主管标了无效：领不了，老板能恢复",
+  离职交接: "成员停用时交接方式选了放进公海",
 };
 
 const 无效原因 = "标了无效，要老板先恢复";
@@ -225,7 +227,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     },
     {
       title: "当前进程", key: "进程", width: 150,
-      render: (_, r) => r.进程 ? <span className="clamp" title={r.进程}>{r.进程}</span> : <span className="muted">—</span>,
+      // 名下不止一个项目的客户：格子里是定状态用的那个，悬停看每个项目
+      render: (_, r) => r.进程 ? <span className="clamp" title={r.进程明细 ?? r.进程}>{r.进程}</span> : <span className="muted">—</span>,
     },
     {
       title: "最后跟进", key: "跟进", width: 104, responsive: ["xl"],
@@ -237,7 +240,13 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     },
     {
       title: "入池原因", key: "原因", width: 140,
-      render: (_, r) => <span className={r.类 === "无效" ? "clamp" : "clamp muted"} style={r.类 === "无效" ? { color: "var(--danger-text)" } : undefined} title={r.入池原因}>{r.入池原因}</span>,
+      // 退回原因（M-公海-09）；标了无效的前面多一个红标，原因照旧写（无效是入池方式，不是原因）
+      render: (_, r) => (
+        <span className="clamp" title={r.类 === "无效" ? `无效客户：${r.入池原因}` : r.入池原因}>
+          {r.类 === "无效" && <Tag color="red" style={{ marginInlineEnd: 4 }}>无效</Tag>}
+          <span className={r.入池原因 === 没原因 ? "muted" : undefined}>{r.入池原因}</span>
+        </span>
+      ),
     },
     {
       title: "操作", key: "操作", width: 136, 常驻: true, fixed: "right",
@@ -276,11 +285,12 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
           options={(["全部", ...公海属性们] as const).map((k) => ({ value: k, label: `${k} ${属性数[k]}` }))}
         />
       </div>
-      <Select style={{ width: 150 }} aria-label="入池原因" placeholder="入池原因" allowClear
+      <Select style={{ width: 150 }} aria-label="入池方式" placeholder="入池方式" allowClear
         popupMatchSelectWidth={260}
         value={f.quick || undefined}
         onChange={(v) => apply({ quick: v ?? "" })}
-        options={快捷们.map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
+        // 离职交接只在有这种数据（或正选着）时出（A-14）
+        options={快捷们.filter((k) => !有数才出的快捷.includes(k) || 快捷数[k] > 0 || f.quick === k).map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
         optionRender={(o) => (
           <div>
             <div>{o.label}</div>

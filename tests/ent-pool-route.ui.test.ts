@@ -47,7 +47,7 @@ beforeAll(async () => {
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     import {快捷们} from '@/lib/enterprise/unified-pool';
     const 快捷数=Object.fromEntries(快捷们.map(k=>[k,9999]));
-    const 行=[{id:'c1',种:'客户',customerId:'c1',projectId:null,客户名:'某某超长名字的智能制造装备与工业自动化系统集成有限公司',项目名:null,进程:null,属性:'其他',最后跟进:null,入池时间:new Date().toISOString(),创建时间:new Date().toISOString(),类:'主动退回',累计:1,入池原因:'主动退回（第 1 次）',快捷:'首次退回',原负责人是我:false}];
+    const 行=[{id:'c1',种:'客户',customerId:'c1',projectId:null,客户名:'某某超长名字的智能制造装备与工业自动化系统集成有限公司',项目名:null,进程:null,属性:'其他',最后跟进:null,入池时间:new Date().toISOString(),创建时间:new Date().toISOString(),类:'主动退回',累计:1,进程明细:null,入池原因:'—',快捷:'首次退回',原负责人是我:false}];
     // 1024 宽：左边 220 的导航 + 内容区 24 内边距，同 app 外框
     window.__render=()=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>

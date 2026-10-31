@@ -55,6 +55,7 @@ import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import { toggleTask, deleteTask, deleteFollowUp, restoreFollowUp, completePlan, saveFollowUp } from "./actions";
 import { useContactRemoval } from "./useContactRemoval";
 import { useTransferConfirm } from "../useTransferConfirm";
+import { usePoolReturnConfirm } from "../usePoolReturnConfirm";
 import { 历史负责人们, 换负责人一句 } from "@/lib/owner-log";
 import { useWidth } from "@/lib/roster";
 import PaneToggle from "@/components/PaneToggle";
@@ -194,6 +195,7 @@ export default function RecordView({
   const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined);
   const { 问怎么拿掉 } = useContactRemoval();
   const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
+  const { 问放回公海 } = usePoolReturnConfirm();
   // 企业版项目模式：报价挂在商机上，企业版没有商机这条线，报价记录一并不摆（10-26）
   const 报价记录 = 项目们 ? [] : 报价记录档;
   const revertChoice = useRef<string>(REVERT_CHOICES[0].value);
@@ -469,7 +471,10 @@ export default function RecordView({
   /** 公海（第 6 块）：放进 / 领取这一位，提示条上带一次撤销（和列表上同一个做法） */
   async function 公海动作(动作: "放进" | "领取") {
     if (动作 === "领取" && !(await 先问转走的项目([customer.id]))) return;
-    const res = 动作 === "放进" ? await 放进公海([customer.id]) : await 领取([customer.id]);
+    // 企业版放回前确认：联系人、项目一起退 + 必选退回原因（U-客户-04 / M-公海-09）；别的版本不问
+    const 问 = 动作 === "放进" ? await 问放回公海("把这位客户放回公海？", 企业) : null;
+    if (问 === false) return;
+    const res = 动作 === "放进" ? await 放进公海([customer.id], 问?.原因) : await 领取([customer.id]);
     router.refresh();
     if (!res.ok) return void message.error(res.error);
     if (!res.updated) return void message.info(动作 === "放进" ? "已经在公海里了" : "已经被别人领走了");
