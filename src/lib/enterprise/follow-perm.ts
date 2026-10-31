@@ -18,6 +18,15 @@ export function 能删改沟通of(me: { id: string; role: string }, org: 组织 
   return 们.has("总管理员") || 们.has("销售管理");
 }
 
+/**
+ * 刚记下的本人可以撤销（删）：AI 卡片确认后的「撤销」、记错了马上撤，都走 deleteFollowUp。
+ * 只认本人记的、记下 撤销窗口分钟 以内的；过了这个时间就和别的沟通一样，普通成员删不了
+ */
+export const 撤销窗口分钟 = 10;
+export function 刚记的能撤(me: { id: string }, f: { ownerId: string | null; createdAt: Date }, now: Date = new Date()): boolean {
+  return f.ownerId === me.id && now.getTime() - f.createdAt.getTime() <= 撤销窗口分钟 * 60_000;
+}
+
 export async function 能删改沟通(me: { id: string; role: string }): Promise<boolean> {
   if (!企业版()) return true;
   if (me.role === "ADMIN" || me.role === "MANAGER") return true;

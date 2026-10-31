@@ -85,6 +85,8 @@ describe("改项目上的一条沟通", () => {
   it("改方式 / 时间 / 内容；标题、状态这些原样；拿旧版本再改报冲突、不盖", async () => {
     await 记项目沟通Action(项目, 沟通());
     const id = await 最新沟通(项目);
+    // 10-31 M-权限-09：普通成员不能改沟通，改的是总管理员 / 经理（成员被拒见 ent-followup-p3.test.ts）
+    当(老板, "ADMIN");
     const 前 = (await prisma.followUp.findUnique({ where: { id } }))!;
     expect(await 改项目沟通(项目, id, { type: "WECHAT", content: "改成微信聊的", occurredAt: "2026-10-19 09:30", 版本: 前.updatedAt.toISOString() })).toEqual({ ok: true });
     const 后 = (await prisma.followUp.findUnique({ where: { id } }))!;
@@ -115,6 +117,7 @@ describe("改项目上的一条沟通", () => {
 
 describe("删项目上的一条沟通：软删进回收站", () => {
   it("删了项目上看不到、行还在；提示条上撤销能拿回来", async () => {
+    // 本人刚记的能撤（10 分钟内，M-权限-09 的例外）；记了一阵的普通成员删不了，见 ent-followup-p3.test.ts
     await 记项目沟通Action(项目, 沟通());
     const id = await 最新沟通(项目);
     const r = await 删项目沟通(项目, id);

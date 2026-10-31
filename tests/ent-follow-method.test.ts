@@ -109,6 +109,7 @@ describe("存进库", () => {
     expect(await saveFollowUp({ ...base, method: "展会面聊" })).toMatchObject({ ok: true });
     const f = (await prisma.followUp.findFirst({ orderBy: { createdAt: "desc" } }))!;
     expect({ type: f.type, method: f.method }).toEqual({ type: "OTHER", method: "展会面聊" });
+    当(老板, "ADMIN"); // 10-31 M-权限-09：改沟通是总管理员 / 经理的事
     expect(await saveFollowUp({ ...base, id: f.id, type: "OTHER", content: "改了内容" })).toMatchObject({ ok: true });
     expect(await prisma.followUp.findUnique({ where: { id: f.id }, select: { method: true, content: true } })).toEqual({ method: "展会面聊", content: "改了内容" });
   });
