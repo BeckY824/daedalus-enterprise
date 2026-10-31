@@ -17,6 +17,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import type { PrismaClient } from "@/generated/prisma";
 import { 是附件编号, type 附件, type 归属 } from "./attachment-rules";
+import { 看已删 } from "./enterprise/soft-delete-core";
 
 /**
  * 附件放哪：桌面端 = 数据目录（每个账号一个，和 crm.db 放一起，自动备份跟着走）；
@@ -220,6 +221,24 @@ export async function 客户附件个数(db: PrismaClient, customerIds: string[]
   return 结果;
 }
 
+/**
+ * 企业版沟通记录的截图、录音（F-跟进-07，迁移 103）：每条沟通记录 → 它的附件（按传上的先后）。
+ * db 传加了限定的 prisma（调用方先认过能看这些沟通记录）
+ */
+export async function 沟通附件们(db: PrismaClient, followUpIds: string[], 目录 = 附件目录()): Promise<Map<string, 附件[]>> {
+  const 结果 = new Map<string, 附件[]>();
+  for (let i = 0; i < followUpIds.length; i += 500) {
+    const 行们 = await db.attachment.findMany({ where: { followUpId: { in: followUpIds.slice(i, i + 500) } }, orderBy: { createdAt: "asc" }, select: { ...选列, followUpId: true } });
+    for (const r of 行们) {
+      if (!r.followUpId) continue;
+      const 们 = 结果.get(r.followUpId) ?? [];
+      们.push(给界面(r, 目录));
+      结果.set(r.followUpId, 们);
+    }
+  }
+  return 结果;
+}
+
 /** cuid 风格：c + 时间 + 随机，只有小写字母数字 */
 function 新编号(): string {
   return "c" + Date.now().toString(36) + crypto.randomBytes(10).toString("hex");
@@ -241,13 +260,16 @@ export async function 清孤儿(db: PrismaClient, 目录 = 附件目录(), 现�
   if (!强制 && g.__附件清理 && 现在 - g.__附件清理 < 3600 * 1000) return 结果;
   g.__附件清理 = 现在;
   try {
-    const 行们 = await db.attachment.findMany({ select: { id: true, opportunityId: true, leadId: true, contactId: true, projectId: true } });
+    const 行们 = await db.attachment.findMany({ select: { id: true, opportunityId: true, leadId: true, contactId: true, projectId: true, followUpId: true } });
     const 商机在 = new Set((await db.opportunity.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.opportunityId ? [r.opportunityId] : [])))] } }, select: { id: true } })).map((x) => x.id));
     // 企业版联系人附件：线索、联系人。两列都有（线索转过客户）的，任一条在就留
     const 线索在 = new Set((await db.lead.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.leadId ? [r.leadId] : [])))] } }, select: { id: true } })).map((x) => x.id));
     const 联系人在 = new Set((await db.contact.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.contactId ? [r.contactId] : [])))] } }, select: { id: true } })).map((x) => x.id));
     // 企业版项目附件（P11）：项目还在就留
     const 项目在 = new Set((await db.project.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.projectId ? [r.projectId] : [])))] } }, select: { id: true } })).map((x) => x.id));
+    // 企业版沟通记录附件（迁移 103）：沟通记录在就留，进了回收站也留（能恢复）；彻底删了才算孤儿
+    const 沟通ids = [...new Set(行们.flatMap((r) => (r.followUpId ? [r.followUpId] : [])))];
+    const 沟通在 = new Set(沟通ids.length ? (await 看已删(() => db.followUp.findMany({ where: { id: { in: 沟通ids } }, select: { id: true } }))).map((x) => x.id) : []);
     const 记录文件 = path.join(目录, ".orphans.json");
     let 记: Record<string, number> = {};
     try { 记 = JSON.parse(fs.readFileSync(记录文件, "utf8")); } catch { /* 没有 / 坏了就从头记 */ }
@@ -255,7 +277,7 @@ export async function 清孤儿(db: PrismaClient, 目录 = 附件目录(), 现�
     for (const r of 行们) {
       const 在 = (!!r.opportunityId && 商机在.has(r.opportunityId))
         || (!!r.leadId && 线索在.has(r.leadId)) || (!!r.contactId && 联系人在.has(r.contactId))
-        || (!!r.projectId && 项目在.has(r.projectId));
+        || (!!r.projectId && 项目在.has(r.projectId)) || (!!r.followUpId && 沟通在.has(r.followUpId));
       if (在) continue;
       const 首次 = typeof 记[r.id] === "number" ? 记[r.id] : 现在;
       if (现在 - 首次 >= 一天) {
