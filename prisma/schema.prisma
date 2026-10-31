@@ -573,7 +573,7 @@ model Attachment {
   contactId     String?
   /// 挂在哪个项目上（企业版项目详情页「附件」，迁移 086）
   projectId     String?
-  /// 附件分类（企业版）：联系人上 名片 / 相册（迁移 074），空 = 相册；项目上 合同 / 其它（10-31），空 = 其它。lib/enterprise/customer-v2.ts 的 附件分类们、项目附件分类们
+  /// 附件分类（企业版）：联系人上 名片 / 相册（迁移 074），空 = 相册；项目上 合同 / 方案 / 其它（10-31；方案 = 项目方案，迁移 101 那批加），空 = 其它。lib/enterprise/customer-v2.ts 的 附件分类们、项目附件分类们
   tag           String?
   /// 原文件名（人看的）；图片压过以后扩展名换成 .jpg
   name          String
@@ -889,6 +889,11 @@ model Project {
   contractCurrency     String?
   depositAmount        Float?
   depositCurrency      String?
+  /// 痛点标注（企业版，迁移 101）：多行自由文本，项目详情「成交需求」下面一行，编辑项目里可改；可空
+  painPoints           String?
+  /// 合同状态（企业版，迁移 101）：起草中 / 待对方确认 / 待我方确认 / 对方修改中 / 我方修改中 / 已生效 / 已终止（lib/project/proj-fields.ts 合同状态们）。
+  /// 新建项目写「起草中」；老项目是空，界面按「起草中」显示（不改老数据）。项目方案是附件（Attachment.tag「方案」），不在这里
+  contractStatus       String?
   /// 预计成交日期（企业版）：这个项目预计哪天签。老数据从客户的 expectedSignAt 搬过来，只搬客户名下只有一个进行中项目的，见 lib/project/expected-deal.ts
   expectedDealAt       DateTime?
   /// 项目来源（企业版，迁移 077）：这个项目是哪个渠道带来的，存渠道 id，界面写渠道全称。

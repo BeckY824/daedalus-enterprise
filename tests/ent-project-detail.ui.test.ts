@@ -12,7 +12,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=f,改项目画像Action=f,改项目沟通=f,删项目沟通=f,撤销删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return{ok:true}},改项目画像Action=f,改项目沟通=f,删项目沟通=f,撤销删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,指认卡点Action=f,认领卡点Action=f,接受卡点Action=f,转让卡点Action=f,返回卡点Action=f,改卡点进度Action=f,解决卡点Action=f,卡点可选的人Action=async()=>[];`);
@@ -219,6 +219,71 @@ it("10-31：这个进程配了必填、还没填的项目金额 / 预计成交�
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 项目来源: null, expectedDealAt: "2026-12-01", 必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额"], 只能靠填齐: false } }));
     await 卡.getByText("2026-12-01").waitFor();
     expect(await 卡.getByText("占位确认", { exact: true }).count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合同附件后面有「项目方案」附件格；编辑框能改这两格、交上去", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.route("http://proj.test/api/attachments**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({ 附件: [] }) }));
+    const 钱 = { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null };
+    const 附 = { 合同: 0, 方案: 0, 其它: 0, 只读: false };
+    // 老项目：合同状态 page.tsx 兜底成起草中，痛点标注空着
+    await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: null, contractStatus: "起草中" } });
+    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "合同状态" }).first();
+    await 卡.waitFor();
+    let 字 = await 卡.innerText();
+    expect(字).toMatch(/合同状态\s*起草中/);
+    expect(字).toContain("待填写痛点标注");
+    expect(字.indexOf("合同金额")).toBeLessThan(字.indexOf("合同状态"));
+    expect(字.indexOf("成交需求")).toBeLessThan(字.indexOf("痛点标注"));
+    const 格名 = await 卡标题(page, ".proj-main"); // 附件格在左栏（回款下面）
+    expect(格名).toEqual(expect.arrayContaining(["合同附件（0）", "项目方案（0）"]));
+    expect(格名.indexOf("项目方案（0）")).toBe(格名.indexOf("合同附件（0）") + 1);
+    // 填了：多行照原样换行
+    await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: "交期总拖\n售后慢", contractStatus: "待我方确认" } });
+    await 卡.getByText("待我方确认").waitFor();
+    字 = await 卡.innerText();
+    expect(字).toMatch(/痛点标注\s*交期总拖\n售后慢/);
+    // 编辑框：两格都在，改了交上去
+    await page.locator(".page-head-a").getByRole("button", { name: "编辑项目" }).click();
+    const 框 = page.locator(".ant-modal-container");
+    const 痛点 = 框.getByRole("textbox", { name: "痛点标注" });
+    await 痛点.waitFor();
+    expect(await 痛点.inputValue()).toBe("交期总拖\n售后慢");
+    await 痛点.fill("  交期总拖  ");
+    await 框.getByRole("combobox", { name: "合同状态" }).click();
+    const 下拉 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+    expect(await 下拉.allInnerTexts()).toEqual(["起草中", "待对方确认", "待我方确认", "对方修改中", "我方修改中", "已生效", "已终止"]);
+    await 下拉.filter({ hasText: "已生效" }).click();
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length > 0);
+    const 交 = await page.evaluate(() => ((window as unknown as { __编辑: [string, Record<string, unknown>][] }).__编辑).at(-1)![1]);
+    expect(交).toMatchObject({ painPoints: "交期总拖", contractStatus: "已生效" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("迁移 101：没给项目新字段（不是企业版 / 藏了）就不摆这两行、编辑框也没有", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
+      成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 项目新字段: { contractStatus: "已生效" } }));
+    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "定金金额" }).first();
+    await 卡.getByText("已生效").waitFor();
+    expect(await 卡.innerText()).not.toContain("痛点标注");
+    await page.locator(".page-head-a").getByRole("button", { name: "编辑项目" }).click();
+    const 框 = page.locator(".ant-modal-container");
+    await 框.getByRole("combobox", { name: "合同状态" }).waitFor();
+    expect(await 框.getByRole("textbox", { name: "痛点标注" }).count()).toBe(0);
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
+      成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null } }));
+    await 卡.getByText("已生效").waitFor({ state: "detached" });
+    const 字 = await 卡.innerText();
+    expect(字).not.toContain("合同状态");
+    expect(字).not.toContain("痛点标注");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

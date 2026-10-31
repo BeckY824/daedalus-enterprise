@@ -334,9 +334,10 @@ const 项目字段名: Record<string, string> = {
   name: "名称", ownerId: "负责人", amount: "金额", currency: "币种", remark: "备注", contactId: "主联系人", expectedDealAt: "预计成交日期", channelId: "项目来源",
   level: "项目级别", addrCountry: "所在地", addrProvince: "所在地", addrCity: "所在地", addrDistrict: "所在地", location: "详细地址",
   dealDemand: "需求描述", contractAmount: "合同金额", contractCurrency: "合同金额", depositAmount: "定金金额", depositCurrency: "定金金额",
+  painPoints: "痛点标注", contractStatus: "合同状态",
 };
 
-/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、所在地、需求描述、合同金额、定金金额 */
+/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、所在地、需求描述、合同金额、定金金额、痛点标注、合同状态 */
 export async function 编辑项目(projectId: string, patch: 编辑项目改动) {
   try {
     const me = await requireUser();

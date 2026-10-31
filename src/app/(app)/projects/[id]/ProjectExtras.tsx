@@ -103,8 +103,8 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
   );
 }
 
-/** 「附件」卡（企业版 P11）：合同、方案、表格、图片都行，不分类；看得到项目就能看、能改项目才能传和删（接口 api/attachments/access.ts 认项目） */
-export function ProjectAttachmentsCard({ projectId, 分类, 标题, 起始个数, 只读 }: { projectId: string; 分类: "合同" | "其它"; 标题: string; 起始个数: number; 只读: boolean }) {
+/** 「附件」卡（企业版 P11）：10-31 起分三张——合同附件 / 项目方案 / 其它附件（分类 = Attachment.tag）；看得到项目就能看、能改项目才能传和删（接口 api/attachments/access.ts 认项目） */
+export function ProjectAttachmentsCard({ projectId, 分类, 标题, 起始个数, 只读 }: { projectId: string; 分类: "合同" | "方案" | "其它"; 标题: string; 起始个数: number; 只读: boolean }) {
   const [个数, set个数] = useState(起始个数);
   return (
     <Card title={`${标题}（${个数}）`}>

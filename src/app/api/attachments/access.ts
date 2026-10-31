@@ -101,9 +101,9 @@ export async function 联系人附件入口(contactId: string): Promise<{ 个数
 
 /**
  * 企业版项目详情页的「附件」区（P11，10-29）：和接口同一个口径——看不到（不是企业版、项目模式关着、公海里同事客户的项目）
- * 就不给这一区，改不了（不是负责人 / 老板 / 主管）就只给看。10-31 分两格：合同附件 / 其它附件，各几个
+ * 就不给这一区，改不了（不是负责人 / 老板 / 主管）就只给看。10-31 分三格：合同附件 / 项目方案 / 其它附件，各几个
  */
-export async function 项目附件入口(projectId: string): Promise<{ 合同: number; 其它: number; 只读: boolean } | null> {
+export async function 项目附件入口(projectId: string): Promise<{ 合同: number; 方案: number; 其它: number; 只读: boolean } | null> {
   if (!企业版() || "错" in await 认父记录({ projectId }, false)) return null;
   const 个数 = await 项目分类附件数(defaultClient, projectId);
   return { ...个数, 只读: "错" in await 认父记录({ projectId }, true) };

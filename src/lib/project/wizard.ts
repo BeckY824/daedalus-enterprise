@@ -15,6 +15,8 @@ import { 有效线索节点, 缺有效沟通, 记沟通标记 } from "./stage-ga
 import { 登记接着建, type 接着建 } from "./hook";
 import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
+import { 新项目默认值 } from "./proj-fields";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 export const 项目名上限 = 60;
 export const 备注上限 = 500;
@@ -162,6 +164,8 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
         phase: 落.phase, node: 落.node, nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText,
         // 项目来源只有企业版建档才写（建档向导里查过库）；团队版一律空，渠道统计回落到客户来源
         ...(好.企业?.项目来源 ? { channelId: 好.企业.项目来源 } : {}),
+        // 合同状态（迁移 101）：企业版新项目落「起草中」
+        ...新项目默认值(企业版()),
       },
     });
     await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: me.id, toPhase: 落.phase, toNode: 落.node } });

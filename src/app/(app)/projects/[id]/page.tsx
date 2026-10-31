@@ -30,6 +30,8 @@ import { 列回款 } from "@/lib/project/payment-db";
 import { 项目画像项, 其他项, 字典定义 } from "@/lib/enterprise/dict-kinds";
 import { 读产品需求 } from "@/lib/project/profile-rules";
 import { 项目关联们 } from "@/lib/project/relate";
+import { 字段权限of } from "@/lib/enterprise/field-perm";
+import { 合同状态显示 } from "@/lib/project/proj-fields";
 import type { 项目画像 } from "./ProjectExtras";
 import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 
@@ -133,6 +135,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 企业版字典下拉（10-27）：不是企业版 可选项 给空
   const [回收原因们, 无效原因们] = await Promise.all([可选项("recycle"), 可选项("invalid")]);
   // 企业版项目来源 / 已立项天数 / AI 录入（10-29 P6）：项目自己选了渠道就用它，没选跟客户来源走（和渠道统计 lib/enterprise/channel-stats.ts 同一条规则）
+  // 痛点标注、合同状态（迁移 101）：字段权限「藏」的那一项不给值（界面不摆那一行、编辑框不交那一项）
+  const 权限 = 企业 ? await 字段权限of(me.id) : null;
   const 企业项目字段 = !企业 ? {} : {
     项目来源: p.channel ? { name: p.channel.name, 跟客户: false } : 露 && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true } : null,
     channelId: p.channelId,
@@ -144,6 +148,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
     // 成交需求、合同金额、定金金额（迁移 097）：和金额一样是项目自己的，都给看
     成交钱: { dealDemand: p.dealDemand, contractAmount: p.contractAmount, contractCurrency: p.contractCurrency, depositAmount: p.depositAmount, depositCurrency: p.depositCurrency },
+    // 合同状态库里空的（老项目）按「起草中」显示，不改库
+    项目新字段: {
+      ...(权限?.("痛点标注") !== "藏" ? { painPoints: p.painPoints } : {}),
+      ...(权限?.("合同状态") !== "藏" ? { contractStatus: 合同状态显示(p.contractStatus) } : {}),
+    },
   };
   // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查
   const 线索验证 = 企业 && p.phase === "线索" ? await 读线索验证(me, p) : null;

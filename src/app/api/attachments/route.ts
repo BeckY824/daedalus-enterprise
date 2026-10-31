@@ -21,11 +21,11 @@ export const runtime = "nodejs";
  *   POST ?opportunityId=|leadId=|contactId=|projectId=&name=&w=&h=  body = 文件原始字节（图片在界面上已经压过），Content-Type = 文件类型
  * 取文件、删除在 [id]/route.ts。
  * 企业版联系人附件分两格（2026-10-29 定稿 P5 第 24 条）：再带 &tag=名片|相册。GET 只列这一格（相册连没分类的老附件），
- * POST 记上这一格。项目附件也分两格（10-31）：&tag=合同|其它，规矩同上（其它连没分类的老附件）；传了合同附件，项目配了节点必填就顺手推一次。
+ * POST 记上这一格。项目附件分三格（10-31）：&tag=合同|方案|其它，规矩同上（其它连没分类的老附件）；传了合同附件、项目方案，项目配了节点必填就顺手推一次。
  * 别的父记录、个人版不认 tag（带了也不管）
  */
 
-/** 这次请求认的分类：企业版、挂在联系人上是 名片 / 相册 之一，挂在项目上是 合同 / 其它 之一；否则 null。带了认不出的值 → 错 */
+/** 这次请求认的分类：企业版、挂在联系人上是 名片 / 相册 之一，挂在项目上是 合同 / 方案 / 其它 之一；否则 null。带了认不出的值 → 错 */
 function 读分类(q: URLSearchParams, 挂在: object): { 值: string | null } | { 错: string } {
   const t = q.get("tag");
   if (!t || !企业版()) return { 值: null };
@@ -106,8 +106,8 @@ export async function POST(req: Request) {
 
   const a = await 存附件(prisma, { 挂在, name: 名, mime, 字节: 体, width: 整数(q.get("w")), height: 整数(q.get("h")), userId: 我.id, tag: 分类.值 });
   await recordAudit({ user: 我, action: "create", entity: "Attachment", entityId: a.id, summary: `给${父.叫法}加了${分类.值 ? `${分类.值}「${名}」` : `${收所有文件(挂在) ? "附件" : "图片"}「${名}」`}（${读大小(a.size)}）`, detail: { ...挂在, 名字: 名, 大小: a.size, ...(分类.值 ? { 分类: 分类.值 } : {}) } });
-  // 合同附件是节点必填之一：传上了就按必填推一次（推不动 / 没配都不影响这次上传）
-  const 推进 = 分类.值 === "合同" && "projectId" in 挂在 ? await 合同附件后推进(我, String(挂在.projectId)).catch(() => []) : [];
+  // 合同附件、项目方案是节点必填之一：传上了就按必填推一次（推不动 / 没配都不影响这次上传）
+  const 推进 = (分类.值 === "合同" || 分类.值 === "方案") && "projectId" in 挂在 ? await 合同附件后推进(我, String(挂在.projectId)).catch(() => []) : [];
   if (推进.length && "projectId" in 挂在) await 记这个项目的自动推进(我, String(挂在.projectId), 推进);
   return NextResponse.json({ 附件: a, ...(推进.length ? { 自动推到: 推进 } : {}) }, { headers: 不存 });
 }
