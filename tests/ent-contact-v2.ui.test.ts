@@ -3,7 +3,7 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
 /* 2026-10-29 P13：企业版联系人第二轮的三处界面——
-   1. 级别星：四档一样宽（亮的实心 + 暗的淡色补满 4 格），读屏念「3 星（A 重点）」
+   1. 级别：10-31 起（F-客户-01）去星标只显示字母徽标，读屏念「客户级别 A 重点」
    2. 联系人表单号码撞了：框顶黄条列出撞到的那位（看得到的可点进客户页、客户页上新建能「挂到本客户」），「仍然保存」照存；改了表单黄条收起
    3. 客户页联系人卡的挂靠一段：挂来的摆主客户 + 说明、能解除；自家的摆「也挂在」、看不到的客户不给链接
    4. 10-31：企业版联系人「职务」下拉 19 项、也能手填；字典外的老职务原样显示；非企业版照旧「与客户关系」 */
@@ -63,20 +63,20 @@ async function open(画: "__星" | "__表单" | "__挂靠" | "__职务" | "__职
   return page;
 }
 
-it("级别星：四档一样宽、亮的颗数对、读屏念星数和说明；没分级给占位", async () => {
+it("级别徽标（F-客户-01 去星标）：只显示字母 S/A/B/C、不带星，四档等高、读屏念档名；没分级给占位", async () => {
   const page = await open("__星");
   try {
-    await page.locator(".cust-stars").first().waitFor();
-    const 各 = await page.locator(".cust-stars").evaluateAll(els => els.map(e => ({
-      宽: Math.round(e.getBoundingClientRect().width), 读: e.getAttribute("aria-label"),
-      亮: (e.firstChild?.textContent ?? "").length, 暗: e.querySelector(".cust-stars-off")?.textContent?.length ?? 0,
+    await page.locator(".cust-level").first().waitFor();
+    const 各 = await page.locator(".cust-level").evaluateAll(els => els.map(e => ({
+      字: e.textContent, 高: Math.round(e.getBoundingClientRect().height), 读: e.getAttribute("aria-label"),
     })));
-    expect(各.map(x => [x.亮, x.暗])).toEqual([[4, 0], [3, 1], [2, 2], [1, 3]]);
-    expect(new Set(各.map(x => x.宽)).size).toBe(1);
-    expect(各[1].读).toBe("3 星（A 重点）");
+    expect(各.map(x => x.字)).toEqual(["S", "A", "B", "C"]);
+    expect(new Set(各.map(x => x.高)).size).toBe(1);
+    expect(各[1].读).toBe("客户级别 A 重点");
+    expect(await page.locator("body").innerText()).not.toMatch(/[★☆]/);
     expect(await page.locator("[data-l='无']").innerText()).toBe("—");
-    const [亮色, 暗色] = await page.locator("[data-l='B'] .cust-stars").evaluate(e => [getComputedStyle(e).color, getComputedStyle(e.querySelector(".cust-stars-off")!).color]);
-    expect(亮色).not.toBe(暗色);
+    const [S色, C色] = await Promise.all(["S", "C"].map(l => page.locator(`[data-l='${l}'] .cust-level`).evaluate(e => getComputedStyle(e).backgroundColor)));
+    expect(S色).not.toBe(C色);
   } finally { await page.close(); }
 });
 
