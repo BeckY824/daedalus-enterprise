@@ -72,6 +72,7 @@ async function 补停用(kind: 字典种类, 停用: readonly string[], db: Pris
  * 默认项改过名（客户状态 10-28 整套换；客户类型 10-30 换两轮：先贸易商→中间贸易商等，再一般客户→暂不确认）：
  * 之前建好的库里，还叫某一轮旧名的默认项（固定 id、名字没被人改过）改成同序号的新名，每轮只改一次，按先后一轮一轮来
  * （很老的库先过第一轮再过第二轮）。新名已经被别的项占了的那一个跳过；人改过名、自己加的不动。每轮改完记一笔，以后不再碰。
+ * 新默认比这一轮短（需求状态 10-30 五项变四项）：多出来的、还叫旧名的那几项停用，不删（项目上存着的原值照常显示）。
  * 第一轮的记号沿用原来的 key（已经改过的库不会重来），第二轮起 key 后面带轮次
  */
 const 换默认记号 = (kind: 字典种类, 轮: number) => (轮 === 0 ? `entDict.defaultRenamed.${kind}` : `entDict.defaultRenamed.${kind}.${轮 + 1}`);
@@ -87,6 +88,7 @@ async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
     for (const [i, 旧名] of 这轮旧名.entries()) {
       const 新名 = 默认[i];
       const 那项 = 现有.find((x) => x.id === 默认id(kind, i) && x.name === 旧名);
+      if (那项 && i >= 默认.length) await db.entDictItem.update({ where: { id: 那项.id }, data: { active: false } });
       if (!那项 || !新名 || 新名 === 旧名 || 占着.has(新名)) continue;
       await db.entDictItem.update({ where: { id: 那项.id }, data: { name: 新名 } });
       那项.name = 新名;
@@ -202,7 +204,7 @@ export async function 选的原因(kind: 字典种类, v: unknown): Promise<{ ok
   return { ok: true, 值: 选 === 其他项 ? `${其他前缀}${写.trim()}` : n };
 }
 
-/** 分配方式默认五项的序号：0 指定分配、1 自动分配、2 公海捞取、3 暂不分配、4 自拓自持（默认id("assign", i)） */
+/** 分配方式默认五项的序号：0 指定分配、1 自动分配、2 公海捞取、3 暂不分配、4 个人自拓（默认id("assign", i)） */
 export type 分配方式序号 = 0 | 1 | 2 | 3 | 4;
 export const 是分配方式序号 = (x: unknown): x is 分配方式序号 => x === 0 || x === 1 || x === 2 || x === 3 || x === 4;
 

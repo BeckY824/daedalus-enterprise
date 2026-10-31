@@ -28,8 +28,8 @@ describe("短号、项目显名", () => {
 
 describe("概览名称", () => {
   it("四段齐：进程|区域|显名|产品需求（多选用、连）", () => {
-    expect(概览名称({ ...项目, addrCountry: "中国", addrProvince: "江苏", addrCity: "苏州", productNeeds: '["常规标品","部署服务"]' }))
-      .toBe("明确需求|苏州|华东二期|常规标品、部署服务");
+    expect(概览名称({ ...项目, addrCountry: "中国", addrProvince: "江苏", addrCity: "苏州", productNeeds: '["常规标品","硬件标品"]' }))
+      .toBe("明确需求|苏州|华东二期|常规标品、硬件标品");
   });
 
   it("空的段跳过：没区域、没需求只剩进程|显名", () => {
