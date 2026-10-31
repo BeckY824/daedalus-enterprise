@@ -30,7 +30,7 @@ const 邀请说法: Record<string, string> = { INVITED: "已邀请", DECLINED: "
 /**
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩和建档向导第四步一样（服务端 规整项目）。
  * 企业版另有项目级别（S / A / B / C，显示成星）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）；
- * 成交需求、合同金额、定金金额（迁移 097）：两个金额和上面「金额」一样，左边币种下拉、右边数字连成一格（Space.Compact）
+ * 需求描述（原成交需求）、合同金额、定金金额（迁移 097）：两个金额和上面「金额」一样，左边币种下拉、右边数字连成一格（Space.Compact）
  */
 export function ProjectEditModal({
   open, onClose, 跑, p, 候选, 联系人们, 渠道们, 改负责人 = true,
@@ -134,7 +134,7 @@ export function ProjectEditModal({
           <InputNumber<number> style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="待填写合同金额" value={钱.contractAmount} formatter={金额格式} onChange={(v) => 改钱({ contractAmount: v ?? null })} />
         </Space.Compact>
       ))}
-      {钱 && 行("成交需求", <Input.TextArea aria-label="成交需求" rows={2} maxLength={成交需求上限} placeholder="客户想买什么、要多少" value={钱.dealDemand} onChange={(e) => 改钱({ dealDemand: e.target.value })} />)}
+      {钱 && 行("需求描述", <Input.TextArea aria-label="需求描述" rows={2} maxLength={成交需求上限} placeholder="客户想买什么、要多少" value={钱.dealDemand} onChange={(e) => 改钱({ dealDemand: e.target.value })} />)}
       {p.expectedDealAt !== undefined && 行("预计成交日期", (
         <DatePicker
           style={{ width: "100%" }}

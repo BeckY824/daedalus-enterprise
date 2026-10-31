@@ -9,7 +9,7 @@
  * 导入只认原系统：节点可以往回走（包括已转商机的退回线索），这一点和手动改节点不同；异常状态导进来没有类别。
  */
 import type { Prisma } from "@/generated/prisma";
-import { 是结局, type 阶段 } from "../project/nodes";
+import { 是结局, 本套名, 企业版字典, type 阶段 } from "../project/nodes";
 import { 规, 写不进, type 值表, type 标量 } from "./apply";
 import { 节点所在阶段 } from "./project-values";
 export { 项目阶段值, 项目节点对值, 节点所在阶段, 结局默认节点 } from "./project-values";
@@ -125,7 +125,9 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
   const 原 = await tx.project.findUnique({ where: { id }, select: { phase: true, node: true, result: true, closedAt: true, ownerId: true } });
   if (!原) throw new 写不进("项目不在了");
   const 新 = 位置({ stage: 有("stage") ? 改动.stage : 现值.stage, status: 有("status") ? 改动.status : 现值.status });
-  if (新.node !== 原.node || 新.result !== 原.result) {
+  // 库里存着旧名（10-31 改名前的 明确需求、成功交付…）的先对到新名再比：同一个节点不算改，不白记一条节点变更
+  const 原结局 = 原.result ? 本套名(原.result, 企业版字典) : null;
+  if (新.node !== 本套名(原.node, 企业版字典) || 新.result !== 原结局) {
     Object.assign(data, { phase: 新.phase, node: 新.node, result: 新.result });
     if (新.result !== "异常状态") Object.assign(data, { exceptionCategoryId: null, exceptionReason: null });
     await tx.projectNodeLog.create({
@@ -142,7 +144,7 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
     });
   }
   if (!新.result) data.closedAt = null;
-  else if (新.result !== 原.result || 有("closedAt")) data.closedAt = 日(有("closedAt") ? 改动.closedAt : 现值.closedAt) ?? 原.closedAt ?? new Date(现在);
+  else if (新.result !== 原结局 || 有("closedAt")) data.closedAt = 日(有("closedAt") ? 改动.closedAt : 现值.closedAt) ?? 原.closedAt ?? new Date(现在);
   if (Object.keys(data).length) await tx.project.update({ where: { id }, data });
 }
 

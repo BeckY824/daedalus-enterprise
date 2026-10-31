@@ -19,6 +19,7 @@ import { 超时回收日, 超时起点, 超时理由, 系统, 节点超时天数
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 字典of } from "@/lib/project/stage-dict";
+import { 本套位置 } from "@/lib/project/nodes";
 import { 有效沟通数 } from "@/lib/project/stage-gates";
 import { 读线索验证 } from "@/lib/project/lead-verify";
 import { dayjs } from "@/lib/utils";
@@ -163,11 +164,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 回款们 = 企业 ? await 列回款(p.id) : null;
   // 企业版关联客户 / 联系人（P17）：同画像，公海里同事客户的项目没领之前不给
   const 关联 = 企业 && 露 ? await 项目关联们(me, p.id) : null;
+  // 库里存着旧节点名 / 旧结局的（企业版 10-31 改名）按这套的新名给界面；节点变更历史（logs）照原样
+  const 现 = 本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典);
   const 详情: 项目详情 = {
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
     ownerId: p.ownerId, ownerName: 叫(p.ownerId)!, historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
-    phase: p.phase, node: p.node, result: p.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
+    phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
     pooled: 公海, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天

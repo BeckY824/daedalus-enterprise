@@ -13,7 +13,7 @@ export type 画像改动 = Partial<Record<Exclude<项目画像键, "productNeeds
 export type 画像字段 = 项目画像键;
 
 /**
- * 项目画像（企业版 P11，迁移 087）：预算能力、价格感知、决策链路、需求状态（单选）、产品需求（多选）。
+ * 项目画像（企业版 P11，迁移 087）：预算能力、价格感知、决策链路、需求状态（单选）、需求类型（多选，10-31 前叫产品需求，列 productNeeds）。
  * 所在地（地址四格 + 详细地址）定稿 -2 版改成和客户地址一套，挪到「编辑项目」里（db.ts 改项目），不走这里。
  * 谁能改同 改项目：能管项目（负责人本人、老板、主管；公海里的先领取）。
  * 选项来自企业字典（设置 → 项目模式 里改）：新选的得是启用着的；已经存着、后来停用的那项不动它就留着（多选里也是），
@@ -32,12 +32,12 @@ export async function 改项目画像(me: 谁, projectId: string, patch: 画像�
     if (!(项.键 in patch)) continue;
     if (项.多选) {
       const v = patch.productNeeds;
-      if (v != null && (!Array.isArray(v) || v.some((x) => typeof x !== "string"))) return { ok: false, error: "产品需求要选列表里的项" };
+      if (v != null && (!Array.isArray(v) || v.some((x) => typeof x !== "string"))) return { ok: false, error: "需求类型要选列表里的项" };
       const 选的 = (v ?? []).map((x) => x.trim()).filter(Boolean);
       const 已有 = 读产品需求(原.productNeeds);
       const 能选 = await 可选项(项.种类);
       const 不认 = 选的.find((x) => !已有.includes(x) && !能选.includes(x));
-      if (不认) return { ok: false, error: `「${不认}」不在产品需求里（可能刚被停用），刷新后再选` };
+      if (不认) return { ok: false, error: `「${不认}」不在需求类型里（可能刚被停用），刷新后再选` };
       新.productNeeds = 存产品需求(选的);
     } else {
       const v = (patch as Record<string, unknown>)[项.键];

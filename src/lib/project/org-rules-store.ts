@@ -2,9 +2,11 @@
 import { getSetting, setSetting } from "../settings";
 import { 企业版 } from "../enterprise/switch";
 import { 规整组织规则, type 组织规则 } from "./org-rules";
+import { 字典of } from "./stage-dict";
 
+/** 存着的节点天数、必填按这套的节点名对上（企业版 10-31 改名：旧 key 读出来就是新名） */
 export async function 读组织规则(): Promise<组织规则> {
-  return 规整组织规则(await getSetting("orgRules"));
+  return 规整组织规则(await getSetting("orgRules"), 字典of(企业版()));
 }
 
 /**
@@ -16,5 +18,5 @@ export async function 生效组织规则(): Promise<组织规则> {
 }
 
 export async function 存组织规则(规则: 组织规则): Promise<void> {
-  await setSetting("orgRules", 规整组织规则(规则));
+  await setSetting("orgRules", 规整组织规则(规则, 字典of(企业版())));
 }

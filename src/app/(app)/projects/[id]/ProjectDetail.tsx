@@ -19,7 +19,7 @@ import FollowMethodSelect from "@/components/FollowMethodSelect";
 import { 对得上的方式 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
-import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
+import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
@@ -102,7 +102,7 @@ export type 项目详情 = {
    * 所在地 = 地址四格 + 详细地址，跟客户资料一样公海里同事客户的项目没领之前是 null（不摆）。不是企业版都不传
    */
   level?: string | null; 所在地?: (客户地址 & { location: string | null }) | null;
-  /** 企业版成交需求、合同金额 + 币种、定金金额 + 币种（迁移 097）；不是企业版不传 */
+  /** 企业版需求描述（10-31 前叫成交需求）、合同金额 + 币种、定金金额 + 币种（迁移 097）；不是企业版不传 */
   成交钱?: 项目成交钱;
   /**
    * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推；
@@ -373,6 +373,10 @@ export default function ProjectDetail({
   const 节点总数 = 节点总数of(字典);
   const 下 = 下一步(当前, 字典);
   const 差 = 交付还差(p);
+  // 订单走成的结局：团队版 成功交付、企业版 交付结清（10-31 改名）；叫法按字典（后台改了就用改的）
+  const 交付结局 = 字典.出口们.订单[0].结局 ?? "成功交付";
+  const 交付叫法 = 结局叫法(交付结局, 字典);
+  const 交付了 = 是交付(p.result);
   const 异常 = p.result === "异常状态";
   const 可改 = 能改 && !p.pooled;
   const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : "只有项目负责人、老板或主管能改";
@@ -464,8 +468,8 @@ export default function ProjectDetail({
       set没成框(到);
       return;
     }
-    if (到.result === "成功交付" && 差.length) {
-      message.warning(`还差${差.join("、")}，勾上才能点成功交付`);
+    if (是交付(到.result) && 差.length) {
+      message.warning(`还差${差.join("、")}，勾上才能点${交付叫法}`);
       return;
     }
     void 跑(() => 改项目节点(p.id, 到), `已改到 ${位置文字(到, 字典)}`);
@@ -473,10 +477,10 @@ export default function ProjectDetail({
 
   /** 结束类（结局）的去处要二次确认（10-30 P2）；异常、要写原因的本来就有自己的框，成功交付没勾齐的 改到 会直接提示 */
   const 结束确认 = (到: 位置) => {
-    if (!到.result || 到.result === "异常状态" || (p.企业版 && 要写原因(到.result)) || (到.result === "成功交付" && 差.length)) return 改到(到);
+    if (!到.result || 到.result === "异常状态" || (p.企业版 && 要写原因(到.result)) || (是交付(到.result) && 差.length)) return 改到(到);
     modal.confirm({
       title: `改到「${结局叫法(到.result, 字典)}」？`,
-      content: 到.result === "成功交付" ? "项目算成功交付、到此结束；以后要改可以把进程改回去" : "项目到此结束；以后要捡回来可以把进程改回去",
+      content: 是交付(到.result) ? `项目算${交付叫法}、到此结束；以后要改可以把进程改回去` : "项目到此结束；以后要捡回来可以把进程改回去",
       okText: "确定",
       onOk: () => 改到(到),
     });
@@ -521,7 +525,7 @@ export default function ProjectDetail({
         到: { phase: v.phase, node: v.node, result: v.result },
         叫: 结局叫法(v.result, 字典),
         说明: v.result === "异常状态" ? "下一步写异常原因" : 要写原因(v.result) ? "下一步选原因" : "项目到此结束；以后要改可以把进程改回去",
-        灰: o.disabled ? "现在改不到这个结局" : v.result === "成功交付" && 差.length ? `还差${差.join("、")}，勾上才能点成功交付` : undefined,
+        灰: o.disabled ? "现在改不到这个结局" : 是交付(v.result) && 差.length ? `还差${差.join("、")}，勾上才能点${交付叫法}` : undefined,
       });
     }
     return 们;
@@ -629,7 +633,7 @@ export default function ProjectDetail({
             <div className="proj-where-label">进程</div>
             <div className="proj-where-value">
               <span className="proj-where-node" title={位.进程}>{位.进程}</span>
-              {位.结局 && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}>{位.结局}</Tag>}
+              {位.结局 && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : 交付了 ? "success" : "default"}>{位.结局}</Tag>}
             </div>
           </div>
           {/* 企业版：哪天回公海写在阶段、进程旁边（10-30 P0-1），3 天内橙、当天红 */}
@@ -667,17 +671,17 @@ export default function ProjectDetail({
           所在阶段={位.阶段}
           所在进程={位.进程}
           结局={位.结局}
-          结局色={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}
-          成功交付={p.result === "成功交付"}
+          结局色={异常 ? "error" : 交付了 ? "success" : "default"}
+          成功交付={交付了}
           动作={节点可改 ? 进程钮 : undefined}
           提示={推不了}
         />
       ) : (
         <Progress
           style={{ marginTop: 12, marginBottom: 0 }}
-          percent={Math.round(((p.result === "成功交付" ? 节点总数 : 节点序号(当前, 字典)) / 节点总数) * 100)}
+          percent={Math.round(((交付了 ? 节点总数 : 节点序号(当前, 字典)) / 节点总数) * 100)}
           showInfo={false}
-          status={异常 ? "exception" : p.result === "成功交付" ? "success" : "active"}
+          status={异常 ? "exception" : 交付了 ? "success" : "active"}
           aria-label={`第 ${节点序号(当前, 字典) + 1} 个进程，共 ${节点总数} 个`}
         />
       )}
@@ -712,7 +716,7 @@ export default function ProjectDetail({
           <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : 待填("定金金额")}</div>
           <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : 待填("合同金额")}</div>
           {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : <span style={{ color: "var(--text-muted)" }}>没有</span>}</span></div>}
-          <div style={行样}><span style={键样}>成交需求</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.成交钱.dealDemand ?? 待填("成交需求")}</span></div>
+          <div style={行样}><span style={键样}>需求描述</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.成交钱.dealDemand ?? 待填("需求描述")}</span></div>
         </>
       )}
       {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期", "选择"))}</div>}
@@ -756,8 +760,8 @@ export default function ProjectDetail({
           <div key={k} style={{ marginBottom: 8 }}>
             <Checkbox
               checked={勾了}
-              disabled={!可改 || 忙 || (勾了 && p.result === "成功交付")}
-              title={不能改 ?? (勾了 && p.result === "成功交付" ? "已经成功交付了；要取消先把进程改回去" : undefined)}
+              disabled={!可改 || 忙 || (勾了 && 交付了)}
+              title={不能改 ?? (勾了 && 交付了 ? `已经${交付叫法}了；要取消先把进程改回去` : undefined)}
               onChange={(e) => void 跑(() => 勾项目交付(p.id, k, e.target.checked))}
             >
               {k === "balanceSettled" ? "尾款结清" : "验收通过"}
@@ -767,16 +771,16 @@ export default function ProjectDetail({
         );
       })}
       <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
-        {p.result === "成功交付" ? "已经成功交付" : 差.length ? `两项都勾上才能点成功交付（还差${差.join("、")}）` : "两项都勾上了，可以点成功交付"}
+        {交付了 ? `已经${交付叫法}` : 差.length ? `两项都勾上才能点${交付叫法}（还差${差.join("、")}）` : `两项都勾上了，可以点${交付叫法}`}
       </div>
-      {p.result !== "成功交付" && (
+      {!交付了 && (
         <Button
           style={{ marginTop: 8 }}
           disabled={!可改 || 忙 || 差.length > 0}
           title={不能改 ?? (差.length ? `还差${差.join("、")}` : undefined)}
-          onClick={() => 结束确认({ phase: "订单", node: p.phase === "订单" ? p.node : 字典.节点们.订单[字典.节点们.订单.length - 1], result: "成功交付" })}
+          onClick={() => 结束确认({ phase: "订单", node: p.phase === "订单" ? p.node : 字典.节点们.订单[字典.节点们.订单.length - 1], result: 交付结局 })}
         >
-          成功交付
+          {交付叫法}
         </Button>
       )}
     </Card>
@@ -787,7 +791,7 @@ export default function ProjectDetail({
     <Card title="进程变更">
       <Timeline
         items={p.logs.map((l) => ({
-          color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : l.to.result === "成功交付" ? "green" : "blue",
+          color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : 是交付(l.to.result) ? "green" : "blue",
           content: (
             <div>
               <div>{l.kind !== "node" ? 换人文字(l) : l.from ? `${位置文字(l.from, 字典)} → ${位置文字(l.to, 字典)}` : `建档，落在 ${位置文字(l.to, 字典)}`}</div>

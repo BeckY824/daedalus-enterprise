@@ -49,7 +49,8 @@ it("给了在推的项目：挂上，记下当时节点，有沟通编号和阶�
   const p = await 项目(客户);
   expect(await 记({ projectId: p.id })).toMatchObject({ ok: true });
   const r = await 挂了(await 最新跟进());
-  expect(r.挂).toMatchObject({ projectId: p.id, node: "明确需求" });
+  // 项目库里存的旧名 明确需求，挂的时候写新名
+  expect(r.挂).toMatchObject({ projectId: p.id, node: "痛点挖掘" });
   expect(r.编号?.projectId).toBe(p.id);
   expect(r.编号?.code).toBeTruthy();
   expect(r.标记).toMatchObject({ projectId: p.id, phase: "商机", replied: false });

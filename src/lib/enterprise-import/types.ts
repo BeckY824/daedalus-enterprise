@@ -114,8 +114,8 @@ export const 字段中文: Record<string, string> = {
   title: "标题",
   content: "内容",
   occurredAt: "跟进时间",
-  // 项目的成交需求 / 合同金额 / 定金金额（迁移 097，只在项目模式落库）
-  dealDemand: "成交需求",
+  // 项目的需求描述（原成交需求）/ 合同金额 / 定金金额（迁移 097，只在项目模式落库）
+  dealDemand: "需求描述",
   contractAmount: "合同金额",
   contractCurrency: "合同币种",
   depositAmount: "定金金额",

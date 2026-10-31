@@ -20,7 +20,7 @@ import { 带币种, 商机币种, 签约币种, 签约金额, 签约合计 } fro
 import { 金额 as 显示金额, 合计文字, 按币种合计 } from "../currency";
 import { 一行说法 } from "../quote";
 import { 客户来源线索 } from "../customer-lead-origin";
-import { 阶段们, 结局们, 是阶段, 是结局 } from "../project/nodes";
+import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 企业版 } from "../enterprise/switch";
 import { 现值选取, 现值表 } from "./current-values";
@@ -303,7 +303,8 @@ export const TOOLS: Tool[] = [
       const 项目负责人 = 项目行.length
         ? new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(项目行.map((p) => p.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
         : new Map<string, string>();
-      const 项目 = 项目行.slice(0, 项目最多).map((p) => ({
+      // 改名后（10-31）库里旧节点名按新名报（本套位置，旧名换新名）
+      const 项目 = 项目行.slice(0, 项目最多).map((p) => 本套位置(p, 字典of(企业版()))).map((p) => ({
         id: p.id,
         名称: p.name,
         阶段: p.phase,
@@ -691,8 +692,9 @@ export const TOOLS: Tool[] = [
       const 天 = typeof args.idleDays === "number" && args.idleDays > 0 ? Math.floor(args.idleDays) : null;
       const where: Prisma.ProjectWhereInput = {
         ...(phase ? { phase } : {}),
-        ...(node ? { node } : {}),
-        ...(r === "全部" ? {} : 是结局(r) ? { result: r } : { result: null }),
+        // 新旧名都认（10-31 改名）：库里可能还是旧名，按同名们一起查
+        ...(node ? { node: { in: 同名们(node) } } : {}),
+        ...(r === "全部" ? {} : r && 是结局(r) ? { result: { in: 同名们(r) } } : { result: null }),
         ...(ownerName ? { ownerId: { in: (await prisma.user.findMany({ where: { name: { contains: ownerName } }, select: { id: true } })).map((u) => u.id) } } : {}),
         ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }] } : {}),
         ...(天 ? { updatedAt: { lt: dayjs().subtract(天, "day").toDate() } } : {}),
@@ -716,7 +718,8 @@ export const TOOLS: Tool[] = [
       const 名字 = new Map(人.map((u) => [u.id, u.name]));
       const me = { id: ctx.userId };
       // 公海里同事客户的项目不露客户名（和项目页一个规矩，见 lib/project/db.ts 的 露客户）；按客户名搜到的也剔掉，免得拿名字试出来
-      const 列 = rows.filter((p) => !词 || p.name.includes(词) || 露客户(me, p, 可见));
+      const 字典 = 字典of(企业版());
+      const 列 = rows.filter((p) => !词 || p.name.includes(词) || 露客户(me, p, 可见)).map((p) => 本套位置(p, 字典));
       // 带关键词时总数也按剔过的算（最多 30 个），不然「1 个项目、列出 0 个」一样露了底
       const 数 = 词 ? 列.length : total;
       const 个数 = (ph: string) => (词 ? 列.filter((p) => p.phase === ph).length : (各阶段.find((g) => g.phase === ph)?._count._all ?? 0));

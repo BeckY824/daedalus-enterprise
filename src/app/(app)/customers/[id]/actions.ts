@@ -29,6 +29,7 @@ import { parseDateInput } from "@/lib/date-input";
 import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "@/lib/enterprise/customer-v2";
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, type 交上来的号 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
+import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 
 /**
  * 这一页上的写操作也要留痕。
@@ -135,7 +136,8 @@ async function 跟着改待办(customerId: string, 旧: 带时间的跟进, 新:
 async function 挂项目(followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient) {
   const p = await db.project.findFirst({ where: { id: projectId, customerId, ...在推项目条件 }, select: { id: true, node: true, phase: true } });
   if (!p) return;
-  await db.followUpProject.create({ data: { followUpId, projectId: p.id, node: p.node } });
+  // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
+  await db.followUpProject.create({ data: { followUpId, projectId: p.id, node: 本套名(p.node, 企业版字典) } });
   await 记沟通编号(db, followUpId, p.id, null);
   await 记沟通标记(db, followUpId, p.id, p.phase, false);
   revalidatePath(`/projects/${p.id}`);

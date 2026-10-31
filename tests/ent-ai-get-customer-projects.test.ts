@@ -61,8 +61,9 @@ describe("get_customer 带项目", () => {
     const r = await 读客户(c, 老板);
     expect(r.summary).toContain("3 个项目");
     const 列 = 项目们(r)!;
+    // 库里存旧节点名 明确需求，回给 AI 的是新名
     expect(列.map((p) => p.id)).toEqual([海.id, 丢.id, 推.id]);
-    expect(列[2]).toEqual({ id: 推.id, 名称: 推.name, 阶段: "商机", 节点: "明确需求", 结局: "进行中", 下一步: "发报价单", 下一步时间: dayjs(下一步).format("YYYY-MM-DD"), 负责人: "乙" });
+    expect(列[2]).toEqual({ id: 推.id, 名称: 推.name, 阶段: "商机", 节点: "痛点挖掘", 结局: "进行中", 下一步: "发报价单", 下一步时间: dayjs(下一步).format("YYYY-MM-DD"), 负责人: "乙" });
     expect(列[1]).toMatchObject({ 阶段: "线索", 节点: "潜客培育", 结局: "线索流失", 下一步时间: null, 负责人: "乙" });
     expect(列[0].负责人).toBe("在公海");
     expect((r.data as Record<string, unknown>).项目说明).toBeUndefined();

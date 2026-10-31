@@ -30,7 +30,7 @@ import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
-import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 字典of, 结局叫法, 阶段与进程, 阶段们, 是交付, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
@@ -40,7 +40,7 @@ import LeadFullNotices from "../leads/LeadFullNotices";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
 import { 取客户近况 } from "../customers/[id]/pick";
 
-/** 看板五列的颜色：三个阶段沿用商机管道的蓝绿黄，成功交付粉、没成灰 */
+/** 看板五列的颜色：三个阶段沿用商机管道的蓝绿黄，成功交付（企业版叫 交付结清）粉、没成灰 */
 const 列色: Record<看板列, string> = {
   线索: 主题颜色(categorical.blue),
   商机: 主题颜色(categorical.green),
@@ -111,6 +111,8 @@ export default function ProjectsView({
   const 预取 = useHoverPrefetch();
   const { message, modal } = App.useApp();
   const 字典 = 字典of(企业版, 出口叫法);
+  // 看板列的 key 两套都叫「成功交付」，列头写这套的叫法（企业版 交付结清）
+  const 列名 = (列: 看板列) => (列 === "成功交付" ? 结局叫法(字典.出口们.订单[0].结局 ?? 列, 字典) : 列);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
   const 要跟 = useFollowDue();
@@ -388,10 +390,10 @@ export default function ProjectsView({
                 const sum = 合计文字(c.合计, b.currency);
                 const 收 = 有空列 && c.数 === 0;
                 return (
-                  <div key={c.列} className="pipe-col" aria-label={`${c.列}，${c.数} 个项目`} style={有空列 ? (收 ? { flex: "0 0 88px" } : { flex: "1 1 184px", minWidth: 0 }) : undefined}>
+                  <div key={c.列} className="pipe-col" aria-label={`${列名(c.列)}，${c.数} 个项目`} style={有空列 ? (收 ? { flex: "0 0 88px" } : { flex: "1 1 184px", minWidth: 0 }) : undefined}>
                     <div className="pipe-h">
                       <span className="pipe-dot" style={{ background: 列色[c.列] }} />
-                      <b style={收 ? { whiteSpace: "nowrap" } : undefined}>{c.列}</b>
+                      <b style={收 ? { whiteSpace: "nowrap" } : undefined}>{列名(c.列)}</b>
                       <span className="pipe-n">{c.数}</span>
                       {!收 && <span className="pipe-sum" title={sum}>{sum}</span>}
                     </div>
@@ -426,7 +428,7 @@ export default function ProjectsView({
                           </div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>
-                              {异常 ? `异常 · ${r.exceptionCategory ? `${r.exceptionCategory} · ` : ""}` : r.result && r.result !== "成功交付" ? `${结局叫法(r.result, 字典)} · ` : ""}{r.node}
+                              {异常 ? `异常 · ${r.exceptionCategory ? `${r.exceptionCategory} · ` : ""}` : r.result && !是交付(r.result) ? `${结局叫法(r.result, 字典)} · ` : ""}{r.node}
                             </span>
                             <span className="pipe-card-a">{金额(r.amount, r.currency)}</span>
                           </div>

@@ -10,6 +10,7 @@
  * 纯数据和纯函数，客户端组件也 import；读库的在 edit-perm.ts。
  */
 import { 直属上级of, 虚线上级of, 管理员类别们of, type 组织, type 管理员类别 } from "./org-core";
+import { 按本套名, 企业版字典 } from "@/lib/project/stage-dict";
 
 export type 能改的人 = 管理员类别 | "直属上级" | "虚线上级";
 
@@ -103,10 +104,12 @@ export function 挡时限改动(
   if (范围 === "全部" || !改 || typeof 改 !== "object") return null;
   if (改.开 !== undefined && 改.开 !== 现在.开) return "超时回收的开关只有老板、总管理员能动";
   if (!改.节点天数 || typeof 改.节点天数 !== "object") return null;
-  const 交来 = 改.节点天数;
-  for (const n of new Set([...Object.keys(现在.节点天数), ...Object.keys(交来)])) {
+  // 交来的整张表可能还带着旧节点名 key（改名前打开的页面）：两边都换成这套的新名再比
+  const 交来 = 按本套名(改.节点天数, 企业版字典);
+  const 原有 = 按本套名(现在.节点天数, 企业版字典);
+  for (const n of new Set([...Object.keys(原有), ...Object.keys(交来)])) {
     if (范围.includes(n)) continue;
-    if (天数值(现在.节点天数[n]) !== 天数值(交来[n])) {
+    if (天数值(原有[n]) !== 天数值(交来[n])) {
       return 范围.length ? `你只能改${范围.map((x) => `「${x}」`).join("")}的时限，「${n}」由老板、总管理员改` : `「${n}」的时限你改不了`;
     }
   }

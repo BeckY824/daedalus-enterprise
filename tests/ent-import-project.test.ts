@@ -83,14 +83,14 @@ describe("项目模式", () => {
     expect(await prisma.project.count()).toBe(7);
 
     const 一 = await 项目("服务器采购");
-    expect([一.phase, 一.node, 一.result, 一.amount]).toEqual(["商机", "共识方案", null, 120000]);
+    expect([一.phase, 一.node, 一.result, 一.amount]).toEqual(["商机", "方案确认", null, 120000]);
     expect(一.closedAt).toBeNull();
     // 预计成交日期落项目上（10-27 从客户挪到项目），不再塞备注
     expect(一.expectedDealAt).toEqual(new Date("2025-09-01T00:00:00"));
     expect(一.remark ?? "").not.toContain("预计成交");
     expect(一.logs).toHaveLength(1);
-    expect(一.logs[0]).toMatchObject({ toPhase: "商机", toNode: "共识方案", toResult: null });
-    expect([(await 项目("样品单")).node, (await 项目("外贸展会")).node]).toEqual(["签订合同", "明确需求"]);
+    expect(一.logs[0]).toMatchObject({ toPhase: "商机", toNode: "方案确认", toResult: null });
+    expect([(await 项目("样品单")).node, (await 项目("外贸展会")).node]).toEqual(["签订合同", "痛点挖掘"]);
 
     const 流失 = await 项目("老客户回访");
     expect([流失.phase, 流失.node, 流失.result]).toEqual(["线索", "潜客培育", "线索流失"]);
@@ -105,14 +105,14 @@ describe("项目模式", () => {
     const 商机丢 = await 项目("商机里输的");
     expect([商机丢.phase, 商机丢.node, 商机丢.result]).toEqual(["商机", "签订合同", "丢单"]);
     const 交付 = await 项目("交付完的");
-    expect([交付.phase, 交付.node, 交付.result]).toEqual(["订单", "尾款结算", "成功交付"]);
+    expect([交付.phase, 交付.node, 交付.result]).toEqual(["订单", "尾款结算", "交付结清"]);
   });
 
   it("跟进挂父项目当前节点；撤回整批删项目和挂件，恢复照原 id 建回", async () => {
     const { 批次Id } = await 导([客户表(), 商机表([["O1", "C1", "服务器采购", "解决方案", "", "12万", "", ""]]), 跟进表()]);
     const p = await 项目("服务器采购");
     expect(p.followUps).toHaveLength(1);
-    expect(p.followUps[0].node).toBe("共识方案");
+    expect(p.followUps[0].node).toBe("方案确认");
     const F1 = await prisma.followUp.findFirstOrThrow({ where: { content: "聊了方案" } });
     expect(F1.opportunityId).toBeNull();
     expect(p.followUps[0].followUpId).toBe(F1.id);
@@ -130,7 +130,7 @@ describe("项目模式", () => {
     expect(回.留下数).toBe(0);
     const p2 = await 项目("服务器采购");
     expect(p2.id).toBe(p.id);
-    expect([p2.node, p2.logs.length]).toEqual(["共识方案", 1]);
+    expect([p2.node, p2.logs.length]).toEqual(["方案确认", 1]);
     expect(p2.followUps.map((f) => f.followUpId)).toEqual([F1.id]);
 
     // 恢复后还能再撤
