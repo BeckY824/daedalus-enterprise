@@ -12,7 +12,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return{ok:true}},改项目画像Action=f,改项目沟通=f,删项目沟通=f,撤销删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=f,撤销删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,指认卡点Action=f,认领卡点Action=f,接受卡点Action=f,转让卡点Action=f,返回卡点Action=f,改卡点进度Action=f,解决卡点Action=f,卡点可选的人Action=async()=>[];`);
@@ -24,7 +24,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
     const root=createRoot(document.getElementById('root'));
     const 长='超长项目名字'.repeat(8), 串='X'.repeat(90);
     const 基={id:'p1',name:长,remark:null,amount:1234567.89,currency:'CNY',customer:{id:'c1',name:'超长客户名'+串,school:'某某超长公司名有限公司'.repeat(4)},contact:{id:'k1',name:'张三',position:'采购总监兼华东大区负责人'},
@@ -49,6 +49,10 @@ beforeAll(async () => {
       {contactId:'k2',名:'关联客户'+串+'|🔥姓名暂未核实',姓名:'王总',customerId:'c2',角色:[],立场:null,主:false,看得到:true}],
       选项:{身份:['业主方','总包方','分包方','投资方','垫资方','运营方','引荐方','监理方','设计方'],角色:['决策人','审批人','影响人','使用人','经办人'],立场:['待定','中立','对手','线人','军师','盟友']},上限:30};
     window.__relate=(能改)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,关联}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{},人们:[]}}/>));
+    /* 10-31 画像十二项（后七项新加）、空的写灰字「暂未确认」；单选下拉第一项「不填」。和 P17 关联一起摆，看关联里空的角色 / 立场 */
+    const 画像={项们:项目画像项.map(x=>({键:x.键,名:字典定义[x.种类].名,多选:x.多选,选项:[...字典定义[x.种类].默认]})),
+      值:{budgetLevel:'预算充足',priceSense:null,decisionChain:null,demandStatus:null,productNeeds:[],purchaseCycle:'半年',productFit:null,valueFit:null,decisionReach:null,competitor:'无竞品·我方独家',deployFit:null,siteStatus:null}};
+    window.__画像=(能改)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,关联,画像}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{},人们:[]}}/>));
     /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content > 换页那层 div。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
     const 行=(id,name,阶段,进程,x)=>({id,name,阶段,进程,结局:null,pooled:false,customerName:'超长客户名'+串,lastType:'PHONE',lastAt:'2026-10-20T00:00:00.000Z',lastNote:'最近一句'+串,nextAt:null,...x});
     const 名单={取到上限:false,rows:[行('p1',长,'订单','生产备货'+'备'.repeat(20)),行('p2','线索项目'+串,'线索','初次接触'),行('p5','没填阶段的项目',null,null,{lastAt:null,lastNote:null}),行('p3',串,'商机','方案报价',{pooled:true,结局:'输单'}),行('p4','商机二','商机','首款支付',{nextAt:'2026-10-01'})]};
@@ -816,6 +820,62 @@ it.each([1024, 800])("R6 %ipx：页头按钮折行不出屏、标题不被挤没
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box.x + box.width / 2, box.y + box.height / 2]);
       expect(点中).toBe(await b.textContent());
     }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/* 10-31：画像各项、需求状态、关联里的角色 / 立场没填时写灰字「暂未确认」（只是显示）；单选下拉能选回「不填」 */
+const 画像卡 = (page: import("playwright").Page) => page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^项目画像$/ }) }).first();
+async function 开画像(能改: boolean) {
+  const { page, errors } = await open(true);
+  await page.evaluate(x => (window as unknown as { __画像: (x: boolean) => void }).__画像(x), 能改);
+  await 画像卡(page).waitFor();
+  return { page, errors };
+}
+it("画像只读：十二项都在、按序；空的（含产品需求、需求状态）写灰字「暂未确认」；关联里空的角色 / 立场 / 身份也写「暂未确认」", async () => {
+  const { page, errors } = await 开画像(false);
+  try {
+    const 卡 = 画像卡(page);
+    expect(await 卡.locator(".proj-profile-key").allInnerTexts()).toEqual(["预算能力", "价格感知", "决策链路", "需求状态", "产品需求", "采购周期", "产品匹配", "价值认同", "决策触达", "竞品信息", "部署条件", "场地现状"]);
+    const 值 = await 卡.locator(".proj-profile-val").allInnerTexts();
+    expect(值).toEqual(["预算充足", "暂未确认", "暂未确认", "暂未确认", "暂未确认", "半年", "暂未确认", "暂未确认", "暂未确认", "无竞品·我方独家", "暂未确认", "暂未确认"]);
+    // 灰字：和正文色不一样
+    const [灰, 正] = await Promise.all([卡.locator(".unconfirmed").first().evaluate(e => getComputedStyle(e).color), 卡.locator(".proj-profile-val").first().evaluate(e => getComputedStyle(e).color)]);
+    expect(灰).not.toBe(正);
+    // 关联只读：王总没角色、没立场；同事的客户没身份
+    const 关联卡 = page.locator(".proj-side > .ant-card").filter({ hasText: /关联(客户|联系人)（/ });
+    expect(await 关联卡.locator(".unconfirmed").count()).toBeGreaterThanOrEqual(3);
+    expect(await page.getByText("—", { exact: true }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+it("画像能改：空的下拉占位写「暂未确认」；单选第一项「不填」，选了就存 null、回到暂未确认；空着再选「不填」不存", async () => {
+  const { page, errors } = await 开画像(true);
+  try {
+    const 卡 = 画像卡(page);
+    expect(await 卡.locator(".ant-select-placeholder").allInnerTexts()).toEqual(Array(9).fill("暂未确认"));
+    const 周期 = 卡.getByRole("combobox", { name: "采购周期" });
+    await 周期.click();
+    const 项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+    await 项.first().waitFor();
+    expect((await 项.allInnerTexts()).slice(0, 6)).toEqual(["不填", "一年", "半年", "三月", "次月", "本月成交"]);
+    await 项.first().click();
+    await page.waitForFunction(() => ((window as unknown as { __画像存?: unknown[] }).__画像存 ?? []).length === 1);
+    expect(await page.evaluate(() => (window as unknown as { __画像存: unknown[][] }).__画像存[0])).toEqual(["p1", { purchaseCycle: null }]);
+    await 卡.locator(".proj-profile-row").filter({ hasText: "采购周期" }).locator(".ant-select-placeholder").waitFor();
+    // 已经空着的场地现状再选「不填」：不存（等上一个下拉收完再开）
+    await page.waitForFunction(() => ![...document.querySelectorAll(".ant-select-dropdown")].some(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")));
+    await 卡.getByRole("combobox", { name: "场地现状" }).click();
+    await page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().click();
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => (window as unknown as { __画像存: unknown[] }).__画像存.length)).toBe(1);
+    // 关联能改：立场下拉占位「暂未确认」、第一项「不填」
+    const 立场 = page.getByRole("combobox", { name: /姓名暂未核实 的项目立场$/ });
+    expect(await 立场.count()).toBe(1);
+    expect(await 立场.locator("xpath=ancestor::*[contains(@class,'ant-select')][1]").locator(".ant-select-placeholder").innerText()).toBe("暂未确认");
+    await page.waitForFunction(() => ![...document.querySelectorAll(".ant-select-dropdown")].some(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")));
+    await 立场.click();
+    expect(await page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().innerText()).toBe("不填");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

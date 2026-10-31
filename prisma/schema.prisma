@@ -913,6 +913,21 @@ model Project {
   demandStatus         String?
   /// 产品需求（多选）：JSON 数组字符串，如 ["常规标品","部署服务"]；空数组存 NULL
   productNeeds         String?
+  /// 项目画像后七项（企业版，迁移 102，10-31）：都单选、可空、存选项名，字典种类见 lib/enterprise/dict-kinds.ts 项目画像项
+  /// 采购周期（projCycle）
+  purchaseCycle        String?
+  /// 产品匹配（projFit）
+  productFit           String?
+  /// 价值认同（projValue）
+  valueFit             String?
+  /// 决策触达（projReach）
+  decisionReach        String?
+  /// 竞品信息（projRival）
+  competitor           String?
+  /// 部署条件（projDeploy）
+  deployFit            String?
+  /// 场地现状（projSite，叫法未定，只在字典里改）
+  siteStatus           String?
   /// 详细地址（定位）（企业版，迁移 087 加的列，原叫「所在地」）：街道门牌之类的自由文字，可空；国家 / 省 / 市 / 区县在下面四列
   location             String?
   /// 项目所在地（企业版，迁移 093）：和客户地址同一套（lib/enterprise/customer-v2.ts 规整地址），都可空；

@@ -11,6 +11,7 @@
  *     需求状态多出的第五项（订单交付）10-31 起：没项目在用就删，有项目在用就停用留着；上一版已经停用过的库也删
  *   - 同天：价格感知照原表换顺序；分配方式「自拓自持」改叫「个人自拓」
  *   - 10-31：需求状态加第五项「暂未确认」，用 5 号（4 号是拿掉的订单交付，不复用）；分配方式改回线上叫法「个人自持」
+ *   - 10-31：画像加七项单选（迁移 102）：取值顺序、存取、「不填」提交存 null
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +19,7 @@ import { resetDb } from "./reset";
 import { 阶段与进程, 团队版字典, 企业版字典, 字典of, type 阶段字典 } from "@/lib/project/stage-dict";
 import { 读产品需求, 存产品需求 } from "@/lib/project/profile-rules";
 import { 改项目画像 } from "@/lib/project/profile";
-import { 企业字典 } from "@/lib/enterprise/dict";
+import { 企业字典, 字典定义, 项目画像项, 暂未确认, 不填值, 不填项, 去不填, type 字典种类 } from "@/lib/enterprise/dict";
 
 describe("阶段与进程：阶段、进程分两格", () => {
   it("进行中：阶段 = phase，进程 = node，没有结局", () => {
@@ -260,5 +261,72 @@ describe("需求状态、产品需求换成原表取值（10-30）", () => {
     await 老库("assign", ["指定分配", "自动分配", "公海捞取", "暂不分配", "自己起的"]);
     await prisma.setting.create({ data: { key: "entDict.defaultRenamed.assign", value: "true" } });
     expect((await 看("assign"))[4]).toEqual(["dict-assign-4", "自己起的", true]);
+  });
+});
+
+describe("画像后七项（10-31，迁移 102）", () => {
+  it("七项的种类、叫法、取值顺序（从差到好）；都单选", () => {
+    const 期望: [string, string, string, string[]][] = [
+      ["purchaseCycle", "projCycle", "采购周期", ["一年", "半年", "三月", "次月", "本月成交"]],
+      ["productFit", "projFit", "产品匹配", ["无法匹配", "部分匹配", "高度匹配", "完全匹配"]],
+      ["valueFit", "projValue", "价值认同", ["价值否定", "权衡观望", "价值认同", "高度契合"]],
+      ["decisionReach", "projReach", "决策触达", ["决策链不明", "仅触达执行层", "决策人已初步接触", "决策人已深度沟通"]],
+      ["competitor", "projRival", "竞品信息", ["竞品已进入终审", "竞品有明确优势", "竞品存在但无优势", "无竞品·我方独家"]],
+      ["deployFit", "projDeploy", "部署条件", ["无法符合", "部分符合", "基本符合", "完全符合"]],
+      ["siteStatus", "projSite", "场地现状", ["暂无场地", "正在选址", "已定待签", "已有场地"]],
+    ];
+    const 后七 = 项目画像项.slice(5);
+    expect(后七.map((x) => [x.键, x.种类, x.多选])).toEqual(期望.map(([键, 种类]) => [键, 种类, false]));
+    for (const [, 种类, 名, 默认] of 期望) {
+      expect(字典定义[种类 as 字典种类].名).toBe(名);
+      expect([...字典定义[种类 as 字典种类].默认]).toEqual(默认);
+    }
+  });
+
+  it("去不填：「不填」和没选都提交 null，别的原样", () => {
+    expect(去不填(不填值)).toBeNull();
+    expect(去不填(undefined)).toBeNull();
+    expect(去不填("")).toBeNull();
+    expect(去不填("一年")).toBe("一年");
+    expect(不填项).toEqual({ value: 不填值, label: "不填" });
+    expect(暂未确认).toBe("暂未确认");
+  });
+
+  describe("存取（真库）", () => {
+    let 乙: { id: string; role: string };
+    let 项目id: string;
+    const 读七项 = () =>
+      prisma.project.findUniqueOrThrow({ where: { id: 项目id }, select: { purchaseCycle: true, productFit: true, valueFit: true, decisionReach: true, competitor: true, deployFit: true, siteStatus: true, demandStatus: true } });
+    beforeEach(async () => {
+      vi.stubEnv("CRM_ENTERPRISE", "1");
+      await resetDb();
+      乙 = { id: (await prisma.user.create({ data: { email: "p7-yi", name: "p7-yi", title: "", role: "SALES", password: "x" } })).id, role: "SALES" };
+      const 客户 = await prisma.customer.create({ data: { name: "QA-七项客户", phone: "13800001102", salesOwnerId: 乙.id } });
+      项目id = (await prisma.project.create({ data: { name: "QA-七项项目", customerId: 客户.id, ownerId: 乙.id, creatorId: 乙.id } })).id;
+    });
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("七项一起存得进、读得回；不在字典里的拦下", async () => {
+      const 值 = { purchaseCycle: "本月成交", productFit: "高度匹配", valueFit: "价值认同", decisionReach: "决策人已初步接触", competitor: "无竞品·我方独家", deployFit: "基本符合", siteStatus: "正在选址" };
+      expect(await 改项目画像(乙, 项目id, 值)).toEqual({ ok: true, 变了: Object.keys(值) });
+      expect(await 读七项()).toMatchObject(值);
+      expect(await 改项目画像(乙, 项目id, { siteStatus: "随便写的" })).toMatchObject({ ok: false, error: expect.stringContaining("不在场地现状里") });
+      expect((await 读七项()).siteStatus).toBe("正在选址");
+    });
+
+    it("「不填」提交上来存 null（新七项、老项都一样）；空着的再提交「不填」不算变", async () => {
+      await 改项目画像(乙, 项目id, { purchaseCycle: "一年", demandStatus: "明确需求" });
+      expect(await 改项目画像(乙, 项目id, { purchaseCycle: 不填值, demandStatus: 不填值 })).toEqual({ ok: true, 变了: ["demandStatus", "purchaseCycle"] });
+      expect(await 读七项()).toMatchObject({ purchaseCycle: null, demandStatus: null });
+      expect(await 改项目画像(乙, 项目id, { productFit: 不填值 })).toEqual({ ok: true, 变了: [] });
+    });
+
+    it("管理员加的项也能选；停用的默认项不能新选", async () => {
+      await 企业字典("projCycle");
+      await prisma.entDictItem.create({ data: { kind: "projCycle", name: "两年", sort: 9 } });
+      await prisma.entDictItem.update({ where: { kind_name: { kind: "projCycle", name: "一年" } }, data: { active: false } });
+      expect(await 改项目画像(乙, 项目id, { purchaseCycle: "两年" })).toEqual({ ok: true, 变了: ["purchaseCycle"] });
+      expect(await 改项目画像(乙, 项目id, { purchaseCycle: "一年" })).toMatchObject({ ok: false });
+    });
   });
 });
