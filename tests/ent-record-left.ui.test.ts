@@ -48,16 +48,16 @@ beforeAll(async () => {
         {id:'f1',type:'EMAIL',title:'客户本身的老跟进',content:'老记录',status:'已完成',duration:null,occurredAt:'2026-10-01T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-01T02:00:00.000Z',项目:null},
       ],
     };
-    window.__render=(企业,项目模式)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})}/></BusinessProvider></App></ConfigProvider>);
+    window.__render=(企业,项目模式,加)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})} {...(加??{})}/></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(企业: boolean, width = 1366, 项目模式 = false) {
+async function open(企业: boolean, width = 1366, 项目模式 = false, 加?: Record<string, unknown>) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://left.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://left.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(([e, p]) => (window as unknown as { __render: (x: boolean, y: boolean) => void }).__render(e, p), [企业, 项目模式] as const);
+  await page.evaluate(([e, p, a]) => (window as unknown as { __render: (x: boolean, y: boolean, z?: unknown) => void }).__render(e, p, a), [企业, 项目模式, 加] as const);
   await page.getByText("联系人", { exact: false }).first().waitFor();
   return page;
 }
@@ -117,8 +117,10 @@ it("企业版项目模式（P14）：没有记录输入、头上是「记一条�
     expect(await page.getByRole("button", { name: "记一条沟通…" }).count()).toBe(1);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
-    expect(await page.getByText("沟通记录", { exact: true }).count()).toBe(1);
-    const 项目链 = page.locator(".rec-tl-proj");
+    expect(await page.locator(".rec-tl-cap").innerText()).toBe("沟通记录");
+    // 照图 04（10-31）：灰底方式 + 时间一行，下面内容、蓝色「项目：名」
+    expect(await page.locator(".rec-sum-item .rec-sum-type").count()).toBeGreaterThan(0);
+    const 项目链 = page.locator(".rec-sum-proj");
     expect(await 项目链.count()).toBe(1);
     expect(await 项目链.getAttribute("href")).toBe("/projects/p1#project-follow");
     // 只读：沟通记录上没有编辑、删除
@@ -126,12 +128,104 @@ it("企业版项目模式（P14）：没有记录输入、头上是「记一条�
     expect(await page.getByText("回访报价").count()).toBe(1);
     expect(await page.locator(".rec-task-k").allInnerTexts()).toEqual(["计划", "项目"]);
     expect(await page.getByText("下次跟进").count()).toBe(0);
-    // 两个项目：点「记一条沟通…」打开菜单挑项目，长名字不把菜单撑出屏
+    // 两个项目：点「记一条沟通…」开框挑项目（10-31 R6，原来是下拉），长名字不把框撑出屏
     await page.getByRole("button", { name: "记一条沟通…" }).click();
-    await page.getByText("记到哪个项目").waitFor();
-    expect(await page.getByText("关联进来的项目").count()).toBe(1);
-    const 菜单宽 = await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first().evaluate(el => el.getBoundingClientRect().right);
-    expect(菜单宽).toBeLessThanOrEqual(1024);
+    const 框 = page.getByRole("dialog");
+    await 框.getByText("记到哪个项目").waitFor();
+    expect(await 框.innerText()).toContain("记一条沟通 · 客户A");
+    expect(await 框.getByText("关联进来的项目").count()).toBe(1);
+    expect(await 框.getByText("关联 · 已结束").count()).toBe(1);
+    expect(await 框.evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(1024);
+    expect(await 框.locator(".ant-menu").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   } finally { await page.close(); }
+});
+/* 10-31 改版 R6：企业版客户页头的具名按钮（照项目详情）。原来收在「跟进」旁边的下拉里 */
+const 全开 = {
+  users: [{ id: "qa", name: "QA", email: "qa@x.test" }, { id: "u2", name: "同事乙", email: "b@x.test" }],
+  能放公海: true,
+  新建项目: { 选项: {} },
+  关联们: [],
+};
+const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")));
+it("企业版项目模式页头：能做的事摆成具名按钮，只有一颗主按钮、删除是危险文字按钮；没有下拉", async () => {
+  const page = await open(true, 1366, true, 全开);
+  try {
+    // 按下面三栏分组（10-31 用户）：左组管资料栏、中组管沟通栏（整个客户的事跟在后面）、右组管右栏
+    expect(await 头按钮(page)).toEqual(["编辑客户资料", "添加联系人", "管理联系人", "关联客户", "开项目", "记一条沟通…", "转让", "放回公海", "删除客户", "新建任务"]);
+    expect(await page.locator(".rec-acts .ant-btn-primary").count()).toBe(1);
+    expect(await page.locator(".rec-acts .ant-btn-dangerous").innerText()).toMatch(/删除客户/);
+    expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(0);
+    // 卡上和页头同名的入口不再重复摆（10-31）：编辑全部、添加联系人、开项目、新建任务、关联「+」只在页头
+    const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head, .rec-acts")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
+    expect(卡上钮.filter(t => /编辑全部|添加联系人|开项目|新建任务|关联一位客户/.test(t))).toEqual([]);
+    // 按钮一行摆在名字下面，各组对齐下面那一栏的左边
+    const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-acts").boundingBox()]);
+    expect(排!.y).toBeGreaterThanOrEqual(名!.y + 名!.height - 1);
+    const 对齐 = await page.evaluate(() => {
+      const 栏 = [...document.querySelectorAll(".rec-page > .rec > *")].map(e => Math.round(e.getBoundingClientRect().left));
+      const 组 = [...document.querySelectorAll(".rec-acts .acts-g")].map(e => Math.round(e.getBoundingClientRect().left));
+      return { 栏, 组 };
+    });
+    expect(Math.abs(对齐.组[0] - 对齐.栏[0])).toBeLessThanOrEqual(2);
+    expect(Math.abs(对齐.组[1] - 对齐.栏[1])).toBeLessThanOrEqual(2);
+  } finally { await page.close(); }
+});
+it("「转让」开框挑人：没挑之前「下一步」点不了；挑了能点；取消关框", async () => {
+  const page = await open(true, 1366, true, 全开);
+  try {
+    await page.locator(".rec-acts").getByRole("button", { name: /^转\s*让$/ }).click();
+    const 框 = page.getByRole("dialog");
+    await 框.getByText("转让 · 客户A").waitFor();
+    const 下一步 = 框.getByRole("button", { name: /下\s*一\s*步/ });
+    expect(await 下一步.isDisabled()).toBe(true);
+    // 候选里没有现负责人自己
+    await 框.getByRole("combobox", { name: "转给谁" }).click();
+    expect(await page.locator(".ant-select-item-option").allInnerTexts()).toEqual(["同事乙"]);
+    await page.locator(".ant-select-item-option").first().click();
+    expect(await 下一步.isDisabled()).toBe(false);
+    await 框.getByRole("button", { name: /取\s*消/ }).click();
+    await 框.waitFor({ state: "hidden" });
+    // 再开一次，上次挑的人清掉
+    await page.locator(".rec-acts").getByRole("button", { name: /^转\s*让$/ }).click();
+    expect(await page.getByRole("dialog").getByRole("button", { name: /下\s*一\s*步/ }).isDisabled()).toBe(true);
+  } finally { await page.close(); }
+});
+it("「管理联系人」框：一人一行，编辑 / 删除；点编辑先关框", async () => {
+  const page = await open(true, 1366, true, 全开);
+  try {
+    await page.locator(".rec-acts").getByRole("button", { name: "管理联系人" }).click();
+    const 框 = page.getByRole("dialog");
+    await 框.getByText("管理联系人 · 客户A").waitFor();
+    const 行 = 框.locator(".proj-modal-row");
+    expect(await 行.count()).toBe(3);
+    expect(await 行.nth(0).innerText()).toContain("主要");
+    expect(await 行.nth(0).innerText()).toContain("采购总监兼华东大区负责人");
+    expect(await 行.nth(1).getByRole("button", { name: /删\s*除/ }).count()).toBe(1);
+    expect(await 框.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await 行.nth(1).getByRole("button", { name: /编\s*辑/ }).click();
+    await 框.waitFor({ state: "hidden" });
+  } finally { await page.close(); }
+});
+it("虚线下属的客户（全只读）：页头只剩主按钮", async () => {
+  const page = await open(true, 1366, true, { ...全开, 只读: "全" });
+  try {
+    expect(await 头按钮(page)).toEqual(["记一条沟通…"]);
+  } finally { await page.close(); }
+});
+it("窄宽：700 / 800 / 1024 按钮一行在名字下面、从左排起、折行不出屏；都不横滚", async () => {
+  for (const w of [700, 800, 1024]) {
+    const page = await open(true, w, true, 全开);
+    try {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      const 排 = page.locator(".rec-acts");
+      expect(await 排.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      const [头, 名, 框] = await Promise.all([page.locator(".rec-head").boundingBox(), page.locator(".rec-head-id").boundingBox(), 排.boundingBox()]);
+      // 每颗按钮都在屏内
+      const 右 = await 排.locator("button").evaluateAll((bs: HTMLElement[]) => Math.max(...bs.map(b => b.getBoundingClientRect().right)));
+      expect(右).toBeLessThanOrEqual(w);
+      expect(框!.y).toBeGreaterThanOrEqual(名!.y + 名!.height - 1);
+      expect(Math.abs(框!.x - 头!.x)).toBeLessThan(2);
+    } finally { await page.close(); }
+  }
 });

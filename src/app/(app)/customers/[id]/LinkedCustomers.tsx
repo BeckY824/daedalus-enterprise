@@ -4,7 +4,7 @@
  * 客户页「关联客户」卡片（企业版项目模式，2026-10-29，定稿 P5 待定 15）：手动挑一位 + 一句说明，两边客户页都看得到同一行。
  * 另一位我看不到（不在我的范围）：只露名字不给链接。改说明、取消都在这一行上就地做；动作在 link-actions.ts
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { App, Button, Input, Select, Space } from "antd";
@@ -15,7 +15,11 @@ import type { 关联一行 } from "@/lib/enterprise/customer-v2-db";
 import { 搜客户, type 可挑客户 } from "./pick";
 import { 关联客户, 改关联说明, 取消关联 } from "./link-actions";
 
-export default function LinkedCustomers({ customerId, 关联们, 只读 }: { customerId: string; 关联们: 关联一行[]; 只读: boolean }) {
+/**
+ * 起手：页头「关联客户」开的框里挂上时直接打开挑人那一行（10-31 R6）。
+ * 不摆加：企业版客户页头已有「关联客户」，卡上不再摆「+」（10-31）
+ */
+export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 = false, 不摆加 = false }: { customerId: string; 关联们: 关联一行[]; 只读: boolean; 起手?: boolean; 不摆加?: boolean }) {
   const { message } = App.useApp();
   const router = useRouter();
   const [加着, set加着] = useState(false);
@@ -49,6 +53,13 @@ export default function LinkedCustomers({ customerId, 关联们, 只读 }: { cus
     搜("");
   }
 
+  const 开过 = useRef(false);
+  useEffect(() => {
+    if (!起手 || 只读 || 开过.current) return;
+    开过.current = true;
+    开加();
+  });
+
   async function 跑(做: () => Promise<{ ok: true } | { ok: false; error: string }>, 成了: string) {
     set存着(true);
     try {
@@ -66,7 +77,7 @@ export default function LinkedCustomers({ customerId, 关联们, 只读 }: { cus
     <div className="rec-sec">
       <div className="rec-sec-t">
         <span>关联客户 {关联们.length > 0 && 关联们.length}</span>
-        {!只读 && !加着 && (
+        {!只读 && !加着 && !不摆加 && (
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一位客户" />
         )}
       </div>

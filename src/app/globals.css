@@ -1182,8 +1182,92 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-where { display: flex; flex-wrap: wrap; gap: 8px 28px; min-width: 0; }
 .proj-where > div { min-width: 0; }
 .proj-where-label { color: var(--text-muted); margin-bottom: 4px; }
+/* 10-31 改版 R6：企业版项目页的具名按钮，单独一行摆在标题下面，按下面两栏分组对齐（列宽、断点和 .proj-2col 一样）。
+   按钮多就在组里折行，不收进「更多」。整个项目的事（转让、放回公海、删除）在左组最后靠右。
+   .page-head-a 这个名字别改：⌘N 靠它找主按钮（components/CommandBar.tsx） */
+.proj-wrap > .page-head-a.proj-acts { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 8px 16px; align-items: start; margin: -6px 0 16px; }
+.proj-acts > .acts-g { display: flex; flex-wrap: wrap; gap: var(--s2); min-width: 0; }
+.acts-whole { display: inline-flex; flex-wrap: wrap; gap: var(--s2); margin-left: auto; }
+@container (max-width: 1000px) { .proj-wrap > .page-head-a.proj-acts { grid-template-columns: minmax(0, 1fr) 280px; } }
+@container (max-width: 629px) { .proj-wrap > .page-head-a.proj-acts { grid-template-columns: minmax(0, 1fr); } .proj-acts > .acts-g:empty { display: none; } }
+/* 页头按钮开的框：卡片原样搬进框里，去掉卡片自己的边框和留白 */
+.proj-modal-cards { display: flex; flex-direction: column; gap: 16px; }
+.proj-modal-cards .ant-card { border: none; box-shadow: none; background: transparent; }
+.proj-modal-cards .ant-card .ant-card-head { padding: 0; min-height: 0; border-bottom: none; margin-bottom: 8px; }
+.proj-modal-cards .ant-card .ant-card-body { padding: 0; }
+.proj-modal-sec { display: flex; flex-direction: column; gap: 16px; }
+.proj-modal-menu.ant-menu { border-inline-end: none !important; }
+.proj-modal-list { max-height: 60vh; overflow-y: auto; }
+.proj-modal-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.proj-modal-row:last-child { border-bottom: none; }
+.proj-modal-clip { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-where-value { display: flex; align-items: center; min-width: 0; font-size: 18px; font-weight: 600; line-height: 28px; }
 .proj-where-node { min-width: 0; overflow-wrap: anywhere; }
+
+/* 10-31 改版 R5：企业版节点卡里的阶段页签。颜色走 --stage-c（三阶段和数据页同一套），
+   当前进程一圈慢呼吸；系统开了「减少动态效果」就不动。名字长了折行，不撑开节点卡 */
+.proj-stages { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.proj-stage-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+.proj-stage-tabs { display: flex; gap: 4px; align-self: stretch; }
+/* 「推进进程」「结束当前进程」（10-31）：和页签同一行靠右、同字号，不要框——文字按钮，悬停才铺底色；推进用品牌色，结束用灰 */
+.proj-stage-acts { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.proj-stage-act {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: none; border-radius: var(--r-ctl);
+  background: none; font: inherit; color: var(--text-muted); cursor: pointer; white-space: nowrap;
+}
+.proj-stage-act .anticon { font-size: 12px; }
+.proj-stage-act:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
+.proj-stage-act:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.proj-stage-act.is-go { color: var(--brand); font-weight: 600; }
+.proj-stage-act.is-go:hover:not(:disabled) { color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
+.proj-stage-act:disabled { color: var(--text-faint); font-weight: 400; cursor: not-allowed; }
+.proj-stage-act-sep { width: 1px; height: 14px; background: var(--line-soft); margin: 0 4px; }
+.proj-stage-why { min-width: 0; overflow-wrap: anywhere; }
+.proj-stage-tab {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 6px 10px; margin-bottom: -1px; border: none; border-bottom: 2px solid transparent;
+  background: none; color: var(--text-muted); font: inherit; cursor: pointer; border-radius: var(--r-ctl) var(--r-ctl) 0 0;
+}
+.proj-stage-tab:hover { color: var(--ink); background: var(--hover); }
+.proj-stage-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.proj-stage-tab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--stage-c); }
+.proj-stage-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--stage-c); opacity: .45; }
+.proj-stage-tab.is-here .proj-stage-dot, .proj-stage-tab.is-on .proj-stage-dot { opacity: 1; }
+.proj-stage-here {
+  font-size: var(--fs-min, 11px); font-weight: 400; line-height: 16px; padding: 0 6px; border-radius: 8px;
+  color: var(--stage-c); background: color-mix(in srgb, var(--stage-c) 12%, transparent);
+}
+.proj-stage-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.proj-stage-note { color: var(--text-muted); font-size: var(--fs-note, 12px); }
+.proj-stage-nodes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 6px; }
+.proj-stage-node {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
+  padding: 4px 10px 4px 6px; border-radius: 14px; border: 1px solid var(--line-soft); color: var(--text-muted);
+}
+.proj-stage-name { min-width: 0; overflow-wrap: anywhere; }
+.proj-stage-mark {
+  width: 16px; height: 16px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; border: 1.5px solid var(--line-strong); color: var(--on-ink);
+}
+.proj-stage-node.is-done { color: var(--ink-soft); }
+.proj-stage-node.is-done .proj-stage-mark { background: var(--stage-c); border-color: var(--stage-c); }
+.proj-stage-node.is-cur {
+  color: var(--ink); font-weight: 600; border-color: var(--stage-c);
+  background: color-mix(in srgb, var(--stage-c) 8%, transparent);
+}
+.proj-stage-node.is-cur .proj-stage-mark { border-color: var(--stage-c); animation: proj-stage-ring 2.4s ease-in-out infinite; }
+.proj-stage-cur { font-size: var(--fs-min, 11px); font-weight: 400; color: var(--stage-c); }
+@keyframes proj-stage-ring {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--stage-c) 35%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--stage-c) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proj-stage-node.is-cur .proj-stage-mark { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--stage-c) 25%, transparent); }
+}
+/* 「结束当前进程」框：一行一个去处，灰着的写清为什么 */
+.proj-end-opts.ant-radio-group { display: flex; flex-direction: column; gap: 10px; }
+.proj-end-name { font-weight: 600; }
+.proj-end-desc { color: var(--text-muted); font-size: var(--dt-aux, 12px); overflow-wrap: anywhere; }
 
 /* 项目画像卡（P11）：键 64px 一列，值占满；下拉、输入框都按卡宽，不撑开右栏 */
 .proj-profile { display: grid; gap: 10px; }
@@ -1247,15 +1331,44 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-tl-order { font-size: var(--fs-note); white-space: nowrap; flex: 0 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
 /* 企业版「沟通记录」每条标的项目（P14 第 6 条）：长项目名截断，悬停看全名 */
 .rec-tl-proj { max-width: 16em; }
-/* 「沟通记录」标题（只读，汇总各项目的跟进） */
-.rec-tl-cap { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: var(--fs-note); font-weight: 600; color: var(--text-muted); }
-.rec-tl-cap-hint { font-weight: 400; }
+/* 企业版客户页「沟通记录」（只读，汇总各项目的跟进；10-31 照图 04）：模块标题在卡里；筛选是一排灰字、选中的品牌色；
+   每条：灰底方式 + 时间、内容、蓝色「项目：名」、灰字记录人，条与条之间一道线。别的版本的时间线不走这套 */
+.rec-tl-cap { padding: 16px 16px 0; }
+.rec-sum .rec-filters { gap: 4px 14px; padding: 8px 16px 4px; }
+.rec-sum .rec-chip { padding: 2px 0; border: 0; border-radius: 0; background: none; font-size: var(--dt-body); color: var(--text-muted); }
+.rec-sum .rec-chip:hover { color: var(--ink); }
+.rec-sum .rec-chip-on, .rec-sum .rec-chip-on:hover { color: var(--brand); font-weight: 600; }
+.rec-sum-item { padding: 14px 0; }
+.rec-sum-item .rec-tl-head { gap: 12px; flex-wrap: wrap; row-gap: 4px; }
+.rec-sum-type { flex: none; padding: 2px 10px; border-radius: var(--r-ctl); background: var(--hover); font-size: var(--dt-aux); color: var(--text-muted); }
+.rec-sum-item .rec-tl-time { margin-left: 0; }
+.rec-sum-title { margin-top: 8px; font-weight: 600; color: var(--ink); font-size: var(--dt-body); overflow-wrap: anywhere; }
+.rec-sum-item .rec-tl-content { margin: 6px 0 2px; }
+.rec-sum-proj { display: inline-block; margin-top: 2px; font-size: var(--dt-body); color: var(--brand); overflow-wrap: anywhere; }
+.rec-sum-item .rec-tl-meta { margin-top: 2px; }
 /* 「跟进」菜单里的项目（P14 第 3 条）：长名字折行显示完整（10-30，原来截断），后面跟一句「关联 / 已结束 / 在公海」 */
 .rec-go { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: min(320px, 80vw); }
 .rec-go-name { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .rec-go-note { flex: none; font-size: var(--fs-note); color: var(--text-muted); }
-/* 「转让」子菜单：成员多时自己滚，不撑出屏幕 */
-.rec-go-sub .ant-dropdown-menu-sub { max-height: min(360px, 60vh); overflow-y: auto; }
+/* 10-31 改版 R6：企业版客户页的具名按钮，单独一行摆在名字下面，按下面三栏分组对齐（列宽、间距、断点和 .rec 一样）。
+   中、右两组包在 .rec-acts-r 里：三栏时它 display: contents，两组各占第 2、3 栏；两栏时它整个进第 2 栏、两组的按钮接着排（整个客户的事还是排最后靠右）；一栏时都叠起来。
+   整个客户的事（转让、放回公海、删除）在中组最后靠右 */
+.rec-page > .rec-acts { flex: none; display: grid; grid-template-columns: 240px minmax(0, 1fr) var(--ai-w); gap: 8px var(--s4); align-items: start; margin-bottom: 14px; }
+.rec-acts .acts-g { display: flex; flex-wrap: wrap; gap: var(--s2); min-width: 0; }
+.rec-acts-r { display: contents; }
+@container rec (max-width: 1089px) {
+  .rec-page > .rec-acts { grid-template-columns: 240px minmax(0, 1fr); }
+  .rec-acts-r { display: flex; flex-wrap: wrap; gap: var(--s2); min-width: 0; }
+  .rec-acts-r > .acts-g { display: contents; }
+  .rec-acts-r .acts-whole { order: 1; }
+}
+@container rec (max-width: 629px) {
+  .rec-page > .rec-acts { grid-template-columns: minmax(0, 1fr); }
+  .rec-acts > .acts-g:empty { display: none; }
+}
+/* 页头按钮开的框：小标题、底部按钮（框开在 .rec-page 外面，字号带兜底） */
+.rec-acts-hint { font-size: var(--dt-aux, 12px); color: var(--text-muted); margin-bottom: -8px; }
+.rec-modal-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
 .rec-tl-head > .ant-tag { flex: none; }
 .rec-tl-time { flex: none; margin-left: auto; font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rec-tl-when { flex: none; position: relative; margin-left: auto; display: inline-flex; align-items: center; }
@@ -1350,10 +1463,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   .rec > .rec-col { grid-column: 1; grid-row: 3; }
 }
 /* 10-31 改版 R3（客户详情，照项目详情那套）：整页不滚，页头和标签行钉在顶上。
-   滚动的是 .rec 这一格（滚动条贴在最右边，就是唯一露出来的那条）；资料栏、三栏时的沟通栏
-   钉在 .rec 顶上、各自滚、不露滚动条，滚一栏别的不动。.rec 设成 size 容器，100cqh = 这一格的可见高度。
-   右栏（AI / 背调 / 待办）原来 sticky，改成跟着 .rec 走：它比屏幕高时原来下半截要整页滚到底才看得到。
-   两栏时右栏在时间线上面、同在第 2 列，一起跟 .rec 滚；单栏（容器 <630）整格一起滚；手机（<768）照旧整页滚。
+   滚动的是 .rec 这一格（滚动条贴在最右边，就是唯一露出来的那条）；三栏时的沟通栏
+   钉在 .rec 顶上、自己滚、不露滚动条，滚一栏别的不动。.rec 设成 size 容器，100cqh = 这一格的可见高度。
+   各栏怎么滚见下面 10-31 那条；单栏（容器 <630）整格一起滚；手机（<768）照旧整页滚。
    选择器带 .main 是为了盖过 Windows 顶栏那条 :is(.rec-rail…) 的 top */
 @media (min-width: 768px) {
   .main:has(.rec-page) { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
@@ -1361,13 +1473,18 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   .main .rec-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .main .rec-page > .rec { flex: 1; min-height: 0; container-type: size; align-content: start; overflow-y: auto; overscroll-behavior-y: contain; }
   .main .rec-page > .rec > .rec-rail { position: static; }
+  /* 10-31 用户：「左中右，基本资料，沟通记录和待办的上下滑动没有分开」——三栏时三栏各自滚：每栏钉在这一格顶上、
+     最高一屏、自己滚，滚一栏另外两栏不动；这一格本身就没东西可滚了。最右那栏的滚动条露着（图 04「只显示最右侧滚动条」）；
+     资料、沟通两栏平时不露，鼠标移上去才露一条细的——整列藏着滚动条看着像被截断（同一天的「没有完整显示」）。
+     两栏时资料栏照样自己滚，第 2 列（待办在上、沟通在下）跟着这一格一起滚 */
   @container rec (min-width: 630px) {
-    .main .rec-page > .rec > .rec-rail:first-child { position: sticky; top: 0; max-height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
-    .main .rec-page > .rec > .rec-rail:first-child::-webkit-scrollbar { display: none; }
+    .main .rec-page > .rec > .rec-rail:first-child { position: sticky; top: 0; max-height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+    .main .rec-page > .rec > .rec-rail:first-child:hover { scrollbar-color: var(--line-strong) transparent; }
   }
   @container rec (min-width: 1090px) {
-    .main .rec-page > .rec > .rec-col { position: sticky; top: 0; max-height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
-    .main .rec-page > .rec > .rec-col::-webkit-scrollbar { display: none; }
+    .main .rec-page > .rec > :is(.rec-col, .rec-right) { position: sticky; top: 0; max-height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; }
+    .main .rec-page > .rec > .rec-col { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+    .main .rec-page > .rec > .rec-col:hover { scrollbar-color: var(--line-strong) transparent; }
   }
   .shell:has(.rec-page) .pane-roster .pane-rows { scrollbar-width: none; }
   .shell:has(.rec-page) .pane-roster .pane-rows::-webkit-scrollbar { display: none; }
@@ -1408,7 +1525,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-wrap .proj-profile-row { grid-template-columns: calc(var(--dt-label) * 4 + 4px) minmax(0, 1fr); }
 .proj-wrap .proj-rel-field { grid-template-columns: calc(var(--dt-label) * 2 + 4px) minmax(0, 1fr); }
 /* 辅助：时间、负责人、计数、到期、备注 */
-.rec-page :is(.rec-head-sub, .rec-tags-n, .rec-tl-time, .rec-tl-meta, .rec-tl-cap, .rec-contact-p, .rec-task-due, .rec-task-k,
+.rec-page :is(.rec-head-sub, .rec-tags-n, .rec-tl-time, .rec-tl-meta, .rec-contact-p, .rec-task-due, .rec-task-k,
   .rec-plan-m, .rec-mini-m, .rec-go-note, .rec-field-hint, .rec-ai-sec-k) { font-size: var(--dt-aux); }
 .rec-page .rec-plan-m:not(.is-over) { color: var(--text-muted); }
 /* 没填的占位：和内容一样大，最浅那档灰 */
