@@ -832,11 +832,11 @@ async function 开画像(能改: boolean) {
   await 画像卡(page).waitFor();
   return { page, errors };
 }
-it("画像只读：十二项都在、按序；空的（含产品需求、需求状态）写灰字「暂未确认」；关联里空的角色 / 立场 / 身份也写「暂未确认」", async () => {
+it("画像只读：十二项都在、按序；空的（含需求类型、需求状态）写灰字「暂未确认」；关联里空的角色 / 立场 / 身份也写「暂未确认」", async () => {
   const { page, errors } = await 开画像(false);
   try {
     const 卡 = 画像卡(page);
-    expect(await 卡.locator(".proj-profile-key").allInnerTexts()).toEqual(["预算能力", "价格感知", "决策链路", "需求状态", "产品需求", "采购周期", "产品匹配", "价值认同", "决策触达", "竞品信息", "部署条件", "场地现状"]);
+    expect(await 卡.locator(".proj-profile-key").allInnerTexts()).toEqual(["预算能力", "价格感知", "决策链路", "需求状态", "需求类型", "采购周期", "产品匹配", "价值认同", "决策触达", "竞品信息", "部署条件", "场地现状"]);
     const 值 = await 卡.locator(".proj-profile-val").allInnerTexts();
     expect(值).toEqual(["预算充足", "暂未确认", "暂未确认", "暂未确认", "暂未确认", "半年", "暂未确认", "暂未确认", "暂未确认", "无竞品·我方独家", "暂未确认", "暂未确认"]);
     // 灰字：和正文色不一样
