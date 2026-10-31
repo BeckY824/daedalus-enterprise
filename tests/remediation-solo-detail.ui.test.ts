@@ -6,6 +6,7 @@ let bundle:string,browser:Browser;
 const plugin:Plugin={name:"solo-page-boundaries",setup(b){
  const stub=(filter:RegExp,code:string)=>b.onResolve({filter},a=>({path:a.path,namespace:"fixture",pluginData:code}));
  stub(/^next\/navigation$/,"export const useRouter=()=>({push(){},refresh(){}})");
+ stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
  stub(/^next\/link$/,"export default function Link(p){return <a {...p}/>}");
  stub(/(^|\/)demo-data$/,"export const 查演示数据状态=async()=>null,灌一套演示数据=async()=>({ok:false}),清除演示数据=灌一套演示数据;");
  stub(/(^|\/)(TaskForm|PlanForm|OpportunityForm|ContractForm)$/,"export default function Form(){return null}");

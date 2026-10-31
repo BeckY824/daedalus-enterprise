@@ -14,6 +14,7 @@ const plugin: Plugin = { name: "leads-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){window.__去.push(u)},refresh(){},replace(){}});");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
   stub(/components\/DataList$/, "export default function D(p){const 动=p.列.find(c=>c.key==='act');return <div data-testid='rows'>{p.行.map(r=><div key={r.id}>{动.render(null,r)}</div>)}</div>}");
   stub(/^\.\/actions$/, "export const saveLead=async()=>({ok:true});export const deleteLeads=async()=>({ok:true});export const mergeLeadInto=async()=>({ok:true});export const convertLead=async()=>window.__转;");
   stub(/^\.\/assign-actions$/, "export const 自动分配线索=async()=>({});export const 批量自动分配=async()=>({});export const 分配线索=async()=>({});export const 本月分配情况=async()=>[];export const 我分出去的线索=async()=>[];export const 关满额提醒=async()=>({ok:true});");
