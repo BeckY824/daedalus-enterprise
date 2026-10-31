@@ -2,8 +2,9 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
-/* 10-31 改版 R3（客户详情）：整页不滚、页头不动。10-31 用户：「左中右…上下滑动没有分开」——三栏时资料、沟通、右栏各自滚，
-   只露最右那栏的滚动条，资料、沟通两栏的细条鼠标移上去才显出来；两栏时资料栏自己滚、第 2 列跟着这一格滚；
+/* 10-31 改版 R3（客户详情）：整页不滚、页头不动。10-31 用户：「左中右…上下滑动没有分开」「三列统一一个固定窗口大小，
+   多余的内容就上下滑动……三列要分开做上下滚动」——三栏时资料、沟通、右栏一样高、各自滚，三栏都不露滚动条
+   （同天「不要露滚动条」）；两栏时资料栏是一扇窗、第 2 列跟着这一格滚；
    单栏整格一起滚；手机宽还是整页滚。左边客户名单不露滚动条。
    渲染照 AppShell 桌面那套 .shell > nav.rail + 名单 + main.main.app-content > 换页那层 div */
 let browser: Browser, bundle: string;
@@ -64,11 +65,10 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
     页滚: document.documentElement.scrollHeight - window.innerHeight,
     横滚: document.documentElement.scrollWidth - window.innerWidth,
     头: q(".rec-head").getBoundingClientRect().top,
-    格顶: 格.scrollTop, 资料顶: 资料.scrollTop, 沟通顶: 沟通.scrollTop, 右顶: 右.scrollTop,
+    格顶: 格.scrollTop, 资料顶: 资料.scrollTop, 沟通顶: 沟通.scrollTop, 右顶: 右.scrollTop, 高: [资料, 沟通, 右].map(e => Math.round(e.getBoundingClientRect().height)), 格高: Math.round(格.clientHeight),
     格溢: 格.scrollHeight - 格.clientHeight, 资料溢: 资料.scrollHeight - 资料.clientHeight, 沟通溢: 沟通.scrollHeight - 沟通.clientHeight,
     格滚: 样(格).overflowY, 资料滚: 样(资料).overflowY, 沟通滚: 样(沟通).overflowY, 右滚: 样(右).overflowY,
     格条: 样(格).scrollbarWidth, 资料条: 样(资料).scrollbarWidth, 沟通条: 样(沟通).scrollbarWidth, 右条: 样(右).scrollbarWidth,
-    资料条色: 样(资料).scrollbarColor, 沟通条色: 样(沟通).scrollbarColor, 右条色: 样(右).scrollbarColor,
     沟通上: 沟通.getBoundingClientRect().top - 格.getBoundingClientRect().top,
     名单条: 样(q(".pane-roster .pane-rows")).scrollbarWidth,
     右钉: 样(右).position,
@@ -76,8 +76,7 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
     资料底: 资料.getBoundingClientRect().bottom, 格底: 格.getBoundingClientRect().bottom, 右底: 右.getBoundingClientRect().bottom,
   };
 });
-const 透明条 = "rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)";
-it("1680px（3 栏）：资料、沟通、右栏各自滚，滚一栏别的不动、页头不动；只露最右那条，左两栏鼠标移上去才露", async () => {
+it("1680px（3 栏）：资料、沟通、右栏一样高的窗口、各自滚，滚一栏别的不动、页头不动；三栏都不露滚动条", async () => {
   const { page, errors } = await open(1680);
   try {
     const 起 = await 量(page);
@@ -91,14 +90,13 @@ it("1680px（3 栏）：资料、沟通、右栏各自滚，滚一栏别的不�
     expect(起.沟通溢).toBeGreaterThan(0);
     expect(起.右底).toBeLessThanOrEqual(560);
     expect(起.名单条).toBe("none");
-    // 左两栏细条平时透明，右栏照常露
-    expect([起.资料条, 起.沟通条]).toEqual(["thin", "thin"]);
-    expect([起.资料条色, 起.沟通条色]).toEqual([透明条, 透明条]);
-    expect(起.右条色).not.toBe(透明条);
-    await page.locator(".rec > .rec-rail:first-child").hover();
-    expect((await 量(page)).资料条色).not.toBe(透明条);
-    await page.locator(".rec > .rec-col").hover();
-    expect((await 量(page)).沟通条色).not.toBe(透明条);
+    // 三栏一样高，都是这一格的可见高度（右栏内容短也不缩）；三栏都不露滚动条
+    expect(起.高).toEqual([起.格高, 起.格高, 起.格高]);
+    expect([起.资料条, 起.沟通条, 起.右条]).toEqual(["none", "none", "none"]);
+    // 资料栏滚到底，最后一样东西露在窗里，不被截
+    await page.locator(".rec > .rec-rail:first-child").evaluate(e => { e.scrollTop = e.scrollHeight; });
+    expect(await page.locator(".rec > .rec-rail:first-child").evaluate(e => { const r = e.getBoundingClientRect(); const 末 = [...e.querySelectorAll("*")].filter(x => (x as HTMLElement).offsetParent && !x.children.length).pop()!; return 末.getBoundingClientRect().bottom <= r.bottom + 1; })).toBe(true);
+    await page.locator(".rec > .rec-rail:first-child").evaluate(e => { e.scrollTop = 0; });
     for (const [栏, 键] of [[".rec > .rec-rail:first-child", "资料顶"], [".rec > .rec-col", "沟通顶"], [".rec > .rec-right", "右顶"]] as const) {
       await page.locator(栏).evaluate(e => { e.scrollTop = 200; });
       const 滚 = await 量(page);
@@ -119,8 +117,9 @@ it("1280px（2 栏）：资料栏自己滚、不跟第 2 列走；第 2 列跟�
     expect(起.页滚).toBeLessThanOrEqual(0);
     expect(起.横滚).toBeLessThanOrEqual(0);
     expect([起.格滚, 起.资料滚]).toEqual(["auto", "auto"]);
-    expect(起.格条).not.toBe("none");
-    expect(起.资料条色).toBe(透明条);
+    expect(起.格条).toBe("none");
+    expect(起.资料条).toBe("none");
+    expect(起.高[0]).toBe(起.格高);
     expect(起.资料溢).toBeGreaterThan(0);
     expect(起.格溢).toBeGreaterThan(0);
     await page.locator(".rec > .rec-rail:first-child").evaluate(e => { e.scrollTop = 200; });

@@ -1463,28 +1463,28 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   .rec > .rec-col { grid-column: 1; grid-row: 3; }
 }
 /* 10-31 改版 R3（客户详情，照项目详情那套）：整页不滚，页头和标签行钉在顶上。
-   滚动的是 .rec 这一格（滚动条贴在最右边，就是唯一露出来的那条）；三栏时的沟通栏
-   钉在 .rec 顶上、自己滚、不露滚动条，滚一栏别的不动。.rec 设成 size 容器，100cqh = 这一格的可见高度。
+   滚动的是 .rec 这一格和里面各栏，滚动条一律不露（10-31「不要露滚动条」）。.rec 设成 size 容器，100cqh = 这一格的可见高度。
    各栏怎么滚见下面 10-31 那条；单栏（容器 <630）整格一起滚；手机（<768）照旧整页滚。
    选择器带 .main 是为了盖过 Windows 顶栏那条 :is(.rec-rail…) 的 top */
 @media (min-width: 768px) {
   .main:has(.rec-page) { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
   .main:has(.rec-page) > div:has(> .rec-page) { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
   .main .rec-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .main .rec-page > .rec { flex: 1; min-height: 0; container-type: size; align-content: start; overflow-y: auto; overscroll-behavior-y: contain; }
+  .main .rec-page > .rec { flex: 1; min-height: 0; container-type: size; align-content: start; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+  .main .rec-page > .rec::-webkit-scrollbar { display: none; }
   .main .rec-page > .rec > .rec-rail { position: static; }
-  /* 10-31 用户：「左中右，基本资料，沟通记录和待办的上下滑动没有分开」——三栏时三栏各自滚：每栏钉在这一格顶上、
-     最高一屏、自己滚，滚一栏另外两栏不动；这一格本身就没东西可滚了。最右那栏的滚动条露着（图 04「只显示最右侧滚动条」）；
-     资料、沟通两栏平时不露，鼠标移上去才露一条细的——整列藏着滚动条看着像被截断（同一天的「没有完整显示」）。
-     两栏时资料栏照样自己滚，第 2 列（待办在上、沟通在下）跟着这一格一起滚 */
+  /* 10-31 用户：「左中右，基本资料，沟通记录和待办的上下滑动没有分开」「三列统一一个固定窗口大小，多余的内容就上下滑动，
+     可以以基本资料为例子作为窗口案例。记住三列要分开做上下滚动。」——三栏时三栏一样高（都是这一格的可见高度，
+     内容少也不缩），各自滚，滚一栏另外两栏不动；这一格本身没东西可滚。三栏都不露滚动条（同天「不要露滚动条」），
+     滚轮、触控板照样滚。
+     两栏时资料栏照样是这么一扇窗，第 2 列（待办在上、沟通在下）跟着这一格一起滚 */
   @container rec (min-width: 630px) {
-    .main .rec-page > .rec > .rec-rail:first-child { position: sticky; top: 0; max-height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: transparent transparent; }
-    .main .rec-page > .rec > .rec-rail:first-child:hover { scrollbar-color: var(--line-strong) transparent; }
+    .main .rec-page > .rec > .rec-rail:first-child { position: sticky; top: 0; height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+    .main .rec-page > .rec > .rec-rail:first-child::-webkit-scrollbar { display: none; }
   }
   @container rec (min-width: 1090px) {
-    .main .rec-page > .rec > :is(.rec-col, .rec-right) { position: sticky; top: 0; max-height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; }
-    .main .rec-page > .rec > .rec-col { scrollbar-width: thin; scrollbar-color: transparent transparent; }
-    .main .rec-page > .rec > .rec-col:hover { scrollbar-color: var(--line-strong) transparent; }
+    .main .rec-page > .rec > :is(.rec-col, .rec-right) { position: sticky; top: 0; height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+    .main .rec-page > .rec > :is(.rec-col, .rec-right)::-webkit-scrollbar { display: none; }
   }
   .shell:has(.rec-page) .pane-roster .pane-rows { scrollbar-width: none; }
   .shell:has(.rec-page) .pane-roster .pane-rows::-webkit-scrollbar { display: none; }
