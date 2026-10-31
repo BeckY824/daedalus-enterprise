@@ -14,6 +14,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import { 演示登录 } from "@/app/login/demo-actions";
+import { 全局搜索 } from "./global-search";
 import { accessibleWorkspacesFor } from "@/lib/tenant/workspace-access";
 import { llmEnabled, listModelOptions } from "@/lib/llm";
 import { 读AI计次, 不计次 } from "@/lib/ai-meter";
@@ -117,6 +118,8 @@ export default async function AppLayout({
         收藏={收藏}
         演示名单={await 读演示名单()}
         演示换人={演示登录}
+        // ⌘K 顺带搜客户、项目、联系人（U-项目-04）：只在企业版项目模式给，范围按角色走（global-search.ts）
+        全局搜索={企业版() && business.projectMode === true ? 全局搜索 : undefined}
         计数={{ "/customers": 客户数 }}
       >
         {children}

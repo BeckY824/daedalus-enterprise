@@ -2229,6 +2229,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .pipe-card-a { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pipe-card-o { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; max-width: 100%; word-break: break-word; }
 /* 每列先摆 50 张（2026-10-24），底下接着翻；列最窄 184，放不下就折行，不撑宽列 */
+/* 企业版项目首页：空列藏起来后的一行说明（U-项目-08）。列名能自己改，几列名字一长就省略、悬停看全，按钮不被挤走；1024 宽不横滚 */
+.pipe-hidden { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin: calc(-1 * var(--s1)) 0 var(--s2); font-size: var(--fs-note); color: var(--text-muted); }
+.pipe-hidden-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pipe-hidden .ant-btn { flex: none; padding-inline: 0; }
 .pipe-more.ant-btn { height: auto; min-height: 28px; white-space: normal; color: var(--brand); gap: 6px; }
 
 /* ---------- 「数据」页上的问数据 ----------
@@ -2249,6 +2253,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cmdk-row b { flex: none; font-weight: 500; color: var(--ink); }
 .cmdk-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
 .cmdk-row-on { background: var(--brand-bg); }
+/* 企业版全局搜索（U-项目-04）：分组小标题；搜到的名字可能很长，名字和附注一起省略，不撑出横滚 */
+.cmdk-sec { padding: var(--s2) var(--s3) var(--s1); font-size: var(--fs-min); color: var(--text-faint); }
+.cmdk-row.cmdk-hit b { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmdk-foot { padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: var(--fs-min); color: var(--text-muted); }
 .cmdk-foot kbd { font-size: var(--fs-min); background: var(--hover); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: var(--r-ctl); padding: 0 5px; }
 /* 左栏底部那行「⌘K 跳转 / 提问」 */

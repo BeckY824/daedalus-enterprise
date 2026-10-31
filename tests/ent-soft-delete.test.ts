@@ -21,7 +21,7 @@ import { resetDb } from "./reset";
 import { deleteCustomers, 删除前清点, checkDuplicate } from "@/app/(app)/customers/actions";
 import { deleteContact, deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { 关键词分页 } from "@/app/(app)/customers/query";
-import { 删项目 } from "@/lib/project/db";
+import { 删项目, 项目不能删提示 } from "@/lib/project/db";
 import { 看得到的客户数, 看得到的跟进数 } from "@/lib/scope-sql";
 import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
 import { 回收站列表, 恢复, 彻底删除, 清过期, 每天清一次, 看已删, 能管回收站, 能彻底删除 } from "@/lib/enterprise/soft-delete";
@@ -143,8 +143,11 @@ describe("回收站列表与恢复", () => {
     expect(await prisma.contact.count()).toBe(1);
   });
 
-  it("单独删的项目、沟通记录各自进回收站，各自恢复", async () => {
-    expect(await 删项目({ id: 老板, role: "ADMIN" }, 项目)).toMatchObject({ ok: true });
+  it("单独删的项目（老数据）、沟通记录各自进回收站，各自恢复", async () => {
+    // 企业版删项目一律拒（M-权限-10），项目原样还在；回收站里单独的项目只剩老数据，直接写 deletedAt 造一个
+    expect(await 删项目({ id: 老板, role: "ADMIN" }, 项目)).toMatchObject({ ok: false, error: 项目不能删提示 });
+    expect(await prisma.project.count()).toBe(1);
+    await raw.project.update({ where: { id: 项目 }, data: { deletedAt: new Date() } });
     expect((await deleteFollowUp(记录, 张三)).ok).toBe(true);
     expect(await prisma.project.count()).toBe(0);
     expect(await prisma.followUp.count()).toBe(0);
