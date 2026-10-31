@@ -2816,6 +2816,26 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    正文的内边距写在 AppShell 行内，所以要 !important；反馈提示出着时两个取大的（它在左下、浮标在右下） */
 .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: 88px !important; }
 html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: max(88px, var(--fbt-room)) !important; }
+/* 客户、项目详情（各栏自己滚）例外：正文底下不让那 88，栏一直铺到窗口底（10-31 用户「我要整个页面本来就有显示」，
+   原来栏底下空一截灰、一进来像要往下滑）。让位挪进各栏自己的滚动里：滚到底，最后一张卡停在浮标、反馈提示上面。
+   选择器多叠一层 html body / .app-content，是为了盖过上面两条带 !important 的 */
+.has-ai-fab { --detail-tail: 64px; }
+html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
+@media (min-width: 768px) {
+  html body .main.app-content.app-content:has(:is(.rec-page, .proj-wrap)) { padding-bottom: 22px !important; }
+  .main .rec-page > .rec > .rec-col { padding-bottom: var(--detail-tail, 0px); }
+  @container rec (min-width: 630px) {
+    .main .rec-page > .rec > .rec-rail:first-child { padding-bottom: var(--detail-tail, 0px); }
+  }
+  @container rec (min-width: 1090px) {
+    .main .rec-page > .rec > .rec-right { padding-bottom: var(--detail-tail, 0px); }
+  }
+  .proj-wrap > .proj-2col { padding-bottom: var(--detail-tail, 0px); }
+  @container (min-width: 630px) {
+    .proj-wrap > .proj-2col { padding-bottom: 0; }
+    .proj-wrap > .proj-2col > :is(.proj-main, .proj-side) { padding-bottom: var(--detail-tail, 0px); }
+  }
+}
 
 /* 从浮标点开的：面板从右下角那一点长出来，接上刚才点的位置 */
 .shell-fab-opened .dock { transform-origin: 100% 100%; animation: dock-from-fab var(--t-morph) var(--ease-morph); }
