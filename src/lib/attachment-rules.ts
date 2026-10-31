@@ -55,6 +55,8 @@ export function 猜音频类型(名字: string): string | null {
 export function 不收说明(名字: string, mime: string, 挂在?: 归属): string | null {
   if (挂在 && "followUpId" in 挂在) {
     if (是图片(mime) || 是音频(mime)) return null;
+    // 浏览器认不出类型的录音（m4a / amr 常见）按扩展名放行，服务端同样按扩展名定类型
+    if ((!mime || mime === "application/octet-stream") && 猜音频类型(名字)) return null;
     return `「${名字}」不是图片或录音，沟通记录只收截图和录音（JPG、PNG、GIF、WebP、BMP，MP3、M4A、WAV、AAC、AMR、OGG）`;
   }
   if (!只收图片 || 是图片(mime) || (挂在 && 收所有文件(挂在))) return null;
