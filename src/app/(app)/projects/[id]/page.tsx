@@ -25,6 +25,7 @@ import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 卡点可选的人, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 // 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
 import { 联系人附件入口, 项目附件入口 } from "@/app/api/attachments/access";
+import { 列回款 } from "@/lib/project/payment-db";
 import { 项目画像项, 其他项, 字典定义 } from "@/lib/enterprise/dict-kinds";
 import { 读产品需求 } from "@/lib/project/profile-rules";
 import { 项目关联们 } from "@/lib/project/relate";
@@ -158,6 +159,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     值: { budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, demandStatus: p.demandStatus, productNeeds: 存的需求 },
   };
   const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
+  // 企业版回款（10-31，迁移 100）：和合同金额一样是项目自己的钱，都给看
+  const 回款们 = 企业 ? await 列回款(p.id) : null;
   // 企业版关联客户 / 联系人（P17）：同画像，公海里同事客户的项目没领之前不给
   const 关联 = 企业 && 露 ? await 项目关联们(me, p.id) : null;
   const 详情: 项目详情 = {
@@ -201,6 +204,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     ...(画像 ? { 画像 } : {}),
     ...(关联 ? { 关联 } : {}),
     ...(项目附件 ? { 项目附件 } : {}),
+    ...(回款们 ? { 回款们 } : {}),
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };
   return <ProjectDetail key={p.id} 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;

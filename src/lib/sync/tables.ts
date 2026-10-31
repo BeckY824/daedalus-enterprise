@@ -80,6 +80,8 @@ export const 不同步表 = [
   // 企业版项目关联客户 / 联系人（2026-10-29 P17，migrations/094、095）：同上
   "ProjectCustomer",
   "ProjectContact",
+  // 企业版项目回款（2026-10-31，migrations/100）：同上
+  "EntProjectPayment",
 ] as const;
 
 /**
@@ -179,6 +181,8 @@ export const 指向人的列: [string, string][] = [
   ["EntLeadVerify", "finalById"],
   ["EntLeadVerifyLog", "userId"],
   ["EntLeadQuotaBonus", "userId"],
+  // 企业版项目回款（2026-10-31）：谁记的
+  ["EntProjectPayment", "userId"],
 ];
 
 /**

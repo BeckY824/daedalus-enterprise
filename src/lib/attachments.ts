@@ -59,11 +59,12 @@ export function 给界面(r: 行, 目录 = 附件目录()): 附件 {
 const 选列 = { id: true, name: true, mime: true, size: true, width: true, height: true, createdAt: true } as const;
 
 /**
- * 分类：企业版联系人附件的 名片 / 相册（迁移 074）。给了就只列这一类；相册连没分类的老附件一起算（customer-v2.ts 附件分类们）
+ * 分类：企业版联系人附件的 名片 / 相册（迁移 074）、项目附件的 合同 / 其它（10-31）。给了就只列这一类；
+ * 相册、其它连没分类的老附件一起算（customer-v2.ts 附件分类们 / 项目附件分类们）
  */
 export function 分类条件(分类: string | null | undefined) {
   if (!分类) return {};
-  return 分类 === "相册" ? { OR: [{ tag: "相册" }, { tag: null }] } : { tag: 分类 };
+  return 分类 === "相册" || 分类 === "其它" ? { OR: [{ tag: 分类 }, { tag: null }] } : { tag: 分类 };
 }
 
 export async function 列附件(db: PrismaClient, 挂在: 归属, 目录 = 附件目录(), 分类?: string | null): Promise<附件[]> {
@@ -157,6 +158,15 @@ export async function 联系人分类附件数(db: PrismaClient, contactIds: str
     x[g.tag === "名片" ? "名片" : "相册"] += g._count._all;
   }
   return 结果;
+}
+
+/** 企业版项目附件分两格（合同 / 其它，10-31）：这个项目每格几个。没分类的老附件算其它（同 分类条件） */
+export async function 项目分类附件数(db: PrismaClient, projectId: string): Promise<{ 合同: number; 其它: number }> {
+  const x = { 合同: 0, 其它: 0 };
+  for (const g of await db.attachment.groupBy({ by: ["tag"], where: { projectId }, _count: { _all: true } })) {
+    x[g.tag === "合同" ? "合同" : "其它"] += g._count._all;
+  }
+  return x;
 }
 
 /**

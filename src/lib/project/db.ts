@@ -241,7 +241,7 @@ export async function 改异常类别(me: 谁, id: string, patch: { name?: unkno
 }
 
 /** 自动推进了才带上 自动推到（没推的返回和原来一模一样） */
-const 带推进 = (到: string[]) => (到.length ? { 自动推到: 到 } : {});
+export const 带推进 = (到: string[]) => (到.length ? { 自动推到: 到 } : {});
 
 /**
  * 改节点：往前只能一步一步走，往后随便退（nodes.ts 改节点问题；企业版按企业版字典，跨阶段不能退），点结局也走这里。每改一次记一行 ProjectNodeLog。
@@ -862,19 +862,22 @@ export async function 读必填数据(
   tx: Prisma.TransactionClient,
   p: { id: string; customerId: string; node: string; contactId: string | null; nextStepAt: Date | null; expectedDealAt: Date | null; amount: number; remark: string | null; acceptancePassed: boolean },
 ): Promise<必填数据> {
-  const [c, 联系人们, 沟通] = await Promise.all([
+  const [c, 联系人们, 沟通, 合同附件数, 回款笔数] = await Promise.all([
     tx.customer.findUnique({
       where: { id: p.customerId },
       select: { phone: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
     }),
     tx.contact.findMany({ where: { customerId: p.customerId }, select: { phone: true, email: true, wechat: true } }),
     tx.followUpProject.findMany({ where: { projectId: p.id }, select: { node: true }, distinct: ["node"] }),
+    tx.attachment.count({ where: { projectId: p.id, tag: "合同" } }),
+    tx.entProjectPayment.count({ where: { projectId: p.id } }),
   ]);
   return {
     项目: { node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed },
     客户: { phone: c?.phone ?? null, extra: c?.extra ?? null },
     联系人们,
     沟通节点们: 沟通.map((x) => x.node),
+    合同附件数, 回款笔数,
   };
 }
 

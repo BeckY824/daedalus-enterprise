@@ -7,7 +7,9 @@ import { 列附件, 存附件, 清孤儿 } from "@/lib/attachments";
 import { 附件上限字节, 每条最多, 超限说明, 规整文件名, 读大小, 不收说明, 收所有文件 } from "@/lib/attachment-rules";
 import { 读归属, 认父记录 } from "./access";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 是附件分类 } from "@/lib/enterprise/customer-v2";
+import { 是附件分类, 是项目附件分类 } from "@/lib/enterprise/customer-v2";
+import { 合同附件后推进 } from "@/lib/project/payment-db";
+import { 记这个项目的自动推进 } from "@/lib/project/auto-advance";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,14 +21,17 @@ export const runtime = "nodejs";
  *   POST ?opportunityId=|leadId=|contactId=|projectId=&name=&w=&h=  body = 文件原始字节（图片在界面上已经压过），Content-Type = 文件类型
  * 取文件、删除在 [id]/route.ts。
  * 企业版联系人附件分两格（2026-10-29 定稿 P5 第 24 条）：再带 &tag=名片|相册。GET 只列这一格（相册连没分类的老附件），
- * POST 记上这一格。别的父记录、个人版不认 tag（带了也不管）
+ * POST 记上这一格。项目附件也分两格（10-31）：&tag=合同|其它，规矩同上（其它连没分类的老附件）；传了合同附件，项目配了节点必填就顺手推一次。
+ * 别的父记录、个人版不认 tag（带了也不管）
  */
 
-/** 这次请求认的分类：企业版、挂在联系人上、且是 名片 / 相册 之一；否则 null。带了认不出的值 → 错 */
+/** 这次请求认的分类：企业版、挂在联系人上是 名片 / 相册 之一，挂在项目上是 合同 / 其它 之一；否则 null。带了认不出的值 → 错 */
 function 读分类(q: URLSearchParams, 挂在: object): { 值: string | null } | { 错: string } {
   const t = q.get("tag");
-  if (!t || !企业版() || !("contactId" in 挂在)) return { 值: null };
-  return 是附件分类(t) ? { 值: t } : { 错: "附件分类不对" };
+  if (!t || !企业版()) return { 值: null };
+  if ("contactId" in 挂在) return 是附件分类(t) ? { 值: t } : { 错: "附件分类不对" };
+  if ("projectId" in 挂在) return 是项目附件分类(t) ? { 值: t } : { 错: "附件分类不对" };
+  return { 值: null };
 }
 
 const 不存 = { "Cache-Control": "no-store" };
@@ -101,5 +106,8 @@ export async function POST(req: Request) {
 
   const a = await 存附件(prisma, { 挂在, name: 名, mime, 字节: 体, width: 整数(q.get("w")), height: 整数(q.get("h")), userId: 我.id, tag: 分类.值 });
   await recordAudit({ user: 我, action: "create", entity: "Attachment", entityId: a.id, summary: `给${父.叫法}加了${分类.值 ? `${分类.值}「${名}」` : `${收所有文件(挂在) ? "附件" : "图片"}「${名}」`}（${读大小(a.size)}）`, detail: { ...挂在, 名字: 名, 大小: a.size, ...(分类.值 ? { 分类: 分类.值 } : {}) } });
-  return NextResponse.json({ 附件: a }, { headers: 不存 });
+  // 合同附件是节点必填之一：传上了就按必填推一次（推不动 / 没配都不影响这次上传）
+  const 推进 = 分类.值 === "合同" && "projectId" in 挂在 ? await 合同附件后推进(我, String(挂在.projectId)).catch(() => []) : [];
+  if (推进.length && "projectId" in 挂在) await 记这个项目的自动推进(我, String(挂在.projectId), 推进);
+  return NextResponse.json({ 附件: a, ...(推进.length ? { 自动推到: 推进 } : {}) }, { headers: 不存 });
 }

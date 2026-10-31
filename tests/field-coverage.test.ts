@@ -51,6 +51,8 @@ const 可写: Record<string, string[]> = {
   EntCommissionSplit: ["userId", "percent"],
   // 企业版线索有效性验证（2026-10-29，P12）：projects/actions.ts 的 线索初判 / 市场复核 / 销售终验 / 总管理终判 收的说明和无效原因
   EntLeadVerify: ["invalidReason", "verifyNote", "reviewNote", "disputeNote", "finalNote"],
+  // 企业版项目回款（2026-10-31，迁移 100）：projects/payment-actions.ts 的 记回款（只加、删，不改）
+  EntProjectPayment: ["paidAt", "currency", "amount"],
   Customer: ["name", "phone", "school", "grade", "major", "channelId", "referrerCustomerId", "salesOwnerId", "channelOwnerId", "followStatus", "decisionStatus", "custStatus", "expectedSignAt", "remark",
     // 企业版客户改版（2026-10-29，迁移 072）：客户表单 saveCustomer 的 企业资料
     "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay",
@@ -469,6 +471,7 @@ const 派生: Record<string, Record<string, string>> = {
     fromUserId: "交出去的人，系统写", toUserId: "接过来的人，系统写", note: "返回看板的理由、解决结果等，跟着那一步写；只增不改",
   },
   EntFollowUpMeta: { followUpId: "哪条沟通，记的时候定", projectId: "挂在哪个项目，记的时候定", code: "FUL + 日期 + 当天流水，记的时候系统生成" },
+  EntProjectPayment: { projectId: "记在哪个项目的回款卡上，记的时候定", userId: "记这笔的人，当前登录账号" },
   CustomerOwnerLog: {
     customerId: "哪位客户，换负责人时系统写", userId: "谁换的，系统写", at: "换的那一刻，系统写",
     fromOwnerId: "换之前的负责人（历史负责人），系统写", toOwnerId: "换之后的负责人，系统写",
