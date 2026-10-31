@@ -132,9 +132,13 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
       extra={onEdit && <Button size="small" icon={<EditOutlined />} onClick={onEdit}>编辑</Button>}
       destroyOnHidden
     >
+      {/* U-渠道-01（10-31 会议）：基本信息、统计、投入记录各成一块，块里单列排，不分两栏 */}
+      <section className="chan-block" aria-label="基本信息">
+      <div className="section-title">基本信息</div>
       <Descriptions
+        className="chan-desc"
         size="small"
-        column={{ xs: 1, sm: 2 }}
+        column={1}
         items={[
           { key: "attr", label: "渠道属性", children: row.attr ?? 无 },
           { key: "platform", label: "渠道名称", children: row.platform ?? 无 },
@@ -149,10 +153,14 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
         ]}
       />
 
-      <div className="section-title" style={{ marginTop: 20 }}>统计</div>
+      </section>
+
+      <section className="chan-block" aria-label="统计">
+      <div className="section-title">统计</div>
       <Descriptions
+        className="chan-desc"
         size="small"
-        column={{ xs: 2, sm: 3 }}
+        column={1}
         items={[
           { key: "线索", label: "关联线索", children: s?.关联线索 ?? 0 },
           { key: "有效", label: "有效线索", children: s?.有效线索 ?? 0 },
@@ -181,8 +189,11 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
           { key: "投入", label: "当前投入", span: "filled", children: 钱(s?.当前投入) },
         ]}
       />
+      </section>
 
-      <div className="section-title" style={{ marginTop: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <section className="chan-block" aria-label="投入记录">
+
+      <div className="section-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span>投入记录</span>
         {能录 && !录 && (
           <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => set录(true)}>
@@ -249,6 +260,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
           ))}
         </ul>
       )}
+      </section>
     </Drawer>
   );
 }

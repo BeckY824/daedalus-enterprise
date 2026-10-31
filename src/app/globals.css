@@ -2094,6 +2094,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .chan-invest-who { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chan-invest-remark { margin-top: 2px; overflow-wrap: anywhere; }
 .chan-invest-del { position: absolute; right: 0; top: var(--s2); }
+/* 渠道详情（U-渠道-01）：基本信息 / 统计 / 投入记录各成一块、单列排；标签列定宽，值列可折行，1024 宽抽屉里不溢出 */
+.chan-block { border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-width: 0; }
+.chan-block + .chan-block { margin-top: var(--s3); }
+.chan-block > .section-title { margin-bottom: var(--s2); }
+.chan-desc .ant-descriptions-item-label { width: 7.5em; flex: none; }
+.chan-desc .ant-descriptions-item-content { min-width: 0; overflow-wrap: anywhere; }
 /* 「重置」一直占着位置，没筛时只是看不见（审查 M17）：原来它一出现就把「列」挤到第二行，
    整张表往下跳一截。出现消失只淡入淡出，不位移。visibility 晚一拍再收，淡出才看得见 */
 .list-reset { transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s; }
