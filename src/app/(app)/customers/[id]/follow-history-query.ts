@@ -12,7 +12,7 @@ export const followHistoryOrder = [{ occurredAt: "desc" }, { id: "desc" }] satis
 
 export function serializeFollowHistory(f: Prisma.FollowUpGetPayload<{ include: typeof followHistoryInclude }>): FollowUpRow {
   return {
-    id: f.id, type: f.type, title: f.title, content: f.content, status: f.status, duration: f.duration,
+    id: f.id, type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, duration: f.duration,
     occurredAt: f.occurredAt.toISOString(), dueAt: scheduleValue(f.dueAt, f.dueOn), dueHasTime: f.dueHasTime,
     participants: f.participants, sourceText: f.source?.text ?? null, ownerId: f.ownerId, ownerName: f.owner.name,
     contactName: f.contact?.name ?? null, contactPosition: f.contact?.position ?? null, contactId: f.contactId,

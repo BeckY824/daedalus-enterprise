@@ -5,6 +5,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "clock-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refreshes=(window.__refreshes??0)+1},push(){}});export const usePathname=()=>'/follow-ups/plans';");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");

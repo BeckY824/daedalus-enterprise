@@ -10,6 +10,8 @@ import { useBusiness } from "@/lib/business-client";
 import { useMe, 默认负责人 } from "@/lib/me-client";
 import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容 } from "@/lib/form-guard";
 import { 跟进类型们 } from "@/lib/constants";
+import FollowMethodSelect from "@/components/FollowMethodSelect";
+import { 对得上的方式 } from "@/lib/follow-method";
 import { 币种选项, 默认币种 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { 成员选项, 独自一人, dayjs, type 可选成员 } from "@/lib/utils";
@@ -41,7 +43,7 @@ type 稿 = {
   项目: { name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number; 渠道?: string | null };
   /** 下一步时间（YYYY-MM-DD）：开了超时回收时才有这格、必填；老草稿里没有这格 */
   /** 节点、明确回复：企业版首条沟通必选（跟进节点 = 项目落在线索阶段哪一步）；团队版没有 */
-  跟进: { type: string; content: string; occurredAt: string; 下一步时间?: string | null; 节点?: string; 明确回复?: boolean | null };
+  跟进: { type: string; method?: string | null; content: string; occurredAt: string; 下一步时间?: string | null; 节点?: string; 明确回复?: boolean | null };
 };
 
 /** 企业版新建线索（10-26）：负责人、渠道必选；只留联系方式、首次沟通记录、跟进节点、客户是否明确回复这几格预设 */
@@ -209,7 +211,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
           // 项目来源：没另选就跟客户的渠道（服务端 项目来源默认 同一个规矩）；团队版不传
           ...(企业 ? { channelId: 项目渠道 || d.客户.渠道 || null } : {}),
         },
-        跟进: 企业 ? d.跟进 : { type: d.跟进.type, content: d.跟进.content, occurredAt: d.跟进.occurredAt, 下一步时间: d.跟进.下一步时间 },
+        跟进: 企业 ? { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) } : { type: d.跟进.type, content: d.跟进.content, occurredAt: d.跟进.occurredAt, 下一步时间: d.跟进.下一步时间 },
       });
       if (!r.ok) {
         message.error(r.error);
@@ -428,7 +430,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
       {步 === 4 && (
         <>
           {一行("沟通方式", (
-            <Select style={{ width: "100%" }} value={d.跟进.type} options={能选类型.map((t) => ({ value: t.value, label: t.label }))} onChange={(v) => 改("跟进", { type: v })} />
+            <FollowMethodSelect style={{ width: "100%" }} aria-label="沟通方式" type={d.跟进.type} method={d.跟进.method} 类型们={能选类型} onChange={(v) => 改("跟进", v)} />
           ), true)}
           {一行("时间", (
             <DatePicker

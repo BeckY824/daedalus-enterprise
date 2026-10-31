@@ -7,7 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Tag, Drawer } from "antd";
 import { SearchOutlined, TableOutlined } from "@ant-design/icons";
-import { FOLLOW_TYPE_MAP } from "@/lib/constants";
+import { 跟进方式名 } from "@/lib/follow-method";
 import { 项目名单分组, 未填写组 } from "@/lib/roster-groups";
 import { avatarColor, initial, smartTime, AVATAR_TEXT } from "@/lib/utils";
 import { 开名单, 关名单, 登记换一位 } from "@/lib/roster";
@@ -87,7 +87,7 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
         : { cls: "ok", 说: "最近沟通过" };
   const 一行 = (r: 名单项目, 带阶段: boolean) => {
     const d = 点(r);
-    const 方式 = r.lastType ? (FOLLOW_TYPE_MAP[r.lastType]?.label ?? null) : null;
+    const 方式 = r.lastType ? 跟进方式名({ type: r.lastType, method: r.lastMethod }) : null;
     const 进程 = r.结局 ?? r.进程;
     return (
       <RowLink key={r.id} href={`/projects/${r.id}`} className={`roster-row${activeId === r.id ? " on" : ""}`} onClick={() => 抽屉开着 && 关名单()}>

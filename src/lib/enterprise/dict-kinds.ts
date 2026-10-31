@@ -1,5 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance", "followMethod"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -108,6 +108,15 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
   projCustRole: { 名: "项目身份", 说明: "客户在这个项目里是哪一方，可多选。", 默认: ["业主方", "总包方", "分包方", "投资方", "垫资方", "运营方", "引荐方", "监理方", "设计方"] },
   projContactRole: { 名: "项目角色", 说明: "联系人在这个项目里管哪一块，可多选。", 默认: ["决策人", "审批人", "影响人", "使用人", "经办人"] },
   projStance: { 名: "项目立场", 说明: "联系人和我方销售的关系。", 默认: ["待定", "中立", "对手", "线人", "军师", "盟友"] },
+  /*
+    沟通方式（10-31）：跟进记录的沟通方式，按对方原表 19 个值、原表顺序。跟进记录存选项名（FollowUp.method），
+    type 照旧按方式对出来（follow-method.ts 方式对类型），首页、统计、提醒还认 type
+  */
+  followMethod: {
+    名: "沟通方式",
+    说明: "这次沟通是通过什么方式。",
+    默认: ["手机通话", "微信沟通", "邮件沟通", "WhatsApp", "旺旺私信", "Telegram", "Skype", "LinkedIn", "Line", "线下拜访", "线上会议", "书面函件", "内部研讨", "手机短信", "客户来访", "展会面聊", "其他方式", "Facebook", "Instagram"],
+  },
 };
 
 /** 项目画像五项：字段名 → 字典种类、是否多选。界面、校验、测试都按这一份走 */

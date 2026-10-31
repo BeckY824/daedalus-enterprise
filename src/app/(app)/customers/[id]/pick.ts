@@ -48,7 +48,7 @@ export async function 取客户选项(id: string): Promise<可挑客户 | null> 
 export type 客户近况 = {
   id: string;
   name: string;
-  上次跟进: { occurredAt: string; type: string; title: string; content: string } | null;
+  上次跟进: { occurredAt: string; type: string; method?: string | null; title: string; content: string } | null;
   /** 最早的那条没做完的计划——和记录页「下次跟进」那一块取的是同一条 */
   未完成计划: { id: string; subject: string; plannedAt: string; method: string } | null;
   /** 没做完的计划一共几条（记录页只摆最早那条，多出来的要在框里说一声） */
@@ -67,7 +67,7 @@ export async function 取客户近况(id: string): Promise<客户近况 | null> 
     select: {
       id: true,
       name: true,
-      followUps: { orderBy: { occurredAt: "desc" }, take: 1, select: { occurredAt: true, type: true, title: true, content: true } },
+      followUps: { orderBy: { occurredAt: "desc" }, take: 1, select: { occurredAt: true, type: true, method: true, title: true, content: true } },
       plans: { where: { done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true } },
       _count: { select: { plans: { where: { done: false } } } },
       contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], select: { id: true, name: true, position: true } },
@@ -81,7 +81,7 @@ export async function 取客户近况(id: string): Promise<客户近况 | null> 
   return {
     id: c.id,
     name: c.name,
-    上次跟进: f ? { occurredAt: f.occurredAt.toISOString(), type: f.type, title: f.title, content: f.content } : null,
+    上次跟进: f ? { occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content } : null,
     未完成计划: p ? { id: p.id, subject: p.subject, plannedAt: scheduleValue(p.plannedAt, p.plannedOn)!, method: p.method } : null,
     未完成计划数: c._count.plans,
     contacts: c.contacts,

@@ -25,6 +25,8 @@ import { clearJob, runJob } from "@/lib/ai-jobs";
 import { statusLabel } from "@/lib/business-config";
 import { 只填没动过的, 跳过说明 } from "@/lib/fill-untouched";
 import CustomerPick, { type 客户近况 } from "./CustomerPick";
+import FollowMethodSelect from "@/components/FollowMethodSelect";
+import { 对得上的方式 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
 
 /** 「标题你改过，没动」里说的名字：和表单上的标签对得上，说短一点 */
@@ -42,6 +44,8 @@ const 字段名: Record<string, string> = {
 type Rec = {
   id?: string;
   type?: string;
+  /** 企业版沟通方式（10-31）：编辑时带上，下拉摆它 */
+  method?: string | null;
   title?: string;
   content?: string;
   status?: string;
@@ -132,6 +136,7 @@ export default function FollowUpForm({
   const router = useRouter();
   const b = useBusiness();
   const type = Form.useWatch("type", form);
+  const method = Form.useWatch("method", form) as string | null | undefined;
   const dueAt = Form.useWatch("dueAt", form);
   const dueHasTime = Form.useWatch("dueHasTime", form) ?? true;
   const status = Form.useWatch("status", form);
@@ -383,6 +388,7 @@ export default function FollowUpForm({
       版本: record?.id ? record.updatedAt : null,
       customerId: 谁,
       type: v.type,
+      method: 对得上的方式(v.type, v.method),
       title: v.title,
       content: v.content,
       status: v.status,
@@ -467,7 +473,7 @@ export default function FollowUpForm({
   async function 记到项目(v: Awaited<ReturnType<typeof form.validateFields>>, 谁: string, 要收口: typeof 收口计划) {
     if (!须知) return;
     const r = await 记项目沟通Action(v.projectId, {
-      type: v.type, content: v.content, occurredAt: v.occurredAt.toISOString(),
+      type: v.type, method: 对得上的方式(v.type, v.method), content: v.content, occurredAt: v.occurredAt.toISOString(),
       阶段: 须知.phase, 明确回复: v.明确回复 === true,
       下一步: v.下一步, 下一步时间: v.下一步时间 ? v.下一步时间.format("YYYY-MM-DD") : null,
     });
@@ -477,7 +483,7 @@ export default function FollowUpForm({
     const 要补 = Boolean(v.title?.trim() || 另选联系人 || (v.status && v.status !== "已完成") || v.durationMinutes || v.participants?.trim());
     if (要补 && r.followUpId && !只读) {
       const 补 = await saveFollowUp({
-        id: r.followUpId, customerId: 谁, type: v.type, title: v.title, content: v.content, status: v.status ?? "已完成",
+        id: r.followUpId, customerId: 谁, type: v.type, method: 对得上的方式(v.type, v.method), title: v.title, content: v.content, status: v.status ?? "已完成",
         durationMinutes: v.durationMinutes ?? null, occurredAt: v.occurredAt.toISOString(),
         contactId: v.contactId ?? 须知.contactId ?? null, participants: v.participants ?? null,
       });
@@ -567,8 +573,17 @@ export default function FollowUpForm({
         )}
         <Row gutter={16}>
           <Col span={8}>
-            <Form.Item name="type" label="沟通方式" rules={[{ required: true }]}>
-              <Select options={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND")).map((t) => ({ value: t.value, label: t.label }))} />
+            <Form.Item name="type" hidden rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="method" hidden><Input /></Form.Item>
+            {/* 企业版列字典里的沟通方式，类型跟着推（FollowMethodSelect）；别的版本就是类型下拉 */}
+            <Form.Item label="沟通方式" required>
+              <FollowMethodSelect
+                aria-label="沟通方式"
+                type={type ?? "PHONE"}
+                method={method}
+                类型们={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND"))}
+                onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 守.改了(); }}
+              />
             </Form.Item>
           </Col>
           <Col span={8}>

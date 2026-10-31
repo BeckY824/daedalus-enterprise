@@ -15,6 +15,8 @@ import { useBusiness } from "@/lib/business-client";
 import { dayjs, fmtDateTime, 成员选项, 独自一人 } from "@/lib/utils";
 import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
+import FollowMethodSelect from "@/components/FollowMethodSelect";
+import { 对得上的方式 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 金额, 默认币种 } from "@/lib/currency";
 import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
@@ -119,7 +121,7 @@ export type 项目详情 = {
     放回方式?: 放回方式;
   }[];
   /** 企业版：code 是沟通编号（只在服务端用，界面不摆），提醒按下一步时间写事实（page.tsx 时限标签），没填下一步时间不给 */
-  followUps: { id: string; type: string; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null }[];
+  followUps: { id: string; type: string; method?: string | null; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null }[];
   members: 组员[];
   /** 企业版提成卡：不是企业版、我看不了（不是组长 / 组员 / 管理员 / 上级）= null，卡片不出 */
   提成: 提成卡 | null;
@@ -700,7 +702,7 @@ export default function ProjectDetail({
       {p.followUps.map((f) => (
         <div key={f.id} style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <FollowTypeCell type={f.type} />
+            <FollowTypeCell type={f.type} method={f.method} />
             <Tag>{f.node}</Tag>
             {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
             <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
@@ -980,20 +982,21 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
   // 老数据可能是待办 / 提醒类型：下拉里补上它自己，不改类型就原样存回
   const 类型们 = 能选类型.some((t) => t.value === f.type) ? 能选类型 : [...能选类型, ...跟进类型们(外贸).filter((t) => t.value === f.type)];
   const [type, setType] = useState(f.type);
+  const [method, setMethod] = useState<string | null>(f.method ?? null);
   const [occurredAt, setOccurredAt] = useState(() => dayjs(f.occurredAt).format(沟通时间格式));
   const [content, setContent] = useState(f.content);
   const [交中, set交中] = useState(false);
   const 差 = !content.trim() ? "请填写这次沟通的内容" : "";
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, content, occurredAt, 版本: f.版本 }), "已保存修改");
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), content, occurredAt, 版本: f.版本 }), "已保存修改");
     set交中(false);
     if (ok) onClose();
   };
   return (
     <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }} onCancel={onClose} onOk={() => void 交()}>
       <div style={{ display: "grid", gap: 12 }}>
-        <Select aria-label="沟通方式" value={type} options={类型们.map((t) => ({ value: t.value, label: t.label }))} onChange={(v: string) => setType(v)} />
+        <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={类型们} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
         <DatePicker
           aria-label="沟通时间"
           showTime={{ format: "HH:mm" }}
@@ -1025,6 +1028,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
 }) {
   const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   const [type, setType] = useState<string>(能选类型[0]?.value ?? "PHONE");
+  const [method, setMethod] = useState<string | null>(null);
   const [occurredAt, setOccurredAt] = useState(() => dayjs().format(沟通时间格式));
   const [content, setContent] = useState("");
   const [下一步文字, set下一步文字] = useState("");
@@ -1085,7 +1089,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
 
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 记项目沟通Action(p.id, { type, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }), "已记下这条沟通");
+    const ok = await 跑(() => 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }), "已记下这条沟通");
     set交中(false);
     if (ok) 关();
   };
@@ -1136,7 +1140,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
             {AI已用完 && <AiRemaining />}
           </div>
         )}
-        <Select aria-label="沟通方式" value={type} options={能选类型.map((t) => ({ value: t.value, label: t.label }))} onChange={(v: string) => setType(v)} />
+        <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={能选类型} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
         <DatePicker
           aria-label="沟通时间"
           showTime={{ format: "HH:mm" }}

@@ -18,6 +18,7 @@ let bundle: string;
 let 表单包: string;
 const plugin: Plugin = { name: "trade-basics-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub", pluginData: code }));
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>'/follow-ups/plans';");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
@@ -51,6 +52,7 @@ beforeAll(async () => {
   // 记录跟进 / 新建计划两张表单：真组件，服务端动作和挑人那一格换成假的；挑人那一格点一下就挑中一位有 WhatsApp 号的
   const 表单插件: Plugin = { name: "trade-basics-forms", setup(b) {
     const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub", pluginData: code }));
+    stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
     stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
     stub(/^\.\/actions$/, "export const saveFollowUp=async()=>({ok:true,id:'f1'}),completePlan=saveFollowUp,savePlan=saveFollowUp;export const saveTask=async()=>({ok:true,id:'t1'});");

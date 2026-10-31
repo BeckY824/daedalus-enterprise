@@ -25,6 +25,7 @@ import { recordAudit, type Actor } from "@/lib/audit";
 import { getBusiness } from "@/lib/business";
 import { 线索转档案 } from "@/lib/lead-convert";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 线索建项目 } from "@/lib/project/from-lead";
 import { 规整沟通, type 向导跟进, type 规整好的沟通 } from "@/lib/project/wizard";
 import { 超上限 } from "@/lib/project/db";
@@ -159,7 +160,9 @@ async function 转项目前查(b: { projectMode?: boolean }, me: { id: string },
   if (!跟进 || typeof 跟进 !== "object") return { error: "转成项目要记一条首条跟进：这次和对方聊了什么" };
   const 规则 = await 生效组织规则();
   const 要下一步 = 规则.超时回收.开;
-  const 好 = 规整沟通(跟进, { 要下一步, 叫法: "首条" });
+  const 认 = await 认跟进方式(跟进);
+  if ("error" in 认) return 认;
+  const 好 = 规整沟通(认, { 要下一步, 叫法: "首条" });
   if ("error" in 好) return 好;
   if (ownerId !== me.id) {
     const 超 = await 超上限(prisma, 规则, ownerId, { phase: "线索", result: null });
