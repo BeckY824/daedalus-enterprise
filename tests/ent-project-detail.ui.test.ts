@@ -52,17 +52,17 @@ beforeAll(async () => {
     /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content > 换页那层 div。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
     const 行=(id,name,阶段,进程,x)=>({id,name,阶段,进程,结局:null,pooled:false,customerName:'超长客户名'+串,lastType:'PHONE',lastAt:'2026-10-20T00:00:00.000Z',lastNote:'最近一句'+串,nextAt:null,...x});
     const 名单={取到上限:false,rows:[行('p1',长,'订单','生产备货'+'备'.repeat(20)),行('p2','线索项目'+串,'线索','初次接触'),行('p5','没填阶段的项目',null,null,{lastAt:null,lastNote:null}),行('p3',串,'商机','方案报价',{pooled:true,结局:'输单'}),行('p4','商机二','商机','首款支付',{nextAt:'2026-10-01'})]};
-    window.__shell=()=>root.render(包(<div className='shell'><nav className='rail' aria-label='主导航'/><ProjectRoster data={名单}/><main className='main app-content' style={{padding:'22px 26px'}}><div style={{maxWidth:1720,margin:'0 auto'}}>{详情(true)}</div></main></div>));
+    window.__shell=(fab)=>root.render(包(<div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/><ProjectRoster data={名单}/><main className='main app-content' style={{padding:'22px 26px'}}><div style={{maxWidth:1720,margin:'0 auto'}}>{详情(true)}</div></main></div>));
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(企业: boolean, width = 1366, 外宽?: number, 三栏 = false) {
+async function open(企业: boolean, width = 1366, 外宽?: number, 三栏 = false, fab = false) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://proj.test/**", r => r.fulfill({ contentType: "text/html", body: `<meta charset='utf-8'><div id='root'${外宽 ? ` style='width:${外宽}px'` : ""}></div>` }));
   await page.goto(三栏 ? "http://proj.test/projects/p1" : "http://proj.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  if (三栏) await page.evaluate(() => (window as unknown as { __shell: () => void }).__shell());
+  if (三栏) await page.evaluate(f => (window as unknown as { __shell: (fab: boolean) => void }).__shell(f), fab);
   else await page.evaluate(e => (window as unknown as { __render: (x: boolean) => void }).__render(e), 企业);
   await page.getByText("进程变更").first().waitFor();
   return { page, errors };
@@ -507,6 +507,26 @@ it("三栏 800px（退成一栏）：整页不滚，那一栏整个滚、页头�
     await page.setViewportSize({ width: 390, height: 700 });
     expect(await page.evaluate(() => getComputedStyle(document.querySelector(".proj-2col")!).overflowY)).toBe("visible");
     expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/* 10-31 用户：「现在就是一开始就要往下滑才能看到。我要整个页面本来就有显示。」——真机 shell 带 has-ai-fab，正文底下给浮标让的 88 把两栏顶短。
+   详情页不让：两栏铺到窗口底（只留正文原本的 22），滚到底最后一张卡停在浮标上面 */
+it.each([1024, 1280, 1366, 1680])("带 AI 浮标 %ipx：两栏铺到窗口底，整页、横向都不滚；滚到底最后一张卡在浮标上面", async (w) => {
+  const { page, errors } = await open(true, w, undefined, true, true);
+  try {
+    await page.setViewportSize({ width: w, height: 760 });
+    const 起 = await page.evaluate(() => ({ 页滚: document.documentElement.scrollHeight - window.innerHeight, 横滚: document.documentElement.scrollWidth - window.innerWidth,
+      主底: document.querySelector(".proj-main")!.getBoundingClientRect().bottom, 侧底: document.querySelector(".proj-side")!.getBoundingClientRect().bottom }));
+    expect(起.页滚).toBeLessThanOrEqual(0);
+    expect(起.横滚).toBeLessThanOrEqual(0);
+    expect(起.主底).toBeGreaterThanOrEqual(760 - 24);
+    expect(起.侧底).toBeGreaterThanOrEqual(760 - 24);
+    for (const s of [".proj-main", ".proj-side"]) {
+      const 留 = await page.locator(s).evaluate(e => { e.scrollTop = e.scrollHeight; return e.getBoundingClientRect().bottom - e.lastElementChild!.getBoundingClientRect().bottom; });
+      expect(留, s).toBeGreaterThanOrEqual(60);
+    }
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
