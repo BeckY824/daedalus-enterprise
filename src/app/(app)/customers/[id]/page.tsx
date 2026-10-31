@@ -198,6 +198,7 @@ export default async function CustomerDetailPage({
       职务选项={企 ? await 页面可选项("contactTitle") : undefined}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
+      客户属性选项={企 ? await 页面可选项("custAttr") : undefined}
       // 下拉里客户状态、客户类型每项的灰字释义（10-30）；字典上面已读过，走请求内缓存
       字典释义={企 ? await 页面客户释义() : undefined}
       // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/screen.tsx）
@@ -221,6 +222,7 @@ export default async function CustomerDetailPage({
         addrDetail: customer.addrDetail,
         assignWay: customer.assignWay,
         customerType: customer.customerType,
+        customerAttr: customer.customerAttr,
         expectedSignAt: scheduleValue(customer.expectedSignAt, customer.expectedSignOn),
         lastFollowAt: customer.lastFollowAt?.toISOString() ?? null,
         remark: customer.remark,

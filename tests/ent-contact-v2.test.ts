@@ -73,7 +73,7 @@ const 挂靠们 = async (contactId: string) =>
   (await prisma.contactCustomer.findMany({ where: { contactId }, select: { customerId: true, note: true } })).map((x) => [x.customerId, x.note]).sort();
 
 describe("纯函数：级别星级、查重键", () => {
-  it("S/A/B/C = 4/3/2/1 颗，满 4 格；认不出的不显示；下拉带星和说明", () => {
+  it("S/A/B/C = 4/3/2/1 颗，满 4 格；认不出的不显示；下拉只有字母和说明（F-客户-01 不画星）", () => {
     expect(级别星数).toEqual({ S: 4, A: 3, B: 2, C: 1 });
     expect(满星).toBe(4);
     expect(级别显示("A")).toMatchObject({ 级: "A", 星数: 3, 亮: "★★★", 暗: "★", 说明: "A 重点" });
@@ -81,10 +81,10 @@ describe("纯函数：级别星级、查重键", () => {
     expect(级别显示("S")!.读法).toContain("4");
     expect([级别显示(null), 级别显示("X")]).toEqual([null, null]);
     expect(级别选项()).toEqual([
-      { value: "S", label: "★★★★ S 战略" },
-      { value: "A", label: "★★★☆ A 重点" },
-      { value: "B", label: "★★☆☆ B 常规" },
-      { value: "C", label: "★☆☆☆ C 培育" },
+      { value: "S", label: "S 战略" },
+      { value: "A", label: "A 重点" },
+      { value: "B", label: "B 常规" },
+      { value: "C", label: "C 培育" },
     ]);
   });
 

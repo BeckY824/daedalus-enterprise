@@ -42,6 +42,7 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 交接要确认, 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 选的原因, 可选项 } from "@/lib/enterprise/dict";
@@ -134,6 +135,8 @@ export type CustomerInput = {
 
 /** 企业版客户主表上新加的几格（迁移 072；客户类型 customerType 是 2026-10-29 P13 迁移 092，取自字典 custType） */
 export type 企业客户资料 = 客户地址 & { shortName: string | null; assignWay: string | null; customerType: string | null;
+  /** 客户属性（迁移 104，2026-10-31 F-客户-04）：字典 custAttr，客户看板按它分列 */
+  customerAttr: string | null;
   /** 地址第五格「客户地址」（迁移 091，P14 第 7 条）：公司详细地址，国内国外都收 */
   addrDetail: string | null };
 
@@ -428,6 +431,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       if (v && v !== 改前?.customerType && !(await 可选项("custType")).includes(v)) return { ok: false, error: `客户类型「${v}」不在可选范围内，请刷新后重选` };
       企资料.customerType = v;
     }
+    // 客户属性（迁移 104）：同客户类型，字典 custAttr 里启用中的一项；原值停用了（10-31 换过一套）原样交回也认
+    if (交.customerAttr !== undefined) {
+      const v = (交.customerAttr ?? "").trim() || null;
+      if (v && v !== 改前?.customerAttr && !(await 可选项("custAttr")).includes(v)) return { ok: false, error: `客户属性「${v}」不在可选范围内，请刷新后重选` };
+      企资料.customerAttr = v;
+    }
   }
 
   /**
@@ -529,6 +538,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       await 写外贸档案(tx, created.id, { ...档案.data, ...(企号?.类型 === "邮箱" ? { email: 企号.值 } : 企号?.类型 === "微信" ? { wechat: 企号.值 } : {}) }, false);
       if (企号) await 记号码(tx, { 刚建的: created.id }, null, 企号);
       if (认得(接着)) await 接着(tx, created.id);
+      // M-公海-14：企业版项目模式下新客户至少带 1 个潜客培育项目（向导已建了项目的不补；老数据不补）
+      if (要补潜客培育(企业版(), b.projectMode)) await 补潜客培育(tx, { customerId: created.id, 客户名: created.name, ownerId: created.salesOwnerId, creatorId: me.id });
       return { created } as const;
     });
     if ("企撞" in 建了 && 建了.企撞) return { ok: false, error: (await 撞号结论(prisma, 建了.企撞, me.id, await 读的我(defaultClient))).提示 };
@@ -1426,9 +1437,9 @@ export async function deleteContract(
 /* ---------- 记录页的行内编辑 ---------- */
 
 /** 记录页里能直接点着改的字段。姓名、手机（要查重）、推荐关系（要重算归属）仍走完整表单 */
-const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", "customerType", ...外贸键] as const;
+const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", "customerType", "customerAttr", ...外贸键] as const;
 /** 只有企业版能点着改的几格（迁移 072）：开关关着不收 */
-const 企业版才有的格: readonly string[] = ["shortName", "assignWay", "customerType"];
+const 企业版才有的格: readonly string[] = ["shortName", "assignWay", "customerType", "customerAttr"];
 export type PatchableKey = (typeof PATCHABLE)[number];
 
 /**
@@ -1517,6 +1528,11 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
     if (v && v !== 原.customerType && !(await 可选项("custType")).includes(v)) return { ok: false, error: `客户类型「${v}」不在可选范围内，请刷新后重选` };
     data.customerType = v || null;
+  } else if (key === "customerAttr") {
+    const 原 = await prisma.customer.findUnique({ where: { id }, select: { customerAttr: true } });
+    if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
+    if (v && v !== 原.customerAttr && !(await 可选项("custAttr")).includes(v)) return { ok: false, error: `客户属性「${v}」不在可选范围内，请刷新后重选` };
+    data.customerAttr = v || null;
   } else if (key === "expectedSignAt") {
     const previous = await prisma.customer.findUnique({ where: { id }, select: { expectedSignAt: true, expectedSignOn: true } });
     const parsed = parseSignDate(v, previous ?? undefined);

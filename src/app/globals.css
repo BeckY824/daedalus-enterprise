@@ -1075,6 +1075,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .country-cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .country-cell-t { font-size: 12px; font-variant-numeric: tabular-nums; }
 .cust-level-B { border-color: var(--warning-line); color: var(--warning-text); background: var(--warning-bg); }
+/* 企业版客户级别只显示字母（F-客户-01，components/LevelLetter.tsx）：S 最重、C 最淡 */
+.cust-level-S { border-color: var(--brand); color: #fff; background: var(--brand); }
+.cust-level-C { border-color: var(--line); color: var(--text-muted); background: transparent; }
 /* 企业版级别画成星（P13 第 5 条，components/LevelStars.tsx）：满格 4 颗，没亮的淡色；不换行、等宽，列表 76 宽放得下 */
 .cust-stars { display: inline-block; white-space: nowrap; color: var(--warning-text); font-size: 12px; line-height: 1; letter-spacing: 1px; }
 .cust-stars-off { color: var(--line); }
@@ -2220,6 +2223,13 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .pipe-card-a { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pipe-card-o { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; max-width: 100%; word-break: break-word; }
 /* 每列先摆 50 张（2026-10-24），底下接着翻；列最窄 184，放不下就折行，不撑宽列 */
+/* 客户看板（U-客户-06）：按客户属性分列，点卡片进客户页（不拖）。属性名管理员能自己加、可能很长：列头名字一行省略、悬停看全 */
+.cust-board .pipe-card { cursor: pointer; }
+.cust-board .pipe-h b { flex: 0 1 auto; min-width: 0; }
+.cust-board-meta { display: inline-flex; align-items: baseline; gap: var(--s1); min-width: 0; }
+.cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
+/* 客户页「新增项目」弹窗（U-客户-05）：带上的客户名一行，超长折行写完不撑宽弹窗 */
+.new-proj-carried { color: var(--text-muted); font-size: var(--fs-note); margin-bottom: var(--s3); overflow-wrap: anywhere; }
 .pipe-more.ant-btn { height: auto; min-height: 28px; white-space: normal; color: var(--brand); gap: 6px; }
 
 /* ---------- 「数据」页上的问数据 ----------
@@ -2940,3 +2950,28 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .lead-auto-assign-list li { display: flex; gap: 8px; padding: 4px 0; min-width: 0; }
 .lead-auto-assign-name { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .lead-auto-assign-list li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* 企业版项目模式客户详情（U-客户-03，10-31 会议）
+   左栏：块与块不相贴，每一节（基本资料、联系人、项目、关联客户、客户背调）各是一张卡、中间留缝，同类信息放同一块 */
+.rec-rail.rec-rail-blocks { background: transparent; box-shadow: none; border: none; padding: 0; }
+.rec-rail.rec-rail-blocks > .rec-sec,
+.rec-rail.rec-rail-blocks > .rec-sec:first-of-type { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 8px 14px 12px; min-width: 0; }
+.rec-rail.rec-rail-blocks > .rec-sec + .rec-sec { margin-top: 12px; }
+/* 资料值一行放不下就省略，悬停 title 看全（U-通用-01）；多行的（地址、备注）照旧换行 */
+.rec-rail-blocks .rec-field-v.is-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
+/* 客户背调只摆一个状态标签，点开弹详情 */
+.rec-research-tag { cursor: pointer; margin-inline-end: 0; }
+.rec-research-tag:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 沟通记录标题右边的「新建沟通」：标题和按钮一行，按钮不换行 */
+.rec-tl-cap .ant-btn { white-space: nowrap; }
+/* 待办挪到页面底部占满宽：行按宽度排成几列；固定高度时它不跟三栏抢高度，自己滚 */
+.rec-todo-bottom { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: var(--s4); align-content: start; }
+.rec-todo-bottom > :is(.rec-side-t, .ant-typography) { grid-column: 1 / -1; }
+.rec-todo-bottom .rec-task { min-width: 0; }
+@media (min-width: 768px) {
+  .main .rec-page > .rec-todo-bottom { flex: none; max-height: 30vh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+  .main .rec-page > .rec-todo-bottom::-webkit-scrollbar { display: none; }
+}
+@container rec (max-width: 629px) {
+  .rec-acts-r > .acts-g:empty { display: none; }
+}

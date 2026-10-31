@@ -50,6 +50,8 @@ export type CustomerRow = {
   assignWay?: string | null;
   /** 客户类型（企业版，字典 custType，2026-10-29 P13 第 4 条，迁移 092）。老调用方没给就当没填 */
   customerType?: string | null;
+  /** 客户属性（企业版，字典 custAttr，10-31 会议 A-17，迁移 104）：客户是哪一类主体，客户看板按它分列 */
+  customerAttr?: string | null;
   expectedSignAt: string | null;
   lastFollowAt: string | null;
   remark: string | null;
@@ -103,6 +105,8 @@ type FormProps = {
   分配方式选项?: string[];
   /** 企业版客户类型的可选项（字典 custType 启用中的，P13 第 4 条） */
   客户类型选项?: string[];
+  /** 企业版客户属性的可选项（字典 custAttr 启用中的，A-17） */
+  客户属性选项?: string[];
   /** 企业版客户状态、客户类型每项的释义（下拉里一行灰字，10-30）；不给就和原来一样 */
   字典释义?: 客户字典释义;
 };
@@ -160,6 +164,7 @@ function CustomerFormInner({
   客户状态自动 = false,
   分配方式选项 = [],
   客户类型选项 = [],
+  客户属性选项 = [],
   字典释义,
 }: FormProps) {
   /** 客户状态还能不能手选：企业版、且没开按项目自动算 */
@@ -331,6 +336,7 @@ function CustomerFormInner({
                 addrDetail: v.addrDetail ?? null,
                 assignWay: v.assignWay ?? null,
                 customerType: v.customerType ?? null,
+                customerAttr: v.customerAttr ?? null,
               },
             }
           : {}),
@@ -503,6 +509,13 @@ function CustomerFormInner({
             <Form.Item label="客户类型" name="customerType">
               <Select allowClear placeholder="选填" {...释义下拉(字典释义?.类型)}
                 options={[...new Set([...客户类型选项, ...(editing?.customerType ? [editing.customerType] : [])])].map((s) => ({ value: s, label: s }))} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            {/* 客户属性（A-17）：选项在设置 → 字典「客户属性」；原值停用了也照样显示 */}
+            <Form.Item label="客户属性" name="customerAttr">
+              <Select allowClear placeholder="选填"
+                options={[...new Set([...客户属性选项, ...(editing?.customerAttr ? [editing.customerAttr] : [])])].map((s) => ({ value: s, label: s, title: s }))} />
             </Form.Item>
           </Col>
           </>) : (<>
@@ -1005,6 +1018,7 @@ function 企业资料基准(e: CustomerRow) {
     addrDetail: e.addrDetail ?? null,
     assignWay: e.assignWay ?? null,
     customerType: e.customerType ?? null,
+    customerAttr: e.customerAttr ?? null,
   };
 }
 

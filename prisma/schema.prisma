@@ -170,6 +170,8 @@ model Customer {
   assignWay    String?
   /// 企业版客户类型（迁移 092，2026-10-29 P13 第 4 条）：个人买家 / 贸易商 / 代理商 / 经销商……（企业版字典 custType）。别的版本一直是空
   customerType String?
+  /// 企业版客户属性（迁移 104，2026-10-31 F-客户-04）：自用非商用 / 个人投资者……（企业版字典 custAttr），客户看板按它分列。别的版本一直是空
+  customerAttr String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

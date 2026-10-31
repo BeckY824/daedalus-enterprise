@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Alert, Button, Input, InputNumber, Radio, Select, Space, Steps } from "antd";
+import { App, Alert, Button, Input, InputNumber, Modal, Radio, Select, Space, Steps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import { PageHead } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -49,6 +49,10 @@ type 稿 = {
 /** 企业版新建线索（10-26）：负责人、渠道必选；只留联系方式、首次沟通记录、跟进节点、客户是否明确回复这几格预设 */
 /** 分配方式们：这个人能用、还启用着的分配方式（10-27 A7：五种都生效，只有「指定分配」要选负责人） */
 export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[] } | null;
+/** 向导要的服务端数据（screen.tsx 建档向导数据）：页面和弹窗共用 */
+export type 建档数据 = { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档 };
+/** 弹窗里摆向导（U-新建-01，10-31 会议）：不摆页头，「存草稿离开」改成关弹窗，建好了先关再跳 */
+type 弹窗模式 = { 关: () => void } | null;
 
 /** 企业版：这次要不要选负责人。只有「指定分配」要；没有可选的分配方式（老配置）照旧选负责人 */
 const 要选负责人 = (d: 稿, 企业: 企业建档) => !!企业 && (!企业.分配方式们.length || d.项目.分配方式 === 0);
@@ -93,24 +97,36 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
  * 建档向导（团队版项目模式 1a，2026-10-23）：查重 → 联系人 → 客户 → 项目 → 首条沟通。
  * 中途关掉不落库，填过的存在本机草稿里（一人一份），下次进来接着填；最后一步一笔建好，失败整笔不留
  */
-export default function ProjectWizard({ users, 要下一步, 企业 = null, 新线索 = false }: { users: 可选成员[]; 要下一步: boolean; 企业?: 企业建档; 新线索?: boolean }) {
+export default function ProjectWizard({ users, 要下一步, 企业 = null, 新线索 = false, 弹窗 = null }: { users: 可选成员[]; 要下一步: boolean; 企业?: 企业建档; 新线索?: boolean; 弹窗?: 弹窗模式 }) {
   // 草稿在本机 localStorage 里，服务端渲染时读不到；挂上之后再按草稿起头，免得两边对不上
   const 挂上了 = useSyncExternalStore(不订阅, () => true, () => false);
   const 我 = useMe();
   const 全名 = 草稿全名(我?.id, 草稿键);
   if (!挂上了) return null;
   const 旧 = 读草稿(全名) as { 稿?: 稿; 步?: number } | null;
-  return <WizardBody key={全名} users={users} 要下一步={要下一步} 企业={企业} 新线索={新线索} 全名={全名} 旧={旧?.稿 && 有内容(旧.稿) ? { 稿: 旧.稿, 步: Number(旧.步) || 0 } : null} />;
+  return <WizardBody key={全名} users={users} 要下一步={要下一步} 企业={企业} 新线索={新线索} 弹窗={弹窗} 全名={全名} 旧={旧?.稿 && 有内容(旧.稿) ? { 稿: 旧.稿, 步: Number(旧.步) || 0 } : null} />;
 }
 
 const 不订阅 = () => () => {};
+
+/**
+ * 「新增客户」「新增项目」弹窗（U-新建-01，10-31 会议）：和 /projects/new 同一个向导、同一套查重（含联系人查重），只是摆在弹窗里。
+ * 草稿照旧每改一格存本机，关了下次点开接着填
+ */
+export function 建档弹窗({ open, 标题, 数据, onClose }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+  return (
+    <Modal open={open} title={标题} footer={null} width={760} onCancel={onClose} destroyOnHidden mask={{ closable: false }}>
+      <ProjectWizard users={数据.users} 要下一步={数据.要下一步} 企业={数据.企业} 弹窗={{ 关: onClose }} />
+    </Modal>
+  );
+}
 
 /**
  * 要下一步 = 企业版开了超时回收：首条沟通要填下一步时间（项目建在线索阶段）。
  * 能填下一步 = 企业版：没开超时回收也摆这一格、选填（10-26 验收 #4，向导里原来看不到下一步时间）
  * 企业版 = 第一步先选号码类型、按类型验格式、全公司查重（2026-10-26，customers/number-actions.ts）；关着第一步和原来一模一样
  */
-function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档; 新线索: boolean; 全名: string; 旧: { 稿: 稿; 步: number } | null }) {
+function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, 旧 }: { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档; 新线索: boolean; 弹窗: 弹窗模式; 全名: string; 旧: { 稿: 稿; 步: number } | null }) {
   const 企业版 = !!企业;
   const 能填下一步 = 企业版;
   const router = useRouter();
@@ -220,8 +236,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
       清草稿(全名);
       message.success(`已建好项目「${d.项目.name.trim()}」`);
       if ("提示" in r && r.提示) (r.转走 ? message.info : message.warning)(r.提示);
-      // 分走了 / 进了公海，项目不在我名下：回线索列表
-      router.push("转走" in r && r.转走 ? (新线索 ? "/leads" : "/projects") : `/projects/${r.projectId}`);
+      弹窗?.关();
+      // 分走了 / 进了公海，项目不在我名下：回线索列表（弹窗里建的：留在原页刷新）
+      if (弹窗 && "转走" in r && r.转走) router.refresh();
+      else router.push("转走" in r && r.转走 ? (新线索 ? "/leads" : "/projects") : `/projects/${r.projectId}`);
     } catch {
       message.error("没建成，请稍后再试；填过的还在");
     } finally {
@@ -231,6 +249,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
 
   // 草稿每改一格就存了（存草稿），这里只是走开并说清在哪找回
   const 离开 = () => {
+    if (弹窗) {
+      if (有内容(d)) message.info("草稿存在这台电脑的浏览器里，下次打开会接着填");
+      return 弹窗.关();
+    }
     if (有内容(d)) message.info(`草稿存在这台电脑的浏览器里，下次点「${新线索 || 企业版 ? "新线索" : "新建项目"}」会接着填`);
     router.push(新线索 || 企业版 ? "/leads" : "/projects");
   };
@@ -254,10 +276,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
 
   return (
     <div style={{ maxWidth: 720 }}>
-      <PageHead
-        title={新线索 || 企业版 ? "新线索" : "新建项目"}
-        subtitle={新线索 || 企业版 ? "建好后是一个线索阶段的项目" : `一次建好${b.customer}、联系人、项目和第一次沟通；中途离开会存成草稿`}
-      />
+      {!弹窗 && (
+        <PageHead
+          title={新线索 || 企业版 ? "新线索" : "新建项目"}
+          subtitle={新线索 || 企业版 ? "建好后是一个线索阶段的项目" : `一次建好${b.customer}、联系人、项目和第一次沟通；中途离开会存成草稿`}
+        />
+      )}
       {接着填 && (
         <Alert
           type="info"
@@ -475,7 +499,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 全名, 旧 }: { u
         ) : (
           <Button type="primary" disabled={!!差} title={差 || undefined} loading={交中} onClick={() => void 提交()}>建好项目</Button>
         )}
-        <Button onClick={离开}>存草稿离开</Button>
+        <Button onClick={离开}>{弹窗 ? "存草稿关闭" : "存草稿离开"}</Button>
       </Space>
       {差 && !拦着 && <div style={{ marginTop: 8, color: "var(--text-muted)" }}>{差}</div>}
     </div>

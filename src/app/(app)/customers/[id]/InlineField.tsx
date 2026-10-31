@@ -115,7 +115,11 @@ export default function InlineField({
     return (
       <div className="rec-field" {...(只读 ? { style: { cursor: "default" } } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
         <div className="rec-field-k">{label}</div>
-        <div className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}`}>
+        {/* 单行的值带 is-line + title（U-通用-01）：企业版项目模式左栏放不下就省略，悬停看全；多行的备注照旧换行 */}
+        <div
+          className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}${kind === "textarea" ? "" : " is-line"}`}
+          title={kind !== "textarea" && typeof display === "string" && display ? display : undefined}
+        >
           {/* 邮箱放不下时在 @ 前换行，不从字母中间断开（F.1 走查：「ahmed@gulfled.a / e」） */}
           {field === "email" && typeof display === "string" && display.includes("@") ? (
             <>
