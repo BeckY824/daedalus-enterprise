@@ -6,6 +6,7 @@
  *   - 老板按节点设最长处理天数，没设的节点不回收；订单阶段、已有结局的、已在公海的都不回收
  *   - 企业版（10-26，清单 C7）：没设的节点按字典的默认天数（7 天）算；设了的按设的，改了以后新的回收日按新天数
  *   - 起点 = 最近一次「有人管」：建项目、换节点、接手（转让/领取）、客户上记了跟进，取最晚的
+ *   - 起算日（10-31，超时回收设置里配，默认 2026-11-01）：起点早于起算日的一律从起算日算，之前的日子不计入超时
  *   - 起点 + 节点天数 那天还没新动静 → 回收（按自然日，和客户公海一样）
  *   - 记沟通时填了下一步时间：下一步那天过完还没跟进就回收，但不会比节点天数更晚（节点天数是上限）
  *   - 回收前一天（10-27）：夜扫给负责人一条待办提醒；项目看板、列表标「即将回收」
@@ -40,6 +41,13 @@ export function 超时起点(...时间: (Date | string | null | undefined)[]): D
     .reduce((a, b) => (b > a ? b : a));
 }
 
+/** 计时真正的起点（当天零点）：max(原来的起点, 起算日)。起算日没设 / 存坏了 = 原来的起点 */
+export function 计时起点(规则: 组织规则, 起点: Date | string) {
+  const 起 = dayjs(起点).startOf("day");
+  const 算 = 规则.超时回收.起算日 ? dayjs(规则.超时回收.起算日).startOf("day") : null;
+  return 算 && 算.isValid() && 算.isAfter(起) ? 算 : 起;
+}
+
 /** 这个节点按几天收：设了按设的，没设按字典默认（团队版 null = 不收）。项目存的旧名、配置里的旧 key 都认（企业版 10-31 改名） */
 export function 节点超时天数(规则: 组织规则, node: string, 字典: 阶段字典 = 团队版字典): number | null {
   const 们 = 规则.超时回收.节点天数;
@@ -53,7 +61,7 @@ export function 超时回收日(规则: 组织规则, p: 超时项目, 起点: D
   if (p.result || p.pooledAt) return null;
   const 天数 = 节点超时天数(规则, p.node, 字典);
   if (!天数) return null;
-  const 起 = dayjs(起点).startOf("day");
+  const 起 = 计时起点(规则, 起点);
   let 日 = 起.add(天数, "day");
   if (p.nextStepAt) {
     const 下一步 = dayjs(p.nextStepAt).startOf("day");

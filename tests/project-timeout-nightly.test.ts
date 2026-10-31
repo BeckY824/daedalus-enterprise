@@ -18,7 +18,7 @@ import { 超时理由, 将回收提醒, 即将回收 } from "@/lib/project/timeo
 import { 读项目列表 } from "@/lib/project/list";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 
-const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 节点天数 } });
+const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数 } });
 /** 服务器本地时间 */
 const 时 = (s: string) => new Date(`${s.replace(" ", "T")}:00`);
 

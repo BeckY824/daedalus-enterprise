@@ -294,7 +294,7 @@ async function 开局(企业: boolean) {
   for (const key of ["enterprise.rule.org_scope", "enterprise.rule.lead_assign"]) await setSetting(key, true);
   await setSetting("orgRules", {
     公海: { 持有上限开: true, 默认上限: 30, 每人上限: { [公.id["外销6"]]: 2 } },
-    超时回收: { 开: true, 节点天数: { 潜客培育: 3, 线索验证: 5, 明确需求: 7 } },
+    超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3, 线索验证: 5, 明确需求: 7 } },
     // D-34「销售本人不能往前推」按「仅上级推」测；10-26 起企业版默认「负责人可推」，那条在 project-node-direct-mgr 里测
     ...(企业 ? { 阶段: { 推进权限: "仅上级推", 出口叫法: {} } } : {}),
   });
@@ -434,7 +434,7 @@ async function 剧本开() {
   拨到("2026-01-29 09:00");
   await 查("D4-改时长先预览", async () => {
     const 前 = await 作为("老板", () => prisma.project.count({ where: { pooledAt: { not: null } } }));
-    const r = 得(await 作为("老板", () => 预览({ 超时回收: { 开: true, 节点天数: { 潜客培育: 1, 线索验证: 5, 明确需求: 7 } } })), "预览") as { 个数: number };
+    const r = 得(await 作为("老板", () => 预览({ 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 1, 线索验证: 5, 明确需求: 7 } } })), "预览") as { 个数: number };
     expect(r.个数).toBeGreaterThan(0);
     expect(await 作为("老板", () => prisma.project.count({ where: { pooledAt: { not: null } } }))).toBe(前);
   });

@@ -2,7 +2,7 @@
 
 /**
  * 企业版统一公海（2026-10-29，P7）：客户公海 + 项目公海一张表。
- * 上面一排：公海属性（全部 / 公海客户 / 公海商机 / 公海线索，带数）、入池原因下拉（带数和一行说明）、排序、搜索。
+ * 上面一排：公海属性（全部 / 线索 / 商机 / 其他，带数，全部 = 三者之和；一排不折行，窄了横向滚）、入池原因下拉（带数和一行说明）、排序、搜索。
  * 条件都在地址栏（useUrlFilters），服务端筛排分页；规矩见 lib/enterprise/unified-pool.ts
  *
  * 10-30 交互改版：领取、分配都带 6 秒撤销（规则 B）；老板、主管行内「⋯」和批量里有「分配给…」，业务员没有；
@@ -48,7 +48,7 @@ type Props = {
   持有: { 有: number; 上限: number } | null;
 };
 
-const 属性色: Record<公海属性, string> = { 公海客户: "default", 公海商机: "blue", 公海线索: "green" };
+const 属性色: Record<公海属性, string> = { 线索: "green", 商机: "blue", 其他: "default" };
 
 /** 入池原因下拉里每一项的一行说明（规则 C）：「多次退回」的门槛是常量，跟着改 */
 const 快捷说明: Record<快捷, string> = {
@@ -262,6 +262,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
       <div style={{ overflowX: "auto", maxWidth: "100%" }}>
         <Segmented
+          aria-label="公海属性"
+          style={{ whiteSpace: "nowrap" }}
           value={f.attr || "全部"}
           onChange={(v) => apply({ attr: v === "全部" ? "" : String(v) })}
           options={(["全部", ...公海属性们] as const).map((k) => ({ value: k, label: `${k} ${属性数[k]}` }))}

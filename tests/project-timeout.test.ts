@@ -14,13 +14,14 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => (mocks.团队 ? { teamId:
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 公海超时收回, 超时预览, 记项目沟通 } from "@/lib/project/db";
-import { 超时回收日, 已超时, 超时理由, 超时起点 } from "@/lib/project/timeout";
+import { 超时回收日, 已超时, 超时理由, 超时起点, 计时起点 } from "@/lib/project/timeout";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
+import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 要下一步时间, 规整向导 } from "@/lib/project/wizard";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
 
-const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 节点天数 } });
+const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数 } });
 
 describe("超时起点", () => {
   it("取最晚的那个，空的跳过", () => {
@@ -55,6 +56,36 @@ describe("超时回收日", () => {
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-01T09:00:00" }, 起)).toBe("2026-10-02");
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-20" }, 起)).toBe("2026-10-08");
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-09-28" }, 起)).toBe("2026-10-08");
+  });
+});
+
+describe("计时起算日（10-31）", () => {
+  const 带起算日 = (起算日: string | null): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 起算日, 节点天数: { 潜客培育: 3 } } });
+  const 线索 = { phase: "线索", node: "潜客培育" };
+
+  it("起点早于起算日：从起算日算，之前的日子不计入；起点晚于起算日：照原来的起点", () => {
+    expect(超时回收日(带起算日("2026-11-01"), 线索, "2026-10-01T10:00:00")).toBe("2026-11-04");
+    expect(超时回收日(带起算日("2026-11-01"), 线索, "2026-11-10T10:00:00")).toBe("2026-11-13");
+    expect(超时回收日(带起算日(null), 线索, "2026-10-01T10:00:00")).toBe("2026-10-04");
+    expect(计时起点(带起算日("2026-11-01"), "2026-10-01T10:00:00").format("YYYY-MM-DD")).toBe("2026-11-01");
+    expect(计时起点(带起算日(null), "2026-10-01T10:00:00").format("YYYY-MM-DD")).toBe("2026-10-01");
+  });
+
+  it("起算日之前不判超时，之后照常判", () => {
+    const 回收日 = 超时回收日(带起算日("2026-11-01"), 线索, "2026-10-01T10:00:00");
+    expect(已超时(回收日, "2026-10-31T12:00:00")).toBe(false);
+    expect(已超时(回收日, "2026-11-03T23:00:00")).toBe(false);
+    expect(已超时(回收日, "2026-11-04T00:01:00")).toBe(true);
+  });
+
+  it("下一步时间早于起算日的不算；起算日之后的照常提前收", () => {
+    expect(超时回收日(带起算日("2026-11-01"), { ...线索, nextStepAt: "2026-10-20" }, "2026-10-01T10:00:00")).toBe("2026-11-04");
+    expect(超时回收日(带起算日("2026-11-01"), { ...线索, nextStepAt: "2026-11-01T15:00:00" }, "2026-10-01T10:00:00")).toBe("2026-11-02");
+  });
+
+  it("规则里没有起算日（老数据 / 外面拼的）：照原来的起点", () => {
+    const 老 = { ...默认组织规则, 超时回收: { 开: true, 节点天数: { 潜客培育: 3 } } } as unknown as 组织规则;
+    expect(超时回收日(老, 线索, "2026-10-01T10:00:00")).toBe("2026-10-04");
   });
 });
 
@@ -174,6 +205,27 @@ describe("扫库收回", () => {
     invalidateSettingsCache();
     await setSetting("projectTimeoutSweptOn", null);
     expect(await 公海超时收回(老板, 天后(5))).toBe(1);
+  });
+
+  it("起算日（10-31）：存规则时没写起算日 = 默认 2026-11-01，之前不收、过了起算日 + 天数照常收；改了起算日按新的", async () => {
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 节点天数: { 潜客培育: 3 } } });
+    expect((await 读组织规则()).超时回收.起算日).toBe("2026-11-01");
+    const p = await 项目(乙.id, { createdAt: new Date("2026-10-01T02:00:00Z") });
+    const 那天 = (d: string) => dayjs(`${d} 12:00`).toDate();
+    expect(await 公海超时收回(老板, 那天("2026-10-31"))).toBe(0);
+    await setSetting("projectTimeoutSweptOn", null);
+    expect(await 公海超时收回(老板, 那天("2026-11-03"))).toBe(0);
+    // 改配置：起算日往后挪到 11-10，11-04 也不收
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: "2026-11-10", 节点天数: { 潜客培育: 3 } } });
+    invalidateSettingsCache();
+    await setSetting("projectTimeoutSweptOn", null);
+    expect(await 公海超时收回(老板, 那天("2026-11-04"))).toBe(0);
+    // 改回默认那天：11-04 = 起算日 + 3 天，照常收
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: "2026-11-01", 节点天数: { 潜客培育: 3 } } });
+    invalidateSettingsCache();
+    await setSetting("projectTimeoutSweptOn", null);
+    expect(await 公海超时收回(老板, 那天("2026-11-04"))).toBe(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).pooledAt).not.toBeNull();
   });
 
   it("团队模式只扫自己名下的", async () => {

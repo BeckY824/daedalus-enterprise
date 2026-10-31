@@ -6,17 +6,18 @@
  *   - 客户行：在客户公海里的客户（有 CustomerPool 那一行）。名下放在项目公海里的项目不另列一行——领客户即领项目（pool-link.ts）
  *   - 项目行：在项目公海里、客户却不在客户公海的项目（客户归别人、只是项目归他；名下有没结束的订单项目，客户没跟着进）
  *
- * 公海属性（算出来的，不存）：
- *   - 公海线索：客户名下正好 1 个项目，在线索阶段、没结局
- *   - 公海商机：客户名下正好 1 个项目，在商机阶段、没结局
- *   - 公海客户：其余（多个项目、项目已结束 / 进了订单、一个项目都没有）
- *   项目行按它自己的阶段算（线索 → 公海线索，商机 → 公海商机）
+ * 公海属性（算出来的，不存），页面上的筛选是 全部 / 线索 / 商机 / 其他，全部 = 线索 + 商机 + 其他：
+ *   - 线索：客户名下正好 1 个项目，在线索阶段、没结局
+ *   - 商机：客户名下正好 1 个项目，在商机阶段、没结局
+ *   - 其他：其余（订单阶段、已有结局（线索流失 / 丢单 / 成功交付 / 异常）、多个项目、一个项目都没有）
+ *   项目行按它自己的阶段算（线索 → 线索，商机 → 商机，别的 → 其他）
+ *   10-31 前叫 公海线索 / 公海商机 / 公海客户，老链接里的 attr 由 规整公海属性 认回来
  *
  * 会上可能改的都是常量：多次退回从几次起、入池原因叫法、快捷按钮。改这里，页面和查库跟着走
  */
 import { 自动理由 } from "@/lib/pool";
 
-export const 公海属性们 = ["公海客户", "公海商机", "公海线索"] as const;
+export const 公海属性们 = ["线索", "商机", "其他"] as const;
 export type 公海属性 = (typeof 公海属性们)[number];
 
 /** 第几次起算「多次退回」（含）：默认 4 次及以上，首次 / 二次 / 三次各一档 */
@@ -51,18 +52,18 @@ const 是自动理由 = (reason: string) => /^\d+ 天没跟进，自动放进公
 
 /**
  * 客户名下的项目 → 公海属性。只数项目本身（有没有在项目公海不管）：
- * 正好一个、没结局、在线索 / 商机阶段才是线索 / 商机，其余一律公海客户
+ * 正好一个、没结局、在线索 / 商机阶段才是线索 / 商机，其余一律其他
  */
 export function 客户公海属性(projects: readonly { phase: string; result: string | null }[]): 公海属性 {
-  if (projects.length !== 1) return "公海客户";
+  if (projects.length !== 1) return "其他";
   const [p] = projects;
-  if (p.result) return "公海客户";
-  if (p.phase === "线索") return "公海线索";
-  if (p.phase === "商机") return "公海商机";
-  return "公海客户";
+  if (p.result) return "其他";
+  if (p.phase === "线索") return "线索";
+  if (p.phase === "商机") return "商机";
+  return "其他";
 }
 
-/** 项目行：按它自己的阶段（只有线索 / 商机能进项目公海，别的兜成公海客户） */
+/** 项目行：按它自己的阶段（只有线索 / 商机能进项目公海，别的兜成其他） */
 export function 项目公海属性(p: { phase: string; result: string | null }): 公海属性 {
   return 客户公海属性([p]);
 }
@@ -138,6 +139,10 @@ export type 公海行 = {
 export type 公海筛选 = { 属性?: string; 快捷?: string; 排序?: string; keyword?: string };
 
 export const 是公海属性 = (v: unknown): v is 公海属性 => typeof v === "string" && (公海属性们 as readonly string[]).includes(v);
+/** 10-31 前的叫法（收藏的老链接 ?attr=公海客户 之类）→ 现在的 */
+const 旧属性: Readonly<Record<string, 公海属性>> = { 公海线索: "线索", 公海商机: "商机", 公海客户: "其他" };
+/** 地址栏里的 attr → 公海属性；认不出的是 ""（= 全部） */
+export const 规整公海属性 = (v: unknown): 公海属性 | "" => (是公海属性(v) ? v : typeof v === "string" && 旧属性[v] ? 旧属性[v] : "");
 export const 是快捷 = (v: unknown): v is 快捷 => typeof v === "string" && (快捷们 as readonly string[]).includes(v);
 export const 规整排序 = (v: unknown): 排序 => (排序们.some((o) => o.value === v) ? (v as 排序) : 默认排序);
 
@@ -154,9 +159,10 @@ const 时 = (v: string | null) => (v ? new Date(v).getTime() : Number.NEGATIVE_I
 export function 筛排(全部: readonly 公海行[], sp: 公海筛选): { 行: 公海行[]; 快捷数: Record<快捷, number>; 属性数: Record<公海属性 | "全部", number> } {
   const 词 = (sp.keyword ?? "").trim().toLowerCase();
   const 搜 = 词 ? 全部.filter((r) => (r.客户名 ?? "").toLowerCase().includes(词) || (r.项目名 ?? "").toLowerCase().includes(词)) : [...全部];
-  const 属性数 = { 全部: 搜.length, 公海客户: 0, 公海商机: 0, 公海线索: 0 } as Record<公海属性 | "全部", number>;
+  const 属性数 = { 全部: 搜.length, 线索: 0, 商机: 0, 其他: 0 } as Record<公海属性 | "全部", number>;
   for (const r of 搜) 属性数[r.属性]++;
-  const 按属性 = 是公海属性(sp.属性) ? 搜.filter((r) => r.属性 === sp.属性) : 搜;
+  const 属性 = 规整公海属性(sp.属性);
+  const 按属性 = 属性 ? 搜.filter((r) => r.属性 === 属性) : 搜;
   const 快捷数 = 数快捷(按属性);
   const 按快捷 = 是快捷(sp.快捷) ? 按属性.filter((r) => r.快捷 === sp.快捷) : 按属性;
   const 键 = 规整排序(sp.排序);

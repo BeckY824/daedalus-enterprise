@@ -33,7 +33,7 @@ import { dayjs } from "@/lib/utils";
 import { setSetting } from "@/lib/settings";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 
-const 开超时 = { ...默认组织规则, 超时回收: { 开: true, 节点天数: {} } };
+const 开超时 = { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: {} } };
 /** 首页摆的四张 */
 const 老四张: 首页卡键[] = ["month-new", "key", "no-follow", "due-soon"];
 /** 测试里按 id 认人：老板 ADMIN，别的 SALES */
