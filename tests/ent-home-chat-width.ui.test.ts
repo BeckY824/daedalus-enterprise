@@ -41,9 +41,9 @@ it("还没问：对话 2/3，四张卡在右边", async () => {
 it("问过之后：卡收起，对话铺满，你的话贴右边", async () => {
   const page = await 打开(false, 1280);
   expect(await page.locator(".home-cards").isVisible()).toBe(false);
-  const 格 = await 框(page, ".cli-ck-g"), 列 = await 框(page, ".cli-col"), 泡 = await 框(page, ".cli-bubble");
-  expect(Math.abs(列.w - 格.w)).toBeLessThan(1);
-  expect(Math.abs(泡.r - 列.r)).toBeLessThan(1);
+  // 全套并发跑时排版偶尔慢一拍（10-31 pre-push 量到差 8px）：等到量得稳再判
+  await expect.poll(async () => Math.abs((await 框(page, ".cli-col")).w - (await 框(page, ".cli-ck-g")).w), { timeout: 3000 }).toBeLessThan(1);
+  await expect.poll(async () => Math.abs((await 框(page, ".cli-bubble")).r - (await 框(page, ".cli-col")).r), { timeout: 3000 }).toBeLessThan(1);
   await page.close();
 });
 

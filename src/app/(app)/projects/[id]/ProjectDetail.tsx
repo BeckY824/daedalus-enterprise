@@ -140,7 +140,7 @@ export type 项目详情 = {
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
-const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 60px", whiteSpace: "nowrap" };
+const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 4.3em", whiteSpace: "nowrap" };
 
 /** 删项目的确认框：列出一起删掉的几样，说清沟通记录本身不删 */
 function 删除说明(n: 项目详情["删前清点"], 客户叫法: string, 进回收站 = false) {
@@ -266,7 +266,7 @@ function 两行(名: string, 注?: string) {
   return (
     <div style={{ lineHeight: 1.4, padding: "2px 0", maxWidth: 280, whiteSpace: "normal" }}>
       <div>{名}</div>
-      {注 && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{注}</div>}
+      {注 && <div style={{ fontSize: "var(--dt-aux, 12px)", color: "var(--text-muted)" }}>{注}</div>}
     </div>
   );
 }
@@ -556,7 +556,7 @@ export default function ProjectDetail({
               {下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步"}
             </Button>
           </Space>
-          {推不了 && <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "right" }}>{推不了}</div>}
+          {推不了 && <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", textAlign: "right" }}>{推不了}</div>}
         </div>
       </div>
       <Progress
@@ -680,7 +680,7 @@ export default function ProjectDetail({
               {l.kind === "node" && l.reason && l.reason !== 超时理由 && <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>}
               {/* 换人那几行：企业版记的回收原因 / 分配方式（10-27）原样淡色显示；超时、停用上一行已经说了 */}
               {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>}
-              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
             </div>
           ),
         }))}
@@ -712,7 +712,7 @@ export default function ProjectDetail({
             <FollowTypeCell type={f.type} method={f.method} />
             <Tag>{f.node}</Tag>
             {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
-            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
+            <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
             {(p.可改沟通 || 卡点?.能发) && (
               // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
               <span style={{ marginLeft: "auto" }}>
@@ -746,7 +746,7 @@ export default function ProjectDetail({
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）
       extra={卡点.能发 && (
         <Space size={8}>
-          {!p.followUps.length && <span style={{ color: "var(--text-muted)", fontSize: 12 }}>先记一条沟通</span>}
+          {!p.followUps.length && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>先记一条沟通</span>}
           <Button type="primary" size="small" disabled={!p.followUps.length} onClick={() => p.followUps[0] && set发卡点于(p.followUps[0].id)}>发卡点</Button>
         </Space>
       )}
@@ -1118,7 +1118,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
       // 还差哪一格写在「记下」旁边，不用悬停
       footer={(按钮) => (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-          {差 && <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{差}</span>}
+          {差 && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{差}</span>}
           <span>{按钮}</span>
         </div>
       )}
@@ -1145,7 +1145,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
             <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
-                  : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>只是预填，核对无误再记下；「客户明确回复了吗」要你自己选</span>}
+                  : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填，核对无误再记下；「客户明确回复了吗」要你自己选</span>}
               </div>
               <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
                 {解析?.结果 ? "重新解析" : "AI 解析填表"}
@@ -1208,8 +1208,8 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
             })}
           </Space>
           {预演 ? (
-            <div style={{ marginTop: 4, fontSize: 12, color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>选这天 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
-          ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>到那天还没人跟进，项目会自动回到项目公海</div>}
+            <div style={{ marginTop: 4, fontSize: "var(--dt-aux, 12px)", color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>选这天 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
+          ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>到那天还没人跟进，项目会自动回到项目公海</div>}
         </div>
       </div>
     </Modal>
