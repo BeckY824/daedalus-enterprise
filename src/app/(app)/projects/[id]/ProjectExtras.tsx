@@ -148,7 +148,7 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
     <Card title={`回款（${回款们.length}）`}>
       <div style={{ marginBottom: 8 }}>当前回款：<b style={{ overflowWrap: "anywhere" }}>{合计}</b></div>
       {回款们.map((x) => (
-        <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "4px 0", borderTop: "1px solid var(--border, #f0f0f0)" }}>
+        <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "4px 0", borderTop: "1px solid var(--line-soft)" }}>
           <span style={{ color: "var(--text-muted)" }}>{dayjs(x.paidAt).format("YYYY-MM-DD")}</span>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{金额(x.amount, x.currency)}</span>
           {能改 && <InlineConfirm 问="删掉这笔回款" 做={() => 删(x.id)}><Button type="link" size="small" danger>删除</Button></InlineConfirm>}
