@@ -165,6 +165,7 @@ export default function RecordView({
   能放公海 = false,
   原负责人领不回 = false,
   只读: 只读档 = false,
+  能删改沟通 = true,
   换负责人记录 = [],
   客户状态选项 = [],
   客户状态色,
@@ -1261,7 +1262,7 @@ export default function RecordView({
                     </div>
                   </motion.div>
                 ) : (
-                  <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读 && !摆法.沟通汇总} 汇总={摆法.沟通汇总} />
+                  <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读 && !摆法.沟通汇总 && 能删改沟通} 汇总={摆法.沟通汇总} />
                 ),
               )}
             </AnimatePresence>

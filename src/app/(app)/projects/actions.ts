@@ -40,8 +40,8 @@ import { scheduleValue } from "@/lib/schedule-date";
 import { 向导自动分配 } from "../leads/assign-actions";
 import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, 认跟进方式, type 分配方式序号 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
-import { 发布卡点, 读卡点默认 } from "@/lib/project/blocker";
-import { 沟通卡点, type 沟通卡点输入 } from "@/lib/project/blocker-rules";
+import { 发布卡点, 读卡点默认, 能发卡点 } from "@/lib/project/blocker";
+import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
 
@@ -622,7 +622,8 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
 }
 
 export type 项目沟通须知结果 =
-  | { ok: true; 能记: true; phase: string; 要下一步: boolean; 回收预演: 回收预演底子 | null; contactId: string | null }
+  /** 卡点默认：能发卡点才给（F-跟进-08，表单摆卡点那一块）；null = 不摆 */
+  | { ok: true; 能记: true; phase: string; 要下一步: boolean; 回收预演: 回收预演底子 | null; contactId: string | null; 卡点默认: 卡点默认 | null }
   | { ok: true; 能记: false }
   | { ok: false; error: string };
 
@@ -651,7 +652,8 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
       const 天数 = 超时回收日(规则, p, 起点, 字典) ? 节点超时天数(规则, p.node, 字典) : null;
       if (天数) 回收预演 = { 起点日: 计时起点(规则, 起点).format("YYYY-MM-DD"), 天数 };  // 起算日之前不算（10-31）
     }
-    return { ok: true, 能记: true, phase: p.phase, 要下一步, 回收预演, contactId: p.contactId ?? null };
+    const 卡点默认 = (await 能发卡点(me, p.id)) ? await 读卡点默认() : null;
+    return { ok: true, 能记: true, phase: p.phase, 要下一步, 回收预演, contactId: p.contactId ?? null, 卡点默认 };
   } catch (e) { return 不在了(e); }
 }
 

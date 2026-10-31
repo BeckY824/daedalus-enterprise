@@ -19,7 +19,7 @@ const plugin: Plugin = { name: "followup-project-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
-  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
+  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x,卡点)=>{window.__项目存={id,...x};window.__卡点=卡点;return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
   stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1'}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
@@ -127,19 +127,27 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名不横向撑出，「
   } finally { await page.close(); }
 });
 
-const 须知 = (底子: { 起点日: string; 天数: number } | null) => ({ ok: true, 能记: true, phase: "线索", 要下一步: true, 回收预演: 底子, contactId: "k1" });
+const 卡点默认 = { 时限天数: 3, 阻碍主体们: ["客户"], 默认类型: "轻度卡点", 默认影响: "短期不影响" };
+const 须知 = (底子: { 起点日: string; 天数: number } | null, 能发卡点 = true) => ({ ok: true, 能记: true, phase: "线索", 要下一步: true, 回收预演: 底子, contactId: "k1", 卡点默认: 能发卡点 ? 卡点默认 : null });
 const 今天 = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date());
 
-it("项目能记：问「客户明确回复了吗」，走项目同一个 action，选明天预演回收日", async () => {
+it("项目能记：问「客户明确回复了吗」（收在「更多」里），走项目同一个 action，选明天预演回收日", async () => {
   const { page, errors } = await open({ 项目: "有", 须知: 须知({ 起点日: 今天(), 天数: 7 }) });
   try {
+    // F-跟进-06：主区只有内容、卡点、下一步、下一步时间；「客户明确回复了吗」在默认折起的「更多」里，旁边提示还没选
+    const 更多 = page.getByRole("button", { name: /更多：/ });
+    await 更多.waitFor();
+    expect(await 更多.getAttribute("aria-expanded")).toBe("false");
+    expect(await page.getByText("客户明确回复还没选").count()).toBe(1);
     const 问 = 格(page, "客户明确回复了吗");
-    await 问.waitFor();
-    expect(await 问.innerText()).toContain("线索");
+    expect(await 问.isVisible()).toBe(false);
+    expect(await 格(page, "标题").isVisible()).toBe(false);
     await page.locator("#content").fill("聊了报价");
-    // 没选就存：拦在「客户明确回复了吗」
+    // 没选就存：拦在「客户明确回复了吗」，「更多」自己展开
     await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => 更多.getAttribute("aria-expanded")).toBe("true");
     await expect.poll(() => 问.innerText()).toContain("请选客户明确回复了吗");
+    expect(await 问.innerText()).toContain("线索");
     await 问.getByText("客户明确回复了", { exact: true }).click();
     await 格(page, "下一步做什么").locator("input").fill("周五前发报价单");
     const 时 = page.locator(".ant-form-item").filter({ has: page.locator('label:text-is("下一步时间")') });
@@ -152,8 +160,11 @@ it("项目能记：问「客户明确回复了吗」，走项目同一个 action
     await page.waitForFunction(() => Reflect.get(window, "__项目存"));
     const 交 = await page.evaluate(() => Reflect.get(window, "__项目存") as Record<string, unknown>);
     expect(交).toMatchObject({ id: "p1", 阶段: "线索", 明确回复: true, 下一步: "周五前发报价单", 下一步时间: 明, content: "聊了报价" });
-    // 没填标题、状态默认已完成：不用再补一刀 saveFollowUp
+    // 标题、状态等随这一次交（额外），不再补一刀 saveFollowUp（M-权限-09 成员改不了沟通）
+    expect(交).toMatchObject({ 额外: { status: "已完成", durationMinutes: null } });
     expect(await page.evaluate(() => Reflect.get(window, "__存"))).toBeUndefined();
+    // 卡点没动：类型「暂无卡点」、描述空，照样交给服务端判（不生成）
+    expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "暂无卡点", impact: null, description: "" });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -170,5 +181,34 @@ it("项目不能记（比如已结束）、规则关着：照旧走 saveFollowUp
     const 时 = b.page.locator(".ant-form-item").filter({ has: b.page.locator('label:text-is("下一步时间")') });
     await 时.getByRole("button", { name: "3 天后" }).click();
     expect(await 时.innerText()).not.toContain("回收日变为");
+  } finally { await b.page.close(); }
+});
+
+it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了描述就随这一次交；不能发卡点的不摆", async () => {
+  const { page, errors } = await open({ 项目: "有", 须知: 须知(null) });
+  try {
+    const 类型 = page.getByRole("combobox", { name: "卡点类型" });
+    await 类型.waitFor();
+    // 位置：沟通内容 < 卡点 < 下一步
+    const y = async (l: import("playwright").Locator) => (await l.boundingBox())!.y;
+    expect(await y(page.locator("#content"))).toBeLessThan(await y(类型));
+    expect(await y(类型)).toBeLessThan(await y(格(page, "下一步做什么")));
+    await 类型.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "重要卡点" }).click();
+    await page.getByRole("textbox", { name: "卡点描述" }).fill("对方法务卡合同");
+    await page.locator("#content").fill("聊了报价");
+    await 格(page, "下一步做什么").locator("input").fill("周五前发报价单");
+    await 格(page, "下一步时间").getByRole("button", { name: "3 天后" }).click();
+    await page.getByRole("button", { name: /更多：/ }).click();
+    await 格(page, "客户明确回复了吗").getByText("没有明确回复", { exact: true }).click();
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => Reflect.get(window, "__项目存"));
+    expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "重要卡点", impact: null, description: "对方法务卡合同" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const b = await open({ 项目: "有", 须知: 须知(null, false) });
+  try {
+    await b.page.getByRole("button", { name: /更多：/ }).waitFor();
+    expect(await b.page.getByRole("combobox", { name: "卡点类型" }).count()).toBe(0);
   } finally { await b.page.close(); }
 });

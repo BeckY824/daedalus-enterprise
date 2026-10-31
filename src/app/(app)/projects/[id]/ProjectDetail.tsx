@@ -43,7 +43,7 @@ import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联�
 import { BlockerList, PublishBlockerModal, type 卡点卡, type 可选人 } from "../BlockerPanel";
 import { 卡点类型们, 影响等级们, 描述上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import type { 附件 } from "@/lib/attachment-rules";
-import FollowAttachments, { 选沟通附件 as 选沟通附件框, 传沟通附件 } from "./FollowAttachments";
+import FollowAttachments, { 选沟通附件 as 选沟通附件框, 传沟通附件 } from "@/components/FollowAttachments";
 import { ProjectCommissionCard, SplitModal } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
