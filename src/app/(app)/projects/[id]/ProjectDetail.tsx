@@ -25,6 +25,7 @@ import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-di
 import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
+import ProjectStages from "./ProjectStages";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
@@ -279,6 +280,7 @@ function 两行(名: string, 注?: string) {
 /** 企业版页头具名按钮开的框（10-31 R6）→ 框的标题 */
 const 头部框叫法 = {
   推进: "推进进程",
+  结束: "结束当前进程",
   线索判定: "线索判定",
   画像: "项目画像",
   关联客户: "关联客户",
@@ -477,7 +479,62 @@ export default function ProjectDetail({
       onOk: () => 改到(到),
     });
   };
-  const 更多去处项 = 节点可改 && !等复核 ? 更多去处(当前, 去处们(当前, !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通, 字典), 字典) : [];
+  const 不能往前 = !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通;
+  const 更多去处项 = 节点可改 && !等复核 ? 更多去处(当前, 去处们(当前, 不能往前, 字典), 字典) : [];
+
+  /** 「结束当前进程」（10-31 R5）为什么点不了；undefined = 能点 */
+  const 不能结束 = 节点可改
+    ? 等复核文字 ?? (p.result ? "项目已经有结局，先改回某个进程" : undefined)
+    : 节点不能改 ?? "只有项目负责人、老板或主管能改进程";
+  /**
+   * 「结束当前进程」框里的去处：进下一阶段 / 进下一进程 / 本阶段的结局。能不能点照 去处们 那一套，不另立规矩：
+   * 往前只能一步，所以本阶段还有进程没走时「进下一阶段」灰着、写清还差哪几个；订单是最后一个阶段，没有「下一阶段」。
+   * 默认选下一阶段，点不了就选下一进程，再不行选第一个能点的结局
+   */
+  const 结束去处 = (() => {
+    if (!p.企业版 || 不能结束) return [];
+    const 组 = 去处们(当前, 不能往前, 字典).find((g) => g.label === p.phase);
+    if (!组) return [];
+    const 拆 = (v: string) => JSON.parse(v) as 位置 & { 出口?: string };
+    const 们: { key: string; 到: 位置; 叫: string; 说明: string; 灰?: string }[] = [];
+    const 走成 = 组.options.find((o) => 拆(o.value).出口);
+    if (走成) {
+      const v = 拆(走成.value);
+      const 列 = 字典.节点们[p.phase as (typeof 阶段们)[number]];
+      const 剩 = 下 && 下.phase === p.phase ? 列.slice(列.indexOf(下.node)) : [];
+      们.push({
+        key: "下一阶段",
+        到: { phase: v.phase, node: v.node },
+        叫: `进入下一阶段：${v.phase}`,
+        说明: `本阶段算「${v.出口}」，进到 ${v.phase}·${v.node}`,
+        灰: 剩.length ? `本阶段还有 ${剩.join("、")} 没走，进程只能一步步推` : 推不了 ?? (走成.disabled ? "现在推不过去" : undefined),
+      });
+    }
+    if (下 && 下.phase === p.phase) 们.push({ key: "下一进程", 到: 下, 叫: `进入下一进程：${下.node}`, 说明: "还在本阶段，往前走一步", 灰: 推不了 });
+    for (const o of 组.options) {
+      const v = 拆(o.value);
+      if (!v.result) continue;
+      们.push({
+        key: o.value,
+        到: { phase: v.phase, node: v.node, result: v.result },
+        叫: 结局叫法(v.result, 字典),
+        说明: v.result === "异常状态" ? "下一步写异常原因" : 要写原因(v.result) ? "下一步选原因" : "项目到此结束；以后要改可以把进程改回去",
+        灰: o.disabled ? "现在改不到这个结局" : v.result === "成功交付" && 差.length ? `还差${差.join("、")}，勾上才能点成功交付` : undefined,
+      });
+    }
+    return 们;
+  })();
+  const [结束选, set结束选] = useState<string | null>(null);
+  const 开结束 = () => {
+    set结束选(结束去处.find((d) => !d.灰)?.key ?? null);
+    set头部框("结束");
+  };
+  const 确认流转 = () => {
+    const d = 结束去处.find((x) => x.key === 结束选 && !x.灰);
+    if (!d) return;
+    set头部框(null);
+    改到(d.到);
+  };
 
   /** 转给…：点了先等 6 秒（提示条上能撤销），到点才真的换负责人；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
   const 开始转给 = (新: string) => {
@@ -579,13 +636,29 @@ export default function ProjectDetail({
           {推不了 && <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", textAlign: "right" }}>{推不了}</div>}
         </div>
       </div>
-      <Progress
-        style={{ marginTop: 12, marginBottom: 0 }}
-        percent={Math.round(((p.result === "成功交付" ? 节点总数 : 节点序号(当前, 字典)) / 节点总数) * 100)}
-        showInfo={false}
-        status={异常 ? "exception" : p.result === "成功交付" ? "success" : "active"}
-        aria-label={`第 ${节点序号(当前, 字典) + 1} 个进程，共 ${节点总数} 个`}
-      />
+      {/* 企业版：三个阶段页签 + 结束当前进程（10-31 R5）；别的版本照旧一条进度条 */}
+      {p.企业版 ? (
+        <ProjectStages
+          key={位.阶段}
+          字典={字典}
+          所在阶段={位.阶段}
+          所在进程={位.进程}
+          结局={位.结局}
+          结局色={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}
+          成功交付={p.result === "成功交付"}
+          不能结束={不能结束}
+          忙={忙}
+          on结束={开结束}
+        />
+      ) : (
+        <Progress
+          style={{ marginTop: 12, marginBottom: 0 }}
+          percent={Math.round(((p.result === "成功交付" ? 节点总数 : 节点序号(当前, 字典)) / 节点总数) * 100)}
+          showInfo={false}
+          status={异常 ? "exception" : p.result === "成功交付" ? "success" : "active"}
+          aria-label={`第 ${节点序号(当前, 字典) + 1} 个进程，共 ${节点总数} 个`}
+        />
+      )}
       {p.线索验证 && <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 跑={跑} 忙={忙} 没有效沟通={没有效沟通} 不给推={p.不给推} />}
       {没有效沟通 && !p.线索验证?.我能 && (
         <div style={{ marginTop: 12, color: "var(--text-muted)" }}>还没有客户明确回复的沟通：记一条、选「客户明确回复了」，才能推过线索验证</div>
@@ -816,6 +889,9 @@ export default function ProjectDetail({
       {可改 && <Button disabled={忙} onClick={() => set编辑开着(true)}>编辑项目</Button>}
       {转给钮}
       {节点可改 && <Button disabled={忙} onClick={开框("推进")}>推进进程</Button>}
+      {节点可改 && !p.result && (等复核文字
+        ? <Tooltip title={等复核文字}><Button disabled>结束当前进程</Button></Tooltip>
+        : <Button disabled={忙} onClick={开结束}>结束当前进程</Button>)}
       {p.线索验证?.我能 && <Button disabled={忙} onClick={开框("线索判定")}>线索判定</Button>}
       {卡点?.能发 && (p.followUps.length
         ? <Button disabled={忙} onClick={() => set发卡点于(p.followUps[0].id)}>发卡点</Button>
@@ -1031,9 +1107,41 @@ export default function ProjectDetail({
 
       {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
 
-      {头部框 && 头部框 !== "改分配" && (
+      {头部框 && 头部框 !== "改分配" && 头部框 !== "结束" && (
         <Modal open title={`${头部框叫法[头部框]} · ${p.name}`} footer={null} width={头部框 === "推进" || 头部框 === "线索判定" ? 520 : 640} onCancel={关头部框}>
           {头部框内容}
+        </Modal>
+      )}
+      {头部框 === "结束" && (
+        <Modal
+          open
+          title={`结束当前进程 · ${p.name}`}
+          width={520}
+          onCancel={关头部框}
+          footer={[
+            <Button key="no" onClick={关头部框}>取消</Button>,
+            <Button key="ok" type="primary" disabled={忙 || !结束去处.some((d) => d.key === 结束选 && !d.灰)} onClick={确认流转}>确认流转</Button>,
+          ]}
+        >
+          <div className="proj-modal-sec">
+            <div><span className="proj-where-label">现在在</span> {位.阶段} · {位.进程}</div>
+            {结束去处.length ? (
+              <Radio.Group className="proj-end-opts" value={结束选} onChange={(e) => set结束选(e.target.value)}>
+                {结束去处.map((d) => (
+                  <Radio key={d.key} value={d.key} disabled={!!d.灰}>
+                    <div className="proj-end-name">{d.叫}</div>
+                    <div className="proj-end-desc">{d.灰 ?? d.说明}</div>
+                  </Radio>
+                ))}
+              </Radio.Group>
+            ) : (
+              <div style={{ color: "var(--text-muted)" }}>{不能结束 ?? "现在没有能去的地方"}</div>
+            )}
+            {(() => {
+              const d = 结束去处.find((x) => x.key === 结束选 && !x.灰);
+              return d && <div><span className="proj-where-label">流转到</span> {位置文字(d.到, 字典)}</div>;
+            })()}
+          </div>
         </Modal>
       )}
       {头部框 === "改分配" && p.提成 && <SplitModal projectId={p.id} t={p.提成} 跑={跑} onClose={关头部框} />}
