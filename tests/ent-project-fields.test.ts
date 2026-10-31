@@ -101,9 +101,12 @@ describe("节点必填：痛点标注 / 项目方案 / 合同已生效", () => {
   });
   const 三项 = ["痛点标注", "项目方案", "合同已生效"];
 
-  it("三项都在目录里；建议清单没动（不默认配）", () => {
+  it("三项都在目录里；建议清单配了痛点标注、项目方案，合同已生效先不配（等合同审批怎么算过定了）", () => {
     for (const k of 三项) expect(必填项名们).toContain(k);
-    for (const 项 of Object.values(建议必填)) for (const k of 三项) expect(项).not.toContain(k);
+    const 配了 = Object.values(建议必填).flat();
+    expect(配了).toContain("痛点标注");
+    expect(配了).toContain("项目方案");
+    expect(配了).not.toContain("合同已生效");
   });
 
   it("都没填（老项目：合同状态空、没读到方案数）：三项都差", () => {
