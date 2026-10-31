@@ -14,6 +14,9 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import { 演示登录 } from "@/app/login/demo-actions";
+import { 读视图名单, 有切换视图 } from "@/lib/enterprise/view-as-menu";
+import { 当前视图 } from "@/lib/enterprise/view-as";
+import { 开始视图, 退出视图 } from "./view-as-actions";
 import { accessibleWorkspacesFor } from "@/lib/tenant/workspace-access";
 import { llmEnabled, listModelOptions } from "@/lib/llm";
 import { 读AI计次, 不计次 } from "@/lib/ai-meter";
@@ -84,6 +87,14 @@ export default async function AppLayout({
     这个人点 AI 按钮花不花次数、还剩几次（lib/ai-meter.ts）：全站的「1 次」角标和输入框下那行字都认它。
     这里**不去云端问余额**（桌面端要联网，断网时会把整页拖住），数由浏览器随后问 /api/ai/meter。
   */
+  /*
+    切换视图（M-权限-08）：总管理员账号菜单里的名单；正在看别人时顶上一条「正在以 X 的视图查看 · 退出」。
+    票还在、但 getCurrentUser 不认了（真身不再是总管理员、被看的人停用了）：这时服务端照样只读，条上写「已失效」让他退出
+  */
+  const [视图名单, 视图票在] = 有切换视图()
+    ? await Promise.all([读视图名单(user), user.视图由 ? Promise.resolve(null) : 当前视图()])
+    : [null, null];
+  const 正在视图 = user.视图由 ? { 名: user.name } : 视图票在 ? { 名: null } : null;
   const AI计次 = 有AI ? await 读AI计次({ 问余额: false }) : 不计次;
   /**
    * 跑在桌面端里：Electron 的 UA 带 "Electron/"。本地模式和连服务器两种都识别得到，
@@ -117,6 +128,10 @@ export default async function AppLayout({
         收藏={收藏}
         演示名单={await 读演示名单()}
         演示换人={演示登录}
+        视图名单={视图名单}
+        视图换人={开始视图}
+        视图退出={退出视图}
+        正在视图={正在视图}
         计数={{ "/customers": 客户数 }}
       >
         {children}

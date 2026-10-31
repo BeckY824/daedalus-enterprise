@@ -32,6 +32,7 @@ import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterpri
 import { 项目级别和地址改成, 项目成交钱改成, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
 import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 视图中跳过 } from "@/lib/enterprise/view-as";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -650,6 +651,8 @@ export async function 超时预览(规则: 组织规则, 今: Date = new Date())
 export const 收回提醒尾 = "已回到项目公海";
 
 export async function 公海超时收回(me: { id: string; name: string }, 今: Date = new Date()): Promise<number> {
+  // 总管理员切换视图（只读预览，M-权限-08）期间不扫：渲染时顺手写库会被拒
+  if (企业版() && (await 视图中跳过())) return 0;
   return 看全部(() => 按规则收回(me, 今));
 }
 
