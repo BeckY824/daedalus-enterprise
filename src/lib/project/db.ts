@@ -5,7 +5,7 @@
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
-import { 改节点问题, 原因上限, 要写原因, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
+import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
 import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
@@ -89,6 +89,17 @@ export function 往前推不给(me: 谁, ownerId: string, org: 组织 | null, �
   const 上级 = 直属上级of(org, ownerId);
   if (!上级 || me.id === 上级 || me.role === "ADMIN" || 管理员类别of(org, me.id) === "总管理员") return null;
   return me.id === ownerId ? "往前推进程要由你的直属上级来推" : "只有负责人的直属上级能往前推进程";
+}
+
+/**
+ * 需求状态补全期（组织规则 阶段.需求补全期，M-权限-07，默认关）：开着时只有经理（主管）、老板、总管理员能往前推进程；
+ * 负责人本人、直属上级（销售账号）都不给。只管往前推：往回退、终止进程、记沟通、改字段照常
+ */
+export const 补全期提示 = "需求状态补全期：只有经理、总管理员能往前推进程，沟通照常记";
+export function 补全期不给(me: 谁, org: 组织 | null, 规则: 组织规则): string | null {
+  if (!规则.阶段.需求补全期 || me.role === "ADMIN" || me.role === "MANAGER") return null;
+  if (org && 管理员类别of(org, me.id) === "总管理员") return null;
+  return 补全期提示;
 }
 
 /**
@@ -278,17 +289,15 @@ export async function 改节点(
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
     const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
-    const 不给 = 往前 ? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则)) : null;
+    const 不给 = 往前
+      ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则))
+      : null;
     if (不给) return { ok: false as const, error: 不给 };
-    // 企业版节点必填（D-37）：配了必填的节点，往前推只给老板、主管、负责人的直属上级、总管理员；销售本人填齐了自动推
+    // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给老板、主管、负责人的直属上级、总管理员；
+    // 销售本人填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
     if (往前 && 按必填走(规则, p.node) && me.role !== "ADMIN" && me.role !== "MANAGER" && !代管节点(me, p.ownerId, org)) {
       const 差 = 还差(规则, await 读必填数据(tx, p));
-      return {
-        ok: false as const,
-        error: 差.length
-          ? `「${现.node}」填齐必填后自动往前推，还差：${差.map(必填叫法).join("、")}；要先推请找老板或主管`
-          : `「${现.node}」的必填已经齐了，保存一下就会自动往前推`,
-      };
+      if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推，要先推请找老板或主管` };
     }
     let 类别: string | null = null;
     let 备注: string | null = null;
@@ -328,6 +337,27 @@ export async function 改节点(
     await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, 变了: true, ...带推进(推进) };
   });
+}
+
+/**
+ * 企业版「终止进程」（M-节点-04）：按项目现在所在的阶段落到「没走成」的结局——线索→线索流失、商机→丢单、订单→异常状态，
+ * 节点停在现在这个。线索流失、丢单要写原因（附.备注），异常状态要选在用的异常类别（附.categoryId，备注可空）。
+ * 权限、校验、节点变更、提成、客户状态都走 改节点（结局不算往前推，补全期也照样能终止）
+ */
+export async function 终止进程(
+  me: 谁, projectId: string, 附?: { categoryId?: string | null; 备注?: string | null },
+): Promise<结果 & { 变了?: boolean; 到?: 位置 }> {
+  if (!企业版()) return { ok: false, error: "终止进程只在企业版有" };
+  const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { phase: true, node: true, result: true } });
+  if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
+  if (p.result) return { ok: false, error: "项目已经有结局了，不用再终止" };
+  const 规则 = await 生效组织规则();
+  const 字典 = 字典of(true, 规则.阶段.出口叫法);
+  const 结局 = 终止结局(p, 字典);
+  if (!结局) return { ok: false, error: "认不出项目在哪个阶段，刷新看看" };
+  const 到: 位置 = { ...本套位置({ phase: p.phase, node: p.node }, 字典), result: 结局 };
+  const r = await 改节点(me, projectId, 到, { categoryId: 附?.categoryId ?? null, 备注: 附?.备注 ?? null });
+  return r.ok ? { ...r, 到 } : r;
 }
 
 export const 交付项们 = { balanceSettled: "尾款结清", acceptancePassed: "验收通过" } as const;
@@ -922,7 +952,8 @@ async function 往前进来的(tx: Prisma.TransactionClient, p: { id: string; ph
  * 刚往前推进来（老板、主管手动推）的传 刚往前 = true，省一次查
  */
 export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, projectId: string, 刚往前 = false): Promise<string[]> {
-  if (!节点推进生效(规则)) return [];
+  // 需求状态补全期（M-权限-07）：只有经理、总管理员手动推，填齐了也不自动推
+  if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return [];
   const 到了: string[] = [];
   let 往前 = 刚往前;
   for (;;) {

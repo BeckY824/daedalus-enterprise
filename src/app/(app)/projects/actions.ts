@@ -16,7 +16,7 @@ import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 
 import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
-import { 改节点, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, type 交付项 } from "@/lib/project/db";
+import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -198,6 +198,28 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
         detail: { 阶段: 到.phase, 节点: 到.node, 结局: 到.result ?? null, 异常类别: 类别, 备注: 类别 || (企业版() && 要写原因(到.result)) ? 异?.备注?.trim() || null : null },
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
+      刷新项目(projectId, p?.customerId);
+    }
+    return r;
+  } catch (e) { return 不在了(e); }
+}
+
+/** 企业版「终止进程」（M-节点-04）：按所在阶段落到线索流失 / 丢单 / 异常状态；线索流失、丢单 备注 = 原因（必填），异常状态带类别。审计和 改项目节点 一样记 */
+export async function 终止项目进程(projectId: string, 附?: { categoryId?: string | null; 备注?: string | null } | null) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    const 带 = 附 && typeof 附 === "object" ? { categoryId: 附.categoryId ?? null, 备注: 附.备注 ?? null } : undefined;
+    const r = await 终止进程(me, projectId, 带);
+    if (r.ok && r.变了 && r.到) {
+      const 到 = r.到;
+      const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, exceptionCategory: { select: { name: true } } } });
+      const 类别 = 到.result === "异常状态" ? p?.exceptionCategory?.name ?? null : null;
+      await recordAudit({
+        user: me, action: "update", entity: "Project", entityId: projectId,
+        summary: `终止进程：项目「${p?.name ?? ""}」在 ${到.phase}·${到.node} 终止（${到.result}${类别 ? `：${类别}` : ""}）`,
+        detail: { 阶段: 到.phase, 节点: 到.node, 结局: 到.result ?? null, 异常类别: 类别, 备注: 带?.备注?.trim() || null, 终止进程: true },
+      });
       刷新项目(projectId, p?.customerId);
     }
     return r;

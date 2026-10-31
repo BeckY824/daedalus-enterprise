@@ -3,7 +3,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能改节点, 代管节点, 往前推不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
+import { 能管项目, 能改节点, 代管节点, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -119,7 +119,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 配了必填的进程记完可能自动推到下一个进程（天数跟着换），算不准就不给，界面不显示那一句
   const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 ? 节点超时天数(规则, p.node, 字典) : null;
   const 回收预演 = 回收天数 ? { 起点日: 计时起点(规则, 回收起点).format("YYYY-MM-DD"), 天数: 回收天数 } : null;
-  const 不给推 = 企业 && !公海 && !p.result ? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
+  // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
+  const 不给推 = 企业 && !公海 && !p.result ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
   // 企业版：线索验证往后推要先有一条客户明确回复的沟通（lib/project/stage-gates.ts）
   const 有效沟通 = 企业 && p.phase === "线索" ? await 有效沟通数(prisma, p.id) : 0;
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查

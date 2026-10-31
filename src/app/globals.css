@@ -1208,19 +1208,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stages { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .proj-stage-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
 .proj-stage-tabs { display: flex; gap: 4px; align-self: stretch; }
-/* 「推进进程」「结束当前进程」（10-31）：和页签同一行靠右、同字号，不要框——文字按钮，悬停才铺底色；推进用品牌色，结束用灰 */
-.proj-stage-acts { margin-left: auto; display: flex; align-items: center; gap: 2px; }
-.proj-stage-act {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: none; border-radius: var(--r-ctl);
-  background: none; font: inherit; color: var(--text-muted); cursor: pointer; white-space: nowrap;
-}
-.proj-stage-act .anticon { font-size: 12px; }
-.proj-stage-act:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
-.proj-stage-act:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
-.proj-stage-act.is-go { color: var(--brand); font-weight: 600; }
-.proj-stage-act.is-go:hover:not(:disabled) { color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
-.proj-stage-act:disabled { color: var(--text-faint); font-weight: 400; cursor: not-allowed; }
-.proj-stage-act-sep { width: 1px; height: 14px; background: var(--line-soft); margin: 0 4px; }
+/* 「完成节点 ▼」「新增沟通」（M-节点-04 / U-项目-06）：和页签同一行靠右；窄了整组换到下一行，不挤页签 */
+.proj-stage-acts { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; min-width: 0; }
+.proj-stage-tip { display: inline-flex; }
+.proj-stage-tip > .ant-btn:disabled { pointer-events: none; }
 .proj-stage-why { min-width: 0; overflow-wrap: anywhere; }
 .proj-stage-tab {
   display: inline-flex; align-items: center; gap: 6px; min-width: 0;
@@ -1232,10 +1223,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-tab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--stage-c); }
 .proj-stage-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--stage-c); opacity: .45; }
 .proj-stage-tab.is-here .proj-stage-dot, .proj-stage-tab.is-on .proj-stage-dot { opacity: 1; }
-.proj-stage-here {
-  font-size: var(--fs-min, 11px); font-weight: 400; line-height: 16px; padding: 0 6px; border-radius: 8px;
-  color: var(--stage-c); background: color-mix(in srgb, var(--stage-c) 12%, transparent);
-}
+/* F-项目-19：不在的阶段页签字灰着（还能点开看） */
+.proj-stage-tab.is-away { color: var(--text-faint); }
+.proj-stage-tab.is-away.is-on { color: var(--text-muted); }
 .proj-stage-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .proj-stage-note { color: var(--text-muted); font-size: var(--fs-note, 12px); }
 .proj-stage-nodes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 6px; }
@@ -1263,10 +1253,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 @media (prefers-reduced-motion: reduce) {
   .proj-stage-node.is-cur .proj-stage-mark { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--stage-c) 25%, transparent); }
 }
-/* 「结束当前进程」框：一行一个去处，灰着的写清为什么 */
-.proj-end-opts.ant-radio-group { display: flex; flex-direction: column; gap: 10px; }
-.proj-end-name { font-weight: 600; }
-.proj-end-desc { color: var(--text-muted); font-size: var(--dt-aux, 12px); overflow-wrap: anywhere; }
+/* A-12：线索/商机列表末尾的出口（已转商机 / 商机赢单）：虚线框，和节点区分开 */
+.proj-stage-exit {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
+  padding: 4px 10px 4px 6px; border-radius: 14px; border: 1px dashed var(--line-strong); color: var(--text-faint);
+}
+.proj-stage-exit.is-done { color: var(--ink-soft); border-style: solid; border-color: var(--stage-c); }
+.proj-stage-exit.is-done .proj-stage-mark { background: var(--stage-c); border-color: var(--stage-c); }
+/* 「完成节点」框里缺的必填 */
+.proj-miss-list { margin: 4px 0 0; padding-left: 20px; overflow-wrap: anywhere; }
 
 /* 项目画像卡（P11）：键 64px 一列，值占满；下拉、输入框都按卡宽，不撑开右栏 */
 .proj-profile { display: grid; gap: 10px; }
