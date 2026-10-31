@@ -286,6 +286,15 @@ html.glass .auth-fine { color: var(--ink-soft); }
 /* 窄屏左栏收起，表单上方补一枚小标（网页版会在手机上打开；桌面端窗口不会这么窄） */
 .auth-mobile-mark { display: none; }
 @media (max-width: 760px) { .auth { grid-template-columns: 1fr; } .auth-side { display: none; } .auth-mobile-mark { display: block; margin-bottom: var(--s2); } }
+/* 企业版登录（U-登录-01，10-31）：没有左栏，页面正中一张卡；标和产品名居中，产品名再长也折行不撑出去 */
+.auth-solo { grid-template-columns: minmax(0, 1fr); }
+.auth-solo .auth-main { background: var(--page-bg); padding: var(--s6) var(--s4); }
+.auth-solo .auth-form { width: min(380px, 100%); padding: var(--s6) var(--s5); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); box-sizing: border-box; }
+.auth-solo .auth-mobile-mark { display: flex; justify-content: center; margin-bottom: var(--s2); }
+.auth-solo .auth-step h1 { text-align: center; }
+.auth-solo-name { overflow-wrap: anywhere; }
+.auth-solo-alt { text-align: center; }
+html.glass .auth-solo .auth-main { background: transparent; }
 
 /* 演示部署的选人门（login/DemoLogin.tsx）：按角色分组，一人一行，点了就进 */
 .demo-login { width: min(400px, 100%); }
