@@ -49,10 +49,10 @@ beforeAll(async () => {
       {contactId:'k2',名:'关联客户'+串+'|🔥姓名暂未核实',姓名:'王总',customerId:'c2',角色:[],立场:null,主:false,看得到:true}],
       选项:{身份:['业主方','总包方','分包方','投资方','垫资方','运营方','引荐方','监理方','设计方'],角色:['决策人','审批人','影响人','使用人','经办人'],立场:['待定','中立','对手','线人','军师','盟友']},上限:30};
     window.__relate=(能改)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,关联}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{},人们:[]}}/>));
-    /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
+    /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content > 换页那层 div。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
     const 行=(id,name,阶段,进程,x)=>({id,name,阶段,进程,结局:null,pooled:false,customerName:'超长客户名'+串,lastType:'PHONE',lastAt:'2026-10-20T00:00:00.000Z',lastNote:'最近一句'+串,nextAt:null,...x});
     const 名单={取到上限:false,rows:[行('p1',长,'订单','生产备货'+'备'.repeat(20)),行('p2','线索项目'+串,'线索','初次接触'),行('p5','没填阶段的项目',null,null,{lastAt:null,lastNote:null}),行('p3',串,'商机','方案报价',{pooled:true,结局:'输单'}),行('p4','商机二','商机','首款支付',{nextAt:'2026-10-01'})]};
-    window.__shell=()=>root.render(包(<div className='shell'><nav className='rail' aria-label='主导航'/><ProjectRoster data={名单}/><main className='main app-content' style={{padding:'22px 26px'}}>{详情(true)}</main></div>));
+    window.__shell=()=>root.render(包(<div className='shell'><nav className='rail' aria-label='主导航'/><ProjectRoster data={名单}/><main className='main app-content' style={{padding:'22px 26px'}}><div style={{maxWidth:1720,margin:'0 auto'}}>{详情(true)}</div></main></div>));
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -313,6 +313,64 @@ it.each([1024, 1280, 1366])("三栏 %ipx：名单收成抽屉，页头最左边�
     await 抽屉.waitFor();
     expect(await page.locator(".pane-drawer .roster-row").count()).toBe(5);
     expect(await 不伸出(page, ".pane-drawer .pane-rows, .pane-drawer .roster-row, .pane-drawer .roster-m")).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 10-31 改版 R3：整页不滚、页头不动，两栏各自滚；只有右栏露滚动条。窄到一栏时那一栏整个滚；手机宽还是整页滚
+it.each([1440, 1280, 1024])("三栏 %ipx：整页不滚，主区、右栏各自滚，滚一栏另一栏和页头不动；主区不露滚动条", async (w) => {
+  const { page, errors } = await open(true, w, undefined, true);
+  try {
+    await page.setViewportSize({ width: w, height: 520 });
+    const 量 = () => page.evaluate(() => {
+      const 主 = document.querySelector(".proj-main") as HTMLElement, 侧 = document.querySelector(".proj-side") as HTMLElement;
+      return { 页滚: document.documentElement.scrollHeight - window.innerHeight, 主顶: 主.scrollTop, 侧顶: 侧.scrollTop, 头: document.querySelector(".proj-head")!.getBoundingClientRect().top,
+        主溢: 主.scrollHeight - 主.clientHeight, 侧溢: 侧.scrollHeight - 侧.clientHeight, 主底: 主.getBoundingClientRect().bottom, 侧底: 侧.getBoundingClientRect().bottom,
+        主条: getComputedStyle(主).scrollbarWidth, 侧条: getComputedStyle(侧).scrollbarWidth, 主滚: getComputedStyle(主).overflowY, 侧滚: getComputedStyle(侧).overflowY };
+    });
+    const 起 = await 量();
+    expect(起.页滚).toBeLessThanOrEqual(0);
+    expect([起.主滚, 起.侧滚]).toEqual(["auto", "auto"]);
+    expect(起.主溢).toBeGreaterThan(0);
+    expect(起.侧溢).toBeGreaterThan(0);
+    expect(起.主条).toBe("none");
+    expect(起.侧条).not.toBe("none");
+    // 两栏底边都在窗口里（不被裁、不顶出去）
+    expect(起.主底).toBeLessThanOrEqual(520);
+    expect(起.侧底).toBeLessThanOrEqual(520);
+    await page.locator(".proj-side").evaluate(e => { e.scrollTop = 200; });
+    const 滚侧 = await 量();
+    expect(滚侧.侧顶).toBeGreaterThan(0);
+    expect([滚侧.主顶, 滚侧.头, 滚侧.页滚]).toEqual([0, 起.头, 起.页滚]);
+    await page.locator(".proj-main").evaluate(e => { e.scrollTop = 200; });
+    const 滚主 = await 量();
+    expect(滚主.主顶).toBeGreaterThan(0);
+    expect([滚主.侧顶, 滚主.头]).toEqual([滚侧.侧顶, 起.头]);
+    // 客户页「跟进」跳过来的落点 #project-follow 还能滚到眼前
+    await page.locator(".proj-main").evaluate(e => { e.scrollTop = 0; });
+    await page.locator("#project-follow").evaluate(e => { (e.parentElement as HTMLElement).scrollTop = 9999; e.scrollIntoView(); });
+    const 落点 = (await page.locator("#project-follow").boundingBox())!;
+    expect(落点.y).toBeGreaterThanOrEqual(0);
+    expect(落点.y).toBeLessThan(520);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("三栏 800px（退成一栏）：整页不滚，那一栏整个滚、页头不动；390 手机宽还是整页滚", async () => {
+  const { page, errors } = await open(true, 800, undefined, true);
+  try {
+    await page.setViewportSize({ width: 800, height: 520 });
+    const 栏 = await page.evaluate(() => getComputedStyle(document.querySelector(".proj-2col")!).gridTemplateColumns.split(" ").length);
+    expect(栏).toBe(1);
+    const 头 = (await page.locator(".proj-head").boundingBox())!.y;
+    expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeLessThanOrEqual(0);
+    await page.locator(".proj-2col").evaluate(e => { e.scrollTop = 300; });
+    expect(await page.locator(".proj-2col").evaluate(e => e.scrollTop)).toBeGreaterThan(0);
+    expect((await page.locator(".proj-head").boundingBox())!.y).toBe(头);
+    await page.setViewportSize({ width: 390, height: 700 });
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector(".proj-2col")!).overflowY)).toBe("visible");
+    expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeGreaterThan(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

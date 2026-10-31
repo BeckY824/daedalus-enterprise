@@ -1159,6 +1159,25 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-head { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
 .proj-head > .page-head { flex: 1; min-width: 0; }
 .proj-head > .pane-toggle { margin: 4px 0 0 -6px; flex: none; }
+/* 10-31 改版 R3：整页不滚，页头钉在顶上，两栏各自滚（滚左栏右栏不动、反过来也一样），只有最右那栏露滚动条。
+   高度从正文 main 一路传下来（main → 换页那层 motion.div → .proj-wrap → .proj-2col），所以 Windows 顶上那条让位、
+   右下角浮标让出的那截（都是 main 的内边距）自动算进去，不另写死数。手机（<768）没有 .main，还是整页滚。
+   容器窄于 630 退成一栏时，那一栏整个滚（干活的在上） */
+@media (min-width: 768px) {
+  .main:has(.proj-wrap) { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+  .main:has(.proj-wrap) > div:has(> .proj-wrap) { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
+  .main .proj-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .proj-wrap > .proj-2col { flex: 1; min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior-y: contain; }
+  @container (min-width: 630px) {
+    .proj-2col { grid-template-rows: minmax(0, 1fr); align-items: stretch; overflow-y: visible; }
+    .proj-main, .proj-side { min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior-y: contain; }
+    .proj-main { scrollbar-width: none; }
+    .proj-main::-webkit-scrollbar { display: none; }
+    .proj-side { scrollbar-width: thin; }
+  }
+  .shell:has(.proj-wrap) .pane-roster .pane-rows { scrollbar-width: none; }
+  .shell:has(.proj-wrap) .pane-roster .pane-rows::-webkit-scrollbar { display: none; }
+}
 /* 节点卡（P11）：阶段、进程分两格摆，不拼成一串；进程名太长折行显示完整（10-30，原来省略） */
 .proj-where { display: flex; flex-wrap: wrap; gap: 8px 28px; min-width: 0; }
 .proj-where > div { min-width: 0; }
