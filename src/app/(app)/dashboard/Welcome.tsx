@@ -11,7 +11,14 @@ import type { 首页信号 } from "./HomeChat";
  * 给了 欢迎（企业版项目模式，10-29 首页改版 #9 / #12）：只留按时段的问候和这一句「欢迎使用 {产品名}」，
  * 日期、信号、上下文、提示词都不出——数字在右边那列指标卡上
  */
-export default function Welcome({ userName, 信号, context, 欢迎 }: { userName: string; 信号?: 首页信号; context: string; 欢迎?: string }) {
+export default function Welcome({ userName, 信号, context, 欢迎, 示例槽 }: {
+  userName: string;
+  信号?: 首页信号;
+  context: string;
+  欢迎?: string;
+  /** 企业版驾驶舱有外框时给（10-31）：欢迎语下面留一格，Composer 把示例画进来（每条一行）。不给 = 示例照旧在输入框底下 */
+  示例槽?: (el: HTMLDivElement | null) => void;
+}) {
   /*
     问候和日期都得在客户端算：服务端渲染出来的是服务器那台机器的「现在」。
     useSyncExternalStore 的第三个参数是服务端快照——先给一个不带时间的中性值，
@@ -42,6 +49,7 @@ export default function Welcome({ userName, 信号, context, 欢迎 }: { userNam
           {greet}，{userName}。
         </div>
         <div className="cli-welcome-s cli-welcome-brand">{欢迎}</div>
+        {示例槽 && <div className="cli-frame-q" ref={示例槽} />}
       </motion.div>
     );
 

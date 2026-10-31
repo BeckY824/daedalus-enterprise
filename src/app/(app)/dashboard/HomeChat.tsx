@@ -86,7 +86,8 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   产品名?: string;
   /**
    * 首页才给：企业版项目模式的四张指标卡（10-29 首页改版 #9–#12）。给了首页就是「驾驶舱」：
-   * 左 2/3 对话、右 1/3 竖排卡（手机上对话在上、卡在下），欢迎屏只留问候和「欢迎使用 {产品名}」
+   * 左 2/3 对话、右 1/3 竖排卡（手机上对话在上、卡在下），欢迎屏只留问候和「欢迎使用 {产品名}」；
+   * 10-31 起左边对话套一个外框（.cli-frame），示例从输入框底下搬到欢迎语下面，输入框在框底
    */
   指标卡?: 首页卡数;
 }) {
@@ -115,9 +116,16 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   const empty = turns.length === 0;
   const 窄 = 模式 === "窄";
   const 驾驶舱 = !!指标卡 && !窄;
+  /*
+    驾驶舱左边那一列套一个外框（10-31 首页改版）：框里左上问候、「欢迎使用 {产品名}」、三条示例各占一行，框底是输入框；
+    问过之后右边卡收起、框铺满这一格。空库的「开始」卡自己就是一张卡，那一屏不再套框
+  */
+  const 外框 = 驾驶舱 && !(empty && 空库);
+  /** 外框里欢迎语下面那一格：示例的状态（↑↓ 选中哪条、点了填进输入框）还在 Composer 里，只是画到这儿来 */
+  const [示例槽, set示例槽] = useState<HTMLDivElement | null>(null);
 
   const 对话列 = (
-    <div className="cli-col">
+    <div className={`cli-col${外框 ? " cli-frame" : ""}`}>
       {!窄 && <LeadFullNotices 提醒={满额提醒} />}
       {empty && 窄 ? (
         /*
@@ -136,7 +144,7 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
           <StartCard 自己服务器={自己服务器} 去导入={去导入} 企业版={企业版} 产品名={产品名} />
         </motion.div>
       ) : empty ? (
-        <Welcome userName={userName} 信号={信号} context={context} 欢迎={驾驶舱 ? `欢迎使用 ${产品名 ?? 默认产品名}` : undefined} />
+        <Welcome userName={userName} 信号={信号} context={context} 欢迎={驾驶舱 ? `欢迎使用 ${产品名 ?? 默认产品名}` : undefined} 示例槽={外框 ? set示例槽 : undefined} />
       ) : (
         <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} 企业版={企业版} />
       )}
@@ -151,6 +159,7 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
         suggestions={suggestions}
         空库={空库}
         渠道名们={渠道名们}
+        示例槽={外框 ? 示例槽 : undefined}
         on发出={set刚发的}
       />
     </div>

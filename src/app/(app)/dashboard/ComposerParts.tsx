@@ -3,6 +3,7 @@
  * 输入框四周那几样：框里左下角的工具键、框上方那一条、发送 / 打断键、框底下的提示和建议问题。
  * 只管画，状态全在 Composer。
  */
+import { createPortal } from "react-dom";
 import { Dropdown, Tooltip } from "antd";
 import { ArrowUpOutlined, SnippetsOutlined, GlobalOutlined, MailOutlined } from "@ant-design/icons";
 import Shortcut from "@/components/Shortcut";
@@ -186,8 +187,10 @@ export function SendKey({ 在跑, onStop, canSend, on发 }: { 在跑: boolean; o
   );
 }
 
-export function ComposerFoot({ 摆建议, suggestions, suggIdx, 空, 在跑, 背调模式, 背调价, AI已用完, on问 }: {
+export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 在跑, 背调模式, 背调价, AI已用完, on问 }: {
   摆建议: boolean;
+  /** 企业版驾驶舱有外框时（10-31）：示例不摆在框底下，画到欢迎语下面那一格（每条一行）；null = 那一格还没挂上。不给 = 照旧摆在框底下 */
+  示例槽?: HTMLElement | null;
   suggestions: Suggestion[];
   suggIdx: number;
   空: boolean;
@@ -197,19 +200,20 @@ export function ComposerFoot({ 摆建议, suggestions, suggIdx, 空, 在跑, 背
   AI已用完: boolean;
   on问: (x: Suggestion) => void;
 }) {
+  /* 4–6 个能直接点的具体问题，就摆在输入框底下——人的视线落在框上。
+     ↑↓ 在这里面走，回车发选中的那条。企业版驾驶舱（10-31）搬到欢迎语下面、每条一行，点了照旧只填进输入框 */
+  const 示例 = 摆建议 ? (
+    <div className="cli-welcome-q">
+      {suggestions.map((x, i) => (
+        <button key={x.label} type="button" className={`cli-q${i === suggIdx ? " cli-q-on" : ""}`} onClick={() => on问(x)} disabled={AI已用完}>
+          {x.label}
+        </button>
+      ))}
+    </div>
+  ) : null;
   return (
     <>
-      {/* 4–6 个能直接点的具体问题，就摆在输入框底下——人的视线落在框上。
-          ↑↓ 在这里面走，回车发选中的那条 */}
-      {摆建议 && (
-        <div className="cli-welcome-q">
-          {suggestions.map((x, i) => (
-            <button key={x.label} type="button" className={`cli-q${i === suggIdx ? " cli-q-on" : ""}`} onClick={() => on问(x)} disabled={AI已用完}>
-              {x.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {示例槽 === undefined ? 示例 : 示例槽 && 示例 ? createPortal(示例, 示例槽) : null}
 
       <div className="cli-hints">
         <span>

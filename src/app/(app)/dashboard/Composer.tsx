@@ -174,7 +174,7 @@ function useComposerHeight(composerRef: React.RefObject<HTMLDivElement | null>) 
   }, [composerRef]);
 }
 
-export default function Composer({ ref, 屏, scope, models, model, 模式, suggestions, 空库, 渠道名们, on发出 }: {
+export default function Composer({ ref, 屏, scope, models, model, 模式, suggestions, 空库, 渠道名们, 示例槽, on发出 }: {
   ref?: React.Ref<ComposerHandle>;
   屏: 这一屏;
   scope: string;
@@ -185,6 +185,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   空库: boolean;
   /** 企业版只用项目的首页才给（启用中的渠道名）：摆「名片」键，认完摆一张新建线索卡 */
   渠道名们?: readonly string[];
+  /** 企业版驾驶舱有外框时（10-31）：示例画到欢迎语下面这一格里（见 ComposerFoot）。null = 那一格还没挂上，先不画 */
+  示例槽?: HTMLElement | null;
   /** 刚发出去的那一问。只有它会在挂载时把自己滚到视口顶部，翻历史不该乱跳 */
   on发出: (id: string) => void;
 }) {
@@ -415,7 +417,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
           }
         />
 
-        <ComposerFoot 摆建议={摆建议} suggestions={suggestions} suggIdx={suggIdx} 空={empty} 在跑={running != null} 背调模式={背调模式} 背调价={调.背调价} AI已用完={AI已用完} on问={问这条} />
+        <ComposerFoot 摆建议={摆建议} 示例槽={示例槽} suggestions={suggestions} suggIdx={suggIdx} 空={empty} 在跑={running != null} 背调模式={背调模式} 背调价={调.背调价} AI已用完={AI已用完} on问={问这条} />
       </div>
 
       <ComposerDoors 粘={粘} 调={调} aiEnabled={models.length > 0} q={q} setQ={setQ} taRef={taRef} />
