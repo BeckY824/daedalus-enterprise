@@ -352,19 +352,22 @@ export async function 勾交付(me: 谁, projectId: string, 项: 交付项, 勾:
   });
 }
 
+/** 企业版（M-权限-10）：项目是公司资产，谁都不能删；不再跟进就终止进程 */
+export const 项目不能删提示 = "项目是公司资产，不能删除；不再跟进请终止进程";
+
 /**
  * 删项目：负责人、老板、主管。节点变更、组员、跟进挂的节点随项目级联；跟进本身留在客户下。
  * 删客户前要先删光它的项目（customers/actions 删除依赖错误）
+ * 企业版一律拒（M-权限-10，10-31 晚会议）：界面上的删除入口去掉，服务端这里再挡一遍，老页面、直接调 action 都删不掉
  */
 export async function 删项目(me: 谁, projectId: string): Promise<结果 & { name?: string; customerId?: string }> {
+  if (企业版()) return { ok: false, error: 项目不能删提示 };
   const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, ownerId: true, pooledAt: true, customerId: true } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (!能管项目(me, p)) return { ok: false as const, error: "只有项目负责人、老板或主管能删项目" };
-    // 企业版（P9）：只记 deletedAt，进设置 → 回收站，节点留痕、项目组都留着，恢复时原样回来
-    if (企业版()) await tx.project.update({ where: { id: p.id }, data: { deletedAt: new Date() } });
-    else await tx.project.delete({ where: { id: p.id } });
+    await tx.project.delete({ where: { id: p.id } });
     // 删掉的项目不算进客户状态（删光了 = 清空）
     await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, name: p.name, customerId: p.customerId };

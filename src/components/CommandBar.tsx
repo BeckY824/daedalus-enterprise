@@ -2,13 +2,15 @@
 import Shortcut from "./Shortcut";
 import { 交给首页问 } from "@/lib/home-ask";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { 换一位 } from "@/lib/roster";
 import { 公海入口 } from "@/lib/enterprise/nav";
+// 只引类型：搜索动作由 layout（服务端）当 prop 传进来，客户端包里不带服务端代码
+import type { 全局搜索结果 } from "@/app/(app)/global-search";
 
 /**
  * ⌘K。
@@ -21,6 +23,9 @@ import { 公海入口 } from "@/lib/enterprise/nav";
  *
  * 快捷键要能被发现：左栏底部常驻一行「⌘K 跳转 / 提问」，这张单子底下也写着。
  * 藏起来的快捷键等于不存在。
+ *
+ * 企业版项目模式（U-项目-04 全局搜索）：打两个字以上，页面下面接着出客户、项目、联系人，
+ * 范围按角色走（global-search.ts，服务端 加上限定），回车 / 点一下进详情；三组都没搜到、页面也没对上才当问题。
  */
 /** 焦点在输入框 / 文本域 / 可编辑区里。⌘N 这类「页面级」快捷键那时不该接管 */
 function 在输入框里(e: KeyboardEvent) {
@@ -29,7 +34,7 @@ function 在输入框里(e: KeyboardEvent) {
   return t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName);
 }
 
-export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: boolean; 企业版项目?: boolean }) {
+export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜索 }: { 有AI: boolean; 企业版项目?: boolean; 全局搜索?: (q: string) => Promise<全局搜索结果> }) {
   const router = useRouter();
   const b = useBusiness();
   const [open, setOpen] = useState(false);
@@ -76,7 +81,34 @@ export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: 
   }, [q, 页面]);
 
   /** 一个页面都没匹配上：那这句话多半是个问题，不是页面名 */
-  const 当问题 = q.trim().length >= 2 && 命中.length === 0;
+  // 搜到的结果带着当时的词：词对得上才算数，对不上就是「还在搜」（不在 effect 里同步清状态）
+  const [搜到, set搜到] = useState<{ 词: string; r: 全局搜索结果 | null } | null>(null);
+  const 词 = q.trim();
+  const 要搜 = 企业版项目 && !!全局搜索 && open && 词.length >= 2;
+  const 数据 = 要搜 && 搜到?.词 === 词 ? 搜到.r : null;
+  const 搜着 = 要搜 && 搜到?.词 !== 词;
+  const 第几次 = useRef(0);
+  useEffect(() => {
+    if (!要搜) return;
+    const 这次 = ++第几次.current;
+    // 停手 250ms 再搜，打字时不连发；回来晚了的（已经又改了字）不认
+    const t = setTimeout(() => {
+      全局搜索?.(词)
+        .then((r) => { if (这次 === 第几次.current) set搜到({ 词, r }); })
+        .catch(() => { if (这次 === 第几次.current) set搜到({ 词, r: null }); });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [要搜, 词, 全局搜索]);
+
+  /** 页面在前，搜到的客户 / 项目 / 联系人接在后面；上下键在这一整串里走 */
+  const 行们 = useMemo(() => {
+    const 页 = 命中.map((p) => ({ key: `页:${p.去}`, 名: p.名, 说明: p.说明, 去: p.去, 组: "" }));
+    if (!要搜 || !数据) return 页;
+    const 组 = (名: string, xs: 全局搜索结果["客户"]) => xs.map((x) => ({ key: `${名}:${x.id}`, 名: x.name, 说明: x.附注 ?? "", 去: x.去, 组: 名 }));
+    return [...页, ...组(b.customer, 数据.客户), ...组("项目", 数据.项目), ...组("联系人", 数据.联系人)];
+  }, [命中, 数据, 要搜, b.customer]);
+
+  const 当问题 = 词.length >= 2 && 行们.length === 0 && !搜着;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -136,7 +168,7 @@ export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: 
       交给首页问(q);
       router.push(`/dashboard?q=${encodeURIComponent(q.trim())}`);
     } else {
-      const p = 命中[i];
+      const p = 行们[i];
       if (!p) return;
       router.push(p.去);
     }
@@ -151,7 +183,7 @@ export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: 
           <input
             autoFocus
             value={q}
-            placeholder="跳到哪一页，或者直接问一句"
+            placeholder={企业版项目 ? `跳到哪一页，搜${b.customer} / 项目 / 联系人，或者问一句` : "跳到哪一页，或者直接问一句"}
             onChange={(e) => {
               setQ(e.target.value);
               setIdx(0);
@@ -159,10 +191,10 @@ export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: 
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setIdx((i) => (i + 1) % Math.max(1, 命中.length));
+                setIdx((i) => (i + 1) % Math.max(1, 行们.length));
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
-                setIdx((i) => (i <= 0 ? 命中.length - 1 : i - 1));
+                setIdx((i) => (i <= 0 ? 行们.length - 1 : i - 1));
               } else if (e.key === "Enter") {
                 e.preventDefault();
                 走();
@@ -181,12 +213,18 @@ export default function CommandBar({ 有AI, 企业版项目 = false }: { 有AI: 
               <span>{有AI ? `「${q.trim()}」——去首页问，它会读完记录再答` : "问题保留在输入框中。启用 AI 接入后，可以在这里继续提问。"}</span>
             </button>
           ) : (
-            命中.map((p, i) => (
-              <button key={p.去} type="button" className={`cmdk-row${i === idx ? " cmdk-row-on" : ""}`} onClick={() => 走(i)} onMouseEnter={() => setIdx(i)}>
-                <b>{p.名}</b>
-                <span>{p.说明}</span>
-              </button>
-            ))
+            <>
+              {行们.map((p, i) => (
+                <div key={p.key} className="cmdk-item">
+                  {p.组 && p.组 !== 行们[i - 1]?.组 && <div className="cmdk-sec">{p.组}</div>}
+                  <button type="button" className={`cmdk-row${i === idx ? " cmdk-row-on" : ""}${p.组 ? " cmdk-hit" : ""}`} title={p.组 ? p.名 : undefined} onClick={() => 走(i)} onMouseEnter={() => setIdx(i)}>
+                    <b>{p.名}</b>
+                    <span>{p.说明}</span>
+                  </button>
+                </div>
+              ))}
+              {要搜 && 搜着 && <div className="cmdk-sec">正在搜{b.customer}、项目、联系人…</div>}
+            </>
           )}
         </div>
         <div className="cmdk-foot">

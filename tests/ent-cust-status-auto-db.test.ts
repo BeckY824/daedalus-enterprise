@@ -1,7 +1,7 @@
 /**
  * 企业版客户状态按项目自动算：读写库这一半（10-30，lib/enterprise/cust-status-auto-db.ts + 各写入口）。
  *   - 重算：存字典这一项「现在的名字」（管理员改了名跟着走）；没项目清成 null；没变的不写
- *   - 写入口跟着算：客户页新建项目、改节点（推进 / 丢单）、删项目 / 回收站恢复
+ *   - 写入口跟着算：客户页新建项目、改节点（推进 / 丢单）、回收站恢复（企业版删项目一律拒，M-权限-10）
  *   - 全量重算：分页、返回改了几个
  *   - 开关：项目模式关着、不是企业版，一格不改
  *   - 客户表单：开着时新建不给状态、整表保存不碰、行内改直接拒
@@ -111,13 +111,17 @@ describe("写入口跟着算", () => {
     expect(await 状态(甲)).toBe("丢单");
   });
 
-  it("删项目 / 回收站恢复：交付没了退回潜在，恢复回来又是交付", async () => {
+  it("删项目被拒（M-权限-10）状态不动；回收站里的项目不算、恢复回来又是交付", async () => {
     const 甲 = await 客户();
     const 交 = await 项目(甲, "订单", "尾款结算", "成功交付");
     await 项目(甲, "线索", "潜客培育");
     await 项目变了重算([甲]);
     expect(await 状态(甲)).toBe("交付");
-    expect(await 删项目(老板, 交)).toMatchObject({ ok: true });
+    expect(await 删项目(老板, 交)).toMatchObject({ ok: false });
+    expect(await 状态(甲)).toBe("交付");
+    // 企业版项目只会随客户一起进回收站；这里直接写 deletedAt 造一个回收站里的项目
+    await prisma.project.update({ where: { id: 交 }, data: { deletedAt: new Date() } });
+    await 项目变了重算([甲]);
     expect(await 状态(甲)).toBe("潜在");
     expect(await 恢复(老板, "Project", 交)).toMatchObject({ ok: true });
     expect(await 状态(甲)).toBe("交付");

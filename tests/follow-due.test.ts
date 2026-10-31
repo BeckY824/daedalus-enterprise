@@ -31,8 +31,8 @@ describe("要跟的数：一个口径、处处一样", () => {
     expect(读("src/lib/enterprise/nav.ts")).toMatch(/key: "\/projects", label: "项目", 图: "项目", 挂要跟: true/);
     expect(壳).toMatch(/<Badge count=\{要跟数\}/);
     expect(读("src/app/(app)/follow-ups/FollowUpsView.tsx")).toContain("useFollowDue()");
-    // 企业版项目页页头的「跟进」键挂同一个数
-    expect(读("src/app/(app)/projects/ProjectsView.tsx")).toContain("useFollowDue()");
+    // 企业版项目首页只留看板、列表（U-项目-08，10-31）：页头不再摆「沟通记录」键，项目页不挂这个数
+    expect(读("src/app/(app)/projects/ProjectsView.tsx")).not.toContain("useFollowDue()");
   });
 
   it("这个数一变就叫桌面端的壳马上再问，Dock 不用等下一分钟", () => {

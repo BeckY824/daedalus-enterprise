@@ -47,6 +47,7 @@ import FeedbackReplyToast from "./feedback/FeedbackReplyToast";
 import { AiMeterBar } from "./AiCost";
 import RailResizer from "./RailResizer";
 import CommandBar from "./CommandBar";
+import type { 全局搜索结果 } from "@/app/(app)/global-search";
 import Shortcut, { useModifierKey } from "./Shortcut";
 import { useBusiness } from "@/lib/business-client";
 import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
@@ -103,6 +104,8 @@ type Props = {
   演示名单?: 演示组[] | null;
   /** 和演示名单一起给：服务端 action（login/demo-actions.ts）从 layout 传进来，客户端组件不直接 import 服务端模块 */
   演示换人?: (userId: string) => Promise<LoginResult>;
+  /** 企业版项目模式的全局搜索（U-项目-04，app/(app)/global-search.ts）：layout 传进来，原样交给 ⌘K 跳转单 */
+  全局搜索?: (q: string) => Promise<全局搜索结果>;
   children: React.ReactNode;
 };
 
@@ -135,7 +138,7 @@ const 根目录图标: Record<根目录图, React.ReactNode> = {
   项目: <ProjectOutlined />,
 };
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -653,7 +656,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       </nav>
 
       {/* ⌘K：跳页或问一句。挂在壳上，哪一页都在 */}
-      <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} />
+      <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} 全局搜索={全局搜索} />
       {/* 我们回了你的反馈、还没看：左下角一条轻提示（一次一条，可关） */}
       {反馈去向 !== "none" && <FeedbackReplyToast 去向={反馈去向} />}
 
