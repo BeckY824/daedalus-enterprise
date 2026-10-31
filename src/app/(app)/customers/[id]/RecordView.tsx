@@ -861,7 +861,7 @@ export default function RecordView({
                 )}
                 {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
                 {摆(customer.assignWay) && (
-                  <InlineField customerId={customer.id} field="assignWay" label="分配方式" value={customer.assignWay ?? null} kind="select"
+                  <InlineField customerId={customer.id} field="assignWay" label="客户分配" value={customer.assignWay ?? null} kind="select"
                     options={[...new Set([...分配方式选项, ...(customer.assignWay ? [customer.assignWay] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空 />
                 )}
               </>
