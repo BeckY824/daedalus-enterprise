@@ -46,12 +46,13 @@ async function 连点保存(page: Page, 框: ReturnType<Page["getByRole"]>, 钮:
 }
 
 /**
- * 点开弹框。dev server 下页面刚出来时可能还没水合完，第一下点了没反应——没开就再点，别把它当成用例失败
+ * 点开弹框。dev server 下页面刚出来时可能还没水合完，第一下点了没反应——没开就再点，别把它当成用例失败。
+ * 企业版客户页头（10-31 R6）和卡上各有一个同名入口、开的是同一个框，取第一个（页头那个）
  */
 async function 打开(page: Page, 按钮: string | RegExp, 框名: string) {
   const 框 = page.getByRole("dialog", { name: 框名 });
   await expect(async () => {
-    if (!(await 框.isVisible())) await page.getByRole("button", { name: 按钮 }).click();
+    if (!(await 框.isVisible())) await page.getByRole("button", { name: 按钮 }).first().click();
     await expect(框).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
   return 框;
