@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { DownOutlined, MoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, DownOutlined, FlagOutlined, MoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { App, Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Progress, Radio, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
@@ -229,6 +229,8 @@ function 换人文字(l: 项目详情["logs"][number]): string {
 /** 负责人那一行括号里：怎么进的公海 */
 /** 空着的字段写「待填写X / 待选择X」（浅灰，和输入框占位同色）；只是显示，不存。0 算填了，由调用方用 !== null 判 */
 const 待填 = (名: string, 动 = "填写") => <span style={{ color: "var(--text-faint)" }}>待{动}{名}</span>;
+/** 这个进程配了必填、还没填的那几格写「占位确认」（10-31 用户：「未填且必填的地方…显示的是占位确认这四个字」）；别的空格照旧写待填写 / 待选择 */
+const 占位确认 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`必填：${名}，填齐后自动往前推`}>占位确认</span>;
 
 /** 项目级别格（企业版 P11）：星 + 档名（「★★★☆ A 重点」）；没分级写「没分级」，认不出的原样给 */
 function 级别格(v: string | null) {
@@ -357,7 +359,7 @@ export default function ProjectDetail({
   /** 沟通的「…」菜单：正在改哪一条 / 删除问句开在哪一条上 */
   const [改沟通于, set改沟通于] = useState<项目详情["followUps"][number] | null>(null);
   const [删问于, set删问于] = useState<string | null>(null);
-  /** 转给…（10-30）：弹窗开着、选了谁、点了转给以后 6 秒等撤销的那位 */
+  /** 转让项目（10-30，原名「转给…」）：弹窗开着、选了谁、点了转给以后 6 秒等撤销的那位 */
   const [转给框, set转给框] = useState(false);
   const [转给谁, set转给谁] = useState<string | null>(null);
   const [待转给, set待转给] = useState<string | null>(null);
@@ -536,7 +538,7 @@ export default function ProjectDetail({
     改到(d.到);
   };
 
-  /** 转给…：点了先等 6 秒（提示条上能撤销），到点才真的换负责人；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
+  /** 转让项目：点了先等 6 秒（提示条上能撤销），到点才真的换负责人；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
   const 开始转给 = (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
     const key = `project-transfer-${p.id}`;
@@ -593,6 +595,26 @@ export default function ProjectDetail({
   };
 
   // 各张卡先摆成常量：企业版两栏、别的版本照原来一栏，摆法不同、卡是同一份
+  /** 企业版「推进进程」「结束当前进程」：摆在节点卡的阶段页签那一行右边（10-31 用户定：先推进、后结束，字号同页签，不要框）。
+      看的不是所在阶段就灰掉，悬停写原因（灰按钮收不到鼠标，提示挂在外面那层 span 上） */
+  const 进程钮 = (不在当前: string | undefined) => {
+    const 钮 = (字: string, 图: ReactNode, 开: () => void, 原因?: string, 主?: boolean) => {
+      const b = (
+        <button type="button" className={`proj-stage-act${主 ? " is-go" : ""}`} disabled={忙 || !!原因} onClick={开}>
+          {图}{字}
+        </button>
+      );
+      return 原因 ? <Tooltip title={原因}><span>{b}</span></Tooltip> : b;
+    };
+    return (
+      <>
+        {钮("推进进程", <ArrowRightOutlined />, () => set头部框("推进"), 不在当前, true)}
+        {!p.result && <span className="proj-stage-act-sep" aria-hidden />}
+        {!p.result && 钮("结束当前进程", <FlagOutlined />, 开结束, 不在当前 ?? 等复核文字)}
+      </>
+    );
+  };
+
   const 位 = 阶段与进程(p, 字典);
   const 节点卡 = (
     <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
@@ -622,7 +644,7 @@ export default function ProjectDetail({
           })()}
         </div>
         {/* 只留「下一步」一个主按钮（10-30 P0-8）；改到别的进程、点结局收进「更多」。灰着的原因写在按钮下面。
-            企业版页头有「推进进程」（框里就是这两个按钮），卡上不再重复摆，只留推不了的原因（10-31） */}
+            企业版「推进进程」（框里就是这两个按钮）摆在下面阶段页签那一行，推不了的原因也跟到那里（10-31） */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, maxWidth: 320, marginLeft: "auto" }}>
           {!p.企业版 && <Space wrap>
             {更多去处项.length > 0 && (
@@ -634,7 +656,7 @@ export default function ProjectDetail({
               {下一步字}
             </Button>
           </Space>}
-          {推不了 && <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", textAlign: "right" }}>{推不了}</div>}
+          {推不了 && !p.企业版 && <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", textAlign: "right" }}>{推不了}</div>}
         </div>
       </div>
       {/* 企业版：三个阶段页签 + 结束当前进程（10-31 R5）；别的版本照旧一条进度条 */}
@@ -647,6 +669,8 @@ export default function ProjectDetail({
           结局={位.结局}
           结局色={异常 ? "error" : p.result === "成功交付" ? "success" : "default"}
           成功交付={p.result === "成功交付"}
+          动作={节点可改 ? 进程钮 : undefined}
+          提示={推不了}
         />
       ) : (
         <Progress
@@ -682,7 +706,7 @@ export default function ProjectDetail({
       {p.企业版 && p.level !== undefined && (
         <div style={行样}><span style={键样}>级别</span>{级别格(p.level)}</div>
       )}
-      <div style={行样}><span style={键样}>金额</span>{金额(p.amount, p.currency)}</div>
+      <div style={行样}><span style={键样}>金额</span>{p.必填?.还差.includes("金额") ? 占位确认("金额") : 金额(p.amount, p.currency)}</div>
       {p.企业版 && p.成交钱 && (
         <>
           <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : 待填("定金金额")}</div>
@@ -691,7 +715,7 @@ export default function ProjectDetail({
           <div style={行样}><span style={键样}>成交需求</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.成交钱.dealDemand ?? 待填("成交需求")}</span></div>
         </>
       )}
-      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? 待填("预计成交日期", "选择")}</div>}
+      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期", "选择"))}</div>}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
         <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源", "选择")}</span></div>
@@ -860,7 +884,7 @@ export default function ProjectDetail({
   );
   // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样，点了 6 秒内能撤销
   const 转给钮 = p.企业版 && 可改 && !独自一人(候选, p.ownerId) && (
-    <Button disabled={忙 || !!待转给} onClick={() => { set转给谁(null); set转给框(true); }}>转给…</Button>
+    <Button disabled={忙 || !!待转给} onClick={() => { set转给谁(null); set转给框(true); }}>转让项目</Button>
   );
   const 放回问 = () => {
     // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
@@ -872,40 +896,48 @@ export default function ProjectDetail({
   const 能管沟通 = p.followUps.length > 0 && (p.可改沟通 || !!卡点?.能发);
 
   // 企业版页头（10-31 R6）：这一页能做的事摆成具名按钮，要填的进弹窗，同一个动作、同一套校验。
-  // 卡上和这里同名的按钮（编辑、记一条沟通、AI 录入、下一步 / 更多、结束当前进程、发卡点、关联 +、改分配）企业版不再摆，只留页头这一处（10-31）
-  // 「记一条沟通」是这一排唯一的主按钮，⌘N 点的就是它（components/CommandBar.tsx 找 .page-head-a 里的主按钮）；公海里的项目主按钮是「领取」
-  const 企业版动作 = (
-    <div className="proj-acts">
-      {领取钮}
-      {p.能记沟通 && <Button type={p.能领取 ? "default" : "primary"} disabled={忙} onClick={() => set记一条开着("手填")}>记一条沟通</Button>}
-      {p.能记沟通 && p.aiEnabled && p.customer && <Button icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-      {可改 && <Button disabled={忙} onClick={() => set编辑开着(true)}>编辑项目</Button>}
+  // 卡上和这里同名的按钮（编辑、记一条沟通、AI 录入、下一步 / 更多、发卡点、关联 +、改分配）企业版不再摆，只留页头这一处（10-31）；
+  // 推进进程、结束当前进程在节点卡的阶段页签那一行（ProjectStages 动作），页头不再重复摆。
+  // 按钮按下面两栏分组、各自对齐那一栏的左边（10-31 用户定）：左组管左栏（节点、沟通、卡点、附件），右组管右栏（项目、画像、关联、项目组、提成）；
+  // 整个项目的事（转让、放回公海、删除）跟在左组最后、靠右。
+  // 「记一条沟通」是唯一的主按钮，⌘N 点的就是它（components/CommandBar.tsx 找 .page-head-a 里的主按钮）；公海里的项目主按钮是「领取」
+  const 整项目钮 = (转给钮 || p.能放公海 || 能改) && (
+    <span className="acts-whole">
       {转给钮}
-      {节点可改 && <Button disabled={忙} onClick={开框("推进")}>推进进程</Button>}
-      {节点可改 && !p.result && (等复核文字
-        ? <Tooltip title={等复核文字}><Button disabled>结束当前进程</Button></Tooltip>
-        : <Button disabled={忙} onClick={开结束}>结束当前进程</Button>)}
-      {p.线索验证?.我能 && <Button disabled={忙} onClick={开框("线索判定")}>线索判定</Button>}
-      {卡点?.能发 && (p.followUps.length
-        ? <Button disabled={忙} onClick={() => set发卡点于(p.followUps[0].id)}>发卡点</Button>
-        : <Tooltip title="先记一条沟通"><Button disabled>发卡点</Button></Tooltip>)}
-      {p.画像 && 可改 && <Button disabled={忙} onClick={开框("画像")}>项目画像</Button>}
-      {p.关联 && 可改 && (
-        <>
-          <Button disabled={忙} onClick={开框("关联客户")}>关联客户</Button>
-          <Button disabled={忙} onClick={开框("关联联系人")}>关联联系人</Button>
-          <Button disabled={忙} onClick={开框("管理关联")}>管理关联</Button>
-        </>
-      )}
-      {/* 附件框里能传、能看、能删（看各格自己的权限），项目组框里能邀请、能改角色、能移出：一个框管到底 */}
-      {p.项目附件 && <Button disabled={忙} onClick={开框("附件")}>{p.项目附件.只读 ? "附件" : "上传附件"}</Button>}
-      {可改 && <Button disabled={忙} onClick={开框("成员")}>邀请成员</Button>}
-      {p.提成?.能改 && <Button disabled={忙} onClick={开框("改分配")}>改分配</Button>}
-      {能管沟通 && <Button disabled={忙} onClick={开框("管理沟通")}>管理沟通</Button>}
       {p.能放公海 && (等复核
         ? <Tooltip title={`${等复核文字}，暂时不能放回`}><Button disabled>放回公海</Button></Tooltip>
         : <Button disabled={忙} onClick={放回问}>放回公海</Button>)}
       {能改 && <Button type="text" danger disabled={忙} onClick={删问}>删除项目</Button>}
+    </span>
+  );
+  const 企业版动作 = (
+    <div className="page-head-a proj-acts">
+      <div className="acts-g">
+        {领取钮}
+        {p.能记沟通 && <Button type={p.能领取 ? "default" : "primary"} disabled={忙} onClick={() => set记一条开着("手填")}>记一条沟通</Button>}
+        {p.能记沟通 && p.aiEnabled && p.customer && <Button icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
+        {p.线索验证?.我能 && <Button disabled={忙} onClick={开框("线索判定")}>线索判定</Button>}
+        {卡点?.能发 && (p.followUps.length
+          ? <Button disabled={忙} onClick={() => set发卡点于(p.followUps[0].id)}>发卡点</Button>
+          : <Tooltip title="先记一条沟通"><Button disabled>发卡点</Button></Tooltip>)}
+        {能管沟通 && <Button disabled={忙} onClick={开框("管理沟通")}>管理沟通</Button>}
+        {/* 附件框里能传、能看、能删（看各格自己的权限），项目组框里能邀请、能改角色、能移出：一个框管到底 */}
+        {p.项目附件 && <Button disabled={忙} onClick={开框("附件")}>{p.项目附件.只读 ? "附件" : "上传附件"}</Button>}
+        {整项目钮}
+      </div>
+      <div className="acts-g">
+        {可改 && <Button disabled={忙} onClick={() => set编辑开着(true)}>编辑项目</Button>}
+        {p.画像 && 可改 && <Button disabled={忙} onClick={开框("画像")}>项目画像</Button>}
+        {p.关联 && 可改 && (
+          <>
+            <Button disabled={忙} onClick={开框("关联客户")}>关联客户</Button>
+            <Button disabled={忙} onClick={开框("关联联系人")}>关联联系人</Button>
+            <Button disabled={忙} onClick={开框("管理关联")}>管理关联</Button>
+          </>
+        )}
+        {可改 && <Button disabled={忙} onClick={开框("成员")}>邀请成员</Button>}
+        {p.提成?.能改 && <Button disabled={忙} onClick={开框("改分配")}>改分配</Button>}
+      </div>
     </div>
   );
 
@@ -913,7 +945,7 @@ export default function ProjectDetail({
     <PageHead
       title={p.name}
       subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
-      extra={p.企业版 ? 企业版动作 : (
+      extra={p.企业版 ? undefined : (
         <Space wrap>
           {领取钮}
           {转给钮}
@@ -1026,6 +1058,8 @@ export default function ProjectDetail({
       ) : (
         页头
       )}
+      {/* 企业版的按钮不放标题右边，单独一行摆在标题下面、按下面两栏对齐（10-31） */}
+      {p.企业版 && 企业版动作}
 
       {p.pooled && (
         <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在项目公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
@@ -1202,8 +1236,8 @@ export default function ProjectDetail({
 
       <Modal
         open={转给框}
-        title="转给…"
-        okText="转给"
+        title="转让项目"
+        okText="转让"
         okButtonProps={{ disabled: !转给谁 }}
         onCancel={() => set转给框(false)}
         onOk={() => 转给谁 && 开始转给(转给谁)}
