@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Form, Select } from "antd";
 import { useBusiness } from "@/lib/business-client";
-import { FOLLOW_TYPE_MAP } from "@/lib/constants";
+import { 跟进方式名 } from "@/lib/follow-method";
 import { smartTime } from "@/lib/utils";
 import { 截止说法 } from "@/lib/deadline";
 import { 搜客户, 取客户近况, type 可挑客户, type 客户近况 } from "./pick";
@@ -135,7 +135,7 @@ function 近况行({ 近况, 给计划, 不提计划 }: { 近况: 客户近况 |
   if (!近况) return <span className="pick-ctx pick-ctx-0">挑好之后，这里会写上次谈到哪儿</span>;
   const f = 近况.上次跟进;
   const p = 近况.未完成计划;
-  const 方式 = f ? FOLLOW_TYPE_MAP[f.type]?.label ?? f.type : "";
+  const 方式 = f ? 跟进方式名(f) : "";
   // 标题空着就拿内容开头顶上；标题和方式一样（「线上会议 · 线上会议」）就不重复
   const 标题 = f ? f.title || f.content.slice(0, 24) + (f.content.length > 24 ? "…" : "") : "";
   return (

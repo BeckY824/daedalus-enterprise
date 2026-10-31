@@ -5,6 +5,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "actions", setup(b) {
   const stub = (filter: RegExp, code: string) => { b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code })); };
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
   stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__calls.push(x);return {ok:true,id:'f1',待办id:'t1'}}; export const completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");

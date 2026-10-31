@@ -16,7 +16,7 @@ import { parseDateInput } from "@/lib/date-input";
 import { 读组织, 直属上级of, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
-import { 选的原因 } from "@/lib/enterprise/dict";
+import { 选的原因, 认跟进方式 } from "@/lib/enterprise/dict";
 import { 生效组织规则 } from "./org-rules-store";
 import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
@@ -711,6 +711,9 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 只扫?: string)
  */
 export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(), opt: { 要下一步文字?: boolean } = {}): Promise<结果 & { followUpId?: string; 自动推到?: string[] }> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
+  const 认 = await 认跟进方式(input);
+  if ("error" in 认) return { ok: false, error: 认.error };
+  input = 认;
   const 规则 = await 生效组织规则();
   const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
@@ -727,7 +730,7 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     const 阶段问题 = 记沟通阶段问题(input, p);
     if (阶段问题) return { ok: false as const, error: 阶段问题 };
     const 跟进 = await tx.followUp.create({
-      data: { type: 好.type, content: 好.content, occurredAt: 好.occurredAt, title: "", status: "已完成", customerId: p.customerId, contactId: p.contactId, ownerId: me.id },
+      data: { type: 好.type, method: 好.method, content: 好.content, occurredAt: 好.occurredAt, title: "", status: "已完成", customerId: p.customerId, contactId: p.contactId, ownerId: me.id },
     });
     await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: p.node } });
     await 记沟通编号(tx, 跟进.id, p.id, 好.nextStepAt, now);

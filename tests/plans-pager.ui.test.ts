@@ -19,6 +19,7 @@ const plugin: Plugin = { name: "plans-pager-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   // 「再看」换 URL：交给测试里的假服务端重取（和 Next 一样，新的一版整份到了才换）
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(u){window.__replace(u)}});export const usePathname=()=>'/follow-ups/plans';");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(customers\/\[id\]\/|^\.\/)actions$/, "export const toggleTask=async()=>({ok:true}),completePlan=toggleTask,deletePlan=toggleTask,deleteTask=toggleTask,saveFollowUp=toggleTask,撤销记一笔=toggleTask;");

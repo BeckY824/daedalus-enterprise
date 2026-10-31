@@ -11,6 +11,8 @@ import { App, Form, Input, Modal, Radio, Select } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import { useBusiness } from "@/lib/business-client";
 import { 跟进类型们 } from "@/lib/constants";
+import FollowMethodSelect from "@/components/FollowMethodSelect";
+import { 对得上的方式 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 成员选项, dayjs, type 可选成员 } from "@/lib/utils";
 import { 项目名上限 } from "@/lib/project/wizard";
@@ -23,6 +25,7 @@ type 表单 = {
   ownerId?: string;
   联系人Id?: string;
   type: string;
+  method?: string | null;
   occurredAt: Dayjs;
   content: string;
   节点?: string;
@@ -58,6 +61,8 @@ export default function NewProjectModal({
   const router = useRouter();
   const b = useBusiness();
   const [form] = Form.useForm<表单>();
+  const 类型 = Form.useWatch("type", form);
+  const 方式 = Form.useWatch("method", form);
   const [存着, set存着] = useState(false);
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   const 主 = 联系人们.find((c) => c.isPrimary) ?? 联系人们[0];
@@ -77,6 +82,7 @@ export default function NewProjectModal({
         项目: { name: v.name, ownerId: v.ownerId ?? null },
         跟进: {
           type: v.type,
+          method: 对得上的方式(v.type, v.method),
           content: v.content,
           occurredAt: v.occurredAt.format(时间格式),
           下一步时间: v.下一步时间 ? v.下一步时间.format("YYYY-MM-DD") : null,
@@ -133,8 +139,10 @@ export default function NewProjectModal({
             <Select options={联系人们.map((c) => ({ value: c.id, label: c.isPrimary ? `${c.name}（主要）` : c.name }))} />
           </Form.Item>
         )}
-        <Form.Item name="type" label="沟通方式" rules={[{ required: true }]}>
-          <Select options={能选类型.map((t) => ({ value: t.value, label: t.label }))} />
+        <Form.Item name="type" hidden rules={[{ required: true }]}><Input /></Form.Item>
+        <Form.Item name="method" hidden><Input /></Form.Item>
+        <Form.Item label="沟通方式" required>
+          <FollowMethodSelect aria-label="沟通方式" type={类型 ?? 能选类型[0]?.value ?? "PHONE"} method={方式} 类型们={能选类型} onChange={(v) => form.setFieldsValue(v)} />
         </Form.Item>
         <Form.Item name="occurredAt" label="时间" rules={[{ required: true, message: "请选时间" }]}>
           <DatePicker showTime={{ format: "HH:mm" }} format={时间格式} allowClear={false} style={{ width: "100%" }} disabledDate={(x) => x.isAfter(dayjs(), "day")} />

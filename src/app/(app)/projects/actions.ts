@@ -39,7 +39,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import { 虚线只读话 } from "@/lib/enterprise/visibility";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 向导自动分配 } from "../leads/assign-actions";
-import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, type 分配方式序号 } from "@/lib/enterprise/dict";
+import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, 认跟进方式, type 分配方式序号 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
@@ -76,7 +76,10 @@ export async function 建档向导(输入: 建档向导输入) {
     const 规则 = await 生效组织规则();
     // 下一步时间：开了超时回收必填；企业版没开也能选填（验收 #4）；不是企业版没有这格，老草稿里留着的也不认、不写，和原来一样
     const 要下一步 = 规则.超时回收.开;
-    const 好 = 规整向导(me, 要下一步 || 企业版() || !input.跟进 ? input : { ...input, 跟进: { ...input.跟进, 下一步时间: null } }, new Date(), 要下一步, 企业版());
+    const 认 = input.跟进 ? await 认跟进方式(input.跟进) : input.跟进;
+    if (认 && "error" in 认) return { ok: false as const, error: 认.error };
+    const 带方式 = 认 ? { ...input, 跟进: 认 } : input;
+    const 好 = 规整向导(me, 要下一步 || 企业版() || !带方式.跟进 ? 带方式 : { ...带方式, 跟进: { ...带方式.跟进, 下一步时间: null } }, new Date(), 要下一步, 企业版());
     if ("error" in 好) return { ok: false as const, error: 好.error };
     // 企业版新建线索要选渠道（10-26：直接选渠道，不是来源类型）
     if (企业版()) {
@@ -654,7 +657,7 @@ async function 项目上的沟通(projectId: string, followUpId: string) {
   return { ok: true as const, f };
 }
 
-export type 改沟通输入 = { type: string; content: string; occurredAt: string; 版本?: string };
+export type 改沟通输入 = { type: string; method?: string | null; content: string; occurredAt: string; 版本?: string };
 
 /** 改项目上的一条沟通：只改沟通方式、时间、内容，别的格子（状态、时长、提醒、联系人、与会人）原样带回去 */
 export async function 改项目沟通(projectId: string, followUpId: string, input: 改沟通输入) {
@@ -667,7 +670,7 @@ export async function 改项目沟通(projectId: string, followUpId: string, inp
     if (!查.ok) return 查;
     const f = 查.f;
     const r = await saveFollowUp({
-      id: f.id, customerId: f.customerId, type: input.type, content: input.content, occurredAt: input.occurredAt,
+      id: f.id, customerId: f.customerId, type: input.type, method: input.method, content: input.content, occurredAt: input.occurredAt,
       title: f.title, status: f.status, durationMinutes: f.duration != null ? f.duration / 60 : null,
       dueAt: scheduleValue(f.dueAt, f.dueOn), dueHasTime: f.dueHasTime ?? undefined,
       contactId: f.contactId, opportunityId: f.opportunityId, participants: f.participants,

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Input, Modal, Select } from "antd";
+import { Button, Input, Modal } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import { useBusiness } from "@/lib/business-client";
 import { 跟进类型们 } from "@/lib/constants";
+import FollowMethodSelect from "@/components/FollowMethodSelect";
 import { 外贸精简 } from "@/lib/business-config";
 import { dayjs } from "@/lib/utils";
 import type { 向导跟进 } from "@/lib/project/wizard";
@@ -74,7 +75,7 @@ function Body({
       <p className="muted" style={{ marginTop: 0 }}>{说明}</p>
       <p style={{ fontWeight: 500 }}>首条跟进：这次和对方聊了什么</p>
       {行("沟通方式", (
-        <Select style={{ width: "100%" }} value={f.type} options={能选类型.map((t) => ({ value: t.value, label: t.label }))} onChange={(v) => setF({ ...f, type: v })} />
+        <FollowMethodSelect style={{ width: "100%" }} aria-label="沟通方式" type={f.type} method={f.method} 类型们={能选类型} onChange={(v) => setF({ ...f, ...v })} />
       ), true)}
       {行("时间", (
         <DatePicker

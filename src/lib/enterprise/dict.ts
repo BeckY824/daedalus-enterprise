@@ -13,6 +13,7 @@ import { 挡改设置 } from "./edit-perm";
 import { 字典种类们, 字典定义, 项目画像项, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, 字典项释义, 默认号of, 默认序号of, type 字典种类 } from "./dict-kinds";
 import { 分配谁能用key, 规整分配谁能用, 能用分配方式, 谁能用的话, type 分配谁能用配置 } from "./assign-use";
 import { 读组织 } from "./org";
+import { 方式对类型, 类型对方式 } from "@/lib/follow-method";
 
 export * from "./dict-kinds";
 export * from "./assign-use";
@@ -336,4 +337,33 @@ export async function 改字典项(me: { id: string; role: string }, id: string,
   if (patch.active !== undefined) data.active = patch.active === true;
   await prisma.entDictItem.update({ where: { id: r.id }, data });
   return { ok: true, kind: r.kind as 字典种类, 原名: r.name };
+}
+
+/**
+ * 跟进记录的沟通方式和类型一起定（10-31，企业版）；事务外调。
+ * 选了方式：得是启用着的（改已有的、方式没变的不查：原来那项后来停用了照样能存），type 按方式对出来。
+ * 没选方式：任务、提醒没有方式；别的按 type 补一个（从旧入口、AI 速记来的）。不是企业版：method 不写
+ */
+export async function 定沟通方式(method: unknown, type: string, 原方式?: string | null): Promise<{ ok: true; method?: string | null; type: string } | { ok: false; error: string }> {
+  if (!企业版()) return { ok: true, type };
+  if (type === "TASK" || type === "REMIND") return { ok: true, method: null, type };
+  const n = typeof method === "string" ? method.trim() : "";
+  if (!n) {
+    // 改已有的、没带方式（旧入口）：type 没变就留着原来的方式，不把 Telegram 冲成「其他方式」
+    if (原方式 && 方式对类型(原方式) === type) return { ok: true, method: 原方式, type };
+    return { ok: true, method: 类型对方式(type), type };
+  }
+  if (n !== 原方式) {
+    const 查 = await 选的原因("followMethod", n);
+    if (!查.ok) return 查;
+  }
+  return { ok: true, method: n, type: 方式对类型(n) };
+}
+
+/** 新记一条沟通（项目上记、建档向导、线索转项目、客户页建项目）的方式和类型一起定好再去规整；事务外调。别的版本原样回去 */
+export async function 认跟进方式<T extends { type: string; method?: string | null }>(f: T): Promise<T | { error: string }> {
+  if (!企业版() || !f || typeof f !== "object") return f;
+  const r = await 定沟通方式(f.method, f.type);
+  if (!r.ok) return { error: r.error };
+  return { ...f, type: r.type, method: r.method ?? null };
 }

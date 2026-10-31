@@ -39,7 +39,7 @@ export async function 线索建项目(
   if (!a.跟进) return 项目.id;
   const 跟进 = await tx.followUp.create({
     data: {
-      type: a.跟进.type, content: a.跟进.content, occurredAt: a.跟进.occurredAt, title: "", status: "已完成",
+      type: a.跟进.type, method: a.跟进.method, content: a.跟进.content, occurredAt: a.跟进.occurredAt, title: "", status: "已完成",
       customerId: a.customerId, contactId: 联系人?.id ?? null, ownerId: a.creatorId,
     },
   });

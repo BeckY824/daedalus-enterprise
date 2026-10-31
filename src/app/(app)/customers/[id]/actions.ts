@@ -16,6 +16,7 @@ import { 领取 } from "../pool-actions";
 import { 认回打码号, 号键 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 定沟通方式 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删 } from "@/lib/enterprise/soft-delete";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 在推项目条件 } from "@/lib/project/active";
@@ -57,6 +58,8 @@ export type FollowUpInput = {
   id?: string;
   customerId: string;
   type: string;
+  /** 企业版沟通方式（企业字典 followMethod 的选项名，10-31）：有它时 type 按它对出来；没有就按 type 补。别的版本不认 */
+  method?: string | null;
   /** 选填。数据库列是 NOT NULL，空的时候存空串——不为此改表结构 */
   title?: string | null;
   content: string;
@@ -172,8 +175,12 @@ export async function saveFollowUp(input: FollowUpInput) {
       if (extra?.tasks?.length || extra?.plan || extra?.完成计划 || ((input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成"))
         return { ok: false as const, error: "这是同事的客户：只能记沟通，待办、提醒和下一步计划请找负责人安排" };
     }
+    // 企业版沟通方式（10-31）：选的方式对出 type；改已有的、方式没变的不查停用
+    const 原方式 = input.id ? (await prisma.followUp.findUnique({ where: { id: input.id }, select: { method: true } }))?.method : null;
+    const 方式 = await 定沟通方式(input.method, input.type, 原方式);
+    if (!方式.ok) return 方式;
     const data = {
-      type: input.type, title: input.title?.trim() ?? "", content: input.content.trim(), status: input.status,
+      type: 方式.type, ...(方式.method !== undefined ? { method: 方式.method } : {}), title: input.title?.trim() ?? "", content: input.content.trim(), status: input.status,
       duration: input.durationMinutes ? Math.round(input.durationMinutes * 60) : null,
       occurredAt: parseDateInput(input.occurredAt)!, dueAt: 期限.at, dueOn: 期限.on, dueHasTime: 期限.hasTime,
       contactId: input.contactId || null, opportunityId: input.opportunityId || null,
@@ -209,8 +216,8 @@ export async function saveFollowUp(input: FollowUpInput) {
         if (会带待办(data) && data.status !== "已完成") 待办id = (await tx.task.create({ data: { title: 待办标题(data), dueAt: data.dueAt!, dueOn: data.dueOn, dueHasTime: data.dueHasTime, customerId: input.customerId, ownerId: user.id } })).id;
       }
       audits.push({ user, action: input.id ? "update" : "create", entity: "FollowUp", entityId: id,
-        summary: `${input.id ? "修改" : "记了"}${customer.name}的一条${类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
-        detail: { 客户: customer.name, 类型: 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120) } });
+        summary: `${input.id ? "修改" : "记了"}${customer.name}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
+        detail: { 客户: customer.name, 类型: "method" in data && data.method ? data.method : 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120) } });
       if (!input.id && input.projectId && 企业版()) await 挂项目(id, input.customerId, input.projectId, tx);
       for (const item of extra?.tasks ?? []) {
         const 时间 = parseScheduleDate(item.dueAt)!;
@@ -285,7 +292,7 @@ export async function deleteFollowUp(id: string, customerId: string) {
 }
 
 export type 删掉的跟进 = {
-  id: string; type: string; title: string; content: string; status: string; duration: number | null;
+  id: string; type: string; method?: string | null; title: string; content: string; status: string; duration: number | null;
   occurredAt: string; dueAt: string | null; dueOn?: string | null; dueHasTime?: boolean | null; participants: string | null;
   customerId: string; contactId: string | null; opportunityId: string | null; ownerId: string;
   createdAt: string; updatedAt: string;
@@ -308,7 +315,7 @@ export async function restoreFollowUp(快照: 删掉的跟进) {
     // 企业版（P9）：删的时候只进了回收站，撤销就是把那一条拿回来，不再建一条
     if (!(await 撤销软删("FollowUp", 快照.id))) await prisma.followUp.create({
       data: {
-        id: 快照.id, type: 快照.type, title: 快照.title, content: 快照.content, status: 快照.status, duration: 快照.duration,
+        id: 快照.id, type: 快照.type, method: 快照.method ?? null, title: 快照.title, content: 快照.content, status: 快照.status, duration: 快照.duration,
         occurredAt: new Date(快照.occurredAt), dueAt: 快照.dueAt ? new Date(快照.dueAt) : null, dueOn: 快照.dueOn ?? null, dueHasTime: 快照.dueHasTime ?? null, participants: 快照.participants,
         customerId: 快照.customerId, contactId: 联系人在 ? 快照.contactId : null, opportunityId: 商机在 ? 快照.opportunityId : null,
         ownerId: 快照.ownerId, createdAt: new Date(快照.createdAt),

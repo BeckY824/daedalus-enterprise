@@ -148,6 +148,8 @@ export type 名单项目 = {
   customerName: string | null;
   /** 最近一次沟通的方式（FOLLOW_TYPE_MAP 的键）和时间 */
   lastType: string | null;
+  /** 企业版沟通方式（10-31） */
+  lastMethod: string | null;
   lastAt: string | null;
   lastNote: string | null;
   /** 项目的下一步日期：「本周要跟」和右下角圆点看它（计划是挂在客户上的，按项目只有这一格）；有结局或在公海就不算 */
@@ -167,7 +169,7 @@ export async function 读名单项目(me: { id: string }, 字典: 阶段字典):
     select: {
       id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, nextStepAt: true, nextStepText: true,
       customer: { select: { name: true } },
-      followUps: { orderBy: { followUp: { occurredAt: "desc" } }, take: 1, select: { followUp: { select: { type: true, content: true, occurredAt: true } } } },
+      followUps: { orderBy: { followUp: { occurredAt: "desc" } }, take: 1, select: { followUp: { select: { type: true, method: true, content: true, occurredAt: true } } } },
     },
   });
   const 可见 = await 看得到的客户(rows.map((r) => r.customerId));
@@ -180,6 +182,7 @@ export async function 读名单项目(me: { id: string }, 字典: 阶段字典):
         id: r.id, name: r.name, ...阶段与进程(r, 字典), pooled: !!r.pooledAt,
         customerName: 露 ? r.customer.name : null,
         lastType: f?.type ?? null,
+        lastMethod: f?.method ?? null,
         lastAt: f ? f.occurredAt.toISOString() : null,
         lastNote: f?.content?.trim().slice(0, 60) || null,
         nextAt: r.nextStepAt && !r.result && !r.pooledAt ? dayjs(r.nextStepAt).format("YYYY-MM-DD") : null,

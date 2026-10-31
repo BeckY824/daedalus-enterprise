@@ -606,6 +606,8 @@ model FollowUp {
   dueOn        String? // 仅日期原日历日；空表示未定/明确钟点/旧未知
   dueHasTime   Boolean? // 是否明确钟点；空表示旧未知，不从午夜反推
   participants String? // 与会人，逗号分隔
+  /// 企业版沟通方式（2026-10-31）：存企业字典 followMethod 的选项名，可空；type 按它对出来（lib/follow-method.ts）
+  method       String?
 
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
