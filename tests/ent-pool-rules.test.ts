@@ -230,7 +230,7 @@ describe("领客户即领项目", () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     当(乙);
-    expect(await 放进公海([c])).toMatchObject({ ok: true, updated: 1 });
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true, updated: 1 });
     expect(await 项目在公海(p)).toBe(false);
     当(丙);
     expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
@@ -316,7 +316,7 @@ describe("原负责人不能领回（10-26 定稿）", () => {
     const p = await 项目(乙.id, c2);
     await prisma.project.create({ data: { name: "另一个", customerId: c2, ownerId: 乙.id, creatorId: 乙.id } });
     当(乙);
-    await 放进公海([c]);
+    await 放进公海([c], "客户主动终止");
     expect(await 领取([c])).toEqual({ ok: false, error: 原负责人不能领回提示 });
     expect(await 在客户公海(c)).toBe(true);
     expect(await 负责人(c)).toBe(乙.id);
@@ -341,9 +341,9 @@ describe("原负责人不能领回（10-26 定稿）", () => {
     const 自己的 = await 客户(乙.id);
     const 丙的 = await 客户(丙.id);
     当(乙);
-    await 放进公海([自己的]);
+    await 放进公海([自己的], "客户主动终止");
     当(丙);
-    await 放进公海([丙的]);
+    await 放进公海([丙的], "客户主动终止");
     当(乙);
     expect(await 领取([自己的, 丙的])).toMatchObject({ ok: true, updated: 1 });
     expect(await 负责人(丙的)).toBe(乙.id);
@@ -354,7 +354,7 @@ describe("原负责人不能领回（10-26 定稿）", () => {
     公海规则.原负责人能领回 = true;
     const c = await 客户(乙.id);
     当(乙);
-    await 放进公海([c]);
+    await 放进公海([c], "客户主动终止");
     expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
   });
 });
@@ -365,7 +365,7 @@ describe("项目公海从属客户公海（10-26 定稿）", () => {
     const p1 = await 项目(乙.id, c);
     const p2 = await 项目(乙.id, c, { phase: "商机", node: "明确需求" });
     当(乙);
-    expect(await 放进公海([c])).toMatchObject({ ok: true, updated: 1 });
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true, updated: 1 });
     当(丙);
     expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
     for (const p of [p1, p2]) expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);

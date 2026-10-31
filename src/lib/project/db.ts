@@ -582,7 +582,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     await tx.project.update({ where: { id: p.id }, data: { pooledAt: 现在, nextStepAt: null, nextStepText: null } });
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason);
     // 企业版：客户名下只有这一个项目，客户也一起进客户公海（pool-link.ts）
-    await 单项目客户跟进公海(tx, p, me.id, 现在);
+    await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
     // 企业版统一公海（P7，迁移 080）：客户累计主动退回 +1（超时回收、离职交接不走这里，不算）。裸 SQL 不顶 updatedAt
     if (企业版()) await tx.$executeRaw(Prisma.sql`UPDATE "Customer" SET "poolReturns" = "poolReturns" + 1 WHERE "id" = ${p.customerId}`);
     return { ok: true as const };

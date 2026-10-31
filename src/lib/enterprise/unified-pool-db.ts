@@ -7,24 +7,39 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
-import { 字典of, 结局叫法, 本套位置 } from "@/lib/project/nodes";
+import { 字典of, 本套位置 } from "@/lib/project/nodes";
+import { 阶段与进程 } from "@/lib/project/stage-dict";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
 import {
-  客户公海属性, 项目公海属性, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
+  客户定状态, 进程格, 进行中, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
 } from "./unified-pool";
 
 /** 客户公海、项目公海各最多取这么多（按入池时间新的在前） */
 export const 公海取上限 = 2000;
 
-type 项目片 = { phase: string; node: string; result: string | null };
+type 项目片 = { name: string; phase: string; node: string; result: string | null };
+type 字典 = ReturnType<typeof 字典of>;
 
-/** 「当前进程」那一格：没结局的写 阶段 · 节点（老节点名换成本套叫法），有结局的写结局叫法 */
-function 进程(p: 项目片, 字典: ReturnType<typeof 字典of>): string {
-  if (p.result) return 结局叫法(p.result, 字典);
-  return `${p.phase} · ${本套位置(p, 字典).node}`;
+/** 一个项目的 阶段 / 节点 / 结局（老节点名、老结局名换成本套叫法；有结局的阶段按结局归） */
+function 位置(p: 项目片, 字典: 字典) {
+  const x = 阶段与进程(本套位置(p, 字典), 字典);
+  return { 阶段: x.阶段, 节点: x.进程, 结局: x.结局 };
+}
+
+/**
+ * 「当前进程」那一格 + 鼠标停上去的明细（U-公海-04）：按 客户定状态 取定状态的那个项目，写「节点 · 状态」，其他类前面带阶段；
+ * 名下不止一个项目时明细列出每个项目
+ */
+function 进程们(projects: readonly 项目片[], 字典: 字典) {
+  const 定 = 客户定状态(projects);
+  const 进程 = 定.项目 ? 进程格(定.属性, 位置(定.项目, 字典)) : null;
+  const 进程明细 = projects.length > 1
+    ? projects.map((p) => { const x = 位置(p, 字典); return `${p.name}：${x.阶段} · ${x.节点} · ${x.结局 ?? 进行中}`; }).join("；")
+    : null;
+  return { 属性: 定.属性, 进程, 进程明细 };
 }
 
 /**
@@ -67,34 +82,37 @@ export async function 读公海行(me: { id: string; name: string }): Promise<{ 
   const 拦 = 拦原负责人();
 
   const 客户行: 公海行[] = 客户们.map((c) => {
-    const 类: 入池类 = c.poolInvalidAt ? "无效" : 客户入池类(c.pool!);
+    const 原类 = 客户入池类(c.pool!);
+    const 类: 入池类 = c.poolInvalidAt ? "无效" : 原类;
     const 一个 = c.projects.length === 1 ? c.projects[0] : null;
+    const 进 = 进程们(c.projects, 字典);
     return {
       id: `c:${c.id}`, 种: "客户", customerId: c.id, projectId: 一个?.id ?? null,
       客户名: c.name,
       项目名: c.projects.length ? c.projects.map((p) => p.name).join("、") : null,
-      进程: c.projects.length ? c.projects.map((p) => 进程(p, 字典)).join("；") : null,
-      属性: 客户公海属性(c.projects),
+      进程: 进.进程, 进程明细: 进.进程明细,
+      属性: 进.属性,
       最后跟进: c.lastFollowAt?.toISOString() ?? null,
       入池时间: c.pool!.at.toISOString(),
       创建时间: c.createdAt.toISOString(),
-      类, 累计: c.poolReturns, 入池原因: 入池原因文字(类, c.poolReturns), 快捷: 归到快捷({ 类, 累计: c.poolReturns }),
+      类, 累计: c.poolReturns, 入池原因: 入池原因文字(原类, c.pool!.reason), 快捷: 归到快捷({ 类, 累计: c.poolReturns }),
       原负责人是我: 拦 && c.salesOwnerId === me.id,
     };
   });
   const 项目行: 公海行[] = 项目们.map((p) => {
     const 类 = 项目入池类(p.logs[0] ?? null);
     const 累计 = p.customer.poolReturns;
+    const 进 = 进程们([p], 字典);
     return {
       id: `p:${p.id}`, 种: "项目", customerId: p.customerId, projectId: p.id,
       客户名: 露客户(me, p, 可见) ? p.customer.name : null,
       项目名: p.name,
-      进程: 进程(p, 字典),
-      属性: 项目公海属性(p),
+      进程: 进.进程, 进程明细: null,
+      属性: 进.属性,
       最后跟进: p.customer.lastFollowAt?.toISOString() ?? null,
       入池时间: p.pooledAt!.toISOString(),
       创建时间: p.createdAt.toISOString(),
-      类, 累计, 入池原因: 入池原因文字(类, 累计), 快捷: 归到快捷({ 类, 累计 }),
+      类, 累计, 入池原因: 入池原因文字(类, p.logs[0]?.reason), 快捷: 归到快捷({ 类, 累计 }),
       // 项目公海原负责人一律领不回（企业版看规则，别的版本本来就不能）
       原负责人是我: p.ownerId === me.id,
     };
