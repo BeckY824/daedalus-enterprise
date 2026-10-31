@@ -1,7 +1,7 @@
 /**
  * 企业版首页驾驶舱，问过之后（10-31 改版 R1）：
  *   还没问（.cli-empty）：对话 2/3、右边四张卡照摆；
- *   问过之后：卡收起，对话铺满这一格，你的话贴着右边（右侧不再空一大片）；
+ *   问过之后：卡收起，对话铺满这一格，你的话贴着右边（右侧不再空一大片）；10-31 起对话套外框（.cli-frame），贴的是框里的右边；
  *   窄格（手机）问过之后卡也收起。
  * 只钉样式（globals.css），结构照 HomeChat 现有的 class 摆。
  */
@@ -15,7 +15,7 @@ afterAll(async () => { await browser?.close(); });
 
 const 页 = (空: boolean) => `<meta charset='utf-8'><main style="padding:24px">
   <div class="cli${空 ? " cli-empty" : ""}"><div class="cli-ck"><div class="cli-ck-g">
-    <div class="cli-col"><div class="cli-log">${空 ? "" : `<div class="cli-turn"><div class="cli-user"><div class="cli-bubble">本月新增几个项目</div></div><div class="cli-a">回答</div></div>`}</div>
+    <div class="cli-col cli-frame"><div class="cli-log">${空 ? "" : `<div class="cli-turn"><div class="cli-user"><div class="cli-bubble">本月新增几个项目</div></div><div class="cli-a">回答</div></div>`}</div>
       <div class="cli-composer"><div class="cli-input">输入</div></div></div>
     <div class="home-cards"><a class="home-card">卡</a><a class="home-card">卡</a><a class="home-card">卡</a><a class="home-card">卡</a></div>
   </div></div></div></main>`;
@@ -43,7 +43,7 @@ it("问过之后：卡收起，对话铺满，你的话贴右边", async () => {
   expect(await page.locator(".home-cards").isVisible()).toBe(false);
   // 全套并发跑时排版偶尔慢一拍（10-31 pre-push 量到差 8px）：等到量得稳再判
   await expect.poll(async () => Math.abs((await 框(page, ".cli-col")).w - (await 框(page, ".cli-ck-g")).w), { timeout: 3000 }).toBeLessThan(1);
-  await expect.poll(async () => Math.abs((await 框(page, ".cli-bubble")).r - (await 框(page, ".cli-col")).r), { timeout: 3000 }).toBeLessThan(1);
+  await expect.poll(async () => Math.abs((await 框(page, ".cli-bubble")).r - (await 框(page, ".cli-log")).r), { timeout: 3000 }).toBeLessThan(1);
   await page.close();
 });
 

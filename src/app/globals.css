@@ -1727,6 +1727,17 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    只打了字没发、点「新对话」回到空白：卡照摆（.cli-empty 只看这段对话有没有问过） */
 .cli:not(.cli-empty) .cli-ck-g { grid-template-columns: minmax(0, 1fr); }
 .cli:not(.cli-empty) .home-cards { display: none; }
+/* 左边对话套一个外框（10-31 首页改版）：边框、圆角、底色和右边指标卡同一套。还没问：问候在框左上，下面「欢迎使用 {产品名}」、
+   三条示例各占一行，输入框贴框底、宽 = 框宽减左右留白；问过之后卡收起、框铺满这一格，框里上面是对话、底下是输入框。
+   只有驾驶舱带 .cli-frame（HomeChat 外框），团队版 / 非项目模式首页、右侧 AI 面板都不受影响 */
+.cli-ck .cli-frame { padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }
+.cli-empty .cli-ck .cli-frame { justify-content: flex-start; }
+.cli-frame .cli-welcome { text-align: left; margin-bottom: 0; }
+.cli-frame-q .cli-welcome-q { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; margin: var(--s4) 0 0; }
+.cli-frame-q .cli-q { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+.cli-empty .cli-frame .cli-composer { margin-top: auto; padding-top: var(--s5); }
+/* 问过之后输入框钉在视口底：底下那层渐变接框的底色，不接页面底色 */
+.cli-frame .cli-composer-sticky { background: linear-gradient(to bottom, transparent, var(--panel) 28%); }
 .home-card { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); color: var(--ink); text-decoration: none; }
 .home-card:hover { border-color: var(--brand-line); color: var(--ink); }
 .home-card-k, .home-card-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1741,6 +1752,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   .cli-ck-g { grid-template-columns: minmax(0, 1fr); align-content: start; }
   .home-cards { position: static; align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cli-empty .home-cards { align-self: stretch; }
+  .cli-ck .cli-frame { padding: var(--s4); }
 }
 @media (max-width: 767px) { .cli:has(.cli-ck) { min-height: 0; } }
 /* 输入框旁「查重」点开的小框 */
