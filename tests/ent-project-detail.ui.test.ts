@@ -277,8 +277,8 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     await 痛点.fill("  交期总拖  ");
     await 框.getByRole("combobox", { name: "合同状态" }).click();
     const 下拉 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
-    await 下拉.filter({ hasText: "已终止" }).waitFor(); // 下拉是点开后才渲染的，CI 机器慢时立刻读会是空的
-    expect(await 下拉.allInnerTexts()).toEqual(["起草中", "待对方确认", "待我方确认", "对方修改中", "我方修改中", "已生效", "已终止"]);
+    // 下拉是点开后才渲染的、还带进场动画，CI 机器慢时立刻读会是空的（等到「已终止」出现再读也空过一次）：轮询到对上为止
+    await expect.poll(() => 下拉.allInnerTexts(), { timeout: 10_000 }).toEqual(["起草中", "待对方确认", "待我方确认", "对方修改中", "我方修改中", "已生效", "已终止"]);
     await 下拉.filter({ hasText: "已生效" }).click();
     await 框.getByRole("button", { name: /保\s*存/ }).click();
     await page.waitForFunction(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length > 0);

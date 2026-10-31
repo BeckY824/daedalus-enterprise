@@ -276,8 +276,9 @@ test("客户记录：左边有窄名单，切人不回列表", async ({ page }) 
   await expect(名单).toBeVisible();
   const 第一位 = page.url();
 
-  // 点名单里的另一位：URL 换人，名单还在——不用退回列表再进去
-  await 名单.locator(".roster-row").nth(1).click();
+  // 点名单里的另一位：URL 换人，名单还在——不用退回列表再进去。
+  // 挑「不是当前这位」的第一行：名单和表格排序在同一时刻建的客户上可能不一致，固定点第二行会点回自己
+  await 名单.locator(".roster-row:not(.on)").first().click();
   await expect(page).not.toHaveURL(第一位);
   await expect(page).toHaveURL(/\/customers\/[^/]+$/);
   await expect(名单).toBeVisible();

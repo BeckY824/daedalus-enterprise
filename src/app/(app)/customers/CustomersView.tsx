@@ -612,10 +612,6 @@ export default function CustomersView({
               { value: "公海", label: `公海 ${公海数 ?? 0}` },
             ]}
           />
-        ) : 统一公海 && 能看板 && !空库 ? (
-          // 企业版（统一公海，标题旁没有「客户 / 公海」）：「列表 / 看板」摆标题旁，不挤右上那组——
-          // 1024 宽开着 AI 栏时右上四个放不下（排版闸门），标题这一行能折行
-          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />
         ) : undefined}
         extra={
           /* 主动作在页头右上角，全站六张列表页同一个位置（设计稿 11/PAGE）。
@@ -656,6 +652,13 @@ export default function CustomersView({
           </Space>
         }
       />
+
+      {/* 企业版（统一公海）的「列表 / 看板」单独一行：1024 宽开着 AI 栏时，右上那组和标题旁都放不下它（排版闸门） */}
+      {统一公海 && 能看板 && !空库 && (
+        <div style={{ marginBottom: "var(--s3)" }}>
+          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />
+        </div>
+      )}
 
       <DataList<CustomerRow>
         页="customers"
