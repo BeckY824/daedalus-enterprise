@@ -189,6 +189,41 @@ it("10-31 改版 R4：项目卡定金在合同前；空着写「待填写X / 待
   } finally { await page.close(); }
 });
 
+it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标题 18、值 16 正文色、字段名 16 灰、辅助 14 灰、待填 16 浅灰；0 照正文色", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
+      成交钱: { contractAmount: null, contractCurrency: null, depositAmount: 0, depositCurrency: "USD", dealDemand: null } }));
+    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "定金金额" }).first();
+    await 卡.waitFor();
+    const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = `var(${v})`; document.querySelector(".proj-wrap")!.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
+    const 样 = (l: import("playwright").Locator) => l.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; });
+    const [墨, 灰, 浅] = [await 色("--ink"), await 色("--text-muted"), await 色("--text-faint")];
+    expect(await 样(page.locator(".proj-wrap .page-head h1"))).toEqual({ 字: "26px", 色: 墨 });
+    expect(await 样(卡.locator(".ant-card-head-title"))).toEqual({ 字: "18px", 色: 墨 });
+    expect(await 样(卡.getByText("定金金额", { exact: true }))).toEqual({ 字: "16px", 色: 灰 });
+    const 零 = 卡.locator("div").filter({ hasText: /^定金金额/ }).last();
+    expect(await 零.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; })).toEqual({ 字: "16px", 色: 墨 });
+    expect(await 样(卡.getByText("待填写合同金额"))).toEqual({ 字: "16px", 色: 浅 });
+    expect(await 样(page.locator(".proj-wrap .proj-where-label").first())).toEqual({ 字: "16px", 色: 灰 });
+    const 辅 = page.locator(".proj-main .ant-card span").filter({ hasText: / · \d{4}-\d{2}-\d{2}/ }).first();
+    expect(await 样(辅)).toEqual({ 字: "14px", 色: 灰 });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("10-31 改版 R7：超长项目名、窄容器下字号放大后不横滚、不截字", async () => {
+  const { page, errors } = await open(true, 1024);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ name: "超长的项目名字没有空格".repeat(8) }));
+    await page.getByText("超长的项目名字没有空格超长").first().waitFor();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const 溢 = await page.evaluate(() => [...document.querySelectorAll(".proj-wrap .page-head h1, .proj-wrap .ant-card-head-title")].filter(e => e.scrollWidth > e.clientWidth + 1).length);
+    expect(溢).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("容器窄于 630（开着 AI 侧栏）：退成一栏，干活的在上", async () => {
   const { page } = await open(true, 1366, 600);
   try {

@@ -1349,6 +1349,71 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   .rec > .rec-right { grid-column: 1; grid-row: 2; }
   .rec > .rec-col { grid-column: 1; grid-row: 3; }
 }
+/* 10-31 改版 R3（客户详情，照项目详情那套）：整页不滚，页头和标签行钉在顶上。
+   滚动的是 .rec 这一格（滚动条贴在最右边，就是唯一露出来的那条）；资料栏、三栏时的沟通栏
+   钉在 .rec 顶上、各自滚、不露滚动条，滚一栏别的不动。.rec 设成 size 容器，100cqh = 这一格的可见高度。
+   右栏（AI / 背调 / 待办）原来 sticky，改成跟着 .rec 走：它比屏幕高时原来下半截要整页滚到底才看得到。
+   两栏时右栏在时间线上面、同在第 2 列，一起跟 .rec 滚；单栏（容器 <630）整格一起滚；手机（<768）照旧整页滚。
+   选择器带 .main 是为了盖过 Windows 顶栏那条 :is(.rec-rail…) 的 top */
+@media (min-width: 768px) {
+  .main:has(.rec-page) { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+  .main:has(.rec-page) > div:has(> .rec-page) { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
+  .main .rec-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .main .rec-page > .rec { flex: 1; min-height: 0; container-type: size; align-content: start; overflow-y: auto; overscroll-behavior-y: contain; }
+  .main .rec-page > .rec > .rec-rail { position: static; }
+  @container rec (min-width: 630px) {
+    .main .rec-page > .rec > .rec-rail:first-child { position: sticky; top: 0; max-height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+    .main .rec-page > .rec > .rec-rail:first-child::-webkit-scrollbar { display: none; }
+  }
+  @container rec (min-width: 1090px) {
+    .main .rec-page > .rec > .rec-col { position: sticky; top: 0; max-height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+    .main .rec-page > .rec > .rec-col::-webkit-scrollbar { display: none; }
+  }
+  .shell:has(.rec-page) .pane-roster .pane-rows { scrollbar-width: none; }
+  .shell:has(.rec-page) .pane-roster .pane-rows::-webkit-scrollbar { display: none; }
+}
+
+/* 10-31 改版 R7：客户详情（.rec-page）、项目详情（企业版 .proj-wrap）同一套字阶。
+   五档都从皮肤的字号令牌往上加，不写死像素：换皮肤（tech 13 / ledger 28 标题……）、暗色时层级照样分得开。
+   默认皮肤下：页面标题 26、模块标题 18、正文 / 填了的值 16、字段名 16、辅助（时间、负责人、计数）14；
+   颜色只用现成的：正文 --ink、字段名和辅助 --text-muted、没填的占位 --text-faint（字号同正文）、链接 --brand。
+   填了 0 算填了，照正文色（项目卡 R4 已经这么判，这里只管字）。长名字一律折行，不截。
+   弹窗在 body 底下，不吃这套，照 antd 表单原样 */
+.rec-page, .proj-wrap {
+  --dt-title: calc(var(--fs-title) + 4px);
+  --dt-module: calc(var(--fs-section) + 3px);
+  --dt-body: calc(var(--fs-body) + 2px);
+  --dt-label: var(--dt-body);
+  --dt-aux: calc(var(--fs-note) + 1px);
+}
+/* 页面标题 */
+.rec-page .rec-head-name, .proj-wrap .page-head h1 { font-size: var(--dt-title); color: var(--ink); }
+/* 模块标题：原来客户页是 13 灰小字，和项目页的卡片标题不像一回事 */
+.rec-page :is(.rec-sec-t, .rec-side-t, .rec-ai-title), .proj-wrap .ant-card .ant-card-head {
+  font-size: var(--dt-module); font-weight: 600; color: var(--ink);
+}
+.rec-page .rec-sec-t a { font-size: var(--dt-body); font-weight: 400; color: var(--brand); }
+/* 正文、填了的值 */
+.rec-page :is(.rec-field-v, .rec-contact, .rec-mini, .rec-task, .rec-plan-v, .rec-ai-sec-v, .rec-tl-title, .rec-tl-content, .rec-contact-line),
+.proj-wrap .ant-card .ant-card-body { font-size: var(--dt-body); color: var(--ink); }
+.rec-page .rec-field-v { line-height: 24px; }
+.rec-page .rec-contact-line { line-height: 1.5; }
+.rec-page .rec-tl-content { line-height: 1.7; }
+/* 字段名：和值一样大、灰一档。客户档案栏的标签列跟字号走，最长的内置名「渠道负责人」五个字一行放下 */
+.rec-page :is(.rec-field-k, .rec-contact-k), .proj-wrap :is(.proj-profile-key, .proj-rel-key, .proj-where-label) {
+  font-size: var(--dt-label); color: var(--text-muted);
+}
+.rec-page .rec-field-k { line-height: 24px; }
+.rec-page .rec-field { grid-template-columns: calc(var(--dt-label) * 5) minmax(0, 1fr); }
+.proj-wrap .proj-profile-row { grid-template-columns: calc(var(--dt-label) * 4 + 4px) minmax(0, 1fr); }
+.proj-wrap .proj-rel-field { grid-template-columns: calc(var(--dt-label) * 2 + 4px) minmax(0, 1fr); }
+/* 辅助：时间、负责人、计数、到期、备注 */
+.rec-page :is(.rec-head-sub, .rec-tags-n, .rec-tl-time, .rec-tl-meta, .rec-tl-cap, .rec-contact-p, .rec-task-due, .rec-task-k,
+  .rec-plan-m, .rec-mini-m, .rec-go-note, .rec-field-hint, .rec-ai-sec-k) { font-size: var(--dt-aux); }
+.rec-page .rec-plan-m:not(.is-over) { color: var(--text-muted); }
+/* 没填的占位：和内容一样大，最浅那档灰 */
+.rec-page .rec-empty { font-size: var(--dt-body); color: var(--text-faint); }
+.rec-page .rec-field-empty { color: var(--text-faint); }
 
 /* ---------- 首页：对话面 ---------- */
 .home { min-height: calc(100vh - 140px); display: flex; flex-direction: column; }
