@@ -21,7 +21,7 @@ import { 管全队客户 } from "@/lib/constants";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
-import { 建档向导数据 } from "../projects/new/screen";
+import { 建档向导数据 } from "../projects/new/wizard-data";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-perm";

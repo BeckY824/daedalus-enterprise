@@ -3,7 +3,7 @@
 import Heat from "@/components/Heat";
 import { useEffect, useState, useSyncExternalStore, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Select, Space, Dropdown, App, Tag, Popover, Segmented, Pagination, type MenuProps } from "antd";
+import { Button, Select, Space, Dropdown, App, Tag, Popover, Segmented, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
   PlusOutlined,
@@ -39,7 +39,6 @@ import { 级别选项, 拼地址 } from "@/lib/enterprise/customer-v2";
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import LevelLetter from "@/components/LevelLetter";
 import { useLocalPref } from "@/lib/local-pref";
-import { 客户看板分列 } from "@/lib/enterprise/cust-attr";
 import LocalTime from "@/components/LocalTime";
 import { 未分级 } from "./query-shared";
 import { useUrlFilters } from "@/lib/url-filters";
@@ -54,6 +53,8 @@ import dynamic from "next/dynamic";
 import type { 建档数据 } from "../projects/new/ProjectWizard";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
+// 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
+const CustomerBoard = dynamic(() => import("./CustomerBoard"));
 const 建档弹窗 = dynamic(() => import("../projects/new/ProjectWizard").then(m => m.建档弹窗), { ssr: false });
 
 /**
@@ -611,12 +612,16 @@ export default function CustomersView({
               { value: "公海", label: `公海 ${公海数 ?? 0}` },
             ]}
           />
+        ) : 统一公海 && 能看板 && !空库 ? (
+          // 企业版（统一公海，标题旁没有「客户 / 公海」）：「列表 / 看板」摆标题旁，不挤右上那组——
+          // 1024 宽开着 AI 栏时右上四个放不下（排版闸门），标题这一行能折行
+          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />
         ) : undefined}
         extra={
           /* 主动作在页头右上角，全站六张列表页同一个位置（设计稿 11/PAGE）。
              导出是次动作，排在它左边，空库时没什么可导，不出现 */
           <Space>
-            {能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />}
+            {能看板 && !空库 && !统一公海 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />}
             {/* 导入和导出都是次动作，排在主动作左边。导入空库时也要在——
                 第一次进来的人手上那份 Excel 正是他不想一条条录的原因 */}
             {能导入导出 && <Button icon={<ImportOutlined />} onClick={() => set导入开着(true)}>导入</Button>}
@@ -969,70 +974,5 @@ export default function CustomersView({
         有别的成员={users.length > 1}
       />}
     </>
-  );
-}
-
-/**
- * 客户看板（U-客户-06）：一列一个客户属性（lib/enterprise/cust-attr.ts 客户看板分列），没填的进「未设置」、没人时不摆。
- * 列多（10 项起），沿用项目看板的 .pipe：等宽排、放不下折行，不横滚；有空列时空列收成 88 宽的窄条把地方让给有客户的列。
- * 卡片：客户名（整段显示，同项目看板 10-30）、级别字母、客户状态、负责人
- */
-function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 总数, 翻页, 去 }: {
-  行们: CustomerRow[];
-  字典: { name: string; active: boolean }[];
-  加载中: boolean;
-  页: number;
-  每页: number;
-  总数: number;
-  翻页: (页: number, 每页: number) => void;
-  去: (id: string) => void;
-}) {
-  const 列们 = 客户看板分列(行们, (r) => r.customerAttr, 字典);
-  const 有空列 = 列们.some((c) => c.行们.length === 0) && 列们.some((c) => c.行们.length > 0);
-  return (
-    <div className="pipe-wrap cust-board" aria-busy={加载中}>
-      <div className="pipe" style={有空列 ? { display: "flex", flexWrap: "wrap", gap: "var(--s3)", alignItems: "start" } : undefined}>
-        {列们.map((c) => {
-          const 收 = 有空列 && c.行们.length === 0;
-          return (
-            <div key={c.key ?? "\u0000未设置"} className="pipe-col" aria-label={`${c.名}${c.停用 ? "（已停用）" : ""}，${c.行们.length} 位客户`}
-              style={有空列 ? (收 ? { flex: "0 0 88px" } : { flex: "1 1 184px", minWidth: 0 }) : undefined}>
-              <div className="pipe-h">
-                <b className="clamp-1" title={c.名}>{c.名}</b>
-                <span className="pipe-n">{c.行们.length}</span>
-                {c.停用 && !收 && <Tag style={{ marginInlineEnd: 0 }}>停用</Tag>}
-              </div>
-              <div className="pipe-bar" style={{ background: c.key === null ? "var(--line-strong)" : "var(--brand)" }} />
-              {c.行们.map((r) => (
-                <div key={r.id} className="pipe-card" tabIndex={0} role="link" title={r.name} aria-label={`${r.name}，${r.salesOwnerName}`}
-                  onClick={() => 去(r.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      去(r.id);
-                    }
-                  }}
-                >
-                  <div className="pipe-card-t fulltext">{r.name}</div>
-                  <div className="pipe-card-m">
-                    <span className="pipe-card-o cust-board-meta">
-                      <LevelLetter level={r.extra?.level} 空={null} />
-                      {r.custStatus && <span className="clamp-1" title={r.custStatus}>{r.custStatus}</span>}
-                    </span>
-                    <span className="pipe-card-o clamp-1" title={r.salesOwnerName}>{r.pool ? "公海" : r.salesOwnerName}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-      {总数 > 每页 && (
-        <div className="cust-board-page">
-          <Pagination size="small" current={页} pageSize={每页} total={总数} showSizeChanger={false} onChange={(p) => 翻页(p, 每页)}
-            showTotal={(t) => `共 ${t} 位，看板分的是这一页的 ${行们.length} 位`} />
-        </div>
-      )}
-    </div>
   );
 }

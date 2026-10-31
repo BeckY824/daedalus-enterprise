@@ -8,6 +8,7 @@
  */
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
+import { 企业版 } from "./owner-pick";
 
 const 张三 = { 用户名: "zhangsan", 密码: "admin123" };
 const 李四 = { 用户名: "lisi", 密码: "admin123" };
@@ -69,7 +70,8 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   // 放回前确认一次（交互规则 B）；企业版要先选退回原因（U-客户-04 + M-公海-09），选了才能点
   const 确认框 = 张.page.getByRole("dialog");
   const 原因 = 确认框.getByRole("combobox", { name: "退回原因" });
-  if (await 原因.count()) {
+  // 确认框要等退回原因字典取回来才弹，不能拿 count() 当场判（CI 慢时还没弹出来就判成没有）
+  if (企业版) {
     await 原因.click();
     await 张.page.locator(".ant-select-item-option", { hasText: "超时未跟进" }).click();
   }
@@ -77,7 +79,7 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   await expect(张.page.getByText("已放回公海 1 位")).toBeVisible();
   // 客户页不含公海：放进去就从这一页走了；搜不到时指一条去公海的路，关键词带上
   await expect(行).toHaveCount(0);
-  await expect(张.page.locator(".page-head .ant-segmented")).toHaveCount(0);
+  await expect(张.page.locator('.page-head .ant-segmented[aria-label$="/ 公海"]')).toHaveCount(0); // 「列表 / 看板」可以在，「客户 / 公海」页签不在
   await 张.page.getByRole("button", { name: /公海里有 1 位匹配/ }).click();
   await expect(张.page).toHaveURL(/\/pool\?keyword=/);
   const 张的公海行 = 张.page.getByRole("row", { name: new RegExp(客户名) });

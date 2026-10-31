@@ -203,7 +203,7 @@ export default async function CustomerDetailPage({
       客户属性选项={企 ? await 页面可选项("custAttr") : undefined}
       // 下拉里客户状态、客户类型每项的灰字释义（10-30）；字典上面已读过，走请求内缓存
       字典释义={企 ? await 页面客户释义() : undefined}
-      // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/screen.tsx）
+      // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/wizard-data.ts）
       新建项目={企 && 规则 ? { 节点们: [...企业版字典.节点们.线索], 要下一步: 规则.超时回收.开 } : null}
       联系人附件数={联系人附件数}
       customer={{
