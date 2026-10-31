@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recordAudit } from "@/lib/audit";
 import { 附件文件, 删附件, 确保文件 } from "@/lib/attachments";
-import { 是附件编号, 是图片, 读大小 } from "@/lib/attachment-rules";
+import { 是附件编号, 是图片, 是音频, 读大小 } from "@/lib/attachment-rules";
 import { 解析范围 } from "@/app/ocr-files/[...path]/route";
 import { 认附件父记录 } from "../access";
 
@@ -15,12 +15,14 @@ export const runtime = "nodejs";
 /**
  * 一个附件：GET / HEAD 取文件（缩略图、看大图、网页上下载），DELETE 删掉。
  * 只有图片按原类型给、能在页面里显示；别的一律当下载（application/octet-stream + attachment）：
- * 有人传个 .html / .svg 进来，在本站打开就能跑脚本
+ * 有人传个 .html / .svg 进来，在本站打开就能跑脚本。
+ * 沟通记录的录音（F-跟进-07）也按原类型给（页面上的 <audio> 要能播、能拖进度），照旧带 sandbox + nosniff，
+ * 白名单里的音频类型（attachment-rules 是音频）浏览器不会当网页跑
  */
 
 type 参数 = { params: Promise<{ id: string }> };
 
-async function 取(id: string, 要改: boolean) {
+async function 取(id: string, 要改: boolean | "删") {
   if (!是附件编号(id)) return { 错: "找不到这个附件", 状态: 404 } as const;
   const a = await prisma.attachment.findFirst({ where: { id } });
   if (!a) return { 错: "这个附件已经不在了，刷新看看", 状态: 404 } as const;
@@ -39,9 +41,11 @@ async function 出(req: Request, ctx: 参数, 只要头: boolean): Promise<Respo
   let 总: number;
   try { 总 = fs.statSync(附件文件(a.id)).size; } catch { return new Response("文件不在这台电脑上", { status: 404 }); }
   const 图 = 是图片(a.mime);
+  // ?download：页面上「下载」那个链接要存成文件，不在浏览器里打开
+  const 原样 = 图 || (!!a.followUpId && 是音频(a.mime));
   const 头 = new Headers({
-    "Content-Type": 图 ? a.mime : "application/octet-stream",
-    "Content-Disposition": `${图 ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(a.name)}`,
+    "Content-Type": 原样 ? a.mime : "application/octet-stream",
+    "Content-Disposition": `${原样 && !new URL(req.url).searchParams.has("download") ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(a.name)}`,
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "sandbox",
     // 文件存进去以后不再改：同一个编号永远是同一份字节
@@ -76,7 +80,7 @@ export async function DELETE(_req: Request, ctx: 参数) {
   const id = (await ctx.params).id;
   // 已经删了（两个窗口、连点）当成功
   if (是附件编号(id) && !(await prisma.attachment.findFirst({ where: { id }, select: { id: true } }))) return NextResponse.json({ ok: true });
-  const r = await 取(id, true);
+  const r = await 取(id, "删");
   if ("错" in r) return NextResponse.json({ error: r.错 }, { status: r.状态 });
   await 删附件(prisma, r.a.id);
   await recordAudit({ user: 我, action: "delete", entity: "Attachment", entityId: r.a.id, summary: `删了${r.叫法}的附件「${r.a.name}」（${读大小(r.a.size)}）`, detail: { 名字: r.a.name, 大小: r.a.size } });

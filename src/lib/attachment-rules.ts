@@ -32,7 +32,33 @@ export const 收的类型 = [...图片类型].join(",");
 export function 收所有文件(挂在: 归属): boolean {
   return "projectId" in 挂在;
 }
+
+/**
+ * 录音（企业版沟通记录，2026-10-31 F-跟进-07）：MP3 / M4A / WAV / AAC / AMR / OGG。
+ * 取文件那头录音按原类型放出去（<audio> 能直接播），照样带 sandbox + nosniff
+ */
+const 音频类型 = new Set([
+  "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/m4a", "audio/wav", "audio/x-wav", "audio/wave",
+  "audio/vnd.wave", "audio/aac", "audio/x-aac", "audio/amr", "audio/ogg",
+]);
+export function 是音频(mime: string): boolean {
+  return 音频类型.has(mime.toLowerCase());
+}
+/** 沟通记录上传框的 accept：浏览器对 m4a / amr 给的类型不一，扩展名一起写上 */
+export const 收的沟通类型 = [...图片类型, ...音频类型, ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".mp3", ".m4a", ".wav", ".aac", ".amr", ".ogg"].join(",");
+/** 按扩展名猜录音类型：有的浏览器传 m4a / amr 时 type 是空或 application/octet-stream */
+export function 猜音频类型(名字: string): string | null {
+  const 扩 = 名字.toLowerCase().split(".").pop() ?? "";
+  return ({ mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", aac: "audio/aac", amr: "audio/amr", ogg: "audio/ogg" } as Record<string, string>)[扩] ?? null;
+}
+
 export function 不收说明(名字: string, mime: string, 挂在?: 归属): string | null {
+  if (挂在 && "followUpId" in 挂在) {
+    if (是图片(mime) || 是音频(mime)) return null;
+    // 浏览器认不出类型的录音（m4a / amr 常见）按扩展名放行，服务端同样按扩展名定类型
+    if ((!mime || mime === "application/octet-stream") && 猜音频类型(名字)) return null;
+    return `「${名字}」不是图片或录音，沟通记录只收截图和录音（JPG、PNG、GIF、WebP、BMP，MP3、M4A、WAV、AAC、AMR、OGG）`;
+  }
   if (!只收图片 || 是图片(mime) || (挂在 && 收所有文件(挂在))) return null;
   return `「${名字}」不是图片，这里只收 JPG、PNG、GIF、WebP、BMP 图片`;
 }
@@ -96,12 +122,12 @@ export type 附件 = {
 
 /**
  * 挂在哪：商机（D-24）；线索 / 联系人只在企业版（2026-10-28 联系人附件，接口按 企业版() 放行）。订单那种 2026-10-29 随订单表删了。
- * 项目（P11，2026-10-29）只在企业版、项目模式开着时认
+ * 项目（P11，2026-10-29）只在企业版、项目模式开着时认；沟通记录（2026-10-31 F-跟进-07）同样，只认挂在项目上的沟通
  */
-export type 归属 = { opportunityId: string } | { leadId: string } | { contactId: string } | { projectId: string };
+export type 归属 = { opportunityId: string } | { leadId: string } | { contactId: string } | { projectId: string } | { followUpId: string };
 
 /** 归属的那一个键和编号：拼查询串、日志用 */
-export type 归属键名 = "opportunityId" | "leadId" | "contactId" | "projectId";
+export type 归属键名 = "opportunityId" | "leadId" | "contactId" | "projectId" | "followUpId";
 export function 归属键(挂在: 归属): [归属键名, string] {
   return Object.entries(挂在)[0] as [归属键名, string];
 }

@@ -573,6 +573,8 @@ model Attachment {
   contactId     String?
   /// 挂在哪个项目上（企业版项目详情页「附件」，迁移 086）
   projectId     String?
+  /// 挂在哪条沟通记录上（企业版项目沟通：截图、录音，迁移 103）。不建外键，同上
+  followUpId    String?
   /// 附件分类（企业版）：联系人上 名片 / 相册（迁移 074），空 = 相册；项目上 合同 / 方案 / 其它（10-31；方案 = 项目方案，迁移 101 那批加），空 = 其它。lib/enterprise/customer-v2.ts 的 附件分类们、项目附件分类们
   tag           String?
   /// 原文件名（人看的）；图片压过以后扩展名换成 .jpg
@@ -592,6 +594,7 @@ model Attachment {
   @@index([leadId])
   @@index([contactId])
   @@index([projectId])
+  @@index([followUpId])
 }
 
 model FollowUp {

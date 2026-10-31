@@ -177,8 +177,13 @@ it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注�
     expect(await page.getByRole("button", { name: "记 下" }).or(page.getByRole("button", { name: "记下" })).first().isDisabled()).toBe(true);
     await page.getByRole("button", { name: /取\s*消/ }).click();
     await 原话.waitFor({ state: "detached" });
-    // 手填入口：AI 那格收着，只给一个「用 AI 从原话预填」
+    // 手填入口：AI 那格收在默认折叠的「更多」里（F-跟进-06），展开后只给一个「用 AI 从原话预填」
     await page.getByRole("button", { name: "记一条沟通" }).first().click();
+    const 更多 = page.getByRole("button", { name: /更多：/ });
+    await 更多.waitFor();
+    expect(await 更多.getAttribute("aria-expanded")).toBe("false");
+    expect(await page.getByRole("button", { name: "用 AI 从原话预填" }).count()).toBe(0);
+    await 更多.click();
     await page.getByRole("button", { name: "用 AI 从原话预填" }).waitFor();
     expect(await page.getByRole("textbox", { name: "沟通原话" }).count()).toBe(0);
     expect(errors).toEqual([]);
@@ -614,7 +619,7 @@ it("R6 页头：具名按钮按设计排，没有「更多」；记一条沟通�
   const { page, errors } = await 覆盖(1280, { 可改沟通: true });
   try {
     // 两组（10-31 用户：按下面的栏分组、对齐）：左边对着主栏（沟通、卡点、转让、删除），右边对着侧栏（项目、项目组、提成）
-    expect(await 页头钮(page)).toEqual(["记一条沟通", "AI录入", "发卡点", "管理沟通", "转让项目", "删除项目", "编辑项目", "邀请成员", "改分配"]);
+    expect(await 页头钮(page)).toEqual(["记一条沟通", "AI录入", "发卡点", "转让项目", "删除项目", "编辑项目", "邀请成员", "改分配"]);
     expect(await page.getByRole("button", { name: "项目的更多操作" }).count()).toBe(0);
     expect(await page.locator(".page-head-a .ant-btn-primary").allTextContents()).toEqual(["记一条沟通"]);
     expect(await page.evaluate(() => document.querySelector(".page-head-a button.ant-btn-primary:not([disabled])")?.textContent)).toBe("记一条沟通");
@@ -630,8 +635,8 @@ it("R6 页头跟着权限：公海里能领的主按钮是「领取」；只读�
   const { page, errors } = await 覆盖(1280, { pooled: true, 能领取: true, 能放公海: false, 提成: null });
   try {
     expect(await 页头钮(page, ".ant-btn-primary")).toEqual(["领取"]);
-    // 公海里的项目谁都改不了（可改 = 能改 && !pooled）：编辑、推进、邀请…都不摆；沟通行上还能发卡点，所以管理沟通在
-    expect(await 页头钮(page)).toEqual(["领取", "记一条沟通", "AI录入", "发卡点", "管理沟通", "删除项目"]);
+    // 公海里的项目谁都改不了（可改 = 能改 && !pooled）：编辑、推进、邀请…都不摆；「管理沟通」M-权限-09 去掉了
+    expect(await 页头钮(page)).toEqual(["领取", "记一条沟通", "AI录入", "发卡点", "删除项目"]);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能放公海: true, 提成: null, 线索验证: { 判定: "有效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 我能: null, 痕: [] } }));
     await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("放回公海"));
     expect(await page.locator(".page-head-a").getByRole("button", { name: "放回公海" }).isDisabled()).toBe(true);
@@ -639,7 +644,7 @@ it("R6 页头跟着权限：公海里能领的主按钮是「领取」；只读�
   } finally { await page.close(); }
 });
 
-it("R6 弹窗：完成节点、改进程、项目组成员、改分配、管理沟通都能打开，标题带项目名；管理沟通里修改换到修改框", async () => {
+it("R6 弹窗：完成节点、改进程、项目组成员、改分配都能打开，标题带项目名；「管理沟通」入口去掉了（M-权限-09）", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: true });
   try {
     const 头 = page.locator(".page-head-a");
@@ -673,11 +678,7 @@ it("R6 弹窗：完成节点、改进程、项目组成员、改分配、管理�
     窗 = await 开("改分配", "改提成分配");
     await 窗.getByRole("button", { name: /取\s*消/ }).click();
     await 窗.waitFor({ state: "hidden" });
-    窗 = await 开("管理沟通", "管理沟通 · ");
-    expect(await 窗.innerText()).toContain("沟通内容");
-    await 窗.getByRole("button", { name: /^修\s*改$/ }).first().click();
-    await page.getByRole("dialog").filter({ hasText: "修改这条沟通" }).waitFor();
-    expect(await page.getByRole("dialog").filter({ hasText: "管理沟通 · " }).count()).toBe(0);
+    expect(await 头.getByRole("button", { name: "管理沟通" }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

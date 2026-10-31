@@ -2917,6 +2917,20 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .att-pic > .ant-btn { position: absolute; top: 2px; right: 2px; background: color-mix(in srgb, var(--panel) 85%, transparent); }
 .att-missing { width: 96px; height: 96px; border: 1px dashed var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: var(--fs-note); color: var(--text-muted); padding: 6px; }
 .att-files { list-style: none; margin: 12px 0 0; padding: 0; }
+/* 企业版沟通记录上的截图、录音（F-跟进-07，projects/[id]/FollowAttachments.tsx）：长文件名折行不撑宽，录音条跟着栏宽缩 */
+.follow-att { margin-top: 6px; display: grid; gap: 6px; min-width: 0; }
+.follow-att-pics { display: flex; flex-wrap: wrap; gap: 8px; }
+.follow-att-pic { position: relative; width: 64px; }
+.follow-att-pic .ant-image, .follow-att-pic .ant-image-img { border-radius: 4px; display: block; }
+.follow-att-pic > .ant-btn { position: absolute; top: 0; right: 0; background: color-mix(in srgb, var(--panel) 85%, transparent); }
+.follow-att-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.follow-att-name { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-note); }
+.follow-att-file audio { height: 32px; max-width: 100%; flex: 1 1 200px; min-width: 0; }
+.follow-att-add { display: flex; align-items: center; gap: 8px; }
+/* 记沟通弹窗（F-跟进-06/08）：卡点两格并排，窄了折成上下；「更多」里的格子和主区同样间距 */
+.follow-blocker-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.follow-blocker-row .ant-select { width: 100%; min-width: 0; }
+.follow-more { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
 .att-files li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); min-width: 0; }
 .att-files li > a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-files li > .muted { flex: none; font-size: var(--fs-note); }

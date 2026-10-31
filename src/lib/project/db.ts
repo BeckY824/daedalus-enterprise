@@ -24,6 +24,7 @@ import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
 import { dayjs } from "../utils";
 import { 看全部 } from "../team-scope";
+import { FOLLOW_RECORD_STATUSES } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
@@ -771,8 +772,10 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     if ("error" in 好) return { ok: false as const, error: 好.error };
     const 阶段问题 = 记沟通阶段问题(input, p);
     if (阶段问题) return { ok: false as const, error: 阶段问题 };
+    const 额外 = await 认沟通额外(tx, input.额外, p.customerId);
+    if ("error" in 额外) return { ok: false as const, error: 额外.error };
     const 跟进 = await tx.followUp.create({
-      data: { type: 好.type, method: 好.method, content: 好.content, occurredAt: 好.occurredAt, title: "", status: "已完成", customerId: p.customerId, contactId: p.contactId, ownerId: me.id },
+      data: { type: 好.type, method: 好.method, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
     });
     // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
     await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
@@ -789,6 +792,33 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     await 勾掉将回收提醒(tx, 规则, p, now);
     return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
   });
+}
+
+/**
+ * 记项目沟通带的额外格子（客户页选了关联项目，10-31）：标题、联系人、状态、时长、参与人。
+ * 联系人只认这位客户名下的；没传联系人 = undefined（用项目的联系人）
+ */
+async function 认沟通额外(
+  tx: Prisma.TransactionClient,
+  x: 向导跟进["额外"],
+  customerId: string,
+): Promise<{ title: string; status: string; duration: number | null; participants: string | null; contactId: string | null | undefined } | { error: string }> {
+  const 空 = { title: "", status: "已完成", duration: null, participants: null, contactId: undefined };
+  if (x == null) return 空;
+  if (typeof x !== "object") return { error: "沟通信息格式不正确" };
+  const title = typeof x.title === "string" ? x.title.trim().slice(0, 200) : "";
+  const status = x.status == null || x.status === "" ? "已完成" : x.status;
+  if (!(FOLLOW_RECORD_STATUSES as readonly string[]).includes(status)) return { error: `记录状态「${status}」不是合法取值` };
+  const 分 = x.durationMinutes;
+  if (分 != null && !(typeof 分 === "number" && Number.isFinite(分) && 分 >= 0)) return { error: "通话时长不能为负数" };
+  const participants = typeof x.participants === "string" && x.participants.trim() ? x.participants.trim().slice(0, 500) : null;
+  let contactId: string | null | undefined = undefined;
+  if (typeof x.contactId === "string" && x.contactId) {
+    const c = await 看全部(() => tx.contact.findFirst({ where: { id: x.contactId!, customerId }, select: { id: true } }));
+    if (!c) return { error: "选的联系人不在这位客户名下，刷新看看" };
+    contactId = c.id;
+  }
+  return { title, status, duration: 分 ? Math.round(分 * 60) : null, participants, contactId };
 }
 
 /**

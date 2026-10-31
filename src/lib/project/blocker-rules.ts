@@ -122,6 +122,27 @@ export function 规整发布(input: 发布输入, 默认: 卡点默认): 好的�
   return { type, impact, obstacle, description, dueDays, resourceRequest: 资源 || null };
 }
 
+/**
+ * 记沟通时顺手标的卡点（2026-10-31 F-跟进-08）：卡点类型、卡点影响、卡点描述都选填。
+ * - 类型没选或选「暂无卡点」、描述也空 → null，不生成卡点（A-18/Q4）
+ * - 否则生成一个：类型没选按「暂无卡点」；影响没选按设置里的默认；阻碍主体不在这个模块里填（认领流转照旧），
+ *   给了就用，没给落「其他」（选项里没有「其他」就落第一个）；描述空就写一句占位，卡点看板上看得出是记沟通时标的
+ * 返回的直接喂给 发布卡点；先过一遍 规整发布，坏的在建沟通之前就报
+ */
+export const 沟通卡点占位描述 = "记沟通时标了卡点，未写描述";
+export type 沟通卡点输入 = { type?: unknown; impact?: unknown; description?: unknown; obstacle?: unknown } | null | undefined;
+export function 沟通卡点(input: 沟通卡点输入, 默认: 卡点默认): 发布输入 | null | { error: string } {
+  if (input == null) return null;
+  if (typeof input !== "object") return { error: "卡点信息格式不正确" };
+  const 类 = 文字(input.type);
+  const 描述 = 文字(input.description);
+  if ((!类 || 类 === "暂无卡点") && !描述) return null;
+  const 主体 = 文字(input.obstacle) || (默认.阻碍主体们.includes("其他") ? "其他" : 默认.阻碍主体们[0] ?? "");
+  const 发: 发布输入 = { type: 类 || "暂无卡点", impact: 文字(input.impact) || 默认.默认影响, obstacle: 主体, description: 描述 || 沟通卡点占位描述 };
+  const 好 = 规整发布(发, 默认);
+  return "error" in 好 ? 好 : 发;
+}
+
 /** 一段可选的文字（进度、资源申请、解决方案…）：空 = null，超长报错 */
 export function 规整文字(v: unknown, 叫法: string, 必填 = false): string | null | { error: string } {
   const s = 文字(v);

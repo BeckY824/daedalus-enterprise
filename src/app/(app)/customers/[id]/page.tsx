@@ -4,6 +4,7 @@ import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 能删改沟通 } from "@/lib/enterprise/follow-perm";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
@@ -187,6 +188,7 @@ export default async function CustomerDetailPage({
       项目们={项目们}
       参与项目们={参与项目们}
       只读={只读}
+      能删改沟通={企 ? await 能删改沟通(me) : true}
       客户状态选项={客户状态选项}
       // 客户状态按字典项上色；项目模式开着按项目自动算（10-30，lib/enterprise/cust-status-auto-db.ts），章只读
       客户状态色={企 ? 客户状态色表(await 页面字典("custStatus")) : undefined}

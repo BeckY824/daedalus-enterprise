@@ -40,7 +40,7 @@ beforeEach(async () => {
   invalidateSettingsCache();
   mocks.企业版 = true;
   销售 = (await prisma.user.create({ data: { email: "s1", name: "小王", title: "", role: "SALES", password: "x" } })).id;
-  mocks.user = { ...mocks.user, id: 销售 };
+  mocks.user = { ...mocks.user, id: 销售, role: "SALES" };
   客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 销售 } })).id;
   别的客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 销售 } })).id;
 });
@@ -80,6 +80,9 @@ it("编辑时带 projectId 也不挂", async () => {
   await 记();
   const id = await 最新跟进();
   const 原 = await prisma.followUp.findUniqueOrThrow({ where: { id } });
+  // 10-31 M-权限-09：改沟通是总管理员 / 经理的事
+  await prisma.user.update({ where: { id: 销售 }, data: { role: "MANAGER" } });
+  mocks.user = { ...mocks.user, role: "MANAGER" };
   expect(await 记({ id, projectId: p.id, content: "改一下", 版本: 原.updatedAt.toISOString() })).toMatchObject({ ok: true });
   expect((await prisma.followUp.findUniqueOrThrow({ where: { id } })).content).toBe("改一下");
   expect(await 挂了(id)).toEqual({ 挂: null, 编号: null, 标记: null });

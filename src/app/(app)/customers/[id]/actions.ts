@@ -17,6 +17,7 @@ import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删 } from "@/lib/enterprise/soft-delete";
+import { 能删改沟通, 不能删改沟通话, 刚记的能撤 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 在推项目条件 } from "@/lib/project/active";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
@@ -147,6 +148,8 @@ export async function saveFollowUp(input: FollowUpInput) {
   try {
     if (!input || typeof input !== "object" || typeof input.content !== "string" || typeof input.customerId !== "string") return { ok: false as const, error: "跟进信息格式不正确" };
     if (!hasVisibleText(input.content)) return { ok: false as const, error: "请填写沟通内容" };
+    // 企业版 M-权限-09（10-31）：记完的沟通只有总管理员、经理能改（lib/enterprise/follow-perm.ts）
+    if (input.id && !(await 能删改沟通(user))) return { ok: false as const, error: 不能删改沟通话 };
     if (!FOLLOW_TYPES.some((t) => t.value === input.type)) return { ok: false as const, error: `跟进类型「${input.type}」不是合法取值` };
     if (!FOLLOW_RECORD_STATUSES.includes(input.status as (typeof FOLLOW_RECORD_STATUSES)[number])) return { ok: false as const, error: `记录状态「${input.status}」不是合法取值` };
     if (input.durationMinutes != null && !(Number.isFinite(input.durationMinutes) && input.durationMinutes >= 0)) return { ok: false as const, error: "通话时长不能为负数" };
@@ -257,6 +260,8 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 删之前先取内容：删完这条记录就无从还原了。整条连 AI 速记的原文一起留着，给撤销用（排查 D2）
     const 待删 = await prisma.followUp.findUnique({ where: { id }, include: { source: true } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
+    // 企业版 M-权限-09（10-31）：普通成员不能删沟通，总管理员、经理能删（软删进回收站）；本人刚记的（AI 卡片撤销）例外
+    if (!刚记的能撤(me, 待删) && !(await 能删改沟通(me))) return { ok: false as const, error: 不能删改沟通话 };
     // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（撤销 / 恢复时按跟进补回来）
     if (软删开着()) await prisma.followUp.update({ where: { id }, data: { deletedAt: new Date() } });
     else await prisma.followUp.delete({ where: { id } });
