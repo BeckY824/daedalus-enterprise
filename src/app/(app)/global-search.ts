@@ -20,7 +20,7 @@ export type 全局搜索结果 = { 客户: 搜到的一条[]; 项目: 搜到的�
 
 const 空: 全局搜索结果 = { 客户: [], 项目: [], 联系人: [] };
 /** 每组最多几条：跳转单里摆得下，要看全的点进各自列表页去搜 */
-export const 每组上限 = 6;
+const 每组上限 = 6;
 
 export async function 全局搜索(关键词: string): Promise<全局搜索结果> {
   const me = await requireUser();
