@@ -22,10 +22,13 @@ import { readSecret } from "@/lib/secret";
 import { 看得到, type 限定 } from "@/lib/team-scope";
 import { 建组织, 实线下属, 虚线下属, 管理员类别of, 管理员类别们of, type 组织 } from "./org-core";
 import { 规则 } from "./rules";
+import { 市场部门key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 
 /** lib/auth.ts 的 COOKIE */
 const 会话票 = "crm_session";
 export const 虚线只读话 = "这是虚线下属的客户：只能看，不能改、不能转";
+/** 虚线下属和市场成员相关（10-31）两样都有时：挡下那一句不说死是哪一样 */
+export const 虚线或市场只读话 = "这是虚线下属或市场成员相关的客户：只能看，不能改、不能转";
 /** 没认出人：只看公海（谁的 id 都不会是这个） */
 const 只看公海: 限定 = { 我: ["__无"], 互看: false, 别人的: new Set() };
 
@@ -139,27 +142,71 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   if (!(await 开着(db, 规则.按组织看客户.key))) return null;
   if (!id) return 只看公海;
 
-  const [users, members, depts] = await Promise.all([
+  const [users, members, depts, 设的市场部门] = await Promise.all([
     db.user.findMany({ select: { id: true, role: true, active: true } }),
     db.entMember.findMany(),
     db.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
+    db.setting.findUnique({ where: { key: 市场部门key }, select: { value: true } }),
   ]);
   const 我 = users.find((u) => u.id === id);
   if (!我 || !我.active) return 只看公海;
   const org = 建组织(users, members, depts);
   const 范围 = 组织范围of(org, 我.role, id);
   if (!范围) return null;
+  const 类别 = 管理员类别们of(org, id);
   // 市场管理分线索（同 lead-assign 能分配；老板、总管理员上面已经不限定）：线索开着分配时全看全改，
   // 不然分出去就看不到、也分不了（F9 10-25）。客户那条线还是按组织架构
-  const 线索 = 管理员类别们of(org, id).has("市场管理") && (await 开着(db, 规则.线索分配.key)) ? { 线索全看: true } : {};
-  if (!范围.读) return { 我: 范围.写, 互看: false, 别人的: new Set(), ...线索 };
+  const 线索 = 类别.has("市场管理") && (await 开着(db, 规则.线索分配.key)) ? { 线索全看: true } : {};
+  const 市场 = 市场的人(org, id, 类别.has("市场管理"), 设的市场部门?.value);
+  if (!范围.读 && !市场.length) return { 我: 范围.写, 互看: false, 别人的: new Set(), ...线索 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）
+  const 别人的 = new Set<string>();
   const 读 = 范围.读;
-  const 那些 = await db.customer.findMany({
-    where: { OR: [{ salesOwnerId: { in: 读 } }, { channelOwnerId: { in: 读 } }] },
-    select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
-  });
-  const 别人的 = new Set(那些.filter((c) => !看得到(c, 范围.写)).map((c) => c.id));
-  return { 我: 范围.写, 互看: false, 别人的, 读, 全拦: true, 话: 虚线只读话, ...线索 };
+  if (读) {
+    const 那些 = await db.customer.findMany({
+      where: { OR: [{ salesOwnerId: { in: 读 } }, { channelOwnerId: { in: 读 } }] },
+      select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
+    });
+    for (const c of 那些) if (!看得到(c, 范围.写)) 别人的.add(c.id);
+  }
+  if (市场.length) {
+    // 市场成员相关的客户（10-31）：看得到、只能看。原来就能动的不降——自己（含实线下属）负责的、公海的，
+    // 以及自己负责 / 进了组的项目挂着的客户（原来就能在项目下记沟通）都不算只读
+    const 写 = 范围.写;
+    const 那些 = await db.customer.findMany({
+      where: 市场相关客户(市场),
+      select: {
+        id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } },
+        projects: { where: { deletedAt: null }, select: { ownerId: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } } },
+      },
+    });
+    for (const c of 那些) {
+      if (看得到(c, 写)) continue;
+      if (c.projects.some((p) => 写.includes(p.ownerId) || p.members.some((m) => 写.includes(m.userId)))) continue;
+      别人的.add(c.id);
+    }
+  }
+  const 话 = 读 && 市场.length ? 虚线或市场只读话 : 读 ? 虚线只读话 : 市场只读话;
+  return {
+    我: 范围.写, 互看: false, 别人的, 全拦: true, 话, ...线索,
+    ...(读 ? { 读 } : {}),
+    ...(市场.length ? { 市场 } : {}),
+  };
+}
+
+/**
+ * 按「市场成员相关」放开读的是哪几位（10-31）：市场管理 = 全部市场成员（自己也是就带上）；市场成员 = 自己；别人 = 空（不放开）。
+ * 存的部门设置读不出当没设（按名字带「市场」）
+ */
+function 市场的人(org: 组织, id: string, 是市场管理: boolean, 存的: string | undefined): string[] {
+  let 设的: string[] | null = null;
+  try {
+    设的 = 存的 === undefined ? null : 规整市场部门(JSON.parse(存的));
+  } catch {
+    设的 = null;
+  }
+  const 成员 = 市场成员们(org, 设的);
+  if (是市场管理) return [...成员];
+  return 成员.has(id) ? [id] : [];
 }

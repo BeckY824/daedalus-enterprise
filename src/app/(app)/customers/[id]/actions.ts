@@ -5,8 +5,7 @@ import { hasVisibleText } from "@/lib/form-validation";
 import { 不在了 } from "@/lib/not-there";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 只读客户, 读的我 } from "@/lib/team-scope";
-import { 虚线只读话 } from "@/lib/enterprise/visibility";
+import { 只读客户, 只读话, 读的我 } from "@/lib/team-scope";
 import type { Prisma } from "@/generated/prisma";
 import { requireUser } from "@/lib/auth";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES } from "@/lib/constants";
@@ -167,10 +166,10 @@ export async function saveFollowUp(input: FollowUpInput) {
       同事的客户（团队开了互看，2026-10-20）：只许新记一条跟进。改已有的、顺手建待办 / 计划、完成别人的计划都不行——
       服务端同一份规矩（scope-policy 互看可加），本机先说清楚，不等推上去被拒进「待核对」
     */
-    const 目标 = await prisma.customer.findUnique({ where: { id: input.customerId }, select: { salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
+    const 目标 = await prisma.customer.findUnique({ where: { id: input.customerId }, select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
     const 只读档 = 目标 ? await 只读客户(defaultClient, 目标) : false;
-    // 企业版虚线下属的客户：跟进也不能记（限定层也会挡，这里先给一句人话）
-    if (只读档 === "全") return { ok: false as const, error: 虚线只读话 };
+    // 企业版虚线下属的、市场成员相关的（10-31）客户：跟进也不能记（限定层也会挡，这里先给一句人话）
+    if (只读档 === "全") return { ok: false as const, error: await 只读话(defaultClient) };
     const 同事的 = !!只读档;
     if (同事的) {
       if (input.id) return { ok: false as const, error: "这是同事的客户：只能新加跟进，改已有的跟进请找负责人" };

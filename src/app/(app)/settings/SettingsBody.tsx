@@ -19,6 +19,7 @@ import { 文字里号码打码, 同名带邮箱 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 管理员类别of } from "@/lib/enterprise/org";
 import { 拆角色, 推业务角色 } from "@/lib/enterprise/org-core";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
+import { 市场部门key, 规整市场部门 } from "@/lib/enterprise/market";
 import { getSetting } from "@/lib/settings";
 import { 读改权限, 能改设置, 谁能改的话, 能改时限的节点, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import type { 组织架构 } from "./OrgTab";
@@ -101,7 +102,7 @@ export default async function SettingsBody() {
     : null;
 
   // 企业版才多一栏「组织架构」：部门树、每个人的部门 / 角色 / 业务线 / 上级。老板和总管理员能改（字段权限、谁能改按「后台设置谁能改」）
-  const [org, 开关, 字段权限, 线索分配, 改权限, 不设配额] = 企业版()
+  const [org, 开关, 字段权限, 线索分配, 改权限, 不设配额, 市场部门] = 企业版()
     ? await Promise.all([
         读组织(),
         Promise.all(规则名们.map(async (n) => [n, await 规则开着(n)] as const)).then((xs) => Object.fromEntries(xs) as Record<(typeof 规则名们)[number], boolean>),
@@ -111,8 +112,10 @@ export default async function SettingsBody() {
         读改权限(),
         // 规则里的「不设配额」选项：规则关着是 null
         读不设配额(),
+        // 市场部门（10-31）：null = 没设，按名字带「市场」的部门认
+        getSetting<unknown>(市场部门key).then(规整市场部门),
       ])
-    : [null, null, null, null, null, null];
+    : [null, null, null, null, null, null, null];
   /**
    * 每样后台设置这个人能不能改：null = 能改，否则是挡住的那句（卡片右上角显示，控件灰掉）。
    * 企业版按「后台设置谁能改」表（B2 第 6 条），别的版本照旧只有老板。和服务端 挡改设置 同一套。
@@ -176,6 +179,7 @@ export default async function SettingsBody() {
           改权限,
           线索分配: 线索分配?.length ? 线索分配 : null,
           线索不设配额: 不设配额,
+          市场部门: 市场部门 ?? null,
         };
       })()
     : null;
