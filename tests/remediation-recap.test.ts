@@ -17,6 +17,8 @@ beforeEach(async () => {
   customerId = (await prisma.customer.create({ data: { name: "QA客户", phone: "", salesOwnerId: state.user.id, createdAt: new Date("2026-01-01") } })).id;
 });
 afterEach(() => vi.useRealTimers()); afterAll(async () => { await prisma.$disconnect(); });
+// 库里默认时间取真实时钟，测试钟停在北京 10-31 12:00；不写死会在真实时间过了 12:00 后落到「本月至今」之外
+const 早上 = new Date("2026-10-31T10:00:00+08:00");
 it("本月快捷意图使用自然月，不是固定30天", () => {
   expect(认意图("这个月我跟了谁")?.调用[0].args).toEqual({ period: "this_month" });
 });
@@ -33,9 +35,9 @@ it("完成计划按实际完成时间，反复点完成不改首次时间，撤�
 });
 it("自己的建档按创建操作人，转交不重记成别人的新建", async () => {
   const other = await prisma.user.create({ data: { email: "other", name: "乙", password: "x" } });
-  const mine = await prisma.customer.create({ data: { name: "我创建后转给乙", phone: "", salesOwnerId: other.id } });
-  const assigned = await prisma.customer.create({ data: { name: "乙创建后转给我", phone: "", salesOwnerId: state.user.id } });
-  for (const [id, uid] of [[mine.id, state.user.id], [assigned.id, other.id]]) await prisma.auditLog.create({ data: { userId: uid, userName: uid, action: "create", entity: "Customer", entityId: id, summary: "创建客户" } });
+  const mine = await prisma.customer.create({ data: { name: "我创建后转给乙", phone: "", salesOwnerId: other.id, createdAt: 早上 } });
+  const assigned = await prisma.customer.create({ data: { name: "乙创建后转给我", phone: "", salesOwnerId: state.user.id, createdAt: 早上 } });
+  for (const [id, uid] of [[mine.id, state.user.id], [assigned.id, other.id]]) await prisma.auditLog.create({ data: { userId: uid, userName: uid, action: "create", entity: "Customer", entityId: id, summary: "创建客户", at: 早上 } });
   const r = await tool("my_recap").run({ period: "this_month" }, ctx());
   expect((r.data as { 新建的客户: { 姓名: string }[] }).新建的客户.map((x) => x.姓名)).toEqual(["我创建后转给乙"]);
 });
@@ -65,11 +67,11 @@ it("常驻进程跨月后本月快捷查询随当前时间重算", () => {
 it("导入、线索新建转化可核实建档人；并入老客户不算新建，重复证据只计一次", async () => {
   const other = await prisma.user.create({ data: { email: "source-other", name: "乙", password: "x" } });
   const ids: string[] = [];
-  for (const name of ["本人导入后转交", "本人线索新建后转交", "并入已有客户"]) ids.push((await prisma.customer.create({ data: { name, phone: "", salesOwnerId: other.id } })).id);
-  const batch = await prisma.importBatch.create({ data: { userId: state.user.id, userName: "QA", fileName: "本地.csv" } });
+  for (const name of ["本人导入后转交", "本人线索新建后转交", "并入已有客户"]) ids.push((await prisma.customer.create({ data: { name, phone: "", salesOwnerId: other.id, createdAt: 早上 } })).id);
+  const batch = await prisma.importBatch.create({ data: { userId: state.user.id, userName: "QA", fileName: "本地.csv", at: 早上 } });
   await prisma.importRow.create({ data: { batchId: batch.id, customerId: ids[0], kind: "create" } });
-  await prisma.auditLog.create({ data: { userId: state.user.id, userName: "QA", action: "create", entity: "Customer", entityId: ids[0], summary: "重复创建证据" } });
-  for (const [customer, merge] of [[ids[1], false], [ids[2], true]] as const) await prisma.auditLog.create({ data: { userId: state.user.id, userName: "QA", action: "convert", entity: "Lead", summary: "转化", detail: JSON.stringify({ customerId: customer, 并入: merge }) } });
+  await prisma.auditLog.create({ data: { userId: state.user.id, userName: "QA", action: "create", entity: "Customer", entityId: ids[0], summary: "重复创建证据", at: 早上 } });
+  for (const [customer, merge] of [[ids[1], false], [ids[2], true]] as const) await prisma.auditLog.create({ data: { userId: state.user.id, userName: "QA", action: "convert", entity: "Lead", summary: "转化", detail: JSON.stringify({ customerId: customer, 并入: merge }), at: 早上 } });
   const r = await tool("my_recap").run({ period: "this_month" }, ctx());
   expect((r.data as { 新建的客户: { 姓名: string }[] }).新建的客户.map((x) => x.姓名).sort()).toEqual(["本人导入后转交", "本人线索新建后转交"].sort());
   expect(r.summary).toContain("可核实本人建档 2 位");
