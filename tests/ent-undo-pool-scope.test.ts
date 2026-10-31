@@ -81,7 +81,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
   it("真从公海领的照常撤：还给原负责人、放回公海", async () => {
     const c = await 客户(小李.id);
     当(小李);
-    expect(await 放进公海([c.id])).toMatchObject({ ok: true, updated: 1 });
+    expect(await 放进公海([c.id], "客户主动终止")).toMatchObject({ ok: true, updated: 1 });
     当(小王);
     const r = await 领取([c.id]);
     if (!r.ok) throw new Error(r.error);
@@ -95,7 +95,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
   it("老板撤自己的分配照常；另一位老板拿同样的数据撤不了", async () => {
     const c = await 客户(小李.id);
     当(小李);
-    await 放进公海([c.id]);
+    await 放进公海([c.id], "客户主动终止");
     当(老板);
     const r = await 分配公海([c.id], 小王.id);
     if (!r.ok) throw new Error(r.error);
@@ -111,7 +111,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
   it("只认 30 分钟内的那一下：31 分钟前领的撤不了，不还、不进公海、不写撤销记录", async () => {
     const c = await 客户(小李.id);
     当(小李);
-    await 放进公海([c.id]);
+    await 放进公海([c.id], "客户主动终止");
     当(小王);
     const r = await 领取([c.id]);
     if (!r.ok) throw new Error(r.error);
@@ -125,7 +125,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
   it("31 分钟前的分配老板也撤不了", async () => {
     const c = await 客户(小李.id);
     当(小李);
-    await 放进公海([c.id]);
+    await 放进公海([c.id], "客户主动终止");
     当(老板);
     const r = await 分配公海([c.id], 小王.id);
     if (!r.ok) throw new Error(r.error);
@@ -144,7 +144,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
   it("分给原负责人的照常撤：放回公海；31 分钟前的撤不了", async () => {
     const c = await 客户(小李.id);
     当(小李);
-    await 放进公海([c.id]);
+    await 放进公海([c.id], "客户主动终止");
     当(老板);
     const r = await 分配公海([c.id], 小李.id);
     if (!r.ok) throw new Error(r.error);

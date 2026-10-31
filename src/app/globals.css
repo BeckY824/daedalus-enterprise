@@ -286,6 +286,15 @@ html.glass .auth-fine { color: var(--ink-soft); }
 /* 窄屏左栏收起，表单上方补一枚小标（网页版会在手机上打开；桌面端窗口不会这么窄） */
 .auth-mobile-mark { display: none; }
 @media (max-width: 760px) { .auth { grid-template-columns: 1fr; } .auth-side { display: none; } .auth-mobile-mark { display: block; margin-bottom: var(--s2); } }
+/* 企业版登录（U-登录-01，10-31）：没有左栏，页面正中一张卡；标和产品名居中，产品名再长也折行不撑出去 */
+.auth-solo { grid-template-columns: minmax(0, 1fr); }
+.auth-solo .auth-main { background: var(--page-bg); padding: var(--s6) var(--s4); }
+.auth-solo .auth-form { width: min(380px, 100%); padding: var(--s6) var(--s5); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); box-sizing: border-box; }
+.auth-solo .auth-mobile-mark { display: flex; justify-content: center; margin-bottom: var(--s2); }
+.auth-solo .auth-step h1 { text-align: center; }
+.auth-solo-name { overflow-wrap: anywhere; }
+.auth-solo-alt { text-align: center; }
+html.glass .auth-solo .auth-main { background: transparent; }
 
 /* 演示部署的选人门（login/DemoLogin.tsx）：按角色分组，一人一行，点了就进 */
 .demo-login { width: min(400px, 100%); }
@@ -307,6 +316,14 @@ html.glass .auth-fine { color: var(--ink-soft); }
 .demo-switch-person { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
 .demo-switch-person b { font-weight: 500; color: var(--ink); }
 .demo-switch-person span { font-size: var(--fs-min); color: var(--text-muted); white-space: normal; overflow-wrap: anywhere; }
+
+/* 企业版切换视图（M-权限-08）：钉在顶上正中一条「正在以 X 的视图查看（只读）· 退出」。固定定位不占栅格，
+   名字长了省略号收尾，「退出」永远在条里看得见；窄屏两边各留 16px */
+.view-as-bar { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 4px 6px 4px 12px; border: 1px solid var(--warning-line); border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-min); line-height: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); white-space: nowrap; }
+.view-as-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.view-as-text b { font-weight: 600; }
+.view-as-exit { flex: none; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warning-text); color: var(--on-ink); font: inherit; line-height: 20px; cursor: pointer; }
+.view-as-exit:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 
 /* 验证码（components/OtpInput.tsx）：真正接键盘的是那个透明 input，格子只是画出来的样子 */
 .otp { --otp-gap: var(--s2); position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: var(--otp-gap); cursor: text; }
@@ -1075,9 +1092,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .country-cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .country-cell-t { font-size: 12px; font-variant-numeric: tabular-nums; }
 .cust-level-B { border-color: var(--warning-line); color: var(--warning-text); background: var(--warning-bg); }
-/* 企业版级别画成星（P13 第 5 条，components/LevelStars.tsx）：满格 4 颗，没亮的淡色；不换行、等宽，列表 76 宽放得下 */
-.cust-stars { display: inline-block; white-space: nowrap; color: var(--warning-text); font-size: 12px; line-height: 1; letter-spacing: 1px; }
-.cust-stars-off { color: var(--line); }
+/* 企业版级别只显示字母（F-客户-01，components/LevelStars.tsx 复用 .cust-level 方块）：S 最重，A 红、B 黄、C 灰同外贸等级 */
+.cust-level-S { border-color: var(--danger); color: var(--on-ink); background: var(--danger); }
+.cust-level-C { border-color: var(--line); color: var(--text-muted); background: transparent; }
 .rec-sec { padding: 6px 12px 10px; border-top: 1px solid var(--border); }
 .rec-sec:first-of-type { border-top: none; }
 .rec-sec-t {
@@ -1155,6 +1172,33 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-side .cust-link-t { overflow-wrap: anywhere; }
 @container (max-width: 1000px) { .proj-2col { grid-template-columns: minmax(0, 1fr) 280px; } }
 @container (max-width: 629px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
+/* 企业版左栏瀑布流（U-项目-01/04）：沟通、卡点与任务各一块，标题那一行是展开 / 收起的按钮，收着只剩标题；
+   块里定高、自己滚（外层左栏照旧上下滚看全部块）；上面一格搜索 */
+.proj-mod .ant-card-head-title { overflow: visible; }
+.proj-mod-h {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0;
+  padding: 0; border: none; background: none; font: inherit; color: inherit; cursor: pointer;
+}
+.proj-mod-h:disabled { cursor: default; }
+.proj-mod-h:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 2px; }
+.proj-mod-h > .anticon { color: var(--text-muted); font-size: 12px; }
+.proj-mod-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-mod.is-closed > .ant-card-body { display: none; }
+.proj-mod.is-closed > .ant-card-head { border-bottom: none; }
+.proj-mod-body { max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior-y: contain; min-width: 0; scrollbar-width: thin; }
+.proj-search { min-width: 0; }
+/* 项目附件一块（F-项目-18）：合同附件 / 项目方案 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
+.proj-att-sec { min-width: 0; }
+.proj-att-sec + .proj-att-sec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.proj-att-h { font-weight: 600; margin-bottom: 8px; }
+.proj-att-from { min-width: 0; }
+.proj-att-from + .proj-att-from { margin-top: 10px; }
+.proj-att-src { display: flex; align-items: center; min-width: 0; color: var(--text-muted); font-size: var(--fs-note, 12px); }
+.proj-att-src > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-att-link.ant-btn { padding-inline: 0; height: auto; font-size: inherit; max-width: 100%; }
+.proj-att-link.ant-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.att-compact > .muted { font-size: var(--fs-note, 12px); }
 /* 页头最左边那颗「显示项目列表」（PaneToggle，名单收起或在抽屉里时才有），照客户记录页 .rec-head */
 .proj-head { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
 .proj-head > .page-head { flex: 1; min-width: 0; }
@@ -1208,23 +1252,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    当前进程一圈慢呼吸；系统开了「减少动态效果」就不动。名字长了折行，不撑开节点卡 */
 .proj-stages { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .proj-stage-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
-.proj-stage-tabs { display: flex; gap: 4px; align-self: stretch; }
-/* 「推进进程」「结束当前进程」（10-31）：和页签同一行靠右、同字号，不要框——文字按钮，悬停才铺底色；推进用品牌色，结束用灰 */
-.proj-stage-acts { margin-left: auto; display: flex; align-items: center; gap: 2px; }
-.proj-stage-act {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: none; border-radius: var(--r-ctl);
-  background: none; font: inherit; color: var(--text-muted); cursor: pointer; white-space: nowrap;
-}
-.proj-stage-act .anticon { font-size: 12px; }
-.proj-stage-act:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
-.proj-stage-act:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
-.proj-stage-act.is-go { color: var(--brand); font-weight: 600; }
-.proj-stage-act.is-go:hover:not(:disabled) { color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
-.proj-stage-act:disabled { color: var(--text-faint); font-weight: 400; cursor: not-allowed; }
-.proj-stage-act-sep { width: 1px; height: 14px; background: var(--line-soft); margin: 0 4px; }
+/* U-项目-01：当前进程块里页签、节点都一行排开，太长左右滑、不折行 */
+.proj-stage-tabs { display: flex; gap: 4px; align-self: stretch; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
+/* 「完成节点 ▼」「新增沟通」（M-节点-04 / U-项目-06）：和页签同一行靠右；窄了整组换到下一行，不挤页签 */
+.proj-stage-acts { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; min-width: 0; }
+.proj-stage-tip { display: inline-flex; }
+.proj-stage-tip > .ant-btn:disabled { pointer-events: none; }
 .proj-stage-why { min-width: 0; overflow-wrap: anywhere; }
 .proj-stage-tab {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap;
   padding: 6px 10px; margin-bottom: -1px; border: none; border-bottom: 2px solid transparent;
   background: none; color: var(--text-muted); font: inherit; cursor: pointer; border-radius: var(--r-ctl) var(--r-ctl) 0 0;
 }
@@ -1233,41 +1269,72 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-tab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--stage-c); }
 .proj-stage-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--stage-c); opacity: .45; }
 .proj-stage-tab.is-here .proj-stage-dot, .proj-stage-tab.is-on .proj-stage-dot { opacity: 1; }
-.proj-stage-here {
-  font-size: var(--fs-min, 11px); font-weight: 400; line-height: 16px; padding: 0 6px; border-radius: 8px;
-  color: var(--stage-c); background: color-mix(in srgb, var(--stage-c) 12%, transparent);
-}
+/* F-项目-19：不在的阶段页签字灰着（还能点开看） */
+.proj-stage-tab.is-away { color: var(--text-faint); }
+.proj-stage-tab.is-away.is-on { color: var(--text-muted); }
 .proj-stage-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .proj-stage-note { color: var(--text-muted); font-size: var(--fs-note, 12px); }
-.proj-stage-nodes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 6px; }
-.proj-stage-node {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
-  padding: 4px 10px 4px 6px; border-radius: 14px; border: 1px solid var(--line-soft); color: var(--text-muted);
+/* 10-31 箭头步骤条：每个进程一块定宽的箭头（左凹右尖、首尾相接），块里居中「圆点 + 名字」。
+   一排放不下就横向滚（触控板 / 滚轮 / 两头小箭头），打开时 ProjectStages 把「当前」滚到中间。
+   当前：浅蓝底 + 蓝描边 + 橙点；其余：浅灰底、灰点；走过的：灰底 + 绿底白勾。
+   描边靠两层：块本身是描边色、::before 缩进 2px 是底色（clip-path 会把 border 一起切掉）。 */
+.proj-stage-strip { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
+.proj-stage-strip > .proj-stage-nodes { flex: 1 1 auto; }
+.proj-stage-nodes {
+  list-style: none; margin: 0; padding: 2px 0 8px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
+  min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
 }
-.proj-stage-name { min-width: 0; overflow-wrap: anywhere; }
+.proj-stage-node, .proj-stage-exit {
+  --chev: 14px;
+  --chev-shape: polygon(0 0, calc(100% - var(--chev)) 0, 100% 50%, calc(100% - var(--chev)) 100%, 0 100%, var(--chev) 50%);
+  position: relative; isolation: isolate; box-sizing: border-box;
+  flex: 0 0 190px; width: 190px; height: 36px; margin-left: calc(3px - var(--chev));
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+  padding: 0 calc(var(--chev) + 6px); color: var(--text-muted); background: transparent;
+  clip-path: var(--chev-shape);
+}
+.proj-stage-node:first-child {
+  margin-left: 0;
+  --chev-shape: polygon(0 0, calc(100% - var(--chev)) 0, 100% 50%, calc(100% - var(--chev)) 100%, 0 100%);
+}
+.proj-stage-node::before, .proj-stage-exit::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; background: var(--hover); clip-path: var(--chev-shape);
+}
+/* 单个节点名太长：块里放不下就省略号，悬停看全名（title） */
+.proj-stage-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .proj-stage-mark {
-  width: 16px; height: 16px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
-  font-size: 10px; border: 1.5px solid var(--line-strong); color: var(--on-ink);
+  width: 8px; height: 8px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9px; background: var(--line-strong); color: var(--on-ink);
 }
 .proj-stage-node.is-done { color: var(--ink-soft); }
-.proj-stage-node.is-done .proj-stage-mark { background: var(--stage-c); border-color: var(--stage-c); }
-.proj-stage-node.is-cur {
-  color: var(--ink); font-weight: 600; border-color: var(--stage-c);
-  background: color-mix(in srgb, var(--stage-c) 8%, transparent);
-}
-.proj-stage-node.is-cur .proj-stage-mark { border-color: var(--stage-c); animation: proj-stage-ring 2.4s ease-in-out infinite; }
-.proj-stage-cur { font-size: var(--fs-min, 11px); font-weight: 400; color: var(--stage-c); }
+.proj-stage-node.is-done .proj-stage-mark, .proj-stage-exit.is-done .proj-stage-mark { width: 14px; height: 14px; background: var(--success); }
+.proj-stage-node.is-cur { color: var(--ink); font-weight: 600; background: var(--brand); }
+.proj-stage-node.is-cur::before { inset: 2px; background: var(--brand-bg); }
+.proj-stage-node.is-cur .proj-stage-mark { background: var(--warning); animation: proj-stage-ring 2.4s ease-in-out infinite; }
+.proj-stage-node.is-cur .ant-tag { flex: none; }
+.proj-stage-cur { flex: none; font-size: var(--fs-min, 11px); font-weight: 400; color: var(--brand); }
 @keyframes proj-stage-ring {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--stage-c) 35%, transparent); }
-  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--stage-c) 0%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 45%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 0%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .proj-stage-node.is-cur .proj-stage-mark { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--stage-c) 25%, transparent); }
+  .proj-stage-node.is-cur .proj-stage-mark { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 30%, transparent); }
 }
-/* 「结束当前进程」框：一行一个去处，灰着的写清为什么 */
-.proj-end-opts.ant-radio-group { display: flex; flex-direction: column; gap: 10px; }
-.proj-end-name { font-weight: 600; }
-.proj-end-desc { color: var(--text-muted); font-size: var(--dt-aux, 12px); overflow-wrap: anywhere; }
+/* A-12：线索/商机列表末尾的出口（已转商机 / 商机赢单）：细灰描边、白底，和进程块区分开；走过了换绿描边 */
+.proj-stage-exit { color: var(--text-faint); background: var(--line-strong); }
+.proj-stage-exit::before { inset: 1.5px; background: var(--panel); }
+.proj-stage-exit.is-done { color: var(--ink-soft); background: var(--success); }
+.proj-stage-exit.is-done::before { background: var(--success-bg); }
+/* 两头的小箭头：只在那一侧还有没露出来的块时出现。摆在这排两边、占自己的宽度，不叠在块上（叠上去会盖住节点名，排版闸门 10-31 拦过） */
+.proj-stage-scroll {
+  flex: none; margin-top: 2px; width: 26px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text-muted); cursor: pointer;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.proj-stage-scroll:hover { color: var(--ink); background: var(--hover); }
+.proj-stage-scroll:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 「完成节点」框里缺的必填 */
+.proj-miss-list { margin: 4px 0 0; padding-left: 20px; overflow-wrap: anywhere; }
 
 /* 项目画像卡（P11）：键 64px 一列，值占满；下拉、输入框都按卡宽，不撑开右栏 */
 .proj-profile { display: grid; gap: 10px; }
@@ -1454,6 +1521,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 @container rec (min-width: 1090px) {
   .rec-ai-guess-btn { display: none; }
 }
+/* 右栏空着不渲染（RecordView 有右栏）：630 以上就两栏，资料、沟通各占一行到底，不给空栏留位置 */
+@container rec (min-width: 630px) {
+  .rec.rec-no-right { grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: none; }
+  .rec.rec-no-right > :is(.rec-rail:first-child, .rec-col) { grid-row: 1; }
+}
 /* 单栏要盖过上面那几条「放第 2 列」：否则网格多出一条隐式列，时间线整栏被挤到正文右边、压在全局 AI 面板底下，
    铅笔点不到（2026-10-19 客户 Windows 截图；1280 宽手动开着 AI 面板就是这样）。叠成一列：档案、待办、时间线 */
 @container rec (max-width: 629px) {
@@ -1605,6 +1677,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-s-late { color: var(--danger-text); font-weight: 600; }
 .btodo-s-today { color: var(--ink); font-weight: 500; }
 .btodo-s-later { color: var(--text-muted); }
+/* 复盘页「卡点」「沟通」页签（P7）：沿用待办列表的样子，只补卡点类型的颜色和长内容的浮层 */
+.rblk-type { font-size: var(--fs-note); color: var(--text-muted); }
+.rblk-type-hot { color: var(--danger-text); font-weight: 600; }
+.rtalk-tip { display: block; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
 .member-who { min-width: 0; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
@@ -1722,7 +1798,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-ck-g { flex: 1; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--s5); }
 .cli-ck .cli-col { max-width: none; margin: 0; min-width: 0; }
 .home-cards { position: sticky; top: var(--s5); align-self: start; display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
-.cli-empty .home-cards { align-self: center; }
+/* 还没问（U-首页-01，10-31）：左边对话框和右边四张卡等高、上下对齐——卡这一列撑满这一格的高，四张平分，字在卡里竖直居中。
+   卡的最小高 = 内容高（flex 基准 0、min-height 走内容），窗口矮也不会叠出去 */
+.cli-empty .home-cards { align-self: stretch; position: static; }
+.cli-empty .home-card { flex: 1 1 0; justify-content: center; }
 /* 问过之后（10-31 改版 R1）：右边四张卡收起，对话铺满这一格——你的话贴着右边、回答占满，右侧不再空一大片（照 Codex / Claude Code）。
    只打了字没发、点「新对话」回到空白：卡照摆（.cli-empty 只看这段对话有没有问过） */
 .cli:not(.cli-empty) .cli-ck-g { grid-template-columns: minmax(0, 1fr); }
@@ -2090,6 +2169,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .chan-invest-who { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chan-invest-remark { margin-top: 2px; overflow-wrap: anywhere; }
 .chan-invest-del { position: absolute; right: 0; top: var(--s2); }
+/* 渠道详情（U-渠道-01）：基本信息 / 统计 / 投入记录各成一块、单列排；标签列定宽，值列可折行，1024 宽抽屉里不溢出 */
+.chan-block { border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-width: 0; }
+.chan-block + .chan-block { margin-top: var(--s3); }
+.chan-block > .section-title { margin-bottom: var(--s2); }
+.chan-desc .ant-descriptions-item-label { width: 7.5em; flex: none; }
+.chan-desc .ant-descriptions-item-content { min-width: 0; overflow-wrap: anywhere; }
 /* 「重置」一直占着位置，没筛时只是看不见（审查 M17）：原来它一出现就把「列」挤到第二行，
    整张表往下跳一截。出现消失只淡入淡出，不位移。visibility 晚一拍再收，淡出才看得见 */
 .list-reset { transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s; }
@@ -2220,6 +2305,17 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .pipe-card-a { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pipe-card-o { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; max-width: 100%; word-break: break-word; }
 /* 每列先摆 50 张（2026-10-24），底下接着翻；列最窄 184，放不下就折行，不撑宽列 */
+/* 企业版项目首页：空列藏起来后的一行说明（U-项目-08）。列名能自己改，几列名字一长就省略、悬停看全，按钮不被挤走；1024 宽不横滚 */
+.pipe-hidden { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin: calc(-1 * var(--s1)) 0 var(--s2); font-size: var(--fs-note); color: var(--text-muted); }
+.pipe-hidden-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pipe-hidden .ant-btn { flex: none; padding-inline: 0; }
+/* 客户看板（U-客户-06）：按客户属性分列，点卡片进客户页（不拖）。属性名管理员能自己加、可能很长：列头名字一行省略、悬停看全 */
+.cust-board .pipe-card { cursor: pointer; }
+.cust-board .pipe-h b { flex: 0 1 auto; min-width: 0; }
+.cust-board-meta { display: inline-flex; align-items: baseline; gap: var(--s1); min-width: 0; }
+.cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
+/* 客户页「新增项目」弹窗（U-客户-05）：带上的客户名一行，超长折行写完不撑宽弹窗 */
+.new-proj-carried { color: var(--text-muted); font-size: var(--fs-note); margin-bottom: var(--s3); overflow-wrap: anywhere; }
 .pipe-more.ant-btn { height: auto; min-height: 28px; white-space: normal; color: var(--brand); gap: 6px; }
 
 /* ---------- 「数据」页上的问数据 ----------
@@ -2240,6 +2336,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cmdk-row b { flex: none; font-weight: 500; color: var(--ink); }
 .cmdk-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
 .cmdk-row-on { background: var(--brand-bg); }
+/* 企业版全局搜索（U-项目-04）：分组小标题；搜到的名字可能很长，名字和附注一起省略，不撑出横滚 */
+.cmdk-sec { padding: var(--s2) var(--s3) var(--s1); font-size: var(--fs-min); color: var(--text-faint); }
+.cmdk-row.cmdk-hit b { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmdk-foot { padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: var(--fs-min); color: var(--text-muted); }
 .cmdk-foot kbd { font-size: var(--fs-min); background: var(--hover); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: var(--r-ctl); padding: 0 5px; }
 /* 左栏底部那行「⌘K 跳转 / 提问」 */
@@ -2906,6 +3005,20 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .att-pic > .ant-btn { position: absolute; top: 2px; right: 2px; background: color-mix(in srgb, var(--panel) 85%, transparent); }
 .att-missing { width: 96px; height: 96px; border: 1px dashed var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: var(--fs-note); color: var(--text-muted); padding: 6px; }
 .att-files { list-style: none; margin: 12px 0 0; padding: 0; }
+/* 企业版沟通记录上的截图、录音（F-跟进-07，projects/[id]/FollowAttachments.tsx）：长文件名折行不撑宽，录音条跟着栏宽缩 */
+.follow-att { margin-top: 6px; display: grid; gap: 6px; min-width: 0; }
+.follow-att-pics { display: flex; flex-wrap: wrap; gap: 8px; }
+.follow-att-pic { position: relative; width: 64px; }
+.follow-att-pic .ant-image, .follow-att-pic .ant-image-img { border-radius: 4px; display: block; }
+.follow-att-pic > .ant-btn { position: absolute; top: 0; right: 0; background: color-mix(in srgb, var(--panel) 85%, transparent); }
+.follow-att-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.follow-att-name { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-note); }
+.follow-att-file audio { height: 32px; max-width: 100%; flex: 1 1 200px; min-width: 0; }
+.follow-att-add { display: flex; align-items: center; gap: 8px; }
+/* 记沟通弹窗（F-跟进-06/08）：卡点两格并排，窄了折成上下；「更多」里的格子和主区同样间距 */
+.follow-blocker-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.follow-blocker-row .ant-select { width: 100%; min-width: 0; }
+.follow-more { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
 .att-files li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); min-width: 0; }
 .att-files li > a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-files li > .muted { flex: none; font-size: var(--fs-note); }
@@ -2940,3 +3053,28 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .lead-auto-assign-list li { display: flex; gap: 8px; padding: 4px 0; min-width: 0; }
 .lead-auto-assign-name { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .lead-auto-assign-list li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* 企业版项目模式客户详情（U-客户-03，10-31 会议）
+   左栏：块与块不相贴，每一节（基本资料、联系人、项目、关联客户、客户背调）各是一张卡、中间留缝，同类信息放同一块 */
+.rec-rail.rec-rail-blocks { background: transparent; box-shadow: none; border: none; padding: 0; }
+.rec-rail.rec-rail-blocks > .rec-sec,
+.rec-rail.rec-rail-blocks > .rec-sec:first-of-type { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 8px 14px 12px; min-width: 0; }
+.rec-rail.rec-rail-blocks > .rec-sec + .rec-sec { margin-top: 12px; }
+/* 资料值一行放不下就省略，悬停 title 看全（U-通用-01）；多行的（地址、备注）照旧换行 */
+.rec-rail-blocks .rec-field-v.is-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
+/* 客户背调只摆一个状态标签，点开弹详情 */
+.rec-research-tag { cursor: pointer; margin-inline-end: 0; }
+.rec-research-tag:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 沟通记录标题右边的「新建沟通」：标题和按钮一行，按钮不换行 */
+.rec-tl-cap .ant-btn { white-space: nowrap; }
+/* 待办挪到页面底部占满宽：行按宽度排成几列；固定高度时它不跟三栏抢高度，自己滚 */
+.rec-todo-bottom { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: var(--s4); align-content: start; }
+.rec-todo-bottom > :is(.rec-side-t, .ant-typography) { grid-column: 1 / -1; }
+.rec-todo-bottom .rec-task { min-width: 0; }
+@media (min-width: 768px) {
+  .main .rec-page > .rec-todo-bottom { flex: none; max-height: 30vh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; padding-bottom: calc(12px + var(--detail-tail, 0px)); }
+  .main .rec-page > .rec-todo-bottom::-webkit-scrollbar { display: none; }
+}
+@container rec (max-width: 629px) {
+  .rec-acts-r > .acts-g:empty { display: none; }
+}

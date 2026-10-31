@@ -754,6 +754,21 @@ function StageRuleCard({
           <div style={{ color: "var(--text-muted)" }}>开了：{要沟通的节点().join("、")} 这几个进程上，各记过至少一条沟通才能推到下一个进程（必填齐了的自动推进也一样）。默认关</div>
         </div>
       </div>
+      {/* 需求状态补全期（M-权限-07）：导入的项目需求状态大多空着，给负责人一段时间补；这期间只有经理、总管理员能往前推 */}
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 16, minWidth: 0 }}>
+        <Switch
+          aria-label="需求状态补全期"
+          size="small"
+          style={{ flex: "none", marginTop: 3 }}
+          disabled={!!挡 || 忙}
+          checked={规则.需求补全期}
+          onChange={(v) => void 跑(() => 改组织规则({ 阶段: { 需求补全期: v } }), "已保存")}
+        />
+        <div style={{ minWidth: 0 }}>
+          <div>需求状态补全期</div>
+          <div style={{ color: "var(--text-muted)" }}>开了：只有经理（主管）、老板、总管理员能往前推进程，负责人只补字段、记沟通；填齐必填也不自动推。往回退、终止进程照常。补完了记得关。默认关</div>
+        </div>
+      </div>
       <div style={{ fontWeight: 500, marginBottom: 8 }}>结束状态叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
       {阶段们.map((s) => {
         const [成, 没成] = 企业版字典.出口们[s];

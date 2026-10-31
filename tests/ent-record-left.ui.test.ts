@@ -14,9 +14,9 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectModal|ContactLinks)$/, "export default function Empty(){return null}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
-  stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海;");
+  stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false});");
-  stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null}");
+  stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
   stub(/^\.\/actions$/, `
@@ -111,13 +111,15 @@ it("开关关闭：左栏照旧——一行一个联系人、空字段都在、�
     expect(await page.getByText("ww_buyer").count()).toBe(0);
   } finally { await page.close(); }
 });
-it("企业版项目模式（P14）：没有记录输入、头上是「记一条沟通…」（两个项目先挑）；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
+it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通记录标题上是「新建沟通…」（两个项目先挑）；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
   const page = await open(true, 1024, true);
   try {
-    expect(await page.getByRole("button", { name: "记一条沟通…" }).count()).toBe(1);
+    const 新建沟通 = page.locator(".rec-tl-cap").getByRole("button", { name: /新建沟通…/ });
+    expect(await 新建沟通.count()).toBe(1);
+    expect(await page.locator(".rec-acts").getByRole("button", { name: /沟通/ }).count()).toBe(0);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
-    expect(await page.locator(".rec-tl-cap").innerText()).toBe("沟通记录");
+    expect(await page.locator(".rec-tl-cap > span").first().innerText()).toBe("沟通记录");
     // 照图 04（10-31）：灰底方式 + 时间一行，下面内容、蓝色「项目：名」
     expect(await page.locator(".rec-sum-item .rec-sum-type").count()).toBeGreaterThan(0);
     const 项目链 = page.locator(".rec-sum-proj");
@@ -128,8 +130,8 @@ it("企业版项目模式（P14）：没有记录输入、头上是「记一条�
     expect(await page.getByText("回访报价").count()).toBe(1);
     expect(await page.locator(".rec-task-k").allInnerTexts()).toEqual(["计划", "项目"]);
     expect(await page.getByText("下次跟进").count()).toBe(0);
-    // 两个项目：点「记一条沟通…」开框挑项目（10-31 R6，原来是下拉），长名字不把框撑出屏
-    await page.getByRole("button", { name: "记一条沟通…" }).click();
+    // 两个项目：点「新建沟通…」开框挑项目（10-31 R6，原来是下拉），长名字不把框撑出屏
+    await 新建沟通.click();
     const 框 = page.getByRole("dialog");
     await 框.getByText("记到哪个项目").waitFor();
     expect(await 框.innerText()).toContain("记一条沟通 · 客户A");
@@ -148,17 +150,18 @@ const 全开 = {
   关联们: [],
 };
 const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")));
-it("企业版项目模式页头：能做的事摆成具名按钮，只有一颗主按钮、删除是危险文字按钮；没有下拉", async () => {
+it("企业版项目模式页头（U-客户-03）：只留开项目、转让、退回公海；没有主按钮、删除、下拉", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    // 按下面三栏分组（10-31 用户）：左组管资料栏、中组管沟通栏（整个客户的事跟在后面）、右组管右栏
-    expect(await 头按钮(page)).toEqual(["编辑客户资料", "添加联系人", "管理联系人", "关联客户", "开项目", "记一条沟通…", "转让", "放回公海", "删除客户", "新建任务"]);
-    expect(await page.locator(".rec-acts .ant-btn-primary").count()).toBe(1);
-    expect(await page.locator(".rec-acts .ant-btn-dangerous").innerText()).toMatch(/删除客户/);
+    // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通挪进沟通记录标题、新建任务跟待办挪到页底
+    expect(await 头按钮(page)).toEqual(["开项目", "转让", "退回公海"]);
+    expect(await page.locator(".rec-acts .ant-btn-primary").count()).toBe(0);
+    expect(await page.locator(".rec-acts .ant-btn-dangerous").count()).toBe(0);
     expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(0);
-    // 卡上和页头同名的入口不再重复摆（10-31）：编辑全部、添加联系人、开项目、新建任务、关联「+」只在页头
+    // 页面上别处也不给去掉的入口；新建任务在页底待办上
     const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head, .rec-acts")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
-    expect(卡上钮.filter(t => /编辑全部|添加联系人|开项目|新建任务|关联一位客户/.test(t))).toEqual([]);
+    expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|开项目/.test(t))).toEqual([]);
+    expect(await page.locator(".rec-todo-bottom").getByRole("button", { name: /新建任务/ }).count()).toBe(1);
     // 按钮一行摆在名字下面，各组对齐下面那一栏的左边
     const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-acts").boundingBox()]);
     expect(排!.y).toBeGreaterThanOrEqual(名!.y + 名!.height - 1);
@@ -191,26 +194,17 @@ it("「转让」开框挑人：没挑之前「下一步」点不了；挑了能�
     expect(await page.getByRole("dialog").getByRole("button", { name: /下\s*一\s*步/ }).isDisabled()).toBe(true);
   } finally { await page.close(); }
 });
-it("「管理联系人」框：一人一行，编辑 / 删除；点编辑先关框", async () => {
+it("项目模式联系人（U-客户-03 去掉管理联系人）：卡上只有编辑、没有删除", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    await page.locator(".rec-acts").getByRole("button", { name: "管理联系人" }).click();
-    const 框 = page.getByRole("dialog");
-    await 框.getByText("管理联系人 · 客户A").waitFor();
-    const 行 = 框.locator(".proj-modal-row");
-    expect(await 行.count()).toBe(3);
-    expect(await 行.nth(0).innerText()).toContain("主要");
-    expect(await 行.nth(0).innerText()).toContain("采购总监兼华东大区负责人");
-    expect(await 行.nth(1).getByRole("button", { name: /删\s*除/ }).count()).toBe(1);
-    expect(await 框.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-    await 行.nth(1).getByRole("button", { name: /编\s*辑/ }).click();
-    await 框.waitFor({ state: "hidden" });
+    expect(await page.getByRole("button", { name: /^编辑联系人 / }).count()).toBeGreaterThan(0);
+    expect(await page.getByRole("button", { name: /^删除联系人 / }).count()).toBe(0);
   } finally { await page.close(); }
 });
-it("虚线下属的客户（全只读）：页头只剩主按钮", async () => {
+it("虚线下属的客户（全只读）：页头一排按钮都不摆", async () => {
   const page = await open(true, 1366, true, { ...全开, 只读: "全" });
   try {
-    expect(await 头按钮(page)).toEqual(["记一条沟通…"]);
+    expect(await page.locator(".rec-acts").count()).toBe(0);
   } finally { await page.close(); }
 });
 it("窄宽：700 / 800 / 1024 按钮一行在名字下面、从左排起、折行不出屏；都不横滚", async () => {

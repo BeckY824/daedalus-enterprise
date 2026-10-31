@@ -5,7 +5,7 @@
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
-import { 改节点问题, 原因上限, 要写原因, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
+import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
 import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
@@ -24,6 +24,7 @@ import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
 import { dayjs } from "../utils";
 import { 看全部 } from "../team-scope";
+import { FOLLOW_RECORD_STATUSES } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
@@ -32,6 +33,7 @@ import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterpri
 import { 项目级别和地址改成, 项目成交钱改成, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
 import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 视图中跳过 } from "@/lib/enterprise/view-as";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -89,6 +91,17 @@ export function 往前推不给(me: 谁, ownerId: string, org: 组织 | null, �
   const 上级 = 直属上级of(org, ownerId);
   if (!上级 || me.id === 上级 || me.role === "ADMIN" || 管理员类别of(org, me.id) === "总管理员") return null;
   return me.id === ownerId ? "往前推进程要由你的直属上级来推" : "只有负责人的直属上级能往前推进程";
+}
+
+/**
+ * 需求状态补全期（组织规则 阶段.需求补全期，M-权限-07，默认关）：开着时只有经理（主管）、老板、总管理员能往前推进程；
+ * 负责人本人、直属上级（销售账号）都不给。只管往前推：往回退、终止进程、记沟通、改字段照常
+ */
+export const 补全期提示 = "需求状态补全期：只有经理、总管理员能往前推进程，沟通照常记";
+export function 补全期不给(me: 谁, org: 组织 | null, 规则: 组织规则): string | null {
+  if (!规则.阶段.需求补全期 || me.role === "ADMIN" || me.role === "MANAGER") return null;
+  if (org && 管理员类别of(org, me.id) === "总管理员") return null;
+  return 补全期提示;
 }
 
 /**
@@ -278,17 +291,15 @@ export async function 改节点(
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
     const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
-    const 不给 = 往前 ? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则)) : null;
+    const 不给 = 往前
+      ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则))
+      : null;
     if (不给) return { ok: false as const, error: 不给 };
-    // 企业版节点必填（D-37）：配了必填的节点，往前推只给老板、主管、负责人的直属上级、总管理员；销售本人填齐了自动推
+    // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给老板、主管、负责人的直属上级、总管理员；
+    // 销售本人填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
     if (往前 && 按必填走(规则, p.node) && me.role !== "ADMIN" && me.role !== "MANAGER" && !代管节点(me, p.ownerId, org)) {
       const 差 = 还差(规则, await 读必填数据(tx, p));
-      return {
-        ok: false as const,
-        error: 差.length
-          ? `「${现.node}」填齐必填后自动往前推，还差：${差.map(必填叫法).join("、")}；要先推请找老板或主管`
-          : `「${现.node}」的必填已经齐了，保存一下就会自动往前推`,
-      };
+      if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推，要先推请找老板或主管` };
     }
     let 类别: string | null = null;
     let 备注: string | null = null;
@@ -330,6 +341,27 @@ export async function 改节点(
   });
 }
 
+/**
+ * 企业版「终止进程」（M-节点-04）：按项目现在所在的阶段落到「没走成」的结局——线索→线索流失、商机→丢单、订单→异常状态，
+ * 节点停在现在这个。线索流失、丢单要写原因（附.备注），异常状态要选在用的异常类别（附.categoryId，备注可空）。
+ * 权限、校验、节点变更、提成、客户状态都走 改节点（结局不算往前推，补全期也照样能终止）
+ */
+export async function 终止进程(
+  me: 谁, projectId: string, 附?: { categoryId?: string | null; 备注?: string | null },
+): Promise<结果 & { 变了?: boolean; 到?: 位置 }> {
+  if (!企业版()) return { ok: false, error: "终止进程只在企业版有" };
+  const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { phase: true, node: true, result: true } });
+  if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
+  if (p.result) return { ok: false, error: "项目已经有结局了，不用再终止" };
+  const 规则 = await 生效组织规则();
+  const 字典 = 字典of(true, 规则.阶段.出口叫法);
+  const 结局 = 终止结局(p, 字典);
+  if (!结局) return { ok: false, error: "认不出项目在哪个阶段，刷新看看" };
+  const 到: 位置 = { ...本套位置({ phase: p.phase, node: p.node }, 字典), result: 结局 };
+  const r = await 改节点(me, projectId, 到, { categoryId: 附?.categoryId ?? null, 备注: 附?.备注 ?? null });
+  return r.ok ? { ...r, 到 } : r;
+}
+
 export const 交付项们 = { balanceSettled: "尾款结清", acceptancePassed: "验收通过" } as const;
 export type 交付项 = keyof typeof 交付项们;
 
@@ -352,19 +384,22 @@ export async function 勾交付(me: 谁, projectId: string, 项: 交付项, 勾:
   });
 }
 
+/** 企业版（M-权限-10）：项目是公司资产，谁都不能删；不再跟进就终止进程 */
+export const 项目不能删提示 = "项目是公司资产，不能删除；不再跟进请终止进程";
+
 /**
  * 删项目：负责人、老板、主管。节点变更、组员、跟进挂的节点随项目级联；跟进本身留在客户下。
  * 删客户前要先删光它的项目（customers/actions 删除依赖错误）
+ * 企业版一律拒（M-权限-10，10-31 晚会议）：界面上的删除入口去掉，服务端这里再挡一遍，老页面、直接调 action 都删不掉
  */
 export async function 删项目(me: 谁, projectId: string): Promise<结果 & { name?: string; customerId?: string }> {
+  if (企业版()) return { ok: false, error: 项目不能删提示 };
   const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, ownerId: true, pooledAt: true, customerId: true } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (!能管项目(me, p)) return { ok: false as const, error: "只有项目负责人、老板或主管能删项目" };
-    // 企业版（P9）：只记 deletedAt，进设置 → 回收站，节点留痕、项目组都留着，恢复时原样回来
-    if (企业版()) await tx.project.update({ where: { id: p.id }, data: { deletedAt: new Date() } });
-    else await tx.project.delete({ where: { id: p.id } });
+    await tx.project.delete({ where: { id: p.id } });
     // 删掉的项目不算进客户状态（删光了 = 清空）
     await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, name: p.name, customerId: p.customerId };
@@ -548,7 +583,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     await tx.project.update({ where: { id: p.id }, data: { pooledAt: 现在, nextStepAt: null, nextStepText: null } });
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason);
     // 企业版：客户名下只有这一个项目，客户也一起进客户公海（pool-link.ts）
-    await 单项目客户跟进公海(tx, p, me.id, 现在);
+    await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
     // 企业版统一公海（P7，迁移 080）：客户累计主动退回 +1（超时回收、离职交接不走这里，不算）。裸 SQL 不顶 updatedAt
     if (企业版()) await tx.$executeRaw(Prisma.sql`UPDATE "Customer" SET "poolReturns" = "poolReturns" + 1 WHERE "id" = ${p.customerId}`);
     return { ok: true as const };
@@ -650,6 +685,8 @@ export async function 超时预览(规则: 组织规则, 今: Date = new Date())
 export const 收回提醒尾 = "已回到项目公海";
 
 export async function 公海超时收回(me: { id: string; name: string }, 今: Date = new Date()): Promise<number> {
+  // 总管理员切换视图（只读预览，M-权限-08）期间不扫：渲染时顺手写库会被拒
+  if (企业版() && (await 视图中跳过())) return 0;
   return 看全部(() => 按规则收回(me, 今));
 }
 
@@ -738,8 +775,10 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     if ("error" in 好) return { ok: false as const, error: 好.error };
     const 阶段问题 = 记沟通阶段问题(input, p);
     if (阶段问题) return { ok: false as const, error: 阶段问题 };
+    const 额外 = await 认沟通额外(tx, input.额外, p.customerId);
+    if ("error" in 额外) return { ok: false as const, error: 额外.error };
     const 跟进 = await tx.followUp.create({
-      data: { type: 好.type, method: 好.method, content: 好.content, occurredAt: 好.occurredAt, title: "", status: "已完成", customerId: p.customerId, contactId: p.contactId, ownerId: me.id },
+      data: { type: 好.type, method: 好.method, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
     });
     // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
     await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
@@ -756,6 +795,33 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     await 勾掉将回收提醒(tx, 规则, p, now);
     return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
   });
+}
+
+/**
+ * 记项目沟通带的额外格子（客户页选了关联项目，10-31）：标题、联系人、状态、时长、参与人。
+ * 联系人只认这位客户名下的；没传联系人 = undefined（用项目的联系人）
+ */
+async function 认沟通额外(
+  tx: Prisma.TransactionClient,
+  x: 向导跟进["额外"],
+  customerId: string,
+): Promise<{ title: string; status: string; duration: number | null; participants: string | null; contactId: string | null | undefined } | { error: string }> {
+  const 空 = { title: "", status: "已完成", duration: null, participants: null, contactId: undefined };
+  if (x == null) return 空;
+  if (typeof x !== "object") return { error: "沟通信息格式不正确" };
+  const title = typeof x.title === "string" ? x.title.trim().slice(0, 200) : "";
+  const status = x.status == null || x.status === "" ? "已完成" : x.status;
+  if (!(FOLLOW_RECORD_STATUSES as readonly string[]).includes(status)) return { error: `记录状态「${status}」不是合法取值` };
+  const 分 = x.durationMinutes;
+  if (分 != null && !(typeof 分 === "number" && Number.isFinite(分) && 分 >= 0)) return { error: "通话时长不能为负数" };
+  const participants = typeof x.participants === "string" && x.participants.trim() ? x.participants.trim().slice(0, 500) : null;
+  let contactId: string | null | undefined = undefined;
+  if (typeof x.contactId === "string" && x.contactId) {
+    const c = await 看全部(() => tx.contact.findFirst({ where: { id: x.contactId!, customerId }, select: { id: true } }));
+    if (!c) return { error: "选的联系人不在这位客户名下，刷新看看" };
+    contactId = c.id;
+  }
+  return { title, status, duration: 分 ? Math.round(分 * 60) : null, participants, contactId };
 }
 
 /**
@@ -919,7 +985,8 @@ async function 往前进来的(tx: Prisma.TransactionClient, p: { id: string; ph
  * 刚往前推进来（老板、主管手动推）的传 刚往前 = true，省一次查
  */
 export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, projectId: string, 刚往前 = false): Promise<string[]> {
-  if (!节点推进生效(规则)) return [];
+  // 需求状态补全期（M-权限-07）：只有经理、总管理员手动推，填齐了也不自动推
+  if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return [];
   const 到了: string[] = [];
   let 往前 = 刚往前;
   for (;;) {

@@ -23,6 +23,7 @@ import { 看得到, type 限定 } from "@/lib/team-scope";
 import { 建组织, 实线下属, 虚线下属, 管理员类别of, 管理员类别们of, type 组织 } from "./org-core";
 import { 规则 } from "./rules";
 import { 市场部门key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
+import { 视图票, 验视图票 } from "./view-as";
 
 /** lib/auth.ts 的 COOKIE */
 const 会话票 = "crm_session";
@@ -74,9 +75,12 @@ async function 是谁(): Promise<{ 钥: string; id: string | null } | "无请求
   const o = 身份.getStore();
   if (o) return { 钥: `u:${o}`, id: o };
   let 票: string | undefined;
+  let 视: string | undefined;
   try {
     const { cookies } = await (头 ??= import("next/headers"));
-    票 = (await cookies()).get(会话票)?.value;
+    const c = await cookies();
+    票 = c.get(会话票)?.value;
+    视 = c.get(视图票)?.value;
   } catch (e) {
     // Next 静态渲染时的「这页要动态」信号带 digest，得原样抛回去
     if (e && typeof e === "object" && "digest" in e) throw e;
@@ -85,7 +89,11 @@ async function 是谁(): Promise<{ 钥: string; id: string | null } | "无请求
   if (!票) return { 钥: "无", id: null };
   try {
     const { payload } = await jwtVerify(票, new TextEncoder().encode(readSecret()));
-    return typeof payload.sub === "string" ? { 钥: `t:${票}`, id: payload.sub } : { 钥: "无", id: null };
+    if (typeof payload.sub !== "string") return { 钥: "无", id: null };
+    // 总管理员切换视图（M-权限-08，view-as.ts）：按被看的那个人算范围
+    const 看 = 视 ? await 验视图票(视, payload.sub) : null;
+    if (看) return { 钥: `v:${票}:${看.谁}`, id: 看.谁 };
+    return { 钥: `t:${票}`, id: payload.sub };
   } catch {
     return { 钥: "无", id: null };
   }

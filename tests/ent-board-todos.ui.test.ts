@@ -65,8 +65,9 @@ const 去了 = (page: Page) => page.evaluate(() => (window as unknown as { __去
 
 it("四张卡 + 类型分段 + 去计划页 + 列；逾期有数是红的；页签在、待办选中", async () => {
   const { page, errors } = await 打开();
-  expect(await page.getByRole("tab").allInnerTexts()).toEqual(["待办", "数据"]);
-  expect(await page.getByRole("tab", { name: "待办" }).getAttribute("aria-selected")).toBe("true");
+  // U-复盘-01（10-31）：四个页签，「待办」改叫「任务」、默认停在它
+  expect(await page.getByRole("tab").allInnerTexts()).toEqual(["任务", "卡点", "沟通", "数据"]);
+  expect(await page.getByRole("tab", { name: "任务" }).getAttribute("aria-selected")).toBe("true");
   // 人员选择器在页签上面
   const 人 = await page.locator(".data-shell-who").boundingBox();
   const 签 = await page.locator(".data-shell-tabs").boundingBox();

@@ -55,6 +55,8 @@ type Props<T> = {
   筛选?: React.ReactNode;
   /** 工具栏和表格之间那一条汇总（商机页的「总额 · 加权预测」）。不给就没有 */
   汇总?: React.ReactNode;
+  /** 给了就用它替掉表格（筛选栏、汇总照留，批量条和表格不摆）：企业版客户页的看板（U-客户-06） */
+  替表格?: React.ReactNode;
   /**
    * 勾了行之后才出现的工具条。不给就不支持多选。
    * 第三个参数是勾中的那几行本身——确认框要写出「是谁」，只有 id 写不出来
@@ -117,7 +119,7 @@ function 行名(r: object): string | null {
 }
 
 export default function DataList<T extends { id: string }>({
-  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 批量, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序,
+  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序,
 }: Props<T>) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -275,7 +277,7 @@ export default function DataList<T extends { id: string }>({
         <div className="list-bar">
           {筛选}
           <span className="list-bar-gap" />
-          {可选的.length > 0 && (
+          {可选的.length > 0 && 替表格 === undefined && (
             /*
               勾一项**不关**这张单子：选列天然是连着点好几下的事，
               点一下关一次等于每改一列都要重新打开。
@@ -311,6 +313,7 @@ export default function DataList<T extends { id: string }>({
 
       {汇总}
 
+      {替表格 !== undefined ? 替表格 : (<>
       {/* 批量工具条：勾了才出现，而且要说清「已选 N 条」——不说人对不上自己勾了几条 */}
       {批量 && 选中.length > 0 && (
         <div className="list-sel">
@@ -380,6 +383,7 @@ export default function DataList<T extends { id: string }>({
                 }
         }
       />
+      </>)}
       {真截断 && (
         <div className="muted" style={{ fontSize: 13, marginTop: 8, textAlign: "right" }}>
           这里只有最近 {取回} 条，库里一共 {截断.总数} 条{截断.说明 ? `。${截断.说明}` : "——用上面的筛选缩小范围"}

@@ -3,7 +3,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRightOutlined, DownOutlined, FlagOutlined, MoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { DownOutlined, EditOutlined, MoreOutlined, SearchOutlined, ThunderboltOutlined, UpOutlined } from "@ant-design/icons";
 import { App, Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Progress, Radio, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
@@ -20,7 +20,7 @@ import FollowMethodSelect from "@/components/FollowMethodSelect";
 import { 对得上的方式 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
-import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
+import { 阶段们, 交付还差, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
@@ -37,16 +37,19 @@ import { 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules"
 import type { 合同状态 } from "@/lib/project/proj-fields";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
+import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, type 卡点卡, type 可选人 } from "../BlockerPanel";
-import type { 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 描述上限, type 卡点默认 } from "@/lib/project/blocker-rules";
+import type { 附件 } from "@/lib/attachment-rules";
+import FollowAttachments, { 选沟通附件 as 选沟通附件框, 传沟通附件 } from "@/components/FollowAttachments";
 import { ProjectCommissionCard, SplitModal } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
 import PaneToggle from "@/components/PaneToggle";
-import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 项目画像 } from "./ProjectExtras";
+import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 沟通附件组, type 项目画像 } from "./ProjectExtras";
+import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源 } from "@/lib/project/detail-search";
 import type { 回款 } from "@/lib/project/payment-db";
 import ProjectRelate from "./ProjectRelate";
 import type { 项目关联 } from "@/lib/project/relate";
@@ -92,7 +95,7 @@ export type 项目详情 = {
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
-  /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户 */
+  /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版还要是总管理员或经理（M-权限-09，普通成员不能改删） */
   可改沟通?: boolean;
   /**
    * 企业版（10-29 P6）：项目来源 = 项目自己选的渠道（没选 = 跟客户来源走，null = 客户也没有）；已立项天数从建项目那天按自然日数；
@@ -130,7 +133,9 @@ export type 项目详情 = {
     放回方式?: 放回方式;
   }[];
   /** 企业版：code 是沟通编号（只在服务端用，界面不摆），提醒按下一步时间写事实（page.tsx 时限标签），没填下一步时间不给 */
-  followUps: { id: string; type: string; method?: string | null; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null }[];
+  followUps: { id: string; type: string; method?: string | null; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null;
+    /** 企业版沟通上的截图、录音（F-跟进-07）；我记的 = 这条是我记的（记的人能往上加附件，删只有总管理员、经理） */
+    附件?: 附件[]; 我记的?: boolean }[];
   members: 组员[];
   /** 企业版提成卡：不是企业版、我看不了（不是组长 / 组员 / 管理员 / 上级）= null，卡片不出 */
   提成: 提成卡 | null;
@@ -247,7 +252,7 @@ function 级别格(v: string | null) {
   return (
     <span title={企业级别说明[档]}>
       <span aria-hidden style={{ color: "var(--warning-text)", letterSpacing: 1 }}>{级别星(档)}</span>
-      <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>{企业级别说明[档]}</span>
+      {" "}<span style={{ color: "var(--text-muted)" }}>{企业级别说明[档].replace(/^\S+\s*/, "")}</span>
     </span>
   );
 }
@@ -288,8 +293,8 @@ function 两行(名: string, 注?: string) {
  */
 /** 企业版页头具名按钮开的框（10-31 R6）→ 框的标题 */
 const 头部框叫法 = {
-  推进: "推进进程",
-  结束: "结束当前进程",
+  推进: "改进程",
+  完成: "完成节点",
   线索判定: "线索判定",
   画像: "项目画像",
   关联客户: "关联客户",
@@ -298,7 +303,6 @@ const 头部框叫法 = {
   附件: "附件",
   成员: "项目组成员",
   改分配: "改分配",
-  管理沟通: "管理沟通",
 } as const;
 type 头部框 = keyof typeof 头部框叫法;
 
@@ -355,6 +359,8 @@ export default function ProjectDetail({
   const [忙, set忙] = useState(false);
   const [异常框, set异常框] = useState<位置 | null>(null);
   const [没成框, set没成框] = useState<位置 | null>(null);
+  /** 异常框 / 没成框是「终止进程」开的（M-节点-04）：确定时走 终止项目进程 */
+  const [终止中, set终止中] = useState(false);
   const [无效原因, set无效原因] = useState<string | null>(null);
   const [放回框, set放回框] = useState(false);
   const [回收原因, set回收原因] = useState<string | null>(null);
@@ -366,11 +372,13 @@ export default function ProjectDetail({
   /** 沟通的「…」菜单：正在改哪一条 / 删除问句开在哪一条上 */
   const [改沟通于, set改沟通于] = useState<项目详情["followUps"][number] | null>(null);
   const [删问于, set删问于] = useState<string | null>(null);
-  /** 转让项目（10-30，原名「转给…」）：弹窗开着、选了谁、点了转给以后 6 秒等撤销的那位 */
+  /** 转让项目（10-30，原名「转给…」；U-项目-07 起点了确认就转、不再等 6 秒撤销）：弹窗开着、选了谁 */
   const [转给框, set转给框] = useState(false);
   const [转给谁, set转给谁] = useState<string | null>(null);
-  const [待转给, set待转给] = useState<string | null>(null);
-  const 转给计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 企业版瀑布流（U-项目-01/04）：沟通默认展开、卡点与任务默认收起；搜索词非空时两块都摊开、只列搜得到的 */
+  const [沟通开, set沟通开] = useState(true);
+  const [卡点开, set卡点开] = useState(false);
+  const [搜, set搜] = useState("");
   /** 企业版页头具名按钮开的那个框（10-31 R6），一次只开一个 */
   const [头部框, set头部框] = useState<头部框 | null>(null);
   /** 附件框每关一次 +1：页面上那几格附件重新挂上，个数跟着刷新 */
@@ -398,11 +406,12 @@ export default function ProjectDetail({
   const 等复核文字 = p.线索验证?.待 === "市场复核" ? "等管理员复核" : p.线索验证?.待 === "总管理终判" ? "等管理员最终确认" : undefined;
   const 等复核 = !!等复核文字;
   // 「下一步」灰着的原因写在按钮下面（规则：灰按钮要写为什么），不靠悬停
-  const 推不了 = (节点可改 ? undefined : 节点不能改 ?? "只有项目负责人、老板或主管能改")
-    ?? 等复核文字
-    ?? p.不给推
-    ?? (卡有效沟通 ? 缺有效沟通 : undefined)
-    ?? (p.必填?.只能靠填齐 ? "这个进程填齐必填后自动往前推；要先推请找老板或主管" : undefined)
+  const 动不了 = (节点可改 ? undefined : 节点不能改 ?? "只有项目负责人、老板或主管能改") ?? 等复核文字;
+  // 往前推另外的关：直属上级才推 / 需求状态补全期（p.不给推）、线索验证缺有效沟通
+  const 往前不了 = p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined);
+  // 配了必填、不是老板主管：缺着必填不给往前推；填齐了（占位值不算）照样能推（M-节点-05/09）
+  const 缺必填 = p.必填?.只能靠填齐 && p.必填.还差.length ? `还差必填：${p.必填.还差.map(必填叫法).join("、")}；补齐再推，要先推请找老板或主管` : undefined;
+  const 推不了 = 动不了 ?? 往前不了 ?? 缺必填
     ?? (下 ? undefined : p.result ? "先改回某个进程再往前推" : "这是最后一个进程了，接下来点结局");
   const 下一步字 = 下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步";
 
@@ -462,7 +471,9 @@ export default function ProjectDetail({
     });
   };
 
-  const 改到 = (到: 位置) => {
+  /** 终止 = true：异常框 / 没成框 点确定走 终止项目进程（M-节点-04，审计写「终止进程」）；成了 = 改成了以后的提示 */
+  const 改到 = (到: 位置, 附: { 终止?: boolean; 成了?: string } = {}) => {
+    set终止中(!!附.终止);
     if (到.result === "异常状态") {
       set原因("");
       set类别(null);
@@ -479,7 +490,7 @@ export default function ProjectDetail({
       message.warning(`还差${差.join("、")}，勾上才能点${交付叫法}`);
       return;
     }
-    void 跑(() => 改项目节点(p.id, 到), `已改到 ${位置文字(到, 字典)}`);
+    void 跑(() => 改项目节点(p.id, 到), 附.成了 ?? `已改到 ${位置文字(到, 字典)}`);
   };
 
   /** 结束类（结局）的去处要二次确认（10-30 P2）；异常、要写原因的本来就有自己的框，成功交付没勾齐的 改到 会直接提示 */
@@ -492,98 +503,47 @@ export default function ProjectDetail({
       onOk: () => 改到(到),
     });
   };
-  const 不能往前 = !!p.必填?.只能靠填齐 || !!p.不给推 || 卡有效沟通;
+  const 不能往前 = !!缺必填 || !!p.不给推 || 卡有效沟通;
   const 更多去处项 = 节点可改 && !等复核 ? 更多去处(当前, 去处们(当前, 不能往前, 字典), 字典) : [];
 
-  /** 「结束当前进程」（10-31 R5）为什么点不了；undefined = 能点 */
-  const 不能结束 = 节点可改
-    ? 等复核文字 ?? (p.result ? "项目已经有结局，先改回某个进程" : undefined)
-    : 节点不能改 ?? "只有项目负责人、老板或主管能改进程";
   /**
-   * 「结束当前进程」框里的去处：进下一阶段 / 进下一进程 / 本阶段的结局。能不能点照 去处们 那一套，不另立规矩：
-   * 往前只能一步，所以本阶段还有进程没走时「进下一阶段」灰着、写清还差哪几个；订单是最后一个阶段，没有「下一阶段」。
-   * 默认选下一阶段，点不了就选下一进程，再不行选第一个能点的结局
+   * 企业版「完成节点」（M-节点-05/06/09）：一次往前一个节点；本阶段最后一个节点完成 = 进下一阶段第一个节点（线索→已转商机、商机→商机赢单，
+   * 同一条记录，字段都在）；订单最后一个节点完成 = 交付结清。有结局的不给完成（先改回进程）
    */
-  const 结束去处 = (() => {
-    if (!p.企业版 || 不能结束) return [];
-    const 组 = 去处们(当前, 不能往前, 字典).find((g) => g.label === p.phase);
-    if (!组) return [];
-    const 拆 = (v: string) => JSON.parse(v) as 位置 & { 出口?: string };
-    const 们: { key: string; 到: 位置; 叫: string; 说明: string; 灰?: string }[] = [];
-    const 走成 = 组.options.find((o) => 拆(o.value).出口);
-    if (走成) {
-      const v = 拆(走成.value);
-      const 列 = 字典.节点们[p.phase as (typeof 阶段们)[number]];
-      const 剩 = 下 && 下.phase === p.phase ? 列.slice(列.indexOf(下.node)) : [];
-      们.push({
-        key: "下一阶段",
-        到: { phase: v.phase, node: v.node },
-        叫: `进入下一阶段：${v.phase}`,
-        说明: `本阶段算「${v.出口}」，进到 ${v.phase}·${v.node}`,
-        灰: 剩.length ? `本阶段还有 ${剩.join("、")} 没走，进程只能一步步推` : 推不了 ?? (走成.disabled ? "现在推不过去" : undefined),
-      });
-    }
-    if (下 && 下.phase === p.phase) 们.push({ key: "下一进程", 到: 下, 叫: `进入下一进程：${下.node}`, 说明: "还在本阶段，往前走一步", 灰: 推不了 });
-    for (const o of 组.options) {
-      const v = 拆(o.value);
-      if (!v.result) continue;
-      们.push({
-        key: o.value,
-        到: { phase: v.phase, node: v.node, result: v.result },
-        叫: 结局叫法(v.result, 字典),
-        说明: v.result === "异常状态" ? "下一步写异常原因" : 要写原因(v.result) ? "下一步选原因" : "项目到此结束；以后要改可以把进程改回去",
-        灰: o.disabled ? "现在改不到这个结局" : 是交付(v.result) && 差.length ? `还差${差.join("、")}，勾上才能点${交付叫法}` : undefined,
-      });
-    }
-    return 们;
-  })();
-  const [结束选, set结束选] = useState<string | null>(null);
-  const 开结束 = () => {
-    set结束选(结束去处.find((d) => !d.灰)?.key ?? null);
-    set头部框("结束");
+  const 完成到: 位置 | null = p.result ? null : 下 ?? { phase: p.phase, node: p.node, result: 交付结局 };
+  const 完成到字 = !完成到 ? "" : 完成到.result
+    ? 交付叫法
+    : 完成到.phase !== p.phase ? `${字典.出口们[p.phase as (typeof 阶段们)[number]]?.[0]?.叫法 ?? "进下一阶段"}，进到 ${完成到.phase}·${完成到.node}` : `下一节点：${完成到.node}`;
+  /** 「完成节点」为什么点不了（缺必填不算：点了在框里列出来）；undefined = 能点 */
+  const 完成不了 = 动不了 ?? (p.result ? "项目已经有结局，先改回某个进程" : 下 ? 往前不了 : undefined);
+  const 完成 = () => {
+    if (!完成到) return;
+    if (完成到.result) return 结束确认(完成到);
+    改到(完成到, { 成了: 完成到.phase !== p.phase ? `${完成到字}` : `已推进到 ${完成到.node}` });
   };
-  const 确认流转 = () => {
-    const d = 结束去处.find((x) => x.key === 结束选 && !x.灰);
-    if (!d) return;
-    set头部框(null);
-    改到(d.到);
+  /** 「终止进程」（M-节点-04）：按所在阶段落到 线索流失 / 丢单 / 异常状态；先确认，再到写原因 / 选类别的框 */
+  const 终止到 = p.企业版 && !p.result ? 终止结局(当前, 字典) : null;
+  const 开终止 = () => {
+    if (!终止到) return;
+    const 叫 = 结局叫法(终止到, 字典);
+    modal.confirm({
+      title: "终止进程？",
+      content: 终止到 === "异常状态"
+        ? `项目停在「${位.阶段}·${位.进程}」，标成「${叫}」；下一步选异常类别。处理好了把进程改回去就恢复`
+        : `项目停在「${位.阶段}·${位.进程}」，落到「${叫}」、到此结束；下一步写原因。以后要捡回来可以把进程改回去`,
+      okText: "继续",
+      okButtonProps: { danger: true },
+      onOk: () => 改到({ phase: p.phase, node: p.node, result: 终止到 }, { 终止: true }),
+    });
   };
 
-  /** 转让项目：点了先等 6 秒（提示条上能撤销），到点才真的换负责人；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
-  const 开始转给 = (新: string) => {
+  /** 转让项目（U-项目-07）：弹窗里点「确认转让」就换负责人，不再等 6 秒撤销；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
+  const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
-    const key = `project-transfer-${p.id}`;
+    const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }), `已转给 ${名}`);
+    if (!ok) return;
     set转给框(false);
-    set待转给(新);
-    转给计时.current = setTimeout(async () => {
-      转给计时.current = null;
-      message.destroy(key);
-      const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }), `已转给 ${名}`);
-      set待转给(null);
-      if (ok) router.push("/projects");
-    }, 6000);
-    message.info({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          6 秒后转给 {名}
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              if (转给计时.current) clearTimeout(转给计时.current);
-              转给计时.current = null;
-              set待转给(null);
-              message.destroy(key);
-              message.info("已撤销，没有转");
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
-    });
+    router.push("/projects");
   };
   const 转给名 = 转给谁 ? (候选.find((m) => m.id === 转给谁)?.name ?? "TA") : null;
 
@@ -606,33 +566,46 @@ export default function ProjectDetail({
   };
 
   // 各张卡先摆成常量：企业版两栏、别的版本照原来一栏，摆法不同、卡是同一份
-  /** 企业版「推进进程」「结束当前进程」：摆在节点卡的阶段页签那一行右边（10-31 用户定：先推进、后结束，字号同页签，不要框）。
-      看的不是所在阶段就灰掉，悬停写原因（灰按钮收不到鼠标，提示挂在外面那层 span 上） */
+  /**
+   * 企业版节点卡阶段页签那一行右边的一组控件（M-节点-04 / U-项目-06）：左边线框「完成节点」+ ▼（终止进程、改到别的进程或结局），
+   * 右边实心「新增沟通」（开记沟通的框，只记沟通、不动节点）。有结局的项目左边换成「改回进程」。
+   * 看的不是所在阶段、或推不了，按钮灰掉、悬停写原因（灰按钮收不到鼠标，提示挂在外面那层 span 上）
+   */
   const 进程钮 = (不在当前: string | undefined) => {
-    const 钮 = (字: string, 图: ReactNode, 开: () => void, 原因?: string, 主?: boolean) => {
-      const b = (
-        <button type="button" className={`proj-stage-act${主 ? " is-go" : ""}`} disabled={忙 || !!原因} onClick={开}>
-          {图}{字}
-        </button>
-      );
-      return 原因 ? <Tooltip title={原因}><span>{b}</span></Tooltip> : b;
-    };
+    const 灰着 = (原因: string | undefined, 钮: ReactNode) => (原因 ? <Tooltip title={原因}><span className="proj-stage-tip">{钮}</span></Tooltip> : 钮);
+    const 完成灰 = 不在当前 ?? 完成不了;
+    const 菜单: NonNullable<MenuProps["items"]> = [
+      ...(终止到 ? [{ key: "stop", danger: true, disabled: !!(不在当前 ?? 动不了), label: 两行("终止进程", 不在当前 ?? 动不了 ?? `落到「${结局叫法(终止到, 字典)}」`) }] : []),
+      ...(更多去处项.length ? [{ key: "more", disabled: !!不在当前, label: 两行("改到别的进程或结局…") }] : []),
+    ];
     return (
       <>
-        {钮("推进进程", <ArrowRightOutlined />, () => set头部框("推进"), 不在当前, true)}
-        {!p.result && <span className="proj-stage-act-sep" aria-hidden />}
-        {!p.result && 钮("结束当前进程", <FlagOutlined />, 开结束, 不在当前 ?? 等复核文字)}
+        {节点可改 && (p.result
+          ? 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
+          : (
+            <Space.Compact>
+              {灰着(完成灰, <Button disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
+              {菜单.length > 0 && (
+                <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => (key === "stop" ? 开终止() : set头部框("推进")) }}>
+                  <Button icon={<DownOutlined />} aria-label="终止进程或改到别的进程" />
+                </Dropdown>
+              )}
+            </Space.Compact>
+          ))}
+        {p.能记沟通 && <Button type="primary" disabled={忙} onClick={() => set记一条开着("手填")}>新增沟通</Button>}
       </>
     );
   };
 
   const 位 = 阶段与进程(p, 字典);
+  const 显示回收日 = p.企业版 && !!p.回收日 && !p.pooled && !p.result;
   const 节点卡 = (
     <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
+      {/* 企业版（F-项目-19）：「阶段」「进程」两格和下面的阶段页签重复，不摆，只留回收日；别的版本照旧 */}
+      {(!p.企业版 || 显示回收日) && <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
         {/* P11：阶段（线索/商机/订单）和进程（节点）分两格摆，不拼成一串；成功交付、异常状态的阶段算订单 */}
         <div className="proj-where">
-          <div>
+          {!p.企业版 && <><div>
             <div className="proj-where-label">阶段</div>
             <div className="proj-where-value">{位.阶段}</div>
           </div>
@@ -642,9 +615,9 @@ export default function ProjectDetail({
               <span className="proj-where-node" title={位.进程}>{位.进程}</span>
               {位.结局 && <Tag style={{ marginLeft: 8 }} color={异常 ? "error" : 交付了 ? "success" : "default"}>{位.结局}</Tag>}
             </div>
-          </div>
+          </div></>}
           {/* 企业版：哪天回公海写在阶段、进程旁边（10-30 P0-1），3 天内橙、当天红 */}
-          {p.企业版 && p.回收日 && !p.pooled && !p.result && (() => {
+          {显示回收日 && p.回收日 && (() => {
             const 回 = 回公海文案(p.回收日);
             return (
               <div style={{ minWidth: 0 }}>
@@ -669,8 +642,8 @@ export default function ProjectDetail({
           </Space>}
           {推不了 && !p.企业版 && <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", textAlign: "right" }}>{推不了}</div>}
         </div>
-      </div>
-      {/* 企业版：三个阶段页签 + 结束当前进程（10-31 R5）；别的版本照旧一条进度条 */}
+      </div>}
+      {/* 企业版：三个阶段页签 + 完成节点 ▼ / 新增沟通（M-节点-04）；别的版本照旧一条进度条 */}
       {p.企业版 ? (
         <ProjectStages
           key={位.阶段}
@@ -680,8 +653,8 @@ export default function ProjectDetail({
           结局={位.结局}
           结局色={异常 ? "error" : 交付了 ? "success" : "default"}
           成功交付={交付了}
-          动作={节点可改 ? 进程钮 : undefined}
-          提示={推不了}
+          动作={节点可改 || p.能记沟通 ? 进程钮 : undefined}
+          提示={p.result && 节点可改 ? undefined : 完成不了}
         />
       ) : (
         <Progress
@@ -699,14 +672,20 @@ export default function ProjectDetail({
       {p.必填 && (
         <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
           {p.必填.还差.length
-            ? `这个进程填齐必填后自动往前推，还差：${p.必填.还差.map(必填叫法).join("、")}`
-            : "这个进程的必填都齐了"}
+            ? `这个节点还差必填：${p.必填.还差.map(必填叫法).join("、")}（「暂无」「-」这类占位不算填了）`
+            : "这个节点的必填都齐了，可以点「完成节点」往前推"}
         </div>
       )}
     </Card>
   );
   const 项目卡 = (
-    <Card title="项目" extra={可改 && !p.企业版 && <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>}>
+    <Card
+      title="项目"
+      // U-项目-05：企业版改项目的入口挪到项目卡右上角一个笔（页头不再摆「编辑项目」），点开还是同一个编辑框；别的版本照旧「编辑」
+      extra={可改 && (p.企业版
+        ? <Tooltip title="编辑项目"><Button type="text" size="small" icon={<EditOutlined />} aria-label="编辑项目" disabled={忙} onClick={() => set编辑开着(true)} /></Tooltip>
+        : <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>)}
+    >
       <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后可见</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
@@ -817,11 +796,30 @@ export default function ProjectDetail({
       />
     </Card>
   );
+  // 企业版瀑布流（U-项目-01/04）：沟通、卡点与任务各是一块，标题那一行点了展开 / 收起（开着箭头朝上、收着朝下），
+  // 块里定高、自己滚；上面一个搜索框，搜沟通和卡点，有词时两块都摊开、只列对得上的。别的版本不折叠、不搜
+  const 搜词 = p.企业版 ? 词们(搜) : [];
+  const 搜着 = 搜词.length > 0;
+  const 列沟通 = 搜着 ? p.followUps.filter((f) => 对得上(搜词, 沟通字段(f))) : p.followUps;
+  const 列卡点 = 卡点 ? (搜着 ? 卡点.们.filter((k) => 对得上(搜词, 卡点字段(k))) : 卡点.们) : [];
+  const 模块 = (id: string, 名: string, 开: boolean, set开: (v: boolean) => void) => {
+    const 摊开 = 开 || 搜着;
+    return {
+      id,
+      className: `proj-mod${摊开 ? "" : " is-closed"}`,
+      title: (
+        <button type="button" className="proj-mod-h" aria-expanded={摊开} aria-controls={`${id}-body`} disabled={搜着} title={搜着 ? "搜索时都摊开" : undefined} onClick={() => set开(!开)}>
+          <span className="proj-mod-name">{名}</span>
+          {摊开 ? <UpOutlined aria-hidden /> : <DownOutlined aria-hidden />}
+        </button>
+      ),
+    };
+  };
+  const 沟通数字 = 搜着 ? `搜到 ${列沟通.length}` : `${p.followUps.length}`;
   const 沟通卡 = (
     <Card
       // 客户页「跟进」菜单跳过来的落点（/projects/<id>#project-follow，P14 第 3 条）
-      id="project-follow"
-      title="沟通"
+      {...(p.企业版 ? 模块("project-follow", `沟通（${沟通数字}）`, 沟通开, set沟通开) : { id: "project-follow", title: "沟通" })}
       extra={
         p.能记沟通 ? (
           // 企业版：「记一条沟通」「AI 录入」在页头（10-31 起卡上不再重复摆）
@@ -829,9 +827,11 @@ export default function ProjectDetail({
         ) : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>
       }
     >
+      <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
       {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后可见"}</div>}
-      {p.followUps.map((f) => (
-        <div key={f.id} style={{ marginBottom: 12 }}>
+      {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
+      {列沟通.map((f) => (
+        <div key={f.id} id={`follow-${f.id}`} className="proj-follow-row" style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <FollowTypeCell type={f.type} method={f.method} />
             <Tag>{f.node}</Tag>
@@ -860,13 +860,18 @@ export default function ProjectDetail({
             )}
           </div>
           <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{f.content}</div>
+          {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可改沟通} />}
         </div>
       ))}
+      </div>
     </Card>
   );
+  // 企业版叫「卡点与任务」（U-项目-01）：这一版只有卡点，任务还没有单独的数据，进来以后列在同一块里
   const 卡点区 = 卡点 && (
     <Card
-      title={`卡点（${卡点.们.length}）`}
+      {...(p.企业版
+        ? 模块("project-blockers", `卡点与任务（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）`, 卡点开, set卡点开)
+        : { title: `卡点（${卡点.们.length}）` })}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）
       extra={卡点.能发 && !p.企业版 && (
         <Space size={8}>
@@ -875,20 +880,36 @@ export default function ProjectDetail({
         </Space>
       )}
     >
-      <BlockerList 们={卡点.们} 人们={卡点.人们} 空="还没有卡点" />
+      <div id="project-blockers-body" className={p.企业版 ? "proj-mod-body" : undefined}>
+        <BlockerList 们={列卡点} 人们={卡点.人们} 空={搜着 && 卡点.们.length ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
+      </div>
     </Card>
   );
 
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
   const 关联卡 = p.关联 && <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} />;
-  // 合同附件、项目方案各单独一格（10-31）：节点必填「合同附件」「项目方案」各看自己那一格；没分格的老附件算在「附件」里
-  const 附件卡 = p.项目附件 && (
-    <>
-      <ProjectAttachmentsCard key={`${p.id}-合同-${附件版}`} projectId={p.id} 分类="合同" 标题="合同附件" 起始个数={p.项目附件.合同} 只读={p.项目附件.只读} />
-      <ProjectAttachmentsCard key={`${p.id}-方案-${附件版}`} projectId={p.id} 分类="方案" 标题="项目方案" 起始个数={p.项目附件.方案} 只读={p.项目附件.只读} />
-      <ProjectAttachmentsCard key={`${p.id}-其它-${附件版}`} projectId={p.id} 分类="其它" 标题="附件" 起始个数={p.项目附件.其它} 只读={p.项目附件.只读} />
-    </>
+  // 项目附件合成一块（F-项目-18）：合同附件、项目方案、其它附件各一格（节点必填「合同附件」「项目方案」各看自己那一格；没分格的老附件算在「其它」里），
+  // 最后一格把挂在各条沟通上的截图、录音收过来，写明来自哪条沟通，点了跳到那条（在这里只看、下载，传和删回那条沟通上）
+  const 沟通附件们: 沟通附件组[] = p.followUps
+    .filter((f) => f.附件?.length)
+    .map((f) => ({ followUpId: f.id, 来源: 沟通来源(f), 附件: f.附件 ?? [] }));
+  const 去看沟通 = (id: string) => {
+    set搜("");
+    set沟通开(true);
+    // 等沟通块摊开、行挂上再滚过去
+    setTimeout(() => document.getElementById(`follow-${id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 0);
+  };
+  const 附件块 = (在框里: boolean) => p.项目附件 && (
+    <ProjectAttachmentsCard
+      key={`${p.id}-${附件版}`}
+      projectId={p.id}
+      起始个数={p.项目附件}
+      只读={p.项目附件.只读}
+      沟通们={沟通附件们}
+      去看={(id) => { if (在框里) set头部框(null); 去看沟通(id); }}
+    />
   );
+  const 附件卡 = 附件块(false);
   const 回款卡 = p.回款们 && <ProjectPaymentsCard key={p.id} projectId={p.id} 回款们={p.回款们} 能改={可改} 默认={p.成交钱?.contractCurrency ?? p.currency} />;
 
   const 领取钮 = (
@@ -898,9 +919,9 @@ export default function ProjectDetail({
       {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
     </>
   );
-  // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样，点了 6 秒内能撤销
+  // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
   const 转给钮 = p.企业版 && 可改 && !独自一人(候选, p.ownerId) && (
-    <Button disabled={忙 || !!待转给} onClick={() => { set转给谁(null); set转给框(true); }}>转让项目</Button>
+    <Button disabled={忙} onClick={() => { set转给谁(null); set转给框(true); }}>转让项目</Button>
   );
   const 放回问 = () => {
     // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
@@ -909,21 +930,19 @@ export default function ProjectDetail({
   };
   const 删问 = () => modal.confirm({ title: "删除这个项目？", content: 删除说明(p.删前清点, b.customer, p.企业版), okText: "删除", okButtonProps: { danger: true }, onOk: 删 });
   const 开框 = (k: 头部框) => () => set头部框(k);
-  const 能管沟通 = p.followUps.length > 0 && (p.可改沟通 || !!卡点?.能发);
 
   // 企业版页头（10-31 R6）：这一页能做的事摆成具名按钮，要填的进弹窗，同一个动作、同一套校验。
-  // 卡上和这里同名的按钮（编辑、记一条沟通、AI 录入、下一步 / 更多、发卡点、关联 +、改分配）企业版不再摆，只留页头这一处（10-31）；
+  // 卡上和这里同名的按钮（记一条沟通、AI 录入、下一步 / 更多、发卡点、关联 +、改分配）企业版不再摆，只留页头这一处（10-31）；编辑项目 U-项目-05 起反过来、只在项目卡右上角；
   // 推进进程、结束当前进程在节点卡的阶段页签那一行（ProjectStages 动作），页头不再重复摆。
   // 按钮按下面两栏分组、各自对齐那一栏的左边（10-31 用户定）：左组管左栏（节点、沟通、卡点、附件），右组管右栏（项目、画像、关联、项目组、提成）；
-  // 整个项目的事（转让、放回公海、删除）跟在左组最后、靠右。
+  // 整个项目的事（转让、放回公海）跟在左组最后、靠右。企业版不摆「删除项目」（M-权限-10：项目是公司资产，服务端也一律拒）。
   // 「记一条沟通」是唯一的主按钮，⌘N 点的就是它（components/CommandBar.tsx 找 .page-head-a 里的主按钮）；公海里的项目主按钮是「领取」
-  const 整项目钮 = (转给钮 || p.能放公海 || 能改) && (
+  const 整项目钮 = (转给钮 || p.能放公海) && (
     <span className="acts-whole">
       {转给钮}
       {p.能放公海 && (等复核
         ? <Tooltip title={`${等复核文字}，暂时不能放回`}><Button disabled>放回公海</Button></Tooltip>
         : <Button disabled={忙} onClick={放回问}>放回公海</Button>)}
-      {能改 && <Button type="text" danger disabled={忙} onClick={删问}>删除项目</Button>}
     </span>
   );
   const 企业版动作 = (
@@ -936,13 +955,11 @@ export default function ProjectDetail({
         {卡点?.能发 && (p.followUps.length
           ? <Button disabled={忙} onClick={() => set发卡点于(p.followUps[0].id)}>发卡点</Button>
           : <Tooltip title="先记一条沟通"><Button disabled>发卡点</Button></Tooltip>)}
-        {能管沟通 && <Button disabled={忙} onClick={开框("管理沟通")}>管理沟通</Button>}
         {/* 附件框里能传、能看、能删（看各格自己的权限），项目组框里能邀请、能改角色、能移出：一个框管到底 */}
         {p.项目附件 && <Button disabled={忙} onClick={开框("附件")}>{p.项目附件.只读 ? "附件" : "上传附件"}</Button>}
         {整项目钮}
       </div>
       <div className="acts-g">
-        {可改 && <Button disabled={忙} onClick={() => set编辑开着(true)}>编辑项目</Button>}
         {p.画像 && 可改 && <Button disabled={忙} onClick={开框("画像")}>项目画像</Button>}
         {p.关联 && 可改 && (
           <>
@@ -991,7 +1008,7 @@ export default function ProjectDetail({
     if (头部框 === "附件") set附件版((v) => v + 1);
     set头部框(null);
   };
-  /** 框里点了要换到别的框（推进 → 结局确认、管理沟通 → 修改）：先关这个，焦点回到页头 */
+  /** 框里点了要换到别的框（推进 → 结局确认）：先关这个，焦点回到页头。「管理沟通」框 M-权限-09 去掉了，改、删在每条沟通的「…」里 */
   const 换框 = (f: () => void) => () => { set头部框(null); f(); };
   const 头部框内容 = (() => {
     switch (头部框) {
@@ -1011,6 +1028,32 @@ export default function ProjectDetail({
             )}
           </div>
         );
+      case "完成": {
+        // M-节点-05/09：先查这个节点的必填（占位值不算填了）；缺了列出来，齐了写能推到哪。老板、主管缺着也能「仍要推进」
+        const 缺 = p.必填?.还差 ?? [];
+        const 能推 = !!完成到 && !完成不了 && !(缺.length && p.必填?.只能靠填齐);
+        return (
+          <div className="proj-modal-sec">
+            <div><span className="proj-where-label">现在在</span> {位.阶段} · {位.进程}</div>
+            {缺.length ? (
+              <Alert
+                type="warning"
+                showIcon
+                message={p.必填?.只能靠填齐 ? "还差这些必填，补齐了才能完成这个节点" : "还差这些必填（你是老板 / 主管，可以先推）"}
+                description={<ul className="proj-miss-list">{缺.map((k) => <li key={k}>{必填叫法(k)}</li>)}</ul>}
+              />
+            ) : (
+              <Alert type="success" showIcon message={p.必填 ? "这个节点的必填都齐了，可以推进" : "这个节点没有配必填，可以推进"} />
+            )}
+            {完成不了 && <div style={{ color: "var(--text-muted)" }}>{完成不了}</div>}
+            {完成到 && <div><span className="proj-where-label">完成后</span> {完成到字}</div>}
+            <Space wrap>
+              {能推 && <Button type="primary" disabled={忙} onClick={换框(完成)}>{缺.length ? "仍要推进" : "确认推进"}</Button>}
+              <Button onClick={关头部框}>{缺.length && !能推 ? "去补齐" : "取消"}</Button>
+            </Space>
+          </div>
+        );
+      }
       case "线索判定":
         return p.线索验证 && <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 跑={跑} 忙={忙} 没有效沟通={没有效沟通} 不给推={p.不给推} />;
       case "画像":
@@ -1023,7 +1066,7 @@ export default function ProjectDetail({
       case "附件":
         return (
           <div className="proj-modal-cards">
-            {附件卡}
+            {附件块(true)}
             {p.contact && p.联系人附件 && (
               <div style={行样}><span style={键样}>联系人附件</span><span>{p.contact.name}：<ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></span></div>
             )}
@@ -1031,32 +1074,6 @@ export default function ProjectDetail({
         );
       case "成员":
         return <div className="proj-modal-cards">{项目组卡}</div>;
-      case "管理沟通":
-        return (
-          <div className="proj-modal-list">
-            {p.followUps.map((f) => (
-              <div key={f.id} className="proj-modal-row">
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <FollowTypeCell type={f.type} method={f.method} />
-                    <Tag>{f.node}</Tag>
-                    <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-                  </div>
-                  <div className="proj-modal-clip">{f.content}</div>
-                </div>
-                <Space size={4}>
-                  {卡点?.能发 && <Button size="small" disabled={忙} onClick={换框(() => set发卡点于(f.id))}>发卡点</Button>}
-                  {p.可改沟通 && <Button size="small" disabled={忙} onClick={换框(() => set改沟通于(f))}>修改</Button>}
-                  {p.可改沟通 && (
-                    <InlineConfirm 问="删了进回收站，30 天内可恢复" 做={() => 删沟通(f.id)}>
-                      <Button size="small" type="text" danger disabled={忙}>删除</Button>
-                    </InlineConfirm>
-                  )}
-                </Space>
-              </div>
-            ))}
-          </div>
-        );
       default:
         return null;
     }
@@ -1094,12 +1111,23 @@ export default function ProjectDetail({
           {/* 企业版两栏（10-27 会后排版）：左边干活——节点、沟通、卡点；右边看资料——项目、交付、项目组、提成、节点变更。
               容器窄了（有 AI 侧栏、窗口小）退成一栏，干活的在上（globals.css .proj-2col） */}
           <div className="proj-2col">
+            {/* 左栏整列上下瀑布流（U-项目-01）：当前进程（固定在最上、不折叠）→ 搜索 → 沟通（默认开）→ 卡点与任务（默认收）→ 项目附件 → 回款 */}
             <div className="proj-main">
               {节点卡}
+              <div className="proj-search">
+                <Input
+                  allowClear
+                  prefix={<SearchOutlined aria-hidden />}
+                  placeholder="搜这个项目的沟通、卡点"
+                  aria-label="搜这个项目的沟通、卡点"
+                  value={搜}
+                  onChange={(e) => set搜(e.target.value)}
+                />
+              </div>
               {沟通卡}
               {卡点区}
-              {回款卡}
               {附件卡}
+              {回款卡}
             </div>
             <aside className="proj-side" aria-label="项目资料">
               {项目卡}
@@ -1151,56 +1179,25 @@ export default function ProjectDetail({
 
       {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
 
-      {头部框 && 头部框 !== "改分配" && 头部框 !== "结束" && (
-        <Modal open title={`${头部框叫法[头部框]} · ${p.name}`} footer={null} width={头部框 === "推进" || 头部框 === "线索判定" ? 520 : 640} onCancel={关头部框}>
+      {头部框 && 头部框 !== "改分配" && (
+        <Modal open title={`${头部框叫法[头部框]} · ${p.name}`} footer={null} width={头部框 === "推进" || 头部框 === "完成" || 头部框 === "线索判定" ? 520 : 640} onCancel={关头部框}>
           {头部框内容}
-        </Modal>
-      )}
-      {头部框 === "结束" && (
-        <Modal
-          open
-          title={`结束当前进程 · ${p.name}`}
-          width={520}
-          onCancel={关头部框}
-          footer={[
-            <Button key="no" onClick={关头部框}>取消</Button>,
-            <Button key="ok" type="primary" disabled={忙 || !结束去处.some((d) => d.key === 结束选 && !d.灰)} onClick={确认流转}>确认流转</Button>,
-          ]}
-        >
-          <div className="proj-modal-sec">
-            <div><span className="proj-where-label">现在在</span> {位.阶段} · {位.进程}</div>
-            {结束去处.length ? (
-              <Radio.Group className="proj-end-opts" value={结束选} onChange={(e) => set结束选(e.target.value)}>
-                {结束去处.map((d) => (
-                  <Radio key={d.key} value={d.key} disabled={!!d.灰}>
-                    <div className="proj-end-name">{d.叫}</div>
-                    <div className="proj-end-desc">{d.灰 ?? d.说明}</div>
-                  </Radio>
-                ))}
-              </Radio.Group>
-            ) : (
-              <div style={{ color: "var(--text-muted)" }}>{不能结束 ?? "现在没有能去的地方"}</div>
-            )}
-            {(() => {
-              const d = 结束去处.find((x) => x.key === 结束选 && !x.灰);
-              return d && <div><span className="proj-where-label">流转到</span> {位置文字(d.到, 字典)}</div>;
-            })()}
-          </div>
         </Modal>
       )}
       {头部框 === "改分配" && p.提成 && <SplitModal projectId={p.id} t={p.提成} 跑={跑} onClose={关头部框} />}
 
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} onClose={() => set记一条开着(false)} 跑={跑} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} 卡点默认={卡点?.能发 ? 卡点.默认 : null} onClose={() => set记一条开着(false)} 跑={跑} />}
 
       <Modal
         open={!!异常框}
-        title="进异常状态"
+        title={终止中 ? "终止进程：进异常状态" : "进异常状态"}
         okText="确定"
         okButtonProps={{ danger: true, disabled: !类别, loading: 忙 }}
         onCancel={() => set异常框(null)}
         onOk={async () => {
           if (!异常框 || !类别) return;
-          const ok = await 跑(() => 改项目节点(p.id, 异常框, { categoryId: 类别, 备注: 原因 }), "已标成异常状态");
+          const 附 = { categoryId: 类别, 备注: 原因 };
+          const ok = await 跑(() => (终止中 ? 终止项目进程(p.id, 附) : 改项目节点(p.id, 异常框, 附)), 终止中 ? "已终止进程，标成异常状态" : "已标成异常状态");
           if (ok) set异常框(null);
         }}
       >
@@ -1218,13 +1215,16 @@ export default function ProjectDetail({
 
       <Modal
         open={!!没成框}
-        title={没成框 ? `定结果：${结局叫法(没成框.result ?? "", 字典)}` : ""}
+        title={没成框 ? `${终止中 ? "终止进程" : "定结果"}：${结局叫法(没成框.result ?? "", 字典)}` : ""}
         okText="确定"
         okButtonProps={{ danger: true, disabled: !没成备注 || !!其他没写好(无效原因), loading: 忙 }}
         onCancel={() => set没成框(null)}
         onOk={async () => {
           if (!没成框 || !没成备注 || 其他没写好(无效原因)) return;
-          const ok = await 跑(() => 改项目节点(p.id, 没成框, { 备注: 没成备注 }), `已改到 ${位置文字(没成框, 字典)}`);
+          const ok = await 跑(
+            () => (终止中 ? 终止项目进程(p.id, { 备注: 没成备注 }) : 改项目节点(p.id, 没成框, { 备注: 没成备注 })),
+            终止中 ? `已终止进程：${结局叫法(没成框.result ?? "", 字典)}` : `已改到 ${位置文字(没成框, 字典)}`,
+          );
           if (ok) set没成框(null);
         }}
       >
@@ -1253,10 +1253,10 @@ export default function ProjectDetail({
       <Modal
         open={转给框}
         title="转让项目"
-        okText="转让"
-        okButtonProps={{ disabled: !转给谁 }}
+        okText="确认转让"
+        okButtonProps={{ disabled: !转给谁, loading: 忙 }}
         onCancel={() => set转给框(false)}
-        onOk={() => 转给谁 && 开始转给(转给谁)}
+        onOk={() => 转给谁 && 确认转给(转给谁)}
       >
         <Select
           showSearch
@@ -1269,7 +1269,7 @@ export default function ProjectDetail({
           options={成员选项(候选).filter((o) => o.value !== p.ownerId)}
         />
         <div style={{ color: "var(--text-muted)" }}>
-          {转给名 ? `转给 ${转给名} 以后，你看不到这个项目；6 秒内可撤销。原来填的下一步会清掉，由 ${转给名} 重新安排。` : "选好人以后，6 秒内可撤销。"}
+          {转给名 ? `确认转给 ${转给名}？转了以后你看不到这个项目，原来填的下一步会清掉，由 ${转给名} 重新安排；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
         </div>
       </Modal>
     </div>
@@ -1327,12 +1327,19 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
 /**
  * 在项目上记一条沟通：方式、时间、内容，加下一步做什么（必填一句话，10-29）和下一步时间（开了超时回收、线索 / 商机阶段必填，别的时候可空）。
  * 记了会挂在客户上（客户页也看得到）和项目当时的节点上；填的下一步时间决定这个项目哪天没跟进会回公海
+ *
+ * F-跟进-06：主区只摆 沟通内容、（卡点）、下一步、下一步时间；沟通方式、沟通时间、项目阶段、客户明确回复、AI 预填收进默认折叠的「更多」，
+ * 字段和校验一个不少（客户明确回复照旧必选，没选时底下那句带「展开更多」）。
+ * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」且描述空 = 不生成，否则记下后照发卡点那一套生成一个。
+ * F-跟进-07（企业版）：可先挑截图、录音，记下之后挂到这条沟通上
  */
-function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
+function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, 跑 }: {
   p: 项目详情;
   外贸: boolean;
-  /** 从「AI 录入」点进来的：AI 那一格先摆出来、光标先落在那 */
+  /** 从「AI 录入」点进来的：「更多」展开、AI 那一格先摆出来、光标先落在那 */
   AI先?: boolean;
+  /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
+  卡点默认?: 卡点默认 | null;
   onClose: () => void;
   跑: (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
 }) {
@@ -1345,6 +1352,13 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
   const [下一步时间, set下一步时间] = useState<string | null>(null);
   const [明确回复, set明确回复] = useState<boolean | null>(null);
   const [交中, set交中] = useState(false);
+  const [更多开, set更多开] = useState(AI先);
+  const [卡点类型, set卡点类型] = useState<string>("暂无卡点");
+  const [卡点影响, set卡点影响] = useState<string | null>(null);
+  const [卡点描述, set卡点描述] = useState("");
+  const [附件们, set附件们] = useState<File[]>([]);
+  const { message } = App.useApp();
+  const router = useRouter();
   // ---- AI 录入（10-29 P6）：粘原话 → 复用客户页「跟进速记」那条解析（parseFollowUpDraft，同一个模型、同一份额度）→ 只往格子里预填，
   // 人核对后点「记下」才写库；解析本身不写任何业务表。企业版、配了模型、看得到客户才给
   const 给AI = !!(p.企业版 && p.aiEnabled && p.customer);
@@ -1394,12 +1408,26 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
   };
   const 差 = !content.trim() ? "请填写这次沟通的内容" : p.企业版 && 明确回复 === null ? "请选客户明确回复了吗"
     : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
+  /** 差的那一格在折起来的「更多」里：底下那句旁边给个「展开更多」 */
+  const 差在更多 = !更多开 && p.企业版 && !!content.trim() && 明确回复 === null;
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
 
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }), "已记下这条沟通");
+    const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
+    const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, description: 卡点描述 } : undefined;
+    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }, 卡点)), "已记下这条沟通");
+    const r = 回.r;
+    if (ok && r?.ok) {
+      if ("卡点" in r && r.卡点) message.success(`已生成卡点 ${r.卡点}`);
+      if ("卡点没发" in r && r.卡点没发) message.warning(`沟通记下了，卡点没生成：${r.卡点没发}`);
+      if (附件们.length && r.followUpId) {
+        const 错 = await 传沟通附件(r.followUpId, 附件们);
+        for (const e of 错) message.error(e);
+        router.refresh();
+      }
+    }
     set交中(false);
     if (ok) 关();
   };
@@ -1414,66 +1442,30 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
       footer={(按钮) => (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
           {差 && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{差}</span>}
+          {差在更多 && <Button size="small" type="link" style={{ paddingInline: 0 }} onClick={() => set更多开(true)}>展开更多</Button>}
           <span>{按钮}</span>
         </div>
       )}
       // 写了字就别让点到框外把草稿关掉（10-29 实点：点日历时手一偏，整段没了）
-      mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() }}
+      mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() && !卡点描述.trim() && !附件们.length }}
       onCancel={关}
       onOk={() => void 交()}
     >
       <div style={{ display: "grid", gap: 12 }}>
-        {给AI && !AI开 && (
-          <Button size="small" icon={<ThunderboltOutlined />} style={{ justifySelf: "start" }} onClick={() => setAI开(true)}>用 AI 从原话预填</Button>
-        )}
-        {给AI && AI开 && (
-          <div style={{ border: "1px solid var(--brand-line)", borderRadius: 8, padding: "10px 12px" }}>
-            <Input.TextArea
-              aria-label="沟通原话"
-              autoFocus={AI先}
-              value={原话}
-              onChange={(e) => set原话(e.target.value)}
-              autoSize={{ minRows: 2, maxRows: 6 }}
-              maxLength={5000}
-              placeholder="把这次沟通随手倒出来，或粘贴聊天记录、语音转的文字，AI 帮你填下面的格子"
-            />
-            <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
-                  : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填，核对无误再记下；「客户明确回复了吗」要你自己选</span>}
-              </div>
-              <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
-                {解析?.结果 ? "重新解析" : "AI 解析填表"}
-                <AiCost />
-              </Button>
+        <div>
+          <div style={{ marginBottom: 4 }}>沟通内容<span style={{ color: "var(--danger-text)" }}> *</span></div>
+          <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
+        </div>
+        {卡点默认 && (
+          <div className="follow-blocker">
+            <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（可不填；选了卡点或写了描述，记下时生成一个卡点）</span></div>
+            <div className="follow-blocker-row">
+              <Select aria-label="卡点类型" value={卡点类型} onChange={set卡点类型} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
+              <Select aria-label="卡点影响" allowClear value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
             </div>
-            {AI已用完 && <AiRemaining />}
+            <Input.TextArea aria-label="卡点描述" style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={卡点描述} onChange={(e) => set卡点描述(e.target.value)} placeholder="卡在哪儿（可不填）" />
           </div>
         )}
-        <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={能选类型} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
-        <DatePicker
-          aria-label="沟通时间"
-          showTime={{ format: "HH:mm" }}
-          format={沟通时间格式}
-          allowClear={false}
-          style={{ width: "100%" }}
-          value={dayjs(occurredAt, 沟通时间格式)}
-          disabledDate={(x) => x.isAfter(dayjs(), "day")}
-          onChange={(v) => v && setOccurredAt(v.format(沟通时间格式))}
-        />
-        {p.企业版 && (
-          <div>
-            <div style={{ marginBottom: 4 }}>项目阶段<span style={{ color: "var(--text-muted)" }}>（记在项目现在的阶段上）</span></div>
-            <Select aria-label="项目阶段" style={{ width: "100%" }} value={p.phase} disabled options={[{ value: p.phase, label: p.phase }]} />
-          </div>
-        )}
-        {p.企业版 && (
-          <div>
-            <div style={{ marginBottom: 4 }}>客户明确回复了吗<span style={{ color: "var(--danger-text)" }}> *</span></div>
-            <Radio.Group aria-label="客户明确回复了吗" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
-          </div>
-        )}
-        <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
         <div>
           <div style={{ marginBottom: 4 }}>下一步做什么<span style={{ color: "var(--danger-text)" }}> *</span></div>
           <Input
@@ -1506,6 +1498,78 @@ function RecordFollowModal({ p, 外贸, AI先 = false, onClose, 跑 }: {
             <div style={{ marginTop: 4, fontSize: "var(--dt-aux, 12px)", color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>选这天 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
           ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>到那天还没人跟进，项目会自动回到项目公海</div>}
         </div>
+        {p.企业版 && (
+          <div>
+            <div style={{ marginBottom: 4 }}>截图 / 录音<span style={{ color: "var(--text-muted)" }}>（可不传，记下后挂在这条沟通上）</span></div>
+            <选沟通附件框 文件们={附件们} on改={set附件们} />
+          </div>
+        )}
+        <div>
+          <Button type="link" size="small" style={{ paddingInline: 0 }} icon={<DownOutlined rotate={更多开 ? 180 : 0} />} aria-expanded={更多开} onClick={() => set更多开((v) => !v)}>
+            更多{p.企业版 ? "：沟通方式、沟通时间、项目阶段、客户明确回复" : "：沟通方式、沟通时间"}{给AI ? "、AI 预填" : ""}
+          </Button>
+          {p.企业版 && 明确回复 === null && !更多开 && <span style={{ color: "var(--danger-text)", fontSize: "var(--dt-aux, 12px)" }}> 客户明确回复还没选</span>}
+        </div>
+        {更多开 && (
+          <div className="follow-more">
+            {给AI && !AI开 && (
+              <Button size="small" icon={<ThunderboltOutlined />} style={{ justifySelf: "start" }} onClick={() => setAI开(true)}>用 AI 从原话预填</Button>
+            )}
+            {给AI && AI开 && (
+              <div style={{ border: "1px solid var(--brand-line)", borderRadius: 8, padding: "10px 12px" }}>
+                <Input.TextArea
+                  aria-label="沟通原话"
+                  autoFocus={AI先}
+                  value={原话}
+                  onChange={(e) => set原话(e.target.value)}
+                  autoSize={{ minRows: 2, maxRows: 6 }}
+                  maxLength={5000}
+                  placeholder="把这次沟通随手倒出来，或粘贴聊天记录、语音转的文字，AI 帮你预填沟通内容、下一步等格子"
+                />
+                <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
+                      : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填，核对无误再记下；「客户明确回复了吗」要你自己选</span>}
+                  </div>
+                  <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
+                    {解析?.结果 ? "重新解析" : "AI 解析填表"}
+                    <AiCost />
+                  </Button>
+                </div>
+                {AI已用完 && <AiRemaining />}
+              </div>
+            )}
+            <div>
+              <div style={{ marginBottom: 4 }}>沟通方式</div>
+              <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={能选类型} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
+            </div>
+            <div>
+              <div style={{ marginBottom: 4 }}>沟通时间</div>
+              <DatePicker
+                aria-label="沟通时间"
+                showTime={{ format: "HH:mm" }}
+                format={沟通时间格式}
+                allowClear={false}
+                style={{ width: "100%" }}
+                value={dayjs(occurredAt, 沟通时间格式)}
+                disabledDate={(x) => x.isAfter(dayjs(), "day")}
+                onChange={(v) => v && setOccurredAt(v.format(沟通时间格式))}
+              />
+            </div>
+            {p.企业版 && (
+              <div>
+                <div style={{ marginBottom: 4 }}>项目阶段<span style={{ color: "var(--text-muted)" }}>（记在项目现在的阶段上）</span></div>
+                <Select aria-label="项目阶段" style={{ width: "100%" }} value={p.phase} disabled options={[{ value: p.phase, label: p.phase }]} />
+              </div>
+            )}
+            {p.企业版 && (
+              <div>
+                <div style={{ marginBottom: 4 }}>客户明确回复了吗<span style={{ color: "var(--danger-text)" }}> *</span></div>
+                <Radio.Group aria-label="客户明确回复了吗" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   );

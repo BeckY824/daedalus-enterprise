@@ -6,6 +6,7 @@ import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import DemoLogin from "./DemoLogin";
 import { 飞书登录凭据, type 飞书登录失败 } from "@/lib/enterprise/feishu-login";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /** 飞书登录没成时，回调带回来的原因（/login?reason=feishu-<原因>）怎么跟人说 */
 const 飞书原因: Record<飞书登录失败, string> = {
@@ -51,6 +52,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       可注册={multiTenant() && !自助注册已关闭()}
       注册地址="/signup"
       产品名={自定产品名() ?? undefined}
+      /* 企业版（自部署）：去掉左栏、正中一张卡；配了飞书时飞书是主按钮、账号密码收起（U-登录-01） */
+      居中={企业版() && !multiTenant()}
     />
   );
 }

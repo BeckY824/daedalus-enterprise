@@ -20,6 +20,9 @@ import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterpris
 import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
+import { 回收原因前缀 } from "@/lib/project/timeout";
+import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
 import { Prisma } from "@/generated/prisma";
 
 export type 公海结果 =
@@ -69,11 +72,19 @@ async function 无效的(ids: string[]): Promise<Set<string>> {
 }
 const 无效不能领提示 = "标了无效的客户不能领取，要老板先恢复";
 
+/** 客户放回公海时能选的退回原因（企业版字典「回收原因」，停用的不出）；别的版本 = 空，不问 */
+export async function 退回原因选项(): Promise<string[]> {
+  await requireUser();
+  return 可选项("recycle");
+}
+
 /**
  * 放进公海：负责人本人或管理员才能放（别人的客户你放不进去——那等于替同事把人扔了）。可批量，
  * 不是自己的那几位跳过并说一声。原负责人不动，领的人来了才换。
+ * 企业版要选退回原因（字典「回收原因」，字典里一项都没启用时不拦），存成「回收原因：X」，统一公海「入池原因」列读它（M-公海-09）；
+ * 别的版本不问，照旧记「手动」
  */
-export async function 放进公海(ids: string[]): Promise<公海结果> {
+export async function 放进公海(ids: string[], 原因?: unknown): Promise<公海结果> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
@@ -86,12 +97,17 @@ export async function 放进公海(ids: string[]): Promise<公海结果> {
   if (!能放.length) {
     return 没权限 ? { ok: false, error: `只有负责人或管理员能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
   }
-  await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason: "手动" })) });
+  // 能放了才问原因：放不了的那句（虚线、没权限、已在公海）照旧先说
+  const 选 = await 选的原因("recycle", 原因);
+  if (!选.ok) return 选;
+  if (企业版() && !选.值 && (await 可选项("recycle")).length) return { ok: false, error: 要选退回原因提示 };
+  const reason = 选.值 ? `${回收原因前缀}${选.值}` : "手动";
+  await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason })) });
   await 记退回(能放.map((c) => c.id), 1);
   await recordAudit({
     user: me, action: "pool", entity: "Customer", entityId: 能放.length === 1 ? 能放[0].id : null,
     summary: `把 ${能放.length} 名${b.customer}放进公海`,
-    detail: { ids: 能放.map((c) => c.id) },
+    detail: { ids: 能放.map((c) => c.id), ...(选.值 ? { 原因: 选.值 } : {}) },
   });
   刷新(ids);
   return { ok: true, updated: 能放.length, unchanged: 已在.length, 没权限 };

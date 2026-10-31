@@ -58,6 +58,8 @@ const 可写: Record<string, string[]> = {
     "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay",
     // 企业版客户类型（2026-10-29，迁移 092）：客户表单 / 行内改 / 导入
     "customerType",
+    // 企业版客户属性（2026-10-31，迁移 104，F-客户-04）：客户表单 / 行内改
+    "customerAttr",
     // 企业版客户地址第五格「客户地址」（2026-10-29，迁移 091，P14 第 7 条）：客户表单 saveCustomer 的 企业资料
     "addrDetail"],
   // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
@@ -411,6 +413,7 @@ const 派生: Record<string, Record<string, string>> = {
     leadId: "挂在哪条线索上（企业版名片建档 / 线索编辑框传的时候定），线索删了这列也不清",
     contactId: "挂在哪位联系人上（企业版传的时候定；线索转客户、并进老客户时补上）",
     projectId: "挂在哪个项目上（企业版项目详情页「附件」传的时候定，P11 迁移 086）",
+    followUpId: "挂在哪条沟通记录上（企业版沟通弹窗传截图、录音时定，迁移 103），沟通删了这列也不清",
     name: "原文件名，传的时候定（去掉路径和 Windows 不认的字符）",
     mime: "文件类型，传的时候定。决定能不能在页面里显示，不给改",
     size: "文件字节数，存文件时量出来",

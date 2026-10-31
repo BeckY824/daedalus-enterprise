@@ -91,7 +91,18 @@ export type 必填数据 = {
   项目方案数?: number;
 };
 
-const 有 = (v: string | null | undefined) => !!v && v.trim().length > 0;
+/**
+ * 占位值（M-节点-05）：导入的老数据、手填的「暂无」「待定」「-」这些不算填了。比的时候去掉首尾空白、不分大小写。
+ * 名单是我方默认，客户给了再加
+ */
+export const 占位值们: readonly string[] = [
+  需求未确认, "暂无", "无", "没有", "未知", "不详", "待定", "待确认", "未确认", "未填", "未填写", "空",
+  "-", "--", "---", "—", "——", "/", "\\", "?", "？", "n/a", "na", "none", "null", "nil", "tbd", "unknown", "0",
+];
+const 占位集 = new Set(占位值们.map((x) => x.toLowerCase()));
+export const 是占位值 = (v: string | null | undefined) => 占位集.has(String(v ?? "").trim().toLowerCase());
+/** 有合法值：不是空的、也不是占位值 */
+const 有 = (v: string | null | undefined) => !!v && v.trim().length > 0 && !是占位值(v);
 
 function 齐了(项: 必填项, d: 必填数据): boolean {
   const x = d.客户.extra;
@@ -104,7 +115,7 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "客户等级": return 有(x?.level);
     case "主联系人": return !!d.项目.contactId;
     // 10-31 客户定：需求 = 需求状态选了表面触达 / 方向明晰 / 明确需求 / 共识痛点（字典可改名，按「选了、不是暂未确认」认），备注不再算
-    case "需求": return 有(d.项目.demandStatus) && d.项目.demandStatus!.trim() !== 需求未确认;
+    case "需求": return 有(d.项目.demandStatus);
     case "金额": return d.项目.amount > 0;
     case "预计成交日期": return !!d.项目.expectedDealAt;
     case "下一步时间": return !!d.项目.nextStepAt;

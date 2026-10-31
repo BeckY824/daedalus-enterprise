@@ -7,6 +7,8 @@ import { multiTenant, runWithTenant } from "./tenant/context";
 import { resolveTenant } from "./tenant/workspaces";
 import { control } from "./tenant/control";
 import { 会话已作废 } from "./tenant/session-cutoff";
+import { 企业版 } from "./enterprise/switch";
+import { 视图票, 验视图票, 能切换视图 } from "./enterprise/view-as";
 
 export const SECRET = new TextEncoder().encode(
   readSecret(),
@@ -22,7 +24,7 @@ export const SESSION_DAYS = 30;
  * 用域名 + HTTPS 部署时设为 true；用 IP + HTTP 临时访问时必须为 false，
  * 否则浏览器会直接丢弃 cookie，表现为「密码正确但一直停在登录页」。
  */
-const COOKIE_SECURE =
+export const COOKIE_SECURE =
   process.env.COOKIE_SECURE === "true" ||
   (process.env.COOKIE_SECURE === undefined && process.env.NODE_ENV === "production");
 
@@ -36,6 +38,8 @@ export type SessionUser = {
   /** 托管身份用于跨工作区隔离；业务User.id只在本库唯一。 */
   accountId?: string;
   workspaceId?: string;
+  /** 企业版切换视图（M-权限-08）：这是总管理员在以别人的视图查看，这里是真身。有它 = 服务端只读 */
+  视图由?: { id: string; name: string };
 };
 
 /**
@@ -69,10 +73,39 @@ export async function createSession(userId: string, workspaceId?: string) {
 export async function destroySession() {
   const store = await cookies();
   store.delete(COOKIE);
+  // 切换视图的票跟着会话走（lib/enterprise/view-as.ts）：退出登录一起清
+  store.delete(视图票);
 }
 
-/** 读取当前登录用户，未登录返回 null */
+/**
+ * 读取当前登录用户，未登录返回 null。
+ * 企业版总管理员切换视图时（带着有效的 crm_view_as）回的是**被看的那个人**，视图由 = 真身——
+ * 全站按这个人的权限渲染；写库在 加上限定 里一律拒（lib/enterprise/view-as.ts）
+ */
 export async function getCurrentUser(): Promise<SessionUser | null> {
+  const 真 = await getSessionUser();
+  if (!真 || 真.accountId || !企业版()) return 真;
+  const 票 = (await cookies()).get(视图票)?.value;
+  return (票 && (await 视图里的人(票, 真))) || 真;
+}
+
+/** 切换视图：票是这个会话签的、真身现在还是总管理员、被看的人还在，才认 */
+async function 视图里的人(票: string, 真: SessionUser): Promise<SessionUser | null> {
+  try {
+    const v = await 验视图票(票, 真.id);
+    if (!v) return null;
+    const { 读组织 } = await import("./enterprise/org");
+    if (!能切换视图(await 读组织(), 真.role, 真.id)) return null;
+    const t = await prisma.user.findUnique({ where: { id: v.谁 } });
+    if (!t || !t.active) return null;
+    return { id: t.id, name: t.name, email: t.email, role: t.role, title: t.title, avatar: t.avatar, 视图由: { id: 真.id, name: 真.name } };
+  } catch {
+    return null;
+  }
+}
+
+/** 会话票上的那个人（真身）：不认切换视图。只有切换视图自己的 action 用它，别处一律 getCurrentUser */
+export async function getSessionUser(): Promise<SessionUser | null> {
   const store = await cookies();
   const token = store.get(COOKIE)?.value;
   if (!token) return null;

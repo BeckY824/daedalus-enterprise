@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * 客户页「新建项目」弹窗（企业版项目模式，2026-10-29，定稿 P5 待定 16）：客户自动带上，只填项目和首条沟通。
- * 几格和建档向导第四、五步一样（projects/new/ProjectWizard.tsx），校验以服务端为准（project-actions.ts 给客户建项目）
+ * 客户页「新增项目」弹窗（企业版项目模式，2026-10-29，定稿 P5 待定 16）：客户自动带上，只填项目和首条沟通。
+ * 几格和建档向导第四、五步一样（projects/new/ProjectWizard.tsx），校验以服务端为准（project-actions.ts 给客户建项目）。
+ * 10-31 会议 U-客户-05：用开项目那套向导界面——上面同一排步骤，前 3 步（查重、联系人、客户）带出现有的、标成已完成，
+ * 从「项目」那步开始：先填项目信息，下一步再填首条沟通
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Dayjs } from "dayjs";
-import { App, Form, Input, Modal, Radio, Select } from "antd";
+import { App, Button, Form, Input, Modal, Radio, Select, Steps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import { useBusiness } from "@/lib/business-client";
 import { 跟进类型们 } from "@/lib/constants";
@@ -19,6 +21,12 @@ import { 项目名上限 } from "@/lib/project/wizard";
 import { 给客户建项目 } from "./project-actions";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
+/** 和建档向导同一排步骤（ProjectWizard 步骤们）；这里前 3 步已带上 */
+const 向导步骤 = ["查重", "联系人", "客户", "项目", "首条沟通"] as const;
+const 跳过几步 = 3;
+
+/** 「项目」这一步的格：下一步前先校验这几格 */
+const 项目格 = ["name", "ownerId", "联系人Id"] as const;
 
 type 表单 = {
   name: string;
@@ -64,6 +72,20 @@ export default function NewProjectModal({
   const 类型 = Form.useWatch("type", form);
   const 方式 = Form.useWatch("method", form);
   const [存着, set存着] = useState(false);
+  /** 0 = 项目，1 = 首条沟通 */
+  const [步, set步] = useState(0);
+  const 关 = () => {
+    set步(0);
+    onClose();
+  };
+  async function 下一步() {
+    try {
+      await form.validateFields([...项目格]);
+    } catch {
+      return;
+    }
+    set步(1);
+  }
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   const 主 = 联系人们.find((c) => c.isPrimary) ?? 联系人们[0];
 
@@ -71,7 +93,10 @@ export default function NewProjectModal({
     let v: 表单;
     try {
       v = await form.validateFields();
-    } catch {
+    } catch (e) {
+      // 项目那一步的格没过：退回那一步给人看
+      const 错 = (e as { errorFields?: { name: (string | number)[] }[] }).errorFields ?? [];
+      if (错.some((x) => (项目格 as readonly (string | number)[]).includes(x.name[0]))) set步(0);
       return;
     }
     set存着(true);
@@ -95,7 +120,7 @@ export default function NewProjectModal({
         return;
       }
       message.success("项目建好了");
-      onClose();
+      关();
       router.push(`/projects/${r.projectId}`);
     } finally {
       set存着(false);
@@ -105,16 +130,31 @@ export default function NewProjectModal({
   return (
     <Modal
       open={open}
-      title="新建项目"
-      okText="建好"
-      cancelText="取消"
-      onOk={存}
-      onCancel={onClose}
-      confirmLoading={存着}
+      title="新增项目"
+      width={640}
+      onCancel={关}
       destroyOnHidden
       mask={{ closable: false }}
+      footer={
+        步 === 0
+          ? [
+              <Button key="x" onClick={关}>取消</Button>,
+              <Button key="n" type="primary" onClick={下一步}>下一步</Button>,
+            ]
+          : [
+              <Button key="b" onClick={() => set步(0)} disabled={存着}>上一步</Button>,
+              <Button key="ok" type="primary" loading={存着} onClick={存}>建好</Button>,
+            ]
+      }
     >
-      <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 12 }}>客户：{customerName}（自动带上）</div>
+      <Steps
+        current={跳过几步 + 步}
+        size="small"
+        style={{ marginBottom: 12 }}
+        items={向导步骤.map((t, i) => ({ title: t, ...(i < 跳过几步 ? { status: "finish" as const } : {}) }))}
+      />
+      <div className="new-proj-carried" title={customerName}>客户：{customerName}（已带上）</div>
+      {/* 两步共用一张表：另一步的格只藏起来、值留着，最后一起交（藏起来的格仍挂着；弹窗关了才卸掉，preserve=false 清值） */}
       <Form
         form={form}
         layout="vertical"
@@ -128,6 +168,7 @@ export default function NewProjectModal({
           节点: 节点们[0],
         }}
       >
+        <div style={步 === 0 ? undefined : { display: "none" }}>
         <Form.Item name="name" label="项目名称" rules={[{ required: true, whitespace: true, message: "请填写项目名称" }]}>
           <Input maxLength={项目名上限} showCount />
         </Form.Item>
@@ -139,6 +180,8 @@ export default function NewProjectModal({
             <Select options={联系人们.map((c) => ({ value: c.id, label: c.isPrimary ? `${c.name}（主要）` : c.name }))} />
           </Form.Item>
         )}
+        </div>
+        <div style={步 === 1 ? undefined : { display: "none" }}>
         <Form.Item name="type" hidden rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="method" hidden><Input /></Form.Item>
         <Form.Item label="沟通方式" required>
@@ -167,6 +210,7 @@ export default function NewProjectModal({
         >
           <DatePicker style={{ width: "100%" }} disabledDate={(x) => x.isBefore(dayjs(), "day")} placeholder="选一天" />
         </Form.Item>
+        </div>
       </Form>
     </Modal>
   );

@@ -3,7 +3,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能改节点, 代管节点, 往前推不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
+import { 能管项目, 能改节点, 代管节点, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -12,6 +12,9 @@ import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 读组织 } from "@/lib/enterprise/org";
+import { 能删改沟通 } from "@/lib/enterprise/follow-perm";
+import { 沟通附件们 } from "@/lib/attachments";
+import type { 附件 } from "@/lib/attachment-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
@@ -106,8 +109,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 回收起点 = 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt);
   const 回收日 = 超时回收日(规则, p, 回收起点, 字典);
   const 能记沟通 = 企业 && !公海 && (能改 || p.members.some((m) => m.userId === me.id && m.inviteStatus === "JOINED"));
-  // 沟通的「…」菜单（改 / 删，10-29）：能记沟通、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）
-  const 可改沟通 = 能记沟通 && 露 && !(await 只读客户(defaultClient, p.customer));
+  // 沟通的「…」菜单（改 / 删，10-29）：能记沟通、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
+  // M-权限-09（10-31）：普通成员记完不能改、不能删，只有总管理员和经理（lib/enterprise/follow-perm.ts）
+  const 可改沟通 = 能记沟通 && 露 && !(await 只读客户(defaultClient, p.customer)) && (await 能删改沟通(me));
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
   const org = 企业 ? await 读组织() : null;
@@ -119,7 +123,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 配了必填的进程记完可能自动推到下一个进程（天数跟着换），算不准就不给，界面不显示那一句
   const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 ? 节点超时天数(规则, p.node, 字典) : null;
   const 回收预演 = 回收天数 ? { 起点日: 计时起点(规则, 回收起点).format("YYYY-MM-DD"), 天数: 回收天数 } : null;
-  const 不给推 = 企业 && !公海 && !p.result ? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
+  // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
+  const 不给推 = 企业 && !公海 && !p.result ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
   // 企业版：线索验证往后推要先有一条客户明确回复的沟通（lib/project/stage-gates.ts）
   const 有效沟通 = 企业 && p.phase === "线索" ? await 有效沟通数(prisma, p.id) : 0;
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
@@ -169,6 +174,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     值: Object.fromEntries(项目画像项.map((项) => [项.键, 项.多选 ? 存的需求 : p[项.键]])) as 项目画像["值"],
   };
   const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
+  // 企业版沟通记录的截图、录音（F-跟进-07）：和沟通记录同一个口径（露客户才给）；传 = 记这条的本人或能改沟通的，删 = 能改沟通的（api/attachments/access.ts 认沟通）
+  const 沟通附件 = 企业 && 露 && p.followUps.length ? await 沟通附件们(prisma, p.followUps.map((f) => f.followUp.id)) : new Map<string, 附件[]>();
   // 企业版回款（10-31，迁移 100）：和合同金额一样是项目自己的钱，都给看
   const 回款们 = 企业 ? await 列回款(p.id) : null;
   // 企业版关联客户 / 联系人（P17）：同画像，公海里同事客户的项目没领之前不给
@@ -208,6 +215,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         return {
           id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
           ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
+          ...(企业 ? { 附件: 沟通附件.get(f.followUp.id) ?? [], 我记的: f.followUp.ownerId === me.id } : {}),
         };
       })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),

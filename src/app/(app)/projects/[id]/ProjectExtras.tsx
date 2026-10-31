@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, InputNumber, Select, Space } from "antd";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import FollowAttachments from "@/components/FollowAttachments";
+import type { 附件 } from "@/lib/attachment-rules";
 import DatePicker from "@/components/BusinessDatePicker";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 暂未确认, 不填项, 去不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
@@ -109,12 +111,53 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
   );
 }
 
-/** 「附件」卡（企业版 P11）：10-31 起分三张——合同附件 / 项目方案 / 其它附件（分类 = Attachment.tag）；看得到项目就能看、能改项目才能传和删（接口 api/attachments/access.ts 认项目） */
-export function ProjectAttachmentsCard({ projectId, 分类, 标题, 起始个数, 只读 }: { projectId: string; 分类: "合同" | "方案" | "其它"; 标题: string; 起始个数: number; 只读: boolean }) {
-  const [个数, set个数] = useState(起始个数);
+/** 挂在一条沟通上的附件（F-项目-18）：来源 = 「谁 · 什么时候 · 头几个字」（lib/project/detail-search.ts 沟通来源） */
+export type 沟通附件组 = { followUpId: string; 来源: string; 附件: 附件[] };
+type 项目附件格 = "合同" | "方案" | "其它";
+const 附件格们: [项目附件格, string][] = [["合同", "合同附件"], ["方案", "项目方案"], ["其它", "其它附件"]];
+
+/**
+ * 「项目附件」一块（企业版 P11；F-项目-18 起合成一块）：合同附件 / 项目方案 / 其它附件各一格（分类 = Attachment.tag），
+ * 看得到项目就能看、能改项目才能传和删（接口 api/attachments/access.ts 认项目）；
+ * 最后一格「沟通附件」把各条沟通上的截图、录音收过来，每组写明来自哪条沟通（去看 = 跳到那条），这里只看、下载，传和删回那条沟通上
+ */
+export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通们, 去看 }: {
+  projectId: string; 起始个数: Record<项目附件格, number>; 只读: boolean; 沟通们: 沟通附件组[]; 去看?: (followUpId: string) => void;
+}) {
+  const [个数, set个数] = useState<Record<项目附件格, number>>({ 合同: 起始个数.合同, 方案: 起始个数.方案, 其它: 起始个数.其它 });
+  // AttachmentsPanel 拿 on个数 当 effect 依赖：每格一个稳定的回调
+  const 记个数 = useMemo(
+    () => Object.fromEntries(附件格们.map(([k]) => [k, (n: number) => set个数((x) => (x[k] === n ? x : { ...x, [k]: n }))])) as Record<项目附件格, (n: number) => void>,
+    [],
+  );
+  const 沟通个数 = 沟通们.reduce((n, g) => n + g.附件.length, 0);
+  const 合计 = 个数.合同 + 个数.方案 + 个数.其它 + 沟通个数;
   return (
-    <Card title={`${标题}（${个数}）`}>
-      <AttachmentsPanel 归属={{ projectId }} 分类={分类} 只读={只读} on个数={set个数} />
+    <Card title={`项目附件（${合计}）`} className="proj-att-card" data-testid="project-attachments">
+      {附件格们.map(([k, 名]) => (
+        <section key={k} className="proj-att-sec" aria-label={名}>
+          <div className="proj-att-h">{名}（{个数[k]}）</div>
+          <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 />
+        </section>
+      ))}
+      <section className="proj-att-sec" aria-label="沟通附件">
+        <div className="proj-att-h">沟通附件（{沟通个数}）</div>
+        {沟通们.length === 0 ? (
+          <div className="muted">沟通上还没有截图、录音</div>
+        ) : (
+          沟通们.map((g) => (
+            <div key={`${g.followUpId}-${g.附件.map((a) => a.id).join(",")}`} className="proj-att-from" data-testid="follow-att-group">
+              <div className="proj-att-src">
+                来自沟通：
+                {去看
+                  ? <Button type="link" size="small" className="proj-att-link" title={g.来源} onClick={() => 去看(g.followUpId)}>{g.来源}</Button>
+                  : <span title={g.来源}>{g.来源}</span>}
+              </div>
+              <FollowAttachments followUpId={g.followUpId} 附件={g.附件} 能传={false} 能删={false} />
+            </div>
+          ))
+        )}
+      </section>
     </Card>
   );
 }

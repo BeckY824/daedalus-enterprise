@@ -16,7 +16,7 @@ import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 
 import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
-import { 改节点, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, type 交付项 } from "@/lib/project/db";
+import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -40,6 +40,8 @@ import { scheduleValue } from "@/lib/schedule-date";
 import { 向导自动分配 } from "../leads/assign-actions";
 import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, 认跟进方式, type 分配方式序号 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
+import { 发布卡点, 读卡点默认, 能发卡点 } from "@/lib/project/blocker";
+import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
 
@@ -198,6 +200,28 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
         detail: { 阶段: 到.phase, 节点: 到.node, 结局: 到.result ?? null, 异常类别: 类别, 备注: 类别 || (企业版() && 要写原因(到.result)) ? 异?.备注?.trim() || null : null },
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
+      刷新项目(projectId, p?.customerId);
+    }
+    return r;
+  } catch (e) { return 不在了(e); }
+}
+
+/** 企业版「终止进程」（M-节点-04）：按所在阶段落到线索流失 / 丢单 / 异常状态；线索流失、丢单 备注 = 原因（必填），异常状态带类别。审计和 改项目节点 一样记 */
+export async function 终止项目进程(projectId: string, 附?: { categoryId?: string | null; 备注?: string | null } | null) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    const 带 = 附 && typeof 附 === "object" ? { categoryId: 附.categoryId ?? null, 备注: 附.备注 ?? null } : undefined;
+    const r = await 终止进程(me, projectId, 带);
+    if (r.ok && r.变了 && r.到) {
+      const 到 = r.到;
+      const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, exceptionCategory: { select: { name: true } } } });
+      const 类别 = 到.result === "异常状态" ? p?.exceptionCategory?.name ?? null : null;
+      await recordAudit({
+        user: me, action: "update", entity: "Project", entityId: projectId,
+        summary: `终止进程：项目「${p?.name ?? ""}」在 ${到.phase}·${到.node} 终止（${到.result}${类别 ? `：${类别}` : ""}）`,
+        detail: { 阶段: 到.phase, 节点: 到.node, 结局: 到.result ?? null, 异常类别: 类别, 备注: 带?.备注?.trim() || null, 终止进程: true },
+      });
       刷新项目(projectId, p?.customerId);
     }
     return r;
@@ -584,13 +608,27 @@ export async function 预览超时回收(改: 规则改动) {
   } catch (e) { return 不在了(e); }
 }
 
-/** 在项目上记一条沟通（项目详情「记一条」）。下一步做什么必填一句话；开了超时回收的线索 / 商机阶段还要带下一步时间 */
-export async function 记项目沟通Action(projectId: string, input: 向导跟进) {
+/**
+ * 在项目上记一条沟通（项目详情「记一条」）。下一步做什么必填一句话；开了超时回收的线索 / 商机阶段还要带下一步时间。
+ * 10-31 F-跟进-08：可顺带一个卡点（类型 / 影响 / 描述都选填，类型「暂无」且描述空就不生成，lib/project/blocker-rules.ts 沟通卡点）。
+ * 卡点先验好再记沟通；沟通记上了、卡点没发成（比如没有发卡点的权限）不回滚沟通，回一句 卡点没发 给界面提示
+ */
+export async function 记项目沟通Action(projectId: string, input: 向导跟进, 卡点?: 沟通卡点输入) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
     if (!企业版()) return { ok: false as const, error: "在项目上记沟通是企业版的功能，请去客户页记" };
+    const 要发 = 卡点 == null ? null : 沟通卡点(卡点, await 读卡点默认());
+    if (要发 && "error" in 要发) return { ok: false as const, error: `卡点：${要发.error}` };
     const r = await 记项目沟通(me, projectId, input, new Date(), { 要下一步文字: true });
+    let 卡点结果: { 卡点?: string; 卡点没发?: string } = {};
+    if (r.ok && 要发 && r.followUpId) {
+      const b = await 发布卡点(me, r.followUpId, 要发);
+      if (b.ok) {
+        卡点结果 = { 卡点: b.code };
+        await recordAudit({ user: me, action: "create", entity: "EntBlocker", entityId: projectId, summary: `记沟通时发布卡点 ${b.code}` });
+      } else 卡点结果 = { 卡点没发: b.error };
+    }
     if (r.ok) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
       await recordAudit({
@@ -601,12 +639,13 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       刷新项目(projectId, p?.customerId);
       revalidatePath("/follow-ups");
     }
-    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
+    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...卡点结果 } : r;
   } catch (e) { return 不在了(e); }
 }
 
 export type 项目沟通须知结果 =
-  | { ok: true; 能记: true; phase: string; 要下一步: boolean; 回收预演: 回收预演底子 | null; contactId: string | null }
+  /** 卡点默认：能发卡点才给（F-跟进-08，表单摆卡点那一块）；null = 不摆 */
+  | { ok: true; 能记: true; phase: string; 要下一步: boolean; 回收预演: 回收预演底子 | null; contactId: string | null; 卡点默认: 卡点默认 | null }
   | { ok: true; 能记: false }
   | { ok: false; error: string };
 
@@ -635,7 +674,8 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
       const 天数 = 超时回收日(规则, p, 起点, 字典) ? 节点超时天数(规则, p.node, 字典) : null;
       if (天数) 回收预演 = { 起点日: 计时起点(规则, 起点).format("YYYY-MM-DD"), 天数 };  // 起算日之前不算（10-31）
     }
-    return { ok: true, 能记: true, phase: p.phase, 要下一步, 回收预演, contactId: p.contactId ?? null };
+    const 卡点默认 = (await 能发卡点(me, p.id)) ? await 读卡点默认() : null;
+    return { ok: true, 能记: true, phase: p.phase, 要下一步, 回收预演, contactId: p.contactId ?? null, 卡点默认 };
   } catch (e) { return 不在了(e); }
 }
 

@@ -36,6 +36,11 @@ const 不算列表页 = [
   // 10-29 试过换 DataList，撑不住三样：rowKey 写死 id（计划和待办的 id 会撞，这里用 key）、
   // 服务端分页强开每页条数且一页也画分页条（这里每页固定、单页不画）、行没有 Tab / 回车进入（这里 role=link）
   "src/app/(app)/overview/BoardTodos.tsx",
+  // 企业版复盘页「沟通」页签（10-31 会议 U-复盘-01）：同上一页，只读、分页在服务端、点行去项目页；
+  // 没有批量、列设置、筛选栏（按人、按时间筛在页签上面），沟通记录本身的列表页还是 FollowUpsView
+  "src/app/(app)/overview/BoardTalks.tsx",
+  // 复盘页「卡点」页签（U-复盘-01）：同上，只读、分页在服务端；卡点本身的看板在项目页
+  "src/app/(app)/overview/BoardBlockers.tsx",
   // 设置里的成员、登录机器、操作日志：都是一页就放得下的小表，没有筛选分页批量
   "src/app/(app)/settings/MembersTab.tsx",
   "src/app/(app)/settings/PasswordTab.tsx",

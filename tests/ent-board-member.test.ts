@@ -176,6 +176,9 @@ describe("地址栏：读页签 / 读卡 / 读类型 / 读页码 / 复盘地址 
     expect(读页签(undefined, "本月")).toBe("data");
     expect(读页签("todo", "本月")).toBe("todo");
     expect(读页签("乱写")).toBe("todo");
+    // U-复盘-01：卡点、沟通两个页签
+    expect(读页签("block")).toBe("block");
+    expect(读页签("talk", "本月")).toBe("talk");
   });
 
   it("卡、类型、页码：认不得的回默认", () => {
@@ -193,6 +196,15 @@ describe("地址栏：读页签 / 读卡 / 读类型 / 读页码 / 复盘地址 
     expect(复盘地址({ tab: "data", view: "本月", f: "today", p: 2 })).toBe(`/overview?tab=data&view=${encodeURIComponent("本月")}`);
     expect(复盘地址({ tab: "todo", view: "本月" })).toBe(`/overview?tab=todo&view=${encodeURIComponent("本月")}`);
     expect(读页签("todo", "本月")).toBe("todo");
+  });
+
+  it("复盘地址（U-复盘-01）：卡点 / 沟通页签只带自己的筛选，默认值（未解决、全部时间）不写，页码照带", () => {
+    expect(复盘地址({ tab: "block" })).toBe("/overview?tab=block");
+    expect(复盘地址({ tab: "block", bs: "open", f: "today", t: "7" })).toBe("/overview?tab=block");
+    expect(复盘地址({ tab: "block", bs: "done", ownerId: "u1", p: 2 })).toBe("/overview?tab=block&ownerId=u1&bs=done&p=2");
+    expect(复盘地址({ tab: "talk", t: "all", bs: "done" })).toBe("/overview?tab=talk");
+    expect(复盘地址({ tab: "talk", t: "30", p: 3 })).toBe("/overview?tab=talk&t=30&p=3");
+    expect(复盘地址({ tab: "talk", view: "本月" })).toBe(`/overview?tab=talk&view=${encodeURIComponent("本月")}`);
   });
 
   it("去计划页：看自己不带参数，看全员 / 选了别人带 scope=all", () => {

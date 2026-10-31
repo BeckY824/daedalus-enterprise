@@ -13,9 +13,9 @@ const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
   stub(/^\.\/(LinkedCustomers|NewProjectModal|ContactLinks)$/, "export default function Empty(){return null}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
-  stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海;");
+  stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false});");
-  stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null}");
+  stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, `
     export async function loadFollowHistory(customerId,before){window.__requests.push({customerId,before});if(window.__fail){window.__fail=false;throw Error('QA网络中断，请重试')};
       if(window.__delay){window.__delay=false;await new Promise(r=>window.__resolve=r)};

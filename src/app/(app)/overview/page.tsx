@@ -14,10 +14,14 @@ import BoardTodos from "./BoardTodos";
 import { 看板的人 } from "@/lib/project/board-member";
 import { 复盘待办of } from "@/lib/project/board-todos-db";
 import { 读页签, 读卡, 读类型, 读页码 } from "@/lib/project/board-todos";
+import { 读卡点筛, 读沟通段 } from "@/lib/project/review-tabs";
+import { 复盘卡点of, 复盘沟通of } from "@/lib/project/review-tabs-db";
+import BoardBlockers from "./BoardBlockers";
+import BoardTalks from "./BoardTalks";
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ view?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; p?: string }>;
+type SP = Promise<{ view?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; bs?: string; t?: string; p?: string }>;
 
 /**
  * 「数据」——看数的唯一入口。
@@ -60,8 +64,8 @@ export default async function DataPage({ searchParams }: { searchParams: SP }) {
 }
 
 /**
- * 按项目数的复盘页（P15）。两个页签（10-29 用户定）：「待办」（默认）｜「数据」，地址栏 tab= 记着；
- * 只取当前页签要的数——在「待办」不查图表，在「数据」不查待办。
+ * 按项目数的复盘页（P15）。四个页签（P7 U-复盘-01，10-31）：「任务」（默认，键 todo）｜「卡点」｜「沟通」｜「数据」，地址栏 tab= 记着；
+ * 只取当前页签要的数——在「任务」不查图表，在「数据」不查待办，卡点、沟通各查各的。
  * 按成员看：管理层地址栏 ownerId 选人（下拉在 DataShell，页签上面、两个页签共用），业务员强制只看自己；
  * 只看某一个人时，图表、按负责人那张表（藏掉）和待办都只数他的。
  * 默认「全部」（10-29 定稿）：总管理员 / 老板 = 所有人；别的上级 = 自己 + 直属和间接下属（看板的人 的 谁），
@@ -81,6 +85,27 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     return (
       <DataShell view={view} 项目 选人={选人} 页签="todo">
         <BoardTodos 数={d} 卡={卡} 类型={类型} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
+      </DataShell>
+    );
+  }
+
+  // 卡点、沟通：范围同上，用 看板的人 的 谁（选了人 = [他]；老板、总管理员看全部 = 不限）
+  const 谁 = 只看 ? [只看] : 人.谁;
+  if (页签 === "block") {
+    const 筛 = 读卡点筛(sp.bs);
+    const d = await 复盘卡点of(谁, user.id, { 筛, 页: 读页码(sp.p) });
+    return (
+      <DataShell view={view} 项目 选人={选人} 页签="block">
+        <BoardBlockers 数={d} 筛={筛} 只看自己={只看 === user.id} />
+      </DataShell>
+    );
+  }
+  if (页签 === "talk") {
+    const 段 = 读沟通段(sp.t);
+    const d = await 复盘沟通of(谁, { 段, 页: 读页码(sp.p) });
+    return (
+      <DataShell view={view} 项目 选人={选人} 页签="talk">
+        <BoardTalks 数={d} 段={段} 只看自己={只看 === user.id} />
       </DataShell>
     );
   }

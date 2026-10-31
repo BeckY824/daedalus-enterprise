@@ -17,9 +17,9 @@ const plugin: Plugin = { name: "customer-scroll-boundaries", setup(b) {
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectModal|ContactLinks)$/, "export default function Empty(){return null}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
-  stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海;");
+  stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false});");
-  stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null}");
+  stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
   stub(/^\.\/actions$/, `
@@ -41,24 +41,25 @@ beforeAll(async () => {
     const followUps=Array.from({length:30},(_,i)=>({id:'f'+i,type:'PHONE',title:'沟通'+i,content:'谈了交期和价格，'.repeat(3),status:'已完成',duration:null,occurredAt:'2026-10-'+String(30-(i%28)).padStart(2,'0')+'T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-20T02:00:00.000Z',项目:{id:'p1',名:'项目一'}}));
     const 项目={跟进去处:[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null}],待办计划:[],followUps};
     const 名单=<aside className='pane pane-roster'><div className='pane-h'><span className='pane-t'>客户</span></div><div className='pane-rows'>{Array.from({length:80},(_,i)=><div key={i} style={{height:40}}>客户{i}</div>)}</div></aside>;
-    window.__render=(fab)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/>{名单}<main className='main app-content' style={{padding:'22px 26px'}}><div><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={[]} opportunities={[]} tasks={tasks} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} 项目们={[]} 旺旺们={[]} {...项目}/></div></main></div></BusinessProvider></App></ConfigProvider>);
+    window.__render=(fab,老)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/>{名单}<main className='main app-content' style={{padding:'22px 26px'}}><div><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={[]} opportunities={[]} tasks={tasks} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} 项目们={[]} 旺旺们={[]} {...(老?{followUps}:项目)}/></div></main></div></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(width: number, height = 560, fab = false) {
+/** 老 = 没开项目模式（待办在右栏、三栏）；默认企业版项目模式：待办在页底、AI 关着时没有右栏 */
+async function open(width: number, height = 560, fab = false, 老 = false) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
   await page.route("http://cust-scroll.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
   await page.goto("http://cust-scroll.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(f => (window as unknown as { __render: (fab: boolean) => void }).__render(f), fab);
+  await page.evaluate(([f, o]) => (window as unknown as { __render: (fab: boolean, 老: boolean) => void }).__render(f, o), [fab, 老] as const);
   await page.locator(".rec-contact").first().waitFor();
   return { page, errors };
 }
 const 量 = (page: import("playwright").Page) => page.evaluate(() => {
   const q = (s: string) => document.querySelector(s) as HTMLElement;
-  const 格 = q(".rec-page > .rec"), 资料 = q(".rec > .rec-rail:first-child"), 沟通 = q(".rec > .rec-col"), 右 = q(".rec > .rec-right");
+  const 格 = q(".rec-page > .rec"), 资料 = q(".rec > .rec-rail:first-child"), 沟通 = q(".rec > .rec-col"), 右 = q(".rec > .rec-right") ?? 沟通, 待办 = q(".rec-page > .rec-todo-bottom");
   const 样 = (e: HTMLElement) => getComputedStyle(e);
   return {
     栏: 样(格).gridTemplateColumns.split(" ").length,
@@ -74,10 +75,14 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
     右钉: 样(右).position,
     资料上: 资料.getBoundingClientRect().top - 格.getBoundingClientRect().top,
     资料底: 资料.getBoundingClientRect().bottom, 格底: 格.getBoundingClientRect().bottom, 右底: 右.getBoundingClientRect().bottom,
+    有右栏: !!q(".rec > .rec-right"), 沟通自滚: 样(沟通).overflowY === "auto",
+    待办: 待办 && { 左: Math.round(待办.getBoundingClientRect().left), 右: Math.round(待办.getBoundingClientRect().right), 底: 待办.getBoundingClientRect().bottom, 上: 待办.getBoundingClientRect().top, 滚: 样(待办).overflowY },
+    资料左: Math.round(资料.getBoundingClientRect().left), 沟通右: Math.round(沟通.getBoundingClientRect().right),
+    底: (待办 ?? 格).getBoundingClientRect().bottom,
   };
 });
-it("1680px（3 栏）：资料、沟通、右栏一样高的窗口、各自滚，滚一栏别的不动、页头不动；三栏都不露滚动条", async () => {
-  const { page, errors } = await open(1680);
+it("1680px（3 栏，没开项目模式）：资料、沟通、右栏一样高的窗口、各自滚，滚一栏别的不动、页头不动；三栏都不露滚动条", async () => {
+  const { page, errors } = await open(1680, 560, false, true);
   try {
     const 起 = await 量(page);
     expect(起.栏).toBe(3);
@@ -105,6 +110,33 @@ it("1680px（3 栏）：资料、沟通、右栏一样高的窗口、各自滚�
       expect([...别的.map(k => 滚[k]), 滚.格顶, 滚.头], 栏).toEqual([0, 0, 0, 起.头]);
       await page.locator(栏).evaluate(e => { e.scrollTop = 0; });
     }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/* U-客户-03：项目模式待办挪到页底占满宽，背调去左栏，右栏只剩 AI；AI 关着就不留空栏，资料、沟通两栏 */
+it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一样高、各自滚；待办在底下占满宽、自己滚；整页不滚", async () => {
+  const { page, errors } = await open(1680, 760);
+  try {
+    const 起 = await 量(page);
+    expect(起.有右栏).toBe(false);
+    expect(起.栏).toBe(2);
+    expect(起.页滚).toBeLessThanOrEqual(0);
+    expect(起.横滚).toBeLessThanOrEqual(0);
+    expect([起.资料滚, 起.沟通滚]).toEqual(["auto", "auto"]);
+    expect(起.高.slice(0, 2)).toEqual([起.格高, 起.格高]);
+    expect(起.格溢).toBeLessThanOrEqual(1);
+    expect(起.待办).not.toBeNull();
+    const 待办 = 起.待办!;
+    expect(待办.滚).toBe("auto");
+    expect(待办.上).toBeGreaterThanOrEqual(起.格底);
+    expect(待办.底).toBeLessThanOrEqual(760);
+    expect(待办.底).toBeGreaterThanOrEqual(760 - 40);
+    expect(Math.abs(待办.左 - 起.资料左)).toBeLessThanOrEqual(1);
+    expect(Math.abs(待办.右 - 起.沟通右)).toBeLessThanOrEqual(1);
+    await page.locator(".rec > .rec-col").evaluate(e => { e.scrollTop = 200; });
+    const 滚 = await 量(page);
+    expect([滚.沟通顶 > 0, 滚.资料顶, 滚.格顶, 滚.头]).toEqual([true, 0, 0, 起.头]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -209,11 +241,13 @@ it("带 AI 浮标：1024 / 1280 / 1366 / 1680 宽栏都铺到窗口底，整页�
       const 高 = 760;
       expect(起.页滚, `${w}`).toBeLessThanOrEqual(0);
       expect(起.横滚, `${w}`).toBeLessThanOrEqual(0);
-      expect(起.格底, `${w}`).toBeGreaterThanOrEqual(高 - 24);
-      expect(起.资料底, `${w}`).toBeGreaterThanOrEqual(高 - 24);
+      // 项目模式待办在页底：待办铺到窗口底，栏铺到这一格底
+      expect(起.底, `${w}`).toBeGreaterThanOrEqual(高 - 24);
+      expect(起.资料底, `${w}`).toBeGreaterThanOrEqual(起.格底 - 1);
       if (起.栏 === 3) expect(起.右底, `${w}`).toBeGreaterThanOrEqual(高 - 24);
       // 自己滚的栏滚到底：最后一个子元素离栏底至少 60（浮标 52 高、离窗口底 24）
-      const 滚的 = 起.栏 === 3 ? [".rec > .rec-rail:first-child", ".rec > .rec-col", ".rec > .rec-right"] : [".rec > .rec-rail:first-child", ".rec-page > .rec"];
+      const 滚的 = 起.栏 === 3 ? [".rec > .rec-rail:first-child", ".rec > .rec-col", ".rec > .rec-right"] : 起.沟通自滚 ? [".rec > .rec-rail:first-child", ".rec > .rec-col"] : [".rec > .rec-rail:first-child", ".rec-page > .rec"];
+      if (起.待办) 滚的.push(".rec-page > .rec-todo-bottom");
       for (const s of 滚的) {
         const 留 = await page.locator(s).evaluate(e => {
           e.scrollTop = e.scrollHeight;
@@ -234,7 +268,7 @@ it("带 AI 浮标、反馈提示出着：栏照样铺到底，滚到底让出提
     await page.evaluate(() => { document.documentElement.classList.add("fbt-room"); document.documentElement.style.setProperty("--fbt-room", "120px"); });
     const 起 = await 量(page);
     expect(起.页滚).toBeLessThanOrEqual(0);
-    expect(起.格底).toBeGreaterThanOrEqual(760 - 24);
+    expect(起.底).toBeGreaterThanOrEqual(760 - 24);
     const 留 = await page.locator(".rec > .rec-rail:first-child").evaluate(e => { e.scrollTop = e.scrollHeight; return e.getBoundingClientRect().bottom - e.lastElementChild!.getBoundingClientRect().bottom; });
     expect(留).toBeGreaterThanOrEqual(116);
     expect(errors).toEqual([]);

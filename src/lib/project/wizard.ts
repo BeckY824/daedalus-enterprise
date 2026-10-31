@@ -37,7 +37,12 @@ export type 向导跟进 = { type: string;
   /** 下一步做什么（一句话，10-29）：项目详情记沟通必填（要下一步文字），向导 / 别的入口可不传；时间可空 */
   下一步?: string | null;
   /** 企业版建档向导：项目建在线索阶段的哪个节点（跟进节点，必选）；团队版不传，一律潜客培育 */
-  节点?: string | null };
+  节点?: string | null;
+  /**
+   * 客户页选了关联项目时（10-31）：标题、另选的联系人、状态、时长（分钟）、参与人一次建好。
+   * 原来是记完再用 saveFollowUp 补改，普通成员不能改沟通了（M-权限-09）就不走那条。项目详情不传 = 照旧（空标题、已完成、项目的联系人）
+   */
+  额外?: { title?: string | null; contactId?: string | null; status?: string | null; durationMinutes?: number | null; participants?: string | null } | null };
 
 export type 规整好的 = {
   联系人: { name: string; position: string | null; phone: string | null; email: string | null; wechat: string | null };

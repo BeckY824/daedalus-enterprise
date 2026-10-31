@@ -4,6 +4,7 @@ import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 能删改沟通 } from "@/lib/enterprise/follow-perm";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
@@ -187,6 +188,7 @@ export default async function CustomerDetailPage({
       项目们={项目们}
       参与项目们={参与项目们}
       只读={只读}
+      能删改沟通={企 ? await 能删改沟通(me) : true}
       客户状态选项={客户状态选项}
       // 客户状态按字典项上色；项目模式开着按项目自动算（10-30，lib/enterprise/cust-status-auto-db.ts），章只读
       客户状态色={企 ? 客户状态色表(await 页面字典("custStatus")) : undefined}
@@ -198,9 +200,10 @@ export default async function CustomerDetailPage({
       职务选项={企 ? await 页面可选项("contactTitle") : undefined}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
+      客户属性选项={企 ? await 页面可选项("custAttr") : undefined}
       // 下拉里客户状态、客户类型每项的灰字释义（10-30）；字典上面已读过，走请求内缓存
       字典释义={企 ? await 页面客户释义() : undefined}
-      // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/screen.tsx）
+      // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/wizard-data.ts）
       新建项目={企 && 规则 ? { 节点们: [...企业版字典.节点们.线索], 要下一步: 规则.超时回收.开 } : null}
       联系人附件数={联系人附件数}
       customer={{
@@ -221,6 +224,7 @@ export default async function CustomerDetailPage({
         addrDetail: customer.addrDetail,
         assignWay: customer.assignWay,
         customerType: customer.customerType,
+        customerAttr: customer.customerAttr,
         expectedSignAt: scheduleValue(customer.expectedSignAt, customer.expectedSignOn),
         lastFollowAt: customer.lastFollowAt?.toISOString() ?? null,
         remark: customer.remark,

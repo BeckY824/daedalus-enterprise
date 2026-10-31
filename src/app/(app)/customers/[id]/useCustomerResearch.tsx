@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Button, Tooltip } from "antd";
+import { Button, Modal, Tag, Tooltip } from "antd";
 import { GlobalOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { useJob, clearJob } from "@/lib/ai-jobs";
@@ -37,7 +37,7 @@ export function useCustomerResearch({
   /** false = 不摆背调按钮（以前存下的背调摘要照样能看） */
   能发起?: boolean;
   开?: boolean;
-}): { 按钮: ReactNode; 区: ReactNode; 能发起: boolean; 有上次: boolean } {
+}): { 按钮: ReactNode; 区: ReactNode; 能发起: boolean; 有上次: boolean; 状态: 背调状态 } {
   const b = useBusiness();
   const researchKey = `research:${customerId}`;
   const researchJob = useJob(researchKey);
@@ -89,7 +89,7 @@ export function useCustomerResearch({
     };
   }, [customerId, researchJob?.status, 开]);
 
-  if (!开) return { 按钮: null, 区: null, 能发起: false, 有上次: false };
+  if (!开) return { 按钮: null, 区: null, 能发起: false, 有上次: false, 状态: "无" };
 
   const 按钮 = 背调入口 ? (
     <Tooltip title={背调说明}>
@@ -149,7 +149,54 @@ export function useCustomerResearch({
     </>
   );
 
-  return { 按钮, 区, 能发起: 背调入口, 有上次: !!上次背调 || Boolean(researchJob) || Boolean(personJob) || 背调开 };
+  return { 按钮, 区, 能发起: 背调入口, 有上次: !!上次背调 || Boolean(researchJob) || Boolean(personJob) || 背调开, 状态: 背调状态of({ 上次: !!上次背调, 任务们: [researchJob?.status, personJob?.status] }) };
+}
+
+/** 客户背调的状态标签（U-客户-03，10-31 会议）：在跑 → 进行中；有存下的或刚跑完 → 已有；都没有 → 无 */
+export type 背调状态 = "已有" | "无" | "进行中";
+export function 背调状态of({ 上次, 任务们 }: { 上次: boolean; 任务们: (string | undefined)[] }): 背调状态 {
+  if (任务们.some((s) => s === "loading")) return "进行中";
+  if (上次 || 任务们.some((s) => s === "done")) return "已有";
+  return "无";
+}
+
+const 背调状态色: Record<背调状态, string | undefined> = { 已有: "green", 进行中: "processing", 无: undefined };
+
+/**
+ * 企业版客户页左栏的「客户背调」块（U-客户-03）：只摆一个状态标签（已有 / 无 / 进行中），点标签弹框看详情、发起背调。
+ * 钩子挂在这个组件上，框关了任务和状态都还在
+ */
+export function CustomerResearchTag(props: { customerId: string; customerName: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void }) {
+  const { 按钮, 区, 能发起, 有上次, 状态 } = useCustomerResearch(props);
+  const [开着, set开着] = useState(false);
+  return (
+    <div className="rec-sec rec-research-sec" aria-label="客户背调">
+      <div className="rec-sec-t">
+        <span>客户背调</span>
+        <Tag
+          className="rec-research-tag"
+          color={背调状态色[状态]}
+          role="button"
+          tabIndex={0}
+          title="点开看背调详情"
+          onClick={() => set开着(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              set开着(true);
+            }
+          }}
+        >
+          {状态}
+        </Tag>
+      </div>
+      <Modal open={开着} title="客户背调" footer={null} width={640} onCancel={() => set开着(false)}>
+        {按钮 && <div style={{ marginBottom: 8 }}>{按钮}</div>}
+        {区}
+        {!能发起 && !有上次 && <div className="muted" style={{ fontSize: 13 }}>还没有背调记录</div>}
+      </Modal>
+    </div>
+  );
 }
 
 /**

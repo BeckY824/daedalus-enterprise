@@ -1,13 +1,11 @@
 "use client";
 
-import { useContext, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import Link from "next/link";
-import { App, Badge, Button, Dropdown, Modal, Select, Space, Segmented, Tag, type SelectProps } from "antd";
-import { CloseOutlined, DownOutlined, InteractionOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { useFollowDue } from "@/components/FollowDue";
-import { DOCK_W, DockOpenContext, useNarrow } from "@/lib/roster";
+import { App, Button, Dropdown, Modal, Select, Space, Segmented, Tag, type SelectProps } from "antd";
+import { CloseOutlined, DownOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
@@ -27,7 +25,7 @@ import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 企业级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
-import type { 项目行, 看板一列 } from "@/lib/project/board";
+import { 看板显示列, type 项目行, type 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, 是交付, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -115,12 +113,6 @@ export default function ProjectsView({
   const 列名 = (列: 看板列) => (列 === "成功交付" ? 结局叫法(字典.出口们.订单[0].结局 ?? 列, 字典) : 列);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
-  const 要跟 = useFollowDue();
-  const 要跟数 = 要跟.逾期 + 要跟.今天;
-  // 页头右边那组不换行（.page-head-a 是 flex: none），窄了「沟通记录」只留图标，名字在 aria-label / 悬停说明里。
-  // 手机上四颗键摆不下；AI 栏开着时正文再让出 380，Windows 1024 也摆不下（排版闸门量出撑出 60px）
-  const 面板开着 = useContext(DockOpenContext);
-  const 小屏 = useNarrow(`(max-width: ${面板开着 ? 1023 + DOCK_W : 767}px)`);
   // 分配只在新线索页：线索阶段的项目按配额分给销售（老的 Lead 分配搬过来，见 leads/assign-actions.ts 的 项目 选项）
   const 可分 = 新线索 && 能自动分配;
   const [分配中, set分配中] = useState<项目行 | null>(null);
@@ -130,8 +122,11 @@ export default function ProjectsView({
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
-  // 企业版看板：空列收窄（规则 H）
-  const 有空列 = 企业版 && 看板.some((c) => c.数 === 0) && 看板.some((c) => c.数 > 0); // 全空时不收，留着各列的空态说明
+  // 企业版看板：空列默认藏起来（U-项目-08，lib/project/board.ts 看板显示列），点「显示空列」再摆回来；全空时不藏
+  const [显示空列, set显示空列] = useState(false);
+  const { 列: 摆的列, 藏了 } = 企业版 ? 看板显示列(看板, 显示空列) : { 列: 看板, 藏了: 0 };
+  const 空列名 = 看板.filter((c) => c.数 === 0).map((c) => 列名(c.列)).join("、");
+  const 能藏 = 企业版 && 空列名 !== "" && 看板.some((c) => c.数 > 0);
   // 企业版新客户一律走「新线索」向导（先查重）；老客户再开一单走页头下拉里的「给老客户开项目」
   const 新建 = () => router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new");
   // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批
@@ -284,8 +279,7 @@ export default function ProjectsView({
       )}
       <ResetFilters 显示={Object.values(f).some(Boolean)} onClick={reset} />
       {企业版 && <Link href="/pool" onMouseEnter={() => 预取.进("/pool")} onMouseLeave={预取.出}>去公海看</Link>}
-      {/* 线索阶段的分配、配额在「新线索」那一页（/leads），左栏没有它，入口留在这里 */}
-      {企业版 && !新线索 && <Link href="/leads" onMouseEnter={() => 预取.进("/leads")} onMouseLeave={预取.出}>新线索列表</Link>}
+      {/* 企业版项目首页只留看板、列表（U-项目-08）：「新线索列表」「沟通记录」入口去掉，/leads、/follow-ups 路由还在，⌘K 搜得到 */}
     </Space>
   );
 
@@ -304,36 +298,19 @@ export default function ProjectsView({
         extra={
           // 窄屏（手机、Windows 1024）按钮多了换行，不撑出页宽
           <Space wrap>
-            {/*
-              企业版左栏只剩六个根目录（10-29，lib/enterprise/nav.ts）：沟通记录不在左栏了，入口摆在这里。
-              要沟通的红数（逾期 + 今天要沟通）左栏挂在「项目」上，点进来在这颗键上找得到同一个数
-            */}
-            {企业版 && !新线索 && (
-              <Badge count={要跟数} size="small" overflowCount={99} color={要跟.逾期 > 0 ? "var(--danger)" : undefined}>
-                <Button
-                  icon={<InteractionOutlined />}
-                  aria-label={要跟数 > 0 ? `沟通记录，要沟通 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}` : "沟通记录"}
-                  onClick={() => router.push("/follow-ups")}
-                  onMouseEnter={() => 预取.进("/follow-ups")}
-                  onMouseLeave={预取.出}
-                  title={小屏 ? "沟通记录" : undefined}
-                >
-                  {小屏 ? null : "沟通记录"}
-                </Button>
-              </Badge>
-            )}
             {新线索 && 线索分配开着 && <AssignedOutButton />}
             {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />}
             {企业版 ? (
-              // 一个主按钮「新线索」（新客户要先查重）；老客户再开一单收在旁边的下拉里，每项带一行说明
+              // 一个主按钮：新线索页叫「新线索」；项目首页叫「新增项目」（U-项目-08 去掉「新线索」入口、U-新建-01 留新建项目）。
+              // 都走同一个向导（新客户要先查重）；老客户再开一单收在旁边的下拉里，每项带一行说明
               <Space.Compact>
-                <Button type="primary" icon={<PlusOutlined />} onClick={新建}>新线索</Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : "新增项目"}</Button>
                 <Dropdown
                   trigger={["click"]}
                   placement="bottomRight"
                   menu={{
                     items: [
-                      { key: "new", label: <两行 名="新线索" 说={`新${b.customer}要先查重`} />, onClick: 新建 },
+                      { key: "new", label: <两行 名={新线索 ? "新线索" : `新${b.customer}开项目`} 说={`新${b.customer}要先查重`} />, onClick: 新建 },
                       { key: "old", label: <两行 名="给老客户开项目" 说={`老${b.customer}直接选${b.customer}`} />, onClick: () => set挑老客户(true) },
                     ],
                   }}
@@ -372,7 +349,7 @@ export default function ProjectsView({
               : {
                   title: "还没有项目",
                   hint: `项目是跟一位${b.customer}做的一件事：从线索培育一路走到交付。新建时会一起建好${b.customer}、联系人和第一次沟通。`,
-                  primary: { label: 企业版 ? "新线索" : "新建第一个项目", onClick: 新建 },
+                  primary: { label: 企业版 ? "新增项目" : "新建第一个项目", onClick: 新建 },
                 }
           }
           筛选={筛选}
@@ -383,22 +360,33 @@ export default function ProjectsView({
       ) : (
         <>
           <div style={{ marginBottom: 12 }}>{筛选}</div>
+          {/* 企业版空列默认藏起来（U-项目-08）：说清藏了哪几列，点一下摆回来 */}
+          {能藏 && (
+            <div className="pipe-hidden">
+              {显示空列 ? (
+                <Button type="link" size="small" onClick={() => set显示空列(false)}>藏起空列</Button>
+              ) : (
+                <>
+                  <span className="pipe-hidden-t" title={空列名}>{藏了} 列没有项目，已藏起：{空列名}</span>
+                  <Button type="link" size="small" onClick={() => set显示空列(true)}>显示空列</Button>
+                </>
+              )}
+            </div>
+          )}
           <div className="pipe-wrap">
-            {/* 企业版空列收成窄条（只留列名和 0），把宽度让给有项目的列 */}
-            <div className="pipe" style={有空列 ? { display: "flex", flexWrap: "wrap", gap: "var(--s3)", alignItems: "start" } : undefined}>
-              {看板.map((c) => {
+            <div className="pipe">
+              {摆的列.map((c) => {
                 const sum = 合计文字(c.合计, b.currency);
-                const 收 = 有空列 && c.数 === 0;
                 return (
-                  <div key={c.列} className="pipe-col" aria-label={`${列名(c.列)}，${c.数} 个项目`} style={有空列 ? (收 ? { flex: "0 0 88px" } : { flex: "1 1 184px", minWidth: 0 }) : undefined}>
+                  <div key={c.列} className="pipe-col" aria-label={`${列名(c.列)}，${c.数} 个项目`}>
                     <div className="pipe-h">
                       <span className="pipe-dot" style={{ background: 列色[c.列] }} />
-                      <b style={收 ? { whiteSpace: "nowrap" } : undefined}>{列名(c.列)}</b>
+                      <b>{列名(c.列)}</b>
                       <span className="pipe-n">{c.数}</span>
-                      {!收 && <span className="pipe-sum" title={sum}>{sum}</span>}
+                      <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.列] }} />
-                    {c.行.length === 0 && !收 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : 空列说法[c.列]}</div>}
+                    {c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : 空列说法[c.列]}</div>}
                     {c.行.map((r) => {
                       const 异常 = r.result === "异常状态";
                       return (
