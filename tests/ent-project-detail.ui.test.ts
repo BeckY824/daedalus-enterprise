@@ -169,6 +169,26 @@ it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注�
   } finally { await page.close(); }
 });
 
+it("10-31 改版 R4：项目卡定金在合同前；空着写「待填写X / 待选择X」（浅灰）；0 算填了", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
+      成交钱: { contractAmount: null, contractCurrency: null, depositAmount: 0, depositCurrency: "USD", dealDemand: null }, expectedDealAt: null, 项目来源: null }));
+    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "定金金额" }).first();
+    await 卡.waitFor();
+    const 字 = await 卡.innerText();
+    expect(字.indexOf("定金金额")).toBeLessThan(字.indexOf("合同金额"));
+    expect(字).toMatch(/定金金额\s*US\$\s*0\b/);
+    expect(字).not.toContain("待填写定金金额");
+    for (const 话 of ["待填写合同金额", "待填写成交需求", "待选择预计成交日期", "待选择项目来源"]) expect(字).toContain(话);
+    expect(字).not.toContain("没填");
+    const 色 = await 卡.getByText("待填写合同金额").evaluate(e => getComputedStyle(e).color);
+    const 浅 = await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--text-faint)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; });
+    expect(色).toBe(浅);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("容器窄于 630（开着 AI 侧栏）：退成一栏，干活的在上", async () => {
   const { page } = await open(true, 1366, 600);
   try {

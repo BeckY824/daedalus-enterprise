@@ -226,6 +226,9 @@ function 换人文字(l: 项目详情["logs"][number]): string {
 }
 
 /** 负责人那一行括号里：怎么进的公海 */
+/** 空着的字段写「待填写X / 待选择X」（浅灰，和输入框占位同色）；只是显示，不存。0 算填了，由调用方用 !== null 判 */
+const 待填 = (名: string, 动 = "填写") => <span style={{ color: "var(--text-faint)" }}>待{动}{名}</span>;
+
 /** 项目级别格（企业版 P11）：星 + 档名（「★★★☆ A 重点」）；没分级写「没分级」，认不出的原样给 */
 function 级别格(v: string | null) {
   if (!v) return <span style={{ color: "var(--text-muted)" }}>没分级</span>;
@@ -591,20 +594,20 @@ export default function ProjectDetail({
       <div style={行样}><span style={键样}>金额</span>{金额(p.amount, p.currency)}</div>
       {p.企业版 && p.成交钱 && (
         <>
-          <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>
+          <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : 待填("定金金额")}</div>
+          <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : 待填("合同金额")}</div>
           {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : <span style={{ color: "var(--text-muted)" }}>没有</span>}</span></div>}
-          <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>
-          <div style={行样}><span style={键样}>成交需求</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.成交钱.dealDemand ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</span></div>
+          <div style={行样}><span style={键样}>成交需求</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.成交钱.dealDemand ?? 待填("成交需求")}</span></div>
         </>
       )}
-      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>}
+      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{p.expectedDealAt ?? 待填("预计成交日期", "选择")}</div>}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
-        <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : <span style={{ color: "var(--text-muted)" }}>没填</span>}</span></div>
+        <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源", "选择")}</span></div>
       )}
       {p.企业版 && p.所在地 && (
         <>
-          <div style={行样}><span style={键样}>区域</span>{项目区域(p.所在地) || <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>
+          <div style={行样}><span style={键样}>区域</span>{项目区域(p.所在地) || 待填("区域", "选择")}</div>
           {(拼地址(p.所在地) || p.所在地.location) && (
             <div style={行样}><span style={键样}>地址</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{[拼地址(p.所在地), p.所在地.location].filter(Boolean).join(" ")}</span></div>
           )}

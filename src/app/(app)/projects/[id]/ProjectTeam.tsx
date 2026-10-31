@@ -122,16 +122,16 @@ export function ProjectEditModal({
           <InputNumber<number> style={{ width: "100%" }} min={0} value={d.amount} formatter={金额格式} onChange={(v) => 改({ amount: v ?? 0 })} />
         </Space.Compact>
       ))}
-      {钱 && 行("合同金额", (
-        <Space.Compact style={{ width: "100%" }}>
-          <Select style={{ width: 140 }} aria-label="合同金额币种" value={钱.contractCurrency} options={币种选项()} onChange={(v) => 改钱({ contractCurrency: v })} showSearch optionFilterProp="label" />
-          <InputNumber<number> style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="不填" value={钱.contractAmount} formatter={金额格式} onChange={(v) => 改钱({ contractAmount: v ?? null })} />
-        </Space.Compact>
-      ))}
       {钱 && 行("定金金额", (
         <Space.Compact style={{ width: "100%" }}>
           <Select style={{ width: 140 }} aria-label="定金金额币种" value={钱.depositCurrency} options={币种选项()} onChange={(v) => 改钱({ depositCurrency: v })} showSearch optionFilterProp="label" />
-          <InputNumber<number> style={{ width: "100%" }} aria-label="定金金额" min={0} placeholder="不填" value={钱.depositAmount} formatter={金额格式} onChange={(v) => 改钱({ depositAmount: v ?? null })} />
+          <InputNumber<number> style={{ width: "100%" }} aria-label="定金金额" min={0} placeholder="待填写定金金额" value={钱.depositAmount} formatter={金额格式} onChange={(v) => 改钱({ depositAmount: v ?? null })} />
+        </Space.Compact>
+      ))}
+      {钱 && 行("合同金额", (
+        <Space.Compact style={{ width: "100%" }}>
+          <Select style={{ width: 140 }} aria-label="合同金额币种" value={钱.contractCurrency} options={币种选项()} onChange={(v) => 改钱({ contractCurrency: v })} showSearch optionFilterProp="label" />
+          <InputNumber<number> style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="待填写合同金额" value={钱.contractAmount} formatter={金额格式} onChange={(v) => 改钱({ contractAmount: v ?? null })} />
         </Space.Compact>
       ))}
       {钱 && 行("成交需求", <Input.TextArea aria-label="成交需求" rows={2} maxLength={成交需求上限} placeholder="客户想买什么、要多少" value={钱.dealDemand} onChange={(e) => 改钱({ dealDemand: e.target.value })} />)}
