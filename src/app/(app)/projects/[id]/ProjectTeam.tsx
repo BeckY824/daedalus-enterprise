@@ -11,7 +11,6 @@ import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
-import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 详细地址上限, 详细地址提示, 成交需求上限, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
@@ -108,7 +107,7 @@ export function ProjectEditModal({
           allowClear
           placeholder="不分级"
           value={级别 ?? undefined}
-          options={企业客户级别.map((x) => ({ value: x, label: `${级别星(x)}  ${企业级别说明[x]}` }))}
+          options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))}
           onChange={(v?: string) => set级别(v ?? null)}
         />
       ))}

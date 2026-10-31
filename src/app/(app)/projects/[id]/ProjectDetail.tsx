@@ -247,7 +247,7 @@ function 级别格(v: string | null) {
   return (
     <span title={企业级别说明[档]}>
       <span aria-hidden style={{ color: "var(--warning-text)", letterSpacing: 1 }}>{级别星(档)}</span>
-      <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>{企业级别说明[档]}</span>
+      {" "}<span style={{ color: "var(--text-muted)" }}>{企业级别说明[档].replace(/^\S+\s*/, "")}</span>
     </span>
   );
 }
