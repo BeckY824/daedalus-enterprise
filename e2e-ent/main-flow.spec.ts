@@ -291,7 +291,7 @@ test("交接要确认：老板把销售甲的客户转给销售乙，确认前�
   expect((await db.project.findFirstOrThrow({ where: { name: "线索乙" } })).ownerId).toBe(销售2.id);
 });
 
-test("项目公海：原负责人领取灰着；别的销售领了，项目、客户、同客户的另一个项目一起归他", async ({ page }) => {
+test("项目公海：项目不能单独领（原负责人、别的销售都灰着）；别的销售在公海领客户，项目、客户、同客户的另一个项目一起归他", async ({ page }) => {
   await 登录(page, "销售1");
   await page.goto(`/projects/${种.项目1}`);
   const 正文 = page.getByRole("main");
@@ -300,10 +300,22 @@ test("项目公海：原负责人领取灰着；别的销售领了，项目、�
 
   await page.context().clearCookies();
   await 登录(page, "销售2");
+  // 10-31 起项目不能单独领（pool-rules.ts 项目能单独领=false）：别的销售在项目详情也是灰着，说要连客户一起领
   await page.goto(`/projects/${种.项目1}`);
   await expect(正文.getByText("这个项目在项目公海里", { exact: true })).toBeVisible();
-  await 正文.getByRole("button", { name: /领\s*取/ }).click();
-  await expect(page.locator(".ant-message-notice", { hasText: "已领取，你是这个项目的负责人了" })).toBeVisible();
+  await expect(正文.getByText("项目不能单独领，要连客户一起领；客户不在公海里的请主管分配")).toBeVisible();
+  await expect(正文.getByRole("button", { name: /领\s*取/ })).toBeDisabled();
+
+  // 去公海领客户：客户在公海里，项目不另列一行；领客户即领项目
+  await page.goto("/pool");
+  await expect(正文.getByRole("button", { name: "领取 公海客户甲" })).toBeEnabled();
+  // 客户行的「项目名称」里列着公海项目一，但没有单独的项目行（项目行才链到项目详情）
+  await expect(正文.locator(`a[href="/projects/${种.项目1}"]`)).toHaveCount(0);
+  await 正文.getByRole("button", { name: "领取 公海客户甲" }).click();
+  await expect(page.locator(".ant-message-notice", { hasText: "已领取「公海客户甲」" })).toBeVisible();
+  await expect(正文.getByRole("button", { name: "领取 公海客户甲" })).toHaveCount(0);
+  await page.goto(`/projects/${种.项目1}`);
+  await expect(正文.locator(".page-head h1")).toHaveText("公海项目一");
   await expect(正文.getByText("这个项目在项目公海里")).toHaveCount(0);
 
   const 销售2 = await db.user.findFirstOrThrow({ where: { email: 账号.销售2 } });

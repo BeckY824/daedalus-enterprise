@@ -878,7 +878,8 @@ it("画像能改：空的下拉占位写「暂未确认」；单选第一项「�
     await 周期.click();
     const 项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
     await 项.first().waitFor();
-    expect((await 项.allInnerTexts()).slice(0, 6)).toEqual(["不填", "一年", "半年", "三月", "次月", "本月成交"]);
+    // 下拉还在展开动画里时 :visible 偶尔一项都抓不到（CI 负载高时拿到过 []），轮询到稳
+    await expect.poll(async () => (await 项.allInnerTexts()).slice(0, 6)).toEqual(["不填", "一年", "半年", "三月", "次月", "本月成交"]);
     await 项.first().click();
     await page.waitForFunction(() => ((window as unknown as { __画像存?: unknown[] }).__画像存 ?? []).length === 1);
     expect(await page.evaluate(() => (window as unknown as { __画像存: unknown[][] }).__画像存[0])).toEqual(["p1", { purchaseCycle: null }]);
