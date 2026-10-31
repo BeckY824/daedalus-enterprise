@@ -56,7 +56,11 @@ beforeEach(async () => {
 afterAll(async () => { await prisma.$disconnect(); });
 
 const 昨天 = () => new Date(Date.now() - 86400000).toISOString();
-const 本月某天 = () => dayjs().startOf("month").add(1, "hour").toDate();
+// 月初头一个小时里（北京时间，测试时区）跑：月初 +1 小时还在将来，复盘不算，就退回月初那一刻（10-31 16:00 GMT 撞上过）
+const 本月某天 = () => {
+  const 头 = dayjs().startOf("month");
+  return (dayjs().diff(头, "minute") > 60 ? 头.add(1, "hour") : 头).toDate();
+};
 
 /* ------------------------------ 造数 ------------------------------ */
 
