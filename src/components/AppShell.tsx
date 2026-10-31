@@ -106,6 +106,13 @@ type Props = {
   演示换人?: (userId: string) => Promise<LoginResult>;
   /** 企业版项目模式的全局搜索（U-项目-04，app/(app)/global-search.ts）：layout 传进来，原样交给 ⌘K 跳转单 */
   全局搜索?: (q: string) => Promise<全局搜索结果>;
+  /** 企业版切换视图（M-权限-08）：只有总管理员拿得到，按业务角色分组列人（lib/enterprise/view-as-menu.ts） */
+  视图名单?: 演示组[] | null;
+  /** 和视图名单一起给：服务端 action（app/(app)/view-as-actions.ts） */
+  视图换人?: (userId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  视图退出?: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** 正在以别人的视图查看：名 = 被看的人；null = 票还在但已失效。有它顶上就挂一条只读提示 */
+  正在视图?: { 名: string | null } | null;
   children: React.ReactNode;
 };
 
@@ -138,7 +145,7 @@ const 根目录图标: Record<根目录图, React.ReactNode> = {
   项目: <ProjectOutlined />,
 };
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -421,6 +428,66 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/" + (pathname.split("/")[1] || "dashboard"));
   }
+  /** 切换视图 / 退出视图：换的是一张票，整页重来，同 换成() */
+  async function 看成(id: string) {
+    if (!视图换人) return;
+    const res = await 视图换人(id).catch(() => ({ ok: false as const, error: "切换失败，请检查网络连接后重试" }));
+    if (!res.ok) return void window.alert(res.error);
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/" + (pathname.split("/")[1] || "dashboard"));
+  }
+  async function 退出看() {
+    if (!视图退出) return;
+    const res = await 视图退出().catch(() => ({ ok: false as const, error: "退出失败，请检查网络连接后重试" }));
+    if (!res.ok) return void window.alert(res.error);
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/" + (pathname.split("/")[1] || "dashboard"));
+  }
+  const 视图菜单 = 视图名单?.length
+    ? [
+        { type: "divider" as const },
+        {
+          key: "view-as",
+          icon: <SwapOutlined />,
+          label: 正在视图 ? "换一个人的视图" : "切换视图（只读）",
+          popupClassName: "demo-switch-pop",
+          children: 视图名单.map((g) => ({
+            type: "group" as const,
+            key: `view-g:${g.角色}`,
+            label: g.名,
+            children: g.人.map((p) => ({
+              key: `view:${p.id}`,
+              icon: p.id === user.id ? <CheckOutlined /> : <span className="demo-switch-gap" />,
+              disabled: p.id === user.id,
+              label: (
+                <span className="demo-switch-person">
+                  <b>{p.name}</b>
+                  {p.说明 && <span>{p.说明}</span>}
+                </span>
+              ),
+            })),
+          })),
+        },
+      ]
+    : [];
+  /** 切换视图期间钉在顶上的一条：谁的视图、只读、退出。两种布局都挂 */
+  const 视图条 = 正在视图 ? (
+    <div className="view-as-bar" role="status">
+      <span className="view-as-text">
+        {正在视图.名 ? (
+          <>
+            正在以 <b>{正在视图.名}</b> 的视图查看（只读）
+          </>
+        ) : (
+          "切换视图已失效（只读）"
+        )}
+      </span>
+      <span aria-hidden>·</span>
+      <button type="button" className="view-as-exit" onClick={() => void 退出看()}>
+        退出
+      </button>
+    </div>
+  ) : null;
   const 演示菜单 = 演示名单?.length
     ? [
         { type: "divider" as const },
@@ -473,9 +540,11 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   const userMenu = {
     onClick: ({ key }: { key: string }) => {
       if (key.startsWith("demo:")) void 换成(key.slice(5));
+      if (key.startsWith("view:")) void 看成(key.slice(5));
       // 软导航才会命中拦截路由（@modal/(.)settings），设置才是盖在当前页上的一层
       if (key === "settings") router.push("/settings");
       if (key === "logout") void logout();
+      if (key === "view-exit") void 退出看();
       if (key === "workspaces") router.push("/workspaces");
     },
     items: [
@@ -496,6 +565,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       },
       ...(workspace?.multiple ? [{ key: "workspaces", label: "切换工作区" }] : []),
       ...演示菜单,
+      ...视图菜单,
+      ...(正在视图 ? [{ key: "view-exit", icon: <LogoutOutlined />, label: "退出切换视图" }] : []),
       { type: "divider" as const },
       {
         key: "settings",
@@ -517,6 +588,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
     // 底色走 --page-bg：外观选白底时地面跟着变白（antd 的 bodyBg 是 JS 里写死的色值，读不到外观）
     return (
       <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
+        {视图条}
         <Header style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", borderBottom: "1px solid var(--line-soft)", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
           <Dropdown
             trigger={["click"]}
@@ -559,6 +631,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   return (
     <DockOpenContext.Provider value={面板占着地方}>
     <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}`}>
+      {视图条}
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
       {desktop && <div className="drag-strip" aria-hidden="true" />}
       <nav className="rail" aria-label="主导航">

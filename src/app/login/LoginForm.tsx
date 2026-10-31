@@ -20,6 +20,9 @@ const 请求超时毫秒 = 20000;
  * 那个链接点进去只能看到「请联系我们」，不如不摆。
  *
  * 左栏品牌 + 右边一张表（见 AuthSide）。托管版是共享工作区的固定账号、自部署是管理员建的用户名。
+ *
+ * 企业版（居中）：不要左栏，页面正中一张卡（U-登录-01，10-31）。配了飞书：主按钮「用飞书登录」，
+ * 账号密码收成底下一条「账号密码登录」，点了才展开；没配飞书（本机、演示实例）：直接是账号密码那张表。
  */
 export default function LoginForm({
   可找回密码,
@@ -29,6 +32,7 @@ export default function LoginForm({
   产品名,
   飞书登录 = false,
   初始错误,
+  居中 = false,
 }: {
   可找回密码: boolean;
   用邮箱: boolean;
@@ -41,6 +45,8 @@ export default function LoginForm({
   飞书登录?: boolean;
   /** 打开登录页时就要显示的错（飞书登录没成带回来的原因，见 page.tsx） */
   初始错误?: string;
+  /** 企业版：去掉左栏，只留正中一张卡；配了飞书时账号密码先收起 */
+  居中?: boolean;
 }) {
   const { 曲线, 时长 } = useMotionTheme();
   /** 托管版的账号是邮箱，自部署是管理员建的登录名。见 page.tsx */
@@ -49,6 +55,8 @@ export default function LoginForm({
   const [密码, set密码] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(初始错误 ?? null);
+  /** 账号密码那张表摆不摆：只有「居中 + 配了飞书」时先收起，点「账号密码登录」展开 */
+  const [摆密码, set摆密码] = useState(!(居中 && 飞书登录));
   const 账号框 = useRef<HTMLInputElement>(null);
   const 密码框 = useRef<HTMLInputElement>(null);
   /**
@@ -108,8 +116,8 @@ export default function LoginForm({
   }
 
   return (
-    <div className="auth">
-      <AuthSide 门={用邮箱 ? "托管版" : "自部署"} 产品名={产品名} />
+    <div className={居中 ? "auth auth-solo" : "auth"}>
+      {!居中 && <AuthSide 门={用邮箱 ? "托管版" : "自部署"} 产品名={产品名} />}
 
       <main className="auth-main">
         <motion.form
@@ -126,8 +134,8 @@ export default function LoginForm({
             <PixelLogo size={40} />
           </div>
           <div className="auth-step">
-            <h1>登录</h1>
-            <p className="auth-hint">
+            <h1>{居中 && 产品名 ? <span className="auth-solo-name">{产品名}</span> : "登录"}</h1>
+            {居中 && 飞书登录 ? null : <p className="auth-hint">
               {用邮箱 ? (
                 <>
                   这里是 Daedalus 账号和云端服务。CRM 请到
@@ -139,8 +147,24 @@ export default function LoginForm({
               ) : (
                 "使用此部署中的账号登录。"
               )}
-            </p>
-            {飞书登录 && (
+            </p>}
+            {飞书登录 && 居中 && (
+              <>
+                {/* 整页跳走（不是客户端路由）：去的是接口，它再跳飞书授权页 */}
+                <Button type="primary" size="large" block href="/api/auth/feishu">
+                  用飞书登录
+                </Button>
+                {!摆密码 && (
+                  <p className="auth-alt auth-solo-alt">
+                    <button type="button" className="auth-link" onClick={() => set摆密码(true)}>
+                      账号密码登录
+                    </button>
+                  </p>
+                )}
+                {摆密码 && <p className="auth-or">账号密码登录</p>}
+              </>
+            )}
+            {飞书登录 && !居中 && (
               <>
                 {/* 整页跳走（不是客户端路由）：去的是接口，它再跳飞书授权页 */}
                 <Button size="large" block href="/api/auth/feishu">
@@ -149,6 +173,8 @@ export default function LoginForm({
                 <p className="auth-or">或用用户名和密码</p>
               </>
             )}
+            {摆密码 && (
+              <>
             <label className="auth-label" htmlFor="auth-account">
               {账号名}
             </label>
@@ -179,9 +205,11 @@ export default function LoginForm({
               placeholder="登录密码"
               autoComplete="current-password"
             />
-            <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+            <Button type={居中 && 飞书登录 ? "default" : "primary"} htmlType="submit" size="large" block loading={loading}>
               登录
             </Button>
+              </>
+            )}
             {(可找回密码 || (可注册 && 注册地址)) && (
               <p className="auth-alt">
                 {可找回密码 && <Link href="/forgot" onClick={()=>记找回邮箱(账号)}>忘记密码？</Link>}

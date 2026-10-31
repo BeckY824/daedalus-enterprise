@@ -11,6 +11,8 @@ import { 看全部 } from "@/lib/team-scope";
 import { 看得到的客户数 } from "@/lib/scope-sql";
 import { dayjs } from "@/lib/utils";
 import { 不掉公海的状态, 公海截止, 自动理由 } from "@/lib/pool";
+import { 视图中跳过 } from "@/lib/enterprise/view-as";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /** 本机记的「今天扫过了」。不进团队同步（同步的设置 只有 business），每台各扫各的 */
 const 扫过键 = "poolSweptOn";
@@ -28,6 +30,8 @@ const 扫过键 = "poolSweptOn";
  * 「今天扫过了」也只记扫过的那一片：团队模式只扫了自己名下的，记在自己的号上（同 Y18），不挡同一台上别人
  */
 export async function 自动掉公海(me: { id: string; name: string }, 今: Date = new Date()): Promise<number> {
+  // 总管理员切换视图（只读预览，M-权限-08）期间不扫：渲染时顺手写库会被拒
+  if (企业版() && (await 视图中跳过())) return 0;
   return 看全部(() => 按天扫(me, 今));
 }
 

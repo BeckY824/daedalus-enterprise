@@ -42,6 +42,7 @@ import { 互看可加, 范围父表 } from "./sync/scope-policy";
 import { 企业版 } from "./enterprise/switch";
 import { 去掉已删, 在看已删 } from "./enterprise/soft-delete-core";
 import { 市场相关客户 } from "./enterprise/market";
+import { 视图写拦, 会写库的SQL, 原文SQL } from "./enterprise/view-as";
 
 const 不限 = 全进程上下文<true>("看全部");
 
@@ -447,8 +448,27 @@ function 改完推一下() {
 export function 加上限定(db: PrismaClient): PrismaClient {
   const c = db.$extends({
     query: {
+      // 裸 SQL 绕得过模型层：切换视图期间 $executeRaw* 一律拒，$queryRaw* 原文会写库的也拒（M-权限-08）
+      async $executeRaw({ args, query }) {
+        if (企业版()) await 视图写拦();
+        return query(args);
+      },
+      async $executeRawUnsafe({ args, query }) {
+        if (企业版()) await 视图写拦();
+        return query(args);
+      },
+      async $queryRaw({ args, query }) {
+        if (企业版() && 会写库的SQL(原文SQL(args))) await 视图写拦();
+        return query(args);
+      },
+      async $queryRawUnsafe({ args, query }) {
+        if (企业版() && 会写库的SQL(原文SQL(args))) await 视图写拦();
+        return query(args);
+      },
       $allModels: {
         async $allOperations({ model, operation, args: 原参数, query }) {
+          // 企业版切换视图（M-权限-08）：总管理员以别人的视图查看期间，服务端一律只读
+          if (写操作.has(operation) && 企业版()) await 视图写拦();
           if (写操作.has(operation)) 改完推一下();
           // 企业版软删（P9）：回收站里的统一滤掉，比业务员范围先算（老板也看不到删了的，除非在 看已删() 里）
           const args = (企业版() && !在看已删() ? 去掉已删(model, operation, 原参数) : 原参数) as typeof 原参数;
