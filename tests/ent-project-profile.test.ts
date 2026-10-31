@@ -23,7 +23,12 @@ import { 企业字典 } from "@/lib/enterprise/dict";
 describe("阶段与进程：阶段、进程分两格", () => {
   it("进行中：阶段 = phase，进程 = node，没有结局", () => {
     expect(阶段与进程({ phase: "线索", node: "潜客培育", result: null })).toEqual({ 阶段: "线索", 进程: "潜客培育", 结局: null });
-    expect(阶段与进程({ phase: "订单", node: "验收交付" }, 企业版字典)).toEqual({ 阶段: "订单", 进程: "验收交付", 结局: null });
+    // 企业版 10-31 改名：库里的旧名按新名显示，新名原样
+    expect(阶段与进程({ phase: "订单", node: "验收交付" }, 企业版字典)).toEqual({ 阶段: "订单", 进程: "交付验收", 结局: null });
+    expect(阶段与进程({ phase: "订单", node: "交付验收" }, 企业版字典)).toEqual({ 阶段: "订单", 进程: "交付验收", 结局: null });
+    expect(阶段与进程({ phase: "商机", node: "明确需求", result: null }, 企业版字典)).toMatchObject({ 进程: "痛点挖掘" });
+    // 团队版不改名
+    expect(阶段与进程({ phase: "订单", node: "验收交付" })).toEqual({ 阶段: "订单", 进程: "验收交付", 结局: null });
   });
 
   it("有结局按结局认阶段，不看库里 phase：成功交付 / 异常状态归订单，线索流失归线索，丢单归商机", () => {
@@ -36,6 +41,9 @@ describe("阶段与进程：阶段、进程分两格", () => {
 
   it("结局按这套的叫法：企业版丢单叫「商机丢单」，后台改了叫法用改的", () => {
     expect(阶段与进程({ phase: "商机", node: "成交推进", result: "丢单" }, 企业版字典).结局).toBe("商机丢单");
+    // 企业版 10-31 改名：库里旧结局 成功交付、新结局 交付结清 都叫 交付结清、归订单
+    expect(阶段与进程({ phase: "商机", node: "尾款结算", result: "成功交付" }, 企业版字典)).toEqual({ 阶段: "订单", 进程: "尾款结算", 结局: "交付结清" });
+    expect(阶段与进程({ phase: "订单", node: "尾款结算", result: "交付结清" }, 企业版字典)).toEqual({ 阶段: "订单", 进程: "尾款结算", 结局: "交付结清" });
     const 改过 = 字典of(true, { 订单: ["交付完成", null] });
     expect(阶段与进程({ phase: "订单", node: "尾款结算", result: "成功交付" }, 改过)).toEqual({ 阶段: "订单", 进程: "尾款结算", 结局: "交付完成" });
   });
@@ -108,7 +116,7 @@ describe("改项目画像（真库、企业字典）", () => {
     await 停用("projProduct", "硬件标品");
     expect(await 改项目画像(乙, 项目id, { productNeeds: ["常规标品", "硬件标品", "内容定制"] })).toMatchObject({ ok: true });
     expect(读产品需求((await 读()).productNeeds)).toEqual(["常规标品", "硬件标品", "内容定制"]);
-    expect(await 改项目画像(乙, 项目id, { productNeeds: ["常规标品", "瞎编的"] })).toMatchObject({ ok: false, error: expect.stringContaining("「瞎编的」不在产品需求里") });
+    expect(await 改项目画像(乙, 项目id, { productNeeds: ["常规标品", "瞎编的"] })).toMatchObject({ ok: false, error: expect.stringContaining("「瞎编的」不在需求类型里") });
     expect(await 改项目画像(乙, 项目id, { productNeeds: "常规标品" as unknown as string[] })).toMatchObject({ ok: false });
     expect(await 改项目画像(乙, 项目id, { productNeeds: [] })).toEqual({ ok: true, 变了: ["productNeeds"] });
     expect((await 读()).productNeeds).toBeNull();

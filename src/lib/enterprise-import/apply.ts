@@ -36,6 +36,7 @@ import { 来源名, type 来源, type 实体, type 映射, type 待写 } from ".
 import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
 import { 线索建项目 } from "../project/from-lead";
 import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-status-auto-db";
+import { 企业版字典, 本套名 } from "../project/stage-dict";
 
 type Tx = Prisma.TransactionClient;
 export type 标量 = string | number | boolean | null;
@@ -396,7 +397,8 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
 /** 跟进挂到项目当前所在的节点上（同项目页「记一笔沟通」） */
 async function 挂项目(tx: Tx, followUpId: string, projectId: string): Promise<void> {
   const p = await tx.project.findUnique({ where: { id: projectId }, select: { node: true } });
-  if (p) await tx.followUpProject.create({ data: { followUpId, projectId, node: p.node } });
+  // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
+  if (p) await tx.followUpProject.create({ data: { followUpId, projectId, node: 本套名(p.node, 企业版字典) } });
 }
 
 /** 改已有记录的这几格。现值 = 改之前读到的（商机结单要看原来的状态） */

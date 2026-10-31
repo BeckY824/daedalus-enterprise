@@ -5,7 +5,7 @@
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
-import { 改节点问题, 原因上限, 要写原因, 下一步, 节点序号, 字典of, 本套位置, type 位置 } from "./nodes";
+import { 改节点问题, 原因上限, 要写原因, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
 import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
@@ -267,13 +267,14 @@ export async function 改节点(
     // 企业版线索验证（P12）在等复核 / 等销售处理：别从这里绕过去（lead-verify.ts 带 验证放行 进来）
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
-    const result = 到.result || null;
     const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
-    // 旧客户端交上来的旧节点名（企业版 验收交付）按新名存
-    到 = 本套位置(到, 字典);
+    // 旧客户端交上来的旧名（企业版 验收交付、成功交付）按新名存；库里存着旧名的项目也先对到新名再比变没变（企业版 10-31 改名）
+    到 = 本套位置({ ...到, result: 到.result || null }, 字典);
+    const result = 到.result || null;
+    const 现 = 本套位置(p, 字典);
     const 问题 = 改节点问题({ ...到, result }, p, 异常, 企业版(), 字典);
     if (问题) return { ok: false as const, error: 问题 };
-    const 挡 = 到.phase !== p.phase || 到.node !== p.node || result !== p.result ? 改不了的话(级别, ["商机阶段"]) : null;
+    const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
     const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
     const 不给 = 往前 ? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则)) : null;
@@ -284,8 +285,8 @@ export async function 改节点(
       return {
         ok: false as const,
         error: 差.length
-          ? `「${p.node}」填齐必填后自动往前推，还差：${差.map(必填叫法).join("、")}；要先推请找老板或主管`
-          : `「${p.node}」的必填已经齐了，保存一下就会自动往前推`,
+          ? `「${现.node}」填齐必填后自动往前推，还差：${差.map(必填叫法).join("、")}；要先推请找老板或主管`
+          : `「${现.node}」的必填已经齐了，保存一下就会自动往前推`,
       };
     }
     let 类别: string | null = null;
@@ -302,14 +303,14 @@ export async function 改节点(
     }
     // 线索流失、丢单的原因只记在节点变更里，项目上的 exceptionReason 是异常状态专用
     const 原因 = 企业版() && 要写原因(result) ? (异常?.备注 ?? "").trim().slice(0, 原因上限) || null : 备注;
-    if (p.phase === 到.phase && p.node === 到.node && p.result === result && p.exceptionCategoryId === 类别 && (p.exceptionReason ?? null) === 备注) {
+    if (现.phase === 到.phase && 现.node === 到.node && 现.result === result && p.exceptionCategoryId === 类别 && (p.exceptionReason ?? null) === 备注) {
       return { ok: true as const, 变了: false };
     }
     await tx.project.update({
       where: { id: p.id },
       data: {
         phase: 到.phase, node: 到.node, result, exceptionCategoryId: 类别, exceptionReason: 备注,
-        closedAt: result ? (p.result === result ? p.closedAt : new Date()) : null,
+        closedAt: result ? (现.result === result ? p.closedAt : new Date()) : null,
       },
     });
     // 企业版提成：进订单（赢单）固定实际提成（lib/project/commission-db.ts）。企业版进了订单不能退回商机（改节点问题 里拦）
@@ -317,7 +318,7 @@ export async function 改节点(
     await tx.projectNodeLog.create({
       data: {
         projectId: p.id, userId: me.id,
-        fromPhase: p.phase, fromNode: p.node, fromResult: p.result,
+        fromPhase: 现.phase, fromNode: 现.node, fromResult: 现.result,
         toPhase: 到.phase, toNode: 到.node, toResult: result, categoryId: 类别, reason: 原因,
       },
     });
@@ -341,7 +342,7 @@ export async function 勾交付(me: 谁, projectId: string, 项: 交付项, 勾:
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (!能管项目(me, p)) return { ok: false as const, error: "只有项目负责人、老板或主管能勾" };
     if (p[项] === 勾) return { ok: true as const, 变了: false };
-    if (!勾 && p.result === "成功交付") return { ok: false as const, error: `已经成功交付了；要取消「${交付项们[项]}」，先把进程改回去` };
+    if (!勾 && 是交付(p.result)) return { ok: false as const, error: `已经${结局叫法(p.result!, 字典of(企业版()))}了；要取消「${交付项们[项]}」，先把进程改回去` };
     const 谁勾 = 项 === "balanceSettled" ? { balanceSettledById: 勾 ? me.id : null, balanceSettledAt: 勾 ? new Date() : null } : { acceptancePassedById: 勾 ? me.id : null, acceptancePassedAt: 勾 ? new Date() : null };
     await tx.project.update({ where: { id: p.id }, data: { [项]: 勾, ...谁勾 } });
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
@@ -397,10 +398,12 @@ export function 转让痕(
   kind: "transfer" | "pool-release" | "pool-claim" = "transfer",
   reason: string | null = null,
 ) {
+  // 节点、结局写新名（企业版 10-31 改名：库里存着旧名的项目按 本套位置 对上）
+  const 现 = 本套位置(p, 字典of(企业版()));
   return {
     projectId: p.id, userId: 操作人, kind, fromOwnerId: 从, toOwnerId: 到, reason,
-    fromPhase: p.phase, fromNode: p.node, fromResult: p.result,
-    toPhase: p.phase, toNode: p.node, toResult: p.result,
+    fromPhase: 现.phase, fromNode: 现.node, fromResult: 现.result ?? null,
+    toPhase: 现.phase, toNode: 现.node, toResult: 现.result ?? null,
   };
 }
 
@@ -665,7 +668,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       await 单项目客户跟进公海(tx, p, null, 今);
       await tx.task.create({
         data: {
-          title: `项目「${p.name}」在「${p.node}」超过处理时长没跟进，${收回提醒尾}`,
+          title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`,
           dueAt: 今, dueOn: dayjs(今).format("YYYY-MM-DD"), dueHasTime: false,
           customerId: p.customerId, ownerId: p.ownerId,
         },
@@ -695,7 +698,7 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 只扫?: string)
   for (const p of await 会收的项目(规则, 只扫)) {
     const 日 = 项目回收日(规则, p);
     if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
-    const title = 将回收提醒(p.name, p.node, 日);
+    const title = 将回收提醒(p.name, 本套名(p.node, 字典of(企业版())), 日);
     if (await prisma.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) continue;
     await prisma.task.create({
       data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId },
@@ -732,7 +735,8 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     const 跟进 = await tx.followUp.create({
       data: { type: 好.type, method: 好.method, content: 好.content, occurredAt: 好.occurredAt, title: "", status: "已完成", customerId: p.customerId, contactId: p.contactId, ownerId: me.id },
     });
-    await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: p.node } });
+    // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
+    await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
     await 记沟通编号(tx, 跟进.id, p.id, 好.nextStepAt, now);
     await 记沟通标记(tx, 跟进.id, p.id, p.phase, input.明确回复 === true);
     // 企业版组员不一定看得到这位客户（客户是负责人的）：最近跟进时间只是跟着记一笔，不按范围拦
@@ -758,7 +762,7 @@ async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组�
   const 日 = 现 && 项目回收日(规则, 现);
   if (日 && 即将回收(日, now)) return;
   await 看全部(() => tx.task.updateMany({
-    where: { ownerId: p.ownerId, customerId: p.customerId, done: false, title: { startsWith: 将回收提醒头(p.name, p.node) } },
+    where: { ownerId: p.ownerId, customerId: p.customerId, done: false, OR: 同名们(p.node).map((n) => ({ title: { startsWith: 将回收提醒头(p.name, n) } })) },
     data: { done: true, doneAt: now },
   }));
 }
@@ -889,7 +893,7 @@ export const 自动推进理由 = "必填齐了，自动推进";
  */
 async function 往前进来的(tx: Prisma.TransactionClient, p: { id: string; phase: string; node: string }): Promise<boolean> {
   const 们 = await tx.projectNodeLog.findMany({
-    where: { projectId: p.id, kind: "node", toPhase: p.phase, toNode: p.node, toResult: null },
+    where: { projectId: p.id, kind: "node", toPhase: p.phase, toNode: { in: 同名们(p.node) }, toResult: null },
     orderBy: [{ at: "desc" }, { id: "desc" }], take: 1,
     select: { fromPhase: true, fromNode: true },
   });
@@ -922,7 +926,7 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
     await tx.projectNodeLog.create({
       data: {
         projectId: p.id, userId: me.id, reason: 自动推进理由,
-        fromPhase: p.phase, fromNode: p.node, fromResult: null, toPhase: 下.phase, toNode: 下.node, toResult: null,
+        fromPhase: p.phase, fromNode: 本套名(p.node, 字典of(企业版())), fromResult: null, toPhase: 下.phase, toNode: 下.node, toResult: null,
       },
     });
     到了.push(下.node);
@@ -945,7 +949,7 @@ export async function 客户项目按必填推进(me: { id: string }, customerId
     const 到 = await 查完再写((tx) => 按必填推进(tx, 规则, me, p.id));
     if (到.length) 推了.push({ ...p, 到 });
   }
-  // 推了节点（可能进了商机 / 首款支付）：客户状态跟着重算一次
+  // 推了节点（可能进了商机 / 首款到账，旧名首款支付）：客户状态跟着重算一次
   if (推了.length) await 项目变了重算([customerId]);
   return 推了;
 }

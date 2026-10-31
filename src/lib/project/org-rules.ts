@@ -4,8 +4,8 @@
  * 存在 Setting 的 orgRules 一个 key 里（业务配置 getBusiness 会丢掉不认识的 key，不混进去）。
  * 这里只管规整，界面也引（不能碰 prisma）；读写库在 org-rules-store.ts，规矩在 lib/project/db.ts 里用
  */
-import { 节点们, 阶段们 } from "./nodes";
-import { 出口叫法上限, type 出口叫法改动 } from "./stage-dict";
+import { 阶段们 } from "./nodes";
+import { 出口叫法上限, 团队版字典, 企业版字典, 按本套名, type 出口叫法改动, type 阶段字典 } from "./stage-dict";
 import { 必填项名们, 能配必填的节点 } from "./required";
 
 /** 持有上限最多填多少：防手滑多打几个 0。填满 999 = 不限（10-26 用户定）：分配、领取、指派都不再卡这个人 */
@@ -14,8 +14,13 @@ export const 上限最大 = 999;
 export const 是不限 = (n: number | null | undefined): boolean => typeof n === "number" && n >= 上限最大;
 /** 节点处理时长最多填多少天 */
 export const 时长最大 = 365;
-/** 能设处理时长的节点：线索、商机阶段的；订单阶段永远不回收 */
-export const 能设时长的节点: readonly string[] = [...节点们.线索, ...节点们.商机];
+/** 能设处理时长的节点：线索、商机阶段的；订单阶段永远不回收。两套字典的并集（企业版 10-31 改了名，两套的名字都认） */
+export const 能设时长的节点: readonly string[] = [
+  ...new Set([...团队版字典.节点们.线索, ...团队版字典.节点们.商机, ...企业版字典.节点们.线索, ...企业版字典.节点们.商机]),
+];
+/** 两套字典里的全部节点 */
+const 全部节点们: readonly string[] = [团队版字典, 企业版字典].flatMap((d) => [...d.节点们.线索, ...d.节点们.商机, ...d.节点们.订单]);
+
 
 /**
  * 往前推节点谁能推（企业版，10-26 决定 #18）：
@@ -127,9 +132,10 @@ function 整数(v: unknown, 最小: number, 最大: number): number | null {
 
 /**
  * 把存着的（或界面传来的）规整成完整的一份：缺的、坏的、超出范围的都退回默认，不认识的 key 丢掉。
- * 读的时候用它兜底，写之前用 规整改动 报错
+ * 读的时候用它兜底，写之前用 规整改动 报错。
+ * 字典 = 这套（读、存时传 字典of(企业版())）：节点天数、必填的旧节点名 key 换成这套的新名
  */
-export function 规整组织规则(raw: unknown): 组织规则 {
+export function 规整组织规则(raw: unknown, 字典: 阶段字典 = 团队版字典): 组织规则 {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const 公海 = (r.公海 && typeof r.公海 === "object" ? r.公海 : {}) as Record<string, unknown>;
   const 每人: Record<string, number> = {};
@@ -166,11 +172,11 @@ export function 规整组织规则(raw: unknown): 组织规则 {
     },
     超时回收: {
       开: 超时.开 === true,
-      节点天数: 天数,
+      节点天数: 按本套名(天数, 字典),
       // 没存过 / 存坏了 = 默认起算日；存过 null / "" = 管理员清掉了，不设
       起算日: 超时.起算日 === null || 超时.起算日 === "" ? null : 是起算日(超时.起算日) ? 超时.起算日 : 默认起算日,
     },
-    节点推进: { 开: 推进.开 === true, 必填 },
+    节点推进: { 开: 推进.开 === true, 必填: 按本套名(必填, 字典) },
     阶段: 规整阶段块(r.阶段),
   };
 }
@@ -276,7 +282,7 @@ export function 合上改动(现在: 组织规则, 改: 规则改动): 组织规
       const 必填: Record<string, string[]> = {};
       for (const [node, v] of Object.entries(t.必填 as Record<string, unknown>)) {
         if (!能配必填的节点.includes(node)) {
-          return { error: [...节点们.线索, ...节点们.商机, ...节点们.订单].includes(node) ? `「${node}」不能配必填（最后一个进程由人点成功交付）` : `「${node}」不是项目的进程，刷新再试` };
+          return { error: 全部节点们.includes(node) ? `「${node}」不能配必填（最后一个进程由人点成功交付）` : `「${node}」不是项目的进程，刷新再试` };
         }
         if (v === null || v === undefined) continue;
         if (!Array.isArray(v)) return { error: "必填清单格式不对，刷新再试" };

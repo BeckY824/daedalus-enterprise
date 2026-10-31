@@ -24,7 +24,7 @@ import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
-import { 企业版字典 } from "@/lib/project/nodes";
+import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
@@ -123,13 +123,13 @@ export default async function CustomerDetailPage({
     企
       ? prisma.contactMethod.findMany({ where: { customerId: customer.id, contactId: null, kind: "wangwang" }, orderBy: { createdAt: "asc" }, select: { value: true } }).then((ms) => ms.map((m) => m.value))
       : [],
-    // 企业版只用项目：商机一节换成这位名下的项目（10-26）
+    // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
     只项目
       ? prisma.project.findMany({
           where: { customerId: customer.id },
           orderBy: { updatedAt: "desc" },
           select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
-        })
+        }).then((ps) => ps.map((p) => 本套位置(p, 企业版字典)))
       : null,
     // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
     规则P ? 规则P.then((r) => 客户参与的项目(customer.id, 字典of(true, r.阶段.出口叫法))) : null,

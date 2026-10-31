@@ -1,7 +1,8 @@
 /**
  * 企业版三大阶段节点状态机（10-26，lib/project/stage-dict.ts + nodes.ts + timeout.ts + db.ts 改节点 / 公海超时收回）。
  *   - 节点、叫法照 2.0（10-26 用户：保留2.0的所有东西）：线索 5 / 商机 8 / 订单 7（含出口）；流程代码们 10-26 删了
- *   - 改名表留着、现在是空的：新版表叫法 10-27 会上问了再填
+ *   - 改名表（10-31）：明确需求→痛点挖掘、共识方案→方案确认、签约审批→合同审批、首款支付→首款到账、验收交付→交付验收、成功交付→交付结清；
+ *     库里旧名照认（显示、统计、必填、客户状态按新名），写进库一律新名
  *   - 跨阶段单向：商机回不了线索、订单回不了商机（服务端拦）；同阶段里往后退随便、往前一步一步
  *   - 结局：线索只能流失或转商机，商机只能流失或赢单；订单的成功交付 / 异常状态照旧
  *   - 超时回收：没填天数的节点默认 7 天；改了天数新的回收日按新天数
@@ -15,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 改节点, 公海超时收回, 超时预览 } from "@/lib/project/db";
 import { 改节点问题, 下一步, 节点序号, 节点总数, 节点总数of } from "@/lib/project/nodes";
-import { 企业版字典, 团队版字典, 字典of, 阶段值们, 结局叫法, 本套节点名 } from "@/lib/project/stage-dict";
+import { 企业版字典, 团队版字典, 字典of, 阶段值们, 结局叫法, 本套节点名, 企业版旧名换新名 } from "@/lib/project/stage-dict";
 import { 超时回收日, 节点超时天数 } from "@/lib/project/timeout";
 import { 能配必填的节点 } from "@/lib/project/required";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
@@ -30,8 +31,8 @@ const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默
 describe("企业版字典：按对方阶段值做种子", () => {
   it("线索 5 / 商机 8 / 订单 7，含出口，值和对方表一致", () => {
     expect(阶段值们(企, "线索")).toEqual(["潜客培育", "线索验证", "线索推进", "已转商机", "线索流失"]);
-    expect(阶段值们(企, "商机")).toEqual(["明确需求", "共识方案", "成交推进", "签约审批", "签订合同", "首款支付", "商机赢单", "商机丢单"]);
-    expect(阶段值们(企, "订单")).toEqual(["生产备货", "物流运输", "安装实施", "验收交付", "尾款结算", "成功交付", "异常状态"]);
+    expect(阶段值们(企, "商机")).toEqual(["痛点挖掘", "方案确认", "成交推进", "合同审批", "签订合同", "首款到账", "商机赢单", "商机丢单"]);
+    expect(阶段值们(企, "订单")).toEqual(["生产备货", "物流运输", "安装实施", "交付验收", "尾款结算", "交付结清", "异常状态"]);
     expect([阶段值们(企, "线索").length, 阶段值们(企, "商机").length, 阶段值们(企, "订单").length]).toEqual([5, 8, 7]);
   });
 
@@ -40,10 +41,13 @@ describe("企业版字典：按对方阶段值做种子", () => {
     expect(企.出口们.线索.map((o) => o.叫法)).toEqual(["已转商机", "线索流失"]);
     expect(企.出口们.商机.map((o) => o.叫法)).toEqual(["商机赢单", "商机丢单"]);
     expect(企.出口们.商机.map((o) => o.结局)).toEqual([null, "丢单"]);
-    expect(企.出口们.订单.map((o) => o.叫法)).toEqual(["成功交付", "异常状态"]);
+    expect(企.出口们.订单.map((o) => o.叫法)).toEqual(["交付结清", "异常状态"]);
     expect(结局叫法("线索流失", 企)).toBe("线索流失");
     expect(结局叫法("丢单", 企)).toBe("商机丢单");
-    expect(结局叫法("成功交付", 企)).toBe("成功交付");
+    // 库里存的旧结局 成功交付 显示成新名
+    expect(结局叫法("成功交付", 企)).toBe("交付结清");
+    expect(结局叫法("交付结清", 企)).toBe("交付结清");
+    expect(结局叫法("成功交付")).toBe("成功交付");
   });
 
   it("后台改出口叫法（挡改设置）：只换叫法、不换结局值；没改的用字典里的", () => {
@@ -67,14 +71,22 @@ describe("企业版字典：按对方阶段值做种子", () => {
     expect(节点总数of(企)).toBe(节点总数);
   });
 
-  it("改名表是空的：节点名两套一样，下一步、序号按企业版字典走", () => {
-    expect(企.改名).toEqual({});
-    expect(企.节点们).toEqual(团队版字典.节点们);
-    expect(下一步({ phase: "订单", node: "安装实施" }, 企)).toEqual({ phase: "订单", node: "验收交付" });
-    expect(节点序号({ phase: "订单", node: "验收交付" }, 企)).toBe(节点序号({ phase: "订单", node: "验收交付" }));
+  it("改名表（10-31）：旧名对上新名，下一步、序号按企业版新名走；团队版不改名", () => {
+    expect(企.改名).toEqual(企业版旧名换新名);
+    expect(团队版字典.改名).toEqual({});
+    expect(企.节点们).not.toEqual(团队版字典.节点们);
+    expect(下一步({ phase: "订单", node: "安装实施" }, 企)).toEqual({ phase: "订单", node: "交付验收" });
+    // 库里还存着旧名：下一步、序号照新名算
+    expect(下一步({ phase: "订单", node: "验收交付" }, 企)).toEqual({ phase: "订单", node: "尾款结算" });
+    expect(节点序号({ phase: "订单", node: "验收交付" }, 企)).toBe(节点序号({ phase: "订单", node: "交付验收" }, 企));
+    expect(节点序号({ phase: "订单", node: "交付验收" }, 企)).toBe(节点序号({ phase: "订单", node: "验收交付" }));
+    expect(能配必填的节点).toContain("交付验收");
     expect(能配必填的节点).toContain("验收交付");
     expect(能配必填的节点).not.toContain("尾款结算");
-    expect(本套节点名("验收交付", 企)).toBe("验收交付");
+    expect(本套节点名("验收交付", 企)).toBe("交付验收");
+    expect(本套节点名("明确需求", 企)).toBe("痛点挖掘");
+    expect(本套节点名("交付验收", 企)).toBe("交付验收");
+    expect(本套节点名("验收交付", 团队版字典)).toBe("验收交付");
   });
 });
 
@@ -198,7 +210,8 @@ describe("读写库（CRM_ENTERPRISE 开 / 关）", () => {
     expect(await prisma.projectNodeLog.count()).toBe(0);
     expect(await 改节点(乙, p.id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true, 变了: true });
     expect(await 改节点(乙, p.id, { phase: "商机", node: "共识方案" })).toMatchObject({ ok: true, 变了: true });
-    expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "共识方案" });
+    // 传旧名也认，写进库是新名
+    expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "方案确认" });
   });
 
   it("企业版：订单改回商机被拦（老板也不行）；线索走到商机、商机走到订单照常", async () => {

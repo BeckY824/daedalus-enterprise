@@ -93,7 +93,7 @@ export const 只读SCHEMAS: Record<string, Schema> = {
     properties: {
       phase: 串("线索 / 商机 / 订单"),
       node: 串("当前进程名"),
-      result: 串("线索流失 / 丢单 / 成功交付 / 异常状态 / 全部；不填只看进行中"),
+      result: 串("线索流失 / 丢单 / 成功交付（企业版叫交付结清） / 异常状态 / 全部；不填只看进行中"),
       ownerName: 串("负责人姓名"),
       keyword: 串("项目名或客户名"),
       idleDays: 数("至少几天没动"),

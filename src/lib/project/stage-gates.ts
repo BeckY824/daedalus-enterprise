@@ -6,7 +6,7 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 节点序号, 字典of, 是阶段, type 位置 } from "./nodes";
+import { 节点序号, 字典of, 是阶段, 本套位置, 同名们, type 位置 } from "./nodes";
 import type { 组织规则 } from "./org-rules";
 
 /** 过了这个节点才算有效线索（MQL 合格）：往后推要先有一条有效沟通 */
@@ -40,8 +40,10 @@ export async function 企业版推进关(tx: Prisma.TransactionClient, p: 位置
   if (!企业版() || p.result) return null;
   const 字典 = 字典of(true);
   if (节点序号(到, 字典) <= 节点序号(p, 字典)) return null;
-  if (规则?.阶段.前两节点要沟通 && 要沟通的节点().includes(p.node)) {
-    if (!(await tx.followUpProject.count({ where: { projectId: p.id, node: p.node } }))) return 缺本节点沟通(p.node);
+  // 库里存着旧名的项目（企业版 10-31 改名）先对到新名；沟通挂的节点新旧名都算
+  const 节 = 本套位置(p, 字典).node;
+  if (规则?.阶段.前两节点要沟通 && 要沟通的节点().includes(节)) {
+    if (!(await tx.followUpProject.count({ where: { projectId: p.id, node: { in: 同名们(节) } } }))) return 缺本节点沟通(节);
   }
   if (p.phase !== "线索") return null;
   if (节点序号(到, 字典) <= 节点序号({ phase: "线索", node: 有效线索节点 }, 字典)) return null;

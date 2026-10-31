@@ -67,12 +67,13 @@ describe("节点必填自动推进", () => {
   });
 
   it("下一个节点也配了、也齐了：接着推，跨阶段也一步一步走", async () => {
+    // 必填配置存的旧节点名 key（明确需求）读成新名 痛点挖掘，照样推；推到的写新名
     await setSetting("orgRules", 开着({ 线索验证: ["金额"], 线索推进: ["金额"], 明确需求: ["主联系人"] }));
     const p = await 项目({ node: "线索验证" });
     await 记有效沟通(p.id); // 越过线索验证要先有有效沟通
     const r = await 改项目(乙, p.id, { name: "一号项目", amount: 5 });
-    expect(r).toMatchObject({ ok: true, 自动推到: ["线索推进", "明确需求"] });
-    expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "明确需求" });
+    expect(r).toMatchObject({ ok: true, 自动推到: ["线索推进", "痛点挖掘"] });
+    expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "痛点挖掘" });
     expect(await prisma.projectNodeLog.count({ where: { projectId: p.id, reason: 自动推进理由 } })).toBe(2);
   });
 

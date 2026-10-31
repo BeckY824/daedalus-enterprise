@@ -5,12 +5,14 @@
  *   线索 = 这批项目全部（项目都从线索阶段起建）
  *   商机 = 走到了商机或更后面（phase 是商机 / 订单）
  *   订单 = 走到了订单（phase 是订单）
- *   交付 = 结局是成功交付
+ *   交付 = 结局是成功交付（企业版叫交付结清，库里新旧名都算）
  * 「这批」由调用方给：现在 = 看得到的全部项目；本月 / 本年 = 这一段新建的项目（和「新建项目」卡同一个 createdAt）。
  * 丢单留在商机阶段、线索流失留在线索阶段、异常状态留在订单阶段，所以它们照样算走到了自己那一段。
  * 转化率 = 本段 / 上一段；上一段是 0 时没有转化率（null），第一段也是 null。
  * 看得到哪些项目不在这里管：查库那层（lib/team-scope）已经按人限定了。
  */
+
+import { 是交付 } from "@/lib/project/stage-dict";
 
 export const 漏斗段们 = ["线索", "商机", "订单", "交付"] as const;
 export type 漏斗段 = (typeof 漏斗段们)[number];
@@ -21,7 +23,7 @@ export function 项目漏斗of(rows: readonly { phase: string; result: string | 
     rows.length,
     rows.filter((p) => p.phase === "商机" || p.phase === "订单").length,
     rows.filter((p) => p.phase === "订单").length,
-    rows.filter((p) => p.result === "成功交付").length,
+    rows.filter((p) => 是交付(p.result)).length,
   ];
   return 漏斗段们.map((段, i) => ({ 段, count: 数[i], 转化率: i === 0 || 数[i - 1] === 0 ? null : 数[i] / 数[i - 1] }));
 }

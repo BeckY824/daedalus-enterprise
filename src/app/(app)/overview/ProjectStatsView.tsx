@@ -195,7 +195,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
       grid: { left: 8, right: 12, top: 34, bottom: 4, containLabel: true },
       xAxis: { type: "category", data: 数.trend.map((b) => b.label), axisLine: { lineStyle: { color: palette.lineSoft } }, axisTick: { show: false }, axisLabel: 轴字 },
       yAxis: { type: "value", minInterval: 1, splitLine: { lineStyle: { color: palette.lineSoft } }, axisLabel: 轴字 },
-      series: 系列.map((s) => ({ name: s.k === "转商机" ? "转商机阶段" : s.k, type: "bar", barMaxWidth: 14, itemStyle: { color: s.c, borderRadius: [3, 3, 0, 0] }, data: 数.trend.map((b) => b[s.k]) })),
+      series: 系列.map((s) => ({ name: s.k === "转商机" ? "转商机阶段" : s.k === "成功交付" ? "交付结清" : s.k, type: "bar", barMaxWidth: 14, itemStyle: { color: s.c, borderRadius: [3, 3, 0, 0] }, data: 数.trend.map((b) => b[s.k]) })),
     };
   }, [数.trend]);
 
@@ -221,7 +221,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
           <StatCard icon={<RiseOutlined />} color={阶段色.商机} label="转商机阶段" value={t.转商机} note={`来回改只数一次 · 转订单 ${t.转订单}`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<TrophyOutlined />} color={阶段色.订单} label="成功交付" value={t.成功交付} note={`${口径}结束的 · ${money(t.交付金额)}`} />
+          <StatCard icon={<TrophyOutlined />} color={阶段色.订单} label="交付结清" value={t.成功交付} note={`${口径}结束的 · ${money(t.交付金额)}`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
           {/* 没成 = 流失 + 丢单；异常还在处理，不算没成。原来三个数并排写，看着像加不平（10-27） */}

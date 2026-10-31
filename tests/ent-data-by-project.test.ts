@@ -5,7 +5,7 @@
  *   一段：新建按 createdAt；转商机 / 转订单一个项目只数一次（来回改不重复算）；结局按 closedAt，只算现在还是这个结局的
  *   按人：按项目现在的负责人；人删了写「已不在的成员」
  */
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 项目现在, 项目一段 } from "../src/app/(app)/overview/project-stats";
@@ -115,5 +115,38 @@ describe("一段", () => {
     expect(数.按人).toEqual([]);
     expect(数.trend.length).toBe(m.to.getDate());
     expect(数.trend.every((t) => t.label.startsWith(`${m.前缀.slice(5)}-`) && t.新建 + t.转商机 + t.转订单 + t.成功交付 === 0)).toBe(true);
+  });
+});
+
+describe("企业版 10-31 改名：库里存着旧名的照新名数", () => {
+  beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", "1"); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("现在：旧节点名（明确需求 / 共识方案 / 验收交付）数进新节点；旧结局 成功交付 和新的 交付结清 一起数", async () => {
+    await 建({ name: "a", ownerId: 王.id, phase: "商机", node: "明确需求", amount: 10 });
+    await 建({ name: "b", ownerId: 王.id, phase: "商机", node: "痛点挖掘", amount: 20 });
+    await 建({ name: "c", ownerId: 李.id, phase: "商机", node: "共识方案" });
+    await 建({ name: "d", ownerId: 李.id, phase: "订单", node: "验收交付" });
+    await 建({ name: "e", ownerId: 王.id, phase: "订单", node: "尾款结算", result: "成功交付", closedAt: new Date() });
+    await 建({ name: "f", ownerId: 王.id, phase: "订单", node: "尾款结算", result: "交付结清", closedAt: new Date() });
+
+    const 数 = await 项目现在("CNY");
+    expect(数.节点.find((n) => n.node === "痛点挖掘")).toMatchObject({ count: 2, amount: 30 });
+    expect(数.节点.find((n) => n.node === "方案确认")?.count).toBe(1);
+    expect(数.节点.find((n) => n.node === "交付验收")?.count).toBe(1);
+    expect(数.节点.map((n) => n.node)).not.toContain("明确需求");
+    expect(数.节点.map((n) => n.node)).not.toContain("验收交付");
+    expect(数.结局.find((r) => r.result === "交付结清")?.count).toBe(2);
+    expect(数.结局.map((r) => r.result)).not.toContain("成功交付");
+  });
+
+  it("一段：旧结局 成功交付 和新的 交付结清 都算进交付", async () => {
+    const m = 上月();
+    const 段外 = new Date(m.from.getTime() - 86400000);
+    await 建({ name: "c", ownerId: 李.id, phase: "订单", node: "尾款结算", result: "成功交付", amount: 100, createdAt: 段外, closedAt: m.日(20) });
+    await 建({ name: "d", ownerId: 李.id, phase: "订单", node: "尾款结算", result: "交付结清", amount: 50, createdAt: 段外, closedAt: m.日(21) });
+
+    const 数 = await 项目一段(m.from, m.to, "day", "CNY");
+    expect(数.合计).toMatchObject({ 成功交付: 2, 交付金额: 150 });
   });
 });

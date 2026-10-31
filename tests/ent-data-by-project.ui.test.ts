@@ -33,7 +33,7 @@ beforeAll(async () => {
     const 现在={
       阶段:[{phase:'线索',count:12,amount:0},{phase:'商机',count:8,amount:98765432},{phase:'订单',count:3,amount:12345678}],
       节点:阶段们.flatMap(p=>节点们[p].map((node,i)=>({phase:p,node,count:i+1,amount:1000000*i}))),
-      结局:[{result:'线索流失',count:2},{result:'丢单',count:1},{result:'成功交付',count:5},{result:'异常状态',count:1}],
+      结局:[{result:'线索流失',count:2},{result:'丢单',count:1},{result:'交付结清',count:5},{result:'异常状态',count:1}],
       公海:2,外币:1,
       漏斗:项目漏斗of([...Array(12)].map(()=>({phase:'线索',result:null})).concat([...Array(8)].map(()=>({phase:'商机',result:null})),[...Array(5)].map(()=>({phase:'订单',result:'成功交付'})))),
       按人:[1,2,3].map(i=>({id:'u'+i,name:长+i,线索:4,商机:3,订单:1,商机金额:98765432,订单金额:12345678})),
@@ -74,7 +74,7 @@ it("现在：项目的卡片、节点图、按负责人表，外币另说一句"
   const t = await page.locator("body").innerText();
   expect(t).toContain("项目现状与复盘");
   for (const s of ["新线索", "商机", "订单", "异常状态", "各进程的项目", "按负责人", "公海里还有 2 个进行中的", "全周期漏斗", "另有 1 个进行中的项目不是 CNY"]) expect(t).toContain(s);
-  expect(t).toContain("成功交付 5");
+  expect(t).toContain("交付结清 5");
   expect(await page.locator("canvas").count()).toBeGreaterThan(0);
   expect(await page.locator('a[href="/leads?ownerId=u1"]').count()).toBe(1);
   expect(await page.locator('a[href="/projects?ownerId=u1"]').count()).toBe(1);
@@ -84,7 +84,9 @@ it("现在：项目的卡片、节点图、按负责人表，外币另说一句"
 it("本月：新建 / 转商机 / 成功交付 / 没成，走势图，按负责人表", async () => {
   const { page, errors } = await 打开("本月");
   const t = await page.locator("body").innerText();
-  for (const s of ["新建项目", "转商机", "成功交付", "没成", "项目走势", "全周期漏斗", "按负责人", "线索流失 1 · 丢单 1"]) expect(t).toContain(s);
+  // 企业版 10-31 成功交付改叫交付结清
+  expect(t).not.toContain("成功交付");
+  for (const s of ["新建项目", "转商机", "交付结清", "没成", "项目走势", "全周期漏斗", "按负责人", "线索流失 1 · 丢单 1"]) expect(t).toContain(s);
   expect(t).not.toContain("不是 CNY");
   // 走势图 + 线索瀑布（P15）
   expect(await page.locator("canvas").count()).toBe(2);

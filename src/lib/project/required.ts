@@ -12,7 +12,7 @@
  *   - 没配必填的节点照原来：能管项目的人手动推，不自动推
  * 必填目录只用系统里已有的字段；方案附件、报价这些还没有的字段，等清单定了再加（合同附件、回款 10-31 加了）
  */
-import { 团队版字典, 企业版字典, type 阶段字典 } from "./stage-dict";
+import { 团队版字典, 企业版字典, 同名们, type 阶段字典 } from "./stage-dict";
 import type { 组织规则 } from "./org-rules";
 
 export const 必填项们 = [
@@ -36,8 +36,8 @@ export const 必填项名们: readonly string[] = 必填项们.map((x) => x.key)
 export const 必填叫法 = (k: string) => (k === "需求" ? "需求（项目备注）" : k === "本节点沟通" ? "当前进程沟通" : k);
 
 /**
- * 能配必填的节点：除了最后一个（尾款结算后面只剩点结局，由人点成功交付）。
- * 两套字典的并集：以后企业版节点改了名，两套的名字都认
+ * 能配必填的节点：除了最后一个（尾款结算后面只剩点结局，由人点成功交付 / 交付结清）。
+ * 两套字典的并集：企业版节点 10-31 改了名，两套的名字都认
  */
 const 去尾 = (字典: 阶段字典) => [...字典.节点们.线索, ...字典.节点们.商机, ...字典.节点们.订单].slice(0, -1);
 export const 能配必填的节点: readonly string[] = [...new Set([...去尾(团队版字典), ...去尾(企业版字典)])];
@@ -90,17 +90,19 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "金额": return d.项目.amount > 0;
     case "预计成交日期": return !!d.项目.expectedDealAt;
     case "下一步时间": return !!d.项目.nextStepAt;
-    case "本节点沟通": return d.沟通节点们.includes(d.项目.node);
+    // 沟通挂的节点、项目的节点可能一边旧名一边新名（企业版 10-31 改名）：同一个节点就算
+    case "本节点沟通": return 同名们(d.项目.node).some((n) => d.沟通节点们.includes(n));
     case "验收通过": return d.项目.acceptancePassed;
     case "合同附件": return (d.合同附件数 ?? 0) > 0;
     case "回款": return (d.回款笔数 ?? 0) > 0;
   }
 }
 
-/** 这个节点配了哪几样（没开 = 空） */
+/** 这个节点配了哪几样（没开 = 空）。项目存的旧名、配置里的旧 key 都按同一个节点认（企业版 10-31 改名） */
 export function 节点必填(规则: 组织规则, node: string): 必填项[] {
   if (!规则.节点推进.开) return [];
-  return (规则.节点推进.必填[node] ?? []) as 必填项[];
+  const 必填 = 规则.节点推进.必填;
+  return (必填[node] ?? 同名们(node).map((n) => 必填[n]).find(Boolean) ?? []) as 必填项[];
 }
 
 /** 开了、至少一个节点配了：才按新规矩走（读库、拦手动推进） */

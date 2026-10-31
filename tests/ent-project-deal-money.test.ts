@@ -96,8 +96,8 @@ describe("项目成交钱改成", () => {
     expect(项目成交钱改成({ contractAmount: -1 }, 空钱)).toMatchObject({ ok: false, error: expect.stringContaining("合同金额") });
     expect(项目成交钱改成({ depositAmount: "一千" }, 空钱)).toMatchObject({ ok: false, error: expect.stringContaining("定金金额") });
     expect(项目成交钱改成({ contractAmount: 1, contractCurrency: "美元" }, 空钱)).toMatchObject({ ok: false, error: expect.stringContaining("币种") });
-    expect(项目成交钱改成({ dealDemand: "长".repeat(成交需求上限 + 1) }, 空钱)).toMatchObject({ ok: false, error: expect.stringContaining("成交需求") });
-    expect(项目成交钱改成({ dealDemand: 3 }, 空钱)).toMatchObject({ ok: false, error: expect.stringContaining("成交需求") });
+    expect(项目成交钱改成({ dealDemand: "长".repeat(成交需求上限 + 1) }, 空钱)).toMatchObject({ ok: false, error: expect.stringContaining("需求描述") });
+    expect(项目成交钱改成({ dealDemand: 3 }, 空钱)).toMatchObject({ ok: false, error: expect.stringContaining("需求描述") });
   });
 });
 
@@ -250,6 +250,6 @@ describe("导入：原表三列", () => {
     expect(await prisma.project.count()).toBe(0);
     const o = await prisma.opportunity.findFirstOrThrow({ where: { name: "QA-设备单" } });
     expect(o.amount).toBe(120000);
-    for (const 段 of ["成交需求：激光切割机 2 台", "合同金额：100000", "定金金额：3万", "定金币种：美元"]) expect(o.remark).toContain(段);
+    for (const 段 of ["需求描述：激光切割机 2 台", "合同金额：100000", "定金金额：3万", "定金币种：美元"]) expect(o.remark).toContain(段);
   });
 });
