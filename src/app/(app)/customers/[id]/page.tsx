@@ -194,6 +194,8 @@ export default async function CustomerDetailPage({
       联系人分类附件数={联系人分类附件}
       关联们={关联们}
       号码种类={号码种类}
+      // 联系人「职务」下拉的候选（10-31，字典 contactTitle）；走请求内缓存
+      职务选项={企 ? await 页面可选项("contactTitle") : undefined}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
       // 下拉里客户状态、客户类型每项的灰字释义（10-30）；字典上面已读过，走请求内缓存

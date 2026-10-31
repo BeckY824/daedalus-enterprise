@@ -12,6 +12,7 @@ import Link from "next/link";
 import { Alert, Button, Drawer, Dropdown, Input, Menu, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 号码保护of } from "@/lib/enterprise/contact-guard";
 import {
   DownOutlined,
   EditOutlined,
@@ -108,6 +109,16 @@ function 号码链接({ kind, value }: { kind: "tel" | "mailto"; value: string }
 }
 
 /** 联系方式那一行的叫法：字典里有就用字典的名字；自定义种类存成 custom:<叫法>，停用了也照样显示 */
+/** 企业版联系人卡上的「号码保护：已开启 / 已关闭」（10-31）：只展示，不能点；为什么开 / 关鼠标停上去看 */
+function 号码保护标签({ c, 客户 }: { c: ContactRow; 客户: Parameters<typeof 号码保护of>[1] }) {
+  const { 状态, 原因 } = 号码保护of(c, 客户);
+  return (
+    <Tag className="rec-contact-guard" color={状态 === "已开启" ? "green" : undefined} title={原因} style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
+      号码保护：{状态}
+    </Tag>
+  );
+}
+
 function 号码叫法(种类: { 名: string; kind: string }[] | undefined, kind: string) {
   return 种类?.find((x) => x.kind === kind)?.名 ?? (kind.startsWith("custom:") ? kind.slice(7) : kind);
 }
@@ -161,6 +172,7 @@ export default function RecordView({
   联系人分类附件数 = null,
   关联们 = null,
   号码种类,
+  职务选项,
   分配方式选项 = [],
   客户类型选项 = [],
   字典释义,
@@ -974,6 +986,8 @@ export default function RecordView({
                     {c.isPrimary && <Tag color="blue" style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
                     {c.挂靠 && <Tag style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
                     {c.position && <span className="rec-contact-p">{c.position}</span>}
+                    {/* 号码保护（10-31）：只展示，不能点，任何逻辑都不看它（lib/enterprise/contact-guard.ts） */}
+                    <号码保护标签 c={c} 客户={customer} />
                   </div>
                   {c.号码们 && 号码种类 ? (
                     /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
@@ -1417,7 +1431,7 @@ export default function RecordView({
         record={排新计划 ? null : plan}
         默认天数={排新计划 ? 7 : 2}
       />
-      <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={() => { setContactOpen(false); router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} />
+      <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={() => { setContactOpen(false); router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
       <ContractForm
         open={contractOpen}
         customerId={customer.id}
