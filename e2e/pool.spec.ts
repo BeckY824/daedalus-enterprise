@@ -75,7 +75,7 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   await 张.page.getByRole("button", { name: /公海里有 1 位匹配/ }).click();
   await expect(张.page).toHaveURL(/\/pool\?keyword=/);
   const 张的公海行 = 张.page.getByRole("row", { name: new RegExp(客户名) });
-  await expect(张的公海行.getByText("公海客户")).toBeVisible();
+  await expect(张的公海行.getByText("其他")).toBeVisible();
   // 原负责人领不回
   await expect(张的公海行.getByRole("button", { name: `领取 ${客户名}` })).toBeDisabled();
   // 老链接 ?pool=1 转去 /pool

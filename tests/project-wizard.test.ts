@@ -98,7 +98,7 @@ describe("建档向导", () => {
   });
 
   describe("下一步时间（企业版超时回收）", () => {
-    const 开着超时 = { ...默认组织规则, 超时回收: { 开: true, 节点天数: { 潜客培育: 7 } } };
+    const 开着超时 = { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 7 } } };
     const 带下一步 = (下一步时间: string) => 输入({ 跟进: { type: "PHONE", content: "电话聊了需求", occurredAt: "2026-10-20 10:00", 下一步时间 } });
     const 项目的 = async (r: Awaited<ReturnType<typeof 建档向导>>) => r.ok ? (await prisma.project.findUniqueOrThrow({ where: { id: r.projectId } })).nextStepAt : "没建成";
 

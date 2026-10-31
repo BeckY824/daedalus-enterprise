@@ -98,11 +98,13 @@ const 天数值 = (v: unknown): string | null => (v === null || v === undefined 
  */
 export function 挡时限改动(
   范围: 时限范围,
-  现在: { 开: boolean; 节点天数: Record<string, number> },
-  改: { 开?: unknown; 节点天数?: Record<string, unknown> | null } | null | undefined,
+  现在: { 开: boolean; 节点天数: Record<string, number>; 起算日?: string | null },
+  改: { 开?: unknown; 节点天数?: Record<string, unknown> | null; 起算日?: unknown } | null | undefined,
 ): string | null {
   if (范围 === "全部" || !改 || typeof 改 !== "object") return null;
   if (改.开 !== undefined && 改.开 !== 现在.开) return "超时回收的开关只有老板、总管理员能动";
+  // 起算日（10-31）：和开关一样只给全权的人；"" 和 null 都算「不设」
+  if (改.起算日 !== undefined && (改.起算日 || null) !== (现在.起算日 ?? null)) return "超时回收的起算日只有老板、总管理员能动";
   if (!改.节点天数 || typeof 改.节点天数 !== "object") return null;
   // 交来的整张表可能还带着旧节点名 key（改名前打开的页面）：两边都换成这套的新名再比
   const 交来 = 按本套名(改.节点天数, 企业版字典);

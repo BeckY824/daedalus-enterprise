@@ -24,7 +24,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 超时回收日, 超时起点, 节点超时天数 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
 import { dayjs } from "@/lib/utils";
@@ -557,7 +557,7 @@ export async function 改组织规则(改: 规则改动) {
       : 改.节点推进 !== undefined
       ? 推.开 ? `组织规则：进程推进开，${Object.keys(推.必填).length} 个进程配了必填` : "组织规则：进程推进关"
       : 改.超时回收 !== undefined
-      ? t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长` : "组织规则：超时回收关"
+      ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
       : 改.公海?.多项目客户 !== undefined
       ? `组织规则：多项目客户公海走法 ${g.多项目客户}`
       : g.持有上限开 ? `组织规则：项目持有上限开，默认 ${是不限(g.默认上限) ? "不限" : `${g.默认上限} 个`}，单独设了 ${Object.keys(g.每人上限).length} 人` : "组织规则：项目持有上限关";
@@ -633,7 +633,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
       const 起点 = 超时起点(p.createdAt, p.logs[0]?.at, c?.lastFollowAt);
       const 天数 = 超时回收日(规则, p, 起点, 字典) ? 节点超时天数(规则, p.node, 字典) : null;
-      if (天数) 回收预演 = { 起点日: dayjs(起点).format("YYYY-MM-DD"), 天数 };
+      if (天数) 回收预演 = { 起点日: 计时起点(规则, 起点).format("YYYY-MM-DD"), 天数 };  // 起算日之前不算（10-31）
     }
     return { ok: true, 能记: true, phase: p.phase, 要下一步, 回收预演, contactId: p.contactId ?? null };
   } catch (e) { return 不在了(e); }

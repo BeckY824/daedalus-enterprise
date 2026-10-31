@@ -109,12 +109,12 @@ describe("改组织规则（企业版持有上限）", () => {
 
   it("超时回收：保存前先看会收回几个，保存后当场收回、返回个数", async () => {
     const p = await prisma.project.update({ where: { id: 项目id }, data: { createdAt: new Date(Date.now() - 10 * 86400_000) } });
-    const 改 = { 超时回收: { 开: true, 节点天数: { [p.node]: 3 } } };
+    const 改 = { 超时回收: { 开: true, 起算日: null, 节点天数: { [p.node]: 3 } } };
     expect(await 预览超时回收(改)).toEqual({ ok: true, 个数: 1, 团队: false });
     expect((await 读组织规则()).超时回收.开).toBe(false);
     expect(await 改组织规则(改)).toEqual({ ok: true, 收回: 1 });
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).pooledAt).not.toBeNull();
-    expect((await 记录()).map((r) => r.summary)).toContain("组织规则：超时回收开，设了 1 个进程的处理时长");
+    expect((await 记录()).map((r) => r.summary)).toContain("组织规则：超时回收开，设了 1 个进程的处理时长，起算日 不设");
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
     expect(await 预览超时回收(改)).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
   });

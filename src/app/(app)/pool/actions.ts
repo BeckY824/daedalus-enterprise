@@ -109,7 +109,7 @@ export async function 分配公海项目(ids: string[], userId: string): Promise
       if (超) return 超;
       await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
       await 记转让(tx, p, me.id, p.ownerId, 给.id, "pool-claim");
-      await 单项目客户跟着领(tx, p.customerId, 给.id);
+      await 单项目客户跟着领(tx, p.customerId, 给.id, me.id);
       return null;
     }));
     if (原因) 没分到.push({ id, 原因 });
