@@ -56,6 +56,9 @@ describe("按阶段、进程筛", () => {
     expect(await 名们({ node: "线索流失" })).toEqual(["流失"]);
     expect(await 名们({ phase: "商机", node: "丢单" })).toEqual(["丢"]);
     expect(await 名们({ phase: "订单", node: "成功交付" })).toEqual(["交付"]);
+    // 企业版 10-31 改名：新名筛得出库里存旧名的
+    expect(await 名们({ phase: "订单", node: "交付结清" })).toEqual(["交付"]);
+    expect(await 名们({ node: "痛点挖掘" })).toEqual(["需求"]);
     // 阶段、进程对不上：空
     expect(await 名们({ phase: "订单", node: "潜客培育" })).toEqual([]);
   });
@@ -66,6 +69,9 @@ describe("按阶段、进程筛", () => {
     const r = await 读项目列表(老板, { phase: "瞎写", node: "也瞎写" });
     expect(r.行.length).toBe(7);
     expect(r.filters).toMatchObject({ phase: "", node: "" });
-    expect((await 读项目列表(老板, { phase: "商机", node: "明确需求" })).filters).toMatchObject({ phase: "商机", node: "明确需求" });
+    expect((await 读项目列表(老板, { phase: "商机", node: "痛点挖掘" })).filters).toMatchObject({ phase: "商机", node: "痛点挖掘" });
+    // 旧名（老链接）认成新名回给界面
+    expect((await 读项目列表(老板, { phase: "商机", node: "明确需求" })).filters).toMatchObject({ phase: "商机", node: "痛点挖掘" });
+    expect((await 读项目列表(老板, { node: "成功交付" })).filters).toMatchObject({ node: "交付结清" });
   });
 });

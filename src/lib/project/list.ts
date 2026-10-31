@@ -13,7 +13,8 @@ import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 import { 认首页卡, 首页卡条件, 即将逾期 } from "./home-cards";
 import { 首页卡的人 } from "./home-cards-db";
-import { 字典of, 阶段与进程, 阶段们, 结局们, type 阶段字典 } from "./stage-dict";
+import { 字典of, 阶段与进程, 阶段们, 结局们of, 同名们, 本套名, type 阶段字典 } from "./stage-dict";
+import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
 import { 待我复核的 } from "./lead-verify";
 
@@ -23,19 +24,21 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
 /**
  * 按阶段、进程筛（10-30 用户：「项目页面没有关于进程，阶段的筛选选项」）。和列表上的显示同一套认法（阶段与进程）：
  * 有结局的按结局认阶段（线索流失归线索、丢单归商机…），进程选结局 = 筛这个结局，选节点 = 停在这个节点、还没结局的。
- * 认不出的值当没筛。
+ * 认不出的值当没筛。库里存着旧节点名 / 旧结局的（企业版 10-31 改名）新旧名一起筛（同名们）。
  */
 export function 阶段进程条件(sp: { phase?: string; node?: string }, 字典: 阶段字典): { 阶段: 阶段 | ""; 进程: string; where: Prisma.ProjectWhereInput[] } {
   const 阶段 = (阶段们 as readonly string[]).includes(sp.phase ?? "") ? (sp.phase as 阶段) : "";
-  const 是结局 = (结局们 as readonly string[]).includes(sp.node ?? "");
-  const 是节点 = 阶段们.some((s) => 字典.节点们[s].includes(sp.node ?? ""));
-  const 进程 = 是结局 || 是节点 ? (sp.node as string) : "";
+  // 传旧名（老链接、老书签）先换成这套的新名再认
+  const 名 = sp.node ? 本套名(sp.node, 字典) : "";
+  const 是结局 = (结局们of(字典) as readonly string[]).includes(名);
+  const 是节点 = 阶段们.some((s) => 字典.节点们[s].includes(名));
+  const 进程 = 是结局 || 是节点 ? 名 : "";
   const where: Prisma.ProjectWhereInput[] = [];
   if (阶段) {
-    const 归它的结局 = 字典.出口们[阶段].flatMap((o) => (o.结局 ? [o.结局] : []));
+    const 归它的结局 = 字典.出口们[阶段].flatMap((o) => (o.结局 ? 同名们(o.结局) : []));
     where.push({ OR: [{ phase: 阶段, result: null }, { result: { in: 归它的结局 } }] });
   }
-  if (进程) where.push(是结局 ? { result: 进程 } : { node: 进程, result: null });
+  if (进程) where.push(是结局 ? { result: { in: 同名们(进程) } } : { node: { in: 同名们(进程) }, result: null });
   return { 阶段, 进程, where };
 }
 
@@ -66,7 +69,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 卡 = 规则 ? 认首页卡(sp.f) : "";
   // 点卡进来的，和卡上的数同一圈人（首页卡的人：业务员只看自己，上级看自己 + 下属，老板全看），数对得上
   const 卡的人 = 卡 ? await 首页卡的人(me) : undefined;
-  const 阶进 = 阶段进程条件(sp, 字典of(企));
+  const 字典 = 字典of(企);
+  const 阶进 = 阶段进程条件(sp, 字典);
   const 并且 = [
     ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的人 ? [{ ownerId: { in: [...卡的人] } }] : [])] : []),
     ...阶进.where,
@@ -110,7 +114,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p), 今)))).map((p) => ({
     id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null,
     ownerId: p.ownerId, ownerName: 名字.get(p.ownerId) ?? "已不在的成员",
-    phase: p.phase, node: p.node, result: p.result, exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
+    // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
+    ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源

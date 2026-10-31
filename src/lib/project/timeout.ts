@@ -12,7 +12,7 @@
  */
 import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
-import { 团队版字典, type 阶段字典 } from "./stage-dict";
+import { 团队版字典, 同名们, type 阶段字典 } from "./stage-dict";
 
 export const 超时理由 = "超过进程处理时长没跟进，自动回到项目公海";
 /** 企业版手动放回公海时选的「回收原因」（字典）记成「回收原因：X」（10-27） */
@@ -40,9 +40,10 @@ export function 超时起点(...时间: (Date | string | null | undefined)[]): D
     .reduce((a, b) => (b > a ? b : a));
 }
 
-/** 这个节点按几天收：设了按设的，没设按字典默认（团队版 null = 不收） */
+/** 这个节点按几天收：设了按设的，没设按字典默认（团队版 null = 不收）。项目存的旧名、配置里的旧 key 都认（企业版 10-31 改名） */
 export function 节点超时天数(规则: 组织规则, node: string, 字典: 阶段字典 = 团队版字典): number | null {
-  return 规则.超时回收.节点天数[node] || 字典.默认超时天数 || null;
+  const 们 = 规则.超时回收.节点天数;
+  return 们[node] || 同名们(node).map((n) => 们[n]).find(Boolean) || 字典.默认超时天数 || null;
 }
 
 /** 哪天会被收回（YYYY-MM-DD）；不会被收回 = null。字典不传 = 团队版（没设天数不收） */

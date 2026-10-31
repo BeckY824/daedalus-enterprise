@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { 成员选项 } from "@/lib/utils";
-import { 阶段们, 节点们, 结局们, type 阶段 } from "@/lib/project/nodes";
+import { 阶段们, 字典of, 本套位置, 结局们of, 是交付, type 阶段, type 阶段字典 } from "@/lib/project/nodes";
+import { 企业版 } from "@/lib/enterprise/switch";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
 
@@ -9,6 +10,7 @@ import { 项目漏斗of, type 漏斗格 } from "./funnel";
  *
  * 看得到哪些项目不在这里管：prisma 外面那层（lib/team-scope）已经按人限定了 project 的查询。
  * 金额只算本位币，不换汇（和签约复盘同一个理由：折出来的数说不清按哪天的汇率）；外币的另外数一下告诉人。
+ * 库里存着旧节点名 / 旧结局的（10-31 企业版改名）先过 本套位置 对到这套的新名再数。
  */
 
 export type 节点格 = { phase: 阶段; node: string; count: number; amount: number };
@@ -41,9 +43,9 @@ export type 项目现在 = {
  */
 export type 线索节点格 = { node: string; count: number; 流失: number; 判无效: number; 退回公海: number };
 type 线索行 = { phase: string; node: string; result: string | null; pooledAt?: Date | null; 判无效?: boolean };
-export function 线索节点of(rows: readonly 线索行[]): 线索节点格[] {
-  const 在线索 = rows.filter((p) => p.phase === "线索");
-  return 节点们.线索.map((node) => {
+export function 线索节点of(rows: readonly 线索行[], 字典: 阶段字典 = 字典of(false)): 线索节点格[] {
+  const 在线索 = rows.filter((p) => p.phase === "线索").map((p) => 本套位置(p, 字典));
+  return 字典.节点们.线索.map((node) => {
     const 这里 = 在线索.filter((p) => p.node === node);
     const 死了 = 这里.filter((p) => p.result === "线索流失");
     return {
@@ -69,17 +71,20 @@ const 判无效了 = (v: { finalResult: string | null } | null) => v?.finalResul
  * 只看（P15 复盘页按成员看）：只数这个人负责的；公海里的不算在谁头上，按人看时一并不数（同下面「按人」的口径）
  */
 export async function 项目现在(本位币: string, 只看?: 只看谁): Promise<项目现在> {
-  const 全部行 = await prisma.project.findMany({
-    where: 只看 === undefined ? undefined : { ownerId: 负责人是(只看) },
-    select: { phase: true, node: true, result: true, amount: true, currency: true, ownerId: true, pooledAt: true, entLeadVerify: { select: { finalResult: true } } },
-  });
+  const 字典 = 字典of(企业版());
+  const 全部行 = (
+    await prisma.project.findMany({
+      where: 只看 === undefined ? undefined : { ownerId: 负责人是(只看) },
+      select: { phase: true, node: true, result: true, amount: true, currency: true, ownerId: true, pooledAt: true, entLeadVerify: { select: { finalResult: true } } },
+    })
+  ).map((p) => 本套位置(p, 字典));
   // 按人看时公海里的不算在谁头上；只有线索瀑布要它们（数「退回公海」流出去几个）
   const rows = 只看 === undefined ? 全部行 : 全部行.filter((p) => !p.pooledAt);
   const 进行中 = rows.filter((p) => !p.result);
   const 钱 = (p: { amount: number; currency: string }) => (p.currency === 本位币 ? p.amount : 0);
 
   const 节点 = 阶段们.flatMap((phase) =>
-    节点们[phase].map((node) => {
+    字典.节点们[phase].map((node) => {
       const 这些 = 进行中.filter((p) => p.phase === phase && p.node === node);
       return { phase, node, count: 这些.length, amount: 这些.reduce((s, p) => s + 钱(p), 0) };
     }),
@@ -103,12 +108,12 @@ export async function 项目现在(本位币: string, 只看?: 只看谁): Promi
   return {
     阶段,
     节点,
-    结局: 结局们.map((result) => ({ result, count: rows.filter((p) => p.result === result).length })),
+    结局: 结局们of(字典).map((result) => ({ result, count: rows.filter((p) => p.result === result).length })),
     公海: 进行中.filter((p) => p.pooledAt).length,
     按人: (await 起名(人)).sort((a, b) => b.商机金额 + b.订单金额 - (a.商机金额 + a.订单金额) || b.线索 + b.商机 + b.订单 - (a.线索 + a.商机 + a.订单)),
     外币: 进行中.filter((p) => p.currency !== 本位币 && p.amount > 0).length,
     漏斗: 项目漏斗of(rows),
-    线索节点: 线索节点of(全部行.map((p) => ({ ...p, 判无效: 判无效了(p.entLeadVerify) }))),
+    线索节点: 线索节点of(全部行.map((p) => ({ ...p, 判无效: 判无效了(p.entLeadVerify) })), 字典),
     线索转商机: 线索转商机of(rows),
   };
 }
@@ -140,9 +145,11 @@ export type 项目一段 = {
  *   新建：项目建在这一段（createdAt）
  *   转商机 / 转订单：这一段里有一次从线索进商机 / 从商机进订单的节点变更（一个项目只数一次，来回改不重复算）
  *   成功交付 / 线索流失 / 丢单 / 异常状态：现在是这个结局、结束在这一段（closedAt）——后来又恢复了的不算
+ *     「成功交付」这一格 = 订单走成的（企业版叫 交付结清，库里旧名也认，见 是交付），键名不改
  * 按人拆按项目现在的负责人，不是当时的。只看（P15）也按现在的负责人筛。
  */
 export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币: string, 只看?: 只看谁): Promise<项目一段> {
+  const 字典 = 字典of(企业版());
   const 段 = { gte: from, lte: to };
   // 同 项目现在：按人看时公海里的不算在谁头上（线索瀑布除外，它要数退回公海的）
   const 负责 = 只看 === undefined ? {} : { ownerId: 负责人是(只看) };
@@ -192,7 +199,7 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
   for (const k of 数过) 合计[k.startsWith("转商机") ? "转商机" : "转订单"]++;
   let 外币 = 0;
   for (const p of 结) {
-    const r = p.result as "成功交付" | "线索流失" | "丢单" | "异常状态";
+    const r = (是交付(p.result) ? "成功交付" : p.result) as "成功交付" | "线索流失" | "丢单" | "异常状态";
     if (!(r in 合计)) continue;
     合计[r]++;
     if (r === "成功交付") {
@@ -208,7 +215,7 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
 
   const 成交了 = new Set<string>([
     ...[...数过].filter((k) => k.startsWith("转订单:")).map((k) => k.slice("转订单:".length)),
-    ...结.filter((p) => p.result === "成功交付").map((p) => p.id),
+    ...结.filter((p) => 是交付(p.result)).map((p) => p.id),
   ]);
 
   return {
@@ -218,7 +225,7 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
     按人: (await 起名(人)).sort((a, b) => b.交付金额 - a.交付金额 || b.成功交付 - a.成功交付 || b.转订单 - a.转订单 || b.转商机 - a.转商机 || b.新建 - a.新建),
     外币,
     漏斗: 项目漏斗of(新),
-    线索节点: 线索节点of(新全.map((p) => ({ ...p, 判无效: 判无效了(p.entLeadVerify) }))),
+    线索节点: 线索节点of(新全.map((p) => ({ ...p, 判无效: 判无效了(p.entLeadVerify) })), 字典),
     线索转商机: 线索转商机of(新),
   };
 }

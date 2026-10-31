@@ -16,10 +16,12 @@
  *     恢复 = 再改到某个节点（结局清掉），同样守上面的前后规矩
  */
 
-import { 阶段们, 结局们, 团队版字典, 结局叫法, 本套节点名, type 阶段, type 结局, type 阶段字典 } from "./stage-dict";
+import { 阶段们, 结局们, 团队版字典, 结局叫法, 本套名, 结局们of, 是交付, type 阶段, type 结局, type 阶段字典 } from "./stage-dict";
 
 export { 阶段们, 结局们, type 阶段, type 结局 };
-export { 团队版字典, 企业版字典, 字典of, 结局叫法, 本套节点名, type 阶段字典 } from "./stage-dict";
+export {
+  团队版字典, 企业版字典, 字典of, 结局叫法, 本套节点名, 本套名, 同名们, 是交付, 结局们of, 企业版旧名换新名, type 阶段字典,
+} from "./stage-dict";
 
 /** 团队版的节点（开关关着一律用这套）；企业版的在 stage-dict.ts 企业版字典，按 字典of(企业版()) 选 */
 export const 节点们: Record<阶段, readonly string[]> = 团队版字典.节点们;
@@ -36,26 +38,28 @@ export const 第一个节点 = { phase: "线索" as 阶段, node: 节点们.线�
 export type 位置 = { phase: string; node: string; result?: string | null };
 
 /**
- * 库里存着旧节点名的项目（字典 改名 里有的）：按 改名 对到这套的名字再比前后。
+ * 库里存着旧节点名 / 旧结局的项目（字典 改名 里有的，企业版 10-31 改名）：按 改名 对到这套的名字再比前后、再写库。
  * 认得的、对不上的都原样
  */
 export function 本套位置<T extends 位置>(p: T, 字典: 阶段字典 = 团队版字典): T {
-  if (!是阶段(p.phase) || 字典.节点们[p.phase].includes(p.node)) return p;
-  const 新 = 本套节点名(p.node, 字典);
-  return 新 === p.node ? p : { ...p, node: 新 };
+  const 节 = 是阶段(p.phase) && !字典.节点们[p.phase].includes(p.node) ? 本套名(p.node, 字典) : p.node;
+  const 果 = p.result ? 本套名(p.result, 字典) : p.result;
+  return 节 === p.node && 果 === p.result ? p : { ...p, node: 节, result: 果 };
 }
 
 export function 是阶段(v: unknown): v is 阶段 {
   return typeof v === "string" && (阶段们 as readonly string[]).includes(v);
 }
 
+/** 库里能存的结局：团队版四个 + 企业版的 交付结清 */
 export function 是结局(v: unknown): v is 结局 {
-  return typeof v === "string" && (结局们 as readonly string[]).includes(v);
+  return typeof v === "string" && ((结局们 as readonly string[]).includes(v) || v === "交付结清");
 }
 
 /** 这个结局属于哪个阶段（结局只能在自己的阶段里点）：看字典里哪个阶段的出口是它 */
 export function 结局所在阶段(r: 结局, 字典: 阶段字典 = 团队版字典): 阶段 {
-  return 阶段们.find((s) => 字典.出口们[s].some((o) => o.结局 === r)) ?? "订单";
+  const 新 = 本套名(r, 字典);
+  return 阶段们.find((s) => 字典.出口们[s].some((o) => o.结局 === 新)) ?? "订单";
 }
 
 /** 异常备注、没成原因最长多少字 */
@@ -103,7 +107,7 @@ export function 改节点问题(
   }
   const r = 到.result ?? null;
   if (r == null) return null;
-  if (!是结局(r)) return `没有「${r}」这个结局`;
+  if (!是结局(r) || !结局们of(字典).includes(r)) return `没有「${r}」这个结局`;
   // 每个阶段只能点自己出口里的结局（线索：线索流失，商机：丢单，订单：成功交付 / 异常状态；已转商机、赢单是进下一阶段，不是结局）
   if (结局所在阶段(r, 字典) !== 到.phase) return `「${结局叫法(r, 字典)}」只能在${结局所在阶段(r, 字典)}阶段点`;
   if (企业 && 要写原因(r)) {
@@ -111,9 +115,9 @@ export function 改节点问题(
     if (!原因) return `点「${结局叫法(r, 字典)}」要写一句原因`;
     if (原因.length > 原因上限) return `原因请控制在 ${原因上限} 字以内`;
   }
-  if (r === "成功交付") {
+  if (是交付(r)) {
     const 差 = 交付还差(项目);
-    if (差.length) return `还差${差.join("、")}，勾上才能点成功交付`;
+    if (差.length) return `还差${差.join("、")}，勾上才能点${结局叫法(r, 字典)}`;
   }
   if (r === "异常状态") {
     // 10-23 定：异常只在订单阶段有，线索、商机阶段的项目（哪怕下一步就进订单）都不能直接进异常
@@ -139,12 +143,13 @@ export function 下一步(当前: 位置, 字典: 阶段字典 = 团队版字典
   return 下阶段 ? { phase: 下阶段, node: 字典.节点们[下阶段][0] } : null;
 }
 
-/** 看板分哪几列：三个阶段里还在走的（异常状态留在订单列、标红，等人处理），加上成功交付、没成两列 */
+/** 看板分哪几列：三个阶段里还在走的（异常状态留在订单列、标红，等人处理），加上成功交付、没成两列。
+ *  列的 key 两套一样叫「成功交付」，企业版显示成 交付结清（结局叫法） */
 export const 看板列们 = ["线索", "商机", "订单", "成功交付", "没成"] as const;
 export type 看板列 = (typeof 看板列们)[number];
 
 export function 看板列(p: 位置): 看板列 {
-  if (p.result === "成功交付") return "成功交付";
+  if (是交付(p.result)) return "成功交付";
   if (p.result === "线索流失" || p.result === "丢单") return "没成";
   return 是阶段(p.phase) ? p.phase : "线索";
 }

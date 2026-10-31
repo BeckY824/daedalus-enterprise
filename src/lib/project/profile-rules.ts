@@ -101,7 +101,7 @@ export type 项目成交钱 = {
   depositCurrency: string | null;
 };
 export const 成交钱键 = ["dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"] as const;
-/** 成交需求最多几个字：和项目备注一个上限 */
+/** 需求描述（原成交需求，列 dealDemand）最多几个字：和项目备注一个上限 */
 export const 成交需求上限 = 500;
 
 /** 金额一格：空 = null；要是不小于 0 的数（界面交的是数字；导入那边先用 认金额 认好再来） */
@@ -124,9 +124,9 @@ export function 项目成交钱改成(
 ): { ok: true; 值: 项目成交钱 } | { ok: false; error: string } {
   let dealDemand = 原.dealDemand;
   if (patch.dealDemand !== undefined) {
-    if (patch.dealDemand !== null && typeof patch.dealDemand !== "string") return { ok: false, error: "成交需求要写文字" };
+    if (patch.dealDemand !== null && typeof patch.dealDemand !== "string") return { ok: false, error: "需求描述要写文字" };
     const t = (patch.dealDemand ?? "").trim();
-    if ([...t].length > 成交需求上限) return { ok: false, error: `成交需求最多 ${成交需求上限} 个字` };
+    if ([...t].length > 成交需求上限) return { ok: false, error: `需求描述最多 ${成交需求上限} 个字` };
     dealDemand = t || null;
   }
   const 一项 = (金额键: "contractAmount" | "depositAmount", 币种键: "contractCurrency" | "depositCurrency", 名: string) => {
