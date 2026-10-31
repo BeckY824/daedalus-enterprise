@@ -2,10 +2,12 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 import { useState } from "react";
-import { Modal, Input, Select, Segmented, Button, Space, App, Typography } from "antd";
+import { Modal, Input, Segmented, Button, Space, App, Typography } from "antd";
 import type { Dayjs } from "dayjs";
 import { dayjs } from "@/lib/utils";
 import { 跟进类型们, FOLLOW_TYPE_MAP } from "@/lib/constants";
+import FollowMethodSelect from "@/components/FollowMethodSelect";
+import { 对得上的方式 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸精简 } from "@/lib/business-config";
 import { hasVisibleText } from "@/lib/form-validation";
@@ -124,6 +126,8 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
   const 外贸 = 外贸精简(b);
   const { message } = App.useApp();
   const [类型, set类型] = useState(() => 默认完成类型(plan.method, 外贸, plan.有WhatsApp));
+  // 企业版沟通方式（10-31）：计划上写的正好是字典里的一种、又对得上类型就先选它
+  const [方式, set方式] = useState<string | null>(() => 对得上的方式(类型, plan.method) ?? null);
   const [字, set字] = useState("");
   const [下次, set下次] = useState<下次>("7");
   const [日子, set日子] = useState<Dayjs | null>(() => dayjs().add(7, "day"));
@@ -142,13 +146,14 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
       const r = await saveFollowUp({
         customerId: plan.customerId,
         type: 类型,
+        method: 对得上的方式(类型, 方式),
         title: "",
         content: 内容,
         status: "已完成",
         occurredAt: new Date().toISOString(),
         附带: {
           tasks: [],
-          ...(下次日 ? { plan: { subject: 下次主题(内容), plannedAt: 下次日, method: FOLLOW_TYPE_MAP[类型]?.label ?? "电话沟通" } } : {}),
+          ...(下次日 ? { plan: { subject: 下次主题(内容), plannedAt: 下次日, method: 对得上的方式(类型, 方式) ?? FOLLOW_TYPE_MAP[类型]?.label ?? "电话沟通" } } : {}),
           完成计划: plan.id,
         },
       }).catch(() => ({ ok: false as const, error: "没保存上，请稍后重试" }));
@@ -189,12 +194,13 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
           </Typography.Paragraph>
           <div className="done-plan-row">
             <span className="done-plan-k">方式</span>
-            <Select
+            <FollowMethodSelect
               aria-label="跟进方式"
               style={{ width: 180 }}
-              value={类型}
-              onChange={set类型}
-              options={跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND").map((t) => ({ value: t.value, label: t.label }))}
+              type={类型}
+              method={方式}
+              类型们={跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND")}
+              onChange={(v) => { set类型(v.type); set方式(v.method); }}
             />
           </div>
           <div className="done-plan-row">

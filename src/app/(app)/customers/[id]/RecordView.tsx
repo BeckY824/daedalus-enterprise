@@ -1606,7 +1606,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 不�
       </div>
       <div className="rec-tl-body">
         <div className="rec-tl-head">
-          <span className="rec-tl-type">{meta.label}</span>
+          <span className="rec-tl-type">{f.method || meta.label}</span>
           {f.title?.trim() && <span className="rec-tl-title" title={f.title}>· {f.title}</span>}
           {f.opportunity && !不挂商机 && <RowLink href={`/opportunities?opportunity=${encodeURIComponent(f.opportunity.id)}`} className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</RowLink>}
           {/* 企业版沟通记录（P14 第 6 条）：每条标出是哪个项目的，点了去项目详情的「沟通」卡记 */}

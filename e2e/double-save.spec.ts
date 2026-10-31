@@ -100,7 +100,9 @@ test("记录跟进（带截止时间、连带建待办）：连点两次保存 �
   await page.goto(企业版 ? `/follow-ups?customer=${客户id}` : `/customers/${客户id}`);
   const 框 = await 打开(page, /^(plus )?记一条沟通$/, "记一条沟通");
   // 换成「跟进任务」才有截止时间；填了截止时间、状态没做完，保存时顺带建一条待办
+  // 企业版下拉里先列 19 种沟通方式、待办类排在后面，虚拟列表不渲染屏外的项：先打字筛出来再点
   await 框.getByLabel("沟通方式").click();
+  if (企业版) await 框.getByLabel("沟通方式").pressSequentially("跟进任务");
   await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-content", { hasText: "跟进任务" }).click();
   // 还没做完（待处理）的才连带建待办，见 saveFollowUp
   await 框.getByLabel("状态").click();

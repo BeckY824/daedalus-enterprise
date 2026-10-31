@@ -5,6 +5,8 @@ import type { CustomerRow } from "../CustomerForm";
 export type FollowUpRow = {
   id: string;
   type: string;
+  /** 企业版沟通方式（10-31），没有就按类型显示 */
+  method?: string | null;
   title: string;
   content: string;
   status: string;

@@ -17,6 +17,7 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 同事的客户, 只读话 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 企业版字典, 节点序号 } from "@/lib/project/nodes";
 import { 有效线索节点, 缺有效沟通, 记沟通标记 } from "@/lib/project/stage-gates";
@@ -64,7 +65,9 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 项目 = 规整项目(输入.项目, me.id);
     if ("error" in 项目) return { ok: false, error: 项目.error };
     const 规则 = await 生效组织规则();
-    const 跟进 = 规整沟通(输入.跟进, { 要下一步: 规则.超时回收.开, 叫法: "首条" });
+    const 认 = await 认跟进方式(输入.跟进);
+    if ("error" in 认) return { ok: false, error: 认.error };
+    const 跟进 = 规整沟通(认, { 要下一步: 规则.超时回收.开, 叫法: "首条" });
     if ("error" in 跟进) return { ok: false, error: 跟进.error };
     const 落 = 认节点和回复(输入.跟进);
     if ("error" in 落) return { ok: false, error: 落.error };
@@ -88,7 +91,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       });
       await tx.projectNodeLog.create({ data: { projectId: p.id, userId: me.id, toPhase: "线索", toNode: 落.节点 } });
       const f = await tx.followUp.create({
-        data: { type: 跟进.type, content: 跟进.content, occurredAt: 跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人?.id ?? null, ownerId: me.id },
+        data: { type: 跟进.type, method: 跟进.method, content: 跟进.content, occurredAt: 跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人?.id ?? null, ownerId: me.id },
       });
       await tx.followUpProject.create({ data: { followUpId: f.id, projectId: p.id, node: 落.节点 } });
       await 记沟通编号(tx, f.id, p.id, 跟进.nextStepAt);

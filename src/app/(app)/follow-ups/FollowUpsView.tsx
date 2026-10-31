@@ -23,6 +23,7 @@ const 无订阅 = () => () => {};
 type Row = {
   id: string;
   type: string;
+  method?: string | null;
   title: string;
   content: string;
   status: string;
@@ -101,7 +102,7 @@ export default function FollowUpsView({
     {
       // 类型三样齐全：颜色、图标、文字。只有颜色的话，色弱的人和扫得快的人都认不出来
       title: "类型", key: "type", dataIndex: "type", width: 104, 常驻: true, // 104：「WhatsApp」带图标要 101，1024 宽+AI 栏时 96 伸出 5px
-      render: (v) => <FollowTypeCell type={v} />,
+      render: (v, r) => <FollowTypeCell type={v} method={r.method} />,
     },
     {
       // 这一页的正文就是「聊了什么」，所以它是最宽的一列。

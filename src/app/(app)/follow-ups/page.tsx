@@ -71,6 +71,7 @@ export default async function FollowUpsPage({
       rows={rows.map((f) => ({
         id: f.id,
         type: f.type,
+        method: f.method,
         title: f.title,
         content: f.content,
         status: f.status,

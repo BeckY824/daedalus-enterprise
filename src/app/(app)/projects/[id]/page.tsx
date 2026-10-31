@@ -58,7 +58,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       exceptionCategory: { select: { name: true } },
       logs: { orderBy: { at: "desc" }, take: 200 },
       members: { orderBy: { createdAt: "asc" } },
-      followUps: { include: { followUp: { select: { id: true, type: true, content: true, occurredAt: true, ownerId: true, updatedAt: true } } } },
+      followUps: { include: { followUp: { select: { id: true, type: true, method: true, content: true, occurredAt: true, ownerId: true, updatedAt: true } } } },
       _count: { select: { logs: true } },
     },
   });
@@ -190,7 +190,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       .map((f) => {
         const 编 = 编号.get(f.followUp.id);
         return {
-          id: f.followUp.id, type: f.followUp.type, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
+          id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
           ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
         };
       })
