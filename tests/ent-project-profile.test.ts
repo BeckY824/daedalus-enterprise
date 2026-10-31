@@ -7,7 +7,8 @@
  *   - 读 / 存产品需求：存 JSON 数组、去重保序、空数组存 null；坏数据读成 []
  *   - 改项目画像（真库 + 企业字典）：单选只认启用着的项；已存的项停用了，不改它照留、别的项照改；多选同理；
  *     负责人、老板能改，同事、公海里的改不了；没变不写；不是企业版不认（所在地不再是画像的一项，传了不认）
- *   - 需求状态、产品需求 10-30 换成客户原表的取值：老库第一次读时按序号改名，需求状态多出的第五项停用，产品需求补齐八项；项目上存的原值不动
+ *   - 需求状态、产品需求 10-30 换成客户原表的取值：老库第一次读时按序号改名，产品需求补齐八项；项目上存的原值不动
+ *     需求状态多出的第五项（订单交付）10-31 起：没项目在用就删，有项目在用就停用留着；上一版已经停用过的库也删
  *   - 同天：价格感知照原表换顺序；分配方式「自拓自持」改叫「个人自拓」
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -150,19 +151,40 @@ describe("需求状态、产品需求换成原表取值（10-30）", () => {
     expect((await 看("projProduct")).map((x) => x[1])).toEqual(["常规标品", "硬件标品", "内容标品", "硬件定制", "内容定制", "软件定制", "区域规划", "全案设计"]);
   });
 
-  it("需求状态老库：前四项按序号改名，订单交付停用不删，自己加的不动；再读不变", async () => {
+  const 改名后四项 = [
+    ["dict-projDemand-0", "表面触达", true],
+    ["dict-projDemand-1", "方向明晰", true],
+    ["dict-projDemand-2", "明确需求", true],
+    ["dict-projDemand-3", "共识痛点", true],
+  ];
+  const 项目存着 = async (demandStatus: string) => {
+    const u = await prisma.user.create({ data: { email: "p11-demand", name: "p11-demand", title: "", role: "SALES", password: "x" } });
+    const c = await prisma.customer.create({ data: { name: "QA-需求状态客户", phone: "13800001088", salesOwnerId: u.id } });
+    return (await prisma.project.create({ data: { name: "QA-需求状态项目", customerId: c.id, ownerId: u.id, creatorId: u.id, demandStatus } })).id;
+  };
+
+  it("需求状态老库：前四项按序号改名，没项目在用的订单交付删掉，自己加的不动；再读不变", async () => {
     await 老库("projDemand", ["潜客培育", "线索验证", "线索推进", "商机跟进", "订单交付"]);
     await prisma.entDictItem.create({ data: { kind: "projDemand", name: "自己加的", sort: 5 } });
-    const 期望 = [
-      ["dict-projDemand-0", "表面触达", true],
-      ["dict-projDemand-1", "方向明晰", true],
-      ["dict-projDemand-2", "明确需求", true],
-      ["dict-projDemand-3", "共识痛点", true],
-      ["dict-projDemand-4", "订单交付", false],
-      [expect.any(String), "自己加的", true],
-    ];
+    const 期望 = [...改名后四项, [expect.any(String), "自己加的", true]];
     expect(await 看("projDemand")).toEqual(期望);
     expect(await 看("projDemand")).toEqual(期望);
+  });
+
+  it("需求状态老库：有项目存着订单交付的，停用留着、项目上的值不动", async () => {
+    await 老库("projDemand", ["潜客培育", "线索验证", "线索推进", "商机跟进", "订单交付"]);
+    const p = await 项目存着("订单交付");
+    expect(await 看("projDemand")).toEqual([...改名后四项, ["dict-projDemand-4", "订单交付", false]]);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).demandStatus).toBe("订单交付");
+  });
+
+  it("需求状态上一版已经改过名、订单交付停着的库：没项目在用也删掉；记下记号，再读不变", async () => {
+    await 老库("projDemand", ["表面触达", "方向明晰", "明确需求", "共识痛点", "订单交付"]);
+    await prisma.setting.create({ data: { key: "entDict.defaultRenamed.projDemand", value: "true" } });
+    await prisma.entDictItem.update({ where: { id: "dict-projDemand-4" }, data: { active: false } });
+    expect(await 看("projDemand")).toEqual(改名后四项);
+    expect(await prisma.setting.findUnique({ where: { key: "entDict.defaultDropped.projDemand" } })).not.toBeNull();
+    expect(await 看("projDemand")).toEqual(改名后四项);
   });
 
   it("需求状态老库：管理员改过名的第五项不停用", async () => {

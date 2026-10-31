@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 挡改设置 } from "./edit-perm";
-import { 字典种类们, 字典定义, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, 字典项释义, type 字典种类 } from "./dict-kinds";
+import { 字典种类们, 字典定义, 项目画像项, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, 字典项释义, type 字典种类 } from "./dict-kinds";
 import { 分配谁能用key, 规整分配谁能用, 能用分配方式, 谁能用的话, type 分配谁能用配置 } from "./assign-use";
 import { 读组织 } from "./org";
 
@@ -36,7 +36,10 @@ async function 建了就算(建: PromiseLike<unknown>) {
 export async function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
   const 停用 = 字典定义[kind].默认停用 ?? [];
   const { 默认顺序 } = 字典定义[kind];
-  if (字典定义[kind].旧默认) await 补换默认(kind, db);
+  if (字典定义[kind].旧默认) {
+    await 补换默认(kind, db);
+    await 删多出的旧默认(kind, db);
+  }
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
       await 建了就算(db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name) } }));
@@ -72,7 +75,7 @@ async function 补停用(kind: 字典种类, 停用: readonly string[], db: Pris
  * 默认项改过名（客户状态 10-28 整套换；客户类型 10-30 换两轮：先贸易商→中间贸易商等，再一般客户→暂不确认）：
  * 之前建好的库里，还叫某一轮旧名的默认项（固定 id、名字没被人改过）改成同序号的新名，每轮只改一次，按先后一轮一轮来
  * （很老的库先过第一轮再过第二轮）。新名已经被别的项占了的那一个跳过；人改过名、自己加的不动。每轮改完记一笔，以后不再碰。
- * 新默认比这一轮短（需求状态 10-30 五项变四项）：多出来的、还叫旧名的那几项停用，不删（项目上存着的原值照常显示）。
+ * 新默认比这一轮短（需求状态 10-30 五项变四项）：多出来的、还叫旧名的那几项先停用，删不删看下面 删多出的旧默认。
  * 第一轮的记号沿用原来的 key（已经改过的库不会重来），第二轮起 key 后面带轮次
  */
 const 换默认记号 = (kind: 字典种类, 轮: number) => (轮 === 0 ? `entDict.defaultRenamed.${kind}` : `entDict.defaultRenamed.${kind}.${轮 + 1}`);
@@ -97,6 +100,28 @@ async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
     }
     await 记下(记号们[轮], db);
   }
+}
+
+/**
+ * 新默认比旧默认短、多出来的那几项（需求状态的订单交付，10-31 用户：「清除掉需求状态里的订单交付，这个是没对齐的」）：
+ * 固定 id、还叫旧名（停没停用都算）的，没有项目在用就删掉；有项目存着这个值就留着停用（项目上照常显示原值）。
+ * 只看项目画像里的单选项（项目画像项），别的种类不删。做完记一笔，以后不再碰
+ */
+const 删旧默认记号 = (kind: 字典种类) => `entDict.defaultDropped.${kind}`;
+async function 删多出的旧默认(kind: 字典种类, db: Prisma.TransactionClient) {
+  const { 默认, 旧默认 = [] } = 字典定义[kind];
+  const 多出的 = 旧默认.flatMap((这轮) => 这轮.slice(默认.length).map((旧名, j) => [默认.length + j, 旧名] as const));
+  const 画像 = 项目画像项.find((x) => x.种类 === kind && !x.多选);
+  if (!多出的.length || !画像) return;
+  if (await db.setting.findUnique({ where: { key: 删旧默认记号(kind) } })) return;
+  for (const [序, 旧名] of 多出的) {
+    const 那项 = await db.entDictItem.findFirst({ where: { id: 默认id(kind, 序), kind, name: 旧名 }, select: { id: true } });
+    if (!那项) continue;
+    const 在用 = await db.project.count({ where: { [画像.键]: 旧名 } });
+    if (在用) await db.entDictItem.update({ where: { id: 那项.id }, data: { active: false } });
+    else await db.entDictItem.deleteMany({ where: { id: 那项.id } });
+  }
+  await 记下(删旧默认记号(kind), db);
 }
 
 /**

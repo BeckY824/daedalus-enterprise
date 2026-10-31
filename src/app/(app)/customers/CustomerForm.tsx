@@ -600,7 +600,7 @@ function CustomerFormInner({
               </Col>
               <Col span={8}>
                 {/* 分配方式（定稿 P5 第 30 条）：选项在设置 → 字典「分配方式」，能改能加；原值停用了也照样显示 */}
-                <Form.Item label="分配方式" name="assignWay">
+                <Form.Item label="客户分配" name="assignWay">
                   <Select allowClear placeholder="选填"
                     options={[...new Set([...分配方式选项, ...(editing?.assignWay ? [editing.assignWay] : [])])].map((s) => ({ value: s, label: s }))} />
                 </Form.Item>

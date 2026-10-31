@@ -435,7 +435,7 @@ export default function CustomersView({
         return 网址 ? <a href={网址} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={网址}>{官网短写(r.extra?.website)}</a> : 空;
       },
     },
-    { title: "分配方式", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => r.assignWay ?? 空 },
+    { title: "客户分配", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => r.assignWay ?? 空 },
   ];
 
   const 列表: 列<CustomerRow>[] = [

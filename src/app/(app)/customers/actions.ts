@@ -419,7 +419,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     }
     if (交.assignWay !== undefined) {
       const v = (交.assignWay ?? "").trim() || null;
-      if (v && v !== 改前?.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `分配方式「${v}」不在可选范围内，请刷新后重选` };
+      if (v && v !== 改前?.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `客户分配「${v}」不在可选范围内，请刷新后重选` };
       企资料.assignWay = v;
     }
     // 客户类型（迁移 092）：同分配方式，得是字典 custType 里启用中的一项（原值停用了原样交回也认）
@@ -1510,7 +1510,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   } else if (key === "assignWay") {
     const 原 = await prisma.customer.findUnique({ where: { id }, select: { assignWay: true } });
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
-    if (v && v !== 原.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `分配方式「${v}」不在可选范围内，请刷新后重选` };
+    if (v && v !== 原.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `客户分配「${v}」不在可选范围内，请刷新后重选` };
     data.assignWay = v || null;
   } else if (key === "customerType") {
     const 原 = await prisma.customer.findUnique({ where: { id }, select: { customerType: true } });
