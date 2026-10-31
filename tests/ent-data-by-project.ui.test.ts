@@ -122,10 +122,10 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：两个视图都不横
   }
 });
 
-it("复盘页带页签：「待办 | 数据」，数据页签里有三视图切换和漏斗 + 线索瀑布", async () => {
+it("复盘页带页签：「任务 | 卡点 | 沟通 | 数据」（10-31 会议四页签），数据页签里有三视图切换和漏斗 + 线索瀑布", async () => {
   const { page, errors } = await 打开("现在", true, 1280, false, "data");
   const tabs = page.getByRole("tab");
-  expect(await tabs.allInnerTexts()).toEqual(["待办", "数据"]);
+  expect(await tabs.allInnerTexts()).toEqual(["任务", "卡点", "沟通", "数据"]);
   expect(await page.getByRole("tab", { name: "数据" }).getAttribute("aria-selected")).toBe("true");
   const t = await page.locator("body").innerText();
   for (const s of ["线索瀑布", "全周期漏斗", "现在"]) expect(t).toContain(s);

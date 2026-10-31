@@ -326,7 +326,7 @@ it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标�
     const 零 = 卡.locator("div").filter({ hasText: /^定金金额/ }).last();
     expect(await 零.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; })).toEqual({ 字: "16px", 色: 墨 });
     expect(await 样(卡.getByText("待填写合同金额"))).toEqual({ 字: "16px", 色: 浅 });
-    expect(await 样(page.locator(".proj-wrap .proj-where-label").first())).toEqual({ 字: "16px", 色: 灰 });
+    // 「阶段 / 进程」两格企业版不显示了（F-项目-19），.proj-where-label 只在有回收日时出现，这里不再量
     const 辅 = page.locator(".proj-main .ant-card span").filter({ hasText: / · \d{4}-\d{2}-\d{2}/ }).first();
     expect(await 样(辅)).toEqual({ 字: "14px", 色: 灰 });
     expect(errors).toEqual([]);
@@ -765,7 +765,7 @@ it("R5 完成节点 / 终止进程（M-节点-04/05）：完成先开框、取�
     await 项.click();
     const 问 = page.getByRole("dialog").filter({ hasText: "终止进程？" });
     await 问.waitFor();
-    await 问.getByRole("button", { name: "继续" }).click();
+    await 问.getByRole("button", { name: /继\s*续/ }).click();
     await page.getByRole("dialog").filter({ hasText: "终止进程：进异常状态" }).waitFor();
     expect(await 改节点记录(page)).toBe("[]");
     expect(await page.evaluate(() => JSON.stringify((window as unknown as { __终止?: unknown[] }).__终止 ?? []))).toBe("[]");

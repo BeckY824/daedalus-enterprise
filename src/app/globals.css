@@ -322,7 +322,7 @@ html.glass .auth-solo .auth-main { background: transparent; }
 .view-as-bar { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 4px 6px 4px 12px; border: 1px solid var(--warning-line); border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-min); line-height: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); white-space: nowrap; }
 .view-as-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .view-as-text b { font-weight: 600; }
-.view-as-exit { flex: none; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warning-text); color: #fff; font: inherit; line-height: 20px; cursor: pointer; }
+.view-as-exit { flex: none; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warning-text); color: var(--on-ink); font: inherit; line-height: 20px; cursor: pointer; }
 .view-as-exit:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 
 /* 验证码（components/OtpInput.tsx）：真正接键盘的是那个透明 input，格子只是画出来的样子 */
@@ -1093,7 +1093,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .country-cell-t { font-size: 12px; font-variant-numeric: tabular-nums; }
 .cust-level-B { border-color: var(--warning-line); color: var(--warning-text); background: var(--warning-bg); }
 /* 企业版级别只显示字母（F-客户-01，components/LevelStars.tsx 复用 .cust-level 方块）：S 最重，A 红、B 黄、C 灰同外贸等级 */
-.cust-level-S { border-color: var(--danger); color: #fff; background: var(--danger); }
+.cust-level-S { border-color: var(--danger); color: var(--on-ink); background: var(--danger); }
 .cust-level-C { border-color: var(--line); color: var(--text-muted); background: transparent; }
 .rec-sec { padding: 6px 12px 10px; border-top: 1px solid var(--border); }
 .rec-sec:first-of-type { border-top: none; }
@@ -1521,6 +1521,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 }
 @container rec (min-width: 1090px) {
   .rec-ai-guess-btn { display: none; }
+}
+/* 右栏空着不渲染（RecordView 有右栏）：630 以上就两栏，资料、沟通各占一行到底，不给空栏留位置 */
+@container rec (min-width: 630px) {
+  .rec.rec-no-right { grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: none; }
+  .rec.rec-no-right > :is(.rec-rail:first-child, .rec-col) { grid-row: 1; }
 }
 /* 单栏要盖过上面那几条「放第 2 列」：否则网格多出一条隐式列，时间线整栏被挤到正文右边、压在全局 AI 面板底下，
    铅笔点不到（2026-10-19 客户 Windows 截图；1280 宽手动开着 AI 面板就是这样）。叠成一列：档案、待办、时间线 */
@@ -3068,7 +3073,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .rec-todo-bottom > :is(.rec-side-t, .ant-typography) { grid-column: 1 / -1; }
 .rec-todo-bottom .rec-task { min-width: 0; }
 @media (min-width: 768px) {
-  .main .rec-page > .rec-todo-bottom { flex: none; max-height: 30vh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+  .main .rec-page > .rec-todo-bottom { flex: none; max-height: 30vh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; padding-bottom: calc(12px + var(--detail-tail, 0px)); }
   .main .rec-page > .rec-todo-bottom::-webkit-scrollbar { display: none; }
 }
 @container rec (max-width: 629px) {

@@ -706,6 +706,9 @@ export default function RecordView({
       </AnimatePresence>
     </div>
   ) : null;
+  /* 企业版项目模式待办挪去页底、背调挪去左栏，右栏只剩 AI；AI 关着或收进抽屉时右栏是空的，
+     不留一条空栏，正文两栏（CSS .rec-no-right） */
+  const 有右栏 = (aiEnabled && !AI在抽屉里) || !去项目跟进 || (!plan && 摆法.下次跟进);
 
   return (
     <div className="rec-page">
@@ -889,7 +892,7 @@ export default function RecordView({
       )}
 
       <只读上下文.Provider value={只读}>
-      <div ref={recRef} className={`rec${AI在抽屉里 ? " rec-2col" : ""}${单栏 ? " rec-1col" : ""}`}>
+      <div ref={recRef} className={`rec${AI在抽屉里 ? " rec-2col" : ""}${单栏 ? " rec-1col" : ""}${有右栏 ? "" : " rec-no-right"}`}>
         {/* ================= 左栏：档案 ================= */}
         <aside className={`rec-rail rec-card${去项目跟进 ? " rec-rail-blocks" : ""}`}>
           {/* 名字和头像不在这儿重画一遍：页头上已经有了（设计稿 12/PAGE 的「基本资料」卡
@@ -1356,6 +1359,7 @@ export default function RecordView({
         </section>
 
         {/* ================= 右栏：AI + 计划/待办 ================= */}
+        {有右栏 && (
         <aside className="rec-right rec-rail">
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
@@ -1386,6 +1390,7 @@ export default function RecordView({
             )}
           </Space>
         </aside>
+        )}
       </div>
       {去项目跟进 && 待办卡}
       </只读上下文.Provider>
