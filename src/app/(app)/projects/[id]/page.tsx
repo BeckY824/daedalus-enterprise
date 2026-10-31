@@ -166,7 +166,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       const 启用 = (await 可选项(项.种类)).filter((x) => x !== 其他项);
       return { 键: 项.键, 名: 字典定义[项.种类].名, 多选: 项.多选, 选项: [...启用, ...存着.filter((x) => !启用.includes(x))] };
     })),
-    值: { budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, demandStatus: p.demandStatus, productNeeds: 存的需求 },
+    值: Object.fromEntries(项目画像项.map((项) => [项.键, 项.多选 ? 存的需求 : p[项.键]])) as 项目画像["值"],
   };
   const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
   // 企业版回款（10-31，迁移 100）：和合同金额一样是项目自己的钱，都给看

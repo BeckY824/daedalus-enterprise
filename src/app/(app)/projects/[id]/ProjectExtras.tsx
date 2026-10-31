@@ -6,21 +6,21 @@ import { App, Button, Card, InputNumber, Select, Space } from "antd";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import DatePicker from "@/components/BusinessDatePicker";
 import InlineConfirm from "@/components/InlineConfirm";
-import type { 项目画像键 } from "@/lib/enterprise/dict-kinds";
+import { 暂未确认, 不填项, 去不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
 import type { 回款 } from "@/lib/project/payment-db";
 import { 改项目画像Action } from "../actions";
 import { 记回款, 删回款 } from "../payment-actions";
 
-/** 项目画像（企业版 P11）：五项字典（所在地、级别在编辑项目框里改）。选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示不出来） */
+/** 项目画像（企业版 P11）：各项字典（10-31 起十二项，见 项目画像项）（所在地、级别在编辑项目框里改）。选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示不出来） */
 export type 项目画像 = {
   项们: { 键: 项目画像键; 名: string; 多选: boolean; 选项: string[] }[];
   值: Partial<Record<Exclude<项目画像键, "productNeeds">, string | null>> & { productNeeds: string[] };
 };
 
-/** 没选的项写「待选择X」（浅灰，和输入框占位同色），只是显示 */
-const 空 = (名: string) => <span style={{ color: "var(--text-faint)" }}>待选择{名}</span>;
+/** 没选的项写灰字「暂未确认」（10-31，和输入框占位同色），只是显示：库里还是空，统计、筛选照旧按空算 */
+const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}>{暂未确认}</span>;
 
 /**
  * 「项目画像」卡：能改的人改一项存一项（下拉选了就存），不能改的只看。
@@ -62,13 +62,13 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
             <span className="proj-profile-key">{项.名}</span>
             <div className="proj-profile-val">
               {!能改 ? (
-                项.多选 ? (值.productNeeds.length ? 值.productNeeds.join("、") : 空(项.名)) : (值[项.键 as Exclude<项目画像键, "productNeeds">] ?? 空(项.名))
+                项.多选 ? (值.productNeeds.length ? 值.productNeeds.join("、") : 空) : (值[项.键 as Exclude<项目画像键, "productNeeds">] || 空)
               ) : 项.多选 ? (
                 <Select
                   mode="multiple"
                   aria-label={项.名}
                   style={{ width: "100%" }}
-                  placeholder={`待选择${项.名}（可多选）`}
+                  placeholder={暂未确认}
                   allowClear
                   disabled={忙}
                   value={值.productNeeds}
@@ -83,18 +83,21 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
                 <Select
                   aria-label={项.名}
                   style={{ width: "100%" }}
-                  placeholder={`待选择${项.名}`}
+                  placeholder={暂未确认}
                   allowClear
                   showSearch
                   optionFilterProp="label"
                   disabled={忙}
-                  value={值[项.键 as Exclude<项目画像键, "productNeeds">] ?? undefined}
-                  options={项.选项.map((x) => ({ value: x, label: x }))}
-                  onChange={(v?: string) => {
+                  value={值[项.键 as Exclude<项目画像键, "productNeeds">] || undefined}
+                  // 第一项「不填」：选了就清空，回到「暂未确认」（同 allowClear 的叉）
+                  options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
+                  onChange={(选?: string) => {
                     const k = 项.键 as Exclude<项目画像键, "productNeeds">;
+                    const v = 去不填(选);
                     const 原 = 值[k] ?? null;
-                    set值({ ...值, [k]: v ?? null });
-                    void 存({ [k]: v ?? null }, () => set值((s) => ({ ...s, [k]: 原 })));
+                    if (v === 原) return;
+                    set值({ ...值, [k]: v });
+                    void 存({ [k]: v }, () => set值((s) => ({ ...s, [k]: 原 })));
                   }}
                 />
               )}

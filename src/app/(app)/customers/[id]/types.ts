@@ -99,6 +99,8 @@ export type RecordProps = {
   关联们?: import("@/lib/enterprise/customer-v2-db").关联一行[] | null;
   /** 企业版联系人号码类型（字典 contactKind，停用的也在：老号要显示叫法） */
   号码种类?: { 名: string; kind: string; active: boolean }[];
+  /** 企业版联系人「职务」下拉的候选（字典 contactTitle 启用中的，10-31）；也能手填 */
+  职务选项?: string[];
   /** 企业版客户分配方式的可选项（字典 custAssign 启用中的） */
   分配方式选项?: string[];
   /** 企业版客户类型的可选项（字典 custType 启用中的，2026-10-29 P13 第 4 条） */

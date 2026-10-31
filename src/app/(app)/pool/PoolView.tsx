@@ -49,6 +49,9 @@ type Props = {
   持有: { 有: number; 上限: number } | null;
 };
 
+/** 项目行操作列里的短说法（整句「项目不能单独领提示」在悬停里） */
+const 项目不能单独领短说 = "要连客户一起领";
+
 const 属性色: Record<公海属性, string> = { 线索池: "green", 商机池: "blue", 其他: "default" };
 
 /** 入池原因下拉里每一项的一行说明（规则 C）：「多次退回」的门槛是常量，跟着改 */
@@ -254,7 +257,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
                 </Dropdown>
               )}
             </Space>
-            {因 && <span className="muted nowrap" style={{ fontSize: 12, lineHeight: "18px" }}>{因}</span>}
+            {/* 操作列只有 136 宽：长的那句（项目不能单独领）行内写短的，整句放悬停里 */}
+            {因 && <span className="muted nowrap" style={{ fontSize: 12, lineHeight: "18px" }} title={因}>{因 === 项目不能单独领提示 ? 项目不能单独领短说 : 因}</span>}
           </div>
         );
       },

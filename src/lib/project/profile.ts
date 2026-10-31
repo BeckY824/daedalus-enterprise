@@ -2,7 +2,7 @@ import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
-import { 项目画像项, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
+import { 项目画像项, 去不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
 import { 能管项目, 按必填推进 } from "./db";
 import { 生效组织规则 } from "./org-rules-store";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
@@ -10,12 +10,16 @@ import { 读产品需求, 存产品需求 } from "./profile-rules";
 
 type 谁 = { id: string; role: string };
 
-/** 改画像传的：五项，没传的不动；单选传 null / 空 = 清掉，多选传 [] = 清掉 */
+/** 画像各列的 select（按 项目画像项 生成，加项不用改这里） */
+const 画像列 = Object.fromEntries(项目画像项.map((x) => [x.键, true])) as Record<项目画像键, true>;
+
+/** 改画像传的：各项（见 项目画像项），没传的不动；单选传 null / 空 / 「不填」= 清掉，多选传 [] = 清掉 */
 export type 画像改动 = Partial<Record<Exclude<项目画像键, "productNeeds">, string | null>> & { productNeeds?: string[] | null };
 export type 画像字段 = 项目画像键;
 
 /**
- * 项目画像（企业版 P11，迁移 087）：预算能力、价格感知、决策链路、需求状态（单选）、需求类型（多选，10-31 前叫产品需求，列 productNeeds）。
+ * 项目画像（企业版 P11，迁移 087）：预算能力、价格感知、决策链路、需求状态（单选）、需求类型（多选，10-31 前叫产品需求，列 productNeeds）；
+ * 10-31 加七项单选（迁移 102）：采购周期、产品匹配、价值认同、决策触达、竞品信息、部署条件、场地现状。
  * 所在地（地址四格 + 详细地址）定稿 -2 版改成和客户地址一套，挪到「编辑项目」里（db.ts 改项目），不走这里。
  * 谁能改同 改项目：能管项目（负责人本人、老板、主管；公海里的先领取）。
  * 选项来自企业字典（设置 → 项目模式 里改）：新选的得是启用着的；已经存着、后来停用的那项不动它就留着（多选里也是），
@@ -26,7 +30,7 @@ export async function 改项目画像(me: 谁, projectId: string, patch: 画像�
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const id = String(projectId ?? "");
   // 事务外先按可见范围读一遍：看不到的项目和不存在一样
-  const 原 = await prisma.project.findFirst({ where: { id }, select: { budgetLevel: true, priceSense: true, decisionChain: true, demandStatus: true, productNeeds: true } });
+  const 原 = await prisma.project.findFirst({ where: { id }, select: 画像列 });
   if (!原) return { ok: false, error: "这个项目已经不在了，刷新看看" };
 
   const 新: Partial<Record<画像字段, string | null>> = {};
@@ -44,7 +48,7 @@ export async function 改项目画像(me: 谁, projectId: string, patch: 画像�
     } else {
       const v = (patch as Record<string, unknown>)[项.键];
       if (v != null && typeof v !== "string") return { ok: false, error: "要选列表里的项" };
-      const t = typeof v === "string" ? v.trim() : "";
+      const t = 去不填(typeof v === "string" ? v.trim() : null) ?? "";
       // 没换（含停用了还留着的那项）原样留，不再对字典
       if (t && t === 原[项.键]) { 新[项.键] = t; continue; }
       const 对 = await 选的原因(项.种类, t);

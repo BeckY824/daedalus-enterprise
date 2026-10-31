@@ -45,6 +45,7 @@ export default function ContactForm({
   未归属 = false,
   onDelete,
   号码种类,
+  职务选项,
 }: {
   open: boolean;
   onClose: () => void;
@@ -67,6 +68,11 @@ export default function ContactForm({
    * 不给 = 手机 / 邮箱 / 微信三格（个人版、团队版、联系人列表页）
    */
   号码种类?: { 名: string; kind: string; active: boolean }[];
+  /**
+   * 企业版「职务」下拉的候选（10-31，字典 contactTitle）：企业版这一格叫「职务」，从下拉挑、也能手填字典外的叫法；
+   * 存的还是 position 那一列，库里已有的文字原样显示。非企业版不看它，照旧「与客户关系」
+   */
+  职务选项?: string[];
 }) {
   const [form] = Form.useForm();
   const { message } = App.useApp();
@@ -278,9 +284,15 @@ export default function ContactForm({
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="position" label={`与${b.customer}关系`}>
-              <AutoComplete options={关系候选(b).map((v) => ({ value: v }))} placeholder={关系候选(b)[0]} />
-            </Form.Item>
+            {企业 ? (
+              <Form.Item name="position" label="职务">
+                <AutoComplete aria-label="职务" options={(职务选项 ?? []).map((v) => ({ value: v }))} placeholder="下拉挑，或直接填" allowClear />
+              </Form.Item>
+            ) : (
+              <Form.Item name="position" label={`与${b.customer}关系`}>
+                <AutoComplete options={关系候选(b).map((v) => ({ value: v }))} placeholder={关系候选(b)[0]} />
+              </Form.Item>
+            )}
           </Col>
           {企业 ? (
             <>
