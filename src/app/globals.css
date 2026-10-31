@@ -1182,6 +1182,27 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-where { display: flex; flex-wrap: wrap; gap: 8px 28px; min-width: 0; }
 .proj-where > div { min-width: 0; }
 .proj-where-label { color: var(--text-muted); margin-bottom: 4px; }
+/* 10-31 改版 R6：企业版项目页头的具名按钮。按钮多就折行，不收进「更多」；标题那边至少留三分之一宽。
+   .page-head-a 这个名字别改：⌘N 靠它找主按钮（components/CommandBar.tsx） */
+.proj-wrap .page-head { align-items: flex-start; }
+.proj-wrap .page-head-a { flex: 0 1 auto; max-width: 66%; }
+.proj-acts { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: flex-end; }
+@container (max-width: 760px) {
+  .proj-wrap .page-head { flex-wrap: wrap; }
+  .proj-wrap .page-head-a { max-width: none; flex-basis: 100%; }
+  .proj-acts { justify-content: flex-start; }
+}
+/* 页头按钮开的框：卡片原样搬进框里，去掉卡片自己的边框和留白 */
+.proj-modal-cards { display: flex; flex-direction: column; gap: 16px; }
+.proj-modal-cards .ant-card { border: none; box-shadow: none; background: transparent; }
+.proj-modal-cards .ant-card .ant-card-head { padding: 0; min-height: 0; border-bottom: none; margin-bottom: 8px; }
+.proj-modal-cards .ant-card .ant-card-body { padding: 0; }
+.proj-modal-sec { display: flex; flex-direction: column; gap: 16px; }
+.proj-modal-menu.ant-menu { border-inline-end: none !important; }
+.proj-modal-list { max-height: 60vh; overflow-y: auto; }
+.proj-modal-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.proj-modal-row:last-child { border-bottom: none; }
+.proj-modal-clip { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-where-value { display: flex; align-items: center; min-width: 0; font-size: 18px; font-weight: 600; line-height: 28px; }
 .proj-where-node { min-width: 0; overflow-wrap: anywhere; }
 

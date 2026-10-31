@@ -75,7 +75,8 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑 }: { projectId: s
   );
 }
 
-function SplitModal({ projectId, t, 跑, onClose }: { projectId: string; t: 提成卡; 跑: 跑法; onClose: () => void }) {
+/** 改分配框：提成卡上的「改分配」、项目页头的「改分配」（10-31 R6）共用这一个 */
+export function SplitModal({ projectId, t, 跑, onClose }: { projectId: string; t: 提成卡; 跑: 跑法; onClose: () => void }) {
   const [分, set分] = useState<分配>(() => ({ ...t.分配 }));
   const [忙, set忙] = useState(false);
   const 给出去 = 两位(Object.values(分).reduce((a, v) => a + Math.round((v || 0) * 100), 0) / 100);

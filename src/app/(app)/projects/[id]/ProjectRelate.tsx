@@ -5,7 +5,7 @@
  * （换主的在「编辑项目」里）；其余的能就地改、能解除。看不到的那家 / 那位只写「同事的客户 / 联系人」，不给链接。
  * 下拉选了就存（同项目画像卡）：存失败提示原因、回到存之前的样子。读写在 lib/project/relate.ts，动作在 ../relate-actions.ts
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { App, Button, Card, Select, Space, Tag } from "antd";
@@ -66,13 +66,26 @@ function useRelateSearch<T>(搜: (词: string) => Promise<T[]>) {
   return { 候选, 搜着, 现在搜, 输入 };
 }
 
-export default function ProjectRelate({ projectId, 关联, 能改 }: { projectId: string; 关联: 项目关联; 能改: boolean }) {
+/**
+ * 只：只摆一张（项目页头「关联客户」「关联联系人」弹框，10-31 R6）；起手：一打开就是「关联一家 / 一位」那一格（同点卡上的「关联」）
+ */
+export default function ProjectRelate({ projectId, 关联, 能改, 只, 起手 = false }: { projectId: string; 关联: 项目关联; 能改: boolean; 只?: "客户" | "联系人"; 起手?: boolean }) {
   return (
     <>
-      <RelateCustomers projectId={projectId} 关联={关联} 能改={能改} />
-      <RelateContacts projectId={projectId} 关联={关联} 能改={能改} />
+      {只 !== "联系人" && <RelateCustomers projectId={projectId} 关联={关联} 能改={能改} 起手={起手} />}
+      {只 !== "客户" && <RelateContacts projectId={projectId} 关联={关联} 能改={能改} 起手={起手} />}
     </>
   );
+}
+
+/** 起手：挂上时跑一次「开加」，和点「关联」一样（够不上限、不能改就不开） */
+function useOpenOnMount(起手: boolean, 能开: boolean, 开加: () => void) {
+  const 开过 = useRef(false);
+  useEffect(() => {
+    if (!起手 || !能开 || 开过.current) return;
+    开过.current = true;
+    开加();
+  });
 }
 
 function 名字({ 名, 全称, href, 主, 主叫 }: { 名: string; 全称: string; href: string | null; 主: boolean; 主叫: string }) {
@@ -86,7 +99,7 @@ function 名字({ 名, 全称, href, 主, 主叫 }: { 名: string; 全称: strin
   );
 }
 
-function RelateCustomers({ projectId, 关联, 能改 }: { projectId: string; 关联: 项目关联; 能改: boolean }) {
+function RelateCustomers({ projectId, 关联, 能改, 起手 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean }) {
   const { 忙, 跑 } = useRelateRun();
   const [加着, set加着] = useState(false);
   const [挑中, set挑中] = useState<string | undefined>();
@@ -101,6 +114,7 @@ function RelateCustomers({ projectId, 关联, 能改 }: { projectId: string; 关
     set身份([]);
     搜.现在搜("");
   };
+  useOpenOnMount(起手, 能改 && 非主 < 关联.上限, 开加);
 
   return (
     <Card
@@ -183,7 +197,7 @@ function CustomerRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: st
   );
 }
 
-function RelateContacts({ projectId, 关联, 能改 }: { projectId: string; 关联: 项目关联; 能改: boolean }) {
+function RelateContacts({ projectId, 关联, 能改, 起手 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean }) {
   const { 忙, 跑 } = useRelateRun();
   const [加着, set加着] = useState(false);
   const [挑中, set挑中] = useState<string | undefined>();
@@ -199,6 +213,7 @@ function RelateContacts({ projectId, 关联, 能改 }: { projectId: string; 关�
     set立场(undefined);
     搜.现在搜("");
   };
+  useOpenOnMount(起手, 能改 && 非主 < 关联.上限, 开加);
 
   return (
     <Card

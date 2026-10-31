@@ -75,7 +75,7 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
   try {
     expect(await 卡标题(page, ".proj-main")).toEqual(["", "沟通", "卡点（0）"]);
     expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组", "提成", "进程变更"]);
-    const 记 = page.getByRole("button", { name: "记一条沟通" });
+    const 记 = page.locator(".page-head-a").getByRole("button", { name: "记一条沟通" });
     expect(await 记.getAttribute("class")).toContain("ant-btn-primary");
     const [主, 侧] = await Promise.all([page.locator(".proj-main").boundingBox(), page.locator(".proj-side").boundingBox()]);
     expect(侧!.x).toBeGreaterThan(主!.x + 主!.width);
@@ -93,7 +93,7 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     // 右栏里的卡片内容不能伸出卡片（右栏窄，最容易被长串撑开）
     const 伸出 = await page.locator(".proj-side > .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    for (const name of ["记一条沟通", "AI 录入", "编辑"]) {
+    for (const name of ["记一条沟通", "AI 录入", "编辑项目"]) {
       const box = await page.getByRole("button", { name }).first().boundingBox();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
@@ -148,7 +148,7 @@ it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注�
     const 项目卡 = await page.locator(".proj-side > .ant-card").filter({ hasText: "项目来源" }).first().innerText();
     expect(项目卡).toContain("28 天");
     expect(项目卡).toMatch(/同.+来源/);
-    await page.getByRole("button", { name: "AI 录入" }).click();
+    await page.getByRole("button", { name: "AI 录入" }).first().click();
     const 原话 = page.getByRole("textbox", { name: "沟通原话" });
     await 原话.waitFor();
     expect(await 原话.evaluate(e => e === document.activeElement)).toBe(true);
@@ -162,7 +162,7 @@ it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注�
     await page.getByRole("button", { name: /取\s*消/ }).click();
     await 原话.waitFor({ state: "detached" });
     // 手填入口：AI 那格收着，只给一个「用 AI 从原话预填」
-    await page.getByRole("button", { name: "记一条沟通" }).click();
+    await page.getByRole("button", { name: "记一条沟通" }).first().click();
     await page.getByRole("button", { name: "用 AI 从原话预填" }).waitFor();
     expect(await page.getByRole("textbox", { name: "沟通原话" }).count()).toBe(0);
     expect(errors).toEqual([]);
@@ -471,10 +471,112 @@ it("下一步：有文字写文字、有时间跟在后面；老数据只有时�
     expect((await 行.innerText()).replace(/\s+/g, " ")).toContain("下一步 2026-11-01");
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ nextStepText: "只写了一句", nextStepAt: null }));
     await page.getByText("只写了一句").waitFor();
-    await page.getByRole("button", { name: "记一条沟通" }).click();
+    await page.getByRole("button", { name: "记一条沟通" }).first().click();
     const 窗 = page.getByRole("dialog");
     await 窗.getByLabel("下一步做什么").waitFor();
     expect(await 窗.getByLabel("下一步做什么").getAttribute("maxlength")).toBe("100");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/* 10-31 改版 R6：企业版页头把这一页能做的事摆成具名按钮，要填的进弹窗；卡上原入口照旧 */
+const 页头钮 = (page: import("playwright").Page, 类 = "") =>
+  page.locator(`.page-head-a button${类}`).evaluateAll(bs => bs.map(b => b.textContent!.replace(/\s/g, "")));
+
+it("R6 页头：具名按钮按设计排，没有「更多」；记一条沟通是唯一主按钮，⌘N 找到的就是它；删除是收着的危险文字钮", async () => {
+  const { page, errors } = await 覆盖(1280, { 可改沟通: true });
+  try {
+    expect(await 页头钮(page)).toEqual(["记一条沟通", "AI录入", "编辑项目", "转给…", "推进进程", "发卡点", "邀请成员", "改分配", "管理沟通", "删除项目"]);
+    expect(await page.getByRole("button", { name: "项目的更多操作" }).count()).toBe(0);
+    expect(await page.locator(".page-head-a .ant-btn-primary").allTextContents()).toEqual(["记一条沟通"]);
+    expect(await page.evaluate(() => document.querySelector(".page-head-a button.ant-btn-primary:not([disabled])")?.textContent)).toBe("记一条沟通");
+    const 删 = page.locator(".page-head-a").getByRole("button", { name: "删除项目" });
+    expect(await 删.getAttribute("class")).toMatch(/ant-btn-text.*ant-btn-dangerous|ant-btn-dangerous.*ant-btn-text|ant-btn-color-dangerous.*ant-btn-variant-text|ant-btn-variant-text/);
+    await 删.click();
+    await page.getByRole("dialog").filter({ hasText: "删除这个项目？" }).waitFor();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("R6 页头跟着权限：公海里能领的主按钮是「领取」；只读的人只剩记沟通那几样；放回公海等复核时灰着说原因", async () => {
+  const { page, errors } = await 覆盖(1280, { pooled: true, 能领取: true, 能放公海: false, 提成: null });
+  try {
+    expect(await 页头钮(page, ".ant-btn-primary")).toEqual(["领取"]);
+    // 公海里的项目谁都改不了（可改 = 能改 && !pooled）：编辑、推进、邀请…都不摆；沟通行上还能发卡点，所以管理沟通在
+    expect(await 页头钮(page)).toEqual(["领取", "记一条沟通", "AI录入", "发卡点", "管理沟通", "删除项目"]);
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能放公海: true, 提成: null, 线索验证: { 判定: "有效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 我能: null, 痕: [] } }));
+    await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("放回公海"));
+    expect(await page.locator(".page-head-a").getByRole("button", { name: "放回公海" }).isDisabled()).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("R6 弹窗：推进进程、项目组成员、改分配、管理沟通都能打开，标题带项目名；管理沟通里修改换到修改框", async () => {
+  const { page, errors } = await 覆盖(1280, { 可改沟通: true });
+  try {
+    const 头 = page.locator(".page-head-a");
+    const 开 = async (按钮: string, 标题: string) => {
+      await 头.getByRole("button", { name: 按钮 }).click();
+      const 窗 = page.getByRole("dialog").filter({ hasText: 标题 });
+      await 窗.waitFor();
+      return 窗;
+    };
+    const 关 = async (窗: import("playwright").Locator) => {
+      await 窗.getByRole("button", { name: /Close|关闭/ }).first().click();
+      await 窗.waitFor({ state: "hidden" });
+    };
+    let 窗 = await 开("推进进程", "推进进程 · 超长项目名字");
+    expect(await 窗.innerText()).toContain("订单 · 生产备货");
+    expect(await 窗.getByRole("button", { name: /^下一步：/ }).count()).toBe(1);
+    await 关(窗);
+    窗 = await 开("邀请成员", "项目组成员 · ");
+    expect(await 窗.innerText()).toContain("组员");
+    await 关(窗);
+    窗 = await 开("改分配", "改提成分配");
+    await 窗.getByRole("button", { name: /取\s*消/ }).click();
+    await 窗.waitFor({ state: "hidden" });
+    窗 = await 开("管理沟通", "管理沟通 · ");
+    expect(await 窗.innerText()).toContain("沟通内容");
+    await 窗.getByRole("button", { name: /^修\s*改$/ }).first().click();
+    await page.getByRole("dialog").filter({ hasText: "修改这条沟通" }).waitFor();
+    expect(await page.getByRole("dialog").filter({ hasText: "管理沟通 · " }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("R6 关联：页头「关联客户」打开就是加客户那一格，「管理关联」两格都在", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __relate: (x: boolean) => void }).__relate(true));
+    await page.getByText("关联客户（3）").waitFor();
+    await page.locator(".page-head-a").getByRole("button", { name: "关联客户" }).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "关联客户 · " });
+    await 窗.waitFor();
+    expect(await 窗.getByText("关联联系人（").count()).toBe(0);
+    await 窗.getByRole("button", { name: /Close|关闭/ }).first().click();
+    await 窗.waitFor({ state: "hidden" });
+    await page.locator(".page-head-a").getByRole("button", { name: "管理关联" }).click();
+    const 管 = page.getByRole("dialog").filter({ hasText: "管理关联 · " });
+    await 管.waitFor();
+    expect(await 管.getByText("关联客户（3）").count()).toBe(1);
+    expect(await 管.getByText(/关联联系人（2）/).count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([1024, 800])("R6 %ipx：页头按钮折行不出屏、标题不被挤没；每个按钮点得中", async (w) => {
+  const { page, errors } = await 覆盖(w, { 可改沟通: true });
+  try {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const 题 = (await page.locator(".proj-wrap .page-head h1").boundingBox())!;
+    expect(题.width).toBeGreaterThan(w / 4);
+    for (const b of await page.locator(".page-head-a button").all()) {
+      const box = (await b.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(w);
+      const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box.x + box.width / 2, box.y + box.height / 2]);
+      expect(点中).toBe(await b.textContent());
+    }
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
