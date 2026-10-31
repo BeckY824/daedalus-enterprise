@@ -3,7 +3,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { DownOutlined, MoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { DownOutlined, EditOutlined, MoreOutlined, SearchOutlined, ThunderboltOutlined, UpOutlined } from "@ant-design/icons";
 import { App, Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Progress, Radio, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
@@ -48,7 +48,8 @@ import { ProjectCommissionCard, SplitModal } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
 import PaneToggle from "@/components/PaneToggle";
-import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 项目画像 } from "./ProjectExtras";
+import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 沟通附件组, type 项目画像 } from "./ProjectExtras";
+import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源 } from "@/lib/project/detail-search";
 import type { 回款 } from "@/lib/project/payment-db";
 import ProjectRelate from "./ProjectRelate";
 import type { 项目关联 } from "@/lib/project/relate";
@@ -371,11 +372,13 @@ export default function ProjectDetail({
   /** 沟通的「…」菜单：正在改哪一条 / 删除问句开在哪一条上 */
   const [改沟通于, set改沟通于] = useState<项目详情["followUps"][number] | null>(null);
   const [删问于, set删问于] = useState<string | null>(null);
-  /** 转让项目（10-30，原名「转给…」）：弹窗开着、选了谁、点了转给以后 6 秒等撤销的那位 */
+  /** 转让项目（10-30，原名「转给…」；U-项目-07 起点了确认就转、不再等 6 秒撤销）：弹窗开着、选了谁 */
   const [转给框, set转给框] = useState(false);
   const [转给谁, set转给谁] = useState<string | null>(null);
-  const [待转给, set待转给] = useState<string | null>(null);
-  const 转给计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 企业版瀑布流（U-项目-01/04）：沟通默认展开、卡点与任务默认收起；搜索词非空时两块都摊开、只列搜得到的 */
+  const [沟通开, set沟通开] = useState(true);
+  const [卡点开, set卡点开] = useState(false);
+  const [搜, set搜] = useState("");
   /** 企业版页头具名按钮开的那个框（10-31 R6），一次只开一个 */
   const [头部框, set头部框] = useState<头部框 | null>(null);
   /** 附件框每关一次 +1：页面上那几格附件重新挂上，个数跟着刷新 */
@@ -534,41 +537,13 @@ export default function ProjectDetail({
     });
   };
 
-  /** 转让项目：点了先等 6 秒（提示条上能撤销），到点才真的换负责人；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
-  const 开始转给 = (新: string) => {
+  /** 转让项目（U-项目-07）：弹窗里点「确认转让」就换负责人，不再等 6 秒撤销；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
+  const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
-    const key = `project-transfer-${p.id}`;
+    const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }), `已转给 ${名}`);
+    if (!ok) return;
     set转给框(false);
-    set待转给(新);
-    转给计时.current = setTimeout(async () => {
-      转给计时.current = null;
-      message.destroy(key);
-      const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }), `已转给 ${名}`);
-      set待转给(null);
-      if (ok) router.push("/projects");
-    }, 6000);
-    message.info({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          6 秒后转给 {名}
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              if (转给计时.current) clearTimeout(转给计时.current);
-              转给计时.current = null;
-              set待转给(null);
-              message.destroy(key);
-              message.info("已撤销，没有转");
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
-    });
+    router.push("/projects");
   };
   const 转给名 = 转给谁 ? (候选.find((m) => m.id === 转给谁)?.name ?? "TA") : null;
 
@@ -704,7 +679,13 @@ export default function ProjectDetail({
     </Card>
   );
   const 项目卡 = (
-    <Card title="项目" extra={可改 && !p.企业版 && <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>}>
+    <Card
+      title="项目"
+      // U-项目-05：企业版改项目的入口挪到项目卡右上角一个笔（页头不再摆「编辑项目」），点开还是同一个编辑框；别的版本照旧「编辑」
+      extra={可改 && (p.企业版
+        ? <Tooltip title="编辑项目"><Button type="text" size="small" icon={<EditOutlined />} aria-label="编辑项目" disabled={忙} onClick={() => set编辑开着(true)} /></Tooltip>
+        : <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>)}
+    >
       <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后可见</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
@@ -815,11 +796,30 @@ export default function ProjectDetail({
       />
     </Card>
   );
+  // 企业版瀑布流（U-项目-01/04）：沟通、卡点与任务各是一块，标题那一行点了展开 / 收起（开着箭头朝上、收着朝下），
+  // 块里定高、自己滚；上面一个搜索框，搜沟通和卡点，有词时两块都摊开、只列对得上的。别的版本不折叠、不搜
+  const 搜词 = p.企业版 ? 词们(搜) : [];
+  const 搜着 = 搜词.length > 0;
+  const 列沟通 = 搜着 ? p.followUps.filter((f) => 对得上(搜词, 沟通字段(f))) : p.followUps;
+  const 列卡点 = 卡点 ? (搜着 ? 卡点.们.filter((k) => 对得上(搜词, 卡点字段(k))) : 卡点.们) : [];
+  const 模块 = (id: string, 名: string, 开: boolean, set开: (v: boolean) => void) => {
+    const 摊开 = 开 || 搜着;
+    return {
+      id,
+      className: `proj-mod${摊开 ? "" : " is-closed"}`,
+      title: (
+        <button type="button" className="proj-mod-h" aria-expanded={摊开} aria-controls={`${id}-body`} disabled={搜着} title={搜着 ? "搜索时都摊开" : undefined} onClick={() => set开(!开)}>
+          <span className="proj-mod-name">{名}</span>
+          {摊开 ? <UpOutlined aria-hidden /> : <DownOutlined aria-hidden />}
+        </button>
+      ),
+    };
+  };
+  const 沟通数字 = 搜着 ? `搜到 ${列沟通.length}` : `${p.followUps.length}`;
   const 沟通卡 = (
     <Card
       // 客户页「跟进」菜单跳过来的落点（/projects/<id>#project-follow，P14 第 3 条）
-      id="project-follow"
-      title="沟通"
+      {...(p.企业版 ? 模块("project-follow", `沟通（${沟通数字}）`, 沟通开, set沟通开) : { id: "project-follow", title: "沟通" })}
       extra={
         p.能记沟通 ? (
           // 企业版：「记一条沟通」「AI 录入」在页头（10-31 起卡上不再重复摆）
@@ -827,9 +827,11 @@ export default function ProjectDetail({
         ) : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>
       }
     >
+      <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
       {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后可见"}</div>}
-      {p.followUps.map((f) => (
-        <div key={f.id} style={{ marginBottom: 12 }}>
+      {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
+      {列沟通.map((f) => (
+        <div key={f.id} id={`follow-${f.id}`} className="proj-follow-row" style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <FollowTypeCell type={f.type} method={f.method} />
             <Tag>{f.node}</Tag>
@@ -861,11 +863,15 @@ export default function ProjectDetail({
           {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可改沟通} />}
         </div>
       ))}
+      </div>
     </Card>
   );
+  // 企业版叫「卡点与任务」（U-项目-01）：这一版只有卡点，任务还没有单独的数据，进来以后列在同一块里
   const 卡点区 = 卡点 && (
     <Card
-      title={`卡点（${卡点.们.length}）`}
+      {...(p.企业版
+        ? 模块("project-blockers", `卡点与任务（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）`, 卡点开, set卡点开)
+        : { title: `卡点（${卡点.们.length}）` })}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）
       extra={卡点.能发 && !p.企业版 && (
         <Space size={8}>
@@ -874,20 +880,36 @@ export default function ProjectDetail({
         </Space>
       )}
     >
-      <BlockerList 们={卡点.们} 人们={卡点.人们} 空="还没有卡点" />
+      <div id="project-blockers-body" className={p.企业版 ? "proj-mod-body" : undefined}>
+        <BlockerList 们={列卡点} 人们={卡点.人们} 空={搜着 && 卡点.们.length ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
+      </div>
     </Card>
   );
 
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
   const 关联卡 = p.关联 && <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} />;
-  // 合同附件、项目方案各单独一格（10-31）：节点必填「合同附件」「项目方案」各看自己那一格；没分格的老附件算在「附件」里
-  const 附件卡 = p.项目附件 && (
-    <>
-      <ProjectAttachmentsCard key={`${p.id}-合同-${附件版}`} projectId={p.id} 分类="合同" 标题="合同附件" 起始个数={p.项目附件.合同} 只读={p.项目附件.只读} />
-      <ProjectAttachmentsCard key={`${p.id}-方案-${附件版}`} projectId={p.id} 分类="方案" 标题="项目方案" 起始个数={p.项目附件.方案} 只读={p.项目附件.只读} />
-      <ProjectAttachmentsCard key={`${p.id}-其它-${附件版}`} projectId={p.id} 分类="其它" 标题="附件" 起始个数={p.项目附件.其它} 只读={p.项目附件.只读} />
-    </>
+  // 项目附件合成一块（F-项目-18）：合同附件、项目方案、其它附件各一格（节点必填「合同附件」「项目方案」各看自己那一格；没分格的老附件算在「其它」里），
+  // 最后一格把挂在各条沟通上的截图、录音收过来，写明来自哪条沟通，点了跳到那条（在这里只看、下载，传和删回那条沟通上）
+  const 沟通附件们: 沟通附件组[] = p.followUps
+    .filter((f) => f.附件?.length)
+    .map((f) => ({ followUpId: f.id, 来源: 沟通来源(f), 附件: f.附件 ?? [] }));
+  const 去看沟通 = (id: string) => {
+    set搜("");
+    set沟通开(true);
+    // 等沟通块摊开、行挂上再滚过去
+    setTimeout(() => document.getElementById(`follow-${id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 0);
+  };
+  const 附件块 = (在框里: boolean) => p.项目附件 && (
+    <ProjectAttachmentsCard
+      key={`${p.id}-${附件版}`}
+      projectId={p.id}
+      起始个数={p.项目附件}
+      只读={p.项目附件.只读}
+      沟通们={沟通附件们}
+      去看={(id) => { if (在框里) set头部框(null); 去看沟通(id); }}
+    />
   );
+  const 附件卡 = 附件块(false);
   const 回款卡 = p.回款们 && <ProjectPaymentsCard key={p.id} projectId={p.id} 回款们={p.回款们} 能改={可改} 默认={p.成交钱?.contractCurrency ?? p.currency} />;
 
   const 领取钮 = (
@@ -897,9 +919,9 @@ export default function ProjectDetail({
       {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
     </>
   );
-  // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样，点了 6 秒内能撤销
+  // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
   const 转给钮 = p.企业版 && 可改 && !独自一人(候选, p.ownerId) && (
-    <Button disabled={忙 || !!待转给} onClick={() => { set转给谁(null); set转给框(true); }}>转让项目</Button>
+    <Button disabled={忙} onClick={() => { set转给谁(null); set转给框(true); }}>转让项目</Button>
   );
   const 放回问 = () => {
     // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
@@ -910,18 +932,17 @@ export default function ProjectDetail({
   const 开框 = (k: 头部框) => () => set头部框(k);
 
   // 企业版页头（10-31 R6）：这一页能做的事摆成具名按钮，要填的进弹窗，同一个动作、同一套校验。
-  // 卡上和这里同名的按钮（编辑、记一条沟通、AI 录入、下一步 / 更多、发卡点、关联 +、改分配）企业版不再摆，只留页头这一处（10-31）；
+  // 卡上和这里同名的按钮（记一条沟通、AI 录入、下一步 / 更多、发卡点、关联 +、改分配）企业版不再摆，只留页头这一处（10-31）；编辑项目 U-项目-05 起反过来、只在项目卡右上角；
   // 推进进程、结束当前进程在节点卡的阶段页签那一行（ProjectStages 动作），页头不再重复摆。
   // 按钮按下面两栏分组、各自对齐那一栏的左边（10-31 用户定）：左组管左栏（节点、沟通、卡点、附件），右组管右栏（项目、画像、关联、项目组、提成）；
-  // 整个项目的事（转让、放回公海、删除）跟在左组最后、靠右。
+  // 整个项目的事（转让、放回公海）跟在左组最后、靠右。企业版不摆「删除项目」（M-权限-10：项目是公司资产，服务端也一律拒）。
   // 「记一条沟通」是唯一的主按钮，⌘N 点的就是它（components/CommandBar.tsx 找 .page-head-a 里的主按钮）；公海里的项目主按钮是「领取」
-  const 整项目钮 = (转给钮 || p.能放公海 || 能改) && (
+  const 整项目钮 = (转给钮 || p.能放公海) && (
     <span className="acts-whole">
       {转给钮}
       {p.能放公海 && (等复核
         ? <Tooltip title={`${等复核文字}，暂时不能放回`}><Button disabled>放回公海</Button></Tooltip>
         : <Button disabled={忙} onClick={放回问}>放回公海</Button>)}
-      {能改 && <Button type="text" danger disabled={忙} onClick={删问}>删除项目</Button>}
     </span>
   );
   const 企业版动作 = (
@@ -939,7 +960,6 @@ export default function ProjectDetail({
         {整项目钮}
       </div>
       <div className="acts-g">
-        {可改 && <Button disabled={忙} onClick={() => set编辑开着(true)}>编辑项目</Button>}
         {p.画像 && 可改 && <Button disabled={忙} onClick={开框("画像")}>项目画像</Button>}
         {p.关联 && 可改 && (
           <>
@@ -1046,7 +1066,7 @@ export default function ProjectDetail({
       case "附件":
         return (
           <div className="proj-modal-cards">
-            {附件卡}
+            {附件块(true)}
             {p.contact && p.联系人附件 && (
               <div style={行样}><span style={键样}>联系人附件</span><span>{p.contact.name}：<ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></span></div>
             )}
@@ -1091,12 +1111,23 @@ export default function ProjectDetail({
           {/* 企业版两栏（10-27 会后排版）：左边干活——节点、沟通、卡点；右边看资料——项目、交付、项目组、提成、节点变更。
               容器窄了（有 AI 侧栏、窗口小）退成一栏，干活的在上（globals.css .proj-2col） */}
           <div className="proj-2col">
+            {/* 左栏整列上下瀑布流（U-项目-01）：当前进程（固定在最上、不折叠）→ 搜索 → 沟通（默认开）→ 卡点与任务（默认收）→ 项目附件 → 回款 */}
             <div className="proj-main">
               {节点卡}
+              <div className="proj-search">
+                <Input
+                  allowClear
+                  prefix={<SearchOutlined aria-hidden />}
+                  placeholder="搜这个项目的沟通、卡点"
+                  aria-label="搜这个项目的沟通、卡点"
+                  value={搜}
+                  onChange={(e) => set搜(e.target.value)}
+                />
+              </div>
               {沟通卡}
               {卡点区}
-              {回款卡}
               {附件卡}
+              {回款卡}
             </div>
             <aside className="proj-side" aria-label="项目资料">
               {项目卡}
@@ -1222,10 +1253,10 @@ export default function ProjectDetail({
       <Modal
         open={转给框}
         title="转让项目"
-        okText="转让"
-        okButtonProps={{ disabled: !转给谁 }}
+        okText="确认转让"
+        okButtonProps={{ disabled: !转给谁, loading: 忙 }}
         onCancel={() => set转给框(false)}
-        onOk={() => 转给谁 && 开始转给(转给谁)}
+        onOk={() => 转给谁 && 确认转给(转给谁)}
       >
         <Select
           showSearch
@@ -1238,7 +1269,7 @@ export default function ProjectDetail({
           options={成员选项(候选).filter((o) => o.value !== p.ownerId)}
         />
         <div style={{ color: "var(--text-muted)" }}>
-          {转给名 ? `转给 ${转给名} 以后，你看不到这个项目；6 秒内可撤销。原来填的下一步会清掉，由 ${转给名} 重新安排。` : "选好人以后，6 秒内可撤销。"}
+          {转给名 ? `确认转给 ${转给名}？转了以后你看不到这个项目，原来填的下一步会清掉，由 ${转给名} 重新安排；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
         </div>
       </Modal>
     </div>
