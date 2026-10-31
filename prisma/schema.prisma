@@ -573,7 +573,7 @@ model Attachment {
   contactId     String?
   /// 挂在哪个项目上（企业版项目详情页「附件」，迁移 086）
   projectId     String?
-  /// 联系人附件分类（企业版，迁移 074）：名片 / 相册；空 = 没分类（联系人那边算相册）。lib/enterprise/customer-v2.ts 的 附件分类们
+  /// 附件分类（企业版）：联系人上 名片 / 相册（迁移 074），空 = 相册；项目上 合同 / 其它（10-31），空 = 其它。lib/enterprise/customer-v2.ts 的 附件分类们、项目附件分类们
   tag           String?
   /// 原文件名（人看的）；图片压过以后扩展名换成 .jpg
   name          String
@@ -939,6 +939,8 @@ model Project {
   /// 企业版项目关联客户 / 联系人（2026-10-29 P17，迁移 094 / 095）。见 ProjectCustomer / ProjectContact
   customerLinks ProjectCustomer[]
   contactLinks  ProjectContact[]
+  /// 企业版回款（2026-10-31，迁移 100）：一笔一行，按币种加起来是「当前回款」。见 EntProjectPayment
+  entPayments   EntProjectPayment[]
 
   @@index([customerId])
   @@index([ownerId])
@@ -1481,6 +1483,25 @@ model EntCommission {
 
 /// 企业版提成分配（2026-10-26，迁移 051）：组长（项目负责人）分给已进组（JOINED）组员的百分比，合计 ≤ 100，剩下的归组长。
 /// 组长自己不占一行；人退组 / 没同意时他那一行不算，那份回到组长。指向人的列不建外键
+/// 企业版项目回款（2026-10-31，迁移 100）：一笔一行，时间、币种、金额都必填；项目上的「当前回款」按币种把它们加起来。
+/// 只加、删，不改（记错了删掉重记）；改动走 lib/project/payment-db.ts，权限同项目的「商机金额」那组字段。指向人的列不建外键
+model EntProjectPayment {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 回款时间（人填的那天）
+  paidAt    DateTime
+  /// 币种：lib/currency 的币种代码之一
+  currency  String
+  /// 回款金额，> 0
+  amount    Float
+  /// 谁记的
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
+
 model EntCommissionSplit {
   id        String   @id @default(cuid())
   projectId String

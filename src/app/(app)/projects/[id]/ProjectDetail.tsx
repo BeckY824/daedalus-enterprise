@@ -16,7 +16,7 @@ import { dayjs, fmtDateTime, 成员选项, 独自一人 } from "@/lib/utils";
 import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
 import { 外贸精简 } from "@/lib/business-config";
-import { 金额, 默认币种 } from "@/lib/currency";
+import { 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { 阶段们, 交付还差, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -41,7 +41,8 @@ import { ProjectCommissionCard } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
 import PaneToggle from "@/components/PaneToggle";
-import { ProjectAttachmentsCard, ProjectProfileCard, type 项目画像 } from "./ProjectExtras";
+import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 项目画像 } from "./ProjectExtras";
+import type { 回款 } from "@/lib/project/payment-db";
 import ProjectRelate from "./ProjectRelate";
 import type { 项目关联 } from "@/lib/project/relate";
 
@@ -130,7 +131,9 @@ export type 项目详情 = {
   /** 企业版关联客户 / 联系人（P17）：不是企业版、公海里没领的不给 */
   关联?: 项目关联;
   /** 企业版项目附件（P11）：看得到才有；只读 = 不能改这个项目（api/attachments/access.ts 项目附件入口） */
-  项目附件?: { 个数: number; 只读: boolean };
+  项目附件?: { 合同: number; 其它: number; 只读: boolean };
+  /** 企业版项目回款（10-31，迁移 100）：一笔一行；项目卡上写「当前回款」= 按币种加 */
+  回款们?: 回款[];
 };
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
@@ -587,6 +590,7 @@ export default function ProjectDetail({
       {p.企业版 && p.成交钱 && (
         <>
           <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>
+          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : <span style={{ color: "var(--text-muted)" }}>没有</span>}</span></div>}
           <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : <span style={{ color: "var(--text-muted)" }}>没填</span>}</div>
           <div style={行样}><span style={键样}>成交需求</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{p.成交钱.dealDemand ?? <span style={{ color: "var(--text-muted)" }}>没填</span>}</span></div>
         </>
@@ -748,7 +752,14 @@ export default function ProjectDetail({
 
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
   const 关联卡 = p.关联 && <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} />;
-  const 附件卡 = p.项目附件 && <ProjectAttachmentsCard key={p.id} projectId={p.id} 起始个数={p.项目附件.个数} 只读={p.项目附件.只读} />;
+  // 合同附件单独一格（10-31）：节点必填「合同附件」看这一格；没分格的老附件算在「附件」里
+  const 附件卡 = p.项目附件 && (
+    <>
+      <ProjectAttachmentsCard key={`${p.id}-合同`} projectId={p.id} 分类="合同" 标题="合同附件" 起始个数={p.项目附件.合同} 只读={p.项目附件.只读} />
+      <ProjectAttachmentsCard key={`${p.id}-其它`} projectId={p.id} 分类="其它" 标题="附件" 起始个数={p.项目附件.其它} 只读={p.项目附件.只读} />
+    </>
+  );
+  const 回款卡 = p.回款们 && <ProjectPaymentsCard key={p.id} projectId={p.id} 回款们={p.回款们} 能改={可改} 默认={p.成交钱?.contractCurrency ?? p.currency} />;
 
   const 页头 = (
     <PageHead
@@ -827,6 +838,7 @@ export default function ProjectDetail({
               {节点卡}
               {沟通卡}
               {卡点区}
+              {回款卡}
               {附件卡}
             </div>
             <aside className="proj-side" aria-label="项目资料">

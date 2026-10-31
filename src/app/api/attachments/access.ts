@@ -1,7 +1,7 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 同事的客户, 只读话, 虚线只读线索 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 附件个数 } from "@/lib/attachments";
+import { 附件个数, 项目分类附件数 } from "@/lib/attachments";
 import { getCurrentUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { 能管项目, 露客户, 看得到的客户 } from "@/lib/project/db";
@@ -101,10 +101,10 @@ export async function 联系人附件入口(contactId: string): Promise<{ 个数
 
 /**
  * 企业版项目详情页的「附件」区（P11，10-29）：和接口同一个口径——看不到（不是企业版、项目模式关着、公海里同事客户的项目）
- * 就不给这一区，改不了（不是负责人 / 老板 / 主管）就只给看
+ * 就不给这一区，改不了（不是负责人 / 老板 / 主管）就只给看。10-31 分两格：合同附件 / 其它附件，各几个
  */
-export async function 项目附件入口(projectId: string): Promise<{ 个数: number; 只读: boolean } | null> {
+export async function 项目附件入口(projectId: string): Promise<{ 合同: number; 其它: number; 只读: boolean } | null> {
   if (!企业版() || "错" in await 认父记录({ projectId }, false)) return null;
-  const 个数 = (await 附件个数(defaultClient, { projectIds: [projectId] })).项目.get(projectId) ?? 0;
-  return { 个数, 只读: "错" in await 认父记录({ projectId }, true) };
+  const 个数 = await 项目分类附件数(defaultClient, projectId);
+  return { ...个数, 只读: "错" in await 认父记录({ projectId }, true) };
 }
