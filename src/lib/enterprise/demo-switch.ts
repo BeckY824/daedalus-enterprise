@@ -35,6 +35,8 @@ export function 分组演示名单(
   const 组 = new Map<业务角色, 演示人[]>();
   for (const u of 在) {
     const m = org.成员.get(u.id)!;
+    // 没设业务角色的不进演示名单（切过去也什么都看不到）
+    if (!m.bizRole) continue;
     const 兼 = m.角色们.filter((r) => r !== m.bizRole).map((r) => `兼${角色名[r]}`);
     const 说明 = [m.deptId ? org.部门.get(m.deptId)?.name : null, m.line, ...兼, u.title].filter(Boolean).join(" · ");
     组.set(m.bizRole, [...(组.get(m.bizRole) ?? []), { id: u.id, name: 叫.get(u.id)!, 说明 }]);

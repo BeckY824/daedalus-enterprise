@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Radio, Grid, Popover } from "antd";
+import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Radio, Grid, Popover, Checkbox } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined } from "@ant-design/icons";
 import { UserCell } from "@/components/ui";
@@ -11,6 +11,7 @@ import { useBusiness } from "@/lib/business-client";
 import { 外贸订单 } from "@/lib/business-config";
 import type { SessionUser } from "@/lib/auth";
 import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用, 解绑飞书身份 } from "./actions";
+import { 设不管设置 } from "./org-actions";
 import type { 停用方式 } from "@/lib/offboard-db";
 import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
@@ -30,6 +31,8 @@ export type Row = {
   项目阶段?: Record<string, number>;
   /** 企业版：组织架构里的业务角色（可多个，按固定顺序）；有它角色列就摆它，账号角色退到编辑框里叫「账号权限」 */
   业务角色?: 业务角色[];
+  /** 企业版：总管理勾了「不管设置」——还是看全部、能转让，但进不了设置页、改不了后台设置（11-01 C1） */
+  不管设置?: boolean;
   followCount: number;
   /** 企业版飞书登录：第一次用飞书登录时按姓名绑上了飞书身份 */
   飞书已绑?: boolean;
@@ -70,6 +73,22 @@ export default function MembersTab({
   const [恢复中, set恢复中] = useState<string | null>(null);
   const [form] = Form.useForm();
   const 按业务角色 = users.some((u) => u.业务角色);
+  const [改不管设置中, set改不管设置中] = useState<string | null>(null);
+  /** 勾 / 取消「不管设置」：只有能改组织架构的总管理（服务端 org-actions 设不管设置 再拦一遍、保至少一位能管设置的总管理） */
+  const on不管设置 = async (r: Row, on: boolean) => {
+    if (改不管设置中) return;
+    set改不管设置中(r.id);
+    try {
+      const res = await 设不管设置(r.id, on);
+      if (!res.ok) message.error(res.error ?? "没改成，请稍后再试");
+      else {
+        message.success(on ? `${r.name} 不再管设置` : `${r.name} 又能管设置了`);
+        router.refresh();
+      }
+    } finally {
+      set改不管设置中(null);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -264,6 +283,22 @@ export default function MembersTab({
                   {角色名[x]}
                 </Tag>
               ))}
+              {/* 「不管设置」只对总管理有意义（11-01 C1）：能改设置的人勾，别人只看到标记 */}
+              {r.业务角色?.includes("director") &&
+                (企业版 && isAdmin ? (
+                  <Checkbox
+                    checked={!!r.不管设置}
+                    disabled={改不管设置中 !== null}
+                    aria-label={`${r.name} 不管设置`}
+                    data-testid="member-no-settings"
+                    onChange={(e) => void on不管设置(r, e.target.checked)}
+                    style={{ fontSize: 12 }}
+                  >
+                    不管设置
+                  </Checkbox>
+                ) : r.不管设置 ? (
+                  <Tag style={{ margin: 0, borderRadius: 6 }}>不管设置</Tag>
+                ) : null)}
             </div>
           ),
         }
@@ -497,7 +532,7 @@ export default function MembersTab({
                 label={按业务角色 ? "账号权限" : "角色"}
                 extra={
                   按业务角色
-                    ? "只管能不能进后台设置；总管理、销售管理这些业务角色在「组织架构」里设。"
+                    ? "能做什么只看业务角色（总管理、销售管理……在「组织架构」里设）；没设业务角色的人什么都做不了。"
                     : "销售主管与销售目前使用相同业务权限；职位仅用于展示，管理权限由角色决定。"
                 }
               >

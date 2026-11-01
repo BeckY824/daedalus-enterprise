@@ -1,7 +1,8 @@
 /**
  * 企业版「字段权限」（角色 × 字段，lib/enterprise/field-perm.ts）。
  * 钉的是：规则没开 = 现在的行为，谁都能改；开了按表管，「只能看」的字段改不了、别的照改；
- * 电话「看不到」从 号码脱敏器 这一个出口打码；老板不受限；设置页交来的表先规整再存。
+ * 电话「看不到」从 号码脱敏器 这一个出口打码；总管理不受字段表限（表里没总管理那一列），但照样只能看、不能改内容（C2）；
+ * 没设业务角色 = 字段一律看不到（11-01 兜底不留）；设置页交来的表先规整再存，只有总管理能存。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -37,7 +38,7 @@ beforeEach(async () => {
   const 建人 = async (email: string, name: string, role: string) => (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
   老板 = await 建人("boss", "老板", "ADMIN");
   销售 = await 建人("s1", "小王", "SALES");
-  await prisma.entMember.create({ data: { userId: 销售, bizRole: "sales" } });
+  await prisma.entMember.createMany({ data: [{ userId: 销售, bizRole: "sales" }, { userId: 老板, bizRole: "director" }] });
   客户 = (await prisma.customer.create({ data: { name: "张三", phone: "13800138000", salesOwnerId: 销售 } })).id;
   await setSetting(字段权限key, { 跟进状态: { sales: "看" }, 电话: { sales: "藏" }, 商机阶段: { sales: "看" } });
   当(销售);
@@ -98,20 +99,21 @@ describe("规则开关", () => {
     expect(await assignSalesOwner([客户], 老板)).toMatchObject({ ok: true });
   });
 
-  it("开了：电话设成看不到的角色打码，老板不受限", async () => {
+  it("开了：电话设成看不到的角色打码，总管理不受字段表限", async () => {
     await 开规则();
     expect((await 号码脱敏器())("13800138000")).not.toBe("13800138000");
     当(老板, "ADMIN");
     expect((await 号码脱敏器())("13800138000")).toBe("13800138000");
-    expect(await patchCustomer(客户, "followStatus", "跟进中")).toMatchObject({ ok: true });
+    expect((await 字段权限of(老板))("跟进状态")).toBe("改");
   });
 
-  it("开了：组织里没登记的人按账号角色推（销售 → 销售，主管 → 销售管理），照推出来的角色管", async () => {
+  it("开了：组织里没登记的人 = 没业务角色，不按账号角色推（11-01）：字段一律看不到、改不了", async () => {
     await 开规则();
     await prisma.entMember.deleteMany({ where: { userId: 销售 } });
-    expect(await patchCustomer(客户, "followStatus", "跟进中")).toMatchObject({ ok: false, error: expect.stringContaining("跟进状态") });
+    expect(await patchCustomer(客户, "remark", "改备注")).toMatchObject({ ok: false });
     const 主管 = (await prisma.user.create({ data: { email: "m1", name: "主管", title: "", role: "MANAGER", password: "x" } })).id;
-    expect((await 字段权限of(主管))("跟进状态")).toBe("改");
+    expect((await 字段权限of(主管))("跟进状态")).toBe("藏");
+    expect((await 字段权限of(主管))("电话")).toBe("藏");
   });
 
   it("商机：企业版只用项目，老入口在字段权限之前就拦（阶段·金额的字段权限改管项目，见下）", async () => {
@@ -141,26 +143,26 @@ describe("项目（10-27 审计：企业版只用项目，金额 / 阶段·节�
     expect([后.name, 后.node, 后.amount, 后.result]).toEqual(["项目B", "共识方案", 100, null]);
   });
 
-  it("负责人只能看 → 改项目换负责人拦；老板不受限", async () => {
+  it("负责人只能看 → 改项目换负责人拦；总管理不受字段表限", async () => {
     await 开规则();
     await setSetting(字段权限key, { 商机负责人: { sales: "看" } });
     const id = await 建项目();
     甲.id = 销售;
     expect(await 改项目(甲, id, { name: "项目A", amount: 100, ownerId: 老板 })).toMatchObject({ ok: false, error: expect.stringContaining("负责人") });
-    expect(await 改节点({ id: 老板, role: "ADMIN" }, id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true });
+    expect((await 字段权限of(老板))("商机负责人")).toBe("改");
   });
 
   it("预计签约只能看 → 项目的预计成交日期改不了（10-27 从客户挪来，沿用这一行）；原样交回照存", async () => {
     await 开规则();
     await setSetting(字段权限key, { 预计签约: { sales: "看" } });
     const id = await 建项目();
-    expect(await 改项目({ id: 老板, role: "ADMIN" }, id, { name: "项目A", amount: 100, expectedDealAt: "2026-11-30" })).toMatchObject({ ok: true });
+    await prisma.project.update({ where: { id }, data: { expectedDealAt: new Date("2026-11-30T00:00:00+08:00") } });
     甲.id = 销售;
     const 原日 = "2026-11-30";
     expect(await 改项目(甲, id, { name: "项目A", amount: 100, expectedDealAt: "2026-12-31" })).toMatchObject({ ok: false, error: expect.stringContaining("预计签约") });
     expect(await 改项目(甲, id, { name: "项目A", amount: 100, expectedDealAt: "" })).toMatchObject({ ok: false, error: expect.stringContaining("预计签约") });
     expect(await 改项目(甲, id, { name: "项目C", amount: 100, expectedDealAt: 原日 })).toMatchObject({ ok: true });
-    expect(await 改项目({ id: 老板, role: "ADMIN" }, id, { name: "项目C", amount: 100, expectedDealAt: "2026-12-31" })).toMatchObject({ ok: true });
+    expect((await 字段权限of(老板))("预计签约")).toBe("改");
   });
 
   it("规则没开 / 不是企业版：照旧能改节点和金额", async () => {
@@ -178,7 +180,7 @@ describe("项目（10-27 审计：企业版只用项目，金额 / 阶段·节�
 });
 
 describe("设置页存表", () => {
-  it("老板能存，交来的先规整；普通销售不能存", async () => {
+  it("总管理能存，交来的先规整；普通销售不能存", async () => {
     expect(await 设字段权限({ 客户备注: { sales: "藏" } })).toMatchObject({ ok: false });
     当(老板, "ADMIN");
     expect(await 设字段权限({ 客户备注: { sales: "藏" }, 乱写: 1 })).toEqual({ ok: true });

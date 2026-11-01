@@ -63,6 +63,8 @@ beforeEach(async () => {
   项运 = await 人("po", "项运");
   await prisma.entMember.createMany({
     data: [
+      // 11-01：权限只认业务角色，老板也要设成总管理
+      { userId: 老板, bizRole: "director" },
       { userId: 总管, bizRole: "director" },
       { userId: 市场, bizRole: "marketing_mgr" },
       { userId: 销售经理, bizRole: "sales_mgr" },
@@ -121,8 +123,8 @@ describe("纯函数", () => {
     expect(能("dict-assign-9", 销售)).toBe(true);
     expect(能(分配方式id.公海捞取, 销售, "SALES", { [分配方式id.公海捞取]: ["sales"] })).toBe(true);
     expect(能(分配方式id.指定, "没这个人")).toBe(false);
-    expect(谁能用的话(分配方式id.公海捞取, "公海捞取", {})).toBe("「公海捞取」只有老板、总管理、管理员和市场管理、渠道运营、项目运营能用");
-    expect(谁能用的话(分配方式id.自动, "自动分配", { [分配方式id.自动]: [] })).toBe("「自动分配」只有老板、总管理、管理员能用");
+    expect(谁能用的话(分配方式id.公海捞取, "公海捞取", {})).toBe("「公海捞取」只有总管理、管理员和市场管理、渠道运营、项目运营能用");
+    expect(谁能用的话(分配方式id.自动, "自动分配", { [分配方式id.自动]: [] })).toBe("「自动分配」只有总管理、管理员能用");
   });
 });
 
@@ -134,7 +136,7 @@ describe("动作照着拦", () => {
     expect(await 存分配谁能用({ [分配方式id.指定]: ["sales_mgr"] })).toEqual({ ok: true });
     当(市场);
     const L = await 建线索("B");
-    expect(await 分配线索({ leadId: L, toUserId: 销售 })).toEqual({ ok: false, error: "「指定分配」只有老板、总管理、管理员和销售管理能用" });
+    expect(await 分配线索({ leadId: L, toUserId: 销售 })).toEqual({ ok: false, error: "「指定分配」只有总管理、管理员和销售管理能用" });
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: L } })).ownerId).toBe(市场);
     当(总管);
     expect(await 分配线索({ leadId: L, toUserId: 销售 })).toEqual({ ok: true });
@@ -148,7 +150,7 @@ describe("动作照着拦", () => {
     expect(await 存分配谁能用({ [分配方式id.自动]: [] })).toEqual({ ok: true });
     当(市场);
     const L = await 建线索("C");
-    expect(await 自动分配线索(L)).toMatchObject({ ok: false, error: "「自动分配」只有老板、总管理、管理员能用" });
+    expect(await 自动分配线索(L)).toMatchObject({ ok: false, error: "「自动分配」只有总管理、管理员能用" });
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: L } })).ownerId).toBe(市场);
     当(老板, "ADMIN");
     expect(await 自动分配线索(L)).toMatchObject({ ok: true, toUserId: 销售 });

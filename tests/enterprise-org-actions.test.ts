@@ -1,6 +1,7 @@
 /**
  * 企业版「组织架构」设置页的写操作（settings/org-actions.ts）。
- * 钉的是：不是企业版 / 共享区 / 普通人一律拦、一行不写；总管理员能改但动不了总管级角色；
+ * 钉的是：不是企业版 / 共享区 / 普通人 / 管理员（只读）一律拦、一行不写；11-01 起只认业务角色：总管理能改（含给人定总管理、管理员），
+ * 勾了「不管设置」的总管理不行，最后一位能管设置的总管理不能被改掉；
  * 部门层数、成环的上级、接口直调塞进来的别的字段都挡住；写成了留一条操作记录。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -17,13 +18,14 @@ vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => mock
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 建部门, 改部门, 删部门, 设成员, 设规则 } from "@/app/(app)/settings/org-actions";
+import { 建部门, 改部门, 删部门, 设成员, 设规则, 设不管设置 } from "@/app/(app)/settings/org-actions";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 
 let 老板: string;
 let 总管: string;
 let 销售: string;
 let 主管: string;
+let 管员: string;
 
 const 记录 = () => prisma.auditLog.findMany({ orderBy: { at: "asc" }, select: { entity: true, summary: true } });
 const 部门id = async (name: string) => (await prisma.entDept.findFirstOrThrow({ where: { name } })).id;
@@ -38,31 +40,45 @@ beforeEach(async () => {
   总管 = await 建人("dir", "总管", "SALES");
   销售 = await 建人("s1", "小王", "SALES");
   主管 = await 建人("m1", "老李", "MANAGER");
-  await prisma.entMember.create({ data: { userId: 总管, bizRole: "director" } });
+  管员 = await 建人("adm", "管员", "ADMIN");
+  // 11-01：权限只认业务角色。账号 ADMIN 不算，老板也要有总管理这一行
+  await prisma.entMember.createMany({ data: [{ userId: 老板, bizRole: "director" }, { userId: 总管, bizRole: "director" }, { userId: 管员, bizRole: "admin" }] });
   当(老板, "ADMIN");
 });
 
 describe("谁能改", () => {
-  it("不是企业版、共享区、普通销售都拦，一行不写", async () => {
-    for (const 设 of [() => { mocks.企业版 = false; }, () => { mocks.共享区 = true; }, () => 当(销售)]) {
+  it("不是企业版、共享区、普通销售、管理员（只读）、账号 ADMIN 没业务角色都拦，一行不写", async () => {
+    const 没角色的ADMIN = (await prisma.user.create({ data: { email: "a2", name: "账号管理员", title: "", role: "ADMIN", password: "x" } })).id;
+    for (const 设 of [() => { mocks.企业版 = false; }, () => { mocks.共享区 = true; }, () => 当(销售), () => 当(管员, "ADMIN"), () => 当(没角色的ADMIN, "ADMIN")]) {
       mocks.企业版 = true; mocks.共享区 = false; 当(老板, "ADMIN");
       设();
-      expect(await 建部门("内贸部", null)).toMatchObject({ ok: false, error: expect.stringContaining("只有老板或总管理员") });
+      expect(await 建部门("内贸部", null)).toMatchObject({ ok: false, error: "只有总管理能改组织架构" });
       expect(await 设成员(销售, { line: "内贸" })).toMatchObject({ ok: false });
     }
     expect(await prisma.entDept.count()).toBe(0);
-    expect(await prisma.entMember.count()).toBe(1);
+    expect(await prisma.entMember.count()).toBe(3);
     expect(await 记录()).toEqual([]);
   });
 
-  it("总管理员能建部门、给人定部门，但动不了总管级角色", async () => {
+  it("总管理（账号不是 ADMIN 也行）能建部门、定部门、给人定总管理 / 管理员", async () => {
     当(总管);
     expect(await 建部门("内贸部", null)).toEqual({ ok: true });
     expect(await 设成员(销售, { deptId: await 部门id("内贸部") })).toEqual({ ok: true });
-    expect(await 设成员(销售, { bizRole: "admin" })).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
-    expect(await 设成员(总管, { bizRole: "sales" })).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
-    当(老板, "ADMIN");
     expect(await 设成员(销售, { bizRole: "admin" })).toEqual({ ok: true });
+    expect(await 设成员(销售, { bizRole: "director" })).toEqual({ ok: true });
+    expect(await prisma.entMember.findUniqueOrThrow({ where: { userId: 销售 } })).toMatchObject({ bizRole: "director" });
+  });
+
+  it("勾了「不管设置」的总管理改不了；最后一位能管设置的总管理不能被改掉、不能勾「不管设置」", async () => {
+    当(老板, "ADMIN");
+    expect(await 设不管设置(总管, true)).toEqual({ ok: true });
+    当(总管);
+    expect(await 建部门("内贸部", null)).toMatchObject({ ok: false, error: "只有总管理能改组织架构" });
+    当(老板, "ADMIN");
+    // 老板是唯一一位能管设置的总管理了
+    expect(await 设成员(老板, { bizRole: "sales" })).toMatchObject({ ok: false, error: expect.stringContaining("至少要留一位") });
+    expect(await 设不管设置(老板, true)).toMatchObject({ ok: false, error: expect.stringContaining("至少要留一位") });
+    expect(await prisma.entMember.findUniqueOrThrow({ where: { userId: 老板 } })).toMatchObject({ bizRole: "director", noSettings: false });
   });
 });
 
@@ -102,7 +118,7 @@ describe("成员", () => {
 
   it("接口直调：只认白名单字段；角色、业务线乱填拦", async () => {
     expect(await 设成员(销售, { line: "内贸", userId: 老板, bizRole: undefined } as never)).toEqual({ ok: true });
-    expect(await prisma.entMember.findUniqueOrThrow({ where: { userId: 销售 } })).toMatchObject({ userId: 销售, line: "内贸", bizRole: "sales" });
+    expect(await prisma.entMember.findUniqueOrThrow({ where: { userId: 销售 } })).toMatchObject({ userId: 销售, line: "内贸", bizRole: "" }); // 11-01 兜底不留：没设过角色的不按账号猜成销售
     expect(await 设成员(销售, { bizRole: "god" })).toMatchObject({ ok: false, error: "没有这个角色" });
     expect(await 设成员(销售, { line: "海外" })).toMatchObject({ ok: false });
     expect(await 设成员(销售, {})).toEqual({ ok: true });
@@ -116,9 +132,11 @@ describe("成员", () => {
 });
 
 describe("规则开关", () => {
-  it("老板能拨，留痕；普通销售拨不了；企业版关着时开关开着也不生效", async () => {
+  it("总管理能拨，留痕；普通销售、管理员拨不了；企业版关着时开关开着也不生效", async () => {
     expect(await 规则开着("按组织看客户")).toBe(false);
     当(销售);
+    expect(await 设规则(true)).toMatchObject({ ok: false });
+    当(管员, "ADMIN");
     expect(await 设规则(true)).toMatchObject({ ok: false });
     当(老板, "ADMIN");
     expect(await 设规则(true)).toEqual({ ok: true });

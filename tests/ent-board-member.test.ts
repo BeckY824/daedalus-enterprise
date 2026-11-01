@@ -1,7 +1,7 @@
 /**
  * 企业版复盘页（P15）：按成员看 + 线索瀑布 + 「待办」页签（10-29 改成两个页签：待办 | 数据）。
- *   - 看板范围of（纯函数）：老板 / 主管 / 管理员类别 / 手下有人 = 管理层；老板、总管理员全看，别的上级 = 自己 + 直接 / 间接 + 虚线下属；
- *     业务员只有自己。只按组织架构定，不看「按组织看客户」开没开（10-29 定稿）
+ *   - 看板范围of（纯函数）：同项目列表的负责人范围（组织范围of，只认业务角色）：总管理 / 管理员全看，别人 = 自己 + 直接 / 间接 + 虚线下属；
+ *     最下级只有自己；没设业务角色谁都不数。只按组织架构定，不看「按组织看客户」开没开（10-29 定稿）
  *   - 看板的人：业务员强制只看自己（地址栏带了别人也不认）；管理层默认看全部、选范围外的当没选；能选的只有一个人时不给下拉
  *   - 项目现在 / 项目一段 带只看：只数那个人负责的（公海的不算）；线索节点按潜客培育 → 线索验证 → 线索推进铺开
  *   - 挑一页：逾期在前、按时间从早到晚、没时间的最后；四张卡的条数跟着人和类型走；卡筛、类型筛；每页 20 条、页码超了落末页
@@ -32,10 +32,17 @@ const 小张 = "b_zhang"; // 经理的虚线下属
 const 外人 = "b_out";
 
 describe("看板范围of（纯函数）", () => {
+  beforeEach(() => vi.stubEnv("CRM_ENTERPRISE", "1"));
+  afterEach(() => vi.unstubAllEnvs());
+  // 11-01 只认业务角色：账号 ADMIN / MANAGER 不算；老板 = 总管理（director），主管 = 销售管理但手下没人
   const org = () =>
     建组织(
       [老板, 主管, 经理, 小王, 小张, 外人].map((id) => ({ id, role: id === 老板 ? "ADMIN" : id === 主管 ? "MANAGER" : "SALES", active: true })),
       [
+        { userId: 老板, deptId: null, bizRole: "director", line: null, managerId: null, dottedManagerId: null },
+        { userId: 主管, deptId: null, bizRole: "sales_mgr", line: null, managerId: null, dottedManagerId: null },
+        { userId: 经理, deptId: null, bizRole: "sales", line: null, managerId: null, dottedManagerId: null },
+        { userId: 外人, deptId: null, bizRole: "sales", line: null, managerId: null, dottedManagerId: null },
         { userId: 小王, deptId: null, bizRole: "sales", line: null, managerId: 经理, dottedManagerId: null },
         { userId: 小张, deptId: null, bizRole: "sales", line: null, managerId: null, dottedManagerId: 经理 },
       ],
@@ -44,21 +51,27 @@ describe("看板范围of（纯函数）", () => {
   const 排 = (r: { 管理层: boolean; 全看: boolean; 可选: string[] }) => ({ ...r, 可选: [...r.可选].sort() });
   const 全部 = [老板, 主管, 经理, 小王, 小张, 外人].sort();
 
-  it("业务员：不是管理层，只有自己", () => {
+  it("最下级：只有自己，不给选", () => {
     expect(看板范围of(org(), "SALES", 外人)).toEqual({ 管理层: false, 全看: false, 可选: [外人] });
     expect(看板范围of(org(), "SALES", 小王)).toEqual({ 管理层: false, 全看: false, 可选: [小王] });
   });
-  it("老板：全看，能选全部人；主管账号不是总管理员，算别的上级——手下没人就只有自己", () => {
+  it("总管理：全看，能选全部人；销售管理手下没人就只有自己；账号角色不算数", () => {
     expect(排(看板范围of(org(), "ADMIN", 老板))).toEqual({ 管理层: true, 全看: true, 可选: 全部 });
-    expect(看板范围of(org(), "MANAGER", 主管)).toEqual({ 管理层: true, 全看: false, 可选: [主管] });
+    expect(排(看板范围of(org(), "SALES", 老板))).toEqual({ 管理层: true, 全看: true, 可选: 全部 });
+    expect(看板范围of(org(), "MANAGER", 主管)).toEqual({ 管理层: false, 全看: false, 可选: [主管] });
   });
-  it("手下有人的经理：自己 + 实线 + 虚线下属，看不到外人", () => {
+  it("没设业务角色：谁都不数（账号 ADMIN 也一样，不兜底）", () => {
+    const 空 = 建组织([{ id: 老板, role: "ADMIN", active: true }], [], []);
+    expect(看板范围of(空, "ADMIN", 老板)).toEqual({ 管理层: false, 全看: false, 可选: [] });
+  });
+  it("手下有人的：自己 + 实线 + 虚线下属，看不到外人", () => {
     expect(排(看板范围of(org(), "SALES", 经理))).toEqual({ 管理层: true, 全看: false, 可选: [经理, 小王, 小张].sort() });
   });
   it("间接下属也算：经理的下属再带人，经理的范围一路往下", () => {
     const 链 = 建组织(
       [经理, 小王, 外人].map((id) => ({ id, role: "SALES", active: true })),
       [
+        { userId: 经理, deptId: null, bizRole: "sales_mgr", line: null, managerId: null, dottedManagerId: null },
         { userId: 小王, deptId: null, bizRole: "sales", line: null, managerId: 经理, dottedManagerId: null },
         { userId: 外人, deptId: null, bizRole: "sales", line: null, managerId: 小王, dottedManagerId: null },
       ],
@@ -237,9 +250,10 @@ describe("库里取数和权限", () => {
     }
     // 做完的不算
     await prisma.followPlan.create({ data: { subject: "做完了", plannedAt: new Date(), done: true, customerId: 客户[老板], ownerId: 老板 } });
-    await prisma.entMember.create({ data: { userId: 经理 } });
-    await prisma.entMember.create({ data: { userId: 小王, managerId: 经理 } });
-    await prisma.entMember.create({ data: { userId: 外人 } });
+    await prisma.entMember.create({ data: { userId: 老板, bizRole: "director" } });
+    await prisma.entMember.create({ data: { userId: 经理, bizRole: "sales_mgr" } });
+    await prisma.entMember.create({ data: { userId: 小王, bizRole: "sales", managerId: 经理 } });
+    await prisma.entMember.create({ data: { userId: 外人, bizRole: "sales" } });
   });
   afterEach(() => {
     vi.unstubAllEnvs();

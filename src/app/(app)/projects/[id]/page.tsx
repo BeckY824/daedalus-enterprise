@@ -3,7 +3,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能放回公海, 能改节点, 代管节点, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
+import { 能管项目, 能放回公海, 能改节点, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -11,7 +11,8 @@ import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
 import { 可选项 } from "@/lib/enterprise/dict";
-import { 读组织 } from "@/lib/enterprise/org";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能看项目, 能转让项目, 是经理, 能删除 } from "@/lib/enterprise/permissions";
 import { 能删改沟通 } from "@/lib/enterprise/follow-perm";
 import { 沟通附件们 } from "@/lib/attachments";
 import type { 附件 } from "@/lib/attachment-rules";
@@ -21,8 +22,7 @@ import { 读项目提成 } from "@/lib/project/commission-db";
 import { 超时回收日, 超时起点, 超时理由, 系统, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
-import { 原负责人回避 } from "@/lib/project/pool-owner";
-import { 管全队客户 } from "@/lib/constants";
+import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 有效沟通数 } from "@/lib/project/stage-gates";
@@ -72,7 +72,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     },
   });
   if (!p) notFound();
-  const 能改 = 能管项目(me, p);
+  // 11-01 只认业务角色（lib/enterprise/permissions.ts）：企业版 org 一定读；没设业务角色的什么都看不到
+  const org = await 权限组织();
+  const 已加入 = p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId);
+  // 数据层（lib/team-scope.ts 看得到的项目）在「按组织看客户」开着时已经筛过；关着也按业务角色再挡一遍
+  if (企业版() && !能看项目(me, { ...p, 已加入 }, org)) notFound();
+  const 能改 = 能管项目(me, p, org);
+  const 能转 = 能转让项目(me, p, org);
   // 公海里同事客户的项目：只给项目本身，客户、联系人、沟通内容领了再看（lib/project/db.ts 露客户）
   const 露 = 露客户(me, p, await 看得到的客户([p.customerId]));
   const [候选, 在职, 联系人们, 角色们, 类别们, 放回过, 规则] = await Promise.all([
@@ -93,8 +99,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 企业 = 企业版();
   // 公海里这个项目最后一次是谁放的（企业版 11-01 起进公海清负责人，原负责人只在留痕里，lib/project/pool-owner.ts）
   const 上一任 = 公海 ? 放回过[0]?.fromOwnerId ?? (p.ownerId || null) : null;
-  // 历史负责人对公海里的这个项目没有任何权限（C-01）：看不到，老板 / 主管不算
-  if (公海 && 原负责人回避() && me.id === 上一任 && !管全队客户(me.role)) notFound();
+  // 历史负责人对公海里的这个项目没有任何权限（C-01）：看不到，总管理 / 管理员不算（回避豁免）
+  if (公海 && 原负责人回避() && me.id === 上一任 && !(await 回避豁免(me))) notFound();
 
   const 历史负责人 = [...new Set(放回过.map((l) => l.fromOwnerId).filter((x): x is string => !!x))];
   const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), p.ownerId, p.creatorId, ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
@@ -116,16 +122,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
   const 回收线 = 超时线(p, 规则.超时回收.开 ? await 超时成员线(规则) : null);
   const 回收日 = 超时回收日(规则, p, 回收起点, 字典, 回收线);
-  const 能记沟通 = 企业 && !公海 && (能改 || p.members.some((m) => m.userId === me.id && m.inviteStatus === "JOINED"));
+  // 11-01：企业版组员只能看，沟通只有负责人记（和 lib/project/db.ts 记项目沟通 同一个判断）
+  const 能记沟通 = 企业 && !公海 && 能改;
   // 沟通的「…」菜单（改 / 删，10-29）：能记沟通、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
   // M-权限-09（10-31）：普通成员记完不能改、不能删，只有总管理员和经理（lib/enterprise/follow-perm.ts）
   const 可改沟通 = 能记沟通 && 露 && !(await 只读客户(defaultClient, p.customer)) && (await 能删改沟通(me));
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
-  const org = 企业 ? await 读组织() : null;
   const 节点能改 = 能改节点(me, p, org);
   const 必填 = !公海 && !p.result && 按必填走(规则, p.node)
-    ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p)), 只能靠填齐: me.role !== "ADMIN" && me.role !== "MANAGER" && !代管节点(me, p.ownerId, org) }
+    ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p)), 只能靠填齐: !是经理(me, org) }
     : null;
   // 记沟通时预演回收日（10-30 P0-2，lib/enterprise/recycle-text.ts 预演回收日）：给起点日和这个进程的天数，浏览器按同一个算法算。
   // 配了必填的进程记完可能自动推到下一个进程（天数跟着换），算不准就不给，界面不显示那一句
@@ -200,8 +206,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 回收预演,
-    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 必填, 不给推, 能改节点: 节点能改,
-    能放公海: !公海 && 能放回公海(me, p) && (能进公海的阶段 as readonly string[]).includes(p.phase),
+    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
+    能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase),
+    // 企业版删项目只有总管理（QA #3，进回收站）；别的版本照旧按 能改
+    能删: 企业 ? 能删除(me, org) : 能改,
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
     能领取: 公海 && (企业 ? !原负责人领不回 && !拦单独领项目() : me.id !== 上一任),
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户

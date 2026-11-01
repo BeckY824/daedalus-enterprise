@@ -178,8 +178,11 @@ let 经理: 人;
 let 乙: 人;
 let 丙: 人;
 let 序 = 0;
+/** 权限只认业务角色（11-01）：账号 ADMIN = 总管理、MANAGER = 销售管理、SALES = 销售成员 */
+const 业务角色of: Record<string, string> = { ADMIN: "director", MANAGER: "sales_mgr", SALES: "sales" };
 async function 造人(email: string, name: string, role: string): Promise<人> {
   const u = await prisma.user.create({ data: { email, name, title: "", role, password: "x" } });
+  await prisma.entMember.create({ data: { userId: u.id, bizRole: 业务角色of[role] } });
   return { id: u.id, name: u.name, role };
 }
 async function 客户(ownerId: string) {
@@ -271,7 +274,7 @@ describe("客户放回公海选退回原因（M-公海-09）", () => {
   it("没权限的那句照旧先说，不先要原因", async () => {
     const c = await 客户(乙.id);
     当(丙);
-    expect(await 放进公海([c])).toMatchObject({ ok: false, error: expect.stringContaining("只有负责人或管理员") });
+    expect(await 放进公海([c])).toMatchObject({ ok: false, error: expect.stringContaining("只有负责人或总管理、销售管理") });
   });
 
   it("不是企业版：不问原因，照旧记「手动」", async () => {
@@ -290,7 +293,7 @@ describe("无效客户", () => {
     await 放进公海([c], "客户主动终止");
 
     当(丙);
-    expect(await 标无效客户([c])).toEqual({ ok: false, error: "只有老板和主管能标无效客户" });
+    expect(await 标无效客户([c])).toEqual({ ok: false, error: "只有总管理和销售管理能标无效客户" });
     当(经理);
     expect(await 标无效客户([c])).toEqual({ ok: true, updated: 1, unchanged: 0 });
     expect(await 标无效客户([c])).toEqual({ ok: true, updated: 0, unchanged: 1 });
@@ -306,7 +309,7 @@ describe("无效客户", () => {
     expect(页.行.map((r) => [r.customerId, r.类, r.入池原因])).toEqual([[c, "无效", "客户主动终止"]]);
 
     当(经理);
-    expect(await 恢复有效客户([c])).toEqual({ ok: false, error: "只有老板能恢复无效客户" });
+    expect(await 恢复有效客户([c])).toEqual({ ok: false, error: "只有总管理能恢复无效客户" });
     当(老板);
     expect(await 恢复有效客户([c])).toEqual({ ok: true, updated: 1, unchanged: 0 });
     当(丙);

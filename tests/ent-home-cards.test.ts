@@ -125,6 +125,9 @@ describe("取数和项目页筛选", () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
     老板 = (await prisma.user.create({ data: { email: "boss", name: "老板", title: "", role: "ADMIN", password: "x" } })).id;
     业务员 = (await prisma.user.create({ data: { email: "sales", name: "业务员", title: "", role: "SALES", password: "x" } })).id;
+    // 11-01 只认业务角色：老板 = 总管理，业务员 = 销售（没设业务角色的谁都不数）
+    await prisma.entMember.create({ data: { userId: 老板, bizRole: "director" } });
+    await prisma.entMember.create({ data: { userId: 业务员, bizRole: "sales" } });
     角色.set(老板, "ADMIN");
     mocks.user = { ...mocks.user, id: 老板, role: "ADMIN" };
     const 重点客户 = await prisma.customer.create({ data: { name: "客户甲", phone: "13900000001", salesOwnerId: 老板, extra: { create: { level: "S" } } } });
@@ -160,7 +163,6 @@ describe("取数和项目页筛选", () => {
   });
 
   it("业务员只数自己负责的（按组织架构看客户开没开都一样；公海里别人放回去的不算），老板照旧看全员", async () => {
-    await prisma.entMember.create({ data: { userId: 业务员 } });
     mocks.user = { ...mocks.user, id: 业务员, name: "业务员", role: "SALES" };
     for (const 开 of [false, true]) {
       await setSetting("enterprise.rule.org_scope", 开);
@@ -174,8 +176,8 @@ describe("取数和项目页筛选", () => {
 
   it("上级数自己 + 下属的：经理带着业务员，外人的不算；点进去行对得上", async () => {
     const 经理 = (await prisma.user.create({ data: { email: "mgr", name: "经理", title: "", role: "SALES", password: "x" } })).id;
-    await prisma.entMember.create({ data: { userId: 经理 } });
-    await prisma.entMember.create({ data: { userId: 业务员, managerId: 经理 } });
+    await prisma.entMember.create({ data: { userId: 经理, bizRole: "sales_mgr" } });
+    await prisma.entMember.update({ where: { userId: 业务员 }, data: { managerId: 经理 } });
     const 经理客户 = await prisma.customer.create({ data: { name: "客户丁", phone: "13900000004", salesOwnerId: 经理, extra: { create: { level: "S" } } } });
     await prisma.project.create({ data: { name: "经理的", customerId: 经理客户.id, ownerId: 经理, creatorId: 经理, level: "A" } });
     // 客户是 S、项目是 B：不算重点（只看项目自己的级别）
@@ -217,7 +219,6 @@ describe("取数和项目页筛选", () => {
     expect(await 列("month-won")).toEqual(["业务员的", "重点新"]);
     // 按组织架构看客户开着：业务员只数自己的
     await setSetting("enterprise.rule.org_scope", true);
-    await prisma.entMember.create({ data: { userId: 业务员 } });
     expect((await 以谁的身份(业务员, () => 数首页卡(业务员, new Date(), ["month-won"])))["month-won"]).toBe(1);
   });
 

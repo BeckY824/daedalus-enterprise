@@ -93,12 +93,12 @@ type 格 = "允许" | "400" | "401" | "403" | "404";
 type 实际 = "放行" | "400" | "401" | "403" | "404" | "超时";
 type 条目 = Partial<Record<身份, 格>> & { 公开?: string; 注?: string; bug?: string };
 
-/** 五种身份是谁。业务角色照企业版组织里的写法：销售 sales、市场 marketing_mgr、经理 sales_mgr；老板是 ADMIN 账号 */
+/** 五种身份是谁。业务角色照企业版组织里的写法：销售 sales、市场 marketing_mgr、经理 sales_mgr；老板是 ADMIN 账号 + 业务角色总管理（11-01 起权限只认业务角色） */
 const 人: Record<Exclude<身份, "未登录">, { id: string; role: string; bizRole: string | null; managerId: string | null }> = {
   销售: { id: "p_sales", role: "SALES", bizRole: "sales", managerId: "p_mgr" },
   市场: { id: "p_mkt", role: "SALES", bizRole: "marketing_mgr", managerId: "p_boss" },
   经理: { id: "p_mgr", role: "MANAGER", bizRole: "sales_mgr", managerId: "p_boss" },
-  老板: { id: "p_boss", role: "ADMIN", bizRole: null, managerId: null },
+  老板: { id: "p_boss", role: "ADMIN", bizRole: "director", managerId: null },
 };
 const 票们 = new Map<身份, string | undefined>();
 

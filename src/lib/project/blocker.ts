@@ -22,9 +22,10 @@ import { 看已删 } from "../enterprise/soft-delete-core";
 import { 看全部 } from "../team-scope";
 import { getSetting, setSetting } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 读组织, 虚线上级of, 实线下属, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
+import { 读组织, 虚线上级of, 直属上级of, 实线下属, type 组织 } from "@/lib/enterprise/org";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
-import { 能管项目, 代管节点 } from "./db";
+import { 能管项目 } from "./db";
+import { 是总管理 } from "@/lib/enterprise/permissions";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 理由上限, 卡点编号前缀, 拼编号, 编号日, 下一个流水,
   type 卡点默认, type 发布输入, type 卡点状态,
@@ -76,9 +77,10 @@ async function 项目上的人(tx: Prisma.TransactionClient, p: 项目要的, us
  * 账号是主管不算（虚线上级、别的组的主管只能看或看不到，E11）。没组织架构退回项目模式的规矩
  */
 function 能管卡点(me: 谁, p: 项目要的, org: 组织 | null): boolean {
-  if (!org) return 能管项目(me, p);
-  if (me.role === "ADMIN" || 管理员类别of(org, me.id) === "总管理员") return true;
-  return !p.pooledAt && (p.ownerId === me.id || 代管节点(me, p.ownerId, org));
+  if (!org) return 能管项目(me, p, null);
+  // 11-01 只认业务角色：总管理看业务角色，不再看账号 ADMIN
+  if (是总管理(me, org)) return true;
+  return !p.pooledAt && (p.ownerId === me.id || 直属上级of(org, p.ownerId) === me.id);
 }
 
 /** 只看不管的上级：实线各级上级（直属的在 能管卡点 里）、虚线上级 */

@@ -59,7 +59,7 @@ export default async function ChannelsPage() {
     })),
     prisma.entChannelInvest.groupBy({ by: ["channelId"], _count: { _all: true } }),
     // 行上「录投入」给谁摆：和 挡投入 同一个口径
-    (async () => me.role === "ADMIN" || (企业版() && 能录投入(await 读组织(), me)))(),
+    (async () => (企业版() ? 能录投入(await 读组织(), me) : me.role === "ADMIN"))(),
     // 新建、编辑、停用、删除给谁摆（10-30 B1）：和 actions.ts 的 挡管 同一个口径；团队版照旧谁都摆
     (async () => !企业版() || 能管渠道(await 读组织(), me))(),
   ]);

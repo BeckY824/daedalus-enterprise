@@ -24,6 +24,8 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
 import { 数新线索 } from "@/lib/project/list";
 import { 数首页卡 } from "@/lib/project/home-cards-db";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能改后台设置, 是管理层 } from "@/lib/enterprise/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +78,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       return <StartCard 自己服务器={自己服务器()} 去导入={await 去导入(user)} 企业版={企业版()} 产品名={自定产品名() ?? undefined} />;
     }
     // 老的数据看板（Board / DashboardView）10-28 删了：企业版只用项目，没配 AI 的首页一律是这一屏
-    return <NoAiHome 管理员={user.role === "ADMIN"} 满额提醒={满额提醒们} />;
+    // 「去设置里配 AI」那个按钮：能改后台设置的人才摆（企业版 = 总管理，11-01 只认业务角色）
+    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 满额提醒={满额提醒们} />;
   }
 
   if (只用项目) {
@@ -99,7 +102,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <HomeChat
         会话={对话}
         userName={user.name}
-        suggestions={user.role === "ADMIN" ? 管理员示例 : 业务员示例}
+        suggestions={(企业版() ? 是管理层(user, await 权限组织()) : user.role === "ADMIN") ? 管理员示例 : 业务员示例}
         context=""
         models={models}
         自己服务器={自己服务器()}

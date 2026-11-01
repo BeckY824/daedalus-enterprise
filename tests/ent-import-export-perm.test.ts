@@ -1,6 +1,6 @@
 /**
  * 企业版导入导出、新建客户给谁（10-27 会议，lib/enterprise/import-perm.ts）。
- * 钉的是：导入、导出只给老板和总管理员（服务端动作也拦，不只是藏按钮）；
+ * 钉的是：导入、导出只给总管理（11-01 只认业务角色：账号 ADMIN 没有总管理这一行也不行；管理员只读也不行）（服务端动作也拦，不只是藏按钮）；
  * 普通销售（不是老板、也没有管理员类别）新建客户负责人只能是自己，传别人也存成自己；编辑照旧；
  * 销售管理能指定别人；企业版导入放给总管理员；不是企业版一律不管。
  */
@@ -27,7 +27,7 @@ import { 导出客户, 开始完整导出 } from "@/app/(app)/customers/export-a
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 企业版导入概况 } from "@/app/(app)/settings/enterprise-import-actions";
 
-let 老板: string, 总管: string, 销售经理: string, 市场: string, 销售: string, 另一销售: string, 没角色: string;
+let 老板: string, 管员: string, 账号ADMIN: string, 总管: string, 销售经理: string, 市场: string, 销售: string, 另一销售: string, 没角色: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
 const 表头 = ["姓名", "手机"];
 const 方案 = (数据: string[][]) => ({ 表头, 数据, 映射: 猜列(表头, 字段表(DEFAULT_BUSINESS)), 重复行: "跳过" as const });
@@ -42,6 +42,8 @@ beforeEach(async () => {
   mocks.企业版 = true;
   const 人 = async (email: string, name: string, role = "SALES") => (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
   老板 = await 人("boss", "老板", "ADMIN");
+  管员 = await 人("adm", "管员", "ADMIN");
+  账号ADMIN = await 人("adm2", "账号管理员", "ADMIN");
   总管 = await 人("dir", "总管");
   销售经理 = await 人("smgr", "销售经理");
   市场 = await 人("mkt", "市场小李");
@@ -50,6 +52,8 @@ beforeEach(async () => {
   没角色 = await 人("m1", "经理账号", "MANAGER");
   await prisma.entMember.createMany({
     data: [
+      { userId: 老板, bizRole: "director" },
+      { userId: 管员, bizRole: "admin" },
       { userId: 总管, bizRole: "director" },
       { userId: 销售经理, bizRole: "sales_mgr" },
       { userId: 市场, bizRole: "marketing_mgr" },
@@ -62,7 +66,7 @@ beforeEach(async () => {
 });
 
 describe("谁算什么", () => {
-  it("老板、总管理员能导入导出；销售管理、市场管理、销售不能", async () => {
+  it("总管理能导入导出；销售管理、市场管理、销售、管理员、没业务角色的账号 ADMIN 不能", async () => {
     const 问 = (id: string, role = "SALES") => 能导入导出({ id, role });
     expect(await 问(老板, "ADMIN")).toBe(true);
     expect(await 问(总管)).toBe(true);
@@ -70,6 +74,8 @@ describe("谁算什么", () => {
     expect(await 问(销售经理)).toBe(false);
     expect(await 问(市场)).toBe(false);
     expect(await 问(销售)).toBe(false);
+    expect(await 问(管员, "ADMIN")).toBe(false);
+    expect(await 问(账号ADMIN, "ADMIN")).toBe(false);
   });
   it("新建只给自己：普通销售是（账号角色是经理、业务角色是销售也算）；老板、各类管理员不是", async () => {
     const 问 = (id: string, role = "SALES") => 新建只给自己({ id, role });
@@ -111,7 +117,7 @@ describe("服务端拦（不只是藏按钮）", () => {
     当(总管);
     await expect(企业版导入概况()).resolves.toBeTruthy();
     当(销售经理);
-    await expect(企业版导入概况()).rejects.toThrow("只有老板和总管理员能做企业版导入");
+    await expect(企业版导入概况()).rejects.toThrow("只有总管理能做企业版导入");
   });
 });
 

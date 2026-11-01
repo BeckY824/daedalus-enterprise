@@ -22,7 +22,7 @@ export type 满额提醒 = { id: string; at: string; 条数: number; 线索: str
 const 键 = (userId: string) => `entLeadFullNotice:${userId}`;
 const 最多留 = 20;
 
-/** 收提醒的人：组织里的市场管理、总管理员（没建组织行的老板按账号推成总管理员，也在内） */
+/** 收提醒的人：组织里的市场管理、总管理员（只认业务角色，11-01；账号管理员没设业务角色的收不到） */
 export function 满额提醒收件人(org: 组织, 原因: 提醒原因 = "满额"): string[] {
   return [...org.成员.keys()].filter((id) => {
     const 类们 = 管理员类别们of(org, id);

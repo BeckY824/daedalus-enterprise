@@ -13,7 +13,8 @@ import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
 import { getSetting, setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
-import { 读组织, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
+import { 读组织, type 组织 } from "@/lib/enterprise/org";
+import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -36,7 +37,7 @@ type 结果 = { ok: true } | { ok: false; error: string };
 type 目标 = { leadId: string; projectId?: undefined } | { projectId: string; leadId?: undefined };
 const 目标of = (x: { leadId?: unknown; projectId?: unknown }): 目标 | null =>
   typeof x.projectId === "string" && x.projectId ? { projectId: x.projectId } : typeof x.leadId === "string" && x.leadId ? { leadId: x.leadId } : null;
-const 没开: { ok: false; error: string } = { ok: false, error: `规则「${规则.线索分配.名}」没开：老板或总管理员在 设置 → 组织架构 里打开` };
+const 没开: { ok: false; error: string } = { ok: false, error: `规则「${规则.线索分配.名}」没开：总管理在 设置 → 组织架构 里打开` };
 
 /** 规则开着才放行；共享试用区不让分 */
 async function 进门() {
@@ -352,7 +353,7 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
 
 /**
  * 建档向导选了「自动分配」（A7，10-27）：项目刚建在我名下，按自动分配挑人转过去，客户跟着给接手的人（向导建的客户只有这一个项目）。
- * 只认我自己是负责人、线索阶段、没进公海的项目。不查「能分配」（老板 / 总管理 / 市场管理）：向导里能不能自动分只看分配方式的「谁能用」
+ * 只认我自己是负责人、线索阶段、没进公海的项目。不查「能分配」（总管理 / 市场管理 / 销售管理）：向导里能不能自动分只看分配方式的「谁能用」
  */
 export async function 向导自动分配(projectId: string): Promise<自动分配结果> {
   const me = await 进门();
@@ -567,7 +568,7 @@ export async function 读不设配额(): Promise<boolean | null> {
 }
 
 /**
- * 拨规则「线索分配和配额」里的选项「不设配额（人人参与、不限额）」（10-30）。和拨规则开关同一道门：老板、总管理员。
+ * 拨规则「线索分配和配额」里的选项「不设配额（人人参与、不限额）」（10-30）。和拨规则开关同一道门：总管理（只认业务角色）。
  * 开了以后自动分配在参与的人里挑本月已分最少的，手动分不查满额；设过的配额留着不删，关掉就照旧生效
  */
 export async function 设不设配额(on: boolean): Promise<结果> {
@@ -575,7 +576,8 @@ export async function 设不设配额(on: boolean): Promise<结果> {
   if (!me) return 没开;
   try {
     const org = await 读组织();
-    if (me.role !== "ADMIN" && 管理员类别of(org, me.id) !== "总管理员") return { ok: false, error: "只有老板或总管理员能改这个选项" };
+    // 和拨规则开关同一道门（org-actions 能改的人）：只有总管理，勾了「不管设置」的不算（11-01）
+    if (!能改后台设置(me, org)) return { ok: false, error: "只有总管理能改这个选项" };
     // 先认人再验参数：业务员拿到的是「只有…能改」，不是参数错
     if (typeof on !== "boolean") return { ok: false, error: "开关只能开或关" };
     if ((await 不设配额开着()) === on) return { ok: true };
@@ -604,7 +606,7 @@ export async function 读线部门设置(): Promise<线部门设置 | null> {
   if (!me) return null;
   const org = await 读组织();
   const 设 = await 读线部门();
-  return { 设的: 设, 还没勾: 两条线.filter((l) => !线勾了部门(org, 设, l)), 能改: 管理员类别of(org, me.id) === "总管理员" };
+  return { 设的: 设, 还没勾: 两条线.filter((l) => !线勾了部门(org, 设, l)), 能改: 能改后台设置(me, org) };
 }
 
 /**
@@ -617,7 +619,7 @@ export async function 设线部门(v: unknown): Promise<结果> {
   if (!me) return 没开;
   try {
     const org = await 读组织();
-    if (管理员类别of(org, me.id) !== "总管理员") return { ok: false, error: "只有总管理员能改各条线参与自动分配的部门" };
+    if (!能改后台设置(me, org)) return { ok: false, error: "只有总管理员能改各条线参与自动分配的部门" };
     const 交来 = 规整线部门(v);
     const 不在 = 两条线.flatMap((l) => 交来[l]).filter((id) => !org.部门.has(id));
     if (不在.length) return { ok: false, error: "有部门已经不在了，刷新再选" };

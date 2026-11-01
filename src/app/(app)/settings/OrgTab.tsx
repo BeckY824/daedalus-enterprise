@@ -66,7 +66,7 @@ const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场
 /**
  * 设置 → 组织架构（企业版，2026-10-24）：部门树、每个人的部门 / 角色 / 业务线 / 直属上级 / 虚线上级。
  * 直属上级不填 = 按部门往上找销售管理；虚线上级只能看他的客户，不能改、不能转。
- * 老板和总管理员能改，其他人只看。
+ * 只有总管理（director）能改（11-01），管理员和其他人只看。
  */
 export default function OrgTab({ value }: { value: 组织架构 }) {
   const router = useRouter();
@@ -209,7 +209,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 市场部门现在 = 市场部门们(new Map(value.部门.map((d) => [d.id, d])), value.市场部门 ?? null);
   const 市场成员 = value.成员.filter((m) => (m.deptId && 市场部门现在.has(m.deptId)) || 单设.includes(m.id)).map((m) => m.name);
   const 人选项 = value.成员.map((m) => ({ value: m.id, label: m.name }));
-  const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>只有老板和总管理员能改</span>;
+  const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>只有总管理能改</span>;
 
   return (
     // minmax(0, 1fr)：不让 nowrap 的表格把整页撑宽，表格在各自卡片里横向滚动

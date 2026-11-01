@@ -16,7 +16,7 @@ import { 认回打码号, 号键 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
-import { 软删开着, 撤销软删 } from "@/lib/enterprise/soft-delete";
+import { 软删开着, 撤销软删, 删除挡 } from "@/lib/enterprise/soft-delete";
 import { 能删改沟通, 不能删改沟通话, 刚记的能撤 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 在推项目条件 } from "@/lib/project/active";
@@ -932,6 +932,9 @@ export type 删掉的联系人 =
 export async function deleteContact(id: string) {
   try {
     const me = await requireUser();
+    // 企业版只有总管理能删（QA #3）
+    const 挡 = await 删除挡(me);
+    if (挡) return { ok: false as const, error: 挡 };
     // 别人刚删了 / 刚移出了：说一句，不抛（原来抛出去，界面上什么反应都没有）
     if (!(await prisma.contact.findUnique({ where: { id }, select: { id: true } }))) {
       return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
@@ -963,6 +966,8 @@ export async function deleteContact(id: string) {
 export async function deleteUnassignedContact(id: string) {
   try {
     const me = await requireUser();
+    const 挡 = await 删除挡(me);
+    if (挡) return { ok: false as const, error: 挡 };
     if (!(await prisma.unassignedContact.findUnique({ where: { id }, select: { id: true } }))) {
       return { ok: false as const, error: "这位联系人已经不在了，刷新看看" };
     }

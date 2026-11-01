@@ -1,7 +1,7 @@
 /**
  * 企业版渠道（2026-10-29 渠道改版）的服务端：
  * - saveChannel 的企业表单：渠道属性 / 渠道名称 / 来源必填，全称一律拼成「名称|来源」（P16 不让手填），属性要在字典里；不交 attr 的老调用照旧。
- * - 渠道投入：只有老板、总管理员、市场管理能录、能删（10-29 P16 写死），渠道负责人、销售管理、销售只能看；录了投入的渠道不能删。
+ * - 渠道投入：只有总管理、市场管理能录、能删（10-29 P16 写死），渠道负责人、销售管理、销售只能看；录了投入的渠道不能删。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -37,7 +37,7 @@ beforeEach(async () => {
     if (bizRole) await prisma.entMember.create({ data: { userId: id, bizRole } });
     return id;
   };
-  老板 = await 建人("boss", "老板", "ADMIN");
+  老板 = await 建人("boss", "老板", "ADMIN", "director"); // 11-01 权限只认业务角色
   负责人 = await 建人("own", "渠道运营", "SALES", "channel_ops");
   市场经理 = await 建人("mm", "市场经理", "SALES", "marketing_mgr");
   总管 = await 建人("dir", "总管", "SALES", "director");
@@ -100,7 +100,7 @@ describe("渠道投入", () => {
   const 录 = (amount = 300, x: Partial<Parameters<typeof addChannelInvest>[0]> = {}) =>
     addChannelInvest({ channelId: 渠道, amount, currency: "CNY", date: "2026-10-20", remark: "十月投流", ...x });
 
-  it("只有老板、总管理员、市场管理能录；渠道负责人、销售管理、销售不能录但能看", async () => {
+  it("只有总管理、市场管理能录（11-01 只认业务角色）；渠道负责人、销售管理、销售不能录但能看", async () => {
     expect((await 录(100)).ok).toBe(true);
     当(总管);
     expect((await 录(200)).ok).toBe(true);
@@ -108,9 +108,9 @@ describe("渠道投入", () => {
     expect((await 录(50)).ok).toBe(true);
     for (const 谁 of [负责人, 销售经理, 销售]) {
       当(谁);
-      expect(await 录(1)).toEqual({ ok: false, error: "渠道投入只有老板、总管理员、市场管理能录，别的角色只能看" });
+      expect(await 录(1)).toEqual({ ok: false, error: "渠道投入只有总管理、市场管理能录，别的角色只能看" });
       const 看 = await listChannelInvests(渠道);
-      expect(看).toMatchObject({ ok: true, 能录: false, 不能录因: "渠道投入只有老板、总管理员、市场管理能录，别的角色只能看" });
+      expect(看).toMatchObject({ ok: true, 能录: false, 不能录因: "渠道投入只有总管理、市场管理能录，别的角色只能看" });
       expect((看 as { rows: unknown[] }).rows).toHaveLength(3);
     }
     当(市场经理);

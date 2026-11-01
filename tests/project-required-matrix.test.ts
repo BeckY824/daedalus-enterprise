@@ -4,7 +4,7 @@
  *   - 沟通三项：同一条沟通上发起主体、内容、方式都有才算；删了的沟通不算
  *   - 线索验证结果：判有效线索且没在等才算；等销售认领不算
  *   - 分配方式 / 所属客户 / 项目来源 / 项目所在地 / 项目级别 从库里读得到
- *   - 配了的节点销售手动推被拦、列的是中文叫法；老板能推；没配的节点不拦
+ *   - 配了的节点销售手动推被拦、列的是中文叫法；销售管理自己负责的能推、总管理不改别人的；没配的节点不拦
  *   - 没开节点推进的组织（老组织）：一样不拦、不自动推
  *   - 矩阵里的结局原因（线索流失 / 商机丢单原因、异常类别、尾款结算两勾）：服务端 改节点问题 已经管，这里钉住
  */
@@ -55,6 +55,7 @@ describe("节点必填按矩阵（真库）", () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
     老板 = await 人("boss", "ADMIN");
     乙 = await 人("yi", "SALES");
+    await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id, bizRole: "sales" }] });
     客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 乙.id } })).id;
   });
   afterEach(() => { vi.unstubAllEnvs(); });
@@ -81,9 +82,13 @@ describe("节点必填按矩阵（真库）", () => {
 
   it("带着上个节点的下一步进生产备货（手动推进来）：不自动推；在生产备货写了下一步才推，且只推一步", async () => {
     await setSetting("orgRules", 开着(建议配置()));
-    // 商机最后一个节点首款到账：老板手动推过来，带着上个节点的下一步
+    // 商机最后一个节点首款到账：首款到账没配必填时手动推过来，带着上个节点的下一步（总管理只能看、转让，不改别人的项目）
     const p = await 项目({ phase: "商机", node: "首款到账", ...下一步 });
-    expect(await 改节点(老板, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true, 变了: true });
+    await setSetting("orgRules", 开着({}));
+    invalidateSettingsCache();
+    expect(await 改节点(乙, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true, 变了: true });
+    await setSetting("orgRules", 开着(建议配置()));
+    invalidateSettingsCache();
     expect(await 现(p.id)).toMatchObject({ node: "生产备货", nextStepText: null, nextStepAt: null });
     expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
     expect((await 现(p.id)).node).toBe("生产备货");
@@ -101,7 +106,11 @@ describe("节点必填按矩阵（真库）", () => {
   it("销售带着上个节点的下一步手动推不过生产备货：下一步被清，还差下一步计划 / 时间", async () => {
     await setSetting("orgRules", 开着(建议配置()));
     const p = await 项目({ phase: "商机", node: "首款到账", ...下一步 });
-    expect(await 改节点(老板, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
+    await setSetting("orgRules", 开着({}));
+    invalidateSettingsCache();
+    expect(await 改节点(乙, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
+    await setSetting("orgRules", 开着(建议配置()));
+    invalidateSettingsCache();
     const r = await 改节点(乙, p.id, { phase: "订单", node: "物流运输" });
     expect(r).toMatchObject({ ok: false });
     expect(r.ok ? "" : r.error).toContain("下一步");
@@ -110,12 +119,12 @@ describe("节点必填按矩阵（真库）", () => {
   it("往后退也清下一步；只改结局（丢单）不清", async () => {
     await setSetting("orgRules", 开着({}));
     const p = await 项目({ phase: "商机", node: "方案敲定", ...下一步 });
-    expect(await 改节点(老板, p.id, { phase: "商机", node: "痛点挖掘" })).toMatchObject({ ok: true, 变了: true });
+    expect(await 改节点(乙, p.id, { phase: "商机", node: "痛点挖掘" })).toMatchObject({ ok: true, 变了: true });
     expect(await 现(p.id)).toMatchObject({ nextStepText: null, nextStepAt: null });
     const 退 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, toNode: "痛点挖掘" } });
     expect(退.reason).toContain("原下一步：约下周演示");
     await prisma.project.update({ where: { id: p.id }, data: 下一步 });
-    expect(await 改节点(老板, p.id, { phase: "商机", node: "痛点挖掘", result: "丢单" }, { 备注: "预算砍了" })).toMatchObject({ ok: true, 变了: true });
+    expect(await 改节点(乙, p.id, { phase: "商机", node: "痛点挖掘", result: "丢单" }, { 备注: "预算砍了" })).toMatchObject({ ok: true, 变了: true });
     expect(await 现(p.id)).toMatchObject({ nextStepText: "约下周演示" });
   });
 
@@ -168,13 +177,18 @@ describe("节点必填按矩阵（真库）", () => {
     expect(await 存一下(p.id)).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
   });
 
-  it("配了的节点：销售手动往前推被拦，还差用中文叫法列；老板能推；没配的节点不拦", async () => {
+  it("配了的节点：销售手动往前推被拦，还差用中文叫法列；销售管理自己负责的能推；没配的节点不拦", async () => {
     await setSetting("orgRules", 开着(建议配置()));
     const p = await 项目({ phase: "商机", node: "首款到账" });
     const r = await 改节点(乙, p.id, { phase: "订单", node: "生产备货" });
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toContain("还差必填：当前回款、当前进程沟通（发起主体、沟通内容、沟通方式）、下一步计划、下一步时间");
-    expect(await 改节点(老板, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
+    // 总管理不改别人的项目（C2）；销售管理自己负责的项目缺着必填也能推（是经理）
+    expect(await 改节点(老板, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: false });
+    const 经理 = await 人("mgr", "MANAGER");
+    await prisma.entMember.create({ data: { userId: 经理.id, bizRole: "sales_mgr" } });
+    const 自己的 = await 项目({ phase: "商机", node: "首款到账", ownerId: 经理.id });
+    expect(await 改节点(经理, 自己的.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
     // 只配一个节点：别的节点照旧手动推
     await setSetting("orgRules", 开着({ 交付验收: ["验收通过"] }));
     invalidateSettingsCache();
