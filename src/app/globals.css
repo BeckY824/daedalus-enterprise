@@ -1186,12 +1186,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   position: absolute; top: 14px; right: 14px; width: 28px; height: 28px;
   display: inline-flex; align-items: center; justify-content: center;
   padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
-  color: var(--text-muted); cursor: pointer; transition: background-color .15s, color .15s;
+  color: var(--text-muted); cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .proj-fold-btn:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
 .proj-fold-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .proj-fold-btn:disabled { cursor: default; opacity: .45; }
-.proj-fold-btn > svg { transition: transform .15s; }
+.proj-fold-btn > svg { transition: transform var(--t-fast) var(--ease); }
 .proj-fold-btn[aria-expanded="true"] > svg { transform: rotate(180deg); }
 .proj-mod-body { max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior-y: contain; min-width: 0; scrollbar-width: thin; }
 .proj-search { min-width: 0; }
