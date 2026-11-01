@@ -26,7 +26,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
-import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由, 原负责人不能领回提示, 项目不能单独领提示, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 系统, 超时理由 } from "@/lib/project/timeout";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 放回公海, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
@@ -153,7 +153,7 @@ describe("单项目客户（D6）", () => {
     expect(await prisma.task.count({ where: { customerId: c, ownerId: 乙.id, title: { contains: "已回到项目公海" } } })).toBe(1);
   });
 
-  it("丙领这个项目：客户一起归丙，客户公海那一行删掉、记领取时间，乙在这位客户上没做完的待办跟着过来", async () => {
+  it("丙领这个项目：客户一起归丙，客户公海那一行删掉、记领取时间；乙在这位客户上没做完的待办进公海时已关掉（11-01 C-01），留在乙名下不跟过来", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     const 待办 = await prisma.task.create({ data: { title: "回个电话", customerId: c, ownerId: 乙.id } });
@@ -163,7 +163,7 @@ describe("单项目客户（D6）", () => {
     expect(await 负责人(c)).toBe(丙.id);
     expect(await 在客户公海(c)).toBe(false);
     expect((await prisma.customerClaim.findUniqueOrThrow({ where: { customerId: c } })).userId).toBe(丙.id);
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: 待办.id } })).ownerId).toBe(丙.id);
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: 待办.id } })).toMatchObject({ ownerId: 乙.id, done: true, title: `回个电话${进公海关待办尾}` });
     expect(await prisma.customerOwnerLog.count({ where: { customerId: c, kind: "claim", toOwnerId: 丙.id } })).toBe(1);
   });
 
@@ -268,7 +268,7 @@ describe("领项目把客户带出客户公海：名下别的公海项目一起�
     expect(痕[0]).toMatchObject({ userId: 丙.id, fromOwnerId: 乙.id, toOwnerId: 丙.id });
     // 手上领的 p1 只记一行（先移出项目公海再带，不会被当成别的公海项目再记）
     expect(await prisma.projectNodeLog.count({ where: { projectId: p1, kind: "pool-claim" } })).toBe(1);
-    expect(await prisma.project.findUniqueOrThrow({ where: { id: q } })).toMatchObject({ ownerId: 乙.id });
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: q } })).toMatchObject({ ownerId: "" }); // 公海里没负责人（11-01 C-01）
     expect(await 项目在公海(q)).toBe(true);
   });
 

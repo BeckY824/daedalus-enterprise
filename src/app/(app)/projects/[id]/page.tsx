@@ -21,6 +21,8 @@ import { 读项目提成 } from "@/lib/project/commission-db";
 import { 超时回收日, 超时起点, 超时理由, 系统, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
+import { 原负责人回避 } from "@/lib/project/pool-owner";
+import { 管全队客户 } from "@/lib/constants";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 有效沟通数 } from "@/lib/project/stage-gates";
@@ -89,9 +91,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     : await prisma.lead.findUnique({ where: { id: p.sourceLeadId }, select: { name: true, convertedAt: true } }).then((l) => ({ name: l?.name ?? null, convertedAt: l?.convertedAt ? dayjs(l.convertedAt).format("YYYY-MM-DD") : null }));
   const 公海 = !!p.pooledAt;
   const 企业 = 企业版();
+  // 公海里这个项目最后一次是谁放的（企业版 11-01 起进公海清负责人，原负责人只在留痕里，lib/project/pool-owner.ts）
+  const 上一任 = 公海 ? 放回过[0]?.fromOwnerId ?? (p.ownerId || null) : null;
+  // 历史负责人对公海里的这个项目没有任何权限（C-01）：看不到，老板 / 主管不算
+  if (公海 && 原负责人回避() && me.id === 上一任 && !管全队客户(me.role)) notFound();
 
   const 历史负责人 = [...new Set(放回过.map((l) => l.fromOwnerId).filter((x): x is string => !!x))];
-  const 人id = new Set<string>([...历史负责人, p.ownerId, p.creatorId, ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
+  const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), p.ownerId, p.creatorId, ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
   for (const x of [p.balanceSettledById, p.acceptancePassedById]) if (x) 人id.add(x);
   const 人 = await prisma.user.findMany({ where: { id: { in: [...人id] } }, select: { id: true, name: true } });
   const 名 = new Map(人.map((u) => [u.id, u.name]));
@@ -101,7 +107,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 认放回 = (reason: string | null): 放回方式 => (reason === 超时理由 ? "超时" : reason === 停用项目进公海理由 ? "停用" : "手动");
   const 最近放回 = 公海 ? p.logs.find((l) => l.kind === "pool-release") : undefined;
   // 企业版「非原负责人均可领取」：原负责人看得到领取按钮、灰着（pool-rules.ts）
-  const 原负责人领不回 = 公海 && me.id === p.ownerId && 拦原负责人();
+  const 原负责人领不回 = 公海 && me.id === 上一任 && 拦原负责人();
 
   // 企业版超时回收：线索 / 商机阶段记沟通要填下一步时间；算出哪天会自动回公海（和 lib/project/db.ts 公海超时收回 同一个起点）
   const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
@@ -185,7 +191,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 详情: 项目详情 = {
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
-    ownerId: p.ownerId, ownerName: 叫(p.ownerId)!, historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
+    // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取
+    ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "没人", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
     pooled: 公海, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
@@ -194,7 +201,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 必填, 不给推, 能改节点: 节点能改,
     能放公海: !公海 && 能放回公海(me, p) && (能进公海的阶段 as readonly string[]).includes(p.phase),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
-    能领取: 公海 && (企业 ? !原负责人领不回 && !拦单独领项目() : me.id !== p.ownerId),
+    能领取: 公海 && (企业 ? !原负责人领不回 && !拦单独领项目() : me.id !== 上一任),
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户
     领取不给: 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 拦单独领项目() ? 项目不能单独领提示 : null,
     进公海: 最近放回 ? { 方式: 认放回(最近放回.reason), 谁: 叫(最近放回.userId)! } : null,
