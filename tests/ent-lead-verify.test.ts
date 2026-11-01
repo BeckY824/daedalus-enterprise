@@ -22,6 +22,7 @@ import {
 } from "@/lib/project/lead-verify";
 import { 本月加额, 配额of, 月份 } from "@/lib/enterprise/lead-assign";
 import { 规则 } from "@/lib/enterprise/rules";
+import { 市场成员key } from "@/lib/enterprise/market";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
 import { 记有效沟通 } from "./helpers/ent-valid-followup";
@@ -230,6 +231,14 @@ describe("企业版线索有效性验证", () => {
       const 老板建 = await 项目({ creatorId: 老板.id });
       expect((await 判无效(老板建)).ok).toBe(true);
       expect(await 状态(老板建)).toMatchObject({ pending: "市场复核" });
+    });
+
+    it("销售单独设成市场成员（岗位调整试行期）：建的照旧交市场复核", async () => {
+      await setSetting(市场成员key, [乙.id]);
+      const id = await 项目({ creatorId: 乙.id });
+      expect((await 读线索验证(乙, await 现(id)))?.初判即终判).toBe(false);
+      expect((await 判无效(id)).ok).toBe(true);
+      expect(await 状态(id)).toMatchObject({ verdict: "初验无效", pending: "市场复核" });
     });
 
     it("判有效：和以前一样直接推到线索推进", async () => {

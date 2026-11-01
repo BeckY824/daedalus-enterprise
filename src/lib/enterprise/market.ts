@@ -2,7 +2,7 @@
  * 企业版「市场成员」（2026-10-31 定）：市场部门的人建的、负责过的客户，转给销售以后他还看得到（只读）。
  *
  * - 市场部门：组织规则里设一组部门（连下级部门）；没设 = 名字带「市场」的部门和它们的下级。
- * - 市场成员：在职、部门在市场部门里的人（组织里只有在职的人）。
+ * - 市场成员：在职、部门在市场部门里的人（组织里只有在职的人），再加上逐人设的（11-01：岗位调整试行期的人，部门不动也算市场成员）。
  * - 市场成员看得到：自己是客户创建人（CustomerCreator）、建过这位客户的任何一个项目、或是负责人（销售 / 渠道 / 项目负责人）的客户和它的项目；
  *   市场管理（bizRole marketing_mgr）看得到任何一位市场成员按上面算得到的。
  * - 「看得到」= 只读：不能改、不能记沟通、不能转、不能领；原来就能改的不降。只在企业版、「按组织看客户」开着时生效，线索照旧。
@@ -14,6 +14,8 @@ import type { 组织部门 } from "./org-tree";
 
 /** Setting：市场部门的编号数组；没存 / 存的不对 = 按名字带「市场」认 */
 export const 市场部门key = "enterprise.market_depts";
+/** Setting：逐人设的市场成员（用户编号数组，11-01）；没存 = 没有 */
+export const 市场成员key = "enterprise.market_users";
 export const 市场只读话 = "这是市场成员相关的客户：只能看，不能改、不能转";
 
 /** 存的、交来的都过一遍：去重、去空，不是数组 = null（按默认） */
@@ -39,10 +41,12 @@ export function 市场部门们(部门: ReadonlyMap<string, Pick<组织部门, "
   return 出;
 }
 
-/** 市场成员：组织里（在职）、部门在市场部门里的人 */
-export function 市场成员们(org: 组织, 设的: readonly string[] | null): Set<string> {
+/** 市场成员：组织里（在职）、部门在市场部门里的人，加上逐人设的（不在组织里了的不算） */
+export function 市场成员们(org: 组织, 设的: readonly string[] | null, 设的人: readonly string[] | null = null): Set<string> {
   const 部门 = 市场部门们(org.部门, 设的);
-  return new Set([...org.成员.values()].filter((m) => m.deptId && 部门.has(m.deptId)).map((m) => m.userId));
+  const 出 = new Set([...org.成员.values()].filter((m) => m.deptId && 部门.has(m.deptId)).map((m) => m.userId));
+  for (const id of 设的人 ?? []) if (org.成员.has(id)) 出.add(id);
+  return 出;
 }
 
 /** 这几位市场成员「相关」的客户（Prisma where）：创建人、负责人，或建过 / 负责着它的项目（回收站里的项目不算） */
