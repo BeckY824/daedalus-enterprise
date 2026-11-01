@@ -93,7 +93,7 @@ async function 认沟通(followUpId: string, 要改: boolean | "删"): Promise<{
   if (!要改) return { 叫法 };
   if (await 能删改沟通(我)) return { 叫法 };
   if (要改 === "删") return { 错: 不能删改沟通话, 状态: 403 };
-  if (f.ownerId !== 我.id) return { 错: "只有记这条沟通的人、总管理员或经理能传附件", 状态: 403 };
+  if (f.ownerId !== 我.id) return { 错: "只有记这条沟通的人或总管理能传附件", 状态: 403 };
   const p = await prisma.project.findFirst({ where: { id: 挂.projectId }, select: { id: true, ownerId: true, pooledAt: true } });
   if (!p || p.pooledAt) return { 错: "这个项目在公海里，先领取再传", 状态: 403 };
   if (!能管项目(我, p, await 权限组织())) {

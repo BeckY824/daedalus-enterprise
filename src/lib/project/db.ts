@@ -96,10 +96,10 @@ export function 上级只推(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
 }
 
 /**
- * 需求状态补全期（组织规则 阶段.需求补全期，M-权限-07，默认关）：开着时只有经理（主管）、老板、总管理员能往前推进程；
+ * 需求状态补全期（组织规则 阶段.需求补全期，M-权限-07，默认关）：开着时只有销售管理、总管理能往前推进程；
  * 负责人本人、直属上级（销售账号）都不给。只管往前推：往回退、终止进程、记沟通、改字段照常
  */
-export const 补全期提示 = "需求状态补全期：只有经理、总管理员能往前推进程，沟通照常记";
+export const 补全期提示 = "需求状态补全期：只有销售管理、总管理能往前推进程，沟通照常记";
 export function 补全期不给(me: 谁, org: 组织 | null, 规则: 组织规则): string | null {
   if (!规则.阶段.需求补全期 || 是经理(me, org)) return null;
   return 补全期提示;
@@ -1124,7 +1124,7 @@ async function 往前进来的(tx: Prisma.TransactionClient, p: { id: string; ph
  * 刚往前推进来（老板、主管手动推）的传 刚往前 = true，省一次查
  */
 export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, projectId: string, 刚往前 = false): Promise<string[]> {
-  // 需求状态补全期（M-权限-07）：只有经理、总管理员手动推，填齐了也不自动推
+  // 需求状态补全期（M-权限-07）：只有销售管理、总管理手动推，填齐了也不自动推
   if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return [];
   const 到了: string[] = [];
   let 往前 = 刚往前;

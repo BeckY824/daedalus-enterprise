@@ -939,7 +939,7 @@ function StageRuleCard({
         />
         <div style={{ minWidth: 0 }}>
           <div>需求状态补全期</div>
-          <div style={{ color: "var(--text-muted)" }}>开了：只有经理（主管）、老板、总管理员能往前推进程，负责人只补字段、记沟通；填齐必填也不自动推。往回退、终止进程照常。补完了记得关。默认关</div>
+          <div style={{ color: "var(--text-muted)" }}>开了：只有销售管理、总管理能往前推进程，负责人只补字段、记沟通；填齐必填也不自动推。往回退、终止进程照常。补完了记得关。默认关</div>
         </div>
       </div>
       <div style={{ fontWeight: 500, marginBottom: 8 }}>结束状态叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>

@@ -28,7 +28,7 @@ async function 登录(page: Page, 谁: keyof typeof 账号) {
   await page.waitForURL(/\/dashboard/);
 }
 
-test("四类账号都能登录：老板、销售经理、销售、市场", async ({ page }) => {
+test("四类账号都能登录：老板、销售管理、销售、市场", async ({ page }) => {
   for (const 谁 of ["老板", "经理", "销售1", "市场"] as const) {
     await page.context().clearCookies();
     await 登录(page, 谁);
@@ -145,7 +145,7 @@ async function 选(page: Page, 框名: string, 项: string) {
 const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-notice", { hasText: 字 });
 
 // A7（11-01 权限只认业务角色）：分配线索 = 市场管理、销售管理、总管理
-test("线索分配：老板、销售经理、市场管理有「分配」，销售没有；市场把线索甲分给销售乙", async ({ page }) => {
+test("线索分配：老板、销售管理、市场管理有「分配」，销售没有；市场把线索甲分给销售乙", async ({ page }) => {
   const 正文 = page.getByRole("main");
   const 分配 = (名: string) => 正文.getByRole("button", { name: `分配 ${名}`, exact: true });
   for (const 谁 of ["老板", "经理"] as const) {
