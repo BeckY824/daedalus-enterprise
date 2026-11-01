@@ -9,7 +9,7 @@ import { useState } from "react";
 import { Button, Card, Input, InputNumber, Modal, Space, Tag } from "antd";
 import { 金额 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
-import { 两位, 分配问题, 更正问题, 更正原因上限, type 提成卡, type 分配 } from "@/lib/project/commission";
+import { 两位, 低于底价, 分配问题, 更正问题, 更正原因上限, type 提成卡, type 分配 } from "@/lib/project/commission";
 import { 存项目底价, 存提成分配, 更正实际提成 } from "../commission-actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
@@ -45,7 +45,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
       <div style={行样}><span style={键样}>项目溢价</span>{用的 ? 钱(用的.项目溢价) : "—"}{用的 && 用的.项目溢价 === 0 && 用的.成交金额 < 用的.项目底价 && <span style={淡}>（成交金额低于底价，溢价算 0）</span>}</div>
       <div style={行样}>
         <span style={键样}>预估提成</span>
-        {t.预估 ? <span>{钱(t.预估.合计)} <span style={淡}>= 底价 × {t.比例.底价比例}%（{钱(t.预估.底价提成)}）+ 溢价 × {t.比例.溢价比例}%（{钱(t.预估.溢价提成)}），{t.单设 === "全部" ? "按负责人单设的比例" : t.单设 === "部分" ? `按负责人单设的比例（没设的那项按${t.范围}）` : `按${t.范围}比例`}</span></span> : <span style={淡}>填了项目底价才算得出来</span>}
+        {t.预估 ? <span>{钱(t.预估.合计)} <span style={淡}>= {低于底价(t.预估.成交金额, t.预估.项目底价) ? "成交金额（低于底价，按比例折算）" : "底价"} × {t.比例.底价比例}%（{钱(t.预估.底价提成)}）+ 溢价 × {t.比例.溢价比例}%（{钱(t.预估.溢价提成)}），{t.单设 === "全部" ? "按负责人单设的比例" : t.单设 === "部分" ? `按负责人单设的比例（没设的那项按${t.范围}）` : `按${t.范围}比例`}</span></span> : <span style={淡}>填了项目底价才算得出来</span>}
       </div>
       <div style={行样}>
         <span style={键样}>实际提成</span>
