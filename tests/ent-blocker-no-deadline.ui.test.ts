@@ -19,7 +19,7 @@ const plugin: Plugin = { name: "blocker-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/blocker-actions$/, `const f=${空跑},字=async()=>({ok:true,字典:[]});export const 发布卡点Action=async(id,input)=>{window.__发布=input;return{ok:true}},认领卡点Action=f,完成卡点Action=f,存卡点默认Action=async(p)=>{window.__存=p;return{ok:true}},存卡点角色开关Action=f,新增原因Action=字,改原因名Action=字,改原因状态Action=字,删原因Action=字,合并原因Action=字,我的卡点Action=async()=>[];`);
+  stub(/blocker-actions$/, `const f=${空跑},字=async()=>({ok:true,字典:[]});export const 发布卡点Action=async(id,input)=>{window.__发布=input;return{ok:true}},认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=async(p)=>{window.__存=p;return{ok:true}},存卡点角色开关Action=f,新增原因Action=字,改原因名Action=字,改原因状态Action=字,删原因Action=字,合并原因Action=字,我的卡点Action=async()=>[];`);
   stub(/\/projects\/actions$|\/ent-dict-actions$|\/commission-actions$/, `const f=${空跑};export const 加组员角色=f,改组员角色=f,加项目异常类别=f,改项目异常类别=f,改组织规则=f,预览超时回收=async()=>({ok:true,项目:[]}),改提成比例=f,改按人提成比例=f,加企业选项=f,改企业选项=f,存分配谁能用=f;`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

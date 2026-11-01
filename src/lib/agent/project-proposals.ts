@@ -84,7 +84,9 @@ export type 项目卡 =
       /** 开了超时回收、项目在线索 / 商机：下一步时间必填 */
       要时间?: boolean;
     })
-  | (项目Base & { kind: "blocker_resolve"; solution: string; result: string })
+  /** 最后一个 = false：确认人不是最后一个完成的（还有别人没点完成），方案 / 结果不必填，result 记成自己的处理说明。
+      缺省 = 按「最后一个」算（必填），落库时 完成卡点 再按当时的人数兜一次 */
+  | (项目Base & { kind: "blocker_resolve"; solution: string; result: string; 最后一个?: boolean })
   | (项目Base & { kind: "payment_add"; paidAt: string; currency: string; amount: number })
   | (项目Base & { kind: "payment_delete" })
   | (项目Base & { kind: "lead_verify"; 步: 验证步 | ""; 判: string; 说明: string; 无效原因: string; 无效原因们?: string[]; 下一步时间: string; 计划内容: string })
@@ -188,7 +190,7 @@ export function buildProjectProposal(
     };
   }
 
-  if (kind === "blocker_resolve") return { ok: true, proposal: { ...共, kind, solution: str(args.solution, 描述上限), result: str(args.result, 描述上限) } };
+  if (kind === "blocker_resolve") return { ok: true, proposal: { ...共, kind, solution: str(args.solution, 描述上限), result: str(args.result, 描述上限), ...(args.最后一个 === false ? { 最后一个: false } : {}) } };
 
   if (kind === "payment_add") {
     const paidAt = 收日子(args.paidAt);
@@ -256,7 +258,8 @@ export function 项目卡缺(p: 项目卡): string[] {
     if (p.要时间 && !p.下一步时间) miss.push("下一步时间");
     if (p.要卡点 && (!p.卡点类型 || p.卡点类型 === "暂无卡点")) miss.push("卡点类型");
   }
-  if (p.kind === "blocker_resolve") {
+  // 方案 / 结果只有最后一个完成的人必填（11-01 定稿）；其余人点完成只留处理说明，可空
+  if (p.kind === "blocker_resolve" && p.最后一个 !== false) {
     if (!p.solution) miss.push("解决方案");
     if (!p.result) miss.push("解决结果");
   }

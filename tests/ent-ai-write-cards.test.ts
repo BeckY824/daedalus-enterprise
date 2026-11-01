@@ -212,6 +212,63 @@ describe("解决卡点", () => {
   });
 });
 
+describe("解决卡点：方案 / 结果只有最后一个完成的人必填（11-01 定稿）", () => {
+  it("收卡：最后一个 = false 不缺方案 / 结果；缺省按最后一个算", () => {
+    const 不是 = 收("blocker_resolve", { targetId: "b1", targetName: "BLK", 最后一个: false });
+    expect((不是 as { proposal: Proposal }).proposal).toMatchObject({ 最后一个: false });
+    expect(missingFields((不是 as { proposal: Proposal }).proposal)).toEqual([]);
+    // 模型乱填 true / 字符串：都不当「不是最后一个」
+    for (const v of [true, "false", undefined]) {
+      const r = 收("blocker_resolve", { targetId: "b1", targetName: "BLK", 最后一个: v });
+      expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["解决方案", "解决结果"]);
+    }
+  });
+
+  it("两人认领：别人没完成时我的卡不要方案、点完成只记说明；别人完成了我的卡就要方案；旧卡被抢先时落库再挡一次", async () => {
+    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+    const k = await prisma.entBlocker.create({
+      data: {
+        code: "BLK-20261101-002", title: "交期紧", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "其他", description: "交期紧", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",
+        claims: { create: [{ userId: 乙.id }, { userId: 丙.id }] },
+      },
+    });
+    const { 卡: 早 } = await 出("propose_blocker_resolve", { project: "云帆一期", result: "催了工厂", reason: "人说他那份做完了" });
+    expect(早).toMatchObject({ kind: "blocker_resolve", targetId: k.id, 最后一个: false });
+    expect(missingFields(早!)).toEqual([]);
+
+    // 另一位先点了完成：再出卡就是最后一个，方案 / 结果必填
+    await prisma.entBlockerClaim.updateMany({ where: { blockerId: k.id, userId: 丙.id }, data: { done: true } });
+    const { 卡: 晚 } = await 出("propose_blocker_resolve", { project: "云帆一期", reason: "人说解决了" });
+    expect(晚).toMatchObject({ targetId: k.id });
+    expect((晚 as { 最后一个?: boolean }).最后一个).not.toBe(false);
+    expect(missingFields(晚!)).toEqual(["解决方案", "解决结果"]);
+
+    // 早出的那张卡（当时不是最后一个）现在点确认：完成卡点按当时的人数再挡，不会空着方案就解决
+    const 拒 = await 确认(早!, 乙);
+    expect(拒.ok).toBe(false);
+    expect((await prisma.entBlocker.findUniqueOrThrow({ where: { id: k.id } })).status).toBe("处理中");
+    expect(await prisma.entBlockerClaim.findFirstOrThrow({ where: { blockerId: k.id, userId: 乙.id } })).toMatchObject({ done: false });
+
+    expect(await 确认({ ...晚!, solution: "换了备选工厂", result: "按期交付" } as 项目卡, 乙)).toMatchObject({ ok: true });
+    expect(await prisma.entBlocker.findUniqueOrThrow({ where: { id: k.id } })).toMatchObject({ status: "已解决", solution: "换了备选工厂", result: "按期交付" });
+  });
+
+  it("不是最后一个：点完成只写自己的处理说明，卡点还在处理中", async () => {
+    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+    const k = await prisma.entBlocker.create({
+      data: {
+        code: "BLK-20261101-003", title: "样品没到", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "轻度卡点", impact: "短期不影响", obstacle: "其他", description: "样品没到", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",
+        claims: { create: [{ userId: 乙.id }, { userId: 丙.id }] },
+      },
+    });
+    const { 卡 } = await 出("propose_blocker_resolve", { project: "云帆一期", reason: "人说他那份做完了" });
+    expect(卡).toMatchObject({ targetId: k.id, 最后一个: false });
+    expect(await 确认({ ...卡!, result: "已寄出" } as 项目卡, 乙)).toMatchObject({ ok: true });
+    expect(await prisma.entBlockerClaim.findFirstOrThrow({ where: { blockerId: k.id, userId: 乙.id } })).toMatchObject({ done: true, note: "已寄出" });
+    expect(await prisma.entBlocker.findUniqueOrThrow({ where: { id: k.id } })).toMatchObject({ status: "处理中", solution: null, result: null });
+  });
+});
+
 describe("回款", () => {
   it("收卡：金额负数、日子看不懂拒；没金额算缺；新记的能撤，删的不能", () => {
     expect(收("payment_add", { targetId: 项目id, amount: -1, paidAt: "2026-11-01" })).toMatchObject({ ok: false });

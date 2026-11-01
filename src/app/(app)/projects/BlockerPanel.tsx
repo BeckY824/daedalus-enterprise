@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Button, Card, Input, Modal, Select, Space, Tag, Timeline } from "antd";
+import { App, Button, Card, Input, Modal, Popconfirm, Select, Space, Tag, Timeline } from "antd";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
 import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
-import { 发布卡点Action, 认领卡点Action, 完成卡点Action } from "./blocker-actions";
+import { 发布卡点Action, 认领卡点Action, 完成卡点Action, 删卡点Action } from "./blocker-actions";
 
 export type { 卡点卡 };
 
@@ -120,7 +120,7 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, onClose }: 
   );
 }
 
-/** 一条卡点的头：编号、状态、类型、影响、原因（待审核的标出来）、标题 */
+/** 一条卡点的头：编号、状态、类型、影响、原因（待审核的标出来；老卡点没挂原因的显示「原阻碍主体：X」）、标题 */
 export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: boolean }) {
   return (
     <>
@@ -134,6 +134,11 @@ export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: 
             {r.name}{r.status === "待审核" ? "（待审核）" : ""}
           </Tag>
         ))}
+        {b.原阻碍主体 && (
+          <Tag title="老卡点，没归到阻碍原因（统计在「未分类（老数据）」里）" style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>
+            原阻碍主体：{b.原阻碍主体}
+          </Tag>
+        )}
         {带项目 && <Link href={`/projects/${b.projectId}`} style={{ overflowWrap: "anywhere" }}>{b.项目}</Link>}
       </div>
       <div style={{ fontWeight: 600, marginTop: 4, overflowWrap: "anywhere" }}>{b.title}</div>
@@ -188,6 +193,12 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }:
           <Space wrap size={4} style={{ marginTop: 6 }}>
             {b.能.认领 && <Button size="small" type="primary" disabled={忙} onClick={() => void 跑(() => 认领卡点Action(b.id), "已认领")}>认领</Button>}
             {b.能.完成 && <Button size="small" type={b.能.认领 ? "default" : "primary"} disabled={忙} onClick={() => 开完成(b)}>我已完成</Button>}
+            {b.能.删 && (
+              <Popconfirm title="删除这个卡点？" description="连流转记录一起删，删了找不回来" okText="删除" okButtonProps={{ danger: true }} cancelText="不删"
+                onConfirm={() => void 跑(() => 删卡点Action(b.id), "已删除")}>
+                <Button size="small" danger type="text" disabled={忙}>删除</Button>
+              </Popconfirm>
+            )}
             <Button size="small" type="link" onClick={() => set展开((s) => { const n = new Set(s); if (n.has(b.id)) n.delete(b.id); else n.add(b.id); return n; })}>
               {展开.has(b.id) ? "收起流转" : `流转（${b.流转.length}）`}
             </Button>

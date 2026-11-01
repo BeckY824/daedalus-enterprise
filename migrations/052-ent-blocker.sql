@@ -55,8 +55,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "EntFollowUpMeta_code_key" ON "EntFollowUpMeta
 CREATE INDEX IF NOT EXISTS "EntFollowUpMeta_projectId_idx" ON "EntFollowUpMeta"("projectId");
 
 -- 2026-11-01 卡点改版追加（每次启动整目录重跑，IF NOT EXISTS 幂等）：认领明细一人一行、阻碍原因字典、卡点 ↔ 原因多选。
--- 标题列在 107-ent-blocker-title.sql。老库 EntBlocker.followUpId 仍是 NOT NULL + 级联（迁移改不了约束），
--- 彻底删沟通前由代码先挡住带卡点的沟通，见 src/lib/project/blocker.ts 卡点脱离沟通。
+-- 标题列、以及老库 EntBlocker.followUpId 从 NOT NULL + 级联改成可空 + 置空，都在 107-ent-blocker-title.sql（重建整张表）。
+-- 上面那张 EntBlocker 只在老库第一次升级时由这里建出来，随后马上被 107 重建；别再往这张表的定义里改东西，改 schema.prisma + 107。
 CREATE TABLE IF NOT EXISTS "EntBlockerClaim" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "blockerId" TEXT NOT NULL,

@@ -10,8 +10,10 @@
  *
  * 谁看得到（B6 / B7，只认业务角色 EntMember.bizRole，账号角色 ADMIN / MANAGER 不算；没设业务角色 = 什么都没有）：
  *   - 角色开关「启用 / 停用」：我的业务角色里有一个启用了才用得上卡点
- *   - 「可看全部」：全部卡点；「只看自己」：创建人、创建人的直属上级、项目负责人（项目不在公海）、点了同意的组员、认领人
- *   看得到 = 能认领（不算改项目）。字典、开关只有总管理员（业务角色 director / admin）能改。
+ *   - 「可看全部」：全部卡点；「只看自己」：创建人、创建人的直属上级、项目负责人和负责人的直属上级（项目不在公海）、点了同意的组员、认领人
+ *   看得到 = 能认领（不算改项目）。
+ * 谁能写（11-01 定稿）：业务角色 admin（管理员）只读——发、认领、完成、改、删、原因管理一律拒（同时是 director 的不算只读）；
+ *   字典、开关、删卡点只有总管理（业务角色 director）。
  * 读写都包在 看全部 里：权限已经在这里明着查过，组员不一定看得到负责人的客户
  */
 import type { Prisma } from "@/generated/prisma";
@@ -26,7 +28,7 @@ import type { 业务角色 } from "@/lib/sync/dept-policy";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
   规整卡点角色开关, 合上卡点角色开关, 卡点角色键, 卡点权限of, 看得到卡点, 原因种子们, 种子原因id, 规整原因名, 兜底原因,
-  卡点状态们, 卡点类型们, 影响等级们,
+  卡点状态们, 卡点类型们, 影响等级们, 卡点只读, 能管卡点, 未分类原因id, 未分类原因名,
   type 卡点默认, type 发布输入, type 卡点角色开关, type 卡点状态, type 原因状态,
 } from "./blocker-rules";
 
@@ -40,6 +42,7 @@ const 没开 = { ok: false as const, error: "卡点是企业版的功能" };
 const 不在了 = { ok: false as const, error: "这个卡点已经不在了，刷新看看" };
 const 没权 = { ok: false as const, error: "你的业务角色没开卡点，找总管理员在「设置 → 项目模式 → 卡点」里打开" };
 const 只总管 = { ok: false as const, error: "只有总管理员能改" };
+const 只读 = { ok: false as const, error: "管理员只能看卡点，不能发、认领、完成、改、删" };
 export const 卡点默认键 = "entBlockerDefaults";
 const 原因种子键 = "entBlockerReasonSeeded";
 
@@ -57,29 +60,29 @@ async function 角色们of(userId: string): Promise<业务角色[]> {
   const m = await 看全部(() => prisma.entMember.findUnique({ where: { userId }, select: { bizRole: true } }));
   return 拆角色(m?.bizRole);
 }
-const 是总管 = (角色们: readonly 业务角色[]) => 角色们.includes("director") || 角色们.includes("admin");
-
-export type 我的卡点权限 = { 开: boolean; 全部: boolean; 总管理员: boolean };
+/** 能写 = 开着且不是只读的管理员；能管 = 总管理（director）：默认值、开关、原因字典、删卡点 */
+export type 我的卡点权限 = { 开: boolean; 全部: boolean; 能写: boolean; 能管: boolean };
 export async function 卡点权限(me: 谁): Promise<我的卡点权限> {
-  if (!企业版()) return { 开: false, 全部: false, 总管理员: false };
+  if (!企业版()) return { 开: false, 全部: false, 能写: false, 能管: false };
   const 角色们 = await 角色们of(me.id);
-  return { ...卡点权限of(角色们, await 读卡点角色开关()), 总管理员: 是总管(角色们) };
+  const 权 = 卡点权限of(角色们, await 读卡点角色开关());
+  return { ...权, 能写: 权.开 && !卡点只读(角色们), 能管: 能管卡点(角色们) };
 }
 
-/** 管理员改卡点默认（默认类型 / 影响）：总管理员 */
+/** 改卡点默认（默认类型 / 影响）：总管理（director） */
 export async function 存卡点默认(me: 谁, patch: unknown): Promise<结果 & { 默认?: 卡点默认 }> {
   if (!企业版()) return 没开;
-  if (!是总管(await 角色们of(me.id))) return 只总管;
+  if (!能管卡点(await 角色们of(me.id))) return 只总管;
   const 新 = 合上卡点默认(await 读卡点默认(), patch);
   if ("error" in 新) return { ok: false, error: 新.error };
   await setSetting(卡点默认键, 新);
   return { ok: true, 默认: 新 };
 }
 
-/** 按业务角色的两个开关：启用 / 停用、只看自己 / 可看全部。总管理员 */
+/** 按业务角色的两个开关：启用 / 停用、只看自己 / 可看全部。总管理（director） */
 export async function 存卡点角色开关(me: 谁, patch: unknown): Promise<结果 & { 开关?: 卡点角色开关 }> {
   if (!企业版()) return 没开;
-  if (!是总管(await 角色们of(me.id))) return 只总管;
+  if (!能管卡点(await 角色们of(me.id))) return 只总管;
   const 新 = 合上卡点角色开关(await 读卡点角色开关(), patch);
   if ("error" in 新) return { ok: false, error: 新.error };
   await setSetting(卡点角色键, 新);
@@ -122,7 +125,7 @@ export async function 可选原因们(): Promise<string[]> {
 
 async function 管字典<T>(me: 谁, fn: (tx: Prisma.TransactionClient) => Promise<T | 错>): Promise<T | 错> {
   if (!企业版()) return 没开;
-  if (!是总管(await 角色们of(me.id))) return 只总管;
+  if (!能管卡点(await 角色们of(me.id))) return 只总管;
   await 备好原因();
   return 查完再写((tx) => 看全部(() => fn(tx)));
 }
@@ -226,12 +229,13 @@ const 组织of = async (): Promise<组织 | null> => (企业版() ? 读组织() 
 
 function 相关人(b: 带全的卡点, org: 组织 | null) {
   return {
-    creatorId: b.creatorId, 创建人上级: org ? 直属上级of(org, b.creatorId) : null, ownerId: b.project.ownerId, 在公海: b.project.pooledAt !== null,
+    creatorId: b.creatorId, 创建人上级: org ? 直属上级of(org, b.creatorId) : null,
+    ownerId: b.project.ownerId, 负责人上级: org ? 直属上级of(org, b.project.ownerId) : null, 在公海: b.project.pooledAt !== null,
     组员们: b.project.members.map((m) => m.userId), 认领人们: b.claims.map((c) => c.userId),
   };
 }
 
-/** 「只看自己」时的查询条件，和 看得到卡点 一个意思（创建人的直属上级 = 我 → 创建人是我的直属下属） */
+/** 「只看自己」时的查询条件，和 看得到卡点 一个意思（X 的直属上级 = 我 → X 是我的直属下属） */
 function 自己的条件(我: string, org: 组织 | null): Prisma.EntBlockerWhereInput {
   const 下属们 = org ? [...实线下属(org, 我, 1)] : [];
   return {
@@ -239,6 +243,7 @@ function 自己的条件(我: string, org: 组织 | null): Prisma.EntBlockerWher
       { creatorId: 我 },
       ...(下属们.length ? [{ creatorId: { in: 下属们 } }] : []),
       { project: { pooledAt: null, ownerId: 我 } },
+      ...(下属们.length ? [{ project: { pooledAt: null, ownerId: { in: 下属们 } } }] : []),
       { project: { members: { some: { userId: 我, inviteStatus: "JOINED" } } } },
       { claims: { some: { userId: 我 } } },
     ],
@@ -260,10 +265,10 @@ async function 下一个卡点编号(tx: Prisma.TransactionClient, now: Date): P
   return 拼卡点编号(now, 下一个卡点流水(最大?.code, now));
 }
 
-/** 能不能在这个项目上发卡点：卡点开着、项目不在公海；负责人、点了同意的组员、负责人的直属上级、总管理员 */
+/** 能不能在这个项目上发卡点：能写（开着、不是只读的管理员）、项目不在公海；负责人、点了同意的组员、负责人的直属上级、总管理 */
 async function 能发(db: Prisma.TransactionClient, me: 谁, p: 项目要的, 权: 我的卡点权限, org: 组织 | null): Promise<boolean> {
-  if (!权.开 || p.pooledAt) return false;
-  if (权.总管理员 || p.ownerId === me.id) return true;
+  if (!权.能写 || p.pooledAt) return false;
+  if (权.能管 || p.ownerId === me.id) return true;
   if (org && 直属上级of(org, p.ownerId) === me.id) return true;
   const m = await db.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
   return m?.inviteStatus === "JOINED";
@@ -281,6 +286,7 @@ export async function 发布卡点(
   if (!企业版()) return 没开;
   const [默认, 权, org] = await Promise.all([读卡点默认(), 卡点权限(me), 组织of()]);
   if (!权.开) return 没权;
+  if (!权.能写) return 只读;
   await 备好原因();
   return 查完再写((tx) => 看全部(async () => {
     const fp = await tx.followUpProject.findUnique({ where: { followUpId: String(followUpId ?? "") }, include: { project: { select: 项目字段 } } });
@@ -315,6 +321,7 @@ export async function 认领卡点(me: 谁, blockerId: string): Promise<卡点�
   if (!企业版()) return 没开;
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return 没权;
+  if (!权.能写) return 只读;
   return 查完再写((tx) => 看全部(async () => {
     const b = await 拿卡点(tx, blockerId);
     if (!b || !看得到卡点(me.id, 权, 相关人(b, org))) return 不在了;
@@ -338,6 +345,7 @@ export async function 完成卡点(
   if (!企业版()) return 没开;
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return 没权;
+  if (!权.能写) return 只读;
   return 查完再写((tx) => 看全部(async () => {
     const b = await 拿卡点(tx, blockerId);
     if (!b || !看得到卡点(me.id, 权, 相关人(b, org))) return 不在了;
@@ -369,6 +377,19 @@ export async function 完成卡点(
   }));
 }
 
+/** 删卡点：只有总管理（director）；连流转、认领行、原因挂接一起删（级联），删了不进回收站 */
+export async function 删卡点(me: 谁, blockerId: string): Promise<卡点结果> {
+  if (!企业版()) return 没开;
+  const 权 = await 卡点权限(me);
+  if (!权.能管) return { ok: false as const, error: "只有总管理员能删卡点" };
+  return 查完再写((tx) => 看已删(() => 看全部(async () => {
+    const b = await tx.entBlocker.findUnique({ where: { id: String(blockerId ?? "") }, select: { id: true, projectId: true, code: true } });
+    if (!b) return 不在了;
+    await tx.entBlocker.delete({ where: { id: b.id } });
+    return { ok: true as const, projectId: b.projectId, code: b.code };
+  })));
+}
+
 /* ───────────── 换人：离职交接、项目从公海领走 ───────────── */
 
 /**
@@ -394,14 +415,37 @@ async function 挪认领(
 }
 
 /**
- * 离职交接（在停用成员 / 客户交接的事务里调，签名不变）：他没完成的认领行给接手人。
- * 跟着项目进公海的（或项目已经在公海里的）不给接手人：原样留着，谁从公海领走项目谁接（卡点随项目换人）。
- * 不是企业版什么都不做
+ * 离职交接（B4，在停用成员 / 客户交接的事务里调，签名不变）：他没完成的认领行
+ *   - 有交接人的给交接人（项目不在公海、也不跟着这次进公海的那些）；
+ *   - 没交接人的（项目跟着进公海 / 本来就在公海，或者没给接手人）→ 他的直属上级（实线）；
+ *   - 都没有 → 这一行从 x/y 里去掉，记一行流转。去掉以后一个认领人都不剩的卡点回到「待接受」。
+ * 和接手人已有的行合并时，那行退回未完成（挪认领）。不是企业版什么都不做
  */
 export const 离职交接理由 = "成员停用，离职交接";
-export async function 交接卡点(tx: Prisma.TransactionClient, 走的人: string, 接手人: string, 操作人: string, 进公海项目: readonly string[]): Promise<number> {
-  if (!企业版()) return 0;
-  return 看全部(() => 挪认领(tx, { projectId: { notIn: [...进公海项目] }, project: { pooledAt: null } }, 走的人, 接手人, 操作人, "handover", 离职交接理由));
+export const 离职转上级理由 = "成员停用，没有交接人，转给直属上级";
+export const 离职去掉理由 = "成员停用，没有交接人也没有直属上级，认领行去掉";
+export async function 交接卡点(tx: Prisma.TransactionClient, 走的人: string, 接手人: string | null, 操作人: string, 进公海项目: readonly string[]): Promise<number> {
+  if (!企业版() || !走的人) return 0;
+  return 看全部(async () => {
+    let 数 = 0;
+    const 有交接人 = { projectId: { notIn: [...进公海项目] }, project: { pooledAt: null } } satisfies Prisma.EntBlockerWhereInput;
+    if (接手人 && 接手人 !== 走的人) 数 += await 挪认领(tx, 有交接人, 走的人, 接手人, 操作人, "handover", 离职交接理由);
+    // 剩下的（没交接人）：直属上级接；上级也停用了不算
+    const org = await 组织of();
+    const 上级 = org ? 直属上级of(org, 走的人) : null;
+    const 上级在职 = 上级 && 上级 !== 走的人 ? (await tx.user.findUnique({ where: { id: 上级 }, select: { active: true } }))?.active : false;
+    if (上级 && 上级在职) return 数 + await 挪认领(tx, {}, 走的人, 上级, 操作人, "handover", 离职转上级理由);
+    const 行们 = await tx.entBlockerClaim.findMany({ where: { userId: 走的人, done: false, blocker: { status: { not: "已解决" } } }, select: { id: true, blockerId: true } });
+    for (const c of 行们) {
+      await tx.entBlockerClaim.delete({ where: { id: c.id } });
+      await 记(tx, c.blockerId, 操作人, "handover", { fromUserId: 走的人, toUserId: null, note: 离职去掉理由 });
+      // 一个认领人都不剩：回到待接受（还有别人在的照旧处理中，最后一个点完成的人写方案和结果）
+      if ((await tx.entBlockerClaim.count({ where: { blockerId: c.blockerId } })) === 0) {
+        await tx.entBlocker.updateMany({ where: { id: c.blockerId, status: "处理中" }, data: { status: "待接受" } });
+      }
+    }
+    return 数 + 行们.length;
+  });
 }
 
 /**
@@ -451,8 +495,10 @@ export type 卡点视图 = {
   status: string; creatorId: string; 发布人: string;
   resourceRequest: string | null; solution: string | null; result: string | null; resolvedAt: Date | null;
   createdAt: Date; 认领: 认领行[]; 进度: { 完成: number; 共: number }; 流转: 卡点流转[];
-  /** 我在这条上能点什么 */
-  能: { 认领: boolean; 完成: boolean; 最后一个: boolean };
+  /** 老卡点（没挂阻碍原因）原来的阻碍主体，详情里显示「原阻碍主体：X」；新卡点 null */
+  原阻碍主体: string | null;
+  /** 我在这条上能点什么（管理员只读：认领、完成都是 false；删只有总管理） */
+  能: { 认领: boolean; 完成: boolean; 最后一个: boolean; 删: boolean };
 };
 
 /** 给界面（客户端组件）的样子：日子排成字符串，不带创建人 id */
@@ -478,15 +524,16 @@ async function 名字们(ids: (string | null)[]): Promise<Map<string, string>> {
   return new Map(us.map((u) => [u.id, u.name || u.email]));
 }
 
-async function 成视图(me: 谁, 们: 带全的卡点[]): Promise<卡点视图[]> {
+async function 成视图(me: 谁, 们: 带全的卡点[], 权: 我的卡点权限): Promise<卡点视图[]> {
   const 名 = await 名字们(们.flatMap((b) => [b.creatorId, ...b.claims.map((c) => c.userId), ...b.logs.flatMap((l) => [l.userId, l.fromUserId, l.toUserId])]));
   return 们.map((b) => {
     const 我的 = b.claims.find((c) => c.userId === me.id);
     const 进度 = 会签进度(b.claims);
-    const 开着 = b.status !== "已解决";
+    const 开着 = 权.能写 && b.status !== "已解决";
     return {
       id: b.id, code: b.code, title: b.title || b.description.slice(0, 20), projectId: b.projectId, 项目: b.project.name, followUpId: b.followUpId, phase: b.phase,
       type: b.type, impact: b.impact, 原因们: b.reasons.map((l) => l.reason), description: b.description,
+      原阻碍主体: b.reasons.length === 0 ? (b.obstacle || null) : null,
       status: b.status, creatorId: b.creatorId, 发布人: 名.get(b.creatorId) ?? "—",
       resourceRequest: b.resourceRequest, solution: b.solution, result: b.result, resolvedAt: b.resolvedAt, createdAt: b.createdAt,
       认领: b.claims.map((c) => ({ userId: c.userId, 名字: 名.get(c.userId) ?? "—", done: c.done, note: c.note, doneAt: c.doneAt, 是我: c.userId === me.id })),
@@ -499,6 +546,7 @@ async function 成视图(me: 谁, 们: 带全的卡点[]): Promise<卡点视图[
         认领: 开着 && !我的,
         完成: 开着 && !!我的 && !我的.done,
         最后一个: 开着 && !!我的 && !我的.done && 进度.共 - 进度.完成 === 1,
+        删: 权.能管,
       },
     };
   });
@@ -512,7 +560,7 @@ async function 看得到的(me: 谁, where: Prisma.EntBlockerWhereInput, opt: { 
   const 范围 = 权.全部 && !opt.只看自己 ? {} : 自己的条件(me.id, org);
   return 看全部(async () => {
     const 们 = await prisma.entBlocker.findMany({ where: { AND: [范围, where] }, include: 卡点带, orderBy: opt.orderBy ?? [{ createdAt: "desc" }], take: opt.take });
-    return 成视图(me, 们);
+    return 成视图(me, 们, 权);
   });
 }
 
@@ -550,7 +598,8 @@ export const 已解决栏上限 = 50;
 export function 看板条件(f: 看板筛选, 我: string): Prisma.EntBlockerWhereInput {
   const 且: Prisma.EntBlockerWhereInput[] = [];
   if (f.我的认领) 且.push({ claims: { some: { userId: 我 } } });
-  if (f.原因) 且.push({ reasons: { some: { reasonId: f.原因 } } });
+  // 未分类（老数据）：一个原因都没挂的老卡点（B9）
+  if (f.原因) 且.push(f.原因 === 未分类原因id ? { reasons: { none: {} } } : { reasons: { some: { reasonId: f.原因 } } });
   if (f.类型 && (卡点类型们 as readonly string[]).includes(f.类型)) 且.push({ type: f.类型 });
   if (f.影响 && (影响等级们 as readonly string[]).includes(f.影响)) 且.push({ impact: f.影响 });
   if (f.项目) 且.push({ projectId: f.项目 });
@@ -567,16 +616,17 @@ export async function 卡点看板(me: 谁, f: 看板筛选 = {}): Promise<卡�
   const 范围 = 权.全部 && !f.只看自己 ? {} : 自己的条件(me.id, org);
   const where: Prisma.EntBlockerWhereInput = { AND: [范围, 看板条件(f, me.id)] };
   return 看全部(async () => {
-    const [开着, 解决了, 已解决共, 按影响, 原因数, 项目们] = await Promise.all([
+    const [开着, 解决了, 已解决共, 按影响, 原因数, 未分类数, 项目们] = await Promise.all([
       prisma.entBlocker.findMany({ where: { AND: [where, { status: { not: "已解决" } }] }, include: 卡点带, orderBy: [{ createdAt: "asc" }] }),
       prisma.entBlocker.findMany({ where: { AND: [where, { status: "已解决" }] }, include: 卡点带, orderBy: [{ resolvedAt: "desc" }], take: 已解决栏上限 }),
       prisma.entBlocker.count({ where: { AND: [where, { status: "已解决" }] } }),
       prisma.entBlocker.groupBy({ by: ["impact"], where, _count: { _all: true } }),
       prisma.entBlockerReasonLink.groupBy({ by: ["reasonId"], where: { blocker: where }, _count: { _all: true } }),
+      prisma.entBlocker.count({ where: { AND: [where, { reasons: { none: {} } }] } }),
       // 项目筛选的下拉：我看得到的卡点挂在哪些项目上（不带项目筛选本身）
       prisma.entBlocker.findMany({ where: 范围, distinct: ["projectId"], select: { project: { select: { id: true, name: true } } } }),
     ]);
-    const 视图 = await 成视图(me, [...开着, ...解决了]);
+    const 视图 = await 成视图(me, [...开着, ...解决了], 权);
     const 栏: Record<卡点状态, 卡点视图[]> = { 待接受: [], 处理中: [], 已解决: [] };
     for (const v of 视图) (栏[v.status as 卡点状态] ?? 栏.待接受).push(v);
     // 原因筛选的下拉：没并走的都列（停用的老卡点上还挂着，照样能筛）
@@ -590,10 +640,12 @@ export async function 卡点看板(me: 谁, f: 看板筛选 = {}): Promise<卡�
         按影响: 影响等级们.map((名) => ({ 名, 数: 按影响.find((x) => x.impact === 名)?._count._all ?? 0 })),
         按原因: 原因数
           .map((r) => ({ id: r.reasonId, 名: 原因of.get(r.reasonId)?.name ?? "—", 状态: 原因of.get(r.reasonId)?.status ?? "启用", 数: r._count._all }))
-          .sort((a, b) => b.数 - a.数 || a.名.localeCompare(b.名)),
+          .sort((a, b) => b.数 - a.数 || a.名.localeCompare(b.名))
+          .concat(未分类数 ? [{ id: 未分类原因id, 名: 未分类原因名, 状态: "未分类", 数: 未分类数 }] : []),
       },
       项目们: 项目们.map((x) => x.project).sort((a, b) => a.name.localeCompare(b.name)),
-      原因们,
+      // 下拉最后多一项「未分类（老数据）」，筛没挂原因的老卡点
+      原因们: [...原因们, { id: 未分类原因id, name: 未分类原因名, status: "未分类" }],
     };
   });
 }

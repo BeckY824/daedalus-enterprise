@@ -27,7 +27,7 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { 许可删除的表, 许可删除的文件 } from "./migration-allowed-drops";
+import { 许可删除的表, 许可删除的文件, 许可重建的文件 } from "./migration-allowed-drops";
 
 const ROOT = path.resolve(__dirname, "..");
 const DIR = path.join(ROOT, "migrations");
@@ -65,7 +65,8 @@ describe("迁移文件", () => {
   });
 
   it("只能加东西：不允许 DROP / DELETE / UPDATE / INSERT（只放过 066 那 7 张表的 DROP TABLE IF EXISTS）", () => {
-    for (const f of 文件) {
+    // 107 的重建（建新表 / 拷 / 删旧 / 改名）一句一句钉在 tests/migration-files-guard.test.ts，这里不重复放行
+    for (const f of 文件.filter((f) => f !== 许可重建的文件)) {
       const sql = 去许可删除(去注释(f));
       for (const [禁, re] of 禁止的语句) {
         expect(re.test(sql), `${f} 含有不允许的语句：${禁}`).toBe(false);
@@ -96,13 +97,13 @@ describe("迁移文件", () => {
     expect(拦(`DROP TABLE IF EXISTS "TradeOrderX";`)).toEqual(["DROP"]);
     expect(拦(`DROP INDEX IF EXISTS "TradeOrder_contractId_key";`)).toEqual(["DROP"]);
     expect(拦(`DROP TABLE IF EXISTS "TradeOrder"; DROP TABLE IF EXISTS "Customer";`)).toEqual(["DROP"]);
-    // 真有 DROP 的只有 066 这一个文件
+    // 真有 DROP 的只有 066 和 107（重建 EntBlocker）这两个文件
     const 带删除 = 文件.filter((f) => /\bDROP\b/i.test(去注释(f)));
-    expect(带删除).toEqual([许可删除的文件]);
+    expect(带删除).toEqual([许可删除的文件, 许可重建的文件]);
   });
 
-  it("ALTER TABLE 只许 ADD COLUMN——改列、改约束、改名都得走 REBUILD_DB=1", () => {
-    for (const f of 文件) {
+  it("ALTER TABLE 只许 ADD COLUMN——改列、改约束、改名都得走 REBUILD_DB=1（107 的重建改名除外，另钉）", () => {
+    for (const f of 文件.filter((f) => f !== 许可重建的文件)) {
       for (const 句 of 去注释(f).match(/ALTER\s+TABLE[\s\S]*?;/gi) ?? []) {
         expect(/ADD\s+COLUMN/i.test(句), `${f} 里这句 ALTER 不是 ADD COLUMN：${句.trim().slice(0, 60)}`).toBe(true);
       }
@@ -129,8 +130,8 @@ describe("迁移文件", () => {
     }
   });
 
-  it("每条建表/建索引都要带 IF NOT EXISTS", () => {
-    for (const f of 文件) {
+  it("每条建表/建索引都要带 IF NOT EXISTS（107 第一句记号索引故意不带，另钉）", () => {
+    for (const f of 文件.filter((f) => f !== 许可重建的文件)) {
       const sql = 去注释(f);
       const 建 = sql.match(/CREATE\s+(TABLE|INDEX|UNIQUE INDEX)[\s\S]*?(?=\()/gi) ?? [];
       for (const 句 of 建) {
@@ -185,6 +186,97 @@ describe("迁移文件", () => {
       // 016 / 017 每遍先把订单 / 供应商建回空表，066 再删：跑完一张都不剩
       for (const t of 许可删除的表) expect(表.map((x) => x.name), `${t} 跑完还在`).not.toContain(t);
       expect(db.prepare('SELECT * FROM "FollowPlan" WHERE id = ?').get("old-plan")).toMatchObject({ id: "old-plan", done: 1, plannedAt: 123456, doneAt: null });
+      db.close();
+    } finally {
+      rmSync(临时库, { force: true });
+    }
+  });
+
+  it("107 老库重建：052 建的老 EntBlocker（followUpId NOT NULL + 级联）→ 跑迁移 → 沟通删了卡点还在、followUpId 置空", () => {
+    /*
+      客户服务器是老库：EntBlocker 由 052（或当时的 schema.sql）建，followUpId NOT NULL + ON DELETE CASCADE。
+      不重建的话，沟通彻底删除（含回收站过期）会连带删掉卡点、认领、原因、流转日志。
+      这里按老库的样子先跑到 106，插一条带认领 / 原因 / 日志的卡点，再像启动那样整目录跑两遍。
+    */
+    const 临时库 = path.join(ROOT, "prisma/_migration-107-check.db");
+    rmSync(临时库, { force: true });
+    try {
+      const db = new DatabaseSync(临时库);
+      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "createdAt" DATETIME)');
+      db.exec('CREATE TABLE "FollowPlan" ("id" TEXT PRIMARY KEY, "done" BOOLEAN, "plannedAt" DATETIME)');
+      db.exec('CREATE TABLE "Opportunity" ("id" TEXT PRIMARY KEY)');
+      db.exec('CREATE TABLE "Task" ("id" TEXT PRIMARY KEY)');
+      db.exec('CREATE TABLE "FollowUp" ("id" TEXT PRIMARY KEY, "ownerId" TEXT, "occurredAt" DATETIME)');
+      db.exec('CREATE TABLE "Channel" ("id" TEXT PRIMARY KEY, "name" TEXT)');
+      db.exec('CREATE TABLE "Contact" ("id" TEXT PRIMARY KEY, "name" TEXT)');
+      db.exec('CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "name" TEXT)');
+      // Project 由 042 建
+      const 老的 = 文件.filter((f) => f < 许可重建的文件);
+      for (const f of 老的) db.exec(readFileSync(path.join(DIR, f), "utf8"));
+      const 列 = () => db.prepare('PRAGMA table_info("EntBlocker")').all() as { name: string; notnull: number }[];
+      expect(列().find((c) => c.name === "followUpId")?.notnull, "前提：老库 followUpId 是 NOT NULL").toBe(1);
+      expect(列().map((c) => c.name)).not.toContain("title");
+
+      db.exec(`INSERT INTO "Customer" ("id","phone") VALUES ('c1','13800000000');
+        INSERT INTO "Project" ("id","name","customerId","ownerId","creatorId","updatedAt") VALUES ('p1','测试项目一','c1','u1','u1','2026-10-20'), ('p2','测试项目二','c1','u1','u1','2026-10-20');
+        INSERT INTO "FollowUp" ("id") VALUES ('f1'), ('f2');
+        INSERT INTO "EntBlocker" ("id","code","projectId","followUpId","customerId","phase","type","impact","obstacle","description","dueDays","dueAt","status","creatorId","updatedAt")
+          VALUES ('b1','BLK20261020001','p1','f1','c1','需求','中度卡点','项目暂停','客户','老卡点一',3,'2026-10-23','处理中','u1','2026-10-20'),
+                 ('b2','BLK20261020002','p2','f2','c1','需求','轻度卡点','短期不影响','价格','老卡点二',3,'2026-10-23','待接受','u1','2026-10-20');
+        INSERT INTO "EntBlockerClaim" ("id","blockerId","userId") VALUES ('k1','b1','u2');
+        INSERT INTO "EntBlockerReason" ("id","name") VALUES ('r1','其他');
+        INSERT INTO "EntBlockerReasonLink" VALUES ('b1','r1');
+        INSERT INTO "EntBlockerLog" ("id","blockerId","userId","action") VALUES ('l1','b1','u1','发布');`);
+
+      // 启动一次：整目录跑（老文件第二遍只许抛可跳过的错，107 第一次必须真跑完）
+      for (const f of 文件) {
+        try {
+          db.exec(readFileSync(path.join(DIR, f), "utf8"));
+        } catch (e) {
+          expect(f, `${f} 在老库上第一次就抛了：${(e as Error)?.message}`).not.toBe(许可重建的文件);
+          expect(可跳过(e), `${f} 抛了 runner 不会放过的错：${(e as Error)?.message}`).toBe(true);
+        }
+      }
+      expect(列().find((c) => c.name === "followUpId")?.notnull, "重建后 followUpId 可空").toBe(0);
+      expect(列().find((c) => c.name === "title")).toBeTruthy();
+      const 外键 = db.prepare('PRAGMA foreign_key_list("EntBlocker")').all() as { from: string; table: string; on_delete: string }[];
+      expect(外键.find((k) => k.from === "followUpId")).toMatchObject({ table: "FollowUp", on_delete: "SET NULL" });
+      expect(外键.find((k) => k.from === "projectId")).toMatchObject({ table: "Project", on_delete: "CASCADE" });
+      const 索引 = (db.prepare('PRAGMA index_list("EntBlocker")').all() as { name: string }[]).map((i) => i.name);
+      for (const i of ["EntBlocker_code_key", "EntBlocker_projectId_status_idx", "EntBlocker_assigneeId_status_idx", "EntBlocker_followUpId_idx"]) expect(索引).toContain(i);
+      expect(db.prepare("select name from sqlite_master where name = 'EntBlocker_107'").get()).toBeUndefined();
+      expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+      expect(db.prepare('SELECT "id","code","status","obstacle","title","followUpId" FROM "EntBlocker" ORDER BY "id"').all()).toEqual([
+        { id: "b1", code: "BLK20261020001", status: "处理中", obstacle: "客户", title: "", followUpId: "f1" },
+        { id: "b2", code: "BLK20261020002", status: "待接受", obstacle: "价格", title: "", followUpId: "f2" },
+      ]);
+
+      // 再启动一次：107 第一句记号索引已在 → already exists → 整个文件跳过，数据不动
+      for (const f of 文件) {
+        try {
+          db.exec(readFileSync(path.join(DIR, f), "utf8"));
+        } catch (e) {
+          expect(可跳过(e), `第 2 次启动 ${f} 抛了 runner 不会放过的错：${(e as Error)?.message}`).toBe(true);
+        }
+      }
+      expect(() => db.exec(readFileSync(path.join(DIR, 许可重建的文件), "utf8"))).toThrow(/already exists/);
+      expect(db.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
+      expect((db.prepare('SELECT count(*) n FROM "EntBlocker"').get() as { n: number }).n).toBe(2);
+
+      // 外键开着删沟通：卡点还在、followUpId 置空，认领 / 原因 / 日志都在
+      db.exec(`DELETE FROM "FollowUp" WHERE "id" = 'f1'`);
+      expect(db.prepare('SELECT "id","followUpId" FROM "EntBlocker" WHERE "id" = ?').get("b1")).toEqual({ id: "b1", followUpId: null });
+      expect((db.prepare('SELECT count(*) n FROM "EntBlockerClaim" WHERE "blockerId" = ?').get("b1") as { n: number }).n).toBe(1);
+      expect((db.prepare('SELECT count(*) n FROM "EntBlockerReasonLink" WHERE "blockerId" = ?').get("b1") as { n: number }).n).toBe(1);
+      expect((db.prepare('SELECT count(*) n FROM "EntBlockerLog" WHERE "blockerId" = ?').get("b1") as { n: number }).n).toBe(1);
+      // 卡点脱离沟通能写 NULL（老结构写不进）
+      db.exec(`UPDATE "EntBlocker" SET "followUpId" = NULL WHERE "id" = 'b2'`);
+      // 项目删了卡点照旧跟着删，子表跟着卡点删（外键在新表上仍然生效）
+      db.exec(`DELETE FROM "Project" WHERE "id" = 'p1'`);
+      expect(db.prepare('SELECT "id" FROM "EntBlocker"').all()).toEqual([{ id: "b2" }]);
+      expect((db.prepare('SELECT count(*) n FROM "EntBlockerClaim"').get() as { n: number }).n).toBe(0);
+      expect((db.prepare('SELECT count(*) n FROM "EntBlockerReasonLink"').get() as { n: number }).n).toBe(0);
+      expect((db.prepare('SELECT count(*) n FROM "EntBlockerLog"').get() as { n: number }).n).toBe(0);
       db.close();
     } finally {
       rmSync(临时库, { force: true });

@@ -12,6 +12,7 @@ import { BlockerList, 状态色, type 卡点卡 } from "../projects/BlockerPanel
  * 谁看得到按卡点的角色开关（服务端 卡点看板）：「可看全部」的角色多一个「只看自己」开关。
  * 筛选全在地址栏（bm 我的认领 / bo 只看自己 / br 原因 / bt 类型 / bi 影响 / bp 项目），换了 replace、不进历史。
  * 卡片和项目详情同一个 BlockerList：认领、我已完成就在这里点。
+ * 按原因统计里，没挂原因的老卡点放「未分类（老数据）」一格（B9），下拉也能筛。
  * 宽度不够（1024 + AI 栏常驻）三栏改成上下排，长项目名、长原因名在卡片里折行
  */
 type 栏们 = Record<卡点状态, 卡点卡[]>;
@@ -83,7 +84,7 @@ export default function BoardBlockers({ 开, 全部, 栏, 已解决共, 统计, 
               className="rblk-sel" popupMatchSelectWidth={false}
               value={筛.原因 || undefined}
               onChange={(v) => 改("原因", v)}
-              options={原因们.map((r) => ({ value: r.id, label: r.status === "启用" ? r.name : `${r.name}（${r.status}）` }))}
+              options={原因们.map((r) => ({ value: r.id, label: r.status === "启用" || r.status === "未分类" ? r.name : `${r.name}（${r.status}）` }))}
             />
             <Select
               size="small" allowClear placeholder="类型" aria-label="卡点类型" className="rblk-sel-s"
@@ -130,7 +131,7 @@ export default function BoardBlockers({ 开, 全部, 栏, 已解决共, 统计, 
                   color={r.状态 === "待审核" ? "warning" : 筛.原因 === r.id ? "processing" : undefined}
                   className="rblk-reason"
                   onClick={() => 改("原因", 筛.原因 === r.id ? undefined : r.id)}
-                  title={r.状态 === "待审核" ? "前台新加的原因，等总管理员在设置里审核" : "点一下按这个原因筛"}
+                  title={r.状态 === "待审核" ? "前台新加的原因，等总管理员在设置里审核" : r.状态 === "未分类" ? "改版前的老卡点，没归到阻碍原因；点一下筛出来" : "点一下按这个原因筛"}
                 >
                   {r.名}{r.状态 === "待审核" ? "（待审核）" : r.状态 === "停用" ? "（停用）" : ""} {r.数}
                 </Tag>

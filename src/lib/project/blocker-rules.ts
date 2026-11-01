@@ -77,22 +77,11 @@ export type 原因状态 = (typeof 原因状态们)[number];
 export const 兜底原因 = "其他";
 
 /**
- * 老的「阻碍主体」→ 新的阻碍原因（集中一张表，改版任务和测试都用这张）。
- * 表里没有的老值原样当原因名，进待审核，等管理员合并或停用
+ * 老卡点的「阻碍主体」不归类（11-01 定稿 B9）：改版不给老卡点挂原因、不从老值生成待审核原因；
+ * 详情显示「原阻碍主体：X」，统计放进这个桶。看板筛选用 未分类原因id 筛没挂原因的卡点
  */
-export const 老主体映射: Readonly<Record<string, string>> = {
-  价格: "价格预算分歧",
-  竞品: "竞品介入占优",
-  技术: "技术方案不匹配",
-  内部资源: "内部交付资源不足",
-  其他: "其他",
-  客户: "客户内部推进慢",
-};
-export function 老主体to原因(obstacle: string | null | undefined): string {
-  const o = 文字(obstacle);
-  if (!o) return 兜底原因;
-  return 老主体映射[o] ?? o.slice(0, 原因名上限);
-}
+export const 未分类原因id = "__未分类";
+export const 未分类原因名 = "未分类（老数据）";
 
 /** 原因名：去空格、限长；空 = null */
 export function 规整原因名(v: unknown): string | null {
@@ -119,8 +108,6 @@ export function 规整原因们(v: unknown): string[] | { error: string } {
 
 export type 发布输入 = {
   type?: unknown; impact?: unknown; title?: unknown; reasons?: unknown; description?: unknown; resourceRequest?: unknown;
-  /** 老调用方（AI 建议卡、老界面）传的单个阻碍主体，按 老主体映射 换成原因 */
-  obstacle?: unknown;
 };
 export type 好的发布 = {
   type: Exclude<卡点类型, "暂无卡点">; impact: 影响等级; title: string; reasons: string[]; description: string; resourceRequest: string | null;
@@ -150,7 +137,6 @@ export function 规整发布(input: 发布输入, 默认: 卡点默认): 好的�
   if (标.length > 标题上限) return { error: `标题不超过 ${标题上限} 个字` };
   let reasons = 规整原因们(input.reasons);
   if ("error" in reasons) return reasons;
-  if (!reasons.length && 文字(input.obstacle)) reasons = [老主体to原因(文字(input.obstacle))];
   if (!reasons.length) reasons = [兜底原因];
   const 资源 = 文字(input.resourceRequest);
   if (资源.length > 描述上限) return { error: `资源申请不超过 ${描述上限} 个字` };
@@ -164,14 +150,14 @@ export function 规整发布(input: 发布输入, 默认: 卡点默认): 好的�
  * 返回的直接喂给 发布卡点；先过一遍 规整发布，坏的在建沟通之前就报
  */
 export const 沟通卡点占位描述 = "记沟通时标了卡点，未写描述";
-export type 沟通卡点输入 = { type?: unknown; impact?: unknown; description?: unknown; obstacle?: unknown; reasons?: unknown; title?: unknown } | null | undefined;
+export type 沟通卡点输入 = { type?: unknown; impact?: unknown; description?: unknown; reasons?: unknown; title?: unknown } | null | undefined;
 export function 沟通卡点(input: 沟通卡点输入, 默认: 卡点默认): 发布输入 | null | { error: string } {
   if (input == null) return null;
   if (typeof input !== "object") return { error: "卡点信息格式不正确" };
   const 类 = 文字(input.type);
   if (!类 || 类 === "暂无卡点") return null;
   const 发: 发布输入 = {
-    type: 类, impact: 文字(input.impact) || 默认.默认影响, title: input.title, reasons: input.reasons, obstacle: input.obstacle,
+    type: 类, impact: 文字(input.impact) || 默认.默认影响, title: input.title, reasons: input.reasons,
     description: 文字(input.description) || 沟通卡点占位描述,
   };
   const 好 = 规整发布(发, 默认);
@@ -294,15 +280,30 @@ export function 卡点权限of(角色们: readonly 业务角色[], 开关: 卡�
   return { 开: 启用的.length > 0, 全部: 启用的.some((r) => 开关.范围[r] === "全部") };
 }
 
-/** 一条卡点「只看自己」时谁看得到：创建人、创建人的直属上级、项目负责人（项目不在公海）、点了同意的组员、认领人 */
+/**
+ * 管理员（admin）只读（11-01 定）：「可以看所有，但不能做任何编辑」。业务角色里有 admin、又没有 director → 卡点上什么都不能写
+ * （发布、认领、我已完成、改设置、管字典、删）。和全局权限的「只读角色」一个口径
+ */
+export function 卡点只读(角色们: readonly 业务角色[]): boolean {
+  return 角色们.includes("admin") && !角色们.includes("director");
+}
+/** 改卡点设置、管阻碍原因字典、删原因、删卡点：只有总管理（director） */
+export function 能管卡点(角色们: readonly 业务角色[]): boolean {
+  return 角色们.includes("director");
+}
+
+/**
+ * 一条卡点「只看自己」时谁看得到（11-01 定稿 B6）：创建人、创建人的直属上级、项目负责人和负责人的直属上级（项目不在公海时）、
+ * 点了同意的组员、认领人。项目在公海期间，原负责人和他的上级都不凭负责人身份看（认领了的照样凭认领行看）
+ */
 export type 卡点相关人 = {
-  creatorId: string; 创建人上级: string | null; ownerId: string; 在公海: boolean; 组员们: readonly string[]; 认领人们: readonly string[];
+  creatorId: string; 创建人上级: string | null; ownerId: string; 负责人上级: string | null; 在公海: boolean; 组员们: readonly string[]; 认领人们: readonly string[];
 };
 export function 看得到卡点(我: string, 权: { 开: boolean; 全部: boolean }, b: 卡点相关人): boolean {
   if (!权.开) return false;
   if (权.全部) return true;
   if (b.creatorId === 我 || b.创建人上级 === 我) return true;
-  if (!b.在公海 && b.ownerId === 我) return true;
+  if (!b.在公海 && (b.ownerId === 我 || b.负责人上级 === 我)) return true;
   return b.组员们.includes(我) || b.认领人们.includes(我);
 }
 

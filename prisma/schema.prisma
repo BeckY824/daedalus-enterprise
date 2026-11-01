@@ -1106,6 +1106,8 @@ model EntBlocker {
 
   @@index([projectId, status])
   @@index([assigneeId, status])
+  /// 迁移 107 也拿这个索引当「已重建过」的记号
+  @@index([followUpId])
 }
 
 /// 卡点认领明细（2026-11-01）：一人一行。done = 点了「我已完成」，note = 自己的处理说明。

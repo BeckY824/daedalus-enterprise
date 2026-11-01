@@ -12,7 +12,7 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import {
-  发布卡点, 认领卡点, 完成卡点, 存卡点默认, 存卡点角色开关, 我的卡点, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因, 原因字典,
+  发布卡点, 认领卡点, 完成卡点, 删卡点, 存卡点默认, 存卡点角色开关, 我的卡点, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因, 原因字典,
   type 卡点结果,
 } from "@/lib/project/blocker";
 import type { 发布输入 } from "@/lib/project/blocker-rules";
@@ -74,6 +74,20 @@ export async function 完成卡点Action(blockerId: string, input: { note?: stri
   } catch (e) { return 不在了(e); }
 }
 
+/** 删卡点：只有总管理（director），删了不进回收站 */
+export async function 删卡点Action(blockerId: string) {
+  try {
+    const me = await requireUser();
+    const 挡 = await 拦();
+    if (挡) return 挡;
+    const r = await 删卡点(me, blockerId);
+    if (!r.ok) return r;
+    await recordAudit({ user: me, action: "delete", entity: "EntBlocker", entityId: r.projectId, summary: `删除卡点 ${r.code}` });
+    刷新(r.projectId);
+    return { ok: true as const };
+  } catch (e) { return 不在了(e); }
+}
+
 /** 设置 → 项目模式 → 卡点默认值 */
 export async function 存卡点默认Action(patch: unknown) {
   try {
@@ -103,7 +117,7 @@ export async function 存卡点角色开关Action(patch: unknown) {
   } catch (e) { return 不在了(e); }
 }
 
-/* 阻碍原因字典（总管理员）：增、改名、启用 / 停用（待审核的启用 = 审核通过）、删（没用过的）、合并 */
+/* 阻碍原因字典（总管理，业务角色 director）：增、改名、启用 / 停用（待审核的启用 = 审核通过）、删（没用过的）、合并 */
 async function 字典收尾(me: SessionUser, r: { ok: boolean; error?: string }, 说: string) {
   if (!r.ok) return r as { ok: false; error: string };
   await recordAudit({ user: me, action: "update", entity: "EntBlockerReason", entityId: "dict", summary: 说 });

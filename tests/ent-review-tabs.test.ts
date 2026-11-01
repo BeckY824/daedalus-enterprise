@@ -129,6 +129,9 @@ describe("库里取数和数据范围", () => {
     expect(板描述(全)).toEqual(["老板的卡点", "经理的卡点", "小王的卡点", "外人的卡点", "外人的经理认领", "小王解决了"].sort());
     expect(全.栏.待接受).toHaveLength(4);
     expect(全.统计).toMatchObject({ 未解决: 5, 已解决: 1 });
+    // 这些都是没挂原因的老卡点：统计全进「未分类（老数据）」
+    expect(全.统计.按原因).toEqual([{ id: "__未分类", 名: "未分类（老数据）", 状态: "未分类", 数: 6 }]);
+    expect(全.栏.待接受[0].原阻碍主体).toBe("客户");
 
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await 卡点看板({ id: 老板, role: "ADMIN" })).toMatchObject({ 开: false, 已解决共: 0 });

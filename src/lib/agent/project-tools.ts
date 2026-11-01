@@ -158,7 +158,7 @@ export const 项目写工具: Tool[] = [
   },
   {
     name: "propose_blocker_resolve",
-    description: "建议在一个卡点上点「我已完成」（要写解决方案和结果）。只有认领了这个卡点、自己那份还没完成的人才能确认；所有认领人都完成后卡点才变成已解决，最后一个完成的人的解决方案和结果记到卡点上。只出建议卡，人确认后才改。",
+    description: "建议在一个卡点上点「我已完成」。只有认领了这个卡点、自己那份还没完成的人才能确认；所有认领人都完成后卡点才变成已解决。只有最后一个完成的人要写解决方案和结果（记到卡点上），其余人只写一句处理说明（放 result，可空）。只出建议卡，人确认后才改。",
     args: `{"project": "项目名或客户名，可空", "blocker": "卡点编号（BLK…）或描述里的关键词，可空", "solution": "怎么解决的", "result": "解决结果", "reason": "一句话理由"}`,
     async run(a, ctx) {
       const 词 = str(a.blocker, 60);
@@ -194,11 +194,13 @@ export const 项目写工具: Tool[] = [
         const 我 = 我的份(k);
         return `${k.project.name} · ${k.status} · ${k.claims.filter((c) => c.done).length}/${k.claims.length}${我 ? (我.done ? " · 我已完成" : " · 我认领了") : ""}`;
       };
-      const 补of = (k: (typeof 卡点们)[number]) => ({ projectId: k.projectId, ...客户of(项目们.get(k.projectId) ?? k.project, 露) });
+      // 我认领了、我那份没完成、别人都完成了 = 我点完成卡点就解决，方案 / 结果必填；其余情况不必填
+      const 最后一个of = (k: (typeof 卡点们)[number]) => { const 我 = 我的份(k); return !!我 && !我.done && k.claims.every((c) => c.userId === ctx.userId || c.done); };
+      const 补of = (k: (typeof 卡点们)[number]) => ({ projectId: k.projectId, 最后一个: 最后一个of(k), ...客户of(项目们.get(k.projectId) ?? k.project, 露) });
       const 前 = 卡点们.slice(0, 候选上限);
       const args =
         前.length === 1
-          ? { targetId: 前[0].id, targetName: 名of(前[0]), projectId: 前[0].projectId }
+          ? { targetId: 前[0].id, targetName: 名of(前[0]), projectId: 前[0].projectId, 最后一个: 最后一个of(前[0]) }
           : { targetId: "", targetName: "", 候选: 前.map((k): 候选 => ({ id: k.id, 名: 名of(k), 说明: 说of(k), 补: 补of(k) })) };
       const 客户 = 前.length === 1 ? (() => { const c = 补of(前[0]); return { id: c.customerId, name: c.customerName }; })() : { id: "", name: "" };
       const 不是我 = 前.length === 1 && !(我的份(前[0]) && !我的份(前[0])!.done);

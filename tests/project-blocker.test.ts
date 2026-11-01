@@ -3,8 +3,11 @@
  *   - 三态：待接受 → 处理中 → 已解决；看得到就能认领，一人一行，进度 x/y；各自点「我已完成」，最后一位写解决方案和结果 → 已解决、锁定
  *   - 没有指认 / 转让 / 退回 / 撤回认领 / 移除认领人
  *   - 老数据改版：看板 → 待接受；待接受 → 待接受、清指认；处理中 → 处理中、经手人 = 第一位认领人；重跑不多出行
- *   - 谁看得到：按业务角色两个开关（启用、只看自己 / 可看全部）；只看自己 = 创建人、创建人直属上级、项目负责人、组员、认领人
- *   - 离职交接、项目从公海领走：没完成的认领行换人
+ *   - 谁看得到：按业务角色两个开关（启用、只看自己 / 可看全部）；只看自己 = 创建人、创建人直属上级、项目负责人（不在公海时）、
+ *     项目负责人直属上级（不在公海时）、组员、认领人；没设业务角色 = 没有任何卡点权限
+ *   - 管理员（业务角色 admin，不兼总管理）只读：看全部，发、认领、完成、改、删、原因管理都拒；删卡点、删原因只有总管理（director）
+ *   - 离职交接：给交接人 → 没交接人给直属上级（实线）→ 都没有就从 x/y 去掉并记日志；项目从公海领走：没完成的认领行换人
+ *   - 老数据（B9）：老阻碍主体不归类，老卡点不挂原因，详情显示原阻碍主体，统计进「未分类（老数据）」
  *   - 暂无卡点不生成；编号 BLK-YYYYMMDD-NNN（北京日子）；沟通彻底删了卡点还在
  *   - 阻碍原因字典：11 个种子、增删改停合并，前台新加的进待审核
  * 测试数据全是虚构的人名
@@ -20,12 +23,13 @@ import { 记项目沟通 } from "@/lib/project/db";
 import * as 卡点模块 from "@/lib/project/blocker";
 import {
   发布卡点, 认领卡点, 完成卡点, 交接卡点, 卡点随项目换人, 项目的卡点, 我的卡点, 能发卡点, 卡点看板, 卡点权限,
-  存卡点默认, 读卡点默认, 存卡点角色开关, 离职交接理由, 卡点脱离沟通,
+  存卡点默认, 读卡点默认, 存卡点角色开关, 离职交接理由, 离职转上级理由, 离职去掉理由, 卡点脱离沟通, 删卡点,
   原因字典, 可选原因们, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因,
 } from "@/lib/project/blocker";
 import { 卡点改版, 卡点改版记号键 } from "@/lib/project/blocker-migrate";
 import {
-  时限提醒of, 编号日, 规整发布, 默认卡点默认, 改版后, 老主体映射, 老主体to原因, 原因种子们, 会签进度, 默认卡点角色开关, 卡点权限of,
+  时限提醒of, 编号日, 规整发布, 默认卡点默认, 改版后, 原因种子们, 会签进度, 默认卡点角色开关, 卡点权限of,
+  卡点只读, 能管卡点, 未分类原因id, 未分类原因名,
 } from "@/lib/project/blocker-rules";
 import { 清过期 } from "@/lib/enterprise/soft-delete";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
@@ -108,7 +112,9 @@ describe("企业版卡点", () => {
     let v = (await 项目的卡点(销售, 项目)).find((x) => x.id === b.id)!;
     expect(v.进度).toEqual({ 完成: 0, 共: 2 });
     expect(v.认领.map((c) => c.名字)).toEqual(["member", "lead"]);
-    expect(v.能).toEqual({ 认领: true, 完成: false, 最后一个: false });
+    expect(v.能).toEqual({ 认领: true, 完成: false, 最后一个: false, 删: false });
+    expect(v.原阻碍主体).toBeNull(); // 新卡点挂了原因，不显示原阻碍主体
+    expect((await 项目的卡点(老板, 项目)).find((x) => x.id === b.id)!.能.删).toBe(true);
 
     // 我已完成只给认领人自己：没认领的点不了
     expect(await 完成卡点(销售, b.id, {})).toMatchObject({ ok: false, error: "你没认领这个卡点" });
@@ -116,7 +122,7 @@ describe("企业版卡点", () => {
     expect(await 完成卡点(组员, b.id, {})).toMatchObject({ ok: false, error: "你已经点过完成了" });
     v = (await 项目的卡点(组长, 项目)).find((x) => x.id === b.id)!;
     expect(v.进度).toEqual({ 完成: 1, 共: 2 });
-    expect(v.能).toEqual({ 认领: false, 完成: true, 最后一个: true });
+    expect(v.能).toEqual({ 认领: false, 完成: true, 最后一个: true, 删: false });
 
     // 没解决前还能再加人
     expect(await 认领卡点(销售, b.id)).toMatchObject({ ok: true });
@@ -219,7 +225,10 @@ describe("企业版卡点", () => {
 
     it("账号是 ADMIN 但没设业务角色：什么都没有", async () => {
       const b = await 发();
-      expect(await 卡点权限(没角色)).toEqual({ 开: false, 全部: false, 总管理员: false });
+      expect(await 卡点权限(没角色)).toEqual({ 开: false, 全部: false, 能写: false, 能管: false });
+    expect(await 发布卡点(没角色, await 沟通(), 卡)).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
+    expect(await 删卡点(没角色, b.id)).toMatchObject({ ok: false });
+    expect(await 新增原因(没角色, "随便")).toMatchObject({ ok: false });
       expect(await 项目的卡点(没角色, 项目)).toEqual([]);
       expect(await 认领卡点(没角色, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
       expect(await 存卡点角色开关(没角色, { 范围: { sales: "全部" } })).toMatchObject({ ok: false, error: "只有总管理员能改" });
@@ -255,6 +264,95 @@ describe("企业版卡点", () => {
       expect(卡点权限of(["sales", "admin"], 停)).toEqual({ 开: true, 全部: false });
     });
 
+    it("项目负责人的直属上级看得到（不在公海时）；进公海后负责人、负责人上级都看不到", async () => {
+      const 散的项目 = (await prisma.project.create({ data: { name: "四期", customerId: 客户, ownerId: 散.id, creatorId: 散.id } })).id;
+      const b = await 发(散, 卡, now, 散的项目);
+      // 创建人换成组员：散主管 只剩「负责人的直属上级」这一条线
+      await prisma.entBlocker.update({ where: { id: b.id }, data: { creatorId: 组员.id } });
+      for (const p of [散主管, 散, 组员, 组长]) expect((await 项目的卡点(p, 散的项目)).map((x) => x.id), p.id).toEqual([b.id]);
+      expect((await 卡点看板(散主管)).栏.待接受.map((x) => x.id)).toEqual([b.id]);
+      expect(await 项目的卡点(虚, 散的项目)).toEqual([]);
+      expect(await 认领卡点(散主管, b.id)).toMatchObject({ ok: true });
+      await prisma.project.update({ where: { id: 散的项目 }, data: { pooledAt: new Date() } });
+      expect((await 项目的卡点(散主管, 散的项目)).map((x) => x.id)).toEqual([b.id]); // 他认领了，按认领人看得到
+      await prisma.entBlockerClaim.deleteMany({ where: { blockerId: b.id } });
+      expect(await 项目的卡点(散主管, 散的项目)).toEqual([]);
+      expect(await 项目的卡点(散, 散的项目)).toEqual([]);
+      expect(await 卡点看板(散主管).then((d) => [...d.栏.待接受, ...d.栏.处理中])).toEqual([]);
+      // 创建人、创建人直属上级照旧
+      expect((await 项目的卡点(组员, 散的项目)).map((x) => x.id)).toEqual([b.id]);
+      expect((await 项目的卡点(组长, 散的项目)).map((x) => x.id)).toEqual([b.id]);
+    });
+
+    it("管理员（业务角色 admin）只读：看全部，发、认领、完成、改设置、管原因、删都拒；兼总管理就能写", async () => {
+      const 管 = await 建("admin-only");
+      const 兼 = await 建("admin-director");
+      await prisma.entMember.createMany({ data: [{ userId: 管.id, bizRole: "admin" }, { userId: 兼.id, bizRole: "admin,director" }] });
+      expect(卡点只读(["admin"])).toBe(true);
+      expect(卡点只读(["admin", "director"])).toBe(false);
+      expect(卡点只读(["sales"])).toBe(false);
+      expect(能管卡点(["admin"])).toBe(false);
+      expect(能管卡点(["director"])).toBe(true);
+      expect(await 卡点权限(管)).toEqual({ 开: true, 全部: true, 能写: false, 能管: false });
+      expect(await 卡点权限(兼)).toEqual({ 开: true, 全部: true, 能写: true, 能管: true });
+
+      const b = await 发();
+      const v = (await 项目的卡点(管, 项目)).find((x) => x.id === b.id)!;
+      expect(v.能).toEqual({ 认领: false, 完成: false, 最后一个: false, 删: false });
+      expect((await 卡点看板(管)).栏.待接受.map((x) => x.id)).toEqual([b.id]);
+      const 只读 = expect.stringContaining("管理员只能看卡点");
+      expect(await 能发卡点(管, 项目)).toBe(false);
+      expect(await 发布卡点(管, await 沟通(), 卡)).toMatchObject({ ok: false, error: 只读 });
+      expect(await 认领卡点(管, b.id)).toMatchObject({ ok: false, error: 只读 });
+      expect(await 完成卡点(管, b.id, { solution: "s", result: "r" })).toMatchObject({ ok: false, error: 只读 });
+      expect(await 存卡点默认(管, { 默认类型: "轻度卡点" })).toMatchObject({ ok: false });
+      expect(await 存卡点角色开关(管, { 范围: { sales: "全部" } })).toMatchObject({ ok: false, error: "只有总管理员能改" });
+      expect(await 新增原因(管, "管理员加的")).toMatchObject({ ok: false });
+      const 其他 = (await 原因字典()).find((r) => r.name === "其他")!;
+      expect(await 改原因状态(管, 其他.id, "停用")).toMatchObject({ ok: false });
+      expect(await 删原因(管, 其他.id)).toMatchObject({ ok: false });
+      expect(await 删卡点(管, b.id)).toMatchObject({ ok: false, error: "只有总管理员能删卡点" });
+      expect(await prisma.entBlocker.count()).toBe(1);
+      expect(await 认领卡点(兼, b.id)).toMatchObject({ ok: true });
+    });
+
+    it("删卡点：只有总管理（director）；认领行、流转、原因挂接一起删；删了就没了", async () => {
+      const b = await 发();
+      await 认领卡点(组员, b.id);
+      expect(await 删卡点(组长, b.id)).toMatchObject({ ok: false, error: "只有总管理员能删卡点" });
+      expect(await 删卡点(销售, b.id)).toMatchObject({ ok: false, error: "只有总管理员能删卡点" });
+      expect(await 删卡点(老板, "没有这条")).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
+      expect(await 删卡点(老板, b.id)).toMatchObject({ ok: true, code: b.code, projectId: 项目 });
+      expect(await prisma.entBlocker.count({ where: { id: b.id } })).toBe(0);
+      expect(await prisma.entBlockerClaim.count({ where: { blockerId: b.id } })).toBe(0);
+      expect(await prisma.entBlockerLog.count({ where: { blockerId: b.id } })).toBe(0);
+      expect(await prisma.entBlockerReasonLink.count({ where: { blockerId: b.id } })).toBe(0);
+      // 删原因也只有总管理
+      const 没用的 = (await 原因字典()).find((r) => r.name === "合同条款争议")!;
+      expect(await 删原因(组长, 没用的.id)).toMatchObject({ ok: false });
+      expect(await 删原因(老板, 没用的.id)).toMatchObject({ ok: true });
+    });
+
+    it("复盘页卡点列表和项目详情走同一个可见规矩：只看自己的人，看板里的卡点 = 各项目详情里的并起来；看不到的认领也是不在了", async () => {
+      const 散的项目 = (await prisma.project.create({ data: { name: "五期", customerId: 客户, ownerId: 散.id, creatorId: 散.id } })).id;
+      const 公海项目 = (await prisma.project.create({ data: { name: "六期", customerId: 客户, ownerId: 组员.id, creatorId: 组员.id } })).id;
+      const 们 = [await 发(), await 发(组员), await 发(散, 卡, now, 散的项目), await 发(组员, 卡, now, 公海项目)];
+      await 认领卡点(散主管, 们[2].id);
+      await prisma.entBlocker.update({ where: { id: 们[3].id }, data: { creatorId: 老板.id } });
+      await prisma.project.update({ where: { id: 公海项目 }, data: { pooledAt: new Date() } });
+      for (const p of [组长, 虚, 销售, 组员, 散, 散主管]) {
+        expect((await 卡点权限(p)).全部, p.id).toBe(false);
+        const 板 = await 卡点看板(p);
+        const 板ids = [...板.栏.待接受, ...板.栏.处理中, ...板.栏.已解决].map((x) => x.id).sort();
+        const 详情ids = (await Promise.all([项目, 散的项目, 公海项目].map((pid) => 项目的卡点(p, pid)))).flat().map((x) => x.id).sort();
+        expect(板ids, p.id).toEqual(详情ids);
+        expect((await 我的卡点(p)).every((x) => 详情ids.includes(x.id)), p.id).toBe(true);
+        for (const b of 们) if (!详情ids.includes(b.id)) expect(await 认领卡点(p, b.id), `${p.id} ${b.id}`).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
+      }
+      // 公海项目：负责人（组员）不再凭负责人身份看到；组员也不是创建人 → 看不到
+      expect(await 项目的卡点(组员, 公海项目)).toEqual([]);
+    });
+
     it("项目进公海：负责人不再算相关人（不公开），创建人、认领人照旧", async () => {
       const 散的项目 = (await prisma.project.create({ data: { name: "二期", customerId: 客户, ownerId: 散.id, creatorId: 散.id } })).id;
       const b = await 发(散, 卡, now, 散的项目);
@@ -267,7 +365,7 @@ describe("企业版卡点", () => {
     });
   });
 
-  it("离职交接：没完成的认领行给接手人（接手人已认领的合并），已解决的不动，进公海的项目留着；都记一行", async () => {
+  it("离职交接：有交接人给交接人（和已有行合并时退回未完成）；进公海的项目给直属上级；已解决的不动；都记一行", async () => {
     const 项目乙 = (await prisma.project.create({ data: { name: "三期", customerId: 客户, ownerId: 销售.id, creatorId: 销售.id } })).id;
     await prisma.projectMember.create({ data: { projectId: 项目乙, userId: 组员.id, inviteStatus: "JOINED" } });
     const 甲 = await 发();
@@ -275,20 +373,52 @@ describe("企业版卡点", () => {
     const 丙 = await 发();
     const 丁 = await 发();
     for (const b of [甲, 乙, 丙, 丁]) await 认领卡点(组员, b.id);
-    await 认领卡点(组长, 丙.id);
-    await 完成卡点(组长, 丙.id, { note: "我这边好了" });
+    await 认领卡点(销售, 丙.id);
+    await 完成卡点(销售, 丙.id, { note: "我这边好了" });
     // 丁 已解决
     await 完成卡点(组员, 丁.id, { solution: "s", result: "r" });
 
-    const n = await prisma.$transaction((tx) => 交接卡点(tx, 组员.id, 组长.id, 老板.id, [项目乙]));
-    expect(n).toBe(2);
-    expect((await 认领行们(甲.id)).map((c) => [c.userId, c.done])).toEqual([[组长.id, false]]);
-    expect((await 认领行们(乙.id)).map((c) => c.userId)).toEqual([组员.id]); // 进公海的项目：谁领走项目谁接
+    // 组员 走，交接人 = 销售；项目乙 跟着进公海 → 组员的直属上级（组长）接
+    const n = await prisma.$transaction((tx) => 交接卡点(tx, 组员.id, 销售.id, 老板.id, [项目乙]));
+    expect(n).toBe(3);
+    expect((await 认领行们(甲.id)).map((c) => [c.userId, c.done])).toEqual([[销售.id, false]]);
+    expect((await 认领行们(乙.id)).map((c) => [c.userId, c.done])).toEqual([[组长.id, false]]);
     // 接手人已认领且点过完成：组员那行并进来，接手人那行退回未完成（多了一份活）
-    expect((await 认领行们(丙.id)).map((c) => [c.userId, c.done])).toEqual([[组长.id, false]]);
+    expect((await 认领行们(丙.id)).map((c) => [c.userId, c.done])).toEqual([[销售.id, false]]);
     expect((await 认领行们(丁.id)).map((c) => [c.userId, c.done])).toEqual([[组员.id, true]]);
-    expect((await 流转(甲.id)).at(-1)).toMatchObject({ action: "handover", userId: 老板.id, fromUserId: 组员.id, toUserId: 组长.id, note: 离职交接理由 });
+    expect((await 流转(甲.id)).at(-1)).toMatchObject({ action: "handover", userId: 老板.id, fromUserId: 组员.id, toUserId: 销售.id, note: 离职交接理由 });
+    expect((await 流转(乙.id)).at(-1)).toMatchObject({ action: "handover", fromUserId: 组员.id, toUserId: 组长.id, note: 离职转上级理由 });
     expect((await 行(甲.id)).status).toBe("处理中");
+  });
+
+  it("离职交接：没交接人 → 直属上级（实线，虚线不算）；上级也停用了 → 认领行去掉、记日志，一个不剩的回待接受", async () => {
+    const 甲 = await 发();
+    const 乙 = await 发();
+    await 认领卡点(组员, 甲.id);
+    await 认领卡点(组员, 乙.id);
+    await 认领卡点(散, 乙.id).then((r) => expect(r.ok).toBe(false)); // 散 看不到
+    await 认领卡点(老板, 乙.id);
+
+    // 销售 有实线上级 组长、虚线上级 虚：没交接人 → 组长
+    await 认领卡点(销售, 甲.id);
+    expect(await prisma.$transaction((tx) => 交接卡点(tx, 销售.id, null, 老板.id, []))).toBe(1);
+    expect((await 认领行们(甲.id)).map((c) => c.userId)).toEqual([组员.id, 组长.id]);
+
+    // 组员 的上级 组长 也停用了 → 去掉
+    await prisma.user.update({ where: { id: 组长.id }, data: { active: false } });
+    expect(await prisma.$transaction((tx) => 交接卡点(tx, 组员.id, null, 老板.id, []))).toBe(2);
+    expect((await 认领行们(甲.id)).map((c) => c.userId)).toEqual([组长.id]);
+    expect((await 行(甲.id)).status).toBe("处理中");
+    expect((await 认领行们(乙.id)).map((c) => c.userId)).toEqual([老板.id]);
+    expect((await 流转(乙.id)).at(-1)).toMatchObject({ action: "handover", fromUserId: 组员.id, toUserId: null, note: 离职去掉理由 });
+
+    // 只剩一个认领人的走了、没人接 → 回待接受，进度 0/0
+    const 丙 = await 发();
+    await 认领卡点(组员, 丙.id);
+    await prisma.$transaction((tx) => 交接卡点(tx, 组员.id, null, 老板.id, []));
+    expect(await 认领行们(丙.id)).toEqual([]);
+    expect((await 行(丙.id)).status).toBe("待接受");
+    expect((await 项目的卡点(老板, 项目)).find((x) => x.id === 丙.id)!.进度).toEqual({ 完成: 0, 共: 0 });
   });
 
   it("项目从公海领走：原负责人没完成的认领行给新负责人（只给函数，公海那边接线）", async () => {
@@ -393,7 +523,7 @@ describe("企业版卡点", () => {
     expect(await 行(b.id)).toMatchObject({ type: "轻度卡点", impact: "可能丢单" });
   });
 
-  it("老数据改版：看板 / 待接受 / 处理中 / 已解决 按规矩改，标题补上、阻碍主体换成原因；重跑不多出行", async () => {
+  it("老数据改版：看板 / 待接受 / 处理中 / 已解决 按规矩改，标题补上；老阻碍主体不归类（不挂原因、显示原阻碍主体、统计进未分类）；重跑不多出行", async () => {
     const f = await 沟通();
     const 老 = async (code: string, status: string, assigneeId: string | null, obstacle: string, description: string) =>
       (await prisma.entBlocker.create({
@@ -415,10 +545,21 @@ describe("企业版卡点", () => {
     expect((await 行(没人处理中)).status).toBe("待接受");
     expect(await 行(解决)).toMatchObject({ status: "已解决", code: "BLK20261020005" });
     expect((await 认领行们(解决)).map((c) => [c.userId, c.done])).toEqual([[组长.id, true]]);
-    const 原因of = async (id: string) => (await prisma.entBlockerReasonLink.findMany({ where: { blockerId: id }, include: { reason: true } })).map((l) => [l.reason.name, l.reason.status]);
-    expect(await 原因of(看板)).toEqual([["价格预算分歧", "启用"]]);
-    expect(await 原因of(处理中)).toEqual([["客户内部推进慢", "启用"]]);
-    expect(await 原因of(解决)).toEqual([["老板拍板", "待审核"]]); // 表里没有的老值进待审核
+    // B9：老卡点一个原因都不挂，也不从老值生成待审核原因（「客户」也不映射）
+    expect(await prisma.entBlockerReasonLink.count()).toBe(0);
+    expect((await 原因字典()).map((r) => r.name)).toEqual([...原因种子们]);
+    const 视图们 = await 项目的卡点(老板, 项目);
+    expect(视图们.find((x) => x.id === 处理中)?.原阻碍主体).toBe("客户");
+    expect(视图们.find((x) => x.id === 解决)?.原阻碍主体).toBe("老板拍板");
+    // 统计：全进「未分类（老数据）」；按它筛 = 没挂原因的
+    const 新 = await 发();
+    expect(视图们.length + 1).toBe((await 项目的卡点(老板, 项目)).length);
+    expect((await 项目的卡点(老板, 项目)).find((x) => x.id === 新.id)?.原阻碍主体).toBeNull();
+    const 板 = await 卡点看板(老板);
+    expect(板.统计.按原因).toContainEqual({ id: 未分类原因id, 名: 未分类原因名, 状态: "未分类", 数: 5 });
+    expect(板.原因们.at(-1)).toEqual({ id: 未分类原因id, name: 未分类原因名, status: "未分类" });
+    const 筛 = await 卡点看板(老板, { 原因: 未分类原因id });
+    expect([...筛.栏.待接受, ...筛.栏.处理中, ...筛.栏.已解决].map((x) => x.id).sort()).toEqual([看板, 待接受, 处理中, 没人处理中, 解决].sort());
 
     // 记号在：不再跑；记号丢了重跑：不多出行
     expect(await 卡点改版()).toBe(0);
@@ -456,11 +597,13 @@ describe("卡点规矩", () => {
     expect(改版后("已解决", null)).toEqual({ status: "已解决", 认领: null });
   });
 
-  it("老阻碍主体 → 原因：表里的换成种子，没有的原样（待审核），空的落「其他」", () => {
-    for (const 新 of Object.values(老主体映射)) expect(原因种子们 as readonly string[]).toContain(新);
-    expect(老主体to原因("价格")).toBe("价格预算分歧");
-    expect(老主体to原因("")).toBe("其他");
-    expect(老主体to原因("没见过的")).toBe("没见过的");
+  it("老阻碍主体不归类：规则里没有映射表；默认卡点角色开关里总管理、管理员可看全部；只读 / 能管的判定", () => {
+    expect(Object.keys(卡点模块)).not.toContain("老主体to原因");
+    expect(未分类原因名).toBe("未分类（老数据）");
+    expect(默认卡点角色开关.范围.director).toBe("全部");
+    expect(默认卡点角色开关.范围.admin).toBe("全部");
+    expect(卡点只读([])).toBe(false);
+    expect(能管卡点([])).toBe(false);
   });
 
   it("会签进度 x/y", () => {
@@ -472,7 +615,8 @@ describe("卡点规矩", () => {
   it("规整发布：没填类型、影响按默认；暂无卡点 = null；没有时限这回事", () => {
     expect(规整发布({ description: "x" }, 默认卡点默认)).toMatchObject({ type: "中度卡点", impact: "短期不影响", title: "x", reasons: ["其他"] });
     expect(规整发布({ type: "暂无卡点", description: "" }, 默认卡点默认)).toBeNull();
-    expect(规整发布({ description: "x", obstacle: "竞品" }, 默认卡点默认)).toMatchObject({ reasons: ["竞品介入占优"] });
+    // 老调用方还传单个阻碍主体：不再换成原因（B9），没选原因照样落「其他」
+    expect(规整发布({ description: "x", obstacle: "竞品" } as never, 默认卡点默认)).toMatchObject({ reasons: ["其他"] });
     expect(规整发布({ description: "x" }, 默认卡点默认)).not.toHaveProperty("dueDays");
     expect(规整发布({ description: "x", type: "乱写" }, 默认卡点默认)).toHaveProperty("error");
   });
