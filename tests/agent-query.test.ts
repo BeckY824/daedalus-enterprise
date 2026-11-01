@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { 校验规格, 说人话, 编译, 表们, 关联们, 取数上限 } from "@/lib/agent/query";
+import { 校验规格, 说人话, 编译, 表们, 关联们, 取数上限, 用到的名字 } from "@/lib/agent/query";
 
 const 查 = (raw: unknown) => 校验规格(raw);
 const 挂 = (raw: unknown) => () => 校验规格(raw);
@@ -315,4 +315,50 @@ it("请求间业务字段互不污染，显示状态回到存储值且过程条�
   expect(编译(general, DEFAULT_BUSINESS).where).toEqual({ AND: [{ grade: { contains: "高管" } }] });
   expect(() => 校验规格({ 表: "客户", 条件: [{ 字段: "职位", 运算: "等于", 值: "高管" }] })).toThrow();
   expect(表们.客户.字段.年级.取值).toContain("大一");
+});
+
+/**
+ * 全库查询（11-01）：项目、卡点、回款、提成、组织这些表也进了白名单。
+ * 人和部门存的是 id，模型只知道名字——名字到 id 由调用方查库后经「名映射」传进来；
+ * 节点 / 结局改过名，旧名的项目也要一起查到。
+ */
+describe("全库查询：人名、旧名、跨两跳", () => {
+  it("新表都在白名单里", () => {
+    for (const 名 of ["项目", "卡点", "项目成员", "节点记录", "项目回款", "线索验证", "公海", "部门", "组织成员", "提成", "提成分配", "同事"]) {
+      expect(表们[名 as keyof typeof 表们], `${名} 不在白名单`).toBeDefined();
+    }
+  });
+
+  it("人名经名映射换成 id；重名的几个人都算", () => {
+    const 规格 = 查({ 表: "项目", 条件: [{ 字段: "负责人", 运算: "等于", 值: "张三" }] });
+    expect(用到的名字(规格)).toEqual({ 人: ["张三"], 部门: [] });
+    const 映射 = { 人: new Map([["张三", ["u1", "u2"]]]), 部门: new Map() };
+    expect(编译(规格, undefined, 映射).where).toEqual({ AND: [{ ownerId: { in: ["u1", "u2"] } }] });
+  });
+
+  it("名字对不上任何人：查 0 条，不能变成不筛", () => {
+    const 规格 = 查({ 表: "项目", 条件: [{ 字段: "负责人", 运算: "等于", 值: "没这人" }] });
+    expect(编译(规格, undefined, { 人: new Map(), 部门: new Map() }).where).toEqual({ AND: [{ ownerId: { in: [] } }] });
+  });
+
+  it("「不等于某人」把没负责人的也算进去", () => {
+    const 规格 = 查({ 表: "项目", 条件: [{ 字段: "负责人", 运算: "不等于", 值: "张三" }] });
+    const 映射 = { 人: new Map([["张三", ["u1"]]]), 部门: new Map() };
+    expect(编译(规格, undefined, 映射).where).toEqual({ AND: [{ OR: [{ ownerId: { notIn: ["u1"] } }, { ownerId: null }] }] });
+  });
+
+  it("结局用新名查，库里存旧名的项目也算", () => {
+    const 规格 = 查({ 表: "项目", 条件: [{ 字段: "结局", 运算: "等于", 值: "交付结清" }] });
+    const where = 编译(规格).where as { AND: { result: { in: string[] } }[] };
+    expect(where.AND[0].result.in).toEqual(expect.arrayContaining(["交付结清", "成功交付"]));
+  });
+
+  it("跟进记录 → 项目 经节点那一跳", () => {
+    const r = 编译(查({
+      表: "跟进记录",
+      条件: [],
+      关联: { 路径: "跟进记录.项目", 条件: [{ 字段: "名称", 运算: "等于", 值: "甲项目" }] },
+    }));
+    expect(r.where).toEqual({ AND: [{ projectNode: { is: { project: { is: { AND: [{ name: "甲项目" }] } } } } }] });
+  });
 });

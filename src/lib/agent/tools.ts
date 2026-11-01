@@ -37,7 +37,11 @@ import { 名字在别处, 别处说法, 别处附件, 找人 } from "./find-name
 import type { BusinessConfig } from "../business-config";
 import type { BriefRecord } from "../ai-draft";
 import { 扩同义词 } from "./synonyms";
-import { 校验规格, 说人话, 编译, 表们, 查询表, 分组上限, 关联们, type 查询规格, type 表名 } from "./query";
+import { 校验规格, 说人话, 编译, 表们, 查询表, 分组上限, 关联们, 用到的名字, 认字段, type 名映射, type 查询规格, type 表名 } from "./query";
+import { 限定的我 } from "../team-scope";
+import { 字段权限of } from "../enterprise/field-perm";
+import { 能看提成 } from "../project/commission-db";
+import { 读组织 } from "../enterprise/org";
 import { buildProposal, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
 import { FOLLOW_TYPES, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES } from "../constants";
 
@@ -957,10 +961,11 @@ export const TOOLS: Tool[] = [
     name: "query_records",
     description:
       "通用查询：按任意条件找记录、排序、计数、分组统计。**别的工具能直接答的别用它**；" +
-      "它接的是：联系人（没有专门工具）、要排序（「哪条线索最久没动」）、要跨一张表（「9 月签约的学员里哪几个是小红老师带来的」）。" +
+      "它接的是：联系人（没有专门工具）、要排序（「哪条线索最久没动」）、要跨一张表（「9 月签约的学员里哪几个是小红老师带来的」）、" +
+      "以及项目、卡点、节点记录、回款、线索验证、提成、公海、组织架构、同事这些没有专门工具的表。人和部门字段直接写名字（「负责人 等于 张三」）。" +
       "能查的表：" + Object.keys(表们).join("、") + "。字段或运算填错会返回能用的选项，照着改一次就行。",
     args:
-      '{"表": "客户/线索/商机/签约/联系人/跟进记录/跟进计划/任务/渠道", ' +
+      '{"表": "' + Object.keys(表们).join("/") + '", ' +
       '"条件": [{"字段": "字段名", "运算": "包含/等于/不等于/属于/大于/小于/不早于/不晚于/最近天数/为空/非空", "值": "值，为空和非空不填"}], ' +
       '"关联": {"路径": "如 客户.来源渠道", "条件": [同上]}（可空，只能跨一张表）, ' +
       '"排序": {"字段": "字段名", "降序": true}（可空）, "取": 20, ' +
@@ -981,17 +986,75 @@ export const TOOLS: Tool[] = [
       if (用到电话(规格, ctx.b) && (await 号码藏着(ctx.userId)))
         return { summary: "电话对你不可见", data: { error: "你的字段权限里电话是隐藏的，不能按电话筛选、排序或分组。换别的字段查。" } };
 
+      // 痛点标注、合同状态按字段权限可能是「藏」：结果里不给，也不能拿来筛、排、分组（同电话）
+      const 藏列 = new Set<string>();
+      if (规格.表 === "项目") {
+        const 级别 = await 字段权限of(ctx.userId);
+        if (级别("痛点标注") === "藏") 藏列.add("painPoints");
+        if (级别("合同状态") === "藏") 藏列.add("contractStatus");
+        const 用到列 = [...规格.条件.map((c) => c.字段), ...(规格.排序 ? [规格.排序.字段] : []), ...(规格.分组 ? [规格.分组] : [])]
+          .map((f) => 认字段("项目", f, ctx.b).列);
+        if (用到列.some((l) => 藏列.has(l)))
+          return { summary: "字段对你不可见", data: { error: "你的字段权限里痛点标注 / 合同状态是隐藏的，不能按它筛选、排序或分组。换别的字段查。" } };
+      }
+      if (规格.关联 && 关联们[规格.关联.路径].到 === "项目") {
+        const 级别 = await 字段权限of(ctx.userId);
+        const 藏 = new Set([...(级别("痛点标注") === "藏" ? ["painPoints"] : []), ...(级别("合同状态") === "藏" ? ["contractStatus"] : [])]);
+        if (规格.关联.条件.some((c) => 藏.has(认字段("项目", c.字段, ctx.b).列)))
+          return { summary: "字段对你不可见", data: { error: "你的字段权限里痛点标注 / 合同状态是隐藏的，不能按它筛选。" } };
+      }
+
+      /*
+        条件里写的是人名 / 部门名，库里存的是 id：先查一次库对上。重名的都算；
+        先精确后模糊（「小王」对不上全名时按包含找），都对不上就照实说，不瞎猜。
+      */
+      const 名字 = 用到的名字(规格, ctx.b);
+      const 映射: 名映射 = { 人: new Map(), 部门: new Map() };
+      for (const n of 名字.人) {
+        let 们 = await prisma.user.findMany({ where: { name: n }, select: { id: true } });
+        if (!们.length) 们 = await prisma.user.findMany({ where: { name: { contains: n } }, select: { id: true } });
+        if (!们.length) return { summary: `没有叫${n}的同事`, data: { error: `没有叫「${n}」的同事。换个写法，或先用 query_records 查「同事」表看全名。` } };
+        映射.人.set(n, 们.map((u) => u.id));
+      }
+      for (const n of 名字.部门) {
+        let 们 = await prisma.entDept.findMany({ where: { name: n }, select: { id: true } });
+        if (!们.length) 们 = await prisma.entDept.findMany({ where: { name: { contains: n } }, select: { id: true } });
+        if (!们.length) return { summary: `没有叫${n}的部门`, data: { error: `没有叫「${n}」的部门。先查「部门」表看全名。` } };
+        映射.部门.set(n, 们.map((d) => d.id));
+      }
+
       const 话 = `${ctx.页面筛选 && Object.keys(ctx.页面筛选).length ? "当前客户页范围；" : ""}${说人话(规格, ctx.b)}`;
-      const compiled = 编译(规格, ctx.b);
+      const compiled = 编译(规格, ctx.b, 映射);
       const { orderBy, take } = compiled;
       let where = compiled.where;
       const 页面条件 = ctx.页面筛选 && Object.keys(ctx.页面筛选).length ? await 客户筛选条件(ctx.页面筛选, ctx.userId) : undefined;
       if (页面条件) {
         if (规格.表 === "客户") where = { AND: [where, 页面条件] };
-        else if (["商机", "签约", "联系人", "跟进记录", "跟进计划", "任务"].includes(规格.表)) where = { AND: [where, { customer: { is: 页面条件 } }] };
+        else if (["商机", "签约", "联系人", "跟进记录", "跟进计划", "任务", "项目"].includes(规格.表)) where = { AND: [where, { customer: { is: 页面条件 } }] };
         else return { summary: "当前范围是客户", data: { error: `当前客户页筛选不能用于${规格.表}，请移除页面上下文后查询。` } };
       }
       const 表定义 = 查询表(规格.表, ctx.b);
+      /*
+        回款、线索验证、提成这几张表不在团队限定层里（lib/team-scope.ts 只管客户、项目那一串），
+        这里手动收到「看得到的项目」上，和项目详情页同一口径；提成再按 能看提成 过一遍（同提成卡）。
+      */
+      if (["项目回款", "线索验证", "提成", "提成分配"].includes(规格.表)) {
+        const 我 = await 限定的我(prisma);
+        const 提成表 = 规格.表 === "提成" || 规格.表 === "提成分配";
+        const 本人 = 提成表 ? await prisma.user.findUnique({ where: { id: ctx.userId }, select: { id: true, role: true } }) : null;
+        if (我 !== null || (提成表 && 本人?.role !== "ADMIN")) {
+          const 项目们 = await prisma.project.findMany({ select: { id: true, ownerId: true, pooledAt: true } });
+          let ids = 项目们.map((p) => p.id);
+          if (提成表 && 本人) {
+            const org = await 读组织();
+            const 组员 = await prisma.projectMember.findMany({ where: { projectId: { in: ids }, inviteStatus: "JOINED" }, select: { projectId: true, userId: true } });
+            const 在组of = new Map<string, Set<string>>();
+            for (const m of 组员) (在组of.get(m.projectId) ?? 在组of.set(m.projectId, new Set()).get(m.projectId)!).add(m.userId);
+            ids = 项目们.filter((p) => 能看提成(本人, p, 在组of.get(p.id) ?? new Set(), org)).map((p) => p.id);
+          }
+          where = { AND: [where, { projectId: { in: ids } }] };
+        }
+      }
       // 白名单已经把表名收死了，这里的动态取用是安全的
       const 表 = (prisma as unknown as Record<string, {
         count: (a: unknown) => Promise<number>;
@@ -1017,10 +1080,11 @@ export const TOOLS: Tool[] = [
         (列 === "followStatus" || 列 === "decisionStatus") && typeof v === "string" ? statusLabel(ctx.b, v) : v;
 
       if (规格.分组) {
-        const 列 = (表定义.字段 as Record<string, { 列: string; 名: string }>)[规格.分组];
+        const 列 = (表定义.字段 as Record<string, { 列: string; 名: string; 型: string }>)[规格.分组];
         const g = await 表.groupBy({ by: [列.列], where, _count: { _all: true } });
+        const 叫 = await 名字表(g, [列]);
         const 行 = g
-          .map((r) => ({ [列.名]: 显示(列.列, r[列.列]) ?? "(空)", 条数: (r._count as { _all: number })._all }))
+          .map((r) => ({ [列.名]: 叫(列.列, r[列.列]) ?? 显示(列.列, r[列.列]) ?? "(空)", 条数: (r._count as { _all: number })._all }))
           .sort((a, b) => (b.条数 as number) - (a.条数 as number))
           .slice(0, 分组上限);
         return { summary: `${话} → ${行.length} 组，共 ${总数} 条${补一句}`, data: { 查询: 话, 总数, 分组: 行, ...额外可见 } };
@@ -1031,11 +1095,18 @@ export const TOOLS: Tool[] = [
       }
 
       const 选 = Object.fromEntries(
-        Object.values(表定义.字段 as Record<string, { 列: string }>).map((f) => [f.列, true]),
+        Object.values(表定义.字段 as Record<string, { 列: string }>).filter((f) => !藏列.has(f.列)).map((f) => [f.列, true]),
       );
       const 日历列 = calendarColumns[规格.表] ?? {};
       const 内部日历列 = Object.values(日历列);
-      const select = { id: true, ...选, ...Object.fromEntries(内部日历列.map(k => [k, true])) };
+      // 挂在项目下的表顺带给项目名，项目表顺带给客户名（看不到的客户不给名字，同项目详情页 露客户）
+      const 挂项目 = 关联们[`${规格.表}.项目` as keyof typeof 关联们]?.列 === "project";
+      const 带 = {
+        ...(挂项目 ? { project: { select: { name: true } } } : {}),
+        ...(规格.表 === "项目" ? { customerId: true, customer: { select: { name: true } } } : {}),
+      };
+      const 主键 = 表定义.主键 ?? "id";
+      const select = { [主键]: true, ...选, ...带, ...Object.fromEntries(内部日历列.map(k => [k, true])) };
       const 排序列 = orderBy ? Object.keys(orderBy)[0] : undefined;
       const rows = 排序列 && 日历列[排序列]
         ? await readCalendarSorted(args => 表.findMany(args), where, select, take, 排序列, 日历列[排序列], orderBy![排序列])
@@ -1051,11 +1122,20 @@ export const TOOLS: Tool[] = [
       */
       const 号 = 脱敏(ctx);
       const 是电话 = (列: string) => 列 === "phone";
+      const 叫 = await 名字表(rows, Object.values(表定义.字段 as Record<string, { 列: string; 型: string }>));
+      const 露 = 规格.表 === "项目"
+        ? await (async () => {
+            const 看得到 = await 看得到的客户(rows.map((r) => String(r.customerId)));
+            return (r: Record<string, unknown>) => 露客户({ id: ctx.userId }, { customerId: String(r.customerId), ownerId: String(r.ownerId), pooledAt: r.pooledAt as Date | null }, 看得到);
+          })()
+        : () => true;
       const 结果 = rows.map((r) =>
         Object.fromEntries(
-          Object.entries(r).filter(([k]) => !内部日历列.includes(k)).map(([k, v]) => [
-            中文[k] ?? k,
-            是电话(k) && typeof v === "string" ? 号(v) : 日历列[k] && typeof r[日历列[k]] === "string" ? r[日历列[k]] : v instanceof Date ? dayjs(v).format("YYYY-MM-DD") : 显示(k, v),
+          Object.entries(r).filter(([k]) => !内部日历列.includes(k) && k !== "customerId").map(([k, v]) => [
+            k === "project" ? "所属项目" : k === "customer" ? "所属客户" : 中文[k] ?? k,
+            k === "project" ? (v as { name: string } | null)?.name ?? null
+              : k === "customer" ? (露(r) ? (v as { name: string } | null)?.name ?? null : "（客户对你不可见）")
+              : 叫(k, v) ?? (是电话(k) && typeof v === "string" ? 号(v) : 日历列[k] && typeof r[日历列[k]] === "string" ? r[日历列[k]] : v instanceof Date ? dayjs(v).format("YYYY-MM-DD") : 显示(k, v)),
           ]),
         ),
       );
@@ -1075,6 +1155,28 @@ export const TOOLS: Tool[] = [
     { needsCustomer: false },
   ),
 ];
+
+/**
+ * 「人」「部门」列存的是 id，喂回模型前换成名字：一批行里出现的 id 只查一次库。
+ * 返回 (列, 值) → 名字；不是人 / 部门列、或值不是 id 时返回 undefined，调用方照原样处理。
+ */
+async function 名字表(rows: Record<string, unknown>[], 字段们: { 列: string; 型: string }[]): Promise<(列: string, v: unknown) => string | undefined> {
+  const 人列 = new Set(字段们.filter((f) => f.型 === "人").map((f) => f.列));
+  const 部门列 = new Set(字段们.filter((f) => f.型 === "部门").map((f) => f.列));
+  const 收 = (列们: Set<string>) => [...new Set(rows.flatMap((r) => [...列们].map((l) => r[l]).filter((v): v is string => typeof v === "string")))];
+  const [人, 部门] = await Promise.all([
+    人列.size ? prisma.user.findMany({ where: { id: { in: 收(人列) } }, select: { id: true, name: true } }) : [],
+    部门列.size ? prisma.entDept.findMany({ where: { id: { in: 收(部门列) } }, select: { id: true, name: true } }) : [],
+  ]);
+  const 人名 = new Map(人.map((u) => [u.id, u.name]));
+  const 部门名 = new Map(部门.map((d) => [d.id, d.name]));
+  return (列, v) => {
+    if (typeof v !== "string") return undefined;
+    if (人列.has(列)) return 人名.get(v) ?? "（已删除的账号）";
+    if (部门列.has(列)) return 部门名.get(v) ?? "（已删除的部门）";
+    return undefined;
+  };
+}
 
 /**
  * 三个提议工具长得一样：认客户 → 校验参数 → 攒一张卡片，全程不写库。
