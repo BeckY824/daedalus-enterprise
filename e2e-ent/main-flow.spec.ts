@@ -64,7 +64,7 @@ test("导入导出：老板列表上有，销售没有；销售直接调上传�
     multipart: { file: { name: "客户.csv", mimeType: "text/csv", buffer: Buffer.from("客户姓名\n张三\n") } },
   });
   expect(r.status()).toBe(403);
-  expect((await r.json()).error).toContain("只有老板和总管理员");
+  expect((await r.json()).error).toContain("只有总管理能做企业版导入");
 });
 
 test("设置：老板有企业版导入和组织架构；销售看得到组织架构，看不到企业版导入、业务配置、AI 接入", async ({ page }) => {
