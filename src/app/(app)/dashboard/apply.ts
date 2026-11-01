@@ -25,6 +25,9 @@ import { 认出备注里的号码, AI建档查重 } from "@/lib/enterprise/ai-le
 import { saveOpportunity } from "../opportunities/actions";
 import { saveChannel } from "../channels/actions";
 import { 按名字找负责人 } from "@/lib/owners";
+import { 是项目卡, type 项目卡 } from "@/lib/agent/project-proposals";
+import { 做项目卡 } from "@/lib/agent/apply-project";
+import { 删回款 } from "../projects/payment-actions";
 
 /**
  * 确认之后怎么撤回去。只给能**干净还原**的两种：记了一条跟进（删掉它）、改了一个状态（改回原值）。
@@ -37,7 +40,9 @@ export type 撤销凭据 =
    * to = 改回去的原值；改成 = 卡片当时改成的值（2026-10-04 J-172）。
    * 撤销前拿它和库里现在的值比：不一样就是确认之后有人（同事或自己）又改过，撤销不能盖掉那次改动
    */
-  | { kind: "set_status"; customerId: string; field: "followStatus" | "decisionStatus"; to: string; 改成: string };
+  | { kind: "set_status"; customerId: string; field: "followStatus" | "decisionStatus"; to: string; 改成: string }
+  /** 全页面 AI 记的一笔项目回款（删掉它）；记这笔时项目被自动推走了就不给（推不回去） */
+  | { kind: "payment_add"; customerId: string; projectId: string; id: string };
 
 /**
  * 新线索卡确认后，名片原图该挂到哪（企业版联系人附件）：只用项目时建的是客户 + 主要联系人 → 挂联系人；
@@ -215,6 +220,14 @@ function 记下确认过(k: string) {
 /** 撤销凭据 → 那张卡的占位。撤销成功就把位让出来：撤完卡又回到能确认的样子，再点不该被说「已经确认过了」（第三轮 B7） */
 const 凭据对应卡 = new Map<string, string>();
 const 凭据键 = (userId: string, u: unknown) => `${userId}:${JSON.stringify(u)}`;
+/** 撤销成功：同一张卡可以再确认一次 */
+function 放掉凭据(userId: string, u: unknown) {
+  const 卡 = 凭据对应卡.get(凭据键(userId, u));
+  if (卡) {
+    确认过的卡.delete(卡);
+    凭据对应卡.delete(凭据键(userId, u));
+  }
+}
 
 export async function applyProposal(input: Proposal): Promise<ApplyResult> {
   const me = await requireUser();
@@ -291,6 +304,11 @@ const 卡上来源 = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 
 
 async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>): Promise<ApplyResult> {
   const b = await getBusiness();
+  // 全页面 AI 的项目类卡（推进节点、卡点、回款、验证、联系人、删客户）：在 lib/agent/apply-project.ts，同样只转给页面上的 server action
+  if (是项目卡(input?.kind)) {
+    if (!(企业版() && b.projectMode === true)) return { ok: false, error: "这张卡只在企业版只用项目时能用" };
+    return 做项目卡(input as 项目卡, me, b);
+  }
 
   // 新建线索不挂在任何客户下，其余三种都必须指到一个还在的客户
   let c = { id: "", name: "" };
@@ -414,9 +432,12 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   } else if (p.kind === "add_plan") {
     const r = await savePlan({ customerId: p.customerId, subject: p.subject, plannedAt: p.plannedAt, method: p.method });
     done = r.ok ? { ok: true } : { ok: false, error: "计划没能保存" };
-  } else {
+  } else if (p.kind === "add_lead") {
     const r = await saveLead({ name: p.name, contact: p.contact || null, phone: p.phone || null, source: p.source, status: p.status, remark: p.remark || null });
     done = !r.ok ? { ok: false, error: r.error } : { ok: true, ...(企业版() && r.id ? { 附件去处: { leadId: r.id } } : {}) };
+  } else {
+    // 项目类卡在函数开头已转走，到这里说明种类对不上
+    done = { ok: false, error: "这张卡的种类不认识" };
   }
   if (!done.ok) return done;
 
@@ -431,6 +452,16 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
  */
 export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await requireUser();
+  if (u?.kind === "payment_add") {
+    // 只删这个项目下的那一笔：凭据里的 id 对不上项目就不动；删走 删回款（权限、留痕都在里面）
+    const 笔 = await prisma.entProjectPayment.findFirst({ where: { id: String(u.id), projectId: String(u.projectId ?? "") }, select: { id: true, project: { select: { name: true } } } });
+    if (!笔) return { ok: false, error: "那笔回款已经不在了，可能已被删掉" };
+    const 删 = await 删回款(笔.id);
+    if (!删.ok) return { ok: false, error: "error" in 删 && typeof 删.error === "string" ? 删.error : "没删成" };
+    放掉凭据(me.id, u);
+    await recordAudit({ user: me, action: "ai_undo", entity: "Ai", entityId: u.kind, summary: `撤销 AI 建议：项目「${笔.project?.name ?? ""}」的一笔回款` });
+    return { ok: true };
+  }
   const 名 = await prisma.customer.findUnique({ where: { id: String(u?.customerId ?? "") }, select: { name: true } });
   if (!名) return { ok: false, error: "这条记录已被删除，没法撤销" };
 
@@ -455,11 +486,7 @@ export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok
   } else {
     return { ok: false, error: "这张卡不支持撤销" };
   }
-  const 卡 = 凭据对应卡.get(凭据键(me.id, u));
-  if (卡) {
-    确认过的卡.delete(卡);
-    凭据对应卡.delete(凭据键(me.id, u));
-  }
+  放掉凭据(me.id, u);
   await recordAudit({ user: me, action: "ai_undo", entity: "Ai", entityId: u.kind, summary: `撤销 AI 建议：${名.name}的${u.kind === "add_followup" ? "一条跟进" : "状态改动"}` });
   return { ok: true };
 }

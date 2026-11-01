@@ -44,6 +44,7 @@ import { 能看提成 } from "../project/commission-db";
 import { 读组织 } from "../enterprise/org";
 import { buildProposal, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
 import { FOLLOW_TYPES, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES } from "../constants";
+import { 项目写工具 } from "./project-tools";
 
 export type ToolContext = {
   userId: string;
@@ -72,7 +73,7 @@ export type ToolContext = {
 export const 脱敏 = (ctx: ToolContext) => ctx.号 ?? (<T extends string | null>(p: T): T => p);
 export type ToolResult = { summary: string; data: unknown; records?: BriefRecord[] };
 
-type Tool = {
+export type Tool = {
   name: string;
   description: string;
   args: string;
@@ -1154,6 +1155,8 @@ export const TOOLS: Tool[] = [
     "update_channel",
     { needsCustomer: false },
   ),
+  // 项目类建议卡（全页面 AI 写入）：只在企业版只用项目时给模型，见 run.ts 这一家的工具
+  ...项目写工具,
 ];
 
 /**

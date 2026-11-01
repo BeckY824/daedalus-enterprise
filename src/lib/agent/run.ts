@@ -17,6 +17,9 @@ import { randomUUID } from "node:crypto";
 import { chatMessagesJSON, chatTextStream, buildSystemPrompt, chatTools, type ToolMessage } from "../llm";
 import { TOOLS as 全部工具, TOOL_MAP as 全部工具表, proposalVocab, type ToolContext } from "./tools";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 项目写工具名 } from "./project-tools";
+import { 验证步们, 每步能判, 联系人可改 } from "./project-proposals";
+import { 卡点类型们, 影响等级们 } from "../project/blocker-rules";
 
 /**
  * 企业版只用项目时没有的老表工具：线索、商机、订单都是项目的阶段了，问它们走 list_projects。
@@ -35,6 +38,8 @@ export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只�
   const TOOLS = 全部工具
     .filter((t) => (t.name === "list_projects" ? b.projectMode === true : true))
     .filter((t) => !(只用项目 && 只用项目不给.includes(t.name)))
+    // 项目类建议卡（推进节点、卡点、回款、验证、联系人、删客户）只在只用项目的企业版给：别处没有这些表
+    .filter((t) => 只用项目 || !项目写工具名.has(t.name))
     .map((t) =>
       只用项目 && t.name === "propose_lead"
         ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。" }
@@ -422,7 +427,13 @@ ${工作方式}
 - **这一家只用项目**：线索、商机、订单是同一个项目的三个阶段（新线索 → 商机 → 订单），没有单独的线索表和商机表。
   问线索、商机、订单都用 list_projects（phase 选阶段）；页面说明里要是写着 list_leads / list_opportunities，也一样换成 list_projects
 - **建档（名片、聊天记录）**：只按已有的字段填，不新造字段；对不上任何字段的写进备注，邮箱、微信、阿里国际站ID（旺旺号、阿里买家 ID 都算这个）各写一行「邮箱：…」「微信：…」「阿里国际站ID：…」。
-  回答分「事实」「推断」「建议」三段，能列成表格的用表格；联系方式查重由系统做，撞了会直接告诉你原负责人，你照原话转告即可`
+  回答分「事实」「推断」「建议」三段，能列成表格的用表格；联系方式查重由系统做，撞了会直接告诉你原负责人，你照原话转告即可
+- **改项目、卡点、回款、验证、联系人，或删除东西：只在人明确要求时才用对应的 propose_* 工具**（propose_project_node 推进节点 / 定结局，
+  propose_project_followup 记沟通和下一步，propose_blocker_add / propose_blocker_resolve 加卡点 / 解决卡点，propose_payment_add / propose_payment_delete 记 / 删回款，
+  propose_lead_verify 线索验证，propose_contact_update 改联系人，propose_customer_delete 删客户）。人只是问情况时不要提。
+  这些工具按名字找项目；找到不止一个时卡上会列出来让人挑，你不要替人选，也不要说"已经改好"。项目不能删，人要删项目就说企业版不支持删项目
+  取值：卡点类型 ${卡点类型们.filter((t) => t !== "暂无卡点").join(" / ")}；影响等级 ${影响等级们.join(" / ")}；
+  线索验证每步能判：${验证步们.map((步) => `${步} ${每步能判[步].join("/")}`).join("；")}；联系人能改的：${Object.values(联系人可改).join("、")}（电话、邮箱、微信不经 AI 改）`
       : ""
   }
 - 问题前面可能附着我们之前的对话。它只用来解开指代（"他""这位""那个学校""再约一下"）；

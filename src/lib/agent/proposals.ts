@@ -14,8 +14,11 @@ import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, FOLLOW_METHODS, FOLLOW_STATUSES, DECISIO
 import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "../business-config";
 import { dayjs } from "../utils";
 import { 是币种, 金额 } from "../currency";
+import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type 项目卡, type 项目卡Kind } from "./project-proposals";
 
-export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel";
+export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
+  /** 全页面 AI 写入的项目类卡（企业版只用项目，见 project-proposals.ts） */
+  | 项目卡Kind;
 
 /**
  * 档案里能改的字段。
@@ -90,7 +93,8 @@ export type Proposal =
   | (Base & { kind: "update_customer"; changes: 一处改动[] })
   | (Base & { kind: "add_opportunity"; name: string; amount: number; /** 币种（2026-10-03）。老的建议卡没有：当本位币 */ currency?: string; stage: string; probability: number; expectedDealAt: string; remark: string })
   | (Base & { kind: "add_contract"; amount: number; currency?: string; signedAt: string; remark: string })
-  | (Base & { kind: "update_channel"; channelName: string; ownerName: string; phone: string; remark: string });
+  | (Base & { kind: "update_channel"; channelName: string; ownerName: string; phone: string; remark: string })
+  | 项目卡;
 
 export type ProposalResult = { ok: true; proposal: Proposal } | { ok: false; error: string };
 
@@ -154,6 +158,7 @@ export function buildProposal(
 ): ProposalResult {
   const base = { id, customerId: customer.id, customerName: customer.name, reason: str(args.reason, 120) };
   if (!base.reason) return { ok: false, error: "reason 必填：用一句话说明为什么建议这么做" };
+  if (是项目卡(kind)) return buildProjectProposal(base, kind, args, b);
 
   if (kind === "set_status") {
     const to = str(args.to, 20);
@@ -313,6 +318,7 @@ type 叫法 = Pick<BusinessConfig, "statusLabels" | "template"> | null | undefin
 export type 建档必填 = { 只用项目: boolean; 要下一步: boolean };
 
 export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): string[] {
+  if (是项目卡(p.kind)) return 项目卡缺(p as 项目卡);
   const miss: string[] = [];
   if (p.kind === "set_status" && !p.to) miss.push("新状态");
   if (p.kind === "add_followup" && p.content.trim().length < 4) miss.push("沟通内容");
@@ -365,7 +371,8 @@ export function describeProposal(p: Proposal, customerNoun: string, 字段表: R
     const 项 = [p.ownerName && "负责人", p.phone && "电话", p.remark && "备注"].filter(Boolean);
     return `改渠道「${p.channelName}」的${项.join("、") || "信息"}`;
   }
-  return `新建一条线索${p.name ? `「${p.name}」` : ""}`;
+  if (p.kind === "add_lead") return `新建一条线索${p.name ? `「${p.name}」` : ""}`;
+  return 描述项目卡(p);
 }
 
 /** 落库后写进操作日志的那句话 */
