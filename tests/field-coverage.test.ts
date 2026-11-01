@@ -500,6 +500,13 @@ const 派生: Record<string, Record<string, string>> = {
     fromOwnerId: "换之前的负责人（历史负责人），系统写", toOwnerId: "换之后的负责人，系统写",
     kind: "改负责人、公海领取 / 分配还是成员停用，系统写",
   },
+  // 企业版站内通知 + 飞书推送（2026-11-01，迁移 109）：lib/enterprise/notify.ts 系统写，用户只能点已读
+  EntNotice: {
+    userId: "收通知的人，事件发生时系统定", kind: "来源（自动分配 / 分配 / 卡点 / 交接……），系统写",
+    title: "通知标题，按事件系统拼", body: "通知正文，按事件系统拼", link: "点开去哪，按事件系统写",
+    dedupeKey: "同一事件不重复发的键，系统生成", readAt: "铃铛里点已读 / 全部已读时系统写",
+    feishuStatus: "推飞书的结果，系统写", feishuError: "没推 / 失败的原因，系统写", feishuAt: "推飞书的时刻，系统写",
+  },
 };
 
 /** 已知缺口：有字段、没写入路径。留在这里是为了让它一直显眼 */
