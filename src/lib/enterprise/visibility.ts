@@ -22,7 +22,7 @@ import { readSecret } from "@/lib/secret";
 import { 看得到, type 限定 } from "@/lib/team-scope";
 import { 建组织, 实线下属, 虚线下属, 管理员类别of, 管理员类别们of, type 组织 } from "./org-core";
 import { 规则 } from "./rules";
-import { 市场部门key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
+import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票 } from "./view-as";
 
 /** lib/auth.ts 的 COOKIE */
@@ -150,11 +150,12 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   if (!(await 开着(db, 规则.按组织看客户.key))) return null;
   if (!id) return 只看公海;
 
-  const [users, members, depts, 设的市场部门] = await Promise.all([
+  const [users, members, depts, 设的市场部门, 设的市场人] = await Promise.all([
     db.user.findMany({ select: { id: true, role: true, active: true } }),
     db.entMember.findMany(),
     db.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
     db.setting.findUnique({ where: { key: 市场部门key }, select: { value: true } }),
+    db.setting.findUnique({ where: { key: 市场成员key }, select: { value: true } }),
   ]);
   const 我 = users.find((u) => u.id === id);
   if (!我 || !我.active) return 只看公海;
@@ -165,7 +166,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   // 市场管理分线索（同 lead-assign 能分配；老板、总管理员上面已经不限定）：线索开着分配时全看全改，
   // 不然分出去就看不到、也分不了（F9 10-25）。客户那条线还是按组织架构
   const 线索 = 类别.has("市场管理") && (await 开着(db, 规则.线索分配.key)) ? { 线索全看: true } : {};
-  const 市场 = 市场的人(org, id, 类别.has("市场管理"), 设的市场部门?.value);
+  const 市场 = 市场的人(org, id, 类别.has("市场管理"), 设的市场部门?.value, 设的市场人?.value);
   if (!范围.读 && !市场.length) return { 我: 范围.写, 互看: false, 别人的: new Set(), ...线索 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）
@@ -205,16 +206,17 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
 
 /**
  * 按「市场成员相关」放开读的是哪几位（10-31）：市场管理 = 全部市场成员（自己也是就带上）；市场成员 = 自己；别人 = 空（不放开）。
- * 存的部门设置读不出当没设（按名字带「市场」）
+ * 存的部门设置读不出当没设（按名字带「市场」）；逐人设的（11-01）读不出当没有
  */
-function 市场的人(org: 组织, id: string, 是市场管理: boolean, 存的: string | undefined): string[] {
-  let 设的: string[] | null = null;
-  try {
-    设的 = 存的 === undefined ? null : 规整市场部门(JSON.parse(存的));
-  } catch {
-    设的 = null;
-  }
-  const 成员 = 市场成员们(org, 设的);
+function 市场的人(org: 组织, id: string, 是市场管理: boolean, 存的: string | undefined, 存的人?: string): string[] {
+  const 读 = (v: string | undefined) => {
+    try {
+      return v === undefined ? null : 规整市场部门(JSON.parse(v));
+    } catch {
+      return null;
+    }
+  };
+  const 成员 = 市场成员们(org, 读(存的), 读(存的人));
   if (是市场管理) return [...成员];
   return 成员.has(id) ? [id] : [];
 }

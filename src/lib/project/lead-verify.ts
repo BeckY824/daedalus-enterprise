@@ -16,6 +16,7 @@ import { 看全部 } from "../team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 管理员类别们of, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
+import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 加一条配额 } from "@/lib/enterprise/lead-assign";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
@@ -55,9 +56,11 @@ export function 实际待(存的: string | null, 交给: "市场复核" | "总�
 
 /**
  * 创建人是销售（业务角色 销售成员 / 销售管理）：线索验证初判即终判（11-01 定）——判有效、判无效都不再走市场复核、总管理终判，
- * 直接按销售初判算最终结果。创建人不在组织里了（离职）按不是算，照旧走复核
+ * 直接按销售初判算最终结果。创建人不在组织里了（离职）按不是算，照旧走复核；
+ * 创建人算市场成员（市场部门里的、逐人设的）也按不是算——角色挂着销售、人在市场试岗的照旧走复核
  */
-export function 创建人是销售(org: 组织, creatorId: string): boolean {
+export function 创建人是销售(org: 组织, creatorId: string, 市场: ReadonlySet<string> = new Set()): boolean {
+  if (市场.has(creatorId)) return false;
   const 们 = org.成员.get(creatorId)?.角色们 ?? [];
   return 们.includes("sales") || 们.includes("sales_mgr");
 }
@@ -181,7 +184,7 @@ export async function 销售初判(
   }
   const 原因 = await 核无效原因(附.invalidReason);
   if (!原因.ok) return 原因;
-  if (创建人是销售(org, p.creatorId)) return 判死(me, p.id, "销售初判", 说明, { ...清空, ...验证人, invalidReason: 原因.值 });
+  if (创建人是销售(org, p.creatorId, await 读市场成员们(org))) return 判死(me, p.id, "销售初判", 说明, { ...清空, ...验证人, invalidReason: 原因.值 });
   const 交给 = await 无效交给(org);
   await 写状态(p.id, { ...清空, ...验证人, invalidReason: 原因.值, verdict: "初验无效", pending: 交给 }, { step: "销售初判", verdict: "无效", reason: 原因.值, note: 说明, userId: me.id });
   return { ok: true };
@@ -297,7 +300,7 @@ export async function 读线索验证(me: 谁, p: 项目): Promise<线索验证 
   const 终验 = v?.salesAck ?? null;
   return {
     判定, 待, 无效原因: v?.invalidReason ?? null, 叫法: 验证结果叫法({ 判定, 待, 终验 }),
-    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId), 我能,
+    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 我能,
     痕: 痕.map((l) => ({ id: l.id, step: l.step, verdict: l.verdict, reason: l.reason, note: l.note, 谁: 名.get(l.userId) ?? "已不在的成员", at: l.at.toISOString() })),
   };
 }
