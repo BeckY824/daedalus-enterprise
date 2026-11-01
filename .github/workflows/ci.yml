@@ -221,6 +221,7 @@ jobs:
   # A（全员看全部）和 B（按组织看，org-seed 后同一份库再压一轮）每页 p95 < 300 ms、0 出错；
   # 顺带量登录 / 首页 / 客户列表首屏 JS（HTML 里全部 script 逐个 gzip -6 求和），
   # 超上限或比 scripts/perf/first-js-baseline.json 涨 > 10% 就红。本机 1 倍 p95 ~50 ms，CI 机慢 2–3 倍也还有余量
+  # 11-01 起每轮连压 3 次、各页取 3 次 p95 的中位数再比 300 ms：CI 机时快时慢，同一个提交重跑过一绿一红
   perf:
     name: 速度闸门
     runs-on: ubuntu-latest
@@ -247,7 +248,7 @@ jobs:
       - name: A：全员看全部 + 首屏 JS
         # 红了也把这轮的表留下（B 会覆盖 result.md），Summary 里两轮都看得到
         run: |
-          rc=0; node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --extra --limit 300 --first-js || rc=$?
+          rc=0; node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 300 --first-js || rc=$?
           cp /tmp/perf/result.md /tmp/perf/A.md 2>/dev/null || true
           exit $rc
         env:
@@ -255,7 +256,7 @@ jobs:
       - name: B：按组织看
         run: |
           DATABASE_URL=file:/tmp/perf/crm.db SEED=/tmp/perf/seed.json NODE_ENV=development npx tsx scripts/perf/enterprise-org-seed.ts
-          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --extra --limit 300 --reuse-db --skip-build
+          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 300 --reuse-db --skip-build
         env:
           GATE: "1"
       - name: 结果写进 Summary
