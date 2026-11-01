@@ -26,7 +26,7 @@ import { 本套位置 } from "@/lib/project/nodes";
 import { 有效沟通数 } from "@/lib/project/stage-gates";
 import { 读线索验证 } from "@/lib/project/lead-verify";
 import { dayjs } from "@/lib/utils";
-import { 项目的卡点, 能发卡点, 读卡点默认, 卡点可选的人, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
+import { 项目的卡点, 能发卡点, 读卡点默认, 可选原因们, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 // 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
 import { 联系人附件入口, 项目附件入口 } from "@/app/api/attachments/access";
 import { 列回款 } from "@/lib/project/payment-db";
@@ -130,11 +130,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
   const 提成 = 企业 ? await 读项目提成(me, p, p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId), org, (uid) => 叫(uid)!, prisma) : null;
 
-  // 企业版卡点（lib/project/blocker.ts）：沟通编号、时限提醒、卡点列表和发卡点；别的版本一样不查
-  const [编号, 卡点们, 能发, 卡点默认, 卡点人们] = 企业
-    ? await Promise.all([沟通编号们(露 ? p.followUps.map((f) => f.followUp.id) : []), 项目的卡点(me, p.id), 能发卡点(me, p.id), 读卡点默认(), 卡点可选的人(me, p.id)])
+  // 企业版卡点（lib/project/blocker.ts）：沟通编号、卡点列表、发卡点的默认值和阻碍原因下拉；别的版本一样不查
+  const [编号, 卡点们, 能发, 卡点默认, 卡点原因们] = 企业
+    ? await Promise.all([沟通编号们(露 ? p.followUps.map((f) => f.followUp.id) : []), 项目的卡点(me, p.id), 能发卡点(me, p.id), 读卡点默认(), 可选原因们()])
     : [new Map<string, { code: string; nextAt: Date | null }>(), [], false, null, []];
-  const 卡点: 项目卡点 | null = 企业 && 卡点默认 ? { 们: 卡点们.map(卡点给界面), 能发: 能发 && 露, 默认: 卡点默认, 人们: 卡点人们 } : null;
+  const 卡点: 项目卡点 | null = 企业 && 卡点默认 ? { 们: 卡点们.map(卡点给界面), 能发: 能发 && 露, 默认: 卡点默认, 原因们: 卡点原因们 } : null;
   // 企业版联系人附件（2026-10-28）：项目卡联系人那一行下面给「附件」，和客户页同一个弹窗；不是企业版、公海里没领的不查
   const 联系人附件 = 企业 && 露 && p.contact ? await 联系人附件入口(p.contact.id) : null;
   // 企业版字典下拉（10-27）：不是企业版 可选项 给空

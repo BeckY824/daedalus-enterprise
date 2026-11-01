@@ -3,32 +3,28 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Button, Card, Dropdown, Input, Modal, Select, Space, Tag, Timeline } from "antd";
-import { MoreOutlined } from "@ant-design/icons";
+import { App, Button, Card, Input, Modal, Select, Space, Tag, Timeline } from "antd";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
-import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 理由上限, type 卡点默认 } from "@/lib/project/blocker-rules";
-import {
-  发布卡点Action, 指认卡点Action, 认领卡点Action, 接受卡点Action, 转让卡点Action, 返回卡点Action, 改卡点进度Action, 解决卡点Action, 卡点可选的人Action,
-} from "./blocker-actions";
+import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 发布卡点Action, 认领卡点Action, 完成卡点Action } from "./blocker-actions";
 
 export type { 卡点卡 };
-export type 可选人 = { id: string; name: string };
 
-type 结果 = { ok: boolean; error?: string };
+type 结果 = { ok: boolean; error?: string; 解决了?: boolean };
 
 /** 跑一个卡点动作：报错弹出来、成了刷新页面 */
 function useRun() {
   const router = useRouter();
   const { message } = App.useApp();
   const [忙, set忙] = useState(false);
-  const 跑 = async (f: () => Promise<结果>, 成了: string) => {
+  const 跑 = async (f: () => Promise<结果>, 成了: string | ((r: 结果) => string)) => {
     set忙(true);
     try {
       const r = await f();
       if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
       else {
-        message.success(成了);
+        message.success(typeof 成了 === "function" ? 成了(r) : 成了);
         router.refresh();
       }
       return r.ok;
@@ -42,10 +38,10 @@ function useRun() {
   return { 忙, 跑 };
 }
 
-const 状态色: Record<string, string> = { 看板: "orange", 待接受: "gold", 处理中: "blue", 已解决: "green" };
+export const 状态色: Record<string, string> = { 待接受: "gold", 处理中: "blue", 已解决: "green" };
 const 类型色: Record<string, string> = { 暂无卡点: "default", 轻度卡点: "cyan", 中度卡点: "orange", 重要卡点: "red" };
 
-/** 流转一行：「张三 转让 · 张三 → 李四」 */
+/** 流转一行：「张三 认领」「张三 离职交接 · 张三 → 李四」 */
 function 流转文字(l: 卡点卡["流转"][number]): string {
   const 叫 = 动作叫法[l.action] ?? l.action;
   const 路 = l.从 && l.到 ? `${l.从} → ${l.到}` : l.到 ? `给 ${l.到}` : "";
@@ -53,8 +49,8 @@ function 流转文字(l: 卡点卡["流转"][number]): string {
 }
 
 /**
- * 卡点用了多久（10-27 会议：先不设解决时限，只记从出现到解决的实际耗时）：没解决的「已开 N 天」，解决了的「用了 N 天解决」。
- * 不满一天算 1 天；dueAt / dueDays 照旧写进库，界面不再显示
+ * 卡点用了多久（10-27 会议：不设解决时限，只记从出现到解决的实际耗时）：没解决的「已开 N 天」，解决了的「用了 N 天解决」。
+ * 不满一天算 1 天；dueAt / dueDays 照旧在库里，界面不显示
  */
 export function 耗时文字(b: Pick<卡点卡, "status" | "createdAt" | "resolvedAt">, now: Date = new Date()): string {
   const 止 = b.status === "已解决" && b.resolvedAt ? dayjs(b.resolvedAt) : dayjs(now);
@@ -62,19 +58,42 @@ export function 耗时文字(b: Pick<卡点卡, "status" | "createdAt" | "resolv
   return b.status === "已解决" && b.resolvedAt ? `用了 ${天} 天解决（${fmtDateTime(b.resolvedAt)}）` : `已开 ${天} 天`;
 }
 
+/** 会签那一行：「处理中 2/3 ✓甲 ✓乙 ○丙」；还没人认领 = 「待接受，还没人认领」 */
+export function 会签文字(b: Pick<卡点卡, "status" | "进度" | "认领">): string {
+  if (!b.认领.length) return `${b.status}，还没人认领`;
+  return `${b.status} ${b.进度.完成}/${b.进度.共} ${b.认领.map((c) => `${c.done ? "✓" : "○"}${c.名字}`).join(" ")}`;
+}
+
+/** 阻碍原因的多选：下拉是设置里启用的原因，也能现打一个新的（发出去后进「待审核」，总管理员在设置里审） */
+export function 原因选择({ 原因们, 值, on改, disabled }: { 原因们: string[]; 值: string[]; on改: (v: string[]) => void; disabled?: boolean }) {
+  return (
+    <Select
+      aria-label="阻碍原因"
+      mode="tags"
+      maxCount={原因最多}
+      disabled={disabled}
+      placeholder="阻碍原因（可多选；没有合适的可以直接打字新增）"
+      value={值}
+      onChange={(v: string[]) => on改([...new Set(v.map((x) => x.trim().slice(0, 原因名上限)).filter(Boolean))])}
+      options={原因们.map((t) => ({ value: t, label: t }))}
+      style={{ width: "100%", minWidth: 0 }}
+    />
+  );
+}
+
 /**
- * 从一条沟通记录发布卡点：类型、影响、阻碍主体（单选，选项是老板在设置里配的）、描述、
- * 资源申请，可以直接指认给项目上的一个人（不指 = 进看板等人认领）
+ * 从一条沟通记录发布卡点：类型、影响、标题、阻碍原因（多选）、描述、资源申请。
+ * 不指给谁：发出去是「待接受」，看得到的人都能认领（11-01 定稿 B1/B3）
  */
-export function PublishBlockerModal({ followUpId, 默认, 人们, onClose }: { followUpId: string; 默认: 卡点默认; 人们: 可选人[]; onClose: () => void }) {
+export function PublishBlockerModal({ followUpId, 默认, 原因们, onClose }: { followUpId: string; 默认: 卡点默认; 原因们: string[]; onClose: () => void }) {
   const { 忙, 跑 } = useRun();
-  const [type, setType] = useState<string>(默认.默认类型);
+  const [type, setType] = useState<string>(默认.默认类型 === "暂无卡点" ? "轻度卡点" : 默认.默认类型);
   const [impact, setImpact] = useState<string>(默认.默认影响);
-  const [obstacle, setObstacle] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const [reasons, setReasons] = useState<string[]>([]);
   const [description, setDescription] = useState("");
   const [resourceRequest, setResourceRequest] = useState("");
-  const [assigneeId, setAssigneeId] = useState<string | null>(null);
-  const 差 = !obstacle ? "选一个阻碍主体" : !description.trim() ? "写一句卡在哪" : "";
+  const 差 = !reasons.length ? "选一个阻碍原因" : !description.trim() ? "写一句卡在哪" : "";
   return (
     <Modal
       open
@@ -84,116 +103,91 @@ export function PublishBlockerModal({ followUpId, 默认, 人们, onClose }: { f
       onCancel={onClose}
       onOk={async () => {
         if (差) return;
-        const ok = await 跑(
-          () => 发布卡点Action(followUpId, { type, impact, obstacle, description, resourceRequest }, assigneeId),
-          assigneeId ? "已发布，等对方接受" : "已发布到卡点看板",
-        );
+        const ok = await 跑(() => 发布卡点Action(followUpId, { type, impact, title, reasons, description, resourceRequest }), "已发布，等人认领");
         if (ok) onClose();
       }}
     >
       <Space direction="vertical" style={{ width: "100%" }}>
-        <Select aria-label="卡点类型" value={type} onChange={(v: string) => setType(v)} options={卡点类型们.map((t) => ({ value: t, label: t }))} />
+        <Select aria-label="卡点类型" value={type} onChange={(v: string) => setType(v)} options={卡点类型们.filter((t) => t !== "暂无卡点").map((t) => ({ value: t, label: t }))} />
         <Select aria-label="影响等级" value={impact} onChange={(v: string) => setImpact(v)} options={影响等级们.map((t) => ({ value: t, label: t }))} />
-        <Select aria-label="阻碍主体" placeholder="阻碍主体" value={obstacle} onChange={(v: string) => setObstacle(v)} options={默认.阻碍主体们.map((t) => ({ value: t, label: t }))} />
+        <Input aria-label="卡点标题" maxLength={标题上限} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="标题（不写就取描述的前 20 个字）" />
+        <原因选择 原因们={原因们} 值={reasons} on改={setReasons} />
         <Input.TextArea aria-label="卡点描述" rows={3} maxLength={描述上限} showCount value={description} onChange={(e) => setDescription(e.target.value)} placeholder="卡在哪（必填）" />
         <Input.TextArea aria-label="资源申请" rows={2} maxLength={描述上限} value={resourceRequest} onChange={(e) => setResourceRequest(e.target.value)} placeholder="需要什么资源（可不写）" />
-        <Select
-          aria-label="指认给"
-          allowClear
-          placeholder="指认给谁（不选 = 放到卡点看板等人认领）"
-          value={assigneeId}
-          onChange={(v: string | undefined) => setAssigneeId(v ?? null)}
-          options={人们.map((u) => ({ value: u.id, label: u.name }))}
-        />
+        {差 && <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{差}</div>}
       </Space>
     </Modal>
   );
 }
 
-type 框 = { kind: "指认" | "转让" | "返回" | "进度" | "解决"; b: 卡点卡 } | null;
+/** 一条卡点的头：编号、状态、类型、影响、原因（待审核的标出来）、标题 */
+export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: boolean }) {
+  return (
+    <>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{b.code}</span>
+        <Tag color={状态色[b.status]}>{b.status}</Tag>
+        <Tag color={类型色[b.type]}>{b.type}</Tag>
+        <Tag>{b.impact}</Tag>
+        {b.原因们.map((r) => (
+          <Tag key={r.id} color={r.status === "待审核" ? "warning" : undefined} title={r.status === "待审核" ? "新加的原因，等总管理员审核" : undefined} style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {r.name}{r.status === "待审核" ? "（待审核）" : ""}
+          </Tag>
+        ))}
+        {带项目 && <Link href={`/projects/${b.projectId}`} style={{ overflowWrap: "anywhere" }}>{b.项目}</Link>}
+      </div>
+      <div style={{ fontWeight: 600, marginTop: 4, overflowWrap: "anywhere" }}>{b.title}</div>
+    </>
+  );
+}
 
 /**
- * 一串卡点：每条显示编号、状态、类型、影响、阻碍主体、开了多久、经手人，按 能 给按钮；流转（谁、什么时候、从谁到谁）展开看。
- * 项目详情和「我的卡点」看板共用；带项目名 = 看板上用（点了进项目）
+ * 一串卡点：头 + 描述 + 会签行（x/y、每人打勾）+ 每人的备注；按钮只有「认领」「我已完成」（11-01 定稿：不指认、不转让、不退回）。
+ * 最后一个点「我已完成」的人要写解决方案和解决结果，写完卡点就锁成已解决。
+ * 项目详情和「我的卡点」共用；带项目 = 卡片上带项目名
  */
-export function BlockerList({ 们, 人们, 带项目 = false, 空 = "还没有卡点" }: { 们: 卡点卡[]; 人们?: 可选人[] | ((projectId: string) => Promise<可选人[]>); 带项目?: boolean; 空?: string }) {
+export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }: { 们: 卡点卡[]; 带项目?: boolean; 空?: string }) {
   const { 忙, 跑 } = useRun();
-  const [框, set框] = useState<框>(null);
-  const [人, set人] = useState<string | null>(null);
-  const [字, set字] = useState("");
-  const [字2, set字2] = useState("");
-  const [候选, set候选] = useState<可选人[]>([]);
+  const [完成于, set完成于] = useState<卡点卡 | null>(null);
+  const [note, setNote] = useState("");
+  const [solution, setSolution] = useState("");
+  const [result, setResult] = useState("");
   const [展开, set展开] = useState<Set<string>>(new Set());
 
-  const 打开 = async (kind: NonNullable<框>["kind"], b: 卡点卡) => {
-    set人(null);
-    set字(kind === "进度" ? b.progress ?? "" : "");
-    set字2(kind === "进度" ? b.resourceRequest ?? "" : "");
-    set框({ kind, b });
-    if (kind === "指认" || kind === "转让") set候选(typeof 人们 === "function" ? await 人们(b.projectId) : 人们 ?? []);
-  };
-  const 关 = () => set框(null);
+  const 开完成 = (b: 卡点卡) => { setNote(""); setSolution(""); setResult(""); set完成于(b); };
+  const 最后 = !!完成于?.能.最后一个;
+  const 不能确定 = 最后 && (!solution.trim() || !result.trim());
   const 确定 = async () => {
-    if (!框) return;
-    const { kind, b } = 框;
-    let ok = false;
-    if (kind === "指认" && 人) ok = await 跑(() => 指认卡点Action(b.id, 人), "已指认，等对方接受");
-    if (kind === "转让" && 人) ok = await 跑(() => 转让卡点Action(b.id, 人, 字), "已转让，等对方接受");
-    if (kind === "返回" && 字.trim()) ok = await 跑(() => 返回卡点Action(b.id, 字), "已返回卡点看板");
-    if (kind === "进度") ok = await 跑(() => 改卡点进度Action(b.id, { progress: 字, resourceRequest: 字2 }), "已更新处理进度");
-    if (kind === "解决") ok = await 跑(() => 解决卡点Action(b.id, { solution: 字, result: 字2 }), "卡点已解决");
-    if (ok) 关();
+    if (!完成于 || 不能确定) return;
+    const ok = await 跑(
+      () => 完成卡点Action(完成于.id, { note, ...(最后 ? { solution, result } : {}) }),
+      (r) => (r.解决了 ? "大家都完成了，卡点已解决" : "已记下，等其他认领人完成"),
+    );
+    if (ok) set完成于(null);
   };
-  const 候选们 = 框?.kind === "转让" ? 候选.filter((u) => u.name !== 框.b.经手人) : 候选;
-  const 不能确定 = !框 ? true : 框.kind === "指认" || 框.kind === "转让" ? !人 : 框.kind === "返回" ? !字.trim() : false;
 
   if (!们.length) return <div style={{ color: "var(--text-muted)" }}>{空}</div>;
   return (
     <>
       {们.map((b) => (
         <div key={b.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line-soft)", minWidth: 0 }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{b.code}</span>
-            <Tag color={状态色[b.status]}>{b.status}</Tag>
-            <Tag color={类型色[b.type]}>{b.type}</Tag>
-            <Tag>{b.impact}</Tag>
-            <Tag>{b.obstacle}</Tag>
-            {带项目 && <Link href={`/projects/${b.projectId}`}>{b.项目}</Link>}
-          </div>
+          <卡点头 b={b} 带项目={带项目} />
           <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{b.description}</div>
-          <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
-            {耗时文字(b)}
-            {" · "}{b.经手人 ? `经手 ${b.经手人}` : "看板上，没人接"}{" · "}{b.发布人} 发布
+          <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2, overflowWrap: "anywhere" }}>
+            {耗时文字(b)}{" · "}{b.发布人} 发布{b.followUpId ? "" : " · 来源沟通已删除"}
           </div>
+          <div style={{ fontSize: 13, marginTop: 4, overflowWrap: "anywhere" }} aria-label="会签进度">{会签文字(b)}</div>
+          {b.认领.filter((c) => c.note).map((c) => (
+            <div key={c.名字} style={{ fontSize: 13, color: "var(--text-muted)", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
+              {c.名字}：{c.note}
+            </div>
+          ))}
           {b.resourceRequest && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>资源申请：{b.resourceRequest}</div>}
-          {b.progress && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>处理进度：{b.progress}</div>}
           {b.solution && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决方案：{b.solution}</div>}
           {b.result && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决结果：{b.result}</div>}
           <Space wrap size={4} style={{ marginTop: 6 }}>
-            {(() => {
-              // 一行最多两个文字按钮，其余收进「⋯」（规则 D）；按常用排：接手的 → 解决 → 进度 → 转人 → 退回
-              type 动作 = { key: string; label: string; 主?: boolean; 做: () => void };
-              const 们动作 = ([
-                b.能.接受 && { key: "接受", label: "接受", 主: true, 做: () => void 跑(() => 接受卡点Action(b.id), "已接受，开始处理") },
-                b.能.认领 && { key: "认领", label: "认领", 主: true, 做: () => void 跑(() => 认领卡点Action(b.id), "已认领，开始处理") },
-                b.能.解决 && { key: "解决", label: "标为已解决", 做: () => void 打开("解决", b) },
-                b.能.改进度 && { key: "进度", label: "更新进度", 做: () => void 打开("进度", b) },
-                b.能.指认 && { key: "指认", label: "指认", 做: () => void 打开("指认", b) },
-                b.能.转让 && { key: "转让", label: "转让", 做: () => void 打开("转让", b) },
-                b.能.返回 && { key: "返回", label: "返回看板", 做: () => void 打开("返回", b) },
-              ] as (动作 | false)[]).filter((x): x is 动作 => !!x);
-              const 摆 = 们动作.slice(0, 2), 收 = 们动作.slice(2);
-              return (
-                <>
-                  {摆.map((x) => <Button key={x.key} size="small" type={x.主 ? "primary" : "default"} disabled={忙} onClick={x.做}>{x.label}</Button>)}
-                  {收.length > 0 && (
-                    <Dropdown trigger={["click"]} disabled={忙} menu={{ items: 收.map((x) => ({ key: x.key, label: x.label, onClick: x.做 })) }}>
-                      <Button size="small" icon={<MoreOutlined />} aria-label="这个卡点的更多操作" />
-                    </Dropdown>
-                  )}
-                </>
-              );
-            })()}
+            {b.能.认领 && <Button size="small" type="primary" disabled={忙} onClick={() => void 跑(() => 认领卡点Action(b.id), "已认领")}>认领</Button>}
+            {b.能.完成 && <Button size="small" type={b.能.认领 ? "default" : "primary"} disabled={忙} onClick={() => 开完成(b)}>我已完成</Button>}
             <Button size="small" type="link" onClick={() => set展开((s) => { const n = new Set(s); if (n.has(b.id)) n.delete(b.id); else n.add(b.id); return n; })}>
               {展开.has(b.id) ? "收起流转" : `流转（${b.流转.length}）`}
             </Button>
@@ -202,11 +196,11 @@ export function BlockerList({ 们, 人们, 带项目 = false, 空 = "还没有�
             <Timeline
               style={{ marginTop: 8 }}
               items={b.流转.map((l) => ({
-                color: l.action === "return" ? "orange" : l.action === "resolve" ? "green" : "blue",
+                color: l.action === "resolve" ? "green" : l.action === "handover" || l.action === "takeover" ? "orange" : "blue",
                 content: (
                   <div>
                     <div>{流转文字(l)}</div>
-                    {l.note && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{l.action === "return" || l.action === "transfer" || l.action === "handover" ? "理由" : "说明"}：{l.note}</div>}
+                    {l.note && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>说明：{l.note}</div>}
                     <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{fmtDateTime(l.at)}</div>
                   </div>
                 ),
@@ -217,57 +211,35 @@ export function BlockerList({ 们, 人们, 带项目 = false, 空 = "还没有�
       ))}
 
       <Modal
-        open={!!框}
-        title={框 ? { 指认: "指认给谁", 转让: "转让给谁", 返回: "返回卡点看板", 进度: "更新处理进度", 解决: "标为已解决" }[框.kind] : ""}
+        open={!!完成于}
+        title={最后 ? "我已完成（最后一位，卡点将标为已解决）" : "我已完成"}
         okText="确定"
         okButtonProps={{ disabled: 不能确定, loading: 忙 }}
-        onCancel={关}
+        onCancel={() => set完成于(null)}
         onOk={确定}
       >
-        {框 && (框.kind === "指认" || 框.kind === "转让") && (
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Select
-              aria-label={框.kind === "指认" ? "指认给" : "转让给"}
-              style={{ width: "100%" }}
-              placeholder={候选们.length ? "选项目上的一位" : "项目上没有别的人可选（负责人或点了同意的组员）"}
-              value={人}
-              onChange={(v: string) => set人(v)}
-              options={候选们.map((u) => ({ value: u.id, label: u.name }))}
-            />
-            {框.kind === "转让" && <Input.TextArea aria-label="转让理由" rows={2} maxLength={理由上限} value={字} onChange={(e) => set字(e.target.value)} placeholder="为什么转（可不写）" />}
-            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>对方点了接受才算接手</div>
-          </Space>
-        )}
-        {框?.kind === "返回" && (
-          <>
-            <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>写一句为什么不接，卡点回到看板等别人认领。</div>
-            <Input.TextArea aria-label="返回理由" rows={3} maxLength={理由上限} showCount value={字} onChange={(e) => set字(e.target.value)} placeholder="理由（必填）" />
-          </>
-        )}
-        {框?.kind === "进度" && (
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Input.TextArea aria-label="处理进度" rows={3} maxLength={描述上限} value={字} onChange={(e) => set字(e.target.value)} placeholder="处理到哪了" />
-            <Input.TextArea aria-label="资源申请" rows={2} maxLength={描述上限} value={字2} onChange={(e) => set字2(e.target.value)} placeholder="需要什么资源（可不写）" />
-          </Space>
-        )}
-        {框?.kind === "解决" && (
-          <Space direction="vertical" style={{ width: "100%" }}>
-            <Input.TextArea aria-label="解决方案" rows={3} maxLength={描述上限} value={字} onChange={(e) => set字(e.target.value)} placeholder="怎么解决的" />
-            <Input.TextArea aria-label="解决结果" rows={2} maxLength={描述上限} value={字2} onChange={(e) => set字2(e.target.value)} placeholder="结果怎样" />
-          </Space>
-        )}
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Input.TextArea aria-label="我的备注" rows={2} maxLength={描述上限} value={note} onChange={(e) => setNote(e.target.value)} placeholder="我这边做了什么（可不写）" />
+          {最后 && (
+            <>
+              <Input.TextArea aria-label="解决方案" rows={3} maxLength={描述上限} value={solution} onChange={(e) => setSolution(e.target.value)} placeholder="解决方案（必填）" />
+              <Input.TextArea aria-label="解决结果" rows={2} maxLength={描述上限} value={result} onChange={(e) => setResult(e.target.value)} placeholder="解决结果（必填）" />
+            </>
+          )}
+          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>点了就不能撤回；所有认领人都完成后卡点锁定为已解决。</div>
+        </Space>
       </Modal>
     </>
   );
 }
 
-/** 项目列表顶上：「我的卡点」看板（指给我的、我在项目上且没人接的），没有就不显示 */
+/** 项目列表顶上：「我的卡点」（我看得到、还没人认领的，和我认领了还没完成的），没有就不显示 */
 export function MyBlockersBoard({ 们 }: { 们: 卡点卡[] }) {
   if (!们.length) return null;
   const 待 = 们.filter((b) => b.status === "待接受").length;
   return (
-    <Card title={`我的卡点（${们.length}${待 ? `，${待} 条等我接受` : ""}）`} size="small" style={{ marginBottom: 16 }}>
-      <BlockerList 们={们} 人们={卡点可选的人Action} 带项目 />
+    <Card title={`我的卡点（${们.length}${待 ? `，${待} 条等人认领` : ""}）`} size="small" style={{ marginBottom: 16 }}>
+      <BlockerList 们={们} 带项目 />
     </Card>
   );
 }

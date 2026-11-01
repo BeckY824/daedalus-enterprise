@@ -42,8 +42,8 @@ import { parseFollowUpDraft } from "../../customers/[id]/ai";
 import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
-import { BlockerList, PublishBlockerModal, type 卡点卡, type 可选人 } from "../BlockerPanel";
-import { 卡点类型们, 影响等级们, 描述上限, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
+import { 卡点类型们, 影响等级们, 描述上限, 标题上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import type { 附件 } from "@/lib/attachment-rules";
 import FollowAttachments, { 选沟通附件 as 选沟通附件框, 传沟通附件 } from "@/components/FollowAttachments";
 import { ProjectCommissionCard } from "./ProjectCommission";
@@ -272,8 +272,8 @@ function 进公海说法(进: 项目详情["进公海"], 原负责人: string): 
  * 项目详情：顶上是节点进度和「下一步」，中间改节点 / 点结局、勾尾款结清和验收通过，下面是节点变更和挂在这个项目上的沟通。
  * 只有负责人、老板、主管能改；其他人看得到、按钮灰着
  */
-/** 企业版卡点：项目详情上的卡点列表、发卡点要的默认值和可指认的人；不是企业版不给（null） */
-export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点默认; 人们: 可选人[] };
+/** 企业版卡点：项目详情上的卡点列表、发卡点要的默认值和阻碍原因下拉；不是企业版不给（null） */
+export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点默认; 原因们: string[] };
 
 const 无效原因前缀 = "无效原因：";
 
@@ -887,7 +887,7 @@ export default function ProjectDetail({
       ))}
     >
       <div id="project-blockers-body" className={p.企业版 ? "proj-mod-body" : undefined}>
-        <BlockerList 们={列卡点} 人们={卡点.人们} 空={搜着 && 卡点.们.length ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
+        <BlockerList 们={列卡点} 空={搜着 && 卡点.们.length ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
       </div>
     </Card>
   );
@@ -1132,7 +1132,7 @@ export default function ProjectDetail({
         />
       )}
 
-      {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 人们={卡点.人们} onClose={() => set发卡点于(null)} />}
+      {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 原因们={卡点.原因们} onClose={() => set发卡点于(null)} />}
 
       {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
 
@@ -1142,7 +1142,7 @@ export default function ProjectDetail({
         </Modal>
       )}
 
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} 卡点默认={卡点?.能发 ? 卡点.默认 : null} onClose={() => set记一条开着(false)} 跑={跑} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} />}
 
       <Modal
         open={!!异常框}
@@ -1295,13 +1295,15 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
  * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」= 不生成（11-01 答复 #5），选了别的类型记下后照发卡点那一套生成一个。
  * F-跟进-07（企业版）：可先挑截图、录音，记下之后挂到这条沟通上
  */
-function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, 跑 }: {
+function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原因们 = [], onClose, 跑 }: {
   p: 项目详情;
   外贸: boolean;
   /** 从「AI 录入」点进来的：「更多」展开、AI 那一格先摆出来、光标先落在那 */
   AI先?: boolean;
   /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
   卡点默认?: 卡点默认 | null;
+  /** 阻碍原因下拉（设置里启用的）；也能现打新的，发出去进待审核 */
+  卡点原因们?: string[];
   onClose: () => void;
   跑: (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
 }) {
@@ -1329,6 +1331,8 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
   const [卡点类型, set卡点类型] = useState<string>("暂无卡点");
   const [卡点影响, set卡点影响] = useState<string | null>(null);
   const [卡点描述, set卡点描述] = useState("");
+  const [卡点标题, set卡点标题] = useState("");
+  const [卡点原因, set卡点原因] = useState<string[]>([]);
   const [附件们, set附件们] = useState<File[]>([]);
   const { message } = App.useApp();
   const router = useRouter();
@@ -1389,7 +1393,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
   const 交 = async () => {
     set交中(true);
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
-    const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, description: 卡点描述 } : undefined;
+    const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, title: 卡点标题, reasons: 卡点原因, description: 卡点描述 } : undefined;
     const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }, 卡点)), "已记下这条沟通");
     const r = 回.r;
     if (ok && r?.ok) {
@@ -1449,6 +1453,8 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
               <Select aria-label="卡点类型" value={卡点类型} onChange={set卡点类型} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
               <Select aria-label="卡点影响" allowClear disabled={卡点类型 === "暂无卡点"} value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
             </div>
+            <Input aria-label="卡点标题" disabled={卡点类型 === "暂无卡点"} style={{ marginTop: 8 }} maxLength={标题上限} value={卡点标题} onChange={(e) => set卡点标题(e.target.value)} placeholder="标题（不写取描述前 20 字）" />
+            <div style={{ marginTop: 8 }}><原因选择 原因们={卡点原因们} 值={卡点原因} on改={set卡点原因} disabled={卡点类型 === "暂无卡点"} /></div>
             <Input.TextArea aria-label="卡点描述" disabled={卡点类型 === "暂无卡点"} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={卡点描述} onChange={(e) => set卡点描述(e.target.value)} placeholder="卡在哪儿" />
           </div>
         )}

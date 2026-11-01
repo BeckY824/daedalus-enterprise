@@ -22,11 +22,14 @@ type 沟通 = { content: string; who: string; node: string; type: string; method
 export const 沟通字段 = (f: 沟通) => [f.content, f.who, f.node, f.type, f.method, ...(f.附件 ?? []).map((a) => a.name)];
 
 type 卡点 = {
-  code: string; type: string; impact: string; obstacle: string; description: string; status: string;
-  经手人: string | null; 发布人: string; resourceRequest: string | null; progress: string | null; solution: string | null; result: string | null;
+  code: string; title: string; type: string; impact: string; 原因们: { name: string }[]; description: string; status: string;
+  认领: { 名字: string; note: string | null }[]; 发布人: string; resourceRequest: string | null; solution: string | null; result: string | null;
 };
-/** 卡点搜得到的：编号、类型、影响、障碍、描述、状态、经手人、发布人、要的资源、进度、方案、结果 */
-export const 卡点字段 = (k: 卡点) => [k.code, k.type, k.impact, k.obstacle, k.description, k.status, k.经手人, k.发布人, k.resourceRequest, k.progress, k.solution, k.result];
+/** 卡点搜得到的：编号、标题、类型、影响、阻碍原因、描述、状态、认领人和各自备注、发布人、要的资源、方案、结果（11-01 改版） */
+export const 卡点字段 = (k: 卡点) => [
+  k.code, k.title, k.type, k.impact, ...k.原因们.map((r) => r.name), k.description, k.status,
+  ...k.认领.flatMap((c) => [c.名字, c.note]), k.发布人, k.resourceRequest, k.solution, k.result,
+];
 
 /** 附件块里「来自沟通：谁 · 什么时候 · 头几个字」：内容太长截到 20 个字 */
 export function 沟通来源(f: { who: string; occurredAt: string; content: string }): string {

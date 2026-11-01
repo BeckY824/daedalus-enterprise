@@ -1059,19 +1059,22 @@ model FollowUpProject {
   @@index([projectId])
 }
 
-/// 企业版卡点（2026-10-26）：只能从项目上的一条沟通发布。发布后在项目的卡点看板上，
-/// 指认给某位 → 对方在「我的卡点」里接受 / 转让 / 返回看板；看板上的谁都能认领；处理的人填解决方案、结果后算解决。
-/// 每一步记一行 EntBlockerLog（谁、什么时候、从谁到谁）。看得到 = 项目负责人、点了同意的组员、看得到这位客户的人、
-/// 指认给的、发布的；在项目公海里的项目卡点不跟着公开。状态：看板 | 待接受 | 处理中 | 已解决
+/// 企业版卡点（2026-10-26，11-01 改版）：从项目上的一条沟通发布（沟通彻底删了卡点留着，followUpId 置空）。
+/// 状态只有三种：待接受 | 处理中 | 已解决。看得到的人都能认领（多人，每人一行 EntBlockerClaim），
+/// 认领人各自点「我已完成」，最后一位完成时填解决方案 / 结果，卡点变已解决并锁定。
+/// 阻碍原因多选，挂在 EntBlockerReasonLink；老的 obstacle 列只留着不再用。
+/// 每一步记一行 EntBlockerLog。在项目公海里的项目卡点不跟着公开。
 model EntBlocker {
   id              String          @id @default(cuid())
-  /// BLK + yyyyMMdd + 当天 3 位流水，发布时生成
+  /// 新的 BLK-yyyyMMdd-3 位流水（北京日）；老的 BLKyyyyMMdd### 不改
   code            String          @unique
+  /// 标题；老数据取描述前 20 字（迁移 107）
+  title           String          @default("")
   projectId       String
   project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  /// 从哪条沟通发布的
-  followUpId      String
-  followUp        FollowUp        @relation(fields: [followUpId], references: [id], onDelete: Cascade)
+  /// 从哪条沟通发布的；沟通彻底删了置空，卡点留着
+  followUpId      String?
+  followUp        FollowUp?       @relation(fields: [followUpId], references: [id], onDelete: SetNull)
   /// 发布那一刻项目的客户、联系人、阶段（照抄，不跟着项目改）
   customerId      String
   contactId       String?
@@ -1080,14 +1083,14 @@ model EntBlocker {
   type            String
   /// 短期不影响 | 项目暂停 | 项目终止 | 可能丢单
   impact          String
-  /// 阻碍主体，选项在设置 → 项目模式 → 卡点默认值
+  /// 老的阻碍主体（单选文字），11-01 起改用 reasons；新卡点写第一个原因名
   obstacle        String
   description     String
-  /// 解决时限（天）和按发布时间算出的截止
+  /// 解决时限：11-01 起界面不显示，列照写
   dueDays         Int
   dueAt           DateTime
-  status          String          @default("看板")
-  /// 现在指认给谁 / 谁在处理；看板上的为空
+  status          String          @default("待接受")
+  /// 11-01 起不用（指认 / 转让取消），改版时搬进 claims 后清空
   assigneeId      String?
   creatorId       String
   resourceRequest String?
@@ -1098,13 +1101,55 @@ model EntBlocker {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   logs            EntBlockerLog[]
+  claims          EntBlockerClaim[]
+  reasons         EntBlockerReasonLink[]
 
   @@index([projectId, status])
   @@index([assigneeId, status])
 }
 
-/// 卡点流转（2026-10-26）：publish 发布 / assign 指认 / claim 认领 / accept 接受 / transfer 转让 / return 返回看板 /
-/// resolve 解决 / edit 改进度 / handover 离职交接。from / to 记从谁到谁，note 记返回理由等
+/// 卡点认领明细（2026-11-01）：一人一行。done = 点了「我已完成」，note = 自己的处理说明。
+/// 不能撤回认领、不能移除认领人；离职 / 交接时没完成的行转给接手人
+model EntBlockerClaim {
+  id        String     @id @default(cuid())
+  blockerId String
+  blocker   EntBlocker @relation(fields: [blockerId], references: [id], onDelete: Cascade)
+  userId    String
+  done      Boolean    @default(false)
+  note      String?
+  doneAt    DateTime?
+  createdAt DateTime   @default(now())
+
+  @@unique([blockerId, userId])
+  @@index([userId, done])
+}
+
+/// 卡点阻碍原因字典（2026-11-01）：status 启用 | 停用 | 待审核（前台新加的先待审核）。
+/// 合并 = 把挂着的卡点改挂到 mergedIntoId，自己停用；用过的只能停用不能删
+model EntBlockerReason {
+  id           String                 @id @default(cuid())
+  name         String                 @unique
+  status       String                 @default("启用")
+  sort         Int                    @default(0)
+  mergedIntoId String?
+  createdById  String?
+  createdAt    DateTime               @default(now())
+  links        EntBlockerReasonLink[]
+}
+
+/// 卡点 ↔ 阻碍原因（多选）
+model EntBlockerReasonLink {
+  blockerId String
+  blocker   EntBlocker       @relation(fields: [blockerId], references: [id], onDelete: Cascade)
+  reasonId  String
+  reason    EntBlockerReason @relation(fields: [reasonId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, reasonId])
+  @@index([reasonId])
+}
+
+/// 卡点流转（2026-10-26）：publish 发布 / claim 认领 / done 我已完成 / resolve 解决 / handover 离职交接 / takeover 项目换人接手；
+/// 老数据里还有 assign 指认 / accept 接受 / transfer 转让 / return 返回看板 / edit 改进度（11-01 起不再产生）
 model EntBlockerLog {
   id         String     @id @default(cuid())
   blockerId  String

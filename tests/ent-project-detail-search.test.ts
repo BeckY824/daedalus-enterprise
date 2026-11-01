@@ -21,9 +21,13 @@ describe("项目详情搜索", () => {
     expect(对得上(词们("FUL0001"), 字段)).toBe(false);
   });
 
-  it("卡点字段：编号、经手人、方案也算", () => {
-    const 字段 = 卡点字段({ code: "BLK0003", type: "资源", impact: "高", obstacle: "缺货", description: "等原料", status: "OPEN", 经手人: "组员丙", 发布人: "组长甲", resourceRequest: null, progress: null, solution: "换供应商", result: null });
-    expect(对得上(词们("blk0003 组员丙 换供应商"), 字段)).toBe(true);
+  it("卡点字段：编号、标题、阻碍原因、认领人和备注、方案也算（11-01 改版）", () => {
+    const 字段 = 卡点字段({
+      code: "BLK-20261101-003", title: "等原料到货", type: "中度卡点", impact: "短期不影响", 原因们: [{ name: "供应链" }], description: "等原料", status: "处理中",
+      认领: [{ 名字: "组员丙", note: "已催供应商" }, { 名字: "组员丁", note: null }], 发布人: "组长甲", resourceRequest: null, solution: "换供应商", result: null,
+    });
+    expect(对得上(词们("blk-20261101-003 组员丙 换供应商"), 字段)).toBe(true);
+    expect(对得上(词们("原料到货 供应链 催供应商 组员丁"), 字段)).toBe(true);
   });
 
   it("沟通来源：谁 · 时间 · 头 20 个字，长了加省略号，空白压成一个空格", () => {
