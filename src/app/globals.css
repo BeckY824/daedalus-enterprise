@@ -1257,6 +1257,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-acts { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; min-width: 0; }
 .proj-stage-tip { display: inline-flex; }
 .proj-stage-tip > .ant-btn:disabled { pointer-events: none; }
+/* 「完成节点」+ ▼（11-01 会议 §13）：绿底白字；推不了时浅绿底深绿字（不是一片灰），原因照旧悬停在外层 span 上看 */
+.ant-btn.proj-done-btn:not(:disabled) { background: var(--success-text); border-color: var(--success-text); color: var(--on-ink); }
+.ant-btn.proj-done-btn:not(:disabled):hover { background: var(--success); border-color: var(--success); color: var(--on-ink); }
+.ant-btn.proj-done-btn:disabled { background: var(--success-bg); border-color: var(--success-line); color: var(--success-text); opacity: .85; }
+.ant-space-compact > .ant-btn.proj-done-btn + .ant-btn.proj-done-btn:not(:disabled),
+.ant-space-compact > .proj-stage-tip + .ant-btn.proj-done-btn:not(:disabled) { border-left-color: color-mix(in srgb, var(--on-ink) 45%, var(--success-text)); }
 .proj-stage-why { min-width: 0; overflow-wrap: anywhere; }
 .proj-stage-tab {
   display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap;
@@ -1266,7 +1272,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-tab:hover { color: var(--ink); background: var(--hover); }
 .proj-stage-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 .proj-stage-tab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--stage-c); }
-.proj-stage-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--stage-c); opacity: .45; }
+.proj-stage-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--stage-c); opacity: .45; margin-inline-start: 2px; }
 .proj-stage-tab.is-here .proj-stage-dot, .proj-stage-tab.is-on .proj-stage-dot { opacity: 1; }
 /* F-项目-19：不在的阶段页签字灰着（还能点开看） */
 .proj-stage-tab.is-away { color: var(--text-faint); }
@@ -1304,6 +1310,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-mark {
   width: 8px; height: 8px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
   font-size: 9px; background: var(--line-strong); color: var(--on-ink);
+  /* 11-01 会议 §13：图标前留一点空，不贴着箭头凹口 */
+  margin-inline-start: var(--stage-mark-gap, 6px);
 }
 .proj-stage-node.is-done { color: var(--ink-soft); }
 .proj-stage-node.is-done .proj-stage-mark, .proj-stage-exit.is-done .proj-stage-mark { width: 14px; height: 14px; background: var(--success); }
@@ -1817,12 +1825,9 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .rkpi-warn-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14em; font-size: var(--fs-note); color: var(--text-muted); }
 .rkpi-warn-d { font-size: var(--fs-note); color: var(--warning-text); }
 /* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
-.member-who { min-width: 0; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
 .member-table { overflow-x: auto; }
 .member-table .ant-table-thead th { white-space: nowrap; }
-@media (max-width: 1199px) { .member-who-sub { padding-left: 0; } }
-.member-who-sub { display: block; padding-left: 38px; font-size: var(--fs-note); color: var(--text-muted); word-break: break-all; }
 /* 设置 · 操作日志：日期 / 时分秒两行，动作标签下面写对象 */
 .audit-at, .audit-act { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; white-space: nowrap; }
 .ant-table-thead > tr > th { font-size: var(--fs-note); font-weight: 500; letter-spacing: 0.01em; }
@@ -2276,6 +2281,24 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .ftype { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .ftype-i { display: inline-flex; font-size: var(--ic); }
 .list-bar { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+/* 设置 → 组织架构 → 通讯录同步的说明（11-01 默认收起） */
+.org-sync-why { margin-bottom: var(--s3); }
+.org-sync-why > summary { cursor: pointer; color: var(--text-muted); font-size: var(--fs-note); width: fit-content; }
+.org-sync-why > summary:hover { color: var(--ink-soft); }
+.org-sync-why > summary:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 2px; }
+.org-sync-why > p { margin: var(--s2) 0 0; overflow-wrap: anywhere; }
+/* 每格一行（11-01 会议 §11，企业版客户、项目列表 DataList 单行）：表头、单元格都不折行，放不下打省略号，
+   截了的格子悬停看全文（DataList 挂 title）。格子里原来「整段折行」的 .fulltext、两行截断的 .clamp、
+   客户名下面那行公司名都收成一行；1024 宽也不折 */
+.dl-one-line .ant-table-thead > tr > th,
+.dl-one-line .ant-table-tbody > tr > td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-one-line .ant-table-tbody > tr > td :is(.fulltext, .clamp) {
+  display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; -webkit-line-clamp: unset; line-clamp: none;
+}
+.dl-one-line .ant-table-tbody > tr > td .ant-space { flex-wrap: nowrap; max-width: 100%; }
+.dl-one-line .cust-link-t { flex-direction: row; align-items: baseline; gap: 6px; }
+.dl-one-line .cust-link-t > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-one-line .cust-link-t > .cust-link-co { flex: 0 1000 auto; overflow-wrap: normal; }
 .list-bar-gap { flex: 1; }
 /* 桌面端：筛选组放不下时在组里折，不再整组掉下去把「列」一个人留在第二行（2026-10-03，1024 宽窗口）。
    窄于 1200 再把搜索框和下拉收一点：最小窗口 1024 的正文只有 740，原尺寸（搜 240–300 + 三个 120–156 + 一直占位的「重置」）
@@ -2434,6 +2457,21 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
    数量为 0 的列照常摆（空态写在列里），不藏、不收窄。 */
 .pipe { display: flex; flex-wrap: nowrap; gap: var(--s3); align-items: start; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--s2); min-width: 0; }
 .pipe > .pipe-col { flex: 0 0 clamp(240px, calc((100% - 3 * var(--s3)) / 4), 360px); }
+/* 横向滚动条常显（11-01 会议 C12）：Mac 默认滚动条不动就藏，看板要一眼看出还能往右滑；轨道也画出来 */
+.pipe::-webkit-scrollbar { height: 10px; }
+.pipe::-webkit-scrollbar-track { background: var(--line); border-radius: var(--r-ctl); }
+.pipe::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--r-ctl); }
+@supports not selector(::-webkit-scrollbar) { .pipe { scrollbar-width: auto; scrollbar-color: var(--line-strong) var(--line); } }
+/* 右边还有没露全的列：右沿 48px 渐隐（用遮罩、不管底色是什么；底下 12px 的滚动条不隐），上面一行右头写「→ 还有 N 列」，点了滑一列（ProjectsView 右边还有几列） */
+.pipe-fade-right > .pipe {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 48px), transparent), linear-gradient(black, black);
+  mask-image: linear-gradient(to right, black calc(100% - 48px), transparent), linear-gradient(black, black);
+  -webkit-mask-size: 100% calc(100% - 12px), 100% 12px; mask-size: 100% calc(100% - 12px), 100% 12px;
+  -webkit-mask-position: top, bottom; mask-position: top, bottom;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+}
+.pipe-top { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin-bottom: 12px; }
+.pipe-top > .pipe-more-right.ant-btn { margin-left: auto; padding-inline: 4px; white-space: nowrap; }
 .pipe-col { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-height: 220px;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
 .pipe-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; } /* 金额放不下就折到第二行，不截成「¥ 1,23…」（10-27，1280 宽五列时） */

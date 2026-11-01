@@ -154,7 +154,6 @@ export type 项目详情 = {
 };
 
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
-const 验证叫法色: Record<string, string> = { 暂未验证: "default", 初验无效: "orange", 复核有效: "blue", 终验无效: "volcano", 有效线索: "green", 无效线索: "red" };
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 4.3em", whiteSpace: "nowrap" };
@@ -243,10 +242,13 @@ function 换人文字(l: 项目详情["logs"][number]): string {
 }
 
 /** 负责人那一行括号里：怎么进的公海 */
-/** 空着的字段（含导入时拿 "-" 占位的，用 有值 判）写「待填写X / 待选择X」（浅灰，和输入框占位同色）；只是显示，不存。0 算填了，由调用方用 !== null 判 */
-const 待填 = (名: string, 动 = "填写") => <span style={{ color: "var(--text-faint)" }}>待{动}{名}</span>;
-/** 这个进程配了必填、还没填的那几格写「占位确认」（10-31 用户：「未填且必填的地方…显示的是占位确认这四个字」）；别的空格照旧写待填写 / 待选择 */
-const 占位确认 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`必填：${名}，填齐后自动往前推`}>占位确认</span>;
+/**
+ * 空着的字段（含导入时拿 "-" 占位的，用 有值 判）一律写「—」（11-01 会议：未填的字段都用 — 代替，原来写「待填写X / 待选择X」）；
+ * 浅灰、悬停说是哪一格没填。只是显示，不存。0 算填了，由调用方用 !== null 判
+ */
+const 待填 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`未填：${名}`} data-empty={名}>{空值符}</span>;
+/** 这个进程配了必填、还没填的那几格：同样写「—」，悬停写「必填：X，填齐后自动往前推」（10-31 原来写「占位确认」四个字，11-01 会议改成一律 —） */
+const 占位确认 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`必填：${名}，填齐后自动往前推`} data-empty={名} data-required="">{空值符}</span>;
 
 /** 项目级别格（企业版 P11）：星 + 档名（「★★★☆ A 重点」）；没分级写「—」（11-01 没填的统一「—」），认不出的原样给 */
 function 级别格(v: string | null) {
@@ -563,8 +565,9 @@ export default function ProjectDetail({
 
   // 各张卡先摆成常量：企业版两栏、别的版本照原来一栏，摆法不同、卡是同一份
   /**
-   * 企业版节点卡阶段页签那一行右边的一组控件（M-节点-04 / U-项目-06）：左边线框「完成节点」+ ▼（终止进程、改到别的进程或结局），
+   * 企业版节点卡阶段页签那一行右边的一组控件（M-节点-04 / U-项目-06）：左边绿底白字「完成节点」+ ▼（终止进程），
    * 右边实心「新增沟通」（开记沟通的框，只记沟通、不动节点）。有结局的项目左边换成「改回进程」。
+   * 11-01 会议 §13：▼ 里「改到别的进程」去掉（服务端那条路不动，改回进程框照旧用）
    * 看的不是所在阶段、或推不了，按钮灰掉、悬停写原因（灰按钮收不到鼠标，提示挂在外面那层 span 上）
    */
   const 进程钮 = (不在当前: string | undefined) => {
@@ -572,7 +575,6 @@ export default function ProjectDetail({
     const 完成灰 = 不在当前 ?? 完成不了;
     const 菜单: NonNullable<MenuProps["items"]> = [
       ...(终止到 ? [{ key: "stop", danger: true, disabled: !!(不在当前 ?? 动不了), label: 两行("终止进程", 不在当前 ?? 动不了 ?? `落到「${结局叫法(终止到, 字典)}」`) }] : []),
-      ...(更多去处项.length ? [{ key: "more", disabled: !!不在当前, label: 两行("改到别的进程或结局…") }] : []),
     ];
     return (
       <>
@@ -580,10 +582,10 @@ export default function ProjectDetail({
           ? 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
           : (
             <Space.Compact>
-              {灰着(完成灰, <Button disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
+              {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
               {菜单.length > 0 && (
-                <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => (key === "stop" ? 开终止() : set头部框("推进")) }}>
-                  <Button icon={<DownOutlined />} aria-label="终止进程或改到别的进程" />
+                <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
+                  <Button className="proj-done-btn" icon={<DownOutlined />} aria-label="终止进程" />
                 </Dropdown>
               )}
             </Space.Compact>
@@ -692,7 +694,8 @@ export default function ProjectDetail({
         <div style={行样}>
           <span style={键样}>线索验证</span>
           <Button type="text" size="small" style={{ paddingInline: 4, marginInlineStart: -4, height: "auto" }} onClick={() => set验证开着(true)} aria-label={`线索验证：${p.线索验证.叫法}，点开查看和操作`} data-testid="lead-verify-row">
-            <Tag color={验证叫法色[p.线索验证.叫法]} style={{ marginInlineEnd: 4 }} data-testid="lead-verify-result">{p.线索验证.叫法}</Tag>
+            {/* 11-01 会议 §6：结果写成纯字、不套灰框（和下面各行的写法一致） */}
+            <span style={{ marginInlineEnd: 4 }} data-testid="lead-verify-result">{p.线索验证.叫法}</span>
             {p.线索验证.我能 && <span style={{ color: "var(--brand)" }}>去处理</span>}
             <RightOutlined aria-hidden style={{ fontSize: 10, color: "var(--text-muted)" }} />
           </Button>
@@ -708,27 +711,27 @@ export default function ProjectDetail({
       {p.企业版 && p.level !== undefined && (
         <div style={行样}><span style={键样}>级别</span>{级别格(p.level)}</div>
       )}
-      <div style={行样}><span style={键样}>金额</span>{p.必填?.还差.includes("金额") ? 占位确认("金额") : 金额(p.amount, p.currency)}</div>
+      <div style={行样}><span style={键样}>金额</span>{p.必填?.还差.includes("金额") ? 占位确认("金额") : p.amount ? 金额(p.amount, p.currency) : 待填("金额")}</div>
       {p.企业版 && p.成交钱 && (
         <>
           <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : 待填("定金金额")}</div>
           <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : 待填("合同金额")}</div>
           {p.项目新字段?.contractStatus && <div style={行样}><span style={键样}>合同状态</span><span>{p.项目新字段.contractStatus}</span></div>}
-          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : <span style={{ color: "var(--text-muted)" }}>没有</span>}</span></div>}
+          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span></div>}
           <div style={行样}><span style={键样}>需求描述</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(p.成交钱.dealDemand) ? p.成交钱.dealDemand : 待填("需求描述")}</span></div>
           {p.项目新字段 && "painPoints" in p.项目新字段 && (
             <div style={行样}><span style={键样}>痛点标注</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(p.项目新字段.painPoints) ? p.项目新字段.painPoints : (p.必填?.还差.includes("痛点标注") ? 占位确认("痛点标注") : 待填("痛点标注"))}</span></div>
           )}
         </>
       )}
-      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{有值(p.expectedDealAt) ? p.expectedDealAt : (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期", "选择"))}</div>}
+      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{有值(p.expectedDealAt) ? p.expectedDealAt : (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期"))}</div>}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
-        <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源", "选择")}</span></div>
+        <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源")}</span></div>
       )}
       {p.企业版 && p.所在地 && (
         <>
-          <div style={行样}><span style={键样}>区域</span>{项目区域(p.所在地) || 待填("区域", "选择")}</div>
+          <div style={行样}><span style={键样}>区域</span>{项目区域(p.所在地) || 待填("区域")}</div>
           {(拼地址(p.所在地) || p.所在地.location) && (
             <div style={行样}><span style={键样}>地址</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{[拼地址(p.所在地), p.所在地.location].filter(Boolean).join(" ")}</span></div>
           )}
@@ -798,7 +801,10 @@ export default function ProjectDetail({
             <div>
               <div>{l.kind !== "node" ? 换人文字(l) : l.from ? `${位置文字(l.from, 字典)} → ${位置文字(l.to, 字典)}` : `建档，落在 ${位置文字(l.to, 字典)}`}</div>
               {l.category && <div style={{ color: "var(--danger-text)" }}>异常类别：{l.category}</div>}
-              {l.kind === "node" && l.reason && l.reason !== 超时理由 && <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>}
+              {/* 企业版换节点清掉的下一步（db.ts 原下一步备注）单独一行淡色，不当原因 */}
+              {l.kind === "node" && l.reason && l.reason !== 超时理由 && (l.reason.startsWith("原下一步：")
+                ? <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>
+                : <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>)}
               {/* 换人那几行：企业版记的回收原因 / 分配方式（10-27）原样淡色显示；超时、停用上一行已经说了 */}
               {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>}
               <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
@@ -822,14 +828,15 @@ export default function ProjectDetail({
       {...(p.企业版 ? { title: `沟通（${沟通数字}）` } : { id: "project-follow", title: "沟通" })}
       extra={
         p.能记沟通 ? (
-          // 企业版：「记一条沟通」「AI 录入」回到这块卡头（11-01 页头只留转让、退回公海）；主按钮是节点卡上的「新增沟通」，这里线框
+          // 企业版：「新增沟通」「AI 录入」在这块卡头（11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗
           p.企业版 ? (
             <Space size={8}>
               {p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-              <Button size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条沟通</Button>
+              <Button size="small" disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新增沟通</Button>
             </Space>
           ) : <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
-        ) : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>
+          // 11-01 会议 §5：企业版删掉「去客户页看看」；别的版本照旧给「去客户页记一条」
+        ) : !p.企业版 && p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
       }
     >
       <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>

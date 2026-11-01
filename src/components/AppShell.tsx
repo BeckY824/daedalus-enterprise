@@ -557,7 +557,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
             </Avatar>
             <div style={{ minWidth: 0 }}>
               <b>{user.name}</b>
-              <span>{[我的演示角色, user.title, user.email].filter(Boolean).join(" · ")}</span>
+              <span>{[我的演示角色, user.email].filter(Boolean).join(" · ")}</span>
               {workspace && <span>当前工作区：{workspace.name}</span>}
             </div>
           </div>
