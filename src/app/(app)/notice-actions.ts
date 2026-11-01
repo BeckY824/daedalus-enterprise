@@ -2,8 +2,8 @@
 /**
  * 企业版站内通知（2026-11-01）：顶栏铃铛读、标已读；设置 → 组织里的「飞书推送」开关。
  *
- * 通知只看、只标自己的。飞书推送开关只认业务角色：总管理员类（总管理 / 管理员）能改；
- * 账号角色（老板 / 主管）不算，没设业务角色 = 不能改。
+ * 通知只看、只标自己的。飞书推送开关跟改后台设置一个口径：只有总管理（勾了「不管设置」的不行），
+ * 管理员只读；账号角色不算，没设业务角色 = 不能改。
  */
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
@@ -11,7 +11,8 @@ import { recordAudit } from "@/lib/audit";
 import { setSetting } from "@/lib/settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { prisma } from "@/lib/prisma";
-import { 拆角色 } from "@/lib/enterprise/org-core";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 我的通知, 未读通知数, 标通知已读, 全部通知已读, type 通知行 } from "@/lib/enterprise/notify";
 import { 飞书推送开着, 飞书推送开关键, 推送凭据 } from "@/lib/enterprise/feishu-push";
 
@@ -46,13 +47,10 @@ export async function 全部标已读(): Promise<number> {
 
 export type 飞书推送概况 = { 开: boolean; 能改: boolean; 配了应用: boolean; 配了地址: boolean };
 
-/** 直接看 EntMember 上存的业务角色：组织里「没设业务角色按账号角色推」那层兜底这里不认（11-01：权限只认业务角色） */
+/** 和改后台设置一个口径（lib/enterprise/permissions.ts）：只有总管理，勾了「不管设置」的不行；管理员只读 */
 async function 能改推送(meId: string): Promise<boolean> {
-  const [u, m] = await Promise.all([
-    prisma.user.findUnique({ where: { id: meId }, select: { active: true } }),
-    prisma.entMember.findUnique({ where: { userId: meId }, select: { bizRole: true } }),
-  ]);
-  return !!u?.active && 拆角色(m?.bizRole).some((r) => r === "director" || r === "admin");
+  const u = await prisma.user.findUnique({ where: { id: meId }, select: { id: true, role: true, active: true } });
+  return !!u?.active && 能改后台设置(u, await 权限组织());
 }
 
 export async function 读飞书推送(): Promise<飞书推送概况 | null> {

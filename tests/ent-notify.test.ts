@@ -213,6 +213,20 @@ describe("飞书推送开关：只认业务角色总管理员", () => {
     expect(await prisma.setting.findUnique({ where: { key: 飞书推送开关键 } })).not.toBeNull();
     expect(await 设飞书推送(false)).toMatchObject({ ok: true, 概况: { 开: false } });
   });
+
+  it("管理员只读、勾了「不管设置」的总管理：都不能改", async () => {
+    const 管理员 = (await prisma.user.create({ data: { email: "adm", name: "管理员", title: "", role: "ADMIN", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 管理员, bizRole: "admin" } });
+    const 甩手总管 = (await prisma.user.create({ data: { email: "dir2", name: "总管二", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 甩手总管, bizRole: "director", noSettings: true } });
+
+    for (const 谁 of [管理员, 甩手总管]) {
+      当(谁);
+      expect(await 设飞书推送(true)).toEqual({ ok: false, error: "只有总管理员能改飞书推送" });
+      expect(await 读飞书推送()).toMatchObject({ 能改: false });
+    }
+    expect(await prisma.setting.findUnique({ where: { key: 飞书推送开关键 } })).toBeNull();
+  });
 });
 
 describe("分配成功提醒", () => {
