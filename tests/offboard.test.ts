@@ -168,7 +168,7 @@ describe("放进公海", () => {
     for (const p of [线索, 商机]) {
       const r = await 项目of(p.id);
       expect(r.pooledAt).not.toBeNull();
-      expect(r.ownerId).toBe(乙);
+      expect(r.ownerId).toBe(""); // 企业版进公海清负责人（11-01 C-01），乙在留痕里
     }
     const 放回 = await prisma.projectNodeLog.findMany({ where: { kind: "pool-release" }, select: { projectId: true, userId: true, fromOwnerId: true, toOwnerId: true, reason: true } });
     expect(new Set(放回.map((x) => x.projectId))).toEqual(new Set([线索.id, 商机.id]));

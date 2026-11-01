@@ -12,6 +12,8 @@ import { 阶段与进程 } from "@/lib/project/stage-dict";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
+import { 历史负责人们, 原负责人回避 } from "@/lib/project/pool-owner";
+import { 管全队客户 } from "@/lib/constants";
 import {
   客户定状态, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
@@ -45,7 +47,7 @@ function 进程们(projects: readonly 项目片[], 字典: 字典) {
 /**
  * 取全量公海行（还没筛）。先跑一遍两种自动回收（同客户页 / 项目页：先收再列），收不动不挡列表
  */
-export async function 读公海行(me: { id: string; name: string }): Promise<{ 行: 公海行[]; 截断: boolean }> {
+export async function 读公海行(me: { id: string; name: string; role?: string }): Promise<{ 行: 公海行[]; 截断: boolean }> {
   await Promise.all([
     自动掉公海(me).catch((e) => console.error("[自动掉公海] 扫的时候出错，这次先不掉", e)),
     公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e)),
@@ -78,8 +80,11 @@ export async function 读公海行(me: { id: string; name: string }): Promise<{ 
     生效组织规则(),
   ]);
   const 字典 = 字典of(true, 规则.阶段.出口叫法);
-  const 可见 = await 看得到的客户(项目们.map((p) => p.customerId));
+  // 原负责人 = 最后一次进公海前的负责人（11-01 C-01 起企业版进公海清负责人，只在留痕里，lib/project/pool-owner.ts）
+  const [可见, 原负责人] = await Promise.all([看得到的客户(项目们.map((p) => p.customerId)), 历史负责人们(prisma, 项目们.map((p) => p.id))]);
   const 拦 = 拦原负责人();
+  // 历史负责人看不到公海里的这个项目（老板 / 主管不算）
+  const 回避 = 原负责人回避() && !管全队客户(me.role);
 
   const 客户行: 公海行[] = 客户们.map((c) => {
     const 原类 = 客户入池类(c.pool!);
@@ -99,7 +104,7 @@ export async function 读公海行(me: { id: string; name: string }): Promise<{ 
       原负责人是我: 拦 && c.salesOwnerId === me.id,
     };
   });
-  const 项目行: 公海行[] = 项目们.map((p) => {
+  const 项目行: 公海行[] = 项目们.filter((p) => !(回避 && 原负责人.get(p.id) === me.id)).map((p) => {
     const 类 = 项目入池类(p.logs[0] ?? null);
     const 累计 = p.customer.poolReturns;
     const 进 = 进程们([p], 字典);
@@ -114,14 +119,14 @@ export async function 读公海行(me: { id: string; name: string }): Promise<{ 
       创建时间: p.createdAt.toISOString(),
       类, 累计, 入池原因: 入池原因文字(类, p.logs[0]?.reason), 快捷: 归到快捷({ 类, 累计 }),
       // 项目公海原负责人一律领不回（企业版看规则，别的版本本来就不能）
-      原负责人是我: p.ownerId === me.id,
+      原负责人是我: (原负责人.get(p.id) ?? p.ownerId) === me.id,
     };
   });
   return { 行: [...客户行, ...项目行], 截断: 客户们.length >= 公海取上限 || 项目们.length >= 公海取上限 };
 }
 
 /** 页面用：取全量 → 筛排 → 切这一页 */
-export async function 读公海页(me: { id: string; name: string }, sp: 公海筛选, page: number, pageSize: number) {
+export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number) {
   const { 行: 全部, 截断 } = await 读公海行(me);
   const { 行, 快捷数, 属性数 } = 筛排(全部, sp);
   const 页数 = Math.max(1, Math.ceil(行.length / pageSize));
