@@ -3,7 +3,7 @@
  *   - 读卡点看板筛 / 沟通条件（纯函数）：卡点看板的地址栏只认 bm/bo/br/bt/bi/bp；沟通按 看板的人 的 谁 圈、时间段筛
  *   - 卡点看板（11-01 改成三栏，谁看得到按卡点的角色开关）：成员看自己发的 / 自己项目上的 / 认领的；
  *     经理加上直属下属发的、看不到外人的；总管理员（可看全部）全部；不是企业版给空
- *   - 复盘沟通of：只列挂在项目上的沟通；成员只看到自己记的；经理看到自己 + 下属的；总管理员全部；时间倒序；最近几天筛
+ *   - 复盘沟通of：只列挂在项目上的沟通，按项目负责人圈（11-01 同项目列表）；成员只看到自己项目上的；经理看到自己 + 下属的；总管理全部；时间倒序；最近几天筛
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,11 +35,11 @@ describe("纯函数：地址栏、条件", () => {
     expect([夹页(0, 50), 夹页(9, 50), 夹页(2, 50), 夹页(3, 0)]).toEqual([1, 3, 2, 1]);
   });
 
-  it("沟通条件：只要挂在没删的项目上的；谁 给了按记录人筛；最近 N 天从那天零点算", () => {
+  it("沟通条件：只要挂在没删的项目上的；谁 给了按项目负责人筛、公海的不算；最近 N 天从那天零点算", () => {
     const now = dayjs("2026-10-31T15:00:00");
     expect(沟通条件(undefined, "all", now)).toEqual({ projectNode: { is: { project: { deletedAt: null } } } });
     const w = 沟通条件([小王], "7", now);
-    expect(w.ownerId).toEqual({ in: [小王] });
+    expect(w.projectNode).toEqual({ is: { project: { deletedAt: null, ownerId: { in: [小王] }, pooledAt: null } } });
     expect(dayjs((w.occurredAt as { gte: Date }).gte).format("YYYY-MM-DD HH:mm")).toBe("2026-10-25 00:00");
   });
 });
@@ -103,7 +103,6 @@ describe("库里取数和数据范围", () => {
   });
   afterAll(() => prisma.$disconnect());
 
-  const 描述 = (d: { 行: { description: string }[] }) => d.行.map((x) => x.description).sort();
   const 内容 = (d: { 行: { 内容: string }[] }) => d.行.map((x) => x.内容).sort();
 
   const 板描述 = (d: 卡点看板数) => [...d.栏.待接受, ...d.栏.处理中, ...d.栏.已解决].map((x) => x.description).sort();

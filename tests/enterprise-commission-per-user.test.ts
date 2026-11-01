@@ -1,7 +1,7 @@
 /**
  * 企业版提成比例按人单设（10-28 用户「以销售个人为单位」）。Setting entCommissionRatesByUser 存 JSON，不加字段、不加迁移。
  * 钉的是：取比例的顺序 = 负责人自己单设的 → 他业务线那一套 → 默认 2% / 30%，单设一项另一项跟业务线；
- * 读写都规整（坏的、负的、超 100、三位小数那项不算）；离职（停用）的人的单设不算；只有老板、总管理员能改，改了进操作记录；
+ * 读写都规整（坏的、负的、超 100、三位小数那项不算）；离职（停用）的人的单设不算；只有总管理能改（11-01 起只认业务角色），改了进操作记录；
  * 只交改了的人、别人原样；算提成、项目提成卡、赢单固定三处一个顺序；开关关着照旧。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -20,7 +20,7 @@ vi.mock("@/lib/business", async (原) => {
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 存项目底价, 改提成比例, 改按人提成比例 } from "@/app/(app)/projects/commission-actions";
-import { 读项目提成, 读按人提成比例 } from "@/lib/project/commission-db";
+import { 读项目提成, 读按人提成比例, 节点变了的提成 } from "@/lib/project/commission-db";
 import { 改节点 } from "@/lib/project/db";
 import { 规整按人提成比例, 按人提成比例问题, 取提成比例, 默认提成比例, 算提成 } from "@/lib/project/commission";
 import { 读组织 } from "@/lib/enterprise/org";
@@ -54,7 +54,16 @@ const 卡 = async () => {
   const 在组 = (await prisma.projectMember.findMany({ where: { projectId: 项目id, inviteStatus: "JOINED" } })).map((m) => m.userId);
   return 读项目提成({ id: 甲, role: "ADMIN" }, p, 在组, await 读组织(), 名, prisma);
 };
-const 赢单 = () => 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
+/** 赢单：11-01 起推节点只给负责人本人，借乙的身份推完再换回来 */
+const 赢单 = async () => {
+  const 原 = mocks.user;
+  当(乙, "SALES");
+  try {
+    return await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
+  } finally {
+    mocks.user = 原;
+  }
+};
 const 固定 = () => prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } });
 
 beforeEach(async () => {
@@ -65,6 +74,8 @@ beforeEach(async () => {
   甲 = (await prisma.user.create({ data: { email: "jia", name: "甲", title: "", role: "ADMIN", password: "x" } })).id;
   乙 = (await prisma.user.create({ data: { email: "yi", name: "乙", title: "", role: "SALES", password: "x" } })).id;
   丙 = (await prisma.user.create({ data: { email: "bing", name: "丙", title: "", role: "SALES", password: "x" } })).id;
+  // 11-01：权限只认业务角色，甲设成总管理，乙是销售
+  await prisma.entMember.createMany({ data: [{ userId: 甲, bizRole: "director" }, { userId: 乙, bizRole: "sales" }] });
   当(甲, "ADMIN");
   const c = await prisma.customer.create({ data: { name: "客户", phone: "13800000001", salesOwnerId: 乙 } });
   项目id = (await prisma.project.create({
@@ -118,7 +129,7 @@ describe("纯函数", () => {
 describe("三处一个顺序：项目提成卡、算提成、赢单固定", () => {
   beforeEach(async () => {
     expect(await 改提成比例(三套(2, 30, { 内贸: [1, 10], 外贸: [3, 40] }))).toMatchObject({ ok: true });
-    await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: "外贸" } });
+    await prisma.entMember.update({ where: { userId: 乙 }, data: { line: "外贸" } });
   });
 
   it("没单设：按业务线（外贸 3% / 40%）", async () => {
@@ -180,7 +191,8 @@ describe("离职（停用）的人", () => {
     expect(await 读按人提成比例(await 读组织())).toEqual({});
     const t = (await 卡())!;
     expect([t.比例, t.单设, t.预估?.合计]).toEqual([默认提成比例, null, 8000]);
-    await 赢单();
+    // 停用的人没有业务角色，自己推不了节点（11-01）；这里直接走赢单那一步的提成挂钩
+    await prisma.$transaction((tx) => 节点变了的提成(tx, 项目id, "商机", "订单"));
     expect(await 固定()).toMatchObject({ fixedRateBase: 2, fixedRatePremium: 30, fixedTotal: 8000 });
   });
 
@@ -230,7 +242,7 @@ describe("改按人设置", () => {
     for (const bizRole of ["sales", "sales_mgr", "marketing_mgr"]) {
       await prisma.entMember.upsert({ where: { userId: 丙 }, update: { bizRole }, create: { userId: 丙, bizRole } });
       当(丙, "SALES");
-      expect(await 改按人提成比例({ [乙]: { 底价比例: 1, 溢价比例: 10 } })).toMatchObject({ ok: false, error: "只有老板或总管理员能改提成比例" });
+      expect(await 改按人提成比例({ [乙]: { 底价比例: 1, 溢价比例: 10 } })).toMatchObject({ ok: false, error: "只有总管理能改提成比例" });
     }
     expect(await 存的()).toBeNull();
     expect(await 记录()).toEqual([]);

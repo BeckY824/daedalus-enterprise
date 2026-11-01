@@ -27,6 +27,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
 import { 原负责人回避, 历史负责人, 我回避的公海项目 } from "./pool-owner";
+import { 能编辑项目, 业务线放行 } from "@/lib/enterprise/permissions";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
   规整卡点角色开关, 合上卡点角色开关, 卡点角色键, 卡点权限of, 看得到卡点, 原因种子们, 种子原因id, 规整原因名, 兜底原因,
@@ -244,8 +245,9 @@ async function 相关人(tx: Prisma.TransactionClient, b: 带全的卡点) {
  */
 function 我的下属们(org: 组织 | null, 我: string): Set<string> {
   if (!org || !org.成员.has(我)) return new Set();
-  const 读 = new Set(实线下属(org, 我));
-  for (const d of 虚线下属(org, 我)) for (const x of [d, ...实线下属(org, d)]) 读.add(x);
+  const 线上 = (x: string) => 业务线放行(org, 我, { ownerId: x });
+  const 读 = new Set([...实线下属(org, 我)].filter(线上));
+  for (const d of 虚线下属(org, 我)) for (const x of [d, ...实线下属(org, d)]) if (线上(x)) 读.add(x);
   读.delete(我);
   return 读;
 }
@@ -257,7 +259,6 @@ async function 自己的条件(我: string, org: 组织 | null): Promise<Prisma.
   const 看得到: Prisma.EntBlockerWhereInput = {
     OR: [
       { creatorId: 我 },
-      ...(下属们.length ? [{ creatorId: { in: 下属们 } }] : []),
       { project: { pooledAt: null, ownerId: 我 } },
       ...(下属们.length ? [{ project: { pooledAt: null, ownerId: { in: 下属们 } } }] : []),
       { project: { members: { some: { userId: 我, inviteStatus: "JOINED" } } } },
@@ -282,13 +283,13 @@ async function 下一个卡点编号(tx: Prisma.TransactionClient, now: Date): P
   return 拼卡点编号(now, 下一个卡点流水(最大?.code, now));
 }
 
-/** 能不能在这个项目上发卡点：能写（开着、不是只读的管理员）、项目不在公海；负责人、点了同意的组员、负责人的直属上级、总管理 */
-async function 能发(db: Prisma.TransactionClient, me: 谁, p: 项目要的, 权: 我的卡点权限, org: 组织 | null): Promise<boolean> {
-  if (!权.能写 || p.pooledAt) return false;
-  if (权.能管 || p.ownerId === me.id) return true;
-  if (org && 直属上级of(org, p.ownerId) === me.id) return true;
-  const m = await db.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
-  return m?.inviteStatus === "JOINED";
+/**
+ * 能不能在这个项目上发卡点：能写（开着、不是只读的管理员）、项目不在公海、能编辑这个项目
+ * （负责人本人且是销售 / 销售管理，permissions.ts 能编辑项目；卡点从沟通发，和记沟通同一道门）。
+ * 总管理、上级、组员不能在别人的项目上发（C2：只能看、转让；看得到的卡点照样能认领、点完成）
+ */
+function 能发(me: 谁, p: 项目要的, 权: 我的卡点权限, org: 组织 | null): boolean {
+  return 权.能写 && !p.pooledAt && 能编辑项目(me, p, org);
 }
 
 /* ───────────── 写：发布、认领、我已完成 ───────────── */
@@ -310,7 +311,7 @@ export async function 发布卡点(
     if (!fp) return { ok: false as const, error: "卡点要从项目上的一条沟通记录发，这条沟通找不到了，刷新看看" };
     const p = fp.project;
     if (p.pooledAt) return { ok: false as const, error: "这个项目在公海里，先领取再发卡点" };
-    if (!(await 能发(tx, me, p, 权, org))) return { ok: false as const, error: "只有项目负责人、项目组成员、直属上级或总管理员能发卡点" };
+    if (!能发(me, p, 权, org)) return { ok: false as const, error: "只有项目负责人能发卡点（总管理员、上级、项目组成员只能看，看得到的卡点能认领）" };
     const 好 = 规整发布(input, 默认);
     if (好 === null) return { ok: true as const };
     if ("error" in 好) return { ok: false as const, error: 好.error };
@@ -606,7 +607,7 @@ export async function 能发卡点(me: 谁, projectId: string): Promise<boolean>
   if (!权.开) return false;
   return 看全部(async () => {
     const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
-    return !!p && 能发(prisma, me, p, 权, org);
+    return !!p && 能发(me, p, 权, org);
   });
 }
 

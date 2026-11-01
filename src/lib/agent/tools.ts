@@ -1043,7 +1043,8 @@ export const TOOLS: Tool[] = [
         const 我 = await 限定的我(prisma);
         const 提成表 = 规格.表 === "提成" || 规格.表 === "提成分配";
         const 本人 = 提成表 ? await prisma.user.findUnique({ where: { id: ctx.userId }, select: { id: true, role: true } }) : null;
-        if (我 !== null || (提成表 && 本人?.role !== "ADMIN")) {
+        // 企业版提成一律按 能看提成 过（11-01 只认业务角色，账号管理员不再整张放行）；别的版本照旧老板看全部
+        if (我 !== null || (提成表 && (企业版() || 本人?.role !== "ADMIN"))) {
           const 项目们 = await prisma.project.findMany({ select: { id: true, ownerId: true, pooledAt: true } });
           let ids = 项目们.map((p) => p.id);
           if (提成表 && 本人) {

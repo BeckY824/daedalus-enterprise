@@ -13,7 +13,8 @@ import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
 import { getSetting, setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
-import { 读组织, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
+import { 读组织, type 组织 } from "@/lib/enterprise/org";
+import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -35,7 +36,7 @@ type 结果 = { ok: true } | { ok: false; error: string };
 type 目标 = { leadId: string; projectId?: undefined } | { projectId: string; leadId?: undefined };
 const 目标of = (x: { leadId?: unknown; projectId?: unknown }): 目标 | null =>
   typeof x.projectId === "string" && x.projectId ? { projectId: x.projectId } : typeof x.leadId === "string" && x.leadId ? { leadId: x.leadId } : null;
-const 没开: { ok: false; error: string } = { ok: false, error: `规则「${规则.线索分配.名}」没开：老板或总管理员在 设置 → 组织架构 里打开` };
+const 没开: { ok: false; error: string } = { ok: false, error: `规则「${规则.线索分配.名}」没开：总管理在 设置 → 组织架构 里打开` };
 
 /** 规则开着才放行；共享试用区不让分 */
 async function 进门() {
@@ -64,7 +65,7 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
   if (!线索种类.includes(kind)) return { ok: false, error: "线索种类只能是营销或营销企划" };
   try {
     const org = await 读组织();
-    if (!能分配(org, me)) return { ok: false, error: "只有老板、总管理员、市场管理能分配线索" };
+    if (!能分配(org, me)) return { ok: false, error: "只有总管理、销售管理、市场管理能分配线索" };
     // 还要看分配方式字典的「谁能用」（assign-use.ts）：指定分配
     const 方式挡 = await 挡分配方式(me, 0);
     if (方式挡) return { ok: false, error: 方式挡 };
@@ -225,7 +226,7 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
   if (!线索种类.includes(kind)) return { ok: false, error: "线索种类只能是营销或营销企划" };
   try {
     const org = await 读组织();
-    if (!能分配(org, me)) return { ok: false, error: "只有老板、总管理员、市场管理能分配线索" };
+    if (!能分配(org, me)) return { ok: false, error: "只有总管理、销售管理、市场管理能分配线索" };
     const 方式挡 = await 挡分配方式(me, 1);
     if (方式挡) return { ok: false, error: 方式挡 };
     const 哪条 = 目标of(opts.项目 ? { projectId: id } : { leadId: id });
@@ -334,7 +335,7 @@ export async function 批量自动分配(leadIds: string[], opts: { 项目?: boo
   if (ids.length > 批量最多) return { ok: false, error: `一次最多自动分配 ${批量最多} 条，分几次点` };
   try {
     const org = await 读组织();
-    if (!能分配(org, me)) return { ok: false, error: "只有老板、总管理员、市场管理能分配线索" };
+    if (!能分配(org, me)) return { ok: false, error: "只有总管理、销售管理、市场管理能分配线索" };
     const 方式挡 = await 挡分配方式(me, 1);
     if (方式挡) return { ok: false, error: 方式挡 };
     const 项目 = opts?.项目 === true;
@@ -395,7 +396,7 @@ export async function 设自动分配参与(userId: string, 状态: 参与状态
   if (!新状态) return { ok: false, error: "参与只能是允许、暂停或禁止" };
   try {
     const org = await 读组织();
-    if (!能改参与(org, me)) return { ok: false, error: "只有老板、总管理员、销售管理能改谁参与自动分配" };
+    if (!能改参与(org, me)) return { ok: false, error: "只有总管理、销售管理能改谁参与自动分配" };
     if (接手问题(org, userId, null)) return { ok: false, error: "这个人不在组织里、已经停用，或者不是销售 / 销售管理" };
     // 读-改-写放进一个事务：两个人同时改不同人的状态，后写的不会把先写的盖掉
     const 变了 = await 查完再写(async (tx) => {
@@ -445,7 +446,8 @@ export async function 设不设配额(on: boolean): Promise<结果> {
   if (!me) return 没开;
   try {
     const org = await 读组织();
-    if (me.role !== "ADMIN" && 管理员类别of(org, me.id) !== "总管理员") return { ok: false, error: "只有老板或总管理员能改这个选项" };
+    // 和拨规则开关同一道门（org-actions 能改的人）：只有总管理，勾了「不管设置」的不算（11-01）
+    if (!能改后台设置(me, org)) return { ok: false, error: "只有总管理能改这个选项" };
     // 先认人再验参数：业务员拿到的是「只有…能改」，不是参数错
     if (typeof on !== "boolean") return { ok: false, error: "开关只能开或关" };
     if ((await 不设配额开着()) === on) return { ok: true };

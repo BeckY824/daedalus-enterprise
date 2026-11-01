@@ -8,7 +8,7 @@ import type { 看板筛选 } from "./blocker";
  * 只管拼条件，不碰库（页面、测试都直接用）；取数在 review-tabs-db.ts。
  *
  * 看谁的跟「任务」「数据」两个页签同一个 看板的人 的 谁（board-member.ts）：
- *   - 业务员：谁 = [自己]；经理：谁 = 自己 + 下属（选了某个人 = [他]）；老板、总管理员：谁 = undefined（不限人）。
+ *   - 最下级：谁 = [自己]；上级：谁 = 自己 + 下属（选了某个人 = [他]）；总管理、管理员：谁 = undefined（不限人）。
  * 这一层是服务端兜底：企业版没开「按组织看客户」时 prisma 那层不拦人。
  *
  * 地址栏：tab=block  bm=1（我的认领） bo=1（只看自己） br=原因 id  bt=类型  bi=影响  bp=项目 id（11-01 改成三栏看板，不分页）
@@ -43,13 +43,13 @@ export function 夹页(页: number, 总数: number, 每页 = 复盘列表每页)
 }
 
 /**
- * 沟通页签查哪些：挂在项目节点上的沟通记录（项目没删），谁 给了就按记录人（ownerId）筛，段 = 最近几天（从那天零点起）。
+ * 沟通页签查哪些：挂在项目节点上的沟通记录（项目没删），谁 给了就按项目负责人筛、公海里的项目不算（11-01 同复盘按负责人数），
+ * 段 = 最近几天（从那天零点起）。
  * 查询走带限定的 prisma：看得到哪些客户的沟通由那一层管（公海里同事客户的沟通内容照旧不给）
  */
 export function 沟通条件(谁: readonly string[] | undefined, 段: 沟通段, now: ReturnType<typeof dayjs>): Prisma.FollowUpWhereInput {
   return {
-    projectNode: { is: { project: { deletedAt: null } } },
-    ...(谁 ? { ownerId: { in: [...谁] } } : {}),
+    projectNode: { is: { project: { deletedAt: null, ...(谁 ? { ownerId: { in: [...谁] }, pooledAt: null } : {}) } } },
     ...(段 === "all" ? {} : { occurredAt: { gte: now.startOf("day").subtract(Number(段) - 1, "day").toDate() } }),
   };
 }

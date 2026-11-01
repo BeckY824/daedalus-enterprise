@@ -57,6 +57,8 @@ beforeEach(async () => {
   渠道 = await 人("cs", "渠道");
   await prisma.entMember.createMany({
     data: [
+      // 11-01：权限只认业务角色，老板也要设成总管理（账号是管理员不算）
+      { userId: 老板, bizRole: "director" },
       { userId: 总管, bizRole: "director" },
       { userId: 市场, bizRole: "marketing_mgr" },
       { userId: 销售经理, bizRole: "sales_mgr" },
@@ -246,7 +248,7 @@ describe("自动分配线索", () => {
     expect(await 批量自动分配([])).toMatchObject({ ok: false, error: "先勾选要分的线索" });
     expect(await 批量自动分配(Array.from({ length: 201 }, (_, i) => `x${i}`))).toMatchObject({ ok: false, error: expect.stringContaining("最多") });
     当(内贸);
-    expect(await 批量自动分配([ids[0]])).toMatchObject({ ok: false, error: expect.stringMatching(/只有老板/) });
+    expect(await 批量自动分配([ids[0]])).toMatchObject({ ok: false, error: "只有总管理、销售管理、市场管理能分配线索" });
   });
 
   it("批量按营销线索分：企划设成不算数时照样看配额、记成营销", async () => {
@@ -307,7 +309,7 @@ describe("自动分配线索", () => {
 
   it("不能分配的人、规则关着都拒", async () => {
     当(内贸);
-    expect(await 自动分配线索(await 建线索("L"))).toMatchObject({ ok: false, error: expect.stringMatching(/只有老板/) });
+    expect(await 自动分配线索(await 建线索("L"))).toMatchObject({ ok: false, error: "只有总管理、销售管理、市场管理能分配线索" });
     当(市场);
     await 开(false);
     expect((await 自动分配线索(await 建线索("M"))).ok).toBe(false);
@@ -329,7 +331,7 @@ describe("参与自动分配（允许 / 暂停 / 禁止）", () => {
     }
     for (const who of [市场, 内贸]) {
       当(who);
-      expect(await 设自动分配参与(两边, "暂停")).toMatchObject({ ok: false, error: expect.stringMatching(/只有老板/) });
+      expect(await 设自动分配参与(两边, "暂停")).toMatchObject({ ok: false, error: "只有总管理、销售管理能改谁参与自动分配" });
     }
     当(老板, "ADMIN");
     expect(await 设自动分配参与(渠道, "禁止")).toMatchObject({ ok: false, error: expect.stringContaining("不是销售") });
@@ -451,14 +453,14 @@ describe("分配", () => {
     expect(记录.map((x) => x.summary)).toContain("分配线索「A」给 内贸小王（内贸）");
   });
 
-  it("老板、总管理员能分；销售、销售经理、渠道不能", async () => {
-    for (const [id, role] of [[老板, "ADMIN"], [总管, "SALES"]] as const) {
+  it("总管理（老板设成总管理）、销售管理能分；销售、渠道不能（11-01：线索分配给市场管理、销售管理、总管理）", async () => {
+    for (const [id, role] of [[老板, "ADMIN"], [总管, "SALES"], [销售经理, "SALES"]] as const) {
       当(id, role);
       expect(await 分配线索({ leadId: await 建线索(`L${id}`), toUserId: 两边 })).toEqual({ ok: true });
     }
-    for (const id of [内贸, 销售经理, 渠道]) {
+    for (const id of [内贸, 渠道]) {
       当(id);
-      expect(await 分配线索({ leadId: await 建线索(`X${id}`), toUserId: 两边 })).toMatchObject({ ok: false, error: expect.stringContaining("只有老板、总管理员、市场管理") });
+      expect(await 分配线索({ leadId: await 建线索(`X${id}`), toUserId: 两边 })).toMatchObject({ ok: false, error: "只有总管理、销售管理、市场管理能分配线索" });
     }
   });
 
@@ -503,14 +505,15 @@ describe("配额", () => {
     expect(await 设配额(内贸, 4)).toMatchObject({ ok: false, error: expect.stringContaining("直属上级") });
     当(外贸);
     expect(await 设配额(外贸, 99)).toMatchObject({ ok: false });
-    // B2 第 6 条默认：配额只给直属 / 虚线上级（和老板），总管理员不在里面；「后台设置谁能改」里勾上才能设
+    // 11-01：总管理能进设置、改后台设置（没勾「不管设置」），配额也能设；勾了「不管设置」就不能
     当(总管);
-    expect(await 设配额(内贸, 1)).toMatchObject({ ok: false, error: "线索配额只有老板、直属上级、虚线上级能改" });
-    await setSetting(改权限key, { 线索配额: ["直属上级", "总管理员"] });
     expect(await 设配额(内贸, 1)).toEqual({ ok: true });
+    await prisma.entMember.update({ where: { userId: 总管 }, data: { noSettings: true } });
+    expect(await 设配额(内贸, 1)).toMatchObject({ ok: false, error: "线索配额只有总管理员、直属上级、虚线上级能改" });
+    await setSetting(改权限key, { 线索配额: ["直属上级", "总管理员"] });
     // 去掉虚线上级：虚线经理就设不了了，直属上级照常
     当(虚线经理);
-    expect(await 设配额(外贸, 5)).toMatchObject({ ok: false, error: "线索配额只有老板、直属上级、总管理员能改" });
+    expect(await 设配额(外贸, 5)).toMatchObject({ ok: false, error: "线索配额只有总管理员、直属上级能改" });
     当(销售经理);
     expect(await 设配额(外贸, 5)).toEqual({ ok: true });
   });
@@ -806,11 +809,11 @@ describe("不设配额（人人参与、不限额，10-30）", () => {
     当(老板, "ADMIN");
   });
 
-  it("老板、总管理员能拨，别人不能；改了留痕，没变不重复留；规则关着读成 null", async () => {
+  it("总管理能拨，别人不能；改了留痕，没变不重复留；规则关着读成 null", async () => {
     expect(await 读不设配额()).toBe(false);
     for (const [id, role] of [[市场, "SALES"], [销售经理, "SALES"], [内贸, "SALES"]] as const) {
       当(id, role);
-      expect(await 设不设配额(true)).toMatchObject({ ok: false, error: expect.stringContaining("老板或总管理员") });
+      expect(await 设不设配额(true)).toMatchObject({ ok: false, error: "只有总管理能改这个选项" });
     }
     expect(await getSetting(不设配额key)).toBeNull();
     当(总管, "SALES");

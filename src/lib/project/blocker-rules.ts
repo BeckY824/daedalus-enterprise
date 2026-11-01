@@ -308,7 +308,8 @@ export function 看得到卡点(我: string, 权: { 开: boolean; 全部: boolea
   if (!权.开) return false;
   if (权.全部) return true;
   if (b.回避人 && b.回避人 === 我) return false;
-  if (b.creatorId === 我 || 我的下属们.has(b.creatorId)) return true;
+  // 上级凭下属看卡点只按项目负责人（同项目列表的负责人范围，11-01 PR-D）；下属在别人项目上发的，上级不跟着看
+  if (b.creatorId === 我) return true;
   if (!b.在公海 && (b.ownerId === 我 || 我的下属们.has(b.ownerId))) return true;
   return b.组员们.includes(我) || b.认领人们.includes(我);
 }

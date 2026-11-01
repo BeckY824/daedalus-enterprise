@@ -2,8 +2,8 @@
 /**
  * 企业版「组织架构」设置页的写操作（2026-10-24）：部门增改删、给人定部门 / 角色 / 业务线 / 上级。
  *
- * 只在企业版开着时可用；老板（账号管理员）和业务角色是总管理员的人能改。
- * 总管理员级别的角色（总管理 / 管理员）只有老板能给、能动，免得总管理员互相把对方降级。
+ * 只在企业版开着时可用；11-01 起只认业务角色：总管理（director，没勾「不管设置」）能改，管理员（admin）只能看。
+ * 账号 ADMIN 不再多出权限。总管理能给、能改总管理 / 管理员这两个角色，但至少要留一位能管设置的总管理。
  * 规则检查都在 lib/enterprise/org.ts 的纯函数里，这里只负责读库、写库、留痕。
  */
 import { revalidatePath } from "next/cache";
@@ -15,7 +15,8 @@ import { setSetting } from "@/lib/settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则, type 规则名 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读组织, 建组织, 管理员类别of, 拆角色, 合角色, 部门挪动问题, 上级设置问题, type 组织部门 } from "@/lib/enterprise/org";
+import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, type 组织, type 组织部门 } from "@/lib/enterprise/org";
+import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 是业务角色, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
@@ -34,18 +35,22 @@ function 改完了() {
   revalidatePath("/settings");
 }
 
-const 总管级 = (r: string | null | undefined) => r === "director" || r === "admin";
-
-/** 能改组织架构的人；不能改返回 null */
+/** 能改组织架构、业务角色、规则的人（11-01 只认业务角色）：总管理 director，勾了「不管设置」的不行；管理员 admin 只读。不能改返回 null */
 async function 能改的人() {
   if (!企业版()) return null;
   const me = await requireUser();
   const { 当前是共享区 } = await import("@/lib/shared-ws/current");
   if (await 当前是共享区()) return null;
-  if (me.role === "ADMIN") return { me, 是老板: true };
-  return 管理员类别of(await 读组织(), me.id) === "总管理员" ? { me, 是老板: false } : null;
+  return 能改后台设置(me, await 权限组织()) ? { me } : null;
 }
-const 不能改 = { ok: false as const, error: "只有老板或总管理员能改组织架构" };
+const 不能改 = { ok: false as const, error: "只有总管理能改组织架构" };
+
+/** 改完以后还剩不剩一位能管设置的总管理（在职、director、没勾「不管设置」）；一个都不剩就没人能再改角色了 */
+function 还有总管(org: 组织, 除了: string): boolean {
+  for (const [id, m] of org.成员) if (id !== 除了 && m.角色们.includes("director") && !m.不管设置) return true;
+  return false;
+}
+const 留一位总管 = "至少要留一位能管设置的总管理（业务角色总管理、没勾「不管设置」）";
 
 async function 全部部门(): Promise<Map<string, 组织部门>> {
   const ds = await prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } });
@@ -154,7 +159,8 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
 
     const 原 = 建组织(users, members, depts);
     const 原角色们 = 原.成员.get(userId)!.角色们;
-    if (!who.是老板 && [...原角色们, ...(新角色们 ?? [])].some(总管级)) return { ok: false, error: "总管理、管理员这两个角色只有老板能给、能改" };
+    // 总管理把自己（或最后一位总管理）的总管理角色去掉：先看还剩不剩一位能管设置的
+    if (新角色们 && 原角色们.includes("director") && !新角色们.includes("director") && !原.成员.get(userId)!.不管设置 && !还有总管(原, userId)) return { ok: false, error: 留一位总管 };
 
     // 带着这次改动重建一遍再查上级：一次同时改部门和上级时按改完的样子算
     const 旧行 = members.find((m) => m.userId === userId);
@@ -185,6 +191,38 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
       改.dottedManagerId !== undefined && `虚线上级 → ${名(改.dottedManagerId)}`,
     ].filter(Boolean);
     await recordAudit({ user: who.me, action: "update", entity: "EntMember", entityId: userId, summary: `组织架构：${人.name} ${说.join("，")}`, detail: 改 });
+    改完了();
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/**
+ * 「不管设置」（C1，迁移 108）：总管理勾上以后进不了设置页，其余总管理权限照旧。只有能改组织架构的总管理能勾；
+ * 别的角色勾了也没用（进设置本来就只给总管理、管理员）。勾完不能一个能管设置的总管理都不剩
+ */
+export async function 设不管设置(userId: string, on: boolean): Promise<结果> {
+  const who = await 能改的人();
+  if (!who) return 不能改;
+  if (typeof on !== "boolean") return { ok: false, error: "只能勾或不勾" };
+  try {
+    const [users, members, depts] = await Promise.all([
+      prisma.user.findMany({ select: { id: true, name: true, role: true, active: true } }),
+      prisma.entMember.findMany(),
+      prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
+    ]);
+    const 人 = users.find((u) => u.id === userId);
+    if (!人 || !人.active) return { ok: false, error: "这个人不在职" };
+    const 原 = 建组织(users, members, depts);
+    const 他 = 原.成员.get(userId);
+    if (on && 他?.角色们.includes("director") && !他.不管设置 && !还有总管(原, userId)) return { ok: false, error: 留一位总管 };
+    await prisma.entMember.upsert({
+      where: { userId },
+      create: { userId, bizRole: 合角色(他?.角色们 ?? []), noSettings: on },
+      update: { noSettings: on },
+    });
+    await recordAudit({ user: who.me, action: "update", entity: "EntMember", entityId: userId, summary: `组织架构：${人.name} ${on ? "勾上" : "取消"}「不管设置」` });
     改完了();
     return { ok: true };
   } catch (e) {
@@ -237,7 +275,7 @@ export async function 设字段权限(配置: unknown): Promise<结果> {
 
 /**
  * 存「后台设置谁能改」表（B2 第 6 条，10-26）：七样后台设置各由哪几类人改，没存的项 = 默认建议。
- * 只有老板和总管理员能改这张表本身（和组织架构同一道门）。
+ * 只有总管理能改这张表本身（和组织架构同一道门）。
  */
 export async function 设改权限(配置: unknown): Promise<结果> {
   const who = await 能改的人();
@@ -245,7 +283,7 @@ export async function 设改权限(配置: unknown): Promise<结果> {
   try {
     const 存 = 规整改权限(配置);
     await setSetting(改权限key, 存);
-    const 说 = 设置项们.map((项) => `${设置项[项].名}：${["老板", ...谁能改(存, 项)].join("、")}`).join("；");
+    const 说 = 设置项们.map((项) => `${设置项[项].名}：${["总管理", ...谁能改(存, 项)].join("、")}`).join("；");
     await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 改权限key, summary: `改后台设置谁能改（${说}）`, detail: 存 });
     改完了();
     return { ok: true };
@@ -256,7 +294,7 @@ export async function 设改权限(配置: unknown): Promise<结果> {
 
 /**
  * 存「市场部门」（10-31）：哪几个部门（连下级）的人算市场成员——他们建的、负责过的客户转给销售后还看得到（只读，lib/enterprise/market.ts）。
- * 空 = 恢复默认（名字带「市场」的部门和下级）。只有老板和总管理员能改（和组织架构同一道门）。
+ * 空 = 恢复默认（名字带「市场」的部门和下级）。只有总管理能改（和组织架构同一道门）。
  * 人：另外逐人算市场成员的（11-01，岗位调整试行期、部门不动的人）；不传 = 不动，空 = 清掉
  */
 export async function 设市场部门(ids: unknown, 人?: unknown): Promise<结果> {

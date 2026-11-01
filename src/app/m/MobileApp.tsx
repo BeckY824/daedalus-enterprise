@@ -778,7 +778,7 @@ function DetailScreen({ os, c, 现在, 断网, 来自, 业务, 待同步, 取图
           {c.联系人.map((p) => (
             <div key={p.id} className="m-contact">
               <Avatar name={p.name} size={34} />
-              <div className="m-row-main"><div className="m-row-t">{p.name}</div><div className="m-row-m">{p.title && <span>{p.title}</span>}{p.email && <span className="m-ellipsis">{p.email}</span>}</div></div>
+              <div className="m-row-main"><div className="m-row-t">{p.name}</div><div className="m-row-m">{p.email && <span className="m-ellipsis">{p.email}</span>}</div></div>
               {p.phone && <a className="m-icon-btn" href={`tel:${号码(p.phone)}`} aria-label={`给 ${p.name} 打电话`}><PhoneOutlined /></a>}
               {p.email && <a className="m-icon-btn" href={`mailto:${p.email}`} aria-label={`给 ${p.name} 发邮件`}><MailOutlined /></a>}
             </div>

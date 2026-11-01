@@ -1373,6 +1373,8 @@ model EntMember {
   managerId       String?
   /// 虚线上级：只能看，不能改、不能转
   dottedManagerId String?
+  /// 「不管设置」（迁移 108，11-01）：总管理勾上以后进不了设置页，其余总管理权限照旧（lib/enterprise/permissions.ts 能进设置）
+  noSettings      Boolean  @default(false)
   updatedAt       DateTime @updatedAt
 
   @@index([deptId])

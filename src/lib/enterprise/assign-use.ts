@@ -4,7 +4,7 @@
  * 默认照 10-27 会上定的：销售只有指定分配、个人自持；市场除个人自持外都有。
  * 其他角色 10-28 改成指定分配、公海捞取（全员都能新建线索；之前一样都没有 = 建不了线索）。管理员已存过的不动。
  * 市场 = 市场管理；销售 = 销售管理 + 销售成员；其他 = 渠道运营 + 项目运营。
- * - 总管理、管理员、老板（账号管理员）每样都能用，不受这张表管。
+ * - 总管理、管理员每样都能用，不受这张表管；11-01 起账号管理员（老板）不再单独放行，没设业务角色的一样都不能用。
  * - 后来加的选项默认谁都能用（没有对应的操作，管不着）。
  * 存 Setting `enterprise.assign_use`：{ 选项 id: 业务角色[] }，没存的项 = 默认。
  * 纯数据和纯函数，客户端组件也 import；读库、存库在 dict.ts。
@@ -51,7 +51,6 @@ export function 谁能用(id: string, 配置: 分配谁能用配置): readonly �
 }
 
 export function 能用分配方式(org: 组织, 我: { id: string; role: string }, id: string, 配置: 分配谁能用配置): boolean {
-  if (我.role === "ADMIN") return true;
   const 们 = org.成员.get(我.id)?.角色们;
   if (!们?.length) return false;
   if (们.includes("director") || 们.includes("admin")) return true;
@@ -64,5 +63,5 @@ export function 能用分配方式(org: 组织, 我: { id: string; role: string 
 export function 谁能用的话(id: string, 名: string, 配置: 分配谁能用配置): string {
   const 能 = 谁能用(id, 配置);
   const 列 = 能 === "所有人" ? [] : 能.map((r) => 角色名[r]);
-  return `「${名}」只有老板、总管理、管理员${列.length ? `和${列.join("、")}` : ""}能用`;
+  return `「${名}」只有总管理、管理员${列.length ? `和${列.join("、")}` : ""}能用`;
 }

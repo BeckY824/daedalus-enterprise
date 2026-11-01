@@ -5,7 +5,8 @@ import { 补来源 } from "@/lib/customer-extra-db";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 解绑飞书 } from "@/lib/enterprise/feishu-login";
-import { 读组织, 直属上级of } from "@/lib/enterprise/org";
+import { 读组织, 直属上级of, 权限组织 } from "@/lib/enterprise/org";
+import { 能改后台设置, 是总管理, 只读角色 } from "@/lib/enterprise/permissions";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
@@ -65,9 +66,15 @@ async function 是共享区() {
   return 当前是共享区();
 }
 
+/** 能改设置：企业版只认业务角色（QA #9，11-01）= 总管理 director，勾了「不管设置」的不行；管理员 admin 能进来看、不能改。别的版本照旧账号 ADMIN */
+async function 能改设置(me: { id: string; role: string }): Promise<boolean> {
+  if (企业版()) return 能改后台设置(me, await 权限组织());
+  return me.role === "ADMIN";
+}
+
 async function requireAdmin() {
   const me = await requireUser();
-  if (me.role !== "ADMIN") throw new Error("FORBIDDEN");
+  if (!(await 能改设置(me))) throw new Error("FORBIDDEN");
   const { 当前是共享区 } = await import("@/lib/shared-ws/current");
   if (await 当前是共享区()) throw new Error("FORBIDDEN");
   return me;
@@ -81,10 +88,12 @@ async function requireAdmin() {
 async function 能办离职(id: string) {
   if (!企业版()) return requireAdmin();
   const me = await requireUser();
-  if (me.role === "ADMIN") return requireAdmin();
+  const org = await 权限组织();
+  if (能改后台设置(me, org)) return requireAdmin();
   if (await 是共享区()) throw new Error("FORBIDDEN");
-  const 他 = typeof id === "string" && id ? await prisma.user.findUnique({ where: { id }, select: { role: true } }) : null;
-  if (他 && 他.role !== "ADMIN" && (await 规则开着("按组织看客户")) && 直属上级of(await 读组织(), id) === me.id) return me;
+  // 11-01 只认业务角色：上级不能停用总管理（原来看账号 ADMIN）；管理员 admin 只读，当了上级也不能办
+  const 有人 = typeof id === "string" && id ? await prisma.user.count({ where: { id } }) : 0;
+  if (有人 && org && !是总管理({ id, role: "" }, org) && !只读角色(me, org) && (await 规则开着("按组织看客户")) && 直属上级of(await 读组织(), id) === me.id) return me;
   throw new Error("FORBIDDEN");
 }
 
@@ -710,7 +719,8 @@ async function 能改本机设置() {
   await requireUser();
   return requireAdmin();
 }
-const 本机说了算 = (role: string) => role === "ADMIN";
+/** 本机的口子（MCP 令牌、导入让 AI 认列）：同 能改设置（企业版 = 总管理，管理员 admin 只读不给令牌） */
+const 本机说了算 = (me: { id: string; role: string }) => 能改设置(me);
 
 /**
  * 保存 AI 接入配置。只有管理员能改；日志只记"改了"，不记任何值——
@@ -829,7 +839,7 @@ export async function 查MCP接入(): Promise<{
 }> {
   const me = await requireUser();
   const 可用 = !multiTenant();
-  if (!可用 || !本机说了算(me.role)) return { 可用: false, 已开: false, 地址: "", 令牌: null };
+  if (!可用 || !(await 本机说了算(me))) return { 可用: false, 已开: false, 地址: "", 令牌: null };
   const t = await 读令牌();
   return { 可用: true, 已开: Boolean(t), 地址: MCP地址(), 令牌: t?.token ?? null };
 }
@@ -837,7 +847,7 @@ export async function 查MCP接入(): Promise<{
 export async function 开启MCP(): Promise<{ ok: true; 令牌: string; 地址: string } | { ok: false; error: string }> {
   const me = await requireUser();
   if (multiTenant()) return { ok: false, error: "托管版不提供 MCP 接口" };
-  if (!本机说了算(me.role)) return { ok: false, error: "只有管理员能开这个口子" };
+  if (!(await 本机说了算(me))) return { ok: false, error: "只有管理员能开这个口子" };
   const t = await 生成令牌(me.id);
   await recordAudit({ user: me, action: "update", entity: "Setting", entityId: "mcpToken", summary: "生成了 MCP 接入令牌（旧的同时作废）" });
   return { ok: true, 令牌: t.token, 地址: MCP地址() };
@@ -845,7 +855,7 @@ export async function 开启MCP(): Promise<{ ok: true; 令牌: string; 地址: s
 
 export async function 关闭MCP(): Promise<{ ok: boolean }> {
   const me = await requireUser();
-  if (multiTenant() || !本机说了算(me.role)) return { ok: false };
+  if (multiTenant() || !(await 本机说了算(me))) return { ok: false };
   await 撤销令牌();
   await recordAudit({ user: me, action: "update", entity: "Setting", entityId: "mcpToken", summary: "关掉了 MCP 接入（令牌已撤销）" });
   return { ok: true };
@@ -860,13 +870,13 @@ export async function 关闭MCP(): Promise<{ ok: boolean }> {
  */
 export async function 查自动判断(): Promise<{ 可用: boolean; 已开: boolean }> {
   const me = await requireUser();
-  if (!判断可用() || !本机说了算(me.role)) return { 可用: false, 已开: false };
+  if (!判断可用() || !(await 本机说了算(me))) return { 可用: false, 已开: false };
   return { 可用: true, 已开: await 自动判断开着() };
 }
 
 export async function 设自动判断开关(开: boolean): Promise<void> {
   const me = await requireUser();
-  if (!本机说了算(me.role)) throw new Error("只有管理员能改");
+  if (!(await 本机说了算(me))) throw new Error("只有管理员能改");
   /*
     共享试用区一律不许改（2026-10-04，回归核对 H-037）：那儿的「管理员」是好几个团队共用的一套账号，
     开了它导入时就能把表头和前三行发给 AI——这个开关不能让别的团队替你打开

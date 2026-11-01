@@ -10,7 +10,7 @@ import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactN
 import { 只读上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Alert, Button, Card, Drawer, Dropdown, Input, Menu, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography } from "antd";
+import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 号码保护of } from "@/lib/enterprise/contact-guard";
@@ -68,7 +68,7 @@ import type { RecordProps, FollowUpRow, ContactRow } from "./types";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 截止说法, 已过期 } from "@/lib/deadline";
 import { 记下最近客户 } from "@/lib/last-customer";
-import { 金额, 合计文字 } from "@/lib/currency";
+import { 金额, 金额或空, 合计文字 } from "@/lib/currency";
 import { 公海标签 } from "@/lib/pool";
 import { 带走说法 } from "@/lib/carry-over";
 import { 滚法 } from "@/lib/reduced-motion";
@@ -138,7 +138,6 @@ const 单栏门槛 = 630;
 
 /** 企业版客户页头按钮开的框（10-31 改版 R6）→ 框的标题 */
 const 客户头部框叫法 = {
-  挑项目: "记一条沟通",
   转让: "转让",
   管理联系人: "管理联系人",
   关联客户: "关联客户",
@@ -213,7 +212,7 @@ export default function RecordView({
   /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
   const 摆法 = 客户页摆法(企业);
   const [建项目开着, set建项目开着] = useState(false);
-  /** 企业版页头具名按钮开的框（10-31 改版 R6）；「记一条沟通…」项目不止一个时开的是「挑项目」 */
+  /** 企业版页头具名按钮开的框（10-31 改版 R6） */
   const [头部框, set头部框] = useState<客户头部框 | null>(null);
   /** 「转让」框里挑中的人 */
   const [转给谁, set转给谁] = useState<string | undefined>();
@@ -221,6 +220,10 @@ export default function RecordView({
   const 去项目跟进 = 摆法.跟进去项目 && 跟进去处 !== null;
   /** 记跟进默认挂的项目：没结束、不在公海的，最近动过的排前面（page.tsx 按 updatedAt 倒序给） */
   const 在推项目 = 项目们?.filter((p) => !p.result && !p.pooledAt) ?? null;
+  /** 联系人一个号码都没留：企业版写「—」（11-01 会议：未填字段一律 —），别的版本照旧一句话 */
+  const 没留联系 = 企业
+    ? <div className="rec-contact-line"><span className="rec-contact-k">联系方式</span><span className="rec-field-empty" title="没留联系方式">{空值符}</span></div>
+    : <div className="rec-contact-line rec-field-empty">没留联系方式</div>;
   // 当主客户的项目上勾过的项目身份（P17）：摆在「项目」那一节每行的小字里
   const 主项目身份 = new Map((参与项目们 ?? []).filter((x) => x.主).map((x) => [x.projectId, x.身份]));
   const [资料全开, set资料全开] = useState(false);
@@ -509,28 +512,20 @@ export default function RecordView({
     setFollowOpen(true);
   }
 
-  /** 跳到项目详情的沟通区（ProjectDetail 沟通卡 id="project-follow"） */
-  function 去项目(id: string) {
-    set头部框(null);
-    router.push(`/projects/${encodeURIComponent(id)}#project-follow`);
-  }
   const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读);
   /**
-   * 「跟进」主按钮（P14 第 3 条）：只有一个项目直接跳过去；不止一个打开菜单挑；一个都没有就新建项目（自动带上这位）。
-   * 别的版本照旧就地记一笔
+   * 「新建沟通」（11-01 会议 §5：客户详情也不跳转，弹窗填）：企业版只用项目时，这位客户有没结束的项目（主客户的 + 关联进来的）
+   * 就开记跟进的弹窗，「关联项目」默认选最近动过的那个，保存走项目那条（记项目沟通Action，同项目详情）；
+   * 一个在推的项目都没有就开新开项目弹窗（自动带上这位）。别的版本照旧就地记一笔
    */
-  /**
-   * 主按钮的字跟着项目数走（10-30 交互改版 8.客户详情）：没项目「给他开项目」；一个「记一条沟通」直接去那个项目记；
-   * 不止一个「记一条沟通…」先挑项目
-   */
-  const 跟进按钮字 = !(跟进去处 ?? []).length ? (能建项目 ? "给他开项目" : "记一条沟通") : (跟进去处 ?? []).length === 1 ? "记一条沟通" : "记一条沟通…";
+  const 记沟通项目 = 去项目跟进
+    ? (跟进去处 ?? []).filter((p) => !p.结束).map((p) => ({ id: p.id, name: p.主 ? p.名 : `${p.名}（关联）` }))
+    : 在推项目;
+  const 跟进按钮字 = 去项目跟进 && !记沟通项目?.length && 能建项目 ? "给他开项目" : "记一条沟通";
   function 点跟进() {
-    if (!去项目跟进) return void openFollow(null);
-    const 去处 = 跟进去处 ?? [];
-    if (去处.length === 1) return 去项目(去处[0].id);
-    if (去处.length > 1) return set头部框("挑项目");
+    if (!去项目跟进 || 记沟通项目?.length) return void openFollow(null);
     if (能建项目) return set建项目开着(true);
-    message.info(`这位${b.customer}还没有项目：跟进记在项目里，请先新建项目`);
+    message.info(`这位${b.customer}还没有在推的项目：跟进记在项目里，请先新建项目`);
   }
 
   /**
@@ -992,20 +987,20 @@ export default function RecordView({
             </div>}
             {/* 企业版项目模式（定稿 P5 第 22、23、29、30 条）：简称、公司、级别 S/A/B/C、地址、官网、分配方式；
                 行业、职位、国家、WhatsApp、邮箱、微信、阿里 ID、旧等级、预计签约不摆（库里照留）。地址要分省市区，在「编辑全部」里改 */}
-            {摆法.新字段 && 摆(customer.shortName) && <InlineField customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
-            {摆(customer.school) && <InlineField customerId={customer.id} field="school" label={b.fields.school} value={customer.school} />}
-            {摆法.旧字段 && 摆(customer.major) && <InlineField customerId={customer.id} field="major" label={b.fields.major} value={customer.major} />}
-            {摆法.旧字段 && 摆(customer.grade) && <InlineField customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />}
+            {摆法.新字段 && 摆(customer.shortName) && <InlineField 空时横线={企业} customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
+            {摆(customer.school) && <InlineField 空时横线={企业} customerId={customer.id} field="school" label={b.fields.school} value={customer.school} />}
+            {摆法.旧字段 && 摆(customer.major) && <InlineField 空时横线={企业} customerId={customer.id} field="major" label={b.fields.major} value={customer.major} />}
+            {摆法.旧字段 && 摆(customer.grade) && <InlineField 空时横线={企业} customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />}
             {摆法.新字段 && (
               <>
-                {摆(级别值) && <InlineField customerId={customer.id} field="level" label="客户级别" value={级别值} kind="select" options={级别选项()} placeholder={空值符} 可清空 />}
+                {摆(级别值) && <InlineField 空时横线={企业} customerId={customer.id} field="level" label="客户级别" value={级别值} kind="select" options={级别选项()} placeholder={空值符} 可清空 />}
                 {摆(customer.customerType) && (
-                  <InlineField customerId={customer.id} field="customerType" label="客户类型" value={去空(customer.customerType)} kind="select"
+                  <InlineField 空时横线={企业} customerId={customer.id} field="customerType" label="客户类型" value={去空(customer.customerType)} kind="select"
                     options={[...new Set([...客户类型选项, ...(有值(customer.customerType) ? [customer.customerType] : [])])].map((x) => ({ value: x, label: x }))} placeholder={空值符} 可清空
                     释义={字典释义?.类型} />
                 )}
                 {摆(customer.customerAttr) && (
-                  <InlineField customerId={customer.id} field="customerAttr" label="客户属性" value={去空(customer.customerAttr)} kind="select"
+                  <InlineField 空时横线={企业} customerId={customer.id} field="customerAttr" label="客户属性" value={去空(customer.customerAttr)} kind="select"
                     options={[...new Set([...客户属性选项, ...(有值(customer.customerAttr) ? [customer.customerAttr] : [])])].map((x) => ({ value: x, label: x }))} placeholder={空值符} 可清空 />
                 )}
                 {/* 地址五格（P14 第 7 条）：前四格拼成一行「所在地区」，第五格「客户地址」（公司详细地址）单独一行；都点「编辑全部」改 */}
@@ -1021,23 +1016,23 @@ export default function RecordView({
                     <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{有值(customer.addrDetail) ? customer.addrDetail : <span className="rec-field-empty">{空值符}</span>}</div>
                   </div>
                 )}
-                {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
+                {摆(档?.website) && <InlineField 空时横线={企业} customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
                 {摆(customer.assignWay) && (
-                  <InlineField customerId={customer.id} field="assignWay" label="客户分配" value={去空(customer.assignWay)} kind="select"
+                  <InlineField 空时横线={企业} customerId={customer.id} field="assignWay" label="客户分配" value={去空(customer.assignWay)} kind="select"
                     options={[...new Set([...分配方式选项, ...(有值(customer.assignWay) ? [customer.assignWay] : [])])].map((x) => ({ value: x, label: x }))} placeholder={空值符} 可清空 />
                 )}
               </>
             )}
             {摆法.旧字段 && 摆档案组 && (
               <>
-                {摆(档?.country) && <InlineField customerId={customer.id} field="country" label="国家" value={档?.country ?? null} kind="combo" options={国家候选.flatMap((g) => g.国家).map((x) => ({ value: x, label: x }))} />}
-                {摆(档?.whatsapp) && <InlineField customerId={customer.id} field="whatsapp" label="WhatsApp" value={档?.whatsapp ?? null} />}
-                {摆(档?.email) && <InlineField customerId={customer.id} field="email" label="邮箱" value={档?.email ?? null} />}
-                {摆(档?.wechat) && <InlineField customerId={customer.id} field="wechat" label="微信" value={档?.wechat ?? null} />}
-                {摆(档?.alibabaId) && <InlineField customerId={customer.id} field="alibabaId" label="阿里 ID" value={档?.alibabaId ?? null} />}
-                {摆(档?.source) && <InlineField customerId={customer.id} field="source" label="来源" value={档?.source ?? null} kind="combo" options={b.sources.map((x) => ({ value: x, label: x }))} />}
-                {摆(档?.level) && <InlineField customerId={customer.id} field="level" label="客户等级" value={档?.level ?? null} kind="select" options={客户等级.map((x) => ({ value: x, label: 客户等级说明[x] }))} placeholder={空值符} 可清空 />}
-                {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
+                {摆(档?.country) && <InlineField 空时横线={企业} customerId={customer.id} field="country" label="国家" value={档?.country ?? null} kind="combo" options={国家候选.flatMap((g) => g.国家).map((x) => ({ value: x, label: x }))} />}
+                {摆(档?.whatsapp) && <InlineField 空时横线={企业} customerId={customer.id} field="whatsapp" label="WhatsApp" value={档?.whatsapp ?? null} />}
+                {摆(档?.email) && <InlineField 空时横线={企业} customerId={customer.id} field="email" label="邮箱" value={档?.email ?? null} />}
+                {摆(档?.wechat) && <InlineField 空时横线={企业} customerId={customer.id} field="wechat" label="微信" value={档?.wechat ?? null} />}
+                {摆(档?.alibabaId) && <InlineField 空时横线={企业} customerId={customer.id} field="alibabaId" label="阿里 ID" value={档?.alibabaId ?? null} />}
+                {摆(档?.source) && <InlineField 空时横线={企业} customerId={customer.id} field="source" label="来源" value={档?.source ?? null} kind="combo" options={b.sources.map((x) => ({ value: x, label: x }))} />}
+                {摆(档?.level) && <InlineField 空时横线={企业} customerId={customer.id} field="level" label="客户等级" value={档?.level ?? null} kind="select" options={客户等级.map((x) => ({ value: x, label: 客户等级说明[x] }))} placeholder={空值符} 可清空 />}
+                {摆(档?.website) && <InlineField 空时横线={企业} customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
               </>
             )}
             {/* 企业版：建档第一步选了阿里国际站ID（类型值、库里 kind 还叫旺旺）时，它只在联系方式子表里（客户表、档案都没有这一格），只读摆出来 */}
@@ -1053,11 +1048,11 @@ export default function RecordView({
             {!独自一人(users, customer.salesOwnerId) && !摆法.转让 && (
               <div className="rec-field" style={{ cursor: "default" }} title={去项目跟进 ? "要换负责人：点上方「转让」" : "要换负责人：在客户列表里勾上这位，点「转让」"}>
                 <div className="rec-field-k">销售负责人</div>
-                <div className="rec-field-v">{customer.salesOwnerName ?? <span className="rec-field-empty">未分配</span>}</div>
+                <div className="rec-field-v">{customer.salesOwnerName ?? (企业 ? <span className="rec-field-empty" title="未分配">{空值符}</span> : <span className="rec-field-empty">未分配</span>)}</div>
               </div>
             )}
             {!独自一人(users, customer.salesOwnerId) && 摆法.转让 && (
-              <InlineField customerId={customer.id} field="salesOwnerId" label="销售负责人" value={customer.salesOwnerId} kind="select" options={带上现任(users, customer.salesOwnerId, customer.salesOwnerName)} />
+              <InlineField 空时横线={企业} customerId={customer.id} field="salesOwnerId" label="销售负责人" value={customer.salesOwnerId} kind="select" options={带上现任(users, customer.salesOwnerId, customer.salesOwnerName)} />
             )}
             {/* 历史负责人（企业版 D-36）：换过负责人才摆；悬停看每次谁转的、从谁到谁、什么时候。停用的人名字照旧显示 */}
             {历史负责人们(换负责人记录, customer.salesOwnerName).length > 0 && (
@@ -1080,9 +1075,9 @@ export default function RecordView({
             )}
             {/* 渠道负责人默认跟着推荐链；这里改的是这一位的单独订正，清空即恢复按推荐链 */}
             {摆渠道负责人 && 摆(customer.channelOwnerId) && (
-              <InlineField customerId={customer.id} field="channelOwnerId" label="渠道负责人" value={customer.channelOwnerId} kind="select" options={带上现任(users, customer.channelOwnerId, customer.channelOwnerName)} placeholder="按推荐链自动确定" 可清空 />
+              <InlineField 空时横线={企业} customerId={customer.id} field="channelOwnerId" label="渠道负责人" value={customer.channelOwnerId} kind="select" options={带上现任(users, customer.channelOwnerId, customer.channelOwnerName)} placeholder="按推荐链自动确定" 可清空 />
             )}
-            {!外贸 && 摆法.旧字段 && 摆(customer.expectedSignAt) && <InlineField customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder={空值符} />}
+            {!外贸 && 摆法.旧字段 && 摆(customer.expectedSignAt) && <InlineField 空时横线={企业} customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder={空值符} />}
             {/* 企业版不摆签约金额（10-28 去遗留 A4） */}
             {!企业 && 摆(customer.signedAmount > 0 ? 1 : null) && (
               <div className="rec-field" style={{ cursor: "default" }}>
@@ -1090,7 +1085,7 @@ export default function RecordView({
                 <div className="rec-field-v">{customer.signedAmount > 0 ? 已签约文字 : <span className="rec-field-empty">{是订单 ? "还没有订单" : "未签约"}</span>}</div>
               </div>
             )}
-            {摆(customer.remark) && <InlineField customerId={customer.id} field="remark" label="备注" value={customer.remark} kind="textarea" placeholder="点击写备注" />}
+            {摆(customer.remark) && <InlineField 空时横线={企业} customerId={customer.id} field="remark" label="备注" value={customer.remark} kind="textarea" placeholder="点击写备注" />}
             {没填几项 > 0 && (
               <Button type="link" size="small" className="rec-sec-more" onClick={() => set资料全开(!资料全开)} aria-expanded={资料全开}>
                 {资料全开 ? "收起没填的" : `展开更多 ${没填几项} 项`}
@@ -1132,7 +1127,7 @@ export default function RecordView({
                           {m.kind === "phone" || m.kind === "landline" ? <号码链接 kind="tel" value={m.value} /> : m.kind === "email" ? <号码链接 kind="mailto" value={m.value} /> : m.value}
                         </div>
                       ))}
-                      {c.号码们.length === 0 && <div className="rec-contact-line rec-field-empty">没留联系方式</div>}
+                      {c.号码们.length === 0 && 没留联系}
                       {c.gender && <div className="rec-contact-line"><span className="rec-contact-k">性别</span>{c.gender}</div>}
                       {c.birthday && <div className="rec-contact-line"><span className="rec-contact-k">生日</span>{c.birthday}</div>}
                       {c.hobby && <div className="rec-contact-line"><span className="rec-contact-k">爱好</span>{c.hobby}</div>}
@@ -1143,7 +1138,7 @@ export default function RecordView({
                       {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><号码链接 kind="tel" value={c.phone} /></div>}
                       {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><号码链接 kind="mailto" value={c.email} /></div>}
                       {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span>{c.wechat}</div>}
-                      {!c.phone && !c.email && !c.wechat && <div className="rec-contact-line rec-field-empty">没留联系方式</div>}
+                      {!c.phone && !c.email && !c.wechat && 没留联系}
                     </>
                   )}
                   {/* 名片、相册分两格（待定 19）；没给分格的个数时照旧一格 */}
@@ -1192,7 +1187,7 @@ export default function RecordView({
                   <span className="rec-mini-sub">
                     <Tag style={{ margin: 0, borderRadius: 6 }}>{p.phase}</Tag>
                     <span className="rec-mini-m" title={p.result ?? p.node}>{p.result === "异常状态" ? `异常 · ${p.node}` : p.result ?? p.node}</span>
-                    <span className="rec-mini-m rec-mini-money">{金额(p.amount, p.currency)}</span>
+                    <span className="rec-mini-m rec-mini-money">{金额或空(p.amount, p.currency, true)}</span>
                     {主项目身份.get(p.id)?.length ? <span className="rec-mini-m" title={`项目身份：${主项目身份.get(p.id)!.join("、")}`}>{主项目身份.get(p.id)!.join("、")}</span> : null}
                   </span>
                 </RowLink>
@@ -1358,10 +1353,10 @@ export default function RecordView({
           {/* 企业版只用项目（P14 第 6 条）：只读的「沟通记录」，各项目的跟进汇总在这里，每条标出属于哪个项目 */}
           {/* 10-31 照图 04：模块标题放卡里、和别的模块标题一样大；原来那句「汇总各项目的沟通；点右上…」去掉——
               按钮已经挪到名字下面，每条也标了项目 */}
-          {/* 「新建沟通」从页头挪到这里（U-客户-03）：一个项目直接去、几个先挑、没有就开项目。窄屏 AI 收进抽屉时，入口也摆在这 */}
+          {/* 「新建沟通」从页头挪到这里（U-客户-03）：有项目开弹窗记、没有就开项目。窄屏 AI 收进抽屉时，入口也摆在这 */}
           {去项目跟进 ? (
             <>
-              {/* 「新建沟通」在卡头（U-客户-03）：一个项目直接去、几个先挑、没有就开项目。窄屏 AI 收进抽屉时，入口也摆在这 */}
+              {/* 「新建沟通」在卡头（U-客户-03）：有在推项目就开弹窗记（11-01 会议 §5，不跳转），没有就开新开项目弹窗。窄屏 AI 收进抽屉时，入口也摆在这 */}
               {摆法.沟通汇总 && 节("沟通记录", `${history.rows.length}${history.hasMore ? "+" : ""}`, (
                 <Space size={8}>
                   {aiEnabled && AI在抽屉里 && (
@@ -1370,7 +1365,7 @@ export default function RecordView({
                     </Button>
                   )}
                   <Button size="small" icon={<PlusOutlined />} onClick={点跟进}>
-                    新建沟通{(跟进去处 ?? []).length > 1 ? "…" : ""}
+                    新建沟通
                   </Button>
                 </Space>
               ), <div className="proj-mod-body">{筛选条}{时间线}</div>)}
@@ -1457,7 +1452,7 @@ export default function RecordView({
         完成了计划={(p, 已完成) => void 完成计划(p, `跟进已记录，计划「${p.subject}」一并完成`, 已完成)}
         contacts={contacts}
         opportunities={项目们 ? [] : opportunities}
-        projects={在推项目}
+        projects={记沟通项目}
         aiEnabled={aiEnabled}
         只读={只读}
       />
@@ -1515,26 +1510,7 @@ export default function RecordView({
         }}
       />
       {头部框 && (
-        <Modal open title={`${客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "挑项目" || 头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
-          {头部框 === "挑项目" && (
-            <div className="proj-modal-sec">
-              <div className="rec-acts-hint">记到哪个项目</div>
-              <Menu
-                className="proj-modal-menu"
-                selectable={false}
-                items={(跟进去处 ?? []).map((p) => ({
-                  key: p.id,
-                  label: (
-                    <span className="rec-go">
-                      <span className="rec-go-name" title={p.名}>{p.名}</span>
-                      {(!p.主 || p.说明) && <span className="rec-go-note">{[!p.主 && "关联", p.说明].filter(Boolean).join(" · ")}</span>}
-                    </span>
-                  ),
-                }))}
-                onClick={({ key }) => 去项目(key)}
-              />
-            </div>
-          )}
+        <Modal open title={`${客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
           {头部框 === "转让" && (
             <div className="proj-modal-sec">
               <Select

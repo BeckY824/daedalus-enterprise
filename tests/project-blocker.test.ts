@@ -70,6 +70,12 @@ describe("企业版卡点", () => {
     expect(r.id).toBeTruthy();
     return r as { ok: true; id: string; code: string; projectId: string };
   }
+  /** 组员发的卡点（老数据：11-01 PR-D 起组员只能看，发不了；这里先由负责人发、再把创建人改成组员） */
+  async function 组员发的(pid = 项目) {
+    const b = await 发(销售, 卡, now, pid);
+    await prisma.entBlocker.update({ where: { id: b.id }, data: { creatorId: 组员.id } });
+    return b;
+  }
   const 行 = (id: string) => prisma.entBlocker.findUniqueOrThrow({ where: { id } });
   const 认领行们 = (blockerId: string) => prisma.entBlockerClaim.findMany({ where: { blockerId }, orderBy: { createdAt: "asc" } });
   const 流转 = (blockerId: string) => prisma.entBlockerLog.findMany({ where: { blockerId }, orderBy: { at: "asc" } });
@@ -195,23 +201,25 @@ describe("企业版卡点", () => {
       data: { code: "BLK20261101999", projectId: 项目, followUpId: await 沟通(), customerId: 客户, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "价格", description: "老数据", dueDays: 3, dueAt: d1, status: "待接受", creatorId: 销售.id },
     });
     expect((await 发(销售, 卡, d1)).code).toBe("BLK-20261101-001");
-    expect((await 发(组员, 卡, d1)).code).toBe("BLK-20261101-002");
+    expect((await 发(销售, 卡, d1)).code).toBe("BLK-20261101-002");
     expect((await 发(销售, 卡, d1)).code).toBe("BLK-20261101-003");
     expect((await 发(销售, 卡, d2)).code).toBe("BLK-20261102-001");
     expect(await prisma.entBlocker.count({ where: { code: "BLK20261101999" } })).toBe(1);
   });
 
-  it("发布：要从项目沟通来；负责人、组员、负责人的直属上级、总管理员能发，无关的人、虚线上级不能；标题没填取描述前 20 字", async () => {
+  it("发布：要从项目沟通来；只有负责人（销售）能发；总管理员、直属上级、虚线上级、组员、无关的人不能（C2：只能看、转让）；标题没填取描述前 20 字", async () => {
     expect(await 发布卡点(销售, "nope", 卡)).toMatchObject({ ok: false, error: expect.stringContaining("沟通") });
     const f = await 沟通();
     expect(await 发布卡点(散, f, 卡)).toMatchObject({ ok: false });
     expect(await 发布卡点(虚, f, 卡)).toMatchObject({ ok: false });
-    expect(await 能发卡点(组员, 项目)).toBe(true);
-    expect(await 能发卡点(组长, 项目)).toBe(true);
-    expect(await 能发卡点(老板, 项目)).toBe(true);
+    for (const p of [组长, 老板, 组员]) expect(await 发布卡点(p, f, 卡), p.id).toMatchObject({ ok: false, error: expect.stringContaining("只能看") });
+    expect(await 能发卡点(销售, 项目)).toBe(true);
+    expect(await 能发卡点(组员, 项目)).toBe(false);
+    expect(await 能发卡点(组长, 项目)).toBe(false);
+    expect(await 能发卡点(老板, 项目)).toBe(false);
     expect(await 能发卡点(散, 项目)).toBe(false);
     expect(await 发布卡点(销售, f, { description: "" })).toMatchObject({ ok: false, error: "写一句卡在哪" });
-    const r = await 发布卡点(组长, f, { description: "一二三四五六七八九十一二三四五六七八九十多出来的字" }, now);
+    const r = await 发布卡点(销售, f, { description: "一二三四五六七八九十一二三四五六七八九十多出来的字" }, now);
     expect(r.ok).toBe(true);
     const row = await 行(r.id!);
     expect(row.title).toBe("一二三四五六七八九十一二三四五六七八九十");
@@ -274,12 +282,14 @@ describe("企业版卡点", () => {
       expect(卡点权限of(["sales", "admin"], 停)).toEqual({ 开: true, 全部: false });
     });
 
-    it("项目负责人的直属上级看得到（不在公海时）；进公海后负责人、负责人上级都看不到", async () => {
+    it("项目负责人的直属上级看得到（不在公海时）；创建人的上级不跟着看；进公海后负责人、负责人上级都看不到", async () => {
       const 散的项目 = (await prisma.project.create({ data: { name: "四期", customerId: 客户, ownerId: 散.id, creatorId: 散.id } })).id;
       const b = await 发(散, 卡, now, 散的项目);
       // 创建人换成组员：散主管 只剩「负责人的直属上级」这一条线
       await prisma.entBlocker.update({ where: { id: b.id }, data: { creatorId: 组员.id } });
-      for (const p of [散主管, 散, 组员, 组长]) expect((await 项目的卡点(p, 散的项目)).map((x) => x.id), p.id).toEqual([b.id]);
+      for (const p of [散主管, 散, 组员]) expect((await 项目的卡点(p, 散的项目)).map((x) => x.id), p.id).toEqual([b.id]);
+      // 创建人（组员）的上级不凭创建人看：上级看卡点只按项目负责人（同项目列表负责人范围，11-01 PR-D）
+      expect(await 项目的卡点(组长, 散的项目)).toEqual([]);
       expect((await 卡点看板(散主管)).栏.待接受.map((x) => x.id)).toEqual([b.id]);
       expect(await 项目的卡点(虚, 散的项目)).toEqual([]);
       expect(await 认领卡点(散主管, b.id)).toMatchObject({ ok: true });
@@ -289,9 +299,9 @@ describe("企业版卡点", () => {
       expect(await 项目的卡点(散主管, 散的项目)).toEqual([]);
       expect(await 项目的卡点(散, 散的项目)).toEqual([]);
       expect(await 卡点看板(散主管).then((d) => [...d.栏.待接受, ...d.栏.处理中])).toEqual([]);
-      // 创建人、创建人直属上级照旧
+      // 创建人照旧看得到，创建人的上级还是看不到
       expect((await 项目的卡点(组员, 散的项目)).map((x) => x.id)).toEqual([b.id]);
-      expect((await 项目的卡点(组长, 散的项目)).map((x) => x.id)).toEqual([b.id]);
+      expect(await 项目的卡点(组长, 散的项目)).toEqual([]);
     });
 
     it("上级链（11-01 复盘范围）：间接上级、虚线上级、虚线下属的实线下属都看得到，和项目列表的组织范围一致；进公海后不凭负责人这条线看", async () => {
@@ -321,13 +331,14 @@ describe("企业版卡点", () => {
       expect(await 认领卡点(大主管, b.id)).toMatchObject({ ok: true });
       expect(await 认领卡点(虚上, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
 
-      // 第二条：创建人换成别组的人，只剩负责人这条线；进公海后上级们（实线、虚线）都看不到，创建人的上级照旧
+      // 第二条：创建人换成别组的人，只剩负责人这条线；创建人的上级不跟着看；进公海后上级们（实线、虚线）都看不到，创建人本人照旧
       const b2 = await 发();
       await prisma.entBlocker.update({ where: { id: b2.id }, data: { creatorId: 散.id } });
-      for (const p of [大主管, 虚2, 散主管]) expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).toContain(b2.id);
+      for (const p of [大主管, 虚2, 散]) expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).toContain(b2.id);
+      expect((await 项目的卡点(散主管, 项目)).map((x) => x.id)).not.toContain(b2.id);
       await prisma.project.update({ where: { id: 项目 }, data: { pooledAt: new Date() } });
-      for (const p of [大主管, 组长, 虚, 虚2]) expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).not.toContain(b2.id);
-      expect((await 项目的卡点(散主管, 项目)).map((x) => x.id)).toEqual([b2.id]);
+      for (const p of [大主管, 组长, 虚, 虚2, 散主管]) expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).not.toContain(b2.id);
+      expect((await 项目的卡点(散, 项目)).map((x) => x.id)).toEqual([b2.id]);
       // 大主管 认领过的那条照样凭认领行看得到
       expect((await 项目的卡点(大主管, 项目)).map((x) => x.id)).toContain(b.id);
     });
@@ -384,7 +395,7 @@ describe("企业版卡点", () => {
     it("复盘页卡点列表和项目详情走同一个可见规矩：只看自己的人，看板里的卡点 = 各项目详情里的并起来；看不到的认领也是不在了", async () => {
       const 散的项目 = (await prisma.project.create({ data: { name: "五期", customerId: 客户, ownerId: 散.id, creatorId: 散.id } })).id;
       const 公海项目 = (await prisma.project.create({ data: { name: "六期", customerId: 客户, ownerId: 组员.id, creatorId: 组员.id } })).id;
-      const 们 = [await 发(), await 发(组员), await 发(散, 卡, now, 散的项目), await 发(组员, 卡, now, 公海项目)];
+      const 们 = [await 发(), await 组员发的(), await 发(散, 卡, now, 散的项目), await 发(组员, 卡, now, 公海项目)];
       await 认领卡点(散主管, 们[2].id);
       await prisma.entBlocker.update({ where: { id: 们[3].id }, data: { creatorId: 老板.id } });
       await prisma.project.update({ where: { id: 公海项目 }, data: { pooledAt: new Date() } });
@@ -483,7 +494,7 @@ describe("企业版卡点", () => {
 
     it("进公海：认领行原样留着；历史负责人凭认领行、创建人都看不到（C-01），总管理员和组员照看；从公海领走 → 认领行给领走的人", async () => {
       const 甲 = await 发(); // 销售发的
-      const 乙 = await 发(组员); // 组员发的，销售认领
+      const 乙 = await 组员发的(); // 组员发的，销售认领
       await 认领卡点(销售, 甲.id);
       await 认领卡点(销售, 乙.id);
       const 两条 = [甲.id, 乙.id].sort();
@@ -530,10 +541,11 @@ describe("企业版卡点", () => {
       const 乙 = await 发();
       await 认领卡点(组员, 甲.id);
       await 认领卡点(销售, 乙.id);
-      expect(await 改项目(销售, 项目, { name: "一期", ownerId: 组长.id })).toMatchObject({ ok: true });
+      // 换负责人 = 转让：负责人的上级来转（11-01 PR-D：负责人本人不能自己转）
+      expect(await 改项目(组长, 项目, { name: "一期", ownerId: 组长.id })).toMatchObject({ ok: true });
       expect(await 谁认领(乙.id)).toEqual([组长.id]);
       expect(await 谁认领(甲.id)).toEqual([组员.id]); // 别人的不动
-      expect((await 流转(乙.id)).at(-1)).toMatchObject({ action: "takeover", userId: 销售.id, fromUserId: 销售.id, toUserId: 组长.id, note: 转让接手理由 });
+      expect((await 流转(乙.id)).at(-1)).toMatchObject({ action: "takeover", userId: 组长.id, fromUserId: 销售.id, toUserId: 组长.id, note: 转让接手理由 });
 
       const m = await prisma.projectMember.findFirstOrThrow({ where: { projectId: 项目, userId: 组员.id } });
       expect(await 移出组员(组长, m.id)).toEqual({ ok: true });

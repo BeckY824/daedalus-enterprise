@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * 企业版「交接中」（2026-10-26，测试清单 D10）：接手人确认 / 拒收，发起人或管理员撤回，客户页顶上列出等确认的交接。
+ * 企业版「交接中」（2026-10-26，测试清单 D10）：接手人确认 / 拒收，发起人或总管理撤回，客户页顶上列出等确认的交接。
  * 发起见 settings/actions.ts deactivateUser（离职）和 customers/actions.ts assignSalesOwner（转让），规矩见 lib/enterprise/handover-db.ts。
  * 不是企业版一律什么都不做：列表回空，确认 / 撤回 / 拒收回错
  */
@@ -17,7 +17,7 @@ import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接卡点 } from "@/lib/project/blocker";
 import { 带走并记下 } from "@/lib/carry-over-db";
-import { 待确认, 了结, 读ids, type 交接种类 } from "@/lib/enterprise/handover-db";
+import { 待确认, 了结, 读ids, 能撤回别人的交接, type 交接种类 } from "@/lib/enterprise/handover-db";
 import { getBusiness } from "@/lib/business";
 
 export type 交接行 = {
@@ -55,7 +55,8 @@ function 读个数(s: string): Record<string, number> {
 export async function 待确认的交接(): Promise<{ 等我确认: 交接行[]; 我发起的: 交接行[] }> {
   const me = await requireUser();
   if (!企业版()) return { 等我确认: [], 我发起的: [] };
-  const 管 = me.role === "ADMIN";
+  // 看全部还没确认的：总管理（11-01 只认业务角色，同 能撤回别人的交接）
+  const 管 = await 能撤回别人的交接(me);
   // 看全部：交接里的客户还不归接手人，限定着查他一个名字都拿不到
   return 看全部(async () => {
     const 行 = await prisma.entHandover.findMany({
@@ -151,10 +152,11 @@ export async function 确认交接(id: string): Promise<结果> {
   return { ok: true, 客户: 换.length };
 }
 
-/** 发起人或管理员撤回：什么都不转，数据留在原负责人名下。离职的成员仍是停用的（要换接手人就再办一次离职，或恢复成员） */
+/** 发起人或总管理撤回：什么都不转，数据留在原负责人名下。离职的成员仍是停用的（要换接手人就再办一次离职，或恢复成员） */
 export async function 撤回交接(id: string): Promise<结果> {
   const me = await requireUser();
-  return 了结一笔(me, id, "已撤回", (h) => h.byUserId === me.id || me.role === "ADMIN", "只有发起人或管理员能撤回");
+  const 别人的也能撤 = await 能撤回别人的交接(me);
+  return 了结一笔(me, id, "已撤回", (h) => h.byUserId === me.id || 别人的也能撤, "只有发起人或总管理能撤回");
 }
 
 /** 接手人拒收：同撤回，数据留在原负责人名下，发起人看操作日志知道被拒了 */

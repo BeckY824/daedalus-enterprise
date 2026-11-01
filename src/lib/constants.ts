@@ -169,8 +169,7 @@ export const ROLES = [
  */
 export const 可担任负责人 = { active: true, role: { not: "ADMIN" } };
 
-/** 能管全队客户的：老板 / 管理员（ADMIN）和业务主管（MANAGER，2026-10-20 团队版加的一档）——指派公海、放回别人的客户、处理重复 */
-export const 管全队客户 = (role?: string | null) => role === "ADMIN" || role === "MANAGER";
+/* 原「管全队客户」（账号 ADMIN / MANAGER）11-01 删掉：企业版只认业务角色，改用 lib/enterprise/permissions.ts 能管公海 */
 
 /* ---------- 招生业务 ---------- */
 

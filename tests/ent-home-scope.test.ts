@@ -2,9 +2,9 @@
  * 企业版首页数据范围按角色自查（U-首页-01 / A-19，10-31）：首页四张卡数谁的、点卡进项目页列谁的，两边同一圈。
  *   - 业务员：只自己负责的
  *   - 销售管理：本部门和下级部门的人（没指定直属上级的按部门往上找到他）+ 自己；别的部门不算
- *   - 老板（账号 ADMIN）、总管理员：全部
- *   - 市场成员：自己负责的 + 自己建的（负责人是谁都算，M-角色-03）
- *   - 市场管理：任一市场成员建的或负责的（M-角色-04）
+ *   - 管理员、总管理：全部（只认业务角色，账号 ADMIN 不算数）
+ *   - 市场成员 / 市场管理：和别人一样按负责人数（自己 + 下属）；市场建给别人的项目在项目列表里只读能看，不进首页卡
+ *   - 没设业务角色：0
  * 「按组织看客户」开没开，首页这一圈都一样。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -54,7 +54,8 @@ describe("首页数据范围按角色", () => {
     const 销售一组 = (await prisma.entDept.create({ data: { name: "销售一组", parentId: 销售一部 } })).id;
     const 销售二部 = (await prisma.entDept.create({ data: { name: "销售二部" } })).id;
     const 市场部 = (await prisma.entDept.create({ data: { name: "市场运营部" } })).id;
-    await 建人("老板", "ADMIN");
+    await 建人("老板", "ADMIN", { bizRole: "admin" });
+    await 建人("没角色", "SALES");
     await 建人("总管", "SALES", { bizRole: "director" });
     await 建人("销售经理", "SALES", { deptId: 销售一部, bizRole: "sales_mgr" });
     await 建人("业务员甲", "SALES", { deptId: 销售一部 });
@@ -62,6 +63,8 @@ describe("首页数据范围按角色", () => {
     await 建人("外部门", "SALES", { deptId: 销售二部 });
     await 建人("市场经理", "SALES", { deptId: 市场部, bizRole: "marketing_mgr" });
     await 建人("市场员", "SALES", { deptId: 市场部 });
+    // 部门往上只自动找销售管理；市场这边的上级要显式指定
+    await prisma.entMember.update({ where: { userId: 人["市场员"].id }, data: { managerId: 人["市场经理"].id } });
     await 建项目("老板的", "老板");
     await 建项目("经理的", "销售经理");
     await 建项目("甲的", "业务员甲");
@@ -85,8 +88,11 @@ describe("首页数据范围按角色", () => {
     业务员甲: ["甲的", "市场建给甲"].sort(),
     业务员乙: ["乙的"],
     外部门: ["外部门的"],
-    市场员: ["市场建给甲", "市场自己的"].sort(),
-    市场经理: ["市场经理的", "市场建给甲", "市场自己的"].sort(),
+    // 首页卡只按负责人数（和复盘同一圈）：市场自己建、负责人是别人的项目不算进卡，项目列表照旧能只读看到
+    市场员: ["市场自己的"],
+    市场经理: ["市场经理的", "市场自己的"].sort(),
+    // 没设业务角色 = 没权限：卡上 0
+    没角色: [],
   };
 
   for (const 开 of [false, true]) {
@@ -103,9 +109,9 @@ describe("首页数据范围按角色", () => {
   it("市场部门另设了：按设的认，名字带「市场」的那个部门不再算", async () => {
     const 别的部门 = (await prisma.entDept.create({ data: { name: "渠道部" } })).id;
     await setSetting("enterprise.market_depts", [别的部门]);
-    // 市场员不再是市场成员：只数自己负责的
+    // 首页卡只按负责人数：市场部门设成哪个都不影响
     expect((await 看("市场员")).行).toEqual(["市场自己的"]);
-    // 市场经理（市场管理）这时市场成员一个都没有：只数自己负责的
-    expect((await 看("市场经理")).行).toEqual(["市场经理的"]);
+    // 市场经理按组织架构是市场员的上级：自己 + 下属负责的
+    expect((await 看("市场经理")).行).toEqual(["市场经理的", "市场自己的"].sort());
   });
 });

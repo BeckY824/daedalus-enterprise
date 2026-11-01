@@ -8,7 +8,7 @@ import {
 
 /**
  * 复盘页「沟通」页签取数（P7 U-复盘-01；「卡点」11-01 起是三栏看板，取数在 lib/project/blocker.ts 卡点看板）。条件在 review-tabs.ts，这里只查库、排好、切一页。
- * 谁 = 看板的人 给的那一圈（只看了某个人 = [他]；老板、总管理员 = undefined）。
+ * 谁 = 看板的人 给的那一圈（只看了某个人 = [他]；总管理、管理员 = undefined）。
  */
 
 const 名 = (u: { name: string | null; email: string } | null | undefined) => (u ? u.name || u.email : "—");

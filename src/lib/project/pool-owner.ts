@@ -9,7 +9,8 @@ import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海规则, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 看全部 } from "@/lib/team-scope";
-import { 管全队客户 } from "@/lib/constants";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能看全部, type 谁 } from "@/lib/enterprise/permissions";
 
 /** 项目在公海里时 ownerId 写这个 */
 export const 公海无负责人 = "";
@@ -109,10 +110,18 @@ export async function 进公海关待办(
 }
 
 /**
- * 这个项目在公海里、我是它的历史负责人、回避开着、我又不是老板 / 主管 → 挡（对它没有任何权限，C-01）。
+ * 回避豁免：只认「能看全部」的业务角色（总管理、管理员），账号 ADMIN / MANAGER 不豁免（11-01 权限只认业务角色，同 PR-E 口径）。
+ * 详情页、列表、统一公海、客户沟通流判「历史负责人要不要回避」都调这个
+ */
+export async function 回避豁免(me: 谁): Promise<boolean> {
+  return 能看全部(me, await 权限组织());
+}
+
+/**
+ * 这个项目在公海里、我是它的历史负责人、回避开着、我又不是总管理 / 管理员 → 挡（对它没有任何权限，C-01）。
  * 详情页、附件接口等按单个项目认权限的地方用；列表用 我回避的公海项目 一次剔
  */
-export async function 原负责人挡着(db: 读痕, me: { id: string; role?: string | null }, p: { id: string; pooledAt?: Date | null }): Promise<boolean> {
-  if (!p.pooledAt || !原负责人回避() || 管全队客户(me.role)) return false;
+export async function 原负责人挡着(db: 读痕, me: 谁, p: { id: string; pooledAt?: Date | null }): Promise<boolean> {
+  if (!p.pooledAt || !原负责人回避() || (await 回避豁免(me))) return false;
   return (await 历史负责人(db, p.id)) === me.id;
 }

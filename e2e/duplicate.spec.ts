@@ -252,8 +252,9 @@ test("填了大写的登录名要归一成小写，否则会出现「填的名�
   await expect(弹窗).toBeHidden();
 
   // 列表里存下来的必须already是小写——登录时是按小写比对的。
-  // 10-27 起登录名是姓名下面那行小字（「登录名 · 职位」），不再单占一格；正则区分大小写
-  await expect(page.locator(".member-who-sub", { hasText: new RegExp(`^daxie${戳}( · |$)`) })).toBeVisible();
+  // 11-01 起姓名一列只放姓名，登录名到编辑弹窗里看
+  await page.getByRole("button", { name: `编辑 大写${戳}` }).click();
+  await expect(page.getByRole("dialog", { name: `编辑成员 · 大写${戳}` }).getByLabel("登录用户名")).toHaveValue(`daxie${戳}`);
 });
 
 /**

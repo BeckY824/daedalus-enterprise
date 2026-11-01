@@ -65,7 +65,7 @@ const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场
 /**
  * 设置 → 组织架构（企业版，2026-10-24）：部门树、每个人的部门 / 角色 / 业务线 / 直属上级 / 虚线上级。
  * 直属上级不填 = 按部门往上找销售管理；虚线上级只能看他的客户，不能改、不能转。
- * 老板和总管理员能改，其他人只看。
+ * 只有总管理（director）能改（11-01），管理员和其他人只看。
  */
 export default function OrgTab({ value }: { value: 组织架构 }) {
   const router = useRouter();
@@ -208,15 +208,14 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 市场部门现在 = 市场部门们(new Map(value.部门.map((d) => [d.id, d])), value.市场部门 ?? null);
   const 市场成员 = value.成员.filter((m) => (m.deptId && 市场部门现在.has(m.deptId)) || 单设.includes(m.id)).map((m) => m.name);
   const 人选项 = value.成员.map((m) => ({ value: m.id, label: m.name }));
-  const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>只有老板和总管理员能改</span>;
+  const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>只有总管理能改</span>;
 
   return (
     // minmax(0, 1fr)：不让 nowrap 的表格把整页撑宽，表格在各自卡片里横向滚动
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
-      {/* 通讯录同步放最上面：演示时找了半天，原来夹在权限表下面（10-27） */}
-      {能改 && <OrgSyncCard />}
-
-      <Card title="组织规则" extra={只看}>
+      {/* 组织规则单独一块放这一屏最上面（11-01 会议 §5「组织规则放设置首屏」）；通讯录同步挪到它下面、说明收起来（OrgSyncCard）。
+          10-27 把通讯录同步提到最上面是因为它夹在权限表下面找不到，现在仍在权限表之前 */}
+      <Card title="组织规则" extra={只看} data-testid="org-rules">
         <p className="muted">每条规则单独开关，除了「{规则.市场复核.名}」都默认关着：关着时和团队版一样，按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         <div style={{ display: "grid", gap: 12 }}>
           {规则名们.map((名) => (
@@ -246,6 +245,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       </Card>
 
       {value.线索分配 && <LeadAssignCard rows={value.线索分配} 不限额={不设配额} />}
+
+      {能改 && <OrgSyncCard />}
 
       <Card title="字段权限" extra={字段权限挡 && <span style={{ color: "var(--text-muted)" }}>{字段权限挡}</span>}>
         <p className="muted">

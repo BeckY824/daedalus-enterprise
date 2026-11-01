@@ -1,11 +1,12 @@
 /**
  * 企业版「后台设置谁能改」（2026-10-26，清单 ② B2 第 6 条）：七样后台设置（10-26 加阶段规则）各由哪几类人改。
- * 10-29 一度加过第八样「录入渠道投入」，同日（P16）改成固定只给老板、总管理员、市场管理（channel-stats.ts 的 能录投入），不再在这里勾；
+ * 10-29 一度加过第八样「录入渠道投入」，同日（P16）改成固定只给总管理员、市场管理（channel-stats.ts 的 能录投入），不再在这里勾；
  * 原来存过的那一项 规整改权限 当不认识的项丢掉。
  *
  * 默认就是清单里的默认建议，对方逐行确认前先这么跑；定了在设置 → 组织架构 →「后台设置谁能改」里勾，
  * 存 Setting `enterprise.edit_perm`：{ 设置项: 能改的人[] }，没存的项 = 默认。
- * - 老板（账号管理员）每一项都能改，不受这张表管，免得把自己锁在外面。
+ * - 总管理员每一项都能改，不受这张表管，免得把自己锁在外面；勾了「不管设置」的总管理不算（11-01 C1）。
+ *   11-01 起账号管理员（老板）不再单独放行，只认业务角色。
  * - 「直属上级」「虚线上级」只对线索配额有意义：给自己的下属设。
  * 纯数据和纯函数，客户端组件也 import；读库的在 edit-perm.ts。
  */
@@ -31,7 +32,7 @@ export const 设置项们 = Object.keys(设置项) as 设置项名[];
 export type 改权限配置 = Partial<Record<设置项名, 能改的人[]>>;
 export const 改权限key = "enterprise.edit_perm";
 
-/** 存的、交来的配置都过一遍：不认识的项丢掉，每项只留这一项可选的人，按可选的顺序排；空数组 = 只有老板 */
+/** 存的、交来的配置都过一遍：不认识的项丢掉，每项只留这一项可选的人，按可选的顺序排；空数组 = 只有总管理员 */
 export function 规整改权限(x: unknown): 改权限配置 {
   const out: 改权限配置 = {};
   if (!x || typeof x !== "object") return out;
@@ -44,7 +45,7 @@ export function 规整改权限(x: unknown): 改权限配置 {
   return out;
 }
 
-/** 这一项现在由谁改（不含老板） */
+/** 这一项现在由谁改（总管理员总能改，表里有没有都一样） */
 export function 谁能改(配置: 改权限配置, 项: 设置项名): readonly 能改的人[] {
   return 配置[项] ?? 设置项[项].默认;
 }
@@ -54,22 +55,24 @@ export function 谁能改(配置: 改权限配置, 项: 设置项名): readonly 
  * 只管企业版：不是企业版的地方别调它，照原来的「只有老板」走。
  */
 export function 能改设置(org: 组织, 我: { id: string; role: string }, 项: 设置项名, 配置: 改权限配置, 目标?: string): boolean {
-  if (我.role === "ADMIN") return true;
+  const 类们 = 管理员类别们of(org, 我.id);
+  if (类们.has("总管理员")) return !org.成员.get(我.id)?.不管设置;
   const 谁 = 谁能改(配置, 项);
   // 兼几类管理员的（10-27 角色多选），哪一类在表里都算
-  if ([...管理员类别们of(org, 我.id)].some((类) => 谁.includes(类))) return true;
+  // 管理员（admin）只读（11-01）：表里就算存了这一类也不算；兼了管理员的，写入在限定层另外拦（team-scope 只读拦）
+  if ([...类们].some((类) => 类 !== "管理员" && 谁.includes(类))) return true;
   if (!目标) return false;
   return (谁.includes("直属上级") && 直属上级of(org, 目标) === 我.id) || (谁.includes("虚线上级") && 虚线上级of(org, 目标) === 我.id);
 }
 
-/** 「只有老板、销售管理、总管理员能改」这样的一句，界面和报错共用 */
+/** 「只有总管理员、销售管理能改」这样的一句，界面和报错共用 */
 export function 谁能改的话(配置: 改权限配置, 项: 设置项名): string {
-  return `只有${["老板", ...谁能改(配置, 项)].join("、")}能改`;
+  return `只有${["总管理员", ...谁能改(配置, 项).filter((x) => x !== "总管理员")].join("、")}能改`;
 }
 
 /**
  * 节点时限再按节点拆（10-27 批注）：「谁能改」表里有这一类人以后，销售管理只改潜客培育，市场管理改潜客培育 + 线索验证；
- * 总管理员和老板每个节点都能改，超时回收的开关也只有他们能动（开关管所有节点）
+ * 总管理员每个节点都能改，超时回收的开关也只有他们能动（开关管所有节点）
  */
 export const 时限可改节点: Readonly<Record<"销售管理" | "市场管理", readonly string[]>> = {
   销售管理: ["潜客培育"],
@@ -79,7 +82,6 @@ export type 时限范围 = "全部" | readonly string[];
 
 /** 我能改哪几个节点的时限："全部" = 每个节点都能改、能开关；[] = 一个都不能改 */
 export function 能改时限的节点(org: 组织, 我: { id: string; role: string }, 配置: 改权限配置): 时限范围 {
-  if (我.role === "ADMIN") return "全部";
   if (!能改设置(org, 我, "节点时限", 配置)) return [];
   const 类们 = 管理员类别们of(org, 我.id);
   if (类们.has("总管理员")) return "全部";
@@ -102,9 +104,9 @@ export function 挡时限改动(
   改: { 开?: unknown; 节点天数?: Record<string, unknown> | null; 起算日?: unknown } | null | undefined,
 ): string | null {
   if (范围 === "全部" || !改 || typeof 改 !== "object") return null;
-  if (改.开 !== undefined && 改.开 !== 现在.开) return "超时回收的开关只有老板、总管理员能动";
+  if (改.开 !== undefined && 改.开 !== 现在.开) return "超时回收的开关只有总管理员能动";
   // 起算日（10-31）：和开关一样只给全权的人；"" 和 null 都算「不设」
-  if (改.起算日 !== undefined && (改.起算日 || null) !== (现在.起算日 ?? null)) return "超时回收的起算日只有老板、总管理员能动";
+  if (改.起算日 !== undefined && (改.起算日 || null) !== (现在.起算日 ?? null)) return "超时回收的起算日只有总管理员能动";
   if (!改.节点天数 || typeof 改.节点天数 !== "object") return null;
   // 交来的整张表可能还带着旧节点名 key（改名前打开的页面）：两边都换成这套的新名再比
   const 交来 = 按本套名(改.节点天数, 企业版字典);
@@ -112,7 +114,7 @@ export function 挡时限改动(
   for (const n of new Set([...Object.keys(原有), ...Object.keys(交来)])) {
     if (范围.includes(n)) continue;
     if (天数值(原有[n]) !== 天数值(交来[n])) {
-      return 范围.length ? `你只能改${范围.map((x) => `「${x}」`).join("")}的时限，「${n}」由老板、总管理员改` : `「${n}」的时限你改不了`;
+      return 范围.length ? `你只能改${范围.map((x) => `「${x}」`).join("")}的时限，「${n}」由总管理员改` : `「${n}」的时限你改不了`;
     }
   }
   return null;

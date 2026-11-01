@@ -83,13 +83,15 @@ export type 项目详情 = {
   进公海: { 方式: 放回方式; 谁: string } | null;
   /** 服务端读的 企业版()：放回公海的说法跟着它走 */
   企业版: boolean;
+  /** 能删这个项目：企业版只有总管理（进回收站），别的版本 = 能改 */
+  能删?: boolean;
   /** 企业版组织规则里改过的出口叫法（设置 → 项目 → 阶段规则）；别的版本是空的 */
   出口叫法: 出口叫法改动;
   /** 企业版线索阶段：客户明确回复了的沟通有几条（0 = 推不过线索验证）；别的阶段、别的版本是 0 */
   有效沟通: number;
   /**
    * 企业版超时回收：nextStepAt 是最近一次沟通填的下一步时间（服务端排好的 YYYY-MM-DD）；回收日 = 哪天没人跟进就自动回公海（null = 不会）；
-   * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人、老板、主管、项目组成员，且不在公海（不是企业版照原来去客户页记）
+   * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人（11-01 起组员只能看），且不在公海（不是企业版照原来去客户页记）
    * nextStepText = 下一步做什么（10-29 起记沟通时自己写一句话，时间可空）；老数据只有时间没有这句，就只摆时间
    */
   nextStepAt: string | null; nextStepText?: string | null; 回收日: string | null;
@@ -125,6 +127,8 @@ export type 项目详情 = {
   不给推: string | null;
   /** 能改节点：能改的人 + 企业版负责人的直属上级（账号可能是 SALES）；只管节点这一块 */
   能改节点: boolean;
+  /** 能转让（换负责人）：企业版 = 总管理、负责人的实线上级（业务线对得上，lib/enterprise/permissions.ts 能转让项目）；负责人本人不能自己转 */
+  能转让?: boolean;
   balanceSettled: boolean; balanceSettledBy: string | null; balanceSettledAt: string | null;
   acceptancePassed: boolean; acceptancePassedBy: string | null; acceptancePassedAt: string | null;
   /** kind 不是 node 的行是换负责人（转让 / 放回公海 / 从公海领取），transfer 记从谁到谁；category 是进异常时选的类别 */
@@ -154,7 +158,6 @@ export type 项目详情 = {
 };
 
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
-const 验证叫法色: Record<string, string> = { 暂未验证: "default", 初验无效: "orange", 复核有效: "blue", 终验无效: "volcano", 有效线索: "green", 无效线索: "red" };
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 4.3em", whiteSpace: "nowrap" };
@@ -243,10 +246,13 @@ function 换人文字(l: 项目详情["logs"][number]): string {
 }
 
 /** 负责人那一行括号里：怎么进的公海 */
-/** 空着的字段（含导入时拿 "-" 占位的，用 有值 判）写「待填写X / 待选择X」（浅灰，和输入框占位同色）；只是显示，不存。0 算填了，由调用方用 !== null 判 */
-const 待填 = (名: string, 动 = "填写") => <span style={{ color: "var(--text-faint)" }}>待{动}{名}</span>;
-/** 这个进程配了必填、还没填的那几格写「占位确认」（10-31 用户：「未填且必填的地方…显示的是占位确认这四个字」）；别的空格照旧写待填写 / 待选择 */
-const 占位确认 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`必填：${名}，填齐后自动往前推`}>占位确认</span>;
+/**
+ * 空着的字段（含导入时拿 "-" 占位的，用 有值 判）一律写「—」（11-01 会议：未填的字段都用 — 代替，原来写「待填写X / 待选择X」）；
+ * 浅灰、悬停说是哪一格没填。只是显示，不存。0 算填了，由调用方用 !== null 判
+ */
+const 待填 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`未填：${名}`} data-empty={名}>{空值符}</span>;
+/** 这个进程配了必填、还没填的那几格：同样写「—」，悬停写「必填：X，填齐后自动往前推」（10-31 原来写「占位确认」四个字，11-01 会议改成一律 —） */
+const 占位确认 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`必填：${名}，填齐后自动往前推`} data-empty={名} data-required="">{空值符}</span>;
 
 /** 项目级别格（企业版 P11）：星 + 档名（「★★★☆ A 重点」）；没分级写「—」（11-01 没填的统一「—」），认不出的原样给 */
 function 级别格(v: string | null) {
@@ -390,7 +396,9 @@ export default function ProjectDetail({
   const 交付了 = 是交付(p.result);
   const 异常 = p.result === "异常状态";
   const 可改 = 能改 && !p.pooled;
-  const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : "只有项目负责人、老板或主管能改";
+  // 企业版 11-01：只有负责人能改内容，总管理、上级、组员都只能看
+  const 改不了话 = p.企业版 ? "只有项目负责人能改，其他人只能看" : "只有项目负责人、老板或主管能改";
+  const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : 改不了话;
   const 节点可改 = p.能改节点 && !p.pooled;
   const 节点不能改 = p.能改节点 ? (p.pooled ? 不能改 : undefined) : 不能改;
   // 企业版：线索阶段还没有客户明确回复的沟通，推不过「线索验证」（服务端 lib/project/stage-gates.ts 同一条）
@@ -402,7 +410,7 @@ export default function ProjectDetail({
   const 等复核文字 = p.线索验证?.待 === "市场复核" ? "等管理员复核" : p.线索验证?.待 === "总管理终判" ? "等管理员最终确认" : undefined;
   const 等复核 = !!等复核文字;
   // 「下一步」灰着的原因写在按钮下面（规则：灰按钮要写为什么），不靠悬停
-  const 动不了 = (节点可改 ? undefined : 节点不能改 ?? "只有项目负责人、老板或主管能改") ?? 等复核文字;
+  const 动不了 = (节点可改 ? undefined : 节点不能改 ?? 改不了话) ?? 等复核文字;
   // 往前推另外的关：直属上级才推 / 需求状态补全期（p.不给推）、线索验证缺有效沟通
   const 往前不了 = p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined);
   // 配了必填、不是老板主管：缺着必填不给往前推；填齐了（占位值不算）照样能推（M-节点-05/09）
@@ -563,8 +571,9 @@ export default function ProjectDetail({
 
   // 各张卡先摆成常量：企业版两栏、别的版本照原来一栏，摆法不同、卡是同一份
   /**
-   * 企业版节点卡阶段页签那一行右边的一组控件（M-节点-04 / U-项目-06）：左边线框「完成节点」+ ▼（终止进程、改到别的进程或结局），
+   * 企业版节点卡阶段页签那一行右边的一组控件（M-节点-04 / U-项目-06）：左边绿底白字「完成节点」+ ▼（终止进程），
    * 右边实心「新增沟通」（开记沟通的框，只记沟通、不动节点）。有结局的项目左边换成「改回进程」。
+   * 11-01 会议 §13：▼ 里「改到别的进程」去掉（服务端那条路不动，改回进程框照旧用）
    * 看的不是所在阶段、或推不了，按钮灰掉、悬停写原因（灰按钮收不到鼠标，提示挂在外面那层 span 上）
    */
   const 进程钮 = (不在当前: string | undefined) => {
@@ -572,7 +581,6 @@ export default function ProjectDetail({
     const 完成灰 = 不在当前 ?? 完成不了;
     const 菜单: NonNullable<MenuProps["items"]> = [
       ...(终止到 ? [{ key: "stop", danger: true, disabled: !!(不在当前 ?? 动不了), label: 两行("终止进程", 不在当前 ?? 动不了 ?? `落到「${结局叫法(终止到, 字典)}」`) }] : []),
-      ...(更多去处项.length ? [{ key: "more", disabled: !!不在当前, label: 两行("改到别的进程或结局…") }] : []),
     ];
     return (
       <>
@@ -580,10 +588,10 @@ export default function ProjectDetail({
           ? 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
           : (
             <Space.Compact>
-              {灰着(完成灰, <Button disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
+              {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
               {菜单.length > 0 && (
-                <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => (key === "stop" ? 开终止() : set头部框("推进")) }}>
-                  <Button icon={<DownOutlined />} aria-label="终止进程或改到别的进程" />
+                <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
+                  <Button className="proj-done-btn" icon={<DownOutlined />} aria-label="终止进程" />
                 </Dropdown>
               )}
             </Space.Compact>
@@ -692,7 +700,8 @@ export default function ProjectDetail({
         <div style={行样}>
           <span style={键样}>线索验证</span>
           <Button type="text" size="small" style={{ paddingInline: 4, marginInlineStart: -4, height: "auto" }} onClick={() => set验证开着(true)} aria-label={`线索验证：${p.线索验证.叫法}，点开查看和操作`} data-testid="lead-verify-row">
-            <Tag color={验证叫法色[p.线索验证.叫法]} style={{ marginInlineEnd: 4 }} data-testid="lead-verify-result">{p.线索验证.叫法}</Tag>
+            {/* 11-01 会议 §6：结果写成纯字、不套灰框（和下面各行的写法一致） */}
+            <span style={{ marginInlineEnd: 4 }} data-testid="lead-verify-result">{p.线索验证.叫法}</span>
             {p.线索验证.我能 && <span style={{ color: "var(--brand)" }}>去处理</span>}
             <RightOutlined aria-hidden style={{ fontSize: 10, color: "var(--text-muted)" }} />
           </Button>
@@ -708,27 +717,27 @@ export default function ProjectDetail({
       {p.企业版 && p.level !== undefined && (
         <div style={行样}><span style={键样}>级别</span>{级别格(p.level)}</div>
       )}
-      <div style={行样}><span style={键样}>金额</span>{p.必填?.还差.includes("金额") ? 占位确认("金额") : 金额(p.amount, p.currency)}</div>
+      <div style={行样}><span style={键样}>金额</span>{p.必填?.还差.includes("金额") ? 占位确认("金额") : p.amount ? 金额(p.amount, p.currency) : 待填("金额")}</div>
       {p.企业版 && p.成交钱 && (
         <>
           <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : 待填("定金金额")}</div>
           <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : 待填("合同金额")}</div>
           {p.项目新字段?.contractStatus && <div style={行样}><span style={键样}>合同状态</span><span>{p.项目新字段.contractStatus}</span></div>}
-          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : <span style={{ color: "var(--text-muted)" }}>没有</span>}</span></div>}
+          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span></div>}
           <div style={行样}><span style={键样}>需求描述</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(p.成交钱.dealDemand) ? p.成交钱.dealDemand : 待填("需求描述")}</span></div>
           {p.项目新字段 && "painPoints" in p.项目新字段 && (
             <div style={行样}><span style={键样}>痛点标注</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(p.项目新字段.painPoints) ? p.项目新字段.painPoints : (p.必填?.还差.includes("痛点标注") ? 占位确认("痛点标注") : 待填("痛点标注"))}</span></div>
           )}
         </>
       )}
-      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{有值(p.expectedDealAt) ? p.expectedDealAt : (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期", "选择"))}</div>}
+      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{有值(p.expectedDealAt) ? p.expectedDealAt : (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期"))}</div>}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
-        <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源", "选择")}</span></div>
+        <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源")}</span></div>
       )}
       {p.企业版 && p.所在地 && (
         <>
-          <div style={行样}><span style={键样}>区域</span>{项目区域(p.所在地) || 待填("区域", "选择")}</div>
+          <div style={行样}><span style={键样}>区域</span>{项目区域(p.所在地) || 待填("区域")}</div>
           {(拼地址(p.所在地) || p.所在地.location) && (
             <div style={行样}><span style={键样}>地址</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{[拼地址(p.所在地), p.所在地.location].filter(Boolean).join(" ")}</span></div>
           )}
@@ -798,7 +807,10 @@ export default function ProjectDetail({
             <div>
               <div>{l.kind !== "node" ? 换人文字(l) : l.from ? `${位置文字(l.from, 字典)} → ${位置文字(l.to, 字典)}` : `建档，落在 ${位置文字(l.to, 字典)}`}</div>
               {l.category && <div style={{ color: "var(--danger-text)" }}>异常类别：{l.category}</div>}
-              {l.kind === "node" && l.reason && l.reason !== 超时理由 && <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>}
+              {/* 企业版换节点清掉的下一步（db.ts 原下一步备注）单独一行淡色，不当原因 */}
+              {l.kind === "node" && l.reason && l.reason !== 超时理由 && (l.reason.startsWith("原下一步：")
+                ? <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>
+                : <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>)}
               {/* 换人那几行：企业版记的回收原因 / 分配方式（10-27）原样淡色显示；超时、停用上一行已经说了 */}
               {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>}
               <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
@@ -822,14 +834,15 @@ export default function ProjectDetail({
       {...(p.企业版 ? { title: `沟通（${沟通数字}）` } : { id: "project-follow", title: "沟通" })}
       extra={
         p.能记沟通 ? (
-          // 企业版：「记一条沟通」「AI 录入」回到这块卡头（11-01 页头只留转让、退回公海）；主按钮是节点卡上的「新增沟通」，这里线框
+          // 企业版：「新增沟通」「AI 录入」在这块卡头（11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗
           p.企业版 ? (
             <Space size={8}>
               {p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-              <Button size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条沟通</Button>
+              <Button size="small" disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新增沟通</Button>
             </Space>
           ) : <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
-        ) : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页{p.企业版 ? "看看" : "记一条"}</Link>
+          // 11-01 会议 §5：企业版删掉「去客户页看看」；别的版本照旧给「去客户页记一条」
+        ) : !p.企业版 && p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
       }
     >
       <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
@@ -924,7 +937,8 @@ export default function ProjectDetail({
     </>
   );
   // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
-  const 转给钮 = p.企业版 && 可改 && !独自一人(候选, p.ownerId) && (
+  // 11-01：转让按 能转让 给（总管理、上级能转不能改；负责人本人能改不能自己转），和 lib/project/db.ts 改项目 同一个判断
+  const 转给钮 = p.企业版 && !p.pooled && !!p.能转让 && !独自一人(候选, p.ownerId) && (
     <Button disabled={忙} onClick={() => { set转给谁(null); set转给框(true); }}>转让项目</Button>
   );
   const 放回问 = () => {
@@ -936,15 +950,20 @@ export default function ProjectDetail({
 
   // 企业版页头（11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」）：记一条沟通 / AI 录入回沟通卡头，发卡点回卡点卡头，
   // 关联 + 回关联卡，邀请回项目组卡，改分配回提成卡，项目画像、附件就在各自卡上改 / 传，线索判定一直在节点卡里。
-  // 公海里的项目这里是「领取」。企业版不摆「删除项目」（M-权限-10：项目是公司资产，服务端也一律拒）。
+  // 公海里的项目这里是「领取」。「删除项目」企业版只摆给总管理（QA #3，进回收站；服务端 删项目 也只放总管理），收在「更多」里。
   // ⌘N 点的是页头主按钮（领取），没有就点节点卡上的「新增沟通」（data-cmd-new，components/CommandBar.tsx）
-  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海) && (
+  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删) && (
     <Space wrap>
       {领取钮}
       {转给钮}
       {p.能放公海 && (等复核
         ? <Tooltip title={`${等复核文字}，暂时不能退回`}><Button disabled>退回公海</Button></Tooltip>
         : <Button disabled={忙} onClick={放回问}>退回公海</Button>)}
+      {p.能删 && (
+        <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: [{ key: "delete", danger: true, label: "删除项目" }], onClick: () => 删问() }}>
+          <Button icon={<MoreOutlined />} aria-label="项目的更多操作">更多</Button>
+        </Dropdown>
+      )}
     </Space>
   );
 
@@ -957,7 +976,7 @@ export default function ProjectDetail({
           {领取钮}
           {转给钮}
           {/* 放回公海、删除项目少用、后果重：收进「更多」（10-30） */}
-          {(p.能放公海 || 能改) && (
+          {(p.能放公海 || (p.能删 ?? 能改)) && (
             <Dropdown
               trigger={["click"]}
               placement="bottomRight"
@@ -965,7 +984,7 @@ export default function ProjectDetail({
               menu={{
                 items: [
                   ...(p.能放公海 ? [{ key: "pool", disabled: 等复核, label: 两行("放回公海", 等复核 ? `${等复核文字}，暂时不能放回` : undefined) }] : []),
-                  ...(能改 ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
+                  ...((p.能删 ?? 能改) ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
                 ],
                 onClick: ({ key }) => (key === "pool" ? 放回问() : 删问()),
               }}

@@ -1,7 +1,7 @@
 "use server";
 
 import { 新建只给自己 } from "@/lib/enterprise/import-perm";
-import { 软删开着, 软删客户, 回收站保留天数 } from "@/lib/enterprise/soft-delete";
+import { 软删开着, 软删客户, 回收站保留天数, 删除挡 } from "@/lib/enterprise/soft-delete";
 import { businessDayjs } from "@/lib/business-clock";
 import { 转交商机 } from "@/lib/opportunity-activity";
 import { hasVisibleText } from "@/lib/form-validation";
@@ -745,7 +745,10 @@ async function 删除依赖错误(db: Prisma.TransactionClient, ids: string[], �
 
 /** 先提示阻塞对象，避免让人走完不可恢复确认后才被拦。执行时仍在事务内再查。 */
 export async function 客户删除预检(ids: string[]): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireUser();
+  const me = await requireUser();
+  // 企业版只有总管理能删（QA #3）
+  const 挡 = await 删除挡(me);
+  if (挡) return { ok: false, error: 挡 };
   const b = await getBusiness();
   // 虚线下属的客户：在「确认删除…不能恢复」之前就说清楚，不等删完报「已经在别处删掉了」
   const 虚线 = await 虚线只读挡(defaultClient, ids);
@@ -760,6 +763,9 @@ export async function deleteCustomers(
   ids: string[],
 ): Promise<{ ok: true; deleted: number; 留下联系人: number } | { ok: false; error: string }> {
   const me = await requireUser();
+  // 企业版只有总管理（director）能删（QA #3，11-01）；管理员 admin 只读
+  const 挡 = await 删除挡(me);
+  if (挡) return { ok: false, error: 挡 };
   const b = await getBusiness();
   if (!ids.length) return { ok: true, deleted: 0, 留下联系人: 0 };
   const 虚线 = await 虚线只读挡(defaultClient, ids);

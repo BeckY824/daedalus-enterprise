@@ -33,6 +33,7 @@ import { saveCustomer, patchCustomer } from "@/app/(app)/customers/actions";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
 
 const 老板 = { id: "tester-id", role: "ADMIN" };
+const 总管 = { id: "director-id", role: "SALES" };
 let 序 = 0;
 
 beforeEach(async () => {
@@ -41,6 +42,9 @@ beforeEach(async () => {
   开关.项目模式关 = false;
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await prisma.user.create({ data: { id: "tester-id", email: "t@t", name: "测试员", role: "ADMIN", password: "x" } });
+  await prisma.user.create({ data: { id: "director-id", email: "d@t", name: "总管", role: "SALES", password: "x" } });
+  // 权限只认业务角色（11-01）：测试员是项目负责人（销售成员），删除 / 恢复只有总管理
+  await prisma.entMember.createMany({ data: [{ userId: "tester-id", bizRole: "sales" }, { userId: "director-id", bizRole: "director" }] });
 });
 afterEach(() => { vi.unstubAllEnvs(); 开关.项目模式关 = false; });
 afterAll(() => prisma.$disconnect());
@@ -123,7 +127,8 @@ describe("写入口跟着算", () => {
     await prisma.project.update({ where: { id: 交 }, data: { deletedAt: new Date() } });
     await 项目变了重算([甲]);
     expect(await 状态(甲)).toBe("潜在");
-    expect(await 恢复(老板, "Project", 交)).toMatchObject({ ok: true });
+    expect(await 恢复(老板, "Project", 交)).toMatchObject({ ok: false });
+    expect(await 恢复(总管, "Project", 交)).toMatchObject({ ok: true });
     expect(await 状态(甲)).toBe("交付");
   });
 });

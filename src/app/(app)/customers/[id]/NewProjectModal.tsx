@@ -4,10 +4,12 @@
  * 客户页「新增项目」弹窗（企业版项目模式，2026-10-29，定稿 P5 待定 16）：客户自动带上，只填项目和首条沟通。
  * 几格和建档向导第四、五步一样（projects/new/ProjectWizard.tsx），校验以服务端为准（project-actions.ts 给客户建项目）。
  * 10-31 会议 U-客户-05：用开项目那套向导界面——上面同一排步骤，前 3 步（查重、联系人、客户）带出现有的、标成已完成，
- * 从「项目」那步开始：先填项目信息，下一步再填首条沟通
+ * 从「项目」那步开始：先填项目信息，下一步再填首条沟通。
+ * 11-01 会议 §6：建好不跳去项目页，留在客户页刷新，提示里带「去看看」
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { Dayjs } from "dayjs";
 import { App, Button, Form, Input, Modal, Radio, Select, Steps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -119,9 +121,16 @@ export default function NewProjectModal({
         message.error(r.error);
         return;
       }
-      message.success("项目建好了");
+      // 11-01 会议 §6：整套在弹窗里走完，不跳页；建好留在客户页（刷新出新项目），提示里给一个「去看看」
+      message.success({
+        content: (
+          <span data-testid="new-project-done">
+            项目建好了 <Link href={`/projects/${r.projectId}`}>去看看</Link>
+          </span>
+        ),
+      });
       关();
-      router.push(`/projects/${r.projectId}`);
+      router.refresh();
     } finally {
       set存着(false);
     }
