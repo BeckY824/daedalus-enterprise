@@ -13,7 +13,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
 import {
-  客户定状态, 进程格, 进行中, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
+  客户定状态, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
 } from "./unified-pool";
 
@@ -30,14 +30,14 @@ function 位置(p: 项目片, 字典: 字典) {
 }
 
 /**
- * 「当前进程」那一格 + 鼠标停上去的明细（U-公海-04）：按 客户定状态 取定状态的那个项目，写「节点 · 状态」，其他类前面带阶段；
+ * 「当前进程」那一格 + 鼠标停上去的明细（U-公海-04）：按 客户定状态 取定状态的那个项目，写「阶段-节点」（11-01 用户：「应该是阶段+进程名。例如线索-潜客培育」），有结局再带结局；
  * 名下不止一个项目时明细列出每个项目
  */
 function 进程们(projects: readonly 项目片[], 字典: 字典) {
   const 定 = 客户定状态(projects);
   const 进程 = 定.项目 ? 进程格(定.属性, 位置(定.项目, 字典)) : null;
   const 进程明细 = projects.length > 1
-    ? projects.map((p) => { const x = 位置(p, 字典); return `${p.name}：${x.阶段} · ${x.节点} · ${x.结局 ?? 进行中}`; }).join("；")
+    ? projects.map((p) => { const x = 位置(p, 字典); return `${p.name}：${进程格(定.属性, x)}`; }).join("；")
     : null;
   return { 属性: 定.属性, 进程, 进程明细 };
 }
