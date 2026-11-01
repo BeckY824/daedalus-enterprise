@@ -146,7 +146,7 @@ describe("扫库收回", () => {
     const 现 = await prisma.project.findUniqueOrThrow({ where: { id: 超.id } });
     expect(现.pooledAt).not.toBeNull();
     expect(现.nextStepAt).toBeNull();
-    expect(现.ownerId).toBe(乙.id);
+    expect(现.ownerId).toBe(""); // 企业版进公海清负责人（11-01 C-01），乙在留痕里
     for (const id of [没到.id, 没设.id, 订单.id, 结局.id]) {
       expect((await prisma.project.findUniqueOrThrow({ where: { id } })).pooledAt).toBeNull();
     }

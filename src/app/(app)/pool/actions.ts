@@ -19,6 +19,7 @@ import { 记转让, 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
+import { 历史负责人 } from "@/lib/project/pool-owner";
 
 export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
 
@@ -108,7 +109,8 @@ export async function 分配公海项目(ids: string[], userId: string): Promise
       const 超 = await 超上限(tx, 规则, 给.id, p);
       if (超) return 超;
       await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
-      await 记转让(tx, p, me.id, p.ownerId, 给.id, "pool-claim");
+      // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
+      await 记转让(tx, p, me.id, (await 历史负责人(tx, id)) ?? (p.ownerId || null), 给.id, "pool-claim");
       await 单项目客户跟着领(tx, p.customerId, 给.id, me.id);
       return null;
     }));

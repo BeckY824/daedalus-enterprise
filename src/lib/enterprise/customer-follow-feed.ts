@@ -13,6 +13,8 @@
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看得到的客户, 露客户 } from "@/lib/project/db";
+import { 我回避的公海项目 } from "@/lib/project/pool-owner";
+import { 管全队客户 } from "@/lib/constants";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "@/app/(app)/customers/[id]/follow-history-query";
 import type { FollowUpRow } from "@/app/(app)/customers/[id]/types";
 
@@ -24,7 +26,7 @@ const 项目上限 = 500;
 type 项目行 = { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null; result: string | null; nextStepAt: Date | null; nextStepText: string | null; updatedAt: Date };
 
 /** 这位客户、当前这位看得到沟通内容的项目（主客户是它的 + 关联进来的；连挂过 = 再加历史上挂过这位跟进的） */
-async function 看得到的项目们(me: { id: string }, customerId: string, 连挂过: boolean): Promise<{ 行: 项目行; 主: boolean }[]> {
+async function 看得到的项目们(me: { id: string; role?: string }, customerId: string, 连挂过: boolean): Promise<{ 行: 项目行; 主: boolean }[]> {
   const [主, 关联, 挂过] = await Promise.all([
     prisma.project.findMany({ where: { customerId }, select: { id: true }, take: 项目上限 }),
     prisma.projectCustomer.findMany({ where: { customerId }, select: { projectId: true }, take: 项目上限 }),
@@ -38,12 +40,13 @@ async function 看得到的项目们(me: { id: string }, customerId: string, 连
     select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, nextStepAt: true, nextStepText: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
   });
-  const 看得到 = await 看得到的客户(ps.map((p) => p.customerId));
-  return ps.filter((p) => 露客户(me, p, 看得到)).map((p) => ({ 行: p, 主: p.customerId === customerId }));
+  // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；老板 / 主管照出）
+  const [看得到, 回避] = await Promise.all([看得到的客户(ps.map((p) => p.customerId)), 管全队客户(me.role) ? ([] as string[]) : 我回避的公海项目(prisma, me.id)]);
+  return ps.filter((p) => 露客户(me, p, 看得到) && !回避.includes(p.id)).map((p) => ({ 行: p, 主: p.customerId === customerId }));
 }
 
 /** 汇总时间线收哪些项目：id → 名称 */
-export async function 汇总的项目(me: { id: string }, customerId: string): Promise<Map<string, string>> {
+export async function 汇总的项目(me: { id: string; role?: string }, customerId: string): Promise<Map<string, string>> {
   return new Map((await 看得到的项目们(me, customerId, true)).map(({ 行 }) => [行.id, 行.name]));
 }
 
@@ -61,7 +64,7 @@ export type 跟进去处 = {
   /** 项目下一步做什么（10-29 起记沟通时自己写的一句话）；老数据只有时间、这里是空 */
   下一步文字: string | null;
 };
-export async function 跟进去处们(me: { id: string }, customerId: string): Promise<跟进去处[]> {
+export async function 跟进去处们(me: { id: string; role?: string }, customerId: string): Promise<跟进去处[]> {
   const 行们 = (await 看得到的项目们(me, customerId, false)).map(({ 行, 主 }) => ({
     id: 行.id,
     名: 行.name,
@@ -78,7 +81,7 @@ export async function 跟进去处们(me: { id: string }, customerId: string): P
  * 一页：新的在前，游标是不可变的排序边界（同 loadFollowHistory）。
  * 调用方先确认这位客户当前这位看得到（客户页本身就要看得到）。
  */
-export async function 客户沟通汇总(me: { id: string }, customerId: string, before?: 沟通游标): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
+export async function 客户沟通汇总(me: { id: string; role?: string }, customerId: string, before?: 沟通游标): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
   const 项目们 = await 汇总的项目(me, customerId);
   const ids = [...项目们.keys()];
   const 范围 = { OR: [{ customerId, projectNode: null }, ...(ids.length ? [{ projectNode: { projectId: { in: ids } } }] : [])] };

@@ -16,6 +16,7 @@ import { 夜里扫超时, 启动夜扫, 停夜扫, 夜扫在跑, 过了夜扫时
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 超时理由, 将回收提醒, 即将回收 } from "@/lib/project/timeout";
 import { 读项目列表 } from "@/lib/project/list";
+import { 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 
 const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数 } });
@@ -80,10 +81,11 @@ describe("夜里定时扫", () => {
     expect(await 在公海(p.id)).toBe(true);
     const log = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } });
     expect(log).toMatchObject({ kind: "pool-release", fromOwnerId: 乙, toOwnerId: null, reason: 超时理由, userId: "system" }); // QA #16：记「系统」，不记打开页面 / 跑定时的那位
-    // 23:59 那遍是回收前一天：先给负责人一条「明天会收」的提醒（10-27）；00:05 收回再一条
-    expect((await prisma.task.findMany({ where: { ownerId: 乙 }, orderBy: { createdAt: "asc" } })).map((t) => t.title)).toEqual([
-      将回收提醒("一号项目", "潜客培育", "2026-10-25"),
-      `项目「一号项目」在「潜客培育」超过处理时长没跟进，${收回提醒尾}`,
+    // 23:59 那遍是回收前一天：先给负责人一条「明天会收」的提醒（10-27）；00:05 收回再一条。
+    // 收回时原负责人在这个项目上没做完的待办跟着关（11-01 C-01），所以「明天会收」那条已关、标题接一句说明
+    expect((await prisma.task.findMany({ where: { ownerId: 乙 }, orderBy: { createdAt: "asc" } })).map((t) => [t.title, t.done])).toEqual([
+      [`${将回收提醒("一号项目", "潜客培育", "2026-10-25")}${进公海关待办尾}`, true],
+      [`项目「一号项目」在「潜客培育」超过处理时长没跟进，${收回提醒尾}`, false],
     ]);
     expect(await prisma.auditLog.count({ where: { action: "pool", entity: "Project" } })).toBe(1);
   });

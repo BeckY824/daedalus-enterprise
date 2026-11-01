@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { 成员选项 } from "@/lib/utils";
 import { 阶段们, 字典of, 本套位置, 结局们of, 是交付, type 阶段, type 阶段字典 } from "@/lib/project/nodes";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 公海里历史负责人是 } from "@/lib/project/pool-owner";
+import type { Prisma } from "@/generated/prisma";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
 
@@ -64,6 +66,14 @@ export function 线索转商机of(rows: readonly 线索行[]): number {
 /** 只看（P15）：一个人 = 只这个人；一串 = 这些人里的（复盘「全部」= 上级能看的这一圈，服务端兜底） */
 export type 只看谁 = string | readonly string[];
 const 负责人是 = (只看: 只看谁) => (typeof 只看 === "string" ? 只看 : { in: [...只看] });
+/**
+ * 按人看时这些人的项目：自己负责的 + 公海里最后是他们放的（企业版 11-01 起进公海清负责人，原负责人只在留痕里，lib/project/pool-owner.ts）。
+ * 公海里的只给线索瀑布数「退回公海」，别的口径照旧不算在谁头上
+ */
+async function 这些人的(只看: 只看谁): Promise<Prisma.ProjectWhereInput> {
+  const 放的 = await 公海里历史负责人是(prisma, typeof 只看 === "string" ? [只看] : 只看);
+  return 放的.length ? { OR: [{ ownerId: 负责人是(只看) }, { id: { in: 放的 } }] } : { ownerId: 负责人是(只看) };
+}
 const 判无效了 = (v: { finalResult: string | null } | null) => v?.finalResult === "无效线索";
 
 /**
@@ -74,7 +84,7 @@ export async function 项目现在(本位币: string, 只看?: 只看谁): Promi
   const 字典 = 字典of(企业版());
   const 全部行 = (
     await prisma.project.findMany({
-      where: 只看 === undefined ? undefined : { ownerId: 负责人是(只看) },
+      where: 只看 === undefined ? undefined : await 这些人的(只看),
       select: { phase: true, node: true, result: true, amount: true, currency: true, ownerId: true, pooledAt: true, entLeadVerify: { select: { finalResult: true } } },
     })
   ).map((p) => 本套位置(p, 字典));
@@ -152,8 +162,8 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
   const 字典 = 字典of(企业版());
   const 段 = { gte: from, lte: to };
   // 同 项目现在：按人看时公海里的不算在谁头上（线索瀑布除外，它要数退回公海的）
-  const 负责 = 只看 === undefined ? {} : { ownerId: 负责人是(只看) };
-  const 谁 = 只看 === undefined ? {} : { ...负责, pooledAt: null };
+  const 负责 = 只看 === undefined ? {} : await 这些人的(只看);
+  const 谁 = 只看 === undefined ? {} : { ownerId: 负责人是(只看), pooledAt: null };
   const [新全, 变, 结] = await Promise.all([
     prisma.project.findMany({
       where: { createdAt: 段, ...负责 },
@@ -179,7 +189,8 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
   const 人 = new Map<string, 人行一段>();
   const 行 = (id: string) => {
     const r = 人.get(id) ?? { id, name: "", 新建: 0, 转商机: 0, 转订单: 0, 成功交付: 0, 交付金额: 0, 没成: 0 };
-    人.set(id, r);
+    // 公海里没负责人的（企业版进公海清空了）不算在谁头上，只进合计
+    if (id) 人.set(id, r);
     return r;
   };
 
