@@ -2,10 +2,12 @@
 /**
  * 企业版压测（10-24 结果：30 人 × 10 倍数据，主要页面 p95 < 200 ms）。
  *
- *   node scripts/perf/enterprise-p95.mjs --out <输出目录> [--scale 10] [--duration 180] [--port 3570] [--skip-build] [--reuse-db] [--extra] [--limit 200] [--first-js]
+ *   node scripts/perf/enterprise-p95.mjs --out <输出目录> [--scale 10] [--duration 180] [--port 3570] [--skip-build] [--reuse-db] [--extra] [--limit 200] [--first-js] [--rounds 1]
  *   GATE=1 …   任何一页 p95 ≥ --limit（默认 200 ms）或有请求出错就以 1 退出
  *   --first-js  再量登录 / 首页 / 客户列表的首屏 JS（HTML 里全部 script 逐个 gzip -6 求和，10-28 P4 的量法），
  *               超 first-js-baseline.json 的上限、或比里面的基线涨 > 10% 也算红。CI 速度闸门用（10-29，测试规划 S12）
+ *   --rounds 3  压测那步连压 3 轮（同一个服务、每轮 --duration 秒），每页取 3 轮 p95 的中位数再和 --limit 比；出错数照全部轮加总。
+ *               CI 机时快时慢，单轮会偶发超线（11-01 同一个提交重跑一绿一红），CI 速度闸门用 3 轮（11-01）
  *
  * 流程：
  *   1. <输出目录>/crm.db 新建一份空库（prisma db push），enterprise-seed.ts 造 30 人 + SCALE 倍数据；
@@ -15,7 +17,7 @@
  *   3. 用同一个 AUTH_SECRET 给 30 个人各签一张会话票据（和 createSession 一样的 HS256 + {sub, ims}），不走登录、不碰密码
  *   4. 单人基线：一个销售按顺序把每页开 15 次（前 3 次热身不算）
  *   5. 压测：30 人同时用，每人打开一页、停 1–3 秒再开下一页，持续 --duration 秒；
- *      每次随机挑一页，一半整页打开（HTML），一半站内切页（RSC，带 RSC: 1 头）
+ *      每次随机挑一页，一半整页打开（HTML），一半站内切页（RSC，带 RSC: 1 头）；--rounds N 时连压 N 轮，各页 p50/p95/p99 取各轮中位数
  *   6. 各页 × 两种打开方式的 p50 / p95 / p99、出错数、服务端内存，写进 result.json 和 result.md
  *
  * 耗时口径：从发请求到响应体读完（服务端渲染 + 传输），本机回环，不含浏览器解析和水合。
@@ -45,6 +47,7 @@ const 种子文件 = path.join(输出, "seed.json");
 const 加一组 = 参数.extra === "1";
 const 密钥 = "perf-only-secret-not-used-anywhere-else-0123456789";
 const 门槛 = Number(参数.limit ?? 200);
+const 轮数 = Math.max(1, Number(参数.rounds ?? 1));
 const 等 = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(输出, { recursive: true });
 
@@ -187,24 +190,36 @@ const 量内存 = () => {
   } catch { /* 量不到就算了 */ }
 };
 const 内存表 = setInterval(量内存, 5000);
-const 样本 = [];
-const 截止 = Date.now() + 时长;
-await Promise.all(名单.map(async (u) => {
-  await 等(Math.random() * 2000);
-  while (Date.now() < 截止) {
-    const 页 = 页面[Math.floor(Math.random() * 页面.length)];
-    const 法 = 方式[Math.floor(Math.random() * 2)];
-    样本.push({ ...(await 开(u, 页, 法)), 页: 页.名, 法, role: u.role });
-    await 等(1000 + Math.random() * 2000);
-  }
-}));
+const 各轮 = [];
+for (let 轮 = 0; 轮 < 轮数; 轮++) {
+  const 这轮 = [];
+  const 截止 = Date.now() + 时长;
+  await Promise.all(名单.map(async (u) => {
+    await 等(Math.random() * 2000);
+    while (Date.now() < 截止) {
+      const 页 = 页面[Math.floor(Math.random() * 页面.length)];
+      const 法 = 方式[Math.floor(Math.random() * 2)];
+      这轮.push({ ...(await 开(u, 页, 法)), 页: 页.名, 法, role: u.role });
+      await 等(1000 + Math.random() * 2000);
+    }
+  }));
+  各轮.push(这轮);
+}
 clearInterval(内存表);
 量内存();
+const 样本 = 各轮.flat();
 
-结果.load = { all: 汇总(样本), pages: {}, byRole: {} };
-for (const 页 of 页面) for (const 法 of 方式) 结果.load.pages[`${页.名} ${法}`] = 汇总(样本.filter((x) => x.页 === 页.名 && x.法 === 法));
-for (const role of ["ADMIN", "MANAGER", "SALES"]) 结果.load.byRole[role] = 汇总(样本.filter((x) => x.role === role));
-结果.load.rps = +(样本.length / (时长 / 1000)).toFixed(1);
+// 次数、出错照全部轮加总；p50 / p95 / p99 取各轮的中位数（1 轮时就是那一轮），rounds 记各轮 p95
+const 中位 = (xs) => { const s = xs.filter((x) => x != null).sort((a, b) => a - b); return s.length ? s[(s.length - 1) >> 1] : null; };
+const 多轮汇总 = (挑) => {
+  const 各 = 各轮.map((r) => 汇总(r.filter(挑)));
+  return { ...汇总(样本.filter(挑)), p50: 中位(各.map((v) => v.p50)), p95: 中位(各.map((v) => v.p95)), p99: 中位(各.map((v) => v.p99)), rounds: 各.map((v) => v.p95) };
+};
+结果.rounds = 轮数;
+结果.load = { all: 多轮汇总(() => true), pages: {}, byRole: {} };
+for (const 页 of 页面) for (const 法 of 方式) 结果.load.pages[`${页.名} ${法}`] = 多轮汇总((x) => x.页 === 页.名 && x.法 === 法);
+for (const role of ["ADMIN", "MANAGER", "SALES"]) 结果.load.byRole[role] = 多轮汇总((x) => x.role === role);
+结果.load.rps = +(样本.length / (时长 / 1000) / 轮数).toFixed(1);
 结果.serverRssMB = { max: 内存.length ? Math.round(Math.max(...内存)) : null, last: 内存.length ? Math.round(内存.at(-1)) : null };
 结果.errorsSample = 样本.filter((x) => !x.ok).slice(0, 10).map((x) => `${x.页} ${x.法} ${x.role} → ${x.status}`);
 
@@ -217,19 +232,20 @@ fs.writeFileSync(path.join(输出, "result.json"), JSON.stringify(结果, null, 
 
 /* ---------- 6. 报告 ---------- */
 const 行 = (k, v) => `| ${k} | ${v.n} | ${v.p50} | **${v.p95}** | ${v.p99} | ${v.errors} | ${Math.round(v.kb)} |`;
+const 压测行 = (k, v) => 行(k, v) + (轮数 > 1 ? ` ${v.rounds.join(" / ")} |` : "");
 const md = [
   `# 企业版压测：30 人 × ${SCALE} 倍数据`,
   "",
-  `${结果.at}，${结果.platform}，Node ${结果.node}。数据：${种子.extra ? "原来那些 + 加的一组（逾期跟进计划，--extra）" : "原来那些（不带 --extra）"}${种子.plans ? `，跟进计划 ${种子.plans} 条` : ""}。库 ${结果.dbMB} MB；压测 ${时长 / 1000} 秒，${结果.load.rps} 次/秒；服务端内存峰值 ${结果.serverRssMB.max} MB。`,
+  `${结果.at}，${结果.platform}，Node ${结果.node}。数据：${种子.extra ? "原来那些 + 加的一组（逾期跟进计划，--extra）" : "原来那些（不带 --extra）"}${种子.plans ? `，跟进计划 ${种子.plans} 条` : ""}。库 ${结果.dbMB} MB；压测 ${时长 / 1000} 秒${轮数 > 1 ? ` × ${轮数} 轮` : ""}，${结果.load.rps} 次/秒；服务端内存峰值 ${结果.serverRssMB.max} MB。`,
   "",
-  `**裁判：各页 p95 < ${门槛} ms 且没有出错 → ${结果.pass ? "绿" : "红"}**${超.length ? `（超了：${超.join("；")}）` : ""}${结果.load.all.errors ? `（出错 ${结果.load.all.errors} 次：${结果.errorsSample.join("；")}）` : ""}`,
+  `**裁判：各页 p95${轮数 > 1 ? `（${轮数} 轮取中位）` : ""} < ${门槛} ms 且没有出错 → ${结果.pass ? "绿" : "红"}**${超.length ? `（超了：${超.join("；")}）` : ""}${结果.load.all.errors ? `（出错 ${结果.load.all.errors} 次：${结果.errorsSample.join("；")}）` : ""}`,
   "",
-  "## 30 人同时用（ms，响应体读完为止）",
+  `## 30 人同时用（ms，响应体读完为止${轮数 > 1 ? `；次数、出错是 ${轮数} 轮加总，p50 / p95 / p99 是各轮中位数` : ""}）`,
   "",
-  "| 页面 | 次数 | p50 | p95 | p99 | 出错 | 大小 KB |",
-  "|---|---|---|---|---|---|---|",
-  ...Object.entries(结果.load.pages).map(([k, v]) => 行(k, v)),
-  行("合计", 结果.load.all),
+  `| 页面 | 次数 | p50 | p95 | p99 | 出错 | 大小 KB |${轮数 > 1 ? " 各轮 p95 |" : ""}`,
+  `|---|---|---|---|---|---|---|${轮数 > 1 ? "---|" : ""}`,
+  ...Object.entries(结果.load.pages).map(([k, v]) => 压测行(k, v)),
+  压测行("合计", 结果.load.all),
   "",
   "按角色：" + Object.entries(结果.load.byRole).map(([k, v]) => `${k} p95 ${v.p95} ms（${v.n} 次）`).join("；"),
   "",
