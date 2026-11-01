@@ -57,6 +57,7 @@ import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/fie
 import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
+import { 交接通知 } from "@/lib/enterprise/notice-sources";
 
 
 /** 状态不在取值表里就给那句报错，合法给 null。建客户、批量改、撤销、行内改四处共用，报错文案一字不改 */
@@ -1044,6 +1045,7 @@ async function 发起转让交接(me: { id: string; name: string }, ids: string[
     return { 发起, 已在: 已在.size };
   }));
   const n = 发起.reduce((a, h) => a + h.customerIds.length, 0);
+  for (const h of 发起) await 交接通知(me, h.id, "发起");
   if (n) {
     const 接手 = (await prisma.user.findUnique({ where: { id: to }, select: { name: true } }))?.name ?? to;
     await recordAudit({

@@ -16,6 +16,7 @@ import {
   type 卡点结果,
 } from "@/lib/project/blocker";
 import type { 发布输入 } from "@/lib/project/blocker-rules";
+import { 卡点通知 } from "@/lib/enterprise/notice-sources";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请总管理员在「设置 → 业务配置」里打开" };
 const 不是企业版 = { ok: false as const, error: "卡点是企业版的功能" };
@@ -60,7 +61,9 @@ export async function 认领卡点Action(blockerId: string) {
     const me = await requireUser();
     const 挡 = await 拦();
     if (挡) return 挡;
-    return 收尾(me, await 认领卡点(me, blockerId), (c) => `认领卡点 ${c}`);
+    const r = await 认领卡点(me, blockerId);
+    if (r.ok) await 卡点通知(me, r.code, "认领");
+    return 收尾(me, r, (c) => `认领卡点 ${c}`);
   } catch (e) { return 不在了(e); }
 }
 
@@ -70,7 +73,9 @@ export async function 完成卡点Action(blockerId: string, input: { note?: stri
     const me = await requireUser();
     const 挡 = await 拦();
     if (挡) return 挡;
-    return 收尾(me, await 完成卡点(me, blockerId, input ?? {}), (c, 解决了) => (解决了 ? `卡点 ${c} 已解决` : `卡点 ${c} 我已完成`));
+    const r = await 完成卡点(me, blockerId, input ?? {});
+    if (r.ok && r.解决了) await 卡点通知(me, r.code, "解决");
+    return 收尾(me, r, (c, 解决了) => (解决了 ? `卡点 ${c} 已解决` : `卡点 ${c} 我已完成`));
   } catch (e) { return 不在了(e); }
 }
 

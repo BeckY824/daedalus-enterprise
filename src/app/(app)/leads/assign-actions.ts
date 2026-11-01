@@ -20,6 +20,7 @@ import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 分配方式叫法, 挡分配方式 } from "@/lib/enterprise/dict";
 import { 发满额提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 分配通知 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限, 记转让 } from "@/lib/project/db";
@@ -72,6 +73,7 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
     const 方式挡 = await 挡分配方式(me, 0);
     if (方式挡) return { ok: false, error: 方式挡 };
     const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line, kind, 自动: false, 带待办: 带待办勾(input.带待办) });
+    if (r.ok) await 分配通知(me, [{ ...哪条, toUserId: input.toUserId }], false);
     return r.ok ? r : { ok: false, error: r.error };
   } catch (e) {
     return 不在了(e);
@@ -236,6 +238,7 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
     const 哪条 = 目标of(opts.项目 ? { projectId: id } : { leadId: id });
     if (!哪条) return { ok: false, error: "要分哪一条？刷新看看" };
     const r = await 自动分给(me, org, 哪条, line, kind);
+    if (r.ok) await 分配通知(me, [{ ...哪条, toUserId: r.toUserId }], true);
     if (!r.ok && r.都满额) {
       const 看 = await 分前看(哪条).catch(() => null);
       await 发满额提醒(org, [看?.ok ? 看.名 : id], me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
@@ -260,6 +263,7 @@ export async function 向导自动分配(projectId: string): Promise<自动分�
     if (!p || p.ownerId !== me.id || p.phase !== "线索" || p.pooledAt) return { ok: false, error: "只能自动分配自己名下、还在线索阶段的项目" };
     const r = await 自动分给(me, await 读组织(), { projectId }, null, "营销");
     if (r.ok) await prisma.customer.updateMany({ where: { id: p.customerId, salesOwnerId: me.id }, data: { salesOwnerId: r.toUserId } });
+    if (r.ok) await 分配通知(me, [{ projectId, toUserId: r.toUserId }], true);
     return r;
   } catch (e) {
     return 不在了(e);
@@ -356,6 +360,7 @@ export async function 批量自动分配(leadIds: string[], opts: { 项目?: boo
       }
       结果.push({ leadId: id, name: 名.get(id) ?? "（看不到这条）", ...r });
     }
+    await 分配通知(me, 结果.flatMap((x) => (x.ok ? [{ toUserId: x.toUserId, [项目 ? "projectId" : "leadId"]: x.leadId }] : [])), true);
     // 因都已满额没分出去的，这一次点击合成一条提醒，不按条刷屏
     // 提醒没发出去不能连累已经分好的结果
     await 发满额提醒(org, 结果.filter((x) => !x.ok && x.都满额).map((x) => x.name), me.name).catch((e) => console.error("[满额提醒] 没发出去", e));

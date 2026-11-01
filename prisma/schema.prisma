@@ -1626,6 +1626,32 @@ model EntHandover {
   @@index([fromUserId, status])
 }
 
+/// 企业版站内通知（2026-11-01，迁移 106）：自动分配、手动分配、验证待办、项目邀请、卡点、交接等事件给相关的人发一条，
+/// 顶栏铃铛看未读、点了跳到对应页面。组织开了「飞书推送」且这人绑了飞书时，同一条再用应用机器人推到飞书（lib/enterprise/notify.ts）。
+/// 同一人同一 dedupeKey 只记一行，重复调用不会重复推。指向人的列不建外键（同 EntHandover）
+model EntNotice {
+  id           String    @id @default(cuid())
+  userId       String
+  /// 来源：自动分配 / 分配 / 验证 / 邀请 / 卡点 / 交接 / 满额 / 回收
+  kind         String
+  title        String
+  body         String    @default("")
+  /// 站内相对路径，如 /projects/xxx；推飞书时前面拼 ENT_PUBLIC_URL
+  link         String?
+  dedupeKey    String
+  readAt       DateTime?
+  /// 待推 / 已推 / 没推（开关关着、没绑飞书、没配应用）/ 失败
+  feishuStatus String    @default("待推")
+  /// 没推、失败的原因（飞书返回的 code + msg，不含密钥）
+  feishuError  String?
+  feishuAt     DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
 /// 企业版选项字典（2026-10-26，迁移 057）：分配方式、回收原因、无效原因、转让原因、验证结果、客户状态、项目标签，
 /// 一张表按 kind 分。默认值由 lib/enterprise/dict.ts 第一次读时补上（迁移不许 INSERT），只停用不删。
 /// 只给选项、不设必填；谁能改同项目字典（「后台设置谁能改」的字典一行）

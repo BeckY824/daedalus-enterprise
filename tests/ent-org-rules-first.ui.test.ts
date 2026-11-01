@@ -17,6 +17,7 @@ const plugin: Plugin = { name: "org-rules-first", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^\.\/LeadAssignCard$/, "export default function C(){return <div data-testid='lead-assign-card'/>}");
   stub(/^\.\/FeishuConnectCard$/, "export default function F(){return null}");
+  stub(/^\.\/FeishuPushSwitch$/, "export default function P(){return null}");
   stub(/^\.\/org-actions$/, `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设市场部门=f,设成员=f,
     设通讯录同步=f,立即同步通讯录=f,设职务对照=f,设通讯录凭据=f,设通讯录间隔=f,飞书表概况=async()=>({ok:false,error:'没接'}),
     通讯录概况=async()=>({ok:true,角色们:[],来源们:[{源:'feishu',名:'飞书',开:false,上次:null,角色对照:{},职务们:[],间隔分钟:60,凭据:{齐了:false,字段:[]}}]});`);

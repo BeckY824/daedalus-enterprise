@@ -32,6 +32,7 @@ import { saveLlmConfig, clearLlmConfig, resolveLlmConfigForTest, testLlm, type M
 import { getBusiness, saveBusiness, mergeBusiness, 企业版锁定, 状态名问题, 阶段名问题, type BusinessConfig } from "@/lib/business";
 import { 判断可用 } from "@/lib/jev/client";
 import { 自动判断开着, 设自动判断 } from "@/lib/jev/settings";
+import { 交接通知 } from "@/lib/enterprise/notice-sources";
 
 /** 密码最短长度。界面上有校验，但接口直调能绕开，空密码会让任何人登进来 */
 const MIN_PASSWORD = 8;
@@ -426,6 +427,7 @@ async function 发起离职交接(me: Awaited<ReturnType<typeof requireUser>>, i
     return { 分, 交接: h.id };
   }, { timeout: 30_000 });
   await 撤托管成员(id);
+  await 交接通知(me, 交接, "发起");
 
   const [被停, 接手] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: { name: true } }),

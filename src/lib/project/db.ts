@@ -36,6 +36,7 @@ import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, ty
 import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
+import { notify } from "@/lib/enterprise/notify";
 import { 进公海后负责人, 历史负责人, 进公海关待办 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
@@ -786,6 +787,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       return true;
     });
     if (收) 收了.push(p.id);
+    if (收) await notify([p.ownerId], { kind: "回收", title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`, link: "/projects", key: `recall:${p.id}:${dayjs(今).format("YYYY-MM-DD")}` });
   }
   if (收了.length) {
     await recordAudit({
@@ -813,6 +815,7 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 只扫?: string)
     await prisma.task.create({
       data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId },
     });
+    await notify([p.ownerId], { kind: "将回收", title, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
   }
 }
 
