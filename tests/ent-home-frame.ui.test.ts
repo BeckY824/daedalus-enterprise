@@ -82,9 +82,25 @@ for (const width of [1024, 1280, 1366]) {
     expect(await page.locator(".home-cards").isVisible()).toBe(true);
     expect(卡.l).toBeGreaterThan(外.r);
     expect(外.w).toBeLessThan((卡.r - 外.l) * 0.75);
-    // 等高对齐（U-首页-01）：框和右边四张卡这一列上下边齐
+    // 等高对齐（U-首页-01；11-01：框缩到卡的高，不是卡拉到框的高）：框和右边四张卡这一列上下边齐，
+    // 卡不拉伸（每张卡 = 内容高），框里的东西不超出框
     expect(Math.abs(卡.t - 外.t)).toBeLessThan(2);
     expect(Math.abs(卡.b - 外.b)).toBeLessThan(2);
+    const 卡高 = await page.locator(".home-card").evaluateAll((els) => els.map((e) => {
+      const kids = [...e.children].map((c) => c.getBoundingClientRect());
+      const s = getComputedStyle(e);
+      const 内容 = Math.max(...kids.map((r) => r.bottom)) - Math.min(...kids.map((r) => r.top));
+      return e.getBoundingClientRect().height - 内容 - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom) - parseFloat(s.borderTopWidth) - parseFloat(s.borderBottomWidth);
+    }));
+    for (const 余 of 卡高) expect(余).toBeLessThan(2);
+    expect(await page.locator(".cli-frame").evaluate((e) => e.scrollHeight <= e.clientHeight + 1)).toBe(true);
+    // 框里还剩的空（最后一条示例到输入框上沿，减去输入框自己的上留白）：两行的长产品名也要放得下（一行字 ≈ 30px）
+    const 空 = await page.evaluate(() => {
+      const qs = [...document.querySelectorAll(".cli-frame-q .cli-q")]; const c = document.querySelector(".cli-frame .cli-composer")!;
+      return c.getBoundingClientRect().top + parseFloat(getComputedStyle(c).paddingTop) - qs[qs.length - 1].getBoundingClientRect().bottom - parseFloat(getComputedStyle(c).paddingTop);
+    });
+    expect(空).toBeGreaterThan(30);
+    console.log(`[${width}] 框高 ${外.b - 外.t}，卡列高 ${卡.b - 卡.t}，框里余 ${空}`);
 
     // 第一行在左上角
     const 问候 = await 字(page, ".cli-frame .cli-welcome-t");

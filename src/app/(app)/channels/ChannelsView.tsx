@@ -54,6 +54,14 @@ const 空转化: 转化 = { 分子: 0, 分母: 0, 比例: null };
 const 空统计: 渠道统计 = { 关联线索: 0, 有效线索: 0, 关联商机: 0, 关联订单: 0, 关联项目: 0, 累计成交: [], 当前投入: [], 产出比: null, 产出比说明: "还没录投入", 累计运营天数: 0, 线索转商机: 空转化, 商机转订单: 空转化 };
 const 统计 = (r: { 统计?: 渠道统计 }) => r.统计 ?? 空统计;
 const 无 = <span className="muted">—</span>;
+/** 渠道名那一列最宽多少（再长省略、悬停看全称）：这一列钉在左边，1024 宽也得给后面的数留地方 */
+const 名字最宽 = 480;
+/** 估一个渠道名一行要多宽，按 16px 的字宽估（宁宽勿窄，省得刚好差一点被省略）：中文、全角字 16，其余 9，两边留白 24 */
+function 名字宽(名: string): number {
+  let w = 24;
+  for (const ch of 名) w += /[\u2e80-\uffef]/.test(ch) ? 16 : 9;
+  return Math.ceil(w);
+}
 
 /** 编辑老渠道时回填表单：没有渠道名称的老渠道，名称和来源都先填成全称 */
 function 编辑初值(r: Row) {
@@ -259,6 +267,11 @@ export default function ChannelsView({
   const 线索一样 = 全部行.every((r) => 统计(r).关联线索 === 统计(r).有效线索);
   const 线索说明 = `这个渠道的${b.customer}名下，眼下还在线索阶段的项目`;
 
+  /** 渠道名一列的宽：按最长的名字估（名字宽），最窄 120、最宽 名字最宽 */
+  const 名列宽 = Math.min(名字最宽, Math.max(120, ...全部行.map((r) => 名字宽(r.name))));
+  /** 属性列：有停用的要并排放「属性 + 已停用」两个标签 */
+  const 属性列宽 = 全部行.some((r) => !r.active) ? 156 : 108;
+
   /** 行上「⋯ → 删除」变灰的原因（交互规则 A）：有关联数据的删不了，口径同 deleteChannel */
   function 删不了(r: Row): string | null {
     const 因 = [r.客户数 ? `名下有 ${r.客户数} 位${b.customer}` : "", r.投入数 ? `录过 ${r.投入数} 笔投入` : ""].filter(Boolean);
@@ -275,22 +288,22 @@ export default function ChannelsView({
   const 列表: 列<Row>[] = [
     {
       /*
-        只留「渠道」一列（10-30）：全称后面跟着属性标签；原来的「渠道属性」「渠道名称」两列名字差不多、名称几乎都是「—」，去掉了
-        （名称照旧能搜）。停用的再跟一个「已停用」，原来那列「渠道状态」也就不要了。
-        名字整段显示（10-30 用户：「要显示完整」）：放不下折行，标签钉在第一行右边、两个就上下叠（.chan-full / .chan-tags）；列宽 240，1024 宽也够折成两三行
+        渠道名一列、渠道属性一列（11-01 用户：「把名字和公域引流这个分开显示……然后所有列都要一行显示」）：
+        名字一行不折，列宽按最长的名字估（名字宽）；再长也只到 名字最宽，超出的省略、悬停看全称。停用的在属性那列后面跟「已停用」
       */
-      title: "渠道", key: "name", dataIndex: "name", width: 240, 常驻: true,
+      title: "渠道", key: "name", dataIndex: "name", width: 名列宽, 常驻: true,
       render: (v: string, r) => (
-        <span className="chan-full">
-          <button type="button" className="link-plain link-strong" title={v} onClick={() => 看详情(r.id)}>{v}</button>
-          {(r.attr || !r.active) && (
-            <span className="chan-tags">
-              {r.attr && <Tag style={{ margin: 0, borderRadius: 6 }}>{r.attr}</Tag>}
-              {!r.active && <Tag style={{ margin: 0, borderRadius: 6 }}>已停用</Tag>}
-            </span>
-          )}
-        </span>
+        <button type="button" className="link-plain link-strong chan-name" title={v} onClick={() => 看详情(r.id)}>{v}</button>
       ),
+    },
+    {
+      title: "渠道属性", key: "attr", dataIndex: "attr", width: 属性列宽,
+      render: (v: string, r) => (v || !r.active ? (
+        <span className="chan-tags">
+          {v && <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag>}
+          {!r.active && <Tag style={{ margin: 0, borderRadius: 6 }}>已停用</Tag>}
+        </span>
+      ) : 无),
     },
     ...(线索一样
       ? [数列("关联线索", `${线索说明}。有效线索是其中有效的那些，现在还没有判无效的记号、两个数一样，合成这一列`, "线索")]
@@ -401,6 +414,7 @@ export default function ChannelsView({
         }
       />
 
+      <div className="chan-list">
       <DataList<Row>
         页="channels"
         空库={全部行.length === 0}
@@ -454,6 +468,7 @@ export default function ChannelsView({
           </Space>
         }
       />
+      </div>
 
       {详情 && <ChannelDrawer key={详情.id} row={详情} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={能管 ? () => openForm(详情) : undefined} />}
 

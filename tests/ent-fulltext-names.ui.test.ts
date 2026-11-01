@@ -4,7 +4,8 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { chromium, type Browser } from "playwright";
 /* 10-30 用户：「目前渠道页有些都没显示完整。要显示完整。做好排版。其他页面也是一样。」
-   渠道页那一格原来单行省略（「Facebook｜VR S…」），改成整段折行：名字不截、不横滚，属性 / 已停用标签钉在名字第一行右边、不压字。
+   11-01 用户：「渠道第一列，把名字和公域引流这个分开显示。也就是拆分为两列。然后所有列都要一行显示。」
+   渠道名一列、渠道属性一列；每一格都一行不折。名字列宽按最长的名字估，放得下就整段显示；超过上限才省略、悬停（title）看全称。
    1024 / 1280 / 1366 三个宽度都量；渲染的是真的 ChannelsView + globals.css，只把服务端动作和抽屉换掉 */
 let browser: Browser, bundle: string;
 const 长名 = "Facebook｜VR STAR SPACE 某某某超长渠道名测试测试测试";
@@ -22,11 +23,11 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import ChannelsView from '@/app/(app)/channels/ChannelsView';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
-    import {我Provider} from '@/lib/me-client';import ChannelPicker from '@/components/ChannelPicker';
+    import {我Provider} from '@/lib/me-client';import {themeConfig} from '@/lib/theme';import ChannelPicker from '@/components/ChannelPicker';
     const root=createRoot(document.getElementById('root'));
     const 行=(id,name,attr,active)=>({id,name,phone:null,remark:'备注',active,attr,platform:null,endDate:null,createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',createdByName:'QA',channelOwnerId:'qa',channelOwnerName:'QA'});
     const rows=[行('c1',${JSON.stringify(长名)},'公域引流',true),行('c2',${JSON.stringify(无空格名)},'个人自拓',false),行('c3','短名','公域引流',true)];
-    window.__render=()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'qa',name:'QA'}}><ChannelsView rows={rows} users={[{id:'qa',name:'QA'}]} 属性选项={['公域引流','个人自拓']}/></我Provider></BusinessProvider></App></ConfigProvider>);
+    window.__render=()=>root.render(<ConfigProvider locale={zhCN} theme={themeConfig}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'qa',name:'QA'}}><ChannelsView rows={rows} users={[{id:'qa',name:'QA'}]} 属性选项={['公域引流','个人自拓']}/></我Provider></BusinessProvider></App></ConfigProvider>);
     // 选渠道的级联：属性 / 名称 / 来源三列，放在 1024 宽的弹窗那么宽的格子里
     window.__picker=()=>root.render(<ConfigProvider locale={zhCN}><div style={{width:472,margin:'420px 0 0 276px'}}><ChannelPicker aria-label='渠道' channels={[{id:'c1',name:${JSON.stringify(长名)},attr:'公域引流',platform:'Facebook',active:true},{id:'c2',name:${JSON.stringify(无空格名)},attr:'个人自拓',platform:null,active:true}]}/></div></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -35,64 +36,72 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 for (const width of [1024, 1280, 1366]) {
-  it(`渠道名整段显示、标签钉在第一行不压字（${width} 宽）`, async () => {
+  it(`渠道名、渠道属性分两列，每格一行；名字放得下就整段、放不下省略带全称；标签点得中（${width} 宽）`, async () => {
     const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
     try {
       await page.route("http://fulltext.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
       await page.goto("http://fulltext.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
       await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
-      await page.locator(".chan-full").nth(2).waitFor();
-      const 量 = await page.evaluate(() => [...document.querySelectorAll(".chan-full")].map((格) => {
-        const 名 = 格.firstElementChild as HTMLElement;
-        const 标签们 = [...格.querySelectorAll<HTMLElement>(".ant-tag")];
-        const 名框 = 名.getBoundingClientRect();
-        const cs = getComputedStyle(名);
-        const 行高 = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5;
-        const td = 格.closest("td")!;
-        return {
-          文: 名.textContent,
-          行数: Math.round(名框.height / 行高),
-          名溢出: 名.scrollWidth > 名.clientWidth + 1,
-          // 不看 td.scrollWidth：固定列的阴影伪元素本来就伸出格子外；看渠道这一块自己有没有超出格子的内容区
-          格溢出: (格 as HTMLElement).scrollWidth > (格 as HTMLElement).clientWidth + 1 || 格.getBoundingClientRect().right > td.getBoundingClientRect().right - parseFloat(getComputedStyle(td).paddingRight) + 0.5,
-          省略: cs.textOverflow === "ellipsis" && cs.whiteSpace === "nowrap",
-          标签: 标签们.map((t, i) => {
-            const r = t.getBoundingClientRect();
+      await page.locator(".chan-name").nth(2).waitFor();
+      const 量 = await page.evaluate(() => {
+        const 表头 = [...document.querySelectorAll<HTMLElement>(".chan-list .ant-table-thead th")].map((th) => th.textContent ?? "");
+        const 行们 = [...document.querySelectorAll<HTMLElement>(".chan-list .ant-table-tbody > tr:not(.ant-table-placeholder):not(.ant-table-measure-row)")];
+        // 每一格都一行：格高不超过一行字 + 上下留白（量最高的那格，和同一行别的格比）
+        const 格们 = 行们.flatMap((tr) => [...tr.querySelectorAll<HTMLElement>(":scope > td")]);
+        const 折行格 = 格们.filter((td) => getComputedStyle(td).whiteSpace !== "nowrap").map((td) => td.textContent);
+        const 行高 = 行们.map((tr) => tr.getBoundingClientRect().height);
+        const 名们 = [...document.querySelectorAll<HTMLElement>(".chan-name")].map((名) => {
+          const cs = getComputedStyle(名); const r = 名.getBoundingClientRect();
+          const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5;
+          const td = 名.closest("td")!; const tr = td.getBoundingClientRect();
+          return {
+            文: 名.textContent, 全称: 名.title, 行数: Math.round(r.height / lh),
+            截了: 名.scrollWidth > 名.clientWidth + 1,
+            省略: cs.textOverflow === "ellipsis" && cs.whiteSpace === "nowrap",
+            在格里: r.right <= tr.right - parseFloat(getComputedStyle(td).paddingRight) + 0.5,
+          };
+        });
+        const 属性格 = [...document.querySelectorAll<HTMLElement>(".chan-list td.dl-col-attr")].map((td) => {
+          const t = td.getBoundingClientRect();
+          return [...td.querySelectorAll<HTMLElement>(".ant-tag")].map((tag) => {
+            const r = tag.getBoundingClientRect();
             const 中 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-            return {
-              字: t.textContent,
-              交: !(r.left >= 名框.right || r.right <= 名框.left || r.top >= 名框.bottom || r.bottom <= 名框.top),
-              // 第一个标签和名字第一行顶齐；第二个叠在它下面，和上一个不相交
-              顶差: i === 0 ? Math.abs(r.top - 名框.top) : 0,
-              压上一个: i > 0 && r.top < 标签们[i - 1].getBoundingClientRect().bottom,
-              在格里: r.right <= td.getBoundingClientRect().right + 0.5,
-              点中: !!中 && t.contains(中),
-            };
-          }),
-        };
-      }));
-      expect(量.map((x) => x.文)).toEqual([长名, 无空格名, "短名"]);
-      for (const x of 量) {
-        expect(x.省略, x.文!).toBe(false);
-        expect(x.名溢出, x.文!).toBe(false);
-        expect(x.格溢出, x.文!).toBe(false);
-        for (const t of x.标签) {
-          expect(t.交, `${x.文} / ${t.字}`).toBe(false);
-          expect(t.顶差, `${x.文} / ${t.字}`).toBeLessThanOrEqual(2);
-          expect(t.在格里, `${x.文} / ${t.字}`).toBe(true);
-          expect(t.点中, `${x.文} / ${t.字}`).toBe(true);
-          expect(t.压上一个, `${x.文} / ${t.字}`).toBe(false);
-        }
+            return { 字: tag.textContent, 顶: Math.round(r.top), 在格里: r.left >= t.left - 0.5 && r.right <= t.right + 0.5, 点中: !!中 && tag.contains(中) };
+          });
+        });
+        const 表 = document.querySelector<HTMLElement>(".chan-list .ant-table-content, .chan-list .ant-table-body");
+        return { 表头, 折行格, 行高, 名们, 属性格, 表横滚: 表 ? 表.scrollWidth > 表.clientWidth : false,
+          页横滚: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          表头折行: [...document.querySelectorAll<HTMLElement>(".chan-list .ant-table-thead th")].filter((th) => getComputedStyle(th).whiteSpace !== "nowrap").map((th) => th.textContent) };
+      });
+      // 两列：「渠道」「渠道属性」挨着
+      const i = 量.表头.indexOf("渠道");
+      expect(i).toBeGreaterThanOrEqual(0);
+      expect(量.表头[i + 1]).toBe("渠道属性");
+      expect(量.名们.map((x) => x.文)).toEqual([长名, 无空格名, "短名"]);
+      // 所有格、表头都不折行，每一行一样高（只有一行字）
+      expect(量.折行格).toEqual([]);
+      expect(量.表头折行).toEqual([]);
+      for (const h of 量.行高) expect(Math.abs(h - 量.行高[0])).toBeLessThan(1);
+      for (const x of 量.名们) {
+        expect(x.行数, x.文!).toBe(1);
+        expect(x.省略, x.文!).toBe(true);
+        expect(x.全称, x.文!).toBe(x.文);
+        expect(x.在格里, x.文!).toBe(true);
       }
-      // 长名真的折了行（不是被藏起来），短名还是一行
-      expect(量[0].行数).toBeGreaterThanOrEqual(2);
-      expect(量[1].行数).toBeGreaterThanOrEqual(2);
-      expect(量[2].行数).toBe(1);
-      // 两个标签横着排时名字被挤成一指宽、折到 8 行（10-30 量到的）；上下叠以后名字留得出宽度
-      for (const x of 量) expect(x.行数, x.文!).toBeLessThanOrEqual(5);
-      expect(量[1].标签.map((t) => t.字)).toEqual(["个人自拓", "已停用"]);
-      // 整页不横滚
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      // 名字列宽按最长的名字估：短名、长名放得下整段；最长的无空格名超了上限才省略
+      expect(量.名们[0].截了).toBe(false);
+      expect(量.名们[2].截了).toBe(false);
+      // 属性标签在自己那一列，「个人自拓 + 已停用」并排一行、都在格里、点得中
+      expect(量.属性格.map((ts) => ts.map((t) => t.字))).toEqual([["公域引流"], ["个人自拓", "已停用"], ["公域引流"]]);
+      for (const ts of 量.属性格) for (const t of ts) {
+        expect(t.在格里, t.字!).toBe(true);
+        expect(t.点中, t.字!).toBe(true);
+        expect(t.顶).toBe(ts[0].顶);
+      }
+      // 整页不横滚（列多了表格自己横滚）
+      expect(量.页横滚).toBe(false);
+      console.log(`[${width}] 名字截了：${量.名们.map((x) => x.截了).join("/")}，表格横滚：${量.表横滚}`);
     } finally { await page.close(); }
   });
 }
