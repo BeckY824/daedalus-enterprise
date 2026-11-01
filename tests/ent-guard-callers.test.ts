@@ -43,10 +43,12 @@ beforeEach(async () => {
   小王 = await 建("wang", "SALES");
   小李 = await 建("li", "SALES");
   await prisma.entMember.createMany({
+    // 11-01 权限只认业务角色：老板要有总管理、业务员要有销售，不然只看公海
     data: [
+      { userId: 老板.id, bizRole: "director" },
       { userId: 组长.id, bizRole: "sales_mgr" },
-      { userId: 小王.id, managerId: 组长.id },
-      { userId: 小李.id, managerId: 组长.id },
+      { userId: 小王.id, managerId: 组长.id, bizRole: "sales" },
+      { userId: 小李.id, managerId: 组长.id, bizRole: "sales" },
     ],
   });
   vi.stubEnv("CRM_ENTERPRISE", "1");

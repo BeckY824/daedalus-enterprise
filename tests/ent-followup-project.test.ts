@@ -81,8 +81,8 @@ it("编辑时带 projectId 也不挂", async () => {
   const id = await 最新跟进();
   const 原 = await prisma.followUp.findUniqueOrThrow({ where: { id } });
   // 10-31 M-权限-09：改沟通是总管理员 / 经理的事
-  await prisma.user.update({ where: { id: 销售 }, data: { role: "MANAGER" } });
-  mocks.user = { ...mocks.user, role: "MANAGER" };
+  // 11-01 权限只认业务角色：改沟通只认总管理（director），账号 MANAGER 不再放行
+  await prisma.entMember.upsert({ where: { userId: 销售 }, create: { userId: 销售, bizRole: "director" }, update: { bizRole: "director" } });
   expect(await 记({ id, projectId: p.id, content: "改一下", 版本: 原.updatedAt.toISOString() })).toMatchObject({ ok: true });
   expect((await prisma.followUp.findUniqueOrThrow({ where: { id } })).content).toBe("改一下");
   expect(await 挂了(id)).toEqual({ 挂: null, 编号: null, 标记: null });

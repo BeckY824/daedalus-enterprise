@@ -2,7 +2,7 @@
  * 企业版节点必填 + 自动推进（D-37，lib/project/required.ts + lib/project/db.ts 按必填推进）。
  *   - 填齐了自动往前推一步、留一行节点变更（理由写自动推进）；下一个节点也齐了接着推
  *   - 没齐照样能保存，只是不推；退回来的节点不自动推
- *   - 配了必填的节点，销售手动往前推被拦（列还差）；老板、主管能推；往后退照旧
+ *   - 配了必填的节点，销售手动往前推被拦（列还差）；自己当负责人的销售管理能推（11-01：总管理、上级改不了进程）；往后退照旧
  *   - 客户那边补了资料：客户名下停在配了节点上的项目跟着推
  *   - 不是企业版 / 没开：和原来一样
  */
@@ -12,7 +12,7 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 改节点, 改项目, 记项目沟通, 勾交付, 客户项目按必填推进, 自动推进理由 } from "@/lib/project/db";
+import { 改节点, 改项目, 记项目沟通, 勾交付, 客户项目按必填推进, 自动推进理由, 只有负责人改进程 } from "@/lib/project/db";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
@@ -49,6 +49,8 @@ describe("节点必填自动推进", () => {
     老板 = await 人("boss", "ADMIN");
     乙 = await 人("yi", "SALES");
     客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 乙.id } })).id;
+    // 11-01 权限只认业务角色：老板 = 总管理（改不了进程），乙 = 销售（项目负责人）
+    await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id }] });
     vi.stubEnv("CRM_ENTERPRISE", "1");
   });
   afterEach(() => { vi.unstubAllEnvs(); });
@@ -119,20 +121,20 @@ describe("节点必填自动推进", () => {
     expect((await 现(没配.id)).node).toBe("线索验证");
   });
 
-  it("退回来的节点不自动推；老板再往前推过去之后照常", async () => {
+  it("退回来的节点不自动推；负责人再往前推过去之后照常", async () => {
     await setSetting("orgRules", 开着({ 线索验证: ["金额"] }));
     const p = await 项目({ node: "线索推进", amount: 0 });
     没推(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" }));
     没推(await 改项目(乙, p.id, { name: "一号项目", amount: 9 }));
     expect((await 现(p.id)).node).toBe("线索验证");
 
-    // 老板手动往前推进来的节点齐了：接着推
+    // 手动往前推进来的节点齐了：接着推（11-01 权限只认业务角色：总管理改不了进程，推的人从老板换成负责人乙）
     const q = await 项目({ amount: 9 });
     await 记有效沟通(q.id);
-    expect(await 改节点(老板, q.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
+    expect(await 改节点(乙, q.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
   });
 
-  it("配了必填的节点：销售手动往前推被拦并列还差；老板、主管能推；往后退照旧", async () => {
+  it("配了必填的节点：销售手动往前推被拦并列还差；自己当负责人的销售管理能推、总管理和不是负责人的推不了；往后退照旧", async () => {
     await setSetting("orgRules", 开着({ 线索验证: ["金额", "国家"] }));
     const p = await 项目({ node: "线索验证" });
     await 记有效沟通(p.id);
@@ -140,11 +142,16 @@ describe("节点必填自动推进", () => {
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toContain("还差必填：预计成交金额、国家");
     expect(await 改节点(乙, p.id, { phase: "线索", node: "潜客培育" })).toMatchObject({ ok: true });
-    没推(await 改节点(老板, p.id, { phase: "线索", node: "线索验证" }));
+    没推(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" }));
+    // 11-01 权限只认业务角色：缺必填往前推只给「自己当负责人的销售管理」；总管理、不是负责人的销售管理改不了进程
+    expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 只有负责人改进程 });
     const 主管 = await 人("mgr", "MANAGER");
+    await prisma.entMember.create({ data: { userId: 主管.id, bizRole: "sales_mgr" } });
+    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 只有负责人改进程 });
+    await prisma.project.update({ where: { id: p.id }, data: { ownerId: 主管.id } });
     expect(await 改节点(主管, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
-    // 结局不算往前，照旧能点
-    expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进", result: "线索流失" }, { 备注: "联系不上" })).toMatchObject({ ok: true });
+    // 结局不算往前，照旧能点（负责人现在是主管）
+    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索推进", result: "线索流失" }, { 备注: "联系不上" })).toMatchObject({ ok: true });
   });
 
   it("没配的节点：销售照样手动推，不自动推", async () => {

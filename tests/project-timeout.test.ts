@@ -111,6 +111,8 @@ describe("扫库收回", () => {
     老板 = await 人("boss", "ADMIN");
     乙 = await 人("yi", "SALES");
     丙 = await 人("bing", "SALES");
+    // 11-01 权限只认业务角色：老板 = 总管理，乙、丙 = 销售
+    await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id }, { userId: 丙.id }] });
     客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 乙.id } })).id;
     vi.stubEnv("CRM_ENTERPRISE", "1");
   });
@@ -264,12 +266,15 @@ describe("扫库收回", () => {
       expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).nextStepAt).toBeNull();
     });
 
-    it("谁能记：负责人、老板、进了组的成员；别人、在公海里的不行", async () => {
+    it("谁能记：只有负责人；别人、进了组的成员、总管理、在公海里的都不行", async () => {
+      // 11-01 权限只认业务角色：沟通是项目内容，只有负责人本人能记；组员、总管理只能看
+      const 拒 = { ok: false, error: "只有项目负责人能记沟通，项目组成员只能看" };
       const p = await 项目(乙.id);
-      expect(await 记项目沟通(丙, p.id, 沟通())).toEqual({ ok: false, error: "只有项目负责人、项目组成员、老板或主管能记沟通" });
+      expect(await 记项目沟通(丙, p.id, 沟通())).toEqual(拒);
       await prisma.projectMember.create({ data: { projectId: p.id, userId: 丙.id, inviteStatus: "JOINED", invitedById: 乙.id } });
-      expect((await 记项目沟通(丙, p.id, 沟通())).ok).toBe(true);
-      expect((await 记项目沟通(老板, p.id, 沟通())).ok).toBe(true);
+      expect(await 记项目沟通(丙, p.id, 沟通())).toEqual(拒);
+      expect(await 记项目沟通(老板, p.id, 沟通())).toEqual(拒);
+      expect((await 记项目沟通(乙, p.id, 沟通())).ok).toBe(true);
       await prisma.project.update({ where: { id: p.id }, data: { pooledAt: new Date() } });
       expect(await 记项目沟通(乙, p.id, 沟通())).toEqual({ ok: false, error: "这个项目在公海里，先领取再记" });
       expect(await 记项目沟通(乙, "没这个", 沟通())).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });

@@ -37,6 +37,7 @@ import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 进公海后负责人, 历史负责人, 进公海关待办 } from "./pool-owner";
+import { 换负责人待办, 待办痕 } from "./carry-tasks";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -84,6 +85,11 @@ export function 往前推不给(me: 谁, ownerId: string, org: 组织 | null, �
   const 上级 = 直属上级of(org, ownerId);
   if (!上级 || me.id === 上级 || 是总管理(me, org)) return null;
   return me.id === ownerId ? "往前推进程要由你的直属上级来推" : "只有负责人的直属上级能往前推进程";
+}
+
+/** 企业版「仅上级推」：没在公海、我是负责人的直属上级 → 这一步能往前推（只往前推，改节点里另拦往后退、点结局） */
+export function 上级只推(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, 推的组织: 组织 | null, 规则: 组织规则): boolean {
+  return 企业版() && !!推的组织 && !负责人可推(规则) && !p.pooledAt && 直属上级of(推的组织, p.ownerId) === me.id;
 }
 
 /**
@@ -274,7 +280,9 @@ export async function 改节点(
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    if (!能改节点(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
+    // 「仅上级推」开着（企业版组织规则）：负责人自己推不动，直属上级只给往前推这一步，别的照旧只给负责人（11-01 闭环）
+    const 上级代推 = !能改节点(me, p, org) && 上级只推(me, p, 推的组织, 规则);
+    if (!能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
     // 企业版线索验证（P12）在等复核 / 等销售处理：别从这里绕过去（lead-verify.ts 带 验证放行 进来）
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
@@ -288,17 +296,18 @@ export async function 改节点(
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
     const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
+    if (上级代推 && !往前) return { ok: false as const, error: 只有负责人改进程 };
     const 不给 = 往前
       ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则))
       : null;
     if (不给) return { ok: false as const, error: 不给 };
-    // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给「经理」（企业版 = 自己当负责人的销售管理，见 是经理）；
+    // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给「经理」（企业版 = 销售管理：自己当负责人的，或「仅上级推」下的直属上级，见 是经理）；
     // 销售本人填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
     if (往前 && 按必填走(规则, p.node) && !是经理(me, org)) {
       const 数据 = await 读必填数据(tx, p);
       // 线索核验判有效（lead-verify.ts 带 验证放行 进来）：先推进程、推成了才写判定，这一步的「线索验证结果」按判了有效算
       const 差 = 还差(规则, 选项?.验证放行 ? { ...数据, 线索验证: { verdict: 有效线索判定, finalResult: 有效线索判定, pending: null } } : 数据);
-      if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推，要先推请找老板或主管` };
+      if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推${企业版() ? "" : "，要先推请找老板或主管"}` };
     }
     let 类别: string | null = null;
     let 备注: string | null = null;
@@ -438,21 +447,26 @@ export async function 记转让(
   操作人: string, 从: string | null, 到: string | null,
   kind: "transfer" | "pool-release" | "pool-claim" = "transfer",
   reason: string | null = null,
+  at?: Date,
 ) {
-  await tx.projectNodeLog.create({ data: 转让痕(p, 操作人, 从, 到, kind, reason) });
+  await tx.projectNodeLog.create({ data: 转让痕(p, 操作人, 从, 到, kind, reason, at) });
 }
 
-/** 记转让 写的那一行；一次转很多个（停用成员）时拼好用 createMany 一起写 */
+/**
+ * 记转让 写的那一行；一次转很多个（停用成员）时拼好用 createMany 一起写。
+ * at 不传按库里默认（现在）；进公海传 pooledAt 那一刻，和关待办的 doneAt 对得上（出公海按这个认那一批，carry-tasks.ts）
+ */
 export function 转让痕(
   p: { id: string; phase: string; node: string; result: string | null },
   操作人: string, 从: string | null, 到: string | null,
   kind: "transfer" | "pool-release" | "pool-claim" = "transfer",
   reason: string | null = null,
+  at?: Date,
 ) {
   // 节点、结局写新名（企业版 10-31 改名：库里存着旧名的项目按 本套位置 对上）
   const 现 = 本套位置(p, 字典of(企业版()));
   return {
-    projectId: p.id, userId: 操作人, kind, fromOwnerId: 从, toOwnerId: 到, reason,
+    projectId: p.id, userId: 操作人, kind, fromOwnerId: 从, toOwnerId: 到, reason, ...(at ? { at } : {}),
     fromPhase: 现.phase, fromNode: 现.node, fromResult: 现.result ?? null,
     toPhase: 现.phase, toNode: 现.node, toResult: 现.result ?? null,
   };
@@ -470,11 +484,12 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
  * 换负责人 = 转让：能转让项目的人（企业版 = 总管理、负责人的实线上级；不是企业版 = 负责人本人、老板、主管）能转，
  * 只改这一个项目，记谁、何时、从谁到谁；别的字段 = 编辑内容，只给 能管项目 的人（企业版 C2：总管理、上级能转不能改）。
+ * 带待办（企业版 C-06，转让弹窗的勾）：原负责人在这个项目上没做完的待办带给新负责人 / 关掉，没传不碰（lib/project/carry-tasks.ts）。
  * 公海里的项目能转让的人指了新负责人 = 出公海。建档人（creatorId）不在这里、哪里都不给改
  */
 export type 编辑项目改动 = 向导项目 & { contactId?: string | null; expectedDealAt?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>
   & Partial<{ [K in keyof 项目成交钱]: 项目成交钱[K] }> & Partial<项目新字段>;
-export async function 改项目(me: 谁, projectId: string, patch: 编辑项目改动): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
+export async function 改项目(me: 谁, projectId: string, patch: 编辑项目改动, 带待办?: boolean): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   const 规则 = await 生效组织规则();
   const 级别 = await 字段权限of(me.id);
@@ -527,7 +542,12 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     // 换了人，上一位填的下一步时间不替新负责人算（超时回收从接手那天重新算）
     await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
     // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
-    if (换人) await 记转让(tx, p, me.id, p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId, 新.ownerId);
+    if (换人) {
+      const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
+      // 原负责人的待办（C-06）：勾着带给新负责人，不勾关掉；碰了几条写进这行留痕
+      const 几条 = await 换负责人待办(tx, p, 原, 新.ownerId, 带待办);
+      await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条));
+    }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, 变了, ...带推进(推进) };
@@ -616,7 +636,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     const 现在 = new Date();
     // 企业版进公海清空负责人（pool-owner.ts），原负责人记在这行 pool-release 的 from 上
     await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
-    await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason);
+    await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
     // 企业版：客户名下只有这一个项目，客户也一起进客户公海（pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
     await 进公海关待办(tx, p, p.ownerId, 现在);
@@ -630,9 +650,9 @@ const 领走了 = { ok: false as const, error: "这个项目已经被人领走�
 
 /**
  * 从公海领取：除了原负责人谁都能领（企业版 10-26 定稿「非原负责人均可领取」，别的版本本来就不能自己领回）。领了就是新负责人，记一行 pool-claim。
- * 开了持有上限的，到上限了领不了
+ * 开了持有上限的，到上限了领不了。带待办（C-06）：进公海时关掉的那批待办重新打开给我，没传不碰
  */
-export async function 领取公海项目(me: 谁, projectId: string): Promise<结果> {
+export async function 领取公海项目(me: 谁, projectId: string, 带待办?: boolean): Promise<结果> {
   const 规则 = await 生效组织规则();
   return 查完再写(async (tx) => {
     const id = String(projectId ?? "");
@@ -657,9 +677,11 @@ export async function 领取公海项目(me: 谁, projectId: string): Promise<�
     const 超 = await 超上限(tx, 规则, me.id, p);
     if (超) return { ok: false as const, error: 超 };
     await tx.project.update({ where: { id: p.id }, data: { ownerId: me.id, pooledAt: null } });
-    await 记转让(tx, p, me.id, 原, me.id, "pool-claim");
+    // 进公海时关掉的那批待办（C-06）：勾着重新打开给我
+    const 几条 = await 换负责人待办(tx, p, 原, me.id, 带待办);
+    await 记转让(tx, p, me.id, 原, me.id, "pool-claim", 待办痕(带待办, 几条));
     // 企业版：客户在客户公海里、名下只有这一个项目，客户一起领过来（pool-link.ts）
-    await 单项目客户跟着领(tx, p.customerId, me.id);
+    await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带待办);
     return { ok: true as const };
   });
 }
@@ -745,7 +767,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今)) return false;
       await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 今, nextStepAt: null, nextStepText: null } });
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
-      await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由);
+      await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
       await 单项目客户跟进公海(tx, p, null, 今);
       // 先关他手上这个项目的待办，再给他发收回提醒（提醒留着不关）
       await 进公海关待办(tx, p, p.ownerId, 今);

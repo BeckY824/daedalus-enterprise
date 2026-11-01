@@ -129,6 +129,8 @@ describe("改项目：级别 + 所在地（真库）", () => {
     await resetDb();
     乙 = await 人("p11l-yi", "SALES");
     丙 = await 人("p11l-bing", "SALES");
+    // 11-01 权限只认业务角色：乙、丙都是销售，乙是负责人
+    await prisma.entMember.createMany({ data: [{ userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
     const 客户 = await prisma.customer.create({ data: { name: "QA-所在地客户", phone: "13800001093", salesOwnerId: 乙.id } });
     项目id = (await prisma.project.create({ data: { name: 基.name, customerId: 客户.id, ownerId: 乙.id, creatorId: 乙.id } })).id;
   });

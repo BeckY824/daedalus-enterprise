@@ -50,7 +50,8 @@ beforeAll(async () => {
   const 人 = (id: string, name: string, role = "SALES") => raw.user.create({ data: { id, email: `${id}@x.com`, name, password: "x", role } });
   await 人(老板, "老板", "ADMIN");
   for (const [id, n] of [[经理, "经理"], [小王, "小王"], [小张, "小张"]]) await 人(id, n);
-  await raw.entMember.createMany({ data: [{ userId: 经理, bizRole: "sales_mgr" }, { userId: 小王, managerId: 经理 }, { userId: 小张 }] });
+  // 11-01 权限只认业务角色：老板（账号 ADMIN）也要有总管理，业务员要有销售，不然只看公海
+  await raw.entMember.createMany({ data: [{ userId: 老板, bizRole: "director" }, { userId: 经理, bizRole: "sales_mgr" }, { userId: 小王, managerId: 经理, bizRole: "sales" }, { userId: 小张, bizRole: "sales" }] });
   let i = 0;
   for (const o of [经理, 小王, 小张, 老板]) {
     for (let k = 0; k < 6; k++) {
@@ -312,7 +313,11 @@ describe("对拍：开 / 关结果一模一样", () => {
       // 规则开着时各人看到的确实不一样（不是全都空的、对拍是真对上的）
       const 各人客户数 = 原来.map((x: unknown[]) => x[2]);
       if (规则开) expect(new Set(各人客户数).size).toBeGreaterThan(2);
-      else expect(new Set(各人客户数).size).toBe(1);
+      else {
+        // 11-01 权限只认业务角色：规则关着也只有设了业务角色的不限定；没认出的人（第 5 个）只看公海
+        expect(new Set(各人客户数.filter((_: unknown, i: number) => i !== 4)).size).toBe(1);
+        expect(各人客户数[4]).toBeLessThan(各人客户数[0]);
+      }
     });
   }
 });

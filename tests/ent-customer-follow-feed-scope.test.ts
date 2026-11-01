@@ -65,7 +65,7 @@ beforeAll(async () => {
   for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   for (const id of [销售A, 销售B]) await raw.user.create({ data: { id, email: `${id}@x.com`, name: id, password: "x", role: "SALES" } });
   await raw.user.create({ data: { id: 老板, email: `${老板}@x.com`, name: 老板, password: "x", role: "ADMIN" } });
-  await raw.entMember.createMany({ data: [{ userId: 销售A }, { userId: 销售B }, { userId: 老板 }] });
+  await raw.entMember.createMany({ data: [{ userId: 销售A }, { userId: 销售B }, { userId: 老板, bizRole: "director" }] });
   甲 = (await raw.customer.create({ data: { name: "QA-A的客户甲", phone: "13800001721", salesOwnerId: 销售A } })).id;
   乙 = (await raw.customer.create({ data: { name: "QA-B的客户乙", phone: "13800001722", salesOwnerId: 销售B } })).id;
   乙的商机 = (await raw.opportunity.create({ data: { name: "QA-乙的商机", customerId: 乙, ownerId: 销售B } })).id;
@@ -128,13 +128,14 @@ describe("企业版客户页沟通记录：只汇总我看得到的项目（真�
     expect(去处.slice(-2).map((p) => p.说明).sort()).toEqual(["在公海", "已结束"]);
   });
 
-  it("B 看不到 A 的项目：B 的汇总里不出 A 项目（主客户甲）的沟通；主客户是乙的项目 B 本来就看得到", async () => {
+  it("B 看不到 A 的项目：B 的汇总里不出 A 项目的沟通；主客户是乙（B 的客户）、A 负责的项目也不出（11-01 项目不再跟客户走）", async () => {
     // B 打不开甲的客户页（loadCustomerFeed 先按客户限定挡）；这里直接调汇总，看项目这一层也不漏
     const r = await 以谁的身份(销售B, () => 客户沟通汇总(B, 甲));
     expect(标题们(r.rows)).not.toContain("A项目的沟通");
     expect(JSON.stringify(r)).not.toContain("QA-A的项目");
-    // A 负责的那个项目主客户是乙（B 的客户），B 本来就看得到
-    expect(标题们(r.rows)).toEqual(expect.arrayContaining(["B项目的沟通", "A关联项目的沟通"]));
+    // 11-01 权限只认业务角色：项目只看负责人范围，主客户是 B 的客户也不放开 A 负责的项目
+    expect(标题们(r.rows)).toContain("B项目的沟通");
+    expect(标题们(r.rows)).not.toContain("A关联项目的沟通");
   });
 
   it("超过一页：游标翻页不重不漏，同一时刻的按 id 接着往下", async () => {

@@ -34,6 +34,8 @@ beforeEach(async () => {
   mocks.开 = true;
   甲 = (await prisma.user.create({ data: { email: "jia", name: "甲", title: "", role: "ADMIN", password: "x" } })).id;
   乙 = (await prisma.user.create({ data: { email: "yi", name: "乙", title: "", role: "SALES", password: "x" } })).id;
+  // 11-01 权限只认业务角色：甲 = 总管理（改组织规则），乙 = 销售
+  await prisma.entMember.createMany({ data: [{ userId: 甲, bizRole: "director" }, { userId: 乙 }] });
   mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
   const c = await prisma.customer.create({ data: { name: "客户", phone: "13800000001", salesOwnerId: 甲 } });
   项目id = (await prisma.project.create({ data: { name: "一期", customerId: c.id, ownerId: 甲, creatorId: 甲 } })).id;
@@ -116,7 +118,8 @@ describe("改组织规则（企业版持有上限）", () => {
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).pooledAt).not.toBeNull();
     expect((await 记录()).map((r) => r.summary)).toContain("组织规则：超时回收开，设了 1 个进程的处理时长，起算日 不设");
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
-    expect(await 预览超时回收(改)).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
+    // 11-01 权限只认业务角色：企业版报错不再说老板
+    expect(await 预览超时回收(改)).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理员") });
   });
 
   it("节点推进：老板配必填、开关，存下并留记录；配不能配的节点拦", async () => {
@@ -132,7 +135,8 @@ describe("改组织规则（企业版持有上限）", () => {
 
   it("业务员改不了；开关关着拦；填错拦，都不写", async () => {
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
-    expect(await 改组织规则({ 公海: { 持有上限开: true } })).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
+    // 11-01 权限只认业务角色：企业版报错不再说老板
+    expect(await 改组织规则({ 公海: { 持有上限开: true } })).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理员") });
     mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
     expect(await 改组织规则({ 公海: { 默认上限: 0 } })).toMatchObject({ ok: false, error: expect.stringContaining("1–999") });
     mocks.开 = false;
@@ -147,6 +151,8 @@ describe("企业版项目组邀请（10-26）", () => {
 
   it("邀请记「邀请进」，同意 / 拒绝各记一条；别人替他回不行", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
+    // 11-01 权限只认业务角色：加组员是项目内容，只有负责人（销售）能做；甲在这条里当负责人的销售
+    await prisma.entMember.update({ where: { userId: 甲 }, data: { bizRole: "sales" } });
     expect(await 加项目组员(项目id, 乙, null)).toEqual({ ok: true });
     const m = await prisma.projectMember.findFirstOrThrow({ where: { userId: 乙 } });
     expect(m.inviteStatus).toBe("INVITED");
