@@ -20,7 +20,7 @@ import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 是业务角色, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
-import { 挡改设置, 规整改权限, 改权限key, 设置项, 设置项们, 谁能改, type 设置项名 } from "@/lib/enterprise/edit-perm";
+import { 挡改设置, 规整改权限, 改权限key, 设置项, 设置项们, 谁能改的话, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import {
   通讯录来源们, 通讯录来源名, 读通讯录设置, 读凭据概况, 开关通讯录同步, 存角色对照, 存通讯录凭据, 存通讯录间隔, 同步通讯录, 对照能给的角色,
   type 通讯录来源, type 通讯录设置, type 凭据概况, type 通讯录一次结果, type 通讯录间隔,
@@ -283,7 +283,7 @@ export async function 设改权限(配置: unknown): Promise<结果> {
   try {
     const 存 = 规整改权限(配置);
     await setSetting(改权限key, 存);
-    const 说 = 设置项们.map((项) => `${设置项[项].名}：${["总管理", ...谁能改(存, 项)].join("、")}`).join("；");
+    const 说 = 设置项们.map((项) => `${设置项[项].名}：${谁能改的话(存, 项).replace(/^只有|能改$/g, "")}`).join("；");
     await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 改权限key, summary: `改后台设置谁能改（${说}）`, detail: 存 });
     改完了();
     return { ok: true };

@@ -33,6 +33,8 @@ beforeEach(async () => {
   mocks.开 = true;
   await prisma.user.create({ data: { id: "tester-id", email: "t@t", name: "测试员", role: "ADMIN", password: "x" } });
   销售 = (await prisma.user.create({ data: { email: "s@t", name: "销售", role: "SALES", password: "x" } })).id;
+  // 11-01 权限只认业务角色：测试员是总管理（才能新建时指定别人当负责人），销售是销售
+  await prisma.entMember.createMany({ data: [{ userId: "tester-id", bizRole: "director" }, { userId: 销售, bizRole: "sales" }] });
 });
 afterEach(() => vi.unstubAllEnvs());
 afterAll(() => prisma.$disconnect());

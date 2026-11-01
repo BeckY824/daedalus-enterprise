@@ -6,7 +6,7 @@
  *     结局按字典叫法（企业版「商机丢单」、后台改的叫法），节点按 改名 对到这套
  *   - 读 / 存产品需求：存 JSON 数组、去重保序、空数组存 null；坏数据读成 []
  *   - 改项目画像（真库 + 企业字典）：单选只认启用着的项；已存的项停用了，不改它照留、别的项照改；多选同理；
- *     负责人、老板能改，同事、公海里的改不了；没变不写；不是企业版不认（所在地不再是画像的一项，传了不认）
+ *     负责人能改；老板（总管理，11-01 C2）、同事、公海里的改不了；没变不写；不是企业版不认（所在地不再是画像的一项，传了不认）
  *   - 需求状态、产品需求 10-30 换成客户原表的取值：老库第一次读时按序号改名，产品需求补齐八项；项目上存的原值不动
  *     需求状态多出的第五项（订单交付）10-31 起：没项目在用就删，有项目在用就停用留着；上一版已经停用过的库也删
  *   - 同天：价格感知照原表换顺序；分配方式「自拓自持」改叫「个人自拓」
@@ -88,6 +88,8 @@ describe("改项目画像（真库、企业字典）", () => {
     老板 = await 人("p11-boss", "ADMIN");
     乙 = await 人("p11-yi", "SALES");
     丙 = await 人("p11-bing", "SALES");
+    // 11-01 权限只认业务角色：老板=总管理，乙、丙=销售
+    await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
     const 客户 = await prisma.customer.create({ data: { name: "QA-画像客户", phone: "13800001087", salesOwnerId: 乙.id } });
     项目id = (await prisma.project.create({ data: { name: "QA-画像项目", customerId: 客户.id, ownerId: 乙.id, creatorId: 乙.id } })).id;
   });
@@ -123,10 +125,12 @@ describe("改项目画像（真库、企业字典）", () => {
     expect((await 读()).productNeeds).toBeNull();
   });
 
-  it("谁能改同改项目：负责人、老板能改；同事、公海里的（含放回去的原负责人）改不了，库里不动", async () => {
+  it("谁能改同改项目：负责人能改；老板、同事、公海里的（含放回去的原负责人）改不了，库里不动", async () => {
     expect(await 改项目画像(丙, 项目id, { budgetLevel: "预算充足" })).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
-    expect(await 改项目画像(老板, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"] });
-    expect(await 改项目画像(老板, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: [] });
+    // 11-01 权限只认业务角色：总管理不能编辑项目内容（C2），只有负责人本人能改
+    expect(await 改项目画像(老板, 项目id, { budgetLevel: "预算充足" })).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
+    expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"] });
+    expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: [] });
     await prisma.project.update({ where: { id: 项目id }, data: { pooledAt: new Date() } });
     expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算匹配" })).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
     expect((await 读()).budgetLevel).toBe("预算充足");
@@ -301,6 +305,8 @@ describe("画像后七项（10-31，迁移 102）", () => {
       vi.stubEnv("CRM_ENTERPRISE", "1");
       await resetDb();
       乙 = { id: (await prisma.user.create({ data: { email: "p7-yi", name: "p7-yi", title: "", role: "SALES", password: "x" } })).id, role: "SALES" };
+      // 11-01 权限只认业务角色：负责人得有销售角色才能改项目
+      await prisma.entMember.create({ data: { userId: 乙.id, bizRole: "sales" } });
       const 客户 = await prisma.customer.create({ data: { name: "QA-七项客户", phone: "13800001102", salesOwnerId: 乙.id } });
       项目id = (await prisma.project.create({ data: { name: "QA-七项项目", customerId: 客户.id, ownerId: 乙.id, creatorId: 乙.id } })).id;
     });

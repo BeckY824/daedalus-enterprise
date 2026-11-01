@@ -33,7 +33,8 @@ beforeEach(async () => {
   await resetDb();
   老板 = await 建("boss", "ADMIN");
   销售 = await 建("sales", "SALES");
-  await prisma.entMember.create({ data: { userId: 销售.id } });
+  // 11-01 权限只认业务角色：老板要有总管理才能改字典，账号 ADMIN 不再放行；销售给销售角色
+  await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 销售.id, bizRole: "sales" }] });
   当(老板);
   vi.stubEnv("CRM_ENTERPRISE", "1");
 });

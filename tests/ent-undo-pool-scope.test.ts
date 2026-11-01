@@ -53,6 +53,8 @@ beforeEach(async () => {
   小李 = await 建("li", "SALES");
   await prisma.entMember.createMany({
     data: [
+      { userId: 老板.id, bizRole: "director" },
+      { userId: 老板二.id, bizRole: "director" },
       { userId: 组长.id, bizRole: "sales_mgr" },
       { userId: 小王.id, managerId: 组长.id },
       { userId: 小李.id, managerId: 组长.id },

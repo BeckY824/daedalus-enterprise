@@ -12,7 +12,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Dropdown, Segmented, Select, Space, Tag } from "antd";
+import { App, Button, Checkbox, Dropdown, Segmented, Select, Space, Tag } from "antd";
 import type { MenuProps } from "antd";
 import { MoreOutlined } from "@ant-design/icons";
 import DataList, { type 列 } from "@/components/DataList";
@@ -96,6 +96,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort);
   const 到上限 = !!持有 && 持有.有 >= 持有.上限;
   const 分给谁 = 成员选项(users);
+  /** 企业版 C-06：领取、分配时，进公海时关掉的原负责人待办一起转给新负责人（默认勾，可以手动关掉；pool-rules.ts） */
+  const [带待办, set带待办] = useState<boolean>(公海规则.带待办默认勾);
 
   /** 领取按钮灰着的原因（规则 A：写在按钮下面）；能领返回 null。持有上限只拦项目（同 领取公海项目），客户行不拦 */
   function 领不了(r: 公海行): string | null {
@@ -112,12 +114,14 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
    * 提示条说清领到几个、几个没领到（能展开看原因），带一次撤销：客户行走 撤销公海，项目行走 撤销公海项目
    */
   async function 动手(动作: "领取" | "分配", 们: 公海行[], 给?: string) {
+    // 企业版 C-06：页头那个勾，这一页的领取、分配都按它（进公海时关掉的待办要不要重新打开给新负责人）
+    const 带 = 公海规则.换负责人带待办 ? 带待办 : undefined;
     const 客户们 = 们.filter((r) => r.种 === "客户");
     const 项目们 = 们.filter((r) => r.种 === "项目" && r.projectId);
     const 没领到: { 名: string; 原因: string }[] = [];
     let 客户res: 公海结果 | null = null;
     if (客户们.length) {
-      客户res = 动作 === "领取" ? await 领取(客户们.map((r) => r.customerId)) : await 分配公海(客户们.map((r) => r.customerId), 给!);
+      客户res = 动作 === "领取" ? await 领取(客户们.map((r) => r.customerId), 带) : await 分配公海(客户们.map((r) => r.customerId), 给!, 带);
       const 到 = new Set(客户res.ok ? (客户res.原负责人 ?? []).map((x) => x.id) : []);
       for (const r of 客户们) {
         if (到.has(r.customerId)) continue;
@@ -131,12 +135,12 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     let 给谁: { id: string; name: string } | undefined = 客户res?.ok ? 客户res.给谁 : undefined;
     if (项目们.length && 动作 === "领取") {
       for (const r of 项目们) {
-        const res = await 领取项目(r.projectId!);
+        const res = await 领取项目(r.projectId!, 带);
         if (res.ok) 项目到.push(r.projectId!);
         else 没领到.push({ 名: 行名(r), 原因: res.error });
       }
     } else if (项目们.length) {
-      const res = await 分配公海项目(项目们.map((r) => r.projectId!), 给!);
+      const res = await 分配公海项目(项目们.map((r) => r.projectId!), 给!, 带);
       if (res.ok) {
         给谁 = res.给谁;
         项目到.push(...res.分到);
@@ -319,7 +323,16 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       <PageHead
         title="公海"
         subtitle="没人负责的客户和项目都在这里：领了就归你"
-        extra={持有 ? <span className={到上限 ? "nowrap" : "muted nowrap"} style={到上限 ? { color: "var(--warning-text)" } : undefined}>我手上 {持有.有} / 上限 {持有.上限}</span> : undefined}
+        extra={
+          <Space size={12} wrap>
+            {公海规则.换负责人带待办 && (
+              <Checkbox className="nowrap" checked={带待办} onChange={(e) => set带待办(e.target.checked)}>
+                原负责人没做完的待办一起转给新负责人
+              </Checkbox>
+            )}
+            {持有 && <span className={到上限 ? "nowrap" : "muted nowrap"} style={到上限 ? { color: "var(--warning-text)" } : undefined}>我手上 {持有.有} / 上限 {持有.上限}</span>}
+          </Space>
+        }
       />
       <DataList<公海行>
         页="pool"

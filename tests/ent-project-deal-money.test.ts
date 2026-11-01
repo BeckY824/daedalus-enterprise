@@ -124,6 +124,8 @@ describe("改项目：成交需求 / 合同金额 / 定金金额（真库）", (
     乙 = { id: (await prisma.user.create({ data: { email: "p097-yi", name: "p097-yi", title: "", role: "SALES", password: "x" } })).id, role: "SALES" };
     const 客户 = await prisma.customer.create({ data: { name: "QA-成交钱客户", phone: "13800001097", salesOwnerId: 乙.id } });
     项目id = (await prisma.project.create({ data: { name: 基.name, customerId: 客户.id, ownerId: 乙.id, creatorId: 乙.id } })).id;
+    // 11-01 权限只认业务角色：负责人得有销售角色才能改项目
+    await prisma.entMember.create({ data: { userId: 乙.id, bizRole: "sales" } });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -150,7 +152,6 @@ describe("改项目：成交需求 / 合同金额 / 定金金额（真库）", (
   });
 
   it("金额只能看：这几格都改不了，只改名字照存", async () => {
-    await prisma.entMember.create({ data: { userId: 乙.id, bizRole: "sales" } });
     await setSetting(规则.字段权限.key, true);
     await setSetting(字段权限key, { 商机金额: { sales: "看" } });
     expect(await 改项目(乙, 项目id, { ...基, contractAmount: 100 })).toMatchObject({ ok: false, error: expect.stringContaining("金额") });

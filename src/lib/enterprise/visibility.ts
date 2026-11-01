@@ -48,7 +48,8 @@ export function 组织范围of(org: 组织, _账号角色: string | null, 我: s
   const 线上 = (x: string) => 业务线放行(org, 我, { ownerId: x });
   const 写 = new Set([我, ...[...实线下属(org, 我)].filter(线上)]);
   const 读 = new Set(写);
-  for (const d of 虚线下属(org, 我)) for (const x of [d, ...实线下属(org, d)]) if (线上(x)) 读.add(x);
+  // 虚线下属（D-39 只读）是专门跨线配的，不按业务线滤
+  for (const d of 虚线下属(org, 我)) for (const x of [d, ...实线下属(org, d)]) 读.add(x);
   return 读.size > 写.size ? { 写: [...写], 读: [...读] } : { 写: [...写] };
 }
 

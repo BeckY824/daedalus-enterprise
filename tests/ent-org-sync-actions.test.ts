@@ -44,6 +44,8 @@ beforeEach(async () => {
   const 建人 = async (email: string, name: string, role: string) => (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
   老板 = await 建人("boss@example.com", "老板", "ADMIN");
   销售 = await 建人("s1@example.com", "小王", "SALES");
+  // 权限只认业务角色（11-01）：老板=总管理，小王=销售
+  await prisma.entMember.createMany({ data: [{ userId: 老板, bizRole: "director" }, { userId: 销售, bizRole: "sales" }] });
   当(老板, "ADMIN");
 });
 
@@ -65,7 +67,7 @@ describe("谁能用", () => {
     for (const 设 of [() => { delete process.env.CRM_ENTERPRISE; }, () => { mocks.共享区 = true; }, () => 当(销售, "SALES")]) {
       process.env.CRM_ENTERPRISE = "1"; mocks.共享区 = false; 当(老板, "ADMIN");
       设();
-      expect(await 通讯录概况()).toMatchObject({ ok: false, error: expect.stringContaining("只有老板或总管理员") });
+      expect(await 通讯录概况()).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理能改组织架构") });
       expect(await 设通讯录同步("feishu", true)).toMatchObject({ ok: false });
       expect(await 立即同步通讯录("feishu")).toMatchObject({ ok: false });
       expect(await 设职务对照("feishu", { 销售: "sales" })).toMatchObject({ ok: false });
