@@ -6,7 +6,9 @@
  *   - 谁看得到：按业务角色两个开关（启用、只看自己 / 可看全部）；只看自己 = 创建人、项目负责人（不在公海时）、组员、认领人，
  *     加上创建人 / 负责人的上级链（实线整条链 + 虚线，同项目列表的组织范围「读」）；没设业务角色 = 没有任何卡点权限
  *   - 管理员（业务角色 admin，不兼总管理）只读：看全部，发、认领、完成、改、删、原因管理都拒；删卡点、删原因只有总管理（director）
- *   - 离职交接：给交接人 → 没交接人给直属上级（实线）→ 都没有就从 x/y 去掉并记日志；项目从公海领走：没完成的认领行换人
+ *   - 离职交接：给交接人 → 没交接人给直属上级（实线）→ 都没有就从 x/y 去掉并记日志
+ *   - 项目换人（B5）：公海领取 / 分配、改负责人、客户转让带着走 → 原负责人没完成的认领行给新负责人；移出组员 → 他的给项目负责人；
+ *     进公海时原样留着，历史负责人在公海期间凭认领行、创建人都看不到（C-01）
  *   - 老数据（B9）：老阻碍主体不归类，老卡点不挂原因，详情显示原阻碍主体，统计进「未分类（老数据）」
  *   - 暂无卡点不生成；编号 BLK-YYYYMMDD-NNN（北京日子）；沟通彻底删了卡点还在
  *   - 阻碍原因字典：11 个种子、增删改停合并，前台新加的进待审核
@@ -19,12 +21,16 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 import dayjs from "dayjs";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 记项目沟通 } from "@/lib/project/db";
+import { 记项目沟通, 放回公海, 领取公海项目, 改项目, 移出组员 } from "@/lib/project/db";
+import { 转项目 } from "@/lib/carry-over-db";
+import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
+import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import * as 卡点模块 from "@/lib/project/blocker";
 import {
   发布卡点, 认领卡点, 完成卡点, 交接卡点, 卡点随项目换人, 项目的卡点, 我的卡点, 能发卡点, 卡点看板, 卡点权限,
   存卡点默认, 读卡点默认, 存卡点角色开关, 离职交接理由, 离职转上级理由, 离职去掉理由, 卡点脱离沟通, 删卡点,
   原因字典, 可选原因们, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因,
+  公海领走接手理由, 转让接手理由, 移出组员接手理由,
 } from "@/lib/project/blocker";
 import { 卡点改版, 卡点改版记号键 } from "@/lib/project/blocker-migrate";
 import {
@@ -463,12 +469,100 @@ describe("企业版卡点", () => {
     expect((await 项目的卡点(老板, 项目)).find((x) => x.id === 丙.id)!.进度).toEqual({ 完成: 0, 共: 0 });
   });
 
-  it("项目从公海领走：原负责人没完成的认领行给新负责人（只给函数，公海那边接线）", async () => {
-    const b = await 发();
-    await 认领卡点(销售, b.id);
-    expect(await prisma.$transaction((tx) => 卡点随项目换人(tx, 项目, 销售.id, 散.id))).toBe(1);
-    expect((await 认领行们(b.id)).map((c) => c.userId)).toEqual([散.id]);
-    expect((await 流转(b.id)).at(-1)).toMatchObject({ action: "takeover", fromUserId: 销售.id, toUserId: 散.id });
+  describe("B5 项目换人：卡点认领行跟着走", () => {
+    afterEach(() => {
+      公海规则.项目能单独领 = false;
+      公海规则.原负责人看得到公海项目 = false;
+    });
+    const 谁认领 = async (blockerId: string) => (await 认领行们(blockerId)).map((c) => c.userId);
+    const 看到 = async (me: 人) => ({
+      项目里: (await 项目的卡点(me, 项目)).map((x) => x.id).sort(),
+      我的: (await 我的卡点(me)).map((x) => x.id).sort(),
+      看板: Object.values((await 卡点看板(me, { 只看自己: true })).栏).flat().map((x) => x.id).sort(),
+    });
+
+    it("进公海：认领行原样留着；历史负责人凭认领行、创建人都看不到（C-01），总管理员和组员照看；从公海领走 → 认领行给领走的人", async () => {
+      const 甲 = await 发(); // 销售发的
+      const 乙 = await 发(组员); // 组员发的，销售认领
+      await 认领卡点(销售, 甲.id);
+      await 认领卡点(销售, 乙.id);
+      const 两条 = [甲.id, 乙.id].sort();
+      expect(await 看到(销售)).toEqual({ 项目里: 两条, 我的: 两条, 看板: 两条 });
+
+      expect(await 放回公海(销售, 项目)).toEqual({ ok: true });
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目 } })).ownerId).toBe("");
+      expect(await 谁认领(甲.id)).toEqual([销售.id]);
+      expect(await 谁认领(乙.id)).toEqual([销售.id]);
+      // 历史负责人：列表、我的、看板都没有，单条认领 / 完成也当不在了
+      expect(await 看到(销售)).toEqual({ 项目里: [], 我的: [], 看板: [] });
+      expect(await 完成卡点(销售, 乙.id, { solution: "x", result: "y" })).toMatchObject({ ok: false, error: "这个卡点已经不在了，刷新看看" });
+      expect(await 认领卡点(销售, 乙.id)).toMatchObject({ ok: false, error: "这个卡点已经不在了，刷新看看" });
+      // 组员（项目组还在）、总管理员照看；不公开：别组的看不到
+      expect((await 项目的卡点(组员, 项目)).map((x) => x.id).sort()).toEqual([甲.id, 乙.id].sort());
+      expect((await 项目的卡点(老板, 项目)).length).toBe(2);
+      expect(await 项目的卡点(散, 项目)).toEqual([]);
+      // 规则改成原负责人看得到公海项目：回到凭认领行 / 创建人看
+      公海规则.原负责人看得到公海项目 = true;
+      expect((await 看到(销售)).项目里).toEqual([甲.id, 乙.id].sort());
+      公海规则.原负责人看得到公海项目 = false;
+
+      公海规则.项目能单独领 = true;
+      expect(await 领取公海项目(散, 项目)).toEqual({ ok: true });
+      expect(await 谁认领(甲.id)).toEqual([散.id]);
+      expect(await 谁认领(乙.id)).toEqual([散.id]);
+      expect((await 流转(乙.id)).at(-1)).toMatchObject({ action: "takeover", userId: 散.id, fromUserId: 销售.id, toUserId: 散.id, note: 公海领走接手理由 });
+      // 项目不在公海了：销售照旧凭创建人看甲，乙（组员发的、认领行已给出去）看不到
+      expect((await 项目的卡点(销售, 项目)).map((x) => x.id)).toEqual([甲.id]);
+    });
+
+    it("领客户带走公海里的项目：历史负责人的认领行一起给领走的人", async () => {
+      const 甲 = await 发();
+      await 认领卡点(销售, 甲.id);
+      expect(await 放回公海(销售, 项目)).toEqual({ ok: true });
+      await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 散.id } });
+      expect(await 领客户带走公海项目([客户], 散.id, 散主管.id)).toEqual([项目]);
+      expect(await 谁认领(甲.id)).toEqual([散.id]);
+      expect((await 流转(甲.id)).at(-1)).toMatchObject({ action: "takeover", userId: 散主管.id, fromUserId: 销售.id, toUserId: 散.id, note: 公海领走接手理由 });
+    });
+
+    it("改项目换负责人 → 认领行给新负责人；移出组员 → 他的认领行给项目负责人；客户转让带着走跟着，离职那条不跟（交接卡点管）", async () => {
+      const 甲 = await 发();
+      const 乙 = await 发();
+      await 认领卡点(组员, 甲.id);
+      await 认领卡点(销售, 乙.id);
+      expect(await 改项目(销售, 项目, { name: "一期", ownerId: 组长.id })).toMatchObject({ ok: true });
+      expect(await 谁认领(乙.id)).toEqual([组长.id]);
+      expect(await 谁认领(甲.id)).toEqual([组员.id]); // 别人的不动
+      expect((await 流转(乙.id)).at(-1)).toMatchObject({ action: "takeover", userId: 销售.id, fromUserId: 销售.id, toUserId: 组长.id, note: 转让接手理由 });
+
+      const m = await prisma.projectMember.findFirstOrThrow({ where: { projectId: 项目, userId: 组员.id } });
+      expect(await 移出组员(组长, m.id)).toEqual({ ok: true });
+      expect(await 谁认领(甲.id)).toEqual([组长.id]);
+      expect((await 流转(甲.id)).at(-1)).toMatchObject({ action: "takeover", userId: 组长.id, fromUserId: 组员.id, toUserId: 组长.id, note: 移出组员接手理由 });
+
+      // 离职那条（转项目 卡点跟着 = false）：项目转了，认领行不动
+      await prisma.$transaction((tx) => 转项目(tx, { id: 项目 }, 散.id, 老板.id, false));
+      expect(await 谁认领(乙.id)).toEqual([组长.id]);
+      // 客户转让带着走（默认跟着）
+      await prisma.$transaction((tx) => 转项目(tx, { id: 项目 }, 散主管.id, 老板.id));
+      expect(await 谁认领(乙.id)).toEqual([组长.id]); // 从 散 转过来的，组长 的行不归 散，不动
+      await prisma.project.update({ where: { id: 项目 }, data: { ownerId: 组长.id } });
+      await prisma.$transaction((tx) => 转项目(tx, { id: 项目 }, 散.id, 老板.id));
+      expect(await 谁认领(乙.id)).toEqual([散.id]);
+      expect(await 谁认领(甲.id)).toEqual([散.id]);
+    });
+
+    it("公海里移出组员：没负责人，认领行原样留着；不是企业版什么都不挪", async () => {
+      const 甲 = await 发();
+      await 认领卡点(组员, 甲.id);
+      expect(await 放回公海(销售, 项目)).toEqual({ ok: true });
+      const m = await prisma.projectMember.findFirstOrThrow({ where: { projectId: 项目, userId: 组员.id } });
+      expect(await prisma.$transaction(async (tx) => { await tx.projectMember.delete({ where: { id: m.id } }); return 卡点随项目换人(tx, 项目, 组员.id, "", 老板.id); })).toBe(0);
+      expect(await 谁认领(甲.id)).toEqual([组员.id]);
+      vi.stubEnv("CRM_ENTERPRISE", "");
+      expect(await prisma.$transaction((tx) => 卡点随项目换人(tx, 项目, 组员.id, 散.id))).toBe(0);
+      expect(await 谁认领(甲.id)).toEqual([组员.id]);
+    });
   });
 
   it("沟通记录彻底删了（回收站到期清掉）：卡点还在，只是不再挂着沟通", async () => {

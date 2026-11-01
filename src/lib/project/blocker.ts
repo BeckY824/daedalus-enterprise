@@ -26,6 +26,7 @@ import { getSetting, setSetting } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
+import { 原负责人回避, 历史负责人, 我回避的公海项目 } from "./pool-owner";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
   规整卡点角色开关, 合上卡点角色开关, 卡点角色键, 卡点权限of, 看得到卡点, 原因种子们, 种子原因id, 规整原因名, 兜底原因,
@@ -228,10 +229,12 @@ type 带全的卡点 = Prisma.EntBlockerGetPayload<{ include: typeof 卡点带 }
 
 const 组织of = async (): Promise<组织 | null> => (企业版() ? 读组织() : null);
 
-function 相关人(b: 带全的卡点) {
+/** 单条判断用：项目在公海、且历史负责人要回避（C-01）时把历史负责人一起带上 */
+async function 相关人(tx: Prisma.TransactionClient, b: 带全的卡点) {
+  const 回避人 = b.project.pooledAt !== null && 原负责人回避() ? await 历史负责人(tx, b.projectId) : null;
   return {
     creatorId: b.creatorId, ownerId: b.project.ownerId, 在公海: b.project.pooledAt !== null,
-    组员们: b.project.members.map((m) => m.userId), 认领人们: b.claims.map((c) => c.userId),
+    组员们: b.project.members.map((m) => m.userId), 认领人们: b.claims.map((c) => c.userId), 回避人,
   };
 }
 
@@ -247,10 +250,11 @@ function 我的下属们(org: 组织 | null, 我: string): Set<string> {
   return 读;
 }
 
-/** 「只看自己」时的查询条件，和 看得到卡点 一个意思 */
-function 自己的条件(我: string, org: 组织 | null): Prisma.EntBlockerWhereInput {
+/** 「只看自己」时的查询条件，和 看得到卡点 一个意思（含 C-01：我是历史负责人、还在公海里的项目整条剔掉） */
+async function 自己的条件(我: string, org: 组织 | null): Promise<Prisma.EntBlockerWhereInput> {
   const 下属们 = [...我的下属们(org, 我)];
-  return {
+  const 回避 = await 我回避的公海项目(prisma, 我);
+  const 看得到: Prisma.EntBlockerWhereInput = {
     OR: [
       { creatorId: 我 },
       ...(下属们.length ? [{ creatorId: { in: 下属们 } }] : []),
@@ -260,6 +264,7 @@ function 自己的条件(我: string, org: 组织 | null): Prisma.EntBlockerWher
       { claims: { some: { userId: 我 } } },
     ],
   };
+  return 回避.length ? { AND: [看得到, { projectId: { notIn: 回避 } }] } : 看得到;
 }
 
 async function 拿卡点(tx: Prisma.TransactionClient, blockerId: string): Promise<带全的卡点 | null> {
@@ -336,7 +341,7 @@ export async function 认领卡点(me: 谁, blockerId: string): Promise<卡点�
   if (!权.能写) return 只读;
   return 查完再写((tx) => 看全部(async () => {
     const b = await 拿卡点(tx, blockerId);
-    if (!b || !看得到卡点(me.id, 权, 相关人(b), 我的下属们(org, me.id))) return 不在了;
+    if (!b || !看得到卡点(me.id, 权, await 相关人(tx, b), 我的下属们(org, me.id))) return 不在了;
     if (b.status === "已解决") return { ok: false as const, error: "这个卡点已经解决了，不能再认领" };
     if (b.claims.some((c) => c.userId === me.id)) return { ok: false as const, error: "你已经认领了" };
     await tx.entBlockerClaim.create({ data: { blockerId: b.id, userId: me.id } });
@@ -360,7 +365,7 @@ export async function 完成卡点(
   if (!权.能写) return 只读;
   return 查完再写((tx) => 看全部(async () => {
     const b = await 拿卡点(tx, blockerId);
-    if (!b || !看得到卡点(me.id, 权, 相关人(b), 我的下属们(org, me.id))) return 不在了;
+    if (!b || !看得到卡点(me.id, 权, await 相关人(tx, b), 我的下属们(org, me.id))) return 不在了;
     if (b.status === "已解决") return { ok: false as const, error: "这个卡点已经解决了" };
     const 我的 = b.claims.find((c) => c.userId === me.id);
     if (!我的) return { ok: false as const, error: "你没认领这个卡点" };
@@ -461,12 +466,20 @@ export async function 交接卡点(tx: Prisma.TransactionClient, 走的人: stri
 }
 
 /**
- * B5：项目从公海被人领走时调（公海那边接线，这里只给函数）：原负责人在这个项目卡点上没完成的认领行，由领走的人接过去。
- * 没解决的卡点在公海期间原样留着（不公开：只按 只看自己 的规矩给相关的人看）
+ * B5：项目换了人，原来那位在这个项目卡点上没完成的认领行由接手的人接过去（挪认领：合并、已解决不动、每条记一行 takeover）。
+ * 接线：记转让（公海领取 / 分配公海项目 / 线索分项目 / 改项目换负责人 / 客户转让撤销还项目）、转项目（客户整体转让带着走）、
+ * 领客户带走公海项目、移出组员（被移出的人 → 项目负责人）。放回公海不调：没解决的卡点在公海期间原样留着，
+ * 不公开（只按 只看自己 的规矩给相关的人看；历史负责人回避开着时他也看不到，见 看得到卡点 的回避人）。
+ * 离职交接不走这里（交接卡点 有自己的去向规则）
  */
-export async function 卡点随项目换人(tx: Prisma.TransactionClient, projectId: string, 原负责人: string, 新负责人: string, 操作人: string = 新负责人): Promise<number> {
+export const 公海领走接手理由 = "项目从公海领走，接手原负责人的卡点";
+export const 转让接手理由 = "项目换负责人，接手原负责人的卡点";
+export const 移出组员接手理由 = "移出项目组，认领行转给项目负责人";
+export async function 卡点随项目换人(
+  tx: Prisma.TransactionClient, projectId: string, 原负责人: string, 新负责人: string, 操作人: string = 新负责人, 理由: string = 公海领走接手理由,
+): Promise<number> {
   if (!企业版() || !原负责人 || !新负责人) return 0;
-  return 看全部(() => 挪认领(tx, { projectId }, 原负责人, 新负责人, 操作人, "takeover", "项目从公海领走，接手原负责人的卡点"));
+  return 看全部(() => 挪认领(tx, { projectId }, 原负责人, 新负责人, 操作人, "takeover", 理由));
 }
 
 /* ───────────── 沟通删了卡点留着（B13） ───────────── */
@@ -569,7 +582,7 @@ async function 看得到的(me: 谁, where: Prisma.EntBlockerWhereInput, opt: { 
   if (!企业版()) return [];
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return [];
-  const 范围 = 权.全部 && !opt.只看自己 ? {} : 自己的条件(me.id, org);
+  const 范围 = 权.全部 && !opt.只看自己 ? {} : await 自己的条件(me.id, org);
   return 看全部(async () => {
     const 们 = await prisma.entBlocker.findMany({ where: { AND: [范围, where] }, include: 卡点带, orderBy: opt.orderBy ?? [{ createdAt: "desc" }], take: opt.take });
     return 成视图(me, 们, 权);
@@ -625,7 +638,7 @@ export async function 卡点看板(me: 谁, f: 看板筛选 = {}): Promise<卡�
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return 空;
   await 备好原因();
-  const 范围 = 权.全部 && !f.只看自己 ? {} : 自己的条件(me.id, org);
+  const 范围 = 权.全部 && !f.只看自己 ? {} : await 自己的条件(me.id, org);
   const where: Prisma.EntBlockerWhereInput = { AND: [范围, 看板条件(f, me.id)] };
   return 看全部(async () => {
     const [开着, 解决了, 已解决共, 按影响, 原因数, 未分类数, 项目们] = await Promise.all([

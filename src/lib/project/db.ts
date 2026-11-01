@@ -35,6 +35,7 @@ import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 进公海后负责人, 历史负责人, 进公海关待办 } from "./pool-owner";
+import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -416,7 +417,8 @@ export async function 客户的项目数(customerIds: string[], db: Prisma.Trans
 
 /**
  * 转让负责人留一行痕：和改节点同一张表，kind = transfer；节点没动，from / to 节点照抄当时的。
- * 手动转让（改项目）和客户转让带着走（carry-over-db）都走这里；放回公海、从公海领取也走这里，kind 换成 pool-release / pool-claim
+ * 手动转让（改项目）和客户转让带着走（carry-over-db）都走这里；放回公海、从公海领取也走这里，kind 换成 pool-release / pool-claim。
+ * 有从有到（不是放回公海）时原负责人没完成的卡点认领行一起给到的人（B5，卡点随项目换人；不是企业版什么都不做）
  */
 export async function 记转让(
   tx: Prisma.TransactionClient,
@@ -426,6 +428,9 @@ export async function 记转让(
   reason: string | null = null,
 ) {
   await tx.projectNodeLog.create({ data: 转让痕(p, 操作人, 从, 到, kind, reason) });
+  if (kind !== "pool-release" && 从 && 到 && 从 !== 到) {
+    await 卡点随项目换人(tx, p.id, 从, 到, 操作人, kind === "pool-claim" ? 公海领走接手理由 : 转让接手理由);
+  }
 }
 
 /** 记转让 写的那一行；一次转很多个（停用成员）时拼好用 createMany 一起写 */
@@ -932,13 +937,19 @@ export async function 换组员角色(me: 谁, memberId: string, roleId: string 
   });
 }
 
-/** 移出项目组 */
+/**
+ * 移出项目组。被移出的人在这个项目卡点上没完成的认领行转给项目负责人（B5）；
+ * 项目在公海里（没负责人）就原样留着，等有人领走时跟着 记转让 走
+ */
 export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
   return 查完再写(async (tx) => {
     const m = await tx.projectMember.findUnique({ where: { id: String(memberId ?? "") }, include: { project: { select: { ownerId: true, pooledAt: true } } } });
     if (!m) return { ok: true as const };
     if (!能管项目(me, m.project)) return { ok: false as const, error: "只有项目负责人、老板或主管能改组员" };
     await tx.projectMember.delete({ where: { id: m.id } });
+    if (m.project.pooledAt === null && m.project.ownerId && m.userId !== m.project.ownerId) {
+      await 卡点随项目换人(tx, m.projectId, m.userId, m.project.ownerId, me.id, 移出组员接手理由);
+    }
     return { ok: true as const };
   });
 }

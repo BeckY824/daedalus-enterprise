@@ -17,6 +17,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位 } from "@/lib/carry-over-db";
 import { 转让痕 } from "@/lib/project/db";
 import { 历史负责人们 } from "@/lib/project/pool-owner";
+import { 卡点随项目换人, 公海领走接手理由 } from "@/lib/project/blocker";
 
 /**
  * 项目刚进了项目公海（主动放回、超时回收），在同一笔事务里调：客户名下一共只有这一个项目、
@@ -99,5 +100,10 @@ async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: str
   // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
   const 原 = await 历史负责人们(tx, ids);
   await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, 原.get(p.id) ?? (p.ownerId || null), 新, "pool-claim")) });
+  // B5：历史负责人没完成的卡点认领行给领走的人（同单独领项目走 记转让）
+  for (const p of 们) {
+    const 从 = 原.get(p.id) ?? p.ownerId;
+    if (从) await 卡点随项目换人(tx, p.id, 从, 新, 操作人, 公海领走接手理由);
+  }
   return ids;
 }
