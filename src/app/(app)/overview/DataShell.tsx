@@ -32,8 +32,12 @@ export default function DataShell({
   view: 视图;
   /** 企业版只用项目：数的是项目的三大阶段，不是签约 */
   项目?: boolean;
-  /** 企业版管理层看谁（P15，lib/project/board-member.ts）：当前 "" = 全部成员；不给 = 不摆下拉（业务员只看自己） */
-  选人?: { 选项: { value: string; label: string }[]; 当前: string };
+  /**
+   * 企业版管理层看谁（P15，lib/project/board-member.ts）：当前 "" = 全部成员；不给 = 不摆下拉（业务员只看自己）。
+   * 我 = 当前登录的人：给了就在下拉左边摆「我的 | 团队」（11-01 版式融合）——只是下拉的快捷键：
+   * 我的 = ownerId=我，团队 = 去掉 ownerId（= 下拉里的「全部成员」）；看谁的照旧由 看板的人 定
+   */
+  选人?: { 选项: { value: string; label: string }[]; 当前: string; 我?: string };
   /**
    * 企业版复盘页的四个页签（P7 U-复盘-01，10-31）：「任务」（默认）｜「卡点」｜「沟通」｜「数据」，记在地址栏 tab=。
    * 不给 = 没有页签（不按项目的老「数据」页），三视图切换照旧摆在最上面
@@ -72,6 +76,21 @@ export default function DataShell({
       {!页签 && 选人 && 人下拉()}
     </div>
   );
+  function 我的团队() {
+    const 我 = 选人?.我;
+    if (!我) return null;
+    // 选了别的成员时两个都不亮（Segmented 的 value 给一个不在选项里的值）
+    const 值 = 显人 === 我 ? "mine" : 显人 === "" ? "team" : "other";
+    return (
+      <Segmented
+        className="data-shell-scope"
+        aria-label="看我的还是团队的"
+        value={值}
+        onChange={(v) => 改({ ownerId: v === "mine" ? 我 : undefined, p: undefined })}
+        options={[{ value: "mine", label: "我的" }, { value: "team", label: "团队" }]}
+      />
+    );
+  }
   function 人下拉() {
     return (
       <Select
@@ -94,7 +113,7 @@ export default function DataShell({
       {页签 ? (
         <>
           {/* 人员选择器在页签上面：四个页签共用，切页签不丢（沟通页签的「按负责人筛」就是它） */}
-          {选人 && <div className="data-shell-bar data-shell-bar-who">{人下拉()}</div>}
+          {选人 && <div className="data-shell-bar data-shell-bar-who">{我的团队()}{人下拉()}</div>}
           <Tabs
             className="data-shell-tabs"
             activeKey={显签}

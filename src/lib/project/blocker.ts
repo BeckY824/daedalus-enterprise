@@ -632,6 +632,14 @@ export function 看板条件(f: 看板筛选, 我: string): Prisma.EntBlockerWhe
   return 且.length ? { AND: 且 } : {};
 }
 
+/** 复盘「数据」页签的未解决卡点数、卡点分布用：同卡点看板那一圈（角色开关，不跟人员选择走）；卡点没开 = null */
+export async function 卡点看板范围(me: 谁): Promise<Prisma.EntBlockerWhereInput | null> {
+  if (!企业版()) return null;
+  const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
+  if (!权.开) return null;
+  return 权.全部 ? {} : 自己的条件(me.id, org);
+}
+
 export async function 卡点看板(me: 谁, f: 看板筛选 = {}): Promise<卡点看板数> {
   const 空栏 = { 待接受: [], 处理中: [], 已解决: [] } as Record<卡点状态, 卡点视图[]>;
   const 空 = { 开: false, 全部: false, 栏: 空栏, 已解决共: 0, 统计: { 未解决: 0, 已解决: 0, 按影响: [], 按原因: [] }, 项目们: [], 原因们: [] };

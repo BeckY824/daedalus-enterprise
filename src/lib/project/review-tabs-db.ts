@@ -3,7 +3,7 @@ import { 跟进方式名 } from "@/lib/follow-method";
 import { dayjs } from "@/lib/utils";
 import {
   沟通条件, 夹页, 复盘列表每页,
-  type 沟通段, type 复盘沟通,
+  type 沟通段, type 沟通方式, type 复盘沟通,
 } from "./review-tabs";
 
 /**
@@ -16,10 +16,10 @@ const 名 = (u: { name: string | null; email: string } | null | undefined) => (u
 /** 沟通：项目上的沟通记录，时间倒序；走带限定的 prisma（看得到哪些客户的沟通由那一层管） */
 export async function 复盘沟通of(
   谁: readonly string[] | undefined,
-  q: { 段: 沟通段; 页?: number; 每页?: number; now?: ReturnType<typeof dayjs> },
+  q: { 段: 沟通段; 方式?: 沟通方式 | ""; 页?: number; 每页?: number; now?: ReturnType<typeof dayjs> },
 ): Promise<复盘沟通> {
   const 每页 = q.每页 ?? 复盘列表每页;
-  const where = 沟通条件(谁, q.段, q.now ?? dayjs());
+  const where = 沟通条件(谁, q.段, q.now ?? dayjs(), q.方式 ?? "");
   const 总数 = await prisma.followUp.count({ where });
   const 页 = 夹页(q.页 ?? 1, 总数, 每页);
   if (!总数) return { 总数, 页, 行: [] };
@@ -29,12 +29,18 @@ export async function 复盘沟通of(
     skip: (页 - 1) * 每页,
     take: 每页,
     select: {
-      id: true, occurredAt: true, type: true, method: true, title: true, content: true,
+      id: true, occurredAt: true, type: true, method: true, initiator: true, title: true, content: true,
       customer: { select: { name: true } },
+      entMeta: { select: { code: true } },
       owner: { select: { name: true, email: true } },
       projectNode: { select: { node: true, project: { select: { id: true, name: true } } } },
     },
   });
+  // 附件按沟通挂（Attachment.followUpId 没外键，只有索引），这一页的一次数
+  const 附件数 = new Map(
+    (await prisma.attachment.groupBy({ by: ["followUpId"], where: { followUpId: { in: 们.map((f) => f.id) } }, _count: { _all: true } }))
+      .map((g) => [g.followUpId, g._count._all] as const),
+  );
   return {
     总数,
     页,
@@ -43,6 +49,7 @@ export async function 复盘沟通of(
         ? [{
             id: f.id, 时间: f.occurredAt.toISOString(), projectId: f.projectNode.project.id, 项目: f.projectNode.project.name,
             节点: f.projectNode.node, 客户: f.customer?.name ?? "—", 方式: 跟进方式名(f), 标题: f.title, 内容: f.content, 负责人: 名(f.owner),
+            发起: f.initiator || null, 编号: f.entMeta?.code ?? null, 附件: 附件数.get(f.id) ?? 0,
           }]
         : [],
     ),

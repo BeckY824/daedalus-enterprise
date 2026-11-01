@@ -13,6 +13,7 @@ import { 金额 } from "@/lib/currency";
 import type { 项目现在, 项目一段, 人行现在, 人行一段 } from "./project-stats";
 import ProjectFunnel from "./ProjectFunnel";
 import LeadWaterfall from "./LeadWaterfall";
+import { 复盘概况排, 复盘提醒排, type 复盘概况数 } from "./ReviewSummary";
 
 /**
  * 企业版只用项目时「数据」页的正文（10-26 用户：「「数据」页改成按项目统计」）。
@@ -65,7 +66,8 @@ function 漏斗与瀑布({ 数, 漏斗说明, 瀑布说明, 空 }: { 数: { 漏�
   );
 }
 
-export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 本位币: string; 单人: boolean }) {
+/** 概况：复盘页（企业版按项目）才传——最上面一排 KPI + 下面卡点分布、超时预警（11-01 参考复盘稿融合）；不传就是原样 */
+export function ProjectNowView({ 数, 本位币, 单人, 概况 }: { 数: 项目现在; 本位币: string; 单人: boolean; 概况?: 复盘概况数 }) {
   const money = (n: number) => 金额(n, 本位币);
   const 段 = Object.fromEntries(数.阶段.map((s) => [s.phase, s]));
   const 异常 = 数.结局.find((r) => r.result === "异常状态")?.count ?? 0;
@@ -118,6 +120,7 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
   return (
     <>
       <外币提示 n={数.外币} 本位币={本位币} 说="进行中的项目" />
+      {概况 && <复盘概况排 数={概况.概况} 本位币={本位币} />}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
           <StatCard icon={<FunnelPlotOutlined />} color={阶段色.线索} label="新线索" value={段.线索?.count ?? 0} note="线索阶段、进行中的" href="/leads" />
@@ -169,6 +172,7 @@ export function ProjectNowView({ 数, 本位币, 单人 }: { 数: 项目现在; 
         )}
       </Row>
 
+      {概况 && <复盘提醒排 分布={概况.分布} 预警={概况.预警} 将回公海={概况.概况.将回公海} />}
 
       <p className="muted" style={{ marginTop: 12 }}>
         已经结束的：{数.结局.filter((r) => r.result !== "异常状态").map((r) => `${r.result} ${r.count}`).join(" · ")}

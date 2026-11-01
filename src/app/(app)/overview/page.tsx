@@ -12,9 +12,10 @@ import { 项目现在, 项目一段 } from "./project-stats";
 import { ProjectNowView, ProjectPeriodView } from "./ProjectStatsView";
 import BoardTodos from "./BoardTodos";
 import { 看板的人 } from "@/lib/project/board-member";
-import { 复盘待办of } from "@/lib/project/board-todos-db";
-import { 读页签, 读卡, 读类型, 读页码 } from "@/lib/project/board-todos";
-import { 读卡点看板筛, 读沟通段 } from "@/lib/project/review-tabs";
+import { 复盘待办of, 复盘看板of } from "@/lib/project/board-todos-db";
+import { 读页签, 读卡, 读类型, 读页码, 读布局 } from "@/lib/project/board-todos";
+import { 读卡点看板筛, 读沟通段, 读沟通方式 } from "@/lib/project/review-tabs";
+import { 将回公海of, 缺沟通of, 复盘概况of } from "@/lib/project/review-extras-db";
 import { 复盘沟通of } from "@/lib/project/review-tabs-db";
 import { 卡点看板, 卡点给界面 } from "@/lib/project/blocker";
 import BoardBlockers from "./BoardBlockers";
@@ -22,7 +23,7 @@ import BoardTalks from "./BoardTalks";
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ view?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; t?: string; p?: string; bm?: string; bo?: string; br?: string; bt?: string; bi?: string; bp?: string }>;
+type SP = Promise<{ view?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; t?: string; p?: string; lay?: string; m?: string; bm?: string; bo?: string; br?: string; bt?: string; bi?: string; bp?: string }>;
 
 /**
  * 「数据」——看数的唯一入口。
@@ -76,16 +77,23 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
   const 人 = await 看板的人(user, sp.ownerId);
   const 只看 = 人.只看;
   const 范围 = 只看 ?? 人.谁;
-  const 选人 = 人.选项 ? { 选项: 人.选项, 当前: 只看 ?? "" } : undefined;
+  // 我 = 「我的 / 团队」快捷分段用（只是下拉的快捷键，范围还是 看板的人 定）
+  const 选人 = 人.选项 ? { 选项: 人.选项, 当前: 只看 ?? "", 我: user.id } : undefined;
   const 页签 = 读页签(sp.tab, sp.view);
 
   if (页签 === "todo") {
     const 卡 = 读卡(sp.f);
     const 类型 = 读类型(sp.kind);
-    const d = await 复盘待办of(范围, { 卡, 类型, 页: 读页码(sp.p) });
+    // 「全部待办」默认三列看板（lay=list 回到表格）；四张卡筛的时候照旧是表格（首页链接 f=today 落表格）
+    const 布局 = 卡 === "all" ? 读布局(sp.lay) : "list";
+    const [d, 板, 回公海] = await Promise.all([
+      布局 === "list" ? 复盘待办of(范围, { 卡, 类型, 页: 读页码(sp.p) }) : undefined,
+      布局 === "board" ? 复盘看板of(范围, { 类型 }) : undefined,
+      将回公海of(范围),
+    ]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="todo">
-        <BoardTodos 数={d} 卡={卡} 类型={类型} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
+        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 卡={卡} 类型={类型} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
       </DataShell>
     );
   }
@@ -113,10 +121,11 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
   }
   if (页签 === "talk") {
     const 段 = 读沟通段(sp.t);
-    const d = await 复盘沟通of(谁, { 段, 页: 读页码(sp.p) });
+    const 方式 = 读沟通方式(sp.m);
+    const [d, 缺] = await Promise.all([复盘沟通of(谁, { 段, 方式, 页: 读页码(sp.p) }), 缺沟通of(范围)]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="talk">
-        <BoardTalks 数={d} 段={段} 只看自己={只看 === user.id} />
+        <BoardTalks 数={d} 段={段} 方式={方式} 缺={缺} 只看自己={只看 === user.id} />
       </DataShell>
     );
   }
@@ -124,10 +133,10 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
   const 业务 = await getBusiness();
   const 本位币 = 业务.currency;
   if (view === "现在") {
-    const [数, 唯一] = await Promise.all([项目现在(本位币, 范围), 唯一负责人()]);
+    const [数, 唯一, 概况] = await Promise.all([项目现在(本位币, 范围), 唯一负责人(), 复盘概况of(范围, user, 本位币)]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="data">
-        <ProjectNowView 数={数} 本位币={本位币} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
+        <ProjectNowView 数={数} 本位币={本位币} 概况={概况} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
       </DataShell>
     );
   }

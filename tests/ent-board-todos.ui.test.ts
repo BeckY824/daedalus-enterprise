@@ -36,12 +36,19 @@ beforeAll(async () => {
       内容:'第'+i+'条：'+长+'的方案回访和报价确认', customerId:'c'+i, customerName:长+i, projectName:i%3?'华东二期产线改造项目'+长:null,
       ownerId:'u1', ownerName:'很长很长的负责人名字', 组:组们[i%5], 去:'/projects/p'+i,
     }));
+    const 列行=(前,n)=>行(n).map((x,i)=>({...x,key:前+':'+i,时间:前==='later'&&i===n-1?null:x.时间,projectLevel:i%2?'S':null}));
     window.__画=(o)=>{
       const n=o.行数??8;
-      const 数={计数:o.计数??{overdue:3,today:2,week:1,all:45}, 总数:o.总数??n, 页:o.页??1, 行:行(n)};
+      const 计数=o.计数??{overdue:3,today:2,week:1,all:45};
+      const 数=o.看板?undefined:{计数, 总数:o.总数??n, 页:o.页??1, 行:行(n)};
+      const 看板=o.看板?{计数, 列:{
+        overdue:{总数:o.看板.overdue??10,行:列行('overdue',Math.min(8,o.看板.overdue??10))},
+        today:{总数:o.看板.today??0,行:列行('today',Math.min(8,o.看板.today??0))},
+        later:{总数:o.看板.later??3,行:列行('later',Math.min(8,o.看板.later??3))},
+      }}:undefined;
       createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-        <DataShell view="现在" 项目 页签="todo" 选人={{选项:[{value:'u1',label:长}],当前:''}}>
-          <BoardTodos 数={数} 卡={o.卡??'all'} 类型={o.类型??'all'} 只看自己={false} 看全员={true}/>
+        <DataShell view="现在" 项目 页签="todo" 选人={{选项:[{value:'u1',label:长},{value:'me',label:'我自己'}],当前:o.当前??'',我:o.我}}>
+          <BoardTodos 数={数} 看板={看板} 布局={o.布局} 回收={o.回收} 卡={o.卡??'all'} 类型={o.类型??'all'} 只看自己={false} 看全员={true}/>
         </DataShell>
       </BusinessProvider></App>);
     };
@@ -78,7 +85,9 @@ it("四张卡 + 类型分段 + 去计划页 + 列；逾期有数是红的；页�
   expect(await 卡.nth(0).getAttribute("class")).toContain("home-card-warn");
   expect(await 卡.nth(3).getAttribute("aria-pressed")).toBe("true");
   expect(await 卡.nth(0).getAttribute("aria-pressed")).toBe("false");
-  expect(await page.locator(".btodo-head .ant-segmented-item").allInnerTexts()).toEqual(["全部", "任务", "跟进计划"]);
+  expect(await page.locator('.btodo-head [aria-label="待办类型"] .ant-segmented-item').allInnerTexts()).toEqual(["全部", "任务", "跟进计划"]);
+  // 全部待办才有「看板 / 列表」；没给看板 = 列表
+  expect(await page.locator(".btodo-lay .ant-segmented-item-selected").innerText()).toBe("列表");
   expect(await page.getByRole("link", { name: "去计划页" }).getAttribute("href")).toBe("/follow-ups/plans?scope=all");
   expect(await page.locator(".btodo thead th").allInnerTexts()).toEqual(["", "到期", "类型", "内容", "客户", "负责人", "状态"]);
   const t = await page.locator(".btodo tbody").innerText();
@@ -101,7 +110,9 @@ it("点卡换 f=、点类型换 kind=，都回到第一页；选中的卡再点�
   await page.locator(".btodo-card").nth(2).click();
   expect(await 去了(page)).toEqual([]);
   await page.locator(".btodo-card").nth(0).click();
-  await page.locator(".btodo-head .ant-segmented-item", { hasText: "跟进计划" }).click();
+  await page.locator('.btodo-head [aria-label="待办类型"] .ant-segmented-item', { hasText: "跟进计划" }).click();
+  // 本周卡不摆「看板 / 列表」
+  expect(await page.locator(".btodo-lay").count()).toBe(0);
   expect(await 去了(page)).toEqual(["/overview?ownerId=u1&f=overdue", "/overview?ownerId=u1&f=week&kind=plan"]);
   await page.close();
 });
@@ -151,5 +162,105 @@ it("减弱动态：页签下划线和内容区都不走过渡；卡悬停不抬�
   expect(await 时长(".data-shell-body")).toMatch(/^(none|all)\|0s$/);
   await page.locator(".btodo-card").nth(1).hover();
   expect(await page.locator(".btodo-card").nth(1).evaluate((e) => getComputedStyle(e).transform)).toBe("none");
+  await page.close();
+});
+
+const 回收开 = { 开: true, 总数: 5, 条: [
+  { 阶段: "线索", 节点: "潜客培育", 天数: 7, 数: 4 },
+  { 阶段: "线索", 节点: "某个名字特别长特别长特别长特别长的节点", 天数: 15, 数: 1 },
+  { 阶段: "商机", 节点: "痛点挖掘", 天数: 7, 数: 0 },
+] };
+
+it("看板：三列 已逾期 / 今天到期 / 待跟进，列头总数、卡片、空列提示；超过 8 条有「看全部」去列表", async () => {
+  const { page, errors } = await 打开({ 看板: { overdue: 10, today: 0, later: 3 } });
+  expect(await page.locator(".btodo-col-h b").allInnerTexts()).toEqual(["已逾期", "今天到期", "待跟进"]);
+  expect(await page.locator(".btodo-col-n").allInnerTexts()).toEqual(["10", "0", "3"]);
+  expect(await page.locator(".btodo-col-overdue .btodo-k").count()).toBe(8);
+  expect(await page.locator(".btodo-col-later .btodo-k").count()).toBe(3);
+  expect(await page.locator(".btodo-col-today .btodo-col-empty").innerText()).toBe("今天没有到期的");
+  expect(await page.locator(".btodo-lay .ant-segmented-item-selected").innerText()).toBe("看板");
+  // 卡片：项目名 + 级别、类型、去跟进；没有表
+  const 卡 = page.locator(".btodo-col-overdue .btodo-k").nth(1);
+  expect(await 卡.locator(".cust-level").innerText()).toBe("S");
+  expect(await 卡.locator(".btodo-k-go").getAttribute("href")).toBe("/projects/p1");
+  expect(await 卡.locator(".btodo-k-over").innerText()).toMatch(/^逾 \d+ 天$/);
+  expect(await page.locator(".btodo thead").count()).toBe(0);
+  // 只有超出 8 条的那列有「看全部」
+  expect(await page.locator(".btodo-col-more").allInnerTexts()).toEqual(["看全部 10 条 ›"]);
+  await page.locator(".btodo-col-more").click();
+  expect(await 去了(page)).toEqual(["/overview?f=overdue&lay=list"]);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("看板 / 列表切换：点列表写 lay=list，点看板去掉 lay；ownerId 照带、回第一页", async () => {
+  const { page } = await 打开({ 看板: {} }, 1280, "/overview?ownerId=u1");
+  await page.locator(".btodo-lay .ant-segmented-item", { hasText: "列表" }).click();
+  expect(await 去了(page)).toEqual(["/overview?ownerId=u1&lay=list"]);
+  await page.close();
+  const b = await 打开({ 布局: "list" }, 1280, "/overview?ownerId=u1&lay=list&p=2");
+  await b.page.locator(".btodo-lay .ant-segmented-item", { hasText: "看板" }).click();
+  expect(await 去了(b.page)).toEqual(["/overview?ownerId=u1"]);
+  await b.page.close();
+});
+
+it("看板一条都没有：整块「没有待办」，不摆三列", async () => {
+  const { page } = await 打开({ 看板: { overdue: 0, today: 0, later: 0 }, 计数: { overdue: 0, today: 0, week: 0, all: 0 } });
+  expect(await page.locator(".btodo-list").first().innerText()).toContain("没有待办");
+  expect(await page.locator(".btodo-col").count()).toBe(0);
+  await page.close();
+});
+
+it("回收提醒：开了按节点一条横条 + 总数 + 去看；没开 / 没设天数各一句话；不给不摆", async () => {
+  const { page } = await 打开({ 看板: {}, 回收: 回收开 });
+  const 块 = page.locator('section[aria-label="回收提醒"]');
+  expect(await 块.locator(".btodo-recycle-sum").innerText()).toBe("3 天内回公海 5 个");
+  expect(await 块.locator(".btodo-rc-k").allInnerTexts()).toEqual(["潜客培育 · 7 天没跟进收回", "某个名字特别长特别长特别长特别长的节点 · 15 天没跟进收回", "痛点挖掘 · 7 天没跟进收回"]);
+  expect(await 块.locator(".btodo-rc-v").allInnerTexts()).toEqual(["4", "1", "0"]);
+  expect(await 块.getByRole("link", { name: "去看 ›" }).getAttribute("href")).toBe("/projects?f=due-soon");
+  await page.close();
+  const 关 = await 打开({ 看板: {}, 回收: { 开: false, 条: [], 总数: 0 } });
+  expect(await 关.page.locator(".btodo-recycle").innerText()).toContain("组织规则里没开超时回收");
+  expect(await 关.page.locator(".btodo-recycle-sum").count()).toBe(0);
+  await 关.page.close();
+  const 空 = await 打开({ 看板: {}, 回收: { 开: true, 条: [], 总数: 0 } });
+  expect(await 空.page.locator(".btodo-recycle").innerText()).toContain("线索、商机的节点都没设回收天数。");
+  await 空.page.close();
+  const 无 = await 打开({ 看板: {} });
+  expect(await 无.page.locator(".btodo-recycle").count()).toBe(0);
+  await 无.page.close();
+});
+
+it("我的 / 团队：只是选人下拉的快捷键——我的 = ownerId=自己，团队 = 去掉 ownerId，都回第一页；没给「我」不摆", async () => {
+  const { page } = await 打开({ 看板: {}, 我: "me", 当前: "u1" }, 1280, "/overview?ownerId=u1&p=3&f=overdue");
+  const 段 = page.locator('.data-shell-scope');
+  expect(await 段.locator(".ant-segmented-item").allInnerTexts()).toEqual(expect.arrayContaining(["我的", "团队"]));
+  await 段.locator(".ant-segmented-item", { hasText: "我的" }).click();
+  await 段.locator(".ant-segmented-item", { hasText: "团队" }).click();
+  expect(await 去了(page)).toEqual(["/overview?ownerId=me&f=overdue", "/overview?f=overdue"]);
+  await page.close();
+  const 无 = await 打开({ 看板: {} });
+  expect(await 无.page.locator(".data-shell-scope").count()).toBe(0);
+  await 无.page.close();
+});
+
+it.each([1024, 1280])("看板 + 回收提醒 + 我的/团队 %ipx：不横向溢出，三列一行，长名字单行省略", async (w) => {
+  const { page } = await 打开({ 看板: { overdue: 10, today: 2, later: 3 }, 回收: 回收开, 我: "me" }, w);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const ys = await page.locator(".btodo-col").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  expect(new Set(ys).size).toBe(1);
+  // 卡上的项目名、内容、回收条节点名：单行、省略、不撑出卡
+  for (const sel of [".btodo-k-proj", ".btodo-k-t", ".btodo-rc-k"]) {
+    const r = await page.locator(sel).first().evaluate((e) => {
+      const s = getComputedStyle(e); const p = e.closest(".btodo-k, .btodo-rc-row")!.getBoundingClientRect(); const b = e.getBoundingClientRect();
+      return { ws: s.whiteSpace, to: s.textOverflow, 出: b.right > p.right + 1, 高: b.height };
+    });
+    expect(r.ws, sel).toBe("nowrap");
+    expect(r.to, sel).toBe("ellipsis");
+    expect(r.出, sel).toBe(false);
+  }
+  // 顶上那一行（选人 + 我的/团队）不折行
+  const 行 = await page.locator(".data-shell-bar-who").evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top)));
+  expect(new Set(行).size).toBe(1);
   await page.close();
 });

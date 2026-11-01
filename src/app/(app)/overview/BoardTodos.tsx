@@ -4,13 +4,17 @@ import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { App, Button, Checkbox, Segmented, Table, Tooltip } from "antd";
-import { fmtDateTime } from "@/lib/utils";
-import { 表格空态 } from "@/components/EmptyState";
+import { dayjs, fmtDateTime } from "@/lib/utils";
+import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import { toggleTask, completePlan } from "../customers/[id]/actions";
 import {
   待办卡们, 待办卡叫法, 待办类型们, 待办类型叫法, 状态of, 计划页链接, 复盘待办每页,
-  type 待办卡, type 待办类型, type 复盘待办, type 复盘待办行,
+  看板列们, 看板列叫法, 看板列的卡, 逾天数,
+  type 待办卡, type 待办类型, type 待办布局, type 复盘待办, type 复盘待办行, type 复盘看板,
 } from "@/lib/project/board-todos";
+import { 企业级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
+import type { 回收提醒 } from "@/lib/project/review-extras";
+import { 即将逾期天数 } from "@/lib/project/home-cards";
 
 /**
  * 复盘页「待办」页签（P15，10-29 用户定）：没做完的跟进计划（FollowPlan）+ 待办事项（Task）。
@@ -18,9 +22,21 @@ import {
  * 卡、类型、页码都在地址栏（f / kind / p），条数、先后、分页在服务端排好（lib/project/board-todos.ts），这里只换地址。
  * 行首的勾直接完成（复用客户页 / 计划页那两个动作，带撤销）；点一行去项目页，客户没有进行中的项目去客户页。
  * 1024 宽 + AI 栏常驻时这块只剩四五百：内容、客户名省略号截断，再窄在表格里横滚，不伸出页面。
+ *
+ * 11-01 参考复盘稿融合：「全部待办」默认摆三列看板（逾期 / 今天到期 / 待跟进，给了 看板 就摆），
+ * 右上角「看板 / 列表」切换（lay=list 回到上面那张表）；点逾期 / 今天 / 本周那几张卡照旧是筛过的表。
+ * 看板下面是「回收提醒」：按节点一条，天数从组织规则读，条长 = 这一圈 3 天内要回公海的项目数。
  */
-export default function BoardTodos({ 数, 卡, 类型, 只看自己, 看全员 }: {
-  数: 复盘待办; 卡: 待办卡; 类型: 待办类型; 只看自己: boolean; 看全员: boolean;
+export default function BoardTodos({ 数, 看板, 卡, 类型, 布局 = "list", 回收, 只看自己, 看全员 }: {
+  /** 表格那份（列表时给） */
+  数?: 复盘待办;
+  /** 三列看板那份（全部待办、没选列表时给）；给了就摆看板、不摆表 */
+  看板?: 复盘看板;
+  卡: 待办卡; 类型: 待办类型;
+  布局?: 待办布局;
+  /** 回收提醒；不给就不摆这块 */
+  回收?: 回收提醒;
+  只看自己: boolean; 看全员: boolean;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -29,13 +45,17 @@ export default function BoardTodos({ 数, 卡, 类型, 只看自己, 看全员 }
   const [换着, start] = useTransition();
 
   /** 换卡、换类型从第一页看起；翻页只改 p。replace：筛选不进历史，返回键回到进复盘页之前那一页 */
-  const 改 = (k: { f?: 待办卡; kind?: 待办类型; p?: number }) => {
+  const 改 = (k: { f?: 待办卡; kind?: 待办类型; lay?: 待办布局; p?: number }) => {
     const q = new URLSearchParams(sp.toString());
     for (const key of ["f", "kind"] as const) {
       if (!(key in k)) continue;
       const v = k[key];
       if (v && v !== "all") q.set(key, v);
       else q.delete(key);
+    }
+    if ("lay" in k) {
+      if (k.lay === "list") q.set("lay", "list");
+      else q.delete("lay");
     }
     if (k.p && k.p > 1) q.set("p", String(k.p));
     else q.delete("p");
@@ -150,12 +170,15 @@ export default function BoardTodos({ 数, 卡, 类型, 只看自己, 看全员 }
     },
   ];
 
+  const 计数 = (看板 ?? 数)?.计数 ?? { overdue: 0, today: 0, week: 0, all: 0 };
+  const 空提示 = 卡 !== "all" || 类型 !== "all" ? "换一张卡、或者类型选「全部」看看。" : 只看自己 ? "你名下的跟进计划和待办都做完了。" : "跟进计划和待办都做完了，这里就空着。";
+
   return (
     <div className="btodo-wrap">
       {/* 四张卡就是筛选：选中的那张描主色边、底色淡一档；逾期有数才红（是 0 就是个灰数） */}
       <div className="btodo-cards" role="group" aria-label="按到期筛选">
         {待办卡们.map((k) => {
-          const n = 数.计数[k];
+          const n = 计数[k];
           const 选中 = 卡 === k;
           return (
             <button
@@ -175,6 +198,16 @@ export default function BoardTodos({ 数, 卡, 类型, 只看自己, 看全员 }
         <div className="btodo-head">
           <b className="section-title">{待办卡叫法[卡]}</b>
           <div className="btodo-head-r">
+            {卡 === "all" && (
+              <Segmented
+                size="small"
+                aria-label="看板还是列表"
+                className="btodo-lay"
+                value={看板 ? "board" : 布局}
+                onChange={(v) => 改({ lay: v as 待办布局 })}
+                options={[{ value: "board", label: "看板" }, { value: "list", label: "列表" }]}
+              />
+            )}
             <Segmented
               size="small"
               aria-label="待办类型"
@@ -185,18 +218,52 @@ export default function BoardTodos({ 数, 卡, 类型, 只看自己, 看全员 }
             <Link href={计划页链接(看全员 ? "全员" : "自己")} className="link-strong nowrap">去计划页</Link>
           </div>
         </div>
+        {看板 && 计数.all === 0 ? (
+          <EmptyState title="没有待办" hint={空提示} demo={false} />
+        ) : 看板 ? (
+          <div className={`btodo-board${换着 ? " is-pending" : ""}`}>
+            {看板列们.map((c) => {
+              const 列 = 看板.列[c];
+              return (
+                <section key={c} className={`btodo-col btodo-col-${c}`} aria-label={`${看板列叫法[c]}，${列.总数} 条`}>
+                  <header className="btodo-col-h">
+                    <i className="btodo-col-dot" aria-hidden />
+                    <b>{看板列叫法[c]}</b>
+                    <span className="btodo-col-n">{列.总数}</span>
+                  </header>
+                  {列.行.length ? (
+                    <ul className="btodo-col-list">
+                      {列.行.map((x) => (
+                        <li key={x.key}>
+                          <待办卡片 x={x} 完成中={刚完成.includes(x.key)} 看全员={看全员} 完成={() => void 完成(x)} />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="btodo-col-empty">{c === "overdue" ? "没有逾期的" : c === "today" ? "今天没有到期的" : "没有排着的"}</p>
+                  )}
+                  {列.总数 > 列.行.length && (
+                    <button type="button" className="btodo-col-more" onClick={() => 改({ f: 看板列的卡[c], lay: "list" })}>
+                      看全部 {列.总数} 条 ›
+                    </button>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        ) : (
         <Table<复盘待办行>
           className="btodo"
           size="small"
           rowKey="key"
           tableLayout="fixed"
           loading={换着 ? { delay: 150 } : false}
-          dataSource={数.行}
+          dataSource={数?.行 ?? []}
           columns={cols}
           pagination={{
-            current: 数.页,
+            current: 数?.页 ?? 1,
             pageSize: 复盘待办每页,
-            total: 数.总数,
+            total: 数?.总数 ?? 0,
             showSizeChanger: false,
             hideOnSinglePage: true,
             size: "small",
@@ -213,10 +280,76 @@ export default function BoardTodos({ 数, 卡, 类型, 只看自己, 看全员 }
             role: "link",
             "aria-label": `${x.内容}，${x.customerName}`,
           })}
-          locale={表格空态({ title: "没有待办", hint: 卡 !== "all" || 类型 !== "all" ? "换一张卡、或者类型选「全部」看看。" : 只看自己 ? "你名下的跟进计划和待办都做完了。" : "跟进计划和待办都做完了，这里就空着。", demo: false })}
+          locale={表格空态({ title: "没有待办", hint: 空提示, demo: false })}
         />
+        )}
       </section>
+      {回收 && <回收提醒块 回收={回收} />}
     </div>
+  );
+}
+
+/** 看板上的一张卡：项目（没有写客户）+ 级别、内容、到期 + 逾几天、负责人（看全员时）、「去跟进」；左边的勾直接完成 */
+function 待办卡片({ x, 完成中, 看全员, 完成 }: { x: 复盘待办行; 完成中: boolean; 看全员: boolean; 完成: () => void }) {
+  const 名 = x.projectName ?? x.customerName;
+  const 全名 = x.projectName ? `${x.customerName} · ${x.projectName}` : x.customerName;
+  const 级 = 企业级别(x.projectLevel);
+  const 逾 = x.组 === "逾期" ? 逾天数(x.时间, dayjs()) : 0;
+  return (
+    <article className={`btodo-k${完成中 ? " btodo-row-done" : ""}${x.组 === "逾期" ? " btodo-k-late" : ""}`}>
+      <Checkbox aria-label={`完成「${x.内容}」`} checked={完成中} disabled={完成中} onChange={完成} />
+      <div className="btodo-k-main">
+        <div className="btodo-k-top">
+          <Tooltip title={全名} placement="topLeft" mouseEnterDelay={0.4}>
+            <span className="btodo-k-proj">{名}</span>
+          </Tooltip>
+          {级 && <span className={`cust-level cust-level-${级}`} title={`项目级别 ${企业级别说明[级]}`} aria-label={`项目级别 ${企业级别说明[级]}`}>{级}</span>}
+          <span className="btodo-k-kind">{x.kind === "plan" ? "跟进计划" : "任务"}</span>
+        </div>
+        <Tooltip title={x.内容} placement="topLeft" mouseEnterDelay={0.4}>
+          <span className="btodo-k-t btodo-t">{x.内容}</span>
+        </Tooltip>
+        <div className="btodo-k-meta">
+          <span className="btodo-time nowrap">{x.时间 ? fmtDateTime(x.时间) : "没定日期"}</span>
+          {逾 > 0 && <span className="btodo-k-over nowrap" suppressHydrationWarning>逾 {逾} 天</span>}
+          {看全员 && <span className="btodo-k-owner">{x.ownerName}</span>}
+          <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›</Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+/** 回收提醒：按节点一条横条，「<节点> · N 天没跟进收回」，条长 = 3 天内要回公海的项目数（同首页卡口径） */
+function 回收提醒块({ 回收 }: { 回收: 回收提醒 }) {
+  const 最多 = Math.max(1, ...回收.条.map((c) => c.数));
+  return (
+    <section className="btodo-list btodo-recycle" aria-label="回收提醒">
+      <div className="btodo-head">
+        <b className="section-title">回收提醒</b>
+        <div className="btodo-head-r">
+          {回收.开 && <span className="btodo-recycle-sum nowrap">{即将逾期天数} 天内回公海 <b>{回收.总数}</b> 个</span>}
+          <Link href="/projects?f=due-soon" className="link-strong nowrap">去看 ›</Link>
+        </div>
+      </div>
+      {!回收.开 ? (
+        <p className="btodo-recycle-off">组织规则里没开超时回收，项目不会因为没跟进自动回公海。</p>
+      ) : 回收.条.length === 0 ? (
+        <p className="btodo-recycle-off">线索、商机的节点都没设回收天数。</p>
+      ) : (
+        <ul className="btodo-rc">
+          {回收.条.map((c) => (
+            <Tooltip key={`${c.阶段}-${c.节点}`} title={`${c.阶段} · ${c.节点}：${c.天数} 天没跟进收回公海，${即将逾期天数} 天内要收回 ${c.数} 个`} placement="topLeft" mouseEnterDelay={0.2}>
+              <li className="btodo-rc-row" tabIndex={0}>
+                <span className="btodo-rc-k">{c.节点} · {c.天数} 天没跟进收回</span>
+                <span className="btodo-rc-bar" aria-hidden><i style={{ width: `${(c.数 / 最多) * 100}%` }} /></span>
+                <b className="btodo-rc-v">{c.数}</b>
+              </li>
+            </Tooltip>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
