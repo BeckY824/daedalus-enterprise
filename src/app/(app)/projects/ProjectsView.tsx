@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import Link from "next/link";
-import { App, Button, Dropdown, Modal, Select, Space, Segmented, Tag, type SelectProps } from "antd";
-import { CloseOutlined, DownOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { App, Button, Modal, Select, Space, Segmented, Tag, type SelectProps } from "antd";
+import { CloseOutlined, PlusOutlined, RightOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import dynamic from "next/dynamic";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
@@ -37,6 +37,11 @@ import { AssignLeadModal, AssignedOutButton } from "../leads/AssignLead";
 import LeadFullNotices from "../leads/LeadFullNotices";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
 import { 取客户近况 } from "../customers/[id]/pick";
+import { 取建档数据 } from "./new/wizard-actions";
+import type { 建档数据 } from "./new/ProjectWizard";
+
+/** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */
+const 建档弹窗 = dynamic(() => import("./new/ProjectWizard").then((m) => m.建档弹窗), { ssr: false });
 
 /** 看板五列的颜色：三个阶段沿用商机管道的蓝绿黄，成功交付（企业版叫 交付结清）粉、没成灰 */
 const 列色: Record<看板列, string> = {
@@ -117,6 +122,25 @@ export default function ProjectsView({
   const 可分 = 新线索 && 能自动分配;
   const [分配中, set分配中] = useState<项目行 | null>(null);
   const [挑老客户, set挑老客户] = useState(false);
+  // 企业版项目首页「新增项目」（11-01 用户：「也是弹窗进行。右侧下拉去掉，打开新增的时候给一个选项新客户还是老客户」）
+  const [选客户, set选客户] = useState(false);
+  const [建档, set建档] = useState<建档数据 | null>(null);
+  const [建档开着, set建档开着] = useState(false);
+  const [取档中, set取档中] = useState(false);
+  const 新客户 = async () => {
+    set取档中(true);
+    try {
+      const d = 建档 ?? (await 取建档数据());
+      if (!d) return void message.error("项目模式没开，不能新增项目");
+      set建档(d);
+      set选客户(false);
+      set建档开着(true);
+    } catch {
+      message.error("没打开，请重试");
+    } finally {
+      set取档中(false);
+    }
+  };
   const [存的看法, set看法] = useLocalPref<"列表" | "看板">("projects-view", "看板");
   const 看法 = 新线索 ? "列表" : 存的看法;
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
@@ -127,8 +151,8 @@ export default function ProjectsView({
   const { 列: 摆的列, 藏了 } = 企业版 ? 看板显示列(看板, 显示空列) : { 列: 看板, 藏了: 0 };
   const 空列名 = 看板.filter((c) => c.数 === 0).map((c) => 列名(c.列)).join("、");
   const 能藏 = 企业版 && 空列名 !== "" && 看板.some((c) => c.数 > 0);
-  // 企业版新客户一律走「新线索」向导（先查重）；老客户再开一单走页头下拉里的「给老客户开项目」
-  const 新建 = () => router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new");
+  // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
+  const 新建 = () => (企业版 && !新线索 ? set选客户(true) : router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new"));
   // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批
   const 卡 = 认首页卡(filters.f);
   const 卡标 = 卡 ? (
@@ -278,7 +302,6 @@ export default function ProjectsView({
         />
       )}
       <ResetFilters 显示={Object.values(f).some(Boolean)} onClick={reset} />
-      {企业版 && <Link href="/pool" onMouseEnter={() => 预取.进("/pool")} onMouseLeave={预取.出}>去公海看</Link>}
       {/* 企业版项目首页只留看板、列表（U-项目-08）：「新线索列表」「沟通记录」入口去掉，/leads、/follow-ups 路由还在，⌘K 搜得到 */}
     </Space>
   );
@@ -300,27 +323,8 @@ export default function ProjectsView({
           <Space wrap>
             {新线索 && 线索分配开着 && <AssignedOutButton />}
             {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />}
-            {企业版 ? (
-              // 一个主按钮：新线索页叫「新线索」；项目首页叫「新增项目」（U-项目-08 去掉「新线索」入口、U-新建-01 留新建项目）。
-              // 都走同一个向导（新客户要先查重）；老客户再开一单收在旁边的下拉里，每项带一行说明
-              <Space.Compact>
-                <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : "新增项目"}</Button>
-                <Dropdown
-                  trigger={["click"]}
-                  placement="bottomRight"
-                  menu={{
-                    items: [
-                      { key: "new", label: <两行 名={新线索 ? "新线索" : `新${b.customer}开项目`} 说={`新${b.customer}要先查重`} />, onClick: 新建 },
-                      { key: "old", label: <两行 名="给老客户开项目" 说={`老${b.customer}直接选${b.customer}`} />, onClick: () => set挑老客户(true) },
-                    ],
-                  }}
-                >
-                  <Button type="primary" icon={<DownOutlined />} aria-label="新建方式" />
-                </Dropdown>
-              </Space.Compact>
-            ) : (
-              <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : "新建项目"}</Button>
-            )}
+            {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
+            <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>
           </Space>
         }
       />
@@ -440,6 +444,21 @@ export default function ProjectsView({
           </div>
         </>
       )}
+      {企业版 && !新线索 && (
+        <Modal open={选客户} title="新增项目" footer={null} width={420} onCancel={() => set选客户(false)} destroyOnHidden>
+          <div className="new-proj-pick">
+            <button type="button" className="new-proj-opt" disabled={取档中} onClick={() => void 新客户()}>
+              <两行 名={`新${b.customer}`} 说={`一起建好${b.customer}、联系人和首条沟通，号码先查重`} />
+              <RightOutlined aria-hidden />
+            </button>
+            <button type="button" className="new-proj-opt" disabled={取档中} onClick={() => { set选客户(false); set挑老客户(true); }}>
+              <两行 名={`老${b.customer}`} 说={`选一位已有的${b.customer}，接着填项目和首条沟通`} />
+              <RightOutlined aria-hidden />
+            </button>
+          </div>
+        </Modal>
+      )}
+      {建档 && <建档弹窗 open={建档开着} 标题="新增项目" 数据={建档} onClose={() => set建档开着(false)} />}
       {企业版 && <OldCustomerProject 开={挑老客户} 关={() => set挑老客户(false)} users={users} 节点们={字典.节点们.线索} 要下一步={要下一步} />}
       {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} />}
     </div>
@@ -452,7 +471,7 @@ function 将收标({ 日 }: { 日: string }) {
   return <Tag color={级别 === "当天" || 级别 === "已过" ? "error" : "warning"} style={{ marginInlineEnd: 0, flexShrink: 0 }}>{短文字}</Tag>;
 }
 
-/** 下拉菜单里的一项：名字 + 一行小字说明 */
+/** 「新增项目」选项里的一项：名字 + 一行小字说明 */
 function 两行({ 名, 说 }: { 名: string; 说: string }) {
   return (
     <div style={{ lineHeight: 1.4, padding: "2px 0" }}>
@@ -510,7 +529,7 @@ function OldCustomerProject({ 开, 关, users, 节点们, 要下一步 }: { 开:
       >
         <CustomerSearchSelect value={选} onChange={set选} placeholder="搜名称 / 公司 / 电话" style={{ width: "100%" }} />
         <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
-          选一位已有的{b.customer}，接着填项目和首条沟通。新{b.customer}请用「新线索」，要先查重。
+          选一位已有的{b.customer}，接着填项目和首条沟通。新{b.customer}请回「新增项目」选「新{b.customer}」，要先查重。
         </div>
       </Modal>
       {客户 && (

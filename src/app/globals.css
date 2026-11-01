@@ -750,7 +750,8 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .roster-n { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 .roster-t { flex: none; font-size: var(--fs-min); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .roster-l2 { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.roster-note { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; font-size: var(--fs-note); color: var(--text-muted); }
+/* 11-01 用户图 3：第三行只显示一行，后面加…（客户、项目名单一样） */
+.roster-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
 /* 右下角的圆点：橙 = 计划到期、灰 = 一个月没动静、绿 = 正常（CustomerRoster 的 点()） */
 .roster-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--success); }
 .roster-dot.due { background: var(--warning); }
@@ -781,6 +782,9 @@ html.glass .roster-row.on { background: color-mix(in srgb, var(--panel) 85%, tra
 .rec-head > .pane-toggle { margin-left: -6px; }
 /* 首页问答区没有页头：贴在左栏右边、中栏页头那一行的高度上，收起前后手几乎不用挪 */
 .pane-toggle-float { position: fixed; top: calc((var(--drag-h) - 28px) / 2); left: calc(var(--rail-w) + 12px); z-index: 21; }
+/* 11-01 用户图 4/5：网页版没有桌面端顶上那条空的拖动区，首页收起对话列表后 fixed 的这颗压在问候「早上好」上。
+   网页版改成摆在问答区上面、单占一行，不跟问候抢位置 */
+.shell:not(.shell-desktop) .cli > .pane-toggle-float { position: static; align-self: flex-start; margin: -4px 0 8px -4px; }
 /* 往窄拖过最窄值再拖一段：松手就收起。拖到这一步先让那一栏淡下去，告诉人「再松手它就收了」 */
 body.rail-resizing-collapse .pane-chat { opacity: .45; }
 @media (prefers-reduced-motion: reduce) {
@@ -1172,19 +1176,23 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-side .cust-link-t { overflow-wrap: anywhere; }
 @container (max-width: 1000px) { .proj-2col { grid-template-columns: minmax(0, 1fr) 280px; } }
 @container (max-width: 629px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
-/* 企业版左栏瀑布流（U-项目-01/04）：沟通、卡点与任务各一块，标题那一行是展开 / 收起的按钮，收着只剩标题；
-   块里定高、自己滚（外层左栏照旧上下滚看全部块）；上面一格搜索 */
-.proj-mod .ant-card-head-title { overflow: visible; }
-.proj-mod-h {
-  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0;
-  padding: 0; border: none; background: none; font: inherit; color: inherit; cursor: pointer;
+/* 企业版项目详情瀑布流（U-项目-01/04 → 11-01）：每张卡包一层 .proj-fold（ProjectFold.tsx），卡头最右一颗圆角小按钮收起 / 展开，
+   开着箭头朝上、收着朝下；收着只剩卡头。沟通、卡点与任务的卡身定高、自己滚（外层左栏照旧上下滚看全部块）；上面一格搜索 */
+.proj-fold { position: relative; min-width: 0; }
+.proj-fold > .ant-card > .ant-card-head { padding-inline-end: 52px; }
+.proj-fold.is-closed > .ant-card > .ant-card-body { display: none; }
+.proj-fold.is-closed > .ant-card > .ant-card-head { border-bottom: none; }
+.proj-fold-btn {
+  position: absolute; top: 14px; right: 14px; width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  color: var(--text-muted); cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
-.proj-mod-h:disabled { cursor: default; }
-.proj-mod-h:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 2px; }
-.proj-mod-h > .anticon { color: var(--text-muted); font-size: 12px; }
-.proj-mod-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.proj-mod.is-closed > .ant-card-body { display: none; }
-.proj-mod.is-closed > .ant-card-head { border-bottom: none; }
+.proj-fold-btn:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.proj-fold-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.proj-fold-btn:disabled { cursor: default; opacity: .45; }
+.proj-fold-btn > svg { transition: transform var(--t-fast) var(--ease); }
+.proj-fold-btn[aria-expanded="true"] > svg { transform: rotate(180deg); }
 .proj-mod-body { max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior-y: contain; min-width: 0; scrollbar-width: thin; }
 .proj-search { min-width: 0; }
 /* 项目附件一块（F-项目-18）：合同附件 / 项目方案 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
@@ -1226,19 +1234,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-where { display: flex; flex-wrap: wrap; gap: 8px 28px; min-width: 0; }
 .proj-where > div { min-width: 0; }
 .proj-where-label { color: var(--text-muted); margin-bottom: 4px; }
-/* 10-31 改版 R6：企业版项目页的具名按钮，单独一行摆在标题下面，按下面两栏分组对齐（列宽、断点和 .proj-2col 一样）。
-   按钮多就在组里折行，不收进「更多」。整个项目的事（转让、放回公海、删除）在左组最后靠右。
-   .page-head-a 这个名字别改：⌘N 靠它找主按钮（components/CommandBar.tsx） */
-.proj-wrap > .page-head-a.proj-acts { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 8px 16px; align-items: start; margin: -6px 0 16px; }
-.proj-acts > .acts-g { display: flex; flex-wrap: wrap; gap: var(--s2); min-width: 0; }
+/* 客户页头那组「整个客户的事」（新开项目、转让项目、退回公海）靠右 */
 .acts-whole { display: inline-flex; flex-wrap: wrap; gap: var(--s2); margin-left: auto; }
-@container (max-width: 1000px) { .proj-wrap > .page-head-a.proj-acts { grid-template-columns: minmax(0, 1fr) 280px; } }
-@container (max-width: 629px) { .proj-wrap > .page-head-a.proj-acts { grid-template-columns: minmax(0, 1fr); } .proj-acts > .acts-g:empty { display: none; } }
-/* 页头按钮开的框：卡片原样搬进框里，去掉卡片自己的边框和留白 */
-.proj-modal-cards { display: flex; flex-direction: column; gap: 16px; }
-.proj-modal-cards .ant-card { border: none; box-shadow: none; background: transparent; }
-.proj-modal-cards .ant-card .ant-card-head { padding: 0; min-height: 0; border-bottom: none; margin-bottom: 8px; }
-.proj-modal-cards .ant-card .ant-card-body { padding: 0; }
 .proj-modal-sec { display: flex; flex-direction: column; gap: 16px; }
 .proj-modal-menu.ant-menu { border-inline-end: none !important; }
 .proj-modal-list { max-height: 60vh; overflow-y: auto; }
@@ -2321,6 +2318,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
 /* 客户页「新增项目」弹窗（U-客户-05）：带上的客户名一行，超长折行写完不撑宽弹窗 */
 .new-proj-carried { color: var(--text-muted); font-size: var(--fs-note); margin-bottom: var(--s3); overflow-wrap: anywhere; }
+/* 项目首页「新增项目」先选新客户 / 老客户（11-01）：两张整行可点的选项，说明长了折行 */
+.new-proj-pick { display: flex; flex-direction: column; gap: var(--s2); }
+.new-proj-opt { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); width: 100%; min-width: 0; padding: 12px 14px; text-align: start; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; overflow-wrap: anywhere; }
+.new-proj-opt:hover:not(:disabled), .new-proj-opt:focus-visible { border-color: var(--brand); background: var(--brand-bg); }
+.new-proj-opt:disabled { cursor: progress; opacity: .6; }
+.new-proj-opt > .anticon { color: var(--text-muted); flex-shrink: 0; }
 .pipe-more.ant-btn { height: auto; min-height: 28px; white-space: normal; color: var(--brand); gap: 6px; }
 
 /* ---------- 「数据」页上的问数据 ----------
@@ -3072,13 +3075,20 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .rec-research-tag:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 /* 沟通记录标题右边的「新建沟通」：标题和按钮一行，按钮不换行 */
 .rec-tl-cap .ant-btn { white-space: nowrap; }
-/* 待办挪到页面底部占满宽：行按宽度排成几列；固定高度时它不跟三栏抢高度，自己滚 */
-.rec-todo-bottom { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: var(--s4); align-content: start; }
-.rec-todo-bottom > :is(.rec-side-t, .ant-typography) { grid-column: 1 / -1; }
-.rec-todo-bottom .rec-task { min-width: 0; }
+/* 11-01 用户：「待办模块放到沟通记录下方，而不是整体下方」——企业版项目模式待办摆在中栏沟通记录下面，一条分隔线隔开。
+   沟通记录区固定高度、内部滚；待办自己也有个上限、内部滚。三栏（≥1090）时中栏本身是一扇窗：沟通记录占剩下的高度 */
+.rec-todo-in { border-top: 1px solid var(--line-soft); padding: 12px 16px 12px; min-width: 0; }
+.rec-todo-in .rec-task { min-width: 0; }
+.rec-col-todo > .rec-tl { max-height: min(60vh, 560px); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+.rec-col-todo > .rec-tl::-webkit-scrollbar, .rec-todo-in::-webkit-scrollbar { display: none; }
 @media (min-width: 768px) {
-  .main .rec-page > .rec-todo-bottom { flex: none; max-height: 30vh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; padding-bottom: calc(12px + var(--detail-tail, 0px)); }
-  .main .rec-page > .rec-todo-bottom::-webkit-scrollbar { display: none; }
+  .rec-todo-in { max-height: 34vh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
+  @container rec (min-width: 1090px) {
+    .main .rec-page > .rec > .rec-col.rec-col-todo { display: flex; flex-direction: column; overflow-y: hidden; }
+    .main .rec-page > .rec > .rec-col.rec-col-todo > * { flex: none; }
+    .main .rec-page > .rec > .rec-col.rec-col-todo > .rec-tl { flex: 1 1 auto; min-height: 160px; max-height: none; }
+    .main .rec-page > .rec > .rec-col.rec-col-todo > .rec-todo-in { max-height: 40%; }
+  }
 }
 @container rec (max-width: 629px) {
   .rec-acts-r > .acts-g:empty { display: none; }

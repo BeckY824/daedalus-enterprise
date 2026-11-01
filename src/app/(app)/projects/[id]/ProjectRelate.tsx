@@ -70,7 +70,7 @@ function useRelateSearch<T>(搜: (词: string) => Promise<T[]>) {
 
 /**
  * 只：只摆一张（项目页头「关联客户」「关联联系人」弹框，10-31 R6）；起手：一打开就是「关联一家 / 一位」那一格（同点卡上的「关联」）。
- * 不摆加：企业版项目页头已有「关联客户」「关联联系人」，右栏卡上不再摆「关联」（10-31）
+ * 不摆加：右栏卡上不摆「关联」（10-31 页头放过；11-01 页头只留转让项目 / 退回公海，卡上照摆，目前没人传）
  */
 export default function ProjectRelate({ projectId, 关联, 能改, 只, 起手 = false, 不摆加 = false }: { projectId: string; 关联: 项目关联; 能改: boolean; 只?: "客户" | "联系人"; 起手?: boolean; 不摆加?: boolean }) {
   return (

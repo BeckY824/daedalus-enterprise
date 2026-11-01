@@ -18,7 +18,7 @@ const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "bas
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 64px" };
 const 淡: React.CSSProperties = { color: "var(--text-muted)" };
 
-/** 不摆改：企业版项目页头已有「改分配」，卡上不再摆（10-31） */
+/** 不摆改：不在卡上摆「改分配」（10-31 页头放过；11-01 页头只留转让项目 / 退回公海，卡上照摆，目前没人传） */
 export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = false }: { projectId: string; t: 提成卡; 忙: boolean; 跑: 跑法; 不摆改?: boolean }) {
   const [底价, set底价] = useState<number | null>(t.项目底价);
   const [分开着, set分开着] = useState(false);
@@ -76,7 +76,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
   );
 }
 
-/** 改分配框：提成卡上的「改分配」、项目页头的「改分配」（10-31 R6）共用这一个 */
+/** 改分配框：提成卡上的「改分配」打开（11-01 起项目页头不再摆） */
 export function SplitModal({ projectId, t, 跑, onClose }: { projectId: string; t: 提成卡; 跑: 跑法; onClose: () => void }) {
   const [分, set分] = useState<分配>(() => ({ ...t.分配 }));
   const [忙, set忙] = useState(false);

@@ -150,18 +150,18 @@ const 全开 = {
   关联们: [],
 };
 const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")));
-it("企业版项目模式页头（U-客户-03）：只留开项目、转让、退回公海；没有主按钮、删除、下拉", async () => {
+it("企业版项目模式页头（U-客户-03）：只留新开项目、转让项目、退回公海；没有主按钮、删除、下拉", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通挪进沟通记录标题、新建任务跟待办挪到页底
-    expect(await 头按钮(page)).toEqual(["开项目", "转让", "退回公海"]);
+    // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通在沟通记录标题、新建任务跟待办在沟通记录下方（11-01）
+    expect(await 头按钮(page)).toEqual(["新开项目", "转让项目", "退回公海"]);
     expect(await page.locator(".rec-acts .ant-btn-primary").count()).toBe(0);
     expect(await page.locator(".rec-acts .ant-btn-dangerous").count()).toBe(0);
     expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(0);
-    // 页面上别处也不给去掉的入口；新建任务在页底待办上
+    // 页面上别处也不给去掉的入口；新建任务在沟通栏的待办上
     const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head, .rec-acts")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
-    expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|开项目/.test(t))).toEqual([]);
-    expect(await page.locator(".rec-todo-bottom").getByRole("button", { name: /新建任务/ }).count()).toBe(1);
+    expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|新开项目/.test(t))).toEqual([]);
+    expect(await page.locator(".rec > .rec-col > .rec-todo-in").getByRole("button", { name: /新建任务/ }).count()).toBe(1);
     // 按钮一行摆在名字下面，各组对齐下面那一栏的左边
     const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-acts").boundingBox()]);
     expect(排!.y).toBeGreaterThanOrEqual(名!.y + 名!.height - 1);
@@ -177,7 +177,7 @@ it("企业版项目模式页头（U-客户-03）：只留开项目、转让、�
 it("「转让」开框挑人：没挑之前「下一步」点不了；挑了能点；取消关框", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    await page.locator(".rec-acts").getByRole("button", { name: /^转\s*让$/ }).click();
+    await page.locator(".rec-acts").getByRole("button", { name: /^转\s*让\s*项\s*目$/ }).click();
     const 框 = page.getByRole("dialog");
     await 框.getByText("转让 · 客户A").waitFor();
     const 下一步 = 框.getByRole("button", { name: /下\s*一\s*步/ });
@@ -190,7 +190,7 @@ it("「转让」开框挑人：没挑之前「下一步」点不了；挑了能�
     await 框.getByRole("button", { name: /取\s*消/ }).click();
     await 框.waitFor({ state: "hidden" });
     // 再开一次，上次挑的人清掉
-    await page.locator(".rec-acts").getByRole("button", { name: /^转\s*让$/ }).click();
+    await page.locator(".rec-acts").getByRole("button", { name: /^转\s*让\s*项\s*目$/ }).click();
     expect(await page.getByRole("dialog").getByRole("button", { name: /下\s*一\s*步/ }).isDisabled()).toBe(true);
   } finally { await page.close(); }
 });
