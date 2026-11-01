@@ -265,9 +265,12 @@ async function 日终(标: string) {
     for (const p of await prisma.project.findMany({ orderBy: { name: "asc" } })) {
       记(`${p.name} 负责人=${公.名[p.ownerId] ?? p.ownerId} 创建=${公.名[p.creatorId ?? ""] ?? "-"} ${p.phase}/${p.node}${p.result ? "/" + p.result : ""} ${p.pooledAt ? "公海@" + 日(p.pooledAt) : "在手"}`);
     }
-    for (const l of await prisma.projectNodeLog.findMany({ orderBy: [{ at: "asc" }, { id: "asc" }] })) {
-      记(`  记录 ${项目名(l.projectId)} ${l.kind} ${l.fromNode ?? "-"}→${l.toNode ?? "-"} 人=${公.名[l.userId ?? ""] ?? "-"} 负责人 ${公.名[l.fromOwnerId ?? ""] ?? "-"}→${公.名[l.toOwnerId ?? ""] ?? "-"} @${日(l.at)}`);
-    }
+    // 同一时刻的记录按行文字排：按 id（cuid）排在整套高负载时偶尔乱序（11-01 推送红过一次，单跑 11 次全绿）
+    const 记录行 = (await prisma.projectNodeLog.findMany()).map((l) => ({
+      at: l.at.getTime(),
+      行: `  记录 ${项目名(l.projectId)} ${l.kind} ${l.fromNode ?? "-"}→${l.toNode ?? "-"} 人=${公.名[l.userId ?? ""] ?? "-"} 负责人 ${公.名[l.fromOwnerId ?? ""] ?? "-"}→${公.名[l.toOwnerId ?? ""] ?? "-"} @${日(l.at)}`,
+    }));
+    for (const { 行 } of 记录行.sort((a, b) => a.at - b.at || (a.行 < b.行 ? -1 : a.行 > b.行 ? 1 : 0))) 记(行);
     for (const t of await prisma.task.findMany({ orderBy: [{ title: "asc" }] })) 记(`  任务 ${公.名[t.ownerId]} ${t.title}`);
     for (const c of await prisma.customer.findMany({ orderBy: { name: "asc" } })) 记(`  客户 ${c.name} 归属=${公.名[c.salesOwnerId ?? ""] ?? "-"}`);
     for (const l of await prisma.lead.findMany({ orderBy: { name: "asc" } })) 记(`  线索 ${l.name} 负责人=${公.名[l.ownerId ?? ""] ?? "-"} ${l.status}`);
