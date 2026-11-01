@@ -254,12 +254,11 @@ describe("项目公海", () => {
   beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", "1"); 公海规则.项目能单独领 = true; });
   afterEach(() => { vi.unstubAllEnvs(); 公海规则.项目能单独领 = false; });
 
-  it("负责人在线索 / 商机阶段能放回；订单阶段、别人、已在公海都拦", async () => {
+  it("负责人在线索 / 商机阶段能放回；订单阶段、别的业务员、已在公海都拦", async () => {
     const 线索 = await 项目(乙.id);
     const 商机 = await 项目(乙.id, 客户甲, { phase: "商机", node: "签约审批" });
     const 订单 = await 项目(乙.id, 客户甲, { phase: "订单", node: "合同签订" });
-    expect(await 放回公海(丙, 线索.id)).toMatchObject({ ok: false, error: expect.stringContaining("只有项目负责人") });
-    expect(await 放回公海(老板, 线索.id)).toMatchObject({ ok: false, error: expect.stringContaining("只有项目负责人") });
+    expect(await 放回公海(丙, 线索.id)).toMatchObject({ ok: false, error: expect.stringContaining("只有项目负责人、老板或主管能放回") });
     expect(await 放回公海(乙, 订单.id)).toMatchObject({ ok: false, error: expect.stringContaining("订单阶段") });
     expect(await 放回公海(乙, 线索.id)).toEqual({ ok: true });
     expect(await 放回公海(乙, 商机.id)).toEqual({ ok: true });
@@ -269,6 +268,16 @@ describe("项目公海", () => {
     expect(现在.ownerId).toBe(乙.id);
     const log = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 线索.id } });
     expect(log).toMatchObject({ kind: "pool-release", userId: 乙.id, fromOwnerId: 乙.id, toOwnerId: null, toNode: "潜客培育" });
+  });
+
+  it("老板也能把别人的项目放回公海（11-01，和客户放公海同一条）：负责人不变，记的是老板放的", async () => {
+    const p = await 项目(乙.id);
+    expect(await 放回公海(老板, p.id)).toEqual({ ok: true });
+    const 现在 = await prisma.project.findUniqueOrThrow({ where: { id: p.id } });
+    expect(现在.pooledAt).not.toBeNull();
+    expect(现在.ownerId).toBe(乙.id);
+    const log = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, kind: "pool-release" } });
+    expect(log).toMatchObject({ userId: 老板.id, fromOwnerId: 乙.id, toOwnerId: null });
   });
 
   it("放回去的人在公海里改不了，原负责人也领不回（10-26 定稿）；别人领了就是新负责人，留痕；领走后别人再领拦", async () => {

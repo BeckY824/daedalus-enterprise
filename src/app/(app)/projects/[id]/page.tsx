@@ -3,7 +3,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能改节点, 代管节点, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
+import { 能管项目, 能放回公海, 能改节点, 代管节点, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -192,7 +192,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 回收预演,
     ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 必填, 不给推, 能改节点: 节点能改,
-    能放公海: !公海 && me.id === p.ownerId && (能进公海的阶段 as readonly string[]).includes(p.phase),
+    能放公海: !公海 && 能放回公海(me, p) && (能进公海的阶段 as readonly string[]).includes(p.phase),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
     能领取: 公海 && (企业 ? !原负责人领不回 && !拦单独领项目() : me.id !== p.ownerId),
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户

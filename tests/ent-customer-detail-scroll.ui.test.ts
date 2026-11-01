@@ -85,7 +85,7 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
     底: 格.getBoundingClientRect().bottom,
   };
 });
-it("1680px（3 栏，没开项目模式）：资料、沟通、右栏一样高的窗口、各自滚，滚一栏别的不动、页头不动；三栏都不露滚动条", async () => {
+it("1680px（3 栏，没开项目模式）：资料、沟通、右栏一样高的窗口、各自滚，滚一栏别的不动、页头不动；只有最右栏露一条细滚动条", async () => {
   const { page, errors } = await open(1680, 560, false, true);
   try {
     const 起 = await 量(page);
@@ -99,9 +99,9 @@ it("1680px（3 栏，没开项目模式）：资料、沟通、右栏一样高�
     expect(起.沟通溢).toBeGreaterThan(0);
     expect(起.右底).toBeLessThanOrEqual(560);
     expect(起.名单条).toBe("none");
-    // 三栏一样高，都是这一格的可见高度（右栏内容短也不缩）；三栏都不露滚动条
+    // 三栏一样高，都是这一格的可见高度（右栏内容短也不缩）；11-01 用户「右侧只需要一个整体页面的上下滚动条」：只最右栏露细条
     expect(起.高).toEqual([起.格高, 起.格高, 起.格高]);
-    expect([起.资料条, 起.沟通条, 起.右条]).toEqual(["none", "none", "none"]);
+    expect([起.资料条, 起.沟通条, 起.右条]).toEqual(["none", "none", "thin"]);
     // 资料栏滚到底，最后一样东西露在窗里，不被截
     await page.locator(".rec > .rec-rail:first-child").evaluate(e => { e.scrollTop = e.scrollHeight; });
     expect(await page.locator(".rec > .rec-rail:first-child").evaluate(e => { const r = e.getBoundingClientRect(); const 末 = [...e.querySelectorAll("*")].filter(x => (x as HTMLElement).offsetParent && !x.children.length).pop()!; return 末.getBoundingClientRect().bottom <= r.bottom + 1; })).toBe(true);
@@ -119,7 +119,7 @@ it("1680px（3 栏，没开项目模式）：资料、沟通、右栏一样高�
 });
 
 /* U-客户-03：背调去左栏，右栏只剩 AI；AI 关着就不留空栏，资料、沟通两栏。11-01 用户：「待办模块放到沟通记录下方，而不是整体下方。」 */
-it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一样高、各自滚；待办在沟通记录下方、沟通栏里；整页不滚", async () => {
+it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一样高、各自滚；待办在沟通记录下方、沟通栏里；沟通、待办自己不滚，整栏一条滚动条", async () => {
   const { page, errors } = await open(1680, 760);
   try {
     const 起 = await 量(page);
@@ -127,9 +127,10 @@ it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一
     expect(起.栏).toBe(2);
     expect(起.页滚).toBeLessThanOrEqual(0);
     expect(起.横滚).toBeLessThanOrEqual(0);
-    // 11-01 起项目模式中栏是一列卡（沟通记录、待办各一张、和项目详情页一样）：中栏自己滚，沟通记录卡身里再滚
-    expect([起.资料滚, 起.沟通滚, 起.记录滚]).toEqual(["auto", "auto", "auto"]);
-    expect([起.资料条, 起.沟通条]).toEqual(["none", "none"]);
+    // 11-01 起项目模式中栏是一列卡（沟通记录、待办各一张、和项目详情页一样）。同天用户「沟通页内的滚动条要隐藏」「待办也是」
+    // 「右侧只需要一个整体页面的上下滚动条」：卡身不再自己滚，滚的是整栏，最右这栏露一条细滚动条
+    expect([起.资料滚, 起.沟通滚, 起.记录滚]).toEqual(["auto", "auto", "visible"]);
+    expect([起.资料条, 起.沟通条]).toEqual(["none", "thin"]);
     expect(起.高.slice(0, 2)).toEqual([起.格高, 起.格高]);
     expect(起.格溢).toBeLessThanOrEqual(1);
     expect(起.待办).not.toBeNull();
@@ -138,10 +139,16 @@ it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一
     expect(待办.上).toBeGreaterThanOrEqual(起.记录底 - 1);
     expect(待办.左).toBeGreaterThanOrEqual(起.沟通左);
     expect(待办.右).toBeLessThanOrEqual(起.沟通右);
-    // 滚的是沟通记录那一块：中栏、资料栏、整格、页头都不动
-    const 记录顶 = await page.locator(".rec > .rec-col .proj-mod-body:has(.rec-tl)").evaluate(e => { e.scrollTop = 200; return e.scrollTop; });
+    // 沟通记录卡身没有自己的滚动（原来限高 60vh、滚到底不往外传，鼠标停在上面整栏拉不下去，11-01 用户「客户详情页右边我都拉不下去看待办」）
+    expect(await page.locator(".rec > .rec-col .proj-mod-body:has(.rec-tl)").evaluate(e => { const c = getComputedStyle(e); return [c.overflowY, c.maxHeight]; })).toEqual(["visible", "none"]);
+    // 鼠标停在沟通记录上往下滚：整栏往下走，一路滚到待办露出来；资料栏、整格、页头不动
+    const 卡 = await page.locator(".rec > .rec-col .rec-tl").first().boundingBox();
+    await page.mouse.move(卡!.x + 40, 卡!.y + 40);
+    for (let i = 0; i < 40; i++) await page.mouse.wheel(0, 400);
+    await page.waitForFunction(() => { const c = document.querySelector(".rec > .rec-col") as HTMLElement; return c.scrollTop >= c.scrollHeight - c.clientHeight - 1; });
     const 滚 = await 量(page);
-    expect([记录顶 > 0, 滚.沟通顶, 滚.资料顶, 滚.格顶, 滚.头]).toEqual([true, 0, 0, 0, 起.头]);
+    expect([滚.沟通顶 > 0, 滚.资料顶, 滚.格顶, 滚.头]).toEqual([true, 0, 0, 起.头]);
+    expect(滚.待办!.底).toBeLessThanOrEqual(滚.沟通底 + 1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -154,7 +161,8 @@ it("1280px（2 栏）：资料栏自己滚、不跟第 2 列走；第 2 列跟�
     expect(起.页滚).toBeLessThanOrEqual(0);
     expect(起.横滚).toBeLessThanOrEqual(0);
     expect([起.格滚, 起.资料滚]).toEqual(["auto", "auto"]);
-    expect(起.格条).toBe("none");
+    // 第 2 列跟着整格滚，露整格的细滚动条（11-01「右侧只需要一个整体页面的上下滚动条」）
+    expect(起.格条).toBe("thin");
     expect(起.资料条).toBe("none");
     expect(起.高[0]).toBe(起.格高);
     expect(起.资料溢).toBeGreaterThan(0);

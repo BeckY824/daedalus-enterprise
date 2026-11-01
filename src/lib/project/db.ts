@@ -562,8 +562,13 @@ export async function 超上限(
   return `${谁}手上已经有 ${有} 个线索 / 商机阶段的项目，到持有上限（${上限} 个）了，先推进或放回一些再接`;
 }
 
+/** 谁能把项目放回公海：负责人本人、老板、业务主管（和客户放公海同一条，11-01 用户「项目详情页没有退回公海」）。阶段另核 */
+export function 能放回公海(me: 谁, p: { ownerId: string }): boolean {
+  return me.id === p.ownerId || me.role === "ADMIN" || me.role === "MANAGER";
+}
+
 /**
- * 放回公海：只有负责人本人能放，线索 / 商机阶段才行。ownerId 留着放回去的人（他就是「历史负责人」；原负责人不能自己领回，企业版和别的版本一样，见 lib/enterprise/pool-rules.ts），
+ * 放回公海：负责人本人、老板、业务主管能放（见 能放回公海），线索 / 商机阶段才行。ownerId 留着放回去的人（他就是「历史负责人」；原负责人不能自己领回，企业版和别的版本一样，见 lib/enterprise/pool-rules.ts），
  * 记一行 pool-release。项目组、节点、交付两项都不动
  */
 export async function 放回公海(me: 谁, projectId: string, 原因?: unknown, 选项?: { 验证放行?: boolean }): Promise<结果> {
@@ -575,7 +580,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (p.pooledAt) return { ok: false as const, error: "这个项目已经在公海里了" };
-    if (me.id !== p.ownerId) return { ok: false as const, error: "只有项目负责人能放回公海" };
+    if (!能放回公海(me, p)) return { ok: false as const, error: "只有项目负责人、老板或主管能放回公海" };
     if (!(能进公海的阶段 as readonly string[]).includes(p.phase)) return { ok: false as const, error: "订单阶段的项目不能放回公海" };
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
