@@ -159,8 +159,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       ...(权限?.("合同状态") !== "藏" ? { contractStatus: 合同状态显示(p.contractStatus) } : {}),
     },
   };
-  // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查
-  const 线索验证 = 企业 && p.phase === "线索" ? await 读线索验证(me, p) : null;
+  // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查。11-01 起项目卡上一直摆「线索验证」结果，过了线索阶段也读
+  const 线索验证 = 企业 ? await 读线索验证(me, p) : null;
   // 企业版项目画像、项目附件（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）。
   // 项目名单在中栏（@pane/projects/[id] → panes.tsx 项目名单），不在这页里读
   const 存的需求 = 读产品需求(p.productNeeds);
