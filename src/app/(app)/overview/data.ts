@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { 签约归属人 } from "@/lib/contract-owner";
+import { 空显 } from "@/lib/empty-value";
 import { 成员选项, dayjs } from "@/lib/utils";
 import { 带币种, 签约币种, 签约金额, 签约合计 } from "@/lib/money-db";
 import type { 币种合计 } from "@/lib/currency";
@@ -132,7 +133,7 @@ export async function 加载复盘(from: Date, to: Date, 粒: 粒度, 币: { 想
       学员id: c.customer.id,
       金额: c.amount,
       日期: c.signedAt.toISOString(),
-      销售: 签约销售(c)?.name ?? "—",
+      销售: 空显(签约销售(c)?.name),
       销售id: 签约销售(c)?.id ?? null,
       渠道负责人id: 签约渠道负责人(c)?.id ?? null,
     });

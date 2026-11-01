@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Segmented, Table, Tooltip } from "antd";
 import { fmtDateTime } from "@/lib/utils";
+import { 有值, 空显 } from "@/lib/empty-value";
 import { 表格空态 } from "@/components/EmptyState";
 import { 卡点筛们, 卡点筛叫法, 复盘列表每页, type 卡点筛, type 复盘卡点, type 复盘卡点行 } from "@/lib/project/review-tabs";
 
@@ -53,8 +54,8 @@ export default function BoardBlockers({ 数, 筛, 只看自己 }: { 数: 复盘�
       key: "描述",
       ellipsis: { showTitle: false },
       render: (_: unknown, x: 复盘卡点行) => (
-        <Tooltip title={`${x.code}　${x.description || "（没写描述）"}`} placement="topLeft" mouseEnterDelay={0.4}>
-          <span className={x.description ? undefined : "btodo-kind"}>{x.description || "—"}</span>
+        <Tooltip title={`${x.code}　${有值(x.description) ? x.description : "（没写描述）"}`} placement="topLeft" mouseEnterDelay={0.4}>
+          <span className={有值(x.description) ? undefined : "btodo-kind"}>{空显(x.description)}</span>
         </Tooltip>
       ),
     },

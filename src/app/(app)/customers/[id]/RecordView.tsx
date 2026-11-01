@@ -1,5 +1,6 @@
 "use client";
 
+import { 是空值, 有值, 去空, 空显, 空值符 } from "@/lib/empty-value";
 import { useFollowHistory } from "./useFollowHistory";
 import { loadCustomerFeed } from "./follow-history-actions";
 import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch";
@@ -238,7 +239,8 @@ export default function RecordView({
   const 有WhatsApp = !!档?.whatsapp?.trim();
   const 官网 = 官网网址(档?.website);
   /** 企业版：这一格摆不摆。填了的总摆；没填的点「展开更多」才摆，摆出来照样点一下就能填 */
-  const 摆 = (v: unknown) => !企业 || 资料全开 || (v !== null && v !== undefined && v !== "");
+  // 导入时拿 "-" 占位的也算没填（11-01，lib/empty-value.ts）：收进「展开更多」、计进没填几项
+  const 摆 = (v: unknown) => !企业 || 资料全开 || !是空值(v);
   /** 企业版：档案那组（国家、邮箱、微信……）展开后没填过也摆，好补 */
   const 摆档案组 = 摆档案 || (企业 && 资料全开);
   // 企业版不摆渠道负责人（10-28 去遗留 A3：来源只问渠道，不按推荐链分负责人）
@@ -256,7 +258,7 @@ export default function RecordView({
             customer.remark,
           ]
         : [customer.phone, customer.shortName, customer.school, 级别值, customer.customerType, customer.customerAttr, 地址文字, 档?.website, customer.assignWay, customer.remark]
-      ).filter((v) => v === null || v === undefined || v === "").length
+      ).filter((v) => 是空值(v)).length
     : 0;
   /** 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp */
   const 背调档案 = useMemo(
@@ -614,7 +616,7 @@ export default function RecordView({
             <Tooltip title="推荐链往上第二代，不足两代取链条最顶端" placement="left">
               <div className="rec-field" style={{ cursor: "default" }}>
                 <div className="rec-field-k">渠道归属</div>
-                <div className="rec-field-v">{customer.attributionName ?? "—"}</div>
+                <div className="rec-field-v">{空显(customer.attributionName)}</div>
               </div>
             </Tooltip>
           </div>
@@ -978,7 +980,7 @@ export default function RecordView({
             {摆(customer.phone) && (
               <div className="rec-field" style={{ cursor: "default" }}>
                 <div className="rec-field-k">电话</div>
-                <div className="rec-field-v">{customer.phone ? (企业 ? <号码链接 kind="tel" value={customer.phone} /> : customer.phone) : <span className="rec-field-empty">未填</span>}</div>
+                <div className="rec-field-v">{有值(customer.phone) ? (企业 ? <号码链接 kind="tel" value={customer.phone} /> : customer.phone) : <span className="rec-field-empty">{空值符}</span>}</div>
               </div>
             )}
             {sourceLead && <div className="rec-field" style={{cursor:"default"}} data-testid="customer-lead-origin">
@@ -996,33 +998,33 @@ export default function RecordView({
             {摆法.旧字段 && 摆(customer.grade) && <InlineField customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />}
             {摆法.新字段 && (
               <>
-                {摆(级别值) && <InlineField customerId={customer.id} field="level" label="客户级别" value={级别值} kind="select" options={级别选项()} placeholder="没分级" 可清空 />}
+                {摆(级别值) && <InlineField customerId={customer.id} field="level" label="客户级别" value={级别值} kind="select" options={级别选项()} placeholder={空值符} 可清空 />}
                 {摆(customer.customerType) && (
-                  <InlineField customerId={customer.id} field="customerType" label="客户类型" value={customer.customerType ?? null} kind="select"
-                    options={[...new Set([...客户类型选项, ...(customer.customerType ? [customer.customerType] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空
+                  <InlineField customerId={customer.id} field="customerType" label="客户类型" value={去空(customer.customerType)} kind="select"
+                    options={[...new Set([...客户类型选项, ...(有值(customer.customerType) ? [customer.customerType] : [])])].map((x) => ({ value: x, label: x }))} placeholder={空值符} 可清空
                     释义={字典释义?.类型} />
                 )}
                 {摆(customer.customerAttr) && (
-                  <InlineField customerId={customer.id} field="customerAttr" label="客户属性" value={customer.customerAttr ?? null} kind="select"
-                    options={[...new Set([...客户属性选项, ...(customer.customerAttr ? [customer.customerAttr] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空 />
+                  <InlineField customerId={customer.id} field="customerAttr" label="客户属性" value={去空(customer.customerAttr)} kind="select"
+                    options={[...new Set([...客户属性选项, ...(有值(customer.customerAttr) ? [customer.customerAttr] : [])])].map((x) => ({ value: x, label: x }))} placeholder={空值符} 可清空 />
                 )}
                 {/* 地址五格（P14 第 7 条）：前四格拼成一行「所在地区」，第五格「客户地址」（公司详细地址）单独一行；都点「编辑全部」改 */}
                 {摆(地址文字) && (
                   <div className="rec-field" style={{ cursor: "default" }} title="国家地区 / 省 / 市 / 区县级市，点「编辑全部」改">
                     <div className="rec-field-k">所在地区</div>
-                    <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{地址文字 || <span className="rec-field-empty">未填</span>}</div>
+                    <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{有值(地址文字) ? 地址文字 : <span className="rec-field-empty">{空值符}</span>}</div>
                   </div>
                 )}
                 {摆(customer.addrDetail) && (
                   <div className="rec-field" style={{ cursor: "default" }} title="公司详细地址，点「编辑全部」改">
                     <div className="rec-field-k">{地址叫法.addrDetail}</div>
-                    <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{customer.addrDetail || <span className="rec-field-empty">未填</span>}</div>
+                    <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{有值(customer.addrDetail) ? customer.addrDetail : <span className="rec-field-empty">{空值符}</span>}</div>
                   </div>
                 )}
                 {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
                 {摆(customer.assignWay) && (
-                  <InlineField customerId={customer.id} field="assignWay" label="客户分配" value={customer.assignWay ?? null} kind="select"
-                    options={[...new Set([...分配方式选项, ...(customer.assignWay ? [customer.assignWay] : [])])].map((x) => ({ value: x, label: x }))} placeholder="未填" 可清空 />
+                  <InlineField customerId={customer.id} field="assignWay" label="客户分配" value={去空(customer.assignWay)} kind="select"
+                    options={[...new Set([...分配方式选项, ...(有值(customer.assignWay) ? [customer.assignWay] : [])])].map((x) => ({ value: x, label: x }))} placeholder={空值符} 可清空 />
                 )}
               </>
             )}
@@ -1034,7 +1036,7 @@ export default function RecordView({
                 {摆(档?.wechat) && <InlineField customerId={customer.id} field="wechat" label="微信" value={档?.wechat ?? null} />}
                 {摆(档?.alibabaId) && <InlineField customerId={customer.id} field="alibabaId" label="阿里 ID" value={档?.alibabaId ?? null} />}
                 {摆(档?.source) && <InlineField customerId={customer.id} field="source" label="来源" value={档?.source ?? null} kind="combo" options={b.sources.map((x) => ({ value: x, label: x }))} />}
-                {摆(档?.level) && <InlineField customerId={customer.id} field="level" label="客户等级" value={档?.level ?? null} kind="select" options={客户等级.map((x) => ({ value: x, label: 客户等级说明[x] }))} placeholder="没分级" 可清空 />}
+                {摆(档?.level) && <InlineField customerId={customer.id} field="level" label="客户等级" value={档?.level ?? null} kind="select" options={客户等级.map((x) => ({ value: x, label: 客户等级说明[x] }))} placeholder={空值符} 可清空 />}
                 {摆(档?.website) && <InlineField customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
               </>
             )}
@@ -1080,7 +1082,7 @@ export default function RecordView({
             {摆渠道负责人 && 摆(customer.channelOwnerId) && (
               <InlineField customerId={customer.id} field="channelOwnerId" label="渠道负责人" value={customer.channelOwnerId} kind="select" options={带上现任(users, customer.channelOwnerId, customer.channelOwnerName)} placeholder="按推荐链自动确定" 可清空 />
             )}
-            {!外贸 && 摆法.旧字段 && 摆(customer.expectedSignAt) && <InlineField customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder="未定" />}
+            {!外贸 && 摆法.旧字段 && 摆(customer.expectedSignAt) && <InlineField customerId={customer.id} field="expectedSignAt" label="预计签约" value={customer.expectedSignAt} kind="date" placeholder={空值符} />}
             {/* 企业版不摆签约金额（10-28 去遗留 A4） */}
             {!企业 && 摆(customer.signedAmount > 0 ? 1 : null) && (
               <div className="rec-field" style={{ cursor: "default" }}>

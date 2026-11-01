@@ -23,21 +23,40 @@ describe("客户看板分列", () => {
   const 字典 = 十项.map((name) => ({ name, active: true }));
   const 取 = (r: 行) => r.attr;
 
-  it("启用的项按字典顺序全摆（空的也摆）；全有值时不摆「未设置」", () => {
+  it("启用的项按字典顺序全摆（空的也摆）；全有值时不摆「—」（没填）那一列", () => {
     const 列们 = 客户看板分列<行>([{ id: "a", attr: "园区管委会" }, { id: "b", attr: "自用非商用" }], 取, 字典);
     expect(列们.map((c) => c.名)).toEqual(十项);
     expect(列们.find((c) => c.名 === "园区管委会")!.行们.map((r) => r.id)).toEqual(["a"]);
     expect(列们.some((c) => c.key === null)).toBe(false);
   });
 
-  it("没填的进「未设置」，摆在最后", () => {
+  it("没填的进「—」那一列，摆在最后", () => {
     const 列们 = 客户看板分列<行>([{ id: "a", attr: null }, { id: "b", attr: "  " }, { id: "c", attr: "个体工商户" }], 取, 字典);
     const 末 = 列们.at(-1)!;
     expect(末).toMatchObject({ key: null, 名: 未设置名 });
     expect(末.行们.map((r) => r.id)).toEqual(["a", "b"]);
   });
 
-  it("停用的、字典里没有的旧值：有客户才摆，标停用，在启用项之后、未设置之前", () => {
+  it("11-01：导入时拿 \"-\" 占位的算没填，和空值并进同一个「—」列，不单成一列、不标停用", () => {
+    const 列们 = 客户看板分列<行>(
+      [{ id: "a", attr: "-" }, { id: "b", attr: null }, { id: "c", attr: " - " }, { id: "d", attr: "－" }, { id: "e", attr: "--" }, { id: "f", attr: "" }, { id: "g", attr: "个体工商户" }],
+      取,
+      字典,
+    );
+    expect(未设置名).toBe("—");
+    expect(列们.map((c) => c.名)).toEqual([...十项, "—"]);
+    expect(列们.some((c) => c.名 === "-" || c.停用)).toBe(false);
+    const 末 = 列们.at(-1)!;
+    expect(末).toMatchObject({ key: null, 名: "—", 停用: false });
+    expect(末.行们.map((r) => r.id)).toEqual(["a", "b", "c", "d", "e", "f"]);
+  });
+
+  it("值带首尾空白照样认进字典那一列", () => {
+    const 列们 = 客户看板分列<行>([{ id: "a", attr: " 园区管委会 " }], 取, 字典);
+    expect(列们.find((c) => c.名 === "园区管委会")!.行们.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("停用的、字典里没有的旧值：有客户才摆，标停用，在启用项之后、「—」之前", () => {
     const 带旧 = [...字典, { name: "旧甲", active: false }, { name: "旧乙", active: false }];
     const 列们 = 客户看板分列<行>(
       [{ id: "a", attr: "字典外" }, { id: "b", attr: "旧乙" }, { id: "c", attr: null }],

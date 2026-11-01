@@ -1,5 +1,6 @@
 "use client";
 
+import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import Heat from "@/components/Heat";
 import { useEffect, useState, useSyncExternalStore, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -396,7 +397,8 @@ export default function CustomersView({
 
   /** 外贸模版（2026-10-05 外贸客户建议），见 lib/business-config.ts 外贸精简 */
   const 外贸 = 外贸精简(b);
-  const 空 = <span className="muted">—</span>;
+  // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
+  const 空 = <span className="muted">{空值符}</span>;
   const 外贸列: 列<CustomerRow>[] = [
     /* 客户等级（2026-10-16）：A 在前；点表头在全部筛选结果里排，没分级的总在最后 */
     {
@@ -408,7 +410,7 @@ export default function CustomersView({
     /* 国家下面一行小字是对方此刻几点（2026-10-16）：挑这会儿能联系谁，不用再去算时差 */
     {
       title: "国家", key: "country", width: 120,
-      render: (_: unknown, r) => r.extra?.country
+      render: (_: unknown, r) => 有值(r.extra?.country)
         ? <span className="country-cell"><span>{r.extra.country}</span><LocalTime country={r.extra.country} 简短 className="muted country-cell-t" /></span>
         : 空,
     },
@@ -422,11 +424,11 @@ export default function CustomersView({
     },
     {
       title: "邮箱", key: "email", width: 190,
-      render: (_: unknown, r) => (r.extra?.email ? <a href={`mailto:${r.extra.email}`} onClick={(e) => e.stopPropagation()} style={{ display: "inline-block", maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }} title={r.extra.email}>{r.extra.email}</a> : 空),
+      render: (_: unknown, r) => (有值(r.extra?.email) ? <a href={`mailto:${r.extra.email}`} onClick={(e) => e.stopPropagation()} style={{ display: "inline-block", maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }} title={r.extra.email}>{r.extra.email}</a> : 空),
     },
-    { title: "微信", key: "wechat", width: 120, 默认: false, render: (_: unknown, r) => r.extra?.wechat ?? 空 },
-    { title: "阿里国际站 ID", key: "alibabaId", width: 150, 默认: false, render: (_: unknown, r) => (r.extra?.alibabaId ? <span style={{ display: "inline-block", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }} title={r.extra.alibabaId}>{r.extra.alibabaId}</span> : 空) },
-    { title: "来源", key: "source", width: 110, 默认: false, render: (_: unknown, r) => r.extra?.source ?? 空 },
+    { title: "微信", key: "wechat", width: 120, 默认: false, render: (_: unknown, r) => (有值(r.extra?.wechat) ? r.extra.wechat : 空) },
+    { title: "阿里国际站 ID", key: "alibabaId", width: 150, 默认: false, render: (_: unknown, r) => (有值(r.extra?.alibabaId) ? <span style={{ display: "inline-block", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }} title={r.extra.alibabaId}>{r.extra.alibabaId}</span> : 空) },
+    { title: "来源", key: "source", width: 110, 默认: false, render: (_: unknown, r) => (有值(r.extra?.source) ? r.extra.source : 空) },
     {
       title: "官网", key: "website", width: 170, 默认: false,
       render: (_: unknown, r) => {
@@ -451,11 +453,11 @@ export default function CustomersView({
     },
     {
       title: "客户类型", key: "customerType", width: 96, 默认: false,
-      render: (_: unknown, r) => (r.customerType ? <span className="clamp-1" style={{ display: "block" }} title={r.customerType}>{r.customerType}</span> : 空),
+      render: (_: unknown, r) => (有值(r.customerType) ? <span className="clamp-1" style={{ display: "block" }} title={r.customerType}>{r.customerType}</span> : 空),
     },
     ...(企业 ? [{
       title: "客户属性", key: "customerAttr", width: 112, 默认: false,
-      render: (_: unknown, r: CustomerRow) => (r.customerAttr ? <span className="clamp-1" style={{ display: "block" }} title={r.customerAttr}>{r.customerAttr}</span> : 空),
+      render: (_: unknown, r: CustomerRow) => (有值(r.customerAttr) ? <span className="clamp-1" style={{ display: "block" }} title={r.customerAttr}>{r.customerAttr}</span> : 空),
     }] : []),
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
     {
@@ -465,7 +467,7 @@ export default function CustomersView({
         return 网址 ? <a href={网址} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={网址}>{官网短写(r.extra?.website)}</a> : 空;
       },
     },
-    { title: "客户分配", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => r.assignWay ?? 空 },
+    { title: "客户分配", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => (有值(r.assignWay) ? r.assignWay : 空) },
   ];
 
   const 列表: 列<CustomerRow>[] = [
@@ -488,23 +490,23 @@ export default function CustomersView({
       列名: `${b.fields.school}·${b.fields.major}`,
       width: 230,
       render: (_, r) =>
-        r.school || r.major ? (
+        有值(r.school) || 有值(r.major) ? (
           <span>
-            {r.school ?? "—"}
-            {r.major && <span className="muted"> · {r.major}</span>}
+            {空显(r.school)}
+            {有值(r.major) && <span className="muted"> · {r.major}</span>}
           </span>
         ) : (
-          <span className="muted">—</span>
+          空
         ),
     } satisfies 列<CustomerRow>]),
     // 企业版：跟进状态换成客户状态（字典 custStatus，10-28 去遗留 A1）
     企业
-      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 110, render: (v: string | null) => (v ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : <span className="muted">—</span>) }
+      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 110, render: (v: string | null) => (有值(v) ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : 空) }
       : { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v: string) => <FollowStatusTag status={v} /> },
     // 外贸不摆预计签约（2026-10-05 外贸客户：「没有意义」——采购时间点看商机的询盘时间）
     ...(外贸 ? [] : [{
       title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 116,
-      render: (v: string | null) => <span className="muted nowrap">{v ? fmtDate(v) : "—"}</span>,
+      render: (v: string | null) => <span className="muted nowrap">{有值(v) ? fmtDate(v) : 空值符}</span>,
     }]),
     /*
       外贸档案的列（2026-10-05 外贸客户：「增加列：国家，Whatsapp，Wechat，邮箱」）。

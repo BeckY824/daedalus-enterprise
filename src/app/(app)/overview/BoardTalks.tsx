@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Segmented, Table, Tooltip } from "antd";
 import { fmtDateTime } from "@/lib/utils";
+import { 有值, 空显 } from "@/lib/empty-value";
 import { 表格空态 } from "@/components/EmptyState";
 import { 沟通段们, 沟通段叫法, 复盘列表每页, type 沟通段, type 复盘沟通, type 复盘沟通行 } from "@/lib/project/review-tabs";
 
@@ -63,10 +64,10 @@ export default function BoardTalks({ 数, 段, 只看自己 }: { 数: 复盘沟�
       key: "内容",
       ellipsis: { showTitle: false },
       render: (_: unknown, x: 复盘沟通行) => {
-        const 全 = x.内容 && x.内容 !== x.标题 ? `${x.标题}：${x.内容}` : x.标题;
+        const 全 = 有值(x.内容) && x.内容 !== x.标题 ? `${x.标题}：${x.内容}` : x.标题;
         return (
           <Tooltip title={<span className="rtalk-tip">{全}</span>} placement="topLeft" mouseEnterDelay={0.4}>
-            <span>{全 || "—"}</span>
+            <span>{空显(全)}</span>
           </Tooltip>
         );
       },
