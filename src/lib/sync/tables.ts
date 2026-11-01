@@ -82,6 +82,8 @@ export const 不同步表 = [
   "ProjectContact",
   // 企业版项目回款（2026-10-31，migrations/100）：同上
   "EntProjectPayment",
+  // 企业版站内通知（2026-11-01）：同上
+  "EntNotice",
 ] as const;
 
 /**
@@ -142,6 +144,8 @@ export const 指向人的列: [string, string][] = [
   ["EntBlockerLog", "userId"],
   ["EntBlockerLog", "fromUserId"],
   ["EntBlockerLog", "toUserId"],
+  // 企业版站内通知（2026-11-01）：不建外键
+  ["EntNotice", "userId"],
   // 企业版渠道投入是谁录的（2026-10-29）
   ["EntChannelInvest", "userId"],
   // 企业版关联客户是谁关联的（2026-10-29）：不建外键

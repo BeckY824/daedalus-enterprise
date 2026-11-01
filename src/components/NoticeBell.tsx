@@ -6,6 +6,7 @@ import { Badge, Button, ConfigProvider, Drawer } from "antd";
 import { BellOutlined } from "@ant-design/icons";
 import { AnimatePresence, motion } from "motion/react";
 import { useSystemReducedMotion } from "@/lib/reduced-motion";
+import { 时长 } from "@/lib/motion";
 import { 读我的通知, 读未读通知数, 标已读, 全部标已读 } from "@/app/(app)/notice-actions";
 import type { 通知行 } from "@/lib/enterprise/notify";
 
@@ -115,7 +116,7 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
             <ul className="notice-list" aria-label="通知列表">
               <AnimatePresence initial={false}>
                 {行们.map((r) => (
-                  <motion.li key={r.id} initial={少 ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 少 ? 0 : 0.16 }}>
+                  <motion.li key={r.id} initial={少 ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 少 ? 0 : 时长.base }}>
                     <button type="button" className={`notice-item${r.read ? "" : " unread"}`} onClick={() => 点(r)} aria-label={`${r.read ? "" : "未读，"}${r.title}`}>
                       <span className="notice-dot" aria-hidden="true" />
                       <span className="notice-main">

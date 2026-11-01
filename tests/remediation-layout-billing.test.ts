@@ -14,6 +14,7 @@ vi.mock("@/lib/tenant/workspace-access", () => ({ accessibleWorkspacesFor: async
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false, listModelOptions: async () => [] }));
 vi.mock("@/lib/ai-meter", () => ({ 读AI计次: async () => ({}), 不计次: {} }));
 vi.mock("@/lib/phone-dedupe", () => ({ 记下分机留存起: async () => {} }));
+vi.mock("@/lib/enterprise/notify", () => ({ 未读通知数: async () => 0 }));
 const AppShell = vi.hoisted(() => () => null);
 vi.mock("@/components/AppShell", () => ({ default: AppShell }));
 vi.mock("@/components/AiCost", () => ({ AiMeterProvider: () => null }));
