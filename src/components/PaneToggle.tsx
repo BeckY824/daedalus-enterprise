@@ -41,6 +41,8 @@ export default function PaneToggle({ 栏, 位置, className, 名: 叫 }: { 栏: 
         </span>
       }
       mouseEnterDelay={0.4}
+      /* 主区那颗贴着左边：默认朝上居中会被左栏边切掉一半（11-01 用户图 5），改成往下、左对齐 */
+      placement={位置 === "主区" ? "bottomLeft" : undefined}
     >
       <button
         type="button"

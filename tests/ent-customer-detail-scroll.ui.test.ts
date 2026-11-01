@@ -46,7 +46,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-/** 老 = 没开项目模式（待办在右栏、三栏）；默认企业版项目模式：待办在页底、AI 关着时没有右栏 */
+/** 老 = 没开项目模式（待办在右栏、三栏）；默认企业版项目模式：待办在沟通记录下方、AI 关着时没有右栏 */
 async function open(width: number, height = 560, fab = false, 老 = false) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
@@ -59,7 +59,7 @@ async function open(width: number, height = 560, fab = false, 老 = false) {
 }
 const 量 = (page: import("playwright").Page) => page.evaluate(() => {
   const q = (s: string) => document.querySelector(s) as HTMLElement;
-  const 格 = q(".rec-page > .rec"), 资料 = q(".rec > .rec-rail:first-child"), 沟通 = q(".rec > .rec-col"), 右 = q(".rec > .rec-right") ?? 沟通, 待办 = q(".rec-page > .rec-todo-bottom");
+  const 格 = q(".rec-page > .rec"), 资料 = q(".rec > .rec-rail:first-child"), 沟通 = q(".rec > .rec-col"), 右 = q(".rec > .rec-right") ?? 沟通, 待办 = q(".rec > .rec-col > .rec-todo-in"), 记录 = q(".rec > .rec-col > .rec-tl");
   const 样 = (e: HTMLElement) => getComputedStyle(e);
   return {
     栏: 样(格).gridTemplateColumns.split(" ").length,
@@ -68,7 +68,7 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
     头: q(".rec-head").getBoundingClientRect().top,
     格顶: 格.scrollTop, 资料顶: 资料.scrollTop, 沟通顶: 沟通.scrollTop, 右顶: 右.scrollTop, 高: [资料, 沟通, 右].map(e => Math.round(e.getBoundingClientRect().height)), 格高: Math.round(格.clientHeight),
     格溢: 格.scrollHeight - 格.clientHeight, 资料溢: 资料.scrollHeight - 资料.clientHeight, 沟通溢: 沟通.scrollHeight - 沟通.clientHeight,
-    格滚: 样(格).overflowY, 资料滚: 样(资料).overflowY, 沟通滚: 样(沟通).overflowY, 右滚: 样(右).overflowY,
+    格滚: 样(格).overflowY, 资料滚: 样(资料).overflowY, 沟通滚: 样(沟通).overflowY, 记录滚: 记录 ? 样(记录).overflowY : null, 右滚: 样(右).overflowY,
     格条: 样(格).scrollbarWidth, 资料条: 样(资料).scrollbarWidth, 沟通条: 样(沟通).scrollbarWidth, 右条: 样(右).scrollbarWidth,
     沟通上: 沟通.getBoundingClientRect().top - 格.getBoundingClientRect().top,
     名单条: 样(q(".pane-roster .pane-rows")).scrollbarWidth,
@@ -77,8 +77,9 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
     资料底: 资料.getBoundingClientRect().bottom, 格底: 格.getBoundingClientRect().bottom, 右底: 右.getBoundingClientRect().bottom,
     有右栏: !!q(".rec > .rec-right"), 沟通自滚: 样(沟通).overflowY === "auto",
     待办: 待办 && { 左: Math.round(待办.getBoundingClientRect().left), 右: Math.round(待办.getBoundingClientRect().right), 底: 待办.getBoundingClientRect().bottom, 上: 待办.getBoundingClientRect().top, 滚: 样(待办).overflowY },
-    资料左: Math.round(资料.getBoundingClientRect().left), 沟通右: Math.round(沟通.getBoundingClientRect().right),
-    底: (待办 ?? 格).getBoundingClientRect().bottom,
+    资料左: Math.round(资料.getBoundingClientRect().left), 沟通左: Math.round(沟通.getBoundingClientRect().left), 沟通右: Math.round(沟通.getBoundingClientRect().right),
+    记录底: 记录 ? 记录.getBoundingClientRect().bottom : 0, 沟通底: 沟通.getBoundingClientRect().bottom,
+    底: 格.getBoundingClientRect().bottom,
   };
 });
 it("1680px（3 栏，没开项目模式）：资料、沟通、右栏一样高的窗口、各自滚，滚一栏别的不动、页头不动；三栏都不露滚动条", async () => {
@@ -114,8 +115,8 @@ it("1680px（3 栏，没开项目模式）：资料、沟通、右栏一样高�
   } finally { await page.close(); }
 });
 
-/* U-客户-03：项目模式待办挪到页底占满宽，背调去左栏，右栏只剩 AI；AI 关着就不留空栏，资料、沟通两栏 */
-it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一样高、各自滚；待办在底下占满宽、自己滚；整页不滚", async () => {
+/* U-客户-03：背调去左栏，右栏只剩 AI；AI 关着就不留空栏，资料、沟通两栏。11-01 用户：「待办模块放到沟通记录下方，而不是整体下方。」 */
+it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一样高、各自滚；待办在沟通记录下方、沟通栏里；整页不滚", async () => {
   const { page, errors } = await open(1680, 760);
   try {
     const 起 = await 量(page);
@@ -123,20 +124,20 @@ it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一
     expect(起.栏).toBe(2);
     expect(起.页滚).toBeLessThanOrEqual(0);
     expect(起.横滚).toBeLessThanOrEqual(0);
-    expect([起.资料滚, 起.沟通滚]).toEqual(["auto", "auto"]);
+    // 项目模式中栏是一扇窗：沟通记录、待办各自内部滚，中栏本身不滚
+    expect([起.资料滚, 起.沟通滚, 起.记录滚]).toEqual(["auto", "hidden", "auto"]);
     expect(起.高.slice(0, 2)).toEqual([起.格高, 起.格高]);
     expect(起.格溢).toBeLessThanOrEqual(1);
     expect(起.待办).not.toBeNull();
     const 待办 = 起.待办!;
-    expect(待办.滚).toBe("auto");
-    expect(待办.上).toBeGreaterThanOrEqual(起.格底);
-    expect(待办.底).toBeLessThanOrEqual(760);
-    expect(待办.底).toBeGreaterThanOrEqual(760 - 40);
-    expect(Math.abs(待办.左 - 起.资料左)).toBeLessThanOrEqual(1);
-    expect(Math.abs(待办.右 - 起.沟通右)).toBeLessThanOrEqual(1);
-    await page.locator(".rec > .rec-col").evaluate(e => { e.scrollTop = 200; });
+    expect(待办.上).toBeGreaterThanOrEqual(起.记录底 - 1);
+    expect(待办.底).toBeLessThanOrEqual(起.沟通底 + 1);
+    expect(待办.左).toBeGreaterThanOrEqual(起.沟通左);
+    expect(待办.右).toBeLessThanOrEqual(起.沟通右);
+    // 滚的是沟通记录那一块：中栏、资料栏、整格、页头都不动
+    const 记录顶 = await page.locator(".rec > .rec-col > .rec-tl").evaluate(e => { e.scrollTop = 200; return e.scrollTop; });
     const 滚 = await 量(page);
-    expect([滚.沟通顶 > 0, 滚.资料顶, 滚.格顶, 滚.头]).toEqual([true, 0, 0, 起.头]);
+    expect([记录顶 > 0, 滚.沟通顶, 滚.资料顶, 滚.格顶, 滚.头]).toEqual([true, 0, 0, 0, 起.头]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -241,13 +242,12 @@ it("带 AI 浮标：1024 / 1280 / 1366 / 1680 宽栏都铺到窗口底，整页�
       const 高 = 760;
       expect(起.页滚, `${w}`).toBeLessThanOrEqual(0);
       expect(起.横滚, `${w}`).toBeLessThanOrEqual(0);
-      // 项目模式待办在页底：待办铺到窗口底，栏铺到这一格底
+      // 栏铺到这一格底（项目模式待办在沟通栏里，11-01）
       expect(起.底, `${w}`).toBeGreaterThanOrEqual(高 - 24);
       expect(起.资料底, `${w}`).toBeGreaterThanOrEqual(起.格底 - 1);
       if (起.栏 === 3) expect(起.右底, `${w}`).toBeGreaterThanOrEqual(高 - 24);
       // 自己滚的栏滚到底：最后一个子元素离栏底至少 60（浮标 52 高、离窗口底 24）
       const 滚的 = 起.栏 === 3 ? [".rec > .rec-rail:first-child", ".rec > .rec-col", ".rec > .rec-right"] : 起.沟通自滚 ? [".rec > .rec-rail:first-child", ".rec > .rec-col"] : [".rec > .rec-rail:first-child", ".rec-page > .rec"];
-      if (起.待办) 滚的.push(".rec-page > .rec-todo-bottom");
       for (const s of 滚的) {
         const 留 = await page.locator(s).evaluate(e => {
           e.scrollTop = e.scrollHeight;

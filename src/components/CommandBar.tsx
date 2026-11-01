@@ -114,12 +114,13 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
     const onKey = (e: KeyboardEvent) => {
       /*
         ⌘N：在当前页新建。它不知道每一页的新建长什么样，也不需要知道——
-        页头右上角那个主按钮就是这一页的主动作（见 ui.tsx 的 PageHead），点它就是。
+        页头右上角那个主按钮就是这一页的主动作（见 ui.tsx 的 PageHead），点它就是；页头不摆主按钮的页（企业版项目详情）给主动作挂 data-cmd-new。
         页头上没有主按钮的页面（首页、数据）什么也不发生，这比弹一个「本页不支持」强。
         在输入框里打字时不接管：那时 ⌘N 该由浏览器或输入法处理。
       */
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n" && !在输入框里(e)) {
-        const 主按钮 = document.querySelector<HTMLButtonElement>(".page-head-a button.ant-btn-primary:not([disabled])");
+        const 主按钮 = document.querySelector<HTMLButtonElement>(".page-head-a button.ant-btn-primary:not([disabled])")
+          ?? document.querySelector<HTMLButtonElement>("button[data-cmd-new]:not([disabled])");
         if (主按钮) {
           e.preventDefault();
           主按钮.click();

@@ -74,35 +74,31 @@ async function open(企业: boolean, width = 1366, 外宽?: number, 三栏 = fal
   return { page, errors };
 }
 const 卡标题 = (page: import("playwright").Page, sel: string) =>
-  page.locator(`${sel} > .ant-card`).evaluateAll(cs => cs.map(c => c.querySelector(":scope > .ant-card-head .ant-card-head-title")?.textContent?.trim() ?? ""));
+  page.locator(`${sel} > .ant-card, ${sel} > .proj-fold > .ant-card`).evaluateAll(cs => cs.map(c => c.querySelector(":scope > .ant-card-head .ant-card-head-title")?.textContent?.trim() ?? ""));
 /* U-项目-05：企业版「编辑项目」从页头挪到项目卡标题右边的小铅笔（aria-label 编辑项目） */
 const 编辑钮 = (page: import("playwright").Page) => page.locator(".proj-side").getByRole("button", { name: "编辑项目" });
 
-it("企业版：左边节点、沟通、卡点，右边项目、交付、项目组、提成、节点变更；记一条沟通是主按钮", async () => {
+it("企业版：左边节点、沟通、卡点，右边项目、交付、项目组、提成、节点变更；新增沟通是主按钮，各模块的按钮回到卡上", async () => {
   const { page, errors } = await open(true);
   try {
     // U-项目-01：左栏瀑布流——当前进程（无标题）→ 沟通（带条数）→ 卡点与任务；没给项目附件 / 回款就不摆那两块
     expect(await 卡标题(page, ".proj-main")).toEqual(["", "沟通（1）", "卡点与任务（0）"]);
     expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组", "提成", "进程变更"]);
-    const 记 = page.locator(".page-head-a").getByRole("button", { name: "记一条沟通" });
-    expect(await 记.getAttribute("class")).toContain("ant-btn-primary");
     const [主, 侧] = await Promise.all([page.locator(".proj-main").boundingBox(), page.locator(".proj-side").boundingBox()]);
     expect(侧!.x).toBeGreaterThan(主!.x + 主!.width);
     expect(Math.round(侧!.width)).toBe(320);
     // 提成预估写明按哪一套比例（10-27：内贸 / 外贸 / 不限）
-    expect(await page.locator(".proj-side > .ant-card").filter({ hasText: "提成" }).first().innerText()).toContain("按外贸比例");
-    // 和页头同名的按钮卡上不再摆（10-31）：编辑、记一条沟通、AI 录入、下一步 / 更多、发卡点、改分配只在页头；
-    // 「完成节点 ▼」「新增沟通」只在阶段页签那一行（M-节点-04 / U-项目-06），页头不重复摆
+    expect(await page.locator(".proj-side .ant-card").filter({ hasText: "提成" }).first().innerText()).toContain("按外贸比例");
+    // 11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」记一条沟通、AI 录入、发卡点、改分配回到各自卡头；
+    // 「完成节点 ▼」「新增沟通」在阶段页签那一行（M-节点-04 / U-项目-06）
     const 卡上钮 = (await page.locator(".proj-main button, .proj-side button").allInnerTexts()).map(t => t.replace(/\s/g, ""));
-    expect(卡上钮.filter(t => /^(编辑|记一条沟通|AI录入|更多|推进进程|结束当前进程|发卡点|改分配|关联)$|^下一步/.test(t))).toEqual([]);
+    expect(卡上钮).toEqual(expect.arrayContaining(["记一条沟通", "AI录入", "发卡点", "改分配"]));
+    expect(卡上钮.filter(t => /^(更多|推进进程|结束当前进程)$|^下一步/.test(t))).toEqual([]);
     expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["完成节点", "", "新增沟通"]);
     expect(await page.locator(".proj-stage-acts button").nth(1).getAttribute("aria-label")).toBe("终止进程或改到别的进程");
     expect(await page.locator(".proj-stage-acts .ant-btn-primary").allInnerTexts()).toEqual(["新增沟通"]);
-    expect(await 页头钮(page)).toEqual(expect.arrayContaining(["记一条沟通", "AI录入", "转让项目", "发卡点", "改分配"]));
-    expect(await 页头钮(page)).not.toEqual(expect.arrayContaining(["编辑项目"]));
+    expect(await 页头钮(page)).toEqual(["转让项目"]);
     expect(await 编辑钮(page).count()).toBe(1);
-    expect(await 页头钮(page)).not.toEqual(expect.arrayContaining(["完成节点"]));
-    expect(await 页头钮(page)).not.toEqual(expect.arrayContaining(["新增沟通"]));
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -112,9 +108,9 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
   try {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     // 右栏里的卡片内容不能伸出卡片（右栏窄，最容易被长串撑开）
-    const 伸出 = await page.locator(".proj-side > .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
+    const 伸出 = await page.locator(".proj-side .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    for (const name of ["记一条沟通", "AI 录入", "转让项目"]) {
+    for (const name of ["记一条沟通", "AI 录入", "新增沟通", "转让项目"]) {
       const box = await page.getByRole("button", { name }).first().boundingBox();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
@@ -124,6 +120,27 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     const 笔 = (await 编辑钮(page).boundingBox())!;
     expect(笔.x + 笔.width).toBeLessThanOrEqual(w);
     expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label"), [笔.x + 笔.width / 2, 笔.y + 笔.height / 2])).toBe("编辑项目");
+    // 每张卡头最右的收起钮（11-01）：不出屏、点得中、不压卡头别的按钮，和卡标题同一行居中
+    const 收钮 = await page.locator(".proj-fold-btn").all();
+    expect(收钮.length).toBeGreaterThanOrEqual(7);
+    for (const b of 收钮) {
+      await b.scrollIntoViewIfNeeded();
+      const box = (await b.boundingBox())!;
+      expect(box.x + box.width).toBeLessThanOrEqual(w);
+      expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.className ?? "", [box.x + box.width / 2, box.y + box.height / 2])).toContain("proj-fold-btn");
+      const 位 = await b.evaluate(btn => {
+        const 卡 = btn.parentElement!.querySelector(":scope > .ant-card")!;
+        const 头 = 卡.querySelector(":scope > .ant-card-head")!.getBoundingClientRect();
+        const 题 = 卡.querySelector(":scope > .ant-card-head .ant-card-head-title")?.getBoundingClientRect();
+        const 别的 = [...卡.querySelectorAll(":scope > .ant-card-head .ant-card-extra button")].map(e => e.getBoundingClientRect());
+        const me = btn.getBoundingClientRect();
+        return { 居中差: Math.abs((me.top + me.bottom) / 2 - (头.top + 头.bottom) / 2), 右距: 卡.getBoundingClientRect().right - me.right, 压: 别的.some(e => e.right > me.left - 2 && e.bottom > me.top && e.top < me.bottom), 题右: 题 ? 题.right : 0, 左: me.left };
+      });
+      expect(位.居中差).toBeLessThanOrEqual(2);
+      expect(位.右距).toBeGreaterThanOrEqual(8);
+      expect(位.压).toBe(false);
+      expect(位.题右).toBeLessThanOrEqual(位.左);
+    }
   } finally { await page.close(); }
 });
 
@@ -138,16 +155,16 @@ it.each([1024, 1280])("P17 %ipx：右栏关联客户 / 关联联系人跟在画�
     expect(位("关联联系人（2）")).toBe(位("关联客户（3）") + 1);
     expect(位("进程变更")).toBeGreaterThan(位("关联联系人（2）"));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    const 伸出 = await page.locator(".proj-side > .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
+    const 伸出 = await page.locator(".proj-side .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "关联客户（3）" }).first();
+    const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "关联客户（3）" }).first();
     const 卡框 = (await 卡.boundingBox())!;
     for (const el of await 卡.locator(".proj-rel-row, .ant-select").all()) {
       const b = (await el.boundingBox())!;
       expect(b.x + b.width).toBeLessThanOrEqual(卡框.x + 卡框.width + 1);
     }
-    // 「关联」在页头，卡上不摆（10-31）
-    expect(await page.locator(".proj-side").getByRole("button", { name: /^关联一/ }).count()).toBe(0);
+    // 「关联」在两张卡头（11-01 页头只留转让项目 / 退回公海）
+    expect(await page.locator(".proj-side").getByRole("button", { name: /^关联一/ }).count()).toBe(2);
     // 主客户不给解除；看不到的那家没链接
     expect(await page.getByRole("button", { name: /^解除和 超长客户名/ }).count()).toBe(0);
     expect(await page.getByRole("button", { name: /^解除和 关联客户/ }).count()).toBe(2);
@@ -161,7 +178,7 @@ it("P17 只读：关联卡只列文字，没有下拉、没有关联 / 解除按
   try {
     await page.evaluate(() => (window as unknown as { __relate: (x: boolean) => void }).__relate(false));
     await page.getByText("关联客户（3）").waitFor();
-    const 两卡 = page.locator(".proj-side > .ant-card").filter({ hasText: /关联(客户|联系人)（/ });
+    const 两卡 = page.locator(".proj-side .ant-card").filter({ hasText: /关联(客户|联系人)（/ });
     expect(await 两卡.count()).toBe(2);
     expect(await 两卡.locator(".ant-select").count()).toBe(0);
     expect(await 两卡.getByRole("button", { name: /关联一|解除和/ }).count()).toBe(0);
@@ -172,7 +189,7 @@ it("P17 只读：关联卡只列文字，没有下拉、没有关联 / 解除按
 it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注明）；「AI 录入」打开记一条、AI 那格先摆出来，只预填不写", async () => {
   const { page, errors } = await open(true);
   try {
-    const 项目卡 = await page.locator(".proj-side > .ant-card").filter({ hasText: "项目来源" }).first().innerText();
+    const 项目卡 = await page.locator(".proj-side .ant-card").filter({ hasText: "项目来源" }).first().innerText();
     expect(项目卡).toContain("28 天");
     expect(项目卡).toMatch(/同.+来源/);
     await page.getByRole("button", { name: "AI 录入" }).first().click();
@@ -206,7 +223,7 @@ it("10-31 改版 R4：项目卡定金在合同前；空着写「待填写X / 待
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
       成交钱: { contractAmount: null, contractCurrency: null, depositAmount: 0, depositCurrency: "USD", dealDemand: null }, expectedDealAt: null, 项目来源: null }));
-    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "定金金额" }).first();
+    const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "定金金额" }).first();
     await 卡.waitFor();
     const 字 = await 卡.innerText();
     expect(字.indexOf("定金金额")).toBeLessThan(字.indexOf("合同金额"));
@@ -227,7 +244,7 @@ it("10-31：这个进程配了必填、还没填的项目金额 / 预计成交�
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
       成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, expectedDealAt: null, 项目来源: null,
       必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额", "预计成交日期"], 只能靠填齐: false } }));
-    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "定金金额" }).first();
+    const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "定金金额" }).first();
     await 卡.getByText("占位确认").first().waitFor();
     expect(await 卡.getByText("占位确认", { exact: true }).count()).toBe(2);
     const 字 = await 卡.innerText();
@@ -253,7 +270,7 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     const 附 = { 合同: 0, 方案: 0, 其它: 0, 只读: false };
     // 老项目：合同状态 page.tsx 兜底成起草中，痛点标注空着
     await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: null, contractStatus: "起草中" } });
-    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "合同状态" }).first();
+    const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "合同状态" }).first();
     await 卡.waitFor();
     let 字 = await 卡.innerText();
     expect(字).toMatch(/合同状态\s*起草中/);
@@ -293,7 +310,7 @@ it("迁移 101：没给项目新字段（不是企业版 / 藏了）就不摆这
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
       成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 项目新字段: { contractStatus: "已生效" } }));
-    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "定金金额" }).first();
+    const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "定金金额" }).first();
     await 卡.getByText("已生效").waitFor();
     expect(await 卡.innerText()).not.toContain("痛点标注");
     await 编辑钮(page).click();
@@ -316,7 +333,7 @@ it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标�
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
       成交钱: { contractAmount: null, contractCurrency: null, depositAmount: 0, depositCurrency: "USD", dealDemand: null } }));
-    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "定金金额" }).first();
+    const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "定金金额" }).first();
     await 卡.waitFor();
     const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = `var(${v})`; document.querySelector(".proj-wrap")!.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
     const 样 = (l: import("playwright").Locator) => l.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; });
@@ -373,7 +390,7 @@ it("开关关闭：照原来一列摆、960 宽，没有两栏；没有提成卡
 it.each([1024, 1280, 1366])("P11 定稿 -2 版 %ipx：项目卡有级别（F-客户-01 起只显示字母不带星）、区域、地址（长地址折行不撑卡）；编辑框里有项目级别、所在地四格、详细地址，不横向溢出", async (w) => {
   const { page, errors } = await open(true, w);
   try {
-    const 卡 = page.locator(".proj-side > .ant-card").filter({ hasText: "项目来源" }).first();
+    const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "项目来源" }).first();
     const 字 = await 卡.innerText();
     expect(字).not.toMatch(/[★☆]/);
     expect(字).toContain("A 重点");
@@ -447,7 +464,7 @@ it.each([1367, 1440])("三栏 %ipx：应用导航 | 项目名单 | 详情三个�
     expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest(".roster-row")?.getAttribute("href"), [b.x + b.width / 2, b.y + b.height / 2])).toBe("/projects/p1");
     // 溢出：整页、名单、每一行、详情的两栏、右栏每张卡
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    expect(await 不伸出(page, ".pane-roster, .pane-roster .pane-rows, .roster-row, .roster-m, main.main, .proj-main, .proj-side, .proj-side > .ant-card")).toEqual([]);
+    expect(await 不伸出(page, ".pane-roster, .pane-roster .pane-rows, .roster-row, .roster-m, main.main, .proj-main, .proj-side, .proj-side .ant-card")).toEqual([]);
     // 组头能折叠，折了那组的行收起来，别的组不动
     await page.locator(".roster-sec").filter({ hasText: "商机" }).click();
     expect(await page.locator(".roster-row").count()).toBe(3);
@@ -466,7 +483,7 @@ it.each([1024, 1280, 1366])("三栏 %ipx：名单收成抽屉，页头最左边�
     expect(开盒!.x).toBeLessThanOrEqual(主区!.x + 4);
     expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label"), [开盒!.x + 开盒!.width / 2, 开盒!.y + 开盒!.height / 2])).toBe("显示项目列表");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    expect(await 不伸出(page, "main.main, .proj-main, .proj-side, .proj-side > .ant-card")).toEqual([]);
+    expect(await 不伸出(page, "main.main, .proj-main, .proj-side, .proj-side .ant-card")).toEqual([]);
     await 开.click();
     const 抽屉 = page.locator(".pane-drawer .roster-row.on");
     await 抽屉.waitFor();
@@ -627,40 +644,42 @@ it("下一步：有文字写文字、有时间跟在后面；老数据只有时�
 const 页头钮 = (page: import("playwright").Page, 类 = "") =>
   page.locator(`.page-head-a button${类}`).evaluateAll(bs => bs.map(b => b.textContent!.replace(/\s/g, "")));
 
-it("R6 页头：具名按钮按设计排，没有「更多」；记一条沟通是唯一主按钮，⌘N 找到的就是它；企业版没有删除项目", async () => {
+it("R6 页头：只留转让项目 / 退回公海，没有「更多」；⌘N 落到节点卡的「新增沟通」；企业版没有删除项目", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: true });
   try {
-    // 两组（10-31 用户：按下面的栏分组、对齐）：左边对着主栏（沟通、卡点、转让），右边对着侧栏（项目组、提成）；
-    // 编辑项目挪到项目卡上（U-项目-05），企业版项目不能删（服务端早就拦，这里入口也去掉）
-    expect(await 页头钮(page)).toEqual(["记一条沟通", "AI录入", "发卡点", "转让项目", "邀请成员", "改分配"]);
+    // 11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」；
+    // 编辑项目在项目卡上（U-项目-05），企业版项目不能删（服务端早就拦，这里入口也去掉）
+    const 钮 = await 页头钮(page);
+    expect(钮[0]).toBe("转让项目");
+    expect(钮.every(t => t === "转让项目" || t === "退回公海")).toBe(true);
     expect(await page.getByRole("button", { name: "项目的更多操作" }).count()).toBe(0);
-    expect(await page.locator(".page-head-a .ant-btn-primary").allTextContents()).toEqual(["记一条沟通"]);
-    expect(await page.evaluate(() => document.querySelector(".page-head-a button.ant-btn-primary:not([disabled])")?.textContent)).toBe("记一条沟通");
+    expect(await page.locator(".page-head-a .ant-btn-primary").count()).toBe(0);
+    expect(await page.evaluate(() => (document.querySelector(".page-head-a button.ant-btn-primary:not([disabled])") ?? document.querySelector("button[data-cmd-new]:not([disabled])"))?.textContent?.replace(/\s/g, ""))).toBe("新增沟通");
     expect(await page.getByRole("button", { name: "删除项目" }).count()).toBe(0);
     expect(await page.getByText("删除这个项目？").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("R6 页头跟着权限：公海里能领的主按钮是「领取」；只读的人只剩记沟通那几样；放回公海等复核时灰着说原因", async () => {
+it("R6 页头跟着权限：公海里能领的只剩「领取」；退回公海等复核时灰着说原因", async () => {
   const { page, errors } = await 覆盖(1280, { pooled: true, 能领取: true, 能放公海: false, 提成: null });
   try {
     expect(await 页头钮(page, ".ant-btn-primary")).toEqual(["领取"]);
-    // 公海里的项目谁都改不了（可改 = 能改 && !pooled）：编辑、推进、邀请…都不摆；「管理沟通」M-权限-09 去掉了
-    expect(await 页头钮(page)).toEqual(["领取", "记一条沟通", "AI录入", "发卡点"]);
+    // 公海里的项目谁都改不了（可改 = 能改 && !pooled）：转让、退回都不摆；记沟通那几样在卡上
+    expect(await 页头钮(page)).toEqual(["领取"]);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能放公海: true, 提成: null, 线索验证: { 判定: "有效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 我能: null, 痕: [] } }));
-    await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("放回公海"));
-    expect(await page.locator(".page-head-a").getByRole("button", { name: "放回公海" }).isDisabled()).toBe(true);
+    await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("退回公海"));
+    expect(await page.locator(".page-head-a").getByRole("button", { name: "退回公海" }).isDisabled()).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("R6 弹窗：完成节点、改进程、项目组成员、改分配都能打开，标题带项目名；「管理沟通」入口去掉了（M-权限-09）", async () => {
+it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项目名；项目组卡上有「邀请」；「管理沟通」入口去掉了（M-权限-09）", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: true });
   try {
     const 头 = page.locator(".page-head-a");
     const 开 = async (按钮: string, 标题: string) => {
-      await 头.getByRole("button", { name: 按钮 }).click();
+      await page.locator(".proj-side").getByRole("button", { name: 按钮 }).click();
       const 窗 = page.getByRole("dialog").filter({ hasText: 标题 });
       await 窗.waitFor();
       return 窗;
@@ -683,9 +702,7 @@ it("R6 弹窗：完成节点、改进程、项目组成员、改分配都能打�
     await 窗.waitFor();
     expect(await 窗.getByRole("button", { name: /^下一步：/ }).count()).toBe(1);
     await 关(窗);
-    窗 = await 开("邀请成员", "项目组成员 · ");
-    expect(await 窗.innerText()).toContain("组员");
-    await 关(窗);
+    expect(await page.locator(".proj-side .ant-card").filter({ hasText: "项目组" }).getByRole("button", { name: /^邀\s*请$/ }).count()).toBe(1);
     窗 = await 开("改分配", "改提成分配");
     await 窗.getByRole("button", { name: /取\s*消/ }).click();
     await 窗.waitFor({ state: "hidden" });
@@ -852,22 +869,14 @@ it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是箭头步骤条
   } finally { await page.close(); }
 });
 
-it("R6 关联：页头「关联客户」打开就是加客户那一格，「管理关联」两格都在", async () => {
+it("R6 关联：页头没有关联入口，关联客户 / 关联联系人卡头各自有「关联」（11-01 放回各模块）", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     await page.evaluate(() => (window as unknown as { __relate: (x: boolean) => void }).__relate(true));
     await page.getByText("关联客户（3）").waitFor();
-    await page.locator(".page-head-a").getByRole("button", { name: "关联客户" }).click();
-    const 窗 = page.getByRole("dialog").filter({ hasText: "关联客户 · " });
-    await 窗.waitFor();
-    expect(await 窗.getByText("关联联系人（").count()).toBe(0);
-    await 窗.getByRole("button", { name: /Close|关闭/ }).first().click();
-    await 窗.waitFor({ state: "hidden" });
-    await page.locator(".page-head-a").getByRole("button", { name: "管理关联" }).click();
-    const 管 = page.getByRole("dialog").filter({ hasText: "管理关联 · " });
-    await 管.waitFor();
-    expect(await 管.getByText("关联客户（3）").count()).toBe(1);
-    expect(await 管.getByText(/关联联系人（2）/).count()).toBe(1);
+    expect(await page.locator(".page-head-a").getByRole("button", { name: /关联/ }).count()).toBe(0);
+    expect(await page.locator(".proj-side").getByRole("button", { name: "关联一家客户" }).count()).toBe(1);
+    expect(await page.locator(".proj-side").getByRole("button", { name: "关联一位联系人" }).count()).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -908,7 +917,7 @@ it("画像只读：十二项都在、按序；空的（含需求类型、需求�
     const [灰, 正] = await Promise.all([卡.locator(".unconfirmed").first().evaluate(e => getComputedStyle(e).color), 卡.locator(".proj-profile-val").first().evaluate(e => getComputedStyle(e).color)]);
     expect(灰).not.toBe(正);
     // 关联只读：王总没角色、没立场；同事的客户没身份
-    const 关联卡 = page.locator(".proj-side > .ant-card").filter({ hasText: /关联(客户|联系人)（/ });
+    const 关联卡 = page.locator(".proj-side .ant-card").filter({ hasText: /关联(客户|联系人)（/ });
     expect(await 关联卡.locator(".unconfirmed").count()).toBeGreaterThanOrEqual(3);
     expect(await page.getByText("—", { exact: true }).count()).toBe(0);
     expect(errors).toEqual([]);
@@ -952,9 +961,9 @@ const 沟通两条 = [
   { id: "f2", type: "PHONE", content: "对方要重新报价", occurredAt: "2026-10-05T00:00:00.000Z", who: "组员丙", node: "生产备货", code: "FUL0002", 提醒: null,
     附件: [{ id: "a1", name: "通话录音.mp3", mime: "audio/mpeg", size: 2048, width: null, height: null, createdAt: "2026-10-05T00:00:00.000Z", 有文件: true }] },
 ];
-const 头 = (page: import("playwright").Page, id: string) => page.locator(`#${id} .proj-mod-h`);
+const 头 = (page: import("playwright").Page, id: string) => page.locator(`#${id} > .proj-fold-btn`);
 
-it("U-项目-01/04：沟通默认摊开、卡点与任务默认收起，点标题行开合；搜索框有词时两块都摊开、只列对得上的", async () => {
+it("U-项目-01/04：沟通默认摊开、卡点与任务默认收起，点卡头最右的钮开合；搜索框有词时两块都摊开、只列对得上的", async () => {
   const { page, errors } = await 覆盖(1280, { followUps: 沟通两条 });
   try {
     expect(await 头(page, "project-follow").getAttribute("aria-expanded")).toBe("true");
@@ -1018,7 +1027,7 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
     await 头(page, "project-follow").click();
     expect(await 头(page, "project-follow").getAttribute("aria-expanded")).toBe("false");
     await 组.locator(".proj-att-link").click();
-    await page.waitForFunction(() => document.querySelector("#project-follow .proj-mod-h")?.getAttribute("aria-expanded") === "true");
+    await page.waitForFunction(() => document.querySelector("#project-follow > .proj-fold-btn")?.getAttribute("aria-expanded") === "true");
     await page.locator("#follow-f2").waitFor();
     expect(errors).toEqual([]);
   } finally { await page.close(); }

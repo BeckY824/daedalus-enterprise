@@ -638,9 +638,9 @@ export default function RecordView({
   );
 
   /* 待办两处都留（P14 第 2 条）：这位客户的任务；企业版再摆没完成的跟进计划、各项目的下一步（只读，点了去办）。
-     企业版项目模式挪到页面底部、占满宽（U-客户-03）；其余照旧在右栏 */
+     企业版项目模式摆在中栏沟通记录下面（11-01 用户：「待办模块放到沟通记录下方，而不是整体下方」）；其余照旧在右栏 */
   const 待办卡 = 摆法.待办 ? (
-    <div className={`rec-card rec-side-card${去项目跟进 ? " rec-todo-bottom" : ""}`} aria-label="待办">
+    <div className={`${去项目跟进 ? "rec-todo-in" : "rec-card rec-side-card"}`} aria-label="待办">
       <div className="rec-side-t">
         <span>待办 {待办数 > 0 && 待办数}</span>
         {!只读 && (
@@ -770,21 +770,20 @@ export default function RecordView({
       </div>
 
       {/*
-        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简）：只留开项目、转让、退回公海。
+        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简）：只留新开项目、转让项目、退回公海（11-01 改名，新开项目在转让项目左边）。
         编辑资料、添加 / 管理联系人、删除客户、AI、新建任务都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
-        「新建沟通」挪进沟通记录的标题上，「新建任务」跟着待办挪到页面底部，删除客户属权限限制不再给入口。
+        「新建沟通」挪进沟通记录的标题上，「新建任务」跟着待办挪到沟通记录下面，删除客户属权限限制不再给入口。
         列宽、断点和 .rec 一样：左组对齐资料栏，整个客户的事（转让、退回公海）在中组最后、靠右
       */}
       {去项目跟进 && (能建项目 || 能转让 || 能退回公海) && (
         <div className="rec-acts">
-          <div className="acts-g">
-            {能建项目 && <Button onClick={() => set建项目开着(true)}>开项目</Button>}
-          </div>
+          <div className="acts-g" />
           <div className="rec-acts-r">
             <div className="acts-g">
-              {(能转让 || 能退回公海) && (
+              {(能建项目 || 能转让 || 能退回公海) && (
                 <span className="acts-whole">
-                  {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>转让</Button>}
+                  {能建项目 && <Button onClick={() => set建项目开着(true)}>新开项目</Button>}
+                  {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>转让项目</Button>}
                   {能退回公海 && <Button onClick={() => void 公海动作("放进")}>退回公海</Button>}
                 </span>
               )}
@@ -1236,7 +1235,7 @@ export default function RecordView({
         </aside>
 
         {/* ================= 中栏：时间线 ================= */}
-        <section className={`rec-col rec-card${摆法.沟通汇总 ? " rec-sum" : ""}`}>
+        <section className={`rec-col rec-card${摆法.沟通汇总 ? " rec-sum" : ""}${去项目跟进 && 待办卡 ? " rec-col-todo" : ""}`}>
           {/* 虚线下属的客户：跟进也记不了，速记框不摆，免得写完才被拦（10-25 实测 F4）。顶上那条黄条已说清只能看 */}
           {/* 企业版项目模式：记录输入挪到项目页（定稿 P5 待定 14 黄框），客户页只看时间线 */}
           {!全只读 && 摆法.记录输入 && <div className="rec-composer">
@@ -1356,6 +1355,7 @@ export default function RecordView({
             )}
             {filter !== "CONTRACT" && history.paged && <div style={{ textAlign: "center", paddingBottom: 12 }}><Button type="link" onClick={() => { history.reset(); router.refresh(); }}>重新加载历史</Button></div>}
           </div>
+          {去项目跟进 && 待办卡}
         </section>
 
         {/* ================= 右栏：AI + 计划/待办 ================= */}
@@ -1392,7 +1392,6 @@ export default function RecordView({
         </aside>
         )}
       </div>
-      {去项目跟进 && 待办卡}
       </只读上下文.Provider>
 
       {/* 1180 以下 AI 收进抽屉。面板本身一个字都不用改——它的状态挂在

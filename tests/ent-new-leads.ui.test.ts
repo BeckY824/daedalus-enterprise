@@ -25,6 +25,10 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>[],取客户近况=async()=>null;");
   stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});");
+  // 「新增项目」→「新客户」：取向导数据记一笔；向导框本身换成一块写着标题的牌子（向导另有测试）
+  stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>{(window.__调||=[]).push(['取建档数据']);return {users:[],要下一步:false,企业:null}};");
+  stub(/new\/ProjectWizard$/, "export const 建档弹窗=()=>null;");
+  stub(/^next\/dynamic$/, "import React from 'react';export default function d(){return function D(p){return p.open?<div className='wizard-stub'>{p.标题}</div>:null}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -37,20 +41,20 @@ beforeAll(async () => {
     const 长='某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购项目第二期';
     const row=(i,node)=>({id:'p'+i,name:长+i,customerId:'c'+i,customerName:长,ownerId:'u'+(i%2),ownerName:'王'+i,phase:'线索',node,result:null,exceptionCategory:null,exceptionReason:null,pooled:false,amount:1234567,currency:'CNY',updatedAt:new Date().toISOString()});
     const 行=[row(1,'潜客培育'),row(2,'线索验证'),{...row(3,'线索推进'),result:'线索流失'}];
-    window.__画=(阶段,能分)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <Projects 行={行} 列={[]} 取到上限={false} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分}/>
+    window.__画=(阶段,能分,企)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
+      <Projects 行={行} 列={[]} 取到上限={false} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 企业版={!!企}/>
     </BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 打开(新线索: boolean, width = 1280, 能分 = false): Promise<{ page: Page; errors: string[] }> {
+async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto(`http://ent.test/${新线索 ? "leads" : "projects"}`); await page.addScriptTag({ content: bundle });
-  await page.evaluate(([v, f]) => (window as unknown as { __画: (v: boolean, f: boolean) => void }).__画(v, f), [新线索, 能分]);
+  await page.evaluate(([v, f, e]) => (window as unknown as { __画: (v: boolean, f: boolean, e: boolean) => void }).__画(v, f, e), [新线索, 能分, 企]);
   await page.getByRole("heading").first().waitFor();
   return { page, errors };
 }
@@ -109,4 +113,35 @@ it("能分配的人：每条没结局的新线索有「分配」「自动分配�
   const 不能 = await 打开(true);
   expect(await 不能.page.getByRole("button", { name: `分配 ${长}1`, exact: true }).count()).toBe(0);
   await 不能.page.close();
+});
+
+it("企业版项目首页：「新增项目」一个按钮（没有旁边的下拉、没有「去公海看」），点开先选新客户 / 老客户，都在弹窗里接着建", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 打开(false, w, false, true);
+    expect(await page.getByRole("button", { name: "新建方式" }).count()).toBe(0);
+    expect(await page.getByText("去公海看").count()).toBe(0);
+    const 钮 = page.getByRole("button", { name: /新增项目$/ });
+    expect(await 钮.count()).toBe(1);
+    const box = (await 钮.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(w);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await 钮.click();
+    const 框 = page.getByRole("dialog", { name: "新增项目" });
+    await 框.waitFor();
+    const 选项 = 框.locator(".new-proj-opt");
+    expect(await 选项.allInnerTexts()).toEqual([expect.stringMatching(/^新客户\n/), expect.stringMatching(/^老客户\n/)]);
+    // 老客户：接「给老客户开项目」挑客户框
+    await 选项.nth(1).click();
+    await page.getByRole("dialog", { name: "给老客户开项目" }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog", { name: "给老客户开项目" }).waitFor({ state: "hidden" });
+    // 新客户：取向导数据，弹「新增项目」向导框，不跳页
+    await 钮.click();
+    await 框.locator(".new-proj-opt").first().click();
+    await page.locator(".wizard-stub").waitFor();
+    expect(await page.locator(".wizard-stub").innerText()).toBe("新增项目");
+    expect(await page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调?.map((x) => x[0]))).toEqual(["取建档数据"]);
+    expect(await 去了(page)).toEqual([]);
+    expect(errors).toEqual([]); await page.close();
+  }
 });
