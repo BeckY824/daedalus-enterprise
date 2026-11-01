@@ -155,7 +155,7 @@ export default function ProjectsView({
   const 看法 = 新线索 ? "列表" : 存的看法;
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
   const 看板框 = useRef<HTMLDivElement>(null);
-  const [右边还有, 滑一列] = 右边还有几列(看板框, 看法 === "看板" ? 看板 : null);
+  const [右边还有, 滑一列] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
   // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
@@ -480,7 +480,7 @@ export default function ProjectsView({
  */
 /** 看板右沿渐隐的宽（和 globals.css .pipe-fade-right 的 48px 一致）：滑过来的那一列整列落在渐隐外 */
 const 渐隐宽 = 48;
-function 右边还有几列(框: React.RefObject<HTMLDivElement | null>, 列们: unknown): [number, () => void] {
+function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: unknown): [number, () => void] {
   const [n, setN] = useState(0);
   const 没露全的 = (el: HTMLDivElement) => {
     const 右 = el.getBoundingClientRect().right;
@@ -488,7 +488,7 @@ function 右边还有几列(框: React.RefObject<HTMLDivElement | null>, 列们:
   };
   useEffect(() => {
     const el = 框.current;
-    if (!el) return void setN(0);
+    if (!el) return; // 提示只在看板里显示，切回看板时重算
     const 算 = () => setN(没露全的(el).length);
     算();
     el.addEventListener("scroll", 算, { passive: true });
