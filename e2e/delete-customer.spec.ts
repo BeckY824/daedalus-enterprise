@@ -6,7 +6,8 @@ import { test, expect, type Page } from "@playwright/test";
 import { 连库, 清空业务数据 } from "./mock-data";
 import { 企业版 } from "./owner-pick";
 
-const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
+// 企业版只有总管理能删客户（11-01 只认业务角色），用 admin（种子里是总管理）
+const 账号 = { 用户名: 企业版 ? "admin" : "zhangsan", 密码: "admin123" };
 
 async function 登录(page: Page) {
   await page.goto("/login");

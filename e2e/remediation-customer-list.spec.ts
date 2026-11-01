@@ -8,7 +8,7 @@ test.beforeAll(async()=>{const db=连库();try{
  await db.contract.createMany({data:Array.from({length:25},(_,i)=>({customerId:`sort-${String(i).padStart(3,"0")}`,amount:i+1,signedAt:new Date("2026-01-01")}))});
 }finally{await db.$disconnect()}});
 test.afterAll(async()=>{const db=连库();try{await 清空业务数据(db)}finally{await db.$disconnect()}});
-async function login(page:Page){await page.goto("/login");await page.getByPlaceholder("用户名").fill("zhangsan");await page.getByPlaceholder("登录密码").fill("admin123");await page.getByRole("button",{name:/登\s*录/}).click();await page.waitForURL(/\/dashboard/)}
+async function login(page:Page,user="zhangsan"){await page.goto("/login");await page.getByPlaceholder("用户名").fill(user);await page.getByPlaceholder("登录密码").fill("admin123");await page.getByRole("button",{name:/登\s*录/}).click();await page.waitForURL(/\/dashboard/)}
 test("实际表头排序跨页执行，全部范围及币种说明可见",async({page})=>{
  test.skip(企业版,"企业版不摆签约金额列，成交看项目（10-28 去遗留 A4）");
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));await login(page);await page.goto("/customers?pageSize=10");
@@ -47,7 +47,7 @@ test("B6 删除末页后页码、地址与筛选一致，刷新仍正确",async(
 
 test("B6 超界地址归一后继续删除末页，路由刷新仍退回有效地址",async({page})=>{
  const db=连库();try{const owner=(await db.user.findUniqueOrThrow({where:{email:'zhangsan'}})).id;await db.customer.createMany({data:Array.from({length:11},(_,i)=>({id:'b6-refresh-'+i,name:'B6连续删页'+i,phone:'139001'+String(i).padStart(5,'0'),salesOwnerId:owner}))})}finally{await db.$disconnect()}
- const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await login(page);await page.goto('/customers?keyword=B6连续删页&pageSize=10&page=999');
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await login(page,企业版?'admin':'zhangsan');await page.goto('/customers?keyword=B6连续删页&pageSize=10&page=999');
  await expect.poll(()=>new URL(page.url()).searchParams.get('page')).toBe('2');await expect(page.getByRole('main').locator('tbody tr[data-row-key]')).toHaveCount(1);
  await page.getByRole('main').getByRole('button',{name:/^更多操作 B6连续删页/}).click();await page.getByRole('menuitem',{name:'删除',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:/^删\s*除$/}).click();
  await expect(page.getByRole('main').locator('tbody tr[data-row-key]')).toHaveCount(10);await expect.poll(()=>new URL(page.url()).searchParams.get('page')).toBe('1');expect(new URL(page.url()).searchParams.get('keyword')).toBe('B6连续删页');expect(errors).toEqual([]);
