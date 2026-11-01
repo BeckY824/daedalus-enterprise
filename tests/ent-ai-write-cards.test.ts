@@ -259,7 +259,7 @@ describe("线索验证", () => {
     expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["无效原因"]);
   });
 
-  it("负责人初判无效：转给 线索初判Action，记下初验无效；不归他判的人确认一行不写", async () => {
+  it("负责人初判无效：转给 线索初判Action；创建人是销售，初判即终判记无效线索；不归他判的人确认一行不写", async () => {
     const { 卡 } = await 出("propose_lead_verify", { project: "云帆一期", 判: "无效", 无效原因: "联系方式无效", 说明: "打了三次", reason: "人说是空号" });
     expect(卡).toMatchObject({ kind: "lead_verify", targetId: 项目id, 步: "初判", 判: "无效" });
 
@@ -270,7 +270,7 @@ describe("线索验证", () => {
     const r = await 确认(卡!, 乙);
     expect(r).toMatchObject({ ok: true });
     expect(项目动作.线索初判Action).toHaveBeenLastCalledWith(项目id, "无效", expect.objectContaining({ invalidReason: "联系方式无效", verifyNote: "打了三次" }));
-    expect(await prisma.entLeadVerify.findUnique({ where: { projectId: 项目id } })).toMatchObject({ verdict: "初验无效" });
+    expect(await prisma.entLeadVerify.findUnique({ where: { projectId: 项目id } })).toMatchObject({ verdict: "无效线索" });
   });
 });
 
