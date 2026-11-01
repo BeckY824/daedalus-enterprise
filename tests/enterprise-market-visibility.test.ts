@@ -82,7 +82,9 @@ beforeAll(async () => {
     ],
   });
   await raw.entMember.createMany({
+    // 11-01 权限只认业务角色：老板（账号 ADMIN）也要有总管理，不然只看公海
     data: [
+      { userId: 老板, bizRole: "director" },
       { userId: 总管, bizRole: "director" },
       { userId: 市场经理, bizRole: "marketing_mgr", deptId: 部.市场 },
       { userId: 小市, bizRole: "channel_ops", deptId: 部.市场一组 },
@@ -221,7 +223,8 @@ describe("默认市场部门（名字带「市场」）", () => {
 
   it("市场管理：所有市场成员相关的都看得到（停用的人不算），只能看", async () => {
     expect(await 名单(市场经理)).toEqual(["A小市建的", "B小场负责项目", "E小市负责的", "H小场建过项目"]);
-    expect(await 项目名单(市场经理)).toEqual(["PA小市建的", "PB小场负责的", "PH小场建的"]);
+    // 11-01 权限只认业务角色：企业版项目不跟客户走，市场这边只看市场成员建的项目；小场负责、销售建的 PB 市场管理看不到（小场自己负责照样看）
+    expect(await 项目名单(市场经理)).toEqual(["PA小市建的", "PH小场建的"]);
     const a = await 客户("A小市建的");
     expect(await 作为(市场经理, () => 只读客户(raw, a))).toBe("全");
     await expect(作为(市场经理, () => db.customer.update({ where: { id: a.id }, data: { major: "x" } }))).rejects.toThrow(/市场成员/);
@@ -296,7 +299,8 @@ describe("设市场部门：只有老板和总管理员能改", () => {
   it("市场管理、销售改不了，一行不写", async () => {
     for (const id of [市场经理, 销售, 小市]) {
       当(id);
-      expect(await 设市场部门([部.品牌])).toMatchObject({ ok: false, error: expect.stringContaining("只有老板或总管理员") });
+      // 11-01 权限只认业务角色：报错改说「只有总管理」，不再说老板
+      expect(await 设市场部门([部.品牌])).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理") });
     }
     expect(await raw.setting.findUnique({ where: { key: 市场部门key } })).toBeNull();
   });

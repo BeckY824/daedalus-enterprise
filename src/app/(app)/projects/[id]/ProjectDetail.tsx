@@ -10,7 +10,7 @@ import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符 } from "@/lib/empty-value";
-import { 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
+import { 项目不能单独领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -379,6 +379,9 @@ export default function ProjectDetail({
   /** 转让项目（10-30，原名「转给…」；U-项目-07 起点了确认就转、不再等 6 秒撤销）：弹窗开着、选了谁 */
   const [转给框, set转给框] = useState(false);
   const [转给谁, set转给谁] = useState<string | null>(null);
+  /** 企业版 C-06：原负责人没做完的待办一起转给接手人（默认勾，可以手动关掉；pool-rules.ts）。不是企业版不摆这个勾、不传 */
+  const 带待办勾出 = p.企业版 && 公海规则.换负责人带待办;
+  const [转给带待办, set转给带待办] = useState<boolean>(公海规则.带待办默认勾);
   /** 企业版瀑布流（U-项目-01/04）：沟通默认展开、卡点与任务默认收起；搜索词非空时两块都摊开、只列搜得到的 */
   const [沟通开, set沟通开] = useState(true);
   const [卡点开, set卡点开] = useState(false);
@@ -544,7 +547,7 @@ export default function ProjectDetail({
   /** 转让项目（U-项目-07）：弹窗里点「确认转让」就换负责人，不再等 6 秒撤销；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
   const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
-    const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }), `已转给 ${名}`);
+    const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }, 带待办勾出 ? 转给带待办 : undefined), `已转给 ${名}`);
     if (!ok) return;
     set转给框(false);
     router.push("/projects");
@@ -939,7 +942,7 @@ export default function ProjectDetail({
   // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
   // 11-01：转让按 能转让 给（总管理、上级能转不能改；负责人本人能改不能自己转），和 lib/project/db.ts 改项目 同一个判断
   const 转给钮 = p.企业版 && !p.pooled && !!p.能转让 && !独自一人(候选, p.ownerId) && (
-    <Button disabled={忙} onClick={() => { set转给谁(null); set转给框(true); }}>转让项目</Button>
+    <Button disabled={忙} onClick={() => { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }}>转让项目</Button>
   );
   const 放回问 = () => {
     // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
@@ -1244,6 +1247,11 @@ export default function ProjectDetail({
           onChange={(v: string) => set转给谁(v)}
           options={成员选项(候选).filter((o) => o.value !== p.ownerId)}
         />
+        {带待办勾出 && (
+          <Checkbox style={{ marginBottom: 8 }} checked={转给带待办} onChange={(e) => set转给带待办(e.target.checked)}>
+            原负责人没做完的待办一起转给新负责人
+          </Checkbox>
+        )}
         <div style={{ color: "var(--text-muted)" }}>
           {转给名 ? `确认转给 ${转给名}？转了以后你看不到这个项目，原来填的下一步会清掉，由 ${转给名} 重新安排；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
         </div>

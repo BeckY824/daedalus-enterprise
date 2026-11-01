@@ -160,6 +160,8 @@ describe("真库：改项目 / 读必填数据 / 新建项目", () => {
     客户id = (await prisma.customer.create({ data: { name: "QA-新字段客户", phone: "13800001101", salesOwnerId: 乙.id } })).id;
     // 直接建 = 老项目的样子：两格都空
     项目id = (await prisma.project.create({ data: { name: 基.name, customerId: 客户id, ownerId: 乙.id, creatorId: 乙.id } })).id;
+    // 11-01 权限只认业务角色：负责人得有销售角色才能改项目
+    await prisma.entMember.create({ data: { userId: 乙.id, bizRole: "sales" } });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -195,7 +197,6 @@ describe("真库：改项目 / 读必填数据 / 新建项目", () => {
   });
 
   it("字段权限：痛点标注只能看 → 改不了；合同状态照改", async () => {
-    await prisma.entMember.create({ data: { userId: 乙.id, bizRole: "sales" } });
     await setSetting(规则.字段权限.key, true);
     await setSetting(字段权限key, { 痛点标注: { sales: "看" } });
     expect(await 改项目(乙, 项目id, { ...基, painPoints: "x" })).toMatchObject({ ok: false, error: expect.stringContaining("痛点标注") });

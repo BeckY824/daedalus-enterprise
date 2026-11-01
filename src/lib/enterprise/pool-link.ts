@@ -18,6 +18,7 @@ import { 带走一位 } from "@/lib/carry-over-db";
 import { 转让痕 } from "@/lib/project/db";
 import { 历史负责人们 } from "@/lib/project/pool-owner";
 import { 卡点随项目换人, 公海领走接手理由 } from "@/lib/project/blocker";
+import { 换负责人待办, 待办痕 } from "@/lib/project/carry-tasks";
 
 /**
  * 项目刚进了项目公海（主动放回、超时回收），在同一笔事务里调：客户名下一共只有这一个项目、
@@ -52,13 +53,15 @@ export async function 单项目客户跟进公海(
  * 返回领过来的客户（原来归谁），没领返回 null。不数项目（客户整体转让），客户在客户公海就一起领，
  * 名下没进项目公海的别的项目由 带走一位 一起转过来；
  * 名下还放在项目公海里的别的项目也一起归 新（10-31，同 领客户带走公海项目：每个记一行 pool-claim，操作人 = 操作人）。
- * 调用方要先把手上这个项目移出项目公海再调，不然它会被当成「别的公海项目」再记一行
+ * 调用方要先把手上这个项目移出项目公海再调，不然它会被当成「别的公海项目」再记一行。
+ * 带待办（C-06）：一起带过来的公海项目，进公海时关掉的那批待办照这个勾重新打开（同手上这个项目）；没传不碰
  */
 export async function 单项目客户跟着领(
   tx: Prisma.TransactionClient,
   customerId: string,
   新: string,
   操作人: string = 新,
+  带待办?: boolean,
 ): Promise<{ customerId: string; 旧: string } | null> {
   if (!企业版() || !公海规则.领项目带走单项目客户) return null;
   return 看全部(async () => {
@@ -70,36 +73,40 @@ export async function 单项目客户跟着领(
     await tx.customerClaim.upsert({ where: { customerId }, update: { userId: 新, at: new Date() }, create: { customerId, userId: 新 } });
     await tx.customerPool.deleteMany({ where: { customerId } });
     if (c.salesOwnerId !== 新) await 带走一位(tx, customerId, c.salesOwnerId, 新, 新, "claim");
-    if (公海规则.领客户带走公海里的项目) await 带走公海项目(tx, [customerId], 新, 操作人);
+    if (公海规则.领客户带走公海里的项目) await 带走公海项目(tx, [customerId], 新, 操作人, 带待办);
     return { customerId, 旧: c.salesOwnerId };
   });
 }
 
 /**
  * 客户公海里的客户刚被领走 / 分走（已经归 新）：名下放在项目公海里的项目一起归 新，每个记一行 pool-claim。
- * 不拦持有上限：同跟着客户转（超上限 的说明）。返回带过来的项目 id
+ * 不拦持有上限：同跟着客户转（超上限 的说明）。返回带过来的项目 id。
+ * 带待办（C-06，领取 / 分配客户时的勾）：这些项目进公海时关掉的那批待办重新打开给 新；没传不碰
  */
-export async function 领客户带走公海项目(customerIds: string[], 新: string, 操作人: string): Promise<string[]> {
+export async function 领客户带走公海项目(customerIds: string[], 新: string, 操作人: string, 带待办?: boolean): Promise<string[]> {
   if (!企业版() || !公海规则.领客户带走公海里的项目 || !customerIds.length) return [];
-  return 看全部(() => 查完再写((tx) => 带走公海项目(tx, customerIds, 新, 操作人)));
+  return 看全部(() => 查完再写((tx) => 带走公海项目(tx, customerIds, 新, 操作人, 带待办)));
 }
 
 /**
  * 同一笔事务里：这几位客户（已经归 新）名下还在项目公海里的项目一起归 新——负责人改成 新、出项目公海、清下一步，
- * 每个记一行 pool-claim（同单独领项目）。不在项目公海里的不碰（那些归谁由 带走一位 / 跟着客户转的项目 管）
+ * 每个记一行 pool-claim（同单独领项目）。不在项目公海里的不碰（那些归谁由 带走一位 / 跟着客户转的项目 管）。
+ * 带待办：每个项目进公海时关掉的那批待办照勾重新打开（carry-tasks.ts），几条写进各自那行 pool-claim
  */
-async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: string[], 新: string, 操作人: string): Promise<string[]> {
+async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: string[], 新: string, 操作人: string, 带待办?: boolean): Promise<string[]> {
   // 只认现在真归 新 的客户：领的事务和这里之间又被人改给了别人的不带
   const 们 = await tx.project.findMany({
     where: { customerId: { in: customerIds }, pooledAt: { not: null }, customer: { salesOwnerId: 新 } },
-    select: { id: true, ownerId: true, phase: true, node: true, result: true },
+    select: { id: true, ownerId: true, phase: true, node: true, result: true, customerId: true, name: true, pooledAt: true },
   });
   if (!们.length) return [];
   const ids = 们.map((p) => p.id);
   await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, pooledAt: null, nextStepAt: null, nextStepText: null } });
   // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
   const 原 = await 历史负责人们(tx, ids);
-  await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, 原.get(p.id) ?? (p.ownerId || null), 新, "pool-claim")) });
+  const 痕: Map<string, string | null> = new Map();
+  for (const p of 们) 痕.set(p.id, 待办痕(带待办, await 换负责人待办(tx, p, 原.get(p.id) ?? null, 新, 带待办)));
+  await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, 原.get(p.id) ?? (p.ownerId || null), 新, "pool-claim", 痕.get(p.id) ?? null)) });
   // B5：历史负责人没完成的卡点认领行给领走的人（同单独领项目走 记转让）
   for (const p of 们) {
     const 从 = 原.get(p.id) ?? p.ownerId;

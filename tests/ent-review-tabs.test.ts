@@ -19,7 +19,7 @@ import { 沟通条件, 读卡点看板筛, 读沟通段, 夹页 } from "@/lib/pr
 import { 复盘沟通of } from "@/lib/project/review-tabs-db";
 import { 卡点看板, type 卡点看板数 } from "@/lib/project/blocker";
 
-const 老板 = "rv_boss";
+const 总管 = "rv_boss";
 const 经理 = "rv_mgr";
 const 小王 = "rv_wang"; // 经理的下属
 const 外人 = "rv_out";
@@ -46,7 +46,7 @@ describe("纯函数：地址栏、条件", () => {
 
 describe("库里取数和数据范围", () => {
   const 用户 = [
-    { id: 老板, name: "老板", role: "ADMIN" },
+    { id: 总管, name: "总管", role: "ADMIN" },
     { id: 经理, name: "经理", role: "SALES" },
     { id: 小王, name: "小王", role: "SALES" },
     { id: 外人, name: "外人", role: "SALES" },
@@ -85,11 +85,11 @@ describe("库里取数和数据范围", () => {
       项目[u.id] = (await prisma.project.create({ data: { name: `${u.name}的项目`, customerId: 客户[u.id], ownerId: u.id, creatorId: u.id } })).id;
       await 记沟通(u.id, `${u.name}聊了`, 1);
     }
-    await prisma.entMember.create({ data: { userId: 老板, bizRole: "director" } });
+    await prisma.entMember.create({ data: { userId: 总管, bizRole: "director" } });
     await prisma.entMember.create({ data: { userId: 经理, bizRole: "sales_mgr" } });
     await prisma.entMember.create({ data: { userId: 小王, managerId: 经理, bizRole: "sales" } });
     await prisma.entMember.create({ data: { userId: 外人, bizRole: "sales" } });
-    // 每个项目一条未解决卡点（发布时间错开，老板的最新）
+    // 每个项目一条未解决卡点（发布时间错开，总管的最新）
     for (const [k, u] of 用户.entries())
       await 发卡点(项目[u.id], 客户[u.id], u.id, `${u.name}的卡点`, { createdAt: dayjs().subtract(10 - k, "hour").toDate() });
     // 外人项目上经理认领了的（经理是认领人，看得到）
@@ -123,9 +123,9 @@ describe("库里取数和数据范围", () => {
   });
 
   it("卡点看板：总管理员（可看全部）全部、三栏分好、统计对；不是企业版给空", async () => {
-    const 全 = await 卡点看板({ id: 老板, role: "ADMIN" });
+    const 全 = await 卡点看板({ id: 总管, role: "ADMIN" });
     expect(全.全部).toBe(true);
-    expect(板描述(全)).toEqual(["老板的卡点", "经理的卡点", "小王的卡点", "外人的卡点", "外人的经理认领", "小王解决了"].sort());
+    expect(板描述(全)).toEqual(["总管的卡点", "经理的卡点", "小王的卡点", "外人的卡点", "外人的经理认领", "小王解决了"].sort());
     expect(全.栏.待接受).toHaveLength(4);
     expect(全.统计).toMatchObject({ 未解决: 5, 已解决: 1 });
     // 这些都是没挂原因的老卡点：统计全进「未分类（老数据）」
@@ -133,7 +133,7 @@ describe("库里取数和数据范围", () => {
     expect(全.栏.待接受[0].原阻碍主体).toBe("客户");
 
     vi.stubEnv("CRM_ENTERPRISE", "");
-    expect(await 卡点看板({ id: 老板, role: "ADMIN" })).toMatchObject({ 开: false, 已解决共: 0 });
+    expect(await 卡点看板({ id: 总管, role: "ADMIN" })).toMatchObject({ 开: false, 已解决共: 0 });
   });
 
   it("沟通：只列挂在项目上的；成员只看到自己记的，经理自己 + 下属，总管理员全部；时间倒序，带项目、节点、负责人", async () => {
@@ -151,7 +151,7 @@ describe("库里取数和数据范围", () => {
 
     const 全 = await 复盘沟通of(undefined, { 段: "all" });
     expect(全.总数).toBe(5);
-    expect(内容(全)).toEqual(["老板聊了", "经理聊了", "小王聊了", "外人聊了", "小王上个月"].sort());
+    expect(内容(全)).toEqual(["总管聊了", "经理聊了", "小王聊了", "外人聊了", "小王上个月"].sort());
     // 卡点自带的沟通（没挂项目节点）不进沟通页签
     expect(内容(全).some((x) => x.startsWith("发卡点"))).toBe(false);
   });

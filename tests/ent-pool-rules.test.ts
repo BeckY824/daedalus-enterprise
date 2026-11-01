@@ -64,7 +64,6 @@ const 今 = new Date("2026-10-26T10:00:00+08:00");
 /** 按组织看客户开着：经理管乙、丙；乙、丙互相看不到 */
 async function 开按组织看() {
   await setSetting(规则.按组织看客户.key, true);
-  await prisma.entMember.createMany({ data: [{ userId: 经理.id, bizRole: "sales_mgr" }, { userId: 乙.id, managerId: 经理.id }, { userId: 丙.id, managerId: 经理.id }] });
   invalidateSettingsCache();
   忘掉企业版范围();
 }
@@ -83,6 +82,8 @@ beforeEach(async () => {
   经理 = await 造人("mkt", "经理", "MANAGER");
   乙 = await 造人("yi", "乙", "SALES");
   丙 = await 造人("bing", "丙", "SALES");
+  // 权限只认业务角色（11-01）：老板=总管理，经理=销售管理，乙、丙=销售、上级经理
+  await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 经理.id, bizRole: "sales_mgr" }, { userId: 乙.id, managerId: 经理.id }, { userId: 丙.id, managerId: 经理.id }] });
   当(老板);
   await setSetting("business", { projectMode: true, poolDays: 30 });
 });

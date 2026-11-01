@@ -55,6 +55,8 @@ beforeEach(async () => {
   经理 = await 造人("mkt", "经理", "MANAGER");
   乙 = await 造人("yi", "乙", "SALES");
   丙 = await 造人("bing", "丙", "SALES");
+  // 11-01 权限只认业务角色：老板要有总管理、经理销售管理、业务员销售，不然什么都不能做
+  await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 经理.id, bizRole: "sales_mgr" }, { userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
   当(老板);
   await setSetting("business", { projectMode: true });
 });
@@ -83,7 +85,8 @@ describe("list_projects", () => {
 
   it("公海里同事客户的项目：露项目不露客户名；按客户名搜不出来，总数也不算它", async () => {
     await setSetting(规则.按组织看客户.key, true);
-    await prisma.entMember.createMany({ data: [{ userId: 经理.id, bizRole: "sales_mgr" }, { userId: 乙.id, managerId: 经理.id }, { userId: 丙.id, managerId: 经理.id }] });
+    // 11-01：业务角色已在 beforeEach 建好，这里只挂上级
+    await prisma.entMember.updateMany({ where: { userId: { in: [乙.id, 丙.id] } }, data: { managerId: 经理.id } });
     invalidateSettingsCache();
     忘掉企业版范围();
     const c = await 客户(丙.id, "海川机械");

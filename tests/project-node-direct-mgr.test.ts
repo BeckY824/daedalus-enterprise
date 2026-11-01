@@ -3,7 +3,8 @@
  *   - 改节点和别的项目内容一个口径（C2）：只有负责人本人（销售 / 销售管理）能改；直属上级、隔级经理、虚线上级、
  *     总管理、管理员都只能看、转让，不再代推（原 D-37「直属上级代推」被 C2 盖掉）
  *   - 默认「负责人可推」：负责人本人能往前推、记的是本人
- *   - 「仅上级推」：负责人有直属上级时本人往前推被拦；上级又改不了内容 → 这个口子开着时没人能往前推（交给用户定）
+ *   - 「仅上级推」：负责人有直属上级时本人往前推被拦，直属上级只给往前推这一步（11-01 闭环：不然开着时谁都推不动）；
+ *     往后退、点结局、改别的照旧只给负责人
  *   - 往后退、点结局照旧（负责人本人能）
  *   - 负责人没设直属上级：本人能推
  *   - 账号 ADMIN 没设业务角色：什么都改不了
@@ -62,15 +63,19 @@ describe("企业版推节点只给负责人本人", () => {
   });
   afterEach(() => { vi.unstubAllEnvs(); });
 
-  it("仅上级推：本人往前推被拦；直属上级、隔级经理、虚线上级、账号 ADMIN 没业务角色的都改不了内容；节点不动", async () => {
+  it("仅上级推：本人往前推被拦；隔级经理、虚线上级、账号 ADMIN 没业务角色的改不了；直属上级能往前推、记的是他", async () => {
     const p = await 项目(销售.id);
     await 记有效沟通(p.id);
     expect(await 改节点(销售, p.id, 往前)).toEqual({ ok: false, error: "往前推进程要由你的直属上级来推" });
-    for (const 谁 of [组长, 经理, 虚, 老板]) {
+    for (const 谁 of [经理, 虚, 老板]) {
       expect(await 改节点(谁, p.id, 往前)).toEqual({ ok: false, error: 只有负责人改进程 });
     }
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).node).toBe("潜客培育");
     expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(0);
+    // 11-01 闭环：直属上级只给往前推这一步
+    expect(await 改节点(组长, p.id, 往前)).toMatchObject({ ok: true });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).node).toBe("线索验证");
+    expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } })).userId).toBe(组长.id);
   });
 
   it("往后退、点结局照旧：本人也能", async () => {
@@ -79,7 +84,7 @@ describe("企业版推节点只给负责人本人", () => {
     expect(await 改节点(销售, p.id, { ...往前, result: "线索流失" }, { 备注: "联系不上" })).toMatchObject({ ok: true });
   });
 
-  it("上级退回、定结果也不行（C2）；能改节点只给负责人本人", async () => {
+  it("上级退回、定结果也不行（C2，仅上级推开着也只放往前推）；能改节点只给负责人本人", async () => {
     const 线 = await 项目(销售.id, { node: "线索推进" });
     expect(await 改节点(组长, 线.id, 往前)).toEqual({ ok: false, error: 只有负责人改进程 });
     expect(await 改节点(组长, 线.id, { ...往前, result: "线索流失" }, { 备注: "预算砍了" })).toEqual({ ok: false, error: 只有负责人改进程 });

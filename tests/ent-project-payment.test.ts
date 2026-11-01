@@ -36,6 +36,8 @@ beforeEach(async () => {
   const 人 = async (email: string) => ({ id: (await prisma.user.create({ data: { email, name: email, title: "", role: "SALES", password: "x" } })).id, role: "SALES" });
   乙 = await 人("pay-yi");
   丙 = await 人("pay-bing");
+  // 11-01 权限只认业务角色：乙、丙都是销售，乙是负责人
+  await prisma.entMember.createMany({ data: [{ userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
   const 客户id = (await prisma.customer.create({ data: { name: "QA-回款客户", phone: "", salesOwnerId: 乙.id } })).id;
   项目id = (await prisma.project.create({ data: { name: "QA-回款项目", customerId: 客户id, ownerId: 乙.id, creatorId: 乙.id } })).id;
 });

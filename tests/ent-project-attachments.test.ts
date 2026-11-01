@@ -7,8 +7,8 @@
  *   - 节点必填配了「合同附件」：传合同附件那一下就推，回 自动推到；传别的不推
  *   - 项目方案（10-31，迁移 101 那批）：&tag=方案 记成方案、列方案只列方案、删了个数跟着减；同事只读传不了；
  *     节点必填配了「项目方案」：传方案那一下就推；只有合同附件不算
- *   - 老板：别人负责的项目也能传
- *   - 同事（看得到项目、不是负责人）：列、取 200；传、删 403，附件原样还在；入口只读
+ *   - 老板（总管理）：别人负责的项目只能看、传不了（11-01 C2）
+ *   - 同事（看得到项目、不是负责人；11-01 起用直属上级）：列、取 200；传、删 403，附件原样还在；入口只读
  *   - 公海里、同事客户的项目（客户信息不露）：列、取 403，入口 null
  *   - 项目不在了：传 404；项目模式关着：传 404、入口 null；不是企业版：projectId 参数 400、入口 null
  *   - 清孤儿：项目还在，项目附件不动
@@ -78,6 +78,8 @@ beforeEach(async () => {
   老板 = await 人("p11a-boss", "ADMIN");
   乙 = await 人("p11a-yi", "SALES");
   丙 = await 人("p11a-bing", "SALES");
+  // 11-01 权限只认业务角色：老板=总管理，乙=销售（负责人），丙=乙的直属上级（看得到项目、不是负责人，只能看）
+  await prisma.entMember.createMany({ data: [{ userId: 老板, bizRole: "director" }, { userId: 乙, bizRole: "sales", managerId: 丙 }, { userId: 丙, bizRole: "sales_mgr" }] });
   客户id = (await prisma.customer.create({ data: { name: "QA-附件客户", phone: "13800001086", salesOwnerId: 乙 } })).id;
   项目id = (await prisma.project.create({ data: { name: "QA-附件项目", customerId: 客户id, ownerId: 乙, creatorId: 乙 } })).id;
   作为(乙, "SALES");
@@ -168,8 +170,12 @@ describe("企业版项目附件：看 = 看得到项目，传 / 删 = 能改项�
     expect(await 节点()).not.toBe(起);
   });
 
-  it("老板：别人负责的项目也能传；表格之类不是图片的照收", async () => {
+  it("老板：别人负责的项目传不了（只能看）；负责人传表格之类不是图片的照收", async () => {
+    // 11-01 权限只认业务角色：总管理不能编辑项目内容（C2），附件跟编辑项目一个口径
     作为(老板, "ADMIN");
+    expect((await 传一个(项目id, "老板传.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")).status).toBe(403);
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 0, 只读: true });
+    作为(乙, "SALES");
     const r = await 传一个(项目id, "报价单.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     expect(r.status).toBe(200);
     expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 1, 只读: false });

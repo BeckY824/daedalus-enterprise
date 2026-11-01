@@ -45,12 +45,13 @@ beforeEach(async () => {
   管 = await 建("admin2", "ADMIN");
   await prisma.entMember.createMany({
     data: [
+      { userId: 老板.id, bizRole: "director" },
       { userId: 经理.id, bizRole: "sales_mgr" },
       { userId: 组长.id, bizRole: "sales_mgr", managerId: 经理.id },
       { userId: 虚.id, bizRole: "sales_mgr" },
       { userId: 销售.id, managerId: 组长.id, dottedManagerId: 虚.id },
       { userId: 同事.id, managerId: 组长.id },
-      { userId: 管.id, managerId: 组长.id },
+      { userId: 管.id, bizRole: "director", managerId: 组长.id },
     ],
   });
   当(老板);
@@ -80,7 +81,7 @@ describe("上级办离职", () => {
     expect(await 在职(销售)).toBe(true);
   });
 
-  it("上级不能停用管理员；老板照旧都能办", async () => {
+  it("上级不能停用总管理；老板照旧都能办", async () => {
     当(组长);
     await expect(deactivateUser(管.id, 同事.id)).rejects.toThrow("FORBIDDEN");
     当(老板);

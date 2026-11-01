@@ -25,7 +25,7 @@ import { 卡点看板 } from "@/lib/project/blocker";
 import { 公海无负责人 } from "@/lib/project/pool-owner";
 
 const 人 = {
-  老板: { id: "rs_boss", role: "ADMIN", bizRole: "director" },
+  总管: { id: "rs_boss", role: "ADMIN", bizRole: "director" },
   管员: { id: "rs_admin", role: "ADMIN", bizRole: "admin" },
   主管: { id: "rs_head", role: "SALES", bizRole: "sales_mgr" },
   经理: { id: "rs_mgr", role: "SALES", bizRole: "sales_mgr", managerId: "rs_head" },
@@ -112,7 +112,7 @@ describe("复盘范围 = 项目列表负责人范围", () => {
 
   const 全部 = (Object.keys(人) as 名字[]).map((n) => `${n}的`).sort();
 
-  for (const 名 of ["老板", "管员", "主管", "经理", "小王", "运营"] as 名字[]) {
+  for (const 名 of ["总管", "管员", "主管", "经理", "小王", "运营"] as 名字[]) {
     it(`${名}（${人[名].bizRole}）：复盘数的项目 = 项目列表看得到的（不在公海的）；卡点看板同一圈`, async () => {
       const 复盘 = await 复盘项目(名);
       expect(复盘).toEqual(await 列表项目(名));
@@ -122,7 +122,7 @@ describe("复盘范围 = 项目列表负责人范围", () => {
   }
 
   it("各角色这一圈的具体人：总管理、管理员全部；销售管理自己 + 下属；项目运营、销售成员只有自己", async () => {
-    expect(await 复盘项目("老板")).toEqual(全部);
+    expect(await 复盘项目("总管")).toEqual(全部);
     expect(await 复盘项目("管员")).toEqual(全部);
     expect(await 复盘项目("运营")).toEqual(["运营的"]);
     expect(await 复盘项目("外人")).toEqual(["外人的"]);

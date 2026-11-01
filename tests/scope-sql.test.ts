@@ -48,13 +48,15 @@ beforeAll(async () => {
   await 人(老板, "老板", "ADMIN");
   for (const [id, n] of [[总管, "总管"], [经理, "经理"], [小王, "小王"], [小张, "小张"], [小赵, "小赵"], [外人, "外人"]]) await 人(id, n);
   await raw.entMember.createMany({
+    // 11-01 权限只认业务角色：老板（账号 ADMIN）也要有总管理，业务员要有销售，不然只看公海
     data: [
+      { userId: 老板, bizRole: "director" },
       { userId: 总管, bizRole: "director" },
       { userId: 经理, bizRole: "sales_mgr" },
-      { userId: 小王, managerId: 经理 },
-      { userId: 小张, dottedManagerId: 经理 },
-      { userId: 小赵, managerId: 小张 },
-      { userId: 外人 },
+      { userId: 小王, managerId: 经理, bizRole: "sales" },
+      { userId: 小张, dottedManagerId: 经理, bizRole: "sales" },
+      { userId: 小赵, managerId: 小张, bizRole: "sales" },
+      { userId: 外人, bizRole: "sales" },
     ],
   });
   // 每人 14 位：五分之一没跟进过（排最后），跟进日和建档日只取几个值，好让排序键大面积撞车

@@ -3,7 +3,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能放回公海, 能改节点, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
+import { 能管项目, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -127,7 +127,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 可改沟通 = 能记沟通 && 露 && !(await 只读客户(defaultClient, p.customer)) && (await 能删改沟通(me));
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
-  const 节点能改 = 能改节点(me, p, org);
+  // 「仅上级推」开着：直属上级也给节点这块（服务端只放往前推，往后退、点结局照拦）
+  const 节点能改 = 能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则);
   const 必填 = !公海 && !p.result && 按必填走(规则, p.node)
     ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p)), 只能靠填齐: !是经理(me, org) }
     : null;

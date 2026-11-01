@@ -44,6 +44,8 @@ beforeEach(async () => {
   甲 = (await prisma.user.create({ data: { email: "jia", name: "甲", title: "", role: "ADMIN", password: "x" } })).id;
   乙 = (await prisma.user.create({ data: { email: "yi", name: "乙", title: "", role: "SALES", password: "x" } })).id;
   丙 = (await prisma.user.create({ data: { email: "bing", name: "丙", title: "", role: "SALES", password: "x" } })).id;
+  // 11-01 权限只认业务角色：甲 = 总管理（企业版用例办离职要这个），乙、丙 = 销售
+  await prisma.entMember.createMany({ data: [{ userId: 甲, bizRole: "director" }, { userId: 乙 }, { userId: 丙 }] });
   mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
   客户 = (await prisma.customer.create({ data: { name: "客户", phone: "13800000001", salesOwnerId: 乙 } })).id;
 });
