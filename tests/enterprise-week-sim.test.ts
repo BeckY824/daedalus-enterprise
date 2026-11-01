@@ -41,6 +41,7 @@ import { saveLead, convertLead } from "@/app/(app)/leads/actions";
 import { dayjs } from "@/lib/utils";
 import { 收回提醒尾 } from "@/lib/project/db";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 不设配额key } from "@/lib/enterprise/lead-assign";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
 import { 建公司, type 公司 } from "./sim/公司";
@@ -62,7 +63,7 @@ const 检查点: Record<string, string> = {
   "D1-营销线索分外贸": "D-38 同一批营销线索也能分给外销1（外贸）",
   "D1-分满了分不进": "D-38 内销1 本月已分 2 = 配额 2，第三条分不进",
   "D1-非销售不能接": "D-38 线索只分给销售：项目运营内运1 接不了",
-  "D1-渠道不能分": "D-38 只有老板 / 总管理员 / 市场管理能分：渠道运营内渠1 分不了",
+  "D1-渠道不能分": "D-38 只有总管理员 / 市场管理 / 销售管理能分（11-01 清单 A9）：渠道运营内渠1 分不了",
   "D1-自拓不计数": "D-38 内销1 自己拓的线索不算本月已分（仍是 2）",
   "D1-没下一步不能存": "D-34 开了超时回收：建档首条沟通没下一步时间存不了",
   "D1-销售只看自己": "D-39/组织范围 内销1 只看到自己的项目（P1），看不到同组内销2 的",
@@ -296,6 +297,8 @@ async function 开局(企业: boolean) {
   公 = await 建公司();
   // 规则开关和组织规则两组都写：开关关时存着也不能生效
   for (const key of ["enterprise.rule.org_scope", "enterprise.rule.lead_assign"]) await setSetting(key, true);
+  // 剧本按「按配额分配」写（D-38 配额 / 分满 / 月初清零）；11-01 起默认不限额（清单 A10 / A11），这里明确改回按配额
+  await setSetting(不设配额key, false);
   await setSetting("orgRules", {
     公海: { 持有上限开: true, 默认上限: 30, 每人上限: { [公.id["外销6"]]: 2 } },
     超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3, 线索验证: 5, 明确需求: 7 } },
@@ -342,7 +345,7 @@ async function 剧本开() {
   await 查("D1-分满了分不进", async () => 拒(await 分给("市场经理", "L3", "内销1", "内贸"), /分满/));
   await 查("D1-营销线索分外贸", async () => { 得(await 分给("市场经理", "L3", "外销1", "外贸"), "分 L3 给外销"); });
   await 查("D1-非销售不能接", async () => 拒(await 分给("市场经理", "L4", "内运1", "内贸")));
-  await 查("D1-渠道不能分", async () => 拒(await 分给("内渠1", "L4", "外销2", "外贸"), /只有老板、总管理员、市场管理/));
+  await 查("D1-渠道不能分", async () => 拒(await 分给("内渠1", "L4", "外销2", "外贸"), /只有总管理员、市场管理、销售管理/));
   await 建线索("内销1", "L自拓", "自拓");
   await 查("D1-自拓不计数", async () => {
     const 情况 = (await 作为("组长", () => 本月分配情况())) as { userId: string; 已分: number }[];
