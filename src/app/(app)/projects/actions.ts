@@ -698,9 +698,9 @@ async function 项目上的沟通(projectId: string, followUpId: string) {
   return { ok: true as const, f };
 }
 
-export type 改沟通输入 = { type: string; method?: string | null; content: string; occurredAt: string; 版本?: string };
+export type 改沟通输入 = { type: string; method?: string | null; /** 发起主体（企业版，11-01）：没带不动 */ initiator?: string | null; content: string; occurredAt: string; 版本?: string };
 
-/** 改项目上的一条沟通：只改沟通方式、时间、内容，别的格子（状态、时长、提醒、联系人、与会人）原样带回去 */
+/** 改项目上的一条沟通：只改沟通方式、发起主体、时间、内容，别的格子（状态、时长、提醒、联系人、与会人）原样带回去 */
 export async function 改项目沟通(projectId: string, followUpId: string, input: 改沟通输入) {
   try {
     await requireUser();
@@ -711,7 +711,7 @@ export async function 改项目沟通(projectId: string, followUpId: string, inp
     if (!查.ok) return 查;
     const f = 查.f;
     const r = await saveFollowUp({
-      id: f.id, customerId: f.customerId, type: input.type, method: input.method, content: input.content, occurredAt: input.occurredAt,
+      id: f.id, customerId: f.customerId, type: input.type, method: input.method, initiator: input.initiator, content: input.content, occurredAt: input.occurredAt,
       title: f.title, status: f.status, durationMinutes: f.duration != null ? f.duration / 60 : null,
       dueAt: scheduleValue(f.dueAt, f.dueOn), dueHasTime: f.dueHasTime ?? undefined,
       contactId: f.contactId, opportunityId: f.opportunityId, participants: f.participants,

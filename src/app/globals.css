@@ -3029,6 +3029,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 记沟通弹窗（F-跟进-06/08）：卡点两格并排，窄了折成上下；「更多」里的格子和主区同样间距 */
 .follow-blocker-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
 .follow-blocker-row .ant-select { width: 100%; min-width: 0; }
+/* 沟通方式 + 发起主体并排（11-01）：窄了自动换行 */
+.follow-pick-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.follow-pick-row .ant-select { width: 100%; min-width: 0; }
 .follow-more { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
 .att-files li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); min-width: 0; }
 .att-files li > a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
