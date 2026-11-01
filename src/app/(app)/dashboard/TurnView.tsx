@@ -6,7 +6,7 @@ import { Tooltip } from "antd";
 import { useCopy } from "@/lib/clipboard";
 import { CopyOutlined, ReloadOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import ProposalCard from "@/components/ProposalCard";
-import PhotoSaveCard from "@/components/PhotoSaveCard";
+import dynamic from "next/dynamic";
 import AiWait from "@/components/AiWait";
 import StreamMarkdown from "@/components/StreamMarkdown";
 import type { BriefRecord } from "@/lib/ai-draft";
@@ -25,6 +25,9 @@ import { 起草, 草稿键, useCopyDraft, type 草稿类 } from "@/lib/draft-job
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import ResearchRun, { ResearchPick } from "@/components/research/ResearchRun";
 import ResearchPerson from "@/components/research/ResearchPerson";
+
+// 后发照片那张「存到刚建的客户名下」卡（11-01 速度闸门）：AI 面板每一页都在，用到时才去拿
+const PhotoSaveCard = dynamic(() => import("@/components/PhotoSaveCard"), { ssr: false });
 
 /** 对话里的一轮：问题、过程条、回答、建议卡、提到的客户。首页和右侧 AI 面板共用 */
 

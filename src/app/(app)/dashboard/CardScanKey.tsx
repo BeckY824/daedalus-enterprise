@@ -24,11 +24,10 @@ import { App } from "antd";
 import { CameraOutlined, IdcardOutlined, LoadingOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
-import { 名片转表单, type 名片填法, type 名片表单 } from "@/lib/card-scan/form";
-import { 认微信截图, type 微信资料 } from "@/lib/card-scan/wechat";
+import type { 名片填法, 名片表单 } from "@/lib/card-scan/form";
+import type { 微信资料 } from "@/lib/card-scan/wechat";
 import { 错的话 } from "@/lib/card-scan/download";
 import { 走网页登录, 服务器预热 } from "@/lib/card-scan/cloud";
-import { 名片成新线索卡, 微信成新线索卡 } from "@/lib/card-scan/lead-card";
 import { 记下名片原图, 名片最多张, 刚建的, 这几张图, type 刚建的人 } from "@/lib/card-scan/originals";
 import type { Proposal } from "@/lib/agent/proposals";
 
@@ -45,10 +44,14 @@ function 同一人(甲: 名片表单, 乙: 名片表单): boolean {
   return 同(甲.name, 乙.name) || 同(甲.school, 乙.school) || 同(甲.phone, 乙.phone) || 同(甲.email, 乙.email);
 }
 
+// 认图那几段（拆名片、认微信截图、摆卡）和认字一样点了才去拿：AI 面板每一页都在，不进每页首屏（11-01 速度闸门）
+const 拿认图 = () => Promise.all([import("@/lib/card-scan/form"), import("@/lib/card-scan/wechat"), import("@/lib/card-scan/lead-card")]);
+
 const 预热 = () => {
   走网页登录();
   void 服务器预热();
   void import("@/lib/card-scan/ocr");
+  void 拿认图();
 };
 
 export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存照片, 拍照 = false, 藏键 = false, 开 }: {
@@ -78,6 +81,7 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
     try {
       预热();
       const { 认名片, AI整理 } = await import("@/lib/card-scan/ocr");
+      const [{ 名片转表单 }, { 认微信截图 }, { 名片成新线索卡, 微信成新线索卡 }] = await 拿认图();
       const 人们: 一个人[] = [];
       let 待挂: File[] = [];
       let 备用: 一个人 | null = null;

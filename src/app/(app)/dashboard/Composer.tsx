@@ -16,7 +16,6 @@ import { clearJob, setJobValue } from "@/lib/ai-jobs";
 import type { StreamJob } from "@/lib/ai-stream";
 import type { AgentAnswer } from "@/lib/thread-history";
 import type { Proposal } from "@/lib/agent/proposals";
-import { 用话补卡 } from "@/lib/card-scan/lead-card";
 import type { 刚建的人 } from "@/lib/card-scan/originals";
 import { cancelStream } from "@/lib/ai-stream";
 import { addTurn, clearThread, type Turn } from "@/lib/home-thread";
@@ -283,10 +282,12 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
    * 算一次提问。次数用完了就照旧直接摆卡（不调模型）。
    * 2026-11-01 起一次几张图认出几个人就几张卡；框里打的那句话（「广交会的客户」）补来源、国家，连话一起发给 Agent，发完清框
    */
-  function 出名片卡(ps: Proposal[], 摘要: string) {
+  async function 出名片卡(ps: Proposal[], 摘要: string) {
     const 话 = q.trim().slice(0, 300);
-    const 卡们 = 话 ? ps.map((p) => (p.kind === "add_lead" ? 用话补卡(p, 话, 渠道名们 ?? []) : p)) : ps;
     if (话) setQ("");
+    // lead-card 认图时已经拿过（CardScanKey），这里不再等网络；不放顶上 import，免得进每页首屏（11-01 速度闸门）
+    const { 用话补卡 } = await import("@/lib/card-scan/lead-card");
+    const 卡们 = 话 ? ps.map((p) => (p.kind === "add_lead" ? 用话补卡(p, 话, 渠道名们 ?? []) : p)) : ps;
     const 问 = 话 ? `${话}（认图：${摘要}）` : `认图建线索：${摘要}`;
     if (AI已用完) {
       const turn = addTurn(scope, { question: 问, kind: "ask" });

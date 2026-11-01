@@ -24,7 +24,10 @@ import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
-import ProjectProposalFields from "@/components/ProjectProposalFields";
+import dynamic from "next/dynamic";
+
+// 项目类卡的格子（11-01 速度闸门）：AI 面板每一页都在，这块只有项目卡用到，出卡时才去拿，不进每页首屏
+const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposalFields"), { ssr: false });
 
 /**
  * AI 建议卡：唯一一条让模型的输出进到数据库的路。
