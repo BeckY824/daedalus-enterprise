@@ -220,7 +220,7 @@ describe("工具自己抛异常", () => {
 });
 
 describe("无限循环", () => {
-  it("每一步都换个参数调工具：6 步封顶，然后回答；只扣 1 次", async () => {
+  it("每一步都换个参数调工具：8 步封顶（11-01 全库查询从 6 调到 8），然后回答；只扣 1 次", async () => {
     const 线 = 接线({
       上游: (r) => {
         const k = 种类(r);
@@ -231,12 +231,12 @@ describe("无限循环", () => {
     });
     const { result, steps } = await 问AI("姓李的都有谁");
     expect(result?.ok).toBe(true);
-    expect(线.上游.filter((r) => 种类(r) === "决策")).toHaveLength(6);
-    expect(工具步(steps).length).toBeLessThanOrEqual(6);
+    expect(线.上游.filter((r) => 种类(r) === "决策")).toHaveLength(8);
+    expect(工具步(steps).length).toBeLessThanOrEqual(8);
     expect(await 用掉(账号.acc.id)).toBe(1);
   });
 
-  it("同一个工具同一套参数反复调：第二次起不再执行，6 步内收住", async () => {
+  it("同一个工具同一套参数反复调：第二次起不再执行，8 步内收住", async () => {
     接线({
       上游: (r) => {
         const k = 种类(r);

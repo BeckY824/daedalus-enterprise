@@ -10,7 +10,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "customer-scroll-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
@@ -59,7 +59,10 @@ async function open(width: number, height = 560, fab = false, 老 = false) {
 }
 const 量 = (page: import("playwright").Page) => page.evaluate(() => {
   const q = (s: string) => document.querySelector(s) as HTMLElement;
-  const 格 = q(".rec-page > .rec"), 资料 = q(".rec > .rec-rail:first-child"), 沟通 = q(".rec > .rec-col"), 右 = q(".rec > .rec-right") ?? 沟通, 待办 = q(".rec > .rec-col > .rec-todo-in"), 记录 = q(".rec > .rec-col > .rec-tl");
+  const 格 = q(".rec-page > .rec"), 资料 = q(".rec > .rec-rail:first-child"), 沟通 = q(".rec > .rec-col"), 右 = q(".rec > .rec-right") ?? 沟通, 待办 = [...document.querySelectorAll<HTMLElement>(".rec > .rec-col > .proj-fold")].find(e => e.querySelector('.proj-fold-btn[aria-label="收起待办"]')) ?? null,
+    // 项目模式（11-01 起）：沟通记录、待办各是一张能收起的卡，沟通记录在卡身里滚；非项目模式还是中栏里的时间线
+    记录 = (document.querySelector(".rec > .rec-col .rec-tl")?.closest(".proj-mod-body") as HTMLElement | null) ?? q(".rec > .rec-col > .rec-tl"),
+    记录块 = (记录?.closest(".proj-fold") as HTMLElement | null) ?? 记录;
   const 样 = (e: HTMLElement) => getComputedStyle(e);
   return {
     栏: 样(格).gridTemplateColumns.split(" ").length,
@@ -78,7 +81,7 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
     有右栏: !!q(".rec > .rec-right"), 沟通自滚: 样(沟通).overflowY === "auto",
     待办: 待办 && { 左: Math.round(待办.getBoundingClientRect().left), 右: Math.round(待办.getBoundingClientRect().right), 底: 待办.getBoundingClientRect().bottom, 上: 待办.getBoundingClientRect().top, 滚: 样(待办).overflowY },
     资料左: Math.round(资料.getBoundingClientRect().left), 沟通左: Math.round(沟通.getBoundingClientRect().left), 沟通右: Math.round(沟通.getBoundingClientRect().right),
-    记录底: 记录 ? 记录.getBoundingClientRect().bottom : 0, 沟通底: 沟通.getBoundingClientRect().bottom,
+    记录底: 记录块 ? 记录块.getBoundingClientRect().bottom : 0, 待办在中栏: !!待办 && 沟通.contains(待办), 沟通底: 沟通.getBoundingClientRect().bottom,
     底: 格.getBoundingClientRect().bottom,
   };
 });
@@ -124,18 +127,19 @@ it("1680px 项目模式、AI 关着：没有空右栏，资料、沟通两栏一
     expect(起.栏).toBe(2);
     expect(起.页滚).toBeLessThanOrEqual(0);
     expect(起.横滚).toBeLessThanOrEqual(0);
-    // 项目模式中栏是一扇窗：沟通记录、待办各自内部滚，中栏本身不滚
-    expect([起.资料滚, 起.沟通滚, 起.记录滚]).toEqual(["auto", "hidden", "auto"]);
+    // 11-01 起项目模式中栏是一列卡（沟通记录、待办各一张、和项目详情页一样）：中栏自己滚，沟通记录卡身里再滚
+    expect([起.资料滚, 起.沟通滚, 起.记录滚]).toEqual(["auto", "auto", "auto"]);
+    expect([起.资料条, 起.沟通条]).toEqual(["none", "none"]);
     expect(起.高.slice(0, 2)).toEqual([起.格高, 起.格高]);
     expect(起.格溢).toBeLessThanOrEqual(1);
     expect(起.待办).not.toBeNull();
     const 待办 = 起.待办!;
+    expect(起.待办在中栏).toBe(true);
     expect(待办.上).toBeGreaterThanOrEqual(起.记录底 - 1);
-    expect(待办.底).toBeLessThanOrEqual(起.沟通底 + 1);
     expect(待办.左).toBeGreaterThanOrEqual(起.沟通左);
     expect(待办.右).toBeLessThanOrEqual(起.沟通右);
     // 滚的是沟通记录那一块：中栏、资料栏、整格、页头都不动
-    const 记录顶 = await page.locator(".rec > .rec-col > .rec-tl").evaluate(e => { e.scrollTop = 200; return e.scrollTop; });
+    const 记录顶 = await page.locator(".rec > .rec-col .proj-mod-body:has(.rec-tl)").evaluate(e => { e.scrollTop = 200; return e.scrollTop; });
     const 滚 = await 量(page);
     expect([记录顶 > 0, 滚.沟通顶, 滚.资料顶, 滚.格顶, 滚.头]).toEqual([true, 0, 0, 0, 起.头]);
     expect(errors).toEqual([]);
@@ -195,7 +199,7 @@ it("10-31 改版 R7：标题 26、模块标题 18、值 16 正文色、字段名
   const { page, errors } = await open(1680, 900);
   try {
     await page.evaluate(() => {
-      const 栏 = document.querySelector(".rec-rail .rec-card") ?? document.querySelector(".rec-rail")!;
+      const 栏 = document.querySelector(".rec-rail .rec-mod > .ant-card-body") ?? document.querySelector(".rec-rail .rec-card") ?? document.querySelector(".rec-rail")!;
       栏.insertAdjacentHTML("beforeend", "<div class='rec-field' id='r7-有'><div class='rec-field-k'>渠道负责人</div><div class='rec-field-v'>0</div></div>"
         + "<div class='rec-field' id='r7-空'><div class='rec-field-k'>官网</div><div class='rec-field-v'><span class='rec-field-empty'>待填写官网</span></div></div>");
     });
@@ -203,14 +207,16 @@ it("10-31 改版 R7：标题 26、模块标题 18、值 16 正文色、字段名
     const 样 = (sel: string) => page.locator(sel).first().evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; });
     const [墨, 灰, 浅, 蓝] = [await 色("--ink"), await 色("--text-muted"), await 色("--text-faint"), await 色("--brand")];
     expect(await 样(".rec-head-name")).toEqual({ 字: "26px", 色: 墨 });
-    expect(await 样(".rec-sec-t")).toEqual({ 字: "18px", 色: 墨 });
+    // 项目模式（11-01 起）模块是卡，模块标题在卡头
+    expect(await 样(".rec-sec-t, .rec-mod > .ant-card-head")).toEqual({ 字: "18px", 色: 墨 });
     expect(await 样("#r7-有 .rec-field-k")).toEqual({ 字: "16px", 色: 灰 });
     expect(await 样("#r7-有 .rec-field-v")).toEqual({ 字: "16px", 色: 墨 });
     expect(await 样("#r7-空 .rec-field-empty")).toEqual({ 字: "16px", 色: 浅 });
     expect(await 样(".rec-tl-time")).toEqual({ 字: "14px", 色: 灰 });
     expect(await 样(".rec-contact-p")).toEqual({ 字: "14px", 色: 灰 });
     expect((await 样(".rec-tl-content")).字).toBe("16px");
-    if (await page.locator(".rec-sec-t a").count()) expect(await 样(".rec-sec-t a")).toEqual({ 字: "16px", 色: 蓝 });
+    const 链 = ".rec-sec-t a, .rec-mod > .ant-card-head .ant-card-extra a";
+    if (await page.locator(链).count()) expect(await 样(链)).toEqual({ 字: "16px", 色: 蓝 });
     // 最长的内置字段名五个字一行放下
     expect(await page.locator("#r7-有 .rec-field-k").evaluate(e => e.getBoundingClientRect().height)).toBeLessThanOrEqual(25);
     expect(errors).toEqual([]);
@@ -224,7 +230,7 @@ it("10-31 改版 R7：字号放大后，1024 / 800 / 390 宽、超长联系人�
       // 手机上 AppShell 不渲染图标栏和名单（AppShell「手机上没有图标栏和中栏」），这里照着拿掉
       if (w < 768) await page.evaluate(() => document.querySelectorAll(".shell > nav.rail, .pane-roster").forEach(e => e.remove()));
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${w}`).toBe(true);
-      const 溢 = await page.evaluate(() => [...document.querySelectorAll(".rec-head-name, .rec-sec-t, .rec-contact-n, .rec-field-k")].filter(e => e.scrollWidth > e.clientWidth + 1).length);
+      const 溢 = await page.evaluate(() => [...document.querySelectorAll(".rec-head-name, .rec-sec-t, .rec-mod .ant-card-head-title, .rec-contact-n, .rec-field-k")].filter(e => e.scrollWidth > e.clientWidth + 1).length);
       expect(溢, `${w}`).toBe(0);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

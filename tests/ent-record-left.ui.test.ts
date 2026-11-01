@@ -7,7 +7,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
@@ -114,12 +114,14 @@ it("开关关闭：左栏照旧——一行一个联系人、空字段都在、�
 it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通记录标题上是「新建沟通…」（两个项目先挑）；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
   const page = await open(true, 1024, true);
   try {
-    const 新建沟通 = page.locator(".rec-tl-cap").getByRole("button", { name: /新建沟通…/ });
+    // 11-01 起沟通记录是一张能收起的卡（照项目详情）：「新建沟通…」在卡头右边
+    const 沟通卡头 = page.locator('.proj-fold:has(> .proj-fold-btn[aria-label="收起沟通记录"]) > .rec-mod > .ant-card-head');
+    const 新建沟通 = 沟通卡头.locator(".ant-card-extra").getByRole("button", { name: /新建沟通…/ });
     expect(await 新建沟通.count()).toBe(1);
     expect(await page.locator(".rec-acts").getByRole("button", { name: /沟通/ }).count()).toBe(0);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
-    expect(await page.locator(".rec-tl-cap > span").first().innerText()).toBe("沟通记录");
+    expect(await 沟通卡头.locator(".ant-card-head-title").innerText()).toMatch(/^沟通记录（\d+\+?）$/);
     // 照图 04（10-31）：灰底方式 + 时间一行，下面内容、蓝色「项目：名」
     expect(await page.locator(".rec-sum-item .rec-sum-type").count()).toBeGreaterThan(0);
     const 项目链 = page.locator(".rec-sum-proj");
@@ -153,7 +155,7 @@ const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-acts b
 it("企业版项目模式页头（U-客户-03）：只留新开项目、转让项目、退回公海；没有主按钮、删除、下拉", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通在沟通记录标题、新建任务跟待办在沟通记录下方（11-01）
+    // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通在沟通记录卡头、新建任务在沟通记录下方的待办卡头（11-01）
     expect(await 头按钮(page)).toEqual(["新开项目", "转让项目", "退回公海"]);
     expect(await page.locator(".rec-acts .ant-btn-primary").count()).toBe(0);
     expect(await page.locator(".rec-acts .ant-btn-dangerous").count()).toBe(0);
@@ -161,7 +163,7 @@ it("企业版项目模式页头（U-客户-03）：只留新开项目、转让�
     // 页面上别处也不给去掉的入口；新建任务在沟通栏的待办上
     const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head, .rec-acts")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
     expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|新开项目/.test(t))).toEqual([]);
-    expect(await page.locator(".rec > .rec-col > .rec-todo-in").getByRole("button", { name: /新建任务/ }).count()).toBe(1);
+    expect(await page.locator('.rec > .rec-col > .proj-fold:has(> .proj-fold-btn[aria-label="收起待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建任务/ }).count()).toBe(1);
     // 按钮一行摆在名字下面，各组对齐下面那一栏的左边
     const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-acts").boundingBox()]);
     expect(排!.y).toBeGreaterThanOrEqual(名!.y + 名!.height - 1);

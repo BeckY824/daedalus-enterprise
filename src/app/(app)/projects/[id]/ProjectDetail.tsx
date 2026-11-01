@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
@@ -17,8 +17,8 @@ import { useBusiness } from "@/lib/business-client";
 import { dayjs, fmtDateTime, 成员选项, 独自一人 } from "@/lib/utils";
 import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
-import { 对得上的方式 } from "@/lib/follow-method";
+import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
+import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { 阶段们, 交付还差, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
@@ -135,7 +135,7 @@ export type 项目详情 = {
     放回方式?: 放回方式;
   }[];
   /** 企业版：code 是沟通编号（只在服务端用，界面不摆），提醒按下一步时间写事实（page.tsx 时限标签），没填下一步时间不给 */
-  followUps: { id: string; type: string; method?: string | null; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null;
+  followUps: { id: string; type: string; method?: string | null; /** 发起主体（企业版，11-01） */ initiator?: string | null; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null;
     /** 企业版沟通上的截图、录音（F-跟进-07）；我记的 = 这条是我记的（记的人能往上加附件，删只有总管理员、经理） */
     附件?: 附件[]; 我记的?: boolean }[];
   members: 组员[];
@@ -839,6 +839,7 @@ export default function ProjectDetail({
         <div key={f.id} id={`follow-${f.id}`} className="proj-follow-row" style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <FollowTypeCell type={f.type} method={f.method} />
+            {f.initiator && <Tag bordered={false}>{f.initiator}</Tag>}
             <Tag>{f.node}</Tag>
             {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
             <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
@@ -1248,20 +1249,26 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
   const 类型们 = 能选类型.some((t) => t.value === f.type) ? 能选类型 : [...能选类型, ...跟进类型们(外贸).filter((t) => t.value === f.type)];
   const [type, setType] = useState(f.type);
   const [method, setMethod] = useState<string | null>(f.method ?? null);
+  // 发起主体（11-01）：原来填了的改时也得有；老记录没填的不逼着补，空着交上去服务端原样留
+  const 主体们 = useFollowInitiators();
+  const [发起, set发起] = useState<string | null>(f.initiator ?? null);
   const [occurredAt, setOccurredAt] = useState(() => dayjs(f.occurredAt).format(沟通时间格式));
   const [content, setContent] = useState(f.content);
   const [交中, set交中] = useState(false);
-  const 差 = !content.trim() ? "请填写这次沟通的内容" : "";
+  const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体" : "";
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), content, occurredAt, 版本: f.版本 }), "已保存修改");
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本 }), "已保存修改");
     set交中(false);
     if (ok) onClose();
   };
   return (
     <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }} onCancel={onClose} onOk={() => void 交()}>
       <div style={{ display: "grid", gap: 12 }}>
-        <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={类型们} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
+        <div className="follow-pick-row">
+          <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={类型们} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
+          {主体们 && <InitiatorSelect 们={主体们} value={发起} onChange={set发起} />}
+        </div>
         <DatePicker
           aria-label="沟通时间"
           showTime={{ format: "HH:mm" }}
@@ -1283,7 +1290,7 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
  * 在项目上记一条沟通：方式、时间、内容，加下一步做什么（必填一句话，10-29）和下一步时间（开了超时回收、线索 / 商机阶段必填，别的时候可空）。
  * 记了会挂在客户上（客户页也看得到）和项目当时的节点上；填的下一步时间决定这个项目哪天没跟进会回公海
  *
- * F-跟进-06：主区只摆 沟通内容、（卡点）、下一步、下一步时间；沟通方式、沟通时间、项目阶段、客户明确回复、AI 预填收进默认折叠的「更多」，
+ * F-跟进-06：主区只摆 沟通方式、发起主体（11-01 答复 #2 挪出来、必填）、沟通内容、（卡点）、下一步、下一步时间；沟通时间、项目阶段、客户明确回复、AI 预填收进默认折叠的「更多」，
  * 字段和校验一个不少（客户明确回复照旧必选，没选时底下那句带「展开更多」）。
  * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」= 不生成（11-01 答复 #5），选了别的类型记下后照发卡点那一套生成一个。
  * F-跟进-07（企业版）：可先挑截图、录音，记下之后挂到这条沟通上
@@ -1301,6 +1308,17 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
   const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   const [type, setType] = useState<string>(能选类型[0]?.value ?? "PHONE");
   const [method, setMethod] = useState<string | null>(null);
+  // 11-01 客户答复 #2：沟通方式默认「微信沟通」、发起主体默认「我方发起」，都必填；字典里停用了就不默认、让人选
+  const 方式们 = useFollowMethods();
+  const 主体们 = useFollowInitiators();
+  const 人改过方式 = useRef(false);
+  const [选的发起, set发起] = useState<string | null>(null);
+  const 发起 = 选的发起 ?? (主体们?.includes(默认发起主体) ? 默认发起主体 : null);
+  useEffect(() => {
+    if (人改过方式.current || !方式们?.includes(默认沟通方式)) return;
+    setType(方式对类型(默认沟通方式));
+    setMethod(默认沟通方式);
+  }, [方式们]);
   const [occurredAt, setOccurredAt] = useState(() => dayjs().format(沟通时间格式));
   const [content, setContent] = useState("");
   const [下一步文字, set下一步文字] = useState("");
@@ -1353,7 +1371,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
       return;
     }
     const 填 = 项目沟通预填(r.draft, 能选类型.map((t) => t.value));
-    if (填.type) setType(填.type);
+    if (填.type) { setType(填.type); setMethod(null); 人改过方式.current = true; }
     if (填.content) setContent(填.content);
     if (填.occurredAt) setOccurredAt(填.occurredAt);
     if (填.下一步) set下一步文字(填.下一步);
@@ -1361,7 +1379,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
     const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步 && "下一步", 填.下一步时间 && "下一步时间"].filter(Boolean);
     set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
   };
-  const 差 = !content.trim() ? "请填写这次沟通的内容" : p.企业版 && 明确回复 === null ? "请选客户明确回复了吗"
+  const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体" : p.企业版 && 明确回复 === null ? "请选客户明确回复了吗"
     : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
   /** 差的那一格在折起来的「更多」里：底下那句旁边给个「展开更多」 */
   const 差在更多 = !更多开 && p.企业版 && !!content.trim() && 明确回复 === null;
@@ -1372,7 +1390,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
     set交中(true);
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
     const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, description: 卡点描述 } : undefined;
-    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }, 卡点)), "已记下这条沟通");
+    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }, 卡点)), "已记下这条沟通");
     const r = 回.r;
     if (ok && r?.ok) {
       if ("卡点" in r && r.卡点) message.success(`已生成卡点 ${r.卡点}`);
@@ -1407,6 +1425,19 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
       onOk={() => void 交()}
     >
       <div style={{ display: "grid", gap: 12 }}>
+        {/* 11-01 客户答复 #2：沟通方式、发起主体都必填，摆在表面不收进「更多」 */}
+        <div className="follow-pick-row">
+          <div>
+            <div style={{ marginBottom: 4 }}>沟通方式<span style={{ color: "var(--danger-text)" }}> *</span></div>
+            <FollowMethodSelect aria-label="沟通方式" style={{ width: "100%" }} type={type} method={method} 类型们={能选类型} onChange={(v) => { setType(v.type); setMethod(v.method); 人改过方式.current = true; }} />
+          </div>
+          {主体们 && (
+            <div>
+              <div style={{ marginBottom: 4 }}>发起主体<span style={{ color: "var(--danger-text)" }}> *</span></div>
+              <InitiatorSelect 们={主体们} style={{ width: "100%" }} value={发起} onChange={set发起} />
+            </div>
+          )}
+        </div>
         <div>
           <div style={{ marginBottom: 4 }}>沟通内容<span style={{ color: "var(--danger-text)" }}> *</span></div>
           <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
@@ -1461,7 +1492,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
         )}
         <div>
           <Button type="link" size="small" style={{ paddingInline: 0 }} icon={<DownOutlined rotate={更多开 ? 180 : 0} />} aria-expanded={更多开} onClick={() => set更多开((v) => !v)}>
-            更多{p.企业版 ? "：沟通方式、沟通时间、项目阶段、客户明确回复" : "：沟通方式、沟通时间"}{给AI ? "、AI 预填" : ""}
+            更多{p.企业版 ? "：沟通时间、项目阶段、客户明确回复" : "：沟通时间"}{给AI ? "、AI 预填" : ""}
           </Button>
           {p.企业版 && 明确回复 === null && !更多开 && <span style={{ color: "var(--danger-text)", fontSize: "var(--dt-aux, 12px)" }}> 客户明确回复还没选</span>}
         </div>
@@ -1494,10 +1525,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
                 {AI已用完 && <AiRemaining />}
               </div>
             )}
-            <div>
-              <div style={{ marginBottom: 4 }}>沟通方式</div>
-              <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={能选类型} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
-            </div>
             <div>
               <div style={{ marginBottom: 4 }}>沟通时间</div>
               <DatePicker

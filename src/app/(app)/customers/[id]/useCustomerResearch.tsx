@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Button, Modal, Tag, Tooltip } from "antd";
+import { Button, Card, Modal, Tag, Tooltip } from "antd";
 import { GlobalOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { useJob, clearJob } from "@/lib/ai-jobs";
@@ -166,13 +166,10 @@ const 背调状态色: Record<背调状态, string | undefined> = { 已有: "gre
  * 企业版客户页左栏的「客户背调」块（U-客户-03）：只摆一个状态标签（已有 / 无 / 进行中），点标签弹框看详情、发起背调。
  * 钩子挂在这个组件上，框关了任务和状态都还在
  */
-export function CustomerResearchTag(props: { customerId: string; customerName: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void }) {
+export function CustomerResearchTag(props: { customerId: string; customerName: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void; 卡?: boolean }) {
   const { 按钮, 区, 能发起, 有上次, 状态 } = useCustomerResearch(props);
   const [开着, set开着] = useState(false);
-  return (
-    <div className="rec-sec rec-research-sec" aria-label="客户背调">
-      <div className="rec-sec-t">
-        <span>客户背调</span>
+  const 标签 = (
         <Tag
           className="rec-research-tag"
           color={背调状态色[状态]}
@@ -189,12 +186,29 @@ export function CustomerResearchTag(props: { customerId: string; customerName: s
         >
           {状态}
         </Tag>
-      </div>
+  );
+  const 框 = (
       <Modal open={开着} title="客户背调" footer={null} width={640} onCancel={() => set开着(false)}>
         {按钮 && <div style={{ marginBottom: 8 }}>{按钮}</div>}
         {区}
         {!能发起 && !有上次 && <div className="muted" style={{ fontSize: 13 }}>还没有背调记录</div>}
       </Modal>
+  );
+  /* 卡：客户页项目模式每块一张卡（外面包 ProjectFold）；标签摆在卡身里 */
+  if (props.卡)
+    return (
+      <Card className="rec-mod" title="客户背调" aria-label="客户背调">
+        {标签}
+        {框}
+      </Card>
+    );
+  return (
+    <div className="rec-sec rec-research-sec" aria-label="客户背调">
+      <div className="rec-sec-t">
+        <span>客户背调</span>
+        {标签}
+      </div>
+      {框}
     </div>
   );
 }

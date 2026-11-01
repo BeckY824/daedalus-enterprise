@@ -88,7 +88,7 @@ export type AgentResult = {
   steps: number;
 };
 
-const MAX_STEPS = 6;
+const MAX_STEPS = 8;
 
 /**
  * 「关于数据有没有」的论断。只在**一次工具都没调**时用来拦回答——
@@ -414,6 +414,7 @@ ${工作方式}
 - 所有查询都经过当前账号的权限和条件过滤；未找到或 0 条只表示当前可访问范围内未找到，不能判断全系统不存在，也不能判断是否由权限造成。不要说“不是权限问题”或断言别人拥有这条资料
 - 工具没找到、也没告诉你别处有时，只说“当前可访问范围内未找到”，不要把关键词当成人名
 - 问数字用 query_metric；问"该联系谁"用 get_watchlist / get_my_plans
+- **库里其他数据（项目、卡点、项目成员、节点记录、回款、线索验证、公海、部门、组织成员、提成、同事）都用 query_records 查**：表名和字段见工具说明，可以计数、分组、按人名或部门名筛。字段权限里隐藏的字段查不到，工具会直接告诉你，照原话转告
 - 已经拿到足够信息就停下来回答，不要重复调用同一个工具
 - 最多 ${MAX_STEPS} 步${
     只用项目
@@ -698,10 +699,10 @@ ${工作方式}
     const result = await 执行(tool, args, thought, `tool-${i}`);
     调过的.set(签名, result.summary);
     // 结果交回去：原生那条按 tool_call_id 对上，JSON 协议那条还是一条 user 消息
-    const 结果文本 = `工具 ${tool.name} 的结果：\n${JSON.stringify(result.data).slice(0, 6000)}`;
+    const 结果文本 = `工具 ${tool.name} 的结果：\n${JSON.stringify(result.data).slice(0, 12000)}`;
     const 回执 = 选择.回执;
     const 末 = 回执[回执.length - 1] as { role: string; content: string };
-    末.content = 末.role === "tool" ? JSON.stringify(result.data).slice(0, 6000) : 结果文本;
+    末.content = 末.role === "tool" ? JSON.stringify(result.data).slice(0, 12000) : 结果文本;
     messages.push(...回执);
 
     /*
@@ -831,7 +832,7 @@ ${工作方式}
       const 签名 = `${tool.name}:${JSON.stringify(args)}`;
       const 结果 = 调过的.has(签名) ? { summary: 调过的.get(签名)!, data: "（这个刚才已经查过，结果见上文）" } : await 执行(tool, args, "", `tool-late-${n++}`);
       调过的.set(签名, 结果.summary);
-      回执.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(结果.data).slice(0, 6000) });
+      回执.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(结果.data).slice(0, 12000) });
     }
     if (调用们.length) messages.push(...回执);
     text = await 组织回答(

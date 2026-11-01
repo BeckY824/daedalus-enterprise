@@ -101,7 +101,7 @@ describe("一个问题多步只扣一次", () => {
     expect((await 余额(账号.owner)).还剩).toBe(0);
   });
 
-  it("原生那条路最坏的情形（6 步全调工具 + 回答里吐 DSML 回炉 + 两次重答）：仍在 12 次以内，只扣 1 次", async () => {
+  it("原生那条路最坏的情形（8 步全调工具 + 回答里吐 DSML 回炉 + 两次重答，11-01 步数从 6 调到 8）：仍在 14 次以内，只扣 1 次", async () => {
     let 回答第几次 = 0;
     const 线 = 接线({
       上游: (r) => {
@@ -118,7 +118,7 @@ describe("一个问题多步只扣一次", () => {
     });
     const { result } = await 问AI("把所有姓王的都找出来");
     expect(result?.ok).toBe(true);
-    expect(线.网关.length).toBeLessThanOrEqual(12);
+    expect(线.网关.length).toBeLessThanOrEqual(14);
     expect(await 用掉(账号.acc.id)).toBe(1);
   });
 
