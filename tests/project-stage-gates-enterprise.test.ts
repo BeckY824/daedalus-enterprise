@@ -40,6 +40,8 @@ describe("企业版三大阶段的门", () => {
     老板 = await 人("boss", "ADMIN");
     乙 = await 人("yi", "SALES");
     客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 乙.id } })).id;
+    // 11-01 权限只认业务角色：老板 = 总管理（只能看、转让，改不了进程），乙 = 销售（项目负责人）
+    await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id }] });
     vi.stubEnv("CRM_ENTERPRISE", "1");
   });
   afterEach(() => { vi.unstubAllEnvs(); });
@@ -74,14 +76,16 @@ describe("企业版三大阶段的门", () => {
   });
 
   describe("有效线索要至少一条有效沟通", () => {
-    it("手动往前推过线索验证：没有有效沟通拦（老板也拦）；没明确回复的不算；记了明确回复的就能推", async () => {
+    it("手动往前推过线索验证：没有有效沟通拦（负责人也拦）；没明确回复的不算；记了明确回复的就能推", async () => {
+      // 11-01 权限只认业务角色：总管理改不了进程，原来「老板也拦」改成负责人乙推、被门拦；老板另断言被权限拦
       const p = await 项目({ node: "线索验证" });
-      expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺有效沟通 });
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺有效沟通 });
       expect(await 记项目沟通(乙, p.id, 沟通({ 阶段: "线索", 明确回复: false }))).toMatchObject({ ok: true });
-      expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺有效沟通 });
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺有效沟通 });
       expect((await 现(p.id)).node).toBe("线索验证");
       expect(await 记项目沟通(乙, p.id, 沟通({ 阶段: "线索", 明确回复: true }))).toMatchObject({ ok: true });
-      expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
+      expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: false, error: "只有项目负责人能改进程（上级、总管理只能看、转让）" });
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
     });
 
     it("线索验证以前、往后退、点结局都不看有效沟通", async () => {
@@ -96,7 +100,7 @@ describe("企业版三大阶段的门", () => {
       const p = await 项目({ node: "线索验证" });
       const f = await 记有效沟通(p.id);
       await prisma.followUp.delete({ where: { id: f } });
-      expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺有效沟通 });
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺有效沟通 });
     });
 
     it("自动推进（节点必填齐了）：没有有效沟通停在线索验证，有了接着推", async () => {
@@ -140,8 +144,8 @@ describe("企业版三大阶段的门", () => {
       expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toEqual({ ok: false, error: 缺本节点沟通("潜客培育") });
       await 记有效沟通(p.id, false);
       expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
-      // 到了线索验证，潜客培育时记的那条不算
-      expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺本节点沟通("线索验证") });
+      // 到了线索验证，潜客培育时记的那条不算（11-01 权限只认业务角色：推的人从老板换成负责人乙）
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺本节点沟通("线索验证") });
 
       // 库里存旧名 明确需求 的项目：按新名 痛点挖掘 认、报错也说新名
       const q = await 项目({ phase: "商机", node: "明确需求" });
@@ -158,8 +162,9 @@ describe("企业版三大阶段的门", () => {
     it("开了：往回退、结束项目不拦", async () => {
       await 开();
       const q = await 项目({ phase: "商机", node: "共识方案" });
-      expect(await 改节点(老板, q.id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true });
-      expect(await 改节点(老板, q.id, { phase: "商机", node: "明确需求", result: "丢单" }, { 备注: "不做了" })).toMatchObject({ ok: true });
+      // 11-01 权限只认业务角色：退、结束由负责人乙做（总管理改不了进程）
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true });
+      expect(await 改节点(乙, q.id, { phase: "商机", node: "明确需求", result: "丢单" }, { 备注: "不做了" })).toMatchObject({ ok: true });
     });
 
     it("开了：自动推进也停在没沟通的节点", async () => {
@@ -182,11 +187,12 @@ describe("企业版三大阶段的门", () => {
   describe("MQL 人工判", () => {
     it("合格：往前推到线索推进（照旧要有效沟通、记节点变更）", async () => {
       const p = await 项目({ node: "线索验证" });
-      expect(await 判MQL(老板, p.id, true)).toEqual({ ok: false, error: 缺有效沟通 });
+      // 11-01 权限只认业务角色：判 MQL 合格 = 推进程，由负责人乙判
+      expect(await 判MQL(乙, p.id, true)).toEqual({ ok: false, error: 缺有效沟通 });
       await 记有效沟通(p.id);
-      expect(await 判MQL(老板, p.id, true)).toMatchObject({ ok: true });
+      expect(await 判MQL(乙, p.id, true)).toMatchObject({ ok: true });
       expect(await 现(p.id)).toMatchObject({ phase: "线索", node: "线索推进" });
-      expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } })).toMatchObject({ fromNode: "线索验证", toNode: "线索推进", userId: 老板.id });
+      expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } })).toMatchObject({ fromNode: "线索验证", toNode: "线索推进", userId: 乙.id });
     });
 
     it("不合格：退回潜客培育，写下一步时间 + 培育跟进计划；日期不填、早于今天、计划内容不填拦", async () => {

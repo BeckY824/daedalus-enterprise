@@ -86,7 +86,9 @@ describe("两条容易被下一个人改坏的约定", () => {
     const path = await import("node:path");
     const src = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/settings/SettingsBody.tsx"), "utf8");
     expect(src).toContain("当前是共享区");
-    expect(src).toMatch(/isAdmin=\{[^}]*!\s*共享区\s*\}/);
+    // 11-01 权限只认业务角色：isAdmin 改传「可进」（企业版按业务角色判能不能进设置），共享区照旧挡在「可进」最前面
+    expect(src).toMatch(/const 可进 = !共享区 &&/);
+    expect(src).toMatch(/isAdmin=\{可进\}/);
   });
 
   it("共享工作区里不摆「已登录的机器」——那一栏里会是别人的机器", async () => {

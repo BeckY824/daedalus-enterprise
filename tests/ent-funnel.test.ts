@@ -70,7 +70,7 @@ describe("可见范围：老板看全员，业务员看自己（企业版 + 项�
     老板 = await prisma.user.create({ data: { email: "boss@t", password: "x", name: "老板", role: "ADMIN" } });
     乙 = await prisma.user.create({ data: { email: "yi@t", password: "x", name: "乙", role: "SALES" } });
     丙 = await prisma.user.create({ data: { email: "bing@t", password: "x", name: "丙", role: "SALES" } });
-    await prisma.entMember.createMany({ data: [{ userId: 乙.id }, { userId: 丙.id }] });
+    await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id }, { userId: 丙.id }] });
     await setSetting("business", { projectMode: true });
     await setSetting(规则.按组织看客户.key, true);
     invalidateSettingsCache();

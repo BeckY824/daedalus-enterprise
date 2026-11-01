@@ -111,10 +111,9 @@ export function 业务线放行(org: 组织, 我: string, p: { ownerId: string }
 function 实线管得到(org: 组织, 我: string, ownerId: string): boolean {
   return 实线下属(org, 我).has(ownerId) && 业务线放行(org, 我, { ownerId });
 }
-/** 只看：实线下属 + 虚线下属（虚线只能看，D-39），业务线对得上 */
+/** 只看：实线下属（业务线对得上）+ 虚线下属（虚线只能看，D-39；虚线是专门跨线配的，不按业务线滤） */
 function 看得到下属的(org: 组织, 我: string, ownerId: string): boolean {
-  if (!业务线放行(org, 我, { ownerId })) return false;
-  if (实线下属(org, 我).has(ownerId)) return true;
+  if (实线下属(org, 我).has(ownerId) && 业务线放行(org, 我, { ownerId })) return true;
   for (const d of 虚线下属(org, 我)) if (d === ownerId || 实线下属(org, d).has(ownerId)) return true;
   return false;
 }

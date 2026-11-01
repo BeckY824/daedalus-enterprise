@@ -82,7 +82,8 @@ beforeEach(async () => {
     if (bizRole) await prisma.entMember.create({ data: { userId: id, bizRole } });
     return id;
   };
-  老板 = await 人("p3-boss", "ADMIN");
+  // 11-01 权限只认业务角色：老板 = 总管理（director）；经理只有账号 MANAGER、没设业务角色 = 什么都不能做
+  老板 = await 人("p3-boss", "ADMIN", "director");
   经理 = await 人("p3-mgr", "MANAGER");
   销管 = await 人("p3-smgr", "SALES", "sales_mgr");
   销售 = await 人("p3-s1", "SALES", "sales");
@@ -181,7 +182,7 @@ describe("F-跟进-07 沟通记录挂截图、录音", () => {
     expect(((await 列表.json()) as { 附件: unknown[] }).附件).toHaveLength(3);
   });
 
-  it("同事（不是记这条的）传 403；成员删 403、附件原样；经理删得掉", async () => {
+  it("同事（不是记这条的）传 403；成员删 403、附件原样；经理删不掉、总管理删得掉", async () => {
     const { followUpId } = await 记一条();
     const id = await 附件id(await 传一个(followUpId!));
     当(同事);
@@ -189,7 +190,11 @@ describe("F-跟进-07 沟通记录挂截图、录音", () => {
     当(销售);
     expect((await 删一个(id)).status).toBe(403);
     expect(await 还在(id)).toBe(true);
+    // 11-01 权限只认业务角色：账号 MANAGER 不再放行，删附件只认总管理
     当(经理, "MANAGER");
+    expect((await 删一个(id)).status).toBe(403);
+    expect(await 还在(id)).toBe(true);
+    当(老板, "ADMIN");
     expect((await 删一个(id)).status).toBe(200);
     expect(await 还在(id)).toBe(false);
   });
@@ -221,7 +226,7 @@ describe("F-跟进-07 沟通记录挂截图、录音", () => {
 });
 
 describe("M-权限-09 谁能改删沟通", () => {
-  it("能删改沟通of：老板、主管账号，组织里总管理员、销售管理能；普通销售不能", () => {
+  it("能删改沟通of：只有组织里的总管理能；账号老板 / 主管、销售管理、普通销售、市场都不能", () => {
     const org = 建组织(
       [{ id: "总", role: "SALES", active: true }, { id: "销管", role: "SALES", active: true }, { id: "销", role: "SALES", active: true }, { id: "市", role: "SALES", active: true }],
       [
@@ -232,11 +237,12 @@ describe("M-权限-09 谁能改删沟通", () => {
       ],
       [],
     );
-    expect(能删改沟通of({ id: "x", role: "ADMIN" }, null)).toBe(true);
-    expect(能删改沟通of({ id: "x", role: "MANAGER" }, null)).toBe(true);
+    // 11-01 权限只认业务角色：org 没给一律拒（账号 ADMIN / MANAGER 不再放行）；销售管理不再能删改（C3 只给总管理）
+    expect(能删改沟通of({ id: "x", role: "ADMIN" }, null)).toBe(false);
+    expect(能删改沟通of({ id: "x", role: "MANAGER" }, null)).toBe(false);
     expect(能删改沟通of({ id: "x", role: "SALES" }, null)).toBe(false);
     expect(能删改沟通of({ id: "总", role: "SALES" }, org)).toBe(true);
-    expect(能删改沟通of({ id: "销管", role: "SALES" }, org)).toBe(true);
+    expect(能删改沟通of({ id: "销管", role: "SALES" }, org)).toBe(false);
     expect(能删改沟通of({ id: "销", role: "SALES" }, org)).toBe(false);
     expect(能删改沟通of({ id: "市", role: "SALES" }, org)).toBe(false);
   });
@@ -276,11 +282,15 @@ describe("M-权限-09 谁能改删沟通", () => {
     expect((await raw.followUp.findUnique({ where: { id: followUpId! }, select: { deletedAt: true } }))?.deletedAt).toBeInstanceOf(Date);
   });
 
-  it("经理（账号主管）改得了；删了是软删、老板回收站里看得到", async () => {
+  it("经理（账号主管）改不了；总管理改得了；删了是软删、老板回收站里看得到", async () => {
     const { followUpId } = await 记一条();
     const id = followUpId!;
     await 变老(id);
+    // 11-01 权限只认业务角色：账号 MANAGER 不再放行，改、删沟通只认总管理（director）
     当(经理, "MANAGER");
+    expect(await 改项目沟通(项目, id, { type: "WECHAT", content: "经理改过", occurredAt: "2026-10-19 09:30" })).toMatchObject({ ok: false });
+    expect((await prisma.followUp.findUniqueOrThrow({ where: { id } })).content).toBe("电话聊了报价");
+    当(老板, "ADMIN");
     expect(await 改项目沟通(项目, id, { type: "WECHAT", content: "经理改过", occurredAt: "2026-10-19 09:30" })).toEqual({ ok: true });
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id } })).content).toBe("经理改过");
     expect(await 删项目沟通(项目, id)).toMatchObject({ ok: true });
@@ -289,14 +299,16 @@ describe("M-权限-09 谁能改删沟通", () => {
     expect((await 回收站列表({ id: 老板, role: "ADMIN" })).map((x) => x.id)).toContain(id);
   });
 
-  it("组织里的销售管理（账号是普通销售）也能删；总管理员（老板）能删", async () => {
+  it("组织里的销售管理（账号是普通销售）删不了；总管理（老板）能删", async () => {
     const 一 = (await 记一条()).followUpId!;
     const 二 = (await 记一条()).followUpId!;
     await 变老(一);
     await 变老(二);
+    // 11-01 权限只认业务角色：只有总管理能删（C3），销售管理不再能删
     当(销管);
-    expect(await deleteFollowUp(一, 客户)).toMatchObject({ ok: true });
+    expect(await deleteFollowUp(一, 客户)).toEqual({ ok: false, error: 不能删改沟通话 });
     当(老板, "ADMIN");
+    expect(await deleteFollowUp(一, 客户)).toMatchObject({ ok: true });
     expect(await deleteFollowUp(二, 客户)).toMatchObject({ ok: true });
     const 收 = (await 回收站列表({ id: 老板, role: "ADMIN" })).map((x) => x.id);
     expect(收).toEqual(expect.arrayContaining([一, 二]));
