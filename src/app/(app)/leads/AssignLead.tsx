@@ -11,7 +11,8 @@ import { App, Button, Form, Modal, Select, Table, Tag } from "antd";
 import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
-import { 分配线索, 本月分配情况, 我分出去的线索, type 分配情况 } from "./assign-actions";
+import { 分配线索, 本月分配情况, 我分出去的线索, 项目分配线, type 分配情况 } from "./assign-actions";
+import { 先填地址提示 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 
 const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}${p.加额 > 0 ? `（含无效补 ${p.加额}）` : ""}`;
@@ -23,6 +24,8 @@ export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: strin
   const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划" }>();
   const [人们, set人们] = useState<分配情况 | null>(null);
   const [忙, set忙] = useState(false);
+  // 新线索（项目）的业务线按项目所在地算（A1–A3），只读；undefined = 还在取
+  const [项目线, set项目线] = useState<{ 线: "内贸" | "外贸" | null } | null | undefined>(undefined);
 
   // 每次打开重取一遍：配额、已分随时在变
   function 打开了(open: boolean) {
@@ -30,6 +33,8 @@ export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: strin
     form.resetFields();
     set人们(null);
     void 本月分配情况().then((r) => set人们(r ?? []));
+    set项目线(undefined);
+    if (lead?.项目) void 项目分配线(lead.id).then(set项目线, () => set项目线(null));
   }
 
   async function 分() {
@@ -78,9 +83,17 @@ export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: strin
               .map((p) => ({ value: p.userId, label: `${p.name}${p.line ? `（${p.line}）` : ""} · ${配额说法(p)}` }))}
           />
         </Form.Item>
-        <Form.Item name="line" label="业务线" extra="选了业务线，只能分给这条线（或没定线）的销售">
-          <Select options={[{ value: "", label: "不限" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />
-        </Form.Item>
+        {lead?.项目 ? (
+          <Form.Item label="业务线" extra="按项目所在地算：中国大陆（不含港澳）= 内贸，其余 = 外贸；要改请改项目所在地">
+            <span data-testid="assign-line-readonly">
+              {项目线 === undefined ? "加载中…" : 项目线?.线 ?? <span className="muted">没填项目所在地（{先填地址提示}，自动分配不会分它）</span>}
+            </span>
+          </Form.Item>
+        ) : (
+          <Form.Item name="line" label="业务线" extra="选了业务线，只能分给这条线（或没定线）的销售">
+            <Select options={[{ value: "", label: "不限" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />
+          </Form.Item>
+        )}
         <Form.Item name="kind" label="线索种类">
           <Select options={[{ value: "营销", label: "营销" }, { value: "营销企划", label: "营销企划" }]} />
         </Form.Item>

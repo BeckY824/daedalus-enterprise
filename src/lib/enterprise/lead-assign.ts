@@ -39,11 +39,13 @@ export function 月份(d = new Date()): string {
 /** 能接分配线索的业务角色：销售、销售管理 */
 const 能接的角色 = new Set(["sales", "sales_mgr"]);
 
-/** 能点「分配」的人：老板（账号管理员）、总管理员、市场管理 */
-export function 能分配(org: 组织, 我: { id: string; role: string }): boolean {
-  if (我.role === "ADMIN") return true;
+/**
+ * 能点「分配」（手动指派 / 自动分配）的人：总管理员、市场管理、销售管理（11-01 清单 A7 / A9）。
+ * 只认业务角色（11-01 定）：账号的 ADMIN / MANAGER 不放行，没设业务角色 = 不能分
+ */
+export function 能分配(org: 组织, 我: { id: string; role?: string }): boolean {
   const 类们 = 管理员类别们of(org, 我.id);
-  return 类们.has("总管理员") || 类们.has("市场管理");
+  return 类们.has("总管理员") || 类们.has("市场管理") || 类们.has("销售管理");
 }
 
 /**
@@ -168,11 +170,12 @@ export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>
   return 查满 ? 理由 : `${理由}；这条不算数，不占配额`;
 }
 
-/** 能改「参与自动分配」开关的人（Q-12 默认）：老板、总管理员、销售管理；直属上级只能看 */
-export function 能改参与(org: 组织, 我: { id: string; role: string }): boolean {
-  if (我.role === "ADMIN") return true;
-  const 类们 = 管理员类别们of(org, 我.id);
-  return 类们.has("总管理员") || 类们.has("销售管理");
+/**
+ * 能改销售「参与状态」（正常 / 暂停 / 禁止）的人：只有总管理员（11-01 16:1x 拍板，A9）。
+ * 市场管理、销售管理只能手动指派、不能改参与状态；直属上级只能看。只认业务角色，账号 ADMIN 不放行
+ */
+export function 能改参与(org: 组织, 我: { id: string; role?: string }): boolean {
+  return 管理员类别们of(org, 我.id).has("总管理员");
 }
 
 // —— 读库 ——

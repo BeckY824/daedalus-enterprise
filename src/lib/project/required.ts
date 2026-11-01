@@ -33,6 +33,7 @@ export const 必填项们 = [
   { key: "痛点标注", 说明: "项目的「痛点标注」写了内容" },
   { key: "项目方案", 说明: "项目的「项目方案」里传了至少一个文件" },
   { key: "合同已生效", 说明: "项目的「合同状态」是「已生效」" },
+  { key: "分配方式", 说明: "项目的「分配方式」选了（新建线索 / 项目时选）" },
 ] as const;
 export type 必填项 = (typeof 必填项们)[number]["key"];
 export const 必填项名们: readonly string[] = 必填项们.map((x) => x.key);
@@ -60,7 +61,8 @@ export const 能配必填的节点: readonly string[] = [...new Set([...去尾(�
  * 签订合同要合同附件；生产备货、物流运输要的采购单、物流单据系统里还没有，等清单定了加字段再配
  */
 export const 建议必填: Record<string, 必填项[]> = {
-  潜客培育: ["联系方式", "来源", "本节点沟通", "下一步时间"],
+  // 11-01 会议 §1：潜客培育的必填加「分配方式」「需求状态」（必填开关开着才生效）
+  潜客培育: ["联系方式", "来源", "本节点沟通", "下一步时间", "分配方式", "需求"],
   线索验证: ["主联系人", "国家", "需求"],
   线索推进: ["金额"],
   明确需求: ["痛点标注"],
@@ -74,7 +76,7 @@ export const 建议必填: Record<string, 必填项[]> = {
 
 /** 算还差时要的数据（db.ts 读好传进来） */
 export type 必填数据 = {
-  项目: { node: string; contactId: string | null; nextStepAt: Date | string | null; expectedDealAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean; demandStatus?: string | null };
+  项目: { node: string; contactId: string | null; nextStepAt: Date | string | null; expectedDealAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean; demandStatus?: string | null; assignMode?: string | null };
   客户: {
     phone: string | null;
     extra: { country?: string | null; whatsapp?: string | null; wechat?: string | null; email?: string | null; source?: string | null; level?: string | null; alibabaId?: string | null } | null;
@@ -127,6 +129,8 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "痛点标注": return 有(d.痛点标注);
     case "项目方案": return (d.项目方案数 ?? 0) > 0;
     case "合同已生效": return d.合同状态 === 生效的合同状态;
+    // 11-01 会议 §1：建的时候选了分配方式（老项目没有 = 没填）
+    case "分配方式": return 有(d.项目.assignMode);
   }
 }
 

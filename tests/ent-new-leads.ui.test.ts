@@ -19,12 +19,12 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true});");
   // 分配那几个 server action：记下调了什么，回成功
-  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒');");
+  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'});");
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,指认卡点Action=好,认领卡点Action=好,接受卡点Action=好,转让卡点Action=好,返回卡点Action=好,改卡点进度Action=好,解决卡点Action=好,卡点可选的人Action=async()=>[];");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>[],取客户近况=async()=>null;");
-  stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});");
+  stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;");
   // 「新增项目」→「新客户」：取向导数据记一笔；向导框本身换成一块写着标题的牌子（向导另有测试）
   stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>{(window.__调||=[]).push(['取建档数据']);return {users:[],要下一步:false,企业:null}};");
   stub(/new\/ProjectWizard$/, "export const 建档弹窗=()=>null;");

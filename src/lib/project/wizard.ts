@@ -17,6 +17,8 @@ import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
 import { 新项目默认值 } from "./proj-fields";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 认业务线 } from "@/lib/enterprise/assign-line";
+import type { 线 } from "@/lib/enterprise/lead-assign";
 
 export const 项目名上限 = 60;
 export const 备注上限 = 500;
@@ -25,7 +27,12 @@ export type 向导联系人 = { name: string; position?: string | null; phone?: 
 /** 分配方式：企业版才有，默认五项的序号（lib/enterprise/dict.ts 分配方式序号），只在 projects/actions.ts 建档向导里认 */
 export type 向导项目 = { name: string; ownerId?: string | null; amount?: number | null; currency?: string | null; remark?: string | null; 分配方式?: number | null;
   /** 项目来源（企业版，迁移 077）：这个项目从哪个渠道来。建档向导没选 = 跟客户来源（项目来源默认）；编辑里改。团队版不传、不认 */
-  channelId?: string | null };
+  channelId?: string | null;
+  /**
+   * 业务线（企业版，11-01 清单 A1，手动选）：内贸 / 外贸，空 = 没填；分配方式选自动分配时必填（projects/actions.ts 建档向导里拦）。
+   * 自动分配只在这条线勾的部门里挑人。团队版不传、不认
+   */
+  业务线?: string | null };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
 /**
  * 阶段、明确回复：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看
@@ -51,7 +58,13 @@ export type 规整好的 = {
   项目: { name: string; ownerId: string; amount: number; currency: string; remark: string | null };
   跟进: 规整好的沟通;
   /** 企业版建档（10-26）：项目落在哪个线索节点、首条沟通客户是否明确回复；团队版没有 */
-  企业?: { 节点: string; 明确回复: boolean; 项目来源?: string | null };
+  企业?: {
+    节点: string; 明确回复: boolean; 项目来源?: string | null;
+    /** 业务线（11-01 A1）：手动选的内贸 / 外贸；没选 = null */
+    业务线?: 线 | null;
+    /** 分配方式的叫法（11-01 迁移 106，存 Project.assignMode）；调用方定好分配方式后填 */
+    分配方式名?: string;
+  };
 };
 
 /**
@@ -143,6 +156,9 @@ export function 规整向导(
       return { error: 缺有效沟通 };
     }
     企业档 = { 节点, 明确回复: f.明确回复 };
+    const 线 = 认业务线(p.业务线);
+    if (线 === undefined) return { error: "业务线只能选内贸或外贸" };
+    企业档.业务线 = 线;
   }
 
   return {
@@ -171,6 +187,9 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
         phase: 落.phase, node: 落.node, nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText,
         // 项目来源只有企业版建档才写（建档向导里查过库）；团队版一律空，渠道统计回落到客户来源
         ...(好.企业?.项目来源 ? { channelId: 好.企业.项目来源 } : {}),
+        // 业务线、分配方式（11-01）：只有企业版建档才写
+        ...(好.企业?.业务线 ? { bizLine: 好.企业.业务线 } : {}),
+        ...(好.企业?.分配方式名 ? { assignMode: 好.企业.分配方式名 } : {}),
         // 合同状态（迁移 101）：企业版新项目落「起草中」
         ...新项目默认值(企业版()),
       },

@@ -32,6 +32,8 @@ describe("目录", () => {
     expect(建议必填.共识方案).toEqual(["项目方案"]);
     expect(建议必填.成交推进).toEqual(["本节点沟通"]);
     expect(建议必填.签约审批).toEqual(["合同已生效"]);
+    // 11-01 会议 §1：潜客培育的必填加分配方式、需求状态
+    expect(建议必填.潜客培育).toEqual(["联系方式", "来源", "本节点沟通", "下一步时间", "分配方式", "需求"]);
     for (const 不配 of ["生产备货", "物流运输", "安装实施"]) expect(建议必填[不配]).toBeUndefined();
   });
 });
@@ -68,7 +70,7 @@ describe("还差", () => {
 
   it("都填了：空", () => {
     const d: 必填数据 = {
-      项目: { node: "潜客培育", contactId: "c1", nextStepAt: new Date(), expectedDealAt: "2026-11-30", amount: 100, remark: "要 200 台", demandStatus: "明确需求", acceptancePassed: true },
+      项目: { node: "潜客培育", contactId: "c1", nextStepAt: new Date(), expectedDealAt: "2026-11-30", amount: 100, remark: "要 200 台", demandStatus: "明确需求", acceptancePassed: true, assignMode: "自动分配" },
       客户: { phone: null, extra: { country: "德国", source: "展会", level: "A" } },
       联系人们: [{ email: "a@b.com" }],
       沟通节点们: ["潜客培育"],
@@ -79,6 +81,16 @@ describe("还差", () => {
       项目方案数: 1,
     };
     expect(还差(全部, d)).toEqual([]);
+  });
+
+  it("分配方式（11-01 会议 §1）：建的时候选了才算；老项目没有 = 差；只在必填开关开着时管", () => {
+    const r = 规则({ 潜客培育: ["分配方式", "需求"] });
+    expect(还差(r, 空数据())).toEqual(["分配方式", "需求"]);
+    for (const m of ["自动分配", "个人自持", "暂不分配", "指定分配", "公海捞取"]) {
+      expect(还差(r, { ...空数据(), 项目: { ...空数据().项目, assignMode: m, demandStatus: "明确需求" } })).toEqual([]);
+    }
+    expect(还差(r, { ...空数据(), 项目: { ...空数据().项目, assignMode: "  ", demandStatus: "暂未确认" } })).toEqual(["分配方式", "需求"]);
+    expect(还差(规则({ 潜客培育: ["分配方式"] }, false), 空数据())).toEqual([]);
   });
 
   it("联系方式：客户上任一样、或任一联系人的电话 / 邮箱 / 微信都算；空白不算", () => {

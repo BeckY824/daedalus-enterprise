@@ -1,7 +1,7 @@
 import { 负责人候选 } from "@/lib/owners";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 我能用的分配方式 } from "@/lib/enterprise/dict";
+import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 企业版字典 } from "@/lib/project/nodes";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import type { 建档数据 } from "./ProjectWizard";
@@ -21,8 +21,8 @@ export async function 建档向导数据(me: SessionUser): Promise<建档数据>
     负责人候选(),
     生效组织规则(),
     企 ? 可选渠道们() : null,
-    企 ? 我能用的分配方式(me) : null,
+    企 ? 新建分配方式数据(me) : null,
   ]);
-  const 企业 = 企 ? { 渠道们: 渠道们!, 节点们: 企业版字典.节点们.线索, 分配方式们: 分配方式们! } : null;
+  const 企业 = 企 ? { 渠道们: 渠道们!, 节点们: 企业版字典.节点们.线索, ...分配方式们! } : null;
   return { users, 要下一步: 规则.超时回收.开, 企业 };
 }

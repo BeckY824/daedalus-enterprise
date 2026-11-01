@@ -5,8 +5,10 @@
  * 几格和建档向导第四、五步一样（projects/new/ProjectWizard.tsx），校验以服务端为准（project-actions.ts 给客户建项目）。
  * 10-31 会议 U-客户-05：用开项目那套向导界面——上面同一排步骤，前 3 步（查重、联系人、客户）带出现有的、标成已完成，
  * 从「项目」那步开始：先填项目信息，下一步再填首条沟通
+ * 11-01 会议 §3：加「分配方式」（默认按业务角色，A6）和「项目所在地」（默认带客户地址，自动分配按它分内贸 / 外贸）；
+ * 只有指定分配要选负责人，其余建在我名下、建好按分配方式走（服务端 给客户建项目）
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Dayjs } from "dayjs";
 import { App, Button, Form, Input, Modal, Radio, Select, Steps } from "antd";
@@ -18,7 +20,10 @@ import { 对得上的方式 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 成员选项, dayjs, type 可选成员 } from "@/lib/utils";
 import { 项目名上限 } from "@/lib/project/wizard";
-import { 给客户建项目 } from "./project-actions";
+import { 给客户建项目, 新项目分配数据, type 新项目分配数据 as 分配数据 } from "./project-actions";
+import AddressInput, { 空地址 } from "@/components/AddressInput";
+import type { 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 判线, 销售自动分确认 } from "@/lib/enterprise/assign-line";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
 /** 和建档向导同一排步骤（ProjectWizard 步骤们）；这里前 3 步已带上 */
@@ -26,10 +31,18 @@ const 向导步骤 = ["查重", "联系人", "客户", "项目", "首条沟通"]
 const 跳过几步 = 3;
 
 /** 「项目」这一步的格：下一步前先校验这几格 */
-const 项目格 = ["name", "ownerId", "联系人Id"] as const;
+const 项目格 = ["name", "分配方式", "ownerId", "联系人Id"] as const;
+const 分配说明: Record<number, string> = {
+  1: "建好后按项目所在地分内贸 / 外贸，自动分给那条线的销售；没填所在地或没人可分 = 留在新线索待分配",
+  2: "建好后放进项目公海，等人捞取",
+  3: "建好后留在新线索待分配，等市场管理或总管理员分",
+  4: "记在你名下，自己跟进",
+};
 
 type 表单 = {
   name: string;
+  分配方式?: number;
+  地址?: 客户地址;
   ownerId?: string;
   联系人Id?: string;
   type: string;
@@ -65,13 +78,35 @@ export default function NewProjectModal({
   /** 开了超时回收：下一步时间必填 */
   要下一步: boolean;
 }) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const router = useRouter();
   const b = useBusiness();
   const [form] = Form.useForm<表单>();
   const 类型 = Form.useWatch("type", form);
   const 方式 = Form.useWatch("method", form);
   const [存着, set存着] = useState(false);
+  // 分配方式、项目所在地默认值：打开时问服务端（没开 / 取不到 = 不摆这两格，和原来一样直接选负责人）
+  const [分配, set分配] = useState<分配数据 | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let 还在 = true;
+    void 新项目分配数据(customerId).then((x) => {
+      if (!还在 || !x) return;
+      set分配(x);
+      const 默认 = x.默认分配方式 ?? (x.分配方式们.length === 1 ? x.分配方式们[0].i : undefined);
+      if (form.getFieldValue("分配方式") === undefined && 默认 !== undefined) form.setFieldValue("分配方式", 默认);
+      if (!form.getFieldValue("地址")) form.setFieldValue("地址", x.客户地址);
+    }).catch(() => {});
+    return () => {
+      还在 = false;
+    };
+  }, [open, customerId, form]);
+  const 分配方式 = Form.useWatch("分配方式", form);
+  const 地址 = Form.useWatch("地址", form) as 客户地址 | undefined;
+  const 有分配 = !!分配 && 分配.分配方式们.length > 0;
+  // 只有指定分配（或没有分配方式可选）要选负责人
+  const 要负责人 = !有分配 || 分配方式 === 0;
+  const 所在线 = 判线(地址);
   /** 0 = 项目，1 = 首条沟通 */
   const [步, set步] = useState(0);
   const 关 = () => {
@@ -93,6 +128,21 @@ export default function NewProjectModal({
     let v: 表单;
     try {
       v = await form.validateFields();
+    } catch {
+      return 真存();
+    }
+    // 销售选自动分配：分出去后就看不到这个项目了，先确认一次（A9）
+    if (分配?.是销售 && v.分配方式 === 1) {
+      modal.confirm({ title: "按自动分配建", content: 销售自动分确认, okText: "确定，分出去", cancelText: "再想想", onOk: () => void 真存() });
+      return;
+    }
+    return 真存();
+  }
+
+  async function 真存() {
+    let v: 表单;
+    try {
+      v = await form.validateFields();
     } catch (e) {
       // 项目那一步的格没过：退回那一步给人看
       const 错 = (e as { errorFields?: { name: (string | number)[] }[] }).errorFields ?? [];
@@ -104,7 +154,11 @@ export default function NewProjectModal({
       const r = await 给客户建项目({
         customerId,
         联系人Id: v.联系人Id ?? null,
-        项目: { name: v.name, ownerId: v.ownerId ?? null },
+        项目: {
+          name: v.name,
+          ownerId: 要负责人 ? v.ownerId ?? null : null,
+          ...(有分配 ? { 分配方式: v.分配方式 ?? null, 地址: v.地址 ?? 空地址 } : {}),
+        },
         跟进: {
           type: v.type,
           method: 对得上的方式(v.type, v.method),
@@ -120,8 +174,11 @@ export default function NewProjectModal({
         return;
       }
       message.success("项目建好了");
+      if (r.提示) (r.转走 ? message.info : message.warning)(r.提示);
       关();
-      router.push(`/projects/${r.projectId}`);
+      // 分走了 / 进了公海，项目不在我名下：留在原页刷新
+      if (r.转走) router.refresh();
+      else router.push(`/projects/${r.projectId}`);
     } finally {
       set存着(false);
     }
@@ -172,9 +229,30 @@ export default function NewProjectModal({
         <Form.Item name="name" label="项目名称" rules={[{ required: true, whitespace: true, message: "请填写项目名称" }]}>
           <Input maxLength={项目名上限} showCount />
         </Form.Item>
-        <Form.Item name="ownerId" label="负责人" rules={[{ required: true, message: "请选项目负责人" }]}>
-          <Select placeholder="选项目负责人" options={成员选项(users)} showSearch optionFilterProp="label" />
-        </Form.Item>
+        {有分配 && (
+          <Form.Item
+            name="分配方式"
+            label="分配方式"
+            rules={[{ required: true, message: "请选分配方式" }]}
+            extra={分配方式 !== undefined ? 分配说明[分配方式] : undefined}
+          >
+            <Select placeholder="选分配方式" options={分配!.分配方式们.map((x) => ({ value: x.i, label: x.名 }))} />
+          </Form.Item>
+        )}
+        {有分配 && (
+          <Form.Item
+            name="地址"
+            label="项目所在地"
+            extra={所在线 ? `算${所在线}：自动分配分给${所在线}那条线` : "默认带客户地址；中国大陆（不含港澳）算内贸，其余算外贸；不填就不会自动分配"}
+          >
+            <AddressInput value={地址 ?? 空地址} onChange={(v) => form.setFieldValue("地址", v)} />
+          </Form.Item>
+        )}
+        {要负责人 && (
+          <Form.Item name="ownerId" label="负责人" rules={[{ required: true, message: "请选项目负责人" }]}>
+            <Select placeholder="选项目负责人" options={成员选项(users)} showSearch optionFilterProp="label" />
+          </Form.Item>
+        )}
         {联系人们.length > 0 && (
           <Form.Item name="联系人Id" label="联系人">
             <Select options={联系人们.map((c) => ({ value: c.id, label: c.isPrimary ? `${c.name}（主要）` : c.name }))} />

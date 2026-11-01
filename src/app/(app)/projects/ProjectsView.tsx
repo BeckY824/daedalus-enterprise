@@ -224,7 +224,7 @@ export default function ProjectsView({
       { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
-    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : <UserCell name={r.ownerName} />) }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等市场管理或总管理员分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),
     // 回公海日：明天（或今天）就回的直接写「明天回公海（11-06）」，再往后只写日期；不会收的（已结束、在订单阶段、在公海）是 —
     ...(企业版 ? [{ title: "回公海日", key: "recycleAt", width: 150, render: (_: unknown, r: 项目行) => (r.即将回收 ? <将收标 日={r.即将回收} /> : r.回收日 ? dayjs(r.回收日).format("MM-DD") : 无) }] : []),
     { title: "最近更新", key: "updatedAt", width: 100, ...收起, render: (_, r) => fmtDate(r.updatedAt) },

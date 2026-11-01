@@ -37,8 +37,9 @@ import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { saveFollowUp, deleteFollowUp, restoreFollowUp, type 删掉的跟进 } from "../customers/[id]/actions";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
-import { 向导自动分配 } from "../leads/assign-actions";
-import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, 认跟进方式, type 分配方式序号 } from "@/lib/enterprise/dict";
+import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
+import { 认业务线, 分配方式序号, 自动分要业务线 } from "@/lib/enterprise/assign-line";
+import { 字典定义, 项目画像项, 认跟进方式 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 import { 发布卡点, 读卡点默认, 能发卡点 } from "@/lib/project/blocker";
 import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -92,7 +93,17 @@ export async function 建档向导(输入: 建档向导输入) {
         const 项目渠道 = await prisma.channel.findUnique({ where: { id: 来源! }, select: { active: true } });
         if (!项目渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
       }
-      if (好.企业) 好.企业.项目来源 = 来源;
+      if (好.企业) {
+        好.企业.项目来源 = 来源;
+        // 分配方式记在项目上（11-01 迁移 106）
+        if (分配) 好.企业.分配方式名 = 分配.名;
+        // 业务线（11-01 清单 A1）：手动选；没选 = 跟客户上选的。选了自动分配就必填，不填不让建
+        if (!好.企业.业务线) {
+          const 客线 = 认业务线(input.客户.企业资料?.bizLine);
+          if (客线) 好.企业.业务线 = 客线;
+        }
+        if (分配?.i === 分配方式序号.自动分配 && !好.企业.业务线) return { ok: false as const, error: 自动分要业务线 };
+      }
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
@@ -132,7 +143,11 @@ export async function 建档向导(输入: 建档向导输入) {
     });
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {
-      r = await saveCustomer({ ...input.客户, id: undefined, updatedAt: null, base: null }, 接着);
+      // 新客户的业务线跟项目走（客户那一步没另选时）
+      const 客户线 = 企 && 好.企业?.业务线 && input.客户.企业资料?.bizLine === undefined
+        ? { 企业资料: { ...(input.客户.企业资料 ?? {}), bizLine: 好.企业.业务线 } }
+        : {};
+      r = await saveCustomer({ ...input.客户, ...客户线, id: undefined, updatedAt: null, base: null }, 接着);
     } catch (e) {
       if (!(e instanceof 联系人号码撞了)) throw e;
       return { ok: false as const, error: `${e.格}：${(await 撞号结论(prisma, e.ids, me.id, await 读的我(defaultClient))).提示}` };
@@ -147,41 +162,12 @@ export async function 建档向导(输入: 建档向导输入) {
     await 客户存了推项目(me, r.id);
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
-    const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!) : null;
+    const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
     return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
   } catch (e) { return 不在了(e); }
 }
 
-/**
- * 向导这次用哪种分配方式：传了就用传的；没传（老草稿、老调用）照负责人推：选了别人 / 没选 = 指定分配（没选照旧拦「请选项目负责人」），建给自己 = 个人自持，用不了个人自持的 = 暂不分配。
- * 推出来的也要过「谁能用」
- */
-async function 定分配方式(me: Awaited<ReturnType<typeof requireUser>>, 项目: 建档向导输入["项目"] | undefined): Promise<{ i: 分配方式序号; 名: string } | { error: string }> {
-  const 能用 = await 我能用的分配方式(me);
-  const 传 = 项目?.分配方式;
-  if (传 !== undefined && 传 !== null && !是分配方式序号(传)) return { error: "没有这种分配方式，刷新后再选" };
-  const 有 = (i: 分配方式序号) => 能用.some((x) => x.i === i);
-  const i: 分配方式序号 = 是分配方式序号(传) ? 传 : 项目?.ownerId !== me.id ? 0 : 有(4) ? 4 : 有(3) ? 3 : 0;
-  const 中 = 能用.find((x) => x.i === i);
-  if (中) return 中;
-  return { error: (await 挡分配方式(me, i)) ?? "这种分配方式已停用，换一种" };
-}
-
-/** 建好之后：自动分配转给挑中的人，公海捞取放进项目公海；没成的项目留在我名下，回一句提示（建档本身算成了）。转走 = 项目已不在我名下 */
-async function 建好再分(me: Awaited<ReturnType<typeof requireUser>>, 分配: { i: 分配方式序号; 名: string }, projectId: string): Promise<{ 提示: string; 转走: boolean } | null> {
-  if (分配.i === 1) {
-    const r = await 向导自动分配(projectId);
-    return r.ok ? { 提示: `已按「${分配.名}」分给 ${r.接手人}`, 转走: true } : { 提示: `项目先建在你名下，「${分配.名}」没成：${r.error}`, 转走: false };
-  }
-  if (分配.i === 2) {
-    const r = await 放回公海(me, projectId, null);
-    if (!r.ok) return { 提示: `项目先建在你名下，没放进公海：${r.error}`, 转走: false };
-    刷新项目(projectId);
-    return { 提示: "已放进项目公海，等人捞取", 转走: true };
-  }
-  return null;
-}
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */
 export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null } | null) {

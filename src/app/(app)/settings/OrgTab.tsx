@@ -13,6 +13,7 @@ import { 市场部门们 } from "@/lib/enterprise/market";
 import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, type 成员改动 } from "./org-actions";
 import { 设不设配额, type 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
+import LineDeptCard from "./LineDeptCard";
 import OrgSyncCard from "./OrgSyncCard";
 
 export type 组织架构 = {
@@ -246,6 +247,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       </Card>
 
       {value.线索分配 && <LeadAssignCard rows={value.线索分配} 不限额={不设配额} />}
+      {value.线索分配 && <LineDeptCard 部门={value.部门} 部门选项={部门选项} 成员={value.成员} />}
 
       <Card title="字段权限" extra={字段权限挡 && <span style={{ color: "var(--text-muted)" }}>{字段权限挡}</span>}>
         <p className="muted">
