@@ -1799,6 +1799,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    右边四张卡照内容高、不拉伸，这一格的高就是四张卡的高（不再撑满整屏）；左边对话框不按自己的内容算高（contain: size），
    被拉成和卡这一列一样高，上下边齐。框里放得下：问候、欢迎语、三条示例、输入框加起来比四张卡矮（ent-home-frame 量着） */
 .cli-empty .cli-ck-g { flex: none; }
+/* 11-01 用户：「首页这两个要居中」——框和四张卡这一组在首页上下居中，不再顶在上面、下面空半屏。
+   用上下 auto 外边距，不用 justify-content: center：这一组比屏高时（手机、矮窗口）不会被顶出上沿 */
+.cli-empty .cli-ck-g { margin-block: auto; }
 .cli-empty .home-cards { align-self: start; position: static; }
 .cli-empty .cli-ck .cli-frame { contain: size; }
 /* 问过之后（10-31 改版 R1）：右边四张卡收起，对话铺满这一格——你的话贴着右边、回答占满，右侧不再空一大片（照 Codex / Claude Code）。

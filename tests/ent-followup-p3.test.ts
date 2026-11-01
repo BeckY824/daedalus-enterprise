@@ -2,7 +2,7 @@
  * 企业版沟通记录 P3（10-31）：F-跟进-08 记沟通时顺手标卡点、F-跟进-07 沟通记录挂截图 / 录音、M-权限-09 谁能改删沟通。
  *
  * 钉的是：
- *   - 卡点（lib/project/blocker-rules.ts 沟通卡点）：没给、类型「暂无卡点」或没选且描述空 → 不生成；选了类型或写了描述 → 生成，
+ *   - 卡点（lib/project/blocker-rules.ts 沟通卡点）：没给、类型「暂无卡点」或没选 → 不生成（描述写了也不生成，11-01 答复 #5）；选了别的类型 → 生成，
  *     影响没选按默认、阻碍主体落「其他」、描述空写占位；坏取值报错、一行不写
  *   - 记项目沟通Action 带卡点：生成的卡点挂在这条沟通上；暂无 + 空描述一个卡点都不建；客户页带的标题 / 状态 / 时长 / 参与人 / 联系人一次存好
  *   - 附件：?followUpId= 记这条的本人能传截图、录音（m4a 没类型按扩展名认），别的文件 415；同事传 403；
@@ -102,11 +102,12 @@ describe("F-跟进-08 卡点：生成 / 不生成", () => {
     expect(沟通卡点({}, 默)).toBeNull();
     expect(沟通卡点({ type: "暂无卡点", impact: null, description: "" }, 默)).toBeNull();
     expect(沟通卡点({ type: "暂无卡点", impact: "项目暂停", description: "   " }, 默)).toBeNull();
+    // 11-01 答复 #5：选暂无就不生成，描述写了也一样
+    expect(沟通卡点({ type: "暂无卡点", description: "预算还没批" }, 默)).toBeNull();
+    expect(沟通卡点({ description: "等对方技术评估" }, 默)).toBeNull();
   });
-  it("选了类型或写了描述 → 生成；影响没选按默认，阻碍主体落「其他」，描述空写占位", () => {
+  it("选了别的类型 → 生成；影响没选按默认，阻碍主体落「其他」，描述空写占位", () => {
     expect(沟通卡点({ type: "重要卡点" }, 默)).toEqual({ type: "重要卡点", impact: 默.默认影响, obstacle: "其他", description: 沟通卡点占位描述 });
-    expect(沟通卡点({ type: "暂无卡点", description: "预算还没批" }, 默)).toEqual({ type: "暂无卡点", impact: 默.默认影响, obstacle: "其他", description: "预算还没批" });
-    expect(沟通卡点({ description: "等对方技术评估" }, 默)).toMatchObject({ type: "暂无卡点", description: "等对方技术评估" });
     expect(沟通卡点({ type: "中度卡点", impact: "项目暂停", description: "x", obstacle: "价格" }, 默)).toMatchObject({ impact: "项目暂停", obstacle: "价格" });
     // 选项里没有「其他」：落第一个
     expect(沟通卡点({ type: "轻度卡点" }, { ...默, 阻碍主体们: ["客户", "技术"] })).toMatchObject({ obstacle: "客户" });
@@ -115,7 +116,7 @@ describe("F-跟进-08 卡点：生成 / 不生成", () => {
     expect(沟通卡点({ type: "瞎填" }, 默)).toHaveProperty("error");
     expect(沟通卡点({ type: "重要卡点", impact: "瞎填" }, 默)).toHaveProperty("error");
     expect(沟通卡点("重要卡点" as never, 默)).toHaveProperty("error");
-    expect(沟通卡点({ description: "字".repeat(501) }, 默)).toHaveProperty("error");
+    expect(沟通卡点({ type: "轻度卡点", description: "字".repeat(501) }, 默)).toHaveProperty("error");
   });
 
   it("记沟通带卡点：暂无 + 空描述一个都不建；选了重要卡点建一个、挂在这条沟通上", async () => {

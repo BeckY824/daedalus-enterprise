@@ -1259,7 +1259,7 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
  *
  * F-跟进-06：主区只摆 沟通内容、（卡点）、下一步、下一步时间；沟通方式、沟通时间、项目阶段、客户明确回复、AI 预填收进默认折叠的「更多」，
  * 字段和校验一个不少（客户明确回复照旧必选，没选时底下那句带「展开更多」）。
- * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」且描述空 = 不生成，否则记下后照发卡点那一套生成一个。
+ * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」= 不生成（11-01 答复 #5），选了别的类型记下后照发卡点那一套生成一个。
  * F-跟进-07（企业版）：可先挑截图、录音，记下之后挂到这条沟通上
  */
 function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, 跑 }: {
@@ -1387,12 +1387,12 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
         </div>
         {卡点默认 && (
           <div className="follow-blocker">
-            <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（可不填；选了卡点或写了描述，记下时生成一个卡点）</span></div>
+            <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点）</span></div>
             <div className="follow-blocker-row">
               <Select aria-label="卡点类型" value={卡点类型} onChange={set卡点类型} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
-              <Select aria-label="卡点影响" allowClear value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
+              <Select aria-label="卡点影响" allowClear disabled={卡点类型 === "暂无卡点"} value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
             </div>
-            <Input.TextArea aria-label="卡点描述" style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={卡点描述} onChange={(e) => set卡点描述(e.target.value)} placeholder="卡在哪儿（可不填）" />
+            <Input.TextArea aria-label="卡点描述" disabled={卡点类型 === "暂无卡点"} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={卡点描述} onChange={(e) => set卡点描述(e.target.value)} placeholder="卡在哪儿" />
           </div>
         )}
         <div>

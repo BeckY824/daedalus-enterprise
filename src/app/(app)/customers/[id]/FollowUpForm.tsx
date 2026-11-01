@@ -31,7 +31,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 描述上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 
-/** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」且描述空 = 不生成（服务端 沟通卡点 同一条规则） */
+/** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成，描述写了也不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则） */
 type 卡点值 = { type: string; impact: string | null; description: string };
 const 空卡点: 卡点值 = { type: "暂无卡点", impact: null, description: "" };
 
@@ -39,12 +39,12 @@ const 空卡点: 卡点值 = { type: "暂无卡点", impact: null, description: 
 function 卡点格({ 默认, 值, on改 }: { 默认: 卡点默认; 值: 卡点值; on改: (x: 卡点值) => void }) {
   return (
     <div className="follow-blocker" style={{ marginBottom: 16 }}>
-      <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（可不填；选了卡点或写了描述，记下时生成一个卡点）</span></div>
+      <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点）</span></div>
       <div className="follow-blocker-row">
         <Select aria-label="卡点类型" value={值.type} onChange={(v) => on改({ ...值, type: v })} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
-        <Select aria-label="卡点影响" allowClear value={值.impact} onChange={(v) => on改({ ...值, impact: v ?? null })} placeholder={`卡点影响（默认${默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
+        <Select aria-label="卡点影响" allowClear disabled={值.type === "暂无卡点"} value={值.impact} onChange={(v) => on改({ ...值, impact: v ?? null })} placeholder={`卡点影响（默认${默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
       </div>
-      <Input.TextArea aria-label="卡点描述" style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={值.description} onChange={(e) => on改({ ...值, description: e.target.value })} placeholder="卡在哪儿（可不填）" />
+      <Input.TextArea aria-label="卡点描述" disabled={值.type === "暂无卡点"} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={值.description} onChange={(e) => on改({ ...值, description: e.target.value })} placeholder="卡在哪儿" />
     </div>
   );
 }

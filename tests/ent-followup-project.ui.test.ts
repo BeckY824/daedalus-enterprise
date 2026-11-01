@@ -193,6 +193,8 @@ it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了�
     const y = async (l: import("playwright").Locator) => (await l.boundingBox())!.y;
     expect(await y(page.locator("#content"))).toBeLessThan(await y(类型));
     expect(await y(类型)).toBeLessThan(await y(格(page, "下一步做什么")));
+    // 11-01 答复 #5：选「暂无卡点」不生成卡点，影响和描述灰着；换成别的类型才能填
+    expect(await page.getByRole("textbox", { name: "卡点描述" }).isDisabled()).toBe(true);
     await 类型.click();
     await page.locator(".ant-select-item-option").filter({ hasText: "重要卡点" }).click();
     await page.getByRole("textbox", { name: "卡点描述" }).fill("对方法务卡合同");

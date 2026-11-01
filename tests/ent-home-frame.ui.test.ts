@@ -100,6 +100,10 @@ for (const width of [1024, 1280, 1366]) {
       return c.getBoundingClientRect().top + parseFloat(getComputedStyle(c).paddingTop) - qs[qs.length - 1].getBoundingClientRect().bottom - parseFloat(getComputedStyle(c).paddingTop);
     });
     expect(空).toBeGreaterThan(30);
+    // 11-01「首页这两个要居中」：框和卡这一组在首页（.cli）里上下居中
+    const 页 = await 框(page, ".cli"), 组 = await 框(page, ".cli-ck-g");
+    expect(页.b - 页.t - (组.b - 组.t)).toBeGreaterThan(40);
+    expect(Math.abs((组.t - 页.t) - (页.b - 组.b))).toBeLessThan(2);
     console.log(`[${width}] 框高 ${外.b - 外.t}，卡列高 ${卡.b - 卡.t}，框里余 ${空}`);
 
     // 第一行在左上角
