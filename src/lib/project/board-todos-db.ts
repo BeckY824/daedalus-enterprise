@@ -3,7 +3,11 @@ import { 限定的我 } from "@/lib/team-scope";
 import { 缓存着 } from "@/lib/home-cache";
 import { 未完成轻列表, 取详情 } from "@/lib/plans-page";
 import { dayjs } from "@/lib/utils";
-import { 挑一页, 复盘待办每页, type 复盘待办, type 复盘待办行, type 待办卡, type 待办类型 } from "./board-todos";
+import type { 组 } from "@/lib/plans-groups";
+import {
+  挑一页, 挑看板, 复盘待办每页, 看板列们, 看板每列,
+  type 复盘待办, type 复盘待办行, type 复盘看板, type 看板列, type 待办卡, type 待办类型,
+} from "./board-todos";
 
 /**
  * 复盘页「待办」页签取数（P15）。查询全走带限定的 prisma：业务员看不到别人客户上的事项，和「数据」页签同一层限定；
@@ -28,22 +32,41 @@ export async function 复盘待办of(
   const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
   const 全部 = await 未完成轻列表(prisma, 共用);
   const { 计数, 总数, 页, 要 } = 挑一页(全部, { 只看, 类型: q.类型, 卡: q.卡, 页: q.页, now: q.now ?? dayjs(), 每页: q.每页 ?? 复盘待办每页 });
-  if (!要.length) return { 计数, 总数, 页, 行: [] };
+  return { 计数, 总数, 页, 行: await 补详情(要) };
+}
 
+/** 「全部待办」的三列看板（挑看板）：同一份轻列表、同一层限定，三列各取前几条的详情，一次查 */
+export async function 复盘看板of(
+  只看?: string | readonly string[],
+  q: { 类型?: 待办类型; now?: ReturnType<typeof dayjs>; 每列?: number } = {},
+): Promise<复盘看板> {
+  const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
+  const 全部 = await 未完成轻列表(prisma, 共用);
+  const { 计数, 列 } = 挑看板(全部, { 只看, 类型: q.类型, now: q.now ?? dayjs(), 每列: q.每列 ?? 看板每列 });
+  const 行们 = await 补详情(看板列们.flatMap((k) => 列[k].要));
+  const 按键 = new Map(行们.map((r) => [r.key, r]));
+  const 摆 = (k: 看板列) => ({ 总数: 列[k].总数, 行: 列[k].要.flatMap((x) => (按键.has(x.key) ? [按键.get(x.key)!] : [])) });
+  return { 计数, 列: { overdue: 摆("overdue"), today: 摆("today"), later: 摆("later") } };
+}
+
+/** 挑出来的那几条取详情 + 客户的进行中项目（名字、级别、去哪）；顺序照 要 */
+async function 补详情(要: readonly { key: string; 组: 组 }[]): Promise<复盘待办行[]> {
+  if (!要.length) return [];
   const { plans, tasks } = await 取详情(prisma, 要.map((x) => x.key));
   const 客户们 = [...new Set([...plans.map((p) => p.customerId), ...tasks.map((t) => t.customerId)])];
   // Task / FollowPlan 不挂项目：客户有进行中的项目就带它的名字、点了去项目页；同一个客户几个都在进行的，取最近动过的那个
   const 项目们 = await prisma.project.findMany({
     where: { customerId: { in: 客户们 }, result: null },
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-    select: { id: true, name: true, customerId: true },
+    select: { id: true, name: true, customerId: true, level: true },
   });
-  const 项目of = new Map<string, { id: string; name: string }>();
+  const 项目of = new Map<string, { id: string; name: string; level: string | null }>();
   for (const p of 项目们) if (!项目of.has(p.customerId)) 项目of.set(p.customerId, p);
   const 挂 = (customerId: string) => {
     const p = 项目of.get(customerId);
     return {
       projectName: p?.name ?? null,
+      projectLevel: p?.level || null,
       去: p ? `/projects/${encodeURIComponent(p.id)}` : `/customers/${encodeURIComponent(customerId)}`,
     };
   };
@@ -60,9 +83,8 @@ export async function 复盘待办of(
       customerId: t.customerId, customerName: t.customerName, ownerId: t.ownerId, ownerName: t.ownerName, ...挂(t.customerId),
     });
   // 轻列表和详情之间有人完成了的：详情里没有，跳过（条数是轻列表那一刻的）
-  const 行 = 要.flatMap((x) => {
+  return 要.flatMap((x) => {
     const d = 详.get(x.key);
     return d ? [{ ...d, 组: x.组 }] : [];
   });
-  return { 计数, 总数, 页, 行 };
 }

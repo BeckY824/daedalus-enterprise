@@ -10,7 +10,7 @@ import type { dayjs } from "@/lib/utils";
  * 这一层是服务端兜底：企业版没开「按组织看客户」时 prisma 那层不拦人。
  *
  * 地址栏：tab=block  bs=open|done|all（卡点状态，默认 open）  p=页码
- *        tab=talk   t=7|30|90|all（最近几天，默认 all）  p=页码
+ *        tab=talk   t=7|30|90|all（最近几天，默认 all）  m=方式（FollowUp.type 的大类，不给 = 全部）  p=页码
  */
 
 export const 复盘列表每页 = 20;
@@ -26,6 +26,14 @@ export const 沟通段们 = ["7", "30", "90", "all"] as const;
 export type 沟通段 = (typeof 沟通段们)[number];
 export const 沟通段叫法: Record<沟通段, string> = { "7": "近 7 天", "30": "近 30 天", "90": "近 90 天", all: "全部" };
 export const 读沟通段 = (v?: string): 沟通段 => ((沟通段们 as readonly string[]).includes(v ?? "") ? (v as 沟通段) : "all");
+
+/**
+ * 沟通页签的方式筛选（11-01 版式融合）：按 FollowUp.type 的八个大类筛（企业字典里的 19 种方式记录时已对到大类，lib/follow-method.ts），
+ * 名字照 类型对方式；乱传 = 不筛
+ */
+export const 沟通方式们 = ["PHONE", "MEETING", "VISIT", "EMAIL", "SMS", "WHATSAPP", "WECHAT", "OTHER"] as const;
+export type 沟通方式 = (typeof 沟通方式们)[number];
+export const 读沟通方式 = (v?: string): 沟通方式 | "" => ((沟通方式们 as readonly string[]).includes(v ?? "") ? (v as 沟通方式) : "");
 
 /** 页码超出最后一页时落到最后一页 */
 export function 夹页(页: number, 总数: number, 每页 = 复盘列表每页): number {
@@ -53,13 +61,15 @@ export function 卡点条件(谁: readonly string[] | undefined, 我: string, �
 }
 
 /**
- * 沟通页签查哪些：挂在项目节点上的沟通记录（项目没删），谁 给了就按记录人（ownerId）筛，段 = 最近几天（从那天零点起）。
+ * 沟通页签查哪些：挂在项目节点上的沟通记录（项目没删），谁 给了就按记录人（ownerId）筛，段 = 最近几天（从那天零点起），
+ * 方式 给了按 type 筛。
  * 查询走带限定的 prisma：看得到哪些客户的沟通由那一层管（公海里同事客户的沟通内容照旧不给）
  */
-export function 沟通条件(谁: readonly string[] | undefined, 段: 沟通段, now: ReturnType<typeof dayjs>): Prisma.FollowUpWhereInput {
+export function 沟通条件(谁: readonly string[] | undefined, 段: 沟通段, now: ReturnType<typeof dayjs>, 方式: 沟通方式 | "" = ""): Prisma.FollowUpWhereInput {
   return {
     projectNode: { is: { project: { deletedAt: null } } },
     ...(谁 ? { ownerId: { in: [...谁] } } : {}),
+    ...(方式 ? { type: 方式 } : {}),
     ...(段 === "all" ? {} : { occurredAt: { gte: now.startOf("day").subtract(Number(段) - 1, "day").toDate() } }),
   };
 }
@@ -72,8 +82,12 @@ export type 复盘卡点行 = {
   客户: string;
   type: string;
   impact: string;
+  /** 阻碍主体 */
+  obstacle: string;
   description: string;
   status: string;
+  /** 解决截止（发布时间 + 时限） */
+  dueAt: string;
   /** 项目负责人 */
   负责人: string;
   /** 现在谁在处理；看板上的为空 */
@@ -94,5 +108,11 @@ export type 复盘沟通行 = {
   标题: string;
   内容: string;
   负责人: string;
+  /** 发起主体（企业字典 followInitiator），没填 = null */
+  发起: string | null;
+  /** 沟通编号（FUL…），没有 = null */
+  编号: string | null;
+  /** 挂了几个附件 */
+  附件: number;
 };
 export type 复盘沟通 = { 总数: number; 页: number; 行: 复盘沟通行[] };
