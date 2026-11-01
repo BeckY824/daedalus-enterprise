@@ -19,6 +19,7 @@ import { 记换负责人, 是我刚换的, 撤销时限毫秒 } from "@/lib/owne
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
+import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
@@ -120,8 +121,9 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
  * 只领还在公海里的。**在事务里逐位删公海那一行、删到了才算我领到**：两个人同时点，后到的那位删到 0 行，
  * 这一位算「已被领走」——原来查和删分在事务两边，两边都报「已领取」，负责人归后到的、活却被先到的带走了（复查）。
  * 领的时间记进 CustomerClaim：自动掉公海从它算起，领走当天没跟进，第二天不会又被扫回去。
+ * 带待办（企业版 C-06，公海页页头的勾，没传按默认勾）：跟着带过来的公海项目，进公海时关掉的那批待办重新打开给我
  */
-export async function 领取(ids: string[]): Promise<公海结果> {
+export async function 领取(ids: string[], 带待办?: boolean): Promise<公海结果> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
@@ -170,7 +172,7 @@ export async function 领取(ids: string[]): Promise<公海结果> {
   if (!领到.length) return { ok: true, updated: 0, unchanged: ids.length - 不能领.size, 没权限: 不能领.size };
   const { 数: 带走, 记下: 带过来 } = await 带走并记下(领到.map((x) => ({ customerId: x.id, 旧: x.值 })), me.id, me.id, "claim");
   // 企业版：名下放在项目公海里的项目一起归我（领客户即领项目，pool-link.ts）
-  const 公海项目 = await 领客户带走公海项目(领到.map((x) => x.id), me.id, me.id);
+  const 公海项目 = await 领客户带走公海项目(领到.map((x) => x.id), me.id, me.id, 带待办勾(带待办));
   if (公海项目.length) 带走.项目 = (带走.项目 ?? 0) + 公海项目.length;
   await recordAudit({
     user: me, action: "claim", entity: "Customer", entityId: 领到.length === 1 ? 领到[0].id : null,
@@ -185,9 +187,9 @@ export async function 领取(ids: string[]): Promise<公海结果> {
  * 老板把公海里的客户直接分给一位业务员（2026-10-20，客户需求：原来公海里的只能业务员自己领）。
  * 规矩和领取一模一样，只是「领的人」换成选中的那位：钉住老签约、原负责人没做完的活跟着过去、记领取时间（自动掉公海从它算起）、
  * 能撤销、记操作日志。同步顺序也照领取：先改负责人、最后删公海那一行（删到 0 行 = 已经被人领走，这一位跳过）。
- * 只给老板和业务主管（2026-10-20）；只分给在职成员
+ * 只给老板和业务主管（2026-10-20）；只分给在职成员。带待办同 领取（C-06）
  */
-export async function 分配公海(ids: string[], userId: string): Promise<公海结果> {
+export async function 分配公海(ids: string[], userId: string, 带待办?: boolean): Promise<公海结果> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!能管公海(me, await 权限组织())) return { ok: false, error: `只有总管理和销售管理能把公海里的${b.customer}分给同事` };
@@ -218,7 +220,7 @@ export async function 分配公海(ids: string[], userId: string): Promise<公�
   }
   if (!分到.length) return { ok: true, updated: 0, unchanged: ids.length - 无效.size, 没权限: 无效.size };
   const { 数: 带走, 记下: 带过来 } = await 带走并记下(分到.map((x) => ({ customerId: x.id, 旧: x.值 })), 给.id, me.id, "pool-assign");
-  const 公海项目 = await 领客户带走公海项目(分到.map((x) => x.id), 给.id, me.id);
+  const 公海项目 = await 领客户带走公海项目(分到.map((x) => x.id), 给.id, me.id, 带待办勾(带待办));
   if (公海项目.length) 带走.项目 = (带走.项目 ?? 0) + 公海项目.length;
   await recordAudit({
     user: me, action: "assign", entity: "Customer", entityId: 分到.length === 1 ? 分到[0].id : null,

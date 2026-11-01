@@ -63,6 +63,8 @@ describe("企业版卡点", () => {
     散主管 = await 建("loose-mgr", "MANAGER");
     await prisma.entMember.createMany({
       data: [
+        // 11-01 权限只认业务角色：老板 要配成总管理（director）才能管卡点、改卡点默认，账号 ADMIN 不再放行
+        { userId: 老板.id, bizRole: "director" },
         { userId: 经理.id, bizRole: "sales_mgr" },
         { userId: 组长.id, bizRole: "sales_mgr", managerId: 经理.id },
         { userId: 虚.id, bizRole: "sales_mgr" },

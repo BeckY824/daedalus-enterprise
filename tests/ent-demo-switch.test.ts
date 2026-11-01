@@ -51,6 +51,9 @@ describe("分组", () => {
         { id: "gone", role: "SALES", active: false },
       ],
       [
+        // 11-01 权限只认业务角色：没设业务角色的不进演示名单，老板、业务员也要有角色
+        { userId: "boss", deptId: null, bizRole: "director", line: null, managerId: null, dottedManagerId: null },
+        { userId: "s1", deptId: null, bizRole: "sales", line: null, managerId: null, dottedManagerId: null },
         { userId: "m1", deptId: "d2", bizRole: "sales,sales_mgr", line: "内贸", managerId: null, dottedManagerId: null },
         { userId: "s2", deptId: null, bizRole: "channel_ops", line: null, managerId: null, dottedManagerId: null },
       ],
@@ -77,6 +80,8 @@ describe("免密登录", () => {
     mocks.发了 = [];
     在职 = (await prisma.user.create({ data: { name: "在职", email: "on@x", password: "x", role: "SALES" } })).id;
     停用 = (await prisma.user.create({ data: { name: "停用", email: "off@x", password: "x", role: "SALES", active: false } })).id;
+    // 11-01 权限只认业务角色：没设业务角色的不进演示名单
+    await prisma.entMember.create({ data: { userId: 在职, bizRole: "sales" } });
   });
 
   it("开关关着：拒，不发会话；名单是 null", async () => {

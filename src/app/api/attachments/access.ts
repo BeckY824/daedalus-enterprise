@@ -71,7 +71,7 @@ async function 认项目(projectId: string, 要改: boolean): Promise<{ 叫法: 
   // 公海里我是历史负责人的项目：当不在（C-01，lib/project/pool-owner.ts）
   if (!p || (await 原负责人挡着(prisma, 我, p))) return { 错: "这个项目已经不在了，刷新看看", 状态: 404 };
   if (!露客户(我, p, await 看得到的客户([p.customerId]))) return { 错: "这个项目在公海里，先领取再看附件", 状态: 403 };
-  if (要改 && !能管项目(我, p, await 权限组织())) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改", 状态: 403 };
+  if (要改 && !能管项目(我, p, await 权限组织())) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改", 状态: 403 };
   return { 叫法: `项目「${p.name}」` };
 }
 

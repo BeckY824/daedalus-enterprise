@@ -16,6 +16,7 @@ import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 
 import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
@@ -230,12 +231,12 @@ export async function 放回项目公海(projectId: string, 原因?: string | nu
   } catch (e) { return 不在了(e); }
 }
 
-/** 从项目公海领取：领了就是负责人 */
-export async function 领取项目(projectId: string) {
+/** 从项目公海领取：领了就是负责人。带待办（C-06）：进公海时关掉的那批待办重新打开给我，没传按默认勾 */
+export async function 领取项目(projectId: string, 带待办?: boolean) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
-    const r = await 领取公海项目(me, projectId);
+    const r = await 领取公海项目(me, projectId, 带待办勾(带待办));
     if (r.ok) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
       await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `从项目公海领取项目「${p?.name ?? ""}」` });
@@ -347,11 +348,12 @@ const 项目字段名: Record<string, string> = {
 };
 
 /** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、所在地、需求描述、合同金额、定金金额、痛点标注、合同状态 */
-export async function 编辑项目(projectId: string, patch: 编辑项目改动) {
+export async function 编辑项目(projectId: string, patch: 编辑项目改动, 带待办?: boolean) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
-    const r = await 改项目(me, projectId, patch);
+    // 换了负责人时原负责人的待办（C-06，转让弹窗的勾）：没传按默认勾
+    const r = await 改项目(me, projectId, patch, 带待办勾(带待办));
     if (r.ok && r.变了?.length) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
       await recordAudit({

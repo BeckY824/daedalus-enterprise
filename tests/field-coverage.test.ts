@@ -36,7 +36,7 @@ function 标量字段(): Record<string, string[]> {
 const 可写: Record<string, string[]> = {
   // 企业版组织架构（2026-10-24）：设置 → 组织架构（settings/org-actions.ts）
   EntDept: ["name", "parentId"],
-  EntMember: ["deptId", "bizRole", "line", "managerId", "dottedManagerId"],
+  EntMember: ["deptId", "bizRole", "line", "managerId", "dottedManagerId", "noSettings"],
   // 企业版线索分配（2026-10-24）：leads/assign-actions.ts 的 分配线索 / 设配额
   EntLeadAssign: ["leadId", "toUserId", "line", "kind"],
   EntLeadQuota: ["userId", "quota"],

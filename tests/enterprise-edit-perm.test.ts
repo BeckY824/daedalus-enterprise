@@ -47,7 +47,7 @@ beforeEach(async () => {
     if (bizRole) await prisma.entMember.create({ data: { userId: id, bizRole } });
     return id;
   };
-  老板 = await 建人("boss", "老板", "ADMIN");
+  老板 = await 建人("boss", "老板", "ADMIN", "director");
   总管 = await 建人("dir", "总管", "SALES", "director");
   销售经理 = await 建人("sm", "销售经理", "SALES", "sales_mgr");
   市场经理 = await 建人("mm", "市场经理", "SALES", "marketing_mgr");
@@ -74,8 +74,8 @@ describe("表和判断", () => {
     expect(规整改权限(null)).toEqual({});
     expect(规整改权限({ 字典: ["总管理员", "销售管理", "老板", "直属上级"], 乱填: ["总管理员"], 字段权限: "总管理员", 必填字段: [] }))
       .toEqual({ 字典: ["销售管理", "总管理员"], 必填字段: [] });
-    expect(谁能改的话({}, "持有上限")).toBe("只有老板、销售管理、总管理员能改");
-    expect(谁能改的话({ 必填字段: [] }, "必填字段")).toBe("只有老板能改");
+    expect(谁能改的话({}, "持有上限")).toBe("只有总管理员、销售管理能改");
+    expect(谁能改的话({ 必填字段: [] }, "必填字段")).toBe("只有总管理员能改");
   });
 
   it("老板总能改；三类按自己的类；直属 / 虚线上级只对自己的下属", async () => {
@@ -86,9 +86,10 @@ describe("表和判断", () => {
     expect(能改设置(org, 人(销售经理), "字典", {})).toBe(false);
     expect(能改设置(org, 人(市场经理), "节点时限", {})).toBe(true);
     expect(能改设置(org, 人(市场经理), "持有上限", {})).toBe(false);
-    expect(能改设置(org, 人(总管), "字典", { 字典: [] })).toBe(false);
-    // 线索配额：默认总管理员不在里面；直属、虚线上级只给自己的下属设
-    expect(能改设置(org, 人(总管), "线索配额", {}, 销售)).toBe(false);
+    // 总管理每项都能改，表里删了也一样（11-01：权限只认业务角色，总管理不受这张表管）
+    expect(能改设置(org, 人(总管), "字典", { 字典: [] })).toBe(true);
+    // 线索配额：总管理照样能改（11-01 权限只认业务角色：总管理不受这张表管）；直属、虚线上级只给自己的下属设
+    expect(能改设置(org, 人(总管), "线索配额", {}, 销售)).toBe(true);
     expect(能改设置(org, 人(销售经理), "线索配额", {}, 销售)).toBe(true);
     expect(能改设置(org, 人(虚线), "线索配额", {}, 销售)).toBe(true);
     expect(能改设置(org, 人(销售经理), "线索配额", {}, 虚线)).toBe(false);
@@ -107,8 +108,8 @@ describe("表和判断", () => {
 describe("各处按自己那一行拦", () => {
   it("字典：默认总管理员能加、销售管理不能；勾上销售管理以后能加", async () => {
     当(销售经理);
-    expect(await 加角色(我(), "售前")).toMatchObject({ ok: false, error: "组员角色只有老板、总管理员能改" });
-    expect(await 加异常类别(我(), "客户失联")).toMatchObject({ ok: false, error: "异常类别只有老板、总管理员能改" });
+    expect(await 加角色(我(), "售前")).toMatchObject({ ok: false, error: "组员角色只有总管理员能改" });
+    expect(await 加异常类别(我(), "客户失联")).toMatchObject({ ok: false, error: "异常类别只有总管理员能改" });
     expect(await prisma.projectRole.count({ where: { name: "售前" } })).toBe(0);
     当(总管);
     expect(await 加角色(我(), "售前")).toMatchObject({ ok: true });
@@ -116,29 +117,30 @@ describe("各处按自己那一行拦", () => {
     当(销售经理);
     expect(await 加异常类别(我(), "客户失联")).toMatchObject({ ok: true });
     当(总管);
-    expect(await 加角色(我(), "交付")).toMatchObject({ ok: false, error: "组员角色只有老板、销售管理能改" });
+    // 总管理不受这张表管，表里只勾销售管理也照样能加
+    expect(await 加角色(我(), "交付")).toMatchObject({ ok: true });
   });
 
   it("组织规则：持有上限 / 节点时限 / 必填字段各看各的行，一次改几块要每块都能改", async () => {
     当(市场经理);
     expect(await 改组织规则({ 超时回收: { 开: false } })).toEqual({ ok: true, 收回: 0 });
-    expect(await 改组织规则({ 公海: { 持有上限开: true } })).toMatchObject({ ok: false, error: "项目持有上限只有老板、销售管理、总管理员能改" });
+    expect(await 改组织规则({ 公海: { 持有上限开: true } })).toMatchObject({ ok: false, error: "项目持有上限只有总管理员、销售管理能改" });
     当(销售经理);
     expect(await 改组织规则({ 公海: { 持有上限开: true } })).toEqual({ ok: true, 收回: 0 });
-    expect(await 改组织规则({ 公海: { 默认上限: 5 }, 节点推进: { 开: true } })).toMatchObject({ ok: false, error: "进程必填字段只有老板、总管理员能改" });
+    expect(await 改组织规则({ 公海: { 默认上限: 5 }, 节点推进: { 开: true } })).toMatchObject({ ok: false, error: "进程必填字段只有总管理员能改" });
     expect((await prisma.auditLog.count({ where: { summary: { contains: "默认 5 个" } } }))).toBe(0);
     当(销售);
-    expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "各进程时限只有老板、销售管理、市场管理、总管理员能改" });
+    expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "各进程时限只有总管理员、销售管理、市场管理能改" });
     // 老板把节点时限收回成只有自己
     当(老板, "ADMIN");
     expect(await 设改权限({ 节点时限: [] })).toEqual({ ok: true });
     当(市场经理);
-    expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "各进程时限只有老板能改" });
+    expect(await 改组织规则({ 超时回收: { 开: false } })).toMatchObject({ ok: false, error: "各进程时限只有总管理员能改" });
   });
 
   it("字段权限表：默认总管理员能存、销售管理不能；共享区一律拦", async () => {
     当(销售经理);
-    expect(await 设字段权限({})).toMatchObject({ ok: false, error: "字段权限表只有老板、总管理员能改" });
+    expect(await 设字段权限({})).toMatchObject({ ok: false, error: "字段权限表只有总管理员能改" });
     当(总管);
     expect(await 设字段权限({})).toEqual({ ok: true });
     await setSetting(改权限key, { 字段权限: ["销售管理"] });
@@ -161,8 +163,8 @@ describe("这张表本身", () => {
     expect(await getSetting(改权限key)).toEqual({ 字典: ["销售管理", "总管理员"] });
     const [r] = await 记录();
     expect(r).toMatchObject({ entity: "Setting", entityId: 改权限key });
-    expect(r.summary).toContain(`${设置项.字典.名}：老板、销售管理、总管理员`);
-    expect(r.summary).toContain(`${设置项.线索配额.名}：老板、直属上级、虚线上级`);
+    expect(r.summary).toContain(`${设置项.字典.名}：总管理员、销售管理`);
+    expect(r.summary).toContain(`${设置项.线索配额.名}：总管理员、直属上级、虚线上级`);
   });
 
   it("不是企业版、共享区都拦，一行不写", async () => {

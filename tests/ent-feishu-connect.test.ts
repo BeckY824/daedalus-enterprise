@@ -74,6 +74,8 @@ beforeEach(async () => {
   const 建人 = async (email: string, name: string, role: string) => (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
   老板 = await 建人("boss@example.com", "老板", "ADMIN");
   销售 = await 建人("s1@example.com", "小王", "SALES");
+  // 权限只认业务角色（11-01）：老板=总管理，小王=销售
+  await prisma.entMember.createMany({ data: [{ userId: 老板, bizRole: "director" }, { userId: 销售, bizRole: "sales" }] });
   当(老板, "ADMIN");
 });
 
@@ -389,7 +391,7 @@ describe("谁能用", () => {
     换联网(f.网);
     const 前 = await 原样();
     delete process.env.CRM_ENTERPRISE;
-    const 拦 = { ok: false, error: "只有老板或总管理员能改组织架构" };
+    const 拦 = { ok: false, error: "只有总管理能改组织架构" };
     expect(await 测试飞书连接动作({ 链接 })).toEqual(拦);
     expect(await 飞书表概况()).toEqual(拦);
     expect(await 设飞书表(链接, { customer: "tblCus" })).toEqual(拦);

@@ -46,6 +46,8 @@ describe("项目关联客户 / 联系人（真库、企业字典）", () => {
     老板 = await 人("p17-boss", "ADMIN");
     乙 = await 人("p17-yi", "SALES");
     丙 = await 人("p17-bing", "SALES");
+    // 11-01 权限只认业务角色：老板=总管理，乙、丙=销售
+    await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
     主客户id = (await prisma.customer.create({ data: { name: "QA-主客户有限公司", shortName: "QA主客户", phone: "13800001701", salesOwnerId: 乙.id } })).id;
     总包id = (await prisma.customer.create({ data: { name: "QA-总包有限公司", phone: "13800001702", salesOwnerId: 乙.id } })).id;
     监理id = (await prisma.customer.create({ data: { name: "QA-监理有限公司", shortName: "QA监理", phone: "13800001703", salesOwnerId: 乙.id } })).id;
@@ -148,10 +150,13 @@ describe("项目关联客户 / 联系人（真库、企业字典）", () => {
     expect(await 客户行(总包id)).toBeNull();
   });
 
-  it("谁能改同改项目：同事改不了、老板能改；公海里的先领取；库里不动", async () => {
+  it("谁能改同改项目：同事、老板改不了；公海里的先领取；库里不动", async () => {
     expect(await 加关联客户(丙, 项目id, 总包id)).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
     expect(await 客户行(总包id)).toBeNull();
-    expect(await 加关联客户(老板, 项目id, 总包id, ["总包方"])).toMatchObject({ ok: true });
+    // 11-01 权限只认业务角色：总管理不能编辑项目内容（C2），只有负责人本人能加关联
+    expect(await 加关联客户(老板, 项目id, 总包id, ["总包方"])).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
+    expect(await 客户行(总包id)).toBeNull();
+    expect(await 加关联客户(乙, 项目id, 总包id, ["总包方"])).toMatchObject({ ok: true });
     expect(await 改客户身份(丙, 项目id, 总包id, ["分包方"])).toMatchObject({ ok: false });
     expect(await 解除关联客户(丙, 项目id, 总包id)).toMatchObject({ ok: false });
     expect(await 加关联联系人(丙, 项目id, 张三id)).toMatchObject({ ok: false });

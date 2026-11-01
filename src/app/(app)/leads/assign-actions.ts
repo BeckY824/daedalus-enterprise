@@ -26,6 +26,7 @@ import { 超上限, 记转让 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
+import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import {
   企划线索计数key, 我分出去的, 月份, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
   认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们,
@@ -95,9 +96,10 @@ async function 不设配额开着(): Promise<boolean> {
 }
 
 /**
- * 手动指派。原负责人 = 界面上看到的负责人（乐观锁，QA #4）：写库时负责人已经不是他了 = 被别人先分走，回「已被分配」不覆盖
+ * 手动指派。原负责人 = 界面上看到的负责人（乐观锁，QA #4）：写库时负责人已经不是他了 = 被别人先分走，回「已被分配」不覆盖。
+ * 带待办（企业版 C-06，分配弹窗的勾）：分的是新线索（项目）时，原负责人没做完的待办一起转给接手人；没传按默认勾
  */
-export async function 分配线索(input: { leadId?: string; projectId?: string; toUserId: string; line?: 线 | null; kind?: 线索种类; 原负责人?: string | null }): Promise<结果 | { ok: false; error: string; 已被分配: true }> {
+export async function 分配线索(input: { leadId?: string; projectId?: string; toUserId: string; line?: 线 | null; kind?: 线索种类; 原负责人?: string | null; 带待办?: boolean }): Promise<结果 | { ok: false; error: string; 已被分配: true }> {
   const me = await 进门();
   if (!me) return 没开;
   const 哪条 = 目标of(input ?? {});
@@ -126,10 +128,10 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
       // 人已经按线（部门 / 标记）筛过了，这里不再查标记
       // 界面没交看到的负责人（老页面）：按这次请求开头读到的比
       const 原负责人 = 看到的 === undefined ? 看.实际负责人 : 看到的;
-      const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line: 用线, 查线: null, kind, 自动: false, 原负责人 });
+      const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line: 用线, 查线: null, kind, 自动: false, 原负责人, 带待办: 带待办勾(input.带待办) });
       return r.ok ? r : r.已被分配 ? 已被分配 : { ok: false, error: r.error };
     }
-    const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line, kind, 自动: false, 原负责人: 看到的 });
+    const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line, kind, 自动: false, 原负责人: 看到的, 带待办: 带待办勾(input.带待办) });
     return r.ok ? r : r.已被分配 ? 已被分配 : { ok: false, error: r.error };
   } catch (e) {
     return 不在了(e);
@@ -147,7 +149,7 @@ type 分给结果 = { ok: true } | { ok: false; error: string; 满?: true; 已�
 const 已被分配: { ok: false; error: string; 已被分配: true } = { ok: false, error: 已被分配的话, 已被分配: true };
 
 async function 分给(
-  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean; 查线?: 线 | null; 原负责人?: string | null },
+  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean; 查线?: 线 | null; 原负责人?: string | null; 带待办?: boolean },
 ): Promise<分给结果> {
   // 查线：核对接手人内贸 / 外贸标记用的线；这条线勾了部门时传 null（按部门挑，不看标记）。没传 = 就用 line
   const 问题 = 接手问题(org, input.toUserId, input.查线 === undefined ? input.line : input.查线);
@@ -203,9 +205,10 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
  * 分配线索阶段的项目（企业版「新线索」）：转了商机、线索流失的不用再分；配额同老线索（默认不限额），手动分另外还要过持有上限（超上限）；
  * 自动分配不看持有上限（11-01 清单 A10 / A11：不限额）。
  * 换负责人 = 转让：清下一步时间（超时回收从接手那天重新算），在公海里的出公海、待分配的清掉待分配，记一行转让痕。
+ * 带待办（C-06）：手动分才有，原负责人的待办按 lib/project/carry-tasks.ts 带过去或关掉；自动分配不传、不碰
  */
 async function 分项目给(
-  me: SessionUser, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null },
+  me: SessionUser, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean },
 ): Promise<分给结果> {
   const p0 = await prisma.project.findFirst({ where: { id: input.projectId }, select: { id: true, name: true } });
   if (!p0) return { ok: false, error: 项目不在 };
@@ -239,9 +242,10 @@ async function 分项目给(
       data: { ownerId: input.toUserId, nextStepAt: null, nextStepText: null, pooledAt: null, awaitAssignAt: null },
     });
     if (改.count !== 1) return 已被分配;
-    await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", `分配方式：${input.way}`);
+    const 几条 = await 换负责人待办(tx, p, 原, input.toUserId, input.带待办);
+    await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", 接上待办痕(`分配方式：${input.way}`, 待办痕(input.带待办, 几条)));
     // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
-    if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id);
+    if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, input.带待办);
     await tx.entLeadAssign.create({
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });

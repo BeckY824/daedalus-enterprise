@@ -36,6 +36,8 @@ beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");
   甲 = (await prisma.user.create({ data: { email: "jia", name: "甲", title: "", role: "ADMIN", password: "x" } })).id;
   mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
+  // 11-01 权限只认业务角色：甲 既是项目负责人（销售管理，记沟通、发卡点要能编辑项目）又是总管理（改卡点默认）；bizRole 逗号多角色
+  await prisma.entMember.create({ data: { userId: 甲, bizRole: "sales_mgr,director" } });
   const c = await prisma.customer.create({ data: { name: "客户", phone: "13800000001", salesOwnerId: 甲 } });
   项目id = (await prisma.project.create({ data: { name: "一期", customerId: c.id, ownerId: 甲, creatorId: 甲 } })).id;
   const r = await 记项目沟通({ id: 甲, role: "ADMIN" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });

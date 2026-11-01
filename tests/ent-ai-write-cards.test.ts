@@ -90,7 +90,8 @@ beforeEach(async () => {
   老板 = await 造人("boss", "老板", "ADMIN");
   乙 = await 造人("yi", "乙", "SALES");
   丙 = await 造人("bing", "丙", "SALES");
-  await prisma.entMember.createMany({ data: [{ userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
+  // 11-01 权限只认业务角色：老板也要有总管理（删除只给总管理）
+  await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
   await setSetting("business", { projectMode: true });
   await setSetting(规则.按组织看客户.key, true);
   客户id = (await prisma.customer.create({ data: { name: "云帆科技", phone: "13900000001", salesOwnerId: 乙.id } })).id;
@@ -305,14 +306,18 @@ describe("删客户", () => {
     expect(不可撤销("customer_delete")).toBe(true);
   });
 
-  it("负责人确认：转给 deleteCustomers，进回收站；看不到的同事确认一行不删", async () => {
+  it("总管理确认：转给 deleteCustomers，进回收站；负责人、看不到的同事确认一行不删", async () => {
     const { 卡 } = await 出("propose_customer_delete", { customer: "云帆科技", reason: "人说是重复的" });
 
     expect((await 确认(卡!, 丙)).ok).toBe(false);
     expect(客户动作.deleteCustomers).not.toHaveBeenCalled();
     expect(await prisma.customer.count()).toBe(1);
 
-    const r = await 确认(卡!, 乙);
+    // 11-01 权限只认业务角色：删除只给总管理，负责人本人也删不了
+    expect(await 确认(卡!, 乙)).toMatchObject({ ok: false, error: "只有总管理能删除" });
+    expect(await prisma.customer.count()).toBe(1);
+
+    const r = await 确认(卡!, 老板);
     expect(r).toMatchObject({ ok: true });
     expect(客户动作.deleteCustomers).toHaveBeenCalledWith([客户id]);
     expect(await prisma.customer.count()).toBe(0);

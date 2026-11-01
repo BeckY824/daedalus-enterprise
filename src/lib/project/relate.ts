@@ -40,7 +40,7 @@ const 项目不在 = { ok: false as const, error: "这个项目已经不在了�
 const 客户不在 = { ok: false as const, error: "这位客户已经不在了（或你看不到），刷新看看" };
 const 人不在 = { ok: false as const, error: "这位联系人已经不在了（或你看不到），刷新看看" };
 const 已关联 = { ok: false as const, error: "已经关联过了，刷新看看" };
-const 管不了 = (p: { pooledAt: Date | null }) => ({ ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改" });
+const 管不了 = (p: { pooledAt: Date | null }) => ({ ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改" });
 
 /** 多选：要是字符串数组；新选的得在启用着的里，已经存着的（停用了也算）不再对字典 */
 async function 认多选(kind: 字典种类, 名: string, v: unknown, 已有: readonly string[]): Promise<{ ok: true; 值: string | null } | { ok: false; error: string }> {

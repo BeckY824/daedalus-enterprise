@@ -48,6 +48,8 @@ beforeEach(async () => {
   mocks.开 = true;
   甲 = (await prisma.user.create({ data: { email: "jia", name: "甲", title: "", role: "ADMIN", password: "x" } })).id;
   mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
+  // 11-01 权限只认业务角色：甲是这些项目的负责人，得有销售角色才能建、改项目
+  await prisma.entMember.create({ data: { userId: 甲, bizRole: "sales" } });
   抖音 = (await prisma.channel.create({ data: { name: "渠道一", channelOwnerId: 甲 } })).id;
   小红 = (await prisma.channel.create({ data: { name: "渠道二", channelOwnerId: 甲 } })).id;
   停了 = (await prisma.channel.create({ data: { name: "停了的", channelOwnerId: 甲, active: false } })).id;
