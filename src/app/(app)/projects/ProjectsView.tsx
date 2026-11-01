@@ -4,7 +4,7 @@ import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { App, Button, Modal, Select, Space, Segmented, Tag, type SelectProps } from "antd";
+import { App, Button, Modal, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
 import { CloseOutlined, PlusOutlined, RightOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import dynamic from "next/dynamic";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
@@ -39,6 +39,7 @@ import LeadFullNotices from "../leads/LeadFullNotices";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
 import { 取客户近况 } from "../customers/[id]/pick";
 import { 取建档数据 } from "./new/wizard-actions";
+import { 滚法 } from "@/lib/reduced-motion";
 import type { 建档数据 } from "./new/ProjectWizard";
 
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */
@@ -66,11 +67,14 @@ function 异常说明(r: 项目行) {
   return [r.exceptionCategory, r.exceptionReason].filter(Boolean).join("：") || undefined;
 }
 
-/** 进程那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红；阶段单独一列（P11），这里只写进程 */
+/** 进程那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红；阶段单独一列（P11），这里只写进程。
+ *  11-01：结局和普通进程一样是纯文字，不带框 */
 function 节点文字(r: 项目行, 字典: 阶段字典) {
-  if (r.result === "异常状态") return <Tag color="error" title={异常说明(r)}>异常 · {r.exceptionCategory ?? r.node}</Tag>;
-  if (r.result) return <Tag>{结局叫法(r.result, 字典)}</Tag>;
-  const 进程 = 阶段与进程(r, 字典).进程;
+  if (r.result === "异常状态") {
+    const 字 = `异常 · ${r.exceptionCategory ?? r.node}`;
+    return <Typography.Text type="danger" className="clamp" title={异常说明(r) ?? 字}>{字}</Typography.Text>;
+  }
+  const 进程 = r.result ? 结局叫法(r.result, 字典) : 阶段与进程(r, 字典).进程;
   return <span className="clamp" title={进程}>{进程}</span>;
 }
 
@@ -152,7 +156,7 @@ export default function ProjectsView({
   const 看法 = 新线索 ? "列表" : 存的看法;
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
   const 看板框 = useRef<HTMLDivElement>(null);
-  const [右边还有, 滑一列] = 右边还有几列(看板框, 看法 === "看板" ? 看板 : null);
+  const [右边还有, 滑一列] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
   // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
@@ -477,7 +481,7 @@ export default function ProjectsView({
  */
 /** 看板右沿渐隐的宽（和 globals.css .pipe-fade-right 的 48px 一致）：滑过来的那一列整列落在渐隐外 */
 const 渐隐宽 = 48;
-function 右边还有几列(框: React.RefObject<HTMLDivElement | null>, 列们: unknown): [number, () => void] {
+function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: unknown): [number, () => void] {
   const [n, setN] = useState(0);
   const 没露全的 = (el: HTMLDivElement) => {
     const 右 = el.getBoundingClientRect().right;
@@ -485,7 +489,7 @@ function 右边还有几列(框: React.RefObject<HTMLDivElement | null>, 列们:
   };
   useEffect(() => {
     const el = 框.current;
-    if (!el) return void setN(0);
+    if (!el) return; // 提示只在看板里显示，切回看板时重算
     const 算 = () => setN(没露全的(el).length);
     算();
     el.addEventListener("scroll", 算, { passive: true });
@@ -500,8 +504,7 @@ function 右边还有几列(框: React.RefObject<HTMLDivElement | null>, 列们:
     const el = 框.current;
     const 下一列 = el && 没露全的(el)[0];
     if (!el || !下一列) return;
-    const 少动 = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollBy({ left: 下一列.getBoundingClientRect().right - el.getBoundingClientRect().right + 渐隐宽, behavior: 少动 ? "auto" : "smooth" });
+    el.scrollBy({ left: 下一列.getBoundingClientRect().right - el.getBoundingClientRect().right + 渐隐宽, behavior: 滚法() });
   };
   return [n, 滑];
 }
