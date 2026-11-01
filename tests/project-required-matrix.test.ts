@@ -59,19 +59,64 @@ describe("节点必填按矩阵（真库）", () => {
   });
   afterEach(() => { vi.unstubAllEnvs(); });
 
-  it("用建议清单：订单阶段生产备货 → 物流运输只要下一步计划 / 时间，齐了一路推到安装实施；缺场地现状停住，补上接着推到交付验收", async () => {
+  it("用建议清单：订单阶段生产备货 → 物流运输只要下一步计划 / 时间；推一步清一次下一步，每个节点得重写才推；缺场地现状停住，补上接着推到交付验收", async () => {
     await setSetting("orgRules", 开着(建议配置()));
     const p = await 项目({ phase: "订单", node: "生产备货", ...下一步 });
     const r = await 存一下(p.id);
-    expect(r).toMatchObject({ ok: true, 自动推到: ["物流运输", "安装实施"] });
-    expect((await 现(p.id)).node).toBe("安装实施");
-    // 场地现状填占位不算
-    await prisma.project.update({ where: { id: p.id }, data: { siteStatus: "暂未确认" } });
+    // 推到物流运输就停：生产备货写的下一步清掉了，不算物流运输的
+    expect(r).toMatchObject({ ok: true, 自动推到: ["物流运输"] });
+    expect(await 现(p.id)).toMatchObject({ node: "物流运输", nextStepText: null, nextStepAt: null });
+    expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
+    // 物流运输写了自己的下一步才推
+    await prisma.project.update({ where: { id: p.id }, data: 下一步 });
+    expect(await 存一下(p.id)).toMatchObject({ ok: true, 自动推到: ["安装实施"] });
+    // 安装实施：场地现状填占位不算（下一步也得在这儿重写）
+    await prisma.project.update({ where: { id: p.id }, data: { siteStatus: "暂未确认", ...下一步 } });
     expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
     await prisma.project.update({ where: { id: p.id }, data: { siteStatus: "已有场地" } });
     expect(await 存一下(p.id)).toMatchObject({ ok: true, 自动推到: ["交付验收"] });
     // 交付验收差验收通过
     expect((await 现(p.id)).node).toBe("交付验收");
+  });
+
+  it("带着上个节点的下一步进生产备货（手动推进来）：不自动推；在生产备货写了下一步才推，且只推一步", async () => {
+    await setSetting("orgRules", 开着(建议配置()));
+    // 商机最后一个节点首款到账：老板手动推过来，带着上个节点的下一步
+    const p = await 项目({ phase: "商机", node: "首款到账", ...下一步 });
+    expect(await 改节点(老板, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true, 变了: true });
+    expect(await 现(p.id)).toMatchObject({ node: "生产备货", nextStepText: null, nextStepAt: null });
+    expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
+    expect((await 现(p.id)).node).toBe("生产备货");
+    // 老值不丢：记在这次节点变更里
+    const 那行 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, toNode: "生产备货" } });
+    expect(那行.reason).toContain("原下一步：约下周演示");
+    // 在生产备货写了下一步：推到物流运输就停（物流运输还没写自己的）
+    await prisma.project.update({ where: { id: p.id }, data: 下一步 });
+    expect(await 存一下(p.id)).toMatchObject({ ok: true, 自动推到: ["物流运输"] });
+    expect((await 现(p.id)).node).toBe("物流运输");
+    const 自动 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, toNode: "物流运输" } });
+    expect(自动.reason).toMatch(/^必填齐了，自动推进\n原下一步：约下周演示 · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  });
+
+  it("销售带着上个节点的下一步手动推不过生产备货：下一步被清，还差下一步计划 / 时间", async () => {
+    await setSetting("orgRules", 开着(建议配置()));
+    const p = await 项目({ phase: "商机", node: "首款到账", ...下一步 });
+    expect(await 改节点(老板, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
+    const r = await 改节点(乙, p.id, { phase: "订单", node: "物流运输" });
+    expect(r).toMatchObject({ ok: false });
+    expect(r.ok ? "" : r.error).toContain("下一步");
+  });
+
+  it("往后退也清下一步；只改结局（丢单）不清", async () => {
+    await setSetting("orgRules", 开着({}));
+    const p = await 项目({ phase: "商机", node: "方案敲定", ...下一步 });
+    expect(await 改节点(老板, p.id, { phase: "商机", node: "痛点挖掘" })).toMatchObject({ ok: true, 变了: true });
+    expect(await 现(p.id)).toMatchObject({ nextStepText: null, nextStepAt: null });
+    const 退 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, toNode: "痛点挖掘" } });
+    expect(退.reason).toContain("原下一步：约下周演示");
+    await prisma.project.update({ where: { id: p.id }, data: 下一步 });
+    expect(await 改节点(老板, p.id, { phase: "商机", node: "痛点挖掘", result: "丢单" }, { 备注: "预算砍了" })).toMatchObject({ ok: true, 变了: true });
+    expect(await 现(p.id)).toMatchObject({ nextStepText: "约下周演示" });
   });
 
   it("用建议清单：下一步计划只写占位（待定）不算，下一步时间没填也不算", async () => {

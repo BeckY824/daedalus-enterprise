@@ -321,11 +321,14 @@ export async function 改节点(
     if (现.phase === 到.phase && 现.node === 到.node && 现.result === result && p.exceptionCategoryId === 类别 && (p.exceptionReason ?? null) === 备注) {
       return { ok: true as const, 变了: false };
     }
+    // 企业版换了节点：下一步计划 / 时间只算当前节点的，清掉，老值记进这次节点变更（换下一步）
+    const 清下一步 = 企业版() && (到.phase !== 现.phase || 到.node !== 现.node);
     await tx.project.update({
       where: { id: p.id },
       data: {
         phase: 到.phase, node: 到.node, result, exceptionCategoryId: 类别, exceptionReason: 备注,
         closedAt: result ? (现.result === result ? p.closedAt : new Date()) : null,
+        ...(清下一步 ? 清掉的下一步 : {}),
       },
     });
     // 企业版提成：进订单（赢单）固定实际提成（lib/project/commission-db.ts）。企业版进了订单不能退回商机（改节点问题 里拦）
@@ -334,7 +337,7 @@ export async function 改节点(
       data: {
         projectId: p.id, userId: me.id,
         fromPhase: 现.phase, fromNode: 现.node, fromResult: 现.result,
-        toPhase: 到.phase, toNode: 到.node, toResult: result, categoryId: 类别, reason: 原因,
+        toPhase: 到.phase, toNode: 到.node, toResult: result, categoryId: 类别, reason: 清下一步 ? 拼备注(原因, 原下一步备注(p)) : 原因,
       },
     });
     // 老板、主管往前推到的节点也配了、也齐了：接着推
@@ -996,6 +999,27 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
 export const 自动推进理由 = "必填齐了，自动推进";
 
 /**
+ * 企业版换节点（手动改节点、按必填自动推）清项目上的下一步计划 / 时间：下一步只算在当前节点写的。
+ * 库里没有「下一步更新时间」，带着上个节点的下一步进新节点，新节点配了下一步必填就直接算齐、一进来就被推走。
+ * 老值不丢：写进这次节点变更的备注（原下一步：文字 · 时间）；记沟通时写的时间沟通记录上另有一份
+ */
+const 清掉的下一步 = { nextStepText: null, nextStepAt: null } as const;
+const 原下一步头 = "原下一步：";
+
+/** 换节点前项目上的下一步，写进节点变更备注的那句；没有下一步 = null */
+export function 原下一步备注(p: { nextStepText?: string | null; nextStepAt?: Date | null }): string | null {
+  const 字 = p.nextStepText?.trim() || "";
+  const 时 = p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD HH:mm") : "";
+  if (!字 && !时) return null;
+  return 原下一步头 + [字, 时].filter(Boolean).join(" · ");
+}
+
+/** 节点变更备注：原因、自动推进理由、原下一步，按行拼；都空 = null */
+function 拼备注(...段: (string | null | undefined)[]): string | null {
+  return 段.filter(Boolean).join("\n") || null;
+}
+
+/**
  * 是不是往前走进现在这个节点的：最后一行进这个节点的节点变更是往前（或建项目那一行）。
  * 退回来的不自动推（退回一般是要重做，等上级手动推）
  */
@@ -1030,11 +1054,12 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
     if (!往前 && !(await 往前进来的(tx, p))) break;
     if (还差(规则, await 读必填数据(tx, p)).length) break;
     if (await 企业版推进关(tx, p, 下, 规则)) break;
-    await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node } });
+    // 推到下一个节点：带过去的下一步不算新节点的（不然新节点配了下一步必填就直接齐了、一路连推），清掉，老值记进这行节点变更
+    await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...清掉的下一步 } });
     await 节点变了的提成(tx, p.id, p.phase, 下.phase);
     await tx.projectNodeLog.create({
       data: {
-        projectId: p.id, userId: me.id, reason: 自动推进理由,
+        projectId: p.id, userId: me.id, reason: 拼备注(自动推进理由, 原下一步备注(p)),
         fromPhase: p.phase, fromNode: 本套名(p.node, 字典of(企业版())), fromResult: null, toPhase: 下.phase, toNode: 下.node, toResult: null,
       },
     });
