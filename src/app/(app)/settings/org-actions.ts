@@ -18,7 +18,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读组织, 建组织, 管理员类别of, 拆角色, 合角色, 部门挪动问题, 上级设置问题, type 组织部门 } from "@/lib/enterprise/org";
 import { 是业务角色, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
-import { 市场部门key, 规整市场部门 } from "@/lib/enterprise/market";
+import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
 import { 挡改设置, 规整改权限, 改权限key, 设置项, 设置项们, 谁能改, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import {
   通讯录来源们, 通讯录来源名, 读通讯录设置, 读凭据概况, 开关通讯录同步, 存角色对照, 存通讯录凭据, 存通讯录间隔, 同步通讯录, 对照能给的角色,
@@ -256,20 +256,31 @@ export async function 设改权限(配置: unknown): Promise<结果> {
 
 /**
  * 存「市场部门」（10-31）：哪几个部门（连下级）的人算市场成员——他们建的、负责过的客户转给销售后还看得到（只读，lib/enterprise/market.ts）。
- * 空 = 恢复默认（名字带「市场」的部门和下级）。只有老板和总管理员能改（和组织架构同一道门）
+ * 空 = 恢复默认（名字带「市场」的部门和下级）。只有老板和总管理员能改（和组织架构同一道门）。
+ * 人：另外逐人算市场成员的（11-01，岗位调整试行期、部门不动的人）；不传 = 不动，空 = 清掉
  */
-export async function 设市场部门(ids: unknown): Promise<结果> {
+export async function 设市场部门(ids: unknown, 人?: unknown): Promise<结果> {
   const who = await 能改的人();
   if (!who) return 不能改;
   try {
     const 设 = 规整市场部门(ids);
     if (!设) return { ok: false, error: "市场部门没选对，刷新再试" };
+    const 设人 = 人 === undefined ? undefined : 规整市场部门(人);
+    if (设人 === null) return { ok: false, error: "市场成员没选对，刷新再试" };
     const 部门 = await 全部部门();
     if (设.some((id) => !部门.has(id))) return { ok: false, error: "选的部门有的已经不在了，刷新再选" };
+    const org = 设人?.length ? await 读组织() : null;
+    if (org && 设人!.some((id) => !org.成员.has(id))) return { ok: false, error: "选的人有的已经不在组织里了，刷新再选" };
     const 存 = 设.length ? 设 : null;
     await setSetting(市场部门key, 存);
     const 说 = 存 ? 存.map((id) => 部门.get(id)!.name).join("、") : "恢复默认（名字带「市场」的部门）";
     await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 市场部门key, summary: `改市场部门（${说}）`, detail: 存 });
+    if (设人 !== undefined) {
+      const 存人 = 设人.length ? 设人 : null;
+      await setSetting(市场成员key, 存人);
+      const 名 = 存人 ? (await prisma.user.findMany({ where: { id: { in: 存人 } }, select: { name: true } })).map((u) => u.name).join("、") : "清空";
+      await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 市场成员key, summary: `改逐人设的市场成员（${名}）`, detail: 存人 });
+    }
     改完了();
     return { ok: true };
   } catch (e) {
