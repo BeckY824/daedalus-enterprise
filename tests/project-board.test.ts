@@ -3,7 +3,7 @@
  * 总控 10-23 定：金额不换汇，各币种各算各的。
  */
 import { describe, it, expect } from "vitest";
-import { 看板分列, 看板显示列, type 项目行 } from "@/lib/project/board";
+import { 看板分列, type 项目行 } from "@/lib/project/board";
 
 let n = 0;
 function 行(补: Partial<项目行>): 项目行 {
@@ -48,32 +48,11 @@ describe("看板分列", () => {
   });
 });
 
-describe("看板显示列（企业版项目首页 U-项目-08：空块默认隐藏）", () => {
-  const 名 = (r: ReturnType<typeof 看板显示列>) => r.列.map((c) => c.列);
-
-  it("有项目的列在，空列默认藏起来，顺序不变、报藏了几列", () => {
+describe("看板 0 个项目的列照常摆（11-01 用户定，原来企业版空列默认藏起）", () => {
+  it("只有两列有项目：五列都在、顺序不变，空列数 0、没有卡片", () => {
     const 列 = 看板分列([行({ phase: "商机", node: "共识方案" }), 行({ phase: "订单", node: "尾款结算", result: "成功交付" })]);
-    const r = 看板显示列(列, false);
-    expect(名(r)).toEqual(["商机", "成功交付"]);
-    expect(r.藏了).toBe(3);
-  });
-
-  it("点了「显示空列」五列都摆回来", () => {
-    const 列 = 看板分列([行({ phase: "商机", node: "共识方案" })]);
-    expect(看板显示列(列, true)).toEqual({ 列, 藏了: 0 });
-  });
-
-  it("五列全空（新库、筛得一个不剩）不藏，留着各列的空态说明", () => {
-    const 列 = 看板分列([]);
-    expect(看板显示列(列, false)).toEqual({ 列, 藏了: 0 });
-  });
-
-  it("五列都有项目：一列不藏", () => {
-    const 列 = 看板分列([
-      行({ phase: "线索", node: "潜客培育" }), 行({ phase: "商机", node: "共识方案" }), 行({ phase: "订单", node: "合同签订" }),
-      行({ phase: "订单", node: "尾款结算", result: "成功交付" }), 行({ phase: "商机", node: "共识方案", result: "丢单" }),
-    ]);
-    expect(看板显示列(列, false)).toMatchObject({ 藏了: 0 });
-    expect(看板显示列(列, false).列).toHaveLength(5);
+    expect(列.map((c) => c.列)).toEqual(["线索", "商机", "订单", "成功交付", "没成"]);
+    expect(列.map((c) => c.数)).toEqual([0, 1, 0, 1, 0]);
+    for (const c of 列) expect(c.行).toHaveLength(c.数);
   });
 });

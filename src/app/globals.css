@@ -2286,14 +2286,17 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .pick-ctx { display: flex; flex-direction: column; font-size: var(--fs-note); color: var(--text-muted); }
 .pick-ctx-0 { color: var(--text-faint); }
 
-/* ---------- 看板（原商机管道，10-28 起项目看板 ProjectsView 在用） ----------
-   任何宽度都不横滚（2026-10-22）：原来一排 flex 往右滚，商机名一长那一列就被撑到上千宽，后面几个阶段得往右拉才看得到。
-   现在各阶段等宽排一行，放不下就折到下一行（最窄 184，和原来一样：Windows 1280 起五个阶段正好一排，1024 才折）；页面只上下滚。列本身能缩（min-width: 0），里面的名字两行省略 */
-.pipe { display: grid; grid-template-columns: repeat(auto-fit, minmax(184px, 1fr)); gap: var(--s3); padding-bottom: var(--s2); align-items: start; }
+/* ---------- 看板（项目 / 新线索 ProjectsView、客户 CustomerBoard 共用这一套 .pipe） ----------
+   列保持固定宽度、列多就在看板框里左右滑（11-01 用户定，所有看板一样）：不再为了塞下所有列把列压窄、也不折行。
+   列宽按「一屏约 4 列」：框宽减 3 个间距再四等分，最窄 240（窄屏少露几列、照样不压），最宽 360（超宽屏多露一两列，卡片不被拉得太散）。
+   只有 .pipe 自己横滚（overflow-x: auto），页面不横滚；排版闸门对 overflow-x: auto 的区域按有意横滚跳过。
+   数量为 0 的列照常摆（空态写在列里），不藏、不收窄。 */
+.pipe { display: flex; flex-wrap: nowrap; gap: var(--s3); align-items: start; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--s2); min-width: 0; }
+.pipe > .pipe-col { flex: 0 0 clamp(240px, calc((100% - 3 * var(--s3)) / 4), 360px); }
 .pipe-col { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-height: 220px;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
 .pipe-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; } /* 金额放不下就折到第二行，不截成「¥ 1,23…」（10-27，1280 宽五列时） */
-.pipe-h b { font-size: var(--fs-body); font-weight: 600; color: var(--ink); white-space: nowrap; flex: none; } /* 阶段名能自己改（6 字内），一行放下；挤的时候让右边的金额省略。列最窄 184，6 个字加张数放得下，金额挤了就省略 */
+.pipe-h b { font-size: var(--fs-body); font-weight: 600; color: var(--ink); white-space: nowrap; flex: none; } /* 阶段名能自己改（6 字内），一行放下；挤的时候让右边的金额省略。列最窄 240，6 个字加张数放得下 */
 .pipe-dot { width: 8px; height: 8px; border-radius: 50%; align-self: center; flex: none; }
 .pipe-n { font-size: var(--fs-min); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 /* 这一列压着多少钱。管道是拿来看钱怎么分布的，只数张数看不出这个 */
@@ -2309,11 +2312,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 列宽固定以后底行放不下金额 + 负责人：金额一行写完，负责人挤不下就折到下一行，再长就换行写完，不省略 */
 .pipe-card-a { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pipe-card-o { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; max-width: 100%; word-break: break-word; }
-/* 每列先摆 50 张（2026-10-24），底下接着翻；列最窄 184，放不下就折行，不撑宽列 */
-/* 企业版项目首页：空列藏起来后的一行说明（U-项目-08）。列名能自己改，几列名字一长就省略、悬停看全，按钮不被挤走；1024 宽不横滚 */
-.pipe-hidden { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin: calc(-1 * var(--s1)) 0 var(--s2); font-size: var(--fs-note); color: var(--text-muted); }
-.pipe-hidden-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pipe-hidden .ant-btn { flex: none; padding-inline: 0; }
+/* 每列先摆 50 张（2026-10-24），底下接着翻；列宽固定，卡片里的字折行写完，不撑宽列 */
 /* 客户看板（U-客户-06）：按客户属性分列，点卡片进客户页（不拖）。属性名管理员能自己加、可能很长：列头名字一行省略、悬停看全 */
 .cust-board .pipe-card { cursor: pointer; }
 .cust-board .pipe-h b { flex: 0 1 auto; min-width: 0; }

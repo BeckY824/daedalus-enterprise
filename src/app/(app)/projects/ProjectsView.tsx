@@ -25,7 +25,7 @@ import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 企业级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
-import { 看板显示列, type 项目行, type 看板一列 } from "@/lib/project/board";
+import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, 是交付, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -146,11 +146,6 @@ export default function ProjectsView({
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
-  // 企业版看板：空列默认藏起来（U-项目-08，lib/project/board.ts 看板显示列），点「显示空列」再摆回来；全空时不藏
-  const [显示空列, set显示空列] = useState(false);
-  const { 列: 摆的列, 藏了 } = 企业版 ? 看板显示列(看板, 显示空列) : { 列: 看板, 藏了: 0 };
-  const 空列名 = 看板.filter((c) => c.数 === 0).map((c) => 列名(c.列)).join("、");
-  const 能藏 = 企业版 && 空列名 !== "" && 看板.some((c) => c.数 > 0);
   // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
   const 新建 = () => (企业版 && !新线索 ? set选客户(true) : router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new"));
   // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批
@@ -364,22 +359,10 @@ export default function ProjectsView({
       ) : (
         <>
           <div style={{ marginBottom: 12 }}>{筛选}</div>
-          {/* 企业版空列默认藏起来（U-项目-08）：说清藏了哪几列，点一下摆回来 */}
-          {能藏 && (
-            <div className="pipe-hidden">
-              {显示空列 ? (
-                <Button type="link" size="small" onClick={() => set显示空列(false)}>藏起空列</Button>
-              ) : (
-                <>
-                  <span className="pipe-hidden-t" title={空列名}>{藏了} 列没有项目，已藏起：{空列名}</span>
-                  <Button type="link" size="small" onClick={() => set显示空列(true)}>显示空列</Button>
-                </>
-              )}
-            </div>
-          )}
+          {/* 五列都摆，0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe） */}
           <div className="pipe-wrap">
             <div className="pipe">
-              {摆的列.map((c) => {
+              {看板.map((c) => {
                 const sum = 合计文字(c.合计, b.currency);
                 return (
                   <div key={c.列} className="pipe-col" aria-label={`${列名(c.列)}，${c.数} 个项目`}>
