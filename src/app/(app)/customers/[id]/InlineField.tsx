@@ -4,6 +4,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 
 import { useContext, useRef, useState } from "react";
 import { 只读上下文 } from "./read-only";
+import { 是空值, 有值, 空值符 } from "@/lib/empty-value";
 import { useRouter } from "next/navigation";
 import { App, AutoComplete, Input, Select } from "antd";
 import { dayjs } from "@/lib/utils";
@@ -104,12 +105,14 @@ export default function InlineField({
     router.refresh();
   }
 
-  const display =
+  const 原显 =
     (kind === "select" || kind === "combo") && options
       ? (options.find((o) => o.value === value)?.label ?? value)
-      : kind === "date" && value
+      : kind === "date" && 有值(value)
         ? dayjs(value).format("YYYY-MM-DD")
         : value;
+  // 导入时拿 "-" 占位的也算没填（11-01）：只读显示「—」，能编辑的照常给填写提示
+  const display = typeof 原显 === "string" && 是空值(原显) ? null : 原显;
 
   if (!editing) {
     return (
@@ -128,7 +131,7 @@ export default function InlineField({
               {display.slice(display.indexOf("@"))}
             </>
           ) : (
-            display || (只读 ? "—" : placeholder)
+            display || (只读 ? 空值符 : placeholder)
           )}
         </div>
       </div>

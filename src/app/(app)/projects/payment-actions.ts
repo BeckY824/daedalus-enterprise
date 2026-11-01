@@ -46,7 +46,8 @@ export async function 记回款(projectId: string, x: 回款提交) {
     });
     await 记自动推进(me, [{ id: projectId, name: r.name, 到: r.自动推到 ?? [] }]);
     刷新项目(projectId, r.customerId);
-    return { ok: true as const, ...(r.自动推到?.length ? { 自动推到: r.自动推到 } : {}) };
+    // id：首页 AI 回款卡确认后的「撤销」按它删回这一笔（全页面 AI 写入）
+    return { ok: true as const, ...(r.id ? { id: r.id } : {}), ...(r.自动推到?.length ? { 自动推到: r.自动推到 } : {}) };
   } catch (e) { return 不在了(e); }
 }
 

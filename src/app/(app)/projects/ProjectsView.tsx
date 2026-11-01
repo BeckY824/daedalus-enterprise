@@ -1,5 +1,6 @@
 "use client";
 
+import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
@@ -25,7 +26,7 @@ import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 企业级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
-import { 看板显示列, type 项目行, type 看板一列 } from "@/lib/project/board";
+import type { 项目行, 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, 是交付, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -146,11 +147,6 @@ export default function ProjectsView({
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
-  // 企业版看板：空列默认藏起来（U-项目-08，lib/project/board.ts 看板显示列），点「显示空列」再摆回来；全空时不藏
-  const [显示空列, set显示空列] = useState(false);
-  const { 列: 摆的列, 藏了 } = 企业版 ? 看板显示列(看板, 显示空列) : { 列: 看板, 藏了: 0 };
-  const 空列名 = 看板.filter((c) => c.数 === 0).map((c) => 列名(c.列)).join("、");
-  const 能藏 = 企业版 && 空列名 !== "" && 看板.some((c) => c.数 > 0);
   // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
   const 新建 = () => (企业版 && !新线索 ? set选客户(true) : router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new"));
   // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批
@@ -204,7 +200,8 @@ export default function ProjectsView({
     });
   }
 
-  const 无 = <span style={{ color: "var(--text-muted)" }}>—</span>;
+  // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
+  const 无 = <span style={{ color: "var(--text-muted)" }}>{空值符}</span>;
   // 企业版默认只摆 7 列（项目、客户、进程、下一步时间、金额、负责人、回公海日），其余收在「列」里（默认: false）；1366 宽不横向滚
   const 收起 = 企业版 ? { 默认: false } : {};
   const 列表: 列<项目行>[] = [
@@ -222,9 +219,9 @@ export default function ProjectsView({
     // P11 定稿 -2 版：项目级别显示成实心星（S 4 颗 … C 1 颗），悬停看档名；没分级的是 —
     ...(企业版 ? [
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
-      { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => r.expectedDealAt ?? 无 },
+      { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
       { title: "已立项", key: "age", width: 80, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
-      { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (r.项目来源 ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
+      { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : <UserCell name={r.ownerName} />) }]),
@@ -364,22 +361,10 @@ export default function ProjectsView({
       ) : (
         <>
           <div style={{ marginBottom: 12 }}>{筛选}</div>
-          {/* 企业版空列默认藏起来（U-项目-08）：说清藏了哪几列，点一下摆回来 */}
-          {能藏 && (
-            <div className="pipe-hidden">
-              {显示空列 ? (
-                <Button type="link" size="small" onClick={() => set显示空列(false)}>藏起空列</Button>
-              ) : (
-                <>
-                  <span className="pipe-hidden-t" title={空列名}>{藏了} 列没有项目，已藏起：{空列名}</span>
-                  <Button type="link" size="small" onClick={() => set显示空列(true)}>显示空列</Button>
-                </>
-              )}
-            </div>
-          )}
+          {/* 五列都摆，0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe） */}
           <div className="pipe-wrap">
             <div className="pipe">
-              {摆的列.map((c) => {
+              {看板.map((c) => {
                 const sum = 合计文字(c.合计, b.currency);
                 return (
                   <div key={c.列} className="pipe-col" aria-label={`${列名(c.列)}，${c.数} 个项目`}>
@@ -420,7 +405,7 @@ export default function ProjectsView({
                           </div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>
-                              {异常 ? `异常 · ${r.exceptionCategory ? `${r.exceptionCategory} · ` : ""}` : r.result && !是交付(r.result) ? `${结局叫法(r.result, 字典)} · ` : ""}{r.node}
+                              {异常 ? `异常 · ${有值(r.exceptionCategory) ? `${r.exceptionCategory} · ` : ""}` : r.result && !是交付(r.result) ? `${结局叫法(r.result, 字典)} · ` : ""}{r.node}
                             </span>
                             <span className="pipe-card-a">{金额(r.amount, r.currency)}</span>
                           </div>
@@ -429,7 +414,7 @@ export default function ProjectsView({
                           ) : (
                             (!不问归属 || r.即将回收) && (
                               <div className="pipe-card-m">
-                                <span className="pipe-card-o">{不问归属 ? null : r.ownerName}</span>
+                                <span className="pipe-card-o">{不问归属 ? null : 空显(r.ownerName)}</span>
                                 {r.即将回收 && <将收标 日={r.即将回收} />}
                               </div>
                             )

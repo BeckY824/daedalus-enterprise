@@ -38,6 +38,15 @@ export const 工具口语: Record<string, (次: number, 客户: string) => strin
   propose_opportunity: () => "拟了一张建议卡",
   propose_contract: () => "拟了一张建议卡",
   propose_channel_update: () => "拟了一张建议卡",
+  propose_project_node: () => "拟了一张建议卡",
+  propose_project_followup: () => "拟了一张建议卡",
+  propose_blocker_add: () => "拟了一张建议卡",
+  propose_blocker_resolve: () => "拟了一张建议卡",
+  propose_payment_add: () => "拟了一张建议卡",
+  propose_payment_delete: () => "拟了一张建议卡",
+  propose_lead_verify: () => "拟了一张建议卡",
+  propose_contact_update: () => "拟了一张建议卡",
+  propose_customer_delete: () => "拟了一张建议卡",
 };
 
 /** 过程条上的 label 形如 `list_channels({})`，取括号前的工具名 */

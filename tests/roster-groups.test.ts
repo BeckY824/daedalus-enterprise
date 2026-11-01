@@ -22,6 +22,11 @@ describe("名单按跟进状态分组：一个人都不能从分组视图里消�
     expect(g.find((x) => x.s === 未填写组)!.rows.map((r) => r.id)).toEqual(["a", "b", "c"]);
     expect(g.every((x) => x.s.trim() !== "")).toBe(true);
   });
+  it("11-01：导入时拿 \"-\" 占位的状态算没填 → 并进「未填写」，不单成一个「-」组", () => {
+    const g = 客户状态分组([{ id: "a", custStatus: "-" }, { id: "b", custStatus: " - " }, { id: "c", custStatus: null }, { id: "d", custStatus: "跟进中" }], ["跟进中"]);
+    expect(g.map((x) => x.s)).toEqual(["跟进中", 未填写组]);
+    expect(g.find((x) => x.s === 未填写组)!.rows.map((r) => r.id)).toEqual(["a", "b", "c"]);
+  });
   it("前后带空格的预设状态 → 并进同名的预设组，不出两个看着一样的组", () => {
     const g = 名单分组([人("a", " 跟进中 "), 人("b", "跟进中")]);
     expect(g).toHaveLength(1);

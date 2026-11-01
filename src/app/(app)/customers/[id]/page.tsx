@@ -95,6 +95,7 @@ export default async function CustomerDetailPage({
     号, users, channels, 挂来的, 另挂, 只项目四样,
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
     联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数, 报价记录,
+    可删改沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义,
   ] = await Promise.all([
     // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
     号码脱敏器(),
@@ -148,6 +149,12 @@ export default async function CustomerDetailPage({
     规则P,
     企 ? 全部联系人idP.then(async (ids) => Object.fromEntries((await 附件个数(defaultClient, { contactIds: ids })).联系人)) : null,
     报价明细 ? 客户报价记录(customer.id) : [],
+    // 下面这几样原来在 JSX 里一个个 await，各等一轮库（11-01 速度闸门：按组织看那组客户详情超 300ms），并进来一起取
+    企 ? 能删改沟通(me) : true,
+    企 ? 页面字典("custStatus") : null,
+    企 ? 页面可选项("contactTitle") : undefined,
+    企 ? 页面可选项("custAttr") : undefined,
+    企 ? 页面客户释义() : undefined,
   ]);
   const [汇总, 跟进去处, 转让选项, 待办计划] = 只项目四样 ?? [null, null, null, null];
   // 号码类的几种（手机、座机、WhatsApp、传真）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
@@ -188,21 +195,21 @@ export default async function CustomerDetailPage({
       项目们={项目们}
       参与项目们={参与项目们}
       只读={只读}
-      能删改沟通={企 ? await 能删改沟通(me) : true}
+      能删改沟通={可删改沟通}
       客户状态选项={客户状态选项}
       // 客户状态按字典项上色；项目模式开着按项目自动算（10-30，lib/enterprise/cust-status-auto-db.ts），章只读
-      客户状态色={企 ? 客户状态色表(await 页面字典("custStatus")) : undefined}
+      客户状态色={客户状态字典 ? 客户状态色表(客户状态字典) : undefined}
       客户状态自动={只项目}
       联系人分类附件数={联系人分类附件}
       关联们={关联们}
       号码种类={号码种类}
       // 联系人「职务」下拉的候选（10-31，字典 contactTitle）；走请求内缓存
-      职务选项={企 ? await 页面可选项("contactTitle") : undefined}
+      职务选项={职务选项}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
-      客户属性选项={企 ? await 页面可选项("custAttr") : undefined}
+      客户属性选项={客户属性选项}
       // 下拉里客户状态、客户类型每项的灰字释义（10-30）；字典上面已读过，走请求内缓存
-      字典释义={企 ? await 页面客户释义() : undefined}
+      字典释义={字典释义}
       // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/wizard-data.ts）
       新建项目={企 && 规则 ? { 节点们: [...企业版字典.节点们.线索], 要下一步: 规则.超时回收.开 } : null}
       联系人附件数={联系人附件数}

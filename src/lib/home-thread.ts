@@ -64,6 +64,14 @@ export type Turn = {
    * 回答里还是这张卡（id 不变，名片原图按 id 认）。见 lib/card-scan/agent-prompt.ts
    */
   名片?: Proposal;
+  /** 2026-11-01 起一次几张图认出几个人：几张卡一起发（老对话里还是上面那一张）；话 = 销售发图时打的那句话 */
+  名片们?: Proposal[];
+  话?: string;
+  /**
+   * 单发的客户照片（2026-11-01）：图里没认出人，问存不存到这页刚建的那位名下。不发给模型，答案是本地摆的一句话 + PhotoSaveCard；
+   * 图按 卡id 记在内存里（lib/card-scan/originals.ts），刷新就没了
+   */
+  存照片?: { 卡id: string; 张数: number; 名: string; 去处: { contactId: string } | { leadId: string } };
 };
 
 /** 首页那一屏的 scope。别的页面用自己的 pathname */

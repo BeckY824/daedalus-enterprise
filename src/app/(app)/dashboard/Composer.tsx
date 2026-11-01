@@ -16,6 +16,7 @@ import { clearJob, setJobValue } from "@/lib/ai-jobs";
 import type { StreamJob } from "@/lib/ai-stream";
 import type { AgentAnswer } from "@/lib/thread-history";
 import type { Proposal } from "@/lib/agent/proposals";
+import type { 刚建的人 } from "@/lib/card-scan/originals";
 import { cancelStream } from "@/lib/ai-stream";
 import { addTurn, clearThread, type Turn } from "@/lib/home-thread";
 import { 是刚交过来的 } from "@/lib/home-ask";
@@ -278,22 +279,44 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   /**
    * 认好一张名片：新开一轮，连卡交给 Agent（2026-10-28 用户：「名片识别也要走agent，以及固定的提示词。」）——
    * 服务端换成固定提示词、先查公司和联系人撞没撞库，说清还差哪几格；回答下面还是这张卡，人补齐点确认才写库。
-   * 算一次提问。次数用完了就照旧直接摆卡（不调模型）；框里打了一半的字不清
+   * 算一次提问。次数用完了就照旧直接摆卡（不调模型）。
+   * 2026-11-01 起一次几张图认出几个人就几张卡；框里打的那句话（「广交会的客户」）补来源、国家，连话一起发给 Agent，发完清框
    */
-  function 出名片卡(p: Proposal, 摘要: string) {
+  async function 出名片卡(ps: Proposal[], 摘要: string) {
+    const 话 = q.trim().slice(0, 300);
+    if (话) setQ("");
+    // lead-card 认图时已经拿过（CardScanKey），这里不再等网络；不放顶上 import，免得进每页首屏（11-01 速度闸门）
+    const { 用话补卡 } = await import("@/lib/card-scan/lead-card");
+    const 卡们 = 话 ? ps.map((p) => (p.kind === "add_lead" ? 用话补卡(p, 话, 渠道名们 ?? []) : p)) : ps;
+    const 问 = 话 ? `${话}（认图：${摘要}）` : `认图建线索：${摘要}`;
     if (AI已用完) {
-      const turn = addTurn(scope, { question: "认名片建线索", kind: "ask" });
+      const turn = addTurn(scope, { question: 问, kind: "ask" });
       const 答: StreamJob<AgentAnswer> = {
         steps: [],
-        answer: { text: `从名片认出：${摘要}。核对一下，来源选好渠道再点确认。`, records: [], customers: [], proposals: [p] },
+        answer: { text: `从图里认出：${摘要}。核对一下，标「待确认」的点掉或改好，来源选好渠道再点确认。`, records: [], customers: [], proposals: 卡们 },
       };
       setJobValue(`home:${turn.id}`, 答);
       on发出(turn.id);
       return;
     }
     const 排队 = Boolean(running);
-    const turn = addTurn(scope, { question: `认名片建线索：${摘要}`, kind: "ask", 名片: p, queued: 排队 });
+    const turn = addTurn(scope, { question: 问, kind: "ask", 名片们: 卡们, 话: 话 || undefined, queued: 排队 });
     if (!排队) start(turn);
+    on发出(turn.id);
+  }
+  /**
+   * 单发的客户照片（2026-11-01，旧系统样例「这个是客户的照片，帮我一起录入到系统」）：图里没认出人、这页刚建过一位，
+   * 新开一轮问存不存到他名下（TurnView 摆 PhotoSaveCard），不调模型、不扣次数。框里打的话当这一问，发完清框
+   */
+  function 问存照片(卡id: string, 张数: number, 给: 刚建的人) {
+    const 话 = q.trim().slice(0, 300);
+    if (话) setQ("");
+    const turn = addTurn(scope, { question: 话 || `客户照片 ${张数} 张`, kind: "ask", 存照片: { 卡id, 张数, 名: 给.名, 去处: 给.去处 } });
+    const 答: StreamJob<AgentAnswer> = {
+      steps: [],
+      answer: { text: `图里没认出名片或微信资料。要把这 ${张数} 张存成「${给.名}」的附件吗？`, records: [], customers: [], proposals: [] },
+    };
+    setJobValue(`home:${turn.id}`, 答);
     on发出(turn.id);
   }
   useImperativeHandle(ref, () => ({ 问: (x: string) => submit(x) }));
@@ -370,6 +393,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
                   }}
                   渠道名们={渠道名们}
                   on出卡={出名片卡}
+                  on存照片={问存照片}
                 />
               ) : (
                 <ComposerTools
