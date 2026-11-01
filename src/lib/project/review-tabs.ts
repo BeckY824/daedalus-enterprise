@@ -6,7 +6,7 @@ import type { dayjs } from "@/lib/utils";
  * 只管拼条件，不碰库（页面、测试都直接用）；取数在 review-tabs-db.ts。
  *
  * 看谁的跟「任务」「数据」两个页签同一个 看板的人 的 谁（board-member.ts）：
- *   - 业务员：谁 = [自己]；经理：谁 = 自己 + 下属（选了某个人 = [他]）；老板、总管理员：谁 = undefined（不限人）。
+ *   - 最下级：谁 = [自己]；上级：谁 = 自己 + 下属（选了某个人 = [他]）；总管理、管理员：谁 = undefined（不限人）。
  * 这一层是服务端兜底：企业版没开「按组织看客户」时 prisma 那层不拦人。
  *
  * 地址栏：tab=block  bs=open|done|all（卡点状态，默认 open）  p=页码
@@ -42,33 +42,25 @@ export function 夹页(页: number, 总数: number, 每页 = 复盘列表每页)
 
 /**
  * 卡点页签查哪些（查询包在 看全部 里，范围全靠这里，同 blocker.ts 的明着查）：
- *   - 谁 = undefined（老板、总管理员）：全部卡点；
- *   - 否则：项目负责人在 谁 里、项目不在公海（公海里的卡点不跟着公开，E11）；
- *     谁 里有我自己时，再加上指认 / 转给我的、我发布的、我是点了同意的组员的项目上的。
- *     经理看下属时只按下属负责的项目算，不按「指认给下属的」——那可能是别的组的项目，经理看不到。
+ *   - 谁 = undefined（总管理、管理员）：全部卡点；
+ *   - 否则：项目负责人在 谁 里、项目不在公海（公海里的卡点不跟着公开，E11）。
+ *     11-01 复盘只按负责人数（同项目列表的负责人范围）：指认给我的、我发布的、我是组员的别人项目上的卡点不再算进复盘，
+ *     在项目详情 / 项目列表的卡点里处理。我 参数留着（调用方不用改）
  */
-export function 卡点条件(谁: readonly string[] | undefined, 我: string, 筛: 卡点筛): Prisma.EntBlockerWhereInput {
+export function 卡点条件(谁: readonly string[] | undefined, _我: string, 筛: 卡点筛): Prisma.EntBlockerWhereInput {
   const 状态: Prisma.EntBlockerWhereInput = 筛 === "open" ? { status: { not: "已解决" } } : 筛 === "done" ? { status: "已解决" } : {};
   if (!谁) return 状态;
-  const 或: Prisma.EntBlockerWhereInput[] = [{ project: { ownerId: { in: [...谁] }, pooledAt: null } }];
-  if (谁.includes(我))
-    或.push(
-      { assigneeId: 我 },
-      { creatorId: 我 },
-      { project: { pooledAt: null, members: { some: { userId: 我, inviteStatus: "JOINED" } } } },
-    );
-  return { ...状态, OR: 或 };
+  return { ...状态, project: { ownerId: { in: [...谁] }, pooledAt: null } };
 }
 
 /**
- * 沟通页签查哪些：挂在项目节点上的沟通记录（项目没删），谁 给了就按记录人（ownerId）筛，段 = 最近几天（从那天零点起），
- * 方式 给了按 type 筛。
+ * 沟通页签查哪些：挂在项目节点上的沟通记录（项目没删），谁 给了就按项目负责人筛、公海里的项目不算（11-01 同复盘按负责人数），
+ * 段 = 最近几天（从那天零点起），方式 给了按 type 筛。
  * 查询走带限定的 prisma：看得到哪些客户的沟通由那一层管（公海里同事客户的沟通内容照旧不给）
  */
 export function 沟通条件(谁: readonly string[] | undefined, 段: 沟通段, now: ReturnType<typeof dayjs>, 方式: 沟通方式 | "" = ""): Prisma.FollowUpWhereInput {
   return {
-    projectNode: { is: { project: { deletedAt: null } } },
-    ...(谁 ? { ownerId: { in: [...谁] } } : {}),
+    projectNode: { is: { project: { deletedAt: null, ...(谁 ? { ownerId: { in: [...谁] }, pooledAt: null } : {}) } } },
     ...(方式 ? { type: 方式 } : {}),
     ...(段 === "all" ? {} : { occurredAt: { gte: now.startOf("day").subtract(Number(段) - 1, "day").toDate() } }),
   };

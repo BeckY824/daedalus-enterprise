@@ -183,9 +183,11 @@ describe("库里取数和范围", () => {
         data: { name: `${u.name}的项目`, customerId: 客户[u.id], ownerId: u.id, creatorId: u.id, createdAt: dayjs().subtract(5, "day").toDate() },
       })).id;
     }
-    await prisma.entMember.create({ data: { userId: 经理 } });
-    await prisma.entMember.create({ data: { userId: 小王, managerId: 经理 } });
-    await prisma.entMember.create({ data: { userId: 外人 } });
+    // 11-01 权限只认业务角色：每人都写明业务角色（老板 = 总管理看全部）
+    await prisma.entMember.create({ data: { userId: 老板, bizRole: "director" } });
+    await prisma.entMember.create({ data: { userId: 经理, bizRole: "sales_mgr" } });
+    await prisma.entMember.create({ data: { userId: 小王, bizRole: "sales", managerId: 经理 } });
+    await prisma.entMember.create({ data: { userId: 外人, bizRole: "sales" } });
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -193,7 +195,7 @@ describe("库里取数和范围", () => {
   });
   afterAll(() => prisma.$disconnect());
 
-  it("沟通按方式筛：只留这一类，范围照旧按记录人", async () => {
+  it("沟通按方式筛：只留这一类，范围照旧按项目负责人", async () => {
     await 记沟通(小王, 项目[小王], "PHONE", "小王打电话");
     await 记沟通(小王, 项目[小王], "VISIT", "小王上门");
     await 记沟通(外人, 项目[外人], "VISIT", "外人上门");
@@ -270,5 +272,31 @@ describe("库里取数和范围", () => {
     const 开 = await 以谁的身份(经理, () => 复盘概况of(经.只看 ?? 经.谁, 经.谁, 经理, "CNY"));
     expect(开.概况.将回公海).toBe(2);
     expect(开.预警).toHaveLength(2);
+  });
+
+  it("范围同项目列表：最下级只数自己；没设业务角色 = 谁都不数（各块都是 0）；公海里的项目不算", async () => {
+    await 存组织规则(开超时);
+    await 发卡点(小王, "客户");
+    await 发卡点(外人, "客户");
+    await 记沟通(外人, 项目[外人], "VISIT", "外人上门");
+    await prisma.project.create({ data: { name: "外人进公海的", customerId: 客户[外人], ownerId: 外人, creatorId: 外人, pooledAt: new Date() } });
+    忘掉企业版范围();
+    const 外 = await 看板的人({ id: 外人, role: "SALES" });
+    expect(外).toMatchObject({ 只看: 外人, 谁: [外人], 选项: null });
+    const 自己 = await 以谁的身份(外人, () => 复盘概况of(外.只看 ?? 外.谁, 外.谁, 外人, "CNY"));
+    expect(自己.概况).toMatchObject({ 在跟: 1, 未解决卡点: 1, 将回公海: 1 });
+
+    await prisma.entMember.delete({ where: { userId: 外人 } });
+    忘掉企业版范围();
+    const 无 = await 看板的人({ id: 外人, role: "SALES" });
+    expect(无).toEqual({ 谁: [], 选项: null });
+    const 圈 = 无.只看 ?? 无.谁;
+    const r = await 以谁的身份(外人, () => 复盘概况of(圈, 无.谁, 外人, "CNY"));
+    expect(r.概况).toMatchObject({ 在跟: 0, 未解决卡点: 0, 已回款: 0, 待回款: 0, 将回公海: 0 });
+    expect(r.预警).toEqual([]);
+    expect((await 缺沟通of(圈)).总数).toBe(0);
+    expect((await 卡点分布of(无.谁, 外人, "all")).总数).toBe(0);
+    expect((await 将回公海of(圈)).提醒.总数).toBe(0);
+    expect((await 复盘沟通of(无.谁, { 段: "all" })).总数).toBe(0);
   });
 });

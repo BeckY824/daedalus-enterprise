@@ -83,13 +83,15 @@ export type 项目详情 = {
   进公海: { 方式: 放回方式; 谁: string } | null;
   /** 服务端读的 企业版()：放回公海的说法跟着它走 */
   企业版: boolean;
+  /** 能删这个项目：企业版只有总管理（进回收站），别的版本 = 能改 */
+  能删?: boolean;
   /** 企业版组织规则里改过的出口叫法（设置 → 项目 → 阶段规则）；别的版本是空的 */
   出口叫法: 出口叫法改动;
   /** 企业版线索阶段：客户明确回复了的沟通有几条（0 = 推不过线索验证）；别的阶段、别的版本是 0 */
   有效沟通: number;
   /**
    * 企业版超时回收：nextStepAt 是最近一次沟通填的下一步时间（服务端排好的 YYYY-MM-DD）；回收日 = 哪天没人跟进就自动回公海（null = 不会）；
-   * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人、老板、主管、项目组成员，且不在公海（不是企业版照原来去客户页记）
+   * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人（11-01 起组员只能看），且不在公海（不是企业版照原来去客户页记）
    * nextStepText = 下一步做什么（10-29 起记沟通时自己写一句话，时间可空）；老数据只有时间没有这句，就只摆时间
    */
   nextStepAt: string | null; nextStepText?: string | null; 回收日: string | null;
@@ -125,6 +127,8 @@ export type 项目详情 = {
   不给推: string | null;
   /** 能改节点：能改的人 + 企业版负责人的直属上级（账号可能是 SALES）；只管节点这一块 */
   能改节点: boolean;
+  /** 能转让（换负责人）：企业版 = 总管理、负责人的实线上级（业务线对得上，lib/enterprise/permissions.ts 能转让项目）；负责人本人不能自己转 */
+  能转让?: boolean;
   balanceSettled: boolean; balanceSettledBy: string | null; balanceSettledAt: string | null;
   acceptancePassed: boolean; acceptancePassedBy: string | null; acceptancePassedAt: string | null;
   /** kind 不是 node 的行是换负责人（转让 / 放回公海 / 从公海领取），transfer 记从谁到谁；category 是进异常时选的类别 */
@@ -392,7 +396,9 @@ export default function ProjectDetail({
   const 交付了 = 是交付(p.result);
   const 异常 = p.result === "异常状态";
   const 可改 = 能改 && !p.pooled;
-  const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : "只有项目负责人、老板或主管能改";
+  // 企业版 11-01：只有负责人能改内容，总管理、上级、组员都只能看
+  const 改不了话 = p.企业版 ? "只有项目负责人能改，其他人只能看" : "只有项目负责人、老板或主管能改";
+  const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : 改不了话;
   const 节点可改 = p.能改节点 && !p.pooled;
   const 节点不能改 = p.能改节点 ? (p.pooled ? 不能改 : undefined) : 不能改;
   // 企业版：线索阶段还没有客户明确回复的沟通，推不过「线索验证」（服务端 lib/project/stage-gates.ts 同一条）
@@ -404,7 +410,7 @@ export default function ProjectDetail({
   const 等复核文字 = p.线索验证?.待 === "市场复核" ? "等管理员复核" : p.线索验证?.待 === "总管理终判" ? "等管理员最终确认" : undefined;
   const 等复核 = !!等复核文字;
   // 「下一步」灰着的原因写在按钮下面（规则：灰按钮要写为什么），不靠悬停
-  const 动不了 = (节点可改 ? undefined : 节点不能改 ?? "只有项目负责人、老板或主管能改") ?? 等复核文字;
+  const 动不了 = (节点可改 ? undefined : 节点不能改 ?? 改不了话) ?? 等复核文字;
   // 往前推另外的关：直属上级才推 / 需求状态补全期（p.不给推）、线索验证缺有效沟通
   const 往前不了 = p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined);
   // 配了必填、不是老板主管：缺着必填不给往前推；填齐了（占位值不算）照样能推（M-节点-05/09）
@@ -931,7 +937,8 @@ export default function ProjectDetail({
     </>
   );
   // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
-  const 转给钮 = p.企业版 && 可改 && !独自一人(候选, p.ownerId) && (
+  // 11-01：转让按 能转让 给（总管理、上级能转不能改；负责人本人能改不能自己转），和 lib/project/db.ts 改项目 同一个判断
+  const 转给钮 = p.企业版 && !p.pooled && !!p.能转让 && !独自一人(候选, p.ownerId) && (
     <Button disabled={忙} onClick={() => { set转给谁(null); set转给框(true); }}>转让项目</Button>
   );
   const 放回问 = () => {
@@ -943,15 +950,20 @@ export default function ProjectDetail({
 
   // 企业版页头（11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」）：记一条沟通 / AI 录入回沟通卡头，发卡点回卡点卡头，
   // 关联 + 回关联卡，邀请回项目组卡，改分配回提成卡，项目画像、附件就在各自卡上改 / 传，线索判定一直在节点卡里。
-  // 公海里的项目这里是「领取」。企业版不摆「删除项目」（M-权限-10：项目是公司资产，服务端也一律拒）。
+  // 公海里的项目这里是「领取」。「删除项目」企业版只摆给总管理（QA #3，进回收站；服务端 删项目 也只放总管理），收在「更多」里。
   // ⌘N 点的是页头主按钮（领取），没有就点节点卡上的「新增沟通」（data-cmd-new，components/CommandBar.tsx）
-  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海) && (
+  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删) && (
     <Space wrap>
       {领取钮}
       {转给钮}
       {p.能放公海 && (等复核
         ? <Tooltip title={`${等复核文字}，暂时不能退回`}><Button disabled>退回公海</Button></Tooltip>
         : <Button disabled={忙} onClick={放回问}>退回公海</Button>)}
+      {p.能删 && (
+        <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: [{ key: "delete", danger: true, label: "删除项目" }], onClick: () => 删问() }}>
+          <Button icon={<MoreOutlined />} aria-label="项目的更多操作">更多</Button>
+        </Dropdown>
+      )}
     </Space>
   );
 
@@ -964,7 +976,7 @@ export default function ProjectDetail({
           {领取钮}
           {转给钮}
           {/* 放回公海、删除项目少用、后果重：收进「更多」（10-30） */}
-          {(p.能放公海 || 能改) && (
+          {(p.能放公海 || (p.能删 ?? 能改)) && (
             <Dropdown
               trigger={["click"]}
               placement="bottomRight"
@@ -972,7 +984,7 @@ export default function ProjectDetail({
               menu={{
                 items: [
                   ...(p.能放公海 ? [{ key: "pool", disabled: 等复核, label: 两行("放回公海", 等复核 ? `${等复核文字}，暂时不能放回` : undefined) }] : []),
-                  ...(能改 ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
+                  ...((p.能删 ?? 能改) ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
                 ],
                 onClick: ({ key }) => (key === "pool" ? 放回问() : 删问()),
               }}

@@ -3,7 +3,8 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 管全队客户 } from "@/lib/constants";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能管公海, 能恢复 } from "@/lib/enterprise/permissions";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 规整公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
 import { 负责人候选 } from "@/lib/owners";
@@ -39,7 +40,8 @@ export default async function PoolPage({
     // 默认排序不写进地址：筛选栏的「重置」看得出没在筛
     sort: sp.sort && 规整排序(sp.sort) === sp.sort ? sp.sort : "",
   };
-  const 能分配 = 管全队客户(me.role);
+  const 权限org = await 权限组织();
+  const 能分配 = 能管公海(me, 权限org);
   const [d, users, 规则, 有] = await Promise.all([
     读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword }, 正整数(sp.page, 1), pageSize),
     // 分配给谁：老板、主管才用得上，同客户页的负责人下拉
@@ -54,8 +56,8 @@ export default async function PoolPage({
       {...d}
       pageSize={pageSize}
       filters={筛}
-      能标无效={管全队客户(me.role)}
-      能恢复={me.role === "ADMIN"}
+      能标无效={能分配}
+      能恢复={能恢复(me, 权限org)}
       能分配={能分配}
       users={users}
       持有={上限 === null ? null : { 有, 上限 }}

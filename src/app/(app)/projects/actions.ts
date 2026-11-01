@@ -22,7 +22,7 @@ import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/proj
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
-import { 读组织 } from "@/lib/enterprise/org";
+import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走 } from "@/lib/project/required";
@@ -175,7 +175,7 @@ async function 建好再分(me: Awaited<ReturnType<typeof requireUser>>, 分配:
     return r.ok ? { 提示: `已按「${分配.名}」分给 ${r.接手人}`, 转走: true } : { 提示: `项目先建在你名下，「${分配.名}」没成：${r.error}`, 转走: false };
   }
   if (分配.i === 2) {
-    const r = await 放回公海(me, projectId, null);
+    const r = await 放回公海(me, projectId, null, { 分配放行: true });
     if (!r.ok) return { 提示: `项目先建在你名下，没放进公海：${r.error}`, 转走: false };
     刷新项目(projectId);
     return { 提示: "已放进项目公海，等人捞取", 转走: true };
@@ -660,10 +660,8 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
     const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
     if (!p || p.pooledAt) return { ok: true, 能记: false };
-    if (!能管项目(me, p)) {
-      const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
-      if (组员?.inviteStatus !== "JOINED") return { ok: true, 能记: false };
-    }
+    // 11-01：企业版沟通只有负责人记，组员只能看（和 lib/project/db.ts 记项目沟通 同一个判断）
+    if (!能管项目(me, p, await 权限组织())) return { ok: true, 能记: false };
     const 规则 = await 生效组织规则();
     const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
     let 回收预演: 回收预演底子 | null = null;

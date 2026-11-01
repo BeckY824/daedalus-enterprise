@@ -12,8 +12,7 @@ import { 阶段与进程 } from "@/lib/project/stage-dict";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
-import { 历史负责人们, 原负责人回避 } from "@/lib/project/pool-owner";
-import { 管全队客户 } from "@/lib/constants";
+import { 历史负责人们, 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import {
   客户定状态, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
@@ -83,8 +82,8 @@ export async function 读公海行(me: { id: string; name: string; role?: string
   // 原负责人 = 最后一次进公海前的负责人（11-01 C-01 起企业版进公海清负责人，只在留痕里，lib/project/pool-owner.ts）
   const [可见, 原负责人] = await Promise.all([看得到的客户(项目们.map((p) => p.customerId)), 历史负责人们(prisma, 项目们.map((p) => p.id))]);
   const 拦 = 拦原负责人();
-  // 历史负责人看不到公海里的这个项目（老板 / 主管不算）
-  const 回避 = 原负责人回避() && !管全队客户(me.role);
+  // 历史负责人看不到公海里的这个项目（总管理 / 管理员不算）
+  const 回避 = 原负责人回避() && !(await 回避豁免(me));
 
   const 客户行: 公海行[] = 客户们.map((c) => {
     const 原类 = 客户入池类(c.pool!);

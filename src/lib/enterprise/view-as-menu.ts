@@ -23,7 +23,7 @@ export async function 读视图名单(user: SessionUser): Promise<演示组[] | 
   const [{ prisma }, { 读组织 }] = await Promise.all([import("@/lib/prisma"), import("./org")]);
   const org = await 读组织();
   const 真 = user.视图由?.id ?? user.id;
-  if (!user.视图由 && !能切换视图(org, user.role, user.id)) return null;
+  if (!user.视图由 && !能切换视图(org, user.id)) return null;
   const 人们 = await prisma.user.findMany({
     where: { active: true, id: { not: 真 } },
     select: { id: true, name: true, email: true, title: true },

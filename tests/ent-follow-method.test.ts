@@ -38,7 +38,7 @@ beforeEach(async () => {
     if (bizRole) await prisma.entMember.create({ data: { userId: id, bizRole } });
     return id;
   };
-  老板 = await 人("boss", "老板", "ADMIN");
+  老板 = await 人("boss", "老板", "ADMIN", "director"); // 11-01 权限只认业务角色
   销售 = await 人("s1", "小王", "SALES", "sales");
   客户 = (await prisma.customer.create({ data: { name: "示例客户", phone: "13800000001", salesOwnerId: 销售 } })).id;
   项目 = (await prisma.project.create({ data: { customerId: 客户, ownerId: 销售, creatorId: 销售, name: "示例项目", phase: "线索", node: "潜客培育" } })).id;
@@ -109,7 +109,7 @@ describe("存进库", () => {
     expect(await saveFollowUp({ ...base, method: "展会面聊" })).toMatchObject({ ok: true });
     const f = (await prisma.followUp.findFirst({ orderBy: { createdAt: "desc" } }))!;
     expect({ type: f.type, method: f.method }).toEqual({ type: "OTHER", method: "展会面聊" });
-    当(老板, "ADMIN"); // 10-31 M-权限-09：改沟通是总管理员 / 经理的事
+    当(老板, "ADMIN"); // 10-31 M-权限-09：改沟通是总管理的事（11-01 只认业务角色）
     expect(await saveFollowUp({ ...base, id: f.id, type: "OTHER", content: "改了内容" })).toMatchObject({ ok: true });
     expect(await prisma.followUp.findUnique({ where: { id: f.id }, select: { method: true, content: true } })).toEqual({ method: "展会面聊", content: "改了内容" });
   });
