@@ -64,6 +64,9 @@ export type Turn = {
    * 回答里还是这张卡（id 不变，名片原图按 id 认）。见 lib/card-scan/agent-prompt.ts
    */
   名片?: Proposal;
+  /** 2026-11-01 起一次几张图认出几个人：几张卡一起发（老对话里还是上面那一张）；话 = 销售发图时打的那句话 */
+  名片们?: Proposal[];
+  话?: string;
 };
 
 /** 首页那一屏的 scope。别的页面用自己的 pathname */

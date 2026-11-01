@@ -33,7 +33,7 @@ export default function ComposerPlus({ 宽, 拍照, 在跑, files, setFiles, 摆
   摆背调键: boolean;
   on切背调: () => void;
   渠道名们: readonly string[];
-  on出卡: (p: Proposal, 摘要: string) => void;
+  on出卡: (ps: Proposal[], 摘要: string) => void;
 }) {
   const 文件 = useRef<开关>(null);
   const 名片 = useRef<开关>(null);

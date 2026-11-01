@@ -262,17 +262,27 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
 async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string } | { ok: false; error: string }> {
   const meId = me.id;
   const 号 = p.phone.trim();
-  const { 号们, 剩 } = 认出备注里的号码(p.remark || "");
+  const { 号们: 备注号们, 剩 } = 认出备注里的号码(p.remark || "");
+  // 2026-11-01 起卡上有邮箱、微信自己的格（认图出的卡）：和备注里认出的一起查重，卡上那格优先
+  const 格号们 = ([["邮箱", p.email], ["微信", p.wechat]] as const)
+    .map(([类型, v]) => (v?.trim() ? 验号码(类型, v.trim()) : null))
+    .filter((h): h is Extract<ReturnType<typeof 验号码>, { ok: true }> => Boolean(h?.ok));
+  const 号们 = [...格号们, ...备注号们.filter((h) => !格号们.some((g) => g.类型 === h.类型 && g.值 === h.值))];
   const 手机 = 号 ? 验号码("手机号", 号) : null;
   const 撞了 = await AI建档查重([...(手机?.ok ? [手机] : []), ...号们], me);
   if (撞了) return { ok: false, error: 撞了 };
   const 邮箱 = 号们.find((h) => h.类型 === "邮箱")?.值 ?? null;
   const 微信 = 号们.find((h) => h.类型 === "微信")?.值 ?? null;
   // 客户只有一格企业号码：有电话放电话；没电话按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个认出的（新建客户企业号码不是手机号才免填电话）。
-  // 邮箱、微信另有联系人那格；阿里国际站ID没占企业号码的话那行留回备注（按新叫法写回）
+  // 邮箱、微信另有联系人那格；阿里国际站ID没占企业号码的话那行留回备注（按新叫法写回）。WhatsApp 不是号码类型，写进备注
   const 旺旺 = 号们.find((h) => h.类型 === "旺旺ID");
   const 企业号 = 号 ? { 类型: "手机号", 值: 号 } : (["邮箱", "微信", "旺旺ID"] as const).map((t) => 号们.find((h) => h.类型 === t)).find(Boolean);
-  const 备注 = 旺旺 && 企业号?.类型 !== "旺旺ID" ? [剩, `${号码类型叫法("旺旺ID")}：${旺旺.值}`].filter(Boolean).join("\n") : 剩;
+  const 备注 = [
+    剩,
+    旺旺 && 企业号?.类型 !== "旺旺ID" ? `${号码类型叫法("旺旺ID")}：${旺旺.值}` : "",
+    p.whatsapp?.trim() && p.whatsapp.trim() !== 号 ? `WhatsApp：${p.whatsapp.trim()}` : "",
+  ].filter(Boolean).join("\n");
+  const 国家 = p.country?.trim() || "";
   // 企业版新建线索要选渠道：卡上只有来源一格，来源就是某个启用中的渠道名（或只含一个渠道名）才认，认不出不猜
   const 渠道们 = await prisma.channel.findMany({ where: { active: true }, select: { id: true, name: true } });
   const 来源 = p.source.trim();
@@ -284,6 +294,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
       school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
       remark: 备注 || null, salesOwnerId: meId, channelId: 渠道.id, referrerCustomerId: null,
+      // 国家、城市进客户地址（和新建客户同一格）；城市不带国家会被当成国内，所以没国家就不交城市
+      ...(国家 ? { 企业资料: { addrCountry: 国家, addrCity: p.city?.trim() || null } } : {}),
     },
     联系人: { name: p.contact.trim() || p.name, phone: 号 || null, email: 邮箱, wechat: 微信 },
     // 负责人是自己、节点放线索第一步、明确回复记「没有」：都是卡上没有的格，按最保守的填，要改到项目页改

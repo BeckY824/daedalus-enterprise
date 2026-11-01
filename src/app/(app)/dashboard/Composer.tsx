@@ -16,6 +16,7 @@ import { clearJob, setJobValue } from "@/lib/ai-jobs";
 import type { StreamJob } from "@/lib/ai-stream";
 import type { AgentAnswer } from "@/lib/thread-history";
 import type { Proposal } from "@/lib/agent/proposals";
+import { 用话补卡 } from "@/lib/card-scan/lead-card";
 import { cancelStream } from "@/lib/ai-stream";
 import { addTurn, clearThread, type Turn } from "@/lib/home-thread";
 import { 是刚交过来的 } from "@/lib/home-ask";
@@ -278,21 +279,26 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   /**
    * 认好一张名片：新开一轮，连卡交给 Agent（2026-10-28 用户：「名片识别也要走agent，以及固定的提示词。」）——
    * 服务端换成固定提示词、先查公司和联系人撞没撞库，说清还差哪几格；回答下面还是这张卡，人补齐点确认才写库。
-   * 算一次提问。次数用完了就照旧直接摆卡（不调模型）；框里打了一半的字不清
+   * 算一次提问。次数用完了就照旧直接摆卡（不调模型）。
+   * 2026-11-01 起一次几张图认出几个人就几张卡；框里打的那句话（「广交会的客户」）补来源、国家，连话一起发给 Agent，发完清框
    */
-  function 出名片卡(p: Proposal, 摘要: string) {
+  function 出名片卡(ps: Proposal[], 摘要: string) {
+    const 话 = q.trim().slice(0, 300);
+    const 卡们 = 话 ? ps.map((p) => (p.kind === "add_lead" ? 用话补卡(p, 话, 渠道名们 ?? []) : p)) : ps;
+    if (话) setQ("");
+    const 问 = 话 ? `${话}（认图：${摘要}）` : `认图建线索：${摘要}`;
     if (AI已用完) {
-      const turn = addTurn(scope, { question: "认名片建线索", kind: "ask" });
+      const turn = addTurn(scope, { question: 问, kind: "ask" });
       const 答: StreamJob<AgentAnswer> = {
         steps: [],
-        answer: { text: `从名片认出：${摘要}。核对一下，来源选好渠道再点确认。`, records: [], customers: [], proposals: [p] },
+        answer: { text: `从图里认出：${摘要}。核对一下，标「待确认」的点掉或改好，来源选好渠道再点确认。`, records: [], customers: [], proposals: 卡们 },
       };
       setJobValue(`home:${turn.id}`, 答);
       on发出(turn.id);
       return;
     }
     const 排队 = Boolean(running);
-    const turn = addTurn(scope, { question: `认名片建线索：${摘要}`, kind: "ask", 名片: p, queued: 排队 });
+    const turn = addTurn(scope, { question: 问, kind: "ask", 名片们: 卡们, 话: 话 || undefined, queued: 排队 });
     if (!排队) start(turn);
     on发出(turn.id);
   }
