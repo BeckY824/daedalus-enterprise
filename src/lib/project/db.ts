@@ -2,14 +2,14 @@
  * 团队版项目模式 1a 的读写（2026-10-23，D-31）。取值规矩在 lib/project/nodes.ts，界面的写在 app/(app)/projects/actions.ts。
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
-import { Prisma } from "@/generated/prisma";
+import { Prisma, type Project } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
-import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, type 必填数据 } from "./required";
+import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, 有效线索判定, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
-import { 企业版推进关, 记沟通阶段问题, 记沟通标记 } from "./stage-gates";
+import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效沟通数 } from "./stage-gates";
 import { 等复核拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
@@ -30,7 +30,7 @@ import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
-import { 项目级别和地址改成, 项目成交钱改成, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
+import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
 import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
@@ -299,7 +299,9 @@ export async function 改节点(
     // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给老板、主管、负责人的直属上级、总管理员；
     // 销售本人填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
     if (往前 && 按必填走(规则, p.node) && me.role !== "ADMIN" && me.role !== "MANAGER" && !代管节点(me, p.ownerId, org)) {
-      const 差 = 还差(规则, await 读必填数据(tx, p));
+      const 数据 = await 读必填数据(tx, p);
+      // 线索核验判有效（lead-verify.ts 带 验证放行 进来）：先推进程、推成了才写判定，这一步的「线索验证结果」按判了有效算
+      const 差 = 还差(规则, 选项?.验证放行 ? { ...数据, 线索验证: { verdict: 有效线索判定, finalResult: 有效线索判定, pending: null } } : 数据);
       if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推，要先推请找老板或主管` };
     }
     let 类别: string | null = null;
@@ -319,11 +321,14 @@ export async function 改节点(
     if (现.phase === 到.phase && 现.node === 到.node && 现.result === result && p.exceptionCategoryId === 类别 && (p.exceptionReason ?? null) === 备注) {
       return { ok: true as const, 变了: false };
     }
+    // 企业版换了节点：下一步计划 / 时间只算当前节点的，清掉，老值记进这次节点变更（换下一步）
+    const 清下一步 = 企业版() && (到.phase !== 现.phase || 到.node !== 现.node);
     await tx.project.update({
       where: { id: p.id },
       data: {
         phase: 到.phase, node: 到.node, result, exceptionCategoryId: 类别, exceptionReason: 备注,
         closedAt: result ? (现.result === result ? p.closedAt : new Date()) : null,
+        ...(清下一步 ? 清掉的下一步 : {}),
       },
     });
     // 企业版提成：进订单（赢单）固定实际提成（lib/project/commission-db.ts）。企业版进了订单不能退回商机（改节点问题 里拦）
@@ -332,7 +337,7 @@ export async function 改节点(
       data: {
         projectId: p.id, userId: me.id,
         fromPhase: 现.phase, fromNode: 现.node, fromResult: 现.result,
-        toPhase: 到.phase, toNode: 到.node, toResult: result, categoryId: 类别, reason: 原因,
+        toPhase: 到.phase, toNode: 到.node, toResult: result, categoryId: 类别, reason: 清下一步 ? 拼备注(原因, 原下一步备注(p)) : 原因,
       },
     });
     // 老板、主管往前推到的节点也配了、也齐了：接着推
@@ -943,37 +948,76 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
   });
 }
 
+/** 读必填数据 要的项目列（整行传进来就行） */
+type 必填项目行 = Pick<Project,
+  "id" | "customerId" | "node" | "contactId" | "nextStepAt" | "nextStepText" | "expectedDealAt" | "amount" | "remark" | "acceptancePassed" | "balanceSettled"
+  | "painPoints" | "contractStatus" | "demandStatus" | "productNeeds" | "name" | "channelId" | "addrCountry" | "level" | "dealDemand" | "contractAmount" | "depositAmount"
+  | "budgetLevel" | "priceSense" | "decisionChain" | "purchaseCycle" | "productFit" | "valueFit" | "decisionReach" | "competitor" | "deployFit" | "siteStatus">;
+
 /**
  * 算「还差」要的数据（企业版节点必填，D-37）：客户（含外贸字段）、客户下的联系人、项目上的沟通各在哪个节点记的。
+ * 11-01 按客户矩阵加：每条沟通的发起主体 / 内容 / 方式、项目分配记录的分配方式、有效沟通数、线索验证结果。
  * 只用 tx：保存的那笔事务里调，刚写的也读得到
  */
-export async function 读必填数据(
-  tx: Prisma.TransactionClient,
-  p: { id: string; customerId: string; node: string; contactId: string | null; nextStepAt: Date | null; expectedDealAt: Date | null; amount: number; remark: string | null; acceptancePassed: boolean;
-    painPoints: string | null; contractStatus: string | null; demandStatus?: string | null },
-): Promise<必填数据> {
-  const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数] = await Promise.all([
+export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行): Promise<必填数据> {
+  const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 有效沟通, 验证] = await Promise.all([
     tx.customer.findUnique({
       where: { id: p.customerId },
-      select: { phone: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
+      select: { phone: true, assignWay: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
     }),
     tx.contact.findMany({ where: { customerId: p.customerId }, select: { phone: true, email: true, wechat: true } }),
-    tx.followUpProject.findMany({ where: { projectId: p.id }, select: { node: true }, distinct: ["node"] }),
+    tx.followUpProject.findMany({ where: { projectId: p.id, followUp: { deletedAt: null } }, select: { node: true, followUp: { select: { initiator: true, content: true, method: true } } } }),
     tx.attachment.count({ where: { projectId: p.id, tag: "合同" } }),
     tx.entProjectPayment.count({ where: { projectId: p.id } }),
     tx.attachment.count({ where: { projectId: p.id, tag: "方案" } }),
+    tx.entLeadAssign.findFirst({ where: { projectId: p.id, way: { not: null } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { way: true } }),
+    有效沟通数(tx, p.id),
+    tx.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { verdict: true, finalResult: true, pending: true } }),
   ]);
   return {
-    项目: { node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed, demandStatus: p.demandStatus ?? null },
-    客户: { phone: c?.phone ?? null, extra: c?.extra ?? null },
+    项目: {
+      node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed, demandStatus: p.demandStatus ?? null,
+      name: p.name, channelId: p.channelId, addrCountry: p.addrCountry, level: p.level, dealDemand: p.dealDemand, nextStepText: p.nextStepText,
+      contractAmount: p.contractAmount, depositAmount: p.depositAmount, balanceSettled: p.balanceSettled,
+      budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, purchaseCycle: p.purchaseCycle, productFit: p.productFit,
+      valueFit: p.valueFit, decisionReach: p.decisionReach, competitor: p.competitor, deployFit: p.deployFit, siteStatus: p.siteStatus,
+    },
+    客户: { phone: c?.phone ?? null, extra: c?.extra ?? null, assignWay: c?.assignWay ?? null },
+    有客户: !!c,
     联系人们,
-    沟通节点们: 沟通.map((x) => x.node),
+    沟通节点们: [...new Set(沟通.map((x) => x.node))],
+    沟通们: 沟通.map((x) => ({ node: x.node, initiator: x.followUp.initiator, content: x.followUp.content, method: x.followUp.method })),
     合同附件数, 回款笔数,
     痛点标注: p.painPoints, 合同状态: p.contractStatus, 项目方案数,
+    需求类型们: 读产品需求(p.productNeeds),
+    分配方式: 分配?.way ?? null,
+    有效沟通数: 有效沟通,
+    线索验证: 验证 ?? null,
   };
 }
 
 export const 自动推进理由 = "必填齐了，自动推进";
+
+/**
+ * 企业版换节点（手动改节点、按必填自动推）清项目上的下一步计划 / 时间：下一步只算在当前节点写的。
+ * 库里没有「下一步更新时间」，带着上个节点的下一步进新节点，新节点配了下一步必填就直接算齐、一进来就被推走。
+ * 老值不丢：写进这次节点变更的备注（原下一步：文字 · 时间）；记沟通时写的时间沟通记录上另有一份
+ */
+const 清掉的下一步 = { nextStepText: null, nextStepAt: null } as const;
+const 原下一步头 = "原下一步：";
+
+/** 换节点前项目上的下一步，写进节点变更备注的那句；没有下一步 = null */
+export function 原下一步备注(p: { nextStepText?: string | null; nextStepAt?: Date | null }): string | null {
+  const 字 = p.nextStepText?.trim() || "";
+  const 时 = p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD HH:mm") : "";
+  if (!字 && !时) return null;
+  return 原下一步头 + [字, 时].filter(Boolean).join(" · ");
+}
+
+/** 节点变更备注：原因、自动推进理由、原下一步，按行拼；都空 = null */
+function 拼备注(...段: (string | null | undefined)[]): string | null {
+  return 段.filter(Boolean).join("\n") || null;
+}
 
 /**
  * 是不是往前走进现在这个节点的：最后一行进这个节点的节点变更是往前（或建项目那一行）。
@@ -1010,11 +1054,12 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
     if (!往前 && !(await 往前进来的(tx, p))) break;
     if (还差(规则, await 读必填数据(tx, p)).length) break;
     if (await 企业版推进关(tx, p, 下, 规则)) break;
-    await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node } });
+    // 推到下一个节点：带过去的下一步不算新节点的（不然新节点配了下一步必填就直接齐了、一路连推），清掉，老值记进这行节点变更
+    await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...清掉的下一步 } });
     await 节点变了的提成(tx, p.id, p.phase, 下.phase);
     await tx.projectNodeLog.create({
       data: {
-        projectId: p.id, userId: me.id, reason: 自动推进理由,
+        projectId: p.id, userId: me.id, reason: 拼备注(自动推进理由, 原下一步备注(p)),
         fromPhase: p.phase, fromNode: 本套名(p.node, 字典of(企业版())), fromResult: null, toPhase: 下.phase, toNode: 下.node, toResult: null,
       },
     });
