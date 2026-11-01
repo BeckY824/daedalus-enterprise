@@ -73,7 +73,9 @@ it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在、可点�
     expect(await first.innerText()).toContain("wx_buyer_2026");
     expect(await cards.nth(1).innerText()).toContain("138****8001");
     expect(await cards.nth(1).getByRole("link").count()).toBe(0);
-    expect(await cards.nth(2).innerText()).toContain("没留联系方式");
+    // 11-01 会议：未填一律写 —，悬停说没留联系方式
+    expect(await cards.nth(2).innerText()).toMatch(/联系方式\s*—/);
+    expect(await cards.nth(2).getByTitle("没留联系方式").count()).toBe(1);
     // 客户电话也能拨；联系方式子表里的旺旺号摆出来，10-29 起叫「阿里国际站ID」
     expect(await page.getByRole("link", { name: "13800138000" }).getAttribute("href")).toBe("tel:13800138000");
     expect(await page.getByText("ww_buyer").count()).toBe(1);
@@ -111,12 +113,12 @@ it("开关关闭：左栏照旧——一行一个联系人、空字段都在、�
     expect(await page.getByText("ww_buyer").count()).toBe(0);
   } finally { await page.close(); }
 });
-it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通记录标题上是「新建沟通…」（两个项目先挑）；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
+it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通记录标题上是「新建沟通」（11-01 §5 直接开弹窗、不跳页）；沟通记录只读、每条标项目；待办里有计划和项目下一步；1024 宽不横滚", async () => {
   const page = await open(true, 1024, true);
   try {
-    // 11-01 起沟通记录是一张能收起的卡（照项目详情）：「新建沟通…」在卡头右边
+    // 11-01 起沟通记录是一张能收起的卡（照项目详情）：「新建沟通」在卡头右边
     const 沟通卡头 = page.locator('.proj-fold:has(> .proj-fold-btn[aria-label="收起沟通记录"]) > .rec-mod > .ant-card-head');
-    const 新建沟通 = 沟通卡头.locator(".ant-card-extra").getByRole("button", { name: /新建沟通…/ });
+    const 新建沟通 = 沟通卡头.locator(".ant-card-extra").getByRole("button", { name: /新建沟通$/ });
     expect(await 新建沟通.count()).toBe(1);
     expect(await page.locator(".rec-acts").getByRole("button", { name: /沟通/ }).count()).toBe(0);
     expect(await page.getByText("记录跟进").count()).toBe(0);
@@ -132,15 +134,20 @@ it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通
     expect(await page.getByText("回访报价").count()).toBe(1);
     expect(await page.locator(".rec-task-k").allInnerTexts()).toEqual(["计划", "项目"]);
     expect(await page.getByText("下次跟进").count()).toBe(0);
-    // 两个项目：点「新建沟通…」开框挑项目（10-31 R6，原来是下拉），长名字不把框撑出屏
+    // 11-01 会议 §5：点「新建沟通」直接开「记一条沟通」弹窗（不再先挑项目、不跳去项目页）；
+    // 弹窗里「关联项目」默认第一个没结束的项目，已结束的不给选；长名字不把框撑出屏
     await 新建沟通.click();
     const 框 = page.getByRole("dialog");
-    await 框.getByText("记到哪个项目").waitFor();
-    expect(await 框.innerText()).toContain("记一条沟通 · 客户A");
-    expect(await 框.getByText("关联进来的项目").count()).toBe(1);
-    expect(await 框.getByText("关联 · 已结束").count()).toBe(1);
+    await 框.getByText("记一条沟通").waitFor();
+    expect(await 框.getByText("记到哪个项目").count()).toBe(0);
+    const 项目格 = 框.locator(".ant-form-item").filter({ has: page.locator("label", { hasText: "关联项目" }) });
+    expect(await 项目格.count()).toBe(1);
+    await expect.poll(() => 项目格.locator(".ant-select-content").innerText()).toContain("超长项目名称");
+    await 项目格.locator(".ant-select").click();
+    expect(await page.locator(".ant-select-item-option").filter({ hasText: "关联进来的项目" }).count()).toBe(0);
+    await page.keyboard.press("Escape");
+    expect(await page.evaluate(() => location.pathname)).toBe("/");
     expect(await 框.evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(1024);
-    expect(await 框.locator(".ant-menu").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   } finally { await page.close(); }
 });

@@ -87,6 +87,11 @@ describe("节点必填自动推进", () => {
     const p = await 项目();
     const r = await 记项目沟通(乙, p.id, { type: "PHONE", content: "聊了", occurredAt: 现在(), 下一步时间: dayjs().add(2, "day").format("YYYY-MM-DD"), 阶段: "线索", 明确回复: false });
     expect(r).toMatchObject({ ok: true, 自动推到: ["线索验证"] });
+    // 推走了：项目上的下一步清掉（只算潜客培育的），老值记在自动推进那行；沟通记录上的下一步时间还在
+    expect(await 现(p.id)).toMatchObject({ nextStepAt: null, nextStepText: null });
+    const 推 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, reason: { startsWith: 自动推进理由 } } });
+    expect(推.reason).toContain("原下一步：");
+    expect((await prisma.entFollowUpMeta.findUniqueOrThrow({ where: { followUpId: r.ok ? r.followUpId! : "" } })).nextAt).not.toBeNull();
 
     const q = await 项目({ phase: "订单", node: "验收交付" });
     expect(await 勾交付(乙, q.id, "acceptancePassed", true)).toMatchObject({ ok: true, 自动推到: ["尾款结算"] });
@@ -133,7 +138,7 @@ describe("节点必填自动推进", () => {
     await 记有效沟通(p.id);
     const r = await 改节点(乙, p.id, { phase: "线索", node: "线索推进" });
     expect(r.ok).toBe(false);
-    expect(!r.ok && r.error).toContain("还差必填：金额、国家");
+    expect(!r.ok && r.error).toContain("还差必填：预计成交金额、国家");
     expect(await 改节点(乙, p.id, { phase: "线索", node: "潜客培育" })).toMatchObject({ ok: true });
     没推(await 改节点(老板, p.id, { phase: "线索", node: "线索验证" }));
     const 主管 = await 人("mgr", "MANAGER");

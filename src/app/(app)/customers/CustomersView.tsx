@@ -664,6 +664,8 @@ export default function CustomersView({
 
       <DataList<CustomerRow>
         页="customers"
+        // 企业版每格一行、放不下省略号悬停看全（11-01 会议 §11）
+        单行={企业}
         不可勾={只读的.size ? (r) => 只读的.has(r.id) : undefined}
         空库={空库}
         没对上={
