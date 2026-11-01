@@ -32,10 +32,17 @@ import {
   FOLLOW_METHODS,
   FOLLOW_RECORD_STATUSES,
 } from "../constants";
+import { 同名们 } from "../project/stage-dict";
+import { 项目画像项, 字典定义 } from "../enterprise/dict-kinds";
 
 /* ---------- 字段白名单 ---------- */
 
-export type 字段型 = "文本" | "数字" | "日期" | "枚举" | "真假";
+/**
+ * 「人」「部门」是引用：库里存 id，对人和模型只说名字。
+ * 条件里给名字，`编译` 时由调用方传进来的 名映射 换成 id（in / notIn），
+ * 结果里的 id 也由调用方换回名字——id 对人没有意义，也不该让模型去猜。
+ */
+export type 字段型 = "文本" | "数字" | "日期" | "枚举" | "真假" | "人" | "部门";
 
 export type 字段 = {
   /** Prisma 里的列名 */
@@ -45,6 +52,8 @@ export type 字段 = {
   型: 字段型;
   /** 枚举的合法取值。填了的话，不在里面的值直接拒绝——拼错一个字不该悄悄查出 0 条 */
   取值?: readonly string[];
+  /** 节点 / 结局名：改过名的旧名也要一起查（同名们），否则改名前的项目查不出来 */
+  同名?: true;
 };
 
 const 字段们 = <T extends Record<string, 字段>>(t: T) => t;
@@ -71,6 +80,16 @@ export const 表们 = {
       最近跟进: { 列: "lastFollowAt", 名: "最近跟进时间", 型: "日期" },
       备注: { 列: "remark", 名: "备注", 型: "文本" },
       建档时间: { 列: "createdAt", 名: "建档时间", 型: "日期" },
+      销售负责人: { 列: "salesOwnerId", 名: "销售负责人", 型: "人" },
+      渠道负责人: { 列: "channelOwnerId", 名: "渠道负责人", 型: "人" },
+      客户状态: { 列: "custStatus", 名: "客户状态", 型: "文本" },
+      客户类型: { 列: "customerType", 名: "客户类型", 型: "文本" },
+      客户属性: { 列: "customerAttr", 名: "客户属性", 型: "文本" },
+      简称: { 列: "shortName", 名: "简称", 型: "文本" },
+      省份: { 列: "addrProvince", 名: "省份", 型: "文本" },
+      城市: { 列: "addrCity", 名: "城市", 型: "文本" },
+      退回公海次数: { 列: "poolReturns", 名: "退回公海次数", 型: "数字" },
+      分配方式: { 列: "assignWay", 名: "分配方式", 型: "文本" },
     }),
   },
   线索: {
@@ -136,6 +155,8 @@ export const 表们 = {
       状态: { 列: "status", 名: "状态", 型: "枚举", 取值: FOLLOW_RECORD_STATUSES },
       时长秒: { 列: "duration", 名: "时长（秒）", 型: "数字" },
       发生时间: { 列: "occurredAt", 名: "发生时间", 型: "日期" },
+      沟通方式: { 列: "method", 名: "沟通方式", 型: "文本" },
+      记录人: { 列: "ownerId", 名: "记录人", 型: "人" },
     }),
   },
   跟进计划: {
@@ -158,6 +179,7 @@ export const 表们 = {
       已完成: { 列: "done", 名: "是否已完成", 型: "真假" },
       完成时间: { 列: "doneAt", 名: "完成时间", 型: "日期" },
       建档时间: { 列: "createdAt", 名: "建档时间", 型: "日期" },
+      负责人: { 列: "ownerId", 名: "负责人", 型: "人" },
     }),
   },
   渠道: {
@@ -169,6 +191,198 @@ export const 表们 = {
       备注: { 列: "remark", 名: "备注", 型: "文本" },
       启用: { 列: "active", 名: "是否启用", 型: "真假" },
       建档时间: { 列: "createdAt", 名: "建档时间", 型: "日期" },
+      负责人: { 列: "channelOwnerId", 名: "渠道负责人", 型: "人" },
+      属性: { 列: "attr", 名: "渠道属性", 型: "文本" },
+      平台: { 列: "platform", 名: "平台", 型: "文本" },
+      结束日期: { 列: "endDate", 名: "结束日期", 型: "日期" },
+    }),
+  },
+  项目: {
+    模型: "project" as const,
+    名: "项目",
+    字段: 字段们({
+      名称: { 列: "name", 名: "项目名称", 型: "文本" },
+      负责人: { 列: "ownerId", 名: "负责人", 型: "人" },
+      创建人: { 列: "creatorId", 名: "创建人", 型: "人" },
+      阶段: { 列: "phase", 名: "阶段", 型: "文本" },
+      节点: { 列: "node", 名: "节点", 型: "文本", 同名: true },
+      结局: { 列: "result", 名: "结局", 型: "文本", 同名: true },
+      异常原因: { 列: "exceptionReason", 名: "异常原因", 型: "文本" },
+      进公海时间: { 列: "pooledAt", 名: "进公海时间", 型: "日期" },
+      下一步时间: { 列: "nextStepAt", 名: "下一步时间", 型: "日期" },
+      下一步: { 列: "nextStepText", 名: "下一步", 型: "文本" },
+      尾款结清: { 列: "balanceSettled", 名: "是否尾款结清", 型: "真假" },
+      验收通过: { 列: "acceptancePassed", 名: "是否验收通过", 型: "真假" },
+      金额: { 列: "amount", 名: "商机金额", 型: "数字" },
+      币种: { 列: "currency", 名: "币种", 型: "文本" },
+      合同金额: { 列: "contractAmount", 名: "合同金额", 型: "数字" },
+      定金: { 列: "depositAmount", 名: "定金", 型: "数字" },
+      合同状态: { 列: "contractStatus", 名: "合同状态", 型: "文本" },
+      预计成交: { 列: "expectedDealAt", 名: "预计成交时间", 型: "日期" },
+      痛点: { 列: "painPoints", 名: "痛点标注", 型: "文本" },
+      成交需求: { 列: "dealDemand", 名: "成交需求", 型: "文本" },
+      ...Object.fromEntries(项目画像项.map((i) => [字典定义[i.种类].名, { 列: i.键, 名: 字典定义[i.种类].名, 型: "文本" as const }])),
+      位置: { 列: "location", 名: "位置", 型: "文本" },
+      省份: { 列: "addrProvince", 名: "省份", 型: "文本" },
+      城市: { 列: "addrCity", 名: "城市", 型: "文本" },
+      等级: { 列: "level", 名: "项目等级", 型: "文本" },
+      备注: { 列: "remark", 名: "备注", 型: "文本" },
+      创建时间: { 列: "createdAt", 名: "创建时间", 型: "日期" },
+      更新时间: { 列: "updatedAt", 名: "更新时间", 型: "日期" },
+      结束时间: { 列: "closedAt", 名: "结束时间", 型: "日期" },
+    }),
+  },
+  卡点: {
+    模型: "entBlocker" as const,
+    名: "卡点",
+    字段: 字段们({
+      编号: { 列: "code", 名: "卡点编号", 型: "文本" },
+      阶段: { 列: "phase", 名: "阶段", 型: "文本" },
+      类型: { 列: "type", 名: "卡点类型", 型: "文本" },
+      影响: { 列: "impact", 名: "影响", 型: "文本" },
+      障碍: { 列: "obstacle", 名: "障碍", 型: "文本" },
+      描述: { 列: "description", 名: "描述", 型: "文本" },
+      时限天数: { 列: "dueDays", 名: "时限天数", 型: "数字" },
+      截止时间: { 列: "dueAt", 名: "截止时间", 型: "日期" },
+      状态: { 列: "status", 名: "状态", 型: "文本" },
+      处理人: { 列: "assigneeId", 名: "处理人", 型: "人" },
+      创建人: { 列: "creatorId", 名: "创建人", 型: "人" },
+      资源申请: { 列: "resourceRequest", 名: "资源申请", 型: "文本" },
+      进展: { 列: "progress", 名: "进展", 型: "文本" },
+      解决方案: { 列: "solution", 名: "解决方案", 型: "文本" },
+      结果: { 列: "result", 名: "结果", 型: "文本" },
+      解决时间: { 列: "resolvedAt", 名: "解决时间", 型: "日期" },
+      创建时间: { 列: "createdAt", 名: "创建时间", 型: "日期" },
+    }),
+  },
+  项目成员: {
+    模型: "projectMember" as const,
+    名: "项目成员",
+    字段: 字段们({
+      成员: { 列: "userId", 名: "成员", 型: "人" },
+      邀请状态: { 列: "inviteStatus", 名: "邀请状态", 型: "文本" },
+      加入时间: { 列: "createdAt", 名: "加入时间", 型: "日期" },
+    }),
+  },
+  节点记录: {
+    模型: "projectNodeLog" as const,
+    名: "节点记录",
+    字段: 字段们({
+      操作人: { 列: "userId", 名: "操作人", 型: "人" },
+      时间: { 列: "at", 名: "时间", 型: "日期" },
+      原阶段: { 列: "fromPhase", 名: "原阶段", 型: "文本" },
+      原节点: { 列: "fromNode", 名: "原节点", 型: "文本", 同名: true },
+      原结局: { 列: "fromResult", 名: "原结局", 型: "文本", 同名: true },
+      新阶段: { 列: "toPhase", 名: "新阶段", 型: "文本" },
+      新节点: { 列: "toNode", 名: "新节点", 型: "文本", 同名: true },
+      新结局: { 列: "toResult", 名: "新结局", 型: "文本", 同名: true },
+      原因: { 列: "reason", 名: "原因", 型: "文本" },
+      类型: { 列: "kind", 名: "记录类型", 型: "文本" },
+      原负责人: { 列: "fromOwnerId", 名: "原负责人", 型: "人" },
+      新负责人: { 列: "toOwnerId", 名: "新负责人", 型: "人" },
+    }),
+  },
+  项目回款: {
+    模型: "entProjectPayment" as const,
+    名: "项目回款",
+    字段: 字段们({
+      回款日: { 列: "paidAt", 名: "回款日期", 型: "日期" },
+      币种: { 列: "currency", 名: "币种", 型: "文本" },
+      金额: { 列: "amount", 名: "回款金额", 型: "数字" },
+      登记人: { 列: "userId", 名: "登记人", 型: "人" },
+      登记时间: { 列: "createdAt", 名: "登记时间", 型: "日期" },
+    }),
+  },
+  线索验证: {
+    模型: "entLeadVerify" as const,
+    名: "线索验证",
+    主键: "projectId",
+    字段: 字段们({
+      判定: { 列: "verdict", 名: "验证结果", 型: "文本" },
+      待办: { 列: "pending", 名: "待谁处理", 型: "文本" },
+      无效原因: { 列: "invalidReason", 名: "无效原因", 型: "文本" },
+      初验说明: { 列: "verifyNote", 名: "初验说明", 型: "文本" },
+      初验人: { 列: "verifiedById", 名: "初验人", 型: "人" },
+      初验时间: { 列: "verifiedAt", 名: "初验时间", 型: "日期" },
+      复核结果: { 列: "reviewResult", 名: "复核结果", 型: "文本" },
+      复核说明: { 列: "reviewNote", 名: "复核说明", 型: "文本" },
+      复核人: { 列: "reviewedById", 名: "复核人", 型: "人" },
+      复核时间: { 列: "reviewedAt", 名: "复核时间", 型: "日期" },
+      销售确认: { 列: "salesAck", 名: "销售确认", 型: "文本" },
+      异议说明: { 列: "disputeNote", 名: "异议说明", 型: "文本" },
+      确认时间: { 列: "ackedAt", 名: "确认时间", 型: "日期" },
+      终判结果: { 列: "finalResult", 名: "终判结果", 型: "文本" },
+      终判说明: { 列: "finalNote", 名: "终判说明", 型: "文本" },
+      终判人: { 列: "finalById", 名: "终判人", 型: "人" },
+      终判时间: { 列: "finalAt", 名: "终判时间", 型: "日期" },
+      更新时间: { 列: "updatedAt", 名: "更新时间", 型: "日期" },
+    }),
+  },
+  公海: {
+    模型: "customerPool" as const,
+    名: "公海客户",
+    主键: "customerId",
+    字段: 字段们({
+      退回人: { 列: "userId", 名: "退回人", 型: "人" },
+      原因: { 列: "reason", 名: "进公海原因", 型: "文本" },
+      时间: { 列: "at", 名: "进公海时间", 型: "日期" },
+    }),
+  },
+  部门: {
+    模型: "entDept" as const,
+    名: "部门",
+    字段: 字段们({
+      名称: { 列: "name", 名: "部门名称", 型: "文本" },
+      上级部门: { 列: "parentId", 名: "上级部门", 型: "部门" },
+      排序: { 列: "sort", 名: "排序", 型: "数字" },
+    }),
+  },
+  组织成员: {
+    模型: "entMember" as const,
+    名: "组织成员",
+    主键: "userId",
+    字段: 字段们({
+      成员: { 列: "userId", 名: "成员", 型: "人" },
+      部门: { 列: "deptId", 名: "部门", 型: "部门" },
+      业务角色: { 列: "bizRole", 名: "业务角色", 型: "文本" },
+      条线: { 列: "line", 名: "条线", 型: "文本" },
+      直属上级: { 列: "managerId", 名: "直属上级", 型: "人" },
+      虚线上级: { 列: "dottedManagerId", 名: "虚线上级", 型: "人" },
+    }),
+  },
+  提成: {
+    模型: "entCommission" as const,
+    名: "项目提成",
+    主键: "projectId",
+    字段: 字段们({
+      底价: { 列: "basePrice", 名: "底价", 型: "数字" },
+      定格时间: { 列: "fixedAt", 名: "定格时间", 型: "日期" },
+      定格成交价: { 列: "fixedDeal", 名: "定格成交价", 型: "数字" },
+      定格底价: { 列: "fixedBase", 名: "定格底价", 型: "数字" },
+      基础提成比例: { 列: "fixedRateBase", 名: "基础提成比例", 型: "数字" },
+      溢价提成比例: { 列: "fixedRatePremium", 名: "溢价提成比例", 型: "数字" },
+      提成总额: { 列: "fixedTotal", 名: "提成总额", 型: "数字" },
+      更新时间: { 列: "updatedAt", 名: "更新时间", 型: "日期" },
+    }),
+  },
+  提成分配: {
+    模型: "entCommissionSplit" as const,
+    名: "提成分配",
+    字段: 字段们({
+      成员: { 列: "userId", 名: "成员", 型: "人" },
+      比例: { 列: "percent", 名: "分配比例", 型: "数字" },
+      设置人: { 列: "setById", 名: "设置人", 型: "人" },
+      更新时间: { 列: "updatedAt", 名: "更新时间", 型: "日期" },
+    }),
+  },
+  同事: {
+    模型: "user" as const,
+    名: "同事",
+    字段: 字段们({
+      姓名: { 列: "name", 名: "姓名", 型: "文本" },
+      职位: { 列: "title", 名: "职位", 型: "文本" },
+      角色: { 列: "role", 名: "系统角色", 型: "枚举", 取值: ["ADMIN", "MANAGER", "SALES"] },
+      在职: { 列: "active", 名: "是否在职", 型: "真假" },
     }),
   },
 } as const;
@@ -176,7 +390,7 @@ export const 表们 = {
 export type 表名 = keyof typeof 表们;
 
 /** 每个请求独立生成显示字段，不修改跨租户共享的静态白名单。只读查询允许历史自由文本职位。 */
-export function 查询表(表: 表名, b?: BusinessConfig): { 模型: string; 名: string; 字段: Record<string, 字段> } {
+export function 查询表(表: 表名, b?: BusinessConfig): { 模型: string; 名: string; 主键?: string; 字段: Record<string, 字段> } {
   const original = 表们[表];
   if (!b || 表 !== "客户") return original;
   const fields = b.fields ?? DEFAULT_BUSINESS.fields;
@@ -197,7 +411,7 @@ export function 查询表(表: 表名, b?: BusinessConfig): { 模型: string; �
  * 一句「小红老师带来的学员的商机的跟进记录」，人核对不动。
  * 一跳覆盖了绝大多数真实问法，而且每一跳都能写进过程条。
  */
-export const 关联们: Record<string, { 从: 表名; 列: string; 到: 表名; 名: string }> = {
+export const 关联们: Record<string, { 从: 表名; 列: string; 到: 表名; 名: string; 经?: string }> = {
   "客户.来源渠道": { 从: "客户", 列: "channel", 到: "渠道", 名: "来源渠道" },
   "商机.客户": { 从: "商机", 列: "customer", 到: "客户", 名: "所属客户" },
   "签约.客户": { 从: "签约", 列: "customer", 到: "客户", 名: "所属客户" },
@@ -205,22 +419,33 @@ export const 关联们: Record<string, { 从: 表名; 列: string; 到: 表名; 
   "跟进记录.客户": { 从: "跟进记录", 列: "customer", 到: "客户", 名: "所属客户" },
   "跟进计划.客户": { 从: "跟进计划", 列: "customer", 到: "客户", 名: "所属客户" },
   "任务.客户": { 从: "任务", 列: "customer", 到: "客户", 名: "所属客户" },
+  "跟进记录.项目": { 从: "跟进记录", 列: "projectNode", 经: "project", 到: "项目", 名: "所属项目" },
+  "项目.客户": { 从: "项目", 列: "customer", 到: "客户", 名: "所属客户" },
+  "项目.渠道": { 从: "项目", 列: "channel", 到: "渠道", 名: "来源渠道" },
+  "卡点.项目": { 从: "卡点", 列: "project", 到: "项目", 名: "所属项目" },
+  "项目成员.项目": { 从: "项目成员", 列: "project", 到: "项目", 名: "所属项目" },
+  "节点记录.项目": { 从: "节点记录", 列: "project", 到: "项目", 名: "所属项目" },
+  "项目回款.项目": { 从: "项目回款", 列: "project", 到: "项目", 名: "所属项目" },
+  "线索验证.项目": { 从: "线索验证", 列: "project", 到: "项目", 名: "所属项目" },
+  "提成.项目": { 从: "提成", 列: "project", 到: "项目", 名: "所属项目" },
+  "提成分配.项目": { 从: "提成分配", 列: "project", 到: "项目", 名: "所属项目" },
+  "公海.客户": { 从: "公海", 列: "customer", 到: "客户", 名: "客户" },
 };
 
 /* ---------- 规格 ---------- */
 
 export const 运算符 = {
   包含: { 名: "包含", 适用: ["文本"] },
-  等于: { 名: "是", 适用: ["文本", "枚举", "数字", "真假"] },
-  不等于: { 名: "不是", 适用: ["文本", "枚举", "数字", "真假"] },
-  属于: { 名: "属于", 适用: ["枚举", "文本"] },
+  等于: { 名: "是", 适用: ["文本", "枚举", "数字", "真假", "人", "部门"] },
+  不等于: { 名: "不是", 适用: ["文本", "枚举", "数字", "真假", "人", "部门"] },
+  属于: { 名: "属于", 适用: ["枚举", "文本", "人", "部门"] },
   大于: { 名: "大于", 适用: ["数字"] },
   小于: { 名: "小于", 适用: ["数字"] },
   不早于: { 名: "不早于", 适用: ["日期"] },
   不晚于: { 名: "不晚于", 适用: ["日期"] },
   最近天数: { 名: "最近", 适用: ["日期"] },
-  为空: { 名: "为空", 适用: ["文本", "日期", "数字", "枚举"] },
-  非空: { 名: "不为空", 适用: ["文本", "日期", "数字", "枚举"] },
+  为空: { 名: "为空", 适用: ["文本", "日期", "数字", "枚举", "人", "部门"] },
+  非空: { 名: "不为空", 适用: ["文本", "日期", "数字", "枚举", "人", "部门"] },
 } as const;
 export type 运算 = keyof typeof 运算符;
 
@@ -255,7 +480,7 @@ function 认表(v: unknown): 表名 {
   throw 错(`没有「${s || "(空)"}」这张表。能查的：${Object.keys(表们).join("、")}`);
 }
 
-function 认字段(表: 表名, v: unknown, b?: BusinessConfig): 字段 {
+export function 认字段(表: 表名, v: unknown, b?: BusinessConfig): 字段 {
   const s = typeof v === "string" ? v.trim() : "";
   const 表定义 = 查询表(表, b);
   const f = Object.hasOwn(表定义.字段, s) ? 表定义.字段[s] : Object.values(表定义.字段).find(f => f.名 === s);
@@ -420,9 +645,36 @@ export function 说人话(s: 查询规格, b?: BusinessConfig): string {
 
 /* ---------- 编译成 Prisma ---------- */
 
-function 条件成where(表: 表名, c: 条件, b?: BusinessConfig): Record<string, unknown> {
+/** 「人」「部门」条件里的名字 → id。调用方查库得来；一个名字可能对上几个人（重名），都算 */
+export type 名映射 = { 人: Map<string, string[]>; 部门: Map<string, string[]> };
+
+/** 规格里用到的全部人名 / 部门名（含关联上的），调用方据此查一次库 */
+export function 用到的名字(s: 查询规格, b?: BusinessConfig): { 人: string[]; 部门: string[] } {
+  const 出 = { 人: new Set<string>(), 部门: new Set<string>() };
+  const 收 = (表: 表名, cs: 条件[]) => {
+    for (const c of cs) {
+      const f = 认字段(表, c.字段, b);
+      if ((f.型 !== "人" && f.型 !== "部门") || c.值 == null) continue;
+      for (const v of Array.isArray(c.值) ? c.值 : [String(c.值)]) 出[f.型].add(v);
+    }
+  };
+  收(s.表, s.条件);
+  if (s.关联) 收(关联们[s.关联.路径].到, s.关联.条件);
+  return { 人: [...出.人], 部门: [...出.部门] };
+}
+
+function 条件成where(表: 表名, c: 条件, b?: BusinessConfig, 映射?: 名映射): Record<string, unknown> {
   const f = 认字段(表, c.字段, b);
   const 列 = f.列;
+  if ((f.型 === "人" || f.型 === "部门") && c.值 != null) {
+    const 型 = f.型;
+    const ids = (Array.isArray(c.值) ? c.值 : [String(c.值)]).flatMap((v) => 映射?.[型].get(v) ?? []);
+    return c.运算 === "不等于" ? { OR: [{ [列]: { notIn: ids } }, { [列]: null }] } : { [列]: { in: ids } };
+  }
+  if (f.同名 && (c.运算 === "等于" || c.运算 === "属于" || c.运算 === "不等于")) {
+    const 名们 = (Array.isArray(c.值) ? c.值 : [String(c.值)]).flatMap((v) => 同名们(v));
+    return c.运算 === "不等于" ? { [列]: { notIn: 名们 } } : { [列]: { in: 名们 } };
+  }
   const 日历列 = calendarColumns[表]?.[列];
   if (日历列 && ["不早于", "不晚于", "最近天数"].includes(c.运算)) {
     const date = c.运算 === "最近天数" ? dayjs().subtract(Number(c.值), "day") : dayjs(String(c.值));
@@ -459,11 +711,12 @@ function 条件成where(表: 表名, c: 条件, b?: BusinessConfig): Record<stri
   }
 }
 
-export function 编译(s: 查询规格, b?: BusinessConfig): { where: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; take: number } {
-  const and = s.条件.map((c) => 条件成where(s.表, c, b));
+export function 编译(s: 查询规格, b?: BusinessConfig, 映射?: 名映射): { where: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; take: number } {
+  const and = s.条件.map((c) => 条件成where(s.表, c, b, 映射));
   if (s.关联) {
     const 定义 = 关联们[s.关联.路径];
-    and.push({ [定义.列]: { is: { AND: s.关联.条件.map((c) => 条件成where(定义.到, c, b)) } } });
+    const 子 = { AND: s.关联.条件.map((c) => 条件成where(定义.到, c, b, 映射)) };
+    and.push({ [定义.列]: { is: 定义.经 ? { [定义.经]: { is: 子 } } : 子 } });
   }
   return {
     where: and.length ? { AND: and } : {},
