@@ -144,6 +144,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
+    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义,
   ] = await Promise.all([
     行P,
     负责人候选(),
@@ -166,6 +167,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     页面可选项("transfer"),
     sp.directOf ? prisma.channel.findUnique({ where: { id: sp.directOf }, select: { name: true } }).then((c) => c?.name ?? "这个渠道") : null,
     读的我(defaultClient),
+    // 下面这几样原来在 JSX 里一个个 await，各等一轮库（11-01 速度闸门：按组织看那组客户页超 300ms），并进来一起取
+    企 && b.projectMode ? 建档向导数据(me) : null,
+    企 ? 页面字典("custStatus") : null,
+    企 ? 客户状态自动() : false,
+    企 ? 页面可选项("custAttr") : [],
+    企 ? 页面字典("custAttr") : [],
+    企 ? 页面客户释义() : undefined,
   ]);
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
   const 旧职位 = 用着的职位.map((c) => c.grade!.trim()).filter((g) => g && !b.grades.includes(g)).sort();
@@ -193,7 +201,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       channels={channels}
       直接新建={sp.new === "1"}
       // 企业版项目模式：「新建客户」在本页弹向导框「新增客户」（U-新建-01），向导要的数据一起给
-      建档={企 && b.projectMode ? await 建档向导数据(me) : null}
+      建档={建档}
       /* ?import=paste：直接把导入抽屉开在「粘一段文本」那一栏（首页那张「开始」卡指过来） */
       直接粘贴={sp.import === "paste"}
       filters={{
@@ -217,14 +225,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       企业版={企业版()}
       客户状态选项={客户状态选项}
       // 客户状态标签按字典项上色（cust-status-color.ts）；项目模式开着按项目自动算，新建 / 编辑表单只读（10-30）
-      客户状态色={企 ? 客户状态色表(await 页面字典("custStatus")) : undefined}
-      客户状态自动={企 && (await 客户状态自动())}
+      客户状态色={客户状态字典 ? 客户状态色表(客户状态字典) : undefined}
+      客户状态自动={状态自动}
       分配方式选项={分配方式选项}
       客户类型选项={客户类型选项}
       // 客户属性（A-17，字典 custAttr）：表单下拉、列表一列、看板按它分列；看板要整份字典（含停用）排旧值的位置
-      客户属性选项={企 ? await 页面可选项("custAttr") : []}
-      客户属性字典={企 ? (await 页面字典("custAttr")).map((x) => ({ name: x.name, active: x.active })) : []}
-      字典释义={企 ? await 页面客户释义() : undefined}
+      客户属性选项={客户属性选项}
+      客户属性字典={客户属性字典.map((x) => ({ name: x.name, active: x.active }))}
+      字典释义={字典释义}
       部门选项={部门选项}
       只读ids={只读ids}
       // 企业版「非原负责人均可领取」（10-26 定稿）：这一页公海里原负责人是我的，领取按钮灰着（接口也拦，pool-actions.ts 领取）
