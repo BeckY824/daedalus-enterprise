@@ -11,7 +11,7 @@ import { App, Select, Input, Checkbox } from "antd";
 import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
-import { 取走名片原图 } from "@/lib/card-scan/originals";
+import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card-scan/originals";
 import { 传附件 } from "@/lib/attachment-upload";
 import { describeProposal, missingFields, 只留选中的改动, 可改字段表, type Proposal, type 线索待确认格 } from "@/lib/agent/proposals";
 import { useBusiness } from "@/lib/business-client";
@@ -83,6 +83,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   const [刚, set刚] = useState<"落印" | "撤销" | null>(null);
   const [撤销中, set撤销中] = useState(false);
   const 根 = useRef<HTMLDivElement>(null);
+  /** 这张卡建出来的联系人 / 线索：撤销时连「刚建的」一起忘掉 */
+  const 建出的去处 = useRef<附件去处 | null>(null);
   /** 改档案时逐项勾选。默认全勾上——建议是它提的，人只需要否掉不想要的那几项 */
   const [勾了, set勾了] = useState<number[]>(() => (proposal.kind === "update_customer" ? proposal.changes.map((_, i) => i) : [0]));
   const 逐项 = draft.kind === "update_customer" && draft.changes.length > 1;
@@ -112,6 +114,11 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       if (焦点在卡里) requestAnimationFrame(() => 对话框?.focus());
       // 名片建的线索：选的几张原图存成它（或建出来的主要联系人）的附件。存完再刷一次，附件数跟着出来
       if (r.附件去处) void 存名片原图(r.附件去处);
+      // 记下刚建的那位：接着单发的客户照片问一句要不要存到他名下（lib/card-scan/originals.ts）
+      if (r.附件去处 && 要提交的.kind === "add_lead") {
+        建出的去处.current = r.附件去处;
+        记下刚建的(r.附件去处, [要提交的.name, 要提交的.contact].filter(Boolean).join(" · "));
+      }
       /*
         **落库之后要刷这一页。**
         0.38.0 之前这张卡只出现在首页，首页没有会过期的列表，所以不刷也看不出来。
@@ -155,6 +162,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       message.error(r.error);
       return;
     }
+    if (建出的去处.current) 忘掉刚建的(建出的去处.current);
+    建出的去处.current = null;
     // 回到「等你确认」：卡片还是那张，人可以改一改再确认，或者忽略。原地褪回铅笔，不重新浮现一遍
     set落印(null);
     set刚("撤销");

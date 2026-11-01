@@ -14,6 +14,8 @@
  * 有联系方式的名片一人一张卡，同名或同公司的另一面并进去；没认出联系方式的（客户照片、背面标志）挂到前一个人名下，
  * 前面没人就挂给下一个。几张卡一起交给 Agent，查重、问还差什么一次说完
  *
+ * 一个人都没认出、这页刚建过一位（先发名片建好，再单发客户照片）：不出卡，问一句存不存到他名下（PhotoSaveCard），点了才传
+ *
  * 拍照（10-29 首页改版 待 1）：手机上这颗键叫「附件」，点了直接调后置相机（capture="environment"），
  * 拍到的照片照样走上面这一套认名片；桌面上还是选文件、叫「名片」
  */
@@ -27,7 +29,7 @@ import { 认微信截图, type 微信资料 } from "@/lib/card-scan/wechat";
 import { 错的话 } from "@/lib/card-scan/download";
 import { 走网页登录, 服务器预热 } from "@/lib/card-scan/cloud";
 import { 名片成新线索卡, 微信成新线索卡 } from "@/lib/card-scan/lead-card";
-import { 记下名片原图, 名片最多张 } from "@/lib/card-scan/originals";
+import { 记下名片原图, 名片最多张, 刚建的, 这几张图, type 刚建的人 } from "@/lib/card-scan/originals";
 import type { Proposal } from "@/lib/agent/proposals";
 
 /** 一次选的几张图里认出的一个人：一张名片（可带背面）或一张微信资料页截图，加上挂在他名下的照片 */
@@ -49,7 +51,7 @@ const 预热 = () => {
   void import("@/lib/card-scan/ocr");
 };
 
-export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍照 = false, 藏键 = false, 开 }: {
+export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存照片, 拍照 = false, 藏键 = false, 开 }: {
   宽: boolean;
   /** 手机上：键叫「附件」，点了调相机，一次拍一张 */
   拍照?: boolean;
@@ -57,6 +59,8 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍�
   渠道名们: readonly string[];
   /** 认好了：摆这几张卡（Composer 里新开一轮） */
   on出卡: (ps: Proposal[], 摘要: string) => void;
+  /** 图里没认出人、这页刚建过一位：问存不存到他名下（图已按 卡id 记下） */
+  on存照片: (卡id: string, 张数: number, 给: 刚建的人) => void;
   /** 不摆自己的键（收进「+」菜单，P15），由 开 去打开选图 / 相机 */
   藏键?: boolean;
   开?: React.Ref<{ 打开: () => void }>;
@@ -107,8 +111,18 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, 拍�
         if (上一个) 上一个.图们.push(f);
         else 待挂.push(f);
       }
-      // 一张像样的名片都没有：照旧拿第一张认出姓名或公司的凑一张卡，人在卡上核对
-      if (!人们.length && 备用) 人们.push({ ...备用, 图们: 待挂 });
+      // 一张像样的名片都没有：这页刚建过人，问存不存到他名下（后发的客户照片）；
+      // 没建过，照旧拿第一张认出姓名或公司的凑一张卡，人在卡上核对
+      const 刚建 = 刚建的();
+      const 怎么办 = 这几张图(人们.length, Boolean(备用), 刚建);
+      if (怎么办 === "存到刚建的" && 刚建) {
+        const id = `photo-${Date.now().toString(36)}`;
+        记下名片原图(id, 图们);
+        message.destroy(键);
+        on存照片(id, Math.min(图们.length, 名片最多张), 刚建);
+        return;
+      }
+      if (怎么办 === "备用出卡" && 备用) 人们.push({ ...备用, 图们: 待挂 });
       if (!人们.length) {
         message.open({ key: 键, type: "warning", content: "没认出名片或微信资料。名片横着放、靠近一点、别反光，再拍一张试试；客户照片要和他的名片或微信截图一起选" });
         return;

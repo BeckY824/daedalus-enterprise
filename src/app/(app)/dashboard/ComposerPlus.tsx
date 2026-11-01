@@ -5,6 +5,7 @@ import { Dropdown } from "antd";
 import { PlusOutlined, PaperClipOutlined, IdcardOutlined, CameraOutlined, FileSearchOutlined, GlobalOutlined } from "@ant-design/icons";
 import AskFiles, { type 附件 } from "@/components/AskFiles";
 import type { Proposal } from "@/lib/agent/proposals";
+import type { 刚建的人 } from "@/lib/card-scan/originals";
 import { 加号菜单项, type 加号项 } from "@/lib/enterprise/composer-plus";
 import CardScanKey from "./CardScanKey";
 import DedupeKey from "./DedupeKey";
@@ -23,7 +24,7 @@ const 图: Record<加号项, React.ReactNode> = {
  * 三个带状态的入口（附件、名片、查重）照旧是原来那三个组件，只是藏起自己的键，由这里的菜单去打开；
  * 选好的文件小签、认名片时的进度提示、查重的小框都跟原来一样。
  */
-export default function ComposerPlus({ 宽, 拍照, 在跑, files, setFiles, 摆背调键, on切背调, 渠道名们, on出卡 }: {
+export default function ComposerPlus({ 宽, 拍照, 在跑, files, setFiles, 摆背调键, on切背调, 渠道名们, on出卡, on存照片 }: {
   宽: boolean;
   /** 手机：名片改成调相机，文本附件不摆（同原来） */
   拍照: boolean;
@@ -34,6 +35,7 @@ export default function ComposerPlus({ 宽, 拍照, 在跑, files, setFiles, 摆
   on切背调: () => void;
   渠道名们: readonly string[];
   on出卡: (ps: Proposal[], 摘要: string) => void;
+  on存照片: (卡id: string, 张数: number, 给: 刚建的人) => void;
 }) {
   const 文件 = useRef<开关>(null);
   const 名片 = useRef<开关>(null);
@@ -70,7 +72,7 @@ export default function ComposerPlus({ 宽, 拍照, 在跑, files, setFiles, 摆
       </Dropdown>
       <DedupeKey 宽={宽} 藏键 开={查重} />
       {!拍照 && <AskFiles files={files} onChange={setFiles} disabled={在跑} 藏键 开={文件} />}
-      <CardScanKey 宽={宽} 在跑={在跑} 渠道名们={渠道名们} on出卡={on出卡} 拍照={拍照} 藏键 开={名片} />
+      <CardScanKey 宽={宽} 在跑={在跑} 渠道名们={渠道名们} on出卡={on出卡} on存照片={on存照片} 拍照={拍照} 藏键 开={名片} />
     </>
   );
 }

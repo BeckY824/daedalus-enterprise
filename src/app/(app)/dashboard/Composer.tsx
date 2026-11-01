@@ -17,6 +17,7 @@ import type { StreamJob } from "@/lib/ai-stream";
 import type { AgentAnswer } from "@/lib/thread-history";
 import type { Proposal } from "@/lib/agent/proposals";
 import { 用话补卡 } from "@/lib/card-scan/lead-card";
+import type { 刚建的人 } from "@/lib/card-scan/originals";
 import { cancelStream } from "@/lib/ai-stream";
 import { addTurn, clearThread, type Turn } from "@/lib/home-thread";
 import { 是刚交过来的 } from "@/lib/home-ask";
@@ -302,6 +303,21 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     if (!排队) start(turn);
     on发出(turn.id);
   }
+  /**
+   * 单发的客户照片（2026-11-01，旧系统样例「这个是客户的照片，帮我一起录入到系统」）：图里没认出人、这页刚建过一位，
+   * 新开一轮问存不存到他名下（TurnView 摆 PhotoSaveCard），不调模型、不扣次数。框里打的话当这一问，发完清框
+   */
+  function 问存照片(卡id: string, 张数: number, 给: 刚建的人) {
+    const 话 = q.trim().slice(0, 300);
+    if (话) setQ("");
+    const turn = addTurn(scope, { question: 话 || `客户照片 ${张数} 张`, kind: "ask", 存照片: { 卡id, 张数, 名: 给.名, 去处: 给.去处 } });
+    const 答: StreamJob<AgentAnswer> = {
+      steps: [],
+      answer: { text: `图里没认出名片或微信资料。要把这 ${张数} 张存成「${给.名}」的附件吗？`, records: [], customers: [], proposals: [] },
+    };
+    setJobValue(`home:${turn.id}`, 答);
+    on发出(turn.id);
+  }
   useImperativeHandle(ref, () => ({ 问: (x: string) => submit(x) }));
   // 放在 submit 定义之后：effect 里提前用到后面才声明的函数，React 编译器的检查不认
   useAddressAsk(submit);
@@ -376,6 +392,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
                   }}
                   渠道名们={渠道名们}
                   on出卡={出名片卡}
+                  on存照片={问存照片}
                 />
               ) : (
                 <ComposerTools

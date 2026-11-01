@@ -6,6 +6,7 @@ import { Tooltip } from "antd";
 import { useCopy } from "@/lib/clipboard";
 import { CopyOutlined, ReloadOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import ProposalCard from "@/components/ProposalCard";
+import PhotoSaveCard from "@/components/PhotoSaveCard";
 import AiWait from "@/components/AiWait";
 import StreamMarkdown from "@/components/StreamMarkdown";
 import type { BriefRecord } from "@/lib/ai-draft";
@@ -375,6 +376,12 @@ export default function TurnView({
           <button type="button" className="cli-link" onClick={onRetry}>
             重试
           </button>
+        </div>
+      )}
+
+      {answer && turn.存照片 && (
+        <div className="prop-list">
+          <PhotoSaveCard 存照片={turn.存照片} />
         </div>
       )}
 
