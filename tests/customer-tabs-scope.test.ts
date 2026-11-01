@@ -48,6 +48,7 @@ beforeAll(async () => {
   for (const [id, n] of [[总管, "总管"], [经理, "经理"], [小王, "小王"], [小张, "小张"], [小赵, "小赵"], [外人, "外人"]]) await 人(id, n);
   await raw.entMember.createMany({
     data: [
+      { userId: 老板, bizRole: "director" },
       { userId: 总管, bizRole: "director" },
       { userId: 经理, bizRole: "sales_mgr" },
       { userId: 小王, managerId: 经理 },

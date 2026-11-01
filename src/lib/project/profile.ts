@@ -68,7 +68,7 @@ export async function 改项目画像(me: 谁, projectId: string, patch: 画像�
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id }, select: { id: true, ownerId: true, pooledAt: true, customerId: true } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    if (!能管项目(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改" };
+    if (!能管项目(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改" };
     await tx.project.update({ where: { id }, data: Object.fromEntries(变了.map((k) => [k, 新[k] ?? null])) });
     const 推进 = 规则 ? await 按必填推进(tx, 规则, me, p.id) : [];
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
