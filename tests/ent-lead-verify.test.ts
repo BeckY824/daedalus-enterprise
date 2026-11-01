@@ -6,6 +6,8 @@
  *   - 最终判无效：项目 线索流失，负责人本月配额 +1（没设配额不加，下个月清零）
  *   - 每一步一行痕；等着的时候改节点 / 放回公海 / 判 MQL 都拦
  *   - 不是企业版：一律拦，一行不写
+ *   - 11-01：创建人是销售（sales / sales_mgr）→ 负责人初判即终判（判无效直接线索流失，不交复核、不补配额）；默认项目由市场建
+ *   - 11-01：详情页显示的六个结果叫法（验证结果叫法）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -16,7 +18,7 @@ import { resetDb } from "./reset";
 import { 改节点, 放回公海 } from "@/lib/project/db";
 import { 判MQL } from "@/lib/project/mql";
 import {
-  销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, 读线索验证, 待我复核的, 实际待,
+  销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, 读线索验证, 待我复核的, 实际待, 验证结果叫法,
 } from "@/lib/project/lead-verify";
 import { 本月加额, 配额of, 月份 } from "@/lib/enterprise/lead-assign";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -35,7 +37,7 @@ describe("企业版线索有效性验证", () => {
     return { id: u.id, role };
   }
   const 项目 = async (补: Record<string, unknown> = {}) =>
-    (await prisma.project.create({ data: { name: "一号项目", customerId: 客户, ownerId: 乙.id, creatorId: 乙.id, node: "线索验证", ...补 } })).id;
+    (await prisma.project.create({ data: { name: "一号项目", customerId: 客户, ownerId: 乙.id, creatorId: 市场.id, node: "线索验证", ...补 } })).id;
   const 现 = (id: string) => prisma.project.findUniqueOrThrow({ where: { id } });
   const 状态 = (id: string) => prisma.entLeadVerify.findUnique({ where: { projectId: id } });
   const 痕 = (id: string) => prisma.entLeadVerifyLog.findMany({ where: { projectId: id }, orderBy: { at: "asc" } });
@@ -201,6 +203,56 @@ describe("企业版线索有效性验证", () => {
     });
   });
 
+  describe("创建人是销售：初判即终判（11-01）", () => {
+    it("判无效：直接 无效线索 + 线索流失，不交复核、不补配额，一行痕；读出来 初判即终判", async () => {
+      const id = await 项目({ creatorId: 乙.id });
+      await 设配额(乙.id, 5);
+      const p0 = await 现(id);
+      expect((await 读线索验证(乙, p0))?.初判即终判).toBe(true);
+      expect((await 判无效(id)).ok).toBe(true);
+      const p = await 现(id);
+      expect(p.result).toBe("线索流失");
+      expect(p.closedAt).toBeInstanceOf(Date);
+      expect(await 状态(id)).toMatchObject({ verdict: "无效线索", finalResult: "无效线索", pending: null, invalidReason: "联系方式无效" });
+      expect((await 痕(id)).map((l) => [l.step, l.verdict, l.reason])).toEqual([["销售初判", "无效", "联系方式无效"]]);
+      expect(await 本月加额(乙.id)).toBe(0);
+      expect(await 待我复核的(市场)).toHaveLength(0);
+      expect((await 读线索验证(乙, p))?.叫法).toBe("无效线索");
+    });
+
+    it("销售经理建的也算；市场建的、老板建的照旧交复核", async () => {
+      const 经理建 = await 项目({ creatorId: 销售经理.id });
+      expect((await 判无效(经理建)).ok).toBe(true);
+      expect((await 现(经理建)).result).toBe("线索流失");
+      const 市场建 = await 项目();
+      expect((await 判无效(市场建)).ok).toBe(true);
+      expect(await 状态(市场建)).toMatchObject({ verdict: "初验无效", pending: "市场复核" });
+      const 老板建 = await 项目({ creatorId: 老板.id });
+      expect((await 判无效(老板建)).ok).toBe(true);
+      expect(await 状态(老板建)).toMatchObject({ pending: "市场复核" });
+    });
+
+    it("判有效：和以前一样直接推到线索推进", async () => {
+      const id = await 项目({ creatorId: 乙.id });
+      await 记有效沟通(id);
+      expect((await 销售初判(乙, id, "有效")).ok).toBe(true);
+      expect((await 现(id)).node).toBe("线索推进");
+      expect((await 读线索验证(乙, await 现(id)))?.叫法).toBe("有效线索");
+    });
+  });
+
+  it("结果叫法：六种", () => {
+    const 叫 = (判定: string, 待: string | null = null, 终验: string | null = null) => 验证结果叫法({ 判定, 待, 终验 } as Parameters<typeof 验证结果叫法>[0]);
+    expect(叫("暂未判定")).toBe("暂未验证");
+    expect(叫("初验无效", "市场复核")).toBe("初验无效");
+    expect(叫("初验无效", "销售终验")).toBe("复核有效");
+    expect(叫("有效线索", "销售认领")).toBe("有效线索");
+    expect(叫("初验无效", "总管理终判")).toBe("初验无效");
+    expect(叫("初验无效", "总管理终判", "提交异议")).toBe("终验无效");
+    expect(叫("有效线索")).toBe("有效线索");
+    expect(叫("无效线索")).toBe("无效线索");
+  });
+
   describe("最终判无效 → 负责人本月配额 +1", () => {
     it("设了配额的 +1，下个月是新的一格；没设配额的不加", async () => {
       await 设配额(乙.id, 5);
@@ -253,7 +305,8 @@ describe("企业版线索有效性验证", () => {
 
     it("组织里没有市场管理：直接交总管理终判", async () => {
       await prisma.entMember.deleteMany({ where: { userId: 市场.id } });
-      const id = await 项目();
+      // 市场管理不在组织里了就按销售算（推业务角色），这里换老板建
+      const id = await 项目({ creatorId: 老板.id });
       await 判无效(id);
       expect((await 状态(id))?.pending).toBe("总管理终判");
     });

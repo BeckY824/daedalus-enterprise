@@ -3,7 +3,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { DownOutlined, EditOutlined, MoreOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { App, Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Progress, Radio, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
@@ -153,6 +153,8 @@ export type 项目详情 = {
   回款们?: 回款[];
 };
 
+/** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
+const 验证叫法色: Record<string, string> = { 暂未验证: "default", 初验无效: "orange", 复核有效: "blue", 终验无效: "volcano", 有效线索: "green", 无效线索: "red" };
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 4.3em", whiteSpace: "nowrap" };
@@ -361,6 +363,8 @@ export default function ProjectDetail({
   const [原因, set原因] = useState("");
   const [类别, set类别] = useState<string | null>(null);
   const [编辑开着, set编辑开着] = useState(false);
+  // 企业版线索验证弹窗（11-01）：项目卡「线索验证」那一行点开，从初判到判定都在框里做
+  const [验证开着, set验证开着] = useState(false);
   const [记一条开着, set记一条开着] = useState<false | "手填" | "AI">(false);
   const [发卡点于, set发卡点于] = useState<string | null>(null);
   /** 沟通的「…」菜单：正在改哪一条 / 删除问句开在哪一条上 */
@@ -657,7 +661,13 @@ export default function ProjectDetail({
           aria-label={`第 ${节点序号(当前, 字典) + 1} 个进程，共 ${节点总数} 个`}
         />
       )}
-      {p.线索验证 && <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 跑={跑} 忙={忙} 没有效沟通={没有效沟通} 不给推={p.不给推} />}
+      {/* 线索验证 11-01 挪到项目卡「线索验证」那一行的弹窗里；轮到我判时这里留一句，点了一样开那个框 */}
+      {p.线索验证?.我能 && (
+        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }} data-testid="lead-verify-nudge">
+          <span style={{ color: "var(--text-muted)" }}>{p.线索验证.待 ? "这条线索轮到你处理" : "这条线索等你判定"}</span>
+          <Button size="small" onClick={() => set验证开着(true)}>打开线索验证</Button>
+        </div>
+      )}
       {没有效沟通 && !p.线索验证?.我能 && (
         <div style={{ marginTop: 12, color: "var(--text-muted)" }}>还没有客户明确回复的沟通：记一条、选「客户明确回复了」，才能推过线索验证</div>
       )}
@@ -678,6 +688,16 @@ export default function ProjectDetail({
         ? <Tooltip title="编辑项目"><Button type="text" size="small" icon={<EditOutlined />} aria-label="编辑项目" disabled={忙} onClick={() => set编辑开着(true)} /></Tooltip>
         : <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>)}
     >
+      {p.线索验证 && (
+        <div style={行样}>
+          <span style={键样}>线索验证</span>
+          <Button type="text" size="small" style={{ paddingInline: 4, marginInlineStart: -4, height: "auto" }} onClick={() => set验证开着(true)} aria-label={`线索验证：${p.线索验证.叫法}，点开查看和操作`} data-testid="lead-verify-row">
+            <Tag color={验证叫法色[p.线索验证.叫法]} style={{ marginInlineEnd: 4 }} data-testid="lead-verify-result">{p.线索验证.叫法}</Tag>
+            {p.线索验证.我能 && <span style={{ color: "var(--brand)" }}>去处理</span>}
+            <RightOutlined aria-hidden style={{ fontSize: 10, color: "var(--text-muted)" }} />
+          </Button>
+        </div>
+      )}
       <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后可见</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
@@ -1093,6 +1113,11 @@ export default function ProjectDetail({
         </>
       )}
 
+      {p.线索验证 && (
+        <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
+          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 跑={跑} 忙={忙} 没有效沟通={没有效沟通} 不给推={p.不给推} />
+        </Modal>
+      )}
       {可改 && 编辑开着 && (
         <ProjectEditModal
           open
