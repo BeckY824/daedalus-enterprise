@@ -4,7 +4,7 @@ import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { App, Button, Modal, Select, Space, Segmented, Tag, type SelectProps } from "antd";
+import { App, Button, Modal, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
 import { CloseOutlined, PlusOutlined, RightOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import dynamic from "next/dynamic";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
@@ -66,11 +66,14 @@ function 异常说明(r: 项目行) {
   return [r.exceptionCategory, r.exceptionReason].filter(Boolean).join("：") || undefined;
 }
 
-/** 进程那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红；阶段单独一列（P11），这里只写进程 */
+/** 进程那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红；阶段单独一列（P11），这里只写进程。
+ *  11-01：结局和普通进程一样是纯文字，不带框 */
 function 节点文字(r: 项目行, 字典: 阶段字典) {
-  if (r.result === "异常状态") return <Tag color="error" title={异常说明(r)}>异常 · {r.exceptionCategory ?? r.node}</Tag>;
-  if (r.result) return <Tag>{结局叫法(r.result, 字典)}</Tag>;
-  const 进程 = 阶段与进程(r, 字典).进程;
+  if (r.result === "异常状态") {
+    const 字 = `异常 · ${r.exceptionCategory ?? r.node}`;
+    return <Typography.Text type="danger" className="clamp" title={异常说明(r) ?? 字}>{字}</Typography.Text>;
+  }
+  const 进程 = r.result ? 结局叫法(r.result, 字典) : 阶段与进程(r, 字典).进程;
   return <span className="clamp" title={进程}>{进程}</span>;
 }
 
