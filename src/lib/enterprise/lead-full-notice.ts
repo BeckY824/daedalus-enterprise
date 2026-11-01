@@ -23,10 +23,11 @@ const 键 = (userId: string) => `entLeadFullNotice:${userId}`;
 const 最多留 = 20;
 
 /** 收提醒的人：组织里的市场管理、总管理员（没建组织行的老板按账号推成总管理员，也在内） */
-export function 满额提醒收件人(org: 组织): string[] {
+export function 满额提醒收件人(org: 组织, 原因: 提醒原因 = "满额"): string[] {
   return [...org.成员.keys()].filter((id) => {
     const 类们 = 管理员类别们of(org, id);
-    return 类们.has("市场管理") || 类们.has("总管理员");
+    // 待分配的线索销售管理也能手动分（11-01 A7），一起提醒
+    return 类们.has("市场管理") || 类们.has("总管理员") || (原因 === "待分配" && 类们.has("销售管理"));
   });
 }
 
@@ -49,7 +50,7 @@ export async function 读满额提醒(userId: string): Promise<满额提醒[]> {
 /** 发一条：线索名是这一次点击里因都已满额没分出去的那几条；空的不发，不是企业版不发 */
 export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: string, 今 = new Date(), 另: { 原因?: 提醒原因; 为什么?: string } = {}): Promise<void> {
   if (!企业版()) return;
-  const 收件人 = 满额提醒收件人(org);
+  const 收件人 = 满额提醒收件人(org, 另.原因);
   if (!线索.length || !收件人.length) return;
   const 条: 满额提醒 = {
     id: `${今.getTime().toString(36)}${Math.random().toString(36).slice(2, 8)}`, at: 今.toISOString(), 条数: 线索.length, 线索, 谁点的,
@@ -66,7 +67,7 @@ export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: 
   invalidateSettingsCache();
 }
 
-/** 新建线索选了自动分配、没分出去（没人可分 / 没填项目所在地），留在新线索待分配：告诉市场管理、总管理员（A10） */
+/** 新建线索选了自动分配、没分出去（没人可分 / 没填项目所在地），留在新线索待分配：告诉市场管理、销售管理、总管理员（A7 / A10） */
 export async function 发待分配提醒(org: 组织, 线索: string[], 谁建的: string, 为什么: string, 今 = new Date()): Promise<void> {
   await 发满额提醒(org, 线索, 谁建的, 今, { 原因: "待分配", 为什么 });
 }

@@ -172,7 +172,7 @@ model Customer {
   customerType String?
   /// 企业版客户属性（迁移 104，2026-10-31 F-客户-04）：自用非商用 / 个人投资者……（企业版字典 custAttr），客户看板按它分列。别的版本一直是空
   customerAttr String?
-  /// 企业版业务线（迁移 106，2026-11-01 清单 A1）：内贸 / 外贸，新建客户时手动选，可空；客户页新开项目时当项目业务线的默认值
+  /// 企业版业务线（迁移 106，2026-11-01 清单 A1）：内贸 / 外贸 / 暂不分配，新建客户时手动选，可空；客户页新开项目时当项目业务线的默认值
   bizLine      String?
 
   createdAt DateTime @default(now())
@@ -953,8 +953,8 @@ model Project {
   /// 待分配（企业版，迁移 106，清单 A7 / A10）：暂不分配、自动分配挑不到人的线索记这一刻；空 = 不在等分配。
   /// 这时 ownerId 还是建的人（列不能空），界面上负责人显示空、摆成「待分配」；有人分出去（assign-actions 分项目给）就清掉
   awaitAssignAt        DateTime?
-  /// 业务线（企业版，迁移 106，清单 A1，11-01 拍板手动填）：内贸 / 外贸；空 = 没填。自动分配只在这条线勾的部门里挑人。
-  /// 读它用 lib/enterprise/assign-line.ts 的 项目业务线
+  /// 业务线（企业版，迁移 106，清单 A1，11-01 拍板手动填）：内贸 / 外贸 / 暂不分配；企业版新建必填，空 = 老数据。自动分配只在这条线勾的部门里挑人，
+  /// 暂不分配不进自动分配；超时回收按它分内外贸时长（C7）。读它用 lib/enterprise/assign-line.ts 的 项目业务线（空 → 负责人的线 → 内贸）
   bizLine              String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt

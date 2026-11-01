@@ -92,7 +92,12 @@ const 在推 = { result: null, pooledAt: null } satisfies Prisma.ProjectWhereInp
  */
 export function 即将逾期粗筛(规则: 组织规则, 字典: 阶段字典, 今: Date | string = new Date()): Prisma.ProjectWhereInput | null {
   if (!规则.超时回收.开) return null;
-  const 天数们 = [...Object.keys(规则.超时回收.节点天数).map((n) => 节点超时天数(规则, n, 字典)), 字典.默认超时天数].filter((d): d is number => !!d && d > 0);
+  // 外贸那套单设的天数（C7）也算进最短，不然外贸项目时长更短时会被粗筛漏掉
+  const 天数们 = [
+    ...Object.keys(规则.超时回收.节点天数).map((n) => 节点超时天数(规则, n, 字典)),
+    ...Object.keys(规则.超时回收.外贸节点天数 ?? {}).map((n) => 节点超时天数(规则, n, 字典, "外贸")),
+    字典.默认超时天数,
+  ].filter((d): d is number => !!d && d > 0);
   if (!天数们.length) return null;
   const 最短 = Math.min(...天数们);
   const 今天 = dayjs(今).startOf("day");

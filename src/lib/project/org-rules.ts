@@ -60,8 +60,14 @@ export type 组织规则 = {
   超时回收: {
     /** 开了才回收；关着时节点时长存着不用，项目沟通也不强制填下一步时间 */
     开: boolean;
-    /** 节点名 → 最长处理天数；没设的节点不回收 */
+    /** 节点名 → 最长处理天数；没设的节点不回收。企业版这一套 = 内贸（「暂不分配」、老数据没填业务线的也按它，C7） */
     节点天数: Record<string, number>;
+    /**
+     * 外贸项目的节点天数（企业版，11-01 清单 C7）：项目业务线（lib/enterprise/assign-line.ts 项目业务线）是外贸时先看这一套；
+     * 这一套里没设的节点 = 跟内贸一样（上线前只有一套时长，外贸默认取同样的值，行为不变）。
+     * 规整组织规则 读出来总有（没存过 = {}）；可选只为了老的手写规则对象不用改
+     */
+    外贸节点天数?: Record<string, number>;
     /**
      * 计时起算日（YYYY-MM-DD，10-31）：所有项目从这天起才开始计超时，之前的日子不算。
      * 实际起点 = max(原来的起点, 起算日)；null = 不设，照原来的起点算
@@ -103,7 +109,7 @@ export function 是起算日(v: unknown): v is string {
 
 export const 默认组织规则: 组织规则 = {
   公海: { 持有上限开: false, 默认上限: 30, 每人上限: {}, 多项目客户: "客户可转让" },
-  超时回收: { 开: false, 节点天数: {}, 起算日: 默认起算日 },
+  超时回收: { 开: false, 节点天数: {}, 外贸节点天数: {}, 起算日: 默认起算日 },
   节点推进: { 开: false, 必填: {} },
   阶段: { 推进权限: "负责人可推", 出口叫法: {}, 前两节点要沟通: false, 需求补全期: false },
 };
@@ -155,13 +161,18 @@ export function 规整组织规则(raw: unknown, 字典: 阶段字典 = 团队�
     }
   }
   const 超时 = (r.超时回收 && typeof r.超时回收 === "object" ? r.超时回收 : {}) as Record<string, unknown>;
-  const 天数: Record<string, number> = {};
-  if (超时.节点天数 && typeof 超时.节点天数 === "object") {
-    for (const [node, v] of Object.entries(超时.节点天数 as Record<string, unknown>)) {
-      const n = 整数(v, 1, 时长最大);
-      if (认得的时长节点.includes(node) && n !== null) 天数[node] = n;
+  const 读天数 = (raw: unknown): Record<string, number> => {
+    const 出: Record<string, number> = {};
+    if (raw && typeof raw === "object") {
+      for (const [node, v] of Object.entries(raw as Record<string, unknown>)) {
+        const n = 整数(v, 1, 时长最大);
+        if (认得的时长节点.includes(node) && n !== null) 出[node] = n;
+      }
     }
-  }
+    return 出;
+  };
+  const 天数 = 读天数(超时.节点天数);
+  const 外贸天数 = 读天数(超时.外贸节点天数);
   const 推进 = (r.节点推进 && typeof r.节点推进 === "object" ? r.节点推进 : {}) as Record<string, unknown>;
   const 必填: Record<string, string[]> = {};
   if (推进.必填 && typeof 推进.必填 === "object") {
@@ -182,6 +193,7 @@ export function 规整组织规则(raw: unknown, 字典: 阶段字典 = 团队�
     超时回收: {
       开: 超时.开 === true,
       节点天数: 按本套名(天数, 字典),
+      外贸节点天数: 按本套名(外贸天数, 字典),
       // 没存过 / 存坏了 = 默认起算日；存过 null / "" = 管理员清掉了，不设
       起算日: 超时.起算日 === null || 超时.起算日 === "" ? null : 是起算日(超时.起算日) ? 超时.起算日 : 默认起算日,
     },
@@ -211,8 +223,8 @@ function 规整阶段块(raw: unknown): 组织规则["阶段"] {
 export type 规则改动 = {
   /** 每人上限里传 null = 这个人不单独设了 */
   公海?: Partial<Omit<组织规则["公海"], "每人上限">> & { 每人上限?: Record<string, number | null> };
-  /** 节点天数整份替换（界面每次带全），传 null / 空的节点 = 不设、不回收 */
-  超时回收?: { 开?: boolean; 节点天数?: Record<string, number | string | null>; 起算日?: string | null };
+  /** 节点天数整份替换（界面每次带全），传 null / 空的节点 = 不设、不回收；外贸节点天数同样整份替换，空的节点 = 跟内贸一样（C7） */
+  超时回收?: { 开?: boolean; 节点天数?: Record<string, number | string | null>; 外贸节点天数?: Record<string, number | string | null>; 起算日?: string | null };
   /** 必填整份替换（界面每次带全），传 null / 空的节点 = 不配、照原来手动推 */
   节点推进?: { 开?: boolean; 必填?: Record<string, string[] | null> };
   /** 出口叫法整份替换（界面每次带全） */
@@ -261,17 +273,27 @@ export function 合上改动(现在: 组织规则, 改: 规则改动): 组织规
       if (typeof t.开 !== "boolean") return { error: "超时回收开关只能开或关" };
       超时回收.开 = t.开;
     }
-    if (t.节点天数 !== undefined) {
-      if (!t.节点天数 || typeof t.节点天数 !== "object") return { error: "进程时长格式不对，刷新再试" };
+    const 认天数 = (raw: unknown, 哪套: string): { 天数: Record<string, number> } | { error: string } => {
+      if (!raw || typeof raw !== "object") return { error: "进程时长格式不对，刷新再试" };
       const 天数: Record<string, number> = {};
-      for (const [node, v] of Object.entries(t.节点天数 as Record<string, unknown>)) {
+      for (const [node, v] of Object.entries(raw as Record<string, unknown>)) {
         if (!能设时长的节点.includes(node)) return { error: `「${node}」不是线索、商机阶段的进程，不能设处理时长` };
         if (v === null || v === undefined || v === "") continue;
         const n = 整数(v, 1, 时长最大);
-        if (n === null) return { error: `「${node}」的处理时长请填 1–${时长最大} 的整数（天）` };
+        if (n === null) return { error: `${哪套}「${node}」的处理时长请填 1–${时长最大} 的整数（天）` };
         天数[node] = n;
       }
-      超时回收.节点天数 = 天数;
+      return { 天数 };
+    };
+    if (t.节点天数 !== undefined) {
+      const 认 = 认天数(t.节点天数, "");
+      if ("error" in 认) return { error: 认.error };
+      超时回收.节点天数 = 认.天数;
+    }
+    if (t.外贸节点天数 !== undefined) {
+      const 认 = 认天数(t.外贸节点天数, "外贸");
+      if ("error" in 认) return { error: 认.error };
+      超时回收.外贸节点天数 = 认.天数;
     }
     if (t.起算日 !== undefined) {
       if (t.起算日 === null || t.起算日 === "") 超时回收.起算日 = null;

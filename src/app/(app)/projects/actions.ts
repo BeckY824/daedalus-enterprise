@@ -16,7 +16,7 @@ import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 
 import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
-import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, type 交付项 } from "@/lib/project/db";
+import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -567,7 +567,7 @@ export async function 改组织规则(改: 规则改动) {
       : 改.节点推进 !== undefined
       ? 推.开 ? `组织规则：进程推进开，${Object.keys(推.必填).length} 个进程配了必填` : "组织规则：进程推进关"
       : 改.超时回收 !== undefined
-      ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
+      ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长（外贸单设 ${Object.keys(t.外贸节点天数 ?? {}).length} 个）` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
       : 改.公海?.多项目客户 !== undefined
       ? `组织规则：多项目客户公海走法 ${g.多项目客户}`
       : g.持有上限开 ? `组织规则：项目持有上限开，默认 ${是不限(g.默认上限) ? "不限" : `${g.默认上限} 个`}，单独设了 ${Object.keys(g.每人上限).length} 人` : "组织规则：项目持有上限关";
@@ -644,7 +644,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
   try {
     const me = await requireUser();
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
-    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
+    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
     if (!p || p.pooledAt) return { ok: true, 能记: false };
     if (!能管项目(me, p)) {
       const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
@@ -657,7 +657,8 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
       const 字典 = 字典of(true, 规则.阶段.出口叫法);
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
       const 起点 = 超时起点(p.createdAt, p.logs[0]?.at, c?.lastFollowAt);
-      const 天数 = 超时回收日(规则, p, 起点, 字典) ? 节点超时天数(规则, p.node, 字典) : null;
+      const 线 = 超时线(p, await 超时成员线(规则));  // 按项目业务线分内外贸天数（C7）
+      const 天数 = 超时回收日(规则, p, 起点, 字典, 线) ? 节点超时天数(规则, p.node, 字典, 线) : null;
       if (天数) 回收预演 = { 起点日: 计时起点(规则, 起点).format("YYYY-MM-DD"), 天数 };  // 起算日之前不算（10-31）
     }
     const 卡点默认 = (await 能发卡点(me, p.id)) ? await 读卡点默认() : null;
