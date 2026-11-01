@@ -1,7 +1,9 @@
 "use client";
 /**
  * 企业版「线索分配和配额」的两块界面（F2 / F7，10-25 实测）：
- * - AssignLeadModal：选接手人、业务线、种类，走 分配线索()——查角色、配额、权限，记进分配记录。原来只有编辑弹窗里能随手改负责人
+ * - AssignLeadModal：选接手人、业务线、种类，走 分配线索()——查角色、配额、权限，记进分配记录。原来只有编辑弹窗里能随手改负责人。
+ *   新线索（项目，11-01 16:1x 拍板 A9）：业务线只读（项目业务线），接手人只列「正常」参与自动分配、业务线对得上的销售
+ *   （暂不分配的项目列全部正常参与的）；市场管理、销售管理、总管理员都能指派，服务端再查一遍
  * - 我分出去的：分出去的线索在别人名下，「按组织架构看客户」开着时列表里看不到，这里看它们后来怎样了
  * 规则判断都在服务端，这里只摆样子、原样报错
  */
@@ -12,20 +14,24 @@ import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
 import { 分配线索, 本月分配情况, 我分出去的线索, 项目分配线, type 分配情况 } from "./assign-actions";
-import { 先填地址提示 } from "@/lib/enterprise/assign-line";
+import type { 项目线 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 
 const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}${p.加额 > 0 ? `（含无效补 ${p.加额}）` : ""}`;
 
-/** 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的 */
-export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void }) {
+/**
+ * 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的。
+ * 不看配额 = 企业版项目列表里的分配入口（11-01 会议 §5）：接手人后面、说明里不写配额，只是不显示，服务端照旧查
+ */
+export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean }) {
   const router = useRouter();
   const { message } = App.useApp();
   const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划" }>();
   const [人们, set人们] = useState<分配情况 | null>(null);
   const [忙, set忙] = useState(false);
-  // 新线索（项目）的业务线按项目所在地算（A1–A3），只读；undefined = 还在取
-  const [项目线, set项目线] = useState<{ 线: "内贸" | "外贸" | null } | null | undefined>(undefined);
+  // 新线索（项目）的业务线（只读）和能指派的人（正常参与、线对得上的销售）；undefined = 还在取，null = 取不到
+  const [项目线, set项目线] = useState<{ 线: 项目线; 可选: string[] } | null | undefined>(undefined);
+  const 可选 = lead?.项目 ? (项目线 ? new Set(项目线.可选) : null) : undefined;
 
   // 每次打开重取一遍：配额、已分随时在变
   function 打开了(open: boolean) {
@@ -69,24 +75,33 @@ export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: strin
       afterOpenChange={打开了}
       destroyOnHidden
     >
-      <p className="muted" style={{ marginTop: 0 }}>只能分给销售或销售管理；配额分满了会拦下，分完记进分配记录。</p>
+      <p className="muted" style={{ marginTop: 0 }}>{不看配额 ? "只能分给销售或销售管理，分完记进分配记录。" : "只能分给销售或销售管理；配额分满了会拦下，分完记进分配记录。"}</p>
       <Form form={form} layout="vertical" initialValues={{ line: "", kind: "营销" }}>
         <Form.Item name="toUserId" label="接手人" rules={[{ required: true, message: "选一个接手人" }]}>
           <Select
             showSearch
             optionFilterProp="label"
-            loading={人们 === null}
+            loading={人们 === null || (!!lead?.项目 && 项目线 === undefined)}
             placeholder="选销售或销售管理"
-            notFoundContent={人们 === null ? "加载中…" : "组织里还没有销售：先在 设置 → 组织架构 里排好"}
+            notFoundContent={
+              人们 === null || (lead?.项目 && 项目线 === undefined)
+                ? "加载中…"
+                : lead?.项目
+                  ? "这条线现在没有正常参与自动分配的销售：请总管理员在 设置 → 组织架构 里看参与状态和各条线的部门"
+                  : "组织里还没有销售：先在 设置 → 组织架构 里排好"
+            }
             options={(人们 ?? [])
-              .filter((p) => p.userId !== lead?.ownerId)
-              .map((p) => ({ value: p.userId, label: `${p.name}${p.line ? `（${p.line}）` : ""} · ${配额说法(p)}` }))}
+              .filter((p) => p.userId !== lead?.ownerId && (可选 === undefined || (可选 !== null && 可选.has(p.userId))))
+              .map((p) => ({ value: p.userId, label: `${p.name}${p.line ? `（${p.line}）` : ""}${不看配额 ? "" : ` · ${配额说法(p)}`}` }))}
           />
         </Form.Item>
         {lead?.项目 ? (
-          <Form.Item label="业务线" extra="按项目所在地算：中国大陆（不含港澳）= 内贸，其余 = 外贸；要改请改项目所在地">
+          <Form.Item
+            label="业务线"
+            extra="项目上选的业务线；老项目没填按负责人的线，再没有按内贸。接手人只列正常参与自动分配、这条线的销售（暂不分配的项目列全部正常参与的）"
+          >
             <span data-testid="assign-line-readonly">
-              {项目线 === undefined ? "加载中…" : 项目线?.线 ?? <span className="muted">没填项目所在地（{先填地址提示}，自动分配不会分它）</span>}
+              {项目线 === undefined ? "加载中…" : 项目线 ? 项目线.线 : <span className="muted">取不到，刷新看看</span>}
             </span>
           </Form.Item>
         ) : (

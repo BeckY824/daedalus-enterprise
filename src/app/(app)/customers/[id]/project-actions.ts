@@ -10,7 +10,7 @@
  * 分配方式（11-01 会议 §3「新增项目时新增字段分配方式」）：和向导同一套（lib/project/after-create-assign.ts）。
  *   指定分配 = 负责人是选的那位；其余先建在我名下，建好按分配方式走（自动分配没分出去 / 暂不分配 = 留在新线索待分配）。
  *   没传（老调用）= 和原来一样：负责人直接选，不记分配方式、建好不再动。客户名下已有别的项目，自动分出去时客户负责人不跟着动
- * 项目所在地（A1–A3）：传了用传的，没传 = 跟这位客户的地址
+ * 业务线（A1，11-01 16:1x）：内贸 / 外贸 / 暂不分配三选一，带了分配方式（企业版新弹窗）就必填；没传分配方式的老调用不要求
  */
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
@@ -30,9 +30,8 @@ import { 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
-import { 规整地址 } from "@/lib/enterprise/customer-v2";
 import { 定分配方式, 建好再分, 新建分配方式数据 } from "@/lib/project/after-create-assign";
-import type { 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -55,16 +54,16 @@ function 认节点和回复(f: 向导跟进): { 节点: string; 明确回复: bo
   return { 节点, 明确回复: f.明确回复 };
 }
 
-export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式数据>> & { 客户地址: 客户地址 };
+export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式数据>> & { 客户业务线: 项目线 | null };
 
-/** 客户页「新增项目」弹窗打开时取：能用的分配方式、按业务角色的默认值、是不是销售（A6 / A9），项目所在地默认带客户地址。看不到的客户 / 没开 = null */
+/** 客户页「新增项目」弹窗打开时取：能用的分配方式、按业务角色的默认值、是不是销售（A6 / A9），业务线默认带客户的（A1）。看不到的客户 / 没开 = null */
 export async function 新项目分配数据(customerId: string): Promise<新项目分配数据 | null> {
   try {
     const me = await requireUser();
     if (!企业版() || (await getBusiness()).projectMode !== true) return null;
-    const 客户 = await prisma.customer.findUnique({ where: { id: String(customerId ?? "") }, select: { addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } });
+    const 客户 = await prisma.customer.findUnique({ where: { id: String(customerId ?? "") }, select: { bizLine: true } });
     if (!客户) return null;
-    return { ...(await 新建分配方式数据(me)), 客户地址: 客户 };
+    return { ...(await 新建分配方式数据(me)), 客户业务线: 是项目线(客户.bizLine) ? 客户.bizLine : null };
   } catch {
     return null;
   }
@@ -79,7 +78,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     }
     const customerId = 输入.customerId;
     // 限定层：看不到的客户查不到；同事的 / 虚线下属的客户只读，不给建
-    const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } });
+    const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } });
     if (!客户) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
     if (await 同事的客户(defaultClient, customerId)) return { ok: false, error: await 只读话(defaultClient) };
 
@@ -90,8 +89,10 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (!项目输入.ownerId) return { ok: false, error: "请选项目负责人" };
     const 项目 = 规整项目(项目输入, me.id);
     if ("error" in 项目) return { ok: false, error: 项目.error };
-    const 地 = 规整地址(输入.项目.地址 === undefined ? 客户 : 输入.项目.地址);
-    if (!地.ok) return { ok: false, error: `项目所在地：${地.error}` };
+    // 业务线：企业版新弹窗（带了分配方式）必填三选一
+    const 业务线 = 认业务线(输入.项目.业务线);
+    if (业务线 === undefined) return { ok: false, error: 业务线不认得 };
+    if (分配 && !业务线) return { ok: false, error: 业务线必填 };
     const 规则 = await 生效组织规则();
     const 认 = await 认跟进方式(输入.跟进);
     if ("error" in 认) return { ok: false, error: 认.error };
@@ -116,7 +117,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const projectId = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
         data: {
-          ...项目, ...地.值, ...(分配 ? { assignMode: 分配.名 } : {}), customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
+          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
           nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText, ...新项目默认值(true),
         },
       });
@@ -147,7 +148,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/customers/${customerId}`);
     revalidatePath("/follow-ups");
-    const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name) : null;
+    const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线) : null;
     return { ok: true, projectId, ...(分了 ?? {}) };
   } catch (e) {
     return 不在了(e);

@@ -38,7 +38,7 @@ import { saveFollowUp, deleteFollowUp, restoreFollowUp, type 删掉的跟进 } f
 import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
-import { 认业务线, 分配方式序号, 自动分要业务线 } from "@/lib/enterprise/assign-line";
+import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
 import { 字典定义, 项目画像项, 认跟进方式 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 import { 发布卡点, 读卡点默认, 能发卡点 } from "@/lib/project/blocker";
@@ -97,12 +97,12 @@ export async function 建档向导(输入: 建档向导输入) {
         好.企业.项目来源 = 来源;
         // 分配方式记在项目上（11-01 迁移 106）
         if (分配) 好.企业.分配方式名 = 分配.名;
-        // 业务线（11-01 清单 A1）：手动选；没选 = 跟客户上选的。选了自动分配就必填，不填不让建
+        // 业务线（11-01 清单 A1，16:1x 拍板三选一）：手动选；没选 = 跟客户上选的。企业版新建必填，不填不让建
         if (!好.企业.业务线) {
           const 客线 = 认业务线(input.客户.企业资料?.bizLine);
           if (客线) 好.企业.业务线 = 客线;
         }
-        if (分配?.i === 分配方式序号.自动分配 && !好.企业.业务线) return { ok: false as const, error: 自动分要业务线 };
+        if (!好.企业.业务线) return { ok: false as const, error: 业务线必填 };
       }
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
@@ -162,7 +162,7 @@ export async function 建档向导(输入: 建档向导输入) {
     await 客户存了推项目(me, r.id);
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
-    const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name) : null;
+    const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
     return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
   } catch (e) { return 不在了(e); }

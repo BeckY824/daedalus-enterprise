@@ -8,7 +8,7 @@ import { 我能用的分配方式, 挡分配方式, 是分配方式序号, type 
 import { 放回公海 } from "@/lib/project/db";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
-import { 默认分配方式, 是销售角色 } from "@/lib/enterprise/assign-line";
+import { 默认分配方式, 是销售角色, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 向导自动分配 } from "@/app/(app)/leads/assign-actions";
 
 /** 新线索能手动分配 / 点自动分配的（A7）：和 lead-assign.ts 能分配 同一组业务角色 */
@@ -42,13 +42,18 @@ export async function 定分配方式(me: 我, 项目: { 分配方式?: number |
 /**
  * 建好之后：
  * - 自动分配：转给挑中的人（客户名下就这一个项目的，客户跟着走）；没分出去（例如这条线的人全暂停）= 留在新线索待分配，提醒市场管理、销售管理、总管理员（A11）。
- *   不看配额、不看持有上限（A10 / A11：不限额）。业务线建之前就拦了必填（A1）
+ *   不看配额、不看持有上限（A10 / A11：不限额）。业务线建之前就拦了必填（A1）；选了「暂不分配」的不自动分，直接待分配、不提醒
  * - 暂不分配：留在新线索待分配（A7），负责人那一格显示空，不提醒；市场管理、销售管理、总管理员在新线索页手动指定或点自动分配
  * - 公海捞取：放进项目公海
  * - 个人自持、指定分配：建好就在负责人名下，不用再动
  * 建档本身算成了，没成的回一句提示。转走 = 项目已不在我名下
  */
-export async function 建好再分(me: 我, 分配: 定好的分配, projectId: string, 项目名: string): Promise<{ 提示: string; 转走: boolean } | null> {
+export async function 建好再分(me: 我, 分配: 定好的分配, projectId: string, 项目名: string, 业务线?: 项目线 | null): Promise<{ 提示: string; 转走: boolean } | null> {
+  if (分配.i === 1 && 业务线 === "暂不分配") {
+    await 标待分配(projectId, null);
+    刷新(projectId);
+    return { 提示: `业务线是「暂不分配」，不自动分：已留在新线索待分配，等${能分配的人}分`, 转走: false };
+  }
   if (分配.i === 1) {
     const r = await 向导自动分配(projectId);
     if (r.ok) return { 提示: `已按「${分配.名}」分给 ${r.接手人}`, 转走: true };

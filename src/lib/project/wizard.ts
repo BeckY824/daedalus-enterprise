@@ -17,8 +17,7 @@ import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
 import { 新项目默认值 } from "./proj-fields";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 认业务线 } from "@/lib/enterprise/assign-line";
-import type { 线 } from "@/lib/enterprise/lead-assign";
+import { 认业务线, 业务线不认得, type 项目线 } from "@/lib/enterprise/assign-line";
 
 export const 项目名上限 = 60;
 export const 备注上限 = 500;
@@ -29,8 +28,8 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
   /** 项目来源（企业版，迁移 077）：这个项目从哪个渠道来。建档向导没选 = 跟客户来源（项目来源默认）；编辑里改。团队版不传、不认 */
   channelId?: string | null;
   /**
-   * 业务线（企业版，11-01 清单 A1，手动选）：内贸 / 外贸，空 = 没填；分配方式选自动分配时必填（projects/actions.ts 建档向导里拦）。
-   * 自动分配只在这条线勾的部门里挑人。团队版不传、不认
+   * 业务线（企业版，11-01 清单 A1，16:1x 拍板三选一）：内贸 / 外贸 / 暂不分配；企业版新建必填（projects/actions.ts 建档向导、
+   * 客户页 给客户建项目 里拦）。自动分配只在这条线勾的部门里挑人，暂不分配不进自动分配。团队版不传、不认
    */
   业务线?: string | null };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
@@ -60,8 +59,8 @@ export type 规整好的 = {
   /** 企业版建档（10-26）：项目落在哪个线索节点、首条沟通客户是否明确回复；团队版没有 */
   企业?: {
     节点: string; 明确回复: boolean; 项目来源?: string | null;
-    /** 业务线（11-01 A1）：手动选的内贸 / 外贸；没选 = null */
-    业务线?: 线 | null;
+    /** 业务线（11-01 A1）：手动选的内贸 / 外贸 / 暂不分配；没选 = null（建档向导再拦必填） */
+    业务线?: 项目线 | null;
     /** 分配方式的叫法（11-01 迁移 106，存 Project.assignMode）；调用方定好分配方式后填 */
     分配方式名?: string;
   };
@@ -157,7 +156,7 @@ export function 规整向导(
     }
     企业档 = { 节点, 明确回复: f.明确回复 };
     const 线 = 认业务线(p.业务线);
-    if (线 === undefined) return { error: "业务线只能选内贸或外贸" };
+    if (线 === undefined) return { error: 业务线不认得 };
     企业档.业务线 = 线;
   }
 

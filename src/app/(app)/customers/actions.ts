@@ -55,7 +55,7 @@ import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
 import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type 客户地址 } from "@/lib/enterprise/customer-v2";
-import { 认业务线 } from "@/lib/enterprise/assign-line";
+import { 认业务线, 业务线不认得 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 
@@ -138,7 +138,7 @@ export type CustomerInput = {
 export type 企业客户资料 = 客户地址 & { shortName: string | null; assignWay: string | null; customerType: string | null;
   /** 客户属性（迁移 104，2026-10-31 F-客户-04）：字典 custAttr，客户看板按它分列 */
   customerAttr: string | null;
-  /** 业务线（迁移 106，2026-11-01 清单 A1）：内贸 / 外贸，手动选；新开项目默认跟它 */
+  /** 业务线（迁移 106，2026-11-01 清单 A1）：内贸 / 外贸 / 暂不分配，手动选；新开项目默认跟它 */
   bizLine: string | null;
   /** 地址第五格「客户地址」（迁移 091，P14 第 7 条）：公司详细地址，国内国外都收 */
   addrDetail: string | null };
@@ -440,10 +440,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       if (v && v !== 改前?.customerAttr && !(await 可选项("custAttr")).includes(v)) return { ok: false, error: `客户属性「${v}」不在可选范围内，请刷新后重选` };
       企资料.customerAttr = v;
     }
-    // 业务线（迁移 106）：只认内贸 / 外贸，空 = 清掉
+    // 业务线（迁移 106）：只认内贸 / 外贸 / 暂不分配，空 = 清掉
     if (交.bizLine !== undefined) {
       const 线 = 认业务线(交.bizLine);
-      if (线 === undefined) return { ok: false, error: "业务线只能选内贸或外贸" };
+      if (线 === undefined) return { ok: false, error: 业务线不认得 };
       企资料.bizLine = 线;
     }
   }
