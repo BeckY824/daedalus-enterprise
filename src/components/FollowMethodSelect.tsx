@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Select } from "antd";
-import { 沟通方式选项 } from "@/app/(app)/follow-method-actions";
+import { 沟通方式选项, 发起主体选项 } from "@/app/(app)/follow-method-actions";
 import { 方式对类型, 类型对方式, 对得上的方式 } from "@/lib/follow-method";
 
 // 一页只取一次：几张表单共用，管理员改了字典刷新页面就是新的；取失败下次再取
@@ -18,6 +18,37 @@ export function useFollowMethods(): string[] | null {
     return () => { 作废 = true; };
   }, []);
   return 们;
+}
+
+// 发起主体同上，一页取一次
+let 取主体: Promise<string[] | null> | null = null;
+
+/** 企业版发起主体的启用项（11-01）；不是企业版 / 没取到是 null（表单不摆这一格，服务端也不写） */
+export function useFollowInitiators(): string[] | null {
+  const [们, set们] = useState<string[] | null>(null);
+  useEffect(() => {
+    let 作废 = false;
+    取主体 ??= 发起主体选项().catch(() => { 取主体 = null; return null; });
+    取主体.then((r) => { if (!作废) set们(r); });
+    return () => { 作废 = true; };
+  }, []);
+  return 们;
+}
+
+/** 新记沟通的默认（11-01 客户答复 #2）：沟通方式「微信沟通」、发起主体「我方发起」——字典里停用了就不默认 */
+export const 默认沟通方式 = "微信沟通";
+export const 默认发起主体 = "我方发起";
+
+/** 发起主体下拉：老记录的值已经停用的，补上它自己，不改就原样存回 */
+export function InitiatorSelect({ value, onChange, 们, style, "aria-label": ariaLabel = "发起主体" }: {
+  value?: string | null;
+  onChange?: (v: string) => void;
+  们: string[];
+  style?: React.CSSProperties;
+  "aria-label"?: string;
+}) {
+  const 项 = value && !们.includes(value) ? [...们, value] : 们;
+  return <Select aria-label={ariaLabel} style={style} placeholder="选发起主体" value={value ?? undefined} options={项.map((x) => ({ value: x, label: x }))} onChange={onChange} />;
 }
 
 export type 方式和类型 = { type: string; method: string | null };

@@ -92,7 +92,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       });
       await tx.projectNodeLog.create({ data: { projectId: p.id, userId: me.id, toPhase: "线索", toNode: 落.节点 } });
       const f = await tx.followUp.create({
-        data: { type: 跟进.type, method: 跟进.method, content: 跟进.content, occurredAt: 跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人?.id ?? null, ownerId: me.id },
+        data: { type: 跟进.type, method: 跟进.method, initiator: 跟进.initiator, content: 跟进.content, occurredAt: 跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人?.id ?? null, ownerId: me.id },
       });
       await tx.followUpProject.create({ data: { followUpId: f.id, projectId: p.id, node: 落.节点 } });
       await 记沟通编号(tx, f.id, p.id, 跟进.nextStepAt);

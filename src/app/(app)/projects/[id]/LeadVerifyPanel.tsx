@@ -7,13 +7,14 @@ import DictSelect from "@/components/DictSelect";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
-import { 缺有效沟通, 培育计划上限, 无效原因上限 } from "@/lib/project/stage-gates";
+import { 缺有效沟通, 培育计划上限, 无效原因上限, 有效线索节点 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string; 自动推到?: string[] }>, 成了?: string) => Promise<boolean>;
 
-const 判定色: Record<string, string> = { 有效线索: "green", 初验无效: "orange", 无效线索: "red", 暂未判定: "default" };
+// 11-01：显示客户定的六个叫法（v.叫法），颜色和项目卡那一行一样
+const 叫法色: Record<string, string> = { 暂未验证: "default", 初验无效: "orange", 复核有效: "blue", 终验无效: "volcano", 有效线索: "green", 无效线索: "red" };
 // 界面上不露内部岗位名（市场管理 / 总管理）：复核两步都说「管理员」，销售那几步说「负责人」（10-30 交互调整，术语表）
 const 等谁: Record<string, string> = {
   市场复核: "等管理员复核",
@@ -33,7 +34,8 @@ function 痕说法(l: 线索验证["痕"][number]): string {
 }
 
 /**
- * 企业版线索有效性验证（P12）：详情页「线索验证」节点上的判定 + 下一步按钮 + 小时间线。
+ * 企业版线索有效性验证（P12）：判定 + 下一步按钮 + 小时间线。11-01 起整块放在项目卡「线索验证」那一行点开的弹窗里。
+ * 项目创建人是销售（v.初判即终判）：负责人判有效、判无效都是最终结果，不交复核。
  * 四步：销售初判 → 市场复核 → 销售终验 → 总管理终判（界面上说成 负责人初判 → 管理员复核 → 负责人确认 → 管理员最终确认）；谁能做哪步服务端已经算好放在 v.我能
  */
 export default function LeadVerifyPanel({
@@ -85,10 +87,14 @@ export default function LeadVerifyPanel({
       return {
         title: "判为无效线索",
         ok: 原因好了,
-        做: () => 跑(() => 线索初判Action(projectId, "无效", { invalidReason: 无效原因, verifyNote: 说明 }), "已判无效，交给复核"),
+        做: () => 跑(() => 线索初判Action(projectId, "无效", { invalidReason: 无效原因, verifyNote: 说明 }), v.初判即终判 ? "已判无效线索" : "已判无效，交给复核"),
         身: (
           <>
-            <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>判无效要过复核：复核也判无效才算无效线索，复核判有效会回到你这里。</div>
+            <div style={{ marginBottom: 8, color: "var(--text-muted)" }} data-testid="lead-verify-invalid-hint">
+              {v.初判即终判
+                ? "这个项目是销售建的：你判无效就是最终结果，这条线索结束（记为线索流失），不再交管理员复核。"
+                : "判无效要过复核：复核也判无效才算无效线索，复核判有效会回到你这里。"}
+            </div>
             {有字典 ? (
               <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因（必选）" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={无效原因选项} />
             ) : (
@@ -162,13 +168,11 @@ export default function LeadVerifyPanel({
     return null;
   })();
 
-  // 线索阶段别的节点、还没判过：不占地方
-  if (!v.我能 && !v.待 && v.痕.length === 0) return null;
   return (
-    <div style={{ marginTop: 12 }} data-testid="lead-verify">
+    <div data-testid="lead-verify">
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <span style={{ color: "var(--text-muted)" }}>线索判定：</span>
-        <Tag color={判定色[v.判定] ?? "default"} style={{ marginInlineEnd: 0 }} data-testid="lead-verify-verdict">{v.判定}</Tag>
+        <span style={{ color: "var(--text-muted)" }}>验证结果：</span>
+        <Tag color={叫法色[v.叫法] ?? "default"} style={{ marginInlineEnd: 0 }} data-testid="lead-verify-verdict">{v.叫法}</Tag>
         {v.待 && <span style={{ color: "var(--text-muted)" }} data-testid="lead-verify-pending">{等谁[v.待]}</span>}
         {v.无效原因 && <span style={{ color: "var(--text-muted)", overflowWrap: "anywhere", minWidth: 0 }}>无效原因：{v.无效原因}</span>}
       </div>
@@ -208,6 +212,12 @@ export default function LeadVerifyPanel({
       )}
       {v.我能 === "销售终验" && 最后说明 && (
         <div style={{ marginTop: 8, color: "var(--text-muted)", overflowWrap: "anywhere" }}>复核说明：{最后说明}</div>
+      )}
+      {!v.我能 && !v.待 && v.痕.length === 0 && (
+        <div style={{ marginTop: 8, color: "var(--text-muted)" }} data-testid="lead-verify-empty">还没验证过：项目走到「线索·{有效线索节点}」时，负责人在这里判有效、无效或还需培育。</div>
+      )}
+      {v.我能 === "初判" && v.初判即终判 && (
+        <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 12 }}>项目是销售建的：你的判定就是最终结果，不交管理员复核。</div>
       )}
       {v.痕.length > 0 && (
         <Timeline

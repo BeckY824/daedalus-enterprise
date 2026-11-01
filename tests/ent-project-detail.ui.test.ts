@@ -8,7 +8,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
@@ -667,9 +667,16 @@ it("R6 页头跟着权限：公海里能领的只剩「领取」；退回公海�
     expect(await 页头钮(page, ".ant-btn-primary")).toEqual(["领取"]);
     // 公海里的项目谁都改不了（可改 = 能改 && !pooled）：转让、退回都不摆；记沟通那几样在卡上
     expect(await 页头钮(page)).toEqual(["领取"]);
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能放公海: true, 提成: null, 线索验证: { 判定: "有效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 我能: null, 痕: [] } }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能放公海: true, 提成: null, 线索验证: { 判定: "初验无效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: "初验无效", 我能: null, 痕: [] } }));
     await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("退回公海"));
     expect(await page.locator(".page-head-a").getByRole("button", { name: "退回公海" }).isDisabled()).toBe(true);
+    // 11-01：项目卡上「线索验证」一行带当前结果，点开弹窗就是整个验证操作
+    expect(await page.getByTestId("lead-verify-result").innerText()).toBe("初验无效");
+    expect(await page.getByTestId("lead-verify-nudge").count()).toBe(0);
+    await page.getByTestId("lead-verify-row").click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "线索验证" });
+    await 窗.waitFor();
+    expect(await 窗.getByTestId("lead-verify-pending").innerText()).toBe("等管理员复核");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

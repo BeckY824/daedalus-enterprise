@@ -15,7 +15,7 @@ import { 领取 } from "../pool-actions";
 import { 认回打码号, 号键 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 定沟通方式 } from "@/lib/enterprise/dict";
+import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删 } from "@/lib/enterprise/soft-delete";
 import { 能删改沟通, 不能删改沟通话, 刚记的能撤 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
@@ -61,6 +61,8 @@ export type FollowUpInput = {
   type: string;
   /** 企业版沟通方式（企业字典 followMethod 的选项名，10-31）：有它时 type 按它对出来；没有就按 type 补。别的版本不认 */
   method?: string | null;
+  /** 企业版发起主体（企业字典 followInitiator，11-01，迁移 105）：新记的没带补「我方发起」，改已有的没带不动。别的版本不认 */
+  initiator?: string | null;
   /** 选填。数据库列是 NOT NULL，空的时候存空串——不为此改表结构 */
   title?: string | null;
   content: string;
@@ -180,11 +182,14 @@ export async function saveFollowUp(input: FollowUpInput) {
         return { ok: false as const, error: "这是同事的客户：只能记沟通，待办、提醒和下一步计划请找负责人安排" };
     }
     // 企业版沟通方式（10-31）：选的方式对出 type；改已有的、方式没变的不查停用
-    const 原方式 = input.id ? (await prisma.followUp.findUnique({ where: { id: input.id }, select: { method: true } }))?.method : null;
-    const 方式 = await 定沟通方式(input.method, input.type, 原方式);
+    const 原 = input.id ? await prisma.followUp.findUnique({ where: { id: input.id }, select: { method: true, initiator: true } }) : null;
+    const 方式 = await 定沟通方式(input.method, input.type, 原?.method);
     if (!方式.ok) return 方式;
+    // 发起主体（11-01）：同上，改已有的、没变的不查停用
+    const 发起 = await 定发起主体(input.initiator, 方式.type, input.id ? { 有: true, 值: 原?.initiator } : undefined);
+    if (!发起.ok) return 发起;
     const data = {
-      type: 方式.type, ...(方式.method !== undefined ? { method: 方式.method } : {}), title: input.title?.trim() ?? "", content: input.content.trim(), status: input.status,
+      type: 方式.type, ...(方式.method !== undefined ? { method: 方式.method } : {}), ...(发起.initiator !== undefined ? { initiator: 发起.initiator } : {}), title: input.title?.trim() ?? "", content: input.content.trim(), status: input.status,
       duration: input.durationMinutes ? Math.round(input.durationMinutes * 60) : null,
       occurredAt: parseDateInput(input.occurredAt)!, dueAt: 期限.at, dueOn: 期限.on, dueHasTime: 期限.hasTime,
       contactId: input.contactId || null, opportunityId: input.opportunityId || null,
@@ -298,7 +303,7 @@ export async function deleteFollowUp(id: string, customerId: string) {
 }
 
 export type 删掉的跟进 = {
-  id: string; type: string; method?: string | null; title: string; content: string; status: string; duration: number | null;
+  id: string; type: string; method?: string | null; initiator?: string | null; title: string; content: string; status: string; duration: number | null;
   occurredAt: string; dueAt: string | null; dueOn?: string | null; dueHasTime?: boolean | null; participants: string | null;
   customerId: string; contactId: string | null; opportunityId: string | null; ownerId: string;
   createdAt: string; updatedAt: string;
@@ -321,7 +326,7 @@ export async function restoreFollowUp(快照: 删掉的跟进) {
     // 企业版（P9）：删的时候只进了回收站，撤销就是把那一条拿回来，不再建一条
     if (!(await 撤销软删("FollowUp", 快照.id))) await prisma.followUp.create({
       data: {
-        id: 快照.id, type: 快照.type, method: 快照.method ?? null, title: 快照.title, content: 快照.content, status: 快照.status, duration: 快照.duration,
+        id: 快照.id, type: 快照.type, method: 快照.method ?? null, initiator: 快照.initiator ?? null, title: 快照.title, content: 快照.content, status: 快照.status, duration: 快照.duration,
         occurredAt: new Date(快照.occurredAt), dueAt: 快照.dueAt ? new Date(快照.dueAt) : null, dueOn: 快照.dueOn ?? null, dueHasTime: 快照.dueHasTime ?? null, participants: 快照.participants,
         customerId: 快照.customerId, contactId: 联系人在 ? 快照.contactId : null, opportunityId: 商机在 ? 快照.opportunityId : null,
         ownerId: 快照.ownerId, createdAt: new Date(快照.createdAt),

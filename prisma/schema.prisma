@@ -613,6 +613,8 @@ model FollowUp {
   participants String? // 与会人，逗号分隔
   /// 企业版沟通方式（2026-10-31）：存企业字典 followMethod 的选项名，可空；type 按它对出来（lib/follow-method.ts）
   method       String?
+  /// 企业版发起主体（2026-11-01，迁移 105）：存企业字典 followInitiator 的选项名，可空；任务、提醒没有
+  initiator    String?
 
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)

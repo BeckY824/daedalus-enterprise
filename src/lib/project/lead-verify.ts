@@ -53,6 +53,15 @@ export function 实际待(存的: string | null, 交给: "市场复核" | "总�
   return 存的 === "市场复核" && 交给 !== "市场复核" ? "总管理终判" : (存的 as 待哪步);
 }
 
+/**
+ * 创建人是销售（业务角色 销售成员 / 销售管理）：线索验证初判即终判（11-01 定）——判有效、判无效都不再走市场复核、总管理终判，
+ * 直接按销售初判算最终结果。创建人不在组织里了（离职）按不是算，照旧走复核
+ */
+export function 创建人是销售(org: 组织, creatorId: string): boolean {
+  const 们 = org.成员.get(creatorId)?.角色们 ?? [];
+  return 们.includes("sales") || 们.includes("sales_mgr");
+}
+
 /** 这一步谁能拍板。销售两步看 能改节点（负责人、老板、主管、直属上级、总管理员）；市场复核只给市场管理；总管理终判给老板、总管理员 */
 export function 能拍板(me: 谁, 步: 验证步, p: { ownerId: string; pooledAt?: Date | null }, org: 组织): boolean {
   if (步 === "市场复核") return 管理员类别们of(org, me.id).has("市场管理");
@@ -69,8 +78,8 @@ const 拍不了: Record<验证步, string> = {
 
 const 字 = (v: unknown, 上限: number) => (typeof v === "string" ? v.trim().slice(0, 上限) : "");
 
-type 项目 = { id: string; name: string; phase: string; node: string; result: string | null; ownerId: string; pooledAt: Date | null; customerId: string };
-const 项目列 = { id: true, name: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true, customerId: true } as const;
+type 项目 = { id: string; name: string; phase: string; node: string; result: string | null; ownerId: string; creatorId: string; pooledAt: Date | null; customerId: string };
+const 项目列 = { id: true, name: true, phase: true, node: true, result: true, ownerId: true, creatorId: true, pooledAt: true, customerId: true } as const;
 const 在验证 = (p: 项目) => p.phase === "线索" && p.node === 有效线索节点 && !p.result && !p.pooledAt;
 
 /** 读项目 + 验证状态 + 现在实际等哪步（看全部：复核的人多半看不到这位销售的项目） */
@@ -99,8 +108,11 @@ async function 写状态(projectId: string, data: Record<string, unknown>, 痕: 
   }));
 }
 
-/** 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、负责人本月配额 +1。都在一个事务里，项目先被人动了就作废 */
-async function 判死(me: 谁, projectId: string, 步: "市场复核" | "总管理终判", 说明: string, 段: Record<string, unknown>): Promise<结果> {
+/**
+ * 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、负责人本月配额 +1。都在一个事务里，项目先被人动了就作废。
+ * 销售初判直接判死（创建人是销售）：带上这次的无效原因，不加配额——不是分来的线索，不补名额
+ */
+async function 判死(me: 谁, projectId: string, 步: "销售初判" | "市场复核" | "总管理终判", 说明: string, 段: Record<string, unknown>): Promise<结果> {
   const 状态开 = await 客户状态自动();
   return 看全部(() => 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: projectId }, select: 项目列 });
@@ -108,7 +120,9 @@ async function 判死(me: 谁, projectId: string, 步: "市场复核" | "总管�
     const v = await tx.entLeadVerify.findUnique({ where: { projectId } });
     const 现在 = new Date();
     await tx.project.update({ where: { id: p.id }, data: { result: "线索流失", closedAt: 现在 } });
-    const 原因 = [v?.invalidReason ? `无效原因：${v.invalidReason}` : "", `${步}判无效`, 说明].filter(Boolean).join("；").slice(0, 原因上限);
+    const 无效原因 = 步 === "销售初判" ? (段.invalidReason as string) : v?.invalidReason;
+    if (步 === "销售初判" && v?.pending) return 作废; // 判的这会儿别人已经判过、交了复核
+    const 原因 = [无效原因 ? `无效原因：${无效原因}` : "", 步 === "销售初判" ? "负责人初判无效（创建人是销售，初判即终判）" : `${步}判无效`, 说明].filter(Boolean).join("；").slice(0, 原因上限);
     await tx.projectNodeLog.create({
       data: {
         projectId: p.id, userId: me.id,
@@ -118,8 +132,8 @@ async function 判死(me: 谁, projectId: string, 步: "市场复核" | "总管�
     });
     const data = { ...段, verdict: "无效线索", finalResult: "无效线索", pending: null };
     await tx.entLeadVerify.upsert({ where: { projectId }, create: { projectId, ...data }, update: data });
-    await tx.entLeadVerifyLog.create({ data: { projectId, step: 步, verdict: "无效", note: 说明 || null, userId: me.id } });
-    await 加一条配额(tx, p.ownerId);
+    await tx.entLeadVerifyLog.create({ data: { projectId, step: 步, verdict: "无效", reason: 步 === "销售初判" ? 无效原因 : null, note: 说明 || null, userId: me.id } });
+    if (步 !== "销售初判") await 加一条配额(tx, p.ownerId);
     await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const };
   }));
@@ -167,6 +181,7 @@ export async function 销售初判(
   }
   const 原因 = await 核无效原因(附.invalidReason);
   if (!原因.ok) return 原因;
+  if (创建人是销售(org, p.creatorId)) return 判死(me, p.id, "销售初判", 说明, { ...清空, ...验证人, invalidReason: 原因.值 });
   const 交给 = await 无效交给(org);
   await 写状态(p.id, { ...清空, ...验证人, invalidReason: 原因.值, verdict: "初验无效", pending: 交给 }, { step: "销售初判", verdict: "无效", reason: 原因.值, note: 说明, userId: me.id });
   return { ok: true };
@@ -252,6 +267,12 @@ export type 验证痕 = { id: string; step: string; verdict: string; reason: str
 export type 线索验证 = {
   判定: string; 待: 待哪步 | null; 无效原因: string | null;
   复核结果: string | null; 最终结果: string | null;
+  /** 负责人终验的结果：接受复核 / 提交异议（没到这步 null） */
+  终验: string | null;
+  /** 项目创建人是销售：初判即终判，判无效不再交复核（11-01） */
+  初判即终判: boolean;
+  /** 项目卡「线索验证」右边显示的结果（11-01）：暂未验证 / 初验无效 / 复核有效 / 终验无效 / 有效线索 / 无效线索 */
+  叫法: 验证结果叫法;
   /** 我现在能做的：初判 / 终验 / 认领；复核两步在列表的「待复核的线索」里 */
   我能: "初判" | "销售终验" | "销售认领" | "市场复核" | "总管理终判" | null;
   痕: 验证痕[];
@@ -272,9 +293,11 @@ export async function 读线索验证(me: 谁, p: 项目): Promise<线索验证 
     if (!待) 我能 = 能拍板(me, "销售初判", p, org) ? "初判" : null;
     else 我能 = 能拍板(me, 待, p, org) ? 待 : null;
   }
+  const 判定 = v?.verdict ?? "暂未判定";
+  const 终验 = v?.salesAck ?? null;
   return {
-    判定: v?.verdict ?? "暂未判定", 待, 无效原因: v?.invalidReason ?? null,
-    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 我能,
+    判定, 待, 无效原因: v?.invalidReason ?? null, 叫法: 验证结果叫法({ 判定, 待, 终验 }),
+    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId), 我能,
     痕: 痕.map((l) => ({ id: l.id, step: l.step, verdict: l.verdict, reason: l.reason, note: l.note, 谁: 名.get(l.userId) ?? "已不在的成员", at: l.at.toISOString() })),
   };
 }
@@ -312,4 +335,20 @@ export async function 待我复核的(me: 谁): Promise<待复核项[]> {
     }
     return 出;
   });
+}
+
+export type 验证结果叫法 = "暂未验证" | "初验无效" | "复核有效" | "终验无效" | "有效线索" | "无效线索";
+/**
+ * 项目卡上「线索验证」右边那个结果（11-01 客户定的六个叫法）：
+ * 等复核 = 初验无效；复核判有效、等负责人确认 = 复核有效；负责人提交异议、等最终确认 = 终验无效；
+ * 定了的按最终结果（有效线索 / 无效线索）；没判过、还需培育 = 暂未验证
+ */
+export function 验证结果叫法(v: Pick<线索验证, "判定" | "待" | "终验">): 验证结果叫法 {
+  if (v.待 === "市场复核") return "初验无效";
+  if (v.待 === "销售终验") return "复核有效";
+  if (v.待 === "总管理终判") return v.终验 === "提交异议" ? "终验无效" : "初验无效";
+  if (v.判定 === "有效线索") return "有效线索";
+  if (v.判定 === "无效线索") return "无效线索";
+  if (v.判定 === "初验无效") return "初验无效";
+  return "暂未验证";
 }

@@ -65,7 +65,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       exceptionCategory: { select: { name: true } },
       logs: { orderBy: { at: "desc" }, take: 200 },
       members: { orderBy: { createdAt: "asc" } },
-      followUps: { include: { followUp: { select: { id: true, type: true, method: true, content: true, occurredAt: true, ownerId: true, updatedAt: true } } } },
+      followUps: { include: { followUp: { select: { id: true, type: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, updatedAt: true } } } },
       _count: { select: { logs: true } },
     },
   });
@@ -159,8 +159,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       ...(权限?.("合同状态") !== "藏" ? { contractStatus: 合同状态显示(p.contractStatus) } : {}),
     },
   };
-  // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查
-  const 线索验证 = 企业 && p.phase === "线索" ? await 读线索验证(me, p) : null;
+  // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查。11-01 起项目卡上一直摆「线索验证」结果，过了线索阶段也读
+  const 线索验证 = 企业 ? await 读线索验证(me, p) : null;
   // 企业版项目画像、项目附件（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）。
   // 项目名单在中栏（@pane/projects/[id] → panes.tsx 项目名单），不在这页里读
   const 存的需求 = 读产品需求(p.productNeeds);
@@ -213,7 +213,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       .map((f) => {
         const 编 = 编号.get(f.followUp.id);
         return {
-          id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
+          id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, initiator: f.followUp.initiator, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
           ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
           ...(企业 ? { 附件: 沟通附件.get(f.followUp.id) ?? [], 我记的: f.followUp.ownerId === me.id } : {}),
         };

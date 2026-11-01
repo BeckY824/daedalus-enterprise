@@ -1,6 +1,6 @@
 /**
  * 企业版沟通方式下拉（10-31，components/FollowMethodSelect）：字典有方式就列方式，选了存 method、type 跟着推；
- * 新记默认手机通话；字典取不到（别的版本）还是原来的类型下拉。
+ * 新记默认微信沟通、发起主体默认我方发起（11-01 答复 #2）；字典里没有微信沟通退回手机通话；字典取不到（别的版本）还是原来的类型下拉。
  */
 import { beforeAll, afterAll, it, expect } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -9,7 +9,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "actions", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>window.__方式们;");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>window.__方式们;export const 发起主体选项=async()=>window.__主体们??null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true});");
   stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__calls.push(x);return {ok:true,id:'f1'}}; export const completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
@@ -23,11 +23,11 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-const 开 = async (方式们: string[] | null) => {
+const 开 = async (方式们: string[] | null, 主体们: string[] | null = null) => {
   const page = await browser.newPage(); page.setDefaultTimeout(5000);
   await page.route("http://follow-method.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://follow-method.test");
-  await page.addScriptTag({ content: `window.__calls=[];window.__方式们=${JSON.stringify(方式们)};` });
+  await page.addScriptTag({ content: `window.__calls=[];window.__方式们=${JSON.stringify(方式们)};window.__主体们=${JSON.stringify(主体们)};` });
   await page.addScriptTag({ content: bundle });
   return page;
 };
@@ -37,15 +37,22 @@ const 填时间和内容 = async (page: import("playwright").Page, 内容: strin
 };
 const 存的 = (page: import("playwright").Page) => page.evaluate(() => (window as unknown as { __calls: Record<string, unknown>[] }).__calls);
 
-it("字典有方式：默认手机通话，选 Telegram 存 method、type 记 OTHER", async () => {
-  const page = await 开(["手机通话", "微信沟通", "Telegram"]);
+it("字典有方式：默认微信沟通，选 Telegram 存 method、type 记 OTHER；发起主体默认我方发起", async () => {
+  const page = await 开(["手机通话", "微信沟通", "Telegram"], ["双方约定", "我方发起", "客户发起", "内部会议"]);
   const 下拉 = page.getByRole("combobox", { name: "沟通方式" });
-  await expect.poll(() => page.locator(".ant-form-item").filter({ hasText: "沟通方式" }).locator(".ant-select-content").innerText()).toBe("手机通话");
+  await expect.poll(() => page.locator(".ant-form-item").filter({ hasText: "沟通方式" }).locator(".ant-select-content").innerText()).toBe("微信沟通");
+  await expect.poll(() => page.locator(".ant-form-item").filter({ hasText: "发起主体" }).locator(".ant-select-content").innerText()).toBe("我方发起");
   await 下拉.click(); await page.getByTitle("Telegram", { exact: true }).click();
   await 填时间和内容(page, "在 Telegram 上聊了报价");
   await page.getByRole("button", { name: /保\s*存/ }).click();
   await expect.poll(async () => (await 存的(page)).length).toBe(1);
-  expect((await 存的(page))[0]).toMatchObject({ type: "OTHER", method: "Telegram" });
+  expect((await 存的(page))[0]).toMatchObject({ type: "OTHER", method: "Telegram", initiator: "我方发起" });
+  await page.close();
+});
+
+it("字典里没有微信沟通：默认退回手机通话", async () => {
+  const page = await 开(["手机通话", "Telegram"]);
+  await expect.poll(() => page.locator(".ant-form-item").filter({ hasText: "沟通方式" }).locator(".ant-select-content").innerText()).toBe("手机通话");
   await page.close();
 });
 

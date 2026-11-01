@@ -11,3 +11,11 @@ export async function 沟通方式选项(): Promise<string[] | null> {
   const 们 = await 可选项("followMethod");
   return 们.length ? 们 : null;
 }
+
+/** 企业版发起主体的启用项（11-01，字典 followInitiator）：记沟通的表单打开时取；别的版本给 null，表单不摆这一格 */
+export async function 发起主体选项(): Promise<string[] | null> {
+  await requireUser();
+  if (!企业版()) return null;
+  const 们 = await 可选项("followInitiator");
+  return 们.length ? 们 : null;
+}

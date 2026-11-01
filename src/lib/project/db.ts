@@ -778,7 +778,7 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     const 额外 = await 认沟通额外(tx, input.额外, p.customerId);
     if ("error" in 额外) return { ok: false as const, error: 额外.error };
     const 跟进 = await tx.followUp.create({
-      data: { type: 好.type, method: 好.method, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
+      data: { type: 好.type, method: 好.method, initiator: 好.initiator, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
     });
     // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
     await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });

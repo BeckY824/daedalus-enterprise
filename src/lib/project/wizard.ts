@@ -33,6 +33,8 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
 export type 向导跟进 = { type: string;
   /** 企业版沟通方式（10-31）：服务端先过 认跟进方式（dict.ts）定好方式和类型，这里只照带；别的版本不传 */
   method?: string | null;
+  /** 企业版发起主体（11-01，迁移 105）：认跟进方式 里定好（没选补「我方发起」），这里只照带；别的版本不传 */
+  initiator?: string | null;
   content: string; occurredAt: string; 下一步时间?: string | null; 阶段?: string; 明确回复?: boolean | null;
   /** 下一步做什么（一句话，10-29）：项目详情记沟通必填（要下一步文字），向导 / 别的入口可不传；时间可空 */
   下一步?: string | null;
@@ -60,7 +62,7 @@ export function 项目来源默认(项目选的: string | null | undefined, 客�
   return 文字(项目选的) || 文字(客户来源) || null;
 }
 
-export type 规整好的沟通 = { type: string; method: string | null; content: string; occurredAt: Date; nextStepAt: Date | null; nextStepText: string | null };
+export type 规整好的沟通 = { type: string; method: string | null; initiator: string | null; content: string; occurredAt: Date; nextStepAt: Date | null; nextStepText: string | null };
 
 export const 要下一步时间 = "开了超时回收：线索、商机阶段的项目记沟通要填下一步时间";
 export const 要下一步文字 = "请写下一步做什么";
@@ -107,7 +109,7 @@ export function 规整沟通(
   const nextStepText = 文字(f.下一步) || null;
   if (!nextStepText && opt.要下一步文字) return { error: 要下一步文字 };
   if (nextStepText && nextStepText.length > 下一步文字上限) return { error: `下一步请控制在 ${下一步文字上限} 字以内` };
-  return { type: f.type, method: 可空(f.method), content: 文字(f.content), occurredAt, nextStepAt, nextStepText };
+  return { type: f.type, method: 可空(f.method), initiator: 可空(f.initiator), content: 文字(f.content), occurredAt, nextStepAt, nextStepText };
 }
 
 /** 后四步交上来的规整一遍。负责人没选 = 自己；在不在职由调用方查库。要下一步 = 开了超时回收（项目建在线索阶段） */
@@ -175,7 +177,7 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
     });
     await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: me.id, toPhase: 落.phase, toNode: 落.node } });
     const 跟进 = await tx.followUp.create({
-      data: { type: 好.跟进.type, method: 好.跟进.method, content: 好.跟进.content, occurredAt: 好.跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人.id, ownerId: me.id },
+      data: { type: 好.跟进.type, method: 好.跟进.method, initiator: 好.跟进.initiator, content: 好.跟进.content, occurredAt: 好.跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人.id, ownerId: me.id },
     });
     await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: 项目.id, node: 落.node } });
     await 记沟通编号(tx, 跟进.id, 项目.id, 好.跟进.nextStepAt);
