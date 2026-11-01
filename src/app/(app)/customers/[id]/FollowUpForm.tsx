@@ -25,8 +25,8 @@ import { clearJob, runJob } from "@/lib/ai-jobs";
 import { statusLabel } from "@/lib/business-config";
 import { 只填没动过的, 跳过说明 } from "@/lib/fill-untouched";
 import CustomerPick, { type 客户近况 } from "./CustomerPick";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
-import { 对得上的方式 } from "@/lib/follow-method";
+import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
+import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 描述上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
@@ -62,13 +62,15 @@ const 字段名: Record<string, string> = {
 };
 
 /** 项目模式主区上的格子：校验没过的不在这里头，才去展开「更多」 */
-const 主区格 = new Set(["customerId", "projectId", "content", "下一步", "下一步时间"]);
+const 主区格 = new Set(["customerId", "projectId", "type", "initiator", "content", "下一步", "下一步时间"]);
 
 type Rec = {
   id?: string;
   type?: string;
   /** 企业版沟通方式（10-31）：编辑时带上，下拉摆它 */
   method?: string | null;
+  /** 企业版发起主体（11-01）：编辑时带上；老记录是空 */
+  initiator?: string | null;
   title?: string;
   content?: string;
   status?: string;
@@ -206,6 +208,16 @@ export default function FollowUpForm({
   const [近况, set近况] = useState<客户近况 | null>(null);
   /** 人亲手改过「跟进类型」没有：换人时没改过才跟着新那位有没有 WhatsApp 号走（2026-10-17 复测，同 PlanForm 人改过方式） */
   const 人改过类型 = useRef(false);
+  /** 企业版字典里的沟通方式 / 发起主体；别的版本是 null（不摆发起主体，类型照旧） */
+  const 方式们 = useFollowMethods();
+  const 主体们 = useFollowInitiators();
+  /**
+   * 新记一条的默认沟通方式：企业版字典里有「微信沟通」就默认它（11-01 客户答复 #2），
+   * 否则照旧跟着这一位有没有 WhatsApp 号走
+   */
+  const 默认方式 = (有号: boolean | undefined) => 方式们?.includes(默认沟通方式)
+    ? { type: 方式对类型(默认沟通方式), method: 默认沟通方式 }
+    : { type: 有号 ? "WHATSAPP" : "PHONE", method: null };
   const customerId = 给定客户 ?? 近况?.id;
   const contacts = 给定联系人 ?? 近况?.contacts ?? [];
   const opportunities = 给定商机 ?? 近况?.opportunities ?? [];
@@ -222,7 +234,7 @@ export default function FollowUpForm({
     // 联系人、商机是上一位的，换了人就不作数了（AI 解析填进去的也一样）
     form.setFieldsValue({ contactId: undefined, opportunityId: undefined });
     // 类型人没碰过：跟着这一位有没有 WhatsApp 号走
-    if (!record?.id && !record?.type && !人改过类型.current) form.setFieldsValue({ type: v?.有WhatsApp ? "WHATSAPP" : "PHONE" });
+    if (!record?.id && !record?.type && !人改过类型.current) form.setFieldsValue(默认方式(v?.有WhatsApp));
   }
 
   const [aiText, setAiText] = useState("");
@@ -364,7 +376,9 @@ export default function FollowUpForm({
       if (record?.id) return;
       // 项目还空着、人也没碰过才挂默认项目；类型人没改过才跟着有没有 WhatsApp 号走（同换人）
       if (默认项目 && form.getFieldValue("projectId") == null && !form.isFieldTouched("projectId")) form.setFieldsValue({ projectId: 默认项目 });
-      if (!record?.type && !人改过类型.current) form.setFieldsValue({ type: 有WhatsApp ? "WHATSAPP" : "PHONE" });
+      if (!record?.type && !人改过类型.current) form.setFieldsValue(默认方式(有WhatsApp));
+      // 发起主体字典晚到：新记的还空着就挂默认「我方发起」
+      if (主体们?.includes(默认发起主体) && form.getFieldValue("initiator") == null) form.setFieldsValue({ initiator: 默认发起主体 });
       return;
     }
     初始化过.current = record;
@@ -387,13 +401,14 @@ export default function FollowUpForm({
     } else {
       form.resetFields();
       form.setFieldsValue({
-        type: record?.type ?? (有WhatsApp ? "WHATSAPP" : "PHONE"),
+        ...(record?.type ? { type: record.type } : 默认方式(有WhatsApp)),
+        initiator: 主体们?.includes(默认发起主体) ? 默认发起主体 : undefined,
         status: "已完成", dueHasTime: true,
         occurredAt: dayjs(),
         projectId: 默认项目,
       });
     }
-  }, [open, record, form, 有WhatsApp, 默认项目]);
+  }, [open, record, form, 有WhatsApp, 默认项目, 方式们, 主体们]);
 
   /*
     保存中：网慢时连点两下会建出两条一样的记录（跟进带的 AI 待办和计划也各建两份，2026-10-02 排查）。
@@ -426,6 +441,7 @@ export default function FollowUpForm({
       customerId: 谁,
       type: v.type,
       method: 对得上的方式(v.type, v.method),
+      initiator: v.initiator ?? null,
       title: v.title,
       content: v.content,
       status: v.status,
@@ -511,7 +527,7 @@ export default function FollowUpForm({
     if (!须知) return;
     // 标题、另选的联系人、状态、时长、参与人随这一次一起交（服务端 认沟通额外），不再事后拿 saveFollowUp 补——普通成员不能改沟通了（M-权限-09）
     const r = await 记项目沟通Action(v.projectId, {
-      type: v.type, method: 对得上的方式(v.type, v.method), content: v.content, occurredAt: v.occurredAt.toISOString(),
+      type: v.type, method: 对得上的方式(v.type, v.method), initiator: v.initiator ?? null, content: v.content, occurredAt: v.occurredAt.toISOString(),
       阶段: 须知.phase, 明确回复: v.明确回复 === true,
       下一步: v.下一步, 下一步时间: v.下一步时间 ? v.下一步时间.format("YYYY-MM-DD") : null,
       额外: {
@@ -560,6 +576,28 @@ export default function FollowUpForm({
     extras?.decisionStatusSuggestion ? `决策状态 → ${statusLabel(b, extras.decisionStatusSuggestion)}` : null,
   ].filter(Boolean);
 
+  /** 沟通方式：企业版列字典里的沟通方式，类型跟着推（FollowMethodSelect）；别的版本就是类型下拉 */
+  const 方式格 = (
+    <>
+      <Form.Item name="type" hidden rules={[{ required: true }]}><Input /></Form.Item>
+      <Form.Item name="method" hidden><Input /></Form.Item>
+      <Form.Item label="沟通方式" required>
+        <FollowMethodSelect
+          aria-label="沟通方式"
+          type={type ?? "PHONE"}
+          method={method}
+          类型们={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND"))}
+          onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 守.改了(); }}
+        />
+      </Form.Item>
+    </>
+  );
+  /** 发起主体（企业版，11-01 客户答复 #2）：新记的必填、默认「我方发起」；改老记录原来没填的不逼着补。任务、提醒没有这一格 */
+  const 主体格 = 主体们 && type !== "TASK" && type !== "REMIND" ? (
+    <Form.Item name="initiator" label="发起主体" rules={[{ required: !record?.id || !!record.initiator, message: "请选择发起主体" }]}>
+      <InitiatorSelect 们={主体们} />
+    </Form.Item>
+  ) : null;
   /** AI 速记那一块：项目模式收进「更多」，别的时候照旧在最上面 */
   const AI块 = showAi && (
   <div
@@ -616,8 +654,8 @@ export default function FollowUpForm({
         {!收起 && AI块}
         {收起 ? (
           /*
-            F-跟进-06（项目模式）：主区只摆关联项目、沟通内容、卡点、下一步、下一步时间、截图录音；
-            沟通方式、状态、发生时间、标题、联系人、时长、参与人、客户明确回复、AI 收进默认折叠的「更多」。
+            F-跟进-06（项目模式）：主区只摆关联项目、沟通方式、发起主体（11-01 答复 #2 挪出来）、沟通内容、卡点、下一步、下一步时间、截图录音；
+            状态、发生时间、标题、联系人、时长、参与人、客户明确回复、AI 收进默认折叠的「更多」。
             折起来只是不显示（Form.Item 照样挂着），校验一个不少；没过的格子在「更多」里就自动展开
           */
           <Row gutter={16}>
@@ -646,6 +684,9 @@ export default function FollowUpForm({
                 />
               </Form.Item>
             </Col>}
+            {/* 11-01 客户答复 #2：沟通方式、发起主体都必填、摆在表面，不收进「更多」 */}
+            <Col span={主体格 ? 12 : 24}>{方式格}</Col>
+            {主体格 && <Col span={12}>{主体格}</Col>}
             <Col span={24}>
               <Form.Item name="content" label="沟通内容" rules={[requiredText("请填写沟通内容")]}>
                 <Input.TextArea rows={4} placeholder="记录沟通要点、客户反馈、下一步动作…" />
@@ -702,7 +743,7 @@ export default function FollowUpForm({
             </Col>
             <Col span={24} style={{ marginBottom: 12 }}>
               <Button type="link" size="small" style={{ paddingInline: 0 }} icon={<DownOutlined rotate={更多显示 ? 180 : 0} />} aria-expanded={更多显示} onClick={() => set更多开(!更多显示)}>
-                更多：沟通方式、发生时间、状态、标题、联系人、客户明确回复{showAi ? "、AI 速记" : ""}
+                更多：发生时间、状态、标题、联系人、客户明确回复{showAi ? "、AI 速记" : ""}
               </Button>
               {!更多显示 && 明确回复 == null && <span style={{ color: "var(--danger-text)", fontSize: "var(--dt-aux, 12px)" }}> 客户明确回复还没选</span>}
             </Col>
@@ -710,26 +751,12 @@ export default function FollowUpForm({
               <div className="follow-more" style={{ marginBottom: 12 }}>
                 {AI块}
                 <Row gutter={16}>
-                  <Col span={8}>
-                    <Form.Item name="type" hidden rules={[{ required: true }]}><Input /></Form.Item>
-                    <Form.Item name="method" hidden><Input /></Form.Item>
-                    {/* 企业版列字典里的沟通方式，类型跟着推（FollowMethodSelect）；别的版本就是类型下拉 */}
-                    <Form.Item label="沟通方式" required>
-                      <FollowMethodSelect
-                        aria-label="沟通方式"
-                        type={type ?? "PHONE"}
-                        method={method}
-                        类型们={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND"))}
-                        onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 守.改了(); }}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
+                  <Col span={12}>
                     <Form.Item name="status" label="状态">
                       <Select options={FOLLOW_RECORD_STATUSES.map((s) => ({ value: s, label: s }))} />
                     </Form.Item>
                   </Col>
-                  <Col span={8}>
+                  <Col span={12}>
                     <Form.Item name="occurredAt" label="发生时间" rules={[{ required: true }]}>
                       <DatePicker showTime maxDate={dayjs().endOf("day")} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} />
                     </Form.Item>
@@ -793,26 +820,15 @@ export default function FollowUpForm({
           </Row>
         ) : (
           <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="type" hidden rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="method" hidden><Input /></Form.Item>
-              {/* 企业版列字典里的沟通方式，类型跟着推（FollowMethodSelect）；别的版本就是类型下拉 */}
-              <Form.Item label="沟通方式" required>
-                <FollowMethodSelect
-                  aria-label="沟通方式"
-                  type={type ?? "PHONE"}
-                  method={method}
-                  类型们={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND"))}
-                  onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 守.改了(); }}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
+            {/* 企业版多一格发起主体（11-01）：四格两行，不挤成一行 */}
+            <Col span={主体格 ? 12 : 8}>{方式格}</Col>
+            {主体格 && <Col span={12}>{主体格}</Col>}
+            <Col span={主体格 ? 12 : 8}>
               <Form.Item name="status" label="状态">
                 <Select options={FOLLOW_RECORD_STATUSES.map((s) => ({ value: s, label: s }))} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={主体格 ? 12 : 8}>
               <Form.Item name="occurredAt" label="发生时间" rules={[{ required: true }]}>
                 <DatePicker showTime maxDate={dayjs().endOf("day")} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} />
               </Form.Item>

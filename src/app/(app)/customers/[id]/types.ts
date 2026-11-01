@@ -7,6 +7,8 @@ export type FollowUpRow = {
   type: string;
   /** 企业版沟通方式（10-31），没有就按类型显示 */
   method?: string | null;
+  /** 企业版发起主体（11-01），老记录没有 */
+  initiator?: string | null;
   title: string;
   content: string;
   status: string;

@@ -89,7 +89,7 @@ describe("字典与校验", () => {
 
   it("认跟进方式：不认的回 error；开关关着原样回去", async () => {
     expect(await 认跟进方式({ type: "PHONE", method: "飞鸽传书" })).toMatchObject({ error: expect.stringContaining("不在") });
-    expect(await 认跟进方式({ type: "PHONE", method: "LinkedIn" })).toEqual({ type: "OTHER", method: "LinkedIn" });
+    expect(await 认跟进方式({ type: "PHONE", method: "LinkedIn" })).toEqual({ type: "OTHER", method: "LinkedIn", initiator: "我方发起" }); // 11-01 新记补默认发起主体
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await 认跟进方式({ type: "PHONE", method: "飞鸽传书" })).toEqual({ type: "PHONE", method: "飞鸽传书" });
   });

@@ -360,10 +360,35 @@ export async function 定沟通方式(method: unknown, type: string, 原方式?:
   return { ok: true, method: n, type: 方式对类型(n) };
 }
 
-/** 新记一条沟通（项目上记、建档向导、线索转项目、客户页建项目）的方式和类型一起定好再去规整；事务外调。别的版本原样回去 */
-export async function 认跟进方式<T extends { type: string; method?: string | null }>(f: T): Promise<T | { error: string }> {
-  if (!企业版() || !f || typeof f !== "object") return f;
+/** 发起主体没选时补的这一项（11-01 客户答复 #2：默认「我方发起」） */
+export const 默认发起主体 = "我方发起";
+
+/**
+ * 跟进记录的发起主体（11-01，企业版，字典 followInitiator）；事务外调。
+ * 不是企业版：undefined = 不写这一列。任务、提醒：null。
+ * 没选：改已有的不动（undefined，旧入口不带这一格）；新记的补「我方发起」。
+ * 选了：得是启用着的；改已有的、和原来一样的不查（原来那项后来停用了照样能存）
+ */
+export async function 定发起主体(v: unknown, type: string, 原: { 有: boolean; 值?: string | null } = { 有: false }): Promise<{ ok: true; initiator?: string | null } | { ok: false; error: string }> {
+  if (!企业版()) return { ok: true };
+  if (type === "TASK" || type === "REMIND") return { ok: true, initiator: null };
+  const n = typeof v === "string" ? v.trim() : "";
+  if (!n) return 原.有 ? { ok: true } : { ok: true, initiator: 默认发起主体 };
+  if (原.有 && n === 原.值) return { ok: true, initiator: n };
+  if (!(await 可选项("followInitiator")).includes(n)) return { ok: false, error: `「${n}」不在${字典定义.followInitiator.名}里（可能刚被停用），刷新后再选` };
+  return { ok: true, initiator: n };
+}
+
+/**
+ * 新记一条沟通（项目上记、建档向导、线索转项目、客户页建项目）的方式和类型、发起主体一起定好再去规整；事务外调。
+ * 别的版本原样回去（发起主体清掉，这一列只企业版写）
+ */
+export async function 认跟进方式<T extends { type: string; method?: string | null; initiator?: string | null }>(f: T): Promise<T | { error: string }> {
+  if (!f || typeof f !== "object") return f;
+  if (!企业版()) return f.initiator == null ? f : { ...f, initiator: null };
   const r = await 定沟通方式(f.method, f.type);
   if (!r.ok) return { error: r.error };
-  return { ...f, type: r.type, method: r.method ?? null };
+  const 发起 = await 定发起主体(f.initiator, r.type);
+  if (!发起.ok) return { error: 发起.error };
+  return { ...f, type: r.type, method: r.method ?? null, initiator: 发起.initiator ?? null };
 }
