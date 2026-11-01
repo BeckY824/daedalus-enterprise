@@ -217,7 +217,16 @@ export async function 查排版(page: Page, 选项: 查排版选项 = {}): Promi
         const 主 = n.parentElement;
         if (!主 || el.contains(主) || !(n.textContent ?? "").trim() || 忽略的(主) || !看得见(主)) continue;
         const rg = document.createRange(); rg.selectNodeContents(n);
-        const 压 = [...rg.getClientRects()].find((t) => Math.min(t.right, r.right) - Math.max(t.left, r.left) > 2 && Math.min(t.bottom, r.bottom) - Math.max(t.top, r.top) > 2);
+        // 字在自己滚的框里（卡身定高自己滚，11-01 客户详情待办卡）：滚出框的那截被框裁掉、看不见，只拿框里露出来的部分比
+        const 裁: { left: number; top: number; right: number; bottom: number } = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity };
+        for (let e: Element | null = 主; e && e !== 框; e = e.parentElement) {
+          const cs = getComputedStyle(e);
+          if (cs.overflowX === "visible" && cs.overflowY === "visible") continue;
+          const b = e.getBoundingClientRect();
+          裁.left = Math.max(裁.left, b.left); 裁.top = Math.max(裁.top, b.top); 裁.right = Math.min(裁.right, b.right); 裁.bottom = Math.min(裁.bottom, b.bottom);
+        }
+        const 压 = [...rg.getClientRects()].find((t) =>
+          Math.min(t.right, r.right, 裁.right) - Math.max(t.left, r.left, 裁.left) > 2 && Math.min(t.bottom, r.bottom, 裁.bottom) - Math.max(t.top, r.top, 裁.top) > 2);
         if (!压) continue;
         问题.push({ 类: "压字", 在哪: 名(el), 字: 字(el) || el.getAttribute("aria-label") || "", 量: `压在「${(n.textContent ?? "").trim().slice(0, 20)}」(${名(主)}) 上` });
         break;

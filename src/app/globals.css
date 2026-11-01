@@ -1575,13 +1575,13 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 页面标题 */
 .rec-page .rec-head-name, .proj-wrap .page-head h1 { font-size: var(--dt-title); color: var(--ink); }
 /* 模块标题：原来客户页是 13 灰小字，和项目页的卡片标题不像一回事 */
-.rec-page :is(.rec-sec-t, .rec-side-t, .rec-ai-title), .proj-wrap .ant-card .ant-card-head {
+.rec-page :is(.rec-sec-t, .rec-side-t, .rec-ai-title, .rec-mod > .ant-card-head), .proj-wrap .ant-card .ant-card-head {
   font-size: var(--dt-module); font-weight: 600; color: var(--ink);
 }
-.rec-page .rec-sec-t a { font-size: var(--dt-body); font-weight: 400; color: var(--brand); }
+.rec-page :is(.rec-sec-t, .rec-mod > .ant-card-head .ant-card-extra) a { font-size: var(--dt-body); font-weight: 400; color: var(--brand); }
 /* 正文、填了的值 */
 .rec-page :is(.rec-field-v, .rec-contact, .rec-mini, .rec-task, .rec-plan-v, .rec-ai-sec-v, .rec-tl-title, .rec-tl-content, .rec-contact-line),
-.proj-wrap .ant-card .ant-card-body { font-size: var(--dt-body); color: var(--ink); }
+.rec-page .rec-mod > .ant-card-body, .proj-wrap .ant-card .ant-card-body { font-size: var(--dt-body); color: var(--ink); }
 .rec-page .rec-field-v { line-height: 24px; }
 .rec-page .rec-contact-line { line-height: 1.5; }
 .rec-page .rec-tl-content { line-height: 1.7; }
@@ -3068,34 +3068,32 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .lead-auto-assign-name { flex: 0 0 auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .lead-auto-assign-list li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 
-/* 企业版项目模式客户详情（U-客户-03，10-31 会议）
-   左栏：块与块不相贴，每一节（基本资料、联系人、项目、关联客户、客户背调）各是一张卡、中间留缝，同类信息放同一块 */
+/* 企业版项目模式客户详情（U-客户-03，10-31 会议 → 11-01）
+   11-01 用户：「客户详情页各个模块都要分开，和项目详情页一致」——基本资料、联系人、项目、参与的项目、关联客户、客户背调、
+   沟通记录、待办各是一张卡（antd Card.rec-mod），外面包一层 .proj-fold（和项目页同一个 ProjectFold），卡头最右一颗收起 / 展开；
+   新增按钮在卡头右边、收起按钮左边。块与块不相贴，中间留缝 */
 .rec-rail.rec-rail-blocks { background: transparent; box-shadow: none; border: none; padding: 0; }
-.rec-rail.rec-rail-blocks > .rec-sec,
-.rec-rail.rec-rail-blocks > .rec-sec:first-of-type { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-card); padding: 8px 14px 12px; min-width: 0; }
-.rec-rail.rec-rail-blocks > .rec-sec + .rec-sec { margin-top: 12px; }
+.rec-rail-blocks > .proj-fold + .proj-fold,
+.rec-col-blocks > .proj-fold + .proj-fold { margin-top: 12px; }
+.rec-page .rec-mod { min-width: 0; }
+.rec-page .rec-mod > .ant-card-head { min-width: 0; }
+.rec-page .rec-mod .ant-card-head-wrapper { min-width: 0; gap: 8px; }
+.rec-page .rec-mod .ant-card-extra { flex: none; white-space: nowrap; }
+/* 左栏只有 240 宽：卡的内边距收一档，收起钮往右靠 4，卡头小按钮的左右留白也收窄——「关联客户（n）」+「关联」一行放得下 */
+.rec-rail-blocks .rec-mod > .ant-card-head { padding-inline: 12px 44px; }
+.rec-rail-blocks > .proj-fold > .proj-fold-btn { right: 10px; }
+.rec-rail-blocks .rec-mod .ant-card-head-wrapper { gap: 6px; }
+.rec-rail-blocks .rec-mod .ant-card-extra .ant-btn-sm { padding-inline: 4px; gap: 4px; }
+.rec-rail-blocks .rec-mod > .ant-card-body { padding: 10px 12px 12px; }
+/* 沟通记录卡里：筛选条、时间线贴着卡身的内边距，不再自己留左右边 */
+.rec-mod .rec-filters { padding: 0 0 6px; }
+.rec-mod .rec-tl { padding: 0; }
+.rec-mod .rec-task { min-width: 0; }
 /* 资料值一行放不下就省略，悬停 title 看全（U-通用-01）；多行的（地址、备注）照旧换行 */
 .rec-rail-blocks .rec-field-v.is-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
 /* 客户背调只摆一个状态标签，点开弹详情 */
 .rec-research-tag { cursor: pointer; margin-inline-end: 0; }
 .rec-research-tag:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
-/* 沟通记录标题右边的「新建沟通」：标题和按钮一行，按钮不换行 */
-.rec-tl-cap .ant-btn { white-space: nowrap; }
-/* 11-01 用户：「待办模块放到沟通记录下方，而不是整体下方」——企业版项目模式待办摆在中栏沟通记录下面，一条分隔线隔开。
-   沟通记录区固定高度、内部滚；待办自己也有个上限、内部滚。三栏（≥1090）时中栏本身是一扇窗：沟通记录占剩下的高度 */
-.rec-todo-in { border-top: 1px solid var(--line-soft); padding: 12px 16px 12px; min-width: 0; }
-.rec-todo-in .rec-task { min-width: 0; }
-.rec-col-todo > .rec-tl { max-height: min(60vh, 560px); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
-.rec-col-todo > .rec-tl::-webkit-scrollbar, .rec-todo-in::-webkit-scrollbar { display: none; }
-@media (min-width: 768px) {
-  .rec-todo-in { max-height: 34vh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
-  @container rec (min-width: 1090px) {
-    .main .rec-page > .rec > .rec-col.rec-col-todo { display: flex; flex-direction: column; overflow-y: hidden; }
-    .main .rec-page > .rec > .rec-col.rec-col-todo > * { flex: none; }
-    .main .rec-page > .rec > .rec-col.rec-col-todo > .rec-tl { flex: 1 1 auto; min-height: 160px; max-height: none; }
-    .main .rec-page > .rec > .rec-col.rec-col-todo > .rec-todo-in { max-height: 40%; }
-  }
-}
 @container rec (max-width: 629px) {
   .rec-acts-r > .acts-g:empty { display: none; }
 }
