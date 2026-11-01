@@ -20,7 +20,8 @@ import { 报价明细 } from "@/lib/features";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户 } from "@/lib/team-scope";
-import { 管全队客户 } from "@/lib/constants";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能管公海 } from "@/lib/enterprise/permissions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -29,7 +30,7 @@ import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
-import { 我回避的公海项目 } from "@/lib/project/pool-owner";
+import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
 
 export const dynamic = "force-dynamic";
@@ -128,9 +129,9 @@ export default async function CustomerDetailPage({
       : [],
     // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
     只项目
-      ? 我回避的公海项目(prisma, me.id).then((回避) => prisma.project.findMany({
-          // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；老板 / 主管照列）
-          where: { customerId: customer.id, ...(回避.length && !管全队客户(me.role) ? { id: { notIn: 回避 } } : {}) },
+      ? 回避豁免(me).then((免) => (免 ? [] : 我回避的公海项目(prisma, me.id))).then((回避) => prisma.project.findMany({
+          // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；总管理 / 管理员照列，回避豁免）
+          where: { customerId: customer.id, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
           orderBy: { updatedAt: "desc" },
           select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
         })).then((ps) => ps.map((p) => 本套位置(p, 企业版字典)))
@@ -190,7 +191,7 @@ export default async function CustomerDetailPage({
       channels={channels}
       aiEnabled={aiEnabled}
       已收藏={已收藏}
-      能放公海={管全队客户(me.role) || customer.salesOwnerId === me.id}
+      能放公海={能管公海(me, await 权限组织()) || customer.salesOwnerId === me.id}
       原负责人领不回={!!customer.pool && customer.salesOwnerId === me.id && 拦原负责人()}
       换负责人记录={换负责人记录}
       旺旺们={旺旺们}

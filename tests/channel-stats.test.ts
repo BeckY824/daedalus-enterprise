@@ -111,16 +111,16 @@ describe("产出比分布", () => {
   });
 });
 
-describe("能录投入（P16：只有老板、总管理员、市场管理）", () => {
+describe("能录投入（P16；11-01 只认业务角色：总管理、市场管理）", () => {
   const org = 建组织(
     ["boss", "dir", "adm", "mm", "sm", "ops", "s", "multi"].map((id) => ({ id, role: id === "boss" ? "ADMIN" : "SALES", active: true })),
     ([["dir", "director"], ["adm", "admin"], ["mm", "marketing_mgr"], ["sm", "sales_mgr"], ["ops", "channel_ops"], ["s", "sales"], ["multi", "sales,marketing_mgr"]] as const)
       .map(([userId, bizRole]) => ({ userId, deptId: null, bizRole, line: null, managerId: null, dottedManagerId: null })),
     [],
   );
-  it("老板、总管理、管理员、市场管理（兼着也算）能录；销售管理、渠道运营、销售不能", () => {
-    expect(能录投入(org, { id: "boss", role: "ADMIN" })).toBe(true);
-    for (const id of ["dir", "adm", "mm", "multi"]) expect(能录投入(org, { id, role: "SALES" })).toBe(true);
-    for (const id of ["sm", "ops", "s", "不在组织里"]) expect(能录投入(org, { id, role: "SALES" })).toBe(false);
+  it("总管理、市场管理（兼着也算）能录；管理员（只读）、销售管理、渠道运营、销售、没业务角色的账号 ADMIN 不能", () => {
+    expect(能录投入(org, { id: "boss", role: "ADMIN" })).toBe(false);
+    for (const id of ["dir", "mm", "multi"]) expect(能录投入(org, { id, role: "SALES" })).toBe(true);
+    for (const id of ["adm", "sm", "ops", "s", "不在组织里"]) expect(能录投入(org, { id, role: "SALES" })).toBe(false);
   });
 });

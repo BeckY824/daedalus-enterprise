@@ -4,7 +4,7 @@
  * - 营销线索可以分给内贸销售，也可以分给外贸销售：分的时候选走哪条线，接手人的业务线要对得上（没填业务线 = 两边都做）。
  * - 分配数按月算、每月清零：每分一次在 EntLeadAssign 记一行，带 month（YYYY-MM），配额只数本月那一格。
  *   销售自己拓的线索没有分配记录，自然不算。
- * - 直属上级、虚线上级（以及总管理员、老板）能给个人设每月配额，不设固定复核周期。
+ * - 直属上级、虚线上级（以及总管理员）能给个人设每月配额，不设固定复核周期。
  *   没设：手动分不限；自动分配不挑他（10-25 用户定「没填的不参与」），配额 0 也不挑。
  * - 10-30 客户定「开着，每人都不限额」：规则里多一个选项「不设配额」（不设配额key，默认关）。开了以后配额整个不起作用：
  *   自动分配在规则范围内（在职、能接这条线、参与自动分配）的人里挑本月已分最少的，手动分也不查满额；关着和以前一样。
@@ -19,6 +19,7 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { businessDayjs } from "@/lib/business-clock";
 import { 管理员类别们of, type 组织 } from "./org-core";
+import { 能分配线索 } from "./permissions";
 import { 能改设置, type 改权限配置 } from "./edit-perm-table";
 
 export const 线索种类 = ["营销", "营销企划"] as const;
@@ -39,16 +40,14 @@ export function 月份(d = new Date()): string {
 /** 能接分配线索的业务角色：销售、销售管理 */
 const 能接的角色 = new Set(["sales", "sales_mgr"]);
 
-/** 能点「分配」的人：老板（账号管理员）、总管理员、市场管理 */
+/** 能点「分配」的人：总管理、市场管理、销售管理（11-01 A7，permissions.ts 能分配线索） */
 export function 能分配(org: 组织, 我: { id: string; role: string }): boolean {
-  if (我.role === "ADMIN") return true;
-  const 类们 = 管理员类别们of(org, 我.id);
-  return 类们.has("总管理员") || 类们.has("市场管理");
+  return 能分配线索(我, org);
 }
 
 /**
  * 能给 目标 设配额的人：按「后台设置谁能改」的「线索分配配额」一行（edit-perm-table.ts），
- * 默认他的直属上级、虚线上级（B2 第 6 条默认建议，10-26），老板总能改。
+ * 默认他的直属上级、虚线上级（B2 第 6 条默认建议，10-26），总管理员总能改。
  */
 export function 能设配额(org: 组织, 我: { id: string; role: string }, 目标: string, 配置: 改权限配置 = {}): boolean {
   return 能改设置(org, 我, "线索配额", 配置, 目标);
@@ -168,11 +167,12 @@ export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>
   return 查满 ? 理由 : `${理由}；这条不算数，不占配额`;
 }
 
-/** 能改「参与自动分配」开关的人（Q-12 默认）：老板、总管理员、销售管理；直属上级只能看 */
+/** 能改「参与自动分配」开关的人（Q-12 默认）：总管理、销售管理；直属上级只能看 */
 export function 能改参与(org: 组织, 我: { id: string; role: string }): boolean {
-  if (我.role === "ADMIN") return true;
   const 类们 = 管理员类别们of(org, 我.id);
-  return 类们.has("总管理员") || 类们.has("销售管理");
+  if (类们.has("总管理员")) return true;
+  // 管理员（admin）只读（11-01）：兼了销售管理也不能改
+  return 类们.has("销售管理") && !类们.has("管理员");
 }
 
 // —— 读库 ——

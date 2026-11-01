@@ -3,17 +3,18 @@
  *
  * 谁能干什么（10-26 总控定，PR 里写明）：
  *   - 填 / 改项目底价：只有项目负责人（项目在公海里时不算），老板、总管理员也不代填（10-26 定）
- *   - 改分配：组长（项目负责人，项目在公海里时不算）、老板（ADMIN）、组织里的总管理员
- *   - 改 A / B（提成比例，内贸 / 外贸 / 不限三套）：老板、总管理员；按人单设（10-28）同样是这两种人
+ *   - 改分配：组长（项目负责人，项目在公海里时不算）、业务角色是总管理的人
+ *   - 改 A / B（提成比例，内贸 / 外贸 / 不限三套）：总管理；按人单设（10-28）同样（11-01 起只认业务角色）
  *   - 更正已固定的实际提成：只有组织里的总管理员（10-27 加），要写原因，操作记录留前后值
- *   - 看提成卡：上面这些人 + 已进组的组员 + 业务主管（MANAGER）+ 负责人的直属上级、虚线上级
+ *   - 看提成卡：上面这些人 + 已进组的组员 + 管理员（只读）+ 负责人的直属上级、虚线上级
  * 不是企业版：每个动作直接拦、一行不写；读一律 null；赢单挂钩什么都不做
  */
 import type { Prisma } from "@/generated/prisma";
 import { 查完再写 } from "../check-then-write";
 import { getSetting, invalidateSettingsCache } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 读组织, 直属上级of, 虚线上级of, 管理员类别of, type 组织 } from "@/lib/enterprise/org";
+import { 读组织, 直属上级of, 虚线上级of, type 组织 } from "@/lib/enterprise/org";
+import { 是总管理, 能看全部 } from "@/lib/enterprise/permissions";
 import {
   提成比例键, 提成范围们, 规整三套提成比例, 三套提成比例问题, 两位, 算提成, 底价问题, 分配问题, 分到每人, 更正问题,
   按人提成比例键, 规整按人提成比例, 按人提成比例问题, 取提成比例,
@@ -25,15 +26,13 @@ type 错 = { ok: false; error: string };
 const 没开企业版: 错 = { ok: false, error: "提成是企业版的功能" };
 const 项目不在: 错 = { ok: false, error: "这个项目已经不在了，刷新看看" };
 
-const 总管理员 = (me: 谁, org: 组织 | null) => !!org && 管理员类别of(org, me.id) === "总管理员";
-
-/** 改提成比例（A / B）：老板、组织里的总管理员 */
+/** 改提成比例（A / B）：总管理（11-01 起只认业务角色，账号管理员不算） */
 export function 能改提成比例(me: 谁, org: 组织 | null): boolean {
-  return me.role === "ADMIN" || 总管理员(me, org);
+  return 是总管理(me, org);
 }
 
 /** 更正已固定的实际提成：只有业务角色是总管理（director）的人；管理员（admin）、销售管理都不行（10-27 定）。
- *  没设业务角色的老板账号按账号角色推成总管理，所以默认能改 */
+ *  没设业务角色的 = 不能改（11-01 起不按账号角色推） */
 export function 能更正提成(me: 谁, org: 组织 | null): boolean {
   return !!org && !!org.成员.get(me.id)?.角色们.includes("director");
 }
@@ -43,14 +42,15 @@ export function 能填底价(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
   return !p.pooledAt && me.id === p.ownerId;
 }
 
-/** 改分配：组长（不在公海）、老板、总管理员。业务主管能看不能改 */
+/** 改分配：组长（不在公海）、总管理（业务角色）。销售管理、管理员能看不能改 */
 export function 能改提成(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null): boolean {
   return (!p.pooledAt && me.id === p.ownerId) || 能改提成比例(me, org);
 }
 
-/** 看提成卡：能改的人、已进组的组员、业务主管、负责人的直属 / 虚线上级 */
+/** 看提成卡：能改的人、已进组的组员、负责人的直属 / 虚线上级、总管理和管理员（看全部，管理员只读）。
+ *  11-01 起只认业务角色，账号是主管不再能看全部 */
 export function 能看提成(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, 在组: ReadonlySet<string>, org: 组织 | null): boolean {
-  if (能改提成(me, p, org) || me.id === p.ownerId || 在组.has(me.id) || me.role === "MANAGER") return true;
+  if (能改提成(me, p, org) || me.id === p.ownerId || 在组.has(me.id) || 能看全部(me, org)) return true;
   return !!org && (直属上级of(org, p.ownerId) === me.id || 虚线上级of(org, p.ownerId) === me.id);
 }
 
@@ -89,7 +89,7 @@ const 一样 = (a: 提成比例, b: 提成比例) => a.底价比例 === b.底价
 /** 改 A / B（三套一起交）。返回改前改后和改了哪几套，操作记录在 action 里记 */
 export async function 改提成比例(me: 谁, input: unknown): Promise<错 | { ok: true; 变了: boolean; 前: 三套提成比例; 后: 三套提成比例; 改了: (typeof 提成范围们)[number][] }> {
   if (!企业版()) return 没开企业版;
-  if (!能改提成比例(me, await 读组织())) return { ok: false, error: "只有老板或总管理员能改提成比例" };
+  if (!能改提成比例(me, await 读组织())) return { ok: false, error: "只有总管理能改提成比例" };
   const 问题 = 三套提成比例问题(input);
   if (问题) return { ok: false, error: 问题 };
   const 交 = input as Record<string, { 底价比例: number; 溢价比例: number }>;
@@ -116,7 +116,7 @@ const 单设一样 = (a: 单设比例 | undefined, b: 单设比例 | undefined) 
 export async function 改按人提成比例(me: 谁, input: unknown): Promise<错 | { ok: true; 变了: boolean; 改了: { userId: string; 前: 单设比例 | null; 后: 单设比例 | null }[] }> {
   if (!企业版()) return 没开企业版;
   const org = await 读组织();
-  if (!能改提成比例(me, org)) return { ok: false, error: "只有老板或总管理员能改提成比例" };
+  if (!能改提成比例(me, org)) return { ok: false, error: "只有总管理能改提成比例" };
   const 问题 = 按人提成比例问题(input);
   if (问题) return { ok: false, error: 问题 };
   const 交 = input as Record<string, { 底价比例?: number | null; 溢价比例?: number | null }>;
@@ -210,7 +210,7 @@ export async function 存提成分配(me: 谁, projectId: string, 分: 分配): 
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
     if (!p) return 项目不在;
-    if (!能改提成(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有组长（项目负责人）或管理员能改提成分配" };
+    if (!能改提成(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有组长（项目负责人）或总管理能改提成分配" };
     if (!分 || typeof 分 !== "object" || Array.isArray(分)) return { ok: false as const, error: "分配的格式不对，刷新再试" };
     if (Object.hasOwn(分, p.ownerId)) return { ok: false as const, error: "组长自己不用分，剩下的都归组长" };
     const 问题 = 分配问题(分);

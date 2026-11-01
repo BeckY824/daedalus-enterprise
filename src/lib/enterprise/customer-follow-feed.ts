@@ -13,8 +13,7 @@
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看得到的客户, 露客户 } from "@/lib/project/db";
-import { 我回避的公海项目 } from "@/lib/project/pool-owner";
-import { 管全队客户 } from "@/lib/constants";
+import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "@/app/(app)/customers/[id]/follow-history-query";
 import type { FollowUpRow } from "@/app/(app)/customers/[id]/types";
 
@@ -40,8 +39,8 @@ async function 看得到的项目们(me: { id: string; role?: string }, customer
     select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, nextStepAt: true, nextStepText: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
   });
-  // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；老板 / 主管照出）
-  const [看得到, 回避] = await Promise.all([看得到的客户(ps.map((p) => p.customerId)), 管全队客户(me.role) ? ([] as string[]) : 我回避的公海项目(prisma, me.id)]);
+  // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；总管理 / 管理员照出）
+  const [看得到, 回避] = await Promise.all([看得到的客户(ps.map((p) => p.customerId)), 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id)))]);
   return ps.filter((p) => 露客户(me, p, 看得到) && !回避.includes(p.id)).map((p) => ({ 行: p, 主: p.customerId === customerId }));
 }
 

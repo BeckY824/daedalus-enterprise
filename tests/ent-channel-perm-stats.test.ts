@@ -1,7 +1,7 @@
 /**
  * 企业版渠道 10-30 这一批：
- * - B1 谁能管渠道：新建、编辑、停用、删除只有老板、总管理员、市场管理；销售管理、渠道运营、销售直调动作也挡，库里不动。团队版照旧不挡。
- * - B2 渠道统计的范围：和客户列表同一套「按组织看客户」——老板、总管理员数全部，别人只数自己看得见的项目。
+ * - B1 谁能管渠道：新建、编辑、停用、删除只有总管理、市场管理（11-01 只认业务角色）；管理员（只读）、销售管理、渠道运营、销售直调动作也挡，库里不动。团队版照旧不挡。
+ * - B2 渠道统计的范围：和客户列表同一套「按组织看客户」——总管理、管理员数全部，别人只数自己看得见的项目。
  * - B5 两个转化率：线索→商机、商机→订单，按「到过的最远阶段」算；导入时直接落在后面阶段的不进前一步的分母；分母 0 是 null。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -22,11 +22,11 @@ import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
 import { 算转化, 算渠道统计, 不能管渠道, type 统计用项目 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../src/app/(app)/overview/funnel";
 
-let 老板: string, 总管: string, 市场经理: string, 销售经理: string, 负责人: string, 销售: string, 销售乙: string;
+let 老板: string, 管员: string, 总管: string, 市场经理: string, 销售经理: string, 负责人: string, 销售: string, 销售乙: string;
 let 渠道: string;
 
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
-const 角色 = (id: string) => (id === 老板 ? "ADMIN" : "SALES");
+const 角色 = (id: string) => (id === 老板 || id === 管员 ? "ADMIN" : "SALES");
 
 beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");
@@ -38,7 +38,8 @@ beforeEach(async () => {
     if (bizRole) await prisma.entMember.create({ data: { userId: id, bizRole } });
     return id;
   };
-  老板 = await 建人("boss", "老板", "ADMIN");
+  老板 = await 建人("boss", "老板", "ADMIN", "director"); // 11-01 权限只认业务角色
+  管员 = await 建人("adm", "管员", "ADMIN", "admin");
   总管 = await 建人("dir", "总管", "SALES", "director");
   市场经理 = await 建人("mm", "市场经理", "SALES", "marketing_mgr");
   销售经理 = await 建人("sm", "销售经理", "SALES", "sales_mgr");
@@ -57,7 +58,7 @@ describe("B1 谁能新建、编辑、停用、删除渠道", () => {
   const 新建 = (source: string) =>
     saveChannel({ name: "", phone: null, remark: null, channelOwnerId: 负责人, attr: "公域引流", platform: "小红书", source });
 
-  it("老板、总管理员、市场管理：新建、编辑、停用、删除都行", async () => {
+  it("总管理、市场管理：新建、编辑、停用、删除都行", async () => {
     for (const [i, id] of [老板, 总管, 市场经理].entries()) {
       当(id, 角色(id));
       const r = await 新建(`店铺${i}`);
@@ -70,9 +71,9 @@ describe("B1 谁能新建、编辑、停用、删除渠道", () => {
     expect(await prisma.channel.count()).toBe(1);
   });
 
-  it("销售管理、渠道运营、销售：四样都挡，库里不动；先挡权限、不先报表单哪里没填", async () => {
-    for (const id of [销售经理, 负责人, 销售]) {
-      当(id);
+  it("管理员、销售管理、渠道运营、销售：四样都挡，库里不动；先挡权限、不先报表单哪里没填", async () => {
+    for (const id of [管员, 销售经理, 负责人, 销售]) {
+      当(id, 角色(id));
       expect(await 新建("店铺")).toEqual({ ok: false, error: 不能管渠道 });
       expect(await saveChannel({ name: "", phone: null, remark: null, attr: "" })).toEqual({ ok: false, error: 不能管渠道 });
       expect(await saveChannel({ id: 渠道, name: "", phone: null, remark: "偷改", channelOwnerId: 负责人, attr: "公域引流", platform: "抖音", source: "官方号" })).toEqual({ ok: false, error: 不能管渠道 });
@@ -123,8 +124,8 @@ describe("B2 渠道统计跟着按组织看客户的范围", () => {
   const 统 = async (id: string) =>
     (await 以谁的身份(id, () => 读渠道统计([{ id: 渠道, createdAt: new Date("2026-10-01T00:00:00"), endDate: null }], new Date("2026-10-30T12:00:00"))))[渠道];
 
-  it("老板、总管理员数全部 3 个项目", async () => {
-    for (const id of [老板, 总管]) expect(await 统(id)).toMatchObject({ 关联线索: 1, 关联商机: 1, 关联订单: 1, 关联项目: 3, 累计成交: [{ 币种: "CNY", 合计: 300 }] });
+  it("总管理、管理员数全部 3 个项目", async () => {
+    for (const id of [老板, 管员, 总管]) expect(await 统(id)).toMatchObject({ 关联线索: 1, 关联商机: 1, 关联订单: 1, 关联项目: 3, 累计成交: [{ 币种: "CNY", 合计: 300 }] });
   });
 
   it("销售只数自己的；和客户列表看得见的是同一批", async () => {

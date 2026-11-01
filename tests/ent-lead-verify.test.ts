@@ -58,6 +58,7 @@ describe("企业版线索有效性验证", () => {
     丙 = await 建人("bing", "SALES");
     await prisma.entMember.createMany({
       data: [
+        { userId: 老板.id, bizRole: "director" },
         { userId: 总管.id, bizRole: "director" },
         { userId: 市场.id, bizRole: "marketing_mgr" },
         { userId: 销售经理.id, bizRole: "sales_mgr" },
@@ -335,12 +336,14 @@ describe("企业版线索有效性验证", () => {
   });
 
   describe("谁能拍板（越权拦下，一行不写）", () => {
-    it("初判：别的业务员、市场管理判不了；老板、销售经理（主管）这种能改节点的能", async () => {
+    it("初判：别的业务员、市场管理判不了；老板、销售经理只能看不能判（C2），负责人能", async () => {
       const id = await 项目();
       expect(await 判无效(id, 丙)).toEqual({ ok: false, error: "只有项目负责人、老板或主管能判这条线索" });
       expect((await 判无效(id, 市场)).ok).toBe(false);
+      expect((await 判无效(id, 老板)).ok).toBe(false);
+      expect((await 判无效(id, 销售经理)).ok).toBe(false);
       expect(await 痕(id)).toHaveLength(0);
-      expect((await 判无效(id, 老板)).ok).toBe(true);
+      expect((await 判无效(id, 乙)).ok).toBe(true);
     });
 
     it("市场复核只给市场管理：业务员、负责人、老板、总管理员都不行", async () => {
@@ -392,11 +395,12 @@ describe("企业版线索有效性验证", () => {
       const id = await 项目();
       await 记有效沟通(id);
       await 判无效(id);
-      for (const 谁 of [乙, 老板]) {
-        const r = await 改节点(谁, id, { phase: "线索", node: "线索推进" });
-        expect(r).toMatchObject({ ok: false, error: "这条线索在等市场复核，复核完再动" });
-        expect((await 改节点(谁, id, { phase: "线索", node: "线索验证", result: "线索流失" })).ok).toBe(false);
-      }
+      const r0 = await 改节点(乙, id, { phase: "线索", node: "线索推进" });
+      expect(r0).toMatchObject({ ok: false, error: "这条线索在等市场复核，复核完再动" });
+      expect((await 改节点(乙, id, { phase: "线索", node: "线索验证", result: "线索流失" })).ok).toBe(false);
+      // 老板本来就不能改别人的项目（C2）
+      expect((await 改节点(老板, id, { phase: "线索", node: "线索推进" })).ok).toBe(false);
+      expect((await 改节点(老板, id, { phase: "线索", node: "线索验证", result: "线索流失" })).ok).toBe(false);
       expect((await 放回公海(乙, id)).ok).toBe(false);
       expect((await 判MQL(乙, id, true)).ok).toBe(false);
       expect(await 现(id)).toMatchObject({ node: "线索验证", result: null, pooledAt: null });

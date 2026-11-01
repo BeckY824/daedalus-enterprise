@@ -29,7 +29,7 @@ async function 要管理员() {
   if (!企业版()) throw new Error("企业版没开");
   const me = await requireUser();
   // 10-27 会议：导入只给老板和总管理员（lib/enterprise/import-perm.ts）
-  if (!(await 最高管理(me)) || (await 当前是共享区())) throw new Error("只有老板和总管理员能做企业版导入");
+  if (!(await 最高管理(me)) || (await 当前是共享区())) throw new Error("只有总管理能做企业版导入");
   return me;
 }
 

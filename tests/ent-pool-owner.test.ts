@@ -32,8 +32,11 @@ let 经理: 人;
 let 乙: 人;
 let 丙: 人;
 
+/** 权限只认业务角色（11-01）：账号 ADMIN = 总管理、MANAGER = 销售管理、SALES = 销售成员 */
+const 业务角色of: Record<string, string> = { ADMIN: "director", MANAGER: "sales_mgr", SALES: "sales" };
 async function 造人(email: string, name: string, role: string): Promise<人> {
   const u = await prisma.user.create({ data: { email, name, title: "", role, password: "x" } });
+  await prisma.entMember.create({ data: { userId: u.id, bizRole: 业务角色of[role] } });
   return { id: u.id, name, role };
 }
 async function 客户(ownerId: string, name = "测试客户") {

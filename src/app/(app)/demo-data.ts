@@ -7,6 +7,11 @@ import { multiTenant } from "@/lib/tenant/context";
 import { recordAudit } from "@/lib/audit";
 import { 灌演示数据 } from "@/lib/shared-ws/dataset";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能改后台设置 } from "@/lib/enterprise/permissions";
+
+/** 演示数据灌 / 清：企业版只认业务角色——能改后台设置的总管理（11-01）；别的版本照旧账号管理员 */
+const 能管演示数据 = async (me: { id: string; role: string }) => (企业版() ? 能改后台设置(me, await 权限组织()) : me.role === "ADMIN");
 
 /**
  * 「灌一套演示数据」——给自己架一套网页版的团队看这东西装满之后长什么样。
@@ -65,7 +70,7 @@ export async function 查演示数据状态(): Promise<演示数据状态> {
     业务数据条数(),
     prisma.setting.findUnique({ where: { key: 标记 }, select: { value: true } }),
   ]);
-  return { 可用: true, 可灌: !企业版(), 有权限: me.role === "ADMIN", 空库: 条数 === 0, 已灌: !!记号 };
+  return { 可用: true, 可灌: !企业版(), 有权限: await 能管演示数据(me), 空库: 条数 === 0, 已灌: !!记号 };
 }
 
 export async function 灌一套演示数据(): Promise<{ ok: true } | { ok: false; error: string; status?: 403 }> {
@@ -73,7 +78,7 @@ export async function 灌一套演示数据(): Promise<{ ok: true } | { ok: fals
   if (multiTenant()) return { ok: false, error: "托管版不支持从界面灌演示数据" };
   // 企业版：客户的正式库，管理员也不给灌。这是服务端动作，没有 HTTP 状态码可回，拒绝原因用 status 标出来
   if (企业版()) return { ok: false, status: 403, error: "企业版不提供演示数据，请在「设置 → 企业版导入」导入真实数据" };
-  if (me.role !== "ADMIN") return { ok: false, error: "只有管理员能灌演示数据" };
+  if (!(await 能管演示数据(me))) return { ok: false, error: "只有管理员能灌演示数据" };
   // 空库才灌。这条是这个功能唯一的安全保证，别为了「方便」放宽
   if ((await 业务数据条数()) > 0) return { ok: false, error: "库里已经有数据了。演示数据只能灌进一个全空的库——要重来请先手动清空" };
 
@@ -91,7 +96,7 @@ export async function 灌一套演示数据(): Promise<{ ok: true } | { ok: fals
 export async function 清除演示数据(): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await requireUser();
   if (multiTenant()) return { ok: false, error: "托管版不支持从界面清除数据" };
-  if (me.role !== "ADMIN") return { ok: false, error: "只有管理员能清除数据" };
+  if (!(await 能管演示数据(me))) return { ok: false, error: "只有管理员能清除数据" };
   const 记号 = await prisma.setting.findUnique({ where: { key: 标记 }, select: { value: true } });
   if (!记号) return { ok: false, error: "这个库里没有灌过演示数据" };
 
