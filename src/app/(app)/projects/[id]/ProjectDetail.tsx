@@ -807,7 +807,10 @@ export default function ProjectDetail({
             <div>
               <div>{l.kind !== "node" ? 换人文字(l) : l.from ? `${位置文字(l.from, 字典)} → ${位置文字(l.to, 字典)}` : `建档，落在 ${位置文字(l.to, 字典)}`}</div>
               {l.category && <div style={{ color: "var(--danger-text)" }}>异常类别：{l.category}</div>}
-              {l.kind === "node" && l.reason && l.reason !== 超时理由 && <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>}
+              {/* 企业版换节点清掉的下一步（db.ts 原下一步备注）单独一行淡色，不当原因 */}
+              {l.kind === "node" && l.reason && l.reason !== 超时理由 && (l.reason.startsWith("原下一步：")
+                ? <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>
+                : <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>)}
               {/* 换人那几行：企业版记的回收原因 / 分配方式（10-27）原样淡色显示；超时、停用上一行已经说了 */}
               {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>}
               <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
