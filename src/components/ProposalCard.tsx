@@ -23,6 +23,8 @@ import { dayjs } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
+import ProjectProposalFields from "@/components/ProjectProposalFields";
 
 /**
  * AI 建议卡：唯一一条让模型的输出进到数据库的路。
@@ -187,7 +189,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
               {撤销中 ? "撤销中…" : "撤销"}
             </button>
           )}
-          <Link href={draft.kind === "add_lead" ? (落印?.项目 ? `/projects/${落印.项目}` : "/leads") : draft.kind === "update_channel" ? "/channels" : `/customers/${draft.customerId}`} className="cli-link">
+          <Link href={查看去处(draft, 落印)} className="cli-link">
             查看 <RightOutlined style={{ fontSize: 10 }} />
           </Link>
         </span>
@@ -220,6 +222,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       <div className="prop-why">{draft.reason}</div>
 
       <div className="prop-body">
+        {是项目卡(draft.kind) && <ProjectProposalFields draft={draft as 项目卡} setDraft={(p) => setDraft(p)} />}
         {draft.kind === "set_status" && (
           <Field label={draft.field === "followStatus" ? "跟进状态" : "决策状态"} 现值={现值文本(draft, draft.field, b)}>
             <Select
@@ -461,6 +464,11 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
         <button type="button" className="prop-no" onClick={() => setState("denied")} disabled={state === "saving"}>
           <CloseOutlined /> 忽略
         </button>
+        {是项目卡(draft.kind) && 不可撤销(draft.kind) && (
+          <span className="prop-err" style={{ margin: 0 }}>
+            此操作不可撤销{draft.kind === "customer_delete" ? "（删后进回收站，30 天内可恢复）" : ""}
+          </span>
+        )}
         <span className="prop-note">
           {勾了.length === 0 ? "一项都没选" : missing.length ? `还差${missing.join("、")}` : <Shortcut>确认前不会写入任何数据 · ⌘↵</Shortcut>}
         </span>
@@ -504,6 +512,20 @@ function 现值文本(p: Proposal, field: string, b: BusinessConfig): string | u
   if (v === undefined) return undefined;
   if (field === "followStatus" || field === "decisionStatus") return v ? statusLabel(b, v) : "";
   return v;
+}
+
+/** 确认之后「查看」去哪：新线索去建成的项目，项目类卡去那个项目，删客户回客户列表 */
+function 查看去处(p: Proposal, 落印: 落印回执 | null): string {
+  if (p.kind === "add_lead") return 落印?.项目 ? `/projects/${落印.项目}` : "/leads";
+  if (p.kind === "update_channel") return "/channels";
+  if (p.kind === "customer_delete") return "/customers";
+  if (p.kind === "contact_update") return p.customerId ? `/customers/${p.customerId}` : "/customers";
+  if (是项目卡(p.kind)) {
+    const q = p as 项目卡;
+    const id = 落印?.项目 || q.projectId || (q.kind === "project_node" || q.kind === "project_followup" || q.kind === "lead_verify" || q.kind === "payment_add" ? q.targetId : "");
+    return id ? `/projects/${id}` : "/projects";
+  }
+  return `/customers/${p.customerId}`;
 }
 
 /** 这张卡所在那一屏的对话框（首页或右侧面板）。往上找，找到第一个装着它的 */
