@@ -14,7 +14,7 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => (mocks.团队 ? { teamId:
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 公海超时收回, 超时预览, 记项目沟通 } from "@/lib/project/db";
-import { 超时回收日, 已超时, 超时理由, 超时起点, 计时起点 } from "@/lib/project/timeout";
+import { 超时回收日, 节点超时天数, 已超时, 超时理由, 超时起点, 计时起点 } from "@/lib/project/timeout";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 要下一步时间, 规整向导 } from "@/lib/project/wizard";
@@ -56,6 +56,28 @@ describe("超时回收日", () => {
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-01T09:00:00" }, 起)).toBe("2026-10-02");
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-20" }, 起)).toBe("2026-10-08");
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-09-28" }, 起)).toBe("2026-10-08");
+  });
+});
+
+describe("内贸、外贸分开的时长（C7）", () => {
+  const 规则: 组织规则 = { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 7 }, 外贸节点天数: { 潜客培育: 3, 线索验证: 5 } } };
+  const 起 = "2026-10-01T10:00:00";
+
+  it("外贸项目按外贸那套；内贸、暂不分配、没传线按内贸", () => {
+    expect(节点超时天数(规则, "潜客培育", undefined, "外贸")).toBe(3);
+    expect(节点超时天数(规则, "潜客培育", undefined, "内贸")).toBe(7);
+    expect(节点超时天数(规则, "潜客培育", undefined, "暂不分配")).toBe(7);
+    expect(节点超时天数(规则, "潜客培育")).toBe(7);
+    expect(超时回收日(规则, { phase: "线索", node: "潜客培育" }, 起, undefined, "外贸")).toBe("2026-10-04");
+    expect(超时回收日(规则, { phase: "线索", node: "潜客培育" }, 起, undefined, "内贸")).toBe("2026-10-08");
+  });
+
+  it("外贸那格空着 = 跟内贸一样；内贸也没设 = 字典默认（团队版字典没默认 = 不收）；外贸单设了、内贸没设的节点只收外贸", () => {
+    const 只内贸: 组织规则 = { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 7 } } };
+    expect(节点超时天数(只内贸, "潜客培育", undefined, "外贸")).toBe(7);
+    expect(节点超时天数(规则, "线索验证", undefined, "外贸")).toBe(5);
+    expect(节点超时天数(规则, "线索验证", undefined, "内贸")).toBeNull();
+    expect(超时回收日(规则, { phase: "线索", node: "线索验证" }, 起, undefined, "内贸")).toBeNull();
   });
 });
 

@@ -232,3 +232,83 @@ describe("回收前一天提醒 + 即将回收（10-27）", () => {
     expect(列.行.find((r) => r.id === p.id)).not.toHaveProperty("即将回收");
   });
 });
+
+describe("内贸、外贸分开算时长（C7）", () => {
+  /** 内贸 / 外贸两套节点时长 */
+  const 两套 = (内贸: Record<string, number>, 外贸: Record<string, number>): 组织规则 => ({
+    ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: 内贸, 外贸节点天数: 外贸 },
+  });
+  /** 每个项目各挂一位客户（企业版单项目客户会跟着项目进公海，互不影响） */
+  let 序 = 0;
+  async function 线项目(bizLine: string | null, 补: Record<string, unknown> = {}) {
+    序 += 1;
+    const c = await prisma.customer.create({ data: { name: `线客户${序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: 乙 } });
+    return 项目("2026-10-20 10:00", { customerId: c.id, name: `项目${序}`, bizLine, ...补 });
+  }
+
+  it("内贸 3 天、外贸 10 天：10-23 内贸到期收、外贸没到期留着；10-30 外贸才收", async () => {
+    await setSetting("orgRules", 两套({ 潜客培育: 3 }, { 潜客培育: 10 }));
+    const 内 = await 线项目("内贸");
+    const 外 = await 线项目("外贸");
+    expect(await 夜里扫超时(时("2026-10-23 00:05"))).toBe(1);
+    expect(await 在公海(内.id)).toBe(true);
+    expect(await 在公海(外.id)).toBe(false);
+    expect(await 夜里扫超时(时("2026-10-29 00:05"))).toBe(0);
+    expect(await 在公海(外.id)).toBe(false);
+    expect(await 夜里扫超时(时("2026-10-30 00:05"))).toBe(1);
+    expect(await 在公海(外.id)).toBe(true);
+  });
+
+  it("反过来：内贸 10 天、外贸 3 天：外贸先收、内贸留着", async () => {
+    await setSetting("orgRules", 两套({ 潜客培育: 10 }, { 潜客培育: 3 }));
+    const 内 = await 线项目("内贸");
+    const 外 = await 线项目("外贸");
+    expect(await 夜里扫超时(时("2026-10-23 00:05"))).toBe(1);
+    expect(await 在公海(外.id)).toBe(true);
+    expect(await 在公海(内.id)).toBe(false);
+    expect(await 夜里扫超时(时("2026-10-30 00:05"))).toBe(1);
+    expect(await 在公海(内.id)).toBe(true);
+  });
+
+  it("「暂不分配」按内贸的时长；外贸那格空着的节点也按内贸", async () => {
+    await setSetting("orgRules", 两套({ 潜客培育: 3 }, { 线索验证: 10 }));
+    const 暂 = await 线项目("暂不分配");
+    const 外 = await 线项目("外贸"); // 外贸只单设了别的节点，潜客培育跟内贸一样 3 天
+    expect(await 夜里扫超时(时("2026-10-23 00:05"))).toBe(2);
+    expect(await 在公海(暂.id)).toBe(true);
+    expect(await 在公海(外.id)).toBe(true);
+  });
+
+  it("老项目没填业务线：负责人是外贸销售按外贸；负责人没设线（或不是成员）按内贸", async () => {
+    await setSetting("orgRules", 两套({ 潜客培育: 3 }, { 潜客培育: 10 }));
+    const 外贸销售 = (await prisma.user.create({ data: { email: "wai", name: "外贸销售", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 外贸销售, bizRole: "sales", line: "外贸" } });
+    const 随外贸 = await 线项目(null, { ownerId: 外贸销售 });
+    const 没线 = await 线项目(null); // 乙不是成员，没线
+    expect(await 夜里扫超时(时("2026-10-23 00:05"))).toBe(1);
+    expect(await 在公海(没线.id)).toBe(true);
+    expect(await 在公海(随外贸.id)).toBe(false);
+    expect(await 夜里扫超时(时("2026-10-30 00:05"))).toBe(1);
+    expect(await 在公海(随外贸.id)).toBe(true);
+  });
+
+  it("没单设外贸时长（老设置只有一套）：外贸项目和内贸一样到期，行为不变", async () => {
+    await setSetting("orgRules", 开着({ 潜客培育: 3 }));
+    const 内 = await 线项目("内贸");
+    const 外 = await 线项目("外贸");
+    expect(await 夜里扫超时(时("2026-10-23 00:05"))).toBe(2);
+    expect(await 在公海(内.id)).toBe(true);
+    expect(await 在公海(外.id)).toBe(true);
+  });
+
+  it("项目列表的即将回收按项目的线算：10-22 内贸的标明天（10-23）收，外贸的不标", async () => {
+    await setSetting("orgRules", 两套({ 潜客培育: 3 }, { 潜客培育: 10 }));
+    const 内 = await 线项目("内贸");
+    const 外 = await 线项目("外贸");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(时("2026-10-22 09:00"));
+    const 列 = await 读项目列表({ id: 老板.id, name: 老板.name, role: "ADMIN" } as never, {});
+    const 标 = Object.fromEntries(列.行.map((r) => [r.id, r.即将回收]));
+    expect(标).toEqual({ [内.id]: "2026-10-23", [外.id]: null });
+  });
+});

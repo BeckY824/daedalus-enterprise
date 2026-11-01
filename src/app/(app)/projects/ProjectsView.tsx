@@ -176,8 +176,10 @@ export default function ProjectsView({
 
   async function 自动分(r: 项目行) {
     try {
-      const res = await 自动分配线索(r.id, { 项目: true });
-      if (!res.ok) return void message.error(res.error);
+      // 原负责人 = 这一行看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
+      const res = await 自动分配线索(r.id, { 项目: true, 原负责人: r.ownerId });
+      // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派
+      if (!res.ok) return void (res.待分配 || res.暂不分配 ? message.warning(res.error, 5) : message.error(res.error));
       message.success(`「${r.name}」${分给了(res)}：${res.为什么}`, 5);
       router.refresh();
     } catch {

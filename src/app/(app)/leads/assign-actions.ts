@@ -53,6 +53,12 @@ const 能分配的话 = "只有总管理员、市场管理、销售管理能分�
 const 不能指派的话 = "只能指派给正常参与自动分配、业务线对得上的销售：他暂停 / 禁止了，或者不在这条线上";
 /** 业务线选了「暂不分配」的新线索不进自动分配 */
 const 暂不分配不自动 = "这条新线索的业务线是「暂不分配」：不自动分，请手动指派";
+/** 乐观锁没对上（QA #4）：打开弹窗 / 点按钮时看到的负责人，写库时已经变了 = 别人先分走了，不覆盖 */
+const 已被分配的话 = "这条线索已被分配：刚才有人先分走了，刷新看看现在在谁名下";
+/**
+ * 界面交来的「我看到的负责人」：字符串 = 那个人，null / 空 = 看到的时候没有负责人；别的（没传、乱传）= undefined，不按它比
+ */
+const 认原负责人 = (x: unknown): string | null | undefined => (x === null || x === "" ? null : typeof x === "string" ? x : undefined);
 
 /** 后台设的「各条线参与自动分配的部门」（A4 / A5）；没设 = 两条线都没勾 */
 async function 读线部门(): Promise<线部门> {
@@ -86,7 +92,10 @@ async function 不设配额开着(): Promise<boolean> {
   return (await getSetting<boolean>(不设配额key)) !== false;
 }
 
-export async function 分配线索(input: { leadId?: string; projectId?: string; toUserId: string; line?: 线 | null; kind?: 线索种类 }): Promise<结果> {
+/**
+ * 手动指派。原负责人 = 界面上看到的负责人（乐观锁，QA #4）：写库时负责人已经不是他了 = 被别人先分走，回「已被分配」不覆盖
+ */
+export async function 分配线索(input: { leadId?: string; projectId?: string; toUserId: string; line?: 线 | null; kind?: 线索种类; 原负责人?: string | null }): Promise<结果 | { ok: false; error: string; 已被分配: true }> {
   const me = await 进门();
   if (!me) return 没开;
   const 哪条 = 目标of(input ?? {});
@@ -95,6 +104,7 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
   const kind = input.kind ?? "营销";
   if (line !== null && !是线(line)) return { ok: false, error: "业务线只能是内贸或外贸" };
   if (!线索种类.includes(kind)) return { ok: false, error: "线索种类只能是营销或营销企划" };
+  const 看到的 = 认原负责人(input.原负责人);
   try {
     const org = await 读组织();
     if (!能分配(org, me)) return { ok: false, error: 能分配的话 };
@@ -112,11 +122,13 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
       }
       const 用线 = 是业务线(看.线) ? 看.线 : null;
       // 人已经按线（部门 / 标记）筛过了，这里不再查标记
-      const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line: 用线, 查线: null, kind, 自动: false });
-      return r.ok ? r : { ok: false, error: r.error };
+      // 界面没交看到的负责人（老页面）：按这次请求开头读到的比
+      const 原负责人 = 看到的 === undefined ? 看.实际负责人 : 看到的;
+      const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line: 用线, 查线: null, kind, 自动: false, 原负责人 });
+      return r.ok ? r : r.已被分配 ? 已被分配 : { ok: false, error: r.error };
     }
-    const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line, kind, 自动: false });
-    return r.ok ? r : { ok: false, error: r.error };
+    const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line, kind, 自动: false, 原负责人: 看到的 });
+    return r.ok ? r : r.已被分配 ? 已被分配 : { ok: false, error: r.error };
   } catch (e) {
     return 不在了(e);
   }
@@ -125,11 +137,16 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
 /**
  * 分配线索()、自动分配线索() 共用的那一段：进门、能不能分已经查过。
  * 配额检查和写入在同一个事务里（查完再写）：两个人同时把线索分给同一个人，后到的那个查的时候先到的已经写完，不会超配额。
- * 分满了（配额满、或项目的持有上限到了）带 满: true，自动分配据此顺延到下一个人
+ * 分满了（配额满、或项目的持有上限到了）带 满: true，自动分配据此顺延到下一个人。
+ * 乐观锁（QA #4）：原负责人 = 分的人看到的负责人（undefined = 不比）；事务里读到的负责人不是他、或写的时候负责人已经变了，
+ * 都回 已被分配: true，不覆盖别人刚分的
  */
+type 分给结果 = { ok: true } | { ok: false; error: string; 满?: true; 已被分配?: true };
+const 已被分配: { ok: false; error: string; 已被分配: true } = { ok: false, error: 已被分配的话, 已被分配: true };
+
 async function 分给(
-  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean; 查线?: 线 | null },
-): Promise<{ ok: true } | { ok: false; error: string; 满?: true }> {
+  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean; 查线?: 线 | null; 原负责人?: string | null },
+): Promise<分给结果> {
   // 查线：核对接手人内贸 / 外贸标记用的线；这条线勾了部门时传 null（按部门挑，不看标记）。没传 = 就用 line
   const 问题 = 接手问题(org, input.toUserId, input.查线 === undefined ? input.line : input.查线);
   if (问题) return { ok: false, error: 问题 };
@@ -145,10 +162,11 @@ async function 分给(
   // 不设配额开着：照样记数（算不算数不变），只是不查满额
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
-  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | { ok: false; error: string; 满?: true }> => {
+  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | Exclude<分给结果, { ok: true }>> => {
     // 负责人、状态在事务里再读一次：同一条线索两边同时分，后到的看到的是先到的写完的
     const 现在 = await tx.lead.findUnique({ where: { id: lead.id }, select: { ownerId: true, status: true } });
     if (!现在) return { ok: false, error: "这条线索已经不在了（或者你看不到它），刷新看看" };
+    if (input.原负责人 !== undefined && 现在.ownerId !== input.原负责人) return 已被分配;
     if (现在.status === "已转化") return { ok: false, error: "已转化的线索不用再分" };
     if (现在.ownerId === input.toUserId) return { ok: false, error: "这条线索已经在他名下了" };
     if (查额) {
@@ -156,7 +174,9 @@ async function 分给(
       const 配额 = await 配额of(input.toUserId, tx);
       if (满了(已分, 配额)) return { ok: false, 满: true, error: `他这个月已经分了 ${已分} 条，配额 ${配额} 条，分满了：找他的上级调配额，或者分给别人` };
     }
-    await tx.lead.update({ where: { id: lead.id }, data: { ownerId: input.toUserId } });
+    // 写的时候 where 带上刚读到的负责人：中间被别人改了就一行都不动
+    const 改 = await tx.lead.updateMany({ where: { id: lead.id, ownerId: 现在.ownerId }, data: { ownerId: input.toUserId } });
+    if (改.count !== 1) return 已被分配;
     await tx.entLeadAssign.create({
       data: { leadId: lead.id, toUserId: input.toUserId, fromUserId: 现在.ownerId, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way },
     });
@@ -183,8 +203,8 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
  * 换负责人 = 转让：清下一步时间（超时回收从接手那天重新算），在公海里的出公海、待分配的清掉待分配，记一行转让痕。
  */
 async function 分项目给(
-  me: SessionUser, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean },
-): Promise<{ ok: true } | { ok: false; error: string; 满?: true }> {
+  me: SessionUser, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null },
+): Promise<分给结果> {
   const p0 = await prisma.project.findFirst({ where: { id: input.projectId }, select: { id: true, name: true } });
   if (!p0) return { ok: false, error: 项目不在 };
   const counted = 计不计数(input.kind, await getSetting<boolean>(企划线索计数key));
@@ -192,9 +212,10 @@ async function 分项目给(
   const 规则 = await 生效组织规则();
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
-  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string } | { ok: false; error: string; 满?: true }> => {
+  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string } | Exclude<分给结果, { ok: true }>> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
     if (!p) return { ok: false, error: 项目不在 };
+    if (input.原负责人 !== undefined && p.ownerId !== input.原负责人) return 已被分配;
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分：去「项目」里转让负责人" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
     if (p.ownerId === input.toUserId && !p.pooledAt && !p.awaitAssignAt) return { ok: false, error: "这条新线索已经在他名下了" };
@@ -207,10 +228,12 @@ async function 分项目给(
       const 超 = await 超上限(tx, 规则, input.toUserId, p);
       if (超) return { ok: false, 满: true, error: 超 };
     }
-    await tx.project.update({
-      where: { id: p.id },
+    // 乐观锁：where 带上刚读到的负责人和公海 / 待分配状态，中间被别人分走了就一行都不动、不覆盖
+    const 改 = await tx.project.updateMany({
+      where: { id: p.id, ownerId: p.ownerId, pooledAt: p.pooledAt, awaitAssignAt: p.awaitAssignAt, phase: "线索", result: null },
       data: { ownerId: input.toUserId, nextStepAt: null, nextStepText: null, pooledAt: null, awaitAssignAt: null },
     });
+    if (改.count !== 1) return 已被分配;
     await 记转让(tx, p, me.id, p.ownerId, input.toUserId, "transfer", `分配方式：${input.way}`);
     // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id);
@@ -237,7 +260,9 @@ async function 分项目给(
  * 分配之前看一眼：现在的负责人（挑人时跳过他）、走哪条线，不能分就给原因。
  * 新线索（项目）的线 = 项目业务线（三选一；老项目没填按负责人的线、再没有按内贸，要传 org 才看负责人）；老线索表 = null
  */
-async function 分前看(哪条: 目标, org?: 组织): Promise<{ ok: true; ownerId: string | null; 名: string; 线: 项目线 | null } | { ok: false; error: string }> {
+async function 分前看(
+  哪条: 目标, org?: 组织,
+): Promise<{ ok: true; ownerId: string | null; 实际负责人: string | null; 待分配: boolean; 名: string; 线: 项目线 | null } | { ok: false; error: string }> {
   if (哪条.projectId !== undefined) {
     const p = await prisma.project.findFirst({
       where: { id: 哪条.projectId },
@@ -247,12 +272,15 @@ async function 分前看(哪条: 目标, org?: 组织): Promise<{ ok: true; owne
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
     // 公海里的、待分配的（A7 / A10，负责人那一格只是建的人占着）：原负责人也能被挑中
-    return { ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId, 名: p.name, 线: 项目业务线(p, org?.成员) };
+    return {
+      ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId, 实际负责人: p.ownerId,
+      待分配: !p.pooledAt && !!p.awaitAssignAt, 名: p.name, 线: 项目业务线(p, org?.成员),
+    };
   }
   const lead = await prisma.lead.findFirst({ where: { id: 哪条.leadId }, select: { ownerId: true, status: true, name: true } });
   if (!lead) return { ok: false, error: "这条线索已经不在了（或者你看不到它），刷新看看" };
   if (lead.status === "已转化") return { ok: false, error: "已转化的线索不用再分" };
-  return { ok: true, ownerId: lead.ownerId, 名: lead.name, 线: null };
+  return { ok: true, ownerId: lead.ownerId, 实际负责人: lead.ownerId, 待分配: false, 名: lead.name, 线: null };
 }
 
 /**
@@ -276,7 +304,7 @@ export async function 项目分配线(projectId: string): Promise<{ 线: 项目�
 
 export type 自动分配结果 =
   | { ok: true; toUserId: string; 接手人: string; 已分: number; 配额: number | null; 为什么: string }
-  | { ok: false; error: string; 都满额?: true; 暂不分配?: true };
+  | { ok: false; error: string; 都满额?: true; 暂不分配?: true; 已被分配?: true; 待分配?: true };
 
 /** 每人参与状态（暂停 / 禁止的才在表里）；老格式 string[] 读成禁止，存坏了当人人允许 */
 async function 参与状态表() {
@@ -293,7 +321,7 @@ async function 不参与名单(): Promise<string[]> {
  * 挑中以后走 分给()，配额、留痕和手动分一样；挑完到落库之间他被别人分满了，就顺延到下一个人。
  * 成了带上接手人、分完以后本月已分几条、配额、为什么挑他，界面直接拿去提示
  */
-export async function 自动分配线索(id: string, opts: { line?: 线 | null; kind?: 线索种类; 项目?: boolean } = {}): Promise<自动分配结果> {
+export async function 自动分配线索(id: string, opts: { line?: 线 | null; kind?: 线索种类; 项目?: boolean; 原负责人?: string | null } = {}): Promise<自动分配结果> {
   const me = await 进门();
   if (!me) return 没开;
   const line = opts.line ?? null;
@@ -307,7 +335,7 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
     if (方式挡) return { ok: false, error: 方式挡 };
     const 哪条 = 目标of(opts.项目 ? { projectId: id } : { leadId: id });
     if (!哪条) return { ok: false, error: "要分哪一条？刷新看看" };
-    const r = await 自动分给(me, org, 哪条, line, kind);
+    const r = await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人));
     if (!r.ok && r.都满额) {
       const 看 = await 分前看(哪条).catch(() => null);
       await 发满额提醒(org, [看?.ok ? 看.名 : id], me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
@@ -342,10 +370,22 @@ export async function 向导自动分配(projectId: string): Promise<自动分�
   }
 }
 
-/** 自动分配线索()、批量自动分配() 共用：进门、能不能分已经查过 */
-async function 自动分给(me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类): Promise<自动分配结果> {
+/**
+ * 自动分配线索()、批量自动分配()、向导自动分配() 共用：进门、能不能分已经查过。
+ * 原负责人 = 点按钮时界面上看到的负责人（乐观锁，QA #4）；没交 = 按这里刚读到的比。被别人先分走了直接回「已被分配」，不再换人分
+ */
+async function 自动分给(
+  me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类, 原负责人?: string | null,
+): Promise<自动分配结果> {
   const 看 = await 分前看(哪条, org);
   if (!看.ok) return 看;
+  const 比谁 = 原负责人 === undefined ? 看.实际负责人 : 原负责人;
+  if (比谁 !== 看.实际负责人) return 已被分配;
+  // 新线索（项目）挑不到人（QA #5）：不抛错、不动它，回 待分配: true 让界面提示「留在新线索待分配，手动指派」
+  const 挑不到 = (为什么: string, 都满额?: true): 自动分配结果 =>
+    哪条.projectId !== undefined
+      ? { ok: false, 待分配: true, ...(都满额 ? { 都满额 } : {}), error: `${为什么}。${看.待分配 ? "已留在新线索待分配" : "这条新线索留在原处"}，可以手动指派` }
+      : { ok: false, ...(都满额 ? { 都满额 } : {}), error: 为什么 };
 
   // 新线索（项目）：线看项目业务线（A1，三选一；老项目按负责人的线、再没有按内贸），不认弹窗传来的；
   // 「暂不分配」不自动分。勾了部门的线按部门挑人（A4），没勾退回按成员标记
@@ -381,25 +421,25 @@ async function 自动分给(me: SessionUser, org: 组织, 哪条: 目标, line: 
     const 谁 = 挑接手人(候选, 跳过, 查满, 不限额);
     if (!谁) {
       // 不设配额（默认）：没有满额一说，也不看持有上限（A10 / A11）。挑不到 = 这条线的人都暂停 / 禁止了，或者这条线没有人
-      if (不限额) return { ok: false, error: "没有能接的人：这条线的人都暂停或禁止了自动分配，或者这条线还没有人" };
+      if (不限额) return 挑不到(`没有能接的人：${line ?? "这条线"}的人都暂停或禁止了自动分配，或者这条线还没有人`);
       // 参与的人里有填了配额的（含 0）、只是都分满了 →「都已满额」，提醒去调配额；
       // 参与的人都没填配额、一个参与的都没有，各是另一回事
       const 参与的 = 候选.filter((c) => !不参与.includes(c.userId));
       if (参与的.some((c) => c.配额 !== null)) {
-        return { ok: false, 都满额: true, error: "都已满额，没有能接的人：线索留在原处，找他们的上级调配额，或者手动分" };
+        return 挑不到("都已满额，没有能接的人：线索留在原处，找他们的上级调配额，或者手动分", true);
       }
-      return {
-        ok: false,
-        error: 参与的.length
-            ? "没有能接的人：没填配额，不参与自动分配。找他们的上级填配额，或者手动分"
-            : "没有能接的人：都不参与自动分配，或者业务线对不上",
-      };
+      return 挑不到(
+        参与的.length
+          ? "没有能接的人：没填配额，不参与自动分配。找他们的上级填配额，或者手动分"
+          : "没有能接的人：都不参与自动分配，或者业务线对不上",
+      );
     }
     const 为什么 = 挑的理由(候选, 跳过, 查满, 谁, 不限额);
-    const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, 查线, kind, 自动: true });
+    const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, 查线, kind, 自动: true, 原负责人: 比谁 });
     if (r.ok) {
       return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 不限额 ? null : (额.get(谁) ?? null), 为什么 };
     }
+    if (r.已被分配) return 已被分配;
     if (!r.满) return { ok: false, error: r.error };
     跳过.add(谁);
   }

@@ -95,6 +95,16 @@ describe("口径（纯函数）", () => {
     expect(即将逾期粗筛(开超时, 字典)).toMatchObject({ result: null, pooledAt: null, phase: { in: ["线索", "商机"] }, customer: { pool: { is: null } } });
   });
 
+  it("外贸单设的时长更短（C7）：粗筛按两套里最短的算，外贸项目不会被漏掉", () => {
+    const 字典 = 字典of(true);
+    const 今 = new Date(2026, 10, 10, 9);
+    const 起 = (w: ReturnType<typeof 即将逾期粗筛>) => ((w?.OR as { createdAt?: { lt: Date } }[])[0].createdAt!.lt);
+    const 只内贸 = 即将逾期粗筛({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 10 } } }, 字典, 今);
+    const 带外贸 = 即将逾期粗筛({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 10 }, 外贸节点天数: { 潜客培育: 2 } } }, 字典, 今);
+    // 最短：只内贸 = min(10, 默认 7) = 7；带外贸 = 2 → 建得更晚的也要捞出来
+    expect(dayjs(起(带外贸)).diff(dayjs(起(只内贸)), "day")).toBe(5);
+  });
+
   it("重点 / 暂未跟进只看在推的；本月新增不管在不在推", () => {
     const 字典 = 字典of(true);
     expect(首页卡条件("key", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, level: { in: ["S", "A"] } });

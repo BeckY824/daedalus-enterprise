@@ -50,7 +50,8 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     set忙(true);
     try {
       const 哪条 = lead.项目 ? { projectId: lead.id } : { leadId: lead.id };
-      const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind });
+      // 原负责人 = 打开弹窗时看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
+      const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind, 原负责人: lead.ownerId });
       if (!res.ok) {
         message.error(res.error, 5);
         return;

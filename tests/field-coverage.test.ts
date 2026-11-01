@@ -450,7 +450,7 @@ const 派生: Record<string, Record<string, string>> = {
     nextStepText: "记沟通时填的下一步做什么，跟 nextStepAt 一起写、一起清",
     deletedAt: "企业版删除时打上（进回收站），恢复时清掉；30 天后连行真删，不给改（lib/enterprise/soft-delete.ts）",
     assignMode: "新建线索 / 项目时选的分配方式，建的那一刻记下，之后不改（11-01 会议 §3，lib/project/after-create-assign.ts）",
-    awaitAssignAt: "建好没分出去（暂不分配、自动分配没人可分 / 没填所在地）那一刻系统打上；有人分出去时清掉（lib/enterprise/await-assign.ts）",
+    awaitAssignAt: "建好没分出去（暂不分配、自动分配没人可分 / 业务线是「暂不分配」）那一刻系统打上；有人分出去时清掉（lib/enterprise/await-assign.ts）",
   },
   ProjectMember: { projectId: "哪个项目的组员，加人时定", userId: "哪位成员，加人时定；换人 = 删了再加", invitedById: "谁拉进来的，加人时打上" },
   ProjectRole: { sort: "加角色时排到最后，系统写；不做拖动排序" },
