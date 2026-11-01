@@ -30,7 +30,7 @@ export function 建测试库() {
   // 企业版权限只认业务角色（11-01，没设 = 没权限）：admin 记总管理，张三、李四记销售，和老规矩下各自能做的对得上
   if (process.env.CRM_ENTERPRISE === "1") {
     execFileSync("npx", ["tsx", "-e", `
-      const { PrismaClient } = require("@prisma/client");
+      const { PrismaClient } = require(process.cwd() + "/src/generated/prisma");
       const p = new PrismaClient();
       (async () => {
         for (const [email, bizRole] of [["admin", "director"], ["zhangsan", "sales"], ["lisi", "sales"]]) {
