@@ -3,7 +3,7 @@ import { 搜索词 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
 import type { 项目行 } from "./board";
 import type { 阶段 } from "./nodes";
-import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的 } from "./db";
+import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线 } from "./db";
 import { 即将回收 } from "./timeout";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 生效组织规则 } from "./org-rules-store";
@@ -97,11 +97,13 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
       logs: 算超时要的.logs,
     },
   });
+  // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
+  const 超时线们 = 规则 ? await 超时成员线(规则) : null;
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
   const 将收 = (p: (typeof rows)[number]) => {
     if (!规则 || p.pooledAt) return null;
-    const 日 = 项目回收日(规则, p);
+    const 日 = 项目回收日(规则, p, 超时线们);
     return 即将回收(日, 今) ? 日 : null;
   };
   // 公海里的项目负责人一栏写原负责人（企业版库里已清空，从留痕取）
@@ -118,13 +120,14 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 名字 = new Map(人.map((u) => [u.id, u.name]));
   // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）
   const 露 = (p: (typeof rows)[number]) => 露客户(me, p, 可见);
-  const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p), 今)))).map((p) => ({
+  const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))).map((p) => ({
     id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null,
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
     ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
-    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
+    ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
+    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
     ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),

@@ -85,17 +85,19 @@ describe("兼几类管理员，几类的权都有", () => {
     expect(能改时限的节点(org, 我("总兼销"), {})).toBe("全部");
   });
 
-  it("分配（总管理、市场管理、销售管理，11-01）和改参与（总管理、销售管理）：兼的两样都能", () => {
-    expect([能分配(org, 我("兼")), 能改参与(org, 我("兼"))]).toEqual([true, true]);
-    expect([能分配(org, 我("销管")), 能改参与(org, 我("销管"))]).toEqual([true, true]);
+  it("分配（总管理员、市场管理、销售管理）；改参与只有总管理员（11-01 清单 A9）", () => {
+    expect([能分配(org, 我("兼")), 能改参与(org, 我("兼"))]).toEqual([true, false]);
+    expect([能分配(org, 我("销管")), 能改参与(org, 我("销管"))]).toEqual([true, false]);
     expect([能分配(org, 我("市场")), 能改参与(org, 我("市场"))]).toEqual([true, false]);
     expect([能分配(org, 我("销兼运")), 能改参与(org, 我("销兼运"))]).toEqual([false, false]);
+    expect([能分配(org, 我("总兼销")), 能改参与(org, 我("总兼销"))]).toEqual([true, true]);
   });
 
-  it("分配方式：哪个角色能用都算（个人自持给销售、自动给市场）", () => {
+  it("分配方式：哪个角色能用都算（个人自持给销售、公海捞取给市场；11-01 起自动分配默认谁都能用）", () => {
     expect(能用分配方式(org, 我("兼"), 分配方式id.个人自持, {})).toBe(true);
-    expect(能用分配方式(org, 我("兼"), 分配方式id.自动, {})).toBe(true);
-    expect(能用分配方式(org, 我("销管"), 分配方式id.自动, {})).toBe(false);
+    expect(能用分配方式(org, 我("兼"), 分配方式id.公海捞取, {})).toBe(true);
+    expect(能用分配方式(org, 我("销管"), 分配方式id.公海捞取, {})).toBe(false);
+    expect(能用分配方式(org, 我("销管"), 分配方式id.自动, {})).toBe(true);
     expect(能用分配方式(org, 我("市场"), 分配方式id.个人自持, {})).toBe(false);
     expect(能用分配方式(org, 我("销兼运"), 分配方式id.个人自持, {})).toBe(true);
   });

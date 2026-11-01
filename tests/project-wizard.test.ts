@@ -42,11 +42,11 @@ function 输入(补: Partial<建档向导输入> = {}): 建档向导输入 {
   };
 }
 
-/** 企业版建档（10-26）：渠道、负责人、跟进节点、客户是否明确回复都要选 */
+/** 企业版建档（10-26）：渠道、负责人、跟进节点、客户是否明确回复都要选；11-01 A1 起业务线也必选（默认填内贸） */
 async function 企业输入(补: Partial<建档向导输入> = {}): Promise<建档向导输入> {
   const 渠道 = (await prisma.channel.findFirst({ where: { name: "小红" } })) ?? (await prisma.channel.create({ data: { name: "小红", channelOwnerId: 甲 } }));
   const b = 输入(补);
-  return { ...b, 客户: { ...b.客户, channelId: 渠道.id }, 项目: { ownerId: 甲, ...b.项目 }, 跟进: { 节点: "潜客培育", 明确回复: false, ...b.跟进 } };
+  return { ...b, 客户: { ...b.客户, channelId: 渠道.id }, 项目: { ownerId: 甲, 业务线: "内贸", ...b.项目 }, 跟进: { 节点: "潜客培育", 明确回复: false, ...b.跟进 } };
 }
 
 async function 各表行数() {

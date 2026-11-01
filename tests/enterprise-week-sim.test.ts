@@ -41,6 +41,7 @@ import { saveLead, convertLead } from "@/app/(app)/leads/actions";
 import { dayjs } from "@/lib/utils";
 import { 收回提醒尾 } from "@/lib/project/db";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 不设配额key } from "@/lib/enterprise/lead-assign";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
 import { 建公司, type 公司 } from "./sim/公司";
@@ -62,7 +63,7 @@ const 检查点: Record<string, string> = {
   "D1-营销线索分外贸": "D-38 同一批营销线索也能分给外销1（外贸）",
   "D1-分满了分不进": "D-38 内销1 本月已分 2 = 配额 2，第三条分不进",
   "D1-非销售不能接": "D-38 线索只分给销售：项目运营内运1 接不了",
-  "D1-渠道不能分": "D-38 只有总管理 / 销售管理 / 市场管理能分（11-01）：渠道运营内渠1 分不了",
+  "D1-渠道不能分": "D-38 只有总管理员 / 市场管理 / 销售管理能分（11-01 清单 A9）：渠道运营内渠1 分不了",
   "D1-自拓不计数": "D-38 内销1 自己拓的线索不算本月已分（仍是 2）",
   "D1-没下一步不能存": "D-34 开了超时回收：建档首条沟通没下一步时间存不了",
   "D1-销售只看自己": "D-39/组织范围 内销1 只看到自己的项目（P1），看不到同组内销2 的",
@@ -192,7 +193,7 @@ function 向导输入(负责人: string, 名: string, 下一步: string | null, 
       salesOwnerId: 公.id[指派给 ?? 负责人], channelId: null, referrerCustomerId: null,
     },
     联系人: { name: `联系人${名}`, position: "采购", phone: `1380000${尾}` },
-    项目: { name: 名, amount: 10000, currency: "CNY", ...(指派给 ? { ownerId: 公.id[指派给] } : {}) },
+    项目: { name: 名, amount: 10000, currency: "CNY", 业务线: "内贸", ...(指派给 ? { ownerId: 公.id[指派给] } : {}) },
     跟进: { type: "PHONE", content: `${名} 首次沟通`, occurredAt: 现在文本(), ...(下一步 ? { 下一步时间: 下一步 } : {}) },
   };
   // 企业版新建线索（10-26 三大阶段）：负责人、渠道、跟进节点、客户是否明确回复必选；首条沟通记成明确回复了（有效线索）
@@ -296,6 +297,8 @@ async function 开局(企业: boolean) {
   公 = await 建公司();
   // 规则开关和组织规则两组都写：开关关时存着也不能生效
   for (const key of ["enterprise.rule.org_scope", "enterprise.rule.lead_assign"]) await setSetting(key, true);
+  // 剧本按「按配额分配」写（D-38 配额 / 分满 / 月初清零）；11-01 起默认不限额（清单 A10 / A11），这里明确改回按配额
+  await setSetting(不设配额key, false);
   await setSetting("orgRules", {
     公海: { 持有上限开: true, 默认上限: 30, 每人上限: { [公.id["外销6"]]: 2 } },
     超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3, 线索验证: 5, 明确需求: 7 } },
@@ -342,8 +345,7 @@ async function 剧本开() {
   await 查("D1-分满了分不进", async () => 拒(await 分给("市场经理", "L3", "内销1", "内贸"), /分满/));
   await 查("D1-营销线索分外贸", async () => { 得(await 分给("市场经理", "L3", "外销1", "外贸"), "分 L3 给外销"); });
   await 查("D1-非销售不能接", async () => 拒(await 分给("市场经理", "L4", "内运1", "内贸")));
-  // 11-01 权限只认业务角色：报错不再说老板
-  await 查("D1-渠道不能分", async () => 拒(await 分给("内渠1", "L4", "外销2", "外贸"), /只有总管理、销售管理、市场管理能分配线索/));
+  await 查("D1-渠道不能分", async () => 拒(await 分给("内渠1", "L4", "外销2", "外贸"), /只有总管理员、市场管理、销售管理/));
   await 建线索("内销1", "L自拓", "自拓");
   await 查("D1-自拓不计数", async () => {
     const 情况 = (await 作为("组长", () => 本月分配情况())) as { userId: string; 已分: number }[];

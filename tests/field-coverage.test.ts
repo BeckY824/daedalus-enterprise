@@ -65,7 +65,9 @@ const 可写: Record<string, string[]> = {
     // 企业版客户属性（2026-10-31，迁移 104，F-客户-04）：客户表单 / 行内改
     "customerAttr",
     // 企业版客户地址第五格「客户地址」（2026-10-29，迁移 091，P14 第 7 条）：客户表单 saveCustomer 的 企业资料
-    "addrDetail"],
+    "addrDetail",
+    // 企业版客户业务线（2026-11-01，迁移 106，清单 A1）：客户表单 saveCustomer 的 企业资料（内贸 / 外贸 / 暂不分配）
+    "bizLine"],
   // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
   Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate"],
   // 企业版渠道投入（2026-10-29）：渠道详情抽屉里录一笔（channels/actions.ts 的 addChannelInvest）
@@ -453,6 +455,9 @@ const 派生: Record<string, Record<string, string>> = {
     nextStepAt: "记沟通时填的下一步时间，跟着最近一条沟通写；企业版超时回收用",
     nextStepText: "记沟通时填的下一步做什么，跟 nextStepAt 一起写、一起清",
     deletedAt: "企业版删除时打上（进回收站），恢复时清掉；30 天后连行真删，不给改（lib/enterprise/soft-delete.ts）",
+    assignMode: "新建线索 / 项目时选的分配方式，建的那一刻记下，之后不改（11-01 会议 §3，lib/project/after-create-assign.ts）",
+    bizLine: "新建线索 / 项目时必选的业务线（内贸 / 外贸 / 暂不分配），建的那一刻记下，自动分配按它分线，之后不改（11-01 清单 A1，迁移 106，lib/enterprise/assign-line.ts）",
+    awaitAssignAt: "建好没分出去（暂不分配、自动分配没人可分 / 业务线是「暂不分配」）那一刻系统打上；有人分出去时清掉（lib/enterprise/await-assign.ts）",
   },
   ProjectMember: { projectId: "哪个项目的组员，加人时定", userId: "哪位成员，加人时定；换人 = 删了再加", invitedById: "谁拉进来的，加人时打上" },
   ProjectRole: { sort: "加角色时排到最后，系统写；不做拖动排序" },

@@ -94,7 +94,7 @@ describe("建档向导：项目来源", () => {
         salesOwnerId: 甲, channelId: 抖音, referrerCustomerId: null,
       },
       联系人: { name: "王经理", position: "采购", phone: "13900000002" },
-      项目: { name: "一期", amount: 0, currency: "CNY", ownerId: 甲, ...(项目渠道 !== undefined ? { channelId: 项目渠道 } : {}) },
+      项目: { name: "一期", amount: 0, currency: "CNY", ownerId: 甲, 业务线: "内贸", ...(项目渠道 !== undefined ? { channelId: 项目渠道 } : {}) },
       跟进: { type: "PHONE", content: "电话聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false },
     } as 建档向导输入;
   }

@@ -3,7 +3,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据 } from "@/lib/project/db";
+import { 能管项目, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -119,7 +119,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
   const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
   const 回收起点 = 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt);
-  const 回收日 = 超时回收日(规则, p, 回收起点, 字典);
+  // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
+  const 回收线 = 超时线(p, 规则.超时回收.开 ? await 超时成员线(规则) : null);
+  const 回收日 = 超时回收日(规则, p, 回收起点, 字典, 回收线);
   // 11-01：企业版组员只能看，沟通只有负责人记（和 lib/project/db.ts 记项目沟通 同一个判断）
   const 能记沟通 = 企业 && !公海 && 能改;
   // 沟通的「…」菜单（改 / 删，10-29）：能记沟通、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
@@ -134,7 +136,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     : null;
   // 记沟通时预演回收日（10-30 P0-2，lib/enterprise/recycle-text.ts 预演回收日）：给起点日和这个进程的天数，浏览器按同一个算法算。
   // 配了必填的进程记完可能自动推到下一个进程（天数跟着换），算不准就不给，界面不显示那一句
-  const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 ? 节点超时天数(规则, p.node, 字典) : null;
+  const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 ? 节点超时天数(规则, p.node, 字典, 回收线) : null;
   const 回收预演 = 回收天数 ? { 起点日: 计时起点(规则, 回收起点).format("YYYY-MM-DD"), 天数: 回收天数 } : null;
   // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
   const 不给推 = 企业 && !公海 && !p.result ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;

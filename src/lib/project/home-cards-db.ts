@@ -10,7 +10,7 @@
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 生效组织规则 } from "./org-rules-store";
-import { 项目回收日, 算超时要的 } from "./db";
+import { 项目回收日, 算超时要的, 超时成员线 } from "./db";
 import { 字典of } from "./stage-dict";
 import type { 组织规则 } from "./org-rules";
 import { 看板的人 } from "./board-member";
@@ -36,8 +36,8 @@ export async function 首页卡范围(user: { id: string; role: string }): Promi
 export async function 即将逾期的项目(规则: 组织规则, 今: Date = new Date(), 圈?: Prisma.ProjectWhereInput): Promise<string[]> {
   const 粗 = 即将逾期粗筛(规则, 字典of(企业版()), 今);
   if (!粗) return [];
-  const 们 = await prisma.project.findMany({ where: { AND: [粗, ...(圈 ? [圈] : [])] }, select: 算超时要的 });
-  return 们.filter((p) => 即将逾期(项目回收日(规则, p), 今)).map((p) => p.id);
+  const [们, 成员] = await Promise.all([prisma.project.findMany({ where: { AND: [粗, ...(圈 ? [圈] : [])] }, select: 算超时要的 }), 超时成员线(规则)]);
+  return 们.filter((p) => 即将逾期(项目回收日(规则, p, 成员), 今)).map((p) => p.id);
 }
 
 /** user = 当前登录的人（按他能看的那一圈数）；摆的 默认就是首页那一列，单测可以传别的 */

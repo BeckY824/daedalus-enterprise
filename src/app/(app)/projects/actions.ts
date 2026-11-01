@@ -17,7 +17,7 @@ import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, type 交付项 } from "@/lib/project/db";
+import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -39,8 +39,9 @@ import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { saveFollowUp, deleteFollowUp, restoreFollowUp, type 删掉的跟进 } from "../customers/[id]/actions";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
-import { 向导自动分配 } from "../leads/assign-actions";
-import { 我能用的分配方式, 挡分配方式, 是分配方式序号, 字典定义, 项目画像项, 认跟进方式, type 分配方式序号 } from "@/lib/enterprise/dict";
+import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
+import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
+import { 字典定义, 项目画像项, 认跟进方式 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们 } from "@/lib/project/blocker";
 import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -94,7 +95,17 @@ export async function 建档向导(输入: 建档向导输入) {
         const 项目渠道 = await prisma.channel.findUnique({ where: { id: 来源! }, select: { active: true } });
         if (!项目渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
       }
-      if (好.企业) 好.企业.项目来源 = 来源;
+      if (好.企业) {
+        好.企业.项目来源 = 来源;
+        // 分配方式记在项目上（11-01 迁移 106）
+        if (分配) 好.企业.分配方式名 = 分配.名;
+        // 业务线（11-01 清单 A1，16:1x 拍板三选一）：手动选；没选 = 跟客户上选的。企业版新建必填，不填不让建
+        if (!好.企业.业务线) {
+          const 客线 = 认业务线(input.客户.企业资料?.bizLine);
+          if (客线) 好.企业.业务线 = 客线;
+        }
+        if (!好.企业.业务线) return { ok: false as const, error: 业务线必填 };
+      }
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
@@ -134,7 +145,11 @@ export async function 建档向导(输入: 建档向导输入) {
     });
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {
-      r = await saveCustomer({ ...input.客户, id: undefined, updatedAt: null, base: null }, 接着);
+      // 新客户的业务线跟项目走（客户那一步没另选时）
+      const 客户线 = 企 && 好.企业?.业务线 && input.客户.企业资料?.bizLine === undefined
+        ? { 企业资料: { ...(input.客户.企业资料 ?? {}), bizLine: 好.企业.业务线 } }
+        : {};
+      r = await saveCustomer({ ...input.客户, ...客户线, id: undefined, updatedAt: null, base: null }, 接着);
     } catch (e) {
       if (!(e instanceof 联系人号码撞了)) throw e;
       return { ok: false as const, error: `${e.格}：${(await 撞号结论(prisma, e.ids, me.id, await 读的我(defaultClient))).提示}` };
@@ -149,41 +164,12 @@ export async function 建档向导(输入: 建档向导输入) {
     await 客户存了推项目(me, r.id);
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
-    const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!) : null;
+    const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
     return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
   } catch (e) { return 不在了(e); }
 }
 
-/**
- * 向导这次用哪种分配方式：传了就用传的；没传（老草稿、老调用）照负责人推：选了别人 / 没选 = 指定分配（没选照旧拦「请选项目负责人」），建给自己 = 个人自持，用不了个人自持的 = 暂不分配。
- * 推出来的也要过「谁能用」
- */
-async function 定分配方式(me: Awaited<ReturnType<typeof requireUser>>, 项目: 建档向导输入["项目"] | undefined): Promise<{ i: 分配方式序号; 名: string } | { error: string }> {
-  const 能用 = await 我能用的分配方式(me);
-  const 传 = 项目?.分配方式;
-  if (传 !== undefined && 传 !== null && !是分配方式序号(传)) return { error: "没有这种分配方式，刷新后再选" };
-  const 有 = (i: 分配方式序号) => 能用.some((x) => x.i === i);
-  const i: 分配方式序号 = 是分配方式序号(传) ? 传 : 项目?.ownerId !== me.id ? 0 : 有(4) ? 4 : 有(3) ? 3 : 0;
-  const 中 = 能用.find((x) => x.i === i);
-  if (中) return 中;
-  return { error: (await 挡分配方式(me, i)) ?? "这种分配方式已停用，换一种" };
-}
-
-/** 建好之后：自动分配转给挑中的人，公海捞取放进项目公海；没成的项目留在我名下，回一句提示（建档本身算成了）。转走 = 项目已不在我名下 */
-async function 建好再分(me: Awaited<ReturnType<typeof requireUser>>, 分配: { i: 分配方式序号; 名: string }, projectId: string): Promise<{ 提示: string; 转走: boolean } | null> {
-  if (分配.i === 1) {
-    const r = await 向导自动分配(projectId);
-    return r.ok ? { 提示: `已按「${分配.名}」分给 ${r.接手人}`, 转走: true } : { 提示: `项目先建在你名下，「${分配.名}」没成：${r.error}`, 转走: false };
-  }
-  if (分配.i === 2) {
-    const r = await 放回公海(me, projectId, null, { 分配放行: true });
-    if (!r.ok) return { 提示: `项目先建在你名下，没放进公海：${r.error}`, 转走: false };
-    刷新项目(projectId);
-    return { 提示: "已放进项目公海，等人捞取", 转走: true };
-  }
-  return null;
-}
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */
 export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null } | null) {
@@ -587,7 +573,7 @@ export async function 改组织规则(改: 规则改动) {
       : 改.节点推进 !== undefined
       ? 推.开 ? `组织规则：进程推进开，${Object.keys(推.必填).length} 个进程配了必填` : "组织规则：进程推进关"
       : 改.超时回收 !== undefined
-      ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
+      ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长${Object.keys(t.外贸节点天数 ?? {}).length ? `（外贸单设 ${Object.keys(t.外贸节点天数 ?? {}).length} 个）` : ""}` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
       : 改.公海?.多项目客户 !== undefined
       ? `组织规则：多项目客户公海走法 ${g.多项目客户}`
       : g.持有上限开 ? `组织规则：项目持有上限开，默认 ${是不限(g.默认上限) ? "不限" : `${g.默认上限} 个`}，单独设了 ${Object.keys(g.每人上限).length} 人` : "组织规则：项目持有上限关";
@@ -664,7 +650,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
   try {
     const me = await requireUser();
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
-    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
+    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
     if (!p || p.pooledAt) return { ok: true, 能记: false };
     // 11-01：企业版沟通只有负责人记，组员只能看（和 lib/project/db.ts 记项目沟通 同一个判断）
     if (!能管项目(me, p, await 权限组织())) return { ok: true, 能记: false };
@@ -675,7 +661,8 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
       const 字典 = 字典of(true, 规则.阶段.出口叫法);
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
       const 起点 = 超时起点(p.createdAt, p.logs[0]?.at, c?.lastFollowAt);
-      const 天数 = 超时回收日(规则, p, 起点, 字典) ? 节点超时天数(规则, p.node, 字典) : null;
+      const 线 = 超时线(p, await 超时成员线(规则));  // 按项目业务线分内外贸天数（C7）
+      const 天数 = 超时回收日(规则, p, 起点, 字典, 线) ? 节点超时天数(规则, p.node, 字典, 线) : null;
       if (天数) 回收预演 = { 起点日: 计时起点(规则, 起点).format("YYYY-MM-DD"), 天数 };  // 起算日之前不算（10-31）
     }
     const 能发 = await 能发卡点(me, p.id);

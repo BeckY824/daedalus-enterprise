@@ -6,7 +6,7 @@
  *   销售自己拓的线索没有分配记录，自然不算。
  * - 直属上级、虚线上级（以及总管理员）能给个人设每月配额，不设固定复核周期。
  *   没设：手动分不限；自动分配不挑他（10-25 用户定「没填的不参与」），配额 0 也不挑。
- * - 10-30 客户定「开着，每人都不限额」：规则里多一个选项「不设配额」（不设配额key，默认关）。开了以后配额整个不起作用：
+ * - 10-30 定「开着，每人都不限额」：规则里多一个选项「不设配额」（不设配额key；11-01 起没存 = 开，存了 false 才按配额）。开着时配额整个不起作用：
  *   自动分配在规则范围内（在职、能接这条线、参与自动分配）的人里挑本月已分最少的，手动分也不查满额；关着和以前一样。
  * - 线索分出去以后，原来的负责人（市场人员）仍能看到转化情况：记录里留了 fromUserId，
  *   「我分出去的线索」按它查，不受「按组织架构看客户」限定。
@@ -18,8 +18,8 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { businessDayjs } from "@/lib/business-clock";
-import { 管理员类别们of, type 组织 } from "./org-core";
-import { 能分配线索 } from "./permissions";
+import type { 组织 } from "./org-core";
+import { 能分配线索, 是总管理 } from "./permissions";
 import { 能改设置, type 改权限配置 } from "./edit-perm-table";
 
 export const 线索种类 = ["营销", "营销企划"] as const;
@@ -40,8 +40,11 @@ export function 月份(d = new Date()): string {
 /** 能接分配线索的业务角色：销售、销售管理 */
 const 能接的角色 = new Set(["sales", "sales_mgr"]);
 
-/** 能点「分配」的人：总管理、市场管理、销售管理（11-01 A7，permissions.ts 能分配线索） */
-export function 能分配(org: 组织, 我: { id: string; role: string }): boolean {
+/**
+ * 能点「分配」（手动指派 / 自动分配）的人：总管理员、市场管理、销售管理（11-01 清单 A7 / A9）。
+ * 只认业务角色（11-01 定，permissions.ts 能分配线索）：账号的 ADMIN / MANAGER 不放行，没设业务角色 = 不能分；管理员（admin）只读
+ */
+export function 能分配(org: 组织, 我: { id: string; role?: string | null }): boolean {
   return 能分配线索(我, org);
 }
 
@@ -106,7 +109,7 @@ export const 参与状态of = (表: Record<string, 参与状态>, userId: string
 
 /**
  * 规则「线索分配和配额」里的选项「不设配额（人人参与、不限额）」（10-30 客户定「开着，每人都不限额」）：
- * Setting 里存 JSON true / false，没存 = 关（和以前一样按配额）。开了以后自动分配不看配额、手动分配不查满额
+ * Setting 里存 JSON true / false；11-01 起没存 = 开（清单 A10 / A11：目前没有配额限制），存了 false 才按配额。开着时自动分配不看配额、手动分配不查满额
  */
 export const 不设配额key = "enterprise.lead_assign.no_quota";
 
@@ -167,12 +170,12 @@ export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>
   return 查满 ? 理由 : `${理由}；这条不算数，不占配额`;
 }
 
-/** 能改「参与自动分配」开关的人（Q-12 默认）：总管理、销售管理；直属上级只能看 */
-export function 能改参与(org: 组织, 我: { id: string; role: string }): boolean {
-  const 类们 = 管理员类别们of(org, 我.id);
-  if (类们.has("总管理员")) return true;
-  // 管理员（admin）只读（11-01）：兼了销售管理也不能改
-  return 类们.has("销售管理") && !类们.has("管理员");
+/**
+ * 能改销售「参与状态」（正常 / 暂停 / 禁止）的人：只有总管理员（11-01 16:1x 拍板，A9；permissions.ts 是总管理）。
+ * 市场管理、销售管理只能手动指派、不能改参与状态；直属上级只能看；管理员（admin）只读。只认业务角色，账号 ADMIN 不放行
+ */
+export function 能改参与(org: 组织, 我: { id: string; role?: string | null }): boolean {
+  return 是总管理(我, org);
 }
 
 // —— 读库 ——

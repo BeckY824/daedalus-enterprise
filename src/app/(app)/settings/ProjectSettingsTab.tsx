@@ -356,10 +356,12 @@ function TimeoutCard({
 }) {
   const { message, modal } = App.useApp();
   const [天数, set天数] = useState<Record<string, number | null>>(规则.节点天数);
+  // 外贸那套（C7）：空着 = 和内贸一样
+  const [外贸天数, set外贸天数] = useState<Record<string, number | null>>(规则.外贸节点天数 ?? {});
   const 节点 = [...节点们.线索, ...节点们.商机];
   const 全能 = 范围 === "全部";
   const 能改 = (n: string) => !挡 && (全能 || 范围.includes(n));
-  const 改了 = 节点.some((n) => (天数[n] ?? null) !== (规则.节点天数[n] ?? null));
+  const 改了 = 节点.some((n) => (天数[n] ?? null) !== (规则.节点天数[n] ?? null) || (外贸天数[n] ?? null) !== (规则.外贸节点天数?.[n] ?? null));
 
   /** 先数会回收几个，有就确认；改完提示真收了几个 */
   const 确认后存 = async (改: 规则改动, 成了: string) => {
@@ -400,6 +402,7 @@ function TimeoutCard({
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到项目公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
+        内贸、外贸项目各按各的时长算（按项目的业务线）；外贸空着 = 和内贸一样。业务线选「暂不分配」的、老项目没填业务线的负责人也没设的，按内贸算。
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
         <span>计时起算日</span>
@@ -419,7 +422,7 @@ function TimeoutCard({
       </div>
       {!挡 && !全能 && (
         <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-          {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他进程、开关和起算日由老板、总管理员改。` : "进程时限、开关和起算日由老板、总管理员改。"}
+          {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他进程、开关和起算日由总管理员改。` : "进程时限、开关和起算日由总管理员改。"}
         </div>
       )}
       {规则.开 && (
@@ -430,6 +433,7 @@ function TimeoutCard({
               {节点们[阶段].map((n) => (
                 <div key={n} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
                   <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={n}>{n}</span>
+                  <span style={{ flex: "0 0 auto", color: "var(--text-muted)" }}>内贸</span>
                   <InputNumber
                     aria-label={`「${n}」的处理时长`}
                     min={1} max={时长最大} precision={0} suffix="天" style={{ width: 120, flex: "0 0 auto" }}
@@ -438,12 +442,21 @@ function TimeoutCard({
                     value={天数[n] ?? null}
                     onChange={(v) => set天数((m) => ({ ...m, [n]: v }))}
                   />
+                  <span style={{ flex: "0 0 auto", color: "var(--text-muted)" }}>外贸</span>
+                  <InputNumber
+                    aria-label={`「${n}」的外贸处理时长`}
+                    min={1} max={时长最大} precision={0} suffix="天" style={{ width: 120, flex: "0 0 auto" }}
+                    placeholder="同内贸"
+                    disabled={!能改(n)}
+                    value={外贸天数[n] ?? null}
+                    onChange={(v) => set外贸天数((m) => ({ ...m, [n]: v }))}
+                  />
                 </div>
               ))}
             </div>
           ))}
           {节点.some(能改) && (
-            <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了} onClick={() => void 确认后存({ 超时回收: { 节点天数: 天数 } }, "已保存")}>保存</Button>
+            <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了} onClick={() => void 确认后存({ 超时回收: { 节点天数: 天数, 外贸节点天数: 外贸天数 } }, "已保存")}>保存</Button>
           )}
         </>
       )}

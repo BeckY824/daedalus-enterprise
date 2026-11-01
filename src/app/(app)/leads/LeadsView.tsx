@@ -179,7 +179,7 @@ export default function LeadsView({
 
   async function 自动分(r: Row) {
     try {
-      const res = await 自动分配线索(r.id);
+      const res = await 自动分配线索(r.id, { 原负责人: r.ownerId });
       if (!res.ok) return void message.error(res.error);
       message.success(`「${r.name}」${分给了(res)}：${res.为什么}`, 5);
       router.refresh();

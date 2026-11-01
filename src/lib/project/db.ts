@@ -37,6 +37,7 @@ import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
+import { 项目业务线, type 成员线查 } from "@/lib/enterprise/assign-line";
 import { 进公海后负责人, 历史负责人, 进公海关待办 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
@@ -584,10 +585,10 @@ export const 能进公海的阶段 = ["线索", "商机"] as const;
 
 /**
  * 手上的项目数（企业版持有上限按这个算）：线索 / 商机阶段、还在走（没结局）、不在公海。
- * 不管怎么到手的——自己建的、领的、被指派的、自动分配的——都算
+ * 不管怎么到手的——自己建的、领的、被指派的、自动分配的——都算；待分配（awaitAssignAt 有值，建的人只是占着负责人那一格）的不算
  */
 export async function 持有数(db: Pick<Prisma.TransactionClient, "project">, userId: string): Promise<number> {
-  return db.project.count({ where: { ownerId: userId, pooledAt: null, result: null, phase: { in: [...能进公海的阶段] } } });
+  return db.project.count({ where: { ownerId: userId, pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] } } });
 }
 
 /**
@@ -696,45 +697,61 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
 const 超时扫过键 = "projectTimeoutSweptOn";
 
 export const 算超时要的 = {
-  id: true, name: true, phase: true, node: true, result: true, pooledAt: true, nextStepAt: true, ownerId: true, customerId: true, createdAt: true,
+  id: true, name: true, phase: true, node: true, result: true, pooledAt: true, nextStepAt: true, ownerId: true, customerId: true, createdAt: true, bizLine: true,
   customer: { select: { lastFollowAt: true, pool: { select: { customerId: true } } } },
   logs: { select: { at: true }, orderBy: { at: "desc" as const }, take: 1 },
 } satisfies Prisma.ProjectSelect;
 type 待查项目 = Prisma.ProjectGetPayload<{ select: typeof 算超时要的 }>;
 
 /**
- * 起点 = 最近一次有人管：建项目、最后一行节点变更 / 转让 / 领取、客户上最后一次跟进，取最晚的（timeout.ts）。
- * 客户在客户公海里的不收（企业版第四节）：项目跟着客户，谁领客户谁带走；先收进项目公海就和客户拆开了
+ * 超时按项目业务线分两套天数（企业版 11-01 清单 C7）要的成员业务线：老项目没填业务线时按负责人的线（assign-line.ts 项目业务线）。
+ * 外贸那套一个节点都没单设 = 线不影响天数，不查库，返回 null；不是企业版也 null
  */
-export function 项目回收日(规则: 组织规则, p: 待查项目): string | null {
-  if (p.customer.pool) return null;
-  return 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业版()));
+export async function 超时成员线(规则: 组织规则): Promise<成员线查 | null> {
+  if (!企业版() || !Object.keys(规则.超时回收.外贸节点天数 ?? {}).length) return null;
+  const 们 = await prisma.entMember.findMany({ select: { userId: true, line: true } });
+  return new Map(们.map((m) => [m.userId, { line: m.line }]));
 }
 
-function 超时了(规则: 组织规则, p: 待查项目, 今: Date): boolean {
-  return 已超时(项目回收日(规则, p), 今);
+/** 超时按哪条线的天数算：企业版 = 项目业务线（填了按填的，老项目按负责人的线，再没有 = 内贸）；别的版本不分线 */
+export function 超时线(p: { bizLine?: string | null; ownerId?: string | null }, 成员?: 成员线查 | null): string | null {
+  return 企业版() ? 项目业务线(p, 成员) : null;
+}
+
+/**
+ * 起点 = 最近一次有人管：建项目、最后一行节点变更 / 转让 / 领取、客户上最后一次跟进，取最晚的（timeout.ts）。
+ * 客户在客户公海里的不收（企业版第四节）：项目跟着客户，谁领客户谁带走；先收进项目公海就和客户拆开了。
+ * 成员 = 超时成员线(规则) 读的（老项目没填业务线按负责人的线）；不传 = 没填的按内贸
+ */
+export function 项目回收日(规则: 组织规则, p: 待查项目, 成员?: 成员线查 | null): string | null {
+  if (p.customer.pool) return null;
+  return 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业版()), 超时线(p, 成员));
+}
+
+function 超时了(规则: 组织规则, p: 待查项目, 今: Date, 成员: 成员线查 | null): boolean {
+  return 已超时(项目回收日(规则, p, 成员), 今);
 }
 
 /** 按这份规则现在超时的项目（还在线索 / 商机、没结局、不在公海、节点设了时长；企业版没设的按默认 7 天） */
-async function 超时的项目(规则: 组织规则, 今: Date, ownerId?: string): Promise<待查项目[]> {
-  return (await 会收的项目(规则, ownerId)).filter((p) => 超时了(规则, p, 今));
+async function 超时的项目(规则: 组织规则, 今: Date, 成员: 成员线查 | null, ownerId?: string): Promise<待查项目[]> {
+  return (await 会收的项目(规则, 成员, ownerId)).filter((p) => 超时了(规则, p, 今, 成员));
 }
 
 /** 按这份规则会被收回的项目（不管哪天收） */
-async function 会收的项目(规则: 组织规则, ownerId?: string): Promise<待查项目[]> {
-  const 节点 = Object.keys(规则.超时回收.节点天数);
+async function 会收的项目(规则: 组织规则, 成员: 成员线查 | null, ownerId?: string): Promise<待查项目[]> {
+  const 节点 = [...new Set([...Object.keys(规则.超时回收.节点天数), ...Object.keys(规则.超时回收.外贸节点天数 ?? {})])];
   const 有默认 = !!字典of(企业版()).默认超时天数;
   if (!规则.超时回收.开 || (!节点.length && !有默认)) return [];
   const 们 = await prisma.project.findMany({
     where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] }, ...(有默认 ? {} : { node: { in: 节点 } }), customer: { pool: { is: null } }, ...(ownerId ? { ownerId } : {}) },
     select: 算超时要的,
   });
-  return 们.filter((p) => !!项目回收日(规则, p));
+  return 们.filter((p) => !!项目回收日(规则, p, 成员));
 }
 
 /** 老板改时长前先看：按这份规则现在会有几个项目回到公海（不分谁的，全看） */
 export async function 超时预览(规则: 组织规则, 今: Date = new Date()): Promise<number> {
-  return 看全部(async () => (await 超时的项目(规则, 今)).length);
+  return 看全部(async () => (await 超时的项目(规则, 今, await 超时成员线(规则))).length);
 }
 
 /**
@@ -764,13 +781,14 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
   const 记号 = `${dayjs(今).format("YYYY-MM-DD")} ${JSON.stringify(规则.超时回收)}`;
   if ((await getSetting<string>(键)) === 记号) return 0;
 
-  const 们 = await 超时的项目(规则, 今, 只扫);
+  const 成员 = await 超时成员线(规则);
+  const 们 = await 超时的项目(规则, 今, 成员, 只扫);
   const 收了: string[] = [];
   for (const p of 们) {
     // 逐个一笔事务：查出来到写下去之间有人刚推了节点、领了、记了沟通，就不收
     const 收 = await 查完再写(async (tx) => {
       const 现 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
-      if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今)) return false;
+      if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今, 成员)) return false;
       await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 今, nextStepAt: null, nextStepText: null } });
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
@@ -793,10 +811,10 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     await recordAudit({
       user: 系统, action: "pool", entity: "Project",
       summary: `${收了.length} 个项目超过进程处理时长没跟进，自动回到项目公海`,
-      detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数 },
+      detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数, 外贸节点天数: 规则.超时回收.外贸节点天数 ?? {} },
     });
   }
-  await 提醒明天收(规则, 今, 只扫);
+  await 提醒明天收(规则, 今, 成员, 只扫);
   await setSetting(键, 记号);
   return 收了.length;
 }
@@ -805,10 +823,10 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
  * 回收前一天（10-27）：明天就要收回的项目，给负责人一条待办提醒（和收回那条同一个地方：首页待办、提醒）。
  * 跟着超时扫走（夜里 00:05 或白天第一次打开页面），同一天同一个项目只提醒一次：老板当天改了时长再扫也不重复
  */
-async function 提醒明天收(规则: 组织规则, 今: Date, 只扫?: string): Promise<void> {
+async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员线查 | null, 只扫?: string): Promise<void> {
   const 今天 = dayjs(今).format("YYYY-MM-DD");
-  for (const p of await 会收的项目(规则, 只扫)) {
-    const 日 = 项目回收日(规则, p);
+  for (const p of await 会收的项目(规则, 成员, 只扫)) {
+    const 日 = 项目回收日(规则, p, 成员);
     if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
     const title = 将回收提醒(p.name, 本套名(p.node, 字典of(企业版())), 日);
     if (await prisma.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) continue;
@@ -1016,7 +1034,7 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
 type 必填项目行 = Pick<Project,
   "id" | "customerId" | "node" | "contactId" | "nextStepAt" | "nextStepText" | "expectedDealAt" | "amount" | "remark" | "acceptancePassed" | "balanceSettled"
   | "painPoints" | "contractStatus" | "demandStatus" | "productNeeds" | "name" | "channelId" | "addrCountry" | "level" | "dealDemand" | "contractAmount" | "depositAmount"
-  | "budgetLevel" | "priceSense" | "decisionChain" | "purchaseCycle" | "productFit" | "valueFit" | "decisionReach" | "competitor" | "deployFit" | "siteStatus">;
+  | "budgetLevel" | "priceSense" | "decisionChain" | "purchaseCycle" | "productFit" | "valueFit" | "decisionReach" | "competitor" | "deployFit" | "siteStatus"> & Partial<Pick<Project, "assignMode">>;
 
 /**
  * 算「还差」要的数据（企业版节点必填，D-37）：客户（含外贸字段）、客户下的联系人、项目上的沟通各在哪个节点记的。
@@ -1040,7 +1058,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
   ]);
   return {
     项目: {
-      node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed, demandStatus: p.demandStatus ?? null,
+      node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed, demandStatus: p.demandStatus ?? null, assignMode: p.assignMode ?? null,
       name: p.name, channelId: p.channelId, addrCountry: p.addrCountry, level: p.level, dealDemand: p.dealDemand, nextStepText: p.nextStepText,
       contractAmount: p.contractAmount, depositAmount: p.depositAmount, balanceSettled: p.balanceSettled,
       budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, purchaseCycle: p.purchaseCycle, productFit: p.productFit,

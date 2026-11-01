@@ -172,6 +172,8 @@ model Customer {
   customerType String?
   /// 企业版客户属性（迁移 104，2026-10-31 F-客户-04）：自用非商用 / 个人投资者……（企业版字典 custAttr），客户看板按它分列。别的版本一直是空
   customerAttr String?
+  /// 企业版业务线（迁移 106，2026-11-01 清单 A1）：内贸 / 外贸 / 暂不分配，新建客户时手动选，可空；客户页新开项目时当项目业务线的默认值
+  bizLine      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -945,6 +947,15 @@ model Project {
   addrDistrict         String?
   /// 项目级别（企业版，迁移 093）：S / A / B / C，可空；界面显示成星级（lib/enterprise/level-stars.ts 级别星数）
   level                String?
+  /// 分配方式（企业版，迁移 106，11-01 会议 §1 / §3）：建线索时选的那一项的名字（指定分配 / 自动分配 / 暂不分配 / 个人自持 …），
+  /// 可空（老数据、团队版）。「潜客培育」必填清单里的「分配方式」看它（lib/project/required.ts）
+  assignMode           String?
+  /// 待分配（企业版，迁移 106，清单 A7 / A10）：暂不分配、自动分配挑不到人的线索记这一刻；空 = 不在等分配。
+  /// 这时 ownerId 还是建的人（列不能空），界面上负责人显示空、摆成「待分配」；有人分出去（assign-actions 分项目给）就清掉
+  awaitAssignAt        DateTime?
+  /// 业务线（企业版，迁移 106，清单 A1，11-01 拍板手动填）：内贸 / 外贸 / 暂不分配；企业版新建必填，空 = 老数据。自动分配只在这条线勾的部门里挑人，
+  /// 暂不分配不进自动分配；超时回收按它分内外贸时长（C7）。读它用 lib/enterprise/assign-line.ts 的 项目业务线（空 → 负责人的线 → 内贸）
+  bizLine              String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
@@ -975,6 +986,7 @@ model Project {
   @@index([ownerId])
   @@index([sourceLeadId])
   @@index([pooledAt])
+  @@index([awaitAssignAt])
   /// 渠道统计按项目来源取数（迁移 077）
   @@index([channelId])
   /// 企业版新线索页按阶段筛、按最近更新倒序取前 500（迁移 065）

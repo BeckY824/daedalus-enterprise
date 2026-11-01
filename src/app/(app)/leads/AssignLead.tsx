@@ -1,7 +1,9 @@
 "use client";
 /**
  * 企业版「线索分配和配额」的两块界面（F2 / F7，10-25 实测）：
- * - AssignLeadModal：选接手人、业务线、种类，走 分配线索()——查角色、配额、权限，记进分配记录。原来只有编辑弹窗里能随手改负责人
+ * - AssignLeadModal：选接手人、业务线、种类，走 分配线索()——查角色、配额、权限，记进分配记录。原来只有编辑弹窗里能随手改负责人。
+ *   新线索（项目，11-01 16:1x 拍板 A9）：业务线只读（项目业务线），接手人只列「正常」参与自动分配、业务线对得上的销售
+ *   （暂不分配的项目列全部正常参与的）；市场管理、销售管理、总管理员都能指派，服务端再查一遍
  * - 我分出去的：分出去的线索在别人名下，「按组织架构看客户」开着时列表里看不到，这里看它们后来怎样了
  * 规则判断都在服务端，这里只摆样子、原样报错
  */
@@ -11,7 +13,8 @@ import { App, Button, Checkbox, Form, Modal, Select, Table, Tag } from "antd";
 import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
-import { 分配线索, 本月分配情况, 我分出去的线索, type 分配情况 } from "./assign-actions";
+import { 分配线索, 本月分配情况, 我分出去的线索, 项目分配线, type 分配情况 } from "./assign-actions";
+import type { 项目线 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 
@@ -29,6 +32,9 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
   const 带待办勾出 = !!lead?.项目 && 公海规则.换负责人带待办;
   const [人们, set人们] = useState<分配情况 | null>(null);
   const [忙, set忙] = useState(false);
+  // 新线索（项目）的业务线（只读）和能指派的人（正常参与、线对得上的销售）；undefined = 还在取，null = 取不到
+  const [项目线, set项目线] = useState<{ 线: 项目线; 可选: string[] } | null | undefined>(undefined);
+  const 可选 = lead?.项目 ? (项目线 ? new Set(项目线.可选) : null) : undefined;
 
   // 每次打开重取一遍：配额、已分随时在变
   function 打开了(open: boolean) {
@@ -36,6 +42,8 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     form.resetFields();
     set人们(null);
     void 本月分配情况().then((r) => set人们(r ?? []));
+    set项目线(undefined);
+    if (lead?.项目) void 项目分配线(lead.id).then(set项目线, () => set项目线(null));
   }
 
   async function 分() {
@@ -45,7 +53,8 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     set忙(true);
     try {
       const 哪条 = lead.项目 ? { projectId: lead.id } : { leadId: lead.id };
-      const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind, ...(带待办勾出 ? { 带待办: v.带待办 } : {}) });
+      // 原负责人 = 打开弹窗时看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
+      const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind, 原负责人: lead.ownerId, ...(带待办勾出 ? { 带待办: v.带待办 } : {}) });
       if (!res.ok) {
         message.error(res.error, 5);
         return;
@@ -76,17 +85,34 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
           <Select
             showSearch
             optionFilterProp="label"
-            loading={人们 === null}
+            loading={人们 === null || (!!lead?.项目 && 项目线 === undefined)}
             placeholder="选销售或销售管理"
-            notFoundContent={人们 === null ? "加载中…" : "组织里还没有销售：先在 设置 → 组织架构 里排好"}
+            notFoundContent={
+              人们 === null || (lead?.项目 && 项目线 === undefined)
+                ? "加载中…"
+                : lead?.项目
+                  ? "这条线现在没有正常参与自动分配的销售：请总管理员在 设置 → 组织架构 里看参与状态和各条线的部门"
+                  : "组织里还没有销售：先在 设置 → 组织架构 里排好"
+            }
             options={(人们 ?? [])
-              .filter((p) => p.userId !== lead?.ownerId)
+              .filter((p) => p.userId !== lead?.ownerId && (可选 === undefined || (可选 !== null && 可选.has(p.userId))))
               .map((p) => ({ value: p.userId, label: `${p.name}${p.line ? `（${p.line}）` : ""}${不看配额 ? "" : ` · ${配额说法(p)}`}` }))}
           />
         </Form.Item>
-        <Form.Item name="line" label="业务线" extra="选了业务线，只能分给这条线（或没定线）的销售">
-          <Select options={[{ value: "", label: "不限" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />
-        </Form.Item>
+        {lead?.项目 ? (
+          <Form.Item
+            label="业务线"
+            extra="项目上选的业务线；老项目没填按负责人的线，再没有按内贸。接手人只列正常参与自动分配、这条线的销售（暂不分配的项目列全部正常参与的）"
+          >
+            <span data-testid="assign-line-readonly">
+              {项目线 === undefined ? "加载中…" : 项目线 ? 项目线.线 : <span className="muted">取不到，刷新看看</span>}
+            </span>
+          </Form.Item>
+        ) : (
+          <Form.Item name="line" label="业务线" extra="选了业务线，只能分给这条线（或没定线）的销售">
+            <Select options={[{ value: "", label: "不限" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />
+          </Form.Item>
+        )}
         <Form.Item name="kind" label="线索种类">
           <Select options={[{ value: "营销", label: "营销" }, { value: "营销企划", label: "营销企划" }]} />
         </Form.Item>

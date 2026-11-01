@@ -16,6 +16,7 @@ import { saveFollowUp, savePlan, deleteFollowUp } from "../customers/[id]/action
 import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 是业务线 } from "@/lib/enterprise/assign-line";
 import { 要下一步时间 } from "@/lib/project/wizard";
 import { 客户在推项目 } from "@/lib/project/active";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -289,6 +290,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 含 = 渠道们.filter((c) => 来源.includes(c.name));
   const 渠道 = 渠道们.find((c) => c.name === 来源) ?? (含.length === 1 ? 含[0] : null);
   if (!渠道) return { ok: false, error: `卡上的渠道「${p.source}」对不上启用中的渠道：请在卡上重新选渠道` };
+  // 业务线（11-01 新建必填）：卡上没这格、项目建在我名下 → 跟我自己的内贸 / 外贸；我没设线就「暂不分配」，要改到项目页改
+  const 我的线 = (await prisma.entMember.findUnique({ where: { userId: meId }, select: { line: true } }))?.line;
   const r = await 建档向导({
     客户: {
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
@@ -299,7 +302,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
     },
     联系人: { name: p.contact.trim() || p.name, phone: 号 || null, email: 邮箱, wechat: 微信 },
     // 负责人是自己、节点放线索第一步、明确回复记「没有」：都是卡上没有的格，按最保守的填，要改到项目页改
-    项目: { name: p.name, amount: 0, ownerId: meId },
+    项目: { name: p.name, amount: 0, ownerId: meId, 业务线: 是业务线(我的线) ? 我的线 : "暂不分配" },
     跟进: {
       type: "OTHER", content: `在首页对话里新建的线索，渠道：${渠道.name}`, occurredAt: new Date().toISOString(),
       下一步时间: p.nextAt || null,

@@ -235,6 +235,7 @@ export default async function CustomerDetailPage({
         assignWay: customer.assignWay,
         customerType: customer.customerType,
         customerAttr: customer.customerAttr,
+        bizLine: customer.bizLine,
         expectedSignAt: scheduleValue(customer.expectedSignAt, customer.expectedSignOn),
         lastFollowAt: customer.lastFollowAt?.toISOString() ?? null,
         remark: customer.remark,
