@@ -1,5 +1,6 @@
 "use client";
 
+import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
@@ -199,7 +200,8 @@ export default function ProjectsView({
     });
   }
 
-  const 无 = <span style={{ color: "var(--text-muted)" }}>—</span>;
+  // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
+  const 无 = <span style={{ color: "var(--text-muted)" }}>{空值符}</span>;
   // 企业版默认只摆 7 列（项目、客户、进程、下一步时间、金额、负责人、回公海日），其余收在「列」里（默认: false）；1366 宽不横向滚
   const 收起 = 企业版 ? { 默认: false } : {};
   const 列表: 列<项目行>[] = [
@@ -217,9 +219,9 @@ export default function ProjectsView({
     // P11 定稿 -2 版：项目级别显示成实心星（S 4 颗 … C 1 颗），悬停看档名；没分级的是 —
     ...(企业版 ? [
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
-      { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => r.expectedDealAt ?? 无 },
+      { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
       { title: "已立项", key: "age", width: 80, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
-      { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (r.项目来源 ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
+      { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : <UserCell name={r.ownerName} />) }]),
@@ -403,7 +405,7 @@ export default function ProjectsView({
                           </div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>
-                              {异常 ? `异常 · ${r.exceptionCategory ? `${r.exceptionCategory} · ` : ""}` : r.result && !是交付(r.result) ? `${结局叫法(r.result, 字典)} · ` : ""}{r.node}
+                              {异常 ? `异常 · ${有值(r.exceptionCategory) ? `${r.exceptionCategory} · ` : ""}` : r.result && !是交付(r.result) ? `${结局叫法(r.result, 字典)} · ` : ""}{r.node}
                             </span>
                             <span className="pipe-card-a">{金额(r.amount, r.currency)}</span>
                           </div>
@@ -412,7 +414,7 @@ export default function ProjectsView({
                           ) : (
                             (!不问归属 || r.即将回收) && (
                               <div className="pipe-card-m">
-                                <span className="pipe-card-o">{不问归属 ? null : r.ownerName}</span>
+                                <span className="pipe-card-o">{不问归属 ? null : 空显(r.ownerName)}</span>
                                 {r.即将回收 && <将收标 日={r.即将回收} />}
                               </div>
                             )

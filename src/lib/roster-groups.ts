@@ -6,10 +6,12 @@
  * - 预设状态按预设顺序排；
  * - 预设外的（老库里的、导入时自己填的）各自成组，按出现先后接在后面，组名就是它自己（dcb680f 修过，原来没测试）；
  * - 空串 / 只有空格 / null 归到「未填写」——原来空串自己成一组，组头一片空白，看着像渲染坏了；
+ *   导入时拿 "-" 占位的也算没填（11-01，lib/empty-value.ts），不单成一个「-」组；
  * - 前后带空格的按去掉空格后的认，「 跟进中」不另起一个看着一模一样的组。
  */
 import { FOLLOW_STATUSES } from "./constants";
 import { 阶段们 } from "./project/stage-dict";
+import { 去空 } from "./empty-value";
 
 export const 未填写组 = "未填写";
 
@@ -34,7 +36,7 @@ export function 客户状态分组<T extends { custStatus?: string | null }>(row
 }
 
 function 按预设分组<T>(rows: T[], 取: (r: T) => string | null | undefined, 预设们: readonly string[]): { s: string; rows: T[] }[] {
-  const 组名 = (r: T) => 取(r)?.trim() || 未填写组;
+  const 组名 = (r: T) => 去空(取(r)) ?? 未填写组;
   const 预设 = new Set<string>(预设们);
   const 其余 = [...new Set(rows.map(组名).filter((s) => !预设.has(s)))];
   // 「未填写」放最后：它不是一种状态，是缺了状态
