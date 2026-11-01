@@ -5,6 +5,7 @@ import { 附件个数, 项目分类附件数 } from "@/lib/attachments";
 import { getCurrentUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { 能管项目, 露客户, 看得到的客户 } from "@/lib/project/db";
+import { 原负责人挡着 } from "@/lib/project/pool-owner";
 import type { 归属 } from "@/lib/attachment-rules";
 import { 能删改沟通, 不能删改沟通话 } from "@/lib/enterprise/follow-perm";
 
@@ -65,8 +66,9 @@ async function 认项目(projectId: string, 要改: boolean): Promise<{ 叫法: 
   if (!企业版() || (await getBusiness()).projectMode !== true) return { 错: "此版本未开放项目附件", 状态: 404 };
   const 我 = await getCurrentUser();
   if (!我) return { 错: "请先登录", 状态: 401 };
-  const p = await prisma.project.findFirst({ where: { id: projectId }, select: { name: true, customerId: true, ownerId: true, pooledAt: true } });
-  if (!p) return { 错: "这个项目已经不在了，刷新看看", 状态: 404 };
+  const p = await prisma.project.findFirst({ where: { id: projectId }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true } });
+  // 公海里我是历史负责人的项目：当不在（C-01，lib/project/pool-owner.ts）
+  if (!p || (await 原负责人挡着(prisma, 我, p))) return { 错: "这个项目已经不在了，刷新看看", 状态: 404 };
   if (!露客户(我, p, await 看得到的客户([p.customerId]))) return { 错: "这个项目在公海里，先领取再看附件", 状态: 403 };
   if (要改 && !能管项目(我, p)) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改", 状态: 403 };
   return { 叫法: `项目「${p.name}」` };

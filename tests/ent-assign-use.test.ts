@@ -272,11 +272,13 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     const b = await 向导({ 分配方式: 0, ownerId: 销售 });
     当(项运);
     const c = await 向导({ 分配方式: 2 });
-    for (const [r, 谁] of [[a, 渠道], [b, 销售], [c, 项运]] as const) {
+    // 放公海的进了公海就没负责人（11-01 C-01），建的人记在留痕里
+    for (const [r, 谁] of [[a, 渠道], [b, 销售], [c, ""]] as const) {
       expect(r).toMatchObject({ ok: true });
       if (r.ok) expect((await 项目of(r.projectId)).ownerId).toBe(谁);
     }
     if (c.ok) expect((await 项目of(c.projectId)).pooledAt).not.toBeNull();
+    if (c.ok) expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: c.projectId, kind: "pool-release" } })).toMatchObject({ fromOwnerId: 项运 });
     expect(await 向导({ 分配方式: 1 })).toMatchObject({ ok: false });
   });
 
