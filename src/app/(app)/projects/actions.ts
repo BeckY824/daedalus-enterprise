@@ -24,6 +24,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
+import { 验证待办通知, 邀请通知, 转项目通知 } from "@/lib/enterprise/notice-sources";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -373,6 +374,7 @@ export async function 编辑项目(projectId: string, patch: 编辑项目改动)
         summary: `编辑项目「${p?.name ?? ""}」：改了${[...new Set(r.变了.map((k) => 项目字段名[k] ?? k))].join("、")}`,
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
+      if (r.变了.includes("ownerId")) await 转项目通知(me, projectId);
       刷新项目(projectId, p?.customerId);
     }
     return r.ok ? { ok: true as const, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
@@ -431,6 +433,7 @@ async function 验证一步(projectId: string, 说法: (项目: string) => strin
     if (r.ok) {
       const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } }));
       await recordAudit({ user: me, action: "update", entity: "EntLeadVerify", entityId: projectId, summary: 说法(p?.name ?? "") });
+      await 验证待办通知(me, projectId);
       await 记这个项目的自动推进(me, projectId, r.自动推到);
       刷新项目(projectId, p?.customerId);
       revalidatePath("/leads");
@@ -491,6 +494,7 @@ export async function 加项目组员(projectId: string, userId: string, roleId?
     if (r.ok) {
       const 邀请 = 企业版() && userId !== me.id;
       await recordAudit({ user: me, action: "create", entity: "ProjectMember", entityId: projectId, summary: `${邀请 ? "邀请进" : "加进"}${await 组员说法(projectId, userId)}` });
+      if (邀请) await 邀请通知(me, projectId, userId);
       刷新项目(projectId);
     }
     return r;

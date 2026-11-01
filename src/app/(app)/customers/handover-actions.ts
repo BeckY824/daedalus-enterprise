@@ -19,6 +19,7 @@ import { 交接卡点 } from "@/lib/project/blocker";
 import { 带走并记下 } from "@/lib/carry-over-db";
 import { 待确认, 了结, 读ids, type 交接种类 } from "@/lib/enterprise/handover-db";
 import { getBusiness } from "@/lib/business";
+import { 交接通知 } from "@/lib/enterprise/notice-sources";
 
 export type 交接行 = {
   id: string;
@@ -127,6 +128,7 @@ export async function 确认交接(id: string): Promise<结果> {
         `${分.计划.length + 分.待办.length} 条没完成的计划和待办、${分.线索.length} 条线索、${分.渠道.length} 个渠道` + (项目.length ? `、${项目.length} 个项目` : ""),
       detail: { 交接: h.id, userId: h.fromUserId, transferToId: me.id, 方式, 客户: 分.客户, 商机: 分.商机, 待办: 分.待办, 计划: 分.计划, 线索: 分.线索, 渠道: 分.渠道, 项目, 进公海客户: 分.进公海客户, 进公海项目: 分.进公海项目 },
     });
+    await 交接通知(me, h.id, "已确认");
     刷新();
     return { ok: true, 客户: 分.客户.length };
   }
@@ -147,6 +149,7 @@ export async function 确认交接(id: string): Promise<结果> {
     summary: `确认接手「${从}」转来的 ${换.length} 名${b.customer}，销售负责人改为「${me.name}」` + (ids.length > 换.length ? `（${ids.length - 换.length} 名在交接期间已换了人，没动）` : ""),
     detail: { 交接: h.id, ids: 换, salesOwnerId: me.id, 原负责人: 换.map((id) => ({ id, salesOwnerId: h.fromUserId })), 带走: 数, 带过来: 记下 },
   });
+  await 交接通知(me, h.id, "已确认");
   刷新();
   return { ok: true, 客户: 换.length };
 }
@@ -182,6 +185,7 @@ async function 了结一笔(
     summary: `${状态 === "已撤回" ? "撤回" : "拒收"}了「${人.get(h.fromUserId) ?? h.fromUserId}」交给「${人.get(h.toUserId) ?? h.toUserId}」的${h.kind}交接（${n} 位客户），数据留在原负责人名下`,
     detail: { 交接: h.id, kind: h.kind, 状态, fromUserId: h.fromUserId, toUserId: h.toUserId, 客户: 读ids(h.customerIds) },
   });
+  await 交接通知(me, h.id, 状态);
   刷新();
   return { ok: true, 客户: 0 };
 }

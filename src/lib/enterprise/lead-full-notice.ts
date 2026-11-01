@@ -12,6 +12,7 @@ import { getSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 管理员类别们of, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
+import { notify } from "./notify";
 
 export type 满额提醒 = { id: string; at: string; 条数: number; 线索: string[]; 谁点的: string };
 
@@ -57,6 +58,13 @@ export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: 
     }
   });
   invalidateSettingsCache();
+  await notify(收件人, {
+    kind: "满额",
+    title: `自动分配没分出去：${线索.length} 条线索都已满额`,
+    body: `${谁点的} 点的自动分配，能接的人都分满了：${线索.slice(0, 10).join("、")}${线索.length > 10 ? ` 等 ${线索.length} 条` : ""}。找销售的上级调配额，或者手动分。`,
+    link: "/leads",
+    key: `full:${条.id}`,
+  });
 }
 
 /** 关掉我自己的一条；不在（关过了、id 不对）当关好了 */

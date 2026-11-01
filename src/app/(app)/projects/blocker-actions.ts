@@ -15,6 +15,7 @@ import {
   type 卡点结果,
 } from "@/lib/project/blocker";
 import type { 发布输入 } from "@/lib/project/blocker-rules";
+import { 卡点通知 } from "@/lib/enterprise/notice-sources";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
 const 不是企业版 = { ok: false as const, error: "卡点是企业版的功能" };
@@ -46,6 +47,7 @@ export async function 发布卡点Action(followUpId: string, input: 发布输入
     const r = await 发布卡点(me, followUpId, input, assigneeId ?? null);
     if (!r.ok) return r;
     await recordAudit({ user: me, action: "create", entity: "EntBlocker", entityId: r.projectId, summary: `发布卡点 ${r.code}` });
+    if (assigneeId) await 卡点通知(me, r.code, "发布");
     刷新(r.projectId!);
     return { ok: true as const, code: r.code };
   } catch (e) { return 不在了(e); }
@@ -56,7 +58,9 @@ export async function 指认卡点Action(blockerId: string, userId: string) {
     const me = await requireUser();
     const 挡 = await 拦();
     if (挡) return 挡;
-    return 收尾(me, await 指认卡点(me, blockerId, userId), (c) => `指认卡点 ${c}`);
+    const r = await 指认卡点(me, blockerId, userId);
+    if (r.ok) await 卡点通知(me, r.code, "指认");
+    return 收尾(me, r, (c) => `指认卡点 ${c}`);
   } catch (e) { return 不在了(e); }
 }
 
@@ -65,7 +69,9 @@ export async function 认领卡点Action(blockerId: string) {
     const me = await requireUser();
     const 挡 = await 拦();
     if (挡) return 挡;
-    return 收尾(me, await 认领卡点(me, blockerId), (c) => `认领卡点 ${c}`);
+    const r = await 认领卡点(me, blockerId);
+    if (r.ok) await 卡点通知(me, r.code, "认领");
+    return 收尾(me, r, (c) => `认领卡点 ${c}`);
   } catch (e) { return 不在了(e); }
 }
 
@@ -83,7 +89,9 @@ export async function 转让卡点Action(blockerId: string, toUserId: string, �
     const me = await requireUser();
     const 挡 = await 拦();
     if (挡) return 挡;
-    return 收尾(me, await 转让卡点(me, blockerId, toUserId, 理由), (c) => `转让卡点 ${c}`);
+    const r = await 转让卡点(me, blockerId, toUserId, 理由);
+    if (r.ok) await 卡点通知(me, r.code, "转让");
+    return 收尾(me, r, (c) => `转让卡点 ${c}`);
   } catch (e) { return 不在了(e); }
 }
 

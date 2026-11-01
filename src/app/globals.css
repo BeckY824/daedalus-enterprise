@@ -424,6 +424,30 @@ html.os-win[data-skin="now"] { --text-muted: color-mix(in srgb, var(--ink-soft) 
 .rail-search:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .rail-search kbd { margin-left: auto; font-family: var(--font-ui); font-size: var(--fs-min); color: var(--text-faint); }
 html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, transparent); border-color: color-mix(in srgb, var(--panel) 70%, transparent); }
+/* 企业版站内通知的铃铛（11-01，NoticeBell）：搜索框右边一颗方钮，搜索框让出位置、不折行 */
+.rail-top .rail-search { flex: 1; min-width: 0; }
+.rail-top .rail-search > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail-top .ant-badge { flex: none; margin-left: 6px; }
+.notice-bell.ant-btn { width: 34px; height: 34px; color: var(--text-muted); -webkit-app-region: no-drag; }
+.notice-drawer .ant-drawer-header { padding: 12px 16px; }
+.notice-drawer .ant-drawer-title { white-space: nowrap; }
+.notice-empty { margin: 0; padding: 32px 16px; text-align: center; }
+.notice-list { list-style: none; margin: 0; padding: 0; }
+.notice-item { display: flex; gap: 10px; width: 100%; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; color: var(--text-muted); font: inherit; text-align: left; cursor: pointer;
+  transition: background var(--t-fast) var(--ease); }
+.notice-item:hover { background: var(--row-hover); }
+.notice-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.notice-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: transparent; }
+.notice-item.unread .notice-dot { background: var(--brand); }
+.notice-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.notice-title { color: var(--ink); font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notice-item.unread .notice-title { font-weight: 600; }
+.notice-body { font-size: var(--fs-note); color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.notice-meta { font-size: var(--fs-min); color: var(--text-faint); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .notice-item { transition: none; }
+  .notice-drawer .ant-drawer-content-wrapper, .notice-drawer .ant-drawer-mask { transition: none !important; animation-duration: 0s !important; }
+}
 /* 导航项右边的灰数：有多少，不催人（红的那个 .rail-count 才是要处理的） */
 .rail-num { margin-left: auto; font-size: var(--fs-note); font-weight: 500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .rail-count + .rail-num { margin-left: var(--s2); }
