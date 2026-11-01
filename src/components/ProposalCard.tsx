@@ -11,9 +11,9 @@ import { App, Select, Input, Checkbox } from "antd";
 import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
-import { 取走名片原图 } from "@/lib/card-scan/originals";
+import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card-scan/originals";
 import { 传附件 } from "@/lib/attachment-upload";
-import { describeProposal, missingFields, 只留选中的改动, 可改字段表, type Proposal } from "@/lib/agent/proposals";
+import { describeProposal, missingFields, 只留选中的改动, 可改字段表, type Proposal, type 线索待确认格 } from "@/lib/agent/proposals";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
 import { 建议结果, 记下建议结果, 清掉建议结果, 记下回执, 读回执 } from "@/lib/ai-jobs";
@@ -23,6 +23,11 @@ import { dayjs } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
+import dynamic from "next/dynamic";
+
+// 项目类卡的格子（11-01 速度闸门）：AI 面板每一页都在，这块只有项目卡用到，出卡时才去拿，不进每页首屏
+const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposalFields"), { ssr: false });
 
 /**
  * AI 建议卡：唯一一条让模型的输出进到数据库的路。
@@ -81,6 +86,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   const [刚, set刚] = useState<"落印" | "撤销" | null>(null);
   const [撤销中, set撤销中] = useState(false);
   const 根 = useRef<HTMLDivElement>(null);
+  /** 这张卡建出来的联系人 / 线索：撤销时连「刚建的」一起忘掉 */
+  const 建出的去处 = useRef<附件去处 | null>(null);
   /** 改档案时逐项勾选。默认全勾上——建议是它提的，人只需要否掉不想要的那几项 */
   const [勾了, set勾了] = useState<number[]>(() => (proposal.kind === "update_customer" ? proposal.changes.map((_, i) => i) : [0]));
   const 逐项 = draft.kind === "update_customer" && draft.changes.length > 1;
@@ -110,6 +117,11 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       if (焦点在卡里) requestAnimationFrame(() => 对话框?.focus());
       // 名片建的线索：选的几张原图存成它（或建出来的主要联系人）的附件。存完再刷一次，附件数跟着出来
       if (r.附件去处) void 存名片原图(r.附件去处);
+      // 记下刚建的那位：接着单发的客户照片问一句要不要存到他名下（lib/card-scan/originals.ts）
+      if (r.附件去处 && 要提交的.kind === "add_lead") {
+        建出的去处.current = r.附件去处;
+        记下刚建的(r.附件去处, [要提交的.name, 要提交的.contact].filter(Boolean).join(" · "));
+      }
       /*
         **落库之后要刷这一页。**
         0.38.0 之前这张卡只出现在首页，首页没有会过期的列表，所以不刷也看不出来。
@@ -153,6 +165,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       message.error(r.error);
       return;
     }
+    if (建出的去处.current) 忘掉刚建的(建出的去处.current);
+    建出的去处.current = null;
     // 回到「等你确认」：卡片还是那张，人可以改一改再确认，或者忽略。原地褪回铅笔，不重新浮现一遍
     set落印(null);
     set刚("撤销");
@@ -187,7 +201,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
               {撤销中 ? "撤销中…" : "撤销"}
             </button>
           )}
-          <Link href={draft.kind === "add_lead" ? (落印?.项目 ? `/projects/${落印.项目}` : "/leads") : draft.kind === "update_channel" ? "/channels" : `/customers/${draft.customerId}`} className="cli-link">
+          <Link href={查看去处(draft, 落印)} className="cli-link">
             查看 <RightOutlined style={{ fontSize: 10 }} />
           </Link>
         </span>
@@ -220,6 +234,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       <div className="prop-why">{draft.reason}</div>
 
       <div className="prop-body">
+        {是项目卡(draft.kind) && <ProjectProposalFields draft={draft as 项目卡} setDraft={(p) => setDraft(p)} />}
         {draft.kind === "set_status" && (
           <Field label={draft.field === "followStatus" ? "跟进状态" : "决策状态"} 现值={现值文本(draft, draft.field, b)}>
             <Select
@@ -392,17 +407,36 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
           </>
         )}
 
-        {draft.kind === "add_lead" && (
+        {draft.kind === "add_lead" && (() => {
+          // 认图认出来的卡（2026-11-01）：改了哪格或点掉黄标，那格就不用再确认
+          const 待 = new Set(draft.待确认 ?? []);
+          const 点掉 = (k: 线索待确认格) => () => {
+            const 剩 = (draft.待确认 ?? []).filter((x) => x !== k);
+            setDraft({ ...draft, 待确认: 剩.length ? 剩 : undefined });
+          };
+          const 改 = (k: 线索待确认格, v: string) => {
+            const 剩 = (draft.待确认 ?? []).filter((x) => x !== k);
+            setDraft({ ...draft, [k]: v, 待确认: 剩.length ? 剩 : undefined });
+          };
+          const 认图卡 = draft.id.startsWith("card-");
+          const 多格 = ([["country", "国家", 110], ["city", "城市", 110], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
+            .filter(([k]) => 认图卡 || draft[k] || 待.has(k));
+          return (
           <>
-            <Field label="名称">
-              <Input size="small" style={{ width: 160 }} placeholder="姓名或公司名" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            <Field label="名称" 待={待.has("name") ? 点掉("name") : undefined}>
+              <Input size="small" style={{ width: 160 }} placeholder="姓名或公司名" value={draft.name} onChange={(e) => 改("name", e.target.value)} />
             </Field>
-            <Field label="联系人">
-              <Input size="small" style={{ width: 140 }} placeholder="可留空" value={draft.contact} onChange={(e) => setDraft({ ...draft, contact: e.target.value })} />
+            <Field label="联系人" 待={待.has("contact") ? 点掉("contact") : undefined}>
+              <Input size="small" style={{ width: 140 }} placeholder="可留空" value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
             </Field>
-            <Field label="电话">
-              <Input size="small" style={{ width: 150 }} placeholder="可留空" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
+            <Field label="电话" 待={待.has("phone") ? 点掉("phone") : undefined}>
+              <Input size="small" style={{ width: 150 }} placeholder="可留空" value={draft.phone} onChange={(e) => 改("phone", e.target.value)} />
             </Field>
+            {多格.map(([k, 叫, 宽]) => (
+              <Field key={k} label={叫} 待={待.has(k) ? 点掉(k) : undefined}>
+                <Input size="small" style={{ width: 宽 }} placeholder="可留空" value={draft[k] ?? ""} onChange={(e) => 改(k, e.target.value)} />
+              </Field>
+            ))}
             <Field label={渠道名们 ? "渠道" : "来源"}>
               <OptionInput size="small" style={{ width: 130 }} allowClear={false} value={draft.source} options={渠道名们 ? [...渠道名们] : b.sources} onChange={(v) => setDraft({ ...draft, source: v })} />
             </Field>
@@ -439,7 +473,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
               <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 5 }} placeholder="可留空" value={draft.remark} onChange={(e) => setDraft({ ...draft, remark: e.target.value })} />
             </Field>
           </>
-        )}
+          );
+        })()}
       </div>
 
       {err && <div className="prop-err">{err}</div>}
@@ -461,6 +496,11 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
         <button type="button" className="prop-no" onClick={() => setState("denied")} disabled={state === "saving"}>
           <CloseOutlined /> 忽略
         </button>
+        {是项目卡(draft.kind) && 不可撤销(draft.kind) && (
+          <span className="prop-err" style={{ margin: 0 }}>
+            此操作不可撤销{draft.kind === "customer_delete" ? "（删后进回收站，30 天内可恢复）" : ""}
+          </span>
+        )}
         <span className="prop-note">
           {勾了.length === 0 ? "一项都没选" : missing.length ? `还差${missing.join("、")}` : <Shortcut>确认前不会写入任何数据 · ⌘↵</Shortcut>}
         </span>
@@ -476,18 +516,21 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
  * 人无从判断这是在改还是本来就是。逐项勾选时前面还有一个勾。
  */
 function Field({
-  label, children, block, 现值, 勾,
+  label, children, block, 现值, 勾, 待,
 }: {
   label: string;
   children: React.ReactNode;
   block?: boolean;
   现值?: string;
   勾?: { 上: boolean; 切: (v: boolean) => void };
+  /** 认图认得没把握的格（2026-11-01）：摆一个黄的「待确认」，点一下 = 核对过了 */
+  待?: () => void;
 }) {
   return (
     <div className={`prop-f${block ? " prop-f-block" : ""}${勾 ? " prop-f-pick" : ""}${勾 && !勾.上 ? " prop-f-off" : ""}`}>
       {勾 && <Checkbox checked={勾.上} onChange={(e) => 勾.切(e.target.checked)} aria-label={`要不要改${label}`} />}
       <span className="prop-f-l">{label}</span>
+      {待 && <button type="button" className="prop-f-wait" onClick={待} title="核对过就点一下；改这一格也算">待确认</button>}
       {现值 !== undefined && (
         <span className="prop-f-was">
           {现值 || "空"} <span className="prop-f-arrow">→</span>
@@ -504,6 +547,20 @@ function 现值文本(p: Proposal, field: string, b: BusinessConfig): string | u
   if (v === undefined) return undefined;
   if (field === "followStatus" || field === "decisionStatus") return v ? statusLabel(b, v) : "";
   return v;
+}
+
+/** 确认之后「查看」去哪：新线索去建成的项目，项目类卡去那个项目，删客户回客户列表 */
+function 查看去处(p: Proposal, 落印: 落印回执 | null): string {
+  if (p.kind === "add_lead") return 落印?.项目 ? `/projects/${落印.项目}` : "/leads";
+  if (p.kind === "update_channel") return "/channels";
+  if (p.kind === "customer_delete") return "/customers";
+  if (p.kind === "contact_update") return p.customerId ? `/customers/${p.customerId}` : "/customers";
+  if (是项目卡(p.kind)) {
+    const q = p as 项目卡;
+    const id = 落印?.项目 || q.projectId || (q.kind === "project_node" || q.kind === "project_followup" || q.kind === "lead_verify" || q.kind === "payment_add" ? q.targetId : "");
+    return id ? `/projects/${id}` : "/projects";
+  }
+  return `/customers/${p.customerId}`;
 }
 
 /** 这张卡所在那一屏的对话框（首页或右侧面板）。往上找，找到第一个装着它的 */

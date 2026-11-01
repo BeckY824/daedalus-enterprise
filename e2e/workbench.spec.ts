@@ -520,8 +520,8 @@ test("项目看板：列头写着这一阶段压着多少钱", async ({ page }) 
   for (const x of 合计) expect(x).toMatch(/¥|￥|\d/);
 });
 
-// 原来是「管道自己横滚」：2026-10-22 起各阶段按宽度等分、放不下折行，看板和页面都不横滚（三个宽度的细量法见 e2e-layout/排版闸门.ts 的项目看板）
-test("1024 下项目看板和页面都不横滚", async ({ page }) => {
+// 11-01 起看板列宽固定（一屏约 4 列）、五列都摆，放不下在看板框里左右滑；页面本身不横滚（globals.css .pipe）
+test("1024 下项目看板在框里横滑、列不压窄，页面不横滚", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 800 });
   await 登录(page);
   await page.goto("/projects");
@@ -530,13 +530,18 @@ test("1024 下项目看板和页面都不横滚", async ({ page }) => {
   const r = await page.evaluate(() => {
     const d = document.documentElement;
     const pipe = document.querySelector(".pipe")!;
+    const 列宽 = [...document.querySelectorAll(".pipe-col")].map((c) => c.getBoundingClientRect().width);
     return {
       页面溢出: d.scrollWidth > d.clientWidth + 1,
-      管道横滚: pipe.scrollWidth > pipe.clientWidth + 1,
+      管道能横滑: getComputedStyle(pipe).overflowX === "auto",
+      列数: 列宽.length,
+      最窄列: Math.min(...列宽),
     };
   });
-  expect(r.页面溢出, "整页被管道撑出了横向滚动条").toBe(false);
-  expect(r.管道横滚, "阶段放不下应该折到下一行，不是让管道横滚").toBe(false);
+  expect(r.页面溢出, "整页被看板撑出了横向滚动条").toBe(false);
+  expect(r.管道能横滑, "列放不下时应在看板框里左右滑").toBe(true);
+  expect(r.列数, "0 个项目的列也照常摆").toBe(5);
+  expect(r.最窄列, "列宽固定，不为塞下所有列压窄").toBeGreaterThanOrEqual(239);
 });
 
 /* ---------- 批 4 ---------- */

@@ -31,6 +31,9 @@ export type StreamBody =
       files?: { name: string; text: string }[];
       /** 企业版认名片：认出来的那张新线索卡，服务端重收一遍、换成固定提示词（lib/card-scan/agent-prompt.ts） */
       card?: unknown;
+      /** 2026-11-01 起一次可发多张（一人一张），带上发图时打的那句话 words */
+      cards?: unknown;
+      words?: string;
     }
   | { mode: "brief"; customerId: string; question?: string }
   /** 背调（lib/research）：公司名必填；从客户详情页发起的带客户 id */

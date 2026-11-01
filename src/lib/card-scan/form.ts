@@ -52,6 +52,55 @@ export function 国家名(iso: string | null | undefined): string {
   try { return new Intl.DisplayNames(["zh-CN"], { type: "region" }).of(k) ?? ""; } catch { return ""; }
 }
 
+/** 英文里的常见简称（Intl 给的是正式名）：都对到 国家叫法 的 ISO */
+const 英文别名: Record<string, string> = {
+  USA: "US", "U.S.A.": "US", "U.S.": "US", America: "US", UK: "GB", "U.K.": "GB", England: "GB", Britain: "GB",
+  UAE: "AE", Emirates: "AE", Dubai: "AE", Korea: "KR", "South Korea": "KR", Russia: "RU", Turkiye: "TR", Türkiye: "TR",
+  Vietnam: "VN", "Viet Nam": "VN", "Hong Kong": "HK", Taiwan: "TW", Macau: "MO", Macao: "MO", Iran: "IR", Saudi: "SA", KSA: "SA",
+};
+let 反查表: [string, string][] | null = null;
+/** 叫法（中文、英文正式名、英文简称，小写）→ 中文叫法；长的在前，找的时候「中国香港」先于「中国」 */
+function 反查(): [string, string][] {
+  if (反查表) return 反查表;
+  const 表 = new Map<string, string>();
+  let 英: Intl.DisplayNames | null = null;
+  try { 英 = new Intl.DisplayNames(["en"], { type: "region" }); } catch { /* 没有 Intl 就只认中文 */ }
+  for (const [iso, 中] of Object.entries(国家叫法)) {
+    表.set(中.toLowerCase(), 中);
+    const e = 英?.of(iso);
+    if (e && e !== iso) 表.set(e.toLowerCase(), 中);
+  }
+  for (const [别, iso] of Object.entries(英文别名)) 表.set(别.toLowerCase(), 国家叫法[iso]);
+  // 中文的「沙特」「香港」「台湾」也常这么写
+  for (const [别, 中] of [["沙特", "沙特阿拉伯"], ["香港", "中国香港"], ["台湾", "中国台湾"], ["澳门", "中国澳门"], ["印尼", "印度尼西亚"]]) 表.set(别, 中);
+  反查表 = [...表.entries()].sort((a, b) => b[0].length - a[0].length);
+  return 反查表;
+}
+
+/** 一格里写的就是一个国家（中文或英文，大小写不论）→ 表单里的叫法；不是 = null */
+export function 国家反查(s: string | null | undefined): string | null {
+  const k = String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  if (!k) return null;
+  return 反查().find(([叫]) => 叫 === k)?.[1] ?? null;
+}
+
+/** 一段话（销售发的那句、微信地区一行）里提到的第一个国家；英文按整词认，免得 Oman 认进 Romania。没有 = null */
+export function 找国家(话: string | null | undefined): { 国家: string; 位: number; 长: number } | null {
+  const s = String(话 ?? "");
+  const 小 = s.toLowerCase();
+  let 最好: { 国家: string; 位: number; 长: number } | null = null;
+  for (const [叫, 中] of 反查()) {
+    let 位 = -1;
+    if (/^[\x00-\x7F]+$/.test(叫)) {
+      const m = new RegExp(`(^|[^a-z])${叫.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z])`).exec(小);
+      if (m) 位 = m.index + m[1].length;
+    } else 位 = 小.indexOf(叫);
+    // 先出现的赢；同一处长的赢（表是长的在前，所以只在更靠前时换）
+    if (位 >= 0 && (!最好 || 位 < 最好.位)) 最好 = { 国家: 中, 位, 长: 叫.length };
+  }
+  return 最好;
+}
+
 /**
  * 外文有译文就「中文（原文）」。中文、英文（只有 ASCII 字母）的不译，模型给了也不用；
  * 译文和原文一样（模型偷懒抄了一遍）就只留原文

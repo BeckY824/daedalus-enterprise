@@ -284,6 +284,74 @@ export const 建议SCHEMAS: Record<string, Schema> = {
     required: ["channelName", "reason"],
     additionalProperties: false,
   },
+  // 项目类建议卡（全页面 AI 写入，企业版只用项目时才给）：按名字找，找到不止一个卡上让人挑
+  propose_project_node: {
+    type: "object",
+    properties: { project: 串("项目名或客户名"), projectId: 串(), 目标: 串("进程名 / 出口 / 结局 / 下一步 / 终止"), 原因: 串("流失、丢单原因或异常备注"), 异常类别: 串(), reason: 串(理由) },
+    required: ["目标", "reason"],
+    additionalProperties: false,
+  },
+  propose_project_followup: {
+    type: "object",
+    properties: { project: 串("项目名或客户名"), projectId: 串(), type: 串("沟通方式"), content: 串(), 明确回复: 串("是 / 否"), 下一步: 串(), 下一步时间: 串("YYYY-MM-DD"), reason: 串(理由) },
+    required: ["content", "reason"],
+    additionalProperties: false,
+  },
+  propose_blocker_add: {
+    type: "object",
+    properties: {
+      project: 串("项目名或客户名"), projectId: 串(), 卡点类型: 串(), 影响等级: 串(), 卡点描述: 串(),
+      type: 串("沟通方式"), content: 串(), 明确回复: 串("是 / 否"), 下一步: 串(), 下一步时间: 串("YYYY-MM-DD"), reason: 串(理由),
+    },
+    required: ["卡点类型", "卡点描述", "reason"],
+    additionalProperties: false,
+  },
+  propose_blocker_resolve: {
+    type: "object",
+    properties: { project: 串("项目名或客户名"), blocker: 串("卡点编号或描述关键词"), solution: 串(), result: 串(), reason: 串(理由) },
+    required: ["reason"],
+    additionalProperties: false,
+  },
+  propose_payment_add: {
+    type: "object",
+    properties: { project: 串("项目名或客户名"), projectId: 串(), paidAt: 串("YYYY-MM-DD"), amount: 数(), currency: 串(币种), reason: 串(理由) },
+    required: ["paidAt", "amount", "reason"],
+    additionalProperties: false,
+  },
+  propose_payment_delete: {
+    type: "object",
+    properties: { project: 串("项目名或客户名"), projectId: 串(), paidAt: 串("YYYY-MM-DD"), amount: 数(), reason: 串(理由) },
+    required: ["reason"],
+    additionalProperties: false,
+  },
+  propose_lead_verify: {
+    type: "object",
+    properties: {
+      project: 串("项目名或客户名"), projectId: 串(), 判: 串("这一步的判定"), 说明: 串(), 无效原因: 串(),
+      下一步时间: 串("YYYY-MM-DD"), 计划内容: 串(), reason: 串(理由),
+    },
+    required: ["reason"],
+    additionalProperties: false,
+  },
+  propose_contact_update: {
+    type: "object",
+    properties: {
+      contact: 串("联系人姓名"), customer: 串("所属客户名"),
+      改: {
+        type: "array",
+        items: { type: "object", properties: { field: 串("姓名 / 职位 / 备注 / 性别 / 生日 / 爱好 / 地址"), value: 串() }, required: ["field", "value"] },
+      },
+      reason: 串(理由),
+    },
+    required: ["contact", "改", "reason"],
+    additionalProperties: false,
+  },
+  propose_customer_delete: {
+    type: "object",
+    properties: { customer: 串("客户名"), id: 串(), reason: 串(理由) },
+    required: ["reason"],
+    additionalProperties: false,
+  },
 };
 
 export const SCHEMAS: Record<string, Schema> = { ...只读SCHEMAS, ...建议SCHEMAS };

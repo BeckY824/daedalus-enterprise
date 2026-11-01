@@ -147,6 +147,36 @@ describe("不撞：建成", () => {
   });
 });
 
+describe("认图出的卡：微信、邮箱、国家有自己的格（2026-11-01）", () => {
+  it("微信、邮箱格进联系人和查重，国家城市进客户地址，WhatsApp 写进备注", async () => {
+    当(乙);
+    const r = await applyProposal(卡({ id: "card-t1", wechat: "Zhou_JL88", email: "zhou@star.com", whatsapp: "+1 416 555 0100", country: "加拿大", city: "多伦多", remark: "职位：采购" }) as never);
+    expect(r).toMatchObject({ ok: true });
+    const c = await prisma.customer.findFirstOrThrow({ include: { contacts: true } });
+    expect(c).toMatchObject({ addrCountry: "加拿大", addrCity: "多伦多", remark: "职位：采购\nWhatsApp：+1 416 555 0100" });
+    expect(c.contacts[0]).toMatchObject({ email: "zhou@star.com", wechat: "Zhou_JL88" });
+    当(甲);
+    expect(await applyProposal(卡({ id: "card-t2", name: "别家", wechat: "zhou_jl88" }) as never)).toEqual({ ok: false, error: 查重提示.AI建档重复("小乙") });
+    expect(await applyProposal(卡({ id: "card-t3", name: "别家", remark: "邮箱：ZHOU@star.com" }) as never)).toEqual({ ok: false, error: 查重提示.AI建档重复("小乙") });
+  });
+
+  it("只有城市没国家：不写地址（不然被当成国内）；卡上格和备注都有微信，用卡上的", async () => {
+    当(乙);
+    expect(await applyProposal(卡({ id: "card-t4", city: "多伦多", wechat: "card_wx01", remark: "微信：remark_wx01" }) as never)).toMatchObject({ ok: true });
+    const c = await prisma.customer.findFirstOrThrow({ include: { contacts: true } });
+    expect(c).toMatchObject({ addrCountry: null, addrCity: null });
+    expect(c.contacts[0].wechat).toBe("card_wx01");
+  });
+
+  it("还有待确认的格：不建", async () => {
+    当(乙);
+    const r = await applyProposal(卡({ id: "card-t5", country: "", 待确认: ["country"] }) as never);
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toContain("确认「国家」");
+    expect(await prisma.customer.count()).toBe(0);
+  });
+});
+
 describe("开关关", () => {
   it("不查、不加待办，照旧写线索表", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
