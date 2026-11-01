@@ -293,17 +293,19 @@ export function 能管卡点(角色们: readonly 业务角色[]): boolean {
 }
 
 /**
- * 一条卡点「只看自己」时谁看得到（11-01 定稿 B6）：创建人、创建人的直属上级、项目负责人和负责人的直属上级（项目不在公海时）、
- * 点了同意的组员、认领人。项目在公海期间，原负责人和他的上级都不凭负责人身份看（认领了的照样凭认领行看）
+ * 一条卡点「只看自己」时谁看得到（11-01 定稿 B6，同日改成上级链）：创建人、项目负责人（项目不在公海时）、点了同意的组员、认领人，
+ * 再加上这些人的上级链——实线整条链 + 虚线（虚线下属和他的实线下属），和项目列表、组织范围of 的「读」同一套，
+ * 隔一级的上级在项目列表看得到的项目，卡点也看得到。我的下属们 由调用方按组织算好传进来（不含我自己）。
+ * 项目在公海期间，原负责人和他的上级都不凭负责人身份看（认领了的照样凭认领行看）
  */
 export type 卡点相关人 = {
-  creatorId: string; 创建人上级: string | null; ownerId: string; 负责人上级: string | null; 在公海: boolean; 组员们: readonly string[]; 认领人们: readonly string[];
+  creatorId: string; ownerId: string; 在公海: boolean; 组员们: readonly string[]; 认领人们: readonly string[];
 };
-export function 看得到卡点(我: string, 权: { 开: boolean; 全部: boolean }, b: 卡点相关人): boolean {
+export function 看得到卡点(我: string, 权: { 开: boolean; 全部: boolean }, b: 卡点相关人, 我的下属们: ReadonlySet<string> = new Set()): boolean {
   if (!权.开) return false;
   if (权.全部) return true;
-  if (b.creatorId === 我 || b.创建人上级 === 我) return true;
-  if (!b.在公海 && (b.ownerId === 我 || b.负责人上级 === 我)) return true;
+  if (b.creatorId === 我 || 我的下属们.has(b.creatorId)) return true;
+  if (!b.在公海 && (b.ownerId === 我 || 我的下属们.has(b.ownerId))) return true;
   return b.组员们.includes(我) || b.认领人们.includes(我);
 }
 

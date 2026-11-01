@@ -3,8 +3,8 @@
  *   - 三态：待接受 → 处理中 → 已解决；看得到就能认领，一人一行，进度 x/y；各自点「我已完成」，最后一位写解决方案和结果 → 已解决、锁定
  *   - 没有指认 / 转让 / 退回 / 撤回认领 / 移除认领人
  *   - 老数据改版：看板 → 待接受；待接受 → 待接受、清指认；处理中 → 处理中、经手人 = 第一位认领人；重跑不多出行
- *   - 谁看得到：按业务角色两个开关（启用、只看自己 / 可看全部）；只看自己 = 创建人、创建人直属上级、项目负责人（不在公海时）、
- *     项目负责人直属上级（不在公海时）、组员、认领人；没设业务角色 = 没有任何卡点权限
+ *   - 谁看得到：按业务角色两个开关（启用、只看自己 / 可看全部）；只看自己 = 创建人、项目负责人（不在公海时）、组员、认领人，
+ *     加上创建人 / 负责人的上级链（实线整条链 + 虚线，同项目列表的组织范围「读」）；没设业务角色 = 没有任何卡点权限
  *   - 管理员（业务角色 admin，不兼总管理）只读：看全部，发、认领、完成、改、删、原因管理都拒；删卡点、删原因只有总管理（director）
  *   - 离职交接：给交接人 → 没交接人给直属上级（实线）→ 都没有就从 x/y 去掉并记日志；项目从公海领走：没完成的认领行换人
  *   - 老数据（B9）：老阻碍主体不归类，老卡点不挂原因，详情显示原阻碍主体，统计进「未分类（老数据）」
@@ -32,6 +32,8 @@ import {
   卡点只读, 能管卡点, 未分类原因id, 未分类原因名,
 } from "@/lib/project/blocker-rules";
 import { 清过期 } from "@/lib/enterprise/soft-delete";
+import { 读组织 } from "@/lib/enterprise/org";
+import { 组织范围of } from "@/lib/enterprise/visibility";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 
@@ -212,15 +214,16 @@ describe("企业版卡点", () => {
   });
 
   describe("谁看得到（只认业务角色）", () => {
-    it("默认：总管理员可看全部；其余只看自己——创建人、创建人直属上级、负责人、组员、认领人看得到，别人按 id 点也是不在了", async () => {
+    it("默认：总管理员可看全部；其余只看自己——创建人、负责人、组员、认领人和他们的上级（实线、虚线）看得到，别人按 id 点也是不在了", async () => {
       const b = await 发();
-      for (const p of [老板, 组长, 销售, 组员]) expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).toEqual([b.id]);
-      for (const p of [虚, 散, 散主管]) expect(await 项目的卡点(p, 项目)).toEqual([]);
+      for (const p of [老板, 组长, 虚, 销售, 组员]) expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).toEqual([b.id]);
+      for (const p of [散, 散主管]) expect(await 项目的卡点(p, 项目)).toEqual([]);
       expect(await 认领卡点(散, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
-      expect(await 认领卡点(虚, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
-      // 看得到就能认领：总管理员、直属上级都能认领
+      expect(await 认领卡点(散主管, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
+      // 看得到就能认领：总管理员、直属上级、虚线上级都能认领
       expect(await 认领卡点(老板, b.id)).toMatchObject({ ok: true });
       expect(await 认领卡点(组长, b.id)).toMatchObject({ ok: true });
+      expect(await 认领卡点(虚, b.id)).toMatchObject({ ok: true });
     });
 
     it("账号是 ADMIN 但没设业务角色：什么都没有", async () => {
@@ -246,7 +249,8 @@ describe("企业版卡点", () => {
       // 看板上可看全部的人能切「只看自己」
       expect((await 卡点看板(散主管, { 只看自己: true })).栏.处理中.map((x) => x.id)).toEqual([b.id]); // 认领了，算自己的
       expect((await 卡点看板(虚, {})).栏.处理中.map((x) => x.id)).toEqual([b.id]);
-      expect((await 卡点看板(虚, { 只看自己: true })).栏.处理中).toEqual([]);
+      // 只看自己也有上级链：虚 是负责人的虚线上级，照样在
+      expect((await 卡点看板(虚, { 只看自己: true })).栏.处理中.map((x) => x.id)).toEqual([b.id]);
 
       expect(await 存卡点角色开关(老板, { 启用: { sales: false } })).toMatchObject({ ok: true });
       invalidateSettingsCache();
@@ -282,6 +286,44 @@ describe("企业版卡点", () => {
       // 创建人、创建人直属上级照旧
       expect((await 项目的卡点(组员, 散的项目)).map((x) => x.id)).toEqual([b.id]);
       expect((await 项目的卡点(组长, 散的项目)).map((x) => x.id)).toEqual([b.id]);
+    });
+
+    it("上级链（11-01 复盘范围）：间接上级、虚线上级、虚线下属的实线下属都看得到，和项目列表的组织范围一致；进公海后不凭负责人这条线看", async () => {
+      // 大主管 → 组长 → 销售（实线两级）；虚2 虚线管 组长；虚上 是 虚 的实线上级
+      const 大主管 = await 建("big-mgr");
+      const 虚2 = await 建("dotted-2");
+      const 虚上 = await 建("dotted-up");
+      await prisma.entMember.createMany({ data: [
+        { userId: 大主管.id, bizRole: "sales_mgr" }, { userId: 虚2.id, bizRole: "sales_mgr" }, { userId: 虚上.id, bizRole: "sales_mgr" },
+      ] });
+      await prisma.entMember.update({ where: { userId: 组长.id }, data: { managerId: 大主管.id, dottedManagerId: 虚2.id } });
+      await prisma.entMember.update({ where: { userId: 虚.id }, data: { managerId: 虚上.id } });
+      const b = await 发(); // 销售 发、销售 负责
+      for (const p of [大主管, 组长, 虚, 虚2]) {
+        expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).toEqual([b.id]);
+        expect((await 卡点看板(p)).栏.待接受.map((x) => x.id), p.id).toEqual([b.id]);
+      }
+      expect((await 我的卡点(大主管)).map((x) => x.id)).toEqual([b.id]);
+      // 虚线只往下走一跳再顺实线：虚 的实线上级不因此看到 虚 的虚线下属；别组主管看不到
+      for (const p of [虚上, 散主管]) expect(await 项目的卡点(p, 项目), p.id).toEqual([]);
+      // 和项目列表同一套：组织范围of 的「读」里有负责人 ⇔ 卡点看得到
+      const org = await 读组织();
+      for (const p of [大主管, 组长, 虚, 虚2, 虚上, 散主管]) {
+        const 范围 = 组织范围of(org, "SALES", p.id)!;
+        expect((范围.读 ?? 范围.写).includes(销售.id), p.id).toBe((await 项目的卡点(p, 项目)).length > 0);
+      }
+      expect(await 认领卡点(大主管, b.id)).toMatchObject({ ok: true });
+      expect(await 认领卡点(虚上, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
+
+      // 第二条：创建人换成别组的人，只剩负责人这条线；进公海后上级们（实线、虚线）都看不到，创建人的上级照旧
+      const b2 = await 发();
+      await prisma.entBlocker.update({ where: { id: b2.id }, data: { creatorId: 散.id } });
+      for (const p of [大主管, 虚2, 散主管]) expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).toContain(b2.id);
+      await prisma.project.update({ where: { id: 项目 }, data: { pooledAt: new Date() } });
+      for (const p of [大主管, 组长, 虚, 虚2]) expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).not.toContain(b2.id);
+      expect((await 项目的卡点(散主管, 项目)).map((x) => x.id)).toEqual([b2.id]);
+      // 大主管 认领过的那条照样凭认领行看得到
+      expect((await 项目的卡点(大主管, 项目)).map((x) => x.id)).toContain(b.id);
     });
 
     it("管理员（业务角色 admin）只读：看全部，发、认领、完成、改设置、管原因、删都拒；兼总管理就能写", async () => {

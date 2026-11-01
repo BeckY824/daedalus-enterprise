@@ -10,7 +10,8 @@
  *
  * 谁看得到（B6 / B7，只认业务角色 EntMember.bizRole，账号角色 ADMIN / MANAGER 不算；没设业务角色 = 什么都没有）：
  *   - 角色开关「启用 / 停用」：我的业务角色里有一个启用了才用得上卡点
- *   - 「可看全部」：全部卡点；「只看自己」：创建人、创建人的直属上级、项目负责人和负责人的直属上级（项目不在公海）、点了同意的组员、认领人
+ *   - 「可看全部」：全部卡点；「只看自己」：创建人、项目负责人（项目不在公海）、点了同意的组员、认领人，
+ *     加上创建人 / 负责人的上级链（实线整条链 + 虚线，同项目列表、组织范围of 的「读」，11-01 复盘范围定稿）
  *   看得到 = 能认领（不算改项目）。
  * 谁能写（11-01 定稿）：业务角色 admin（管理员）只读——发、认领、完成、改、删、原因管理一律拒（同时是 director 的不算只读）；
  *   字典、开关、删卡点只有总管理（业务角色 director）。
@@ -23,7 +24,7 @@ import { 看已删 } from "../enterprise/soft-delete-core";
 import { 看全部 } from "../team-scope";
 import { getSetting, setSetting } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 读组织, 直属上级of, 实线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
+import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
@@ -227,17 +228,28 @@ type 带全的卡点 = Prisma.EntBlockerGetPayload<{ include: typeof 卡点带 }
 
 const 组织of = async (): Promise<组织 | null> => (企业版() ? 读组织() : null);
 
-function 相关人(b: 带全的卡点, org: 组织 | null) {
+function 相关人(b: 带全的卡点) {
   return {
-    creatorId: b.creatorId, 创建人上级: org ? 直属上级of(org, b.creatorId) : null,
-    ownerId: b.project.ownerId, 负责人上级: org ? 直属上级of(org, b.project.ownerId) : null, 在公海: b.project.pooledAt !== null,
+    creatorId: b.creatorId, ownerId: b.project.ownerId, 在公海: b.project.pooledAt !== null,
     组员们: b.project.members.map((m) => m.userId), 认领人们: b.claims.map((c) => c.userId),
   };
 }
 
-/** 「只看自己」时的查询条件，和 看得到卡点 一个意思（X 的直属上级 = 我 → X 是我的直属下属） */
+/**
+ * 我凭上级身份能看谁的卡点（不含我自己）：实线下属整条链 + 虚线下属和他们的实线下属。
+ * 和 组织范围of 的「读」同一套（11-01：「上级可以看下级。最下级只能看自己」），只是不认账号角色 ADMIN——卡点只认业务角色
+ */
+function 我的下属们(org: 组织 | null, 我: string): Set<string> {
+  if (!org || !org.成员.has(我)) return new Set();
+  const 读 = new Set(实线下属(org, 我));
+  for (const d of 虚线下属(org, 我)) for (const x of [d, ...实线下属(org, d)]) 读.add(x);
+  读.delete(我);
+  return 读;
+}
+
+/** 「只看自己」时的查询条件，和 看得到卡点 一个意思 */
 function 自己的条件(我: string, org: 组织 | null): Prisma.EntBlockerWhereInput {
-  const 下属们 = org ? [...实线下属(org, 我, 1)] : [];
+  const 下属们 = [...我的下属们(org, 我)];
   return {
     OR: [
       { creatorId: 我 },
@@ -324,7 +336,7 @@ export async function 认领卡点(me: 谁, blockerId: string): Promise<卡点�
   if (!权.能写) return 只读;
   return 查完再写((tx) => 看全部(async () => {
     const b = await 拿卡点(tx, blockerId);
-    if (!b || !看得到卡点(me.id, 权, 相关人(b, org))) return 不在了;
+    if (!b || !看得到卡点(me.id, 权, 相关人(b), 我的下属们(org, me.id))) return 不在了;
     if (b.status === "已解决") return { ok: false as const, error: "这个卡点已经解决了，不能再认领" };
     if (b.claims.some((c) => c.userId === me.id)) return { ok: false as const, error: "你已经认领了" };
     await tx.entBlockerClaim.create({ data: { blockerId: b.id, userId: me.id } });
@@ -348,7 +360,7 @@ export async function 完成卡点(
   if (!权.能写) return 只读;
   return 查完再写((tx) => 看全部(async () => {
     const b = await 拿卡点(tx, blockerId);
-    if (!b || !看得到卡点(me.id, 权, 相关人(b, org))) return 不在了;
+    if (!b || !看得到卡点(me.id, 权, 相关人(b), 我的下属们(org, me.id))) return 不在了;
     if (b.status === "已解决") return { ok: false as const, error: "这个卡点已经解决了" };
     const 我的 = b.claims.find((c) => c.userId === me.id);
     if (!我的) return { ok: false as const, error: "你没认领这个卡点" };
