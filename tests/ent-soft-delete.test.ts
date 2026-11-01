@@ -2,7 +2,8 @@
  * 企业版软删与回收站（P9，2026-10-29，lib/enterprise/soft-delete*.ts、settings/trash-actions.ts）。
  * 钉的是：删了的从列表 / 详情 / 统计里消失（Prisma 扩展统一滤 + 裸 SQL 各自带条件）；客户连带联系人、项目、沟通记录
  * 同一时刻进回收站、一起回来；单独删的所属客户还在回收站里先不让恢复；30 天到期真删、线索退回；
- * 老板 / 主管 / 管理员能看能恢复，只有老板和总管理员能彻底删除，业务员都不行；查重不算回收站里的；不是企业版照旧真删。
+ * 只认业务角色（11-01）：删除、回收站看 / 恢复 / 彻底删除都只有总管理；账号 ADMIN / MANAGER、销售管理、市场管理、管理员都不行；
+ * 查重不算回收站里的；不是企业版照旧真删。
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
@@ -27,7 +28,7 @@ import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
 import { 回收站列表, 恢复, 彻底删除, 清过期, 每天清一次, 看已删, 能管回收站, 能彻底删除 } from "@/lib/enterprise/soft-delete";
 import { 回收站列表动作, 恢复回收站, 彻底删除回收站 } from "@/app/(app)/settings/trash-actions";
 
-let 老板: string, 总管: string, 销售经理: string, 市场: string, 销售: string, 主管: string;
+let 老板: string, 管员: string, 总管: string, 销售经理: string, 市场: string, 销售: string, 主管: string;
 let 张三: string, 李四: string, 联系人: string, 记录: string, 项目: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
 const 天 = 86_400_000;
@@ -42,8 +43,11 @@ beforeEach(async () => {
   市场 = await 人("mkt", "市场小李");
   销售 = await 人("s1", "小王");
   主管 = await 人("m1", "主管账号", "MANAGER");
+  管员 = await 人("adm", "管理员账号", "ADMIN");
   await prisma.entMember.createMany({
     data: [
+      { userId: 老板, bizRole: "director" },
+      { userId: 管员, bizRole: "admin" },
       { userId: 总管, bizRole: "director" },
       { userId: 销售经理, bizRole: "sales_mgr" },
       { userId: 市场, bizRole: "marketing_mgr" },
@@ -144,10 +148,11 @@ describe("回收站列表与恢复", () => {
   });
 
   it("单独删的项目（老数据）、沟通记录各自进回收站，各自恢复", async () => {
-    // 企业版删项目一律拒（M-权限-10），项目原样还在；回收站里单独的项目只剩老数据，直接写 deletedAt 造一个
-    expect(await 删项目({ id: 老板, role: "ADMIN" }, 项目)).toMatchObject({ ok: false, error: 项目不能删提示 });
+    // 企业版删项目只有总管理（11-01）：负责人自己、账号 ADMIN 没业务角色的都被拒；总管理删了进回收站
+    expect(await 删项目({ id: 销售, role: "SALES" }, 项目)).toMatchObject({ ok: false, error: 项目不能删提示 });
+    expect(await 删项目({ id: 管员, role: "ADMIN" }, 项目)).toMatchObject({ ok: false, error: 项目不能删提示 });
     expect(await prisma.project.count()).toBe(1);
-    await raw.project.update({ where: { id: 项目 }, data: { deletedAt: new Date() } });
+    expect(await 删项目({ id: 老板, role: "ADMIN" }, 项目)).toMatchObject({ ok: true });
     expect((await deleteFollowUp(记录, 张三)).ok).toBe(true);
     expect(await prisma.project.count()).toBe(0);
     expect(await prisma.followUp.count()).toBe(0);
@@ -200,29 +205,26 @@ describe("30 天到期清理", () => {
 });
 
 describe("谁能看、恢复、彻底删除", () => {
-  it("能看能恢复：老板、主管、销售管理、市场管理、总管理员；业务员不行。彻底删除只有老板和总管理员", async () => {
+  it("看、恢复、彻底删除都只有总管理；账号 ADMIN / MANAGER、管理员、销售管理、市场管理、业务员都不行", async () => {
     const 看 = async (id: string, role = "SALES") => [await 能管回收站({ id, role }), await 能彻底删除({ id, role })];
     expect(await 看(老板, "ADMIN")).toEqual([true, true]);
     expect(await 看(总管)).toEqual([true, true]);
-    expect(await 看(主管, "MANAGER")).toEqual([true, false]);
-    expect(await 看(销售经理)).toEqual([true, false]);
-    expect(await 看(市场)).toEqual([true, false]);
+    expect(await 看(管员, "ADMIN")).toEqual([false, false]);
+    expect(await 看(主管, "MANAGER")).toEqual([false, false]);
+    expect(await 看(销售经理)).toEqual([false, false]);
+    expect(await 看(市场)).toEqual([false, false]);
     expect(await 看(销售)).toEqual([false, false]);
   });
 
-  it("服务端动作也拦：业务员看不了、恢复不了；销售管理能恢复但不能彻底删除；总管理员能彻底删除", async () => {
+  it("服务端动作也拦：除了总管理谁都看不了、恢复不了、彻底删不了；总管理能彻底删除", async () => {
     await deleteCustomers([张三]);
-    当(销售);
-    expect(await 回收站列表动作()).toEqual({ ok: false, error: "只有老板和管理员能看回收站" });
-    expect(await 恢复回收站("Customer", 张三)).toEqual({ ok: false, error: "只有老板和管理员能恢复" });
-    expect(await 彻底删除回收站("Customer", 张三)).toEqual({ ok: false, error: "只有老板和总管理员能彻底删除" });
-
-    当(主管, "MANAGER");
-    expect(await 彻底删除回收站("Customer", 张三)).toEqual({ ok: false, error: "只有老板和总管理员能彻底删除" });
-    当(销售经理);
-    const 列 = await 回收站列表动作();
-    expect(列).toMatchObject({ ok: true, 能彻底删除: false });
-    expect(await 彻底删除回收站("Customer", 张三)).toEqual({ ok: false, error: "只有老板和总管理员能彻底删除" });
+    for (const [id, role] of [[销售, "SALES"], [主管, "MANAGER"], [销售经理, "SALES"], [管员, "ADMIN"]] as const) {
+      当(id, role);
+      expect(await 回收站列表动作()).toEqual({ ok: false, error: "只有总管理能看回收站" });
+      expect(await 恢复回收站("Customer", 张三)).toEqual({ ok: false, error: "只有总管理能恢复" });
+      expect(await 彻底删除回收站("Customer", 张三)).toEqual({ ok: false, error: "只有总管理能彻底删除" });
+    }
+    当(老板, "ADMIN");
     expect(await raw.customer.count()).toBe(2);
     expect(await 恢复回收站("Customer", 张三)).toMatchObject({ ok: true, 连带: 3 });
     expect(await prisma.auditLog.count({ where: { action: "restore", entityId: 张三 } })).toBe(1);

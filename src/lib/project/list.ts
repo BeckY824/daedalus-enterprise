@@ -67,7 +67,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 今 = new Date();
   // 首页指标卡的筛选只在企业版认；条件和卡上 count 用的是同一份（home-cards.ts），数对得上
   const 卡 = 规则 ? 认首页卡(sp.f) : "";
-  // 点卡进来的，和卡上的数同一圈（首页卡范围：业务员只看自己，上级看自己 + 下属，市场的人加市场那一圈，老板全看），数对得上
+  // 点卡进来的，和卡上的数同一圈（首页卡范围：按负责人，最下级只看自己，上级看自己 + 下属，总管理 / 管理员全看），数对得上
   const 卡的圈 = 卡 ? await 首页卡范围(me) : undefined;
   const 字典 = 字典of(企);
   const 阶进 = 阶段进程条件(sp, 字典);

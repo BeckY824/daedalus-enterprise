@@ -5,6 +5,7 @@ import { 附件个数, 项目分类附件数 } from "@/lib/attachments";
 import { getCurrentUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { 能管项目, 露客户, 看得到的客户 } from "@/lib/project/db";
+import { 权限组织 } from "@/lib/enterprise/org";
 import type { 归属 } from "@/lib/attachment-rules";
 import { 能删改沟通, 不能删改沟通话 } from "@/lib/enterprise/follow-perm";
 
@@ -68,7 +69,7 @@ async function 认项目(projectId: string, 要改: boolean): Promise<{ 叫法: 
   const p = await prisma.project.findFirst({ where: { id: projectId }, select: { name: true, customerId: true, ownerId: true, pooledAt: true } });
   if (!p) return { 错: "这个项目已经不在了，刷新看看", 状态: 404 };
   if (!露客户(我, p, await 看得到的客户([p.customerId]))) return { 错: "这个项目在公海里，先领取再看附件", 状态: 403 };
-  if (要改 && !能管项目(我, p)) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改", 状态: 403 };
+  if (要改 && !能管项目(我, p, await 权限组织())) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改", 状态: 403 };
   return { 叫法: `项目「${p.name}」` };
 }
 
@@ -93,7 +94,9 @@ async function 认沟通(followUpId: string, 要改: boolean | "删"): Promise<{
   if (f.ownerId !== 我.id) return { 错: "只有记这条沟通的人、总管理员或经理能传附件", 状态: 403 };
   const p = await prisma.project.findFirst({ where: { id: 挂.projectId }, select: { id: true, ownerId: true, pooledAt: true } });
   if (!p || p.pooledAt) return { 错: "这个项目在公海里，先领取再传", 状态: 403 };
-  if (!能管项目(我, p)) {
+  if (!能管项目(我, p, await 权限组织())) {
+    // 企业版（11-01）：组员只能看，沟通附件也只有负责人能传
+    if (企业版()) return { 错: "只有项目负责人能传附件，项目组成员只能看", 状态: 403 };
     const 组员 = await defaultClient.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: 我.id } }, select: { inviteStatus: true } });
     if (组员?.inviteStatus !== "JOINED") return { 错: "你已经不在这个项目组里了，传不了附件", 状态: 403 };
   }

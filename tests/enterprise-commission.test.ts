@@ -26,7 +26,7 @@ import { 算提成, 分到每人, 分配问题, 默认提成比例, 更正问题
 import { 读组织 } from "@/lib/enterprise/org";
 import { invalidateSettingsCache } from "@/lib/settings";
 
-let 甲: string; // 老板
+let 甲: string; // 老板（业务角色总管理）
 let 乙: string; // 组长（项目负责人）
 let 丙: string; // 已进组的组员
 let 丁: string; // 邀请了还没同意
@@ -43,7 +43,7 @@ const 名 = (uid: string) => ({ [甲]: "甲", [乙]: "乙", [丙]: "丙", [丁]:
 const 卡 = async (who: { id: string; role: string }) => {
   const p = await prisma.project.findUniqueOrThrow({ where: { id: 项目id } });
   const 在组 = (await prisma.projectMember.findMany({ where: { projectId: 项目id, inviteStatus: "JOINED" } })).map((m) => m.userId);
-  return 读项目提成(who, p, 在组, null, 名, prisma);
+  return 读项目提成(who, p, 在组, await 读组织(), 名, prisma);
 };
 
 beforeEach(async () => {
@@ -55,6 +55,8 @@ beforeEach(async () => {
   乙 = (await prisma.user.create({ data: { email: "yi", name: "乙", title: "", role: "SALES", password: "x" } })).id;
   丙 = (await prisma.user.create({ data: { email: "bing", name: "丙", title: "", role: "SALES", password: "x" } })).id;
   丁 = (await prisma.user.create({ data: { email: "ding", name: "丁", title: "", role: "SALES", password: "x" } })).id;
+  // 11-01：权限只认业务角色，老板要设成总管理
+  await prisma.entMember.createMany({ data: [{ userId: 甲, bizRole: "director" }, { userId: 乙, bizRole: "sales" }] });
   当(甲, "ADMIN");
   const c = await prisma.customer.create({ data: { name: "客户", phone: "13800000001", salesOwnerId: 乙 } });
   项目id = (await prisma.project.create({
@@ -124,7 +126,7 @@ describe("提成比例 A / B", () => {
   });
   it("销售改不了；超出 0–100 拦", async () => {
     当(乙, "SALES");
-    expect(await 改提成比例(三套(3, 25))).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
+    expect(await 改提成比例(三套(3, 25))).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理") });
     当(甲, "ADMIN");
     expect(await 改提成比例(三套(3, 25, { 外贸: [101, 25] }))).toMatchObject({ ok: false, error: expect.stringContaining("外贸") });
     expect(await prisma.setting.findUnique({ where: { key: "entCommissionRates" } })).toBeNull();
@@ -214,8 +216,9 @@ describe("赢单固定实际提成", () => {
     当(乙, "SALES");
     await 存项目底价(项目id, 100000);
     await 存提成分配(项目id, { [丙]: 25 });
-    当(甲, "ADMIN");
+    // 11-01：推节点只给负责人本人
     expect(await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true, 变了: true });
+    当(甲, "ADMIN");
     const c = await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } });
     expect(c).toMatchObject({ fixedDeal: 120000, fixedBase: 100000, fixedRateBase: 2, fixedRatePremium: 30, fixedTotal: 8000 });
     expect(c.fixedAt).toBeInstanceOf(Date);
@@ -232,12 +235,12 @@ describe("赢单固定实际提成", () => {
     expect(await 存项目底价(项目id, 90000)).toMatchObject({ ok: false, error: expect.stringContaining("已经赢单") });
 
     // 进了订单不回商机（10-26 三大阶段规则），固定的提成也就一直不动
-    当(甲, "ADMIN");
     expect(await 改节点(mocks.user, 项目id, { phase: "商机", node: "首款支付" })).toMatchObject({ ok: false, error: expect.stringContaining("不能退回商机") });
     expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedTotal: 8000, basePrice: 100000 });
   });
 
   it("没填底价就赢单：在订单阶段补填底价时固定", async () => {
+    当(乙, "SALES");
     expect(await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
     expect(await prisma.entCommission.findUnique({ where: { projectId: 项目id } })).toBeNull();
     当(乙, "SALES");
@@ -259,25 +262,27 @@ describe("按负责人的业务线取比例（10-27）", () => {
     当(甲, "ADMIN");
   });
   it("负责人是内贸：预估和赢单固定都按内贸那一套", async () => {
-    await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: "内贸" } });
+    await prisma.entMember.update({ where: { userId: 乙 }, data: { line: "内贸" } });
     const t = await 卡带组织();
     expect(t.范围).toBe("内贸");
     expect(t.比例).toEqual({ 底价比例: 1, 溢价比例: 10 });
     expect(t.预估?.合计).toBe(3000);
+    当(乙, "SALES");
     await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
     expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedRateBase: 1, fixedRatePremium: 10, fixedTotal: 3000 });
   });
   it("负责人是外贸：按外贸", async () => {
-    await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: "外贸" } });
+    await prisma.entMember.update({ where: { userId: 乙 }, data: { line: "外贸" } });
     expect((await 卡带组织()).预估?.合计).toBe(11000);
+    当(乙, "SALES");
     await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
     expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedRateBase: 3, fixedRatePremium: 40, fixedTotal: 11000 });
   });
-  it("两边都做（业务线空）、不在组织里：按不限", async () => {
-    expect((await 卡带组织()).范围).toBe("不限");
-    await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: null } });
+  it("两边都做（业务线空）：按不限", async () => {
+    await prisma.entMember.update({ where: { userId: 乙 }, data: { line: null } });
     const t = await 卡带组织();
     expect([t.范围, t.预估?.合计]).toEqual(["不限", 8000]);
+    当(乙, "SALES");
     await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
     expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedRateBase: 2, fixedRatePremium: 30, fixedTotal: 8000 });
   });
@@ -289,8 +294,9 @@ describe("总管理员更正已固定提成（10-27）", () => {
     当(乙, "SALES");
     await 存项目底价(项目id, 100000);
     await 存提成分配(项目id, { [丙]: 25 });
-    当(甲, "ADMIN");
+    // 11-01：推节点只给负责人本人
     await 改节点(mocks.user, 项目id, { phase: "订单", node: "生产备货" });
+    当(甲, "ADMIN");
   };
   const 组织卡 = async (who: { id: string; role: string }) => {
     const p = await prisma.project.findUniqueOrThrow({ where: { id: 项目id } });
@@ -329,7 +335,7 @@ describe("总管理员更正已固定提成（10-27）", () => {
     expect(await prisma.auditLog.count()).toBe(条数);
   });
 
-  it("别人都不行：管理员、销售管理、组长、组员拦下一行不写，卡片上也没有入口；没设业务角色的老板按总管理算", async () => {
+  it("别人都不行：管理员、销售管理、组长、组员拦下一行不写，卡片上也没有入口；没设业务角色的老板也不行", async () => {
     await 赢单();
     const 己 = (await prisma.user.create({ data: { email: "ji", name: "己", title: "", role: "SALES", password: "x" } })).id;
     await prisma.entMember.create({ data: { userId: 己, bizRole: "admin" } });
@@ -337,11 +343,16 @@ describe("总管理员更正已固定提成（10-27）", () => {
     for (const [id, role] of [[己, "SALES"], [庚, "MANAGER"], [乙, "SALES"], [丙, "SALES"]] as const) {
       当(id, role);
       expect(await 更正实际提成(项目id, 1, "改")).toMatchObject({ ok: false, error: "只有总管理员能更正已固定的提成" });
-      expect((await 组织卡({ id, role }))?.能更正).toBe(false);
+      expect((await 组织卡({ id, role }))?.能更正 ?? false).toBe(false); // 账号是主管、没设业务角色的连卡都看不到
     }
     expect(await prisma.entCommission.findUniqueOrThrow({ where: { projectId: 项目id } })).toMatchObject({ fixedTotal: 8000 });
     expect((await 组织卡({ id: 己, role: "SALES" }))!.实际).not.toHaveProperty("按算式");
     expect((await 组织卡({ id: 甲, role: "ADMIN" }))?.能更正).toBe(true);
+    // 11-01：兜底不留，老板没设业务角色就没权限
+    await prisma.entMember.delete({ where: { userId: 甲 } });
+    当(甲, "ADMIN");
+    expect(await 更正实际提成(项目id, 1, "改")).toMatchObject({ ok: false, error: "只有总管理员能更正已固定的提成" });
+    expect((await 组织卡({ id: 甲, role: "ADMIN" }))?.能更正 ?? false).toBe(false);
   });
 
   it("还没固定：不让更正，卡片也不给入口；原因没写拦", async () => {

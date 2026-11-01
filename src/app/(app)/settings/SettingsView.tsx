@@ -4,6 +4,7 @@ import { useBusinessTimeZone } from "@/lib/business-client";
 import { 同名带邮箱 } from "@/lib/utils";
 
 import { useState } from "react";
+import { ConfigProvider } from "antd";
 import { useSearchParams, usePathname } from "next/navigation";
 import { PageHead } from "@/components/ui";
 import "./settings.css";
@@ -46,6 +47,7 @@ export default function SettingsView({
   users,
   me,
   isAdmin,
+  只读 = false,
   logs,
   llm,
   business,
@@ -64,6 +66,8 @@ export default function SettingsView({
   users: Row[];
   me: SessionUser;
   isAdmin: boolean;
+  /** 企业版管理员（admin）：设置页能看、不能改（11-01）。AI 接入 / 业务配置控件全灰，团队成员不给编辑 */
+  只读?: boolean;
   logs: AuditRow[];
   llm: LlmView;
   business: BusinessConfig;
@@ -113,13 +117,13 @@ export default function SettingsView({
      * 于是销售想改自己的名字得去求管理员。
      */
     { key: "profile", label: "个人资料", children: <ProfileTab me={{ name: me.name, title: me.title, email: me.email }} /> },
-    { key: "members", label: "团队成员", children: <MembersTab users={users} me={me} isAdmin={isAdmin} 用邮箱登录={用邮箱登录} 企业版={企业版} 下属可停用={下属可停用} /> },
+    { key: "members", label: "团队成员", children: <MembersTab users={users} me={me} isAdmin={isAdmin && !只读} 用邮箱登录={用邮箱登录} 企业版={企业版} 下属可停用={下属可停用} /> },
     { key: "keymap", label: "快捷键", children: <KeymapTab /> },
     { key: "appearance", label: "外观", children: <AppearanceTab /> },
     { key: "password", label: "登录与密码", children: <PasswordTab 机器={机器} /> },
-    // AI 接入、业务配置全团队一份，只有管理员 / 老板改
-    ...(isAdmin ? [{ key: "ai", label: "AI 接入", children: <AiSettingsTab llm={llm} usage={aiUsage} 企业版={企业版} /> }] : []),
-    ...(isAdmin ? [{ key: "business", label: "业务配置", children: <BusinessSettingsTab value={business} 多人={users.filter((u) => u.active).length > 1} 企业版={企业版} /> }] : []),
+    // AI 接入、业务配置全团队一份，只有老板（企业版：总管理）改；企业版管理员只读看，控件整栏灰掉（服务端 requireAdmin 另外拦）
+    ...(isAdmin ? [{ key: "ai", label: "AI 接入", children: <ConfigProvider componentDisabled={只读}><AiSettingsTab llm={llm} usage={aiUsage} 企业版={企业版} /></ConfigProvider> }] : []),
+    ...(isAdmin ? [{ key: "business", label: "业务配置", children: <ConfigProvider componentDisabled={只读}><BusinessSettingsTab value={business} 多人={users.filter((u) => u.active).length > 1} 企业版={企业版} /></ConfigProvider> }] : []),
     ...(组织架构 ? [{ key: "org", label: "组织架构", children: <OrgTab value={组织架构} /> }] : []),
     ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={持有成员} /> }] : []),
     ...(导入记录 ? [{ key: "imports", label: "导入记录", children: <ImportsTab /> }] : []),

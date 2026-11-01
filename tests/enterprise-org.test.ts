@@ -23,16 +23,17 @@ it("推业务角色：管理员 → 总管理员，主管 → 销售管理，其
   expect(推业务角色(null)).toBe("sales");
 });
 
-it("建组织：停用的人不进；没 EntMember 行按账号角色推；乱填的角色、业务线、删掉的部门都当没填", () => {
+it("建组织：停用的人不进；没 EntMember 行 = 没业务角色（不按账号角色推，11-01）；乱填的角色、业务线、删掉的部门都当没填", () => {
   const org = 建组织(
     [人("boss", "ADMIN"), 人("a"), 人("gone", "SALES", false), 人("m", "MANAGER")],
     [行({ userId: "a", deptId: "deleted", bizRole: "ceo", line: "国际" }), 行({ userId: "gone", deptId: "nei" })],
     部门,
   );
   expect([...org.成员.keys()].sort()).toEqual(["a", "boss", "m"]);
-  expect(org.成员.get("boss")!.bizRole).toBe("director");
-  expect(org.成员.get("m")!.bizRole).toBe("sales_mgr");
-  expect(org.成员.get("a")).toMatchObject({ deptId: null, bizRole: "sales", line: null });
+  // 账号 ADMIN / MANAGER 没 EntMember 行：没业务角色，就没权限
+  expect(org.成员.get("boss")).toMatchObject({ bizRole: null, 角色们: [] });
+  expect(org.成员.get("m")).toMatchObject({ bizRole: null, 角色们: [] });
+  expect(org.成员.get("a")).toMatchObject({ deptId: null, bizRole: null, 角色们: [], line: null });
 });
 
 it("直属上级：显式指定的优先；指定的人停用了、指定自己的都不算", () => {
@@ -130,14 +131,15 @@ it("虚线下属：只顺虚线走，成环不转圈，不含自己", () => {
   expect([...虚线下属(org, "a", 1)]).toEqual(["b"]);
 });
 
-it("管理员三类：总管理员 / 销售管理 / 市场管理；其余角色和不在册的不是管理员", () => {
+it("管理员类别：总管理员 / 销售管理 / 市场管理 / 管理员（只读）；账号 ADMIN 没业务角色的、其余角色和不在册的都不是", () => {
   const org = 建组织(
-    [人("boss", "ADMIN"), 人("adm"), 人("sm"), 人("mm"), 人("s"), 人("ops")],
-    [行({ userId: "adm", bizRole: "admin" }), 行({ userId: "sm", bizRole: "sales_mgr" }), 行({ userId: "mm", bizRole: "marketing_mgr" }), 行({ userId: "ops", bizRole: "channel_ops" })],
+    [人("boss", "ADMIN"), 人("dir"), 人("adm"), 人("sm"), 人("mm"), 人("s"), 人("ops")],
+    [行({ userId: "dir", bizRole: "director" }), 行({ userId: "adm", bizRole: "admin" }), 行({ userId: "sm", bizRole: "sales_mgr" }), 行({ userId: "mm", bizRole: "marketing_mgr" }), 行({ userId: "ops", bizRole: "channel_ops" })],
     部门,
   );
-  expect(管理员类别of(org, "boss")).toBe("总管理员");
-  expect(管理员类别of(org, "adm")).toBe("总管理员");
+  expect(管理员类别of(org, "boss")).toBeNull();
+  expect(管理员类别of(org, "dir")).toBe("总管理员");
+  expect(管理员类别of(org, "adm")).toBe("管理员");
   expect(管理员类别of(org, "sm")).toBe("销售管理");
   expect(管理员类别of(org, "mm")).toBe("市场管理");
   expect(管理员类别of(org, "s")).toBeNull();

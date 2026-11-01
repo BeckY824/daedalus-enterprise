@@ -216,7 +216,8 @@ export type 投入行 = { id: string; amount: number; currency: string; date: st
 async function 挡投入(me: { id: string; role: string }, channelId: string): Promise<{ 名: string } | { error: string; 不在?: true }> {
   const c = await prisma.channel.findUnique({ where: { id: channelId }, select: { name: true } });
   if (!c) return { error: "这个渠道已经不在了（可能在别处删了），刷新看看", 不在: true };
-  const 能 = me.role === "ADMIN" || (企业版() && 能录投入(await 读组织(), me));
+  // 企业版只认业务角色（11-01：账号管理员不再放行）；不是企业版只认老板
+  const 能 = 企业版() ? 能录投入(await 读组织(), me) : me.role === "ADMIN";
   return 能 ? { 名: c.name } : { error: 不能录投入 };
 }
 

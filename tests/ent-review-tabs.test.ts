@@ -1,9 +1,9 @@
 /**
  * 企业版复盘页四个页签（U-复盘-01，10-31 会议）：任务 | 卡点 | 沟通 | 数据。这里测新加的「卡点」「沟通」两个页签：
  *   - 卡点条件 / 沟通条件（纯函数）：总管理员不限人；成员 / 经理按 看板的人 的 谁 圈；卡点状态、沟通时间段筛
- *   - 复盘卡点of：成员只看到自己负责项目上的 + 指认给自己的 / 自己发的；经理看到自己 + 下属的、看不到外人的；
- *     总管理员看全部；公海里的项目的卡点不给非总管理员；默认只列未解决；按发布时间倒序；分页；不是企业版给空
- *   - 复盘沟通of：只列挂在项目上的沟通；成员只看到自己记的；经理看到自己 + 下属的；总管理员全部；时间倒序；最近几天筛
+ *   - 复盘卡点of（11-01 只按负责人数）：成员只看到自己负责项目上的（指认给自己的别人项目上的不算）；经理看到自己 + 下属的、看不到外人的；
+ *     总管理看全部；公海里的项目的卡点不给非总管理；默认只列未解决；按发布时间倒序；分页；不是企业版给空
+ *   - 复盘沟通of：只列挂在项目上的沟通，按项目负责人圈；成员只看到自己项目上的；经理看到自己 + 下属的；总管理全部；时间倒序；最近几天筛
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,21 +30,18 @@ describe("纯函数：地址栏、条件", () => {
     expect([夹页(0, 50), 夹页(9, 50), 夹页(2, 50), 夹页(3, 0)]).toEqual([1, 3, 2, 1]);
   });
 
-  it("卡点条件：总管理员（谁 = undefined）只按状态；经理看下属只按下属负责、不在公海的项目；含自己时加上指认 / 发布 / 参与的", () => {
+  it("卡点条件：总管理（谁 = undefined）只按状态；别人只按 谁 负责、不在公海的项目（含自己也不加指认 / 发布 / 参与的）", () => {
     expect(卡点条件(undefined, 老板, "open")).toEqual({ status: { not: "已解决" } });
     expect(卡点条件(undefined, 老板, "all")).toEqual({});
-    expect(卡点条件([小王], 经理, "done")).toEqual({ status: "已解决", OR: [{ project: { ownerId: { in: [小王] }, pooledAt: null } }] });
-    const 自己 = 卡点条件([经理, 小王], 经理, "all");
-    expect(自己.OR).toHaveLength(4);
-    expect(自己.OR).toContainEqual({ assigneeId: 经理 });
-    expect(自己.OR).toContainEqual({ creatorId: 经理 });
+    expect(卡点条件([小王], 经理, "done")).toEqual({ status: "已解决", project: { ownerId: { in: [小王] }, pooledAt: null } });
+    expect(卡点条件([经理, 小王], 经理, "all")).toEqual({ project: { ownerId: { in: [经理, 小王] }, pooledAt: null } });
   });
 
-  it("沟通条件：只要挂在没删的项目上的；谁 给了按记录人筛；最近 N 天从那天零点算", () => {
+  it("沟通条件：只要挂在没删的项目上的；谁 给了按项目负责人筛、公海的不算；最近 N 天从那天零点算", () => {
     const now = dayjs("2026-10-31T15:00:00");
     expect(沟通条件(undefined, "all", now)).toEqual({ projectNode: { is: { project: { deletedAt: null } } } });
     const w = 沟通条件([小王], "7", now);
-    expect(w.ownerId).toEqual({ in: [小王] });
+    expect(w.projectNode).toEqual({ is: { project: { deletedAt: null, ownerId: { in: [小王] }, pooledAt: null } } });
     expect(dayjs((w.occurredAt as { gte: Date }).gte).format("YYYY-MM-DD HH:mm")).toBe("2026-10-25 00:00");
   });
 });
@@ -90,13 +87,14 @@ describe("库里取数和数据范围", () => {
       项目[u.id] = (await prisma.project.create({ data: { name: `${u.name}的项目`, customerId: 客户[u.id], ownerId: u.id, creatorId: u.id } })).id;
       await 记沟通(u.id, `${u.name}聊了`, 1);
     }
-    await prisma.entMember.create({ data: { userId: 经理 } });
-    await prisma.entMember.create({ data: { userId: 小王, managerId: 经理 } });
-    await prisma.entMember.create({ data: { userId: 外人 } });
+    await prisma.entMember.create({ data: { userId: 老板, bizRole: "director" } });
+    await prisma.entMember.create({ data: { userId: 经理, bizRole: "sales_mgr" } });
+    await prisma.entMember.create({ data: { userId: 小王, bizRole: "sales", managerId: 经理 } });
+    await prisma.entMember.create({ data: { userId: 外人, bizRole: "sales" } });
     // 每个项目一条未解决卡点（发布时间错开，老板的最新）
     for (const [k, u] of 用户.entries())
       await 发卡点(项目[u.id], 客户[u.id], u.id, `${u.name}的卡点`, { createdAt: dayjs().subtract(10 - k, "hour").toDate() });
-    // 外人项目上指认给经理的（经理含自己时看得到，经理只看小王时看不到）
+    // 外人项目上指认给经理的：项目负责人是外人，复盘只按负责人数，经理的复盘里不算（11-01）
     await 发卡点(项目[外人], 客户[外人], 外人, "外人指给经理", { status: "待接受", assigneeId: 经理 });
     // 小王已解决的
     await 发卡点(项目[小王], 客户[小王], 小王, "小王解决了", { status: "已解决" });
@@ -110,21 +108,20 @@ describe("库里取数和数据范围", () => {
   const 描述 = (d: { 行: { description: string }[] }) => d.行.map((x) => x.description).sort();
   const 内容 = (d: { 行: { 内容: string }[] }) => d.行.map((x) => x.内容).sort();
 
-  it("卡点：成员只看到自己项目上的 + 指认给自己的，看不到别人的；带项目、客户、负责人名", async () => {
+  it("卡点：成员只看到自己项目上的，看不到别人的；带项目、客户、负责人名", async () => {
     const { 谁 } = await 看板的人({ id: 小王, role: "SALES" });
     const r = await 以谁的身份(小王, () => 复盘卡点of(谁, 小王, { 筛: "open" }));
     expect(描述(r)).toEqual(["小王的卡点"]);
     expect(r.行[0]).toMatchObject({ 项目: "小王的项目", 客户: "小王的客户", 负责人: "小王", 经手人: null, projectId: 项目[小王] });
-    // 外人：自己的 + 没有别人的
+    // 外人：自己项目上的（含他指给经理的那条），没有别人的
     const 外 = await 看板的人({ id: 外人, role: "SALES" }, 老板);
     expect(描述(await 以谁的身份(外人, () => 复盘卡点of(外.谁, 外人, { 筛: "open" })))).toEqual(["外人指给经理", "外人的卡点"].sort());
   });
 
-  it("卡点：经理看自己 + 下属的、加上指认给自己的；看不到外人自己的；只看小王时不带指认给经理的", async () => {
+  it("卡点：经理看自己 + 下属项目上的；外人项目上指给经理的不算（不是经理这一圈负责的）；只看小王时只有小王的", async () => {
     const r = await 看板的人({ id: 经理, role: "SALES" });
     const 全 = await 以谁的身份(经理, () => 复盘卡点of(r.谁, 经理, { 筛: "open" }));
-    expect(描述(全)).toEqual(["经理的卡点", "小王的卡点", "外人指给经理"].sort());
-    expect(全.行.find((x) => x.description === "外人指给经理")).toMatchObject({ 负责人: "外人", 经手人: "经理", status: "待接受" });
+    expect(描述(全)).toEqual(["经理的卡点", "小王的卡点"].sort());
     const 王 = await 看板的人({ id: 经理, role: "SALES" }, 小王);
     expect(描述(await 以谁的身份(经理, () => 复盘卡点of(王.谁, 经理, { 筛: "open" })))).toEqual(["小王的卡点"]);
     // 已解决 / 全部
@@ -132,7 +129,7 @@ describe("库里取数和数据范围", () => {
     expect(描述(await 以谁的身份(经理, () => 复盘卡点of(王.谁, 经理, { 筛: "all" })))).toEqual(["小王的卡点", "小王解决了"].sort());
   });
 
-  it("卡点：总管理员看全部、按发布时间倒序、分页；公海里的项目只有总管理员看得到；不是企业版给空", async () => {
+  it("卡点：总管理看全部、按发布时间倒序、分页；公海里的项目只有总管理员看得到；不是企业版给空", async () => {
     const 全 = await 复盘卡点of(undefined, 老板, { 筛: "open" });
     expect(全.总数).toBe(5);
     expect(全.行.map((x) => x.description)).toEqual(["外人指给经理", "外人的卡点", "小王的卡点", "经理的卡点", "老板的卡点"]);
@@ -143,7 +140,7 @@ describe("库里取数和数据范围", () => {
 
     await prisma.project.update({ where: { id: 项目[小王] }, data: { pooledAt: new Date() } });
     const 经 = await 看板的人({ id: 经理, role: "SALES" });
-    expect(描述(await 以谁的身份(经理, () => 复盘卡点of(经.谁, 经理, { 筛: "open" })))).toEqual(["经理的卡点", "外人指给经理"].sort());
+    expect(描述(await 以谁的身份(经理, () => 复盘卡点of(经.谁, 经理, { 筛: "open" })))).toEqual(["经理的卡点"]);
     expect(描述(await 复盘卡点of(undefined, 老板, { 筛: "open" }))).toContain("小王的卡点");
 
     vi.stubEnv("CRM_ENTERPRISE", "");

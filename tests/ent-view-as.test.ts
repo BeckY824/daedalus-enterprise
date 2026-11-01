@@ -1,10 +1,10 @@
 /**
  * 企业版切换视图（M-权限-08，lib/enterprise/view-as.ts）：
- *   - 只有总管理员（账号 ADMIN、组织里的总管理员）能切；别人直接 POST action 也拒，不出票
+ *   - 只有业务角色总管理、管理员能切（11-01：账号 ADMIN 不算，没设业务角色的不能）；别人直接 POST action 也拒，不出票
  *   - 切换期间 getCurrentUser 回被看的人（带 视图由 = 真身），读按他的范围照常
  *   - **切换期间服务端所有写一律拒**：create / update / upsert / delete、$executeRaw、写库的 $queryRaw；还有走 action 的那一路
  *   - 退出删票、回到自己，开始 / 退出各一条留痕
- *   - 票只认签它的那个会话；真身不再是总管理员时票不认人，但照样只读
+ *   - 票只认签它的那个会话；真身不再是总管理 / 管理员时票不认人，但照样只读
  * 会话票、视图票都从假的 next/headers 里读（同 enterprise-permission-matrix），set / delete 落在这份假 cookie 上。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -27,6 +27,7 @@ import { prisma } from "@/lib/prisma";
 import { readSecret } from "@/lib/secret";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
+import { 系统写 } from "@/lib/team-scope";
 import { getCurrentUser, destroySession } from "@/lib/auth";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读组织 } from "@/lib/enterprise/org";
@@ -35,7 +36,7 @@ import { 读视图名单 } from "@/lib/enterprise/view-as-menu";
 import { 开始视图, 退出视图 } from "@/app/(app)/view-as-actions";
 import { patchCustomer } from "@/app/(app)/customers/actions";
 
-const 人 = { 老板: "", 总管: "", 甲: "", 乙: "" };
+const 人 = { 老板: "", 总管: "", 甲: "", 乙: "", 光账号: "" };
 let 甲的客户 = "";
 let 乙的客户 = "";
 
@@ -58,7 +59,7 @@ describe("企业版切换视图", () => {
       if (bizRole) await prisma.entMember.create({ data: { userId: u.id, deptId: bizRole === "director" ? null : 部, bizRole } });
       return u.id;
     };
-    人.老板 = await 建("老板", "ADMIN");
+    人.老板 = await 建("老板", "ADMIN", "admin");
     人.总管 = await 建("总管", "SALES", "director");
     人.甲 = await 建("业务员甲", "SALES", "sales");
     人.乙 = await 建("业务员乙", "SALES", "sales");
@@ -73,17 +74,22 @@ describe("企业版切换视图", () => {
   });
   afterAll(() => prisma.$disconnect());
 
-  it("谁能切：老板、总管理员能，业务员不能", async () => {
+  it("谁能切：管理员、总管理能；销售成员、销售管理、账号 ADMIN 没业务角色的都不能", async () => {
+    人.光账号 = (await prisma.user.create({ data: { email: "光账号@t", name: "光账号", title: "", role: "ADMIN", password: "x" } })).id;
+    const 经理 = (await prisma.user.create({ data: { email: "经理@t", name: "经理", title: "", role: "MANAGER", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 经理, bizRole: "sales_mgr" } });
     const org = await 读组织();
-    expect(能切换视图(org, "ADMIN", 人.老板)).toBe(true);
-    expect(能切换视图(org, "SALES", 人.总管)).toBe(true);
-    expect(能切换视图(org, "SALES", 人.甲)).toBe(false);
+    expect(能切换视图(org, 人.老板)).toBe(true);
+    expect(能切换视图(org, 人.总管)).toBe(true);
+    expect(能切换视图(org, 人.甲)).toBe(false);
+    expect(能切换视图(org, 经理)).toBe(false);
+    expect(能切换视图(org, 人.光账号)).toBe(false);
   });
 
-  it("非总管理员直接调 action 也被拒，不出票、名单也拿不到", async () => {
+  it("非总管理 / 管理员直接调 action 也被拒，不出票、名单也拿不到", async () => {
     await 登录成(人.甲);
     const r = await 开始视图(人.乙);
-    expect(r).toEqual({ ok: false, error: "只有总管理员能切换视图" });
+    expect(r).toEqual({ ok: false, error: "只有总管理和管理员能切换视图" });
     expect(罐.票.has(视图票)).toBe(false);
     expect(await 读视图名单((await getCurrentUser())!)).toBeNull();
     expect((await getCurrentUser())!.id).toBe(人.甲);
@@ -163,14 +169,15 @@ describe("企业版切换视图", () => {
     expect((await getCurrentUser())!.id).toBe(人.甲);
   });
 
-  it("切换中真身被撤了管理员：不再按被看的人渲染，但照样只读，直到退出", async () => {
+  it("切换中真身被撤了管理员（业务角色改成销售成员）：不再按被看的人渲染，但照样只读，直到退出", async () => {
     await 登录成(人.老板);
     expect(await 开始视图(人.乙)).toEqual({ ok: true });
-    await prisma.user.update({ where: { id: 人.老板 }, data: { role: "SALES" } }).catch(() => {}); // 只读中，改不了
+    await prisma.entMember.update({ where: { userId: 人.老板 }, data: { bizRole: "sales" } }).catch(() => {}); // 只读中，改不了
     // 绕开切换视图（别的会话）把老板降成业务员
     const 票 = 罐.票.get(视图票)!;
     罐.票.delete(视图票);
-    await prisma.user.update({ where: { id: 人.老板 }, data: { role: "SALES" } });
+    // 老板这会儿是管理员（只读），降级由别人（系统那一路）改
+    await 系统写(() => prisma.entMember.update({ where: { userId: 人.老板 }, data: { bizRole: "sales" } }));
     罐.票.set(视图票, 票);
     忘掉企业版范围();
     const me = (await getCurrentUser())!;
@@ -178,7 +185,7 @@ describe("企业版切换视图", () => {
     expect(me.视图由).toBeUndefined();
     await expect(prisma.customer.update({ where: { id: 乙的客户 }, data: { name: "x" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
     // 他也开不了新的
-    expect(await 开始视图(人.甲)).toEqual({ ok: false, error: "只有总管理员能切换视图" });
+    expect(await 开始视图(人.甲)).toEqual({ ok: false, error: "只有总管理和管理员能切换视图" });
     await 退出视图();
     忘掉企业版范围();
     await prisma.customer.create({ data: { name: "退出后能建", phone: "13900000005", salesOwnerId: 人.老板 } });

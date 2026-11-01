@@ -12,6 +12,7 @@ import { 字段权限of, 改不了的话 } from "@/lib/enterprise/field-perm";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 生效组织规则 } from "./org-rules-store";
 import { 能管项目, 按必填推进, 带推进 } from "./db";
+import { 权限组织 } from "@/lib/enterprise/org";
 
 type 谁 = { id: string; role: string };
 
@@ -52,6 +53,7 @@ type 写结果 =
 
 /** 记一笔回款 */
 export async function 记回款(me: 谁, projectId: string, x: unknown): Promise<写结果 & { id?: string }> {
+  const org = await 权限组织();
   const 好 = 规整回款(x);
   if ("error" in 好) return { ok: false, error: 好.error };
   const 挡 = 改不了的话(await 字段权限of(me.id), ["商机金额"]);
@@ -61,7 +63,7 @@ export async function 记回款(me: 谁, projectId: string, x: unknown): Promise
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p || p.deletedAt) return 不在;
-    if (!能管项目(me, p)) return 管不了(p);
+    if (!能管项目(me, p, org)) return 管不了(p);
     const r = await tx.entProjectPayment.create({ data: { projectId: p.id, ...好, userId: me.id } });
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
@@ -71,6 +73,7 @@ export async function 记回款(me: 谁, projectId: string, x: unknown): Promise
 
 /** 删一笔回款（记错了删掉重记）。删了不往回退节点 */
 export async function 删回款(me: 谁, paymentId: string): Promise<写结果 & { projectId?: string }> {
+  const org = await 权限组织();
   const 挡 = 改不了的话(await 字段权限of(me.id), ["商机金额"]);
   if (挡) return { ok: false, error: 挡 };
   return 查完再写(async (tx) => {
@@ -78,7 +81,7 @@ export async function 删回款(me: 谁, paymentId: string): Promise<写结果 &
     if (!r) return { ok: false as const, error: "这笔回款已经不在了，刷新看看" };
     const p = r.project;
     if (p.deletedAt) return 不在;
-    if (!能管项目(me, p)) return 管不了(p);
+    if (!能管项目(me, p, org)) return 管不了(p);
     await tx.entProjectPayment.delete({ where: { id: r.id } });
     return { ok: true as const, projectId: p.id, name: p.name, customerId: p.customerId, 笔: { paidAt: r.paidAt, currency: r.currency, amount: r.amount } };
   });
@@ -86,11 +89,12 @@ export async function 删回款(me: 谁, paymentId: string): Promise<写结果 &
 
 /** 传了一个合同附件或项目方案（10-31）：项目配了节点必填就按必填推一次。返回推到的节点（没推 = 空） */
 export async function 合同附件后推进(me: 谁, projectId: string): Promise<string[]> {
+  const org = await 权限组织();
   const 规则 = await 生效组织规则();
   const 状态开 = await 客户状态自动();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: projectId }, select: { id: true, customerId: true, ownerId: true, pooledAt: true, deletedAt: true } });
-    if (!p || p.deletedAt || !能管项目(me, p)) return [];
+    if (!p || p.deletedAt || !能管项目(me, p, org)) return [];
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
     return 推进;

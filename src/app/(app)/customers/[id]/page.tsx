@@ -20,7 +20,8 @@ import { 报价明细 } from "@/lib/features";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户 } from "@/lib/team-scope";
-import { 管全队客户 } from "@/lib/constants";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能管公海 } from "@/lib/enterprise/permissions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -188,7 +189,7 @@ export default async function CustomerDetailPage({
       channels={channels}
       aiEnabled={aiEnabled}
       已收藏={已收藏}
-      能放公海={管全队客户(me.role) || customer.salesOwnerId === me.id}
+      能放公海={能管公海(me, await 权限组织()) || customer.salesOwnerId === me.id}
       原负责人领不回={!!customer.pool && customer.salesOwnerId === me.id && 拦原负责人()}
       换负责人记录={换负责人记录}
       旺旺们={旺旺们}

@@ -9,6 +9,7 @@
  * 只管「组织里谁是谁」；规则生不生效（企业版() && 规则开关）由调用方判断。
  */
 import { prisma } from "@/lib/prisma";
+import { 企业版 } from "./switch";
 import { 建组织, 直属上级of, 虚线上级of, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
 
 export * from "./org-core";
@@ -30,3 +31,8 @@ export const 虚线上级 = async (userId: string): Promise<string | null> => �
 // 类型和读库的函数同名（老写法），类型在这里再转一次
 export type 管理员类别 = 类别;
 export const 管理员类别 = async (userId: string): Promise<类别 | null> => 管理员类别of(await 读组织(), userId);
+
+/** 判权限用的组织（permissions.ts 的 org 参数）：企业版读整张组织表；不是企业版 = null（走老规矩） */
+export async function 权限组织(): Promise<组织 | null> {
+  return 企业版() ? 读组织() : null;
+}

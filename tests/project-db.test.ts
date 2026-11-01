@@ -39,7 +39,10 @@ beforeEach(async () => {
   乙 = await 人("yi", "SALES");
   丙 = await 人("bing", "SALES");
   客户甲 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 老板.id } })).id;
+  // 企业版那几段（11-01 权限只认业务角色）：老板 = 总管理，乙丙 = 销售成员；不是企业版不看这张表
+  await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
 });
+afterEach(() => { vi.unstubAllEnvs(); });
 
 describe("改节点", () => {
   it("往前一步一步走、往后随便退，每改一次记一行；没变的不记；往前跳拦下不记", async () => {
@@ -69,7 +72,7 @@ describe("改节点", () => {
     const p = await 项目(乙.id);
     expect(await 改节点(丙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
     expect(await 改节点(老板, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
-    expect(能管项目({ id: "x", role: "MANAGER" }, { ownerId: 乙.id })).toBe(true);
+    expect(能管项目({ id: "x", role: "MANAGER" }, { ownerId: 乙.id }, null)).toBe(true);
     expect(await prisma.projectNodeLog.count()).toBe(1);
   });
 
@@ -258,7 +261,7 @@ describe("项目公海", () => {
     const 线索 = await 项目(乙.id);
     const 商机 = await 项目(乙.id, 客户甲, { phase: "商机", node: "签约审批" });
     const 订单 = await 项目(乙.id, 客户甲, { phase: "订单", node: "合同签订" });
-    expect(await 放回公海(丙, 线索.id)).toMatchObject({ ok: false, error: expect.stringContaining("只有项目负责人、老板或主管能放回") });
+    expect(await 放回公海(丙, 线索.id)).toMatchObject({ ok: false, error: expect.stringContaining("只有项目负责人、上级或总管理能放回") });
     expect(await 放回公海(乙, 订单.id)).toMatchObject({ ok: false, error: expect.stringContaining("订单阶段") });
     expect(await 放回公海(乙, 线索.id)).toEqual({ ok: true });
     expect(await 放回公海(乙, 商机.id)).toEqual({ ok: true });
@@ -552,26 +555,31 @@ describe("企业版项目组：邀请 → 同意 / 拒绝（10-26）", () => {
     expect(await 加组员(乙, p.id, 丙.id)).toMatchObject({ ok: false, error: expect.stringContaining("已经在") });
   });
 
-  it("拉自己直接进组，不用自己点同意", async () => {
+  it("拉自己直接进组，不用自己点同意；总管理不是负责人，加不了组员（11-01 只有负责人改内容）", async () => {
     const p = await 项目(乙.id);
-    expect(await 加组员(老板, p.id, 老板.id)).toEqual({ ok: true });
+    expect(await 加组员(老板, p.id, 老板.id)).toMatchObject({ ok: false, error: "只有项目负责人能加组员" });
+    expect(await 加组员(乙, p.id, 乙.id)).toEqual({ ok: true });
     expect((await prisma.projectMember.findFirstOrThrow()).inviteStatus).toBe("JOINED");
   });
 
-  it("同意前看不到项目、记不了沟通；同意后看得到（同事客户下的也行），节点变更、组员、沟通跟着放开", async () => {
-    const p = await 项目(老板.id, 客户甲);
+  it("同意前看不到项目、记不了沟通；同意后看得到（同事客户下的也行），节点变更、组员、沟通跟着放开（只看不改）", async () => {
+    const p = await 项目(乙.id, 客户甲);
     const 看到的 = async () => (await prisma.project.findMany({ where: 限定条件("Project", 丙.id) as never })).map((r) => r.id);
-    expect(await 加组员(老板, p.id, 丙.id)).toEqual({ ok: true });
+    expect(await 加组员(乙, p.id, 丙.id)).toEqual({ ok: true });
     expect(await 看到的()).toEqual([]);
     expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm") })).toMatchObject({ ok: false });
     const m = await prisma.projectMember.findFirstOrThrow();
     await 回邀请(丙, m.id, true);
     expect(await 看到的()).toEqual([p.id]);
     expect(await prisma.projectMember.count({ where: 限定条件("ProjectMember", 丙.id) as never })).toBe(1);
-    expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), 阶段: p.phase, 明确回复: true })).toMatchObject({ ok: true });
+    // 11-01：组员（JOINED）能看不能改，沟通也记不了；负责人记的组员看得到
+    expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), 阶段: p.phase, 明确回复: true })).toMatchObject({ ok: false });
+    expect(await 记项目沟通(乙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), 阶段: p.phase, 明确回复: true })).toMatchObject({ ok: true });
     expect(await prisma.followUpProject.count({ where: 限定条件("FollowUpProject", 丙.id) as never })).toBe(1);
-    // 乙不是组员，照旧看不到
-    expect((await prisma.project.findMany({ where: 限定条件("Project", 乙.id) as never }))).toEqual([]);
+    // 丁不是组员，照旧看不到
+    const 丁 = await 人("ding", "SALES");
+    await prisma.entMember.create({ data: { userId: 丁.id, bizRole: "sales" } });
+    expect((await prisma.project.findMany({ where: 限定条件("Project", 丁.id) as never }))).toEqual([]);
   });
 });
 
