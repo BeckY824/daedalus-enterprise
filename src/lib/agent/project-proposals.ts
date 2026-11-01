@@ -1,6 +1,6 @@
 /**
  * 首页 AI 的项目类建议卡（全页面 AI 写入，企业版只用项目时才给）：推进节点 / 定结局、记沟通（带下一步、可带卡点）、
- * 解决卡点、记 / 删回款、线索验证、改联系人、删客户。
+ * 卡点我已完成、记 / 删回款、线索验证、改联系人、删客户。
  *
  * 和 proposals.ts 同一个分寸：AI 只出卡，人确认后才走原有的 server action（权限、字段权限、团队范围、操作记录都在那里面）。
  * 这里只放纯校验：不合法当场拒（让模型重说），还没填的照样出卡、由 项目卡缺 拦住确认。生成时和落库时各跑一遍。
@@ -295,7 +295,7 @@ export function 描述项目卡(p: 项目卡): string {
     }
     case "project_followup":
       return `在项目「${名(p)}」上记一条${FOLLOW_TYPE_MAP[p.type]?.label ?? "沟通"}${p.要卡点 ? `，并发布${p.卡点类型 || "卡点"}` : ""}`;
-    case "blocker_resolve": return `把卡点「${名(p)}」标成已解决`;
+    case "blocker_resolve": return `卡点「${名(p)}」我已完成`;
     case "payment_add": return `给项目「${名(p)}」记一笔回款${p.amount ? ` ${p.currency} ${p.amount}` : ""}`;
     case "payment_delete": return `删除项目回款「${名(p)}」`;
     case "lead_verify": return `线索「${名(p)}」${p.步 || "验证"}：${p.判 || "…"}`;

@@ -19,6 +19,7 @@ import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删 } from "@/lib/enterprise/soft-delete";
 import { 能删改沟通, 不能删改沟通话, 刚记的能撤 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
+import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 版本冲突, 版本条件, 推进版本 } from "@/lib/edit-version";
@@ -563,6 +564,8 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
       const audits: Parameters<typeof recordAudit>[0][] = [];
       const 跟进 = await tx.followUp.findFirst({ where: { id: input.跟进id, customerId: input.customerId }, select: { id: true, type: true, occurredAt: true } });
       if (跟进) {
+        // 11-01 卡点 B13：这条沟通上发过卡点的，卡点脱开照旧留着；老库脱不开就不撤
+        if ((await 卡点脱离沟通(tx, [跟进.id])).size) return { ok: false as const, error: "这条跟进上已经发过卡点，撤不回来了，去时间线上删" };
         await tx.followUp.delete({ where: { id: 跟进.id } });
         audits.push({ user, action: "delete", entity: "FollowUp", entityId: 跟进.id, summary: `撤销：删掉${customer.name}刚记的一条${类型名(跟进.type)}跟进（${dayjs(跟进.occurredAt).format("YYYY-MM-DD")}）` });
       }

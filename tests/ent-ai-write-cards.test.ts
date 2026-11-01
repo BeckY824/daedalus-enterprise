@@ -22,7 +22,7 @@ vi.mock("@/app/(app)/projects/actions", async (原) => {
 });
 vi.mock("@/app/(app)/projects/blocker-actions", async (原) => {
   const m = await 原<typeof import("@/app/(app)/projects/blocker-actions")>();
-  return { ...m, 解决卡点Action: vi.fn(m.解决卡点Action) };
+  return { ...m, 完成卡点Action: vi.fn(m.完成卡点Action) };
 });
 vi.mock("@/app/(app)/projects/payment-actions", async (原) => {
   const m = await 原<typeof import("@/app/(app)/projects/payment-actions")>();
@@ -183,7 +183,10 @@ describe("解决卡点", () => {
   async function 一个处理中的卡点(handler: string) {
     const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
     return prisma.entBlocker.create({
-      data: { code: "BLK20261101001", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "价格", description: "报价高", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中", assigneeId: handler },
+      data: {
+        code: "BLK-20261101-001", title: "报价高", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "价格", description: "报价高", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",
+        claims: { create: { userId: handler } },
+      },
     });
   }
 
@@ -192,7 +195,7 @@ describe("解决卡点", () => {
     expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["解决方案", "解决结果"]);
   });
 
-  it("处理人确认：转给 解决卡点Action，变已解决；不是处理人的确认一行不写", async () => {
+  it("唯一认领人确认：转给 完成卡点Action（我已完成），变已解决；不是认领人的确认一行不写", async () => {
     const k = await 一个处理中的卡点(乙.id);
     const { 卡 } = await 出("propose_blocker_resolve", { project: "云帆一期", reason: "人说解决了" });
     expect(卡).toMatchObject({ kind: "blocker_resolve", targetId: k.id });
@@ -204,7 +207,7 @@ describe("解决卡点", () => {
 
     const r = await 确认(填好, 乙);
     expect(r).toMatchObject({ ok: true });
-    expect(卡点动作.解决卡点Action).toHaveBeenCalledWith(k.id, { solution: "降价 5%", result: "客户接受" });
+    expect(卡点动作.完成卡点Action).toHaveBeenCalledWith(k.id, { note: "客户接受", solution: "降价 5%", result: "客户接受" });
     expect((await prisma.entBlocker.findUniqueOrThrow({ where: { id: k.id } })).status).toBe("已解决");
   });
 });

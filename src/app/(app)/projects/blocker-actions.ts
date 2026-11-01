@@ -12,8 +12,8 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import {
-  发布卡点, 认领卡点, 完成卡点, 存卡点默认, 存卡点角色开关, 我的卡点, 卡点看板, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因, 原因字典,
-  type 卡点结果, type 看板筛选,
+  发布卡点, 认领卡点, 完成卡点, 存卡点默认, 存卡点角色开关, 我的卡点, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因, 原因字典,
+  type 卡点结果,
 } from "@/lib/project/blocker";
 import type { 发布输入 } from "@/lib/project/blocker-rules";
 
@@ -164,13 +164,4 @@ export async function 我的卡点Action() {
     if (await 拦()) return [];
     return await 我的卡点(me);
   } catch { return []; }
-}
-
-/** 复盘页卡点三栏看板换筛选时刷新 */
-export async function 卡点看板Action(筛: 看板筛选) {
-  try {
-    const me = await requireUser();
-    if (await 拦()) return null;
-    return await 卡点看板(me, 筛 ?? {});
-  } catch { return null; }
 }

@@ -106,11 +106,11 @@ describe("F-跟进-08 卡点：生成 / 不生成", () => {
     expect(沟通卡点({ type: "暂无卡点", description: "预算还没批" }, 默)).toBeNull();
     expect(沟通卡点({ description: "等对方技术评估" }, 默)).toBeNull();
   });
-  it("选了别的类型 → 生成；影响没选按默认，阻碍主体落「其他」，描述空写占位", () => {
-    expect(沟通卡点({ type: "重要卡点" }, 默)).toEqual({ type: "重要卡点", impact: 默.默认影响, obstacle: "其他", description: 沟通卡点占位描述 });
+  it("选了别的类型 → 生成；影响没选按默认，描述空写占位；原因没选留空（发布时落「其他」）", () => {
+    expect(沟通卡点({ type: "重要卡点" }, 默)).toEqual({ type: "重要卡点", impact: 默.默认影响, description: 沟通卡点占位描述 });
+    // 老调用方传的单个阻碍主体照传，发布时按 老主体映射 换成原因
     expect(沟通卡点({ type: "中度卡点", impact: "项目暂停", description: "x", obstacle: "价格" }, 默)).toMatchObject({ impact: "项目暂停", obstacle: "价格" });
-    // 选项里没有「其他」：落第一个
-    expect(沟通卡点({ type: "轻度卡点" }, { ...默, 阻碍主体们: ["客户", "技术"] })).toMatchObject({ obstacle: "客户" });
+    expect(沟通卡点({ type: "轻度卡点", reasons: ["其他"] }, 默)).toMatchObject({ reasons: ["其他"] });
   });
   it("坏取值报错", () => {
     expect(沟通卡点({ type: "瞎填" }, 默)).toHaveProperty("error");

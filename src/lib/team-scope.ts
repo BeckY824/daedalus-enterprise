@@ -261,6 +261,8 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
       case "EntBlocker":
         return 看得到的卡点(我, 可见客户(谁们));
       case "EntBlockerLog":
+      case "EntBlockerClaim":
+      case "EntBlockerReasonLink":
         return { blocker: 看得到的卡点(我, 可见客户(谁们)) };
       default:
         return null;
@@ -317,11 +319,13 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
     case "ProjectCustomer":
     case "ProjectContact":
       return { project: 看得到的项目(我, 客户) };
-    // 企业版卡点（10-26）：项目负责人、点了同意的组员、看得到这位客户的、指认给的、发布的；
+    // 企业版卡点（10-26，11-01 改）：项目负责人、点了同意的组员、看得到这位客户的、认领了的、发布的；
     // 项目放在公海里时卡点不跟着公开（E11：无关的人直连接口也拿不到）
     case "EntBlocker":
       return 看得到的卡点(我, 客户);
     case "EntBlockerLog":
+    case "EntBlockerClaim":
+    case "EntBlockerReasonLink":
       return { blocker: 看得到的卡点(我, 客户) };
     default:
       return null;
@@ -336,7 +340,8 @@ function 看得到的项目(我: string | { in: string[] }, 客户: Record<strin
 
 function 看得到的卡点(我: string | { in: string[] }, 客户: Record<string, unknown>) {
   const 项目 = { OR: [{ ownerId: 我 }, { customer: 客户 }, { members: { some: { userId: 我, inviteStatus: "JOINED" } } }] };
-  return { OR: [{ assigneeId: 我 }, { creatorId: 我 }, { project: 项目 }] };
+  // 11-01 起没有处理人，认领人一人一行（claims）；角色「可看全部」、直属上级在 lib/project/blocker.ts 里另算（那边绕开这层）
+  return { OR: [{ claims: { some: { userId: 我 } } }, { creatorId: 我 }, { project: 项目 }] };
 }
 
 /** 带 where 的操作。create / upsert 不限（新建的本来就是自己的；upsert 限了会在别人的行上再建一条） */

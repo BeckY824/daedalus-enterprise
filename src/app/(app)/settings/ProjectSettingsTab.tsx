@@ -14,10 +14,14 @@ import { 加企业选项, 改企业选项, 存分配谁能用 } from "./ent-dict
 import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterprise/dict-kinds";
 import type { 时限范围 } from "@/lib/enterprise/edit-perm-table";
 import { 分配可选角色, 谁能用, type 分配谁能用配置 } from "@/lib/enterprise/assign-use";
-import { 角色名 } from "@/lib/sync/dept-policy";
+import { 角色名, 业务角色 as 业务角色们 } from "@/lib/sync/dept-policy";
 import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
-import { 存卡点默认Action } from "@/app/(app)/projects/blocker-actions";
-import { 卡点类型们, 影响等级们, 主体名上限, 主体最多, type 卡点默认 } from "@/lib/project/blocker-rules";
+import {
+  存卡点默认Action, 存卡点角色开关Action, 新增原因Action, 改原因名Action, 改原因状态Action, 删原因Action, 合并原因Action,
+} from "@/app/(app)/projects/blocker-actions";
+import { 卡点类型们, 影响等级们, 原因名上限, type 卡点默认, type 卡点角色开关, type 卡点范围 } from "@/lib/project/blocker-rules";
+import type { 原因行 } from "@/lib/project/blocker";
+
 
 const 节点们 = 企业版字典.节点们;
 const 默认天数 = 企业版字典.默认超时天数;
@@ -48,8 +52,14 @@ export type 项目设置 = {
   挡: Record<"字典" | "持有上限" | "节点时限" | "必填字段" | "阶段规则", string | null>;
   /** 节点时限能改时，能改哪几个节点："全部" = 都能改、能开关；没给 = 全部（老板 / 不是企业版） */
   时限节点?: 时限范围;
-  /** 企业版卡点的默认值（阻碍主体的选项、默认类型和影响）；不是企业版 = null，卡片不出 */
+  /** 企业版卡点的默认值（默认类型和影响）；不是企业版 = null，卡片不出 */
   卡点默认?: 卡点默认 | null;
+  /** 企业版阻碍原因字典（11-01 B9 / B10）：带用了几次、待审核；不是企业版 = null */
+  卡点原因?: 原因行[] | null;
+  /** 企业版卡点按业务角色的两个开关（B6 / B7）；不是企业版 = null */
+  卡点开关?: 卡点角色开关 | null;
+  /** 卡点的默认值、字典、开关只有总管理员（业务角色 director / admin）能改 */
+  能改卡点?: boolean;
   /** 企业版提成比例 A（底价）/ B（溢价），百分数，内贸 / 外贸 / 不限三套；不是企业版 = null，卡片不出（服务端读的 企业版()） */
   提成比例: 三套提成比例 | null;
   /** 老板、总管理员能改提成比例 */
@@ -88,6 +98,9 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
     }
   };
 
+  // 卡点三张卡只认业务角色是不是总管理员；共享试用区照旧谁都不能改
+  const 卡点挡 = value.挡.字典 === "共享试用区不能改" ? value.挡.字典 : value.能改卡点 ? null : "只有总管理员能改";
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <DictCard
@@ -108,7 +121,9 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} 忙={忙} 跑={跑} />}
       {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
-      {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
+      {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={卡点挡} 忙={忙} 跑={跑} />}
+      {value.卡点开关 && <BlockerRolesCard 开关={value.卡点开关} 挡={卡点挡} 忙={忙} 跑={跑} />}
+      {value.卡点原因 && <BlockerReasonsCard 们={value.卡点原因} 挡={卡点挡} 忙={忙} 跑={跑} />}
       {value.提成比例 && <RatesCard 比例={value.提成比例} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
       {value.提成比例 && value.按人提成 && <PerUserRatesCard 三套={value.提成比例} {...value.按人提成} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
     </div>
@@ -508,37 +523,25 @@ function AdvanceCard({
 }
 
 /**
- * 卡点默认值（企业版）：阻碍主体有哪些选项、发布时默认选的类型和影响。
- * 10-27 会议：卡点先不设解决时限，每类的天数不再让填（库里照旧存着，发布时仍按它写 dueAt，界面不显示）。
- * 谁能改跟字典一样
+ * 卡点默认值（企业版）：发布时默认选的类型和影响（类型、影响都单选，各四个固定值）。
+ * 11-01 定稿：卡点不设解决时限（库里的时限列留着，界面不显示、不让填）；阻碍原因改成下面的字典卡，多选。
+ * 只有总管理员能改
  */
 function BlockerDefaultsCard({
   默认, 挡, 忙, 跑,
 }: {
   默认: 卡点默认; 挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const [主体们, set主体们] = useState<string[]>(默认.阻碍主体们);
   const [类型, set类型] = useState(默认.默认类型);
   const [影响, set影响] = useState(默认.默认影响);
-  const 改了 =
-    主体们.join("\n") !== 默认.阻碍主体们.join("\n") || 类型 !== 默认.默认类型 || 影响 !== 默认.默认影响;
-  const 齐了 = 主体们.length > 0;
-  const 保存 = () => 跑(() => 存卡点默认Action({ 阻碍主体们: 主体们, 默认类型: 类型, 默认影响: 影响 }), "已保存");
+  const 改了 = 类型 !== 默认.默认类型 || 影响 !== 默认.默认影响;
+  const 保存 = () => 跑(() => 存卡点默认Action({ 默认类型: 类型, 默认影响: 影响 }), "已保存");
   const 行 = { display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" as const };
 
   return (
     <Card title="卡点默认值" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        在项目沟通记录上发卡点时，阻碍主体从下面的选项里单选；卡点不设解决时限，只记从出现到解决用了几天。
-      </div>
-      <div style={行}>
-        <span style={{ width: 72 }}>阻碍主体</span>
-        <Select
-          aria-label="阻碍主体的选项" mode="tags" style={{ flex: "1 1 240px", minWidth: 0 }} disabled={!!挡}
-          value={主体们} maxCount={主体最多} placeholder="输入后回车添加"
-          onChange={(v: string[]) => set主体们([...new Set(v.map((x) => x.trim()).filter((x) => x && x.length <= 主体名上限))])}
-          open={false} tokenSeparators={[",", "，"]}
-        />
+        在项目沟通记录上发卡点时默认选中的类型和影响；卡点不设解决时限，只记从出现到解决用了几天。
       </div>
       <div style={行}>
         <span style={{ width: 72 }}>默认类型</span>
@@ -549,7 +552,164 @@ function BlockerDefaultsCard({
         <Select aria-label="默认影响" style={{ width: 160 }} disabled={!!挡} value={影响} onChange={set影响} options={影响等级们.map((t) => ({ value: t, label: t }))} />
       </div>
       {!挡 && (
-        <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了 || !齐了} onClick={() => void 保存()}>保存</Button>
+        <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了} onClick={() => void 保存()}>保存</Button>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * 卡点按业务角色的两个开关（11-01 B6 / B7）：启用 / 停用；只看自己 / 可看全部。
+ * 只看自己 = 创建人、创建人的直属上级、项目负责人和组员、认领人能看到；看得到就能认领。
+ * 账号角色不算数，没设业务角色的人看不到卡点。只有总管理员能改
+ */
+function BlockerRolesCard({
+  开关, 挡, 忙, 跑,
+}: {
+  开关: 卡点角色开关; 挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const [草稿, set草稿] = useState<卡点角色开关>(开关);
+  const 改了 = 业务角色们.some((r) => 草稿.启用[r] !== 开关.启用[r] || 草稿.范围[r] !== 开关.范围[r]);
+  const 保存 = () => 跑(() => 存卡点角色开关Action(草稿), "已保存");
+  return (
+    <Card title="卡点：谁能用" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        按业务角色设。「只看自己」能看到自己发的、自己下属发的、自己负责或参与的项目上的、自己认领的卡点；「可看全部」看全公司。看得到就能认领。
+      </div>
+      <div className="blk-roles" role="table" aria-label="卡点角色开关">
+        {业务角色们.map((r) => (
+          <div key={r} className="blk-role-row" role="row">
+            <span className="blk-role-name" role="cell">{角色名[r]}</span>
+            <span role="cell">
+              <Switch
+                size="small" aria-label={`${角色名[r]}启用卡点`} disabled={!!挡}
+                checked={草稿.启用[r]} checkedChildren="启用" unCheckedChildren="停用"
+                onChange={(v) => set草稿((d) => ({ ...d, 启用: { ...d.启用, [r]: v } }))}
+              />
+            </span>
+            <span role="cell">
+              <Radio.Group
+                size="small" optionType="button" aria-label={`${角色名[r]}数据范围`} disabled={!!挡 || !草稿.启用[r]}
+                value={草稿.范围[r]}
+                onChange={(e) => set草稿((d) => ({ ...d, 范围: { ...d.范围, [r]: e.target.value as 卡点范围 } }))}
+                options={[{ value: "自己", label: "只看自己" }, { value: "全部", label: "可看全部" }]}
+              />
+            </span>
+          </div>
+        ))}
+      </div>
+      {!挡 && (
+        <Space style={{ marginTop: 12 }}>
+          <Button type="primary" disabled={忙 || !改了} onClick={() => void 保存()}>保存</Button>
+          {改了 && <Button disabled={忙} onClick={() => set草稿(开关)}>撤销修改</Button>}
+        </Space>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * 阻碍原因字典（11-01 B9 / B10）：发卡点时多选。总管理员能增、改名、启用 / 停用、删、合并；
+ * 用过的只能停用（或合并进别的原因），没用过的才能删。前台新加的原因先是「待审核」，启用 = 审核通过。
+ */
+function BlockerReasonsCard({
+  们, 挡, 忙, 跑,
+}: {
+  们: 原因行[]; 挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+}) {
+  const [新名, set新名] = useState("");
+  const [改名中, set改名中] = useState<{ id: string; name: string } | null>(null);
+  const [并入, set并入] = useState<{ 从: string; 到?: string } | null>(null);
+  const 现有 = 们.filter((r) => !r.并入);
+  const 待审 = 现有.filter((r) => r.status === "待审核").length;
+  const 名of = new Map(们.map((r) => [r.id, r.name]));
+  const 加 = async () => {
+    const n = 新名.trim();
+    if (!n) return;
+    if (await 跑(() => 新增原因Action(n), "已添加")) set新名("");
+  };
+  return (
+    <Card
+      title="阻碍原因"
+      extra={挡 ? <span style={{ color: "var(--text-muted)" }}>{挡}</span> : 待审 > 0 && <Tag color="warning">{待审} 个待审核</Tag>}
+    >
+      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        发卡点时从这里多选。用过的原因不能删，只能停用或合并进别的原因（合并后旧卡点改挂到目标原因上）；
+        前台新加的原因先是「待审核」，复盘页的统计里照样算，启用就算审核通过。
+      </div>
+      <div className="blk-reasons" role="list" aria-label="阻碍原因字典">
+        {现有.map((r) => (
+          <div key={r.id} className="blk-reason-row" role="listitem">
+            <span className="blk-reason-name">
+              {改名中?.id === r.id ? (
+                <Input
+                  size="small" autoFocus maxLength={原因名上限} value={改名中.name} aria-label="新名字"
+                  onChange={(e) => set改名中({ id: r.id, name: e.target.value })}
+                  onPressEnter={async () => { if (await 跑(() => 改原因名Action(r.id, 改名中.name), "已改名")) set改名中(null); }}
+                />
+              ) : (
+                <>
+                  <span className="blk-reason-text" title={r.name}>{r.name}</span>
+                  {r.status === "待审核" && <Tag color="warning">待审核</Tag>}
+                  {r.status === "停用" && <Tag>停用</Tag>}
+                </>
+              )}
+            </span>
+            <span className="blk-reason-used">{r.用了 ? `${r.用了} 条卡点在用` : "没用过"}</span>
+            {!挡 && (
+              <Space size={4} wrap className="blk-reason-ops">
+                {改名中?.id === r.id ? (
+                  <>
+                    <Button size="small" type="primary" disabled={忙 || !改名中.name.trim()} onClick={async () => { if (await 跑(() => 改原因名Action(r.id, 改名中.name), "已改名")) set改名中(null); }}>保存</Button>
+                    <Button size="small" disabled={忙} onClick={() => set改名中(null)}>取消</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="small" type="link" disabled={忙} onClick={() => set改名中({ id: r.id, name: r.name })}>改名</Button>
+                    {r.status === "启用" ? (
+                      <Button size="small" type="link" disabled={忙} onClick={() => void 跑(() => 改原因状态Action(r.id, "停用"), "已停用")}>停用</Button>
+                    ) : (
+                      <Button size="small" type="link" disabled={忙} onClick={() => void 跑(() => 改原因状态Action(r.id, "启用"), r.status === "待审核" ? "已审核通过" : "已启用")}>
+                        {r.status === "待审核" ? "审核通过" : "启用"}
+                      </Button>
+                    )}
+                    <Button size="small" type="link" disabled={忙 || !现有.some((x) => x.id !== r.id && x.status === "启用")} onClick={() => set并入({ 从: r.id })}>合并到…</Button>
+                    {r.用了 === 0 && (
+                      <Popconfirm title={`删除「${r.name}」？`} okText="删除" cancelText="不删" onConfirm={() => void 跑(() => 删原因Action(r.id), "已删除")}>
+                        <Button size="small" type="link" danger disabled={忙}>删除</Button>
+                      </Popconfirm>
+                    )}
+                  </>
+                )}
+              </Space>
+            )}
+            {并入?.从 === r.id && (
+              <div className="blk-reason-merge">
+                <span>把「{r.name}」合并到</span>
+                <Select
+                  size="small" showSearch optionFilterProp="label" placeholder="选目标原因" aria-label="合并到哪个原因"
+                  style={{ width: 180 }} popupMatchSelectWidth={false} value={并入.到}
+                  onChange={(v: string) => set并入({ 从: r.id, 到: v })}
+                  options={现有.filter((x) => x.id !== r.id && x.status === "启用").map((x) => ({ value: x.id, label: x.name }))}
+                />
+                <Button
+                  size="small" type="primary" disabled={忙 || !并入.到}
+                  onClick={async () => { if (await 跑(() => 合并原因Action(r.id, 并入.到!), `已合并到「${名of.get(并入.到!) ?? ""}」`)) set并入(null); }}
+                >合并</Button>
+                <Button size="small" disabled={忙} onClick={() => set并入(null)}>取消</Button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {!挡 && (
+        <Space.Compact style={{ marginTop: 12, width: "100%", maxWidth: 360 }}>
+          <Input
+            aria-label="新阻碍原因" placeholder="新原因，比如：交期冲突" maxLength={原因名上限}
+            value={新名} onChange={(e) => set新名(e.target.value)} onPressEnter={() => void 加()}
+          />
+          <Button type="primary" disabled={忙 || !新名.trim()} onClick={() => void 加()}>添加</Button>
+        </Space.Compact>
       )}
     </Card>
   );

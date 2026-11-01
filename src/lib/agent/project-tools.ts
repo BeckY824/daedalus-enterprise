@@ -158,7 +158,7 @@ export const 项目写工具: Tool[] = [
   },
   {
     name: "propose_blocker_resolve",
-    description: "建议把一个卡点标成已解决（要写解决方案和结果）。只有卡点现在的处理人、状态是处理中时才能确认。只出建议卡，人确认后才改。",
+    description: "建议在一个卡点上点「我已完成」（要写解决方案和结果）。只有认领了这个卡点、自己那份还没完成的人才能确认；所有认领人都完成后卡点才变成已解决，最后一个完成的人的解决方案和结果记到卡点上。只出建议卡，人确认后才改。",
     args: `{"project": "项目名或客户名，可空", "blocker": "卡点编号（BLK…）或描述里的关键词，可空", "solution": "怎么解决的", "result": "解决结果", "reason": "一句话理由"}`,
     async run(a, ctx) {
       const 词 = str(a.blocker, 60);
@@ -177,9 +177,9 @@ export const 项目写工具: Tool[] = [
         where: {
           status: { not: "已解决" },
           ...(项目ids ? { projectId: { in: 项目ids } } : {}),
-          ...(词 ? { OR: [{ code: 词 }, { description: { contains: 词 } }] } : {}),
+          ...(词 ? { OR: [{ code: 词 }, { title: { contains: 词 } }, { description: { contains: 词 } }] } : {}),
         },
-        select: { id: true, code: true, description: true, status: true, assigneeId: true, projectId: true, project: { select: 项目列 } },
+        select: { id: true, code: true, title: true, description: true, status: true, projectId: true, claims: { select: { userId: true, done: true } }, project: { select: 项目列 } },
         orderBy: { createdAt: "desc" },
         take: 候选上限 + 1,
       });
@@ -188,8 +188,12 @@ export const 项目写工具: Tool[] = [
         const 可见 = await 看得到的客户(卡点们.map((k) => k.project.customerId));
         露 = (p) => 露客户({ id: ctx.userId }, p, 可见);
       }
-      const 名of = (k: (typeof 卡点们)[number]) => `${k.code} ${k.description.slice(0, 20)}`;
-      const 说of = (k: (typeof 卡点们)[number]) => `${k.project.name} · ${k.status}${k.assigneeId === ctx.userId ? " · 我在处理" : ""}`;
+      const 名of = (k: (typeof 卡点们)[number]) => `${k.code} ${(k.title || k.description).slice(0, 20)}`;
+      const 我的份 = (k: (typeof 卡点们)[number]) => k.claims.find((c) => c.userId === ctx.userId);
+      const 说of = (k: (typeof 卡点们)[number]) => {
+        const 我 = 我的份(k);
+        return `${k.project.name} · ${k.status} · ${k.claims.filter((c) => c.done).length}/${k.claims.length}${我 ? (我.done ? " · 我已完成" : " · 我认领了") : ""}`;
+      };
       const 补of = (k: (typeof 卡点们)[number]) => ({ projectId: k.projectId, ...客户of(项目们.get(k.projectId) ?? k.project, 露) });
       const 前 = 卡点们.slice(0, 候选上限);
       const args =
@@ -197,9 +201,9 @@ export const 项目写工具: Tool[] = [
           ? { targetId: 前[0].id, targetName: 名of(前[0]), projectId: 前[0].projectId }
           : { targetId: "", targetName: "", 候选: 前.map((k): 候选 => ({ id: k.id, 名: 名of(k), 说明: 说of(k), 补: 补of(k) })) };
       const 客户 = 前.length === 1 ? (() => { const c = 补of(前[0]); return { id: c.customerId, name: c.customerName }; })() : { id: "", name: "" };
-      const 不是我 = 前.length === 1 && !(前[0].assigneeId === ctx.userId && 前[0].status === "处理中");
+      const 不是我 = 前.length === 1 && !(我的份(前[0]) && !我的份(前[0])!.done);
       return 出卡(ctx, "blocker_resolve", 客户, { ...args, solution: a.solution, result: a.result, reason: a.reason },
-        不是我 ? "注意：这个卡点现在不是你在处理（或还没接受），确认时多半会被拒，回答里照实说。" : "");
+        不是我 ? "注意：你没认领这个卡点（或你那份已经点过完成），确认时多半会被拒，回答里照实说。" : "");
     },
   },
   {

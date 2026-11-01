@@ -67,6 +67,8 @@ export const 不同步表 = [
   "ContactMethod",
   // 企业版卡点、沟通记录编号（2026-10-26）：同上
   "EntBlocker", "EntBlockerLog", "EntFollowUpMeta",
+  // 企业版卡点认领人、阻碍原因字典（2026-11-01）：同上
+  "EntBlockerClaim", "EntBlockerReason", "EntBlockerReasonLink",
   // 企业版选项字典（2026-10-26，migrations/057）：同上
   "EntDictItem",
   // 企业版渠道投入（2026-10-29，migrations/071）：同上
@@ -139,6 +141,9 @@ export const 指向人的列: [string, string][] = [
   ["ProjectNodeLog", "userId"],
   ["EntBlocker", "assigneeId"],
   ["EntBlocker", "creatorId"],
+  // 卡点认领人、原因是谁加的（2026-11-01）：不建外键
+  ["EntBlockerClaim", "userId"],
+  ["EntBlockerReason", "createdById"],
   ["EntBlockerLog", "userId"],
   ["EntBlockerLog", "fromUserId"],
   ["EntBlockerLog", "toUserId"],

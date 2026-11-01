@@ -40,8 +40,12 @@ const 可写: Record<string, string[]> = {
   // 企业版线索分配（2026-10-24）：leads/assign-actions.ts 的 分配线索 / 设配额
   EntLeadAssign: ["leadId", "toUserId", "line", "kind"],
   EntLeadQuota: ["userId", "quota"],
-  // 企业版卡点（2026-10-26）：projects/blocker-actions.ts 的 发布 / 指认 / 转让 / 改进度 / 解决
-  EntBlocker: ["type", "impact", "obstacle", "description", "dueDays", "assigneeId", "resourceRequest", "progress", "solution", "result"],
+  // 企业版卡点（11-01 改版）：projects/blocker-actions.ts 的 发布（类型、影响、标题、描述、资源申请）/ 我已完成（最后一位写解决方案、解决结果）
+  EntBlocker: ["type", "impact", "title", "description", "resourceRequest", "solution", "result"],
+  // 我已完成时写的备注（blocker-actions.ts 完成卡点Action）
+  EntBlockerClaim: ["note"],
+  // 阻碍原因字典：设置 → 项目模式 → 阻碍原因（blocker-actions.ts 新增 / 改名 / 改状态 / 合并）
+  EntBlockerReason: ["name", "status"],
   // 记项目沟通填的下一步时间（projects/actions.ts 记项目沟通Action）
   EntFollowUpMeta: ["nextAt"],
   // 企业版沟通标记（2026-10-26）：记项目沟通 / 建档向导一起写，沟通弹窗里选阶段、选客户是否明确回复
@@ -470,11 +474,23 @@ const 派生: Record<string, Record<string, string>> = {
     code: "BLK + 日期 + 当天流水，发布时系统生成，不改", projectId: "从哪个项目的沟通发布，发布时定",
     followUpId: "从哪条沟通发布，发布时定", customerId: "发布那一刻项目的客户，系统照抄", contactId: "发布那一刻项目的联系人，系统照抄",
     phase: "发布那一刻项目的阶段，系统照抄", dueAt: "发布时间 + 解决时限，系统算",
-    status: "看板 / 待接受 / 处理中 / 已解决，按认领、接受、转让、返回、解决系统写",
-    creatorId: "发布的人，当前登录账号", resolvedAt: "点解决的那一刻，系统写",
+    status: "待接受 / 处理中 / 已解决，按有没有人认领、认领人是不是都完成了系统写（11-01）",
+    creatorId: "发布的人，当前登录账号", resolvedAt: "最后一位认领人点「我已完成」的那一刻，系统写",
+    obstacle: "老的阻碍主体；11-01 起系统写第一个阻碍原因名，给老报表用",
+    dueDays: "11-01 起不设解决时限，系统按类型默认值照写，界面不显示",
+    assigneeId: "11-01 起不指认、不转让，改版时搬进认领表后清空，不再写",
+    progress: "11-01 起不再改进度（各认领人的备注记在认领表），老数据留着只读",
   },
+  EntBlockerClaim: {
+    blockerId: "认领的哪个卡点，系统写", userId: "认领的人，当前登录账号；离职交接 / 项目换人时系统挪给接手的人",
+    done: "点「我已完成」时系统写，不能撤回", doneAt: "点「我已完成」的那一刻，系统写",
+  },
+  EntBlockerReason: {
+    sort: "新加的排在最后，系统写", mergedIntoId: "合并到哪个原因，合并时系统写", createdById: "新加原因的人，当前登录账号",
+  },
+  EntBlockerReasonLink: { blockerId: "哪个卡点，发布时系统写", reasonId: "挂的哪个原因，发布时按选的原因写；合并时系统改挂" },
   EntBlockerLog: {
-    blockerId: "哪个卡点，系统写", userId: "谁做的，当前登录账号", at: "那一刻，系统写", action: "发布 / 指认 / 认领 / 接受 / 转让 / 返回 / 解决 / 改进度 / 离职交接，系统写",
+    blockerId: "哪个卡点，系统写", userId: "谁做的，当前登录账号", at: "那一刻，系统写", action: "发布 / 认领 / 我已完成 / 解决 / 离职交接 / 项目换人接手（老数据还有指认、接受、转让、返回、改进度），系统写",
     fromUserId: "交出去的人，系统写", toUserId: "接过来的人，系统写", note: "返回看板的理由、解决结果等，跟着那一步写；只增不改",
   },
   EntFollowUpMeta: { followUpId: "哪条沟通，记的时候定", projectId: "挂在哪个项目，记的时候定", code: "FUL + 日期 + 当天流水，记的时候系统生成" },

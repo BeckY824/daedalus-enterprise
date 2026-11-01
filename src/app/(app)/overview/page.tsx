@@ -14,14 +14,15 @@ import BoardTodos from "./BoardTodos";
 import { 看板的人 } from "@/lib/project/board-member";
 import { 复盘待办of } from "@/lib/project/board-todos-db";
 import { 读页签, 读卡, 读类型, 读页码 } from "@/lib/project/board-todos";
-import { 读卡点筛, 读沟通段 } from "@/lib/project/review-tabs";
-import { 复盘卡点of, 复盘沟通of } from "@/lib/project/review-tabs-db";
+import { 读卡点看板筛, 读沟通段 } from "@/lib/project/review-tabs";
+import { 复盘沟通of } from "@/lib/project/review-tabs-db";
+import { 卡点看板, 卡点给界面 } from "@/lib/project/blocker";
 import BoardBlockers from "./BoardBlockers";
 import BoardTalks from "./BoardTalks";
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ view?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; bs?: string; t?: string; p?: string }>;
+type SP = Promise<{ view?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; t?: string; p?: string; bm?: string; bo?: string; br?: string; bt?: string; bi?: string; bp?: string }>;
 
 /**
  * 「数据」——看数的唯一入口。
@@ -91,12 +92,22 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
 
   // 卡点、沟通：范围同上，用 看板的人 的 谁（选了人 = [他]；老板、总管理员看全部 = 不限）
   const 谁 = 只看 ? [只看] : 人.谁;
+  // 卡点（11-01 B15）：三栏看板，谁看得到按卡点的角色开关（只看自己 / 可看全部），不跟上面的人员选择走
   if (页签 === "block") {
-    const 筛 = 读卡点筛(sp.bs);
-    const d = await 复盘卡点of(谁, user.id, { 筛, 页: 读页码(sp.p) });
+    const 筛 = 读卡点看板筛(sp);
+    const d = await 卡点看板(user, 筛);
     return (
-      <DataShell view={view} 项目 选人={选人} 页签="block">
-        <BoardBlockers 数={d} 筛={筛} 只看自己={只看 === user.id} />
+      <DataShell view={view} 项目 页签="block">
+        <BoardBlockers
+          开={d.开}
+          全部={d.全部}
+          栏={{ 待接受: d.栏.待接受.map(卡点给界面), 处理中: d.栏.处理中.map(卡点给界面), 已解决: d.栏.已解决.map(卡点给界面) }}
+          已解决共={d.已解决共}
+          统计={d.统计}
+          项目们={d.项目们}
+          原因们={d.原因们}
+          筛={筛}
+        />
       </DataShell>
     );
   }

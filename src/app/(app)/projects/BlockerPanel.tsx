@@ -58,10 +58,10 @@ export function 耗时文字(b: Pick<卡点卡, "status" | "createdAt" | "resolv
   return b.status === "已解决" && b.resolvedAt ? `用了 ${天} 天解决（${fmtDateTime(b.resolvedAt)}）` : `已开 ${天} 天`;
 }
 
-/** 会签那一行：「处理中 2/3 ✓甲 ✓乙 ○丙」；还没人认领 = 「待接受，还没人认领」 */
+/** 会签那一行：「处理中 2/3 ✓甲 ✓乙 ⏳丙」；还没人认领 = 「待接受，还没人认领」 */
 export function 会签文字(b: Pick<卡点卡, "status" | "进度" | "认领">): string {
   if (!b.认领.length) return `${b.status}，还没人认领`;
-  return `${b.status} ${b.进度.完成}/${b.进度.共} ${b.认领.map((c) => `${c.done ? "✓" : "○"}${c.名字}`).join(" ")}`;
+  return `${b.status} ${b.进度.完成}/${b.进度.共} ${b.认领.map((c) => `${c.done ? "✓" : "⏳"}${c.名字}`).join(" ")}`;
 }
 
 /** 阻碍原因的多选：下拉是设置里启用的原因，也能现打一个新的（发出去后进「待审核」，总管理员在设置里审） */

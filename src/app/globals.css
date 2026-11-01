@@ -1688,6 +1688,37 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 复盘页「卡点」「沟通」页签（P7）：沿用待办列表的样子，只补卡点类型的颜色和长内容的浮层 */
 .rblk-type { font-size: var(--fs-note); color: var(--text-muted); }
 .rblk-type-hot { color: var(--danger-text); font-weight: 600; }
+/* 复盘页「卡点」三栏看板（11-01 B15）：筛选条、统计条、三栏；容器窄（1024 + AI 栏常驻）三栏改上下排 */
+.rblk { display: flex; flex-direction: column; gap: var(--s3); }
+.rblk-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; max-width: 100%; }
+.rblk-switch { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: var(--fs-note); }
+.rblk-sel { width: 160px; max-width: 100%; }
+.rblk-sel-s { width: 112px; max-width: 100%; }
+.rblk-stats { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); align-items: flex-start; min-width: 0; }
+.rblk-stat { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s2); min-width: 0; }
+.rblk-stat-grow { flex: 1 1 240px; }
+.rblk-stat-k { color: var(--text-muted); font-size: var(--fs-note); }
+.rblk-stat-v { font-size: 18px; margin-right: var(--s2); }
+.rblk-impact { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-note); white-space: nowrap; }
+.rblk-impact-k { color: var(--text-muted); }
+.rblk-impact-bar { display: inline-block; width: 48px; height: 6px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
+.rblk-impact-bar > i { display: block; height: 100%; background: var(--brand); }
+.rblk-reasons .rblk-reason { cursor: pointer; margin-inline-end: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.rblk-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); align-items: start; }
+.rblk-col { min-width: 0; }
+.rblk-col-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
+@container (max-width: 760px) { .rblk-cols { grid-template-columns: minmax(0, 1fr); } }
+/* 设置 → 卡点角色开关、阻碍原因字典（11-01）：窄宽度下按钮折行，长原因名省略带 title */
+.blk-roles { display: grid; gap: 8px; }
+.blk-role-row { display: grid; grid-template-columns: minmax(72px, 120px) auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.blk-role-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blk-reasons { display: grid; gap: 4px; }
+.blk-reason-row { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border, rgba(0,0,0,.06)); min-width: 0; }
+.blk-reason-name { display: inline-flex; gap: 6px; align-items: center; flex: 1 1 180px; min-width: 0; }
+.blk-reason-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blk-reason-used { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.blk-reason-ops { margin-left: auto; }
+.blk-reason-merge { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .rtalk-tip { display: block; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 设置 · 团队成员：登录名 · 职位小字放名字下面，对齐名字（头像 30 + 间距 8） */
 .member-who { min-width: 0; }

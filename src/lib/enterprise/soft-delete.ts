@@ -7,6 +7,7 @@
  *   - 谁能看、能恢复：老板、主管、组织里有管理员类别的（销售管理 / 市场管理 / 总管理员）；看的范围照各自平时看得到的
  *   - 彻底删除：只有最高级管理员（老板或总管理员）
  *   - 到期清理：删了满 30 天的真删掉，夜扫的钟上每天一次（project/nightly.ts）
+ *   - 真删沟通记录：上面的卡点先脱开、照旧留着（11-01 卡点 B13）；老库脱不开的那几条留在回收站不删
  *
  * 不是企业版：这些都不开（删除照旧是真删）。
  */
@@ -19,6 +20,7 @@ import { 管理员类别 } from "./org";
 import { 最高管理 } from "./import-perm";
 import { 看已删, 回收站保留天数, 客户连带, type 软删表名 } from "./soft-delete-core";
 import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
+import { 卡点脱离沟通 } from "../project/blocker";
 
 export { 看已删, 回收站保留天数, 客户连带, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -134,6 +136,9 @@ export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promis
     if (!行?.deletedAt) return { ok: false as const, error: "这一条不在回收站里了，刷新看看" };
     const name = await 叫什么(tx, t, id);
     if (t === "Customer") await 看全部(() => 线索退回(tx, [id]));
+    if (t === "FollowUp" && (await 卡点脱离沟通(tx, [id])).size) {
+      return { ok: false as const, error: "这条沟通上发过卡点，卡点要留着，这条先留在回收站" };
+    }
     await 看全部(() => 表(tx, t).deleteMany({ where: { id } }));
     return { ok: true as const, name };
   }));
@@ -154,7 +159,11 @@ export async function 清过期(现在: Date = new Date()): Promise<Record<软�
   const 数 = { FollowUp: 0, Contact: 0, Project: 0, Customer: 0 } as Record<软删表名, number>;
   if (!企业版()) return 数;
   await 看全部(() => 看已删(() => prisma.$transaction(async (tx) => {
-    for (const t of ["FollowUp", "Contact", "Project"] as const) 数[t] = (await 表(tx, t).deleteMany({ where: { deletedAt: { lt: 线 } } })).count;
+    // 沟通上的卡点先脱开（卡点照旧在）；老库脱不开的沟通这次跳过
+    const 到期沟通 = (await tx.followUp.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((f) => f.id);
+    const 留 = await 卡点脱离沟通(tx, 到期沟通);
+    数.FollowUp = (await tx.followUp.deleteMany({ where: { deletedAt: { lt: 线 }, ...(留.size ? { id: { notIn: [...留] } } : {}) } })).count;
+    for (const t of ["Contact", "Project"] as const) 数[t] = (await 表(tx, t).deleteMany({ where: { deletedAt: { lt: 线 } } })).count;
     const 客户 = (await tx.customer.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((c) => c.id);
     await 线索退回(tx, 客户);
     if (客户.length) 数.Customer = (await tx.customer.deleteMany({ where: { id: { in: 客户 } } })).count;
