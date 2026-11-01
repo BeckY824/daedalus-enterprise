@@ -92,10 +92,13 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     // 11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」记一条沟通、AI 录入、发卡点、改分配回到各自卡头；
     // 「完成节点 ▼」「新增沟通」在阶段页签那一行（M-节点-04 / U-项目-06）
     const 卡上钮 = (await page.locator(".proj-main button, .proj-side button").allInnerTexts()).map(t => t.replace(/\s/g, ""));
-    expect(卡上钮).toEqual(expect.arrayContaining(["记一条沟通", "AI录入", "发卡点", "改分配"]));
+    expect(卡上钮).toEqual(expect.arrayContaining(["新增沟通", "AI录入", "发卡点", "改分配"]));
+    // 11-01 会议 §5：沟通卡头右边写「新增沟通」（走弹窗），不再有「去客户页看看」
+    expect(await page.getByTestId("follow-card-new").innerText()).toBe("新增沟通");
+    expect(await page.locator(".proj-main a").filter({ hasText: /页看看/ }).count()).toBe(0);
     expect(卡上钮.filter(t => /^(更多|推进进程|结束当前进程)$|^下一步/.test(t))).toEqual([]);
     expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["完成节点", "", "新增沟通"]);
-    expect(await page.locator(".proj-stage-acts button").nth(1).getAttribute("aria-label")).toBe("终止进程或改到别的进程");
+    expect(await page.locator(".proj-stage-acts button").nth(1).getAttribute("aria-label")).toBe("终止进程");
     expect(await page.locator(".proj-stage-acts .ant-btn-primary").allInnerTexts()).toEqual(["新增沟通"]);
     expect(await 页头钮(page)).toEqual(["转让项目"]);
     expect(await 编辑钮(page).count()).toBe(1);
@@ -110,7 +113,7 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     // 右栏里的卡片内容不能伸出卡片（右栏窄，最容易被长串撑开）
     const 伸出 = await page.locator(".proj-side .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    for (const name of ["记一条沟通", "AI 录入", "新增沟通", "转让项目"]) {
+    for (const name of ["AI 录入", "新增沟通", "转让项目"]) {
       const box = await page.getByRole("button", { name }).first().boundingBox();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
@@ -206,7 +209,7 @@ it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注�
     await page.getByRole("button", { name: /取\s*消/ }).click();
     await 原话.waitFor({ state: "detached" });
     // 手填入口：AI 那格收在默认折叠的「更多」里（F-跟进-06），展开后只给一个「用 AI 从原话预填」
-    await page.getByRole("button", { name: "记一条沟通" }).first().click();
+    await page.getByTestId("follow-card-new").click();
     const 更多 = page.getByRole("button", { name: /更多：/ });
     await 更多.waitFor();
     expect(await 更多.getAttribute("aria-expanded")).toBe("false");
@@ -218,46 +221,61 @@ it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注�
   } finally { await page.close(); }
 });
 
-it("10-31 改版 R4：项目卡定金在合同前；空着写「待填写X / 待选择X」（浅灰）；0 算填了", async () => {
+it("10-31 改版 R4 + 11-01 会议：项目卡定金在合同前；空着一律写「—」（浅灰、悬停写未填哪格）；0 算填了", async () => {
   const { page, errors } = await open(true);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
       成交钱: { contractAmount: null, contractCurrency: null, depositAmount: 0, depositCurrency: "USD", dealDemand: null }, expectedDealAt: null, 项目来源: null }));
     const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "定金金额" }).first();
-    await 卡.waitFor();
+    await 卡.locator('[data-empty="合同金额"]').waitFor();
     const 字 = await 卡.innerText();
     expect(字.indexOf("定金金额")).toBeLessThan(字.indexOf("合同金额"));
     expect(字).toMatch(/定金金额\s*US\$\s*0\b/);
-    expect(字).not.toContain("待填写定金金额");
-    for (const 话 of ["待填写合同金额", "待填写需求描述", "待选择预计成交日期", "待选择项目来源"]) expect(字).toContain(话);
-    expect(字).not.toContain("没填");
-    const 色 = await 卡.getByText("待填写合同金额").evaluate(e => getComputedStyle(e).color);
+    expect(await 卡.locator('[data-empty="定金金额"]').count()).toBe(0);
+    for (const 名 of ["合同金额", "需求描述", "预计成交日期", "项目来源"]) {
+      const 格 = 卡.locator(`[data-empty="${名}"]`);
+      expect(await 格.innerText()).toBe("—");
+      expect(await 格.getAttribute("title")).toBe(`未填：${名}`);
+    }
+    expect(字).toMatch(/合同金额\s*—/);
+    expect(字).not.toMatch(/待填写|待选择|没填/);
+    const 色 = await 卡.locator('[data-empty="合同金额"]').evaluate(e => getComputedStyle(e).color);
     const 浅 = await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--text-faint)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; });
     expect(色).toBe(浅);
+    // 项目金额落库默认 0、分不出没填和填了 0：0 也写 —，不写 ¥ 0
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ amount: 0, 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null } }));
+    await 卡.locator('[data-empty="金额"]').waitFor();
+    expect(await 卡.innerText()).toMatch(/(^|\n)金额\s*—/);
+    expect(await 卡.innerText()).not.toMatch(/¥\s*0\b/);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("10-31：这个进程配了必填、还没填的项目金额 / 预计成交写「占位确认」（浅灰）；没配必填的空格照旧写待填写 / 待选择", async () => {
+it("10-31 必填 + 11-01 会议：这个进程配了必填、还没填的项目金额 / 预计成交也写「—」，悬停说是必填；没配必填的空格写 —、悬停「未填」", async () => {
   const { page, errors } = await open(true);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
       成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, expectedDealAt: null, 项目来源: null,
       必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额", "预计成交日期"], 只能靠填齐: false } }));
     const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "定金金额" }).first();
-    await 卡.getByText("占位确认").first().waitFor();
-    expect(await 卡.getByText("占位确认", { exact: true }).count()).toBe(2);
+    await 卡.locator("[data-required]").first().waitFor();
+    expect(await 卡.locator("[data-required]").evaluateAll(es => es.map(e => e.getAttribute("data-empty")))).toEqual(["金额", "预计成交日期"]);
+    expect(await 卡.locator('[data-empty="金额"]').innerText()).toBe("—");
+    expect(await 卡.locator('[data-empty="金额"]').getAttribute("title")).toBe("必填：金额，填齐后自动往前推");
     const 字 = await 卡.innerText();
-    expect(字).toMatch(/金额\s*占位确认/);
-    expect(字).not.toContain("待选择预计成交日期");
-    // 合同金额、定金这几格不在必填清单里（必填的「金额」是项目金额那一格），照旧写待填写
-    for (const 话 of ["待填写合同金额", "待填写定金金额", "待填写需求描述", "待选择项目来源"]) expect(字).toContain(话);
+    expect(字).not.toMatch(/占位确认|待填写|待选择/);
+    // 合同金额、定金这几格不在必填清单里（必填的「金额」是项目金额那一格），写 — 但不标必填
+    for (const 名 of ["合同金额", "定金金额", "需求描述", "项目来源"]) {
+      const 格 = 卡.locator(`[data-empty="${名}"]`);
+      expect(await 格.innerText()).toBe("—");
+      expect(await 格.getAttribute("data-required")).toBeNull();
+    }
     const 浅 = await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--text-faint)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; });
-    expect(await 卡.getByText("占位确认").first().evaluate(e => getComputedStyle(e).color)).toBe(浅);
+    expect(await 卡.locator("[data-required]").first().evaluate(e => getComputedStyle(e).color)).toBe(浅);
     // 填上了就照常显示（__over 每次从底稿起，成交钱要再带上）
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 项目来源: null, expectedDealAt: "2026-12-01", 必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额"], 只能靠填齐: false } }));
     await 卡.getByText("2026-12-01").waitFor();
-    expect(await 卡.getByText("占位确认", { exact: true }).count()).toBe(1);
+    expect(await 卡.locator("[data-required]").count()).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -274,7 +292,7 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     await 卡.waitFor();
     let 字 = await 卡.innerText();
     expect(字).toMatch(/合同状态\s*起草中/);
-    expect(字).toContain("待填写痛点标注");
+    expect(await 卡.locator('[data-empty="痛点标注"]').innerText()).toBe("—");
     expect(字.indexOf("合同金额")).toBeLessThan(字.indexOf("合同状态"));
     expect(字.indexOf("成交需求")).toBeLessThan(字.indexOf("痛点标注"));
     // F-项目-18：附件合成左栏一块「项目附件」，合同附件后面紧跟项目方案，最后是沟通上的附件
@@ -343,7 +361,7 @@ it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标�
     expect(await 样(卡.getByText("定金金额", { exact: true }))).toEqual({ 字: "16px", 色: 灰 });
     const 零 = 卡.locator("div").filter({ hasText: /^定金金额/ }).last();
     expect(await 零.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; })).toEqual({ 字: "16px", 色: 墨 });
-    expect(await 样(卡.getByText("待填写合同金额"))).toEqual({ 字: "16px", 色: 浅 });
+    expect(await 样(卡.locator('[data-empty="合同金额"]'))).toEqual({ 字: "16px", 色: 浅 });
     // 「阶段 / 进程」两格企业版不显示了（F-项目-19），.proj-where-label 只在有回收日时出现，这里不再量
     const 辅 = page.locator(".proj-main .ant-card span").filter({ hasText: / · \d{4}-\d{2}-\d{2}/ }).first();
     expect(await 样(辅)).toEqual({ 字: "14px", 色: 灰 });
@@ -632,7 +650,7 @@ it("下一步：有文字写文字、有时间跟在后面；老数据只有时�
     expect((await 行.innerText()).replace(/\s+/g, " ")).toContain("下一步 2026-11-01");
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ nextStepText: "只写了一句", nextStepAt: null }));
     await page.getByText("只写了一句").waitFor();
-    await page.getByRole("button", { name: "记一条沟通" }).first().click();
+    await page.getByTestId("follow-card-new").click();
     const 窗 = page.getByRole("dialog");
     await 窗.getByLabel("下一步做什么").waitFor();
     expect(await 窗.getByLabel("下一步做什么").getAttribute("maxlength")).toBe("100");
@@ -672,6 +690,9 @@ it("R6 页头跟着权限：公海里能领的只剩「领取」；退回公海�
     expect(await page.locator(".page-head-a").getByRole("button", { name: "退回公海" }).isDisabled()).toBe(true);
     // 11-01：项目卡上「线索验证」一行带当前结果，点开弹窗就是整个验证操作
     expect(await page.getByTestId("lead-verify-result").innerText()).toBe("初验无效");
+    // 11-01 会议 §6：结果是纯字，不套 Tag 框
+    expect(await page.getByTestId("lead-verify-row").locator(".ant-tag").count()).toBe(0);
+    expect(await page.getByTestId("lead-verify-result").evaluate(e => e.tagName)).toBe("SPAN");
     expect(await page.getByTestId("lead-verify-nudge").count()).toBe(0);
     await page.getByTestId("lead-verify-row").click();
     const 窗 = page.getByRole("dialog").filter({ hasText: "线索验证" });
@@ -695,7 +716,7 @@ it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项�
       await 窗.getByRole("button", { name: /Close|关闭/ }).first().click();
       await 窗.waitFor({ state: "hidden" });
     };
-    // 完成节点在阶段页签那一行；▼ 里「改到别的进程或结局…」开改进程框
+    // 完成节点在阶段页签那一行
     await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
     let 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · 超长项目名字" });
     await 窗.waitFor();
@@ -703,17 +724,43 @@ it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项�
     expect(await 窗.innerText()).toContain("下一节点：物流运输");
     expect(await 窗.getByRole("button", { name: "确认推进" }).count()).toBe(1);
     await 关(窗);
-    await page.getByRole("button", { name: "终止进程或改到别的进程" }).click();
-    await page.getByRole("menuitem", { name: /改到别的进程或结局/ }).click();
-    窗 = page.getByRole("dialog").filter({ hasText: "改进程 · 超长项目名字" });
-    await 窗.waitFor();
-    expect(await 窗.getByRole("button", { name: /^下一步：/ }).count()).toBe(1);
-    await 关(窗);
+    // 11-01 会议 §13：▼ 里删掉「改到别的进程」，只剩终止
+    await page.getByRole("button", { name: "终止进程" }).click();
+    await page.getByRole("menuitem").first().waitFor();
+    expect(await page.getByRole("menuitem", { name: /改到别的进程/ }).count()).toBe(0);
+    expect((await page.getByRole("menuitem").allInnerTexts()).some(t => t.includes("终止"))).toBe(true);
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem").first().waitFor({ state: "hidden" });
     expect(await page.locator(".proj-side .ant-card").filter({ hasText: "项目组" }).getByRole("button", { name: /^邀\s*请$/ }).count()).toBe(1);
     窗 = await 开("改分配", "改提成分配");
     await 窗.getByRole("button", { name: /取\s*消/ }).click();
     await 窗.waitFor({ state: "hidden" });
     expect(await 头.getByRole("button", { name: "管理沟通" }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("11-01 会议 §13：节点图标前留一点间隔；「完成节点」绿底白字，▼ 跟着绿", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    const 间隔 = await page.locator(".proj-stage-node .proj-stage-mark").first().evaluate(e => parseFloat(getComputedStyle(e).marginInlineStart));
+    expect(间隔).toBeGreaterThanOrEqual(4);
+    const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = v; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
+    const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
+    expect(await 钮.isDisabled()).toBe(false);
+    const [底, 字] = await 钮.evaluate(e => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color]);
+    expect(底).toBe(await 色("var(--success-text)"));
+    expect(字).toBe(await 色("var(--on-ink)"));
+    expect(await page.getByRole("button", { name: "终止进程" }).evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 色("var(--success-text)"));
+    // 看别的阶段时灰掉：浅绿底、字还是深绿看得清，悬停照旧写原因
+    await page.locator(".proj-stage-tab").filter({ hasText: "线索" }).first().click();
+    await page.waitForFunction(() => (document.querySelector(".proj-stage-acts .proj-done-btn") as HTMLButtonElement | null)?.disabled === true);
+    const 灰钮 = page.locator(".proj-stage-acts .proj-done-btn").first();
+    const [灰底, 灰字] = await 灰钮.evaluate(e => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color]);
+    expect(灰底).toBe(await 色("var(--success-bg)"));
+    expect(灰字).toBe(await 色("var(--success-text)"));
+    await page.locator(".proj-stage-acts .proj-stage-tip").first().hover();
+    await page.locator(".ant-tooltip").filter({ hasText: /\S/ }).first().waitFor();
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -785,7 +832,7 @@ it("R5 完成节点 / 终止进程（M-节点-04/05）：完成先开框、取�
     expect(await 改节点记录(page)).toContain("物流运输");
     // 终止：▼ → 终止进程（写着落到哪）→ 确认 → 订单进异常框；这一步还没改节点
     await page.evaluate(() => { (window as unknown as { __改节点: unknown[] }).__改节点 = []; });
-    await page.getByRole("button", { name: "终止进程或改到别的进程" }).click();
+    await page.getByRole("button", { name: "终止进程" }).click();
     const 项 = page.getByRole("menuitem", { name: /终止进程/ });
     expect(await 项.innerText()).toContain("落到「异常状态」");
     await 项.click();
@@ -815,7 +862,7 @@ it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一�
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
     expect(await page.locator(".proj-stage-exit.is-todo").innerText()).toBe("已转商机");
     expect(await 框字()).toContain("下一节点：线索验证");
-    await page.getByRole("button", { name: "终止进程或改到别的进程" }).click();
+    await page.getByRole("button", { name: "终止进程" }).click();
     expect(await page.getByRole("menuitem", { name: /终止进程/ }).innerText()).toContain("落到「线索流失」");
     await page.keyboard.press("Escape");
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进" }));

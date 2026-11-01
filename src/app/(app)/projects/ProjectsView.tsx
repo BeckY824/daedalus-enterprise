@@ -1,11 +1,11 @@
 "use client";
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { App, Button, Modal, Select, Space, Segmented, Tag, type SelectProps } from "antd";
-import { CloseOutlined, PlusOutlined, RightOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { App, Button, Modal, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
+import { CloseOutlined, PlusOutlined, RightOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import dynamic from "next/dynamic";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
@@ -39,6 +39,7 @@ import LeadFullNotices from "../leads/LeadFullNotices";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
 import { 取客户近况 } from "../customers/[id]/pick";
 import { 取建档数据 } from "./new/wizard-actions";
+import { 滚法 } from "@/lib/reduced-motion";
 import type { 建档数据 } from "./new/ProjectWizard";
 
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */
@@ -66,11 +67,14 @@ function 异常说明(r: 项目行) {
   return [r.exceptionCategory, r.exceptionReason].filter(Boolean).join("：") || undefined;
 }
 
-/** 进程那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红；阶段单独一列（P11），这里只写进程 */
+/** 进程那一格：有结局写结局（按字典的叫法，后台改了出口叫法就用改的），异常标红；阶段单独一列（P11），这里只写进程。
+ *  11-01：结局和普通进程一样是纯文字，不带框 */
 function 节点文字(r: 项目行, 字典: 阶段字典) {
-  if (r.result === "异常状态") return <Tag color="error" title={异常说明(r)}>异常 · {r.exceptionCategory ?? r.node}</Tag>;
-  if (r.result) return <Tag>{结局叫法(r.result, 字典)}</Tag>;
-  const 进程 = 阶段与进程(r, 字典).进程;
+  if (r.result === "异常状态") {
+    const 字 = `异常 · ${r.exceptionCategory ?? r.node}`;
+    return <Typography.Text type="danger" className="clamp" title={异常说明(r) ?? 字}>{字}</Typography.Text>;
+  }
+  const 进程 = r.result ? 结局叫法(r.result, 字典) : 阶段与进程(r, 字典).进程;
   return <span className="clamp" title={进程}>{进程}</span>;
 }
 
@@ -104,9 +108,12 @@ export default function ProjectsView({
   卡点们?: 卡点卡[];
   /** 企业版「新线索」页：只看线索阶段 */
   阶段?: "线索";
-  /** 企业版「线索分配和配额」开着：页头摆「我分出去的」 */
+  /** 企业版「线索分配和配额」开着：页头摆「我分出去的」（新线索页；项目页筛到线索阶段时也摆） */
   线索分配开着?: boolean;
-  /** 我能分配（老板、总管理员、市场管理）：每行「分配」「自动分配」、勾选后批量自动分配；服务端还会再查一遍 */
+  /**
+   * 我能分配（总管理员、市场管理）：每行「分配」「自动分配」、勾选后批量自动分配；服务端还会再查一遍。
+   * 新线索页一直有；企业版项目页阶段筛到「线索」时也有（11-01 会议 §5：分配入口搬进项目列表），那里不显示配额
+   */
   能自动分配?: boolean;
   /** 自动分配因都已满额没分出去的提醒 */
   满额提醒?: 满额提醒[];
@@ -119,8 +126,11 @@ export default function ProjectsView({
   const 列名 = (列: 看板列) => (列 === "成功交付" ? 结局叫法(字典.出口们.订单[0].结局 ?? 列, 字典) : 列);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
-  // 分配只在新线索页：线索阶段的项目按配额分给销售（老的 Lead 分配搬过来，见 leads/assign-actions.ts 的 项目 选项）
-  const 可分 = 新线索 && 能自动分配;
+  // 企业版项目页阶段筛到「线索」：分配入口也摆在这儿（11-01 会议 §5「分配入口搬进项目列表但不看配额」）。
+  // 只是多一处入口、不显示配额字样；分不分得出去、配额拦不拦照旧由服务端定
+  const 项目页分 = 企业版 && !新线索 && filters.phase === "线索";
+  // 线索阶段的项目分给销售（老的 Lead 分配搬过来，见 leads/assign-actions.ts 的 项目 选项）
+  const 可分 = (新线索 || 项目页分) && 能自动分配;
   const [分配中, set分配中] = useState<项目行 | null>(null);
   const [挑老客户, set挑老客户] = useState(false);
   // 企业版项目首页「新增项目」（11-01 用户：「也是弹窗进行。右侧下拉去掉，打开新增的时候给一个选项新客户还是老客户」）
@@ -145,6 +155,8 @@ export default function ProjectsView({
   const [存的看法, set看法] = useLocalPref<"列表" | "看板">("projects-view", "看板");
   const 看法 = 新线索 ? "列表" : 存的看法;
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
+  const 看板框 = useRef<HTMLDivElement>(null);
+  const [右边还有, 滑一列] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
   // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
@@ -159,7 +171,12 @@ export default function ProjectsView({
   // 公海里同事客户的项目不给客户名（page.tsx 露客户），领取后再看
   const 领了再看 = "领取后可见";
 
-  const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`;
+  const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => (项目页分 ? `已分给 ${r.接手人}` : `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`);
+  // 页头「分配」：分配在列表的每行和勾选里做，看板上点它先切到列表
+  const 去分配 = () => {
+    if (看法 !== "列表") set看法("列表");
+    message.info("勾选要分的线索点「自动分配」，或点行末的「分配」指定接手人");
+  };
 
   async function 自动分(r: 项目行) {
     try {
@@ -206,7 +223,7 @@ export default function ProjectsView({
   const 收起 = 企业版 ? { 默认: false } : {};
   const 列表: 列<项目行>[] = [
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「进程」挤成两个字一行
-    // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）
+    // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）；企业版每格一行、放不下省略号悬停看全（11-01 会议 §11，DataList 单行）
     { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string) => <span className="fulltext" title={v}>{v}</span> },
     { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
     // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列
@@ -318,7 +335,8 @@ export default function ProjectsView({
         extra={
           // 窄屏（手机、Windows 1024）按钮多了换行，不撑出页宽
           <Space wrap>
-            {新线索 && 线索分配开着 && <AssignedOutButton />}
+            {项目页分 && 能自动分配 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
+            {(新线索 || 项目页分) && 线索分配开着 && <AssignedOutButton />}
             {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />}
             {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
             <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>
@@ -335,6 +353,7 @@ export default function ProjectsView({
         <DataList<项目行>
           // 企业版默认只摆 7 列（1366 宽不横滚），换个键让已存的旧列设置回到新默认
           页={企业版 ? (新线索 ? "ent-leads-v2" : "ent-projects") : "projects"}
+          单行={企业版}
           列={列表}
           行={行}
           空库={行.length === 0 && !在筛}
@@ -360,10 +379,16 @@ export default function ProjectsView({
         />
       ) : (
         <>
-          <div style={{ marginBottom: 12 }}>{筛选}</div>
-          {/* 五列都摆，0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe） */}
-          <div className="pipe-wrap">
-            <div className="pipe">
+          <div className="pipe-top">
+            {筛选}
+            {右边还有 > 0 && (
+              <Button type="link" className="pipe-more-right" title="往右滑一列" onClick={滑一列}>→ 还有 {右边还有} 列</Button>
+            )}
+          </div>
+          {/* 五列都摆，0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe）。
+              右边还有没露全的列：右沿渐隐 + 上面「→ 还有 N 列」（11-01 会议 C12），横向滚动条常显 */}
+          <div className={右边还有 > 0 ? "pipe-wrap pipe-fade-right" : "pipe-wrap"}>
+            <div className="pipe" ref={看板框}>
               {看板.map((c) => {
                 const sum = 合计文字(c.合计, b.currency);
                 return (
@@ -445,9 +470,43 @@ export default function ProjectsView({
       )}
       {建档 && <建档弹窗 open={建档开着} 标题="新增项目" 数据={建档} onClose={() => set建档开着(false)} />}
       {企业版 && <OldCustomerProject 开={挑老客户} 关={() => set挑老客户(false)} users={users} 节点们={字典.节点们.线索} 要下一步={要下一步} />}
-      {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} />}
+      {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分} />}
     </div>
   );
+}
+
+/**
+ * 看板右边还有几列没整列露出来（11-01 会议 C12「加横向滚动条和『→ 还有 N 列』的提示」）。
+ * 滚动、框变宽窄、列变了都重算；滑一列 = 把右边第一列没露全的整列滑进来，点几下到头
+ */
+/** 看板右沿渐隐的宽（和 globals.css .pipe-fade-right 的 48px 一致）：滑过来的那一列整列落在渐隐外 */
+const 渐隐宽 = 48;
+function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: unknown): [number, () => void] {
+  const [n, setN] = useState(0);
+  const 没露全的 = (el: HTMLDivElement) => {
+    const 右 = el.getBoundingClientRect().right;
+    return Array.from(el.children).filter((c) => c.getBoundingClientRect().right > 右 + 1);
+  };
+  useEffect(() => {
+    const el = 框.current;
+    if (!el) return; // 提示只在看板里显示，切回看板时重算
+    const 算 = () => setN(没露全的(el).length);
+    算();
+    el.addEventListener("scroll", 算, { passive: true });
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(算);
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", 算);
+      ro?.disconnect();
+    };
+  }, [框, 列们]);
+  const 滑 = () => {
+    const el = 框.current;
+    const 下一列 = el && 没露全的(el)[0];
+    if (!el || !下一列) return;
+    el.scrollBy({ left: 下一列.getBoundingClientRect().right - el.getBoundingClientRect().right + 渐隐宽, behavior: 滚法() });
+  };
+  return [n, 滑];
 }
 
 /** 企业版超时回收：快到回收日的项目标一下（10-27）。标签直接写哪天，不用悬停；文字和项目详情同一套（recycle-text.ts） */

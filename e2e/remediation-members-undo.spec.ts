@@ -11,7 +11,7 @@ test("T-038/T-039 成员编辑冲突与恢复失败在界面如实提示", async
     id = (await db.user.create({ data: { name: "QA成员失败提示", email: "qa-ui-member", password: "unused", role: "SALES", active: false } })).id;
     await login(page); await page.goto("/settings"); await page.getByRole("tab", { name: "团队成员" }).click();
     const row = page.getByRole("row").filter({ hasText: "QA成员失败提示" });
-    await row.getByRole("button", { name: "edit", exact: true }).click();
+    await row.getByRole("button", { name: "编辑 QA成员失败提示", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "编辑成员 · QA成员失败提示" });
     await dialog.getByLabel("登录用户名", { exact: true }).fill("admin");
     await dialog.getByRole("button", { name: /保\s*存/ }).click();

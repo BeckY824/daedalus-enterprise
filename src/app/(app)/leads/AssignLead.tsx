@@ -17,8 +17,11 @@ import { 公海规则 } from "@/lib/enterprise/pool-rules";
 
 const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}${p.加额 > 0 ? `（含无效补 ${p.加额}）` : ""}`;
 
-/** 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的 */
-export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void }) {
+/**
+ * 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的。
+ * 不看配额 = 企业版项目列表里的分配入口（11-01 会议 §5）：接手人后面、说明里不写配额，只是不显示，服务端照旧查
+ */
+export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean }) {
   const router = useRouter();
   const { message } = App.useApp();
   const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划"; 带待办: boolean }>();
@@ -67,7 +70,7 @@ export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: strin
       afterOpenChange={打开了}
       destroyOnHidden
     >
-      <p className="muted" style={{ marginTop: 0 }}>只能分给销售或销售管理；配额分满了会拦下，分完记进分配记录。</p>
+      <p className="muted" style={{ marginTop: 0 }}>{不看配额 ? "只能分给销售或销售管理，分完记进分配记录。" : "只能分给销售或销售管理；配额分满了会拦下，分完记进分配记录。"}</p>
       <Form form={form} layout="vertical" initialValues={{ line: "", kind: "营销", 带待办: 公海规则.带待办默认勾 }}>
         <Form.Item name="toUserId" label="接手人" rules={[{ required: true, message: "选一个接手人" }]}>
           <Select
@@ -78,7 +81,7 @@ export function AssignLeadModal({ lead, 关 }: { lead: { id: string; name: strin
             notFoundContent={人们 === null ? "加载中…" : "组织里还没有销售：先在 设置 → 组织架构 里排好"}
             options={(人们 ?? [])
               .filter((p) => p.userId !== lead?.ownerId)
-              .map((p) => ({ value: p.userId, label: `${p.name}${p.line ? `（${p.line}）` : ""} · ${配额说法(p)}` }))}
+              .map((p) => ({ value: p.userId, label: `${p.name}${p.line ? `（${p.line}）` : ""}${不看配额 ? "" : ` · ${配额说法(p)}`}` }))}
           />
         </Form.Item>
         <Form.Item name="line" label="业务线" extra="选了业务线，只能分给这条线（或没定线）的销售">

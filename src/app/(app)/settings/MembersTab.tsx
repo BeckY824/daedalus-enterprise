@@ -119,7 +119,7 @@ export default function MembersTab({
         <>
           <div>
             系统里已有一位<b>{同名.name}</b>
-            {同名.title ? `（${同名.title}）` : ""}，{用邮箱登录 ? "登录邮箱" : "登录用户名"} <b>{同名.email}</b>。
+，{用邮箱登录 ? "登录邮箱" : "登录用户名"} <b>{同名.email}</b>。
           </div>
           <div style={{ marginTop: 8 }}>
             如果这是另一个人，可以继续创建，各处负责人下拉会自动带上登录名区分；
@@ -219,7 +219,7 @@ export default function MembersTab({
             defaultValue={target}
             style={{ width: "100%" }}
             onChange={(v) => (target = v)}
-            options={others.map((u) => ({ value: u.id, label: `${u.name}（${u.title}）` }))}
+            options={others.map((u) => ({ value: u.id, label: u.name }))}
           />
           <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
             {外贸订单(b) ? "已经下的订单、转了订单和丢单的商机" : "已经签下的业绩、赢单和丢单的商机"}，还算在「{r.name}」头上。
@@ -244,23 +244,13 @@ export default function MembersTab({
 
   const 屏 = Grid.useBreakpoint();
   const columns: ColumnsType<Row> = [
-    // 姓名、登录名、职位并成一列（10-27）：设置弹窗里九列铺开要左右拖，登录名和职位小字放名字下面。
-    // 导入 / 同步时没给邮箱的人记的是 .invalid 占位邮箱（保留域名，不会是真的），不显示（10-30 交互规则 F）
+    // 姓名这一列只放姓名（11-01 用户：「系统清除掉小字。只留姓名即可」）：权限只看「角色」那一栏，
+    // 职位、登录名这些小字容易被误当成权限。登录名在编辑弹窗里看；职位数据不动，只是不显示
     {
       title: "姓名",
       dataIndex: "name",
       width: 190,
-      render: (v, r) => {
-        const 邮箱 = r.email && !/\.invalid$/i.test(r.email) ? r.email : null;
-        return (
-          <div className="member-who">
-            <UserCell name={v} size={30} />
-            <span className="member-who-sub" title={邮箱 ? (用邮箱登录 ? "登录邮箱" : "登录用户名") : undefined}>
-              {[邮箱, r.title].filter(Boolean).join(" · ")}
-            </span>
-          </div>
-        );
-      },
+      render: (v) => <UserCell name={v} size={30} />,
     },
     按业务角色
       ? {
@@ -340,6 +330,7 @@ export default function MembersTab({
               className="row-act"
               size="small"
               icon={<EditOutlined />}
+              aria-label={`编辑 ${r.name}`}
               onClick={() => {
                 setEditing(r);
                 setOpen(true);
@@ -495,8 +486,9 @@ export default function MembersTab({
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="title" label="职位">
-                <Input placeholder="销售 / 销售经理 / 销售主管" />
+              {/* 职位不再填也不显示（11-01）：老数据留着不动 */}
+              <Form.Item name="title" hidden>
+                <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -611,7 +603,7 @@ function OffboardForm({ name, 点, others, defaultTarget, onChange }: {
         value={target}
         style={{ width: "100%" }}
         onChange={(v) => 改({ target: v })}
-        options={others.map((u) => ({ value: u.id, label: `${u.name}（${u.title}）` }))}
+        options={others.map((u) => ({ value: u.id, label: u.name }))}
       />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
         {外贸订单(b) ? "已经下的订单、转了订单和丢单的商机" : "已经签下的业绩、赢单和丢单的商机"}、已有结局的项目，还算在「{name}」头上；
@@ -660,7 +652,7 @@ function BatchOffboardForm({ names, others, defaultTarget, onChange }: {
         value={target}
         style={{ width: "100%" }}
         onChange={(v) => 改({ target: v })}
-        options={others.map((u) => ({ value: u.id, label: `${u.name}（${u.title}）` }))}
+        options={others.map((u) => ({ value: u.id, label: u.name }))}
       />
     </div>
   );

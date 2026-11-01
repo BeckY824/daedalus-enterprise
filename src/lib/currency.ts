@@ -154,3 +154,12 @@ export function 合计文字(合计: { 币种: string; 合计: number }[], 本�
   if (合计.length === 0) return 金额(0, 本位币);
   return 合计.map((x) => 金额(x.合计, x.币种)).join(" · ");
 }
+
+/**
+ * 详情页金额格（11-01 会议「未填一律 —」）：null / undefined 写「—」，填了的照 金额 写（填了 0 就是「¥ 0」）。
+ * 零算没填 = 库里区分不了「没填」和「填了 0」的（项目金额 amount 默认 0）：0 也写「—」
+ */
+export function 金额或空(n: number | null | undefined, 币种: string = 默认币种, 零算没填 = false): string {
+  if (typeof n !== "number" || !Number.isFinite(n) || (零算没填 && n === 0)) return "—";
+  return 金额(n, 币种);
+}

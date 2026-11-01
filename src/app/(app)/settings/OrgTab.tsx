@@ -213,10 +213,9 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   return (
     // minmax(0, 1fr)：不让 nowrap 的表格把整页撑宽，表格在各自卡片里横向滚动
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
-      {/* 通讯录同步放最上面：演示时找了半天，原来夹在权限表下面（10-27） */}
-      {能改 && <OrgSyncCard />}
-
-      <Card title="组织规则" extra={只看}>
+      {/* 组织规则单独一块放这一屏最上面（11-01 会议 §5「组织规则放设置首屏」）；通讯录同步挪到它下面、说明收起来（OrgSyncCard）。
+          10-27 把通讯录同步提到最上面是因为它夹在权限表下面找不到，现在仍在权限表之前 */}
+      <Card title="组织规则" extra={只看} data-testid="org-rules">
         <p className="muted">每条规则单独开关，除了「{规则.市场复核.名}」都默认关着：关着时和团队版一样，按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         <div style={{ display: "grid", gap: 12 }}>
           {规则名们.map((名) => (
@@ -246,6 +245,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       </Card>
 
       {value.线索分配 && <LeadAssignCard rows={value.线索分配} 不限额={不设配额} />}
+
+      {能改 && <OrgSyncCard />}
 
       <Card title="字段权限" extra={字段权限挡 && <span style={{ color: "var(--text-muted)" }}>{字段权限挡}</span>}>
         <p className="muted">
