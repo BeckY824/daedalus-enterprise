@@ -712,7 +712,7 @@ it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项�
 });
 
 /* 10-31 改版 R5：节点卡里三个阶段页签 + 「完成节点 ▼」「新增沟通」（M-节点-04）。节点按字典来，能去哪照 去处们 那一套。
-   F-项目-19：页签不挂「当前阶段」，不在的阶段字灰着（is-away）；A-12：线索末尾「已转商机」、商机末尾「商机赢单」 */
+   F-项目-19：页签不挂「当前阶段」，不在的阶段字灰着（is-away）；A-12：线索末尾「已转商机」、商机末尾「商机赢单」、订单末尾「交付结清」（11-01） */
 const 阶段签 = (page: import("playwright").Page) =>
   page.locator(".proj-stage-tab").evaluateAll(ts => ts.map(t => `${t.getAttribute("aria-selected") === "true" ? "*" : ""}${t.textContent}`));
 const 节点们 = (page: import("playwright").Page) =>
@@ -725,7 +725,8 @@ it("R5 阶段页签：三个页签、默认选所在阶段；进程按字典列�
     expect(await page.locator(".proj-main .ant-progress").count()).toBe(0);
     expect(await 阶段签(page)).toEqual(["线索", "商机", "*订单"]);
     expect(await page.locator(".proj-stage-tab.is-away").count()).toBe(2);
-    expect(await page.locator(".proj-stage-exit").count()).toBe(0);
+    // 11-01 答复 #7：订单末尾也挂「交付结清」，没交付不打勾
+    expect(await page.locator(".proj-stage-exit.is-todo").innerText()).toBe("交付结清");
     expect(await 节点们(page)).toEqual(["cur:生产备货", "todo:物流运输", "todo:安装实施", "todo:交付验收", "todo:尾款结算"]);
     expect(await page.locator(".proj-stage-node[aria-current=step]").innerText()).toContain("当前");
     // 「完成节点 ▼」「新增沟通」摆在页签那一行右边
@@ -833,6 +834,7 @@ it("R5 有结局 / 不能改进程：有结局换成「改回进程」、没有�
     expect(await page.locator(".proj-stage-acts").getByRole("button", { name: "改回进程" }).count()).toBe(1);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ result: "交付结清" }));
     await page.waitForFunction(() => document.querySelectorAll(".proj-stage-node.is-done").length === 5);
+    expect(await page.locator(".proj-stage-exit.is-done").innerText()).toBe("交付结清");
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能改节点: false }));
     await page.waitForFunction(() => ![...document.querySelectorAll(".proj-stage-acts button")].some(b => b.textContent === "改回进程"));
     expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["新增沟通"]);
