@@ -20,6 +20,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 历史负责人 } from "@/lib/project/pool-owner";
+import { 换负责人待办, 待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 
 export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
 
@@ -87,9 +88,10 @@ export type 分项目结果 =
 /**
  * 老板、主管把项目公海里的项目分给同事（10-30，P0 #6）：权限同客户公海的 分配公海，持有上限照拦指派（超上限）。
  * 规矩同 领取公海项目：标了无效的客户的项目分不了；记一行 pool-claim（操作人 = 我，到 = 给的那位），撤销认的就是这一行；
- * 客户在客户公海里、名下只有这一个项目的，客户跟着一起过去。一个一个分，分不了的说原因，不整批失败
+ * 客户在客户公海里、名下只有这一个项目的，客户跟着一起过去。一个一个分，分不了的说原因，不整批失败。
+ * 带待办（C-06，公海页页头的勾，没传按默认勾）：进公海时关掉的那批待办重新打开给分到的人
  */
-export async function 分配公海项目(ids: string[], userId: string): Promise<分项目结果> {
+export async function 分配公海项目(ids: string[], userId: string, 带待办?: boolean): Promise<分项目结果> {
   const me = await requireUser();
   if (!管全队客户(me.role)) return { ok: false, error: "只有老板和业务主管能把公海里的项目分给同事" };
   if (!(await 开着())) return 只企业版项目模式;
@@ -97,11 +99,12 @@ export async function 分配公海项目(ids: string[], userId: string): Promise
   if (!给) return { ok: false, error: "这位同事不在了或已停用，换一位" };
   const 们 = 规整ids(ids);
   const 规则 = await 生效组织规则();
+  const 带 = 带待办勾(带待办);
   const 分到: string[] = [];
   const 没分到: { id: string; 原因: string }[] = [];
   for (const id of 们) {
     const 原因 = await 看全部(() => 查完再写(async (tx) => {
-      const p = await tx.project.findUnique({ where: { id }, select: { id: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true, customerId: true } });
+      const p = await tx.project.findUnique({ where: { id }, select: { id: true, name: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true, customerId: true } });
       if (!p) return "这个项目已经不在了";
       if (!p.pooledAt) return "已经被人领走了";
       const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
@@ -110,8 +113,10 @@ export async function 分配公海项目(ids: string[], userId: string): Promise
       if (超) return 超;
       await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
       // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
-      await 记转让(tx, p, me.id, (await 历史负责人(tx, id)) ?? (p.ownerId || null), 给.id, "pool-claim");
-      await 单项目客户跟着领(tx, p.customerId, 给.id, me.id);
+      const 原 = (await 历史负责人(tx, id)) ?? (p.ownerId || null);
+      const 几条 = await 换负责人待办(tx, p, 原, 给.id, 带);
+      await 记转让(tx, p, me.id, 原, 给.id, "pool-claim", 待办痕(带, 几条));
+      await 单项目客户跟着领(tx, p.customerId, 给.id, me.id, 带);
       return null;
     }));
     if (原因) 没分到.push({ id, 原因 });

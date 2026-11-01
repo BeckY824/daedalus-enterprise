@@ -7,12 +7,13 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Form, Modal, Select, Table, Tag } from "antd";
+import { App, Button, Checkbox, Form, Modal, Select, Table, Tag } from "antd";
 import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
 import { 分配线索, 本月分配情况, 我分出去的线索, type 分配情况 } from "./assign-actions";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
+import { 公海规则 } from "@/lib/enterprise/pool-rules";
 
 const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}${p.加额 > 0 ? `（含无效补 ${p.加额}）` : ""}`;
 
@@ -23,7 +24,9 @@ const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配�
 export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean }) {
   const router = useRouter();
   const { message } = App.useApp();
-  const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划" }>();
+  const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划"; 带待办: boolean }>();
+  /** 企业版 C-06：分的是新线索（项目）才摆「待办一起转」的勾，默认勾、可以关（pool-rules.ts） */
+  const 带待办勾出 = !!lead?.项目 && 公海规则.换负责人带待办;
   const [人们, set人们] = useState<分配情况 | null>(null);
   const [忙, set忙] = useState(false);
 
@@ -42,7 +45,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     set忙(true);
     try {
       const 哪条 = lead.项目 ? { projectId: lead.id } : { leadId: lead.id };
-      const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind });
+      const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind, ...(带待办勾出 ? { 带待办: v.带待办 } : {}) });
       if (!res.ok) {
         message.error(res.error, 5);
         return;
@@ -68,7 +71,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
       destroyOnHidden
     >
       <p className="muted" style={{ marginTop: 0 }}>{不看配额 ? "只能分给销售或销售管理，分完记进分配记录。" : "只能分给销售或销售管理；配额分满了会拦下，分完记进分配记录。"}</p>
-      <Form form={form} layout="vertical" initialValues={{ line: "", kind: "营销" }}>
+      <Form form={form} layout="vertical" initialValues={{ line: "", kind: "营销", 带待办: 公海规则.带待办默认勾 }}>
         <Form.Item name="toUserId" label="接手人" rules={[{ required: true, message: "选一个接手人" }]}>
           <Select
             showSearch
@@ -87,6 +90,11 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
         <Form.Item name="kind" label="线索种类">
           <Select options={[{ value: "营销", label: "营销" }, { value: "营销企划", label: "营销企划" }]} />
         </Form.Item>
+        {带待办勾出 && (
+          <Form.Item name="带待办" valuePropName="checked" style={{ marginBottom: 0 }}>
+            <Checkbox>原负责人没做完的待办一起转给新负责人</Checkbox>
+          </Form.Item>
+        )}
       </Form>
     </Modal>
   );
