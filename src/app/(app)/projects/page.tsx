@@ -5,6 +5,10 @@ import { 看板分列 } from "@/lib/project/board";
 import { 读项目列表 } from "@/lib/project/list";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 我的卡点, 卡点给界面 } from "@/lib/project/blocker";
+import { 规则开着 } from "@/lib/enterprise/rules";
+import { 读组织 } from "@/lib/enterprise/org";
+import { 能分配 } from "@/lib/enterprise/lead-assign";
+import { 当前是共享区 } from "@/lib/shared-ws/current";
 import ProjectsView from "./ProjectsView";
 
 export const dynamic = "force-dynamic";
@@ -19,5 +23,9 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   // 先读列表（里面先跑超时回收），再取「我的卡点」，看到的是收完的样子
   const d = await 读项目列表(me, sp);
   const 卡点们 = 企业版() ? await 我的卡点(me) : [];
-  return <ProjectsView {...d} 列={看板分列(d.行)} 卡点们={卡点们.map(卡点给界面)} />;
+  // 企业版阶段筛到「线索」：分配入口也摆在项目列表（11-01 会议 §5），谁能分照新线索页（leads/page.tsx）同一个口径
+  const 筛线索 = 企业版() && sp.phase === "线索";
+  const 线索分配开着 = 筛线索 && (await 规则开着("线索分配")) && !(await 当前是共享区());
+  const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
+  return <ProjectsView {...d} 列={看板分列(d.行)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} />;
 }
