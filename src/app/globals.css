@@ -1193,7 +1193,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-fold-btn:disabled { cursor: default; opacity: .45; }
 .proj-fold-btn > svg { transition: transform var(--t-fast) var(--ease); }
 .proj-fold-btn[aria-expanded="true"] > svg { transform: rotate(180deg); }
-.proj-mod-body { max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior-y: contain; min-width: 0; scrollbar-width: thin; }
+/* 模块本身不滚（11-01 用户「沟通页内的滚动条要隐藏」「待办也是」「右侧只需要一个整体页面的上下滚动条」）：
+   原来每块限高 60vh 自己滚、滚到底也不往外传，鼠标停在沟通 / 待办上整栏就拉不下去。现在内容全铺开，滚的是整栏 */
+.proj-mod-body { min-width: 0; }
 .proj-search { min-width: 0; }
 /* 项目附件一块（F-项目-18）：合同附件 / 项目方案 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
 .proj-att-sec { min-width: 0; }
@@ -1554,6 +1556,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   @container rec (min-width: 1090px) {
     .main .rec-page > .rec > :is(.rec-col, .rec-right) { position: sticky; top: 0; height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none; }
     .main .rec-page > .rec > :is(.rec-col, .rec-right)::-webkit-scrollbar { display: none; }
+  }
+  /* 11-01 用户「右侧只需要一个整体页面的上下滚动条」：最右那栏露一条细滚动条（照项目页 .proj-side），别的栏照旧不露。
+     有右栏（AI + 计划）时是右栏；企业版项目模式没右栏，最右是沟通 + 待办那栏；两栏（630–1089）时第 2 列跟着整格滚，露整格的 */
+  @container rec (min-width: 1090px) {
+    .main .rec-page > .rec:not(.rec-no-right) > .rec-right,
+    .main .rec-page > .rec.rec-no-right > .rec-col { scrollbar-width: thin; }
+  }
+  @container rec (min-width: 630px) and (max-width: 1089px) {
+    .main .rec-page > .rec { scrollbar-width: thin; }
   }
   .shell:has(.rec-page) .pane-roster .pane-rows { scrollbar-width: none; }
   .shell:has(.rec-page) .pane-roster .pane-rows::-webkit-scrollbar { display: none; }
