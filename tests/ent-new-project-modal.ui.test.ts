@@ -1,0 +1,52 @@
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { build, type Plugin } from "esbuild";
+import path from "node:path";
+import { chromium, type Browser } from "playwright";
+/* 11-01 会议 §6：客户页「新开项目」整套在弹窗里走完——建好不跳去项目页，留在原页刷新，提示里带「去看看」 */
+let browser: Browser, bundle: string;
+const plugin: Plugin = { name: "new-project-modal-boundaries", setup(b) {
+  const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新??0)+1},push(u){(window.__跳=window.__跳??[]).push(u)},replace(u){(window.__跳=window.__跳??[]).push(u)}});export const usePathname=()=>\"/customers/a\";");
+  stub(/^next\/link$/, "export default function L({href,children,...p}){return <a href={href} {...p}>{children}</a>}");
+  stub(/(^|\/)project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return{ok:true,projectId:'np1'}};");
+  b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
+} };
+beforeAll(async () => {
+  bundle = (await build({ stdin: { contents: `
+    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
+    import NewProjectModal from '@/app/(app)/customers/[id]/NewProjectModal';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    const root=createRoot(document.getElementById('root'));
+    function 页(){
+      const [开,set开]=React.useState(true);
+      return <><div data-testid="还在客户页">客户页</div><NewProjectModal open={开} onClose={()=>set开(false)} customerId="a" customerName="测试客户甲" 默认负责人="u1" users={[{id:'u1',name:'同事甲',email:'a@x.test'}]} 联系人们={[]} 节点们={['初次接触','需求确认']} 要下一步={false}/></>;
+    }
+    root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><页/></BusinessProvider></App></ConfigProvider>);
+  `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
+  browser = await chromium.launch();
+}, 120_000);
+afterAll(async () => { await browser?.close(); });
+
+it("11-01 §6：新开项目在弹窗里填完、建好不跳页（刷新 + 提示里带「去看看」链到新项目）", async () => {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 800 } }); page.setDefaultTimeout(5000);
+  try {
+    await page.route("http://npm.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+    await page.goto("http://npm.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+    const 框 = page.getByRole("dialog");
+    await 框.getByText("新增项目").waitFor();
+    await 框.getByRole("button", { name: "下一步" }).click();
+    await 框.locator("textarea").fill("第一次电话，聊了需求");
+    await 框.getByText("明确回复了", { exact: true }).click();
+    await 框.getByRole("button", { name: /建\s*好/ }).click();
+    const 提示 = page.getByTestId("new-project-done");
+    await 提示.waitFor();
+    expect(await 提示.innerText()).toMatch(/项目建好了/);
+    expect(await 提示.getByRole("link", { name: "去看看" }).getAttribute("href")).toBe("/projects/np1");
+    const 记 = await page.evaluate(() => { const w = window as unknown as { __跳?: string[]; __刷新?: number; __建?: { customerId: string } }; return { 跳: w.__跳 ?? [], 刷新: w.__刷新 ?? 0, 客户: w.__建?.customerId }; });
+    expect(记.客户).toBe("a");
+    expect(记.跳).toEqual([]);
+    expect(记.刷新).toBe(1);
+    expect(await page.getByTestId("还在客户页").count()).toBe(1);
+    await expect.poll(() => page.getByRole("dialog").count()).toBe(0);
+  } finally { await page.close(); }
+});

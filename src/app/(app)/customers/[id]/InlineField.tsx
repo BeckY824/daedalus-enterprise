@@ -36,6 +36,7 @@ export default function InlineField({
   placeholder = "点击填写",
   可清空 = false,
   释义,
+  空时横线 = false,
 }: {
   customerId: string;
   field: PatchableKey;
@@ -52,6 +53,11 @@ export default function InlineField({
   可清空?: boolean;
   /** 下拉每项下面一行灰字（企业版客户类型，10-30）：名字 → 释义；框里选中后还是只显示名字 */
   释义?: Record<string, string>;
+  /**
+   * 没填时也写「—」（11-01 会议：企业版客户详情页未填字段一律用 — 代替）。
+   * 「点击填写」那句挪到悬停提示里，点「—」照旧进编辑
+   */
+  空时横线?: boolean;
 }) {
   const router = useRouter();
   const { message } = App.useApp();
@@ -121,7 +127,7 @@ export default function InlineField({
         {/* 单行的值带 is-line + title（U-通用-01）：企业版项目模式左栏放不下就省略，悬停看全；多行的备注照旧换行 */}
         <div
           className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}${kind === "textarea" ? "" : " is-line"}`}
-          title={kind !== "textarea" && typeof display === "string" && display ? display : undefined}
+          title={kind !== "textarea" && typeof display === "string" && display ? display : !display && 空时横线 && !只读 ? placeholder : undefined}
         >
           {/* 邮箱放不下时在 @ 前换行，不从字母中间断开（F.1 走查：「ahmed@gulfled.a / e」） */}
           {field === "email" && typeof display === "string" && display.includes("@") ? (
@@ -131,7 +137,7 @@ export default function InlineField({
               {display.slice(display.indexOf("@"))}
             </>
           ) : (
-            display || (只读 ? 空值符 : placeholder)
+            display || (只读 || 空时横线 ? 空值符 : placeholder)
           )}
         </div>
       </div>

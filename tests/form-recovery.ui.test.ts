@@ -43,7 +43,7 @@ beforeAll(async () => {
     import Profile from '@/app/(app)/settings/ProfileTab';
     import Channels from '@/app/(app)/channels/ChannelsView';
     const done=()=>window.__saved++;
-    const forms={billing:<Billing workspaceName="QA" status="TRIAL" daysLeft={window.__days??26764} writable={window.__writable??true} isOwner paidUntil={window.__paid??null}/>,inlineSign:<Inline customerId="c1" field="expectedSignAt" label="预计签约" value="2026-10-08" kind="date"/>,calendarPlan:<Plan open customerId="c1" record={window.__calendarRecord} onSaved={done} onClose={()=>{}}/>,
+    const forms={billing:<Billing workspaceName="QA" status="TRIAL" daysLeft={window.__days??26764} writable={window.__writable??true} isOwner paidUntil={window.__paid??null}/>,inlineSign:<Inline customerId="c1" field="expectedSignAt" label="预计签约" value="2026-10-08" kind="date"/>,inlineEmpty:<Inline customerId="c1" field="major" label="专业" value={null} 空时横线/>,inlineEmptyOld:<Inline customerId="c1" field="major" label="专业" value={null}/>,calendarPlan:<Plan open customerId="c1" record={window.__calendarRecord} onSaved={done} onClose={()=>{}}/>,
       calendarTask:<Task open customerId="c1" record={window.__calendarRecord} onSaved={done} onClose={()=>{}}/>,
       plan:<Plan open customerId="c1" record={null} onSaved={done} onClose={()=>{}}/>,
       contact:<Contact open customerId="c1" record={null} onSaved={done} onClose={()=>{}}/>,
@@ -213,6 +213,30 @@ it("预计签约行内DatePicker在纽约提交原日历日", async () => {
   await page.locator('.ant-picker-cell[title="2026-10-12"]').click();
   await expect.poll(() => page.evaluate(() => window.__calls.length)).toBe(1);
   expect(await page.evaluate(() => window.__calls[0])).toMatchObject({ id: "c1", key: "expectedSignAt", value: "2026-10-12" }); await page.close();
+});
+
+it("11-01 会议：企业版客户详情未填字段写「—」（填写提示挪到悬停），点「—」照旧进编辑；不开时还是「点击填写」", async () => {
+  const page = await browser.newPage(); page.setDefaultTimeout(5000);
+  await page.route("http://forms.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+  await page.goto("http://forms.test"); await page.evaluate(() => Object.assign(window, { __kind: "inlineEmpty", __calls: [], __fail: false }));
+  await page.addScriptTag({ content: bundle });
+  const 值 = page.locator(".rec-field-v"); await 值.waitFor();
+  expect(await 值.innerText()).toBe("—");
+  expect(await 值.getAttribute("title")).toBe("点击填写");
+  expect(await page.getByText("点击填写").count()).toBe(0);
+  await page.getByRole("button", { name: "编辑专业" }).click();
+  await page.locator(".rec-field-editing input").fill("测试专业");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => window.__calls.length)).toBe(1);
+  expect(await page.evaluate(() => window.__calls[0])).toMatchObject({ id: "c1", key: "major", value: "测试专业" });
+  await page.close();
+  const 旧 = await browser.newPage(); 旧.setDefaultTimeout(5000);
+  await 旧.route("http://forms.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+  await 旧.goto("http://forms.test"); await 旧.evaluate(() => Object.assign(window, { __kind: "inlineEmptyOld", __calls: [], __fail: false }));
+  await 旧.addScriptTag({ content: bundle });
+  await 旧.locator(".rec-field-v").waitFor();
+  expect(await 旧.locator(".rec-field-v").innerText()).toBe("点击填写");
+  await 旧.close();
 });
 
 it("J-030 历史渠道和负责人显示姓名，普通编辑不重写归属或外贸资料", async () => {

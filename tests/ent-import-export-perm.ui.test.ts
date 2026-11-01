@@ -5,6 +5,7 @@
  *   新建客户：普通销售负责人那一格锁成自己、灰掉，提示「新建的只能记在自己名下」；编辑不锁
  *   开关关闭（页面传 能导入导出=true、负责人只能自己=false）：和原来一样
  *   Windows 1024 / 1280 / 1366：列表头部不横向撑出，「新建」点得中
+ *   企业版客户列表每格一行（11-01 会议 §11）：1024 宽也不折，超长名字省略号、悬停看全；非企业版照旧
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -39,15 +40,15 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true},{id:'boss',name:'老板',email:'b',role:'ADMIN',active:true}];
     const row={id:'c1',name:长,phone:'13800000001',school:长,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:null,signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null};
-    window.__render=({what,能,锁,空,粘贴,编辑})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}>{
-      what==='list'?<CustomersView rows={空?[]:[row]} total={空?0:1} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{}} 能导入导出={能} 负责人只能自己={锁} 直接粘贴={粘贴} 客户数={空?0:1}/>:
+    window.__render=({what,能,锁,空,粘贴,编辑,企})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}>{
+      what==='list'?<CustomersView rows={空?[]:[row]} total={空?0:1} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{}} 能导入导出={能} 负责人只能自己={锁} 直接粘贴={粘贴} 客户数={空?0:1} 企业版={!!企}/>:
       <CustomerForm open editing={编辑?{id:'c1',name:'老客户',phone:'13800000001',salesOwnerId:'u2',salesOwnerName:'小张',followStatus:'待跟进',decisionStatus:'了解中',updatedAt:'2026-10-01T00:00:00.000Z'}:null} users={users} channels={[]} 负责人只能自己={锁} onClose={()=>{}}/>
     }</我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 参数 = { what: "list" | "form"; 能?: boolean; 锁?: boolean; 空?: boolean; 粘贴?: boolean; 编辑?: boolean };
+type 参数 = { what: "list" | "form"; 能?: boolean; 锁?: boolean; 空?: boolean; 粘贴?: boolean; 编辑?: boolean; 企?: boolean };
 async function open(p: 参数, width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -124,4 +125,34 @@ it.each([1024, 1280, 1366])("Windows %ipx：没导入导出按钮的列表头不
     const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box.x + box.width / 2, box.y + box.height / 2]);
     expect(点中).toBe(await btn.textContent());
   } finally { await page.close(); }
+});
+
+it("企业版客户列表 1024 宽：每格一行不折，被截的格子悬停看全文；非企业版照旧折行", async () => {
+  const { page, errors } = await open({ what: "list", 企: true }, 1024);
+  try {
+    await page.locator(".ant-table-tbody > tr.ant-table-row > td").first().waitFor();
+    expect(await page.locator(".list.dl-one-line").count()).toBe(1);
+    const 折了 = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>(".ant-table-tbody > tr.ant-table-row > td")).filter((td) => {
+      if (getComputedStyle(td).whiteSpace !== "nowrap") return true;
+      const w = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if (!n.textContent?.trim()) continue;
+        const r = document.createRange(); r.selectNodeContents(n);
+        if (new Set(Array.from(r.getClientRects()).filter((x) => x.width > 0).map((x) => Math.round(x.top))).size > 1) return true;
+      }
+      return false;
+    }).map((td) => td.className));
+    expect(折了).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // 超长客户名那格被截：悬停挂上整段
+    const 名格 = page.locator(".ant-table-tbody > tr.ant-table-row > td").filter({ hasText: "某某超长贸易进出口有限公司" }).first();
+    await 名格.hover();
+    await expect.poll(() => 名格.getAttribute("title")).toContain("某某超长贸易进出口有限公司某某超长贸易进出口有限公司");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const 老 = await open({ what: "list" }, 1024);
+  try {
+    await 老.page.locator(".ant-table-tbody > tr.ant-table-row > td").first().waitFor();
+    expect(await 老.page.locator(".dl-one-line").count()).toBe(0);
+  } finally { await 老.page.close(); }
 });
