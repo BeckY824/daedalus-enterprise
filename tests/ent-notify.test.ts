@@ -291,3 +291,22 @@ describe("分配成功提醒", () => {
     expect(await prisma.entNotice.count()).toBe(0);
   });
 });
+
+describe("卡点通知（11-01 认领制：不指认、不转让）", () => {
+  it("有人认领、最后一位完成即解决 → 告诉发布的人；发布的人自己点不收", async () => {
+    const { 卡点通知 } = await import("@/lib/enterprise/notice-sources");
+    const 客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 甲 } })).id;
+    const 项目 = (await prisma.project.create({ data: { name: "一期", customerId: 客户, ownerId: 甲, creatorId: 甲 } })).id;
+    await prisma.entBlocker.create({
+      data: { code: "BLK-20261101-001", projectId: 项目, customerId: 客户, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "价格", title: "报价卡住", description: "客户嫌贵", dueDays: 3, dueAt: new Date(), status: "待接受", creatorId: 甲 },
+    });
+    await 卡点通知({ id: 乙, name: "乙" }, "BLK-20261101-001", "认领");
+    await 卡点通知({ id: 乙, name: "乙" }, "BLK-20261101-001", "解决");
+    await 卡点通知({ id: 甲, name: "甲" }, "BLK-20261101-001", "认领");
+    await 卡点通知({ id: 乙, name: "乙" }, undefined, "认领");
+    const 甲的 = await 行(甲);
+    expect(甲的.map((n) => n.title)).toEqual(["乙 认领了你发布的卡点 BLK-20261101-001", "你发布的卡点 BLK-20261101-001 已解决"]);
+    expect(甲的[0]).toMatchObject({ kind: "卡点", body: "项目「一期」· 报价卡住", link: `/projects/${项目}` });
+    expect(await 行(乙)).toEqual([]);
+  });
+});
