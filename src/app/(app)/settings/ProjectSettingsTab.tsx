@@ -592,7 +592,7 @@ function RatesCard({
   return (
     <Card title="提成比例" extra={!能改 && <span style={{ color: "var(--text-muted)" }}>只有老板、总管理员能改</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0。按项目负责人的业务线用内贸 / 外贸那一套，两边都做或没设业务线的用「不限」。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
+        底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0、底价提成按成交金额 × 底价比例折算。按项目负责人的业务线用内贸 / 外贸那一套，两边都做或没设业务线的用「不限」。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
         {提成范围们.map((k) => (

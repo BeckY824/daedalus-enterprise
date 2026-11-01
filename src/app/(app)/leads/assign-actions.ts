@@ -24,6 +24,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限, 记转让 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 历史负责人 } from "@/lib/project/pool-owner";
 import {
   企划线索计数key, 我分出去的, 月份, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
   认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们,
@@ -212,10 +213,11 @@ async function 分项目给(
   const 规则 = await 生效组织规则();
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
-  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string } | Exclude<分给结果, { ok: true }>> => {
+  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | Exclude<分给结果, { ok: true }>> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
     if (!p) return { ok: false, error: 项目不在 };
-    if (input.原负责人 !== undefined && p.ownerId !== input.原负责人) return 已被分配;
+    // 进公海清了负责人的（C-01）ownerId 是空串，和界面交来的「没人」(null) 当一回事
+    if (input.原负责人 !== undefined && (p.ownerId || null) !== input.原负责人) return 已被分配;
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分：去「项目」里转让负责人" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
     if (p.ownerId === input.toUserId && !p.pooledAt && !p.awaitAssignAt) return { ok: false, error: "这条新线索已经在他名下了" };
@@ -228,19 +230,21 @@ async function 分项目给(
       const 超 = await 超上限(tx, 规则, input.toUserId, p);
       if (超) return { ok: false, 满: true, error: 超 };
     }
+    // 分之前的负责人：在公海里的取历史负责人（企业版进公海清了负责人，lib/project/pool-owner.ts）
+    const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
     // 乐观锁：where 带上刚读到的负责人和公海 / 待分配状态，中间被别人分走了就一行都不动、不覆盖
     const 改 = await tx.project.updateMany({
       where: { id: p.id, ownerId: p.ownerId, pooledAt: p.pooledAt, awaitAssignAt: p.awaitAssignAt, phase: "线索", result: null },
       data: { ownerId: input.toUserId, nextStepAt: null, nextStepText: null, pooledAt: null, awaitAssignAt: null },
     });
     if (改.count !== 1) return 已被分配;
-    await 记转让(tx, p, me.id, p.ownerId, input.toUserId, "transfer", `分配方式：${input.way}`);
+    await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", `分配方式：${input.way}`);
     // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id);
     await tx.entLeadAssign.create({
-      data: { projectId: p.id, toUserId: input.toUserId, fromUserId: p.ownerId, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
+      data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });
-    return { ok: true, fromUserId: p.ownerId };
+    return { ok: true, fromUserId: 原 };
   });
   if (!落库.ok) return 落库;
 
@@ -273,7 +277,7 @@ async function 分前看(
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
     // 公海里的、待分配的（A7 / A10，负责人那一格只是建的人占着）：原负责人也能被挑中
     return {
-      ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId, 实际负责人: p.ownerId,
+      ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId || null, 实际负责人: p.ownerId || null,
       待分配: !p.pooledAt && !!p.awaitAssignAt, 名: p.name, 线: 项目业务线(p, org?.成员),
     };
   }

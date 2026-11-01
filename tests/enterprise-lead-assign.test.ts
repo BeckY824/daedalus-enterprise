@@ -955,6 +955,15 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     expect(await prisma.projectNodeLog.count({ where: { projectId: P, kind: "transfer" } })).toBe(1);
   });
 
+  it("QA #4 公海里清了负责人的（ownerId 空串，C-01）：界面交「没人」照样能分，不误报「已被分配」", async () => {
+    const P = await 建项目("公海的", { bizLine: "内贸", ownerId: "", pooledAt: new Date() });
+    expect(await 分配线索({ projectId: P, toUserId: 内贸, 原负责人: "" })).toEqual({ ok: true });
+    expect((await 项目(P)).ownerId).toBe(内贸);
+    const Q = await 建项目("公海的二", { bizLine: "外贸", ownerId: "", pooledAt: new Date() });
+    expect(await 自动分配线索(Q, { 项目: true, 原负责人: null })).toMatchObject({ ok: true });
+    expect([外贸, 两边]).toContain((await 项目(Q)).ownerId);
+  });
+
   it("QA #4 并发：手动指派和自动分配同时点，只分一次", async () => {
     const P = await 建项目("并发二", { bizLine: "外贸" });
     const [a, b] = await Promise.all([

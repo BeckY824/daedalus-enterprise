@@ -4,6 +4,7 @@
  * 规矩（用户和总控 10-26 定）：
  *   - 底价提成 = 项目底价 × A（默认 2%）；溢价提成 = (成交金额 − 项目底价) × B（默认 30%）。
  *     成交金额低于底价时溢价算 0，不出负数。A、B 是百分数，存 Setting（entCommissionRates），管理员在设置里改
+ *   - 成交金额低于底价时按比例折算：底价提成 = 成交金额 × A（11-01 定，不另设值）；金额还没填时照底价预估
  *   - A、B 分内贸、外贸、不限三套（10-27 会议），按项目负责人的业务线（EntMember.line）取；两边都做 / 没设 = 不限。
  *     Setting 里旧的一套平铺值当「不限」，内贸、外贸没存过的跟「不限」一样
  *   - 管理员还能给某个人单设一套（10-28，entCommissionRatesByUser），比业务线那一套优先（取提成比例）
@@ -127,12 +128,17 @@ export function 提成比例问题(v: { 底价比例?: unknown; 溢价比例?: u
 
 export type 提成算式 = { 成交金额: number; 项目底价: number; 项目溢价: number; 底价提成: number; 溢价提成: number; 合计: number };
 
+/** 成交金额填了且低于项目底价：底价提成按成交金额折算 */
+export function 低于底价(成交金额: number, 项目底价: number): boolean {
+  return 成交金额 > 0 && 成交金额 < 项目底价;
+}
+
 /** 按比例算一次提成。底价没填 → null（不出数） */
 export function 算提成(成交金额: number | null | undefined, 项目底价: number | null | undefined, 比例: 提成比例): 提成算式 | null {
   if (项目底价 == null || !Number.isFinite(项目底价)) return null;
   const 成交 = Number.isFinite(成交金额) ? (成交金额 as number) : 0;
   const 溢价 = Math.max(0, 两位(成交 - 项目底价));
-  const 底价提成 = 两位((项目底价 * 比例.底价比例) / 100);
+  const 底价提成 = 两位(((低于底价(成交, 项目底价) ? 成交 : 项目底价) * 比例.底价比例) / 100);
   const 溢价提成 = 两位((溢价 * 比例.溢价比例) / 100);
   return { 成交金额: 成交, 项目底价, 项目溢价: 溢价, 底价提成, 溢价提成, 合计: 两位(底价提成 + 溢价提成) };
 }

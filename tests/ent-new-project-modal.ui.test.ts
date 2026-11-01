@@ -9,7 +9,7 @@ const plugin: Plugin = { name: "new-project-modal-boundaries", setup(b) {
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新??0)+1},push(u){(window.__跳=window.__跳??[]).push(u)},replace(u){(window.__跳=window.__跳??[]).push(u)}});export const usePathname=()=>\"/customers/a\";");
   stub(/^next\/link$/, "export default function L({href,children,...p}){return <a href={href} {...p}>{children}</a>}");
-  stub(/(^|\/)project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return{ok:true,projectId:'np1'}};");
+  stub(/(^|\/)project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return{ok:true,projectId:'np1'}};export const 新项目分配数据=async()=>({分配方式们:[{i:0,名:'指定分配'}],默认分配方式:0,是销售:false,客户业务线:'内贸'});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -42,8 +42,11 @@ it("11-01 §6：新开项目在弹窗里填完、建好不跳页（刷新 + 提�
     await 提示.waitFor();
     expect(await 提示.innerText()).toMatch(/项目建好了/);
     expect(await 提示.getByRole("link", { name: "去看看" }).getAttribute("href")).toBe("/projects/np1");
-    const 记 = await page.evaluate(() => { const w = window as unknown as { __跳?: string[]; __刷新?: number; __建?: { customerId: string } }; return { 跳: w.__跳 ?? [], 刷新: w.__刷新 ?? 0, 客户: w.__建?.customerId }; });
+    const 记 = await page.evaluate(() => { const w = window as unknown as { __跳?: string[]; __刷新?: number; __建?: { customerId: string; 项目?: { 分配方式?: number; 业务线?: string } } }; return { 跳: w.__跳 ?? [], 刷新: w.__刷新 ?? 0, 客户: w.__建?.customerId, 建: w.__建 }; });
     expect(记.客户).toBe("a");
+    // 分配方式、业务线（A1）默认带上：业务线默认 = 客户的业务线
+    expect(JSON.stringify(记.建)).toContain('"分配方式":0');
+    expect(JSON.stringify(记.建)).toContain('"业务线":"内贸"');
     expect(记.跳).toEqual([]);
     expect(记.刷新).toBe(1);
     expect(await page.getByTestId("还在客户页").count()).toBe(1);

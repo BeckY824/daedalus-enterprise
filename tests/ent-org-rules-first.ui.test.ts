@@ -20,7 +20,7 @@ const plugin: Plugin = { name: "org-rules-first", setup(b) {
   stub(/^\.\/org-actions$/, `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设市场部门=f,设成员=f,
     设通讯录同步=f,立即同步通讯录=f,设职务对照=f,设通讯录凭据=f,设通讯录间隔=f,飞书表概况=async()=>({ok:false,error:'没接'}),
     通讯录概况=async()=>({ok:true,角色们:[],来源们:[{源:'feishu',名:'飞书',开:false,上次:null,角色对照:{},职务们:[],间隔分钟:60,凭据:{齐了:false,字段:[]}}]});`);
-  stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};`);
+  stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};export const 读线部门设置=async()=>({设的:{内贸:[],外贸:[]},还没勾:[],能改:true});export const 设线部门=${空跑};`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

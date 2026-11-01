@@ -192,7 +192,7 @@ function 向导输入(负责人: string, 名: string, 下一步: string | null, 
       salesOwnerId: 公.id[指派给 ?? 负责人], channelId: null, referrerCustomerId: null,
     },
     联系人: { name: `联系人${名}`, position: "采购", phone: `1380000${尾}` },
-    项目: { name: 名, amount: 10000, currency: "CNY", ...(指派给 ? { ownerId: 公.id[指派给] } : {}) },
+    项目: { name: 名, amount: 10000, currency: "CNY", 业务线: "内贸", ...(指派给 ? { ownerId: 公.id[指派给] } : {}) },
     跟进: { type: "PHONE", content: `${名} 首次沟通`, occurredAt: 现在文本(), ...(下一步 ? { 下一步时间: 下一步 } : {}) },
   };
   // 企业版新建线索（10-26 三大阶段）：负责人、渠道、跟进节点、客户是否明确回复必选；首条沟通记成明确回复了（有效线索）

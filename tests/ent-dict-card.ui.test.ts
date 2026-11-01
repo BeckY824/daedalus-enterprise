@@ -43,7 +43,9 @@ it("切换种类、加选项、停用；375 宽不横向撑出", async () => {
   const 交的 = await page.evaluate(() => (window as unknown as { __assignUse: Record<string, string[]> }).__assignUse);
   expect(交的["dict-assign-2"]).toEqual(expect.arrayContaining(["marketing_mgr", "channel_ops", "project_ops", "sales"]));
   expect(交的["dict-assign-2"]).toHaveLength(4);
-  expect(交的["dict-assign-3"]).toEqual(["marketing_mgr"]);
+  // 暂不分配：11-01 起默认谁都能用（市场 + 销售 + 其他）
+  expect(交的["dict-assign-3"]).toEqual(expect.arrayContaining(["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"]));
+  expect(交的["dict-assign-3"]).toHaveLength(5);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await page.getByText("回收原因", { exact: true }).click();
   await page.getByText("企业选项 · 回收原因").waitFor();

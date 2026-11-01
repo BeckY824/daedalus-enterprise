@@ -113,7 +113,7 @@ it("能分配的人：每条没结局的新线索有「分配」「自动分配�
   await page.getByRole("button", { name: `自动分配 ${长}1` }).click();
   await page.getByText("按顺序", { exact: false }).first().waitFor();
   const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
-  expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true }]);
+  expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
   expect(await 去了(page)).toEqual([]); // 点按钮不触发行跳转
   expect(errors).toEqual([]); await page.close();
   const 不能 = await 打开(true);
@@ -252,7 +252,7 @@ it("企业版项目页阶段筛到「线索」（11-01 会议 §5）：页头有
     await page.getByText("已分给 王1", { exact: false }).first().waitFor();
     expect(await page.locator("body").innerText()).not.toContain("配额");
     const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
-    expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true }]);
+    expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
     // 指定接手人的弹窗：不写配额
     await page.getByRole("button", { name: `分配 ${长名}1`, exact: true }).click();
     const 框 = page.getByRole("dialog");

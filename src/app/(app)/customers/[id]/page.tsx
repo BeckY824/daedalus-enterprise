@@ -29,6 +29,7 @@ import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
+import { 我回避的公海项目 } from "@/lib/project/pool-owner";
 import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
 
 export const dynamic = "force-dynamic";
@@ -127,11 +128,12 @@ export default async function CustomerDetailPage({
       : [],
     // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
     只项目
-      ? prisma.project.findMany({
-          where: { customerId: customer.id },
+      ? 我回避的公海项目(prisma, me.id).then((回避) => prisma.project.findMany({
+          // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；老板 / 主管照列）
+          where: { customerId: customer.id, ...(回避.length && !管全队客户(me.role) ? { id: { notIn: 回避 } } : {}) },
           orderBy: { updatedAt: "desc" },
           select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
-        }).then((ps) => ps.map((p) => 本套位置(p, 企业版字典)))
+        })).then((ps) => ps.map((p) => 本套位置(p, 企业版字典)))
       : null,
     // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
     规则P ? 规则P.then((r) => 客户参与的项目(customer.id, 字典of(true, r.阶段.出口叫法))) : null,
