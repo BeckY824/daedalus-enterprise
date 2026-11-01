@@ -39,6 +39,7 @@ import LeadFullNotices from "../leads/LeadFullNotices";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
 import { 取客户近况 } from "../customers/[id]/pick";
 import { 取建档数据 } from "./new/wizard-actions";
+import { 滚法 } from "@/lib/reduced-motion";
 import type { 建档数据 } from "./new/ProjectWizard";
 
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */
@@ -503,8 +504,7 @@ function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: 
     const el = 框.current;
     const 下一列 = el && 没露全的(el)[0];
     if (!el || !下一列) return;
-    const 少动 = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollBy({ left: 下一列.getBoundingClientRect().right - el.getBoundingClientRect().right + 渐隐宽, behavior: 少动 ? "auto" : "smooth" });
+    el.scrollBy({ left: 下一列.getBoundingClientRect().right - el.getBoundingClientRect().right + 渐隐宽, behavior: 滚法() });
   };
   return [n, 滑];
 }
