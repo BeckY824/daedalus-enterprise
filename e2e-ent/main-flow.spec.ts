@@ -144,21 +144,23 @@ async function 选(page: Page, 框名: string, 项: string) {
 }
 const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-notice", { hasText: 字 });
 
-test("线索分配：老板、市场管理有「分配」，销售经理、销售没有；市场把线索甲分给销售乙", async ({ page }) => {
+// A7（11-01 权限只认业务角色）：分配线索 = 市场管理、销售管理、总管理
+test("线索分配：老板、销售经理、市场管理有「分配」，销售没有；市场把线索甲分给销售乙", async ({ page }) => {
   const 正文 = page.getByRole("main");
   const 分配 = (名: string) => 正文.getByRole("button", { name: `分配 ${名}`, exact: true });
-  await 登录(page, "老板");
-  await page.goto("/leads");
-  await expect(分配("线索甲")).toBeVisible();
-
-  for (const 谁 of ["经理", "销售1"] as const) {
+  for (const 谁 of ["老板", "经理"] as const) {
     await page.context().clearCookies();
     await 登录(page, 谁);
     await page.goto("/leads");
-    await expect(正文.locator(".page-head")).toBeVisible();
-    if (谁 === "销售1") await expect(正文.getByText("线索乙").first()).toBeVisible();
-    await expect(正文.getByRole("button", { name: /^分配 / })).toHaveCount(0);
+    await expect(分配("线索甲")).toBeVisible();
   }
+
+  await page.context().clearCookies();
+  await 登录(page, "销售1");
+  await page.goto("/leads");
+  await expect(正文.locator(".page-head")).toBeVisible();
+  await expect(正文.getByText("线索乙").first()).toBeVisible();
+  await expect(正文.getByRole("button", { name: /^分配 / })).toHaveCount(0);
 
   await page.context().clearCookies();
   await 登录(page, "市场");
