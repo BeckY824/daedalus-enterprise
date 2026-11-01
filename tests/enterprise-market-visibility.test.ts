@@ -32,7 +32,7 @@ vi.mock("@/lib/prisma", async () => {
 import { prisma as db, defaultClient as raw } from "@/lib/prisma";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 建组织 } from "@/lib/enterprise/org-core";
-import { 市场部门们, 市场成员们, 规整市场部门, 市场部门key, 市场只读话 } from "@/lib/enterprise/market";
+import { 市场部门们, 市场成员们, 规整市场部门, 市场部门key, 市场成员key, 市场只读话 } from "@/lib/enterprise/market";
 import { 只读客户, 只读话, 有市场只读 } from "@/lib/team-scope";
 import { 规则 } from "@/lib/enterprise/rules";
 import { assignSalesOwner, patchCustomer } from "@/app/(app)/customers/actions";
@@ -124,7 +124,7 @@ beforeAll(async () => {
 beforeEach(() => 忘掉企业版范围());
 // 改了全局规则的测试：恢复成「按组织看客户」开着、市场部门没设
 afterEach(async () => {
-  await raw.setting.deleteMany({ where: { key: 市场部门key } });
+  await raw.setting.deleteMany({ where: { key: { in: [市场部门key, 市场成员key] } } });
   await 开规则(true);
 });
 
@@ -174,6 +174,9 @@ describe("市场部门们 / 市场成员们（纯函数）", () => {
     );
     expect([...市场成员们(org, null)]).toEqual(["u1"]);
     expect([...市场成员们(org, ["b"])]).toEqual(["u2"]);
+    // 逐人设的（11-01）：部门不在也算；停用的、不在组织里的不算
+    expect([...市场成员们(org, ["b"], ["u4", "u3", "不在", "u2"])]).toEqual(["u2", "u4"]);
+    expect([...市场成员们(org, null, null)]).toEqual(["u1"]);
   });
 });
 
@@ -261,6 +264,23 @@ describe("手动设的市场部门", () => {
   });
 });
 
+describe("逐人设的市场成员（11-01）", () => {
+  it("品牌部的人单独设成市场成员：部门不动也算，市场部的人照旧算；市场管理也看得到", async () => {
+    await 存设置(市场成员key, [品宣]);
+    expect(await 名单(品宣)).toEqual(["D品宣建的"]);
+    const d = await 客户("D品宣建的");
+    expect(await 作为(品宣, () => 只读客户(raw, d))).toBe("全");
+    await expect(作为(品宣, () => db.customer.update({ where: { id: d.id }, data: { major: "x" } }))).rejects.toThrow(/市场成员/);
+    expect(await 名单(小市)).toEqual(["A小市建的", "E小市负责的"]);
+    expect(await 名单(市场经理)).toEqual(["A小市建的", "B小场负责项目", "D品宣建的", "E小市负责的", "H小场建过项目"]);
+  });
+
+  it("设的人停用了不算", async () => {
+    await 存设置(市场成员key, [走了]);
+    expect(await 名单(市场经理)).toEqual(["A小市建的", "B小场负责项目", "E小市负责的", "H小场建过项目"]);
+  });
+});
+
 describe("「按组织看客户」关着不起作用", () => {
   it("关着：照旧看全部，没有市场只读；市场成员对转给销售的客户和团队版一样", async () => {
     await 开规则(false);
@@ -295,5 +315,22 @@ describe("设市场部门：只有老板和总管理员能改", () => {
     expect(JSON.parse((await raw.setting.findUniqueOrThrow({ where: { key: 市场部门key } })).value)).toBeNull();
     expect(await 名单(小场)).toEqual(["B小场负责项目", "H小场建过项目"]);
     expect(await raw.auditLog.count({ where: { entityId: 市场部门key } })).toBe(3);
+  });
+
+  it("逐人设的市场成员一起存：不传不动、空 = 清掉、不在组织里的人挡住（11-01）", async () => {
+    当(销售);
+    expect(await 设市场部门([], [品宣])).toMatchObject({ ok: false });
+    expect(await raw.setting.findUnique({ where: { key: 市场成员key } })).toBeNull();
+    当(老板, "ADMIN");
+    expect(await 设市场部门([], [品宣, 品宣])).toEqual({ ok: true });
+    expect(JSON.parse((await raw.setting.findUniqueOrThrow({ where: { key: 市场成员key } })).value)).toEqual([品宣]);
+    expect(await 名单(品宣)).toEqual(["D品宣建的"]);
+    expect(await 设市场部门([部.市场一组])).toEqual({ ok: true });
+    expect(JSON.parse((await raw.setting.findUniqueOrThrow({ where: { key: 市场成员key } })).value)).toEqual([品宣]);
+    expect(await 设市场部门([], [走了])).toMatchObject({ ok: false, error: expect.stringContaining("不在组织里") });
+    expect(await 设市场部门([], "x")).toMatchObject({ ok: false });
+    expect(await 设市场部门([], [])).toEqual({ ok: true });
+    expect(JSON.parse((await raw.setting.findUniqueOrThrow({ where: { key: 市场成员key } })).value)).toBeNull();
+    expect(await 名单(品宣)).toEqual([]);
   });
 });

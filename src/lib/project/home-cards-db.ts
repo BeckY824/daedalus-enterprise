@@ -15,24 +15,13 @@ import { 字典of } from "./stage-dict";
 import type { 组织规则 } from "./org-rules";
 import { 看板的人 } from "./board-member";
 import { 读组织, 管理员类别们of } from "@/lib/enterprise/org";
-import { 市场部门key, 市场成员们, 规整市场部门 } from "@/lib/enterprise/market";
+import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import type { Prisma } from "@/generated/prisma";
 import { 首页卡条件, 即将逾期, 即将逾期粗筛, 首页摆的卡, type 首页卡键, type 首页卡数 } from "./home-cards";
 
 /** 卡和项目页按哪一圈负责人筛：undefined = 不另筛（老板 / 总管理员、或不是企业版） */
 export async function 首页卡的人(user: { id: string; role: string }): Promise<readonly string[] | undefined> {
   return (await 看板的人(user)).谁;
-}
-
-/** 存的市场部门设置读不出当没设（按名字带「市场」认），同 visibility.ts */
-async function 设的市场部门(): Promise<string[] | null> {
-  const v = await prisma.setting.findUnique({ where: { key: 市场部门key }, select: { value: true } });
-  if (!v) return null;
-  try {
-    return 规整市场部门(JSON.parse(v.value));
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -45,7 +34,7 @@ export async function 首页卡范围(user: { id: string; role: string }): Promi
   if (!谁) return undefined;
   const 负责 = { ownerId: { in: [...谁] } };
   const org = await 读组织();
-  const 成员 = 市场成员们(org, await 设的市场部门());
+  const 成员 = await 读市场成员们(org);
   if (管理员类别们of(org, user.id).has("市场管理")) {
     if (!成员.size) return 负责;
     const 们 = { in: [...成员] };
