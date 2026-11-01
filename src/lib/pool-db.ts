@@ -2,7 +2,7 @@
  * 公海读写（2026-10-03，0.46.15 第 6 块）。规矩和说法在 lib/pool.ts；按钮背后的动作在 customers/pool-actions.ts。
  */
 import { cache } from "react";
-import { prisma } from "@/lib/prisma";
+import { prisma, defaultClient } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { getSetting, setSetting } from "@/lib/settings";
 import { recordAudit } from "@/lib/audit";
@@ -31,7 +31,7 @@ const 扫过键 = "poolSweptOn";
  */
 export async function 自动掉公海(me: { id: string; name: string }, 今: Date = new Date()): Promise<number> {
   // 总管理员切换视图（只读预览，M-权限-08）期间、管理员（admin，只读）打开页面时不扫：渲染时顺手写库会被拒
-  if (企业版() && ((await 视图中跳过()) || (await 只读身份中(prisma)))) return 0;
+  if (企业版() && ((await 视图中跳过()) || (await 只读身份中(defaultClient)))) return 0;
   return 看全部(() => 按天扫(me, 今));
 }
 

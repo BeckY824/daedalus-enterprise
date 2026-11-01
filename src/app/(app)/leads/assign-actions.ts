@@ -24,6 +24,7 @@ import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限, 记转让 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 历史负责人 } from "@/lib/project/pool-owner";
 import {
   企划线索计数key, 我分出去的, 月份, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
   认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们,
@@ -143,7 +144,7 @@ async function 分项目给(
   const 规则 = await 生效组织规则();
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
-  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string } | { ok: false; error: string; 满?: true }> => {
+  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | { ok: false; error: string; 满?: true }> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
     if (!p) return { ok: false, error: 项目不在 };
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分：去「项目」里转让负责人" };
@@ -156,14 +157,16 @@ async function 分项目给(
     }
     const 超 = await 超上限(tx, 规则, input.toUserId, p);
     if (超) return { ok: false, 满: true, error: 超 };
+    // 分之前的负责人：在公海里的取历史负责人（企业版进公海清了负责人，lib/project/pool-owner.ts）
+    const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
     await tx.project.update({ where: { id: p.id }, data: { ownerId: input.toUserId, nextStepAt: null, nextStepText: null, pooledAt: null } });
-    await 记转让(tx, p, me.id, p.ownerId, input.toUserId, "transfer", `分配方式：${input.way}`);
+    await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", `分配方式：${input.way}`);
     // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id);
     await tx.entLeadAssign.create({
-      data: { projectId: p.id, toUserId: input.toUserId, fromUserId: p.ownerId, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
+      data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });
-    return { ok: true, fromUserId: p.ownerId };
+    return { ok: true, fromUserId: 原 };
   });
   if (!落库.ok) return 落库;
 

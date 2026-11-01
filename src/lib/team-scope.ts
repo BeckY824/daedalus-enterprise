@@ -199,7 +199,10 @@ export async function 有市场只读(db: PrismaClient): Promise<boolean> {
   return !!(await 现在的限定(db)).市场?.length;
 }
 
-/** 现在这个人是企业版管理员（admin，只读）：页面渲染时顺手做的写（每天一扫这类）跳过，不然一读就报错 */
+/**
+ * 现在这个人是企业版管理员（admin，只读）：页面渲染时顺手做的写（每天一扫这类）跳过，不然一读就报错。
+ * db 要传底层 defaultClient：传带限定的 prisma 时，算范围的查询又走回限定钩子、等自己那份范围，缓存冷着就一直卡住
+ */
 export async function 只读身份中(db: PrismaClient): Promise<boolean> {
   return !!(await 只读的话(db));
 }

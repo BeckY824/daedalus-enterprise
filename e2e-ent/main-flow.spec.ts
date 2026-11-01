@@ -291,12 +291,13 @@ test("交接要确认：老板把销售甲的客户转给销售乙，确认前�
   expect((await db.project.findFirstOrThrow({ where: { name: "线索乙" } })).ownerId).toBe(销售2.id);
 });
 
-test("项目公海：项目不能单独领（原负责人、别的销售都灰着）；别的销售在公海领客户，项目、客户、同客户的另一个项目一起归他", async ({ page }) => {
+test("项目公海：原负责人看不到公海里的项目；别的销售项目不能单独领（灰着），在公海领客户，项目、客户、同客户的另一个项目一起归他", async ({ page }) => {
   await 登录(page, "销售1");
+  // 11-01 C-01：项目进了公海，历史负责人没有任何权限，详情找不到（pool-owner.ts 原负责人回避）
   await page.goto(`/projects/${种.项目1}`);
   const 正文 = page.getByRole("main");
-  await expect(正文.getByText("这个项目在项目公海里", { exact: true })).toBeVisible();
-  await expect(正文.getByRole("button", { name: /领\s*取/ })).toBeDisabled();
+  await expect(正文.getByText("没有找到这条记录")).toBeVisible();
+  await expect(正文.getByText("公海项目一")).toHaveCount(0);
 
   await page.context().clearCookies();
   await 登录(page, "销售2");

@@ -16,6 +16,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位 } from "@/lib/carry-over-db";
 import { 转让痕 } from "@/lib/project/db";
+import { 历史负责人们 } from "@/lib/project/pool-owner";
 
 /**
  * 项目刚进了项目公海（主动放回、超时回收），在同一笔事务里调：客户名下一共只有这一个项目、
@@ -95,6 +96,8 @@ async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: str
   if (!们.length) return [];
   const ids = 们.map((p) => p.id);
   await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, pooledAt: null, nextStepAt: null, nextStepText: null } });
-  await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, p.ownerId, 新, "pool-claim")) });
+  // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
+  const 原 = await 历史负责人们(tx, ids);
+  await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, 原.get(p.id) ?? (p.ownerId || null), 新, "pool-claim")) });
   return ids;
 }

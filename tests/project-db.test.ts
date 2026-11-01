@@ -268,17 +268,17 @@ describe("项目公海", () => {
     expect(await 放回公海(乙, 线索.id)).toMatchObject({ ok: false, error: expect.stringContaining("已经在公海") });
     const 现在 = await prisma.project.findUniqueOrThrow({ where: { id: 线索.id } });
     expect(现在.pooledAt).not.toBeNull();
-    expect(现在.ownerId).toBe(乙.id);
+    expect(现在.ownerId).toBe(""); // 企业版进公海清负责人（11-01 C-01），乙记在留痕里 = 历史负责人
     const log = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 线索.id } });
     expect(log).toMatchObject({ kind: "pool-release", userId: 乙.id, fromOwnerId: 乙.id, toOwnerId: null, toNode: "潜客培育" });
   });
 
-  it("老板也能把别人的项目放回公海（11-01，和客户放公海同一条）：负责人不变，记的是老板放的", async () => {
+  it("老板也能把别人的项目放回公海（11-01，和客户放公海同一条）：负责人清空，留痕记原负责人乙、老板放的", async () => {
     const p = await 项目(乙.id);
     expect(await 放回公海(老板, p.id)).toEqual({ ok: true });
     const 现在 = await prisma.project.findUniqueOrThrow({ where: { id: p.id } });
     expect(现在.pooledAt).not.toBeNull();
-    expect(现在.ownerId).toBe(乙.id);
+    expect(现在.ownerId).toBe("");
     const log = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id, kind: "pool-release" } });
     expect(log).toMatchObject({ userId: 老板.id, fromOwnerId: 乙.id, toOwnerId: null });
   });
@@ -289,7 +289,7 @@ describe("项目公海", () => {
     expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
     expect(await 改项目(乙, p.id, { name: "改个名" })).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
     expect(await 领取公海项目(乙, p.id)).toEqual({ ok: false, error: "原负责人不能领回" });
-    expect(await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ ownerId: 乙.id });
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ ownerId: "" });
     expect(await 领取公海项目(丙, p.id)).toEqual({ ok: true });
     expect(await 领取公海项目(老板, p.id)).toMatchObject({ ok: false, error: expect.stringContaining("领走") });
     expect(await 领取公海项目(乙, p.id)).toMatchObject({ ok: false, error: expect.stringContaining("领走") });
@@ -340,7 +340,7 @@ describe("项目公海", () => {
     expect(await 持有数(prisma, 丙.id)).toBe(1);
     expect(await 领取公海项目(丙, a.id)).toEqual({ ok: true });
     expect(await 领取公海项目(丙, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("持有上限（2 个）") });
-    expect(await prisma.project.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ ownerId: 乙.id });
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ ownerId: "" });
     expect(await prisma.projectNodeLog.count({ where: { projectId: b.id, kind: "pool-claim" } })).toBe(0);
     const c = await 项目(老板.id);
     expect(await 改项目(老板, c.id, { name: "一号项目", ownerId: 丙.id })).toMatchObject({ ok: false, error: expect.stringContaining("持有上限") });
