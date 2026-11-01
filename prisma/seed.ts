@@ -53,6 +53,13 @@ async function main() {
     console.log(`  ${u.email.padEnd(11)} ${u.name}（${u.title}）`);
   }
 
+  // 企业版首装（11-01 权限只认业务角色，没设业务角色 = 没权限）：一个成员都没有时，admin 先记成总管理，
+  // 不然没人进得了设置去建组织、给别人设业务角色。已经有成员的库（升级、重跑）一行不动
+  if (企业版() && (await prisma.entMember.count()) === 0) {
+    const admin = await prisma.user.findUnique({ where: { email: "admin" }, select: { id: true } });
+    if (admin) await prisma.entMember.create({ data: { userId: admin.id, bizRole: "director" } });
+  }
+
   // 名单外的账号：默认只提示，不擅自处理——有人可能是在界面上正常加的。企业版的人都是界面上加的，整段跳过
   const 名单外 = 企业版() ? [] : await prisma.user.findMany({
     where: { email: { notIn: USERS.map((u) => u.email) } },

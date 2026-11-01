@@ -26,6 +26,21 @@ export function 建测试库() {
   });
   // 只建账号，不写业务数据——业务数据由用例自己按链条造，才测得出流程
   execFileSync("npx", ["tsx", "prisma/seed.ts"], { cwd: ROOT, env, stdio: "pipe" });
+
+  // 企业版权限只认业务角色（11-01，没设 = 没权限）：admin 记总管理，张三、李四记销售，和老规矩下各自能做的对得上
+  if (process.env.CRM_ENTERPRISE === "1") {
+    execFileSync("npx", ["tsx", "-e", `
+      const { PrismaClient } = require("@prisma/client");
+      const p = new PrismaClient();
+      (async () => {
+        for (const [email, bizRole] of [["admin", "director"], ["zhangsan", "sales"], ["lisi", "sales"]]) {
+          const u = await p.user.findUnique({ where: { email }, select: { id: true } });
+          if (u) await p.entMember.upsert({ where: { userId: u.id }, create: { userId: u.id, bizRole }, update: { bizRole } });
+        }
+        await p.$disconnect();
+      })();
+    `], { cwd: ROOT, env, stdio: "pipe" });
+  }
 }
 
 export default function globalSetup() {
