@@ -10,7 +10,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海规则, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 看全部 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能看全部, type 谁 } from "@/lib/enterprise/permissions";
+import { 能看全部, 只读按线, type 谁 } from "@/lib/enterprise/permissions";
 
 /** 项目在公海里时 ownerId 写这个 */
 export const 公海无负责人 = "";
@@ -114,7 +114,8 @@ export async function 进公海关待办(
  * 详情页、列表、统一公海、客户沟通流判「历史负责人要不要回避」都调这个
  */
 export async function 回避豁免(me: 谁): Promise<boolean> {
-  return 能看全部(me, await 权限组织());
+  const org = await 权限组织();
+  return 能看全部(me, org) || !!只读按线(me, org);
 }
 
 /**

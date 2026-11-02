@@ -14,7 +14,7 @@ import { 查完再写 } from "../check-then-write";
 import { getSetting, invalidateSettingsCache } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 虚线上级of, type 组织 } from "@/lib/enterprise/org";
-import { 是总管理, 能看全部 } from "@/lib/enterprise/permissions";
+import { 只读按线, 是总管理, 能看全部 } from "@/lib/enterprise/permissions";
 import {
   提成比例键, 提成范围们, 规整三套提成比例, 三套提成比例问题, 两位, 算提成, 底价问题, 分配问题, 分到每人, 更正问题,
   按人提成比例键, 规整按人提成比例, 按人提成比例问题, 取提成比例,
@@ -50,7 +50,7 @@ export function 能改提成(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
 /** 看提成卡：能改的人、已进组的组员、负责人的直属 / 虚线上级、总管理和管理员（看全部，管理员只读）。
  *  11-01 起只认业务角色，账号是主管不再能看全部 */
 export function 能看提成(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, 在组: ReadonlySet<string>, org: 组织 | null): boolean {
-  if (能改提成(me, p, org) || me.id === p.ownerId || 在组.has(me.id) || 能看全部(me, org)) return true;
+  if (能改提成(me, p, org) || me.id === p.ownerId || 在组.has(me.id) || 能看全部(me, org) || 只读按线(me, org)) return true;
   return !!org && (直属上级of(org, p.ownerId) === me.id || 虚线上级of(org, p.ownerId) === me.id);
 }
 

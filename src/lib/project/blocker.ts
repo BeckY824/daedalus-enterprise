@@ -27,7 +27,8 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
 import { 原负责人回避, 历史负责人, 我回避的公海项目 } from "./pool-owner";
-import { 能编辑项目, 业务线放行 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 业务线放行, 只读按线 } from "@/lib/enterprise/permissions";
+import { 按线范围of, 按线项目 } from "@/lib/enterprise/line-viewer";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
   规整卡点角色开关, 合上卡点角色开关, 卡点角色键, 卡点权限of, 看得到卡点, 原因种子们, 种子原因id, 规整原因名, 兜底原因,
@@ -69,7 +70,9 @@ export async function 卡点权限(me: 谁): Promise<我的卡点权限> {
   if (!企业版()) return { 开: false, 全部: false, 能写: false, 能管: false };
   const 角色们 = await 角色们of(me.id);
   const 权 = 卡点权限of(角色们, await 读卡点角色开关());
-  return { ...权, 能写: 权.开 && !卡点只读(角色们), 能管: 能管卡点(角色们) };
+  // 管理员设了业务线（11-02）：不算「全部」，下面按这条线算
+  const 全部 = 权.全部 && !(卡点只读(角色们) && 只读按线(me, await 读组织()));
+  return { ...权, 全部, 能写: 权.开 && !卡点只读(角色们), 能管: 能管卡点(角色们) };
 }
 
 /** 改卡点默认（默认类型 / 影响）：总管理（director） */
@@ -256,11 +259,13 @@ function 我的下属们(org: 组织 | null, 我: string): Set<string> {
 async function 自己的条件(我: string, org: 组织 | null): Promise<Prisma.EntBlockerWhereInput> {
   const 下属们 = [...我的下属们(org, 我)];
   const 回避 = await 我回避的公海项目(prisma, 我);
+  const 线 = org ? 按线范围of(org, 我) : null;
   const 看得到: Prisma.EntBlockerWhereInput = {
     OR: [
       { creatorId: 我 },
       { project: { pooledAt: null, ownerId: 我 } },
       ...(下属们.length ? [{ project: { pooledAt: null, ownerId: { in: 下属们 } } }] : []),
+      ...(线 ? [{ project: { pooledAt: null, ...按线项目(线) } as Prisma.ProjectWhereInput }] : []),
       { project: { members: { some: { userId: 我, inviteStatus: "JOINED" } } } },
       { claims: { some: { userId: 我 } } },
     ],
