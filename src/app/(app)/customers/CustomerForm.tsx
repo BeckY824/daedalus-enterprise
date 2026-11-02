@@ -456,7 +456,7 @@ function CustomerFormInner({
             {/* 跟业务配置的叫法走（2026-10-04 L-003）：改成「学员」后这里原来还写着「客户姓名」 */}
             {/* 企业版客户是单位：这一格叫「客户全称」，旁边另有一格简称（定稿 P5 第 22 条） */}
             <Form.Item label={企业 ? "客户全称" : `${b.customer}姓名`} name="name" rules={[requiredText(企业 ? "请输入客户全称" : "请输入姓名")]}>
-              <Input placeholder={企业 ? "营业执照上的全称" : "如：张三"} />
+              <Input placeholder={企业 ? "营业执照上的全称" : "如：张三"} maxLength={企业 ? 200 : undefined} />
             </Form.Item>
           </Col>
           <Col span={8}>
@@ -898,7 +898,8 @@ function CustomerFormInner({
         </Row>
 
         <Form.Item label="备注" name="remark">
-          <Input.TextArea rows={3} placeholder={`${b.customer}背景、意向、注意事项…`} />
+          {/* 企业版上限同 actions.ts 企业版客户太长（11-02） */}
+          <Input.TextArea rows={3} placeholder={`${b.customer}背景、意向、注意事项…`} maxLength={企业 ? 2000 : undefined} showCount={企业} />
         </Form.Item>
 
         <Space />

@@ -10,7 +10,7 @@
  *     - 清空：备注、简称、预计签约日（两列都清）
  *     - 预计签约日：交 2026-12-31 → on = 2026-12-31、at = 北京 0 点；2026-13-01 拒
  *     - 简称：中间空白并成一个，20 字收、21 字拒；详细地址 100 收、101 拒
- *     - 待定（钉现状）：客户名称、备注没有长度上限（项目名称 60、备注 500）
+ *     - 客户名称最多 200、备注最多 2000（11-02；只看新建和改动了的，老数据超长的照存）
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -167,7 +167,8 @@ describe("客户字段：saveCustomer / patchCustomer 真库", () => {
     await prisma.user.create({ data: { id: "tester-id", email: "t@t", name: "测试员", role: "ADMIN", password: "x" } });
     销售甲 = (await prisma.user.create({ data: { email: "s@t", name: "销售甲", role: "SALES", password: "x" } })).id;
     await prisma.entMember.create({ data: { userId: 销售甲, bizRole: "sales" } });
-    await prisma.entMember.create({ data: { userId: "tester-id", bizRole: "director" } });
+    // 11-02：只有负责人（销售/销售管理）能改，测试员当销售、客户归测试员
+    await prisma.entMember.create({ data: { userId: "tester-id", bizRole: "sales" } });
   });
   afterEach(() => vi.unstubAllEnvs());
   afterAll(() => prisma.$disconnect());
@@ -176,7 +177,7 @@ describe("客户字段：saveCustomer / patchCustomer 真库", () => {
     saveCustomer({
       name: `客户${++序}`, phone: `1390000${String(2000 + 序).slice(-4)}`, school: null, grade: null, major: null,
       followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
-      salesOwnerId: 销售甲, channelId: null, referrerCustomerId: null,
+      salesOwnerId: "tester-id", channelId: null, referrerCustomerId: null,
       ...改,
     } as Parameters<typeof saveCustomer>[0]);
   async function 新建id(改: Record<string, unknown> = {}) {
@@ -294,13 +295,17 @@ describe("客户字段：saveCustomer / patchCustomer 真库", () => {
     expect([c.addrCountry, c.addrProvince, c.addrCity, c.addrDistrict]).toEqual([null, null, null, null]);
   });
 
-  it("待定（钉现状）：客户名称、备注没有长度上限——5000 字备注、300 字名称都收（项目名称 60、备注 500）", async () => {
-    const id = await 新建id({ name: "名".repeat(300), remark: "备".repeat(5000) });
-    const c = await 读(id);
-    expect(c.name.length).toBe(300);
-    expect(c.remark?.length).toBe(5000);
-    expect(await patchCustomer(id, "remark", "备".repeat(20000))).toMatchObject({ ok: true });
-    expect((await 读(id)).remark?.length).toBe(20000);
+  it("11-02：客户名称最多 200、备注最多 2000；新建、整表改、单格改都挡，老数据超长没动的照存", async () => {
+    expect(await 新建({ name: "名".repeat(201) })).toMatchObject({ ok: false, error: expect.stringContaining("200") });
+    expect(await 新建({ remark: "备".repeat(2001) })).toMatchObject({ ok: false, error: expect.stringContaining("2000") });
+    const id = await 新建id({ name: "名".repeat(200), remark: "备".repeat(2000) });
+    expect(await patchCustomer(id, "remark", "备".repeat(2001))).toMatchObject({ ok: false });
+    expect((await 读(id)).remark?.length).toBe(2000);
+    // 老数据：库里直接写成超长，改别的格（整表保存原样交回名称、备注）照存
+    await prisma.customer.update({ where: { id }, data: { name: "老".repeat(300), remark: "旧".repeat(5000) } });
+    expect(await 整表保存(id, { followStatus: "跟进中" })).toMatchObject({ ok: true });
+    expect((await 读(id)).name.length).toBe(300);
+    expect(await 整表保存(id, { name: "老".repeat(301) })).toMatchObject({ ok: false });
   });
 
   it("名称只有空白 / 零宽字符拒", async () => {

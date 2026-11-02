@@ -116,10 +116,12 @@ describe("飞书整本同步", () => {
     expect(李组长.title).toBe("大区经理");
 
     // 成员：部门、角色、上级
-    expect(await 成员行(老板)).toMatchObject({ deptId: null, bizRole: "director", managerId: null });
-    expect(await 成员行(经理)).toMatchObject({ deptId: 销售部, bizRole: "sales_mgr", managerId: 老板 });
+    // 11-02：只认业务角色，不按账号角色推。老板账号原来没行：同步不给它角色（老板不动），留空等设置里设
+    expect(await 成员行(老板)).toMatchObject({ deptId: null, bizRole: "", managerId: null });
+    expect(await 成员行(经理)).toMatchObject({ deptId: 销售部, bizRole: "", managerId: 老板 });
     expect(await 成员行(李组长.id)).toMatchObject({ deptId: 华东组, bizRole: "sales_mgr", managerId: 经理 });
-    expect(await 成员行(张三)).toMatchObject({ deptId: 华东一队, bizRole: "sales", managerId: 李组长.id });
+    expect(await 成员行(张三)).toMatchObject({ deptId: 华东一队, bizRole: "", managerId: 李组长.id });
+    // 新建的账号照飞书给：负责人 → 销售管理，其余 → 销售（见上面李组长、下面赵四）
     expect(await 成员行(赵四.id)).toMatchObject({ deptId: 华东一队, bizRole: "sales", managerId: 李组长.id });
     expect(await 成员行(孙市场.id)).toMatchObject({ deptId: await 部门id("市场部"), bizRole: "sales", managerId: null });
 
@@ -188,6 +190,7 @@ describe("业务角色", () => {
   it("第一次认到的现有账号不按负责人改角色；之后上游变了跟着变；这边手动改过的不覆盖", async () => {
     // 经理原来是销售（账号 SALES），在飞书是销售部负责人：第一次不动
     await prisma.user.update({ where: { id: 经理 }, data: { role: "SALES" } });
+    await prisma.entMember.create({ data: { userId: 经理, bizRole: "sales" } });
     await 接飞书();
     await 同步通讯录("feishu");
     expect((await 成员行(经理))!.bizRole).toBe("sales");
@@ -200,6 +203,16 @@ describe("业务角色", () => {
     换联网(假网(飞书录).网);
     await 同步通讯录("feishu");
     expect((await 成员行(经理))!.bizRole).toBe("sales");
+  });
+
+  it("11-02：现有账号没设业务角色的，同步几次都不按账号角色推（留空，设置里设）", async () => {
+    await prisma.user.update({ where: { id: 经理 }, data: { role: "SALES" } });
+    await 接飞书();
+    await 同步通讯录("feishu");
+    expect((await 成员行(经理))!.bizRole).toBe("");
+    换联网(假网(飞书录).网);
+    await 同步通讯录("feishu");
+    expect((await 成员行(经理))!.bizRole).toBe("");
   });
 
   it("兼职角色：负责人只换销售那一个，兼的市场管理留着（10-27 角色多选）", async () => {
@@ -218,6 +231,7 @@ describe("业务角色", () => {
   });
 
   it("老板和总管理的角色从来不动，角色对照也改不了", async () => {
+    await prisma.entMember.create({ data: { userId: 老板, bizRole: "director" } });
     await prisma.entMember.create({ data: { userId: 张三, bizRole: "director" } });
     await 存角色对照("feishu", { 总经理: "sales", 外贸专员: "sales" }, { id: 老板, name: "老板" });
     await 接飞书();

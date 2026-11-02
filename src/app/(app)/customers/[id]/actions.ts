@@ -16,7 +16,9 @@ import { 认回打码号, 号键 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
-import { 软删开着, 撤销软删, 删除挡 } from "@/lib/enterprise/soft-delete";
+import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
+import { 能恢复 } from "@/lib/enterprise/permissions";
+import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
@@ -31,6 +33,8 @@ import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "@/lib
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, type 交上来的号 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
+
+const 只有总管理能恢复话 = "只有总管理能恢复删掉的记录";
 
 /**
  * 这一页上的写操作也要留痕。
@@ -320,6 +324,12 @@ export type 删掉的跟进 = {
 export async function restoreFollowUp(快照: 删掉的跟进) {
   try {
     const me = await requireUser();
+    // 企业版：只认回收站里那一条（不照快照新建，快照是前端交上来的）；总管理能恢复，本人刚记的 10 分钟内能撤
+    if (企业版()) {
+      const 行 = await 看已删(() => defaultClient.followUp.findUnique({ where: { id: 快照.id }, select: { ownerId: true, createdAt: true, deletedAt: true, customerId: true } }));
+      if (!行 || 行.customerId !== 快照.customerId) return { ok: false as const, error: "这条跟进已经不在了，撤不回来" };
+      if (行.deletedAt && !刚记的能撤(me, 行) && !能恢复(me, await 权限组织())) return { ok: false as const, error: 只有总管理能恢复话 };
+    }
     if (await prisma.followUp.findUnique({ where: { id: 快照.id }, select: { id: true } })) return { ok: true as const };
     if (!(await prisma.customer.findUnique({ where: { id: 快照.customerId }, select: { id: true } }))) {
       return { ok: false as const, error: "这位客户已经不在了，撤不回来" };
@@ -566,7 +576,9 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
       const 计划 = await tx.followPlan.findFirst({ where: { id: input.计划id, customerId: input.customerId }, select: { id: true, subject: true } });
       if (!计划) return { ok: false as const, error: "这条计划已经不在了，刷新看看" };
       const audits: Parameters<typeof recordAudit>[0][] = [];
-      const 跟进 = await tx.followUp.findFirst({ where: { id: input.跟进id, customerId: input.customerId }, select: { id: true, type: true, occurredAt: true } });
+      const 跟进 = await tx.followUp.findFirst({ where: { id: input.跟进id, customerId: input.customerId }, select: { id: true, type: true, occurredAt: true, ownerId: true, createdAt: true } });
+      // 企业版：只撤自己 10 分钟内刚记的那笔，别人的、早先的去时间线（删只给总管理）
+      if (跟进 && 企业版() && !刚记的能撤(user, 跟进)) return { ok: false as const, error: "只能撤销自己刚记的（10 分钟内），这条去时间线上处理" };
       if (跟进) {
         // 11-01 卡点 B13：这条沟通上发过卡点的，卡点脱开照旧留着；老库脱不开就不撤
         if ((await 卡点脱离沟通(tx, [跟进.id])).size) return { ok: false as const, error: "这条跟进上已经发过卡点，撤不回来了，去时间线上删" };
@@ -1022,6 +1034,14 @@ async function 认回删掉的号(id: string, 交回: string | null) {
 export async function restoreContact(快照: 删掉的联系人) {
   try {
     const me = await requireUser();
+    // 企业版：删联系人只有总管理（删除挡），恢复也只有总管理；挂着的只认回收站里那一条，不照快照新建
+    if (企业版()) {
+      if (!能恢复(me, await 权限组织())) return { ok: false as const, error: 只有总管理能恢复话 };
+      if (快照.哪种 !== "未归属") {
+        const 行 = await 看已删(() => defaultClient.contact.findUnique({ where: { id: 快照.id }, select: { customerId: true } }));
+        if (!行 || 行.customerId !== 快照.customerId) return { ok: false as const, error: "这位联系人已经不在了，撤不回来" };
+      }
+    }
     const 号 = await 认回删掉的号(快照.id, 快照.phone);
     const 在 = await Promise.all([
       prisma.contact.findUnique({ where: { id: 快照.id }, select: { id: true } }),

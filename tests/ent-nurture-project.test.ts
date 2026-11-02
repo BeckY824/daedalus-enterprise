@@ -87,6 +87,9 @@ describe("saveCustomer 新建", () => {
     mocks.开 = false;
     const id = await 新建();
     mocks.开 = true;
+    // 11-02：只有负责人能改。客户转给测试员、测试员当销售
+    await prisma.customer.update({ where: { id }, data: { salesOwnerId: "tester-id" } });
+    await prisma.entMember.update({ where: { userId: "tester-id" }, data: { bizRole: "sales" } });
     expect(await patchCustomer(id, "remark", "改个备注")).toMatchObject({ ok: true });
     expect(await prisma.project.count({ where: { customerId: id } })).toBe(0);
   });

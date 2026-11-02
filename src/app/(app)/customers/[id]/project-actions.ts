@@ -21,6 +21,8 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 同事的客户, 只读话 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 企业版字典, 节点序号 } from "@/lib/project/nodes";
@@ -84,8 +86,17 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (!客户) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
     if (await 同事的客户(defaultClient, customerId)) return { ok: false, error: await 只读话(defaultClient) };
 
+    // 11-02：只认业务角色。没设的、管理员（只读）不给建
+    const org = await 权限组织();
+    if (!org || 没设业务角色(org, me.id)) return { ok: false, error: "你还没有业务角色，不能改数据，请找总管理设置" };
+    if (只读角色(me, org)) return { ok: false, error: 只读角色话 };
     const 分配 = 输入.项目.分配方式 === undefined || 输入.项目.分配方式 === null ? null : await 定分配方式(me, 输入.项目);
     if (分配 && "error" in 分配) return { ok: false, error: 分配.error };
+    // 没带分配方式、负责人又不是自己 = 指定给别人：照「指定分配」查能不能用
+    if (!分配 && 输入.项目.ownerId && 输入.项目.ownerId !== me.id) {
+      const 指定 = await 定分配方式(me, { 分配方式: 0, ownerId: 输入.项目.ownerId });
+      if ("error" in 指定) return { ok: false, error: 指定.error };
+    }
     // 指定分配以外：先建在我名下，建好再按分配方式走
     const 项目输入 = !分配 || 分配.i === 0 ? 输入.项目 : { ...输入.项目, ownerId: me.id };
     if (!项目输入.ownerId) return { ok: false, error: "请选项目负责人" };

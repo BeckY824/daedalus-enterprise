@@ -22,7 +22,7 @@ import { encryptSecret, getSetting, invalidateSettingsCache, maskSecret } from "
 import { recordAudit, type Actor } from "@/lib/audit";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 建组织, 上级设置问题, 推业务角色, 拆角色, 合角色 } from "@/lib/enterprise/org-core";
+import { 建组织, 上级设置问题, 拆角色, 合角色 } from "@/lib/enterprise/org-core";
 import { 是业务角色, 部门最多层数, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 连接键, 当前联网, 读连接配置 } from "@/lib/enterprise-import/adapter";
 import { 飞书适配器 } from "@/lib/enterprise-import/feishu";
@@ -373,8 +373,8 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
           bizRole: null,
         });
         // 业务角色
-        // 现有的人：没有 EntMember 行的按账号角色推（和组织页一致）
-        const 现角色 = uid ? (成员有.get(uid)?.bizRole ?? 推业务角色(用户有.get(uid)?.role)) : undefined;
+        // 现有的人：没有 EntMember 行的当没设业务角色（11-02：只认业务角色，不按账号角色推）
+        const 现角色 = uid ? (成员有.get(uid)?.bizRole ?? "") : undefined;
         const 老板 = uid ? 用户有.get(uid)?.role === "ADMIN" : false;
         const 总管级 = 拆角色(现角色).some((r) => r === "director" || r === "admin");
         const 手动改过 = !!uid && s.给过[uid] !== undefined && 规整角色(现角色) !== 规整角色(s.给过[uid]);
@@ -412,7 +412,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
         const uid = p.userId!;
         const 原 = 目标.get(uid);
         const deptId = p.deptExt ? 部门对照[p.deptExt] : (原?.deptId ?? null);
-        const bizRole = p.bizRole ?? 原?.bizRole ?? 推业务角色(用户有.get(uid)?.role);
+        const bizRole = p.bizRole ?? 原?.bizRole ?? "";
         if (p.bizRole) 给过[uid] = p.bizRole;
         // 第一次认到、没动它的：记下当时的角色，下次才分得清是不是有人手动改过
         else if (给过[uid] === undefined && 拆角色(bizRole).length) 给过[uid] = 规整角色(bizRole);

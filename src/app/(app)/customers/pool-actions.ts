@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 虚线只读挡 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
@@ -94,8 +94,11 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   if (虚线) return { ok: false, error: 虚线 };
   const 这些 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
   const 已在 = 这些.filter((c) => c.pool);
-  const 管 = 能管公海(me, await 权限组织());
-  const 能放 = 这些.filter((c) => !c.pool && (管 || c.salesOwnerId === me.id));
+  const 组织 = await 权限组织();
+  const 管 = 能管公海(me, 组织);
+  // 11-02：自己的也得是销售 / 销售管理才能放（管理员只读、没设业务角色的没权限）
+  const 自己能放 = 能转出自己的(me, 组织);
+  const 能放 = 这些.filter((c) => !c.pool && (管 || (自己能放 && c.salesOwnerId === me.id)));
   const 没权限 = 这些.length - 已在.length - 能放.length;
   if (!能放.length) {
     return 没权限 ? { ok: false, error: `只有负责人或总管理、销售管理能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
@@ -250,7 +253,9 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   const 现 = 动作 === "分配" ? 给谁! : me.id;
   if (动作 === "放进") {
     // 先认出真撤得动的那几位，退回计数只减它们（企业版统一公海）
-    const 撤 = (await prisma.customerPool.findMany({ where: { customerId: { in: ids }, userId: me.id }, select: { customerId: true } })).map((x) => x.customerId);
+    // 企业版：放进去超过撤销时限就撤不回（原负责人不能自己领回）
+    const 时限内 = 企业版() ? { at: { gte: new Date(Date.now() - 撤销时限毫秒) } } : {};
+    const 撤 = (await prisma.customerPool.findMany({ where: { customerId: { in: ids }, userId: me.id, ...时限内 }, select: { customerId: true } })).map((x) => x.customerId);
     const r = await prisma.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } });
     if (r.count) await 记退回(撤, -1);
     刷新(ids);

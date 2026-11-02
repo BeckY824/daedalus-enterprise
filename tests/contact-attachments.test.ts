@@ -64,6 +64,8 @@ beforeEach(async () => {
   fs.rmSync(附件夹, { recursive: true, force: true });
   mocks.只读.clear();
   我 = (await prisma.user.create({ data: { email: "qa-catt", name: "QA", role: "ADMIN", password: "unused" } })).id;
+  // 11-02：传要负责人（销售），删只给总管理：QA 两个角色都有
+  await prisma.entMember.create({ data: { userId: 我, bizRole: "sales,director" } });
   mocks.user = { ...mocks.user, id: 我 };
 });
 afterEach(() => vi.unstubAllEnvs());

@@ -3,7 +3,7 @@
  * stress.test.ts 一行不改、原样引进来：关着的那一遍是它自己，这里是开着的那一遍（lib/read-pool.ts）。
  * 只读通道多开了 4 个连接，要钉住的就是「多连接 + 交互式事务」这回不会再锁死。
  */
-import { vi, it, expect, afterAll } from "vitest";
+import { vi, it, expect, afterAll, beforeEach } from "vitest";
 
 const 原 = vi.hoisted(() => {
   const 原 = { CRM_ENTERPRISE: process.env.CRM_ENTERPRISE, CRM_READ_POOL: process.env.CRM_READ_POOL };
@@ -15,6 +15,13 @@ const 原 = vi.hoisted(() => {
 });
 
 import "./stress.test";
+import { prisma } from "@/lib/prisma";
+
+// 11-02 起企业版只认业务角色、没设的不能改：压测的操作人（u0）给个总管理（stress.test 的 beforeEach 先建人，这条后跑）
+beforeEach(async () => {
+  const u = await prisma.user.findUniqueOrThrow({ where: { email: "u0" } });
+  await prisma.entMember.create({ data: { userId: u.id, bizRole: "director" } });
+});
 
 it("这一遍真的开着只读通道，查询真的走了它", async () => {
   const { 读通道开着 } = await import("@/lib/read-pool");

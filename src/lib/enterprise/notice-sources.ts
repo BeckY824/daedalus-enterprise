@@ -55,7 +55,7 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
       await notify([toUserId], {
         kind: 自动 ? "自动分配" : "分配",
         title: n === 1 ? `${头}一条新线索：${名们[0]}` : `${头} ${n} 条新线索`,
-        body: n === 1 ? (自动 ? `${谁点的.name} 点的自动分配，按配额轮到了你。` : "") : 名单(名们),
+        body: n === 1 ? (自动 ? `${谁点的.name} 点的自动分配，轮到了你。` : "") : 名单(名们),
         link: 只一条项目 ? `/projects/${们[0].projectId}` : "/leads",
         key: `assign:${自动 ? "auto" : "manual"}:${们.map((c) => c.projectId ?? c.leadId).sort().join(",").slice(0, 400)}:${分钟()}`,
       });

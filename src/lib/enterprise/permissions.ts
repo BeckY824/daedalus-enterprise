@@ -161,6 +161,17 @@ export function 能转出自己的(me: 谁, org: 组织 | null): boolean {
   return !!org && !只读角色(me, org) && 有(org, me.id, 负责人角色);
 }
 
+/**
+ * 改客户详情（字段、行内改一格、编辑客户）：同项目，只有负责人本人，且是销售 / 销售管理（11-02「负责人都可以对其中的内容进行编辑」）。
+ * 公海里的客户谁都改不了，先领；还没负责人的（不在公海）给能管公海的（总管理、销售管理）。上级、总管理只看、只转让（C2）
+ */
+export function 能改客户(me: 谁, c: { salesOwnerId: string | null; 在公海: boolean }, org: 组织 | null): boolean {
+  if (老()) return true;
+  if (!org || c.在公海 || 只读角色(me, org)) return false;
+  if (!c.salesOwnerId) return 能管公海(me, org);
+  return c.salesOwnerId === me.id && 有(org, me.id, 负责人角色);
+}
+
 /** 放回公海：负责人本人（能编辑的），或能转让的（老板、主管也能退回公海 #137 → 总管理、上级） */
 export function 能放回公海(me: 谁, p: 权限项目, org: 组织 | null): boolean {
   return !p.pooledAt && (能编辑项目(me, p, org) || 能转让项目(me, p, org));

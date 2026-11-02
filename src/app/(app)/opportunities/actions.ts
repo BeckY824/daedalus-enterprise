@@ -19,6 +19,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 报价明细 } from "@/lib/features";
 import { 挡字段 } from "@/lib/enterprise/field-perm";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
+import { 删除挡 } from "@/lib/enterprise/soft-delete";
 import { 整理报价行, 报价合计 } from "@/lib/quote";
 import { 写报价, 历次报价, 上次报价 as 查上次报价, type 一次报价 } from "@/lib/quote-db";
 
@@ -322,6 +323,9 @@ export async function setOppStatus(
 export async function deleteOpportunities(ids: string[]) {
   try {
     const me = await requireUser();
+    // 企业版：删除只给总管理（C3），商机没有回收站就不让别人硬删
+    const 挡 = await 删除挡(me);
+    if (挡) return { ok: false as const, error: 挡 };
     /*
       先把名字查出来再删——删完就没得查了。
       删除是最该留痕的一种写操作：删掉的东西在界面上再也找不到，日志是唯一能回答
