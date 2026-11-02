@@ -598,6 +598,39 @@ async function 覆盖(width: number, x: Record<string, unknown>) {
   return { page, errors };
 }
 
+// 11-02 项目详情标清项目负责人、项目创建人：页头写各一次，负责人空着写「暂无」；项目卡不再摆一遍
+it.each<[string, Record<string, unknown>, string]>([
+  ["两个不同的人", { ownerName: "负责人乙", creatorName: "创建人丙" }, "项目负责人：负责人乙 · 项目创建人：创建人丙 · 创建于 "],
+  ["负责人空着", { ownerId: "", ownerName: "", creatorName: "创建人丙" }, "项目负责人：暂无 · 项目创建人：创建人丙 · 创建于 "],
+  ["创建人是停用占位账号，照实写", { ownerName: "负责人乙", creatorName: "（无负责人）" }, "项目负责人：负责人乙 · 项目创建人：（无负责人） · 创建于 "],
+  ["公海里，系统收回：ownerName 是原负责人，不算负责人", { pooled: true, ownerId: "", ownerName: "负责人乙", creatorName: "创建人丙", 进公海: { 方式: "超时", 谁: "系统" } }, "项目负责人：暂无（在公海里，原负责人 负责人乙 · 超时没跟进，系统自动收回） · 项目创建人：创建人丙 · 创建于 "],
+  ["公海里，查不到原负责人", { pooled: true, ownerId: "", ownerName: "", creatorName: "创建人丙" }, "项目负责人：暂无（在公海里） · 项目创建人：创建人丙 · 创建于 "],
+])("页头标清项目负责人、项目创建人：%s", async (_, x, 开头) => {
+  const { page, errors } = await 覆盖(1280, x);
+  try {
+    expect(await page.locator(".proj-head .page-head p").innerText()).toContain(开头);
+    // 项目卡只剩「历史」，负责人不写第二遍；空的也不写「没人」
+    expect(await page.getByText("负责人", { exact: true }).count()).toBe(0);
+    expect(await page.locator(".proj-main").innerText()).not.toContain("没人");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280, 1366])("%ipx：超长负责人、创建人名字在页头折行，不横向伸出，也不压住按钮", async (宽) => {
+  const 长名 = "超长名字" + "Y".repeat(90);
+  const { page, errors } = await 覆盖(宽, { ownerName: 长名, creatorName: 长名 + "丙" });
+  try {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(await 不伸出(page, ".proj-head .page-head p")).toEqual([]);
+    const 行 = page.locator(".proj-head .page-head p");
+    expect(await 行.innerText()).toContain(长名 + "丙");
+    const 框 = (await 行.boundingBox())!;
+    expect(框.x + 框.width).toBeLessThanOrEqual(宽);
+    expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("p")?.textContent?.startsWith("项目负责人：") ?? false, [框.x + 框.width / 2, 框.y + 框.height / 2])).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 for (const 宽 of [1280, 1024]) {
   it(`${宽}px：每条沟通有「…」，修改 / 删除菜单不出屏；修改弹窗带上原内容；删除先就地确认`, async () => {
     const { page, errors } = await 覆盖(宽, { 可改沟通: true, 可删沟通: true, followUps: [{ id: "f1", type: "PHONE", content: "沟通内容" + "X".repeat(90), occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "2026-10-03T00:00:00.000Z" }] });
