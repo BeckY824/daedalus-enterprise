@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/settings";
 import { multiTenant } from "@/lib/tenant/context";
 import { 读连接配置 } from "@/lib/enterprise-import/adapter";
+import { 正在切换视图 } from "./view-as";
 
 export const 飞书推送开关键 = "entFeishuPush";
 const 默认基址 = "https://open.feishu.cn";
@@ -126,6 +127,7 @@ const 截 = (s: string) => (s.length > 500 ? `${s.slice(0, 500)}…` : s);
 export async function 推通知们(ids: readonly string[]): Promise<void> {
   if (!ids.length) return;
   try {
+    if (await 正在切换视图()) return; // 只读预览不发飞书（通知落库那一步本来也被拒，这里兜底）
     const 记没推 = (原因: string, 哪些: readonly string[] = ids) =>
       prisma.entNotice.updateMany({ where: { id: { in: [...哪些] }, feishuStatus: "待推" }, data: { feishuStatus: "没推", feishuError: 原因, feishuAt: new Date() } });
     if (!(await 飞书推送开着())) return void (await 记没推("飞书推送没开"));

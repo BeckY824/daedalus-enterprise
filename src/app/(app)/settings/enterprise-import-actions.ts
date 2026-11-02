@@ -16,6 +16,7 @@ import { 导出对照表, 读回对照表 } from "@/lib/enterprise-import/templa
 import { 负责人候选 } from "@/lib/owners";
 import { 来源们, 来源名, type 来源, type 值对照名 } from "@/lib/enterprise-import/types";
 import { 最高管理 } from "@/lib/enterprise/import-perm";
+import { 视图外部拦 } from "@/lib/enterprise/view-as";
 
 /**
  * 设置页「企业版导入」那一栏的服务端动作。上传文件走 /api/enterprise-import/upload（server action 默认只收 1 MB）。
@@ -155,6 +156,7 @@ export async function 改映射重新试跑(批次Id: string, 改: 映射改动)
 /** 对照表：报告里列、值、负责人怎么对的导成一张 CSV，给原系统那边的人填 */
 export async function 下载对照表(批次Id: string): Promise<string> {
   await 要管理员();
+  await 视图外部拦();
   const r = await 取试跑报告(批次Id);
   if (!r) throw new Error("找不到这次试跑，请重新上传");
   return 导出对照表(r.报告, await 负责人候选());
@@ -229,12 +231,14 @@ export async function 改同步(源: string, 改: { 开?: boolean; 频率?: 同�
 
 export async function 立即同步(源: string): Promise<同步一次结果> {
   const me = await 要管理员();
+  await 视图外部拦();
   return 同步一次(认来源(源), { 用户: { id: me.id, name: me.name } });
 }
 
 /** 接口来的首次导入：拉全量出报告，后面和 Excel 同一套（看报告 → 改映射 → 正式导入） */
 export async function 从接口拉全量(源: string): Promise<{ 批次Id: string; 报告: 试跑报告 }> {
   const me = await 要管理员();
+  await 视图外部拦();
   return 拉全量试跑(认来源(源), me.id);
 }
 
@@ -245,5 +249,6 @@ export async function 切换这个来源(源: string): Promise<切换结果> {
 
 export async function 下载快照(id: string): Promise<{ 文件名: string; 内容: string } | null> {
   await 要管理员();
+  await 视图外部拦();
   return 导出快照(id);
 }

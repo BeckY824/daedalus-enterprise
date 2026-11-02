@@ -26,6 +26,7 @@ import { 带额度 } from "@/lib/tenant/ai-allowance";
 import { 带币种, 商机币种, 签约合计 } from "@/lib/money-db";
 import { 金额 as 显示金额, 合计文字 } from "@/lib/currency";
 import { AI客户输入错误, AI文本输入错误 } from "@/lib/ai-input";
+import { 视图外部拒 } from "@/lib/enterprise/view-as";
 
 /**
  * AI 只起草、不落库：这两个 action 都不写业务表。
@@ -44,6 +45,8 @@ export async function parseFollowUpDraft(input: {
 }): Promise<{ ok: true; draft: FollowUpDraft } | { ok: false; error: string }> {
   const error = AI客户输入错误(input) ?? AI文本输入错误(input?.text, 5, 5000, "内容太短，AI 没有可整理的信息");
   if (error) return { ok: false, error };
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   return 带额度("parse", () => 解析速记(input));
 }
 
@@ -152,6 +155,8 @@ export async function generateBrief(input: {
 }, emit?: Emit): Promise<简报回执> {
   const error = AI客户输入错误(input) ?? (input?.question === undefined ? null : AI文本输入错误(input.question, 0, 200, ""));
   if (error) return { ok: false, error };
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   return 带额度("brief", () => 生成简报(input, emit));
 }
 

@@ -2,8 +2,8 @@
  * 企业版复盘页「待办」页签的界面（P15，10-29 用户定：复盘页改成「待办 | 数据」两个页签）。
  *
  *   四张指标卡：逾期 / 今天到期 / 本周到期 / 全部待办，显示条数；逾期不是 0 才红；卡就是筛选，选中的那张 aria-pressed、点了换地址 f=
- *   列表上方右侧：待办类型分段（全部 / 任务 / 跟进计划）+「去计划页」
- *   列：勾、到期、类型、内容、客户（带项目名）、负责人、状态；多于 20 条才有分页、点第 2 页换地址 p=2
+ *   列表上方：11-02 起不再分类型、不摆「去计划页」，全部待办时只有「看板 / 列表」
+ *   列：勾、到期、内容、客户（带项目名）、负责人、状态；多于 20 条才有分页、点第 2 页换地址 p=2
  *   空：「没有待办」
  *   Windows 1024 / 1280 / 1366 + 超长客户名：页面不横向溢出；手机 375：四张卡 2×2
  *   减弱动态：页签下划线、内容淡入淡出都不走过渡
@@ -48,7 +48,7 @@ beforeAll(async () => {
       }}:undefined;
       createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
         <DataShell view="现在" 项目 页签="todo" 选人={{选项:[{value:'u1',label:长},{value:'me',label:'我自己'}],当前:o.当前??'',我:o.我}}>
-          <BoardTodos 数={数} 看板={看板} 布局={o.布局} 回收={o.回收} 卡={o.卡??'all'} 类型={o.类型??'all'} 只看自己={false} 看全员={true}/>
+          <BoardTodos 数={数} 看板={看板} 布局={o.布局} 回收={o.回收} 卡={o.卡??'all'}  只看自己={false} 看全员={true}/>
         </DataShell>
       </BusinessProvider></App>);
     };
@@ -70,7 +70,7 @@ async function 打开(o: Record<string, unknown> = {}, width = 1280, 地址 = "/
 }
 const 去了 = (page: Page) => page.evaluate(() => (window as unknown as { __去?: string[] }).__去 ?? []);
 
-it("四张卡 + 类型分段 + 去计划页 + 列；逾期有数是红的；页签在、待办选中", async () => {
+it("四张卡 + 列；没有类型分段和去计划页；逾期有数是红的；页签在、待办选中", async () => {
   const { page, errors } = await 打开();
   // U-复盘-01（10-31）：四个页签，「待办」改叫「任务」、默认停在它
   expect(await page.getByRole("tab").allInnerTexts()).toEqual(["任务", "卡点", "沟通", "数据"]);
@@ -85,13 +85,15 @@ it("四张卡 + 类型分段 + 去计划页 + 列；逾期有数是红的；页�
   expect(await 卡.nth(0).getAttribute("class")).toContain("home-card-warn");
   expect(await 卡.nth(3).getAttribute("aria-pressed")).toBe("true");
   expect(await 卡.nth(0).getAttribute("aria-pressed")).toBe("false");
-  expect(await page.locator('.btodo-head [aria-label="待办类型"] .ant-segmented-item').allInnerTexts()).toEqual(["全部", "任务", "跟进计划"]);
+  // 11-02：「全部 / 任务 / 跟进计划」和「去计划页」删了，这张表就是任务
+  expect(await page.locator('[aria-label="待办类型"]').count()).toBe(0);
   // 全部待办才有「看板 / 列表」；没给看板 = 列表
   expect(await page.locator(".btodo-lay .ant-segmented-item-selected").innerText()).toBe("列表");
-  expect(await page.getByRole("link", { name: "去计划页" }).getAttribute("href")).toBe("/follow-ups/plans?scope=all");
-  expect(await page.locator(".btodo thead th").allInnerTexts()).toEqual(["", "到期", "类型", "内容", "客户", "负责人", "状态"]);
+  expect(await page.getByRole("link", { name: "去计划页" }).count()).toBe(0);
+  expect(await page.locator(".btodo thead th").allInnerTexts()).toEqual(["", "到期", "内容", "客户", "负责人", "状态"]);
   const t = await page.locator(".btodo tbody").innerText();
-  for (const s of ["跟进计划", "任务", "华东二期产线改造项目", "没定日期", "逾期", "今天", "之后"]) expect(t).toContain(s);
+  for (const s of ["华东二期产线改造项目", "没定日期", "逾期", "今天", "之后"]) expect(t).toContain(s);
+  expect(t).not.toContain("跟进计划");
   // 8 条一页放得下，不摆分页
   expect(await page.locator(".ant-pagination").count()).toBe(0);
   expect(errors).toEqual([]); await page.close();
@@ -103,17 +105,16 @@ it("逾期是 0：不红", async () => {
   await page.close();
 });
 
-it("点卡换 f=、点类型换 kind=，都回到第一页；选中的卡再点不动", async () => {
-  const { page } = await 打开({ 卡: "week" }, 1280, "/overview?ownerId=u1&f=week&p=2");
+it("点卡换 f=、回到第一页，旧链接带的 kind= 顺手去掉；选中的卡再点不动", async () => {
+  const { page } = await 打开({ 卡: "week" }, 1280, "/overview?ownerId=u1&f=week&kind=plan&p=2");
   expect(await page.locator(".btodo-card").nth(2).getAttribute("aria-pressed")).toBe("true");
   expect(await page.locator(".btodo-head .section-title").innerText()).toBe("本周到期");
   await page.locator(".btodo-card").nth(2).click();
   expect(await 去了(page)).toEqual([]);
   await page.locator(".btodo-card").nth(0).click();
-  await page.locator('.btodo-head [aria-label="待办类型"] .ant-segmented-item', { hasText: "跟进计划" }).click();
   // 本周卡不摆「看板 / 列表」
   expect(await page.locator(".btodo-lay").count()).toBe(0);
-  expect(await 去了(page)).toEqual(["/overview?ownerId=u1&f=overdue", "/overview?ownerId=u1&f=week&kind=plan"]);
+  expect(await 去了(page)).toEqual(["/overview?ownerId=u1&f=overdue"]);
   await page.close();
 });
 
@@ -179,7 +180,7 @@ it("看板：三列 已逾期 / 今天到期 / 待跟进，列头总数、卡片
   expect(await page.locator(".btodo-col-later .btodo-k").count()).toBe(3);
   expect(await page.locator(".btodo-col-today .btodo-col-empty").innerText()).toBe("今天没有到期的");
   expect(await page.locator(".btodo-lay .ant-segmented-item-selected").innerText()).toBe("看板");
-  // 卡片：项目名 + 级别、类型、去跟进；没有表
+  // 卡片：项目名 + 级别、去跟进；没有表
   const 卡 = page.locator(".btodo-col-overdue .btodo-k").nth(1);
   expect(await 卡.locator(".cust-level").innerText()).toBe("S");
   expect(await 卡.locator(".btodo-k-go").getAttribute("href")).toBe("/projects/p1");

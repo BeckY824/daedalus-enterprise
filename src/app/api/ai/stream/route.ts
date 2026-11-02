@@ -12,6 +12,8 @@ import { 收客户页面筛选 } from "@/lib/ai-page-filters";
 import { AI文本输入错误 } from "@/lib/ai-input";
 import { 背调一次 } from "@/lib/research/stream";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 正在切换视图 } from "@/lib/enterprise/view-as";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { missingFields } from "@/lib/agent/proposals";
 import { 收名片卡们, 名片要查, 名片提示词 } from "@/lib/card-scan/agent-prompt";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -46,6 +48,8 @@ import { 带额度 } from "@/lib/tenant/ai-allowance";
 
 export const dynamic = "force-dynamic";
 
+const 事件流头 = { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" };
+
 /**
  * AI 工作流的事件流（SSE）。
  *
@@ -56,6 +60,10 @@ export const dynamic = "force-dynamic";
  * 鉴权、配额、留痕都在被调用的动作里，这里只负责把 emit 接到响应流上。
  */
 export async function POST(req: Request) {
+  // 切换视图（只读预览）不问 AI。回一条正常的结果事件：简报、提问都按它显示原话，回 4xx 界面上只有「请求失败」
+  if (await 正在切换视图()) {
+    return new Response(`data: ${JSON.stringify({ type: "result", ok: false, error: 视图外部话 })}\n\n`, { headers: 事件流头 });
+  }
   let body: Record<string, unknown>;
   try {
     body = (await req.json()) as Record<string, unknown>;
@@ -170,9 +178,7 @@ export async function POST(req: Request) {
     },
   });
 
-  return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" },
-  });
+  return new Response(stream, { headers: 事件流头 });
 }
 
 

@@ -5,6 +5,8 @@ import { App, Button, Image, Popconfirm, Spin, Upload } from "antd";
 import { DeleteOutlined, FileOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import { 附件上限字节, 图片长边, 是图片, 每条最多, 读大小, 只收图片, 收的类型, 收所有文件, type 附件, type 归属 } from "@/lib/attachment-rules";
 import { 传附件, 归属查询 } from "@/lib/attachment-upload";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
 declare global {
   interface Window {
@@ -24,8 +26,11 @@ declare global {
  * 企业版项目附件（P11，10-29）：归属 = 项目，什么文件都收（收所有文件），说法从「图片」换成「附件」
  * 紧凑（F-项目-18，项目附件合成一块后每格用）：大拖放框换成一颗小「上传」按钮，上限、提示一样
  */
-export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说明, on个数, 分类, 紧凑 = false }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean }) {
+export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 说明, on个数, 分类, 紧凑 = false }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean }) {
   const { message } = App.useApp();
+  // 切换视图（只读预览）：看得到列表和图，不能传、删、下载（服务端同样拒）
+  const 视图中 = useViewAs();
+  const 只读 = 只读参 || 视图中;
   const [列表, set列表] = useState<附件[] | null>(null);
   const [传着, set传着] = useState(0);
   // 分类（企业版联系人的 名片 / 相册，10-29）：只列这一格、传上去记成这一格
@@ -96,6 +101,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
       else if (r.只显示) message.info("这类文件不直接运行，已在文件夹里选中它");
       return;
     }
+    if (视图中) return void message.warning(视图外部话);
     // 网页 / 连着服务器：当下载
     const 链 = document.createElement("a");
     链.href = `/api/attachments/${a.id}`;

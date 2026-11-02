@@ -11,6 +11,7 @@ import { statusLabel } from "@/lib/business-config";
 import { formatTimeline } from "@/lib/ai-context";
 import { 带额度 } from "@/lib/tenant/ai-allowance";
 import { AI客户输入错误, AI文本输入错误 } from "@/lib/ai-input";
+import { 视图外部拒 } from "@/lib/enterprise/view-as";
 
 /**
  * 盯盘清单的「起草跟进」：给一条唤醒话术草稿。
@@ -20,6 +21,8 @@ import { AI客户输入错误, AI文本输入错误 } from "@/lib/ai-input";
 export async function draftWakeup(input: { customerId: string; reason: string; 风格?: 起草风格 }): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
   const error = AI客户输入错误(input) ?? AI文本输入错误(input?.reason, 1, 1000, "请填写本次跟进原因");
   if (error) return { ok: false, error };
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   return 带额度("wakeup", () => 起草唤醒话术(input));
 }
 

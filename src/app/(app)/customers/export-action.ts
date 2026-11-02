@@ -11,6 +11,7 @@ import { 负责人候选 } from "@/lib/owners";
 import type { 跟进导出行 } from "./export-table";
 import { 客户附件个数 } from "@/lib/attachments";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 视图外部拒, 视图外部拦 } from "@/lib/enterprise/view-as";
 
 /** 旧调用保留有明确截断标志的有界结果；产品按钮使用下面的完整分批出口。 */
 const 导出上限 = 20_000;
@@ -20,6 +21,8 @@ export async function 导出客户(条件: 客户条件): Promise<
   { ok: true; rows: 客户行[]; 跟进: 跟进导出行[]; 截断了: boolean; 跟进截断了: boolean } | { ok: false; error: string }
 > {
   if (!(await 能导入导出(await requireUser()))) return { ok: false, error: 不能导入导出 };
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   const where = await 客户筛选条件(条件);
   const [全部, 号] = await Promise.all([
     prisma.customer.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 导出上限 + 1, select: { ...客户行字段, createdAt: true } }),
@@ -87,6 +90,7 @@ async function 导出归属省略(where: Prisma.CustomerWhereInput) {
 /** 企业版只给老板和总管理员（10-27 会议）；按钮藏了，这里再挡直调 */
 async function 要能导出() {
   if (!(await 能导入导出(await requireUser()))) throw new Error(不能导入导出);
+  await 视图外部拦(); // 切换视图（只读预览）不把数据带走
 }
 
 /** 完整导出按固定顺序分批读取，每批请求独立检查当前权限。 */

@@ -13,6 +13,8 @@ import type { AiUsage } from "@/lib/ai-usage";
 import type { ModelOption } from "@/lib/llm";
 import { PROVIDERS, 认服务商 } from "@/lib/providers";
 import { MCP令牌变量, MCP接入命令 } from "@/lib/mcp/commands";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
 export type LlmView = {
   /** ui：界面里填的；cloud：桌面端登录的云端账号给的；env：运维在 .env 里配的；null：未配置 */
@@ -46,6 +48,7 @@ export type LlmView = {
 export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: LlmView; usage: AiUsage; 企业版?: boolean }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
+  const 视图中 = useViewAs();
   const [form] = Form.useForm<{ providerId: string; baseUrl: string; model: string; apiKey?: string }>();
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -292,7 +295,7 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
           </Form.Item>
 
           <Space wrap>
-            <Button onClick={onTest} loading={testing}>
+            <Button onClick={onTest} loading={testing} disabled={视图中} title={视图中 ? 视图外部话 : undefined}>
               测试连接
             </Button>
             <Button type="primary" onClick={onSave} loading={saving}>

@@ -320,6 +320,8 @@ html.glass .auth-solo .auth-main { background: transparent; }
 /* 企业版切换视图（M-权限-08）：钉在顶上正中一条「正在以 X 的视图查看（只读）· 退出」。固定定位不占栅格，
    名字长了省略号收尾，「退出」永远在条里看得见；窄屏两边各留 16px */
 .view-as-bar { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 4px 6px 4px 12px; border: 1px solid var(--warning-line); border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-min); line-height: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); white-space: nowrap; }
+/* 手机：顶栏只有一行，浮在上面会盖住菜单键，改成排在顶栏上方；电脑上内容区顶部另留了空（AppShell） */
+@media (max-width: 767px) { .view-as-bar { position: static; transform: none; align-self: center; margin: 6px 16px; } }
 .view-as-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .view-as-text b { font-weight: 600; }
 .view-as-exit { flex: none; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warning-text); color: var(--on-ink); font: inherit; line-height: 20px; cursor: pointer; }
@@ -1704,7 +1706,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); margin-bottom: var(--s3); min-width: 0; }
 .btodo-head-r { display: flex; align-items: center; gap: var(--s3); min-width: 0; max-width: 100%; }
 .btodo-head-r .ant-segmented { max-width: 100%; overflow-x: auto; }
-.btodo-kind { color: var(--text-muted); font-size: var(--fs-note); }
 .btodo-proj { color: var(--text-muted); }
 .btodo .btodo-row { cursor: pointer; }
 .btodo .btodo-row > td { transition: background var(--t-press) var(--ease); }
@@ -1780,7 +1781,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-k-top { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
 .btodo-k-proj { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ink); }
 .btodo-k-top .cust-level { flex: none; height: 18px; min-width: 18px; font-size: var(--fs-min); }
-.btodo-k-kind { flex: none; margin-left: auto; color: var(--text-muted); font-size: var(--fs-min); }
 .btodo-k-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
 .btodo-k-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--s2); min-width: 0; font-size: var(--fs-min); color: var(--text-muted); }
 .btodo-k-meta .btodo-time { font-size: var(--fs-min); }
