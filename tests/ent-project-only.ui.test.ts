@@ -15,7 +15,9 @@ import { chromium, type Browser, type Page } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "ent-project-only", setup(b) {
   b.onResolve({ filter: /^next\/(navigation|link)$/ }, a => ({ path: a.path, namespace: "fixture" }));
-  b.onResolve({ filter: /(^|\/)(UpdateRow|WhatsNew|AiTasks|AiDock|FeedbackButton|AiCost|RailResizer|LeadFullNotices|RecordView|ProjectDetail|NoticeBell)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
+  b.onResolve({ filter: /(^|\/)WhatsNew$/ }, a => ({ path: a.path, namespace: "whats-new" }));
+  b.onLoad({ filter: /.*/, namespace: "whats-new" }, () => ({ contents: "export default function W(){return '更新记录'}" }));
+  b.onResolve({ filter: /(^|\/)(UpdateRow|AiTasks|AiDock|FeedbackButton|AiCost|RailResizer|LeadFullNotices|RecordView|ProjectDetail|NoticeBell)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
   b.onLoad({ filter: /.*/, namespace: "empty-child" }, () => ({ contents: "export default function Empty(){return null} export function AiMeterBar(){return null}" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ resolveDir: process.cwd(), contents: a.path === "next/link"
     ? `import React from 'react';export default function Link({href,onClick,prefetch,children,...p}){return React.createElement('a',{...p,href,onClick:e=>{onClick?.(e);if(!e.defaultPrevented){e.preventDefault();window.__route=href}}},children)}`
@@ -25,17 +27,17 @@ beforeAll(async () => {
   const r = await build({ stdin: { contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import Shell from '@/components/AppShell';import NoAiHome from '@/app/(app)/dashboard/NoAiHome';
     const root=createRoot(document.getElementById('root'));window.__route='';window.desktopNav={onGo:()=>()=>{},setCustomerLabel:async()=>true};
-    window.__render=(企业版项目,管理员)=>root.render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><Shell user={{id:'qa',name:'QA',email:'qa@example.test',role:管理员?'ADMIN':'MEMBER',title:''}} workspace={{name:'某某超长名字的企业版工作区',multiple:false,billing:false}} desktop={false} 反馈去向="github" 企业版项目={企业版项目} pane={null} ai={null} 要跟={{逾期:0,今天:0}}><NoAiHome 管理员={管理员}/></Shell></BusinessProvider></App>);`, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
+    window.__render=(企业版项目,管理员,桌面=false,企业版=false)=>root.render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><Shell user={{id:'qa',name:'QA',email:'qa@example.test',role:管理员?'ADMIN':'MEMBER',title:''}} workspace={{name:'某某超长名字的企业版工作区',multiple:false,billing:false}} desktop={桌面} 反馈去向="github" 企业版项目={企业版项目} 企业版={企业版} pane={null} ai={null} 要跟={{逾期:0,今天:0}}><NoAiHome 管理员={管理员}/></Shell></BusinessProvider></App>);`, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 打开(企业版项目: boolean, 管理员 = true, width = 1280): Promise<{ page: Page; errors: string[] }> {
+async function 打开(企业版项目: boolean, 管理员 = true, width = 1280, 桌面 = false, 企业版 = false): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://ent.test/dashboard"); await page.addScriptTag({ content: bundle });
-  await page.evaluate(([v, a]) => (window as unknown as { __render: (v: boolean, a: boolean) => void }).__render(v, a), [企业版项目, 管理员] as const);
+  await page.evaluate(([v, a, d, e]) => (window as unknown as { __render: (v: boolean, a: boolean, d: boolean, e: boolean) => void }).__render(v, a, d, e), [企业版项目, 管理员, 桌面, 企业版] as const);
   await page.getByRole("navigation", { name: "主导航" }).waitFor();
   return { page, errors };
 }
@@ -49,6 +51,15 @@ it("企业版项目：左栏六个根目录、这个顺序；没有商机、新�
   expect(名).toEqual(["首页", "复盘", "渠道", "公海", "客户", "项目"]);
   expect(await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "公海", exact: true }).getAttribute("href")).toBe("/pool");
   expect(errors).toEqual([]); await page.close();
+});
+
+it("左下角「更新记录」：企业版即使在桌面壳里也不摆（11-02 用户：先关）；团队版桌面端照旧", async () => {
+  const 企 = await 打开(true, true, 1280, true, true);
+  expect(await 企.page.locator("body").innerText()).not.toContain("更新记录");
+  expect(企.errors).toEqual([]); await 企.page.close();
+  const 团 = await 打开(true, true, 1280, true, false);
+  expect(await 团.page.locator("body").innerText()).toContain("更新记录");
+  expect(团.errors).toEqual([]); await 团.page.close();
 });
 
 it("开关关（团队版项目模式）：线索不改名；商机一项 10-28 起也不摆", async () => {
