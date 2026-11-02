@@ -453,7 +453,8 @@ html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, trans
 /* 导航项右边的灰数：有多少，不催人（红的那个 .rail-count 才是要处理的） */
 .rail-num { margin-left: auto; font-size: var(--fs-note); font-weight: 500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .rail-count + .rail-num { margin-left: var(--s2); }
-/* 收藏的客户：导航下面一小栏，名字前一个首字圆片 */
+/* 收藏的客户、项目：导航下面各一小栏，名字前一个首字圆片。两栏最多 16 行，矮屏放不下时这一块自己滚，底部的设置、账号不被挤出屏 */
+.rail-favs { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 .rail-fav { display: flex; flex-direction: column; gap: 2px; margin-top: var(--s4); }
 /* 「更多」那一组：线索 / 联系人 / 渠道，比主导航轻一档（字小、行矮） */
 .rail-more { display: flex; flex-direction: column; gap: 2px; margin-top: var(--s4); }
@@ -1251,6 +1252,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 页头最左边那颗「显示项目列表」（PaneToggle，名单收起或在抽屉里时才有），照客户记录页 .rec-head */
 .proj-head { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
 .proj-head > .page-head { flex: 1; min-width: 0; }
+/* 名字旁边的星：再长的名字也是名字折行，星不掉到下一行 */
+.proj-head .page-head-t { flex-wrap: nowrap; gap: 4px; }
+.proj-head .page-head-t h1 { min-width: 0; }
+.proj-head .page-head-t .rec-star { flex: none; }
 .proj-head > .pane-toggle { margin: 4px 0 0 -6px; flex: none; }
 /* 10-31 改版 R3：整页不滚，页头钉在顶上，两栏各自滚（滚左栏右栏不动、反过来也一样），只有最右那栏露滚动条。
    高度从正文 main 一路传下来（main → 换页那层 motion.div → .proj-wrap → .proj-2col），所以 Windows 顶上那条让位、

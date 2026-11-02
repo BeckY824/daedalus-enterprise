@@ -29,6 +29,7 @@ import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
 import { ProjectFold } from "./ProjectFold";
 import ProjectStages from "./ProjectStages";
+import ProjectStarButton from "./ProjectStarButton";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
@@ -61,6 +62,8 @@ import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
   id: string; name: string; remark: string | null; amount: number; currency: string;
+  /** 这个人收藏了这个项目没有（左栏「收藏的项目」，11-02） */
+  收藏了?: boolean;
   /** 这个人字段权限不是「改」的那几项（企业版，11-02）：卡片上不摆就地改的入口；服务端 改项目 照旧按字段权限拦 */
   只能看字段?: string[];
   /** null = 公海里同事客户的项目，领取后再给（page.tsx 露客户）；联系人、沟通这时也是空的 */
@@ -1147,6 +1150,7 @@ export default function ProjectDetail({
   const 页头 = (
     <PageHead
       title={p.name}
+      titleAside={<ProjectStarButton projectId={p.id} 初值={p.收藏了 ?? false} />}
       subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
       extra={p.企业版 ? 企业版页头钮 || undefined : (
         <Space wrap>
