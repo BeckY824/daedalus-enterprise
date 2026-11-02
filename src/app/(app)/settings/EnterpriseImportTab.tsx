@@ -5,7 +5,7 @@ import { App, Alert, Button, Card, Empty, Popconfirm, Select, Space, Spin, Switc
 import { InboxOutlined } from "@ant-design/icons";
 import { smartTime } from "@/lib/utils";
 import { 来源名, 字段中文 } from "@/lib/enterprise-import/types";
-import { 单个请求最长毫秒 } from "@/lib/enterprise-import/net";
+import { 单个请求最长毫秒 } from "@/lib/enterprise-import/net-limits";
 import type { 试跑报告 } from "@/lib/enterprise-import/report";
 import {
   企业版导入概况,
@@ -26,6 +26,8 @@ import {
   type 撤回一段结果,
 } from "./enterprise-import-actions";
 import EnterpriseImportReport from "./EnterpriseImportReport";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
 /**
  * 设置 → 企业版导入（只有 CRM_ENTERPRISE=1、管理员、不在共享试用区时才摆出来）。
@@ -307,6 +309,7 @@ export default function EnterpriseImportTab() {
 
 function UploadPane({ on出报告 }: { on出报告: (批次Id: string, 报告: 试跑报告) => void }) {
   const { message } = App.useApp();
+  const 视图中 = useViewAs();
   const [文件们, set文件们] = useState<UploadFile[]>([]);
   const [传, set传] = useState(false);
 
@@ -341,7 +344,7 @@ function UploadPane({ on出报告 }: { on出报告: (批次Id: string, 报告: �
         fileList={文件们}
         beforeUpload={() => false}
         onChange={({ fileList }) => set文件们(fileList.slice(-10))}
-        disabled={传}
+        disabled={传 || 视图中}
       >
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
@@ -349,7 +352,7 @@ function UploadPane({ on出报告 }: { on出报告: (批次Id: string, 报告: �
         <p className="ant-upload-text">点这里或把文件拖进来</p>
         <p className="ant-upload-hint">.xlsx / .csv，最多 10 个文件，合计 200 MB 以内</p>
       </Upload.Dragger>
-      <Button type="primary" disabled={!文件们.length} loading={传} onClick={() => void 试跑()}>
+      <Button type="primary" disabled={!文件们.length || 视图中} title={视图中 ? 视图外部话 : undefined} loading={传} onClick={() => void 试跑()}>
         {传 ? "读文件、认列、清洗中…" : "试跑"}
       </Button>
     </Space>
@@ -485,6 +488,7 @@ const 显示 = (v: unknown) => (v === null || v === undefined || v === "" ? "（
 
 function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; on变了: () => void; on出报告: (批次Id: string, 报告: 试跑报告) => void }) {
   const { message, modal } = App.useApp();
+  const 视图中 = useViewAs();
   const [忙, set忙] = useState<string | null>(null);
 
   async function 做<T>(键: string, f: () => Promise<T>): Promise<T | null> {
@@ -567,7 +571,8 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
                     <Button
                       size="small"
                       loading={!!拉着}
-                      disabled={!!忙 || !!拉着}
+                      disabled={!!忙 || !!拉着 || 视图中}
+                      title={视图中 ? 视图外部话 : undefined}
                       onClick={async () => {
                         const r = await 做(`同步-${源}`, () => 立即同步(源));
                         if (r) message[r.结果 === "出错" ? "error" : r.结果 === "成功" ? "success" : "info"](r.话);
@@ -578,7 +583,8 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
                     <Button
                       size="small"
                       loading={忙 === `全量-${源}`}
-                      disabled={!!忙 || !!拉着}
+                      disabled={!!忙 || !!拉着 || 视图中}
+                      title={视图中 ? 视图外部话 : undefined}
                       onClick={async () => {
                         const r = await 做(`全量-${源}`, () => 从接口拉全量(源));
                         if (r) on出报告(r.批次Id, r.报告);
@@ -643,7 +649,7 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
                 title: "",
                 width: 90,
                 render: (_, s) => (
-                  <Button size="small" type="link" loading={忙 === `dl-${s.id}`} onClick={() => void 下载(s.id)}>
+                  <Button size="small" type="link" disabled={视图中} title={视图中 ? 视图外部话 : undefined} loading={忙 === `dl-${s.id}`} onClick={() => void 下载(s.id)}>
                     下载
                   </Button>
                 ),

@@ -54,6 +54,7 @@ import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
 import { useMotionTheme } from "@/components/MotionTheme";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
+import { 切换视图Provider } from "@/components/ViewAsContext";
 
 const { Header, Content } = Layout;
 
@@ -590,6 +591,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
   if (小屏) {
     // 底色走 --page-bg：外观选白底时地面跟着变白（antd 的 bodyBg 是 JS 里写死的色值，读不到外观）
     return (
+      <切换视图Provider value={!!正在视图}>
       <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         {视图条}
         <Header style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", borderBottom: "1px solid var(--line-soft)", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
@@ -629,10 +631,12 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
         )}
         {显示浮标 && <AiFab onClick={() => set手机开在(底下那页)} />}
       </Layout>
+      </切换视图Provider>
     );
   }
 
   return (
+    <切换视图Provider value={!!正在视图}>
     <DockOpenContext.Provider value={面板占着地方}>
     <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}`}>
       {视图条}
@@ -782,5 +786,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
       )}
     </div>
     </DockOpenContext.Provider>
+    </切换视图Provider>
   );
 }

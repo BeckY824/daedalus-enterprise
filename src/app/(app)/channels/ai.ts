@@ -11,6 +11,7 @@ import { FOLLOW_TYPE_MAP } from "@/lib/constants";
 import { getBusiness } from "@/lib/business";
 import { 带额度 } from "@/lib/tenant/ai-allowance";
 import { AI客户输入错误 } from "@/lib/ai-input";
+import { 视图外部拒 } from "@/lib/enterprise/view-as";
 
 /**
  * 转介绍雷达的「起草邀请」：给已签约学员写一条请求转介绍的微信草稿。
@@ -20,6 +21,8 @@ import { AI客户输入错误 } from "@/lib/ai-input";
 export async function draftInvite(input: { customerId: string; 风格?: 起草风格 }): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
   const error = AI客户输入错误(input);
   if (error) return { ok: false, error };
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   return 带额度("invite", () => 起草邀请(input));
 }
 

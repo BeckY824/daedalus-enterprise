@@ -1,6 +1,10 @@
 /**
  * 飞书 / 钉钉适配器共用的联网小件：fetch、等待、时钟都能换（契约测试换成录好的响应，不联网、不真等）。
  */
+import { 视图外部拦 } from "@/lib/enterprise/view-as";
+import { 退避, 请求超时毫秒, 连不上重试 } from "./net-limits";
+
+export { 退避, 请求超时毫秒, 连不上重试, 单个请求最长毫秒 } from "./net-limits";
 
 export type 联网 = {
   fetch: (url: string, init?: RequestInit) => Promise<Response>;
@@ -22,18 +26,10 @@ export class 接口出错 extends Error {
   }
 }
 
-/** 被限流时最多重试几次、每次等多久（1s、2s、4s…，封顶 30s） */
+/** 被限流时最多重试几次（每次等多久见 退避） */
 export const 最多重试 = 5;
-export const 退避 = (第几次: number) => Math.min(30_000, 1000 * 2 ** 第几次);
 /** 对方服务器出错（502 网关、503 维护中…）：多半是一时的，和连不上一样再试 连不上重试 次 */
 export const 对方出错 = (status: number) => status >= 500 && status <= 599;
-
-/** 单次请求最多等多久：断网时 fetch 会自己报错，但对方不回话（半开连接、网关卡住）时会一直挂着，定时同步就整个卡死 */
-export const 请求超时毫秒 = 30_000;
-/** 连不上（断网、DNS 解析不了、连接被重置、超时）时再试几次，退避同限流 */
-export const 连不上重试 = 2;
-/** 一个请求最坏要多久：每次都等满超时、中间退避两回（30 × 3 + 1 + 2 = 93 秒）。界面「正在同步」按这个说 */
-export const 单个请求最长毫秒 = 请求超时毫秒 * (连不上重试 + 1) + Array.from({ length: 连不上重试 }, (_, i) => 退避(i)).reduce((a, b) => a + b, 0);
 
 function 连不上原因(e: unknown): string {
   const err = e as { name?: string; message?: string; cause?: { code?: string } };
@@ -51,6 +47,7 @@ function 连不上原因(e: unknown): string {
  * 同步里接口出错 = 这次算出错、起点不挪，下次从同一个时间再拉；拉到一半断的，前面拉到的也不写（还没到写那步）。
  */
 export async function 请求(网: 联网, 谁: string, url: string, init: RequestInit): Promise<Response> {
+  await 视图外部拦(); // 飞书、钉钉的接口都过这里：切换视图（只读预览）一个请求都不发
   for (let 第几次 = 0; ; 第几次++) {
     try {
       return await 网.fetch(url, { ...init, signal: AbortSignal.timeout(请求超时毫秒) });

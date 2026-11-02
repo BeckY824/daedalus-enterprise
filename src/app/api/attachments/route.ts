@@ -7,6 +7,7 @@ import { 列附件, 存附件, 清孤儿 } from "@/lib/attachments";
 import { 附件上限字节, 每条最多, 超限说明, 规整文件名, 读大小, 不收说明, 收所有文件, 猜音频类型 } from "@/lib/attachment-rules";
 import { 读归属, 认父记录 } from "./access";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 正在切换视图, 视图拒绝响应 } from "@/lib/enterprise/view-as";
 import { 是附件分类, 是项目附件分类 } from "@/lib/enterprise/customer-v2";
 import { 合同附件后推进 } from "@/lib/project/payment-db";
 import { 记这个项目的自动推进 } from "@/lib/project/auto-advance";
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
   const 父 = await 认父记录(挂在, false);
   if ("错" in 父) return NextResponse.json({ error: 父.错 }, { status: 父.状态 });
   // 顺手清一下孤儿（一小时最多一次）：看全部——业务员看不到的商机不等于没了
-  void 看全部(() => 清孤儿(defaultClient));
+  if (!(await 正在切换视图())) void 看全部(() => 清孤儿(defaultClient));
   const 分类 = 读分类(new URL(req.url).searchParams, 挂在);
   if ("错" in 分类) return NextResponse.json({ error: 分类.错 }, { status: 400 });
   return NextResponse.json({ 附件: await 列附件(prisma, 挂在, undefined, 分类.值) }, { headers: 不存 });
@@ -79,6 +80,8 @@ const 整数 = (s: string | null) => {
 export async function POST(req: Request) {
   const 我 = await getCurrentUser();
   if (!我) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  const 拒 = await 视图拒绝响应();
+  if (拒) return 拒;
   const q = new URL(req.url).searchParams;
   const 挂在 = 读归属(q);
   if (!挂在) return NextResponse.json({ error: "参数不对" }, { status: 400 });
