@@ -42,6 +42,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { saveTask, toggleTask, deleteTask, savePlan, deletePlan, completePlan, detachContact, undoDetachContact, saveUnassignedContact } from "@/app/(app)/customers/[id]/actions";
+import { bulkFollowStatus } from "@/app/(app)/customers/actions";
 
 /** 人：代称 → 用户 id */
 const 人 = {
@@ -224,5 +225,25 @@ describe.each([false, true])("联系人移出 / 挂回（按组织看客户 %s�
     expect((await 试("没角色", () => saveUnassignedContact({ id: u.id, name: "没角色改的" }))).成了).toBe(false);
     expect((await raw.unassignedContact.findUniqueOrThrow({ where: { id: u.id } })).name).toBe("李工");
     expect((await 试("销售乙", () => saveUnassignedContact({ id: u.id, name: "李工", customerId: 客户.乙的 }))).成了).toBe(true);
+  });
+});
+
+describe.each([false, true])("列表批量改跟进状态（按组织看客户 %s）", (规则开) => {
+  beforeEach(() => 开规则(规则开));
+  const 状态 = async (id: string) => (await raw.customer.findUniqueOrThrow({ where: { id } })).followStatus;
+
+  it("负责人改自己的客户成；勾进一位别人的整批不改", async () => {
+    expect((await 试("销售甲", () => bulkFollowStatus([客户.甲的], "意向较高"))).成了).toBe(true);
+    expect(await 状态(客户.甲的)).toBe("意向较高");
+    expect((await 试("销售甲", () => bulkFollowStatus([客户.甲的, 客户.乙的], "已成交"))).成了).toBe(false);
+    expect([await 状态(客户.甲的), await 状态(客户.乙的)]).toEqual(["意向较高", "待跟进"]);
+  });
+
+  it("组长、老板、没角色改销售甲的客户 → 拒；公海客户谁都不能改", async () => {
+    for (const 谁 of ["组长", "老板", "没角色", "销售乙"] as const) {
+      expect((await 试(谁, () => bulkFollowStatus([客户.甲的], "意向较高"))).成了).toBe(false);
+    }
+    expect((await 试("老板", () => bulkFollowStatus([客户.公海], "意向较高"))).成了).toBe(false);
+    expect([await 状态(客户.甲的), await 状态(客户.公海)]).toEqual(["待跟进", "待跟进"]);
   });
 });

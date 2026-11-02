@@ -1191,6 +1191,11 @@ export async function bulkFollowStatus(ids: string[], followStatus: string): Pro
   if (虚线) return { ok: false, error: 虚线 };
   const 挡 = await 挡字段(me.id, ["跟进状态"]);
   if (挡) return { ok: false, error: 挡 };
+  // 企业版跟进状态是客户详情，只给负责人改（11-02）；勾了一位不归自己的就整批不改，免得改一半
+  for (const id of 企业版() ? ids : []) {
+    const 改挡 = await 改客户挡(me, id);
+    if (改挡) return { ok: false, error: 改挡 };
+  }
 
   const already = await prisma.customer.count({ where: { id: { in: ids }, followStatus } });
   // 先记下每位原来的状态，给撤销用（排查 D1）
