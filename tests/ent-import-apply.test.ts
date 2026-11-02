@@ -10,9 +10,15 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 试跑 } from "@/lib/enterprise-import/report";
-import { 写一批 } from "@/lib/enterprise-import/apply";
+import { 写一批 as 只写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
 import type { 读出的表 } from "@/lib/enterprise-import/excel";
 import type { 实体, 待写 } from "@/lib/enterprise-import/types";
+
+// 11-02 起企业版正式导入前必选业务线：老用例一律先定外贸
+const 写一批: typeof 只写一批 = async (id, ...r) => {
+  await 定这批业务线(id, "外贸");
+  return 只写一批(id, ...r);
+};
 
 function 表(名: string, 实体: 实体, 表头: string[], 行: string[][]): 读出的表 {
   return { 名, 实体, 表头, 行, 行号: 行.map((_, i) => i + 2), 提醒: [] };

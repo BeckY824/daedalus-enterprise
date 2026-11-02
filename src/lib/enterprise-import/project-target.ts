@@ -77,7 +77,7 @@ export async function 是项目(tx: Tx, id: string): Promise<boolean> {
 }
 
 /** 新建项目 + 一条起点日志；创建人记成负责人（导入的人不一定是负责人，项目页「我创建的」按它算） */
-export async function 建项目(tx: Tx, v: 值表, 现在: string): Promise<string> {
+export async function 建项目(tx: Tx, v: 值表, 现在: string, 业务线?: string): Promise<string> {
   const 位 = 位置(v);
   const ownerId = String(v.ownerId);
   const p = await tx.project.create({
@@ -98,6 +98,7 @@ export async function 建项目(tx: Tx, v: 值表, 现在: string): Promise<stri
       contractCurrency: 串(v.contractCurrency ?? null),
       depositAmount: 数(v.depositAmount ?? null),
       depositCurrency: 串(v.depositCurrency ?? null),
+      ...(业务线 ? { bizLine: 业务线 } : {}),
     },
     select: { id: true },
   });

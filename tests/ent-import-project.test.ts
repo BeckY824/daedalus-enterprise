@@ -19,10 +19,16 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 试跑 } from "@/lib/enterprise-import/report";
-import { 写一批 } from "@/lib/enterprise-import/apply";
+import { 写一批 as 只写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
 import { 撤回一批, 恢复一批 } from "@/lib/enterprise-import/revert";
 import type { 读出的表 } from "@/lib/enterprise-import/excel";
 import type { 实体 } from "@/lib/enterprise-import/types";
+
+// 11-02 起企业版正式导入前必选业务线：老用例一律先定外贸
+const 写一批: typeof 只写一批 = async (id, ...r) => {
+  await 定这批业务线(id, "外贸");
+  return 只写一批(id, ...r);
+};
 
 function 表(名: string, 实体: 实体, 表头: string[], 行: string[][]): 读出的表 {
   return { 名, 实体, 表头, 行, 行号: 行.map((_, i) => i + 2), 提醒: [] };
@@ -64,6 +70,35 @@ afterAll(async () => {
 });
 
 describe("项目模式", () => {
+  // 11-02 用户：「之后导入的会改为手动选择，内贸，外贸还是暂不分配」
+  it("业务线：没选不让正式导入、一条不写；选了外贸，新建的客户、项目都落外贸", async () => {
+    const { 批次Id, 报告 } = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: [客户表(), 商机表([["O1", "C1", "服务器采购", "解决方案", "", "", "", ""]])], 建议器: null });
+    expect(报告.映射).toMatchObject({ 项目: true, 业务线: null });
+    await expect(只写一批(批次Id, 我)).rejects.toThrow("先选这批的业务线");
+    expect((await prisma.entImportBatch.findUniqueOrThrow({ where: { id: 批次Id } })).status).toBe("preview");
+    expect(await prisma.customer.count()).toBe(0);
+    await expect(定这批业务线(批次Id, "海外")).rejects.toThrow("只能选");
+    await 定这批业务线(批次Id, "外贸");
+    expect((await 只写一批(批次Id, 我)).完了).toBe(true);
+    expect((await prisma.customer.findMany({ select: { bizLine: true } })).map((c) => c.bizLine)).toEqual(["外贸", "外贸"]);
+    expect((await 项目("服务器采购")).bizLine).toBe("外贸");
+    // 已开始写的批次不能再改线
+    await 定这批业务线(批次Id, "内贸");
+    expect(JSON.parse((await prisma.entImportBatch.findUniqueOrThrow({ where: { id: 批次Id } })).mapping!).业务线).toBe("外贸");
+  });
+
+  it("业务线：再导一遍改已有的客户、项目，不动它们的业务线；同步批次的老映射没选过，新建的落暂不分配", async () => {
+    await 导([客户表(), 商机表([["O1", "C1", "服务器采购", "解决方案", "", "", "", ""]])]);
+    await prisma.customer.updateMany({ data: { bizLine: "内贸" } });
+    await prisma.project.updateMany({ data: { bizLine: "内贸" } });
+    const { 批次Id } = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: [客户表(), 商机表([["O1", "C1", "服务器采购改名", "解决方案", "", "", "", ""], ["O2", "C2", "新单", "解决方案", "", "", "", ""]])], 建议器: null });
+    await prisma.entImportBatch.update({ where: { id: 批次Id }, data: { kind: "sync" } });
+    expect((await 只写一批(批次Id, 我)).完了).toBe(true);
+    expect((await prisma.customer.findMany({ select: { bizLine: true } })).map((c) => c.bizLine)).toEqual(["内贸", "内贸"]);
+    expect((await 项目("服务器采购改名")).bizLine).toBe("内贸");
+    expect((await 项目("新单")).bizLine).toBe("暂不分配");
+  });
+
   it("商机行建成项目：节点按 2.0 / 新版叫法 / 同义词认，结局落成 result，不建商机", async () => {
     const { 报告 } = await 导([
       客户表(),
