@@ -16,8 +16,10 @@ import { 认回打码号, 号键 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
-import { 软删开着, 撤销软删, 删除挡 } from "@/lib/enterprise/soft-delete";
-import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤 } from "@/lib/enterprise/follow-perm";
+import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
+import { 能恢复 } from "@/lib/enterprise/permissions";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤, 客户事项挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
@@ -31,6 +33,8 @@ import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "@/lib
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, type 交上来的号 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
+
+const 只有总管理能恢复话 = "只有总管理能恢复删掉的记录";
 
 /**
  * 这一页上的写操作也要留痕。
@@ -320,6 +324,12 @@ export type 删掉的跟进 = {
 export async function restoreFollowUp(快照: 删掉的跟进) {
   try {
     const me = await requireUser();
+    // 企业版：只认回收站里那一条（不照快照新建，快照是前端交上来的）；总管理能恢复，本人刚记的 10 分钟内能撤
+    if (企业版()) {
+      const 行 = await 看已删(() => defaultClient.followUp.findUnique({ where: { id: 快照.id }, select: { ownerId: true, createdAt: true, deletedAt: true, customerId: true } }));
+      if (!行 || 行.customerId !== 快照.customerId) return { ok: false as const, error: "这条跟进已经不在了，撤不回来" };
+      if (行.deletedAt && !刚记的能撤(me, 行) && !能恢复(me, await 权限组织())) return { ok: false as const, error: 只有总管理能恢复话 };
+    }
     if (await prisma.followUp.findUnique({ where: { id: 快照.id }, select: { id: true } })) return { ok: true as const };
     if (!(await prisma.customer.findUnique({ where: { id: 快照.customerId }, select: { id: true } }))) {
       return { ok: false as const, error: "这位客户已经不在了，撤不回来" };
@@ -372,6 +382,25 @@ export async function restoreFollowUp(快照: 删掉的跟进) {
 
 /* ---------------- 待办任务 ---------------- */
 
+/**
+ * 企业版待办、计划谁能动（11-02）：跟着客户的负责人走（lib/enterprise/follow-perm 客户事项挡）。
+ * 改已有的按库里那条的客户认，不信传来的；也不许借编辑把它挪到别的客户名下。不是企业版 null
+ */
+async function 事项挡(me: Awaited<ReturnType<typeof requireUser>>, 传的客户: string | null, 哪种: "task" | "plan" | null = null, id?: string): Promise<string | null> {
+  if (!企业版()) return null;
+  let 客户 = 传的客户;
+  if (哪种 && id) {
+    const 原 = 哪种 === "task"
+      ? await defaultClient.task.findUnique({ where: { id }, select: { customerId: true } })
+      : await defaultClient.followPlan.findUnique({ where: { id }, select: { customerId: true } });
+    if (原) {
+      if (传的客户 && 原.customerId !== 传的客户) return "不能把它挪到别的客户名下";
+      客户 = 原.customerId;
+    }
+  }
+  return 客户事项挡(me, 客户);
+}
+
 export async function saveTask(input: {
   id?: string;
   customerId: string;
@@ -383,6 +412,8 @@ export async function saveTask(input: {
 }) {
   try {
     const user = await requireUser();
+    const 挡 = await 事项挡(user, input.customerId, input.id ? "task" : null, input.id);
+    if (挡) return { ok: false as const, error: 挡 };
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.title)) return { ok: false as const, error: "请填写待办内容" };
     if (input.dueAt != null && !parseDateInput(input.dueAt)) return { ok: false as const, error: "截止时间格式不正确" };
@@ -419,6 +450,8 @@ export async function saveTask(input: {
 export async function toggleTask(id: string, done: boolean) {
   try {
     const me = await requireUser();
+    const 挡 = await 事项挡(me, null, "task", id);
+    if (挡) return { ok: false as const, error: 挡 };
     const t = await prisma.task.update({
       where: { id },
       data: { done, doneAt: done ? new Date() : null },
@@ -437,6 +470,8 @@ export async function toggleTask(id: string, done: boolean) {
 export async function deleteTask(id: string) {
   try {
     const me = await requireUser();
+    const 挡 = await 事项挡(me, null, "task", id);
+    if (挡) return { ok: false as const, error: 挡 };
     const t = await prisma.task.delete({ where: { id } });
     await recordAudit({
       user: me, action: "delete", entity: "Task", entityId: id,
@@ -464,6 +499,8 @@ export async function savePlan(input: {
 }) {
   try {
     const user = await requireUser();
+    const 挡 = await 事项挡(user, input.customerId, input.id ? "plan" : null, input.id);
+    if (挡) return { ok: false as const, error: 挡 };
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.subject)) return { ok: false as const, error: "请填写跟进主题" };
     if (!parseDateInput(input.plannedAt)) return { ok: false as const, error: "计划时间格式不正确" };
@@ -515,6 +552,8 @@ export async function deletePlan(id: string) {
     const me = await requireUser();
     const p = await prisma.followPlan.findUnique({ where: { id } });
     if (!p) return { ok: false as const, error: "这条计划已经不在了，刷新看看" };
+    const 挡 = await 事项挡(me, p.customerId);
+    if (挡) return { ok: false as const, error: 挡 };
     await prisma.followPlan.delete({ where: { id } });
     await recordAudit({
       user: me, action: "delete", entity: "FollowPlan", entityId: id,
@@ -534,6 +573,8 @@ export async function deletePlan(id: string) {
 export async function completePlan(id: string, 完成 = true) {
   try {
     const me = await requireUser();
+    const 挡 = await 事项挡(me, null, "plan", id);
+    if (挡) return { ok: false as const, error: 挡 };
     // 同状态重复提交不重写首次完成时间。撤销时清空，再完成才记录新时刻。
     await prisma.followPlan.updateMany({ where: { id, done: !完成 }, data: { done: 完成, doneAt: 完成 ? new Date() : null } });
     const p = await prisma.followPlan.findUniqueOrThrow({ where: { id } });
@@ -566,7 +607,9 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
       const 计划 = await tx.followPlan.findFirst({ where: { id: input.计划id, customerId: input.customerId }, select: { id: true, subject: true } });
       if (!计划) return { ok: false as const, error: "这条计划已经不在了，刷新看看" };
       const audits: Parameters<typeof recordAudit>[0][] = [];
-      const 跟进 = await tx.followUp.findFirst({ where: { id: input.跟进id, customerId: input.customerId }, select: { id: true, type: true, occurredAt: true } });
+      const 跟进 = await tx.followUp.findFirst({ where: { id: input.跟进id, customerId: input.customerId }, select: { id: true, type: true, occurredAt: true, ownerId: true, createdAt: true } });
+      // 企业版：只撤自己 10 分钟内刚记的那笔，别人的、早先的去时间线（删只给总管理）
+      if (跟进 && 企业版() && !刚记的能撤(user, 跟进)) return { ok: false as const, error: "只能撤销自己刚记的（10 分钟内），这条去时间线上处理" };
       if (跟进) {
         // 11-01 卡点 B13：这条沟通上发过卡点的，卡点脱开照旧留着；老库脱不开就不撤
         if ((await 卡点脱离沟通(tx, [跟进.id])).size) return { ok: false as const, error: "这条跟进上已经发过卡点，撤不回来了，去时间线上删" };
@@ -825,6 +868,8 @@ export async function detachContact(id: string) {
     const me = await requireUser();
     const c = await prisma.contact.findUnique({ where: { id }, include: { customer: { select: { name: true } } } });
     if (!c) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
+    const 挡 = await 客户事项挡(me, c.customerId);
+    if (挡) return { ok: false as const, error: 挡 };
     const 跟进 = await prisma.followUp.findMany({ where: { contactId: id }, select: { id: true } });
     // 函数式事务：数组式在托管版的工作区代理下会抛错（见 lib/carry-over-db.ts 带走没做完的）
     await prisma.$transaction(async (tx) => {
@@ -862,6 +907,8 @@ export async function undoDetachContact(id: string, 原来是关键: boolean) {
     if (!u.fromCustomerId || !(await prisma.customer.findUnique({ where: { id: u.fromCustomerId }, select: { id: true } }))) {
       return { ok: false as const, error: "原来那位客户已经不在了，撤不回去" };
     }
+    const 挡 = await 客户事项挡(me, u.fromCustomerId);
+    if (挡) return { ok: false as const, error: 挡 };
     await prisma.$transaction((tx) => 挂上(tx, u, u.fromCustomerId!, u.wasPrimary ?? 原来是关键));
     await recordAudit({
       user: me, action: "update", entity: "Contact", entityId: id,
@@ -881,6 +928,9 @@ export async function undoDetachContact(id: string, 原来是关键: boolean) {
 export async function saveUnassignedContact(input: 联系人字段 & { id: string; customerId?: string | null; isPrimary?: boolean; 版本?: string | null }) {
   try {
     const me = await requireUser();
+    // 企业版：挂到哪位客户下面就按那位的负责人挡；只改资料（不挂）只挡没业务角色、管理员
+    const 挡 = await 客户事项挡(me, input.customerId);
+    if (挡) return { ok: false as const, error: 挡 };
     if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
     if (input.isPrimary != null && typeof input.isPrimary !== "boolean") return { ok: false as const, error: "关键联系人选项格式不正确" };
     const u = await prisma.unassignedContact.findUnique({ where: { id: input.id } });
@@ -1022,6 +1072,14 @@ async function 认回删掉的号(id: string, 交回: string | null) {
 export async function restoreContact(快照: 删掉的联系人) {
   try {
     const me = await requireUser();
+    // 企业版：删联系人只有总管理（删除挡），恢复也只有总管理；挂着的只认回收站里那一条，不照快照新建
+    if (企业版()) {
+      if (!能恢复(me, await 权限组织())) return { ok: false as const, error: 只有总管理能恢复话 };
+      if (快照.哪种 !== "未归属") {
+        const 行 = await 看已删(() => defaultClient.contact.findUnique({ where: { id: 快照.id }, select: { customerId: true } }));
+        if (!行 || 行.customerId !== 快照.customerId) return { ok: false as const, error: "这位联系人已经不在了，撤不回来" };
+      }
+    }
     const 号 = await 认回删掉的号(快照.id, 快照.phone);
     const 在 = await Promise.all([
       prisma.contact.findUnique({ where: { id: 快照.id }, select: { id: true } }),

@@ -23,7 +23,10 @@ import { 查号码, type 查号码结果 } from "../../customers/number-actions"
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 建档向导 } from "../actions";
-import { 三种业务线, 业务线必填, 销售自动分确认 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 业务线必填, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
+import AddressInput, { 空地址 } from "@/components/AddressInput";
+import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
+import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 
 const 草稿键 = "项目建档向导";
 const 步骤们 = ["查重", "联系人", "客户", "项目", "首条沟通"] as const;
@@ -42,7 +45,11 @@ type 稿 = {
   /** 分配方式：企业版才有（默认五项的序号，0 指定 / 1 自动 / 2 公海捞取 / 3 暂不分配 / 4 个人自持）；老草稿里没有 */
   /** 渠道 = 项目来源（企业版，迁移 077）：没另选（空）= 跟客户的渠道；老草稿里没有 */
   /** 业务线（企业版，11-01 A1）：内贸 / 外贸 / 暂不分配，企业版必填；老草稿里没有 = 没填 */
-  项目: { name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number; 渠道?: string | null; 业务线?: string | null };
+  /** 所在地（企业版，11-02，选填）：项目自己的四格 + 详细地址；业务线手选 = 人动过业务线下拉，所在地的建议就不再覆盖（只在界面用，不交） */
+  项目: {
+    name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number; 渠道?: string | null; 业务线?: string | null;
+    所在地?: 客户地址 & { location?: string | null }; 业务线手选?: boolean;
+  };
   /** 下一步时间（YYYY-MM-DD）：开了超时回收时才有这格、必填；老草稿里没有这格 */
   /** 节点、明确回复：企业版首条沟通必选（跟进节点 = 项目落在线索阶段哪一步）；团队版没有 */
   跟进: { type: string; method?: string | null; content: string; occurredAt: string; 下一步时间?: string | null; 节点?: string; 明确回复?: boolean | null };
@@ -222,7 +229,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
     set交中(true);
     // 企业版不是「指定分配」的：先建在我名下（服务端也这么改），建好再按分配方式转走
     const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
-    const { 渠道: 项目渠道, ...项目稿 } = d.项目;
+    const { 渠道: 项目渠道, 业务线手选, ...项目稿 } = d.项目;
     try {
       const r = await 建档向导({
         客户: {
@@ -282,6 +289,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
     set接着填(false);
   };
 
+  // 所在地给的业务线建议（11-02）：只提示，提交 = 人确认了
+  const 线提示 = 企业 ? 所在地提示(建议业务线(d.项目.所在地), d.项目.业务线) : null;
   const 一行 = (label: string, el: React.ReactNode, 必填 = false) => (
     <label className="wiz-row" style={{ display: "block", marginBottom: 16 }}>
       <div style={{ marginBottom: 6, color: "var(--text-muted)" }}>{必填 && <span style={{ color: "var(--danger)" }}>* </span>}{label}</div>
@@ -447,6 +456,25 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
               {d.项目.分配方式 !== undefined && 分配说明[d.项目.分配方式] && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{分配说明[d.项目.分配方式]}</div>}
             </>
           ), true)}
+          {/* 项目所在地（11-02，选填）：项目自己的，不是客户地址；填了按所在地建议业务线（没手动选过就预填，人确认） */}
+          {企业 && 一行("项目所在地", (
+            <AddressInput
+              value={d.项目.所在地 ?? 空地址}
+              onChange={(a) => {
+                const 预填 = 所在地预填(建议业务线(a), d.项目.业务线, !!d.项目.业务线手选);
+                改("项目", { 所在地: { ...a, location: d.项目.所在地?.location ?? null }, ...(预填 ? { 业务线: 预填 } : {}) });
+              }}
+            />
+          ))}
+          {企业 && 一行("详细地址", (
+            <Input
+              aria-label="详细地址"
+              placeholder={详细地址提示}
+              maxLength={详细地址上限}
+              value={d.项目.所在地?.location ?? ""}
+              onChange={(e) => 改("项目", { 所在地: { ...(d.项目.所在地 ?? 空地址), location: e.target.value } })}
+            />
+          ))}
           {企业 && 一行("业务线", (
             <>
               <Select
@@ -456,8 +484,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
                 value={d.项目.业务线 || undefined}
                 placeholder="内贸 / 外贸 / 暂不分配"
                 options={三种业务线.map((x) => ({ value: x, label: x }))}
-                onChange={(v) => 改("项目", { 业务线: v ?? null })}
+                onChange={(v) => 改("项目", { 业务线: v ?? null, 业务线手选: true })}
               />
+              {线提示 && <div data-testid="wizard-bizline-hint" style={{ marginTop: 4, fontSize: 12, color: 线提示.同 ? "var(--text-muted)" : "var(--warning-text)" }}>{线提示.话}</div>}
               <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>
                 自动分配只分给这条线的销售；暂不分配 = 不自动分，留在新线索等人指派。客户没另选时也记成这条线
               </div>

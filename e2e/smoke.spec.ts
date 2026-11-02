@@ -203,7 +203,8 @@ test("8. 两个人同时改同一条客户：改不同字段自动合并，改�
   const 乙 = await 乙上下文.newPage();
 
   await 登录(甲, 账号);
-  await 登录(乙, 管理员);
+  // 企业版客户详情只有负责人能改（11-02），总管理只看：「两个人」= 负责人在两台设备上同时开
+  await 登录(乙, 企业版 ? 账号 : 管理员);
 
   async function 打开编辑框(page: Page) {
     await page.goto("/customers");

@@ -11,6 +11,7 @@
  *   指定分配 = 负责人是选的那位；其余先建在我名下，建好按分配方式走（自动分配没分出去 / 暂不分配 = 留在新线索待分配）。
  *   没传（老调用）= 和原来一样：负责人直接选，不记分配方式、建好不再动。客户名下已有别的项目，自动分出去时客户负责人不跟着动
  * 业务线（A1，11-01 16:1x）：内贸 / 外贸 / 暂不分配三选一，带了分配方式（企业版新弹窗）就必填；没传分配方式的老调用不要求
+ * 项目所在地（11-02）：选填，四格 + 详细地址，规整同编辑项目；弹窗按所在地给业务线建议，人确认（提交即确认），服务端不按地址改线
  */
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
@@ -20,12 +21,15 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 同事的客户, 只读话 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 企业版字典, 节点序号 } from "@/lib/project/nodes";
 import { 有效线索节点, 缺有效沟通, 记沟通标记 } from "@/lib/project/stage-gates";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 新项目默认值 } from "@/lib/project/proj-fields";
+import { 新项目所在地 } from "@/lib/project/profile-rules";
 import { 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
@@ -82,8 +86,17 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (!客户) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
     if (await 同事的客户(defaultClient, customerId)) return { ok: false, error: await 只读话(defaultClient) };
 
+    // 11-02：只认业务角色。没设的、管理员（只读）不给建
+    const org = await 权限组织();
+    if (!org || 没设业务角色(org, me.id)) return { ok: false, error: "你还没有业务角色，不能改数据，请找总管理设置" };
+    if (只读角色(me, org)) return { ok: false, error: 只读角色话 };
     const 分配 = 输入.项目.分配方式 === undefined || 输入.项目.分配方式 === null ? null : await 定分配方式(me, 输入.项目);
     if (分配 && "error" in 分配) return { ok: false, error: 分配.error };
+    // 没带分配方式、负责人又不是自己 = 指定给别人：照「指定分配」查能不能用
+    if (!分配 && 输入.项目.ownerId && 输入.项目.ownerId !== me.id) {
+      const 指定 = await 定分配方式(me, { 分配方式: 0, ownerId: 输入.项目.ownerId });
+      if ("error" in 指定) return { ok: false, error: 指定.error };
+    }
     // 指定分配以外：先建在我名下，建好再按分配方式走
     const 项目输入 = !分配 || 分配.i === 0 ? 输入.项目 : { ...输入.项目, ownerId: me.id };
     if (!项目输入.ownerId) return { ok: false, error: "请选项目负责人" };
@@ -93,6 +106,9 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 业务线 = 认业务线(输入.项目.业务线);
     if (业务线 === undefined) return { ok: false, error: 业务线不认得 };
     if (分配 && !业务线) return { ok: false, error: 业务线必填 };
+    // 项目所在地（11-02，选填）：和编辑项目同一套规整；没填五格都是 null
+    const 地 = 新项目所在地(输入.项目.所在地);
+    if (!地.ok) return { ok: false, error: 地.error };
     const 规则 = await 生效组织规则();
     const 认 = await 认跟进方式(输入.跟进);
     if ("error" in 认) return { ok: false, error: 认.error };
@@ -117,7 +133,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const projectId = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
         data: {
-          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
+          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
           nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText, ...新项目默认值(true),
         },
       });

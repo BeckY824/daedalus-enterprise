@@ -10,12 +10,14 @@ import { 连库, 清空业务数据 } from "./mock-data";
 import { 企业版 } from "./owner-pick";
 
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
+/** 企业版待办、计划只有客户负责人（销售 / 销售管理）能删，总管理只看（11-02） */
+const 销售 = { 用户名: "zhangsan", 密码: "admin123" };
 
-async function 登录(page: Page) {
+async function 登录(page: Page, who = 管理员) {
   for (let i = 0; i < 3; i++) {
     await page.goto("/login");
-    await page.getByPlaceholder("用户名").fill(管理员.用户名);
-    await page.getByPlaceholder("登录密码").fill(管理员.密码);
+    await page.getByPlaceholder("用户名").fill(who.用户名);
+    await page.getByPlaceholder("登录密码").fill(who.密码);
     await page.getByRole("button", { name: /登\s*录/ }).click();
     try {
       await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
@@ -257,12 +259,14 @@ test("删签约：确认框说清金额、会退回哪个赢单商机、状态�
 
 test("删待办 / 删计划（计划页）：就地确认，删了那一行就没了", async ({ page }) => {
   const p = 连库();
+  const 谁 = 企业版 ? 销售 : 管理员;
+  const 我 = (await p.user.findFirstOrThrow({ where: { email: 谁.用户名 } })).id;
   const c = await p.customer.create({ data: { name: `计划客户${戳}`, phone: `1387${戳}0`.slice(0, 11), salesOwnerId: 我 } });
   await p.followPlan.create({ data: { customerId: c.id, ownerId: 我, subject: `回访${戳}`, plannedAt: new Date(Date.now() - 86400000), method: "电话沟通" } });
   await p.task.create({ data: { customerId: c.id, ownerId: 我, title: `发资料${戳}`, dueAt: new Date(Date.now() - 86400000) } });
   await p.$disconnect();
 
-  await 登录(page);
+  await 登录(page, 谁);
   await page.goto("/follow-ups/plans");
   for (const [标题, 提示] of [[`回访${戳}`, "计划已删除"], [`发资料${戳}`, "待办已删除"]] as const) {
     await expect(page.getByText(标题, { exact: true })).toBeVisible();

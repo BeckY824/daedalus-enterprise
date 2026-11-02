@@ -42,7 +42,7 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能改客户, 没设业务角色 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
@@ -220,6 +220,21 @@ export type SaveCustomerResult =
  * 第二个参数只给项目模式的建档向导用：新建时在建客户的同一个事务里接着建联系人、项目、首条跟进，
  * 它抛错整笔回滚、一行不留。只认 lib/project/hook.ts 登记过的；编辑不调
  */
+/**
+ * 企业版客户名称、备注长度上限（11-02）：名称 200、备注 2000。只看新建和这次改动了的——导进来的老数据里有超长的（3702 最长名称 130 字），
+ * 没动它就照存，不因为改了别的格被挡
+ */
+const 客户名称上限 = 200;
+const 客户备注上限 = 2000;
+function 企业版客户太长(叫法: string, 交: { name?: string | null; remark?: string | null }, 原: { name: string; remark: string | null } | null): string | null {
+  if (!企业版()) return null;
+  const 名 = 交.name?.trim() ?? "";
+  if (交.name != null && 名 !== (原?.name ?? "") && 名.length > 客户名称上限) return `${叫法}名称最多 ${客户名称上限} 个字`;
+  const 备 = 交.remark?.trim() ?? "";
+  if (交.remark != null && 备 !== (原?.remark ?? "") && 备.length > 客户备注上限) return `备注最多 ${客户备注上限} 个字`;
+  return null;
+}
+
 export async function saveCustomer(input: CustomerInput, 接着?: unknown): Promise<SaveCustomerResult> {
   const me = await requireUser();
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
@@ -229,8 +244,17 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
 
   const 改前 = input.id ? await prisma.customer.findUnique({ where: { id: input.id } }) : null;
   if (input.id && !改前) return { ok: false, error: `这条${b.customer}已经不在了（可能已删除），无法保存` };
+  const 太长 = 企业版客户太长(b.customer, { name: input.name, remark: input.remark }, 改前);
+  if (太长) return { ok: false, error: 太长 };
   // 团队互看：同事的客户读得到、改不了（lib/team-scope.ts），先说人话
   if (input.id && await 同事的客户(defaultClient, input.id)) return { ok: false, error: await 只读话(defaultClient) };
+  const 改挡 = await 改客户挡(me, input.id);
+  if (改挡) return { ok: false, error: 改挡 };
+  // 编辑里换了负责人：同转让（只转自己的；管理、总管理随便转）
+  if (改前 && input.salesOwnerId && input.salesOwnerId !== 改前.salesOwnerId) {
+    const 转挡 = await 转让挡(me, [改前.id]);
+    if (转挡) return { ok: false, error: 转挡 };
+  }
   /*
     编辑之前先把老签约的「签约那一刻是谁的」钉住（排查 X1）。不只换负责人：改来源渠道 / 推荐人也会重算渠道负责人（复查 R）。
     没有缺的时候它只是一次很轻的查询，所以编辑一律先调，不去猜这次会不会动到归属
@@ -995,6 +1019,24 @@ async function 转让挡(me: Awaited<ReturnType<typeof requireUser>>, ids: strin
   return 别人的 ? 只有管理能转让话 : null;
 }
 
+const 只有负责人改客户话 = "只有负责人能改客户资料（上级、总管理只能看、转让）";
+const 公海先领话 = "公海里的客户先领取或分配，再改";
+
+/**
+ * 企业版改客户详情挡（11-02，permissions.ts 能改客户）：负责人本人（销售、销售管理）才能改；公海里的谁都不能改；
+ * 没设业务角色的一律拒。规则「按组织看客户」关着时限定层不拦，这里照样拦。新建（id 空）只挡没设业务角色的
+ */
+async function 改客户挡(me: Awaited<ReturnType<typeof requireUser>>, id?: string | null): Promise<string | null> {
+  if (!企业版()) return null;
+  const org = await 权限组织();
+  if (!org || 没设业务角色(org, me.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
+  if (!id) return null;
+  const c = await defaultClient.customer.findUnique({ where: { id }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+  if (!c) return null; // 不在了：后面照原样报「已删除」
+  if (c.pool) return 公海先领话;
+  return 能改客户(me, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : 只有负责人改客户话;
+}
+
 /** 批量改销售负责人 */
 export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原因?: string | null): Promise<BulkResult> {
   const me = await requireUser();
@@ -1149,6 +1191,11 @@ export async function bulkFollowStatus(ids: string[], followStatus: string): Pro
   if (虚线) return { ok: false, error: 虚线 };
   const 挡 = await 挡字段(me.id, ["跟进状态"]);
   if (挡) return { ok: false, error: 挡 };
+  // 企业版跟进状态是客户详情，只给负责人改（11-02）；勾了一位不归自己的就整批不改，免得改一半
+  for (const id of 企业版() ? ids : []) {
+    const 改挡 = await 改客户挡(me, id);
+    if (改挡) return { ok: false, error: 改挡 };
+  }
 
   const already = await prisma.customer.count({ where: { id: { in: ids }, followStatus } });
   // 先记下每位原来的状态，给撤销用（排查 D1）
@@ -1490,12 +1537,19 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   if (!PATCHABLE.includes(key) || (企业版才有的格.includes(key) && !企业版())) return { ok: false, error: "这个字段不能在这里改" };
   // 团队互看：同事的客户读得到、改不了（lib/team-scope.ts），外贸档案那几格也一样
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
+  // 企业版：换负责人走转让那条规矩（只转自己的；管理、总管理随便转），公海里的走领取 / 分配；别的格只有负责人能改
+  const 归属挡 = key === "salesOwnerId" ? await 转让挡(me, [id]) ?? (企业版() && await defaultClient.customerPool.findUnique({ where: { customerId: id }, select: { customerId: true } }) ? 公海先领话 : null) : await 改客户挡(me, id);
+  if (归属挡) return { ok: false, error: 归属挡 };
   const 挡 = 客户列字段[key] ? await 挡字段(me.id, [客户列字段[key]]) : null;
   if (挡) return { ok: false, error: 挡 };
   // 动到归属的几格（负责人、渠道负责人、来源、推荐人）之前先钉住老签约（排查 X1 / 复查 R）
   if (["salesOwnerId", "channelOwnerId", "channelId", "referrerCustomerId"].includes(key)) await 钉住老签约();
 
   const v = typeof value === "string" ? value.trim() : value;
+  if (key === "remark") {
+    const 太长 = 企业版客户太长(b.customer, { remark: v }, await prisma.customer.findUnique({ where: { id }, select: { name: true, remark: true } }));
+    if (太长) return { ok: false, error: 太长 };
+  }
   /*
     外贸档案那五格（2026-10-05）在旁表 CustomerExtra 里，单独写、单独留痕
   */

@@ -9,6 +9,8 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 原负责人挡着 } from "@/lib/project/pool-owner";
 import type { 归属 } from "@/lib/attachment-rules";
 import { 能改这条沟通, 能删沟通, 不能删沟通话 } from "@/lib/enterprise/follow-perm";
+import { 能删除, 能改客户, 没设业务角色 } from "@/lib/enterprise/permissions";
+import { 只有总管理能删话 } from "@/lib/enterprise/soft-delete";
 
 /**
  * ?opportunityId= / ?leadId= / ?contactId= / ?projectId= / ?followUpId=，多选一（沟通记录的截图、录音 10-31 F-跟进-07）。
@@ -58,8 +60,27 @@ export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Pro
     客户 = c.customerId;
     叫法 = `联系人「${c.name}」`;
   }
+  // 同事的客户（只读范围）先挡，话说「只能看」；再按企业版负责人挡
   if (要改 && 客户 && await 同事的客户(defaultClient, 客户)) return { 错: await 只读话(defaultClient), 状态: 403 };
+  if (要改 && 企业版()) {
+    const 挡 = await 企业版改附件挡(要改, 客户);
+    if (挡) return { 错: 挡, 状态: 403 };
+  }
   return { 叫法 };
+}
+
+/** 企业版商机 / 线索 / 联系人附件（11-02）：没业务角色不能动；删只给总管理；传跟着改客户走（负责人，公海里先领） */
+async function 企业版改附件挡(要改: true | "删", 客户: string | null): Promise<string | null> {
+  const 我 = await getCurrentUser();
+  if (!我) return "请先登录";
+  const org = await 权限组织();
+  if (!org || 没设业务角色(org, 我.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
+  if (要改 === "删") return 能删除(我, org) ? null : 只有总管理能删话;
+  if (!客户) return null;
+  const c = await defaultClient.customer.findUnique({ where: { id: 客户 }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+  if (!c) return null;
+  if (c.pool) return "这位客户在公海里，先领取再改";
+  return 能改客户(我, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : "只有负责人能改附件";
 }
 
 /** 项目附件的权限：带限定的 prisma 取项目（看不到的项目当不在），再按 露客户 / 能管项目 挡 */

@@ -304,10 +304,10 @@ describe("自动分配线索", () => {
     expect([await 负责人(A), await 负责人(B)].sort()).toEqual([两边, 市场].sort());
   });
 
-  it("现在的负责人不再分给自己；没设不参与名单 = 人人参与", async () => {
+  it("现在的负责人不再分给自己；没设不参与名单 = 人人参与（销售管理除外，11-02 自动分配只给销售）", async () => {
     await setSetting(自动分配不参与key, null);
     const L = await 建线索("L", 销售经理);
-    expect(await 自动分配线索(L)).toMatchObject({ ok: true, toUserId: 虚线经理 });
+    expect(await 自动分配线索(L)).toMatchObject({ ok: true, toUserId: 内贸 });
   });
 
   it("不能分配的人、规则关着都拒", async () => {

@@ -6,7 +6,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 重新试跑, type 试跑报告, type 映射改动 } from "@/lib/enterprise-import/report";
-import { 写一批, type 写入结果 } from "@/lib/enterprise-import/apply";
+import { 写一批, 定这批业务线, type 写入结果 } from "@/lib/enterprise-import/apply";
 import { 撤回一批, 恢复一批, 留下说法, type 撤回结果, type 留下明细 } from "@/lib/enterprise-import/revert";
 import { 列冲突, 定冲突, type 冲突选择, type 定冲突结果, type 冲突条目 } from "@/lib/enterprise-import/resolve";
 import { 读同步设置, 改同步设置, 同步一次, 拉全量试跑, 能同步的来源, 正在同步, type 同步设置, type 同步频率, type 同步一次结果 } from "@/lib/enterprise-import/sync";
@@ -179,8 +179,10 @@ export async function 丢掉试跑(批次Id: string): Promise<void> {
 }
 
 /** 正式导入：写一段，界面看 完了 再接着调 */
-export async function 正式导入一段(批次Id: string): Promise<写入结果> {
+export async function 正式导入一段(批次Id: string, 业务线?: string): Promise<写入结果> {
   const me = await 要管理员();
+  // 企业版这批新建的落哪条业务线：第一段带上，存进映射，接着导入和之后的同步照它
+  if (业务线) await 定这批业务线(批次Id, 业务线);
   return 写一批(批次Id, { id: me.id, name: me.name });
 }
 

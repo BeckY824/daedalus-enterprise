@@ -42,6 +42,7 @@ beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await prisma.user.create({ data: { id: "tester-id", email: "t@t", name: "测试员", role: "ADMIN", password: "x" } });
   销售 = (await prisma.user.create({ data: { email: "s@t", name: "销售", role: "SALES", password: "x" } })).id;
+  await prisma.entMember.createMany({ data: [{ userId: "tester-id", bizRole: "sales" }, { userId: 销售, bizRole: "sales" }] });
 });
 afterEach(() => vi.unstubAllEnvs());
 afterAll(() => prisma.$disconnect());
@@ -50,7 +51,8 @@ const 新建 = (改: Record<string, unknown> = {}) =>
   saveCustomer({
     name: `测试客户${++序}`, phone: `1380000${String(1000 + 序).slice(-4)}`, school: null, grade: null, major: null,
     followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
-    salesOwnerId: 销售, channelId: null, referrerCustomerId: null,
+    // 11-02：只有负责人能改，客户归测试员（销售）
+    salesOwnerId: "tester-id", channelId: null, referrerCustomerId: null,
     ...改,
   } as Parameters<typeof saveCustomer>[0]);
 

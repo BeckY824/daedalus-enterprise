@@ -19,9 +19,15 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 试跑 } from "@/lib/enterprise-import/report";
-import { 写一批 } from "@/lib/enterprise-import/apply";
+import { 写一批 as 只写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
 import { 撤回一批 } from "@/lib/enterprise-import/revert";
 import type { 读出的表 } from "@/lib/enterprise-import/excel";
+
+// 11-02 起企业版正式导入前必选业务线：老用例一律先定外贸
+const 写一批: typeof 只写一批 = async (id, ...r) => {
+  await 定这批业务线(id, "外贸");
+  return 只写一批(id, ...r);
+};
 
 const 我 = { id: "tester-id", name: "测试员" };
 
@@ -72,6 +78,18 @@ describe("企业版只用项目：导入线索建线索阶段的项目", () => {
     expect(await prisma.customer.count()).toBe(1);
     expect(await prisma.contact.count()).toBe(0);
     expect((await prisma.project.findFirstOrThrow()).customerId).toBe(老.id);
+  });
+
+  it("业务线：线索建的客户、项目落这批选的线；挂到已有客户的不改客户的线", async () => {
+    const 老 = await prisma.customer.create({ data: { name: "已有客户", phone: "13600000002", salesOwnerId: 我.id, bizLine: "内贸" } });
+    const { 批次Id } = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: [线索表([["L1", "温州小厂", "陈总", "13600000001", "李娜", ""], ["L2", "同号的", "王总", "13600000002", "李娜", ""]])], 建议器: null });
+    await expect(只写一批(批次Id, 我)).rejects.toThrow("先选这批的业务线");
+    await 定这批业务线(批次Id, "暂不分配");
+    expect((await 只写一批(批次Id, 我)).完了).toBe(true);
+    const 新 = await prisma.project.findFirstOrThrow({ where: { name: "温州小厂" }, include: { customer: true } });
+    expect([新.bizLine, 新.customer.bizLine]).toEqual(["暂不分配", "暂不分配"]);
+    expect((await prisma.project.findFirstOrThrow({ where: { name: "同号的" } })).bizLine).toBe("暂不分配");
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).bizLine).toBe("内贸");
   });
 
   it("已转化 / 已放弃的线索不建项目", async () => {

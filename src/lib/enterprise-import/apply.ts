@@ -35,6 +35,7 @@ import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
 import { 线索建项目 } from "../project/from-lead";
+import { 是项目线 } from "../enterprise/assign-line";
 import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-status-auto-db";
 import { 企业版字典, 本套名 } from "../project/stage-dict";
 
@@ -94,6 +95,8 @@ export type 现场 = {
   现在: string;
   /** 企业版只用项目：商机行建成项目、跟进挂项目（映射.项目） */
   项目?: boolean;
+  /** 企业版新建的客户、项目落哪条业务线（映射.业务线；同步用的老映射没选过 = 暂不分配）。非企业版 = undefined，不写 */
+  业务线?: string;
 };
 
 const J = (v: unknown) => JSON.stringify(v);
@@ -298,7 +301,7 @@ export async function 摘联系人号(tx: Tx, contactId: string): Promise<void> 
 }
 
 /** 新建一条，返回 id。值已经过 落值（负责人认过、父记录换成我们的 id、日期是 ISO）。项目 = 商机行建成项目 */
-export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?: boolean): Promise<string> {
+export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?: boolean, 业务线?: string): Promise<string> {
   if (e === "customer") {
     const c = await tx.customer.create({
       data: {
@@ -311,6 +314,7 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
         remark: 串(v.remark),
         ...Object.fromEntries(客户新列.map((k) => [k, 串(v[k] ?? null)])),
         ...(v.channelId ? await 渠道格(tx, String(v.channelId)) : {}),
+        ...(业务线 ? { bizLine: 业务线 } : {}),
       },
       select: { id: true },
     });
@@ -355,7 +359,7 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     await 记联系人号(tx, String(v.customerId), c.id, v);
     return c.id;
   }
-  if (e === "opportunity" && 项目) return 建项目(tx, v, 现在);
+  if (e === "opportunity" && 项目) return 建项目(tx, v, 现在, 业务线);
   if (e === "opportunity") {
     const status = 串(v.status) ?? "OPEN";
     const o = await tx.opportunity.create({
@@ -569,7 +573,7 @@ async function 再认同号(tx: Tx, 现: 现场, phone: string): Promise<string 
 
 async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
   const v = await 落值(tx, 现, w, null, null);
-  const id = await 建(tx, w.实体, v, 现.现在, 现.项目);
+  const id = await 建(tx, w.实体, v, 现.现在, 现.项目, 现.业务线);
   await tx.entExternalRef.create({
     data: { source: 现.源, entity: w.实体, externalId: w.外部ID, targetId: id, fingerprint: w.指纹, written: J(v), raw: J(w.原始), batchId: 现.批次Id },
   });
@@ -601,7 +605,7 @@ async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v
   let customerId = await 再认同号(tx, 现, String(v.phone ?? ""));
   let 联系人Id: string | null = null;
   if (!customerId) {
-    customerId = await 建(tx, "customer", { name: v.name, phone: v.phone, salesOwnerId: 负责人, followStatus: null, remark: null }, 现.现在);
+    customerId = await 建(tx, "customer", { name: v.name, phone: v.phone, salesOwnerId: 负责人, followStatus: null, remark: null }, 现.现在, 现.项目, 现.业务线);
     await 记("customer", customerId);
     if (!空(v.contact)) {
       联系人Id = await 建(tx, "contact", { name: v.contact, position: null, phone: v.phone, email: v.email, wechat: null, isPrimary: true, remark: null, customerId }, 现.现在);
@@ -609,6 +613,7 @@ async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v
     }
   }
   const 项目Id = await 线索建项目(tx, { 线索名: String(v.name), leadId, customerId, ownerId: 负责人, creatorId: 负责人, 联系人Id });
+  if (现.业务线) await tx.project.update({ where: { id: 项目Id }, data: { bizLine: 现.业务线 } });
   await 记("opportunity", 项目Id);
 }
 
@@ -737,7 +742,19 @@ export async function 开现场(批次Id: string, 源: 来源, m: 映射, 用户
     分机起: await 分机留存起(),
     现在: new Date().toISOString(),
     项目: !!m.项目,
+    业务线: m.项目 ? (m.业务线 ?? "暂不分配") : undefined,
   };
+}
+
+/** 正式导入前定这批的业务线（企业版必选）：只能定还没开始写的批次 */
+export async function 定这批业务线(批次Id: string, 业务线: string): Promise<void> {
+  if (!是项目线(业务线)) throw new Error("业务线只能选内贸、外贸或暂不分配");
+  const 批 = await prisma.entImportBatch.findUnique({ where: { id: 批次Id }, select: { status: true, mapping: true } });
+  if (!批) throw new Error("找不到这一批");
+  if (批.status !== "preview") return;
+  const m = 解<映射 | null>(批.mapping, null);
+  if (!m) throw new Error("这一批没有字段映射，请重新试跑");
+  await prisma.entImportBatch.updateMany({ where: { id: 批次Id, status: "preview" }, data: { mapping: J({ ...m, 业务线 }) } });
 }
 
 /**
@@ -748,6 +765,10 @@ export async function 写一批(批次Id: string, 用户: Actor, opts: { 段长�
   const 开始 = Date.now();
   const 批 = await prisma.entImportBatch.findUnique({ where: { id: 批次Id } });
   if (!批) throw new Error("找不到这一批");
+  if (批.status === "preview" && 批.kind !== "sync") {
+    const 先看 = 解<映射 | null>(批.mapping, null);
+    if (先看?.项目 && !是项目线(先看.业务线)) throw new Error("先选这批的业务线（内贸 / 外贸 / 暂不分配）再正式导入");
+  }
   if (批.status === "preview") await prisma.entImportBatch.updateMany({ where: { id: 批次Id, status: "preview" }, data: { status: "applying" } });
   else if (批.status !== "applying") return 结果(批次Id);
 

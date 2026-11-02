@@ -51,7 +51,7 @@ afterAll(async () => { await browser?.close(); });
 const 长 = "某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域销售中心";
 const 刚才 = (分钟: number) => new Date(Date.now() - 分钟 * 60_000).toISOString();
 const 三条 = [
-  { id: "n1", kind: "自动分配", title: "自动分配给你一条新线索：" + 长, body: "市场小李 点的自动分配，按配额轮到了你。", link: "/leads", read: false, createdAt: 刚才(0) },
+  { id: "n1", kind: "自动分配", title: "自动分配给你一条新线索：" + 长, body: "市场小李 点的自动分配，轮到了你。", link: "/leads", read: false, createdAt: 刚才(0) },
   { id: "n2", kind: "卡点", title: "销售经理 把卡点 KD-0012 指给了你", body: "项目「华东二期」· 技术：" + 长 + 长, link: "/projects/p2", read: false, createdAt: 刚才(90) },
   { id: "n3", kind: "交接", title: "总管 确认接手了 3 位客户", body: "", link: "/customers", read: true, createdAt: 刚才(60 * 24 * 2) },
 ];

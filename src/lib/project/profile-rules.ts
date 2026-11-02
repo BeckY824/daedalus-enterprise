@@ -89,6 +89,24 @@ export function 项目级别和地址改成(
   return { ok: true, 值: { level, ...地址, location } };
 }
 
+/** 新建项目时一起填的所在地（11-02：新建项目两个入口可选填）：四格 + 详细地址，存的是项目自己的，不看客户 / 联系人地址 */
+export type 新项目所在地输入 = Partial<Record<(typeof 地址键)[number] | "location", unknown>>;
+
+/**
+ * 新建项目交上来的所在地 → 要存的值：没传 / 全空 = 五格都是 null（和没填一样）；
+ * 有值就和编辑项目同一套口径（规整地址：每格上限、国外只留国家 + 城市、国内统一存「中国」；规整详细地址）
+ */
+export function 新项目所在地(v: 新项目所在地输入 | null | undefined): { ok: true; 值: 客户地址 & { location: string | null } } | { ok: false; error: string } {
+  if (v !== null && v !== undefined && typeof v !== "object") return { ok: false, error: "项目所在地格式不对，关掉重新填一次" };
+  const r = 项目级别和地址改成(
+    { addrCountry: v?.addrCountry ?? null, addrProvince: v?.addrProvince ?? null, addrCity: v?.addrCity ?? null, addrDistrict: v?.addrDistrict ?? null, location: v?.location ?? null },
+    { level: null, addrCountry: null, addrProvince: null, addrCity: null, addrDistrict: null, location: null },
+  );
+  if (!r.ok) return r;
+  const { addrCountry, addrProvince, addrCity, addrDistrict, location } = r.值;
+  return { ok: true, 值: { addrCountry, addrProvince, addrCity, addrDistrict, location } };
+}
+
 /**
  * 成交需求、合同金额、定金金额（企业版，迁移 097）：客户原表三列照原样进来，编辑项目里可改。
  * 和 amount（「金额」：看板合计、提成的成交金额）各是各的，不互相抄

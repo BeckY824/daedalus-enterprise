@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { App, Alert, Button, Checkbox, Collapse, Input, Popconfirm, Progress, Select, Space, Table, Tag, Typography } from "antd";
+import { App, Alert, Button, Checkbox, Collapse, Input, Modal, Popconfirm, Progress, Radio, Select, Space, Table, Tag, Typography } from "antd";
 import { 实体名, 实体顺序, 标准字段, 字段中文, type 实体, type 格式类, type 问题, type 值对照名 } from "@/lib/enterprise-import/types";
 import type { 试跑报告, 映射改动, 报告列 } from "@/lib/enterprise-import/report";
 import { 改映射重新试跑, 丢掉试跑, 正式导入一段, 下载对照表, 填回对照表, type 企业版概况 } from "./enterprise-import-actions";
@@ -44,6 +44,11 @@ export default function EnterpriseImportReport({
   const [忙, set忙] = useState<"重跑" | "导入" | "丢掉" | "对照表" | null>(null);
   const 选对照表 = useRef<HTMLInputElement>(null);
   const [进度, set进度] = useState<{ 写到: number; 总数: number } | null>(null);
+  // 企业版这批新建的客户、项目落哪条业务线：人手动选，不按地址猜（没选不让导）
+  const 要选线 = !!报告.映射.项目;
+  const [线, set线] = useState<string | null>(报告.映射.业务线 ?? null);
+  // 正式导入只弹这一个清单：选业务线 → 看会写多少 → 导入，不另设页面确认
+  const [清单开, set清单开] = useState(false);
 
   const 改了几处 = useMemo(
     () =>
@@ -116,7 +121,7 @@ export default function EnterpriseImportReport({
     set进度({ 写到: 0, 总数: 报告.合计.待写 });
     try {
       for (;;) {
-        const r = await 正式导入一段(批次Id);
+        const r = await 正式导入一段(批次Id, 要选线 ? (线 ?? undefined) : undefined);
         set进度({ 写到: r.写到, 总数: r.总数 });
         if (r.完了) {
           modal.success({
@@ -555,23 +560,50 @@ export default function EnterpriseImportReport({
               if (f) void 传对照表(f);
             }}
           />
-          <Popconfirm
-            title="确认正式导入？"
-            description={
-              改了几处
-                ? "你改的映射还没重新试跑，先点「按改的重新试跑」再导入"
-                : 报告.预演
-                  ? `会新建 ${报告.预演.合计.新建} 条、更新 ${报告.预演.合计.更新} 条，跳过 ${报告.预演.合计.跳过} 条，${报告.预演.合计.冲突} 条冲突${报告.预演.合计.失败 ? `，${报告.预演.合计.失败} 条写不进` : ""}。我们这边改过的不覆盖，只记一笔冲突。导完可以整批撤回。`
-                  : `会写 ${报告.合计.待写} 条（跳过 ${报告.合计.跳过} 条）。我们这边改过的不覆盖，只记一笔冲突。导完可以整批撤回。`
-            }
-            okText="导入"
-            okButtonProps={{ disabled: 改了几处 > 0 }}
-            onConfirm={() => void 导入()}
+          <Button
+            type="primary"
+            disabled={!!忙 || 报告.合计.待写 === 0 || (要选类别.length === 报告.文件.length && 报告.文件.length > 0)}
+            loading={忙 === "导入"}
+            onClick={() => set清单开(true)}
           >
-            <Button type="primary" disabled={!!忙 || 报告.合计.待写 === 0 || 要选类别.length === 报告.文件.length && 报告.文件.length > 0} loading={忙 === "导入"}>
-              确认，正式导入
-            </Button>
-          </Popconfirm>
+            确认，正式导入
+          </Button>
+          <Modal
+            open={清单开}
+            title="正式导入"
+            okText="导入"
+            okButtonProps={{ disabled: 改了几处 > 0 || (要选线 && !线), loading: 忙 === "导入" }}
+            onOk={() => {
+              set清单开(false);
+              void 导入();
+            }}
+            onCancel={() => set清单开(false)}
+            destroyOnHidden
+          >
+            <ol style={{ paddingLeft: 20, margin: 0, display: "grid", gap: 12 }}>
+              {改了几处 > 0 && (
+                <li>
+                  <Typography.Text type="danger">你改的映射还没重新试跑，先点「按改的重新试跑」再导入</Typography.Text>
+                </li>
+              )}
+              {要选线 && (
+                <li>
+                  <div style={{ marginBottom: 6 }}>这批新建的客户、项目归哪条业务线（必选）</div>
+                  <Radio.Group value={线} onChange={(e) => set线(e.target.value)} options={["内贸", "外贸", "暂不分配"].map((x) => ({ value: x, label: x }))} />
+                  <div>
+                    <Typography.Text type="secondary">暂不分配的不进自动分配；已有的客户、项目不改业务线</Typography.Text>
+                  </div>
+                </li>
+              )}
+              <li>
+                {报告.预演
+                  ? `会新建 ${报告.预演.合计.新建} 条、更新 ${报告.预演.合计.更新} 条，跳过 ${报告.预演.合计.跳过} 条，${报告.预演.合计.冲突} 条冲突${报告.预演.合计.失败 ? `，${报告.预演.合计.失败} 条写不进` : ""}。`
+                  : `会写 ${报告.合计.待写} 条（跳过 ${报告.合计.跳过} 条）。`}
+                我们这边改过的不覆盖，只记一笔冲突。
+              </li>
+              <li>导完可以整批撤回。</li>
+            </ol>
+          </Modal>
           <Popconfirm title="不要这次试跑了？" description="只删这份报告，什么都还没写进去。" okText="不要了" onConfirm={() => void 丢掉()}>
             <Button type="text" danger disabled={!!忙} loading={忙 === "丢掉"}>
               不要这次试跑
