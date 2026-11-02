@@ -29,7 +29,7 @@ import { DEFAULT_BUSINESS, mergeBusiness, 公海天数, BUSINESS_PRESETS, 表单
 import { getBusiness } from "@/lib/business";
 import fs from "node:fs";
 import path from "node:path";
-import { 该掉公海, 公海截止, 公海标签, 客户页签归属 } from "@/lib/pool";
+import { 该掉公海, 公海截止, 公海标签, 客户页签归属, 无负责人占位名 } from "@/lib/pool";
 import { 自动掉公海, 客户页签数 } from "@/lib/pool-db";
 import { 放进公海, 领取, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 客户筛选条件, 在看子集, 只按页签 } from "@/app/(app)/customers/query";
@@ -82,6 +82,8 @@ describe("规则", () => {
   it("标签写原负责人", () => {
     expect(公海标签("张三")).toBe("公海（原 张三）");
     expect(公海标签(null)).toBe("公海");
+    // 挂占位账号的公海客户（没有负责人）：没有「原负责人」可说，不露「原 （无负责人）」
+    expect(公海标签(无负责人占位名)).toBe("公海");
   });
 
   it("业务配置：poolDays 规整成 0–365 的整数，默认 0；预设里都是 0", () => {

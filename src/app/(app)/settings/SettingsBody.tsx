@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { 无负责人占位邮箱 } from "@/lib/pool";
 import { requireUser } from "@/lib/auth";
 import SettingsView from "./SettingsView";
 import { 我的机器 } from "./actions";
@@ -53,6 +54,8 @@ export default async function SettingsBody() {
   ]);
 
   const users = await prisma.user.findMany({
+    // 占位账号（lib/pool.ts）不是成员：不进团队成员表，也就不会被人点「启用」
+    where: { email: { not: 无负责人占位邮箱 } },
     orderBy: { createdAt: "asc" },
     include: {
       _count: { select: { salesCustomers: true, opportunities: true, followUps: true } },

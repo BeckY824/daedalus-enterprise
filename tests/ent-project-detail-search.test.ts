@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源 } from "@/lib/project/detail-search";
+import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源, 能隐藏接手前 } from "@/lib/project/detail-search";
 
 /* 10-31 会议 1.0（U-项目-04、F-项目-18）：项目详情顶部搜索、附件块里的「来自沟通」 */
 describe("项目详情搜索", () => {
@@ -37,5 +37,23 @@ describe("项目详情搜索", () => {
     expect(段).toHaveLength(3);
     expect(段[2]).toBe("一二三四五六七八九十 一二三四五六七八九…");
     expect(沟通来源({ who: "组长甲", occurredAt: "2026-10-03T00:00:00.000Z", content: "短的" }).endsWith(" · 短的")).toBe(true);
+  });
+});
+
+/* 11-02：沟通卡头「隐藏接手前」只给当前负责人，公海里没有当前负责人 */
+describe("能隐藏接手前", () => {
+  const 底 = { 企业版: true, pooled: false, 我是负责人: true, followUps: [{ 接手前: true }, { 接手前: false }] };
+
+  it("企业版、不在公海、看的人是负责人、有接手前的沟通：才给按钮", () => {
+    expect(能隐藏接手前(底)).toBe(true);
+  });
+
+  it("差一条都不给", () => {
+    expect(能隐藏接手前({ ...底, 企业版: false })).toBe(false);
+    expect(能隐藏接手前({ ...底, pooled: true })).toBe(false);
+    expect(能隐藏接手前({ ...底, 我是负责人: false })).toBe(false);
+    expect(能隐藏接手前({ ...底, 我是负责人: undefined })).toBe(false);
+    expect(能隐藏接手前({ ...底, followUps: [{ 接手前: false }] })).toBe(false);
+    expect(能隐藏接手前({ ...底, followUps: [] })).toBe(false);
   });
 });

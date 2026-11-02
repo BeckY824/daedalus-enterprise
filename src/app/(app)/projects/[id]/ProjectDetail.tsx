@@ -54,7 +54,7 @@ import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachment
 import type { 提成卡 } from "@/lib/project/commission";
 import PaneToggle from "@/components/PaneToggle";
 import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 沟通附件组, type 项目画像 } from "./ProjectExtras";
-import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源 } from "@/lib/project/detail-search";
+import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源, 能隐藏接手前 } from "@/lib/project/detail-search";
 import type { 回款 } from "@/lib/project/payment-db";
 import ProjectRelate from "./ProjectRelate";
 import type { 项目关联 } from "@/lib/project/relate";
@@ -82,6 +82,8 @@ export type 项目详情 = {
   exceptionReason: string | null; exceptionCategory: string | null;
   /** 在项目公海里；能放公海 = 我是负责人且在线索 / 商机阶段；能领取 = 在公海里，且我不是原负责人（企业版按 pool-rules.ts） */
   pooled: boolean; 能放公海: boolean; 能领取: boolean;
+  /** 看的人就是当前负责人（沟通卡头「隐藏接手前」只给他，lib/project/detail-search.ts 能隐藏接手前） */
+  我是负责人?: boolean;
   /** 企业版原负责人领不回时那句话：领取按钮照样摆、灰着，悬停给这句；null = 不用灰 */
   领取不给: string | null;
   /** 在公海里时最近一次怎么进来的（ownerName 这时是原负责人）：谁放的、超时系统收 / 办停用时放 / 手动放回 */
@@ -150,7 +152,9 @@ export type 项目详情 = {
   /** 企业版：code 是沟通编号（只在服务端用，界面不摆），提醒按下一步时间写事实（page.tsx 时限标签），没填下一步时间不给 */
   followUps: { id: string; type: string; method?: string | null; /** 发起主体（企业版，11-01） */ initiator?: string | null; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null;
     /** 企业版沟通上的截图、录音（F-跟进-07）；我记的 = 这条是我记的（记的人能往上加附件，删只有总管理员、经理） */
-    附件?: 附件[]; 我记的?: boolean }[];
+    附件?: 附件[]; 我记的?: boolean;
+    /** 企业版：这条沟通的归属人不是当前负责人（负责人可以点一下不看，11-02） */
+    接手前?: boolean }[];
   members: 组员[];
   /** 企业版提成卡：不是企业版、我看不了（不是组长 / 组员 / 管理员 / 上级）= null，卡片不出 */
   提成: 提成卡 | null;
@@ -416,6 +420,8 @@ export default function ProjectDetail({
   const [沟通开, set沟通开] = useState(true);
   const [卡点开, set卡点开] = useState(false);
   const [搜, set搜] = useState("");
+  /** 负责人点了「隐藏接手前」（11-02）：只是不显示，默认显示全部 */
+  const [只看接手后, set只看接手后] = useState(false);
   /** 企业版页头具名按钮开的那个框（10-31 R6），一次只开一个 */
   const [头部框, set头部框] = useState<头部框 | null>(null);
   const 当前: 位置 = { phase: p.phase, node: p.node, result: p.result };
@@ -989,30 +995,38 @@ export default function ProjectDetail({
   // 块里定高、自己滚；上面一个搜索框，搜沟通和卡点，有词时两块都摊开、只列对得上的。别的版本不折叠、不搜
   const 搜词 = p.企业版 ? 词们(搜) : [];
   const 搜着 = 搜词.length > 0;
-  const 列沟通 = 搜着 ? p.followUps.filter((f) => 对得上(搜词, 沟通字段(f))) : p.followUps;
+  const 能隐藏 = 能隐藏接手前(p);
+  const 隐藏中 = 能隐藏 && 只看接手后;
+  // 只管这张卡列哪几条：发卡点、附件块那边照旧用 p.followUps
+  const 显示的沟通 = 隐藏中 ? p.followUps.filter((f) => !f.接手前) : p.followUps;
+  const 列沟通 = 搜着 ? 显示的沟通.filter((f) => 对得上(搜词, 沟通字段(f))) : 显示的沟通;
   const 列卡点 = 卡点 ? (搜着 ? 卡点.们.filter((k) => 对得上(搜词, 卡点字段(k))) : 卡点.们) : [];
-  const 沟通数字 = 搜着 ? `搜到 ${列沟通.length}` : `${p.followUps.length}`;
+  const 沟通数字 = 搜着 ? `搜到 ${列沟通.length}` : `${显示的沟通.length}`;
   const 沟通卡 = (
     <Card
       // 客户页「跟进」菜单跳过来的落点（/projects/<id>#project-follow，P14 第 3 条）
       // 企业版的落点 id 在外面那层模块壳上（ProjectFold）
       {...(p.企业版 ? { title: `沟通（${沟通数字}）` } : { id: "project-follow", title: "沟通" })}
       extra={
-        p.能记沟通 ? (
-          // 企业版：「新增沟通」「AI 录入」在这块卡头（11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗
-          p.企业版 ? (
-            <Space size={8}>
-              {p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-              <Button size="small" disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新增沟通</Button>
+        p.企业版 ? (
+          // 企业版：「新增沟通」「AI 录入」在这块卡头（11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗。
+          // 11-01 会议 §5：企业版删掉「去客户页看看」。窄的时候按钮折行，不把标题挤没（globals.css .proj-follow-acts）
+          (能隐藏 || p.能记沟通) && (
+            <Space size={8} wrap className="proj-follow-acts">
+              {能隐藏 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
+              {p.能记沟通 && p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
+              {p.能记沟通 && <Button size="small" disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新增沟通</Button>}
             </Space>
-          ) : <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
-          // 11-01 会议 §5：企业版删掉「去客户页看看」；别的版本照旧给「去客户页记一条」
-        ) : !p.企业版 && p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
+          )
+        ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
+          // 别的版本照旧给「去客户页记一条」
+          : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
       }
     >
       <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
       {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后可见"}</div>}
       {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
+      {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}
       {列沟通.map((f) => (
         <div key={f.id} id={`follow-${f.id}`} className="proj-follow-row" style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

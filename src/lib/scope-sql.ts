@@ -7,7 +7,7 @@ import { 读的我, 有市场只读 } from "@/lib/team-scope";
  * lib/team-scope 的 可见客户 = 负责人是我 OR 渠道负责人是我 OR 在公海。Prisma 把「在公海」展开成
  * Customer LEFT JOIN CustomerPool，OR 起来 SQLite 用不上负责人的索引，只能整张客户表扫一遍：
  * 10 万客户一次计数 ~20 ms，30 人同时开页面时排在只读连接上要等上百毫秒（2026-10-26 企业版 p95）。
- * 这里把「在公海」写成 id IN (SELECT customerId FROM CustomerPool)（customerId 是外键、删客户连带删），
+ * 这里把「在公海」写成 id IN (SELECT customerId FROM CustomerPool)（customerId 是外键，硬删客户才连带删；软删的公海行还在，外层的 deletedAt 条件把它们排掉），
  * 三个条件都能走索引，SQLite 用 MULTI-INDEX OR 各取一段再合起来，只碰看得到的那几千行。
  * 试过三段 UNION：计数也快，但挑前 n 位时要把几万个编号先攒出来再排，经理（看四五万位）反而比原来慢一倍。
  *
@@ -33,6 +33,19 @@ export async function 看得到的客户数(): Promise<number> {
   const 范围 = await 看得到的();
   if (!范围) return prisma.customer.count();
   const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "Customer" c WHERE ${范围.where}`, ...范围.参数);
+  return Number(r.n);
+}
+
+/**
+ * 公海里未删的客户几位。软删（进回收站）不动公海表，那一行还留着等恢复，直接数公海表会把回收站里的算进去。
+ * 不从公海表 JOIN 客户数没删的（Prisma 的 customer: { deletedAt: null } 和裸 SQL 都试过，10 万客户、3 万公海一次 14–16 ms，
+ * 原来只数公海表 0.7 ms）：公海总数走主键，回收站那头走 deletedAt 索引（写 > 0 才走，IS NOT NULL 这版 SQLite 不走、整表扫），
+ * 只碰回收站里那些行，同样的量一次 2 ms。回收站本来就小，tests/customer-tabs-scope.test.ts 逐个身份对拍
+ */
+export async function 未删公海数(): Promise<number> {
+  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
+    `SELECT (SELECT COUNT(*) FROM "CustomerPool") - (SELECT COUNT(*) FROM "Customer" c JOIN "CustomerPool" p ON p."customerId" = c.id WHERE c."deletedAt" > 0) AS n`,
+  );
   return Number(r.n);
 }
 

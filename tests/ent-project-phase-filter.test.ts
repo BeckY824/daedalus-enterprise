@@ -14,7 +14,9 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 读项目列表 } from "@/lib/project/list";
+import { 读项目列表, 读名单项目 } from "@/lib/project/list";
+import { 看板分列 } from "@/lib/project/board";
+import { 字典of } from "@/lib/project/nodes";
 
 let 老板: { id: string; name: string; role: string };
 
@@ -44,6 +46,40 @@ afterAll(() => prisma.$disconnect());
 
 const 名们 = async (sp: { phase?: string; node?: string }, 只看阶段?: "线索") =>
   (await 读项目列表(老板, sp, 只看阶段)).行.map((r) => r.name.replace("项目", "")).sort();
+
+describe("公海项目只在 /pool（11-02）", () => {
+  const 进公海 = async () => {
+    const c = await prisma.customer.findFirstOrThrow();
+    await prisma.project.create({ data: { name: "项目公海", customerId: c.id, ownerId: "", creatorId: 老板.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } });
+  };
+
+  it("企业版默认列表、看板、新线索页都不列公海项目，取到上限也只数列出来的；pool=1 只列公海", async () => {
+    await 进公海();
+    expect(await 名们({})).not.toContain("公海");
+    expect(await 名们({}, "线索")).not.toContain("公海");
+    expect(await 名们({ phase: "线索" })).not.toContain("公海");
+    const d = await 读项目列表(老板, {});
+    expect(d.行.length).toBe(7);
+    expect(d.取到上限).toBe(false);
+    expect(看板分列(d.行).flatMap((c) => c.行).map((r) => r.name)).not.toContain("项目公海");
+    expect((await 读项目列表(老板, { pool: "1" })).行.map((r) => r.name)).toEqual(["项目公海"]);
+  });
+
+  it("项目详情中栏名单和项目页同一个范围：不列公海项目", async () => {
+    await 进公海();
+    const r = await 读名单项目(老板, 字典of(true));
+    expect(r.rows.map((x) => x.name)).not.toContain("项目公海");
+    expect(r.rows.length).toBe(7);
+  });
+
+  it("没开企业版时不动：默认列表照旧带上公海项目，pool=1 照旧只列公海", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    const c = await prisma.customer.findFirstOrThrow();
+    await prisma.project.create({ data: { name: "项目公海", customerId: c.id, ownerId: 老板.id, creatorId: 老板.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } });
+    expect((await 读项目列表(老板, {})).行.map((r) => r.name)).toContain("项目公海");
+    expect((await 读项目列表(老板, { pool: "1" })).行.map((r) => r.name)).toEqual(["项目公海"]);
+  });
+});
 
 describe("按阶段、进程筛", () => {
   it("阶段：有结局的按结局认", async () => {

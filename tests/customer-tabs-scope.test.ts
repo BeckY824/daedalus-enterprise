@@ -94,4 +94,22 @@ describe("客户页签数带范围", () => {
     expect(await 以谁的身份(外人, 客户页签数)).toEqual({ 公海: 3, 非公海: 1 });
     expect(await 以谁的身份("ghost", 客户页签数)).toEqual({ 公海: 3, 非公海: 0 });
   });
+
+  it("回收站里的公海客户不算：软删不动公海表，那一行还在，公海不计它、两数相加照样等于角标（11-02 公海多、客户少）", async () => {
+    const c = await raw.customer.create({ data: { name: "I进了回收站的公海", phone: "13800009999", salesOwnerId: 老板, deletedAt: new Date() } });
+    await raw.customerPool.create({ data: { customerId: c.id } });
+    // 软删了、不在公海的也不能被多减
+    const d = await raw.customer.create({ data: { name: "J进了回收站的", phone: "13800009998", salesOwnerId: 老板, deletedAt: new Date() } });
+    try {
+      expect(await raw.customerPool.count()).toBe(4);
+      for (const 谁 of [老板, 经理, 小王, 外人, "ghost"]) {
+        const [新, 旧, 角标] = await 以谁的身份(谁, async () => [await 客户页签数(), await 照旧数(), await db.customer.count()] as const);
+        expect(新.公海).toBe(3);
+        expect({ 谁, ...新 }).toEqual({ 谁, ...旧 });
+        expect(新.公海 + 新.非公海).toBe(角标);
+      }
+    } finally {
+      await raw.customer.deleteMany({ where: { id: { in: [c.id, d.id] } } });
+    }
+  });
 });

@@ -223,9 +223,12 @@ describe("回收前一天提醒 + 即将回收（10-27）", () => {
     const 还早 = await 项目("2026-10-24 10:00", { customerId: 另一位, name: "二号项目" });
     const 丙客户 = (await prisma.customer.create({ data: { name: "客户丙", phone: "13800000003", salesOwnerId: 乙 } })).id;
     const 公海里 = await 项目("2026-10-23 10:00", { customerId: 丙客户, name: "三号项目", pooledAt: 时("2026-10-24 10:00") });
-    const 列 = await 读项目列表({ id: 老板.id, name: 老板.name, role: "ADMIN" } as never, {});
-    const 标 = Object.fromEntries(列.行.map((r) => [r.id, r.即将回收]));
-    expect(标).toEqual({ [明天收.id]: "2026-10-26", [还早.id]: null, [公海里.id]: null });
+    const 老板我 = { id: 老板.id, name: 老板.name, role: "ADMIN" } as never;
+    const 列 = await 读项目列表(老板我, {});
+    // 企业版默认列表不列公海项目（11-02），公海里的要带 pool=1 才看得到
+    expect(Object.fromEntries(列.行.map((r) => [r.id, r.即将回收]))).toEqual({ [明天收.id]: "2026-10-26", [还早.id]: null });
+    const 公海列 = await 读项目列表(老板我, { pool: "1" });
+    expect(Object.fromEntries(公海列.行.map((r) => [r.id, r.即将回收]))).toEqual({ [公海里.id]: null });
   });
 
   it("不是企业版：不提醒，列表行不带这个字段", async () => {

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -1153,4 +1153,82 @@ it("箭头步骤条：当前块浅蓝底蓝描边橙点，别的灰底灰点，�
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+/* 11-02 用户：「当前项目负责人可以选择不看之前的项目沟通……通过一个按钮可以做选择」 */
+describe("沟通卡头：隐藏接手前", () => {
+  const 一条 = (id: string, content: string, 接手前: boolean) => ({ id, type: "PHONE", content, occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "2026-10-03T00:00:00.000Z", 接手前 });
+  const 两条 = [一条("f1", "上一任记的沟通", true), 一条("f2", "接手以后记的沟通", false)];
+
+  it("负责人默认看全部；点一下只藏接手前的、数字跟着变，再点恢复", async () => {
+    const { page, errors } = await 覆盖(1280, { 我是负责人: true, followUps: 两条 });
+    try {
+      const 钮 = page.getByTestId("follow-hide-before");
+      expect(await 钮.innerText()).toBe("隐藏接手前");
+      expect(await 钮.getAttribute("aria-pressed")).toBe("false");
+      expect((await 卡标题(page, ".proj-main"))[1]).toBe("沟通（2）");
+      expect(await page.getByText("上一任记的沟通").count()).toBe(1);
+
+      await 钮.click();
+      expect(await 钮.innerText()).toBe("显示全部");
+      expect(await 钮.getAttribute("aria-pressed")).toBe("true");
+      expect((await 卡标题(page, ".proj-main"))[1]).toBe("沟通（1）");
+      expect(await page.getByText("上一任记的沟通").count()).toBe(0);
+      expect(await page.getByText("接手以后记的沟通").count()).toBe(1);
+
+      await 钮.click();
+      expect((await 卡标题(page, ".proj-main"))[1]).toBe("沟通（2）");
+      expect(await page.getByText("上一任记的沟通").count()).toBe(1);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("全是接手前的：藏了以后写清楚还有几条被藏，不是「还没有沟通」", async () => {
+    const { page, errors } = await 覆盖(1280, { 我是负责人: true, followUps: [两条[0]] });
+    try {
+      await page.getByTestId("follow-hide-before").click();
+      expect((await 卡标题(page, ".proj-main"))[1]).toBe("沟通（0）");
+      expect(await page.getByText("接手后还没有沟通；接手前的 1 条已隐藏").count()).toBe(1);
+      expect(await page.getByText("还没有挂在这个项目上的沟通").count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("非负责人、项目在公海、没有接手前的沟通：都没有这颗按钮", async () => {
+    for (const x of [
+      { 我是负责人: false, followUps: 两条 },
+      { 我是负责人: true, pooled: true, followUps: 两条 },
+      { 我是负责人: true, followUps: [两条[1]] },
+    ]) {
+      const { page, errors } = await 覆盖(1280, x);
+      try {
+        expect(await page.getByTestId("follow-hide-before").count(), JSON.stringify(x)).toBe(0);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  });
+
+  it.each([800, 1024, 1280])("%ipx：三颗按钮都摆着，标题不被挤断，横向不伸出", async (宽) => {
+    const { page, errors } = await 覆盖(宽, { 我是负责人: true, 能记沟通: true, aiEnabled: true, followUps: 两条 });
+    try {
+      const 钮 = page.getByTestId("follow-hide-before");
+      await 钮.waitFor();
+      expect(await page.getByTestId("follow-card-new").count()).toBe(1);
+      expect(await page.getByRole("button", { name: /AI 录入/ }).count()).toBe(1);
+      expect(await 不伸出(page, ".proj-main")).toEqual([]);
+      const 标题 = await 钮.evaluate(e => {
+        const t = e.closest(".ant-card-head")!.querySelector(".ant-card-head-title") as HTMLElement;
+        return { 完整: t.scrollWidth <= t.clientWidth, 文字: t.innerText };
+      });
+      expect(标题).toEqual({ 完整: true, 文字: "沟通（2）" });
+      // 折叠按钮（ProjectFold）摆在卡头最右，这几颗不能压上去
+      const 压 = await 钮.evaluate(e => {
+        const f = e.closest(".proj-fold")!.querySelector(".proj-fold-btn")!.getBoundingClientRect();
+        return [...e.closest(".proj-follow-acts")!.querySelectorAll("button")].filter(b => { const r = b.getBoundingClientRect(); return r.right > f.left && r.left < f.right && r.bottom > f.top && r.top < f.bottom; }).length;
+      });
+      expect(压).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
 });

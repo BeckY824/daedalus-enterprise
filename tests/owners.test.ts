@@ -13,7 +13,8 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 可担任负责人 } from "@/lib/constants";
-import { 负责人候选, 负责人口径, 按名字找负责人 } from "@/lib/owners";
+import { 负责人候选, 负责人口径, 按名字找负责人, 跟进筛选成员 } from "@/lib/owners";
+import { 无负责人占位名, 无负责人占位邮箱 } from "@/lib/pool";
 import { 默认负责人 } from "@/lib/me-client";
 import fs from "node:fs";
 import path from "node:path";
@@ -23,6 +24,37 @@ afterAll(async () => { await prisma.$disconnect(); });
 
 const 建人 = (name: string, role: string, active = true) =>
   prisma.user.create({ data: { email: `${name}@t.local`, name, title: role, role, active, password: "x" } });
+
+describe("占位账号（lib/pool.ts，没有负责人的公海客户挂它）不当成员", () => {
+  const 建占位 = async () => {
+    const 占位 = await prisma.user.create({ data: { email: 无负责人占位邮箱, name: 无负责人占位名, title: "", role: "SALES", active: false, password: "x" } });
+    // 导入时没有负责人的沟通挂在它上面：跟进筛选本来会把「留有跟进的停用成员」列出来
+    const c = await prisma.customer.create({ data: { name: "公海客户", phone: "13900000111", salesOwnerId: 占位.id } });
+    await prisma.followUp.create({ data: { customerId: c.id, ownerId: 占位.id, type: "CALL", title: "", content: "原系统的沟通", status: "已完成" } });
+    return 占位;
+  };
+
+  it("负责人候选、按名字找、跟进筛选都没有它；留有跟进的真停用成员照列", async () => {
+    await 建人("张三", "SALES");
+    const 离职 = await 建人("离职的", "SALES", false);
+    const c = await prisma.customer.create({ data: { name: "老客户", phone: "13900000112", salesOwnerId: 离职.id } });
+    await prisma.followUp.create({ data: { customerId: c.id, ownerId: 离职.id, type: "CALL", title: "", content: "x", status: "已完成" } });
+    await 建占位();
+    expect((await 负责人候选()).map((u) => u.name)).toEqual(["张三"]);
+    expect(await 按名字找负责人(无负责人占位名)).toEqual([]);
+    expect((await 跟进筛选成员()).map((u) => u.name).sort()).toEqual(["张三", "离职的"].sort());
+  });
+
+  it("工作区一个在职的都没有时，候选也兜不到它（兜底只看 active）", async () => {
+    await 建占位();
+    expect(await 负责人候选()).toEqual([]);
+  });
+
+  it("设置页团队成员表不列它（不然以停用成员露出来、还能被点启用）", () => {
+    const 源 = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/settings/SettingsBody.tsx"), "utf8");
+    expect(源).toMatch(/users = await prisma\.user\.findMany\(\{[^}]*where: \{ email: \{ not: 无负责人占位邮箱 \} \}/);
+  });
+});
 
 describe("有销售的工作区", () => {
   beforeEach(async () => {

@@ -2,15 +2,20 @@
  * 企业版导入 · 正式写入：试跑出 preview 批次 → 写一批。
  * 新建五类、同号连上已有客户只补空、本批同号并入、重跑不重复、三方比对 / 冲突、本地已删、结单日期、负责人退回、分段续写。
  */
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 试跑 } from "@/lib/enterprise-import/report";
+import { 试跑, 重新试跑 } from "@/lib/enterprise-import/report";
 import { 写一批 as 只写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
+import { 撤回一批 } from "@/lib/enterprise-import/revert";
+import { 无主入池理由 } from "@/lib/enterprise-import/project-target";
+import { 公海标签, 无负责人占位名, 无负责人占位邮箱 } from "@/lib/pool";
+import { 公海无负责人 } from "@/lib/project/pool-owner";
+import { 入池原因文字, 客户入池类 } from "@/lib/enterprise/unified-pool";
 import type { 读出的表 } from "@/lib/enterprise-import/excel";
 import type { 实体, 待写 } from "@/lib/enterprise-import/types";
 
@@ -58,6 +63,12 @@ async function 导(表们: 读出的表[]) {
   const id = await 跑(表们);
   return { id, r: await 写一批(id, 我) };
 }
+/** 11-02 起没人指定就没有默认负责人：要落默认的用例在对照表上指定一个 */
+async function 导带默认(表们: 读出的表[], 默认负责人Id: string) {
+  const id = await 跑(表们);
+  await 重新试跑(id, { 默认负责人Id }, 我.id);
+  return { id, r: await 写一批(id, 我) };
+}
 const 对照 = (entity: string, externalId: string) =>
   prisma.entExternalRef.findUniqueOrThrow({ where: { source_entity_externalId: { source: "excel", entity, externalId } } });
 
@@ -75,7 +86,7 @@ afterAll(async () => {
 
 describe("首次导入", () => {
   it("五类都写进去，挂对父记录、负责人；批次 done、记操作日志", async () => {
-    const { id, r } = await 导([客户表(), 联系人表(), 线索表(), 商机表(), 跟进表()]);
+    const { id, r } = await 导带默认([客户表(), 联系人表(), 线索表(), 商机表(), 跟进表()], 张伟);
     expect(r).toMatchObject({ 状态: "done", 完了: true, 总数: 9, 写到: 9, 新建: 9, 更新: 0, 冲突: 0, 失败: 0 });
 
     const c1 = await prisma.customer.findFirstOrThrow({ where: { name: "杭州云帆科技有限公司" }, include: { extra: true } });
@@ -136,7 +147,7 @@ describe("首次导入", () => {
 
   it("负责人不在职 / 是管理员：退回默认负责人；离职的人上次是负责人也不用", async () => {
     await prisma.user.update({ where: { id: 李娜 }, data: { active: false } });
-    await 导([客户表()]);
+    await 导带默认([客户表()], 张伟);
     const c2 = await prisma.customer.findFirstOrThrow({ where: { name: "宁波海川贸易" } });
     expect(c2.salesOwnerId).not.toBe(李娜);
     expect([张伟]).toContain(c2.salesOwnerId);
@@ -155,6 +166,141 @@ describe("首次导入", () => {
     expect(await prisma.contact.count()).toBe(0);
     const note = JSON.parse((await prisma.entImportBatch.findUniqueOrThrow({ where: { id } })).note!);
     expect(note).toEqual([expect.objectContaining({ 实体: "contact", 外部ID: p.外部ID, 原因: expect.stringContaining("所属客户不在了") })]);
+  });
+});
+
+describe("没指定默认负责人（11-02：不自动挑人，进公海）", () => {
+  const 占位 = () => prisma.user.findUnique({ where: { email: 无负责人占位邮箱 } });
+  const 无主客户表 = (行: string[][] = [
+    ["C1", "示例空着", "13800006001", "", "", ""],
+    ["C2", "示例对不上", "13800006002", "查无此人", "", ""],
+    ["C3", "示例写对", "13800006003", "张伟", "", ""],
+  ]) => 表("客户.xlsx", "customer", 客户头, 行);
+  const 无主商机表 = () => 表("商机.xlsx", "opportunity", ["商机ID", "客户ID", "商机名称", "商机阶段"], [["O1", "C3", "示例商机", "需求确认"]]);
+  const 无主线索表 = () => 表("线索.xlsx", "lead", ["线索ID", "线索名称", "联系人", "电话", "负责人"], [["L1", "示例线索", "陈总", "13600006001", ""]]);
+
+  it("报告默认是空的；空着、对不上的客户挂占位账号并进公海，写对的不动；清单里列出；占位账号只建一个、不能登录", async () => {
+    const 试 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: [无主客户表()], 建议器: null });
+    expect(试.报告.映射.默认负责人.id).toBe("");
+    expect(试.报告.问题.filter((q) => q.类别 === "负责人空着" || q.类别 === "负责人对不上").map((q) => [q.外部ID, q.类别])).toEqual([
+      ["C1", "负责人空着"], ["C2", "负责人对不上"],
+    ]);
+    for (const q of 试.报告.问题.filter((x) => x.类别.startsWith("负责人"))) expect(q.说明).toMatch(/进公海/);
+    expect(await 占位(), "预演写完回滚，不留占位账号").toBeNull();
+    expect(试.报告.预演?.合计).toMatchObject({ 新建: 3, 失败: 0 });
+
+    const r = await 写一批(试.批次Id, 我);
+    expect(r).toMatchObject({ 新建: 3, 失败: 0 });
+    const 号 = (await 占位())!;
+    expect(号).toMatchObject({ name: 无负责人占位名, active: false });
+    const 甲 = await prisma.customer.findFirstOrThrow({ where: { name: "示例空着" }, include: { pool: true } });
+    const 乙 = await prisma.customer.findFirstOrThrow({ where: { name: "示例对不上" }, include: { pool: true } });
+    const 丙 = await prisma.customer.findFirstOrThrow({ where: { name: "示例写对" }, include: { pool: true } });
+    expect([甲.salesOwnerId, 乙.salesOwnerId, 丙.salesOwnerId]).toEqual([号.id, 号.id, 张伟]);
+    expect(甲.pool).toMatchObject({ reason: 无主入池理由, userId: 号.id });
+    expect(乙.pool).not.toBeNull();
+    expect(丙.pool).toBeNull();
+    // 真人（导入的人、别的业务员）名下没多东西
+    expect(await prisma.customer.count({ where: { salesOwnerId: { in: [我.id, 李娜] } } })).toBe(0);
+    expect(await prisma.user.count({ where: { email: 无负责人占位邮箱 } })).toBe(1);
+    // 入池原因说清楚；挂占位账号的「原负责人」不露名字
+    expect(入池原因文字(客户入池类(甲.pool!), 甲.pool!.reason)).toBe("导入时没有负责人");
+    expect(公海标签(号.name)).toBe("公海");
+  });
+
+  it("再导一遍原样：零更新零冲突，占位账号还是一个；没默认时不会把人从公海拉出来", async () => {
+    const 首 = await 导([无主客户表()]);
+    const { r } = await 导([无主客户表()]);
+    expect(r).toMatchObject({ 新建: 0, 更新: 0, 冲突: 0, 失败: 0 });
+    expect(首.r.失败).toBe(0);
+    expect(await prisma.user.count({ where: { email: 无负责人占位邮箱 } })).toBe(1);
+    expect(await prisma.customerPool.count()).toBe(2);
+  });
+
+  it("已有同号客户：负责人不动，也不进公海", async () => {
+    const 已有 = await prisma.customer.create({ data: { name: "早就有", phone: "13800006001", salesOwnerId: 李娜 } });
+    await 导([无主客户表([["C1", "示例空着", "13800006001", "", "", ""]])]);
+    const c = await prisma.customer.findUniqueOrThrow({ where: { id: 已有.id }, include: { pool: true } });
+    expect(c.salesOwnerId).toBe(李娜);
+    expect(c.pool).toBeNull();
+  });
+
+  it("后来指定了默认负责人再导：落到默认、出公海；撤回这次更新：回占位、回公海", async () => {
+    await 导([无主客户表()]);
+    const 二 = await 导带默认([无主客户表()], 李娜);
+    expect(二.r.冲突).toBe(0);
+    const 读 = (name: string) => prisma.customer.findFirstOrThrow({ where: { name }, include: { pool: true } });
+    expect(await 读("示例空着")).toMatchObject({ salesOwnerId: 李娜, pool: null });
+    expect(await 读("示例对不上")).toMatchObject({ salesOwnerId: 李娜, pool: null });
+    expect(await 读("示例写对")).toMatchObject({ salesOwnerId: 张伟, pool: null });
+
+    await 撤回一批(二.id, 我);
+    const 号 = (await 占位())!;
+    const 回 = await 读("示例空着");
+    expect(回.salesOwnerId).toBe(号.id);
+    expect(回.pool).toMatchObject({ reason: 无主入池理由 });
+  });
+
+  it("人工改过负责人的（领走了）：再导没默认，不动；不回公海", async () => {
+    await 导([无主客户表()]);
+    const 甲 = await prisma.customer.findFirstOrThrow({ where: { name: "示例空着" } });
+    await prisma.customer.update({ where: { id: 甲.id }, data: { salesOwnerId: 李娜 } });
+    await prisma.customerPool.delete({ where: { customerId: 甲.id } });
+    const { r } = await 导([无主客户表()]);
+    expect(r).toMatchObject({ 冲突: 0, 失败: 0 });
+    const 后 = await prisma.customer.findUniqueOrThrow({ where: { id: 甲.id }, include: { pool: true } });
+    expect(后.salesOwnerId).toBe(李娜);
+    expect(后.pool).toBeNull();
+  });
+
+  it("老模式（没开企业版）：跟进、商机、线索没负责人也不落真人（商机、跟进挂占位，线索空着）", async () => {
+    const 跟进 = 表("跟进记录.xlsx", "followup", ["跟进ID", "客户ID", "跟进方式", "跟进内容", "跟进时间"], [["F1", "C3", "电话", "聊了", "2025-06-01 10:00"]]);
+    const { r } = await 导([无主客户表(), 无主线索表(), 无主商机表(), 跟进]);
+    expect(r.失败).toBe(0);
+    const 号 = (await 占位())!;
+    expect((await prisma.followUp.findFirstOrThrow()).ownerId).toBe(号.id);
+    expect((await prisma.opportunity.findFirstOrThrow()).ownerId).toBe(号.id);
+    expect((await prisma.lead.findFirstOrThrow()).ownerId).toBeNull();
+  });
+
+  describe("企业版项目模式", () => {
+    beforeEach(() => void vi.stubEnv("CRM_ENTERPRISE", "1"));
+    afterEach(() => void vi.unstubAllEnvs());
+
+    it("商机行：项目进公海（ownerId 空、有进公海留痕），撤回能撤；再导不算动过", async () => {
+      const { id, r } = await 导([无主客户表(), 无主商机表()]);
+      expect(r.失败).toBe(0);
+      const p = await prisma.project.findFirstOrThrow({ where: { name: "示例商机" }, include: { logs: true } });
+      expect(p.ownerId).toBe(公海无负责人);
+      expect(p.pooledAt).not.toBeNull();
+      expect(p.creatorId).toBe(我.id);
+      expect(p.logs.filter((l) => l.kind === "pool-release").map((l) => l.reason)).toEqual([无主入池理由]);
+
+      const 再 = await 导([无主客户表(), 无主商机表()]);
+      expect(再.r).toMatchObject({ 新建: 0, 更新: 0, 冲突: 0, 失败: 0 });
+      await 撤回一批(再.id, 我);
+      await 撤回一批(id, 我);
+      expect(await prisma.project.count()).toBe(0);
+    });
+
+    it("后来指定默认负责人再导：商机项目落到默认、出公海", async () => {
+      await 导([无主客户表(), 无主商机表()]);
+      await 导带默认([无主客户表(), 无主商机表()], 李娜);
+      const p = await prisma.project.findFirstOrThrow({ where: { name: "示例商机" } });
+      expect(p.ownerId).toBe(李娜);
+      expect(p.pooledAt).toBeNull();
+    });
+
+    it("线索行：新建的客户挂占位进公海，项目进公海", async () => {
+      const { r } = await 导([无主线索表()]);
+      expect(r.失败).toBe(0);
+      const 号 = (await 占位())!;
+      const p = await prisma.project.findFirstOrThrow({ include: { customer: { include: { pool: true } } } });
+      expect(p.ownerId).toBe(公海无负责人);
+      expect(p.pooledAt).not.toBeNull();
+      expect(p.customer.salesOwnerId).toBe(号.id);
+      expect(p.customer.pool).toMatchObject({ reason: 无主入池理由 });
+    });
   });
 });
 

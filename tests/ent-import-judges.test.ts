@@ -15,7 +15,7 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 试跑 } from "@/lib/enterprise-import/report";
+import { 试跑, 重新试跑 } from "@/lib/enterprise-import/report";
 import { 写一批, type 写入结果 } from "@/lib/enterprise-import/apply";
 import { 撤回一批 } from "@/lib/enterprise-import/revert";
 import { 读文件, type 读出的表 } from "@/lib/enterprise-import/excel";
@@ -67,6 +67,12 @@ let 导入后: 快照 = {};
 let 试后: 快照 = {};
 let 批2 = "";
 
+/** 同一批再传一次也指定同一个默认负责人（页面上是带着上次认过的映射来的） */
+const 带默认试跑 = async (表: 读出的表[]) => {
+  const 试 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表, 建议器: null });
+  return 重新试跑(试.批次Id, { 默认负责人Id: 默认负责人 }, 我.id);
+};
+
 beforeAll(async () => {
   await resetDb();
   invalidateSettingsCache();
@@ -85,11 +91,14 @@ beforeAll(async () => {
   表们 = ["客户.xlsx", "联系人.xlsx", "商机.xlsx", "跟进记录.xlsx"].map(读);
   导入前 = await 拍();
 
-  const 试 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: 表们, 建议器: null });
+  // 11-02 起没人指定就没有默认负责人（不自动挑人）。这份裁判要看「对不上的落默认」：指定一个业务员
+  const 首试 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: 表们, 建议器: null });
+  expect(首试.报告.映射.默认负责人.id).toBe("");
+  默认负责人 = (await prisma.user.findFirstOrThrow({ where: { role: "SALES", active: true } })).id;
+  const 试 = await 重新试跑(首试.批次Id, { 默认负责人Id: 默认负责人 }, 我.id);
   试后 = await 拍();
   批1 = 试.批次Id;
   报告1 = 试.报告;
-  默认负责人 = 报告1.映射.默认负责人.id;
   写1 = await 写一批(批1, 我);
   导入后 = await 拍();
 }, 120_000);
@@ -208,6 +217,7 @@ describe("裁判 · 零丢失", () => {
   it("报告上的默认负责人是能当负责人的业务员（导入的是管理员也一样），不会报告说给 A、实际落到 B", async () => {
     const u = await prisma.user.findUniqueOrThrow({ where: { id: 默认负责人 } });
     expect(u.role).toBe("SALES");
+    expect(报告1.映射.默认负责人.id).toBe(默认负责人);
   });
 
   it("负责人：写邮箱的认到本人；只写重名名字、离职、英文名、空着的落默认负责人，报告里都提醒了", async () => {
@@ -261,7 +271,7 @@ describe("裁判 · 零丢失", () => {
 
 describe("裁判 · 幂等", () => {
   it("同一批再导一次：报告零新建，写入零新建零更新，库里一格不变", async () => {
-    const 试 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: 表们, 建议器: null });
+    const 试 = await 带默认试跑(表们);
     批2 = 试.批次Id;
     expect(试.报告.预演?.合计).toMatchObject({ 新建: 0, 更新: 0, 冲突: 0, 失败: 0 });
     for (const e of 实体顺序) {
@@ -297,7 +307,7 @@ describe("裁判 · 来回", () => {
 describe("裁判 · 冲突 / 没变 / 更新的对账", () => {
   it("报告（先演一遍）的新建 / 更新 / 跳过 / 冲突 / 写不进 = 写入结果 = 库里各表增减", async () => {
     // 先照原样导一遍
-    const 首 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: 表们, 建议器: null });
+    const 首 = await 带默认试跑(表们);
     const 首写 = await 写一批(首.批次Id, 我);
     expect(首.报告.预演?.合计).toEqual({ 新建: 首写.新建, 更新: 首写.更新, 跳过: 首写.跳过, 冲突: 首写.冲突, 失败: 首写.失败 });
 
@@ -331,7 +341,7 @@ describe("裁判 · 冲突 / 没变 / 更新的对账", () => {
 
     const 前 = await 拍();
     const 前行 = await prisma.entImportRow.count();
-    const 试 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: 新表们, 建议器: null });
+    const 试 = await 带默认试跑(新表们);
     expect(await 拍(), "试跑不该动库").toEqual(前);
     const 演 = 试.报告.预演!;
     expect(演).not.toBeNull();

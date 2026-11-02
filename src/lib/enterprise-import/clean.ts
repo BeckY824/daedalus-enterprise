@@ -22,8 +22,11 @@ import { createHash } from "node:crypto";
 import { CUSTOMER_SOURCES, FOLLOW_TYPES, OPP_STAGES, STAGE_PROBABILITY, TRADE_SOURCES } from "../constants";
 import { 国家候选 } from "../customer-extra";
 import { 联系人号查重键 } from "../enterprise/customer-v2";
+import { businessDayjs } from "../business-clock";
+import { parseDateInput } from "../date-input";
 import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
+import { 无负责人占位名 } from "../pool";
 import { 拆多人, 进备注, 输单, 对客户类型, 客户类型空着, 客户类型等级 } from "./mapping";
 import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
@@ -159,15 +162,24 @@ export function 认时间(v: string): Date | null {
   const d = 认日期(v);
   if (!d) return null;
   const s = v.trim();
+  // 写明了时区的（浏览器解析 xlsx 变成的 ISO 串）本来就是一个确定的时刻，不再当墙钟
+  if (/(?:Z|[+-]\d{2}:\d{2})$/.test(s)) {
+    const 时刻 = parseDateInput(s);
+    if (时刻) return 时刻;
+  }
+  // 认日期 落的是业务时区那一天的零点，时分也要按业务时区设：原来 d.setHours 按进程时区，
+  // 本机伦敦跑导入时所有沟通时间早 16–17 小时（11-02）。没有业务时区（桌面端）businessDayjs 就是本机时区，和原来一样
+  const 设时分 = (那天: Date, h: number, m: number, sec: number) => businessDayjs(那天).hour(h).minute(m).second(sec).millisecond(0).toDate();
   if (/^\d{4,6}\.\d+$/.test(s)) {
-    const 秒 = Math.round((Number(s) % 1) * 86400);
-    d.setHours(Math.floor(秒 / 3600), Math.floor((秒 % 3600) / 60), 秒 % 60, 0);
-    return d;
+    // 连日期一起取整到秒：23:59:59.9 进到第二天零点时日期跟着进，不会日期进一次、时分又进一次
+    const 总秒 = Math.round(Number(s) * 86400);
+    const 秒 = 总秒 % 86400;
+    return 设时分(认日期(String(Math.floor(总秒 / 86400))) ?? d, Math.floor(秒 / 3600), Math.floor((秒 % 3600) / 60), 秒 % 60);
   }
   const t = /[\sT日](\d{1,2})[:：](\d{2})(?:[:：](\d{2}))?/.exec(s);
   if (t) {
     const [h, m, sec] = [Number(t[1]), Number(t[2]), Number(t[3] ?? 0)];
-    if (h < 24 && m < 60 && sec < 60) d.setHours(h, m, sec, 0);
+    if (h < 24 && m < 60 && sec < 60) return 设时分(d, h, m, sec);
   }
   return d;
 }
@@ -240,14 +252,14 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
 
   const 负责人 = (r: 原始记录, 写法: string | undefined): string => {
     if (!写法) {
-      出问题(r, "提醒", "负责人空着", "原系统没写负责人，先落到默认负责人名下");
+      出问题(r, "提醒", "负责人空着", m.默认负责人Id ? "原系统没写负责人，先落到默认负责人名下" : `原系统没写负责人，也没指定默认负责人：不落到任何人，进公海（挂「${无负责人占位名}」）`);
       return m.默认负责人Id;
     }
     const id = m.负责人[写法];
     const 几个 = 拆多人(写法);
     if (id && 几个.length) 出问题(r, "提醒", "负责人有几个", `负责人写了 ${几个.length} 个人（${写法}），我们一条只有一个负责人，按映射落到其中一个名下，其余的人请导完再看要不要协作`);
     if (id) return id;
-    出问题(r, "提醒", "负责人对不上", `负责人「${写法}」对不上我们这边的成员，先落到默认负责人名下`);
+    出问题(r, "提醒", "负责人对不上", `负责人「${写法}」对不上我们这边的成员，${m.默认负责人Id ? "先落到默认负责人名下" : `也没指定默认负责人：不落到任何人，进公海（挂「${无负责人占位名}」）`}`);
     return m.默认负责人Id;
   };
 

@@ -1219,6 +1219,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    开着箭头朝上、收着朝下；收着只剩卡头。沟通、卡点与任务的卡身定高、自己滚（外层左栏照旧上下滚看全部块）；上面一格搜索 */
 .proj-fold { position: relative; min-width: 0; }
 .proj-fold > .ant-card > .ant-card-head { padding-inline-end: 52px; }
+/* 沟通卡头的按钮多一颗「隐藏接手前」（11-02）：窄的时候折行、靠右，不把「沟通（N）」挤没 */
+.proj-follow-acts { justify-content: flex-end; }
 .proj-fold.is-closed > .ant-card > .ant-card-body { display: none; }
 .proj-fold.is-closed > .ant-card > .ant-card-head { border-bottom: none; }
 .proj-fold-btn {
