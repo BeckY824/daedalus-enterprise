@@ -32,20 +32,29 @@ export function 原负责人回避(): boolean {
 
 type 读痕 = Pick<Prisma.TransactionClient, "projectNodeLog">;
 
+/**
+ * 按 id 查的大名单一批多少个：SQLite 一句最多 999 个参数，留足范围层那些条件的位置（11-02）。
+ * 过限交给 Prisma 自己拆不靠谱：条件带否定拆不了（P2029），orderBy 字段没 select 拆完合不上（panic「no entry found for key」）
+ */
+export const 一批id数 = 400;
+
 /** 几个项目各自的历史负责人（最近一条 pool-release 的 fromOwnerId）。没放回过的不在里面 */
 export async function 历史负责人们(db: 读痕, projectIds: string[]): Promise<Map<string, string>> {
   const 们 = new Map<string, string>();
-  if (!projectIds.length) return 们;
-  const 行 = await 看全部(() => db.projectNodeLog.findMany({
-    where: { projectId: { in: [...new Set(projectIds)] }, kind: "pool-release" },
-    orderBy: [{ at: "desc" }, { id: "desc" }],
-    select: { projectId: true, fromOwnerId: true },
-  }));
-  const 看过 = new Set<string>();
-  for (const l of 行) {
-    if (看过.has(l.projectId)) continue;
-    看过.add(l.projectId);
-    if (l.fromOwnerId) 们.set(l.projectId, l.fromOwnerId);
+  const ids = [...new Set(projectIds)];
+  // 同一个项目的留痕都在同一批，每批自己排好序就够。一批一批来：db 可能是事务
+  for (let i = 0; i < ids.length; i += 一批id数) {
+    const 行 = await 看全部(() => db.projectNodeLog.findMany({
+      where: { projectId: { in: ids.slice(i, i + 一批id数) }, kind: "pool-release" },
+      orderBy: [{ at: "desc" }, { id: "desc" }],
+      select: { projectId: true, fromOwnerId: true },
+    }));
+    const 看过 = new Set<string>();
+    for (const l of 行) {
+      if (看过.has(l.projectId)) continue;
+      看过.add(l.projectId);
+      if (l.fromOwnerId) 们.set(l.projectId, l.fromOwnerId);
+    }
   }
   return 们;
 }

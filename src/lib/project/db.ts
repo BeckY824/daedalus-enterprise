@@ -38,7 +38,7 @@ import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/li
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
-import { 进公海后负责人, 历史负责人, 进公海关待办 } from "./pool-owner";
+import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
 
@@ -113,12 +113,18 @@ export function 露客户(me: { id: string }, p: { customerId: string; ownerId: 
   return 看得到的.has(p.customerId) || (!p.pooledAt && p.ownerId === me.id);
 }
 
-/** 这批客户里当前这位看得到哪几个：走带限定的客户端查一遍，限定层说了算，这里不另写一套规矩 */
+/**
+ * 这批客户里当前这位看得到哪几个：走带限定的客户端查一遍，限定层说了算，这里不另写一套规矩。
+ * 限定层的条件带否定，名单过 999 个 Prisma 拆不了批（P2029），所以自己一批一批查；db 可能是事务，不并行
+ */
 export async function 看得到的客户(customerIds: string[], db: Pick<Prisma.TransactionClient, "customer"> = prisma): Promise<Set<string>> {
   const ids = [...new Set(customerIds)];
-  if (ids.length === 0) return new Set();
-  const rows = await db.customer.findMany({ where: { id: { in: ids } }, select: { id: true } });
-  return new Set(rows.map((r) => r.id));
+  const 看得到 = new Set<string>();
+  for (let i = 0; i < ids.length; i += 一批id数) {
+    const rows = await db.customer.findMany({ where: { id: { in: ids.slice(i, i + 一批id数) } }, select: { id: true } });
+    for (const r of rows) 看得到.add(r.id);
+  }
+  return 看得到;
 }
 
 /** 组员角色字典：按排序列出（停用的也列，界面自己挑），空着就先建默认的（企业版 6 个，别的版本 4 个） */
