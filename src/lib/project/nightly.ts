@@ -6,14 +6,14 @@
  *
  *   - 只在企业版起钟（instrumentation.ts）；项目模式关着不扫
  *   - 每分钟看一眼钟，过了今天 00:05 才扫（服务器停着错过了，开机就补）
- *   - 留痕、操作日志记在「系统」名下（timeout.ts 系统，QA #16）；一个在职老板都没有就不扫，等有人打开页面
+ *   - 操作人一律是「系统」（timeout.ts 系统，QA #16）：夜扫不靠哪个账号，权限只认业务角色后找账号老板找不到人也照样扫（11-02）
  *   - 同一个钟顺带清回收站（P9）：删了满 30 天的真删掉，每天一遍，不看项目模式（lib/enterprise/soft-delete.ts 每天清一次）
- *   - 同一个钟顺带发到期提醒（lib/enterprise/due-notice.ts）：北京 09:00 起，跟进计划、项目下一步、卡点今天到期的
+ *   - 同一个钟顺带发到期提醒（lib/enterprise/due-notice.ts）：北京 09:00 起，跟进计划、项目下一步今天到期的和昨天逾期的
  */
-import { prisma } from "../prisma";
 import { getBusiness } from "../business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海超时收回 } from "./db";
+import { 系统 } from "./timeout";
 import { 每天清一次 } from "@/lib/enterprise/soft-delete";
 import { 钟上到期提醒 } from "@/lib/enterprise/due-notice";
 import { dayjs } from "../utils";
@@ -29,11 +29,7 @@ export function 过了夜扫时刻(现在: Date): boolean {
 export async function 夜里扫超时(现在: Date = new Date()): Promise<number> {
   if (!企业版() || !过了夜扫时刻(现在)) return 0;
   if ((await getBusiness()).projectMode !== true) return 0;
-  const 老板 = await prisma.user.findFirst({
-    where: { role: "ADMIN", active: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true },
-  });
-  if (!老板) return 0;
-  return 公海超时收回(老板, 现在);
+  return 公海超时收回(系统, 现在);
 }
 
 const g = globalThis as unknown as { __entNightlyTimer?: ReturnType<typeof setInterval>; __entNightlyRun?: Promise<void> };

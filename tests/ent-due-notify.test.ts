@@ -1,6 +1,6 @@
 /**
  * 企业版到期提醒（lib/enterprise/due-notice.ts）。「现在」都当参数传，不等真实时钟；时刻一律写成带 +08:00 / Z 的真实瞬间。
- * 钉的是：今天到期才提醒（明天、历史逾期都不提醒，开机不轰炸）；北京 09:00 起、晚起来当天补；重复扫、重启不重发；改到期日再提醒；
+ * 钉的是：今天到期提醒负责人，昨天逾期提醒负责人和直属上级（明天、前天及更早都不提醒，开机不轰炸）；北京 09:00 起、晚起来当天补；重复扫、重启不重发；改到期日再提醒；
  * 已完成 / 已结束 / 公海 / 已删 / 停用的人不提醒；卡点到期日不提醒；北京跨日；不是企业版、切换视图不发；挂在夜扫钟上且只挂这一处；飞书开着顺带推。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -119,9 +119,9 @@ describe("今天到期才提醒", () => {
   it("老计划没有 plannedOn：按 plannedAt 落在北京今天算", async () => {
     const a = await 计划({ plannedOn: null, plannedAt: 京("2026-11-02 08:00") });
     await 计划({ plannedOn: null, plannedAt: 京("2026-11-03 08:00") });
-    await 计划({ plannedOn: null, plannedAt: 京("2026-11-01 08:00") });
+    const 昨天的 = await 计划({ plannedOn: null, plannedAt: 京("2026-11-01 08:00") });
     await 到期提醒扫一遍(今早);
-    expect(await 钥匙们()).toEqual([`due:plan:${a.id}:2026-11-02`]);
+    expect((await 钥匙们()).sort()).toEqual([`due:plan:${a.id}:2026-11-02`, `overdue:plan:${昨天的.id}:2026-11-01`].sort());
   });
 
   it("项目下一步：给项目负责人，指向项目", async () => {
@@ -144,21 +144,155 @@ describe("今天到期才提醒", () => {
     expect(await 通知们()).toEqual([]);
   });
 
-  it("历史逾期的不提醒（一上线不轰炸）：昨天的、去年的，两种来源都不补发", async () => {
+  it("历史逾期不补（一上线不轰炸）：去年的三种来源都不发；昨天的只发逾期这一档，不再发到期", async () => {
     for (const [日, 时] of [["2026-11-01", "2026-11-01 10:00"], ["2025-03-01", "2025-03-01 10:00"]] as const) {
       await 计划({ plannedOn: 日, plannedAt: 京(时) });
       await 计划({ plannedOn: null, plannedAt: 京(时) });
       await 项目({ nextStepAt: 京(时) });
     }
+    expect(await 到期提醒扫一遍(今早)).toBe(3);
+    const 钥匙 = await 钥匙们();
+    expect(钥匙).toHaveLength(3);
+    expect(钥匙.every((k) => k!.startsWith("overdue:") && k!.endsWith(":2026-11-01"))).toBe(true);
+  });
+
+  it("服务停了一整天：开机不补 2 号的到期，只发今天的到期和昨天的逾期；再晚一天开机，逾期也不补", async () => {
+    const a = await 计划({ plannedOn: "2026-11-02" });
+    const 明天的 = await 计划({ plannedOn: "2026-11-03", plannedAt: 京("2026-11-03 10:00") });
+    await 到期提醒扫一遍(京("2026-11-03 10:00"));
+    expect((await 钥匙们()).sort()).toEqual([`due:plan:${明天的.id}:2026-11-03`, `overdue:plan:${a.id}:2026-11-02`].sort());
+    await prisma.entNotice.deleteMany();
+    expect(await 到期提醒扫一遍(京("2026-11-05 10:00"))).toBe(0);
+  });
+});
+
+describe("昨天逾期：负责人 + 直属上级", () => {
+  const 上级是 = async (managerId: string | null, 下属 = 甲) => {
+    await prisma.entMember.upsert({ where: { userId: 下属 }, update: { managerId }, create: { userId: 下属, managerId } });
+  };
+  const 收件人 = async () => (await 通知们()).map((n) => n.userId).sort();
+  const 昨天计划 = (补: Record<string, unknown> = {}) => 计划({ plannedOn: "2026-11-01", plannedAt: 京("2026-11-01 10:00"), subject: "回访", ...补 });
+  const 昨天 = 京("2026-11-01 10:00");
+
+  it("跟进计划：负责人和上级各一条，kind 跟进逾期，上级看得出是谁的", async () => {
+    await 上级是(乙);
+    const a = await 昨天计划();
+    expect(await 到期提醒扫一遍(今早)).toBe(2);
+    expect(await 收件人()).toEqual([甲, 乙].sort());
+    for (const n of await 通知们()) {
+      expect(n).toMatchObject({ kind: "跟进逾期", title: "跟进计划已逾期：回访", dedupeKey: `overdue:plan:${a.id}:2026-11-01`, link: `/customers/${客户}` });
+      expect(n.body).toContain("到期日 2026-11-01");
+      expect(n.body).toContain("负责人：jia");
+    }
+  });
+
+  it("项目下一步：负责人和上级各一条，指向项目", async () => {
+    await 上级是(乙);
+    const p = await 项目({ nextStepAt: 昨天, nextStepText: "发方案" });
+    expect(await 到期提醒扫一遍(今早)).toBe(2);
+    expect(await 收件人()).toEqual([甲, 乙].sort());
+    for (const n of await 通知们()) {
+      expect(n).toMatchObject({ kind: "跟进逾期", title: `项目下一步已逾期：${p.name}`, dedupeKey: `overdue:next:${p.id}:2026-11-01`, link: `/projects/${p.id}` });
+      expect(n.body).toContain("发方案");
+      expect(n.body).toContain("负责人：jia");
+    }
+  });
+
+  it("今天到期的只发负责人，上级不收", async () => {
+    await 上级是(乙);
+    await 计划({ plannedOn: "2026-11-02" });
+    await 项目({ nextStepAt: 今早 });
+    expect(await 到期提醒扫一遍(今早)).toBe(2);
+    expect((await 通知们()).every((n) => n.userId === 甲)).toBe(true);
+  });
+
+  it("同一条只报一次：当天重复扫不重发，第二天也不再报", async () => {
+    await 上级是(乙);
+    await 昨天计划();
+    await 项目({ nextStepAt: 昨天 });
+    expect(await 到期提醒扫一遍(今早)).toBe(4);
+    expect(await 到期提醒扫一遍(京("2026-11-02 15:00"))).toBe(0);
+    expect(await 到期提醒扫一遍(京("2026-11-03 10:00"))).toBe(0);
+    expect(await prisma.entNotice.count()).toBe(4);
+  });
+
+  it("前天及更早的不报", async () => {
+    await 上级是(乙);
+    await 计划({ plannedOn: "2026-10-31", plannedAt: 京("2026-10-31 10:00") });
+    await 项目({ nextStepAt: 京("2026-10-31 23:59") });
+    expect(await 到期提醒扫一遍(今早)).toBe(0);
+  });
+
+  it("口径同到期：已完成、已结束、项目在公海、客户在公海、回收站里的都不报", async () => {
+    await 上级是(乙);
+    await 昨天计划({ done: true });
+    await 项目({ nextStepAt: 昨天, result: "丢单" });
+    await 项目({ nextStepAt: 昨天, pooledAt: 今早 });
+    const 公海客户 = await 新客户();
+    await prisma.customerPool.create({ data: { customerId: 公海客户 } });
+    await 昨天计划({ customerId: 公海客户 });
+    await 项目({ nextStepAt: 昨天, customerId: 公海客户 });
+    await 项目({ nextStepAt: 昨天, deletedAt: 今早 });
     expect(await 到期提醒扫一遍(今早)).toBe(0);
     expect(await 通知们()).toEqual([]);
   });
 
-  it("服务停了一整天：开机不补昨天到期的，只提醒今天的", async () => {
-    await 计划({ plannedOn: "2026-11-02" });
-    const 明天的 = await 计划({ plannedOn: "2026-11-03", plannedAt: 京("2026-11-03 10:00") });
-    await 到期提醒扫一遍(京("2026-11-03 10:00"));
-    expect(await 钥匙们()).toEqual([`due:plan:${明天的.id}:2026-11-03`]);
+  it("没有上级不报错，只发负责人；没有 EntMember 行也一样", async () => {
+    await 昨天计划();
+    expect(await 到期提醒扫一遍(今早)).toBe(1);
+    expect(await 收件人()).toEqual([甲]);
+    await 上级是(null, 乙);
+    await 项目({ ownerId: 乙, nextStepAt: 昨天 });
+    expect(await 到期提醒扫一遍(今早)).toBe(1);
+    expect(await 收件人()).toEqual([甲, 乙].sort());
+  });
+
+  it("上级停用不发，只发负责人", async () => {
+    await 上级是(乙);
+    await prisma.user.update({ where: { id: 乙 }, data: { active: false } });
+    await 昨天计划();
+    expect(await 到期提醒扫一遍(今早)).toBe(1);
+    expect(await 收件人()).toEqual([甲]);
+  });
+
+  it("负责人停用：这条谁都不发（负责人不在组织成员里，也就找不到上级）", async () => {
+    await 上级是(乙);
+    await prisma.user.update({ where: { id: 甲 }, data: { active: false } });
+    await 昨天计划();
+    expect(await 到期提醒扫一遍(今早)).toBe(0);
+    expect(await 通知们()).toEqual([]);
+  });
+
+  it("上级就是负责人自己：不重复", async () => {
+    await 上级是(甲);
+    await 昨天计划();
+    expect(await 到期提醒扫一遍(今早)).toBe(1);
+    expect(await 收件人()).toEqual([甲]);
+  });
+
+  it("读组织出错：这一遍只发负责人；下一遍补上级，负责人不重发", async () => {
+    await 上级是(乙);
+    await 昨天计划();
+    const 读 = vi.spyOn(prisma.user, "findMany").mockRejectedValueOnce(new Error("库忙"));
+    const 错 = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await 到期提醒扫一遍(今早)).toBe(1);
+      expect(await 收件人()).toEqual([甲]);
+      expect(错).toHaveBeenCalled();
+    } finally {
+      读.mockRestore();
+      错.mockRestore();
+    }
+    expect(await 到期提醒扫一遍(京("2026-11-02 10:05"))).toBe(1);
+    expect(await 收件人()).toEqual([甲, 乙].sort());
+  });
+
+  it("改了到期日又逾期：可以再报（key 带到期日）", async () => {
+    const p = await 项目({ nextStepAt: 昨天 });
+    expect(await 到期提醒扫一遍(今早)).toBe(1);
+    await prisma.project.update({ where: { id: p.id }, data: { nextStepAt: 京("2026-11-04 10:00") } });
+    expect(await 到期提醒扫一遍(京("2026-11-05 10:00"))).toBe(1);
+    expect((await 钥匙们()).sort()).toEqual([`overdue:next:${p.id}:2026-11-01`, `overdue:next:${p.id}:2026-11-04`].sort());
   });
 });
 
@@ -265,29 +399,29 @@ describe("提醒时点与北京跨日", () => {
 
   it("「今天」按北京日历，不按 UTC：UTC 还是 1 号、北京已是 2 号上午的提醒 2 号的", async () => {
     const a = await 计划({ plannedOn: "2026-11-02" });
-    await 计划({ plannedOn: "2026-11-01", plannedAt: 京("2026-11-01 10:00") });
+    const 昨天的 = await 计划({ plannedOn: "2026-11-01", plannedAt: 京("2026-11-01 10:00") });
     // 北京 11-02 00:30 / 08:59：2 号了，但没到时点
     expect(await 到期提醒扫一遍(new Date("2026-11-01T16:30:00Z"))).toBe(0);
     expect(await 到期提醒扫一遍(new Date("2026-11-02T00:59:00Z"))).toBe(0);
     // 北京 11-02 09:00 = UTC 01:00
-    expect(await 到期提醒扫一遍(new Date("2026-11-02T01:00:00Z"))).toBe(1);
-    expect(await 钥匙们()).toEqual([`due:plan:${a.id}:2026-11-02`]);
+    expect(await 到期提醒扫一遍(new Date("2026-11-02T01:00:00Z"))).toBe(2);
+    expect((await 钥匙们()).sort()).toEqual([`due:plan:${a.id}:2026-11-02`, `overdue:plan:${昨天的.id}:2026-11-01`].sort());
   });
 
   it("北京 23:59:59 算当天、次日 00:00 算明天（下一步按瞬间存的）", async () => {
     const 当天 = await 项目({ nextStepAt: new Date("2026-11-02T15:59:59Z") });
     await 项目({ nextStepAt: new Date("2026-11-02T16:00:00Z") });
     const 零点那个 = await 项目({ nextStepAt: new Date("2026-11-01T16:00:00Z") }); // 北京 11-02 00:00
-    await 项目({ nextStepAt: new Date("2026-11-01T15:59:59Z") }); // 北京 11-01 23:59:59
+    const 昨天的 = await 项目({ nextStepAt: new Date("2026-11-01T15:59:59Z") }); // 北京 11-01 23:59:59，算昨天
     await 到期提醒扫一遍(京("2026-11-02 09:00"));
-    expect((await 钥匙们()).sort()).toEqual([`due:next:${零点那个.id}:2026-11-02`, `due:next:${当天.id}:2026-11-02`].sort());
+    expect((await 钥匙们()).sort()).toEqual([`due:next:${零点那个.id}:2026-11-02`, `due:next:${当天.id}:2026-11-02`, `overdue:next:${昨天的.id}:2026-11-01`].sort());
   });
 
-  it("UTC 同一天、北京已跨日（UTC 11-02 16:30 = 北京 11-03 00:30）：还没到 3 号的时点，2 号的也不再发", async () => {
-    await 计划({ plannedOn: "2026-11-02" });
+  it("UTC 同一天、北京已跨日（UTC 11-02 16:30 = 北京 11-03 00:30）：还没到 3 号的时点不发；到点后 2 号的不再发到期，只发逾期", async () => {
+    const a = await 计划({ plannedOn: "2026-11-02" });
     expect(await 到期提醒扫一遍(new Date("2026-11-02T16:30:00Z"))).toBe(0);
-    expect(await 到期提醒扫一遍(new Date("2026-11-03T01:00:00Z"))).toBe(0);
-    expect(await 通知们()).toEqual([]);
+    expect(await 到期提醒扫一遍(new Date("2026-11-03T01:00:00Z"))).toBe(1);
+    expect(await 钥匙们()).toEqual([`overdue:plan:${a.id}:2026-11-02`]);
   });
 });
 

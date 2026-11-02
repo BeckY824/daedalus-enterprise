@@ -25,7 +25,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 验证待办通知, 邀请通知, 转项目通知 } from "@/lib/enterprise/notice-sources";
+import { 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 } from "@/lib/enterprise/notice-sources";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -619,6 +619,7 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       if (b.ok && b.code) {
         卡点结果 = { 卡点: b.code };
         await recordAudit({ user: me, action: "create", entity: "EntBlocker", entityId: projectId, summary: `记沟通时发布卡点 ${b.code}` });
+        await 卡点发布通知(me, b.code);
       } else if (!b.ok) 卡点结果 = { 卡点没发: b.error };
     }
     if (r.ok) {

@@ -66,10 +66,18 @@ export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: 
     }
   });
   invalidateSettingsCache();
-  await notify(收件人, {
+  const 名单 = `${线索.slice(0, 10).join("、")}${线索.length > 10 ? ` 等 ${线索.length} 条` : ""}`;
+  // 待分配不是满额：这条业务线没人可分或选了暂不分配，说法和界面（leads/LeadFullNotices.tsx）对齐
+  await notify(收件人, 另.原因 === "待分配" ? {
+    kind: "待分配",
+    title: `待分配：${线索.length} 条新线索没自动分出去`,
+    body: `${名单}（${谁点的} 建的）。${另.为什么 ? `${另.为什么}。` : ""}线索留在新线索、没有负责人：去新线索手动分。`,
+    link: "/leads",
+    key: `full:${条.id}`,
+  } : {
     kind: "满额",
     title: `自动分配没分出去：${线索.length} 条线索都已满额`,
-    body: `${谁点的} 点的自动分配，能接的人都分满了：${线索.slice(0, 10).join("、")}${线索.length > 10 ? ` 等 ${线索.length} 条` : ""}。找销售的上级调配额，或者手动分。`,
+    body: `${谁点的} 点的自动分配，能接的人都分满了：${名单}。找销售的上级调配额，或者手动分。`,
     link: "/leads",
     key: `full:${条.id}`,
   });

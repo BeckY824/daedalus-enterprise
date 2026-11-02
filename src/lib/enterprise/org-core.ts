@@ -97,6 +97,15 @@ export function 直属上级of(org: 组织, userId: string): string | null {
   return null;
 }
 
+/**
+ * 这件事要告诉谁（通知用）：负责人 + 他的直属上级。只留在职的（org.成员 只有在职的）、去重、去掉操作者。
+ * 负责人停用了 = 直属上级of 也找不到人，这条谁都不发
+ */
+export function 负责人和上级(org: 组织, ownerId: string, 排除?: string): string[] {
+  const 们 = [ownerId, 直属上级of(org, ownerId)].filter((id): id is string => !!id && org.成员.has(id) && id !== 排除);
+  return [...new Set(们)];
+}
+
 /** 虚线上级：只认显式指定的，停用了 = 没有 */
 export function 虚线上级of(org: 组织, userId: string): string | null {
   const d = org.成员.get(userId)?.dottedManagerId;
