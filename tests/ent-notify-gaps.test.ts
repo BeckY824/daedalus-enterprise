@@ -23,6 +23,7 @@ vi.mock("@/lib/enterprise/org", async (原) => {
   return { ...m, 读组织: () => (mocks.读组织出错 ? Promise.reject(new Error("库忙")) : m.读组织()) };
 });
 
+import dayjs from "dayjs";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
@@ -120,7 +121,7 @@ describe("发布卡点", () => {
 
   it("记沟通时顺带发卡点：同样通知上级", async () => {
     当(甲);
-    const r = await 记项目沟通Action(项目, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true, 下一步: "再聊", 下一步时间: new Date().toISOString().slice(0, 10) }, { type: "中度卡点", description: "报价比别家高一成" });
+    const r = await 记项目沟通Action(项目, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true, 下一步: "再聊", 下一步时间: dayjs().format("YYYY-MM-DD") }, { type: "中度卡点", description: "报价比别家高一成" });
     expect(r, JSON.stringify(r)).toMatchObject({ ok: true, 卡点: expect.any(String) });
     expect(await 收件人("卡点")).toEqual([组长]);
   });

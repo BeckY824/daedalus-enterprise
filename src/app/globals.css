@@ -1256,6 +1256,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-head .page-head-t { flex-wrap: nowrap; gap: 4px; }
 .proj-head .page-head-t h1 { min-width: 0; }
 .proj-head .page-head-t .rec-star { flex: none; }
+/* 名字下面那行写负责人、创建人：一长串没空格的人名也折行，不伸出页头（11-02） */
+.proj-head .page-head p { overflow-wrap: anywhere; }
 .proj-head > .pane-toggle { margin: 4px 0 0 -6px; flex: none; }
 /* 10-31 改版 R3：整页不滚，页头钉在顶上，两栏各自滚（滚左栏右栏不动、反过来也一样），只有最右那栏露滚动条。
    高度从正文 main 一路传下来（main → 换页那层 motion.div → .proj-wrap → .proj-2col），所以 Windows 顶上那条让位、

@@ -308,6 +308,16 @@ function 进公海说法(进: 项目详情["进公海"], 原负责人: string): 
 }
 
 /**
+ * 页头那行：项目负责人、项目创建人各写各的（11-02，原来的「X 建于」看不出 X 是什么人）；负责人空着写「暂无」。只在页头写，项目卡不再摆一遍。
+ * 在公海里时 ownerName 是原负责人：不写成负责人是 X，也不把系统收回说成 X 放回的（QA #14）
+ */
+function 项目人说法(p: 项目详情): string {
+  const 负责人 = (p.pooled ? "" : p.ownerName) || "暂无";
+  const 公海 = p.pooled ? `（在公海里${p.ownerName ? `，原负责人 ${p.ownerName}` : ""}${进公海说法(p.进公海, p.ownerName)}）` : "";
+  return `项目负责人：${负责人}${公海} · 项目创建人：${p.creatorName || "暂无"}`;
+}
+
+/**
  * 项目详情：顶上是节点进度和「下一步」，中间改节点 / 点结局、勾尾款结清和验收通过，下面是节点变更和挂在这个项目上的沟通。
  * 只有负责人、老板、主管能改；其他人看得到、按钮灰着
  */
@@ -897,8 +907,6 @@ export default function ProjectDetail({
           )}
         </>
       )}
-      {/* 在公海里时 ownerName 是原负责人：不写成「负责人 X」，也不把系统收回说成 X 放回的（QA #14） */}
-      <div style={行样}><span style={键样}>负责人</span>{p.pooled ? <span>在公海里<span style={{ color: "var(--text-muted)" }}>（原负责人 {p.ownerName}{进公海说法(p.进公海, p.ownerName)}）</span></span> : p.ownerName}</div>
       {p.historyOwners.length > 0 && (
         <div style={行样}><span style={键样}>历史</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }} title="历史负责人：把这个项目放回过公海的人">{p.historyOwners.join("、")}</span></div>
       )}
@@ -1151,7 +1159,7 @@ export default function ProjectDetail({
     <PageHead
       title={p.name}
       titleAside={<ProjectStarButton projectId={p.id} 初值={p.收藏了 ?? false} />}
-      subtitle={`${p.pooled ? `在项目公海里 · 原负责人 ${p.ownerName}` : `负责人 ${p.ownerName}`} · ${p.creatorName} 建于 ${fmtDateTime(p.createdAt)}`}
+      subtitle={`${项目人说法(p)} · 创建于 ${fmtDateTime(p.createdAt)}`}
       extra={p.企业版 ? 企业版页头钮 || undefined : (
         <Space wrap>
           {领取钮}
