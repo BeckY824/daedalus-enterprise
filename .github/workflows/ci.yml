@@ -254,9 +254,10 @@ jobs:
         env:
           GATE: "1"
       - name: B：按组织看
+        # 线 400（11-02 用户放宽）：同一份代码 CI 上 114～367 ms，300 太贴机器波动；A 还是 300
         run: |
           DATABASE_URL=file:/tmp/perf/crm.db SEED=/tmp/perf/seed.json NODE_ENV=development npx tsx scripts/perf/enterprise-org-seed.ts
-          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 300 --reuse-db --skip-build
+          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 400 --reuse-db --skip-build
         env:
           GATE: "1"
       - name: 结果写进 Summary
