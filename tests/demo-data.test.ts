@@ -25,6 +25,8 @@ beforeEach(async () => {
   await resetDb();
   const jia = await prisma.user.create({ data: { email: "jia", name: "甲", title: "销售", role: "ADMIN", password: "x" } });
   mocks.user = { id: jia.id, name: "甲", email: "jia", role: "ADMIN", title: "管理员", avatar: null };
+  // 11-01 权限只认业务角色：企业版里灌 / 清演示数据要总管理，账号 ADMIN 不再放行；别的版本不看这行
+  await prisma.entMember.create({ data: { userId: jia.id, bizRole: "director" } });
   delete process.env.DESKTOP_LOCAL;
 });
 afterEach(() => { vi.unstubAllEnvs(); });

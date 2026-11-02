@@ -32,6 +32,8 @@ beforeEach(async () => {
   忘掉回填();
   const u = await prisma.user.create({ data: { email: "yi", name: "yi", title: "", role: "SALES", password: "x" } });
   乙 = { id: u.id, role: "SALES" };
+  // 11-01 权限只认业务角色：负责人得有销售角色才能改项目
+  await prisma.entMember.create({ data: { userId: u.id, bizRole: "sales" } });
   vi.stubEnv("CRM_ENTERPRISE", "1");
 });
 afterEach(() => { vi.unstubAllEnvs(); });

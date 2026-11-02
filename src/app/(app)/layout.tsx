@@ -11,6 +11,7 @@ import { businessTimeZone } from "@/lib/business-clock";
 import { 本地模式, 归属对不上, 读 as 读云端凭据 } from "@/lib/desktop/cloud";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 未读通知数 } from "@/lib/enterprise/notify";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import { 演示登录 } from "@/app/login/demo-actions";
@@ -123,6 +124,8 @@ export default async function AppLayout({
         // 企业版只用项目一条线：左栏和 ⌘K 没有商机，线索叫「新线索」（lib/enterprise/project-only.ts）
         企业版项目={企业版() && business.projectMode === true}
         企业版={企业版()}
+        // 企业版站内通知（11-01）：铃铛上的未读数，之后铃铛自己每分钟问一次（lib/enterprise/notify.ts）；以别人视图看时不摆
+        通知未读={企业版() && !user.视图由 ? await 未读通知数(user.id) : undefined}
         产品名={自定产品名() ?? undefined}
         pane={pane}
         ai={有AI ? { models } : null}

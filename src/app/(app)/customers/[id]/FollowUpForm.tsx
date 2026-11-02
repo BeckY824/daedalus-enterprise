@@ -28,23 +28,30 @@ import CustomerPick, { type 客户近况 } from "./CustomerPick";
 import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
-import { 卡点类型们, 影响等级们, 描述上限, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 
 /** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成，描述写了也不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则） */
-type 卡点值 = { type: string; impact: string | null; description: string };
-const 空卡点: 卡点值 = { type: "暂无卡点", impact: null, description: "" };
+type 卡点值 = { type: string; impact: string | null; title: string; reasons: string[]; description: string };
+const 空卡点: 卡点值 = { type: "暂无卡点", impact: null, title: "", reasons: [], description: "" };
 
 /** 卡点那一块：摆在沟通内容和下一步之间，和项目详情「记一条沟通」一个样子（同一套 CSS） */
-function 卡点格({ 默认, 值, on改 }: { 默认: 卡点默认; 值: 卡点值; on改: (x: 卡点值) => void }) {
+function 卡点格({ 默认, 原因们, 值, on改 }: { 默认: 卡点默认; 原因们: string[]; 值: 卡点值; on改: (x: 卡点值) => void }) {
+  const 暂无 = 值.type === "暂无卡点";
   return (
     <div className="follow-blocker" style={{ marginBottom: 16 }}>
       <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点）</span></div>
       <div className="follow-blocker-row">
         <Select aria-label="卡点类型" value={值.type} onChange={(v) => on改({ ...值, type: v })} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
-        <Select aria-label="卡点影响" allowClear disabled={值.type === "暂无卡点"} value={值.impact} onChange={(v) => on改({ ...值, impact: v ?? null })} placeholder={`卡点影响（默认${默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
+        <Select aria-label="卡点影响" allowClear disabled={暂无} value={值.impact} onChange={(v) => on改({ ...值, impact: v ?? null })} placeholder={`卡点影响（默认${默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
       </div>
-      <Input.TextArea aria-label="卡点描述" disabled={值.type === "暂无卡点"} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={值.description} onChange={(e) => on改({ ...值, description: e.target.value })} placeholder="卡在哪儿" />
+      <Input aria-label="卡点标题" disabled={暂无} style={{ marginTop: 8 }} maxLength={标题上限} value={值.title} onChange={(e) => on改({ ...值, title: e.target.value })} placeholder="卡点标题（不填取描述前 20 字）" />
+      <Select
+        aria-label="阻碍原因" mode="tags" disabled={暂无} style={{ marginTop: 8, width: "100%" }} maxCount={原因最多} value={值.reasons}
+        onChange={(v: string[]) => on改({ ...值, reasons: v.map((x) => x.trim().slice(0, 原因名上限)).filter(Boolean) })}
+        placeholder="阻碍原因（可多选；没有的直接打字新加，等总管理员审核）" options={原因们.map((v) => ({ value: v, label: v }))}
+      />
+      <Input.TextArea aria-label="卡点描述" disabled={暂无} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={值.description} onChange={(e) => on改({ ...值, description: e.target.value })} placeholder="卡在哪儿" />
     </div>
   );
 }
@@ -694,7 +701,7 @@ export default function FollowUpForm({
             </Col>
             {须知?.卡点默认 && (
               <Col span={24}>
-                <卡点格 默认={须知.卡点默认} 值={卡点} on改={(x) => { set卡点(x); 守.改了(); }} />
+                <卡点格 默认={须知.卡点默认} 原因们={须知.卡点原因们 ?? []} 值={卡点} on改={(x) => { set卡点(x); 守.改了(); }} />
               </Col>
             )}
             <Col span={24}>

@@ -21,6 +21,7 @@ import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 加一条配额 } from "@/lib/enterprise/lead-assign";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 改节点, 能改节点, 放回公海 } from "./db";
+import { 是总管理 } from "@/lib/enterprise/permissions";
 import { 判MQL, MQL合格去 } from "./mql";
 import { 有效线索节点, 无效原因上限 } from "./stage-gates";
 export { 无效原因上限 };
@@ -65,10 +66,10 @@ export function 创建人是销售(org: 组织, creatorId: string, 市场: Reado
   return 们.includes("sales") || 们.includes("sales_mgr");
 }
 
-/** 这一步谁能拍板。销售两步看 能改节点（负责人、老板、主管、直属上级、总管理员）；市场复核只给市场管理；总管理终判给老板、总管理员 */
+/** 这一步谁能拍板。销售两步看 能改节点（企业版只有负责人本人，C2）；市场复核只给市场管理；总管理终判给老板、总管理员 */
 export function 能拍板(me: 谁, 步: 验证步, p: { ownerId: string; pooledAt?: Date | null }, org: 组织): boolean {
   if (步 === "市场复核") return 管理员类别们of(org, me.id).has("市场管理");
-  if (步 === "总管理终判") return me.role === "ADMIN" || 管理员类别们of(org, me.id).has("总管理员");
+  if (步 === "总管理终判") return 是总管理(me, org);
   return 能改节点(me, p, org);
 }
 const 拍不了: Record<验证步, string> = {

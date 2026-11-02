@@ -7,6 +7,7 @@
  */
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { 系统写 } from "@/lib/team-scope";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 挡改设置 } from "./edit-perm";
@@ -36,7 +37,11 @@ async function 建了就算(建: PromiseLike<unknown>) {
 }
 
 /** 一类的选项：按排序列出（停用的也列，界面自己挑）；这一类一行都没有就先建默认的 */
-export async function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
+export function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
+  // 第一次读顺手建默认项是系统写：管理员（admin，只读）打开页面时也得建得上
+  return 系统写(() => 企业字典本体(kind, db));
+}
+async function 企业字典本体(kind: 字典种类, db: Prisma.TransactionClient): Promise<EntDictItem[]> {
   const 停用 = 字典定义[kind].默认停用 ?? [];
   const { 默认顺序 } = 字典定义[kind];
   if (字典定义[kind].旧默认) {
@@ -255,7 +260,7 @@ export async function 读分配谁能用(): Promise<分配谁能用配置> {
  * null = 能用，否则是挡住的那句；不是企业版 = null（不管）。事务外调
  */
 export async function 挡分配方式(me: { id: string; role: string }, i: 分配方式序号): Promise<string | null> {
-  if (!企业版() || me.role === "ADMIN") return null;
+  if (!企业版()) return null;
   const id = 默认id("assign", i);
   const [org, 配置] = await Promise.all([读组织(), 读分配谁能用()]);
   if (能用分配方式(org, me, id, 配置)) return null;
@@ -270,7 +275,7 @@ export async function 我能用的分配方式(me: { id: string; role: string })
   for (const x of 项们) {
     const i = [0, 1, 2, 3, 4].find((k) => 默认id("assign", k) === x.id);
     if (!是分配方式序号(i) || !x.active) continue;
-    if (me.role === "ADMIN" || 能用分配方式(org, me, x.id, 配置)) 出.push({ i, 名: x.name });
+    if (能用分配方式(org, me, x.id, 配置)) 出.push({ i, 名: x.name });
   }
   return 出;
 }

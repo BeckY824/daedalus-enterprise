@@ -2,7 +2,9 @@
  * 企业版「按组织架构看客户」（2026-10-24，规则开关 规则.按组织看客户）。
  *
  * 和团队版业务员限定共用一层（lib/team-scope.ts 的 加上限定），这里只回答「这个请求的人看得到、改得到谁负责的客户」：
- *   - 老板（账号 ADMIN）、总管理员（业务角色 director / admin）：看全部，不限定；
+ *   - 总管理（业务角色 director，11-01 起不看账号 ADMIN）：看全部，不限定；没设业务角色的只看公海；
+ *   - 管理员（admin，11-01 晚）：看全部，但带 只读 —— lib/team-scope.ts 加上限定 每条写都拒；
+ *   - 规则「按组织看客户」关着：照旧不限定，但没设业务角色的照样只看公海、管理员照样只读（QA #2：没设业务角色 = 没权限）；
  *   - 其余：**改** = 自己 + 实线下属（直属上级链往下整条）负责的客户 + 公海；
  *     **看** = 改的范围 + 虚线下属和他们的实线下属负责的客户——虚线上级只能看，不能改、不能转，
  *     那些客户下面也不能新建任何东西（跟进也不行，和团队版互看「能加跟进」不同）。
@@ -20,10 +22,11 @@ import { jwtVerify } from "jose";
 import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
 import { 看得到, type 限定 } from "@/lib/team-scope";
-import { 建组织, 实线下属, 虚线下属, 管理员类别of, 管理员类别们of, type 组织 } from "./org-core";
+import { 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
 import { 规则 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票 } from "./view-as";
+import { 能看全部, 只读角色, 只读角色话, 没设业务角色, 业务线放行 } from "./permissions";
 
 /** lib/auth.ts 的 COOKIE */
 const 会话票 = "crm_session";
@@ -37,11 +40,15 @@ const 只看公海: 限定 = { 我: ["__无"], 互看: false, 别人的: new Set
  * 算范围（纯函数，测试直接用）：null = 看全部。
  * 写 = 自己 + 实线下属；读 = 写 + 每个虚线下属和他的实线下属。读比写多才带 读，不然和普通限定一样
  */
-export function 组织范围of(org: 组织, 账号角色: string | null, 我: string): { 写: string[]; 读?: string[] } | null {
-  if (账号角色 === "ADMIN" || 管理员类别of(org, 我) === "总管理员") return null;
-  if (!org.成员.has(我)) return { 写: ["__无"] };
-  const 写 = new Set([我, ...实线下属(org, 我)]);
+export function 组织范围of(org: 组织, _账号角色: string | null, 我: string): { 写: string[]; 读?: string[] } | null {
+  // 11-01 只认业务角色（lib/enterprise/permissions.ts）：账号 ADMIN 不再看全部，总管理看业务角色；没设业务角色 = 只看公海
+  if (能看全部({ id: 我 }, org)) return null;
+  if (没设业务角色(org, 我)) return { 写: ["__无"] };
+  // 管理类成员按自己的业务线过滤下属（外贸只看外贸、内贸只看内贸；自己没设业务线不限，同 业务线放行）
+  const 线上 = (x: string) => 业务线放行(org, 我, { ownerId: x });
+  const 写 = new Set([我, ...[...实线下属(org, 我)].filter(线上)]);
   const 读 = new Set(写);
+  // 虚线下属（D-39 只读）是专门跨线配的，不按业务线滤
   for (const d of 虚线下属(org, 我)) for (const x of [d, ...实线下属(org, d)]) 读.add(x);
   return 读.size > 写.size ? { 写: [...写], 读: [...读] } : { 写: [...写] };
 }
@@ -147,8 +154,8 @@ async function 开着(db: PrismaClient, key: string): Promise<boolean> {
 }
 
 async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> {
-  if (!(await 开着(db, 规则.按组织看客户.key))) return null;
   if (!id) return 只看公海;
+  const 规则开着 = await 开着(db, 规则.按组织看客户.key);
 
   const [users, members, depts, 设的市场部门, 设的市场人] = await Promise.all([
     db.user.findMany({ select: { id: true, role: true, active: true } }),
@@ -160,6 +167,10 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   const 我 = users.find((u) => u.id === id);
   if (!我 || !我.active) return 只看公海;
   const org = 建组织(users, members, depts);
+  // 管理员（admin）：看全部、写全拒（规则开不开都一样）
+  if (只读角色({ id }, org)) return { 我: null, 互看: false, 别人的: new Set(), 只读: 只读角色话 };
+  // 规则关着：原来一律不限定；11-01 起没设业务角色的照样没权限（只看公海）
+  if (!规则开着) return 没设业务角色(org, id) ? 只看公海 : null;
   const 范围 = 组织范围of(org, 我.role, id);
   if (!范围) return null;
   const 类别 = 管理员类别们of(org, id);

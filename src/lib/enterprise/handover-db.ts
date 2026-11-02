@@ -16,6 +16,13 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 规则开着 } from "./rules";
+import { 权限组织 } from "./org";
+import { 是总管理 } from "./permissions";
+
+/** 撤回别人发起的交接、看全部还没确认的交接：总管理（不是企业版：账号管理员） */
+export async function 能撤回别人的交接(我: { id: string; role: string }): Promise<boolean> {
+  return 是总管理(我, await 权限组织());
+}
 
 export type 交接种类 = "离职" | "转让";
 export type 交接状态 = "待确认" | "已确认" | "已撤回" | "已拒收";
@@ -58,11 +65,12 @@ export function 离职交接中(userId: string, db: 库 = prisma) {
 
 /**
  * 把一行从待确认改成别的状态：带着 status 条件改，两个人同时点（接手人确认、发起人撤回）只成一个。改成了返回 true。
- * 谁能了结函数自己挡（2026-10-28，不靠入口）：确认、拒收只有接手人；撤回只有发起人或管理员（ADMIN）。
- * 不是这几位的一律改不成、返回 false（和「已经被别人了结」同一个说法）
+ * 谁能了结函数自己挡（2026-10-28，不靠入口）：确认、拒收只有接手人；撤回只有发起人或总管理（11-01 起只认业务角色）。
+ * 不是这几位的一律改不成、返回 false（和「已经被别人了结」同一个说法）。
+ * 撤回才读组织表；撤回不在事务里调（SQLite 只有一个连接，事务里再读会卡住）
  */
 export async function 了结(db: 库, id: string, 状态: Exclude<交接状态, "待确认">, 我: { id: string; role: string }): Promise<boolean> {
-  const 谁能 = 状态 === "已撤回" ? (我.role === "ADMIN" ? {} : { byUserId: 我.id }) : { toUserId: 我.id };
+  const 谁能 = 状态 === "已撤回" ? ((await 能撤回别人的交接(我)) ? {} : { byUserId: 我.id }) : { toUserId: 我.id };
   const r = await db.entHandover.updateMany({
     where: { id, status: 待确认, ...谁能 },
     data: { status: 状态, doneAt: new Date(), doneById: 我.id },

@@ -179,7 +179,7 @@ export default function LeadsView({
 
   async function 自动分(r: Row) {
     try {
-      const res = await 自动分配线索(r.id);
+      const res = await 自动分配线索(r.id, { 原负责人: r.ownerId });
       if (!res.ok) return void message.error(res.error);
       message.success(`「${r.name}」${分给了(res)}：${res.为什么}`, 5);
       router.refresh();
@@ -321,6 +321,10 @@ export default function LeadsView({
                   cancelText: "取消",
                   async onOk() {
                     const res = await deleteLeads([r.id]);
+                    if (!res.ok) {
+                      message.error(res.error);
+                      return;
+                    }
                     // 行可能已被别人删掉，如实说，别一律提示「已删除」
                     message.success(res.deleted ? "已删除" : "这条线索已经不在了（可能已删除）");
                     router.refresh();

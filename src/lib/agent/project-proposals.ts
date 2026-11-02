@@ -1,6 +1,6 @@
 /**
  * 首页 AI 的项目类建议卡（全页面 AI 写入，企业版只用项目时才给）：推进节点 / 定结局、记沟通（带下一步、可带卡点）、
- * 解决卡点、记 / 删回款、线索验证、改联系人、删客户。
+ * 卡点我已完成、记 / 删回款、线索验证、改联系人、删客户。
  *
  * 和 proposals.ts 同一个分寸：AI 只出卡，人确认后才走原有的 server action（权限、字段权限、团队范围、操作记录都在那里面）。
  * 这里只放纯校验：不合法当场拒（让模型重说），还没填的照样出卡、由 项目卡缺 拦住确认。生成时和落库时各跑一遍。
@@ -84,7 +84,9 @@ export type 项目卡 =
       /** 开了超时回收、项目在线索 / 商机：下一步时间必填 */
       要时间?: boolean;
     })
-  | (项目Base & { kind: "blocker_resolve"; solution: string; result: string })
+  /** 最后一个 = false：确认人不是最后一个完成的（还有别人没点完成），方案 / 结果不必填，result 记成自己的处理说明。
+      缺省 = 按「最后一个」算（必填），落库时 完成卡点 再按当时的人数兜一次 */
+  | (项目Base & { kind: "blocker_resolve"; solution: string; result: string; 最后一个?: boolean })
   | (项目Base & { kind: "payment_add"; paidAt: string; currency: string; amount: number })
   | (项目Base & { kind: "payment_delete" })
   | (项目Base & { kind: "lead_verify"; 步: 验证步 | ""; 判: string; 说明: string; 无效原因: string; 无效原因们?: string[]; 下一步时间: string; 计划内容: string })
@@ -188,7 +190,7 @@ export function buildProjectProposal(
     };
   }
 
-  if (kind === "blocker_resolve") return { ok: true, proposal: { ...共, kind, solution: str(args.solution, 描述上限), result: str(args.result, 描述上限) } };
+  if (kind === "blocker_resolve") return { ok: true, proposal: { ...共, kind, solution: str(args.solution, 描述上限), result: str(args.result, 描述上限), ...(args.最后一个 === false ? { 最后一个: false } : {}) } };
 
   if (kind === "payment_add") {
     const paidAt = 收日子(args.paidAt);
@@ -256,7 +258,8 @@ export function 项目卡缺(p: 项目卡): string[] {
     if (p.要时间 && !p.下一步时间) miss.push("下一步时间");
     if (p.要卡点 && (!p.卡点类型 || p.卡点类型 === "暂无卡点")) miss.push("卡点类型");
   }
-  if (p.kind === "blocker_resolve") {
+  // 方案 / 结果只有最后一个完成的人必填（11-01 定稿）；其余人点完成只留处理说明，可空
+  if (p.kind === "blocker_resolve" && p.最后一个 !== false) {
     if (!p.solution) miss.push("解决方案");
     if (!p.result) miss.push("解决结果");
   }
@@ -295,7 +298,7 @@ export function 描述项目卡(p: 项目卡): string {
     }
     case "project_followup":
       return `在项目「${名(p)}」上记一条${FOLLOW_TYPE_MAP[p.type]?.label ?? "沟通"}${p.要卡点 ? `，并发布${p.卡点类型 || "卡点"}` : ""}`;
-    case "blocker_resolve": return `把卡点「${名(p)}」标成已解决`;
+    case "blocker_resolve": return `卡点「${名(p)}」我已完成`;
     case "payment_add": return `给项目「${名(p)}」记一笔回款${p.amount ? ` ${p.currency} ${p.amount}` : ""}`;
     case "payment_delete": return `删除项目回款「${名(p)}」`;
     case "lead_verify": return `线索「${名(p)}」${p.步 || "验证"}：${p.判 || "…"}`;

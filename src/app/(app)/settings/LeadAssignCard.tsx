@@ -60,7 +60,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
 
   return (
     <Card id="lead-assign" title="线索分配" data-testid="org-lead-assign"
-      extra={!能改参与 && <span style={{ color: "var(--text-muted)" }}>参与只有老板、总管理员、销售管理能改</span>}>
+      extra={!能改参与 && <span style={{ color: "var(--text-muted)" }}>参与状态只有总管理员能改</span>}>
       {不限额 ? (
         <p className="muted" data-testid="org-lead-no-quota-note">
           现在是「不设配额」：自动分配在 线索 页点「自动分配」，挑参与的人里本月已分最少的，一样多先给最早进分配池的；配额不起作用，手动分也不查满额。

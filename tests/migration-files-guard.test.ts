@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 许可删除的表, 许可删除的文件 } from "./migration-allowed-drops";
+import { 许可删除的表, 许可删除的文件, 许可重建的文件, 许可重建的语句, 切句 } from "./migration-allowed-drops";
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -24,8 +24,8 @@ describe("迁移文件守卫（README 的规矩，跑之前就拦住）", () => 
   /** 唯一许可的删除：066 删外贸订单 / 供应商整套 7 张表（2026-10-29）。名单见 migration-allowed-drops.ts */
   const 许可删除 = new RegExp(`^DROP TABLE IF EXISTS "(${许可删除的表.join("|")})"$`, "i");
 
-  it("每一句都是 CREATE … IF NOT EXISTS 或 ALTER TABLE … ADD COLUMN（只增不改；只放过 066 那 7 张表的 DROP TABLE IF EXISTS）", () => {
-    const 违规 = 迁移.flatMap((f) => 语句(f).filter((s) => !/^CREATE (UNIQUE )?(TABLE|INDEX) IF NOT EXISTS/i.test(s) && !/^ALTER TABLE \S+ ADD COLUMN/i.test(s) && !(f === 许可删除的文件 && 许可删除.test(s))).map((s) => `${f}: ${s.slice(0, 60)}`));
+  it("每一句都是 CREATE … IF NOT EXISTS 或 ALTER TABLE … ADD COLUMN（只增不改；只放过 066 那 7 张表的 DROP TABLE IF EXISTS，107 的重建另一条钉死）", () => {
+    const 违规 = 迁移.filter((f) => f !== 许可重建的文件).flatMap((f) => 语句(f).filter((s) => !/^CREATE (UNIQUE )?(TABLE|INDEX) IF NOT EXISTS/i.test(s) && !/^ALTER TABLE \S+ ADD COLUMN/i.test(s) && !(f === 许可删除的文件 && 许可删除.test(s))).map((s) => `${f}: ${s.slice(0, 60)}`));
     expect(违规).toEqual([]);
   });
 
@@ -34,6 +34,20 @@ describe("迁移文件守卫（README 的规矩，跑之前就拦住）", () => 
     expect(删).toEqual(许可删除的表);
     expect(删.indexOf("TradeOrder")).toBeGreaterThan(Math.max(删.indexOf("FollowUpOrder"), 删.indexOf("TradeOrderNode"), 删.indexOf("TradeOrderDoc"), 删.indexOf("TradeOrderPurchase")));
     expect(删.indexOf("Supplier")).toBeGreaterThan(Math.max(删.indexOf("SupplierQuote"), 删.indexOf("TradeOrderPurchase")));
+  });
+
+  it("107 只许是那一套重建：记号索引 → 关外键 → 事务里建新表 / 拷 / 删旧 / 改名 / 补索引 → 开外键，一句不多一句不少", () => {
+    expect(迁移).toContain(许可重建的文件);
+    const 句 = 切句(fs.readFileSync(path.join(ROOT, "migrations", 许可重建的文件), "utf8"));
+    expect(句.length).toBe(许可重建的语句.length);
+    句.forEach((s, i) => expect(s, `107 第 ${i + 1} 句不对`).toMatch(许可重建的语句[i]));
+    // 拷数据两边列名一致、一列不少（标题列老库没有，不拷，新表默认 ''）
+    const m = 句[4].match(/^INSERT INTO "EntBlocker_107" \(([^)]*)\) SELECT (.*) FROM "EntBlocker"$/);
+    expect(m).not.toBeNull();
+    expect(m![1]).toBe(m![2]);
+    const 拷的列 = m![1].split(",").map((c) => c.trim().replace(/"/g, ""));
+    const 新表的列 = [...句[3].matchAll(/"(\w+)" (TEXT|INTEGER|DATETIME)/g)].map((x) => x[1]);
+    expect(新表的列.filter((c) => c !== "title")).toEqual(拷的列);
   });
 
   it("带 ADD COLUMN 的文件里不夹建表（第二遍那句一抛，同文件后面的全被跳过）", () => {

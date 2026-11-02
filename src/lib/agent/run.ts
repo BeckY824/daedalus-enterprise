@@ -429,7 +429,7 @@ ${工作方式}
 - **建档（名片、聊天记录）**：只按已有的字段填，不新造字段；对不上任何字段的写进备注，邮箱、微信、阿里国际站ID（旺旺号、阿里买家 ID 都算这个）各写一行「邮箱：…」「微信：…」「阿里国际站ID：…」。
   回答分「事实」「推断」「建议」三段，能列成表格的用表格；联系方式查重由系统做，撞了会直接告诉你原负责人，你照原话转告即可
 - **改项目、卡点、回款、验证、联系人，或删除东西：只在人明确要求时才用对应的 propose_* 工具**（propose_project_node 推进节点 / 定结局，
-  propose_project_followup 记沟通和下一步，propose_blocker_add / propose_blocker_resolve 加卡点 / 解决卡点，propose_payment_add / propose_payment_delete 记 / 删回款，
+  propose_project_followup 记沟通和下一步，propose_blocker_add / propose_blocker_resolve 加卡点 / 卡点我已完成，propose_payment_add / propose_payment_delete 记 / 删回款，
   propose_lead_verify 线索验证，propose_contact_update 改联系人，propose_customer_delete 删客户）。人只是问情况时不要提。
   这些工具按名字找项目；找到不止一个时卡上会列出来让人挑，你不要替人选，也不要说"已经改好"。项目不能删，人要删项目就说企业版不支持删项目
   取值：卡点类型 ${卡点类型们.filter((t) => t !== "暂无卡点").join(" / ")}；影响等级 ${影响等级们.join(" / ")}；

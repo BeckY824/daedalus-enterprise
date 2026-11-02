@@ -49,10 +49,12 @@ beforeEach(async () => {
   销售 = await 建("sales", "SALES");
   接手 = await 建("taker", "SALES");
   await prisma.entMember.createMany({
+    // 11-01 权限只认业务角色：老板要有总管理才能办离职，业务员要有销售
     data: [
+      { userId: 老板.id, bizRole: "director" },
       { userId: 组长.id, bizRole: "sales_mgr" },
-      { userId: 销售.id, managerId: 组长.id },
-      { userId: 接手.id, managerId: 组长.id },
+      { userId: 销售.id, managerId: 组长.id, bizRole: "sales" },
+      { userId: 接手.id, managerId: 组长.id, bizRole: "sales" },
     ],
   });
   当(老板);
@@ -115,7 +117,8 @@ describe("离职交接中", () => {
     const h = await 一笔();
 
     当(组长);
-    expect(await 撤回交接(h.id)).toEqual({ ok: false, error: "只有发起人或管理员能撤回" });
+    // 11-01 权限只认业务角色：报错说「总管理」，不再说「管理员」
+    expect(await 撤回交接(h.id)).toEqual({ ok: false, error: "只有发起人或总管理能撤回" });
     当(接手);
     expect(await 撤回交接(h.id)).toMatchObject({ ok: false });
     当(老板);

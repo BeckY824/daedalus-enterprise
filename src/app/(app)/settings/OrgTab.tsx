@@ -13,6 +13,7 @@ import { 市场部门们 } from "@/lib/enterprise/market";
 import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, type 成员改动 } from "./org-actions";
 import { 设不设配额, type 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
+import LineDeptCard from "./LineDeptCard";
 import OrgSyncCard from "./OrgSyncCard";
 
 export type 组织架构 = {
@@ -47,13 +48,13 @@ const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
 /**
  * 角色下拉每项下面那行「能做什么」（10-30）：只写代码里按角色写死的那几样——总管理员看全部（lib/enterprise/visibility.ts）、
- * 改组织架构（org-actions）、分配线索 / 录渠道投入 / 改谁参与自动分配（lead-assign、channel-stats）、复核和终判无效线索（lead-verify）。
+ * 改组织架构（org-actions）、分配线索 / 录渠道投入 / 改销售的参与状态（只有总管理员）（lead-assign、channel-stats）、复核和终判无效线索（lead-verify）。
  * 字段权限、分配方式谁能用那两张表按角色配，不写在这里
  */
 const 角色能做: Record<业务角色, string> = {
-  director: "看全部客户；改组织架构；分配线索、录渠道投入；终判无效线索",
-  admin: "看全部客户；改组织架构；分配线索、录渠道投入；终判无效线索",
-  sales_mgr: "能分到线索；改谁参与自动分配",
+  director: "看全部客户；改组织架构；分配线索、改销售的参与状态、录渠道投入；终判无效线索",
+  admin: "看全部客户；改组织架构；分配线索、改销售的参与状态、录渠道投入；终判无效线索",
+  sales_mgr: "能分到线索；手动指派线索",
   sales: "能分到线索",
   marketing_mgr: "分配线索、录渠道投入；复核被判无效的线索",
   channel_ops: "没有额外的管理权限",
@@ -65,7 +66,7 @@ const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场
 /**
  * 设置 → 组织架构（企业版，2026-10-24）：部门树、每个人的部门 / 角色 / 业务线 / 直属上级 / 虚线上级。
  * 直属上级不填 = 按部门往上找销售管理；虚线上级只能看他的客户，不能改、不能转。
- * 老板和总管理员能改，其他人只看。
+ * 只有总管理（director）能改（11-01），管理员和其他人只看。
  */
 export default function OrgTab({ value }: { value: 组织架构 }) {
   const router = useRouter();
@@ -208,7 +209,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 市场部门现在 = 市场部门们(new Map(value.部门.map((d) => [d.id, d])), value.市场部门 ?? null);
   const 市场成员 = value.成员.filter((m) => (m.deptId && 市场部门现在.has(m.deptId)) || 单设.includes(m.id)).map((m) => m.name);
   const 人选项 = value.成员.map((m) => ({ value: m.id, label: m.name }));
-  const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>只有老板和总管理员能改</span>;
+  const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>只有总管理能改</span>;
 
   return (
     // minmax(0, 1fr)：不让 nowrap 的表格把整页撑宽，表格在各自卡片里横向滚动
@@ -245,6 +246,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       </Card>
 
       {value.线索分配 && <LeadAssignCard rows={value.线索分配} 不限额={不设配额} />}
+      {value.线索分配 && <LineDeptCard 部门={value.部门} 部门选项={部门选项} 成员={value.成员} />}
 
       {能改 && <OrgSyncCard />}
 

@@ -13,6 +13,7 @@ import { parseScheduleDate } from "@/lib/schedule-date";
 import { recordAudit } from "@/lib/audit";
 import { 验号码, 查重提示, type 号码类型 } from "./contact-format";
 import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞 } from "./contact-dedupe";
+import { notify } from "./notify";
 
 export type 认出的号 = { 类型: 号码类型; 值: string; 键: string };
 
@@ -76,4 +77,5 @@ async function 提醒原负责人(客户id: string, 客户名: string, 原负责
   const 时间 = parseScheduleDate(new Date().toISOString())!;
   const t = await prisma.task.create({ data: { title, dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: 客户id, ownerId: 原负责人 } });
   await recordAudit({ user: 我, action: "create", entity: "Task", entityId: t.id, summary: `AI 建档撞号，给原负责人加了待办「${title}」` });
+  if (原负责人 !== 我.id) await notify([原负责人], { kind: "撞号", title, link: `/customers/${客户id}`, key: `ai-dup:${t.id}` });
 }

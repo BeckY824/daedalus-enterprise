@@ -22,7 +22,7 @@ vi.mock("@/app/(app)/projects/actions", async (原) => {
 });
 vi.mock("@/app/(app)/projects/blocker-actions", async (原) => {
   const m = await 原<typeof import("@/app/(app)/projects/blocker-actions")>();
-  return { ...m, 解决卡点Action: vi.fn(m.解决卡点Action) };
+  return { ...m, 完成卡点Action: vi.fn(m.完成卡点Action) };
 });
 vi.mock("@/app/(app)/projects/payment-actions", async (原) => {
   const m = await 原<typeof import("@/app/(app)/projects/payment-actions")>();
@@ -90,7 +90,8 @@ beforeEach(async () => {
   老板 = await 造人("boss", "老板", "ADMIN");
   乙 = await 造人("yi", "乙", "SALES");
   丙 = await 造人("bing", "丙", "SALES");
-  await prisma.entMember.createMany({ data: [{ userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
+  // 11-01 权限只认业务角色：老板也要有总管理（删除只给总管理）
+  await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
   await setSetting("business", { projectMode: true });
   await setSetting(规则.按组织看客户.key, true);
   客户id = (await prisma.customer.create({ data: { name: "云帆科技", phone: "13900000001", salesOwnerId: 乙.id } })).id;
@@ -183,7 +184,10 @@ describe("解决卡点", () => {
   async function 一个处理中的卡点(handler: string) {
     const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
     return prisma.entBlocker.create({
-      data: { code: "BLK20261101001", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "价格", description: "报价高", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中", assigneeId: handler },
+      data: {
+        code: "BLK-20261101-001", title: "报价高", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "价格", description: "报价高", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",
+        claims: { create: { userId: handler } },
+      },
     });
   }
 
@@ -192,7 +196,7 @@ describe("解决卡点", () => {
     expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["解决方案", "解决结果"]);
   });
 
-  it("处理人确认：转给 解决卡点Action，变已解决；不是处理人的确认一行不写", async () => {
+  it("唯一认领人确认：转给 完成卡点Action（我已完成），变已解决；不是认领人的确认一行不写", async () => {
     const k = await 一个处理中的卡点(乙.id);
     const { 卡 } = await 出("propose_blocker_resolve", { project: "云帆一期", reason: "人说解决了" });
     expect(卡).toMatchObject({ kind: "blocker_resolve", targetId: k.id });
@@ -204,8 +208,65 @@ describe("解决卡点", () => {
 
     const r = await 确认(填好, 乙);
     expect(r).toMatchObject({ ok: true });
-    expect(卡点动作.解决卡点Action).toHaveBeenCalledWith(k.id, { solution: "降价 5%", result: "客户接受" });
+    expect(卡点动作.完成卡点Action).toHaveBeenCalledWith(k.id, { note: "客户接受", solution: "降价 5%", result: "客户接受" });
     expect((await prisma.entBlocker.findUniqueOrThrow({ where: { id: k.id } })).status).toBe("已解决");
+  });
+});
+
+describe("解决卡点：方案 / 结果只有最后一个完成的人必填（11-01 定稿）", () => {
+  it("收卡：最后一个 = false 不缺方案 / 结果；缺省按最后一个算", () => {
+    const 不是 = 收("blocker_resolve", { targetId: "b1", targetName: "BLK", 最后一个: false });
+    expect((不是 as { proposal: Proposal }).proposal).toMatchObject({ 最后一个: false });
+    expect(missingFields((不是 as { proposal: Proposal }).proposal)).toEqual([]);
+    // 模型乱填 true / 字符串：都不当「不是最后一个」
+    for (const v of [true, "false", undefined]) {
+      const r = 收("blocker_resolve", { targetId: "b1", targetName: "BLK", 最后一个: v });
+      expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["解决方案", "解决结果"]);
+    }
+  });
+
+  it("两人认领：别人没完成时我的卡不要方案、点完成只记说明；别人完成了我的卡就要方案；旧卡被抢先时落库再挡一次", async () => {
+    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+    const k = await prisma.entBlocker.create({
+      data: {
+        code: "BLK-20261101-002", title: "交期紧", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "其他", description: "交期紧", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",
+        claims: { create: [{ userId: 乙.id }, { userId: 丙.id }] },
+      },
+    });
+    const { 卡: 早 } = await 出("propose_blocker_resolve", { project: "云帆一期", result: "催了工厂", reason: "人说他那份做完了" });
+    expect(早).toMatchObject({ kind: "blocker_resolve", targetId: k.id, 最后一个: false });
+    expect(missingFields(早!)).toEqual([]);
+
+    // 另一位先点了完成：再出卡就是最后一个，方案 / 结果必填
+    await prisma.entBlockerClaim.updateMany({ where: { blockerId: k.id, userId: 丙.id }, data: { done: true } });
+    const { 卡: 晚 } = await 出("propose_blocker_resolve", { project: "云帆一期", reason: "人说解决了" });
+    expect(晚).toMatchObject({ targetId: k.id });
+    expect((晚 as { 最后一个?: boolean }).最后一个).not.toBe(false);
+    expect(missingFields(晚!)).toEqual(["解决方案", "解决结果"]);
+
+    // 早出的那张卡（当时不是最后一个）现在点确认：完成卡点按当时的人数再挡，不会空着方案就解决
+    const 拒 = await 确认(早!, 乙);
+    expect(拒.ok).toBe(false);
+    expect((await prisma.entBlocker.findUniqueOrThrow({ where: { id: k.id } })).status).toBe("处理中");
+    expect(await prisma.entBlockerClaim.findFirstOrThrow({ where: { blockerId: k.id, userId: 乙.id } })).toMatchObject({ done: false });
+
+    expect(await 确认({ ...晚!, solution: "换了备选工厂", result: "按期交付" } as 项目卡, 乙)).toMatchObject({ ok: true });
+    expect(await prisma.entBlocker.findUniqueOrThrow({ where: { id: k.id } })).toMatchObject({ status: "已解决", solution: "换了备选工厂", result: "按期交付" });
+  });
+
+  it("不是最后一个：点完成只写自己的处理说明，卡点还在处理中", async () => {
+    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+    const k = await prisma.entBlocker.create({
+      data: {
+        code: "BLK-20261101-003", title: "样品没到", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "轻度卡点", impact: "短期不影响", obstacle: "其他", description: "样品没到", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",
+        claims: { create: [{ userId: 乙.id }, { userId: 丙.id }] },
+      },
+    });
+    const { 卡 } = await 出("propose_blocker_resolve", { project: "云帆一期", reason: "人说他那份做完了" });
+    expect(卡).toMatchObject({ targetId: k.id, 最后一个: false });
+    expect(await 确认({ ...卡!, result: "已寄出" } as 项目卡, 乙)).toMatchObject({ ok: true });
+    expect(await prisma.entBlockerClaim.findFirstOrThrow({ where: { blockerId: k.id, userId: 乙.id } })).toMatchObject({ done: true, note: "已寄出" });
+    expect(await prisma.entBlocker.findUniqueOrThrow({ where: { id: k.id } })).toMatchObject({ status: "处理中", solution: null, result: null });
   });
 });
 
@@ -305,14 +366,18 @@ describe("删客户", () => {
     expect(不可撤销("customer_delete")).toBe(true);
   });
 
-  it("负责人确认：转给 deleteCustomers，进回收站；看不到的同事确认一行不删", async () => {
+  it("总管理确认：转给 deleteCustomers，进回收站；负责人、看不到的同事确认一行不删", async () => {
     const { 卡 } = await 出("propose_customer_delete", { customer: "云帆科技", reason: "人说是重复的" });
 
     expect((await 确认(卡!, 丙)).ok).toBe(false);
     expect(客户动作.deleteCustomers).not.toHaveBeenCalled();
     expect(await prisma.customer.count()).toBe(1);
 
-    const r = await 确认(卡!, 乙);
+    // 11-01 权限只认业务角色：删除只给总管理，负责人本人也删不了
+    expect(await 确认(卡!, 乙)).toMatchObject({ ok: false, error: "只有总管理能删除" });
+    expect(await prisma.customer.count()).toBe(1);
+
+    const r = await 确认(卡!, 老板);
     expect(r).toMatchObject({ ok: true });
     expect(客户动作.deleteCustomers).toHaveBeenCalledWith([客户id]);
     expect(await prisma.customer.count()).toBe(0);

@@ -8,7 +8,8 @@ import { 转交商机 } from "@/lib/opportunity-activity";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 虚线只读挡 } from "@/lib/team-scope";
-import { 管全队客户 } from "@/lib/constants";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能管公海 } from "@/lib/enterprise/permissions";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
@@ -93,10 +94,11 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   if (虚线) return { ok: false, error: 虚线 };
   const 这些 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
   const 已在 = 这些.filter((c) => c.pool);
-  const 能放 = 这些.filter((c) => !c.pool && (管全队客户(me.role) || c.salesOwnerId === me.id));
+  const 管 = 能管公海(me, await 权限组织());
+  const 能放 = 这些.filter((c) => !c.pool && (管 || c.salesOwnerId === me.id));
   const 没权限 = 这些.length - 已在.length - 能放.length;
   if (!能放.length) {
-    return 没权限 ? { ok: false, error: `只有负责人或管理员能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
+    return 没权限 ? { ok: false, error: `只有负责人或总管理、销售管理能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
   }
   // 能放了才问原因：放不了的那句（虚线、没权限、已在公海）照旧先说
   const 选 = await 选的原因("recycle", 原因);
@@ -190,7 +192,7 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
 export async function 分配公海(ids: string[], userId: string, 带待办?: boolean): Promise<公海结果> {
   const me = await requireUser();
   const b = await getBusiness();
-  if (!管全队客户(me.role)) return { ok: false, error: `只有老板和业务主管能把公海里的${b.customer}分给同事` };
+  if (!能管公海(me, await 权限组织())) return { ok: false, error: `只有总管理和销售管理能把公海里的${b.customer}分给同事` };
   const 给 = await prisma.user.findFirst({ where: { id: String(userId ?? ""), active: true }, select: { id: true, name: true } });
   if (!给) return { ok: false, error: "这位同事不在了或已停用，换一位" };
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
@@ -243,7 +245,7 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   const me = await requireUser();
   const ids = 原.map((x) => x.id);
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
-  if (动作 === "分配" && (!管全队客户(me.role) || !给谁)) return { ok: false, error: "只有老板和业务主管能撤销分配" };
+  if (动作 === "分配" && (!能管公海(me, await 权限组织()) || !给谁)) return { ok: false, error: "只有总管理和销售管理能撤销分配" };
   /** 这几位现在归谁：领取 = 我，分配 = 分到的那位 */
   const 现 = 动作 === "分配" ? 给谁! : me.id;
   if (动作 === "放进") {

@@ -8,7 +8,7 @@ const plugin: Plugin = { name: "stub-actions", setup(b) {
   b.onResolve({ filter: /\/projects\/actions$|\/ent-dict-actions$|\/blocker-actions$|\/commission-actions$|^next\/navigation$/ }, (a) => ({ path: a.path, namespace: "fixture" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ loader: "js", contents: `
     const 空=async()=>({ok:true});
-    export const 加组员角色=空, 改组员角色=空, 加项目异常类别=空, 改项目异常类别=空, 改组织规则=空, 预览超时回收=async()=>({ok:true,项目:[]}), 存卡点默认Action=空, 改提成比例=空, 改按人提成比例=空;
+    export const 加组员角色=空, 改组员角色=空, 加项目异常类别=空, 改项目异常类别=空, 改组织规则=空, 预览超时回收=async()=>({ok:true,项目:[]}), 存卡点默认Action=空, 存卡点角色开关Action=空, 新增原因Action=空, 改原因名Action=空, 改原因状态Action=空, 删原因Action=空, 合并原因Action=空, 改提成比例=空, 改按人提成比例=空;
     export const 加企业选项=async(kind,name)=>{window.__opts[kind].push({id:'n'+name,name,active:true,用的人:0});window.__rerender();return{ok:true}};
     export const 改企业选项=async(id,patch)=>{for(const xs of Object.values(window.__opts))for(const x of xs)if(x.id===id)Object.assign(x,patch);window.__rerender();return{ok:true}};
     export const 存分配谁能用=async(v)=>{window.__assignUse=v;return{ok:true}};
@@ -43,7 +43,9 @@ it("切换种类、加选项、停用；375 宽不横向撑出", async () => {
   const 交的 = await page.evaluate(() => (window as unknown as { __assignUse: Record<string, string[]> }).__assignUse);
   expect(交的["dict-assign-2"]).toEqual(expect.arrayContaining(["marketing_mgr", "channel_ops", "project_ops", "sales"]));
   expect(交的["dict-assign-2"]).toHaveLength(4);
-  expect(交的["dict-assign-3"]).toEqual(["marketing_mgr"]);
+  // 暂不分配：11-01 起默认谁都能用（市场 + 销售 + 其他）
+  expect(交的["dict-assign-3"]).toEqual(expect.arrayContaining(["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"]));
+  expect(交的["dict-assign-3"]).toHaveLength(5);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await page.getByText("回收原因", { exact: true }).click();
   await page.getByText("企业选项 · 回收原因").waitFor();

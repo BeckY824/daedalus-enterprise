@@ -53,13 +53,15 @@ beforeAll(async () => {
   await 人(老板, "老板", "ADMIN");
   for (const [id, n] of [[总管, "总管"], [市场, "市场"], [经理, "经理"], [小王, "小王"], [小张, "小张"], [外人, "外人"]]) await 人(id, n);
   await raw.entMember.createMany({
+    // 11-01 权限只认业务角色：老板（账号 ADMIN）也要有总管理，业务员要有销售，不然只看公海
     data: [
+      { userId: 老板, bizRole: "director" },
       { userId: 总管, bizRole: "director" },
       { userId: 市场, bizRole: "marketing_mgr" },
       { userId: 经理, bizRole: "sales_mgr" },
-      { userId: 小王, managerId: 经理 },
-      { userId: 小张, dottedManagerId: 经理 },
-      { userId: 外人 },
+      { userId: 小王, managerId: 经理, bizRole: "sales" },
+      { userId: 小张, dottedManagerId: 经理, bizRole: "sales" },
+      { userId: 外人, bizRole: "sales" },
     ],
   });
   // 每位负责人有一种只有自己用的来源，再有几种大家共用的；一部分线索挂在客户上（客户的负责人错开一位、

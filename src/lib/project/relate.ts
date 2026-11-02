@@ -27,6 +27,7 @@ import { 能管项目, 露客户, 看得到的客户 } from "./db";
 import { 读产品需求 as 读多选, 存产品需求 as 存多选 } from "./profile-rules";
 import { 客户显名, 引用联系人, 短号, 概览名称 } from "./relate-names";
 import type { 阶段字典 } from "./stage-dict";
+import { 权限组织 } from "@/lib/enterprise/org";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -39,7 +40,7 @@ const 项目不在 = { ok: false as const, error: "这个项目已经不在了�
 const 客户不在 = { ok: false as const, error: "这位客户已经不在了（或你看不到），刷新看看" };
 const 人不在 = { ok: false as const, error: "这位联系人已经不在了（或你看不到），刷新看看" };
 const 已关联 = { ok: false as const, error: "已经关联过了，刷新看看" };
-const 管不了 = (p: { pooledAt: Date | null }) => ({ ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人、老板或主管能改" });
+const 管不了 = (p: { pooledAt: Date | null }) => ({ ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改" });
 
 /** 多选：要是字符串数组；新选的得在启用着的里，已经存着的（停用了也算）不再对字典 */
 async function 认多选(kind: 字典种类, 名: string, v: unknown, 已有: readonly string[]): Promise<{ ok: true; 值: string | null } | { ok: false; error: string }> {
@@ -80,6 +81,7 @@ async function 看得到的人(contactId: unknown) {
 
 /** 加一家关联客户（可以顺手带上身份）。主客户不用加：它总在第一行，直接勾身份 */
 export async function 加关联客户(me: 谁, projectId: string, customerId: string, roles?: unknown): Promise<结果 & { 名?: string }> {
+  const org = await 权限组织();
   if (!企业版()) return 关着;
   const p = await 读项目(projectId);
   if (!p) return 项目不在;
@@ -92,7 +94,7 @@ export async function 加关联客户(me: 谁, projectId: string, customerId: st
   return 查完再写(async (tx) => {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { ownerId: true, pooledAt: true, customerId: true } });
     if (!现) return 项目不在;
-    if (!能管项目(me, 现)) return 管不了(现);
+    if (!能管项目(me, 现, org)) return 管不了(现);
     if (现.customerId === customerId) return { ok: false as const, error: "这就是项目的主客户，直接在它那一行勾身份" };
     if (await tx.projectCustomer.findFirst({ where: { projectId: p.id, customerId }, select: { id: true } })) return 已关联;
     const 已有 = await tx.projectCustomer.count({ where: { projectId: p.id, customerId: { not: 现.customerId } } });
@@ -109,6 +111,7 @@ export async function 加关联客户(me: 谁, projectId: string, customerId: st
 
 /** 改一家的项目身份：主客户第一次勾时 upsert 一行；别的得已经关联着 */
 export async function 改客户身份(me: 谁, projectId: string, customerId: string, roles: unknown): Promise<结果 & { 名?: string; 变了?: boolean }> {
+  const org = await 权限组织();
   if (!企业版()) return 关着;
   const p = await 读项目(projectId);
   if (!p) return 项目不在;
@@ -124,7 +127,7 @@ export async function 改客户身份(me: 谁, projectId: string, customerId: st
   return 查完再写(async (tx) => {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { ownerId: true, pooledAt: true, customerId: true } });
     if (!现) return 项目不在;
-    if (!能管项目(me, 现)) return 管不了(现);
+    if (!能管项目(me, 现, org)) return 管不了(现);
     const 有 = await tx.projectCustomer.findFirst({ where: { projectId: p.id, customerId }, select: { id: true } });
     if (有) await tx.projectCustomer.update({ where: { id: 有.id }, data: { roles: 身份.值 } });
     else if (customerId === 现.customerId) await tx.projectCustomer.create({ data: { projectId: p.id, customerId, roles: 身份.值 } });
@@ -135,6 +138,7 @@ export async function 改客户身份(me: 谁, projectId: string, customerId: st
 
 /** 解除一家关联客户。主客户解不了（在「编辑项目」里换主客户） */
 export async function 解除关联客户(me: 谁, projectId: string, customerId: string): Promise<结果 & { 名?: string }> {
+  const org = await 权限组织();
   if (!企业版()) return 关着;
   const p = await 读项目(projectId);
   if (!p) return 项目不在;
@@ -144,7 +148,7 @@ export async function 解除关联客户(me: 谁, projectId: string, customerId:
   return 查完再写(async (tx) => {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { ownerId: true, pooledAt: true, customerId: true } });
     if (!现) return 项目不在;
-    if (!能管项目(me, 现)) return 管不了(现);
+    if (!能管项目(me, 现, org)) return 管不了(现);
     if (现.customerId === customerId) return { ok: false as const, error: "主客户解除不了，要换在「编辑项目」里换" };
     const n = await tx.projectCustomer.deleteMany({ where: { projectId: p.id, customerId } });
     if (!n.count) return { ok: false as const, error: "这家已经不在关联里了，刷新看看" };
@@ -156,6 +160,7 @@ export async function 解除关联客户(me: 谁, projectId: string, customerId:
 
 /** 加一位关联联系人（可以顺手带上角色、立场）。主联系人不用加：它总在第一行 */
 export async function 加关联联系人(me: 谁, projectId: string, contactId: string, 改: { roles?: unknown; stance?: unknown } = {}): Promise<结果 & { 名?: string }> {
+  const org = await 权限组织();
   if (!企业版()) return 关着;
   const p = await 读项目(projectId);
   if (!p) return 项目不在;
@@ -170,7 +175,7 @@ export async function 加关联联系人(me: 谁, projectId: string, contactId: 
   return 查完再写(async (tx) => {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { ownerId: true, pooledAt: true, contactId: true } });
     if (!现) return 项目不在;
-    if (!能管项目(me, 现)) return 管不了(现);
+    if (!能管项目(me, 现, org)) return 管不了(现);
     if (现.contactId === contactId) return { ok: false as const, error: "这就是项目的主联系人，直接在它那一行改角色、立场" };
     if (await tx.projectContact.findFirst({ where: { projectId: p.id, contactId }, select: { id: true } })) return 已关联;
     const 已有 = await tx.projectContact.count({ where: { projectId: p.id, ...(现.contactId ? { contactId: { not: 现.contactId } } : {}) } });
@@ -187,6 +192,7 @@ export async function 加关联联系人(me: 谁, projectId: string, contactId: 
 
 /** 改一位的项目角色 / 立场（没传的不动）：主联系人第一次改时 upsert 一行；别的得已经关联着 */
 export async function 改联系人角色立场(me: 谁, projectId: string, contactId: string, 改: { roles?: unknown; stance?: unknown }): Promise<结果 & { 名?: string; 变了?: boolean }> {
+  const org = await 权限组织();
   if (!企业版()) return 关着;
   if (!改 || typeof 改 !== "object") return { ok: false, error: "要改什么？" };
   const p = await 读项目(projectId);
@@ -211,7 +217,7 @@ export async function 改联系人角色立场(me: 谁, projectId: string, conta
   return 查完再写(async (tx) => {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { ownerId: true, pooledAt: true, contactId: true } });
     if (!现) return 项目不在;
-    if (!能管项目(me, 现)) return 管不了(现);
+    if (!能管项目(me, 现, org)) return 管不了(现);
     const 有 = await tx.projectContact.findFirst({ where: { projectId: p.id, contactId }, select: { id: true } });
     if (有) await tx.projectContact.update({ where: { id: 有.id }, data: 新 });
     else if (contactId === 现.contactId) await tx.projectContact.create({ data: { projectId: p.id, contactId, ...新 } });
@@ -222,6 +228,7 @@ export async function 改联系人角色立场(me: 谁, projectId: string, conta
 
 /** 解除一位关联联系人。主联系人解不了（在「编辑项目」里换） */
 export async function 解除关联联系人(me: 谁, projectId: string, contactId: string): Promise<结果 & { 名?: string }> {
+  const org = await 权限组织();
   if (!企业版()) return 关着;
   const p = await 读项目(projectId);
   if (!p) return 项目不在;
@@ -231,7 +238,7 @@ export async function 解除关联联系人(me: 谁, projectId: string, contactI
   return 查完再写(async (tx) => {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { ownerId: true, pooledAt: true, contactId: true } });
     if (!现) return 项目不在;
-    if (!能管项目(me, 现)) return 管不了(现);
+    if (!能管项目(me, 现, org)) return 管不了(现);
     if (现.contactId === contactId) return { ok: false as const, error: "主联系人解除不了，要换在「编辑项目」里换" };
     const n = await tx.projectContact.deleteMany({ where: { projectId: p.id, contactId } });
     if (!n.count) return { ok: false as const, error: "这位已经不在关联里了，刷新看看" };

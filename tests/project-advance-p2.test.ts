@@ -1,6 +1,6 @@
 /**
  * 企业版推进 / 终止（P2：M-权限-07、M-节点-04/05/06/07/09、A-12）
- *   - 需求状态补全期开关：开着只有经理、总管理员能往前推，成员拦下；往后退、记沟通照旧；自动推进停；关着照旧
+ *   - 需求状态补全期开关：开着只有自己当负责人的销售管理能往前推，成员拦下（11-01：总管理、上级改不了进程）；往后退、记沟通照旧；自动推进停；关着照旧
  *   - 终止进程：线索→线索流失、商机→丢单、订单→异常状态，留节点变更；有结局了不再终止；不是企业版没有
  *   - 线索最后一个节点完成：进商机第一个节点，项目上的字段跟着走
  *   - 占位值（暂无、- 等）不算填了；销售本人填齐了能手动完成节点
@@ -11,7 +11,7 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 改节点, 改项目, 记项目沟通, 终止进程, 异常类别字典, 补全期提示 } from "@/lib/project/db";
+import { 改节点, 改项目, 记项目沟通, 终止进程, 异常类别字典, 补全期提示, 只有负责人改进程 } from "@/lib/project/db";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 是占位值, 还差, type 必填数据 } from "@/lib/project/required";
 import { 终止结局 } from "@/lib/project/nodes";
@@ -68,26 +68,34 @@ describe("企业版推进 / 终止（P2）", () => {
   describe("需求状态补全期（M-权限-07）", () => {
     const 往前 = { phase: "线索", node: "线索验证" };
 
-    it("关着（默认）：成员、经理、总管理员都能往前推", async () => {
-      for (const who of [成员, 经理, 总]) {
-        const p = await 项目();
+    it("关着（默认）：负责人（成员、自己当负责人的经理）都能往前推；总管理员推不了", async () => {
+      // 11-01 权限只认业务角色：进程只有负责人能改，总管理只能看、转让；经理推的是自己负责的项目
+      for (const who of [成员, 经理]) {
+        const p = await 项目({ ownerId: who.id });
         expect(await 改节点(who, p.id, 往前)).toMatchObject({ ok: true, 变了: true });
         expect(await 现(p.id)).toMatchObject({ node: "线索验证" });
       }
+      const p = await 项目();
+      expect(await 改节点(总, p.id, 往前)).toEqual({ ok: false, error: 只有负责人改进程 });
+      expect((await 现(p.id)).node).toBe("潜客培育");
     });
 
-    it("开着：成员往前推拦下、节点不动；经理、总管理员照样能推", async () => {
+    it("开着：成员往前推拦下、节点不动；自己当负责人的经理照样能推；总管理员、上级、没业务角色的推不了", async () => {
       await 设(规则({ 需求补全期: true }));
       const p = await 项目();
       expect(await 改节点(成员, p.id, 往前)).toEqual({ ok: false, error: 补全期提示 });
       expect((await 现(p.id)).node).toBe("潜客培育");
       expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(0);
 
+      // 11-01 权限只认业务角色：经理是成员的上级也改不了下属的进程；总管理、没 EntMember 的老板一样推不了
+      for (const who of [经理, 总, 老板]) expect(await 改节点(who, p.id, 往前)).toEqual({ ok: false, error: 只有负责人改进程 });
+      // 转给经理当负责人后，经理（销售管理）补全期照样能推
+      await prisma.project.update({ where: { id: p.id }, data: { ownerId: 经理.id } });
       expect(await 改节点(经理, p.id, 往前)).toMatchObject({ ok: true });
       await 记有效沟通(p.id);
-      expect(await 改节点(总, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
+      expect(await 改节点(经理, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
       expect(await 现(p.id)).toMatchObject({ node: "线索推进" });
-      expect(await 改节点(老板, p.id, { phase: "商机", node: "痛点挖掘" })).toMatchObject({ ok: true });
+      expect(await 改节点(经理, p.id, { phase: "商机", node: "痛点挖掘" })).toMatchObject({ ok: true });
     });
 
     it("开着：往后退、终止、记沟通照旧", async () => {
@@ -137,10 +145,12 @@ describe("企业版推进 / 终止（P2）", () => {
     });
 
     it("商机 → 丢单", async () => {
+      // 11-01 权限只认业务角色：终止 = 改进程，上级（经理）终止不了下属的项目，由负责人成员终止
       const p = await 项目({ phase: "商机", node: "方案敲定" });
-      expect(await 终止进程(经理, p.id, { 备注: "价格谈不拢" })).toMatchObject({ ok: true });
+      expect(await 终止进程(经理, p.id, { 备注: "价格谈不拢" })).toMatchObject({ ok: false });
+      expect(await 终止进程(成员, p.id, { 备注: "价格谈不拢" })).toMatchObject({ ok: true });
       expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "方案敲定", result: "丢单" });
-      expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } })).toMatchObject({ userId: 经理.id, toResult: "丢单" });
+      expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id } })).toMatchObject({ userId: 成员.id, toResult: "丢单" });
     });
 
     it("订单 → 异常状态：要选异常类别", async () => {
@@ -198,7 +208,7 @@ describe("企业版推进 / 终止（P2）", () => {
       // 需求状态没选 / 选「暂无」一类的占位：还差需求，拦下
       await prisma.project.update({ where: { id: p.id }, data: { demandStatus: "暂无" } });
       const 拦 = await 改节点(成员, p.id, { phase: "线索", node: "线索推进" });
-      expect(拦).toEqual({ ok: false, error: "「线索验证」还差必填：需求（需求状态）；补齐再推，要先推请找老板或主管" });
+      expect(拦).toEqual({ ok: false, error: "「线索验证」还差必填：需求（需求状态）；补齐再推" }); // 11-01 企业版不再提「找老板或主管」（上级改不了内容）
       // 填了真值：没自动推的话手动也能推（这里改画像就自动推了，两种都算完成）
       const r = await 改项目画像(成员, p.id, { demandStatus: "明确需求" });
       expect(r).toMatchObject({ ok: true });

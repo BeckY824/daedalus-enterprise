@@ -210,7 +210,8 @@ describe("关回去", () => {
 describe("公海由老板指派", () => {
   it("业务员调不了；分给停用的人不行", async () => {
     当("wang");
-    expect(await 分配公海([ids["公海客户"]], 小王)).toMatchObject({ ok: false, error: expect.stringContaining("只有老板") });
+    // 11-01 权限只认业务角色：报错不再说老板 / 业务主管，改说总管理、销售管理（企业版、团队版同一句）
+    expect(await 分配公海([ids["公海客户"]], 小王)).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理和销售管理") });
     当("boss");
     expect(await 分配公海([ids["公海客户"]], "acct_gone")).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
     expect(await raw.customerPool.count({ where: { customerId: ids["公海客户"] } })).toBe(1);

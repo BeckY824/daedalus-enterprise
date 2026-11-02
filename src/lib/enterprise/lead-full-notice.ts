@@ -7,22 +7,28 @@
  * 为什么不走待办（Task）：待办必须挂客户，线索还没有客户；也不进铃铛、Dock 的数，那些数的是要跟进的客户。
  * 存 Setting，每人一个键、一份列表：企业版是一台服务器一个库，Setting 不跨端同步，按人分的键不会串到别人那儿。
  * 一次点击（单条或批量）只发一条，列出没分出去的线索；每人最多留最近 20 条。
+ *
+ * 11-01（清单 A10）同一套也发「待分配」：新建线索选了自动分配、但这条业务线没人可分或业务线是「暂不分配」，线索留在新线索等人手动分，
+ * 同样告诉市场管理、总管理员；条目带 原因，界面按原因换说法。老条目没有 原因 = 满额。
  */
 import { getSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 管理员类别们of, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
+import { notify } from "./notify";
 
-export type 满额提醒 = { id: string; at: string; 条数: number; 线索: string[]; 谁点的: string };
+export type 提醒原因 = "满额" | "待分配";
+export type 满额提醒 = { id: string; at: string; 条数: number; 线索: string[]; 谁点的: string; 原因?: 提醒原因; 为什么?: string };
 
 const 键 = (userId: string) => `entLeadFullNotice:${userId}`;
 const 最多留 = 20;
 
-/** 收提醒的人：组织里的市场管理、总管理员（没建组织行的老板按账号推成总管理员，也在内） */
-export function 满额提醒收件人(org: 组织): string[] {
+/** 收提醒的人：组织里的市场管理、总管理员（只认业务角色，11-01；账号管理员没设业务角色的收不到） */
+export function 满额提醒收件人(org: 组织, 原因: 提醒原因 = "满额"): string[] {
   return [...org.成员.keys()].filter((id) => {
     const 类们 = 管理员类别们of(org, id);
-    return 类们.has("市场管理") || 类们.has("总管理员");
+    // 待分配的线索销售管理也能手动分（11-01 A7），一起提醒
+    return 类们.has("市场管理") || 类们.has("总管理员") || (原因 === "待分配" && 类们.has("销售管理"));
   });
 }
 
@@ -43,11 +49,14 @@ export async function 读满额提醒(userId: string): Promise<满额提醒[]> {
 }
 
 /** 发一条：线索名是这一次点击里因都已满额没分出去的那几条；空的不发，不是企业版不发 */
-export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: string, 今 = new Date()): Promise<void> {
+export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: string, 今 = new Date(), 另: { 原因?: 提醒原因; 为什么?: string } = {}): Promise<void> {
   if (!企业版()) return;
-  const 收件人 = 满额提醒收件人(org);
+  const 收件人 = 满额提醒收件人(org, 另.原因);
   if (!线索.length || !收件人.length) return;
-  const 条: 满额提醒 = { id: `${今.getTime().toString(36)}${Math.random().toString(36).slice(2, 8)}`, at: 今.toISOString(), 条数: 线索.length, 线索, 谁点的 };
+  const 条: 满额提醒 = {
+    id: `${今.getTime().toString(36)}${Math.random().toString(36).slice(2, 8)}`, at: 今.toISOString(), 条数: 线索.length, 线索, 谁点的,
+    ...(另.原因 && 另.原因 !== "满额" ? { 原因: 另.原因 } : {}), ...(另.为什么 ? { 为什么: 另.为什么 } : {}),
+  };
   // 读-改-写放进一个事务：两个人同时点自动分配，后写的不会把先写的盖掉
   await 查完再写(async (tx) => {
     for (const userId of 收件人) {
@@ -57,6 +66,18 @@ export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: 
     }
   });
   invalidateSettingsCache();
+  await notify(收件人, {
+    kind: "满额",
+    title: `自动分配没分出去：${线索.length} 条线索都已满额`,
+    body: `${谁点的} 点的自动分配，能接的人都分满了：${线索.slice(0, 10).join("、")}${线索.length > 10 ? ` 等 ${线索.length} 条` : ""}。找销售的上级调配额，或者手动分。`,
+    link: "/leads",
+    key: `full:${条.id}`,
+  });
+}
+
+/** 新建线索选了自动分配、没分出去（这条业务线没人可分），留在新线索待分配：告诉市场管理、销售管理、总管理员（A7 / A10） */
+export async function 发待分配提醒(org: 组织, 线索: string[], 谁建的: string, 为什么: string, 今 = new Date()): Promise<void> {
+  await 发满额提醒(org, 线索, 谁建的, 今, { 原因: "待分配", 为什么 });
 }
 
 /** 关掉我自己的一条；不在（关过了、id 不对）当关好了 */

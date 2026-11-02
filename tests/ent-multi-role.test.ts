@@ -3,7 +3,7 @@
  * 钉的是：
  *   拆 / 合：按固定顺序、去重、丢掉不认识的；老数据单值照读；
  *   兼几类管理员的，几类的权都有（改设置、分配、改参与、用分配方式、字段权限取最宽、接手、提成更正）；
- *   设成员：数组和逗号串都收，空的、不认识的拦，非老板加不了总管级，存规整串，留「角色 → A、B」；
+ *   设成员：只有总管理能设（11-01）；数组和逗号串都收，空的、不认识的拦，存规整串，留「角色 → A、B」；
  *   开关关闭：设成员一律拦，一行不写。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -45,7 +45,7 @@ describe("拆 / 合", () => {
     expect(拆角色("")).toEqual([]);
     expect(合角色(["marketing_mgr", "sales_mgr", "marketing_mgr", "瞎填"])).toBe("sales_mgr,marketing_mgr");
   });
-  it("建组织：老数据单值照读；逗号串拆开，主角色是排第一的；全不认识的按账号角色推", () => {
+  it("建组织：老数据单值照读；逗号串拆开，主角色是排第一的；全不认识的 = 没设业务角色（不按账号角色推，11-01）", () => {
     const org = 建组织(
       [{ id: "a", role: "SALES", active: true }, { id: "b", role: "SALES", active: true }, { id: "c", role: "MANAGER", active: true }],
       [
@@ -57,7 +57,7 @@ describe("拆 / 合", () => {
     );
     expect(org.成员.get("a")).toMatchObject({ bizRole: "sales", 角色们: ["sales"] });
     expect(org.成员.get("b")).toMatchObject({ bizRole: "sales_mgr", 角色们: ["sales_mgr", "marketing_mgr"] });
-    expect(org.成员.get("c")!.角色们).toHaveLength(1);
+    expect(org.成员.get("c")!.角色们).toEqual([]);
   });
 });
 
@@ -85,17 +85,19 @@ describe("兼几类管理员，几类的权都有", () => {
     expect(能改时限的节点(org, 我("总兼销"), {})).toBe("全部");
   });
 
-  it("分配（总管理员、市场管理）和改参与（总管理员、销售管理）：兼的两样都能", () => {
-    expect([能分配(org, 我("兼")), 能改参与(org, 我("兼"))]).toEqual([true, true]);
-    expect([能分配(org, 我("销管")), 能改参与(org, 我("销管"))]).toEqual([false, true]);
+  it("分配（总管理员、市场管理、销售管理）；改参与只有总管理员（11-01 清单 A9）", () => {
+    expect([能分配(org, 我("兼")), 能改参与(org, 我("兼"))]).toEqual([true, false]);
+    expect([能分配(org, 我("销管")), 能改参与(org, 我("销管"))]).toEqual([true, false]);
     expect([能分配(org, 我("市场")), 能改参与(org, 我("市场"))]).toEqual([true, false]);
     expect([能分配(org, 我("销兼运")), 能改参与(org, 我("销兼运"))]).toEqual([false, false]);
+    expect([能分配(org, 我("总兼销")), 能改参与(org, 我("总兼销"))]).toEqual([true, true]);
   });
 
-  it("分配方式：哪个角色能用都算（个人自持给销售、自动给市场）", () => {
+  it("分配方式：哪个角色能用都算（个人自持给销售、公海捞取给市场；11-01 起自动分配默认谁都能用）", () => {
     expect(能用分配方式(org, 我("兼"), 分配方式id.个人自持, {})).toBe(true);
-    expect(能用分配方式(org, 我("兼"), 分配方式id.自动, {})).toBe(true);
-    expect(能用分配方式(org, 我("销管"), 分配方式id.自动, {})).toBe(false);
+    expect(能用分配方式(org, 我("兼"), 分配方式id.公海捞取, {})).toBe(true);
+    expect(能用分配方式(org, 我("销管"), 分配方式id.公海捞取, {})).toBe(false);
+    expect(能用分配方式(org, 我("销管"), 分配方式id.自动, {})).toBe(true);
     expect(能用分配方式(org, 我("市场"), 分配方式id.个人自持, {})).toBe(false);
     expect(能用分配方式(org, 我("销兼运"), 分配方式id.个人自持, {})).toBe(true);
   });
@@ -126,7 +128,7 @@ beforeEach(async () => {
   总管 = await 建人("dir", "总管", "SALES");
   销售 = await 建人("s1", "小王", "SALES");
   双 = await 建人("s2", "小张", "SALES");
-  await prisma.entMember.createMany({ data: [{ userId: 总管, bizRole: "director" }, { userId: 销售, bizRole: "sales" }, { userId: 双, bizRole: "sales,marketing_mgr" }] });
+  await prisma.entMember.createMany({ data: [{ userId: 老板, bizRole: "director" }, { userId: 总管, bizRole: "director" }, { userId: 销售, bizRole: "sales" }, { userId: 双, bizRole: "sales,marketing_mgr" }] });
   当(老板, "ADMIN");
 });
 
@@ -147,13 +149,16 @@ describe("设成员：多选", () => {
     expect((await 行(销售))!.bizRole).toBe("sales");
   });
 
-  it("总管理员给别人加不了总管级；也改不了兼着总管级的人", async () => {
+  it("只有总管理能设角色（能给别人加总管级、管理员）；兼管理员的、账号 ADMIN 没业务角色的都改不了", async () => {
     当(总管);
-    expect(await 设成员(销售, { bizRole: ["sales", "director"] })).toMatchObject({ ok: false });
     expect(await 设成员(销售, { bizRole: ["sales", "marketing_mgr"] })).toEqual({ ok: true });
-    await prisma.entMember.update({ where: { userId: 双 }, data: { bizRole: "sales,admin" } });
-    expect(await 设成员(双, { bizRole: ["sales"] })).toMatchObject({ ok: false });
-    expect((await 行(双))!.bizRole).toBe("sales,admin");
+    expect(await 设成员(双, { bizRole: ["sales", "admin"] })).toEqual({ ok: true });
+    expect((await 行(双))!.bizRole).toBe("admin,sales");
+    当(双);
+    expect(await 设成员(销售, { bizRole: ["sales"] })).toEqual({ ok: false, error: "只有总管理能改组织架构" });
+    await prisma.entMember.delete({ where: { userId: 老板 } });
+    当(老板, "ADMIN");
+    expect(await 设成员(销售, { bizRole: ["sales"] })).toEqual({ ok: false, error: "只有总管理能改组织架构" });
     expect((await 行(销售))!.bizRole).toBe("sales,marketing_mgr");
   });
 

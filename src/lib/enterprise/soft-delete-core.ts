@@ -28,6 +28,8 @@ export const 回收站保留天数 = 30;
 export const 客户连带: readonly 软删表名[] = ["Contact", "Project", "FollowUp"];
 /** 父行删了照样看得到的表：线索转过客户也还是线索（客户进回收站，线索页照旧在） */
 const 不随父滤 = new Set(["Lead"]);
+/** 某张表的某条父关联不跟着滤（11-01 卡点 B13：沟通删了卡点照旧在，项目进回收站卡点照旧跟项目走） */
+const 不随父滤关联 = new Set(["EntBlocker.followUp"]);
 
 const 软 = new Set<string>(软删表);
 type 参数 = Record<string, unknown>;
@@ -58,6 +60,7 @@ export function 未删条件(model: string): 参数 | null {
   const 条: 参数[] = [];
   for (const f of 关系们.get(model)?.values() ?? []) {
     if (f.isList || !软.has(f.type) || !f.relationFromFields?.length) continue;
+    if (不随父滤关联.has(`${model}.${f.name}`)) continue;
     // 可空的外键：没挂（空）也算没删
     条.push(f.isRequired ? { [f.name]: { is: { deletedAt: null } } } : { OR: [{ [f.relationFromFields[0]]: null }, { [f.name]: { is: { deletedAt: null } } }] });
   }

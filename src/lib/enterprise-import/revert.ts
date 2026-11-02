@@ -26,6 +26,7 @@ import { 读现值, 改, 规, 引用键, 摘联系人号, 记客户号, 记联�
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
 import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-target";
 import { 客户状态自动, 跟着项目重算 } from "../enterprise/cust-status-auto-db";
+import { 卡点脱离沟通 } from "../project/blocker";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -184,7 +185,11 @@ async function 删(tx: Tx, e: 实体, id: string): Promise<void> {
   } else if (e === "opportunity") {
     if (await 是项目(tx, id)) await tx.project.delete({ where: { id } });
     else await tx.opportunity.delete({ where: { id } });
-  } else await tx.followUp.delete({ where: { id } });
+  } else {
+    // 11-01 卡点 B13：沟通上发过的卡点脱开照旧留着；老库脱不开的这条沟通就不撤（卡点不能跟着没了）
+    if ((await 卡点脱离沟通(tx, [id])).size) return;
+    await tx.followUp.delete({ where: { id } });
+  }
 }
 
 /** 补空时新建的外贸档案，格子退回空之后整行删掉：库里不留一条全空的行（全空的行和没有这行在页面上一样） */

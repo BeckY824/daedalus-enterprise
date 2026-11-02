@@ -39,7 +39,7 @@ export const 必填项们 = [
   { key: "沟通三项", 叫法: "当前进程沟通（发起主体、沟通内容、沟通方式）", 说明: "在当前进程上至少一条沟通把发起主体、沟通内容、沟通方式三样都填了（缺一样不算）" },
   { key: "需求类型", 说明: "项目画像的「需求类型」至少选了一项" },
   { key: "需求描述", 叫法: "需求描述（成交需求）", 说明: "项目的「成交需求」写了内容" },
-  { key: "分配方式", 说明: "项目分配记录上有分配方式，或客户的「分配方式（客户）」选了" },
+  { key: "分配方式", 说明: "新建时选了分配方式，或项目分配记录上有分配方式，或客户的「分配方式（客户）」选了" },
   { key: "项目名称", 说明: "项目名称写了" },
   { key: "所属客户", 说明: "项目挂在一位客户名下" },
   { key: "项目来源", 说明: "项目来源选了渠道" },
@@ -112,7 +112,7 @@ export const 建议必填: Record<string, 必填项[]> = {
 /** 算还差时要的数据（db.ts 读好传进来）。11-01 加的几样都可不传：没读 = 没填 */
 export type 必填数据 = {
   项目: {
-    node: string; contactId: string | null; nextStepAt: Date | string | null; expectedDealAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean; demandStatus?: string | null;
+    node: string; contactId: string | null; nextStepAt: Date | string | null; expectedDealAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean; demandStatus?: string | null; assignMode?: string | null;
     name?: string | null; channelId?: string | null; addrCountry?: string | null; level?: string | null; dealDemand?: string | null; nextStepText?: string | null;
     contractAmount?: number | null; depositAmount?: number | null; balanceSettled?: boolean;
   } & { [列 in 画像列]?: string | null };
@@ -198,7 +198,8 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     }
     case "需求类型": return (d.需求类型们 ?? []).some((v) => 有(v));
     case "需求描述": return 有(d.项目.dealDemand);
-    case "分配方式": return 有(d.分配方式) || 有(d.客户.assignWay);
+    // 11-01 会议 §1：建的时候选的分配方式（项目上的 assignMode）也算
+    case "分配方式": return 有(d.分配方式) || 有(d.客户.assignWay) || 有(d.项目.assignMode);
     case "项目名称": return 有(d.项目.name);
     case "所属客户": return !!d.有客户;
     case "项目来源": return !!d.项目.channelId;

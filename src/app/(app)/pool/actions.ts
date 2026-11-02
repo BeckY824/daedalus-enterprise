@@ -10,7 +10,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
-import { 管全队客户 } from "@/lib/constants";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能管公海, 能恢复 } from "@/lib/enterprise/permissions";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
@@ -45,7 +46,7 @@ function 刷新() {
 /** 老板、主管把公海里的客户标成无效：标了的领不了、分不了。已经是无效的算没变 */
 export async function 标无效客户(ids: string[]): Promise<标记结果> {
   const me = await requireUser();
-  if (!管全队客户(me.role)) return { ok: false, error: "只有老板和主管能标无效客户" };
+  if (!能管公海(me, await 权限组织())) return { ok: false, error: "只有总管理和销售管理能标无效客户" };
   if (!(await 开着())) return 只企业版项目模式;
   const 们 = 规整ids(ids);
   if (!们.length) return { ok: true, updated: 0, unchanged: 0 };
@@ -65,7 +66,7 @@ export async function 标无效客户(ids: string[]): Promise<标记结果> {
 /** 只有老板能恢复：清掉无效标记，客户还在公海里，照常能领 */
 export async function 恢复有效客户(ids: string[]): Promise<标记结果> {
   const me = await requireUser();
-  if (me.role !== "ADMIN") return { ok: false, error: "只有老板能恢复无效客户" };
+  if (!能恢复(me, await 权限组织())) return { ok: false, error: "只有总管理能恢复无效客户" };
   if (!(await 开着())) return 只企业版项目模式;
   const 们 = 规整ids(ids);
   if (!们.length) return { ok: true, updated: 0, unchanged: 0 };
@@ -93,7 +94,7 @@ export type 分项目结果 =
  */
 export async function 分配公海项目(ids: string[], userId: string, 带待办?: boolean): Promise<分项目结果> {
   const me = await requireUser();
-  if (!管全队客户(me.role)) return { ok: false, error: "只有老板和业务主管能把公海里的项目分给同事" };
+  if (!能管公海(me, await 权限组织())) return { ok: false, error: "只有总管理和销售管理能把公海里的项目分给同事" };
   if (!(await 开着())) return 只企业版项目模式;
   const 给 = await prisma.user.findFirst({ where: { id: String(userId ?? ""), active: true }, select: { id: true, name: true } });
   if (!给) return { ok: false, error: "这位同事不在了或已停用，换一位" };
@@ -139,7 +140,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
  */
 export async function 撤销公海项目(动作: "领取" | "分配", ids: string[], 给谁?: string): Promise<标记结果> {
   const me = await requireUser();
-  if (动作 === "分配" && (!管全队客户(me.role) || !给谁)) return { ok: false, error: "只有老板和业务主管能撤销分配" };
+  if (动作 === "分配" && (!能管公海(me, await 权限组织()) || !给谁)) return { ok: false, error: "只有总管理和销售管理能撤销分配" };
   if (!(await 开着())) return 只企业版项目模式;
   const 现 = 动作 === "分配" ? String(给谁) : me.id;
   const 们 = 规整ids(ids);

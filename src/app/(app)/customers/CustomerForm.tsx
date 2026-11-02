@@ -26,6 +26,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 地址叫法, 详细地址上限, 简称上限 } from "@/lib/enterprise/customer-v2";
+import { 三种业务线 } from "@/lib/enterprise/assign-line";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 
 export type CustomerRow = {
@@ -52,6 +53,8 @@ export type CustomerRow = {
   customerType?: string | null;
   /** 客户属性（企业版，字典 custAttr，10-31 会议 A-17，迁移 104）：客户是哪一类主体，客户看板按它分列 */
   customerAttr?: string | null;
+  /** 业务线（企业版，迁移 106，11-01 清单 A1）：内贸 / 外贸 / 暂不分配，手动选；列表行没带 = undefined，不交、不清 */
+  bizLine?: string | null;
   expectedSignAt: string | null;
   lastFollowAt: string | null;
   remark: string | null;
@@ -337,6 +340,8 @@ function CustomerFormInner({
                 assignWay: v.assignWay ?? null,
                 customerType: v.customerType ?? null,
                 customerAttr: v.customerAttr ?? null,
+                // 业务线：新建、或打开时带着这一格的才交（列表行没带这格时不交，免得把库里的清掉）
+                ...(!editing || editing.bizLine !== undefined || v.bizLine ? { bizLine: v.bizLine ?? null } : {}),
               },
             }
           : {}),
@@ -516,6 +521,12 @@ function CustomerFormInner({
             <Form.Item label="客户属性" name="customerAttr">
               <Select allowClear placeholder="选填"
                 options={[...new Set([...客户属性选项, ...(editing?.customerAttr ? [editing.customerAttr] : [])])].map((s) => ({ value: s, label: s, title: s }))} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            {/* 业务线（11-01 清单 A1）：内贸 / 外贸 / 暂不分配手动选，新开项目默认跟它；自动分配按项目上的业务线走 */}
+            <Form.Item label="业务线" name="bizLine">
+              <Select allowClear placeholder="内贸 / 外贸 / 暂不分配" data-testid="customer-bizline" options={三种业务线.map((x) => ({ value: x, label: x }))} />
             </Form.Item>
           </Col>
           </>) : (<>
@@ -1019,6 +1030,7 @@ function 企业资料基准(e: CustomerRow) {
     assignWay: e.assignWay ?? null,
     customerType: e.customerType ?? null,
     customerAttr: e.customerAttr ?? null,
+    ...(e.bizLine !== undefined ? { bizLine: e.bizLine ?? null } : {}),
   };
 }
 

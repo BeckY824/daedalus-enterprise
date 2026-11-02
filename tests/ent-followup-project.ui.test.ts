@@ -127,8 +127,8 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名不横向撑出，「
   } finally { await page.close(); }
 });
 
-const 卡点默认 = { 时限天数: 3, 阻碍主体们: ["客户"], 默认类型: "轻度卡点", 默认影响: "短期不影响" };
-const 须知 = (底子: { 起点日: string; 天数: number } | null, 能发卡点 = true) => ({ ok: true, 能记: true, phase: "线索", 要下一步: true, 回收预演: 底子, contactId: "k1", 卡点默认: 能发卡点 ? 卡点默认 : null });
+const 卡点默认 = { 默认类型: "轻度卡点", 默认影响: "短期不影响" };
+const 须知 = (底子: { 起点日: string; 天数: number } | null, 能发卡点 = true) => ({ ok: true, 能记: true, phase: "线索", 要下一步: true, 回收预演: 底子, contactId: "k1", 卡点默认: 能发卡点 ? 卡点默认 : null, 卡点原因们: 能发卡点 ? ["价格", "交期"] : [] });
 const 今天 = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date());
 
 it("项目能记：问「客户明确回复了吗」（收在「更多」里），走项目同一个 action，选明天预演回收日", async () => {
@@ -164,7 +164,7 @@ it("项目能记：问「客户明确回复了吗」（收在「更多」里）�
     expect(交).toMatchObject({ 额外: { status: "已完成", durationMinutes: null } });
     expect(await page.evaluate(() => Reflect.get(window, "__存"))).toBeUndefined();
     // 卡点没动：类型「暂无卡点」、描述空，照样交给服务端判（不生成）
-    expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "暂无卡点", impact: null, description: "" });
+    expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "暂无卡点", impact: null, title: "", reasons: [], description: "" });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -198,6 +198,8 @@ it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了�
     await 类型.click();
     await page.locator(".ant-select-item-option").filter({ hasText: "重要卡点" }).click();
     await page.getByRole("textbox", { name: "卡点描述" }).fill("对方法务卡合同");
+    // 11-01 B9：阻碍原因多选（不选也能交，服务端记成「其他」）
+    expect(await page.getByRole("combobox", { name: "阻碍原因" }).count()).toBe(1);
     await page.locator("#content").fill("聊了报价");
     await 格(page, "下一步做什么").locator("input").fill("周五前发报价单");
     await 格(page, "下一步时间").getByRole("button", { name: "3 天后" }).click();
@@ -205,7 +207,7 @@ it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了�
     await 格(page, "客户明确回复了吗").getByText("没有明确回复", { exact: true }).click();
     await page.getByRole("button", { name: /保\s*存/ }).click();
     await page.waitForFunction(() => Reflect.get(window, "__项目存"));
-    expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "重要卡点", impact: null, description: "对方法务卡合同" });
+    expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "重要卡点", impact: null, title: "", reasons: [], description: "对方法务卡合同" });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
   const b = await open({ 项目: "有", 须知: 须知(null, false) });

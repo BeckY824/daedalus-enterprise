@@ -2,7 +2,7 @@
  * 首页 AI 项目类建议卡的落库（全页面 AI 写入）：只由 dashboard/apply.ts 的 applyProposal 调，人点了确认才走到这里。
  *
  * 一条铁律和 apply.ts 一样：这里不自己写库，每一种卡都转给页面上同一个 server action
- * （改项目节点 / 终止项目进程 / 记项目沟通Action / 解决卡点Action / 记回款 / 删回款 / 线索验证几步 / saveContact / deleteCustomers），
+ * （改项目节点 / 终止项目进程 / 记项目沟通Action / 完成卡点Action / 记回款 / 删回款 / 线索验证几步 / saveContact / deleteCustomers），
  * 权限、字段权限、团队范围、操作记录都在那里面，用的是确认人自己的身份。没权限 = 原样把那里的话回给卡片，什么都不写。
  *
  * 落库前把卡按库里此刻的样子再核一遍：项目进程、验证走到哪步变了就不写（卡是几分钟前按旧样子出的）。
@@ -17,7 +17,7 @@ import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 读线索验证 } from "@/lib/project/lead-verify";
 import { buildProjectProposal, 项目卡缺, 描述项目卡, 认目标, 同一落点, type 项目卡 } from "./project-proposals";
 import { 改项目节点, 终止项目进程, 记项目沟通Action, 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action } from "@/app/(app)/projects/actions";
-import { 解决卡点Action } from "@/app/(app)/projects/blocker-actions";
+import { 完成卡点Action } from "@/app/(app)/projects/blocker-actions";
 import { 记回款, 删回款 } from "@/app/(app)/projects/payment-actions";
 import { saveContact } from "@/app/(app)/customers/[id]/actions";
 import { deleteCustomers } from "@/app/(app)/customers/actions";
@@ -89,9 +89,11 @@ async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
     }
     case "blocker_resolve": {
       const 卡点 = await prisma.entBlocker.findUnique({ where: { id: p.targetId }, select: { projectId: true } });
-      const 结 = await 解决卡点Action(p.targetId, { solution: p.solution, result: p.result });
+      // 「我已完成」：只点确认人自己那行；最后一个点的才写进 解决方案 / 解决结果，其余人的结果记成自己的处理说明
+      const 结 = await 完成卡点Action(p.targetId, { note: p.result, solution: p.solution, result: p.result });
       if (!结.ok) return { ok: false, error: 话(结) };
-      return { ok: true, ...(卡点?.projectId ? { 项目: 卡点.projectId } : {}) };
+      const 补 = "解决了" in 结 && 结.解决了 ? "；所有认领人都完成了，卡点已解决" : "；你这份已完成，还在等其他认领人";
+      return { ok: true, ...(卡点?.projectId ? { 项目: 卡点.projectId } : {}), 补话: 补 };
     }
     case "payment_add": {
       const 结 = await 记回款(p.targetId, { paidAt: p.paidAt, currency: p.currency, amount: p.amount });

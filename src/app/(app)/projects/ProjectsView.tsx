@@ -180,8 +180,10 @@ export default function ProjectsView({
 
   async function 自动分(r: 项目行) {
     try {
-      const res = await 自动分配线索(r.id, { 项目: true });
-      if (!res.ok) return void message.error(res.error);
+      // 原负责人 = 这一行看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
+      const res = await 自动分配线索(r.id, { 项目: true, 原负责人: r.ownerId });
+      // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派
+      if (!res.ok) return void (res.待分配 || res.暂不分配 ? message.warning(res.error, 5) : message.error(res.error));
       message.success(`「${r.name}」${分给了(res)}：${res.为什么}`, 5);
       router.refresh();
     } catch {
@@ -241,7 +243,7 @@ export default function ProjectsView({
       { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
-    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : <UserCell name={r.ownerName} />) }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),
     // 回公海日：明天（或今天）就回的直接写「明天回公海（11-06）」，再往后只写日期；不会收的（已结束、在订单阶段、在公海）是 —
     ...(企业版 ? [{ title: "回公海日", key: "recycleAt", width: 150, render: (_: unknown, r: 项目行) => (r.即将回收 ? <将收标 日={r.即将回收} /> : r.回收日 ? dayjs(r.回收日).format("MM-DD") : 无) }] : []),
     { title: "最近更新", key: "updatedAt", width: 100, ...收起, render: (_, r) => fmtDate(r.updatedAt) },

@@ -3,7 +3,7 @@ import { 搜索词 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
 import type { 项目行 } from "./board";
 import type { 阶段 } from "./nodes";
-import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的 } from "./db";
+import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线 } from "./db";
 import { 即将回收 } from "./timeout";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 生效组织规则 } from "./org-rules-store";
@@ -17,8 +17,7 @@ import { 字典of, 阶段与进程, 阶段们, 结局们of, 同名们, 本套名
 import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
 import { 待我复核的 } from "./lead-verify";
-import { 历史负责人们, 我回避的公海项目 } from "./pool-owner";
-import { 管全队客户 } from "@/lib/constants";
+import { 历史负责人们, 我回避的公海项目, 回避豁免 } from "./pool-owner";
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string };
@@ -69,7 +68,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 今 = new Date();
   // 首页指标卡的筛选只在企业版认；条件和卡上 count 用的是同一份（home-cards.ts），数对得上
   const 卡 = 规则 ? 认首页卡(sp.f) : "";
-  // 点卡进来的，和卡上的数同一圈（首页卡范围：业务员只看自己，上级看自己 + 下属，市场的人加市场那一圈，老板全看），数对得上
+  // 点卡进来的，和卡上的数同一圈（首页卡范围：按负责人，最下级只看自己，上级看自己 + 下属，总管理 / 管理员全看），数对得上
   const 卡的圈 = 卡 ? await 首页卡范围(me) : undefined;
   const 字典 = 字典of(企);
   const 阶进 = 阶段进程条件(sp, 字典);
@@ -77,8 +76,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的圈 ? [卡的圈] : [])] : []),
     ...阶进.where,
   ];
-  // 企业版 C-01：公海里我是历史负责人的项目我看不到（老板 / 主管不算，lib/project/pool-owner.ts）
-  const 回避 = 管全队客户(me.role) ? [] : await 我回避的公海项目(prisma, me.id);
+  // 企业版 C-01：公海里我是历史负责人的项目我看不到（总管理 / 管理员不算，lib/project/pool-owner.ts 回避豁免）
+  const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
   const rows = await prisma.project.findMany({
     where: {
       ...(只看阶段 ? { phase: 只看阶段 } : {}),
@@ -98,11 +97,13 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
       logs: 算超时要的.logs,
     },
   });
+  // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
+  const 超时线们 = 规则 ? await 超时成员线(规则) : null;
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
   const 将收 = (p: (typeof rows)[number]) => {
     if (!规则 || p.pooledAt) return null;
-    const 日 = 项目回收日(规则, p);
+    const 日 = 项目回收日(规则, p, 超时线们);
     return 即将回收(日, 今) ? 日 : null;
   };
   // 公海里的项目负责人一栏写原负责人（企业版库里已清空，从留痕取）
@@ -119,13 +120,14 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 名字 = new Map(人.map((u) => [u.id, u.name]));
   // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）
   const 露 = (p: (typeof rows)[number]) => 露客户(me, p, 可见);
-  const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p), 今)))).map((p) => ({
+  const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))).map((p) => ({
     id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null,
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
     ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
-    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
+    ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
+    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
     ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
@@ -176,7 +178,7 @@ export type 名单项目 = {
  * 不另开权限口子。不跑超时回收（那是项目页列表的事，详情页每点一个都扫一遍太重）
  */
 export async function 读名单项目(me: { id: string; role?: string }, 字典: 阶段字典): Promise<{ rows: 名单项目[]; 取到上限: boolean }> {
-  const 回避 = 管全队客户(me.role) ? [] : await 我回避的公海项目(prisma, me.id);
+  const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
   const rows = await prisma.project.findMany({
     ...(回避.length ? { where: { id: { notIn: 回避 } } } : {}),
     orderBy: { updatedAt: "desc" },

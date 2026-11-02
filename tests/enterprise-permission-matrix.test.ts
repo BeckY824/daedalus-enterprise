@@ -1,7 +1,8 @@
 /**
  * 企业版权限矩阵（2026-10-24）：6 种角色 × 5 个接口 × 5 类记录，每一格「看得到 / 改得了」都和下面的期望表比对。
  *
- * - 角色：老板（ADMIN）、总管理员、经理（有实线、虚线下属）、虚线上级（只有虚线下属）、普通销售、停用的人
+ * - 角色：老板（ADMIN 账号 + 业务角色总管理）、总管理员、经理（有实线、虚线下属）、虚线上级（只有虚线下属）、普通销售、停用的人、
+ *   管理员（业务角色 admin：看全部、改不了、不能导出）。11-01 起权限只认业务角色，没设业务角色 = 没权限（另见 ent-permissions）
  * - 记录：自己的、实线下属的、虚线下属的、公海、别人的（这个角色没有这类下属时那格写 null = 不适用）
  * - 接口：列表、详情、导出、关键词搜索、AI 查客户——都走真实入口（requireUser 认 crm_session 会话票，
  *   prisma 那一层按组织限定），不是直接调 visibility 的纯函数
@@ -63,7 +64,7 @@ import { 字段权限key } from "@/lib/enterprise/field-perm";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 跑工具 } from "@/lib/mcp/tools";
 
-const 角色 = ["老板", "总管理员", "经理", "虚线上级", "普通销售", "停用的人"] as const;
+const 角色 = ["老板", "总管理员", "经理", "虚线上级", "普通销售", "停用的人", "管理员"] as const;
 const 记录 = ["自己的", "实线下属的", "虚线下属的", "公海", "别人的"] as const;
 const 接口 = ["列表", "详情", "导出", "关键词搜索", "AI查客户"] as const;
 type 角色 = (typeof 角色)[number];
@@ -71,7 +72,7 @@ type 记录 = (typeof 记录)[number];
 type 接口 = (typeof 接口)[number];
 
 /** 每个角色是谁 */
-const 用户: Record<角色, string> = { 老板: "m_boss", 总管理员: "m_dir", 经理: "m_mgr", 虚线上级: "m_dot", 普通销售: "m_wang", 停用的人: "m_off" };
+const 用户: Record<角色, string> = { 老板: "m_boss", 总管理员: "m_dir", 经理: "m_mgr", 虚线上级: "m_dot", 普通销售: "m_wang", 停用的人: "m_off", 管理员: "m_adm" };
 /** 组织：总管 → 老板；经理 → 总管；小王、停用的人 → 经理（实线）；小张 → 经理（虚线）；小李 → 虚线上级（虚线）；外人谁都不挂 */
 const 小张 = "m_zhang";
 const 小李 = "m_li";
@@ -85,6 +86,7 @@ const 记录归属: Record<角色, Record<记录, string | null>> = {
   虚线上级: { 自己的: 用户.虚线上级, 实线下属的: null, 虚线下属的: 小李, 公海: "公海", 别人的: 外人 },
   普通销售: { 自己的: 用户.普通销售, 实线下属的: null, 虚线下属的: null, 公海: "公海", 别人的: 外人 },
   停用的人: { 自己的: 用户.停用的人, 实线下属的: null, 虚线下属的: null, 公海: "公海", 别人的: 外人 },
+  管理员: { 自己的: 用户.管理员, 实线下属的: null, 虚线下属的: null, 公海: "公海", 别人的: 外人 },
 };
 
 /** 期望表：[看得到, 改得了]，按 记录 的顺序；null = 不适用。五个接口的「看得到」口径一样 */
@@ -98,16 +100,18 @@ const 期望: Record<角色, ([boolean, boolean] | null)[]> = {
   普通销售: [[T, T], 无, 无, [T, T], [F, F]],
   // 入口就拦下：哪一格都拿不到
   停用的人: [[F, F], 无, 无, [F, F], [F, F]],
+  // 管理员：看全部，一个字都改不了
+  管理员: [[T, F], 无, 无, [T, F], [T, F]],
 };
 
 /**
  * 电话是否打码（按角色，字段权限是「角色 × 字段」，和是谁的记录无关）。电话只对业务角色 sales 设了「藏」：
- * 普通销售、虚线上级在组织里没写业务角色，按账号角色 SALES 推成 sales；经理是 sales_mgr、总管理员是 director；老板永远不受限
+ * 普通销售、虚线上级的业务角色是 sales；经理是 sales_mgr、总管理员和老板是 director、管理员是 admin
  */
-const 打码: Record<角色, boolean | null> = { 老板: F, 总管理员: F, 经理: F, 虚线上级: T, 普通销售: T, 停用的人: 无 };
+const 打码: Record<角色, boolean | null> = { 老板: F, 总管理员: F, 经理: F, 虚线上级: T, 普通销售: T, 停用的人: 无, 管理员: F };
 
-/** 导出只给老板和总管理员（10-27 会议）：其他角色整个接口被拒，「导出」那一列只比对这两位，另一组钉被拒 */
-const 能导出: Record<角色, boolean> = { 老板: T, 总管理员: T, 经理: F, 虚线上级: F, 普通销售: F, 停用的人: F };
+/** 导出只给总管理（10-27 会议；11-01 起只认业务角色，管理员只读也不给）：其他角色整个接口被拒，「导出」那一列只比对这两位，另一组钉被拒 */
+const 能导出: Record<角色, boolean> = { 老板: T, 总管理员: T, 经理: F, 虚线上级: F, 普通销售: F, 停用的人: F, 管理员: F };
 
 const 客户id = new Map<string, string>(); // 归属（用户 id 或 "公海"）→ 客户 id
 const 电话前缀 = "1380077";
@@ -222,18 +226,21 @@ beforeAll(async () => {
   for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   const 人 = (id: string, role = "SALES", active = true) => raw.user.create({ data: { id, email: `${id}@x.com`, name: id, password: "x", role, active } });
   await 人(用户.老板, "ADMIN");
+  await 人(用户.管理员, "ADMIN");
   for (const id of [用户.总管理员, 用户.经理, 用户.虚线上级, 用户.普通销售, 小张, 小李, 外人]) await 人(id);
   await 人(用户.停用的人, "SALES", false);
   await raw.entMember.createMany({
     data: [
+      { userId: 用户.老板, bizRole: "director" },
+      { userId: 用户.管理员, bizRole: "admin" },
       { userId: 用户.总管理员, bizRole: "director", managerId: 用户.老板 },
       { userId: 用户.经理, bizRole: "sales_mgr", managerId: 用户.总管理员 },
-      { userId: 用户.普通销售, managerId: 用户.经理 },
-      { userId: 用户.停用的人, managerId: 用户.经理 },
-      { userId: 小张, dottedManagerId: 用户.经理 },
-      { userId: 小李, dottedManagerId: 用户.虚线上级 },
-      { userId: 用户.虚线上级 },
-      { userId: 外人 },
+      { userId: 用户.普通销售, bizRole: "sales", managerId: 用户.经理 },
+      { userId: 用户.停用的人, bizRole: "sales", managerId: 用户.经理 },
+      { userId: 小张, bizRole: "sales", dottedManagerId: 用户.经理 },
+      { userId: 小李, bizRole: "sales", dottedManagerId: 用户.虚线上级 },
+      { userId: 用户.虚线上级, bizRole: "sales" },
+      { userId: 外人, bizRole: "sales" },
     ],
   });
   let n = 10;
@@ -285,8 +292,8 @@ describe("看得到 + 电话是否打码", () => {
   });
 });
 
-describe("导出只给老板和总管理员", () => {
-  it.each(["经理", "虚线上级", "普通销售"] as const)("%s 调导出客户被拒", async (role) => {
+describe("导出只给总管理", () => {
+  it.each(["经理", "虚线上级", "普通销售", "管理员"] as const)("%s 调导出客户被拒", async (role) => {
     expect(await 作为(role, () => 导出客户({}))).toEqual({ ok: false, error: 不能导入导出 });
   });
 });
@@ -320,10 +327,15 @@ describe("停用的人", () => {
 });
 
 describe("删联系人的撤销快照（直接调接口）", () => {
-  it.each([
-    { role: "普通销售" as const, mask: true },
-    { role: "老板" as const, mask: false },
-  ])("$role → 快照里的号打码 $mask；撤销后库里还是原号", async ({ role, mask }) => {
+  // 11-01 起企业版只有总管理能删（QA #3）：普通销售删联系人被拒、库里不动；快照打码那条只剩开关关着的情形（见下一条）
+  it("普通销售删自己客户的联系人 → 被拒，库里还在", async () => {
+    const c = await raw.contact.create({ data: { name: "普通销售的联系人", phone: "13900771239", customerId: 客户id.get(记录归属.普通销售.自己的!)! } });
+    expect(await 作为("普通销售", () => deleteContact(c.id))).toEqual({ ok: false, error: "只有总管理能删除" });
+    expect((await raw.contact.findUniqueOrThrow({ where: { id: c.id } })).deletedAt ?? null).toBeNull();
+    await raw.contact.delete({ where: { id: c.id } });
+  });
+
+  it.each([{ role: "老板" as const, mask: false }])("$role → 快照里的号打码 $mask；撤销后库里还是原号", async ({ role, mask }) => {
     const 原号 = "13900771234";
     const c = await raw.contact.create({ data: { name: `${role}的联系人`, phone: 原号, customerId: 客户id.get(记录归属[role].自己的!)! } });
     const r = await 作为(role, () => deleteContact(c.id));

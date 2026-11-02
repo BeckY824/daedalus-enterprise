@@ -179,7 +179,8 @@ describe("主管看全部、能管客户", () => {
     await 当("wang");
     expect(登录的.user.role).toBe("SALES");
     expect(await 客户名()).toEqual(["公海客户", "小王的客户"].sort());
-    expect(await 分配公海([ids["公海客户"]], 小王)).toMatchObject({ ok: false, error: expect.stringContaining("只有老板和业务主管") });
+    // 11-01 权限只认业务角色：报错不再说老板 / 业务主管，改说总管理、销售管理（企业版、团队版同一句）
+    expect(await 分配公海([ids["公海客户"]], 小王)).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理和销售管理") });
     expect(await 团队状态()).toMatchObject({ 我是主管: false });
   });
 });

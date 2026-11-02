@@ -68,6 +68,14 @@ beforeEach(async () => {
   老板 = await 造人("boss", "老板", "ADMIN");
   乙 = await 造人("yi", "乙", "SALES");
   丙 = await 造人("bing", "丙", "SALES");
+  // 11-01 权限只认业务角色：老板要有总管理才能转让、分配公海项目，乙、丙要有销售才能领
+  await prisma.entMember.createMany({
+    data: [
+      { userId: 老板.id, bizRole: "director" },
+      { userId: 乙.id, bizRole: "sales" },
+      { userId: 丙.id, bizRole: "sales" },
+    ],
+  });
   mocks.user = { ...mocks.user, id: 老板.id, name: 老板.name, role: 老板.role };
 });
 afterEach(() => {

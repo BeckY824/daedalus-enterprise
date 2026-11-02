@@ -22,6 +22,7 @@ import { 自动分配线索, 批量自动分配, 我的满额提醒, 关满额�
 import { 读满额提醒, 发满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 规则 } from "@/lib/enterprise/rules";
+import { 不设配额key } from "@/lib/enterprise/lead-assign";
 
 let 老板: string, 总管: string, 市场: string, 销售经理: string, 甲: string, 乙: string;
 
@@ -46,6 +47,7 @@ beforeEach(async () => {
   乙 = await 人("b", "销售乙");
   await prisma.entMember.createMany({
     data: [
+      { userId: 老板, bizRole: "director" },
       { userId: 总管, bizRole: "director" },
       { userId: 市场, bizRole: "marketing_mgr" },
       { userId: 销售经理, bizRole: "sales_mgr" },
@@ -54,6 +56,8 @@ beforeEach(async () => {
     ],
   });
   await setSetting(规则.线索分配.key, true);
+  // 11-01 起「不设配额」没存 = 开（A10 / A11），开着时没有满额一说；这里钉的是按配额分时的满额提醒，先显式关上
+  await setSetting(不设配额key, false);
   // 销售经理也能接线索：给他 0 配额，算「填了配额」，满额那条路才走得到
   await 配(销售经理, 0);
   当(市场);

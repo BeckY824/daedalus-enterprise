@@ -48,6 +48,8 @@ beforeEach(async () => {
   mocks.开 = true;
   甲 = (await prisma.user.create({ data: { email: "jia", name: "甲", title: "", role: "ADMIN", password: "x" } })).id;
   mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
+  // 11-01 权限只认业务角色：甲是这些项目的负责人，得有销售角色才能建、改项目
+  await prisma.entMember.create({ data: { userId: 甲, bizRole: "sales" } });
   抖音 = (await prisma.channel.create({ data: { name: "渠道一", channelOwnerId: 甲 } })).id;
   小红 = (await prisma.channel.create({ data: { name: "渠道二", channelOwnerId: 甲 } })).id;
   停了 = (await prisma.channel.create({ data: { name: "停了的", channelOwnerId: 甲, active: false } })).id;
@@ -92,7 +94,7 @@ describe("建档向导：项目来源", () => {
         salesOwnerId: 甲, channelId: 抖音, referrerCustomerId: null,
       },
       联系人: { name: "王经理", position: "采购", phone: "13900000002" },
-      项目: { name: "一期", amount: 0, currency: "CNY", ownerId: 甲, ...(项目渠道 !== undefined ? { channelId: 项目渠道 } : {}) },
+      项目: { name: "一期", amount: 0, currency: "CNY", ownerId: 甲, 业务线: "内贸", ...(项目渠道 !== undefined ? { channelId: 项目渠道 } : {}) },
       跟进: { type: "PHONE", content: "电话聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false },
     } as 建档向导输入;
   }

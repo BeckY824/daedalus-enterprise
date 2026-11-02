@@ -52,6 +52,7 @@ import Shortcut, { useModifierKey } from "./Shortcut";
 import { useBusiness } from "@/lib/business-client";
 import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
 import { useMotionTheme } from "@/components/MotionTheme";
+import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 
 const { Header, Content } = Layout;
@@ -88,6 +89,8 @@ type Props = {
   企业版项目?: boolean;
   /** 企业版开关（服务端读了传下来）：右侧 AI 面板的回答里不摆「起草转介绍邀请」 */
   企业版?: boolean;
+  /** 企业版站内通知（11-01）：我没读的通知数，layout 读好传下来；undefined = 不摆铃铛（非企业版） */
+  通知未读?: number;
   /** 标签页标题里的产品名。企业版可换成客户自己的（lib/enterprise/brand.ts） */
   产品名?: string;
   /**
@@ -145,7 +148,7 @@ const 根目录图标: Record<根目录图, React.ReactNode> = {
   项目: <ProjectOutlined />,
 };
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -607,6 +610,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
           <span style={{ flex: 1 }} />
           {/* 手机上也要能说一句：用得别扭的时刻多半就发生在手机上（在路上翻学员的时候） */}
           {反馈去向 !== "none" && <FeedbackButton 去向={反馈去向} />}
+          {通知未读 !== undefined && <NoticeBell 初始未读={通知未读} 手机 />}
           <Badge count={要跟数} size="small" color={要跟.逾期 > 0 ? "var(--danger)" : "var(--text-muted)"}>
             <Button type="text" icon={<BellOutlined />} aria-label={要跟说法 ? `跟进计划，${要跟说法}` : "跟进计划"} onClick={() => router.push("/follow-ups/plans")} />
           </Badge>
@@ -649,6 +653,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
             {/* 首页的 ⌘K 是「回问答框」、记录页是「换一位」：那两处不写，免得标签和按下去的对不上（lib/roster.ts） */}
             {!页内占着CmdK && <kbd><Shortcut>⌘K</Shortcut></kbd>}
           </button>
+          {通知未读 !== undefined && <NoticeBell 初始未读={通知未读} />}
         </div>
         {/* 名字直接写出来，不再靠 tooltip：第一次打开的人不会去悬停，
             他只看到一列认不出的方块。aria-label 保留原样，e2e 和读屏都认它。 */}

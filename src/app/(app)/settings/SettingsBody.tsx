@@ -6,7 +6,7 @@ import { describeLlmConfig } from "@/lib/llm";
 import { getBusiness } from "@/lib/business";
 import { 角色字典, 异常类别字典, 能进公海的阶段 } from "@/lib/project/db";
 import { 读组织规则 } from "@/lib/project/org-rules-store";
-import { 读卡点默认 } from "@/lib/project/blocker";
+import { 读卡点默认, 读卡点角色开关, 原因字典, 卡点权限 } from "@/lib/project/blocker";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 能管回收站 } from "@/lib/enterprise/soft-delete";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
@@ -16,8 +16,9 @@ import { multiTenant } from "@/lib/tenant/context";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
 import { 文字里号码打码, 同名带邮箱 } from "@/lib/utils";
-import { 读组织, 直属上级of, 虚线上级of, 管理员类别of } from "@/lib/enterprise/org";
-import { 拆角色, 推业务角色 } from "@/lib/enterprise/org-core";
+import { 读组织, 直属上级of, 虚线上级of, 权限组织 } from "@/lib/enterprise/org";
+import { 拆角色 } from "@/lib/enterprise/org-core";
+import { 能进设置, 能改后台设置, 只读角色, 是总管理 } from "@/lib/enterprise/permissions";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
 import { getSetting } from "@/lib/settings";
@@ -62,14 +63,13 @@ export default async function SettingsBody() {
   const 项目数 = (await 企业版只用项目())
     ? await prisma.project.groupBy({ by: ["ownerId", "phase"], where: { result: null, pooledAt: null }, _count: { _all: true } })
     : null;
-  // 企业版「团队成员」的角色列摆业务角色（10-28 用户：「看所有人的角色都是销售？这个不应该吧」）——账号上的 role 只管能不能进后台，
-  // 停用的人也要有，所以直接读 EntMember，不走只含在职的 读组织()；没设过的按账号角色推，和 组织 同一个口径
-  const 业务角色of = 企业版()
-    ? await prisma.entMember.findMany({ select: { userId: true, bizRole: true } }).then((ms) => {
-        const 存 = new Map(ms.map((m) => [m.userId, 拆角色(m.bizRole)]));
-        return (u: { id: string; role: string }) => (存.get(u.id)?.length ? 存.get(u.id)! : [推业务角色(u.role)]);
-      })
+  // 企业版「团队成员」的角色列摆业务角色（10-28 用户：「看所有人的角色都是销售？这个不应该吧」）。
+  // 停用的人也要有，所以直接读 EntMember，不走只含在职的 读组织()。没设过的就是空——不按账号角色推（11-01：没设业务角色 = 没权限，界面上也别装作有）
+  const 成员行 = 企业版() ? await prisma.entMember.findMany({ select: { userId: true, bizRole: true, noSettings: true } }) : null;
+  const 业务角色of = 成员行
+    ? ((存) => (u: { id: string }) => 存.get(u.id) ?? [])(new Map(成员行.map((m) => [m.userId, 拆角色(m.bizRole)])))
     : null;
+  const 不管设置们 = new Set((成员行 ?? []).filter((m) => m.noSettings).map((m) => m.userId));
   const 阶段数of = (id: string) => Object.fromEntries((项目数 ?? []).filter((g) => g.ownerId === id).map((g) => [g.phase, g._count._all]));
 
   // 项目模式（团队版 1a）开着才多一栏：组员角色字典、异常类别字典
@@ -82,11 +82,15 @@ export default async function SettingsBody() {
         // 组织规则只企业版有：别的版本不读、卡片不出
         企业版() ? 读组织规则() : null,
         企业版() ? 读卡点默认() : null,
+        // 卡点（11-01 B6–B9）：阻碍原因字典、按业务角色的两个开关；只有总管理员（业务角色）能改
+        企业版() ? 原因字典() : null,
+        企业版() ? 读卡点角色开关() : null,
+        企业版() ? 卡点权限(me).then((x) => x.能管) : false,
         // 每人手上的线索 / 商机项目数，和 lib/project/db.ts 持有数 同一个口径
         !企业版() ? [] : prisma.project.groupBy({ by: ["ownerId"], where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] } }, _count: { _all: true } }),
         // 提成比例 A / B 只企业版有：别的版本不读、卡片不出
         企业版() ? 读提成比例() : null,
-      ]).then(([角色, 用量, 类别, 类别用量, 组织规则, 卡点默认, 持有, 提成比例]) => {
+      ]).then(([角色, 用量, 类别, 类别用量, 组织规则, 卡点默认, 卡点原因, 卡点开关, 能改卡点, 持有, 提成比例]) => {
         const 用 = new Map(用量.map((x) => [x.roleId, x._count._all]));
         const 类别用 = new Map(类别用量.map((x) => [x.exceptionCategoryId, x._count._all]));
         return {
@@ -94,6 +98,9 @@ export default async function SettingsBody() {
           类别们: 类别.map((c) => ({ id: c.id, name: c.name, active: c.active, 用的人: 类别用.get(c.id) ?? 0 })),
           组织规则,
           卡点默认,
+          卡点原因,
+          卡点开关,
+          能改卡点,
           持有: Object.fromEntries(持有.map((x) => [x.ownerId, x._count._all])),
           提成比例,
           能改提成比例: false,
@@ -101,6 +108,11 @@ export default async function SettingsBody() {
       })
     : null;
 
+  // 进设置页 / 改后台设置（11-01 #9）：企业版只认业务角色——总管理能改，管理员（admin）只读看，勾了「不管设置」的总管理都不行；
+  // 别的版本照旧账号 ADMIN。和服务端 settings/actions.ts 能改设置、org-actions.ts 能改的人 同一套
+  const 权限org = 企业版() ? await 权限组织() : null;
+  const 可进 = !共享区 && (企业版() ? 能进设置(me, 权限org) : me.role === "ADMIN");
+  const 可改 = !共享区 && (企业版() ? 能改后台设置(me, 权限org) : me.role === "ADMIN");
   // 企业版才多一栏「组织架构」：部门树、每个人的部门 / 角色 / 业务线 / 上级。老板和总管理员能改（字段权限、谁能改按「后台设置谁能改」）
   const [org, 开关, 字段权限, 线索分配, 改权限, 不设配额, 市场部门, 市场单设] = 企业版()
     ? await Promise.all([
@@ -173,8 +185,9 @@ export default async function SettingsBody() {
               自动上级: 自动 ? 名.get(自动) ?? null : null,
             };
           }),
-          能改: !共享区 && (me.role === "ADMIN" || 管理员类别of(org, me.id) === "总管理员"),
-          是老板: me.role === "ADMIN" && !共享区,
+          // 组织架构、业务角色分配只有总管理（11-01）；能改的人就能授总管理 / 管理员
+          能改: 可改,
+          是老板: 可改,
           规则开着: 开关,
           字段权限,
           字段权限挡: 挡("字段权限"),
@@ -186,9 +199,10 @@ export default async function SettingsBody() {
         };
       })()
     : null;
-  // 企业版：直属上级能给下属办离职（D-36），管理员除外；老板本来就能办全部。跟「按组织看客户」开关走，同 能办离职
-  const 下属可停用 = org && 开关?.按组织看客户 && !共享区 && me.role !== "ADMIN"
-    ? users.filter((u) => u.role !== "ADMIN" && 直属上级of(org, u.id) === me.id).map((u) => u.id)
+  // 企业版：直属上级能给下属办离职（D-36），总管理不在其内；能改设置的总管理本来就能办全部，管理员（admin）只读、一个都不能办。
+  // 跟「按组织看客户」开关走，同 settings/actions.ts 能办离职
+  const 下属可停用 = org && 开关?.按组织看客户 && !共享区 && !可改 && !只读角色(me, 权限org)
+    ? users.filter((u) => !是总管理(u, 权限org) && 直属上级of(org, u.id) === me.id).map((u) => u.id)
     : [];
 
   // 谁能导入只认 import-perm.ts 一处（现在企业版是老板、总管理员），以后放宽只改那里
@@ -207,7 +221,9 @@ export default async function SettingsBody() {
        * 不给他过 requireAdmin 了（settings/actions.ts），界面这边也别摆那些按钮：
        * 摆着点了只会报错，而 AI 接入那一栏还会把平台 Key 的尾 4 位显示出来。
        */
-      isAdmin={me.role === "ADMIN" && !共享区}
+      isAdmin={可进}
+      /* 管理员（admin）能进来看、不能改（11-01）：AI 接入 / 业务设置那几栏控件全灰，团队成员不给编辑 */
+      只读={可进 && !可改}
       共享区={共享区}
       企业版导入={企业版() && !共享区 && 能导入}
       /* 不能导入的人那栏永远是空的，不摆 */
@@ -243,6 +259,7 @@ export default async function SettingsBody() {
         oppCount: u._count.opportunities,
         ...(项目数 ? { 项目阶段: 阶段数of(u.id) } : {}),
         ...(业务角色of ? { 业务角色: 业务角色of(u) } : {}),
+        ...(成员行 && 不管设置们.has(u.id) ? { 不管设置: true } : {}),
         followCount: u._count.followUps,
         ...(u.feishuOpenId ? { 飞书已绑: true } : {}),
       }))}

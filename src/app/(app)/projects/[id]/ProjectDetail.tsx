@@ -42,8 +42,8 @@ import { parseFollowUpDraft } from "../../customers/[id]/ai";
 import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
-import { BlockerList, PublishBlockerModal, type 卡点卡, type 可选人 } from "../BlockerPanel";
-import { 卡点类型们, 影响等级们, 描述上限, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
+import { 卡点类型们, 影响等级们, 描述上限, 标题上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import type { 附件 } from "@/lib/attachment-rules";
 import FollowAttachments, { 选沟通附件 as 选沟通附件框, 传沟通附件 } from "@/components/FollowAttachments";
 import { ProjectCommissionCard } from "./ProjectCommission";
@@ -83,13 +83,15 @@ export type 项目详情 = {
   进公海: { 方式: 放回方式; 谁: string } | null;
   /** 服务端读的 企业版()：放回公海的说法跟着它走 */
   企业版: boolean;
+  /** 能删这个项目：企业版只有总管理（进回收站），别的版本 = 能改 */
+  能删?: boolean;
   /** 企业版组织规则里改过的出口叫法（设置 → 项目 → 阶段规则）；别的版本是空的 */
   出口叫法: 出口叫法改动;
   /** 企业版线索阶段：客户明确回复了的沟通有几条（0 = 推不过线索验证）；别的阶段、别的版本是 0 */
   有效沟通: number;
   /**
    * 企业版超时回收：nextStepAt 是最近一次沟通填的下一步时间（服务端排好的 YYYY-MM-DD）；回收日 = 哪天没人跟进就自动回公海（null = 不会）；
-   * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人、老板、主管、项目组成员，且不在公海（不是企业版照原来去客户页记）
+   * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人（11-01 起组员只能看），且不在公海（不是企业版照原来去客户页记）
    * nextStepText = 下一步做什么（10-29 起记沟通时自己写一句话，时间可空）；老数据只有时间没有这句，就只摆时间
    */
   nextStepAt: string | null; nextStepText?: string | null; 回收日: string | null;
@@ -99,6 +101,8 @@ export type 项目详情 = {
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版还要是总管理员或经理（M-权限-09，普通成员不能改删） */
   可改沟通?: boolean;
+  /** 沟通能删：只有总管理（11-02，和 可改沟通 分开） */
+  可删沟通?: boolean;
   /**
    * 企业版（10-29 P6）：项目来源 = 项目自己选的渠道（没选 = 跟客户来源走，null = 客户也没有）；已立项天数从建项目那天按自然日数；
    * 渠道们 = 能改时编辑框里选项目来源用的；aiEnabled = 「记一条沟通」里给不给 AI 解析（没配模型不给）。不是企业版都不传
@@ -125,6 +129,8 @@ export type 项目详情 = {
   不给推: string | null;
   /** 能改节点：能改的人 + 企业版负责人的直属上级（账号可能是 SALES）；只管节点这一块 */
   能改节点: boolean;
+  /** 能转让（换负责人）：企业版 = 总管理、负责人的实线上级（业务线对得上，lib/enterprise/permissions.ts 能转让项目）、负责人本人转出自己的 */
+  能转让?: boolean;
   balanceSettled: boolean; balanceSettledBy: string | null; balanceSettledAt: string | null;
   acceptancePassed: boolean; acceptancePassedBy: string | null; acceptancePassedAt: string | null;
   /** kind 不是 node 的行是换负责人（转让 / 放回公海 / 从公海领取），transfer 记从谁到谁；category 是进异常时选的类别 */
@@ -274,8 +280,8 @@ function 进公海说法(进: 项目详情["进公海"], 原负责人: string): 
  * 项目详情：顶上是节点进度和「下一步」，中间改节点 / 点结局、勾尾款结清和验收通过，下面是节点变更和挂在这个项目上的沟通。
  * 只有负责人、老板、主管能改；其他人看得到、按钮灰着
  */
-/** 企业版卡点：项目详情上的卡点列表、发卡点要的默认值和可指认的人；不是企业版不给（null） */
-export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点默认; 人们: 可选人[] };
+/** 企业版卡点：项目详情上的卡点列表、发卡点要的默认值和阻碍原因下拉；不是企业版不给（null） */
+export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点默认; 原因们: string[] };
 
 const 无效原因前缀 = "无效原因：";
 
@@ -395,7 +401,9 @@ export default function ProjectDetail({
   const 交付了 = 是交付(p.result);
   const 异常 = p.result === "异常状态";
   const 可改 = 能改 && !p.pooled;
-  const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : "只有项目负责人、老板或主管能改";
+  // 企业版 11-01：只有负责人能改内容，总管理、上级、组员都只能看
+  const 改不了话 = p.企业版 ? "只有项目负责人能改，其他人只能看" : "只有项目负责人、老板或主管能改";
+  const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : 改不了话;
   const 节点可改 = p.能改节点 && !p.pooled;
   const 节点不能改 = p.能改节点 ? (p.pooled ? 不能改 : undefined) : 不能改;
   // 企业版：线索阶段还没有客户明确回复的沟通，推不过「线索验证」（服务端 lib/project/stage-gates.ts 同一条）
@@ -407,7 +415,7 @@ export default function ProjectDetail({
   const 等复核文字 = p.线索验证?.待 === "市场复核" ? "等管理员复核" : p.线索验证?.待 === "总管理终判" ? "等管理员最终确认" : undefined;
   const 等复核 = !!等复核文字;
   // 「下一步」灰着的原因写在按钮下面（规则：灰按钮要写为什么），不靠悬停
-  const 动不了 = (节点可改 ? undefined : 节点不能改 ?? "只有项目负责人、老板或主管能改") ?? 等复核文字;
+  const 动不了 = (节点可改 ? undefined : 节点不能改 ?? 改不了话) ?? 等复核文字;
   // 往前推另外的关：直属上级才推 / 需求状态补全期（p.不给推）、线索验证缺有效沟通
   const 往前不了 = p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined);
   // 配了必填、不是老板主管：缺着必填不给往前推；填齐了（占位值不算）照样能推（M-节点-05/09）
@@ -853,7 +861,7 @@ export default function ProjectDetail({
             <Tag>{f.node}</Tag>
             {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
             <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-            {(p.可改沟通 || 卡点?.能发) && (
+            {(p.可改沟通 || p.可删沟通 || 卡点?.能发) && (
               // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
               <span style={{ marginLeft: "auto" }}>
                 <InlineConfirm 问="删了进回收站，30 天内可恢复" 开={删问于 === f.id} set开={(v) => set删问于(v ? f.id : null)} 做={() => 删沟通(f.id)}>
@@ -864,7 +872,8 @@ export default function ProjectDetail({
                     menu={{
                       items: [
                         ...(卡点?.能发 ? [{ key: "blocker", label: "发卡点" }] : []),
-                        ...(p.可改沟通 ? [{ key: "edit", label: "修改" }, { key: "delete", label: "删除", danger: true }] : []),
+                        ...(p.可改沟通 ? [{ key: "edit", label: "修改" }] : []),
+                        ...(p.可删沟通 ? [{ key: "delete", label: "删除", danger: true }] : []),
                       ],
                       onClick: ({ key }) => (key === "blocker" ? set发卡点于(f.id) : key === "edit" ? set改沟通于(f) : set删问于(f.id)),
                     }}
@@ -876,7 +885,7 @@ export default function ProjectDetail({
             )}
           </div>
           <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{f.content}</div>
-          {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可改沟通} />}
+          {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} />}
         </div>
       ))}
       </div>
@@ -897,7 +906,7 @@ export default function ProjectDetail({
       ))}
     >
       <div id="project-blockers-body" className={p.企业版 ? "proj-mod-body" : undefined}>
-        <BlockerList 们={列卡点} 人们={卡点.人们} 空={搜着 && 卡点.们.length ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
+        <BlockerList 们={列卡点} 空={搜着 && 卡点.们.length ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
       </div>
     </Card>
   );
@@ -934,7 +943,8 @@ export default function ProjectDetail({
     </>
   );
   // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
-  const 转给钮 = p.企业版 && 可改 && !独自一人(候选, p.ownerId) && (
+  // 11-01：转让按 能转让 给（总管理、上级能转不能改；负责人本人能改不能自己转），和 lib/project/db.ts 改项目 同一个判断
+  const 转给钮 = p.企业版 && !p.pooled && !!p.能转让 && !独自一人(候选, p.ownerId) && (
     <Button disabled={忙} onClick={() => { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }}>转让项目</Button>
   );
   const 放回问 = () => {
@@ -946,15 +956,20 @@ export default function ProjectDetail({
 
   // 企业版页头（11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」）：记一条沟通 / AI 录入回沟通卡头，发卡点回卡点卡头，
   // 关联 + 回关联卡，邀请回项目组卡，改分配回提成卡，项目画像、附件就在各自卡上改 / 传，线索判定一直在节点卡里。
-  // 公海里的项目这里是「领取」。企业版不摆「删除项目」（M-权限-10：项目是公司资产，服务端也一律拒）。
+  // 公海里的项目这里是「领取」。「删除项目」企业版只摆给总管理（QA #3，进回收站；服务端 删项目 也只放总管理），收在「更多」里。
   // ⌘N 点的是页头主按钮（领取），没有就点节点卡上的「新增沟通」（data-cmd-new，components/CommandBar.tsx）
-  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海) && (
+  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删) && (
     <Space wrap>
       {领取钮}
       {转给钮}
       {p.能放公海 && (等复核
         ? <Tooltip title={`${等复核文字}，暂时不能退回`}><Button disabled>退回公海</Button></Tooltip>
         : <Button disabled={忙} onClick={放回问}>退回公海</Button>)}
+      {p.能删 && (
+        <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: [{ key: "delete", danger: true, label: "删除项目" }], onClick: () => 删问() }}>
+          <Button icon={<MoreOutlined />} aria-label="项目的更多操作">更多</Button>
+        </Dropdown>
+      )}
     </Space>
   );
 
@@ -967,7 +982,7 @@ export default function ProjectDetail({
           {领取钮}
           {转给钮}
           {/* 放回公海、删除项目少用、后果重：收进「更多」（10-30） */}
-          {(p.能放公海 || 能改) && (
+          {(p.能放公海 || (p.能删 ?? 能改)) && (
             <Dropdown
               trigger={["click"]}
               placement="bottomRight"
@@ -975,7 +990,7 @@ export default function ProjectDetail({
               menu={{
                 items: [
                   ...(p.能放公海 ? [{ key: "pool", disabled: 等复核, label: 两行("放回公海", 等复核 ? `${等复核文字}，暂时不能放回` : undefined) }] : []),
-                  ...(能改 ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
+                  ...((p.能删 ?? 能改) ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
                 ],
                 onClick: ({ key }) => (key === "pool" ? 放回问() : 删问()),
               }}
@@ -1142,7 +1157,7 @@ export default function ProjectDetail({
         />
       )}
 
-      {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 人们={卡点.人们} onClose={() => set发卡点于(null)} />}
+      {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 原因们={卡点.原因们} onClose={() => set发卡点于(null)} />}
 
       {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
 
@@ -1152,7 +1167,7 @@ export default function ProjectDetail({
         </Modal>
       )}
 
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} 卡点默认={卡点?.能发 ? 卡点.默认 : null} onClose={() => set记一条开着(false)} 跑={跑} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} />}
 
       <Modal
         open={!!异常框}
@@ -1311,13 +1326,15 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
  * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」= 不生成（11-01 答复 #5），选了别的类型记下后照发卡点那一套生成一个。
  * F-跟进-07（企业版）：可先挑截图、录音，记下之后挂到这条沟通上
  */
-function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, 跑 }: {
+function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原因们 = [], onClose, 跑 }: {
   p: 项目详情;
   外贸: boolean;
   /** 从「AI 录入」点进来的：「更多」展开、AI 那一格先摆出来、光标先落在那 */
   AI先?: boolean;
   /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
   卡点默认?: 卡点默认 | null;
+  /** 阻碍原因下拉（设置里启用的）；也能现打新的，发出去进待审核 */
+  卡点原因们?: string[];
   onClose: () => void;
   跑: (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
 }) {
@@ -1345,6 +1362,8 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
   const [卡点类型, set卡点类型] = useState<string>("暂无卡点");
   const [卡点影响, set卡点影响] = useState<string | null>(null);
   const [卡点描述, set卡点描述] = useState("");
+  const [卡点标题, set卡点标题] = useState("");
+  const [卡点原因, set卡点原因] = useState<string[]>([]);
   const [附件们, set附件们] = useState<File[]>([]);
   const { message } = App.useApp();
   const router = useRouter();
@@ -1405,7 +1424,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
   const 交 = async () => {
     set交中(true);
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
-    const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, description: 卡点描述 } : undefined;
+    const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, title: 卡点标题, reasons: 卡点原因, description: 卡点描述 } : undefined;
     const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }, 卡点)), "已记下这条沟通");
     const r = 回.r;
     if (ok && r?.ok) {
@@ -1465,6 +1484,8 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, onClose, �
               <Select aria-label="卡点类型" value={卡点类型} onChange={set卡点类型} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
               <Select aria-label="卡点影响" allowClear disabled={卡点类型 === "暂无卡点"} value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
             </div>
+            <Input aria-label="卡点标题" disabled={卡点类型 === "暂无卡点"} style={{ marginTop: 8 }} maxLength={标题上限} value={卡点标题} onChange={(e) => set卡点标题(e.target.value)} placeholder="标题（不写取描述前 20 字）" />
+            <div style={{ marginTop: 8 }}><原因选择 原因们={卡点原因们} 值={卡点原因} on改={set卡点原因} disabled={卡点类型 === "暂无卡点"} /></div>
             <Input.TextArea aria-label="卡点描述" disabled={卡点类型 === "暂无卡点"} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={卡点描述} onChange={(e) => set卡点描述(e.target.value)} placeholder="卡在哪儿" />
           </div>
         )}

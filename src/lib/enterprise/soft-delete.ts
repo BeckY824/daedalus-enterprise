@@ -4,9 +4,10 @@
  *   - 删客户：客户和名下的联系人、项目、沟通记录记同一个 deletedAt（客户连带），一起进回收站
  *   - 恢复客户：同一时刻删的那些一起回来；早些时候单独删的那几条照旧留在回收站
  *   - 单独删的联系人 / 项目 / 沟通记录：所属客户也在回收站里的，先恢复客户
- *   - 谁能看、能恢复：老板、主管、组织里有管理员类别的（销售管理 / 市场管理 / 总管理员）；看的范围照各自平时看得到的
- *   - 彻底删除：只有最高级管理员（老板或总管理员）
+ *   - 谁能看、能恢复：只有总管理（11-01 C4，permissions.ts 能恢复）；看的范围照各自平时看得到的
+ *   - 彻底删除：只有总管理（C3，permissions.ts 能删除）
  *   - 到期清理：删了满 30 天的真删掉，夜扫的钟上每天一次（project/nightly.ts）
+ *   - 真删沟通记录：上面的卡点先脱开、照旧留着（11-01 卡点 B13）；老库脱不开的那几条留在回收站不删
  *
  * 不是企业版：这些都不开（删除照旧是真删）。
  */
@@ -15,10 +16,11 @@ import { prisma } from "../prisma";
 import { dayjs } from "../utils";
 import { 看全部 } from "../team-scope";
 import { 企业版 } from "./switch";
-import { 管理员类别 } from "./org";
-import { 最高管理 } from "./import-perm";
+import { 权限组织 } from "./org";
+import { 能删除, 能恢复 } from "./permissions";
 import { 看已删, 回收站保留天数, 客户连带, type 软删表名 } from "./soft-delete-core";
 import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
+import { 卡点脱离沟通 } from "../project/blocker";
 
 export { 看已删, 回收站保留天数, 客户连带, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -31,15 +33,26 @@ export function 软删开着(): boolean {
   return 企业版();
 }
 
-/** 看回收站、恢复：老板、主管、有管理员类别的 */
+/** 看回收站、恢复：只有总管理（C4） */
 export async function 能管回收站(me: 谁): Promise<boolean> {
   if (!企业版()) return false;
-  return me.role === "ADMIN" || me.role === "MANAGER" || (await 管理员类别(me.id)) !== null;
+  return 能恢复(me, await 权限组织());
 }
 
-/** 彻底删除：老板或总管理员 */
+/** 彻底删除：只有总管理（C3） */
 export async function 能彻底删除(me: 谁): Promise<boolean> {
-  return 企业版() && (await 最高管理(me));
+  return 企业版() && 能删除(me, await 权限组织());
+}
+
+/** 企业版删除（客户、联系人、项目、线索进回收站或真删）被拦时那一句 */
+export const 只有总管理能删话 = "只有总管理能删除";
+/**
+ * 删除前过一下（QA #3，11-01）：企业版只有总管理（director）能删，管理员（admin）只读也不能；回 null = 放行。
+ * 不是企业版不拦（照旧按各自的范围）
+ */
+export async function 删除挡(me: 谁): Promise<string | null> {
+  if (!企业版()) return null;
+  return 能删除(me, await 权限组织()) ? null : 只有总管理能删话;
 }
 
 export const 回收站叫法: Record<软删表名, string> = { Customer: "客户", Project: "项目", Contact: "联系人", FollowUp: "沟通记录" };
@@ -87,7 +100,7 @@ async function 重算最近跟进(tx: Tx, customerId: string) {
  * 关键联系人：回来的那位原来是关键、客户这会儿已经另有关键的，回来的那位不再标关键（一位客户只留一个关键）
  */
 export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结果<{ 连带: number; customerId: string | null }>> {
-  if (!(await 能管回收站(me))) return { ok: false, error: "只有老板和管理员能恢复" };
+  if (!(await 能管回收站(me))) return { ok: false, error: "只有总管理能恢复" };
   // 客户状态跟着项目算：项目回来了（单条或随客户连带）要重算，开关事务外读
   const 状态开 = (t === "Customer" || t === "Project") && (await 客户状态自动());
   return prisma.$transaction((tx) => 看已删(async () => {
@@ -128,12 +141,15 @@ async function 线索退回(tx: Tx, customerIds: string[]) {
 
 /** 彻底删除回收站里的一条：只有老板 / 总管理员。客户连同名下的一起真删（外键级联） */
 export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promise<结果<{ name: string }>> {
-  if (!(await 能彻底删除(me))) return { ok: false, error: "只有老板和总管理员能彻底删除" };
+  if (!(await 能彻底删除(me))) return { ok: false, error: "只有总管理能彻底删除" };
   return prisma.$transaction((tx) => 看已删(async () => {
     const 行 = await 表(tx, t).findUnique({ where: { id }, select: { id: true, deletedAt: true } });
     if (!行?.deletedAt) return { ok: false as const, error: "这一条不在回收站里了，刷新看看" };
     const name = await 叫什么(tx, t, id);
     if (t === "Customer") await 看全部(() => 线索退回(tx, [id]));
+    if (t === "FollowUp" && (await 卡点脱离沟通(tx, [id])).size) {
+      return { ok: false as const, error: "这条沟通上发过卡点，卡点要留着，这条先留在回收站" };
+    }
     await 看全部(() => 表(tx, t).deleteMany({ where: { id } }));
     return { ok: true as const, name };
   }));
@@ -154,7 +170,11 @@ export async function 清过期(现在: Date = new Date()): Promise<Record<软�
   const 数 = { FollowUp: 0, Contact: 0, Project: 0, Customer: 0 } as Record<软删表名, number>;
   if (!企业版()) return 数;
   await 看全部(() => 看已删(() => prisma.$transaction(async (tx) => {
-    for (const t of ["FollowUp", "Contact", "Project"] as const) 数[t] = (await 表(tx, t).deleteMany({ where: { deletedAt: { lt: 线 } } })).count;
+    // 沟通上的卡点先脱开（卡点照旧在）；老库脱不开的沟通这次跳过
+    const 到期沟通 = (await tx.followUp.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((f) => f.id);
+    const 留 = await 卡点脱离沟通(tx, 到期沟通);
+    数.FollowUp = (await tx.followUp.deleteMany({ where: { deletedAt: { lt: 线 }, ...(留.size ? { id: { notIn: [...留] } } : {}) } })).count;
+    for (const t of ["Contact", "Project"] as const) 数[t] = (await 表(tx, t).deleteMany({ where: { deletedAt: { lt: 线 } } })).count;
     const 客户 = (await tx.customer.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((c) => c.id);
     await 线索退回(tx, 客户);
     if (客户.length) 数.Customer = (await tx.customer.deleteMany({ where: { id: { in: 客户 } } })).count;

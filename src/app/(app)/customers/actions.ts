@@ -1,7 +1,7 @@
 "use server";
 
 import { 新建只给自己 } from "@/lib/enterprise/import-perm";
-import { 软删开着, 软删客户, 回收站保留天数 } from "@/lib/enterprise/soft-delete";
+import { 软删开着, 软删客户, 回收站保留天数, 删除挡 } from "@/lib/enterprise/soft-delete";
 import { businessDayjs } from "@/lib/business-clock";
 import { 转交商机 } from "@/lib/opportunity-activity";
 import { hasVisibleText } from "@/lib/form-validation";
@@ -42,6 +42,8 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
+import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 交接要确认, 交接中的客户 } from "@/lib/enterprise/handover-db";
@@ -55,8 +57,10 @@ import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
 import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 认业务线, 业务线不认得 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
+import { 交接通知 } from "@/lib/enterprise/notice-sources";
 
 
 /** 状态不在取值表里就给那句报错，合法给 null。建客户、批量改、撤销、行内改四处共用，报错文案一字不改 */
@@ -137,6 +141,8 @@ export type CustomerInput = {
 export type 企业客户资料 = 客户地址 & { shortName: string | null; assignWay: string | null; customerType: string | null;
   /** 客户属性（迁移 104，2026-10-31 F-客户-04）：字典 custAttr，客户看板按它分列 */
   customerAttr: string | null;
+  /** 业务线（迁移 106，2026-11-01 清单 A1）：内贸 / 外贸 / 暂不分配，手动选；新开项目默认跟它 */
+  bizLine: string | null;
   /** 地址第五格「客户地址」（迁移 091，P14 第 7 条）：公司详细地址，国内国外都收 */
   addrDetail: string | null };
 
@@ -436,6 +442,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       const v = (交.customerAttr ?? "").trim() || null;
       if (v && v !== 改前?.customerAttr && !(await 可选项("custAttr")).includes(v)) return { ok: false, error: `客户属性「${v}」不在可选范围内，请刷新后重选` };
       企资料.customerAttr = v;
+    }
+    // 业务线（迁移 106）：只认内贸 / 外贸 / 暂不分配，空 = 清掉
+    if (交.bizLine !== undefined) {
+      const 线 = 认业务线(交.bizLine);
+      if (线 === undefined) return { ok: false, error: 业务线不认得 };
+      企资料.bizLine = 线;
     }
   }
 
@@ -745,7 +757,10 @@ async function 删除依赖错误(db: Prisma.TransactionClient, ids: string[], �
 
 /** 先提示阻塞对象，避免让人走完不可恢复确认后才被拦。执行时仍在事务内再查。 */
 export async function 客户删除预检(ids: string[]): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireUser();
+  const me = await requireUser();
+  // 企业版只有总管理能删（QA #3）
+  const 挡 = await 删除挡(me);
+  if (挡) return { ok: false, error: 挡 };
   const b = await getBusiness();
   // 虚线下属的客户：在「确认删除…不能恢复」之前就说清楚，不等删完报「已经在别处删掉了」
   const 虚线 = await 虚线只读挡(defaultClient, ids);
@@ -760,6 +775,9 @@ export async function deleteCustomers(
   ids: string[],
 ): Promise<{ ok: true; deleted: number; 留下联系人: number } | { ok: false; error: string }> {
   const me = await requireUser();
+  // 企业版只有总管理（director）能删（QA #3，11-01）；管理员 admin 只读
+  const 挡 = await 删除挡(me);
+  if (挡) return { ok: false, error: 挡 };
   const b = await getBusiness();
   if (!ids.length) return { ok: true, deleted: 0, 留下联系人: 0 };
   const 虚线 = await 虚线只读挡(defaultClient, ids);
@@ -961,6 +979,22 @@ export async function 转走项目预览of(ids: string[], 新负责人?: string)
   return 数转走的项目(ids.filter((x) => typeof x === "string"), 新);
 }
 
+/** 企业版销售转了别人的 / 公海里的客户（界面不摆，直接调接口才到这） */
+const 只有管理能转让话 = "只能转出自己的客户；别人的找管理、总管理转";
+
+/**
+ * 企业版谁能转这批客户（11-02）：管理、总管理随便转；负责人（销售、销售管理）只转得了自己名下、不在公海的
+ * （「负责人自己转出也可以，前提是自己的项目」）。看全部数：限定层会把看不到的滤掉，数漏了就放过去了
+ */
+async function 转让挡(me: Awaited<ReturnType<typeof requireUser>>, ids: string[]): Promise<string | null> {
+  if (!企业版()) return null;
+  const org = await 权限组织();
+  if (能管公海(me, org)) return null;
+  if (!能转出自己的(me, org)) return 只有管理能转让话;
+  const 别人的 = await 看全部(() => prisma.customer.count({ where: { id: { in: ids }, OR: [{ salesOwnerId: { not: me.id } }, { pool: { isNot: null } }] } }));
+  return 别人的 ? 只有管理能转让话 : null;
+}
+
 /** 批量改销售负责人 */
 export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原因?: string | null): Promise<BulkResult> {
   const me = await requireUser();
@@ -975,6 +1009,9 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 虚线下属的客户限定层会静静滤掉，结果报成「已不存在」：先说真原因
   const 虚线 = await 虚线只读挡(defaultClient, ids);
   if (虚线) return { ok: false, error: 虚线 };
+  // 企业版转让 / 重新分配：管理、总管理（11-02：「这些都是管理来做。就是销售的上级」）；负责人只转自己的（同 能转让项目）。虚线 / 市场那句更具体，排它后面
+  const 不让 = await 转让挡(me, ids);
+  if (不让) return { ok: false, error: 不让 };
   const 挡 = await 挡字段(me.id, ["销售负责人"]);
   if (挡) return { ok: false, error: 挡 };
 
@@ -1038,6 +1075,7 @@ async function 发起转让交接(me: { id: string; name: string }, ids: string[
     return { 发起, 已在: 已在.size };
   }));
   const n = 发起.reduce((a, h) => a + h.customerIds.length, 0);
+  for (const h of 发起) await 交接通知(me, h.id, "发起");
   if (n) {
     const 接手 = (await prisma.user.findUnique({ where: { id: to }, select: { name: true } }))?.name ?? to;
     await recordAudit({

@@ -28,7 +28,7 @@ async function 登录(page: Page, 谁: keyof typeof 账号) {
   await page.waitForURL(/\/dashboard/);
 }
 
-test("四类账号都能登录：老板、销售经理、销售、市场", async ({ page }) => {
+test("四类账号都能登录：老板、销售管理、销售、市场", async ({ page }) => {
   for (const 谁 of ["老板", "经理", "销售1", "市场"] as const) {
     await page.context().clearCookies();
     await 登录(page, 谁);
@@ -64,7 +64,7 @@ test("导入导出：老板列表上有，销售没有；销售直接调上传�
     multipart: { file: { name: "客户.csv", mimeType: "text/csv", buffer: Buffer.from("客户姓名\n张三\n") } },
   });
   expect(r.status()).toBe(403);
-  expect((await r.json()).error).toContain("只有老板和总管理员");
+  expect((await r.json()).error).toContain("只有总管理能做企业版导入");
 });
 
 test("设置：老板有企业版导入和组织架构；销售看得到组织架构，看不到企业版导入、业务配置、AI 接入", async ({ page }) => {
@@ -144,21 +144,23 @@ async function 选(page: Page, 框名: string, 项: string) {
 }
 const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-notice", { hasText: 字 });
 
-test("线索分配：老板、市场管理有「分配」，销售经理、销售没有；市场把线索甲分给销售乙", async ({ page }) => {
+// A7（11-01 权限只认业务角色）：分配线索 = 市场管理、销售管理、总管理
+test("线索分配：老板、销售管理、市场管理有「分配」，销售没有；市场把线索甲分给销售乙", async ({ page }) => {
   const 正文 = page.getByRole("main");
   const 分配 = (名: string) => 正文.getByRole("button", { name: `分配 ${名}`, exact: true });
-  await 登录(page, "老板");
-  await page.goto("/leads");
-  await expect(分配("线索甲")).toBeVisible();
-
-  for (const 谁 of ["经理", "销售1"] as const) {
+  for (const 谁 of ["老板", "经理"] as const) {
     await page.context().clearCookies();
     await 登录(page, 谁);
     await page.goto("/leads");
-    await expect(正文.locator(".page-head")).toBeVisible();
-    if (谁 === "销售1") await expect(正文.getByText("线索乙").first()).toBeVisible();
-    await expect(正文.getByRole("button", { name: /^分配 / })).toHaveCount(0);
+    await expect(分配("线索甲")).toBeVisible();
   }
+
+  await page.context().clearCookies();
+  await 登录(page, "销售1");
+  await page.goto("/leads");
+  await expect(正文.locator(".page-head")).toBeVisible();
+  await expect(正文.getByText("线索乙").first()).toBeVisible();
+  await expect(正文.getByRole("button", { name: /^分配 / })).toHaveCount(0);
 
   await page.context().clearCookies();
   await 登录(page, "市场");

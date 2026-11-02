@@ -42,7 +42,8 @@ beforeEach(async () => {
     if (bizRole) await prisma.entMember.create({ data: { userId: id, bizRole } });
     return id;
   };
-  老板 = await 人("boss", "老板", "ADMIN");
+  // 11-01 权限只认业务角色：老板 = 总管理（改、删沟通，看回收站都只认 director）
+  老板 = await 人("boss", "老板", "ADMIN", "director");
   销售 = await 人("s1", "小王", "SALES", "sales");
   同事 = await 人("s2", "小李", "SALES", "sales");
   客户 = (await prisma.customer.create({ data: { name: "示例客户", phone: "13800000001", salesOwnerId: 销售 } })).id;
@@ -85,8 +86,7 @@ describe("改项目上的一条沟通", () => {
   it("改方式 / 时间 / 内容；标题、状态这些原样；拿旧版本再改报冲突、不盖", async () => {
     await 记项目沟通Action(项目, 沟通());
     const id = await 最新沟通(项目);
-    // 10-31 M-权限-09：普通成员不能改沟通，改的是总管理员 / 经理（成员被拒见 ent-followup-p3.test.ts）
-    当(老板, "ADMIN");
+    // 11-02 改沟通是负责人的事（同事、总管理被拒见 ent-followup-p3.test.ts）
     const 前 = (await prisma.followUp.findUnique({ where: { id } }))!;
     expect(await 改项目沟通(项目, id, { type: "WECHAT", content: "改成微信聊的", occurredAt: "2026-10-19 09:30", 版本: 前.updatedAt.toISOString() })).toEqual({ ok: true });
     const 后 = (await prisma.followUp.findUnique({ where: { id } }))!;

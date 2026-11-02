@@ -1,7 +1,8 @@
 /**
  * 企业版「按组织架构看客户」（lib/enterprise/visibility.ts + team-scope 加上限定）。
  * 钉的是：规则关着 = 照旧看全部；开了以后销售只看自己的和公海，直属上级看、改整条下属链，
- * 虚线上级只能看（改、转、在下面加跟进都拦）；老板、总管理员看全部；没认出人只看公海；后台任务不限定。
+ * 虚线上级只能看（改、转、在下面加跟进都拦）；总管理、管理员看全部；没设业务角色 = 什么都没有（11-01）；没认出人只看公海；后台任务不限定。
+ * 删客户只有总管理（11-01），经理删虚线 / 实线下属的客户都先被这一条挡。
  * 虚线上级批量改负责人：客户改不动，客户下面的项目、待办也不能被带走（一周模拟 D2 查出来的）。
  * 虚线下属的客户被挡时说对原因：批量转 / 删 / 放公海 / 批量状态不报「已不存在」，编辑不用团队版的话（10-25 实测 F4 / F5）。
  * 用拷出来的一份库、显式单连接，不碰共用的测试库。
@@ -45,6 +46,7 @@ const 小王 = "e_wang"; // 经理的实线下属
 const 小张 = "e_zhang"; // 经理的虚线下属
 const 小赵 = "e_zhao"; // 小张的实线下属（经理虚线链上）
 const 外人 = "e_other";
+const 没角色 = "e_none"; // 账号在、组织里没有他那一行（没设业务角色）
 
 const 名单 = async () => (await db.customer.findMany({ orderBy: { name: "asc" } })).map((c) => c.name);
 const 作为 = <T,>(id: string, f: () => Promise<T>) => 以谁的身份(id, f);
@@ -62,9 +64,10 @@ beforeAll(async () => {
   for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   const 人 = (id: string, name: string, role = "SALES") => raw.user.create({ data: { id, email: `${id}@x.com`, name, password: "x", role } });
   await 人(老板, "老板", "ADMIN");
-  for (const [id, n] of [[总管, "总管"], [经理, "经理"], [小王, "小王"], [小张, "小张"], [小赵, "小赵"], [外人, "外人"]]) await 人(id, n);
+  for (const [id, n] of [[总管, "总管"], [经理, "经理"], [小王, "小王"], [小张, "小张"], [小赵, "小赵"], [外人, "外人"], [没角色, "没角色"]]) await 人(id, n);
   await raw.entMember.createMany({
     data: [
+      { userId: 老板, bizRole: "admin" },
       { userId: 总管, bizRole: "director" },
       { userId: 经理, bizRole: "sales_mgr" },
       { userId: 小王, managerId: 经理 },
@@ -93,16 +96,21 @@ describe("组织范围of（纯函数）", () => {
     建组织(
       [老板, 总管, 经理, 小王, 小张, 小赵, 外人].map((id) => ({ id, role: id === 老板 ? "ADMIN" : "SALES", active: true })),
       [
+        { userId: 老板, deptId: null, bizRole: "admin", line: null, managerId: null, dottedManagerId: null },
         { userId: 总管, deptId: null, bizRole: "director", line: null, managerId: null, dottedManagerId: null },
+        { userId: 经理, deptId: null, bizRole: "sales_mgr", line: null, managerId: null, dottedManagerId: null },
+        { userId: 外人, deptId: null, bizRole: "sales", line: null, managerId: null, dottedManagerId: null },
         { userId: 小王, deptId: null, bizRole: "sales", line: null, managerId: 经理, dottedManagerId: null },
         { userId: 小张, deptId: null, bizRole: "sales", line: null, managerId: null, dottedManagerId: 经理 },
         { userId: 小赵, deptId: null, bizRole: "sales", line: null, managerId: 小张, dottedManagerId: null },
       ],
       [],
     );
-  it("老板、总管理员 = 看全部", () => {
+  it("管理员、总管理 = 看全部；账号 ADMIN 没设业务角色的什么都没有", () => {
     expect(组织范围of(org(), "ADMIN", 老板)).toBeNull();
     expect(组织范围of(org(), "SALES", 总管)).toBeNull();
+    const 光账号 = 建组织([{ id: "bare", role: "ADMIN", active: true }], [], []);
+    expect(组织范围of(光账号, "ADMIN", "bare")).toEqual({ 写: ["__无"] });
   });
   it("经理：改 = 自己 + 实线下属；看再加虚线下属和他的实线下属", () => {
     const r = 组织范围of(org(), "SALES", 经理)!;
@@ -113,6 +121,7 @@ describe("组织范围of（纯函数）", () => {
     const o = 建组织(
       [经理, 小王, 小赵].map((id) => ({ id, role: "SALES", active: true })),
       [
+        { userId: 经理, deptId: null, bizRole: "sales_mgr", line: null, managerId: null, dottedManagerId: null },
         { userId: 小王, deptId: null, bizRole: "sales", line: null, managerId: 经理, dottedManagerId: 经理 },
         { userId: 小赵, deptId: null, bizRole: "sales", line: null, managerId: 小王, dottedManagerId: null },
       ],
@@ -146,6 +155,10 @@ describe("规则关着", () => {
     expect(await 作为(外人, 名单)).toHaveLength(7);
     expect(await 作为(外人, () => 读的我(raw))).toBeNull();
   });
+  it("没设业务角色的照样没权限：只看公海（QA #2，规则关着也一样）", async () => {
+    await 开规则(false);
+    expect(await 作为(没角色, 名单)).toEqual(["G公海"]);
+  });
 });
 
 describe("规则开着", () => {
@@ -155,7 +168,7 @@ describe("规则开着", () => {
     expect(await 作为(外人, 名单)).toEqual(["E外人的", "G公海"]);
   });
 
-  it("老板、总管理员看全部", async () => {
+  it("管理员、总管理看全部", async () => {
     expect(await 作为(老板, 名单)).toHaveLength(7);
     expect(await 作为(总管, 名单)).toHaveLength(7);
   });
@@ -235,16 +248,18 @@ describe("虚线下属的客户被挡时说对原因（F4 / F5）", () => {
     expect(await 作为(小王, () => 虚线只读的(raw, ids))).toEqual([]);
   });
 
-  it("批量转、删、删前预检、批量状态、放公海：单选一位虚线客户 → 虚线那句，不说已删；客户原样", async () => {
+  it("批量转、批量状态、放公海：单选一位虚线客户 → 虚线那句，不说已删；删、删前预检先被「只有总管理能删除」挡；客户原样", async () => {
     const id = await 客户id("C小张的");
     for (const r of [
       await 作为(经理, () => assignSalesOwner([id], 经理)),
-      await 作为(经理, () => 客户删除预检([id])),
-      await 作为(经理, () => deleteCustomers([id])),
       await 作为(经理, () => bulkFollowStatus([id], "跟进中")),
       await 作为(经理, () => 放进公海([id])),
     ]) {
       expect(r).toEqual({ ok: false, error: 虚线只读话 });
+      不说已删(r);
+    }
+    for (const r of [await 作为(经理, () => 客户删除预检([id])), await 作为(经理, () => deleteCustomers([id]))]) {
+      expect(r).toEqual({ ok: false, error: "只有总管理能删除" });
       不说已删(r);
     }
     const c = await raw.customer.findUniqueOrThrow({ where: { id }, include: { pool: true } });
@@ -253,14 +268,16 @@ describe("虚线下属的客户被挡时说对原因（F4 / F5）", () => {
 
   it("多选里混了两位虚线客户：说几位、叫人去掉再试", async () => {
     const ids = await Promise.all(["B小王的", "C小张的", "D小赵的"].map(客户id));
-    const r = await 作为(经理, () => deleteCustomers(ids));
+    const r = await 作为(经理, () => assignSalesOwner(ids, 经理));
     expect(r).toEqual({ ok: false, error: "选中的有 2 位是虚线下属的客户：只能看，不能改、不能转、不能删。去掉这几位再试" });
     expect(await raw.customer.count({ where: { id: { in: ids } } })).toBe(3);
   });
 
-  it("实线下属的照常走（预检不被虚线挡）", async () => {
+  it("实线下属的不被虚线挡（经理删不了是因为只有总管理能删，不是虚线那句）；总管理预检照常过", async () => {
     const id = await 客户id("B小王的");
-    expect(await 作为(经理, () => 客户删除预检([id]))).toEqual({ ok: true });
+    expect(await 作为(经理, () => 客户删除预检([id]))).toEqual({ ok: false, error: "只有总管理能删除" });
+    登录.user = { ...登录.user, id: 总管, name: "总管", role: "SALES" };
+    expect(await 作为(总管, () => 客户删除预检([id]))).toEqual({ ok: true });
   });
 
   it("编辑（整表保存 / 单格改）被挡用虚线那句，不用团队版「同事的客户」", async () => {

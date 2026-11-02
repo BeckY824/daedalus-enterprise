@@ -17,6 +17,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位 } from "@/lib/carry-over-db";
 import { 转让痕 } from "@/lib/project/db";
 import { 历史负责人们 } from "@/lib/project/pool-owner";
+import { 卡点随项目换人, 公海领走接手理由 } from "@/lib/project/blocker";
 import { 换负责人待办, 待办痕 } from "@/lib/project/carry-tasks";
 
 /**
@@ -106,5 +107,10 @@ async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: str
   const 痕: Map<string, string | null> = new Map();
   for (const p of 们) 痕.set(p.id, 待办痕(带待办, await 换负责人待办(tx, p, 原.get(p.id) ?? null, 新, 带待办)));
   await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, 原.get(p.id) ?? (p.ownerId || null), 新, "pool-claim", 痕.get(p.id) ?? null)) });
+  // B5：历史负责人没完成的卡点认领行给领走的人（同单独领项目走 记转让）
+  for (const p of 们) {
+    const 从 = 原.get(p.id) ?? p.ownerId;
+    if (从) await 卡点随项目换人(tx, p.id, 从, 新, 操作人, 公海领走接手理由);
+  }
   return ids;
 }

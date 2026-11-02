@@ -210,6 +210,8 @@ describe("读写库（CRM_ENTERPRISE 开 / 关）", () => {
     invalidateSettingsCache();
     老板 = await 人("boss", "ADMIN");
     乙 = await 人("yi", "SALES");
+    // 11-01 权限只认业务角色：老板 = 总管理，乙 = 销售
+    await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id }] });
     客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 乙.id } })).id;
     vi.stubEnv("CRM_ENTERPRISE", "1");
   });
@@ -217,7 +219,8 @@ describe("读写库（CRM_ENTERPRISE 开 / 关）", () => {
 
   it("企业版：商机改回线索被拦、不记节点变更；同阶段往后退能改", async () => {
     const p = await 项目({ phase: "商机", node: "共识方案" });
-    expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: "项目已经进了商机阶段，不能退回线索阶段" });
+    // 11-01 权限只认业务角色：总管理改不了进程，退阶段的门由负责人本人来撞
+    expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: "项目已经进了商机阶段，不能退回线索阶段" });
     expect(await prisma.projectNodeLog.count()).toBe(0);
     expect(await 改节点(乙, p.id, { phase: "商机", node: "明确需求" })).toMatchObject({ ok: true, 变了: true });
     expect(await 改节点(乙, p.id, { phase: "商机", node: "共识方案" })).toMatchObject({ ok: true, 变了: true });
@@ -225,9 +228,11 @@ describe("读写库（CRM_ENTERPRISE 开 / 关）", () => {
     expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "方案敲定" });
   });
 
-  it("企业版：订单改回商机被拦（老板也不行）；线索走到商机、商机走到订单照常", async () => {
+  it("企业版：订单改回商机被拦（负责人也不行，总管理本来就改不了进程）；线索走到商机、商机走到订单照常", async () => {
     const q = await 项目({ phase: "订单", node: "物流运输" });
-    expect(await 改节点(老板, q.id, { phase: "商机", node: "首款支付" })).toMatchObject({ ok: false, error: expect.stringContaining("不能退回商机阶段") });
+    // 11-01 权限只认业务角色：总管理改不了进程（只能看、转让）；退阶段的门由负责人本人来撞
+    expect(await 改节点(老板, q.id, { phase: "商机", node: "首款支付" })).toMatchObject({ ok: false, error: "只有项目负责人能改进程（上级、总管理只能看、转让）" });
+    expect(await 改节点(乙, q.id, { phase: "商机", node: "首款支付" })).toMatchObject({ ok: false, error: expect.stringContaining("不能退回商机阶段") });
     expect(await 现(q.id)).toMatchObject({ phase: "订单", node: "物流运输" });
 
     const p = await 项目({ node: "线索推进" });

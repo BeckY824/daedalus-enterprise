@@ -10,18 +10,23 @@ import type { 组织部门 } from "./org-tree";
 export type 组织成员 = {
   userId: string;
   deptId: string | null;
-  /** 主角色 = 角色们里排最前的那个（按 dept-policy 的顺序） */
-  bizRole: 业务角色;
-  /** 一个人可以兼几个角色（10-27 会议）；至少一个 */
+  /** 主角色 = 角色们里排最前的那个（按 dept-policy 的顺序）；没设业务角色 = null */
+  bizRole: 业务角色 | null;
+  /** 一个人可以兼几个角色（10-27 会议）。11-01 起空着 = 没设业务角色 = 什么权限都没有（不再按账号角色推） */
   角色们: 业务角色[];
   line: 业务线 | null;
   managerId: string | null;
   dottedManagerId: string | null;
+  /** 「不管设置」（迁移 108）：总管理勾上以后进不了设置页 */
+  不管设置: boolean;
 };
 /** 只含在职（User.active）的人：停用的人不当任何人的上级，也不算谁的下属 */
 export type 组织 = { 成员: Map<string, 组织成员>; 部门: Map<string, 组织部门> };
 
-/** 没有 EntMember 行的人按账号角色推：管理员 → 总管理员，主管 → 销售管理，其余 → 销售 */
+/**
+ * 账号角色 → 业务角色的老对照：管理员 → 总管理员，主管 → 销售管理，其余 → 销售。
+ * 11-01 起**不再拿来兜底权限**（没设业务角色 = 没权限，见 建组织）；只剩设置页「从账号角色带一个初始勾选」这类提示用
+ */
 export function 推业务角色(账号角色: string | null | undefined): 业务角色 {
   return 账号角色 === "ADMIN" ? "director" : 账号角色 === "MANAGER" ? "sales_mgr" : "sales";
 }
@@ -41,7 +46,7 @@ const 是业务线 = (x: unknown): x is 业务线 => x === "内贸" || x === "�
 
 export function 建组织(
   users: readonly { id: string; role: string; active: boolean }[],
-  members: readonly { userId: string; deptId: string | null; bizRole: string; line: string | null; managerId: string | null; dottedManagerId: string | null }[],
+  members: readonly { userId: string; deptId: string | null; bizRole: string; line: string | null; managerId: string | null; dottedManagerId: string | null; noSettings?: boolean | null }[],
   depts: readonly 组织部门[],
 ): 组织 {
   const 行 = new Map(members.map((m) => [m.userId, m]));
@@ -50,17 +55,18 @@ export function 建组织(
   for (const u of users) {
     if (!u.active) continue;
     const m = 行.get(u.id);
-    const 拆 = 拆角色(m?.bizRole);
-    const 角色们 = 拆.length ? 拆 : [推业务角色(u.role)];
+    // 11-01 用户定「兜底不留，没设业务角色就没权限」：没有 EntMember 行、或角色串是空的 = 角色们空着，不再按账号角色推
+    const 角色们 = 拆角色(m?.bizRole);
     成员.set(u.id, {
       userId: u.id,
       // 部门被删了的当没分部门
       deptId: m?.deptId && 部门.has(m.deptId) ? m.deptId : null,
-      bizRole: 角色们[0],
+      bizRole: 角色们[0] ?? null,
       角色们,
       line: m && 是业务线(m.line) ? m.line : null,
       managerId: m?.managerId ?? null,
       dottedManagerId: m?.dottedManagerId ?? null,
+      不管设置: !!m?.noSettings,
     });
   }
   return { 成员, 部门 };
@@ -120,22 +126,27 @@ export const 实线下属 = (org: 组织, 我: string, 层数 = Infinity) => 下
 /** 虚线下属：只顺虚线往下（A 虚线管 B、B 虚线管 C，A 也看 C），同团队版 虚线上级规则 */
 export const 虚线下属 = (org: 组织, 我: string, 层数 = Infinity) => 下属(org, 虚线上级of, 我, 层数);
 
-/** 企业版管理员三类（10-24）：销售管理 / 市场管理 / 总管理员；别的角色 = 不是管理员 */
-export type 管理员类别 = "销售管理" | "市场管理" | "总管理员";
+/**
+ * 企业版管理员类别（10-24）：销售管理 / 市场管理 / 总管理员；别的角色 = 不是管理员。
+ * 11-01 晚拆开：总管理员只有 director；admin（管理员）单列一类「管理员」= 看全部、只读（lib/enterprise/permissions.ts 只读角色），
+ * 所以问「能不能改」时 .has("总管理员") 不再放 admin 进来
+ */
+export type 管理员类别 = "销售管理" | "市场管理" | "总管理员" | "管理员";
 /** 兼几个角色的人，几类都算（10-27）：销售管理兼市场管理的，两边的权都有 */
 export function 管理员类别们of(org: 组织, userId: string): Set<管理员类别> {
   const 们 = new Set<管理员类别>();
   for (const r of org.成员.get(userId)?.角色们 ?? []) {
-    if (r === "director" || r === "admin") 们.add("总管理员");
+    if (r === "director") 们.add("总管理员");
+    else if (r === "admin") 们.add("管理员");
     else if (r === "sales_mgr") 们.add("销售管理");
     else if (r === "marketing_mgr") 们.add("市场管理");
   }
   return 们;
 }
-/** 最高的那一类：总管理员 > 销售管理 > 市场管理；只问「是不是总管理员 / 是不是管理员」时用，问别的类用 管理员类别们of */
+/** 最高的那一类：总管理员 > 销售管理 > 市场管理 > 管理员（只读）；只问「是不是总管理员 / 是不是管理员」时用，问别的类用 管理员类别们of */
 export function 管理员类别of(org: 组织, userId: string): 管理员类别 | null {
   const 们 = 管理员类别们of(org, userId);
-  return 们.has("总管理员") ? "总管理员" : 们.has("销售管理") ? "销售管理" : 们.has("市场管理") ? "市场管理" : null;
+  return 们.has("总管理员") ? "总管理员" : 们.has("销售管理") ? "销售管理" : 们.has("市场管理") ? "市场管理" : 们.has("管理员") ? "管理员" : null;
 }
 
 /** 部门在第几层（一级部门 = 1，null = 顶上 = 0）；断链、成环 = Infinity */

@@ -53,3 +53,37 @@ CREATE TABLE IF NOT EXISTS "EntFollowUpMeta" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "EntFollowUpMeta_code_key" ON "EntFollowUpMeta"("code");
 CREATE INDEX IF NOT EXISTS "EntFollowUpMeta_projectId_idx" ON "EntFollowUpMeta"("projectId");
+
+-- 2026-11-01 卡点改版追加（每次启动整目录重跑，IF NOT EXISTS 幂等）：认领明细一人一行、阻碍原因字典、卡点 ↔ 原因多选。
+-- 标题列、以及老库 EntBlocker.followUpId 从 NOT NULL + 级联改成可空 + 置空，都在 107-ent-blocker-title.sql（重建整张表）。
+-- 上面那张 EntBlocker 只在老库第一次升级时由这里建出来，随后马上被 107 重建；别再往这张表的定义里改东西，改 schema.prisma + 107。
+CREATE TABLE IF NOT EXISTS "EntBlockerClaim" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "blockerId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "done" BOOLEAN NOT NULL DEFAULT false,
+    "note" TEXT,
+    "doneAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "EntBlockerClaim_blockerId_fkey" FOREIGN KEY ("blockerId") REFERENCES "EntBlocker" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "EntBlockerClaim_blockerId_userId_key" ON "EntBlockerClaim"("blockerId", "userId");
+CREATE INDEX IF NOT EXISTS "EntBlockerClaim_userId_done_idx" ON "EntBlockerClaim"("userId", "done");
+CREATE TABLE IF NOT EXISTS "EntBlockerReason" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT '启用',
+    "sort" INTEGER NOT NULL DEFAULT 0,
+    "mergedIntoId" TEXT,
+    "createdById" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "EntBlockerReason_name_key" ON "EntBlockerReason"("name");
+CREATE TABLE IF NOT EXISTS "EntBlockerReasonLink" (
+    "blockerId" TEXT NOT NULL,
+    "reasonId" TEXT NOT NULL,
+    PRIMARY KEY ("blockerId", "reasonId"),
+    CONSTRAINT "EntBlockerReasonLink_blockerId_fkey" FOREIGN KEY ("blockerId") REFERENCES "EntBlocker" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "EntBlockerReasonLink_reasonId_fkey" FOREIGN KEY ("reasonId") REFERENCES "EntBlockerReason" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "EntBlockerReasonLink_reasonId_idx" ON "EntBlockerReasonLink"("reasonId");

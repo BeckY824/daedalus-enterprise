@@ -103,7 +103,13 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
         </>
       )}
 
-      {draft.kind === "blocker_resolve" && (
+      {draft.kind === "blocker_resolve" && draft.最后一个 === false && (
+        <F label="处理说明（选填）" block>
+          <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 4 }} value={draft.result} onChange={(e) => 设({ result: e.target.value })} />
+        </F>
+      )}
+
+      {draft.kind === "blocker_resolve" && draft.最后一个 !== false && (
         <>
           <F label="解决方案" block>
             <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 4 }} value={draft.solution} onChange={(e) => 设({ solution: e.target.value })} />

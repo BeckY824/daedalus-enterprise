@@ -95,7 +95,7 @@ async function 视图里的人(票: string, 真: SessionUser): Promise<SessionUs
     const v = await 验视图票(票, 真.id);
     if (!v) return null;
     const { 读组织 } = await import("./enterprise/org");
-    if (!能切换视图(await 读组织(), 真.role, 真.id)) return null;
+    if (!能切换视图(await 读组织(), 真.id)) return null;
     const t = await prisma.user.findUnique({ where: { id: v.谁 } });
     if (!t || !t.active) return null;
     return { id: t.id, name: t.name, email: t.email, role: t.role, title: t.title, avatar: t.avatar, 视图由: { id: 真.id, name: 真.name } };

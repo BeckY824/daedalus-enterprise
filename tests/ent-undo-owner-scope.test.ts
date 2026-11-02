@@ -47,9 +47,10 @@ beforeEach(async () => {
   小李 = await 建("li", "SALES");
   await prisma.entMember.createMany({
     data: [
+      { userId: 老板.id, bizRole: "director" },
       { userId: 组长.id, bizRole: "sales_mgr" },
-      { userId: 小王.id, managerId: 组长.id },
-      { userId: 小李.id, managerId: 组长.id },
+      { userId: 小王.id, bizRole: "sales", managerId: 组长.id },
+      { userId: 小李.id, bizRole: "sales", managerId: 组长.id },
     ],
   });
   当(老板);
@@ -147,5 +148,36 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     await 记录挪到(c.id, 29);
     expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 1 });
     expect(await 归谁(c.id)).toBe(小王.id);
+  });
+});
+
+describe("企业版转让客户：负责人只转自己的，别人的 / 公海里的找管理（11-02）", () => {
+  const 拦话 = "只能转出自己的客户；别人的找管理、总管理转";
+  it("销售转自己的照常；转同事的、公海里的拦住，负责人不动", async () => {
+    const 自己的 = await 客户(小王.id);
+    const 同事的 = await 客户(小李.id);
+    const 公海的 = await 客户(小王.id);
+    await prisma.customerPool.create({ data: { customerId: 公海的.id } });
+    当(小王);
+    expect(await assignSalesOwner([自己的.id], 小李.id)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([同事的.id], 小王.id)).toEqual({ ok: false, error: 拦话 });
+    expect(await assignSalesOwner([公海的.id], 小李.id)).toEqual({ ok: false, error: 拦话 });
+    // 一批里夹着别人的也整批拦
+    const 又一个 = await 客户(小王.id);
+    expect(await assignSalesOwner([又一个.id, 同事的.id], 小王.id)).toEqual({ ok: false, error: 拦话 });
+    expect(await 归谁(同事的.id)).toBe(小李.id);
+    expect(await 归谁(公海的.id)).toBe(小王.id);
+    expect(await 归谁(又一个.id)).toBe(小王.id);
+  });
+
+  it("没设业务角色的转不了自己的；销售管理、总管理转谁的都行", async () => {
+    const 光杆 = await 建("bare", "SALES");
+    const c = await 客户(光杆.id);
+    当(光杆);
+    expect(await assignSalesOwner([c.id], 小李.id)).toEqual({ ok: false, error: 拦话 });
+    当(组长);
+    expect(await assignSalesOwner([c.id], 小李.id)).toMatchObject({ ok: true, updated: 1 });
+    当(老板);
+    expect(await assignSalesOwner([c.id], 小王.id)).toMatchObject({ ok: true, updated: 1 });
   });
 });

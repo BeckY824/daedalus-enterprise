@@ -53,6 +53,8 @@ beforeEach(async () => {
   乙 = await 造人("yi", "小乙");
   const 老板 = await 造人("boss", "老板", "ADMIN");
   await prisma.channel.create({ data: { name: "展会", channelOwnerId: 老板.id } });
+  // 11-01 权限只认业务角色：业务员要有销售、老板要有总管理，不然什么都不能做
+  await prisma.entMember.createMany({ data: [{ userId: 甲.id, bizRole: "sales" }, { userId: 乙.id, bizRole: "sales" }, { userId: 老板.id, bizRole: "director" }] });
 });
 
 describe("认出备注里的号码", () => {

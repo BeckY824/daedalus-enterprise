@@ -2,7 +2,7 @@
  * 企业版「切换视图」（M-权限-08，10-31）：总管理员挑一个人，界面按这个人的权限渲染——看他看得到的客户、项目、首页数，
  * 菜单、按钮也按他的角色画。用来核权限、帮业务员看「他那边长什么样」。仿 demo-switch.ts，但这是正式部署能用的：
  *
- *   - 只有总管理员能切：账号 ADMIN，或组织里的总管理员（同 visibility.ts 组织范围of 看全部的那两种）。拦在 server action 里，不只藏入口
+ *   - 只有业务角色总管理（director）、管理员（admin）能切（11-01 晚定，账号 ADMIN 不再放行）。拦在 server action 里，不只藏入口
  *   - **切换期间整个服务端只读**：加上限定（lib/team-scope.ts）里所有写（create / update / upsert / delete…）和写库的裸 SQL 一律拒，
  *     抛 视图只读错误（code 同 只读错误，不在了() 原样回这句话）。不靠界面藏按钮：哪个按钮点了都改不了库
  *   - 状态放在一张单独的签名票（crm_view_as，2 小时）里，会话票（crm_session）不动：退出 = 删这张票，原身份原样回来。
@@ -19,7 +19,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { readSecret } from "@/lib/secret";
 import { 全进程上下文 } from "@/lib/process-als";
-import { 管理员类别of, type 组织 } from "./org-core";
+import type { 组织 } from "./org-core";
 
 /** 视图票的 cookie 名 */
 export const 视图票 = "crm_view_as";
@@ -38,9 +38,13 @@ export class 视图只读错误 extends Error {
   }
 }
 
-/** 能不能切换视图：账号 ADMIN，或组织里的总管理员 */
-export function 能切换视图(org: 组织, 账号角色: string | null | undefined, userId: string): boolean {
-  return 账号角色 === "ADMIN" || 管理员类别of(org, userId) === "总管理员";
+/**
+ * 能不能切换视图：只认业务角色总管理（director）、管理员（admin）——「切换视图应该只有总管理员和系统管理员才可以看到」（11-01）。
+ * 账号 ADMIN 不再放行；没设业务角色的不能。菜单（view-as-menu.ts）、action（view-as-actions.ts）、认票（auth.ts）同这一处
+ */
+export function 能切换视图(org: 组织, userId: string): boolean {
+  const 角们 = org.成员.get(userId)?.角色们 ?? [];
+  return 角们.includes("director") || 角们.includes("admin");
 }
 
 const 钥 = () => new TextEncoder().encode(readSecret());

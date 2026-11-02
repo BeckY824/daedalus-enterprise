@@ -14,7 +14,12 @@
    **唯一的例外**是 `066-drop-trade-tables.sql`（2026-10-29）：外贸订单 / 供应商整套 7 张表
    企业版不再用，用 `DROP TABLE IF EXISTS` 删掉，先子表后父表。每次启动 016 / 017 / 023 会先把它们
    建回空表、066 再删，重跑不抛。只许这 7 张、只许这种写法，名单钉在
-   `tests/migration-allowed-drops.ts`，两份迁移守卫测试都按它放行——别往里加别的表
+   `tests/migration-allowed-drops.ts`，两份迁移守卫测试都按它放行——别往里加别的表。
+   **第二个例外**是 `107-ent-blocker-title.sql`（2026-11-01）：重建 EntBlocker（建新表 → 拷数据 →
+   删旧表 → 改名 → 补索引），把老库 followUpId 的 NOT NULL + 级联改成可空 + 置空（沟通删了卡点留着）。
+   第一句是不带 IF NOT EXISTS 的记号索引，全新安装 / 已重建过都抛 already exists、整个文件跳过；
+   记号放在事务外面（放进 BEGIN 里抛错会留下没结束的事务）。整份文件一句一句钉在
+   `tests/migration-allowed-drops.ts` 的 许可重建的语句，老库升级另有一条测试（tests/migrations.test.ts「107 老库重建」）
 4. `ALTER TABLE ... ADD COLUMN` 是第 2 条的唯一例外，因为 SQLite 没有
    `ADD COLUMN IF NOT EXISTS`：第二次执行必然抛 `duplicate column name`。
    所有 runner 都把这一句（和 `already exists`）当预期跳过：

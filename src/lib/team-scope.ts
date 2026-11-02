@@ -52,6 +52,30 @@ export function 看全部<T>(fn: () => Promise<T>): Promise<T> {
   return 不限.run(true, async () => await fn());
 }
 
+const 系统写这段 = 全进程上下文<true>("系统写");
+/**
+ * 这一段里的写是系统顺手做的（字典第一次读时建默认项这类），不算谁在改数据：企业版管理员（admin，只读）读页面时照样建得上。
+ * 只给这种幂等的种子写用，用户动作别包
+ */
+export function 系统写<T>(fn: () => Promise<T>): Promise<T> {
+  return 系统写这段.run(true, async () => await fn());
+}
+/** 管理员（admin）只读时，这几张表的写照样放：留痕、自己的 AI 对话、自己的账号（登录改密、改名；别人的账号在设置 action 里按 能改后台设置 拦） */
+const 只读也能写 = new Set(["AuditLog", "AiConversation", "AiMessage", "AiProject", "User"]);
+async function 只读拦(db: PrismaClient, model?: string): Promise<void> {
+  if (系统写这段.getStore() || (model && 只读也能写.has(model))) return;
+  const 只读 = await 只读的话(db);
+  if (只读) throw new 只读错误(只读);
+}
+/**
+ * 这个请求的人是不是只读的管理员：不看 看全部()——那是「查全部」不是「谁都能写」，包在里面的写照样要拦。
+ * 不是企业版网页（桌面端、团队版）没有这个角色
+ */
+async function 只读的话(db: PrismaClient): Promise<string | undefined> {
+  if (process.env.DESKTOP_LOCAL === "1" || !企业版()) return undefined;
+  return (await (await import("./enterprise/visibility")).企业版范围(db))?.只读;
+}
+
 /** 限定成谁：团队版是一个人的 id；企业版是一组人（自己 + 实线下属） */
 export type 谁 = string | readonly string[];
 const 等于 = (w: 谁) => (typeof w === "string" ? w : { in: [...w] });
@@ -63,7 +87,11 @@ const 等于 = (w: 谁) => (typeof w === "string" ? w : { in: [...w] });
  * 线索全看 = 线索不限定（市场管理开着线索分配时要看、要分全部线索，F9 10-25），客户那条线照旧；
  * 市场 = 市场成员（10-31）：读另外放开这几位市场成员相关的客户（创建人、负责人、建过 / 负责项目），只读，别人的 里也有它们
  */
-export type 限定 = { 我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean; 市场?: readonly string[] };
+export type 限定 = {
+  我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean; 市场?: readonly string[];
+  /** 企业版管理员（业务角色 admin，11-01）：看全部、写一律拒，这一句就是拒的时候给人看的话（加上限定 统一拦） */
+  只读?: string;
+};
 const 不限定: 限定 = { 我: null, 互看: false, 别人的: new Set() };
 const g = globalThis as unknown as { __限定?: 限定 & { 到: number }; __限定刷新?: Promise<限定> };
 
@@ -171,6 +199,14 @@ export async function 有市场只读(db: PrismaClient): Promise<boolean> {
   return !!(await 现在的限定(db)).市场?.length;
 }
 
+/**
+ * 现在这个人是企业版管理员（admin，只读）：页面渲染时顺手做的写（每天一扫这类）跳过，不然一读就报错。
+ * db 要传底层 defaultClient：传带限定的 prisma 时，算范围的查询又走回限定钩子、等自己那份范围，缓存冷着就一直卡住
+ */
+export async function 只读身份中(db: PrismaClient): Promise<boolean> {
+  return !!(await 只读的话(db));
+}
+
 async function 现在的限定(db: PrismaClient): Promise<限定> {
   if (不限.getStore()) return 不限定;
   if (process.env.DESKTOP_LOCAL !== "1") {
@@ -261,6 +297,8 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
       case "EntBlocker":
         return 看得到的卡点(我, 可见客户(谁们));
       case "EntBlockerLog":
+      case "EntBlockerClaim":
+      case "EntBlockerReasonLink":
         return { blocker: 看得到的卡点(我, 可见客户(谁们)) };
       default:
         return null;
@@ -308,7 +346,7 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
     // 项目模式 1a（2026-10-23）：项目跟客户走；负责人不是这位客户的销售时，自己负责的项目也看得到；
     // 放在项目公海里的谁都看得到（才能领）。企业版（10-26）：点了同意的组员也看得到，只是邀请着的不算
     case "Project":
-      return 看得到的项目(我, 客户);
+      return 看得到的项目(我, 客户, 市场);
     case "ProjectMember":
     case "ProjectNodeLog":
     case "FollowUpProject":
@@ -316,27 +354,36 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
     // 企业版项目关联客户 / 联系人（2026-10-29 P17）：跟项目走——看得到项目就看得到关联了谁
     case "ProjectCustomer":
     case "ProjectContact":
-      return { project: 看得到的项目(我, 客户) };
-    // 企业版卡点（10-26）：项目负责人、点了同意的组员、看得到这位客户的、指认给的、发布的；
+      return { project: 看得到的项目(我, 客户, 市场) };
+    // 企业版卡点（10-26，11-01 改）：项目负责人、点了同意的组员、看得到这位客户的、认领了的、发布的；
     // 项目放在公海里时卡点不跟着公开（E11：无关的人直连接口也拿不到）
     case "EntBlocker":
       return 看得到的卡点(我, 客户);
     case "EntBlockerLog":
+    case "EntBlockerClaim":
+    case "EntBlockerReasonLink":
       return { blocker: 看得到的卡点(我, 客户) };
     default:
       return null;
   }
 }
 
-function 看得到的项目(我: string | { in: string[] }, 客户: Record<string, unknown>) {
-  const 或: Record<string, unknown>[] = [{ ownerId: 我 }, { customer: 客户 }, { pooledAt: { not: null } }];
-  if (企业版()) 或.push({ members: { some: { userId: 我, inviteStatus: "JOINED" } } });
-  return { OR: 或 };
+function 看得到的项目(我: string | { in: string[] }, 客户: Record<string, unknown>, 市场?: readonly string[]) {
+  if (企业版()) {
+    // 11-01 只认业务角色（lib/enterprise/permissions.ts 能看项目）：企业版项目不再跟客户走——
+    // 负责人是自己（或实线 / 虚线下属，范围已按业务线筛过）、在公海、点了同意的组员；市场成员看自己建的项目（只读）。
+    // 同一位客户下同事负责的项目看不到
+    const 或: Record<string, unknown>[] = [{ ownerId: 我 }, { pooledAt: { not: null } }, { members: { some: { userId: 我, inviteStatus: "JOINED" } } }];
+    if (市场?.length) 或.push({ creatorId: { in: [...市场] } });
+    return { OR: 或 };
+  }
+  return { OR: [{ ownerId: 我 }, { customer: 客户 }, { pooledAt: { not: null } }] };
 }
 
 function 看得到的卡点(我: string | { in: string[] }, 客户: Record<string, unknown>) {
   const 项目 = { OR: [{ ownerId: 我 }, { customer: 客户 }, { members: { some: { userId: 我, inviteStatus: "JOINED" } } }] };
-  return { OR: [{ assigneeId: 我 }, { creatorId: 我 }, { project: 项目 }] };
+  // 11-01 起没有处理人，认领人一人一行（claims）；角色「可看全部」、直属上级在 lib/project/blocker.ts 里另算（那边绕开这层）
+  return { OR: [{ claims: { some: { userId: 我 } } }, { creatorId: 我 }, { project: 项目 }] };
 }
 
 /** 带 where 的操作。create / upsert 不限（新建的本来就是自己的；upsert 限了会在别人的行上再建一条） */
@@ -449,26 +496,33 @@ export function 加上限定(db: PrismaClient): PrismaClient {
   const c = db.$extends({
     query: {
       // 裸 SQL 绕得过模型层：切换视图期间 $executeRaw* 一律拒，$queryRaw* 原文会写库的也拒（M-权限-08）
+      // 管理员（admin）只读也在这一层拦（只读拦）
       async $executeRaw({ args, query }) {
         if (企业版()) await 视图写拦();
+        if (企业版()) await 只读拦(db);
         return query(args);
       },
       async $executeRawUnsafe({ args, query }) {
         if (企业版()) await 视图写拦();
+        if (企业版()) await 只读拦(db);
         return query(args);
       },
       async $queryRaw({ args, query }) {
         if (企业版() && 会写库的SQL(原文SQL(args))) await 视图写拦();
+        if (企业版() && 会写库的SQL(原文SQL(args))) await 只读拦(db);
         return query(args);
       },
       async $queryRawUnsafe({ args, query }) {
         if (企业版() && 会写库的SQL(原文SQL(args))) await 视图写拦();
+        if (企业版() && 会写库的SQL(原文SQL(args))) await 只读拦(db);
         return query(args);
       },
       $allModels: {
         async $allOperations({ model, operation, args: 原参数, query }) {
           // 企业版切换视图（M-权限-08）：总管理员以别人的视图查看期间，服务端一律只读
           if (写操作.has(operation) && 企业版()) await 视图写拦();
+          // 企业版管理员（admin，11-01）：看全部、任何写都拒——客户、项目、线索、沟通、待办、卡点、设置、分配、删除、导入都走这里
+          if (写操作.has(operation) && 企业版()) await 只读拦(db, model);
           if (写操作.has(operation)) 改完推一下();
           // 企业版软删（P9）：回收站里的统一滤掉，比业务员范围先算（老板也看不到删了的，除非在 看已删() 里）
           const args = (企业版() && !在看已删() ? 去掉已删(model, operation, 原参数) : 原参数) as typeof 原参数;
@@ -515,6 +569,8 @@ export function 加上限定(db: PrismaClient): PrismaClient {
       if (prop !== "$transaction" || typeof v !== "function") return v;
       return async (...a: unknown[]) => {
         await 现在的限定(db).catch(() => {});
+        // 看全部() 里开事务：上面那句直接回不限定、没算真身的范围，管理员只读拦要的那份也先算好
+        await 只读的话(db).catch(() => {});
         return (v as (...x: unknown[]) => unknown).apply(t, a);
       };
     },
