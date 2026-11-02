@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
+import { 项目收藏了吗 } from "@/lib/favorites";
 import { getBusiness } from "@/lib/business";
 import { 能管项目, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
@@ -204,6 +205,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 库里存着旧节点名 / 旧结局的（企业版 10-31 改名）按这套的新名给界面；节点变更历史（logs）照原样
   const 现 = 本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典);
   const 详情: 项目详情 = {
+    收藏了: await 项目收藏了吗(me.id, id),
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
     // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取
