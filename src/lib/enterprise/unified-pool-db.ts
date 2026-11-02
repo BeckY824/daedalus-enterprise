@@ -8,8 +8,12 @@
  * 客户的项目、项目的留痕不用 select 关联带（11-02）：关联加载内部是 外键 IN (所有父行)，公海过 999 行就超 SQLite 的参数上限，
  * Prisma 要拆批；范围层给关联补的 看得到的项目 带 pooledAt: { not: null }，否定条件没法拆，受限身份一开就 P2029（总管理不限定所以不报）。
  * 单独查、用关联条件框范围，不拼大 IN；范围层给顶层查询加的条件和原来给关联加的是同一句，口径不变
+ *
+ * 客户行的公海属性按名下全部项目算，不过范围层（11-02）：属性是客户本身的事，谁看都一样。受限身份看不到项目时不能当成「没有项目」落到其他。
+ * 项目名、当前进程还是按各人看得到的项目，这句不放开
  */
 import { prisma } from "@/lib/prisma";
+import { 看全部 } from "@/lib/team-scope";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
 import { 字典of, 本套位置 } from "@/lib/project/nodes";
 import { 阶段与进程 } from "@/lib/project/stage-dict";
@@ -18,7 +22,7 @@ import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import {
-  客户定状态, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
+  客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
 } from "./unified-pool";
 
@@ -82,13 +86,17 @@ export async function 读公海行(me: { id: string; name: string; role?: string
   // 取满了才按最早入池那一行框，没取满就是公海全部。框出来的可能比这些行多（同一刻入池的），下面按行取，多的不用
   const 最早客户 = 客户们.length >= 公海取上限 ? 客户们[客户们.length - 1].pool!.at : null;
   const 最早项目 = 项目们.length >= 公海取上限 ? 项目们[项目们.length - 1].pooledAt! : null;
-  const [客户的项目们, 留痕们, 可见] = await Promise.all([
+  const 框客户 = { customer: { pool: 最早客户 ? { at: { gte: 最早客户 } } : { isNot: null } } };
+  const [客户的项目们, 定属性的项目们, 留痕们, 可见] = await Promise.all([
     客户们.length
       ? prisma.project.findMany({
-        where: { customer: { pool: 最早客户 ? { at: { gte: 最早客户 } } : { isNot: null } } },
+        where: 框客户,
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         select: { customerId: true, id: true, name: true, phase: true, node: true, result: true, createdAt: true },
       })
+      : [],
+    客户们.length
+      ? 看全部(() => prisma.project.findMany({ where: 框客户, select: { customerId: true, phase: true, result: true } }))
       : [],
     项目们.length
       ? prisma.projectNodeLog.findMany({
@@ -104,6 +112,12 @@ export async function 读公海行(me: { id: string; name: string; role?: string
     const 们 = 项目of客户.get(p.customerId);
     if (们) 们.push(p);
     else 项目of客户.set(p.customerId, [p]);
+  }
+  const 全部项目of客户 = new Map<string, (typeof 定属性的项目们)[number][]>();
+  for (const p of 定属性的项目们) {
+    const 们 = 全部项目of客户.get(p.customerId);
+    if (们) 们.push(p);
+    else 全部项目of客户.set(p.customerId, [p]);
   }
   // 每个项目最近一条放回：入池类、入池原因认它；fromOwnerId 就是原负责人 = 最后一次进公海前的负责人
   // （11-01 C-01 起企业版进公海清负责人，只在留痕里，同 lib/project/pool-owner.ts 历史负责人们）
@@ -124,7 +138,7 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       客户名: c.name,
       项目名: 名下.length ? 名下.map((p) => p.name).join("、") : null,
       进程: 进.进程, 进程明细: 进.进程明细,
-      属性: 进.属性,
+      属性: 客户公海属性(全部项目of客户.get(c.id) ?? []),
       最后跟进: c.lastFollowAt?.toISOString() ?? null,
       入池时间: c.pool!.at.toISOString(),
       创建时间: c.createdAt.toISOString(),
