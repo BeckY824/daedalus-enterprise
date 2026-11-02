@@ -3,7 +3,7 @@
  *   - 钟拨到 00:05，没人打开页面，超时的项目照样回公海；00:04 还不收
  *   - 同一天跑两遍（或夜里扫过白天再打开页面），第二遍一条都不收；第二天 00:05 接着收
  *   - 服务停着错过 00:05，开机补收；当天重启不多收
- *   - 不是企业版：不起钟、扫也不收；项目模式关着、没有在职老板也不扫
+ *   - 不是企业版：不起钟、扫也不收；没有账号老板照扫（11-02 操作人用 系统）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -149,11 +149,13 @@ describe("夜里定时扫", () => {
     expect(await 在公海(p.id)).toBe(true);
   });
 
-  it("没有在职老板：不扫", async () => {
+  it("没有账号老板也照扫（11-02 权限只认业务角色，操作人用 系统），留痕记 system", async () => {
     const p = await 项目("2026-10-01 10:00");
     await prisma.user.update({ where: { id: 老板.id }, data: { active: false } });
-    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
-    expect(await 在公海(p.id)).toBe(false);
+    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(1);
+    expect(await 在公海(p.id)).toBe(true);
+    const 留痕 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p.id }, orderBy: { at: "desc" } });
+    expect(留痕.userId).toBe("system");
   });
 });
 

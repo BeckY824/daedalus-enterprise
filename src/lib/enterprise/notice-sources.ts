@@ -8,7 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
-import { 读组织, 管理员类别们of } from "./org";
+import { 读组织, 管理员类别们of, 负责人和上级 } from "./org";
 import { 企业版 } from "./switch";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
 
@@ -60,6 +60,31 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
         key: `assign:${自动 ? "auto" : "manual"}:${们.map((c) => c.projectId ?? c.leadId).sort().join(",").slice(0, 400)}:${分钟()}`,
       });
     }
+  });
+}
+
+/**
+ * 公海里分出去了：同 分配通知 的口径（自己分给自己不发；一次分配接手人只收一条）。
+ * 跟来 = 分客户时名下跟着过来的公海项目数
+ */
+export async function 公海分配通知(谁点的: 人, toUserId: string, 对象: "客户" | "项目", ids: readonly string[], 跟来 = 0): Promise<void> {
+  await 稳("公海分配通知", async () => {
+    if (!ids.length || toUserId === 谁点的.id) return;
+    const 行们 = await 看全部(async () => (对象 === "客户"
+      ? prisma.customer.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true } })
+      : prisma.project.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true } })));
+    const 名 = new Map(行们.map((x) => [x.id, x.name]));
+    const 名们 = ids.map((id) => 名.get(id) ?? `（一个${对象}）`);
+    const n = ids.length;
+    const 页 = 对象 === "客户" ? "/customers" : "/projects";
+    const 跟来话 = 跟来 ? `名下 ${跟来} 个公海里的项目也一起给你了。` : "";
+    await notify([toUserId], {
+      kind: "分配",
+      title: n === 1 ? `${谁点的.name} 把公海里的${对象}分给你：${名们[0]}` : `${谁点的.name} 把公海里 ${n} 个${对象}分给你`,
+      body: n === 1 ? 跟来话 : `${名单(名们)}${跟来话 ? `。${跟来话}` : ""}`,
+      link: n === 1 ? `${页}/${ids[0]}` : 页,
+      key: `pool-assign:${对象 === "客户" ? "customer" : "project"}:${[...ids].sort().join(",").slice(0, 400)}:${toUserId}:${分钟()}`,
+    });
   });
 }
 
@@ -136,6 +161,28 @@ export async function 转项目通知(me: 人, projectId: string): Promise<void>
 /* ───────────────────────── 卡点 ───────────────────────── */
 
 export type 卡点动作 = "认领" | "解决";
+
+/** 发布了卡点：告诉项目负责人和他的直属上级（发布的人自己不收）。同一个卡点只发一次 */
+export async function 卡点发布通知(me: 人, code: string | undefined): Promise<void> {
+  await 稳("卡点发布通知", async () => {
+    if (!code) return;
+    const [b, org] = await 看全部(() => Promise.all([
+      prisma.entBlocker.findUnique({
+        where: { code },
+        select: { code: true, projectId: true, title: true, description: true, project: { select: { name: true, ownerId: true } } },
+      }),
+      读组织(),
+    ]));
+    if (!b) return;
+    await notify(负责人和上级(org, b.project.ownerId, me.id), {
+      kind: "卡点",
+      title: `${me.name} 发布了卡点 ${b.code}`,
+      body: `项目「${b.project.name}」· ${(b.title || b.description).slice(0, 200)}`,
+      link: `/projects/${b.projectId}`,
+      key: `blocker-new:${b.code}`,
+    });
+  });
+}
 
 /** 11-01 卡点改认领制（不指认、不转让）：有人认领、最后一位完成即解决 → 都告诉发布卡点的人 */
 export async function 卡点通知(me: 人, code: string | undefined, 动作: 卡点动作): Promise<void> {
