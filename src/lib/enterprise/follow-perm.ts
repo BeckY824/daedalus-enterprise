@@ -9,7 +9,7 @@
  */
 import { 企业版 } from "./switch";
 import { 权限组织, type 组织 } from "./org";
-import { 能删除, 有业务角色, 只读角色 } from "./permissions";
+import { 能删除, 有业务角色, 只读角色, 只读角色话, 没设业务角色, 能改客户 } from "./permissions";
 import { defaultClient } from "@/lib/prisma";
 
 export const 不能改沟通话 = "只有负责人能改沟通记录";
@@ -58,4 +58,25 @@ export async function 能改这条沟通(me: 谁, f: { customerId: string; id?: 
 export async function 能删沟通(me: 谁): Promise<boolean> {
   if (!企业版()) return true;
   return 能删沟通of(me, await 权限组织());
+}
+
+export const 没业务角色话 = "你还没有业务角色，不能改数据，请找总管理设置";
+export const 不能改客户事项话 = "只有负责人能改这位客户的待办、计划和联系人";
+
+/**
+ * 企业版客户详情上跟着客户走的小事（待办、下次计划、联系人移出 / 挂回，11-02）：同沟通——客户负责人或这位客户下项目的负责人改，
+ * 没业务角色、管理员、公海里的拒；上级、总管理只看。不是企业版 null（团队版限定层照旧）
+ */
+export async function 客户事项挡(me: 谁, customerId: string | null | undefined): Promise<string | null> {
+  if (!企业版()) return null;
+  const org = await 权限组织();
+  if (!org || 没设业务角色(org, me.id)) return 没业务角色话;
+  if (只读角色(me, org)) return 只读角色话;
+  if (!customerId) return null;
+  const c = await defaultClient.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+  if (!c) return null; // 不在了：后面照原样报
+  if (c.pool) return "这位客户在公海里，先领取再改";
+  if (能改客户(me, { salesOwnerId: c.salesOwnerId, 在公海: false }, org)) return null;
+  const 项目 = await defaultClient.project.findMany({ where: { customerId, pooledAt: null }, select: { ownerId: true } });
+  return 能改沟通of(me, 项目.map((x) => x.ownerId), org) ? null : 不能改客户事项话;
 }

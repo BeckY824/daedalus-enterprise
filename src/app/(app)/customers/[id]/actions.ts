@@ -19,7 +19,7 @@ import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 能恢复 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤 } from "@/lib/enterprise/follow-perm";
+import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤, 客户事项挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
@@ -382,6 +382,25 @@ export async function restoreFollowUp(快照: 删掉的跟进) {
 
 /* ---------------- 待办任务 ---------------- */
 
+/**
+ * 企业版待办、计划谁能动（11-02）：跟着客户的负责人走（lib/enterprise/follow-perm 客户事项挡）。
+ * 改已有的按库里那条的客户认，不信传来的；也不许借编辑把它挪到别的客户名下。不是企业版 null
+ */
+async function 事项挡(me: Awaited<ReturnType<typeof requireUser>>, 传的客户: string | null, 哪种: "task" | "plan" | null = null, id?: string): Promise<string | null> {
+  if (!企业版()) return null;
+  let 客户 = 传的客户;
+  if (哪种 && id) {
+    const 原 = 哪种 === "task"
+      ? await defaultClient.task.findUnique({ where: { id }, select: { customerId: true } })
+      : await defaultClient.followPlan.findUnique({ where: { id }, select: { customerId: true } });
+    if (原) {
+      if (传的客户 && 原.customerId !== 传的客户) return "不能把它挪到别的客户名下";
+      客户 = 原.customerId;
+    }
+  }
+  return 客户事项挡(me, 客户);
+}
+
 export async function saveTask(input: {
   id?: string;
   customerId: string;
@@ -393,6 +412,8 @@ export async function saveTask(input: {
 }) {
   try {
     const user = await requireUser();
+    const 挡 = await 事项挡(user, input.customerId, input.id ? "task" : null, input.id);
+    if (挡) return { ok: false as const, error: 挡 };
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.title)) return { ok: false as const, error: "请填写待办内容" };
     if (input.dueAt != null && !parseDateInput(input.dueAt)) return { ok: false as const, error: "截止时间格式不正确" };
@@ -429,6 +450,8 @@ export async function saveTask(input: {
 export async function toggleTask(id: string, done: boolean) {
   try {
     const me = await requireUser();
+    const 挡 = await 事项挡(me, null, "task", id);
+    if (挡) return { ok: false as const, error: 挡 };
     const t = await prisma.task.update({
       where: { id },
       data: { done, doneAt: done ? new Date() : null },
@@ -447,6 +470,8 @@ export async function toggleTask(id: string, done: boolean) {
 export async function deleteTask(id: string) {
   try {
     const me = await requireUser();
+    const 挡 = await 事项挡(me, null, "task", id);
+    if (挡) return { ok: false as const, error: 挡 };
     const t = await prisma.task.delete({ where: { id } });
     await recordAudit({
       user: me, action: "delete", entity: "Task", entityId: id,
@@ -474,6 +499,8 @@ export async function savePlan(input: {
 }) {
   try {
     const user = await requireUser();
+    const 挡 = await 事项挡(user, input.customerId, input.id ? "plan" : null, input.id);
+    if (挡) return { ok: false as const, error: 挡 };
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.subject)) return { ok: false as const, error: "请填写跟进主题" };
     if (!parseDateInput(input.plannedAt)) return { ok: false as const, error: "计划时间格式不正确" };
@@ -525,6 +552,8 @@ export async function deletePlan(id: string) {
     const me = await requireUser();
     const p = await prisma.followPlan.findUnique({ where: { id } });
     if (!p) return { ok: false as const, error: "这条计划已经不在了，刷新看看" };
+    const 挡 = await 事项挡(me, p.customerId);
+    if (挡) return { ok: false as const, error: 挡 };
     await prisma.followPlan.delete({ where: { id } });
     await recordAudit({
       user: me, action: "delete", entity: "FollowPlan", entityId: id,
@@ -544,6 +573,8 @@ export async function deletePlan(id: string) {
 export async function completePlan(id: string, 完成 = true) {
   try {
     const me = await requireUser();
+    const 挡 = await 事项挡(me, null, "plan", id);
+    if (挡) return { ok: false as const, error: 挡 };
     // 同状态重复提交不重写首次完成时间。撤销时清空，再完成才记录新时刻。
     await prisma.followPlan.updateMany({ where: { id, done: !完成 }, data: { done: 完成, doneAt: 完成 ? new Date() : null } });
     const p = await prisma.followPlan.findUniqueOrThrow({ where: { id } });
@@ -837,6 +868,8 @@ export async function detachContact(id: string) {
     const me = await requireUser();
     const c = await prisma.contact.findUnique({ where: { id }, include: { customer: { select: { name: true } } } });
     if (!c) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
+    const 挡 = await 客户事项挡(me, c.customerId);
+    if (挡) return { ok: false as const, error: 挡 };
     const 跟进 = await prisma.followUp.findMany({ where: { contactId: id }, select: { id: true } });
     // 函数式事务：数组式在托管版的工作区代理下会抛错（见 lib/carry-over-db.ts 带走没做完的）
     await prisma.$transaction(async (tx) => {
@@ -874,6 +907,8 @@ export async function undoDetachContact(id: string, 原来是关键: boolean) {
     if (!u.fromCustomerId || !(await prisma.customer.findUnique({ where: { id: u.fromCustomerId }, select: { id: true } }))) {
       return { ok: false as const, error: "原来那位客户已经不在了，撤不回去" };
     }
+    const 挡 = await 客户事项挡(me, u.fromCustomerId);
+    if (挡) return { ok: false as const, error: 挡 };
     await prisma.$transaction((tx) => 挂上(tx, u, u.fromCustomerId!, u.wasPrimary ?? 原来是关键));
     await recordAudit({
       user: me, action: "update", entity: "Contact", entityId: id,
@@ -893,6 +928,9 @@ export async function undoDetachContact(id: string, 原来是关键: boolean) {
 export async function saveUnassignedContact(input: 联系人字段 & { id: string; customerId?: string | null; isPrimary?: boolean; 版本?: string | null }) {
   try {
     const me = await requireUser();
+    // 企业版：挂到哪位客户下面就按那位的负责人挡；只改资料（不挂）只挡没业务角色、管理员
+    const 挡 = await 客户事项挡(me, input.customerId);
+    if (挡) return { ok: false as const, error: 挡 };
     if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
     if (input.isPrimary != null && typeof input.isPrimary !== "boolean") return { ok: false as const, error: "关键联系人选项格式不正确" };
     const u = await prisma.unassignedContact.findUnique({ where: { id: input.id } });
