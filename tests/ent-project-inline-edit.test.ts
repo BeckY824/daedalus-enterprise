@@ -102,6 +102,36 @@ describe("编辑项目：只交一格", () => {
   });
 });
 
+describe("老项目历史超限", () => {
+  const 长名 = `  ${"名".repeat(80)}  `, 长备注 = `  ${"备".repeat(600)}  `;
+  beforeEach(async () => {
+    await prisma.project.update({ where: { id: 项目 }, data: { name: 长名, remark: 长备注 } });
+  });
+
+  it("名称、备注超长又带空白：改金额能存，这两列一字不动", async () => {
+    expect((await 编辑项目(项目, { amount: 500 })).ok).toBe(true);
+    expect(await 读()).toMatchObject({ amount: 500, name: 长名, remark: 长备注 });
+  });
+
+  it("只改备注：校验新备注，名称不动", async () => {
+    expect((await 编辑项目(项目, { remark: "短备注" })).ok).toBe(true);
+    expect(await 读()).toMatchObject({ remark: "短备注", name: 长名 });
+    expect((await 编辑项目(项目, { remark: "字".repeat(501) })).ok).toBe(false);
+    expect((await 读()).remark).toBe("短备注");
+  });
+
+  it("传了才校验：把名称改超长、改成空都报错", async () => {
+    expect((await 编辑项目(项目, { name: "名".repeat(61) })).ok).toBe(false);
+    expect((await 编辑项目(项目, { name: "   " })).ok).toBe(false);
+    expect((await 读()).name).toBe(长名);
+  });
+
+  it("备注传 null 还是清空", async () => {
+    expect((await 编辑项目(项目, { remark: null })).ok).toBe(true);
+    expect((await 读()).remark).toBeNull();
+  });
+});
+
 describe("权限没有新路", () => {
   it("不是负责人：改不了，库不变", async () => {
     当(同事);

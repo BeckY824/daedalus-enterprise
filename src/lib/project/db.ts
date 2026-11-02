@@ -510,7 +510,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 能改 = 能管项目(me, p, org);
     const 能转 = 能转让项目(me, p, org);
     if (!能改 && !能转) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
-    const 好 = 规整项目({ ...项目现值(p), ...传了的(patch) }, p.ownerId);
+    // 只校验、只写这次传了的格子（11-02 就地改）：老项目名称、备注超长或带首尾空白，改别的格子不报错，也不被顺手规整掉
+    const 传 = 传了的(patch);
+    const 好 = 规整项目({ ...项目现值(p), name: "未传", remark: null, ...传 }, p.ownerId);
     if ("error" in 好) return { ok: false as const, error: 好.error };
     if (好.ownerId !== p.ownerId && !(await 在职(tx, 好.ownerId))) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
     const contactId = patch.contactId === undefined ? p.contactId : patch.contactId || null;
@@ -536,7 +538,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 线 = 改线 ? 认业务线(patch.业务线) : null;
     if (改线 && 线 === undefined) return { ok: false as const, error: 业务线不认得 };
     if (改线 && !线) return { ok: false as const, error: 业务线必填 };
-    const 新 = { ...好, contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
+    const 新 = { ...好, ...(传.name === undefined ? { name: p.name } : {}), ...(传.remark === undefined ? { remark: p.remark } : {}), contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
