@@ -1,7 +1,7 @@
 /**
  * 企业版只用项目时「数据」页的数（10-26 用户：「「数据」页改成按项目统计」）。
  *
- *   现在：进行中的按阶段 / 节点 / 人数，公海的不算在人头上，外币不算金额、另外数
+ *   现在：进行中且不在公海的按阶段 / 节点 / 人数，公海的单独数，外币不算金额、另外数
  *   一段：新建按 createdAt；转商机 / 转订单一个项目只数一次（来回改不重复算）；结局按 closedAt，只算现在还是这个结局的
  *   按人：按项目现在的负责人；人删了写「已不在的成员」
  */
@@ -39,7 +39,7 @@ beforeEach(async () => {
 afterAll(async () => void (await prisma.$disconnect()));
 
 describe("现在", () => {
-  it("进行中按阶段、节点、人数；有结局的另算；公海不算人头；外币不算金额", async () => {
+  it("进行中按阶段、节点、人数；有结局的另算；公海不算阶段和人头；外币不算金额", async () => {
     await 建({ name: "a", ownerId: 王.id, phase: "线索", node: "潜客培育" });
     await 建({ name: "b", ownerId: 王.id, phase: "商机", node: "共识方案", amount: 100000 });
     await 建({ name: "c", ownerId: 李.id, phase: "商机", node: "共识方案", amount: 50000, currency: "USD" });
@@ -51,7 +51,8 @@ describe("现在", () => {
     const 数 = await 项目现在("CNY");
     expect(数.阶段).toEqual([
       { phase: "线索", count: 1, amount: 0 },
-      { phase: "商机", count: 3, amount: 130000 },
+      { phase: "商机", count: 2, amount: 100000 },
+      // 公海那个不算进阶段，单独数在「公海」
       { phase: "订单", count: 1, amount: 80000 },
     ]);
     expect(数.节点.find((n) => n.node === "共识方案")).toMatchObject({ count: 2, amount: 100000 });

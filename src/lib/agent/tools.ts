@@ -23,6 +23,7 @@ import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 企业版 } from "../enterprise/switch";
+import { 无负责人占位邮箱 } from "../pool";
 import { 现值选取, 现值表 } from "./current-values";
 import { prisma } from "../prisma";
 import { dayjs } from "../utils";
@@ -848,7 +849,7 @@ export const TOOLS: Tool[] = [
     async run(args) {
       const kw = str(args.keyword, 20);
       const rows = await prisma.user.findMany({
-        where: { ...(kw ? { name: { contains: kw } } : {}), ...(args.includeInactive === true ? {} : { active: true }) },
+        where: { email: { not: 无负责人占位邮箱 }, ...(kw ? { name: { contains: kw } } : {}), ...(args.includeInactive === true ? {} : { active: true }) },
         orderBy: { createdAt: "asc" },
         take: 50,
         select: {
