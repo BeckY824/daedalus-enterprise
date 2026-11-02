@@ -13,7 +13,7 @@ import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效沟�
 import { 等复核拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
-import { 直属上级of, 权限组织, type 组织 } from "@/lib/enterprise/org";
+import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
 import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除 } from "@/lib/enterprise/permissions";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -807,6 +807,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
 
   const 成员 = await 超时成员线(规则);
   const 们 = await 超时的项目(规则, 今, 成员, 只扫);
+  const 查收件人 = 回收通知收件人();
   const 收了: string[] = [];
   for (const p of 们) {
     // 逐个一笔事务：查出来到写下去之间有人刚推了节点、领了、记了沟通，就不收
@@ -829,7 +830,10 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       return true;
     });
     if (收) 收了.push(p.id);
-    if (收) await notify([p.ownerId], { kind: "回收", title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`, link: "/projects", key: `recall:${p.id}:${dayjs(今).format("YYYY-MM-DD")}` });
+    if (收) {
+      const 发给 = await 查收件人(p.ownerId);
+      await notify(发给.人们, { kind: "回收", title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`, body: 发给.说明, link: "/projects", key: `recall:${p.id}:${dayjs(今).format("YYYY-MM-DD")}` });
+    }
   }
   if (收了.length) {
     await recordAudit({
@@ -838,16 +842,41 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数, 外贸节点天数: 规则.超时回收.外贸节点天数 ?? {} },
     });
   }
-  await 提醒明天收(规则, 今, 成员, 只扫);
+  await 提醒明天收(规则, 今, 成员, 查收件人, 只扫);
   await setSetting(键, 记号);
   return 收了.length;
 }
 
+type 回收收件人查 = (ownerId: string) => Promise<{ 人们: string[]; 说明: string }>;
+
 /**
- * 回收前一天（10-27）：明天就要收回的项目，给负责人一条待办提醒（和收回那条同一个地方：首页待办、提醒）。
+ * 回收、将回收的铃铛发给谁（11-02）：负责人 + 他的直属上级（上级看得出是谁的：说明里写负责人）。
+ * 一遍扫只读一次组织，没东西要发就不读；读出错只发负责人，通知不能连累回收。待办提醒还是只给负责人
+ */
+function 回收通知收件人(): 回收收件人查 {
+  let 底: Promise<{ org: 组织; 名: Map<string, string> } | null> | undefined;
+  const 读 = async () => {
+    const [org, 人们] = await Promise.all([读组织(), prisma.user.findMany({ select: { id: true, name: true } })]);
+    return { org, 名: new Map(人们.map((u) => [u.id, u.name])) };
+  };
+  return async (ownerId) => {
+    if (!企业版()) return { 人们: [ownerId], 说明: "" };
+    底 ??= 读().catch((e) => {
+      console.warn("[通知] 读组织失败，回收提醒只发负责人：", e instanceof Error ? e.message : e);
+      return null;
+    });
+    const d = await 底;
+    if (!d) return { 人们: [ownerId], 说明: "" };
+    const 名 = d.名.get(ownerId);
+    return { 人们: 负责人和上级(d.org, ownerId), 说明: 名 ? `负责人：${名}` : "" };
+  };
+}
+
+/**
+ * 回收前一天（10-27）：明天就要收回的项目，给负责人一条待办提醒（和收回那条同一个地方：首页待办、提醒），铃铛同时告诉他的直属上级。
  * 跟着超时扫走（夜里 00:05 或白天第一次打开页面），同一天同一个项目只提醒一次：老板当天改了时长再扫也不重复
  */
-async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员线查 | null, 只扫?: string): Promise<void> {
+async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员线查 | null, 查收件人: 回收收件人查, 只扫?: string): Promise<void> {
   const 今天 = dayjs(今).format("YYYY-MM-DD");
   for (const p of await 会收的项目(规则, 成员, 只扫)) {
     const 日 = 项目回收日(规则, p, 成员);
@@ -857,7 +886,8 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
     await prisma.task.create({
       data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId },
     });
-    await notify([p.ownerId], { kind: "将回收", title, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
+    const 发给 = await 查收件人(p.ownerId);
+    await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
   }
 }
 

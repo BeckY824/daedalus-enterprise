@@ -22,6 +22,7 @@ import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 历史负责人 } from "@/lib/project/pool-owner";
 import { 换负责人待办, 待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
+import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
 
 export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
 
@@ -130,6 +131,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       detail: { ids: 分到, 给: 给.id },
     });
     刷新();
+    await 公海分配通知(me, 给.id, "项目", 分到);
   }
   return { ok: true, 分到, 没分到, 给谁: 给 };
 }

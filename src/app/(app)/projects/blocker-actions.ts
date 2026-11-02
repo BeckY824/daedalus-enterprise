@@ -16,7 +16,7 @@ import {
   type 卡点结果,
 } from "@/lib/project/blocker";
 import type { 发布输入 } from "@/lib/project/blocker-rules";
-import { 卡点通知 } from "@/lib/enterprise/notice-sources";
+import { 卡点发布通知, 卡点通知 } from "@/lib/enterprise/notice-sources";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请总管理员在「设置 → 业务配置」里打开" };
 const 不是企业版 = { ok: false as const, error: "卡点是企业版的功能" };
@@ -52,6 +52,7 @@ export async function 发布卡点Action(followUpId: string, input: 发布输入
     if (!r.code) return { ok: true as const, code: undefined };
     await recordAudit({ user: me, action: "create", entity: "EntBlocker", entityId: r.projectId, summary: `发布卡点 ${r.code}` });
     刷新(r.projectId!);
+    await 卡点发布通知(me, r.code);
     return { ok: true as const, code: r.code };
   } catch (e) { return 不在了(e); }
 }

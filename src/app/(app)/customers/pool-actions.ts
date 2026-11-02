@@ -25,6 +25,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
+import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
 import { Prisma } from "@/generated/prisma";
 
 export type 公海结果 =
@@ -233,6 +234,7 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
     detail: { ids: 分到.map((x) => x.id), 给: 给.id, 原负责人: 分到.map((x) => ({ id: x.id, salesOwnerId: x.值 })) },
   });
   刷新(ids);
+  await 公海分配通知(me, 给.id, "客户", 分到.map((x) => x.id), 公海项目.length);
   return { ok: true, updated: 分到.length, unchanged: ids.length - 分到.length - 无效.size, 没权限: 无效.size, 带走, 原负责人: 分到, 带过来, 给谁: 给, 公海项目 };
 }
 
