@@ -617,7 +617,7 @@ it.each<[string, Record<string, unknown>, string]>([
 });
 
 it.each([1024, 1280, 1366])("%ipx：超长负责人、创建人名字在页头折行，不横向伸出，也不压住按钮", async (宽) => {
-  const 长名 = "超长名字" + "Y".repeat(90);
+  const 长名 = "超长名字" + "Y".repeat(300); // 这里没有外壳，页头有整屏宽：90 个不够宽，去掉折行规则也量不出来
   const { page, errors } = await 覆盖(宽, { ownerName: 长名, creatorName: 长名 + "丙" });
   try {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
