@@ -8,6 +8,7 @@ import { 附件文件, 删附件, 确保文件 } from "@/lib/attachments";
 import { 是附件编号, 是图片, 是音频, 读大小 } from "@/lib/attachment-rules";
 import { 解析范围 } from "@/app/ocr-files/[...path]/route";
 import { 认附件父记录 } from "../access";
+import { 视图拒绝响应 } from "@/lib/enterprise/view-as";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,13 +37,18 @@ async function 出(req: Request, ctx: 参数, 只要头: boolean): Promise<Respo
   const r = await 取((await ctx.params).id, false);
   if ("错" in r) return new Response(r.错, { status: r.状态 });
   const { a } = r;
+  const 图 = 是图片(a.mime);
+  // ?download：页面上「下载」那个链接要存成文件，不在浏览器里打开
+  const 原样 = 图 || (!!a.followUpId && 是音频(a.mime));
+  // 切换视图（只读预览）不把文件带走：页面里看图、播录音放行，下载一律 403
+  if (!原样 || new URL(req.url).searchParams.has("download")) {
+    const 拒 = await 视图拒绝响应();
+    if (拒) return 拒;
+  }
   const 文件 = await 确保文件(a.id);
   if (文件 === "还在上传") return new Response("对方还在上传，稍后再看", { status: 409 });
   let 总: number;
   try { 总 = fs.statSync(附件文件(a.id)).size; } catch { return new Response("文件不在这台电脑上", { status: 404 }); }
-  const 图 = 是图片(a.mime);
-  // ?download：页面上「下载」那个链接要存成文件，不在浏览器里打开
-  const 原样 = 图 || (!!a.followUpId && 是音频(a.mime));
   const 头 = new Headers({
     "Content-Type": 原样 ? a.mime : "application/octet-stream",
     "Content-Disposition": `${原样 && !new URL(req.url).searchParams.has("download") ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(a.name)}`,
@@ -77,6 +83,8 @@ export function HEAD(req: Request, ctx: 参数) {
 export async function DELETE(_req: Request, ctx: 参数) {
   const 我 = await getCurrentUser();
   if (!我) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  const 拒 = await 视图拒绝响应();
+  if (拒) return 拒;
   const id = (await ctx.params).id;
   // 已经删了（两个窗口、连点）当成功
   if (是附件编号(id) && !(await prisma.attachment.findFirst({ where: { id }, select: { id: true } }))) return NextResponse.json({ ok: true });

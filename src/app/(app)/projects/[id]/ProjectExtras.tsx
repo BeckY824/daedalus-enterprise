@@ -124,6 +124,8 @@ const 附件格们: [项目附件格, string][] = [["合同", "合同附件"], [
 export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通们, 去看 }: {
   projectId: string; 起始个数: Record<项目附件格, number>; 只读: boolean; 沟通们: 沟通附件组[]; 去看?: (followUpId: string) => void;
 }) {
+  // 传完、删完刷新项目：节点必填（合同、方案）和页上别处跟着变；这一格的列表自己已经更新了（AttachmentsPanel）
+  const router = useRouter();
   const [个数, set个数] = useState<Record<项目附件格, number>>({ 合同: 起始个数.合同, 方案: 起始个数.方案, 其它: 起始个数.其它 });
   // AttachmentsPanel 拿 on个数 当 effect 依赖：每格一个稳定的回调
   const 记个数 = useMemo(
@@ -137,7 +139,7 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
       {附件格们.map(([k, 名]) => (
         <section key={k} className="proj-att-sec" aria-label={名}>
           <div className="proj-att-h">{名}（{个数[k]}）</div>
-          <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 />
+          <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 on变了={() => router.refresh()} />
         </section>
       ))}
       <section className="proj-att-sec" aria-label="沟通附件">

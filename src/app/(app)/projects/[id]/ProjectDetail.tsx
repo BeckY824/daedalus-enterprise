@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { App, Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Progress, Radio, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
+import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Progress, Radio, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -20,7 +20,7 @@ import { 跟进类型们 } from "@/lib/constants";
 import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
-import { 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
+import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { 阶段们, 交付还差, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -33,10 +33,13 @@ import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
 import type { 可选渠道 } from "@/components/ChannelPicker";
-import { 拼地址, 企业级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 拼地址, 企业级别, 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
-import { 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
-import type { 合同状态 } from "@/lib/project/proj-fields";
+import { 成交需求上限, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
+import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
+import { 备注上限 } from "@/lib/project/wizard";
+import { 文字格改动, 沟通正文改动, 钱格改动, type 钱格值 } from "@/lib/project/inline-edit";
+import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
 import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
@@ -58,6 +61,8 @@ import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
   id: string; name: string; remark: string | null; amount: number; currency: string;
+  /** 这个人字段权限不是「改」的那几项（企业版，11-02）：卡片上不摆就地改的入口；服务端 改项目 照旧按字段权限拦 */
+  只能看字段?: string[];
   /** null = 公海里同事客户的项目，领取后再给（page.tsx 露客户）；联系人、沟通这时也是空的 */
   customer: { id: string; name: string; school: string | null } | null;
   contact: { id: string; name: string; position: string | null } | null;
@@ -165,6 +170,27 @@ export type 项目详情 = {
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 4.3em", whiteSpace: "nowrap" };
+// 多行的格子（需求描述、痛点、备注）：键和第一行对齐，不居中到一大段字的中间
+const 多行行样: React.CSSProperties = { ...行样, alignItems: "flex-start" };
+
+/** 就地改：一格钱（数 + 币种），窄卡上折成两行不溢出 */
+function 钱编辑器(名: string) {
+  return function 编辑钱({ 草稿, set草稿, 忙 }: 编辑器参数<钱格值>) {
+    return (
+      <div className="proj-inline-money">
+        <InputNumber aria-label={名} autoFocus min={0} max={1e12} precision={2} disabled={忙} value={草稿.数} onChange={(v) => set草稿({ ...草稿, 数: typeof v === "number" ? v : null })} />
+        <Select aria-label={`${名}币种`} showSearch disabled={忙} value={草稿.币} options={币种选项()} onChange={(v: string) => set草稿({ ...草稿, 币: v })} />
+      </div>
+    );
+  };
+}
+
+/** 就地改：多行文字 */
+function 文字编辑器(名: string, 上限: number) {
+  return function 编辑文字({ 草稿, set草稿, 忙 }: 编辑器参数<string>) {
+    return <Input.TextArea aria-label={名} autoFocus autoSize={{ minRows: 2, maxRows: 10 }} maxLength={上限} showCount disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />;
+  };
+}
 
 /** 删项目的确认框：列出一起删掉的几样，说清沟通记录本身不删 */
 function 删除说明(n: 项目详情["删前清点"], 客户叫法: string, 进回收站 = false) {
@@ -425,6 +451,26 @@ export default function ProjectDetail({
   const 推不了 = 动不了 ?? 往前不了 ?? 缺必填
     ?? (下 ? undefined : p.result ? "先改回某个进程再往前推" : "这是最后一个进程了，接下来点结局");
   const 下一步字 = 下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步";
+
+  // 卡片就地改（11-02）：只开企业版；字段权限不是「改」的那几项不摆入口（服务端 改项目 同一张表）。入口灰不灰不看 忙，存的时候各格自己转圈
+  const 能就地改 = 可改 && p.企业版;
+  const 字段能改 = (名: string) => 能就地改 && !p.只能看字段?.includes(名);
+  /** 存项目卡的一格：同一个 编辑项目（权限、字段权限、留痕都在里面）；失败把原因交回格子，留在编辑态 */
+  const 存项目项 = async (patch: Parameters<typeof 编辑项目>[1]): Promise<string | null> => {
+    const r = await 编辑项目(p.id, patch);
+    if (!r.ok) return r.error ?? "没存上，请稍后再试";
+    if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+    router.refresh();
+    return null;
+  };
+  /** 存沟通正文：版本冲突（别人刚改过）失败时也刷新，拿到新版本，草稿还在，再点保存就行 */
+  const 存沟通正文 = async (f: 项目详情["followUps"][number], content: string): Promise<string | null> => {
+    const 交 = 沟通正文改动(f, content);
+    if ("error" in 交) return 交.error ?? "请填写这次沟通的内容";
+    const r = await 改项目沟通(p.id, f.id, 交.改动);
+    router.refresh();
+    return r.ok ? null : r.error ?? "没存上，请稍后再试";
+  };
 
   const 跑 = async (f: () => Promise<{ ok: boolean; error?: string; 自动推到?: string[] }>, 成了?: string) => {
     set忙(true);
@@ -722,22 +768,120 @@ export default function ProjectDetail({
       {p.contact && <div style={行样}><span style={键样}>联系人</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>}
       {p.contact && p.联系人附件 && <div style={行样}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       {p.企业版 && p.level !== undefined && (
-        <div style={行样}><span style={键样}>级别</span>{级别格(p.level)}</div>
+        <div style={行样}>
+          <span style={键样}>级别</span>
+          <ProjectInlineField<string | null>
+            名="级别"
+            值={p.level}
+            能改={能就地改}
+            显示={级别格}
+            存={(v) => 存项目项({ level: v })}
+            编辑器={({ 草稿, 提交, 忙 }) => (
+              <Select aria-label="级别" autoFocus defaultOpen allowClear disabled={忙} placeholder="不分级" style={{ width: "100%" }} value={草稿 ?? undefined} options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} onChange={(v?: string) => 提交(v ?? null)} />
+            )}
+          />
+        </div>
       )}
-      <div style={行样}><span style={键样}>金额</span>{p.必填?.还差.includes("金额") ? 占位确认("金额") : p.amount ? 金额(p.amount, p.currency) : 待填("金额")}</div>
+      <div style={行样}>
+        <span style={键样}>金额</span>
+        <ProjectInlineField<钱格值>
+          名="金额"
+          值={{ 数: p.amount || null, 币: p.currency }}
+          能改={字段能改("商机金额")}
+          回车存
+          // 必填占位只对库里那个值说话：刚改过（乐观值）就直接显示新值
+          显示={(v) => (v.数 === (p.amount || null) && p.必填?.还差.includes("金额") ? 占位确认("金额") : v.数 ? 金额(v.数, v.币) : 待填("金额"))}
+          存={(v) => 存项目项(钱格改动("金额", v))}
+          编辑器={钱编辑器("金额")}
+        />
+      </div>
       {p.企业版 && p.成交钱 && (
         <>
-          <div style={行样}><span style={键样}>定金金额</span>{p.成交钱.depositAmount !== null ? 金额(p.成交钱.depositAmount, p.成交钱.depositCurrency ?? 默认币种) : 待填("定金金额")}</div>
-          <div style={行样}><span style={键样}>合同金额</span>{p.成交钱.contractAmount !== null ? 金额(p.成交钱.contractAmount, p.成交钱.contractCurrency ?? 默认币种) : 待填("合同金额")}</div>
-          {p.项目新字段?.contractStatus && <div style={行样}><span style={键样}>合同状态</span><span>{p.项目新字段.contractStatus}</span></div>}
+          <div style={行样}>
+            <span style={键样}>定金金额</span>
+            <ProjectInlineField<钱格值>
+              名="定金金额"
+              值={{ 数: p.成交钱.depositAmount, 币: p.成交钱.depositCurrency ?? 默认币种 }}
+              能改={字段能改("商机金额")}
+              回车存
+              显示={(v) => (v.数 !== null ? 金额(v.数, v.币) : 待填("定金金额"))}
+              存={(v) => 存项目项(钱格改动("定金金额", v))}
+              编辑器={钱编辑器("定金金额")}
+            />
+          </div>
+          <div style={行样}>
+            <span style={键样}>合同金额</span>
+            <ProjectInlineField<钱格值>
+              名="合同金额"
+              值={{ 数: p.成交钱.contractAmount, 币: p.成交钱.contractCurrency ?? 默认币种 }}
+              能改={字段能改("商机金额")}
+              回车存
+              显示={(v) => (v.数 !== null ? 金额(v.数, v.币) : 待填("合同金额"))}
+              存={(v) => 存项目项(钱格改动("合同金额", v))}
+              编辑器={钱编辑器("合同金额")}
+            />
+          </div>
+          {p.项目新字段?.contractStatus && (
+            <div style={行样}>
+              <span style={键样}>合同状态</span>
+              <ProjectInlineField<string>
+                名="合同状态"
+                值={p.项目新字段.contractStatus}
+                能改={字段能改("合同状态")}
+                显示={(v) => <span>{v}</span>}
+                存={(v) => 存项目项({ contractStatus: v })}
+                编辑器={({ 草稿, 提交, 忙 }) => (
+                  <Select aria-label="合同状态" autoFocus defaultOpen disabled={忙} style={{ width: "100%" }} value={草稿} options={合同状态们.map((x) => ({ value: x, label: x }))} onChange={(v: string) => 提交(v)} />
+                )}
+              />
+            </div>
+          )}
           {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span></div>}
-          <div style={行样}><span style={键样}>需求描述</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(p.成交钱.dealDemand) ? p.成交钱.dealDemand : 待填("需求描述")}</span></div>
+          <div style={多行行样}>
+            <span style={键样}>需求描述</span>
+            <ProjectInlineField<string>
+              名="需求描述"
+              规整={(v) => v.trim()}
+              值={p.成交钱.dealDemand ?? ""}
+              能改={字段能改("商机金额")}
+              多行
+              显示={(v) => <span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(v) ? v : 待填("需求描述")}</span>}
+              存={(v) => 存项目项({ dealDemand: 文字格改动(v) })}
+              编辑器={文字编辑器("需求描述", 成交需求上限)}
+            />
+          </div>
           {p.项目新字段 && "painPoints" in p.项目新字段 && (
-            <div style={行样}><span style={键样}>痛点标注</span><span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(p.项目新字段.painPoints) ? p.项目新字段.painPoints : (p.必填?.还差.includes("痛点标注") ? 占位确认("痛点标注") : 待填("痛点标注"))}</span></div>
+            <div style={多行行样}>
+              <span style={键样}>痛点标注</span>
+              <ProjectInlineField<string>
+                名="痛点标注"
+                规整={(v) => v.trim()}
+                值={p.项目新字段.painPoints ?? ""}
+                能改={字段能改("痛点标注")}
+                多行
+                显示={(v) => <span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(v) ? v : (p.必填?.还差.includes("痛点标注") ? 占位确认("痛点标注") : 待填("痛点标注"))}</span>}
+                存={(v) => 存项目项({ painPoints: 文字格改动(v) })}
+                编辑器={文字编辑器("痛点标注", 痛点标注上限)}
+              />
+            </div>
           )}
         </>
       )}
-      {p.企业版 && <div style={行样}><span style={键样}>预计成交</span>{有值(p.expectedDealAt) ? p.expectedDealAt : (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期"))}</div>}
+      {p.企业版 && (
+        <div style={行样}>
+          <span style={键样}>预计成交</span>
+          <ProjectInlineField<string | null>
+            名="预计成交"
+            值={p.expectedDealAt ?? null}
+            能改={字段能改("预计签约")}
+            显示={(v) => (有值(v) ? v : (p.必填?.还差.includes("预计成交日期") ? 占位确认("预计成交日期") : 待填("预计成交日期")))}
+            存={(v) => 存项目项({ expectedDealAt: v })}
+            编辑器={({ 草稿, 提交, 忙 }) => (
+              <DatePicker aria-label="预计成交" autoFocus disabled={忙} style={{ width: "100%" }} value={草稿 ? dayjs(草稿) : null} onChange={(d) => 提交(d ? d.format("YYYY-MM-DD") : null)} />
+            )}
+          />
+        </div>
+      )}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
         <div style={行样}><span style={键样}>项目来源</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源")}</span></div>
@@ -765,7 +909,21 @@ export default function ProjectDetail({
           </span>
         </div>
       )}
-      {p.remark && <div style={{ marginTop: 8, whiteSpace: "pre-wrap", color: "var(--text-muted)" }}>{p.remark}</div>}
+      {能就地改 ? (
+        <div style={多行行样}>
+          <span style={键样}>备注</span>
+          <ProjectInlineField<string>
+            名="备注"
+            规整={(v) => v.trim()}
+            值={p.remark ?? ""}
+            能改
+            多行
+            显示={(v) => <span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap", color: "var(--text-muted)" }}>{v || 待填("备注")}</span>}
+            存={(v) => 存项目项({ remark: 文字格改动(v) })}
+            编辑器={文字编辑器("备注", 备注上限)}
+          />
+        </div>
+      ) : p.remark && <div style={{ marginTop: 8, whiteSpace: "pre-wrap", overflowWrap: "anywhere", color: "var(--text-muted)" }}>{p.remark}</div>}
     </Card>
   );
   const 交付卡 = 显示交付 && (
@@ -886,8 +1044,19 @@ export default function ProjectDetail({
               </span>
             )}
           </div>
-          <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{f.content}</div>
-          {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} />}
+          <div style={{ marginTop: 4 }}>
+            <ProjectInlineField<string>
+              名="沟通内容"
+              规整={(v) => v.trim()}
+              值={f.content}
+              能改={p.企业版 && !!p.可改沟通}
+              多行
+              显示={(v) => <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
+              存={(v) => 存沟通正文(f, v)}
+              编辑器={({ 草稿, set草稿, 忙 }) => <Input.TextArea aria-label="沟通内容" autoFocus autoSize={{ minRows: 3, maxRows: 14 }} disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />}
+            />
+          </div>
+          {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} on变了={() => router.refresh()} />}
         </div>
       ))}
       </div>

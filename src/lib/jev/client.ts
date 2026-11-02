@@ -20,6 +20,7 @@
  */
 import { TypeSafeClient, type ChoiceQuestion } from "@typesafe-ai/sdk";
 import { 本地模式, 云端地址, 读 as 读云端凭据 } from "../desktop/cloud";
+import { 正在切换视图 } from "../enterprise/view-as";
 
 /** 一次判断最多等这么久。超了就当没有——让人多点两下下拉框，好过让导入卡住 */
 const 超时毫秒 = 8000;
@@ -102,6 +103,7 @@ export async function 问选择(
 ): Promise<Record<string, 选择答案> | null> {
   const client = 取客户端();
   if (!client || Object.keys(问题).length === 0) return null;
+  if (await 正在切换视图()) return null; // 只读预览不外发。答不上来调用方本来就接得住（回落规则）
   try {
     const r = await client.systemOne({ state: state as never, questions: 问题 });
     const out: Record<string, 选择答案> = {};

@@ -7,6 +7,7 @@ import { 读文件们, type 读出的表 } from "@/lib/enterprise-import/excel";
 import { 试跑 } from "@/lib/enterprise-import/report";
 import { 已认映射, 读同步设置 } from "@/lib/enterprise-import/sync";
 import { 实体顺序, type 实体 } from "@/lib/enterprise-import/types";
+import { 视图拒绝响应 } from "@/lib/enterprise/view-as";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,6 +30,8 @@ export async function POST(req: Request) {
   if (!企业版()) return NextResponse.json({ error: "企业版没开" }, { status: 404 });
   const 我 = await getCurrentUser();
   if (!我) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  const 拒 = await 视图拒绝响应();
+  if (拒) return 拒;
   if (!(await 最高管理(我)) || (await 当前是共享区())) return NextResponse.json({ error: "只有总管理能做企业版导入" }, { status: 403 });
 
   const 切了 = (await 读同步设置("excel")).切换;
