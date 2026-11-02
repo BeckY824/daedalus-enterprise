@@ -25,7 +25,7 @@ import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限, 记转让 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
-import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import {
@@ -414,6 +414,7 @@ async function 自动分给(
   } else {
     人们 = 自动候选人们(org, 看.ownerId, line);
   }
+  人们 = 只留销售(org, 人们);
   const 月 = 月份();
   const [计数, 配额, 加额, 建号, 不参与, 企划算数, 不限额] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: 人们 } }, _count: { _all: true } }),
