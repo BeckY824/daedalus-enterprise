@@ -2,8 +2,12 @@
  * 企业版统一公海的取数（2026-10-29，P7）：客户公海 + 项目公海一次取齐，拼成 公海行，筛排分页在 unified-pool.ts。
  * 规矩（一行是什么、属性、入池原因、快捷）见 unified-pool.ts 开头。
  *
- * 量：两句 findMany（各带一层 include）+ 一句可见客户，全部并行，不按行再查（30 人同时开也是固定 3 句）。
+ * 量：先两句取行，再两句取行上挂的项目和放回留痕，加一句可见客户（过 400 位才分批），不按行再查，30 人同时开也就这么多。
  * 公海是「没人要的」那一堆，不会很大；各取最近入池的 公海取上限 条，超了页面上说一声，更早的靠搜索
+ *
+ * 客户的项目、项目的留痕不用 select 关联带（11-02）：关联加载内部是 外键 IN (所有父行)，公海过 999 行就超 SQLite 的参数上限，
+ * Prisma 要拆批；范围层给关联补的 看得到的项目 带 pooledAt: { not: null }，否定条件没法拆，受限身份一开就 P2029（总管理不限定所以不报）。
+ * 单独查、用关联条件框范围，不拼大 IN；范围层给顶层查询加的条件和原来给关联加的是同一句，口径不变
  */
 import { prisma } from "@/lib/prisma";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
@@ -12,7 +16,7 @@ import { 阶段与进程 } from "@/lib/project/stage-dict";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
-import { 历史负责人们, 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
+import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import {
   客户定状态, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
@@ -60,9 +64,6 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       select: {
         id: true, name: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true,
         pool: { select: { userId: true, reason: true, at: true } },
-        // orderBy 用到的字段必须一起 select：公海客户过 999 个时 Prisma（6.16，SQLite）把子查询的 IN 拆成几批再合，
-        // 合的时候要按 orderBy 字段排，没 select 就 panic「no entry found for key」，整页打不开（10-30 8702 导入 4882 个客户后）
-        projects: { select: { id: true, name: true, phase: true, node: true, result: true, createdAt: true }, orderBy: { createdAt: "asc" } },
       },
     }),
     // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）
@@ -73,14 +74,41 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       select: {
         id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, createdAt: true,
         customer: { select: { name: true, lastFollowAt: true, poolReturns: true } },
-        logs: { where: { kind: "pool-release" }, orderBy: { at: "desc" }, take: 1, select: { userId: true, reason: true, at: true } },
       },
     }),
     生效组织规则(),
   ]);
   const 字典 = 字典of(true, 规则.阶段.出口叫法);
-  // 原负责人 = 最后一次进公海前的负责人（11-01 C-01 起企业版进公海清负责人，只在留痕里，lib/project/pool-owner.ts）
-  const [可见, 原负责人] = await Promise.all([看得到的客户(项目们.map((p) => p.customerId)), 历史负责人们(prisma, 项目们.map((p) => p.id))]);
+  // 取满了才按最早入池那一行框，没取满就是公海全部。框出来的可能比这些行多（同一刻入池的），下面按行取，多的不用
+  const 最早客户 = 客户们.length >= 公海取上限 ? 客户们[客户们.length - 1].pool!.at : null;
+  const 最早项目 = 项目们.length >= 公海取上限 ? 项目们[项目们.length - 1].pooledAt! : null;
+  const [客户的项目们, 留痕们, 可见] = await Promise.all([
+    客户们.length
+      ? prisma.project.findMany({
+        where: { customer: { pool: 最早客户 ? { at: { gte: 最早客户 } } : { isNot: null } } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { customerId: true, id: true, name: true, phase: true, node: true, result: true, createdAt: true },
+      })
+      : [],
+    项目们.length
+      ? prisma.projectNodeLog.findMany({
+        where: { kind: "pool-release", project: { pooledAt: 最早项目 ? { gte: 最早项目 } : { not: null }, customer: { pool: null } } },
+        orderBy: [{ at: "desc" }, { id: "desc" }],
+        select: { projectId: true, userId: true, reason: true, fromOwnerId: true },
+      })
+      : [],
+    看得到的客户(项目们.map((p) => p.customerId)),
+  ]);
+  const 项目of客户 = new Map<string, (typeof 客户的项目们)[number][]>();
+  for (const p of 客户的项目们) {
+    const 们 = 项目of客户.get(p.customerId);
+    if (们) 们.push(p);
+    else 项目of客户.set(p.customerId, [p]);
+  }
+  // 每个项目最近一条放回：入池类、入池原因认它；fromOwnerId 就是原负责人 = 最后一次进公海前的负责人
+  // （11-01 C-01 起企业版进公海清负责人，只在留痕里，同 lib/project/pool-owner.ts 历史负责人们）
+  const 最近放回 = new Map<string, (typeof 留痕们)[number]>();
+  for (const l of 留痕们) if (!最近放回.has(l.projectId)) 最近放回.set(l.projectId, l);
   const 拦 = 拦原负责人();
   // 历史负责人看不到公海里的这个项目（总管理 / 管理员不算）
   const 回避 = 原负责人回避() && !(await 回避豁免(me));
@@ -88,12 +116,13 @@ export async function 读公海行(me: { id: string; name: string; role?: string
   const 客户行: 公海行[] = 客户们.map((c) => {
     const 原类 = 客户入池类(c.pool!);
     const 类: 入池类 = c.poolInvalidAt ? "无效" : 原类;
-    const 一个 = c.projects.length === 1 ? c.projects[0] : null;
-    const 进 = 进程们(c.projects, 字典);
+    const 名下 = 项目of客户.get(c.id) ?? [];
+    const 一个 = 名下.length === 1 ? 名下[0] : null;
+    const 进 = 进程们(名下, 字典);
     return {
       id: `c:${c.id}`, 种: "客户", customerId: c.id, projectId: 一个?.id ?? null,
       客户名: c.name,
-      项目名: c.projects.length ? c.projects.map((p) => p.name).join("、") : null,
+      项目名: 名下.length ? 名下.map((p) => p.name).join("、") : null,
       进程: 进.进程, 进程明细: 进.进程明细,
       属性: 进.属性,
       最后跟进: c.lastFollowAt?.toISOString() ?? null,
@@ -103,8 +132,9 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       原负责人是我: 拦 && c.salesOwnerId === me.id,
     };
   });
-  const 项目行: 公海行[] = 项目们.filter((p) => !(回避 && 原负责人.get(p.id) === me.id)).map((p) => {
-    const 类 = 项目入池类(p.logs[0] ?? null);
+  const 项目行: 公海行[] = 项目们.filter((p) => !(回避 && 最近放回.get(p.id)?.fromOwnerId === me.id)).map((p) => {
+    const 留痕 = 最近放回.get(p.id) ?? null;
+    const 类 = 项目入池类(留痕);
     const 累计 = p.customer.poolReturns;
     const 进 = 进程们([p], 字典);
     return {
@@ -116,9 +146,9 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       最后跟进: p.customer.lastFollowAt?.toISOString() ?? null,
       入池时间: p.pooledAt!.toISOString(),
       创建时间: p.createdAt.toISOString(),
-      类, 累计, 入池原因: 入池原因文字(类, p.logs[0]?.reason), 快捷: 归到快捷({ 类, 累计 }),
+      类, 累计, 入池原因: 入池原因文字(类, 留痕?.reason), 快捷: 归到快捷({ 类, 累计 }),
       // 项目公海原负责人一律领不回（企业版看规则，别的版本本来就不能）
-      原负责人是我: (原负责人.get(p.id) ?? p.ownerId) === me.id,
+      原负责人是我: (留痕?.fromOwnerId || p.ownerId) === me.id,
     };
   });
   return { 行: [...客户行, ...项目行], 截断: 客户们.length >= 公海取上限 || 项目们.length >= 公海取上限 };
