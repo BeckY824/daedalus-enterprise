@@ -701,7 +701,7 @@ export default function CustomersView({
             ? `${b.customer}是这套系统的中心：跟进记录、商机、订单都挂在他身上。`
             : `${b.customer}是这套系统的中心：跟进记录、商机、签约都挂在他身上，推荐归属也按他这条线往上算。`,
           primary: { label: `新建第一位${b.customer}`, onClick: 新建 },
-          secondary: 能导入导出 ? [{ label: "从 Excel 导入", onClick: () => set导入开着(true) }] : [],
+          secondary: 能导入导出 && !视图中 ? [{ label: "从 Excel 导入", onClick: () => set导入开着(true) }] : [],
         }}
         筛选={
           /*

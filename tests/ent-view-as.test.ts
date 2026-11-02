@@ -28,6 +28,8 @@ import { readSecret } from "@/lib/secret";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
 import { 系统写 } from "@/lib/team-scope";
+import { 企业字典 } from "@/lib/enterprise/dict";
+import { 角色字典, 异常类别字典 } from "@/lib/project/db";
 import { getCurrentUser, destroySession } from "@/lib/auth";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读组织 } from "@/lib/enterprise/org";
@@ -147,6 +149,20 @@ describe("企业版切换视图", () => {
       ["view-as-exit", 人.总管, 人.甲],
     ]);
     expect(痕[0].summary).toContain("业务员甲");
+  });
+
+  it("切视图时字典还是空的：第一次读照样建好默认项，不崩页；普通写和手动改字典仍拒", async () => {
+    await prisma.entDictItem.deleteMany();
+    await prisma.projectRole.deleteMany();
+    await prisma.projectExceptionCategory.deleteMany();
+    await 登录成(人.老板);
+    expect(await 开始视图(人.甲)).toEqual({ ok: true });
+    忘掉企业版范围();
+    expect((await 企业字典("assign")).length).toBeGreaterThan(0);
+    expect((await 角色字典()).length).toBeGreaterThan(0);
+    expect((await 异常类别字典()).length).toBeGreaterThan(0);
+    await expect(prisma.customer.update({ where: { id: 甲的客户 }, data: { name: "x" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
+    await expect(prisma.projectRole.create({ data: { name: "视图里加的" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
   });
 
   it("票只认签它的那个会话：换个人带着这张票，不认、也不拦", async () => {

@@ -749,7 +749,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
 
       {/* antd 的 Content 自己就渲染成 <main>，外面不能再包一层：
           一个文档只能有一个 main，两个会让读屏和测试都认不出正文是哪块 */}
-      <main className="main app-content" style={{ padding: "22px 26px" }}>
+      <main className="main app-content" style={{ padding: 正在视图 ? "44px 26px 22px" : "22px 26px" }}>
         {/*
           换页时正文淡进来、抬 6px。**--t（180ms），而且只有正文**——
           左栏和中栏不动，动的只是"这一页的内容换了"这件事本身。
