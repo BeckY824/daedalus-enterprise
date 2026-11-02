@@ -167,6 +167,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,
     // 项目级别、所在地（P11 定稿 -2 版，迁移 093）：级别是项目自己的，都给看；所在地跟客户资料一样，公海里同事客户的项目没领之前不给
     level: p.level,
+    // 业务线（11-02）：编辑框里能改（改了不重新自动分配）；老项目没填是 null
+    bizLine: p.bizLine,
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
     // 成交需求、合同金额、定金金额（迁移 097）：和金额一样是项目自己的，都给看
     成交钱: { dealDemand: p.dealDemand, contractAmount: p.contractAmount, contractCurrency: p.contractCurrency, depositAmount: p.depositAmount, depositCurrency: p.depositCurrency },

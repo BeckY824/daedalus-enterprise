@@ -37,7 +37,7 @@ import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
-import { 项目业务线, type 成员线查 } from "@/lib/enterprise/assign-line";
+import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
 import { 进公海后负责人, 历史负责人, 进公海关待办 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
@@ -487,7 +487,7 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 /**
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期、项目来源、项目级别、所在地（地址四格 + 详细地址）。
  * 规矩同向导第四步（规整项目）；级别和所在地见 profile-rules.ts 项目级别和地址改成，成交需求 / 合同金额 / 定金金额见 项目成交钱改成，
- * 痛点标注 / 合同状态见 proj-fields.ts 项目新字段改成（都是不是企业版传了也不动）；
+ * 痛点标注 / 合同状态见 proj-fields.ts 项目新字段改成，业务线（11-02）三选一、不给清空、改了不重新自动分配（都是不是企业版传了也不动）；
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
  * 换负责人 = 转让：能转让项目的人（企业版 = 总管理、负责人的实线上级、负责人本人；不是企业版 = 负责人本人、老板、主管）能转，
  * 只改这一个项目，记谁、何时、从谁到谁；别的字段 = 编辑内容，只给 能管项目 的人（企业版 C2：总管理、上级能转不能改）。
@@ -529,7 +529,12 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (钱 && !钱.ok) return { ok: false as const, error: 钱.error };
     const 新字段 = 企业版() ? 项目新字段改成(patch, p) : null;
     if (新字段 && !新字段.ok) return { ok: false as const, error: 新字段.error };
-    const 新 = { ...好, contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}) };
+    // 业务线（11-02，企业版）：传了才比；三选一，不给清空。改了只换线，不重新自动分配（所在地给的建议由界面提示、人点了才改）
+    const 改线 = 企业版() && patch.业务线 !== undefined;
+    const 线 = 改线 ? 认业务线(patch.业务线) : null;
+    if (改线 && 线 === undefined) return { ok: false as const, error: 业务线不认得 };
+    if (改线 && !线) return { ok: false as const, error: 业务线必填 };
+    const 新 = { ...好, contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");

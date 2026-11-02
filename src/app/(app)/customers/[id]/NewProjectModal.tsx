@@ -8,8 +8,10 @@
  * 11-01 会议 §6：建好不跳去项目页，留在客户页刷新，提示里带「去看看」
  * 11-01 会议 §3：加「分配方式」（默认按业务角色，A6）和「业务线」（内贸 / 外贸 / 暂不分配，必填，默认带客户的业务线，A1）；
  * 只有指定分配要选负责人，其余建在我名下、建好按分配方式走（服务端 给客户建项目）
+ * 11-02：加选填的「项目所在地」（四格 + 详细地址，项目自己的，不看客户 / 联系人地址）；填了按所在地给业务线建议——
+ * 没手动选过业务线就预填建议、旁边写「请确认」；手动选过不覆盖，和建议不一样时提示一句。点「建好」= 确认
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Dayjs } from "dayjs";
@@ -22,8 +24,11 @@ import { 对得上的方式 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 成员选项, dayjs, type 可选成员 } from "@/lib/utils";
 import { 项目名上限 } from "@/lib/project/wizard";
+import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
+import AddressInput, { 空地址 } from "@/components/AddressInput";
+import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 给客户建项目, 新项目分配数据, type 新项目分配数据 as 分配数据 } from "./project-actions";
-import { 三种业务线, 销售自动分确认, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
 /** 和建档向导同一排步骤（ProjectWizard 步骤们）；这里前 3 步已带上 */
@@ -87,6 +92,10 @@ export default function NewProjectModal({
   const [存着, set存着] = useState(false);
   // 分配方式、业务线默认值：打开时问服务端（没开 / 取不到 = 不摆这两格，和原来一样直接选负责人）
   const [分配, set分配] = useState<分配数据 | null>(null);
+  // 项目所在地（选填）和「业务线手动选过没有」：客户默认带的业务线不算手动选，所在地建议可以换掉它
+  const [地址, set地址] = useState<客户地址>(空地址);
+  const [详细, set详细] = useState("");
+  const 手选 = useRef(false);
   useEffect(() => {
     if (!open) return;
     let 还在 = true;
@@ -102,6 +111,14 @@ export default function NewProjectModal({
     };
   }, [open, customerId, form]);
   const 分配方式 = Form.useWatch("分配方式", form);
+  const 业务线 = Form.useWatch("业务线", form);
+  const 建议 = 建议业务线(地址);
+  const 线提示 = 所在地提示(建议, 业务线);
+  const 改地址 = (a: 客户地址) => {
+    set地址(a);
+    const 预填 = 所在地预填(建议业务线(a), form.getFieldValue("业务线"), 手选.current);
+    if (预填) form.setFieldValue("业务线", 预填);
+  };
   const 有分配 = !!分配 && 分配.分配方式们.length > 0;
   // 只有指定分配（或没有分配方式可选）要选负责人
   const 要负责人 = !有分配 || 分配方式 === 0;
@@ -109,6 +126,9 @@ export default function NewProjectModal({
   const [步, set步] = useState(0);
   const 关 = () => {
     set步(0);
+    set地址(空地址);
+    set详细("");
+    手选.current = false;
     onClose();
   };
   async function 下一步() {
@@ -156,6 +176,7 @@ export default function NewProjectModal({
           name: v.name,
           ownerId: 要负责人 ? v.ownerId ?? null : null,
           ...(有分配 ? { 分配方式: v.分配方式 ?? null, 业务线: v.业务线 ?? null } : {}),
+          所在地: { ...地址, location: 详细.trim() || null },
         },
         跟进: {
           type: v.type,
@@ -233,6 +254,12 @@ export default function NewProjectModal({
         <Form.Item name="name" label="项目名称" rules={[{ required: true, whitespace: true, message: "请填写项目名称" }]}>
           <Input maxLength={项目名上限} showCount />
         </Form.Item>
+        <Form.Item label="项目所在地" extra="选填；项目在哪就填哪（不是客户地址），填了会按所在地建议业务线">
+          <AddressInput value={地址} onChange={改地址} />
+        </Form.Item>
+        <Form.Item label="详细地址">
+          <Input aria-label="详细地址" placeholder={详细地址提示} maxLength={详细地址上限} value={详细} onChange={(e) => set详细(e.target.value)} />
+        </Form.Item>
         {有分配 && (
           <Form.Item
             name="分配方式"
@@ -248,9 +275,20 @@ export default function NewProjectModal({
             name="业务线"
             label="业务线"
             rules={[{ required: true, message: "请选业务线（内贸 / 外贸 / 暂不分配）" }]}
-            extra="自动分配只分给这条线的销售；暂不分配 = 不自动分，留在新线索等人指派。超时回收按这条线的时长算"
+            extra={
+              <>
+                {线提示 && <div data-testid="new-project-bizline-hint" style={线提示.同 ? undefined : { color: "var(--warning-text)" }}>{线提示.话}</div>}
+                自动分配只分给这条线的销售；暂不分配 = 不自动分，留在新线索等人指派。超时回收按这条线的时长算
+              </>
+            }
           >
-            <Select placeholder="内贸 / 外贸 / 暂不分配" options={三种业务线.map((x) => ({ value: x, label: x }))} />
+            <Select
+              placeholder="内贸 / 外贸 / 暂不分配"
+              options={三种业务线.map((x) => ({ value: x, label: x }))}
+              onChange={() => {
+                手选.current = true;
+              }}
+            />
           </Form.Item>
         )}
         {要负责人 && (

@@ -13,6 +13,7 @@ import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 详细地址上限, 详细地址提示, 成交需求上限, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
+import { 三种业务线, 建议业务线, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
@@ -31,7 +32,8 @@ const 邀请说法: Record<string, string> = { INVITED: "已邀请", DECLINED: "
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩和建档向导第四步一样（服务端 规整项目）。
  * 企业版另有项目级别（S / A / B / C，显示成星）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）；
  * 需求描述（原成交需求）、合同金额、定金金额（迁移 097）：两个金额和上面「金额」一样，左边币种下拉、右边数字连成一格（Space.Compact）；
- * 痛点标注（多行）、合同状态（七项单选）（迁移 101）：哪一项没传（不是企业版 / 字段权限藏了）就不摆、不交
+ * 痛点标注（多行）、合同状态（七项单选）（迁移 101）：哪一项没传（不是企业版 / 字段权限藏了）就不摆、不交；
+ * 业务线（11-02）：三选一；改了所在地、按所在地看像另一条线时在所在地下面提示 +「改成 X」，点了才换，不悄悄改；改线不重新自动分配
  */
 export function ProjectEditModal({
   open, onClose, 跑, p, 候选, 联系人们, 渠道们, 改负责人 = true,
@@ -44,6 +46,8 @@ export function ProjectEditModal({
     id: string; name: string; ownerId: string; amount: number; currency: string; remark: string | null; contactId: string | null; expectedDealAt?: string | null; channelId?: string | null;
     /** 企业版才传；不传 = 不摆、不交 */
     level?: string | null;
+    /** 企业版才传（老项目没填是 null）；不传 = 不摆、不交；没改不交 */
+    bizLine?: string | null;
     /** 企业版、看得到客户资料才传（公海里同事客户的项目不给）；不传或 null = 不摆、不交 */
     所在地?: (客户地址 & { location: string | null }) | null;
     /** 企业版才传；不传 = 不摆、不交 */
@@ -63,6 +67,11 @@ export function ProjectEditModal({
   const [级别, set级别] = useState(p.level ?? null);
   const [地址, set地址] = useState<客户地址>(p.所在地 ? { addrCountry: p.所在地.addrCountry, addrProvince: p.所在地.addrProvince, addrCity: p.所在地.addrCity, addrDistrict: p.所在地.addrDistrict } : 空地址);
   const [详细, set详细] = useState(p.所在地?.location ?? "");
+  const [线, set线] = useState<string | null>(p.bizLine ?? null);
+  // 所在地动过才提示（打开时就不一致的老项目不打扰）；提示只给建议，点「改成 X」才换
+  const 地址动了 = !!p.所在地 && (["addrCountry", "addrProvince", "addrCity", "addrDistrict"] as const).some((k) => (地址[k] ?? null) !== (p.所在地?.[k] ?? null));
+  const 建议 = p.bizLine !== undefined && 地址动了 ? 建议业务线(地址) : null;
+  const 线提示 = 所在地提示(建议, 线);
   // 金额空着时币种下拉先摆人民币；金额没填交上去币种服务端会存空（项目成交钱改成）
   const [钱, set钱] = useState(p.成交钱 ? { ...p.成交钱, dealDemand: p.成交钱.dealDemand ?? "", contractCurrency: p.成交钱.contractCurrency ?? 默认币种, depositCurrency: p.成交钱.depositCurrency ?? 默认币种 } : null);
   const 新 = p.项目新字段;
@@ -74,6 +83,7 @@ export function ProjectEditModal({
   // 没传的不交：服务端按「没传 = 不动」处理（项目级别和地址改成）
   const 附带 = {
     ...(p.level !== undefined ? { level: 级别 } : {}),
+    ...(p.bizLine !== undefined && 线 !== (p.bizLine ?? null) ? { 业务线: 线 } : {}),
     ...(p.所在地 ? { ...地址, location: 详细.trim() || null } : {}),
     ...(钱 ? { ...钱, dealDemand: 钱.dealDemand.trim() || null } : {}),
     ...(新 && "painPoints" in 新 ? { painPoints: 痛点.trim() || null } : {}),
@@ -109,6 +119,16 @@ export function ProjectEditModal({
           value={级别 ?? undefined}
           options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))}
           onChange={(v?: string) => set级别(v ?? null)}
+        />
+      ))}
+      {p.bizLine !== undefined && 行("业务线", (
+        <Select<项目线>
+          style={{ width: "100%" }}
+          aria-label="业务线"
+          placeholder="选内贸 / 外贸 / 暂不分配"
+          value={(线 ?? undefined) as 项目线 | undefined}
+          options={三种业务线.map((x) => ({ value: x, label: x }))}
+          onChange={(v) => set线(v)}
         />
       ))}
       {改负责人 && !独自一人(候选, d.ownerId) && 行("负责人", (
@@ -164,7 +184,17 @@ export function ProjectEditModal({
           aria-label="项目来源"
         />
       ))}
-      {p.所在地 && 行("所在地", <AddressInput value={地址} onChange={set地址} />)}
+      {p.所在地 && 行("所在地", (
+        <>
+          <AddressInput value={地址} onChange={set地址} />
+          {建议 && 线提示 && !线提示.同 && (
+            <div data-testid="edit-bizline-hint" style={{ marginTop: 4, color: "var(--text-muted)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{线提示.话}</span>
+              <Button size="small" onClick={() => set线(建议)}>改成{建议}</Button>
+            </div>
+          )}
+        </>
+      ))}
       {p.所在地 && 行("详细地址", <Input aria-label="详细地址" placeholder={详细地址提示} maxLength={详细地址上限} value={详细} onChange={(e) => set详细(e.target.value)} />)}
       {行("备注", <Input.TextArea rows={3} maxLength={备注上限} showCount value={d.remark} onChange={(e) => 改({ remark: e.target.value })} />)}
     </Modal>
