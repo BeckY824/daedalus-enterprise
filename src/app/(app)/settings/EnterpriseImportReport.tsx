@@ -572,7 +572,7 @@ export default function EnterpriseImportReport({
             open={清单开}
             title="正式导入"
             okText="导入"
-            okButtonProps={{ disabled: 改了几处 > 0 || (要选线 && !线) }}
+            okButtonProps={{ disabled: 改了几处 > 0 || (要选线 && !线), loading: 忙 === "导入" }}
             onOk={() => {
               set清单开(false);
               void 导入();
