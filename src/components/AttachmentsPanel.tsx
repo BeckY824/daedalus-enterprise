@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { App, Button, Image, Popconfirm, Spin, Upload } from "antd";
 import { DeleteOutlined, FileOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import { 附件上限字节, 图片长边, 是图片, 每条最多, 读大小, 只收图片, 收的类型, 收所有文件, type 附件, type 归属 } from "@/lib/attachment-rules";
@@ -20,11 +20,12 @@ declare global {
  *
  * 企业版联系人附件（10-28）也用这一块：归属 = 线索 / 联系人，说明 换成名片那句；只读 = 只看不传不删（只读的客户）。
  * on个数：张数变了告诉外面（联系人卡上的「附件 N」跟着变）
+ * on变了（11-02）：一批传完（有传成的）或删掉一个后叫一次，外面 router.refresh（项目节点必填跟着变）；不在这里 useRouter，别的地方用这块不用管
  *
  * 企业版项目附件（P11，10-29）：归属 = 项目，什么文件都收（收所有文件），说法从「图片」换成「附件」
  * 紧凑（F-项目-18，项目附件合成一块后每格用）：大拖放框换成一颗小「上传」按钮，上限、提示一样
  */
-export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说明, on个数, 分类, 紧凑 = false }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean }) {
+export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说明, on个数, 分类, 紧凑 = false, on变了 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void }) {
   const { message } = App.useApp();
   const [列表, set列表] = useState<附件[] | null>(null);
   const [传着, set传着] = useState(0);
@@ -41,21 +42,32 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
     return j.附件 ?? [];
   }, [查询, 叫]);
 
+  // 读的序号（11-02）：只认最后一次读的结果，先发后到的旧列表不盖新的（传了两个时第二个不会闪没；删掉的不会被回来的旧列表带回来）
+  const 读序 = useRef(0);
+  const 这批 = useRef({ 在传: 0, 传成: 0 });
+
   const 刷新 = useCallback(
-    () =>
-      读().then(set列表, (e: unknown) => {
-        set列表((x) => x ?? []);
-        message.error(e instanceof Error ? e.message : `读${叫}没成`);
-      }),
+    () => {
+      const 序 = ++读序.current;
+      return 读().then(
+        (x) => { if (序 === 读序.current) set列表(x); },
+        (e: unknown) => {
+          if (序 !== 读序.current) return;
+          set列表((x) => x ?? []);
+          message.error(e instanceof Error ? e.message : `读${叫}没成`);
+        },
+      );
+    },
     [读, message, 叫],
   );
 
   useEffect(() => {
     let 走了 = false;
+    const 序 = ++读序.current;
     读().then(
-      (x) => { if (!走了) set列表(x); },
+      (x) => { if (!走了 && 序 === 读序.current) set列表(x); },
       (e: unknown) => {
-        if (走了) return;
+        if (走了 || 序 !== 读序.current) return;
         set列表([]);
         message.error(e instanceof Error ? e.message : `读${叫}没成`);
       },
@@ -64,21 +76,41 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
   }, [读, message, 叫]);
 
   async function 传一个(f: File) {
+    这批.current.在传++;
     set传着((n) => n + 1);
     try {
       const r = await 传附件(挂在, f, 分类);
       if (!r.ok) return void message.error(r.error);
-      await 刷新();
+      这批.current.传成++;
+      // 传上去的先摆上（列表还没读回来时 x 是 null，等这批传完读一遍），这批传完再读一遍对齐
+      const 新 = r.附件;
+      if (新) set列表((x) => (x && !x.some((y) => y.id === 新.id) ? [...x, 新] : x));
+      // 企业版节点必填：传了合同 / 方案把必填填齐，项目自动往前推了
+      if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
     } finally {
       set传着((n) => n - 1);
+      if (--这批.current.在传 === 0) {
+        const 有传成 = 这批.current.传成 > 0;
+        这批.current.传成 = 0;
+        if (有传成) {
+          await 刷新();
+          on变了?.();
+        }
+      }
     }
   }
 
   async function 删(a: 附件) {
-    const r = await fetch(`/api/attachments/${a.id}`, { method: "DELETE" });
-    const j = (await r.json().catch(() => ({}))) as { error?: string };
-    if (!r.ok) return void message.error(j.error ?? "没删掉");
-    set列表((x) => x?.filter((y) => y.id !== a.id) ?? null);
+    try {
+      const r = await fetch(`/api/attachments/${a.id}`, { method: "DELETE" });
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) return void message.error(j.error ?? "没删掉");
+      读序.current++;
+      set列表((x) => x?.filter((y) => y.id !== a.id) ?? null);
+      on变了?.();
+    } catch {
+      message.error("没删掉，请检查网络后再试");
+    }
   }
 
   async function 打开(a: 附件) {
@@ -106,6 +138,8 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
   const 图们 = (列表 ?? []).filter((a) => 是图片(a.mime));
   const 别的 = (列表 ?? []).filter((a) => !是图片(a.mime));
   const 满了 = (列表?.length ?? 0) >= 每条最多;
+  // 传着时灰掉：重复点不会多传一遍；同一次选的多个文件照样都传
+  const 灰 = 满了 || 传着 > 0;
 
   return (
     <div className="att-panel" data-testid="attachments-panel">
@@ -113,14 +147,14 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
         <Upload
           multiple
           showUploadList={false}
-          disabled={满了}
+          disabled={灰}
           accept={只图 ? 收的类型 : undefined}
           beforeUpload={(f) => {
             void 传一个(f);
             return false;
           }}
         >
-          <Button size="small" icon={<UploadOutlined />} disabled={满了}>上传</Button>
+          <Button size="small" icon={<UploadOutlined />} disabled={灰}>上传</Button>
         </Upload>
         <span className="muted">{满了 ? `已经 ${每条最多} 个了，先删掉几个不要的` : `单个最多 ${读大小(附件上限字节)}`}</span>
       </div>}
@@ -128,7 +162,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读 = false, 说�
       <Upload.Dragger
         multiple
         showUploadList={false}
-        disabled={满了}
+        disabled={灰}
         accept={只图 ? 收的类型 : undefined}
         beforeUpload={(f) => {
           void 传一个(f);

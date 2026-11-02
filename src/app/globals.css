@@ -1198,6 +1198,19 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 列要钉成 minmax(0,1fr)：默认的隐式列按内容最小宽度算，一个没空格的超长客户名能把 320 的右栏撑到上千（10-27 单测量出 1119px） */
 .proj-main, .proj-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 .proj-side .cust-link-t { overflow-wrap: anywhere; }
+/* 卡片就地改一格（11-02，ProjectInlineField）：小笔平时藏着（占着位置、不跳字），悬停 / 键盘聚焦才显；手机这类没有悬停的常显。
+   flex:1 + min-width:0：放在「键 + 值」一行里也不把卡撑宽 */
+.proj-inline { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 4px; cursor: text; }
+.proj-inline-val { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.proj-inline-pen { flex: 0 0 auto; border: 0; padding: 0 2px; background: none; cursor: pointer; color: var(--text-muted); opacity: 0; line-height: inherit; }
+.proj-inline:hover .proj-inline-pen, .proj-inline-pen:focus-visible { opacity: 1; }
+@media (hover: none) { .proj-inline-pen { opacity: 1; } }
+.proj-inline-edit { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.proj-inline-money { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.proj-inline-money > * { flex: 1 1 110px; min-width: 0; }
+.proj-inline-err { color: var(--danger-text); overflow-wrap: anywhere; }
+.proj-inline-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.proj-inline-hint { color: var(--text-muted); font-size: var(--dt-aux, 12px); }
 @container (max-width: 1000px) { .proj-2col { grid-template-columns: minmax(0, 1fr) 280px; } }
 @container (max-width: 629px) { .proj-2col { grid-template-columns: minmax(0, 1fr); } }
 /* 企业版项目详情瀑布流（U-项目-01/04 → 11-01）：每张卡包一层 .proj-fold（ProjectFold.tsx），卡头最右一颗圆角小按钮收起 / 展开，
