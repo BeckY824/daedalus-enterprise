@@ -4,6 +4,8 @@ import { useState } from "react";
 import { App, Button, Input, Select, Space, Tag } from "antd";
 import { 测试飞书连接动作, 飞书表概况, 设飞书表 } from "./org-actions";
 import type { 主表槽, 测试结果, 数据表 } from "@/lib/enterprise/feishu-connect";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
 /**
  * 设置 → 组织架构 →「飞书连接」（企业版，10-26）：填 App ID / Secret → 测试连接 → 贴多维表格链接、对表。
@@ -30,6 +32,7 @@ function 起始(r: 表概况结果 | null) {
 
 export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<string, string>; 初始: 表概况结果 | null }) {
   const { message } = App.useApp();
+  const 视图中 = useViewAs();
   const [起] = useState(() => 起始(初始));
   const [主表们] = useState<主表[]>(起.主表们);
   const [链接, set链接] = useState(起.链接);
@@ -102,7 +105,7 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
             onChange={(e) => set链接(e.target.value)} />
         </label>
         <div>
-          <Button type="primary" loading={忙 === "test"} disabled={!!忙} onClick={() => void 测试()} data-testid="feishu-test">测试连接</Button>
+          <Button type="primary" loading={忙 === "test"} disabled={!!忙 || 视图中} title={视图中 ? 视图外部话 : undefined} onClick={() => void 测试()} data-testid="feishu-test">测试连接</Button>
         </div>
       </div>
 
@@ -139,7 +142,7 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
             ))}
           </div>
           <div style={{ marginTop: 8 }}>
-            <Button disabled={!改过表 || !!忙 || !链接.trim()} loading={忙 === "save"} onClick={() => void 存表()} data-testid="feishu-tables-save">保存对照</Button>
+            <Button disabled={!改过表 || !!忙 || !链接.trim() || 视图中} title={视图中 ? 视图外部话 : undefined} loading={忙 === "save"} onClick={() => void 存表()} data-testid="feishu-tables-save">保存对照</Button>
           </div>
         </div>
       )}

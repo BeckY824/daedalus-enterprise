@@ -33,6 +33,7 @@ import { getBusiness, saveBusiness, mergeBusiness, 企业版锁定, 状态名问
 import { 判断可用 } from "@/lib/jev/client";
 import { 自动判断开着, 设自动判断 } from "@/lib/jev/settings";
 import { 交接通知 } from "@/lib/enterprise/notice-sources";
+import { 视图外部拒 } from "@/lib/enterprise/view-as";
 
 /** 密码最短长度。界面上有校验，但接口直调能绕开，空密码会让任何人登进来 */
 const MIN_PASSWORD = 8;
@@ -749,6 +750,8 @@ export async function clearLlmSettings() {
 /** 用表单里当前填的值发一次最小请求；key 留空则用已保存的 */
 export async function testLlmSettings(input: { baseUrl: string; model: string; apiKey?: string | null }) {
   await 能改本机设置();
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   if (!是网址(input.baseUrl)) return { ok: false as const, error: "接口地址要以 http:// 或 https:// 开头" };
   const cfg = await resolveLlmConfigForTest(input);
   if (!cfg) return { ok: false as const, error: "还没有 API Key：请先填写" };

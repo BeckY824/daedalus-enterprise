@@ -7,6 +7,8 @@ import { 部门最多层数 } from "@/lib/sync/dept-policy";
 import { 通讯录概况, 飞书表概况, 设通讯录同步, 立即同步通讯录, 设职务对照, 设通讯录凭据, 设通讯录间隔, type 通讯录一栏 } from "./org-actions";
 import FeishuConnectCard from "./FeishuConnectCard";
 import FeishuPushSwitch from "./FeishuPushSwitch";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
 /**
  * 设置 → 组织架构 →「通讯录同步」（企业版 F1，10-26）：飞书 / 钉钉的部门、成员、直属上级、职务每小时（可改每半小时）拉一次，写进组织架构。
@@ -21,6 +23,7 @@ const 结果色: Record<string, string> = { 成功: "success", 没变化: "defau
 export default function OrgSyncCard() {
   const router = useRouter();
   const { message } = App.useApp();
+  const 视图中 = useViewAs();
   const [数据, set数据] = useState<{ 来源们: 通讯录一栏[]; 角色们: { value: string; label: string }[] } | null>(null);
   const [错, set错] = useState<string | null>(null);
   const [忙, set忙] = useState<string | null>(null);
@@ -102,7 +105,7 @@ export default function OrgSyncCard() {
                 <Select size="small" style={{ width: 104 }} value={s.间隔分钟} options={间隔选项} disabled={!!忙} aria-label={`${s.名}同步频率`}
                   onChange={(v: 60 | 30) => void 跑(`gap-${s.源}`, () => 设通讯录间隔(s.源, v), `${s.名}通讯录改成${v === 30 ? "每半小时" : "每小时"}同步一次`)} />
                 {s.凭据.齐了 ? <Tag color="success">凭据已填</Tag> : <Tag color="warning">凭据没填</Tag>}
-                <Button size="small" loading={忙 === `sync-${s.源}`} disabled={!!忙 || !s.凭据.齐了} onClick={() => void 同步(s)}>立即同步</Button>
+                <Button size="small" loading={忙 === `sync-${s.源}`} disabled={!!忙 || !s.凭据.齐了 || 视图中} title={视图中 ? 视图外部话 : undefined} onClick={() => void 同步(s)}>立即同步</Button>
               </Space>
 
               {s.上次 && (

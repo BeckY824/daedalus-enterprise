@@ -23,6 +23,8 @@ import { useImperativeHandle, useRef, useState } from "react";
 import { App } from "antd";
 import { CameraOutlined, IdcardOutlined, LoadingOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
 import type { 名片填法, 名片表单 } from "@/lib/card-scan/form";
 import type { 微信资料 } from "@/lib/card-scan/wechat";
@@ -72,7 +74,14 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
   const { message } = App.useApp();
   const 选 = useRef<HTMLInputElement>(null);
   const [认着, set认着] = useState(false);
-  useImperativeHandle(开, () => ({ 打开: () => { if (!在跑 && !认着) 选.current?.click(); } }), [在跑, 认着]);
+  const 视图中 = useViewAs();
+  useImperativeHandle(开, () => ({
+    打开: () => {
+      // 切换视图只读：服务端也拒，这里先说清，免得选了图才报「没认出」
+      if (视图中) void message.warning(视图外部话);
+      else if (!在跑 && !认着) 选.current?.click();
+    },
+  }), [视图中, 在跑, 认着, message]);
 
   async function 认(图们: File[]) {
     set认着(true);
@@ -161,8 +170,8 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
         onClick={() => 选.current?.click()}
         onPointerEnter={预热}
         onFocus={预热}
-        disabled={在跑 || 认着}
-        title={拍照 ? "拍一张名片，认出来摆成一张新建线索卡，核对后确认；照片会存成新线索的附件" : "选名片、微信资料页截图（可以一次选几张，客户照片放在他的名片后面），一个人一张新建线索卡，核对后确认；图会存成附件。框里先打一句「广交会的客户」会一起带上"}
+        disabled={在跑 || 认着 || 视图中}
+        title={视图中 ? 视图外部话 : 拍照 ? "拍一张名片，认出来摆成一张新建线索卡，核对后确认；照片会存成新线索的附件" : "选名片、微信资料页截图（可以一次选几张，客户照片放在他的名片后面），一个人一张新建线索卡，核对后确认；图会存成附件。框里先打一句「广交会的客户」会一起带上"}
         aria-label={拍照 ? "拍照建线索" : "认名片建线索"}
       >
         {认着 ? <LoadingOutlined /> : 拍照 ? <CameraOutlined /> : <IdcardOutlined />}

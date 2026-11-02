@@ -52,6 +52,8 @@ import CurrencySelect from "@/components/CurrencySelect";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import dynamic from "next/dynamic";
 import type { 建档数据 } from "../projects/new/ProjectWizard";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -228,6 +230,7 @@ export default function CustomersView({
   }, [page, requestedPage]);
 
   const { message, modal } = App.useApp();
+  const 视图中 = useViewAs();
   const { 问删除 } = useDeleteCustomers();
   const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
@@ -624,11 +627,13 @@ export default function CustomersView({
             {能看板 && !空库 && !统一公海 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />}
             {/* 导入和导出都是次动作，排在主动作左边。导入空库时也要在——
                 第一次进来的人手上那份 Excel 正是他不想一条条录的原因 */}
-            {能导入导出 && <Button icon={<ImportOutlined />} onClick={() => set导入开着(true)}>导入</Button>}
+            {能导入导出 && <Button icon={<ImportOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined} onClick={() => set导入开着(true)}>导入</Button>}
             {能导入导出 && !空库 && (<>
               <Button
                 icon={<ExportOutlined />}
                 loading={导出中}
+                disabled={视图中}
+                title={视图中 ? 视图外部话 : undefined}
                 onClick={async () => {
                   // 按服务端这次查询用的条件导全部（filters），不是当前这一页，也不是输入框里还没搜的草稿
                   const controller = new AbortController();
@@ -696,7 +701,7 @@ export default function CustomersView({
             ? `${b.customer}是这套系统的中心：跟进记录、商机、订单都挂在他身上。`
             : `${b.customer}是这套系统的中心：跟进记录、商机、签约都挂在他身上，推荐归属也按他这条线往上算。`,
           primary: { label: `新建第一位${b.customer}`, onClick: 新建 },
-          secondary: 能导入导出 ? [{ label: "从 Excel 导入", onClick: () => set导入开着(true) }] : [],
+          secondary: 能导入导出 && !视图中 ? [{ label: "从 Excel 导入", onClick: () => set导入开着(true) }] : [],
         }}
         筛选={
           /*

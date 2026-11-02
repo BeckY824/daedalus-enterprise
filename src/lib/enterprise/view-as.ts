@@ -10,8 +10,10 @@
  *   - 票只认签它的那个会话：vb 必须等于 crm_session 的 sub。换人登录、退出登录（destroySession 一起删）都作废
  *   - 开始、退出各记一条操作留痕（action = view-as / view-as-exit）
  *
- * 限度（只读预览，写进交接）：挡的是**写库**。不经过库的副作用——调外部接口（飞书推送、AI 模型）、往磁盘写附件——这一层看不到；
- * 这些入口落库那一步会被拒，但外部那一下可能已经发出去了。所以切换期间别去点「发飞书」「上传」「问 AI」这类按钮。
+ * 写库之外（11-02）：不经过库的副作用——调外部接口（飞书推送和同步、AI 模型）、往磁盘写附件、把数据带走（导出、下载附件）——
+ * 限定那一层看不到，各入口开头调 视图外部拦 / 视图外部拒 / 视图拒绝响应（本文件）统一拒，话术在 view-as-words.ts；
+ * llm.ts、jev/client.ts、enterprise-import/net.ts、feishu-push.ts 这几个出口再兜一道，后来新加的入口忘了拦也发不出去。
+ * 界面上的按钮按 components/ViewAsContext.tsx 禁用。附件在页面里看图、播录音不拦：预览本来就要看，真身也有权限。
  * 页面渲染时顺手写库的（首页、客户页每天扫一次掉公海 / 超时收回）在切换期间直接跳过，见 pool-db.ts、project/db.ts。
  *
  * 本模块不在顶层 import next/headers：lib/team-scope.ts（每条写都过）和测试都要用它，同 visibility.ts 是谁()。
@@ -19,6 +21,8 @@
 import { SignJWT, jwtVerify } from "jose";
 import { readSecret } from "@/lib/secret";
 import { 全进程上下文 } from "@/lib/process-als";
+import { 企业版 } from "./switch";
+import { 视图外部话 } from "./view-as-words";
 import type { 组织 } from "./org-core";
 
 /** 视图票的 cookie 名 */
@@ -43,8 +47,10 @@ export class 视图只读错误 extends Error {
  * 账号 ADMIN 不再放行；没设业务角色的不能。菜单（view-as-menu.ts）、action（view-as-actions.ts）、认票（auth.ts）同这一处
  */
 export function 能切换视图(org: 组织, userId: string): boolean {
-  const 角们 = org.成员.get(userId)?.角色们 ?? [];
-  return 角们.includes("director") || 角们.includes("admin");
+  const m = org.成员.get(userId);
+  const 角们 = m?.角色们 ?? [];
+  // 管理员设了业务线（11-02）只看这条线，切视图等于看全部，不给
+  return 角们.includes("director") || (角们.includes("admin") && !m?.line);
 }
 
 const 钥 = () => new TextEncoder().encode(readSecret());
@@ -118,6 +124,29 @@ export async function 视图写拦(): Promise<void> {
 /** 只读预览期间，页面渲染时顺手做的每天一扫（掉公海、超时收回）跳过：回 true = 跳过 */
 export async function 视图中跳过(): Promise<boolean> {
   return !放行.getStore() && !!(await 当前视图());
+}
+
+/**
+ * 这个请求是不是在切换视图：不经过库的动作（导出、上传、发飞书、调 AI）都问它。
+ * 不是企业版的部署直接 false，连 cookie 都不读；不在请求里（定时同步、脚本）读不到票，也是 false
+ */
+export async function 正在切换视图(): Promise<boolean> {
+  return 企业版() && (await 视图中跳过());
+}
+
+/** 切换视图就抛（code 同只读错误）：会抛错的 action、底层出口用 */
+export async function 视图外部拦(): Promise<void> {
+  if (await 正在切换视图()) throw new 视图只读错误(视图外部话);
+}
+
+/** 切换视图就回一个 {ok:false,error}，否则 null：回结果的 action 用，`const 拒 = await 视图外部拒(); if (拒) return 拒;` */
+export async function 视图外部拒(): Promise<{ ok: false; error: string } | null> {
+  return (await 正在切换视图()) ? { ok: false, error: 视图外部话 } : null;
+}
+
+/** 切换视图就回 403（{error}），否则 null：route.ts 用 */
+export async function 视图拒绝响应(): Promise<Response | null> {
+  return (await 正在切换视图()) ? Response.json({ error: 视图外部话 }, { status: 403 }) : null;
 }
 
 /** 裸 SQL 扩展钩子拿到的参数里取 SQL 原文：字符串、[字符串, ...参数]、Prisma.sql 模板（带 strings / sql）。认不出回 null */
