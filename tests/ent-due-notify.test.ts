@@ -1,7 +1,7 @@
 /**
  * 企业版到期提醒（lib/enterprise/due-notice.ts）。「现在」都当参数传，不等真实时钟；时刻一律写成带 +08:00 / Z 的真实瞬间。
  * 钉的是：今天到期才提醒（明天、历史逾期都不提醒，开机不轰炸）；北京 09:00 起、晚起来当天补；重复扫、重启不重发；改到期日再提醒；
- * 已完成 / 已解决 / 已结束 / 公海 / 已删 / 停用的人不提醒；收件人；北京跨日；不是企业版、切换视图不发；挂在夜扫钟上且只挂这一处；飞书开着顺带推。
+ * 已完成 / 已结束 / 公海 / 已删 / 停用的人不提醒；卡点到期日不提醒；北京跨日；不是企业版、切换视图不发；挂在夜扫钟上且只挂这一处；飞书开着顺带推。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import fs from "node:fs";
@@ -131,29 +131,24 @@ describe("今天到期才提醒", () => {
     expect((await 通知们())[0].body).toContain("发方案");
   });
 
-  it("卡点：kind 是卡点到期，指向项目，正文写明到期日", async () => {
-    const p = await 项目();
-    const b = await 卡点(p.id);
-    await 到期提醒扫一遍(今早);
-    const [n] = await 通知们();
-    expect(n).toMatchObject({ kind: "卡点到期", link: `/projects/${p.id}`, dedupeKey: `due:blocker:${b.id}:2026-11-02`, title: "卡点今天到期：等报价" });
-    expect(n.body).toContain("到期日 2026-11-02");
+  it("卡点到期日这版不提醒（界面看不到这个日期，和「不设解决时限」的定稿冲突）", async () => {
+    await 卡点((await 项目()).id, { status: "处理中", assigneeId: 乙 });
+    expect(await 到期提醒扫一遍(今早)).toBe(0);
+    expect(await 通知们()).toEqual([]);
   });
 
   it("明天到期的不提醒", async () => {
     await 计划({ plannedOn: "2026-11-03", plannedAt: 京("2026-11-03 10:00") });
     await 项目({ nextStepAt: 京("2026-11-03 10:00") });
-    await 卡点((await 项目()).id, { dueAt: 京("2026-11-03 10:00") });
     expect(await 到期提醒扫一遍(今早)).toBe(0);
     expect(await 通知们()).toEqual([]);
   });
 
-  it("历史逾期的不提醒（一上线不轰炸）：昨天的、去年的，三种来源都不补发", async () => {
+  it("历史逾期的不提醒（一上线不轰炸）：昨天的、去年的，两种来源都不补发", async () => {
     for (const [日, 时] of [["2026-11-01", "2026-11-01 10:00"], ["2025-03-01", "2025-03-01 10:00"]] as const) {
       await 计划({ plannedOn: 日, plannedAt: 京(时) });
       await 计划({ plannedOn: null, plannedAt: 京(时) });
       await 项目({ nextStepAt: 京(时) });
-      await 卡点((await 项目()).id, { dueAt: 京(时) });
     }
     expect(await 到期提醒扫一遍(今早)).toBe(0);
     expect(await 通知们()).toEqual([]);
@@ -168,28 +163,24 @@ describe("今天到期才提醒", () => {
 });
 
 describe("不该提醒的", () => {
-  it("已完成的计划、已解决的卡点", async () => {
+  it("已完成的计划", async () => {
     await 计划({ done: true });
-    await 卡点((await 项目()).id, { status: "已解决" });
     expect(await 到期提醒扫一遍(今早)).toBe(0);
   });
 
-  it("已结束的项目：下一步、卡点都不提醒", async () => {
+  it("已结束的项目：下一步不提醒", async () => {
     await 项目({ result: "丢单", nextStepAt: 今早 });
-    await 卡点((await 项目({ result: "成功交付" })).id);
     expect(await 到期提醒扫一遍(今早)).toBe(0);
   });
 
-  it("公海的项目：下一步、卡点都不提醒", async () => {
+  it("公海的项目：下一步不提醒", async () => {
     await 项目({ pooledAt: 京("2026-10-30 10:00"), nextStepAt: 今早 });
-    await 卡点((await 项目({ pooledAt: 京("2026-10-30 10:00") })).id);
     expect(await 到期提醒扫一遍(今早)).toBe(0);
   });
 
-  it("客户在公海：计划、项目下一步、卡点都不提醒", async () => {
+  it("客户在公海：计划、项目下一步都不提醒", async () => {
     await 计划();
     await 项目({ nextStepAt: 今早 });
-    await 卡点((await 项目()).id);
     await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动" } });
     expect(await 到期提醒扫一遍(今早)).toBe(0);
   });
@@ -198,7 +189,6 @@ describe("不该提醒的", () => {
     const 要删的客户 = await 新客户();
     await 计划({ customerId: 要删的客户 });
     const 已删 = await 项目({ nextStepAt: 今早 });
-    await 卡点(已删.id);
     await prisma.customer.update({ where: { id: 要删的客户 }, data: { deletedAt: 今早 } });
     await prisma.project.update({ where: { id: 已删.id }, data: { deletedAt: 今早 } });
     expect(await 到期提醒扫一遍(今早)).toBe(0);
@@ -224,36 +214,10 @@ describe("不该提醒的", () => {
   });
 });
 
-describe("卡点的收件人", () => {
-  it("没点完成的认领人 + 老负责人列；点了完成的不再提醒；发布人不收", async () => {
-    const b = await 卡点((await 项目()).id, { status: "处理中", assigneeId: 乙 });
-    const 丁 = await 人("ding");
-    await prisma.entBlockerClaim.createMany({ data: [{ blockerId: b.id, userId: 甲 }, { blockerId: b.id, userId: 丁, done: true }] });
-    await 到期提醒扫一遍(今早);
-    expect((await 通知们()).map((n) => n.userId).sort()).toEqual([甲, 乙].sort());
-  });
-
-  it("没人认领、没负责人：给发布人", async () => {
-    await 卡点((await 项目()).id);
-    await 到期提醒扫一遍(今早);
-    expect((await 通知们()).map((n) => n.userId)).toEqual([丙]);
-  });
-
-  it("认领人都停用了：也给发布人；发布人也停用了就没人收", async () => {
-    const 走了 = await 人("zou", null, false);
-    const b = await 卡点((await 项目()).id, { status: "处理中" });
-    await prisma.entBlockerClaim.create({ data: { blockerId: b.id, userId: 走了 } });
-    const c = await 卡点((await 项目()).id, { creatorId: 走了 });
-    await 到期提醒扫一遍(今早);
-    expect(await 通知们()).toMatchObject([{ userId: 丙, dedupeKey: `due:blocker:${b.id}:2026-11-02` }]);
-    expect(await 钥匙们()).not.toContain(`due:blocker:${c.id}:2026-11-02`);
-  });
-});
-
 describe("只提醒一次", () => {
   it("重复扫不重复；进程重启（节流记号没了、库还在）也不重发", async () => {
     await 计划();
-    await 卡点((await 项目()).id);
+    await 项目({ nextStepAt: 今早 });
     expect(await 到期提醒扫一遍(今早)).toBe(2);
     expect(await 到期提醒扫一遍(今早)).toBe(0);
     忘掉到期提醒节流();
@@ -310,13 +274,13 @@ describe("提醒时点与北京跨日", () => {
     expect(await 钥匙们()).toEqual([`due:plan:${a.id}:2026-11-02`]);
   });
 
-  it("北京 23:59:59 算当天、次日 00:00 算明天（下一步、卡点按瞬间存的）", async () => {
+  it("北京 23:59:59 算当天、次日 00:00 算明天（下一步按瞬间存的）", async () => {
     const 当天 = await 项目({ nextStepAt: new Date("2026-11-02T15:59:59Z") });
     await 项目({ nextStepAt: new Date("2026-11-02T16:00:00Z") });
-    const 当天卡点 = await 卡点((await 项目()).id, { dueAt: new Date("2026-11-01T16:00:00Z") }); // 北京 11-02 00:00
-    await 卡点((await 项目()).id, { dueAt: new Date("2026-11-01T15:59:59Z") }); // 北京 11-01 23:59:59
+    const 零点那个 = await 项目({ nextStepAt: new Date("2026-11-01T16:00:00Z") }); // 北京 11-02 00:00
+    await 项目({ nextStepAt: new Date("2026-11-01T15:59:59Z") }); // 北京 11-01 23:59:59
     await 到期提醒扫一遍(京("2026-11-02 09:00"));
-    expect((await 钥匙们()).sort()).toEqual([`due:blocker:${当天卡点.id}:2026-11-02`, `due:next:${当天.id}:2026-11-02`].sort());
+    expect((await 钥匙们()).sort()).toEqual([`due:next:${零点那个.id}:2026-11-02`, `due:next:${当天.id}:2026-11-02`].sort());
   });
 
   it("UTC 同一天、北京已跨日（UTC 11-02 16:30 = 北京 11-03 00:30）：还没到 3 号的时点，2 号的也不再发", async () => {
@@ -356,13 +320,13 @@ describe("钟与出错", () => {
 
   it("一处来源出错：只记日志、不抛，别的来源照发", async () => {
     await 计划();
-    const b = await 卡点((await 项目()).id);
+    const p = await 项目({ nextStepAt: 今早 });
     const 错 = vi.spyOn(console, "error").mockImplementation(() => {});
     const 查 = vi.spyOn(prisma.followPlan, "findMany").mockRejectedValueOnce(new Error("库忙"));
     expect(await 到期提醒扫一遍(今早)).toBe(1);
     expect(查).toHaveBeenCalled();
     expect(错).toHaveBeenCalled();
-    expect(await 钥匙们()).toEqual([`due:blocker:${b.id}:2026-11-02`]);
+    expect(await 钥匙们()).toEqual([`due:next:${p.id}:2026-11-02`]);
   });
 });
 

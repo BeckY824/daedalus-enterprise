@@ -3,7 +3,7 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 /* 11-02 项目详情瀑布流：卡片就地改 + 新传附件马上出现。
-   钉的是：没权限 DOM 里没入口；只交改的那一格；失败留在编辑态、输入不丢、写原因；Esc 放弃；回车不重复存；
+   钉的是：没权限、切换视图中 DOM 里没入口；只交改的那一格；失败留在编辑态、输入不丢、写原因；Esc 放弃；回车不重复存；
    乐观显示、props 回来听服务端；中文输入法选字的回车不提交；
    FollowAttachments / AttachmentsPanel：传完不用刷新、传着不能重复点、失败状态恢复、一批只 refresh 一次、prop 后到也进得来；
    1024 / 1280 / 1366 超长内容编辑态不溢出 */
@@ -30,7 +30,7 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import FollowAttachments from '@/components/FollowAttachments';import AttachmentsPanel from '@/components/AttachmentsPanel';
-    import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    import {切换视图Provider} from '@/components/ViewAsContext';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const root=createRoot(document.getElementById('root'));
     const 长='超长项目名字'.repeat(8), 串='X'.repeat(300), 字='很长的一段正文没有换行'.repeat(40);
     const 成交钱={dealDemand:'需求'+字,contractAmount:1234567.89,contractCurrency:'USD',depositAmount:1000,depositCurrency:'CNY'};
@@ -43,6 +43,7 @@ beforeAll(async () => {
       members:[],删前清点:{留痕:0,组员:0,沟通:1},企业版:true,能记沟通:true,可改沟通:true,可删沟通:true,提成:null,level:'A',成交钱,项目新字段:{painPoints:'痛点'+字,contractStatus:'起草中'},所在地:{addrCountry:'中国',addrProvince:'广东省',addrCity:'深圳市',addrDistrict:'南山区',location:''},项目来源:{name:'渠道',跟客户:true},channelId:null,已立项天数:3,渠道们:[],aiEnabled:false};
     const 包=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>{x}</BusinessProvider></App></ConfigProvider>;
     window.__详情=(x,能改=true)=>root.render(包(<ProjectDetail p={{...基,...x}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={null}/>));
+    window.__视图详情=(x)=>root.render(包(<切换视图Provider value={true}><ProjectDetail p={{...基,...x}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={null}/></切换视图Provider>));
     const 附=(id,mime='application/pdf')=>({id,name:id+'.pdf',mime,size:10,有文件:true,createdAt:'2026-10-01'});
     window.__附=附;
     window.__沟通附件=(附件,能传=true)=>root.render(包(<FollowAttachments followUpId='f1' 附件={附件} 能传={能传} 能删 on变了={()=>{window.__变了=(window.__变了||0)+1;}}/>));
@@ -52,7 +53,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 窗 = Window & Record<string, unknown> & { __详情: (x?: object, 能改?: boolean) => void; __沟通附件: (a: object[], 能传?: boolean) => void; __面板: () => void; __附: (id: string) => object };
+type 窗 = Window & Record<string, unknown> & { __详情: (x?: object, 能改?: boolean) => void; __视图详情: (x?: object) => void; __沟通附件: (a: object[], 能传?: boolean) => void; __面板: () => void; __附: (id: string) => object };
 async function 开(w = 1280) {
   const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -92,6 +93,16 @@ it("没权限：只读角色、公海、不是企业版，DOM 里都没有就地
     expect(await page.locator(".proj-inline-pen").count()).toBe(0);
     await 详情(page, { 企业版: false, 能记沟通: false, 可改沟通: false });
     expect(await page.locator(".proj-inline-pen").count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("切换视图中：能改的人也没有就地改入口，值照样看得到", async () => {
+  const { page } = await 开();
+  try {
+    await page.evaluate(() => (window as unknown as 窗).__视图详情({}));
+    await page.getByText("进程变更").first().waitFor();
+    expect(await page.locator(".proj-inline-pen, .proj-inline, .proj-inline-edit").count()).toBe(0);
+    expect(await page.locator(".proj-side").innerText()).toContain("起草中");
   } finally { await page.close(); }
 });
 

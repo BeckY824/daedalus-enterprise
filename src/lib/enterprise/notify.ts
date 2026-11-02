@@ -13,7 +13,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 推通知们 } from "@/lib/enterprise/feishu-push";
 
 export type 通知 = {
-  /** 来源：自动分配 / 分配 / 验证 / 邀请 / 卡点 / 交接 / 满额 / 回收 / 跟进到期 / 卡点到期 */
+  /** 来源：自动分配 / 分配 / 验证 / 邀请 / 卡点 / 交接 / 满额 / 回收 / 跟进到期 */
   kind: string;
   title: string;
   body?: string;

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { EditOutlined } from "@ant-design/icons";
 import { Button } from "antd";
 import Shortcut from "@/components/Shortcut";
+import { useViewAs } from "@/components/ViewAsContext";
 
 /** 编辑器拿到的：草稿、改草稿、提交（下拉、日期选了就存，传选中的值，不等 setState）、在不在存 */
 export type 编辑器参数<T> = { 草稿: T; set草稿: (v: T) => void; 提交: (v?: T) => void; 忙: boolean };
@@ -11,7 +12,7 @@ export type 编辑器参数<T> = { 草稿: T; set草稿: (v: T) => void; 提交:
 /**
  * 项目详情卡片上就地改一格（11-02）。保存走外面给的 存（编辑项目 / 改项目沟通，服务端照旧判权限、留痕），这里不写库。
  *
- * - 没权限（能改 = false）只渲染 显示，DOM 里没有入口
+ * - 没权限（能改 = false）、切换视图中只渲染 显示，DOM 里没有入口
  * - 点这一格或那颗小笔进入编辑；选中文字时不进（方便复制）
  * - 单行 Enter 存（回车存），多行 ⌘↵ / Ctrl+↵ 存，Esc 放弃；中文输入法选字时的回车、Esc 不算
  * - 不做失焦自动存：点到别处不会悄悄改掉，也不会丢（输入留着，还开着）
@@ -33,6 +34,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
   /** 存之前规整（文字去首尾空白）：只多打了空格不发请求，乐观显示和服务端存的一样；草稿不动，存失败时输入原样留着 */
   规整?: (v: T) => T;
 }) {
+  const 视图中 = useViewAs();
   const [开着, set开着] = useState(false);
   const [草稿, set草稿] = useState(值);
   const [错, set错] = useState<string | null>(null);
@@ -55,7 +57,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     }
   }, [开着]);
 
-  if (!能改) return <>{显示(现)}</>;
+  if (!能改 || 视图中) return <>{显示(现)}</>;
 
   const 开 = () => {
     set草稿(现);
