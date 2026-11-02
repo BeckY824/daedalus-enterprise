@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { 读收藏 } from "@/lib/favorites";
+import { 读收藏, 读项目收藏 } from "@/lib/favorites";
 import { 客户总数 } from "@/lib/pool-db";
 import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
@@ -66,7 +66,7 @@ export default async function AppLayout({
     但完成、改期、新建之后各处都会 router.refresh()——那时它跟着变。中栏要的数据在 @pane 槽位里各自查
   */
   const 业务 = getBusiness();
-  const [要跟, business, ua, 有AI, models, 收藏, 客户数] = await Promise.all([
+  const [要跟, business, ua, 有AI, models, 收藏, 项目收藏, 客户数] = await Promise.all([
     // 只要两个数：在库里数（lib/reminders-db.ts 数提醒，口径同 算提醒），不把名下没做的全拉回来
     数提醒(user.id),
     // 业务术语（学员/客户、院校/年级/专业…）：全站客户端组件从这里拿
@@ -81,6 +81,8 @@ export default async function AppLayout({
     listModelOptions(),
     // 左栏下半截（2026-10-02 照毛玻璃原型）：收藏的客户、客户数。都很便宜，和上面一起查
     读收藏(user.id),
+    // 收藏的项目（11-02）：只有项目模式才有项目可收
+    业务.then((b) => (b.projectMode === true ? 读项目收藏(user) : [])),
     // 和客户页页签同一个数，同一次渲染只数一遍（lib/pool-db.ts 客户总数）
     // 左栏商机一项 10-28 删了（/opportunities 一律转到 /projects），在谈商机数也不数了
     客户总数(),
@@ -130,6 +132,7 @@ export default async function AppLayout({
         pane={pane}
         ai={有AI ? { models } : null}
         收藏={收藏}
+        项目收藏={项目收藏}
         演示名单={await 读演示名单()}
         演示换人={演示登录}
         // ⌘K 顺带搜客户、项目、联系人（U-项目-04）：只在企业版项目模式给，范围按角色走（global-search.ts）

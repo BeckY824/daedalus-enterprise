@@ -71,6 +71,8 @@ type Props = {
   workspace?: { name: string; multiple: boolean; billing?: boolean };
   /** 左栏「收藏的客户」（lib/favorites.ts）。没收藏过就整栏不出现 */
   收藏?: { id: string; name: string }[];
+  /** 左栏「收藏的项目」（11-02）。同上，没收藏过就没有这一栏 */
+  项目收藏?: { id: string; name: string }[];
   /** 导航项右边的数（2026-10-02 照毛玻璃原型）：客户总数、在谈的商机。只给有意义的那几项 */
   计数?: Partial<Record<string, number>>;
   /**
@@ -149,7 +151,7 @@ const 根目录图标: Record<根目录图, React.ReactNode> = {
   项目: <ProjectOutlined />,
 };
 
-export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -671,16 +673,23 @@ export default function AppShell({ user, workspace, 收藏 = [], 计数 = {}, �
             {nav.filter((n) => n.组 === "更多").map((n) => 一项(n))}
           </div>
         )}
-        {收藏.length > 0 && (
-          <div className="rail-fav" aria-label="收藏的客户">
-            <div className="rail-fav-h">收藏的{b.customer}</div>
-            {收藏.map((c) => (
-              <Link key={c.id} href={`/customers/${c.id}`} className={`rail-fav-i${pathname === `/customers/${c.id}` ? " on" : ""}`}>
-                <span className="rail-fav-av" style={{ background: avatarColor(c.name), color: AVATAR_TEXT }}>
-                  {initial(c.name)}
-                </span>
-                <span className="rail-fav-n">{c.name}</span>
-              </Link>
+        {(收藏.length > 0 || 项目收藏.length > 0) && (
+          <div className="rail-favs">
+            {[
+              { 名: `收藏的${b.customer}`, 标: "收藏的客户", 路: "/customers", 项: 收藏 },
+              { 名: "收藏的项目", 标: "收藏的项目", 路: "/projects", 项: 项目收藏 },
+            ].filter((栏) => 栏.项.length > 0).map((栏) => (
+              <div key={栏.路} className="rail-fav" aria-label={栏.标}>
+                <div className="rail-fav-h">{栏.名}</div>
+                {栏.项.map((c) => (
+                  <Link key={c.id} href={`${栏.路}/${c.id}`} className={`rail-fav-i${pathname === `${栏.路}/${c.id}` ? " on" : ""}`}>
+                    <span className="rail-fav-av" style={{ background: avatarColor(c.name), color: AVATAR_TEXT }}>
+                      {initial(c.name)}
+                    </span>
+                    <span className="rail-fav-n">{c.name}</span>
+                  </Link>
+                ))}
+              </div>
             ))}
           </div>
         )}
