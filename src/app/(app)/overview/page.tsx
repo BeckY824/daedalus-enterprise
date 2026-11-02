@@ -13,7 +13,7 @@ import { ProjectNowView, ProjectPeriodView } from "./ProjectStatsView";
 import BoardTodos from "./BoardTodos";
 import { 看板的人 } from "@/lib/project/board-member";
 import { 复盘待办of, 复盘看板of } from "@/lib/project/board-todos-db";
-import { 读页签, 读卡, 读类型, 读页码, 读布局 } from "@/lib/project/board-todos";
+import { 读页签, 读卡, 读页码, 读布局 } from "@/lib/project/board-todos";
 import { 读卡点看板筛, 读沟通段, 读沟通方式 } from "@/lib/project/review-tabs";
 import { 将回公海of, 缺沟通of, 复盘概况of } from "@/lib/project/review-extras-db";
 import { 复盘沟通of } from "@/lib/project/review-tabs-db";
@@ -83,17 +83,16 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
 
   if (页签 === "todo") {
     const 卡 = 读卡(sp.f);
-    const 类型 = 读类型(sp.kind);
-    // 「全部待办」默认三列看板（lay=list 回到表格）；四张卡筛的时候照旧是表格（首页链接 f=today 落表格）
+      // 「全部待办」默认三列看板（lay=list 回到表格）；四张卡筛的时候照旧是表格（首页链接 f=today 落表格）
     const 布局 = 卡 === "all" ? 读布局(sp.lay) : "list";
     const [d, 板, 回公海] = await Promise.all([
-      布局 === "list" ? 复盘待办of(范围, { 卡, 类型, 页: 读页码(sp.p) }) : undefined,
-      布局 === "board" ? 复盘看板of(范围, { 类型 }) : undefined,
+      布局 === "list" ? 复盘待办of(范围, { 卡, 页: 读页码(sp.p) }) : undefined,
+      布局 === "board" ? 复盘看板of(范围) : undefined,
       将回公海of(范围),
     ]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="todo">
-        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 卡={卡} 类型={类型} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
+        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 卡={卡} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
       </DataShell>
     );
   }

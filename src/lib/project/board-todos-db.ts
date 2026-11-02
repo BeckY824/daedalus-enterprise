@@ -6,7 +6,7 @@ import { dayjs } from "@/lib/utils";
 import type { 组 } from "@/lib/plans-groups";
 import {
   挑一页, 挑看板, 复盘待办每页, 看板列们, 看板每列,
-  type 复盘待办, type 复盘待办行, type 复盘看板, type 看板列, type 待办卡, type 待办类型,
+  type 复盘待办, type 复盘待办行, type 复盘看板, type 看板列, type 待办卡,
 } from "./board-todos";
 
 /**
@@ -27,22 +27,22 @@ export async function 复盘待办计数(只看?: string | readonly string[], no
 
 export async function 复盘待办of(
   只看?: string | readonly string[],
-  q: { 类型?: 待办类型; 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number } = {},
+  q: { 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number } = {},
 ): Promise<复盘待办> {
   const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
   const 全部 = await 未完成轻列表(prisma, 共用);
-  const { 计数, 总数, 页, 要 } = 挑一页(全部, { 只看, 类型: q.类型, 卡: q.卡, 页: q.页, now: q.now ?? dayjs(), 每页: q.每页 ?? 复盘待办每页 });
+  const { 计数, 总数, 页, 要 } = 挑一页(全部, { 只看, 卡: q.卡, 页: q.页, now: q.now ?? dayjs(), 每页: q.每页 ?? 复盘待办每页 });
   return { 计数, 总数, 页, 行: await 补详情(要) };
 }
 
 /** 「全部待办」的三列看板（挑看板）：同一份轻列表、同一层限定，三列各取前几条的详情，一次查 */
 export async function 复盘看板of(
   只看?: string | readonly string[],
-  q: { 类型?: 待办类型; now?: ReturnType<typeof dayjs>; 每列?: number } = {},
+  q: { now?: ReturnType<typeof dayjs>; 每列?: number } = {},
 ): Promise<复盘看板> {
   const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
   const 全部 = await 未完成轻列表(prisma, 共用);
-  const { 计数, 列 } = 挑看板(全部, { 只看, 类型: q.类型, now: q.now ?? dayjs(), 每列: q.每列 ?? 看板每列 });
+  const { 计数, 列 } = 挑看板(全部, { 只看, now: q.now ?? dayjs(), 每列: q.每列 ?? 看板每列 });
   const 行们 = await 补详情(看板列们.flatMap((k) => 列[k].要));
   const 按键 = new Map(行们.map((r) => [r.key, r]));
   const 摆 = (k: 看板列) => ({ 总数: 列[k].总数, 行: 列[k].要.flatMap((x) => (按键.has(x.key) ? [按键.get(x.key)!] : [])) });
