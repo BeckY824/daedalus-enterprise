@@ -599,7 +599,7 @@ async function 覆盖(width: number, x: Record<string, unknown>) {
 
 for (const 宽 of [1280, 1024]) {
   it(`${宽}px：每条沟通有「…」，修改 / 删除菜单不出屏；修改弹窗带上原内容；删除先就地确认`, async () => {
-    const { page, errors } = await 覆盖(宽, { 可改沟通: true, followUps: [{ id: "f1", type: "PHONE", content: "沟通内容" + "X".repeat(90), occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "2026-10-03T00:00:00.000Z" }] });
+    const { page, errors } = await 覆盖(宽, { 可改沟通: true, 可删沟通: true, followUps: [{ id: "f1", type: "PHONE", content: "沟通内容" + "X".repeat(90), occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "2026-10-03T00:00:00.000Z" }] });
     try {
       const 点 = page.getByRole("button", { name: "这条沟通的更多操作" });
       expect(await 点.count()).toBe(1);

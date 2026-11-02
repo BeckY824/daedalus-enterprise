@@ -101,6 +101,8 @@ export type 项目详情 = {
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版还要是总管理员或经理（M-权限-09，普通成员不能改删） */
   可改沟通?: boolean;
+  /** 沟通能删：只有总管理（11-02，和 可改沟通 分开） */
+  可删沟通?: boolean;
   /**
    * 企业版（10-29 P6）：项目来源 = 项目自己选的渠道（没选 = 跟客户来源走，null = 客户也没有）；已立项天数从建项目那天按自然日数；
    * 渠道们 = 能改时编辑框里选项目来源用的；aiEnabled = 「记一条沟通」里给不给 AI 解析（没配模型不给）。不是企业版都不传
@@ -127,7 +129,7 @@ export type 项目详情 = {
   不给推: string | null;
   /** 能改节点：能改的人 + 企业版负责人的直属上级（账号可能是 SALES）；只管节点这一块 */
   能改节点: boolean;
-  /** 能转让（换负责人）：企业版 = 总管理、负责人的实线上级（业务线对得上，lib/enterprise/permissions.ts 能转让项目）；负责人本人不能自己转 */
+  /** 能转让（换负责人）：企业版 = 总管理、负责人的实线上级（业务线对得上，lib/enterprise/permissions.ts 能转让项目）、负责人本人转出自己的 */
   能转让?: boolean;
   balanceSettled: boolean; balanceSettledBy: string | null; balanceSettledAt: string | null;
   acceptancePassed: boolean; acceptancePassedBy: string | null; acceptancePassedAt: string | null;
@@ -859,7 +861,7 @@ export default function ProjectDetail({
             <Tag>{f.node}</Tag>
             {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
             <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-            {(p.可改沟通 || 卡点?.能发) && (
+            {(p.可改沟通 || p.可删沟通 || 卡点?.能发) && (
               // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
               <span style={{ marginLeft: "auto" }}>
                 <InlineConfirm 问="删了进回收站，30 天内可恢复" 开={删问于 === f.id} set开={(v) => set删问于(v ? f.id : null)} 做={() => 删沟通(f.id)}>
@@ -870,7 +872,8 @@ export default function ProjectDetail({
                     menu={{
                       items: [
                         ...(卡点?.能发 ? [{ key: "blocker", label: "发卡点" }] : []),
-                        ...(p.可改沟通 ? [{ key: "edit", label: "修改" }, { key: "delete", label: "删除", danger: true }] : []),
+                        ...(p.可改沟通 ? [{ key: "edit", label: "修改" }] : []),
+                        ...(p.可删沟通 ? [{ key: "delete", label: "删除", danger: true }] : []),
                       ],
                       onClick: ({ key }) => (key === "blocker" ? set发卡点于(f.id) : key === "edit" ? set改沟通于(f) : set删问于(f.id)),
                     }}
@@ -882,7 +885,7 @@ export default function ProjectDetail({
             )}
           </div>
           <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{f.content}</div>
-          {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可改沟通} />}
+          {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} />}
         </div>
       ))}
       </div>

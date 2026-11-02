@@ -86,7 +86,7 @@ describe("存进库", () => {
     expect(await saveFollowUp({ ...base, initiator: "双方约定" })).toMatchObject({ ok: true });
     const f = (await prisma.followUp.findFirst({ orderBy: { createdAt: "desc" } }))!;
     expect(f.initiator).toBe("双方约定");
-    当(老板, "ADMIN");
+    // 11-02 改沟通是负责人的事：销售自己改
     expect(await saveFollowUp({ ...base, id: f.id, content: "改了内容" })).toMatchObject({ ok: true });
     expect(await prisma.followUp.findUnique({ where: { id: f.id }, select: { initiator: true, content: true } })).toEqual({ initiator: "双方约定", content: "改了内容" });
     expect(await saveFollowUp({ ...base, type: "TASK", content: "周五回访", initiator: "我方发起" })).toMatchObject({ ok: true });

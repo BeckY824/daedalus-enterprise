@@ -142,15 +142,23 @@ export function 能编辑项目(me: 谁, p: 权限项目, org: 组织 | null): b
 }
 
 /**
- * 转让、重新分配负责人（含公海里的项目指给人）：总管理；负责人的实线上级（业务线对得上）。
- * 公海里的项目原负责人已清掉，按「销售管理 + 业务线」放行。负责人本人不能自己转（找上级）
+ * 转让、重新分配负责人（含公海里的项目指给人）：总管理；负责人的实线上级（业务线对得上）；
+ * 负责人本人转出自己的项目（11-02：「负责人自己转出也可以，前提是自己的项目」）。
+ * 公海里的项目原负责人已清掉，按「销售管理 + 业务线」放行
  */
 export function 能转让项目(me: 谁, p: 权限项目, org: 组织 | null): boolean {
   if (老()) return 老管(me) || (!p.pooledAt && me.id === p.ownerId);
   if (!org || 只读角色(me, org)) return false;
   if (有(org, me.id, 总管理角色)) return true;
+  if (能编辑项目(me, p, org)) return true;
   if (p.pooledAt) return 有(org, me.id, ["sales_mgr"]) && 业务线放行(org, me.id, p);
   return 实线管得到(org, me.id, p.ownerId);
+}
+
+/** 负责人转出自己的客户（11-02，同 能转让项目 的负责人本人）：销售、销售管理；转的是不是他自己的、在不在公海，调用处查 */
+export function 能转出自己的(me: 谁, org: 组织 | null): boolean {
+  if (老()) return true;
+  return !!org && !只读角色(me, org) && 有(org, me.id, 负责人角色);
 }
 
 /** 放回公海：负责人本人（能编辑的），或能转让的（老板、主管也能退回公海 #137 → 总管理、上级） */

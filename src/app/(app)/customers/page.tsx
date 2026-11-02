@@ -18,7 +18,7 @@ import { defaultClient } from "@/lib/prisma";
 import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -188,6 +188,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     <CustomersView
       // 公海里的直接分给同事：只给管理员（团队版的老板）。业务员那边不摆（2026-10-20）
       能分配公海={能管公海(me, await 权限组织())}
+      能转出自己的={能转出自己的(me, await 权限组织())}
       能导入导出={可导入导出}
       负责人只能自己={只给自己}
       rows={rows.map((r) => 成客户行(r, 号))}

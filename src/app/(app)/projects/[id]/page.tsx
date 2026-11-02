@@ -13,7 +13,7 @@ import { 已立项天数 } from "@/lib/project/project-fields";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 是经理, 能删除 } from "@/lib/enterprise/permissions";
-import { 能删改沟通 } from "@/lib/enterprise/follow-perm";
+import { 能删沟通 } from "@/lib/enterprise/follow-perm";
 import { 沟通附件们 } from "@/lib/attachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -125,8 +125,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 11-01：企业版组员只能看，沟通只有负责人记（和 lib/project/db.ts 记项目沟通 同一个判断）
   const 能记沟通 = 企业 && !公海 && 能改;
   // 沟通的「…」菜单（改 / 删，10-29）：不在公海、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
-  // M-权限-09 / C3：只有总管理能改、删（lib/enterprise/follow-perm.ts）。不挂在 能记沟通 上：那个只给负责人（销售），两条一与就谁都没有「…」（11-01 CI 查出）
-  const 可改沟通 = 企业 && !公海 && 露 && !(await 只读客户(defaultClient, p.customer)) && (await 能删改沟通(me));
+  // M-权限-09（11-02）：改 = 负责人（能记沟通 就是负责人），删 = 只有总管理（C3），两样分开给（lib/enterprise/follow-perm.ts）
+  const 沟通能动 = 企业 && !公海 && 露 && !(await 只读客户(defaultClient, p.customer));
+  const 可改沟通 = 沟通能动 && 能记沟通;
+  const 可删沟通 = 沟通能动 && (await 能删沟通(me));
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
   // 「仅上级推」开着：直属上级也给节点这块（服务端只放往前推，往后退、点结局照拦）
@@ -207,7 +209,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 回收预演,
-    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
+    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase),
     // 企业版删项目只有总管理（QA #3，进回收站）；别的版本照旧按 能改
     能删: 企业 ? 能删除(me, org) : 能改,

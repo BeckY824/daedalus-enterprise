@@ -61,7 +61,7 @@ describe("角色 × 动作（项目：负责人 s、市场 mkt 建的、项目�
     dir: [T, F, T, T, T, T, T, T, T, T, T],
     adm: [T, F, F, F, F, F, F, F, T, F, T],
     mgr: [T, F, T, T, T, T, F, F, F, F, F],
-    s: [T, T, F, T, F, F, F, F, F, F, F],
+    s: [T, T, T, T, F, F, F, F, F, F, F], // 11-02 负责人转出自己的
     s2: [F, F, F, F, F, F, F, F, F, F, F],
     mkt: [T, F, F, F, T, F, F, F, F, F, F],
     ops: [T, F, F, F, F, F, F, F, F, F, F],

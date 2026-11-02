@@ -91,6 +91,8 @@ type Props = {
   users: 可选成员[];
   /** 老板（管理员）：公海里的客户能直接「分配给…」某位同事（2026-10-20）。业务员不摆 */
   能分配公海?: boolean;
+  /** 企业版负责人转出自己的客户（11-02）：批量分配摆给他，选了别人的服务端 assignSalesOwner 拦 */
+  能转出自己的?: boolean;
   /** 企业版只有老板和总管理员能导入导出（10-27 会议），别人不摆按钮；不是企业版一律 true */
   能导入导出?: boolean;
   /** 企业版普通销售新建客户负责人只能是自己（10-27 会议） */
@@ -210,7 +212,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -834,7 +836,8 @@ export default function CustomersView({
             >
               <Button size="small" icon={<UserSwitchOutlined />}>分配给…</Button>
             </Dropdown>}
-            {!不问归属 && !(公海页 && 能分配公海) && <Dropdown
+            {/* 企业版批量分配（转让）：管理、总管理；负责人只转自己的（11-02，服务端 assignSalesOwner 同样拦） */}
+            {!不问归属 && !(公海页 && 能分配公海) && (!企业 || 能分配公海 || (能转出自己的 && !公海页)) && <Dropdown
               menu={{
                 // 同样走 成员选项：批量分配比单条更需要认清人，转错了是一批数据
                 items: 成员选项(users).map((o) => ({

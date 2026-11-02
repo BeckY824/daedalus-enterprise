@@ -165,9 +165,11 @@ export default function RecordView({
   aiEnabled,
   已收藏 = false,
   能放公海 = false,
+  能转让客户 = true,
   原负责人领不回 = false,
   只读: 只读档 = false,
-  能删改沟通 = true,
+  能改沟通 = true,
+  能删沟通 = true,
   换负责人记录 = [],
   客户状态选项 = [],
   客户状态色,
@@ -567,7 +569,7 @@ export default function RecordView({
   }
   /** 转给谁：在职成员里去掉现任 */
   const 转让候选 = 成员选项(users).filter((o) => o.value !== customer.salesOwnerId);
-  const 能转让 = 去项目跟进 && !只读 && !customer.pool && 转让候选.length > 0;
+  const 能转让 = 去项目跟进 && !只读 && 能转让客户 && !customer.pool && 转让候选.length > 0;
   const 能退回公海 = 去项目跟进 && !只读 && !独自一人(users) && 能放公海 && !customer.pool;
   /** 「管理联系人」框里列谁：和联系人卡上露编辑 / 删除的是同一拨（见 联系人操作） */
   const 可管联系人 = 只读 ? [] : contacts.filter((c) => !c.挂靠 || c.挂靠.能改);
@@ -767,7 +769,7 @@ export default function RecordView({
               </div>
             </motion.div>
           ) : (
-            <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读 && !摆法.沟通汇总 && 能删改沟通} 汇总={摆法.沟通汇总} />
+            <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读 && !摆法.沟通汇总 && 能改沟通} 可删={!只读 && !摆法.沟通汇总 && 能删沟通} 汇总={摆法.沟通汇总} />
           ),
         )}
       </AnimatePresence>
@@ -1727,7 +1729,7 @@ function StatusPicker({
   );
 }
 
-function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 不挂商机 = false, 汇总 = false }: { f: FollowUpRow; showOwner: boolean; index: number; onEdit: () => void; onDelete: () => void; 可改?: boolean; 不挂商机?: boolean; 汇总?: boolean }) {
+function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可删 = 可改, 不挂商机 = false, 汇总 = false }: { f: FollowUpRow; showOwner: boolean; index: number; onEdit: () => void; onDelete: () => void; 可改?: boolean; 可删?: boolean; 不挂商机?: boolean; 汇总?: boolean }) {
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const meta = FOLLOW_TYPE_MAP[f.type] ?? FOLLOW_TYPE_MAP.OTHER;
   const [srcOpen, setSrcOpen] = useState(false);
@@ -1808,14 +1810,14 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 不�
           {/* 时间和编辑/删除包在一起：图标得跟着时间走，不能按整个头部居中 */}
           <span className="rec-tl-when">
             {时间}
-            {可改 && <span className="rec-tl-acts">
-              <Button type="text" size="small" icon={<EditOutlined />} onClick={onEdit} aria-label="编辑跟进" />
+            {(可改 || 可删) && <span className="rec-tl-acts">
+              {可改 && <Button type="text" size="small" icon={<EditOutlined />} onClick={onEdit} aria-label="编辑跟进" />}
               {/* 就地确认，不弹框：一条跟进记录，删了还能再写一条——
                   后果一句话说得完的事，不值得一个盖住半屏的框（见 components/InlineConfirm.tsx） */}
               {/* 带提醒时间、还没做的「提醒 / 任务」顺带建了一条待办，删它待办也一起走（第 2 期 2a：说清会一起删什么） */}
-              <InlineConfirm 问={(f.type === "TASK" || f.type === "REMIND") && f.dueAt && f.status !== "已完成" ? "连同它的待办一起删？" : "删除这条？"} 做={onDelete}>
+              {可删 && <InlineConfirm 问={(f.type === "TASK" || f.type === "REMIND") && f.dueAt && f.status !== "已完成" ? "连同它的待办一起删？" : "删除这条？"} 做={onDelete}>
                 <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label="删除跟进" />
-              </InlineConfirm>
+              </InlineConfirm>}
             </span>}
           </span>
         </div>

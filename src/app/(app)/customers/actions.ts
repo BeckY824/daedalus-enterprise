@@ -42,6 +42,8 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
+import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 交接要确认, 交接中的客户 } from "@/lib/enterprise/handover-db";
@@ -977,6 +979,22 @@ export async function 转走项目预览of(ids: string[], 新负责人?: string)
   return 数转走的项目(ids.filter((x) => typeof x === "string"), 新);
 }
 
+/** 企业版销售转了别人的 / 公海里的客户（界面不摆，直接调接口才到这） */
+const 只有管理能转让话 = "只能转出自己的客户；别人的找管理、总管理转";
+
+/**
+ * 企业版谁能转这批客户（11-02）：管理、总管理随便转；负责人（销售、销售管理）只转得了自己名下、不在公海的
+ * （「负责人自己转出也可以，前提是自己的项目」）。看全部数：限定层会把看不到的滤掉，数漏了就放过去了
+ */
+async function 转让挡(me: Awaited<ReturnType<typeof requireUser>>, ids: string[]): Promise<string | null> {
+  if (!企业版()) return null;
+  const org = await 权限组织();
+  if (能管公海(me, org)) return null;
+  if (!能转出自己的(me, org)) return 只有管理能转让话;
+  const 别人的 = await 看全部(() => prisma.customer.count({ where: { id: { in: ids }, OR: [{ salesOwnerId: { not: me.id } }, { pool: { isNot: null } }] } }));
+  return 别人的 ? 只有管理能转让话 : null;
+}
+
 /** 批量改销售负责人 */
 export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原因?: string | null): Promise<BulkResult> {
   const me = await requireUser();
@@ -991,6 +1009,9 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 虚线下属的客户限定层会静静滤掉，结果报成「已不存在」：先说真原因
   const 虚线 = await 虚线只读挡(defaultClient, ids);
   if (虚线) return { ok: false, error: 虚线 };
+  // 企业版转让 / 重新分配：管理、总管理（11-02：「这些都是管理来做。就是销售的上级」）；负责人只转自己的（同 能转让项目）。虚线 / 市场那句更具体，排它后面
+  const 不让 = await 转让挡(me, ids);
+  if (不让) return { ok: false, error: 不让 };
   const 挡 = await 挡字段(me.id, ["销售负责人"]);
   if (挡) return { ok: false, error: 挡 };
 
