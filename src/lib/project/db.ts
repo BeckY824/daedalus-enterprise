@@ -498,9 +498,11 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
  * 换负责人 = 转让：能转让项目的人（企业版 = 总管理、负责人的实线上级、负责人本人；不是企业版 = 负责人本人、老板、主管）能转，
  * 只改这一个项目，记谁、何时、从谁到谁；别的字段 = 编辑内容，只给 能管项目 的人（企业版 C2：总管理、上级能转不能改）。
  * 带待办（企业版 C-06，转让弹窗的勾）：原负责人在这个项目上没做完的待办带给新负责人 / 关掉，没传不碰（lib/project/carry-tasks.ts）。
- * 公海里的项目能转让的人指了新负责人 = 出公海。建档人（creatorId）不在这里、哪里都不给改
+ * 公海里的项目能转让的人指了新负责人 = 出公海。建档人（creatorId）不在这里、哪里都不给改。
+ * 没传的 = 不动（11-02 卡片就地改一次只交一格）：名称、负责人、金额、币种、备注也按「传了才改」，
+ * 别拿打开页面时的旧值把别人刚改的盖回去，也不会因为顺手带了只能看的金额被字段权限拦
  */
-export type 编辑项目改动 = 向导项目 & { contactId?: string | null; expectedDealAt?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>
+export type 编辑项目改动 = Partial<向导项目> & { contactId?: string | null; expectedDealAt?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>
   & Partial<{ [K in keyof 项目成交钱]: 项目成交钱[K] }> & Partial<项目新字段>;
 export async function 改项目(me: 谁, projectId: string, patch: 编辑项目改动, 带待办?: boolean): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
@@ -514,7 +516,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 能改 = 能管项目(me, p, org);
     const 能转 = 能转让项目(me, p, org);
     if (!能改 && !能转) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
-    const 好 = 规整项目(patch, p.ownerId);
+    // 只校验、只写这次传了的格子（11-02 就地改）：老项目名称、备注超长或带首尾空白，改别的格子不报错，也不被顺手规整掉
+    const 传 = 传了的(patch);
+    const 好 = 规整项目({ ...项目现值(p), name: "未传", remark: null, ...传 }, p.ownerId);
     if ("error" in 好) return { ok: false as const, error: 好.error };
     if (好.ownerId !== p.ownerId && !(await 在职(tx, 好.ownerId))) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
     const contactId = patch.contactId === undefined ? p.contactId : patch.contactId || null;
@@ -540,7 +544,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 线 = 改线 ? 认业务线(patch.业务线) : null;
     if (改线 && 线 === undefined) return { ok: false as const, error: 业务线不认得 };
     if (改线 && !线) return { ok: false as const, error: 业务线必填 };
-    const 新 = { ...好, contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
+    const 新 = { ...好, ...(传.name === undefined ? { name: p.name } : {}), ...(传.remark === undefined ? { remark: p.remark } : {}), contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
@@ -570,6 +574,15 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, 变了, ...带推进(推进) };
   });
+}
+
+/** 改项目 规整前的底子：没传的格子用库里现在的值 */
+const 项目现值 = (p: { name: string; ownerId: string; amount: number; currency: string; remark: string | null }) =>
+  ({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark });
+
+/** 把值是 undefined 的键去掉（server action 序列化后本来就没有，直接调的时候 { remark: undefined } 不能把底子盖掉）；null = 明说清空，留着 */
+function 传了的(patch: 编辑项目改动): 编辑项目改动 {
+  return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as 编辑项目改动;
 }
 
 /**

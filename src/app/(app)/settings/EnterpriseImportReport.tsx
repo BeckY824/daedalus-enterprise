@@ -5,6 +5,8 @@ import { App, Alert, Button, Checkbox, Collapse, Input, Modal, Popconfirm, Progr
 import { 实体名, 实体顺序, 标准字段, 字段中文, type 实体, type 格式类, type 问题, type 值对照名 } from "@/lib/enterprise-import/types";
 import type { 试跑报告, 映射改动, 报告列 } from "@/lib/enterprise-import/report";
 import { 改映射重新试跑, 丢掉试跑, 正式导入一段, 下载对照表, 填回对照表, type 企业版概况 } from "./enterprise-import-actions";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
 /**
  * 企业版导入的试跑报告：看清这次会写多少、哪些跳过、映射认得对不对；改了映射重新试跑；确认后正式导入。
@@ -40,6 +42,7 @@ export default function EnterpriseImportReport({
   on完了: () => void;
 }) {
   const { message, modal } = App.useApp();
+  const 视图中 = useViewAs();
   const [改, set改] = useState<映射改动>({});
   const [忙, set忙] = useState<"重跑" | "导入" | "丢掉" | "对照表" | null>(null);
   const 选对照表 = useRef<HTMLInputElement>(null);
@@ -543,7 +546,7 @@ export default function EnterpriseImportReport({
           <Button disabled={!改了几处 || !!忙} loading={忙 === "重跑"} onClick={() => void 重跑()}>
             按改的重新试跑{改了几处 ? `（改了 ${改了几处} 处）` : ""}
           </Button>
-          <Button disabled={!!忙} loading={忙 === "对照表"} onClick={() => void 下对照表()}>
+          <Button disabled={!!忙 || 视图中} title={视图中 ? 视图外部话 : undefined} loading={忙 === "对照表"} onClick={() => void 下对照表()}>
             下载对照表
           </Button>
           <Button disabled={!!忙 || 改了几处 > 0} title={改了几处 ? "页面上改的还没重新试跑，先试跑或撤掉再传对照表" : undefined} onClick={() => 选对照表.current?.click()}>

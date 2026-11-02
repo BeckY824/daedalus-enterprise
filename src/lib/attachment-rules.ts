@@ -131,3 +131,12 @@ export type 归属键名 = "opportunityId" | "leadId" | "contactId" | "projectId
 export function 归属键(挂在: 归属): [归属键名, string] {
   return Object.entries(挂在)[0] as [归属键名, string];
 }
+
+/**
+ * 卡片上该显示哪些附件（11-02）：服务端给的 + 刚传上去、服务端那份还没带上的 - 刚删掉的。
+ * 组件的 prop 会随 router.refresh 变，不能只在挂载时 useState 一次（不然要整页刷新才看得到）；按 id 去重，刷新回来不会多出一份
+ */
+export function 合并附件<T extends { id: string }>(服务端: readonly T[], 新传: readonly T[], 删了: readonly string[]): T[] {
+  const 有 = new Set(服务端.map((a) => a.id));
+  return [...服务端, ...新传.filter((a) => !有.has(a.id))].filter((a) => !删了.includes(a.id));
+}

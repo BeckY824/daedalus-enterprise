@@ -177,6 +177,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       ...(权限?.("痛点标注") !== "藏" ? { painPoints: p.painPoints } : {}),
       ...(权限?.("合同状态") !== "藏" ? { contractStatus: 合同状态显示(p.contractStatus) } : {}),
     },
+    // 卡片就地改（11-02）：不是「改」的这几项不摆入口；服务端 改项目 同一张字段权限表照旧拦
+    只能看字段: (["商机金额", "预计签约", "痛点标注", "合同状态"] as const).filter((名) => 权限?.(名) !== "改"),
   };
   // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查。11-01 起项目卡上一直摆「线索验证」结果，过了线索阶段也读
   const 线索验证 = 企业 ? await 读线索验证(me, p) : null;

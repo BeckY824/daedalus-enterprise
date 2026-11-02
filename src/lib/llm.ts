@@ -19,6 +19,7 @@ import { 抹掉密钥 } from "./secret";
 import type { AI功能 } from "./ai-features";
 import { getLlmConfig, type LlmConfig } from "./llm-config";
 import { 本地模式 } from "./desktop/cloud";
+import { 视图外部拦 } from "./enterprise/view-as";
 
 export * from "./llm-config";
 
@@ -161,6 +162,7 @@ export type 工具声明 = { type: "function"; function: { name: string; descrip
 export const 首字等待毫秒 = { 流式: 20_000, 短输出: 15_000, 中输出: 45_000 };
 
 async function chatRaw(cfg: LlmConfig, messages: ToolMessage[], opts: ChatOpts, useJsonFormat: boolean, stream: boolean, tools?: 工具声明[]): Promise<Response> {
+  await 视图外部拦(); // 切换视图（只读预览）不调模型：入口各自拦了，这里是所有对话请求的出口，兜底
   const 云端网关 = /\/api\/gateway\/v1\/?$/.test(cfg.baseUrl);
   if (云端网关 && 已知AI用完(cfg, opts.requestId)) throw Object.assign(new Error("AI 次数用完了，可在设置刷新余额或填自己的模型 API Key"), { status: 402 });
   const 模型 = opts.model ?? cfg.model;

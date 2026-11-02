@@ -26,6 +26,7 @@ import {
   type 通讯录来源, type 通讯录设置, type 凭据概况, type 通讯录一次结果, type 通讯录间隔,
 } from "@/lib/enterprise/org-sync";
 import { 测试飞书连接, 读飞书表配置, 存飞书表, 主表们, type 测试结果, type 飞书表概况 } from "@/lib/enterprise/feishu-connect";
+import { 视图外部拒 } from "@/lib/enterprise/view-as";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 
@@ -377,6 +378,8 @@ export async function 设通讯录同步(源: 通讯录来源, 开: boolean): Pr
 export async function 立即同步通讯录(源: 通讯录来源): Promise<{ ok: true; 一次: 通讯录一次结果 } | { ok: false; error: string }> {
   const who = await 能改的人();
   if (!who) return 不能改;
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   if (!是来源(源)) return { ok: false, error: "参数不对" };
   try {
     const 一次 = await 同步通讯录(源, { 用户: who.me });
@@ -433,6 +436,8 @@ export async function 设通讯录间隔(源: 通讯录来源, 分钟: number): 
 export async function 测试飞书连接动作(p: { 填?: { appId?: string; appSecret?: string }; 链接?: string }): Promise<{ ok: true; 结果: 测试结果 } | { ok: false; error: string }> {
   const who = await 能改的人();
   if (!who) return 不能改;
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   if (p && typeof p !== "object") return { ok: false, error: "参数不对" };
   const 串 = (v: unknown) => (typeof v === "string" ? v : undefined);
   try {
@@ -455,6 +460,8 @@ export async function 飞书表概况(): Promise<{ ok: true; 概况: 飞书表�
 export async function 设飞书表(链接: string, 选: Record<string, string | null>): Promise<{ ok: true; 概况: 飞书表概况 } | { ok: false; error: string }> {
   const who = await 能改的人();
   if (!who) return 不能改;
+  const 拒 = await 视图外部拒();
+  if (拒) return 拒;
   if (typeof 链接 !== "string" || !选 || typeof 选 !== "object") return { ok: false, error: "参数不对" };
   try {
     const r = await 存飞书表({ 链接, 选 }, who.me);

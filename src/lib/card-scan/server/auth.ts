@@ -5,6 +5,8 @@
 import { NextResponse } from "next/server";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 正在切换视图 } from "@/lib/enterprise/view-as";
+import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { getCurrentUser } from "@/lib/auth";
 import { 认领, 取Bearer } from "@/lib/tenant/device-token";
 import { 连手机资格 } from "@/lib/tenant/mobile-link";
@@ -31,7 +33,10 @@ export async function 认扫名片的人(req: Request): Promise<{ accountId: str
   if (!multiTenant()) {
     if (!企业版()) return new NextResponse("Not Found", { status: 404 });
     const 我 = await getCurrentUser();
-    return 我 ? { accountId: 我.id } : NextResponse.json({ error: "登录已失效，请重新登录" }, { status: 401 });
+    if (!我) return NextResponse.json({ error: "登录已失效，请重新登录" }, { status: 401 });
+    // 切换视图（只读预览）不把名片送去认字、整理。浏览器收到 403 退回本机规则，退出视图是整页重载，不会一直停用
+    if (await 正在切换视图()) return NextResponse.json({ error: 视图外部话 }, { status: 403 });
+    return { accountId: 我.id };
   }
   const t = await 认领(取Bearer(req));
   if (!t) return NextResponse.json({ error: "登录已失效，请重新登录" }, { status: 401 });

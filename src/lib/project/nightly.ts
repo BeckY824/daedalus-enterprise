@@ -8,12 +8,14 @@
  *   - 每分钟看一眼钟，过了今天 00:05 才扫（服务器停着错过了，开机就补）
  *   - 留痕、操作日志记在「系统」名下（timeout.ts 系统，QA #16）；一个在职老板都没有就不扫，等有人打开页面
  *   - 同一个钟顺带清回收站（P9）：删了满 30 天的真删掉，每天一遍，不看项目模式（lib/enterprise/soft-delete.ts 每天清一次）
+ *   - 同一个钟顺带发到期提醒（lib/enterprise/due-notice.ts）：北京 09:00 起，跟进计划、项目下一步、卡点今天到期的
  */
 import { prisma } from "../prisma";
 import { getBusiness } from "../business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海超时收回 } from "./db";
 import { 每天清一次 } from "@/lib/enterprise/soft-delete";
+import { 钟上到期提醒 } from "@/lib/enterprise/due-notice";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -52,6 +54,9 @@ export function 启动夜扫(间隔毫秒 = 60_000): void {
       // 回收站到期清理：和超时回收各管各的，一边出错不拦另一边
       .then(() => (过了夜扫时刻(现在) ? 每天清一次(现在) : null))
       .then(() => undefined, (e) => console.error("[回收站] 到期清理出错，下一分钟再试", e))
+      // 到期提醒：同样各管各的（自己不抛，这里再兜一道）
+      .then(() => 钟上到期提醒(现在))
+      .then(() => undefined, (e) => console.error("[到期提醒] 出错，下一遍再试", e))
       .finally(() => { g.__entNightlyRun = undefined; });
   }, 间隔毫秒);
   g.__entNightlyTimer.unref?.();
