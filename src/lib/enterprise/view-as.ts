@@ -43,8 +43,10 @@ export class 视图只读错误 extends Error {
  * 账号 ADMIN 不再放行；没设业务角色的不能。菜单（view-as-menu.ts）、action（view-as-actions.ts）、认票（auth.ts）同这一处
  */
 export function 能切换视图(org: 组织, userId: string): boolean {
-  const 角们 = org.成员.get(userId)?.角色们 ?? [];
-  return 角们.includes("director") || 角们.includes("admin");
+  const m = org.成员.get(userId);
+  const 角们 = m?.角色们 ?? [];
+  // 管理员设了业务线（11-02）只看这条线，切视图等于看全部，不给
+  return 角们.includes("director") || (角们.includes("admin") && !m?.line);
 }
 
 const 钥 = () => new TextEncoder().encode(readSecret());

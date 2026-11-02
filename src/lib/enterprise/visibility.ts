@@ -4,6 +4,7 @@
  * 和团队版业务员限定共用一层（lib/team-scope.ts 的 加上限定），这里只回答「这个请求的人看得到、改得到谁负责的客户」：
  *   - 总管理（业务角色 director，11-01 起不看账号 ADMIN）：看全部，不限定；没设业务角色的只看公海；
  *   - 管理员（admin，11-01 晚）：看全部，但带 只读 —— lib/team-scope.ts 加上限定 每条写都拒；
+ *   - 管理员设了业务线（11-02）：同样带 只读，但只看这条线（line-viewer.ts），规则开不开都一样；
  *   - 规则「按组织看客户」关着：照旧不限定，但没设业务角色的照样只看公海、管理员照样只读（QA #2：没设业务角色 = 没权限）；
  *   - 其余：**改** = 自己 + 实线下属（直属上级链往下整条）负责的客户 + 公海；
  *     **看** = 改的范围 + 虚线下属和他们的实线下属负责的客户——虚线上级只能看，不能改、不能转，
@@ -23,6 +24,7 @@ import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
 import { 看得到, type 限定 } from "@/lib/team-scope";
 import { 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
+import { 按线范围of, 按线项目, 按线客户 } from "./line-viewer";
 import { 规则 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票 } from "./view-as";
@@ -41,6 +43,9 @@ const 只看公海: 限定 = { 我: ["__无"], 互看: false, 别人的: new Set
  * 写 = 自己 + 实线下属；读 = 写 + 每个虚线下属和他的实线下属。读比写多才带 读，不然和普通限定一样
  */
 export function 组织范围of(org: 组织, _账号角色: string | null, 我: string): { 写: string[]; 读?: string[] } | null {
+  // 管理员设了业务线：看这条线的成员和下属（看板、复盘的选人框也从这里来），写在 加上限定 那边全拒
+  const 按线 = 按线范围of(org, 我);
+  if (按线) return { 写: [我], 读: 按线.人们 };
   // 11-01 只认业务角色（lib/enterprise/permissions.ts）：账号 ADMIN 不再看全部，总管理看业务角色；没设业务角色 = 只看公海
   if (能看全部({ id: 我 }, org)) return null;
   if (没设业务角色(org, 我)) return { 写: ["__无"] };
@@ -168,7 +173,15 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   if (!我 || !我.active) return 只看公海;
   const org = 建组织(users, members, depts);
   // 管理员（admin）：看全部、写全拒（规则开不开都一样）
-  if (只读角色({ id }, org)) return { 我: null, 互看: false, 别人的: new Set(), 只读: 只读角色话 };
+  if (只读角色({ id }, org)) {
+    const 线 = 按线范围of(org, id);
+    if (!线) return { 我: null, 互看: false, 别人的: new Set(), 只读: 只读角色话 };
+    // 设了业务线：按人的那一半走 读 + 市场（看得到客户、raw SQL 回退 Prisma），按标签的那一半走 按线
+    return {
+      我: [id], 读: 线.人们, 市场: 线.人们, 按线: { 本人: id, 项目: 按线项目(线), 客户: 按线客户(线) },
+      互看: false, 别人的: new Set(), 全拦: true, 话: 只读角色话, 只读: 只读角色话,
+    };
+  }
   // 规则关着：原来一律不限定；11-01 起没设业务角色的照样没权限（只看公海）
   if (!规则开着) return 没设业务角色(org, id) ? 只看公海 : null;
   const 范围 = 组织范围of(org, 我.role, id);
