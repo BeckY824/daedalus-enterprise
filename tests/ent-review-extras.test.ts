@@ -34,7 +34,7 @@ describe("纯函数", () => {
   const now = dayjs("2026-10-28T12:00:00");
   const 项 = (key: string, 时间: string | null, ownerId = "a") => ({ key, 时间, ownerId });
 
-  it("挑看板：三列 = 逾期 / 今天 / 之后（本周 + 以后 + 没定时间），数同四张卡；每列只取前几条；按人、按类型筛", () => {
+  it("挑看板：三列 = 逾期 / 今天 / 之后（本周 + 以后 + 没定时间），数同四张卡；每列只取前几条；按人筛", () => {
     const 全部 = [
       项("task:没时间", null),
       项("plan:以后", "2026-11-20T10:00:00"),
@@ -53,9 +53,9 @@ describe("纯函数", () => {
     const 二 = 挑看板(全部, { now, 每列: 2 });
     expect(二.列.overdue).toMatchObject({ 总数: 3 });
     expect(二.列.overdue.要).toHaveLength(2);
-    const a = 挑看板(全部, { now, 只看: "a", 类型: "task" });
-    expect(a.计数).toEqual({ overdue: 1, today: 1, week: 1, all: 4 });
-    expect(a.列.overdue.要.map((x) => x.key)).toEqual(["task:逾2"]);
+    const a = 挑看板(全部, { now, 只看: "a" });
+    expect(a.计数).toEqual({ overdue: 2, today: 1, week: 1, all: 6 });
+    expect(a.列.overdue.要.map((x) => x.key)).toEqual(["task:逾2", "plan:逾1"]);
     expect(看板列的卡).toEqual({ overdue: "overdue", today: "today", later: "all" });
   });
 
