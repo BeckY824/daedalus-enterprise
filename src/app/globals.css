@@ -1704,7 +1704,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); margin-bottom: var(--s3); min-width: 0; }
 .btodo-head-r { display: flex; align-items: center; gap: var(--s3); min-width: 0; max-width: 100%; }
 .btodo-head-r .ant-segmented { max-width: 100%; overflow-x: auto; }
-.btodo-kind { color: var(--text-muted); font-size: var(--fs-note); }
 .btodo-proj { color: var(--text-muted); }
 .btodo .btodo-row { cursor: pointer; }
 .btodo .btodo-row > td { transition: background var(--t-press) var(--ease); }
@@ -1780,7 +1779,6 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-k-top { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
 .btodo-k-proj { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ink); }
 .btodo-k-top .cust-level { flex: none; height: 18px; min-width: 18px; font-size: var(--fs-min); }
-.btodo-k-kind { flex: none; margin-left: auto; color: var(--text-muted); font-size: var(--fs-min); }
 .btodo-k-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
 .btodo-k-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--s2); min-width: 0; font-size: var(--fs-min); color: var(--text-muted); }
 .btodo-k-meta .btodo-time { font-size: var(--fs-min); }

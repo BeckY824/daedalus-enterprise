@@ -4,9 +4,9 @@
  *     最下级只有自己；没设业务角色谁都不数。只按组织架构定，不看「按组织看客户」开没开（10-29 定稿）
  *   - 看板的人：业务员强制只看自己（地址栏带了别人也不认）；管理层默认看全部、选范围外的当没选；能选的只有一个人时不给下拉
  *   - 项目现在 / 项目一段 带只看：只数那个人负责的（公海的不算）；线索节点按潜客培育 → 线索验证 → 线索推进铺开
- *   - 挑一页：逾期在前、按时间从早到晚、没时间的最后；四张卡的条数跟着人和类型走；卡筛、类型筛；每页 20 条、页码超了落末页
+ *   - 挑一页：逾期在前、按时间从早到晚、没时间的最后；四张卡的条数跟着人走；卡筛；每页 20 条、页码超了落末页
  *   - 复盘待办of：业务员只看到自己的；按组织看开着时经理看不到范围外的；管理层选了谁只看到谁的；点一行去项目页 / 客户页、带项目名
- *   - 读页签 / 复盘地址 / 计划页链接：地址栏怎么读、怎么写（首页「今日待办」落到待办页签的今天到期）
+ *   - 读页签 / 复盘地址：地址栏怎么读、怎么写（首页「今日待办」落到待办页签的今天到期）
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,7 +20,7 @@ import { setSetting } from "@/lib/settings";
 import { 清首页缓存 } from "@/lib/home-cache";
 import { dayjs } from "@/lib/utils";
 import { 看板范围of, 看板的人 } from "@/lib/project/board-member";
-import { 挑一页, 计划页链接, 状态of, 复盘待办每页, 读页签, 读卡, 读类型, 读页码, 复盘地址 } from "@/lib/project/board-todos";
+import { 挑一页, 状态of, 复盘待办每页, 读页签, 读卡, 读页码, 复盘地址 } from "@/lib/project/board-todos";
 import { 复盘待办of } from "@/lib/project/board-todos-db";
 import { 项目现在, 项目一段, 线索节点of } from "../src/app/(app)/overview/project-stats";
 
@@ -149,15 +149,6 @@ describe("挑一页（纯函数）", () => {
     expect(挑一页(七条, { now, 卡: "week" }).要.map((x) => x.key)).toEqual(["plan:本周早", "task:本周晚"]);
   });
 
-  it("类型：任务只留 Task、跟进计划只留 FollowPlan，四张卡的数也只数这一类", () => {
-    const 任 = 挑一页(七条, { now, 类型: "task" });
-    expect(任.要.map((x) => x.key)).toEqual(["task:逾期远", "task:今天", "task:本周晚", "task:没时间"]);
-    expect(任.计数).toEqual({ overdue: 1, today: 1, week: 1, all: 4 });
-    const 计 = 挑一页(七条, { now, 类型: "plan", 卡: "overdue" });
-    expect(计.要.map((x) => x.key)).toEqual(["plan:逾期近"]);
-    expect(计.计数).toEqual({ overdue: 1, today: 0, week: 1, all: 3 });
-  });
-
   it("只看：只留这个人的，条数也只数他的", () => {
     const r = 挑一页([项("task:a1", null, "a"), 项("plan:b1", "2026-10-20T09:00:00", "b"), 项("plan:a2", "2026-10-20T09:00:00", "a")], { 只看: "a", now });
     expect(r.要.map((x) => x.key)).toEqual(["plan:a2", "task:a1"]);
@@ -182,7 +173,7 @@ describe("挑一页（纯函数）", () => {
   });
 });
 
-describe("地址栏：读页签 / 读卡 / 读类型 / 读页码 / 复盘地址 / 计划页链接", () => {
+describe("地址栏：读页签 / 读卡 / 读页码 / 复盘地址", () => {
   it("没写 tab 默认待办；只带 view（首页信号、/reports 跳过来）落数据；tab 明写的照写的", () => {
     expect(读页签()).toBe("todo");
     expect(读页签("data")).toBe("data");
@@ -194,9 +185,8 @@ describe("地址栏：读页签 / 读卡 / 读类型 / 读页码 / 复盘地址 
     expect(读页签("talk", "本月")).toBe("talk");
   });
 
-  it("卡、类型、页码：认不得的回默认", () => {
+  it("卡、页码：认不得的回默认", () => {
     expect([读卡("today"), 读卡("x"), 读卡()]).toEqual(["today", "all", "all"]);
-    expect([读类型("plan"), 读类型("x"), 读类型()]).toEqual(["plan", "all", "all"]);
     expect([读页码("3"), 读页码("0"), 读页码("-2"), 读页码("1.5"), 读页码("abc"), 读页码()]).toEqual([3, 1, 1, 1, 1, 1]);
   });
 
@@ -204,8 +194,8 @@ describe("地址栏：读页签 / 读卡 / 读类型 / 读页码 / 复盘地址 
     expect(复盘地址({})).toBe("/overview");
     expect(复盘地址({ f: "today" })).toBe("/overview?f=today");
     expect(复盘地址({ f: "today", ownerId: "u1" })).toBe("/overview?ownerId=u1&f=today");
-    expect(复盘地址({ f: "all", kind: "all", p: 1 })).toBe("/overview");
-    expect(复盘地址({ f: "week", kind: "task", p: 3 })).toBe("/overview?f=week&kind=task&p=3");
+    expect(复盘地址({ f: "all", p: 1 })).toBe("/overview");
+    expect(复盘地址({ f: "week", p: 3 })).toBe("/overview?f=week&p=3");
     expect(复盘地址({ tab: "data", view: "本月", f: "today", p: 2 })).toBe(`/overview?tab=data&view=${encodeURIComponent("本月")}`);
     expect(复盘地址({ tab: "todo", view: "本月" })).toBe(`/overview?tab=todo&view=${encodeURIComponent("本月")}`);
     expect(读页签("todo", "本月")).toBe("todo");
@@ -218,11 +208,6 @@ describe("地址栏：读页签 / 读卡 / 读类型 / 读页码 / 复盘地址 
     expect(复盘地址({ tab: "talk", t: "all", bs: "done" })).toBe("/overview?tab=talk");
     expect(复盘地址({ tab: "talk", t: "30", p: 3 })).toBe("/overview?tab=talk&t=30&p=3");
     expect(复盘地址({ tab: "talk", view: "本月" })).toBe(`/overview?tab=talk&view=${encodeURIComponent("本月")}`);
-  });
-
-  it("去计划页：看自己不带参数，看全员 / 选了别人带 scope=all", () => {
-    expect(计划页链接("自己")).toBe("/follow-ups/plans");
-    expect(计划页链接("全员")).toBe("/follow-ups/plans?scope=all");
   });
 });
 
@@ -307,9 +292,8 @@ describe("库里取数和权限", () => {
     const 王 = await 复盘待办of(小王);
     expect(内容(王)).toEqual(["小王发资料", "小王回访"]);
     expect(王.计数.all).toBe(2);
-    // 卡 + 类型 + 分页一起：逾期的跟进计划只有一条；每页 1 条时第 2 页是第二条
-    expect(内容(await 复盘待办of(undefined, { 卡: "overdue", 类型: "plan" }))).toEqual(["外人回访", "小王回访", "经理回访", "老板回访"].sort());
-    expect(内容(await 复盘待办of(小王, { 类型: "task" }))).toEqual(["小王发资料"]);
+    // 卡 + 分页一起：逾期只有回访；每页 1 条时第 2 页是第二条
+    expect(内容(await 复盘待办of(undefined, { 卡: "overdue" }))).toEqual(["外人回访", "小王回访", "经理回访", "老板回访"].sort());
     const 第二 = await 复盘待办of(小王, { 每页: 1, 页: 2 });
     expect(第二).toMatchObject({ 页: 2, 总数: 2 });
     expect(内容(第二)).toEqual(["小王发资料"]);

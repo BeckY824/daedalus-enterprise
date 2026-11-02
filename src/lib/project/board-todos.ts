@@ -9,9 +9,9 @@ import type { 轻项 } from "@/lib/plans-page";
  * 所以「逾期 / 今天到期 / 本周到期」的条数和计划页组头一致——本周 = 今天以后到本周末，不含今天和逾期（同计划页）。
  * 看谁跟着复盘页的人员选择走（board-member.ts 的 看板的人）；看得到哪些客户的事项由外面那层 prisma 限定。
  *
- * 顶上四张指标卡本身就是筛选，列表上方的分段是「待办类型」；都记在地址栏，刷新、返回不丢：
- *   tab=todo|block|talk|data  f=overdue|today|week|all  kind=all|task|plan  lay=list（全部待办时看表格，不写 = 三列看板）  p=页码（从 1 起）
- * 分页在服务端：轻列表上筛人、筛类型、分组排好，只取当页 20 条的详情。
+ * 顶上四张指标卡本身就是筛选；都记在地址栏，刷新、返回不丢：
+ *   tab=todo|block|talk|data  f=overdue|today|week|all  lay=list（全部待办时看表格，不写 = 三列看板）  p=页码（从 1 起）
+ * 分页在服务端：轻列表上筛人、分组排好，只取当页 20 条的详情。
  *
  * 本文件不碰库，页面和测试都直接用；取数在 board-todos-db.ts。
  */
@@ -34,12 +34,6 @@ export const 待办卡叫法: Record<待办卡, string> = { overdue: "逾期", t
 const 卡的组: Record<Exclude<待办卡, "all">, 组> = { overdue: "逾期", today: "今天", week: "本周" };
 export const 读卡 = (v?: string): 待办卡 => ((待办卡们 as readonly string[]).includes(v ?? "") ? (v as 待办卡) : "all");
 
-/** 待办类型：全部 / 任务（Task）/ 跟进计划（FollowPlan）；值是地址栏 kind= 的取值 */
-export const 待办类型们 = ["all", "task", "plan"] as const;
-export type 待办类型 = (typeof 待办类型们)[number];
-export const 待办类型叫法: Record<待办类型, string> = { all: "全部", task: "任务", plan: "跟进计划" };
-export const 读类型 = (v?: string): 待办类型 => ((待办类型们 as readonly string[]).includes(v ?? "") ? (v as 待办类型) : "all");
-
 /** 每页几条 */
 export const 复盘待办每页 = 20;
 export const 读页码 = (v?: string): number => {
@@ -55,20 +49,19 @@ export const 状态of = (g: 组): 待办状态 => (g === "逾期" ? "逾期" : g
 export const 在卡里 = (卡: 待办卡, g: 组): boolean => 卡 === "all" || 卡的组[卡] === g;
 
 /**
- * 挑出这一页要摆的：按人筛（只看：一个人的 id，或一组人 = 看板的人 的 谁；不给 = 不筛）→ 按类型筛 → 分组 → 逾期在前、然后按时间从早到晚、没时间的排最后
+ * 挑出这一页要摆的：按人筛（只看：一个人的 id，或一组人 = 看板的人 的 谁；不给 = 不筛）→ 分组 → 逾期在前、然后按时间从早到晚、没时间的排最后
  * （分组 的「以后」里没时间的本来就在末尾）→ 按卡筛 → 切出第 页 页。
- * 四张卡的条数跟着人和类型走（换成「任务」，卡上数的也只是任务），不跟着卡本身。
+ * 四张卡的条数跟着人走，不跟着卡本身。
  * 页码超出最后一页时落到最后一页（完成了几条、换了人之后地址栏里的页码可能已经没那么多页）。
  */
 export function 挑一页(
   全部: readonly 轻项[],
-  { 只看, 类型 = "all", 卡 = "all", 页 = 1, now = dayjs(), 每页 = 复盘待办每页 }: {
-    只看?: string | readonly string[]; 类型?: 待办类型; 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number;
+  { 只看, 卡 = "all", 页 = 1, now = dayjs(), 每页 = 复盘待办每页 }: {
+    只看?: string | readonly string[]; 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number;
   } = {},
 ): { 计数: Record<待办卡, number>; 总数: number; 页: number; 要: { key: string; 组: 组 }[] } {
-  const 前缀 = 类型 === "all" ? null : `${类型}:`;
   const 人 = 只看 === undefined ? null : new Set(typeof 只看 === "string" ? [只看] : 只看);
-  const 这些 = 全部.filter((x) => (!人 || 人.has(x.ownerId)) && (!前缀 || x.key.startsWith(前缀)));
+  const 这些 = 全部.filter((x) => !人 || 人.has(x.ownerId));
   const 分 = 分组(这些, now);
   const 排好 = 组名.flatMap((g) => 分[g].map((x) => ({ key: x.key, 组: g })));
   const 卡里 = 排好.filter((x) => 在卡里(卡, x.组));
@@ -98,12 +91,12 @@ const 组的列 = (g: 组): 看板列 => (g === "逾期" ? "overdue" : g === "�
 export type 待办布局 = "board" | "list";
 export const 读布局 = (v?: string): 待办布局 => (v === "list" ? "list" : "board");
 
-/** 同 挑一页 的筛人、筛类型、分组和排序，切成三列、每列前 每列 条 */
+/** 同 挑一页 的筛人、分组和排序，切成三列、每列前 每列 条 */
 export function 挑看板(
   全部: readonly 轻项[],
-  { 只看, 类型 = "all", now = dayjs(), 每列 = 看板每列 }: { 只看?: string | readonly string[]; 类型?: 待办类型; now?: ReturnType<typeof dayjs>; 每列?: number } = {},
+  { 只看, now = dayjs(), 每列 = 看板每列 }: { 只看?: string | readonly string[]; now?: ReturnType<typeof dayjs>; 每列?: number } = {},
 ): { 计数: Record<待办卡, number>; 列: Record<看板列, { 总数: number; 要: { key: string; 组: 组 }[] }> } {
-  const 全 = 挑一页(全部, { 只看, 类型, now, 每页: Number.MAX_SAFE_INTEGER });
+  const 全 = 挑一页(全部, { 只看, now, 每页: Number.MAX_SAFE_INTEGER });
   const 列 = Object.fromEntries(看板列们.map((k) => [k, { 总数: 0, 要: [] as { key: string; 组: 组 }[] }])) as Record<看板列, { 总数: number; 要: { key: string; 组: 组 }[] }>;
   for (const x of 全.要) {
     const c = 列[组的列(x.组)];
@@ -145,17 +138,12 @@ export type 复盘待办行 = {
 export type 复盘待办 = { 计数: Record<待办卡, number>; 总数: number; 页: number; 行: 复盘待办行[] };
 export type 复盘看板 = { 计数: Record<待办卡, number>; 列: Record<看板列, { 总数: number; 行: 复盘待办行[] }> };
 
-/** 右上角「去计划页」：看全部成员、或选了别人时带 scope=all（计划页没有按人筛的参数，选了某个人只能带到「全部成员」） */
-export function 计划页链接(范围: "自己" | "全员"): string {
-  return `/follow-ups/plans${范围 === "全员" ? "?scope=all" : ""}`;
-}
-
 /**
  * 复盘页地址：页签、看谁、各页签自己的筛选、页码；默认值不写进地址栏。
- * 每个页签只带自己的筛选（待办 f / kind，卡点 bs，沟通 t）；「数据」不带页码
+ * 每个页签只带自己的筛选（待办 f，卡点 bs，沟通 t）；「数据」不带页码
  */
 export function 复盘地址(q: {
-  tab?: 复盘页签; view?: string; ownerId?: string; f?: 待办卡; kind?: 待办类型; lay?: 待办布局; bs?: string; t?: string; m?: string; p?: number;
+  tab?: 复盘页签; view?: string; ownerId?: string; f?: 待办卡; lay?: 待办布局; bs?: string; t?: string; m?: string; p?: number;
 }): string {
   const s = new URLSearchParams();
   const 签 = q.tab ?? "todo";
@@ -164,7 +152,6 @@ export function 复盘地址(q: {
   if (q.ownerId) s.set("ownerId", q.ownerId);
   if (签 === "todo") {
     if (q.f && q.f !== "all") s.set("f", q.f);
-    if (q.kind && q.kind !== "all") s.set("kind", q.kind);
     if (q.lay === "list") s.set("lay", "list");
   }
   if (签 === "block" && q.bs && q.bs !== "open") s.set("bs", q.bs);
