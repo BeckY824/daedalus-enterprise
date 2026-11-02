@@ -13,6 +13,8 @@
  *   - 管理员（admin，11-01 晚定）：「可以看所有。但不能做任何编辑」——看全部、任何写都拒（客户、项目、线索、沟通、待办、卡点、
  *     设置、分配、删除、导入）。设置页能看不能改；组织架构、业务角色的分配只有总管理能做。兼了别的角色也只读（总管理除外）。
  *     服务端统一拦在 lib/team-scope.ts 加上限定（同切换视图那一层），见 只读角色
+ *   - 管理员又设了业务线（11-02）：照样一律不能改，但只看这条线——负责人或创建人是这条线的成员或下属、标签是这条线、公海；
+ *     进不了设置、切换不了视图。见 line-viewer.ts、只读按线
  *   - 切换视图：只有总管理、管理员（11-01 晚定）
  *   - 销售（sales / sales_mgr）：自己是负责人的项目能看、能编辑；只是创建人不是负责人 = 没有任何权限
  *   - 市场（marketing_mgr / channel_ops）：自己创建的项目只能看
@@ -26,12 +28,14 @@
  * 企业版里 org 传 null 一律拒，不留后门。org 用 org.ts 的 权限组织() 读。
  */
 import type { 业务角色, 业务线 } from "@/lib/sync/dept-policy";
+import { 项目业务线 } from "./assign-line";
+import { 按线的线, 按线范围of } from "./line-viewer";
 import { 实线下属, 虚线下属, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
 
 export type 谁 = { id: string; role?: string | null };
 /** 判权限用到的项目字段。已加入 = 点了同意（inviteStatus = JOINED）的组员 userId */
-export type 权限项目 = { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; 已加入?: readonly string[] };
+export type 权限项目 = { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; bizLine?: string | null; 已加入?: readonly string[] };
 
 /** 总管理：能管全公司（转让、删除、恢复、设置）。11-01 晚起不含 admin（admin 只读） */
 const 总管理角色: readonly 业务角色[] = ["director"];
@@ -66,10 +70,15 @@ export function 是总管理(me: 谁, org: 组织 | null): boolean {
   return !!org && 有(org, me.id, 总管理角色);
 }
 
-/** 能看全部：总管理、管理员（admin 只读）。老规矩 = 账号 ADMIN / MANAGER */
+/** 能看全部：总管理、没设业务线的管理员（admin 只读）。老规矩 = 账号 ADMIN / MANAGER */
 export function 能看全部(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老管(me);
-  return !!org && 有(org, me.id, 看全部角色);
+  return !!org && 有(org, me.id, 看全部角色) && !按线的线(org, me.id);
+}
+
+/** 管理员设了业务线（11-02）：只看这条线，回这条线；别的情况 null。写一律拒，同 只读角色 */
+export function 只读按线(me: 谁, org: 组织 | null): 业务线 | null {
+  return !老() && org ? 按线的线(org, me.id) : null;
 }
 
 /**
@@ -122,11 +131,13 @@ function 看得到下属的(org: 组织, 我: string, ownerId: string): boolean 
 export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): boolean {
   if (老()) return 老管(me) || me.id === p.ownerId || !!p.pooledAt;
   if (!org || 没设业务角色(org, me.id)) return false;
-  if (有(org, me.id, 看全部角色)) return true;
+  if (能看全部(me, org)) return true;
   // 项目公海：谁都看得到才能领（历史负责人不能领、不能看另由公海那条规则管）
   if (p.pooledAt) return true;
   if (p.ownerId === me.id) return true;
   if (p.已加入?.includes(me.id)) return true;
+  const 按线 = 按线范围of(org, me.id);
+  if (按线) return 按线.人们.includes(p.ownerId) || (!!p.creatorId && 按线.人们.includes(p.creatorId)) || 项目业务线(p, org.成员) === 按线.线;
   if (p.creatorId === me.id && 有(org, me.id, 市场角色)) return true;
   return 看得到下属的(org, me.id, p.ownerId);
 }
@@ -205,7 +216,7 @@ export function 能恢复(me: 谁, org: 组织 | null): boolean {
 /** 进设置页（看）：总管理、管理员（只读看），勾了「不管设置」的不行（C1） */
 export function 能进设置(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老板(me);
-  return !!org && 有(org, me.id, 看全部角色) && !org.成员.get(me.id)?.不管设置;
+  return !!org && 有(org, me.id, 看全部角色) && !按线的线(org, me.id) && !org.成员.get(me.id)?.不管设置;
 }
 
 /** 改后台设置（含组织架构、业务角色分配）：只有总管理 director，勾了「不管设置」的不行（C1）。管理员能进设置页看、不能改 */
