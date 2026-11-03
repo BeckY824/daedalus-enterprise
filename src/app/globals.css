@@ -1390,6 +1390,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-scroll:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 /* 「完成节点」框里缺的必填 */
 .proj-miss-list { margin: 4px 0 0; padding-left: 20px; overflow-wrap: anywhere; }
+/* 「完成节点」框的按钮排：贴在弹框正文底边（11-03 A6-5），上面的内容滚过它时不透出来 */
+.proj-fill-foot { position: sticky; bottom: 0; z-index: 1; margin-bottom: -4px; padding: 8px 0 4px; background: var(--ant-color-bg-elevated, var(--panel)); }
 
 /* 项目画像卡（P11）：键 64px 一列，值占满；下拉、输入框都按卡宽，不撑开右栏 */
 .proj-profile { display: grid; gap: 10px; }

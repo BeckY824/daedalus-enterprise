@@ -203,13 +203,21 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     }
   };
 
+  // 几项都要去同一处（比如三项都靠记一条沟通）：按钮只摆在第一项上，后面的写「点上面的」（11-03 A6-5）
+  const 首个去处 = new Map<窗外去处, string>();
+  for (const k of 行们) {
+    const 类 = 归类(k, 环);
+    if (类.类 === "去" && 类.去 && !已存.includes(k) && !首个去处.has(类.去)) 首个去处.set(类.去, k);
+  }
   const 窗外行 = (项: 必填项, 去: 窗外去处 | null, 原因: string) => {
     const 能去 = 去 === "沟通" ? p.能记沟通 : 去 === "附件" ? !!p.项目附件 : 去 === "回款" ? !!p.回款们 : 去 === "线索验证" ? !!p.线索验证 : 去 === "客户" ? !!p.customer : false;
     return (
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px", minWidth: 0 }}>
         <span style={{ ...灰字, flex: "1 1 200px", minWidth: 0 }}>{原因}</span>
         {去 === "客户" && 能去 && p.customer && <Link href={`/customers/${p.customer.id}${客户格[项] ? `#field-${客户格[项]}` : ""}`}>{去处按钮.客户}</Link>}
-        {去 && 去 !== "客户" && 能去 && <Button size="small" disabled={占着} onClick={() => on去(去)}>{去处按钮[去]}</Button>}
+        {去 && 去 !== "客户" && 能去 && (首个去处.get(去) === 项
+          ? <Button size="small" disabled={占着} onClick={() => on去(去)}>{去处按钮[去]}</Button>
+          : <span style={灰字}>点上面的「{去处按钮[去]}」一起补</span>)}
       </div>
     );
   };
@@ -233,7 +241,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
           className="proj-miss-list"
           tabIndex={0}
           aria-label="还差的必填"
-          style={{ listStyle: "none", margin: 0, padding: "0 4px 0 0", maxHeight: "min(50vh, 420px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}
+          style={{ listStyle: "none", margin: 0, padding: "0 4px 0 0", maxHeight: "min(40vh, 420px)", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}
         >
           {行们.map((k) => {
             const 类 = 归类(k, 环);
@@ -262,6 +270,8 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
       {完成不了 && <div style={{ color: "var(--text-muted)" }}>{完成不了}</div>}
       {完成到字 && <div><span className="proj-where-label">完成后</span> {完成到字}</div>}
       {话 && <div role="status" style={{ overflowWrap: "anywhere" }}>{话}</div>}
+      {/* 按钮这一排贴在框底（11-03 A6-5）：缺得多、窗口矮时不用先滚到底才看得到 */}
+      <div className="proj-fill-foot">
       <Space wrap>
         {!!缺.length && 有格子 && 能推进 && (
           <Button type="primary" disabled={占着 || !态.能一键完成} loading={存着} onClick={() => 走("推")}>保存并完成节点</Button>
@@ -275,7 +285,8 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
         {!缺.length && 能推进 && <Button type="primary" disabled={占着} onClick={on完成}>确认推进</Button>}
         <Button onClick={on关}>取消</Button>
       </Space>
-      {灰着话 && <div style={灰字}>{灰着话}</div>}
+      {灰着话 && <div style={{ ...灰字, marginTop: 4 }}>{灰着话}</div>}
+      </div>
     </div>
   );
 }
