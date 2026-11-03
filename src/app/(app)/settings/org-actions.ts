@@ -15,7 +15,7 @@ import { setSetting } from "@/lib/settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则, type 规则名 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, type 组织, type 组织部门 } from "@/lib/enterprise/org";
+import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 是业务角色, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
@@ -174,10 +174,13 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
       ...改,
       bizRole: 新角色们 ? 合角色(新角色们) : (旧行?.bizRole ?? 合角色(原角色们)),
     };
-    const 新 = 建组织(users, [...members.filter((m) => m.userId !== userId), 新行], depts);
+    // 带上「只看某人」名单：设了的人不能当别人的实线上级（指定的、按部门推出来的都算，V3.5.1）
+    const 只看 = await prisma.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } });
+    const 新 = 填组织设置(建组织(users, [...members.filter((m) => m.userId !== userId), 新行], depts), null, 只看?.value);
     const 问题 =
       (改.managerId !== undefined ? 上级设置问题(新, userId, 改.managerId, "直属") : null) ??
-      (改.dottedManagerId !== undefined ? 上级设置问题(新, userId, 改.dottedManagerId, "虚线") : null);
+      (改.dottedManagerId !== undefined ? 上级设置问题(新, userId, 改.dottedManagerId, "虚线") : null) ??
+      只看某人当了上级(新);
     if (问题) return { ok: false, error: 问题 };
 
     const 存 = { ...改, bizRole: 新角色们 ? 合角色(新角色们) : undefined };
@@ -320,6 +323,72 @@ export async function 设市场部门(ids: unknown, 人?: unknown): Promise<结�
       const 名 = 存人 ? (await prisma.user.findMany({ where: { id: { in: 存人 } }, select: { name: true } })).map((u) => u.name).join("、") : "清空";
       await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 市场成员key, summary: `改逐人设的市场成员（${名}）`, detail: 存人 });
     }
+    改完了();
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/** 设了「只看某人」的人有没有被谁当实线上级（指定的、按部门推出来的都算）：有就回那一句 */
+function 只看某人当了上级(org: 组织): string | null {
+  for (const id of org.成员.keys()) {
+    const 上 = 直属上级of(org, id);
+    if (上 && org.只看某人?.has(上)) return "有人以设了「只看某人」的成员为实线上级，先给那些人换上级";
+  }
+  return null;
+}
+
+/**
+ * 「只看某人」（V3.5.1 市管特例）：本人只看 那个人 是创建人或负责人的数据，公海照常；不当负责人、不编、不转、不删。
+ * 那个人 = null 是取消。设之前本人不能是任何人的实线上级（指定的、按部门推出来的都算）
+ */
+export async function 设只看某人(本人: string, 那个人: string | null): Promise<结果> {
+  const who = await 能改的人();
+  if (!who) return 不能改;
+  try {
+    const org = await 读组织();
+    if (!org.成员.has(本人)) return { ok: false, error: "这个人不在职" };
+    if (那个人 !== null && !org.成员.has(那个人)) return { ok: false, error: "选的人不在职" };
+    if (那个人 === 本人) return { ok: false, error: "不能只看自己" };
+    const 表 = new Map(org.只看某人 ?? []);
+    if (那个人) 表.set(本人, 那个人);
+    else 表.delete(本人);
+    const 新 = { ...org, 只看某人: 表 };
+    if (那个人) {
+      const 下属 = [...org.成员.keys()].filter((id) => 直属上级of(新, id) === 本人);
+      if (下属.length) {
+        const 名 = (await prisma.user.findMany({ where: { id: { in: 下属 } }, select: { name: true } })).map((u) => u.name).join("、");
+        return { ok: false, error: `${名} 以他为直属上级，先给他们换上级再设「只看某人」` };
+      }
+    }
+    const 存 = 表.size ? Object.fromEntries(规整只看某人(Object.fromEntries(表), org)) : null;
+    await setSetting(只看某人键, 存);
+    const 名们 = new Map((await prisma.user.findMany({ where: { id: { in: [本人, ...(那个人 ? [那个人] : [])] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+    await recordAudit({
+      user: who.me, action: "update", entity: "Setting", entityId: 只看某人键,
+      summary: 那个人 ? `${名们.get(本人)} 设为只看 ${名们.get(那个人)}` : `${名们.get(本人)} 取消「只看某人」`, detail: 存,
+    });
+    改完了();
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/** 回收站副手（V3.5.1）：系统管理员之外能看、能恢复回收站的人；彻底删除仍只有系统管理员。空 = 清空 */
+export async function 设回收站副手(ids: unknown): Promise<结果> {
+  const who = await 能改的人();
+  if (!who) return 不能改;
+  try {
+    const 设 = 规整市场部门(ids);
+    if (!设) return { ok: false, error: "选的人不对，刷新再试" };
+    const org = await 读组织();
+    if (设.some((id) => !org.成员.has(id))) return { ok: false, error: "选的人有的已经不在组织里了，刷新再选" };
+    const 存 = 设.length ? 设 : null;
+    await setSetting(回收站副手键, 存);
+    const 名 = 设.length ? (await prisma.user.findMany({ where: { id: { in: 设 } }, select: { name: true } })).map((u) => u.name).join("、") : "清空";
+    await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 回收站副手键, summary: `改回收站副手（${名}）`, detail: 存 });
     改完了();
     return { ok: true };
   } catch (e) {

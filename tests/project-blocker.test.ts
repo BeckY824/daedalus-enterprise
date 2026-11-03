@@ -207,16 +207,16 @@ describe("企业版卡点", () => {
     expect(await prisma.entBlocker.count({ where: { code: "BLK20261101999" } })).toBe(1);
   });
 
-  it("发布：要从项目沟通来；只有负责人（销售）能发；总管理员、直属上级、虚线上级、组员、无关的人不能（C2：只能看、转让）；标题没填取描述前 20 字", async () => {
+  it("发布：要从项目沟通来；只有负责人（销售）、系统管理员（V3.5.1）能发；直属上级、虚线上级、组员、无关的人不能（C2：只能看、转让）；标题没填取描述前 20 字", async () => {
     expect(await 发布卡点(销售, "nope", 卡)).toMatchObject({ ok: false, error: expect.stringContaining("沟通") });
     const f = await 沟通();
     expect(await 发布卡点(散, f, 卡)).toMatchObject({ ok: false });
     expect(await 发布卡点(虚, f, 卡)).toMatchObject({ ok: false });
-    for (const p of [组长, 总管, 组员]) expect(await 发布卡点(p, f, 卡), p.id).toMatchObject({ ok: false, error: expect.stringContaining("只能看") });
+    for (const p of [组长, 组员]) expect(await 发布卡点(p, f, 卡), p.id).toMatchObject({ ok: false, error: expect.stringContaining("只能看") });
     expect(await 能发卡点(销售, 项目)).toBe(true);
     expect(await 能发卡点(组员, 项目)).toBe(false);
     expect(await 能发卡点(组长, 项目)).toBe(false);
-    expect(await 能发卡点(总管, 项目)).toBe(false);
+    expect(await 能发卡点(总管, 项目)).toBe(true);
     expect(await 能发卡点(散, 项目)).toBe(false);
     expect(await 发布卡点(销售, f, { description: "" })).toMatchObject({ ok: false, error: "写一句卡在哪" });
     const r = await 发布卡点(销售, f, { description: "一二三四五六七八九十一二三四五六七八九十多出来的字" }, now);

@@ -4,7 +4,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
+import { 能管项目, 能加组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -127,10 +127,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 11-01：企业版组员只能看，沟通只有负责人记（和 lib/project/db.ts 记项目沟通 同一个判断）
   const 能记沟通 = 企业 && !公海 && 能改;
   // 沟通的「…」菜单（改 / 删，10-29）：不在公海、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
-  // M-权限-09（11-02）：改 = 负责人（能记沟通 就是负责人），删 = 只有总管理（C3），两样分开给（lib/enterprise/follow-perm.ts）
+  // M-权限-09（11-02）：改 = 负责人（能记沟通 就是负责人），删 = 负责人本人或系统管理员（V3.5.1），两样分开给（lib/enterprise/follow-perm.ts）
   const 沟通能动 = 企业 && !公海 && 露 && !(await 只读客户(defaultClient, p.customer));
   const 可改沟通 = 沟通能动 && 能记沟通;
-  const 可删沟通 = 沟通能动 && (await 能删沟通(me));
+  const 可删沟通 = 沟通能动 && (能删除(me, org, p.ownerId) || (!!p.customerId && (await 能删沟通(me, { customerId: p.customerId }))));
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
   // 「仅上级推」开着：直属上级也给节点这块（服务端只放往前推，往后退、点结局照拦）
@@ -221,8 +221,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase),
-    // 企业版删项目只有总管理（QA #3，进回收站）；别的版本照旧按 能改
-    能删: 企业 ? 能删除(me, org) : 能改,
+    // 企业版删项目：项目负责人本人或系统管理员（V3.5.1，进回收站）；别的版本照旧按 能改
+    能删: 企业 ? 能删除(me, org, 公海 ? null : p.ownerId) : 能改,
+    // 项目组员（V3.5.1）：进了组就能往组里拉人
+    能加组员: 能加组员(me, p, org, 已加入.includes(me.id)),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
     能领取: 公海 && (企业 ? !原负责人领不回 && !拦单独领项目() : me.id !== 上一任),
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户

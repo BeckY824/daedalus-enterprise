@@ -43,14 +43,12 @@ export class 视图只读错误 extends Error {
 }
 
 /**
- * 能不能切换视图：只认业务角色总管理（director）、管理员（admin）——「切换视图应该只有总管理员和系统管理员才可以看到」（11-01）。
- * 账号 ADMIN 不再放行；没设业务角色的不能。菜单（view-as-menu.ts）、action（view-as-actions.ts）、认票（auth.ts）同这一处
+ * 能不能切换视图：只给系统管理员（V3.5.1，11-03）= 业务角色总管理（director）、没设业务线（同 permissions.ts 是系统管理员）。
+ * 条线总管理、管理员只读、账号 ADMIN 都不行。菜单（view-as-menu.ts）、action（view-as-actions.ts）、认票（auth.ts）同这一处
  */
 export function 能切换视图(org: 组织, userId: string): boolean {
   const m = org.成员.get(userId);
-  const 角们 = m?.角色们 ?? [];
-  // 管理员设了业务线（11-02）只看这条线，切视图等于看全部，不给
-  return 角们.includes("director") || (角们.includes("admin") && !m?.line);
+  return !!m && m.角色们.includes("director") && !m.line;
 }
 
 const 钥 = () => new TextEncoder().encode(readSecret());

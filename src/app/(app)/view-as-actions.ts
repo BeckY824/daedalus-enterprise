@@ -20,7 +20,7 @@ export async function 开始视图(userId: string): Promise<视图结果> {
   if (!企业版() || multiTenant()) return { ok: false, error: "这个部署没有切换视图" };
   const 真 = await getSessionUser();
   if (!真) return { ok: false, error: "登录已过期，请重新登录" };
-  if (!能切换视图(await 读组织(), 真.id)) return { ok: false, error: "只有总管理和管理员能切换视图" };
+  if (!能切换视图(await 读组织(), 真.id)) return { ok: false, error: "只有系统管理员能切换视图" };
   if (userId === 真.id) return 退出视图();
   const t = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, active: true } });
   if (!t || !t.active) return { ok: false, error: "这个人不在了或已停用，刷新一下再选" };

@@ -205,13 +205,15 @@ export function ProjectEditModal({
  * 企业版（10-26）= 发邀请，对方在项目列表上点同意才进组；没接受的可以再邀一次；组长 = 项目负责人
  */
 export function ProjectTeamCard({
-  projectId, 组员们, 角色们, 在职, 能改, 忙, 跑, 企业版 = false, 组长,
+  projectId, 组员们, 角色们, 在职, 能改, 能加 = 能改, 忙, 跑, 企业版 = false, 组长,
 }: {
   projectId: string;
   组员们: 组员[];
   角色们: 角色[];
   在职: 可选成员[];
   能改: boolean;
+  /** 能往组里拉人（默认 = 能改；企业版项目组员也能拉，V3.5.1） */
+  能加?: boolean;
   忙: boolean;
   跑: 跑法;
   企业版?: boolean;
@@ -250,7 +252,7 @@ export function ProjectTeamCard({
           )}
         </div>
       ))}
-      {能改 && (
+      {能加 && (
         <Space.Compact style={{ width: "100%", marginTop: 4 }}>
           <Select
             style={{ flex: "1 1 auto", minWidth: 0 }}

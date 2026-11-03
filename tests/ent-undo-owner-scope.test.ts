@@ -152,7 +152,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
 });
 
 describe("企业版转让客户：负责人只转自己的，别人的 / 公海里的找管理（11-02）", () => {
-  const 拦话 = "只能转出自己的客户；别人的找管理、总管理转";
+  const 拦话 = "只能转出自己的或直属下属的客户；别的找系统管理员转";
   it("销售转自己的照常；转同事的、公海里的拦住，负责人不动", async () => {
     const 自己的 = await 客户(小王.id);
     const 同事的 = await 客户(小李.id);
@@ -170,13 +170,15 @@ describe("企业版转让客户：负责人只转自己的，别人的 / 公海�
     expect(await 归谁(又一个.id)).toBe(小王.id);
   });
 
-  it("没设业务角色的转不了自己的；销售管理、总管理转谁的都行", async () => {
+  it("没设业务角色的转不了自己的；销售管理只转直属一级下属的（V3.5.1），系统管理员转谁的都行", async () => {
     const 光杆 = await 建("bare", "SALES");
     const c = await 客户(光杆.id);
     当(光杆);
     expect(await assignSalesOwner([c.id], 小李.id)).toEqual({ ok: false, error: 拦话 });
     当(组长);
-    expect(await assignSalesOwner([c.id], 小李.id)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([c.id], 小李.id)).toEqual({ ok: false, error: 拦话 });
+    const 下属的 = await 客户(小王.id);
+    expect(await assignSalesOwner([下属的.id], 小李.id)).toMatchObject({ ok: true, updated: 1 });
     当(老板);
     expect(await assignSalesOwner([c.id], 小王.id)).toMatchObject({ ok: true, updated: 1 });
   });

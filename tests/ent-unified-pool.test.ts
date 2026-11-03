@@ -309,7 +309,7 @@ describe("无效客户", () => {
     expect(页.行.map((r) => [r.customerId, r.类, r.入池原因])).toEqual([[c, "无效", "客户主动终止"]]);
 
     当(经理);
-    expect(await 恢复有效客户([c])).toEqual({ ok: false, error: "只有总管理能恢复无效客户" });
+    expect(await 恢复有效客户([c])).toEqual({ ok: false, error: "只有系统管理员或回收站副手能恢复无效客户" });
     当(老板);
     expect(await 恢复有效客户([c])).toEqual({ ok: true, updated: 1, unchanged: 0 });
     当(丙);

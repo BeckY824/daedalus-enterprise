@@ -201,6 +201,8 @@ export default async function SettingsBody() {
           线索不设配额: 不设配额,
           市场部门: 市场部门 ?? null,
           市场单设: 市场单设 ?? [],
+          只看某人: Object.fromEntries(org.只看某人 ?? []),
+          回收站副手: [...(org.回收站副手 ?? [])],
         };
       })()
     : null;
@@ -212,7 +214,7 @@ export default async function SettingsBody() {
 
   // 谁能导入只认 import-perm.ts 一处（现在企业版是老板、总管理员），以后放宽只改那里
   const 能导入 = await 能导入导出(me);
-  // 回收站：企业版的老板、主管、管理员（谁能看 / 恢复 / 彻底删除只认 lib/enterprise/soft-delete.ts）
+  // 回收站：企业版的系统管理员、回收站副手（谁能看 / 恢复 / 彻底删除只认 lib/enterprise/soft-delete.ts）
   const 有回收站 = 企业版() && !共享区 && (await 能管回收站(me));
 
   return (
@@ -234,7 +236,8 @@ export default async function SettingsBody() {
       企业版导入={企业版() && !共享区 && 可进 && 能导入}
       /* 不能导入的人那栏永远是空的，不摆 */
       导入记录={能导入 && (!企业版() || 可进)}
-      回收站={有回收站 && 可进}
+      /* 回收站副手（V3.5.1）不是系统管理员、进不了后台设置，回收站这栏照样给；勾了「不管设置」的系统管理员仍跟着「可进」走 */
+      回收站={有回收站 && (可进 || !是总管理(me, 权限org))}
       /* 托管版的登录标识是邮箱（控制面账号按邮箱认，找回密码也靠它）；
          自部署版是用户名，既有账号是 admin / zhangsan 这种，不能改 */
       用邮箱登录={multiTenant()}

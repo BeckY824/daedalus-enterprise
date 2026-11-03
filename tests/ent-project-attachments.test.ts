@@ -170,15 +170,15 @@ describe("企业版项目附件：看 = 看得到项目，传 / 删 = 能改项�
     expect(await 节点()).not.toBe(起);
   });
 
-  it("老板：别人负责的项目传不了（只能看）；负责人传表格之类不是图片的照收", async () => {
-    // 11-01 权限只认业务角色：总管理不能编辑项目内容（C2），附件跟编辑项目一个口径
+  it("老板（系统管理员）：别人负责的项目也能传（V3.5.1）；负责人传表格之类不是图片的照收", async () => {
+    // 附件跟编辑项目一个口径：系统管理员能改所有非公海项目
     作为(老板, "ADMIN");
-    expect((await 传一个(项目id, "老板传.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")).status).toBe(403);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 0, 只读: true });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 0, 只读: false });
+    expect((await 传一个(项目id, "老板传.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")).status).toBe(200);
     作为(乙, "SALES");
     const r = await 传一个(项目id, "报价单.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     expect(r.status).toBe(200);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 1, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 2, 只读: false });
   });
 
   it("同事：列、取得到；传、删 403，附件原样还在；入口只读", async () => {

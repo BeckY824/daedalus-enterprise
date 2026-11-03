@@ -149,7 +149,7 @@ describe("身份", () => {
     expect(x.人们).not.toContain(内甲);
   });
 
-  it("不算看全部、照样只读、设置和切视图都不给；没设线的管理员照旧", async () => {
+  it("不算看全部、照样只读、设置和切视图都不给；没设线的管理员照旧看全部", async () => {
     const org = await 读组织();
     expect(能看全部(我(线管), org)).toBe(false);
     expect(只读角色(我(线管), org)).toBe(true);
@@ -157,8 +157,9 @@ describe("身份", () => {
     expect(能切换视图(org, 线管)).toBe(false);
     expect(能看全部(我(全管), org)).toBe(true);
     expect(只读角色(我(全管), org)).toBe(true);
-    expect(能切换视图(org, 全管)).toBe(true);
-    expect(能切换视图(org, 总)).toBe(true);
+    // V3.5.1：切视图只给系统管理员，没设线的管理员也不行
+    expect(能切换视图(org, 全管)).toBe(false);
+    expect(能切换视图(org, 总)).toBe(false); // 总 设了线 = 条线总管理，也只看不切
   });
 });
 

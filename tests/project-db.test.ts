@@ -555,11 +555,12 @@ describe("企业版项目组：邀请 → 同意 / 拒绝（10-26）", () => {
     expect(await 加组员(乙, p.id, 丙.id)).toMatchObject({ ok: false, error: expect.stringContaining("已经在") });
   });
 
-  it("拉自己直接进组，不用自己点同意；总管理不是负责人，加不了组员（11-01 只有负责人改内容）", async () => {
+  it("拉自己直接进组，不用自己点同意；系统管理员不是负责人也能加组员（V3.5.1 系统管理员全部）", async () => {
     const p = await 项目(乙.id);
-    expect(await 加组员(老板, p.id, 老板.id)).toMatchObject({ ok: false, error: "只有项目负责人能加组员" });
+    expect(await 加组员(丙, p.id, 丙.id)).toMatchObject({ ok: false, error: "只有项目负责人和项目组员能加组员" });
     expect(await 加组员(乙, p.id, 乙.id)).toEqual({ ok: true });
-    expect((await prisma.projectMember.findFirstOrThrow()).inviteStatus).toBe("JOINED");
+    expect((await prisma.projectMember.findFirstOrThrow({ where: { userId: 乙.id } })).inviteStatus).toBe("JOINED");
+    expect(await 加组员(老板, p.id, 老板.id)).toEqual({ ok: true });
   });
 
   it("同意前看不到项目、记不了沟通；同意后看得到（同事客户下的也行），节点变更、组员、沟通跟着放开（只看不改）", async () => {

@@ -137,8 +137,8 @@ const 项目名 = async () => (await raw.project.findUnique({ where: { id: 项�
 const 项目负责人 = async () => (await raw.project.findUnique({ where: { id: 项目.甲的 }, select: { ownerId: true } }))?.ownerId;
 const 客户负责人 = async (id: string) => (await raw.customer.findUnique({ where: { id }, select: { salesOwnerId: true } }))?.salesOwnerId;
 
-describe("编辑项目 · 改名称：只有负责人（规则开、项目模式）", () => {
-  const 表: [谁, boolean][] = [["销售甲", true], ["销售乙", false], ["组长", false], ["老板", false], ["管理员", false], ["没角色", false], ["市场", false]];
+describe("编辑项目 · 改名称：负责人、系统管理员（规则开、项目模式，V3.5.1）", () => {
+  const 表: [谁, boolean][] = [["销售甲", true], ["销售乙", false], ["组长", false], ["老板", true], ["管理员", false], ["没角色", false], ["市场", false]];
   for (const [r, 应] of 表) {
     it(`${r} 改甲的项目名 → ${应 ? "能" : "拒"}`, async () => {
       const x = await 试(r, () => 编辑项目(项目.甲的, { name: `${r}改的` } as never));
@@ -159,8 +159,8 @@ describe("编辑项目 · 改负责人（转让）：负责人转自己的、实
   }
 });
 
-describe("删除项目：只有总管理（含不管设置的）", () => {
-  const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", false], ["组长", false], ["管理员", false], ["没角色", false], ["市场", false]];
+describe("删除项目：总管理（含不管设置的）、负责人本人（V3.5.1 软删）", () => {
+  const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", true], ["销售乙", false], ["组长", false], ["管理员", false], ["没角色", false], ["市场", false]];
   for (const [r, 应] of 表) {
     it(`${r} 删甲的项目 → ${应 ? "能" : "拒"}`, async () => {
       const x = await 试(r, () => 删除项目(项目.甲的));
@@ -189,8 +189,8 @@ describe("assignSalesOwner（客户转让 / 分配）", () => {
   }
 });
 
-describe("deleteCustomers：只有总管理", () => {
-  const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", false], ["组长", false], ["管理员", false], ["没角色", false], ["市场", false], ["多角色", false]];
+describe("deleteCustomers：总管理、负责人本人（V3.5.1 软删）", () => {
+  const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", true], ["销售乙", false], ["组长", false], ["管理员", false], ["没角色", false], ["市场", false], ["多角色", false]];
   for (const [r, 应] of 表) {
     it(`${r} 删甲的客户 → ${应 ? "能" : "拒"}`, async () => {
       const x = await 试(r, () => deleteCustomers([客户.甲的]));

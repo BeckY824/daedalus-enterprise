@@ -3,7 +3,7 @@
 /**
  * 企业版统一公海的两个新动作（2026-10-29，P7）：标无效客户、恢复有效客户。领取照用原来的（客户公海 领取、项目公海 领取项目）。
  * 10-30 交互改版补两个：老板、主管把项目行分给同事（分配公海项目，客户行照用 分配公海）；领 / 分项目行的撤销（撤销公海项目，规则 B）。
- * 规矩：老板、主管能标无效；只有老板能恢复。只认还在客户公海里的客户（项目行的客户归别人，不在这里标）。
+ * 规矩：老板、主管能标无效；恢复 = 系统管理员、回收站副手（V3.5.1）。只认还在客户公海里的客户（项目行的客户归别人，不在这里标）。
  * 先拦权限、再看参数：权限矩阵拿空参数调，得先说「无权」（tests/permissions/matrix.test.ts）
  */
 import { revalidatePath } from "next/cache";
@@ -66,10 +66,10 @@ export async function 标无效客户(ids: string[]): Promise<标记结果> {
   return { ok: true, updated: r.count, unchanged: 们.length - r.count };
 }
 
-/** 只有老板能恢复：清掉无效标记，客户还在公海里，照常能领 */
+/** 系统管理员、回收站副手能恢复：清掉无效标记，客户还在公海里，照常能领 */
 export async function 恢复有效客户(ids: string[]): Promise<标记结果> {
   const me = await requireUser();
-  if (!能恢复(me, await 权限组织())) return { ok: false, error: "只有总管理能恢复无效客户" };
+  if (!能恢复(me, await 权限组织())) return { ok: false, error: "只有系统管理员或回收站副手能恢复无效客户" };
   if (!(await 开着())) return 只企业版项目模式;
   const 们 = 规整ids(ids);
   if (!们.length) return { ok: true, updated: 0, unchanged: 0 };

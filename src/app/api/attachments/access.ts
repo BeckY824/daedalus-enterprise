@@ -32,7 +32,7 @@ export function 读归属(q: URLSearchParams): 归属 | null {
  * 项目（企业版、项目模式开着）不走客户那条：看 = 看得到项目且露客户（公海里同事客户的项目，客户信息都不给，附件也不给）；
  * 改 = 能管项目（负责人、老板、主管），和编辑项目一个口径。
  * 沟通记录（企业版、项目模式开着，只认挂在项目上的沟通）：看 = 看得到那个项目；传 = 能改这条沟通的（负责人）或记这条的本人（还能记沟通）；
- * 删 = 只有总管理（M-权限-09 / C3，附件跟着沟通同一个口径）。
+ * 删 = 负责人本人或系统管理员（V3.5.1，附件跟着沟通同一个口径）。
  * 返回给日志用的一句「商机「xx」」，不行就回一句人话
  */
 export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Promise<{ 叫法: string } | { 错: string; 状态: number }> {
@@ -69,15 +69,14 @@ export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Pro
   return { 叫法 };
 }
 
-/** 企业版商机 / 线索 / 联系人附件（11-02）：没业务角色不能动；删只给总管理；传跟着改客户走（负责人，公海里先领） */
+/** 企业版商机 / 线索 / 联系人附件（11-02）：没业务角色不能动；删 = 客户负责人本人或系统管理员（V3.5.1）；传跟着改客户走（负责人，公海里先领） */
 async function 企业版改附件挡(要改: true | "删", 客户: string | null): Promise<string | null> {
   const 我 = await getCurrentUser();
   if (!我) return "请先登录";
   const org = await 权限组织();
   if (!org || 没设业务角色(org, 我.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
-  if (要改 === "删") return 能删除(我, org) ? null : 只有总管理能删话;
-  if (!客户) return null;
-  const c = await defaultClient.customer.findUnique({ where: { id: 客户 }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+  const c = 客户 ? await defaultClient.customer.findUnique({ where: { id: 客户 }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }) : null;
+  if (要改 === "删") return 能删除(我, org, c && !c.pool ? c.salesOwnerId : null) ? null : 只有总管理能删话;
   if (!c) return null;
   if (c.pool) return "这位客户在公海里，先领取再改";
   return 能改客户(我, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : "只有负责人能改附件";
@@ -98,7 +97,7 @@ async function 认项目(projectId: string, 要改: boolean): Promise<{ 叫法: 
 
 /**
  * 沟通记录的截图、录音（F-跟进-07）：沟通记录要挂在一个项目上，先按项目认「看」，再看能不能传、能不能删。
- * 传：能改这条沟通（负责人，11-02），或这条是自己记的且自己还能在这个项目上记沟通；删：只有总管理
+ * 传：能改这条沟通（负责人，11-02），或这条是自己记的且自己还能在这个项目上记沟通；删：负责人本人或系统管理员
  */
 async function 认沟通(followUpId: string, 要改: boolean | "删"): Promise<{ 叫法: string } | { 错: string; 状态: number }> {
   if (!企业版() || (await getBusiness()).projectMode !== true) return { 错: "此版本未开放沟通记录附件", 状态: 404 };
@@ -112,7 +111,7 @@ async function 认沟通(followUpId: string, 要改: boolean | "删"): Promise<{
   if ("错" in 看) return 看;
   const 叫法 = `${看.叫法}的沟通记录`;
   if (!要改) return { 叫法 };
-  if (要改 === "删") return (await 能删沟通(我)) ? { 叫法 } : { 错: 不能删沟通话, 状态: 403 };
+  if (要改 === "删") return (await 能删沟通(我, { customerId: f.customerId, id: f.id })) ? { 叫法 } : { 错: 不能删沟通话, 状态: 403 };
   if (await 能改这条沟通(我, { customerId: f.customerId, id: f.id })) return { 叫法 };
   if (f.ownerId !== 我.id) return { 错: "只有负责人或记这条沟通的人能传附件", 状态: 403 };
   const p = await prisma.project.findFirst({ where: { id: 挂.projectId }, select: { id: true, ownerId: true, pooledAt: true } });

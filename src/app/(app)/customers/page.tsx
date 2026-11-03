@@ -18,7 +18,7 @@ import { defaultClient } from "@/lib/prisma";
 import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能删除 } from "@/lib/enterprise/permissions";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -134,6 +134,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
 
   // 这一页的行和页面上别的几样互不依赖，一次并起来取（10-29 提速：原来行取完以后再一个个 await，十来次往返串着）
   const 企 = 企业版();
+  const 删权限org = 企 ? await 权限组织() : null;
   const 行P = 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
       where: where!,
       orderBy: 等级排序
@@ -191,8 +192,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       能分配公海={能管公海(me, await 权限组织())}
       能转出自己的={能转出自己的(me, await 权限组织())}
       能导入导出={可导入导出}
-      // 企业版只有总管理能删（11-03 C2-1）：别的角色不摆删除，原来点了才弹「只有总管理能删除」
+      // 企业版能删的角色才摆删除（V3.5.1：系统管理员；销售、销管、渠运删自己负责的），不是自己负责的行不摆
       能删={(await 删除挡(me)) == null}
+      删不了ids={企 ? rows.filter((r) => !能删除(me, 删权限org, r.pool ? null : r.salesOwnerId)).map((r) => r.id) : []}
       负责人只能自己={只给自己}
       rows={rows.map((r) => 成客户行(r, 号))}
       total={total}

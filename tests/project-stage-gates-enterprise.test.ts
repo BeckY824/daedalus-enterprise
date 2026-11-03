@@ -40,7 +40,7 @@ describe("企业版三大阶段的门", () => {
     老板 = await 人("boss", "ADMIN");
     乙 = await 人("yi", "SALES");
     客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 乙.id } })).id;
-    // 11-01 权限只认业务角色：老板 = 总管理（只能看、转让，改不了进程），乙 = 销售（项目负责人）
+    // 老板 = 系统管理员（director、没设业务线），乙 = 销售（项目负责人）；门都按负责人乙测
     await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id }] });
     vi.stubEnv("CRM_ENTERPRISE", "1");
   });
@@ -77,14 +77,13 @@ describe("企业版三大阶段的门", () => {
 
   describe("有效线索要至少一条有效沟通", () => {
     it("手动往前推过线索验证：没有有效沟通拦（负责人也拦）；没明确回复的不算；记了明确回复的就能推", async () => {
-      // 11-01 权限只认业务角色：总管理改不了进程，原来「老板也拦」改成负责人乙推、被门拦；老板另断言被权限拦
+      // 11-01 权限只认业务角色：总管理改不了进程，原来「老板也拦」改成负责人乙推、被门拦（V3.5.1 老板是系统管理员，能改进程，见 project-node-direct-mgr）
       const p = await 项目({ node: "线索验证" });
       expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺有效沟通 });
       expect(await 记项目沟通(乙, p.id, 沟通({ 阶段: "线索", 明确回复: false }))).toMatchObject({ ok: true });
       expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 缺有效沟通 });
       expect((await 现(p.id)).node).toBe("线索验证");
       expect(await 记项目沟通(乙, p.id, 沟通({ 阶段: "线索", 明确回复: true }))).toMatchObject({ ok: true });
-      expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: false, error: "只有项目负责人能改进程（上级、总管理只能看、转让）" });
       expect(await 改节点(乙, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
     });
 

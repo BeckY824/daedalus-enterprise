@@ -1,35 +1,29 @@
 /**
- * 企业版权限：只认业务角色（2026-11-01 用户定）。
+ * 企业版权限：只认业务角色（2026-11-01 用户定），规则按《CRM权限方案终版 V3.5.1》+《权限表反馈》（11-03）。
  *
- *   「账号只保持姓名，角色才是他们的实际权限。例如账号：某某，角色：销售管理。这就结束了」
- *   「兜底不留，没设业务角色就没权限。」
+ *   「账号只保持姓名，角色才是他们的实际权限。」「兜底不留，没设业务角色就没权限。」
  *
- * 所以这里不看账号角色（User.role 的 ADMIN / MANAGER），只看组织里的业务角色（EntMember.bizRole，可多选，org-core.ts 角色们）。
- * 没设业务角色 = 下面每个动作都拒。页面、接口都调这几个函数，别各自再写一遍角色判断。
+ * 不看账号角色（User.role），只看 EntMember.bizRole（可多选，org-core.ts 角色们）。页面、接口都调这里，别各自再写一遍角色判断。
  *
- * 规则（会议 §4 + 11-01 拍板）：
- *   - 总管理（director）：看全部；能转让、重新分配，但**不能编辑项目内容**（字段、节点推进、沟通）；
- *     只有总管理能删除、能在回收站恢复（C3、C4）；能进设置，勾了「不管设置」的进不了（C1），其余照旧
- *   - 管理员（admin，11-01 晚定）：「可以看所有。但不能做任何编辑」——看全部、任何写都拒（客户、项目、线索、沟通、待办、卡点、
- *     设置、分配、删除、导入）。设置页能看不能改；组织架构、业务角色的分配只有总管理能做。兼了别的角色也只读（总管理除外）。
- *     服务端统一拦在 lib/team-scope.ts 加上限定（同切换视图那一层），见 只读角色
- *   - 管理员又设了业务线（11-02）：照样一律不能改，但只看这条线——负责人或创建人是这条线的成员或下属、标签是这条线、公海；
- *     进不了设置、切换不了视图。见 line-viewer.ts、只读按线
- *   - 切换视图：只有总管理、管理员（11-01 晚定）
- *   - 销售（sales / sales_mgr）：自己是负责人的项目能看、能编辑；只是创建人不是负责人 = 没有任何权限
- *   - 市场（marketing_mgr / channel_ops）：自己创建的项目只能看
- *   - 管理（直属上级，含销售管理）：看自己的 + 下属的（实线整条链；虚线下属只能看），能转让、重新分配，不能编辑内容（C2）；
- *     自己当负责人的按负责人规则
- *   - 分配线索：市场管理、销售管理、总管理（A7）
- *   - 管理类成员看别人的项目再按自己的业务线（EntMember.line）过滤：外贸只看外贸、内贸只看内贸、没设不限
- *   - 被邀请进项目、点了同意的组员（项目运营部、营销企划部这类）：能看、不能编辑
+ * 四权（看 / 编 / 转 / 删）：
+ *   - 系统管理员（director、没设业务线）：全部；软删、真删、回收站；切换视角、后台设置、导入导出、成员管理只给他
+ *   - 条线总管理（director 又设了业务线）：看本线人员名下全部；不能编辑；条线内能转让；不能删（line-viewer.ts 条线范围of）
+ *   - 销管（sales_mgr）：看实线下属整条链 + 自己 + 公海；只编辑自己负责的；转让直属一级（同业务线）；自己负责的能软删
+ *   - 销售（sales）：自己 + 公海；编辑、转让、软删自己负责的
+ *   - 市管（marketing_mgr）：看实线下属 + 公海；不编辑；转让直属一级；不删
+ *   - 项目组员（project_ops）：看加入的项目；被指定为负责人才能编辑；不转、不删
+ *   - 渠运（channel_ops）：本人负责的能看、编、软删，成熟后转出给销售；自己创建的客户一直看得到（market.ts）；不领公海
+ *   - 设了「只看某人」的（org.只看某人，V3.5.1 市管特例）：业务数据只看 那个人 = 创建人或负责人 的，公海照常；不当负责人、不编、不转、不删
+ *   - 管理员只读（admin、不兼 director）：看全部（设了业务线只看这条线，line-viewer.ts）；什么都不能改，服务端统一拦在 team-scope
+ *   - 没设角色 / 停用：只看公海
+ * 转让白名单（四选一）：负责人本人、实线直属上级（只一级）、条线总管理（条线内）、系统管理员。
+ * 领公海：销售、销管、条线总管理、系统管理员。回收站：系统管理员 + 回收站副手（org.回收站副手）。
  *
- * 不是企业版（团队版 / 老测试，这个仓库已不部署）按老规矩（账号角色）走，见 老；
- * 企业版里 org 传 null 一律拒，不留后门。org 用 org.ts 的 权限组织() 读。
+ * 不是企业版（这个仓库已不部署）按老规矩（账号角色）走，见 老；企业版里 org 传 null 一律拒。org 用 org.ts 的 权限组织() 读。
  */
 import type { 业务角色, 业务线 } from "@/lib/sync/dept-policy";
 import { 项目业务线 } from "./assign-line";
-import { 按线的线, 按线范围of } from "./line-viewer";
+import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
 import { 实线下属, 虚线下属, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
 
@@ -37,19 +31,26 @@ export type 谁 = { id: string; role?: string | null };
 /** 判权限用到的项目字段。已加入 = 点了同意（inviteStatus = JOINED）的组员 userId */
 export type 权限项目 = { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; bizLine?: string | null; 已加入?: readonly string[] };
 
-/** 总管理：能管全公司（转让、删除、恢复、设置）。11-01 晚起不含 admin（admin 只读） */
-const 总管理角色: readonly 业务角色[] = ["director"];
-/** 看全部：总管理 + 管理员（只读） */
-const 看全部角色: readonly 业务角色[] = ["director", "admin"];
-/** 负责人规则能编辑的角色 */
-const 负责人角色: readonly 业务角色[] = ["sales", "sales_mgr"];
+/** 负责人规则能编辑的角色：销售、销管、渠运，项目组员被指定为负责人时也能（V3.5.1） */
+const 可编辑角色: readonly 业务角色[] = ["sales", "sales_mgr", "channel_ops", "project_ops"];
+/** 能转出、软删自己名下的：销售、销管、渠运（项目组员不能） */
+const 负责人角色: readonly 业务角色[] = ["sales", "sales_mgr", "channel_ops"];
 /** 「市场」：自己创建的项目只能看 */
 const 市场角色: readonly 业务角色[] = ["marketing_mgr", "channel_ops"];
 /** 能分配线索（A7） */
 const 分线索角色: readonly 业务角色[] = ["director", "sales_mgr", "marketing_mgr"];
+/** 领公海（V3.5.1）：销售、销管、条线总管理、系统管理员 */
+const 领公海角色: readonly 业务角色[] = ["sales", "sales_mgr", "director"];
 
 const 角色们 = (org: 组织, id: string): readonly 业务角色[] => org.成员.get(id)?.角色们 ?? [];
 const 有 = (org: 组织, id: string, 们: readonly 业务角色[]) => 角色们(org, id).some((r) => 们.includes(r));
+
+/** 设了「只看某人」（V3.5.1 市管特例）：回那个人的 id；没设 null。企业版里才有 */
+export function 只看的人(org: 组织 | null, id: string): string | null {
+  return (!老() && org?.只看某人?.get(id)) || null;
+}
+/** 设了「只看某人」的人写的时候那一句 */
+export const 只看某人话 = "你设了「只看某人」，只能看，不能改";
 
 /**
  * 不是企业版时的老规矩（团队版 / 老测试）：账号 ADMIN / MANAGER 放行，org 传不传都不看。
@@ -64,16 +65,23 @@ export function 没设业务角色(org: 组织 | null, userId: string): boolean 
   return !org || 角色们(org, userId).length === 0;
 }
 
-/** 总管理（director）：企业版问「能不能管全公司」都调这个。只问「看不看得到全部」用 能看全部 */
-export function 是总管理(me: 谁, org: 组织 | null): boolean {
+/**
+ * 系统管理员（V3.5.1）：业务角色总管理（director）、没设业务线。设了业务线的总管理是条线总管理，不算（line-viewer.ts 条线的线）。
+ * 企业版问「能不能管全公司」（真删、回收站、设置、切换视角、导入导出、成员管理）都调这个。只问「看不看得到全部」用 能看全部
+ */
+export function 是系统管理员(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老板(me);
-  return !!org && 有(org, me.id, 总管理角色);
+  const m = org?.成员.get(me.id);
+  return !!m && m.角色们.includes("director") && !m.line;
 }
 
-/** 能看全部：总管理、没设业务线的管理员（admin 只读）。老规矩 = 账号 ADMIN / MANAGER */
+/** 老名字：等于 是系统管理员（V3.5.1 起条线总管理不在内） */
+export const 是总管理 = 是系统管理员;
+
+/** 能看全部：系统管理员、没设业务线的管理员（admin 只读）。条线总管理只看本线（条线范围of）。老规矩 = 账号 ADMIN / MANAGER */
 export function 能看全部(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老管(me);
-  return !!org && 有(org, me.id, 看全部角色) && !按线的线(org, me.id);
+  return !!org && (是系统管理员(me, org) || (只读角色(me, org) && !按线的线(org, me.id)));
 }
 
 /** 管理员设了业务线（11-02）：只看这条线，回这条线；别的情况 null。写一律拒，同 只读角色 */
@@ -87,7 +95,7 @@ export function 只读按线(me: 谁, org: 组织 | null): 业务线 | null {
  * 不是企业版没有这个角色
  */
 export function 只读角色(me: 谁, org: 组织 | null): boolean {
-  return !老() && !!org && 有(org, me.id, ["admin"]) && !有(org, me.id, 总管理角色);
+  return !老() && !!org && 有(org, me.id, ["admin"]) && !有(org, me.id, ["director"]);
 }
 /** 只读角色写的时候那一句 */
 export const 只读角色话 = "管理员只能看，不能改任何数据";
@@ -104,10 +112,13 @@ export function 不能当负责人话(org: 组织 | null, userId: string): strin
   if (老()) return null;
   if (没设业务角色(org, userId)) return "该成员还没设业务角色，不能当负责人，请找总管理设置";
   if (只读角色({ id: userId }, org)) return "管理员只读，不能当负责人";
+  if (只看的人(org, userId)) return "设了「只看某人」的成员只能看，不能当负责人";
   return null;
 }
 /** 没设业务角色的领公海（11-03 用户定：无法领）。账号的 ADMIN / MANAGER 不算；别人分给他不在此列 */
 export const 没业务角色不能领话 = "还没设业务角色，不能领公海里的客户和项目，请找总管理设置";
+/** 有业务角色、但这个角色不领公海（市管、渠运、项目组员、只看某人的，V3.5.1）时那一句 */
+export const 不能领公海话 = "你的角色不能领公海里的客户和项目，请找销售或销售管理";
 /** 没设业务角色的新建项目：五种分配方式一样都用不了（assign-use 能用分配方式），向导入口和服务端都说这句（11-03 D3-6） */
 export const 没业务角色不能新建话 = "还没设业务角色，不能新建项目，请找总管理设置";
 
@@ -135,10 +146,6 @@ export function 业务线放行(org: 组织, 我: string, p: { ownerId: string }
   return !线 || 线 === 我线;
 }
 
-/** 负责人在不在我手下（实线下属整条链），且业务线对得上：管理转让、重新分配按这个 */
-function 实线管得到(org: 组织, 我: string, ownerId: string): boolean {
-  return 实线下属(org, 我).has(ownerId) && 业务线放行(org, 我, { ownerId });
-}
 /** 只看：实线下属（业务线对得上）+ 虚线下属（虚线只能看，D-39；虚线是专门跨线配的，不按业务线滤） */
 function 看得到下属的(org: 组织, 我: string, ownerId: string): boolean {
   if (实线下属(org, 我).has(ownerId) && 业务线放行(org, 我, { ownerId })) return true;
@@ -149,12 +156,18 @@ function 看得到下属的(org: 组织, 我: string, ownerId: string): boolean 
 /** 看：项目详情、列表里露不露 */
 export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): boolean {
   if (老()) return 老管(me) || me.id === p.ownerId || !!p.pooledAt;
-  if (!org || 没设业务角色(org, me.id)) return false;
+  // 没设角色：只看公海（V3.5.1）
+  if (!org || 没设业务角色(org, me.id)) return !老() && !!org && !!p.pooledAt;
+  // 只看某人：那个人（和自己）是负责人或创建人的，加上公海
+  const 目标 = 只看的人(org, me.id);
+  if (目标) return !!p.pooledAt || [目标, me.id].some((x) => x === p.ownerId || x === p.creatorId);
   if (能看全部(me, org)) return true;
   // 项目公海：谁都看得到才能领（历史负责人不能领、不能看另由公海那条规则管）
   if (p.pooledAt) return true;
   if (p.ownerId === me.id) return true;
   if (p.已加入?.includes(me.id)) return true;
+  const 条线 = 条线范围of(org, me.id);
+  if (条线 && (条线.人们.includes(p.ownerId) || (!!p.creatorId && 条线.人们.includes(p.creatorId)))) return true;
   const 按线 = 按线范围of(org, me.id);
   if (按线) return 按线.人们.includes(p.ownerId) || (!!p.creatorId && 按线.人们.includes(p.creatorId)) || 项目业务线(p, org.成员) === 按线.线;
   if (p.creatorId === me.id && 有(org, me.id, 市场角色)) return true;
@@ -162,49 +175,71 @@ export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): bool
 }
 
 /**
- * 编辑项目内容（字段、节点推进、沟通、交付勾选、组员）：只有负责人本人，且负责人得是销售 / 销售管理。
- * 总管理、上级、市场、组员都只能看（C2）。公海里的项目没有负责人：谁都改不了，先领
+ * 编辑项目内容（字段、节点推进、沟通、交付勾选、组员）：系统管理员；或负责人本人，且是销售 / 销管 / 项目组员（V3.5.1）。
+ * 条线总管理、上级、市场、管理员只读都只能看。公海里的项目没有负责人：谁都改不了，先领
  */
 export function 能编辑项目(me: 谁, p: 权限项目, org: 组织 | null): boolean {
   if (老()) return 老管(me) || (!p.pooledAt && me.id === p.ownerId);
-  if (!org || p.pooledAt || 只读角色(me, org)) return false;
-  return p.ownerId === me.id && 有(org, me.id, 负责人角色);
+  if (!org || p.pooledAt || 只读角色(me, org) || 只看的人(org, me.id)) return false;
+  if (是系统管理员(me, org)) return true;
+  return p.ownerId === me.id && 能按负责人编辑(org, me.id);
+}
+
+/** 负责人本人能不能改自己名下的：销售、销管、项目组员；条线总管理不行（V3.5.1「编 不可」） */
+function 能按负责人编辑(org: 组织, id: string): boolean {
+  return 有(org, id, 可编辑角色) && !条线范围of(org, id);
 }
 
 /**
- * 转让、重新分配负责人（含公海里的项目指给人）：总管理；负责人的实线上级（业务线对得上）；
- * 负责人本人转出自己的项目（11-02：「负责人自己转出也可以，前提是自己的项目」）。
- * 公海里的项目原负责人已清掉，按「销售管理 + 业务线」放行
+ * 转让、重新分配负责人（含公海里的项目指给人）。白名单四选一（V3.5.1）：
+ *   负责人本人（销售、销管）、实线直属上级（只一级，业务线对得上）、条线总管理（条线内）、系统管理员。
+ * 公海里的项目原负责人已清掉，按「能管公海 + 业务线」放行
  */
 export function 能转让项目(me: 谁, p: 权限项目, org: 组织 | null): boolean {
   if (老()) return 老管(me) || (!p.pooledAt && me.id === p.ownerId);
-  if (!org || 只读角色(me, org)) return false;
-  if (有(org, me.id, 总管理角色)) return true;
-  if (能编辑项目(me, p, org)) return true;
-  if (p.pooledAt) return 有(org, me.id, ["sales_mgr"]) && 业务线放行(org, me.id, p);
-  return 实线管得到(org, me.id, p.ownerId);
+  if (!org || 只读角色(me, org) || 没设业务角色(org, me.id) || 只看的人(org, me.id)) return false;
+  if (是系统管理员(me, org)) return true;
+  if (p.pooledAt) return 能管公海(me, org) && 业务线放行(org, me.id, p);
+  return 能转让名下(me, p.ownerId, org);
 }
 
-/** 负责人转出自己的客户（11-02，同 能转让项目 的负责人本人）：销售、销售管理；转的是不是他自己的、在不在公海，调用处查 */
+/** 负责人是 ownerId 的东西（项目、客户）我能不能转给别人：负责人本人、直属一级上级、条线总管理。系统管理员、只读调用前已判 */
+function 能转让名下(me: 谁, ownerId: string, org: 组织): boolean {
+  if (ownerId === me.id) return 能转出自己的(me, org);
+  if (实线下属(org, me.id, 1).has(ownerId) && 业务线放行(org, me.id, { ownerId })) return true;
+  return !!条线范围of(org, me.id)?.人们.includes(ownerId);
+}
+
+/** 负责人转出自己的（同 能转让项目 的负责人本人）：销售、销管、渠运；项目组员不能转。转的是不是他自己的、在不在公海，调用处查 */
 export function 能转出自己的(me: 谁, org: 组织 | null): boolean {
   if (老()) return true;
-  return !!org && !只读角色(me, org) && 有(org, me.id, 负责人角色);
+  return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, 负责人角色);
+}
+
+/** 转让客户（客户详情「转给」、批量转让）：同项目的白名单；公海里的客户走公海分配（能管公海） */
+export function 能转让客户(me: 谁, c: { salesOwnerId: string | null; 在公海: boolean }, org: 组织 | null): boolean {
+  if (老()) return true;
+  if (!org || 只读角色(me, org) || 没设业务角色(org, me.id) || 只看的人(org, me.id)) return false;
+  if (是系统管理员(me, org)) return true;
+  if (c.在公海 || !c.salesOwnerId) return 能管公海(me, org);
+  return 能转让名下(me, c.salesOwnerId, org);
 }
 
 /**
- * 改客户详情（字段、行内改一格、编辑客户）：同项目，只有负责人本人，且是销售 / 销售管理（11-02「负责人都可以对其中的内容进行编辑」）。
- * 公海里的客户谁都改不了，先领；还没负责人的（不在公海）给能管公海的（总管理、销售管理）。上级、总管理只看、只转让（C2）
+ * 改客户详情（字段、行内改一格、编辑客户）：同项目——系统管理员；或负责人本人且是销售 / 销管 / 项目组员。
+ * 公海里的客户谁都改不了，先领；还没负责人的（不在公海）给能管公海的（系统管理员、销管）
  */
 export function 能改客户(me: 谁, c: { salesOwnerId: string | null; 在公海: boolean }, org: 组织 | null): boolean {
   if (老()) return true;
-  if (!org || c.在公海 || 只读角色(me, org)) return false;
+  if (!org || c.在公海 || 只读角色(me, org) || 只看的人(org, me.id)) return false;
+  if (是系统管理员(me, org)) return true;
   if (!c.salesOwnerId) return 能管公海(me, org);
-  return c.salesOwnerId === me.id && 有(org, me.id, 负责人角色);
+  return c.salesOwnerId === me.id && 能按负责人编辑(org, me.id);
 }
 
-/** 放回公海：负责人本人（能编辑的），或能转让的（老板、主管也能退回公海 #137 → 总管理、上级） */
+/** 放回公海：能转让的才能放回（负责人本人、直属一级上级、条线总管理、系统管理员） */
 export function 能放回公海(me: 谁, p: 权限项目, org: 组织 | null): boolean {
-  return !p.pooledAt && (能编辑项目(me, p, org) || 能转让项目(me, p, org));
+  return !p.pooledAt && 能转让项目(me, p, org);
 }
 
 /** 分配线索（A7）：市场管理、销售管理、总管理 */
@@ -215,33 +250,58 @@ export function 能分配线索(me: 谁, org: 组织 | null): boolean {
 
 /**
  * 公海：分给同事、撤销分配、把别人的客户放回公海、标无效客户（原 constants.ts 管全队客户 = 账号 ADMIN / MANAGER）：
- * 总管理、销售管理。恢复无效客户另走 能恢复（只有总管理，C4）
+ * 总管理（系统管理员、条线总管理）、销售管理。恢复无效客户另走 能恢复
  */
 export function 能管公海(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老管(me);
   return !!org && !只读角色(me, org) && 有(org, me.id, ["director", "sales_mgr"]);
 }
 
-/** 删除（客户、联系人、项目、线索、沟通记录进回收站；彻底删除）：只有总管理 director（C3；管理员 admin 只读，不能删） */
-export function 能删除(me: 谁, org: 组织 | null): boolean {
-  return 是总管理(me, org);
+/**
+ * 软删（客户、联系人、项目、线索、沟通记录进回收站）：系统管理员；销售、销管、渠运删自己负责的（V3.5.1）。
+ * 条线总管理、市管、项目组员、管理员只读、只看某人的不能删。负责人 = 这一行的负责人（客户 salesOwnerId、项目 ownerId）；
+ * 跟进、附件这类挂在项目 / 客户下的，传它所属那一行的负责人
+ */
+export function 能删除(me: 谁, org: 组织 | null, 负责人: string | null | undefined): boolean {
+  if (老()) return 老板(me);
+  if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return false;
+  if (是系统管理员(me, org)) return true;
+  return !!负责人 && 负责人 === me.id && 有(org, me.id, 负责人角色) && !条线范围of(org, me.id);
 }
 
-/** 回收站：看、恢复，公海里恢复无效客户：只有总管理（C4） */
+/** 列表上摆不摆删除按钮（批量删）：有可能删得了任何一行的人。每行删不删得了，服务端再按 能删除 逐行判 */
+export function 能删一些(me: 谁, org: 组织 | null): boolean {
+  if (老()) return 老板(me);
+  if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return false;
+  return 是系统管理员(me, org) || (有(org, me.id, 负责人角色) && !条线范围of(org, me.id));
+}
+
+/** 真删（回收站里彻底删除、清空回收站）：只有系统管理员 */
+export function 能真删(me: 谁, org: 组织 | null): boolean {
+  return 是系统管理员(me, org);
+}
+
+/** 回收站：看、恢复，公海里恢复无效客户：系统管理员 + 回收站副手（V3.5.1） */
 export function 能恢复(me: 谁, org: 组织 | null): boolean {
-  return 是总管理(me, org);
+  if (是系统管理员(me, org)) return true;
+  return !老() && !!org?.成员.has(me.id) && !!org.回收站副手?.has(me.id);
 }
 
-/** 进设置页（看）：总管理、管理员（只读看），勾了「不管设置」的不行（C1） */
+/** 领公海（V3.5.1）：销售、销管、条线总管理、系统管理员；管理员只读、市管、项目组员、没设角色的不能领 */
+export function 能领公海(me: 谁, org: 组织 | null): boolean {
+  if (老()) return true;
+  return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, 领公海角色);
+}
+
+/** 进设置页：只有系统管理员（V3.5.1 后台设置只给系统管理员），勾了「不管设置」的不行（C1） */
 export function 能进设置(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老板(me);
-  return !!org && 有(org, me.id, 看全部角色) && !按线的线(org, me.id) && !org.成员.get(me.id)?.不管设置;
+  return 是系统管理员(me, org) && !org?.成员.get(me.id)?.不管设置;
 }
 
-/** 改后台设置（含组织架构、业务角色分配）：只有总管理 director，勾了「不管设置」的不行（C1）。管理员能进设置页看、不能改 */
+/** 改后台设置（含组织架构、业务角色分配）：同 能进设置 */
 export function 能改后台设置(me: 谁, org: 组织 | null): boolean {
-  if (老()) return 老板(me);
-  return !!org && 有(org, me.id, 总管理角色) && !org.成员.get(me.id)?.不管设置;
+  return 能进设置(me, org);
 }
 
 /**

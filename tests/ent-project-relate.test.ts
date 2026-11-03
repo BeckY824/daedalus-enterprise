@@ -150,13 +150,12 @@ describe("项目关联客户 / 联系人（真库、企业字典）", () => {
     expect(await 客户行(总包id)).toBeNull();
   });
 
-  it("谁能改同改项目：同事、老板改不了；公海里的先领取；库里不动", async () => {
+  it("谁能改同改项目：同事改不了、老板（系统管理员）能改；公海里的先领取；库里不动", async () => {
     expect(await 加关联客户(丙, 项目id, 总包id)).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
     expect(await 客户行(总包id)).toBeNull();
-    // 11-01 权限只认业务角色：总管理不能编辑项目内容（C2），只有负责人本人能加关联
-    expect(await 加关联客户(老板, 项目id, 总包id, ["总包方"])).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
-    expect(await 客户行(总包id)).toBeNull();
-    expect(await 加关联客户(乙, 项目id, 总包id, ["总包方"])).toMatchObject({ ok: true });
+    // V3.5.1：系统管理员能改所有非公海项目
+    expect(await 加关联客户(老板, 项目id, 总包id, ["总包方"])).toMatchObject({ ok: true });
+    expect(await 客户行(总包id)).not.toBeNull();
     expect(await 改客户身份(丙, 项目id, 总包id, ["分包方"])).toMatchObject({ ok: false });
     expect(await 解除关联客户(丙, 项目id, 总包id)).toMatchObject({ ok: false });
     expect(await 加关联联系人(丙, 项目id, 张三id)).toMatchObject({ ok: false });

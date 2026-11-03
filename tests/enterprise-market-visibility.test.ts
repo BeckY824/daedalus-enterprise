@@ -223,8 +223,8 @@ describe("默认市场部门（名字带「市场」）", () => {
 
   it("市场管理：所有市场成员相关的都看得到（停用的人不算），只能看", async () => {
     expect(await 名单(市场经理)).toEqual(["A小市建的", "B小场负责项目", "E小市负责的", "H小场建过项目"]);
-    // 11-01 权限只认业务角色：企业版项目不跟客户走，市场这边只看市场成员建的项目；小场负责、销售建的 PB 市场管理看不到（小场自己负责照样看）
-    expect(await 项目名单(市场经理)).toEqual(["PA小市建的", "PH小场建的"]);
+    // V3.5.1：市场成员建的、负责的项目都看得到（客户 B 因小场负责项目而看得到，项目本身也看得到），只能看
+    expect(await 项目名单(市场经理)).toEqual(["PA小市建的", "PB小场负责的", "PH小场建的"]);
     const a = await 客户("A小市建的");
     expect(await 作为(市场经理, () => 只读客户(raw, a))).toBe("全");
     await expect(作为(市场经理, () => db.customer.update({ where: { id: a.id }, data: { major: "x" } }))).rejects.toThrow(/市场成员/);
@@ -236,7 +236,8 @@ describe("默认市场部门（名字带「市场」）", () => {
     const a = await 客户("A小市建的");
     await 作为(销售, () => db.customer.update({ where: { id: a.id }, data: { remark: "销售改的" } }));
     expect(await 名单(外人)).toEqual([]);
-    expect(await 名单(品宣)).toEqual([]);
+    // V3.5.1：渠运自己创建的客户永久可见（不算市场成员也一样）
+    expect(await 名单(品宣)).toEqual(["D品宣建的"]);
     expect(await 作为(外人, () => 有市场只读(raw))).toBe(false);
   });
 
@@ -255,15 +256,17 @@ describe("手动设的市场部门", () => {
     const d = await 客户("D品宣建的");
     expect(await 作为(品宣, () => 只读客户(raw, d))).toBe("全");
     await expect(作为(品宣, () => db.customer.update({ where: { id: d.id }, data: { major: "x" } }))).rejects.toThrow(/市场成员/);
-    expect(await 名单(小市)).toEqual(["E小市负责的"]);
-    expect(await 名单(小场)).toEqual([]);
+    // 不算市场成员了：自己负责的、渠运自己建的（V3.5.1 永久可见）、自己负责 / 建的项目挂着的客户照样看得到
+    expect(await 名单(小市)).toEqual(["A小市建的", "E小市负责的"]);
+    expect(await 名单(小场)).toEqual(["B小场负责项目", "H小场建过项目"]);
     expect(await 名单(市场经理)).toEqual(["D品宣建的"]);
   });
 
   it("设成下级部门：只算这一组（连它的下级）", async () => {
     await 设市场([部.市场一组]);
     expect(await 名单(小市)).toEqual(["A小市建的", "E小市负责的"]);
-    expect(await 名单(小场)).toEqual([]);
+    // 小场不算市场成员了，自己负责 / 建的项目挂着的客户照样看得到（V3.5.1）
+    expect(await 名单(小场)).toEqual(["B小场负责项目", "H小场建过项目"]);
   });
 });
 
@@ -335,6 +338,6 @@ describe("设市场部门：只有老板和总管理员能改", () => {
     expect(await 设市场部门([], "x")).toMatchObject({ ok: false });
     expect(await 设市场部门([], [])).toEqual({ ok: true });
     expect(JSON.parse((await raw.setting.findUniqueOrThrow({ where: { key: 市场成员key } })).value)).toBeNull();
-    expect(await 名单(品宣)).toEqual([]);
+    expect(await 名单(品宣)).toEqual(["D品宣建的"]); // 渠运自己建的永久可见（V3.5.1）
   });
 });

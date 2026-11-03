@@ -21,7 +21,50 @@ export type 组织成员 = {
   不管设置: boolean;
 };
 /** 只含在职（User.active）的人：停用的人不当任何人的上级，也不算谁的下属 */
-export type 组织 = { 成员: Map<string, 组织成员>; 部门: Map<string, 组织部门> };
+export type 组织 = {
+  成员: Map<string, 组织成员>;
+  部门: Map<string, 组织部门>;
+  /** 回收站副手（V3.5.1）：系统管理员之外能看、能恢复回收站的人。Setting enterprise.trash_helpers（逗号串 userId），org.ts 读组织 填 */
+  回收站副手?: ReadonlySet<string>;
+  /** 只看某人（V3.5.1 市管特例）：本人 → 那个人；业务数据只看那个人是创建人或负责人的。Setting enterprise.watch_only（JSON），org.ts 读组织 填 */
+  只看某人?: ReadonlyMap<string, string>;
+};
+
+/** 回收站副手名单存的 Setting 键（设置页存 JSON 数组；手写的逗号串也认） */
+export const 回收站副手键 = "enterprise.trash_helpers";
+/** 只看某人存的 Setting 键（JSON {本人 userId: 那个人 userId}），设置页「组织架构」里配 */
+
+export const 只看某人键 = "enterprise.watch_only";
+
+/** Setting 原文：JSON 解得开就解（setSetting 存的），解不开当原样字符串（库里手写的逗号串） */
+function 解码(v: string | null | undefined): unknown {
+  if (!v) return null;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
+}
+
+/** 读完 Setting 后补上组织里的两份名单（org.ts 读组织、visibility.ts 算 共用）：回收站副手（逗号串）、只看某人（JSON） */
+export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined): 组织 {
+  const 解 = 解码(副手);
+  const 副手们 = Array.isArray(解) ? 解 : typeof 解 === "string" ? 解.split(",") : [];
+  org.回收站副手 = new Set(副手们.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter((x) => org.成员.has(x)));
+  org.只看某人 = 规整只看某人(只看, org);
+  return org;
+}
+
+/** 解析 enterprise.watch_only（{本人: 那个人}）：两个都在职、不是同一个人才留；存坏了当没设 */
+export function 规整只看某人(value: unknown, org: 组织): Map<string, string> {
+  const m = new Map<string, string>();
+  let o: unknown = typeof value === "string" ? 解码(value) : value;
+  // setSetting 再包一层 JSON：解出来还是字符串就再解一次
+  if (typeof o === "string") o = 解码(o);
+  if (!o || typeof o !== "object" || Array.isArray(o)) return m;
+  for (const [k, v] of Object.entries(o)) if (typeof v === "string" && k !== v && org.成员.has(k) && org.成员.has(v)) m.set(k, v);
+  return m;
+}
 
 /**
  * 账号角色 → 业务角色的老对照：管理员 → 总管理员，主管 → 销售管理，其余 → 销售。
@@ -198,6 +241,7 @@ export function 上级设置问题(org: 组织, userId: string, 上级: string |
   if (!org.成员.has(userId)) return "这个人不在职";
   if (上级 === userId) return "上级不能是自己";
   if (!org.成员.has(上级)) return "选的上级不在职";
+  if (种类 === "直属" && org.只看某人?.has(上级)) return "选的人设了「只看某人」，不能当别人的实线上级";
   const 下面 = 种类 === "直属" ? 实线下属(org, userId) : 虚线下属(org, userId);
   return 下面.has(上级) ? `选的人是他的${种类 === "直属" ? "" : "虚线"}下属，不能反过来当他的上级` : null;
 }

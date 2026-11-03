@@ -1,7 +1,7 @@
 /**
  * 企业版推节点（11-01 起权限只认业务角色）：
  *   - 改节点和别的项目内容一个口径（C2）：只有负责人本人（销售 / 销售管理）能改；直属上级、隔级经理、虚线上级、
- *     总管理、管理员都只能看、转让，不再代推（原 D-37「直属上级代推」被 C2 盖掉）
+ *     条线总管理、管理员都只能看、转让，不再代推（原 D-37「直属上级代推」被 C2 盖掉）；系统管理员能推（V3.5.1）
  *   - 默认「负责人可推」：负责人本人能往前推、记的是本人
  *   - 「仅上级推」：负责人有直属上级时本人往前推被拦，直属上级只给往前推这一步（11-01 闭环：不然开着时谁都推不动）；
  *     往后退、点结局、改别的照旧只给负责人
@@ -95,17 +95,22 @@ describe("企业版推节点只给负责人本人", () => {
     expect(能改节点(老板, { ownerId: 销售.id }, org)).toBe(false);
   });
 
-  it("总管理、管理员：谁的项目都改不了节点（只能看、转让）", async () => {
-    for (const bizRole of ["director", "admin"]) {
+  it("条线总管理、管理员：谁的项目都改不了节点（只能看、转让）；系统管理员（总管理、没设线）能推（V3.5.1）", async () => {
+    for (const [bizRole, line] of [["director", "外贸"], ["admin", null]] as const) {
       const 总 = await 建(`top-${bizRole}`, "MANAGER");
-      await prisma.entMember.create({ data: { userId: 总.id, bizRole } });
+      await prisma.entMember.create({ data: { userId: 总.id, bizRole, line } });
       const p = await 项目(销售.id);
       await 记有效沟通(p.id);
-      if (bizRole === "director") expect(往前推不给(总, 销售.id, await 读组织())).toBeNull(); // 推的规矩本身不拦总管理，拦他的是能不能改内容
       const r = await 改节点(总, p.id, 往前);
       expect(r).toMatchObject({ ok: false });
       expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(0);
     }
+    const 系管 = await 建("top-sys", "MANAGER");
+    await prisma.entMember.create({ data: { userId: 系管.id, bizRole: "director" } });
+    const p = await 项目(销售.id);
+    await 记有效沟通(p.id);
+    expect(往前推不给(系管, 销售.id, await 读组织())).toBeNull();
+    expect(await 改节点(系管, p.id, 往前)).toMatchObject({ ok: true });
   });
 
   it("负责人没设直属上级：照旧，本人能推", async () => {

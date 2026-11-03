@@ -32,7 +32,25 @@ export function 按线的线(org: 组织, id: string): 业务线 | null {
 
 export function 按线范围of(org: 组织, id: string): 按线范围 | null {
   const 线 = 按线的线(org, id);
-  if (!线) return null;
+  return 线 ? 范围(org, id, 线) : null;
+}
+
+/**
+ * 条线总管理（V3.5.1，11-03）：总管理（director）又设了业务线 = 管这条线。没设业务线的总管理是系统管理员（permissions.ts 是系统管理员）。
+ * 看本线人员名下全部、条线内能转让；不能编辑、不能删、进不了设置
+ */
+export function 条线的线(org: 组织, id: string): 业务线 | null {
+  const m = org.成员.get(id);
+  return m?.line && m.角色们.includes("director") ? m.line : null;
+}
+
+/** 条线总管理管得到的人：同 按线范围of（本人 + 下属 + 这条线的成员） */
+export function 条线范围of(org: 组织, id: string): 按线范围 | null {
+  const 线 = 条线的线(org, id);
+  return 线 ? 范围(org, id, 线) : null;
+}
+
+function 范围(org: 组织, id: string, 线: 业务线): 按线范围 {
   const 人们 = new Set<string>([id, ...实线下属(org, id)]);
   for (const d of 虚线下属(org, id)) for (const x of [d, ...实线下属(org, d)]) 人们.add(x);
   const 外贸们: string[] = [];

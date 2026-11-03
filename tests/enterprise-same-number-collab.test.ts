@@ -229,7 +229,7 @@ describe("同号再次录入", () => {
     expect(await prisma.followUp.count({ where: { customerId: x.客户.id } })).toBe(0);
   });
 
-  it("组员看不到客户时，项目必填不误报「所属客户」（11-03 B6-1）", async () => {
+  it("组员级联看得到客户（V3.5.1），项目必填不误报「所属客户」（11-03 B6-1）", async () => {
     const x = await 现场();
     await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.市场.id, inviteStatus: "JOINED", invitedById: x.负责人.id } });
     const 行 = await prisma.project.findUniqueOrThrow({ where: { id: x.项目!.id } });
@@ -237,19 +237,20 @@ describe("同号再次录入", () => {
       见客户: await prisma.customer.findUnique({ where: { id: x.客户.id }, select: { id: true } }),
       数据: await 读必填数据(prisma, 行),
     }));
-    expect(r.见客户).toBeNull(); // 前提：这位组员确实看不到客户
+    expect(r.见客户?.id).toBe(x.客户.id); // V3.5.1：加入的项目挂的客户级联看得到（只读）
     expect(r.数据.有客户).toBe(true);
     expect(r.数据.客户.phone).toBe(号码);
   });
 
-  it("看不到客户的组员直接记沟通：说没权限，不说客户不在了（11-03 B5-6）", async () => {
+  it("组员直接在级联看到的客户下记沟通：拦下、说只能看，不说客户不在了（11-03 B5-6，V3.5.1）", async () => {
     const x = await 现场();
     await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.市场.id, inviteStatus: "JOINED", invitedById: x.负责人.id } });
     const r = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "PHONE", content: "组员想记一条", status: "已完成", occurredAt: new Date().toISOString() }));
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).not.toContain("不在了");
-    expect(r.error).toContain("没有权限");
+    expect(r.error).toContain("只能看");
+    expect(await prisma.followUp.count({ where: { customerId: x.客户.id } })).toBe(0);
     const 没了 = await 作为(x.市场, () => saveFollowUp({ customerId: "没有这个客户", type: "PHONE", content: "x", status: "已完成", occurredAt: new Date().toISOString() }));
     expect(!没了.ok && 没了.error).toContain("不在了");
   });

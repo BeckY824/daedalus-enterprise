@@ -248,7 +248,7 @@ describe("虚线下属的客户被挡时说对原因（F4 / F5）", () => {
     expect(await 作为(小王, () => 虚线只读的(raw, ids))).toEqual([]);
   });
 
-  it("批量转、批量状态、放公海：单选一位虚线客户 → 虚线那句，不说已删；删、删前预检先被「只有总管理能删除」挡；客户原样", async () => {
+  it("批量转、批量状态、放公海：单选一位虚线客户 → 虚线那句，不说已删；删、删前预检先被「只有负责人本人或系统管理员能删除」挡；客户原样", async () => {
     const id = await 客户id("C小张的");
     for (const r of [
       await 作为(经理, () => assignSalesOwner([id], 经理)),
@@ -259,7 +259,7 @@ describe("虚线下属的客户被挡时说对原因（F4 / F5）", () => {
       不说已删(r);
     }
     for (const r of [await 作为(经理, () => 客户删除预检([id])), await 作为(经理, () => deleteCustomers([id]))]) {
-      expect(r).toEqual({ ok: false, error: "只有总管理能删除" });
+      expect(r).toEqual({ ok: false, error: "只有负责人本人或系统管理员能删除" });
       不说已删(r);
     }
     const c = await raw.customer.findUniqueOrThrow({ where: { id }, include: { pool: true } });
@@ -273,9 +273,9 @@ describe("虚线下属的客户被挡时说对原因（F4 / F5）", () => {
     expect(await raw.customer.count({ where: { id: { in: ids } } })).toBe(3);
   });
 
-  it("实线下属的不被虚线挡（经理删不了是因为只有总管理能删，不是虚线那句）；总管理预检照常过", async () => {
+  it("实线下属的不被虚线挡（经理删不了是因为只有负责人本人或系统管理员能删，不是虚线那句）；系统管理员预检照常过", async () => {
     const id = await 客户id("B小王的");
-    expect(await 作为(经理, () => 客户删除预检([id]))).toEqual({ ok: false, error: "只有总管理能删除" });
+    expect(await 作为(经理, () => 客户删除预检([id]))).toEqual({ ok: false, error: "只有负责人本人或系统管理员能删除" });
     登录.user = { ...登录.user, id: 总管, name: "总管", role: "SALES" };
     expect(await 作为(总管, () => 客户删除预检([id]))).toEqual({ ok: true });
   });

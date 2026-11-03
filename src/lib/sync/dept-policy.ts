@@ -13,7 +13,7 @@ export const 业务角色 = ["director", "admin", "sales_mgr", "sales", "channel
 export type 业务角色 = (typeof 业务角色)[number];
 export const 角色名: Record<业务角色, string> = {
   director: "总管理", admin: "管理员", sales_mgr: "销售管理", sales: "销售成员",
-  channel_ops: "渠道运营", marketing_mgr: "市场管理", project_ops: "项目运营",
+  channel_ops: "渠道运营", marketing_mgr: "市场管理", project_ops: "项目组员",
 };
 /**
  * 数据范围：本人 / 本人 + 互看开关 / 本一级部门 / 全公司。
@@ -26,7 +26,7 @@ export const 范围名: Record<数据范围, string> = {
 };
 /**
  * 默认值 = 现在的行为（只有一个一级部门时）：老板 → 总管理看全部；主管 → 销售管理看本部门（= 全队）；业务员 → 销售成员看自己 + 互看开关。
- * 管理员按 10-23 拍板也默认看全公司（「配置表里能改」）；渠道运营、市场管理、项目运营同销售成员
+ * 管理员按 10-23 拍板也默认看全公司（「配置表里能改」）；渠道运营、市场管理、项目组员同销售成员
  */
 export const 默认范围: Record<业务角色, 数据范围> = {
   director: "all", admin: "all", sales_mgr: "dept", sales: "self_share", channel_ops: "self_share", marketing_mgr: "self_share", project_ops: "self_share",

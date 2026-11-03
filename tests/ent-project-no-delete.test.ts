@@ -40,19 +40,21 @@ const 还在 = async () => {
   return p != null && p.deletedAt == null;
 };
 
-describe("企业版：删项目只有总管理", () => {
+describe("企业版：删项目 = 项目负责人本人或系统管理员（V3.5.1）", () => {
   it("没设业务角色的账号 ADMIN 调 server action：拒，项目原样还在、不记删除审计", async () => {
     expect(await 删除项目(项目)).toEqual({ ok: false, error: 项目不能删提示 });
     expect(await 还在()).toBe(true);
     expect(await raw.auditLog.count({ where: { entity: "Project", action: "delete" } })).toBe(0);
   });
 
-  it("项目负责人自己删也拒；管理员（admin）只读也拒", async () => {
-    mocks.user = { ...mocks.user, id: 销售, role: "SALES" };
-    expect(await 删除项目(项目)).toMatchObject({ ok: false, error: 项目不能删提示 });
-    expect(await 删项目({ id: 销售, role: "SALES" }, 项目)).toMatchObject({ ok: false, error: 项目不能删提示 });
+  it("管理员（admin）只读拒；项目负责人本人能删（软删），恢复后接着测", async () => {
     expect(await 删项目({ id: 管理员, role: "SALES" }, 项目)).toMatchObject({ ok: false, error: 项目不能删提示 });
     expect(await 还在()).toBe(true);
+    mocks.user = { ...mocks.user, id: 销售, role: "SALES" };
+    expect(await 删除项目(项目)).toEqual({ ok: true });
+    expect(await 还在()).toBe(false);
+    await raw.project.update({ where: { id: 项目 }, data: { deletedAt: null } });
+    await raw.auditLog.deleteMany({ where: { entity: "Project", action: "delete" } });
   });
 
   it("不存在的项目 id 对别人也是同一句（不先露「不在了」）", async () => {

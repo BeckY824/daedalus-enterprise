@@ -169,8 +169,10 @@ type Props = {
   };
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
   部门选项?: { value: string; label: string }[];
-  /** 能删客户：企业版只有总管理（11-03 C2-1）；别的版本 true。false 时行菜单、批量工具条都不摆删除 */
+  /** 能删客户：企业版有能删的角色（系统管理员；销售、销管、渠运删自己负责的，V3.5.1）；别的版本 true。false 时行菜单、批量工具条都不摆删除 */
   能删?: boolean;
+  /** 企业版这一页里我删不了的（不是我负责的、在公海的；系统管理员一律空）：行菜单不摆删除，批量勾到了先说清 */
+  删不了ids?: string[];
   /** 企业版虚线下属的客户（这一页里的）：只能看——不摆编辑 / 删除、不让勾批量（10-25 实测 F4）。团队版一律空 */
   只读ids?: string[];
   /** 企业版这一页公海里原负责人是我的：领取按钮灰着、悬停说「原负责人不能领回」（lib/enterprise/pool-rules.ts）。别的版本一律空 */
@@ -216,10 +218,11 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
+  const 删不了 = new Set(删不了ids);
   const 领不回 = new Set(原负责人领不回ids);
   // 服务端已取有效页的数据；只修正地址，避免二次请求与开发模式流式重定向错误。
   useEffect(() => {
@@ -587,7 +590,7 @@ export default function CustomersView({
           }] : []),
           { key: "edit", label: "编辑", onClick: () => { setEditing(r); setFormOpen(true); } },
           // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）
-          ...(能删 ? [{ key: "delete", label: "删除", onClick: () => void 问删除([{ id: r.id, name: r.name }]) }] : []),
+          ...(能删 && !删不了.has(r.id) ? [{ key: "delete", label: "删除", onClick: () => void 问删除([{ id: r.id, name: r.name }]) }] : []),
         ];
         return (
           <div>
@@ -940,12 +943,14 @@ export default function CustomersView({
               size="small"
               icon={<DeleteOutlined />}
               // 写出是谁、会一起删掉什么（排查 B1）：人得对得上自己勾的是哪几位
-              onClick={() =>
+              onClick={() => {
+                const 不行 = selected.filter((id) => 删不了.has(id)).length;
+                if (不行) return void message.warning(`勾的里有 ${不行} 位不是你负责的，删不了；只勾自己负责的再删`);
                 void 问删除(
                   selected.map((id) => ({ id, name: 选中行.find((r) => r.id === id)?.name ?? "" })),
                   清空,
-                )
-              }
+                );
+              }}
             >
               删除
             </Button>}

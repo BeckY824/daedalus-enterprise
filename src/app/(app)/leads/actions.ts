@@ -25,7 +25,7 @@ import { recordAudit, type Actor } from "@/lib/audit";
 import { getBusiness } from "@/lib/business";
 import { 线索转档案 } from "@/lib/lead-convert";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 删除挡 } from "@/lib/enterprise/soft-delete";
+import { 真删挡 } from "@/lib/enterprise/soft-delete";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 线索建项目 } from "@/lib/project/from-lead";
 import { 规整沟通, type 向导跟进, type 规整好的沟通 } from "@/lib/project/wizard";
@@ -148,8 +148,8 @@ export async function saveLead(input: {
 
 export async function deleteLeads(ids: string[]) {
   const me = await requireUser();
-  // 企业版只有总管理能删（QA #3）：线索是真删，没有回收站
-  const 挡 = await 删除挡(me);
+  // 企业版：线索是真删、没有回收站，只给系统管理员（V3.5.1）
+  const 挡 = await 真删挡(me);
   if (挡) return { ok: false as const, error: 挡 };
   const 待删 = await prisma.lead.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
   const res = await prisma.lead.deleteMany({ where: { id: { in: ids } } });

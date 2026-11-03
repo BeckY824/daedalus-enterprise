@@ -4,8 +4,9 @@
  *   - 删客户：客户和名下的联系人、项目、沟通记录记同一个 deletedAt（客户连带），一起进回收站
  *   - 恢复客户：同一时刻删的那些一起回来；早些时候单独删的那几条照旧留在回收站
  *   - 单独删的联系人 / 项目 / 沟通记录：所属客户也在回收站里的，先恢复客户
- *   - 谁能看、能恢复：只有总管理（11-01 C4，permissions.ts 能恢复）；看的范围照各自平时看得到的
- *   - 彻底删除：只有总管理（C3，permissions.ts 能删除）
+ *   - 谁能看、能恢复：系统管理员、回收站副手（V3.5.1，permissions.ts 能恢复）；看的范围照各自平时看得到的
+ *   - 谁能删：系统管理员；销售、销管、渠运删自己负责的（V3.5.1，permissions.ts 能删除）
+ *   - 彻底删除：只有系统管理员（permissions.ts 能真删）
  *   - 到期清理：删了满 30 天的真删掉，夜扫的钟上每天一次（project/nightly.ts）
  *   - 真删沟通记录：上面的卡点先脱开、照旧留着（11-01 卡点 B13）；老库脱不开的那几条留在回收站不删
  *
@@ -17,7 +18,7 @@ import { dayjs } from "../utils";
 import { 看全部 } from "../team-scope";
 import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
-import { 能删除, 能恢复 } from "./permissions";
+import { 能删除, 能删一些, 能真删, 能恢复 } from "./permissions";
 import { 看已删, 回收站保留天数, 客户连带, type 软删表名 } from "./soft-delete-core";
 import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
@@ -33,26 +34,35 @@ export function 软删开着(): boolean {
   return 企业版();
 }
 
-/** 看回收站、恢复：只有总管理（C4） */
+/** 看回收站、恢复：系统管理员、回收站副手（V3.5.1） */
 export async function 能管回收站(me: 谁): Promise<boolean> {
   if (!企业版()) return false;
   return 能恢复(me, await 权限组织());
 }
 
-/** 彻底删除：只有总管理（C3） */
+/** 彻底删除：只有系统管理员（V3.5.1） */
 export async function 能彻底删除(me: 谁): Promise<boolean> {
-  return 企业版() && 能删除(me, await 权限组织());
+  return 企业版() && 能真删(me, await 权限组织());
 }
 
 /** 企业版删除（客户、联系人、项目、线索进回收站或真删）被拦时那一句 */
-export const 只有总管理能删话 = "只有总管理能删除";
+export const 只有总管理能删话 = "只有负责人本人或系统管理员能删除";
 /**
- * 删除前过一下（QA #3，11-01）：企业版只有总管理（director）能删，管理员（admin）只读也不能；回 null = 放行。
+ * 删除前过一下（V3.5.1）：系统管理员都能删；销售、销管、渠运只删自己负责的；回 null = 放行。
+ * 负责人们 = 要删的每一行的负责人（客户 salesOwnerId，其余 ownerId）；不传 = 只问摆不摆删除按钮（能删一些）。
  * 不是企业版不拦（照旧按各自的范围）
  */
-export async function 删除挡(me: 谁): Promise<string | null> {
+export async function 删除挡(me: 谁, 负责人们?: readonly (string | null | undefined)[]): Promise<string | null> {
   if (!企业版()) return null;
-  return 能删除(me, await 权限组织()) ? null : 只有总管理能删话;
+  const org = await 权限组织();
+  if (!负责人们) return 能删一些(me, org) ? null : 只有总管理能删话;
+  return 负责人们.every((x) => 能删除(me, org, x)) ? null : 只有总管理能删话;
+}
+
+/** 没有回收站、删了就真没了的（线索、商机）：企业版只给系统管理员（V3.5.1 真删只给系统管理员） */
+export async function 真删挡(me: 谁): Promise<string | null> {
+  if (!企业版()) return null;
+  return 能真删(me, await 权限组织()) ? null : "这类记录没有回收站，只有系统管理员能删除";
 }
 
 export const 回收站叫法: Record<软删表名, string> = { Customer: "客户", Project: "项目", Contact: "联系人", FollowUp: "沟通记录" };
@@ -100,7 +110,7 @@ async function 重算最近跟进(tx: Tx, customerId: string) {
  * 关键联系人：回来的那位原来是关键、客户这会儿已经另有关键的，回来的那位不再标关键（一位客户只留一个关键）
  */
 export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结果<{ 连带: number; customerId: string | null }>> {
-  if (!(await 能管回收站(me))) return { ok: false, error: "只有总管理能恢复" };
+  if (!(await 能管回收站(me))) return { ok: false, error: "只有系统管理员或回收站副手能恢复" };
   // 客户状态跟着项目算：项目回来了（单条或随客户连带）要重算，开关事务外读
   const 状态开 = (t === "Customer" || t === "Project") && (await 客户状态自动());
   return prisma.$transaction((tx) => 看已删(async () => {
@@ -139,9 +149,9 @@ async function 线索退回(tx: Tx, customerIds: string[]) {
   await tx.lead.updateMany({ where: { customerId: { in: customerIds } }, data: { customerId: null, status: "跟进中", convertedAt: null } });
 }
 
-/** 彻底删除回收站里的一条：只有老板 / 总管理员。客户连同名下的一起真删（外键级联） */
+/** 彻底删除回收站里的一条：只有系统管理员。客户连同名下的一起真删（外键级联） */
 export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promise<结果<{ name: string }>> {
-  if (!(await 能彻底删除(me))) return { ok: false, error: "只有总管理能彻底删除" };
+  if (!(await 能彻底删除(me))) return { ok: false, error: "只有系统管理员能彻底删除" };
   return prisma.$transaction((tx) => 看已删(async () => {
     const 行 = await 表(tx, t).findUnique({ where: { id }, select: { id: true, deletedAt: true } });
     if (!行?.deletedAt) return { ok: false as const, error: "这一条不在回收站里了，刷新看看" };

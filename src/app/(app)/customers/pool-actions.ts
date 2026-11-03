@@ -11,7 +11,7 @@ import { 不能当负责人 } from "@/lib/owners";
 import { 看全部, 虚线只读挡 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 能管公海, 能转出自己的, 只读角色, 只读角色话, 没设业务角色, 没业务角色不能领话 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 只读角色, 只读角色话, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话 } from "@/lib/enterprise/permissions";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
@@ -168,6 +168,8 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
   if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读角色话 };
   // 没设业务角色的不能领（11-03 用户定）：权限只认业务角色，账号 ADMIN / MANAGER 不算。别人分给他（分配公海）不走这里
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: 没业务角色不能领话 };
+  // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）
+  if (企业版() && !能领公海(me, await 权限组织())) return { ok: false, error: 不能领公海话 };
   // 企业版「非原负责人均可领取」（pool-rules.ts，10-26 定稿）：公海里负责人一直留着原来那位，是他的就不让他自己领回
   const 不能领 = 拦原负责人()
     ? new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: me.id, pool: { isNot: null } }, select: { id: true } }))).map((c) => c.id))

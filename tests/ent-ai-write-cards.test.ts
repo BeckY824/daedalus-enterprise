@@ -366,18 +366,15 @@ describe("删客户", () => {
     expect(不可撤销("customer_delete")).toBe(true);
   });
 
-  it("总管理确认：转给 deleteCustomers，进回收站；负责人、看不到的同事确认一行不删", async () => {
+  it("负责人本人确认：转给 deleteCustomers，进回收站；看不到的同事确认一行不删", async () => {
     const { 卡 } = await 出("propose_customer_delete", { customer: "云帆科技", reason: "人说是重复的" });
 
     expect((await 确认(卡!, 丙)).ok).toBe(false);
     expect(客户动作.deleteCustomers).not.toHaveBeenCalled();
     expect(await prisma.customer.count()).toBe(1);
 
-    // 11-01 权限只认业务角色：删除只给总管理，负责人本人也删不了
-    expect(await 确认(卡!, 乙)).toMatchObject({ ok: false, error: "只有总管理能删除" });
-    expect(await prisma.customer.count()).toBe(1);
-
-    const r = await 确认(卡!, 老板);
+    // V3.5.1：删除给负责人本人或系统管理员
+    const r = await 确认(卡!, 乙);
     expect(r).toMatchObject({ ok: true });
     expect(客户动作.deleteCustomers).toHaveBeenCalledWith([客户id]);
     expect(await prisma.customer.count()).toBe(0);
