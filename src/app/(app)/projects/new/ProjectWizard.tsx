@@ -503,7 +503,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
             </>
           ), true)}
           {(企业 ? 要选负责人(d, 企业) : !独自一人(users, d.项目.ownerId)) && 一行("负责人", (
-            <Select style={{ width: "100%" }} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={负责人选项} onChange={(v) => 改("项目", { ownerId: v })} />
+            <Select style={{ width: "100%" }} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={负责人选项} onChange={(v) => 改("项目", { ownerId: v })} showSearch optionFilterProp="label" />
           ), !!企业)}
           {!企业 && 一行("金额", (
             <Space.Compact style={{ width: "100%" }}>
