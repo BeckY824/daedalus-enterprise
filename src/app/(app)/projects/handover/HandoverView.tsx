@@ -34,7 +34,7 @@ export default function HandoverView({ 人们, 候选, 项目模式, 系统管�
       />
       {下属.length > 0 && <OffboardReport 下属={下属} />}
       {人们.length ? (
-        <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Space orientation="vertical" size={16} style={{ width: "100%" }}>
           {人们.map((p) => <PersonCard key={p.id} p={p} 候选={候选} 项目模式={项目模式} />)}
         </Space>
       ) : (

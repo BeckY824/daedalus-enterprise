@@ -292,7 +292,7 @@ describe("查重：负责人已离职指直属上级（C4-5）", () => {
 });
 
 describe("页面", () => {
-  it("设置成员页企业版办离职不再给「放进公海」；离职交接页只读、共享区 404", async () => {
+  it("设置成员页企业版办离职不再给「放进公海」；离职交接页只读、共享区、不是谁上级的人 404", async () => {
     const members = await readFile("src/app/(app)/settings/MembersTab.tsx", "utf8");
     expect(members).toContain("deactivateUser(r.id, \"\")");
     expect(members).not.toMatch(/value[:=]\s*"公海"/);
@@ -300,5 +300,6 @@ describe("页面", () => {
     expect(page).toContain("只读角色(me, org)");
     expect(page).toContain("当前是共享区()");
     expect(page).toContain("notFound()");
+    expect(page).toContain("managerId: me.id, userId: { not: me.id }");
   });
 });
