@@ -3,7 +3,7 @@
 import DatePicker from "@/components/BusinessDatePicker";
 
 import { useContext, useRef, useState } from "react";
-import { 只读上下文 } from "./read-only";
+import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { 是空值, 有值, 空值符 } from "@/lib/empty-value";
 import { useRouter } from "next/navigation";
 import { App, AutoComplete, Input, Select } from "antd";
@@ -62,7 +62,9 @@ export default function InlineField({
   const router = useRouter();
   const { message } = App.useApp();
   const { 先问转走的项目 } = useTransferConfirm();
-  const 只读 = useContext(只读上下文);
+  // 企业版字段权限「只能看」的格（11-03 D5-1）：和整页只读一样只显示、不给点，悬停说为什么
+  const 权限挡 = useContext(只能看的格上下文).includes(field);
+  const 只读 = useContext(只读上下文) || 权限挡;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string | null>(value);
   const [saving, setSaving] = useState(false);
@@ -122,7 +124,7 @@ export default function InlineField({
 
   if (!editing) {
     return (
-      <div className="rec-field" {...(只读 ? { style: { cursor: "default" } } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
+      <div className="rec-field" {...(只读 ? { style: { cursor: "default" }, ...(权限挡 ? { title: `你的角色只能看「${label}」，改不了（设置 → 组织架构 → 字段权限）` } : {}) } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
         <div className="rec-field-k">{label}</div>
         {/* 单行的值带 is-line + title（U-通用-01）：企业版项目模式左栏放不下就省略，悬停看全；多行的备注照旧换行 */}
         <div

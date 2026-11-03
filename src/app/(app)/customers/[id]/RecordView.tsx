@@ -7,7 +7,7 @@ import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch
 
 
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { 只读上下文 } from "./read-only";
+import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography } from "antd";
@@ -145,6 +145,9 @@ const 客户头部框叫法 = {
 } as const;
 type 客户头部框 = keyof typeof 客户头部框叫法;
 
+/** 只能看的格默认空：放模块里，免得每次渲染一个新数组让下面的格子跟着重渲 */
+const 无格: string[] = [];
+
 export default function RecordView({
   customer,
   sourceLead = null,
@@ -169,6 +172,7 @@ export default function RecordView({
   原负责人领不回 = false,
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
+  只能看的格 = 无格,
   能改沟通 = true,
   能删沟通 = true,
   换负责人记录 = [],
@@ -974,6 +978,7 @@ export default function RecordView({
       )}
 
       <只读上下文.Provider value={只读}>
+      <只能看的格上下文.Provider value={只能看的格}>
       <div ref={recRef} className={`rec${AI在抽屉里 ? " rec-2col" : ""}${单栏 ? " rec-1col" : ""}${有右栏 ? "" : " rec-no-right"}`}>
         {/* ================= 左栏：档案 ================= */}
         <aside className={`rec-rail rec-card${去项目跟进 ? " rec-rail-blocks" : ""}`}>
@@ -1433,6 +1438,7 @@ export default function RecordView({
         </aside>
         )}
       </div>
+      </只能看的格上下文.Provider>
       </只读上下文.Provider>
 
       {/* 1180 以下 AI 收进抽屉。面板本身一个字都不用改——它的状态挂在
@@ -1709,8 +1715,10 @@ function StatusPicker({
   const router = useRouter();
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
-  // 同事的客户（互看）：状态章只显示
-  if (useContext(只读上下文)) return <span style={{ display: "inline-flex" }}>{children}</span>;
+  // 同事的客户（互看）、字段权限里这一格只能看（11-03 D5-1）：状态章只显示
+  const 整页只读 = useContext(只读上下文);
+  const 权限挡 = useContext(只能看的格上下文).includes(field);
+  if (整页只读 || 权限挡) return <span style={{ display: "inline-flex" }}>{children}</span>;
   return (
     <Dropdown
       trigger={["click"]}
