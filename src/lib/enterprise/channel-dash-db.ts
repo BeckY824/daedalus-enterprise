@@ -17,8 +17,8 @@ export async function 读看板底数(渠道ids: string[], 今: Date = new Date(
         channelId: true, phase: true, result: true, amount: true, currency: true, createdAt: true,
         customer: { select: { channelId: true } },
         entLeadVerify: { select: { verdict: true } },
-        // 不 orderBy（父行过千会让 Prisma 6.16 崩，见 channel-stats-db.ts）；算的时候取最早一条，不靠顺序
-        logs: { where: { kind: "node" }, select: { toPhase: true, at: true } },
+        // 不 orderBy（父行过千会让 Prisma 6.16 崩，见 channel-stats-db.ts）；起步要按时间排了取头一条（同列表），别的取最早一条
+        logs: { where: { kind: "node" }, select: { fromPhase: true, toPhase: true, at: true } },
       },
     }),
     prisma.entChannelInvest.findMany({ where: { channelId: { in: 渠道ids } }, select: { channelId: true, amount: true, currency: true, date: true } }),
@@ -29,7 +29,8 @@ export async function 读看板底数(渠道ids: string[], 今: Date = new Date(
       channelId: 项目算哪个渠道(p.channelId, p.customer.channelId),
       phase: p.phase, result: p.result, amount: p.amount, currency: p.currency, createdAt: p.createdAt,
       判定: p.entLeadVerify?.verdict ?? null,
-      节点们: p.logs,
+      起步: [...p.logs].sort((x, y) => x.at.getTime() - y.at.getTime()).find((l) => l.fromPhase === null)?.toPhase ?? "线索",
+      节点们: p.logs.map((l) => ({ toPhase: l.toPhase, at: l.at })),
     })),
     投入们,
     今,
