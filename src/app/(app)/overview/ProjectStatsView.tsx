@@ -13,7 +13,9 @@ import { 金额 } from "@/lib/currency";
 import type { 项目现在, 项目一段, 人行现在, 人行一段 } from "./project-stats";
 import ProjectFunnel from "./ProjectFunnel";
 import LeadWaterfall from "./LeadWaterfall";
-import { 复盘概况排, 复盘提醒排, type 复盘概况数 } from "./ReviewSummary";
+import { 复盘概况排, 复盘提醒排, 客户分布排, type 复盘概况数 } from "./ReviewSummary";
+import type { 客户分布 } from "@/lib/project/review-extras";
+import { 字典of, 结局叫法, type 出口叫法改动 } from "@/lib/project/stage-dict";
 
 /**
  * 企业版只用项目时「数据」页的正文（10-26 用户：「「数据」页改成按项目统计」）。
@@ -67,7 +69,9 @@ function 漏斗与瀑布({ 数, 漏斗说明, 瀑布说明, 空 }: { 数: { 漏�
 }
 
 /** 概况：复盘页（企业版按项目）才传——最上面一排 KPI + 下面卡点分布、超时预警（11-01 参考复盘稿融合）；不传就是原样 */
-export function ProjectNowView({ 数, 本位币, 单人, 概况 }: { 数: 项目现在; 本位币: string; 单人: boolean; 概况?: 复盘概况数 }) {
+export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口叫法 }: { 数: 项目现在; 本位币: string; 单人: boolean; 概况?: 复盘概况数; 客户?: 客户分布; 出口叫法?: 出口叫法改动 }) {
+  // 结局按企业版叫法（商机丢单 / 交付结清，后台改过就用改的），别露库里的「丢单」（11-03 客户：看板底部用了丢单）
+  const 字典 = 字典of(true, 出口叫法);
   const money = (n: number) => 金额(n, 本位币);
   const 段 = Object.fromEntries(数.阶段.map((s) => [s.phase, s]));
   const 异常 = 数.结局.find((r) => r.result === "异常状态")?.count ?? 0;
@@ -120,7 +124,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况 }: { 数: 项目
   return (
     <>
       <外币提示 n={数.外币} 本位币={本位币} 说="进行中的项目" />
-      {概况 && <复盘概况排 数={概况.概况} 本位币={本位币} />}
+      {概况 && <复盘概况排 数={概况.概况} 本位币={本位币} 不算={`${字典.出口们.商机[1].叫法} / ${字典.出口们.线索[1].叫法}`} />}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
           <StatCard icon={<FunnelPlotOutlined />} color={阶段色.线索} label="新线索" value={段.线索?.count ?? 0} note="线索阶段、进行中的" href="/leads" />
@@ -175,13 +179,17 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况 }: { 数: 项目
       {概况 && <复盘提醒排 分布={概况.分布} 预警={概况.预警} 将回公海={概况.概况.将回公海} />}
 
       <p className="muted" style={{ marginTop: 12 }}>
-        已经结束的：{数.结局.filter((r) => r.result !== "异常状态").map((r) => `${r.result} ${r.count}`).join(" · ")}
+        已经结束的：{数.结局.filter((r) => r.result !== "异常状态").map((r) => `${结局叫法(r.result, 字典)} ${r.count}`).join(" · ")}
       </p>
+
+      {客户 && <客户分布排 分布={客户} />}
     </>
   );
 }
 
-export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项目一段; 本位币: string; 口径: string; 单人: boolean }) {
+export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法 }: { 数: 项目一段; 本位币: string; 口径: string; 单人: boolean; 出口叫法?: 出口叫法改动 }) {
+  const 字典 = 字典of(true, 出口叫法);
+  const [流失名, 丢单名] = [字典.出口们.线索[1].叫法, 字典.出口们.商机[1].叫法];
   const money = (n: number) => 金额(n, 本位币);
   const t = 数.合计;
   const 有事 = t.新建 + t.转商机 + t.转订单 + t.成功交付 > 0;
@@ -211,7 +219,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
     数列("新建"), 数列("转商机", "转商机阶段"), 数列("转订单"), 数列("成功交付", "交付"),
     { title: "交付金额", dataIndex: "交付金额", width: 140, align: "right" as const, defaultSortOrder: "descend" as const,
       sorter: (a: 人行一段, b: 人行一段) => a.交付金额 - b.交付金额, render: (v: number) => <span className="nowrap" style={{ fontWeight: 500 }}>{money(v)}</span> },
-    数列("没成", "流失 / 丢单"),
+    数列("没成", `${流失名} / ${丢单名}`),
   ];
 
   return (
@@ -228,8 +236,8 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人 }: { 数: 项
           <StatCard icon={<TrophyOutlined />} color={阶段色.订单} label="交付结清" value={t.成功交付} note={`${口径}结束的 · ${money(t.交付金额)}`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          {/* 没成 = 流失 + 丢单；异常还在处理，不算没成。原来三个数并排写，看着像加不平（10-27） */}
-          <StatCard icon={<StopOutlined />} color={categorical.orange} label="没成" value={t.线索流失 + t.丢单} note={`线索流失 ${t.线索流失} · 丢单 ${t.丢单}${t.异常状态 ? `；另有异常 ${t.异常状态}，不算在没成里` : ""}`} />
+          {/* 没成 = 线索流失 + 商机丢单；异常还在处理，不算没成。原来三个数并排写，看着像加不平（10-27） */}
+          <StatCard icon={<StopOutlined />} color={categorical.orange} label="没成" value={t.线索流失 + t.丢单} note={`${流失名} ${t.线索流失} · ${丢单名} ${t.丢单}${t.异常状态 ? `；另有异常 ${t.异常状态}，不算在没成里` : ""}`} />
         </Col>
       </Row>
 

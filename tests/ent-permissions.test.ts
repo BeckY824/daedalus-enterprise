@@ -22,7 +22,7 @@ import { 满额提醒收件人 } from "@/lib/enterprise/lead-full-notice";
 import { 能拍板, 有市场管理 } from "@/lib/project/lead-verify";
 import {
   能看项目, 能编辑项目, 能转让项目, 能放回公海, 能分配线索, 能管公海, 能删除, 能恢复, 能进设置, 能改后台设置,
-  只读角色, 能看全部, 是总管理, 没设业务角色, 能真删, 能领公海, 能删一些, 能转让客户, 能改客户, 只看的人, 是管理层, type 权限项目,
+  只读角色, 能看全部, 是总管理, 没设业务角色, 能真删, 能领公海, 能删一些, 能转让客户, 能转出自己的, 能改客户, 只看的人, 是管理层, type 权限项目,
 } from "@/lib/enterprise/permissions";
 import { 能切换视图 } from "@/lib/enterprise/view-as";
 import { 能加组员 } from "@/lib/project/db";
@@ -83,6 +83,18 @@ describe("角色 × 动作（项目：负责人 s、市场 mkt 建的、项目�
       能分配线索(me, org), 能管公海(me, org), 能删除(me, org, 项目.ownerId), 能恢复(me, org), 能进设置(me, org), 能改后台设置(me, org),
       能切换视图(org, id),
     ]).toEqual(期望);
+  });
+});
+
+describe("市管当了负责人（交接接过来的，11-03 反馈 7）：不能编辑、能转出、不能删", () => {
+  const 市管的: 权限项目 = { ownerId: "mkt", creatorId: "s", pooledAt: null };
+  it("项目和客户都一样；创建人不跟着变", () => {
+    const me = 当("mkt");
+    expect([能编辑项目(me, 市管的, org), 能转让项目(me, 市管的, org), 能删除(me, org, "mkt")]).toEqual([false, true, false]);
+    expect(能转让客户(me, { salesOwnerId: "mkt", 在公海: false }, org)).toBe(true);
+    expect(能转出自己的(me, org)).toBe(true);
+    // 项目组员当负责人仍不能转（只多放了市管）
+    expect(能转出自己的(当("ops"), org)).toBe(false);
   });
 });
 

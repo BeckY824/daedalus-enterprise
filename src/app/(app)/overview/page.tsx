@@ -15,11 +15,12 @@ import { 看板的人 } from "@/lib/project/board-member";
 import { 复盘待办of, 复盘看板of } from "@/lib/project/board-todos-db";
 import { 读页签, 读卡, 读页码, 读布局 } from "@/lib/project/board-todos";
 import { 读卡点看板筛, 读沟通段, 读沟通方式 } from "@/lib/project/review-tabs";
-import { 将回公海of, 缺沟通of, 复盘概况of } from "@/lib/project/review-extras-db";
+import { 将回公海of, 缺沟通of, 复盘概况of, 客户分布of } from "@/lib/project/review-extras-db";
 import { 复盘沟通of } from "@/lib/project/review-tabs-db";
 import { 卡点看板, 卡点给界面 } from "@/lib/project/blocker";
 import BoardBlockers from "./BoardBlockers";
 import BoardTalks from "./BoardTalks";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 
 export const dynamic = "force-dynamic";
 
@@ -132,10 +133,10 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
   const 业务 = await getBusiness();
   const 本位币 = 业务.currency;
   if (view === "现在") {
-    const [数, 唯一, 概况] = await Promise.all([项目现在(本位币, 范围), 唯一负责人(), 复盘概况of(范围, user, 本位币)]);
+    const [数, 唯一, 概况, 规则, 客户] = await Promise.all([项目现在(本位币, 范围), 唯一负责人(), 复盘概况of(范围, user, 本位币), 生效组织规则(), 客户分布of(范围)]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="data">
-        <ProjectNowView 数={数} 本位币={本位币} 概况={概况} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
+        <ProjectNowView 数={数} 本位币={本位币} 概况={概况} 客户={客户} 出口叫法={规则.阶段.出口叫法} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
       </DataShell>
     );
   }
@@ -144,10 +145,10 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
   const from = (本月 ? now.startOf("month") : now.startOf("year")).toDate();
   const to = (本月 ? now.endOf("month") : now.endOf("year")).toDate();
   const 口径 = 本月 ? now.format("YYYY 年 M 月") : `${now.year()} 年`;
-  const [数, 唯一] = await Promise.all([项目一段(from, to, 本月 ? "day" : "month", 本位币, 范围), 唯一负责人()]);
+  const [数, 唯一, 规则] = await Promise.all([项目一段(from, to, 本月 ? "day" : "month", 本位币, 范围), 唯一负责人(), 生效组织规则()]);
   return (
     <DataShell view={view} 项目 选人={选人} 页签="data">
-      <ProjectPeriodView 数={数} 本位币={本位币} 口径={口径} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
+      <ProjectPeriodView 数={数} 本位币={本位币} 口径={口径} 出口叫法={规则.阶段.出口叫法} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
     </DataShell>
   );
 }

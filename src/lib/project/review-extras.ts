@@ -124,3 +124,35 @@ export function 算回款(
   }
   return { 已回款, 待回款, 外币项目 };
 }
+
+/**
+ * 客户分布（11-03 客户反馈：复盘数据页最下方加客户分布图）：这一圈负责的客户（不含公海、回收站）按国家、按业务线数。
+ * 国家多的只摆前几个，其余并成「其他」；没填的单列、排最后
+ */
+export type 分布条 = { 名: string; 数: number };
+export type 客户分布 = { 总数: number; 按国家: 分布条[]; 按业务线: 分布条[] };
+export const 国家最多 = 9;
+
+function 排一列(们: readonly { 键: string | null; 数: number }[], 没填: string, 最多 = Infinity): 分布条[] {
+  const 计 = new Map<string, number>();
+  let 空 = 0;
+  for (const g of 们) {
+    const k = g.键?.trim();
+    if (k) 计.set(k, (计.get(k) ?? 0) + g.数);
+    else 空 += g.数;
+  }
+  const 有 = [...计].map(([名, 数]) => ({ 名, 数 })).sort((a, b) => b.数 - a.数 || a.名.localeCompare(b.名, "zh"));
+  const 前 = 有.length > 最多 ? [...有.slice(0, 最多 - 1), { 名: "其他", 数: 有.slice(最多 - 1).reduce((s, x) => s + x.数, 0) }] : 有;
+  return 空 ? [...前, { 名: 没填, 数: 空 }] : 前;
+}
+
+export function 排客户分布(
+  国家们: readonly { addrCountry: string | null; _count: { _all: number } }[],
+  线们: readonly { bizLine: string | null; _count: { _all: number } }[],
+): 客户分布 {
+  return {
+    总数: 国家们.reduce((s, g) => s + g._count._all, 0),
+    按国家: 排一列(国家们.map((g) => ({ 键: g.addrCountry, 数: g._count._all })), "未填国家", 国家最多),
+    按业务线: 排一列(线们.map((g) => ({ 键: g.bizLine, 数: g._count._all })), "未填业务线"),
+  };
+}
