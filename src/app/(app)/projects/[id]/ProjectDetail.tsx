@@ -145,6 +145,8 @@ export type 项目详情 = {
   能改节点: boolean;
   /** 能转让（换负责人）：企业版 = 总管理、负责人的实线上级（业务线对得上，lib/enterprise/permissions.ts 能转让项目）、负责人本人转出自己的 */
   能转让?: boolean;
+  /** 企业版：转给这些人以后我还看得到这个项目（没有 = 按看不到说） */
+  转后还能看?: string[];
   balanceSettled: boolean; balanceSettledBy: string | null; balanceSettledAt: string | null;
   acceptancePassed: boolean; acceptancePassedBy: string | null; acceptancePassedAt: string | null;
   /** kind 不是 node 的行是换负责人（转让 / 放回公海 / 从公海领取），transfer 记从谁到谁；category 是进异常时选的类别 */
@@ -622,7 +624,8 @@ export default function ProjectDetail({
     const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }, 带待办勾出 ? 转给带待办 : undefined), `已转给 ${名}`);
     if (!ok) return;
     set转给框(false);
-    router.push("/projects");
+    // 转完自己还看得到（总管理、上级）就留在这页，看不到才回列表
+    if (!p.转后还能看?.includes(新)) router.push("/projects");
   };
   const 转给名 = 转给谁 ? (候选.find((m) => m.id === 转给谁)?.name ?? "TA") : null;
 
@@ -1459,7 +1462,7 @@ export default function ProjectDetail({
           </Checkbox>
         )}
         <div style={{ color: "var(--text-muted)" }}>
-          {转给名 ? `确认转给 ${转给名}？转了以后你看不到这个项目，原来填的下一步会清掉，由 ${转给名} 重新安排；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
+          {转给名 ? `确认转给 ${转给名}？${转给谁 && p.转后还能看?.includes(转给谁) ? "转了以后你还能看这个项目" : "转了以后你看不到这个项目"}，原来填的下一步会清掉，由 ${转给名} 重新安排；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
         </div>
       </Modal>
     </div>
