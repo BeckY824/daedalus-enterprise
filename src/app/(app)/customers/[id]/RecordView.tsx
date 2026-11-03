@@ -498,7 +498,7 @@ export default function RecordView({
       duration: 6,
       content: (
         <span>
-          {动作 === "放进" ? "已放回公海，谁都能领" : `已领取，负责人改成你${带走说法(res.带走)}`}
+          {动作 === "放进" ? (企业 ? "已放回公海，原负责人不能再领回来" : "已放回公海，谁都能领") : `已领取，负责人改成你${带走说法(res.带走)}`}
           <Button type="link" size="small" onClick={async () => {
             message.destroy(key);
             const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, undefined, res.ok ? res.公海项目 : undefined);
