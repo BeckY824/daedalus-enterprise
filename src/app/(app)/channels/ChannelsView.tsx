@@ -47,6 +47,8 @@ export type 渠道行 = {
   客户数?: number;
   /** 录过几笔投入，同上 */
   投入数?: number;
+  /** 项目来源是这个渠道的项目数，同上（11-03 A1-1） */
+  项目数?: number;
 };
 type Row = 渠道行;
 
@@ -274,7 +276,7 @@ export default function ChannelsView({
 
   /** 行上「⋯ → 删除」变灰的原因（交互规则 A）：有关联数据的删不了，口径同 deleteChannel */
   function 删不了(r: Row): string | null {
-    const 因 = [r.客户数 ? `名下有 ${r.客户数} 位${b.customer}` : "", r.投入数 ? `录过 ${r.投入数} 笔投入` : ""].filter(Boolean);
+    const 因 = [r.客户数 ? `名下有 ${r.客户数} 位${b.customer}` : "", r.投入数 ? `录过 ${r.投入数} 笔投入` : "", r.项目数 ? `是 ${r.项目数} 个项目的项目来源` : ""].filter(Boolean);
     return 因.length ? `${因.join("、")}，不能删；不用了就停用` : null;
   }
   async function 切停用(r: Row) {

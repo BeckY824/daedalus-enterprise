@@ -124,7 +124,8 @@ export type 必填数据 = {
   };
   /** 客户还在（所属客户）；没读 = 不在 */
   有客户?: boolean;
-  联系人们: { phone?: string | null; email?: string | null; wechat?: string | null }[];
+  /** 客户下的联系人；id、name 读了才看主联系人姓名是不是占位（11-03 A2-2） */
+  联系人们: { id?: string; name?: string | null; phone?: string | null; email?: string | null; wechat?: string | null }[];
   /** 挂在项目上的沟通各在哪个节点记的 */
   沟通节点们: string[];
   /** 挂在项目上的每条沟通：哪个节点记的、发起主体、内容、方式（沟通三项用） */
@@ -176,7 +177,8 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "来源": return 有(x?.source);
     case "国家": return 有(x?.country);
     case "客户等级": return 有(x?.level);
-    case "主联系人": return !!d.项目.contactId;
+    // 挂着的那位姓名是「未知」这类占位不算（11-03 A2-2）；没读姓名的照旧只看挂没挂
+    case "主联系人": return !!d.项目.contactId && !d.联系人们.some((c) => c.id === d.项目.contactId && c.name != null && 是占位值(c.name));
     // 10-31 客户定：需求 = 需求状态选了表面触达 / 方向明晰 / 明确需求 / 共识痛点（字典可改名，按「选了、不是暂未确认」认），备注不再算
     case "需求": return 有(d.项目.demandStatus);
     case "金额": return d.项目.amount > 0;

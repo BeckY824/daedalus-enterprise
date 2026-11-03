@@ -234,5 +234,19 @@ describe("企业版推进 / 终止（P2）", () => {
       expect(还差(规, d)).toEqual(["联系方式", "需求"]);
       expect(还差(规, { ...d, 客户: { ...d.客户, phone: "+44 7700 900123" }, 项目: { ...d.项目, demandStatus: "明确需求" } })).toEqual([]);
     });
+
+    it("还差：主联系人挂着、但姓名是「未知」这类占位 → 算缺（11-03 A2-2）", () => {
+      const 规 = 规则({}, { 潜客培育: ["主联系人"] });
+      const d: 必填数据 = {
+        项目: { node: "潜客培育", contactId: "c1", nextStepAt: null, expectedDealAt: null, amount: 0, remark: null, acceptancePassed: false },
+        客户: { phone: null, extra: null },
+        联系人们: [{ id: "c1", name: "未知" }, { id: "c2", name: "王经理" }],
+        沟通节点们: [],
+      };
+      expect(还差(规, d)).toEqual(["主联系人"]);
+      expect(还差(规, { ...d, 项目: { ...d.项目, contactId: "c2" } })).toEqual([]);
+      // 没读姓名（老调用方）：照旧只看挂没挂
+      expect(还差(规, { ...d, 联系人们: [] })).toEqual([]);
+    });
   });
 });

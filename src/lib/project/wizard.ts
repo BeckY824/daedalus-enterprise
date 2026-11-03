@@ -15,6 +15,7 @@ import { 有效线索节点, 缺有效沟通, 记沟通标记 } from "./stage-ga
 import { 登记接着建, type 接着建 } from "./hook";
 import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
+import { 是占位值 } from "./required";
 import { 新项目默认值 } from "./proj-fields";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 认业务线, 业务线不认得, type 项目线 } from "@/lib/enterprise/assign-line";
@@ -94,6 +95,9 @@ const 首条能记的 = FOLLOW_TYPES.filter((t) => t.value !== "TASK" && t.value
 const 文字 = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 const 可空 = (v: unknown) => 文字(v) || null;
 
+/** 企业版建档名字填了占位（未知、待定、暂未确认…）的提示，向导前端同一句 */
+export const 占位名提示 = (叫: string) => `${叫}不能填「未知」「待定」这类占位，请填真实的`;
+
 /** 项目那几格（名称、负责人、金额、币种、备注）规整一遍：向导第四步和项目详情里「编辑」共用。负责人没选 = 默认那位 */
 export function 规整项目(p: 向导项目, 默认负责人: string): 规整好的["项目"] | { error: string } {
   if (!hasVisibleText(p.name)) return { error: "请填写项目名称" };
@@ -156,6 +160,9 @@ export function 规整向导(
   // 企业版新建线索（10-26）：负责人必选（不默认自己）、跟进节点必选、客户是否明确回复必选；渠道必选在 建档向导 里查库
   let 企业档: 规整好的["企业"];
   if (企业) {
+    // 占位值不算填了（11-03 A2-2）：「未知」「待定」「暂未确认」这类建出来详情也算缺
+    if (是占位值(c.name)) return { error: 占位名提示("联系人姓名") };
+    if (是占位值(p.name)) return { error: 占位名提示("项目名称") };
     if (!文字(p.ownerId)) return { error: "请选项目负责人" };
     const 节点 = 文字(f.节点);
     if (!企业版字典.节点们.线索.includes(节点)) return { error: "请选当前进程（线索阶段的哪一步）" };

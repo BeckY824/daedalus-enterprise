@@ -463,6 +463,16 @@ describe("企业版线索有效性验证", () => {
       expect((await 读线索验证(市场, p))?.我能).toBeNull();
     });
 
+    it("最后判成有效线索：不再带着当初写的无效原因（A4-2）", async () => {
+      const id = await 项目();
+      await 记有效沟通(id);
+      await 判无效(id);
+      await 市场复核(市场, id, true);
+      expect((await 读线索验证(乙, await 现(id)))?.无效原因).toBe("联系方式无效");
+      expect((await 销售终验(乙, id, true)).ok).toBe(true);
+      expect(await 读线索验证(乙, await 现(id))).toMatchObject({ 叫法: "有效线索", 无效原因: null });
+    });
+
     it("待我复核的：市场管理看到等市场复核的；总管看到等终判的；销售两步只给负责人本人", async () => {
       const id = await 项目();
       await 判无效(id);

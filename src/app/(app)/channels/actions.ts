@@ -189,6 +189,10 @@ export async function deleteChannel(id: string): Promise<{ ok: true } | { ok: fa
   // 录过投入的也不删：投入跟着渠道级联删掉，钱的记录就没了
   const 投入 = await prisma.entChannelInvest.count({ where: { channelId: id } });
   if (投入 > 0) return { ok: false, error: `该渠道已录了 ${投入} 笔投入，不能删除。如需停用请点「停用」` };
+  // 项目来源挂在这个渠道上的也不删（11-03 A1-1）：项目来源可以和客户来源不同，外键 SetNull 会把项目来源悄悄清空、渠道统计少算。
+  // 和数客户一样数全部项目，不按看得见的范围
+  const 项目 = await 看全部(() => prisma.project.count({ where: { channelId: id } }));
+  if (项目 > 0) return { ok: false, error: `该渠道是 ${项目} 个项目的项目来源，不能删除。如需停用请点「停用」` };
   const 待删 = await prisma.channel.findUnique({ where: { id }, select: { name: true } });
   // 另一个窗口已经删了：说一句，不抛（2026-10-04 第 2 期 2a）。查完到删之间又被删的那一下也接住
   if (!待删) return { ok: false, error: "这个渠道已经不在了（可能在别处删了），刷新看看" };
