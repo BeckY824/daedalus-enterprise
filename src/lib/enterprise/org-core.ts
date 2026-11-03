@@ -187,6 +187,8 @@ export type 管理员类别 = "销售管理" | "市场管理" | "总管理员" |
 /** 兼几个角色的人，几类都算（10-27）：销售管理兼市场管理的，两边的权都有 */
 export function 管理员类别们of(org: 组织, userId: string): Set<管理员类别> {
   const 们 = new Set<管理员类别>();
+  // 设了「只看某人」的人角色挂着也不算任何一类管理员（V3.5.1 市管特例，11-03）：不收复核、满额 / 待分配提醒，不管渠道、不做市场复核
+  if (org.只看某人?.has(userId)) return 们;
   for (const r of org.成员.get(userId)?.角色们 ?? []) {
     if (r === "director") 们.add("总管理员");
     else if (r === "admin") 们.add("管理员");
