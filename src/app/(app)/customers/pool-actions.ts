@@ -9,7 +9,8 @@ import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 虚线只读挡 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能转出自己的, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
+import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 能管公海, 能转出自己的, 只读角色, 只读角色话, 没设业务角色, 没业务角色不能领话 } from "@/lib/enterprise/permissions";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
@@ -111,6 +112,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   if (企业版() && !选.值 && (await 可选项("recycle")).length) return { ok: false, error: 要选退回原因提示 };
   const reason = 选.值 ? `${回收原因前缀}${选.值}` : "手动";
   await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason })) });
+  忘掉企业版范围(); // 原负责人回避名单变了，这一下就要看不到（范围缓存 10 秒）
   await 记退回(能放.map((c) => c.id), 1);
   await recordAudit({
     user: me, action: "pool", entity: "Customer", entityId: 能放.length === 1 ? 能放[0].id : null,
@@ -134,6 +136,8 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
   // 管理员只读（11-02）：公海看得到、领不走。下面的事务包着 看全部，team-scope 拦不到
   if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读角色话 };
+  // 没设业务角色的不能领（11-03 用户定）：权限只认业务角色，账号 ADMIN / MANAGER 不算。别人分给他（分配公海）不走这里
+  if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: 没业务角色不能领话 };
   // 企业版「非原负责人均可领取」（pool-rules.ts，10-26 定稿）：公海里负责人一直留着原来那位，是他的就不让他自己领回
   const 不能领 = 拦原负责人()
     ? new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: me.id, pool: { isNot: null } }, select: { id: true } }))).map((c) => c.id))
@@ -261,9 +265,13 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     // 先认出真撤得动的那几位，退回计数只减它们（企业版统一公海）
     // 企业版：放进去超过撤销时限就撤不回（原负责人不能自己领回）
     const 时限内 = 企业版() ? { at: { gte: new Date(Date.now() - 撤销时限毫秒) } } : {};
-    const 撤 = (await prisma.customerPool.findMany({ where: { customerId: { in: ids }, userId: me.id, ...时限内 }, select: { customerId: true } })).map((x) => x.customerId);
-    const r = await prisma.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } });
-    if (r.count) await 记退回(撤, -1);
+    // 原负责人放进去之后自己看不到这位（回避，11-03），包 看全部 才撤得动；只认自己放进去的、时限内的，范围没放宽
+    const 撤 = (await 看全部(() => prisma.customerPool.findMany({ where: { customerId: { in: ids }, userId: me.id, ...时限内 }, select: { customerId: true } }))).map((x) => x.customerId);
+    const r = await 看全部(() => prisma.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } }));
+    if (r.count) {
+      忘掉企业版范围();
+      await 记退回(撤, -1);
+    }
     刷新(ids);
     return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0 };
   }

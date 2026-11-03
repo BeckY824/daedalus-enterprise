@@ -20,7 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 企业字典, 改字典项, 定沟通方式, 认跟进方式 } from "@/lib/enterprise/dict";
-import { 方式对类型, 类型对方式, 对得上的方式, 跟进方式名 } from "@/lib/follow-method";
+import { 方式对类型, 类型对方式, 对得上的方式, 跟进方式名, 筛选方式名 } from "@/lib/follow-method";
 import { 记项目沟通Action } from "@/app/(app)/projects/actions";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 
@@ -59,6 +59,18 @@ describe("纯函数", () => {
     expect(对得上的方式("PHONE", "微信沟通")).toBeUndefined();
     expect(跟进方式名({ type: "OTHER", method: "Telegram" })).toBe("Telegram");
     expect(跟进方式名({ type: "PHONE" })).toBe("电话沟通");
+  });
+});
+
+describe("看板沟通方式筛选的叫法", () => {
+  it("OTHER 这档含导入的「未注明」，筛选显示「其他 / 未注明」；别的档照旧", () => {
+    expect(筛选方式名("OTHER")).toBe("其他 / 未注明");
+    expect(筛选方式名("PHONE")).toBe(类型对方式("PHONE"));
+    expect(筛选方式名("没这档")).toBe("没这档");
+  });
+  it("补方式的 类型对方式 不动；行内显示记录自己的方式", () => {
+    expect(类型对方式("OTHER")).toBe("其他方式");
+    expect(跟进方式名({ type: "OTHER", method: "未注明" })).toBe("未注明");
   });
 });
 

@@ -28,6 +28,8 @@ import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
 import { ProjectFold } from "./ProjectFold";
+import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
+import type { 窗外去处, 草稿们 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
 import ProjectStarButton from "./ProjectStarButton";
 import AiWait from "@/components/AiWait";
@@ -437,6 +439,7 @@ export default function ProjectDetail({
   const [只看接手后, set只看接手后] = useState(false);
   /** 企业版页头具名按钮开的那个框（10-31 R6），一次只开一个 */
   const [头部框, set头部框] = useState<头部框 | null>(null);
+  const 必填草稿 = useRef<Record<string, 草稿们>>({});
   const 当前: 位置 = { phase: p.phase, node: p.node, result: p.result };
   const 字典 = 字典of(p.企业版, p.出口叫法);
   const 节点总数 = 节点总数of(字典);
@@ -1202,9 +1205,17 @@ export default function ProjectDetail({
 
   const 关头部框 = () => set头部框(null);
   /** 企业版每块卡包一层模块壳（ProjectFold）：卡头最右一颗收起 / 展开，各块自己记开合 */
-  const 折 = (名: string, 卡: ReactNode) => (卡 ? <ProjectFold 名={名}>{卡}</ProjectFold> : null);
+  const 折 = (名: string, 卡: ReactNode, id?: string) => (卡 ? <ProjectFold id={id} 名={名}>{卡}</ProjectFold> : null);
   /** 框里点了要换到别的框（推进 → 结局确认）：先关这个，焦点回到页头。「管理沟通」框 M-权限-09 去掉了，改、删在每条沟通的「…」里 */
   const 换框 = (f: () => void) => () => { set头部框(null); f(); };
+  /** 「完成节点」框里填不了的必填：关框，打开或滚到能填的地方 */
+  const 去补必填 = (去: 窗外去处) => {
+    set头部框(null);
+    if (去 === "沟通") set记一条开着("手填");
+    else if (去 === "线索验证") set验证开着(true);
+    else if (去 === "附件") 定位到模块("project-attachments-fold");
+    else if (去 === "回款") 定位到模块("project-payments-fold");
+  };
   const 头部框内容 = (() => {
     switch (头部框) {
       case "推进":
@@ -1223,32 +1234,26 @@ export default function ProjectDetail({
             )}
           </div>
         );
-      case "完成": {
-        // M-节点-05/09：先查这个节点的必填（占位值不算填了）；缺了列出来，齐了写能推到哪。老板、主管缺着也能「仍要推进」
-        const 缺 = p.必填?.还差 ?? [];
-        const 能推 = !!完成到 && !完成不了 && !(缺.length && p.必填?.只能靠填齐);
+      case "完成":
+        // M-节点-05/09：先查这个节点的必填（占位值不算填了）；缺了当场填（11-03 一窗填完），齐了写能推到哪。老板、主管缺着也能「仍要推进」
         return (
-          <div className="proj-modal-sec">
-            <div><span className="proj-where-label">现在在</span> {位.阶段} · {位.进程}</div>
-            {缺.length ? (
-              <Alert
-                type="warning"
-                showIcon
-                message={p.必填?.只能靠填齐 ? "还差这些必填，补齐了才能完成这个节点" : "还差这些必填（你是老板 / 主管，可以先推）"}
-                description={<ul className="proj-miss-list">{缺.map((k) => <li key={k}>{必填叫法(k)}</li>)}</ul>}
-              />
-            ) : (
-              <Alert type="success" showIcon message={p.必填 ? "这个节点的必填都齐了，可以推进" : "这个节点没有配必填，可以推进"} />
-            )}
-            {完成不了 && <div style={{ color: "var(--text-muted)" }}>{完成不了}</div>}
-            {完成到 && <div><span className="proj-where-label">完成后</span> {完成到字}</div>}
-            <Space wrap>
-              {能推 && <Button type="primary" disabled={忙} onClick={换框(完成)}>{缺.length ? "仍要推进" : "确认推进"}</Button>}
-              <Button onClick={关头部框}>{缺.length && !能推 ? "去补齐" : "取消"}</Button>
-            </Space>
-          </div>
+          <ProjectFillRequired
+            p={p}
+            联系人们={联系人们}
+            能就地改={能就地改}
+            改不了话={改不了话}
+            现在在={`${位.阶段} · ${位.进程}`}
+            能推进={!!完成到 && !完成不了}
+            完成不了={完成不了}
+            完成到字={完成到字}
+            忙={忙}
+            on完成={换框(完成)}
+            on关={关头部框}
+            on去={去补必填}
+            读草稿={() => 必填草稿.current[p.id]}
+            留草稿={(草稿) => { 必填草稿.current[p.id] = 草稿; }}
+          />
         );
-      }
       default:
         return null;
     }
@@ -1300,8 +1305,8 @@ export default function ProjectDetail({
               {/* 沟通、卡点跟着搜索：有词时都摊开、收起钮灰着 */}
               <ProjectFold id="project-follow" 名="沟通" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
               {卡点区 && <ProjectFold id="project-blockers" 名="卡点与任务" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
-              {折("项目附件", 附件卡)}
-              {折("回款", 回款卡)}
+              {折("项目附件", 附件卡, "project-attachments-fold")}
+              {折("回款", 回款卡, "project-payments-fold")}
             </div>
             <aside className="proj-side" aria-label="项目资料">
               {折("项目", 项目卡)}

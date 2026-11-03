@@ -14,6 +14,7 @@ import { recordAudit } from "@/lib/audit";
 import { 验号码, 查重提示, type 号码类型 } from "./contact-format";
 import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞 } from "./contact-dedupe";
 import { notify } from "./notify";
+import { 同号再次录入, type 录入信息 } from "./same-number-collab";
 
 export type 认出的号 = { 类型: 号码类型; 值: string; 键: string };
 
@@ -52,7 +53,7 @@ export function 认出备注里的号码(备注: string): { 号们: 认出的号
 }
 
 /** 挨个查，撞了回给录入的人看的话（不建档）；都没撞回 null */
-export async function AI建档查重(号们: 认出的号[], 我: { id: string; name: string }): Promise<string | null> {
+export async function AI建档查重(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<string | null> {
   const 读 = await 读的我(defaultClient);
   for (const 号 of 号们) {
     const ids = await 全公司查号(prisma, 号.类型, 号.值, 号.键);
@@ -62,20 +63,22 @@ export async function AI建档查重(号们: 认出的号[], 我: { id: string; 
       continue;
     }
     const 结论 = await 撞号结论(prisma, ids, 我.id, 读);
+    // 卡上录的内容也接同号协同（写进现有项目、发邀请、通知）；回 AI 卡的话照 10-27 定的原文，协同已经通知过就不再响铃
+    const 协同 = 录入 ? await 同号再次录入(我, 号, 录入) : null;
     if (结论.状态 !== "重复") return 结论.提示;
     const 原 = await 首条撞的(prisma, ids);
-    if (原?.salesOwnerId) await 提醒原负责人(原.id, 原.name, 原.salesOwnerId, 我);
+    if (原?.salesOwnerId) await 提醒原负责人(原.id, 原.name, 原.salesOwnerId, 我, !协同?.走);
     return 查重提示.AI建档重复(结论.撞.salesOwnerName);
   }
   return null;
 }
 
 /** 同一位客户还挂着一条没做完的同样提醒就不再加（同一张卡点两次、两个号都撞同一位，只提醒一次） */
-async function 提醒原负责人(客户id: string, 客户名: string, 原负责人: string, 我: { id: string; name: string }) {
+async function 提醒原负责人(客户id: string, 客户名: string, 原负责人: string, 我: { id: string; name: string }, 响铃: boolean) {
   const title = 查重提示.提醒原负责人(我.name, 客户名);
   if (await prisma.task.findFirst({ where: { customerId: 客户id, ownerId: 原负责人, title, done: false }, select: { id: true } })) return;
   const 时间 = parseScheduleDate(new Date().toISOString())!;
   const t = await prisma.task.create({ data: { title, dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: 客户id, ownerId: 原负责人 } });
   await recordAudit({ user: 我, action: "create", entity: "Task", entityId: t.id, summary: `AI 建档撞号，给原负责人加了待办「${title}」` });
-  if (原负责人 !== 我.id) await notify([原负责人], { kind: "撞号", title, link: `/customers/${客户id}`, key: `ai-dup:${t.id}` });
+  if (响铃 && 原负责人 !== 我.id) await notify([原负责人], { kind: "撞号", title, link: `/customers/${客户id}`, key: `ai-dup:${t.id}` });
 }

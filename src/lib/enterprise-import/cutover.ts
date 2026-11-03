@@ -7,6 +7,7 @@
  * 同一来源有一批正在写入 / 撤回 / 恢复时不切（快照会缺一截）。
  */
 import { prisma } from "../prisma";
+import { businessDayjs } from "../business-clock";
 import { recordAudit, type Actor } from "../audit";
 import { 别的在写 } from "./revert";
 import { 读同步设置 } from "./sync";
@@ -28,7 +29,7 @@ function 解(s: string): unknown {
 
 export async function 切换(源: 来源, 用户: Actor): Promise<切换结果> {
   const 设置 = await 读同步设置(源);
-  if (设置.切换) throw new Error(`${来源名[源]}已经在 ${设置.切换.时间.slice(0, 10)} 切换过了`);
+  if (设置.切换) throw new Error(`${来源名[源]}已经在 ${businessDayjs(设置.切换.时间).format("YYYY-MM-DD")} 切换过了`);
   if (await 别的在写(源, "")) throw new Error("同一来源还有一批正在写入、撤回或恢复，等它完了再切换");
 
   // 分段按 id 读，一万多条也不一次拉进内存
@@ -77,5 +78,5 @@ export async function 导出快照(id: string): Promise<{ 文件名: string; 内
   const s = await prisma.entSnapshot.findUnique({ where: { id } });
   if (!s) return null;
   const 内容 = JSON.stringify({ 来源: s.source, 来源名: 来源名[s.source as 来源] ?? s.source, 时间: s.createdAt.toISOString(), 条数: s.count, 对照: JSON.parse(s.data) }, null, 2);
-  return { 文件名: `${来源名[s.source as 来源] ?? s.source}-切换快照-${s.createdAt.toISOString().slice(0, 10)}.json`, 内容 };
+  return { 文件名: `${来源名[s.source as 来源] ?? s.source}-切换快照-${businessDayjs(s.createdAt).format("YYYY-MM-DD")}.json`, 内容 };
 }

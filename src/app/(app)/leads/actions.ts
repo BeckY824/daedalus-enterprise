@@ -38,6 +38,8 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 线索附件转给联系人 } from "@/lib/attachments";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 
 /**
  * 企业版「线索分配和配额」开着时，负责人只能经「分配」换（F2，10-25 实测）：编辑、新建里随手改负责人
@@ -111,6 +113,14 @@ export async function saveLead(input: {
   // 新建、没人管的线索，原负责人都当作「我」：建给自己、认领照常，给别人要走分配
   const 不给 = input.id && !原 ? null : await 改负责人不给(user, 原?.ownerId ?? user.id, data.ownerId);
   if (不给) return { ok: false as const, error: 不给 };
+  // 企业版新建：号码已在有人跟的客户上 = 同号再次录入，来源和备注写进现有项目、不另建线索；公海、占位、停用的照常建
+  if (企业版() && !input.id) {
+    for (const 号 of [验号码("手机号", data.phone ?? ""), 验号码("邮箱", data.email ?? "")]) {
+      if (!号.ok) continue;
+      const 协同 = await 同号再次录入(user, 号, { 入口: "新建线索", 来源: data.source, 内容: data.remark });
+      if (协同.走) return { ok: false as const, error: 协同.反馈, 同号协同: true as const };
+    }
+  }
   // 新建的线索编号：企业版名片建档拿它挂名片原图（联系人附件）
   let 新id: string | undefined;
   if (input.id) {

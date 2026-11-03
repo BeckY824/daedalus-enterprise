@@ -1,6 +1,7 @@
 "use server";
 
 import { requireUser } from "@/lib/auth";
+import { 北京日期 } from "@/lib/team-pricing";
 import { multiTenant } from "@/lib/tenant/context";
 import { resolveCurrentTenant } from "@/lib/tenant/resolve";
 import { control } from "@/lib/tenant/control";
@@ -35,7 +36,7 @@ export async function submitPayment(input: { plan: string; reference: string }):
   const ws = await control.workspace.findUnique({ where: { id: t.workspaceId } });
   if (!ws) return { ok: false, error: "工作区不存在" };
 
-  const 记录 = `[待核对] ${new Date().toISOString().slice(0, 10)} ${PLANS[input.plan].label} ¥${PLANS[input.plan].price} 单号 ${ref}`;
+  const 记录 = `[待核对] ${北京日期(new Date())} ${PLANS[input.plan].label} ¥${PLANS[input.plan].price} 单号 ${ref}`;
   await control.workspace.update({
     where: { id: t.workspaceId },
     // 追加而不是覆盖：续费第二次时上一次的记录还得能查

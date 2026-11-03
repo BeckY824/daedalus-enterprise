@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { fmtDate } from "@/lib/utils";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 最高管理 } from "@/lib/enterprise/import-perm";
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
   if (!(await 最高管理(我)) || (await 当前是共享区())) return NextResponse.json({ error: "只有总管理能做企业版导入" }, { status: 403 });
 
   const 切了 = (await 读同步设置("excel")).切换;
-  if (切了) return NextResponse.json({ error: `Excel 导入已经在 ${切了.时间.slice(0, 10)} 切换过了，不再收新文件` }, { status: 400 });
+  if (切了) return NextResponse.json({ error: `Excel 导入已经在 ${fmtDate(切了.时间)} 切换过了，不再收新文件` }, { status: 400 });
 
   const 长 = Number(req.headers.get("content-length") ?? 0);
   if (长 > 一次上限字节) return NextResponse.json({ error: `一次传的文件加起来超过 ${一次上限字节 / 1024 / 1024} MB，请分几次传` }, { status: 413 });

@@ -485,7 +485,9 @@ export default function RecordView({
     const 问 = 动作 === "放进" ? await 问放回公海("把这位客户放回公海？", 企业) : null;
     if (问 === false) return;
     const res = 动作 === "放进" ? await 放进公海([customer.id], 问?.原因) : await 领取([customer.id]);
-    router.refresh();
+    // 原负责人放进公海后自己就看不到这位了（11-03），留在详情页刷新是 404：回列表，提示条上的撤销还在
+    if (企业 && 动作 === "放进" && res.ok && res.updated) router.push("/customers");
+    else router.refresh();
     if (!res.ok) return void message.error(res.error);
     if (!res.updated) return void message.info(动作 === "放进" ? "已经在公海里了" : "已经被别人领走了");
     const 原 = 动作 === "领取" ? (res.原负责人 ?? []) : [{ id: customer.id, 值: "" }];

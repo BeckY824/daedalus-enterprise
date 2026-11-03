@@ -75,7 +75,7 @@ export async function 已认映射(源: 来源): Promise<映射 | null> {
 export async function 改同步设置(源: 来源, 改: { 开?: boolean; 频率?: 同步频率; 几点?: number }, 用户: Actor): Promise<同步设置> {
   if (!能同步的来源.includes(源)) throw new Error("Excel 没有自动同步：把新导出的文件再传一次，按原系统 ID 只更新变了的");
   const 现 = await 读同步设置(源);
-  if (现.切换 && 改.开) throw new Error(`已经在 ${现.切换.时间.slice(0, 10)} 切换过了，同步关掉后不能再开`);
+  if (现.切换 && 改.开) throw new Error(`已经在 ${businessDayjs(现.切换.时间).format("YYYY-MM-DD")} 切换过了，同步关掉后不能再开`);
   if (改.频率 !== undefined && 改.频率 !== "每小时" && 改.频率 !== "每晚") throw new Error("频率只能是每小时或每晚");
   if (改.几点 !== undefined && !(Number.isInteger(改.几点) && 改.几点 >= 0 && 改.几点 <= 23)) throw new Error("每晚几点要填 0 到 23");
   if (改.开 && !(await 已认映射(源))) throw new Error(`先从${来源名[源]}做一次首次导入（试跑、确认、正式导入），再开同步`);
@@ -116,7 +116,7 @@ export async function 同步一次(源: 来源, opts: { 用户?: Actor; 现在?:
   if (设置.切换) return { 结果: "跳过", 话: "已经切换，不再同步" };
   // 同一来源已经在拉（定时那次还没完又点了立即同步，或点了两下）：不叠，也不改「上次」，等那次自己记
   const 在 = 正在同步(源);
-  if (在) return { 结果: "跳过", 话: `正在同步（${在.谁} ${new Date(在.开始).toTimeString().slice(0, 5)} 开始的那次还没完），这次不再拉` };
+  if (在) return { 结果: "跳过", 话: `正在同步（${在.谁} ${businessDayjs(在.开始).format("HH:mm")} 开始的那次还没完），这次不再拉` };
   const 开始 = opts.现在 ?? new Date();
   在同步[源] = { 开始: new Date().toISOString(), 谁: opts.用户?.name || "定时同步" };
   try {

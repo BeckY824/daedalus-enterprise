@@ -19,6 +19,7 @@
  *   所以照旧挂「兜底负责人」（脚本里 --owner=姓名，不给就第一个在职管理员），提示写「负责人留空待管理员指定，先挂给 X」。
  * - 渠道属性不在字典里：照收、报一句（字典里补上就能筛）；空着也照收。
  */
+import { businessDayjs } from "@/lib/business-clock";
 import { 认日期 } from "@/lib/import/plan";
 import { 拼全称, 全称上限 } from "./channel-stats";
 
@@ -177,8 +178,8 @@ export function 排导入(
     if (结束原文 && !结束) 话.push(`结束日期「${结束原文}」认不出，留空`);
     // 来源名称里写了年份（比如「某展2025」），结束日期却是别的年份：多半填错了，不猜哪个对，日期留空
     const 名年 = 名里的年份(来源);
-    if (结束 && 名年.length && !名年.includes(结束.getFullYear())) {
-      话.push(`结束日期「${结束原文}」是 ${结束.getFullYear()} 年，来源名称里写的是 ${[...new Set(名年)].join("、")} 年，对不上，留空`);
+    if (结束 && 名年.length && !名年.includes(businessDayjs(结束).year())) {
+      话.push(`结束日期「${结束原文}」是 ${businessDayjs(结束).year()} 年，来源名称里写的是 ${[...new Set(名年)].join("、")} 年，对不上，留空`);
       结束 = null;
     }
 
@@ -212,12 +213,12 @@ export function 排导入(
   const 后缀 = new Map<草稿, string>();
   for (const 组 of 同名.values()) {
     const 有日期 = 组.filter((d) => d.endDate);
-    const 月们 = new Set(有日期.map((d) => `${d.endDate!.getFullYear()}-${d.endDate!.getMonth()}`));
+    const 月们 = new Set(有日期.map((d) => businessDayjs(d.endDate!).format("YYYY-MM")));
     if (月们.size < 2) continue;
-    const 跨年 = new Set(有日期.map((d) => d.endDate!.getFullYear())).size > 1;
+    const 跨年 = new Set(有日期.map((d) => businessDayjs(d.endDate!).year())).size > 1;
     for (const d of 有日期) {
-      const 月 = d.endDate!.getMonth() + 1;
-      后缀.set(d, 跨年 ? `（${d.endDate!.getFullYear()}年${月}月）` : `（${月}月）`);
+      const 月 = businessDayjs(d.endDate!).month() + 1;
+      后缀.set(d, 跨年 ? `（${businessDayjs(d.endDate!).year()}年${月}月）` : `（${月}月）`);
     }
   }
 

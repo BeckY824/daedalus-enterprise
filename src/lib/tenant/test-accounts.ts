@@ -1,4 +1,5 @@
 import { control } from "./control";
+import { businessDayjs } from "@/lib/business-clock";
 import { 运营名单 } from "@/lib/ops-auth";
 
 /**
@@ -86,10 +87,9 @@ export async function 当前是测试账号(workspaceId: string): Promise<boolea
   }
 }
 
-/** 留痕的一行。时间按本机时区（线上 TZ=Asia/Shanghai），和运营台别处一个口径 */
+/** 留痕的一行。时间走业务钟（线上固定北京），和运营台别处一个口径 */
 export function 留痕行(on: boolean, by: string, now = new Date()): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  const 时 = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+  const 时 = businessDayjs(now).format("YYYY-MM-DD HH:mm");
   return `${时} ${on ? "标为测试账号" : "取消测试账号"} · ${by}`;
 }
 

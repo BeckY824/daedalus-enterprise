@@ -40,6 +40,7 @@ import { 字段权限of } from "@/lib/enterprise/field-perm";
 import { 合同状态显示 } from "@/lib/project/proj-fields";
 import type { 项目画像 } from "./ProjectExtras";
 import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
+import SameNumberBanner from "./SameNumberBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -254,5 +255,5 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     ...(回款们 ? { 回款们 } : {}),
     删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
   };
-  return <ProjectDetail key={p.id} 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} />;
+  return <>{企业版() && 露 ? <SameNumberBanner projectId={p.id} /> : null}<ProjectDetail key={p.id} 卡点={卡点} p={详情} 能改={能改} 候选={候选} 在职={在职} 联系人们={联系人们} 角色们={角色们.map((r) => ({ id: r.id, name: r.name, active: r.active }))} 类别们={类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name }))} /></>;
 }

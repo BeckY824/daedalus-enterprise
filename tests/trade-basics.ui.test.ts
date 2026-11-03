@@ -3,7 +3,7 @@
  *   计划页点 ✓ → 小框：方式按计划写的来、一句话没写时「保存并完成」是灰的、下次默认 7 天后（北京日历日）→ 交给 saveFollowUp 的就是
  *     一条已完成的跟进 + 完成这条计划 + 7 天后的日期计划；「不排」就不带计划；「跳过，直接完成」只调 completePlan
  *   待办点 ✓ 不弹框，照旧直接完成
- *   对方当地时间：浏览器在伦敦，美国客户显示「对方当地 HH:mm」，是夜里的标「夜里」；英国客户（同一钟点）不显示
+ *   对方当地时间：浏览器在伦敦，美国客户显示「对方当地 HH:mm」，是夜里的标「夜里」；比较基准固定北京（11-03），英国客户也显示
  * 2026-10-17 PR26 手测补的：
  *   有 WhatsApp 号的客户：计划写着老默认「电话沟通」时小框默认 WhatsApp；记录跟进、新建计划（给定的 / 挑中的）也默认 WhatsApp
  *   「保存并完成」的提示里有「撤销」，点了交给 撤销记一笔 的是这一笔、这条计划、刚排的下一条
@@ -164,13 +164,13 @@ it("小框：「跳过，直接完成」只勾掉计划（提示里照旧有撤�
   await page.close();
 });
 
-it("对方当地时间：美国显示「对方当地 02:05」并标夜里；迪拜简短写法；英国和本机同一钟点不显示", async () => {
+it("对方当地时间：美国显示「对方当地 02:05」并标夜里；迪拜简短写法；比较基准固定北京：英国也显示当地时间", async () => {
   const { page, errors } = await 开();
   await page.locator("#us [data-testid=local-time]").waitFor();
   expect(await page.locator("#us").innerText()).toBe("对方当地 02:05夜里");
   expect(await page.locator("#us [data-testid=local-time]").getAttribute("title")).toContain("America/New_York");
   expect(await page.locator("#dubai").innerText()).toBe("10:05");
-  expect(await page.locator("#uk").innerText()).toBe("");
+  expect(await page.locator("#uk").innerText()).toBe("对方当地 07:05");
   expect(errors).toEqual([]);
   await page.close();
 });

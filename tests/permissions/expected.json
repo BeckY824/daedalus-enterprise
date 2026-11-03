@@ -161,6 +161,7 @@
     "动作 app/(app)/customers/pool-actions.ts#放进公海": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/pool-actions.ts#退回原因选项": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/pool-actions.ts#领取": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
+    "动作 app/(app)/customers/same-number-actions.ts#同号协同录入": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/dashboard/ai.ts#draftWakeup": {"未登录":"400","销售":"允许","市场":"允许","经理":"允许","老板":"允许","注":"参数错先于认人：dashboard/ai.ts:20 先校验入参，requireUser 在第 31 行"},
     "动作 app/(app)/dashboard/apply.ts#applyProposal": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/dashboard/apply.ts#undoProposal": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},

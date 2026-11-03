@@ -7,6 +7,7 @@
  * 时区名写 IANA 的代表城市（华盛顿用 America/New_York，堪培拉用 Australia/Sydney，巴西利亚用 America/Sao_Paulo）。
  * 夏令时交给 Intl 算，不自己维护偏移。
  */
+import { businessTimeZone } from "./business-clock";
 import { 认国家 } from "./customer-extra";
 
 export const 国家时区: Record<string, string> = {
@@ -81,7 +82,7 @@ export type 当地时间 = {
 /**
  * 这个国家此刻几点。认不出国家、或者和本机是同一个钟点（客户也在中国、或时差为零）返回 null——
  * 和自己一样的时间写出来只是噪音。
- * 本机时区可以传进来（测试用）；不传用运行环境的
+ * 本机时区可以传进来（测试用）；不传时企业版按北京比，没开业务钟的用运行环境的
  */
 export function 对方当地(国家: string | null | undefined, 现在: Date = new Date(), 本机时区?: string): 当地时间 | null {
   const 名 = 认国家(国家);
@@ -89,7 +90,8 @@ export function 对方当地(国家: string | null | undefined, 现在: Date = n
   if (!时区) return null;
   const 那边 = 格式(时区);
   if (!那边) return null;
-  const 这边 = 本机时区 ? 格式(本机时区) : new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const 这边时区 = 本机时区 ?? businessTimeZone();
+  const 这边 = 这边时区 ? 格式(这边时区) : new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   if (!这边) return null;
   const a = 拆(那边, 现在);
   const b = 拆(这边, 现在);

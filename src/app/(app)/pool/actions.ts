@@ -15,6 +15,7 @@ import { 能管公海, 能恢复 } from "@/lib/enterprise/permissions";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
+import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 记转让, 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -151,6 +152,7 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
     if (await 看全部(() => 查完再写((tx) => 撤回项目公海(tx, id, 现, me.id)))) 撤了++;
   }
   if (撤了) {
+    忘掉企业版范围(); // 回到公海，原负责人回避名单变了
     await recordAudit({
       user: me, action: "update", entity: "Project", entityId: 们.length === 1 ? 们[0] : null,
       summary: `撤销${动作}：${撤了} 个项目放回项目公海`,

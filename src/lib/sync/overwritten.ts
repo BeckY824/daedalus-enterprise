@@ -13,6 +13,7 @@
  * 记录挂在本机还看得到的记录上：清理失权副本、业务员离开团队时跟着清掉（不在这台留别人客户的内容）。
  */
 import type { PrismaClient, Prisma } from "@/generated/prisma";
+import { businessDayjs } from "../business-clock";
 import { 列的叫法, 表的叫法 } from "./labels";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -77,9 +78,7 @@ export async function 记被盖(tx: Db, x: { t: string; k: string; 本机设备:
 function 显示值(col: string, v: string | null): string | null {
   if (v == null || v === "") return v;
   if (/(At|On)$/.test(col) && /^\d{12,14}$/.test(v)) {
-    const d = new Date(Number(v));
-    const p = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return businessDayjs(Number(v)).format("YYYY-MM-DD HH:mm");
   }
   if (["done", "isPrimary", "closed"].includes(col) && (v === "1" || v === "0" || v === "true" || v === "false")) return v === "1" || v === "true" ? "是" : "否";
   return v;

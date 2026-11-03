@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { 口令对 } from "./guard";
 import { 当前运营账号 } from "@/lib/ops-auth";
+import { 北京日期 } from "@/lib/team-pricing";
 import { control } from "@/lib/tenant/control";
 import { multiTenant } from "@/lib/tenant/context";
 import { isPlanKey, PLANS } from "@/lib/tenant/plans";
@@ -40,7 +41,7 @@ export async function activate(input: { token: string; workspaceId: string; plan
   // 续费要在原到期日基础上顺延，不能从今天重算——那会把用户已付的天数吃掉
   const base = ws.paidUntil && ws.paidUntil > new Date() ? ws.paidUntil : new Date();
   const paidUntil = new Date(base.getTime() + PLANS[input.plan].days * 86_400_000);
-  const 记录 = `[已开通] ${new Date().toISOString().slice(0, 10)} ${PLANS[input.plan].label} 至 ${paidUntil.toISOString().slice(0, 10)}${input.note ? ` ${input.note}` : ""}`;
+  const 记录 = `[已开通] ${北京日期(new Date())} ${PLANS[input.plan].label} 至 ${北京日期(paidUntil)}${input.note ? ` ${input.note}` : ""}`;
 
   await control.workspace.update({
     where: { id: input.workspaceId },

@@ -17,7 +17,7 @@ import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
-import { 能恢复 } from "@/lib/enterprise/permissions";
+import { 能恢复, 没设业务角色, 没业务角色不能领话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤, 客户事项挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
@@ -209,8 +209,10 @@ export async function saveFollowUp(input: FollowUpInput) {
       领取照电脑上原来那一套（改负责人、记领取时间、原负责人没做完的活跟过来、操作日志）；同步时和别人抢，先同步上的拿到，
       后到的那台改负责人、领取和这条跟进都进「待核对」（tests/team-qa-sync.test.ts D4）
     */
-    const 领取了 = !input.id && !!(await prisma.customerPool.findUnique({ where: { customerId: input.customerId }, select: { customerId: true } }))
-      && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
+    const 在公海 = !input.id && !!(await prisma.customerPool.findUnique({ where: { customerId: input.customerId }, select: { customerId: true } }));
+    // 没设业务角色的领不了（11-03）：记了就等于没领到却留了条沟通，直接说清楚，不记
+    if (在公海 && 企业版() && 没设业务角色(await 权限组织(), user.id)) return { ok: false as const, error: 没业务角色不能领话 };
+    const 领取了 = 在公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
     const result = await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
       if (!customer) return { ok: false as const, error: "这个客户已经不在了，请刷新重试" };

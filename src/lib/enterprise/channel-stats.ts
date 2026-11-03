@@ -18,6 +18,7 @@
  * - 统计范围（10-30 B2）：数的是「我看得见的」项目——读库那边走 prisma 的范围扩展，和客户列表「按组织看客户」是同一套，
  *   老板、总管理员看全部，别人只数自己和下属的。这个文件只管算，不管范围。
  */
+import { businessTimeZone } from "../business-clock";
 import { 管理员类别们of, type 组织 } from "./org-core";
 
 /**
@@ -141,8 +142,8 @@ export function 算成交(p: 统计用项目): boolean {
 }
 
 const 一天 = 86_400_000;
-/** 当地日历天的序号：时区按进程的（生产和单测都是 Asia/Shanghai） */
-const 第几天 = (d: Date) => Math.floor((d.getTime() - d.getTimezoneOffset() * 60_000) / 一天);
+/** 日历天的序号：企业版固定北京（UTC+8，没有夏令时），不看进程时区；没开业务钟的按本机 */
+const 第几天 = (d: Date) => Math.floor((d.getTime() + (businessTimeZone() ? 480 : -d.getTimezoneOffset()) * 60_000) / 一天);
 
 export function 运营天数(创建: Date, 结束: Date | null, 今天: Date): number {
   return Math.max(0, 第几天(结束 ?? 今天) - 第几天(创建));

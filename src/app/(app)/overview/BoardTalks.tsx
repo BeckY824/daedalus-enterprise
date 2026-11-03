@@ -7,7 +7,7 @@ import { Pagination, Segmented, Select, Tooltip } from "antd";
 import { fmtDateTime } from "@/lib/utils";
 import { 有值 } from "@/lib/empty-value";
 import EmptyState from "@/components/EmptyState";
-import { 类型对方式 } from "@/lib/follow-method";
+import { 筛选方式名 } from "@/lib/follow-method";
 import {
   沟通段们, 沟通段叫法, 沟通方式们, 复盘列表每页,
   type 沟通段, type 沟通方式, type 复盘沟通, type 复盘沟通行,
@@ -57,7 +57,7 @@ export default function BoardTalks({ 数, 段, 方式 = "", 只看自己, 缺 }:
               aria-label="沟通方式"
               value={方式}
               onChange={(v) => 改({ m: v ?? "" })}
-              options={[{ value: "", label: "全部方式" }, ...沟通方式们.map((k) => ({ value: k, label: 类型对方式(k) ?? k }))]}
+              options={[{ value: "", label: "全部方式" }, ...沟通方式们.map((k) => ({ value: k, label: 筛选方式名(k) }))]}
               popupMatchSelectWidth={false}
             />
             <Segmented

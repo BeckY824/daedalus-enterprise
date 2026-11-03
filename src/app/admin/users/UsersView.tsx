@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { 北京日期 } from "@/lib/team-pricing";
 import { Input, Segmented, Select, Table } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { 站内, 等待中, 预取, 页头 } from "../OpsShell";
@@ -142,7 +143,7 @@ export default function UsersView({ token, 账号 }: { token: string; 账号: �
               render: (_, a) => (a.近30天调用 ? 千分位(a.近30天调用) : <span className="opx-faint">0</span>),
             },
             { title: "最近活跃", width: 110, render: (_, a) => <span className="opx-muted"><TimeAgo iso={a.最近活跃} /></span> },
-            { title: "注册于", width: 124, className: "num", render: (_, a) => <span className="opx-muted" style={{ whiteSpace: "nowrap" }}>{a.createdAt.slice(0, 10)}</span> },
+            { title: "注册于", width: 124, className: "num", render: (_, a) => <span className="opx-muted" style={{ whiteSpace: "nowrap" }}>{北京日期(new Date(a.createdAt))}</span> },
             {
               title: "测试账号",
               width: 104,

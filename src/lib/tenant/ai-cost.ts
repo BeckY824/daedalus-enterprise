@@ -27,7 +27,7 @@
  * 两条路不会重叠：托管版不走网关，桌面端的 llm.ts 跑在用户自己机器上、连不到控制面库。
  */
 import { control } from "./control";
-import { fmtDate } from "../utils";
+import { dayjs, fmtDate } from "../utils";
 import { multiTenant } from "./context";
 import { currentTenant } from "./context";
 import { resolveCurrentTenant } from "./resolve";
@@ -130,9 +130,7 @@ export type 成本概览 = {
  * 只合成一个 测试 的数（lib/tenant/test-accounts.ts，2026-10-04「不算真实用户」）。
  */
 export async function 成本概览(天数 = 14, 测试账号: ReadonlySet<string> = new Set()): Promise<成本概览> {
-  const 起 = new Date();
-  起.setDate(起.getDate() - (天数 - 1));
-  起.setHours(0, 0, 0, 0);
+  const 起 = dayjs().subtract(天数 - 1, "day").startOf("day").toDate();
 
   const rows = await control.aiCall.findMany({
     where: { at: { gte: 起 } },

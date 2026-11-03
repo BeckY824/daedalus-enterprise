@@ -19,7 +19,7 @@ import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
 import ResetFilters from "@/components/ResetFilters";
 import { PageHead, RowLink } from "@/components/ui";
-import { smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
+import { fmtDateTime, smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
 import { useUrlFilters } from "@/lib/url-filters";
 import { 带走说法 } from "@/lib/carry-over";
 import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
@@ -236,11 +236,11 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     },
     {
       title: "最后跟进", key: "跟进", width: 104, responsive: ["xl"],
-      render: (_, r) => r.最后跟进 ? <span className="nowrap" title={new Date(r.最后跟进).toLocaleString()}>{smartTime(r.最后跟进)}</span> : <span className="muted">没跟进过</span>,
+      render: (_, r) => r.最后跟进 ? <span className="nowrap" title={fmtDateTime(r.最后跟进)}>{smartTime(r.最后跟进)}</span> : <span className="muted">没跟进过</span>,
     },
     {
       title: "入池时间", key: "入池", width: 104,
-      render: (_, r) => <span className="nowrap" title={new Date(r.入池时间).toLocaleString()}>{smartTime(r.入池时间)}</span>,
+      render: (_, r) => <span className="nowrap" title={fmtDateTime(r.入池时间)}>{smartTime(r.入池时间)}</span>,
     },
     {
       title: "入池原因", key: "原因", width: 140,
