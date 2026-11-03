@@ -126,7 +126,12 @@ const 不订阅 = () => () => {};
  * 「新增客户」「新增项目」弹窗（U-新建-01，10-31 会议）：和 /projects/new 同一个向导、同一套查重（含联系人查重），只是摆在弹窗里。
  * 草稿照旧每改一格存本机，关了下次点开接着填
  */
-export function 建档弹窗({ open, 标题, 数据, onClose }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+export function 建档弹窗(props: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+  return <WizardModal {...props} />;
+}
+
+// 要用 hook（提示、当前用户），组件名得是大写英文开头（react-hooks 规则）
+function WizardModal({ open, 标题, 数据, onClose }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
   const { message } = App.useApp();
   const 我 = useMe();
   // 右上 X / Esc 关：和「存草稿关闭」一样说一句草稿留着（11-03 A1-3：直接关掉，人以为填的都没了）
