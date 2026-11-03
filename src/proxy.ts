@@ -131,6 +131,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // 排除 API 路由与静态资源；/api/auth/logout 需要能自行清 Cookie 后跳转
-  matcher: ["/((?!api|_next/static|_next/image|ocr/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  // 排除 API 路由与静态资源（geo/ 是复盘页世界地图的国家边界）；/api/auth/logout 需要能自行清 Cookie 后跳转
+  matcher: ["/((?!api|_next/static|_next/image|ocr/|geo/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
 };

@@ -126,14 +126,18 @@ export function 算回款(
 }
 
 /**
- * 客户分布（11-03 客户反馈：复盘数据页最下方加客户分布图）：这一圈负责的客户（不含公海、回收站）按国家、按业务线数。
- * 国家多的只摆前几个，其余并成「其他」；没填的单列、排最后
+ * 客户分布（11-03 客户反馈：复盘数据页最下方加客户分布图；同日又要「像地图那种的呈现」）：这一圈负责的客户（不含公海、回收站）按国家、按业务线数。
+ * 按国家给两份，都出自同一次 groupBy：
+ *   - 按国家：地图旁的榜单用。前 8 个照摆，其余并成「其他」；没填的不在里面，单写一行「未填国家 N 个」（未填国家）
+ *   - 全部国家：地图用。不截断、不含没填的
+ * 业务线没填的仍单列、排最后
  */
 export type 分布条 = { 名: string; 数: number };
-export type 客户分布 = { 总数: number; 按国家: 分布条[]; 按业务线: 分布条[] };
+export type 客户分布 = { 总数: number; 按国家: 分布条[]; 全部国家: 分布条[]; 未填国家: number; 按业务线: 分布条[] };
 export const 国家最多 = 9;
 
-function 排一列(们: readonly { 键: string | null; 数: number }[], 没填: string, 最多 = Infinity): 分布条[] {
+/** 名字去空格后合并同名，多的在前、同数按拼音；空的（null、全空格）另数 */
+function 数一列(们: readonly { 键: string | null; 数: number }[]): { 有: 分布条[]; 空: number } {
   const 计 = new Map<string, number>();
   let 空 = 0;
   for (const g of 们) {
@@ -141,18 +145,24 @@ function 排一列(们: readonly { 键: string | null; 数: number }[], 没填: 
     if (k) 计.set(k, (计.get(k) ?? 0) + g.数);
     else 空 += g.数;
   }
-  const 有 = [...计].map(([名, 数]) => ({ 名, 数 })).sort((a, b) => b.数 - a.数 || a.名.localeCompare(b.名, "zh"));
+  return { 有: [...计].map(([名, 数]) => ({ 名, 数 })).sort((a, b) => b.数 - a.数 || a.名.localeCompare(b.名, "zh")), 空 };
+}
+
+function 排一列({ 有, 空 }: { 有: 分布条[]; 空: number }, 没填: string | null, 最多 = Infinity): 分布条[] {
   const 前 = 有.length > 最多 ? [...有.slice(0, 最多 - 1), { 名: "其他", 数: 有.slice(最多 - 1).reduce((s, x) => s + x.数, 0) }] : 有;
-  return 空 ? [...前, { 名: 没填, 数: 空 }] : 前;
+  return 空 && 没填 ? [...前, { 名: 没填, 数: 空 }] : 前;
 }
 
 export function 排客户分布(
   国家们: readonly { addrCountry: string | null; _count: { _all: number } }[],
   线们: readonly { bizLine: string | null; _count: { _all: number } }[],
 ): 客户分布 {
+  const 国 = 数一列(国家们.map((g) => ({ 键: g.addrCountry, 数: g._count._all })));
   return {
     总数: 国家们.reduce((s, g) => s + g._count._all, 0),
-    按国家: 排一列(国家们.map((g) => ({ 键: g.addrCountry, 数: g._count._all })), "未填国家", 国家最多),
-    按业务线: 排一列(线们.map((g) => ({ 键: g.bizLine, 数: g._count._all })), "未填业务线"),
+    按国家: 排一列(国, null, 国家最多),
+    全部国家: 国.有,
+    未填国家: 国.空,
+    按业务线: 排一列(数一列(线们.map((g) => ({ 键: g.bizLine, 数: g._count._all }))), "未填业务线"),
   };
 }
