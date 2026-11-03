@@ -104,6 +104,20 @@ export async function 同号可协同(号: 验好的号): Promise<boolean> {
   return (await 找目标(号)).走;
 }
 
+/** 向导那段话按情况说（11-03 B6-8 / B7-4）：没项目写进客户沟通、不提邀请；自己负责、已在组也不提邀请。和真写时同一套判断 */
+export type 协同情况 = { 有项目: boolean; 自己负责: boolean; 已在组: boolean };
+export async function 同号协同情况(号: 验好的号, 我id: string): Promise<协同情况 | null> {
+  if (!(await 同号可协同(号))) return null;
+  return 看全部(async () => {
+    const 目标 = await 找目标(号);
+    if (!目标.走) return null;
+    const { 首条, 项目 } = 目标;
+    const 自己负责 = 首条.salesOwnerId === 我id || (!!项目 && 项目.ownerId === 我id);
+    const 成员 = 项目 && !自己负责 ? await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: 项目.id, userId: 我id } }, select: { inviteStatus: true } }) : null;
+    return { 有项目: !!项目, 自己负责, 已在组: 成员?.inviteStatus === "JOINED" };
+  });
+}
+
 /** 这次的来源文字：选了渠道用渠道名，否则用来源格；「其他」这种不算来源 */
 async function 这次来源(db: 库, 录入: Pick<录入信息, "渠道id" | "来源">): Promise<string> {
   if (录入.渠道id) {
@@ -246,7 +260,9 @@ export async function 同号只记备注(
   const 来源 = 真来源 || 入口;
   const 谁 = (await tx.user.findUnique({ where: { id: 操作人 }, select: { name: true } }))?.name ?? "导入";
   // 行上没写来源时只记是哪个系统来的，不算「来源不同」
-  const 拼 = 拼内容(号, 谁, `${入口}导入`, 来源, 真来源 ? await 现有来源们(tx, customerId, 项目.channel?.name) : [], null);
+  // 「Excel 导出」这种叫法拼「导入」会成「Excel 导出导入」（11-03 B6-8），换成「Excel 导入」；来源那格照旧，去重认的是它
+  const 入口文字 = 入口.endsWith("导出") ? 入口.replace(/导出$/, "导入") : `${入口}导入`;
+  const 拼 = 拼内容(号, 谁, 入口文字, 来源, 真来源 ? await 现有来源们(tx, customerId, 项目.channel?.name) : [], null);
   const 已有 = await tx.followUp.findFirst({
     where: { customerId, title: { startsWith: 同号标题 }, AND: [{ content: { contains: 号.值 } }, { content: { contains: `来源：${来源}，` } }], deletedAt: null },
     select: { id: true },

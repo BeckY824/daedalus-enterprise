@@ -357,7 +357,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           {企查 && 已查 === 查过键(d, true) && (
             企查.ok && 企查.状态 === "首次录入" ? <Alert type="success" showIcon title={去符号(企查.提示)} description={企查.归属地 ? `归属地：${企查.归属地}` : undefined} />
             : !企查.ok ? <Alert type="warning" showIcon title={去符号(企查.提示)} />
-            : <撞号面板 查={企查} users={users} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} /> : null} />
+            : <撞号面板 查={企查} users={users} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />
           )}
         </>
       )}

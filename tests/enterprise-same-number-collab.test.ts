@@ -344,6 +344,19 @@ describe("入口", () => {
     await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: x.负责人.id } });
     expect(await 作为(x.销售, () => 查号码("手机号", 号码))).not.toHaveProperty("可协同");
   });
+
+  it("查号码带上协同情况，向导按它说那段话：别人的项目 / 自己负责 / 已在组 / 没项目（11-03 B6-8 / B7-4）", async () => {
+    const x = await 现场();
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: true, 自己负责: false, 已在组: false } });
+    expect(await 作为(x.负责人, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: true, 自己负责: true } });
+    await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.销售.id, inviteStatus: "JOINED" } });
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: true, 自己负责: false, 已在组: true } });
+  });
+
+  it("没项目的客户：协同情况说没项目（11-03 B6-8）", async () => {
+    const x = await 现场({ 项目: false });
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 可协同: true, 协同: { 有项目: false, 自己负责: false, 已在组: false } });
+  });
 });
 
 describe("导入撞号只记备注", () => {
@@ -355,6 +368,7 @@ describe("导入撞号只记备注", () => {
     expect(id).toBeTruthy();
     const f = await prisma.followUp.findUnique({ where: { id: id! } });
     expect(f?.content).toContain("来源：飞书");
+    expect(f?.content).toContain("入口：飞书导入");
     expect(f?.title).toBe("同号再次录入");
     expect(await prisma.followUpProject.count({ where: { projectId: x.项目!.id, node: 同号节点 } })).toBe(1);
     expect(await prisma.projectMember.count()).toBe(0);
@@ -364,6 +378,16 @@ describe("导入撞号只记备注", () => {
 
     await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: x.负责人.id } });
     expect(await prisma.$transaction((tx) => 同号只记备注(tx, { customerId: x.客户.id, 操作人: x.市场.id, 号: 好号(), 入口: "钉钉" }))).toBeNull();
+  });
+});
+
+describe("导入撞号的入口文字", () => {
+  it("「Excel 导出」不拼成「Excel 导出导入」（11-03 B6-8）", async () => {
+    const x = await 现场();
+    const id = await prisma.$transaction((tx) => 同号只记备注(tx, { customerId: x.客户.id, 操作人: x.市场.id, 号: 好号(), 入口: "Excel 导出" }));
+    const f = await prisma.followUp.findUniqueOrThrow({ where: { id: id! } });
+    expect(f.content).toContain("入口：Excel 导入");
+    expect(f.content).not.toContain("导出导入");
   });
 });
 
