@@ -335,7 +335,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
         />
       )}
       <Steps current={步} size="small" style={{ marginBottom: 企业 ? 8 : 24 }} items={步骤们.map((t) => ({ title: t }))} />
-      {企业 && <div style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 12 }}>首条沟通里勾了「客户明确回复了」，项目才会进入线索推进。</div>}
+      {企业 && <div style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 12 }}>{/* 11-03 A2-5：勾了不会自动换进程，进程按「当前进程」选的落 */}项目建在「当前进程」选的那一步；要建在「{有效线索节点}」之后，首条沟通得选「客户明确回复了」。</div>}
 
       {步 === 0 && 企业版 && (
         <>
