@@ -99,7 +99,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
   };
 
   // 卡点三张卡只认业务角色是不是总管理员；共享试用区照旧谁都不能改
-  const 卡点挡 = value.挡.字典 === "共享试用区不能改" ? value.挡.字典 : value.能改卡点 ? null : "只有总管理员能改";
+  const 卡点挡 = value.挡.字典 === "共享试用区不能改" ? value.挡.字典 : value.能改卡点 ? null : "只有总管理能改";
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -176,7 +176,7 @@ function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
   return (
     <Card title="分配方式 · 谁能用" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        按业务角色勾谁能用这种方式分线索。老板、总管理、管理员每样都能用。新建线索时只能选自己能用的方式：指定分配要选负责人，自动分配建好就分给销售，公海捞取建好放进项目公海，暂不分配、个人自持先记在自己名下。从公海领不看这里，非原负责人都能领。
+        按业务角色勾谁能用这种方式分线索。总管理、管理员每样都能用。新建线索时只能选自己能用的方式：指定分配要选负责人，自动分配建好就分给销售，公海捞取建好放进项目公海，暂不分配、个人自持先记在自己名下。从公海领不看这里，非原负责人都能领。
       </div>
       {项们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8, minWidth: 0 }}>
@@ -310,7 +310,7 @@ function HoldCapCard({
       }
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从项目公海领、也不能再被指派新项目；自己建档的不拦。默认关，不限个数。填 {上限最大} = 不限。
+        开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从项目公海领、也不能再被指派新项目；自己建档的不拦。关着时不限个数。填 {上限最大} = 不限。
       </div>
       {规则.持有上限开 && (
         <>
@@ -750,7 +750,7 @@ function RatesCard({
   const 改了 = 提成范围们.some((k) => 草稿[k].底价比例 !== 比例[k].底价比例 || 草稿[k].溢价比例 !== 比例[k].溢价比例);
   const 改 = (k: 提成范围, 哪个: "底价比例" | "溢价比例", v: number | null) => set草稿((d) => ({ ...d, [k]: { ...d[k], [哪个]: v } }));
   return (
-    <Card title="提成比例" extra={!能改 && <span style={{ color: "var(--text-muted)" }}>只有老板、总管理员能改</span>}>
+    <Card title="提成比例" extra={!能改 && <span style={{ color: "var(--text-muted)" }}>只有总管理能改</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         底价提成 = 项目底价 × 底价比例；溢价提成 =（成交金额 − 项目底价）× 溢价比例，成交金额低于底价时溢价算 0、底价提成按成交金额 × 底价比例折算。按项目负责人的业务线用内贸 / 外贸那一套，两边都做或没设业务线的用「不限」。改了以后，还没赢单的项目按新比例预估；已经赢单的实际提成不变。
       </div>

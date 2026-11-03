@@ -50,7 +50,7 @@ async function 改负责人不给(user: { id: string; role: string }, 原负责�
   if (!(await 规则开着("线索分配")) || (await 当前是共享区())) return null;
   return 能分配(await 读组织(), user)
     ? "改负责人请用线索列表里的「分配」：会查接手人的角色、配额，并记进分配记录"
-    : "只有老板、总管理员、市场管理能分配线索";
+    : "只有总管理、销售管理、市场管理能分配线索";
 }
 
 export async function saveLead(input: {
