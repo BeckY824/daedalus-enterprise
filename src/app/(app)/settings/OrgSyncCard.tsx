@@ -101,7 +101,9 @@ export default function OrgSyncCard() {
             <section key={s.源} data-testid={`org-sync-${s.源}`} style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
               <Space align="center" wrap>
                 <b>{s.名}</b>
-                <Switch checked={s.开} disabled={!!忙} aria-label={`${s.名}通讯录同步`}
+                {/* 凭据没填时打不开（服务端也拦），灰着并说缺什么；已经开着的照样能关（D9-1） */}
+                <Switch checked={s.开} disabled={!!忙 || (!s.开 && !s.凭据.齐了)} aria-label={`${s.名}通讯录同步`}
+                  title={!s.开 && !s.凭据.齐了 ? `先在下面填好${s.名}的连接凭据再打开` : undefined}
                   onChange={(v) => void 跑(`on-${s.源}`, () => 设通讯录同步(s.源, v), v ? `${s.名}通讯录同步已打开，${s.间隔分钟 === 30 ? "每半小时" : "每小时"}一次` : `${s.名}通讯录同步已关掉`)} />
                 <Select size="small" style={{ width: 104 }} value={s.间隔分钟} options={间隔选项} disabled={!!忙} aria-label={`${s.名}同步频率`}
                   onChange={(v: 60 | 30) => void 跑(`gap-${s.源}`, () => 设通讯录间隔(s.源, v), `${s.名}通讯录改成${v === 30 ? "每半小时" : "每小时"}同步一次`)} />
@@ -146,7 +148,7 @@ export default function OrgSyncCard() {
               </div>
 
               {s.源 === "feishu" && <FeishuConnectCard 草稿={草稿} 初始={表概况} />}
-              {s.源 === "feishu" && <FeishuPushSwitch />}
+              {s.源 === "feishu" && <FeishuPushSwitch 凭据齐了={s.凭据.齐了} />}
 
               <div style={{ marginTop: 12 }}>
                 <span className="muted">职务 → 业务角色（没对上的人，业务角色不动）</span>
