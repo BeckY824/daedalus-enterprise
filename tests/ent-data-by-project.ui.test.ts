@@ -86,7 +86,7 @@ it("本月：新建 / 转商机 / 成功交付 / 没成，走势图，按负责�
   const t = await page.locator("body").innerText();
   // 企业版 10-31 成功交付改叫交付结清
   expect(t).not.toContain("成功交付");
-  for (const s of ["新建项目", "转商机", "交付结清", "没成", "项目走势", "全周期漏斗", "按负责人", "线索流失 1 · 丢单 1"]) expect(t).toContain(s);
+  for (const s of ["新建项目", "转商机", "交付结清", "没成", "项目走势", "全周期漏斗", "按负责人", "线索流失 1 · 商机丢单 1"]) expect(t).toContain(s);
   expect(t).not.toContain("不是 CNY");
   // 走势图 + 线索瀑布（P15）
   expect(await page.locator("canvas").count()).toBe(2);
