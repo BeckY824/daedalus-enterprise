@@ -8,6 +8,7 @@
  * 别的模块要「谁是他直属上级」只调那几个，别自己查表。
  * 只管「组织里谁是谁」；规则生不生效（企业版() && 规则开关）由调用方判断。
  */
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
 import { 回收站副手键, 只看某人键, 填组织设置, 建组织, 直属上级of, 虚线上级of, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
@@ -18,8 +19,8 @@ export { 部门树, type 组织部门 } from "./org-tree";
 
 export { 回收站副手键, 只看某人键 } from "./org-core";
 
-/** 从库里读整张组织表。二三十人的公司，一次全读比逐条查省事也更快 */
-export async function 读组织(): Promise<组织> {
+/** 从库里读整张组织表。二三十人的公司，一次全读比逐条查省事也更快。一次渲染里只读一遍（客户列表一页要问四五次），渲染外（动作、测试）照旧每次现读 */
+export const 读组织 = cache(async (): Promise<组织> => {
   const [users, members, depts, 副手, 只看] = await Promise.all([
     prisma.user.findMany({ select: { id: true, role: true, active: true } }),
     prisma.entMember.findMany(),
@@ -28,7 +29,7 @@ export async function 读组织(): Promise<组织> {
     prisma.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } }),
   ]);
   return 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value);
-}
+});
 
 export const 直属上级 = async (userId: string): Promise<string | null> => 直属上级of(await 读组织(), userId);
 export const 虚线上级 = async (userId: string): Promise<string | null> => 虚线上级of(await 读组织(), userId);
