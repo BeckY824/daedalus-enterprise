@@ -30,6 +30,8 @@ import { 看全部, 限定的我, 看得到 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 能导入导出, 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 同号只记备注 } from "@/lib/enterprise/same-number-collab";
 import { getBusiness } from "@/lib/business";
 import { resolveAttribution } from "@/lib/attribution";
 import { recordAudit } from "@/lib/audit";
@@ -78,6 +80,9 @@ export type 导入方案 = Omit<排布, "字段表"> & {
 
 /** 暂存没了（进程重启、放太久）：抽屉看到 重送 会把表重新送一遍再试，人感觉不到 */
 const 暂存过期 = { ok: false as const, error: "这份表要重新交给软件一次", 重送: true as const };
+
+/** ImportRow.kind：撞号记的那条备注，before 里存 followUpId，撤销时删掉 */
+const 同号备注行 = "same-number";
 
 /** 把暂存号换回整张表。没给暂存号就原样（测试、小表老调用） */
 function 补全(方案: 导入方案, userId: string): 导入方案 | null {
@@ -287,7 +292,7 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
 export type 导入结果 = { ok: true; batchId: string; 新建: number; 补空: number; 跳过: number; 进不了: number } | { ok: false; error: string };
 
 type 排好的行 = Awaited<ReturnType<typeof 排好>>["行"];
-type 落库现场 = { batchId: string; 重复行: 导入方案["重复行"]; salesOwnerId: string; 渠道: Map<string, string> };
+type 落库现场 = { batchId: string; 重复行: 导入方案["重复行"]; salesOwnerId: string; 渠道: Map<string, string>; 操作人: string };
 type 几条 = { 新建: number; 补空: number; 跳过: number; 进不了: number };
 
 async function 落库准备(行: 排好的行, me: Awaited<ReturnType<typeof requireUser>>) {
@@ -297,7 +302,7 @@ async function 落库准备(行: 排好的行, me: Awaited<ReturnType<typeof req
   const 渠道 = new Map(
     (await prisma.channel.findMany({ where: { name: { in: 渠道名单 } }, select: { id: true, name: true } })).map((c) => [c.name, c.id]),
   );
-  return { salesOwnerId, 渠道 };
+  return { salesOwnerId, 渠道, 操作人: me.id };
 }
 
 /**
@@ -307,7 +312,7 @@ async function 落库准备(行: 排好的行, me: Awaited<ReturnType<typeof req
 async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = false): Promise<几条> {
   const { 表, 邮表, 微表, 阿表, 档案们, 限定我, 命中ids } = await 导入匹配(行);
   const 本批写过 = new Set(
-    续接 ? (await prisma.importRow.findMany({ where: { batchId: 现场.batchId, customerId: { in: 命中ids } }, select: { customerId: true } })).map((x) => x.customerId) : [],
+    续接 ? (await prisma.importRow.findMany({ where: { batchId: 现场.batchId, customerId: { in: 命中ids }, kind: { not: 同号备注行 } }, select: { customerId: true } })).map((x) => x.customerId) : [],
   );
   let 新建 = 0;
   let 补空 = 0;
@@ -340,6 +345,18 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
     const 旧 = 认.旧;
     // 接着导（分段导入断了又续上）：上一趟这一批自己已经写过这位，算过了，不再记一次跳过
     if (旧 && 本批写过.has(旧.id)) continue;
+
+    // 企业版：撞到有人在跟的客户，已有项目记一条同号备注（不邀请不通知），记一行导入记录，撤销这批时一起退
+    if (旧 && 企业版()) {
+      const 号 = phone ? 验号码("手机号", phone) : email ? 验号码("邮箱", email) : wechat ? 验号码("微信", wechat) : 验号码("旺旺ID", alibabaId);
+      if (号.ok) {
+        const 渠道id = r.值.channelName ? (现场.渠道.get(r.值.channelName) ?? null) : null;
+        await prisma.$transaction(async (tx) => {
+          const id = await 同号只记备注(tx, { customerId: 旧.id, 操作人: 现场.操作人, 号, 入口: "Excel", 渠道id, 来源: r.值.source });
+          if (id) await tx.importRow.create({ data: { batchId: 现场.batchId, customerId: 旧.id, kind: 同号备注行, before: JSON.stringify({ followUpId: id }) } });
+        });
+      }
+    }
 
     if (旧 && !看得到(旧 as { salesOwnerId: string | null }, 限定我)) {
       跳过++;
@@ -664,6 +681,12 @@ async function 撤这一批(
       const c = 客户们.get(row.customerId) ?? null;
       // 已经被删了：撤销的目的达到了，不算「没动」
       if (!c) continue;
+
+      if (row.kind === 同号备注行) {
+        const { followUpId } = JSON.parse(row.before ?? "{}") as { followUpId?: string };
+        if (followUpId) await prisma.followUp.deleteMany({ where: { id: followUpId } });
+        continue;
+      }
 
       const 有挂件 = Object.values(c._count).some((n) => n > 0);
       const 下游 = [...new Set([...c.referrals, ...c.attributedCustomers].map((x) => x.name))];

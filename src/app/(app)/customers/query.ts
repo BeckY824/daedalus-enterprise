@@ -109,10 +109,10 @@ export async function 客户筛选条件(
   /** 关键词按谁的字段权限搜（电话藏着就不按号码匹配）；不给 = 当前登录的人。AI 助手经 MCP 调时没有 cookie，要传 */
   userId?: string,
 ): Promise<Prisma.CustomerWhereInput> {
-  // 这一批导入动过的人。撤销过的批次不算（那些人已经删了 / 还原了）
+  // 这一批导入动过的人。撤销过的批次不算（那些人已经删了 / 还原了）；撞号只记备注的客户没被动过，也不算
   const 本批 = sp.batch
     ? await prisma.importRow.findMany({
-        where: { batchId: sp.batch, batch: { revertedAt: null } },
+        where: { batchId: sp.batch, kind: { not: "same-number" }, batch: { revertedAt: null } },
         select: { customerId: true },
       })
     : null;

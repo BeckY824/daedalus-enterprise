@@ -326,6 +326,16 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
         : "这位没有电话，是按阿里 ID 认的：阿里 ID 不能清空（或者先补上电话 / WhatsApp / 邮箱 / 微信）" };
   }
 
+  // 企业版老表单没选号码类型（不带 企业号码）：填的号挨个问一遍，撞到有人在跟的同样进项目组协同，别的落回下面的查重
+  if (企业版() && !改前 && !input.企业号码) {
+    const 这些号 = [验号码("手机号", phone ?? ""), 验号码("邮箱", 交的邮箱), 验号码("微信", 交的微信), 验号码("旺旺ID", 交的阿里)];
+    for (const 号 of 这些号) {
+      if (!号.ok) continue;
+      const 协同 = await 同号再次录入(me, 号, { 入口: "手工建档", 渠道id: input.channelId, 内容: input.remark });
+      if (协同.走) return { ok: false, error: 协同.反馈, 同号协同: true };
+    }
+  }
+
   // 服务端再查一次重：表单上的提示只是给人看的，不能作为约束。
   // 空电话不查：两个都没留电话的人不是同一个人（原来这里会拿 "" 去比，没电话的人一个都存不了）
   /*
