@@ -21,6 +21,9 @@ import { prisma } from "@/lib/prisma";
 beforeEach(async () => {
   const u = await prisma.user.findUniqueOrThrow({ where: { email: "u0" } });
   await prisma.entMember.create({ data: { userId: u.id, bizRole: "director" } });
+  // 11-03 起负责人也只认业务角色（D3-9）：其余四个是建档时的负责人，设成销售
+  const 其余 = await prisma.user.findMany({ where: { email: { in: ["u1", "u2", "u3", "u4"] } }, select: { id: true } });
+  await prisma.entMember.createMany({ data: 其余.map((x) => ({ userId: x.id, bizRole: "sales" })) });
 });
 
 it("这一遍真的开着只读通道，查询真的走了它", async () => {
