@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能恢复 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能恢复, 只读角色 } from "@/lib/enterprise/permissions";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 规整公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
 import { 负责人候选 } from "@/lib/owners";
@@ -61,6 +61,7 @@ export default async function PoolPage({
       能分配={能分配}
       users={users}
       持有={上限 === null ? null : { 有, 上限 }}
+      只读={只读角色(me, 权限org)}
     />
   );
 }

@@ -23,7 +23,7 @@ import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
-import { 没业务角色不能领话 } from "@/lib/enterprise/permissions";
+import { 没业务角色不能领话, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 放回公海, 领取公海项目 } from "@/lib/project/db";
 import { 读项目列表 } from "@/lib/project/list";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
@@ -361,6 +361,16 @@ describe("没设业务角色不能领", () => {
       expect(await raw.customerPool.count({ where: { customerId: c } })).toBe(1);
       expect((await raw.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
     }
+  });
+
+  it("只读管理员领客户、领项目：都回「管理员只能看」那句（11-03 B2-1）", async () => {
+    公海规则.项目能单独领 = false;
+    const 管理员 = await 造人("ro@x", "管理员", "SALES", "admin");
+    const { c, p } = await 导入的(乙.id, "给管理员");
+    当(管理员);
+    expect(await 以谁的身份(管理员.id, () => 领取([c]))).toEqual({ ok: false, error: 只读角色话 });
+    expect(await 以谁的身份(管理员.id, () => 领取公海项目(管理员, p))).toEqual({ ok: false, error: 只读角色话 });
+    expect((await raw.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
   });
 
   it("记跟进顺手领：不领也不记，同一句话", async () => {

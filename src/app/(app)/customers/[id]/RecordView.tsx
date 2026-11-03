@@ -168,6 +168,7 @@ export default function RecordView({
   能转让客户 = true,
   原负责人领不回 = false,
   只读: 只读档 = false,
+  管理员只读 = false,
   能改沟通 = true,
   能删沟通 = true,
   换负责人记录 = [],
@@ -188,8 +189,8 @@ export default function RecordView({
   待办计划 = [],
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
-  const 只读 = !!只读档;
-  const 全只读 = 只读档 === "全";
+  const 只读 = !!只读档 || 管理员只读;
+  const 全只读 = 只读档 === "全" || 管理员只读;
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -511,7 +512,7 @@ export default function RecordView({
   }
 
   function openFollow(record: FollowUpRow | null, aiText?: string) {
-    if (全只读) return void message.info("这是虚线下属的客户：只能看，不能改、不能转");
+    if (全只读) return void message.info(管理员只读 ? "管理员只能看，不能改任何数据" : "这是虚线下属的客户：只能看，不能改、不能转");
     setFollowInit({ record, aiText });
     setFollowOpen(true);
   }
@@ -930,7 +931,7 @@ export default function RecordView({
         {customer.pool && (
           <span className="rec-tags-n rec-pool">
             <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放回公海" : customer.pool.reason}>{公海标签(customer.salesOwnerName)}</Tag>
-            {原负责人领不回
+            {管理员只读 ? null : 原负责人领不回
               ? <Tooltip title={原负责人不能领回提示}><Button size="small" type="link" icon={<UserAddOutlined />} disabled>领取</Button></Tooltip>
               : <Button size="small" type="link" icon={<UserAddOutlined />} onClick={() => void 公海动作("领取")}>领取</Button>}
           </span>
@@ -957,7 +958,7 @@ export default function RecordView({
         )}
       </div>
 
-      {只读 && (
+      {只读 && !管理员只读 && (
         <Alert
           className="rec-readonly"
           type="info"

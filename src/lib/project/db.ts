@@ -15,7 +15,7 @@ import { 等复核拦, 复核判死拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 没设业务角色, 没业务角色不能领话 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 没设业务角色, 没业务角色不能领话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -705,6 +705,8 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
   // 没设业务角色的不能领（11-03 用户定）：权限只认业务角色。分配（别人分给他）不走这里
   // 停用的人业务角色已清，先说停用，话才准
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: (await 在职(prisma, me.id)) ? 没业务角色不能领话 : "账号已停用" };
+  // 只读管理员先说只读（11-03 B2-1：原来落到「项目不能单独领」，同领客户 pool-actions 领取）
+  if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读角色话 };
   const 规则 = await 生效组织规则();
   return 查完再写(async (tx) => {
     const id = String(projectId ?? "");
