@@ -4,7 +4,7 @@ import type { Prisma } from "@/generated/prisma";
 import { dayjs } from "@/lib/utils";
 import { 带币种, 签约金额, 签约合计, 签约币种 } from "@/lib/money-db";
 import { 客户关键词条件, 客户关键词SQL, 客户id集合 } from "@/lib/search-keyword";
-import { 读的我, 有市场只读 } from "@/lib/team-scope";
+import { 读的我, 有市场只读, 现在的公海回避 } from "@/lib/team-scope";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 未分级 } from "./query-shared";
 import { 读团队 } from "@/lib/sync/client";
@@ -224,7 +224,7 @@ const 企业版才筛: readonly string[] = ["custStatus", "customerType"];
  * 10 万客户搜「138」要 1.6–1.9 s；这样写 60–75 ms（老板）、7–10 ms（业务员）。
  *
  * 范围和 lib/team-scope.ts 的 可见客户(读的我) ∧ 公海条件 是同一个口径，化简后：
- * 「客户」页签 = 我负责（销售或渠道）∧ 不在公海；「公海」页签 = 在公海（公海人人看得到）；老板只剩页签条件。
+ * 「客户」页签 = 我负责（销售或渠道）∧ 不在公海；「公海」页签 = 在公海（公海人人看得到，原负责人回避的除外，11-03）；老板只剩页签条件。
  * **那边的可见范围改了，这里要跟着改**（customer-keyword-page.test.ts 拿 Prisma 老路逐页对拍守着）。
  * 这里只给 id，行由调用方经限定层再取一次：范围就算写宽了，也只会多算总数，不会多给行。
  *
@@ -239,8 +239,20 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
   // 回收站里的客户（企业版软删，P9）不进列表：裸 SQL 不过 Prisma 扩展，这里自己带上
   const 段 = [kw.sql, 'c."deletedAt" IS NULL'];
   const 值: unknown[] = [...kw.values];
-  if (公海) 段.push('EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
-  else {
+  if (公海) {
+    段.push('EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
+    // 原负责人回避（11-03）：这个页签全是公海客户，负责人是他的都不算；名单过上限走老路
+    const 回避 = await 现在的公海回避(defaultClient);
+    if (回避?.客户 === null) return null;
+    if (回避) {
+      段.push('c."salesOwnerId" <> ?');
+      值.push(回避.本人);
+      if (回避.客户?.length) {
+        段.push(`c.id NOT IN (${回避.客户.map(() => "?").join(", ")})`);
+        值.push(...回避.客户);
+      }
+    }
+  } else {
     // 企业版市场成员（10-31）另外看得到他们相关的客户：裸 SQL 只按负责人算不全，走老路（Prisma 限定层带着那一段）
     if (谁 && (await 有市场只读(defaultClient))) return null;
     if (谁) {

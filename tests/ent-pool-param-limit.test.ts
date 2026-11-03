@@ -52,6 +52,8 @@ async function 造组织() {
   return { 总管理, 全看管理员, 按线管理员, 销售管理, 虚线上级, 销售, 同事, 市场管理, 市场成员, 没设角色 };
 }
 let 组: Awaited<ReturnType<typeof 造组织>>;
+/** 公海客户的负责人。11-03 起负责人本人回避自己进公海的客户，这里要看「项目名按范围」，客户归一位不在组里的人（同导入数据的占位账号） */
+let 占位: 人;
 
 const 读 = async (u: 人) => {
   mocks.user = { ...mocks.user, id: u.id, name: u.name, role: u.role };
@@ -59,9 +61,9 @@ const 读 = async (u: 人) => {
 };
 const 时刻 = (i: number) => new Date(Date.UTC(2026, 9, 1) + i * 1000);
 
-/** n 位公海客户，每位一个项目（项目不在公海），负责人 owner；i 越大入池越新 */
+/** n 位公海客户（负责人是占位），每位一个项目（项目不在公海，负责人 owner）；i 越大入池越新 */
 async function 公海客户们(n: number, owner: string) {
-  const 客户 = Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `客户${i}`, phone: `13${String(i).padStart(9, "0")}`, salesOwnerId: owner }));
+  const 客户 = Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `客户${i}`, phone: `13${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id }));
   await prisma.customer.createMany({ data: 客户 });
   await prisma.customerPool.createMany({ data: 客户.map((c, i) => ({ customerId: c.id, reason: "r", at: 时刻(i) })) });
   await prisma.project.createMany({ data: 客户.map((c, i) => ({ id: `p${i}`, name: `项目${i}`, customerId: c.id, ownerId: owner, creatorId: owner })) });
@@ -85,6 +87,7 @@ describe("统一公海过 999 行", () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
     await prisma.setting.upsert({ where: { key: 规则.按组织看客户.key }, update: { value: "true" }, create: { key: 规则.按组织看客户.key, value: "true" } });
     组 = await 造组织();
+    占位 = await 造人("placeholder");
     报错 = vi.spyOn(console, "error");
   });
   afterEach(() => {
@@ -100,7 +103,7 @@ describe("统一公海过 999 行", () => {
       expect([名, r.总数]).toEqual([名, 过限]);
       expect([名, r.截断]).toEqual([名, false]);
       const 带项目 = r.行.filter((x) => x.项目名).length;
-      // 负责人是自己 / 下属 / 能看全部 / 虚线下属 / 这条线的，看得到项目名；同事、市场、没设角色的看不到
+      // 项目负责人是自己 / 下属 / 能看全部 / 虚线下属 / 这条线的，看得到项目名；同事、市场、没设角色的看不到
       const 看得到 = ["总管理", "全看管理员", "按线管理员", "销售管理", "虚线上级", "销售"].includes(名);
       expect([名, 带项目]).toEqual([名, 看得到 ? 过限 : 0]);
     }
@@ -111,7 +114,7 @@ describe("统一公海过 999 行", () => {
 
   it("公海属性是客户本身的事：每种身份分类和计数都一样，看不到项目也不落到「其他」；项目名、进程仍按可见范围", async () => {
     const 客户 = async (id: string, i: number) => {
-      await prisma.customer.create({ data: { id, name: id, phone: `14${String(i).padStart(9, "0")}`, salesOwnerId: 组.销售.id } });
+      await prisma.customer.create({ data: { id, name: id, phone: `14${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id } });
       await prisma.customerPool.create({ data: { customerId: id, reason: "r", at: 时刻(i) } });
     };
     const 项目 = (id: string, customerId: string, phase: string, node: string, owner = 组.销售.id) =>
@@ -219,7 +222,7 @@ describe("统一公海过 999 行", () => {
     const 项 = async (id: string, customerId: string, ownerId: string, 其他: Record<string, unknown> = {}) =>
       prisma.project.create({ data: { id, name: id, customerId, ownerId, creatorId: ownerId, ...其他 } });
 
-    await 客("客a", 销售.id);
+    await 客("客a", 占位.id);
     await prisma.customerPool.create({ data: { customerId: "客a", reason: "r", at: 时刻(1) } });
     await 项("自己的", "客a", 销售.id, { createdAt: 时刻(1) });
     await 项("同事的", "客a", 同事.id, { createdAt: 时刻(2) });

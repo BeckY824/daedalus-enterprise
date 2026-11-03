@@ -14,6 +14,7 @@
  * 外贸模版例外：没有电话拿 WhatsApp 认，WhatsApp 也没有拿邮箱认（2026-10-07，lib/email-dedupe.ts），邮箱也没有拿微信号认（2026-10-19），
  * 微信也没有拿阿里国际站 ID 认（2026-10-21）。
  */
+import { businessDayjs, businessTimeZone } from "../business-clock";
 import { parseDateInput } from "../date-input";
 import { calendarDay } from "../schedule-date";
 import type { 字段名, 字段规格 } from "./fields";
@@ -75,6 +76,11 @@ export { 规整手机号, 像手机号 };
 export function 认日期(v: string): Date | null {
   const s = v.trim();
   if (!s) return null;
+  // 写明了时区的是一个确定的时刻：企业版算它落在北京的哪一天，不照抄字面的日期（…T16:00:00Z 在北京已是第二天）
+  if (businessTimeZone() && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(s)) {
+    const 时刻 = parseDateInput(s);
+    if (时刻) return parseDateInput(businessDayjs(时刻).format("YYYY-MM-DD"));
+  }
   // 8 位连写的 20260919（不少系统这么导，第二轮 r2-data）。年份 1900–2100、月日合法才认，否则往下当序列号 / 别的
   const 连写 = /^(19\d{2}|20\d{2}|2100)(\d{2})(\d{2})$/.exec(s);
   if (连写) {

@@ -29,7 +29,6 @@ import { 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 }
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
-import { dayjs } from "@/lib/utils";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, type 位置 } from "@/lib/project/nodes";
@@ -41,6 +40,7 @@ import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
+import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们 } from "@/lib/project/blocker";
@@ -124,10 +124,21 @@ export async function 建档向导(输入: 建档向导输入) {
     const 第一步 = 企 && input.客户.企业号码 ? 验号码(input.客户.企业号码.类型, input.客户.企业号码.值) : null;
     const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null) : [];
     if ("error" in 联号) return { ok: false as const, error: 联号.error };
+    // 撞到有人在跟的客户：这次录的写进现有项目（同号再次录入），不建；公海、占位、停用的照原来的提示拦
+    const 同号录入 = { 入口: "手工建档", 渠道id: input.客户.channelId, 内容: 好.跟进.content };
+    if (第一步?.ok) {
+      const 结论 = await 企业号码查重(prisma, 第一步, me.id, await 读的我(defaultClient));
+      const 协同 = 结论.状态 !== "首次录入" ? await 同号再次录入(me, 第一步, 同号录入) : null;
+      if (协同?.走) return { ok: false as const, error: 协同.反馈, 同号协同: true as const };
+    }
     const 要查 = 联号.filter((号) => !号.同第一步);
     for (const 号 of 要查) {
       const 结论 = await 企业号码查重(prisma, 号, me.id, await 读的我(defaultClient));
-      if (结论.状态 !== "首次录入") return { ok: false as const, error: `${号.格}：${结论.提示}` };
+      if (结论.状态 !== "首次录入") {
+        const 协同 = await 同号再次录入(me, 号, 同号录入);
+        if (协同.走) return { ok: false as const, error: 协同.反馈, 同号协同: true as const };
+        return { ok: false as const, error: `${号.格}：${结论.提示}` };
+      }
     }
 
     const 建了: Partial<建好的> = {};
@@ -223,7 +234,8 @@ export async function 放回项目公海(projectId: string, 原因?: string | nu
     if (!(await 开着())) return 没开;
     const r = await 放回公海(me, projectId, 原因);
     if (r.ok) {
-      const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
+      // 放回之后他自己看不到这个项目了（原负责人回避，11-03），留痕要的名字绕开限定读
+      const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } }));
       const 选了 = 企业版() && typeof 原因 === "string" && 原因.trim() ? 原因.trim() : null;
       await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `把项目「${p?.name ?? ""}」放回项目公海${选了 ? `（${选了}）` : ""}`, ...(选了 ? { detail: { 回收原因: 选了 } } : {}) });
       刷新项目(projectId, p?.customerId);

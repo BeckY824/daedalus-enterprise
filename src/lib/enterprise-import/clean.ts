@@ -161,7 +161,8 @@ export function 认赢率(v: string): number | null {
 export function 认时间(v: string): Date | null {
   const d = 认日期(v);
   if (!d) return null;
-  const s = v.trim();
+  // +0800 这种不带冒号的时区也算写明了，规整成 +08:00
+  const s = v.trim().replace(/(\d:\d{2}(?::\d{2}(?:\.\d+)?)?)([+-]\d{2})(\d{2})$/, "$1$2:$3");
   // 写明了时区的（浏览器解析 xlsx 变成的 ISO 串）本来就是一个确定的时刻，不再当墙钟
   if (/(?:Z|[+-]\d{2}:\d{2})$/.test(s)) {
     const 时刻 = parseDateInput(s);
@@ -197,7 +198,9 @@ export function 校验格式(类: 格式类, v: string): string | null {
   }
   if (类 === "日期" || 类 === "时间") {
     const d = 类 === "日期" ? 认日期(s) : 认时间(s);
-    return d && d.getFullYear() >= 1990 && d.getFullYear() <= 2100 ? s : null;
+    if (!d) return null;
+    const 年 = businessDayjs(d).year();
+    return 年 >= 1990 && 年 <= 2100 ? s : null;
   }
   return (类 === "国家" ? 国家们 : 来源们).includes(s) ? s : null;
 }
@@ -552,7 +555,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
       let 生日 = 认生日(生日原);
       if (生日 === undefined) {
         const d = 认日期(生日原);
-        if (d) 生日 = 认生日(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+        if (d) 生日 = 认生日(businessDayjs(d).format("YYYY-MM-DD"));
       }
       if (生日) o.birthday = 生日;
       else {

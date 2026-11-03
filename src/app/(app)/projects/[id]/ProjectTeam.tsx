@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import dayjs from "dayjs";
 import { Button, Card, Input, InputNumber, Modal, Popconfirm, Select, Space, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import { 币种选项, 默认币种 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
-import { 成员选项, 独自一人, type 可选成员 } from "@/lib/utils";
+import { dayjs, 成员选项, 独自一人, type 可选成员 } from "@/lib/utils";
 import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import AddressInput, { 空地址 } from "@/components/AddressInput";

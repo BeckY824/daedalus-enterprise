@@ -130,7 +130,7 @@ describe("看得到的客户：裸 SQL 和 Prisma 范围对拍", () => {
     await raw.setting.create({ data: { key: 规则.按组织看客户.key, value: JSON.stringify(true) } });
     const 公海 = await raw.customerPool.count();
     expect(await 以谁的身份("ghost", 看得到的客户数)).toBe(公海);
-    const 经理看 = await raw.customer.count({ where: { OR: [{ salesOwnerId: { in: [经理, 小王, 小张, 小赵] } }, { channelOwnerId: 经理 }, { pool: { isNot: null } }] } });
+    const 经理看 = await raw.customer.count({ where: { OR: [{ salesOwnerId: { in: [经理, 小王, 小张, 小赵] } }, { channelOwnerId: 经理 }, { pool: { isNot: null } }], NOT: { salesOwnerId: 经理, pool: { isNot: null } } } }); // 11-03 自己退进公海的回避，下属退的照看
     expect(await 以谁的身份(经理, 看得到的客户数)).toBe(经理看);
     expect(await 以谁的身份(老板, 看得到的客户数)).toBe(await raw.customer.count());
     await raw.setting.deleteMany({ where: { key: 规则.按组织看客户.key } });

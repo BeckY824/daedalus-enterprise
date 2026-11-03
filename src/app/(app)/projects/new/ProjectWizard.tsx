@@ -22,6 +22,7 @@ import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
 import { 查号码, type 查号码结果 } from "../../customers/number-actions";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
+import SameNumberEntry from "./SameNumberEntry";
 import { 建档向导 } from "../actions";
 import { 三种业务线, 业务线必填, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
@@ -251,6 +252,15 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
         },
         跟进: 企业 ? { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) } : { type: d.跟进.type, content: d.跟进.content, occurredAt: d.跟进.occurredAt, 下一步时间: d.跟进.下一步时间 },
       });
+      if (!r.ok && "同号协同" in r) {
+        // 同号再次录入：没新建，记录已写进现有项目（查重之后才有人录同号时走到这）
+        清草稿(全名);
+        message.info(r.error);
+        弹窗?.关();
+        if (弹窗) router.refresh();
+        else router.push(新线索 || 企业版 ? "/leads" : "/projects");
+        return;
+      }
       if (!r.ok) {
         message.error(r.error);
         return;
@@ -347,7 +357,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           {企查 && 已查 === 查过键(d, true) && (
             企查.ok && 企查.状态 === "首次录入" ? <Alert type="success" showIcon title={去符号(企查.提示)} description={企查.归属地 ? `归属地：${企查.归属地}` : undefined} />
             : !企查.ok ? <Alert type="warning" showIcon title={去符号(企查.提示)} />
-            : <撞号面板 查={企查} users={users} />
+            : <撞号面板 查={企查} users={users} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} /> : null} />
           )}
         </>
       )}
@@ -575,7 +585,7 @@ function 去符号(s: string): string {
  * 企业版查重撞了（P0-7）：把撞到的那条摆出来，并给出口，而不是只说「已存在」。
  * 看不到的客户不给名字（撞号结论 按 看得到 收），写「领取后可见」；在公海的给「去领取」，在同事名下的给「联系负责人」
  */
-function 撞号面板({ 查, users }: { 查: Extract<查号码结果, { ok: true }>; users: 可选成员[] }) {
+function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 协同?: React.ReactNode }) {
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
   const 负责人 = 撞?.salesOwnerName ?? "";
@@ -603,6 +613,7 @@ function 撞号面板({ 查, users }: { 查: Extract<查号码结果, { ok: true
               ? <Button size="small" href={`mailto:${邮箱}`}>联系负责人：{负责人}</Button>
               : <span style={{ color: "var(--text-muted)" }}>联系负责人：{负责人}</span>)}
           </Space>
+          {协同}
         </div>
       }
     />

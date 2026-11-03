@@ -61,6 +61,7 @@ import { 认业务线, 业务线不认得 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 交接通知 } from "@/lib/enterprise/notice-sources";
+import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 
 
 /** 状态不在取值表里就给那句报错，合法给 null。建客户、批量改、撤销、行内改四处共用，报错文案一字不改 */
@@ -214,7 +215,8 @@ export type SaveConflict = {
 
 export type SaveCustomerResult =
   | { ok: true; id: string; 带走?: 带走数 }
-  | { ok: false; error: string; conflict?: SaveConflict };
+  /** 同号协同 = 没新建，这次录的已写进现有项目（error 是给添加人的反馈，不是出错） */
+  | { ok: false; error: string; conflict?: SaveConflict; 同号协同?: true };
 
 /**
  * 第二个参数只给项目模式的建档向导用：新建时在建客户的同一个事务里接着建联系人、项目、首条跟进，
@@ -270,7 +272,11 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (企号 && !企号.ok) return { ok: false, error: 企号.提示 };
   if (企号) {
     const 结论 = await 企业号码查重(prisma, 企号, me.id, await 读的我(defaultClient));
-    if (结论.状态 !== "首次录入") return { ok: false, error: 结论.提示 };
+    if (结论.状态 !== "首次录入") {
+      const 协同 = await 同号再次录入(me, 企号, { 入口: "手工建档", 渠道id: input.channelId, 内容: input.remark });
+      if (协同.走) return { ok: false, error: 协同.反馈, 同号协同: true };
+      return { ok: false, error: 结论.提示 };
+    }
   }
   const 企号别的 = 企号?.ok === true && 企号.类型 !== "手机号";
   const 交的电话 = 企号?.ok && 企号.类型 === "手机号" ? 企号.值 : input.phone;

@@ -103,7 +103,7 @@ describe("跟进记录页总数：裸 SQL = Prisma 老路", () => {
       // 钉几个绝对值，免得两边一起错还对得上
       const 全部 = await raw.followUp.count();
       expect(await 以谁的身份(老板, () => 看得到的跟进数({}))).toBe(全部);
-      const 外人看 = await raw.followUp.count({ where: { customer: { OR: [{ salesOwnerId: 外人 }, { channelOwnerId: 外人 }, { pool: { isNot: null } }] } } });
+      const 外人看 = await raw.followUp.count({ where: { customer: { OR: [{ salesOwnerId: 外人 }, { channelOwnerId: 外人 }, { pool: { isNot: null } }], NOT: { salesOwnerId: 外人, pool: { isNot: null } } } } }); // 11-03 自己退进公海的回避
       expect(await 以谁的身份(外人, () => 看得到的跟进数({}))).toBe(外人看);
       expect(外人看).toBeLessThan(全部);
       const 公海的 = await raw.followUp.count({ where: { customer: { pool: { isNot: null } } } });

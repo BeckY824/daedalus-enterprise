@@ -91,7 +91,8 @@ describe("客户页签数带范围", () => {
   it("看得到的数对：老板全部、经理链（含渠道是他的外人客户）、外人、没认出人只看公海", async () => {
     expect(await 以谁的身份(老板, 客户页签数)).toEqual({ 公海: 3, 非公海: 5 });
     expect(await 以谁的身份(经理, 客户页签数)).toEqual({ 公海: 3, 非公海: 4 });
-    expect(await 以谁的身份(外人, 客户页签数)).toEqual({ 公海: 3, 非公海: 1 });
+    // 11-03 原负责人回避：「E外人的」在公海、负责人是外人，他自己看不到（经理、老板照看）
+    expect(await 以谁的身份(外人, 客户页签数)).toEqual({ 公海: 2, 非公海: 1 });
     expect(await 以谁的身份("ghost", 客户页签数)).toEqual({ 公海: 3, 非公海: 0 });
   });
 
@@ -102,9 +103,11 @@ describe("客户页签数带范围", () => {
     const d = await raw.customer.create({ data: { name: "J进了回收站的", phone: "13800009998", salesOwnerId: 老板, deletedAt: new Date() } });
     try {
       expect(await raw.customerPool.count()).toBe(4);
+      // 小王、外人各有一位在公海、负责人是自己，回避后各少一位
+      const 公海几位: Record<string, number> = { [老板]: 3, [经理]: 3, [小王]: 2, [外人]: 2, ghost: 3 };
       for (const 谁 of [老板, 经理, 小王, 外人, "ghost"]) {
         const [新, 旧, 角标] = await 以谁的身份(谁, async () => [await 客户页签数(), await 照旧数(), await db.customer.count()] as const);
-        expect(新.公海).toBe(3);
+        expect({ 谁, 公海: 新.公海 }).toEqual({ 谁, 公海: 公海几位[谁] });
         expect({ 谁, ...新 }).toEqual({ 谁, ...旧 });
         expect(新.公海 + 新.非公海).toBe(角标);
       }

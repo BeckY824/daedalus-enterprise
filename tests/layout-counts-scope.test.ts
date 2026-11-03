@@ -106,7 +106,7 @@ describe("左栏的数：快路径 = Prisma 老路", () => {
       // 商机角标 10-28 随左栏商机一项删了，这里改钉客户角标
       const 全部 = await raw.customer.count();
       expect(await 以谁的身份(老板, 客户总数)).toBe(全部);
-      const 外人看 = await raw.customer.count({ where: { OR: [{ salesOwnerId: 外人 }, { channelOwnerId: 外人 }, { pool: { isNot: null } }] } });
+      const 外人看 = await raw.customer.count({ where: { OR: [{ salesOwnerId: 外人 }, { channelOwnerId: 外人 }, { pool: { isNot: null } }], NOT: { salesOwnerId: 外人, pool: { isNot: null } } } }); // 11-03 自己退进公海的回避
       expect(await 以谁的身份(外人, 客户总数)).toBe(外人看);
       expect(外人看).toBeLessThan(全部);
       expect(await 以谁的身份("ghost", 客户总数)).toBe(await raw.customerPool.count());

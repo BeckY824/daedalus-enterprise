@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { App, Alert, Button, Card, Empty, Popconfirm, Select, Space, Spin, Switch, Table, Tabs, Tag, Typography, Upload, type UploadFile } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
-import { smartTime } from "@/lib/utils";
+import { fmtDate, smartTime } from "@/lib/utils";
 import { 来源名, 字段中文 } from "@/lib/enterprise-import/types";
 import { 单个请求最长毫秒 } from "@/lib/enterprise-import/net-limits";
 import type { 试跑报告 } from "@/lib/enterprise-import/report";
@@ -527,7 +527,7 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
             title={名}
             extra={
               拉着 ? <Tag color="processing">正在同步</Tag>
-              : 设置.切换 ? <Tag>已在 {设置.切换.时间.slice(0, 10)} 切换</Tag>
+              : 设置.切换 ? <Tag>已在 {fmtDate(设置.切换.时间)} 切换</Tag>
               : 设置.开 ? <Tag color="green">自动同步开着</Tag>
               : null
             }

@@ -22,7 +22,7 @@ import { 全进程上下文 } from "@/lib/process-als";
 import { jwtVerify } from "jose";
 import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
-import { 看得到, type 限定 } from "@/lib/team-scope";
+import { 看得到, type 限定, type 公海回避 } from "@/lib/team-scope";
 import { 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
 import { 按线范围of, 按线项目, 按线客户 } from "./line-viewer";
 import { 规则 } from "./rules";
@@ -182,16 +182,24 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
       互看: false, 别人的: new Set(), 全拦: true, 话: 只读角色话, 只读: 只读角色话,
     };
   }
-  // 规则关着：原来一律不限定；11-01 起没设业务角色的照样没权限（只看公海）
-  if (!规则开着) return 没设业务角色(org, id) ? 只看公海 : null;
+  // 规则关着：原来一律不限定；11-01 起没设业务角色的照样没权限（只看公海）；
+  // 原负责人回避（11-03）规则开不开都算，能看全部的（总管理等）不回避
+  if (!规则开着) {
+    if (能看全部({ id }, org)) return null;
+    const 回避 = await 公海回避of(db, id);
+    if (没设业务角色(org, id)) return 回避 ? { ...只看公海, 公海回避: 回避 } : 只看公海;
+    return 回避 ? { 我: null, 互看: false, 别人的: new Set(), 公海回避: 回避 } : null;
+  }
   const 范围 = 组织范围of(org, 我.role, id);
   if (!范围) return null;
+  const 回避 = await 公海回避of(db, id);
+  const 带回避 = 回避 ? { 公海回避: 回避 } : {};
   const 类别 = 管理员类别们of(org, id);
   // 市场管理分线索（同 lead-assign 能分配；老板、总管理员上面已经不限定）：线索开着分配时全看全改，
   // 不然分出去就看不到、也分不了（F9 10-25）。客户那条线还是按组织架构
   const 线索 = 类别.has("市场管理") && (await 开着(db, 规则.线索分配.key)) ? { 线索全看: true } : {};
   const 市场 = 市场的人(org, id, 类别.has("市场管理"), 设的市场部门?.value, 设的市场人?.value);
-  if (!范围.读 && !市场.length) return { 我: 范围.写, 互看: false, 别人的: new Set(), ...线索 };
+  if (!范围.读 && !市场.length) return { 我: 范围.写, 互看: false, 别人的: new Set(), ...线索, ...带回避 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）
   const 别人的 = new Set<string>();
@@ -225,6 +233,48 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     我: 范围.写, 互看: false, 别人的, 全拦: true, 话, ...线索,
     ...(读 ? { 读 } : {}),
     ...(市场.length ? { 市场 } : {}),
+    ...带回避,
+  };
+}
+
+/** 回避名单的上限：再多 NOT IN 又长又慢、也怕碰 SQLite 参数上限（否定条件不能拆批），退回按关联写的条件 */
+const 回避名单上限 = 100;
+
+/**
+ * 这个人要回避哪些公海客户和项目（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。
+ * 判「原负责人」用已有字段，不加 schema：
+ *   - 项目：最后一次 pool-release 留痕的 fromOwnerId（退项目、超时回收、离职都写；公海项目 ownerId 已清空）
+ *   - 客户：负责人（放进公海、超时扫描都留着 salesOwnerId；导入的是占位账号，走不到这条）；
+ *     或者他退的项目挂着的公海客户（占位负责人、别人名下的都靠这条）
+ * 不看 CustomerPool.userId：那是操作的人，可能是上级，超时的是空。
+ * 客户在公海，下面的项目都算回避（客户都看不到，项目点进去也打不开）。别人领走客户、项目后自然从名单出来，
+ * 他是不是还能看回到原来的范围（负责人、组员、上级）。什么都没有的人回 undefined，查询不多任何条件。
+ * db 是底层 defaultClient（不过软删扩展），自己带 deletedAt
+ */
+async function 公海回避of(db: PrismaClient, id: string): Promise<公海回避 | undefined> {
+  const { 原负责人回避, 公海里历史负责人是, 一批id数 } = await import("@/lib/project/pool-owner");
+  if (!原负责人回避()) return undefined;
+  const 放回的 = await 公海里历史负责人是(db, [id]);
+  const 他公海客户 = { salesOwnerId: id, pool: { isNot: null }, deletedAt: null };
+  const [有客户, 挂着的] = await Promise.all([
+    db.customer.findFirst({ where: 他公海客户, select: { id: true } }),
+    db.project.findMany({ where: { deletedAt: null, customer: 他公海客户 }, select: { id: true }, take: 回避名单上限 + 1 }),
+  ]);
+  // 他退的项目挂着的公海客户里，负责人不是他的（负责人是他的 回避客户条件 一句带上了）
+  const 客户们 = new Set<string>();
+  for (let i = 0; i < 放回的.length; i += 一批id数) {
+    const 行 = await db.project.findMany({
+      where: { id: { in: 放回的.slice(i, i + 一批id数) }, customer: { salesOwnerId: { not: id }, pool: { isNot: null }, deletedAt: null } },
+      select: { customerId: true },
+    });
+    for (const r of 行) 客户们.add(r.customerId);
+  }
+  const 项目们 = new Set([...放回的, ...挂着的.map((p) => p.id)]);
+  if (!有客户 && !客户们.size && !项目们.size) return undefined;
+  return {
+    本人: id,
+    客户: 客户们.size > 回避名单上限 ? null : [...客户们],
+    项目: 项目们.size > 回避名单上限 ? null : [...项目们],
   };
 }
 

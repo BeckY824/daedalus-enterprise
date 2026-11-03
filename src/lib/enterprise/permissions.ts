@@ -60,8 +60,8 @@ const 老管 = (me: 谁) => me.role === "ADMIN" || me.role === "MANAGER";
 const 老板 = (me: 谁) => me.role === "ADMIN";
 
 /** 没设业务角色（不在职、没有 EntMember 行、角色串空） */
-export function 没设业务角色(org: 组织, userId: string): boolean {
-  return 角色们(org, userId).length === 0;
+export function 没设业务角色(org: 组织 | null, userId: string): boolean {
+  return !org || 角色们(org, userId).length === 0;
 }
 
 /** 总管理（director）：企业版问「能不能管全公司」都调这个。只问「看不看得到全部」用 能看全部 */
@@ -91,6 +91,8 @@ export function 只读角色(me: 谁, org: 组织 | null): boolean {
 }
 /** 只读角色写的时候那一句 */
 export const 只读角色话 = "管理员只能看，不能改任何数据";
+/** 没设业务角色的领公海（11-03 用户定：无法领）。账号的 ADMIN / MANAGER 不算；别人分给他不在此列 */
+export const 没业务角色不能领话 = "还没设业务角色，不能领公海里的客户和项目，请找总管理设置";
 
 /* 切换视图（M-权限-08）只有总管理、管理员：见 view-as.ts 能切换视图（菜单、action、认票同一处） */
 

@@ -1,5 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 读的我, 有市场只读 } from "@/lib/team-scope";
+import { 读的我, 有市场只读, 现在的公海回避 } from "@/lib/team-scope";
 
 /**
  * 业务员（企业版按组织看、团队版没开互看）看得到的客户，用裸 SQL 数和挑，不走 Prisma 那层 where。
@@ -12,7 +12,8 @@ import { 读的我, 有市场只读 } from "@/lib/team-scope";
  * 试过三段 UNION：计数也快，但挑前 n 位时要把几万个编号先攒出来再排，经理（看四五万位）反而比原来慢一倍。
  *
  * 范围用 读的我()：和钩子给 Customer 读加的那一句同一个名单（企业版虚线下属算「读」）；null = 不限定，
- * 调用方照旧走 Prisma（不限定时 Prisma 那句本来就快）。tests/scope-sql.test.ts 逐个身份拿 Prisma 对拍
+ * 调用方照旧走 Prisma（不限定时 Prisma 那句本来就快）。tests/scope-sql.test.ts 逐个身份拿 Prisma 对拍。
+ * 原负责人回避（11-03，见 team-scope 公海回避）：要回避的人多两个 AND，别人的 SQL 一个字不变；名单过上限回 null 走 Prisma
  */
 async function 看得到的(): Promise<{ where: string; 参数: string[] } | null> {
   const 我 = await 读的我(defaultClient);
@@ -21,10 +22,22 @@ async function 看得到的(): Promise<{ where: string; 参数: string[] } | nul
   const 们 = typeof 我 === "string" ? [我] : [...我];
   if (!们.length) 们.push("__无");
   const 占 = 们.map(() => "?").join(",");
+  const 回避 = await 现在的公海回避(defaultClient);
+  if (回避?.客户 === null) return null;
+  const 避 = 回避 ? 回避段(回避.本人, 回避.客户 ?? []) : { sql: "", 参数: [] as string[] };
   return {
     // 回收站里的客户（企业版软删，P9）不算：裸 SQL 不过 Prisma 扩展，自己带上。外层是 AND，三段 OR 照旧各走各的索引
-    where: `(c."salesOwnerId" IN (${占}) OR c."channelOwnerId" IN (${占}) OR c.id IN (SELECT "customerId" FROM "CustomerPool")) AND c."deletedAt" IS NULL`,
-    参数: [...们, ...们],
+    where: `(c."salesOwnerId" IN (${占}) OR c."channelOwnerId" IN (${占}) OR c.id IN (SELECT "customerId" FROM "CustomerPool")) AND c."deletedAt" IS NULL${避.sql}`,
+    参数: [...们, ...们, ...避.参数],
+  };
+}
+
+/** 回避的那段：负责人是他的公海客户 + 名单上的客户。salesOwnerId 非空，NOT (... ) 不踩 NULL */
+function 回避段(本人: string, 客户: string[]): { sql: string; 参数: string[] } {
+  const 名单 = 客户.length ? ` AND c.id NOT IN (${客户.map(() => "?").join(",")})` : "";
+  return {
+    sql: ` AND NOT (c."salesOwnerId" = ? AND c.id IN (SELECT "customerId" FROM "CustomerPool"))${名单}`,
+    参数: [本人, ...客户],
   };
 }
 
@@ -47,6 +60,27 @@ export async function 未删公海数(): Promise<number> {
     `SELECT (SELECT COUNT(*) FROM "CustomerPool") - (SELECT COUNT(*) FROM "Customer" c JOIN "CustomerPool" p ON p."customerId" = c.id WHERE c."deletedAt" > 0) AS n`,
   );
   return Number(r.n);
+}
+
+/**
+ * 这个人的「公海」页签数（= 公海列表条数）。不用回避的人就是 未删公海数（走主键，不 JOIN）；
+ * 回避的人减掉他回避的那几位：负责人走 salesOwnerId 索引、名单走主键，只碰他自己那点行，不扫公海表。名单过上限走 Prisma
+ */
+export async function 看得到的公海数(): Promise<number> {
+  const 回避 = await 现在的公海回避(defaultClient);
+  if (!回避) return 未删公海数();
+  if (回避.客户 === null) return prisma.customer.count({ where: { pool: { isNot: null } } });
+  const 名单 = 回避.客户;
+  const 或名单 = 名单.length ? ` OR c.id IN (${名单.map(() => "?").join(",")})` : "";
+  const [全部, [r]] = await Promise.all([
+    未删公海数(),
+    prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
+      `SELECT COUNT(*) AS n FROM "Customer" c WHERE c."deletedAt" IS NULL AND (c."salesOwnerId" = ?${或名单}) AND c.id IN (SELECT "customerId" FROM "CustomerPool")`,
+      回避.本人,
+      ...名单,
+    ),
+  ]);
+  return 全部 - Number(r.n);
 }
 
 /**

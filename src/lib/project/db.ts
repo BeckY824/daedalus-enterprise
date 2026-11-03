@@ -14,7 +14,8 @@ import { 等复核拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 没设业务角色, 没业务角色不能领话 } from "@/lib/enterprise/permissions";
+import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
@@ -656,7 +657,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
   if (!选.ok) return 选;
   const reason = 选.值 ? `${回收原因前缀}${选.值}` : null;
   const org = await 权限组织();
-  return 查完再写(async (tx) => {
+  const r: 结果 = await 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (p.pooledAt) return { ok: false as const, error: "这个项目已经在公海里了" };
@@ -675,6 +676,9 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     if (企业版()) await tx.$executeRaw(Prisma.sql`UPDATE "Customer" SET "poolReturns" = "poolReturns" + 1 WHERE "id" = ${p.customerId}`);
     return { ok: true as const };
   });
+  // 原负责人回避名单变了（11-03），这一下就要看不到，不等范围缓存的 10 秒
+  if (r.ok) 忘掉企业版范围();
+  return r;
 }
 
 const 领走了 = { ok: false as const, error: "这个项目已经被人领走了，刷新看看" };
@@ -684,6 +688,8 @@ const 领走了 = { ok: false as const, error: "这个项目已经被人领走�
  * 开了持有上限的，到上限了领不了。带待办（C-06）：进公海时关掉的那批待办重新打开给我，没传不碰
  */
 export async function 领取公海项目(me: 谁, projectId: string, 带待办?: boolean): Promise<结果> {
+  // 没设业务角色的不能领（11-03 用户定）：权限只认业务角色。分配（别人分给他）不走这里
+  if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: 没业务角色不能领话 };
   const 规则 = await 生效组织规则();
   return 查完再写(async (tx) => {
     const id = String(projectId ?? "");
@@ -836,6 +842,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     }
   }
   if (收了.length) {
+    忘掉企业版范围(); // 超时回到公海的也算他退的（pool-release 留痕），回避名单变了
     await recordAudit({
       user: 系统, action: "pool", entity: "Project",
       summary: `${收了.length} 个项目超过进程处理时长没跟进，自动回到项目公海`,
@@ -1038,7 +1045,8 @@ export async function 待我回的邀请(me: 谁): Promise<待回邀请[]> {
   const 名 = new Map((await 看全部(() => prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } }))).map((u) => [u.id, u.name || u.email]));
   return rows.map((r) => ({
     id: r.id, projectId: r.projectId, 项目: r.project.name, 负责人: 名.get(r.project.ownerId) ?? "—",
-    邀请人: (r.invitedById && 名.get(r.invitedById)) || "—", 角色: r.role?.name ?? null, createdAt: r.createdAt,
+    // invitedById 空 = 系统发的（同号再次录入，lib/enterprise/same-number-collab.ts）
+    邀请人: r.invitedById ? 名.get(r.invitedById) ?? "—" : "系统（同号再次录入）", 角色: r.role?.name ?? null, createdAt: r.createdAt,
   }));
 }
 

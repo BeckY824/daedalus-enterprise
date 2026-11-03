@@ -1,6 +1,6 @@
 import { control } from "@/lib/tenant/control";
 import { 读串, type 运营台串里一条 } from "@/lib/feedback-thread";
-import { fmtDate } from "@/lib/utils";
+import { dayjs, fmtDate } from "@/lib/utils";
 import { 系统名, 数设备, type 设备分布 } from "@/lib/tenant/device-info";
 import { 测试账号们, 测试留痕, type 测试来由 } from "@/lib/tenant/test-accounts";
 
@@ -19,12 +19,12 @@ import { 测试账号们, 测试留痕, type 测试来由 } from "@/lib/tenant/t
 
 const 天毫秒 = 86_400_000;
 
-/** 本机时区的 YYYY-MM-DD。线上容器 TZ=Asia/Shanghai，和人看报表的口径一致 */
+/** 业务钟的 YYYY-MM-DD（线上固定北京，不看容器 TZ），和人看报表的口径一致 */
 const 日 = (d: Date) => fmtDate(d);
 
 /** 从今天往前数 n 天（含今天）的每一天，旧的在前 */
 export function 近几天(n: number, now = new Date()): string[] {
-  const 今 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const 今 = dayjs(now).startOf("day").toDate();
   return Array.from({ length: n }, (_, i) => 日(new Date(今.getTime() - (n - 1 - i) * 天毫秒 + 12 * 3_600_000)));
 }
 

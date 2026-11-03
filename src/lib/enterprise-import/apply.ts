@@ -36,6 +36,7 @@ import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目, 无主入池理由, 无主项目进公海 } from "./project-target";
 import { 无负责人占位名, 无负责人占位邮箱 } from "../pool";
+import { 同号标题, 同号只记备注 } from "../enterprise/same-number-collab";
 import { 公海无负责人 } from "../project/pool-owner";
 import { 线索建项目 } from "../project/from-lead";
 import { 是项目线 } from "../enterprise/assign-line";
@@ -365,7 +366,7 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
         phone: 串(v.phone),
         email: 串(v.email),
         industry: 串(v.industry),
-        source: 串(v.source) ?? "其他",
+        source: 串(v.source ?? null) ?? "其他",
         status: 串(v.status) ?? "待跟进",
         ownerId: 串(v.ownerId),
         remark: 串(v.remark),
@@ -648,6 +649,7 @@ async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v
       data: { batchId: 现.批次Id, entity: e, externalId: 线索带出(w.外部ID), targetId: id, kind: "create", written: J(await 读现值(tx, e, id)) },
     });
   let customerId = await 再认同号(tx, 现, String(v.phone ?? ""));
+  if (customerId) await 记同号备注(tx, 现, w, customerId, v, 线索带出(w.外部ID));
   let 联系人Id: string | null = null;
   if (!customerId) {
     const 客户负责人 = 负责人 ?? (await 无负责人占位Id(tx));
@@ -665,10 +667,19 @@ async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v
   await 记("opportunity", 项目Id);
 }
 
+/** 导入撞到有人在跟的客户：在已有项目写一条醒目备注和来源（不发邀请）。记一行导入记录，整批撤回一起退 */
+async function 记同号备注(tx: Tx, 现: 现场, w: 待写, customerId: string, v: 值表, externalId: string): Promise<void> {
+  const 号 = 验号码("手机号", String(v.phone ?? ""));
+  if (!号.ok) return;
+  const id = await 同号只记备注(tx, { customerId, 操作人: 现.操作人, 号, 入口: 来源名[现.源], 渠道id: 串(v.channelId ?? null), 来源: 串(v.source ?? null) });
+  if (id) await tx.entImportRow.create({ data: { batchId: 现.批次Id, entity: "followup", externalId, targetId: id, kind: "create", written: J(await 读现值(tx, "followup", id)) } });
+}
+
 /** 连上我们这边早就有的同号客户：只补空着的格子；对照表记原系统这次的值，之后同步照三方比对 */
 async function 补空(tx: Tx, 现: 现场, w: 待写, 目标: string): Promise<结果> {
   const 现值 = (await 读现值(tx, "customer", 目标))!;
   const v = await 落值(tx, 现, w, null, 现值);
+  await 记同号备注(tx, 现, w, 目标, v, `同号:${w.外部ID}`);
   const 补: 值表 = {};
   const before: 值表 = {};
   const 挂得上 = !空(v.channelId) && (await 可挂渠道(tx, 目标));
@@ -956,7 +967,7 @@ async function 收尾(批次Id: string, 用户: Actor): Promise<void> {
   const ids = [...new Set(跟进.map((r) => r.targetId))];
   await 看全部(async () => {
     for (let i = 0; i < ids.length; i += 500) {
-      const 组 = await prisma.followUp.groupBy({ by: ["customerId"], where: { id: { in: ids.slice(i, i + 500) } }, _max: { occurredAt: true } });
+      const 组 = await prisma.followUp.groupBy({ by: ["customerId"], where: { id: { in: ids.slice(i, i + 500) }, NOT: { title: { startsWith: 同号标题 } } }, _max: { occurredAt: true } }); // 同号备注不替负责人续最近跟进
       for (const g of 组) {
         const at = g._max.occurredAt;
         if (!at) continue;

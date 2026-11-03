@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Input, Select, Space, Switch, Tag } from "antd";
+import { fmtDateTime } from "@/lib/utils";
 import { 部门最多层数 } from "@/lib/sync/dept-policy";
 import { 通讯录概况, 飞书表概况, 设通讯录同步, 立即同步通讯录, 设职务对照, 设通讯录凭据, 设通讯录间隔, type 通讯录一栏 } from "./org-actions";
 import FeishuConnectCard from "./FeishuConnectCard";
@@ -111,7 +112,7 @@ export default function OrgSyncCard() {
               {s.上次 && (
                 <div style={{ marginTop: 8 }}>
                   <Tag color={结果色[s.上次.结果]}>{s.上次.结果}</Tag>
-                  <span className="muted">{new Date(s.上次.时间).toLocaleString("zh-CN", { hour12: false })}　{s.上次.话}</span>
+                  <span className="muted">{fmtDateTime(s.上次.时间)}　{s.上次.话}</span>
                   {!!s.上次.报告?.length && (
                     <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }} data-testid={`org-sync-${s.源}-report`}>
                       {s.上次.报告.map((x, i) => <li key={i}>{x}</li>)}

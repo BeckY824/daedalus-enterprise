@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, ConfigProvider, Drawer } from "antd";
 import { BellOutlined } from "@ant-design/icons";
 import { AnimatePresence, motion } from "motion/react";
+import { businessDayjs } from "@/lib/business-clock";
 import { useSystemReducedMotion } from "@/lib/reduced-motion";
 import { 时长 } from "@/lib/motion";
 import { 读我的通知, 读未读通知数, 标已读, 全部标已读 } from "@/app/(app)/notice-actions";
@@ -24,8 +25,7 @@ export function 多久以前(iso: string, 现在 = Date.now()): string {
   if (秒 < 3600) return `${Math.floor(秒 / 60)} 分钟前`;
   if (秒 < 86400) return `${Math.floor(秒 / 3600)} 小时前`;
   if (秒 < 86400 * 7) return `${Math.floor(秒 / 86400)} 天前`;
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return businessDayjs(iso).format("M月D日");
 }
 
 export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初始未读?: number; 手机?: boolean }) {

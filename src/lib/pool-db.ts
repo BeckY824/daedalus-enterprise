@@ -8,7 +8,8 @@ import { getSetting, setSetting } from "@/lib/settings";
 import { recordAudit } from "@/lib/audit";
 import { 读团队 } from "@/lib/sync/client";
 import { 看全部, 只读身份中 } from "@/lib/team-scope";
-import { 看得到的客户数, 未删公海数 } from "@/lib/scope-sql";
+import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 看得到的客户数, 看得到的公海数 } from "@/lib/scope-sql";
 import { dayjs } from "@/lib/utils";
 import { 不掉公海的状态, 公海截止, 自动理由 } from "@/lib/pool";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
@@ -62,6 +63,7 @@ async function 按天扫(me: { id: string; name: string }, 今: Date): Promise<n
     await prisma.customerPool.createMany({ data: 行 }).catch(async () => {
       for (const r of 行) await prisma.customerPool.upsert({ where: { customerId: r.customerId }, update: {}, create: r });
     });
+    忘掉企业版范围(); // 负责人回避名单变了（11-03）
     await recordAudit({
       user: me, action: "pool", entity: "Customer",
       summary: `${要掉.length} 名${b.customer}${b.poolDays} 天没跟进，自动放进公海`,
@@ -88,10 +90,12 @@ export const 客户总数 = cache(() => 看得到的客户数());
  * 改成全部客户（和角标同一个数）减公海表条数。限定了也对得上：公海表按「挂在看得到的客户上」限定，
  * 而看得到的客户里本来就含整个公海（可见客户 的第三条），所以带限定数出来的公海表 = 全部公海，
  * 带限定的全部客户 = 看得到的非公海 + 全部公海；互看读两边都不限定。公海表的 customerId 是外键，只有硬删客户才连带删；软删（进回收站）公海行还在，
- * 所以公海这头只数挂在未删客户上的（lib/scope-sql.ts 未删公海数），不然公海多、客户少，两数相加对不上角标
+ * 所以公海这头只数挂在未删客户上的（lib/scope-sql.ts 未删公海数），不然公海多、客户少，两数相加对不上角标。
+ * 原负责人回避（11-03）：看得到的客户里不再含他回避的那几位公海客户，公海这头也减掉同样几位（看得到的公海数，只碰他自己那点行），
+ * 公式不变，列表条数 = 页签数
  */
 export async function 客户页签数(): Promise<{ 公海: number; 非公海: number }> {
-  // 公海表带限定数 = 全部公海（见上），裸 SQL 不过钩子，不用再给它套 Customer 那层 JOIN
-  const [全部, 公海] = await Promise.all([客户总数(), 未删公海数()]);
+  // 公海表带限定数 = 全部公海减回避的（见上），裸 SQL 不过钩子，不用再给它套 Customer 那层 JOIN
+  const [全部, 公海] = await Promise.all([客户总数(), 看得到的公海数()]);
   return { 公海, 非公海: 全部 - 公海 };
 }

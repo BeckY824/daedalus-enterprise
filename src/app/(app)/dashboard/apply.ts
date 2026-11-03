@@ -270,7 +270,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
     .filter((h): h is Extract<ReturnType<typeof 验号码>, { ok: true }> => Boolean(h?.ok));
   const 号们 = [...格号们, ...备注号们.filter((h) => !格号们.some((g) => g.类型 === h.类型 && g.值 === h.值))];
   const 手机 = 号 ? 验号码("手机号", 号) : null;
-  const 撞了 = await AI建档查重([...(手机?.ok ? [手机] : []), ...号们], me);
+  const 撞了 = await AI建档查重([...(手机?.ok ? [手机] : []), ...号们], me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
   if (撞了) return { ok: false, error: 撞了 };
   const 邮箱 = 号们.find((h) => h.类型 === "邮箱")?.值 ?? null;
   const 微信 = 号们.find((h) => h.类型 === "微信")?.值 ?? null;

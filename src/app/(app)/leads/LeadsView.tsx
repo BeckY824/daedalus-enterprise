@@ -139,6 +139,13 @@ export default function LeadsView({
     const v = await form.validateFields().catch(() => null);
     if (!v) return;
     const res = await saveLead({ id: editing?.id, 版本: editing?.updatedAt, ...v });
+    if (!res.ok && "同号协同" in res) {
+      message.info(res.error);
+      守.存好了();
+      setOpen(false);
+      router.refresh();
+      return;
+    }
     if (!res.ok) {
       message.error(res.error);
       return;

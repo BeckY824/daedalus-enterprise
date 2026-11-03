@@ -4,6 +4,7 @@ import { createContext, useContext } from "react";
 import type { EChartsCoreOption } from "echarts/core";
 import type { 设备分布 } from "@/lib/device-os";
 import { 简称 } from "@/lib/initials";
+import { 北京日期 } from "@/lib/team-pricing";
 
 /**
  * 运营台几页共用的小件。颜色全走 ops.css 里的变量；图表那边 echarts 不认 CSS 变量，
@@ -43,7 +44,7 @@ export function 何时(iso: string | null, 基准: string | number = Date.now())
   const 天 = Math.floor(时 / 24);
   if (天 === 1) return "昨天";
   if (天 < 30) return `${天} 天前`;
-  return iso.slice(0, 10);
+  return 北京日期(new Date(iso));
 }
 
 /**

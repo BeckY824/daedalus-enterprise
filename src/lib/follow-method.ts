@@ -40,6 +40,14 @@ export function 类型对方式(type: string): string | null {
   return 对方式[type] ?? null;
 }
 
+/**
+ * 筛选下拉上的叫法。筛选按 type 走，OTHER 这一档既有选了「其他方式」的，也有导入时没写方式的（method = 未注明），
+ * 叫「其他方式」后者对不上。只改筛选的叫法：类型对方式 还要拿去给老记录补方式，不能动；行内显示记录自己的方式（跟进方式名）
+ */
+export function 筛选方式名(type: string): string {
+  return type === "OTHER" ? "其他 / 未注明" : 类型对方式(type) ?? type;
+}
+
 /** 列表、时间线上显示的叫法：企业版有方式显示方式，没有（个人版、团队版、任务提醒）显示类型名 */
 export function 跟进方式名(f: { type: string; method?: string | null }): string {
   return f.method || FOLLOW_TYPE_MAP[f.type]?.label || f.type;

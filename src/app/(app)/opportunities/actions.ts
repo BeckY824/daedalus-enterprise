@@ -1,5 +1,6 @@
 "use server";
 
+import { businessDayjs } from "@/lib/business-clock";
 import { hasVisibleText } from "@/lib/form-validation";
 
 import { 不在了 } from "@/lib/not-there";
@@ -203,7 +204,7 @@ export async function saveOpportunity(input: {
     summary: input.id
       ? `修改商机「${data.name}」：${data.stage} · ${状态名[data.status] ?? data.status} · ${显示金额(data.amount, result.币)}`
       : `新建商机「${data.name}」：${data.stage} · ${显示金额(data.amount, result.币)}`,
-    detail: { 名称: data.name, 金额: data.amount, 币种: result.币, 阶段: data.stage, 状态: 状态名[data.status] ?? data.status, 概率: data.probability, ...(询盘 ? { 询盘时间: 询盘.toISOString().slice(0, 10) } : {}) },
+    detail: { 名称: data.name, 金额: data.amount, 币种: result.币, 阶段: data.stage, 状态: 状态名[data.status] ?? data.status, 概率: data.probability, ...(询盘 ? { 询盘时间: businessDayjs(询盘).format("YYYY-MM-DD") } : {}) },
   });
 
   刷新商机(input.customerId);
