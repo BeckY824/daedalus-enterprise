@@ -27,10 +27,10 @@ import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 企业级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
-import type { 项目行, 看板一列 } from "@/lib/project/board";
+import { 卡片小字, type 项目行, type 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
-import { 字典of, 结局叫法, 阶段与进程, 阶段们, 是交付, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
@@ -401,6 +401,7 @@ export default function ProjectsView({
                     {c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
                     {c.行.map((r) => {
                       const 异常 = r.result === "异常状态";
+                      const 小字 = 卡片小字(r, 字典);
                       return (
                         <div
                           key={r.id}
@@ -408,8 +409,8 @@ export default function ProjectsView({
                           style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色] }}
                           tabIndex={0}
                           role="link"
-                          title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}`}
-                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${异常 ? "异常 · " : ""}${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}`}
+                          title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${小字}`}
+                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}`}
                           onClick={() => router.push(`/projects/${r.id}`)}
                           onMouseEnter={() => 预取.进(`/projects/${r.id}`)}
                           onMouseLeave={预取.出}
@@ -428,7 +429,7 @@ export default function ProjectsView({
                           </div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>
-                              {异常 ? `异常 · ${有值(r.exceptionCategory) ? `${r.exceptionCategory} · ` : ""}${r.node}` : r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : `${r.result ? `${结局叫法(r.result, 字典)} · ` : ""}${r.node}`}
+                              {小字}
                             </span>
                             <span className="pipe-card-a">{金额(r.amount, r.currency)}</span>
                           </div>

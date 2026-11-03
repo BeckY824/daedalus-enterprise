@@ -5,6 +5,8 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
+  // 沟通撤销（A7-1）：FollowUndo 用 @/ 路径引客户页 actions
+  stub(/^@\/app\/\(app\)\/customers\/\[id\]\/actions$/, "export const 撤销刚记的沟通=async()=>({ok:true});");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh++},push(){}});export const usePathname=()=>\"/customers/x\";");

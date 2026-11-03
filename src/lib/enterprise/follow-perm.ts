@@ -11,6 +11,7 @@ import { 企业版 } from "./switch";
 import { 权限组织, type 组织 } from "./org";
 import { 能删除, 有业务角色, 只读角色, 只读角色话, 没设业务角色, 能改客户 } from "./permissions";
 import { defaultClient } from "@/lib/prisma";
+import { 撤销拦 } from "./follow-undo";
 
 export const 不能改沟通话 = "只有负责人能改沟通记录";
 export const 不能删沟通话 = "只有负责人本人或系统管理员能删沟通记录";
@@ -32,9 +33,9 @@ export function 能删沟通of(me: 谁, 负责人们: readonly (string | null | 
  * 刚记下的本人可以撤销（删）：AI 卡片确认后的「撤销」、记错了马上撤，都走 deleteFollowUp。
  * 只认本人记的、记下 撤销窗口分钟 以内的；过了这个时间就和别的沟通一样，负责人本人或系统管理员能删
  */
-export const 撤销窗口分钟 = 10;
+export { 撤销窗口分钟 } from "./follow-undo";
 export function 刚记的能撤(me: { id: string }, f: { ownerId: string | null; createdAt: Date }, now: Date = new Date()): boolean {
-  return f.ownerId === me.id && now.getTime() - f.createdAt.getTime() <= 撤销窗口分钟 * 60_000;
+  return 撤销拦(me, f, now) === null;
 }
 
 /** 这条沟通的负责人们：客户负责人（客户不在公海）+ 挂的项目的负责人（项目不在公海） */

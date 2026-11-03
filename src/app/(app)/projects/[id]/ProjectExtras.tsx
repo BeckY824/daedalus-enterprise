@@ -12,6 +12,7 @@ import { 暂未确认, 不填项, 去不填, type 项目画像键 } from "@/lib/
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
 import type { 回款 } from "@/lib/project/payment-db";
+import { 还应收, 回款少于应收, type 应收依据 } from "@/lib/project/payment-hint";
 import { 改项目画像Action } from "../actions";
 import { 记回款, 删回款 } from "../payment-actions";
 
@@ -168,7 +169,7 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
  * 「回款」卡（2026-10-31，迁移 100）：一笔一行（时间、币种、金额），上面写当前回款（按币种加，不换汇）。
  * 只加、删：记错了删掉重记。能改 = 能改这个项目；字段权限「商机金额」锁了的，服务端拦并回一句人话
  */
-export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默认币 }: { projectId: string; 回款们: 回款[]; 能改: boolean; 默认?: string }) {
+export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默认币, 合同 }: { projectId: string; 回款们: 回款[]; 能改: boolean; 默认?: string; 合同?: 应收依据 | null }) {
   const { message } = App.useApp();
   const router = useRouter();
   const [日, set日] = useState<string | null>(dayjs().format("YYYY-MM-DD"));
@@ -176,6 +177,8 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
   const [数, set数] = useState<number | null>(null);
   const [忙, set忙] = useState(false);
   const 合计 = 回款们.length ? 合计文字(按币种合计(回款们, (x) => x.amount, (x) => x.currency)) : "还没有回款";
+  // 录的这笔少于「合同金额 − 已回」就黄字提示一句，不拦「记一笔」（A5-4）
+  const 少了 = 回款少于应收(数, 币, 还应收(合同, 回款们));
 
   async function 记() {
     if (!日 || !数) return;
@@ -214,6 +217,7 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
           <Button type="primary" loading={忙} disabled={!日 || !数} onClick={() => void 记()}>记一笔</Button>
         </Space>
       )}
+      {能改 && 少了 && <div role="status" className="pay-short-hint">{少了}</div>}
     </Card>
   );
 }

@@ -21,6 +21,7 @@ import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterpri
 import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤, 客户事项挡 } from "@/lib/enterprise/follow-perm";
+import { 撤销拦 } from "@/lib/enterprise/follow-undo";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
@@ -314,6 +315,32 @@ export async function deleteFollowUp(id: string, customerId: string) {
       原文: source?.text ?? null,
     };
     return { ok: true as const, 快照 };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/**
+ * A7-1（11-03）：刚记的沟通「撤销」——提示条上、时间线上本人 10 分钟内的那条都走这里。
+ * 服务器再判一次（本人 + 服务器时间 10 分钟内），过了给一句说清楚的话；能撤就走 deleteFollowUp（软删进回收站 + 审计）。
+ * 挂在项目上的连项目页一起刷。撤销不回退记这条时顺带推的项目节点（和删沟通一样）
+ */
+export async function 撤销刚记的沟通(id: string) {
+  try {
+    const me = await requireUser();
+    if (typeof id !== "string" || !id) return { ok: false as const, error: "这条沟通的信息不完整，刷新看看" };
+    const f = await prisma.followUp.findUnique({ where: { id }, select: { customerId: true, ownerId: true, createdAt: true } });
+    if (!f) return { ok: false as const, error: "这条沟通已经不在了，刷新看看" };
+    const 拦 = 撤销拦(me, f);
+    if (拦) return { ok: false as const, error: 拦 };
+    const 挂 = await prisma.followUpProject.findUnique({ where: { followUpId: id }, select: { projectId: true } });
+    const r = await deleteFollowUp(id, f.customerId);
+    if (!r.ok) return r;
+    if (挂) {
+      revalidatePath("/projects");
+      revalidatePath(`/projects/${挂.projectId}`);
+    }
+    return { ok: true as const };
   } catch (e) {
     return 不在了(e);
   }
@@ -843,7 +870,8 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
     刷新联系人(主客户);
     if (从挂靠编辑) 刷新联系人(input.customerId);
     await 客户存了推项目(me, 主客户);
-    return { ok: true as const };
+    // 新建的带回 id：记录页把刚加的这位排到最前、闪一下（11-03 C1-8）
+    return { ok: true as const, id: 落库id };
   } catch (e) {
     return 不在了(e);
   }

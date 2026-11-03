@@ -11,6 +11,7 @@ import { 跟进方式名 } from "@/lib/follow-method";
 import { 项目名单分组, 未填写组 } from "@/lib/roster-groups";
 import { avatarColor, initial, smartTime, AVATAR_TEXT } from "@/lib/utils";
 import { 开名单, 关名单, 登记换一位 } from "@/lib/roster";
+import { 名单回车去处 } from "@/lib/cmdk";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import PaneToggle from "@/components/PaneToggle";
 import { useLocalPref } from "@/lib/local-pref";
@@ -148,8 +149,13 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
           placeholder="搜项目名、客户、最近一句"
           aria-label="搜索项目"
           onKeyDown={(e) => {
-            // 名单里没有的，回车去项目页全量里搜
-            if (e.key === "Enter" && q.trim() && rows.length === 0) router.push(`/projects?keyword=${encodeURIComponent(q.trim())}`);
+            // 回车：搜出来的第一位直接进（11-03 C1-2）；名单里一位都没有的，去全量表格里搜（lib/cmdk.ts）
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            const 去 = 名单回车去处(q, 页签里, rows.length, "/projects");
+            if (!去) return;
+            e.preventDefault();
+            if (抽屉开着) 关名单();
+            router.push(去);
           }}
         />
         <kbd className="pane-kbd">

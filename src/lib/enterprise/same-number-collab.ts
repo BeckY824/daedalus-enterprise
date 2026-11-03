@@ -278,11 +278,15 @@ export async function 同号只记备注(
 
 export type 同号提醒 = { id: string; 谁: string; 何时: Date; 重点: boolean; 摘要: string };
 
-/** 项目详情顶上那条提醒要的：最近几次同号再次录入（首行写着谁、什么号、什么来源；第二行是来源不同的说明） */
-export async function 同号提醒们(projectId: string): Promise<同号提醒[]> {
+/**
+ * 项目详情顶上那条提醒要的：最近几次同号再次录入（首行写着谁、什么号、什么来源；第二行是来源不同的说明）。
+ * 客户详情顶上同一条（11-03 B6-9）传这位客户名下列出来的那几个项目，合起来取最近 5 条
+ */
+export async function 同号提醒们(projectId: string | readonly string[]): Promise<同号提醒[]> {
+  if (typeof projectId !== "string" && !projectId.length) return [];
   const 们 = await 看全部(() =>
     prisma.followUpProject.findMany({
-      where: { projectId, node: 同号节点, followUp: { deletedAt: null } },
+      where: { projectId: typeof projectId === "string" ? projectId : { in: [...projectId] }, node: 同号节点, followUp: { deletedAt: null } },
       select: { followUp: { select: { id: true, title: true, content: true, occurredAt: true, owner: { select: { name: true } } } } },
       orderBy: { followUp: { occurredAt: "desc" } },
       take: 5,
