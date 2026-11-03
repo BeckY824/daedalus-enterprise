@@ -517,7 +517,7 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
 
   return (
     <Space orientation="vertical" size={14} style={{ display: "flex" }}>
-      {概况.同步.map(({ 来源: 源, 名, 能同步, 设置, 在同步 }) => {
+      {概况.同步.map(({ 来源: 源, 名, 能同步, 接好了, 设置, 在同步 }) => {
         // 这边刚点的还没进概况，也算在同步
         const 拉着 = 在同步 ?? (忙 === `同步-${源}` ? { 开始: null, 谁: "你" } : null);
         return (
@@ -583,11 +583,13 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
                     <Button
                       size="small"
                       loading={忙 === `全量-${源}`}
-                      disabled={!!忙 || !!拉着 || 视图中}
-                      title={视图中 ? 视图外部话 : undefined}
+                      disabled={!!忙 || !!拉着 || 视图中 || !接好了}
+                      title={视图中 ? 视图外部话 : !接好了 ? `${名}接口还没接：要客户在${名}后台开应用、给读取权限、填好连接配置后才能拉。先用${名}导出的 Excel 导入。` : undefined}
                       onClick={async () => {
                         const r = await 做(`全量-${源}`, () => 从接口拉全量(源));
-                        if (r) on出报告(r.批次Id, r.报告);
+                        if (!r) return;
+                        if (!r.ok) return void message.error(r.error);
+                        on出报告(r.批次Id, r.报告);
                       }}
                     >
                       从{名}拉全量试跑
