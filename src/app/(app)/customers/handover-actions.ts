@@ -27,6 +27,8 @@ export type 交接行 = {
   从: string;
   给: string;
   发起人: string;
+  /** 发起人转的是自己名下的（横幅不写两遍名字，11-03 C3-4） */
+  自己的: boolean;
   /** 离职的「转交 / 公海」 */
   way: string | null;
   /** 企业版转让原因（字典「转让原因」，没选为空） */
@@ -75,6 +77,7 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
       return {
         id: h.id, kind: h.kind as 交接种类, way: h.way, reason: h.reason,
         从: 人.get(h.fromUserId) ?? "（已删除的成员）", 给: 人.get(h.toUserId) ?? "（已删除的成员）", 发起人: 人.get(h.byUserId) ?? "（已删除的成员）",
+        自己的: h.fromUserId === h.byUserId,
         个数: 读个数(h.counts), 客户: ids.slice(0, 列几位).map((id) => 名.get(id)).filter((x): x is string => !!x), 客户总数: ids.length,
         createdAt: h.createdAt.toISOString(),
         我能确认: h.toUserId === me.id, 我能撤回: h.byUserId === me.id || 管,

@@ -60,7 +60,7 @@ import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type �
 import { 认业务线, 业务线不认得 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
-import { 交接通知 } from "@/lib/enterprise/notice-sources";
+import { 交接通知, 改负责人通知 } from "@/lib/enterprise/notice-sources";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 
 
@@ -1101,6 +1101,7 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
     return 换人的.filter((c) => 已换.has(c.id));
   });
   const { 数: 带走, 记下: 带过来 } = await 带走并记下(换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, me.id);
+  await 改负责人通知(me, 换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId);
 
   if (res.count) {
     await recordAudit({

@@ -158,6 +158,25 @@ describe("离职交接中", () => {
   });
 });
 
+describe("离职时没东西给接手人（11-03 C4-2）", () => {
+  it("名下空、或公海方式全进了公海：当场停用，不建交接、不发「等你确认」", async () => {
+    expect(await deactivateUser(销售.id, 接手.id, "转交")).toEqual({ ok: true });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 销售.id } })).active).toBe(false);
+    expect(await prisma.entHandover.count()).toBe(0);
+    expect(await prisma.entNotice.count({ where: { userId: 接手.id } })).toBe(0);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "deactivate", entityId: 销售.id } })).toMatchObject({ summary: expect.stringContaining("没发起交接") });
+
+    // 公海方式：待跟进的客户全进公海，给接手人的一样没有
+    const 组员 = await 建("s3", "SALES");
+    await prisma.entMember.create({ data: { userId: 组员.id, managerId: 组长.id, bizRole: "sales" } });
+    await 客户(组员.id);
+    expect(await deactivateUser(组员.id, 接手.id, "公海")).toEqual({ ok: true });
+    expect(await prisma.entHandover.count()).toBe(0);
+    expect(await prisma.customerPool.count()).toBe(1);
+    expect(await prisma.entNotice.count({ where: { userId: 接手.id } })).toBe(0);
+  });
+});
+
 describe("转让交接中", () => {
   it("给别人先不换；重复发起不重复记；确认时只转还归原负责人的，活和换负责人记录一起走", async () => {
     const a = await 客户(销售.id);
@@ -287,4 +306,88 @@ describe("开关关掉", () => {
       }
     });
   }
+});
+
+describe("交接通知（11-03 C3-3 / C3-5 / C4-7 / C8-1）", () => {
+  const 通知 = (userId: string, 事件: string, hid: string) => prisma.entNotice.findFirst({ where: { userId, dedupeKey: `handover:${hid}:${事件}` } });
+
+  it("确认后：接手人那条「等你确认」标成已读；发起人和原负责人都收到，标题带客户名", async () => {
+    const a = await 客户(销售.id);
+    当(组长);
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
+    const h = await 一笔();
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).toBeNull();
+
+    当(接手);
+    expect(await 确认交接(h.id)).toEqual({ ok: true, 客户: 1 });
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).not.toBeNull();
+    expect((await 通知(组长.id, "已确认", h.id))?.title).toContain(a.name);
+    const 给原负责人 = await 通知(销售.id, "已确认", h.id);
+    expect(给原负责人?.title).toContain(a.name);
+    expect(给原负责人?.readAt).toBeNull();
+  });
+
+  it("总管理撤回别人发起的：接手人旧通知已读、收到「已撤回」；发起人也收到", async () => {
+    const a = await 客户(销售.id);
+    当(销售);
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
+    const h = await 一笔();
+    // C3-4：发起人转的是自己名下的，横幅据此写「自己名下」
+    当(接手);
+    expect((await 待确认的交接()).等我确认[0]).toMatchObject({ 自己的: true });
+
+    当(老板);
+    expect(await 撤回交接(h.id)).toEqual({ ok: true, 客户: 0 });
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).not.toBeNull();
+    expect(await 通知(接手.id, "已撤回", h.id)).not.toBeNull();
+    expect((await 通知(销售.id, "已撤回", h.id))?.title).toContain("撤回");
+  });
+
+  it("离职交接拒收：旧通知已读；停用的原负责人不收", async () => {
+    await 客户(销售.id);
+    await deactivateUser(销售.id, 接手.id);
+    const h = await 一笔();
+    当(接手);
+    expect(await 拒收交接(h.id)).toEqual({ ok: true, 客户: 0 });
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).not.toBeNull();
+    expect(await 通知(老板.id, "已拒收", h.id)).not.toBeNull();
+    expect(await prisma.entNotice.count({ where: { userId: 销售.id } })).toBe(0);
+  });
+
+  it("转给自己当场换：原负责人收到一条，写着客户名", async () => {
+    const a = await 客户(销售.id);
+    当(组长);
+    expect(await assignSalesOwner([a.id], 组长.id)).toMatchObject({ ok: true, updated: 1 });
+    const 收到 = await prisma.entNotice.findMany({ where: { userId: 销售.id } });
+    expect(收到).toHaveLength(1);
+    expect(收到[0].title).toContain(a.name);
+    expect(await prisma.entNotice.count({ where: { userId: 组长.id } })).toBe(0);
+  });
+});
+
+describe("最后一位总管理（11-03 C4-6）：企业版只认业务角色", () => {
+  it("唯一的总管理账号是 SALES，也不能停用自己", async () => {
+    await prisma.user.update({ where: { id: 老板.id }, data: { role: "SALES" } });
+    当({ ...老板, role: "SALES" });
+    const r = await deactivateUser(老板.id, 接手.id, "转交");
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toContain("最后一位能管设置的总管理");
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 老板.id } })).active).toBe(true);
+  });
+
+  it("账号 ADMIN 但业务角色是销售，不算最后一位管理员，照常停用", async () => {
+    await prisma.user.update({ where: { id: 老板.id }, data: { role: "SALES" } });
+    当({ ...老板, role: "SALES" });
+    const 号管 = await 建("acct-admin", "ADMIN");
+    await prisma.entMember.create({ data: { userId: 号管.id, bizRole: "sales" } });
+    expect((await deactivateUser(号管.id, 接手.id, "转交")).ok).toBe(true);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 号管.id } })).active).toBe(false);
+  });
+
+  it("另有一位勾了「不管设置」的总管理，不算能管设置，还是拦", async () => {
+    const 二 = await 建("boss2", "ADMIN");
+    await prisma.entMember.create({ data: { userId: 二.id, bizRole: "director", noSettings: true } });
+    const r = await deactivateUser(老板.id, 接手.id, "转交");
+    expect(r.ok).toBe(false);
+  });
 });

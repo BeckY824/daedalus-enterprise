@@ -32,6 +32,7 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
+import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 
 export const dynamic = "force-dynamic";
 
@@ -230,7 +231,8 @@ export default async function CustomerDetailPage({
         major: customer.major,
         followStatus: customer.followStatus,
         decisionStatus: customer.decisionStatus,
-        custStatus: customer.custStatus,
+        // 项目模式自动算：库里还没算过的（种子 / 导入的老数据）按名下项目现算一个显示，别和下面「项目（n）」对不上（11-03 C1-4）
+        custStatus: 只项目 ? await 显示用客户状态(customer.id, customer.custStatus) : customer.custStatus,
         shortName: customer.shortName,
         addrCountry: customer.addrCountry,
         addrProvince: customer.addrProvince,
