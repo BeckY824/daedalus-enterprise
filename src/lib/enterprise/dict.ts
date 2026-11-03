@@ -14,6 +14,7 @@ import { 挡改设置 } from "./edit-perm";
 import { 字典种类们, 字典定义, 项目画像项, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, 字典项释义, 默认号of, 默认序号of, type 字典种类 } from "./dict-kinds";
 import { 分配谁能用key, 规整分配谁能用, 能用分配方式, 谁能用的话, type 分配谁能用配置 } from "./assign-use";
 import { 读组织 } from "./org";
+import { 没设业务角色, 没业务角色不能新建话 } from "./permissions";
 import { 方式对类型, 类型对方式 } from "@/lib/follow-method";
 
 export * from "./dict-kinds";
@@ -264,6 +265,8 @@ export async function 挡分配方式(me: { id: string; role: string }, i: 分�
   const id = 默认id("assign", i);
   const [org, 配置] = await Promise.all([读组织(), 读分配谁能用()]);
   if (能用分配方式(org, me, id, 配置)) return null;
+  // 没设角色的哪种都用不了，直说没设角色，别报「只有……能用」让人以为换一种就行（D3-6）
+  if (没设业务角色(org, me.id)) return 没业务角色不能新建话;
   return 谁能用的话(id, await 分配方式叫法(i), 配置);
 }
 

@@ -47,6 +47,8 @@ import { POST as 传 } from "@/app/api/attachments/route";
 import { GET as 取, DELETE as 删 } from "@/app/api/attachments/[id]/route";
 import { POST as 传导入表 } from "@/app/api/enterprise-import/upload/route";
 import { 认扫名片的人 } from "@/lib/card-scan/server/auth";
+import { 改我的资料, changeMyPassword } from "@/app/(app)/settings/actions";
+import { 视图只读错误 } from "@/lib/enterprise/view-as";
 
 const 原数据目录 = process.env.CRM_DATA_DIR;
 const 临时目录 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-viewas-effects-"));
@@ -355,6 +357,22 @@ describe("切换视图拦不经过库的动作", () => {
 
       await 登录成(人.甲);
       expect(await 认()).toEqual({ accountId: 人.甲 });
+    });
+  });
+
+  describe("改自己的资料和密码", () => {
+    it("切换视图直说只读（不是笼统的保存失败），库里没动；不切换照常改", async () => {
+      const 只读话 = new 视图只读错误().message;
+      await 切到(人.老板, 人.甲);
+      expect(await 改我的资料({ name: "改名了", title: "" })).toEqual({ ok: false, error: 只读话 });
+      expect(await changeMyPassword("x", "新密码新密码1")).toEqual({ ok: false, error: 只读话 });
+      const 甲 = await prisma.user.findUnique({ where: { id: 人.甲 } });
+      expect(甲?.name).toBe("业务员甲");
+      expect(甲?.password).toBe("x");
+
+      await 登录成(人.甲);
+      expect(await 改我的资料({ name: "改名了", title: "" })).toEqual({ ok: true });
+      expect((await prisma.user.findUnique({ where: { id: 人.甲 } }))?.name).toBe("改名了");
     });
   });
 });

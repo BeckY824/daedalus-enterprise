@@ -87,13 +87,15 @@ export default function LeadVerifyPanel({
       return {
         title: "判为无效线索",
         ok: 原因好了,
-        做: () => 跑(() => 线索初判Action(projectId, "无效", { invalidReason: 无效原因, verifyNote: 说明 }), v.初判即终判 ? "已判无效线索" : "已判无效，交给复核"),
+        做: () => 跑(() => 线索初判Action(projectId, "无效", { invalidReason: 无效原因, verifyNote: 说明 }), v.初判即终判 ? "已判无效线索" : v.无效交给 === "总管理终判" ? "已判无效，等管理员最终确认" : "已判无效，交给复核"),
         身: (
           <>
             <div style={{ marginBottom: 8, color: "var(--text-muted)" }} data-testid="lead-verify-invalid-hint">
               {v.初判即终判
                 ? "这个项目是销售建的：你判无效就是最终结果，这条线索结束（记为线索流失），不再交管理员复核。"
-                : "判无效要过复核：复核也判无效才算无效线索，复核判有效会回到你这里。"}
+                : v.无效交给 === "总管理终判"
+                  ? "判无效直接交管理员最终确认：确认无效才算无效线索，确认有效会回到你这里继续跟。"
+                  : "判无效要过复核：复核也判无效才算无效线索，复核判有效会回到你这里。"}
             </div>
             {有字典 ? (
               <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因（必选）" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={无效原因选项} />

@@ -30,6 +30,7 @@ import { 三种业务线, 业务线必填, 销售自动分确认, 建议业务�
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
 
 const 草稿键 = "项目建档向导";
 const 步骤们 = ["查重", "联系人", "客户", "项目", "首条沟通"] as const;
@@ -61,7 +62,7 @@ type 稿 = {
 /** 企业版新建线索（10-26）：负责人、渠道必选；只留联系方式、首次沟通记录、跟进节点、客户是否明确回复这几格预设 */
 /** 分配方式们：这个人能用、还启用着的分配方式（10-27 A7：五种都生效，只有「指定分配」要选负责人） */
 /** 默认分配方式：按业务角色（11-01 会议 §1 / §3：市场 → 自动分配，销售 → 个人自持，其他 → 暂不分配）；是销售：选自动分配要再确认（A9） */
-export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式?: number | null; 是销售?: boolean } | null;
+export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式?: number | null; 是销售?: boolean; 没角色?: boolean } | null;
 /** 向导要的服务端数据（wizard-data.ts 建档向导数据）：页面和弹窗共用 */
 export type 建档数据 = { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档 };
 /** 弹窗里摆向导（U-新建-01，10-31 会议）：不摆页头，「存草稿离开」改成关弹窗，建好了先关再跳 */
@@ -92,6 +93,8 @@ const 查过键 = (d: 稿, 企: boolean) => (企 ? `${d.号码类型 ?? ""}|${d.
 
 function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: boolean, 企业: 企业建档 = null): string {
   const 企 = !!企业;
+  // 没设业务角色的哪种分配方式都用不了，第一步就停住，别让人填完五步才被拦（D3-6）
+  if (企业?.没角色) return 没业务角色不能新建话;
   if (步 === 0 && 企) return !d.号码类型 ? "请选择号码类型" : !d.phone.trim() ? "先填号码再查" : 已查 !== 查过键(d, 企) ? "点「查重」看看这个号码有没有人录过" : "";
   if (步 === 0) return !d.phone.trim() ? "先填电话再查" : 已查 !== d.phone.trim() ? "点「查重」看看这个号码有没有人录过" : "";
   // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
@@ -340,6 +343,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           action={<Button size="small" onClick={重来}>清空重来</Button>}
         />
       )}
+      {企业?.没角色 && <Alert type="warning" showIcon style={{ marginBottom: 16 }} title={没业务角色不能新建话} data-testid="wizard-no-role" />}
       <Steps current={步} size="small" style={{ marginBottom: 企业 ? 8 : 24 }} items={步骤们.map((t) => ({ title: t }))} />
       {企业 && <div style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 12 }}>{/* 11-03 A2-5：勾了不会自动换进程，进程按「当前进程」选的落 */}项目建在「当前进程」选的那一步；要建在「{有效线索节点}」之后，首条沟通得选「客户明确回复了」。</div>}
 
@@ -366,7 +370,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
                 }}
                 onPressEnter={() => void 查重()}
               />
-              <Button loading={查中} disabled={!d.号码类型} onClick={() => void 查重()}>查重</Button>
+              <Button loading={查中} disabled={!d.号码类型 || !!企业?.没角色} onClick={() => void 查重()}>查重</Button>
             </Space.Compact>
           ), true)}
           {企查 && 已查 === 查过键(d, true) && (

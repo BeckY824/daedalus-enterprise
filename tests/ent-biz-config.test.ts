@@ -147,7 +147,8 @@ describe("导入入口跟导入权限走", () => {
     const { readFile } = await import("node:fs/promises");
     const body = await readFile("src/app/(app)/settings/SettingsBody.tsx", "utf8");
     expect(body).toContain("const 能导入 = await 能导入导出(me);");
-    expect(body).toContain("导入记录={能导入}");
+    // 不管设置的总管理进不了设置，导入记录也跟着「可进」走（D2-1）
+    expect(body).toContain("导入记录={能导入 && (!企业版() || 可进)}");
     const view = await readFile("src/app/(app)/settings/SettingsView.tsx", "utf8");
     expect(view).toContain("导入记录 = true,");
     expect(view).toMatch(/\.\.\.\(导入记录 \? \[\{ key: "imports"/);

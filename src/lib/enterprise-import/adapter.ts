@@ -47,6 +47,19 @@ export async function 读连接配置(来源: 来源): Promise<Record<string, un
   return 解连接配置(await getSetting<Record<string, unknown>>(连接键(来源)));
 }
 
+/** 连接配置填齐了没有（拉的时候和界面判按钮灰不灰同这一处） */
+function 配好了(来源: "feishu" | "dingtalk", c: Record<string, unknown> | null): boolean {
+  const 有 = (k: string) => typeof c?.[k] === "string" && (c[k] as string).trim() !== "";
+  if (!c) return false;
+  if (来源 === "feishu") return 有("appId") && 有("appSecret") && Array.isArray(c.表们) && c.表们.length > 0;
+  return 有("appKey") && 有("appSecret") && 有("操作人UserId");
+}
+
+/** 这个来源的接口凭据填齐了没有：没填齐「从飞书/钉钉拉全量试跑」就灰着（11-03 完成度 D7-3） */
+export async function 接口接好了(来源: 来源): Promise<boolean> {
+  return (来源 === "feishu" || 来源 === "dingtalk") && 配好了(来源, await 读连接配置(来源));
+}
+
 /**
  * 飞书 / 钉钉：每次拉的时候才读配置。没配（或缺必填项）就停下说人话，同步记「没接」；
  * 配好了就交给真正的适配器。
@@ -59,11 +72,10 @@ class 按配置适配器 implements 适配器 {
   }
   private async 按配置(): Promise<适配器> {
     const c = await 读连接配置(this.来源);
-    const 有 = (k: string) => typeof c?.[k] === "string" && (c[k] as string).trim() !== "";
-    if (c && this.来源 === "feishu" && 有("appId") && 有("appSecret") && Array.isArray(c.表们) && c.表们.length) {
+    if (c && this.来源 === "feishu" && 配好了("feishu", c)) {
       return new 飞书适配器(c as unknown as 飞书配置, 用的网);
     }
-    if (c && this.来源 === "dingtalk" && 有("appKey") && 有("appSecret") && 有("操作人UserId")) {
+    if (c && this.来源 === "dingtalk" && 配好了("dingtalk", c)) {
       return new 钉钉适配器(c as unknown as 钉钉配置, 用的网, 用的网 === 真联网 ? undefined : 0);
     }
     throw new 还没接(`${this.名字}接口还没接：要客户在${this.名字}后台开应用、给读取权限后才能拉。先用${this.名字}导出的 Excel 导入。`);

@@ -124,9 +124,9 @@ export async function 存卡点角色开关Action(patch: unknown) {
 }
 
 /* 阻碍原因字典（总管理，业务角色 director）：增、改名、启用 / 停用（待审核的启用 = 审核通过）、删（没用过的）、合并 */
-async function 字典收尾(me: SessionUser, r: { ok: boolean; error?: string }, 说: string) {
+async function 字典收尾(me: SessionUser, r: { ok: boolean; error?: string }, 说: string, 动作: "create" | "update" | "delete" | "merge" = "update") {
   if (!r.ok) return r as { ok: false; error: string };
-  await recordAudit({ user: me, action: "update", entity: "EntBlockerReason", entityId: "dict", summary: 说 });
+  await recordAudit({ user: me, action: 动作, entity: "EntBlockerReason", entityId: "dict", summary: 说 });
   revalidatePath("/settings");
   revalidatePath("/overview");
   return { ok: true as const, 字典: await 原因字典() };
@@ -137,7 +137,7 @@ export async function 新增原因Action(name: string) {
     const me = await requireUser();
     const 挡 = await 拦();
     if (挡) return 挡;
-    return 字典收尾(me, await 新增原因(me, name), `新增阻碍原因「${String(name ?? "").trim()}」`);
+    return 字典收尾(me, await 新增原因(me, name), `新增阻碍原因「${String(name ?? "").trim()}」`, "create");
   } catch (e) { return 不在了(e); }
 }
 
@@ -164,7 +164,7 @@ export async function 删原因Action(id: string) {
     const me = await requireUser();
     const 挡 = await 拦();
     if (挡) return 挡;
-    return 字典收尾(me, await 删原因(me, id), "删除阻碍原因");
+    return 字典收尾(me, await 删原因(me, id), "删除阻碍原因", "delete");
   } catch (e) { return 不在了(e); }
 }
 
@@ -173,7 +173,7 @@ export async function 合并原因Action(从id: string, 到id: string) {
     const me = await requireUser();
     const 挡 = await 拦();
     if (挡) return 挡;
-    return 字典收尾(me, await 合并原因(me, 从id, 到id), "合并阻碍原因");
+    return 字典收尾(me, await 合并原因(me, 从id, 到id), "合并阻碍原因", "merge");
   } catch (e) { return 不在了(e); }
 }
 

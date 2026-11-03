@@ -7,7 +7,7 @@ import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch
 
 
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { 只读上下文 } from "./read-only";
+import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography } from "antd";
@@ -145,6 +145,9 @@ const 客户头部框叫法 = {
 } as const;
 type 客户头部框 = keyof typeof 客户头部框叫法;
 
+/** 只能看的格默认空：放模块里，免得每次渲染一个新数组让下面的格子跟着重渲 */
+const 无格: string[] = [];
+
 export default function RecordView({
   customer,
   sourceLead = null,
@@ -168,6 +171,8 @@ export default function RecordView({
   能转让客户 = true,
   原负责人领不回 = false,
   只读: 只读档 = false,
+  只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
+  只能看的格 = 无格,
   管理员只读 = false,
   能改沟通 = true,
   能删沟通 = true,
@@ -191,6 +196,8 @@ export default function RecordView({
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
   const 全只读 = 只读档 === "全" || 管理员只读;
+  // 市场成员相关的客户（10-31）也是「全」只读，但不是虚线下属：黄条、提示照服务端那句说（11-03 D3-5）
+  const 虚线的 = !全只读话.includes("市场成员");
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -525,7 +532,7 @@ export default function RecordView({
   }
 
   function openFollow(record: FollowUpRow | null, aiText?: string) {
-    if (全只读) return void message.info(管理员只读 ? "管理员只能看，不能改任何数据" : "这是虚线下属的客户：只能看，不能改、不能转");
+    if (全只读) return void message.info(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
     setFollowInit({ record, aiText });
     setFollowOpen(true);
   }
@@ -541,6 +548,8 @@ export default function RecordView({
     : 在推项目;
   const 跟进按钮字 = 去项目跟进 && !记沟通项目?.length && 能建项目 ? "给他开项目" : "记一条沟通";
   function 点跟进() {
+    // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
+    if (全只读) return void message.info(全只读话);
     if (!去项目跟进 || 记沟通项目?.length) return void openFollow(null);
     if (能建项目) return set建项目开着(true);
     message.info(`这位${b.customer}还没有在推的项目：跟进记在项目里，请先新建项目`);
@@ -977,12 +986,13 @@ export default function RecordView({
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message={全只读 ? `虚线下属 ${customer.salesOwnerName} 的${b.customer} · 只能看` : `同事 ${customer.salesOwnerName} 的${b.customer} · 只能看和加跟进`}
-          description={全只读 ? "这是虚线下属的客户：只能看，不能改、不能转。要改请找他的直属上级或总管理员" : "团队开了「同事之间互相看得到客户」。改资料、删除、转交、排计划请找负责人或" + (企业 ? "总管理" : "老板")}
+          message={全只读 ? `${虚线的 ? "虚线下属 " : ""}${customer.salesOwnerName} 的${b.customer} · 只能看` : `同事 ${customer.salesOwnerName} 的${b.customer} · 只能看和加跟进`}
+          description={全只读 ? `${全只读话}。要改请找${虚线的 ? "他的直属上级" : "负责人"}或总管理` : "团队开了「同事之间互相看得到客户」。改资料、删除、转交、排计划请找负责人或" + (企业 ? "总管理" : "老板")}
         />
       )}
 
       <只读上下文.Provider value={只读}>
+      <只能看的格上下文.Provider value={只能看的格}>
       <div ref={recRef} className={`rec${AI在抽屉里 ? " rec-2col" : ""}${单栏 ? " rec-1col" : ""}${有右栏 ? "" : " rec-no-right"}`}>
         {/* ================= 左栏：档案 ================= */}
         <aside className={`rec-rail rec-card${去项目跟进 ? " rec-rail-blocks" : ""}`}>
@@ -1198,7 +1208,8 @@ export default function RecordView({
                   <Link href="/projects">全部 ›</Link>
                 </Space>
               ), <>
-              {项目们.length === 0 && <div className="rec-empty">还没有项目</div>}
+              {/* 企业版项目不跟客户走（11-01）：只读的客户名下可能有同事负责、他看不到的项目，别说「还没有」（11-03 D3-3） */}
+              {项目们.length === 0 && <div className="rec-empty">{全只读 ? "没有你能看的项目" : "还没有项目"}</div>}
               {项目们.map((p) => (
                 <RowLink key={p.id} href={`/projects/${encodeURIComponent(p.id)}`} className="rec-mini rec-mini-2">
                   <span className="rec-mini-n" title={p.name}>{p.name}</span>
@@ -1441,6 +1452,7 @@ export default function RecordView({
         </aside>
         )}
       </div>
+      </只能看的格上下文.Provider>
       </只读上下文.Provider>
 
       {/* 1180 以下 AI 收进抽屉。面板本身一个字都不用改——它的状态挂在
@@ -1717,8 +1729,10 @@ function StatusPicker({
   const router = useRouter();
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
-  // 同事的客户（互看）：状态章只显示
-  if (useContext(只读上下文)) return <span style={{ display: "inline-flex" }}>{children}</span>;
+  // 同事的客户（互看）、字段权限里这一格只能看（11-03 D5-1）：状态章只显示
+  const 整页只读 = useContext(只读上下文);
+  const 权限挡 = useContext(只能看的格上下文).includes(field);
+  if (整页只读 || 权限挡) return <span style={{ display: "inline-flex" }}>{children}</span>;
   return (
     <Dropdown
       trigger={["click"]}

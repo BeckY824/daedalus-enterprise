@@ -133,7 +133,8 @@ export default function SettingsView({
   ]
     // 共享试用区：账号是几个团队共用的，名字和密码不给改（排查 A3）
     .filter((x) => !(共享区 && (x.key === "password" || x.key === "profile")))
-    .map((x) => ({ ...x, 说明: 说明表[x.key] ?? "" })) as { key: string; label: string; 说明: string; children: React.ReactNode }[];
+    // 不是托管版没有「已登录的机器」这一块（机器 = null），说明别提它（D1-2）
+    .map((x) => ({ ...x, 说明: x.key === "password" && !机器 ? "改自己的登录密码" : 说明表[x.key] ?? "" })) as { key: string; label: string; 说明: string; children: React.ReactNode }[];
 
   /**
    * 分组：**「我自己的」和「整个团队的」分开**——这两件事的心理位置不一样。

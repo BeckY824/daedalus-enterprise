@@ -22,7 +22,7 @@ const ACTION_LABEL: Record<string, string> = {
   create: "新建", update: "修改", delete: "删除", assign: "转派",
   convert: "转化", deactivate: "停用", reactivate: "恢复", password: "改密码", device_revoke: "退出机器", ai_use: "AI", ai_apply: "确认 AI 建议", ai_undo: "撤销 AI 建议",
   pool: "放回公海", claim: "领取", import: "导入", merge: "合并重复",
-  restore: "从回收站恢复", purge: "彻底删除",
+  restore: "从回收站恢复", purge: "彻底删除", sync: "同步",
 };
 const ENTITY_LABEL: Record<string, string> = {
   Customer: "学员", Contract: "签约", Lead: "线索", User: "成员", Channel: "渠道", Setting: "系统设置", Ai: "AI 功能", Device: "机器",
@@ -33,6 +33,8 @@ const ENTITY_LABEL: Record<string, string> = {
   Project: "项目", ProjectMember: "项目组成员", ProjectRole: "项目角色", ProjectExceptionCategory: "异常分类", Attachment: "附件", followup: "沟通记录",
   EntImportBatch: "企业版导入", EntDept: "部门", EntSnapshot: "数据快照", EntMember: "成员", EntLeadQuota: "分配上限", EntLeadAssign: "线索分配", EntBlocker: "卡点",
   EntCommission: "提成", EntLeadVerify: "线索验证",
+  // 2026-11-03 D6-2：这几类原来直接露英文表名；新加 recordAudit 记得补（tests/audit-labels 守着）
+  EntBlockerReason: "阻碍原因", EntProjectPayment: "回款", EntDictItem: "字典", EntOrgSync: "通讯录同步", EntConn: "连接设置",
 };
 /** 明细是入库时序列化的 JSON，格式化给人看；万一存了非法内容也不能让页面崩 */
 function safeJson(raw: string | null): string {

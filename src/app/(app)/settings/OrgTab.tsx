@@ -23,6 +23,8 @@ export type 组织架构 = {
   能改: boolean;
   /** 账号管理员：总管理、管理员两个角色只有老板能给、能动 */
   是老板: boolean;
+  /** 本人是总管理但被勾了「不管设置」：只看，提示换一句 */
+  不管设置?: boolean;
   /** 每条组织规则的开关：除了「市场复核」默认开，别的默认都关 */
   规则开着: Record<规则名, boolean>;
   /** 「角色 × 字段」表，只有和默认（能改）不一样的格 */
@@ -62,6 +64,8 @@ const 角色能做: Record<业务角色, string> = {
 };
 /** 「后台设置谁能改」表的列 */
 const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场管理", "直属上级", "虚线上级"];
+/** 表头显示的叫法：存的值还是「总管理员」（老配置都按这个存），界面统一叫总管理（D2-2） */
+const 人列名 = (p: 能改的人) => (p === "总管理员" ? "总管理" : p);
 
 /**
  * 设置 → 组织架构（企业版，2026-10-24）：部门树、每个人的部门 / 角色 / 业务线 / 直属上级 / 虚线上级。
@@ -209,7 +213,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 市场部门现在 = 市场部门们(new Map(value.部门.map((d) => [d.id, d])), value.市场部门 ?? null);
   const 市场成员 = value.成员.filter((m) => (m.deptId && 市场部门现在.has(m.deptId)) || 单设.includes(m.id)).map((m) => m.name);
   const 人选项 = value.成员.map((m) => ({ value: m.id, label: m.name }));
-  const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>只有总管理能改</span>;
+  const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>{value.不管设置 ? "你被设为「不管设置」，这里只能看" : "只有总管理能改"}</span>;
 
   return (
     // minmax(0, 1fr)：不让 nowrap 的表格把整页撑宽，表格在各自卡片里横向滚动
@@ -217,7 +221,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       {/* 组织规则单独一块放这一屏最上面（11-01 会议 §5「组织规则放设置首屏」）；通讯录同步挪到它下面、说明收起来（OrgSyncCard）。
           10-27 把通讯录同步提到最上面是因为它夹在权限表下面找不到，现在仍在权限表之前 */}
       <Card title="组织规则" extra={只看} data-testid="org-rules">
-        <p className="muted">每条规则单独开关，除了「{规则.市场复核.名}」都默认关着：关着时和团队版一样，按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
+        <p className="muted">每条规则单独开关，除了「{规则.市场复核.名}」都默认关着：关着时按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         <div style={{ display: "grid", gap: 12 }}>
           {规则名们.map((名) => (
             <Space align="start" key={名}>
@@ -253,7 +257,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       <Card title="字段权限" extra={字段权限挡 && <span style={{ color: "var(--text-muted)" }}>{字段权限挡}</span>}>
         <p className="muted">
           打开上面的「{规则.字段权限.名}」才生效。每格是这个角色对这个字段能做什么：能改、只能看；电话还能选看不到（页面、导出、AI 助手里都打码）。
-          没动过的格都是能改。老板不受限。「用推荐表」填的是我们建议的默认（成交段渠道、市场只能看，项目运营只改备注），保存后再打开规则。
+          没动过的格都是能改。总管理不受限。「用推荐表」填的是我们建议的默认（成交段渠道、市场只能看，项目运营只改备注），保存后再打开规则。
         </p>
         <div style={{ overflowX: "auto" }}>
           <table className="org-field-perm" data-testid="org-field-perm">
@@ -290,7 +294,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
 
       <Card title="后台设置谁能改" extra={只看}>
         <p className="muted">
-          每一行是一样后台设置，勾上的人能改，没勾的只能看。老板每一样都能改，不在表里。
+          每一行是一样后台设置，勾上的人能改，没勾的只能看。总管理每一样都能改，不在表里。
           「直属上级」「虚线上级」只用在线索配额上：只能给自己的下属设。
         </p>
         <div style={{ overflowX: "auto" }}>
@@ -298,7 +302,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
             <thead>
               <tr>
                 <th>设置</th>
-                {人列.map((p) => <th key={p}>{p}</th>)}
+                {人列.map((p) => <th key={p}>{人列名(p)}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -311,7 +315,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                     {人列.map((p) => (
                       <td key={p}>
                         {可选.includes(p) ? (
-                          <Checkbox checked={谁.includes(p)} disabled={!能改 || 忙} aria-label={`${p} 能改「${设置项[项].名}」`}
+                          <Checkbox checked={谁.includes(p)} disabled={!能改 || 忙} aria-label={`${人列名(p)} 能改「${设置项[项].名}」`}
                             onChange={(e) => 勾(项, p, e.target.checked)} />
                         ) : <span className="muted">—</span>}
                       </td>
@@ -364,7 +368,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
 
       <Card title="市场部门和市场成员" extra={只看} data-testid="org-market-depts">
         <p className="muted">
-          打开「{规则.按组织看客户.名}」才生效。这几个部门（连下级部门）的人算市场成员：自己建的、建过项目的、负责过的客户，转给销售以后还看得到这位客户和它的项目，只能看，不能改、不能记沟通、不能转。
+          打开「{规则.按组织看客户.名}」才生效。这几个部门（连下级部门）的人算市场成员：自己建的、建过项目的、负责过的客户，转给销售以后还看得到这位客户和市场成员自己建的项目，只能看，不能改、不能记沟通、不能转。
           市场管理看得到所有市场成员看得到的。没设 = 名字带「市场」的部门和下级。市场成员建的项目，线索验证判无效照旧交市场复核。
         </p>
         <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="市场部门" disabled={!能改 || 忙}

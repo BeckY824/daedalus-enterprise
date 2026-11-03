@@ -17,6 +17,7 @@ import { 负责人候选 } from "@/lib/owners";
 import { 来源们, 来源名, type 来源, type 值对照名 } from "@/lib/enterprise-import/types";
 import { 最高管理 } from "@/lib/enterprise/import-perm";
 import { 视图外部拦 } from "@/lib/enterprise/view-as";
+import { 接口接好了 } from "@/lib/enterprise-import/adapter";
 
 /**
  * 设置页「企业版导入」那一栏的服务端动作。上传文件走 /api/enterprise-import/upload（server action 默认只收 1 MB）。
@@ -74,7 +75,7 @@ export type 企业版概况 = {
   批次们: 批次行[];
   /** 三个来源都列：Excel 没有自动同步（能同步 false），但也能切换、留快照 */
   /** 在同步：这一刻正在拉的那次（定时或别人点的也算），界面显示「正在同步」 */
-  同步: { 来源: 来源; 名: string; 能同步: boolean; 设置: 同步设置; 在同步: { 开始: string; 谁: string } | null }[];
+  同步: { 来源: 来源; 名: string; 能同步: boolean; /** 接口凭据填齐了：没填齐拉全量的按钮灰着 */ 接好了: boolean; 设置: 同步设置; 在同步: { 开始: string; 谁: string } | null }[];
   待定冲突: number;
   快照们: { id: string; 来源: 来源; 名: string; 条数: number; 人名: string; 时间: string }[];
   成员们: { id: string; name: string }[];
@@ -102,7 +103,7 @@ export async function 企业版导入概况(): Promise<企业版概况> {
     prisma.entConflict.count({ where: { status: "待定" } }),
     列快照(),
     prisma.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, name: true, active: true } }),
-    Promise.all(来源们.map(async (源) => ({ 来源: 源, 名: 来源名[源], 能同步: 能同步的来源.includes(源), 设置: await 读同步设置(源), 在同步: 正在同步(源) }))),
+    Promise.all(来源们.map(async (源) => ({ 来源: 源, 名: 来源名[源], 能同步: 能同步的来源.includes(源), 接好了: await 接口接好了(源), 设置: await 读同步设置(源), 在同步: 正在同步(源) }))),
   ]);
   const 名 = new Map(成员们.map((u) => [u.id, u.name]));
   return {
@@ -182,11 +183,17 @@ export async function 丢掉试跑(批次Id: string): Promise<void> {
 }
 
 /** 正式导入：写一段，界面看 完了 再接着调 */
-export async function 正式导入一段(批次Id: string, 业务线?: string): Promise<写入结果> {
+export async function 正式导入一段(批次Id: string, 业务线?: string): Promise<写入结果 & { 没留批次?: true }> {
   const me = await 要管理员();
   // 企业版这批新建的落哪条业务线：第一段带上，存进映射，接着导入和之后的同步照它
   if (业务线) await 定这批业务线(批次Id, 业务线);
-  return 写一批(批次Id, { id: me.id, name: me.name });
+  const w = await 写一批(批次Id, { id: me.id, name: me.name });
+  // 全是和上次一样的：什么也没写，这一批没东西可撤，同 sync 写完 不留空批次（11-03 完成度 D7-9）
+  if (w.完了 && w.新建 + w.更新 + w.冲突 + w.失败 === 0 && !(await prisma.entImportRow.count({ where: { batchId: 批次Id } }))) {
+    await prisma.entImportBatch.delete({ where: { id: 批次Id } });
+    return { ...w, 没留批次: true };
+  }
+  return w;
 }
 
 /**
@@ -237,10 +244,15 @@ export async function 立即同步(源: string): Promise<同步一次结果> {
 }
 
 /** 接口来的首次导入：拉全量出报告，后面和 Excel 同一套（看报告 → 改映射 → 正式导入） */
-export async function 从接口拉全量(源: string): Promise<{ 批次Id: string; 报告: 试跑报告 }> {
+export async function 从接口拉全量(源: string): Promise<{ ok: true; 批次Id: string; 报告: 试跑报告 } | { ok: false; error: string }> {
   const me = await 要管理员();
   await 视图外部拦();
-  return 拉全量试跑(认来源(源), me.id);
+  /* 没接、一条都没拉到、对方接口报错，都是要给人看的原话；抛出去生产构建只剩「Minified React error #441」（11-03 完成度 D7-3） */
+  try {
+    return { ok: true, ...(await 拉全量试跑(认来源(源), me.id)) };
+  } catch (e) {
+    return { ok: false, error: ((e instanceof Error ? e.message : String(e)).trim().split("\n").pop() ?? "").trim().slice(0, 200) || "没拉成，请稍后再试" };
+  }
 }
 
 export async function 切换这个来源(源: string): Promise<切换结果> {

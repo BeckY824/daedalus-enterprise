@@ -367,7 +367,14 @@ export default function CustomersView({
   const [导出中, set导出中] = useState(false);
   const [导出进度, set导出进度] = useState("");
   const 导出取消 = useRef<AbortController | null>(null);
-  useEffect(() => () => 导出取消.current?.abort(), []);
+  // 离开客户页不打断导出：请求接着跑，下完照样存 ZIP、弹提示（D8-3：原先一卸载就 abort，几万条时「点了导出没东西」）。
+  // 关标签页、刷新会真断，导出中先拦一下
+  useEffect(() => {
+    if (!导出中) return;
+    const 拦 = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", 拦);
+    return () => window.removeEventListener("beforeunload", 拦);
+  }, [导出中]);
   const [formOpen, setFormOpen] = useState(Boolean(直接新建) && !建档);
   /** 「新增客户」向导框（U-新建-01）：和 /projects/new 同一个向导，弹在本页 */
   const [建档开着, set建档开着] = useState(Boolean(直接新建 && 建档));

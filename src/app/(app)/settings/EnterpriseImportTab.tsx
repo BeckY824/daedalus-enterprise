@@ -116,9 +116,10 @@ export default function EnterpriseImportTab() {
     }
   }
 
-  const 撤回的话 = (r: 撤回一段结果, 动作: "撤回" | "恢复") =>
+  // 删掉的除了批次「新建」那几条，还有同号客户上记的提醒、线索顺手建的客户和项目，所以不叫「新建的」，多出来的说一声（11-03 完成度 D7-8）
+  const 撤回的话 = (r: 撤回一段结果, 动作: "撤回" | "恢复", 新建 = 0) =>
     动作 === "撤回"
-      ? `删掉新建的 ${r.删掉} 条，更新过的还原 ${r.还原} 条${r.留下数 ? `；${r.留下数} 条后来又被改过，没动：${r.留下.slice(0, 5).join("；")}${r.留下数 > 5 ? "……" : ""}` : ""}`
+      ? `删掉这批建出来的 ${r.删掉} 条${r.删掉 > 新建 ? `（含同号客户上记的提醒、线索顺手建的客户和项目）` : ""}，更新过的还原 ${r.还原} 条${r.留下数 ? `；${r.留下数} 条后来又被改过，没动：${r.留下.slice(0, 5).join("；")}${r.留下数 > 5 ? "……" : ""}` : ""}`
       : `恢复 ${r.恢复} 条${r.留下数 ? `；${r.留下数} 条没恢复：${r.留下.slice(0, 5).join("；")}${r.留下数 > 5 ? "……" : ""}` : ""}`;
 
   async function 写(b: 批次行) {
@@ -127,7 +128,7 @@ export default function EnterpriseImportTab() {
   }
   async function 撤(b: 批次行) {
     const r = await 一直跑(b, "撤回中", "reverting", 撤回一段);
-    if (r) modal.success({ title: "整批撤回完成", content: 撤回的话(r, "撤回") });
+    if (r) (r.留下数 ? modal.warning : modal.success)({ title: r.留下数 ? `撤回完成，${r.留下数} 条没撤` : "整批撤回完成", content: 撤回的话(r, "撤回", b.新建) });
   }
   async function 恢复(b: 批次行) {
     const r = await 一直跑(b, "恢复中", "restoring", 恢复一段);
@@ -154,10 +155,22 @@ export default function EnterpriseImportTab() {
     }
   }
 
+  // 每个来源最早真导过的那批才叫「首次导入」，之后再导的叫「再次导入」，没导的是试跑（11-03 完成度 D7-7）
+  const 首批 = new Map<string, 批次行>();
+  for (const b of 概况.批次们) {
+    if (b.类型 !== "full" || b.状态 === "preview") continue;
+    const 前 = 首批.get(b.来源);
+    if (!前 || b.时间 < 前.时间) 首批.set(b.来源, b);
+  }
+  const 类型说法 = (b: 批次行) =>
+    b.类型 === "sync" ? "同步" : b.类型 === "resolve" ? "冲突处理" : b.状态 === "preview" ? "试跑" : 首批.get(b.来源)?.id === b.id ? "首次导入" : "再次导入";
+
   const 批次表 = (
     <Table<批次行>
       rowKey="id"
       size="middle"
+      // 窄窗口（800px 上下）横向滚，不把列压成一字一行
+      scroll={{ x: 960 }}
       dataSource={概况.批次们}
       pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
       locale={{ emptyText: "还没有导入过" }}
@@ -189,13 +202,16 @@ export default function EnterpriseImportTab() {
         ),
       }}
       columns={[
-        { title: "时间", width: 120, render: (_, b) => smartTime(b.时间) },
-        { title: "来源", width: 150, render: (_, b) => `${来源名[b.来源] ?? b.来源} · ${b.类型 === "sync" ? "同步" : b.类型 === "resolve" ? "冲突处理" : "首次导入"}` },
+        // 导完的批记导完那一刻，不是试跑建批的时候
+        { title: "时间", width: 120, render: (_, b) => <span title={b.完成时间 ? `试跑于 ${smartTime(b.时间)}` : undefined}>{smartTime(b.完成时间 ?? b.时间)}</span> },
+        { title: "来源", width: 150, render: (_, b) => `${来源名[b.来源] ?? b.来源} · ${类型说法(b)}` },
         {
           title: "状态",
           width: 130,
           render: (_, b) => {
-            const s = 跑?.id === b.id ? { 话: 跑.话, 色: "processing" } : 状态说法[b.状态] ?? { 话: b.状态, 色: "default" };
+            // 撤回了但有留下没动的：列表上就看得出没撤干净，展开看是哪几条
+            const 留下 = b.状态 === "reverted" ? (b.撤回账?.留下数 ?? 0) : 0;
+            const s = 跑?.id === b.id ? { 话: 跑.话, 色: "processing" } : 留下 ? { 话: `已撤回，${留下} 条没撤`, 色: "warning" } : 状态说法[b.状态] ?? { 话: b.状态, 色: "default" };
             return <Tag color={s.色}>{s.话}</Tag>;
           },
         },
@@ -517,7 +533,7 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
 
   return (
     <Space orientation="vertical" size={14} style={{ display: "flex" }}>
-      {概况.同步.map(({ 来源: 源, 名, 能同步, 设置, 在同步 }) => {
+      {概况.同步.map(({ 来源: 源, 名, 能同步, 接好了, 设置, 在同步 }) => {
         // 这边刚点的还没进概况，也算在同步
         const 拉着 = 在同步 ?? (忙 === `同步-${源}` ? { 开始: null, 谁: "你" } : null);
         return (
@@ -583,11 +599,13 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
                     <Button
                       size="small"
                       loading={忙 === `全量-${源}`}
-                      disabled={!!忙 || !!拉着 || 视图中}
-                      title={视图中 ? 视图外部话 : undefined}
+                      disabled={!!忙 || !!拉着 || 视图中 || !接好了}
+                      title={视图中 ? 视图外部话 : !接好了 ? `${名}接口还没接：要客户在${名}后台开应用、给读取权限、填好连接配置后才能拉。先用${名}导出的 Excel 导入。` : undefined}
                       onClick={async () => {
                         const r = await 做(`全量-${源}`, () => 从接口拉全量(源));
-                        if (r) on出报告(r.批次Id, r.报告);
+                        if (!r) return;
+                        if (!r.ok) return void message.error(r.error);
+                        on出报告(r.批次Id, r.报告);
                       }}
                     >
                       从{名}拉全量试跑

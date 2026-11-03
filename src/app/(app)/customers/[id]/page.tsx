@@ -19,8 +19,9 @@ import { 客户报价记录 } from "@/lib/quote-db";
 import { 报价明细 } from "@/lib/features";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
-import { 只读客户 } from "@/lib/team-scope";
+import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
+import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
 import { 能管公海, 能转出自己的, 只读角色 } from "@/lib/enterprise/permissions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
@@ -86,6 +87,8 @@ export default async function CustomerDetailPage({
   customer.plans = earliestScheduled(customer.plans, p => scheduleOrder(p.plannedAt, p.plannedOn), 1);
 
   const 企 = 企业版();
+  // 字段权限里改不了的格（11-03 D5-1）：档案那几格不给点，免得打开编辑框存了才被拒（规则没开 = 全能改，不读库）
+  const 只能看的格P = 企 ? 字段权限of(me.id).then((级) => Object.entries(客户列字段).flatMap(([列, 名]) => (级(名) === "改" ? [] : [列]))) : Promise.resolve([]);
   /*
     下面这些互不依赖（或只依赖上面那条客户），一次并起来取（10-29 提速）：原来 JSX 属性里一个个 await，
     客户页一屏是二十来次串着的往返。有先后的用 .then 接在各自的前一步后面，不另起一道墙
@@ -202,6 +205,8 @@ export default async function CustomerDetailPage({
       项目们={项目们}
       参与项目们={参与项目们}
       只读={只读}
+      只读话={只读 === "全" ? await 只读话(defaultClient) : undefined}
+      只能看的格={await 只能看的格P}
       管理员只读={企 && 只读角色(me, await 权限组织())}
       能改沟通={可改沟通}
       能删沟通={可删沟通}

@@ -99,7 +99,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
   };
 
   // 卡点三张卡只认业务角色是不是总管理员；共享试用区照旧谁都不能改
-  const 卡点挡 = value.挡.字典 === "共享试用区不能改" ? value.挡.字典 : value.能改卡点 ? null : "只有总管理员能改";
+  const 卡点挡 = value.挡.字典 === "共享试用区不能改" ? value.挡.字典 : value.能改卡点 ? null : "只有总管理能改";
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -310,7 +310,7 @@ function HoldCapCard({
       }
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从项目公海领、也不能再被指派新项目；自己建档的不拦。默认关，不限个数。填 {上限最大} = 不限。
+        开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从项目公海领、也不能再被指派新项目；自己建档的不拦。关着时不限个数。填 {上限最大} = 不限。
       </div>
       {规则.持有上限开 && (
         <>

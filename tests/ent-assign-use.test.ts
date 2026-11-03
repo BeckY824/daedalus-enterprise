@@ -37,6 +37,8 @@ import { 领取项目, 建档向导, type 建档向导输入 } from "@/app/(app)
 import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
+import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
+import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
 
 let 老板: string, 总管: string, 市场: string, 销售经理: string, 销售: string, 另一销售: string, 渠道: string, 项运: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
@@ -221,6 +223,17 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect((await 我能用的分配方式({ id: 市场, role: "SALES" })).map((x) => x.i)).toEqual([0, 1, 2]);
     当(市场);
     expect(await 向导({ 分配方式: 3 })).toMatchObject({ ok: false, error: "这种分配方式已停用，换一种" });
+  });
+
+  it("没设业务角色（11-03 D3-6）：挡住的话直说没设角色；向导数据标出没角色，好在入口就提示", async () => {
+    const 没角色 = (await prisma.user.create({ data: { email: "none", name: "没角色", title: "", role: "SALES", password: "x" } })).id;
+    expect(await 挡分配方式({ id: 没角色, role: "SALES" }, 0)).toBe(没业务角色不能新建话);
+    const 人 = (id: string) => ({ id, role: "SALES", name: "", email: "", title: "" });
+    expect(await 新建分配方式数据(人(没角色))).toMatchObject({ 分配方式们: [], 没角色: true });
+    expect(await 新建分配方式数据(人(销售))).toMatchObject({ 没角色: false });
+    当(没角色);
+    expect(await 向导({ 分配方式: 0, ownerId: 销售 })).toMatchObject({ ok: false, error: 没业务角色不能新建话 });
+    expect(await prisma.project.count()).toBe(0);
   });
 
   it("用不了的拦下、一行不写：销售选公海捞取、市场选个人自持", async () => {
