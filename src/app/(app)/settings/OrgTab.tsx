@@ -18,8 +18,8 @@ import OrgSyncCard from "./OrgSyncCard";
 
 export type 组织架构 = {
   部门: 组织部门[];
-  /** 在职的人；自动上级 = 没指定直属上级时按部门推出来的那位（名字），推不出来是 null */
-  成员: { id: string; name: string; deptId: string | null; bizRole: string; line: string | null; managerId: string | null; dottedManagerId: string | null; 自动上级: string | null }[];
+  /** 在职的人；managerId = 手填的直属上级（停用了的当没填） */
+  成员: { id: string; name: string; deptId: string | null; bizRole: string; line: string | null; managerId: string | null; dottedManagerId: string | null }[];
   能改: boolean;
   /** 账号管理员：总管理、管理员两个角色只有老板能给、能动 */
   是老板: boolean;
@@ -73,7 +73,7 @@ const 人列名 = (p: 能改的人) => (p === "总管理员" ? "总管理" : p);
 
 /**
  * 设置 → 组织架构（企业版，2026-10-24）：部门树、每个人的部门 / 角色 / 业务线 / 直属上级 / 虚线上级。
- * 直属上级不填 = 按部门往上找销售管理；虚线上级只能看他的客户，不能改、不能转。
+ * 直属上级只认手填的，不填 = 没有上级（11-03 C10-1）；虚线上级只能看他的客户，不能改、不能转。
  * 只有总管理（director）能改（11-01），管理员和其他人只看。
  */
 export default function OrgTab({ value }: { value: 组织架构 }) {
@@ -303,8 +303,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
 
       <Card title="后台设置谁能改" extra={只看}>
         <p className="muted">
-          每一行是一样后台设置，勾上的人能改，没勾的只能看。总管理每一样都能改，不在表里。
-          「直属上级」「虚线上级」只用在线索配额上：只能给自己的下属设。
+          勾上的人能改，没勾的只能看。系统管理员都能改，不在表里；项目模式的其它设置只有系统管理员能改。
+          「直属上级」「虚线上级」只能给自己的下属设。
         </p>
         <div style={{ overflowX: "auto" }}>
           <table className="org-field-perm" data-testid="org-edit-perm">
@@ -315,7 +315,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
               </tr>
             </thead>
             <tbody>
-              {设置项们.map((项) => {
+              {设置项们.filter((项) => 设置项[项].可选.length > 0).map((项) => {
                 const 谁 = 谁能改(改权限, 项);
                 const 可选: readonly 能改的人[] = 设置项[项].可选;
                 return (
@@ -345,7 +345,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
 
 
       <Card title="部门" extra={只看}>
-        <p className="muted">部门最多 {部门最多层数} 层。销售没指定直属上级时，按所在部门往上找销售管理当他的上级。</p>
+        <p className="muted">部门最多 {部门最多层数} 层。上级只认每个人手填的「直属上级」，没填就是没有上级，不按部门推。</p>
         <div className="team-dept-tree" data-testid="org-depts">
           {树.length === 0 && <p className="muted">还没有部门。</p>}
           {树.map(({ d, 层: n, 断 }) => (
@@ -445,7 +445,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                   value={m.line ?? "__都"} onChange={(v) => 设(m.id, { line: v === "__都" ? null : v })}
                   options={[{ value: "__都", label: "两边都做" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />
                 <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 的直属上级`} disabled={!改他 || 忙}
-                  placeholder={m.自动上级 ? `直属：自动（${m.自动上级}）` : "直属：没有"}
+                  placeholder="直属：没有"
                   value={m.managerId ?? null} onChange={(v) => 设(m.id, { managerId: v ?? null })}
                   options={别人.map((x) => ({ ...x, label: `直属：${x.label}` }))} />
                 <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 的虚线上级`} disabled={!改他 || 忙}

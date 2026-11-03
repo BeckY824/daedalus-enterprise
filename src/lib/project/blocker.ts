@@ -27,7 +27,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
 import { 原负责人回避, 历史负责人, 我回避的公海项目 } from "./pool-owner";
-import { 能编辑项目, 业务线放行, 只读按线 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 业务线放行, 只读按线, 是系统管理员 } from "@/lib/enterprise/permissions";
 import { 按线范围of, 按线项目 } from "@/lib/enterprise/line-viewer";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
@@ -45,7 +45,7 @@ export type 卡点结果 = { ok: true; projectId: string; code: string; 解决�
 const 没开 = { ok: false as const, error: "卡点是企业版的功能" };
 const 不在了 = { ok: false as const, error: "这个卡点已经不在了，刷新看看" };
 const 没权 = { ok: false as const, error: "你的业务角色没开卡点，找总管理员在「设置 → 项目模式 → 卡点」里打开" };
-const 只总管 = { ok: false as const, error: "只有总管理员能改" };
+const 只总管 = { ok: false as const, error: "只有系统管理员能改" };
 const 只读 = { ok: false as const, error: "管理员只能看卡点，不能发、认领、完成、改、删" };
 export const 卡点默认键 = "entBlockerDefaults";
 const 原因种子键 = "entBlockerReasonSeeded";
@@ -64,7 +64,12 @@ async function 角色们of(userId: string): Promise<业务角色[]> {
   const m = await 看全部(() => prisma.entMember.findUnique({ where: { userId }, select: { bizRole: true } }));
   return 拆角色(m?.bizRole);
 }
-/** 能写 = 开着且不是只读的管理员；能管 = 总管理（director）：默认值、开关、原因字典、删卡点 */
+/** 能管卡点（默认值、开关、原因字典、删卡点）：只有系统管理员——条线总管理不算（11-03 D3-7 ①：项目模式设置只给系统管理员） */
+async function 系统管理员(me: 谁): Promise<boolean> {
+  const 角色们 = await 角色们of(me.id);
+  return 能管卡点(角色们) && 是系统管理员(me, await 读组织());
+}
+/** 能写 = 开着且不是只读的管理员；能管 = 系统管理员（系统管理员 函数） */
 export type 我的卡点权限 = { 开: boolean; 全部: boolean; 能写: boolean; 能管: boolean };
 export async function 卡点权限(me: 谁): Promise<我的卡点权限> {
   if (!企业版()) return { 开: false, 全部: false, 能写: false, 能管: false };
@@ -72,23 +77,23 @@ export async function 卡点权限(me: 谁): Promise<我的卡点权限> {
   const 权 = 卡点权限of(角色们, await 读卡点角色开关());
   // 管理员设了业务线（11-02）：不算「全部」，下面按这条线算
   const 全部 = 权.全部 && !(卡点只读(角色们) && 只读按线(me, await 读组织()));
-  return { ...权, 全部, 能写: 权.开 && !卡点只读(角色们), 能管: 能管卡点(角色们) };
+  return { ...权, 全部, 能写: 权.开 && !卡点只读(角色们), 能管: 能管卡点(角色们) && (await 系统管理员(me)) };
 }
 
-/** 改卡点默认（默认类型 / 影响）：总管理（director） */
+/** 改卡点默认（默认类型 / 影响）：系统管理员 */
 export async function 存卡点默认(me: 谁, patch: unknown): Promise<结果 & { 默认?: 卡点默认 }> {
   if (!企业版()) return 没开;
-  if (!能管卡点(await 角色们of(me.id))) return 只总管;
+  if (!(await 系统管理员(me))) return 只总管;
   const 新 = 合上卡点默认(await 读卡点默认(), patch);
   if ("error" in 新) return { ok: false, error: 新.error };
   await setSetting(卡点默认键, 新);
   return { ok: true, 默认: 新 };
 }
 
-/** 按业务角色的两个开关：启用 / 停用、只看自己 / 可看全部。总管理（director） */
+/** 按业务角色的两个开关：启用 / 停用、只看自己 / 可看全部。系统管理员 */
 export async function 存卡点角色开关(me: 谁, patch: unknown): Promise<结果 & { 开关?: 卡点角色开关 }> {
   if (!企业版()) return 没开;
-  if (!能管卡点(await 角色们of(me.id))) return 只总管;
+  if (!(await 系统管理员(me))) return 只总管;
   const 新 = 合上卡点角色开关(await 读卡点角色开关(), patch);
   if ("error" in 新) return { ok: false, error: 新.error };
   await setSetting(卡点角色键, 新);
@@ -131,7 +136,7 @@ export async function 可选原因们(): Promise<string[]> {
 
 async function 管字典<T>(me: 谁, fn: (tx: Prisma.TransactionClient) => Promise<T | 错>): Promise<T | 错> {
   if (!企业版()) return 没开;
-  if (!能管卡点(await 角色们of(me.id))) return 只总管;
+  if (!(await 系统管理员(me))) return 只总管;
   await 备好原因();
   return 查完再写((tx) => 看全部(() => fn(tx)));
 }
@@ -404,7 +409,7 @@ export async function 完成卡点(
 export async function 删卡点(me: 谁, blockerId: string): Promise<卡点结果> {
   if (!企业版()) return 没开;
   const 权 = await 卡点权限(me);
-  if (!权.能管) return { ok: false as const, error: "只有总管理员能删卡点" };
+  if (!权.能管) return { ok: false as const, error: "只有系统管理员能删卡点" };
   return 查完再写((tx) => 看已删(() => 看全部(async () => {
     const b = await tx.entBlocker.findUnique({ where: { id: String(blockerId ?? "") }, select: { id: true, projectId: true, code: true } });
     if (!b) return 不在了;

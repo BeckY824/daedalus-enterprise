@@ -5,7 +5,7 @@ import CustomersView from "./CustomersView";
 import HandoverPending from "./HandoverPending";
 import { 待确认的交接 } from "./handover-actions";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 负责人候选 } from "@/lib/owners";
+import { 负责人候选, 公海分配候选 } from "@/lib/owners";
 import { 可选渠道 } from "@/lib/options";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { llmEnabled } from "@/lib/llm";
@@ -18,7 +18,7 @@ import { defaultClient } from "@/lib/prisma";
 import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能转出自己的, 能删除 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -192,6 +192,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       能分配公海={能管公海(me, await 权限组织())}
       能转出自己的={能转出自己的(me, await 权限组织())}
       能导入导出={可导入导出}
+      // 没设业务角色、只读管理员不摆「新建」「领取」（11-03 D3-7 ④）
+      能新建和领取={能新建和领取(me, 删权限org)}
+      // 公海「分配给…」只列分得过去的（11-03 B2-7）；不是企业版同 users
+      公海分给={企 ? await 公海分配候选(me) : undefined}
       // 企业版能删的角色才摆删除（V3.5.1：系统管理员；销售、销管、渠运删自己负责的），不是自己负责的行不摆
       能删={(await 删除挡(me)) == null}
       删不了ids={企 ? rows.filter((r) => !能删除(me, 删权限org, r.pool ? null : r.salesOwnerId)).map((r) => r.id) : []}

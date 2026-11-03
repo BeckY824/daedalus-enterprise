@@ -174,6 +174,7 @@ export default function RecordView({
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
   只能看的格 = 无格,
   管理员只读 = false,
+  能领 = true,
   能改沟通 = true,
   能删沟通 = true,
   换负责人记录 = [],
@@ -953,7 +954,7 @@ export default function RecordView({
         {customer.pool && (
           <span className="rec-tags-n rec-pool">
             <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放回公海" : customer.pool.reason}>{公海标签(customer.salesOwnerName)}</Tag>
-            {管理员只读 ? null : 原负责人领不回
+            {管理员只读 || !能领 ? null : 原负责人领不回
               ? <Tooltip title={原负责人不能领回提示}><Button size="small" type="link" icon={<UserAddOutlined />} disabled>领取</Button></Tooltip>
               : <Button size="small" type="link" icon={<UserAddOutlined />} onClick={() => void 公海动作("领取")}>领取</Button>}
           </span>

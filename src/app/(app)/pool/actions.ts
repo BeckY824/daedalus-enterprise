@@ -8,7 +8,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { 不能当负责人 } from "@/lib/owners";
+import { 公海分不给 } from "@/lib/owners";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 权限组织 } from "@/lib/enterprise/org";
@@ -101,7 +101,8 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
   if (!(await 开着())) return 只企业版项目模式;
   const 给 = await prisma.user.findFirst({ where: { id: String(userId ?? ""), active: true }, select: { id: true, name: true } });
   if (!给) return { ok: false, error: "这位同事不在了或已停用，换一位" };
-  const 不行 = await 不能当负责人(给.id);
+  // 只分给能当负责人的；不是系统管理员只分给同业务线的（11-03 B2-7）
+  const 不行 = await 公海分不给(me, 给.id);
   if (不行) return { ok: false, error: 不行 };
   const 们 = 规整ids(ids);
   const 规则 = await 生效组织规则();

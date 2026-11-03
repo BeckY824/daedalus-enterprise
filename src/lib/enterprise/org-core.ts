@@ -116,28 +116,13 @@ export function 建组织(
 }
 
 /**
- * 直属上级（10-24 定）：显式指定的优先；没指定（或指定的人停用了）就从本部门往上找销售管理。
- * - 自己就是销售管理的，从上一级部门开始找，同部门的另一个销售管理不算他的上级；
- * - 同一个部门有几个销售管理时取编号最小的那个，结果稳定；想指定谁就显式设 managerId；
- * - 一直找到顶都没有 = null（不往总管理员上兜：谁能代替直属上级做事由各条规则自己定）。
+ * 直属上级（11-03 C10-1 定）：只认手填的「直属上级」（managerId）。没填、填的人停用了、填的是自己 = 没有上级，
+ * 不再按部门往上找销售管理。权限（上级看下属、转让、办离职）、通知、卡点、提成都只认这一处
  */
 export function 直属上级of(org: 组织, userId: string): string | null {
   const m = org.成员.get(userId);
-  if (!m) return null;
-  if (m.managerId && m.managerId !== userId && org.成员.has(m.managerId)) return m.managerId;
-
-  let dept = m.deptId;
-  if (m.角色们.includes("sales_mgr") && dept) dept = org.部门.get(dept)?.parentId ?? null;
-  // 多走两步兜住断链；成环的部门树走满步数就停
-  for (let i = 0; dept && i < 部门最多层数 + 2; i++) {
-    const 候选 = [...org.成员.values()]
-      .filter((x) => x.deptId === dept && x.角色们.includes("sales_mgr") && x.userId !== userId)
-      .map((x) => x.userId)
-      .sort();
-    if (候选.length) return 候选[0];
-    dept = org.部门.get(dept)?.parentId ?? null;
-  }
-  return null;
+  if (!m?.managerId || m.managerId === userId || !org.成员.has(m.managerId)) return null;
+  return m.managerId;
 }
 
 /**

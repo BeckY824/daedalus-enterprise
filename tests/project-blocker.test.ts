@@ -248,13 +248,13 @@ describe("企业版卡点", () => {
     expect(await 新增原因(没角色, "随便")).toMatchObject({ ok: false });
       expect(await 项目的卡点(没角色, 项目)).toEqual([]);
       expect(await 认领卡点(没角色, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
-      expect(await 存卡点角色开关(没角色, { 范围: { sales: "全部" } })).toMatchObject({ ok: false, error: "只有总管理员能改" });
+      expect(await 存卡点角色开关(没角色, { 范围: { sales: "全部" } })).toMatchObject({ ok: false, error: "只有系统管理员能改" });
     });
 
     it("角色开关：总管理员改；销售主管改成可看全部 → 别组主管也看得到、能认领；销售停用 → 发不了也看不到", async () => {
       const b = await 发();
       const 留着的沟通 = await 沟通();
-      expect(await 存卡点角色开关(组长, { 范围: { sales_mgr: "全部" } })).toMatchObject({ ok: false, error: "只有总管理员能改" });
+      expect(await 存卡点角色开关(组长, { 范围: { sales_mgr: "全部" } })).toMatchObject({ ok: false, error: "只有系统管理员能改" });
       expect(await 存卡点角色开关(总管, { 范围: { sales_mgr: "奇怪" } })).toMatchObject({ ok: false });
       expect(await 存卡点角色开关(总管, { 范围: { sales_mgr: "全部" } })).toMatchObject({ ok: true });
       invalidateSettingsCache();
@@ -365,12 +365,12 @@ describe("企业版卡点", () => {
       expect(await 认领卡点(管, b.id)).toMatchObject({ ok: false, error: 只读 });
       expect(await 完成卡点(管, b.id, { solution: "s", result: "r" })).toMatchObject({ ok: false, error: 只读 });
       expect(await 存卡点默认(管, { 默认类型: "轻度卡点" })).toMatchObject({ ok: false });
-      expect(await 存卡点角色开关(管, { 范围: { sales: "全部" } })).toMatchObject({ ok: false, error: "只有总管理员能改" });
+      expect(await 存卡点角色开关(管, { 范围: { sales: "全部" } })).toMatchObject({ ok: false, error: "只有系统管理员能改" });
       expect(await 新增原因(管, "管理员加的")).toMatchObject({ ok: false });
       const 其他 = (await 原因字典()).find((r) => r.name === "其他")!;
       expect(await 改原因状态(管, 其他.id, "停用")).toMatchObject({ ok: false });
       expect(await 删原因(管, 其他.id)).toMatchObject({ ok: false });
-      expect(await 删卡点(管, b.id)).toMatchObject({ ok: false, error: "只有总管理员能删卡点" });
+      expect(await 删卡点(管, b.id)).toMatchObject({ ok: false, error: "只有系统管理员能删卡点" });
       expect(await prisma.entBlocker.count()).toBe(1);
       expect(await 认领卡点(兼, b.id)).toMatchObject({ ok: true });
     });
@@ -378,8 +378,8 @@ describe("企业版卡点", () => {
     it("删卡点：只有总管理（director）；认领行、流转、原因挂接一起删；删了就没了", async () => {
       const b = await 发();
       await 认领卡点(组员, b.id);
-      expect(await 删卡点(组长, b.id)).toMatchObject({ ok: false, error: "只有总管理员能删卡点" });
-      expect(await 删卡点(销售, b.id)).toMatchObject({ ok: false, error: "只有总管理员能删卡点" });
+      expect(await 删卡点(组长, b.id)).toMatchObject({ ok: false, error: "只有系统管理员能删卡点" });
+      expect(await 删卡点(销售, b.id)).toMatchObject({ ok: false, error: "只有系统管理员能删卡点" });
       expect(await 删卡点(总管, "没有这条")).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
       expect(await 删卡点(总管, b.id)).toMatchObject({ ok: true, code: b.code, projectId: 项目 });
       expect(await prisma.entBlocker.count({ where: { id: b.id } })).toBe(0);
@@ -597,7 +597,7 @@ describe("企业版卡点", () => {
       const 字典 = await 原因字典();
       expect(字典.map((r) => r.name)).toEqual([...原因种子们]);
       expect(字典.every((r) => r.status === "启用")).toBe(true);
-      expect(await 新增原因(组长, "场地没定")).toMatchObject({ ok: false, error: "只有总管理员能改" });
+      expect(await 新增原因(组长, "场地没定")).toMatchObject({ ok: false, error: "只有系统管理员能改" });
       const 新 = await 新增原因(总管, "场地没定");
       expect(新).toMatchObject({ ok: true });
       expect(await 新增原因(总管, "场地没定")).toMatchObject({ ok: false });

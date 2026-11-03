@@ -4,10 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能恢复, 只读角色 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能恢复, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 规整公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
-import { 负责人候选 } from "@/lib/owners";
+import { 公海分配候选 } from "@/lib/owners";
 import { 持有数 } from "@/lib/project/db";
 import { 持有上限of } from "@/lib/project/org-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -44,8 +44,8 @@ export default async function PoolPage({
   const 能分配 = 能管公海(me, 权限org);
   const [d, users, 规则, 有] = await Promise.all([
     读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword }, 正整数(sp.page, 1), pageSize),
-    // 分配给谁：老板、主管才用得上，同客户页的负责人下拉
-    能分配 ? 负责人候选() : Promise.resolve([]),
+    // 分配给谁：老板、主管才用得上；只列能当负责人的，不是系统管理员只列同业务线的（11-03 B2-7）
+    能分配 ? 公海分配候选(me) : Promise.resolve([]),
     生效组织规则(),
     持有数(prisma, me.id),
   ]);
@@ -61,7 +61,8 @@ export default async function PoolPage({
       能分配={能分配}
       users={users}
       持有={上限 === null ? null : { 有, 上限 }}
-      只读={只读角色(me, 权限org)}
+      // 只读管理员（B2-1）、没设业务角色的（11-03 D3-7 ④）：领取都不摆
+      只读={!能新建和领取(me, 权限org)}
     />
   );
 }
