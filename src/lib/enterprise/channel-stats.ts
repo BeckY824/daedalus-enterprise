@@ -137,7 +137,7 @@ export function 是有效线索(_p: 统计用项目): boolean {
 }
 
 /** 算不算进累计成交 */
-export function 算成交(p: 统计用项目): boolean {
+export function 算成交(p: Pick<统计用项目, "phase" | "result">): boolean {
   return p.phase === "订单" && p.result !== "异常状态";
 }
 
@@ -151,7 +151,8 @@ export function 运营天数(创建: Date, 结束: Date | null, 今天: Date): n
 
 const 分 = (x: number) => Math.round(x * 100) / 100;
 
-function 合计(行: { amount: number; currency: string }[]): 币种合计[] {
+/** 按币种加（跳过 0、两位小数、大的在前）；渠道看板合计也用它，和列表的累计成交、当前投入一个算法 */
+export function 合计(行: { amount: number; currency: string }[]): 币种合计[] {
   const m = new Map<string, number>();
   for (const r of 行) {
     const v = Number(r.amount) || 0;

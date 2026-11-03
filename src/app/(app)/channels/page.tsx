@@ -6,6 +6,7 @@ import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
+import { 读看板底数 } from "@/lib/enterprise/channel-dash-db";
 import { 能录投入, 能管渠道 } from "@/lib/enterprise/channel-stats";
 import { 看全部 } from "@/lib/team-scope";
 import { 读组织 } from "@/lib/enterprise/org";
@@ -44,8 +45,10 @@ export default async function ChannelsPage() {
     行上「⋯ → 删除」有没有关联数据（10-30 交互规则 A）：口径照 deleteChannel——名下客户（来源或归属落在这个渠道）、录过的投入，
     有就把删除项变灰、原因写在旁边，不等点了确认才说删不了。只读，删不删照旧由 deleteChannel 判
   */
-  const [统计, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管] = await Promise.all([
+  const [统计, 看板底数, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管] = await Promise.all([
     读渠道统计(channels),
+    // 总览看板（11-03）：每个渠道 × 本月 / 本季 / 全部的底数，界面按列表的筛选结果再合，口径见 channel-dash.ts
+    企业版() ? 读看板底数(channels.map((c) => c.id)) : Promise.resolve(null),
     prisma.user.findMany({
       where: { id: { in: [...new Set(channels.map((c) => c.createdById).filter((x): x is string => Boolean(x)))] } },
       select: { id: true, name: true },
@@ -81,6 +84,7 @@ export default async function ChannelsPage() {
       属性选项={属性选项}
       能录={能录}
       能管={能管}
+      看板底数={看板底数}
       rows={channels.map((c) => ({
         id: c.id,
         name: c.name,

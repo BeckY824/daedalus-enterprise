@@ -22,6 +22,8 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../overview/funnel";
 import ChannelDrawer from "./ChannelDrawer";
+import ChannelDash from "./ChannelDash";
+import { 筛渠道, type 看板底数 } from "@/lib/enterprise/channel-dash";
 
 export type 渠道行 = {
   id: string;
@@ -110,6 +112,7 @@ export default function ChannelsView({
   属性选项 = [],
   能录 = false,
   能管 = true,
+  看板底数,
 }: {
   rows: Row[];
   users: 可选成员[];
@@ -122,6 +125,8 @@ export default function ChannelsView({
    * 别人只读——「新建渠道」、空态的新建、行上「⋯」、抽屉里的「编辑」都不出。服务端 挡管 再挡一道
    */
   能管?: boolean;
+  /** 总览看板的底数（企业版才有，channel-dash.ts）；没有就不摆看板 */
+  看板底数?: 看板底数 | null;
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -132,16 +137,8 @@ export default function ChannelsView({
   const [attr, setAttr] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [active, setActive] = useState("");
-  const rows = useMemo(() => {
-    const k = kw.trim().toLowerCase();
-    return 全部行.filter(
-      (r) =>
-        (!k || [r.name, r.platform, r.attr, r.remark].some((x) => (x ?? "").toLowerCase().includes(k))) &&
-        (!attr || r.attr === attr) &&
-        (!ownerId || r.channelOwnerId === ownerId) &&
-        (!active || (active === "on") === r.active),
-    );
-  }, [全部行, kw, attr, ownerId, active]);
+  // 看板也吃这一份：列表剩几个渠道，看板就按这几个算
+  const rows = useMemo(() => 筛渠道(全部行, { kw, attr, ownerId, active }), [全部行, kw, attr, ownerId, active]);
   /** 属性筛选：字典里的 + 表里实际出现的（停用了的旧属性也能筛出来） */
   const 筛选属性 = useMemo(() => [...new Set([...属性选项, ...全部行.map((r) => r.attr).filter((x): x is string => Boolean(x))])], [属性选项, 全部行]);
   const [open, setOpen] = useState(false);
@@ -424,6 +421,7 @@ export default function ChannelsView({
         行={rows}
         亮={亮行}
         行类={(r) => (r.active ? undefined : "row-off")}
+        汇总={看板底数 && rows.length > 0 ? <ChannelDash 渠道们={rows} 底数={看板底数} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} /> : undefined}
         空态={{
           title: "还没有渠道",
           hint: `渠道是${b.customer}从哪来的：按「渠道属性 → 渠道名称 → 来源」建一条，新建${b.customer}时从清单里选；在渠道详情里录投入，这里就算得出投入产出比。不再用的渠道停用即可。`,
