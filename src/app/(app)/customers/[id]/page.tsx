@@ -19,7 +19,7 @@ import { 客户报价记录 } from "@/lib/quote-db";
 import { 报价明细 } from "@/lib/features";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
-import { 只读客户 } from "@/lib/team-scope";
+import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
@@ -201,6 +201,7 @@ export default async function CustomerDetailPage({
       项目们={项目们}
       参与项目们={参与项目们}
       只读={只读}
+      只读话={只读 === "全" ? await 只读话(defaultClient) : undefined}
       能改沟通={可改沟通}
       能删沟通={可删沟通}
       客户状态选项={客户状态选项}
