@@ -598,9 +598,10 @@ function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { 
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
   const 负责人 = 撞?.salesOwnerName ?? "";
-  // 同名同事不止一位时不猜是谁，只写名字
+  // 同名同事不止一位时不猜是谁，只写名字。
+  // 企业版登录名放在 email 列里、多半不是邮箱（11-03 A2-6）：像邮箱的才给 mailto，不然只写名字
   const 同名 = users.filter((u) => u.name === 负责人);
-  const 邮箱 = 同名.length === 1 ? 同名[0].email : "";
+  const 邮箱 = 同名.length === 1 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(同名[0].email ?? "") ? 同名[0].email : "";
   return (
     <Alert
       type={在公海 ? "warning" : "error"}
