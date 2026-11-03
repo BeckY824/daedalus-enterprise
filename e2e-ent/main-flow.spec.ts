@@ -67,7 +67,7 @@ test("导入导出：老板列表上有，销售没有；销售直接调上传�
   expect((await r.json()).error).toContain("只有总管理能做企业版导入");
 });
 
-test("设置：老板有企业版导入和组织架构；销售看得到组织架构，看不到企业版导入、业务配置、AI 接入", async ({ page }) => {
+test("设置：老板有企业版导入和组织架构；销售只剩个人几栏（D3-1），看不到组织架构、企业版导入、业务配置、AI 接入", async ({ page }) => {
   await 登录(page, "老板");
   await page.goto("/settings");
   const 目录 = () => page.locator("main .set-nav-i b").allInnerTexts();
@@ -79,8 +79,8 @@ test("设置：老板有企业版导入和组织架构；销售看得到组织�
   await page.goto("/settings");
   await page.waitForSelector("main .set-nav-i");
   const 销售看到 = await 目录();
-  expect(销售看到).toContain("组织架构");
-  for (const 不该有 of ["企业版导入", "业务配置", "AI 接入"]) expect(销售看到).not.toContain(不该有);
+  expect(销售看到).toContain("个人资料");
+  for (const 不该有 of ["组织架构", "企业版导入", "业务配置", "AI 接入"]) expect(销售看到).not.toContain(不该有);
 });
 
 test("设置 → 组织架构：飞书没填凭据时，「立即同步」灰着，「飞书连接」摆着等填", async ({ page }) => {
