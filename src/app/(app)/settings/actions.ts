@@ -108,6 +108,14 @@ async function 能办离职(id: string) {
  * 而且做完当场看不出问题，下次要加人时才发现。
  */
 async function wouldLoseLastAdmin(targetId: string): Promise<boolean> {
+  // 企业版只认业务角色（11-03 C4-6）：看的是能管设置的总管理（在职、director、没勾「不管设置」），
+  // 同组织架构页 org-actions.ts 的「还有总管」；账号 ADMIN 在企业版不多出权限，原来只看它，种子总管理是 SALES 就拦不住
+  if (企业版()) {
+    const org = await 读组织();
+    const 能管 = (id: string) => { const m = org.成员.get(id); return !!m && m.角色们.includes("director") && !m.不管设置; };
+    if (!能管(targetId)) return false;
+    return ![...org.成员.keys()].some((id) => id !== targetId && 能管(id));
+  }
   const target = await prisma.user.findUnique({ where: { id: targetId }, select: { role: true, active: true } });
   if (!target || target.role !== "ADMIN" || !target.active) return false;
   const others = await prisma.user.count({
@@ -161,7 +169,7 @@ export async function saveUser(input: {
   if (input.password && input.password.length < MIN_PASSWORD) {
     return { ok: false as const, error: `密码至少 ${MIN_PASSWORD} 位` };
   }
-  if (input.id && (input.role !== "ADMIN" || !input.active) && (await wouldLoseLastAdmin(input.id))) {
+  if (input.id && ((!企业版() && input.role !== "ADMIN") || !input.active) && (await wouldLoseLastAdmin(input.id))) {
     return {
       ok: false as const,
       error: "这是系统里最后一个管理员，不能停用或降级，否则将无人可以管理成员。请先指定另一位管理员。",
@@ -335,7 +343,9 @@ export async function deactivateUser(id: string, transferToId: string, 方式: �
   if (await wouldLoseLastAdmin(id)) {
     return {
       ok: false as const,
-      error: "这是系统里最后一个管理员，停用后将无人可以管理成员。请先指定另一位管理员。",
+      error: 企业版()
+        ? "这是最后一位能管设置的总管理，停用后就没人能管成员、改角色了。请先在组织架构里给另一位设上总管理。"
+        : "这是系统里最后一个管理员，停用后将无人可以管理成员。请先指定另一位管理员。",
     };
   }
   // 企业版「交接中」：上一次离职交接还没确认，不能再交给第二个人（先撤回再办）

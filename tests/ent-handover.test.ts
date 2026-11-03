@@ -364,3 +364,30 @@ describe("交接通知（11-03 C3-3 / C3-5 / C4-7 / C8-1）", () => {
     expect(await prisma.entNotice.count({ where: { userId: 组长.id } })).toBe(0);
   });
 });
+
+describe("最后一位总管理（11-03 C4-6）：企业版只认业务角色", () => {
+  it("唯一的总管理账号是 SALES，也不能停用自己", async () => {
+    await prisma.user.update({ where: { id: 老板.id }, data: { role: "SALES" } });
+    当({ ...老板, role: "SALES" });
+    const r = await deactivateUser(老板.id, 接手.id, "转交");
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toContain("最后一位能管设置的总管理");
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 老板.id } })).active).toBe(true);
+  });
+
+  it("账号 ADMIN 但业务角色是销售，不算最后一位管理员，照常停用", async () => {
+    await prisma.user.update({ where: { id: 老板.id }, data: { role: "SALES" } });
+    当({ ...老板, role: "SALES" });
+    const 号管 = await 建("acct-admin", "ADMIN");
+    await prisma.entMember.create({ data: { userId: 号管.id, bizRole: "sales" } });
+    expect((await deactivateUser(号管.id, 接手.id, "转交")).ok).toBe(true);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 号管.id } })).active).toBe(false);
+  });
+
+  it("另有一位勾了「不管设置」的总管理，不算能管设置，还是拦", async () => {
+    const 二 = await 建("boss2", "ADMIN");
+    await prisma.entMember.create({ data: { userId: 二.id, bizRole: "director", noSettings: true } });
+    const r = await deactivateUser(老板.id, 接手.id, "转交");
+    expect(r.ok).toBe(false);
+  });
+});
