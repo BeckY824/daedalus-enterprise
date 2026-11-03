@@ -57,6 +57,9 @@ const 不算列表页 = [
   // 企业版「我分出去的」弹窗（2026-10-25）：列的是分配账本（每条线索最近一次分配），同导入记录；
   // 只读、没有筛选、批量、列设置，线索本身的列表页还是 LeadsView
   "src/app/(app)/leads/AssignLead.tsx",
+  // 企业版离职交接（11-03）：列的是要交出去的那个人名下的客户和项目，只为勾选后交给谁；
+  // 没有筛选、列设置、空态，业务记录本身的列表页还是客户页、项目页
+  "src/app/(app)/projects/handover/HandoverView.tsx",
   // 导入抽屉：一张列文件的列，一张列读不懂的格子。都还没进库
   "src/app/(app)/customers/ImportDrawer.tsx",
   "src/app/(app)/customers/import-steps.tsx",
