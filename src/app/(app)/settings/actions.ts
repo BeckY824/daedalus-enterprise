@@ -84,9 +84,9 @@ async function requireAdmin() {
 }
 
 /**
- * 谁能给这个人办离职（停用、停用前清点）：管理员；企业版再加上他的直属上级（D-36）。
- * 上级不能停用管理员。不是企业版和原来一样，只认管理员。
- * 直属上级这一条跟「按组织看客户」开关走：开关关着时组织只是一张表，上级不多出权限（同 lib/project/db 直属才推）
+ * 谁能给这个人办离职（停用、停用前清点）：管理员；企业版 = 系统管理员 + 他明确填了的直属上级（D-36，11-03 B7-2）。
+ * 上级不能停用总管理。不是企业版和原来一样，只认管理员。
+ * 11-03 起直属上级这一条不再跟「按组织看客户」开关走：办离职只是停用，名下数据原地不动，不多给谁看什么
  */
 async function 能办离职(id: string) {
   if (!企业版()) return requireAdmin();
@@ -96,7 +96,7 @@ async function 能办离职(id: string) {
   if (await 是共享区()) throw new Error("FORBIDDEN");
   // 11-01 只认业务角色：上级不能停用总管理（原来看账号 ADMIN）；管理员 admin 只读，当了上级也不能办
   const 有人 = typeof id === "string" && id ? await prisma.user.count({ where: { id } }) : 0;
-  if (有人 && org && !是总管理({ id, role: "" }, org) && !只读角色(me, org) && (await 规则开着("按组织看客户")) && 直属上级of(await 读组织(), id) === me.id) return me;
+  if (有人 && org && !是总管理({ id, role: "" }, org) && !只读角色(me, org) && 直属上级of(await 读组织(), id) === me.id) return me;
   throw new Error("FORBIDDEN");
 }
 
@@ -317,6 +317,7 @@ export async function saveUser(input: {
  */
 export async function deactivateUser(id: string, transferToId: string, 方式: 停用方式 = "转交") {
   const me = await 能办离职(id);
+  if (企业版()) return 离职原地不动(me, id, 方式);
   if (!停用方式们.includes(方式)) return { ok: false as const, error: "交接方式不对，刷新再试" };
   if (方式 === "公海" && !企业版()) return { ok: false as const, error: "放回公海交接是企业版的功能" };
   // 必须在业务库转交、停用之前拒绝，不能写到一半才发现永久 OWNER 身份丢失。
@@ -415,6 +416,46 @@ export async function deactivateUser(id: string, transferToId: string, 方式: �
   return { ok: true as const };
 }
 
+/**
+ * 企业版办离职（11-03 C4-4 / B7-2）：只停用，名下客户、项目、商机、线索、渠道原地不动（负责人仍是他），
+ * 不再有「放进公海」，也不当场选接手人；之后由他的直属上级或系统管理员在「项目 → 离职交接」里交给接手人
+ * （lib/enterprise/offboard-handover.ts）。他手上没解决的卡点照旧给直属上级（交接卡点 接手人传空）。
+ * 重新启用时数据还在他名下，不用退回
+ */
+async function 离职原地不动(me: Awaited<ReturnType<typeof requireUser>>, id: string, 方式: 停用方式) {
+  if (方式 === "公海") return { ok: false as const, error: "离职不再放进公海：停用后名下客户原地不动，到「项目 → 离职交接」里交给接手人" };
+  if (!停用方式们.includes(方式)) return { ok: false as const, error: "交接方式不对，刷新再试" };
+  if (托管版()) {
+    const t = await resolveCurrentTenant();
+    const link = await prisma.workspaceAccount.findFirst({ where: { userId: id } });
+    if (t && link && await 是创建者(link.accountId, t.workspaceId)) return { ok: false as const, error: "工作区创建者不能停用" };
+  }
+  const 被停 = typeof id === "string" && id ? await prisma.user.findUnique({ where: { id }, select: { name: true, active: true } }) : null;
+  if (!被停) return { ok: false as const, error: "这个成员已不存在，请刷新重试" };
+  if (!被停.active) return { ok: true as const };
+  if (await wouldLoseLastAdmin(id)) {
+    return { ok: false as const, error: "这是最后一位能管设置的总管理，停用后就没人能管成员、改角色了。请先在组织架构里给另一位设上总管理。" };
+  }
+  if (await 离职交接中(id)) {
+    return { ok: false as const, error: "这位成员的离职交接还在等接手人确认：先在客户页「交接中」里撤回，再重新办" };
+  }
+  const 分 = await prisma.$transaction(async (tx) => {
+    const 分 = await 停用分拣(tx, id, "转交", true);
+    await 交接卡点(tx, id, null, me.id, []);
+    await tx.user.update({ where: { id }, data: { active: false } });
+    return 分;
+  }, { timeout: 30_000 });
+  await 撤托管成员(id);
+  const 项目 = (await getBusiness()).projectMode === true ? 分.项目.length : 0;
+  await recordAudit({
+    user: me, action: "deactivate", entity: "User", entityId: id,
+    summary: `停用成员「${被停.name}」：名下 ${分.客户.length} 位客户` + (项目 ? `、${项目} 个项目` : "") + "原地不动（负责人仍是 TA），到「离职交接」里交给接手人",
+    detail: { userId: id, 原地不动: { 客户: 分.客户.length, 项目, 商机: 分.商机.length, 线索: 分.线索.length, 渠道: 分.渠道.length } },
+  });
+  for (const p of ["/settings", "/customers", "/leads", "/channels", "/projects", "/projects/handover"]) revalidatePath(p);
+  return { ok: true as const };
+}
+
 async function 撤托管成员(id: string) {
   if (!托管版()) return;
   const t = await resolveCurrentTenant();
@@ -488,7 +529,8 @@ export async function 批量停用(ids: string[], transferToId: string, 方式: 
   const 们 = Array.isArray(ids) ? [...new Set(ids.filter((x) => typeof x === "string" && x))] : [];
   if (!们.length) return { ok: false as const, error: "先选要停用的成员" };
   if (们.length > 批量停用上限) return { ok: false as const, error: `一次最多停用 ${批量停用上限} 人` };
-  if (们.includes(transferToId)) return { ok: false as const, error: "接手人不能在要停用的人里" };
+  // 企业版 11-03 起办离职不选接手人（名下原地不动，到离职交接里交），这一条只防老调用传进来的
+  if (transferToId && 们.includes(transferToId)) return { ok: false as const, error: "接手人不能在要停用的人里" };
   for (const id of 们) await 能办离职(id);
   const 失败: { id: string; error: string }[] = [];
   let 交接中 = 0;
@@ -505,22 +547,17 @@ export async function 批量停用(ids: string[], transferToId: string, 方式: 
 }
 
 /**
- * 停用前清点（离职交接对话框用，企业版才有）：两种方式各会转走、放进公海多少，和停用时同一套分法（停用分拣）。
+ * 停用前清点（离职对话框用，企业版才有）：停用后有多少客户、项目原地留在他名下，和停用时同一套分法（停用分拣）。
  * 只是数个数，真停用时在事务里重新分。不是企业版对话框照原来的说，不来清点
  */
 export async function 停用清点(id: string) {
   await 能办离职(id);
   if (typeof id !== "string" || !id) return { ok: false as const, error: "这个成员已不存在，请刷新重试" };
   if (!企业版()) return { ok: false as const, error: "离职交接是企业版的功能" };
-  const 数 = (分: Awaited<ReturnType<typeof 停用分拣>>) => ({
-    客户: 分.客户.length,
-    进公海客户: 分.进公海客户.length + 分.本来在公海.length,
-    项目: 分.项目.length,
-    进公海项目: 分.进公海项目.length,
-    订单项目: 分.订单项目,
-  });
-  const [转交, 公海] = await Promise.all([停用分拣(prisma, id, "转交", true), 停用分拣(prisma, id, "公海", true)]);
-  return { ok: true as const, 转交: 数(转交), 公海: 数(公海) };
+  // 11-03 C4-4：只剩「原地不动」一种，清点的是停用后还留在他名下、要到离职交接里交的；没开项目模式不数项目
+  const 分 = await 停用分拣(prisma, id, "转交", true);
+  const 项目模式 = (await getBusiness()).projectMode === true;
+  return { ok: true as const, 原地: { 客户: 分.客户.length, 项目: 项目模式 ? 分.项目.length : 0 } };
 }
 
 export async function reactivateUser(id: string) {
