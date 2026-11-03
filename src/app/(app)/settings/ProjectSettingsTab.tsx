@@ -809,7 +809,7 @@ function PerUserRatesCard({
   return (
     <Card
       title="提成比例 · 按人设置"
-      extra={!能改 ? <span style={{ color: "var(--text-muted)" }}>只有老板、总管理员能改</span> : 单设数 > 0 && <span style={{ color: "var(--text-muted)" }}>已单设 {单设数} 人</span>}
+      extra={!能改 ? <span style={{ color: "var(--text-muted)" }}>只有总管理能改</span> : 单设数 > 0 && <span style={{ color: "var(--text-muted)" }}>已单设 {单设数} 人</span>}
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         给某个销售单独定比例，比上面按业务线的那一套优先；留空的那项跟他业务线的比例走（框里灰字就是现在用的）。离职的人自动不算。改了以后，他还没赢单的项目按新比例预估；已经赢单的实际提成不变。
