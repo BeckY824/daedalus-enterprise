@@ -27,6 +27,7 @@ import { 问同事 } from "@/lib/sync/dedupe-client";
 import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
+import { 离职负责人找谁 } from "./departed-owner";
 
 /** ContactMethod.kind：号码类型 → 库里的写法。二维码没有号，不进子表 */
 export const 号码库类型 = { 手机号: "phone", 邮箱: "email", 微信: "wechat", 旺旺ID: "wangwang" } as const satisfies Partial<Record<号码类型, string>>;
@@ -79,7 +80,11 @@ export async function 全公司查号(db: 库, 类型: 号码类型, 值: string
 }
 
 /** 给人看的撞到的那位：和 checkDuplicate 的 DuplicateHit 一个样子 */
-export type 撞到的人 = { id: string | null; name: string | null; school: string | null; salesOwnerName: string; createdAt: string | null };
+export type 撞到的人 = {
+  id: string | null; name: string | null; school: string | null; salesOwnerName: string; createdAt: string | null;
+  /** 负责人已离职（11-03 C4-5）：该找谁（他在职的直属上级，没有就「系统管理员」）。在职的没有这格 */
+  负责人已离职找?: string;
+};
 
 export type 查号结论 =
   | { 状态: "首次录入"; 提示: string; 撞: null }
@@ -106,6 +111,8 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
   };
   if (挑.salesOwnerId === 我 && !挑.pool) return { 状态: "我的通讯录已有", 提示: 查重提示.我的通讯录已有, 撞 };
   if (挑.pool) return { 状态: "公海待捞", 提示: 查重提示.公海待捞, 撞, ...((await 我回避的(db, 挑, 我)) ? { 原负责人是我: true as const } : {}) };
+  const 找谁 = await 离职负责人找谁(挑.salesOwnerId);
+  if (找谁) return { 状态: "重复", 提示: 查重提示.重复离职(找谁, 撞.name), 撞: { ...撞, 负责人已离职找: 找谁 } };
   return { 状态: "重复", 提示: 查重提示.重复(同事, 撞.name), 撞 };
 }
 

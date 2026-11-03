@@ -22,7 +22,7 @@ const ACTION_LABEL: Record<string, string> = {
   create: "新建", update: "修改", delete: "删除", assign: "转派",
   convert: "转化", deactivate: "停用", reactivate: "恢复", password: "改密码", device_revoke: "退出机器", ai_use: "AI", ai_apply: "确认 AI 建议", ai_undo: "撤销 AI 建议",
   pool: "放回公海", claim: "领取", import: "导入", merge: "合并重复",
-  restore: "从回收站恢复", purge: "彻底删除", sync: "同步",
+  restore: "从回收站恢复", purge: "彻底删除", sync: "同步", handover: "离职交接",
 };
 const ENTITY_LABEL: Record<string, string> = {
   Customer: "学员", Contract: "签约", Lead: "线索", User: "成员", Channel: "渠道", Setting: "系统设置", Ai: "AI 功能", Device: "机器",

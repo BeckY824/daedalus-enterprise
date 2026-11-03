@@ -406,10 +406,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
                 撞.id ? (
                   <span>
                     <Link href={`/customers/${撞.id}`}>{撞.name}</Link>
-                    {撞.school ? ` · ${撞.school}` : ""} · 在 {撞.salesOwnerName} 名下。要给这位{b.customer}开新项目，请找 {撞.salesOwnerName} 或老板
+                    {撞.school ? ` · ${撞.school}` : ""} · 在 {撞.salesOwnerName} 名下。{撞.负责人已离职找 ? `负责人已离职，请联系 ${撞.负责人已离职找}` : `要给这位${b.customer}开新项目，请找 ${撞.salesOwnerName} 或老板`}
                   </span>
                 ) : (
-                  <span>同事 {撞.salesOwnerName} 名下已经有这个号码{撞.name ? `（${撞.name}）` : ""}；要接手请找 {撞.salesOwnerName} 或老板</span>
+                  <span>{撞.负责人已离职找
+                    ? `${撞.salesOwnerName}（已离职）名下已经有这个号码${撞.name ? `（${撞.name}）` : ""}；负责人已离职，请联系 ${撞.负责人已离职找}`
+                    : `同事 ${撞.salesOwnerName} 名下已经有这个号码${撞.name ? `（${撞.name}）` : ""}；要接手请找 ${撞.salesOwnerName} 或老板`}</span>
                 )
               }
             />
@@ -610,6 +612,8 @@ function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { 
   // 自己退回公海的：企业版原负责人看不到也领不回，「打开它」「去领取」都走不通，不摆（11-03 B7-3）
   const 我退的 = 在公海 && !!查.原负责人是我;
   const 负责人 = 撞?.salesOwnerName ?? "";
+  // 负责人已离职（11-03 C4-5）：不叫人找他，指他的直属上级（没有就系统管理员）
+  const 离职找 = 撞?.负责人已离职找 ?? "";
   // 同名同事不止一位时不猜是谁，只写名字。
   // 企业版登录名放在 email 列里、多半不是邮箱（11-03 A2-6）：像邮箱的才给 mailto，不然只写名字
   const 同名 = users.filter((u) => u.name === 负责人);
@@ -625,14 +629,15 @@ function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { 
             {撞?.name ?? "领取后可见"}
             {撞?.school ? ` · ${撞.school}` : ""}
             {" · "}
-            {在公海 ? "在公海" : 查.状态 === "我的通讯录已有" ? "在你名下" : `负责人：${负责人}`}
+            {在公海 ? "在公海" : 查.状态 === "我的通讯录已有" ? "在你名下" : `负责人：${负责人}${离职找 ? "（已离职）" : ""}`}
             {查.归属地 ? ` · 归属地：${查.归属地}` : ""}
           </div>
           <Space size={8} style={{ marginTop: 8 }} wrap>
             {撞?.id && !我退的 && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button></Link>}
             {我退的 && <span style={{ color: "var(--text-muted)" }}>是你退回公海的，{原负责人不能领回提示}</span>}
             {在公海 && !我退的 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
-            {查.状态 === "重复" && 负责人 && (邮箱
+            {查.状态 === "重复" && 离职找 && <span style={{ color: "var(--text-muted)" }}>负责人已离职，请联系 {离职找}</span>}
+            {查.状态 === "重复" && 负责人 && !离职找 && (邮箱
               ? <Button size="small" href={`mailto:${邮箱}`}>联系负责人：{负责人}</Button>
               : <span style={{ color: "var(--text-muted)" }}>联系负责人：{负责人}</span>)}
           </Space>

@@ -1,8 +1,8 @@
 /**
- * 离职交接（企业版 D-36，2026-10-24）：停用成员时一次处理完他名下全部，两种方式——
- *   转交 —— 全给接手人（原来的做法），他负责、挂在别人客户上的没结局项目也一起转
- *   公海 —— 客户进客户公海、线索 / 商机阶段项目回项目公海；已签约 / 已流失、名下有订单阶段项目的客户和订单阶段项目给接手人
- * 停用前的清点和停用本身同一套分法，数要对得上；200 条以内一次做完不卡
+ * 离职交接（企业版 D-36，2026-10-24；11-03 C4-4 / B7-2 改）：企业版办离职只停用、名下原地不动，
+ * 不再有「放进公海」方式；之后在「项目 → 离职交接」里一键「全部交给」接手人——
+ *   全给接手人（原来的转交），他负责、挂在别人客户上的没结局项目也一起转
+ * 停用前的清点和全部交给同一套分法，数要对得上；200 条以内一次做完不卡
  * 不是企业版（CRM_ENTERPRISE 不设）：没有公海方式、不清点，转交和原来一样（别处的项目不动）
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
+vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
   return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), projectMode: true }) };
@@ -21,7 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { deactivateUser, 停用清点 } from "@/app/(app)/settings/actions";
 import { 领取 } from "@/app/(app)/customers/pool-actions";
-import { 停用进公海理由, 停用项目进公海理由 } from "@/lib/offboard-db";
+import { 交接全部 } from "@/app/(app)/projects/handover/actions";
 import { 公海超时收回 } from "@/lib/project/db";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
@@ -53,6 +54,12 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllEnvs(); });
 
 afterAll(async () => { await prisma.$disconnect(); });
+
+/** 企业版办离职（原地不动）+ 离职交接看板「全部交给」 */
+async function 离职全部交给(from: string, to: string) {
+  expect(await deactivateUser(from, "")).toEqual({ ok: true });
+  expect((await 交接全部(from, to)).ok).toBe(true);
+}
 
 describe("不是企业版", () => {
   beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", ""); });
@@ -92,7 +99,7 @@ describe("不是企业版", () => {
   });
 });
 
-describe("转交（默认）", () => {
+describe("全部交给（原来的转交）", () => {
   it("客户、活、项目全给接手人；他挂在别人客户上的没结局项目也转，有结局的留着；跟进和建档人照旧", async () => {
     const c = await 客户("乙的客户", 乙);
     const 丙的客户 = await 客户("丙的客户", 丙);
@@ -106,6 +113,10 @@ describe("转交（默认）", () => {
     const p3 = await prisma.project.update({ where: { id: (await 项目("收尾的", 乙, 丙的客户.id)).id }, data: { result: "成功交付" } });
 
     expect(await deactivateUser(乙, 丙)).toEqual({ ok: true });
+    // 办离职原地不动
+    expect((await 客户of(c.id)).salesOwnerId).toBe(乙);
+    expect((await 项目of(p2.id)).ownerId).toBe(乙);
+    expect((await 交接全部(乙, 丙)).ok).toBe(true);
 
     expect((await 客户of(c.id)).salesOwnerId).toBe(丙);
     expect((await 客户of(c.id)).pool).toBeNull();
@@ -133,65 +144,21 @@ describe("转交（默认）", () => {
   });
 });
 
-describe("放进公海", () => {
-  it("一般客户进客户公海（负责人先不改、写明原因）；已签约 / 已流失、有订单阶段项目的给接手人", async () => {
-    const 跟进中 = await 客户("跟进中", 乙);
-    const 签约 = await 客户("签约", 乙, "已签约");
-    const 流失 = await 客户("流失", 乙, "已流失");
-    const 有订单 = await 客户("有订单", 乙);
-    const 订单项目 = await 项目("订单的", 丙, 有订单.id, "订单", "签约");
-    const 本来在公海 = await 客户("本来在公海", 乙);
-    await prisma.customerPool.create({ data: { customerId: 本来在公海.id, userId: 乙, reason: "手动" } });
-
-    expect(await deactivateUser(乙, 丙, "公海")).toEqual({ ok: true });
-
-    const 公海里 = await 客户of(跟进中.id);
-    expect(公海里.salesOwnerId).toBe(乙);
-    expect(公海里.pool).toMatchObject({ reason: 停用进公海理由, userId: 甲 });
-    expect((await 客户of(本来在公海.id)).pool).toMatchObject({ reason: "手动" });
-    for (const c of [签约, 流失, 有订单]) {
-      const r = await 客户of(c.id);
-      expect([r.name, r.salesOwnerId, r.pool]).toEqual([c.name, 丙, null]);
-    }
-    expect((await 项目of(订单项目.id)).ownerId).toBe(丙);
-    const 详情 = JSON.parse((await prisma.auditLog.findFirstOrThrow({ where: { action: "deactivate", entityId: 乙 } })).detail!);
-    expect(详情).toMatchObject({ 方式: "公海", 转走了: { 进公海客户: [跟进中.id], 本来在公海: [本来在公海.id] } });
+describe("放进公海（11-03 C4-4 去掉）", () => {
+  it("企业版办离职传公海方式：直接拒，人还在职、什么都不动", async () => {
+    const c = await 客户("乙的客户", 乙);
+    expect(await deactivateUser(乙, 丙, "公海")).toMatchObject({ ok: false, error: expect.stringContaining("不再放进公海") });
+    expect((await 客户of(c.id)).pool).toBeNull();
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 乙 } })).active).toBe(true);
   });
 
-  it("项目：线索 / 商机阶段的回项目公海（留放回痕），订单阶段的只能给接手人，有结局的留着", async () => {
-    const 丙的客户 = await 客户("丙的客户", 丙);
-    const 线索 = await 项目("线索的", 乙, 丙的客户.id);
-    const 商机 = await 项目("商机的", 乙, 丙的客户.id, "商机", "方案报价");
-    const 订单 = await 项目("订单的", 乙, 丙的客户.id, "订单", "签约");
-    const 收尾 = await prisma.project.update({ where: { id: (await 项目("收尾的", 乙, 丙的客户.id)).id }, data: { result: "成功交付" } });
-
-    expect(await deactivateUser(乙, 甲, "公海")).toEqual({ ok: true });
-
-    for (const p of [线索, 商机]) {
-      const r = await 项目of(p.id);
-      expect(r.pooledAt).not.toBeNull();
-      expect(r.ownerId).toBe(""); // 企业版进公海清负责人（11-01 C-01），乙在留痕里
-    }
-    const 放回 = await prisma.projectNodeLog.findMany({ where: { kind: "pool-release" }, select: { projectId: true, userId: true, fromOwnerId: true, toOwnerId: true, reason: true } });
-    expect(new Set(放回.map((x) => x.projectId))).toEqual(new Set([线索.id, 商机.id]));
-    expect(放回.every((x) => x.userId === 甲 && x.fromOwnerId === 乙 && x.toOwnerId === null && x.reason === 停用项目进公海理由)).toBe(true);
-    expect(await 项目of(订单.id)).toMatchObject({ ownerId: 甲, pooledAt: null });
-    expect(await 项目of(收尾.id)).toMatchObject({ ownerId: 乙, pooledAt: null });
-  });
-
-  it("进公海客户上没做完的活留在他名下，有人领了跟着走；别的客户上的活、线索给接手人", async () => {
+  it("离职后客户被放进公海：上面没做完的活留在他名下，有人领了跟着走", async () => {
     const 去公海 = await 客户("去公海", 乙);
-    const 丙的客户 = await 客户("丙的客户", 丙);
     const 公海上的待办 = await prisma.task.create({ data: { title: "回电", customerId: 去公海.id, ownerId: 乙 } });
     const 公海上的商机 = await prisma.opportunity.create({ data: { name: "一单", customerId: 去公海.id, ownerId: 乙 } });
-    const 别处的计划 = await prisma.followPlan.create({ data: { subject: "下周见", plannedAt: new Date(), customerId: 丙的客户.id, ownerId: 乙 } });
-    const 线索 = await prisma.lead.create({ data: { name: "线索", ownerId: 乙 } });
-
-    expect(await deactivateUser(乙, 甲, "公海")).toEqual({ ok: true });
+    expect(await deactivateUser(乙, "")).toEqual({ ok: true });
+    await prisma.customerPool.create({ data: { customerId: 去公海.id, userId: 甲, reason: "手动" } });
     expect((await prisma.task.findUniqueOrThrow({ where: { id: 公海上的待办.id } })).ownerId).toBe(乙);
-    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 公海上的商机.id } })).ownerId).toBe(乙);
-    expect((await prisma.followPlan.findUniqueOrThrow({ where: { id: 别处的计划.id } })).ownerId).toBe(甲);
-    expect((await prisma.lead.findUniqueOrThrow({ where: { id: 线索.id } })).ownerId).toBe(甲);
 
     // 丙从公海领走：客户、他没做完的活一起归丙
     mocks.user = { ...mocks.user, id: 丙, role: "SALES" };
@@ -203,14 +170,14 @@ describe("放进公海", () => {
 });
 
 describe("进公海客户上的项目跟着客户（第四节）", () => {
-  it("离职进公海：客户上的项目留在原负责人名下、超时不收；谁领客户谁带走项目", async () => {
+  it("离职后客户在公海里：客户上的项目留在原负责人名下、超时不收；谁领客户谁带走项目", async () => {
     await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 1, 明确需求: 1 } } });
     const 去公海 = await 客户("去公海", 乙);
     const 跟客户的 = await 项目("跟客户的", 乙, 去公海.id);
     const 同事的 = await 项目("同事负责的", 甲, 去公海.id, "商机", "明确需求");
 
-    expect(await deactivateUser(乙, 甲, "公海")).toEqual({ ok: true });
-    expect(await 客户of(去公海.id)).toMatchObject({ pool: { customerId: 去公海.id } });
+    expect(await deactivateUser(乙, "")).toEqual({ ok: true });
+    await prisma.customerPool.create({ data: { customerId: 去公海.id, userId: 甲, reason: "手动" } });
     expect(await 项目of(跟客户的.id)).toMatchObject({ ownerId: 乙, pooledAt: null });
 
     // 过了时长也不收进项目公海：收了就和客户拆开，领客户的人拿不到
@@ -228,7 +195,7 @@ describe("进公海客户上的项目跟着客户（第四节）", () => {
 });
 
 describe("停用清点", () => {
-  it("两种方式的数和真停用时做的对得上", async () => {
+  it("清点的数和停用后「全部交给」做的对得上", async () => {
     const c1 = await 客户("跟进中", 乙);
     await 客户("签约", 乙, "已签约");
     const 本来在公海 = await 客户("本来在公海", 乙);
@@ -239,18 +206,13 @@ describe("停用清点", () => {
     await 项目("别处订单", 乙, 丙的客户.id, "订单", "签约");
 
     const 点 = await 停用清点(乙);
-    expect(点).toEqual({
-      ok: true,
-      // 本来在公海的那位两种方式都不转、不重复放（11-03 完成度 C4-1；原来转交算进 客户）
-      转交: { 客户: 2, 进公海客户: 1, 项目: 3, 进公海项目: 0, 订单项目: 0 },
-      公海: { 客户: 1, 进公海客户: 2, 项目: 1, 进公海项目: 1, 订单项目: 1 },
-    });
+    // 本来在公海的那位不算、不转（11-03 完成度 C4-1）
+    expect(点).toEqual({ ok: true, 原地: { 客户: 2, 项目: 3 } });
 
-    expect(await deactivateUser(乙, 甲, "公海")).toEqual({ ok: true });
-    expect(await prisma.customer.count({ where: { salesOwnerId: 甲 } })).toBe(1);
-    expect(await prisma.customerPool.count()).toBe(2);
-    expect(await prisma.project.count({ where: { ownerId: 甲 } })).toBe(1);
-    expect(await prisma.project.count({ where: { pooledAt: { not: null } } })).toBe(1);
+    await 离职全部交给(乙, 甲);
+    expect(await prisma.customer.count({ where: { salesOwnerId: 甲 } })).toBe(2);
+    expect(await prisma.customerPool.count()).toBe(1);
+    expect(await prisma.project.count({ where: { ownerId: 甲 } })).toBe(3);
   });
 
   it("业务员不能清点", async () => {
@@ -270,25 +232,14 @@ describe("一次 200 条", () => {
     await prisma.project.createMany({ data: Array.from({ length: 200 }, (_, i) => ({ name: `别处${i}`, customerId: 丙的客户.id, ownerId: 乙, creatorId: 乙 })) });
   };
 
-  it("转交：200 位客户、400 个项目一次转完，每个项目都留转让痕", async () => {
+  it("办离职 + 全部交给：200 位客户、400 个项目一次转完，每个项目都留转让痕", async () => {
     await 造();
     const 起 = Date.now();
-    expect(await deactivateUser(乙, 甲)).toEqual({ ok: true });
+    await 离职全部交给(乙, 甲);
     expect(Date.now() - 起).toBeLessThan(15_000);
     expect(await prisma.customer.count({ where: { salesOwnerId: 乙 } })).toBe(0);
     expect(await prisma.project.count({ where: { ownerId: 甲 } })).toBe(400);
     expect(await prisma.projectNodeLog.count({ where: { kind: "transfer" } })).toBe(400);
   }, 60_000);
 
-  it("公海：200 位客户进公海、200 个别处项目回项目公海", async () => {
-    await 造();
-    const 起 = Date.now();
-    expect(await deactivateUser(乙, 甲, "公海")).toEqual({ ok: true });
-    expect(Date.now() - 起).toBeLessThan(15_000);
-    expect(await prisma.customerPool.count({ where: { reason: 停用进公海理由 } })).toBe(200);
-    expect(await prisma.project.count({ where: { pooledAt: { not: null } } })).toBe(200);
-    expect(await prisma.projectNodeLog.count({ where: { kind: "pool-release" } })).toBe(200);
-    // 客户在公海里：挂在这些客户上的项目先不动，谁领客户谁整体带走
-    expect(await prisma.project.count({ where: { ownerId: 乙, pooledAt: null } })).toBe(200);
-  }, 60_000);
 });

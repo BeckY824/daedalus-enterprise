@@ -22,6 +22,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 负责人候选 } from "@/lib/owners";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
+import { 交接全部, 交接客户 } from "@/app/(app)/projects/handover/actions";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
 import { 改项目 } from "@/lib/project/db";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -82,12 +83,16 @@ describe("企业版负责人候选只认业务角色", () => {
     expect(await 归谁(c.id)).toBe(账号管理员销售.id);
   });
 
-  it("停用时接收人是只读管理员 / 没角色：拒，人还在职、客户不动", async () => {
+  it("离职交接接手人是只读管理员 / 没角色：拒，客户不动（11-03 办离职不选接手人，接手人在离职交接里选）", async () => {
     const c = await 客户(销售.id);
-    expect(await deactivateUser(销售.id, 管理员.id, "转交")).toMatchObject({ ok: false, error: expect.stringContaining("只读管理员") });
-    expect(await deactivateUser(销售.id, 没角色.id, "转交")).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: 销售.id } })).active).toBe(true);
+    expect(await deactivateUser(销售.id, 管理员.id, "转交")).toEqual({ ok: true });
     expect(await 归谁(c.id)).toBe(销售.id);
+    expect(await 交接全部(销售.id, 管理员.id)).toMatchObject({ ok: false, error: expect.stringContaining("只读") });
+    expect(await 交接全部(销售.id, 没角色.id)).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
+    expect(await 交接客户(销售.id, c.id, 没角色.id)).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
+    expect(await 归谁(c.id)).toBe(销售.id);
+    expect(await 交接客户(销售.id, c.id, 账号管理员销售.id)).toMatchObject({ ok: true });
+    expect(await 归谁(c.id)).toBe(账号管理员销售.id);
   });
 
   it("改项目负责人、分配公海项目给没角色的人：拒", async () => {

@@ -94,13 +94,13 @@ const 检查点: Record<string, string> = {
   "D4-原负责人领不回P2": "D-35（10-26 定稿）内销2 去公海领回 P2：拒；内销1 领：成",
   "D4-历任负责人": "D-35 P2 记录里能看出每一任负责人和进出公海时间（内销2 → 公海 → 内销1）",
   "D5-按沟通时间起算": "D-34 P3 D2 23:59 记过沟通 → 1/30 08:00 收回",
-  "D5-先列会转走的项目": "D-36 离职先列「会一起转走的 N 个项目」（内销3：1 个）",
+  "D5-先列会转走的项目": "D-36 离职先列「原地留在 TA 名下的 N 个项目」（内销3：1 个；11-03 C4-4 起离职不转走）",
   "D5-上级能办离职": "D-36 离职由上级指派：组长给内销3 办离职转内销1",
-  "D5-转交一起转": "D-36 内销3 离职转内销1：P10 和它的客户一起到内销1",
+  "D5-转交一起转": "D-36 内销3 离职原地不动，组长在离职交接里全部交给内销1：P10 和它的客户一起到内销1",
   "D5-转移留记录": "D-36 P10 留一条转移记录（谁、从内销3 到内销1、时间）",
   "D5-离职登不进来": "D-36 内销3 停用",
   "D5-创建人照旧": "D-36 P10 的创建人仍是内销3",
-  "D5-订单不进公海": "D-36 外销5 公海方式离职：订单阶段的 P9 不进公海、指派给接手人",
+  "D5-订单不进公海": "D-36 外销5 离职不能放进公海（11-03 C4-4）：订单阶段的 P9 原地不动，交接给外销4，从没进过公海",
   "D5-批量离职": "D-36 离职能批量（200 条一次做完）",
   "D5-当晚还没收": "D-34 P6 23:59:59 建、潜客培育 3 天 → 1/30 23:59 还在手",
   "D6-按时长收回": "D-34 P6 → 1/31 08:00 回到公海",
@@ -124,9 +124,9 @@ const 检查点: Record<string, string> = {
   "补-直属又是虚线取并集": "D-39（默认：权限取并集）外贸经理同时是内销4 的直属和虚线上级：看得到 P8；11-01 起上级推不了，节点记录没有他",
   "补-扫描留痕带项目": "D-34 自动收回的操作日志里带着收回的项目",
   "补-停用的人领不了": "D-35/36 已离职的人领公海项目被拒",
-  "补-公海离职三分": "D-36 离职进公海：有订单的客户连项目给接手人；其余客户进客户公海、项目留在客户上；别人客户上的线索项目进项目公海",
+  "补-公海离职三分": "D-36 离职不再进公海（11-03 C4-4）：公海方式被拒；离职后客户、项目都原地留在 TA 名下，不进任何公海",
   "补-扫描不动客户公海里的项目": "D-34 客户在客户公海里，项目过了时长也不收",
-  "补-领客户带走项目": "D-35/36 谁从客户公海领了客户，客户上的项目归谁，留转移记录",
+  "补-领客户带走项目": "D-35/36 离职人的客户被上级手动放进客户公海，谁领了客户，客户上的项目归谁，留转移记录",
   "补-周末全库一致": "D-34~36 收尾：公海里没有订单项目、没有在职项目挂在离职人名下、进公海的都有记录",
 };
 
@@ -329,6 +329,7 @@ async function 剧本开() {
   const 预览 = await 要("app/(app)/projects/actions", "预览超时回收", "D-34");
   const 持有数 = await 要("lib/project/db", "持有数", "D-35");
   const 停用清点 = await 要("app/(app)/settings/actions", "停用清点", "D-36");
+  const 交接全部 = await 要("app/(app)/projects/handover/actions", "交接全部", "B7-2");
   const 分给 = (谁: string, 线索: string, 给: string, line: "内贸" | "外贸" | null) =>
     作为(谁, () => 分配({ leadId: 线索id[线索], toUserId: 公.id[给], line }));
 
@@ -472,14 +473,17 @@ async function 剧本开() {
   await 查("D5-按沟通时间起算", async () => expect(await 在公海("P3")).toBe(true));
   拨到("2026-01-30 10:00");
   await 查("D5-先列会转走的项目", async () => {
-    const r = 得(await 作为("老板", () => 停用清点(公.id["内销3"])), "停用清点") as { 转交: { 项目: number } };
-    expect(r.转交.项目).toBe(1);
+    const r = 得(await 作为("老板", () => 停用清点(公.id["内销3"])), "停用清点") as { 原地: { 项目: number } };
+    expect(r.原地.项目).toBe(1);
   });
   await 查("D5-上级能办离职", async () => { 得(await 作为("组长", () => 停用(公.id["内销3"], 公.id["内销1"], "转交")), "组长办离职"); });
   // 组长办不了（现在只有老板能办）就由老板办，后面的检查点照常走
   if ((await 作为("老板", () => prisma.user.findUniqueOrThrow({ where: { id: 公.id["内销3"] } }))).active) {
     得(await 作为("老板", () => 停用(公.id["内销3"], 公.id["内销1"], "转交")), "老板办离职");
   }
+  // 11-03 C4-4/B7-2：离职原地不动（接手人参数不再用），直属上级在「项目 → 离职交接」里全部交给内销1
+  expect(公.名[(await 项目("P10")).ownerId], "离职后 P10 原地不动").toBe("内销3");
+  得(await 作为("组长", () => 交接全部(公.id["内销3"], 公.id["内销1"])), "组长离职交接全部交给内销1");
   await 查("D5-转交一起转", async () => {
     expect(公.名[(await 项目("P10")).ownerId]).toBe("内销1");
     const c = await 作为("老板", () => prisma.customer.findUniqueOrThrow({ where: { id: 客户id["P10"] } }));
@@ -493,7 +497,10 @@ async function 剧本开() {
     expect((await 作为("老板", () => prisma.user.findUniqueOrThrow({ where: { id: 公.id["内销3"] } }))).active).toBe(false));
   await 查("D5-创建人照旧", async () => expect(公.名[(await 项目("P10")).creatorId ?? ""]).toBe("内销3"));
   await 查("D5-订单不进公海", async () => {
-    得(await 作为("老板", () => 停用(公.id["外销5"], 公.id["外销4"], "公海")), "外销5 公海方式离职");
+    拒(await 作为("老板", () => 停用(公.id["外销5"], 公.id["外销4"], "公海")), /不再放进公海/);
+    得(await 作为("老板", () => 停用(公.id["外销5"], "", "转交")), "外销5 离职");
+    expect([(await 项目("P9")).pooledAt, 公.名[(await 项目("P9")).ownerId]]).toEqual([null, "外销5"]);
+    得(await 作为("老板", () => 交接全部(公.id["外销5"], 公.id["外销4"])), "外销5 离职交接给外销4");
     const p = await 项目("P9");
     expect([p.pooledAt, 公.名[p.ownerId]]).toEqual([null, "外销4"]);
   });
@@ -550,6 +557,9 @@ async function 剧本开() {
 async function 补查() {
   const 改规则 = await 要("app/(app)/projects/actions", "改组织规则", "D-34");
   const 领客户 = await 要("app/(app)/customers/pool-actions", "领取", "D-36");
+  const 放客户进公海 = await 要("app/(app)/customers/pool-actions", "放进公海", "D-36");
+  const 退回原因选项 = await 要("app/(app)/customers/pool-actions", "退回原因选项", "D-36");
+  const 交接全部 = await 要("app/(app)/projects/handover/actions", "交接全部", "B7-2");
   拨到("2026-02-01 09:30");
   await 查("补-必填字段谁能改", async () => {
     const 改 = { 节点推进: { 开: true, 必填: { 潜客培育: ["需求"], 线索验证: ["国家"] } } };
@@ -621,16 +631,20 @@ async function 补查() {
     await prisma.project.update({ where: { id: 项目id["P32"] }, data: { ownerId: 公.id["内销5"] } });
   });
   await 查("补-公海离职三分", async () => {
-    得(await 作为("老板", () => 停用(公.id["内销5"], 公.id["内销4"], "公海")), "内销5 公海方式离职");
+    // 11-03 C4-4：公海方式直接拒；离职后三个项目连客户原地留在内销5 名下，哪个公海都不进
+    拒(await 作为("老板", () => 停用(公.id["内销5"], 公.id["内销4"], "公海")), /不再放进公海/);
+    得(await 作为("老板", () => 停用(公.id["内销5"], "", "转交")), "内销5 离职");
     const [p30, p31, p32] = [await 项目("P30"), await 项目("P31"), await 项目("P32")];
     const 客 = (n: string) => 作为("老板", () => prisma.customer.findUniqueOrThrow({ where: { id: 客户id[n] }, include: { pool: true } }));
     const [c30, c31] = [await 客("P30"), await 客("P31")];
     expect({
       P30: [公.名[p30.ownerId], p30.pooledAt, 公.名[c30.salesOwnerId ?? ""], !!c30.pool],
-      P31: [公.名[p31.ownerId], p31.pooledAt, !!c31.pool],
-      P32: [p32.pooledAt !== null],
-    }).toEqual({ P30: ["内销4", null, "内销4", false], P31: ["内销5", null, true], P32: [true] });
+      P31: [公.名[p31.ownerId], p31.pooledAt, 公.名[c31.salesOwnerId ?? ""], !!c31.pool],
+      P32: [公.名[p32.ownerId], p32.pooledAt],
+    }).toEqual({ P30: ["内销5", null, "内销5", false], P31: ["内销5", null, "内销5", false], P32: ["内销5", null] });
   });
+  // 离职后老板把客户P31 手动放进客户公海（离职交接之外的另一条路），项目留在客户上
+  得(await 作为("老板", async () => 放客户进公海([客户id["P31"]], (await 退回原因选项())[0])), "老板把客户P31 放进客户公海");
   await 扫("2026-02-05 08:00");
   await 查("补-扫描不动客户公海里的项目", async () => expect(await 在公海("P31")).toBe(false));
   拨到("2026-02-05 09:00");
@@ -640,6 +654,8 @@ async function 补查() {
     const l = await 作为("老板", () => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 项目id["P31"], kind: "transfer" }, orderBy: { at: "desc" } }));
     expect([公.名[l.fromOwnerId ?? ""], 公.名[l.toOwnerId ?? ""]]).toEqual(["内销5", "内销6"]);
   });
+  // 剩下的（P30 连客户、别人客户上的 P32）在离职交接里全部交给内销4
+  得(await 作为("老板", () => 交接全部(公.id["内销5"], 公.id["内销4"])), "内销5 离职交接给内销4");
   await 查("补-周末全库一致", async () => {
     await 作为("老板", async () => {
       expect(await prisma.project.count({ where: { phase: "订单", pooledAt: { not: null } } }), "公海里的订单项目").toBe(0);

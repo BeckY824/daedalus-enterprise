@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
+vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
   return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), projectMode: true }) };
@@ -22,6 +23,7 @@ import { resetDb } from "./reset";
 import { assignSalesOwner, patchCustomer, 撤销改负责人, 转走项目预览of } from "@/app/(app)/customers/actions";
 import { 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
+import { 交接全部 } from "@/app/(app)/projects/handover/actions";
 import { 历史负责人of } from "@/lib/owner-log-db";
 import { 历史负责人们, 换负责人一句, type 换负责人记录 } from "@/lib/owner-log";
 import { 转走项目说法, 预览列几个 } from "@/lib/carry-over";
@@ -100,18 +102,20 @@ describe("每条换负责人的路都留记录", () => {
     expect(await 记录of(c.id)).toMatchObject([{ userId: 甲, fromOwnerId: 乙, toOwnerId: 丙, kind: "pool-assign" }]);
   });
 
-  it("成员停用转交：他名下每位客户一行 deactivate", async () => {
+  it("成员停用原地不动、不记；离职交接全部交给：他名下每位客户一行 deactivate（11-03 C4-4）", async () => {
     const a = await 客户("乙一", 乙);
     const b = await 客户("乙二", 乙);
-    const r = await deactivateUser(乙, 丙);
-    expect(r.ok).toBe(true);
+    expect((await deactivateUser(乙, 丙)).ok).toBe(true);
+    for (const c of [a, b]) expect(await 记录of(c.id)).toEqual([]);
+    expect((await 交接全部(乙, 丙)).ok).toBe(true);
     for (const c of [a, b]) expect(await 记录of(c.id)).toMatchObject([{ userId: 甲, fromOwnerId: 乙, toOwnerId: 丙, kind: "deactivate" }]);
   });
 
-  it("停用 200 位客户：一次做完、200 行记录", async () => {
+  it("停用后全部交给 200 位客户：一次做完、200 行记录", async () => {
     await prisma.customer.createMany({ data: Array.from({ length: 200 }, (_, i) => ({ name: `乙${i}`, phone: `1370000${String(i).padStart(4, "0")}`, salesOwnerId: 乙, followStatus: "跟进中" })) });
     const 起 = Date.now();
     expect((await deactivateUser(乙, 丙)).ok).toBe(true);
+    expect((await 交接全部(乙, 丙)).ok).toBe(true);
     expect(Date.now() - 起).toBeLessThan(20_000);
     expect(await prisma.customerOwnerLog.count({ where: { kind: "deactivate", fromOwnerId: 乙, toOwnerId: 丙 } })).toBe(200);
   }, 30_000);
