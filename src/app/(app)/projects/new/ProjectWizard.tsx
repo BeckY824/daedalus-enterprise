@@ -23,6 +23,7 @@ import { 查号码, type 查号码结果 } from "../../customers/number-actions"
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import SameNumberEntry from "./SameNumberEntry";
+import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 建档向导 } from "../actions";
 import { 三种业务线, 业务线必填, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
@@ -588,6 +589,8 @@ function 去符号(s: string): string {
 function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 协同?: React.ReactNode }) {
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
+  // 自己退回公海的：企业版原负责人看不到也领不回，「打开它」「去领取」都走不通，不摆（11-03 B7-3）
+  const 我退的 = 在公海 && !!查.原负责人是我;
   const 负责人 = 撞?.salesOwnerName ?? "";
   // 同名同事不止一位时不猜是谁，只写名字
   const 同名 = users.filter((u) => u.name === 负责人);
@@ -607,8 +610,9 @@ function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { 
             {查.归属地 ? ` · 归属地：${查.归属地}` : ""}
           </div>
           <Space size={8} style={{ marginTop: 8 }} wrap>
-            {撞?.id && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button></Link>}
-            {在公海 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
+            {撞?.id && !我退的 && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button></Link>}
+            {我退的 && <span style={{ color: "var(--text-muted)" }}>是你退回公海的，{原负责人不能领回提示}</span>}
+            {在公海 && !我退的 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
             {查.状态 === "重复" && 负责人 && (邮箱
               ? <Button size="small" href={`mailto:${邮箱}`}>联系负责人：{负责人}</Button>
               : <span style={{ color: "var(--text-muted)" }}>联系负责人：{负责人}</span>)}

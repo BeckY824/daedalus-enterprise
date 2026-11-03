@@ -353,6 +353,18 @@ describe("入口", () => {
     expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: true, 自己负责: false, 已在组: true } });
   });
 
+  it("查重撞到自己退回公海的：带原负责人是我（向导不给打开它、去领取）；别人查不带（11-03 B7-3）", async () => {
+    const x = await 现场();
+    await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: x.负责人.id } });
+    expect(await 作为(x.负责人, () => 查号码("手机号", 号码))).toMatchObject({ 状态: "公海待捞", 原负责人是我: true });
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).not.toHaveProperty("原负责人是我");
+    // 负责人不是我、但项目是我退的：同样领不回
+    await prisma.project.update({ where: { id: x.项目!.id }, data: { pooledAt: new Date(), ownerId: "" } });
+    await prisma.projectNodeLog.create({ data: { projectId: x.项目!.id, userId: x.销售.id, kind: "pool-release", fromOwnerId: x.销售.id, toPhase: "线索", toNode: "线索" } });
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 状态: "公海待捞", 原负责人是我: true });
+    expect(await 作为(x.市场, () => 查号码("手机号", 号码))).not.toHaveProperty("原负责人是我");
+  });
+
   it("没项目的客户：协同情况说没项目（11-03 B6-8）", async () => {
     const x = await 现场({ 项目: false });
     expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 可协同: true, 协同: { 有项目: false, 自己负责: false, 已在组: false } });
