@@ -412,8 +412,8 @@ export default function ProjectsView({
                           style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.列] }}
                           tabIndex={0}
                           role="link"
-                          title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${r.node}`}
-                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${异常 ? "异常 · " : ""}${r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}`}
+                          title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}`}
+                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${异常 ? "异常 · " : ""}${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}`}
                           onClick={() => router.push(`/projects/${r.id}`)}
                           onMouseEnter={() => 预取.进(`/projects/${r.id}`)}
                           onMouseLeave={预取.出}
@@ -432,7 +432,7 @@ export default function ProjectsView({
                           </div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>
-                              {异常 ? `异常 · ${有值(r.exceptionCategory) ? `${r.exceptionCategory} · ` : ""}` : r.result && !是交付(r.result) ? `${结局叫法(r.result, 字典)} · ` : ""}{r.node}
+                              {异常 ? `异常 · ${有值(r.exceptionCategory) ? `${r.exceptionCategory} · ` : ""}${r.node}` : r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : `${r.result ? `${结局叫法(r.result, 字典)} · ` : ""}${r.node}`}
                             </span>
                             <span className="pipe-card-a">{金额(r.amount, r.currency)}</span>
                           </div>

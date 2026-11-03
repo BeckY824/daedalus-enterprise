@@ -16,7 +16,8 @@ import { 币种选项, 默认币种 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { 成员选项, 独自一人, dayjs, type 可选成员 } from "@/lib/utils";
 import { 外贸精简 } from "@/lib/business-config";
-import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
+import { 项目名上限, 备注上限, 占位名提示 } from "@/lib/project/wizard";
+import { 是占位值 } from "@/lib/project/required";
 import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
 import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
 import { 查号码, type 查号码结果 } from "../../customers/number-actions";
@@ -93,16 +94,17 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
   const 企 = !!企业;
   if (步 === 0 && 企) return !d.号码类型 ? "请选择号码类型" : !d.phone.trim() ? "先填号码再查" : 已查 !== 查过键(d, 企) ? "点「查重」看看这个号码有没有人录过" : "";
   if (步 === 0) return !d.phone.trim() ? "先填电话再查" : 已查 !== d.phone.trim() ? "点「查重」看看这个号码有没有人录过" : "";
-  if (步 === 1) return d.联系人.name.trim() ? "" : "请填写联系人姓名";
-  if (步 === 2) return !d.客户.name.trim() ? "请填写名称" : 企业 && !d.客户.渠道 ? "请选渠道" : "";
-  if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined ? "请选分配方式" : 企业 && !d.项目.业务线 ? 业务线必填 : 要选负责人(d, 企业) && !d.项目.ownerId ? "请选项目负责人" : "";
+  // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
+  if (步 === 1) return !d.联系人.name.trim() ? "请填写联系人姓名" : 企 && 是占位值(d.联系人.name) ? 占位名提示("联系人姓名") : "";
+  if (步 === 2) return !d.客户.name.trim() ? "请填写名称" : 企 && 是占位值(d.客户.name) ? 占位名提示("客户名称") : 企业 && !d.客户.渠道 ? "请选渠道" : "";
+  if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : 企 && 是占位值(d.项目.name) ? 占位名提示("项目名称") : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined ? "请选分配方式" : 企业 && !d.项目.业务线 ? 业务线必填 : 要选负责人(d, 企业) && !d.项目.ownerId ? "请选项目负责人" : "";
   if (!d.跟进.content.trim()) return "请填写这次沟通的内容";
   if (企业) {
     if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选当前进程（线索阶段的哪一步）";
     if (typeof d.跟进.明确回复 !== "boolean") return "请选：客户明确回复了吗";
     if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点) && !d.跟进.明确回复) return 缺有效沟通;
   }
-  return 要下一步 && !d.跟进.下一步时间 ? "请填下一步时间：到那天还没有新的沟通，项目会自动回到公海" : "";
+  return 要下一步 && !d.跟进.下一步时间 ? "请填下一步时间：过了那天还没有新的沟通，项目会自动回到公海" : "";
 }
 
 /**
@@ -125,9 +127,21 @@ const 不订阅 = () => () => {};
  * 「新增客户」「新增项目」弹窗（U-新建-01，10-31 会议）：和 /projects/new 同一个向导、同一套查重（含联系人查重），只是摆在弹窗里。
  * 草稿照旧每改一格存本机，关了下次点开接着填
  */
-export function 建档弹窗({ open, 标题, 数据, onClose }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+export function 建档弹窗(props: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+  return <WizardModal {...props} />;
+}
+
+// 要用 hook（提示、当前用户），组件名得是大写英文开头（react-hooks 规则）
+function WizardModal({ open, 标题, 数据, onClose }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+  const { message } = App.useApp();
+  const 我 = useMe();
+  // 右上 X / Esc 关：和「存草稿关闭」一样说一句草稿留着（11-03 A1-3：直接关掉，人以为填的都没了）
+  const 关 = () => {
+    if (有内容((读草稿(草稿全名(我?.id, 草稿键)) as { 稿?: unknown } | null)?.稿)) message.info("草稿存在这台电脑的浏览器里，下次打开会接着填");
+    onClose();
+  };
   return (
-    <Modal open={open} title={标题} footer={null} width={760} onCancel={onClose} destroyOnHidden mask={{ closable: false }}>
+    <Modal open={open} title={标题} footer={null} width={760} onCancel={关} destroyOnHidden mask={{ closable: false }}>
       <ProjectWizard users={数据.users} 要下一步={数据.要下一步} 企业={数据.企业} 弹窗={{ 关: onClose }} />
     </Modal>
   );
@@ -327,7 +341,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
         />
       )}
       <Steps current={步} size="small" style={{ marginBottom: 企业 ? 8 : 24 }} items={步骤们.map((t) => ({ title: t }))} />
-      {企业 && <div style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 12 }}>首条沟通里勾了「客户明确回复了」，项目才会进入线索推进。</div>}
+      {企业 && <div style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 12 }}>{/* 11-03 A2-5：勾了不会自动换进程，进程按「当前进程」选的落 */}项目建在「当前进程」选的那一步；要建在「{有效线索节点}」之后，首条沟通得选「客户明确回复了」。</div>}
 
       {步 === 0 && 企业版 && (
         <>
@@ -557,7 +571,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
                 onChange={(v) => 改("跟进", { 下一步时间: v ? v.format("YYYY-MM-DD") : null })}
                 placeholder="选一天"
               />
-              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "到那天还没有新的沟通，项目会自动回到公海" : "选填：打算哪天再沟通，项目上会显示"}</div>
+              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "过了那天还没有新的沟通，或在当前这步停满规定天数，项目都会自动回到公海，哪个先到按哪个" : "选填：打算哪天再沟通，项目上会显示"}</div>
             </>
           ), 要下一步)}
         </>
@@ -592,9 +606,10 @@ function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { 
   // 自己退回公海的：企业版原负责人看不到也领不回，「打开它」「去领取」都走不通，不摆（11-03 B7-3）
   const 我退的 = 在公海 && !!查.原负责人是我;
   const 负责人 = 撞?.salesOwnerName ?? "";
-  // 同名同事不止一位时不猜是谁，只写名字
+  // 同名同事不止一位时不猜是谁，只写名字。
+  // 企业版登录名放在 email 列里、多半不是邮箱（11-03 A2-6）：像邮箱的才给 mailto，不然只写名字
   const 同名 = users.filter((u) => u.name === 负责人);
-  const 邮箱 = 同名.length === 1 ? 同名[0].email : "";
+  const 邮箱 = 同名.length === 1 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(同名[0].email ?? "") ? 同名[0].email : "";
   return (
     <Alert
       type={在公海 ? "warning" : "error"}
