@@ -148,11 +148,12 @@ const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-
 test("线索分配：老板、销售管理、市场管理有「分配」，销售没有；市场把线索甲分给销售乙", async ({ page }) => {
   const 正文 = page.getByRole("main");
   const 分配 = (名: string) => 正文.getByRole("button", { name: `分配 ${名}`, exact: true });
-  for (const 谁 of ["老板", "经理"] as const) {
+  // 经理只看得到手填了直属上级是他的人的线索（11-03 C10-1），市场建的线索甲他看不到，验他下属销售甲的线索乙
+  for (const [谁, 线索] of [["老板", "线索甲"], ["经理", "线索乙"]] as const) {
     await page.context().clearCookies();
     await 登录(page, 谁);
     await page.goto("/leads");
-    await expect(分配("线索甲")).toBeVisible();
+    await expect(分配(线索)).toBeVisible();
   }
 
   await page.context().clearCookies();
