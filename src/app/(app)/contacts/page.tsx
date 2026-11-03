@@ -5,7 +5,9 @@ import ContactsView from "./ContactsView";
 import type { Prisma } from "@/generated/prisma";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 负责人候选 } from "@/lib/owners";
-import { 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
+import { 号码种类表, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 页面可选项 } from "@/lib/enterprise/dict";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,15 @@ export default async function ContactsPage({
   const 号 = await 号码脱敏器();
   // 企业版联系人挂多位客户（P13）：所属客户后面摆 +N，鼠标停上去看另外挂在哪几位（开关关着给空）
   const 另挂 = await 联系人另挂(rows.map((c) => c.id));
+  /*
+    企业版「添加联系人」用和客户页一样的表单（号码几行、职务下拉、新几格）：原来这页走老表单只交电话，
+    号码查重没跑、同一个号挂到两位客户下，新增和编辑的格子也对不上（11-03 完成度 B7-1）
+  */
+  const 企 = 企业版();
+  const [号码种类, 职务选项] = await Promise.all([
+    企 ? 号码种类表().then((t) => t.map((x) => ({ 名: x.名, kind: x.kind, active: x.active }))) : undefined,
+    企 ? 页面可选项("contactTitle") : undefined,
+  ]);
 
   return (
     <ContactsView
@@ -68,6 +79,8 @@ export default async function ContactsPage({
       学员们={[]}
       有客户={Boolean(firstCustomer)}
       users={users}
+      号码种类={号码种类}
+      职务选项={职务选项}
       rows={rows.map((c) => ({
         id: c.id,
         name: c.name,

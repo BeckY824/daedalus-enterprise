@@ -406,6 +406,20 @@ describe("联系方式查重", () => {
     expect((await saveContact({ id: 张, customerId: 甲, name: "张二", isPrimary: false, 企业: { 号码们: [{ kind: "phone", value: "13900000031" }, { kind: "email", value: "z2@x.com" }] }, 版本: 张本.updatedAt.toISOString() })).ok).toBe(true);
   });
 
+  it("不带号码几行、只交老三格（联系人页原来的表单）也查重：撞了不存，照存放行（11-03 完成度 B7-1）", async () => {
+    const 甲 = await 新建id();
+    const 乙 = await 新建id();
+    const 张 = await 建联系人(甲, "张七", [{ kind: "phone", value: "13900000071" }, { kind: "wechat", value: "ZhangQi" }]);
+    const 存 = (改: Record<string, unknown>) => saveContact({ customerId: 乙, name: "李七", isPrimary: false, ...改 });
+    expect(await 存({ phone: "139 0000 0071" })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "phone" }] });
+    expect(await 存({ wechat: " zhangqi " })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "wechat" }] });
+    expect(await prisma.contact.count({ where: { name: "李七" } })).toBe(0);
+    expect((await 存({ phone: "13900000071", 照存: true })).ok).toBe(true);
+    // 编辑：原来就有的号不再拦
+    const 李 = await prisma.contact.findFirstOrThrow({ where: { name: "李七" } });
+    expect((await saveContact({ id: 李.id, customerId: 乙, name: "李七", isPrimary: false, phone: "13900000071", position: "经理", 版本: 李.updatedAt.toISOString() })).ok).toBe(true);
+  });
+
   it("传真、Telegram 也查重：传真只比数字，Telegram 用户名去 @ 不分大小写；saveContact 撞了不存", async () => {
     const 甲 = await 新建id();
     const 乙 = await 新建id();

@@ -46,6 +46,8 @@ export default function ContactsView({
   学员们,
   有客户 = 学员们.length > 0,
   users,
+  号码种类,
+  职务选项,
 }: {
   rows: Row[];
   /** 库里一共多少条。行只取了前 300，分页条不能拿行数冒充总数 */
@@ -57,6 +59,9 @@ export default function ContactsView({
   有客户?: boolean;
   /** 负责人候选。只用来判断是不是只有一个人 */
   users: { id: string; name: string }[];
+  /** 企业版：给了「添加联系人」就用企业版那套表单（同客户页）；未归属的人编辑照旧 */
+  号码种类?: { 名: string; kind: string; active: boolean }[];
+  职务选项?: string[];
 }) {
   const b = useBusiness();
   const router = useRouter();
@@ -249,6 +254,8 @@ export default function ContactsView({
         }}
         学员们={学员们}
         record={null}
+        号码种类={号码种类}
+        职务选项={职务选项}
       />
 
       <ContactForm
