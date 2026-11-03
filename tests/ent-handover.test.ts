@@ -313,6 +313,9 @@ describe("交接通知（11-03 C3-3 / C3-5 / C4-7 / C8-1）", () => {
     当(销售);
     expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
     const h = await 一笔();
+    // C3-4：发起人转的是自己名下的，横幅据此写「自己名下」
+    当(接手);
+    expect((await 待确认的交接()).等我确认[0]).toMatchObject({ 自己的: true });
 
     当(老板);
     expect(await 撤回交接(h.id)).toEqual({ ok: true, 客户: 0 });

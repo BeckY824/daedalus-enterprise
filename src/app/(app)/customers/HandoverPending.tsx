@@ -38,19 +38,21 @@ export default function HandoverPending({ 等我确认, 我发起的 }: { 等我
     }
   }
 
-  const 说 = (h: 交接行) => {
+  // 发起人转的是自己名下的：横幅写「自己名下」，不写两遍名字（11-03 C3-4，铃铛标题同样处理）
+  const 说 = (h: 交接行, 发起人说 = false) => {
     const 名 = h.客户.length ? `：${h.客户.join("、")}${h.客户总数 > h.客户.length ? ` 等 ${h.客户总数} 位` : ""}` : "";
     const 余 = h.kind === "离职"
       ? Object.entries(h.个数).filter(([k, n]) => k !== "客户" && n > 0).map(([k, n]) => `${n} 个${k}`).join("、")
       : "";
-    return `${h.kind === "离职" ? `离职成员「${h.从}」` : `「${h.从}」名下`}的 ${h.客户总数} 位客户${余 ? `（另有 ${余}）` : ""}${名}${h.reason ? `（转让原因：${h.reason}）` : ""}`;
+    const 谁的 = h.kind === "离职" ? `离职成员「${h.从}」` : 发起人说 && h.自己的 ? "自己名下" : `「${h.从}」名下`;
+    return `${谁的}的 ${h.客户总数} 位客户${余 ? `（另有 ${余}）` : ""}${名}${h.reason ? `（转让原因：${h.reason}）` : ""}`;
   };
 
   return (
     <Space orientation="vertical" style={{ width: "100%", marginBottom: 12 }}>
       {等我确认.map((h) => (
         <Alert key={h.id} type="warning" showIcon
-          title={`「${h.发起人}」把${说(h)}交接给你，等你确认`}
+          title={`「${h.发起人}」把${说(h, true)}交接给你，等你确认`}
           description="确认前这些客户还在原负责人名下，你的客户列表里看不到。"
           action={<Space>
             <Button size="small" type="primary" loading={忙 === h.id} onClick={() => 办(h, "确认")}>确认接手</Button>
