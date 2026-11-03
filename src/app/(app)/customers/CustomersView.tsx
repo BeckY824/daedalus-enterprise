@@ -381,7 +381,9 @@ export default function CustomersView({
   const [formOpen, setFormOpen] = useState(Boolean(直接新建) && !建档);
   /** 「新增客户」向导框（U-新建-01）：和 /projects/new 同一个向导，弹在本页 */
   const [建档开着, set建档开着] = useState(Boolean(直接新建 && 建档));
-  const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出);
+  const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出 && !企业);
+  /** 企业版不用客户页这个旧导入抽屉（11-03）：导入走设置 →「企业版导入」，首页那张「开始」卡同一个去处 */
+  const 去导入 = () => (企业 ? router.push("/settings?tab=enterprise") : set导入开着(true));
   /** ?new=1 / ?import=paste 进来就开：等水合完再开。服务端先画一个开着的弹窗，会和客户端那一版对不上（跟进页同一写法） */
   const 已水合 = useSyncExternalStore(无订阅, () => true, () => false);
   /*
@@ -641,7 +643,7 @@ export default function CustomersView({
             {能看板 && !空库 && !统一公海 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />}
             {/* 导入和导出都是次动作，排在主动作左边。导入空库时也要在——
                 第一次进来的人手上那份 Excel 正是他不想一条条录的原因 */}
-            {能导入导出 && <Button icon={<ImportOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined} onClick={() => set导入开着(true)}>导入</Button>}
+            {能导入导出 && <Button icon={<ImportOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined} onClick={去导入}>导入</Button>}
             {能导入导出 && !空库 && (<>
               <Button
                 icon={<ExportOutlined />}
@@ -715,7 +717,7 @@ export default function CustomersView({
             ? `${b.customer}是这套系统的中心：跟进记录、商机、订单都挂在他身上。`
             : `${b.customer}是这套系统的中心：跟进记录、商机、签约都挂在他身上，推荐归属也按他这条线往上算。`,
           primary: { label: `新建第一位${b.customer}`, onClick: 新建 },
-          secondary: 能导入导出 && !视图中 ? [{ label: "从 Excel 导入", onClick: () => set导入开着(true) }] : [],
+          secondary: 能导入导出 && !视图中 ? [{ label: "从 Excel 导入", onClick: 去导入 }] : [],
         }}
         筛选={
           /*
@@ -994,7 +996,7 @@ export default function CustomersView({
         }}
       />
 
-      {能导入导出 && <ImportDrawer
+      {能导入导出 && !企业 && <ImportDrawer
         open={导入开着 && 已水合}
         b={b}
         aiEnabled={Boolean(aiEnabled)}

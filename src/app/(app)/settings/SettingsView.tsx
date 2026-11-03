@@ -36,6 +36,7 @@ const 说明表: Record<string, string> = {
   ai: "走哪把 Key、还剩几次",
   business: "客户 / 学员 这些叫法",
   imports: "导进来的那几批，可撤销",
+  exports: "谁导出了哪张表、多少行",
   enterprise: "飞书 / 钉钉 / Excel 导进来、同步、切换",
   audit: "每一次改动的记录",
   trash: "删了的 30 天内能恢复",
@@ -61,6 +62,7 @@ export default function SettingsView({
   企业版导入 = false,
   导入记录 = true,
   回收站 = false,
+  导出记录 = null,
   下属可停用 = [],
 }: {
   users: Row[];
@@ -96,6 +98,8 @@ export default function SettingsView({
   导入记录?: boolean;
   /** 企业版：系统管理员、回收站副手多一栏「回收站」（删了的客户 / 项目 / 联系人 / 沟通记录，30 天内能恢复） */
   回收站?: boolean;
+  /** 「导出记录」那一栏（11-03）：最近 200 次导出，只给系统管理员；null = 不摆 */
+  导出记录?: AuditRow[] | null;
   /** 企业版：我是直属上级、能给他们办离职的人 */
   下属可停用?: string[];
 }) {
@@ -129,6 +133,7 @@ export default function SettingsView({
     ...(导入记录 ? [{ key: "imports", label: "导入记录", children: <ImportsTab /> }] : []),
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
     ...(回收站 ? [{ key: "trash", label: "回收站", children: <TrashTab /> }] : []),
+    ...(导出记录 ? [{ key: "exports", label: "导出记录", children: <AuditTab logs={导出记录} 导出 /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
   ]
     // 共享试用区：账号是几个团队共用的，名字和密码不给改（排查 A3）
@@ -143,7 +148,7 @@ export default function SettingsView({
    */
   const 分组表: [string, string[]][] = [
     ["个人", ["profile", "password", "keymap", "appearance"]],
-    ["工作区", ["members", "org", "business", "project", "ai", "imports", "enterprise", "trash", "audit"]],
+    ["工作区", ["members", "org", "business", "project", "ai", "imports", "exports", "enterprise", "trash", "audit"]],
   ];
 
   /**

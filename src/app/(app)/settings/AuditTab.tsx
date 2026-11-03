@@ -22,7 +22,7 @@ const ACTION_LABEL: Record<string, string> = {
   create: "新建", update: "修改", delete: "删除", assign: "转派",
   convert: "转化", deactivate: "停用", reactivate: "恢复", password: "改密码", device_revoke: "退出机器", ai_use: "AI", ai_apply: "确认 AI 建议", ai_undo: "撤销 AI 建议",
   pool: "放回公海", claim: "领取", import: "导入", merge: "合并重复",
-  restore: "从回收站恢复", purge: "彻底删除", sync: "同步",
+  restore: "从回收站恢复", purge: "彻底删除", sync: "同步", export: "导出",
 };
 const ENTITY_LABEL: Record<string, string> = {
   Customer: "学员", Contract: "签约", Lead: "线索", User: "成员", Channel: "渠道", Setting: "系统设置", Ai: "AI 功能", Device: "机器",
@@ -49,10 +49,11 @@ function safeJson(raw: string | null): string {
 const ACTION_COLOR: Record<string, string> = {
   create: "success", update: "processing", delete: "error",
   assign: "cyan", convert: "gold", deactivate: "warning", reactivate: "default", password: "default", ai_use: "purple", ai_apply: "green", ai_undo: "default",
-  pool: "default", claim: "cyan", merge: "geekblue", restore: "green", purge: "error",
+  pool: "default", claim: "cyan", merge: "geekblue", restore: "green", purge: "error", export: "magenta",
 };
 
-export default function AuditTab({ logs }: { logs: AuditRow[] }) {
+/** 导出 = 设置 →「导出记录」：同一张表只放导出那几条，抬头换成导出的说法（11-03） */
+export default function AuditTab({ logs, 导出 = false }: { logs: AuditRow[]; 导出?: boolean }) {
   const b = useBusiness();
   return (
     <>
@@ -60,8 +61,8 @@ export default function AuditTab({ logs }: { logs: AuditRow[] }) {
                 type="info"
                 showIcon
                 style={{ marginBottom: 14 }}
-                title={`${b.customer}等业务数据的修改会记录在这里`}
-                description="记录只增不改不删，成员被停用或删除后其历史操作仍然保留。此处显示最近 200 条。"
+                title={导出 ? "谁、什么时候导出了哪张表、多少行" : `${b.customer}等业务数据的修改会记录在这里`}
+                description={导出 ? "每导出一次记一条，展开看当时的筛选条件。只有系统管理员看得到，此处显示最近 200 条。" : "记录只增不改不删，成员被停用或删除后其历史操作仍然保留。此处显示最近 200 条。"}
               />
               <Table<AuditRow>
                 rowKey="id"
@@ -70,7 +71,7 @@ export default function AuditTab({ logs }: { logs: AuditRow[] }) {
                 // 留个底：手机上内容那列至少还有 160 宽，放不下就在框里横滚；1024 的设置页约 494，不滚
                 scroll={{ x: 480 }}
                 pagination={{ pageSize: 20, showSizeChanger: false }}
-                locale={{ emptyText: "还没有任何操作记录" }}
+                locale={{ emptyText: 导出 ? "还没有人导出过" : "还没有任何操作记录" }}
                 expandable={{
                   // 明细是 JSON，平时折起来，要追细节时再展开
                   rowExpandable: (r) => !!r.detail,
