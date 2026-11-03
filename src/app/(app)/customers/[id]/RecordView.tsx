@@ -229,6 +229,19 @@ export default function RecordView({
   // 当主客户的项目上勾过的项目身份（P17）：摆在「项目」那一节每行的小字里
   const 主项目身份 = new Map((参与项目们 ?? []).filter((x) => x.主).map((x) => [x.projectId, x.身份]));
   const [资料全开, set资料全开] = useState(false);
+  // 项目「完成节点」框里窗外项点「去客户页」带着 #field-xxx 来（11-03 A6-1）：没填的格收在「展开更多」里，先展开再滚到那一格
+  useEffect(() => {
+    const m = /^#field-(\w+)$/.exec(window.location.hash);
+    if (!m) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 地址栏的 hash 只有到了浏览器里才读得到，只在进页时跑一次
+    set资料全开(true);
+    const t = window.setTimeout(() => {
+      const 格 = document.querySelector<HTMLElement>(`[data-field="${m[1]}"]`);
+      格?.scrollIntoView({ block: "center", behavior: "smooth" });
+      格?.focus();
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, []);
   /*
     外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」（订单号那几格 2026-10-29 随订单表删了）；
     不摆预计签约、推荐关系、渠道负责人；档案里多国家 / WhatsApp / 微信 / 邮箱 / 来源

@@ -15,7 +15,7 @@ import { 读的我 } from "@/lib/team-scope";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了 } from "@/lib/enterprise/contact-dedupe";
 import { 登记接着建 } from "@/lib/project/hook";
-import { 规整向导, 向导接着建, 项目来源默认, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 规整向导, 向导接着建, 项目来源默认, 占位名提示, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
@@ -29,7 +29,7 @@ import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 } from "@/lib/enterprise/notice-sources";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
-import { 按必填走 } from "@/lib/project/required";
+import { 按必填走, 是占位值 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
@@ -89,6 +89,7 @@ export async function 建档向导(输入: 建档向导输入) {
     if ("error" in 好) return { ok: false as const, error: 好.error };
     // 企业版新建线索要选渠道（10-26：直接选渠道，不是来源类型）
     if (企业版()) {
+      if (是占位值(String(input.客户.name ?? ""))) return { ok: false as const, error: 占位名提示("客户名称") };
       const 渠道 = input.客户.channelId ? await prisma.channel.findUnique({ where: { id: String(input.客户.channelId) }, select: { active: true } }) : null;
       if (!渠道?.active) return { ok: false as const, error: input.客户.channelId ? "这个渠道不存在或已停用，换一个" : "请选渠道" };
       // 项目来源（迁移 077）：没另选 = 跟客户来源；另选了也得是还启用着的渠道

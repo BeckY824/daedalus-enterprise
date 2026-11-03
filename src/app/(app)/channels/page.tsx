@@ -44,7 +44,7 @@ export default async function ChannelsPage() {
     行上「⋯ → 删除」有没有关联数据（10-30 交互规则 A）：口径照 deleteChannel——名下客户（来源或归属落在这个渠道）、录过的投入，
     有就把删除项变灰、原因写在旁边，不等点了确认才说删不了。只读，删不删照旧由 deleteChannel 判
   */
-  const [统计, 创建人们, 属性选项, 挂客户, 投入笔数, 能录, 能管] = await Promise.all([
+  const [统计, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管] = await Promise.all([
     读渠道统计(channels),
     prisma.user.findMany({
       where: { id: { in: [...new Set(channels.map((c) => c.createdById).filter((x): x is string => Boolean(x)))] } },
@@ -58,6 +58,8 @@ export default async function ChannelsPage() {
       select: { channelId: true, attributionChannelId: true },
     })),
     prisma.entChannelInvest.groupBy({ by: ["channelId"], _count: { _all: true } }),
+    // 项目来源挂在渠道上的项目（11-03 A1-1），同样数全部
+    看全部(() => prisma.project.groupBy({ by: ["channelId"], where: { channelId: { not: null } }, _count: { _all: true } })),
     // 行上「录投入」给谁摆：和 挡投入 同一个口径
     (async () => (企业版() ? 能录投入(await 读组织(), me) : me.role === "ADMIN"))(),
     // 新建、编辑、停用、删除给谁摆（10-30 B1）：和 actions.ts 的 挡管 同一个口径；团队版照旧谁都摆
@@ -70,6 +72,7 @@ export default async function ChannelsPage() {
     for (const id of new Set([c.channelId, c.attributionChannelId])) if (id) 客户数.set(id, (客户数.get(id) ?? 0) + 1);
   }
   const 投入数 = new Map(投入笔数.map((x) => [x.channelId, x._count._all]));
+  const 项目数 = new Map(挂项目.map((x) => [x.channelId, x._count._all]));
 
   const 号 = await 号码脱敏器();
   return (
@@ -96,6 +99,7 @@ export default async function ChannelsPage() {
         统计: 统计[c.id],
         客户数: 客户数.get(c.id) ?? 0,
         投入数: 投入数.get(c.id) ?? 0,
+        项目数: 项目数.get(c.id) ?? 0,
       }))}
     />
   );
