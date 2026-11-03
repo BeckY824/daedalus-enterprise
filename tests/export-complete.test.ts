@@ -77,10 +77,10 @@ it("创建时间写在未来的旧记录（导入 / 迁移来的）照样导出�
   expect(await 校验完整导出({}, result.start, result.fingerprints)).toEqual({ ok: true });
 });
 
-it("非法参数不查询；开始后新增的记录不混进既有批次", async () => {
+it("非法参数不查询；开始后新增的客户不悄悄少一位，校验报变化请人重导（11-03 客户条件和列表同一份）", async () => {
   const result = await 收全();
   await prisma.customer.create({ data: { id: "new", name: "新", phone: "1", salesOwnerId: "export-user", createdAt: new Date(Date.now()+100) } });
-  expect((await 读取完整导出批次({}, result.start.截止, "客户")).rows).toHaveLength(0);
+  await expect(校验完整导出({}, result.start, result.fingerprints)).rejects.toThrow(/变化/);
   await expect(读取完整导出批次({}, "bad", "客户")).rejects.toThrow(/参数/);
   await expect(读取完整导出批次({}, result.start.截止, "客户", "x".repeat(129))).rejects.toThrow(/参数/);
 });

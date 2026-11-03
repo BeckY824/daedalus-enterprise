@@ -15,6 +15,10 @@ import { test, expect, type Page, type Route } from "@playwright/test";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
 import { 连库 } from "./mock-data";
 import { 粘贴字数上限 } from "../src/lib/import/paste";
+import { 企业版 } from "./owner-pick";
+
+// 企业版客户页不摆这个旧导入抽屉（11-03）：导入走设置 →「企业版导入」，那条在企业版导入的用例里测
+test.skip(企业版, "企业版客户页没有旧导入抽屉，导入走设置 →「企业版导入」");
 
 const 管理员 = { 用户名: "admin", 密码: "admin123" };
 const 戳 = String(Date.now()).slice(-6);

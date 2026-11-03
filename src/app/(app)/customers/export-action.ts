@@ -12,10 +12,21 @@ import type { 跟进导出行 } from "./export-table";
 import { 客户附件个数 } from "@/lib/attachments";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 视图外部拒, 视图外部拦 } from "@/lib/enterprise/view-as";
+import { recordAudit } from "@/lib/audit";
 
 /** 旧调用保留有明确截断标志的有界结果；产品按钮使用下面的完整分批出口。 */
 const 导出上限 = 20_000;
 const 跟进上限 = 50_000;
+
+/**
+  导出留痕（11-03）：谁、什么时候、导了哪张表、多少行、按什么筛的。日志平时只记写操作，
+  导出是数据整批离开系统，单独记一条；设置 →「导出记录」给系统管理员翻
+*/
+async function 记导出(条件: 客户条件, 客户数: number, 跟进数: number) {
+  const me = await requireUser();
+  const 筛选 = Object.fromEntries(Object.entries(条件 ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== ""));
+  await recordAudit({ user: me, action: "export", entity: "Customer", summary: `导出客户表 ${客户数} 位、沟通记录 ${跟进数} 条`, detail: { 筛选, 客户数, 跟进数 } });
+}
 
 export async function 导出客户(条件: 客户条件): Promise<
   { ok: true; rows: 客户行[]; 跟进: 跟进导出行[]; 截断了: boolean; 跟进截断了: boolean } | { ok: false; error: string }
@@ -72,6 +83,7 @@ export async function 导出客户(条件: 客户条件): Promise<
       ownerName: f.owner.name,
     }));
   const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 企业版());
+  await 记导出(条件, rows.length, 跟进.length);
   return { ok: true, rows: rows.map((r) => ({ ...成客户行(r, 号), 附件数: 附件.get(r.id) ?? null })), 跟进, 截断了: 全部.length > 导出上限, 跟进截断了: 跟进行.length > 跟进上限 };
 }
 
@@ -94,8 +106,10 @@ async function 要能导出() {
 }
 
 /**
-  开始导出那一刻已经有的记录。只看 createdAt 会漏掉导入 / 迁移带来的未来创建时间（列表照显示、导出少一条，D8-2）；
-  导出开始后才建的，updatedAt 也在截止之后，照样不混进来
+  跟进只取开始导出那一刻已经有的。只看 createdAt 会漏掉导入 / 迁移带来的未来创建时间（D8-2）。
+  **客户不加这道时间线**：客户条件和列表完全同一份（客户筛选条件），列表显示几位、导出就是几位（11-03）——
+  创建和修改时间都在未来的导入行，加了时间线照样被截掉，列表 122、导出 121。
+  导出期间新建的客户会让条数对不上，校验时报「数据发生变化」请人重导，不会悄悄少一位或多一位
 */
 const 截止前有 = (截止: Date) => ({ OR: [{ createdAt: { lte: 截止 } }, { updatedAt: { lte: 截止 } }] });
 
@@ -103,7 +117,7 @@ const 截止前有 = (截止: Date) => ({ OR: [{ createdAt: { lte: 截止 } }, {
 export async function 开始完整导出(条件: 客户条件) {
   await 要能导出();
   const 截止 = new Date();
-  const where = { AND: [await 客户筛选条件(条件), 截止前有(截止)] };
+  const where = await 客户筛选条件(条件);
   const [客户数, 跟进数] = await Promise.all([
     prisma.customer.count({ where }),
     prisma.followUp.count({ where: { customer: where, ...截止前有(截止) } }),
@@ -115,7 +129,7 @@ export async function 读取完整导出批次(条件: 客户条件, 截止文�
   await 要能导出();
   const 截止 = new Date(截止文本);
   if (!Number.isFinite(截止.getTime()) || 截止 > new Date() || (类别 !== "客户" && 类别 !== "跟进") || (游标 !== undefined && (typeof 游标 !== "string" || 游标.length > 128))) throw new Error("导出参数无效，请重新导出");
-  const where = { AND: [await 客户筛选条件(条件), 截止前有(截止)] };
+  const where = await 客户筛选条件(条件);
   const 号 = await 号码脱敏器();
   if (类别 === "客户") {
     const all = await prisma.customer.findMany({ where: { AND: [where, ...(游标 ? [{ id: { gt: 游标 } }] : [])] }, orderBy: { id: "asc" }, take: 5001, select: 客户行字段 });
@@ -141,7 +155,7 @@ export async function 校验完整导出(条件: 客户条件, 起点: Awaited<R
   if (!起点 || typeof 起点.截止 !== "string" || !Number.isSafeInteger(起点.客户数) || 起点.客户数 < 0 || !Number.isSafeInteger(起点.跟进数) || 起点.跟进数 < 0 || !Array.isArray(指纹) || 指纹.some((x) => !x || (x.类别 !== "客户" && x.类别 !== "跟进") || !/^[a-f0-9]{64}$/.test(x.指纹))) throw new Error("导出参数无效，请重新导出");
   const 截止 = new Date(起点.截止);
   if (!Number.isFinite(截止.getTime()) || 截止 > new Date()) throw new Error("导出参数无效，请重新导出");
-  const where = { AND: [await 客户筛选条件(条件), 截止前有(截止)] };
+  const where = await 客户筛选条件(条件);
   const [客户数, 跟进数, 改过客户, 改过跟进] = await Promise.all([
     prisma.customer.count({ where }),
     prisma.followUp.count({ where: { customer: where, ...截止前有(截止) } }),
@@ -162,5 +176,7 @@ export async function 校验完整导出(条件: 客户条件, 起点: Awaited<R
     } while (游标);
   }
   if (index !== 指纹.length) throw new Error("导出批次不完整，请重新导出");
+  // 校验过了才记：中途失败、要重导的那次不算导出去了
+  await 记导出(条件, 起点.客户数, 起点.跟进数);
   return { ok: true as const };
 }

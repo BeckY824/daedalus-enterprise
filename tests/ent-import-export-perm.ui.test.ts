@@ -3,6 +3,7 @@
  *
  *   客户列表：没权限（普通销售、销售管理）不摆「导入」「导出」，空库那张卡也不给「从 Excel 导入」，?import=paste 也不打开导入抽屉
  *   新建客户：普通销售负责人那一格锁成自己、灰掉，提示「新建的只能记在自己名下」；编辑不锁
+ *   企业版客户页没有旧导入抽屉（11-03）：「导入」去 设置 → 企业版导入，?import=paste 也不打开
  *   开关关闭（页面传 能导入导出=true、负责人只能自己=false）：和原来一样
  *   Windows 1024 / 1280 / 1366：列表头部不横向撑出，「新建」点得中
  *   企业版客户列表每格一行（11-01 会议 §11）：1024 宽也不折，超长名字省略号、悬停看全；非企业版照旧
@@ -16,7 +17,7 @@ let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "import-perm-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   const 空跑 = "async()=>({ok:true})";
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__push=u},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^\.\/ImportDrawer$/, "export default function D({open}){return <div data-testid='import-drawer' data-open={String(open)}/>}");
   stub(/^\.\/export-client$/, "export const 完整导出=async()=>({ok:true});");
@@ -89,6 +90,24 @@ it("开关关闭 / 有权限：导入、导出都在，空库卡给「从 Excel 
   try {
     expect(await 空.page.getByText("从 Excel 导入").count()).toBe(1);
     expect([...errors, ...空.errors]).toEqual([]);
+  } finally { await 空.page.close(); }
+});
+
+it("企业版：客户页没有旧导入抽屉，「导入」「从 Excel 导入」都去设置里的企业版导入（11-03）", async () => {
+  const { page, errors } = await open({ what: "list", 企: true, 粘贴: true });
+  try {
+    expect(await page.getByTestId("import-drawer").count()).toBe(0);
+    expect(await page.getByRole("button", { name: /导\s*出/ }).count()).toBe(1);
+    await page.getByRole("button", { name: /导\s*入/ }).click();
+    expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/settings?tab=enterprise");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const 空 = await open({ what: "list", 企: true, 空: true });
+  try {
+    expect(await 空.page.getByTestId("import-drawer").count()).toBe(0);
+    await 空.page.getByText("从 Excel 导入").click();
+    expect(await 空.page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/settings?tab=enterprise");
+    expect(空.errors).toEqual([]);
   } finally { await 空.page.close(); }
 });
 

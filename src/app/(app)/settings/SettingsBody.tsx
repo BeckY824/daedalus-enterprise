@@ -120,6 +120,8 @@ export default async function SettingsBody() {
       })
     : null;
 
+  // 导出记录（11-03）：只给系统管理员；单独取，不让「最近 200 条」操作日志把导出挤没了
+  const 导出日志 = 可进 ? await prisma.auditLog.findMany({ where: { action: "export" }, orderBy: { at: "desc" }, take: 200 }) : null;
   // 企业版才多一栏「组织架构」：部门树、每个人的部门 / 角色 / 业务线 / 上级。老板和总管理员能改（字段权限、谁能改按「后台设置谁能改」）
   const [org, 开关, 字段权限, 线索分配, 改权限, 不设配额, 市场部门, 市场单设] = 企业版()
     ? await Promise.all([
@@ -213,6 +215,17 @@ export default async function SettingsBody() {
   // 回收站：企业版的系统管理员、回收站副手（谁能看 / 恢复 / 彻底删除只认 lib/enterprise/soft-delete.ts）
   const 有回收站 = 企业版() && !共享区 && (await 能管回收站(me));
 
+  /* 共享试用区：留痕里记的是原号，别的团队也翻得到——号码在这儿打掉再交给浏览器（2026-10-01 排查 A5） */
+  const 成日志行 = (l: (typeof logs)[number]) => ({
+    id: l.id,
+    at: l.at.toISOString(),
+    userName: l.userName,
+    action: l.action,
+    entity: l.entity,
+    summary: 共享区 ? 文字里号码打码(l.summary) : l.summary,
+    detail: 共享区 && l.detail ? 文字里号码打码(l.detail) : l.detail,
+  });
+
   return (
     <SettingsView
       项目设置={项目设置 && { ...项目设置, 能改提成比例: !!项目设置.提成比例 && !共享区 && 能改提成比例(me, org) }}
@@ -243,16 +256,8 @@ export default async function SettingsBody() {
       business={business}
       aiUsage={aiUsage}
       机器={机器}
-      /* 共享试用区：留痕里记的是原号，别的团队也翻得到——号码在这儿打掉再交给浏览器（2026-10-01 排查 A5） */
-      logs={(只个人 ? [] : logs).map((l) => ({
-        id: l.id,
-        at: l.at.toISOString(),
-        userName: l.userName,
-        action: l.action,
-        entity: l.entity,
-        summary: 共享区 ? 文字里号码打码(l.summary) : l.summary,
-        detail: 共享区 && l.detail ? 文字里号码打码(l.detail) : l.detail,
-      }))}
+      logs={(只个人 ? [] : logs).map(成日志行)}
+      导出记录={导出日志 && 导出日志.map(成日志行)}
       users={(只个人 ? [] : users).map((u) => ({
         id: u.id,
         name: u.name,
