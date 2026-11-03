@@ -55,7 +55,10 @@ const 记 = (userId: string, key: string) => raw.entNotice.create({ data: { user
 beforeEach(async () => {
   process.env.CRM_ENTERPRISE = "1";
   delete process.env.DESKTOP_LOCAL;
+  // 拷来的 test.db 可能带着别的用例刚写的行（项目、跟进挂在用户上），清表时先关外键，否则偶发撞外键
+  await raw.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
   for (const t of ["EntNotice", "AuditLog", "EntMember", "Customer", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  await raw.$executeRawUnsafe("PRAGMA foreign_keys = ON");
   await raw.user.create({ data: { id: 只读, email: "ro@x.com", name: "只读号", password: "x", role: "SALES", active: true } });
   await raw.user.create({ data: { id: 同事, email: "other@x.com", name: "同事", password: "x", role: "SALES", active: true } });
   await raw.entMember.createMany({ data: [{ userId: 只读, bizRole: "admin" }, { userId: 同事, bizRole: "sales" }] });

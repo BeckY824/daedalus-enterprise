@@ -81,9 +81,15 @@ async function 记退回(ids: string[], 加: 1 | -1) {
 /** 企业版统一公海（P7，迁移 079）：这几位里标了无效的（还在公海里的）。标了无效的不能领、不能分 */
 async function 无效的(ids: string[]): Promise<Set<string>> {
   if (!企业版() || !ids.length) return new Set();
-  return new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, pool: { isNot: null }, poolInvalidAt: { not: null } }, select: { id: true } }))).map((c) => c.id));
+  // 带否定条件 Prisma 不会自己拆批，过 999 个参数报 P2029（11-03 B2-3）：500 个一批查
+  const 无效 = new Set<string>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const 这批 = ids.slice(i, i + 500);
+    for (const c of await 看全部(() => prisma.customer.findMany({ where: { id: { in: 这批 }, pool: { isNot: null }, poolInvalidAt: { not: null } }, select: { id: true } }))) 无效.add(c.id);
+  }
+  return 无效;
 }
-const 无效不能领提示 = "标了无效的客户不能领取，要老板先恢复";
+const 无效不能领提示 = "标了无效的客户不能领取，要总管理先恢复";
 
 /** 客户放回公海时能选的退回原因（企业版字典「回收原因」，停用的不出）；别的版本 = 空，不问 */
 export async function 退回原因选项(): Promise<string[]> {
@@ -245,7 +251,7 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
   // 企业版：标了无效的分不出去（统一公海 P7），算「没权限」那几位
   const 无效 = await 无效的(ids);
-  if (无效.size && 无效.size === new Set(ids).size) return { ok: false, error: "标了无效的客户不能分配，要老板先恢复" };
+  if (无效.size && 无效.size === new Set(ids).size) return { ok: false, error: "标了无效的客户不能分配，要总管理先恢复" };
   await 钉住老签约();
   const 分到: { id: string; 值: string }[] = [];
   for (const id of [...new Set(ids)].filter((x) => !无效.has(x))) {

@@ -22,7 +22,7 @@ import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
-import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 只读角色 } from "@/lib/enterprise/permissions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -33,6 +33,7 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
+import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 
 export const dynamic = "force-dynamic";
 
@@ -206,6 +207,7 @@ export default async function CustomerDetailPage({
       只读={只读}
       只读话={只读 === "全" ? await 只读话(defaultClient) : undefined}
       只能看的格={await 只能看的格P}
+      管理员只读={企 && 只读角色(me, await 权限组织())}
       能改沟通={可改沟通}
       能删沟通={可删沟通}
       客户状态选项={客户状态选项}
@@ -234,7 +236,8 @@ export default async function CustomerDetailPage({
         major: customer.major,
         followStatus: customer.followStatus,
         decisionStatus: customer.decisionStatus,
-        custStatus: customer.custStatus,
+        // 项目模式自动算：库里还没算过的（种子 / 导入的老数据）按名下项目现算一个显示，别和下面「项目（n）」对不上（11-03 C1-4）
+        custStatus: 只项目 ? await 显示用客户状态(customer.id, customer.custStatus) : customer.custStatus,
         shortName: customer.shortName,
         addrCountry: customer.addrCountry,
         addrProvince: customer.addrProvince,

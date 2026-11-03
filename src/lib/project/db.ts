@@ -15,7 +15,7 @@ import { 等复核拦, 复核判死拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 没设业务角色, 没业务角色不能领话 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 没设业务角色, 没业务角色不能领话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -705,6 +705,8 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
   // 没设业务角色的不能领（11-03 用户定）：权限只认业务角色。分配（别人分给他）不走这里
   // 停用的人业务角色已清，先说停用，话才准
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: (await 在职(prisma, me.id)) ? 没业务角色不能领话 : "账号已停用" };
+  // 只读管理员先说只读（11-03 B2-1：原来落到「项目不能单独领」，同领客户 pool-actions 领取）
+  if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读角色话 };
   const 规则 = await 生效组织规则();
   return 查完再写(async (tx) => {
     const id = String(projectId ?? "");
@@ -723,7 +725,7 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了（领项目会把客户一起带走）
     if (企业版()) {
       const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } }));
-      if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要老板先恢复" };
+      if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要总管理先恢复" };
     }
     // 原负责人领不回：企业版看 公海规则（10-26 定稿「非原负责人均可领取」），别的版本照旧。
     // 原负责人 = 留痕里最后一次进公海前的负责人（企业版进公海清了 ownerId，pool-owner.ts）
@@ -997,6 +999,18 @@ async function 认沟通额外(
 }
 
 /**
+ * 企业版（11-03 B3-1）：客户上记了跟进（不挂项目）也续了回收时钟（超时起点取客户最近跟进），
+ * 名下还在推的项目照 勾掉将回收提醒 再算一遍：回收日推到明天以后的，那条「再不跟进」的提醒跟着勾掉（同项目上记沟通）
+ */
+export async function 客户跟进后勾掉将回收提醒(customerId: string, now: Date = new Date()): Promise<void> {
+  if (!企业版()) return;
+  const 规则 = await 生效组织规则();
+  const 们 = await 看全部(() => prisma.project.findMany({ where: { customerId, pooledAt: null, result: null }, select: { id: true, name: true, node: true, ownerId: true, customerId: true } }));
+  if (!们.length) return;
+  await 查完再写(async (tx) => { for (const p of 们) await 勾掉将回收提醒(tx, 规则, p, now); });
+}
+
+/**
  * 企业版（10-27）：记了沟通，回收日往后推了、不再是明天以内，负责人那条「再不跟进」的提醒跟着勾掉。
  * 下一步时间填的今天（回收日还是明天）就不勾：明天那条提醒照样作数。按记沟通前的项目名 + 节点找（自动推进可能换了节点）
  */
@@ -1125,11 +1139,12 @@ type 必填项目行 = Pick<Project,
  */
 export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行): Promise<必填数据> {
   const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 有效沟通, 验证] = await Promise.all([
-    tx.customer.findUnique({
+    // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
+    看全部(() => tx.customer.findUnique({
       where: { id: p.customerId },
       select: { phone: true, assignWay: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
-    }),
-    tx.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, phone: true, email: true, wechat: true } }),
+    })),
+    看全部(() => tx.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, phone: true, email: true, wechat: true } })),
     tx.followUpProject.findMany({ where: { projectId: p.id, followUp: { deletedAt: null } }, select: { node: true, followUp: { select: { initiator: true, content: true, method: true } } } }),
     tx.attachment.count({ where: { projectId: p.id, tag: "合同" } }),
     tx.entProjectPayment.count({ where: { projectId: p.id } }),

@@ -108,6 +108,14 @@ async function 能办离职(id: string) {
  * 而且做完当场看不出问题，下次要加人时才发现。
  */
 async function wouldLoseLastAdmin(targetId: string): Promise<boolean> {
+  // 企业版只认业务角色（11-03 C4-6）：看的是能管设置的总管理（在职、director、没勾「不管设置」），
+  // 同组织架构页 org-actions.ts 的「还有总管」；账号 ADMIN 在企业版不多出权限，原来只看它，种子总管理是 SALES 就拦不住
+  if (企业版()) {
+    const org = await 读组织();
+    const 能管 = (id: string) => { const m = org.成员.get(id); return !!m && m.角色们.includes("director") && !m.不管设置; };
+    if (!能管(targetId)) return false;
+    return ![...org.成员.keys()].some((id) => id !== targetId && 能管(id));
+  }
   const target = await prisma.user.findUnique({ where: { id: targetId }, select: { role: true, active: true } });
   if (!target || target.role !== "ADMIN" || !target.active) return false;
   const others = await prisma.user.count({
@@ -161,7 +169,7 @@ export async function saveUser(input: {
   if (input.password && input.password.length < MIN_PASSWORD) {
     return { ok: false as const, error: `密码至少 ${MIN_PASSWORD} 位` };
   }
-  if (input.id && (input.role !== "ADMIN" || !input.active) && (await wouldLoseLastAdmin(input.id))) {
+  if (input.id && ((!企业版() && input.role !== "ADMIN") || !input.active) && (await wouldLoseLastAdmin(input.id))) {
     return {
       ok: false as const,
       error: "这是系统里最后一个管理员，不能停用或降级，否则将无人可以管理成员。请先指定另一位管理员。",
@@ -335,7 +343,9 @@ export async function deactivateUser(id: string, transferToId: string, 方式: �
   if (await wouldLoseLastAdmin(id)) {
     return {
       ok: false as const,
-      error: "这是系统里最后一个管理员，停用后将无人可以管理成员。请先指定另一位管理员。",
+      error: 企业版()
+        ? "这是最后一位能管设置的总管理，停用后就没人能管成员、改角色了。请先在组织架构里给另一位设上总管理。"
+        : "这是系统里最后一个管理员，停用后将无人可以管理成员。请先指定另一位管理员。",
     };
   }
   // 企业版「交接中」：上一次离职交接还没确认，不能再交给第二个人（先撤回再办）
@@ -421,6 +431,12 @@ async function 发起离职交接(me: Awaited<ReturnType<typeof requireUser>>, i
   const { 分, 交接 } = await prisma.$transaction(async (tx) => {
     const 分 = await 停用分拣(tx, id, 方式, true);
     await 离职放进公海(tx, 分, me.id);
+    // 给接手人的一样都没有（比如公海方式全进了公海、名下本来就空）：不建交接、不发「等你确认」，当场停用（11-03 C4-2）
+    if (![分.客户, 分.商机, 分.待办, 分.计划, 分.线索, 分.渠道, 分.项目].some((x) => x.length)) {
+      await 交接卡点(tx, id, transferToId, me.id, 分.进公海项目);
+      await tx.user.update({ where: { id }, data: { active: false } });
+      return { 分, 交接: null };
+    }
     const h = await tx.entHandover.create({
       data: {
         kind: "离职", fromUserId: id, toUserId: transferToId, byUserId: me.id, way: 方式,
@@ -432,7 +448,7 @@ async function 发起离职交接(me: Awaited<ReturnType<typeof requireUser>>, i
     return { 分, 交接: h.id };
   }, { timeout: 30_000 });
   await 撤托管成员(id);
-  await 交接通知(me, 交接, "发起");
+  if (交接) await 交接通知(me, 交接, "发起");
 
   const [被停, 接手] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: { name: true } }),
@@ -441,16 +457,19 @@ async function 发起离职交接(me: Awaited<ReturnType<typeof requireUser>>, i
   const 进公海 = 分.进公海客户.length + 分.本来在公海.length;
   await recordAudit({
     user: me, action: "deactivate", entity: "User", entityId: id,
-    summary: `停用成员「${被停?.name ?? id}」，交接给「${接手?.name ?? transferToId}」，等对方确认后转过去：` +
-      `${分.客户.length} 位客户、${分.商机.length} 个进行中商机、${分.计划.length + 分.待办.length} 条没完成的计划和待办、` +
-      `${分.线索.length} 条线索、${分.渠道.length} 个渠道` + (分.项目.length ? `、${分.项目.length} 个项目` : "") +
+    summary: (交接
+      ? `停用成员「${被停?.name ?? id}」，交接给「${接手?.name ?? transferToId}」，等对方确认后转过去：` +
+        `${分.客户.length} 位客户、${分.商机.length} 个进行中商机、${分.计划.length + 分.待办.length} 条没完成的计划和待办、` +
+        `${分.线索.length} 条线索、${分.渠道.length} 个渠道` + (分.项目.length ? `、${分.项目.length} 个项目` : "")
+      : `停用成员「${被停?.name ?? id}」，名下没有要交给「${接手?.name ?? transferToId}」的，没发起交接`) +
       (方式 === "公海" ? `；${进公海} 位客户已放回公海` + (分.进公海项目.length ? `、${分.进公海项目.length} 个项目已放回项目公海` : "") : ""),
-    detail: { userId: id, transferToId, 方式, 交接, 交接中: true, 进公海客户: 分.进公海客户, 进公海项目: 分.进公海项目 },
+    detail: { userId: id, transferToId, 方式, 交接, 交接中: !!交接, 进公海客户: 分.进公海客户, 进公海项目: 分.进公海项目 },
   });
 
   revalidatePath("/settings");
   revalidatePath("/customers");
   revalidatePath("/projects");
+  if (!交接) return { ok: true as const };
   return { ok: true as const, 交接中: true as const };
 }
 

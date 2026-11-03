@@ -114,7 +114,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       if (!p) return "这个项目已经不在了";
       if (!p.pooledAt) return "已经被人领走了";
       const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
-      if (c?.pool && c.poolInvalidAt) return "客户标了无效，要老板先恢复";
+      if (c?.pool && c.poolInvalidAt) return "客户标了无效，要总管理先恢复";
       const 超 = await 超上限(tx, 规则, 给.id, p);
       if (超) return 超;
       await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });

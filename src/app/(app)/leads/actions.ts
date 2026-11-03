@@ -356,7 +356,7 @@ export async function mergeLeadInto(leadId: string, customerId: string, 跟进?:
   if (!lead) return { ok: false, error: "线索不存在" };
   if (lead.customerId || lead.status === "已转化") return { ok: false, error: "该线索已转化" };
   const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, name: true } });
-  if (!customer) return { ok: false, error: `你看不到这位${b.customer}，并不过去：请找负责人或老板` };
+  if (!customer) return { ok: false, error: `你看不到这位${b.customer}，并不过去：请找负责人或${企业版() ? "总管理" : "老板"}` };
   const 邮箱 = 线索认人邮箱(lead, b.template === "trade");
   const 电话 = 查电话(lead.phone, { 必填: true });
   const 条件 = 邮箱 ? await 同邮箱条件(prisma, 邮箱) : 电话.ok ? await 同号条件(prisma, 电话.phone, await 分机留存起()) : null;

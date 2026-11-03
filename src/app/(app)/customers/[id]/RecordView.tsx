@@ -173,6 +173,7 @@ export default function RecordView({
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
   只能看的格 = 无格,
+  管理员只读 = false,
   能改沟通 = true,
   能删沟通 = true,
   换负责人记录 = [],
@@ -193,8 +194,8 @@ export default function RecordView({
   待办计划 = [],
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
-  const 只读 = !!只读档;
-  const 全只读 = 只读档 === "全";
+  const 只读 = !!只读档 || 管理员只读;
+  const 全只读 = 只读档 === "全" || 管理员只读;
   // 市场成员相关的客户（10-31）也是「全」只读，但不是虚线下属：黄条、提示照服务端那句说（11-03 D3-5）
   const 虚线的 = !全只读话.includes("市场成员");
   const { 曲线, 时长, 间隔 } = useMotionTheme();
@@ -517,7 +518,7 @@ export default function RecordView({
       duration: 6,
       content: (
         <span>
-          {动作 === "放进" ? "已放回公海，谁都能领" : `已领取，负责人改成你${带走说法(res.带走)}`}
+          {动作 === "放进" ? (企业 ? "已放回公海，原负责人不能再领回来" : "已放回公海，谁都能领") : `已领取，负责人改成你${带走说法(res.带走)}`}
           <Button type="link" size="small" onClick={async () => {
             message.destroy(key);
             const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, undefined, res.ok ? res.公海项目 : undefined);
@@ -531,7 +532,7 @@ export default function RecordView({
   }
 
   function openFollow(record: FollowUpRow | null, aiText?: string) {
-    if (全只读) return void message.info(全只读话);
+    if (全只读) return void message.info(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
     setFollowInit({ record, aiText });
     setFollowOpen(true);
   }
@@ -952,7 +953,7 @@ export default function RecordView({
         {customer.pool && (
           <span className="rec-tags-n rec-pool">
             <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放回公海" : customer.pool.reason}>{公海标签(customer.salesOwnerName)}</Tag>
-            {原负责人领不回
+            {管理员只读 ? null : 原负责人领不回
               ? <Tooltip title={原负责人不能领回提示}><Button size="small" type="link" icon={<UserAddOutlined />} disabled>领取</Button></Tooltip>
               : <Button size="small" type="link" icon={<UserAddOutlined />} onClick={() => void 公海动作("领取")}>领取</Button>}
           </span>
@@ -979,14 +980,14 @@ export default function RecordView({
         )}
       </div>
 
-      {只读 && (
+      {只读 && !管理员只读 && (
         <Alert
           className="rec-readonly"
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
           message={全只读 ? `${虚线的 ? "虚线下属 " : ""}${customer.salesOwnerName} 的${b.customer} · 只能看` : `同事 ${customer.salesOwnerName} 的${b.customer} · 只能看和加跟进`}
-          description={全只读 ? `${全只读话}。要改请找${虚线的 ? "他的直属上级" : "负责人"}或总管理` : "团队开了「同事之间互相看得到客户」。改资料、删除、转交、排计划请找负责人或老板"}
+          description={全只读 ? `${全只读话}。要改请找${虚线的 ? "他的直属上级" : "负责人"}或总管理` : "团队开了「同事之间互相看得到客户」。改资料、删除、转交、排计划请找负责人或" + (企业 ? "总管理" : "老板")}
         />
       )}
 

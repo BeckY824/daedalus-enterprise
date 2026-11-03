@@ -300,7 +300,7 @@ describe("无效客户", () => {
 
     当(丙);
     const 领 = await 领取([c]);
-    expect(领).toEqual({ ok: false, error: "标了无效的客户不能领取，要老板先恢复" });
+    expect(领).toEqual({ ok: false, error: "标了无效的客户不能领取，要总管理先恢复" });
     expect(await 负责人(c)).toBe(乙.id);
     当(老板);
     expect(await 分配公海([c], 丙.id)).toMatchObject({ ok: false });
@@ -327,7 +327,7 @@ describe("无效客户", () => {
     当(老板);
     await 标无效客户([c]);
     const r = await 领取公海项目(丙, p);
-    expect(r).toEqual({ ok: false, error: "这位客户已标成无效客户，领不了，要老板先恢复" });
+    expect(r).toEqual({ ok: false, error: "这位客户已标成无效客户，领不了，要总管理先恢复" });
   });
 
   it("不在公海的客户标不上", async () => {

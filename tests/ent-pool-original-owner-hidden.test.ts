@@ -23,7 +23,7 @@ import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
-import { 没业务角色不能领话 } from "@/lib/enterprise/permissions";
+import { 没业务角色不能领话, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 放回公海, 领取公海项目 } from "@/lib/project/db";
 import { 读项目列表 } from "@/lib/project/list";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
@@ -143,11 +143,20 @@ describe("原负责人退到公海后看不到", () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c, "能读到名字的项目");
     当(乙);
-    expect(await 以谁的身份(乙.id, () => 放回项目公海(p))).toEqual({ ok: true });
+    // 客户名下就这一个项目，客户跟着进了公海：action 带回 客户跟着，提示条据此说清（11-03 B4-2）
+    expect(await 以谁的身份(乙.id, () => 放回项目公海(p))).toEqual({ ok: true, 客户跟着: true });
     const 记 = await raw.auditLog.findFirst({ where: { entityId: p, action: "update" }, orderBy: { at: "desc" } });
     expect(记?.summary).toContain("能读到名字的项目");
     // action 里忘掉过范围：不用等 10 秒缓存
     expect(await 看(乙, c, p)).toEqual(都看不到);
+  });
+
+  it("放回项目公海：客户归别人、没跟着进公海时不带 客户跟着（11-03 B4-2）", async () => {
+    const c = await 客户(丙.id);
+    const p = await 项目(乙.id, c, "客户归丙的项目");
+    当(乙);
+    expect(await 以谁的身份(乙.id, () => 放回项目公海(p))).toEqual({ ok: true });
+    expect(await raw.customerPool.findUnique({ where: { customerId: c } })).toBeNull();
   });
 
   it("放进公海（客户级）：他还负责的项目也一起看不到；撤销（时限内）回来", async () => {
@@ -234,6 +243,19 @@ describe("原负责人退到公海后看不到", () => {
       expect((await prisma.customer.updateMany({ where: { id: c }, data: { name: "改一下" } })).count).toBe(0);
       expect((await prisma.project.updateMany({ where: { id: p }, data: { name: "改一下" } })).count).toBe(0);
     });
+  });
+
+  it("原负责人直调领自己退的项目：说「原负责人不能领回」，不说被人领走了（11-03 B4-1）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    当(乙);
+    await 以谁的身份(乙.id, () => 放回公海(乙, p));
+    const 导 = await 导入的(乙.id);
+    忘掉企业版范围();
+    for (const id of [p, 导.p]) {
+      expect(await 以谁的身份(乙.id, () => 领取公海项目(乙, id))).toEqual({ ok: false, error: "原负责人不能领回" });
+      expect((await raw.project.findUnique({ where: { id }, select: { pooledAt: true } }))?.pooledAt).not.toBeNull();
+    }
   });
 
   it("没动过公海的客户、别人退的：不受影响；渠道负责人不算原负责人", async () => {
@@ -348,6 +370,16 @@ describe("没设业务角色不能领", () => {
       expect(await raw.customerPool.count({ where: { customerId: c } })).toBe(1);
       expect((await raw.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
     }
+  });
+
+  it("只读管理员领客户、领项目：都回「管理员只能看」那句（11-03 B2-1）", async () => {
+    公海规则.项目能单独领 = false;
+    const 管理员 = await 造人("ro@x", "管理员", "SALES", "admin");
+    const { c, p } = await 导入的(乙.id, "给管理员");
+    当(管理员);
+    expect(await 以谁的身份(管理员.id, () => 领取([c]))).toEqual({ ok: false, error: 只读角色话 });
+    expect(await 以谁的身份(管理员.id, () => 领取公海项目(管理员, p))).toEqual({ ok: false, error: 只读角色话 });
+    expect((await raw.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
   });
 
   it("记跟进顺手领：不领也不记，同一句话", async () => {

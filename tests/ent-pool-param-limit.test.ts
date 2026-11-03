@@ -24,6 +24,7 @@ import { 读公海页, 公海取上限 } from "@/lib/enterprise/unified-pool-db"
 import { 入池原因文字, 项目入池类, 系统操作人 } from "@/lib/enterprise/unified-pool";
 import { 历史负责人们, 我回避的公海项目 } from "@/lib/project/pool-owner";
 import { 看得到的客户 } from "@/lib/project/db";
+import { 分配公海, 领取 } from "@/app/(app)/customers/pool-actions";
 
 type 人 = { id: string; name: string; role: string };
 const 过限 = 1200;
@@ -273,5 +274,30 @@ describe("统一公海过 999 行", () => {
     const 总管理看 = (await 读(组.总管理)).行.find((x) => x.id === "c:客a")!;
     expect(总管理看.项目名).toBe("自己的、同事的、公海的、邀请中、已加入、市场建的");
     expect((await 读(组.总管理)).行.find((x) => x.id === "p:退回两次")!.类).toBe("主动退回");
+  }, 大);
+
+  it("一次分配过 999 位公海客户（11-03 B2-3）：不报 P2029，名下公海项目一起过去，标了无效的那位跳过", async () => {
+    const n = 1100;
+    const 号 = Array.from({ length: n }, (_, i) => i);
+    await prisma.customer.createMany({ data: 号.map((i) => ({ id: `bc${i}`, name: `批量${i}`, phone: `16${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id, poolInvalidAt: i === 0 ? 时刻(0) : null })) });
+    await prisma.customerPool.createMany({ data: 号.map((i) => ({ customerId: `bc${i}`, reason: "r", at: 时刻(i) })) });
+    await prisma.project.createMany({ data: 号.map((i) => ({ id: `bp${i}`, name: `批量项目${i}`, customerId: `bc${i}`, ownerId: "", creatorId: 占位.id, pooledAt: 时刻(i) })) });
+    mocks.user = { ...mocks.user, id: 组.总管理.id, name: 组.总管理.name, role: 组.总管理.role };
+    const r = await 以谁的身份(组.总管理.id, () => 分配公海(号.map((i) => `bc${i}`), 组.销售.id));
+    expect(r).toMatchObject({ ok: true, updated: n - 1, 没权限: 1 });
+    expect(await prisma.customer.count({ where: { salesOwnerId: 组.销售.id } })).toBe(n - 1);
+    expect(await prisma.project.count({ where: { ownerId: 组.销售.id, pooledAt: null } })).toBe(n - 1);
+    expect(await prisma.customerPool.count()).toBe(1);
+  }, 大);
+
+  it("一次领取过 999 位公海客户（同 B2-3）：不报 P2029", async () => {
+    const n = 1100;
+    const 号 = Array.from({ length: n }, (_, i) => i);
+    await prisma.customer.createMany({ data: 号.map((i) => ({ id: `lc${i}`, name: `批量${i}`, phone: `17${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id })) });
+    await prisma.customerPool.createMany({ data: 号.map((i) => ({ customerId: `lc${i}`, reason: "r", at: 时刻(i) })) });
+    mocks.user = { ...mocks.user, id: 组.销售.id, name: 组.销售.name, role: 组.销售.role };
+    const r = await 以谁的身份(组.销售.id, () => 领取(号.map((i) => `lc${i}`)));
+    expect(r).toMatchObject({ ok: true, updated: n });
+    expect(await prisma.customerPool.count()).toBe(0);
   }, 大);
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Radio, Grid, Popover, Checkbox } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -162,13 +162,15 @@ export default function MembersTab({
   }
 
   const [清点中, set清点中] = useState<string | null>(null);
+  // 停用对话框：选了接手人才能点确认（11-03 C4-3），选的时候回头改确认按钮
+  const 停用框 = useRef<ReturnType<typeof modal.confirm> | null>(null);
   // 接手人同负责人候选（11-03 完成度 C3-1，lib/enterprise/permissions.ts 能当负责人）：企业版要有业务角色、不是只读管理员
   const 能接手 = (u: Row) => u.active && (!企业版 || (!!u.业务角色?.length && (!u.业务角色.includes("admin") || u.业务角色.includes("director"))));
   const 能停 = (r: Row) => r.active && (isAdmin ? r.id !== me.id : 下属可停用.includes(r.id));
   // 企业版批量离职：勾几个人，同一个接手人、同一种方式一次办完
   const [勾了, set勾了] = useState<string[]>([]);
   const 能批量 = 企业版 && (isAdmin || 下属可停用.length > 0);
-  function onBatchDeactivate() {
+  async function onBatchDeactivate() {
     const 们 = 勾了.filter((id) => users.some((u) => u.id === id && 能停(u)));
     const others = users.filter((u) => 能接手(u) && !们.includes(u.id));
     if (!们.length) return;
@@ -176,16 +178,34 @@ export default function MembersTab({
       message.error("没有可接手的成员");
       return;
     }
-    let target = others[0].id;
+    if (清点中) return;
+    // 批量也照单人那样先清点，几个人的数加起来说（11-03 C4-3）
+    set清点中("批量");
+    const 各 = await Promise.all(们.map((id) => 停用清点(id).catch(() => null)));
+    set清点中(null);
+    const 坏 = 各.find((x) => !x?.ok);
+    if (坏 !== undefined) {
+      message.error(坏 && "error" in 坏 ? 坏.error : "清点没成功，刷新再试");
+      return;
+    }
+    const 加 = (k: "转交" | "公海") => 各.reduce<清点>((和, x) => {
+      const 数 = x && x.ok ? x[k] : null;
+      if (!数) return 和;
+      return { 客户: 和.客户 + 数.客户, 进公海客户: 和.进公海客户 + 数.进公海客户, 项目: 和.项目 + 数.项目, 进公海项目: 和.进公海项目 + 数.进公海项目, 订单项目: 和.订单项目 + 数.订单项目 };
+    }, { 客户: 0, 进公海客户: 0, 项目: 0, 进公海项目: 0, 订单项目: 0 });
+    // 接手人默认空、必须选（11-03 C4-3）：原来默认列表第一个，不看直接点确认就整批交给了他
+    let target = "";
     let 方式: 停用方式 = "转交";
-    modal.confirm({
+    const 可确认 = () => 停用框.current?.update({ okButtonProps: { danger: true, disabled: !target } });
+    停用框.current = modal.confirm({
       title: `停用 ${们.length} 位成员`,
       width: 480,
-      content: <BatchOffboardForm names={们.map((id) => users.find((u) => u.id === id)?.name ?? "")} others={others} defaultTarget={target} onChange={(v) => { target = v.target; 方式 = v.方式; }} />,
+      content: <BatchOffboardForm names={们.map((id) => users.find((u) => u.id === id)?.name ?? "")} 点={{ 转交: 加("转交"), 公海: 加("公海") }} others={others} onChange={(v) => { target = v.target; 方式 = v.方式; 可确认(); }} />,
       okText: "确认停用",
-      okButtonProps: { danger: true },
+      okButtonProps: { danger: true, disabled: true },
       cancelText: "取消",
       async onOk() {
+        if (!target) { message.error("先选接手人"); return; }
         const res = await 批量停用(们, target, 方式).catch(() => null);
         if (!res) { message.error("停用没成功，刷新再试"); return; }
         if (!res.ok) { message.error(res.error); return; }
@@ -217,9 +237,11 @@ export default function MembersTab({
       }
       点 = 清;
     }
-    let target = others[0].id;
+    // 接手人默认空、必须选（11-03 C4-3）
+    let target = "";
     let 方式: 停用方式 = "转交";
-    modal.confirm({
+    const 可确认 = () => 停用框.current?.update({ okButtonProps: { danger: true, disabled: !target } });
+    停用框.current = modal.confirm({
       title: `停用成员「${r.name}」`,
       width: 480,
       content: 点 ? (
@@ -227,8 +249,7 @@ export default function MembersTab({
           name={r.name}
           点={点}
           others={others}
-          defaultTarget={target}
-          onChange={(v) => { target = v.target; 方式 = v.方式; }}
+          onChange={(v) => { target = v.target; 方式 = v.方式; 可确认(); }}
         />
       ) : (
         <div style={{ marginTop: 12 }}>
@@ -237,9 +258,11 @@ export default function MembersTab({
             {r.customerCount} 位{b.customer}，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：
           </Typography.Paragraph>
           <Select
-            defaultValue={target}
+            showSearch
+            optionFilterProp="label"
+            placeholder="选接手人"
             style={{ width: "100%" }}
-            onChange={(v) => (target = v)}
+            onChange={(v: string) => { target = v; 可确认(); }}
             options={others.map((u) => ({ value: u.id, label: u.name }))}
           />
           <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
@@ -248,9 +271,10 @@ export default function MembersTab({
         </div>
       ),
       okText: "确认停用",
-      okButtonProps: { danger: true },
+      okButtonProps: { danger: true, disabled: true },
       cancelText: "取消",
       async onOk() {
+        if (!target) { message.error("先选接手人"); return; }
         const res = await deactivateUser(r.id, target, 方式);
         if (res.ok) {
           // 企业版「交接中」：给接手人的那部分等他确认（D10）
@@ -379,6 +403,7 @@ export default function MembersTab({
                 className="row-act"
                 size="small"
                 icon={<StopOutlined />}
+                aria-label={`停用成员 ${r.name}`}
                 disabled={r.id === me.id}
                 loading={清点中 === r.id}
                 onClick={() => onDeactivate(r)}
@@ -439,7 +464,7 @@ export default function MembersTab({
         </Button>
       )}
       {能批量 && 勾了.length > 0 && (
-        <Button danger icon={<StopOutlined />} style={{ marginBottom: 14, marginLeft: isAdmin ? 8 : 0 }} onClick={onBatchDeactivate}>
+        <Button danger icon={<StopOutlined />} style={{ marginBottom: 14, marginLeft: isAdmin ? 8 : 0 }} loading={清点中 === "批量"} onClick={onBatchDeactivate}>
           批量停用（{勾了.length}）
         </Button>
       )}
@@ -593,16 +618,15 @@ type 清点 = { 客户: number; 进公海客户: number; 项目: number; 进公�
  * 停用对话框的正文：选交接方式（转交给一个人 / 放进公海）、选接手人，照清点的数说清会怎样。
  * 默认转交，和原来一样；公海方式下订单阶段的项目、已签约的客户还是给接手人，所以接手人两种方式都要选
  */
-function OffboardForm({ name, 点, others, defaultTarget, onChange }: {
+function OffboardForm({ name, 点, others, onChange }: {
   name: string;
   点: { 转交: 清点; 公海: 清点 };
   others: Row[];
-  defaultTarget: string;
   onChange: (v: { target: string; 方式: 停用方式 }) => void;
 }) {
   const b = useBusiness();
   const [方式, set方式] = useState<停用方式>("转交");
-  const [target, setTarget] = useState(defaultTarget);
+  const [target, setTarget] = useState("");
   const 数 = 点[方式];
   const 改 = (v: { target?: string; 方式?: 停用方式 }) => {
     const 新 = { target: v.target ?? target, 方式: v.方式 ?? 方式 };
@@ -637,9 +661,12 @@ function OffboardForm({ name, 点, others, defaultTarget, onChange }: {
         </Typography.Paragraph>
       )}
       <Select
-        value={target}
+        showSearch
+        optionFilterProp="label"
+        placeholder="选接手人"
+        value={target || undefined}
         style={{ width: "100%" }}
-        onChange={(v) => 改({ target: v })}
+        onChange={(v: string) => 改({ target: v })}
         options={others.map((u) => ({ value: u.id, label: u.name }))}
       />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
@@ -650,16 +677,16 @@ function OffboardForm({ name, 点, others, defaultTarget, onChange }: {
   );
 }
 
-/** 批量停用对话框：同一个接手人、同一种交接方式。不逐个清点，各人名下的数到留痕里看 */
-function BatchOffboardForm({ names, others, defaultTarget, onChange }: {
+/** 批量停用对话框：同一个接手人、同一种交接方式。清点是几个人的数加起来，各人名下的数到留痕里看 */
+function BatchOffboardForm({ names, 点, others, onChange }: {
   names: string[];
+  点: { 转交: 清点; 公海: 清点 };
   others: Row[];
-  defaultTarget: string;
   onChange: (v: { target: string; 方式: 停用方式 }) => void;
 }) {
   const b = useBusiness();
   const [方式, set方式] = useState<停用方式>("转交");
-  const [target, setTarget] = useState(defaultTarget);
+  const [target, setTarget] = useState("");
   const 改 = (v: { target?: string; 方式?: 停用方式 }) => {
     const 新 = { target: v.target ?? target, 方式: v.方式 ?? 方式 };
     setTarget(新.target);
@@ -682,13 +709,16 @@ function BatchOffboardForm({ names, others, defaultTarget, onChange }: {
       />
       <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 8 }}>
         {方式 === "转交"
-          ? `他们名下的${b.customer}、项目，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：`
-          : `能放公海的${b.customer}和项目放回公海；已签约、已流失、订单阶段的，和线索、渠道，交给：`}
+          ? `他们名下的 ${点.转交.客户} 位${b.customer}${点.转交.项目 ? `、${点.转交.项目} 个项目` : ""}，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：`
+          : `${点.公海.进公海客户} 位${b.customer}${点.公海.进公海项目 ? `、${点.公海.进公海项目} 个项目` : ""}放回公海；已签约、已流失、订单阶段的${点.公海.客户 ? ` ${点.公海.客户} 位${b.customer}` : ""}${点.公海.项目 ? `、${点.公海.项目} 个项目` : ""}，和线索、渠道，交给：`}
       </Typography.Paragraph>
       <Select
-        value={target}
+        showSearch
+        optionFilterProp="label"
+        placeholder="选接手人"
+        value={target || undefined}
         style={{ width: "100%" }}
-        onChange={(v) => 改({ target: v })}
+        onChange={(v: string) => 改({ target: v })}
         options={others.map((u) => ({ value: u.id, label: u.name }))}
       />
     </div>

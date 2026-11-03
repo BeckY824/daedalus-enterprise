@@ -18,14 +18,15 @@
  * 「🔀请选择号码类型」两条是格式那一半的（contact-format.ts）
  */
 import type { Prisma } from "@/generated/prisma";
-import { prisma } from "@/lib/prisma";
+import { prisma, defaultClient } from "@/lib/prisma";
 import { 号键 } from "@/lib/phone";
 import { 号键SQL, 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件 } from "@/lib/email-dedupe";
-import { 看全部, 看得到, 限定的我, 只读错误, type 谁 } from "@/lib/team-scope";
+import { 看全部, 看得到, 限定的我, 只读错误, 现在的公海回避, type 谁 } from "@/lib/team-scope";
 import { 问同事 } from "@/lib/sync/dedupe-client";
 import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
 import { 号码归属地 } from "./phone-region";
+import { 拦原负责人 } from "./pool-rules";
 
 /** ContactMethod.kind：号码类型 → 库里的写法。二维码没有号，不进子表 */
 export const 号码库类型 = { 手机号: "phone", 邮箱: "email", 微信: "wechat", 旺旺ID: "wangwang" } as const satisfies Partial<Record<号码类型, string>>;
@@ -82,7 +83,9 @@ export type 撞到的人 = { id: string | null; name: string | null; school: str
 
 export type 查号结论 =
   | { 状态: "首次录入"; 提示: string; 撞: null }
-  | { 状态: "公海待捞" | "我的通讯录已有" | "重复"; 提示: string; 撞: 撞到的人 };
+  | { 状态: "我的通讯录已有" | "重复"; 提示: string; 撞: 撞到的人 }
+  /** 原负责人是我 = 我自己放回（或被收回）公海的、企业版原负责人领不回也看不到：向导不给「打开它」「去领取」（11-03 B7-3） */
+  | { 状态: "公海待捞"; 提示: string; 撞: 撞到的人; 原负责人是我?: true };
 
 /**
  * 撞到的 id → 提示。好几位都撞的认首条（建档最早、同一刻按 id）：首条在我名下 📒，在公海 ⛔公海待捞，否则说首条的负责人。
@@ -102,8 +105,21 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
     createdAt: 看得见 ? 挑.createdAt.toISOString() : null,
   };
   if (挑.salesOwnerId === 我 && !挑.pool) return { 状态: "我的通讯录已有", 提示: 查重提示.我的通讯录已有, 撞 };
-  if (挑.pool) return { 状态: "公海待捞", 提示: 查重提示.公海待捞, 撞 };
+  if (挑.pool) return { 状态: "公海待捞", 提示: 查重提示.公海待捞, 撞, ...((await 我回避的(db, 挑, 我)) ? { 原负责人是我: true as const } : {}) };
   return { 状态: "重复", 提示: 查重提示.重复(同事, 撞.name), 撞 };
+}
+
+/**
+ * 这位公海客户是不是我退的、我领不回也看不到（11-03 B7-3）：和 team-scope 公海回避 同一套——负责人是我，或在我的回避名单里；
+ * 名单过上限（null）时照回避的退路，看有没有我退的公海项目
+ */
+async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | null }, 我: string): Promise<boolean> {
+  if (!拦原负责人()) return false;
+  if (挑.salesOwnerId === 我) return true;
+  const 避 = await 现在的公海回避(defaultClient);
+  if (!避 || 避.本人 !== 我) return false;
+  if (避.客户) return 避.客户.includes(挑.id);
+  return 看全部(async () => !!(await db.project.findFirst({ where: { customerId: 挑.id, pooledAt: { not: null }, logs: { some: { kind: "pool-release", fromOwnerId: 我 } } }, select: { id: true } })));
 }
 
 /**
