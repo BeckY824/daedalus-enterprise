@@ -10,6 +10,7 @@ import type { Prisma } from "@/generated/prisma";
 import { requireUser } from "@/lib/auth";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES } from "@/lib/constants";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
+import { 客户跟进后勾掉将回收提醒 } from "@/lib/project/db";
 import { recordAudit } from "@/lib/audit";
 import { 领取 } from "../pool-actions";
 import { 认回打码号, 号键 } from "@/lib/phone";
@@ -265,6 +266,8 @@ export async function saveFollowUp(input: FollowUpInput) {
     for (const audit of result.audits) await recordAudit(audit);
     刷新待办(input.customerId);
     revalidatePath("/follow-ups");
+    // 客户最近跟进往后推了 = 名下项目的回收时钟续了：「再不跟进」的提醒跟着勾掉（11-03 B3-1）。按推进前的节点找提醒，放在自动推进前面
+    await 客户跟进后勾掉将回收提醒(input.customerId, now);
     await 客户存了推项目(user, input.customerId);
     return { ok: true as const, id: result.id, ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}) };
   } catch (e) { return 不在了(e); }

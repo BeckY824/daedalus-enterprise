@@ -997,6 +997,18 @@ async function 认沟通额外(
 }
 
 /**
+ * 企业版（11-03 B3-1）：客户上记了跟进（不挂项目）也续了回收时钟（超时起点取客户最近跟进），
+ * 名下还在推的项目照 勾掉将回收提醒 再算一遍：回收日推到明天以后的，那条「再不跟进」的提醒跟着勾掉（同项目上记沟通）
+ */
+export async function 客户跟进后勾掉将回收提醒(customerId: string, now: Date = new Date()): Promise<void> {
+  if (!企业版()) return;
+  const 规则 = await 生效组织规则();
+  const 们 = await 看全部(() => prisma.project.findMany({ where: { customerId, pooledAt: null, result: null }, select: { id: true, name: true, node: true, ownerId: true, customerId: true } }));
+  if (!们.length) return;
+  await 查完再写(async (tx) => { for (const p of 们) await 勾掉将回收提醒(tx, 规则, p, now); });
+}
+
+/**
  * 企业版（10-27）：记了沟通，回收日往后推了、不再是明天以内，负责人那条「再不跟进」的提醒跟着勾掉。
  * 下一步时间填的今天（回收日还是明天）就不勾：明天那条提醒照样作数。按记沟通前的项目名 + 节点找（自动推进可能换了节点）
  */
