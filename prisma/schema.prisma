@@ -24,6 +24,8 @@ model User {
   active    Boolean  @default(true)
   /// 企业版用飞书登录：第一次按姓名对上后记下的飞书 open_id（migrations/098）
   feishuOpenId String? @unique
+  /// 自部署改密时刻（11-03）：比它早签发的会话一律作废，见 src/lib/auth.ts getSessionUser
+  passwordChangedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

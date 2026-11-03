@@ -100,13 +100,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 公海 = !!p.pooledAt;
   const 企业 = 企业版();
   const 能领 = !企业 || 能新建和领取(me, org);
+  // 沟通记录跟着项目走（11-03 C6-2）：企业版不在公海的项目，看得到项目（负责人、组员、管理者，上面 能看项目 挡过）就看得到上面谁记的沟通，
+  // 包括前负责人记的、客户不归自己线的；客户本身、联系人照旧按 露。公海里照旧领了再看。附件照旧按 露（附件接口按客户认）
+  const 露沟通 = 露 || (企业 && !p.pooledAt);
   // 公海里这个项目最后一次是谁放的（企业版 11-01 起进公海清负责人，原负责人只在留痕里，lib/project/pool-owner.ts）
   const 上一任 = 公海 ? 放回过[0]?.fromOwnerId ?? (p.ownerId || null) : null;
   // 历史负责人对公海里的这个项目没有任何权限（C-01）：看不到，总管理 / 管理员不算（回避豁免）
   if (公海 && 原负责人回避() && me.id === 上一任 && !(await 回避豁免(me))) notFound();
 
   const 历史负责人 = [...new Set(放回过.map((l) => l.fromOwnerId).filter((x): x is string => !!x))];
-  const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), p.ownerId, p.creatorId, ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
+  const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), p.ownerId, p.creatorId, ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露沟通 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
   for (const x of [p.balanceSettledById, p.acceptancePassedById]) if (x) 人id.add(x);
   const 人 = await prisma.user.findMany({ where: { id: { in: [...人id] } }, select: { id: true, name: true } });
   const 名 = new Map(人.map((u) => [u.id, u.name]));
@@ -153,7 +156,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   // 企业版卡点（lib/project/blocker.ts）：沟通编号、卡点列表、发卡点的默认值和阻碍原因下拉；别的版本一样不查
   const [编号, 卡点们, 能发, 卡点默认, 卡点原因们] = 企业
-    ? await Promise.all([沟通编号们(露 ? p.followUps.map((f) => f.followUp.id) : []), 项目的卡点(me, p.id), 能发卡点(me, p.id), 读卡点默认(), 可选原因们()])
+    ? await Promise.all([沟通编号们(露沟通 ? p.followUps.map((f) => f.followUp.id) : []), 项目的卡点(me, p.id), 能发卡点(me, p.id), 读卡点默认(), 可选原因们()])
     : [new Map<string, { code: string; nextAt: Date | null }>(), [], false, null, []];
   const 卡点: 项目卡点 | null = 企业 && 卡点默认 ? { 们: 卡点们.map(卡点给界面), 能发: 能发 && 露, 默认: 卡点默认, 原因们: 卡点原因们 } : null;
   // 企业版联系人附件（2026-10-28）：项目卡联系人那一行下面给「附件」，和客户页同一个弹窗；不是企业版、公海里没领的不查
@@ -243,7 +246,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       transfer: l.kind === "node" ? null : { from: 叫(l.fromOwnerId) ?? "没人", to: 叫(l.toOwnerId) ?? "没人" },
       ...(l.kind === "pool-release" ? { 放回方式: 认放回(l.reason) } : {}),
     })),
-    followUps: (露 ? p.followUps : [])
+    followUps: (露沟通 ? p.followUps : [])
       .map((f) => {
         const 编 = 编号.get(f.followUp.id);
         return {

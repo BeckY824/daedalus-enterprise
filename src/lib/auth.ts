@@ -144,6 +144,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user || !user.active) return null;
+    // 改过密：比改密早签发的会话（别的设备上的）作废；没有 ims 的老票也当作废
+    if (user.passwordChangedAt && !(typeof payload.ims === "number" && payload.ims >= user.passwordChangedAt.getTime())) return null;
     return {
       id: user.id,
       name: user.name,

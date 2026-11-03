@@ -8,6 +8,8 @@
  * - 部门：按上游的树建 / 改名 / 挪；超过 3 层的并到第 3 层那个祖先里，进报告。上游删了的部门：空了才删，还有人就留着、进报告。
  *   第一次同步时，同一级同名的现有部门直接认领，不重复建。
  * - 人：先按上次认过的对照，再按邮箱（不分大小写）认现有账号；都认不出就建一个账号（普通销售、不能登录，要在用户管理里设密码）。
+ *   飞书另有两条（11-03）：最先按已绑的 open_id 认，最后按唯一在用的同名账号认；认到的人把 open_id 写进 User.feishuOpenId，
+ *   只补空——已绑别的、这个 open_id 在别人身上，都不动、进报告。不改负责人、不停用任何人。
  *   上游离职的只进报告，不在这里停用（停用走离职交接，客户要交给谁得有人定）。
  * - 直属上级：上游给了就用；会绕成环的不设，进报告。上游没给就不动这边的。
  * - 业务角色：角色对照（职务 → 业务角色）> 部门负责人 = 销售管理 > 销售。这边手动改过的（和上次同步给的不一样）不覆盖；
@@ -193,7 +195,7 @@ async function 建适配器(源: 通讯录来源): Promise<{ 拉通讯录(): Pro
 type 现有 = {
   部门: { id: string; name: string; parentId: string | null; sort: number }[];
   成员: { userId: string; deptId: string | null; bizRole: string; managerId: string | null; line: string | null; dottedManagerId: string | null }[];
-  用户: { id: string; email: string; name: string; role: string; active: boolean }[];
+  用户: { id: string; email: string; name: string; role: string; active: boolean; feishuOpenId: string | null; password: string }[];
 };
 
 type 部门计划 = { 外部ID: string; id: string | null; name: string; 上级外部ID: string | null; sort: number };
@@ -293,7 +295,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
       const 有: 现有 = {
         部门: await tx.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
         成员: await tx.entMember.findMany({ select: { userId: true, deptId: true, bizRole: true, managerId: true, line: true, dottedManagerId: true } }),
-        用户: await tx.user.findMany({ select: { id: true, email: true, name: true, role: true, active: true } }),
+        用户: await tx.user.findMany({ select: { id: true, email: true, name: true, role: true, active: true, feishuOpenId: true, password: true } }),
       };
       const 部门有 = new Map(有.部门.map((d) => [d.id, d]));
       const 用户有 = new Map(有.用户.map((u) => [u.id, u]));
@@ -338,6 +340,19 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
 
       /* —— 人 —— */
       const 按邮箱 = new Map(有.用户.map((u) => [u.email.toLowerCase(), u.id]));
+      /*
+        飞书身份（11-03）：通讯录的外部ID 就是 open_id，和飞书登录、飞书推送是同一个应用的。
+        认人先认已绑的 open_id（飞书登录绑的，最准）；对照、邮箱都认不出时，按唯一在用的同名账号认——
+        导入建的号邮箱多是占位，不认姓名的话每个人都会被建一个空的新号，飞书登录就进了空号。
+      */
+      const 飞书 = 源 === "feishu";
+      const 按openId = new Map(有.用户.filter((u) => u.feishuOpenId).map((u) => [u.feishuOpenId!, u.id]));
+      const 别人对照的 = new Set(Object.values(s.人对照));
+      const 本次认了 = new Set<string>();
+      const 唯一同名 = (名: string): string | null => {
+        const 名们 = 有.用户.filter((u) => u.active && u.name === 名 && !u.feishuOpenId && !本次认了.has(u.id) && !别人对照的.has(u.id));
+        return 名们.length === 1 ? 名们[0].id : null;
+      };
       const 人对照: Record<string, string> = {};
       const 职务们 = new Set<string>();
       const 计划们: 人计划[] = [];
@@ -346,11 +361,14 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
       for (const p of 本.人们) {
         const 职务 = p.职务?.trim() ?? "";
         if (职务) 职务们.add(职务);
-        let uid: string | null = s.人对照[p.外部ID] && 用户有.has(s.人对照[p.外部ID]) ? s.人对照[p.外部ID] : null;
+        let uid: string | null = (飞书 && 按openId.get(p.外部ID)) || null;
+        if (!uid) uid = s.人对照[p.外部ID] && 用户有.has(s.人对照[p.外部ID]) ? s.人对照[p.外部ID] : null;
         const 邮箱 = p.邮箱?.trim().toLowerCase();
         // 上游没给邮箱的，按上次建号用的兜底邮箱认（人对照丢了也不会每次撞唯一键）
         const 兜底邮箱 = `${源}-${p.外部ID}@contacts.invalid`.toLowerCase();
         if (!uid) uid = 按邮箱.get(邮箱 || 兜底邮箱) ?? null;
+        if (!uid && 飞书 && !p.离职) uid = 唯一同名(p.名.trim());
+        if (uid) 本次认了.add(uid);
         if (p.离职) {
           if (uid && 用户有.get(uid)?.active) 报告.push(`${p.名} 在${名}已离职，这边账号还开着：要停用请走离职交接`);
           if (uid) 人对照[p.外部ID] = uid;
@@ -398,9 +416,39 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
         const u = await tx.user.create({ data: { email: n.email, name: n.name, title: n.title, role: "SALES", password: 不能登录 } });
         p.userId = u.id;
         人对照[p.外部ID] = u.id;
-        用户有.set(u.id, { id: u.id, email: u.email, name: u.name, role: u.role, active: true });
+        用户有.set(u.id, { id: u.id, email: u.email, name: u.name, role: u.role, active: true, feishuOpenId: null, password: u.password });
         新建数++;
         改了++;
+      }
+
+      /* —— 飞书身份：只补空。已绑了别的、这个 open_id 已在别人身上，都不动、进报告 —— */
+      let 绑数 = 0;
+      if (飞书) {
+        for (const p of 计划们) {
+          const uid = p.userId!;
+          const u = 用户有.get(uid)!;
+          if (u.feishuOpenId === p.外部ID) continue;
+          if (u.feishuOpenId) {
+            报告.push(`${u.name} 这边已经绑了别的飞书身份，没改；换过飞书号的话请在设置 → 成员里解绑`);
+            continue;
+          }
+          const 占着 = 按openId.get(p.外部ID);
+          if (占着 && 占着 !== uid) {
+            报告.push(`${u.name} 的飞书身份已经绑在 ${用户有.get(占着)?.name ?? 占着} 上，没改`);
+            continue;
+          }
+          // 对上的是同步自己建的空号、这边还有在用的同名老账号：多半是重复账号，先不绑，免得飞书登录进了空号
+          if (u.password === 不能登录 && 有.用户.some((x) => x.id !== uid && x.active && x.name === u.name)) {
+            报告.push(`${u.name} 有同名的在用账号，像是重复建的号，没绑飞书身份：请合并或停用多的那个`);
+            continue;
+          }
+          const r = await tx.user.updateMany({ where: { id: uid, feishuOpenId: null }, data: { feishuOpenId: p.外部ID } });
+          if (r.count !== 1) continue;
+          u.feishuOpenId = p.外部ID;
+          按openId.set(p.外部ID, uid);
+          绑数++;
+          改了++;
+        }
       }
 
       /* —— 部门、角色先落到组织里，再一个个设上级（设一个查一次环） —— */
@@ -465,7 +513,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
       }
 
       const 话 = 改了
-        ? `部门 ${留的.length} 个、成员 ${计划们.length} 人${新建数 ? `，新建 ${新建数} 个账号（还不能登录，要在用户管理里设密码）` : ""}${报告.length ? `，${报告.length} 条要看` : ""}`
+        ? `部门 ${留的.length} 个、成员 ${计划们.length} 人${新建数 ? `，新建 ${新建数} 个账号（还不能登录，要在用户管理里设密码）` : ""}${绑数 ? `，${绑数} 人绑上飞书身份` : ""}${报告.length ? `，${报告.length} 条要看` : ""}`
         : `没变化${报告.length ? `，${报告.length} 条要看` : ""}`;
       const 结果: 通讯录结果类别 = 改了 ? "成功" : "没变化";
       const 新设置: 通讯录设置 = {
