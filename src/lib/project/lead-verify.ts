@@ -299,8 +299,10 @@ export async function 读线索验证(me: 谁, p: 项目): Promise<线索验证 
   }
   const 判定 = v?.verdict ?? "暂未判定";
   const 终验 = v?.salesAck ?? null;
+  const 叫法 = 验证结果叫法({ 判定, 待, 终验 });
   return {
-    判定, 待, 无效原因: v?.invalidReason ?? null, 叫法: 验证结果叫法({ 判定, 待, 终验 }),
+    // 最后判成有效线索：当初初判写的无效原因不再挂在结果旁边（痕里照留）
+    判定, 待, 无效原因: 叫法 === "有效线索" ? null : v?.invalidReason ?? null, 叫法,
     复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 我能,
     痕: 痕.map((l) => ({ id: l.id, step: l.step, verdict: l.verdict, reason: l.reason, note: l.note, 谁: 名.get(l.userId) ?? "已不在的成员", at: l.at.toISOString() })),
   };
