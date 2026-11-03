@@ -2,6 +2,7 @@
  * 企业版接了飞书登录之后的账号密码（11-03，lib/enterprise/password-login.ts、app/login/actions.ts、lib/auth.ts）：
  *   - 密码只给系统管理员兜底：普通成员、只读管理员知道密码也登不进；登不进一律同一句，不区分没这个号 / 密码错 / 不是系统管理员
  *   - 没接飞书（本机、E2E）：照旧谁都能用密码登
+ *   - 部署时建的运维号 admin（账号角色 ADMIN）始终能登：系统运营要看实际运行
  *   - 组织表里还没有系统管理员（刚部署）：账号角色 ADMIN 的能登，免得谁都进不去
  *   - 改密（自己改、管理员重置）后，别的设备上改密前签发的会话作废；改密的本人当场续一张新票
  */
@@ -79,6 +80,16 @@ describe("接了飞书：账号密码只给系统管理员", () => {
     const 销售 = await 建号("销售甲", "pass-1234");
     expect(await login(老板.email, "pass-1234")).toEqual({ ok: true });
     expect(await login(销售.email, "pass-1234")).toEqual({ ok: false, error: 密码登录拒绝话 });
+  });
+
+  it("部署时建的运维号 admin：组织里已有系统管理员、自己没进组织表也能登；改成别的角色就不放", async () => {
+    await 建号("总管甲", "pass-1234", { bizRole: "director" });
+    const 运维 = await prisma.user.create({
+      data: { email: "admin", name: "管理员", title: "系统管理员", role: "ADMIN", password: await 哈希密码("pass-1234") },
+    });
+    expect(await login("admin", "pass-1234")).toEqual({ ok: true });
+    await prisma.user.update({ where: { id: 运维.id }, data: { role: "SALES" } });
+    expect(await login("admin", "pass-1234")).toEqual({ ok: false, error: 密码登录拒绝话 });
   });
 
   it("没接飞书：照旧谁都能用密码登，错了照旧分开说", async () => {
