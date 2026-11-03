@@ -379,6 +379,9 @@ export default function DataList<T extends { id: string }>({
                 onClick: (e) => {
                   // 点在按钮、链接、勾选框上时不算「点这一行」
                   if ((e.target as HTMLElement).closest("a, button, .ant-checkbox-wrapper, .ant-select, .ant-dropdown-trigger")) return;
+                  // 行里弹出的下拉菜单挂在 body 上，点它的事件照样冒到这一行（React 传送门）：不在这一行里的点击不算
+                  // （11-03 B2-10：公海行「⋯ → 分配给…」点二级菜单标题跳了客户页）
+                  if (!e.currentTarget.contains(e.target as Node)) return;
                   const 去 = 行链接?.(r);
                   if (去) router.push(去);
                   else 行点击?.(r);
