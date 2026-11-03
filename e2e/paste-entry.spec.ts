@@ -185,6 +185,7 @@ test("D-031 /customers?new=1：新建框开一次，地址上的 new=1 当场抹
 });
 
 test("D-031 /customers?import=paste：导入抽屉开着，地址上的 import 当场抹掉、别的筛选参数留着，刷新不再弹", async ({ page }) => {
+  test.skip(企业版, "企业版客户页没有旧导入抽屉（11-03），?import=paste 不再开它；导入走设置 →「企业版导入」");
   await 换能导入的人(page);
   await page.goto("/customers?import=paste&q=%E7%B2%98%E8%B4%B4%E7%BB%84");
   await expect(page.locator(".ant-drawer-open")).toBeVisible();
@@ -203,6 +204,7 @@ test("D-031 /customers?import=paste：导入抽屉开着，地址上的 import �
   「从假变真」那一下等不到。空库「开始」卡上的主按钮「粘一段聊天」走的就是这条路。修法：来路 的初值取 初始来路。
 */
 test("/customers?import=paste：抽屉直接停在「粘一段文本」那一栏", async ({ page }) => {
+  test.skip(企业版, "企业版客户页没有旧导入抽屉（11-03），?import=paste 不再开它；导入走设置 →「企业版导入」");
   await 换能导入的人(page);
   await page.goto("/customers?import=paste");
   const 抽屉 = page.locator(".ant-drawer");
