@@ -692,11 +692,12 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
     当(市场);
   });
 
-  it("手动分：换负责人、清下一步时间、记分配和转让痕、配额照算", async () => {
+  it("手动分：换负责人、下一步跟着项目走（11-03 A2-3）、记分配和转让痕、配额照算", async () => {
     const P = await 建项目("P");
-    await prisma.project.update({ where: { id: P }, data: { nextStepAt: new Date() } });
+    const 下一步 = new Date();
+    await prisma.project.update({ where: { id: P }, data: { nextStepAt: 下一步, nextStepText: "约客户看样" } });
     expect(await 分配线索({ projectId: P, toUserId: 内贸, line: "内贸" })).toEqual({ ok: true });
-    expect(await 项目(P)).toMatchObject({ ownerId: 内贸, nextStepAt: null, pooledAt: null });
+    expect(await 项目(P)).toMatchObject({ ownerId: 内贸, nextStepAt: 下一步, nextStepText: "约客户看样", pooledAt: null });
     expect(await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: P } })).toMatchObject({ leadId: "", toUserId: 内贸, fromUserId: 市场, byUserId: 市场, counted: true });
     expect(await prisma.projectNodeLog.count({ where: { projectId: P, kind: "transfer", fromOwnerId: 市场, toOwnerId: 内贸 } })).toBe(1);
     expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: P, kind: "transfer" } })).toMatchObject({ reason: "分配方式：指定分配；原负责人没做完的待办带过来 0 条" }); // C-06：手动分没传勾按默认勾
