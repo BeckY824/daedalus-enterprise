@@ -186,7 +186,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   function 标记(r: 公海行, 动作: "无效" | "恢复") {
     modal.confirm({
       title: 动作 === "无效" ? `把「${行名(r)}」标成无效客户？` : `把「${行名(r)}」恢复成有效客户？`,
-      content: 动作 === "无效" ? "标了以后谁都领不了，只有老板能恢复" : "恢复后留在公海里，谁都能领",
+      content: 动作 === "无效" ? "标了以后谁都领不了，只有总管理能恢复" : "恢复后留在公海里，谁都能领",
       okText: 动作 === "无效" ? "标无效" : "恢复",
       cancelText: "取消",
       onOk: async () => {

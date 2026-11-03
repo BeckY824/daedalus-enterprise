@@ -965,7 +965,7 @@ export default function RecordView({
           showIcon
           style={{ marginBottom: 12 }}
           message={全只读 ? `虚线下属 ${customer.salesOwnerName} 的${b.customer} · 只能看` : `同事 ${customer.salesOwnerName} 的${b.customer} · 只能看和加跟进`}
-          description={全只读 ? "这是虚线下属的客户：只能看，不能改、不能转。要改请找他的直属上级或总管理员" : "团队开了「同事之间互相看得到客户」。改资料、删除、转交、排计划请找负责人或老板"}
+          description={全只读 ? "这是虚线下属的客户：只能看，不能改、不能转。要改请找他的直属上级或总管理员" : "团队开了「同事之间互相看得到客户」。改资料、删除、转交、排计划请找负责人或" + (企业 ? "总管理" : "老板")}
         />
       )}
 

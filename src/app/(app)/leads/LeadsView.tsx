@@ -458,7 +458,7 @@ export default function LeadsView({
                 <Form.Item
                   name="ownerId"
                   label="负责人"
-                  extra={线索分配开着 ? (能自动分配 ? "换负责人请用列表里的「分配」" : "换负责人要由老板、总管理员或市场管理来分配") : undefined}
+                  extra={线索分配开着 ? (能自动分配 ? "换负责人请用列表里的「分配」" : "换负责人要由总管理、销售管理或市场管理来分配") : undefined}
                 >
                   <Select options={成员选项(users)} disabled={线索分配开着} />
                 </Form.Item>
