@@ -128,6 +128,16 @@ describe("建档向导", () => {
     });
   });
 
+  it("企业版：联系人姓名、客户名称、项目名称填「未知」「待定」「暂未确认」这类占位拦下，一行不写（11-03 A2-2）", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    const 基 = await 企业输入();
+    expect(await 建档向导({ ...基, 联系人: { ...基.联系人, name: " 未知 " } })).toMatchObject({ ok: false, error: expect.stringContaining("联系人姓名") });
+    expect(await 建档向导({ ...基, 客户: { ...基.客户, name: "暂未确认" } })).toMatchObject({ ok: false, error: expect.stringContaining("客户名称") });
+    expect(await 建档向导({ ...基, 项目: { ...基.项目, name: "待定" } })).toMatchObject({ ok: false, error: expect.stringContaining("项目名称") });
+    expect(await 各表行数()).toEqual(全空);
+    expect(await 建档向导(基)).toMatchObject({ ok: true });
+  });
+
   it("开关关着：拦下，一行不写", async () => {
     mocks.开 = false;
     expect(await 建档向导(输入())).toMatchObject({ ok: false, error: expect.stringContaining("项目模式没开") });

@@ -16,7 +16,8 @@ import { 币种选项, 默认币种 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { 成员选项, 独自一人, dayjs, type 可选成员 } from "@/lib/utils";
 import { 外贸精简 } from "@/lib/business-config";
-import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
+import { 项目名上限, 备注上限, 占位名提示 } from "@/lib/project/wizard";
+import { 是占位值 } from "@/lib/project/required";
 import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
 import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
 import { 查号码, type 查号码结果 } from "../../customers/number-actions";
@@ -92,9 +93,10 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
   const 企 = !!企业;
   if (步 === 0 && 企) return !d.号码类型 ? "请选择号码类型" : !d.phone.trim() ? "先填号码再查" : 已查 !== 查过键(d, 企) ? "点「查重」看看这个号码有没有人录过" : "";
   if (步 === 0) return !d.phone.trim() ? "先填电话再查" : 已查 !== d.phone.trim() ? "点「查重」看看这个号码有没有人录过" : "";
-  if (步 === 1) return d.联系人.name.trim() ? "" : "请填写联系人姓名";
-  if (步 === 2) return !d.客户.name.trim() ? "请填写名称" : 企业 && !d.客户.渠道 ? "请选渠道" : "";
-  if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined ? "请选分配方式" : 企业 && !d.项目.业务线 ? 业务线必填 : 要选负责人(d, 企业) && !d.项目.ownerId ? "请选项目负责人" : "";
+  // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
+  if (步 === 1) return !d.联系人.name.trim() ? "请填写联系人姓名" : 企 && 是占位值(d.联系人.name) ? 占位名提示("联系人姓名") : "";
+  if (步 === 2) return !d.客户.name.trim() ? "请填写名称" : 企 && 是占位值(d.客户.name) ? 占位名提示("客户名称") : 企业 && !d.客户.渠道 ? "请选渠道" : "";
+  if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : 企 && 是占位值(d.项目.name) ? 占位名提示("项目名称") : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined ? "请选分配方式" : 企业 && !d.项目.业务线 ? 业务线必填 : 要选负责人(d, 企业) && !d.项目.ownerId ? "请选项目负责人" : "";
   if (!d.跟进.content.trim()) return "请填写这次沟通的内容";
   if (企业) {
     if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选当前进程（线索阶段的哪一步）";
