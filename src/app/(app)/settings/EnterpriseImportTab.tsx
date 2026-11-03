@@ -154,10 +154,22 @@ export default function EnterpriseImportTab() {
     }
   }
 
+  // 每个来源最早真导过的那批才叫「首次导入」，之后再导的叫「再次导入」，没导的是试跑（11-03 完成度 D7-7）
+  const 首批 = new Map<string, 批次行>();
+  for (const b of 概况.批次们) {
+    if (b.类型 !== "full" || b.状态 === "preview") continue;
+    const 前 = 首批.get(b.来源);
+    if (!前 || b.时间 < 前.时间) 首批.set(b.来源, b);
+  }
+  const 类型说法 = (b: 批次行) =>
+    b.类型 === "sync" ? "同步" : b.类型 === "resolve" ? "冲突处理" : b.状态 === "preview" ? "试跑" : 首批.get(b.来源)?.id === b.id ? "首次导入" : "再次导入";
+
   const 批次表 = (
     <Table<批次行>
       rowKey="id"
       size="middle"
+      // 窄窗口（800px 上下）横向滚，不把列压成一字一行
+      scroll={{ x: 960 }}
       dataSource={概况.批次们}
       pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
       locale={{ emptyText: "还没有导入过" }}
@@ -189,8 +201,9 @@ export default function EnterpriseImportTab() {
         ),
       }}
       columns={[
-        { title: "时间", width: 120, render: (_, b) => smartTime(b.时间) },
-        { title: "来源", width: 150, render: (_, b) => `${来源名[b.来源] ?? b.来源} · ${b.类型 === "sync" ? "同步" : b.类型 === "resolve" ? "冲突处理" : "首次导入"}` },
+        // 导完的批记导完那一刻，不是试跑建批的时候
+        { title: "时间", width: 120, render: (_, b) => <span title={b.完成时间 ? `试跑于 ${smartTime(b.时间)}` : undefined}>{smartTime(b.完成时间 ?? b.时间)}</span> },
+        { title: "来源", width: 150, render: (_, b) => `${来源名[b.来源] ?? b.来源} · ${类型说法(b)}` },
         {
           title: "状态",
           width: 130,
