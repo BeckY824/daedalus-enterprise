@@ -9,6 +9,7 @@ import { SearchOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { 换一位 } from "@/lib/roster";
 import { 公海入口 } from "@/lib/enterprise/nav";
+import { 没找到说法 } from "@/lib/cmdk";
 // 只引类型：搜索动作由 layout（服务端）当 prop 传进来，客户端包里不带服务端代码
 import type { 全局搜索结果 } from "@/app/(app)/global-search";
 
@@ -109,6 +110,8 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
   }, [命中, 数据, 要搜, b.customer]);
 
   const 当问题 = 词.length >= 2 && 行们.length === 0 && !搜着;
+  /** 打了字、页面没对上、也不在搜着：先说清楚没找到什么（11-03 C10-2），能问的照样给「问一句」 */
+  const 没找到 = !!词 && 行们.length === 0 && !搜着;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -169,7 +172,8 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
       交给首页问(q);
       router.push(`/dashboard?q=${encodeURIComponent(q.trim())}`);
     } else {
-      const p = 行们[i];
+      // 回车 = 过滤后的第一项（11-03 C1-2；打字时 idx 归零）；列表刚变短、高亮那条没了也落回第一项
+      const p = 行们[i] ?? 行们[0];
       if (!p) return;
       router.push(p.去);
     }
@@ -197,6 +201,8 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
                 e.preventDefault();
                 setIdx((i) => (i <= 0 ? 行们.length - 1 : i - 1));
               } else if (e.key === "Enter") {
+                // 输入法还在选字时的回车是上屏，不是「去」
+                if (e.nativeEvent.isComposing) return;
                 e.preventDefault();
                 走();
               } else if (e.key === "Escape") {
@@ -208,6 +214,7 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
           />
         </div>
         <div className="cmdk-list">
+          {没找到 && <div className="cmdk-sec cmdk-none" role="status">{没找到说法(词)}</div>}
           {当问题 ? (
             <button type="button" className="cmdk-row cmdk-row-on" disabled={!有AI} onClick={() => 走()}>
               <b>{有AI ? "问一句" : "尚未接入 AI"}</b>

@@ -2,7 +2,7 @@
  * 选渠道组件的三级树（2026-10-29 渠道改版）：渠道属性 → 渠道名称 → 来源，叶子的 value 是渠道 id。
  */
 import { describe, it, expect } from "vitest";
-import { 渠道树, 两级渠道树, 路径, 选中的渠道, 未分属性, type 可选渠道 } from "@/components/ChannelPicker";
+import { 渠道树, 两级渠道树, 路径, 选中的渠道, 未分属性, 有渠道可选, 没渠道提示, type 可选渠道 } from "@/components/ChannelPicker";
 
 const 渠 = (id: string, name: string, attr: string | null, platform: string | null, active = true): 可选渠道 => ({ id, name, attr, platform, active });
 
@@ -92,5 +92,17 @@ describe("两级渠道树（P16 新建线索：渠道名称 → 来源）", () =
     expect(选中的渠道([渠道树(清单)[0].value])).toBeNull();
     expect(选中的渠道([])).toBeNull();
     expect(选中的渠道(undefined)).toBeNull();
+  });
+});
+
+describe("没有渠道时（A2-8）", () => {
+  it("一个都没有、或全停用了：不能选，提示找系统管理员加", () => {
+    expect(有渠道可选([])).toBe(false);
+    expect(有渠道可选([渠("1", "抖音|停掉的", "公域引流", "抖音", false)])).toBe(false);
+    expect(没渠道提示).toBe("请系统管理员先添加渠道");
+  });
+  it("有一个能用的、或停用的正是选着的那个：照常给下拉", () => {
+    expect(有渠道可选([渠("1", "抖音|官方号", "公域引流", "抖音")])).toBe(true);
+    expect(有渠道可选([渠("1", "抖音|停掉的", "公域引流", "抖音", false)], "1")).toBe(true);
   });
 });

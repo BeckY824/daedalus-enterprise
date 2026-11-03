@@ -3,7 +3,7 @@
  * 总控 10-23 定：金额不换汇，各币种各算各的。
  */
 import { describe, it, expect } from "vitest";
-import { 看板分列, type 项目行 } from "@/lib/project/board";
+import { 看板分列, 卡片小字, type 项目行 } from "@/lib/project/board";
 import { 字典of } from "@/lib/project/stage-dict";
 
 let n = 0;
@@ -97,5 +97,42 @@ describe("看板分列（企业版：按进程分列，11-03 客户反馈 6）",
     const 列 = 看板分列([行({ phase: "商机", node: "痛点挖掘" }), 行({ phase: "线索", node: "潜客培育" })], 企, "商机");
     expect(列.map((c) => c.名)).toEqual(["痛点挖掘", "方案敲定", "成交推进", "合同审批", "签订合同", "首款到账", "商机丢单"]);
     expect(列.reduce((n, c) => n + c.数, 0)).toBe(1);
+  });
+});
+
+describe("看板卡片小字跟着当前进程走（11-03 A5-5）", () => {
+  const 企 = 字典of(true);
+  const 列名of = (r: 项目行) => 看板分列([r], 企).find((c) => c.行.length)!.列;
+
+  it("进行中：写所在进程，和卡片落的列一致", () => {
+    const r = 行({ phase: "订单", node: "物流运输" });
+    expect(卡片小字(r, 企)).toBe("物流运输");
+    expect(列名of(r)).toBe("物流运输");
+  });
+
+  it("认不出的旧进程落本阶段第一列，小字也写那一列，不再写旧进程", () => {
+    const r = 行({ phase: "订单", node: "早没了的进程" });
+    expect(列名of(r)).toBe("生产备货");
+    expect(卡片小字(r, 企)).toBe("生产备货");
+  });
+
+  it("交付结清写结局叫法，不写停在的尾款结算（A5-6）", () => {
+    const r = 行({ phase: "订单", node: "尾款结算", result: "交付结清" });
+    expect(卡片小字(r, 企)).toBe("交付结清");
+    expect(卡片小字({ ...r, result: "成功交付" }, 企)).toBe("交付结清");
+  });
+
+  it("异常：类别 + 所在进程；类别没填只写进程", () => {
+    expect(卡片小字(行({ phase: "订单", node: "安装实施", result: "异常状态", exceptionCategory: "缺货" }), 企)).toBe("异常 · 缺货 · 安装实施");
+    expect(卡片小字(行({ phase: "订单", node: "早没了的进程", result: "异常状态" }), 企)).toBe("异常 · 生产备货");
+  });
+
+  it("流失 / 丢单：结局叫法 · 停在的进程", () => {
+    expect(卡片小字(行({ phase: "商机", node: "方案敲定", result: "丢单" }), 企)).toBe("商机丢单 · 方案敲定");
+  });
+
+  it("团队版照旧写 node", () => {
+    expect(卡片小字(行({ phase: "订单", node: "安装实施" }))).toBe("安装实施");
+    expect(卡片小字(行({ phase: "订单", node: "尾款结算", result: "成功交付" }))).toBe("成功交付");
   });
 });

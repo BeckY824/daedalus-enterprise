@@ -19,5 +19,6 @@ export function serializeFollowHistory(f: Prisma.FollowUpGetPayload<{ include: t
     opportunityId: f.opportunityId,
     opportunity: f.opportunity?.customerId === f.customerId ? { id: f.opportunity.id, name: f.opportunity.name } : null,
     updatedAt: f.updatedAt.toISOString(),
+    createdAt: f.createdAt.toISOString(),
   };
 }

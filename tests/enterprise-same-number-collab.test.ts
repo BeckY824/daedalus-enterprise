@@ -131,6 +131,9 @@ describe("同号再次录入", () => {
     expect(提醒.find((t) => t.谁 === "小丁")?.重点).toBe(true);
     expect(提醒.find((t) => t.谁 === "小丁")?.摘要).toContain("重点关注");
     expect(提醒.find((t) => t.谁 === "小丙")?.重点).toBe(false);
+    // 客户详情顶上同一条（11-03 B6-9）：传这位客户名下的几个项目，合起来取；空列表不查库
+    expect((await 同号提醒们([x.项目!.id, "没这个项目"])).map((t) => t.id)).toEqual(提醒.map((t) => t.id));
+    expect(await 同号提醒们([])).toEqual([]);
   });
 
   it("已是组员：写记录，不再邀请，不改成员状态", async () => {

@@ -69,7 +69,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       exceptionCategory: { select: { name: true } },
       logs: { orderBy: { at: "desc" }, take: 200 },
       members: { orderBy: { createdAt: "asc" } },
-      followUps: { include: { followUp: { select: { id: true, type: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, updatedAt: true } } } },
+      followUps: { include: { followUp: { select: { id: true, type: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, createdAt: true, updatedAt: true } } } },
       _count: { select: { logs: true } },
     },
   });
@@ -252,7 +252,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         return {
           id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, initiator: f.followUp.initiator, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
           ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
-          ...(企业 ? { 附件: 沟通附件.get(f.followUp.id) ?? [], 我记的: f.followUp.ownerId === me.id, 接手前: f.followUp.ownerId !== p.ownerId } : {}),
+          ...(企业 ? { 附件: 沟通附件.get(f.followUp.id) ?? [], 我记的: f.followUp.ownerId === me.id, 记下于: f.followUp.createdAt.toISOString(), 接手前: f.followUp.ownerId !== p.ownerId } : {}),
         };
       })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),

@@ -445,7 +445,6 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
                 placeholder="这条线索从哪个渠道、哪个来源来"
                 onChange={(v) => 改("客户", { 渠道: v ?? undefined })}
               />
-              {企业.渠道们.length === 0 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>还没有渠道：先去 <Link href="/channels">渠道页</Link> 加一个</div>}
             </>
           ), true)}
           {!企业 && 一行(b.fields.school, <Input value={d.客户.school} onChange={(e) => 改("客户", { school: e.target.value })} />)}

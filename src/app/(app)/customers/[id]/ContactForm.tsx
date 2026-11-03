@@ -49,7 +49,8 @@ export default function ContactForm({
 }: {
   open: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  /** 新加到这位客户上的（新建、或撞号后挂过来）带上联系人 id，记录页拿它排最前、闪一下（11-03 C1-8）；改资料不带 */
+  onSaved: (新加的?: string) => void;
   /** 记录页上给定；列表页上不给，改由表单里选 */
   customerId?: string;
   /** 只有不给 customerId 时才用得上：可选的学员 */
@@ -125,7 +126,7 @@ export default function ContactForm({
       if (!r.ok) return void message.error(r.error);
       message.success(`已挂到本${b.customer}`);
       守.存好了();
-      onSaved();
+      onSaved(contactId);
     } finally {
       set存着(false);
     }
@@ -190,7 +191,7 @@ export default function ContactForm({
     }
     message.success(record ? "已保存" : "联系人已添加");
     守.存好了();
-    onSaved();
+    onSaved(record ? undefined : r.id);
   }
 
   return (

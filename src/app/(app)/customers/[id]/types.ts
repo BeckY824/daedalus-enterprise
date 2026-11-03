@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { 可选成员 } from "@/lib/utils";
 import type { ContractRow } from "./ContractForm";
 import type { CustomerRow } from "../CustomerForm";
@@ -27,6 +28,8 @@ export type FollowUpRow = {
   contactId: string | null;
   opportunityId: string | null;
   opportunity?: { id: string; name: string } | null;
+  /** 记下的时间（服务器时间）：本人 10 分钟内能撤销（A7-1） */
+  createdAt?: string;
   /** 编辑框的版本号（2026-10-04 J-105） */
   updatedAt: string;
   /** 企业版客户页「沟通记录」汇总时：这条属于哪个项目（null = 客户本身挂的老跟进；2026-10-29 P14） */
@@ -65,6 +68,8 @@ export type ContactRow = {
 };
 
 export type RecordProps = {
+  /** 摆在整页最上面的提醒条（客户详情顶上的同号再次录入醒目条，11-03 B6-9）；没有就不摆 */
+  醒目条?: ReactNode;
   /** 原始转化线索；没有关联或已删除时为空，不用推荐关系推断。 */
   sourceLead?: import("@/lib/customer-lead-origin").CustomerLeadOrigin | null;
   /** 这位在不在我左栏的「收藏的客户」里（lib/favorites.ts） */
