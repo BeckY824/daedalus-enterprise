@@ -158,6 +158,25 @@ describe("离职交接中", () => {
   });
 });
 
+describe("离职时没东西给接手人（11-03 C4-2）", () => {
+  it("名下空、或公海方式全进了公海：当场停用，不建交接、不发「等你确认」", async () => {
+    expect(await deactivateUser(销售.id, 接手.id, "转交")).toEqual({ ok: true });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 销售.id } })).active).toBe(false);
+    expect(await prisma.entHandover.count()).toBe(0);
+    expect(await prisma.entNotice.count({ where: { userId: 接手.id } })).toBe(0);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "deactivate", entityId: 销售.id } })).toMatchObject({ summary: expect.stringContaining("没发起交接") });
+
+    // 公海方式：待跟进的客户全进公海，给接手人的一样没有
+    const 组员 = await 建("s3", "SALES");
+    await prisma.entMember.create({ data: { userId: 组员.id, managerId: 组长.id, bizRole: "sales" } });
+    await 客户(组员.id);
+    expect(await deactivateUser(组员.id, 接手.id, "公海")).toEqual({ ok: true });
+    expect(await prisma.entHandover.count()).toBe(0);
+    expect(await prisma.customerPool.count()).toBe(1);
+    expect(await prisma.entNotice.count({ where: { userId: 接手.id } })).toBe(0);
+  });
+});
+
 describe("转让交接中", () => {
   it("给别人先不换；重复发起不重复记；确认时只转还归原负责人的，活和换负责人记录一起走", async () => {
     const a = await 客户(销售.id);
