@@ -9,9 +9,9 @@ export default async function SameNumberBanner({ projectId }: { projectId: strin
   const 们 = await 同号提醒们(projectId);
   if (!们.length) return null;
   const 有重点 = 们.some((x) => x.重点);
-  const 色 = 有重点 ? "var(--color-danger, #cf1322)" : "var(--color-warning, #d48806)";
+  const 色 = 有重点 ? "var(--danger)" : "var(--warning)";
   return (
-    <div role="status" aria-label="同号再次录入提醒" style={{ margin: "0 0 12px", padding: "10px 14px", borderRadius: 8, border: `1px solid ${色}`, background: "var(--bg-elevated, transparent)" }}>
+    <div role="status" aria-label="同号再次录入提醒" style={{ margin: "0 0 12px", padding: "10px 14px", borderRadius: 8, border: `1px solid ${色}`, background: "var(--panel)" }}>
       <div style={{ fontWeight: 600, color: 色 }}>{有重点 ? "同号再次录入 · 来源不同，重点关注" : "同号再次录入"}</div>
       {们.map((x) => (
         <div key={x.id} style={{ marginTop: 4, fontSize: 13, overflowWrap: "anywhere" }}>
