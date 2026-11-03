@@ -782,7 +782,7 @@ export default function ProjectDetail({
           </Button>
         </div>
       )}
-      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后可见</span>}</div>
+      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
@@ -1038,7 +1038,7 @@ export default function ProjectDetail({
       }
     >
       <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
-      {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后可见"}</div>}
+      {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : p.pooled ? "领取后可见" : "无权查看"}</div>}
       {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
       {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}
       {列沟通.map((f) => (

@@ -1139,11 +1139,12 @@ type 必填项目行 = Pick<Project,
  */
 export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行): Promise<必填数据> {
   const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 有效沟通, 验证] = await Promise.all([
-    tx.customer.findUnique({
+    // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
+    看全部(() => tx.customer.findUnique({
       where: { id: p.customerId },
       select: { phone: true, assignWay: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
-    }),
-    tx.contact.findMany({ where: { customerId: p.customerId }, select: { phone: true, email: true, wechat: true } }),
+    })),
+    看全部(() => tx.contact.findMany({ where: { customerId: p.customerId }, select: { phone: true, email: true, wechat: true } })),
     tx.followUpProject.findMany({ where: { projectId: p.id, followUp: { deletedAt: null } }, select: { node: true, followUp: { select: { initiator: true, content: true, method: true } } } }),
     tx.attachment.count({ where: { projectId: p.id, tag: "合同" } }),
     tx.entProjectPayment.count({ where: { projectId: p.id } }),

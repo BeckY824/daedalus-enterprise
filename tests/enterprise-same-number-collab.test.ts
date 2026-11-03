@@ -20,7 +20,7 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 同号再次录入, 同号可协同, 同号只记备注, 同号提醒们, 同号节点 } from "@/lib/enterprise/same-number-collab";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
 import { saveLead } from "@/app/(app)/leads/actions";
-import { 待我回的邀请 } from "@/lib/project/db";
+import { 待我回的邀请, 读必填数据 } from "@/lib/project/db";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
 import { 字段表, 猜列 } from "@/lib/import/fields";
@@ -226,6 +226,19 @@ describe("同号再次录入", () => {
     const 管 = await 人("adm1", "小戊", "admin");
     expect((await 作为(管, () => 同号再次录入(管, 好号(), { 入口: "手工建档" }))).走).toBe(false);
     expect(await prisma.followUp.count({ where: { customerId: x.客户.id } })).toBe(0);
+  });
+
+  it("组员看不到客户时，项目必填不误报「所属客户」（11-03 B6-1）", async () => {
+    const x = await 现场();
+    await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.市场.id, inviteStatus: "JOINED", invitedById: x.负责人.id } });
+    const 行 = await prisma.project.findUniqueOrThrow({ where: { id: x.项目!.id } });
+    const r = await 作为(x.市场, async () => ({
+      见客户: await prisma.customer.findUnique({ where: { id: x.客户.id }, select: { id: true } }),
+      数据: await 读必填数据(prisma, 行),
+    }));
+    expect(r.见客户).toBeNull(); // 前提：这位组员确实看不到客户
+    expect(r.数据.有客户).toBe(true);
+    expect(r.数据.客户.phone).toBe(号码);
   });
 });
 
