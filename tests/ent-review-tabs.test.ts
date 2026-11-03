@@ -3,16 +3,11 @@
  *   - 读卡点看板筛 / 沟通条件（纯函数）：卡点看板的地址栏只认 bm/bo/br/bt/bi/bp；沟通按 看板的人 的 谁 圈、时间段筛
  *   - 卡点看板（11-01 改成三栏，谁看得到按卡点的角色开关）：成员看自己发的 / 自己项目上的 / 认领的；
  *     经理加上直属下属发的、看不到外人的；总管理员（可看全部）全部；不是企业版给空
- *   - 复盘沟通of：只列挂在项目上的沟通，按项目负责人圈（11-01 同项目列表）；成员只看到自己项目上的；经理看到自己 + 下属的；总管理全部；时间倒序；最近几天筛
+ *   - 复盘沟通of：只列挂在项目上的沟通，按项目负责人圈（11-01 同项目列表），谁记的都算（11-03 C6-2）；成员只看到自己项目上的；经理看到自己 + 下属的；总管理全部；时间倒序；最近几天筛
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
-// 照原样跑，只为看「看全部」时配对的负责人名单（空串配不上任何沟通，光看结果看不出来）
-vi.mock("@/lib/project/review-tabs", async (原) => {
-  const m = await 原<typeof import("@/lib/project/review-tabs")>();
-  return { ...m, 沟通条件: vi.fn(m.沟通条件) };
-});
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -40,14 +35,12 @@ describe("纯函数：地址栏、条件", () => {
     expect([夹页(0, 50), 夹页(9, 50), 夹页(2, 50), 夹页(3, 0)]).toEqual([1, 3, 2, 1]);
   });
 
-  it("沟通条件：每人一组「记录人 = 项目负责人 = 他」，项目没删；谁 给了公海的不算；看全部按全部负责人配；最近 N 天从那天零点算", () => {
+  it("沟通条件：按这一圈负责的项目筛（谁记的都算，11-03 C6-2），项目没删；谁 给了公海的不算；看全部只排公海（负责人空串）；最近 N 天从那天零点算", () => {
     const now = dayjs("2026-10-31T15:00:00");
-    expect(沟通条件(undefined, "all", now, "", ["甲"])).toEqual({
-      OR: [{ ownerId: "甲", projectNode: { is: { project: { deletedAt: null, ownerId: "甲" } } } }],
-    });
-    expect(沟通条件(undefined, "all", now)).toEqual({ OR: [] });
+    expect(沟通条件(undefined, "all", now)).toEqual({ projectNode: { is: { project: { deletedAt: null, ownerId: { not: "" } } } } });
     const w = 沟通条件([小王], "7", now);
-    expect(w.OR).toEqual([{ ownerId: 小王, projectNode: { is: { project: { deletedAt: null, ownerId: 小王, pooledAt: null } } } }]);
+    expect(w.projectNode).toEqual({ is: { project: { deletedAt: null, ownerId: { in: [小王] }, pooledAt: null } } });
+    expect(w).not.toHaveProperty("ownerId");
     expect(dayjs((w.occurredAt as { gte: Date }).gte).format("YYYY-MM-DD HH:mm")).toBe("2026-10-25 00:00");
   });
 });
@@ -144,7 +137,7 @@ describe("库里取数和数据范围", () => {
     expect(await 卡点看板({ id: 总管, role: "ADMIN" })).toMatchObject({ 开: false, 已解决共: 0 });
   });
 
-  it("沟通：只列挂在项目上的；成员只看到自己记的，经理自己 + 下属，总管理员全部；时间倒序，带项目、节点、负责人", async () => {
+  it("沟通：只列挂在项目上的；成员只看到自己项目上的，经理自己 + 下属，总管理员全部；时间倒序，带项目、节点、负责人", async () => {
     await 记沟通(小王, "小王没挂项目", 0, false);
     await 记沟通(小王, "小王上个月", 40);
 
@@ -164,15 +157,18 @@ describe("库里取数和数据范围", () => {
     expect(内容(全).some((x) => x.startsWith("发卡点"))).toBe(false);
   });
 
-  it("看全部：公海项目（ownerId 空串）不算一个负责人，名单里没有空串；看得到的沟通不变", async () => {
+  it("看全部：公海项目（ownerId 空串）上的沟通不算", async () => {
     const 前 = 内容(await 复盘沟通of(undefined, { 段: "all" }));
-    await prisma.project.create({ data: { name: "公海项目", customerId: 客户[外人], ownerId: "", creatorId: 外人, pooledAt: new Date() } });
+    const 公 = await prisma.project.create({ data: { name: "公海项目", customerId: 客户[外人], ownerId: "", creatorId: 外人, pooledAt: new Date() } });
+    const f = await prisma.followUp.create({ data: { customerId: 客户[外人], ownerId: 外人, type: "CALL", title: "", content: "公海项目上的", status: "已完成", occurredAt: new Date() } });
+    await prisma.followUpProject.create({ data: { followUpId: f.id, projectId: 公.id, node: "潜客培育" } });
     expect(内容(await 复盘沟通of(undefined, { 段: "all" }))).toEqual(前);
-    const 全部负责人 = vi.mocked(沟通条件).mock.lastCall?.[4] as string[];
-    expect([...全部负责人].sort()).toEqual(用户.map((u) => u.id).sort());
+    await prisma.followUpProject.deleteMany({ where: { followUpId: f.id } });
+    await prisma.followUp.delete({ where: { id: f.id } });
+    await prisma.project.delete({ where: { id: 公.id } });
   });
 
-  it("沟通只算项目负责人本人记的：同事记在他项目上的、转手前前任记的，选谁、看全部都不算", async () => {
+  it("沟通跟着项目走（11-03 C6-2）：同事代记、转手前前任记的都算到项目现在这一圈；客户还在前任名下，接手人、他的上级照样看得到，圈外的人看不到", async () => {
     const 记 = async (记录人: string, 内容: string, 项目id: string) => {
       const f = await prisma.followUp.create({
         data: { customerId: 客户[小王], ownerId: 记录人, type: "CALL", title: "", content: 内容, status: "已完成", occurredAt: new Date() },
@@ -182,20 +178,28 @@ describe("库里取数和数据范围", () => {
     };
     const 们 = [await 记(外人, "同事代记", 项目[小王]), await 记(小王, "记在别人项目上", 项目[外人])];
     const 只有 = (x: string[]) => x.filter((c) => c === "同事代记" || c === "记在别人项目上");
-    expect(只有(内容(await 复盘沟通of([小王], { 段: "all" })))).toEqual([]);
-    expect(只有(内容(await 复盘沟通of([外人], { 段: "all" })))).toEqual([]);
-    expect(只有(内容(await 复盘沟通of([小王, 外人], { 段: "all" })))).toEqual([]);
-    expect(只有(内容(await 复盘沟通of(undefined, { 段: "all" })))).toEqual([]);
+    expect(只有(内容(await 复盘沟通of([小王], { 段: "all" })))).toEqual(["同事代记"]);
+    expect(只有(内容(await 复盘沟通of([外人], { 段: "all" })))).toEqual(["记在别人项目上"]);
+    expect(只有(内容(await 复盘沟通of(undefined, { 段: "all" }))).sort()).toEqual(["同事代记", "记在别人项目上"].sort());
 
-    // 项目转手：前任记的不再算到任何人头上，新负责人记的算
-    const 转手 = (await prisma.project.create({ data: { name: "转手项目", customerId: 客户[小王], ownerId: 小王, creatorId: 小王, node: "潜客培育" } })).id;
-    们.push(await 记(小王, "转手前前任记的", 转手));
-    await prisma.project.update({ where: { id: 转手 }, data: { ownerId: 外人 } });
-    们.push(await 记(外人, "转手后新负责人记的", 转手));
-    const 全 = 内容(await 复盘沟通of(undefined, { 段: "all" }));
-    expect(全).not.toContain("转手前前任记的");
-    expect(全).toContain("转手后新负责人记的");
-    expect(内容(await 复盘沟通of([小王], { 段: "all" }))).not.toContain("转手前前任记的");
+    // 项目从外人转给小王，客户还在外人名下（小王、经理按客户都看不到这位客户）：前任记的、接手后记的都跟着项目到小王这一圈
+    const 转手 = (await prisma.project.create({ data: { name: "转手项目", customerId: 客户[外人], ownerId: 外人, creatorId: 外人, node: "潜客培育" } })).id;
+    const 记外 = async (记录人: string, 内容: string) => {
+      const f = await prisma.followUp.create({ data: { customerId: 客户[外人], ownerId: 记录人, type: "CALL", title: "", content: 内容, status: "已完成", occurredAt: new Date() } });
+      await prisma.followUpProject.create({ data: { followUpId: f.id, projectId: 转手, node: "潜客培育" } });
+      return f.id;
+    };
+    们.push(await 记外(外人, "转手前前任记的"));
+    await prisma.project.update({ where: { id: 转手 }, data: { ownerId: 小王 } });
+    们.push(await 记外(小王, "转手后新负责人记的"));
+    const 王 = await 看板的人({ id: 小王, role: "SALES" });
+    const 王看 = 内容(await 以谁的身份(小王, () => 复盘沟通of(王.谁, { 段: "all" })));
+    expect(王看).toEqual(expect.arrayContaining(["转手前前任记的", "转手后新负责人记的"]));
+    const 经 = await 看板的人({ id: 经理, role: "SALES" });
+    expect(内容(await 以谁的身份(经理, () => 复盘沟通of(经.谁, { 段: "all" })))).toEqual(expect.arrayContaining(["转手前前任记的", "转手后新负责人记的"]));
+    // 前任（不在小王这一圈、也不是他的上级）不再从复盘里看到这个项目上的沟通
+    const 外 = await 看板的人({ id: 外人, role: "SALES" });
+    expect(内容(await 以谁的身份(外人, () => 复盘沟通of(外.谁, { 段: "all" })))).not.toContain("转手前前任记的");
 
     await prisma.followUpProject.deleteMany({ where: { followUpId: { in: 们 } } });
     await prisma.followUp.deleteMany({ where: { id: { in: 们 } } });

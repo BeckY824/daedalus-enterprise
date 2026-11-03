@@ -23,7 +23,7 @@ import { 发满额提醒, 读满额提醒, 关掉满额提醒, type 满额提醒
 import { 分配通知 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
-import { 超上限, 记转让 } from "@/lib/project/db";
+import { 超上限, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
@@ -209,7 +209,7 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
 /**
  * 分配线索阶段的项目（企业版「新线索」）：转了商机、线索流失的不用再分；配额同老线索（默认不限额），手动分另外还要过持有上限（超上限）；
  * 自动分配不看持有上限（11-01 清单 A10 / A11：不限额）。
- * 换负责人 = 转让：清下一步时间（超时回收从接手那天重新算），在公海里的出公海、待分配的清掉待分配，记一行转让痕。
+ * 换负责人 = 转让：下一步跟着项目走（11-03 A2-3，超时回收从接手那天重新算），在公海里的出公海、待分配的清掉待分配，记一行转让痕。
  * 带待办（C-06）：手动分才有，原负责人的待办按 lib/project/carry-tasks.ts 带过去或关掉；自动分配不传、不碰
  */
 async function 分项目给(
@@ -242,14 +242,17 @@ async function 分项目给(
     }
     // 分之前的负责人：在公海里的取历史负责人（企业版进公海清了负责人，lib/project/pool-owner.ts）
     const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
-    // 乐观锁：where 带上刚读到的负责人和公海 / 待分配状态，中间被别人分走了就一行都不动、不覆盖
+    // 乐观锁：where 带上刚读到的负责人和公海 / 待分配状态，中间被别人分走了就一行都不动、不覆盖。
+    // 下一步（时间 + 文字）跟着项目走、不清（11-03 A2-3，同 改项目 转让）
     const 改 = await tx.project.updateMany({
       where: { id: p.id, ownerId: p.ownerId, pooledAt: p.pooledAt, awaitAssignAt: p.awaitAssignAt, phase: "线索", result: null },
-      data: { ownerId: input.toUserId, nextStepAt: null, nextStepText: null, pooledAt: null, awaitAssignAt: null },
+      data: { ownerId: input.toUserId, pooledAt: null, awaitAssignAt: null },
     });
     if (改.count !== 1) return 已被分配;
+    await 将回收提醒跟着换人(tx, p, 原, input.toUserId);
     const 几条 = await 换负责人待办(tx, p, 原, input.toUserId, input.带待办);
     await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", 接上待办痕(`分配方式：${input.way}`, 待办痕(input.带待办, 几条)));
+    await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: input.toUserId }, new Date());
     // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, input.带待办);
     // 不在公海：客户名下就这一个项目、客户还归原负责人（市场建档后分出去这种），客户也跟着走（11-03 A3-3：

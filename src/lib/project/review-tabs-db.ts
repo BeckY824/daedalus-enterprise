@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { 跟进方式名 } from "@/lib/follow-method";
 import { dayjs } from "@/lib/utils";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 看全部 } from "@/lib/team-scope";
 import {
   沟通条件, 夹页, 复盘列表每页,
   type 沟通段, type 沟通方式, type 复盘沟通,
 } from "./review-tabs";
-import { 公海无负责人 } from "./pool-owner";
 
 /**
  * 复盘页「沟通」页签取数（P7 U-复盘-01；「卡点」11-01 起是三栏看板，取数在 lib/project/blocker.ts 卡点看板）。条件在 review-tabs.ts，这里只查库、排好、切一页。
@@ -14,16 +15,24 @@ import { 公海无负责人 } from "./pool-owner";
 
 const 名 = (u: { name: string | null; email: string } | null | undefined) => (u ? u.name || u.email : "—");
 
-/** 沟通：项目负责人本人记在项目上的沟通，时间倒序；走带限定的 prisma（看得到哪些客户的沟通由那一层管） */
+/**
+ * 沟通：这一圈负责的项目上的沟通（谁记的都算，11-03 C6-2），时间倒序。
+ * 企业版按项目认、不按客户认：谁 就是他看得到的那一圈负责人（看板的人），公海里的不算，所以绕开客户那层限定——
+ * 项目换了人、客户还在前任名下时，接手人和他的上级照样看得到这个项目上的沟通；圈外的人照旧看不到。不是企业版照旧走带限定的 prisma
+ */
 export async function 复盘沟通of(
   谁: readonly string[] | undefined,
   q: { 段: 沟通段; 方式?: 沟通方式 | ""; 页?: number; 每页?: number; now?: ReturnType<typeof dayjs> },
 ): Promise<复盘沟通> {
+  return 企业版() ? 看全部(() => 取沟通(谁, q)) : 取沟通(谁, q);
+}
+
+async function 取沟通(
+  谁: readonly string[] | undefined,
+  q: { 段: 沟通段; 方式?: 沟通方式 | ""; 页?: number; 每页?: number; now?: ReturnType<typeof dayjs> },
+): Promise<复盘沟通> {
   const 每页 = q.每页 ?? 复盘列表每页;
-  // 看全部时没有名单，取现有项目的全部负责人来配对（人数远不到参数上限）。公海项目 ownerId 是空串（没有负责人），不算一个负责人：
-  // 没有哪条沟通的归属人是空串，放进名单也配不上，白占一个参数
-  const 全部负责人 = 谁 ? [] : (await prisma.project.findMany({ where: { deletedAt: null, ownerId: { not: 公海无负责人 } }, distinct: ["ownerId"], select: { ownerId: true } })).map((p) => p.ownerId);
-  const where = 沟通条件(谁, q.段, q.now ?? dayjs(), q.方式 ?? "", 全部负责人);
+  const where = 沟通条件(谁, q.段, q.now ?? dayjs(), q.方式 ?? "");
   const 总数 = await prisma.followUp.count({ where });
   const 页 = 夹页(q.页 ?? 1, 总数, 每页);
   if (!总数) return { 总数, 页, 行: [] };

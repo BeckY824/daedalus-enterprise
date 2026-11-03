@@ -12,6 +12,8 @@ import type { Prisma } from "@/generated/prisma";
 import { 是结局, 本套名, 企业版字典, type 阶段 } from "../project/nodes";
 import { 公海无负责人 } from "../project/pool-owner";
 import { 回收原因前缀 } from "../project/timeout";
+import { 卡点随项目换人, 转让接手理由 } from "../project/blocker";
+import { 将回收提醒跟着换人 } from "../project/db";
 import { 规, 写不进, type 值表, type 标量 } from "./apply";
 import { 节点所在阶段 } from "./project-values";
 export { 项目阶段值, 项目节点对值, 节点所在阶段, 结局默认节点 } from "./project-values";
@@ -166,7 +168,7 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
   if (有("depositCurrency")) data.depositCurrency = 串(改动.depositCurrency);
   // 换了客户，原来选的联系人就不是这家的了
   if (有("customerId")) Object.assign(data, { customerId: String(改动.customerId), contactId: null });
-  const 原 = await tx.project.findUnique({ where: { id }, select: { phase: true, node: true, result: true, closedAt: true, ownerId: true, creatorId: true, pooledAt: true } });
+  const 原 = await tx.project.findUnique({ where: { id }, select: { name: true, customerId: true, phase: true, node: true, result: true, closedAt: true, ownerId: true, creatorId: true, pooledAt: true } });
   if (!原) throw new 写不进("项目不在了");
   const 新 = 位置({ stage: 有("stage") ? 改动.stage : 现值.stage, status: 有("status") ? 改动.status : 现值.status });
   // 库里存着旧名（10-31 改名前的 明确需求、成功交付…）的先对到新名再比：同一个节点不算改，不白记一条节点变更
@@ -201,6 +203,13 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
     await tx.projectNodeLog.create({
       data: { projectId: id, userId: String(data.ownerId), kind: "transfer", fromOwnerId: null, toOwnerId: String(data.ownerId), fromPhase: 位.phase, fromNode: 位.node, fromResult: 位.result, toPhase: 位.phase, toNode: 位.node, toResult: 位.result, at: new Date(现在) },
     });
+  }
+  // 导入把负责人从一个人换成另一个人（11-03 A2-3）：卡点认领行、「再不跟进就回公海」的提醒跟着项目给新负责人（同转让）；
+  // 下一步、沟通本来就挂在项目上不动
+  const 换人 = 有("ownerId") && !!原.ownerId && 原.ownerId !== 公海无负责人 && data.ownerId !== 公海无负责人 && data.ownerId !== 原.ownerId;
+  if (换人) {
+    await 卡点随项目换人(tx, id, 原.ownerId, String(data.ownerId), String(data.ownerId), 转让接手理由);
+    await 将回收提醒跟着换人(tx, 原, 原.ownerId, String(data.ownerId));
   }
 }
 
