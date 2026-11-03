@@ -64,6 +64,19 @@ it.each(["修改", "删除", "外贸旁表", "跟进", "遗漏批次"])("完整�
   await expect(校验完整导出({}, result.start, result.fingerprints)).rejects.toThrow(/变化|不完整/);
 });
 
+it("创建时间写在未来的旧记录（导入 / 迁移来的）照样导出，和列表条数一致（D8-2）", async () => {
+  const at = new Date("2026-01-01");
+  const 未来 = new Date(Date.now() + 30 * 86400_000);
+  await prisma.customer.create({ data: { id: "old", name: "旧", phone: "1", salesOwnerId: "export-user", createdAt: at, updatedAt: at } });
+  await prisma.customer.create({ data: { id: "future", name: "未来", phone: "2", salesOwnerId: "export-user", createdAt: 未来, updatedAt: at } });
+  await prisma.followUp.create({ data: { id: "ff", customerId: "future", ownerId: "export-user", type: "PHONE", title: "回电", content: "内容", createdAt: 未来, updatedAt: at } });
+  const result = await 收全();
+  expect(result.start).toMatchObject({ 客户数: 2, 跟进数: 1 });
+  expect(result.customers.sort()).toEqual(["future", "old"]);
+  expect(result.follows).toEqual(["ff"]);
+  expect(await 校验完整导出({}, result.start, result.fingerprints)).toEqual({ ok: true });
+});
+
 it("非法参数不查询；开始后新增的记录不混进既有批次", async () => {
   const result = await 收全();
   await prisma.customer.create({ data: { id: "new", name: "新", phone: "1", salesOwnerId: "export-user", createdAt: new Date(Date.now()+100) } });

@@ -93,14 +93,20 @@ async function 要能导出() {
   await 视图外部拦(); // 切换视图（只读预览）不把数据带走
 }
 
+/**
+  开始导出那一刻已经有的记录。只看 createdAt 会漏掉导入 / 迁移带来的未来创建时间（列表照显示、导出少一条，D8-2）；
+  导出开始后才建的，updatedAt 也在截止之后，照样不混进来
+*/
+const 截止前有 = (截止: Date) => ({ OR: [{ createdAt: { lte: 截止 } }, { updatedAt: { lte: 截止 } }] });
+
 /** 完整导出按固定顺序分批读取，每批请求独立检查当前权限。 */
 export async function 开始完整导出(条件: 客户条件) {
   await 要能导出();
   const 截止 = new Date();
-  const where = { AND: [await 客户筛选条件(条件), { createdAt: { lte: 截止 } }] };
+  const where = { AND: [await 客户筛选条件(条件), 截止前有(截止)] };
   const [客户数, 跟进数] = await Promise.all([
     prisma.customer.count({ where }),
-    prisma.followUp.count({ where: { customer: where, createdAt: { lte: 截止 } } }),
+    prisma.followUp.count({ where: { customer: where, ...截止前有(截止) } }),
   ]);
   return { 截止: 截止.toISOString(), 客户数, 跟进数, ...await 导出归属省略(where) };
 }
@@ -109,7 +115,7 @@ export async function 读取完整导出批次(条件: 客户条件, 截止文�
   await 要能导出();
   const 截止 = new Date(截止文本);
   if (!Number.isFinite(截止.getTime()) || 截止 > new Date() || (类别 !== "客户" && 类别 !== "跟进") || (游标 !== undefined && (typeof 游标 !== "string" || 游标.length > 128))) throw new Error("导出参数无效，请重新导出");
-  const where = { AND: [await 客户筛选条件(条件), { createdAt: { lte: 截止 } }] };
+  const where = { AND: [await 客户筛选条件(条件), 截止前有(截止)] };
   const 号 = await 号码脱敏器();
   if (类别 === "客户") {
     const all = await prisma.customer.findMany({ where: { AND: [where, ...(游标 ? [{ id: { gt: 游标 } }] : [])] }, orderBy: { id: "asc" }, take: 5001, select: 客户行字段 });
@@ -119,7 +125,7 @@ export async function 读取完整导出批次(条件: 客户条件, 截止文�
     return { 类别: "客户" as const, rows: values, 指纹: createHash("sha256").update(JSON.stringify(values)).digest("hex"), 游标: all.length > 5000 ? rows.at(-1)!.id : null };
   }
   const all = await prisma.followUp.findMany({
-    where: { customer: where, createdAt: { lte: 截止 }, ...(游标 ? { id: { gt: 游标 } } : {}) },
+    where: { customer: where, ...截止前有(截止), ...(游标 ? { id: { gt: 游标 } } : {}) },
     orderBy: { id: "asc" }, take: 10001,
     select: { id: true, customerId: true, customer: { select: { name: true, phone: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true,
       opportunity: { select: { name: true } }, owner: { select: { name: true } } },
@@ -135,10 +141,10 @@ export async function 校验完整导出(条件: 客户条件, 起点: Awaited<R
   if (!起点 || typeof 起点.截止 !== "string" || !Number.isSafeInteger(起点.客户数) || 起点.客户数 < 0 || !Number.isSafeInteger(起点.跟进数) || 起点.跟进数 < 0 || !Array.isArray(指纹) || 指纹.some((x) => !x || (x.类别 !== "客户" && x.类别 !== "跟进") || !/^[a-f0-9]{64}$/.test(x.指纹))) throw new Error("导出参数无效，请重新导出");
   const 截止 = new Date(起点.截止);
   if (!Number.isFinite(截止.getTime()) || 截止 > new Date()) throw new Error("导出参数无效，请重新导出");
-  const where = { AND: [await 客户筛选条件(条件), { createdAt: { lte: 截止 } }] };
+  const where = { AND: [await 客户筛选条件(条件), 截止前有(截止)] };
   const [客户数, 跟进数, 改过客户, 改过跟进] = await Promise.all([
     prisma.customer.count({ where }),
-    prisma.followUp.count({ where: { customer: where, createdAt: { lte: 截止 } } }),
+    prisma.followUp.count({ where: { customer: where, ...截止前有(截止) } }),
     prisma.customer.findFirst({ where: { createdAt: { lte: 截止 }, updatedAt: { gt: 截止 } }, select: { id: true } }),
     prisma.followUp.findFirst({ where: { createdAt: { lte: 截止 }, updatedAt: { gt: 截止 } }, select: { id: true } }),
   ]);
