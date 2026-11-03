@@ -34,7 +34,7 @@ import { getBusiness, saveBusiness, mergeBusiness, 企业版锁定, 状态名问
 import { 判断可用 } from "@/lib/jev/client";
 import { 自动判断开着, 设自动判断 } from "@/lib/jev/settings";
 import { 交接通知 } from "@/lib/enterprise/notice-sources";
-import { 视图外部拒 } from "@/lib/enterprise/view-as";
+import { 视图外部拒, 正在切换视图, 视图只读错误 } from "@/lib/enterprise/view-as";
 
 /** 密码最短长度。界面上有校验，但接口直调能绕开，空密码会让任何人登进来 */
 const MIN_PASSWORD = 8;
@@ -567,6 +567,8 @@ export async function 解绑飞书身份(id: string) {
  */
 export async function 改我的资料(input: { name: string; title: string }) {
   const me = await requireUser();
+  // 切换视图（只读）：写库会抛只读错，冒到界面只剩「保存失败」，这里直说
+  if (await 正在切换视图()) return { ok: false as const, error: new 视图只读错误().message };
   if (await 是共享区()) return { ok: false as const, error: "这是几个试用团队共用的账号，名字和密码不能改——改了别的团队就登不进来了" };
   const name = input.name.trim();
   const title = input.title.trim();
@@ -599,6 +601,8 @@ export async function 改我的资料(input: { name: string; title: string }) {
  */
 export async function changeMyPassword(oldPwd: string, newPwd: string) {
   const me = await requireUser();
+  // 切换视图（只读）：写库会抛只读错，冒到界面只剩「保存失败」，这里直说
+  if (await 正在切换视图()) return { ok: false as const, error: new 视图只读错误().message };
   /*
     网页试用版是几个团队共用一个账号（memory: web-trial-shared-workspace）。原来这里不拦：
     任何一个团队改了密码，会吊销这个账号的全部会话，别的团队全被踢出、也登不回来（2026-10-01 排查 A3）
