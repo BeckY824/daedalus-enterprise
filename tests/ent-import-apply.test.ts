@@ -78,6 +78,8 @@ beforeEach(async () => {
   await prisma.user.create({ data: { id: 我.id, email: "t@x", name: 我.name, title: "管理员", role: "ADMIN", password: "x" } });
   张伟 = (await prisma.user.create({ data: { email: "zw@x", name: "张伟", title: "销售", role: "SALES", password: "x" } })).id;
   李娜 = (await prisma.user.create({ data: { email: "ln@x", name: "李娜", title: "销售", role: "SALES", password: "x" } })).id;
+  // 11-03 起企业版负责人只认业务角色（D3-9）：两个销售设上，企业版的用例才能落到他们名下
+  await prisma.entMember.createMany({ data: [{ userId: 张伟, bizRole: "sales" }, { userId: 李娜, bizRole: "sales" }] });
 });
 
 afterAll(async () => {

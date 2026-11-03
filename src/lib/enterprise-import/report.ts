@@ -211,6 +211,14 @@ export async function 试跑(p: 试跑参数): Promise<试跑结果> {
   });
   提醒.push(...猜.提醒);
   const m = 猜.映射;
+  // 人手动对上的成员也要能当负责人：写的时候只认这份名单，对不上的按没对上落（11-03 完成度 D7-1，原来报告不说，写完才发现进了公海）
+  const 当不了 = Object.entries(m.负责人).filter(([, id]) => id && !能任(id));
+  if (当不了.length) {
+    const 名 = new Map((await prisma.user.findMany({ where: { id: { in: 当不了.map(([, id]) => id) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+    for (const [w, id] of 当不了) {
+      提醒.push(`负责人「${w}」对到的「${名.get(id) || id}」当不了负责人（只读管理员、没设业务角色或已停用），写的时候按没对上处理，请改对一位成员`);
+    }
+  }
 
   // 2) 定下映射后再成记录：有「原系统 ID」列的这时才用上
   const 记录 = 能用的表.length

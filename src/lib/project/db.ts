@@ -4,13 +4,14 @@
  */
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
+import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
 import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, 有效线索判定, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效沟通数 } from "./stage-gates";
-import { 等复核拦 } from "./lead-verify-guard";
+import { 等复核拦, 复核判死拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
@@ -32,6 +33,7 @@ import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
 import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
@@ -305,7 +307,12 @@ export async function 改节点(
     if (问题) return { ok: false as const, error: 问题 };
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
-    const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
+    // 有结局的改回进行中也按节点比：改回到后面的节点同样算往前推，必填门、推进关照拦（11-03 测试 A5-1：终止再改回绕过必填和线索验证）
+    const 往前 = !result && 节点序号(到, 字典) > 节点序号(p, 字典);
+    if (p.result && !result) {
+      const 判死 = await 复核判死拦(tx, p.id);
+      if (判死) return { ok: false as const, error: 判死 };
+    }
     if (上级代推 && !往前) return { ok: false as const, error: 只有负责人改进程 };
     const 不给 = 往前
       ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则))
@@ -522,6 +529,10 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 好 = 规整项目({ ...项目现值(p), name: "未传", remark: null, ...传 }, p.ownerId);
     if ("error" in 好) return { ok: false as const, error: 好.error };
     if (好.ownerId !== p.ownerId && !(await 在职(tx, 好.ownerId))) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
+    if (好.ownerId !== p.ownerId) {
+      const 不行 = await 不能当负责人(好.ownerId);
+      if (不行) return { ok: false as const, error: 不行 };
+    }
     const contactId = patch.contactId === undefined ? p.contactId : patch.contactId || null;
     if (contactId && contactId !== p.contactId) {
       const c = await tx.contact.findUnique({ where: { id: contactId }, select: { customerId: true } });
@@ -613,7 +624,8 @@ export const 能进公海的阶段 = ["线索", "商机"] as const;
  * 不管怎么到手的——自己建的、领的、被指派的、自动分配的——都算；待分配（awaitAssignAt 有值，建的人只是占着负责人那一格）的不算
  */
 export async function 持有数(db: Pick<Prisma.TransactionClient, "project">, userId: string): Promise<number> {
-  return db.project.count({ where: { ownerId: userId, pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] } } });
+  // 数的是 userId 手上真有几个，不按谁在看限定（11-03 A3-1：市场管理分配时看不到别人名下的，少数了、突破上限）
+  return 看全部(() => db.project.count({ where: { ownerId: userId, pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] } } }));
 }
 
 /**
@@ -663,6 +675,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     if (p.pooledAt) return { ok: false as const, error: "这个项目已经在公海里了" };
     if (!选项?.分配放行 && !能放回公海(me, p, org)) return { ok: false as const, error: "只有项目负责人、上级或总管理能放回公海" };
     if (!(能进公海的阶段 as readonly string[]).includes(p.phase)) return { ok: false as const, error: "订单阶段的项目不能放回公海" };
+    // 客户正在转让交接中（11-03 完成度 C3-2）：项目跟着客户走，这时放了，接手人确认后拿不到。别人发起的交接也算
+    if (企业版() && (await 看全部(() => 交接中的客户([p.customerId], tx))).size) return { ok: false as const, error: "这个项目的客户正在转让交接中，先撤回交接再放回公海" };
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
     const 现在 = new Date();
@@ -697,8 +711,13 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     const p = await tx.project.findUnique({ where: { id } });
     // 两人同时领：先进来的领走了，项目就落到后进来那位的范围外（业务员只看自己的 + 公海），带限定查是空的；
     // 不带限定再看一眼，还在就是被人领走了，不是删了（D-35）
-    if (!p) return (await 看全部(() => tx.project.findUnique({ where: { id }, select: { id: true } })))
-      ? 领走了 : { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+    if (!p) {
+      const 真 = await 看全部(() => tx.project.findUnique({ where: { id }, select: { id: true, pooledAt: true } }));
+      if (!真) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+      // 还在公海、只是我看不到：是我放回的（原负责人回避），话说准（11-03 完成度 B4-3）
+      if (真.pooledAt && 企业版() && !公海规则.原负责人能领回 && (await 历史负责人(tx, id)) === me.id) return { ok: false as const, error: 原负责人不能领回提示 };
+      return 领走了;
+    }
     if (!p.pooledAt) return 领走了;
     if (!(await 在职(tx, me.id))) return { ok: false as const, error: "账号已停用" };
     // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了（领项目会把客户一起带走）

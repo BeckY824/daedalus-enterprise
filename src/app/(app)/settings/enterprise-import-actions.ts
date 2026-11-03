@@ -93,7 +93,8 @@ export async function 企业版导入概况(): Promise<企业版概况> {
   const 项目 = await 企业版只用项目();
   const [批们, 待定冲突, 快照们, 成员们, 同步] = await Promise.all([
     prisma.entImportBatch.findMany({
-      where: { kind: { in: ["full", "sync"] } },
+      // 冲突处理批（定冲突「采用原系统」建的）也列：能撤回、恢复，不列界面上就撤不了（11-03 完成度 D7-2）
+      where: { kind: { in: ["full", "sync", "resolve"] } },
       orderBy: { createdAt: "desc" },
       take: 列多少批,
       select: { id: true, source: true, kind: true, status: true, total: true, cursor: true, created: true, updated: true, skipped: true, conflicts: true, failed: true, userId: true, createdAt: true, finishedAt: true, revertedAt: true, revertNote: true, note: true },

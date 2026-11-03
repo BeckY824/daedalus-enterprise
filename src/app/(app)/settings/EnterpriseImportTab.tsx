@@ -190,7 +190,7 @@ export default function EnterpriseImportTab() {
       }}
       columns={[
         { title: "时间", width: 120, render: (_, b) => smartTime(b.时间) },
-        { title: "来源", width: 150, render: (_, b) => `${来源名[b.来源] ?? b.来源} · ${b.类型 === "sync" ? "同步" : "首次导入"}` },
+        { title: "来源", width: 150, render: (_, b) => `${来源名[b.来源] ?? b.来源} · ${b.类型 === "sync" ? "同步" : b.类型 === "resolve" ? "冲突处理" : "首次导入"}` },
         {
           title: "状态",
           width: 130,

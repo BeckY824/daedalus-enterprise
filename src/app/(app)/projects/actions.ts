@@ -6,6 +6,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
+import { 不能当负责人 } from "@/lib/owners";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
@@ -24,6 +25,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
+import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 } from "@/lib/enterprise/notice-sources";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
@@ -109,8 +111,15 @@ export async function 建档向导(输入: 建档向导输入) {
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
+    const 不行 = await 不能当负责人(好.项目.ownerId);
+    if (不行) return { ok: false as const, error: 不行 };
     // 负责人选了别人 = 指派，开了持有上限的要算；自己建给自己不拦（lib/project/db.ts 超上限）
     if (好.项目.ownerId !== me.id) {
+      // 企业版指定分配给别人：和分配线索同一条（11-03 A2-1）——只能给销售 / 销售管理；业务线这里不比
+      if (企业版()) {
+        const 问题 = 接手问题(await 读组织(), 好.项目.ownerId, null);
+        if (问题) return { ok: false as const, error: 问题 };
+      }
       const 超 = await 超上限(prisma, 规则, 好.项目.ownerId, { phase: "线索", result: null });
       if (超) return { ok: false as const, error: 超 };
     }
@@ -175,7 +184,9 @@ export async function 建档向导(输入: 建档向导输入) {
     await 客户存了推项目(me, r.id);
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
-    const 分了 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null) : null;
+    // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
+    const 分了 = 分配 ? (await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null))
+      ?? (好.项目.ownerId !== me.id ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : null) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
     return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
   } catch (e) { return 不在了(e); }

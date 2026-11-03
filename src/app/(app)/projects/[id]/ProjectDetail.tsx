@@ -754,7 +754,7 @@ export default function ProjectDetail({
       {没有效沟通 && !p.线索验证?.我能 && (
         <div style={{ marginTop: 12, color: "var(--text-muted)" }}>还没有客户明确回复的沟通：记一条、选「客户明确回复了」，才能推过线索验证</div>
       )}
-      {p.必填 && (
+      {p.必填 && !p.result && (
         <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
           {p.必填.还差.length
             ? `这个节点还差必填：${p.必填.还差.map(必填叫法).join("、")}（「暂无」「-」这类占位不算填了）`

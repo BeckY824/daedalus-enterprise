@@ -49,6 +49,8 @@ beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await prisma.user.create({ data: { id: 我.id, email: "t@x", name: 我.name, title: "管理员", role: "ADMIN", password: "x" } });
   李娜 = (await prisma.user.create({ data: { email: "ln@x", name: "李娜", title: "销售", role: "SALES", password: "x" } })).id;
+  // 企业版没业务角色的人当不了负责人（11-03 完成度 C3-1）
+  await prisma.entMember.create({ data: { userId: 李娜, bizRole: "sales" } });
 });
 
 afterAll(async () => {

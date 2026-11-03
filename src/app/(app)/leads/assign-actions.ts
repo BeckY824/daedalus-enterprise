@@ -25,6 +25,7 @@ import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限, 记转让 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
@@ -169,7 +170,8 @@ async function 分给(
   // 不设配额开着：照样记数（算不算数不变），只是不查满额
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
-  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | Exclude<分给结果, { ok: true }>> => {
+  // 能不能分在入口查过（能分配）、这条看得到也查过：事务里看全部——市场管理分别人名下的，按「我」限定的写一行都改不到（11-03 A3-4）
+  const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | Exclude<分给结果, { ok: true }>> => {
     // 负责人、状态在事务里再读一次：同一条线索两边同时分，后到的看到的是先到的写完的
     const 现在 = await tx.lead.findUnique({ where: { id: lead.id }, select: { ownerId: true, status: true } });
     if (!现在) return { ok: false, error: "这条线索已经不在了（或者你看不到它），刷新看看" };
@@ -188,7 +190,7 @@ async function 分给(
       data: { leadId: lead.id, toUserId: input.toUserId, fromUserId: 现在.ownerId, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way },
     });
     return { ok: true, fromUserId: 现在.ownerId };
-  });
+  }));
   if (!落库.ok) return 落库;
 
   const { line } = input;
@@ -220,7 +222,8 @@ async function 分项目给(
   const 规则 = await 生效组织规则();
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
-  const 落库 = await 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | Exclude<分给结果, { ok: true }>> => {
+  // 同老线索：入口查过能分配、看得到，事务里看全部（11-03 A3-4 市场管理分别人名下的假报「已被分配」）
+  const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null } | Exclude<分给结果, { ok: true }>> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
     if (!p) return { ok: false, error: 项目不在 };
     // 进公海清了负责人的（C-01）ownerId 是空串，和界面交来的「没人」(null) 当一回事
@@ -249,11 +252,20 @@ async function 分项目给(
     await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", 接上待办痕(`分配方式：${input.way}`, 待办痕(input.带待办, 几条)));
     // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, input.带待办);
+    // 不在公海：客户名下就这一个项目、客户还归原负责人（市场建档后分出去这种），客户也跟着走（11-03 A3-3：
+    // 客户留在原负责人名下，接手的人打不开项目，原负责人还看得到）。客户名下还有别的项目的不动。
+    // 只换客户负责人、记一笔；客户上的待办照「带不带待办」那条规矩走（C-06：只带标题点了项目名的）
+    else if (原 && 原 !== input.toUserId && (await tx.project.count({ where: { customerId: p.customerId } })) === 1) {
+      const 改客户 = await tx.customer.updateMany({ where: { id: p.customerId, salesOwnerId: 原 }, data: { salesOwnerId: input.toUserId } });
+      if (改客户.count === 1) {
+        await tx.customerOwnerLog.create({ data: { customerId: p.customerId, userId: me.id, fromOwnerId: 原, toOwnerId: input.toUserId, kind: "assign" } });
+      }
+    }
     await tx.entLeadAssign.create({
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });
     return { ok: true, fromUserId: 原 };
-  });
+  }));
   if (!落库.ok) return 落库;
 
   const { line } = input;

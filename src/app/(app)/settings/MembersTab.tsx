@@ -162,13 +162,15 @@ export default function MembersTab({
   }
 
   const [清点中, set清点中] = useState<string | null>(null);
+  // 接手人同负责人候选（11-03 完成度 C3-1，lib/enterprise/permissions.ts 能当负责人）：企业版要有业务角色、不是只读管理员
+  const 能接手 = (u: Row) => u.active && (!企业版 || (!!u.业务角色?.length && (!u.业务角色.includes("admin") || u.业务角色.includes("director"))));
   const 能停 = (r: Row) => r.active && (isAdmin ? r.id !== me.id : 下属可停用.includes(r.id));
   // 企业版批量离职：勾几个人，同一个接手人、同一种方式一次办完
   const [勾了, set勾了] = useState<string[]>([]);
   const 能批量 = 企业版 && (isAdmin || 下属可停用.length > 0);
   function onBatchDeactivate() {
     const 们 = 勾了.filter((id) => users.some((u) => u.id === id && 能停(u)));
-    const others = users.filter((u) => u.active && !们.includes(u.id));
+    const others = users.filter((u) => 能接手(u) && !们.includes(u.id));
     if (!们.length) return;
     if (!others.length) {
       message.error("没有可接手的成员");
@@ -197,7 +199,7 @@ export default function MembersTab({
     });
   }
   async function onDeactivate(r: Row) {
-    const others = users.filter((u) => u.active && u.id !== r.id);
+    const others = users.filter((u) => 能接手(u) && u.id !== r.id);
     if (!others.length) {
       message.error("没有可接手的成员");
       return;
@@ -623,7 +625,7 @@ function OffboardForm({ name, 点, others, defaultTarget, onChange }: {
       {方式 === "转交" ? (
         <Typography.Paragraph type="secondary" style={小字}>
           {/* 说清转交的是往后要跟的活、历史业绩不动（排查 B2）。原来只写「名下 N 个客户、N 个商机」，叫法还写死成「客户」 */}
-          {数.客户} 位{b.customer}{数.项目 ? `、${数.项目} 个项目` : ""}，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：
+          {数.客户} 位{b.customer}{数.项目 ? `、${数.项目} 个项目` : ""}{数.进公海客户 ? `（另有 ${数.进公海客户} 位本来就在公海，不动）` : ""}，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：
         </Typography.Paragraph>
       ) : (
         <Typography.Paragraph type="secondary" style={小字}>

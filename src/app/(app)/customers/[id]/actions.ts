@@ -773,15 +773,24 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
     if (!电话.ok) return 电话;
     /*
       全部联系方式查重（同类型 + 规整值，全公司联系人）：只查这次新出现的号——这位原来就有的不再查，
-      不然老数据里本来就重的号，改个职位也存不下
+      不然老数据里本来就重的号，改个职位也存不下。
+      没交号码几行、只交老三格的（联系人页原来的表单）也查：原来只查号码几行，从联系人页新增同一个号能挂到两位客户下（11-03 完成度 B7-1）
     */
-    if (号 && !input.照存) {
+    const 老键 = (kind: string, v: string | null | undefined) => (v ? (kind === "phone" ? 号键(v) : v.trim().toLowerCase()) : "");
+    const 查的行们 = 号
+      ? 号.行们
+      : 企业版()
+        ? ([["phone", 电话.phone], ["email", input.email], ["wechat", input.wechat]] as const)
+            .map(([kind, v]) => ({ kind, value: (v ?? "").trim(), numberKey: 老键(kind, v) }))
+            .filter((x) => x.numberKey)
+        : [];
+    if (查的行们.length && !input.照存) {
       const 原有 = new Set((原?.contactMethods ?? []).map((x) => `${x.kind}|${x.numberKey}`));
       if (原) for (const [kind, v] of [["phone", 原.phone], ["email", 原.email], ["wechat", 原.wechat]] as const) {
-        const 键 = v ? (kind === "phone" ? 号键(v) : v.trim().toLowerCase()) : "";
+        const 键 = 老键(kind, v);
         if (键) 原有.add(`${kind}|${键}`);
       }
-      const 新的 = 号.行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
+      const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
       const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();

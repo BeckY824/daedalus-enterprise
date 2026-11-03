@@ -37,7 +37,8 @@ export const 缺本节点沟通 = (node: string) => `「${node}」要先记一�
  * 不是企业版、不是往这儿推的，一律 null
  */
 export async function 企业版推进关(tx: Prisma.TransactionClient, p: 位置 & { id: string }, 到: 位置, 规则?: 组织规则): Promise<string | null> {
-  if (!企业版() || p.result) return null;
+  // 有结局的改回到后面的节点也照拦（11-03 A5-1）；结局本身不归这里管（到.result 有值不算往前推）
+  if (!企业版() || 到.result) return null;
   const 字典 = 字典of(true);
   if (节点序号(到, 字典) <= 节点序号(p, 字典)) return null;
   // 库里存着旧名的项目（企业版 10-31 改名）先对到新名；沟通挂的节点新旧名都算

@@ -239,7 +239,17 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     if (!r.ok) return;
     const p = await 项目of(r.projectId);
     expect([p.ownerId, p.customer.salesOwnerId, p.pooledAt]).toEqual([销售, 销售, null]);
-    expect("转走" in r).toBe(false);
+    // 不在我名下了：回线索列表，不跳看不到的详情页（11-03 A2-1）
+    expect(r).toMatchObject({ 转走: true, 提示: expect.stringContaining("已指派给") });
+  });
+
+  it("指定分配只能给销售 / 销售管理（11-03 A2-1）：指给渠道运营、市场管理拦下、一行不写", async () => {
+    当(市场);
+    for (const 谁 of [渠道, 项运, 总管]) expect(await 向导({ 分配方式: 0, ownerId: 谁 })).toMatchObject({ ok: false, error: "线索只能分给销售或销售管理" });
+    当(销售);
+    expect(await 向导({ 分配方式: 0, ownerId: 市场 })).toMatchObject({ ok: false, error: "线索只能分给销售或销售管理" });
+    expect(await prisma.project.count()).toBe(0);
+    expect(await 向导({ 分配方式: 0, ownerId: 销售经理 })).toMatchObject({ ok: true, 转走: true });
   });
 
   it("暂不分配 / 个人自持：选了别人也记在自己名下；暂不分配留在新线索待分配、不发提醒，个人自持不待分配；分配方式记在项目上", async () => {
