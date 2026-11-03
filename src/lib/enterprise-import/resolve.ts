@@ -12,7 +12,7 @@ import { prisma } from "../prisma";
 import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
-import { 写不进, 开现场, 落值, 建, 改, 读现值, 规, 引用键, type 现场, type 值表 } from "./apply";
+import { 写不进, 开现场, 落值, 建, 改, 读现值, 规, 引用键, 无主客户进公海, type 现场, type 值表 } from "./apply";
 import { 别的在写, 重算最近跟进, type 定的一笔 } from "./revert";
 import { 来源名, 实体名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 企业版只用项目 } from "../enterprise/project-only";
@@ -146,7 +146,8 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
 
         if (c.localDeleted) {
           if (选 === "保留我们") continue; // 删了就是删了：不建、对照行不动，原系统再改时还会问
-          const 新id = await 建(tx, e, v!, 现.现在, 现.项目, 现.业务线);
+          const 新id = await 建(tx, e, v!, 现.现在, 现.项目, 现.业务线, 现.操作人);
+          if (e === "customer") await 无主客户进公海(tx, 现, 新id, v!);
           await tx.entExternalRef.update({ where: { id: ref.id }, data: { targetId: 新id, written: J(v), batchId: 批.id } });
           await tx.entImportRow.create({ data: { batchId: 批.id, entity: e, externalId: c.externalId, targetId: 新id, kind: "create", written: J(v), refBefore: J(ref) } });
           if (e === "followup" && v!.customerId) 碰过.add(String(v!.customerId));

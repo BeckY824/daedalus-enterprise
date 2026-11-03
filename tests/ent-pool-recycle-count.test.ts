@@ -84,7 +84,7 @@ describe("收回次数", () => {
     expect((await 读项目列表(老板, { pool: "1", recycled: "3" })).filters.recycled).toBe("3");
     // 不在公海视图：传了也不筛
     const 非公海 = await 读项目列表(老板, { recycled: "0" });
-    expect(非公海.行.length).toBe(5);
+    expect(非公海.行.length).toBe(1); // 企业版默认列表不列公海项目（公海只在 /pool，11-02）
     expect(非公海.filters.recycled).toBe("");
   });
 

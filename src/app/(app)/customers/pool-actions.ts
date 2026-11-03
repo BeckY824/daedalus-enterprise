@@ -26,6 +26,7 @@ import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
 import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
+import { 无负责人占位邮箱 } from "@/lib/pool";
 import { Prisma } from "@/generated/prisma";
 
 export type 公海结果 =
@@ -243,6 +244,7 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
  * 撤销领取：负责人还给原来的人、再放回公海；**只还领取时带过来的那几条活**（带过来），
  * 领取之前就归我的计划、待办、商机不动（复查：原来按「我名下没做完的」整个转回去，把我自己的也送走了）。
  * 只撤自己刚才那一下：只认「现在还归我、不在公海」的那几位；原负责人已经停用的不还（还给停用的人等于丢进黑洞），留在我这儿。
+ * 无负责人占位账号也是停用的，但还给它就是回到没人负责的公海，不是黑洞，照撤（11-02，见 lib/pool.ts）。
  * 撤销分配（老板）：同撤销领取，「我」换成分到的那位（给谁）——只认现在还归他、不在公海的，他名下带过去的活还回去
  * 负责人真换过的还要对上换负责人记录（2026-10-28）：最近一条得是我把他从原负责人换到现在这位的。
  * 不然业务员把自己的客户当「刚领的」撤，原负责人随手填个同事，就绕过交接把客户塞到同事名下
@@ -266,7 +268,7 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0 };
   }
   const 还归我 = await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: 现, pool: null }, select: { id: true } });
-  const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 原.map((x) => x.值) }, active: true }, select: { id: true } })).map((u) => u.id));
+  const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 原.map((x) => x.值) }, OR: [{ active: true }, { email: 无负责人占位邮箱 }] }, select: { id: true } })).map((u) => u.id));
   const 换过 = 原.filter((x) => x.值 !== 现);
   const 我换的 = await 是我刚换的(换过.map((x) => ({ customerId: x.id, 原: x.值, 现 })), me.id);
   // 负责人没换过的（原负责人自己领回 / 分给原负责人）没有换负责人记录，认领取记录：时限内领给 现 的才撤。

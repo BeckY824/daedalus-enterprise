@@ -31,6 +31,15 @@ export const 卡点字段 = (k: 卡点) => [
   ...k.认领.flatMap((c) => [c.名字, c.note]), k.发布人, k.resourceRequest, k.solution, k.result,
 ];
 
+/**
+ * 负责人可以不看接手前的沟通（11-02 用户：「当前项目负责人可以选择不看之前的项目沟通……通过一个按钮可以做选择」）：
+ * 接手前 = 这条沟通的归属人不是当前负责人（page.tsx 算好给界面）。只是不显示，不删数据。
+ * 按钮只给当前负责人；项目在公海里没有当前负责人，不给；没有接手前的沟通时点了也没变化，不摆
+ */
+export function 能隐藏接手前(p: { 企业版: boolean; pooled: boolean; 我是负责人?: boolean; followUps: { 接手前?: boolean }[] }): boolean {
+  return p.企业版 && !p.pooled && !!p.我是负责人 && p.followUps.some((f) => f.接手前);
+}
+
 /** 附件块里「来自沟通：谁 · 什么时候 · 头几个字」：内容太长截到 20 个字 */
 export function 沟通来源(f: { who: string; occurredAt: string; content: string }): string {
   const 头 = f.content.replace(/\s+/g, " ").trim();

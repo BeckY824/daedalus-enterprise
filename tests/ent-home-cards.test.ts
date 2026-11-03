@@ -158,8 +158,8 @@ describe("取数和项目页筛选", () => {
     expect(await 列("no-follow")).toEqual(["业务员的", "重点新"]);
     // 超时回收没开：即将逾期恒为 0，点进去是空列表
     expect(await 列("due-soon")).toEqual([]);
-    // 乱传当没筛
-    expect((await 列("whatever")).length).toBe(5);
+    // 乱传当没筛（没筛的默认列表不列公海项目，「普通公海」只在 /pool，11-02）
+    expect((await 列("whatever")).length).toBe(4);
   });
 
   it("业务员只数自己负责的（按组织架构看客户开没开都一样；公海里别人放回去的不算），老板照旧看全员", async () => {
@@ -187,8 +187,8 @@ describe("取数和项目页筛选", () => {
     expect(数).toEqual({ "month-new": 3, key: 2, "no-follow": 3, "due-soon": 0 });
     expect(await 列("month-new")).toEqual(["业务员的", "经理的", "经理的普通"]);
     expect(await 列("key")).toEqual(["业务员的", "经理的"]);
-    // 不点卡的项目页不按这一圈筛（照旧由数据那层管）
-    expect((await 列("")).length).toBe(7);
+    // 不点卡的项目页不按这一圈筛（照旧由数据那层管；公海项目不在默认列表，11-02）
+    expect((await 列("")).length).toBe(6);
   });
 
   it("开了超时回收：回收日 3 天以内的才算即将逾期", async () => {

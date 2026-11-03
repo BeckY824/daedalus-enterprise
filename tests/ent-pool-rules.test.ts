@@ -32,7 +32,8 @@ import { 自动掉公海 } from "@/lib/pool-db";
 import { 放回公海, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 默认组织规则 } from "@/lib/project/org-rules";
-import { 放进公海, 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
+import { 放进公海, 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
+import { 无负责人占位邮箱, 无负责人占位名 } from "@/lib/pool";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
 
@@ -236,6 +237,63 @@ describe("领客户即领项目", () => {
     当(丙);
     expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
+  });
+});
+
+describe("没人负责的公海客户：领错、分错都能撤（11-02）", () => {
+  let 占位: 人;
+  const 没人负责的 = async () => {
+    const c = await 客户(占位.id);
+    await prisma.customerPool.create({ data: { customerId: c, userId: 占位.id, reason: "导入：原系统公海" } });
+    const p = await 项目("", c, { creatorId: 老板.id, pooledAt: 天前(30, 今) });
+    return { c, p };
+  };
+  const 回到原样 = async (c: string, p: string) => {
+    expect(await 负责人(c)).toBe(占位.id);
+    expect(await 在客户公海(c)).toBe(true);
+    const 项 = await prisma.project.findUniqueOrThrow({ where: { id: p } });
+    expect(项.ownerId).toBe("");
+    expect(项.pooledAt).not.toBeNull();
+  };
+  beforeEach(async () => {
+    const u = await prisma.user.create({ data: { email: 无负责人占位邮箱, name: 无负责人占位名, title: "", role: "SALES", password: "x", active: false } });
+    占位 = { id: u.id, name: u.name, role: "SALES" };
+  });
+
+  it("领了能撤，撤完客户和项目都回公海，还能再领", async () => {
+    const { c, p } = await 没人负责的();
+    当(乙);
+    const r = await 领取([c]);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.updated).toBe(1);
+    expect(await 负责人(c)).toBe(乙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(乙.id);
+    expect(await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目)).toMatchObject({ ok: true, updated: 1 });
+    await 回到原样(c, p);
+    expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
+    expect(await 负责人(c)).toBe(乙.id);
+  });
+
+  it("分错了能撤", async () => {
+    const { c, p } = await 没人负责的();
+    当(老板);
+    const r = await 分配公海([c], 丙.id);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.updated).toBe(1);
+    expect(await 负责人(c)).toBe(丙.id);
+    expect(await 撤销公海("分配", r.原负责人!, r.带过来, r.给谁?.id, r.公海项目)).toMatchObject({ ok: true, updated: 1 });
+    await 回到原样(c, p);
+  });
+
+  it("原负责人是别的停用同事的，照旧不还", async () => {
+    const 离职 = await prisma.user.create({ data: { email: "left@local", name: "离职", title: "", role: "SALES", password: "x", active: false } });
+    const c = await 客户(离职.id);
+    await prisma.customerPool.create({ data: { customerId: c, userId: 离职.id, reason: "手动" } });
+    当(乙);
+    const r = await 领取([c]);
+    if (!r.ok) throw new Error(r.error);
+    expect(await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目)).toMatchObject({ ok: true, updated: 0, unchanged: 1 });
+    expect(await 负责人(c)).toBe(乙.id);
   });
 });
 

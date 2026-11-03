@@ -7,6 +7,7 @@ import type { 试跑报告, 映射改动, 报告列 } from "@/lib/enterprise-imp
 import { 改映射重新试跑, 丢掉试跑, 正式导入一段, 下载对照表, 填回对照表, type 企业版概况 } from "./enterprise-import-actions";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
+import { 无负责人占位名 } from "@/lib/pool";
 
 /**
  * 企业版导入的试跑报告：看清这次会写多少、哪些跳过、映射认得对不对；改了映射重新试跑；确认后正式导入。
@@ -310,16 +311,28 @@ export default function EnterpriseImportReport({
       )}
 
       {(() => {
-        // 落到默认负责人的：原系统没写负责人 / 写了对不上。分类里是全量的数，问题表只列前一部分
+        // 落到默认负责人（没指定就进公海，11-02）的：原系统没写负责人 / 写了对不上。分类里是全量的数，问题表只列前一部分
         const 数 = (类别: 问题["类别"]) => 报告.问题分类.filter((c) => c.类别 === 类别).reduce((a, c) => a + c.数, 0);
         const 空 = 数("负责人空着"), 错 = 数("负责人对不上");
         if (!空 && !错) return null;
-        const 谁 = 成员选项.find((o) => o.value === (改.默认负责人Id ?? 报告.映射.默认负责人.id))?.label ?? 报告.映射.默认负责人.名;
+        const 默认Id = 改.默认负责人Id ?? 报告.映射.默认负责人.id;
+        const 谁 = 成员选项.find((o) => o.value === 默认Id)?.label ?? 报告.映射.默认负责人.名;
+        const 条数 = [空 && `${空} 条没写负责人`, 错 && `${错} 条负责人对不上`].filter(Boolean).join("、");
+        if (!默认Id) {
+          return (
+            <Alert
+              type="warning"
+              showIcon
+              title={`${条数}，不会落到任何人，进公海`}
+              description={`客户挂在「${无负责人占位名}」下面，项目没有负责人，都等人在公海里领。要归到人，就在下面「负责人对谁」里选默认负责人，或把原系统的写法对到具体的人，再试跑一遍。`}
+            />
+          );
+        }
         return (
           <Alert
             type="warning"
             showIcon
-            title={`${[空 && `${空} 条没写负责人`, 错 && `${错} 条负责人对不上`].filter(Boolean).join("、")}，会落到「${谁}」名下`}
+            title={`${条数}，会落到「${谁}」名下`}
             description="导进来全挂在一个人名下，这个人的客户列表、待办会一下子多很多。不对就在下面「负责人对谁」里换默认负责人，或把原系统的写法对到具体的人，再试跑一遍。"
           />
         );
@@ -502,7 +515,7 @@ export default function EnterpriseImportReport({
                     style={{ width: 180 }}
                     disabled={只读}
                     value={改.默认负责人Id ?? 报告.映射.默认负责人.id}
-                    options={成员选项}
+                    options={[{ value: "", label: "不指定（进公海）" }, ...成员选项]}
                     onChange={(v) => set改((x) => ({ ...x, 默认负责人Id: v }))}
                   />
                   名下

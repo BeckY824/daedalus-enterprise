@@ -11,7 +11,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
-import { 负责人候选, 唯一负责人 } from "@/lib/owners";
+import { 负责人候选 } from "@/lib/owners";
 import { 看全部 } from "@/lib/team-scope";
 import { 号键 } from "@/lib/phone";
 import { 不掉公海的状态, 公海截止 } from "@/lib/pool";
@@ -195,7 +195,9 @@ export async function 试跑(p: 试跑参数): Promise<试跑结果> {
   const 候选: 成员[] = await 负责人候选();
   // 默认负责人要是能当负责人的人：管理员 / 停用的写的时候会被换掉，报告上就得先换好，免得报告说给 A、实际落到 B
   const 能任 = (id?: string | null) => !!id && 候选.some((c) => c.id === id);
-  const 默认负责人Id = [p.已有映射?.默认负责人Id, await 唯一负责人(), p.用户Id, 候选[0]?.id].find(能任) ?? p.用户Id;
+  // 11-02：没人指定就空着，不替人挑（原来挑「唯一的业务员 / 导入的人 / 名单第一个」，大批客户错归一个不相干的同事）。
+  // 空着时负责人空、对不上的行进公海，清单里照列（clean.ts 负责人、apply.ts 落值）
+  const 默认负责人Id = 能任(p.已有映射?.默认负责人Id) ? p.已有映射!.默认负责人Id : "";
   const 猜 = await 猜映射({
     表: 概要,
     记录: 粗记录,
@@ -382,7 +384,7 @@ export function 合并改动(已有: 映射 | null, 改: 映射改动): 映射 |
     m.负责人[w] = id;
     m.说明[说明键.人(w)] = "手动";
   }
-  if (改.默认负责人Id) m.默认负责人Id = 改.默认负责人Id;
+  if (改.默认负责人Id !== undefined) m.默认负责人Id = 改.默认负责人Id; // "" = 不指定，进公海
   if (改.不采用AI清洗) 去掉AI清洗(m);
   for (const 类 of 格式类们) {
     for (const [v, to] of Object.entries(改.格式?.[类] ?? {})) {

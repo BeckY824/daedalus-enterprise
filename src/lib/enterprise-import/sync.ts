@@ -12,6 +12,7 @@
  * Excel 没有「拉」：再导出一次重新上传，走首次导入那条路，同样按原系统 ID 只更新变了的。
  */
 import { prisma } from "../prisma";
+import { businessDayjs } from "../business-clock";
 import { getSetting, setSetting } from "../settings";
 import type { Actor } from "../audit";
 import { 企业版 } from "../enterprise/switch";
@@ -245,8 +246,8 @@ export function 到点了(s: 同步设置, 现在: Date): boolean {
   if (!s.开 || s.切换) return false;
   const 上次 = s.上次 ? new Date(s.上次.时间).getTime() : null;
   if (s.频率 === "每小时") return 上次 === null || 现在.getTime() - 上次 >= 55 * 60_000;
-  const 今天点 = new Date(现在);
-  今天点.setHours(s.几点, 0, 0, 0);
+  // 那个钟点是业务时区的（企业版北京）：和 认时间 一样不按进程时区设（11-02），没有业务时区就是本机
+  const 今天点 = businessDayjs(现在).hour(s.几点).minute(0).second(0).millisecond(0).toDate();
   return 现在 >= 今天点 && (上次 === null || 上次 < 今天点.getTime());
 }
 

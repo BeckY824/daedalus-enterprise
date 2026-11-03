@@ -272,7 +272,7 @@ describe("对照表：导出 → 填 → 读回", () => {
     expect(行[0]).toBe(对照表头.join(","));
     expect(行).toContain(`列,客户,编号,原系统 ID,${行[1].split(",").slice(4).join(",")}`);
     expect(行.find((r) => r.startsWith("列,跟进记录,记录,内容,"))).toMatch(/拼进内容/);
-    expect(行).toContain("负责人,,老乙,b1@x.invalid,成员名字或邮箱（重名的填邮箱）；空着 = 默认负责人");
+    expect(行).toContain("负责人,,老乙,b1@x.invalid,成员名字或邮箱（重名的填邮箱）；空着 = 默认负责人，默认负责人也空着就进公海");
     expect(行.find((r) => r.startsWith("商机阶段,"))).toMatch(/^商机阶段,商机,阶段甲,,/);
     expect(行.at(-1)).toMatch(/^默认负责人,,,甲一,/);
   });
@@ -314,15 +314,15 @@ describe("对照表：导出 → 填 → 读回", () => {
       "负责人,,老甲,同名,", // 7：重名没邮箱
       "负责人,,老甲,nobody@x.invalid,", // 8
       "负责人,,改过的写法,甲一,", // 9
-      "默认负责人,,,,", // 10
+      "默认负责人,,,,", // 10：空着 = 不指定（11-02 起合法：对不上的进公海，不挑人）
       "瞎写的类别,,x,y,", // 11
       ",,,,", // 空行不算
       "列,跟进记录,记录,拼进备注,", // 13：跟进写「拼进备注」也认（落到内容）
     ].join("\r\n");
     const r = 读(csv);
-    expect(r.改).toEqual({ 列: { followup: { 记录: 进备注 } } });
-    expect(r.改了).toBe(1);
-    expect(r.问题).toHaveLength(10);
+    expect(r.改).toEqual({ 列: { followup: { 记录: 进备注 } }, 默认负责人Id: "" });
+    expect(r.改了).toBe(2);
+    expect(r.问题).toHaveLength(9);
     const 第 = (n: number) => r.问题.find((p) => p.startsWith(`第 ${n} 行`)) ?? "";
     expect(第(2)).toMatch(/没有「不存在的字段」这个字段/);
     expect(第(3)).toMatch(/「哪一类」填的「不知道」认不出/);
@@ -332,7 +332,7 @@ describe("对照表：导出 → 填 → 读回", () => {
     expect(第(7)).toMatch(/2 个同名成员，请填邮箱/);
     expect(第(8)).toMatch(/找不到邮箱是「nobody@x\.invalid」/);
     expect(第(9)).toMatch(/没有负责人「改过的写法」/);
-    expect(第(10)).toMatch(/默认负责人不能空着/);
+    expect(第(10)).toBe("");
     expect(第(11)).toMatch(/「类别」填的「瞎写的类别」认不出/);
   });
 

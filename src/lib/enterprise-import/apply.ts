@@ -14,7 +14,8 @@
  *   - 本批同号的后一条（并入）→ 不另建，只记一条对照指向前一条写出来的那位
  *   - 没导过、我们这边有同号客户 → 连上它，只补空着的格子（客户状态、备注、外贸档案），负责人和跟进状态不动
  *   - 否则新建；赢单 / 输单带上结单日期（看板按它算月份），跟进写完给客户补「最近跟进」
- * 负责人对不上在职的业务员（离职、被改成管理员）：退回上次的负责人 → 默认负责人 → 导入的人
+ * 负责人对不上在职的业务员（离职、被改成管理员）：退回上次的负责人 → 默认负责人 → 都没有就不落到任何真人（11-02，见 落值）：
+ * 已有的记录负责人不动；新建的客户挂占位账号「（无负责人）」进客户公海，项目没负责人进项目公海，跟进和老商机挂占位账号，线索空着
  *
  * P8（10-29）：客户简称 / 地址四格 / 分配方式、联系人性别 / 生日 / 爱好 / 地址照三方比对，但只在表里给了才比（空的不算冲突）；
  * 来源对上的渠道只补空、归属没定的才挂，不记冲突；客户 / 联系人的号同时记进 ContactMethod 子表（照 P5 记号码）
@@ -33,7 +34,9 @@ import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
 import { 客户类型空着 } from "./mapping";
 import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
-import { 读项目, 建项目, 改项目, 是项目 } from "./project-target";
+import { 读项目, 建项目, 改项目, 是项目, 无主入池理由, 无主项目进公海 } from "./project-target";
+import { 无负责人占位名, 无负责人占位邮箱 } from "../pool";
+import { 公海无负责人 } from "../project/pool-owner";
 import { 线索建项目 } from "../project/from-lead";
 import { 是项目线 } from "../enterprise/assign-line";
 import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-status-auto-db";
@@ -90,7 +93,8 @@ export type 现场 = {
   m: 映射;
   /** 在职、不是管理员的成员 */
   可任: Set<string>;
-  兜底负责人: string;
+  /** 导入的人：无主项目的创建人、节点日志和进公海留痕记他（项目负责人是空的） */
+  操作人: string;
   分机起: Date | null;
   现在: string;
   /** 企业版只用项目：商机行建成项目、跟进挂项目（映射.项目） */
@@ -300,8 +304,37 @@ export async function 摘联系人号(tx: Tx, contactId: string): Promise<void> 
   for (const m of 们) await 摘号(tx, m.customerId, contactId, m.kind, m.numberKey);
 }
 
-/** 新建一条，返回 id。值已经过 落值（负责人认过、父记录换成我们的 id、日期是 ISO）。项目 = 商机行建成项目 */
-export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?: boolean, 业务线?: string): Promise<string> {
+/**
+ * 没有负责人时挂的占位账号（11-02，常量和说明在 lib/pool.ts）：停用、不能登录，所以进不了 可任，也不会被候选名单选中。
+ * 按邮箱认，没有就建，一个库只有一个。在事务里取、不存在现场上：预演会回滚，存下来下一条就连不上了
+ */
+export async function 无负责人占位Id(tx: Tx): Promise<string> {
+  const u = await tx.user.upsert({
+    where: { email: 无负责人占位邮箱 },
+    update: {},
+    create: { email: 无负责人占位邮箱, name: 无负责人占位名, password: "!不能登录", active: false },
+    select: { id: true },
+  });
+  return u.id;
+}
+
+const 是占位账号 = async (tx: Tx, id: string) =>
+  (await tx.user.findUnique({ where: { email: 无负责人占位邮箱 }, select: { id: true } }))?.id === id;
+
+/**
+ * 挂占位账号的客户进客户公海。放进去的人记占位账号、不记导入的人：userId 非空才不算成超时回收（入池原因那一格写 无主入池理由），
+ * 记导入的人的话，他能在公海页「撤销放回」，客户就挂着占位账号出了公海
+ */
+const 无主客户入池 = (占位: string, customerId: string, 现在: string) => ({ customerId, userId: 占位, reason: 无主入池理由, at: new Date(现在) });
+
+/** 刚建的客户负责人不在 可任 里 = 落值 挂了占位账号：进公海 */
+export async function 无主客户进公海(tx: Tx, 现: 现场, customerId: string, v: 值表): Promise<void> {
+  const 负责人 = String(v.salesOwnerId ?? "");
+  if (!现.可任.has(负责人)) await tx.customerPool.create({ data: 无主客户入池(负责人, customerId, 现.现在) });
+}
+
+/** 新建一条，返回 id。值已经过 落值（负责人认过、父记录换成我们的 id、日期是 ISO）。项目 = 商机行建成项目；操作人 = 无主项目记的那个人 */
+export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?: boolean, 业务线?: string, 操作人?: string): Promise<string> {
   if (e === "customer") {
     const c = await tx.customer.create({
       data: {
@@ -359,7 +392,7 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     await 记联系人号(tx, String(v.customerId), c.id, v);
     return c.id;
   }
-  if (e === "opportunity" && 项目) return 建项目(tx, v, 现在, 业务线);
+  if (e === "opportunity" && 项目) return 建项目(tx, v, 现在, 业务线, 操作人);
   if (e === "opportunity") {
     const status = 串(v.status) ?? "OPEN";
     const o = await tx.opportunity.create({
@@ -412,7 +445,13 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     const data: Prisma.CustomerUncheckedUpdateInput = {};
     if (有("name")) data.name = String(改动.name);
     if (有("phone")) data.phone = 串(改动.phone) ?? "";
-    if (有("salesOwnerId")) data.salesOwnerId = String(改动.salesOwnerId);
+    if (有("salesOwnerId")) {
+      data.salesOwnerId = String(改动.salesOwnerId);
+      // 无主客户后来有了负责人（指定默认负责人后再导）就出公海；撤回、采用原系统改回占位账号就回公海。别的原因进公海的不碰
+      if (await 是占位账号(tx, data.salesOwnerId)) {
+        await tx.customerPool.upsert({ where: { customerId: id }, update: {}, create: 无主客户入池(data.salesOwnerId, id, 现在) });
+      } else await tx.customerPool.deleteMany({ where: { customerId: id, reason: 无主入池理由 } });
+    }
     if (有("followStatus")) data.followStatus = 串(改动.followStatus) ?? "待跟进";
     if (有("custStatus")) data.custStatus = 串(改动.custStatus);
     if (有("customerType")) data.customerType = 串(改动.customerType);
@@ -513,7 +552,11 @@ export async function 落值(tx: Tx, 现: 现场, w: 待写, 上次: 值表 | nu
   const 主 = 负责人列[w.实体];
   if (主 && !现.可任.has(String(v[主] ?? ""))) {
     const 退 = [上次?.[主], 现.m.默认负责人Id].find((x): x is string => typeof x === "string" && 现.可任.has(x));
-    v[主] = 退 ?? 现.兜底负责人;
+    if (退) v[主] = 退;
+    // 11-02：没人可退也不替人挑（原来退给导入的人）。已有的记录不动：有上次就当原系统这格没改（三方比对跳过），连已有客户、并入的记现在那位（不算冲突）
+    else if (现值) v[主] = 上次 ? (上次[主] ?? null) : (现值[主] ?? null);
+    // 新建 / 建回：外键必填的挂占位账号，记进对照表的也是它，下次才比得上；线索和项目的负责人可以空
+    else v[主] = w.实体 === "lead" || (w.实体 === "opportunity" && 现.项目) ? null : await 无负责人占位Id(tx);
   }
   if (w.父客户) {
     const id = await 认父(tx, 现.源, "customer", w.父客户);
@@ -573,11 +616,12 @@ async function 再认同号(tx: Tx, 现: 现场, phone: string): Promise<string 
 
 async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
   const v = await 落值(tx, 现, w, null, null);
-  const id = await 建(tx, w.实体, v, 现.现在, 现.项目, 现.业务线);
+  const id = await 建(tx, w.实体, v, 现.现在, 现.项目, 现.业务线, 现.操作人);
   await tx.entExternalRef.create({
     data: { source: 现.源, entity: w.实体, externalId: w.外部ID, targetId: id, fingerprint: w.指纹, written: J(v), raw: J(w.原始), batchId: 现.批次Id },
   });
   await tx.entImportRow.create({ data: { batchId: 现.批次Id, entity: w.实体, externalId: w.外部ID, targetId: id, kind: "create", written: J(v) } });
+  if (w.实体 === "customer") await 无主客户进公海(tx, 现, id, v);
   if (w.实体 === "lead" && 现.项目) await 线索落项目(tx, 现, w, id, v);
   return "新建";
 }
@@ -594,10 +638,11 @@ export const 线索带出 = (外部ID: string) => `线索:${外部ID}`;
  * 已转化 / 已放弃的线索不建项目（转化过的原系统里另有客户和商机，会照客户、商机行导进来）。
  * 建出来的客户、联系人、项目各记一行导入记录（externalId 加前缀），整批撤回时倒着一起退掉。
  * Lead 行不标已转化、不连客户：标了撤回会被「已经转成客户了」拦住。
+ * 线索没负责人（11-02）：新建的客户挂占位账号进客户公海，项目进项目公海；连上的同号客户不动，只有项目进公海。创建人记导入的人。
  */
 async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v: 值表): Promise<void> {
   if (v.status === "已转化" || v.status === "已放弃") return;
-  const 负责人 = 串(v.ownerId) ?? 现.兜底负责人;
+  const 负责人 = 串(v.ownerId);
   const 记 = async (e: 实体, id: string) =>
     tx.entImportRow.create({
       data: { batchId: 现.批次Id, entity: e, externalId: 线索带出(w.外部ID), targetId: id, kind: "create", written: J(await 读现值(tx, e, id)) },
@@ -605,14 +650,17 @@ async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v
   let customerId = await 再认同号(tx, 现, String(v.phone ?? ""));
   let 联系人Id: string | null = null;
   if (!customerId) {
-    customerId = await 建(tx, "customer", { name: v.name, phone: v.phone, salesOwnerId: 负责人, followStatus: null, remark: null }, 现.现在, 现.项目, 现.业务线);
+    const 客户负责人 = 负责人 ?? (await 无负责人占位Id(tx));
+    customerId = await 建(tx, "customer", { name: v.name, phone: v.phone, salesOwnerId: 客户负责人, followStatus: null, remark: null }, 现.现在, 现.项目, 现.业务线);
+    if (!负责人) await 无主客户进公海(tx, 现, customerId, { salesOwnerId: 客户负责人 });
     await 记("customer", customerId);
     if (!空(v.contact)) {
       联系人Id = await 建(tx, "contact", { name: v.contact, position: null, phone: v.phone, email: v.email, wechat: null, isPrimary: true, remark: null, customerId }, 现.现在);
       await 记("contact", 联系人Id);
     }
   }
-  const 项目Id = await 线索建项目(tx, { 线索名: String(v.name), leadId, customerId, ownerId: 负责人, creatorId: 负责人, 联系人Id });
+  const 项目Id = await 线索建项目(tx, { 线索名: String(v.name), leadId, customerId, ownerId: 负责人 ?? 公海无负责人, creatorId: 负责人 ?? 现.操作人, 联系人Id });
+  if (!负责人) await 无主项目进公海(tx, 项目Id, 现.操作人, 现.现在);
   if (现.业务线) await tx.project.update({ where: { id: 项目Id }, data: { bizLine: 现.业务线 } });
   await 记("opportunity", 项目Id);
 }
@@ -729,7 +777,7 @@ async function 记冲突(tx: Tx, 现: 现场, w: 待写, targetId: string, field
 
 const 计数列: Record<结果, "created" | "updated" | "skipped" | "conflicts"> = { 新建: "created", 更新: "updated", 跳过: "skipped", 冲突: "conflicts" };
 
-/** 写之前备好的：谁能当负责人、负责人都对不上时给谁 */
+/** 写之前备好的：谁能当负责人、谁在导入 */
 export async function 开现场(批次Id: string, 源: 来源, m: 映射, 用户: Actor): Promise<现场> {
   const 成员 = await prisma.user.findMany({ where: { active: true, role: { not: "ADMIN" } }, select: { id: true } });
   const 可任 = new Set(成员.map((u) => u.id));
@@ -738,7 +786,7 @@ export async function 开现场(批次Id: string, 源: 来源, m: 映射, 用户
     源,
     m,
     可任,
-    兜底负责人: 可任.has(用户.id) ? 用户.id : (成员[0]?.id ?? 用户.id),
+    操作人: 用户.id,
     分机起: await 分机留存起(),
     现在: new Date().toISOString(),
     项目: !!m.项目,

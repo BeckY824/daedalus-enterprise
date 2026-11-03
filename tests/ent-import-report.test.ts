@@ -80,7 +80,7 @@ describe("试跑", () => {
       ["客户.xlsx", "customer", 3],
       ["跟进记录.xlsx", "followup", 3],
     ]);
-    // 负责人：张伟、李娜对上；不认识的落默认负责人（只有两个业务员，唯一负责人认不出 → 导入的人）并记一条提醒
+    // 负责人：张伟、李娜对上；不认识的记一条提醒。没人指定就没有默认负责人（11-02：不自动挑人，不然大批客户错归不相干的同事）
     expect(报告.映射.负责人).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ 写法: "张伟", 成员Id: 张伟, 成员名: "张伟" }),
@@ -88,7 +88,7 @@ describe("试跑", () => {
         expect.objectContaining({ 写法: "不认识的人", 成员Id: "" }),
       ]),
     );
-    expect([张伟, 李娜]).toContain(报告.映射.默认负责人.id); // 导入的人是管理员、不能当负责人：默认落到能任的人，和实际写入一致
+    expect(报告.映射.默认负责人.id).toBe("");
     expect(报告.问题分类).toContainEqual({ 实体: "customer", 级别: "提醒", 类别: "负责人对不上", 数: 1 });
     // 列的报告：落到哪、谁认的、几条样例
     const 列 = 报告.映射.列.customer!;
@@ -302,6 +302,8 @@ describe("合并改动", () => {
     expect(新.值.阶段).toEqual({ 谈判: "谈判审核" });
     expect(新.负责人).toEqual({ 老王: "u2" });
     expect(新.默认负责人Id).toBe("u3");
+    // 默认负责人能清空：空串 = 不指定，对不上的进公海
+    expect(合并改动(原, { 默认负责人Id: "" })!.默认负责人Id).toBe("");
     expect(新.说明).toMatchObject({
       [说明键.列("customer", "名称")]: "规则",
       [说明键.列("customer", "电话")]: "手动",

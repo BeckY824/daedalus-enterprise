@@ -18,7 +18,7 @@ vi.mock("@/lib/business", async (原) => {
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 试跑 } from "@/lib/enterprise-import/report";
+import { 试跑, 重新试跑 } from "@/lib/enterprise-import/report";
 import { 写一批 as 只写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
 import { 撤回一批, 恢复一批 } from "@/lib/enterprise-import/revert";
 import type { 读出的表 } from "@/lib/enterprise-import/excel";
@@ -49,6 +49,9 @@ const 我 = { id: "tester-id", name: "测试员" };
 
 async function 导(表们: 读出的表[]) {
   const { 批次Id, 报告 } = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: 表们, 建议器: null });
+  // 商机表没有负责人列：指定默认负责人，这个文件测的是建项目；没指定进公海那条路在 ent-import-apply.test.ts（11-02）
+  const 张伟 = await prisma.user.findUniqueOrThrow({ where: { email: "zw@x" } });
+  await 重新试跑(批次Id, { 默认负责人Id: 张伟.id }, 我.id);
   const r = await 写一批(批次Id, 我);
   expect(r.完了).toBe(true);
   return { 批次Id, 报告 };

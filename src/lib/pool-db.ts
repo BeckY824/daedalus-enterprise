@@ -8,7 +8,7 @@ import { getSetting, setSetting } from "@/lib/settings";
 import { recordAudit } from "@/lib/audit";
 import { 读团队 } from "@/lib/sync/client";
 import { 看全部, 只读身份中 } from "@/lib/team-scope";
-import { 看得到的客户数 } from "@/lib/scope-sql";
+import { 看得到的客户数, 未删公海数 } from "@/lib/scope-sql";
 import { dayjs } from "@/lib/utils";
 import { 不掉公海的状态, 公海截止, 自动理由 } from "@/lib/pool";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
@@ -87,10 +87,11 @@ export const 客户总数 = cache(() => 看得到的客户数());
  * 10 万客户一次 ~10 ms，限定了（业务员、企业版按组织看）还要全表扫，一次 20–30 ms，每次进客户页要数两遍（2026-10-25/26 企业版 p95）。
  * 改成全部客户（和角标同一个数）减公海表条数。限定了也对得上：公海表按「挂在看得到的客户上」限定，
  * 而看得到的客户里本来就含整个公海（可见客户 的第三条），所以带限定数出来的公海表 = 全部公海，
- * 带限定的全部客户 = 看得到的非公海 + 全部公海；互看读两边都不限定。公海表的 customerId 是外键、删客户连带删
+ * 带限定的全部客户 = 看得到的非公海 + 全部公海；互看读两边都不限定。公海表的 customerId 是外键，只有硬删客户才连带删；软删（进回收站）公海行还在，
+ * 所以公海这头只数挂在未删客户上的（lib/scope-sql.ts 未删公海数），不然公海多、客户少，两数相加对不上角标
  */
 export async function 客户页签数(): Promise<{ 公海: number; 非公海: number }> {
-  // 公海表带限定数 = 全部公海（见上），就不让钩子再给它套 Customer 那层 JOIN
-  const [全部, 公海] = await Promise.all([客户总数(), 看全部(() => prisma.customerPool.count())]);
+  // 公海表带限定数 = 全部公海（见上），裸 SQL 不过钩子，不用再给它套 Customer 那层 JOIN
+  const [全部, 公海] = await Promise.all([客户总数(), 未删公海数()]);
   return { 公海, 非公海: 全部 - 公海 };
 }

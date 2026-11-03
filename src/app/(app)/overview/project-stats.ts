@@ -91,23 +91,24 @@ export async function 项目现在(本位币: string, 只看?: 只看谁): Promi
   // 按人看时公海里的不算在谁头上；只有线索瀑布要它们（数「退回公海」流出去几个）
   const rows = 只看 === undefined ? 全部行 : 全部行.filter((p) => !p.pooledAt);
   const 进行中 = rows.filter((p) => !p.result);
+  // 阶段、节点只数有人跟的：公海里的单独数在「公海」（11-02 验收：客户数和项目数要趋同，公海的两边都不算）
+  const 在跟 = 进行中.filter((p) => !p.pooledAt);
   const 钱 = (p: { amount: number; currency: string }) => (p.currency === 本位币 ? p.amount : 0);
 
   const 节点 = 阶段们.flatMap((phase) =>
     字典.节点们[phase].map((node) => {
-      const 这些 = 进行中.filter((p) => p.phase === phase && p.node === node);
+      const 这些 = 在跟.filter((p) => p.phase === phase && p.node === node);
       return { phase, node, count: 这些.length, amount: 这些.reduce((s, p) => s + 钱(p), 0) };
     }),
   );
   const 阶段 = 阶段们.map((phase) => {
-    const 这些 = 进行中.filter((p) => p.phase === phase);
+    const 这些 = 在跟.filter((p) => p.phase === phase);
     return { phase, count: 这些.length, amount: 这些.reduce((s, p) => s + 钱(p), 0) };
   });
 
   // 公海里的不算在谁头上（负责人还是原来那个人，可人已经不管它了）
   const 人 = new Map<string, 人行现在>();
-  for (const p of 进行中) {
-    if (p.pooledAt) continue;
+  for (const p of 在跟) {
     const r = 人.get(p.ownerId) ?? { id: p.ownerId, name: "", 线索: 0, 商机: 0, 订单: 0, 商机金额: 0, 订单金额: 0 };
     if (p.phase === "线索") r.线索++;
     else if (p.phase === "商机") { r.商机++; r.商机金额 += 钱(p); }
@@ -121,7 +122,7 @@ export async function 项目现在(本位币: string, 只看?: 只看谁): Promi
     结局: 结局们of(字典).map((result) => ({ result, count: rows.filter((p) => p.result === result).length })),
     公海: 进行中.filter((p) => p.pooledAt).length,
     按人: (await 起名(人)).sort((a, b) => b.商机金额 + b.订单金额 - (a.商机金额 + a.订单金额) || b.线索 + b.商机 + b.订单 - (a.线索 + a.商机 + a.订单)),
-    外币: 进行中.filter((p) => p.currency !== 本位币 && p.amount > 0).length,
+    外币: 在跟.filter((p) => p.currency !== 本位币 && p.amount > 0).length,
     漏斗: 项目漏斗of(rows),
     线索节点: 线索节点of(全部行.map((p) => ({ ...p, 判无效: 判无效了(p.entLeadVerify) })), 字典),
     线索转商机: 线索转商机of(rows),

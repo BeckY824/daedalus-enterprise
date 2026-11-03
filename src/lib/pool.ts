@@ -28,9 +28,17 @@ export function 公海截止(天数: number, 今: Date = new Date()): Date {
   return dayjs(今).startOf("day").subtract(天数 - 1, "day").toDate();
 }
 
-/** 列表负责人那一格、记录页头上的标签 */
+/**
+ * 没有负责人的公海客户挂的占位账号（11-02）：Customer.salesOwnerId 是必填外键，原系统没写负责人、又没指定默认负责人的客户
+ * 只能挂个人，不能挂真人（挂真人 = 大批客户错归一个不相干的同事）。这个号停用（active = false）、不能登录，
+ * 候选名单本来就只列在职的；按邮箱认，名字只是显示。没有就建（lib/enterprise-import/apply.ts 无负责人占位Id）
+ */
+export const 无负责人占位名 = "（无负责人）";
+export const 无负责人占位邮箱 = "no-owner@placeholder.local";
+
+/** 列表负责人那一格、记录页头上的标签。挂占位账号的客户没有原负责人，只写「公海」 */
 export function 公海标签(原负责人?: string | null): string {
-  return 原负责人 ? `公海（原 ${原负责人}）` : "公海";
+  return 原负责人 && 原负责人 !== 无负责人占位名 ? `公海（原 ${原负责人}）` : "公海";
 }
 
 /** 自动掉进去的理由，日志和标签提示里都用这一句 */

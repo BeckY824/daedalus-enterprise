@@ -84,7 +84,9 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
       ...(回避.length ? { id: { notIn: 回避 } } : {}),
       ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }] } : {}),
       ...(typeof sp.ownerId === "string" && sp.ownerId ? { ownerId: sp.ownerId } : {}),
-      ...(sp.pool === "1" ? { pooledAt: { not: null } } : {}),
+      // 企业版公海只有一处（/pool）：默认列表不列公海项目，不然同一个项目两边都有；团队版公海项目照旧混在列表里，页上有「在公海」标。
+      // 点首页卡进来的不加：哪些算由卡的条件定（「本月新增」不管在不在推，含公海），和卡上的数对得上
+      ...(sp.pool === "1" ? { pooledAt: { not: null } } : 企 && !卡 ? { pooledAt: null } : {}),
       // 卡的条件、阶段筛里也有 OR（即将逾期的粗筛、按结局认阶段），放进 AND 里不和搜索词的 OR 打架
       ...(并且.length ? { AND: 并且 } : {}),
     },
@@ -178,9 +180,9 @@ export type 名单项目 = {
  * 不另开权限口子。不跑超时回收（那是项目页列表的事，详情页每点一个都扫一遍太重）
  */
 export async function 读名单项目(me: { id: string; role?: string }, 字典: 阶段字典): Promise<{ rows: 名单项目[]; 取到上限: boolean }> {
-  const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
+  // 公海项目不进名单（企业版公海只在 /pool，和项目页默认列表一样）；历史负责人回避的都在公海里，也就不用另外排
   const rows = await prisma.project.findMany({
-    ...(回避.length ? { where: { id: { notIn: 回避 } } } : {}),
+    where: { pooledAt: null },
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
     select: {

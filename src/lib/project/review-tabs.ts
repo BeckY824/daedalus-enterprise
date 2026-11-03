@@ -51,13 +51,24 @@ export function 夹页(页: number, 总数: number, 每页 = 复盘列表每页)
 }
 
 /**
- * 沟通页签查哪些：挂在项目节点上的沟通记录（项目没删），谁 给了就按项目负责人筛、公海里的项目不算（11-01 同复盘按负责人数），
+ * 沟通页签查哪些：挂在项目节点上（项目没删）、由项目当前负责人本人记的沟通（11-02 定：同事、前任记的不算，项目页照旧能看到）。
+ * 谁 给了就只算这一圈负责的、公海里的项目不算（11-01 同复盘按负责人数）；谁 = undefined（看全部）时按 全部负责人 逐个配对。
+ * 库里不能比两列，所以每人一组「记录人 = X 且 项目负责人 = X」。
  * 段 = 最近几天（从那天零点起），方式 给了按 type 筛。
  * 查询走带限定的 prisma：看得到哪些客户的沟通由那一层管（公海里同事客户的沟通内容照旧不给）
  */
-export function 沟通条件(谁: readonly string[] | undefined, 段: 沟通段, now: ReturnType<typeof dayjs>, 方式: 沟通方式 | "" = ""): Prisma.FollowUpWhereInput {
+export function 沟通条件(
+  谁: readonly string[] | undefined,
+  段: 沟通段,
+  now: ReturnType<typeof dayjs>,
+  方式: 沟通方式 | "" = "",
+  全部负责人: readonly string[] = [],
+): Prisma.FollowUpWhereInput {
   return {
-    projectNode: { is: { project: { deletedAt: null, ...(谁 ? { ownerId: { in: [...谁] }, pooledAt: null } : {}) } } },
+    OR: (谁 ?? 全部负责人).map((人) => ({
+      ownerId: 人,
+      projectNode: { is: { project: { deletedAt: null, ownerId: 人, ...(谁 ? { pooledAt: null } : {}) } } },
+    })),
     ...(方式 ? { type: 方式 } : {}),
     ...(段 === "all" ? {} : { occurredAt: { gte: now.startOf("day").subtract(Number(段) - 1, "day").toDate() } }),
   };

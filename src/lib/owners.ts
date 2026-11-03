@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { 可担任负责人 } from "./constants";
+import { 无负责人占位邮箱 } from "./pool";
 
 /**
  * 「谁能被指派为负责人」的候选名单。
@@ -68,7 +69,8 @@ export async function 唯一负责人(): Promise<string | null> {
 /** 历史记录筛选不是指派：管理员及留有跟进的停用成员都必须可选。 */
 export async function 跟进筛选成员() {
   return prisma.user.findMany({
-    where: { OR: [{ active: true }, { followUps: { some: {} } }] },
+    // 占位账号（导入时没有负责人的沟通挂在它上面）不是成员，不进筛选
+    where: { email: { not: 无负责人占位邮箱 }, OR: [{ active: true }, { followUps: { some: {} } }] },
     select: { id: true, name: true, email: true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });

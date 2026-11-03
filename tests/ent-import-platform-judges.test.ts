@@ -98,14 +98,17 @@ const 数问题 = (报告: 试跑报告, 级别: "跳过" | "提醒", e?: 实体
 };
 
 const 格 = (s: string) => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-/** 模拟客户填对照表：空着的值填「能填的」里第一个，重名的负责人填邮箱；其余照导出的不动 */
-function 填表(csv: string, 负责人填: Record<string, string>): { bytes: Uint8Array; 填了: number } {
+/** 模拟客户填对照表：空着的值填「能填的」里第一个，重名的负责人填邮箱，默认负责人填一个（11-02 起没人指定就空着）；其余照导出的不动 */
+function 填表(csv: string, 负责人填: Record<string, string>, 默认邮箱: string): { bytes: Uint8Array; 填了: number } {
   const { rows } = 解析CSV带行号(解码CSV(new TextEncoder().encode(csv)));
   const [类别, 原, 我们, 能填] = (["类别", "原系统写法", "我们这边", "能填的"] as const).map((h) => rows[0].indexOf(h));
   let 填了 = 0;
   for (const r of rows.slice(1)) {
     if (r[类别] === "负责人" && 负责人填[r[原]]) {
       r[我们] = 负责人填[r[原]];
+      填了++;
+    } else if (r[类别] === "默认负责人") {
+      r[我们] = 默认邮箱;
       填了++;
     } else if (!["列", "负责人", "默认负责人"].includes(r[类别]) && !r[我们]) {
       r[我们] = r[能填].split("、")[0];
@@ -159,13 +162,17 @@ describe.each(样例们)("裁判 · $目录", (样) => {
 
     const csv = 导出对照表(首报告, 成员们);
     expect(解析CSV带行号(解码CSV(new TextEncoder().encode(csv))).rows[0]).toEqual([...对照表头]);
-    const 填 = 填表(csv, 样.负责人填);
+    // 11-02 起没人指定就没有默认负责人：这份裁判要「对不上的落默认」，对照表上指定一个业务员
+    expect(首报告.映射.默认负责人.id).toBe("");
+    const 默认 = await prisma.user.findFirstOrThrow({ where: { role: "SALES", active: true } });
+    const 填 = 填表(csv, 样.负责人填, 默认.email!);
     表格 = 填.bytes;
     const 回 = 读回对照表({ 名: "对照表.csv", bytes: 表格 }, 首报告, 成员们);
     expect(回.问题).toEqual([]);
     expect(回.改了).toBe(填.填了);
 
     报告1 = (await 重新试跑(批1, 回.改, 我.id)).报告;
+    expect(报告1.映射.默认负责人.id).toBe(默认.id);
     expect(报告1.映射.值.filter((v) => !v.我们的值)).toEqual([]);
     expect(数问题(报告1, "提醒").阶段对不上 ?? 0).toBe(0);
     for (const [写法, 邮箱] of Object.entries(样.负责人填)) {
