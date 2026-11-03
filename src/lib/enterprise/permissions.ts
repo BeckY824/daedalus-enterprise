@@ -242,10 +242,10 @@ export function 能放回公海(me: 谁, p: 权限项目, org: 组织 | null): b
   return !p.pooledAt && 能转让项目(me, p, org);
 }
 
-/** 分配线索（A7）：市场管理、销售管理、总管理 */
+/** 分配线索（A7）：市场管理、销售管理、总管理；设了「只看某人」的不行（11-03） */
 export function 能分配线索(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老管(me);
-  return !!org && !只读角色(me, org) && 有(org, me.id, 分线索角色);
+  return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, 分线索角色);
 }
 
 /**
@@ -314,11 +314,11 @@ export function 是经理(me: 谁, org: 组织 | null): boolean {
 }
 
 /**
- * 「管理层」：总管理、销售管理、市场管理，或手下有人（直属 / 虚线上级）。
+ * 「管理层」：总管理、销售管理、市场管理，或手下有人（直属 / 虚线上级）；设了「只看某人」的不算（11-03）。
  * 首页、复盘按人看、给下属推必填这类「管人」的入口用；不等于能编辑别人的项目
  */
 export function 是管理层(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老管(me);
-  if (!org) return false;
+  if (!org || 只看的人(org, me.id)) return false;
   return 有(org, me.id, ["director", "admin", "sales_mgr", "marketing_mgr"]) || 实线下属(org, me.id, 1).size > 0 || 虚线下属(org, me.id, 1).size > 0;
 }

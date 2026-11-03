@@ -13,12 +13,16 @@
  *   - 条线总管理（总管理设了业务线）：看本线、条线内转让，不编辑、不删、不进设置
  *   - 转让只到直属一级；项目组员当负责人能编辑、不能转、不能删
  *   - 没设业务角色只看公海；领公海：销售、销管、总管理
+ *   - 只看某人：只看那个人的、公海照常、什么都不能改；角色挂着市场管理也不算管理员（不收提醒、不管渠道、不做市场复核）
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { 建组织, 规整只看某人, 上级设置问题, 填组织设置, type 组织 } from "@/lib/enterprise/org-core";
+import { 建组织, 规整只看某人, 上级设置问题, 填组织设置, 管理员类别们of, type 组织 } from "@/lib/enterprise/org-core";
+import { 能管渠道, 能录投入 } from "@/lib/enterprise/channel-stats";
+import { 满额提醒收件人 } from "@/lib/enterprise/lead-full-notice";
+import { 能拍板, 有市场管理 } from "@/lib/project/lead-verify";
 import {
   能看项目, 能编辑项目, 能转让项目, 能放回公海, 能分配线索, 能管公海, 能删除, 能恢复, 能进设置, 能改后台设置,
-  只读角色, 能看全部, 是总管理, 没设业务角色, 能真删, 能领公海, 能删一些, 能转让客户, 能改客户, 只看的人, type 权限项目,
+  只读角色, 能看全部, 是总管理, 没设业务角色, 能真删, 能领公海, 能删一些, 能转让客户, 能改客户, 只看的人, 是管理层, type 权限项目,
 } from "@/lib/enterprise/permissions";
 import { 能切换视图 } from "@/lib/enterprise/view-as";
 import { 能加组员 } from "@/lib/project/db";
@@ -279,6 +283,13 @@ describe("只看某人（V3.5.1 特例）", () => {
     expect([能看项目({ id: "w" }, p, o), 能看项目({ id: "w" }, 自建, o), 能看项目({ id: "w" }, { ownerId: "s", creatorId: "s" }, o), 能看项目({ id: "w" }, 公海项目, o)]).toEqual([true, true, false, true]);
     expect([能编辑项目({ id: "w" }, { ownerId: "w" }, o), 能转让项目({ id: "w" }, { ownerId: "w" }, o), 能删除({ id: "w" }, o, "w"), 能删一些({ id: "w" }, o), 能领公海({ id: "w" }, o)]).toEqual([false, false, false, false, false]);
     expect([能改客户({ id: "w" }, { salesOwnerId: "w", 在公海: false }, o), 能转让客户({ id: "w" }, { salesOwnerId: "w", 在公海: false }, o)]).toEqual([false, false]);
+  });
+  it("角色挂着市场管理也不算管理员：不收满额 / 待分配提醒，不管渠道、不录投入、不做市场复核、不分线索（11-03）", () => {
+    expect([管理员类别们of(基, "w").has("市场管理"), 管理员类别们of(o, "w").size]).toEqual([true, 0]);
+    expect([满额提醒收件人(o), 满额提醒收件人(o, "待分配"), 满额提醒收件人(基)]).toEqual([[], [], ["w"]]);
+    expect([能管渠道(o, { id: "w", role: "SALES" }), 能录投入(o, { id: "w", role: "SALES" }), 能管渠道(基, { id: "w", role: "SALES" })]).toEqual([false, false, true]);
+    expect([能拍板({ id: "w", role: "SALES" }, "市场复核", { ownerId: "s" }, o), 有市场管理(o), 有市场管理(基)]).toEqual([false, false, true]);
+    expect([能分配线索({ id: "w" }, o), 是管理层({ id: "w" }, o), 能分配线索({ id: "w" }, 基), 是管理层({ id: "w" }, 基)]).toEqual([false, false, true, true]);
   });
   it("不能当别人的实线上级；虚线照旧", () => {
     expect(上级设置问题(o, "s", "w", "直属")).toMatch("只看某人");
