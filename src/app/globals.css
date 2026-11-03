@@ -435,7 +435,8 @@ html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, trans
 .notice-drawer .ant-drawer-title { white-space: nowrap; }
 .notice-empty { margin: 0; padding: 32px 16px; text-align: center; }
 .notice-list { list-style: none; margin: 0; padding: 0; }
-.notice-item { display: flex; gap: 10px; width: 100%; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; color: var(--text-muted); font: inherit; text-align: left; cursor: pointer;
+.notice-list > li { border-bottom: 1px solid var(--line-soft); }
+.notice-item { display: flex; gap: 10px; width: 100%; padding: 12px 16px; border: 0; background: transparent; color: var(--text-muted); font: inherit; text-align: left; cursor: pointer;
   transition: background var(--t-fast) var(--ease); }
 .notice-item:hover { background: var(--row-hover); }
 .notice-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
@@ -446,6 +447,13 @@ html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, trans
 .notice-item.unread .notice-title { font-weight: 600; }
 .notice-body { font-size: var(--fs-note); color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .notice-meta { font-size: var(--fs-min); color: var(--text-faint); white-space: nowrap; }
+/* 正文两行放不下时「展开全文」（11-03 B6-6）：展开后整段照原换行显示，太长在这一格里滚，不把抽屉撑成一条 */
+.notice-body.full { display: block; -webkit-line-clamp: unset; white-space: pre-wrap; max-height: 40vh; overflow-y: auto; }
+.notice-more { display: block; margin: -6px 0 0; padding: 0 16px 10px 34px; border: 0; background: transparent; color: var(--brand); font: inherit; font-size: var(--fs-note); cursor: pointer; }
+/* 带「展开全文」的那条：悬停底色连着按钮一起铺，不让正文和按钮看着像两条 */
+.notice-list > li:has(.notice-more):hover { background: var(--row-hover); }
+.notice-more:hover { text-decoration: underline; }
+.notice-more:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) {
   .notice-item { transition: none; }
   .notice-drawer .ant-drawer-content-wrapper, .notice-drawer .ant-drawer-mask { transition: none !important; animation-duration: 0s !important; }
@@ -2606,6 +2614,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .cmdk-row-on { background: var(--brand-bg); }
 /* 企业版全局搜索（U-项目-04）：分组小标题；搜到的名字可能很长，名字和附注一起省略，不撑出横滚 */
 .cmdk-sec { padding: var(--s2) var(--s3) var(--s1); font-size: var(--fs-min); color: var(--text-faint); }
+/* ⌘K 搜不到（11-03 C10-2）：输入已在 lib/cmdk.ts 截断，这里只兜一手不撑出横滚 */
+.cmdk-sec.cmdk-none { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
+/* 录回款少于应收（A5-4）：黄字一句，不拦保存 */
+.pay-short-hint { margin-top: 6px; color: var(--warning-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
 .cmdk-row.cmdk-hit b { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmdk-foot { padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: var(--fs-min); color: var(--text-muted); }
 .cmdk-foot kbd { font-size: var(--fs-min); background: var(--hover); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: var(--r-ctl); padding: 0 5px; }

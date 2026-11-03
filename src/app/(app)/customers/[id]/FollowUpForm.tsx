@@ -30,6 +30,7 @@ import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
+import { 记下带撤销, 撤 } from "@/components/FollowUndo";
 
 /** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成，描述写了也不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则） */
 type 卡点值 = { type: string; impact: string | null; title: string; reasons: string[]; description: string };
@@ -108,6 +109,7 @@ export default function FollowUpForm({
   open,
   onClose,
   onSaved,
+  on撤销,
   customerId: 给定客户,
   预选客户,
   record,
@@ -124,6 +126,8 @@ export default function FollowUpForm({
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /** 记下后提示条上点了「撤销」、撤成了（A7-1）：有本地列表的页面（客户页时间线）顺手把那行去掉 */
+  on撤销?: (id: string) => void;
   /** 记录页上给定；跟进页上不给，改由表单第一格挑 */
   customerId?: string;
   /** 不给 customerId 时预填的那一位（从某位客户带过来的） */
@@ -436,6 +440,9 @@ export default function FollowUpForm({
     }
   }
 
+  /** 刚记的那条撤销了：页面数据刷一下（A7-1） */
+  const 撤完 = (id: string) => { on撤销?.(id); router.refresh(); };
+
   async function onOk() {
     const v = await form.validateFields();
     const 谁 = 给定客户 ?? (v.customerId as string);
@@ -486,9 +493,12 @@ export default function FollowUpForm({
       if ("待办id" in res && res.待办id) {
         // 顺带建了待办：Dock 数和到点提醒要马上跟上
         void window.desktopReminders?.刷新();
-        return void message.success("沟通已记下，也加进了待办——到点会提醒你");
+        return void 记下带撤销(message, "沟通已记下，也加进了待办——到点会提醒你", res.id, () => 撤完(res.id));
       }
-      return void message.success(record?.id ? "已保存" : "领取了" in res && res.领取了 ? "已领取并记下这条沟通，这位现在归你了" : "沟通已记下");
+      if (record?.id) return void message.success("已保存");
+      // 领取并记下：撤销只撤这条沟通、不退回领取，提示里就不摆撤销免得误会
+      if ("领取了" in res && res.领取了) return void message.success("已领取并记下这条沟通，这位现在归你了");
+      return void 记下带撤销(message, "沟通已记下", res.id, () => 撤完(res.id));
     }
 
     // 跟进页上挑人记的：人留在原地（新的那行会亮一下），提示里给撤销和去他记录页的路
@@ -502,6 +512,18 @@ export default function FollowUpForm({
       content: (
         <span>
           {要收口 ? `沟通已记下，计划「${要收口.subject}」一并完成` : `已记下和${名}的这次沟通`}
+          {!要收口 && (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                message.destroy(key);
+                void 撤(message, res.id, () => 撤完(res.id));
+              }}
+            >
+              撤销
+            </Button>
+          )}
           {要收口 && (
             <Button
               type="link"
@@ -568,7 +590,8 @@ export default function FollowUpForm({
     if ("卡点没发" in r && r.卡点没发) message.warning(`沟通记下了，卡点没生成：${r.卡点没发}`);
     if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
     if (要收口 && !只读 && 完成了计划) return void 完成了计划(要收口, true);
-    message.success(要收口 && !只读 ? `沟通已记下，计划「${要收口.subject}」一并完成` : "沟通已记下");
+    if (要收口 && !只读) return void message.success(`沟通已记下，计划「${要收口.subject}」一并完成`);
+    记下带撤销(message, "沟通已记下", r.followUpId, () => r.followUpId && 撤完(r.followUpId));
   }
 
   const showDuration = type === "PHONE" || type === "MEETING";

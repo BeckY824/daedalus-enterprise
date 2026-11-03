@@ -13,6 +13,7 @@ import { 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib
 import { 详细地址上限, 详细地址提示, 成交需求上限, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 三种业务线, 建议业务线, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 换角色提示, 再邀默认角色 } from "@/lib/project/team-ui";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
@@ -243,7 +244,7 @@ export function ProjectTeamCard({
             title={不能改}
             value={m.roleId ?? undefined}
             options={角色选项(角色们, m.roleId)}
-            onChange={(v) => void 跑(() => 换项目组员角色(m.id, v ?? null), v ? "已换角色" : "已清掉角色")}
+            onChange={(v) => void 跑(() => 换项目组员角色(m.id, v ?? null), 换角色提示(角色们, v))}
           />
           {能改 && (
             <Popconfirm title={`把${m.name}移出项目组？`} okText="移出" okButtonProps={{ danger: true }} onConfirm={() => void 跑(() => 移出项目组员(m.id), "已移出")}>
@@ -263,7 +264,12 @@ export function ProjectTeamCard({
             optionFilterProp="label"
             value={加谁}
             options={成员选项(可加)}
-            onChange={set加谁}
+            onChange={(v) => {
+              set加谁(v);
+              // 拒绝过的人再邀：角色默认带上次邀请时选的（B5-4）
+              const 上次 = 企业版 ? 再邀默认角色(组员们, 角色们, v) : undefined;
+              if (上次) set加角色(上次);
+            }}
           />
           <Select style={{ width: 120 }} allowClear placeholder="角色" aria-label="新组员的角色" disabled={忙} value={加角色} options={角色选项(角色们)} onChange={set加角色} />
           <Button

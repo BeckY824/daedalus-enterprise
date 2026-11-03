@@ -25,6 +25,16 @@ export function 通知摘要(body: string, 字数 = 120): string {
   return 收.length > 字数 ? `${收.slice(0, 字数)}…` : 收;
 }
 
+/**
+ * 铃铛里正文最多两行（CSS 截断），超过的给「展开全文」（11-03 B6-6）。抽屉 380 宽、一行约 25 个字：
+ * 收空白后超过 50 字、或原文本身有换行，就当两行放不下。
+ */
+export function 通知要展开(body: string | null | undefined, 两行字数 = 50): boolean {
+  if (!body) return false;
+  const 收 = body.trim();
+  return /\n/.test(收) || 收.replace(/\s+/g, " ").length > 两行字数;
+}
+
 export function 多久以前(iso: string, 现在 = Date.now()): string {
   const 秒 = Math.max(0, Math.round((现在 - new Date(iso).getTime()) / 1000));
   if (秒 < 60) return "刚刚";
@@ -42,6 +52,14 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
   const [挂过, set挂过] = useState(false);
   const [行们, set行们] = useState<通知行[] | null>(null);
   const [忙, set忙] = useState(false);
+  const [展开的, set展开的] = useState<ReadonlySet<string>>(() => new Set());
+  const 切展开 = (id: string) =>
+    set展开的((原) => {
+      const 新 = new Set(原);
+      if (新.has(id)) 新.delete(id);
+      else 新.add(id);
+      return 新;
+    });
 
   // 每分钟、切回这个标签页时问一次未读数
   useEffect(() => {
@@ -131,14 +149,20 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
                       <button type="button" className={`notice-item${r.read ? "" : " unread"}`} onClick={() => 点(r)} aria-label={`${r.read ? "" : "未读，"}${r.title}`}>
                         <span className="notice-dot" aria-hidden="true" />
                         <span className="notice-main">
-                          {/* 标题一行截断、正文只摆前 120 字：悬停看全文（11-03 C8-3 / B6-7，卡点编号常被截掉），同客户列表的 title 做法 */}
+                          {/* 标题一行截断、正文两行截断：悬停看全文（11-03 C8-3 / B6-7，卡点编号常被截掉），同客户列表的 title 做法；
+                              长的下面「展开全文」原地展开（B6-6），展开后不截、太长在框里滚 */}
                           <span className="notice-title" title={r.title}>{r.title}</span>
-                          {r.body && <span className="notice-body" title={r.body}>{通知摘要(r.body)}</span>}
+                          {r.body && (展开的.has(r.id) ? <span className="notice-body full">{r.body.trim()}</span> : <span className="notice-body" title={r.body}>{通知摘要(r.body)}</span>)}
                           <span className="notice-meta">
                             {r.kind} · {多久以前(r.createdAt)}
                           </span>
                         </span>
                       </button>
+                      {通知要展开(r.body) && (
+                        <button type="button" className="notice-more" aria-expanded={展开的.has(r.id)} onClick={() => 切展开(r.id)}>
+                          {展开的.has(r.id) ? "收起" : "展开全文"}
+                        </button>
+                      )}
                     </motion.li>
                   ))}
                 </AnimatePresence>

@@ -9,6 +9,7 @@ import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
 import RecordView from "./RecordView";
+import SameNumberBanner from "../../projects/[id]/SameNumberBanner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "./follow-history-query";
 import { 负责人候选 } from "@/lib/owners";
 import { 可选渠道 } from "@/lib/options";
@@ -192,6 +193,8 @@ export default async function CustomerDetailPage({
   return (
     <RecordView
       key={customer.id}
+      // 同号再次录入的醒目条：项目详情顶上那条，客户详情也摆（11-03 B6-9）；只看这页列出来的项目（已滤掉我回避的公海项目）
+      醒目条={只项目 && 项目们?.length ? <SameNumberBanner projectId={项目们.map((p) => p.id)} /> : null}
       sourceLead={sourceLead}
       users={users}
       channels={channels}

@@ -24,6 +24,13 @@ const 前缀 = { 属性: "attr:", 名称: "plat:" } as const;
 
 export type 渠道层级 = "三级" | "两级";
 
+/** A2-8：一个渠道都没有时，选渠道的地方不摆空下拉，说清找谁加（业务员自己加不了渠道） */
+export const 没渠道提示 = "请系统管理员先添加渠道";
+/** 能不能选：停用的不算（除非正是现在选着的那个） */
+export function 有渠道可选(channels: 可选渠道[], 选着?: string | null): boolean {
+  return channels.some((c) => c.active || c.id === 选着);
+}
+
 /** 渠道清单 → 「渠道名称 → 来源」两级树；渠道名称按出现顺序，同名不同属性的并在一起 */
 export function 两级渠道树(channels: 可选渠道[], 选着?: string | null): 节点[] {
   const 树: 节点[] = [];
@@ -113,6 +120,9 @@ export default function ChannelPicker({
 }) {
   const 树 = useMemo(() => (层级 === "两级" ? 两级渠道树 : 渠道树)(channels, value), [channels, value, 层级]);
   const 当前 = useMemo(() => 路径(树, value), [树, value]);
+  if (!有渠道可选(channels, value)) {
+    return <div aria-label={ariaLabel} style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: "32px", ...style }}>{没渠道提示}</div>;
+  }
   return (
     <Cascader<节点>
       aria-label={ariaLabel}

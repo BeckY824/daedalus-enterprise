@@ -14,3 +14,13 @@ it("长正文截到开头加省略号；短的、空的原样", async () => {
   expect(通知摘要("市场小李 点的自动分配，轮到了你。")).toBe("市场小李 点的自动分配，轮到了你。");
   expect(通知摘要("")).toBe("");
 });
+
+it("要不要给「展开全文」（11-03 B6-6）：两行放得下的不给，长的、带换行的给", async () => {
+  const { 通知要展开 } = await import("@/components/NoticeBell");
+  expect(通知要展开("市场小李 点的自动分配，轮到了你。")).toBe(false);
+  expect(通知要展开("")).toBe(false);
+  expect(通知要展开(null)).toBe(false);
+  expect(通知要展开("展会上又聊了一次，".repeat(150))).toBe(true);
+  expect(通知要展开("第一行\n第二行")).toBe(true);
+  expect(通知要展开("  前后空白不算  \n")).toBe(false);
+});

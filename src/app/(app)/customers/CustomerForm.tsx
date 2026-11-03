@@ -28,6 +28,7 @@ import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 地址叫法, 详细地址上限, 简称上限 } from "@/lib/enterprise/customer-v2";
 import { 三种业务线 } from "@/lib/enterprise/assign-line";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
+import { 没渠道提示 } from "@/components/ChannelPicker";
 
 export type CustomerRow = {
   id: string;
@@ -763,7 +764,10 @@ function CustomerFormInner({
             rules={[{ required: 渠道必填, message: "请选择渠道" }]}
             extra={来源锁着 ? "客户来源记的是第一次带来的渠道，建好之后不改；后来又从别的渠道来的，记在项目上" : undefined}
           >
-            <Select showSearch placeholder="选择渠道" optionFilterProp="label" options={渠道选项} disabled={来源锁着} />
+            {/* A2-8：一个渠道都没有，不摆空下拉 */}
+            {渠道选项.length === 0 && !来源锁着
+              ? <Select placeholder={没渠道提示} options={[]} disabled />
+              : <Select showSearch placeholder="选择渠道" optionFilterProp="label" options={渠道选项} disabled={来源锁着} />}
           </Form.Item>
         )}
 

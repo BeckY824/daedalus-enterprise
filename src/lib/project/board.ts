@@ -3,8 +3,9 @@
  * 每列列头写项目数和金额合计，金额按币种分开不换汇（总控 10-23 定：项目不进首页统计、数据页、业绩，只在自己的看板里合计）。
  */
 import { 按币种合计, type 币种合计 } from "../currency";
+import { 有值 } from "../empty-value";
 import { 看板列, 看板列们, 是阶段, type 看板列 as 列名 } from "./nodes";
-import { 阶段们, 是交付, type 阶段, type 阶段字典 } from "./stage-dict";
+import { 阶段们, 是交付, 结局叫法, type 阶段, type 阶段字典 } from "./stage-dict";
 
 export type 项目行 = {
   id: string;
@@ -74,6 +75,20 @@ function 进程列(r: 项目行, 字典: 阶段字典): string {
   if (r.result && r.result !== "异常状态") return 是交付(r.result) ? (字典.出口们.订单[0].结局 ?? r.result) : r.result;
   const 阶 = 是阶段(r.phase) ? r.phase : "线索";
   return 字典.节点们[阶].includes(r.node) ? r.node : 字典.节点们[阶][0];
+}
+
+/**
+ * 看板卡片那行小字（11-03 A5-5：卡片小字跟着当前进程走）：企业版写的进程就是卡片落的那列（进程列），
+ * 不再直接写库里的 node——认不出的旧进程落本阶段第一列时，小字也写那一列，不会列和字对不上；
+ * 交付结清写结局叫法（A5-6），流失 / 丢单写「结局 · 停在的进程」，异常写「异常 · 类别 · 进程」。团队版照旧写 node。
+ */
+export function 卡片小字(r: 项目行, 字典?: 阶段字典): string {
+  const 企 = 字典?.名 === "企业版";
+  const 异常 = r.result === "异常状态";
+  const 进程 = 企 && (!r.result || 异常) ? 进程列(r, 字典!) : r.node;
+  if (异常) return `异常 · ${有值(r.exceptionCategory) ? `${r.exceptionCategory} · ` : ""}${进程}`;
+  if (r.result && 是交付(r.result)) return 结局叫法(r.result, 字典);
+  return `${r.result ? `${结局叫法(r.result, 字典)} · ` : ""}${进程}`;
 }
 
 /**

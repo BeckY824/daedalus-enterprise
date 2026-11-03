@@ -14,6 +14,7 @@ import { avatarColor, initial, smartTime, AVATAR_TEXT } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel } from "@/lib/business-config";
 import { 开名单, 关名单, 登记换一位 } from "@/lib/roster";
+import { 名单回车去处 } from "@/lib/cmdk";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import PaneToggle from "@/components/PaneToggle";
 import { useLocalPref } from "@/lib/local-pref";
@@ -205,8 +206,13 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
           placeholder="搜姓名、最近一句"
           aria-label={`搜索${b.customer}`}
           onKeyDown={(e) => {
-            // 这 50 位里没有的，回车去全量表格里搜
-            if (e.key === "Enter" && q.trim() && rows.length === 0) router.push(`/customers?keyword=${encodeURIComponent(q.trim())}`);
+            // 回车：搜出来的第一位直接进（11-03 C1-2）；名单里一位都没有的，去全量表格里搜（lib/cmdk.ts）
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            const 去 = 名单回车去处(q, 页签里, rows.length, "/customers");
+            if (!去) return;
+            e.preventDefault();
+            if (抽屉开着) 关名单();
+            router.push(去);
           }}
         />
         <kbd className="pane-kbd"><Shortcut>⌘K</Shortcut></kbd>

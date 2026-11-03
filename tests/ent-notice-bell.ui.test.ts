@@ -189,3 +189,31 @@ it("减弱动态：抽屉打开不走过渡，一点就到位", async () => {
   expect(errors).toEqual([]);
   await page.close();
 });
+
+it.each([1024, 1280, 1366])("%ipx 正文 1200 字：铃铛里只两行，「展开全文」原地看全文、不跳页；短的不给展开（11-03 B6-6）", async (w) => {
+  const 千字 = "展会上又聊了一次，客户想先看样机再定。".repeat(64).slice(0, 1200);
+  const { page, errors } = await 打开([{ id: "L", kind: "撞号", title: "同号又录了一次：" + 长, body: 千字, link: "/projects/pL", read: false, createdAt: 刚才(3) }, 三条[0]], { width: w });
+  await 铃(page).click();
+  await expect.poll(() => page.locator(".notice-item").count()).toBe(2);
+  const 正文 = page.locator(".notice-body").first();
+  const 行高 = await 正文.evaluate((e) => parseFloat(getComputedStyle(e).lineHeight) || parseFloat(getComputedStyle(e).fontSize) * 1.6);
+  expect((await 正文.boundingBox())!.height).toBeLessThanOrEqual(行高 * 2 + 2);
+  // 只有长的那条有「展开全文」
+  expect(await page.getByRole("button", { name: "展开全文" }).count()).toBe(1);
+  await page.getByRole("button", { name: "展开全文" }).click();
+  const 全 = page.locator(".notice-body.full");
+  await 全.waitFor();
+  expect((await 全.innerText()).length).toBe(1200);
+  // 展开后在这一格里滚，不撑过 40vh；不跳页、不标已读
+  expect((await 全.boundingBox())!.height).toBeLessThanOrEqual(800 * 0.4 + 2);
+  expect(await 窗<string[] | undefined>(page, "__去")).toBeUndefined();
+  expect(await 窗<string[]>(page, "__调")).toEqual(["读"]);
+  expect(await page.getByRole("button", { name: "收起" }).getAttribute("aria-expanded")).toBe("true");
+  const 抽屉 = await page.locator(".notice-drawer .ant-drawer-content-wrapper").boundingBox();
+  expect(抽屉!.x + 抽屉!.width).toBeLessThanOrEqual(w + 1);
+  expect(await page.locator(".notice-drawer .ant-drawer-body").evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+  await page.getByRole("button", { name: "收起" }).click();
+  await expect.poll(() => page.locator(".notice-body.full").count()).toBe(0);
+  expect(errors).toEqual([]);
+  await page.close();
+});

@@ -28,6 +28,8 @@ import {
 } from "@ant-design/icons";
 import { motion, AnimatePresence } from "motion/react";
 import InlineConfirm from "@/components/InlineConfirm";
+import { useMe } from "@/lib/me-client";
+import { UndoRecentFollow } from "@/components/FollowUndo";
 import { 跟进类型们, FOLLOW_TYPE_MAP, FOLLOW_STATUSES, DECISION_STATUSES, FOLLOW_RECORD_STATUS_COLOR } from "@/lib/constants";
 import { 成员选项, dayjs, duration, fmtDate, fmtDateTime, initial, avatarColor, AVATAR_TEXT, 独自一人 } from "@/lib/utils";
 import { RowLink, FollowStatusTag, StageTag, DecisionStatusTag, FOLLOW_TYPE_ICON } from "@/components/ui";
@@ -40,6 +42,7 @@ import FollowUpForm from "./FollowUpForm";
 import TaskForm from "./TaskForm";
 import OpportunityForm from "../../opportunities/OpportunityForm";
 import PlanForm from "./PlanForm";
+import { 刚加的排前 } from "@/lib/fresh-first";
 import ContactForm from "./ContactForm";
 import ContactAttachments from "./ContactAttachments";
 import ContactLinks from "./ContactLinks";
@@ -192,6 +195,7 @@ export default function RecordView({
   跟进去处 = null,
   转让原因,
   待办计划 = [],
+  醒目条 = null,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -344,6 +348,8 @@ export default function RecordView({
   /** 这次打开计划表单是「排下一次」（新建，默认一周后），不是改眼前这条（审查 M10） */
   const [排新计划, set排新计划] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  // 刚加的联系人（11-03 C1-8）：这一页上排最前、底色闪一下淡掉（只动底色不位移，减弱动态下照样不晃）
+  const [刚加的联系人, set刚加的联系人] = useState<string | null>(null);
   const [editingContact, setEditingContact] = useState<ContactRow | null>(null);
   const [custOpen, setCustOpen] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);
@@ -794,7 +800,7 @@ export default function RecordView({
               </div>
             </motion.div>
           ) : (
-            <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读 && !摆法.沟通汇总 && 能改沟通} 可删={!只读 && !摆法.沟通汇总 && 能删沟通} 汇总={摆法.沟通汇总} />
+            <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} on撤销={() => { history.remove(e.f.id); router.refresh(); }} 可改={!只读 && !摆法.沟通汇总 && 能改沟通} 可删={!只读 && !摆法.沟通汇总 && 能删沟通} 汇总={摆法.沟通汇总} />
           ),
         )}
       </AnimatePresence>
@@ -813,6 +819,7 @@ export default function RecordView({
 
   return (
     <div className="rec-page">
+      {醒目条}
       <div className="rec-head">
         {/*
           没有「← 返回列表」。左边就是窄名单，换一个人点一下就换（设计稿 12/PAGE：
@@ -1132,11 +1139,11 @@ export default function RecordView({
                 </Space>
               ), <>
             {contacts.length === 0 && <div className="rec-empty">还没有联系人</div>}
-            {contacts.map((c) =>
+            {刚加的排前(contacts, 刚加的联系人).map((c) =>
               企业 ? (
                 /* 企业版（10-27 会议：联系方式要完整展示）：一人一张小卡，电话 / 邮箱 / 微信各占一行、长了换行不截断。
                    原来一行只摆「职位或电话」其中一个，有职位就看不到电话 */
-                <div key={c.id} className="rec-contact">
+                <div key={c.id} className={`rec-contact${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
                   <div className="rec-contact-h">
                     <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(c.name)}</Avatar>
                     <span className="rec-contact-n">{c.name}</span>
@@ -1181,7 +1188,7 @@ export default function RecordView({
                 </div>
               ) : (
               <Fragment key={c.id}>
-              <div className="rec-mini">
+              <div className={`rec-mini${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
                 <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12 }}>{initial(c.name)}</Avatar>
                 {/* 截断成「母亲…」之后，鼠标停上去得看得到全名 */}
                 <span className="rec-mini-n" title={c.name}>
@@ -1473,6 +1480,7 @@ export default function RecordView({
           if (followInit.record?.id) void history.refreshRow(followInit.record.id).catch(() => message.warning("跟进已保存，请刷新页面核对最新内容"));
           router.refresh();
         }}
+        on撤销={(id) => history.remove(id)}
         customerId={customer.id}
         有WhatsApp={有WhatsApp}
         record={followInit.record}
@@ -1510,7 +1518,7 @@ export default function RecordView({
         record={排新计划 ? null : plan}
         默认天数={排新计划 ? 7 : 2}
       />
-      <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={() => { setContactOpen(false); router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
+      <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={(新加的) => { setContactOpen(false); if (新加的) set刚加的联系人(新加的); router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
       <ContractForm
         open={contractOpen}
         customerId={customer.id}
@@ -1759,8 +1767,13 @@ function StatusPicker({
   );
 }
 
-function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可删 = 可改, 不挂商机 = false, 汇总 = false }: { f: FollowUpRow; showOwner: boolean; index: number; onEdit: () => void; onDelete: () => void; 可改?: boolean; 可删?: boolean; 不挂商机?: boolean; 汇总?: boolean }) {
+function FollowItem({ f, showOwner, index, onEdit, onDelete, on撤销, 可改 = true, 可删 = 可改, 不挂商机 = false, 汇总 = false }: { f: FollowUpRow; showOwner: boolean; index: number; onEdit: () => void; onDelete: () => void; on撤销?: () => void; 可改?: boolean; 可删?: boolean; 不挂商机?: boolean; 汇总?: boolean }) {
   const { 曲线, 时长, 间隔 } = useMotionTheme();
+  const 我 = useMe();
+  // A7-1：自己刚记的（10 分钟内）给一个「撤销」，到点自己收起来；只读汇总里也给（撤的是自己刚记的，不是改别人的）
+  const 撤销 = on撤销 && 我 && f.ownerId === 我.id && f.createdAt
+    ? <UndoRecentFollow id={f.id} 我记的 createdAt={f.createdAt} 撤完={on撤销} />
+    : null;
   const meta = FOLLOW_TYPE_MAP[f.type] ?? FOLLOW_TYPE_MAP.OTHER;
   const [srcOpen, setSrcOpen] = useState(false);
   const 原文 = f.sourceText && (
@@ -1800,6 +1813,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         <div className="rec-tl-head">
           <span className="rec-sum-type">{f.method || meta.label}</span>
           {时间}
+          {撤销}
           {f.status !== "已完成" && (
             <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
               {f.status}
@@ -1840,6 +1854,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
           {/* 时间和编辑/删除包在一起：图标得跟着时间走，不能按整个头部居中 */}
           <span className="rec-tl-when">
             {时间}
+            {撤销}
             {(可改 || 可删) && <span className="rec-tl-acts">
               {可改 && <Button type="text" size="small" icon={<EditOutlined />} onClick={onEdit} aria-label="编辑跟进" />}
               {/* 就地确认，不弹框：一条跟进记录，删了还能再写一条——
