@@ -103,7 +103,7 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
     if (typeof d.跟进.明确回复 !== "boolean") return "请选：客户明确回复了吗";
     if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点) && !d.跟进.明确回复) return 缺有效沟通;
   }
-  return 要下一步 && !d.跟进.下一步时间 ? "请填下一步时间：到那天还没有新的沟通，项目会自动回到公海" : "";
+  return 要下一步 && !d.跟进.下一步时间 ? "请填下一步时间：过了那天还没有新的沟通，项目会自动回到公海" : "";
 }
 
 /**
@@ -565,7 +565,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
                 onChange={(v) => 改("跟进", { 下一步时间: v ? v.format("YYYY-MM-DD") : null })}
                 placeholder="选一天"
               />
-              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "到那天还没有新的沟通，项目会自动回到公海" : "选填：打算哪天再沟通，项目上会显示"}</div>
+              <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "过了那天还没有新的沟通，或在当前这步停满规定天数，项目都会自动回到公海，哪个先到按哪个" : "选填：打算哪天再沟通，项目上会显示"}</div>
             </>
           ), 要下一步)}
         </>
