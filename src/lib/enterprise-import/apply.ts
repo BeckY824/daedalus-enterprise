@@ -40,6 +40,7 @@ import { 同号标题, 同号只记备注 } from "../enterprise/same-number-coll
 import { 公海无负责人 } from "../project/pool-owner";
 import { 线索建项目 } from "../project/from-lead";
 import { 是项目线 } from "../enterprise/assign-line";
+import { 负责人口径 } from "../owners";
 import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-status-auto-db";
 import { 企业版字典, 本套名 } from "../project/stage-dict";
 
@@ -92,7 +93,7 @@ export type 现场 = {
   批次Id: string;
   源: 来源;
   m: 映射;
-  /** 在职、不是管理员的成员 */
+  /** 能当负责人的人（企业版按业务角色，同试跑报告的候选，lib/owners 负责人口径） */
   可任: Set<string>;
   /** 导入的人：无主项目的创建人、节点日志和进公海留痕记他（项目负责人是空的） */
   操作人: string;
@@ -790,7 +791,7 @@ const 计数列: Record<结果, "created" | "updated" | "skipped" | "conflicts">
 
 /** 写之前备好的：谁能当负责人、谁在导入 */
 export async function 开现场(批次Id: string, 源: 来源, m: 映射, 用户: Actor): Promise<现场> {
-  const 成员 = await prisma.user.findMany({ where: { active: true, role: { not: "ADMIN" } }, select: { id: true } });
+  const 成员 = await prisma.user.findMany({ where: await 负责人口径(), select: { id: true } });
   const 可任 = new Set(成员.map((u) => u.id));
   return {
     批次Id,
