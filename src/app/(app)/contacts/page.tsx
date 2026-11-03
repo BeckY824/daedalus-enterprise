@@ -46,7 +46,8 @@ export default async function ContactsPage({
     prisma.contact.count({ where }),
     prisma.contact.findMany({
       where,
-      orderBy: [{ isPrimary: "desc" }, { createdAt: "desc" }],
+      // 只按时间倒序（11-03 C1-9）：原来关键优先，新加的非关键联系人排到最后一页，像没加上；关键的行上有标
+      orderBy: [{ createdAt: "desc" }],
       take: 300,
       include: {
         customer: { select: { id: true, name: true, school: true, salesOwner: { select: { id: true, name: true, email: true } } } },

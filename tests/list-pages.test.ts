@@ -63,6 +63,18 @@ describe("J-018 列表页「共 N 条」是真总数，不是 take: 300 的上�
   });
 });
 
+describe("联系人页按时间倒序（11-03 C1-9）", () => {
+  it("刚加的非关键联系人排第一，不被老的关键联系人挤到后面", async () => {
+    const c = await 造客户(我);
+    await prisma.contact.createMany({
+      data: Array.from({ length: 30 }, (_, i) => ({ name: `关键${i}`, customerId: c.id, isPrimary: true, createdAt: new Date(2026, 9, 1, 0, i) })),
+    });
+    await prisma.contact.create({ data: { name: "刚加的", customerId: c.id, isPrimary: false } });
+    const el = (await ContactsPage({ searchParams: 空() })) as unknown as 元素;
+    expect((el.props.rows as { name: string }[])[0].name).toBe("刚加的");
+  });
+});
+
 describe("线索页来源下拉：设置里的 + 库里用着的，去重（2026-10-28 改成 groupBy；企业版开关关着）", () => {
   it("库里用着、设置里没有的也给出来，每种只出现一次；库里那部分和 distinct 老写法一致", async () => {
     expect(process.env.CRM_ENTERPRISE).toBeUndefined();
