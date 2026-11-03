@@ -134,12 +134,15 @@ async function 选(page: Page, 框名: string, 项: string) {
   const 选上了 = page.locator(".ant-select", { has: page.getByRole("combobox", { name: 框名 }) })
     .locator(`[title="${项}"]:not(.ant-select-item)`);
   const 那项 = page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${项}"]`);
+  // 多选框点完、保存回来之前框里的标签可能一闪没了（CI 上见过：重来时又点了一次，把刚选上的点掉）：下拉里这项已选中就只等不点
+  const 那项已选 = page.locator(`.ant-select-dropdown:visible .ant-select-item-option-selected[title="${项}"]`);
   await expect(async () => {
     if (await 选上了.count()) return;
+    if (await 那项已选.count()) { await expect(选上了.first()).toBeVisible({ timeout: 5_000 }); return; }
     if (!(await 那项.isVisible())) await 框.click();
     await expect(那项).toBeVisible({ timeout: 2_000 });
     await 那项.click();
-    await expect(选上了.first()).toBeVisible({ timeout: 2_000 });
+    await expect(选上了.first()).toBeVisible({ timeout: 5_000 });
   }).toPass();
 }
 const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-notice", { hasText: 字 });

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "./prisma";
 import { 可担任负责人 } from "./constants";
 import { 无负责人占位邮箱 } from "./pool";
@@ -22,11 +23,13 @@ import { 能当负责人, 不能当负责人话, 公海分不给话, type 谁 } 
  * 排行榜和「管理员不做销售」这个口径又对不上了。
  * 单人工作区不存在这个矛盾：那个人就是销售本人，指派、AI 匹配、排行榜都得认他，
  * 否则他在自己的系统里既选不到自己、也从来看不见自己的业绩（见 负责人口径）。
+ *
+ * 一次渲染里只查一遍（公海分配候选会再要一次）；渲染外（动作、测试）照旧每次现查。
  */
-export async function 负责人候选() {
+export const 负责人候选 = cache(async () => {
   const 选项 = { select: { id: true, name: true, email: true }, orderBy: { name: "asc" as const } };
   return prisma.user.findMany({ where: await 负责人口径(), ...选项 });
-}
+});
 
 /** 公海「分配给…」的下拉（11-03 B2-7）：负责人候选里分得过去的——不是系统管理员时只剩同业务线的。不是企业版 = 负责人候选 */
 export async function 公海分配候选(me: 谁) {
