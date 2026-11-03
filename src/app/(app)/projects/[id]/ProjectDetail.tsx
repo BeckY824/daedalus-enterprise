@@ -1622,8 +1622,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
   };
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体" : p.企业版 && 明确回复 === null ? "请选客户明确回复了吗"
     : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
-  /** 差的那一格在折起来的「更多」里：底下那句旁边给个「展开更多」 */
-  const 差在更多 = !更多开 && p.企业版 && !!content.trim() && 明确回复 === null;
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
 
@@ -1656,7 +1654,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
       footer={(按钮) => (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
           {差 && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{差}</span>}
-          {差在更多 && <Button size="small" type="link" style={{ paddingInline: 0 }} onClick={() => set更多开(true)}>展开更多</Button>}
           <span>{按钮}</span>
         </div>
       )}
@@ -1733,11 +1730,17 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
             <选沟通附件框 文件们={附件们} on改={set附件们} />
           </div>
         )}
+        {/* 必填，摆在外面不折进「更多」（A7-2） */}
+        {p.企业版 && (
+          <div>
+            <div style={{ marginBottom: 4 }}>客户明确回复了吗<span style={{ color: "var(--danger-text)" }}> *</span></div>
+            <Radio.Group aria-label="客户明确回复了吗" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
+          </div>
+        )}
         <div>
           <Button type="link" size="small" style={{ paddingInline: 0 }} icon={<DownOutlined rotate={更多开 ? 180 : 0} />} aria-expanded={更多开} onClick={() => set更多开((v) => !v)}>
-            更多{p.企业版 ? "：沟通时间、项目阶段、客户明确回复" : "：沟通时间"}{给AI ? "、AI 预填" : ""}
+            更多{p.企业版 ? "：沟通时间、项目阶段" : "：沟通时间"}{给AI ? "、AI 预填" : ""}
           </Button>
-          {p.企业版 && 明确回复 === null && !更多开 && <span style={{ color: "var(--danger-text)", fontSize: "var(--dt-aux, 12px)" }}> 客户明确回复还没选</span>}
         </div>
         {更多开 && (
           <div className="follow-more">
@@ -1785,12 +1788,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
               <div>
                 <div style={{ marginBottom: 4 }}>项目阶段<span style={{ color: "var(--text-muted)" }}>（记在项目现在的阶段上）</span></div>
                 <Select aria-label="项目阶段" style={{ width: "100%" }} value={p.phase} disabled options={[{ value: p.phase, label: p.phase }]} />
-              </div>
-            )}
-            {p.企业版 && (
-              <div>
-                <div style={{ marginBottom: 4 }}>客户明确回复了吗<span style={{ color: "var(--danger-text)" }}> *</span></div>
-                <Radio.Group aria-label="客户明确回复了吗" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
               </div>
             )}
           </div>
