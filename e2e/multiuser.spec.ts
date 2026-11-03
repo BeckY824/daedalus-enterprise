@@ -288,6 +288,10 @@ test.describe("E 组：同账号多设备与在线停用", () => {
     await 丙行.getByRole("button").nth(1).click();
     const 确认 = 管理.page.getByRole("dialog");
     await expect(确认).toContainText("停用成员");
+    // 接手人默认空、必须选（11-03 C4-3），没选时确认按钮是灰的
+    await expect(确认.getByRole("button", { name: /确认停用/ })).toBeDisabled();
+    await 确认.getByRole("combobox").last().click();
+    await 管理.page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().click();
     await 确认.getByRole("button", { name: /确认停用/ }).click();
     await expect(管理.page.locator(".ant-message")).toContainText("已停用并转交");
 
