@@ -10,14 +10,14 @@ import { 企业版 } from "@/lib/enterprise/switch";
 
 /** 飞书登录没成时，回调带回来的原因（/login?reason=feishu-<原因>）怎么跟人说 */
 const 飞书原因: Record<飞书登录失败, string> = {
-  off: "这个部署没有接飞书登录，请用用户名和密码登录。",
+  off: "这个部署没有接飞书登录。无法登录请联系管理员。",
   state: "飞书登录超时或被打断了，请再点一次「用飞书登录」。",
   denied: "你在飞书里取消了授权，没有登录。",
   exchange: "没能从飞书取到你的身份，请稍后再试；一直不行请联系管理员。",
-  nomatch: "CRM 里没有和你飞书姓名相同的账号。请管理员把 CRM 账号的姓名改成和飞书一致，或先用用户名和密码登录。",
-  dup: "CRM 里有不止一个和你飞书姓名相同的账号，认不出是哪个。请管理员改掉重名账号的姓名。",
-  taken: "和你飞书姓名相同的 CRM 账号已经绑定了别的飞书身份。请管理员在「设置 → 成员」里解绑后再试。",
-  inactive: "你的 CRM 账号已停用，请联系管理员。",
+  nomatch: "CRM 里没有认出你的飞书账号。无法登录请联系管理员。",
+  dup: "CRM 里有不止一个账号对得上你的飞书账号，认不出是哪个。无法登录请联系管理员。",
+  taken: "对得上你的 CRM 账号已经绑定了别的飞书身份。无法登录请联系管理员。",
+  inactive: "你的 CRM 账号已停用。无法登录请联系管理员。",
 };
 
 /**
@@ -26,7 +26,7 @@ const 飞书原因: Record<飞书登录失败, string> = {
  */
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ reason?: string | string[] }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ reason?: string | string[]; admin?: string | string[] }> }) {
   /* 演示部署（CRM_DEMO_SWITCH=1）：不要密码，选人就进。开关关着读出来是 null，走下面的正常登录 */
   const 演示名单 = await 读演示名单();
   if (演示名单) return <DemoLogin 名单={演示名单} 产品名={自定产品名() ?? undefined} />;
@@ -37,7 +37,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       自部署  —— 管理员在设置里建的成员，登录名是 admin、zhangsan 这样的用户名
     写死一个的话，另一半人会对着一个填不进去的框反复试。
   */
-  const reason = (await searchParams).reason;
+  const { reason, admin } = await searchParams;
   const 飞书没成 = typeof reason === "string" && reason.startsWith("feishu-") ? 飞书原因[reason.slice(7) as 飞书登录失败] : undefined;
   return (
     <LoginForm
@@ -52,8 +52,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       可注册={multiTenant() && !自助注册已关闭()}
       注册地址="/signup"
       产品名={自定产品名() ?? undefined}
-      /* 企业版（自部署）：去掉左栏、正中一张卡；配了飞书时飞书是主按钮、账号密码收起（U-登录-01） */
+      /* 企业版（自部署）：去掉左栏、正中一张卡；配了飞书时只有飞书登录（U-登录-01，11-03） */
       居中={企业版() && !multiTenant()}
+      /* 隐藏的系统管理员入口 /login?admin=1：配了飞书时才有意义，只露表单；能不能登服务端另判（lib/enterprise/password-login.ts） */
+      管理员入口={admin === "1"}
     />
   );
 }
