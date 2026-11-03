@@ -1895,6 +1895,20 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .rkpi-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); margin-top: var(--s4); }
 @media (max-width: 900px) { .rkpi-pair { grid-template-columns: minmax(0, 1fr); } }
 .rkpi-pair > .btodo-list { container-type: inline-size; }
+/* 客户分布（11-03）：按国家那块是世界地图 + 榜单，要整宽；按业务线跟在下面。区块够宽时榜单在地图右边，不够宽落到地图下面 */
+.rkpi-pair.is-stacked { grid-template-columns: minmax(0, 1fr); }
+.cmap { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); min-width: 0; }
+.cmap-map { min-width: 0; }
+/* 固定宽高比：地图拉下来之前是一块同样大的底色，拉好了不跳高度 */
+.cmap-canvas { width: 100%; aspect-ratio: 2 / 1; min-height: 160px; }
+.cmap-canvas.is-loading { border-radius: var(--r-card); background: var(--line-soft); }
+.cmap-rank { min-width: 0; }
+.cmap-unset { margin: var(--s2) 0 0; font-size: var(--fs-note); }
+@container (min-width: 720px) {
+  .cmap { grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); align-items: center; }
+  .cmap.no-map { grid-template-columns: minmax(0, 1fr); }
+  .cmap:not(.no-map) .cmap-rank .btodo-rc-row { grid-template-columns: minmax(0, 7em) minmax(0, 1fr) 3em; }
+}
 .rkpi-cap { font-size: var(--fs-note); }
 .rkpi-warn { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .rkpi-warn li + li { border-top: 1px solid var(--line-soft); }

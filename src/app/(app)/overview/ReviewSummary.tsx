@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Tooltip } from "antd";
 import { 金额 } from "@/lib/currency";
 import { 即将逾期天数 } from "@/lib/project/home-cards";
 import EmptyState from "@/components/EmptyState";
+import CustomerWorldMap from "./CustomerWorldMap";
 import type { 复盘概况, 预警行, 卡点分布, 客户分布 } from "@/lib/project/review-extras";
 
 /** 复盘页「数据 · 现在」多出来的三块（企业版按项目才传，团队版「数据」页不出）。口径见 review-extras.ts */
@@ -90,17 +92,21 @@ export function 复盘提醒排({ 分布, 预警, 将回公海 }: { 分布: 卡�
   );
 }
 
-/** 客户分布（11-03）：数据页签最下面，按国家、按业务线两块；这一圈负责的客户，不含公海 */
+/**
+ * 客户分布（11-03）：数据页签最下面，按国家、按业务线两块；这一圈负责的客户，不含公海。
+ * 按国家（同日客户又要「像地图那种的呈现」）：世界地图着色 + 前几名榜单（宽时榜单在右、窄时在下），榜单下面单写没填国家的；
+ * 地图拉不下来就只留榜单
+ */
 export function 客户分布排({ 分布 }: { 分布: 客户分布 }) {
   const 空 = <EmptyState title="还没有客户" hint="这一圈负责的客户会按国家和业务线摆在这里。" demo={false} />;
   return (
-    <div className="rkpi-pair">
+    <div className="rkpi-pair is-stacked">
       <section className="btodo-list" aria-label="客户分布·按国家">
         <div className="btodo-head">
           <b className="section-title">客户分布 · 按国家</b>
           <span className="muted rkpi-cap">共 {分布.总数} 个客户，不含公海</span>
         </div>
-        {分布.总数 === 0 ? 空 : <分布横条 们={分布.按国家} 单位="个" 最多={Infinity} />}
+        {分布.总数 === 0 ? 空 : <CountryMapAndRank 分布={分布} />}
       </section>
       <section className="btodo-list" aria-label="客户分布·按业务线">
         <div className="btodo-head">
@@ -108,6 +114,20 @@ export function 客户分布排({ 分布 }: { 分布: 客户分布 }) {
         </div>
         {分布.总数 === 0 ? 空 : <分布横条 们={分布.按业务线} 单位="个" 最多={Infinity} />}
       </section>
+    </div>
+  );
+}
+
+/** 地图 + 榜单（组件名用英文：hooks 规则只认大写开头的组件） */
+function CountryMapAndRank({ 分布 }: { 分布: 客户分布 }) {
+  const [地图坏, set地图坏] = useState(false);
+  return (
+    <div className={`cmap${地图坏 ? " no-map" : ""}`}>
+      {!地图坏 && <CustomerWorldMap 全部国家={分布.全部国家} 出错={() => set地图坏(true)} />}
+      <div className="cmap-rank">
+        {分布.按国家.length > 0 && <分布横条 们={分布.按国家} 单位="个" 最多={Infinity} />}
+        {分布.未填国家 > 0 && <p className="muted cmap-unset">未填国家 {分布.未填国家} 个</p>}
+      </div>
     </div>
   );
 }
