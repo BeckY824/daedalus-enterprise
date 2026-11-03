@@ -12,6 +12,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 看得到的客户, 露客户 } from "@/lib/project/db";
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "@/app/(app)/customers/[id]/follow-history-query";
@@ -83,7 +84,16 @@ export async function 跟进去处们(me: { id: string; role?: string }, custome
 export async function 客户沟通汇总(me: { id: string; role?: string }, customerId: string, before?: 沟通游标): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
   const 项目们 = await 汇总的项目(me, customerId);
   const ids = [...项目们.keys()];
-  const 范围 = { OR: [{ customerId, projectNode: null }, ...(ids.length ? [{ projectNode: { projectId: { in: ids } } }] : [])] };
+  /*
+    这位客户名下进了回收站的项目：挂在上面、记在这位客户名下的沟通照旧留在客户下（删项目时就是这么说的），
+    和客户本身的老跟进一样摆，不标项目（11-03 C2-2：原来一起藏了，客户页「还没有沟通记录」，删客户预检却数得到）
+  */
+  const 删了的 = (await 看全部(() => 看已删(() => prisma.project.findMany({ where: { customerId, deletedAt: { not: null } }, select: { id: true }, take: 项目上限 })))).map((p) => p.id);
+  const 范围 = { OR: [
+    { customerId, projectNode: null },
+    ...(ids.length ? [{ projectNode: { projectId: { in: ids } } }] : []),
+    ...(删了的.length ? [{ customerId, projectNode: { projectId: { in: 删了的 } } }] : []),
+  ] };
   const rows = await 看全部(() => prisma.followUp.findMany({
     where: { AND: [范围, ...(before ? [{ OR: [
       { occurredAt: { lt: new Date(before.occurredAt) } },
@@ -94,7 +104,8 @@ export async function 客户沟通汇总(me: { id: string; role?: string }, cust
   }));
   return {
     rows: rows.slice(0, 汇总每页).map((f) => {
-      const pid = f.projectNode?.projectId ?? null;
+      // 删了的项目不标（上面的 删了的）
+      const pid = f.projectNode && 项目们.has(f.projectNode.projectId) ? f.projectNode.projectId : null;
       const 行 = serializeFollowHistory(f);
       // 别的客户名下的记录（关联项目的）：商机是那家客户的，不在这里露
       return { ...行, opportunity: f.customerId === customerId ? 行.opportunity : null, 项目: pid ? { id: pid, 名: 项目们.get(pid) ?? "" } : null };

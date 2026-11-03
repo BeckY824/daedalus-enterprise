@@ -79,7 +79,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     }
     // 老的数据看板（Board / DashboardView）10-28 删了：企业版只用项目，没配 AI 的首页一律是这一屏
     // 「去设置里配 AI」那个按钮：能改后台设置的人才摆（企业版 = 总管理，11-01 只认业务角色）
-    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 满额提醒={满额提醒们} />;
+    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 满额提醒={满额提醒们} />;
   }
 
   if (只用项目) {

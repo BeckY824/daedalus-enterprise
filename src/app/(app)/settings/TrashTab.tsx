@@ -50,11 +50,17 @@ export default function TrashTab() {
 
   function 真删(r: 回收站条目) {
     const 连 = r.连带 ? 连带话(r.连带) : "";
+    // 客户真删会把名下的一起级联删掉，早些时候单独删、还在回收站里能恢复的也在内：点名写出来（11-03 C2-3）
+    const 单删的 = r.表 === "Customer" ? (行 ?? []).filter((x) => x.客户?.id === r.id) : [];
+    const 单删话 = 单删的.length
+      ? `另外单独删的${单删的.slice(0, 3).map((x) => `${叫(x.表)}「${x.名称}」`).join("、")}${单删的.length > 3 ? ` 等 ${单删的.length} 条` : ""}也会一起彻底删掉，不能再恢复。`
+      : "";
     modal.confirm({
       title: `彻底删除${叫(r.表)}「${r.名称}」？`,
       content: (
         <>
           <div>删了就找不回来了{连 ? `，${连}一起删掉` : ""}。</div>
+          {单删话 && <div>{单删话}</div>}
           <div style={{ color: "var(--text-muted)" }}>不急的话放着就好，30 天到了会自动清掉。</div>
         </>
       ),

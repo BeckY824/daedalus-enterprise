@@ -20,7 +20,7 @@ import {
   InteractionOutlined,
   SettingOutlined,
   DeploymentUnitOutlined,
-  BellOutlined,
+  CalendarOutlined,
   MenuOutlined,
   LogoutOutlined,
   DownOutlined,
@@ -77,7 +77,7 @@ type Props = {
   计数?: Partial<Record<string, number>>;
   /**
    * 要跟的：我名下逾期 + 今天到期、还没做的计划和待办（lib/reminders-db.ts）。
-   * 和桌面端 Dock 上的数是同一个——左栏「跟进」、手机顶栏铃铛都挂它，人在 Dock 上看见 1，打开应用能顺着找到那个 1
+   * 和桌面端 Dock 上的数是同一个——左栏「跟进」、手机顶栏的跟进计划按钮（日历图标，11-03 C8-2 和通知铃铛分开）都挂它，人在 Dock 上看见 1，打开应用能顺着找到那个 1
    */
   要跟: { 逾期: number; 今天: number };
   /** 跑在桌面端（Electron）里：红黄绿钮嵌在图标栏顶上，系统标题栏不再画 */
@@ -616,7 +616,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           {反馈去向 !== "none" && <FeedbackButton 去向={反馈去向} />}
           {通知未读 !== undefined && <NoticeBell 初始未读={通知未读} 手机 />}
           <Badge count={要跟数} size="small" color={要跟.逾期 > 0 ? "var(--danger)" : "var(--text-muted)"}>
-            <Button type="text" icon={<BellOutlined />} aria-label={要跟说法 ? `跟进计划，${要跟说法}` : "跟进计划"} onClick={() => router.push("/follow-ups/plans")} />
+            <Button type="text" icon={<CalendarOutlined />} aria-label={要跟说法 ? `跟进计划，${要跟说法}` : "跟进计划"} onClick={() => router.push("/follow-ups/plans")} />
           </Badge>
           <Dropdown trigger={["click"]} menu={userMenu}>
             <Button type="text" aria-label={`${user.name}，账号菜单`}>

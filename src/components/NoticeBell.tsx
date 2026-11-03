@@ -125,8 +125,9 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
                       <button type="button" className={`notice-item${r.read ? "" : " unread"}`} onClick={() => 点(r)} aria-label={`${r.read ? "" : "未读，"}${r.title}`}>
                         <span className="notice-dot" aria-hidden="true" />
                         <span className="notice-main">
-                          <span className="notice-title">{r.title}</span>
-                          {r.body && <span className="notice-body">{r.body}</span>}
+                          {/* 标题一行截断、正文两行截断：悬停看全文（11-03 C8-3，卡点编号常被截掉），同客户列表的 title 做法 */}
+                          <span className="notice-title" title={r.title}>{r.title}</span>
+                          {r.body && <span className="notice-body" title={r.body}>{r.body}</span>}
                           <span className="notice-meta">
                             {r.kind} · {多久以前(r.createdAt)}
                           </span>

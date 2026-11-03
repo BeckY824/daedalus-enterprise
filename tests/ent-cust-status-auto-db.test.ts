@@ -24,7 +24,7 @@ vi.mock("@/lib/business", async (orig) => {
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 重算客户状态, 全量重算客户状态, 项目变了重算, 客户状态名们, 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
+import { 重算客户状态, 全量重算客户状态, 项目变了重算, 客户状态名们, 客户状态自动, 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 import { 客户状态id } from "@/lib/enterprise/cust-status-auto";
 import { 改节点, 删项目 } from "@/lib/project/db";
 import { 恢复 } from "@/lib/enterprise/soft-delete";
@@ -91,6 +91,18 @@ describe("重算客户状态", () => {
     await 项目(甲, "商机", "明确需求");
     await 重算客户状态(prisma, [甲]);
     expect(await 状态(甲)).toBe("有意向");
+  });
+});
+
+describe("显示用客户状态（11-03 C1-4）", () => {
+  it("库里没存状态（种子 / 导入的老数据）但有项目：现算一个给章显示，不写库；没项目才是 null", async () => {
+    const 甲 = await 客户();
+    await 项目(甲, "商机", "共识方案");
+    expect(await 显示用客户状态(甲, null)).toBe("意向");
+    expect(await 状态(甲)).toBe(null);
+    expect(await 显示用客户状态(甲, "潜在")).toBe("潜在");
+    const 乙 = await 客户();
+    expect(await 显示用客户状态(乙, null)).toBe(null);
   });
 });
 

@@ -26,6 +26,7 @@ import { 建档向导数据 } from "../projects/new/wizard-data";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-perm";
+import { 删除挡 } from "@/lib/enterprise/soft-delete";
 
 export const dynamic = "force-dynamic";
 
@@ -190,6 +191,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       能分配公海={能管公海(me, await 权限组织())}
       能转出自己的={能转出自己的(me, await 权限组织())}
       能导入导出={可导入导出}
+      // 企业版只有总管理能删（11-03 C2-1）：别的角色不摆删除，原来点了才弹「只有总管理能删除」
+      能删={(await 删除挡(me)) == null}
       负责人只能自己={只给自己}
       rows={rows.map((r) => 成客户行(r, 号))}
       total={total}
