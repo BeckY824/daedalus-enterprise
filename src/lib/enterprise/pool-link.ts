@@ -95,10 +95,14 @@ export async function 领客户带走公海项目(customerIds: string[], 新: st
  */
 async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: string[], 新: string, 操作人: string, 带待办?: boolean): Promise<string[]> {
   // 只认现在真归 新 的客户：领的事务和这里之间又被人改给了别人的不带
-  const 们 = await tx.project.findMany({
-    where: { customerId: { in: customerIds }, pooledAt: { not: null }, customer: { salesOwnerId: 新 } },
-    select: { id: true, ownerId: true, phase: true, node: true, result: true, customerId: true, name: true, pooledAt: true },
-  });
+  // 带否定条件 Prisma 不会自己拆批，一次分过 999 位客户报 P2029（11-03 B2-3）：500 位一批查
+  const 们 = [];
+  for (let i = 0; i < customerIds.length; i += 500) {
+    们.push(...(await tx.project.findMany({
+      where: { customerId: { in: customerIds.slice(i, i + 500) }, pooledAt: { not: null }, customer: { salesOwnerId: 新 } },
+      select: { id: true, ownerId: true, phase: true, node: true, result: true, customerId: true, name: true, pooledAt: true },
+    })));
+  }
   if (!们.length) return [];
   const ids = 们.map((p) => p.id);
   await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, pooledAt: null, nextStepAt: null, nextStepText: null } });
