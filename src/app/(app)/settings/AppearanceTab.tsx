@@ -18,6 +18,14 @@ export default function AppearanceTab() {
   const 当前 = 读外观(JSON.stringify(存的));
   // 选完当场生效：<html> 上的属性一换，整页的 token 跟着换，不用刷新
   useEffect(() => 挂外观(当前), [当前.paper, 当前.skin, 当前.mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  /**
+   * 点了就当场挂上，不只靠上面那个 effect：页面上亮的和 <html> 上挂的对不上时（D6-1：刷新后亮着「原底」、实际是白底），
+   * 点亮着的那一项值没变、effect 不重跑，点了像没反应、换不回去
+   */
+  const 选 = (a: 外观) => {
+    存(a);
+    挂外观(a);
+  };
 
   return (
     <div className="appr">
@@ -32,7 +40,7 @@ export default function AppearanceTab() {
               role="radio"
               aria-checked={当前.mode === x.key}
               className={`appr-opt${当前.mode === x.key ? " on" : ""}`}
-              onClick={() => 存({ ...当前, mode: x.key })}
+              onClick={() => 选({ ...当前, mode: x.key })}
             >
               {/* 小样读的是那一档自己的值（dark.css 的 [data-mode-preview]）；跟随系统左明右暗各半 */}
               {x.key === "system" ? (
@@ -66,7 +74,7 @@ export default function AppearanceTab() {
               role="radio"
               aria-checked={当前.paper === x.key}
               className={`appr-opt${当前.paper === x.key ? " on" : ""}`}
-              onClick={() => 存({ ...当前, paper: x.key })}
+              onClick={() => 选({ ...当前, paper: x.key })}
             >
               <span className={`appr-mini appr-mini-${x.key}`} aria-hidden="true">
                 <i className="appr-mini-rail" />
@@ -90,7 +98,7 @@ export default function AppearanceTab() {
                 role="radio"
                 aria-checked={当前.skin === x.key}
                 className={`appr-opt${当前.skin === x.key ? " on" : ""}`}
-                onClick={() => 存({ ...当前, skin: x.key })}
+                onClick={() => 选({ ...当前, skin: x.key })}
               >
                 <span className="appr-mini appr-mini-skin" data-skin-preview={x.key} aria-hidden="true">
                   <i className="appr-mini-rail" />
