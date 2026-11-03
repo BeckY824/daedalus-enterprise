@@ -62,11 +62,11 @@ const 快捷说明: Record<快捷, string> = {
   二次退回: "被同事主动放回公海，累计第 2 次",
   三次退回: "被同事主动放回公海，累计第 3 次",
   多次退回: `被同事主动放回公海，累计 ${多次退回起} 次及以上`,
-  无效客户: "老板或主管标了无效：领不了，老板能恢复",
+  无效客户: "总管理或销售管理标了无效：领不了，总管理能恢复",
   离职交接: "成员停用时交接方式选了放进公海",
 };
 
-const 无效原因 = "标了无效，要老板先恢复";
+const 无效原因 = "标了无效，要总管理先恢复";
 
 const 行名 = (r: 公海行) => r.客户名 ?? r.项目名 ?? "这一行";
 
@@ -227,7 +227,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         ? (r.projectId && r.种 === "项目"
           ? <RowLink href={`/projects/${r.projectId}`} className="fulltext" title={r.项目名}>{r.项目名}</RowLink>
           : <span className="fulltext" title={r.项目名}>{r.项目名}</span>)
-        : <span className="muted">还没有项目</span>,
+        // 看不到不等于没有：别人的项目不露名字，领取后一起到手（11-03 测试 C6-4）
+        : <span className="muted">领取后可见</span>,
     },
     {
       title: "当前进程", key: "进程", width: 150,

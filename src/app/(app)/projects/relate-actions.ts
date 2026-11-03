@@ -15,7 +15,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 引用联系人 } from "@/lib/project/relate-names";
 import { 加关联客户, 改客户身份, 解除关联客户, 加关联联系人, 改联系人角色立场, 解除关联联系人 } from "@/lib/project/relate";
 
-const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
+const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 
 async function 开着(): Promise<boolean> {
   return (await getBusiness()).projectMode === true;

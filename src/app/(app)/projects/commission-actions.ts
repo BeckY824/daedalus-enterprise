@@ -16,7 +16,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 存项目底价 as 存底价, 存提成分配 as 存分配, 改提成比例 as 改比例, 改按人提成比例 as 改按人, 更正实际提成 as 更正 } from "@/lib/project/commission-db";
 import type { 分配, 三套提成比例, 按人提成提交, 单设比例 } from "@/lib/project/commission";
 
-const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
+const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 const 不是企业版 = { ok: false as const, error: "提成是企业版的功能" };
 
 async function 开着(): Promise<boolean> {

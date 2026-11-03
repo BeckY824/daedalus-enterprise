@@ -59,7 +59,7 @@ export async function 读公海行(me: { id: string; name: string; role?: string
     自动掉公海(me).catch((e) => console.error("[自动掉公海] 扫的时候出错，这次先不掉", e)),
     公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e)),
   ]);
-  const [客户们, 项目们, 规则] = await Promise.all([
+  const [查到客户, 项目们, 规则] = await Promise.all([
     // 带限定的客户端：公海里的客户人人看得到（限定层说了算，这里不另写）
     prisma.customer.findMany({
       where: { pool: { isNot: null } },
@@ -82,6 +82,8 @@ export async function 读公海行(me: { id: string; name: string; role?: string
     }),
     生效组织规则(),
   ]);
+  // Prisma 分批查关联，中间这行被别人领走 pool 就是 null（11-03 测试 B2-8：整页 500），跳过这行
+  const 客户们 = 查到客户.flatMap((c) => (c.pool ? [{ ...c, pool: c.pool }] : []));
   const 字典 = 字典of(true, 规则.阶段.出口叫法);
   // 取满了才按最早入池那一行框，没取满就是公海全部。框出来的可能比这些行多（同一刻入池的），下面按行取，多的不用
   const 最早客户 = 客户们.length >= 公海取上限 ? 客户们[客户们.length - 1].pool!.at : null;

@@ -72,7 +72,7 @@ test("添加联系人：连点两次保存 → 只多一位联系人", async ({ 
   await 登录(page);
   await page.goto(`/customers/${客户id}`);
   const 框 = await 打开(page, "添加联系人", "添加联系人");
-  await 框.getByPlaceholder("张经理").fill("连点联系人");
+  await 框.getByPlaceholder("张伟").fill("连点联系人");
   await 连点保存(page, 框, /保\s*存/);
   expect(await 数((p) => p.contact.count({ where: { customerId: 客户id, name: "连点联系人" } })), "连点两次建出了两位联系人").toBe(1);
 });

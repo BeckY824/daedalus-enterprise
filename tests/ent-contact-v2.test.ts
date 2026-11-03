@@ -426,6 +426,9 @@ describe("联系方式查重", () => {
     const 叫 = (k: string) => (k === "phone" ? "手机" : k);
     const 见 = { contactId: "c1", name: "张三", customerId: "u1", customerName: "某客户", 同事: "销售", kind: "phone", value: "139" };
     expect(联系人撞号话([见], 叫)).toContain("「张三」（某客户）");
+    // 撞到的就在这位客户上：不叫人「挂到这位客户上」（11-03 B7-6）
+    expect(联系人撞号话([见], 叫, 见.customerId!)).not.toContain("挂到这位客户上");
+    expect(联系人撞号话([见], 叫, "别的客户")).toContain("挂到这位客户上");
     expect(联系人撞号话([{ ...见, contactId: null, name: null, customerId: null, customerName: null }, 见], 叫)).toContain("销售名下的一位联系人身上等 2 位");
   });
 });

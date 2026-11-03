@@ -219,7 +219,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     <div className="proj-modal-sec">
       <div><span className="proj-where-label">现在在</span> {现在在}</div>
       {缺.length ? (
-        <Alert type="warning" showIcon message={只能靠填齐 ? "还差这些必填，补齐了才能完成这个节点" : "还差这些必填（你是老板 / 主管，可以先推）"} />
+        <Alert type="warning" showIcon message={只能靠填齐 ? "还差这些必填，补齐了才能完成这个节点" : "还差这些必填（你是总管理 / 销售管理，可以先推）"} />
       ) : (
         <Alert type="success" showIcon message={p.必填 ? "这个节点的必填都齐了，可以推进" : "这个节点没有配必填，可以推进"} />
       )}

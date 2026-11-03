@@ -864,7 +864,7 @@ test("联系人页能直接加一位，但第一格必须先选归属", async ({
   const 弹窗 = page.getByRole("dialog");
   await expect(弹窗).toBeVisible();
   // 只填姓名就保存：得被拦住。没有归属的联系人没有意义
-  await 弹窗.getByPlaceholder("张经理").fill("走查的家长");
+  await 弹窗.getByPlaceholder("张伟").fill("走查的家长");
   await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
   await expect(弹窗.getByText(/请选择所属/)).toBeVisible();
   await expect(弹窗).toBeVisible();

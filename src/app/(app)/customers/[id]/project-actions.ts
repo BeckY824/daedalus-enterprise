@@ -76,7 +76,7 @@ export async function 新项目分配数据(customerId: string): Promise<新项�
 export async function 给客户建项目(输入: 给客户建项目输入): Promise<结果> {
   try {
     const me = await requireUser();
-    if (!企业版() || (await getBusiness()).projectMode !== true) return { ok: false, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
+    if (!企业版() || (await getBusiness()).projectMode !== true) return { ok: false, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
     if (!输入 || typeof 输入 !== "object" || typeof 输入.customerId !== "string" || !输入.项目 || !输入.跟进) {
       return { ok: false, error: "项目信息不完整，关掉重新填一次" };
     }

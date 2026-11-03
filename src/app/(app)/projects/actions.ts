@@ -46,7 +46,7 @@ import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/pro
 import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们 } from "@/lib/project/blocker";
 import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 
-const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
+const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 
 async function 开着(): Promise<boolean> {
   return (await getBusiness()).projectMode === true;
