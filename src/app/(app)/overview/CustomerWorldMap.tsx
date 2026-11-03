@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { palette } from "@/lib/palette";
 import type { 分布条 } from "@/lib/project/review-extras";
 import { 地图数据, 地图提示, 色档们, type 地图区, type 地图要素 } from "@/lib/project/customer-map";
 
@@ -48,9 +49,9 @@ function 现配色(n: number): 配色 {
   const s = getComputedStyle(document.documentElement);
   const v = (k: string) => s.getPropertyValue(k);
   const 画 = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
-  const 底 = 读色(画, v("--panel"), "#ffffff");
-  const 主 = 读色(画, v("--brand"), "#2f6bff");
-  const 深 = 读色(画, v("--brand-deep"), "#1a3f9e");
+  const 底 = 读色(画, v("--panel"), palette.panel);
+  const 主 = 读色(画, v("--brand"), palette.brand);
+  const 深 = 读色(画, v("--brand-deep"), palette.brandDeep);
   const 站 = [混(底, 主, 0.2), 混(底, 主, 0.5), 主, 混(主, 深, 0.7)];
   const 档 = Array.from({ length: n }, (_, i) => {
     const p = n === 1 ? 2 / 3 : (i / (n - 1)) * (站.length - 1);
@@ -59,13 +60,13 @@ function 现配色(n: number): 配色 {
   });
   return {
     档,
-    零: hex(读色(画, v("--line"), "#e5e7eb")),
+    零: hex(读色(画, v("--line"), palette.line)),
     边: hex(底),
     底: hex(底),
-    字: hex(读色(画, v("--ink-soft"), "#374151")),
-    弱字: hex(读色(画, v("--text-muted"), "#6b7280")),
-    线: hex(读色(画, v("--line-soft"), "#eceef2")),
-    重: hex(读色(画, v("--ink"), "#111827")),
+    字: hex(读色(画, v("--ink-soft"), palette.inkSoft)),
+    弱字: hex(读色(画, v("--text-muted"), palette.textMuted)),
+    线: hex(读色(画, v("--line-soft"), palette.lineSoft)),
+    重: hex(读色(画, v("--ink"), palette.ink)),
   };
 }
 
