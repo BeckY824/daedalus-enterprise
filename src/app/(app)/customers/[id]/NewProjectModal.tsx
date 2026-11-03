@@ -15,7 +15,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Dayjs } from "dayjs";
-import { App, Button, Form, Input, Modal, Radio, Select, Steps } from "antd";
+import { Alert, App, Button, Form, Input, Modal, Radio, Select, Steps } from "antd";
+import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
 import DatePicker from "@/components/BusinessDatePicker";
 import { useBusiness } from "@/lib/business-client";
 import { 跟进类型们 } from "@/lib/constants";
@@ -221,7 +222,7 @@ export default function NewProjectModal({
         步 === 0
           ? [
               <Button key="x" onClick={关}>取消</Button>,
-              <Button key="n" type="primary" onClick={下一步}>下一步</Button>,
+              <Button key="n" type="primary" onClick={下一步} disabled={!!分配?.没角色} title={分配?.没角色 ? 没业务角色不能新建话 : undefined}>下一步</Button>,
             ]
           : [
               <Button key="b" onClick={() => set步(0)} disabled={存着}>上一步</Button>,
@@ -236,6 +237,8 @@ export default function NewProjectModal({
         items={向导步骤.map((t, i) => ({ title: t, ...(i < 跳过几步 ? { status: "finish" as const } : {}) }))}
       />
       <div className="new-proj-carried" title={customerName}>客户：{customerName}（已带上）</div>
+      {/* 没设业务角色：哪种分配方式都用不了，一打开就说清，别填完才被拦（D3-6） */}
+      {分配?.没角色 && <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={没业务角色不能新建话} />}
       {/* 两步共用一张表：另一步的格只藏起来、值留着，最后一起交（藏起来的格仍挂着；弹窗关了才卸掉，preserve=false 清值） */}
       <Form
         form={form}

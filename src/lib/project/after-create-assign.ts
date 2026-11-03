@@ -7,6 +7,7 @@ import type { requireUser } from "@/lib/auth";
 import { 我能用的分配方式, 挡分配方式, 是分配方式序号, type 分配方式序号 } from "@/lib/enterprise/dict";
 import { 放回公海 } from "@/lib/project/db";
 import { 读组织 } from "@/lib/enterprise/org";
+import { 没设业务角色 } from "@/lib/enterprise/permissions";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
 import { 默认分配方式, 是销售角色, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 向导自动分配 } from "@/app/(app)/leads/assign-actions";
@@ -79,9 +80,10 @@ export async function 建好再分(me: 我, 分配: 定好的分配, projectId: 
  * 新建线索 / 项目页面上「分配方式」那一格要的：这人能用哪几种、默认选哪种（A6，按业务角色）、是不是销售（选自动分配要再确认，A9）。
  * 业务角色只认 EntMember（组织里的 角色们），账号角色不算
  */
-export async function 新建分配方式数据(me: 我): Promise<{ 分配方式们: 定好的分配[]; 默认分配方式: number | null; 是销售: boolean }> {
+export async function 新建分配方式数据(me: 我): Promise<{ 分配方式们: 定好的分配[]; 默认分配方式: number | null; 是销售: boolean; 没角色: boolean }> {
   const [能用, org] = await Promise.all([我能用的分配方式(me), 读组织()]);
   const 角色们 = org.成员.get(me.id)?.角色们 ?? [];
   const 默认 = 默认分配方式(角色们, 能用.map((x) => x.i));
-  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们) };
+  // 没角色：向导一进来就提示、不让往下填，免得填完五步才被服务端拦（D3-6）
+  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们), 没角色: 没设业务角色(org, me.id) };
 }
