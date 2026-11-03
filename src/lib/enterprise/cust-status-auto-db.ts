@@ -73,6 +73,19 @@ export async function 重算客户状态(db: 库, customerIds: Iterable<string |
   });
 }
 
+/**
+ * 详情页那枚章显示用（11-03 C1-4）：库里存着就用存的；没存（种子、导入的老数据没跑过重算）按名下项目现算一个，只显示、不写库
+ * （只读角色打开详情也不能写）。还是 null = 真没有项目，章上才写「暂无项目」
+ */
+export async function 显示用客户状态(customerId: string, 存的: string | null): Promise<string | null> {
+  if (存的) return 存的;
+  return 看全部(async () => {
+    const 项目们 = await prisma.project.findMany({ where: { customerId, deletedAt: null }, select: { phase: true, node: true, result: true } });
+    const 序 = 算客户状态(项目们);
+    return 序 == null ? null : (await 客户状态名们())[序];
+  });
+}
+
 /** 写入口用：开着才算（开 = 事务外面读好的 客户状态自动()），关着什么都不做 */
 export async function 跟着项目重算(db: 库, 开: boolean, customerIds: Iterable<string | null | undefined>): Promise<number> {
   return 开 ? 重算客户状态(db, customerIds) : 0;
