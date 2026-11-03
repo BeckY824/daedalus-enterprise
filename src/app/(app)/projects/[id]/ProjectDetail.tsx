@@ -1246,6 +1246,7 @@ export default function ProjectDetail({
             能推进={!!完成到 && !完成不了}
             完成不了={完成不了}
             完成到字={完成到字}
+            交付还差={完成到?.result && 是交付(完成到.result) ? 差 : undefined}
             忙={忙}
             on完成={换框(完成)}
             on关={关头部框}

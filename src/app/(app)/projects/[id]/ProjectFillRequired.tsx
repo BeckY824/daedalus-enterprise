@@ -44,7 +44,7 @@ export function 定位到模块(id: string) {
  * 「完成节点」框（M-节点-05/09，11-03 一窗填完）：还差的必填直接摆输入，控件和页面上编辑这一项时一样；
  * 点一个按钮存齐并推进。存的逻辑在 lib/project/required-fill.ts，校验、权限都在原来的 action 里
  */
-export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了话, 现在在, 能推进, 完成不了, 完成到字, 忙, on完成, on关, on去, 读草稿, 留草稿 }: {
+export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了话, 现在在, 能推进, 完成不了, 完成到字, 交付还差, 忙, on完成, on关, on去, 读草稿, 留草稿 }: {
   p: 项目详情;
   联系人们: 联系人[];
   能就地改: boolean;
@@ -54,6 +54,8 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   能推进: boolean;
   完成不了?: string;
   完成到字: string;
+  /** 最后一个节点完成 = 交付结清：尾款结清、验收通过没勾的也列进来当场勾（11-03 A5-2），谁都不能缺着推 */
+  交付还差?: string[];
   忙: boolean;
   on完成: () => void;
   on关: () => void;
@@ -74,8 +76,11 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   const 锁 = useRef(false);
   const 刷完要 = useRef<"推" | "强推" | null>(null);
 
-  const 缺 = useMemo(() => p.必填?.还差 ?? [], [p.必填?.还差]);
-  const 只能靠填齐 = !!p.必填?.只能靠填齐;
+  const 缺 = useMemo(() => {
+    const 配的 = p.必填?.还差 ?? [];
+    return [...配的, ...((交付还差 ?? []) as 必填项[]).filter((k) => !配的.includes(k))];
+  }, [p.必填?.还差, 交付还差]);
+  const 只能靠填齐 = !!p.必填?.只能靠填齐 || !!交付还差?.length;
   const 环: 窗里环境 = {
     能就地改,
     改不了话,
