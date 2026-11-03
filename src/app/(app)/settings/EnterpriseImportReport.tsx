@@ -127,6 +127,11 @@ export default function EnterpriseImportReport({
       for (;;) {
         const r = await 正式导入一段(批次Id, 要选线 ? (线 ?? undefined) : undefined);
         set进度({ 写到: r.写到, 总数: r.总数 });
+        if (r.完了 && r.没留批次) {
+          modal.info({ title: "都和上次导的一样", content: "这次没有新建或更新任何东西，不留批次。" });
+          on完了();
+          return;
+        }
         if (r.完了) {
           modal.success({
             title: "导入完成",
@@ -212,6 +217,9 @@ export default function EnterpriseImportReport({
   // 企业版只用项目时，「商机」行建成项目，界面上也叫项目
   const 名 = (e: 实体) => (e === "opportunity" && 报告.映射.项目 ? "项目" : 实体名[e]);
   const 要选类别 = 报告.文件.filter((f) => !f.实体);
+  // 没变的（和上次导的一样）写的时候直接跳过，不算「会写」；全是没变的不给正式导入，免得留一个空批次（11-03 完成度 D7-5、D7-9）
+  const 没变数 = 实体顺序.reduce((a, e) => a + 报告.按类[e].没变, 0);
+  const 要写 = 报告.合计.待写 - 没变数;
 
   return (
     <Space orientation="vertical" size={14} style={{ display: "flex" }}>
@@ -269,7 +277,7 @@ export default function EnterpriseImportReport({
         pagination={false}
         title={() => (
           <b>
-            一共 {报告.合计.记录} 条：会写 {报告.合计.待写} 条，跳过 {报告.合计.跳过} 条，要看一眼的 {报告.合计.提醒} 条
+            一共 {报告.合计.记录} 条：会写 {要写} 条{没变数 > 0 && `，没变 ${没变数} 条（和上次导的一样，不再写）`}，跳过 {报告.合计.跳过} 条，要看一眼的 {报告.合计.提醒} 条
           </b>
         )}
         dataSource={实体顺序.map((e) => ({ 实体: e, ...报告.按类[e] })).filter((x) => x.待写 + x.跳过 + x.提醒 > 0)}
@@ -293,6 +301,12 @@ export default function EnterpriseImportReport({
             <b>
               先照正式导入演了一遍（没写进库）：写完会新建 {报告.预演!.合计.新建} 条、更新 {报告.预演!.合计.更新} 条、跳过 {报告.预演!.合计.跳过} 条、冲突 {报告.预演!.合计.冲突} 条、写不进 {报告.预演!.合计.失败} 条
             </b>
+          )}
+          footer={() => (
+            <Typography.Text type="secondary">
+              以这张为准。上一张是按清洗分的：真写时没变的、并入已有的算跳过，我们这边改过的记冲突
+              {报告.合计.跳过 > 0 && `；跳过里含清洗时就跳过的 ${报告.合计.跳过} 条`}
+            </Typography.Text>
           )}
           dataSource={实体顺序.flatMap((e) => (报告.预演!.按类[e] ? [{ 实体: e, ...报告.预演!.按类[e]! }] : []))}
           columns={[
@@ -578,8 +592,9 @@ export default function EnterpriseImportReport({
           />
           <Button
             type="primary"
-            disabled={!!忙 || 报告.合计.待写 === 0 || (要选类别.length === 报告.文件.length && 报告.文件.length > 0)}
+            disabled={!!忙 || 要写 <= 0 || (要选类别.length === 报告.文件.length && 报告.文件.length > 0)}
             loading={忙 === "导入"}
+            title={要写 <= 0 && 没变数 > 0 ? "都和上次导的一样，没有要写的" : undefined}
             onClick={() => set清单开(true)}
           >
             确认，正式导入
@@ -614,7 +629,7 @@ export default function EnterpriseImportReport({
               <li>
                 {报告.预演
                   ? `会新建 ${报告.预演.合计.新建} 条、更新 ${报告.预演.合计.更新} 条，跳过 ${报告.预演.合计.跳过} 条，${报告.预演.合计.冲突} 条冲突${报告.预演.合计.失败 ? `，${报告.预演.合计.失败} 条写不进` : ""}。`
-                  : `会写 ${报告.合计.待写} 条（跳过 ${报告.合计.跳过} 条）。`}
+                  : `会写 ${要写} 条（跳过 ${报告.合计.跳过} 条${没变数 ? `，没变 ${没变数} 条` : ""}）。`}
                 我们这边改过的不覆盖，只记一笔冲突。
               </li>
               <li>导完可以整批撤回。</li>

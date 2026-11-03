@@ -183,11 +183,17 @@ export async function 丢掉试跑(批次Id: string): Promise<void> {
 }
 
 /** 正式导入：写一段，界面看 完了 再接着调 */
-export async function 正式导入一段(批次Id: string, 业务线?: string): Promise<写入结果> {
+export async function 正式导入一段(批次Id: string, 业务线?: string): Promise<写入结果 & { 没留批次?: true }> {
   const me = await 要管理员();
   // 企业版这批新建的落哪条业务线：第一段带上，存进映射，接着导入和之后的同步照它
   if (业务线) await 定这批业务线(批次Id, 业务线);
-  return 写一批(批次Id, { id: me.id, name: me.name });
+  const w = await 写一批(批次Id, { id: me.id, name: me.name });
+  // 全是和上次一样的：什么也没写，这一批没东西可撤，同 sync 写完 不留空批次（11-03 完成度 D7-9）
+  if (w.完了 && w.新建 + w.更新 + w.冲突 + w.失败 === 0 && !(await prisma.entImportRow.count({ where: { batchId: 批次Id } }))) {
+    await prisma.entImportBatch.delete({ where: { id: 批次Id } });
+    return { ...w, 没留批次: true };
+  }
+  return w;
 }
 
 /**
