@@ -116,9 +116,10 @@ export default function EnterpriseImportTab() {
     }
   }
 
-  const 撤回的话 = (r: 撤回一段结果, 动作: "撤回" | "恢复") =>
+  // 删掉的除了批次「新建」那几条，还有同号客户上记的提醒、线索顺手建的客户和项目，所以不叫「新建的」，多出来的说一声（11-03 完成度 D7-8）
+  const 撤回的话 = (r: 撤回一段结果, 动作: "撤回" | "恢复", 新建 = 0) =>
     动作 === "撤回"
-      ? `删掉新建的 ${r.删掉} 条，更新过的还原 ${r.还原} 条${r.留下数 ? `；${r.留下数} 条后来又被改过，没动：${r.留下.slice(0, 5).join("；")}${r.留下数 > 5 ? "……" : ""}` : ""}`
+      ? `删掉这批建出来的 ${r.删掉} 条${r.删掉 > 新建 ? `（含同号客户上记的提醒、线索顺手建的客户和项目）` : ""}，更新过的还原 ${r.还原} 条${r.留下数 ? `；${r.留下数} 条后来又被改过，没动：${r.留下.slice(0, 5).join("；")}${r.留下数 > 5 ? "……" : ""}` : ""}`
       : `恢复 ${r.恢复} 条${r.留下数 ? `；${r.留下数} 条没恢复：${r.留下.slice(0, 5).join("；")}${r.留下数 > 5 ? "……" : ""}` : ""}`;
 
   async function 写(b: 批次行) {
@@ -127,7 +128,7 @@ export default function EnterpriseImportTab() {
   }
   async function 撤(b: 批次行) {
     const r = await 一直跑(b, "撤回中", "reverting", 撤回一段);
-    if (r) modal.success({ title: "整批撤回完成", content: 撤回的话(r, "撤回") });
+    if (r) (r.留下数 ? modal.warning : modal.success)({ title: r.留下数 ? `撤回完成，${r.留下数} 条没撤` : "整批撤回完成", content: 撤回的话(r, "撤回", b.新建) });
   }
   async function 恢复(b: 批次行) {
     const r = await 一直跑(b, "恢复中", "restoring", 恢复一段);
@@ -208,7 +209,9 @@ export default function EnterpriseImportTab() {
           title: "状态",
           width: 130,
           render: (_, b) => {
-            const s = 跑?.id === b.id ? { 话: 跑.话, 色: "processing" } : 状态说法[b.状态] ?? { 话: b.状态, 色: "default" };
+            // 撤回了但有留下没动的：列表上就看得出没撤干净，展开看是哪几条
+            const 留下 = b.状态 === "reverted" ? (b.撤回账?.留下数 ?? 0) : 0;
+            const s = 跑?.id === b.id ? { 话: 跑.话, 色: "processing" } : 留下 ? { 话: `已撤回，${留下} 条没撤`, 色: "warning" } : 状态说法[b.状态] ?? { 话: b.状态, 色: "default" };
             return <Tag color={s.色}>{s.话}</Tag>;
           },
         },
