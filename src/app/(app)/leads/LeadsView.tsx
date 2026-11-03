@@ -168,7 +168,7 @@ export default function LeadsView({
     const 到 = 撞.customerId;
     modal.confirm({
       title: `电话已经是${b.customer}「${撞.客户名}」的号码`,
-      content: `负责人：${撞.负责人}。把「${r.name}」并到这位${b.customer}？线索标成已转化、关联到「${撞.客户名}」，不另建档案，也不改「${撞.客户名}」的资料。${企业版项目 ? `会在「${撞.客户名}」名下建一个项目「${r.name}」。` : ""}`,
+      content: `${撞.在公海 ? "这位在公海里" : `负责人：${撞.负责人}`}。把「${r.name}」并到这位${b.customer}？线索标成已转化、关联到「${撞.客户名}」，不另建档案，也不改「${撞.客户名}」的资料。${企业版项目 ? `会在「${撞.客户名}」名下建一个项目「${r.name}」。` : ""}`,
       okText: `并到「${撞.客户名}」`,
       cancelText: "取消",
       async onOk() {
@@ -429,7 +429,7 @@ export default function LeadsView({
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="contact" label="联系人"><Input placeholder="张经理" /></Form.Item>
+              <Form.Item name="contact" label="联系人"><Input placeholder="张伟" /></Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="phone" label="联系电话"><Input placeholder="13800002211" /></Form.Item>

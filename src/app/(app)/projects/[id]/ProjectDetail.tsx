@@ -469,7 +469,7 @@ export default function ProjectDetail({
   // 往前推另外的关：直属上级才推 / 需求状态补全期（p.不给推）、线索验证缺有效沟通
   const 往前不了 = p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined);
   // 配了必填、不是老板主管：缺着必填不给往前推；填齐了（占位值不算）照样能推（M-节点-05/09）
-  const 缺必填 = p.必填?.只能靠填齐 && p.必填.还差.length ? `还差必填：${p.必填.还差.map(必填叫法).join("、")}；补齐再推，要先推请找老板或主管` : undefined;
+  const 缺必填 = p.必填?.只能靠填齐 && p.必填.还差.length ? `还差必填：${p.必填.还差.map(必填叫法).join("、")}；补齐再推，要先推请找总管理或销售管理` : undefined;
   const 推不了 = 动不了 ?? 往前不了 ?? 缺必填
     ?? (下 ? undefined : p.result ? "先改回某个进程再往前推" : "这是最后一个进程了，接下来点结局");
   const 下一步字 = 下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步";
@@ -1387,7 +1387,7 @@ export default function ProjectDetail({
         <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把进程改回去就算恢复，类别和备注留在进程变更里。</div>
         <Select
           style={{ width: "100%", marginBottom: 12 }}
-          placeholder={类别们.length ? "选异常类别" : "没有在用的异常类别，请老板在设置里加"}
+          placeholder={类别们.length ? "选异常类别" : "没有在用的异常类别，请管理员在设置里加"}
           value={类别}
           onChange={(v: string) => set类别(v)}
           options={类别们.map((c) => ({ value: c.id, label: c.name }))}

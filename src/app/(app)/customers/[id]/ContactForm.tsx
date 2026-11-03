@@ -280,7 +280,7 @@ export default function ContactForm({
           )}
           <Col span={12}>
             <Form.Item name="name" label="姓名" rules={[requiredText("请填写姓名")]}>
-              <Input placeholder="张经理" />
+              <Input placeholder="张伟" />
             </Form.Item>
           </Col>
           <Col span={12}>

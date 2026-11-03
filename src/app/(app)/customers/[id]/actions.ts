@@ -785,7 +785,7 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
       const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();
-        return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k)), 撞了 };
+        return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户), 撞了 };
       }
     }
     const data = { ...规整(input), phone: 电话.phone, ...(企?.ok ? 企.data : {}), isPrimary: 主要, customerId: 主客户 };

@@ -15,7 +15,7 @@ import { dayjs } from "@/lib/utils";
 import { 记回款 as 记, 删回款 as 删, type 回款提交 } from "@/lib/project/payment-db";
 import { 记自动推进 } from "@/lib/project/auto-advance";
 
-const 没开 = { ok: false as const, error: "项目模式没开：请老板在「设置 → 业务配置」里打开" };
+const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 const 不是企业版 = { ok: false as const, error: "回款是企业版的功能" };
 
 async function 开着(): Promise<boolean> {

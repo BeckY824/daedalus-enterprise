@@ -214,7 +214,7 @@ async function 转项目之后(user: Actor, lead: { name: string }, customerId: 
  * 转客户时撞了号，撞的是谁（J-024）。业务员撞到同事的客户：**只给负责人**，不给名字、不给 id、不能并
  * （10-04 用户拍板，和客户表单查重一个口径）；看得到那位客户的人（老板、负责人自己、公海里的）可以「并到这位客户」。
  */
-export type 线索撞号 = { 客户名: string | null; 负责人: string; customerId: string | null; 能并: boolean };
+export type 线索撞号 = { 客户名: string | null; 负责人: string; customerId: string | null; 能并: boolean; 在公海?: boolean };
 
 export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
   { ok: true; customerId: string; projectId?: string } | { ok: false; error: string; 撞号?: 线索撞号 }
@@ -260,15 +260,17 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
         看得到那位就能并过去；看不到（业务员撞同事的）指路——线索负责人改成那位同事由他来并，或者请老板并
       */
       const 能并 = 看得到(dup, 我);
-      const 负责人 = dup.salesOwner.name;
+      // 公海里的客户没有负责人：salesOwner 还挂着原负责人或占位账号「（无负责人）」，别说成现负责人（11-03 测试 B7-5）
+      const 在公海 = !!dup.pool || /^（.*）$/.test(dup.salesOwner.name);
+      const 负责人 = 在公海 ? "公海" : dup.salesOwner.name;
       return {
         ok: false as const,
         error: 能并
-          ? `${phone ? "电话" : "邮箱"}已经是${b.customer}「${dup.name}」（负责人：${负责人}）的${依据}，可以把这条线索并到这位${b.customer}，不用另建档案`
+          ? `${phone ? "电话" : "邮箱"}已经是${b.customer}「${dup.name}」（${在公海 ? "在公海里" : `负责人：${负责人}`}）的${依据}，可以把这条线索并到这位${b.customer}，不用另建档案`
           : 看得到(dup, 读我)
-          ? `${phone ? "电话" : "邮箱"}已经是同事 ${负责人} 的${b.customer}「${dup.name}」的${依据}。同事的${b.customer}只能看，并不过去：可以把线索负责人改成 ${负责人} 由他来并，或者请老板并`
-          : `${phone ? "电话" : "邮箱"}已经是同事 ${负责人} 名下一位${b.customer}的${依据}。你看不到这位${b.customer}，并不过去：可以把线索负责人改成 ${负责人} 由他来并，或者请老板并`,
-        撞号: { 客户名: 能并 ? dup.name : null, 负责人, customerId: 能并 ? dup.id : null, 能并 } satisfies 线索撞号,
+          ? `${phone ? "电话" : "邮箱"}已经是同事 ${负责人} 的${b.customer}「${dup.name}」的${依据}。同事的${b.customer}只能看，并不过去：可以把线索负责人改成 ${负责人} 由他来并，或者请${企业版() ? "总管理" : "老板"}并`
+          : `${phone ? "电话" : "邮箱"}已经是同事 ${负责人} 名下一位${b.customer}的${依据}。你看不到这位${b.customer}，并不过去：可以把线索负责人改成 ${负责人} 由他来并，或者请${企业版() ? "总管理" : "老板"}并`,
+        撞号: { 客户名: 能并 ? dup.name : null, 负责人, customerId: 能并 ? dup.id : null, 能并, ...(在公海 ? { 在公海 } : {}) } satisfies 线索撞号,
       };
     }
 

@@ -221,7 +221,7 @@ export function ProjectTeamCard({
   const [加角色, set加角色] = useState<string | undefined>();
   const 在组 = new Set(组员们.filter((m) => !(企业版 && m.inviteStatus === "DECLINED")).map((m) => m.userId));
   const 可加 = 在职.filter((u) => !在组.has(u.id));
-  const 不能改 = 能改 ? undefined : "只有项目负责人、老板或主管能改";
+  const 不能改 = 能改 ? undefined : 企业版 ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改";
 
   return (
     <Card title="项目组">

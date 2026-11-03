@@ -99,7 +99,8 @@ export default function BoardTalks({ 数, 段, 方式 = "", 只看自己, 缺 }:
 }
 
 function 沟通条({ x, 去 }: { x: 复盘沟通行; 去: () => void }) {
-  const 全 = 有值(x.内容) && x.内容 !== x.标题 ? `${x.标题}：${x.内容}` : x.标题;
+  // 页面记的沟通没有标题，只显示内容，别留个「：」打头（11-03 测试 C6-1）
+  const 全 = 有值(x.内容) && x.内容 !== x.标题 ? (有值(x.标题) ? `${x.标题}：${x.内容}` : x.内容) : x.标题;
   return (
     <li className="rtalk-i">
       <span className="rtalk-pt" aria-hidden />
@@ -122,8 +123,8 @@ function 沟通条({ x, 去 }: { x: 复盘沟通行; 去: () => void }) {
         </div>
         <Tooltip title={<span className="rtalk-tip">{全}</span>} placement="topLeft" mouseEnterDelay={0.4}>
           <div className="rtalk-t">
-            <b>{x.标题}</b>
-            {全 !== x.标题 && <span>：{x.内容}</span>}
+            {有值(x.标题) && <b>{x.标题}</b>}
+            {全 !== x.标题 && <span>{有值(x.标题) ? "：" : ""}{x.内容}</span>}
           </div>
         </Tooltip>
         <div className="rblk-k-meta">
