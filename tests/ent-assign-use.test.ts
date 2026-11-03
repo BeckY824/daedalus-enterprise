@@ -228,8 +228,9 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
   it("没设业务角色（11-03 D3-6）：挡住的话直说没设角色；向导数据标出没角色，好在入口就提示", async () => {
     const 没角色 = (await prisma.user.create({ data: { email: "none", name: "没角色", title: "", role: "SALES", password: "x" } })).id;
     expect(await 挡分配方式({ id: 没角色, role: "SALES" }, 0)).toBe(没业务角色不能新建话);
-    expect(await 新建分配方式数据({ id: 没角色, role: "SALES" })).toMatchObject({ 分配方式们: [], 没角色: true });
-    expect(await 新建分配方式数据({ id: 销售, role: "SALES" })).toMatchObject({ 没角色: false });
+    const 人 = (id: string) => ({ id, role: "SALES", name: "", email: "", title: "" });
+    expect(await 新建分配方式数据(人(没角色))).toMatchObject({ 分配方式们: [], 没角色: true });
+    expect(await 新建分配方式数据(人(销售))).toMatchObject({ 没角色: false });
     当(没角色);
     expect(await 向导({ 分配方式: 0, ownerId: 销售 })).toMatchObject({ ok: false, error: 没业务角色不能新建话 });
     expect(await prisma.project.count()).toBe(0);
