@@ -25,6 +25,8 @@ import { 待确认的交接, 确认交接, 撤回交接, 拒收交接 } from "@/
 import { 了结 } from "@/lib/enterprise/handover-db";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 可选项 } from "@/lib/enterprise/dict";
+import { 放进公海 } from "@/app/(app)/customers/pool-actions";
+import { 放回公海 } from "@/lib/project/db";
 
 type 人 = { id: string; role: string };
 let 老板: 人, 组长: 人, 销售: 人, 接手: 人;
@@ -216,6 +218,27 @@ describe("转让交接中", () => {
     const h = await 一笔();
     const 成 = await Promise.all([了结(prisma, h.id, "已确认", 接手), 了结(prisma, h.id, "已撤回", 老板)]);
     expect(成.filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("转让交接中放公海（11-03 完成度 C3-2）", () => {
+  // 原来：交接待确认时原负责人能把客户放进公海，接手人确认后客户归他、公海那行还在，他看不到也领不到
+  it("交接中的客户放不进公海（客户、只这一个项目的项目都拦）；万一已在公海，确认时不改负责人", async () => {
+    const a = await 客户(销售.id);
+    const p = (await prisma.project.create({ data: { name: "项目a", customerId: a.id, ownerId: 销售.id, creatorId: 销售.id, phase: "线索" } })).id;
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
+
+    当(销售);
+    expect(await 放进公海([a.id])).toMatchObject({ ok: false, error: expect.stringContaining("交接") });
+    expect(await 放回公海(销售, p)).toMatchObject({ ok: false, error: expect.stringContaining("交接") });
+    expect(await prisma.customerPool.count()).toBe(0);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).toBeNull();
+
+    // 老数据：交接期间已经进了公海
+    await prisma.customerPool.create({ data: { customerId: a.id, userId: 销售.id, reason: "手动" } });
+    当(接手);
+    expect(await 确认交接((await 一笔()).id)).toEqual({ ok: true, 客户: 0 });
+    expect(await 归谁(a.id)).toBe(销售.id);
   });
 });
 

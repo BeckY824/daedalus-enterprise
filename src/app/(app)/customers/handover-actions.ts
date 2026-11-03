@@ -137,7 +137,8 @@ export async function 确认交接(id: string): Promise<结果> {
   const ids = 读ids(h.customerIds);
   const 换 = await 看全部(() => prisma.$transaction(async (tx) => {
     if (!(await 了结(tx, h.id, "已确认", me))) return null;
-    const 还归他 = (await tx.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId }, select: { id: true } })).map((c) => c.id);
+    // 交接期间进了公海的不转（11-03 完成度 C3-2）：转了负责人是接手人、人却在公海里，他看不到也领不到
+    const 还归他 = (await tx.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId, pool: null }, select: { id: true } })).map((c) => c.id);
     if (还归他.length) await tx.customer.updateMany({ where: { id: { in: 还归他 } }, data: { salesOwnerId: me.id } });
     return 还归他;
   }));
@@ -147,7 +148,7 @@ export async function 确认交接(id: string): Promise<结果> {
   const 从 = (await prisma.user.findUnique({ where: { id: h.fromUserId }, select: { name: true } }))?.name ?? h.fromUserId;
   await recordAudit({
     user: me, action: "assign", entity: "Customer",
-    summary: `确认接手「${从}」转来的 ${换.length} 名${b.customer}，销售负责人改为「${me.name}」` + (ids.length > 换.length ? `（${ids.length - 换.length} 名在交接期间已换了人，没动）` : ""),
+    summary: `确认接手「${从}」转来的 ${换.length} 名${b.customer}，销售负责人改为「${me.name}」` + (ids.length > 换.length ? `（${ids.length - 换.length} 名在交接期间已换了人或进了公海，没动）` : ""),
     detail: { 交接: h.id, ids: 换, salesOwnerId: me.id, 原负责人: 换.map((id) => ({ id, salesOwnerId: h.fromUserId })), 带走: 数, 带过来: 记下 },
   });
   await 交接通知(me, h.id, "已确认");

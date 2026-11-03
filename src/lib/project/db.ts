@@ -32,6 +32,7 @@ import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
 import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
@@ -669,6 +670,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     if (p.pooledAt) return { ok: false as const, error: "这个项目已经在公海里了" };
     if (!选项?.分配放行 && !能放回公海(me, p, org)) return { ok: false as const, error: "只有项目负责人、上级或总管理能放回公海" };
     if (!(能进公海的阶段 as readonly string[]).includes(p.phase)) return { ok: false as const, error: "订单阶段的项目不能放回公海" };
+    // 客户正在转让交接中（11-03 完成度 C3-2）：项目跟着客户走，这时放了，接手人确认后拿不到。别人发起的交接也算
+    if (企业版() && (await 看全部(() => 交接中的客户([p.customerId], tx))).size) return { ok: false as const, error: "这个项目的客户正在转让交接中，先撤回交接再放回公海" };
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
     const 现在 = new Date();
