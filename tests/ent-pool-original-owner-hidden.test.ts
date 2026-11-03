@@ -236,6 +236,19 @@ describe("原负责人退到公海后看不到", () => {
     });
   });
 
+  it("原负责人直调领自己退的项目：说「原负责人不能领回」，不说被人领走了（11-03 B4-1）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    当(乙);
+    await 以谁的身份(乙.id, () => 放回公海(乙, p));
+    const 导 = await 导入的(乙.id);
+    忘掉企业版范围();
+    for (const id of [p, 导.p]) {
+      expect(await 以谁的身份(乙.id, () => 领取公海项目(乙, id))).toEqual({ ok: false, error: "原负责人不能领回" });
+      expect((await raw.project.findUnique({ where: { id }, select: { pooledAt: true } }))?.pooledAt).not.toBeNull();
+    }
+  });
+
   it("没动过公海的客户、别人退的：不受影响；渠道负责人不算原负责人", async () => {
     const 自己的 = await 客户(乙.id, "自己的客户");
     const 自己的项目 = await 项目(乙.id, 自己的, "自己的项目");
