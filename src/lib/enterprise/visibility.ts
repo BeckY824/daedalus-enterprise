@@ -182,7 +182,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     if (!线) return { 我: null, 互看: false, 别人的: new Set(), 只读: 只读角色话 };
     // 设了业务线：按人的那一半走 读 + 市场（看得到客户、raw SQL 回退 Prisma），按标签的那一半走 按线
     return {
-      我: [id], 读: 线.人们, 市场: 线.人们, 按线: { 本人: id, 项目: 按线项目(线), 客户: 按线客户(线) },
+      我: [id], 读: 线.人们, 市场: 线.人们, 组员客户: await 组员客户of(db, 线.人们), 按线: { 本人: id, 项目: 按线项目(线), 客户: 按线客户(线) },
       互看: false, 别人的: new Set(), 全拦: true, 话: 只读角色话, 只读: 只读角色话,
     };
   }
@@ -194,7 +194,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     const 回避 = await 公海回避of(db, id);
     const 那些 = await db.customer.findMany({ where: 市场相关客户(人们), select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
     const 别人的 = new Set(那些.filter((c) => !看得到(c, [id])).map((c) => c.id));
-    return { 我: [id], 读: 人们, 市场: 人们, 互看: false, 别人的, 全拦: true, 话: 只看某人话, ...(回避 ? { 公海回避: 回避 } : {}) };
+    return { 我: [id], 读: 人们, 市场: 人们, 组员客户: await 组员客户of(db, 人们), 互看: false, 别人的, 全拦: true, 话: 只看某人话, ...(回避 ? { 公海回避: 回避 } : {}) };
   }
   // 规则关着：原来一律不限定；11-01 起没设业务角色的照样没权限（只看公海）；
   // 原负责人回避（11-03）规则开不开都算，能看全部的（总管理等）不回避
@@ -217,13 +217,15 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   // 自己负责的项目挂着的也不算只读（被指定为负责人才能编辑，在项目下记沟通）
   const 写 = 范围.写;
   const 组员只读 = new Set<string>();
-  for (const c of await db.customer.findMany({
+  const 组员的 = await db.customer.findMany({
     where: 组员的客户({ in: [...(范围.读 ?? 写)] }),
     select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, projects: { where: { deletedAt: null }, select: { ownerId: true } } },
-  })) {
+  });
+  for (const c of 组员的) {
     if (!看得到(c, 写) && !c.projects.some((p) => 写.includes(p.ownerId))) 组员只读.add(c.id);
   }
-  if (!范围.读 && !市场.length && !组员只读.size) return { 我: 写, 互看: false, 别人的: new Set(), ...线索, ...带回避 };
+  const 带组员 = 组员的.length ? { 组员客户: 组员的.length > 组员名单上限 ? null : 组员的.map((c) => c.id) } : {};
+  if (!范围.读 && !市场.length && !组员只读.size) return { 我: 写, 互看: false, 别人的: new Set(), ...线索, ...带回避, ...带组员 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）
   const 别人的 = new Set<string>(组员只读);
@@ -257,7 +259,18 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     ...(读 ? { 读 } : {}),
     ...(市场.length ? { 市场 } : {}),
     ...带回避,
+    ...带组员,
   };
+}
+
+/** 组员客户名单的上限：再多 IN 又长、也怕碰 SQLite 参数上限，退回按关联写的子查询 */
+const 组员名单上限 = 300;
+
+/** 这几位以组员身份（点了同意）加入的项目挂着的客户编号（见 限定.组员客户）；一个都没有回 undefined，查询不多任何条件 */
+async function 组员客户of(db: PrismaClient, 人们: string[]): Promise<string[] | null | undefined> {
+  const 行 = await db.customer.findMany({ where: 组员的客户({ in: 人们 }), select: { id: true }, take: 组员名单上限 + 1 });
+  if (!行.length) return undefined;
+  return 行.length > 组员名单上限 ? null : 行.map((c) => c.id);
 }
 
 /** 回避名单的上限：再多 NOT IN 又长又慢、也怕碰 SQLite 参数上限（否定条件不能拆批），退回按关联写的条件 */

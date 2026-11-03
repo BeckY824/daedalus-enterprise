@@ -443,7 +443,7 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
       // 进了回收站的项目不算进客户状态
       await 跟着项目重算(tx, 状态开, [p.customerId]);
       return { ok: true as const, name: p.name, customerId: p.customerId };
-    });
+    }).then((r) => { if (r.ok) 忘掉企业版范围(); return r; }); // 组员看得到的客户名单跟着项目算
   }
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, ownerId: true, pooledAt: true, customerId: true } });
@@ -1068,6 +1068,7 @@ export async function 加组员(me: 谁, projectId: string, userId: string, role
     if (!负责人拉) 组员拉 = { 项目: p.id, 名: p.name, 负责人: p.ownerId, 谁: uid };
     return { ok: true as const };
   });
+  if (r.ok) 忘掉企业版范围(); // 自己加自己直接进组，组员看得到的客户名单变了
   // 组员拉人（V3.5.1）：留痕 + 告诉负责人。事务外写，不和上面的写锁抢
   const 拉 = 组员拉 as { 项目: string; 名: string; 负责人: string; 谁: string } | null;
   if (r.ok && 拉) {
@@ -1088,7 +1089,7 @@ export async function 回邀请(me: 谁, memberId: string, 同意: boolean): Pro
     if (m.inviteStatus !== "INVITED") return { ok: false as const, error: m.inviteStatus === "JOINED" ? "你已经在项目组里了" : "你已经拒绝过这个邀请了" };
     await 看全部(() => tx.projectMember.update({ where: { id: m.id }, data: { inviteStatus: 同意 ? "JOINED" : "DECLINED" } }));
     return { ok: true as const, projectId: m.projectId };
-  });
+  }).then((r) => { if (r.ok) 忘掉企业版范围(); return r; }); // 同意了马上看得到客户
 }
 
 export type 待回邀请 = { id: string; projectId: string; 项目: string; 负责人: string; 邀请人: string; 角色: string | null; createdAt: Date };
@@ -1149,7 +1150,7 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
       await 卡点随项目换人(tx, m.projectId, m.userId, m.project.ownerId, me.id, 移出组员接手理由);
     }
     return { ok: true as const };
-  });
+  }).then((r) => { if (r.ok) 忘掉企业版范围(); return r; }); // 移出了马上看不到
 }
 
 /** 读必填数据 要的项目列（整行传进来就行） */
