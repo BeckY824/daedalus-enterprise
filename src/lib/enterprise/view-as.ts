@@ -167,5 +167,10 @@ export function 原文SQL(args: unknown): string | null {
 export function 会写库的SQL(sql: string | null): boolean {
   if (sql === null) return true;
   const s = sql.replace(/\s+/g, " ");
-  return /\b(insert|update|delete|replace|create|drop|alter|attach|detach|vacuum|reindex)\b/i.test(s) || /\bpragma\s+[\w.]+\s*=/i.test(s);
+  // replace( 是读用的字符串函数（号键SQL 里大量用），只有 REPLACE INTO 才写；INSERT OR REPLACE 已被 insert 拦
+  return (
+    /\b(insert|update|delete|create|drop|alter|attach|detach|vacuum|reindex)\b/i.test(s) ||
+    /\breplace\s+into\b/i.test(s) ||
+    /\bpragma\s+[\w.]+\s*=/i.test(s)
+  );
 }
