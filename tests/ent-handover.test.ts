@@ -288,3 +288,57 @@ describe("开关关掉", () => {
     });
   }
 });
+
+describe("交接通知（11-03 C3-3 / C3-5 / C4-7 / C8-1）", () => {
+  const 通知 = (userId: string, 事件: string, hid: string) => prisma.entNotice.findFirst({ where: { userId, dedupeKey: `handover:${hid}:${事件}` } });
+
+  it("确认后：接手人那条「等你确认」标成已读；发起人和原负责人都收到，标题带客户名", async () => {
+    const a = await 客户(销售.id);
+    当(组长);
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
+    const h = await 一笔();
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).toBeNull();
+
+    当(接手);
+    expect(await 确认交接(h.id)).toEqual({ ok: true, 客户: 1 });
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).not.toBeNull();
+    expect((await 通知(组长.id, "已确认", h.id))?.title).toContain(a.name);
+    const 给原负责人 = await 通知(销售.id, "已确认", h.id);
+    expect(给原负责人?.title).toContain(a.name);
+    expect(给原负责人?.readAt).toBeNull();
+  });
+
+  it("总管理撤回别人发起的：接手人旧通知已读、收到「已撤回」；发起人也收到", async () => {
+    const a = await 客户(销售.id);
+    当(销售);
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
+    const h = await 一笔();
+
+    当(老板);
+    expect(await 撤回交接(h.id)).toEqual({ ok: true, 客户: 0 });
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).not.toBeNull();
+    expect(await 通知(接手.id, "已撤回", h.id)).not.toBeNull();
+    expect((await 通知(销售.id, "已撤回", h.id))?.title).toContain("撤回");
+  });
+
+  it("离职交接拒收：旧通知已读；停用的原负责人不收", async () => {
+    await 客户(销售.id);
+    await deactivateUser(销售.id, 接手.id);
+    const h = await 一笔();
+    当(接手);
+    expect(await 拒收交接(h.id)).toEqual({ ok: true, 客户: 0 });
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).not.toBeNull();
+    expect(await 通知(老板.id, "已拒收", h.id)).not.toBeNull();
+    expect(await prisma.entNotice.count({ where: { userId: 销售.id } })).toBe(0);
+  });
+
+  it("转给自己当场换：原负责人收到一条，写着客户名", async () => {
+    const a = await 客户(销售.id);
+    当(组长);
+    expect(await assignSalesOwner([a.id], 组长.id)).toMatchObject({ ok: true, updated: 1 });
+    const 收到 = await prisma.entNotice.findMany({ where: { userId: 销售.id } });
+    expect(收到).toHaveLength(1);
+    expect(收到[0].title).toContain(a.name);
+    expect(await prisma.entNotice.count({ where: { userId: 组长.id } })).toBe(0);
+  });
+});
