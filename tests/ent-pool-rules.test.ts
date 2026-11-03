@@ -681,3 +681,35 @@ describe("项目不能单独领，只能随客户一起领（10-31 晚定）", (
     expect(await 领取公海项目(乙, p)).toEqual({ ok: false, error: 原负责人不能领回提示 });
   });
 });
+
+describe("客户级放公海、占位负责人的原负责人（11-03 完成度 B1-4 / B4-3）", () => {
+  it("名下有没结束的订单阶段项目：放不进客户公海；订单有了结局的照放（B1-4）", async () => {
+    const 有单 = await 客户(乙.id);
+    await 项目(乙.id, 有单, { phase: "订单" });
+    const 结了 = await 客户(乙.id);
+    await 项目(乙.id, 结了, { phase: "订单", result: "赢单" });
+    当(乙);
+    expect(await 放进公海([有单], "客户主动终止")).toEqual({ ok: false, error: expect.stringContaining("订单阶段") });
+    expect(await 在客户公海(有单)).toBe(false);
+    expect(await 放进公海([有单, 结了], "客户主动终止")).toMatchObject({ ok: true, updated: 1, 有订单: 1, 没权限: 0 });
+    expect(await 在客户公海(结了)).toBe(true);
+    expect(await 在客户公海(有单)).toBe(false);
+  });
+
+  it("客户挂在占位账号下、项目是乙放回的：乙领客户、领项目都报「原负责人不能领回」，丙照领（B4-3）", async () => {
+    const u = await prisma.user.create({ data: { email: 无负责人占位邮箱, name: 无负责人占位名, title: "", role: "SALES", password: "x", active: false } });
+    const c = await 客户(u.id);
+    const p = await 项目(乙.id, c);
+    await 放回公海(乙, p);
+    await prisma.customerPool.upsert({ where: { customerId: c }, update: {}, create: { customerId: c, userId: u.id, reason: "导入：原系统公海" } });
+    await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: u.id } });
+    忘掉企业版范围();
+    当(乙);
+    expect(await 以谁的身份(乙.id, () => 领取([c]))).toEqual({ ok: false, error: 原负责人不能领回提示 });
+    expect(await 以谁的身份(乙.id, () => 领取公海项目(乙, p))).toEqual({ ok: false, error: 原负责人不能领回提示 });
+    expect(await 在客户公海(c)).toBe(true);
+    当(丙);
+    expect(await 以谁的身份(丙.id, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 负责人(c)).toBe(丙.id);
+  });
+});

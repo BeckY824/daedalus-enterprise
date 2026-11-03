@@ -28,6 +28,8 @@ import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
 import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
 import { 无负责人占位邮箱 } from "@/lib/pool";
+import { 能进公海的阶段 } from "@/lib/project/db";
+import { 历史负责人们 } from "@/lib/project/pool-owner";
 import { Prisma } from "@/generated/prisma";
 
 export type 公海结果 =
@@ -39,6 +41,8 @@ export type 公海结果 =
       unchanged: number;
       /** 不是自己的、自己又不是管理员——放不进去 */
       没权限: number;
+      /** 放进公海：名下有没结束的订单阶段项目、没放的几位（企业版，B1-4） */
+      有订单?: number;
       /** 领取时跟着过来的没做完的活 */
       带走?: 带走数;
       /** 领取前各归谁：撤销领取时还给他、放回公海 */
@@ -83,6 +87,8 @@ export async function 退回原因选项(): Promise<string[]> {
   return 可选项("recycle");
 }
 
+const 有订单不能放提示 = (客户: string) => `${客户}名下有没结束的订单阶段项目，不能放回公海`;
+
 /**
  * 放进公海：负责人本人或管理员才能放（别人的客户你放不进去——那等于替同事把人扔了）。可批量，
  * 不是自己的那几位跳过并说一声。原负责人不动，领的人来了才换。
@@ -101,9 +107,19 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   const 管 = 能管公海(me, 组织);
   // 11-02：自己的也得是销售 / 销售管理才能放（管理员只读、没设业务角色的没权限）
   const 自己能放 = 能转出自己的(me, 组织);
-  const 能放 = 这些.filter((c) => !c.pool && (管 || (自己能放 && c.salesOwnerId === me.id)));
-  const 没权限 = 这些.length - 已在.length - 能放.length;
+  const 有权限 = 这些.filter((c) => !c.pool && (管 || (自己能放 && c.salesOwnerId === me.id)));
+  // 企业版：名下有没结束的订单阶段项目的不能放（11-03 完成度 B1-4，同项目放回公海「订单阶段的项目不能放回公海」）。
+  // 不按谁在看限定：别人负责的订单项目也算
+  const 有订单 = 企业版() && 有权限.length
+    ? new Set((await 看全部(() => prisma.project.findMany({
+        where: { customerId: { in: 有权限.map((c) => c.id) }, pooledAt: null, result: null, phase: { notIn: [...能进公海的阶段] } },
+        select: { customerId: true },
+      }))).map((p) => p.customerId))
+    : new Set<string>();
+  const 能放 = 有权限.filter((c) => !有订单.has(c.id));
+  const 没权限 = 这些.length - 已在.length - 有权限.length;
   if (!能放.length) {
+    if (有订单.size) return { ok: false, error: 有订单不能放提示(b.customer) };
     return 没权限 ? { ok: false, error: `只有负责人或总管理、销售管理能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
   }
   // 能放了才问原因：放不了的那句（虚线、没权限、已在公海）照旧先说
@@ -120,7 +136,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
     detail: { ids: 能放.map((c) => c.id), ...(选.值 ? { 原因: 选.值 } : {}) },
   });
   刷新(ids);
-  return { ok: true, updated: 能放.length, unchanged: 已在.length, 没权限 };
+  return { ok: true, updated: 能放.length, unchanged: 已在.length, 没权限, ...(有订单.size ? { 有订单: 有订单.size } : {}) };
 }
 
 /**
@@ -142,6 +158,16 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
   const 不能领 = 拦原负责人()
     ? new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: me.id, pool: { isNot: null } }, select: { id: true } }))).map((c) => c.id))
     : new Set<string>();
+  // 客户挂在「没人负责」占位账号下（导入的原系统公海、离职转公海）：客户上看不出原负责人，
+  // 按名下公海项目的历史负责人认，是我放回的就领不回（11-03 完成度 B4-3；领客户会把这些项目一起带走）
+  if (拦原负责人()) {
+    const 占位的 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, pool: { isNot: null }, salesOwner: { email: 无负责人占位邮箱 } }, select: { id: true } }))).map((c) => c.id);
+    if (占位的.length) {
+      const 公海项目们 = await 看全部(() => prisma.project.findMany({ where: { customerId: { in: 占位的 }, pooledAt: { not: null } }, select: { id: true, customerId: true } }));
+      const 原 = await 历史负责人们(prisma, 公海项目们.map((p) => p.id));
+      for (const p of 公海项目们) if (原.get(p.id) === me.id) 不能领.add(p.customerId);
+    }
+  }
   // 企业版：标了无效的不能领（统一公海 P7），和原负责人领不回一样算「没权限」那几位
   const 无效 = await 无效的(ids);
   const 原负责人的 = 不能领.size;

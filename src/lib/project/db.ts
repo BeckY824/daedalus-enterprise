@@ -703,8 +703,13 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     const p = await tx.project.findUnique({ where: { id } });
     // 两人同时领：先进来的领走了，项目就落到后进来那位的范围外（业务员只看自己的 + 公海），带限定查是空的；
     // 不带限定再看一眼，还在就是被人领走了，不是删了（D-35）
-    if (!p) return (await 看全部(() => tx.project.findUnique({ where: { id }, select: { id: true } })))
-      ? 领走了 : { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+    if (!p) {
+      const 真 = await 看全部(() => tx.project.findUnique({ where: { id }, select: { id: true, pooledAt: true } }));
+      if (!真) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+      // 还在公海、只是我看不到：是我放回的（原负责人回避），话说准（11-03 完成度 B4-3）
+      if (真.pooledAt && 企业版() && !公海规则.原负责人能领回 && (await 历史负责人(tx, id)) === me.id) return { ok: false as const, error: 原负责人不能领回提示 };
+      return 领走了;
+    }
     if (!p.pooledAt) return 领走了;
     if (!(await 在职(tx, me.id))) return { ok: false as const, error: "账号已停用" };
     // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了（领项目会把客户一起带走）
