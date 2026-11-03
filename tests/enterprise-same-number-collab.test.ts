@@ -22,6 +22,7 @@ import { 查号码 } from "@/app/(app)/customers/number-actions";
 import { saveLead } from "@/app/(app)/leads/actions";
 import { 待我回的邀请, 读必填数据 } from "@/lib/project/db";
 import { saveCustomer } from "@/app/(app)/customers/actions";
+import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
 import { 字段表, 猜列 } from "@/lib/import/fields";
 import { getBusiness } from "@/lib/business";
@@ -239,6 +240,18 @@ describe("同号再次录入", () => {
     expect(r.见客户).toBeNull(); // 前提：这位组员确实看不到客户
     expect(r.数据.有客户).toBe(true);
     expect(r.数据.客户.phone).toBe(号码);
+  });
+
+  it("看不到客户的组员直接记沟通：说没权限，不说客户不在了（11-03 B5-6）", async () => {
+    const x = await 现场();
+    await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.市场.id, inviteStatus: "JOINED", invitedById: x.负责人.id } });
+    const r = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "PHONE", content: "组员想记一条", status: "已完成", occurredAt: new Date().toISOString() }));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).not.toContain("不在了");
+    expect(r.error).toContain("没有权限");
+    const 没了 = await 作为(x.市场, () => saveFollowUp({ customerId: "没有这个客户", type: "PHONE", content: "x", status: "已完成", occurredAt: new Date().toISOString() }));
+    expect(!没了.ok && 没了.error).toContain("不在了");
   });
 });
 

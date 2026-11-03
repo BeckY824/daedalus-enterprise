@@ -5,7 +5,7 @@ import { hasVisibleText } from "@/lib/form-validation";
 import { 不在了 } from "@/lib/not-there";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 只读客户, 只读话, 读的我 } from "@/lib/team-scope";
+import { 只读客户, 只读话, 读的我, 看全部 } from "@/lib/team-scope";
 import type { Prisma } from "@/generated/prisma";
 import { requireUser } from "@/lib/auth";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES } from "@/lib/constants";
@@ -216,7 +216,8 @@ export async function saveFollowUp(input: FollowUpInput) {
     const 领取了 = 在公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
     const result = await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
-      if (!customer) return { ok: false as const, error: "这个客户已经不在了，请刷新重试" };
+      // 客户在、只是看不到（比如项目组员）：说没权限，不说「不在了」（11-03 B5-6）
+      if (!customer) return { ok: false as const, error: (await 看全部(() => tx.customer.findUnique({ where: { id: input.customerId }, select: { id: true } }))) ? "你没有权限给这个客户记沟通，请找负责人" : "这个客户已经不在了，请刷新重试" };
       const plan = extra?.完成计划 ? await tx.followPlan.findFirst({ where: { id: extra.完成计划, customerId: input.customerId } }) : null;
       if (extra?.完成计划 && !plan) return { ok: false as const, error: "要完成的计划已不存在或不属于这位客户，请重新选择" };
       const audits: Parameters<typeof recordAudit>[0][] = [];
