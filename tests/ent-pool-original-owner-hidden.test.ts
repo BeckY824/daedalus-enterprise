@@ -143,11 +143,20 @@ describe("原负责人退到公海后看不到", () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c, "能读到名字的项目");
     当(乙);
-    expect(await 以谁的身份(乙.id, () => 放回项目公海(p))).toEqual({ ok: true });
+    // 客户名下就这一个项目，客户跟着进了公海：action 带回 客户跟着，提示条据此说清（11-03 B4-2）
+    expect(await 以谁的身份(乙.id, () => 放回项目公海(p))).toEqual({ ok: true, 客户跟着: true });
     const 记 = await raw.auditLog.findFirst({ where: { entityId: p, action: "update" }, orderBy: { at: "desc" } });
     expect(记?.summary).toContain("能读到名字的项目");
     // action 里忘掉过范围：不用等 10 秒缓存
     expect(await 看(乙, c, p)).toEqual(都看不到);
+  });
+
+  it("放回项目公海：客户归别人、没跟着进公海时不带 客户跟着（11-03 B4-2）", async () => {
+    const c = await 客户(丙.id);
+    const p = await 项目(乙.id, c, "客户归丙的项目");
+    当(乙);
+    expect(await 以谁的身份(乙.id, () => 放回项目公海(p))).toEqual({ ok: true });
+    expect(await raw.customerPool.findUnique({ where: { customerId: c } })).toBeNull();
   });
 
   it("放进公海（客户级）：他还负责的项目也一起看不到；撤销（时限内）回来", async () => {

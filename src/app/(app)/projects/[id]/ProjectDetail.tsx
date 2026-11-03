@@ -1425,12 +1425,14 @@ export default function ProjectDetail({
         okButtonProps={{ loading: 忙, disabled: !!其他没写好(回收原因) }}
         onCancel={() => set放回框(false)}
         onOk={async () => {
-          const ok = await 跑(() => 放回项目公海(p.id, 回收原因), "已放回项目公海");
+          let 客户跟着 = false;
+          const ok = await 跑(async () => { const r = await 放回项目公海(p.id, 回收原因); 客户跟着 = r.ok && "客户跟着" in r && !!r.客户跟着; return r; });
+          if (ok) message.success(客户跟着 ? "已放回项目公海，客户和名下别的项目一起进了公海" : "已放回项目公海");
           // 企业版放回后原负责人看不到这个项目了（C-01，lib/project/pool-owner.ts 原负责人回避），回项目列表
           if (ok) { set放回框(false); router.push("/projects"); }
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户也归你时，客户会一起进公海，客户名下别的项目跟着客户走，你也都看不到了（名下有没结束的订单项目时客户不动）。</div>
         <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
       </Modal>
 
