@@ -618,7 +618,8 @@ export const 能进公海的阶段 = ["线索", "商机"] as const;
  * 不管怎么到手的——自己建的、领的、被指派的、自动分配的——都算；待分配（awaitAssignAt 有值，建的人只是占着负责人那一格）的不算
  */
 export async function 持有数(db: Pick<Prisma.TransactionClient, "project">, userId: string): Promise<number> {
-  return db.project.count({ where: { ownerId: userId, pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] } } });
+  // 数的是 userId 手上真有几个，不按谁在看限定（11-03 A3-1：市场管理分配时看不到别人名下的，少数了、突破上限）
+  return 看全部(() => db.project.count({ where: { ownerId: userId, pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] } } }));
 }
 
 /**

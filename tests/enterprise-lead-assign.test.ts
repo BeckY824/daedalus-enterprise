@@ -711,7 +711,8 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
   it("手动分带待办（C-06）：勾着改给接手人，不勾关掉；自动分配不碰", async () => {
     const 待办 = (title: string) => prisma.task.create({ data: { title, customerId: 客户, ownerId: 市场, dueOn: "2026-11-20" } });
     const 看 = (id: string) => prisma.task.findUniqueOrThrow({ where: { id } });
-    // 客户归市场（原负责人）：只算标题点了项目名的
+    // 客户归市场（原负责人）：只算标题点了项目名的。客户名下另有项目，分出去客户不跟着走（A3-3），一直归市场
+    await 建项目("占位");
     const P = await 建项目("P");
     const 这个 = await 待办("「P」回电话");
     const 客户上的 = await 待办("回个电话");
