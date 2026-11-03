@@ -281,6 +281,26 @@ describe("原负责人退到公海后看不到", () => {
     expect(await 看(丙, 们[0].c, 们[0].p)).toMatchObject({ 客户详情: true, 项目详情: true });
   });
 
+  it("负责人是他的线索挂在回避客户上也不出；没挂客户的、别的客户上的照常", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    const 别的 = await 客户(乙.id, "别的客户");
+    const 挂回避 = await raw.lead.create({ data: { name: "挂回避", ownerId: 乙.id, customerId: c } });
+    const 挂别的 = await raw.lead.create({ data: { name: "挂别的", ownerId: 乙.id, customerId: 别的 } });
+    const 没挂 = await raw.lead.create({ data: { name: "没挂", ownerId: 乙.id } });
+    const 乙看 = () => 以谁的身份(乙.id, () => prisma.lead.findMany({ select: { id: true } })).then((r) => r.map((x) => x.id));
+    当(乙);
+    await 以谁的身份(乙.id, () => 放回公海(乙, p));
+    忘掉企业版范围();
+    当(乙);
+    expect((await 乙看()).sort()).toEqual([挂别的.id, 没挂.id].sort());
+    await raw.setting.deleteMany({ where: { key: 规则.按组织看客户.key } });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    当(乙);
+    expect(await 乙看()).not.toContain(挂回避.id);
+  });
+
   it("没设业务角色的人也回避（他只看公海）", async () => {
     const 无角色 = await 造人("none2@x", "无角色二", "SALES", null);
     const { c, p } = await 导入的(无角色.id);

@@ -338,7 +338,11 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
       return 避客 ? { AND: [{ OR: [{ ownerId: 我 }, { customer: 原客户 }] }, { customer: 避客 }] } : { OR: [{ ownerId: 我 }, { customer: 客户 }] };
     // 线索照旧（10-31 市场成员不放开线索）；按线的（11-02）跟这条线的客户走
     case "Lead":
-      return { OR: [{ ownerId: 我 }, { customer: 避客 ? { AND: [可见客户(谁们), 避客] } : 可见客户(谁们) }, ...(按线 ? [{ customer: 按线.客户 }] : [])] };
+      {
+        const 线索 = { OR: [{ ownerId: 我 }, { customer: 可见客户(谁们) }, ...(按线 ? [{ customer: 按线.客户 }] : [])] };
+        // 回避的客户上，负责人还是我的线索也不出；没挂客户的线索和回避无关
+        return 避客 ? { AND: [线索, { OR: [{ customerId: null }, { customer: 避客 }] }] } : 线索;
+      }
     case "AuditLog":
       return { userId: 我 };
     case "UnassignedContact":
@@ -425,7 +429,7 @@ function 回避项目条件(避: 公海回避): Record<string, unknown> {
 
 /**
  * 规则「按组织看客户」关着时（别人一律不限定）原负责人照样回避：不限定别的，只加回避这一段。
- * 跟 限定条件 同一批表；线索没挂客户、负责人是他自己的不挡（同 限定条件），操作日志、未归属联系人和回避无关
+ * 跟 限定条件 同一批表；线索没挂客户的不挡（同 限定条件），操作日志、未归属联系人和回避无关
  */
 export function 只回避条件(model: string, 避: 公海回避): Record<string, unknown> | null {
   const 客 = 回避客户条件(避);
@@ -437,7 +441,7 @@ export function 只回避条件(model: string, 避: 公海回避): Record<string
     case "FollowPlan":
       return { customer: 客 };
     case "Lead":
-      return { OR: [{ customerId: null }, { ownerId: 避.本人 }, { customer: 客 }] };
+      return { OR: [{ customerId: null }, { customer: 客 }] };
     case "Project":
       return 项;
     case "EntBlocker":
