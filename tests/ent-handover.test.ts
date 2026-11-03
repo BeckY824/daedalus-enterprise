@@ -19,7 +19,7 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
-import { deactivateUser, reactivateUser } from "@/app/(app)/settings/actions";
+import { deactivateUser, reactivateUser, 停用清点 } from "@/app/(app)/settings/actions";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接 } from "@/app/(app)/customers/handover-actions";
 import { 了结 } from "@/lib/enterprise/handover-db";
@@ -239,6 +239,27 @@ describe("转让交接中放公海（11-03 完成度 C3-2）", () => {
     当(接手);
     expect(await 确认交接((await 一笔()).id)).toEqual({ ok: true, 客户: 0 });
     expect(await 归谁(a.id)).toBe(销售.id);
+  });
+});
+
+describe("离职交接时本来在公海的客户（11-03 完成度 C4-1）", () => {
+  // 原来：转交把公海里的也改到接手人名下，公海那行还在，接手人成了「原负责人」，看不到也领不到
+  it("转交：在公海的不算进接手、确认后留在公海不转；清点分开数", async () => {
+    const a = await 客户(销售.id);
+    const b = await 客户(销售.id);
+    await prisma.customerPool.create({ data: { customerId: b.id, userId: 销售.id, reason: "手动" } });
+    const pb = (await prisma.project.create({ data: { name: "公海客户的项目", customerId: b.id, ownerId: 销售.id, creatorId: 销售.id, phase: "线索" } })).id;
+    const tb = await prisma.task.create({ data: { title: "回电", customerId: b.id, ownerId: 销售.id } });
+
+    expect(await 停用清点(销售.id)).toMatchObject({ ok: true, 转交: { 客户: 1, 进公海客户: 1, 项目: 0 } });
+    expect(await deactivateUser(销售.id, 接手.id, "转交")).toEqual({ ok: true, 交接中: true });
+    当(接手);
+    expect(await 确认交接((await 一笔()).id)).toEqual({ ok: true, 客户: 1 });
+    expect(await 归谁(a.id)).toBe(接手.id);
+    expect(await 归谁(b.id)).toBe(销售.id);
+    expect(await prisma.customerPool.count({ where: { customerId: b.id } })).toBe(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: pb } })).ownerId).toBe(销售.id);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: tb.id } })).ownerId).toBe(销售.id);
   });
 });
 

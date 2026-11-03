@@ -623,7 +623,7 @@ function OffboardForm({ name, 点, others, defaultTarget, onChange }: {
       {方式 === "转交" ? (
         <Typography.Paragraph type="secondary" style={小字}>
           {/* 说清转交的是往后要跟的活、历史业绩不动（排查 B2）。原来只写「名下 N 个客户、N 个商机」，叫法还写死成「客户」 */}
-          {数.客户} 位{b.customer}{数.项目 ? `、${数.项目} 个项目` : ""}，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：
+          {数.客户} 位{b.customer}{数.项目 ? `、${数.项目} 个项目` : ""}{数.进公海客户 ? `（另有 ${数.进公海客户} 位本来就在公海，不动）` : ""}，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：
         </Typography.Paragraph>
       ) : (
         <Typography.Paragraph type="secondary" style={小字}>
