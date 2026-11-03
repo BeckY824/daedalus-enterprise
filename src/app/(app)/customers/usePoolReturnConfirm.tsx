@@ -5,7 +5,8 @@ import DictSelect from "@/components/DictSelect";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { 退回原因选项 } from "./pool-actions";
 
-export const 一起退说明 = "名下联系人、项目一起退回公海，谁领了客户就一起归谁；6 秒内可以撤销。";
+// 原负责人领不回、也看不到（企业版口径，pool-rules.ts）；这个框只有企业版弹（11-03 B1-2）
+export const 一起退说明 = "名下联系人、项目一起退回公海，同事领了客户就一起归他；原负责人不能再领回来，也看不到它了；6 秒内可以撤销。";
 
 /**
  * 客户放回公海前问一句（企业版 U-客户-04 + M-公海-09，流程同转让）：写明名下联系人、项目一起退，

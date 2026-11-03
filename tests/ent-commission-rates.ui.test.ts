@@ -98,7 +98,7 @@ it("不能改的人：六格全灰，没有保存，写着谁能改", async () =
   try {
     expect(await 卡.locator("input:disabled").count()).toBe(6);
     expect(await 卡.getByRole("button", { name: /保\s*存/ }).count()).toBe(0);
-    expect(await 卡.innerText()).toContain("只有老板、总管理员能改");
+    expect(await 卡.innerText()).toContain("只有总管理能改");
   } finally { await page.close(); }
 });
 
@@ -168,7 +168,7 @@ it("按人设置：不能改的人六格全灰、没有保存", async () => {
     await 按人卡.waitFor();
     expect(await 按人卡.locator("input:disabled").count()).toBe(6);
     expect(await 按人卡.getByRole("button", { name: /保\s*存/ }).count()).toBe(0);
-    expect(await 按人卡.innerText()).toContain("只有老板、总管理员能改");
+    expect(await 按人卡.innerText()).toContain("只有总管理能改");
   } finally { await page.close(); }
 });
 

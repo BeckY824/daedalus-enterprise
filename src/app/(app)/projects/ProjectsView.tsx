@@ -168,8 +168,8 @@ export default function ProjectsView({
       {首页卡口径[卡].名}
     </Tag>
   ) : undefined;
-  // 公海里同事客户的项目不给客户名（page.tsx 露客户），领取后再看
-  const 领了再看 = "领取后可见";
+  // 看不到的客户不给客户名（page.tsx 露客户）：在公海的领了再看；不在公海的（比如组员）领不了，不写「领取」（11-03 B6-1）
+  const 领了再看 = (r: { pooled: boolean }) => (r.pooled ? "领取后可见" : "无权查看");
 
   const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => (项目页分 ? `已分给 ${r.接手人}` : `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`);
   // 页头「分配」：分配在列表的每行和勾选里做，看板上点它先切到列表
@@ -227,7 +227,7 @@ export default function ProjectsView({
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「进程」挤成两个字一行
     // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）；企业版每格一行、放不下省略号悬停看全（11-01 会议 §11，DataList 单行）
     { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string) => <span className="fulltext" title={v}>{v}</span> },
-    { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
+    { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看(r)}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
     // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列
     ...(新线索 ? [] : [{ title: "阶段", key: "phase", width: 72, ...收起, render: (_: unknown, r: 项目行) => 阶段与进程(r, 字典).阶段 }]),
     { title: "进程", key: "node", width: 130, render: (_, r) => <>{节点文字(r, 字典)}{!企业版 && r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
@@ -412,8 +412,8 @@ export default function ProjectsView({
                           style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.列] }}
                           tabIndex={0}
                           role="link"
-                          title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看} · ${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}`}
-                          aria-label={`${r.name}，${r.customerName ?? 领了再看}，${异常 ? "异常 · " : ""}${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}`}
+                          title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}`}
+                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${异常 ? "异常 · " : ""}${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}`}
                           onClick={() => router.push(`/projects/${r.id}`)}
                           onMouseEnter={() => 预取.进(`/projects/${r.id}`)}
                           onMouseLeave={预取.出}
@@ -428,7 +428,7 @@ export default function ProjectsView({
                         >
                           <div className="pipe-card-t fulltext" title={r.name}>{r.name}</div>
                           <div className="pipe-card-m">
-                            <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看}</span>
+                            <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
                           </div>
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>

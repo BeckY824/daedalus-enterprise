@@ -21,7 +21,7 @@ import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能转出自己的 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 只读角色 } from "@/lib/enterprise/permissions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -202,6 +202,7 @@ export default async function CustomerDetailPage({
       项目们={项目们}
       参与项目们={参与项目们}
       只读={只读}
+      管理员只读={企 && 只读角色(me, await 权限组织())}
       能改沟通={可改沟通}
       能删沟通={可删沟通}
       客户状态选项={客户状态选项}

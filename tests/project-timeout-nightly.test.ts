@@ -8,6 +8,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
+const mocks = vi.hoisted(() => ({ user: { id: "", name: "乙", email: "yi", role: "SALES", title: "", avatar: null as string | null } }));
+vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
+vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -18,6 +22,7 @@ import { 超时理由, 将回收提醒, 即将回收 } from "@/lib/project/timeo
 import { 读项目列表 } from "@/lib/project/list";
 import { 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
+import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 
 const 开着 = (节点天数: Record<string, number>): 组织规则 => ({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数 } });
 /** 服务器本地时间 */
@@ -204,6 +209,18 @@ describe("回收前一天提醒 + 即将回收（10-27）", () => {
     expect(await 没勾的()).toBe(1);
     expect(await 记项目沟通(乙我, p.id, 沟通("2026-10-28"), 现在)).toMatchObject({ ok: true }); // 起点推到 10-25 → 10-28
     expect(await 提醒们()).toEqual([expect.objectContaining({ done: true, doneAt: 现在 })]);
+  });
+
+  it("客户上记跟进（不挂项目）也续了回收时钟 → 那条提醒同样勾掉（11-03 B3-1）", async () => {
+    await 项目("2026-10-23 10:00"); // 3 天 → 10-26
+    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
+    expect((await 提醒们()).map((t) => t.done)).toEqual([false]);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(时("2026-10-25 10:00"));
+    mocks.user = { ...mocks.user, id: 乙 };
+    expect(await saveFollowUp({ customerId: 客户, type: "PHONE", content: "聊了", status: "已完成", occurredAt: 时("2026-10-25 09:00").toISOString() } as never)).toMatchObject({ ok: true });
+    // 起点推到 10-25 → 10-28 回收，不再是明天
+    expect(await 提醒们()).toEqual([expect.objectContaining({ done: true })]);
   });
 
   it("不是企业版：记沟通不碰待办（同样标题的也不勾）", async () => {

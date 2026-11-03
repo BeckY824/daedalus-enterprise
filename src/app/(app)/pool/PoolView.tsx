@@ -48,6 +48,8 @@ type Props = {
   users: 可选成员[];
   /** 持有上限开着、我不是不限：手上几个（同 超上限 的口径） / 上限几个；没开为 null */
   持有: { 有: number; 上限: number } | null;
+  /** 只读管理员（11-03 B2-1）：不摆领取、不给勾选；行末没别的操作时操作列整列不出 */
+  只读?: boolean;
 };
 
 /** 项目行操作列里的短说法（整句「项目不能单独领提示」在悬停里） */
@@ -68,7 +70,9 @@ const 快捷说明: Record<快捷, string> = {
 
 const 无效原因 = "标了无效，要总管理先恢复";
 
-const 行名 = (r: 公海行) => r.客户名 ?? r.项目名 ?? "这一行";
+const 行名 = (r: 公海行) => (r.种 === "项目" ? r.项目名 ?? r.客户名 : r.客户名 ?? r.项目名) ?? "这一行";
+/** 提示条里叫这一行：项目行写明是项目，别读成客户被领走 / 分走（11-03 B2-6：只动了项目，提示写的是客户名） */
+const 叫 = (r: 公海行) => (r.种 === "项目" && r.项目名 ? `项目「${r.项目名}」` : `「${行名(r)}」`);
 
 /** 领取 / 分配的提示条正文：没领到的能展开看每一条为什么 */
 function ResultBar({ 文案, 没领到, 撤销 }: { 文案: string; 没领到: { 名: string; 原因: string }[]; 撤销?: () => void }) {
@@ -89,7 +93,7 @@ function ResultBar({ 文案, 没领到, 撤销 }: { 文案: string; 没领到: {
   );
 }
 
-export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 能标无效, 能恢复, 能分配, users, 持有 }: Props) {
+export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 能标无效, 能恢复, 能分配, users, 持有, 只读 = false }: Props) {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
@@ -156,8 +160,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     }
     const 带走 = 客户res?.ok ? 带走说法(客户res.带走) : "";
     const 文案 = 动作 === "领取"
-      ? (们.length === 1 ? `已领取「${行名(们[0])}」${带走}` : 没领到.length ? `领到 ${到数} 个，${没领到.length} 个没领到` : `已领取 ${到数} 个${带走}`)
-      : (们.length === 1 ? `已把「${行名(们[0])}」分给 ${给谁?.name ?? "同事"}${带走}` : `已分给 ${给谁?.name ?? "同事"} ${到数} 个${没领到.length ? `，${没领到.length} 个没分出去` : ""}`);
+      ? (们.length === 1 ? `已领取${叫(们[0])}${带走}` : 没领到.length ? `领到 ${到数} 个，${没领到.length} 个没领到` : `已领取 ${到数} 个${带走}`)
+      : (们.length === 1 ? `已把${叫(们[0])}分给 ${给谁?.name ?? "同事"}${带走}` : `已分给 ${给谁?.name ?? "同事"} ${到数} 个${没领到.length ? `，${没领到.length} 个没分出去` : ""}`);
     const key = `pool-${动作}-${们[0].id}-${们.length}`;
     const 撤销 = async () => {
       message.destroy(key);
@@ -182,7 +186,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   function 标记(r: 公海行, 动作: "无效" | "恢复") {
     modal.confirm({
       title: 动作 === "无效" ? `把「${行名(r)}」标成无效客户？` : `把「${行名(r)}」恢复成有效客户？`,
-      content: 动作 === "无效" ? "标了以后谁都领不了，只有老板能恢复" : "恢复后留在公海里，谁都能领",
+      content: 动作 === "无效" ? "标了以后谁都领不了，只有总管理能恢复" : "恢复后留在公海里，谁都能领",
       okText: 动作 === "无效" ? "标无效" : "恢复",
       cancelText: "取消",
       onOk: async () => {
@@ -210,7 +214,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     return items;
   }
 
-  const 列们: 列<公海行>[] = [
+  const 全部列: 列<公海行>[] = [
     {
       title: "公海属性", key: "属性", width: 96, 常驻: true,
       render: (_, r) => <Tag color={属性色[r.属性]} style={{ marginInlineEnd: 0 }}>{r.属性}</Tag>,
@@ -261,10 +265,12 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         return (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 0 }}>
             <Space size={2}>
-              <Button className="row-act" aria-label={`领取 ${行名(r)}`} disabled={!!因} size="small"
-                onClick={(e) => { e.stopPropagation(); void 动手("领取", [r]); }}>
-                领取
-              </Button>
+              {!只读 && (
+                <Button className="row-act" aria-label={`领取 ${行名(r)}`} disabled={!!因} size="small"
+                  onClick={(e) => { e.stopPropagation(); void 动手("领取", [r]); }}>
+                  领取
+                </Button>
+              )}
               {!!菜单?.length && (
                 <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
                   <Button className="row-act" aria-label={`更多操作 ${行名(r)}`} type="text" size="small" icon={<MoreOutlined />} onClick={(e) => e.stopPropagation()} />
@@ -272,12 +278,13 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
               )}
             </Space>
             {/* 操作列只有 136 宽：长的那句（项目不能单独领）行内写短的，整句放悬停里 */}
-            {因 && <span className="muted nowrap" style={{ fontSize: 12, lineHeight: "18px" }} title={因}>{因 === 项目不能单独领提示 ? 项目不能单独领短说 : 因}</span>}
+            {因 && !只读 && <span className="muted nowrap" style={{ fontSize: 12, lineHeight: "18px" }} title={因}>{因 === 项目不能单独领提示 ? 项目不能单独领短说 : 因}</span>}
           </div>
         );
       },
     },
   ];
+  const 列们 = 全部列.filter((c) => !(只读 && c.key === "操作" && !能分配 && !能标无效 && !能恢复));
 
   const 筛选 = (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 8px", minWidth: 0 }}>
@@ -343,7 +350,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         空态={{ title: "公海是空的", hint: "超时没跟进、被退回的客户和项目会出现在这里", demo: false }}
         筛选={筛选}
         汇总={截断 ? <div className="muted" style={{ fontSize: 12 }}>公海里太多了，这里只列最近入池的一批；更早的请用搜索找</div> : undefined}
-        批量={(选中, 清空, 选中行) => (
+        批量={只读 ? undefined : (选中, 清空, 选中行) => (
           <Space size={6} wrap>
             <Button size="small" onClick={async () => { await 动手("领取", 选中行); 清空(); }}>领取</Button>
             {能分配 && 分给谁.length > 0 && (

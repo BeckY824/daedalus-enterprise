@@ -20,8 +20,9 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 同号再次录入, 同号可协同, 同号只记备注, 同号提醒们, 同号节点 } from "@/lib/enterprise/same-number-collab";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
 import { saveLead } from "@/app/(app)/leads/actions";
-import { 待我回的邀请 } from "@/lib/project/db";
+import { 待我回的邀请, 读必填数据 } from "@/lib/project/db";
 import { saveCustomer } from "@/app/(app)/customers/actions";
+import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
 import { 字段表, 猜列 } from "@/lib/import/fields";
 import { getBusiness } from "@/lib/business";
@@ -227,6 +228,31 @@ describe("同号再次录入", () => {
     expect((await 作为(管, () => 同号再次录入(管, 好号(), { 入口: "手工建档" }))).走).toBe(false);
     expect(await prisma.followUp.count({ where: { customerId: x.客户.id } })).toBe(0);
   });
+
+  it("组员看不到客户时，项目必填不误报「所属客户」（11-03 B6-1）", async () => {
+    const x = await 现场();
+    await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.市场.id, inviteStatus: "JOINED", invitedById: x.负责人.id } });
+    const 行 = await prisma.project.findUniqueOrThrow({ where: { id: x.项目!.id } });
+    const r = await 作为(x.市场, async () => ({
+      见客户: await prisma.customer.findUnique({ where: { id: x.客户.id }, select: { id: true } }),
+      数据: await 读必填数据(prisma, 行),
+    }));
+    expect(r.见客户).toBeNull(); // 前提：这位组员确实看不到客户
+    expect(r.数据.有客户).toBe(true);
+    expect(r.数据.客户.phone).toBe(号码);
+  });
+
+  it("看不到客户的组员直接记沟通：说没权限，不说客户不在了（11-03 B5-6）", async () => {
+    const x = await 现场();
+    await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.市场.id, inviteStatus: "JOINED", invitedById: x.负责人.id } });
+    const r = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "PHONE", content: "组员想记一条", status: "已完成", occurredAt: new Date().toISOString() }));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).not.toContain("不在了");
+    expect(r.error).toContain("没有权限");
+    const 没了 = await 作为(x.市场, () => saveFollowUp({ customerId: "没有这个客户", type: "PHONE", content: "x", status: "已完成", occurredAt: new Date().toISOString() }));
+    expect(!没了.ok && 没了.error).toContain("不在了");
+  });
 });
 
 describe("入口", () => {
@@ -318,6 +344,31 @@ describe("入口", () => {
     await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: x.负责人.id } });
     expect(await 作为(x.销售, () => 查号码("手机号", 号码))).not.toHaveProperty("可协同");
   });
+
+  it("查号码带上协同情况，向导按它说那段话：别人的项目 / 自己负责 / 已在组 / 没项目（11-03 B6-8 / B7-4）", async () => {
+    const x = await 现场();
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: true, 自己负责: false, 已在组: false } });
+    expect(await 作为(x.负责人, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: true, 自己负责: true } });
+    await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.销售.id, inviteStatus: "JOINED" } });
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: true, 自己负责: false, 已在组: true } });
+  });
+
+  it("查重撞到自己退回公海的：带原负责人是我（向导不给打开它、去领取）；别人查不带（11-03 B7-3）", async () => {
+    const x = await 现场();
+    await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: x.负责人.id } });
+    expect(await 作为(x.负责人, () => 查号码("手机号", 号码))).toMatchObject({ 状态: "公海待捞", 原负责人是我: true });
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).not.toHaveProperty("原负责人是我");
+    // 负责人不是我、但项目是我退的：同样领不回
+    await prisma.project.update({ where: { id: x.项目!.id }, data: { pooledAt: new Date(), ownerId: "" } });
+    await prisma.projectNodeLog.create({ data: { projectId: x.项目!.id, userId: x.销售.id, kind: "pool-release", fromOwnerId: x.销售.id, toPhase: "线索", toNode: "线索" } });
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 状态: "公海待捞", 原负责人是我: true });
+    expect(await 作为(x.市场, () => 查号码("手机号", 号码))).not.toHaveProperty("原负责人是我");
+  });
+
+  it("没项目的客户：协同情况说没项目（11-03 B6-8）", async () => {
+    const x = await 现场({ 项目: false });
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 可协同: true, 协同: { 有项目: false, 自己负责: false, 已在组: false } });
+  });
 });
 
 describe("导入撞号只记备注", () => {
@@ -329,6 +380,7 @@ describe("导入撞号只记备注", () => {
     expect(id).toBeTruthy();
     const f = await prisma.followUp.findUnique({ where: { id: id! } });
     expect(f?.content).toContain("来源：飞书");
+    expect(f?.content).toContain("入口：飞书导入");
     expect(f?.title).toBe("同号再次录入");
     expect(await prisma.followUpProject.count({ where: { projectId: x.项目!.id, node: 同号节点 } })).toBe(1);
     expect(await prisma.projectMember.count()).toBe(0);
@@ -338,6 +390,16 @@ describe("导入撞号只记备注", () => {
 
     await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: x.负责人.id } });
     expect(await prisma.$transaction((tx) => 同号只记备注(tx, { customerId: x.客户.id, 操作人: x.市场.id, 号: 好号(), 入口: "钉钉" }))).toBeNull();
+  });
+});
+
+describe("导入撞号的入口文字", () => {
+  it("「Excel 导出」不拼成「Excel 导出导入」（11-03 B6-8）", async () => {
+    const x = await 现场();
+    const id = await prisma.$transaction((tx) => 同号只记备注(tx, { customerId: x.客户.id, 操作人: x.市场.id, 号: 好号(), 入口: "Excel 导出" }));
+    const f = await prisma.followUp.findUniqueOrThrow({ where: { id: id! } });
+    expect(f.content).toContain("入口：Excel 导入");
+    expect(f.content).not.toContain("导出导入");
   });
 });
 

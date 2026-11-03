@@ -785,7 +785,7 @@ export default function ProjectDetail({
           </Button>
         </div>
       )}
-      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>领取后可见</span>}</div>
+      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
@@ -1041,7 +1041,7 @@ export default function ProjectDetail({
       }
     >
       <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
-      {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : "领取后可见"}</div>}
+      {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : p.pooled ? "领取后可见" : "无权查看"}</div>}
       {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
       {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}
       {列沟通.map((f) => (
@@ -1429,12 +1429,14 @@ export default function ProjectDetail({
         okButtonProps={{ loading: 忙, disabled: !!其他没写好(回收原因) }}
         onCancel={() => set放回框(false)}
         onOk={async () => {
-          const ok = await 跑(() => 放回项目公海(p.id, 回收原因), "已放回项目公海");
+          let 客户跟着 = false;
+          const ok = await 跑(async () => { const r = await 放回项目公海(p.id, 回收原因); 客户跟着 = r.ok && "客户跟着" in r && !!r.客户跟着; return r; });
+          if (ok) message.success(客户跟着 ? "已放回项目公海，客户和名下别的项目一起进了公海" : "已放回项目公海");
           // 企业版放回后原负责人看不到这个项目了（C-01，lib/project/pool-owner.ts 原负责人回避），回项目列表
           if (ok) { set放回框(false); router.push("/projects"); }
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户也归你时，客户会一起进公海，客户名下别的项目跟着客户走，你也都看不到了（名下有没结束的订单项目时客户不动）。</div>
         <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
       </Modal>
 

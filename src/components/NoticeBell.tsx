@@ -19,6 +19,12 @@ import type { 通知行 } from "@/lib/enterprise/notify";
  * 抽屉（连同包它的 ConfigProvider）第一次点开才挂：带主题的 ConfigProvider 一挂上，antd 就按新主题把整套样式再生成一遍，
  * 每页 HTML 多 38KB，速度闸门「按组织看」的客户详情 p95 超线（11-02）
  */
+/** 正文只摆开头：撞号通知的正文是整段沟通内容，上千字时一条占满抽屉（11-03 B6-7）；完整的点进去看 */
+export function 通知摘要(body: string, 字数 = 120): string {
+  const 收 = body.replace(/\s+/g, " ").trim();
+  return 收.length > 字数 ? `${收.slice(0, 字数)}…` : 收;
+}
+
 export function 多久以前(iso: string, 现在 = Date.now()): string {
   const 秒 = Math.max(0, Math.round((现在 - new Date(iso).getTime()) / 1000));
   if (秒 < 60) return "刚刚";
@@ -125,9 +131,9 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
                       <button type="button" className={`notice-item${r.read ? "" : " unread"}`} onClick={() => 点(r)} aria-label={`${r.read ? "" : "未读，"}${r.title}`}>
                         <span className="notice-dot" aria-hidden="true" />
                         <span className="notice-main">
-                          {/* 标题一行截断、正文两行截断：悬停看全文（11-03 C8-3，卡点编号常被截掉），同客户列表的 title 做法 */}
+                          {/* 标题一行截断、正文只摆前 120 字：悬停看全文（11-03 C8-3 / B6-7，卡点编号常被截掉），同客户列表的 title 做法 */}
                           <span className="notice-title" title={r.title}>{r.title}</span>
-                          {r.body && <span className="notice-body" title={r.body}>{r.body}</span>}
+                          {r.body && <span className="notice-body" title={r.body}>{通知摘要(r.body)}</span>}
                           <span className="notice-meta">
                             {r.kind} · {多久以前(r.createdAt)}
                           </span>

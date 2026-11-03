@@ -637,7 +637,7 @@ describe("规则开着时编辑 / 新建不能随手换负责人（F2，10-25 �
   });
   it("不能分配的人新建给别人：拒，说只有老板、总管理员、市场管理能分配；建给自己照常", async () => {
     当(渠道);
-    expect(await 存({ name: "L6", ownerId: 外贸 })).toMatchObject({ ok: false, error: expect.stringMatching(/只有老板、总管理员、市场管理/) });
+    expect(await 存({ name: "L6", ownerId: 外贸 })).toMatchObject({ ok: false, error: expect.stringMatching(/只有总管理、销售管理、市场管理/) });
     expect(await prisma.lead.count({ where: { name: "L6" } })).toBe(0);
     expect((await 存({ name: "L6", ownerId: 渠道 })).ok).toBe(true);
     expect((await 存({ name: "L7" })).ok).toBe(true);
