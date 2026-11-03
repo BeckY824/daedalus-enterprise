@@ -520,7 +520,8 @@ test("项目看板：列头写着这一阶段压着多少钱", async ({ page }) 
   for (const x of 合计) expect(x).toMatch(/¥|￥|\d/);
 });
 
-// 11-01 起看板列宽固定（一屏约 4 列）、五列都摆，放不下在看板框里左右滑；页面本身不横滚（globals.css .pipe）
+// 11-01 起看板列宽固定（一屏约 4 列），放不下在看板框里左右滑；页面本身不横滚（globals.css .pipe）。
+// 11-03 起企业版按进程分列（每个进程一列 + 三列出口），空列也摆
 test("1024 下项目看板在框里横滑、列不压窄，页面不横滚", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 800 });
   await 登录(page);
@@ -540,7 +541,7 @@ test("1024 下项目看板在框里横滑、列不压窄，页面不横滚", asy
   });
   expect(r.页面溢出, "整页被看板撑出了横向滚动条").toBe(false);
   expect(r.管道能横滑, "列放不下时应在看板框里左右滑").toBe(true);
-  expect(r.列数, "0 个项目的列也照常摆").toBe(5);
+  expect(r.列数, "0 个项目的列也照常摆（企业版按进程分列，比五列多）").toBeGreaterThan(5);
   expect(r.最窄列, "列宽固定，不为塞下所有列压窄").toBeGreaterThanOrEqual(239);
 });
 
