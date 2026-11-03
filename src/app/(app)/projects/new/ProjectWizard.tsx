@@ -125,8 +125,15 @@ const 不订阅 = () => () => {};
  * 草稿照旧每改一格存本机，关了下次点开接着填
  */
 export function 建档弹窗({ open, 标题, 数据, onClose }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+  const { message } = App.useApp();
+  const 我 = useMe();
+  // 右上 X / Esc 关：和「存草稿关闭」一样说一句草稿留着（11-03 A1-3：直接关掉，人以为填的都没了）
+  const 关 = () => {
+    if (有内容((读草稿(草稿全名(我?.id, 草稿键)) as { 稿?: unknown } | null)?.稿)) message.info("草稿存在这台电脑的浏览器里，下次打开会接着填");
+    onClose();
+  };
   return (
-    <Modal open={open} title={标题} footer={null} width={760} onCancel={onClose} destroyOnHidden mask={{ closable: false }}>
+    <Modal open={open} title={标题} footer={null} width={760} onCancel={关} destroyOnHidden mask={{ closable: false }}>
       <ProjectWizard users={数据.users} 要下一步={数据.要下一步} 企业={数据.企业} 弹窗={{ 关: onClose }} />
     </Modal>
   );
