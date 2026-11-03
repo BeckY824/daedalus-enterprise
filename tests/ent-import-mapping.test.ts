@@ -272,6 +272,14 @@ describe("Excel 读表", () => {
     expect(成记录(t2, "customer", 规则猜列("customer", t2.表头))[0].外部ID).toBe(a[0].外部ID);
   });
 
+  it("只有表头、或整个文件是空的：读的时候直说（D7-10）", () => {
+    const 头 = 读文件({ 名: "客户.csv", bytes: new TextEncoder().encode("客户名称,手机\n") });
+    expect(头.行).toHaveLength(0);
+    expect(头.提醒.join("")).toMatch(/只有表头，没有数据/);
+    const 空 = 读文件({ 名: "客户.csv", bytes: new TextEncoder().encode("") });
+    expect(空.提醒.join("")).toMatch(/文件是空的/);
+  });
+
   it("有 ID 列就用原系统 ID", () => {
     const t = 读文件({ 名: "客户.csv", bytes: new TextEncoder().encode("记录ID,客户名称\nrec001,甲公司\n") });
     expect(成记录(t, "customer", 规则猜列("customer", t.表头))[0].外部ID).toBe("rec001");

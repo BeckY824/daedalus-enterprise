@@ -121,6 +121,7 @@ function 成读出的表(名: string, 原: { rows: string[][]; 行号: number[] 
   const 提醒: string[] = [];
   const 截 = 只导了前面的话(t.截断了);
   if (截) 提醒.push(截);
+  if (!行.length) 提醒.push(表头.length ? "只有表头，没有数据行，这张表没东西可导" : "这个文件是空的，没东西可导");
   return { 名, 实体: null, 表头, 行, 行号, 提醒 };
 }
 
