@@ -438,13 +438,17 @@ function CustomerFormInner({
               dup.id ? (
                 <span>
                   {dup.name}
-                  {dup.school ? ` · ${dup.school}` : ""} · 销售负责人 {dup.salesOwnerName}
+                  {dup.school ? ` · ${dup.school}` : ""} · 销售负责人 {dup.salesOwnerName}{dup.负责人已离职找 ? "（已离职）" : ""}
                   {dup.createdAt ? ` · 录入于 ${dayjs(dup.createdAt).format("YYYY-MM-DD")}` : ""}
+                  {/* 负责人已离职（11-03 C4-5）：指他的直属上级 */}
+                  {dup.负责人已离职找 ? ` · 负责人已离职，请联系 ${dup.负责人已离职找}` : ""}
                 </span>
               ) : (
                 // 业务员撞到同事名下、自己看不到的：只露同事名 + 客户名（10-19 拍板；同事的客户本机没有时由服务端查重给出）
                 <span>
-                  同事 {dup.salesOwnerName} 名下已经有这个号码{dup.name ? `（${dup.name}）` : ""}，请勿重复录入；要接手请找 {dup.salesOwnerName} 或老板
+                  {dup.负责人已离职找
+                    ? `${dup.salesOwnerName}（已离职）名下已经有这个号码${dup.name ? `（${dup.name}）` : ""}，请勿重复录入；负责人已离职，请联系 ${dup.负责人已离职找}`
+                    : `同事 ${dup.salesOwnerName} 名下已经有这个号码${dup.name ? `（${dup.name}）` : ""}，请勿重复录入；要接手请找 ${dup.salesOwnerName} 或老板`}
                 </span>
               )
             }

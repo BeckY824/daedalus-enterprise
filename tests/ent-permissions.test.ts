@@ -23,6 +23,7 @@ import { 能拍板, 有市场管理 } from "@/lib/project/lead-verify";
 import {
   能看项目, 能编辑项目, 能转让项目, 能放回公海, 能分配线索, 能管公海, 能删除, 能恢复, 能进设置, 能改后台设置,
   只读角色, 能看全部, 是总管理, 没设业务角色, 能真删, 能领公海, 能删一些, 能转让客户, 能转出自己的, 能改客户, 只看的人, 是管理层, type 权限项目,
+  能新建和领取, 不能新建项目话, 公海分不给话, 只读角色话,
 } from "@/lib/enterprise/permissions";
 import { 能切换视图 } from "@/lib/enterprise/view-as";
 import { 能加组员 } from "@/lib/project/db";
@@ -259,6 +260,54 @@ describe("回收站副手、真删", () => {
 describe("领公海（V3.5.1）", () => {
   it("销售、销管、总管理能领；管理员只读、市管、项目组员、没设角色的不能", () => {
     expect(["dir", "mgr", "s", "s2", "adm", "mkt", "ops", "bare"].map((id) => 能领公海(当(id), org))).toEqual([true, true, true, true, false, false, false, false]);
+  });
+});
+
+describe("新建、领取摆不摆（11-03 D3-7 ④）", () => {
+  it("没设业务角色、只读管理员看不到；别的业务角色都摆", () => {
+    expect(["dir", "mgr", "s", "mkt", "ops", "adm", "空串", "bare"].map((id) => 能新建和领取(当(id), org))).toEqual([true, true, true, true, true, false, false, false]);
+  });
+  it("建档向导那一句：只读说只能看，没设角色说去设；能建 = null", () => {
+    expect(不能新建项目话(当("s"), org)).toBeNull();
+    expect(不能新建项目话(当("adm"), org)).toBe(只读角色话);
+    expect(不能新建项目话(当("bare"), org)).toMatch(/业务角色/);
+    expect(不能新建项目话(当("s"), null)).toMatch(/业务角色/);
+  });
+  it("不是企业版一律摆", () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect([能新建和领取(当("bare"), null), 不能新建项目话(当("bare"), null)]).toEqual([true, null]);
+  });
+});
+
+describe("公海分配给谁（11-03 B2-7）", () => {
+  const o = 组织of([
+    { id: "系统", bizRole: "director" },
+    { id: "外贸总", bizRole: "director", line: "外贸" },
+    { id: "外贸销管", bizRole: "sales_mgr", line: "外贸" },
+    { id: "外贸销售", bizRole: "sales", line: "外贸" },
+    { id: "内贸销售", bizRole: "sales", line: "内贸" },
+    { id: "没线销售", bizRole: "sales" },
+    { id: "没线销管", bizRole: "sales_mgr" },
+    { id: "只读", bizRole: "admin" },
+    { id: "没角色", bizRole: "" },
+  ]);
+  it("系统管理员能分给任何能当负责人的人，不看业务线", () => {
+    expect(["外贸销售", "内贸销售", "没线销售", "外贸总"].map((t) => 公海分不给话({ id: "系统" }, o, t))).toEqual([null, null, null, null]);
+  });
+  it("有业务线的只能分给同线的；对方没设线也不行", () => {
+    expect(公海分不给话({ id: "外贸销管" }, o, "外贸销售")).toBeNull();
+    expect(公海分不给话({ id: "外贸总" }, o, "外贸销管")).toBeNull();
+    expect(公海分不给话({ id: "外贸销管" }, o, "内贸销售")).toBe("只能分给同业务线的同事");
+    expect(公海分不给话({ id: "外贸总" }, o, "没线销售")).toBe("只能分给同业务线的同事");
+  });
+  it("自己没设线的不收窄", () => {
+    expect(["外贸销售", "内贸销售", "没线销售"].map((t) => 公海分不给话({ id: "没线销管" }, o, t))).toEqual([null, null, null]);
+  });
+  it("只读、没设角色的谁分都不行（系统管理员也不行）", () => {
+    for (const me of ["系统", "外贸销管", "没线销管"]) {
+      expect(公海分不给话({ id: me }, o, "只读")).toBe("管理员只读，不能当负责人");
+      expect(公海分不给话({ id: me }, o, "没角色")).toMatch(/还没设业务角色/);
+    }
   });
 });
 

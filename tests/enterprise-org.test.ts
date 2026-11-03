@@ -36,7 +36,7 @@ it("建组织：停用的人不进；没 EntMember 行 = 没业务角色（不�
   expect(org.成员.get("a")).toMatchObject({ deptId: null, bizRole: null, 角色们: [], line: null });
 });
 
-it("直属上级：显式指定的优先；指定的人停用了、指定自己的都不算", () => {
+it("直属上级：只认手填的（11-03 C10-1）；指定的人停用了、指定自己的都不算，也不按部门往上推", () => {
   const org = 建组织(
     [人("a"), 人("b"), 人("c"), 人("mgr"), 人("off", "SALES", false)],
     [
@@ -48,48 +48,25 @@ it("直属上级：显式指定的优先；指定的人停用了、指定自己�
     部门,
   );
   expect(直属上级of(org, "a")).toBe("b");
-  expect(直属上级of(org, "b")).toBe("mgr");
-  expect(直属上级of(org, "c")).toBe("mgr");
+  expect(直属上级of(org, "b")).toBeNull();
+  expect(直属上级of(org, "c")).toBeNull();
   expect(直属上级of(org, "nobody")).toBeNull();
 });
 
-it("直属上级：没指定就本部门往上找销售管理；几个销售管理取编号最小的；找到顶都没有是 null", () => {
+it("直属上级：没手填 = 没有；本部门、上级部门有销售管理也不算（11-03 C10-1）", () => {
   const org = 建组织(
-    [人("s1"), 人("s2"), 人("s3"), 人("z-mgr"), 人("a-mgr"), 人("top-mgr"), 人("boss", "ADMIN")],
+    [人("s1"), 人("s2"), 人("a-mgr"), 人("top-mgr")],
     [
       行({ userId: "s1", deptId: "nei-1-a" }),
       行({ userId: "s2", deptId: "nei-1" }),
-      行({ userId: "s3", deptId: "wai" }),
-      行({ userId: "z-mgr", deptId: "nei-1", bizRole: "sales_mgr" }),
       行({ userId: "a-mgr", deptId: "nei-1", bizRole: "sales_mgr" }),
       行({ userId: "top-mgr", deptId: "nei", bizRole: "sales_mgr" }),
     ],
     部门,
   );
-  expect(直属上级of(org, "s1")).toBe("a-mgr"); // 本部门没有，往上一级
-  expect(直属上级of(org, "s2")).toBe("a-mgr");
-  expect(直属上级of(org, "s3")).toBeNull(); // 外贸部没有销售管理，也不往总管理员上兜
-  expect(直属上级of(org, "boss")).toBeNull(); // 没分部门
-});
-
-it("直属上级：销售管理自己从上一级部门找，同部门另一个销售管理不算", () => {
-  const org = 建组织(
-    [人("a-mgr"), 人("z-mgr"), 人("top-mgr")],
-    [
-      行({ userId: "a-mgr", deptId: "nei-1", bizRole: "sales_mgr" }),
-      行({ userId: "z-mgr", deptId: "nei-1", bizRole: "sales_mgr" }),
-      行({ userId: "top-mgr", deptId: "nei", bizRole: "sales_mgr" }),
-    ],
-    部门,
-  );
-  expect(直属上级of(org, "a-mgr")).toBe("top-mgr");
-  expect(直属上级of(org, "z-mgr")).toBe("top-mgr");
-  expect(直属上级of(org, "top-mgr")).toBeNull();
-});
-
-it("直属上级：部门树成环不转圈", () => {
-  const org = 建组织([人("s")], [行({ userId: "s", deptId: "loop-1" })], 部门);
-  expect(直属上级of(org, "s")).toBeNull();
+  expect(直属上级of(org, "s1")).toBeNull();
+  expect(直属上级of(org, "s2")).toBeNull();
+  expect(直属上级of(org, "a-mgr")).toBeNull();
 });
 
 it("虚线上级：只认显式指定的；停用、指自己 = 没有", () => {
@@ -103,15 +80,15 @@ it("虚线上级：只认显式指定的；停用、指自己 = 没有", () => {
   expect(虚线上级of(org, "c")).toBeNull();
 });
 
-it("实线下属：整条链往下，层数可限；显式和按部门推出来的都算", () => {
+it("实线下属：整条链往下，层数可限；只顺手填的直属上级走，同部门不算（11-03 C10-1）", () => {
   const org = 建组织(
     [人("top"), 人("mgr"), 人("s1"), 人("s2"), 人("x")],
     [
       行({ userId: "top", deptId: "nei", bizRole: "sales_mgr" }),
-      行({ userId: "mgr", deptId: "nei-1", bizRole: "sales_mgr" }),
-      行({ userId: "s1", deptId: "nei-1" }),
+      行({ userId: "mgr", deptId: "nei-1", bizRole: "sales_mgr", managerId: "top" }),
+      行({ userId: "s1", deptId: "nei-1", managerId: "mgr" }),
       行({ userId: "s2", managerId: "s1" }),
-      行({ userId: "x", deptId: "wai" }),
+      行({ userId: "x", deptId: "nei-1" }),
     ],
     部门,
   );
@@ -176,8 +153,8 @@ it("上级设置问题：不能是自己、停用的人、自己链上的下属�
     [人("top"), 人("mgr"), 人("s"), 人("d"), 人("off", "SALES", false)],
     [
       行({ userId: "top", deptId: "nei", bizRole: "sales_mgr" }),
-      行({ userId: "mgr", deptId: "nei-1", bizRole: "sales_mgr" }),
-      行({ userId: "s", deptId: "nei-1" }),
+      行({ userId: "mgr", deptId: "nei-1", bizRole: "sales_mgr", managerId: "top" }),
+      行({ userId: "s", deptId: "nei-1", managerId: "mgr" }),
       行({ userId: "d", dottedManagerId: "s" }),
     ],
     部门,
@@ -187,7 +164,7 @@ it("上级设置问题：不能是自己、停用的人、自己链上的下属�
   expect(上级设置问题(org, "s", "s", "直属")).toBe("上级不能是自己");
   expect(上级设置问题(org, "s", "off", "直属")).toBe("选的上级不在职");
   expect(上级设置问题(org, "off", "top", "直属")).toBe("这个人不在职");
-  expect(上级设置问题(org, "top", "s", "直属")).toMatch(/是他的下属/); // s 按部门推到 mgr，mgr 推到 top
+  expect(上级设置问题(org, "top", "s", "直属")).toMatch(/是他的下属/); // s 手填 mgr，mgr 手填 top
   expect(上级设置问题(org, "s", "d", "虚线")).toMatch(/是他的虚线下属/);
   expect(上级设置问题(org, "s", "d", "直属")).toBeNull(); // 虚线和实线各算各的
 });

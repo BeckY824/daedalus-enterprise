@@ -174,7 +174,7 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
       ...改,
       bizRole: 新角色们 ? 合角色(新角色们) : (旧行?.bizRole ?? 合角色(原角色们)),
     };
-    // 带上「只看某人」名单：设了的人不能当别人的实线上级（指定的、按部门推出来的都算，V3.5.1）
+    // 带上「只看某人」名单：设了的人不能当别人的实线上级（只认手填的直属上级，V3.5.1 / 11-03 C10-1）
     const 只看 = await prisma.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } });
     const 新 = 填组织设置(建组织(users, [...members.filter((m) => m.userId !== userId), 新行], depts), null, 只看?.value);
     const 问题 =
@@ -330,7 +330,7 @@ export async function 设市场部门(ids: unknown, 人?: unknown): Promise<结�
   }
 }
 
-/** 设了「只看某人」的人有没有被谁当实线上级（指定的、按部门推出来的都算）：有就回那一句 */
+/** 设了「只看某人」的人有没有被谁当实线上级（只认手填的直属上级）：有就回那一句 */
 function 只看某人当了上级(org: 组织): string | null {
   for (const id of org.成员.keys()) {
     const 上 = 直属上级of(org, id);
@@ -341,7 +341,7 @@ function 只看某人当了上级(org: 组织): string | null {
 
 /**
  * 「只看某人」（V3.5.1 市管特例）：本人只看 那个人 是创建人或负责人的数据，公海照常；不当负责人、不编、不转、不删。
- * 那个人 = null 是取消。设之前本人不能是任何人的实线上级（指定的、按部门推出来的都算）
+ * 那个人 = null 是取消。设之前本人不能是任何人的实线上级（只认手填的直属上级）
  */
 export async function 设只看某人(本人: string, 那个人: string | null): Promise<结果> {
   const who = await 能改的人();

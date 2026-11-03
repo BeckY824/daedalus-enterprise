@@ -22,6 +22,7 @@ import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类�
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 不能新建项目话 } from "@/lib/enterprise/permissions";
 import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
@@ -71,6 +72,9 @@ export async function 建档向导(输入: 建档向导输入) {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
     if (!输入 || typeof 输入 !== "object" || !输入.客户 || typeof 输入.客户 !== "object") return { ok: false as const, error: "建档信息不完整，请从头再走一遍" };
+    // 没设业务角色、只读管理员不能新建（11-03 D3-7 ④）：页面上「新线索」不摆，这里再拦
+    const 新建挡 = 企业版() ? 不能新建项目话(me, await 权限组织()) : null;
+    if (新建挡) return { ok: false as const, error: 新建挡 };
     // 企业版分配方式（A7，10-27）：只能用分配方式字典里这个人能用、还启用着的那几种（assign-use.ts）。
     // 指定分配 = 负责人是选的那位；另外四种都先建在我名下，自动分配建好后按自动分配转出去、公海捞取建好后放进项目公海
     const 分配 = 企业版() ? await 定分配方式(me, 输入.项目) : null;

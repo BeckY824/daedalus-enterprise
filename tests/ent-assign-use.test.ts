@@ -38,7 +38,8 @@ import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
-import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
+import { 没业务角色不能新建话, 只读角色话 } from "@/lib/enterprise/permissions";
+import { saveCustomer } from "@/app/(app)/customers/actions";
 
 let 老板: string, 总管: string, 市场: string, 销售经理: string, 销售: string, 另一销售: string, 渠道: string, 项运: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
@@ -234,6 +235,15 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     当(没角色);
     expect(await 向导({ 分配方式: 0, ownerId: 销售 })).toMatchObject({ ok: false, error: 没业务角色不能新建话 });
     expect(await prisma.project.count()).toBe(0);
+  });
+
+  it("只读管理员（11-03 D3-7 ④）：新线索向导、新建客户都拦，一行不写", async () => {
+    const 管 = (await prisma.user.create({ data: { email: "ad", name: "管理员", title: "", role: "ADMIN", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 管, bizRole: "admin" } });
+    当(管, "ADMIN");
+    expect(await 向导({ 分配方式: 0, ownerId: 销售 })).toMatchObject({ ok: false, error: 只读角色话 });
+    expect(await saveCustomer({ name: "新客户甲", phone: "13900000001", salesOwnerId: 销售 } as never)).toMatchObject({ ok: false, error: 只读角色话 });
+    expect([await prisma.project.count(), await prisma.customer.count()]).toEqual([0, 0]);
   });
 
   it("用不了的拦下、一行不写：销售选公海捞取、市场选个人自持", async () => {

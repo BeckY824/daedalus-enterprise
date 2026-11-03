@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 看得到, 读的我, 同事的客户, 只读话, 虚线只读挡, type 谁 } from "@/lib/team-scope";
 import { 同事撞号说法, type 查重种类 } from "@/lib/sync/dedupe";
+import { 离职负责人找谁, 离职负责人说法 } from "@/lib/enterprise/departed-owner";
 import { 问同事 } from "@/lib/sync/dedupe-client";
 import { requireUser } from "@/lib/auth";
 import { 可选客户 } from "@/lib/options";
@@ -42,7 +43,7 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 能转让客户, 能改客户, 没设业务角色 } from "@/lib/enterprise/permissions";
+import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
@@ -166,14 +167,19 @@ export type DuplicateHit = {
   school: string | null;
   salesOwnerName: string;
   createdAt: string | null;
+  /** 企业版：负责人已离职（11-03 C4-5），该找谁（他在职的直属上级，没有就「系统管理员」） */
+  负责人已离职找?: string;
 } | null;
 
 type 撞到的 = { name: string; salesOwnerId: string | null; channelOwnerId: string | null; pool: unknown; salesOwner: { name: string } | null };
 const 撞到的字段 = { name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } } as const;
 
 /** 保存时撞号那句话：看得到的说是谁；业务员撞同事的只说负责人（同 DuplicateHit）。依据 =「手机号 138…」或「邮箱 a@b.com」 */
-function 撞号说法(依据: string, dup: 撞到的, 我: 谁 | null, 客户: string): string {
-  if (看得到(dup, 我)) return `${依据} 已存在（${dup.name}），请勿重复录入`;
+async function 撞号说法(依据: string, dup: 撞到的, 我: 谁 | null, 客户: string): Promise<string> {
+  // 负责人已离职（11-03 C4-5）：不叫人去找他，指他的直属上级
+  const 找谁 = await 离职负责人找谁(dup.salesOwnerId);
+  if (看得到(dup, 我)) return `${依据} 已存在（${dup.name}），请勿重复录入${找谁 ? `；${离职负责人说法(找谁)}` : ""}`;
+  if (找谁) return `${依据} 已是${dup.name ? `${客户}「${dup.name}」` : `同事名下的${客户}`}，请勿重复录入；${离职负责人说法(找谁)}`;
   return 同事撞号说法(依据, dup.salesOwner?.name ?? "同事", dup.name, 客户);
 }
 
@@ -194,12 +200,14 @@ export async function checkDuplicate(phone: string, excludeId?: string): Promise
     return 撞 ? { id: null, name: 撞.客户名 || null, school: null, salesOwnerName: 撞.同事, createdAt: null } : null;
   }
   const 看得见 = 看得到(hit, await 读的我(defaultClient));
+  const 找谁 = await 离职负责人找谁(hit.salesOwnerId);
   return {
     id: 看得见 ? hit.id : null,
     name: hit.name,
     school: 看得见 ? hit.school : null,
     salesOwnerName: hit.salesOwner?.name ?? "同事",
     createdAt: 看得见 ? hit.createdAt.toISOString() : null,
+    ...(找谁 ? { 负责人已离职找: 找谁 } : {}),
   };
 }
 
@@ -348,7 +356,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       where: { AND: [await 同号条件(prisma, phone, await 分机留存起()), ...(input.id ? [{ id: { not: input.id } }] : [])] },
       select: 撞到的字段,
     }));
-    if (dup) return { ok: false, error: 撞号说法(`手机号 ${phone}`, dup, await 读的我(defaultClient), b.customer) };
+    if (dup) return { ok: false, error: await 撞号说法(`手机号 ${phone}`, dup, await 读的我(defaultClient), b.customer) };
   }
   // 按邮箱认的：邮箱没动的不查（同上面号码没动不查）。有电话的不拿邮箱挡——同一公司几位联系人共用 info@ 常见
   const 查邮箱 = 按邮箱认 && !phone && !(改前 && 邮箱键(交的邮箱) === 邮箱键(改前邮箱));
@@ -357,7 +365,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       where: { AND: [await 同邮箱条件(prisma, 交的邮箱), ...(input.id ? [{ id: { not: input.id } }] : [])] },
       select: 撞到的字段,
     }));
-    if (dup) return { ok: false, error: 撞号说法(`邮箱 ${交的邮箱}`, dup, await 读的我(defaultClient), b.customer) };
+    if (dup) return { ok: false, error: await 撞号说法(`邮箱 ${交的邮箱}`, dup, await 读的我(defaultClient), b.customer) };
   }
   // 按微信认的：同上，微信号没动的不查；有电话或邮箱的不拿微信挡
   const 查微信 = 按微信认 && !phone && !(改前 && 邮箱键(交的微信) === 邮箱键(改前微信));
@@ -366,7 +374,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       where: { AND: [await 同微信条件(prisma, 交的微信), ...(input.id ? [{ id: { not: input.id } }] : [])] },
       select: 撞到的字段,
     }));
-    if (dup) return { ok: false, error: 撞号说法(`微信 ${交的微信}`, dup, await 读的我(defaultClient), b.customer) };
+    if (dup) return { ok: false, error: await 撞号说法(`微信 ${交的微信}`, dup, await 读的我(defaultClient), b.customer) };
   }
   // 按阿里 ID 认的：同上，没动的不查；有电话、邮箱或微信的不拿阿里 ID 挡
   const 查阿里 = 按阿里认 && !phone && !(改前 && 邮箱键(交的阿里) === 邮箱键(改前阿里));
@@ -375,7 +383,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       where: { AND: [await 同阿里条件(prisma, 交的阿里), ...(input.id ? [{ id: { not: input.id } }] : [])] },
       select: 撞到的字段,
     }));
-    if (dup) return { ok: false, error: 撞号说法(`阿里 ID ${交的阿里}`, dup, await 读的我(defaultClient), b.customer) };
+    if (dup) return { ok: false, error: await 撞号说法(`阿里 ID ${交的阿里}`, dup, await 读的我(defaultClient), b.customer) };
   }
 
   /*
@@ -600,7 +608,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       return { created } as const;
     });
     if ("企撞" in 建了 && 建了.企撞) return { ok: false, error: (await 撞号结论(prisma, 建了.企撞, me.id, await 读的我(defaultClient))).提示 };
-    if ("撞号" in 建了 && 建了.撞号) return { ok: false, error: 撞号说法(phone ? `手机号 ${phone}` : `邮箱 ${交的邮箱}`, 建了.撞号, await 读的我(defaultClient), b.customer) };
+    if ("撞号" in 建了 && 建了.撞号) return { ok: false, error: await 撞号说法(phone ? `手机号 ${phone}` : `邮箱 ${交的邮箱}`, 建了.撞号, await 读的我(defaultClient), b.customer) };
     const { created } = 建了;
     await recordAudit({
       user: me, action: "create", entity: "Customer", entityId: created.id,
@@ -1054,7 +1062,8 @@ async function 改客户挡(me: Awaited<ReturnType<typeof requireUser>>, id?: st
   if (!企业版()) return null;
   const org = await 权限组织();
   if (!org || 没设业务角色(org, me.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
-  if (!id) return null;
+  // 只读管理员新建也拦（11-03 D3-7 ④）：改已有的下面 能改客户 就不给，限定层也拦
+  if (!id) return 只读角色(me, org) ? 只读角色话 : null;
   const c = await defaultClient.customer.findUnique({ where: { id }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
   if (!c) return null; // 不在了：后面照原样报「已删除」
   if (c.pool) return 公海先领话;

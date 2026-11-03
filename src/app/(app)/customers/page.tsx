@@ -5,9 +5,10 @@ import CustomersView from "./CustomersView";
 import HandoverPending from "./HandoverPending";
 import { 待确认的交接 } from "./handover-actions";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 负责人候选 } from "@/lib/owners";
+import { 负责人候选, 公海分配候选 } from "@/lib/owners";
 import { 可选渠道 } from "@/lib/options";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器, 当前是共享区 } from "@/lib/shared-ws/current";
+import { 离职交接入口 } from "@/lib/enterprise/offboard-handover";
 import { llmEnabled } from "@/lib/llm";
 import { 客户筛选条件, 客户行字段, 成客户行, 客户金额分页, 在看子集, 只按页签, 关键词分页, 按序取客户行 } from "./query";
 import { 规整币种 } from "@/lib/currency";
@@ -18,7 +19,7 @@ import { defaultClient } from "@/lib/prisma";
 import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能转出自己的, 能删除 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -147,7 +148,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
-    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义,
+    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接,
   ] = await Promise.all([
     行P,
     负责人候选(),
@@ -177,6 +178,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 ? 页面可选项("custAttr") : [],
     企 ? 页面字典("custAttr") : [],
     企 ? 页面客户释义() : undefined,
+    // 离职交接入口（11-03 B7-2）：开了项目模式摆在项目页头，没开摆在这里
+    企 && !b.projectMode ? 当前是共享区().then((共享) => (共享 ? null : 离职交接入口(me))) : null,
   ]);
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
   const 旧职位 = 用着的职位.map((c) => c.grade!.trim()).filter((g) => g && !b.grades.includes(g)).sort();
@@ -192,6 +195,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       能分配公海={能管公海(me, await 权限组织())}
       能转出自己的={能转出自己的(me, await 权限组织())}
       能导入导出={可导入导出}
+      // 没设业务角色、只读管理员不摆「新建」「领取」（11-03 D3-7 ④）
+      能新建和领取={能新建和领取(me, 删权限org)}
+      // 公海「分配给…」只列分得过去的（11-03 B2-7）；不是企业版同 users
+      公海分给={企 ? await 公海分配候选(me) : undefined}
       // 企业版能删的角色才摆删除（V3.5.1：系统管理员；销售、销管、渠运删自己负责的），不是自己负责的行不摆
       能删={(await 删除挡(me)) == null}
       删不了ids={企 ? rows.filter((r) => !能删除(me, 删权限org, r.pool ? null : r.salesOwnerId)).map((r) => r.id) : []}
@@ -209,6 +216,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       直接新建={sp.new === "1"}
       // 企业版项目模式：「新建客户」在本页弹向导框「新增客户」（U-新建-01），向导要的数据一起给
       建档={建档}
+      待交接={待交接}
       /* ?import=paste：直接把导入抽屉开在「粘一段文本」那一栏（首页那张「开始」卡指过来） */
       直接粘贴={sp.import === "paste"}
       filters={{

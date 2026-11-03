@@ -3,7 +3,8 @@
  *   - 手动转一个项目的负责人：只改这一个项目，留一行转让痕（谁、何时、从谁到谁）
  *   - 转客户 = 整体转（总控 10-23 定）：这位客户名下的项目不管原来谁负责、有没有结局都跟着转，只有项目公海里的不动；
  *     撤销各还各的（按转让痕还给转之前的负责人），只还带过来的那几个
- *   - 停用成员：项目跟着转走的客户一起整体转；企业版另把他负责、挂在别人客户上、没结局的也给接手人（D-36，10-24）
+ *   - 停用成员：项目跟着转走的客户一起整体转；企业版办离职原地不动（11-03 C4-4），离职交接「全部交给」时
+ *     另把他负责、挂在别人客户上、没结局的也给接手人（D-36，10-24）
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
+vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
   return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), projectMode: true }) };
@@ -22,6 +24,7 @@ import { resetDb } from "./reset";
 import { 编辑项目 } from "@/app/(app)/projects/actions";
 import { assignSalesOwner, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
+import { 交接全部 } from "@/app/(app)/projects/handover/actions";
 import { 角色字典 } from "@/lib/project/db";
 
 let 甲: string;
@@ -163,7 +166,7 @@ describe("停用成员", () => {
     expect(new Set((await 转让痕()).map((x) => x.projectId))).toEqual(new Set([乙的.id, 丙在乙客户上的.id]));
   });
 
-  it("企业版：他挂在别人客户上的没结局项目也给接手人，有结局的留着", async () => {
+  it("企业版：办离职原地不动；全部交给时他挂在别人客户上的没结局项目也给接手人，有结局的留着", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
     const 乙的 = await 项目("乙的", 乙);
     const 丙在乙客户上的 = await 项目("丙在乙客户上的", 丙);
@@ -171,6 +174,10 @@ describe("停用成员", () => {
     const 乙在丙客户上的 = await 项目("乙在丙客户上的", 乙, 丙的客户.id);
     const 乙收尾的 = await prisma.project.update({ where: { id: (await 项目("乙收尾的", 乙, 丙的客户.id)).id }, data: { result: "成功交付" } });
     expect(await deactivateUser(乙, 甲)).toEqual({ ok: true });
+    expect(await 负责人(乙的.id)).toBe(乙);
+    expect(await 转让痕()).toEqual([]);
+    await prisma.entMember.update({ where: { userId: 甲 }, data: { bizRole: "director" } });
+    expect((await 交接全部(乙, 甲)).ok).toBe(true);
     expect(await 负责人(乙的.id)).toBe(甲);
     expect(await 负责人(丙在乙客户上的.id)).toBe(甲);
     expect(await 负责人(乙在丙客户上的.id)).toBe(甲);

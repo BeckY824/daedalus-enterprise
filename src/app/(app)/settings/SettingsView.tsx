@@ -63,7 +63,7 @@ export default function SettingsView({
   导入记录 = true,
   回收站 = false,
   导出记录 = null,
-  下属可停用 = [],
+  只个人 = false,
 }: {
   users: Row[];
   me: SessionUser;
@@ -100,8 +100,8 @@ export default function SettingsView({
   回收站?: boolean;
   /** 「导出记录」那一栏（11-03）：最近 200 次导出，只给系统管理员；null = 不摆 */
   导出记录?: AuditRow[] | null;
-  /** 企业版：我是直属上级、能给他们办离职的人 */
-  下属可停用?: string[];
+  /** 企业版不是系统管理员（11-03 D3-1）：只摆个人资料、登录与密码、快捷键、外观（回收站副手另有回收站），成员管理、后台设置都不出 */
+  只个人?: boolean;
 }) {
   const [搜, set搜] = useState("");
   // 当前页签由地址栏 ?tab= 决定：中栏那列设置项就是一组带 tab 的链接，刷新、回退都对得上
@@ -121,7 +121,7 @@ export default function SettingsView({
      * 于是销售想改自己的名字得去求管理员。
      */
     { key: "profile", label: "个人资料", children: <ProfileTab me={{ name: me.name, title: me.title, email: me.email }} /> },
-    { key: "members", label: "团队成员", children: <MembersTab users={users} me={me} isAdmin={isAdmin && !只读} 用邮箱登录={用邮箱登录} 企业版={企业版} 下属可停用={下属可停用} /> },
+    { key: "members", label: "团队成员", children: <MembersTab users={users} me={me} isAdmin={isAdmin && !只读} 用邮箱登录={用邮箱登录} 企业版={企业版} /> },
     { key: "keymap", label: "快捷键", children: <KeymapTab /> },
     { key: "appearance", label: "外观", children: <AppearanceTab /> },
     { key: "password", label: "登录与密码", children: <PasswordTab 机器={机器} /> },
@@ -138,6 +138,7 @@ export default function SettingsView({
   ]
     // 共享试用区：账号是几个团队共用的，名字和密码不给改（排查 A3）
     .filter((x) => !(共享区 && (x.key === "password" || x.key === "profile")))
+    .filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "trash"].includes(x.key))
     // 不是托管版没有「已登录的机器」这一块（机器 = null），说明别提它（D1-2）
     .map((x) => ({ ...x, 说明: x.key === "password" && !机器 ? "改自己的登录密码" : 说明表[x.key] ?? "" })) as { key: string; label: string; 说明: string; children: React.ReactNode }[];
 

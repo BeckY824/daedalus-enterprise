@@ -1,9 +1,8 @@
 /**
  * 企业版「交接中」（2026-10-26，测试清单 D10：转出去的数据，交接完成前接手人看不到）：
- *   - 离职（转交）：成员当场停用，客户、待办留在他名下，接手人列表里一个都没有；接手人确认了才转，转完看得到、有留痕；重复确认回错
- *   - 离职（公海）：进公海的那半当场进，给接手人的那半等确认
- *   - 撤回（发起人 / 管理员）、拒收（接手人）：什么都不转；别人撤不了；了结后再确认回错
- *   - 同一个人的离职交接没了结不能再办；成员恢复启用，没确认的离职交接作废
+ *   - 离职：11-03 起企业版办离职只停用、名下原地不动，不再发起离职交接（交接到「项目 → 离职交接」，
+ *     见 ent-offboard-handover.test.ts）。升级前发起、还没了结的老离职交接照旧：接手人确认了才转，转完看得到、有留痕；
+ *     撤回（发起人 / 管理员）、拒收（接手人）什么都不转；没了结不能再办离职；成员恢复启用，没确认的作废
  *   - 转让：给别人的先不换负责人；重复发起不重复记；确认时只转还归原负责人的，名下的活和换负责人记录一起走
  *   - 两个人同时了结同一笔只成一个；转给自己照旧当场换
  *   - 开关关掉：规则关着、不是企业版，离职 / 转让和原来一样当场转，一行交接都不写；不是企业版确认回错、列表回空
@@ -15,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
+vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -27,6 +27,7 @@ import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 放进公海 } from "@/app/(app)/customers/pool-actions";
 import { 放回公海 } from "@/lib/project/db";
+import { 交接全部 } from "@/app/(app)/projects/handover/actions";
 
 type 人 = { id: string; role: string };
 let 老板: 人, 组长: 人, 销售: 人, 接手: 人;
@@ -42,6 +43,12 @@ const 客户 = (salesOwnerId: string, followStatus = "待跟进") =>
 const 归谁 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).salesOwnerId;
 const 接手看得到 = () => 以谁的身份(接手.id, () => prisma.customer.findMany({ select: { id: true } }));
 const 一笔 = () => prisma.entHandover.findFirstOrThrow();
+/** 升级前（11-03 C4-4 之前）发起、还没了结的离职交接：人已停用，名下留着，记一行待确认 */
+async function 老离职交接(way = "转交") {
+  await prisma.user.update({ where: { id: 销售.id }, data: { active: false } });
+  const ids = (await prisma.customer.findMany({ where: { salesOwnerId: 销售.id }, select: { id: true } })).map((c) => c.id);
+  return prisma.entHandover.create({ data: { kind: "离职", way, fromUserId: 销售.id, toUserId: 接手.id, byUserId: 老板.id, customerIds: JSON.stringify(ids), counts: JSON.stringify({ 客户: ids.length }) } });
+}
 
 beforeEach(async () => {
   await resetDb();
@@ -67,17 +74,12 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllEnvs(); });
 afterAll(async () => { await prisma.$disconnect(); });
 
-describe("离职交接中", () => {
+describe("离职交接中（升级前留下的）", () => {
   it("转交：确认前留在原负责人名下、接手人看不到；确认后转过去、看得到、有留痕；重复确认回错", async () => {
     const c = await 客户(销售.id);
     const t = await prisma.task.create({ data: { title: "回电", customerId: c.id, ownerId: 销售.id } });
-
-    expect(await deactivateUser(销售.id, 接手.id, "转交")).toEqual({ ok: true, 交接中: true });
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: 销售.id } })).active).toBe(false);
-    expect(await 归谁(c.id)).toBe(销售.id);
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: t.id } })).ownerId).toBe(销售.id);
+    await 老离职交接();
     expect(await 接手看得到()).toEqual([]);
-    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "deactivate", entityId: 销售.id } })).toMatchObject({ userId: 老板.id });
 
     当(接手);
     const 列 = await 待确认的交接();
@@ -91,32 +93,14 @@ describe("离职交接中", () => {
     expect((await 接手看得到()).map((x) => x.id)).toEqual([c.id]);
     expect(await 一笔()).toMatchObject({ status: "已确认", doneById: 接手.id });
     expect(await prisma.customerOwnerLog.findFirstOrThrow({ where: { customerId: c.id } })).toMatchObject({ fromOwnerId: 销售.id, toOwnerId: 接手.id, kind: "deactivate", userId: 老板.id });
-    expect(await prisma.auditLog.count({ where: { action: "deactivate", entityId: 销售.id } })).toBe(2);
 
     expect(await 确认交接(列.等我确认[0].id)).toMatchObject({ ok: false });
     expect((await 待确认的交接()).等我确认).toEqual([]);
   });
 
-  it("公海：该进公海的当场进，给接手人的等确认", async () => {
-    const 去公海 = await 客户(销售.id);
-    const 签了 = await 客户(销售.id, "已签约");
-    expect(await deactivateUser(销售.id, 接手.id, "公海")).toEqual({ ok: true, 交接中: true });
-    expect((await prisma.customerPool.findMany()).map((p) => p.customerId)).toEqual([去公海.id]);
-    expect(await 归谁(签了.id)).toBe(销售.id);
-    // 公海里的谁都看得到；给接手人的那位确认前看不到
-    expect((await 接手看得到()).map((x) => x.id)).toEqual([去公海.id]);
-
-    当(接手);
-    expect(await 确认交接((await 一笔()).id)).toEqual({ ok: true, 客户: 1 });
-    expect(await 归谁(签了.id)).toBe(接手.id);
-    expect(await 归谁(去公海.id)).toBe(销售.id);
-    expect(await prisma.customerPool.count()).toBe(1);
-  });
-
   it("撤回、拒收：什么都不转；别人撤不了；了结之后确认回错", async () => {
     const c = await 客户(销售.id);
-    await deactivateUser(销售.id, 接手.id);
-    const h = await 一笔();
+    const h = await 老离职交接();
 
     当(组长);
     // 11-01 权限只认业务角色：报错说「总管理」，不再说「管理员」
@@ -131,11 +115,8 @@ describe("离职交接中", () => {
     expect(await 确认交接(h.id)).toMatchObject({ ok: false });
     expect(await 归谁(c.id)).toBe(销售.id);
 
-    // 再办一次离职（人已停用，走恢复后重办），这次接手人拒收
-    当(老板);
-    await reactivateUser(销售.id);
-    await deactivateUser(销售.id, 接手.id);
-    const h2 = await prisma.entHandover.findFirstOrThrow({ where: { status: "待确认" } });
+    // 另一笔老的，这次接手人拒收
+    const h2 = await 老离职交接();
     当(接手);
     expect(await 拒收交接(h2.id)).toEqual({ ok: true, 客户: 0 });
     expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: h2.id } })).status).toBe("已拒收");
@@ -145,10 +126,10 @@ describe("离职交接中", () => {
 
   it("没了结不能再办；恢复启用把没确认的离职交接作废", async () => {
     await 客户(销售.id);
-    await deactivateUser(销售.id, 接手.id);
+    await 老离职交接();
     // 人已停用，再办一次走不到交接；这里直接看守卫：恢复前再发起会被挡
     await prisma.user.update({ where: { id: 销售.id }, data: { active: true } });
-    expect(await deactivateUser(销售.id, 组长.id)).toMatchObject({ ok: false, error: expect.stringContaining("还在等接手人确认") });
+    expect(await deactivateUser(销售.id, "")).toMatchObject({ ok: false, error: expect.stringContaining("还在等接手人确认") });
     await prisma.user.update({ where: { id: 销售.id }, data: { active: false } });
 
     expect(await reactivateUser(销售.id)).toMatchObject({ ok: true });
@@ -158,22 +139,22 @@ describe("离职交接中", () => {
   });
 });
 
-describe("离职时没东西给接手人（11-03 C4-2）", () => {
-  it("名下空、或公海方式全进了公海：当场停用，不建交接、不发「等你确认」", async () => {
+describe("办离职不再发起交接（11-03 C4-4）", () => {
+  it("名下有没有东西都当场停用、原地不动：不建交接、不发「等你确认」；公海方式回错", async () => {
+    const c = await 客户(销售.id);
     expect(await deactivateUser(销售.id, 接手.id, "转交")).toEqual({ ok: true });
     expect((await prisma.user.findUniqueOrThrow({ where: { id: 销售.id } })).active).toBe(false);
+    expect(await 归谁(c.id)).toBe(销售.id);
     expect(await prisma.entHandover.count()).toBe(0);
     expect(await prisma.entNotice.count({ where: { userId: 接手.id } })).toBe(0);
-    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "deactivate", entityId: 销售.id } })).toMatchObject({ summary: expect.stringContaining("没发起交接") });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "deactivate", entityId: 销售.id } })).toMatchObject({ summary: expect.stringContaining("原地不动") });
 
-    // 公海方式：待跟进的客户全进公海，给接手人的一样没有
     const 组员 = await 建("s3", "SALES");
     await prisma.entMember.create({ data: { userId: 组员.id, managerId: 组长.id, bizRole: "sales" } });
     await 客户(组员.id);
-    expect(await deactivateUser(组员.id, 接手.id, "公海")).toEqual({ ok: true });
-    expect(await prisma.entHandover.count()).toBe(0);
-    expect(await prisma.customerPool.count()).toBe(1);
-    expect(await prisma.entNotice.count({ where: { userId: 接手.id } })).toBe(0);
+    expect(await deactivateUser(组员.id, 接手.id, "公海")).toMatchObject({ ok: false, error: expect.stringContaining("不再放进公海") });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 组员.id } })).active).toBe(true);
+    expect(await prisma.customerPool.count()).toBe(0);
   });
 });
 
@@ -263,22 +244,32 @@ describe("转让交接中放公海（11-03 完成度 C3-2）", () => {
 
 describe("离职交接时本来在公海的客户（11-03 完成度 C4-1）", () => {
   // 原来：转交把公海里的也改到接手人名下，公海那行还在，接手人成了「原负责人」，看不到也领不到
-  it("转交：在公海的不算进接手、确认后留在公海不转；清点分开数", async () => {
+  it("老的离职交接确认时、离职交接看板全部交给时：在公海的都不转；清点不算公海里的", async () => {
     const a = await 客户(销售.id);
     const b = await 客户(销售.id);
     await prisma.customerPool.create({ data: { customerId: b.id, userId: 销售.id, reason: "手动" } });
     const pb = (await prisma.project.create({ data: { name: "公海客户的项目", customerId: b.id, ownerId: 销售.id, creatorId: 销售.id, phase: "线索" } })).id;
     const tb = await prisma.task.create({ data: { title: "回电", customerId: b.id, ownerId: 销售.id } });
+    const 不动 = async () => {
+      expect(await 归谁(b.id)).toBe(销售.id);
+      expect(await prisma.customerPool.count({ where: { customerId: b.id } })).toBe(1);
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: pb } })).ownerId).toBe(销售.id);
+      expect((await prisma.task.findUniqueOrThrow({ where: { id: tb.id } })).ownerId).toBe(销售.id);
+    };
 
-    expect(await 停用清点(销售.id)).toMatchObject({ ok: true, 转交: { 客户: 1, 进公海客户: 1, 项目: 0 } });
-    expect(await deactivateUser(销售.id, 接手.id, "转交")).toEqual({ ok: true, 交接中: true });
+    expect(await 停用清点(销售.id)).toMatchObject({ ok: true, 原地: { 客户: 1 } });
+    await 老离职交接();
     当(接手);
     expect(await 确认交接((await 一笔()).id)).toEqual({ ok: true, 客户: 1 });
     expect(await 归谁(a.id)).toBe(接手.id);
-    expect(await 归谁(b.id)).toBe(销售.id);
-    expect(await prisma.customerPool.count({ where: { customerId: b.id } })).toBe(1);
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: pb } })).ownerId).toBe(销售.id);
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: tb.id } })).ownerId).toBe(销售.id);
+    await 不动();
+
+    // 看板：把 a 退回原负责人名下再走一遍「全部交给」
+    await prisma.customer.update({ where: { id: a.id }, data: { salesOwnerId: 销售.id } });
+    当(老板);
+    expect((await 交接全部(销售.id, 接手.id)).ok).toBe(true);
+    expect(await 归谁(a.id)).toBe(接手.id);
+    await 不动();
   });
 });
 
@@ -291,7 +282,8 @@ describe("开关关掉", () => {
       const b = await 客户(组长.id);
 
       expect(await deactivateUser(销售.id, 接手.id)).toEqual({ ok: true });
-      expect(await 归谁(a.id)).toBe(接手.id);
+      // 企业版办离职原地不动（11-03 C4-4），不是企业版照旧当场转
+      expect(await 归谁(a.id)).toBe(情形 === "规则关着" ? 销售.id : 接手.id);
       expect(await assignSalesOwner([b.id], 接手.id)).toMatchObject({ ok: true, updated: 1 });
       expect(await 归谁(b.id)).toBe(接手.id);
       expect(await prisma.entHandover.count()).toBe(0);
@@ -345,8 +337,8 @@ describe("交接通知（11-03 C3-3 / C3-5 / C4-7 / C8-1）", () => {
 
   it("离职交接拒收：旧通知已读；停用的原负责人不收", async () => {
     await 客户(销售.id);
-    await deactivateUser(销售.id, 接手.id);
-    const h = await 一笔();
+    const h = await 老离职交接();
+    await prisma.entNotice.create({ data: { userId: 接手.id, kind: "交接", title: "等你确认", dedupeKey: `handover:${h.id}:发起` } });
     当(接手);
     expect(await 拒收交接(h.id)).toEqual({ ok: true, 客户: 0 });
     expect((await 通知(接手.id, "发起", h.id))?.readAt).not.toBeNull();

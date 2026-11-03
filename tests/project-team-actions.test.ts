@@ -119,7 +119,7 @@ describe("改组织规则（企业版持有上限）", () => {
     expect((await 记录()).map((r) => r.summary)).toContain("组织规则：超时回收开，设了 1 个进程的处理时长，起算日 不设");
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
     // 11-01 权限只认业务角色：企业版报错不再说老板
-    expect(await 预览超时回收(改)).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理员") });
+    expect(await 预览超时回收(改)).toMatchObject({ ok: false, error: expect.stringContaining("只有系统管理员") });
   });
 
   it("节点推进：老板配必填、开关，存下并留记录；配不能配的节点拦", async () => {
@@ -136,7 +136,7 @@ describe("改组织规则（企业版持有上限）", () => {
   it("业务员改不了；开关关着拦；填错拦，都不写", async () => {
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
     // 11-01 权限只认业务角色：企业版报错不再说老板
-    expect(await 改组织规则({ 公海: { 持有上限开: true } })).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理员") });
+    expect(await 改组织规则({ 公海: { 持有上限开: true } })).toMatchObject({ ok: false, error: expect.stringContaining("只有系统管理员") });
     mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
     expect(await 改组织规则({ 公海: { 默认上限: 0 } })).toMatchObject({ ok: false, error: expect.stringContaining("1–999") });
     mocks.开 = false;

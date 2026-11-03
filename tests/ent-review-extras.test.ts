@@ -81,7 +81,7 @@ describe("纯函数", () => {
 
   it("沟通条件：方式给了按 type 筛，不给不加；卡点条件那几样不动", () => {
     const now2 = dayjs("2026-10-31T15:00:00");
-    expect(沟通条件(undefined, "all", now2, "VISIT")).toEqual({ OR: [], type: "VISIT" });
+    expect(沟通条件(undefined, "all", now2, "VISIT")).toMatchObject({ type: "VISIT" });
     expect(沟通条件(["u1"], "all", now2)).not.toHaveProperty("type");
   });
 

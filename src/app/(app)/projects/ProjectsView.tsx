@@ -3,6 +3,7 @@
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { App, Button, Modal, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
 import { CloseOutlined, PlusOutlined, RightOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
@@ -78,7 +79,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [],
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -109,6 +110,10 @@ export default function ProjectsView({
   能自动分配?: boolean;
   /** 自动分配因都已满额没分出去的提醒 */
   满额提醒?: 满额提醒[];
+  /** 新线索页摆不摆「新线索」（11-03 D3-7 ④：没设业务角色、只读管理员不摆；服务端向导另拦）。默认摆 */
+  能新建?: boolean;
+  /** 企业版：我能处理、名下还有东西没交走的离职成员几位（11-03 B7-2）；null 不摆；0 = 我是谁的直属上级，摆入口不带数 */
+  待交接?: number | null;
 }) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -329,9 +334,10 @@ export default function ProjectsView({
           <Space wrap>
             {项目页分 && 能自动分配 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
             {(新线索 || 项目页分) && 线索分配开着 && <AssignedOutButton />}
+            {!新线索 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
             {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />}
             {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
-            <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>
+            {(能新建 || !新线索) && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>}
           </Space>
         }
       />
@@ -356,7 +362,7 @@ export default function ProjectsView({
               ? {
                   title: "还没有新线索",
                   hint: `新线索就是还在线索阶段的项目。新建时会一起建好${b.customer}、联系人和第一次沟通，从潜客培育开始。`,
-                  primary: { label: "新线索", onClick: 新建 },
+                  primary: 能新建 ? { label: "新线索", onClick: 新建 } : undefined,
                 }
               : {
                   title: "还没有项目",

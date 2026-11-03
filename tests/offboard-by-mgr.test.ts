@@ -1,10 +1,11 @@
 /**
  * 企业版离职由上级办（D-36）：
  *   - 直属上级能给下属办离职、先清点；隔级、虚线、同级不行（FORBIDDEN）；上级不能停用管理员
- *   - 直属上级这一条跟「按组织看客户」开关走：开关关着上级不行，老板照旧
- *   - 批量停用：同一个接手人一次办完，200 人一次做完；有一个人办不了就一个都不动；单个失败记下来接着办别人
+ *   - 11-03：直属上级办离职不再看「按组织看客户」开关（谁能办离职 = 手填直属上级 + 系统管理员）
+ *   - 11-03 C4-4：办离职名下原地不动，转给接手人改在「项目 → 离职交接」里「全部交给」
+ *   - 批量停用：200 人一次做完；有一个人办不了就一个都不动；单个失败记下来接着办别人
  *   - 不是企业版：只认管理员，和原来一样；批量停用不给
- *   - 「线索分配」开着：转给接手人的没转化线索各记一行分配（不算数、种类沿用上次）；关着不记
+ *   - 「线索分配」开着：全部交给接手人时没转化线索各记一行分配（不算数、种类沿用上次）；关着不记
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -13,11 +14,13 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
+vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
 import { deactivateUser, 停用清点, 批量停用 } from "@/app/(app)/settings/actions";
+import { 交接全部 } from "@/app/(app)/projects/handover/actions";
 import { 月份, 本月已分 } from "@/lib/enterprise/lead-assign";
 
 type 人 = { id: string; role: string };
@@ -62,12 +65,14 @@ afterEach(() => { vi.unstubAllEnvs(); });
 afterAll(async () => { await prisma.$disconnect(); });
 
 describe("上级办离职", () => {
-  it("直属上级能清点、能停用，转交照常，留痕记的是上级", async () => {
+  it("直属上级能清点、能停用（原地不动），再在离职交接里全部交给，留痕记的是上级", async () => {
     const c = await 客户(销售.id);
     当(组长);
-    expect(await 停用清点(销售.id)).toMatchObject({ ok: true, 转交: { 客户: 1 } });
+    expect(await 停用清点(销售.id)).toMatchObject({ ok: true, 原地: { 客户: 1 } });
     expect(await deactivateUser(销售.id, 同事.id, "转交")).toEqual({ ok: true });
     expect(await 在职(销售)).toBe(false);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(销售.id);
+    expect((await 交接全部(销售.id, 同事.id)).ok).toBe(true);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(同事.id);
     expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "deactivate", entityId: 销售.id } })).toMatchObject({ userId: 组长.id });
   });
@@ -94,15 +99,14 @@ describe("上级办离职", () => {
     expect(await deactivateUser(销售.id, 同事.id)).toEqual({ ok: true });
   });
 
-  it("「按组织看客户」开关关着：上级不能清点、不能停用，老板照旧", async () => {
+  it("11-03「按组织看客户」开关关着：直属上级照样能清点、能办离职（只认手填直属上级 + 系统管理员）", async () => {
     await setSetting("enterprise.rule.org_scope", false);
+    当(经理);
+    await expect(deactivateUser(销售.id, "")).rejects.toThrow("FORBIDDEN");
     当(组长);
-    await expect(停用清点(销售.id)).rejects.toThrow("FORBIDDEN");
-    await expect(deactivateUser(销售.id, 同事.id)).rejects.toThrow("FORBIDDEN");
-    await expect(批量停用([销售.id], 同事.id)).rejects.toThrow("FORBIDDEN");
-    expect(await 在职(销售)).toBe(true);
-    当(老板);
-    expect(await deactivateUser(销售.id, 同事.id)).toEqual({ ok: true });
+    expect(await 停用清点(销售.id)).toMatchObject({ ok: true, 原地: { 客户: 0 } });
+    expect(await deactivateUser(销售.id, "")).toEqual({ ok: true });
+    expect(await 在职(销售)).toBe(false);
   });
 
   it("不是企业版：上级不行，只认管理员", async () => {
@@ -115,14 +119,16 @@ describe("上级办离职", () => {
 });
 
 describe("批量停用", () => {
-  it("上级一次办完几个下属，名下都转给接手人", async () => {
+  it("上级一次办完几个下属：都停用，名下原地不动；之后各自全部交给接手人", async () => {
     const 甲 = await 客户(销售.id);
     const 乙 = await 客户(同事.id);
     当(组长);
-    expect(await 批量停用([销售.id, 同事.id], 组长.id, "转交")).toEqual({ ok: true, 停了: 2, 失败: [] });
+    expect(await 批量停用([销售.id, 同事.id], "", "转交")).toEqual({ ok: true, 停了: 2, 失败: [] });
     expect([await 在职(销售), await 在职(同事)]).toEqual([false, false]);
-    const 主 = await prisma.customer.findMany({ where: { id: { in: [甲.id, 乙.id] } }, select: { salesOwnerId: true } });
-    expect(主.map((x) => x.salesOwnerId)).toEqual([组长.id, 组长.id]);
+    const 主 = async () => Object.fromEntries((await prisma.customer.findMany({ where: { id: { in: [甲.id, 乙.id] } }, select: { id: true, salesOwnerId: true } })).map((x) => [x.id, x.salesOwnerId]));
+    expect(await 主()).toEqual({ [甲.id]: 销售.id, [乙.id]: 同事.id });
+    for (const id of [销售.id, 同事.id]) expect((await 交接全部(id, 组长.id)).ok).toBe(true);
+    expect(await 主()).toEqual({ [甲.id]: 组长.id, [乙.id]: 组长.id });
   });
 
   it("里面有一个办不了：FORBIDDEN，一个都不动", async () => {
@@ -133,7 +139,7 @@ describe("批量停用", () => {
 
   it("单个失败记下来，接着办别人", async () => {
     expect(await 批量停用([销售.id, "不在了"], 组长.id)).toEqual({
-      ok: true, 停了: 1, 失败: [{ id: "不在了", error: "停用没成功，刷新再试" }],
+      ok: true, 停了: 1, 失败: [{ id: "不在了", error: "这个成员已不存在，请刷新重试" }],
     });
     expect(await 在职(销售)).toBe(false);
   });
@@ -170,7 +176,9 @@ describe("离职交接记线索分配", () => {
     const 转了 = await prisma.lead.create({ data: { name: "转了", ownerId: 销售.id, convertedAt: new Date() } });
     await prisma.entLeadAssign.create({ data: { leadId: 乙.id, toUserId: 销售.id, byUserId: 老板.id, kind: "营销企划", month: 月份() } });
     当(组长);
-    expect(await deactivateUser(销售.id, 同事.id)).toEqual({ ok: true });
+    expect(await deactivateUser(销售.id, "")).toEqual({ ok: true });
+    expect(await prisma.entLeadAssign.count({ where: { toUserId: 同事.id } })).toBe(0);
+    expect((await 交接全部(销售.id, 同事.id)).ok).toBe(true);
     const 记 = await prisma.entLeadAssign.findMany({ where: { toUserId: 同事.id }, orderBy: { leadId: "asc" } });
     expect(记.map((r) => r.leadId).sort()).toEqual([甲.id, 乙.id].sort());
     for (const r of 记) expect(r).toMatchObject({ fromUserId: 销售.id, byUserId: 组长.id, line: null, counted: false, month: 月份() });
@@ -182,7 +190,9 @@ describe("离职交接记线索分配", () => {
 
   it("「线索分配」关着：线索照样转，不记分配", async () => {
     await prisma.lead.create({ data: { name: "甲", ownerId: 销售.id } });
-    expect(await deactivateUser(销售.id, 同事.id)).toEqual({ ok: true });
+    expect(await deactivateUser(销售.id, "")).toEqual({ ok: true });
+    expect(await prisma.lead.count({ where: { ownerId: 销售.id } })).toBe(1);
+    expect((await 交接全部(销售.id, 同事.id)).ok).toBe(true);
     expect(await prisma.lead.count({ where: { ownerId: 同事.id } })).toBe(1);
     expect(await prisma.entLeadAssign.count()).toBe(0);
   });

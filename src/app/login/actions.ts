@@ -8,6 +8,8 @@ import { 检查限流, 记一次失败, 清除限流, 解析来源IP, 阈值, IP
 import { multiTenant } from "@/lib/tenant/context";
 import { verifyAccount } from "@/lib/tenant/accounts";
 import { accessibleWorkspacesFor } from "@/lib/tenant/workspace-access";
+import { 能用密码登录, 密码登录拒绝话 } from "@/lib/enterprise/password-login";
+import { 飞书登录凭据 } from "@/lib/enterprise/feishu-login";
 
 export type LoginResult =
   | { ok: true; 选工作区?: boolean }
@@ -81,16 +83,22 @@ export async function login(email: string, password: string): Promise<LoginResul
   }
 
   const user = await prisma.user.findUnique({ where: { email: 账号 } });
+  // 企业版接了飞书登录（11-03）：密码只给系统管理员兜底，登不进一律同一句（lib/enterprise/password-login.ts）
+  const 只给管理员 = (await 飞书登录凭据()) !== null;
 
   if (!user || !user.active) {
     keys.forEach(([k, 上限]) => 记一次失败(k, Date.now(), 上限));
-    return { ok: false, error: "账号不存在或已停用" };
+    return { ok: false, error: 只给管理员 ? 密码登录拒绝话 : "账号不存在或已停用" };
   }
 
   const valid = await 核对密码串(password, user.password);
   if (!valid) {
     keys.forEach(([k, 上限]) => 记一次失败(k, Date.now(), 上限));
-    return { ok: false, error: "密码错误" };
+    return { ok: false, error: 只给管理员 ? 密码登录拒绝话 : "密码错误" };
+  }
+  if (只给管理员 && !(await 能用密码登录(user))) {
+    keys.forEach(([k, 上限]) => 记一次失败(k, Date.now(), 上限));
+    return { ok: false, error: 密码登录拒绝话 };
   }
   // 老的 bcrypt 串趁这次对上换成 scrypt；只认库里还是这一串时才换，别盖掉同一刻刚改的新密码
   if (要升级(user.password)) {

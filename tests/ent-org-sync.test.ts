@@ -463,3 +463,55 @@ describe("开关关着：个人版 / 团队版不变", () => {
     expect((await 读通讯录设置("feishu")).上次).toBeNull();
   });
 });
+
+describe("飞书身份（open_id）只补空（11-03）", () => {
+  const open_id = async (id: string) => (await prisma.user.findUniqueOrThrow({ where: { id } })).feishuOpenId;
+
+  it("认上的人写进 open_id；离职的不绑；再跑一次没有新绑定", async () => {
+    await 接飞书();
+    const r = await 同步通讯录("feishu", { 用户: { id: 老板, name: "老板" } });
+    expect(r.结果).toBe("成功");
+    expect(await open_id(老板)).toBe("ou-boss");
+    expect(await open_id(经理)).toBe("ou-mgr");
+    expect(await open_id(张三)).toBe("ou-s1");
+    expect(await open_id(离职的)).toBeNull();
+    expect((await 人("lead@example.com")).feishuOpenId).toBe("ou-lead");
+    expect(r.话).toMatch(/\d+ 人绑上飞书身份/);
+
+    await 接飞书();
+    const r2 = await 同步通讯录("feishu", { 用户: { id: 老板, name: "老板" } });
+    expect(r2.话).toContain("没变化");
+    expect(await open_id(张三)).toBe("ou-s1");
+  });
+
+  it("已经绑了别的 open_id：不覆盖，进报告；其他人照常补", async () => {
+    await prisma.user.update({ where: { id: 张三 }, data: { feishuOpenId: "ou-other" } });
+    await 接飞书();
+    const r = await 同步通讯录("feishu", { 用户: { id: 老板, name: "老板" } });
+    expect(r.结果).toBe("成功");
+    expect(await open_id(张三)).toBe("ou-other");
+    expect(r.报告.some((x) => x.includes("张三") && x.includes("别的飞书身份"))).toBe(true);
+    expect(await open_id(经理)).toBe("ou-mgr");
+    // 不停用、不改账号角色
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 张三 } })).active).toBe(true);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: 张三 } })).role).toBe("SALES");
+  });
+
+  it("邮箱是导入占位的同名号：按唯一同名认上并补 open_id，不另建账号", async () => {
+    const 赵四 = (await prisma.user.create({ data: { email: "row-12@import.invalid", name: "赵四", title: "", role: "SALES", password: "x" } })).id;
+    await 接飞书();
+    const r = await 同步通讯录("feishu", { 用户: { id: 老板, name: "老板" } });
+    expect(r.话).toContain("新建 2 个账号");
+    expect(await open_id(赵四)).toBe("ou-s2");
+    expect(await prisma.user.count({ where: { email: "feishu-ou-s2@contacts.invalid" } })).toBe(0);
+  });
+
+  it("同名的有两个：不按名字认，照旧另建不能登录的号，谁的 open_id 都不动", async () => {
+    const a = (await prisma.user.create({ data: { email: "row-1@import.invalid", name: "赵四", title: "", role: "SALES", password: "x" } })).id;
+    const b = (await prisma.user.create({ data: { email: "row-2@import.invalid", name: "赵四", title: "", role: "SALES", password: "x" } })).id;
+    await 接飞书();
+    await 同步通讯录("feishu", { 用户: { id: 老板, name: "老板" } });
+    expect(await open_id(a)).toBeNull();
+    expect(await open_id(b)).toBeNull();
+  });
+});
