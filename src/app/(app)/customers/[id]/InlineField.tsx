@@ -122,7 +122,7 @@ export default function InlineField({
 
   if (!editing) {
     return (
-      <div className="rec-field" {...(只读 ? { style: { cursor: "default" } } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
+      <div className="rec-field" data-field={field} {...(只读 ? { style: { cursor: "default" } } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
         <div className="rec-field-k">{label}</div>
         {/* 单行的值带 is-line + title（U-通用-01）：企业版项目模式左栏放不下就省略，悬停看全；多行的备注照旧换行 */}
         <div
@@ -146,7 +146,7 @@ export default function InlineField({
 
   const common = { autoFocus: true, size: "middle" as const, style: { width: "100%" } };
   return (
-    <div className="rec-field rec-field-editing">
+    <div className="rec-field rec-field-editing" data-field={field}>
       <div className="rec-field-k">{label}</div>
       {kind === "select" && (
         <Select

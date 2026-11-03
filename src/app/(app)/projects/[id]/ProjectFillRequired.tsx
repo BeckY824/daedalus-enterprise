@@ -18,7 +18,7 @@ import { 成交需求上限 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限 } from "@/lib/project/proj-fields";
 import type { 钱格值 } from "@/lib/project/inline-edit";
 import {
-  归类, 初始草稿, 草稿问题, 草稿是空的, 现值不算的话, 这项的改动, 算窗口状态, 依次保存, 存完怎么走, 按目录排,
+  归类, 客户格, 初始草稿, 草稿问题, 草稿是空的, 现值不算的话, 这项的改动, 算窗口状态, 依次保存, 存完怎么走, 按目录排,
   type 地址草稿, 草稿值, 草稿们, 窗外去处, 窗里环境, 想怎么走, 填法,
 } from "@/lib/project/required-fill";
 import { 编辑项目, 改项目画像Action, 勾项目交付 } from "../actions";
@@ -203,12 +203,12 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     }
   };
 
-  const 窗外行 = (去: 窗外去处 | null, 原因: string) => {
+  const 窗外行 = (项: 必填项, 去: 窗外去处 | null, 原因: string) => {
     const 能去 = 去 === "沟通" ? p.能记沟通 : 去 === "附件" ? !!p.项目附件 : 去 === "回款" ? !!p.回款们 : 去 === "线索验证" ? !!p.线索验证 : 去 === "客户" ? !!p.customer : false;
     return (
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px", minWidth: 0 }}>
         <span style={{ ...灰字, flex: "1 1 200px", minWidth: 0 }}>{原因}</span>
-        {去 === "客户" && 能去 && p.customer && <Link href={`/customers/${p.customer.id}`}>{去处按钮.客户}</Link>}
+        {去 === "客户" && 能去 && p.customer && <Link href={`/customers/${p.customer.id}${客户格[项] ? `#field-${客户格[项]}` : ""}`}>{去处按钮.客户}</Link>}
         {去 && 去 !== "客户" && 能去 && <Button size="small" disabled={占着} onClick={() => on去(去)}>{去处按钮[去]}</Button>}
       </div>
     );
@@ -247,7 +247,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
                   {必填叫法(k)}
                   {存上了 && <Tag color="success" style={{ marginInlineStart: 8 }}>已存上</Tag>}
                 </div>
-                {!存上了 && (类.类 === "填" ? 控件(项, 类.法) : 窗外行(类.去, 类.原因))}
+                {!存上了 && (类.类 === "填" ? 控件(项, 类.法) : 窗外行(项, 类.去, 类.原因))}
                 {现值话 && <div style={灰字}>{现值话}</div>}
                 {问题 && <div style={灰字}>{问题}</div>}
                 {失败[k] && <div className="proj-inline-err" role="alert">{失败[k]}</div>}
