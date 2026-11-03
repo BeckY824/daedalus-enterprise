@@ -145,6 +145,8 @@ export type 项目详情 = {
   能改节点: boolean;
   /** 能转让（换负责人）：企业版 = 总管理、负责人的实线上级（业务线对得上，lib/enterprise/permissions.ts 能转让项目）、负责人本人转出自己的 */
   能转让?: boolean;
+  /** 企业版：转给这些人以后我还看得到这个项目（没有 = 按看不到说） */
+  转后还能看?: string[];
   balanceSettled: boolean; balanceSettledBy: string | null; balanceSettledAt: string | null;
   acceptancePassed: boolean; acceptancePassedBy: string | null; acceptancePassedAt: string | null;
   /** kind 不是 node 的行是换负责人（转让 / 放回公海 / 从公海领取），transfer 记从谁到谁；category 是进异常时选的类别 */
@@ -622,7 +624,8 @@ export default function ProjectDetail({
     const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }, 带待办勾出 ? 转给带待办 : undefined), `已转给 ${名}`);
     if (!ok) return;
     set转给框(false);
-    router.push("/projects");
+    // 转完自己还看得到（总管理、上级）就留在这页，看不到才回列表
+    if (!p.转后还能看?.includes(新)) router.push("/projects");
   };
   const 转给名 = 转给谁 ? (候选.find((m) => m.id === 转给谁)?.name ?? "TA") : null;
 
@@ -1246,6 +1249,7 @@ export default function ProjectDetail({
             能推进={!!完成到 && !完成不了}
             完成不了={完成不了}
             完成到字={完成到字}
+            交付还差={完成到?.result && 是交付(完成到.result) ? 差 : undefined}
             忙={忙}
             on完成={换框(完成)}
             on关={关头部框}
@@ -1458,7 +1462,7 @@ export default function ProjectDetail({
           </Checkbox>
         )}
         <div style={{ color: "var(--text-muted)" }}>
-          {转给名 ? `确认转给 ${转给名}？转了以后你看不到这个项目，原来填的下一步会清掉，由 ${转给名} 重新安排；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
+          {转给名 ? `确认转给 ${转给名}？${转给谁 && p.转后还能看?.includes(转给谁) ? "转了以后你还能看这个项目" : "转了以后你看不到这个项目"}，原来填的下一步会清掉，由 ${转给名} 重新安排；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
         </div>
       </Modal>
     </div>
@@ -1618,8 +1622,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
   };
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体" : p.企业版 && 明确回复 === null ? "请选客户明确回复了吗"
     : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
-  /** 差的那一格在折起来的「更多」里：底下那句旁边给个「展开更多」 */
-  const 差在更多 = !更多开 && p.企业版 && !!content.trim() && 明确回复 === null;
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
 
@@ -1652,7 +1654,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
       footer={(按钮) => (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
           {差 && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{差}</span>}
-          {差在更多 && <Button size="small" type="link" style={{ paddingInline: 0 }} onClick={() => set更多开(true)}>展开更多</Button>}
           <span>{按钮}</span>
         </div>
       )}
@@ -1729,11 +1730,17 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
             <选沟通附件框 文件们={附件们} on改={set附件们} />
           </div>
         )}
+        {/* 必填，摆在外面不折进「更多」（A7-2） */}
+        {p.企业版 && (
+          <div>
+            <div style={{ marginBottom: 4 }}>客户明确回复了吗<span style={{ color: "var(--danger-text)" }}> *</span></div>
+            <Radio.Group aria-label="客户明确回复了吗" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
+          </div>
+        )}
         <div>
           <Button type="link" size="small" style={{ paddingInline: 0 }} icon={<DownOutlined rotate={更多开 ? 180 : 0} />} aria-expanded={更多开} onClick={() => set更多开((v) => !v)}>
-            更多{p.企业版 ? "：沟通时间、项目阶段、客户明确回复" : "：沟通时间"}{给AI ? "、AI 预填" : ""}
+            更多{p.企业版 ? "：沟通时间、项目阶段" : "：沟通时间"}{给AI ? "、AI 预填" : ""}
           </Button>
-          {p.企业版 && 明确回复 === null && !更多开 && <span style={{ color: "var(--danger-text)", fontSize: "var(--dt-aux, 12px)" }}> 客户明确回复还没选</span>}
         </div>
         {更多开 && (
           <div className="follow-more">
@@ -1781,12 +1788,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
               <div>
                 <div style={{ marginBottom: 4 }}>项目阶段<span style={{ color: "var(--text-muted)" }}>（记在项目现在的阶段上）</span></div>
                 <Select aria-label="项目阶段" style={{ width: "100%" }} value={p.phase} disabled options={[{ value: p.phase, label: p.phase }]} />
-              </div>
-            )}
-            {p.企业版 && (
-              <div>
-                <div style={{ marginBottom: 4 }}>客户明确回复了吗<span style={{ color: "var(--danger-text)" }}> *</span></div>
-                <Radio.Group aria-label="客户明确回复了吗" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
               </div>
             )}
           </div>

@@ -169,6 +169,17 @@ describe("渠道投入", () => {
     expect(await deleteChannel(渠道)).toEqual({ ok: true });
   });
 
+  it("项目来源挂在这个渠道上的不能删（11-03 A1-1）：客户来源是别的渠道也要数到，不然项目来源被悄悄清空", async () => {
+    const 别的 = (await prisma.channel.create({ data: { name: "小红书|店铺", channelOwnerId: 负责人 } })).id;
+    const 客户 = await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 销售, channelId: 别的 } });
+    const p = await prisma.project.create({ data: { customerId: 客户.id, name: "单子", phase: "订单", ownerId: 销售, creatorId: 销售, channelId: 渠道 } });
+    当(市场经理);
+    expect(await deleteChannel(渠道)).toEqual({ ok: false, error: "该渠道是 1 个项目的项目来源，不能删除。如需停用请点「停用」" });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).channelId).toBe(渠道);
+    await prisma.project.update({ where: { id: p.id }, data: { channelId: null } });
+    expect(await deleteChannel(渠道)).toEqual({ ok: true });
+  });
+
   it("读渠道统计：项目按客户的渠道归，投入合计、产出比跟着算", async () => {
     await 录(400);
     const 客户 = await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 销售, channelId: 渠道 } });
