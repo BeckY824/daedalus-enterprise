@@ -30,7 +30,7 @@ import {
 import { FOLLOW_STATUSES, DECISION_STATUSES, OPP_STAGES } from "@/lib/constants";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { recordAudit, describeCustomerChanges } from "@/lib/audit";
-import { 唯一负责人 } from "@/lib/owners";
+import { 唯一负责人, 不能当负责人 } from "@/lib/owners";
 import { getBusiness } from "@/lib/business";
 import { 写签约金额, 带币种, 商机币种, 签约币种, 签约金额, 签约合计 } from "@/lib/money-db";
 import { 金额 as 显示金额, 是币种, 规整币种 } from "@/lib/currency";
@@ -531,6 +531,11 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   // 企业版普通销售新建的客户只能记在自己名下（10-27 会议，lib/enterprise/import-perm.ts），不看表单传来的
   const salesOwnerId = !input.id && (await 新建只给自己(me)) ? me.id : input.salesOwnerId || (await 唯一负责人());
   if (!salesOwnerId) return { ok: false, error: "请选择销售负责人" };
+  // 换了负责人才查（老客户挂在没角色的人名下，改别的字段不拦）。11-03 完成度 D3-9
+  if (salesOwnerId !== 改前?.salesOwnerId) {
+    const 不行 = await 不能当负责人(salesOwnerId);
+    if (不行) return { ok: false, error: 不行 };
+  }
 
   const sign = parseSignDate(input.expectedSignAt, 改前 ?? undefined);
   if (!sign) return { ok: false, error: "日期格式不对或日期不存在" };
@@ -1064,6 +1069,9 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   const reason = salesOwnerId === me.id ? null : 选.值;
 
   if (!(await 在职(salesOwnerId))) return { ok: false, error: "该成员不存在或已停用，请选择一位在职成员" };
+  // 没设角色的人、只读管理员不能接（交接也一样，原来能交接给管理员，11-03 完成度 C3-1）
+  const 不行 = await 不能当负责人(salesOwnerId);
+  if (不行) return { ok: false, error: 不行 };
   // 虚线下属的客户限定层会静静滤掉，结果报成「已不存在」：先说真原因
   const 虚线 = await 虚线只读挡(defaultClient, ids);
   if (虚线) return { ok: false, error: 虚线 };
@@ -1611,6 +1619,8 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     data.custStatus = r.值;
   } else if (key === "salesOwnerId") {
     if (typeof v !== "string" || !v || !(await 在职(v))) return { ok: false, error: "负责人不存在或已停用" };
+    const 不行 = await 不能当负责人(v);
+    if (不行) return { ok: false, error: 不行 };
     data.salesOwnerId = v;
   } else if (key === "channelOwnerId") {
     // 清空 = 恢复跟着推荐链走；给了人 = 手工钉死。只动这一条学员，不影响任何其他人

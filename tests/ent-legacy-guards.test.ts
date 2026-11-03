@@ -30,6 +30,8 @@ beforeEach(async () => {
   mocks.开 = true;
   vi.stubEnv("CRM_ENTERPRISE", "1");
   mocks.user.id = (await prisma.user.create({ data: { email: "a@x", name: "老板", title: "", role: "ADMIN", password: "x" } })).id;
+  // 企业版没业务角色的人当不了负责人（11-03 完成度 C3-1）
+  await prisma.entMember.create({ data: { userId: mocks.user.id, bizRole: "director" } });
   客户 = (await prisma.customer.create({ data: { name: "云帆科技", phone: "13900000001", salesOwnerId: mocks.user.id } })).id;
 });
 

@@ -6,6 +6,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
+import { 不能当负责人 } from "@/lib/owners";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
@@ -110,6 +111,8 @@ export async function 建档向导(输入: 建档向导输入) {
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
+    const 不行 = await 不能当负责人(好.项目.ownerId);
+    if (不行) return { ok: false as const, error: 不行 };
     // 负责人选了别人 = 指派，开了持有上限的要算；自己建给自己不拦（lib/project/db.ts 超上限）
     if (好.项目.ownerId !== me.id) {
       // 企业版指定分配给别人：和分配线索同一条（11-03 A2-1）——只能给销售 / 销售管理；业务线这里不比

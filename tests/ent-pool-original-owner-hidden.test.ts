@@ -5,7 +5,7 @@
  *   - 同事照常看得到才能领；上级、总管理不受影响；上级自己是原负责人也回避
  *   - 新负责人领走：原负责人还是看不到（仍是组员看得到项目）；只认最后一次放回
  *   - 规则「按组织看客户」关着（别人都不限定）：照样回避
- *   - 没设业务角色：公海客户、公海项目、记跟进自动领都拦，账号 ADMIN 不算；别人分给 ta 不拦
+ *   - 没设业务角色：公海客户、公海项目、记跟进自动领都拦，账号 ADMIN 不算；别人分给 ta 也拦（11-03 完成度 C3-1：没业务角色不能当负责人）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -359,14 +359,14 @@ describe("没设业务角色不能领", () => {
     expect(await raw.customerPool.count({ where: { customerId: c } })).toBe(1);
   });
 
-  it("设了业务角色的正常领；别人分给没业务角色的不拦", async () => {
+  it("设了业务角色的正常领；别人分给没业务角色的也拦", async () => {
     const 无角色 = await 造人("none4@x", "无角色四", "SALES", null);
     const 甲 = await 导入的(乙.id, "丙来领");
     当(丙);
     expect(await 以谁的身份(丙.id, () => 领取([甲.c]))).toMatchObject({ ok: true, updated: 1 });
     const 乙的 = await 导入的(乙.id, "分给人");
     当(老板);
-    expect(await 以谁的身份(老板.id, () => 分配公海([乙的.c], 无角色.id))).toMatchObject({ ok: true, updated: 1 });
-    expect((await raw.customer.findUniqueOrThrow({ where: { id: 乙的.c } })).salesOwnerId).toBe(无角色.id);
+    expect(await 以谁的身份(老板.id, () => 分配公海([乙的.c], 无角色.id))).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
+    expect((await raw.customer.findUniqueOrThrow({ where: { id: 乙的.c } })).salesOwnerId).not.toBe(无角色.id);
   });
 });

@@ -1,6 +1,8 @@
 import { prisma } from "./prisma";
 import { 可担任负责人 } from "./constants";
 import { 无负责人占位邮箱 } from "./pool";
+import { 权限组织 } from "./enterprise/org";
+import { 能当负责人, 不能当负责人话 } from "./enterprise/permissions";
 
 /**
  * 「谁能被指派为负责人」的候选名单。
@@ -33,6 +35,9 @@ export async function 负责人候选() {
  * 后者会让一个多人工作区里的管理员因为重名之类的巧合被悄悄放进来。
  */
 export async function 负责人口径() {
+  // 企业版按业务角色（11-03 完成度 D3-9）：有角色、不是只读管理员；不看账号角色，也没有「没别人就列全部」的回退
+  const org = await 权限组织();
+  if (org) return { active: true, id: { in: [...org.成员.keys()].filter((id) => 能当负责人(org, id)) } };
   const 有别人 = await prisma.user.count({ where: 可担任负责人 });
   return 有别人 > 0 ? 可担任负责人 : { active: true };
 }
@@ -74,4 +79,13 @@ export async function 跟进筛选成员() {
     select: { id: true, name: true, email: true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });
+}
+
+/**
+ * 服务端指派负责人时的同一道闸（11-03 完成度 D3-9 / C3-1）：企业版没设业务角色、只读管理员不能当负责人。
+ * 返回拒绝的话；能当或不是企业版 = null。在职另由各入口查
+ */
+export async function 不能当负责人(userId: string): Promise<string | null> {
+  const org = await 权限组织();
+  return org ? 不能当负责人话(org, userId) : null;
 }

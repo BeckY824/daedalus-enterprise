@@ -91,6 +91,21 @@ export function 只读角色(me: 谁, org: 组织 | null): boolean {
 }
 /** 只读角色写的时候那一句 */
 export const 只读角色话 = "管理员只能看，不能改任何数据";
+/**
+ * 能当负责人（11-03 完成度 D3-9 / C3-1）：企业版 = 有业务角色、不是只读管理员（含按线的）；不看账号角色——
+ * 账号 ADMIN 的真销售能选，没设角色的人、只读管理员选不到（原来只排除账号 ADMIN，管理员照样进下拉、能被转给、能接交接）。
+ * 下拉（owners.ts 负责人口径）和服务端各入口都按这一处。不是企业版一律能（老规矩在 负责人口径 里）
+ */
+export function 能当负责人(org: 组织 | null, userId: string): boolean {
+  return 不能当负责人话(org, userId) === null;
+}
+/** 不能当负责人时那一句；能当 = null */
+export function 不能当负责人话(org: 组织 | null, userId: string): string | null {
+  if (老()) return null;
+  if (没设业务角色(org, userId)) return "该成员还没设业务角色，不能当负责人，请找总管理设置";
+  if (只读角色({ id: userId }, org)) return "管理员只读，不能当负责人";
+  return null;
+}
 /** 没设业务角色的领公海（11-03 用户定：无法领）。账号的 ADMIN / MANAGER 不算；别人分给他不在此列 */
 export const 没业务角色不能领话 = "还没设业务角色，不能领公海里的客户和项目，请找总管理设置";
 

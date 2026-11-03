@@ -4,6 +4,7 @@
  */
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
+import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
 import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, 有效线索判定, type 必填数据 } from "./required";
@@ -528,6 +529,10 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 好 = 规整项目({ ...项目现值(p), name: "未传", remark: null, ...传 }, p.ownerId);
     if ("error" in 好) return { ok: false as const, error: 好.error };
     if (好.ownerId !== p.ownerId && !(await 在职(tx, 好.ownerId))) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
+    if (好.ownerId !== p.ownerId) {
+      const 不行 = await 不能当负责人(好.ownerId);
+      if (不行) return { ok: false as const, error: 不行 };
+    }
     const contactId = patch.contactId === undefined ? p.contactId : patch.contactId || null;
     if (contactId && contactId !== p.contactId) {
       const c = await tx.contact.findUnique({ where: { id: contactId }, select: { customerId: true } });

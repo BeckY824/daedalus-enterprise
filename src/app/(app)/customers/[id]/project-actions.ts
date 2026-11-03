@@ -15,6 +15,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
+import { 不能当负责人 } from "@/lib/owners";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
@@ -119,6 +120,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
 
     const 负责人 = await prisma.user.findUnique({ where: { id: 项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false, error: "项目负责人不存在或已停用，请选一位在职成员" };
+    const 不行 = await 不能当负责人(项目.ownerId);
+    if (不行) return { ok: false, error: 不行 };
     if (项目.ownerId !== me.id) {
       const 超 = await 超上限(prisma, 规则, 项目.ownerId, { phase: "线索", result: null });
       if (超) return { ok: false, error: 超 };
