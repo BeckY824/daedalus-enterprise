@@ -22,6 +22,7 @@ import { 能删除, 能删一些, 能真删, 能恢复 } from "./permissions";
 import { 看已删, 回收站保留天数, 客户连带, type 软删表名 } from "./soft-delete-core";
 import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
+import { 忘掉企业版范围 } from "./visibility";
 
 export { 看已删, 回收站保留天数, 客户连带, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -132,7 +133,7 @@ export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结�
     if (t === "Customer" || t === "FollowUp") await 重算最近跟进(tx, customerId);
     await 跟着项目重算(tx, 状态开, [customerId]);
     return { ok: true as const, 连带, customerId };
-  }));
+  })).then((r) => { if (r.ok && (t === "Customer" || t === "Project")) 忘掉企业版范围(); return r; }); // 项目回来了，组员看得到的客户名单跟着变
 }
 
 /** 恢复之后一位客户有两位关键联系人：留原来在的那位，回来的取消关键 */
