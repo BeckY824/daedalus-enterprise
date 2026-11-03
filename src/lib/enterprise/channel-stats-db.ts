@@ -15,10 +15,15 @@
 import { prisma } from "@/lib/prisma";
 import { 算渠道统计, 项目算哪个渠道, type 统计用渠道, type 统计用项目, type 渠道统计 } from "./channel-stats";
 
+/** 归到这批渠道的项目（两种来源都捞，见文件头）；渠道看板 channel-dash-db.ts 也用这一个 */
+export const 渠道项目条件 = (渠道ids: string[]) => ({
+  OR: [{ channelId: { in: 渠道ids } }, { channelId: null, customer: { channelId: { in: 渠道ids } } }],
+});
+
 async function 取项目(渠道ids: string[]): Promise<统计用项目[]> {
   if (渠道ids.length === 0) return [];
   const 行 = await prisma.project.findMany({
-    where: { OR: [{ channelId: { in: 渠道ids } }, { channelId: null, customer: { channelId: { in: 渠道ids } } }] },
+    where: 渠道项目条件(渠道ids),
     select: {
       channelId: true, phase: true, result: true, amount: true, currency: true,
       customer: { select: { channelId: true } },
