@@ -45,21 +45,13 @@ import type { 建档数据 } from "./new/ProjectWizard";
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */
 const 建档弹窗 = dynamic(() => import("./new/ProjectWizard").then((m) => m.建档弹窗), { ssr: false });
 
-/** 看板五列的颜色：三个阶段沿用商机管道的蓝绿黄，成功交付（企业版叫 交付结清）粉、没成灰 */
+/** 看板列的颜色：三个阶段沿用商机管道的蓝绿黄（企业版进程列跟所在阶段），成功交付（企业版叫 交付结清）粉、没成（流失 / 丢单）灰 */
 const 列色: Record<看板列, string> = {
   线索: 主题颜色(categorical.blue),
   商机: 主题颜色(categorical.green),
   订单: 主题颜色(categorical.yellow),
   成功交付: 主题颜色(categorical.pink),
   没成: "var(--line-strong)",
-};
-
-const 空列说法: Record<看板列, string> = {
-  线索: "还没有在培育的线索",
-  商机: "还没有在谈的商机",
-  订单: "还没有在交付的订单",
-  成功交付: "还没有交付完的项目",
-  没成: "没有流失或丢掉的项目",
 };
 
 /** 异常的悬停说明：类别 + 备注 */
@@ -122,8 +114,6 @@ export default function ProjectsView({
   const 预取 = useHoverPrefetch();
   const { message, modal } = App.useApp();
   const 字典 = 字典of(企业版, 出口叫法);
-  // 看板列的 key 两套都叫「成功交付」，列头写这套的叫法（企业版 交付结清）
-  const 列名 = (列: 看板列) => (列 === "成功交付" ? 结局叫法(字典.出口们.订单[0].结局 ?? 列, 字典) : 列);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
   // 企业版项目页阶段筛到「线索」：分配入口也摆在这儿（11-01 会议 §5「分配入口搬进项目列表但不看配额」）。
@@ -387,29 +377,29 @@ export default function ProjectsView({
               <Button type="link" className="pipe-more-right" title="往右滑一列" onClick={滑一列}>→ 还有 {右边还有} 列</Button>
             )}
           </div>
-          {/* 五列都摆，0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe）。
+          {/* 每列都摆（团队版五列；企业版按进程一个一列 + 三个出口，11-03 客户反馈 6），0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe）。
               右边还有没露全的列：右沿渐隐 + 上面「→ 还有 N 列」（11-01 会议 C12），横向滚动条常显 */}
           <div className={右边还有 > 0 ? "pipe-wrap pipe-fade-right" : "pipe-wrap"}>
             <div className="pipe" ref={看板框}>
               {看板.map((c) => {
                 const sum = 合计文字(c.合计, b.currency);
                 return (
-                  <div key={c.列} className="pipe-col" aria-label={`${列名(c.列)}，${c.数} 个项目`}>
+                  <div key={c.列} className="pipe-col" aria-label={`${c.阶段 ? `${c.阶段} · ` : ""}${c.名}，${c.数} 个项目`}>
                     <div className="pipe-h">
-                      <span className="pipe-dot" style={{ background: 列色[c.列] }} />
-                      <b>{列名(c.列)}</b>
+                      <span className="pipe-dot" style={{ background: 列色[c.色] }} />
+                      <b title={c.阶段 ? `${c.阶段}阶段` : undefined}>{c.名}</b>
                       <span className="pipe-n">{c.数}</span>
                       <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
-                    <div className="pipe-bar" style={{ background: 列色[c.列] }} />
-                    {c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : 空列说法[c.列]}</div>}
+                    <div className="pipe-bar" style={{ background: 列色[c.色] }} />
+                    {c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
                     {c.行.map((r) => {
                       const 异常 = r.result === "异常状态";
                       return (
                         <div
                           key={r.id}
                           className="pipe-card"
-                          style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.列] }}
+                          style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色] }}
                           tabIndex={0}
                           role="link"
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${!异常 && r.result && 是交付(r.result) ? 结局叫法(r.result, 字典) : r.node}`}

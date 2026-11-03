@@ -8,7 +8,7 @@ import { 上限最大, 时长最大, 默认起算日, 是不限, 到上限的人
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
-import { 企业版字典, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
+import { 企业版字典, 字典of, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
 import { 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 加企业选项, 改企业选项, 存分配谁能用 } from "./ent-dict-actions";
 import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterprise/dict-kinds";
@@ -892,6 +892,7 @@ function StageRuleCard({
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
   const 阶段们 = ["线索", "商机"] as const;
+  const 出口名 = 字典of(true, 规则.出口叫法).出口们;
   const 原来 = (s: (typeof 阶段们)[number]): [string, string] => [规则.出口叫法[s]?.[0] ?? "", 规则.出口叫法[s]?.[1] ?? ""];
   const [叫法, set叫法] = useState<Record<string, [string, string]>>(() => Object.fromEntries(阶段们.map((s) => [s, 原来(s)])));
   const 改了 = 阶段们.some((s) => 叫法[s][0] !== 原来(s)[0] || 叫法[s][1] !== 原来(s)[1]);
@@ -902,7 +903,7 @@ function StageRuleCard({
   return (
     <Card title="阶段规则" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        线索阶段只能走到「转商机」或「流失」，商机阶段只能「赢单」或「丢单」，订单只能从商机进；进了下一个阶段就退不回上一个，阶段里面往后退随便退。每次推进都记在进程变更里。
+        线索阶段只能走到「{出口名.线索[0].叫法}」或「{出口名.线索[1].叫法}」，商机阶段只能「{出口名.商机[0].叫法}」或「{出口名.商机[1].叫法}」，订单只能从商机进；进了下一个阶段就退不回上一个，阶段里面往后退随便退。每次推进都记在进程变更里。
       </div>
       <div style={{ fontWeight: 500, marginBottom: 8 }}>谁能往前推进程</div>
       <Radio.Group

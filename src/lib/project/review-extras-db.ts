@@ -11,8 +11,8 @@ import { 复盘待办计数 } from "./board-todos-db";
 
 type 谁 = { id: string; role: string };
 import {
-  负责人条件, 回收条们, 按节点数, 排卡点分布, 算回款, 预警最多, 缺沟通最多,
-  type 回收提醒, type 预警行, type 缺沟通, type 卡点分布, type 复盘概况,
+  负责人条件, 回收条们, 按节点数, 排卡点分布, 排客户分布, 算回款, 预警最多, 缺沟通最多,
+  type 回收提醒, type 预警行, type 缺沟通, type 卡点分布, type 复盘概况, type 客户分布,
 } from "./review-extras";
 
 /**
@@ -85,6 +85,19 @@ export async function 卡点分布of(me: 谁): Promise<卡点分布> {
     ]);
     return 排卡点分布(主体们, 状态们);
   });
+}
+
+/** 客户分布：这一圈负责的客户（按客户负责人；不含公海，回收站的由软删统一滤掉），按国家、按业务线各一次 groupBy */
+export async function 客户分布of(范围: 范围): Promise<客户分布> {
+  const where = {
+    pool: { is: null },
+    ...(范围 === undefined ? {} : { salesOwnerId: typeof 范围 === "string" ? 范围 : { in: [...范围] } }),
+  };
+  const [国家们, 线们] = await Promise.all([
+    prisma.customer.groupBy({ by: ["addrCountry"], where, _count: { _all: true } }),
+    prisma.customer.groupBy({ by: ["bizLine"], where, _count: { _all: true } }),
+  ]);
+  return 排客户分布(国家们, 线们);
 }
 
 /**

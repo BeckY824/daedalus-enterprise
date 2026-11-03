@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { 看板分列 } from "@/lib/project/board";
+import { 字典of } from "@/lib/project/stage-dict";
 import { 读项目列表 } from "@/lib/project/list";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 我的卡点, 卡点给界面 } from "@/lib/project/blocker";
@@ -27,5 +28,5 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const 筛线索 = 企业版() && sp.phase === "线索";
   const 线索分配开着 = 筛线索 && (await 规则开着("线索分配")) && !(await 当前是共享区());
   const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
-  return <ProjectsView {...d} 列={看板分列(d.行)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} />;
+  return <ProjectsView {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} />;
 }
