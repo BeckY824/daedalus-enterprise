@@ -156,3 +156,22 @@ describe("企业版客户页沟通记录：只汇总我看得到的项目（真�
     expect(标题们(全).slice(-3)).toEqual(["A关联项目的沟通", "A项目的沟通", "甲的老跟进"]);
   });
 });
+
+describe("删了的项目：沟通照旧留在客户下（11-03 C2-2）", () => {
+  it("甲的项目进了回收站：挂在上面的沟通照样在甲的时间线里，不标项目；别的客户删的项目不混进来", async () => {
+    const 要删的 = (await raw.project.create({ data: { name: "QA-要删的项目", customerId: 甲, ownerId: 销售A, creatorId: 销售A } })).id;
+    await 记(甲, 销售A, "要删项目的沟通", 900, 要删的);
+    await raw.project.update({ where: { id: 要删的 }, data: { deletedAt: new Date() } });
+    const r = await 以谁的身份(销售A, () => 客户沟通汇总(A, 甲));
+    const 那条 = r.rows.find((x) => x.title === "要删项目的沟通");
+    expect(那条).toBeTruthy();
+    expect(那条!.项目).toBeNull();
+    // 乙那边删的项目不会混进甲
+    const 乙要删 = (await raw.project.create({ data: { name: "QA-乙要删的项目", customerId: 乙, ownerId: 销售B, creatorId: 销售B } })).id;
+    await 记(乙, 销售B, "乙删项目的沟通", 901, 乙要删);
+    await raw.project.update({ where: { id: 乙要删 }, data: { deletedAt: new Date() } });
+    const 再 = await 以谁的身份(老板, () => 客户沟通汇总(老板我, 甲));
+    expect(标题们(再.rows)).not.toContain("乙删项目的沟通");
+    expect(标题们(再.rows)).toContain("要删项目的沟通");
+  });
+});
