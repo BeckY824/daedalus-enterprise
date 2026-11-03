@@ -10,7 +10,7 @@ import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, �
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效沟通数 } from "./stage-gates";
-import { 等复核拦 } from "./lead-verify-guard";
+import { 等复核拦, 复核判死拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
@@ -305,7 +305,12 @@ export async function 改节点(
     if (问题) return { ok: false as const, error: 问题 };
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
-    const 往前 = !result && !p.result && 节点序号(到, 字典) > 节点序号(p, 字典);
+    // 有结局的改回进行中也按节点比：改回到后面的节点同样算往前推，必填门、推进关照拦（11-03 测试 A5-1：终止再改回绕过必填和线索验证）
+    const 往前 = !result && 节点序号(到, 字典) > 节点序号(p, 字典);
+    if (p.result && !result) {
+      const 判死 = await 复核判死拦(tx, p.id);
+      if (判死) return { ok: false as const, error: 判死 };
+    }
     if (上级代推 && !往前) return { ok: false as const, error: 只有负责人改进程 };
     const 不给 = 往前
       ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则))

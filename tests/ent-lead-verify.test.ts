@@ -410,6 +410,31 @@ describe("企业版线索有效性验证", () => {
       expect(r.ok ? "" : r.error).toContain("先在详情页「线索验证」里处理");
     });
 
+    it("复核判死是终局（11-03 A4-1）：负责人改不回进行中；初判即终判的照旧能自己改回", async () => {
+      const id = await 项目();
+      await 判无效(id);
+      await 市场复核(市场, id, false, "确认空号");
+      const r = await 改节点(乙, id, { phase: "线索", node: "线索验证" });
+      expect(r.ok).toBe(false);
+      expect(r.ok ? "" : r.error).toContain("市场复核判了无效线索");
+      expect((await 现(id)).result).toBe("线索流失");
+      const 自判 = await 项目({ name: "自判", creatorId: 乙.id });
+      await 判无效(自判);
+      expect((await 改节点(乙, 自判, { phase: "线索", node: "线索验证" })).ok).toBe(true);
+      expect((await 现(自判)).result).toBeNull();
+    });
+
+    it("终止再改回绕不过推进关（11-03 A5-1）：线索验证点线索流失，改回线索推进要有效沟通", async () => {
+      const id = await 项目();
+      expect(await 改节点(乙, id, { phase: "线索", node: "线索验证", result: "线索流失" }, { 备注: "客户不做了" })).toMatchObject({ ok: true });
+      const r = await 改节点(乙, id, { phase: "线索", node: "线索推进" });
+      expect(r.ok).toBe(false);
+      expect(await 现(id)).toMatchObject({ node: "线索验证", result: "线索流失" });
+      // 改回原节点（不往前推）照旧
+      expect((await 改节点(乙, id, { phase: "线索", node: "线索验证" })).ok).toBe(true);
+      expect(await 现(id)).toMatchObject({ node: "线索验证", result: null });
+    });
+
     it("没在等（判过有效、或没判过）：改节点照旧", async () => {
       const id = await 项目();
       await 记有效沟通(id);

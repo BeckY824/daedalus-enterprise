@@ -135,7 +135,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
   // 「仅上级推」开着：直属上级也给节点这块（服务端只放往前推，往后退、点结局照拦）
   const 节点能改 = 能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则);
-  const 必填 = !公海 && !p.result && 按必填走(规则, p.node)
+  // 有结局的也算（11-03 A5-1）：改回到后面的节点同样算往前推，下拉里照样灰着
+  const 必填 = !公海 && 按必填走(规则, p.node)
     ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p)), 只能靠填齐: !是经理(me, org) }
     : null;
   // 记沟通时预演回收日（10-30 P0-2，lib/enterprise/recycle-text.ts 预演回收日）：给起点日和这个进程的天数，浏览器按同一个算法算。
@@ -143,7 +144,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 ? 节点超时天数(规则, p.node, 字典, 回收线) : null;
   const 回收预演 = 回收天数 ? { 起点日: 计时起点(规则, 回收起点).format("YYYY-MM-DD"), 天数: 回收天数 } : null;
   // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
-  const 不给推 = 企业 && !公海 && !p.result ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
+  const 不给推 = 企业 && !公海 ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
   // 企业版：线索验证往后推要先有一条客户明确回复的沟通（lib/project/stage-gates.ts）
   const 有效沟通 = 企业 && p.phase === "线索" ? await 有效沟通数(prisma, p.id) : 0;
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
