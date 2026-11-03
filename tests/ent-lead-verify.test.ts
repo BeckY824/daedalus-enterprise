@@ -305,6 +305,8 @@ describe("企业版线索有效性验证", () => {
       await setSetting(规则.市场复核.key, false);
       invalidateSettingsCache();
       const id = await 项目();
+      // 判之前读：初判弹窗按这一格说「直接交最终确认」，不再说「要过复核」（11-03 D-A4-1）
+      expect((await 读线索验证(乙, await 现(id)))?.无效交给).toBe("总管理终判");
       await 判无效(id);
       expect((await 状态(id))?.pending).toBe("总管理终判");
       expect((await 市场复核(市场, id, false)).ok).toBe(false);
@@ -448,7 +450,7 @@ describe("企业版线索有效性验证", () => {
       const p = await 现(id);
       expect((await 读线索验证(乙, p))?.我能).toBe("初判");
       expect((await 读线索验证(丙, p))?.我能).toBeNull();
-      expect(await 读线索验证(乙, p)).toMatchObject({ 判定: "暂未判定", 待: null, 痕: [] });
+      expect(await 读线索验证(乙, p)).toMatchObject({ 判定: "暂未判定", 待: null, 痕: [], 无效交给: "市场复核" });
       await 判无效(id);
       expect(await 读线索验证(乙, p)).toMatchObject({ 判定: "初验无效", 待: "市场复核", 无效原因: "联系方式无效", 我能: null });
       expect((await 读线索验证(市场, p))?.我能).toBe("市场复核");

@@ -275,6 +275,8 @@ export type 线索验证 = {
   终验: string | null;
   /** 项目创建人是销售：初判即终判，判无效不再交复核（11-01） */
   初判即终判: boolean;
+  /** 眼下销售判无效会交给哪一步（规则「市场复核」关了、或没有市场管理 → 总管理终判）；初判弹窗按它说（11-03 D-A4-1） */
+  无效交给?: "市场复核" | "总管理终判";
   /** 项目卡「线索验证」右边显示的结果（11-01）：暂未验证 / 初验无效 / 复核有效 / 终验无效 / 有效线索 / 无效线索 */
   叫法: 验证结果叫法;
   /** 我现在能做的：初判 / 终验 / 认领；复核两步在列表的「待复核的线索」里 */
@@ -290,7 +292,8 @@ export async function 读线索验证(me: 谁, p: 项目): Promise<线索验证 
     prisma.entLeadVerifyLog.findMany({ where: { projectId: p.id }, orderBy: { at: "asc" } }),
     读组织(),
   ]));
-  const 待 = 实际待(v?.pending ?? null, await 无效交给(org));
+  const 交给 = await 无效交给(org);
+  const 待 = 实际待(v?.pending ?? null, 交给);
   const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(痕.map((l) => l.userId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   let 我能: 线索验证["我能"] = null;
   if (在验证(p)) {
@@ -301,7 +304,7 @@ export async function 读线索验证(me: 谁, p: 项目): Promise<线索验证 
   const 终验 = v?.salesAck ?? null;
   return {
     判定, 待, 无效原因: v?.invalidReason ?? null, 叫法: 验证结果叫法({ 判定, 待, 终验 }),
-    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 我能,
+    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 无效交给: 交给, 我能,
     痕: 痕.map((l) => ({ id: l.id, step: l.step, verdict: l.verdict, reason: l.reason, note: l.note, 谁: 名.get(l.userId) ?? "已不在的成员", at: l.at.toISOString() })),
   };
 }
