@@ -10,20 +10,24 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
-import { 建组织, 直属上级of, 虚线上级of, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
+import { 回收站副手键, 只看某人键, 填组织设置, 建组织, 直属上级of, 虚线上级of, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
 
 export * from "./org-core";
 // 部门树在 org-tree.ts（客户端组件也用，不能带 prisma）；这里转出去，服务端照旧从 org 拿
 export { 部门树, type 组织部门 } from "./org-tree";
 
+export { 回收站副手键, 只看某人键 } from "./org-core";
+
 /** 从库里读整张组织表。二三十人的公司，一次全读比逐条查省事也更快 */
 export async function 读组织(): Promise<组织> {
-  const [users, members, depts] = await Promise.all([
+  const [users, members, depts, 副手, 只看] = await Promise.all([
     prisma.user.findMany({ select: { id: true, role: true, active: true } }),
     prisma.entMember.findMany(),
     prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
+    prisma.setting.findUnique({ where: { key: 回收站副手键 }, select: { value: true } }),
+    prisma.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } }),
   ]);
-  return 建组织(users, members, depts);
+  return 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value);
 }
 
 export const 直属上级 = async (userId: string): Promise<string | null> => 直属上级of(await 读组织(), userId);

@@ -157,9 +157,9 @@ export default async function CustomerDetailPage({
     企 ? 全部联系人idP.then(async (ids) => Object.fromEntries((await 附件个数(defaultClient, { contactIds: ids })).联系人)) : null,
     报价明细 ? 客户报价记录(customer.id) : [],
     // 下面这几样原来在 JSX 里一个个 await，各等一轮库（11-01 速度闸门：按组织看那组客户详情超 300ms），并进来一起取
-    // 沟通（11-02）：改 = 负责人，删 = 只有总管理（lib/enterprise/follow-perm.ts，服务端 saveFollowUp / deleteFollowUp 同样拦）
+    // 沟通（11-02）：改 = 负责人，删 = 负责人本人或系统管理员（V3.5.1，lib/enterprise/follow-perm.ts，服务端 saveFollowUp / deleteFollowUp 同样拦）
     企 ? 能改这条沟通(me, { customerId: customer.id }) : true,
-    企 ? 能删沟通(me) : true,
+    企 ? 能删沟通(me, { customerId: customer.id }) : true,
     企 ? 页面字典("custStatus") : null,
     企 ? 页面可选项("contactTitle") : undefined,
     企 ? 页面可选项("custAttr") : undefined,

@@ -42,7 +42,7 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 能管公海, 能转出自己的, 能改客户, 没设业务角色 } from "@/lib/enterprise/permissions";
+import { 能转让客户, 能改客户, 没设业务角色 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
@@ -800,11 +800,16 @@ async function 删除依赖错误(db: Prisma.TransactionClient, ids: string[], �
   return `以下${客户叫法}仍是其他档案的推荐来源或业绩归属，删除会断开推荐链，整批已阻止：${visible.filter(c => idsBlocked.has(c.id)).map(c => c.name).join("、")}。请先调整下游档案的推荐人或业绩归属，再删除。`;
 }
 
+/** 要删的客户各自的负责人（看不到的不在里面，后面照旧按范围挡） */
+async function 客户负责人们(ids: string[]): Promise<(string | null)[]> {
+  return (await prisma.customer.findMany({ where: { id: { in: ids } }, select: { salesOwnerId: true } })).map((c) => c.salesOwnerId);
+}
+
 /** 先提示阻塞对象，避免让人走完不可恢复确认后才被拦。执行时仍在事务内再查。 */
 export async function 客户删除预检(ids: string[]): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await requireUser();
-  // 企业版只有总管理能删（QA #3）
-  const 挡 = await 删除挡(me);
+  // 企业版：系统管理员；销售、销管、渠运删自己负责的（V3.5.1）
+  const 挡 = await 删除挡(me, await 客户负责人们(ids));
   if (挡) return { ok: false, error: 挡 };
   const b = await getBusiness();
   // 虚线下属的客户：在「确认删除…不能恢复」之前就说清楚，不等删完报「已经在别处删掉了」
@@ -820,8 +825,8 @@ export async function deleteCustomers(
   ids: string[],
 ): Promise<{ ok: true; deleted: number; 留下联系人: number } | { ok: false; error: string }> {
   const me = await requireUser();
-  // 企业版只有总管理（director）能删（QA #3，11-01）；管理员 admin 只读
-  const 挡 = await 删除挡(me);
+  // 企业版：系统管理员；销售、销管、渠运删自己负责的（V3.5.1）
+  const 挡 = await 删除挡(me, await 客户负责人们(ids));
   if (挡) return { ok: false, error: 挡 };
   const b = await getBusiness();
   if (!ids.length) return { ok: true, deleted: 0, 留下联系人: 0 };
@@ -1024,23 +1029,21 @@ export async function 转走项目预览of(ids: string[], 新负责人?: string)
   return 数转走的项目(ids.filter((x) => typeof x === "string"), 新);
 }
 
-/** 企业版销售转了别人的 / 公海里的客户（界面不摆，直接调接口才到这） */
-const 只有管理能转让话 = "只能转出自己的客户；别人的找管理、总管理转";
+/** 企业版转了不归自己管的客户（界面不摆，直接调接口才到这） */
+const 只有管理能转让话 = "只能转出自己的或直属下属的客户；别的找系统管理员转";
 
 /**
- * 企业版谁能转这批客户（11-02）：管理、总管理随便转；负责人（销售、销售管理）只转得了自己名下、不在公海的
- * （「负责人自己转出也可以，前提是自己的项目」）。看全部数：限定层会把看不到的滤掉，数漏了就放过去了
+ * 企业版谁能转这批客户（V3.5.1）：逐个按 能转让客户——负责人本人、实线直属一级上级、条线总管理（条线内）、系统管理员；
+ * 公海里的给能管公海的。看全部查：限定层会把看不到的滤掉，查漏了就放过去了
  */
 async function 转让挡(me: Awaited<ReturnType<typeof requireUser>>, ids: string[]): Promise<string | null> {
   if (!企业版()) return null;
   const org = await 权限组织();
-  if (能管公海(me, org)) return null;
-  if (!能转出自己的(me, org)) return 只有管理能转让话;
-  const 别人的 = await 看全部(() => prisma.customer.count({ where: { id: { in: ids }, OR: [{ salesOwnerId: { not: me.id } }, { pool: { isNot: null } }] } }));
-  return 别人的 ? 只有管理能转让话 : null;
+  const 们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
+  return 们.every((c) => 能转让客户(me, { salesOwnerId: c.salesOwnerId, 在公海: !!c.pool }, org)) ? null : 只有管理能转让话;
 }
 
-const 只有负责人改客户话 = "只有负责人能改客户资料（上级、总管理只能看、转让）";
+const 只有负责人改客户话 = "只有负责人或系统管理员能改客户资料（上级、条线总管理只能看、转让）";
 const 公海先领话 = "公海里的客户先领取或分配，再改";
 
 /**

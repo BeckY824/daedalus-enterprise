@@ -1,5 +1,6 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 读的我, 有市场只读, 现在的公海回避 } from "@/lib/team-scope";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /**
  * 业务员（企业版按组织看、团队版没开互看）看得到的客户，用裸 SQL 数和挑，不走 Prisma 那层 where。
@@ -25,10 +26,14 @@ async function 看得到的(): Promise<{ where: string; 参数: string[] } | nul
   const 回避 = await 现在的公海回避(defaultClient);
   if (回避?.客户 === null) return null;
   const 避 = 回避 ? 回避段(回避.本人, 回避.客户 ?? []) : { sql: "", 参数: [] as string[] };
+  // 企业版项目组员（V3.5.1）：加入的项目挂的客户也看得到，同 team-scope 组员的客户
+  const 组员 = 企业版()
+    ? ` OR c.id IN (SELECT p."customerId" FROM "Project" p JOIN "ProjectMember" m ON m."projectId" = p.id WHERE m."userId" IN (${占}) AND m."inviteStatus" = 'JOINED' AND p."deletedAt" IS NULL)`
+    : "";
   return {
     // 回收站里的客户（企业版软删，P9）不算：裸 SQL 不过 Prisma 扩展，自己带上。外层是 AND，三段 OR 照旧各走各的索引
-    where: `(c."salesOwnerId" IN (${占}) OR c."channelOwnerId" IN (${占}) OR c.id IN (SELECT "customerId" FROM "CustomerPool")) AND c."deletedAt" IS NULL${避.sql}`,
-    参数: [...们, ...们, ...避.参数],
+    where: `(c."salesOwnerId" IN (${占}) OR c."channelOwnerId" IN (${占}) OR c.id IN (SELECT "customerId" FROM "CustomerPool")${组员}) AND c."deletedAt" IS NULL${避.sql}`,
+    参数: [...们, ...们, ...(组员 ? 们 : []), ...避.参数],
   };
 }
 

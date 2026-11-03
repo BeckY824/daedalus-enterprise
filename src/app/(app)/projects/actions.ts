@@ -703,7 +703,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
 /**
  * 项目详情里一条沟通的「…」菜单（10-29）。改、删都走客户页那一套（saveFollowUp / deleteFollowUp），规矩不另写：
  * 只认挂在这个项目上的沟通；同事的客户 / 虚线下属的客户（只读客户）改不了、删不了，和客户页不摆编辑删除一致。
- * 删 = 企业版软删，进「设置 → 回收站」，30 天内老板能恢复
+ * 删 = 企业版软删，进「设置 → 回收站」，30 天内系统管理员、回收站副手能恢复
  */
 async function 项目上的沟通(projectId: string, followUpId: string) {
   if (typeof projectId !== "string" || typeof followUpId !== "string" || !projectId || !followUpId) return { ok: false as const, error: "这条沟通的信息不完整，刷新看看" };

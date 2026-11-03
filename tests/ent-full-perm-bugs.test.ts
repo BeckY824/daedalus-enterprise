@@ -246,11 +246,13 @@ describe("【中】撤销公海「放进」不限时（customers/pool-actions.ts
 });
 
 describe("【中】附件 认父记录：联系人 / 线索 / 商机三支不看业务角色、删不要求总管理（api/attachments/access.ts:38-62）", () => {
-  it("销售甲删自己客户联系人上的附件 → 应被拒（删只给总管理，同沟通附件）", async () => {
+  it("V3.5.1：销售甲删自己客户联系人上的附件 → 能（负责人本人能软删）；销售乙删甲客户的 → 拒", async () => {
     await 开规则(true);
     const c = await raw.contact.create({ data: { name: "甲客户的联系人", customerId: 客户.甲的 } });
     const r = await 作为("销售甲", () => 认父记录({ contactId: c.id }, "删"));
-    expect("错" in r, JSON.stringify(r)).toBe(true);
+    expect("错" in r, JSON.stringify(r)).toBe(false);
+    const r2 = await 作为("销售乙", () => 认父记录({ contactId: c.id }, "删"));
+    expect("错" in r2, JSON.stringify(r2)).toBe(true);
   });
 
   it("没设业务角色的人给公海客户的联系人传附件 → 应被拒", async () => {

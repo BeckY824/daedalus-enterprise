@@ -100,7 +100,7 @@ describe("切换视图拦不经过库的动作", () => {
       await prisma.entMember.create({ data: { userId: u.id, deptId: bizRole === "director" ? null : 部, bizRole } });
       return u.id;
     };
-    人.老板 = await 建("老板", "ADMIN", "admin");
+    人.老板 = await 建("老板", "ADMIN", "director");
     人.总管 = await 建("总管", "SALES", "director");
     人.甲 = await 建("业务员甲", "SALES", "sales");
     甲的客户 = (await prisma.customer.create({ data: { name: "甲的客户", phone: "13900000001", salesOwnerId: 人.甲 } })).id;

@@ -125,11 +125,10 @@ describe("改项目画像（真库、企业字典）", () => {
     expect((await 读()).productNeeds).toBeNull();
   });
 
-  it("谁能改同改项目：负责人能改；老板、同事、公海里的（含放回去的原负责人）改不了，库里不动", async () => {
+  it("谁能改同改项目：负责人、系统管理员能改；同事、公海里的（含放回去的原负责人）改不了，库里不动", async () => {
     expect(await 改项目画像(丙, 项目id, { budgetLevel: "预算充足" })).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
-    // 11-01 权限只认业务角色：总管理不能编辑项目内容（C2），只有负责人本人能改
-    expect(await 改项目画像(老板, 项目id, { budgetLevel: "预算充足" })).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人") });
-    expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"] });
+    // V3.5.1：系统管理员（总管理、没设业务线）全部能改；负责人本人能改
+    expect(await 改项目画像(老板, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"] });
     expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: [] });
     await prisma.project.update({ where: { id: 项目id }, data: { pooledAt: new Date() } });
     expect(await 改项目画像(乙, 项目id, { budgetLevel: "预算匹配" })).toMatchObject({ ok: false, error: expect.stringContaining("公海") });

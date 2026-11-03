@@ -316,7 +316,7 @@ export async function 发布卡点(
     if (!fp) return { ok: false as const, error: "卡点要从项目上的一条沟通记录发，这条沟通找不到了，刷新看看" };
     const p = fp.project;
     if (p.pooledAt) return { ok: false as const, error: "这个项目在公海里，先领取再发卡点" };
-    if (!能发(me, p, 权, org)) return { ok: false as const, error: "只有项目负责人能发卡点（总管理员、上级、项目组成员只能看，看得到的卡点能认领）" };
+    if (!能发(me, p, 权, org)) return { ok: false as const, error: "只有项目负责人或系统管理员能发卡点（条线总管理、上级、项目组成员只能看，看得到的卡点能认领）" };
     const 好 = 规整发布(input, 默认);
     if (好 === null) return { ok: true as const };
     if ("error" in 好) return { ok: false as const, error: 好.error };

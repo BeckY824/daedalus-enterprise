@@ -92,10 +92,10 @@ const 记录归属: Record<角色, Record<记录, string | null>> = {
 /** 期望表：[看得到, 改得了]，按 记录 的顺序；null = 不适用。五个接口的「看得到」口径一样 */
 const T = true, F = false, 无 = null;
 const 期望: Record<角色, ([boolean, boolean] | null)[]> = {
-  // 11-02：只有负责人本人（销售 / 销售管理）能改；总管理、上级只看、只转让；公海里的谁都改不了（先领）
+  // V3.5.1：系统管理员（总管理没设业务线）谁的都能改；其余只有负责人本人（销售 / 销售管理）能改，上级只看、只转让；公海里的谁都改不了（先领）
   //            自己的    实线下属的  虚线下属的  公海      别人的
-  老板: [[T, F], [T, F], 无, [T, F], [T, F]],
-  总管理员: [[T, F], [T, F], 无, [T, F], [T, F]],
+  老板: [[T, T], [T, T], 无, [T, F], [T, T]],
+  总管理员: [[T, T], [T, T], 无, [T, F], [T, T]],
   经理: [[T, T], [T, F], [T, F], [T, F], [F, F]],
   虚线上级: [[T, T], 无, [T, F], [T, F], [F, F]],
   普通销售: [[T, T], 无, 无, [T, F], [F, F]],
@@ -328,12 +328,16 @@ describe("停用的人", () => {
 });
 
 describe("删联系人的撤销快照（直接调接口）", () => {
-  // 11-01 起企业版只有总管理能删（QA #3）：普通销售删联系人被拒、库里不动；快照打码那条只剩开关关着的情形（见下一条）
-  it("普通销售删自己客户的联系人 → 被拒，库里还在", async () => {
-    const c = await raw.contact.create({ data: { name: "普通销售的联系人", phone: "13900771239", customerId: 客户id.get(记录归属.普通销售.自己的!)! } });
-    expect(await 作为("普通销售", () => deleteContact(c.id))).toEqual({ ok: false, error: "只有总管理能删除" });
+  // V3.5.1：负责人本人或系统管理员能删；普通销售删别人客户的联系人被拒、库里不动，删自己客户的能删（软删）
+  it("普通销售删别人客户的联系人 → 被拒，库里还在；自己客户的能删", async () => {
+    const c = await raw.contact.create({ data: { name: "普通销售的联系人", phone: "13900771239", customerId: 客户id.get(记录归属.普通销售.别人的!)! } });
+    expect(await 作为("普通销售", () => deleteContact(c.id))).toMatchObject({ ok: false });
     expect((await raw.contact.findUniqueOrThrow({ where: { id: c.id } })).deletedAt ?? null).toBeNull();
     await raw.contact.delete({ where: { id: c.id } });
+    const 自己的 = await raw.contact.create({ data: { name: "普通销售的联系人", phone: "13900771238", customerId: 客户id.get(记录归属.普通销售.自己的!)! } });
+    expect(await 作为("普通销售", () => deleteContact(自己的.id))).toMatchObject({ ok: true });
+    expect((await raw.contact.findUniqueOrThrow({ where: { id: 自己的.id } })).deletedAt).toBeInstanceOf(Date);
+    await raw.contact.delete({ where: { id: 自己的.id } });
   });
 
   it.each([{ role: "老板" as const, mask: false }])("$role → 快照里的号打码 $mask；撤销后库里还是原号", async ({ role, mask }) => {

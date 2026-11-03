@@ -338,14 +338,14 @@ describe("企业版线索有效性验证", () => {
   });
 
   describe("谁能拍板（越权拦下，一行不写）", () => {
-    it("初判：别的业务员、市场管理判不了；老板、销售经理只能看不能判（C2），负责人能", async () => {
+    it("初判：别的业务员、市场管理判不了；销售经理只能看不能判（C2）；负责人、系统管理员能", async () => {
       const id = await 项目();
       expect(await 判无效(id, 丙)).toEqual({ ok: false, error: "只有项目负责人、老板或主管能判这条线索" });
       expect((await 判无效(id, 市场)).ok).toBe(false);
-      expect((await 判无效(id, 老板)).ok).toBe(false);
       expect((await 判无效(id, 销售经理)).ok).toBe(false);
       expect(await 痕(id)).toHaveLength(0);
       expect((await 判无效(id, 乙)).ok).toBe(true);
+      expect((await 判无效(await 项目(), 老板)).ok).toBe(true);
     });
 
     it("市场复核只给市场管理：业务员、负责人、老板、总管理员都不行", async () => {

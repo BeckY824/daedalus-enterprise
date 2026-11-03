@@ -24,7 +24,7 @@ function 刷新() {
 export async function 回收站列表动作(): Promise<{ ok: true; 条目: 回收站条目[]; 能彻底删除: boolean } | { ok: false; error: string }> {
   const me = await requireUser();
   if (!企业版()) return 没开;
-  if (!(await 能管回收站(me))) return { ok: false, error: "只有总管理能看回收站" };
+  if (!(await 能管回收站(me))) return { ok: false, error: "只有系统管理员或回收站副手能看回收站" };
   return { ok: true, 条目: await 回收站列表(me), 能彻底删除: await 能彻底删除(me) };
 }
 
@@ -32,7 +32,7 @@ export async function 恢复回收站(t: 软删表名, id: string) {
   try {
     const me = await requireUser();
     if (!企业版()) return 没开;
-    if (!(await 能管回收站(me))) return { ok: false as const, error: "只有总管理能恢复" };
+    if (!(await 能管回收站(me))) return { ok: false as const, error: "只有系统管理员或回收站副手能恢复" };
     if (!是表(t) || typeof id !== "string" || !id) return { ok: false as const, error: "要恢复哪一条？刷新看看" };
     const r = await 恢复(me, t, id);
     if (!r.ok) return r;
@@ -50,7 +50,7 @@ export async function 彻底删除回收站(t: 软删表名, id: string) {
   try {
     const me = await requireUser();
     if (!企业版()) return 没开;
-    if (!(await 能彻底删除(me))) return { ok: false as const, error: "只有总管理能彻底删除" };
+    if (!(await 能彻底删除(me))) return { ok: false as const, error: "只有系统管理员能彻底删除" };
     if (!是表(t) || typeof id !== "string" || !id) return { ok: false as const, error: "要删哪一条？刷新看看" };
     const r = await 彻底删除(me, t, id);
     if (!r.ok) return r;

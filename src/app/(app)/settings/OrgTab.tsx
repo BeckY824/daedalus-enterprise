@@ -10,7 +10,7 @@ import { 规则, 规则名们, type 规则名 } from "@/lib/enterprise/rules-tab
 import { 字段, 字段名们, 字段级别of, 推荐字段配置, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
 import { 市场部门们 } from "@/lib/enterprise/market";
-import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, type 成员改动 } from "./org-actions";
+import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, 设只看某人, 设回收站副手, type 成员改动 } from "./org-actions";
 import { 设不设配额, type 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
 import LineDeptCard from "./LineDeptCard";
@@ -41,6 +41,10 @@ export type 组织架构 = {
   市场部门?: string[] | null;
   /** 逐人设的市场成员（11-01）：用户编号；部门不在市场部门也算 */
   市场单设?: string[];
+  /** 只看某人（V3.5.1）：{本人: 那个人}，本人只看那个人建的、负责的 */
+  只看某人?: Record<string, string>;
+  /** 回收站副手（V3.5.1）：系统管理员之外能看、能恢复回收站的人 */
+  回收站副手?: string[];
 };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
 
@@ -213,6 +217,11 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 市场部门现在 = 市场部门们(new Map(value.部门.map((d) => [d.id, d])), value.市场部门 ?? null);
   const 市场成员 = value.成员.filter((m) => (m.deptId && 市场部门现在.has(m.deptId)) || 单设.includes(m.id)).map((m) => m.name);
   const 人选项 = value.成员.map((m) => ({ value: m.id, label: m.name }));
+  const 只看表 = value.只看某人 ?? {};
+  const 页面副手 = JSON.stringify(value.回收站副手 ?? []);
+  const [副手草稿, set副手草稿] = useState<{ 基于: string; 人: string[] } | null>(null);
+  const 副手 = 副手草稿 && 副手草稿.基于 === 页面副手 ? 副手草稿.人 : (value.回收站副手 ?? []);
+  const 副手改了 = JSON.stringify(副手) !== 页面副手;
   const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>{value.不管设置 ? "你被设为「不管设置」，这里只能看" : "只有总管理能改"}</span>;
 
   return (
@@ -257,7 +266,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       <Card title="字段权限" extra={字段权限挡 && <span style={{ color: "var(--text-muted)" }}>{字段权限挡}</span>}>
         <p className="muted">
           打开上面的「{规则.字段权限.名}」才生效。每格是这个角色对这个字段能做什么：能改、只能看；电话还能选看不到（页面、导出、AI 助手里都打码）。
-          没动过的格都是能改。总管理不受限。「用推荐表」填的是我们建议的默认（成交段渠道、市场只能看，项目运营只改备注），保存后再打开规则。
+          没动过的格都是能改。总管理不受限。「用推荐表」填的是我们建议的默认（成交段渠道、市场只能看，项目组员只改备注），保存后再打开规则。
         </p>
         <div style={{ overflowX: "auto" }}>
           <table className="org-field-perm" data-testid="org-field-perm">
@@ -392,8 +401,23 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         )}
       </Card>
 
+      <Card title="回收站副手" extra={只看} data-testid="org-trash-helpers">
+        <p className="muted">系统管理员之外，这些人也能看回收站、恢复删掉的数据（只看得到平时看得到的）；彻底删除仍只有系统管理员。</p>
+        <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="回收站副手" disabled={!能改 || 忙}
+          placeholder="没有" optionFilterProp="label"
+          value={副手} onChange={(v: string[]) => set副手草稿({ 基于: 页面副手, 人: v })}
+          options={人选项} />
+        {能改 && (
+          <Space wrap style={{ marginTop: 12 }}>
+            <Button type="primary" disabled={!副手改了 || 忙} data-testid="org-trash-helpers-save" onClick={() => void 跑(() => 设回收站副手(副手), "回收站副手已保存")}>保存</Button>
+            <Button disabled={!副手改了 || 忙} onClick={() => set副手草稿(null)}>放弃修改</Button>
+          </Space>
+        )}
+      </Card>
+
       <Card title="每个人的部门、角色和上级" extra={只看}>
-        <p className="muted">业务线用来分线索：内贸线索只分给内贸的人，外贸同理，「两边都做」两种都能分到。虚线上级只能看他的客户，不能改、不能转。</p>
+        <p className="muted">业务线用来分线索：内贸线索只分给内贸的人，外贸同理，「两边都做」两种都能分到。虚线上级只能看他的客户，不能改、不能转。
+          「只看某人」：这个人只看选中的人建的、负责的数据（公海照常），不当负责人、不能改；设了的人不能当别人的直属上级。</p>
         <ul className="team-dept-members" data-testid="org-members">
           {value.成员.map((m) => {
             const 他的角色 = 拆角色(m.bizRole);
@@ -428,6 +452,10 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                   placeholder="虚线上级（只能看）"
                   value={m.dottedManagerId ?? null} onChange={(v) => 设(m.id, { dottedManagerId: v ?? null })}
                   options={别人.map((x) => ({ ...x, label: `虚线：${x.label}` }))} />
+                <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 只看某人`} disabled={!改他 || 忙}
+                  placeholder="只看某人：没设"
+                  value={只看表[m.id] ?? null} onChange={(v) => void 跑(() => 设只看某人(m.id, v ?? null), v ? "已设「只看某人」" : "已取消「只看某人」")}
+                  options={别人.map((x) => ({ ...x, label: `只看：${x.label}` }))} />
               </li>
             );
           })}

@@ -68,27 +68,30 @@ describe("企业版推进 / 终止（P2）", () => {
   describe("需求状态补全期（M-权限-07）", () => {
     const 往前 = { phase: "线索", node: "线索验证" };
 
-    it("关着（默认）：负责人（成员、自己当负责人的经理）都能往前推；总管理员推不了", async () => {
-      // 11-01 权限只认业务角色：进程只有负责人能改，总管理只能看、转让；经理推的是自己负责的项目
+    it("关着（默认）：负责人（成员、自己当负责人的经理）、系统管理员都能往前推", async () => {
+      // V3.5.1：进程负责人改；总管理没设业务线 = 系统管理员，也能改；经理推的是自己负责的项目
       for (const who of [成员, 经理]) {
         const p = await 项目({ ownerId: who.id });
         expect(await 改节点(who, p.id, 往前)).toMatchObject({ ok: true, 变了: true });
         expect(await 现(p.id)).toMatchObject({ node: "线索验证" });
       }
       const p = await 项目();
-      expect(await 改节点(总, p.id, 往前)).toEqual({ ok: false, error: 只有负责人改进程 });
-      expect((await 现(p.id)).node).toBe("潜客培育");
+      expect(await 改节点(总, p.id, 往前)).toMatchObject({ ok: true, 变了: true });
+      expect((await 现(p.id)).node).toBe("线索验证");
     });
 
-    it("开着：成员往前推拦下、节点不动；自己当负责人的经理照样能推；总管理员、上级、没业务角色的推不了", async () => {
+    it("开着：成员往前推拦下、节点不动；自己当负责人的经理、系统管理员照样能推；上级、没业务角色的推不了", async () => {
       await 设(规则({ 需求补全期: true }));
       const p = await 项目();
       expect(await 改节点(成员, p.id, 往前)).toEqual({ ok: false, error: 补全期提示 });
       expect((await 现(p.id)).node).toBe("潜客培育");
       expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(0);
 
-      // 11-01 权限只认业务角色：经理是成员的上级也改不了下属的进程；总管理、没 EntMember 的老板一样推不了
-      for (const who of [经理, 总, 老板]) expect(await 改节点(who, p.id, 往前)).toEqual({ ok: false, error: 只有负责人改进程 });
+      // 11-01 权限只认业务角色：经理是成员的上级也改不了下属的进程；没 EntMember 的老板一样推不了
+      for (const who of [经理, 老板]) expect(await 改节点(who, p.id, 往前)).toEqual({ ok: false, error: 只有负责人改进程 });
+      // V3.5.1：系统管理员（总管理、没设线）补全期也能推
+      const q = await 项目();
+      expect(await 改节点(总, q.id, 往前)).toMatchObject({ ok: true, 变了: true });
       // 转给经理当负责人后，经理（销售管理）补全期照样能推
       await prisma.project.update({ where: { id: p.id }, data: { ownerId: 经理.id } });
       expect(await 改节点(经理, p.id, 往前)).toMatchObject({ ok: true });

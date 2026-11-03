@@ -83,7 +83,7 @@ export type RecordProps = {
   管理员只读?: boolean;
   /** 企业版沟通记录能不能改（M-权限-09，11-02：负责人能改；服务端 saveFollowUp 同样拦）。默认能 */
   能改沟通?: boolean;
-  /** 企业版沟通记录能不能删（只有总管理；服务端 deleteFollowUp 同样拦）。默认能 */
+  /** 企业版沟通记录能不能删（负责人本人或系统管理员，V3.5.1；服务端 deleteFollowUp 同样拦）。默认能 */
   能删沟通?: boolean;
   /** 我能把这位放进公海吗：负责人本人或管理员（第 6 块） */
   能放公海?: boolean;

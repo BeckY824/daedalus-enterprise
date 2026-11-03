@@ -15,7 +15,7 @@ import { 等复核拦, 复核判死拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 没设业务角色, 没业务角色不能领话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读角色话, 有业务角色 } from "@/lib/enterprise/permissions";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -67,9 +67,17 @@ export const 角色名上限 = 20;
 export function 能管项目(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null): boolean {
   return 能编辑项目(me, p, org);
 }
+/**
+ * 能往项目组里加人（V3.5.1）：能管项目的人；企业版再加上已进组的项目组员（project_ops，不是负责人也能拉人），公海里的不算。
+ * 组员拉的人照旧发邀请、对方同意才进组，并通知负责人
+ */
+export function 能加组员(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null, 我在组里: boolean): boolean {
+  if (能管项目(me, p, org)) return true;
+  return 企业版() && !!org && 我在组里 && !p.pooledAt && 有业务角色(me, org, "project_ops") && !只读角色(me, org);
+}
 /** 节点这一块和别的内容一个口径（11-01 起直属上级、总管理不再代推，C2） */
 export const 能改节点 = 能管项目;
-export const 只有负责人改进程 = "只有项目负责人能改进程（上级、总管理只能看、转让）";
+export const 只有负责人改进程 = "只有项目负责人或系统管理员能改进程（上级、条线总管理只能看、转让）";
 
 /**
  * 企业版 D-37：负责人有直属上级时，手动往前推节点只给这位直属上级、老板和组织里的总管理员；负责人本人、隔级上级、
@@ -413,23 +421,24 @@ export async function 勾交付(me: 谁, projectId: string, 项: 交付项, 勾:
   });
 }
 
-/** 企业版（M-权限-10）：项目是公司资产，只有总管理能删（进回收站）；别人不再跟进就终止进程 */
-export const 项目不能删提示 = "项目是公司资产，只有总管理能删除；不再跟进请终止进程";
+/** 企业版（V3.5.1）：项目负责人本人或系统管理员能删（进回收站）；别人不再跟进就终止进程 */
+export const 项目不能删提示 = "只有项目负责人本人或系统管理员能删除；不再跟进请终止进程";
 
 /**
  * 删项目：负责人、老板、主管。节点变更、组员、跟进挂的节点随项目级联；跟进本身留在客户下。
  * 删客户前要先删光它的项目（customers/actions 删除依赖错误）
- * 企业版（QA #3，11-01）：只有总管理（director）能删，删了进回收站（软删，能恢复）；
- * 别人（含负责人、管理员 admin）一律拒，不存在的 id 也回同一句（不先露「不在了」）
+ * 企业版（V3.5.1，11-03）：系统管理员，或项目负责人本人（销售、销管、渠运，项目不在公海）能删，删了进回收站（软删，能恢复）；
+ * 别人（条线总管理、组员、管理员 admin）一律拒，不存在的 id 对非系统管理员也回同一句（不先露「不在了」）
  */
 export async function 删项目(me: 谁, projectId: string): Promise<结果 & { name?: string; customerId?: string }> {
   const 状态开 = await 客户状态自动();
   const org = await 权限组织();
   if (企业版()) {
-    if (!能删除(me, org)) return { ok: false, error: 项目不能删提示 };
+    if (!能删一些(me, org)) return { ok: false, error: 项目不能删提示 };
     return 查完再写(async (tx) => {
-      const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, customerId: true } });
-      if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+      const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true } });
+      if (!p) return { ok: false as const, error: 能删除(me, org, null) ? "这个项目已经不在了，刷新看看" : 项目不能删提示 };
+      if (!能删除(me, org, p.pooledAt ? null : p.ownerId)) return { ok: false as const, error: 项目不能删提示 };
       await 软删一条(tx, "Project", p.id);
       // 进了回收站的项目不算进客户状态
       await 跟着项目重算(tx, 状态开, [p.customerId]);
@@ -562,7 +571,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (日变了) 变了.push("expectedDealAt");
     if (!变了.length) return { ok: true as const, 变了 };
     // 改负责人 = 转让，要 能转让项目；别的字段 = 编辑内容，要 能管项目（11-01：总管理、上级能转不能改；11-02：负责人本人能改，也能把自己的转出去）
-    if (变了.includes("ownerId") && !能转) return { ok: false as const, error: "只有负责人本人、总管理或负责人的上级能转让这个项目" };
+    if (变了.includes("ownerId") && !能转) return { ok: false as const, error: "只有负责人本人、直属上级、条线总管理或系统管理员能转让这个项目" };
     if (变了.some((k) => k !== "ownerId") && !能改) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只能转让负责人，项目内容只有负责人能改" };
     // 企业版字段权限：动了「只能看」的金额（含合同金额、定金金额、成交需求）/ 负责人 / 预计成交日期 / 痛点标注 / 合同状态就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
@@ -707,6 +716,8 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: (await 在职(prisma, me.id)) ? 没业务角色不能领话 : "账号已停用" };
   // 只读管理员先说只读（11-03 B2-1：原来落到「项目不能单独领」，同领客户 pool-actions 领取）
   if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读角色话 };
+  // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）
+  if (企业版() && !能领公海(me, await 权限组织())) return { ok: false, error: 不能领公海话 };
   const 规则 = await 生效组织规则();
   return 查完再写(async (tx) => {
     const id = String(projectId ?? "");
@@ -939,7 +950,7 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (p.pooledAt) return { ok: false as const, error: "这个项目在公海里，先领取再记" };
     // 企业版（11-01）：沟通是项目内容，只有负责人记；被邀请进组的只能看（规则 6）
-    if (企业版() && !能管项目(me, p, org)) return { ok: false as const, error: "只有项目负责人能记沟通，项目组成员只能看" };
+    if (企业版() && !能管项目(me, p, org)) return { ok: false as const, error: "只有项目负责人或系统管理员能记沟通，项目组成员只能看" };
     if (!能管项目(me, p, org)) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
       if (组员?.inviteStatus !== "JOINED") return { ok: false as const, error: "只有项目负责人、项目组成员、老板或主管能记沟通" };
@@ -1033,10 +1044,15 @@ async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组�
  */
 export async function 加组员(me: 谁, projectId: string, userId: string, roleId?: string | null): Promise<结果> {
   const org = await 权限组织();
-  return 查完再写(async (tx) => {
-    const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, ownerId: true, pooledAt: true } });
+  let 组员拉: { 项目: string; 名: string; 负责人: string; 谁: string } | null = null;
+  const r = await 查完再写(async (tx) => {
+    const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, ownerId: true, pooledAt: true } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    if (!能管项目(me, p, org)) return { ok: false as const, error: "只有项目负责人能加组员" };
+    const 负责人拉 = 能管项目(me, p, org);
+    if (!负责人拉) {
+      const 我 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+      if (!能加组员(me, p, org, 我?.inviteStatus === "JOINED")) return { ok: false as const, error: "只有项目负责人和项目组员能加组员" };
+    }
     const uid = String(userId ?? "");
     if (!(await 在职(tx, uid))) return { ok: false as const, error: "这位成员不存在或已停用" };
     const 角色 = await 可用角色(tx, roleId);
@@ -1049,8 +1065,18 @@ export async function 加组员(me: 谁, projectId: string, userId: string, role
     }
     if (有) return { ok: false as const, error: 有.inviteStatus === "INVITED" ? "已经邀请过这位了，等对方同意" : "这位已经在项目组里了" };
     await tx.projectMember.create({ data: { projectId: p.id, userId: uid, roleId: 角色, inviteStatus: 发邀请 ? "INVITED" : "JOINED", invitedById: me.id } });
+    if (!负责人拉) 组员拉 = { 项目: p.id, 名: p.name, 负责人: p.ownerId, 谁: uid };
     return { ok: true as const };
   });
+  // 组员拉人（V3.5.1）：留痕 + 告诉负责人。事务外写，不和上面的写锁抢
+  const 拉 = 组员拉 as { 项目: string; 名: string; 负责人: string; 谁: string } | null;
+  if (r.ok && 拉) {
+    const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [me.id, 拉.谁] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+    const 话 = `${名.get(me.id)} 邀请 ${名.get(拉.谁)} 加入项目「${拉.名}」`;
+    await recordAudit({ user: { id: me.id, name: 名.get(me.id) ?? "" }, action: "update", entity: "Project", entityId: 拉.项目, summary: 话 });
+    await notify([拉.负责人], { kind: "项目组", title: 话, link: `/projects/${拉.项目}` });
+  }
+  return r;
 }
 
 /** 企业版：被邀请的人回邀请。只有本人能回、只回还在等的；同意 = 进组（JOINED），拒绝 = DECLINED（负责人那边看得到「没接受」，能再邀） */

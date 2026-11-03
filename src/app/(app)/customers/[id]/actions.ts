@@ -18,7 +18,7 @@ import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
-import { 能恢复, 没设业务角色, 没业务角色不能领话 } from "@/lib/enterprise/permissions";
+import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤, 客户事项挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
@@ -35,7 +35,7 @@ import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类�
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 
-const 只有总管理能恢复话 = "只有总管理能恢复删掉的记录";
+const 只有总管理能恢复话 = "只有系统管理员或回收站副手能恢复删掉的记录";
 
 /**
  * 这一页上的写操作也要留痕。
@@ -213,6 +213,8 @@ export async function saveFollowUp(input: FollowUpInput) {
     const 在公海 = !input.id && !!(await prisma.customerPool.findUnique({ where: { customerId: input.customerId }, select: { customerId: true } }));
     // 没设业务角色的领不了（11-03）：记了就等于没领到却留了条沟通，直接说清楚，不记
     if (在公海 && 企业版() && 没设业务角色(await 权限组织(), user.id)) return { ok: false as const, error: 没业务角色不能领话 };
+    // 角色不领公海的（市管、渠运、项目组员，V3.5.1）同样不记
+    if (在公海 && 企业版() && !能领公海(user, await 权限组织())) return { ok: false as const, error: 只读角色(user, await 权限组织()) ? 只读角色话 : 不能领公海话 };
     const 领取了 = 在公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
     const result = await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
@@ -280,8 +282,8 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 删之前先取内容：删完这条记录就无从还原了。整条连 AI 速记的原文一起留着，给撤销用（排查 D2）
     const 待删 = await prisma.followUp.findUnique({ where: { id }, include: { source: true } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
-    // 企业版 M-权限-09 / C3：只有总管理能删沟通（软删进回收站）；本人刚记的（AI 卡片撤销）例外
-    if (!刚记的能撤(me, 待删) && !(await 能删沟通(me))) return { ok: false as const, error: 不能删沟通话 };
+    // 企业版 V3.5.1：负责人本人或系统管理员能删沟通（软删进回收站）；本人刚记的（AI 卡片撤销）例外
+    if (!刚记的能撤(me, 待删) && !(await 能删沟通(me, { customerId: 待删.customerId, id }))) return { ok: false as const, error: 不能删沟通话 };
     // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（撤销 / 恢复时按跟进补回来）
     if (软删开着()) await prisma.followUp.update({ where: { id }, data: { deletedAt: new Date() } });
     else await prisma.followUp.delete({ where: { id } });
@@ -330,7 +332,7 @@ export type 删掉的跟进 = {
 export async function restoreFollowUp(快照: 删掉的跟进) {
   try {
     const me = await requireUser();
-    // 企业版：只认回收站里那一条（不照快照新建，快照是前端交上来的）；总管理能恢复，本人刚记的 10 分钟内能撤
+    // 企业版：只认回收站里那一条（不照快照新建，快照是前端交上来的）；系统管理员、回收站副手能恢复，本人刚记的 10 分钟内能撤
     if (企业版()) {
       const 行 = await 看已删(() => defaultClient.followUp.findUnique({ where: { id: 快照.id }, select: { ownerId: true, createdAt: true, deletedAt: true, customerId: true } }));
       if (!行 || 行.customerId !== 快照.customerId) return { ok: false as const, error: "这条跟进已经不在了，撤不回来" };
@@ -1004,13 +1006,12 @@ export type 删掉的联系人 =
 export async function deleteContact(id: string) {
   try {
     const me = await requireUser();
-    // 企业版只有总管理能删（QA #3）
-    const 挡 = await 删除挡(me);
-    if (挡) return { ok: false as const, error: 挡 };
     // 别人刚删了 / 刚移出了：说一句，不抛（原来抛出去，界面上什么反应都没有）
-    if (!(await prisma.contact.findUnique({ where: { id }, select: { id: true } }))) {
-      return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
-    }
+    const 在 = await prisma.contact.findUnique({ where: { id }, select: { customer: { select: { salesOwnerId: true } } } });
+    if (!在) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
+    // 企业版：系统管理员，或所属客户的负责人本人（V3.5.1）
+    const 挡 = await 删除挡(me, [在.customer?.salesOwnerId]);
+    if (挡) return { ok: false as const, error: 挡 };
     const 跟进 = await prisma.followUp.findMany({ where: { contactId: id }, select: { id: true } });
     // 企业版（P9）：只记 deletedAt，进回收站；跟进记录还挂着他，回来时「跟谁谈的」照旧
     const c = 软删开着()
@@ -1038,11 +1039,10 @@ export async function deleteContact(id: string) {
 export async function deleteUnassignedContact(id: string) {
   try {
     const me = await requireUser();
-    const 挡 = await 删除挡(me);
+    const 在 = await prisma.unassignedContact.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!在) return { ok: false as const, error: "这位联系人已经不在了，刷新看看" };
+    const 挡 = await 删除挡(me, [在.ownerId]);
     if (挡) return { ok: false as const, error: 挡 };
-    if (!(await prisma.unassignedContact.findUnique({ where: { id }, select: { id: true } }))) {
-      return { ok: false as const, error: "这位联系人已经不在了，刷新看看" };
-    }
     const u = await prisma.unassignedContact.delete({ where: { id } });
     await recordAudit({
       user: me, action: "delete", entity: "Contact", entityId: id,
@@ -1087,7 +1087,7 @@ async function 认回删掉的号(id: string, 交回: string | null) {
 export async function restoreContact(快照: 删掉的联系人) {
   try {
     const me = await requireUser();
-    // 企业版：删联系人只有总管理（删除挡），恢复也只有总管理；挂着的只认回收站里那一条，不照快照新建
+    // 企业版：删联系人 = 负责人本人或系统管理员（删除挡），恢复 = 系统管理员、回收站副手；挂着的只认回收站里那一条，不照快照新建
     if (企业版()) {
       if (!能恢复(me, await 权限组织())) return { ok: false as const, error: 只有总管理能恢复话 };
       if (快照.哪种 !== "未归属") {

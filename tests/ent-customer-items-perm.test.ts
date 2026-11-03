@@ -1,6 +1,6 @@
 /**
  * 企业版客户详情上的待办、下次计划、联系人移出 / 挂回（11-02 权限只认业务角色）：跟着客户负责人走。
- * 负责人（销售）能动；同组别人、上级、总管理只看；没业务角色、管理员拒；改已有的不许挪到别的客户名下。
+ * 负责人（销售）、系统管理员（director 没设业务线，V3.5.1）能动；同组别人、上级只看；没业务角色、管理员拒；改已有的不许挪到别的客户名下。
  * 骨架同 ent-full-perm-bugs（拷出来的一份库、真会话票）。
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
@@ -142,7 +142,7 @@ describe.each([false, true])("待办、计划（按组织看客户 %s）", (规�
     expect(await raw.task.count({ where: { id: t.id } })).toBe(0);
   });
 
-  it.each(["销售乙", "组长", "老板", "没角色"] as const)("%s 动不了销售甲客户的待办（加、改、勾、删）", async (谁) => {
+  it.each(["销售乙", "组长", "没角色"] as const)("%s 动不了销售甲客户的待办（加、改、勾、删）", async (谁) => {
     const t = await 建待办(客户.甲的, 人.销售甲);
     expect((await 试(谁, () => saveTask({ customerId: 客户.甲的, title: "别人加的" }))).成了).toBe(false);
     expect((await 试(谁, () => saveTask({ id: t.id, customerId: 客户.甲的, title: "别人改的" }))).成了).toBe(false);
@@ -177,7 +177,7 @@ describe.each([false, true])("待办、计划（按组织看客户 %s）", (规�
     expect((await 试("销售甲", () => deletePlan(p.id))).成了).toBe(true);
   });
 
-  it.each(["销售乙", "组长", "老板", "没角色"] as const)("%s 动不了销售甲客户的计划（排、改、完成、删）", async (谁) => {
+  it.each(["销售乙", "组长", "没角色"] as const)("%s 动不了销售甲客户的计划（排、改、完成、删）", async (谁) => {
     const p = await 建计划(客户.甲的, 人.销售甲);
     expect((await 试(谁, () => savePlan({ customerId: 客户.甲的, subject: "别人排的", plannedAt: 明天(), method: "电话" }))).成了).toBe(false);
     expect((await 试(谁, () => savePlan({ id: p.id, customerId: 客户.甲的, subject: "别人改的", plannedAt: 明天(), method: "电话" }))).成了).toBe(false);
@@ -186,6 +186,14 @@ describe.each([false, true])("待办、计划（按组织看客户 %s）", (规�
     const 后 = await raw.followPlan.findUniqueOrThrow({ where: { id: p.id } });
     expect([后.subject, 后.done]).toEqual(["回访", false]);
     expect(await raw.followPlan.count({ where: { customerId: 客户.甲的 } })).toBe(1);
+  });
+
+  it("老板（系统管理员）能动销售甲客户的待办、计划", async () => {
+    const t = await 建待办(客户.甲的, 人.销售甲);
+    expect((await 试("老板", () => saveTask({ id: t.id, customerId: 客户.甲的, title: "老板改的" }))).成了).toBe(true);
+    expect((await 试("老板", () => toggleTask(t.id, true))).成了).toBe(true);
+    const p = await 建计划(客户.甲的, 人.销售甲);
+    expect((await 试("老板", () => completePlan(p.id))).成了).toBe(true);
   });
 
   it("公海里的客户：谁都不能给它加待办、排计划（先领取）", async () => {
@@ -212,10 +220,15 @@ describe.each([false, true])("联系人移出 / 挂回（按组织看客户 %s�
     expect((await raw.contact.findUniqueOrThrow({ where: { id: c.id } })).customerId).toBe(客户.甲的);
   });
 
-  it.each(["销售乙", "组长", "老板", "没角色"] as const)("%s 不能把销售甲客户的联系人移出", async (谁) => {
+  it.each(["销售乙", "组长", "没角色"] as const)("%s 不能把销售甲客户的联系人移出", async (谁) => {
     const c = await 建联系人();
     expect((await 试(谁, () => detachContact(c.id))).成了).toBe(false);
     expect((await raw.contact.findUniqueOrThrow({ where: { id: c.id } })).customerId).toBe(客户.甲的);
+  });
+
+  it("老板（系统管理员）能把销售甲客户的联系人移出", async () => {
+    const c = await 建联系人();
+    expect((await 试("老板", () => detachContact(c.id))).成了).toBe(true);
   });
 
   it("未归属的人：销售乙不能挂到销售甲的客户下，能挂到自己客户下；没角色的连资料都改不了", async () => {
@@ -239,11 +252,13 @@ describe.each([false, true])("列表批量改跟进状态（按组织看客户 %
     expect([await 状态(客户.甲的), await 状态(客户.乙的)]).toEqual(["意向较高", "待跟进"]);
   });
 
-  it("组长、老板、没角色改销售甲的客户 → 拒；公海客户谁都不能改", async () => {
-    for (const 谁 of ["组长", "老板", "没角色", "销售乙"] as const) {
+  it("组长、没角色、别的销售改销售甲的客户 → 拒；老板（系统管理员）能改；公海客户谁都不能改", async () => {
+    for (const 谁 of ["组长", "没角色", "销售乙"] as const) {
       expect((await 试(谁, () => bulkFollowStatus([客户.甲的], "意向较高"))).成了).toBe(false);
     }
     expect((await 试("老板", () => bulkFollowStatus([客户.公海], "意向较高"))).成了).toBe(false);
     expect([await 状态(客户.甲的), await 状态(客户.公海)]).toEqual(["待跟进", "待跟进"]);
+    expect((await 试("老板", () => bulkFollowStatus([客户.甲的], "意向较高"))).成了).toBe(true);
+    expect(await 状态(客户.甲的)).toBe("意向较高");
   });
 });
