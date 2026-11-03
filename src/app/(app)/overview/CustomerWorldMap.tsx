@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { palette } from "@/lib/palette";
+import { 少动 } from "@/lib/reduced-motion";
 import type { 分布条 } from "@/lib/project/review-extras";
 import { 地图数据, 地图提示, 色档们, type 地图区, type 地图要素 } from "@/lib/project/customer-map";
 
@@ -133,7 +134,7 @@ export default function CustomerWorldMap({ 全部国家, 出错 }: { 全部国�
         if (停 || !ref.current) return;
         const { 区 } = 地图数据(全部国家, 要素们);
         const 档们 = 色档们(Math.max(0, ...区.map((x) => x.value)));
-        const 动 = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const 动 = !少动();
         const c = echarts.init(ref.current);
         const 画 = (reset: boolean) => c.setOption(选项(区, 现配色(档们.length), 档们, 动), reset);
         画(true);
