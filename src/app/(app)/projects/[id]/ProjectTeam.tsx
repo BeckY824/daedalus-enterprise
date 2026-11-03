@@ -241,7 +241,7 @@ export function ProjectTeamCard({
             title={不能改}
             value={m.roleId ?? undefined}
             options={角色选项(角色们, m.roleId)}
-            onChange={(v) => void 跑(() => 换项目组员角色(m.id, v ?? null))}
+            onChange={(v) => void 跑(() => 换项目组员角色(m.id, v ?? null), v ? "已换角色" : "已清掉角色")}
           />
           {能改 && (
             <Popconfirm title={`把${m.name}移出项目组？`} okText="移出" okButtonProps={{ danger: true }} onConfirm={() => void 跑(() => 移出项目组员(m.id), "已移出")}>
