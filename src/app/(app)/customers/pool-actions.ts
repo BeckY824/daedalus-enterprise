@@ -7,7 +7,7 @@
 import { 转交商机 } from "@/lib/opportunity-activity";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 不能当负责人 } from "@/lib/owners";
+import { 公海分不给 } from "@/lib/owners";
 import { 看全部, 虚线只读挡 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -248,7 +248,8 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
   if (!能管公海(me, await 权限组织())) return { ok: false, error: `只有总管理和销售管理能把公海里的${b.customer}分给同事` };
   const 给 = await prisma.user.findFirst({ where: { id: String(userId ?? ""), active: true }, select: { id: true, name: true } });
   if (!给) return { ok: false, error: "这位同事不在了或已停用，换一位" };
-  const 不行 = await 不能当负责人(给.id);
+  // 只分给能当负责人的；不是系统管理员只分给同业务线的（11-03 B2-7）
+  const 不行 = await 公海分不给(me, 给.id);
   if (不行) return { ok: false, error: 不行 };
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
   // 企业版：标了无效的分不出去（统一公海 P7），算「没权限」那几位

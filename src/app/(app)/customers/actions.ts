@@ -42,7 +42,7 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 能转让客户, 能改客户, 没设业务角色 } from "@/lib/enterprise/permissions";
+import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
@@ -1054,7 +1054,8 @@ async function 改客户挡(me: Awaited<ReturnType<typeof requireUser>>, id?: st
   if (!企业版()) return null;
   const org = await 权限组织();
   if (!org || 没设业务角色(org, me.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
-  if (!id) return null;
+  // 只读管理员新建也拦（11-03 D3-7 ④）：改已有的下面 能改客户 就不给，限定层也拦
+  if (!id) return 只读角色(me, org) ? 只读角色话 : null;
   const c = await defaultClient.customer.findUnique({ where: { id }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
   if (!c) return null; // 不在了：后面照原样报「已删除」
   if (c.pool) return 公海先领话;

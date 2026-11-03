@@ -67,7 +67,7 @@ test("导入导出：老板列表上有，销售没有；销售直接调上传�
   expect((await r.json()).error).toContain("只有总管理能做企业版导入");
 });
 
-test("设置：老板有企业版导入和组织架构；销售看得到组织架构，看不到企业版导入、业务配置、AI 接入", async ({ page }) => {
+test("设置：老板有企业版导入和组织架构；销售只剩个人几栏（D3-1），看不到组织架构、企业版导入、业务配置、AI 接入", async ({ page }) => {
   await 登录(page, "老板");
   await page.goto("/settings");
   const 目录 = () => page.locator("main .set-nav-i b").allInnerTexts();
@@ -79,8 +79,8 @@ test("设置：老板有企业版导入和组织架构；销售看得到组织�
   await page.goto("/settings");
   await page.waitForSelector("main .set-nav-i");
   const 销售看到 = await 目录();
-  expect(销售看到).toContain("组织架构");
-  for (const 不该有 of ["企业版导入", "业务配置", "AI 接入"]) expect(销售看到).not.toContain(不该有);
+  expect(销售看到).toContain("个人资料");
+  for (const 不该有 of ["组织架构", "企业版导入", "业务配置", "AI 接入"]) expect(销售看到).not.toContain(不该有);
 });
 
 test("设置 → 组织架构：飞书没填凭据时，「立即同步」灰着，「飞书连接」摆着等填", async ({ page }) => {
@@ -134,12 +134,15 @@ async function 选(page: Page, 框名: string, 项: string) {
   const 选上了 = page.locator(".ant-select", { has: page.getByRole("combobox", { name: 框名 }) })
     .locator(`[title="${项}"]:not(.ant-select-item)`);
   const 那项 = page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${项}"]`);
+  // 多选框点完、保存回来之前框里的标签可能一闪没了（CI 上见过：重来时又点了一次，把刚选上的点掉）：下拉里这项已选中就只等不点
+  const 那项已选 = page.locator(`.ant-select-dropdown:visible .ant-select-item-option-selected[title="${项}"]`);
   await expect(async () => {
     if (await 选上了.count()) return;
+    if (await 那项已选.count()) { await expect(选上了.first()).toBeVisible({ timeout: 5_000 }); return; }
     if (!(await 那项.isVisible())) await 框.click();
     await expect(那项).toBeVisible({ timeout: 2_000 });
     await 那项.click();
-    await expect(选上了.first()).toBeVisible({ timeout: 2_000 });
+    await expect(选上了.first()).toBeVisible({ timeout: 5_000 });
   }).toPass();
 }
 const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-notice", { hasText: 字 });
@@ -148,11 +151,12 @@ const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-
 test("线索分配：老板、销售管理、市场管理有「分配」，销售没有；市场把线索甲分给销售乙", async ({ page }) => {
   const 正文 = page.getByRole("main");
   const 分配 = (名: string) => 正文.getByRole("button", { name: `分配 ${名}`, exact: true });
-  for (const 谁 of ["老板", "经理"] as const) {
+  // 经理只看得到手填了直属上级是他的人的线索（11-03 C10-1），市场建的线索甲他看不到，验他下属销售甲的线索乙
+  for (const [谁, 线索] of [["老板", "线索甲"], ["经理", "线索乙"]] as const) {
     await page.context().clearCookies();
     await 登录(page, 谁);
     await page.goto("/leads");
-    await expect(分配("线索甲")).toBeVisible();
+    await expect(分配(线索)).toBeVisible();
   }
 
   await page.context().clearCookies();

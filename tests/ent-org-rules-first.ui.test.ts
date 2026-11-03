@@ -29,7 +29,7 @@ beforeAll(async () => {
     import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
     import OrgTab from '@/app/(app)/settings/OrgTab';
     const root=createRoot(document.getElementById('root'));
-    const 人=(id,name,bizRole)=>({id,name,deptId:null,bizRole,line:null,managerId:null,dottedManagerId:null,自动上级:null});
+    const 人=(id,name,bizRole)=>({id,name,deptId:null,bizRole,line:null,managerId:null,dottedManagerId:null});
     window.__render=({能改})=>root.render(<App><OrgTab value={{
       部门:[],成员:[人('a','某某超长名字的业务员'.repeat(3),'sales_mgr'),人('b','小王','sales')],能改,是老板:能改,
       规则开着:{按组织看客户:false,线索分配:true,字段权限:false,交接要确认:false,市场复核:true},字段权限:{},字段权限挡:null,改权限:{},线索分配:[]}}/></App>);

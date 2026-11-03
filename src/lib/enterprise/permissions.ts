@@ -294,6 +294,31 @@ export function 能领公海(me: 谁, org: 组织 | null): boolean {
   return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, 领公海角色);
 }
 
+/** 摆不摆「领取」「新建客户」「新线索」（11-03 D3-7 ④）：没设业务角色、只读管理员看不到；服务端各入口另拦。不是企业版一律摆 */
+export function 能新建和领取(me: 谁, org: 组织 | null): boolean {
+  if (老()) return true;
+  return !!org && !没设业务角色(org, me.id) && !只读角色(me, org);
+}
+
+/** 新建项目（建档向导）挡在哪：能 = null；只读管理员说只能看，没设业务角色说去设（11-03 D3-7 ④） */
+export function 不能新建项目话(me: 谁, org: 组织 | null): string | null {
+  if (能新建和领取(me, org)) return null;
+  return org && 只读角色(me, org) ? 只读角色话 : 没业务角色不能新建话;
+}
+
+/**
+ * 公海「分配给…」能不能分给这个人（11-03 B2-7）：先得能当负责人（在职、有业务角色、不是只读）；
+ * 分的人不是系统管理员、自己又有业务线时，只能分给同业务线的（对方没设线也不行）。能分 = null。不是企业版不管线
+ */
+export function 公海分不给话(me: 谁, org: 组织 | null, 目标: string): string | null {
+  const 不行 = 不能当负责人话(org, 目标);
+  if (不行) return 不行;
+  if (老() || !org || 是系统管理员(me, org)) return null;
+  const 我线 = org.成员.get(me.id)?.line ?? null;
+  if (!我线) return null;
+  return org.成员.get(目标)?.line === 我线 ? null : "只能分给同业务线的同事";
+}
+
 /** 进设置页：只有系统管理员（V3.5.1 后台设置只给系统管理员），勾了「不管设置」的不行（C1） */
 export function 能进设置(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老板(me);

@@ -99,6 +99,10 @@ type Props = {
   能导入导出?: boolean;
   /** 企业版普通销售新建客户负责人只能是自己（10-27 会议） */
   负责人只能自己?: boolean;
+  /** 企业版没设业务角色、只读管理员（11-03 D3-7 ④）：「新建」「领取」都不摆，服务端另拦；不是企业版一律 true */
+  能新建和领取?: boolean;
+  /** 公海「分配给…」的下拉（11-03 B2-7）：只列能当负责人的，不是系统管理员再收到同业务线；没给 = 用 users */
+  公海分给?: 可选成员[];
   channels: Option[];
   /** 进来就把新建表单打开（首页空库那张「开始」卡的落点） */
   直接新建?: boolean;
@@ -218,12 +222,13 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
   const 删不了 = new Set(删不了ids);
   const 领不回 = new Set(原负责人领不回ids);
+  const 分给们 = 公海分给 ?? users;
   // 服务端已取有效页的数据；只修正地址，避免二次请求与开发模式流式重定向错误。
   useEffect(() => {
     if (requestedPage === undefined || requestedPage === String(page)) return;
@@ -584,9 +589,9 @@ export default function CustomersView({
         const 公海里 = r.pool && !不问归属;
         const 菜单: NonNullable<MenuProps["items"]> = [
           // 老板直接分给某位同事（2026-10-20）：规矩同领取，只是领的人换成选中的那位
-          ...(公海里 && 能分配公海 && 成员选项(users).length ? [{
+          ...(公海里 && 能分配公海 && 成员选项(分给们).length ? [{
             key: "assign", label: "分配给…",
-            children: 成员选项(users).map((o) => ({ key: `assign:${o.value}`, label: o.label, onClick: async () => 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]) })),
+            children: 成员选项(分给们).map((o) => ({ key: `assign:${o.value}`, label: o.label, onClick: async () => 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]) })),
           }] : []),
           { key: "edit", label: "编辑", onClick: () => { setEditing(r); setFormOpen(true); } },
           // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）
@@ -595,7 +600,7 @@ export default function CustomersView({
         return (
           <div>
             <Space size={2}>
-              {公海里 && (
+              {公海里 && 能新建和领取 && (
                 <Button className="row-act" aria-label={`领取 ${r.name}`} disabled={领不回.has(r.id)} size="small"
                   onClick={async () => 公海提示(await 领取([r.id]), "领取", [r.id])}>领取</Button>
               )}
@@ -604,7 +609,7 @@ export default function CustomersView({
                 <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} />
               </Dropdown>
             </Space>
-            {公海里 && 领不回.has(r.id) && <div className="muted" style={{ fontSize: 12, lineHeight: "16px" }}>{原负责人不能领回提示}</div>}
+            {公海里 && 能新建和领取 && 领不回.has(r.id) && <div className="muted" style={{ fontSize: 12, lineHeight: "16px" }}>{原负责人不能领回提示}</div>}
           </div>
         );
       },
@@ -669,9 +674,9 @@ export default function CustomersView({
               </Button>
               {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span><Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button></Space>}
             </>)}
-            <Button type="primary" icon={<PlusOutlined />} onClick={新建}>
+            {能新建和领取 && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>
               新建{b.customer}
-            </Button>
+            </Button>}
           </Space>
         }
       />
@@ -714,7 +719,7 @@ export default function CustomersView({
             : 外贸
             ? `${b.customer}是这套系统的中心：跟进记录、商机、订单都挂在他身上。`
             : `${b.customer}是这套系统的中心：跟进记录、商机、签约都挂在他身上，推荐归属也按他这条线往上算。`,
-          primary: { label: `新建第一位${b.customer}`, onClick: 新建 },
+          primary: 能新建和领取 ? { label: `新建第一位${b.customer}`, onClick: 新建 } : undefined,
           secondary: 能导入导出 && !视图中 ? [{ label: "从 Excel 导入", onClick: () => set导入开着(true) }] : [],
         }}
         筛选={
@@ -842,7 +847,7 @@ export default function CustomersView({
             {/* 公海页签的老板：「分配给…」= 从公海直接分出去（出公海、记领取时间）；批量分配只换负责人、人还在公海里，这里不摆 */}
             {!不问归属 && 公海页 && 能分配公海 && <Dropdown
               menu={{
-                items: 成员选项(users).map((o) => ({
+                items: 成员选项(分给们).map((o) => ({
                   key: o.value,
                   label: o.label,
                   onClick: async () => {
@@ -885,7 +890,7 @@ export default function CustomersView({
               <Button size="small" icon={<UserSwitchOutlined />}>批量分配</Button>
             </Dropdown>}
             {/* 「公海」页签只有领取，「客户」页签只有放进公海；子集里两种混着，看勾的是什么 */}
-            {!不问归属 && (公海页 || (子集 && 选中行.some((r) => r.pool)) ? (
+            {!不问归属 && (公海页 || (子集 && 选中行.some((r) => r.pool)) ? (能新建和领取 &&
               <>
                 <Button size="small" icon={<UserAddOutlined />}
                   // 勾的全是自己当原负责人的公海客户：领不了，灰着，原因写在旁边

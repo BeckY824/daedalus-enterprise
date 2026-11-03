@@ -71,17 +71,17 @@ describe("兼几类管理员，几类的权都有", () => {
     expect(管理员类别们of(org, "销兼运").size).toBe(0);
   });
 
-  it("改设置：字典默认只给总管理员；持有上限默认给销售管理；兼的人两边都按并集", () => {
-    const 配置 = { 字典: ["市场管理"] as const, 持有上限: ["销售管理"] as const } as unknown as Parameters<typeof 能改设置>[3];
-    expect(能改设置(org, 我("兼"), "字典", 配置)).toBe(true);
-    expect(能改设置(org, 我("兼"), "持有上限", 配置)).toBe(true);
-    expect(能改设置(org, 我("销管"), "字典", 配置)).toBe(false);
-    expect(能改设置(org, 我("市场"), "持有上限", 配置)).toBe(false);
+  it("改设置：项目模式那几项只给系统管理员，表里存了别的类也不算（11-03 D3-7 ①）；线索配额兼的人按并集", () => {
+    const 配置 = { 字典: ["市场管理"], 持有上限: ["销售管理"], 线索配额: ["市场管理"] } as unknown as Parameters<typeof 能改设置>[3];
+    expect(能改设置(org, 我("兼"), "字典", 配置)).toBe(false);
+    expect(能改设置(org, 我("兼"), "持有上限", 配置)).toBe(false);
+    expect(能改设置(org, 我("兼"), "线索配额", 配置)).toBe(true);
+    expect(能改设置(org, 我("销管"), "线索配额", 配置)).toBe(false);
     expect(能改设置(org, 我("总兼销"), "字段权限", {})).toBe(true);
     expect(能改设置(org, 我("销"), "字段权限", {})).toBe(false);
-    // 节点时限：销售管理只能改潜客培育，市场管理能改潜客培育和线索验证；兼的取并集，兼总管的全部
-    expect([...能改时限的节点(org, 我("兼"), {})].sort()).toEqual(["潜客培育", "线索验证"].sort());
-    expect(能改时限的节点(org, 我("销管"), {})).toEqual(["潜客培育"]);
+    // 节点时限：销售管理、市场管理一个节点都改不了；系统管理员全部
+    expect(能改时限的节点(org, 我("兼"), {})).toEqual([]);
+    expect(能改时限的节点(org, 我("销管"), {})).toEqual([]);
     expect(能改时限的节点(org, 我("总兼销"), {})).toBe("全部");
   });
 

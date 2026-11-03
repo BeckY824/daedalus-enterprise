@@ -2,7 +2,7 @@ import { prisma } from "./prisma";
 import { 可担任负责人 } from "./constants";
 import { 无负责人占位邮箱 } from "./pool";
 import { 权限组织 } from "./enterprise/org";
-import { 能当负责人, 不能当负责人话 } from "./enterprise/permissions";
+import { 能当负责人, 不能当负责人话, 公海分不给话, type 谁 } from "./enterprise/permissions";
 
 /**
  * 「谁能被指派为负责人」的候选名单。
@@ -26,6 +26,12 @@ import { 能当负责人, 不能当负责人话 } from "./enterprise/permissions
 export async function 负责人候选() {
   const 选项 = { select: { id: true, name: true, email: true }, orderBy: { name: "asc" as const } };
   return prisma.user.findMany({ where: await 负责人口径(), ...选项 });
+}
+
+/** 公海「分配给…」的下拉（11-03 B2-7）：负责人候选里分得过去的——不是系统管理员时只剩同业务线的。不是企业版 = 负责人候选 */
+export async function 公海分配候选(me: 谁) {
+  const [们, org] = await Promise.all([负责人候选(), 权限组织()]);
+  return org ? 们.filter((u) => 公海分不给话(me, org, u.id) === null) : 们;
 }
 
 /**
@@ -88,4 +94,9 @@ export async function 跟进筛选成员() {
 export async function 不能当负责人(userId: string): Promise<string | null> {
   const org = await 权限组织();
   return org ? 不能当负责人话(org, userId) : null;
+}
+/** 公海分配（客户、项目）服务端那道：同 公海分配候选，分不过去的那一句；能分 = null */
+export async function 公海分不给(me: 谁, userId: string): Promise<string | null> {
+  const org = await 权限组织();
+  return org ? 公海分不给话(me, org, userId) : null;
 }

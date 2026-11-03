@@ -19,7 +19,7 @@ import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
 import { 文字里号码打码, 同名带邮箱 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 权限组织 } from "@/lib/enterprise/org";
 import { 拆角色 } from "@/lib/enterprise/org-core";
-import { 能进设置, 能改后台设置, 只读角色, 是总管理 } from "@/lib/enterprise/permissions";
+import { 能进设置, 能改后台设置, 是总管理 } from "@/lib/enterprise/permissions";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
 import { getSetting } from "@/lib/settings";
@@ -75,8 +75,17 @@ export default async function SettingsBody() {
   const 不管设置们 = new Set((成员行 ?? []).filter((m) => m.noSettings).map((m) => m.userId));
   const 阶段数of = (id: string) => Object.fromEntries((项目数 ?? []).filter((g) => g.ownerId === id).map((g) => [g.phase, g._count._all]));
 
+  // 进设置页 / 改后台设置（11-01 #9）：企业版只认业务角色——系统管理员，勾了「不管设置」的不行；
+  // 别的版本照旧账号 ADMIN。和服务端 settings/actions.ts 能改设置、org-actions.ts 能改的人 同一套
+  const 权限org = 企业版() ? await 权限组织() : null;
+  const 可进 = !共享区 && (企业版() ? 能进设置(me, 权限org) : me.role === "ADMIN");
+  const 可改 = !共享区 && (企业版() ? 能改后台设置(me, 权限org) : me.role === "ADMIN");
+  // 企业版不是系统管理员（11-03 D3-1）：只给个人资料、登录与密码、快捷键、外观（回收站副手另多回收站），
+  // 成员、组织架构、项目模式、操作日志都不出、数据也不取
+  const 只个人 = 企业版() && !可进;
+
   // 项目模式（团队版 1a）开着才多一栏：组员角色字典、异常类别字典
-  const 项目设置底 = business.projectMode
+  const 项目设置底 = business.projectMode && !只个人
     ? await Promise.all([
         角色字典(),
         prisma.projectMember.groupBy({ by: ["roleId"], _count: { _all: true } }),
@@ -111,11 +120,6 @@ export default async function SettingsBody() {
       })
     : null;
 
-  // 进设置页 / 改后台设置（11-01 #9）：企业版只认业务角色——总管理能改，管理员（admin）只读看，勾了「不管设置」的总管理都不行；
-  // 别的版本照旧账号 ADMIN。和服务端 settings/actions.ts 能改设置、org-actions.ts 能改的人 同一套
-  const 权限org = 企业版() ? await 权限组织() : null;
-  const 可进 = !共享区 && (企业版() ? 能进设置(me, 权限org) : me.role === "ADMIN");
-  const 可改 = !共享区 && (企业版() ? 能改后台设置(me, 权限org) : me.role === "ADMIN");
   // 企业版才多一栏「组织架构」：部门树、每个人的部门 / 角色 / 业务线 / 上级。老板和总管理员能改（字段权限、谁能改按「后台设置谁能改」）
   const [org, 开关, 字段权限, 线索分配, 改权限, 不设配额, 市场部门, 市场单设] = 企业版()
     ? await Promise.all([
@@ -170,7 +174,7 @@ export default async function SettingsBody() {
     时限节点: org && 改权限 ? 能改时限的节点(org, me, 改权限) : undefined,
     按人提成: 项目设置底.提成比例 && org ? await 按人提成数据(org) : null,
   };
-  const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限
+  const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限 && !只个人
     ? (() => {
         // 同名的带邮箱：组织架构每人一行、上级下拉都靠这个分清两个王芳
         const 名 = 同名带邮箱(users.filter((u) => org.成员.has(u.id)));
@@ -178,14 +182,12 @@ export default async function SettingsBody() {
           部门: [...org.部门.values()],
           成员: users.filter((u) => org.成员.has(u.id)).map((u) => {
             const m = org.成员.get(u.id)!;
-            // 显式指定的上级停用了，直属上级of 会退回按部门推；界面上也当没指定，显示推出来的那位
-            const 指定 = m.managerId && org.成员.has(m.managerId) ? m.managerId : null;
-            const 自动 = 指定 ? null : 直属上级of(org, u.id);
+            // 只认手填的直属上级（11-03 C10-1）：填的人停用了当没填
+            const 指定 = 直属上级of(org, u.id);
             return {
               // m.bizRole 只是主角色；角色框是多选，要给全（逗号串）——给主角色的话兼的角色刷新就不见了，再改一次就被冲掉
               id: u.id, name: 名.get(u.id)!, deptId: m.deptId, bizRole: m.角色们.join(","), line: m.line,
               managerId: 指定, dottedManagerId: 虚线上级of(org, u.id),
-              自动上级: 自动 ? 名.get(自动) ?? null : null,
             };
           }),
           // 组织架构、业务角色分配只有总管理（11-01）；能改的人就能授总管理 / 管理员
@@ -206,12 +208,6 @@ export default async function SettingsBody() {
         };
       })()
     : null;
-  // 企业版：直属上级能给下属办离职（D-36），总管理不在其内；能改设置的总管理本来就能办全部，管理员（admin）只读、一个都不能办。
-  // 跟「按组织看客户」开关走，同 settings/actions.ts 能办离职
-  const 下属可停用 = org && 开关?.按组织看客户 && !共享区 && !可改 && !只读角色(me, 权限org)
-    ? users.filter((u) => !是总管理(u, 权限org) && 直属上级of(org, u.id) === me.id).map((u) => u.id)
-    : [];
-
   // 谁能导入只认 import-perm.ts 一处（现在企业版是老板、总管理员），以后放宽只改那里
   const 能导入 = await 能导入导出(me);
   // 回收站：企业版的系统管理员、回收站副手（谁能看 / 恢复 / 彻底删除只认 lib/enterprise/soft-delete.ts）
@@ -242,13 +238,13 @@ export default async function SettingsBody() {
          自部署版是用户名，既有账号是 admin / zhangsan 这种，不能改 */
       用邮箱登录={multiTenant()}
       企业版={企业版()}
-      下属可停用={下属可停用}
+      只个人={只个人}
       llm={llm}
       business={business}
       aiUsage={aiUsage}
       机器={机器}
       /* 共享试用区：留痕里记的是原号，别的团队也翻得到——号码在这儿打掉再交给浏览器（2026-10-01 排查 A5） */
-      logs={logs.map((l) => ({
+      logs={(只个人 ? [] : logs).map((l) => ({
         id: l.id,
         at: l.at.toISOString(),
         userName: l.userName,
@@ -257,7 +253,7 @@ export default async function SettingsBody() {
         summary: 共享区 ? 文字里号码打码(l.summary) : l.summary,
         detail: 共享区 && l.detail ? 文字里号码打码(l.detail) : l.detail,
       }))}
-      users={users.map((u) => ({
+      users={(只个人 ? [] : users).map((u) => ({
         id: u.id,
         name: u.name,
         email: u.email,
