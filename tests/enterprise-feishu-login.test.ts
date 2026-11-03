@@ -1,6 +1,6 @@
 /**
  * 企业版用飞书身份登录 + 保持登录（2026-10-30）。
- * 认人：先按记下的 open_id，没记过按姓名认在用的号且只认一个；重名、没对上、已绑别人、停用都不放行。
+ * 认人：先按记下的 open_id；没记过先按飞书给的邮箱（11-03），再按姓名，认在用的号且只认一个；重名、没对上、已绑别人、停用都不放行。
  * 保持登录：会话 30 天，签发够一天的票在打开页面时顺延，ims 不变；没有 ims 的老票不顺延。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -17,7 +17,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const 建号 = (name: string, extra: { active?: boolean; feishuOpenId?: string } = {}) =>
+const 建号 = (name: string, extra: { active?: boolean; feishuOpenId?: string; email?: string } = {}) =>
   prisma.user.create({ data: { email: `${name}-${Math.random().toString(36).slice(2, 8)}@x.test`, name, title: "销售", role: "SALES", password: "x", ...extra } });
 
 async function 原因(p: Promise<unknown>) {
@@ -73,6 +73,45 @@ describe("认飞书用户", () => {
   });
 });
 
+describe("认飞书用户：第一次登录按邮箱绑定（11-03）", () => {
+  beforeEach(() => resetDb());
+
+  it("按邮箱认上唯一在用的号并绑定，名字对不上也认；之后按 open_id 认", async () => {
+    const 他 = await 建号("张三", { email: "zhangsan@corp.test" });
+    await 建号("飞书上的名字");
+    const r = await 认飞书用户({ openId: "ou_1", name: "飞书上的名字", 邮箱们: ["zhangsan@corp.test"] });
+    expect(r.id).toBe(他.id);
+    expect((await prisma.user.findUnique({ where: { id: 他.id } }))?.feishuOpenId).toBe("ou_1");
+    const 审计 = await prisma.auditLog.findFirst({ where: { entityId: 他.id } });
+    expect(JSON.stringify(审计)).toContain("按邮箱");
+    expect((await 认飞书用户({ openId: "ou_1", name: "随便" })).id).toBe(他.id);
+  });
+
+  it("邮箱没对上：退回按姓名认", async () => {
+    const 他 = await 建号("张三");
+    expect((await 认飞书用户({ openId: "ou_1", name: "张三", 邮箱们: ["nobody@corp.test"] })).id).toBe(他.id);
+  });
+
+  it("邮箱对上两个在用的号：dup，谁也不绑", async () => {
+    await 建号("张三", { email: "a@corp.test" });
+    await 建号("李四", { email: "b@corp.test" });
+    expect(await 原因(认飞书用户({ openId: "ou_1", name: "张三", 邮箱们: ["a@corp.test", "b@corp.test"] }))).toBe("dup");
+    expect(await prisma.user.count({ where: { feishuOpenId: { not: null } } })).toBe(0);
+  });
+
+  it("邮箱只对上停用的号：inactive；对上的号已绑别的飞书身份：taken", async () => {
+    await 建号("张三", { email: "a@corp.test", active: false });
+    expect(await 原因(认飞书用户({ openId: "ou_1", name: "张三", 邮箱们: ["a@corp.test"] }))).toBe("inactive");
+    await 建号("李四", { email: "b@corp.test", feishuOpenId: "ou_old" });
+    expect(await 原因(认飞书用户({ openId: "ou_2", name: "李四", 邮箱们: ["b@corp.test"] }))).toBe("taken");
+  });
+
+  it("都没对上：nomatch（登录页提示「无法登录请联系管理员」）", async () => {
+    await 建号("张三", { email: "a@corp.test" });
+    expect(await 原因(认飞书用户({ openId: "ou_1", name: "李四", 邮箱们: ["x@corp.test"] }))).toBe("nomatch");
+  });
+});
+
 describe("换飞书身份", () => {
   const 凭据 = { appId: "cli_test", appSecret: "s" };
   const 回 = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -80,10 +119,17 @@ describe("换飞书身份", () => {
   it("换 token、读用户信息，拿到 open_id 和姓名", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(回({ code: 0, access_token: "u-token" })).mockResolvedValueOnce(回({ code: 0, data: { open_id: "ou_1", name: " 张三 " } }));
     vi.stubGlobal("fetch", fetch);
-    expect(await 换飞书身份("c", "http://h/api/auth/feishu/callback", 凭据)).toEqual({ openId: "ou_1", name: "张三" });
+    expect(await 换飞书身份("c", "http://h/api/auth/feishu/callback", 凭据)).toEqual({ openId: "ou_1", name: "张三", 邮箱们: [] });
     const body = JSON.parse(fetch.mock.calls[0][1].body);
     expect(body).toMatchObject({ grant_type: "authorization_code", client_id: "cli_test", code: "c", redirect_uri: "http://h/api/auth/feishu/callback" });
     expect(fetch.mock.calls[1][1].headers.Authorization).toBe("Bearer u-token");
+  });
+
+  it("邮箱：email 和 enterprise_email 都收，小写、去重、去空", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(回({ code: 0, access_token: "t" })).mockResolvedValueOnce(回({ code: 0, data: { open_id: "ou_1", name: "张三", email: " ZS@Corp.test ", enterprise_email: "zs@corp.test" } })));
+    expect((await 换飞书身份("c", "r", 凭据)).邮箱们).toEqual(["zs@corp.test"]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(回({ code: 0, access_token: "t" })).mockResolvedValueOnce(回({ code: 0, data: { open_id: "ou_1", name: "张三", email: "", enterprise_email: "zs@ent.test" } })));
+    expect((await 换飞书身份("c", "r", 凭据)).邮箱们).toEqual(["zs@ent.test"]);
   });
 
   it("飞书回错、断网、没有 open_id：一律 exchange", async () => {

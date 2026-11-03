@@ -582,14 +582,17 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       const 超 = await 超上限(tx, 规则, 新.ownerId, p);
       if (超) return { ok: false as const, error: 超 };
     }
-    // 换了人，上一位填的下一步时间不替新负责人算（超时回收从接手那天重新算）
-    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
+    // 换了人：企业版下一步（时间 + 文字）跟着项目走、不清（11-03 A2-3）；超时回收照样从接手那天重新算（转让留痕），
+    // 上一位填的、早于接手那天的下一步时间不会把回收日往前拉（超时回收日 只认起点以后的）。不是企业版照旧清掉
+    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 && !企业版() ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
     // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
     if (换人) {
       const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
+      await 将回收提醒跟着换人(tx, p, 原, 新.ownerId);
       // 原负责人的待办（C-06）：勾着带给新负责人，不勾关掉；碰了几条写进这行留痕
       const 几条 = await 换负责人待办(tx, p, 原, 新.ownerId, 带待办);
       await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条));
+      await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
@@ -1023,9 +1026,10 @@ export async function 客户跟进后勾掉将回收提醒(customerId: string, n
 
 /**
  * 企业版（10-27）：记了沟通，回收日往后推了、不再是明天以内，负责人那条「再不跟进」的提醒跟着勾掉。
- * 下一步时间填的今天（回收日还是明天）就不勾：明天那条提醒照样作数。按记沟通前的项目名 + 节点找（自动推进可能换了节点）
+ * 下一步时间填的今天（回收日还是明天）就不勾：明天那条提醒照样作数。按记沟通前的项目名 + 节点找（自动推进可能换了节点）。
+ * 换负责人（11-03 A2-3）也调：将回收提醒跟着换人 把提醒交给新负责人、记完转让痕以后按新负责人再算一遍
  */
-async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组织规则, p: { id: string; name: string; node: string; ownerId: string; customerId: string }, now: Date): Promise<void> {
+export async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组织规则, p: { id: string; name: string; node: string; ownerId: string; customerId: string }, now: Date): Promise<void> {
   if (!企业版()) return;
   const 现 = await 看全部(() => tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 }));
   const 日 = 现 && 项目回收日(规则, 现);
@@ -1034,6 +1038,20 @@ async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组�
     where: { ownerId: p.ownerId, customerId: p.customerId, done: false, OR: 同名们(p.node).map((n) => ({ title: { startsWith: 将回收提醒头(p.name, n) } })) },
     data: { done: true, doneAt: now },
   }));
+}
+
+/**
+ * 企业版（11-03 A2-3）：项目换负责人，原负责人那条「再不跟进，X 日会自动回到项目公海」的提醒（自救任务）跟着项目给新负责人，
+ * 不留在原负责人那、也不被「不带待办」关掉——所以在 换负责人待办 之前调。认法同 勾掉将回收提醒（项目名 + 节点开头、挂这位客户、没勾）。
+ * 回收日还在不在明天以内，调用方记完转让痕以后用 勾掉将回收提醒 再算（事务里读不了规则的，如 转项目，只交不算）
+ */
+export async function 将回收提醒跟着换人(tx: Prisma.TransactionClient, p: { name: string; node: string; customerId: string }, 原: string | null, 新: string): Promise<number> {
+  if (!企业版() || !原 || 原 === 新) return 0;
+  const r = await 看全部(() => tx.task.updateMany({
+    where: { ownerId: 原, customerId: p.customerId, done: false, OR: 同名们(p.node).map((n) => ({ title: { startsWith: 将回收提醒头(p.name, n) } })) },
+    data: { ownerId: 新 },
+  }));
+  return r.count;
 }
 
 /**

@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   user: { id: "", name: "甲", email: "a@x", role: "ADMIN", title: "管理员", avatar: null },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
+// createSession：自部署改密后给本人续新票（11-03），这里不验会话，空着即可
+vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user, createSession: async () => {} }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";

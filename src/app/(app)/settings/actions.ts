@@ -253,8 +253,11 @@ export async function saveUser(input: {
       try {
         await prisma.user.update({
           where: { id: input.id },
-          data: input.password ? { ...base, password: await 哈希密码(input.password) } : base,
+          // 重置了密码：记下改密时刻，这个人别的设备上的旧会话随之作废（lib/auth.ts getSessionUser）
+          data: input.password ? { ...base, password: await 哈希密码(input.password), passwordChangedAt: new Date() } : base,
         });
+        // 给自己重置的：当场续一张新票，别把自己也踢下线
+        if (input.password && input.id === me.id) await createSession(me.id);
       } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "P2002") return { ok: false, error: "该登录用户名已被占用" };
         throw error;
@@ -658,10 +661,15 @@ export async function changeMyPassword(oldPwd: string, newPwd: string) {
      */
     await createSession(link.accountId, 我的工作区);
   } else {
+    /*
+      自部署（11-03）：记下改密时刻，比它早签发的会话——别的设备上的——一律作废（lib/auth.ts getSessionUser）。
+      本人这张也早于它，当场再签一张，免得改完密码被踢回登录页。
+    */
     await prisma.user.update({
       where: { id: me.id },
-      data: { password: await 哈希密码(newPwd) },
+      data: { password: await 哈希密码(newPwd), passwordChangedAt: new Date() },
     });
+    await createSession(me.id);
   }
   // 只记「改过密码」这件事，不记任何密码内容
   await recordAudit({

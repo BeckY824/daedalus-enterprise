@@ -620,7 +620,7 @@ export default function ProjectDetail({
     });
   };
 
-  /** 转让项目（U-项目-07）：弹窗里点「确认转让」就换负责人，不再等 6 秒撤销；换了以后原来的下一步清掉，你可能就看不到这个项目了，回项目列表 */
+  /** 转让项目（U-项目-07）：弹窗里点「确认转让」就换负责人，不再等 6 秒撤销；下一步、卡点、沟通都跟着项目走（11-03 A2-3）；你可能就看不到这个项目了，回项目列表 */
   const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
     const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }, 带待办勾出 ? 转给带待办 : undefined), `已转给 ${名}`);
@@ -1466,7 +1466,7 @@ export default function ProjectDetail({
           </Checkbox>
         )}
         <div style={{ color: "var(--text-muted)" }}>
-          {转给名 ? `确认转给 ${转给名}？${转给谁 && p.转后还能看?.includes(转给谁) ? "转了以后你还能看这个项目" : "转了以后你看不到这个项目"}，原来填的下一步会清掉，由 ${转给名} 重新安排；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
+          {转给名 ? `确认转给 ${转给名}？${转给谁 && p.转后还能看?.includes(转给谁) ? "转了以后你还能看这个项目" : "转了以后你看不到这个项目"}，下一步、卡点、沟通记录都跟着项目交给 ${转给名}；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
         </div>
       </Modal>
     </div>

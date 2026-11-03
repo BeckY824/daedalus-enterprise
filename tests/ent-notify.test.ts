@@ -189,6 +189,20 @@ describe("飞书推送", () => {
     expect((await 行(甲))[0]).toMatchObject({ feishuStatus: "没推", feishuError: "没配飞书应用" });
   });
 
+  it("第一次飞书登录按邮箱绑上之后（11-03）：同一批里绑了的推到人，没绑的只站内、不报错", async () => {
+    const { 认飞书用户 } = await import("@/lib/enterprise/feishu-login");
+    const 丙 = (await prisma.user.create({ data: { email: "c@corp.test", name: "丙", title: "", role: "SALES", password: "x" } })).id;
+    await 认飞书用户({ openId: "ou_bing", name: "飞书名", 邮箱们: ["c@corp.test"] });
+    await setSetting(飞书推送开关键, true);
+    飞书正常();
+    await notify([丙, 乙], { kind: "a", title: "一", key: "1" });
+    await 等通知推完();
+    const 发的 = fetchMock.mock.calls.filter((c) => c[0] === 发消息地址).map((c) => JSON.parse(c[1].body).receive_id);
+    expect(发的).toEqual(["ou_bing"]);
+    expect((await 行(丙))[0]).toMatchObject({ feishuStatus: "已推" });
+    expect((await 行(乙))[0]).toMatchObject({ feishuStatus: "没推", feishuError: "没绑飞书" });
+  });
+
   it("链接：没配 ENT_PUBLIC_URL 不带；绝对地址原样", () => {
     expect(完整链接("/projects/p1")).toBe("https://crm.example.test/projects/p1");
     expect(完整链接(null)).toBeNull();
