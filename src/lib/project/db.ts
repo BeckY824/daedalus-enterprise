@@ -32,7 +32,7 @@ import { FOLLOW_RECORD_STATUSES } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
-import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 单项目客户跟进公海, 单项目客户跟着领, 项目转让客户跟着转 } from "@/lib/enterprise/pool-link";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
@@ -593,6 +593,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       const 几条 = await 换负责人待办(tx, p, 原, 新.ownerId, 带待办);
       await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条));
       await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
+      // 企业版：客户跟着项目一起转（11-04），在公海里的一起出公海
+      await 项目转让客户跟着转(tx, p.customerId, 新.ownerId, me.id, 带待办);
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);

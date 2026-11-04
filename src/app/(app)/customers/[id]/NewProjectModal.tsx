@@ -29,7 +29,7 @@ import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-ru
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 给客户建项目, 新项目分配数据, type 新项目分配数据 as 分配数据 } from "./project-actions";
-import { 三种业务线, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 分配说明, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
 /** 和建档向导同一排步骤（ProjectWizard 步骤们）；这里前 3 步已带上 */
@@ -38,13 +38,6 @@ const 跳过几步 = 3;
 
 /** 「项目」这一步的格：下一步前先校验这几格 */
 const 项目格 = ["name", "分配方式", "业务线", "ownerId", "联系人Id"] as const;
-const 分配说明: Record<number, string> = {
-  1: "建好后按业务线自动分给那条线正常参与的销售；业务线选了暂不分配或没人可分 = 留在新线索待分配",
-  2: "建好后放进项目公海，等人捞取",
-  3: "建好后留在新线索待分配，等市场管理、销售管理或总管理员分",
-  4: "记在你名下，自己跟进",
-};
-
 type 表单 = {
   name: string;
   分配方式?: number;

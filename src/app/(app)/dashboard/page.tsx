@@ -3,8 +3,9 @@ import { requireUser } from "@/lib/auth";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 公海超时收回 } from "@/lib/project/db";
 import { llmEnabled, listModelOptions } from "@/lib/llm";
-import { 唯一负责人 } from "@/lib/owners";
-import { dayjs } from "@/lib/utils";
+import { 唯一负责人, 负责人候选 } from "@/lib/owners";
+import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
+import { dayjs, 成员选项 } from "@/lib/utils";
 import { getBusiness } from "@/lib/business";
 import { statusLabel, 外贸订单 } from "@/lib/business-config";
 import { loadWatchlistPage } from "@/lib/sentinel-data";
@@ -88,7 +89,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       不摆信号、上下文；输入框底下按角色摆 3 个示例，点了只填进输入框不发（10-30 交互审核），所以这条路只取要用的：卡上的四个数（摆哪四张、口径都在 lib/project/home-cards.ts）、
       空库判断要的几个 count、新线索卡要的渠道名和「下一步必填」
     */
-    const [models, 学员数, 线索数, myPlans, 没做完的待办, 卡, 渠道, 规则] = await Promise.all([
+    // 企业版：卡上分配方式、项目负责人和「新建项目」同一套（11-04 用户：首页录入要和新建项目 / 新建客户一致）
+    const 企 = 企业版();
+    const [models, 学员数, 线索数, myPlans, 没做完的待办, 卡, 渠道, 规则, 候选, 分配] = await Promise.all([
       listModelOptions(),
       prisma.customer.count(),
       数新线索(),
@@ -97,7 +100,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       数首页卡(user),
       prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } }),
       生效组织规则(),
+      企 ? 负责人候选() : null,
+      企 ? 新建分配方式数据(user) : null,
     ]);
+    const 新线索企业格 = 候选 && 分配
+      ? {
+          成员: 候选.some((u) => u.id === user.id) ? 成员选项(候选) : [...成员选项(候选), { value: user.id, label: user.name }],
+          分配方式们: 分配.分配方式们,
+          默认分配方式: 分配.默认分配方式,
+          是销售: 分配.是销售,
+        }
+      : undefined;
     return (
       <HomeChat
         会话={对话}
@@ -112,6 +125,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         满额提醒={满额提醒们}
         渠道名们={渠道.map((c) => c.name)}
         要下一步={规则.超时回收.开}
+        新线索企业={新线索企业格}
         空库={学员数 === 0 && 线索数 === 0 && myPlans === 0 && 没做完的待办 === 0}
         指标卡={卡}
       />

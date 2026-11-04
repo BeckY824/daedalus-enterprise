@@ -3381,6 +3381,13 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 沟通方式 + 发起主体并排（11-01）：窄了自动换行 */
 .follow-pick-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
 .follow-pick-row .ant-select { width: 100%; min-width: 0; }
+/* 「更多」整行可点（11-04）：箭头、文字、红字提示同一个按钮，占满一行，窄了换行不溢出 */
+.follow-more-toggle.ant-btn { width: 100%; height: auto; min-height: 32px; padding: 4px 0; justify-content: flex-start; align-items: center; text-align: left; white-space: normal; }
+.follow-more-toggle.ant-btn > span:last-child { min-width: 0; }
+.follow-more-hint { color: var(--danger-text); font-size: var(--dt-aux, 12px); }
+/* 选项全名（11-04）：下拉按内容撑开，最宽到屏幕宽减边距，再长就折行，桌面和手机都看得到全名 */
+.opt-popup-full { max-width: calc(100vw - 32px); }
+.opt-popup-full .ant-select-item-option-content { white-space: normal; word-break: break-word; }
 .follow-more { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
 .att-files li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); min-width: 0; }
 .att-files li > a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

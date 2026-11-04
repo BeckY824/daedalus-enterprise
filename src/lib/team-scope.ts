@@ -298,16 +298,20 @@ function 认一次(db: PrismaClient): Promise<限定> {
   return 票.p;
 }
 
-/** 业务员看得到的客户：自己是销售负责人或渠道负责人，或者在公海里（企业版：负责人是这组人里的一位） */
 /** 点了同意的组员所在项目（没进回收站）挂的客户 */
 export const 组员的客户 = (我: string | { in: string[] }) => ({ projects: { some: { deletedAt: null, members: { some: { userId: 我, inviteStatus: "JOINED" } } } } });
-export const 可见客户 = (我: 谁) => ({ OR: [{ salesOwnerId: 等于(我) }, { channelOwnerId: 等于(我) }, { pool: { isNot: null } }] });
+/**
+ * 业务员看得到的客户：自己是销售负责人或渠道负责人，或者在公海里（企业版：负责人是这组人里的一位）。
+ * 企业版不认渠道负责人（11-04 用户定：销售 = 仅自身作为负责人的数据；企业版界面也不出渠道负责人，导入带进来的渠道负责人不再让人看到别人的客户）。
+ * 公海这条留着给「公海」页签；个人列表、「我的客户」另外排掉公海（customers/query.ts）
+ */
+export const 可见客户 = (我: 谁) => ({ OR: [{ salesOwnerId: 等于(我) }, ...(企业版() ? [] : [{ channelOwnerId: 等于(我) }]), { pool: { isNot: null } }] });
 
-/** 一位客户业务员看不看得到（查重时看全部取回来的行，再按这个判） */
+/** 一位客户业务员看不看得到（查重时看全部取回来的行，再按这个判）；企业版不认渠道负责人，同 可见客户 */
 export function 看得到(c: { salesOwnerId: string | null; channelOwnerId?: string | null; pool?: unknown }, 我: 谁 | null): boolean {
   if (!我) return true;
   const 是 = (x: string | null | undefined) => !!x && (typeof 我 === "string" ? x === 我 : 我.includes(x));
-  return 是(c.salesOwnerId) || 是(c.channelOwnerId) || !!c.pool;
+  return 是(c.salesOwnerId) || (!企业版() && 是(c.channelOwnerId)) || !!c.pool;
 }
 
 /**
@@ -476,10 +480,11 @@ function 看得到的项目(我: string | { in: string[] }, 客户: Record<strin
   if (按线) return { OR: [{ pooledAt: { not: null } }, { members: { some: { userId: 按线.本人, inviteStatus: "JOINED" } } }, 按线.项目] };
   if (企业版()) {
     // 11-01 只认业务角色（lib/enterprise/permissions.ts 能看项目）：企业版项目不再跟客户走——
-    // 负责人是自己（或实线 / 虚线下属，范围已按业务线筛过）、在公海、点了同意的组员；市场成员看自己建的项目（只读）。
+    // 负责人是自己（或实线 / 虚线下属，范围已按业务线筛过）、在公海、点了同意的组员；市场成员看自己负责的、
+    // 自己建的且负责人不为空（不在公海）的项目（只读，11-04 用户定：市场成员 = 自身为创建人且负责人不为空的数据）。
     // 同一位客户下同事负责的项目看不到
     const 或: Record<string, unknown>[] = [{ ownerId: 我 }, { pooledAt: { not: null } }, { members: { some: { userId: 我, inviteStatus: "JOINED" } } }];
-    if (市场?.length) 或.push({ creatorId: { in: [...市场] } }, { ownerId: { in: [...市场] } });
+    if (市场?.length) 或.push({ ownerId: { in: [...市场] } }, { creatorId: { in: [...市场] }, pooledAt: null, ownerId: { not: "" } });
     // 原负责人回避（11-03）：挡在整段外面，他自己是组员、下属负责的也不例外——不在公海了才从名单里出来
     return 避项 ? { AND: [{ OR: 或 }, 避项] } : { OR: 或 };
   }
