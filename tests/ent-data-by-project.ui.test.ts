@@ -5,7 +5,8 @@
  *   本月：新建 / 转商机 / 成功交付 / 没成，走势图，按负责人表；外币另外说一句
  *   开关关：副标题照旧「业务现状与签约复盘」
  *   复盘页带页签（P15）：「待办 | 数据」两个页签，数据页签里才有三视图切换
- *   Windows 1024 / 1280 / 1366 宽度 + 超长名字：页面不横向溢出
+ *   自定义（V3.5.1 P-界面-10）：视图分段后面摆日期段、回显两头；别的视图不摆
+ *   Windows 1024 / 1280 / 1366 宽度 + 超长名字：页面不横向溢出；选了自定义视图条还是一行
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -50,7 +51,7 @@ beforeAll(async () => {
       线索转商机:4,
     };
     window.__画=(view,项目,单人,页签)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:项目}}>
-      <DataShell view={view} 项目={项目} 页签={页签||undefined}>
+      <DataShell view={view} 项目={项目} 页签={页签||undefined} 段={view==='自定义'?{from:'2026-10-01',to:'2026-11-04'}:undefined}>
         {!项目?<div>老的</div>:view==='现在'?<ProjectNowView 数={现在} 本位币="CNY" 单人={单人}/>:<ProjectPeriodView 数={一段} 本位币="CNY" 口径="2026 年 10 月" 单人={单人}/>}
       </DataShell>
     </BusinessProvider></App>);
@@ -131,4 +132,21 @@ it("复盘页带页签：「任务 | 卡点 | 沟通 | 数据」（10-31 会议�
   for (const s of ["线索瀑布", "全周期漏斗", "现在"]) expect(t).toContain(s);
   expect(await page.locator(".data-shell-body .data-shell-bar .ant-segmented").count()).toBe(1);
   expect(errors).toEqual([]); await page.close();
+});
+
+it.each([1024, 1280, 1366])("自定义 %ipx：分段后面摆日期段、回显两头、不给清空；和分段同一行、不溢出；别的视图不摆", async (w) => {
+  const { page, errors } = await 打开("自定义", true, w, false, "data");
+  const 条 = page.locator(".data-shell-body .data-shell-bar");
+  expect(await 条.locator(".ant-segmented-item").allInnerTexts()).toEqual(["现在", "本月", "本年", "自定义"]);
+  expect(await 条.locator(".ant-segmented-item-selected").innerText()).toBe("自定义");
+  expect(await 条.locator(".custom-range input").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual(["2026-10-01", "2026-11-04"]);
+  expect(await 条.locator(".custom-range .ant-picker-clear").count()).toBe(0);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const ys = await 条.evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
+  expect(new Set(ys).size).toBe(1);
+  expect(errors).toEqual([]); await page.close();
+  const 别 = await 打开("本月", true, w, false, "data");
+  expect(await 别.page.locator(".custom-range").count()).toBe(0);
+  await 别.page.close();
 });

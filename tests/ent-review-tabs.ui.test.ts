@@ -2,7 +2,7 @@
  * 企业版复盘页 11-01 版式融合：卡点 / 沟通页签、数据页签「现在」最上面那几块的界面。
  *
  *   卡点：11-01 卡点页签换成卡点 v2 三栏看板（待接受 / 处理中 / 已解决，见 BoardBlockers），这里只量三栏摆得出、筛选写地址、窄屏不溢出
- *   沟通：方式下拉写 m=、时间分段写 t=、时间线卡片（发起 / 附件 / 编号有才摆）、点一条去项目页、空态、旁边「还没沟通过的项目」和它的空态
+ *   沟通：方式下拉写 m=、时间分段写 t=（自定义再摆日期段，写 tf= tt=）、时间线卡片（发起 / 附件 / 编号有才摆）、点一条去项目页、空态、旁边「还没沟通过的项目」和它的空态
  *   数据：六格 KPI（3 天内回公海没开 = —）、卡点分布、超时预警和两种空
  *   Windows 1024：不横向溢出、长名字单行省略
  */
@@ -45,7 +45,7 @@ beforeAll(async () => {
         里=<BoardBlockers 开 全部={o.全部??true} 栏={栏} 已解决共={1} 统计={统计} 项目们={[{id:'p0',name:'华东二期产线改造项目'+长}]} 原因们={[{id:'r1',name:'价格',status:'启用'}]} 筛={o.筛??{}}/>;
       } else if(o.页==='talk'){
         const n=o.行数??4;
-        里=<BoardTalks 数={{总数:o.总数??n,页:1,行:沟通(n)}} 段={o.段??'all'} 方式={o.方式??''} 只看自己={false} 缺={o.缺==null?undefined:{总数:o.缺,行:缺行(Math.min(5,o.缺))}}/>;
+        里=<BoardTalks 数={{总数:o.总数??n,页:1,行:沟通(n)}} 段={o.段??'all'} 区间={o.区间} 方式={o.方式??''} 只看自己={false} 缺={o.缺==null?undefined:{总数:o.缺,行:缺行(Math.min(5,o.缺))}}/>;
       } else {
         const 概={在跟:12,逾期任务:3,未解决卡点:0,已回款:123456,待回款:7890,外币项目:o.外币??0,将回公海:o.将回公海===undefined?2:o.将回公海};
         const 预警=Array.from({length:o.预警??2},(_,i)=>({id:'w'+i,名:'要回公海的项目'+i+长,节点:'潜客培育',负责人:'小'+i,回收日:'2026-11-0'+(i+2)}));
@@ -139,6 +139,32 @@ it("沟通：方式下拉写 m=、选「全部方式」去掉 m；时间分段�
   await page.close();
 });
 
+it("沟通 · 自定义：日期段摆在分段后面、回显两头；挑一段写 t=custom&tf&tt、回第一页；换回别的段 tf / tt 一起去掉", async () => {
+  const 区间 = { from: "2026-10-01", to: "2026-10-31" };
+  const { page, errors } = await 打开({ 页: "talk", 段: "custom", 区间 }, 1280, "/overview?tab=talk&ownerId=u1&t=custom&tf=2026-10-01&tt=2026-10-31&p=2");
+  expect(await page.locator('[aria-label="时间范围"] .ant-segmented-item-selected').innerText()).toBe("自定义");
+  const 框 = page.locator(".btodo-head-r .custom-range input");
+  expect(await 框.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual(["2026-10-01", "2026-10-31"]);
+  // 没有清空按钮
+  expect(await page.locator(".btodo-head-r .custom-range .ant-picker-clear").count()).toBe(0);
+  await 框.first().click();
+  await 框.first().fill("2026-09-01");
+  await 框.first().press("Enter");
+  await 框.last().fill("2026-09-30");
+  await 框.last().press("Enter");
+  await page.waitForTimeout(100);
+  await page.locator('[aria-label="时间范围"] .ant-segmented-item').first().click();
+  expect(await 去了(page)).toEqual([
+    "/overview?tab=talk&ownerId=u1&t=custom&tf=2026-09-01&tt=2026-09-30",
+    "/overview?tab=talk&ownerId=u1&t=7",
+  ]);
+  expect(errors).toEqual([]); await page.close();
+  // 别的段不摆日期段
+  const 别 = await 打开({ 页: "talk", 段: "30" });
+  expect(await 别.page.locator(".custom-range").count()).toBe(0);
+  await 别.page.close();
+});
+
 it("沟通：没记录 → 「没有沟通记录」；筛过时提示选全部；缺沟通是 0 → 一句话、不摆看全部；不给缺不摆旁栏", async () => {
   const { page } = await 打开({ 页: "talk", 行数: 0, 方式: "VISIT", 缺: 0 });
   expect(await page.locator(".btodo-list").first().innerText()).toMatch(/没有沟通记录[\s\S]*时间、方式都选「全部」看看/);
@@ -197,6 +223,14 @@ it.each([1024, 1366])("Windows %ipx + 超长名字：三个页签都不横向溢
   const ys = await 谈.page.locator(".btodo-head-r").first().evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
   expect(new Set(ys).size).toBe(1);
   await 谈.page.close();
+  // 选了自定义：方式下拉、分段、日期段还是同一行，不溢出
+  const 自 = await 打开({ 页: "talk", 缺: 3, 段: "custom", 区间: { from: "2026-10-01", to: "2026-11-04" } }, w);
+  await 自.page.waitForTimeout(150);
+  expect(await 不溢出(自.page)).toBe(true);
+  const 自ys = await 自.page.locator(".btodo-head-r").first().evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
+  expect(自ys).toHaveLength(3);
+  expect(new Set(自ys).size).toBe(1);
+  await 自.page.close();
   const 数 = await 打开({ 页: "data", 分布, 外币: 2 }, w);
   await 数.page.waitForTimeout(150);
   expect(await 不溢出(数.page)).toBe(true);

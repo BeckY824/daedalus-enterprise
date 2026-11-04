@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma";
 import type { dayjs } from "@/lib/utils";
 import type { 看板筛选 } from "./blocker";
+import { 日期段界, type 日期段 } from "@/lib/custom-date-range";
 
 /**
  * 企业版复盘页「卡点」「沟通」两个页签（P7 U-复盘-01，10-31）的规矩：地址栏怎么读、查哪些行。
@@ -12,7 +13,7 @@ import type { 看板筛选 } from "./blocker";
  * 这一层是服务端兜底：企业版没开「按组织看客户」时 prisma 那层不拦人。
  *
  * 地址栏：tab=block  bm=1（我的认领） bo=1（只看自己） br=原因 id  bt=类型  bi=影响  bp=项目 id（11-01 改成三栏看板，不分页）
- *        tab=talk   t=7|30|90|all（最近几天，默认 all）  m=方式（FollowUp.type 的大类，不给 = 全部）  p=页码
+ *        tab=talk   t=7|30|90|all|custom（最近几天，默认 all；custom 再带 tf= tt= 两个 YYYY-MM-DD，两头都算）  m=方式（FollowUp.type 的大类，不给 = 全部）  p=页码
  */
 
 export const 复盘列表每页 = 20;
@@ -31,10 +32,10 @@ export function 读卡点看板筛(sp: 卡点看板地址): 看板筛选 {
   };
 }
 
-/** 沟通页签的时间筛选：最近 7 / 30 / 90 天、全部 */
-export const 沟通段们 = ["7", "30", "90", "all"] as const;
+/** 沟通页签的时间筛选：最近 7 / 30 / 90 天、全部、自定义（V3.5.1 P-界面-10，挑开始日和结束日，地址栏 tf= tt=） */
+export const 沟通段们 = ["7", "30", "90", "all", "custom"] as const;
 export type 沟通段 = (typeof 沟通段们)[number];
-export const 沟通段叫法: Record<沟通段, string> = { "7": "近 7 天", "30": "近 30 天", "90": "近 90 天", all: "全部" };
+export const 沟通段叫法: Record<沟通段, string> = { "7": "近 7 天", "30": "近 30 天", "90": "近 90 天", all: "全部", custom: "自定义" };
 export const 读沟通段 = (v?: string): 沟通段 => ((沟通段们 as readonly string[]).includes(v ?? "") ? (v as 沟通段) : "all");
 
 /**
@@ -54,7 +55,7 @@ export function 夹页(页: number, 总数: number, 每页 = 复盘列表每页)
  * 沟通页签查哪些：挂在项目节点上（项目没删）、这一圈负责的项目上的沟通，谁记的都算（11-03 C6-2 定：换负责人后前任记的沟通跟着项目走，
  * 接手人、组员、管理者都看得到；推翻 11-02「同事、前任记的不算」）。
  * 谁 给了就只算这一圈负责的、公海里的项目不算（11-01 同复盘按负责人数）；谁 = undefined（看全部）时算所有有负责人的项目（公海项目负责人是空串，不算）。
- * 段 = 最近几天（从那天零点起），方式 给了按 type 筛。
+ * 段 = 最近几天（从那天零点起）；custom 按 区间（开始日零点到结束日 23:59:59.999，业务钟），没给区间 = 不筛时间。方式 给了按 type 筛。
  * 企业版按这一圈项目认、不再按客户那层限定（review-tabs-db.ts 复盘沟通of）；公海里的项目不算，同事客户的沟通内容照旧不给
  */
 export function 沟通条件(
@@ -62,12 +63,16 @@ export function 沟通条件(
   段: 沟通段,
   now: ReturnType<typeof dayjs>,
   方式: 沟通方式 | "" = "",
+  区间?: 日期段,
 ): Prisma.FollowUpWhereInput {
+  const 界 = 段 === "custom" && 区间 ? 日期段界(区间) : undefined;
   return {
     // 公海无负责人 是空串（lib/project/pool-owner.ts），这里只用类型的文件不引它
     projectNode: { is: { project: { deletedAt: null, ...(谁 ? { ownerId: { in: [...谁] }, pooledAt: null } : { ownerId: { not: "" } }) } } },
     ...(方式 ? { type: 方式 } : {}),
-    ...(段 === "all" ? {} : { occurredAt: { gte: now.startOf("day").subtract(Number(段) - 1, "day").toDate() } }),
+    ...(段 === "all" || 段 === "custom"
+      ? 界 ? { occurredAt: { gte: 界.from, lte: 界.to } } : {}
+      : { occurredAt: { gte: now.startOf("day").subtract(Number(段) - 1, "day").toDate() } }),
   };
 }
 
