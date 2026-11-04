@@ -7,6 +7,7 @@ import {
   沟通条件, 夹页, 复盘列表每页,
   type 沟通段, type 沟通方式, type 复盘沟通,
 } from "./review-tabs";
+import type { 日期段 } from "@/lib/custom-date-range";
 
 /**
  * 复盘页「沟通」页签取数（P7 U-复盘-01；「卡点」11-01 起是三栏看板，取数在 lib/project/blocker.ts 卡点看板）。条件在 review-tabs.ts，这里只查库、排好、切一页。
@@ -22,17 +23,17 @@ const 名 = (u: { name: string | null; email: string } | null | undefined) => (u
  */
 export async function 复盘沟通of(
   谁: readonly string[] | undefined,
-  q: { 段: 沟通段; 方式?: 沟通方式 | ""; 页?: number; 每页?: number; now?: ReturnType<typeof dayjs> },
+  q: { 段: 沟通段; 区间?: 日期段; 方式?: 沟通方式 | ""; 页?: number; 每页?: number; now?: ReturnType<typeof dayjs> },
 ): Promise<复盘沟通> {
   return 企业版() ? 看全部(() => 取沟通(谁, q)) : 取沟通(谁, q);
 }
 
 async function 取沟通(
   谁: readonly string[] | undefined,
-  q: { 段: 沟通段; 方式?: 沟通方式 | ""; 页?: number; 每页?: number; now?: ReturnType<typeof dayjs> },
+  q: { 段: 沟通段; 区间?: 日期段; 方式?: 沟通方式 | ""; 页?: number; 每页?: number; now?: ReturnType<typeof dayjs> },
 ): Promise<复盘沟通> {
   const 每页 = q.每页 ?? 复盘列表每页;
-  const where = 沟通条件(谁, q.段, q.now ?? dayjs(), q.方式 ?? "");
+  const where = 沟通条件(谁, q.段, q.now ?? dayjs(), q.方式 ?? "", q.区间);
   const 总数 = await prisma.followUp.count({ where });
   const 页 = 夹页(q.页 ?? 1, 总数, 每页);
   if (!总数) return { 总数, 页, 行: [] };

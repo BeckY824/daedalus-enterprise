@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useOptimistic, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Pagination, Segmented, Select, Tooltip } from "antd";
@@ -13,26 +13,39 @@ import {
   type 沟通段, type 沟通方式, type 复盘沟通, type 复盘沟通行,
 } from "@/lib/project/review-tabs";
 import type { 缺沟通 } from "@/lib/project/review-extras";
+import CustomRangePicker from "@/components/CustomRangePicker";
+import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 
 /**
  * 复盘页「沟通」页签（P7 U-复盘-01；11-01 参考复盘稿融合改成时间线）：项目负责人本人在项目上记的跟进（别人记的不算，11-02），时间倒序。
- * 按负责人筛 = 页签上面的人员选择（几个页签共用）；按时间筛 = 右上角分段（近 7 / 30 / 90 天、全部，t=）；按方式筛 = 下拉（m=，八个大类）。
+ * 按负责人筛 = 页签上面的人员选择（几个页签共用）；按时间筛 = 右上角分段（近 7 / 30 / 90 天、全部、自定义，t=；自定义再摆一个日期段，tf= tt=）；按方式筛 = 下拉（m=，八个大类）。
  * 每条：时间、项目 · 节点、客户、标题：内容（省略 + 悬停全文）、方式、发起主体 / 附件 / 编号（有才摆）、记录人。
  * 只读，点一条去项目页（这里不给删改，A-13；沟通只能挂在项目节点上记，这里没有「新增」）。
  * 旁边「还没沟通过的项目」= 首页「暂未跟进」卡同口径，这一圈人负责的，最近建的 5 个。
  */
-export default function BoardTalks({ 数, 段, 方式 = "", 只看自己, 缺 }: {
-  数: 复盘沟通; 段: 沟通段; 方式?: 沟通方式 | ""; 只看自己: boolean; 缺?: 缺沟通;
+export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己, 缺 }: {
+  /** 区间：段 = custom 时服务端读好的那一段（缺 / 错已落到本月 1 号到今天） */
+  数: 复盘沟通; 段: 沟通段; 区间?: 日期段; 方式?: 沟通方式 | ""; 只看自己: boolean; 缺?: 缺沟通;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
   const [换着, start] = useTransition();
+  // 点了「自定义」先亮、日期段先摆出来，不等服务端那一屏
+  const [显段, set显段] = useOptimistic(段);
 
-  const 改 = (k: { t?: 沟通段; m?: 沟通方式 | ""; p?: number }) => {
+  const 改 = (k: { t?: 沟通段; 区间?: 日期段; m?: 沟通方式 | ""; p?: number }) => {
     const q = new URLSearchParams(sp.toString());
     if ("t" in k) {
       if (k.t && k.t !== "all") q.set("t", k.t);
       else q.delete("t");
+      // 换了别的段，自定义的两头不留；选「自定义」没挑日子 = 服务端落到本月
+      if (k.t === "custom" && k.区间) {
+        q.set("tf", k.区间.from);
+        q.set("tt", k.区间.to);
+      } else {
+        q.delete("tf");
+        q.delete("tt");
+      }
     }
     if ("m" in k) {
       if (k.m) q.set("m", k.m);
@@ -41,7 +54,10 @@ export default function BoardTalks({ 数, 段, 方式 = "", 只看自己, 缺 }:
     if (k.p && k.p > 1) q.set("p", String(k.p));
     else q.delete("p");
     const t = q.toString();
-    start(() => router.replace(`/overview${t ? `?${t}` : ""}`, { scroll: false }));
+    start(() => {
+      if (k.t) set显段(k.t);
+      router.replace(`/overview${t ? `?${t}` : ""}`, { scroll: false });
+    });
   };
   const 去 = (x: 复盘沟通行) => router.push(`/projects/${encodeURIComponent(x.projectId)}`);
 
@@ -63,10 +79,13 @@ export default function BoardTalks({ 数, 段, 方式 = "", 只看自己, 缺 }:
             <Segmented
               size="small"
               aria-label="时间范围"
-              value={段}
+              value={显段}
               onChange={(v) => 改({ t: v as 沟通段 })}
               options={沟通段们.map((k) => ({ value: k, label: 沟通段叫法[k] }))}
             />
+            {显段 === "custom" && (
+              <CustomRangePicker size="small" 段={区间 ?? 读日期段()} 改={(d) => 改({ t: "custom", 区间: d })} />
+            )}
           </div>
         </div>
         {数.行.length === 0 ? (
