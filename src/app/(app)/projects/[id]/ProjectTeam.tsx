@@ -14,6 +14,7 @@ import { 详细地址上限, 详细地址提示, 成交需求上限, type 项目
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 三种业务线, 建议业务线, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 换角色提示, 再邀默认角色 } from "@/lib/project/team-ui";
+import { 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
@@ -115,10 +116,10 @@ export function ProjectEditModal({
           style={{ width: "100%" }}
           aria-label="项目级别"
           allowClear
-          placeholder="不分级"
+          placeholder={未选占位}
           value={级别 ?? undefined}
-          options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))}
-          onChange={(v?: string) => set级别(v ?? null)}
+          options={[不填项, ...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))]}
+          onChange={(v?: string) => set级别(去不填(v))}
         />
       ))}
       {p.bizLine !== undefined && 行("业务线", (
@@ -138,10 +139,11 @@ export function ProjectEditModal({
         <Select
           style={{ width: "100%" }}
           allowClear
-          placeholder="不填"
+          aria-label="主联系人"
+          placeholder={未选占位}
           value={d.contactId ?? undefined}
-          options={联系人们.map((c) => ({ value: c.id, label: c.position ? `${c.name} · ${c.position}` : c.name }))}
-          onChange={(v) => 改({ contactId: v ?? null })}
+          options={[不填项, ...联系人们.map((c) => ({ value: c.id, label: c.position ? `${c.name} · ${c.position}` : c.name }))]}
+          onChange={(v?: string) => 改({ contactId: 去不填(v) })}
         />
       ))}
       {行("金额", (

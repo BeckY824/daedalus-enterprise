@@ -12,7 +12,7 @@ import { App, Button, Card, Select, Space, Tag } from "antd";
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import InlineConfirm from "@/components/InlineConfirm";
 import type { 项目关联, 关联客户行, 关联联系人行 } from "@/lib/project/relate";
-import { 暂未确认, 不填项, 去不填 } from "@/lib/enterprise/dict-kinds";
+import { 未选占位, 不填项, 去不填, 去多选不填 } from "@/lib/enterprise/dict-kinds";
 import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
 import {
   加关联客户Action, 改客户身份Action, 解除关联客户Action,
@@ -21,8 +21,8 @@ import {
 } from "../relate-actions";
 
 type 结果 = { ok: true } | { ok: false; error: string };
-/** 没填的身份 / 角色 / 立场写灰字「暂未确认」（10-31，原来是「—」），只是显示，库里还是空 */
-const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}>{暂未确认}</span>;
+/** 没填的身份 / 角色 / 立场写灰字「—」（10-31 改成「暂未确认」，11-04 用户又统一回「—」），只是显示，库里还是空 */
+const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}>{未选占位}</span>;
 /** 下拉选项 = 启用着的 + 这一行已经存着、后来停用的（不然下拉里显示不出来） */
 const 并上 = (启用: string[], 存着: readonly (string | null)[]) => [...启用, ...存着.filter((x): x is string => !!x && !启用.includes(x))].map((x) => ({ value: x, label: x }));
 
@@ -181,14 +181,17 @@ function CustomerRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: st
               mode="multiple"
               size="small"
               allowClear
-              placeholder={暂未确认}
+              placeholder={未选占位}
               disabled={忙}
               value={值}
-              options={并上(选项, x.身份)}
+              // 第一项「—」：勾了就全清空（11-04，同 allowClear 的叉）
+              options={[不填项, ...并上(选项, x.身份)]}
               aria-label={`${x.名} 的项目身份`}
               style={{ width: "100%" }}
-              onChange={(v: string[]) => {
+              onChange={(选: string[]) => {
+                const v = 去多选不填(选);
                 const 原 = 值;
+                if (!v.length && !原.length) return;
                 set值(v);
                 void 跑(() => 改客户身份Action(projectId, x.customerId, v), () => set值(原));
               }}
@@ -280,14 +283,17 @@ function ContactRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: str
               mode="multiple"
               size="small"
               allowClear
-              placeholder={暂未确认}
+              placeholder={未选占位}
               disabled={忙}
               value={值.角色}
-              options={并上(选项.角色, x.角色)}
+              // 第一项「—」：勾了就全清空（11-04，同 allowClear 的叉）
+              options={[不填项, ...并上(选项.角色, x.角色)]}
               aria-label={`${x.名} 的项目角色`}
               style={{ width: "100%" }}
-              onChange={(v: string[]) => {
+              onChange={(选: string[]) => {
+                const v = 去多选不填(选);
                 const 原 = 值.角色;
+                if (!v.length && !原.length) return;
                 set值((s) => ({ ...s, 角色: v }));
                 void 跑(() => 改联系人角色立场Action(projectId, x.contactId, { roles: v }), () => set值((s) => ({ ...s, 角色: 原 })));
               }}
@@ -302,10 +308,10 @@ function ContactRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: str
             <Select
               size="small"
               allowClear
-              placeholder={暂未确认}
+              placeholder={未选占位}
               disabled={忙}
               value={值.立场 || undefined}
-              // 第一项「不填」：选了就清空（同 allowClear 的叉）
+              // 第一项「—」：选了就清空（同 allowClear 的叉）
               options={[不填项, ...并上(选项.立场, [x.立场])]}
               aria-label={`${x.名} 的项目立场`}
               style={{ width: "100%" }}

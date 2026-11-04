@@ -19,7 +19,7 @@ import { resetDb } from "./reset";
 import { 阶段与进程, 团队版字典, 企业版字典, 字典of, type 阶段字典 } from "@/lib/project/stage-dict";
 import { 读产品需求, 存产品需求 } from "@/lib/project/profile-rules";
 import { 改项目画像 } from "@/lib/project/profile";
-import { 企业字典, 字典定义, 项目画像项, 暂未确认, 不填值, 不填项, 去不填, type 字典种类 } from "@/lib/enterprise/dict";
+import { 企业字典, 字典定义, 项目画像项, 未选占位, 不填值, 不填项, 去不填, 去多选不填, type 字典种类 } from "@/lib/enterprise/dict";
 
 describe("阶段与进程：阶段、进程分两格", () => {
   it("进行中：阶段 = phase，进程 = node，没有结局", () => {
@@ -291,8 +291,18 @@ describe("画像后七项（10-31，迁移 102）", () => {
     expect(去不填(undefined)).toBeNull();
     expect(去不填("")).toBeNull();
     expect(去不填("一年")).toBe("一年");
-    expect(不填项).toEqual({ value: 不填值, label: "不填" });
-    expect(暂未确认).toBe("暂未确认");
+    // 11-04 用户：下拉第一项、没填的灰字都统一写「—」
+    expect(不填项).toEqual({ value: 不填值, label: "—" });
+    expect(未选占位).toBe("—");
+  });
+
+  it("去多选不填：勾了「—」就全清空，没勾原样，空和 null 都是 []", () => {
+    expect(去多选不填(["硬件", 不填值])).toEqual([]);
+    expect(去多选不填([不填值])).toEqual([]);
+    expect(去多选不填(["硬件", "软件"])).toEqual(["硬件", "软件"]);
+    expect(去多选不填([])).toEqual([]);
+    expect(去多选不填(null)).toEqual([]);
+    expect(去多选不填(undefined)).toEqual([]);
   });
 
   describe("存取（真库）", () => {

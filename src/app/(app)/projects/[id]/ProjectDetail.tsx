@@ -8,7 +8,7 @@ import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu,
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
-import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
+import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符 } from "@/lib/empty-value";
 import { 项目不能单独领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法 } from "@/lib/project/required";
@@ -188,7 +188,7 @@ export type 项目详情 = {
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 4.3em", whiteSpace: "nowrap" };
-// 多行的格子（需求描述、痛点、备注）：键和第一行对齐，不居中到一大段字的中间
+// 多行的格子（需求描述、痛点、备注；前两个 11-04 起平时一行）：键和第一行对齐，不居中到一大段字的中间
 const 多行行样: React.CSSProperties = { ...行样, alignItems: "flex-start" };
 
 /** 就地改：一格钱（数 + 币种），窄卡上折成两行不溢出 */
@@ -797,7 +797,8 @@ export default function ProjectDetail({
         <div style={行样}><span style={键样}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
       {/* 联系人名字、职位可能很长：在 1024 宽的项目卡里折行，不顶出卡片 */}
-      {/* 11-04：企业版就地改联系人（下拉选本客户的联系人，可清空）；不是企业版照旧只读 */}
+      {/* 11-04：企业版就地改联系人（下拉选本客户的联系人，可清空）；不是企业版照旧只读。
+          可清空的就地下拉第一项都是「—」：误点了能选回没填（11-04 用户） */}
       {p.企业版 && 能就地改 && p.customer ? (
         <div style={行样}>
           <span style={键样}>联系人</span>
@@ -811,7 +812,7 @@ export default function ProjectDetail({
             }}
             存={(v) => 存项目项({ contactId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
-              <Select aria-label="联系人" autoFocus defaultOpen allowClear disabled={忙} placeholder="选联系人" style={{ width: "100%" }} value={草稿 ?? undefined} options={联系人们.map((c) => ({ value: c.id, label: c.position ? `${c.name} · ${c.position}` : c.name }))} onChange={(v?: string) => 提交(v ?? null)} />
+              <Select aria-label="联系人" autoFocus defaultOpen allowClear disabled={忙} placeholder="选联系人" style={{ width: "100%" }} value={草稿 ?? undefined} options={[不填项, ...联系人们.map((c) => ({ value: c.id, label: c.position ? `${c.name} · ${c.position}` : c.name }))]} onChange={(v?: string) => 提交(去不填(v))} />
             )}
           />
         </div>
@@ -829,7 +830,7 @@ export default function ProjectDetail({
             显示={级别格}
             存={(v) => 存项目项({ level: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
-              <Select aria-label="级别" autoFocus defaultOpen allowClear disabled={忙} placeholder="不分级" style={{ width: "100%" }} value={草稿 ?? undefined} options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} onChange={(v?: string) => 提交(v ?? null)} />
+              <Select aria-label="级别" autoFocus defaultOpen allowClear disabled={忙} placeholder={未选占位} style={{ width: "100%" }} value={草稿 ?? undefined} options={[不填项, ...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))]} onChange={(v?: string) => 提交(去不填(v))} />
             )}
           />
         </div>
@@ -897,7 +898,8 @@ export default function ProjectDetail({
               值={p.成交钱.dealDemand ?? ""}
               能改={字段能改("商机金额")}
               多行
-              显示={(v) => <span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(v) ? v : 待填("需求描述")}</span>}
+              一行显示
+              显示={(v) => (有值(v) ? <span className="proj-one" data-tip={v}>{v}</span> : 待填("需求描述"))}
               存={(v) => 存项目项({ dealDemand: 文字格改动(v) })}
               编辑器={文字编辑器("需求描述", 成交需求上限)}
             />
@@ -911,7 +913,8 @@ export default function ProjectDetail({
                 值={p.项目新字段.painPoints ?? ""}
                 能改={字段能改("痛点标注")}
                 多行
-                显示={(v) => <span style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{有值(v) ? v : (p.必填?.还差.includes("痛点标注") ? 占位确认("痛点标注") : 待填("痛点标注"))}</span>}
+                一行显示
+                显示={(v) => (有值(v) ? <span className="proj-one" data-tip={v}>{v}</span> : (p.必填?.还差.includes("痛点标注") ? 占位确认("痛点标注") : 待填("痛点标注")))}
                 存={(v) => 存项目项({ painPoints: 文字格改动(v) })}
                 编辑器={文字编辑器("痛点标注", 痛点标注上限)}
               />

@@ -68,7 +68,9 @@ export default function TruncTip() {
       let 题主 = el.closest("[title]") as HTMLElement | null;
       if (题主 && 题主 !== el && 题主 !== el.parentElement && 题主 !== el.parentElement?.parentElement) 题主 = null;
       const 题 = 题主?.getAttribute("title")?.trim() ?? "";
-      const 字 = (题 || el.innerText || "").trim();
+      // 一行显示的多行文字（需求描述、痛点）：一行里换行被压成空格，浮层用 data-tip 里的原文，保住分段
+      const 原文 = (el.matches("[data-tip]") ? el : el.querySelector("[data-tip]"))?.getAttribute("data-tip")?.trim() ?? "";
+      const 字 = (题 || 原文 || el.innerText || "").trim();
       if (!字) return;
       if (题主) {
         摘下的 = { el: 题主, title: 题主.getAttribute("title") ?? "" };

@@ -8,7 +8,7 @@ import FollowAttachments from "@/components/FollowAttachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import DatePicker from "@/components/BusinessDatePicker";
 import InlineConfirm from "@/components/InlineConfirm";
-import { 暂未确认, 不填项, 去不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
+import { 未选占位, 不填项, 去不填, 去多选不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
 import type { 回款 } from "@/lib/project/payment-db";
@@ -22,8 +22,8 @@ export type 项目画像 = {
   值: Partial<Record<Exclude<项目画像键, "productNeeds">, string | null>> & { productNeeds: string[] };
 };
 
-/** 没选的项写灰字「暂未确认」（10-31，和输入框占位同色），只是显示：库里还是空，统计、筛选照旧按空算 */
-const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}>{暂未确认}</span>;
+/** 没选的项写灰字「—」（10-31 是「暂未确认」，11-04 用户统一改「—」；和输入框占位同色），只是显示：库里还是空，统计、筛选照旧按空算 */
+const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}>{未选占位}</span>;
 
 /**
  * 「项目画像」卡：能改的人改一项存一项（下拉选了就存），不能改的只看。
@@ -71,13 +71,16 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
                   mode="multiple"
                   aria-label={项.名}
                   style={{ width: "100%" }}
-                  placeholder={暂未确认}
+                  placeholder={未选占位}
                   allowClear
                   disabled={忙}
                   value={值.productNeeds}
-                  options={项.选项.map((x) => ({ value: x, label: x }))}
-                  onChange={(v: string[]) => {
+                  // 第一项「—」：勾了就全清空，回到没填（11-04，防误点之后回不去；同 allowClear 的叉）
+                  options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
+                  onChange={(选: string[]) => {
+                    const v = 去多选不填(选);
                     const 原 = 值.productNeeds;
+                    if (!v.length && !原.length) return;
                     set值({ ...值, productNeeds: v });
                     void 存({ productNeeds: v }, () => set值((s) => ({ ...s, productNeeds: 原 })));
                   }}
@@ -86,13 +89,13 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
                 <Select
                   aria-label={项.名}
                   style={{ width: "100%" }}
-                  placeholder={暂未确认}
+                  placeholder={未选占位}
                   allowClear
                   showSearch
                   optionFilterProp="label"
                   disabled={忙}
                   value={值[项.键 as Exclude<项目画像键, "productNeeds">] || undefined}
-                  // 第一项「不填」：选了就清空，回到「暂未确认」（同 allowClear 的叉）
+                  // 第一项「—」：选了就清空，回到没填（同 allowClear 的叉）
                   options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
                   onChange={(选?: string) => {
                     const k = 项.键 as Exclude<项目画像键, "productNeeds">;
