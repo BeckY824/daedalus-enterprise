@@ -924,7 +924,7 @@ export const TOOLS: Tool[] = [
   proposeTool(
     "propose_lead",
     "建议新建一条线索。只知道名字也要提，留空的字段人会在卡片上补。",
-    '{"name": "线索名称/姓名", "contact": "联系人，可空", "phone": "电话，可空", "source": "来源，可空", "status": "状态，可空", "remark": "备注，可空；国家城市、下一步别写进来", "country": "国家/地区，可空", "city": "城市，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步做什么，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给"], "reason": "一句话：为什么"}',
+    '{"name": "线索名称/姓名", "contact": "联系人，可空", "phone": "电话，可空", "wechat": "微信，可空", "email": "邮箱，可空", "whatsapp": "WhatsApp，可空", "source": "来源，可空", "status": "状态，可空", "remark": "备注，可空；国家城市、下一步别写进来", "country": "国家/地区，可空", "city": "城市，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步做什么，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给"], "reason": "一句话：为什么"}',
     "add_lead",
     { needsCustomer: false },
   ),
