@@ -4,6 +4,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 
 import { isCalendarDate } from "@/lib/schedule-date";
 import { 是逾期 } from "@/lib/overdue";
+import { 滚法 } from "@/lib/reduced-motion";
 import { requiredText } from "@/lib/form-validation";
 
 import { useEffect, useRef, useState } from "react";
@@ -610,8 +611,7 @@ export default function FollowUpForm({
     set更多开(开);
     if (!开) return;
     requestAnimationFrame(() => {
-      const 慢 = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      更多区.current?.scrollIntoView({ block: "nearest", behavior: 慢 ? "smooth" : "auto" });
+      更多区.current?.scrollIntoView({ block: "nearest", behavior: 滚法() });
     });
   }
   /** 挑人模式下还没挑：AI 解析要知道是谁（认联系人、商机），先不让点 */
