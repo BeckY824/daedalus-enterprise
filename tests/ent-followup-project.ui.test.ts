@@ -45,8 +45,8 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 type 参数 = { 项目?: "有" | "空" | null; 编辑?: boolean; 须知?: unknown };
-async function open(p: 参数, width = 1366) {
-  const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
+async function open(p: 参数, width = 1366, height = 900) {
+  const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://fup.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://fup.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
@@ -217,4 +217,33 @@ it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了�
     await b.page.getByRole("button", { name: /更多：/ }).waitFor();
     expect(await b.page.getByRole("combobox", { name: "卡点类型" }).count()).toBe(0);
   } finally { await b.page.close(); }
+});
+it("「更多」整行可点：点箭头、点红字提示都能展开，展开后滚进可视区，再点收起（11-04，1024/1280/1366 × 768 高）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await open({ 项目: "有", 须知: 须知({ 起点日: 今天(), 天数: 7 }) }, w, 768);
+    try {
+      const 更多 = page.getByRole("button", { name: /更多：/ });
+      await 更多.scrollIntoViewIfNeeded();
+      // 红字提示在按钮里，同一个可点区域
+      expect(await 更多.getByText("客户明确回复还没选").count()).toBe(1);
+      const 点 = async (sel: string) => {
+        const b = (await 更多.locator(sel).first().boundingBox())!;
+        const x = b.x + Math.min(b.width / 2, 6), y = b.y + b.height / 2;
+        expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("button.follow-more-toggle"), [x, y])).toBe(true);
+        await page.mouse.click(x, y);
+      };
+      await 点(".anticon");
+      await expect.poll(() => 更多.getAttribute("aria-expanded")).toBe("true");
+      const 问 = 格(page, "客户明确回复了吗");
+      await expect.poll(async () => { const b = await 问.boundingBox(); return !!b && b.y >= 0 && b.y + b.height <= 768; }).toBe(true);
+      await 更多.scrollIntoViewIfNeeded();
+      await 点(".anticon");
+      await expect.poll(() => 更多.getAttribute("aria-expanded")).toBe("false");
+      await 点(".follow-more-hint");
+      await expect.poll(() => 更多.getAttribute("aria-expanded")).toBe("true");
+      // 整行不溢出：按钮不比所在列宽
+      expect(await 更多.evaluate((e) => e.scrollWidth <= e.parentElement!.clientWidth + 1)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });

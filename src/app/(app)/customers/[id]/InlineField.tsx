@@ -37,6 +37,7 @@ export default function InlineField({
   可清空 = false,
   释义,
   空时横线 = false,
+  显示,
 }: {
   customerId: string;
   field: PatchableKey;
@@ -58,6 +59,11 @@ export default function InlineField({
    * 「点击填写」那句挪到悬停提示里，点「—」照旧进编辑
    */
   空时横线?: boolean;
+  /**
+   * 有值时换个样子显示（11-04：企业版客户电话就地改，号码照旧点了能拨）。
+   * 里面的链接点了只拨号、不进编辑；点这一行别处才进编辑
+   */
+  显示?: (v: string) => React.ReactNode;
 }) {
   const router = useRouter();
   const { message } = App.useApp();
@@ -132,7 +138,9 @@ export default function InlineField({
           title={kind !== "textarea" && typeof display === "string" && display ? display : !display && 空时横线 && !只读 ? placeholder : undefined}
         >
           {/* 邮箱放不下时在 @ 前换行，不从字母中间断开（F.1 走查：「ahmed@gulfled.a / e」） */}
-          {field === "email" && typeof display === "string" && display.includes("@") ? (
+          {显示 && typeof display === "string" && display ? (
+            <span onClick={(e) => (e.target as HTMLElement).closest("a") && e.stopPropagation()}>{显示(display)}</span>
+          ) : field === "email" && typeof display === "string" && display.includes("@") ? (
             <>
               {display.slice(0, display.indexOf("@"))}
               <wbr />

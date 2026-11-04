@@ -33,7 +33,9 @@ const 当 = (u: 人) => { mocks.user = { ...mocks.user, id: u.id, name: u.name }
 let 序 = 0;
 const 卡 = (补: Record<string, unknown> = {}) => ({
   id: `p${++序}`, kind: "add_lead" as const, customerId: "", customerName: "", reason: "测试",
-  name: "星河电子", contact: "周经理", phone: "", source: "展会", status: "待跟进", remark: "", ...补,
+  name: "星河电子", contact: "周经理", phone: "", source: "展会", status: "待跟进", remark: "",
+  // 11-04 起和新建项目同一套必填：销售默认个人自持
+  分配方式: 4, 业务线: "内贸", 节点: "潜客培育", 明确回复: false, ...补,
 });
 /** 甲建一位老客户：先走同一条 AI 建档，联系方式就和真实录入一样进了子表 */
 async function 甲先建(补: Record<string, unknown>) {
@@ -152,7 +154,7 @@ describe("不撞：建成", () => {
 describe("认图出的卡：微信、邮箱、国家有自己的格（2026-11-01）", () => {
   it("微信、邮箱格进联系人和查重，国家城市进客户地址，WhatsApp 写进备注", async () => {
     当(乙);
-    const r = await applyProposal(卡({ id: "card-t1", wechat: "Zhou_JL88", email: "zhou@star.com", whatsapp: "+1 416 555 0100", country: "加拿大", city: "多伦多", remark: "职位：采购" }) as never);
+    const r = await applyProposal(卡({ id: "card-t1", wechat: "Zhou_JL88", email: "zhou@star.com", whatsapp: "+1 416 555 0100", country: "加拿大", city: "多伦多", 区域去处: ["客户"], remark: "职位：采购" }) as never);
     expect(r).toMatchObject({ ok: true });
     const c = await prisma.customer.findFirstOrThrow({ include: { contacts: true } });
     expect(c).toMatchObject({ addrCountry: "加拿大", addrCity: "多伦多", remark: "职位：采购\nWhatsApp：+1 416 555 0100" });
@@ -164,7 +166,7 @@ describe("认图出的卡：微信、邮箱、国家有自己的格（2026-11-01
 
   it("只有城市没国家：不写地址（不然被当成国内）；卡上格和备注都有微信，用卡上的", async () => {
     当(乙);
-    expect(await applyProposal(卡({ id: "card-t4", city: "多伦多", wechat: "card_wx01", remark: "微信：remark_wx01" }) as never)).toMatchObject({ ok: true });
+    expect(await applyProposal(卡({ id: "card-t4", city: "多伦多", 区域去处: ["客户"], wechat: "card_wx01", remark: "微信：remark_wx01" }) as never)).toMatchObject({ ok: true });
     const c = await prisma.customer.findFirstOrThrow({ include: { contacts: true } });
     expect(c).toMatchObject({ addrCountry: null, addrCity: null });
     expect(c.contacts[0].wechat).toBe("card_wx01");

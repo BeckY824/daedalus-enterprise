@@ -26,7 +26,7 @@ import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import SameNumberEntry from "./SameNumberEntry";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 建档向导 } from "../actions";
-import { 三种业务线, 业务线必填, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 分配说明, 业务线必填, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
@@ -70,13 +70,6 @@ type 弹窗模式 = { 关: () => void } | null;
 
 /** 企业版：这次要不要选负责人。只有「指定分配」要；没有可选的分配方式（老配置）照旧选负责人 */
 const 要选负责人 = (d: 稿, 企业: 企业建档) => !!企业 && (!企业.分配方式们.length || d.项目.分配方式 === 0);
-const 分配说明: Record<number, string> = {
-  1: "建好后按业务线自动分给那条线正常参与的销售；业务线选了暂不分配或没人可分 = 留在新线索待分配",
-  2: "建好后放进项目公海，等人捞取",
-  3: "建好后留在新线索待分配，等市场管理、销售管理或总管理员分",
-  4: "记在你名下，自己跟进",
-};
-
 function 空稿(ownerId: string, currency: string, 首类型: string): 稿 {
   return {
     phone: "",

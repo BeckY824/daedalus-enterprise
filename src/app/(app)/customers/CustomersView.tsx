@@ -488,6 +488,11 @@ export default function CustomersView({
       title: "客户属性", key: "customerAttr", width: 112, 默认: false,
       render: (_: unknown, r: CustomerRow) => (有值(r.customerAttr) ? <span className="clamp-1" style={{ display: "block" }} title={r.customerAttr}>{r.customerAttr}</span> : 空),
     }] : []),
+    // 国家（11-04 用户：客户列表加国家列，有值才显示）：这一页里有人填了客户所在国家才摆这一列
+    ...(rows.some((r) => 有值(r.addrCountry)) ? [{
+      title: "国家", key: "addrCountry", width: 96,
+      render: (_: unknown, r: CustomerRow) => (有值(r.addrCountry) ? <span className="clamp-1" style={{ display: "block" }} title={r.addrCountry ?? ""}>{r.addrCountry}</span> : 空),
+    }] : []),
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
     {
       title: "官网", key: "website", width: 170, 默认: false,

@@ -14,6 +14,7 @@ import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, FOLLOW_METHODS, FOLLOW_STATUSES, DECISIO
 import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "../business-config";
 import { dayjs } from "../utils";
 import { 是币种, 金额 } from "../currency";
+import { 有效线索节点, 缺有效沟通 } from "../project/stage-gates";
 import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type 项目卡, type 项目卡Kind } from "./project-proposals";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
@@ -90,7 +91,7 @@ export type Proposal =
   | (Base & { kind: "add_plan"; subject: string; plannedAt: string; method: string })
   | (Base & { kind: "add_lead"; name: string; contact: string; phone: string; source: string; status: string; remark: string;
       /** 下一步时间（企业版建成项目用，开了超时回收必填，YYYY-MM-DD）；别的版本不看（10-27） */ nextAt?: string }
-      & 线索卡多的格)
+      & 线索卡多的格 & 线索建档格)
   | (Base & { kind: "update_customer"; changes: 一处改动[] })
   | (Base & { kind: "add_opportunity"; name: string; amount: number; /** 币种（2026-10-03）。老的建议卡没有：当本位币 */ currency?: string; stage: string; probability: number; expectedDealAt: string; remark: string })
   | (Base & { kind: "add_contract"; amount: number; currency?: string; signedAt: string; remark: string })
@@ -115,6 +116,34 @@ function 收线索多的格(args: Record<string, unknown>): 线索卡多的格 {
   }
   const 待 = Array.isArray(args.待确认) ? [...new Set(args.待确认.filter((k): k is 线索待确认格 => typeof k === "string" && Object.hasOwn(线索待确认叫法, k)))] : [];
   if (待.length) 出.待确认 = 待;
+  return 出;
+}
+
+/**
+ * 企业版只用项目时，新线索卡和「新建项目」对齐的几格（11-04）：分配方式 / 指定的负责人 / 进程 / 明确回复由人在卡上选，
+ * 模型不给；业务线、下一步文字、国家城市填到哪模型有把握才给，没把握留空让人选。别的版本不看
+ */
+export type 区域去处 = "客户" | "联系人" | "项目";
+export const 区域去处叫法: Record<区域去处, string> = { 客户: "客户所在区域", 联系人: "联系人所在区域", 项目: "项目所在地" };
+export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务线?: string; 节点?: string; 明确回复?: boolean; 下一步?: string; 区域去处?: 区域去处[] };
+const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string" && Object.hasOwn(区域去处叫法, x);
+
+/** 模型给 bizLine / nextStep / regionTo；卡片回传的是收好的中文键（业务线 / 下一步 / 区域去处 + 人选的四格），两种都认，再校验一遍 */
+function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
+  const 出: 线索建档格 = {};
+  const 线 = str(args.业务线 ?? args.bizLine, 10);
+  if (线 === "内贸" || 线 === "外贸" || 线 === "暂不分配") 出.业务线 = 线;
+  const 下 = str(args.下一步 ?? args.nextStep, 100);
+  if (下) 出.下一步 = 下;
+  const 原去 = args.区域去处 ?? args.regionTo;
+  const 去 = Array.isArray(原去) ? [...new Set(原去.filter(是区域去处))] : [];
+  if (去.length) 出.区域去处 = 去;
+  if (typeof args.分配方式 === "number" && Number.isInteger(args.分配方式) && args.分配方式 >= 0 && args.分配方式 <= 9) 出.分配方式 = args.分配方式;
+  const 负责 = str(args.ownerId, 60);
+  if (负责) 出.ownerId = 负责;
+  const 节 = str(args.节点, 30);
+  if (节) 出.节点 = 节;
+  if (typeof args.明确回复 === "boolean") 出.明确回复 = args.明确回复;
   return 出;
 }
 
@@ -323,6 +352,7 @@ export function buildProposal(
       remark: str(args.remark, 500),
       ...(下一步.at ? { nextAt: 下一步.at } : {}),
       ...收线索多的格(args),
+      ...收线索建档格(args),
     },
   };
 }
@@ -338,7 +368,12 @@ type 叫法 = Pick<BusinessConfig, "statusLabels" | "template"> | null | undefin
  * 企业版只用项目时新线索卡多两样必填（2026-10-28）：建成的是线索阶段的项目，要挂渠道（dashboard/apply.ts 建成项目）；
  * 开了超时回收还要「下一步」时间（lib/project/wizard.ts 规整沟通）。不给就只认名称，和原来一样
  */
-export type 建档必填 = { 只用项目: boolean; 要下一步: boolean };
+export type 建档必填 = { 只用项目: boolean; 要下一步: boolean;
+  /**
+   * 和「新建项目」一样的那几样（11-04）：有分配方式可选就必选、选「指定分配」要选负责人、业务线、进程、明确回复，
+   * 进程排在有效线索之后要「客户明确回复了」；卡上有国家 / 城市要选填到哪。不传 = 老卡只查上面两样
+   */
+  企业?: { 有分配方式: boolean; 节点们: readonly string[] } };
 
 export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): string[] {
   if (是项目卡(p.kind)) return 项目卡缺(p as 项目卡);
@@ -351,9 +386,22 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
     if (!p.method) miss.push("方式");
   }
   if (p.kind === "add_lead") {
-    if (!p.name.trim()) miss.push("名称");
+    // 企业版和新建项目同叫法：客户名称（组织 / 公司）、联系人姓名都必填（11-04）
+    const 企格 = 建档?.只用项目 ? 建档.企业 : undefined;
+    if (!p.name.trim()) miss.push(企格 ? "客户名称" : "名称");
+    if (企格 && !p.contact.trim()) miss.push("联系人姓名");
     if (建档?.只用项目 && !p.source.trim()) miss.push("来源（渠道）");
     if (建档?.只用项目 && 建档.要下一步 && !p.nextAt) miss.push("下一步时间");
+    const 企 = 企格;
+    if (企) {
+      if (企.有分配方式 && typeof p.分配方式 !== "number") miss.push("分配方式");
+      if ((!企.有分配方式 || p.分配方式 === 0) && !p.ownerId) miss.push("项目负责人");
+      if (!p.业务线) miss.push("业务线");
+      if (!p.节点 || !企.节点们.includes(p.节点)) miss.push("当前进程");
+      if (typeof p.明确回复 !== "boolean") miss.push("客户明确回复了吗");
+      else if (p.节点 && 企.节点们.indexOf(p.节点) > 企.节点们.indexOf(有效线索节点) && !p.明确回复) miss.push(缺有效沟通);
+      if ((p.country?.trim() || p.city?.trim()) && !p.区域去处?.length) miss.push("国家 / 城市填到哪");
+    }
     for (const k of p.待确认 ?? []) miss.push(`确认「${线索待确认叫法[k]}」`);
   }
   if (p.kind === "update_customer") {

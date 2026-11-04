@@ -4,6 +4,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 
 import { isCalendarDate } from "@/lib/schedule-date";
 import { 是逾期 } from "@/lib/overdue";
+import { 滚法 } from "@/lib/reduced-motion";
 import { requiredText } from "@/lib/form-validation";
 
 import { useEffect, useRef, useState } from "react";
@@ -207,7 +208,9 @@ export default function FollowUpForm({
     AI 速记框里有字（带原文打开、或已解析过）就展开着，不然人看不到 AI 在干什么
   */
   const 收起 = 项目模式 && !!须知;
-  const [更多开, set更多开] = useState(false);
+  // null = 没手动开关过：跟着 AI 速记框走（有字 / 解析过就开着）；true/false = 人点过，听人的（11-04：有字时点了也要能收起）
+  const [更多开, set更多开] = useState<boolean | null>(null);
+  const 更多区 = useRef<HTMLDivElement>(null);
   const [卡点, set卡点] = useState<卡点值>(空卡点);
   const [附件们, set附件们] = useState<File[]>([]);
   const 明确回复 = Form.useWatch("明确回复", form) as boolean | undefined;
@@ -275,7 +278,7 @@ export default function FollowUpForm({
     // 下次打开「同时完成计划」重新默认勾上。在关闭的事件里复位，不放 effect（同上）
     set收口(true);
     set近况(null);
-    set更多开(false);
+    set更多开(null);
     set卡点(空卡点);
     set附件们([]);
   }
@@ -598,7 +601,19 @@ export default function FollowUpForm({
   const showDue = type === "TASK" || type === "REMIND";
   const showAi = aiEnabled && !record?.id;
   /** 「更多」显不显示：人点开了，或 AI 速记框里有字 / 解析过 */
-  const 更多显示 = 更多开 || !!aiText.trim() || !!解析;
+  const 更多显示 = 更多开 ?? (!!aiText.trim() || !!解析);
+  /**
+   * 整行（箭头 + 文字 + 红字提示）都是一个按钮（11-04 用户：「点击下三角并不能打开折叠……把符号也包含进去」）。
+   * 「更多」常贴在弹窗底部（1366×768 这类矮屏），展开的内容落在可视区下面，看着像没反应：展开后把它滚进来
+   */
+  function 切更多() {
+    const 开 = !更多显示;
+    set更多开(开);
+    if (!开) return;
+    requestAnimationFrame(() => {
+      更多区.current?.scrollIntoView({ block: "nearest", behavior: 滚法() });
+    });
+  }
   /** 挑人模式下还没挑：AI 解析要知道是谁（认联系人、商机），先不让点 */
   const 还没挑 = !customerId;
   const suggestions = [
@@ -772,13 +787,15 @@ export default function FollowUpForm({
               </Form.Item>
             </Col>
             <Col span={24} style={{ marginBottom: 12 }}>
-              <Button type="link" size="small" style={{ paddingInline: 0 }} icon={<DownOutlined rotate={更多显示 ? 180 : 0} />} aria-expanded={更多显示} onClick={() => set更多开(!更多显示)}>
-                更多：发生时间、状态、标题、联系人、客户明确回复{showAi ? "、AI 速记" : ""}
+              <Button type="link" size="small" className="follow-more-toggle" icon={<DownOutlined rotate={更多显示 ? 180 : 0} />} aria-expanded={更多显示} onClick={切更多}>
+                <span>
+                  更多：发生时间、状态、标题、联系人、客户明确回复{showAi ? "、AI 速记" : ""}
+                  {!更多显示 && 明确回复 == null && <span className="follow-more-hint"> 客户明确回复还没选</span>}
+                </span>
               </Button>
-              {!更多显示 && 明确回复 == null && <span style={{ color: "var(--danger-text)", fontSize: "var(--dt-aux, 12px)" }}> 客户明确回复还没选</span>}
             </Col>
             <Col span={24} style={更多显示 ? undefined : { display: "none" }}>
-              <div className="follow-more" style={{ marginBottom: 12 }}>
+              <div className="follow-more" ref={更多区} style={{ marginBottom: 12 }}>
                 {AI块}
                 <Row gutter={16}>
                   <Col span={12}>

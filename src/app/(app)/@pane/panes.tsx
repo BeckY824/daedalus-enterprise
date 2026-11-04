@@ -15,6 +15,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 页面字典 } from "@/lib/enterprise/dict";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
+import { 拼地址 } from "@/lib/enterprise/customer-v2";
 
 /**
  * 中栏（312px）的内容。眼下**只有一种**：学员记录页的窄名单。
@@ -62,6 +63,7 @@ export async function 学员名单() {
       id: true, name: true, followStatus: true, custStatus: true, lastFollowAt: true, salesOwnerId: true,
       salesOwner: { select: { name: true } },
       channel: { select: { name: true } },
+      addrCountry: true, addrProvince: true, addrCity: true,
       referrerCustomerId: true,
       followUps: { orderBy: { occurredAt: "desc" }, take: 1, select: { content: true, type: true } },
       // 最近一条还没做的计划：「本周要跟」那个页签和右下角的圆点都看它
@@ -85,8 +87,8 @@ export async function 学员名单() {
             mine: c.salesOwnerId === me.id,
             lastNote: c.followUps[0]?.content?.trim().slice(0, 60) || null,
             // 渠道名 > 转介绍 > 最近一次跟进方式，都没有就留空。
-            // 企业版只认渠道（预设的来源清单，没有转介绍链）：没有渠道就留空，不回落
-            source: 企业 ? c.channel?.name ?? null : c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),
+            // 企业版（11-04 用户：名单里名字上方从「来源」改成客户所在国家地区）：国内「省 市」、国外「国家 城市」，不带区；没填就留空
+            source: 企业 ? 拼地址({ addrCountry: c.addrCountry, addrProvince: c.addrProvince, addrCity: c.addrCity }) || null : c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),
             nextPlanAt: p ? scheduleValue(p.plannedAt, p.plannedOn) : null,
           };
         }),

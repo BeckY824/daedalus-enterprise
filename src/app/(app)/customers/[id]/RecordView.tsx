@@ -49,6 +49,7 @@ import ContactLinks from "./ContactLinks";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
+import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
 import LinkedCustomers from "./LinkedCustomers";
 import { ProjectFold } from "../../projects/[id]/ProjectFold";
@@ -1004,15 +1005,13 @@ export default function RecordView({
       <div ref={recRef} className={`rec${AI在抽屉里 ? " rec-2col" : ""}${单栏 ? " rec-1col" : ""}${有右栏 ? "" : " rec-no-right"}`}>
         {/* ================= 左栏：档案 ================= */}
         <aside className={`rec-rail rec-card${去项目跟进 ? " rec-rail-blocks" : ""}`}>
-          {/* 名字和头像不在这儿重画一遍：页头上已经有了（设计稿 12/PAGE 的「基本资料」卡
-              第一行就是电话）。电话是只读的——改手机号要查重，走完整表单 */}
-          {/* 企业版项目模式页头有「编辑资料」，卡上不再重复摆（10-31） */}
-          {节("基本资料", undefined, !只读 && !去项目跟进 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => setCustOpen(true)}>编辑全部</Button>, <>
+          {/* 名字和头像不在这儿重画一遍：页头上已经有了（设计稿 12/PAGE 的「基本资料」卡第一行就是电话）。
+              11-04 用户：所有字段点了直接改，不再摆「编辑全部」。电话也就地改：查重、打码号认回都在服务端；
+              点号码本身照旧拨号，点别处才进编辑 */}
+          {节("基本资料", undefined, undefined, <>
             {摆(customer.phone) && (
-              <div className="rec-field" style={{ cursor: "default" }}>
-                <div className="rec-field-k">电话</div>
-                <div className="rec-field-v">{有值(customer.phone) ? (企业 ? <号码链接 kind="tel" value={customer.phone} /> : customer.phone) : <span className="rec-field-empty">{空值符}</span>}</div>
-              </div>
+              <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
+                显示={企业 ? (v) => <号码链接 kind="tel" value={v} /> : undefined} />
             )}
             {sourceLead && <div className="rec-field" style={{cursor:"default"}} data-testid="customer-lead-origin">
               <div className="rec-field-k">来源线索</div>
@@ -1022,7 +1021,7 @@ export default function RecordView({
               </div>
             </div>}
             {/* 企业版项目模式（定稿 P5 第 22、23、29、30 条）：简称、公司、级别 S/A/B/C、地址、官网、分配方式；
-                行业、职位、国家、WhatsApp、邮箱、微信、阿里 ID、旧等级、预计签约不摆（库里照留）。地址要分省市区，在「编辑全部」里改 */}
+                行业、职位、国家、WhatsApp、邮箱、微信、阿里 ID、旧等级、预计签约不摆（库里照留）。地址分省市区，就地一起改 */}
             {摆法.新字段 && 摆(customer.shortName) && <InlineField 空时横线={企业} customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
             {摆(customer.school) && <InlineField 空时横线={企业} customerId={customer.id} field="school" label={b.fields.school} value={customer.school} />}
             {摆法.旧字段 && 摆(customer.major) && <InlineField 空时横线={企业} customerId={customer.id} field="major" label={b.fields.major} value={customer.major} />}
@@ -1039,19 +1038,9 @@ export default function RecordView({
                   <InlineField 空时横线={企业} customerId={customer.id} field="customerAttr" label="客户属性" value={去空(customer.customerAttr)} kind="select"
                     options={[...new Set([...客户属性选项, ...(有值(customer.customerAttr) ? [customer.customerAttr] : [])])].map((x) => ({ value: x, label: x }))} placeholder={空值符} 可清空 />
                 )}
-                {/* 地址五格（P14 第 7 条）：前四格拼成一行「所在地区」，第五格「客户地址」（公司详细地址）单独一行；都点「编辑全部」改 */}
-                {摆(地址文字) && (
-                  <div className="rec-field" style={{ cursor: "default" }} title="国家地区 / 省 / 市 / 区县级市，点「编辑全部」改">
-                    <div className="rec-field-k">所在地区</div>
-                    <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{有值(地址文字) ? 地址文字 : <span className="rec-field-empty">{空值符}</span>}</div>
-                  </div>
-                )}
-                {摆(customer.addrDetail) && (
-                  <div className="rec-field" style={{ cursor: "default" }} title="公司详细地址，点「编辑全部」改">
-                    <div className="rec-field-k">{地址叫法.addrDetail}</div>
-                    <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{有值(customer.addrDetail) ? customer.addrDetail : <span className="rec-field-empty">{空值符}</span>}</div>
-                  </div>
-                )}
+                {/* 地址五格（P14 第 7 条）：前四格拼成一行「所在地区」，第五格「客户地址」（公司详细地址）单独一行；都就地改 */}
+                {摆(地址文字) && <RegionInlineField 空时横线={企业} customerId={customer.id} value={{ addrCountry: customer.addrCountry ?? null, addrProvince: customer.addrProvince ?? null, addrCity: customer.addrCity ?? null, addrDistrict: customer.addrDistrict ?? null }} />}
+                {摆(customer.addrDetail) && <InlineField 空时横线={企业} customerId={customer.id} field="addrDetail" label={地址叫法.addrDetail} value={customer.addrDetail ?? null} />}
                 {摆(档?.website) && <InlineField 空时横线={企业} customerId={customer.id} field="website" label="官网" value={档?.website ?? null} placeholder="如 www.example.com" />}
                 {摆(customer.assignWay) && (
                   <InlineField 空时横线={企业} customerId={customer.id} field="assignWay" label="客户分配" value={去空(customer.assignWay)} kind="select"

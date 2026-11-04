@@ -1558,10 +1558,14 @@ export async function deleteContract(
 
 /* ---------- 记录页的行内编辑 ---------- */
 
-/** 记录页里能直接点着改的字段。姓名、手机（要查重）、推荐关系（要重算归属）仍走完整表单 */
-const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", "customerType", "customerAttr", ...外贸键] as const;
+/**
+ * 记录页里能直接点着改的字段。姓名、推荐关系（要重算归属）仍走完整表单。
+ * 电话、客户地址 11-04 起也能直接改（用户：改成直接可编辑，不用再点按钮）：电话照完整表单那套查重（见下面 phone 那段），
+ * 所在地区四格一起交，走 patchCustomerRegion
+ */
+const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", "customerType", "customerAttr", "phone", "addrDetail", ...外贸键] as const;
 /** 只有企业版能点着改的几格（迁移 072）：开关关着不收 */
-const 企业版才有的格: readonly string[] = ["shortName", "assignWay", "customerType", "customerAttr"];
+const 企业版才有的格: readonly string[] = ["shortName", "assignWay", "customerType", "customerAttr", "addrDetail"];
 export type PatchableKey = (typeof PATCHABLE)[number];
 
 /**
@@ -1664,6 +1668,32 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
     if (v && v !== 原.customerAttr && !(await 可选项("custAttr")).includes(v)) return { ok: false, error: `客户属性「${v}」不在可选范围内，请刷新后重选` };
     data.customerAttr = v || null;
+  } else if (key === "phone") {
+    /*
+      电话：和 saveCustomer 编辑时同一条规矩——打码的样子认回原号；原样没动的不规整、不查重；
+      原来有号码的不许清空；换了号先查本机（看全部，同事名下的也比），再问服务端同事那边有没有
+    */
+    const 原 = await prisma.customer.findUnique({ where: { id }, select: { phone: true } });
+    if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
+    const 号 = String(认回打码号(v, 原.phone) ?? "").trim();
+    if (号 === (原.phone ?? "")) return { ok: true };
+    const 电话 = 查电话(号, { 必填: Boolean(原.phone) });
+    if (!电话.ok) return { ok: false, error: 电话.error };
+    if (电话.phone === 原.phone) return { ok: true };
+    if (电话.phone) {
+      const dup = await 看全部(async () => prisma.customer.findFirst({
+        where: { AND: [await 同号条件(prisma, 电话.phone, await 分机留存起()), { id: { not: id } }] },
+        select: 撞到的字段,
+      }));
+      if (dup) return { ok: false, error: await 撞号说法(`手机号 ${电话.phone}`, dup, await 读的我(defaultClient), b.customer) };
+      const 撞 = await 问同事("phone", 电话.phone, id);
+      if (撞) return { ok: false, error: 同事撞号说法(`手机号 ${电话.phone}`, 撞.同事, 撞.客户名, b.customer) };
+    }
+    data.phone = 电话.phone;
+  } else if (key === "addrDetail") {
+    const 详 = 规整详细地址(v);
+    if (!详.ok) return { ok: false, error: 详.error };
+    data.addrDetail = 详.值;
   } else if (key === "expectedSignAt") {
     const previous = await prisma.customer.findUnique({ where: { id }, select: { expectedSignAt: true, expectedSignOn: true } });
     const parsed = parseSignDate(v, previous ?? undefined);
@@ -1692,6 +1722,36 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   revalidatePath("/customers");
   await 客户存了推项目(me, id);
   return { ok: true, 带走 };
+}
+
+/**
+ * 所在地区（国家地区 / 省 / 市 / 区）一起改（企业版，11-04 就地编辑）：四格是一个选择器选出来的，拆开存会存出「中国 + 别国的市」。
+ * 规矩同 patchCustomer：同事的客户只读、只有负责人能改、规整同完整表单（规整地址），没变就不写，留痕只记变了的格
+ */
+export async function patchCustomerRegion(id: string, 址: Partial<客户地址>): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await requireUser();
+  const b = await getBusiness();
+  if (!企业版()) return { ok: false, error: "这个字段不能在这里改" };
+  if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
+  const 挡 = await 改客户挡(me, id);
+  if (挡) return { ok: false, error: 挡 };
+  const r = 规整地址(址);
+  if (!r.ok) return r;
+  const before = await prisma.customer.findUnique({ where: { id }, select: { name: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } });
+  if (!before) return { ok: false, error: `这条${b.customer}已被删除` };
+  const 变了 = (Object.keys(r.值) as (keyof 客户地址)[]).filter((k) => (before[k] ?? null) !== r.值[k]);
+  if (!变了.length) return { ok: true };
+  await prisma.customer.update({ where: { id }, data: r.值 });
+  const labels = customerFieldLabels(b);
+  await recordAudit({
+    user: me, action: "update", entity: "Customer", entityId: id,
+    summary: `修改${b.customer}「${before.name}」：所在地区`,
+    detail: describeCustomerChanges(变了, before as Record<string, unknown>, r.值, labels),
+  });
+  revalidatePath(`/customers/${id}`);
+  revalidatePath("/customers");
+  await 客户存了推项目(me, id);
+  return { ok: true };
 }
 
 /**
