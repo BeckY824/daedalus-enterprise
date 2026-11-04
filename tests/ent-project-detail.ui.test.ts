@@ -290,12 +290,12 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     await page.route("http://proj.test/api/attachments**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({ 附件: [] }) }));
     const 钱 = { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null };
     const 附 = { 合同: 0, 方案: 0, 其它: 0, 只读: false };
-    // 老项目：合同状态 page.tsx 兜底成起草中，痛点标注空着
-    await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: null, contractStatus: "起草中" } });
+    // 老项目：合同状态、痛点标注都空着，都写「—」（11-04 用户：空值统一「—」）
+    await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: null, contractStatus: null } });
     const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "合同状态" }).first();
     await 卡.waitFor();
     let 字 = await 卡.innerText();
-    expect(字).toMatch(/合同状态\s*起草中/);
+    expect(await 卡.locator('[data-empty="合同状态"]').innerText()).toBe("—");
     expect(await 卡.locator('[data-empty="痛点标注"]').innerText()).toBe("—");
     expect(字.indexOf("合同金额")).toBeLessThan(字.indexOf("合同状态"));
     expect(字.indexOf("成交需求")).toBeLessThan(字.indexOf("痛点标注"));
@@ -318,7 +318,7 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     await 框.getByRole("combobox", { name: "合同状态" }).click();
     const 下拉 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
     // 下拉是点开后才渲染的、还带进场动画，CI 机器慢时立刻读会是空的（等到「已终止」出现再读也空过一次）：轮询到对上为止
-    await expect.poll(() => 下拉.allInnerTexts(), { timeout: 10_000 }).toEqual(["起草中", "待对方确认", "待我方确认", "对方修改中", "我方修改中", "已生效", "已终止"]);
+    await expect.poll(() => 下拉.allInnerTexts(), { timeout: 10_000 }).toEqual(["—", "起草中", "待对方确认", "待我方确认", "对方修改中", "我方修改中", "已生效", "已终止"]);
     await 下拉.filter({ hasText: "已生效" }).click();
     await 框.getByRole("button", { name: /保\s*存/ }).click();
     await page.waitForFunction(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length > 0);
@@ -1086,6 +1086,8 @@ it("画像能改：空的下拉占位写「—」；单选、多选第一项「�
     await 角色.click();
     const 角色项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
     await expect.poll(async () => (await 角色项.allInnerTexts())[0]).toBe("—");
+    // 下拉带进场动画、多选打开时还会滚到已选项：等动画收完再点，不然会点到第二项（11-04 本机 3 次挂 1 次）
+    await page.waitForFunction(() => { const d = [...document.querySelectorAll(".ant-select-dropdown")].filter(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")); return d.length === 1 && !/(appear|enter)/.test(d[0].className); });
     await 角色项.first().click();
     await page.waitForFunction(() => ((window as unknown as { __角色存?: unknown[] }).__角色存 ?? []).length === 1);
     expect(await page.evaluate(() => (window as unknown as { __角色存: unknown[][] }).__角色存[0])).toEqual(["p1", "k1", { roles: [] }]);
@@ -1096,6 +1098,8 @@ it("画像能改：空的下拉占位写「—」；单选、多选第一项「�
     await 身份.click();
     const 身份项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
     await expect.poll(async () => (await 身份项.allInnerTexts())[0]).toBe("—");
+    // 下拉带进场动画、多选打开时还会滚到已选项：等动画收完再点，不然会点到第二项（11-04 本机 3 次挂 1 次）
+    await page.waitForFunction(() => { const d = [...document.querySelectorAll(".ant-select-dropdown")].filter(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")); return d.length === 1 && !/(appear|enter)/.test(d[0].className); });
     await 身份项.first().click();
     await page.waitForFunction(() => ((window as unknown as { __身份存?: unknown[] }).__身份存 ?? []).length === 1);
     expect(await page.evaluate(() => (window as unknown as { __身份存: unknown[][] }).__身份存[0])).toEqual(["p1", "c1", []]);

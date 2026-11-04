@@ -2,9 +2,9 @@
  * 企业版项目的痛点标注、合同状态、项目方案（迁移 101，10-31）。
  *
  * 钉的是：
- *   - 合同状态七项、顺序固定；默认「起草中」；库里空的（老项目）、认不出的显示成「起草中」
+ *   - 合同状态七项、顺序固定；新建默认「起草中」；库里空的（老项目、或选了「—」）、认不出的给 null（界面写「—」）
  *   - 项目新字段改成：没传 = 原样；痛点标注去首尾空白、空 = 清掉、超长 / 不是文字报错；
- *     合同状态空 = 回到起草中、认不出报错、和现在显示的一样 = 原样（老项目空着交回「起草中」不算改）
+ *     合同状态空 = 清掉（显示「—」）、认不出报错、和现在显示的一样 = 原样
  *   - 新建项目：企业版写「起草中」，别的版本不写（线索建项目真库走一遍）
  *   - 节点必填三项：痛点标注 / 项目方案（至少一个附件）/ 合同已生效，满足和不满足都钉
  *   - 读必填数据（真库）：项目方案数只数 tag「方案」的附件；合同状态原样带出
@@ -43,11 +43,11 @@ describe("合同状态：选项和默认", () => {
     expect(是合同状态("生效")).toBe(false);
   });
 
-  it("库里空的（老项目）、认不出的都显示「起草中」；认得出的原样", () => {
-    expect(合同状态显示(null)).toBe("起草中");
-    expect(合同状态显示(undefined)).toBe("起草中");
-    expect(合同状态显示("")).toBe("起草中");
-    expect(合同状态显示("乱写的")).toBe("起草中");
+  it("库里空的（老项目、选了「—」）、认不出的都给 null（界面写「—」）；认得出的原样", () => {
+    expect(合同状态显示(null)).toBeNull();
+    expect(合同状态显示(undefined)).toBeNull();
+    expect(合同状态显示("")).toBeNull();
+    expect(合同状态显示("乱写的")).toBeNull();
     expect(合同状态显示("我方修改中")).toBe("我方修改中");
   });
 
@@ -76,16 +76,17 @@ describe("项目新字段改成", () => {
     expect(项目新字段改成({ painPoints: 3 }, 空)).toMatchObject({ ok: false, error: expect.stringContaining("痛点标注") });
   });
 
-  it("合同状态：七项里的照存；空 = 回到起草中；认不出报错", () => {
+  it("合同状态：七项里的照存；空 = 清掉；认不出报错", () => {
     expect(项目新字段改成({ contractStatus: "已生效" }, 原)).toEqual({ ok: true, 值: { ...原, contractStatus: "已生效" } });
-    expect(项目新字段改成({ contractStatus: "" }, 原)).toEqual({ ok: true, 值: { ...原, contractStatus: "起草中" } });
-    expect(项目新字段改成({ contractStatus: null }, 原)).toEqual({ ok: true, 值: { ...原, contractStatus: "起草中" } });
+    expect(项目新字段改成({ contractStatus: "" }, 原)).toEqual({ ok: true, 值: { ...原, contractStatus: null } });
+    expect(项目新字段改成({ contractStatus: null }, 原)).toEqual({ ok: true, 值: { ...原, contractStatus: null } });
     expect(项目新字段改成({ contractStatus: "生效了" }, 原)).toMatchObject({ ok: false, error: expect.stringContaining("合同状态") });
     expect(项目新字段改成({ contractStatus: 1 }, 原)).toMatchObject({ ok: false });
   });
 
-  it("老项目合同状态空着：界面交回「起草中」不算改（库里留空）；改成别的才写", () => {
-    expect(项目新字段改成({ contractStatus: "起草中" }, 空)).toEqual({ ok: true, 值: 空 });
+  it("合同状态空着：交回「—」（null）不算改；选了起草中 / 别的就写", () => {
+    expect(项目新字段改成({ contractStatus: null }, 空)).toEqual({ ok: true, 值: 空 });
+    expect(项目新字段改成({ contractStatus: "起草中" }, 空)).toEqual({ ok: true, 值: { ...空, contractStatus: "起草中" } });
     expect(项目新字段改成({ contractStatus: "已终止" }, 空)).toEqual({ ok: true, 值: { ...空, contractStatus: "已终止" } });
   });
 });
@@ -175,8 +176,11 @@ describe("真库：改项目 / 读必填数据 / 新建项目", () => {
     expect(await 读()).toEqual({ painPoints: "交期总拖\n售后慢", contractStatus: "待我方确认" });
   });
 
-  it("老项目合同状态空着：交回「起草中」不算改、库里还是空；清掉痛点标注存成空", async () => {
-    expect(await 改项目(乙, 项目id, { ...基, contractStatus: "起草中" })).toEqual({ ok: true, 变了: [] });
+  it("合同状态空着交回「—」不算改；有值选回「—」清成空；清掉痛点标注存成空", async () => {
+    expect(await 改项目(乙, 项目id, { ...基, contractStatus: null })).toEqual({ ok: true, 变了: [] });
+    expect(await 读()).toEqual(空);
+    await 改项目(乙, 项目id, { ...基, contractStatus: "待对方确认" });
+    expect(await 改项目(乙, 项目id, { ...基, contractStatus: null })).toMatchObject({ ok: true, 变了: ["contractStatus"] });
     expect(await 读()).toEqual(空);
     await 改项目(乙, 项目id, { ...基, painPoints: "x" });
     expect(await 改项目(乙, 项目id, { ...基, painPoints: "" })).toMatchObject({ ok: true, 变了: ["painPoints"] });

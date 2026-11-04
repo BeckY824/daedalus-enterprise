@@ -238,6 +238,23 @@ it("下拉：选了就存；级别能清空", async () => {
   } finally { await page.close(); }
 });
 
+it("合同状态：下拉第一项是「—」，选了交 null、格里写「—」（11-04 用户：空值统一「—」、能回到「—」）", async () => {
+  const { page } = await 开();
+  try {
+    await 详情(page);
+    await 笔(page, "合同状态").click();
+    await page.locator(".ant-select-dropdown").getByText("已生效", { exact: true }).click();
+    await 格(page, "合同状态").getByText("已生效").waitFor();
+    await 笔(page, "合同状态").click();
+    const 项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+    await expect.poll(() => 项.first().innerText(), { timeout: 10_000 }).toBe("—");
+    await 项.first().click();
+    await page.waitForFunction(() => ((window as unknown as 窗).__编辑 as unknown[]).length === 2);
+    expect((await 编辑记录(page))![1]).toEqual(["p1", { contractStatus: null }]);
+    await 格(page, "合同状态").locator('[data-empty="合同状态"]').waitFor();
+  } finally { await page.close(); }
+});
+
 it("沟通正文：只交正文 + 原样的类型时间 + 版本；空的挡；失败（版本冲突）留草稿，也刷新拿新版本", async () => {
   const { page } = await 开();
   try {
