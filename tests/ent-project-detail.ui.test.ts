@@ -373,14 +373,19 @@ it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标�
   } finally { await page.close(); }
 });
 
-it("10-31 改版 R7：超长项目名、窄容器下字号放大后不横滚、不截字", async () => {
+// 11-04 用户改了规矩：「尽量所有信息都在一行显示完整」「一行显示不下的用... 但是悬浮要做好，鼠标移上去可以看完整。」
+// 所以超长项目名不再折行，改成一行 + 省略号；页面照旧不许横滚
+it("10-31 改版 R7（11-04 改一行）：超长项目名、窄容器下字号放大后不横滚，放不下的一行带省略号", async () => {
   const { page, errors } = await open(true, 1024);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ name: "超长的项目名字没有空格".repeat(8) }));
     await page.getByText("超长的项目名字没有空格超长").first().waitFor();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    const 溢 = await page.evaluate(() => [...document.querySelectorAll(".proj-wrap .page-head h1, .proj-wrap .ant-card-head-title")].filter(e => e.scrollWidth > e.clientWidth + 1).length);
-    expect(溢).toBe(0);
+    const 溢 = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".proj-wrap .page-head h1, .proj-wrap .ant-card-head-title")]
+      .filter(e => e.scrollWidth > e.clientWidth + 1)
+      .filter(e => { const s = getComputedStyle(e); return !(s.textOverflow === "ellipsis" && s.whiteSpace === "nowrap"); })
+      .map(e => e.className + " | " + e.innerText.slice(0, 12)));
+    expect(溢).toEqual([]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

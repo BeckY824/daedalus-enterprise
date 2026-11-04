@@ -334,10 +334,11 @@ export default function ChannelsView({
     { title: "结束日期", key: "endDate", dataIndex: "endDate", width: 112, 默认: false, render: (v: string | null) => (v ? <span className="nowrap">{fmtDate(v)}</span> : 无) },
     // 创建人、备注是辅助列：一行省略照旧（ellipsis 下 antd 自己给字符串格子写 title，悬停看全）
     { title: "创建人", key: "createdByName", dataIndex: "createdByName", width: 110, 默认: false, ellipsis: true, render: (v: string | null) => v ?? 无 },
-    { title: "备注", key: "remark", dataIndex: "remark", width: 200, 默认: false, ellipsis: true, render: (v: string | null) => v ?? 无 },
+    // 备注照旧折行写完（11-04 用户：「除了备注，备注信息有时候过多」）
+    { title: "备注", key: "remark", dataIndex: "remark", width: 200, 默认: false, 折行: true, render: (v: string | null) => v ?? 无 },
     {
       /* 行上只留一个带字的按钮（规则 D）：能录投入的是「录投入」，别人是「详情」；编辑、停用、删除收进「⋯」，删除不标红 */
-      title: "", key: "act", width: 108, 常驻: true, fixed: "right",
+      title: "", key: "act", width: 124, 常驻: true, fixed: "right",
       render: (_, r) => {
         const 删因 = 删不了(r);
         const 菜单: NonNullable<MenuProps["items"]> = [

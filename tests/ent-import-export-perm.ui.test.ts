@@ -36,12 +36,12 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
-    import CustomersView from '@/app/(app)/customers/CustomersView';import CustomerForm from '@/app/(app)/customers/CustomerForm';
+    import CustomersView from '@/app/(app)/customers/CustomersView';import TruncTip from '@/components/TruncTip';import CustomerForm from '@/app/(app)/customers/CustomerForm';
     const root=createRoot(document.getElementById('root'));
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true},{id:'boss',name:'老板',email:'b',role:'ADMIN',active:true}];
     const row={id:'c1',name:长,phone:'13800000001',school:长,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:null,signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null};
-    window.__render=({what,能,锁,空,粘贴,编辑,企})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}>{
+    window.__render=({what,能,锁,空,粘贴,编辑,企})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}><TruncTip/>{
       what==='list'?<CustomersView rows={空?[]:[row]} total={空?0:1} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{}} 能导入导出={能} 负责人只能自己={锁} 直接粘贴={粘贴} 客户数={空?0:1} 企业版={!!企}/>:
       <CustomerForm open editing={编辑?{id:'c1',name:'老客户',phone:'13800000001',salesOwnerId:'u2',salesOwnerName:'小张',followStatus:'待跟进',decisionStatus:'了解中',updatedAt:'2026-10-01T00:00:00.000Z'}:null} users={users} channels={[]} 负责人只能自己={锁} onClose={()=>{}}/>
     }</我Provider></BusinessProvider></App></ConfigProvider>);
@@ -163,10 +163,11 @@ it("企业版客户列表 1024 宽：每格一行不折，被截的格子悬停�
     }).map((td) => td.className));
     expect(折了).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    // 超长客户名那格被截：悬停挂上整段
+    // 超长客户名那格被截：悬停浮出整段（11-04 用户：「一行显示不下的用... 但是悬浮要做好，鼠标移上去可以看完整。」
+    // 浮层是全站的 TruncTip，不再给格子挂 title）
     const 名格 = page.locator(".ant-table-tbody > tr.ant-table-row > td").filter({ hasText: "某某超长贸易进出口有限公司" }).first();
     await 名格.hover();
-    await expect.poll(() => 名格.getAttribute("title")).toContain("某某超长贸易进出口有限公司某某超长贸易进出口有限公司");
+    await expect.poll(() => page.evaluate(() => { const t = document.getElementById("trunc-tip"); return t?.classList.contains("is-on") ? t.textContent ?? "" : ""; })).toContain("某某超长贸易进出口有限公司某某超长贸易进出口有限公司");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
   const 老 = await open({ what: "list" }, 1024);

@@ -106,9 +106,10 @@ for (const width of [1024, 1280, 1366]) {
   });
 }
 
-/* 选渠道的级联（ChannelPicker）原来格子单行省略、每列最宽 400，三列并排比 1024 屏还宽，弹层被推出左边 */
+/* 选渠道的级联（ChannelPicker）原来每列最宽 400，三列并排比 1024 屏还宽，弹层被推出左边。
+   11-04 用户：「一行显示不下的用... 但是悬浮要做好」——长来源一行省略（格子 title 有全称），10-30 的折行作废 */
 for (const width of [1024, 1366]) {
-  it(`选渠道的级联：长来源折行显示完整、三列都在屏幕里（${width} 宽）`, async () => {
+  it(`选渠道的级联：长来源一行省略、带全称、三列都在屏幕里（${width} 宽）`, async () => {
     const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
     try {
       await page.route("http://fulltext.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -130,16 +131,16 @@ for (const width of [1024, 1366]) {
           长: 长.map((e) => {
             const r = e.getBoundingClientRect(); const cs = getComputedStyle(e);
             const 中 = document.elementFromPoint(r.left + 10, r.top + r.height / 2);
-            return { 文: e.textContent, 省略: cs.textOverflow === "ellipsis" && cs.whiteSpace === "nowrap", 溢出: e.scrollWidth > e.clientWidth + 1, 折行: r.height > parseFloat(cs.lineHeight) * 1.5, 点中: !!中 && e.contains(中) };
+            return { 文: e.textContent, 题: e.closest("[title]")?.getAttribute("title") ?? "", 省略: cs.textOverflow === "ellipsis" && cs.whiteSpace === "nowrap", 溢出: e.scrollWidth > e.clientWidth + 1, 折行: r.height > parseFloat(cs.lineHeight) * 1.5, 点中: !!中 && e.contains(中) };
           }),
           左: pop.left, 右: pop.right,
         };
       });
       expect(量.长.length).toBeGreaterThan(0);
       for (const x of 量.长) {
-        expect(x.省略, x.文!).toBe(false);
-        expect(x.溢出, x.文!).toBe(false);
-        expect(x.折行, x.文!).toBe(true);
+        expect(x.省略, x.文!).toBe(true);
+        expect(x.折行, x.文!).toBe(false);
+        if (x.溢出) expect(x.题, x.文!).toBe(x.文);
         expect(x.点中, x.文!).toBe(true);
       }
       expect(量.左).toBeGreaterThanOrEqual(0);

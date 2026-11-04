@@ -107,7 +107,7 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
           </span>
           <span className="roster-n">{r.name}</span>
           <span className="roster-l2">
-            {/* 名字整段显示（.roster-n 不截）；最近一句是辅助，最多两行，悬停看全 */}
+            {/* 名字一行、放不下省略号，悬停看全（11-04）；最近一句是辅助，最多两行 */}
             <span className="roster-note" title={r.lastNote ?? undefined}>{r.lastNote ?? `还没沟通${r.customerName ? ` · ${r.customerName}` : ""}`}</span>
             {进程 && (
               <span className="roster-stage" title={`当前进程：${进程}`}>

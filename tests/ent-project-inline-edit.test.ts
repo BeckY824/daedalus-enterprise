@@ -233,3 +233,66 @@ describe("纯函数", () => {
     expect(合并附件([], [], [])).toEqual([]);
   });
 });
+
+describe("联系人 / 项目来源 / 业务线：就地改也只交一格", () => {
+  const 别的格 = async () => { const p = await 读(); return [p.name, p.remark, p.amount, p.ownerId]; };
+  const 原样 = ["示例项目", "原备注", 100, () => 销售] as const;
+  const 核别的格没动 = async () => expect(await 别的格()).toEqual([原样[0], 原样[1], 原样[2], 原样[3]()]);
+
+  it("联系人：换成本客户下的联系人落库、留痕；别的客户的联系人拦下；交 null 清掉", async () => {
+    const 甲 = (await prisma.contact.create({ data: { name: "联系人甲", customerId: 客户 } })).id;
+    const 外客户 = (await prisma.customer.create({ data: { name: "另一个客户", phone: "13800000002", salesOwnerId: 销售 } })).id;
+    const 外人 = (await prisma.contact.create({ data: { name: "外人", customerId: 外客户 } })).id;
+
+    expect(await 编辑项目(项目, { contactId: 甲 })).toMatchObject({ ok: true });
+    expect((await 读()).contactId).toBe(甲);
+    await 核别的格没动();
+    const 痕 = await prisma.auditLog.findFirstOrThrow({ where: { entityId: 项目, action: "update" }, orderBy: { at: "desc" } });
+    expect(痕.summary).toContain("主联系人");
+
+    const r = await 编辑项目(项目, { contactId: 外人 });
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toContain("不在这个客户下");
+    expect((await 读()).contactId).toBe(甲);
+
+    expect(await 编辑项目(项目, { contactId: null })).toMatchObject({ ok: true });
+    expect((await 读()).contactId).toBeNull();
+  });
+
+  it("项目来源：在用的渠道落库；停用的拦下；交 null 清掉；别的格不动", async () => {
+    const 展会 = (await prisma.channel.create({ data: { name: "展会", channelOwnerId: 销售 } })).id;
+    const 停了 = (await prisma.channel.create({ data: { name: "停用渠道", channelOwnerId: 销售, active: false } })).id;
+
+    expect(await 编辑项目(项目, { channelId: 展会 })).toMatchObject({ ok: true });
+    expect((await 读()).channelId).toBe(展会);
+    await 核别的格没动();
+
+    expect((await 编辑项目(项目, { channelId: 停了 })).ok).toBe(false);
+    expect((await 读()).channelId).toBe(展会);
+
+    expect(await 编辑项目(项目, { channelId: null })).toMatchObject({ ok: true });
+    expect((await 读()).channelId).toBeNull();
+  });
+
+  it("业务线：改成外贸落库、负责人不跟着重分；清空和不认得的值拦下", async () => {
+    expect(await 编辑项目(项目, { 业务线: "外贸" })).toMatchObject({ ok: true });
+    expect((await 读()).bizLine).toBe("外贸");
+    await 核别的格没动();
+
+    expect((await 编辑项目(项目, { 业务线: "" })).ok).toBe(false);
+    expect((await 编辑项目(项目, { 业务线: "火星线" })).ok).toBe(false);
+    expect((await 读()).bizLine).toBe("外贸");
+  });
+
+  it("不是负责人：三格都改不了，库不变", async () => {
+    const 展会 = (await prisma.channel.create({ data: { name: "展会", channelOwnerId: 销售 } })).id;
+    const 甲 = (await prisma.contact.create({ data: { name: "联系人甲", customerId: 客户 } })).id;
+    const 前 = await 读();
+    当(同事);
+    for (const patch of [{ contactId: 甲 }, { channelId: 展会 }, { 业务线: "外贸" }]) {
+      expect((await 编辑项目(项目, patch)).ok).toBe(false);
+    }
+    const 后 = await 读();
+    expect([后.contactId, 后.channelId, 后.bizLine]).toEqual([前.contactId, 前.channelId, 前.bizLine]);
+  });
+});

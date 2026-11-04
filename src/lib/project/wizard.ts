@@ -25,7 +25,9 @@ import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 export const 项目名上限 = 60;
 export const 备注上限 = 500;
 
-export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null };
+/** address：联系人所在区域 / 地址（一格文字，11-04 首页录入把国家城市放这）；向导界面不传 = 不存 */
+export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null; address?: string | null };
+export const 联系人地址上限 = 100;
 /** 分配方式：企业版才有，默认五项的序号（lib/enterprise/dict.ts 分配方式序号），只在 projects/actions.ts 建档向导里认 */
 export type 向导项目 = { name: string; ownerId?: string | null; amount?: number | null; currency?: string | null; remark?: string | null; 分配方式?: number | null;
   /** 项目来源（企业版，迁移 077）：这个项目从哪个渠道来。建档向导没选 = 跟客户来源（项目来源默认）；编辑里改。团队版不传、不认 */
@@ -61,7 +63,7 @@ export type 向导跟进 = { type: string;
   额外?: { title?: string | null; contactId?: string | null; status?: string | null; durationMinutes?: number | null; participants?: string | null } | null };
 
 export type 规整好的 = {
-  联系人: { name: string; position: string | null; phone: string | null; email: string | null; wechat: string | null };
+  联系人: { name: string; position: string | null; phone: string | null; email: string | null; wechat: string | null; address?: string | null };
   项目: { name: string; ownerId: string; amount: number; currency: string; remark: string | null };
   跟进: 规整好的沟通;
   /** 企业版建档（10-26）：项目落在哪个线索节点、首条沟通客户是否明确回复；团队版没有 */
@@ -150,6 +152,8 @@ export function 规整向导(
   if (!hasVisibleText(c.name)) return { error: "请填写联系人姓名" };
   const 电话 = 可空(c.phone);
   if (电话?.includes("*")) return { error: "联系人电话里不能有 *" };
+  const 联系人地址 = 可空(c.address);
+  if (联系人地址 && 联系人地址.length > 联系人地址上限) return { error: `联系人地址最多 ${联系人地址上限} 个字` };
 
   const 项目 = 规整项目(p, me.id);
   if ("error" in 项目) return 项目;
@@ -180,7 +184,7 @@ export function 规整向导(
   }
 
   return {
-    联系人: { name: 文字(c.name), position: 可空(c.position), phone: 电话, email: 可空(c.email), wechat: 可空(c.wechat) },
+    联系人: { name: 文字(c.name), position: 可空(c.position), phone: 电话, email: 可空(c.email), wechat: 可空(c.wechat), ...(联系人地址 ? { address: 联系人地址 } : {}) },
     项目,
     跟进,
     ...(企业档 ? { 企业: 企业档 } : {}),

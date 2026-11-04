@@ -22,6 +22,7 @@ export default function OptionInput({
   size,
   maxLength,
   "aria-label": ariaLabel,
+  popupMatchSelectWidth,
 }: {
   /** Form.Item 注入的 id：表单标签靠它和输入框关联（读屏、按标签找输入框都靠这个） */
   id?: string;
@@ -34,6 +35,8 @@ export default function OptionInput({
   style?: React.CSSProperties;
   size?: "small" | "middle" | "large";
   maxLength?: number;
+  /** false = 下拉按选项全名撑开（渠道名长，11-04 用户：桌面和手机都要看得到全名）；最宽到屏幕宽，超出就折行 */
+  popupMatchSelectWidth?: boolean | number;
 }) {
   return (
     <AutoComplete
@@ -50,6 +53,7 @@ export default function OptionInput({
       allowClear={allowClear}
       style={style}
       size={size}
+      {...(popupMatchSelectWidth !== undefined ? { popupMatchSelectWidth, classNames: { popup: { root: "opt-popup-full" } } } : {})}
     />
   );
 }

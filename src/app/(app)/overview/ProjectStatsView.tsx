@@ -39,10 +39,11 @@ function 外币提示({ n, 本位币, 说 }: { n: number; 本位币: string; 说
 }
 
 /** 名字列：点了去项目列表按这个人筛（线索阶段的去新线索）。
- *  名字不截断；同名的「王芳（邮箱）」拆两行，邮箱小字放下面，表格不用左右拖 */
+ *  一行：同名的「王芳（邮箱）」邮箱小字跟在后面，放不下省略号、悬停看全（11-04 用户：「一行显示不下的用...」，推翻原先拆两行） */
 const 名字列 = (去: (id: string) => string) => ({
   title: "负责人",
   dataIndex: "name",
+  ellipsis: true,
   render: (v: string, r: { id: string }) => {
     const m = /^(.*)（(.+@.+)）$/.exec(v);
     return (

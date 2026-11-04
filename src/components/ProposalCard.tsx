@@ -7,13 +7,14 @@ import Shortcut from "./Shortcut";
 import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Select, Input, Checkbox } from "antd";
+import { App, Select, Input, Checkbox, Radio } from "antd";
 import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
 import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card-scan/originals";
 import { 传附件 } from "@/lib/attachment-upload";
-import { describeProposal, missingFields, 只留选中的改动, 可改字段表, type Proposal, type 线索待确认格 } from "@/lib/agent/proposals";
+import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
+import { 三种业务线, 分配说明, 销售自动分确认, 建议业务线 } from "@/lib/enterprise/assign-line";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
 import { 建议结果, 记下建议结果, 清掉建议结果, 记下回执, 读回执 } from "@/lib/ai-jobs";
@@ -58,6 +59,13 @@ const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposal
 export const 新线索来源 = createContext<readonly string[] | null>(null);
 /** 同一处：开了超时回收，新线索卡的「下一步时间」也必填（和 dashboard/apply.ts 的拦截同一份 missingFields） */
 export const 新线索要下一步 = createContext(false);
+/**
+ * 同一处（11-04）：新线索卡和「新建项目」向导走同一套分配 —— 分配方式（按业务角色能用的那几种）、
+ * 指定分配时的负责人候选、业务线、当前进程、客户明确回复。服务端算好传进来（dashboard/page.tsx，同 wizard-data.ts）
+ */
+export type 新线索企业格 = { 成员: { value: string; label: string }[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式: number | null; 是销售: boolean };
+export const 新线索企业 = createContext<新线索企业格 | null>(null);
+const 线索节点们 = 企业版字典.节点们.线索;
 
 type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string };
 
@@ -66,11 +74,23 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   const b = useBusiness();
   const 渠道名们 = useContext(新线索来源);
   const 要下一步 = useContext(新线索要下一步);
+  const 企 = useContext(新线索企业);
   /* 三个档案字段叫什么、「职位」那一格有哪些选项，跟着业务配置走（通用版 vs 教培预设） */
   const 字段表 = 可改字段表(b);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const router = useRouter();
-  const [draft, setDraft] = useState<Proposal>(proposal);
+  // 企业版新线索卡：默认值和新建向导一致 —— 分配方式按角色默认（只有一种能用就直接选上）、进程默认线索第一步、业务线按国家 / 城市猜
+  const [draft, setDraft] = useState<Proposal>(() => {
+    if (proposal.kind !== "add_lead" || !企 || !渠道名们) return proposal;
+    const 默认 = 企.默认分配方式;
+    const 分 = 默认 !== null && 企.分配方式们.some((x) => x.i === 默认) ? 默认 : 企.分配方式们.length === 1 ? 企.分配方式们[0].i : undefined;
+    return {
+      ...proposal,
+      分配方式: proposal.分配方式 ?? 分,
+      节点: proposal.节点 && 线索节点们.includes(proposal.节点) ? proposal.节点 : 线索节点们[0],
+      业务线: proposal.业务线 ?? 建议业务线({ addrCountry: proposal.country, addrCity: proposal.city }) ?? undefined,
+    };
+  });
   const [state, set状态] = useState<"idle" | "saving" | "done" | "denied">(() => (记号 && 建议结果(记号)) || "idle");
   const setState = (s: "idle" | "saving" | "done" | "denied") => {
     set状态(s);
@@ -96,11 +116,21 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   const 要提交的 = useMemo<Proposal>(() => 只留选中的改动(draft, 勾了), [draft, 勾了]);
   // 模型不知道的字段留空，人在卡片上补齐才能确认
   // 企业版卡上那一格叫「渠道」（术语表），提示里跟着叫；lib 里那句「来源（渠道）」AI 的提示词也在用，不动
-  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步 } : undefined).map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m));
+  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们 } } : {}) } : undefined)
+    .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m));
   const 能确认 = state !== "saving" && missing.length === 0 && 勾了.length > 0;
 
-  async function confirm() {
+  function confirm() {
     if (!能确认) return;
+    // 销售选自动分配：分出去自己就看不到了，和新建向导同一句先问一下
+    if (企?.是销售 && 要提交的.kind === "add_lead" && 要提交的.分配方式 === 1) {
+      modal.confirm({ title: "按自动分配建", content: 销售自动分确认, okText: "确定，分出去", cancelText: "再想想", onOk: () => void 提交() });
+      return;
+    }
+    void 提交();
+  }
+
+  async function 提交() {
     setState("saving");
     setErr("");
     // 确认完这张卡就没有输入框了：焦点原来在卡里的，送回对话框，让人接着说下一句
@@ -223,7 +253,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       onKeyDown={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
           e.preventDefault();
-          void confirm();
+          confirm();
         }
       }}
     >
@@ -419,15 +449,19 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
             setDraft({ ...draft, [k]: v, 待确认: 剩.length ? 剩 : undefined });
           };
           const 认图卡 = draft.id.startsWith("card-");
+          // 企业版卡上国家、城市总摆着（和新建向导一样能填），别的版本照旧有值才出
+          const 企卡 = !!(企 && 渠道名们);
           const 多格 = ([["country", "国家", 110], ["city", "城市", 110], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
-            .filter(([k]) => 认图卡 || draft[k] || 待.has(k));
+            .filter(([k]) => 认图卡 || draft[k] || 待.has(k) || (企卡 && (k === "country" || k === "city")));
+          const 有区域 = !!(draft.country?.trim() || draft.city?.trim());
+          const 负责人选项 = 企?.成员 ?? [];
           return (
           <>
-            <Field label="名称" 待={待.has("name") ? 点掉("name") : undefined}>
-              <Input size="small" style={{ width: 160 }} placeholder="姓名或公司名" value={draft.name} onChange={(e) => 改("name", e.target.value)} />
+            <Field label={企卡 ? "客户名称（组织 / 公司）" : "名称"} 待={待.has("name") ? 点掉("name") : undefined}>
+              <Input size="small" style={{ width: 企卡 ? 200 : 160 }} placeholder={企卡 ? "组织或公司名" : "姓名或公司名"} value={draft.name} onChange={(e) => 改("name", e.target.value)} />
             </Field>
-            <Field label="联系人" 待={待.has("contact") ? 点掉("contact") : undefined}>
-              <Input size="small" style={{ width: 140 }} placeholder="可留空" value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
+            <Field label={企卡 ? "联系人姓名" : "联系人"} 待={待.has("contact") ? 点掉("contact") : undefined}>
+              <Input size="small" style={{ width: 140 }} placeholder={企卡 ? undefined : "可留空"} value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
             </Field>
             <Field label="电话" 待={待.has("phone") ? 点掉("phone") : undefined}>
               <Input size="small" style={{ width: 150 }} placeholder="可留空" value={draft.phone} onChange={(e) => 改("phone", e.target.value)} />
@@ -437,12 +471,36 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
                 <Input size="small" style={{ width: 宽 }} placeholder="可留空" value={draft[k] ?? ""} onChange={(e) => 改(k, e.target.value)} />
               </Field>
             ))}
+            {/* 国家 / 城市写进哪一格由人定（11-04：「摩洛哥客户」分不清是客户、联系人还是项目所在地），不进备注 */}
+            {企卡 && 有区域 && (
+              <Field label="国家 / 城市填到" block>
+                <Checkbox.Group
+                  value={draft.区域去处 ?? []}
+                  options={(Object.keys(区域去处叫法) as 区域去处[]).map((k) => ({ value: k, label: 区域去处叫法[k] }))}
+                  onChange={(v) => setDraft({ ...draft, 区域去处: (v as 区域去处[]).length ? (v as 区域去处[]) : undefined })}
+                />
+              </Field>
+            )}
             <Field label={渠道名们 ? "渠道" : "来源"}>
-              <OptionInput size="small" style={{ width: 130 }} allowClear={false} value={draft.source} options={渠道名们 ? [...渠道名们] : b.sources} onChange={(v) => setDraft({ ...draft, source: v })} />
+              {/* 企业版渠道名常很长：下拉不跟输入框同宽，按内容撑开、最宽到屏幕边，长名折行显示全（11-04） */}
+              <OptionInput
+                size="small"
+                style={{ width: 渠道名们 ? 200 : 130 }}
+                allowClear={false}
+                value={draft.source}
+                options={渠道名们 ? [...渠道名们] : b.sources}
+                {...(渠道名们 ? { popupMatchSelectWidth: false } : {})}
+                onChange={(v) => setDraft({ ...draft, source: v })}
+              />
             </Field>
             {/* 企业版建成项目：首条沟通的下一步时间（开了超时回收必填）；别的版本不显示 */}
+            {渠道名们 && 企卡 && (
+              <Field label="下一步做什么">
+                <Input size="small" style={{ width: 200 }} placeholder="可留空" maxLength={200} value={draft.下一步 ?? ""} onChange={(e) => setDraft({ ...draft, 下一步: e.target.value || undefined })} />
+              </Field>
+            )}
             {渠道名们 && (
-              <Field label="下一步">
+              <Field label={企卡 ? "下一步时间" : "下一步"}>
                 <DatePicker
                   size="small"
                   style={{ width: 130 }}
@@ -454,7 +512,40 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
               </Field>
             )}
             {/* 企业版建成项目时不读「状态」（dashboard/apply.ts 的 建成项目），选了也没用：不摆下拉，直接写明会建成什么（10-30 交互审核 P0-4） */}
-            {渠道名们 ? (
+            {企卡 && 企 ? (
+              <>
+                {企.分配方式们.length > 0 && (
+                  <Field label="分配方式" block>
+                    <Select
+                      size="small"
+                      style={{ width: 160 }}
+                      placeholder="选一种"
+                      value={draft.分配方式}
+                      options={企.分配方式们.map((x) => ({ value: x.i, label: x.名 }))}
+                      onChange={(v) => setDraft({ ...draft, 分配方式: v })}
+                    />
+                    {typeof draft.分配方式 === "number" && 分配说明[draft.分配方式] && <span className="muted" style={{ fontSize: 12 }}>{分配说明[draft.分配方式]}</span>}
+                  </Field>
+                )}
+                {(企.分配方式们.length === 0 || draft.分配方式 === 0) && (
+                  <Field label="项目负责人">
+                    <Select size="small" style={{ width: 160 }} showSearch optionFilterProp="label" placeholder="选一位" value={draft.ownerId || undefined} options={负责人选项} onChange={(v) => setDraft({ ...draft, ownerId: v })} />
+                  </Field>
+                )}
+                <Field label="业务线">
+                  <Select size="small" style={{ width: 110 }} placeholder="选一条" value={draft.业务线} options={三种业务线.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 业务线: v })} />
+                </Field>
+                <Field label="当前进程">
+                  <Select size="small" style={{ width: 150 }} value={draft.节点} options={线索节点们.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 节点: v })} />
+                </Field>
+                <Field label="客户明确回复了吗" block>
+                  <Radio.Group size="small" value={draft.明确回复} onChange={(e) => setDraft({ ...draft, 明确回复: e.target.value })}>
+                    <Radio value={true}>客户明确回复了</Radio>
+                    <Radio value={false}>没有明确回复</Radio>
+                  </Radio.Group>
+                </Field>
+              </>
+            ) : 渠道名们 ? (
               <Field label="建成" block>
                 <span className="muted">负责人：我 · 阶段：线索 · {企业版字典.节点们.线索[0]} · 金额 0</span>
               </Field>

@@ -134,7 +134,8 @@ describe("给哪些工具、直连换成什么", () => {
 describe("确认新线索卡", () => {
   const 线索卡 = (补: Record<string, unknown> = {}) => ({
     id: "p1", kind: "add_lead" as const, customerId: "", customerName: "", reason: "测试",
-    name: "星河电子", contact: "周经理", phone: "13700001234", source: "展会", status: "待跟进", remark: "要样品", ...补,
+    name: "星河电子", contact: "周经理", phone: "13700001234", source: "展会", status: "待跟进", remark: "要样品",
+    分配方式: 4, 业务线: "内贸", 节点: "潜客培育", 明确回复: false, ...补,
   });
   let 展会: string;
   beforeEach(async () => {

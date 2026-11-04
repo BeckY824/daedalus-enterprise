@@ -117,12 +117,20 @@ describe("B5 隐私页", () => {
   });
 });
 
-describe("B6 客户侧栏来源", () => {
-  it("企业版只认渠道名、不回落；关着照旧 渠道 > 转介绍 > 跟进方式", async () => {
+describe("B6 客户侧栏名字上方", () => {
+  it("企业版显示客户所在国家地区（11-04 用户：从「来源」改成国家地区）；关着照旧 渠道 > 转介绍 > 跟进方式", async () => {
     const s = await 读("src/app/(app)/@pane/panes.tsx");
     expect(s).toContain("const 企业 = 企业版();");
     expect(s).toContain(
-      'source: 企业 ? c.channel?.name ?? null : c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),',
+      'source: 企业 ? 拼地址({ addrCountry: c.addrCountry, addrProvince: c.addrProvince, addrCity: c.addrCity }) || null : c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),',
     );
+  });
+  it("国家地区怎么拼：国内省市不带区、直辖市只写一遍，国外国家城市，没填空串", async () => {
+    const { 拼地址 } = await import("@/lib/enterprise/customer-v2");
+    expect(拼地址({ addrCountry: "中国", addrProvince: "广东省", addrCity: "深圳市" })).toBe("广东省 深圳市");
+    expect(拼地址({ addrCountry: "中国", addrProvince: "北京市", addrCity: "北京市" })).toBe("北京市");
+    expect(拼地址({ addrCountry: "摩洛哥", addrProvince: null, addrCity: "卡萨布兰卡" })).toBe("摩洛哥 卡萨布兰卡");
+    expect(拼地址({ addrCountry: "美国", addrProvince: null, addrCity: null })).toBe("美国");
+    expect(拼地址({ addrCountry: null, addrProvince: null, addrCity: null })).toBe("");
   });
 });

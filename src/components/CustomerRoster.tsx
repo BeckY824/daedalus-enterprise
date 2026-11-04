@@ -33,7 +33,7 @@ export type CustomerRosterData = {
     lastNote: string | null;
     /** 我名下的（「我的」页签） */
     mine?: boolean;
-    /** 卡片第一行：从哪儿来（渠道 / 转介绍 / 最近一次怎么联系的），见 @pane/panes.tsx */
+    /** 卡片第一行：桌面端是从哪儿来（渠道 / 转介绍 / 最近一次怎么联系的）；企业版是客户所在国家地区（11-04），见 @pane/panes.tsx */
     source?: string | null;
     /** 最近一条还没做的计划：「本周要跟」和右下角圆点看它 */
     nextPlanAt?: string | null;
@@ -169,7 +169,7 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
           </span>
           <span className="roster-n">{r.name}</span>
           <span className="roster-l2">
-            {/* 名字整段显示（.roster-n 不截）；最近一句是辅助，最多两行，悬停看全 */}
+            {/* 名字一行、放不下省略号，悬停看全（11-04）；最近一句是辅助，最多两行 */}
             <span className="roster-note" title={r.lastNote ?? undefined}>{r.lastNote ?? `还没跟进 · ${r.ownerName}`}</span>
             <span className={`roster-dot ${d.cls}`} title={d.说} aria-label={d.说} />
           </span>

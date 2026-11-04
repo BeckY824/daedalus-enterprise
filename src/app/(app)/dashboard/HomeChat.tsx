@@ -15,7 +15,7 @@ import Composer, { type ComposerHandle } from "./Composer";
 import { useHomeTurns } from "./useHomeTurns";
 import LeadFullNotices from "../leads/LeadFullNotices";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
-import { 新线索来源, 新线索要下一步 } from "@/components/ProposalCard";
+import { 新线索来源, 新线索要下一步, 新线索企业, type 新线索企业格 } from "@/components/ProposalCard";
 import HomeCards from "./HomeCards";
 import type { 首页卡数 } from "@/lib/project/home-cards";
 
@@ -38,7 +38,7 @@ export type 首页信号 = {
   逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string;
 };
 
-export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 产品名, 指标卡 }: {
+export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 新线索企业: 企业格, 产品名, 指标卡 }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   userName: string;
@@ -82,6 +82,8 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   渠道名们?: string[];
   /** 企业版开了超时回收：新线索卡的下一步时间必填 */
   要下一步?: boolean;
+  /** 企业版新线索卡：分配方式、项目负责人候选（和新建项目同一份，dashboard/page.tsx 取） */
+  新线索企业?: 新线索企业格;
   /** 空库时「开始」卡欢迎语里的产品名（企业版 CRM_PRODUCT_NAME，page.tsx 传）；不给 = StartCard 自己的默认名 */
   产品名?: string;
   /**
@@ -168,6 +170,7 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
   return (
     <新线索来源.Provider value={渠道名们 ?? null}>
     <新线索要下一步.Provider value={要下一步}>
+    <新线索企业.Provider value={企业格 ?? null}>
       <div className={`cli${empty ? " cli-empty" : ""}${窄 ? " cli-narrow" : ""}`}>
         {/* 首页对话列表收起了（或窗口太窄成了抽屉）：问答区左上角一颗侧栏图标把它叫回来，和列表页头上那颗是同一个。右侧 AI 面板（窄）里不摆 */}
         {!窄 && <PaneToggle 栏="chat" 位置="主区" className="pane-toggle-float" />}
@@ -183,6 +186,7 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
           对话列
         )}
       </div>
+    </新线索企业.Provider>
     </新线索要下一步.Provider>
     </新线索来源.Provider>
   );

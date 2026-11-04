@@ -39,6 +39,8 @@ export type 列<T> = ColumnType<T> & {
   默认?: boolean;
   /** true = 不进列设置，永远跟着（操作列） */
   常驻?: boolean;
+  /** true = 这一列照旧折行写完（备注这类长文，11-04 用户：「除了备注，备注信息有时候过多」）。其余列一行、省略号、悬停看全 */
+  折行?: boolean;
 };
 
 type Props<T> = {
@@ -105,20 +107,11 @@ type Props<T> = {
   /** 这一行不让勾（批量操作一律做不了的行）。企业版虚线下属的客户：只能看，勾上去批量什么都会被拦（10-25 实测 F4） */
   不可勾?: (r: T) => boolean;
   /**
-   * 每格只占一行（11-01 会议 §11，企业版客户、项目列表）：不折行，放不下打省略号，
-   * 悬停整格看全文（被截了才挂 title）。不给 = 照旧（名字类整段折行写完）
+   * 每格只占一行，放不下打省略号，悬停看全文（11-04 用户：「所有页面都是这样」，默认开）。
+   * 悬停浮层是全站的 TruncTip，被截了才出。备注列给列上的 折行；整张表不要就传 false
    */
   单行?: boolean;
 };
-
-/** 单行模式：鼠标进格子时，字被截了就把整格的字挂成 title，悬停看全；没截不挂（不给每格都冒提示） */
-function 截了挂全文(e: React.MouseEvent<HTMLElement>) {
-  const td = e.currentTarget;
-  const 截了 = [td, ...Array.from(td.querySelectorAll<HTMLElement>("*"))].some((el) => el.scrollWidth > el.clientWidth + 1);
-  const 字 = td.innerText.replace(/\s+/g, " ").trim();
-  if (截了 && 字) td.title = 字;
-  else td.removeAttribute("title");
-}
 
 const 列键 = <T,>(c: 列<T>) => String(c.key ?? c.dataIndex);
 
@@ -133,7 +126,7 @@ function 行名(r: object): string | null {
 }
 
 export default function DataList<T extends { id: string }>({
-  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = false,
+  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true,
 }: Props<T>) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -259,24 +252,12 @@ export default function DataList<T extends { id: string }>({
           // 只钉常驻的：能被收进「列」里的列不该当名字
           ...(i === 0 && c.常驻 && !c.fixed ? { fixed: "left" as const } : {}),
           // 带上列键做类名，挪到看得见 靠它找表头
-          className: [c.className, `dl-col-${列键(c)}`].filter(Boolean).join(" "),
+          // 折行：备注这类长文照旧折行；操作列（表头空）按钮不截
+          className: [c.className, `dl-col-${列键(c)}`, c.折行 ? "dl-wrap" : "", c.title === "" ? "dl-act" : ""].filter(Boolean).join(" "),
           // 操作列表头是空的，读屏念到这一格只有「列标题」；看不见的「操作」两个字给读屏用（10-27 整合第 8 条）
           ...(c.title === "" ? { title: <span className="sr-only">操作</span> } : {}),
-          // 单行：截了的格子悬停看全文（列自己的 onCell 照留）
-          ...(单行 ? {
-            onCell: (r: T, idx?: number) => {
-              const 原 = c.onCell?.(r, idx) ?? {};
-              return {
-                ...原,
-                onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
-                  截了挂全文(e);
-                  原.onMouseEnter?.(e as React.MouseEvent<HTMLTableDataCellElement>);
-                },
-              };
-            },
-          } : {}),
         })),
-    [全部列, 可见, 单行],
+    [全部列, 可见],
   );
   useEffect(() => {
     if (!待露.current) return;
