@@ -976,12 +976,12 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
-  transition: opacity var(--t-fast) var(--ease), visibility 0s linear var(--t-fast);
+  transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) var(--t-fast);
 }
 .trunc-tip.is-on {
   opacity: 1;
   visibility: visible;
-  transition: opacity var(--t-fast) var(--ease), visibility 0s;
+  transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s;
 }
 
 /* 自动列宽的表（不设 ellipsis 的 antd Table）：单元格里的长串可以从任意处断开。
