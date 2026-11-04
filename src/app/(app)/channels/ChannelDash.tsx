@@ -2,13 +2,21 @@
 
 /**
  * 渠道页的总览看板（11-03，企业版）：摆在筛选栏和列表之间，渠道们 = 列表筛出来的那一批（同一个 筛渠道()），
- * 右上角切 本月 / 本季 / 全部。数怎么算全在 lib/enterprise/channel-dash.ts，这里只摆。
+ * 右上角切 本月 / 本季 / 全部 / 自定义。数怎么算全在 lib/enterprise/channel-dash.ts，这里只摆。
+ * 三个预设三份底数都在手上，切了不回服务端；「自定义」写地址栏 view=自定义&from=&to=（读法同数据页，lib/custom-date-range.ts），
+ * 服务端按那一段多算一份。市场成员 / 市场管理多一段「进公海」（P-界面-09），只读、不跳公海。
  * 颜色都取主题变量；字一律正文色 / 次要色，不拿系列色写字。
  */
-import { useMemo, useState } from "react";
-import { Segmented, Tooltip } from "antd";
+import { useMemo, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Segmented, Select, Tooltip } from "antd";
 import { 合计文字 } from "@/lib/currency";
-import { 周期们, 周期起点, 算看板, 判够占比, 预警线索下限, type 周期, type 看板底数, type 看板渠道 } from "@/lib/enterprise/channel-dash";
+import CustomRangePicker from "@/components/CustomRangePicker";
+import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
+import {
+  周期们, 周期起点, 算看板, 判够占比, 预警线索下限, 自定义, 算进公海, 进公海明细, 原因最多,
+  type 档, type 看板底数, type 看板渠道, type 看板公海,
+} from "@/lib/enterprise/channel-dash";
 
 /** 一位小数的百分比；算不了是「—」 */
 function 百分(r: number | null): string {
@@ -28,19 +36,55 @@ const 其他色 = "var(--line-strong)";
 export default function ChannelDash({
   渠道们,
   底数,
+  段 = null,
+  公海 = null,
   筛了负责人,
   能录,
   看详情,
 }: {
   渠道们: 看板渠道[];
   底数: 看板底数;
+  /** 地址栏带着「自定义」时服务端读好的那一段；null = 没选自定义 */
+  段?: 日期段 | null;
+  /** 进公海那段（只给市场成员 / 市场管理）；null 不摆 */
+  公海?: 看板公海 | null;
   筛了负责人: boolean;
   能录: boolean;
   看详情: (id: string, 录?: boolean) => void;
 }) {
-  const [期, set期] = useState<周期>("全部");
-  const k = useMemo(() => 算看板(渠道们, 底数[期], 筛了负责人), [渠道们, 底数, 期, 筛了负责人]);
-  const 起 = 周期起点(期, new Date());
+  const router = useRouter();
+  const 路径 = usePathname();
+  const 参数 = useSearchParams();
+  const [换着, start] = useTransition();
+  const [期, set期] = useState<档>(段 ? 自定义 : "全部");
+  // 刚点「自定义」、那一份还在路上：先摆本月 1 号到今天（同服务端默认），数先空着、看板压暗
+  const 显段 = 段 ?? 读日期段();
+  const 期底 = 期 === 自定义 ? 底数.自定义 ?? {} : 底数[期];
+  const k = useMemo(() => 算看板(渠道们, 期底, 筛了负责人), [渠道们, 期底, 筛了负责人]);
+  const 起 = 期 === 自定义 ? null : 周期起点(期, new Date());
+  /** 改地址栏的 view / from / to，别的参数原样留着；不滚动、不进历史 */
+  const 写地址 = (改: { view?: string; from?: string; to?: string }) => {
+    const q = new URLSearchParams(参数.toString());
+    for (const key of ["view", "from", "to"] as const) {
+      const v = 改[key];
+      if (v) q.set(key, v);
+      else q.delete(key);
+    }
+    const qs = q.toString();
+    start(() => router.replace(qs ? `${路径}?${qs}` : 路径, { scroll: false }));
+  };
+  const 换档 = (v: 档) => {
+    set期(v);
+    if (v === 自定义) 写地址({ view: 自定义, from: 显段.from, to: 显段.to });
+    // 回到预设：去掉地址栏的那一段（预设三份本来就在手上，不用等服务端）
+    else if (参数.get("view")) 写地址({});
+  };
+  const [创建人, set创建人] = useState("");
+  const 进公海们 = useMemo(
+    () => (公海 ? 算进公海(渠道们, 期 === 自定义 ? 公海.底[自定义] : 公海.底[期], 创建人) : []),
+    [公海, 渠道们, 期, 创建人],
+  );
+  const 进合计 = 进公海们.reduce((s, r) => s + r.进, 0);
   const 转商机分母 = k.转商机.分母 === "有效线索" ? "到商机 ÷ 有效线索" : "到商机 ÷ 线索";
   const 投入空 = k.投入.length === 0;
   const 环合计 = k.环?.段.reduce((s, x) => s + x.数, 0) ?? 0;
@@ -54,12 +98,15 @@ export default function ChannelDash({
   ];
 
   return (
-    <section className="chan-dash" aria-label="渠道总览">
+    <section className={`chan-dash${换着 ? " chan-dash-busy" : ""}`} aria-label="渠道总览" aria-busy={换着 || undefined}>
       <div className="chan-dash-bar">
         <span className="chan-dash-hint">
           按筛选出的 {k.渠道数} 个渠道算{起 ? ` · ${北京日(起)} 起` : ""}
         </span>
-        <Segmented size="small" value={期} onChange={(v) => set期(v as 周期)} options={[...周期们]} aria-label="统计周期" />
+        <span className="chan-dash-when">
+          <Segmented size="small" value={期} onChange={(v) => 换档(v as 档)} options={[...周期们, 自定义]} aria-label="统计周期" />
+          {期 === 自定义 && <CustomRangePicker size="small" 段={显段} 改={(d) => 写地址({ view: 自定义, from: d.from, to: d.to })} />}
+        </span>
       </div>
 
       <div className="chan-dash-kpi">
@@ -216,6 +263,52 @@ export default function ChannelDash({
           )}
         </div>
       </div>
+
+      {公海 && (
+        <div className="chan-dash-cell chan-dash-pool">
+          <div className="chan-dash-h">
+            进公海
+            <Tooltip
+              title={`数${公海.视角 === "市场管理" ? "本人和实线下属" : "自己"}创建的线索：这段时间进公海的条数（一条只算一次，按最近那回的方式）÷ 同期在这个渠道新建的线索；`
+                + `导入时就没负责人的不算。判无效 = 还在公海、被标了无效；被退回、判无效各列最多 ${原因最多} 个原因。只看数，不进公海`}
+            >
+              <span className="chan-dash-q" tabIndex={0} aria-label="进公海怎么算">?</span>
+            </Tooltip>
+            {进合计 > 0 && <span className="chan-dash-pool-sum">共 {数(进合计)} 条</span>}
+            {公海.视角 === "市场管理" && (
+              <Select
+                size="small"
+                className="chan-dash-pool-who"
+                aria-label="创建人"
+                placeholder="全部创建人"
+                allowClear
+                showSearch={{ optionFilterProp: "label" }}
+                value={创建人 || undefined}
+                onChange={(v?: string) => set创建人(v ?? "")}
+                options={公海.创建人们.map((u) => ({ value: u.id, label: u.name }))}
+                popupMatchSelectWidth={false}
+              />
+            )}
+          </div>
+          {进公海们.length === 0 ? (
+            <p className="chan-dash-none">这段时间没有进公海的线索</p>
+          ) : (
+            <ul className="chan-dash-pool-list">
+              {进公海们.map((r) => {
+                const 明细 = 进公海明细(r);
+                const 头 = `进 ${数(r.进)} · 占 ${百分(r.占)}`;
+                return (
+                  <li key={r.id}>
+                    <span className="chan-dash-ell" title={r.name}>{r.name}</span>
+                    <b title={`${r.name}：同期新建 ${数(r.线索)} 条线索，进公海 ${数(r.进)} 条`}>{头}</b>
+                    <span className="chan-dash-ell chan-dash-pool-d" title={明细 || undefined}>{明细 || "—"}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       {k.未录投入 > 0 && (
         <div className="chan-dash-empty">

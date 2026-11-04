@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 推通知们 } from "@/lib/enterprise/feishu-push";
+import { 市场进不了详情的 } from "./market-view-db";
 
 export type 通知 = {
   /** 来源：自动分配 / 分配 / 验证 / 邀请 / 卡点 / 交接 / 满额 / 待分配 / 回收 / 将回收 / 跟进到期 / 跟进逾期 */
@@ -73,7 +74,15 @@ export async function 我的通知(userId: string, 条数 = 30): Promise<通知�
     take: Math.min(Math.max(1, 条数), 100),
     select: { id: true, kind: true, title: true, body: true, link: true, readAt: true, createdAt: true },
   });
-  return 行们.map((r) => ({ id: r.id, kind: r.kind, title: r.title, body: r.body, link: r.link, read: r.readAt !== null, createdAt: r.createdAt.toISOString() }));
+  // 市场角色：链到「已分给圈外的人」的项目详情的，改链项目列表（那一行在列表里看进度，详情页本来也挡，11-04 P-看-06）
+  const 项目id = (link: string | null) => /^\/projects\/([^/?#]+)$/.exec(link ?? "")?.[1];
+  const ids = 行们.map((r) => 项目id(r.link)).filter((x): x is string => !!x).map((x) => decodeURIComponent(x));
+  const 挡 = ids.length ? await 市场进不了详情的(userId, ids) : new Set<string>();
+  const 链 = (link: string | null) => {
+    const id = 项目id(link);
+    return id && 挡.has(decodeURIComponent(id)) ? "/projects" : link;
+  };
+  return 行们.map((r) => ({ id: r.id, kind: r.kind, title: r.title, body: r.body, link: 链(r.link), read: r.readAt !== null, createdAt: r.createdAt.toISOString() }));
 }
 
 export async function 未读通知数(userId: string): Promise<number> {

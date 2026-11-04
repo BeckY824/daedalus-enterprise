@@ -28,6 +28,7 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 有效沟通数 } from "@/lib/project/stage-gates";
 import { 读线索验证 } from "@/lib/project/lead-verify";
+import { 市场进不了详情 } from "@/lib/enterprise/market-view-db";
 import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 可选原因们, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 // 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
@@ -79,6 +80,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 已加入 = p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId);
   // 数据层（lib/team-scope.ts 看得到的项目）在「按组织看客户」开着时已经筛过；关着也按业务角色再挡一遍
   if (企业版() && !能看项目(me, { ...p, 已加入 }, org)) notFound();
+  // 市场角色：已分给圈外的人的那条只在项目页看进度，详情（含直接输网址）一律不给（11-04 P-看-06）
+  if (企业版() && (await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) notFound();
   const 能改 = 能管项目(me, p, org);
   const 能转 = 能转让项目(me, p, org);
   // 公海里同事客户的项目：只给项目本身，客户、联系人、沟通内容领了再看（lib/project/db.ts 露客户）

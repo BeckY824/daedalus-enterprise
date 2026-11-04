@@ -27,6 +27,12 @@ import { 合计, 算产出比, 算成交 } from "./channel-stats";
 
 export const 周期们 = ["本月", "本季", "全部"] as const;
 export type 周期 = (typeof 周期们)[number];
+/**
+ * 档位（11-04 P-界面-10）：三个预设之后多一个「自定义」。地址栏 view=自定义&from=&to=，读法、北京日界线、两头都含
+ * 用数据页那一份公共件（lib/custom-date-range.ts 读日期段 / 日期段界），这里只收算好的两个瞬间
+ */
+export const 自定义 = "自定义";
+export type 档 = 周期 | typeof 自定义;
 
 /** 已判定占同期总线索到这个比例，线索→商机才改用有效线索作分母 */
 export const 判够占比 = 0.5;
@@ -46,6 +52,9 @@ export function 周期起点(周期: 周期, 今: Date): Date | null {
   const 月 = 周期 === "本月" ? 墙.getUTCMonth() : Math.floor(墙.getUTCMonth() / 3) * 3;
   return new Date(Date.UTC(墙.getUTCFullYear(), 月, 1) - 北京);
 }
+
+/** 自定义那一段的真实瞬间：日期段界() 给的 开始日 00:00 到 结束日 23:59:59.999，两头都含 */
+export type 看板区间 = { from: Date; to: Date };
 
 export type 看板项目 = {
   /** 已按 项目算哪个渠道() 归好 */
@@ -69,7 +78,8 @@ export type 渠道期数 = {
   线索: number; 已判定: number; 有效: number; 商机: number; 订单: number; 成交: 币种合计[]; 投入: 币种合计[];
   起线索: number; 起有效: number; 起转商机: number;
 };
-export type 看板底数 = Record<周期, Record<string, 渠道期数>>;
+/** 自定义 只在网址带了区间时有 */
+export type 看板底数 = Record<周期, Record<string, 渠道期数>> & { 自定义?: Record<string, 渠道期数> };
 
 const 空期: 渠道期数 = { 线索: 0, 已判定: 0, 有效: 0, 商机: 0, 订单: 0, 成交: [], 投入: [], 起线索: 0, 起有效: 0, 起转商机: 0 };
 
@@ -94,12 +104,17 @@ export function 已判定(判定: string | null): boolean {
 /** 几份按币种的合计再加起来（同列表的累计成交、当前投入一个算法） */
 const 合 = (份: 币种合计[][]) => 合计(份.flat().map((x) => ({ amount: x.合计, currency: x.币种 })));
 
-/** 每个渠道 × 每个周期的底数，一次算好交给界面；界面按筛选结果再合 */
-export function 算看板底数(渠道ids: string[], 项目们: 看板项目[], 投入们: 看板投入[], 今: Date = new Date()): 看板底数 {
+/** 各档的 [起, 止]（两头都含）：预设档没有上限；自定义 = 地址栏那一段 */
+export function 看板各档(今: Date, 区间?: 看板区间 | null): [档, number, number][] {
+  const 预设 = 周期们.map((期): [档, number, number] => [期, 周期起点(期, 今)?.getTime() ?? -Infinity, Infinity]);
+  return 区间 ? [...预设, [自定义, 区间.from.getTime(), 区间.to.getTime()]] : 预设;
+}
+
+/** 每个渠道 × 每个周期的底数，一次算好交给界面；界面按筛选结果再合。带了区间多算一份 自定义 */
+export function 算看板底数(渠道ids: string[], 项目们: 看板项目[], 投入们: 看板投入[], 今: Date = new Date(), 区间?: 看板区间 | null): 看板底数 {
   const out = {} as 看板底数;
-  for (const 期 of 周期们) {
-    const 起 = 周期起点(期, 今)?.getTime() ?? -Infinity;
-    const 在 = (t: Date | null) => t !== null && t.getTime() >= 起;
+  for (const [期, 起, 止] of 看板各档(今, 区间)) {
+    const 在 = (t: Date | null) => t !== null && t.getTime() >= 起 && t.getTime() <= 止;
     const 表: Record<string, 渠道期数> = {};
     const 成交行 = new Map<string, 看板项目[]>();
     for (const id of 渠道ids) 表[id] = { ...空期 };
@@ -255,4 +270,91 @@ export function 算看板(渠道们: 看板渠道[], 底: Record<string, 渠道�
     未录投入: 未录.length,
     首个未录: 未录[0]?.id ?? null,
   };
+}
+
+/*
+ * 进公海（11-04 P-界面-09，只给市场成员 / 市场管理）：每个渠道多一段，读完就懂、不用点进任何一条。
+ * - 数什么：项目（= 线索）的进公海留痕（pool-release），一条项目一个档里只算一次，方式和原因认这一档里最近那条。
+ *   导入时没负责人直接落进公海的不算（不是「进」的，是导进来就在）。
+ * - 归谁：项目的创建人。市场成员数自己创建的，市场管理数本人 + 实线下属创建的，可按创建人筛（界面上筛，底数按人分好）。
+ * - 时间：进公海那一刻落在档里（同看板别的事件按事件时间）；占比 = 进公海条数 ÷ 同档同一批创建人在这个渠道新建的线索，
+ *   两边各按各的时间，所以早建晚进的能让占比过 100%，照实写。
+ * - 方式：离职交接（成员停用带进来的）/ 超时回收（系统收的）/ 判无效（还在公海、客户被标了无效的，认最近一回进公海）/
+ *   其余都是被退回（退回原因 = 留痕里的「回收原因：X」）。判无效的原因取线索验证里写的无效原因，没写不列。
+ */
+export const 入池方式们 = ["超时回收", "被退回", "判无效", "离职交接"] as const;
+export type 入池方式 = (typeof 入池方式们)[number];
+/** 原因列几个 */
+export const 原因最多 = 3;
+
+export type 看板入池 = { projectId: string; channelId: string | null; creatorId: string; at: Date; 方式: 入池方式; 原因: string | null };
+export type 看板线索 = { channelId: string | null; creatorId: string; createdAt: Date };
+export type 公海格 = { 线索: number; 进: number; 方式: Record<入池方式, number>; 退回因: Record<string, number>; 无效因: Record<string, number> };
+/** 档 → 渠道 → 创建人 → 格 */
+export type 公海底数 = Partial<Record<档, Record<string, Record<string, 公海格>>>>;
+
+const 空公海格 = (): 公海格 => ({ 线索: 0, 进: 0, 方式: { 超时回收: 0, 被退回: 0, 判无效: 0, 离职交接: 0 }, 退回因: {}, 无效因: {} });
+
+export function 算公海底数(渠道ids: string[], 入池们: 看板入池[], 线索们: 看板线索[], 今: Date = new Date(), 区间?: 看板区间 | null): 公海底数 {
+  const 有 = new Set(渠道ids);
+  const out: 公海底数 = {};
+  for (const [期, 起, 止] of 看板各档(今, 区间)) {
+    const 在 = (t: Date) => t.getTime() >= 起 && t.getTime() <= 止;
+    const 表: Record<string, Record<string, 公海格>> = {};
+    const 格of = (ch: string, who: string) => ((表[ch] ??= {})[who] ??= 空公海格());
+    for (const l of 线索们) if (l.channelId && 有.has(l.channelId) && 在(l.createdAt)) 格of(l.channelId, l.creatorId).线索++;
+    const 最近 = new Map<string, 看板入池>();
+    for (const x of 入池们) {
+      if (!x.channelId || !有.has(x.channelId) || !在(x.at)) continue;
+      const 旧 = 最近.get(x.projectId);
+      if (!旧 || x.at.getTime() > 旧.at.getTime()) 最近.set(x.projectId, x);
+    }
+    for (const x of 最近.values()) {
+      const g = 格of(x.channelId!, x.creatorId);
+      g.进++;
+      g.方式[x.方式]++;
+      const 因 = x.方式 === "被退回" ? g.退回因 : x.方式 === "判无效" ? g.无效因 : null;
+      if (因 && x.原因) 因[x.原因] = (因[x.原因] ?? 0) + 1;
+    }
+    out[期] = 表;
+  }
+  return out;
+}
+
+/** 交给界面的那一包：底数 + 谁在看（市场管理多一个创建人筛选，创建人们 = 本人 + 实线下属） */
+export type 看板公海 = { 底: 公海底数; 视角: "市场成员" | "市场管理"; 创建人们: { id: string; name: string }[] };
+
+export type 进公海段 = { 方式: 入池方式; 数: number; 因: { 名: string; 数: number }[] };
+export type 进公海行 = { id: string; name: string; 进: number; 线索: number; 占: number | null; 段: 进公海段[] };
+
+const 前几 = (m: Record<string, number>) =>
+  Object.entries(m).map(([名, 数]) => ({ 名, 数 })).sort((a, b) => b.数 - a.数 || a.名.localeCompare(b.名, "zh")).slice(0, 原因最多);
+
+/** 看板上的进公海那一段：渠道们 = 列表筛出来的那批；创建人 = 市场管理筛的那位（空 = 圈里全部）。只列进过公海的，多的在前 */
+export function 算进公海(渠道们: { id: string; name: string }[], 底: Record<string, Record<string, 公海格>> | undefined, 创建人 = ""): 进公海行[] {
+  const out: 进公海行[] = [];
+  for (const c of 渠道们) {
+    const 合 = 空公海格();
+    for (const [who, g] of Object.entries(底?.[c.id] ?? {})) {
+      if (创建人 && who !== 创建人) continue;
+      合.线索 += g.线索;
+      合.进 += g.进;
+      for (const k of 入池方式们) 合.方式[k] += g.方式[k];
+      for (const [n, v] of Object.entries(g.退回因)) 合.退回因[n] = (合.退回因[n] ?? 0) + v;
+      for (const [n, v] of Object.entries(g.无效因)) 合.无效因[n] = (合.无效因[n] ?? 0) + v;
+    }
+    if (!合.进) continue;
+    out.push({
+      id: c.id, name: c.name, 进: 合.进, 线索: 合.线索, 占: 比(合.进, 合.线索),
+      段: 入池方式们.filter((k) => 合.方式[k] > 0).map((k) => ({
+        方式: k, 数: 合.方式[k], 因: k === "被退回" ? 前几(合.退回因) : k === "判无效" ? 前几(合.无效因) : [],
+      })),
+    });
+  }
+  return out.sort((a, b) => b.进 - a.进);
+}
+
+/** 一行的明细文字：「超时回收 3；被退回 8：预算不足 5 · 联系不上 3；判无效 1；离职交接 2」 */
+export function 进公海明细(r: Pick<进公海行, "段">): string {
+  return r.段.map((d) => `${d.方式} ${d.数}${d.因.length ? `：${d.因.map((x) => `${x.名} ${x.数}`).join(" · ")}` : ""}`).join("；");
 }

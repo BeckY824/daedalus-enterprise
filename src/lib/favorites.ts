@@ -4,6 +4,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, type 谁 } from "@/lib/enterprise/permissions";
 import { 回避豁免, 我回避的公海项目 } from "@/lib/project/pool-owner";
+import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 
 /** 收藏的客户、项目怎么存、怎么读（左栏那两栏，改动在 app/(app)/favorites.ts）。读的这一半不放在 "use server" 文件里：那里导出的每个函数都能被浏览器直接调，一个收 userId 的读函数放过去，就成了「传别人的 id 读别人的收藏」。 */
 export const 收藏键 = (userId: string) => `favorites:${userId}`;
@@ -37,7 +38,9 @@ export async function 点得开的项目(me: 谁, ids: string[]): Promise<收藏
   });
   const org = await 权限组织();
   const 回避 = new Set((await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id));
-  const 能开 = rows.filter((p) => !回避.has(p.id) && (!企业版() || 能看项目(me, { ...p, 已加入: p.members.map((m) => m.userId) }, org)));
+  // 市场角色：已分给圈外的人的那条点开也是 404（详情页 市场进不了详情），左栏同样不留（11-04 P-看-06）
+  const 市场挡 = 企业版() ? await 市场进不了详情的(me.id, rows.map((p) => p.id)) : new Set<string>();
+  const 能开 = rows.filter((p) => !回避.has(p.id) && !市场挡.has(p.id) && (!企业版() || 能看项目(me, { ...p, 已加入: p.members.map((m) => m.userId) }, org)));
   const 按id = new Map(能开.map((p): [string, 收藏项] => [p.id, { id: p.id, name: p.name }]));
   return ids.map((id) => 按id.get(id)).filter((x): x is 收藏项 => Boolean(x));
 }

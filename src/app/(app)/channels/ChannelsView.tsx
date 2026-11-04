@@ -23,7 +23,8 @@ import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分
 import { 转化率字 } from "../overview/funnel";
 import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
-import { 筛渠道, type 看板底数 } from "@/lib/enterprise/channel-dash";
+import { 筛渠道, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
+import type { 日期段 } from "@/lib/custom-date-range";
 
 export type 渠道行 = {
   id: string;
@@ -113,6 +114,8 @@ export default function ChannelsView({
   能录 = false,
   能管 = true,
   看板底数,
+  看板段 = null,
+  公海 = null,
 }: {
   rows: Row[];
   users: 可选成员[];
@@ -127,6 +130,10 @@ export default function ChannelsView({
   能管?: boolean;
   /** 总览看板的底数（企业版才有，channel-dash.ts）；没有就不摆看板 */
   看板底数?: 看板底数 | null;
+  /** 看板选着「自定义」时那一段（服务端读好地址栏）；没选 = null */
+  看板段?: 日期段 | null;
+  /** 看板的「进公海」那段（11-04 P-界面-09，只给市场成员 / 市场管理）；别人 null 不摆 */
+  公海?: 看板公海 | null;
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -422,7 +429,7 @@ export default function ChannelsView({
         行={rows}
         亮={亮行}
         行类={(r) => (r.active ? undefined : "row-off")}
-        汇总={看板底数 && rows.length > 0 ? <ChannelDash 渠道们={rows} 底数={看板底数} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} /> : undefined}
+        汇总={看板底数 && rows.length > 0 ? <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} /> : undefined}
         空态={{
           title: "还没有渠道",
           hint: `渠道是${b.customer}从哪来的：按「渠道属性 → 渠道名称 → 来源」建一条，新建${b.customer}时从清单里选；在渠道详情里录投入，这里就算得出投入产出比。不再用的渠道停用即可。`,
