@@ -258,6 +258,8 @@ export async function 同步通讯录(源: 通讯录来源, opts: { 用户?: Act
     } catch (e) {
       return await 记上次(源, 现在, "出错", `拉${名}通讯录出错，这次一行没写，下次再试：${e instanceof Error ? e.message : String(e)}`);
     }
+    const 缺名 = 缺名字的话(源, 本);
+    if (缺名) return await 记上次(源, 现在, "出错", 缺名);
     const s = await 读通讯录设置(源);
     const 用户 = opts.用户 ?? (await 记名的人(s.开的人Id));
     try {
@@ -274,6 +276,22 @@ export async function 同步通讯录(源: 通讯录来源, opts: { 用户?: Act
   } finally {
     在同步.delete(源);
   }
+}
+
+/**
+ * 上游回来的部门 / 人没带名字（适配器拿 ID 顶上了）：多半是应用没开基本信息权限，接口照样回成功。
+ * 照写会建出一堆拿 ID 当名字的部门和账号、现有的一个也认不上（11-04 c1 干跑），所以一行不写、说清缺哪项。
+ */
+function 缺名字的话(源: 通讯录来源, 本: 通讯录): string | null {
+  const 没名 = (x: { 外部ID: string; 名: string }) => !x.名.trim() || x.名 === x.外部ID;
+  const 部门 = 本.部门们.filter(没名).length;
+  const 人 = 本.人们.filter(没名).length;
+  if (!部门 && !人) return null;
+  const 名 = 通讯录来源名[源];
+  const 权限 = 源 === "feishu" ? ["「获取部门基础信息」", "「获取用户基本信息」"] : ["通讯录部门信息读取", "通讯录成员信息读取"];
+  const 几 = [部门 ? `${部门} 个部门` : "", 人 ? `${人} 个人` : ""].filter(Boolean).join("、");
+  const 缺 = [部门 ? 权限[0] : "", 人 ? 权限[1] : ""].filter(Boolean).join("、");
+  return `${名}通讯录里有 ${几}没带名字，这次一行没写：请${名}管理员给应用开通${缺}权限、发布新版本后再同步`;
 }
 
 async function 记上次(源: 通讯录来源, 现在: Date, 结果: 通讯录结果类别, 话: string, 报告: string[] = []): Promise<通讯录一次结果> {

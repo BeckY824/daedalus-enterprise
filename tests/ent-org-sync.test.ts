@@ -335,6 +335,62 @@ describe("出错：能恢复的这次就成，恢复不了的一行不写", () =
     expect(await 库样子()).toEqual(前);
   });
 
+  /* 11-04 c1 上干跑：应用没开「获取部门基础信息」「获取用户基本信息」，飞书照样回 200，只是部门、人都不带 name。
+     照旧跑会建出一堆拿 ID 当名字的账号和部门、现有的一个也认不上，所以一行不写、说清缺哪项 */
+  const 去掉名字 = (部门: boolean, 人们: boolean): Record<string, 响应[]> => {
+    const 改: Record<string, 响应[]> = {};
+    for (const [k, v] of Object.entries(飞书录.路由)) {
+      const 是部门 = k.startsWith(部门第一页), 是人 = k.startsWith("GET /open-apis/contact/v3/users/find_by_department");
+      if (!(是部门 && 部门) && !(是人 && 人们)) continue;
+      改[k] = v.map((r) => {
+        const body = structuredClone(r.body) as { data?: { items?: Record<string, unknown>[] } };
+        for (const it of body.data?.items ?? []) delete it.name;
+        return { ...r, body };
+      });
+    }
+    return 改;
+  };
+  const 接没名字的飞书 = async (部门: boolean, 人们: boolean) => {
+    await setSetting(连接键("feishu"), { appId: "cli_fake", appSecret: "fake-secret" });
+    换联网(假网(飞书录, {}, 去掉名字(部门, 人们)).网);
+  };
+
+  it("部门、人都没名字（没开两项基本信息权限）：一行不写，话里点名两项权限", async () => {
+    const 前 = await 库样子();
+    await 接没名字的飞书(true, true);
+    const r = await 同步通讯录("feishu");
+    expect(r.结果).toBe("出错");
+    expect(r.话).toContain("一行没写");
+    expect(r.话).toContain("获取部门基础信息");
+    expect(r.话).toContain("获取用户基本信息");
+    expect(await 库样子()).toEqual(前);
+    expect((await 读通讯录设置("feishu")).上次).toMatchObject({ 结果: "出错" });
+  });
+
+  it("只有人没名字：一行不写，只点名「获取用户基本信息」", async () => {
+    const 前 = await 库样子();
+    await 接没名字的飞书(false, true);
+    const r = await 同步通讯录("feishu");
+    expect(r.结果).toBe("出错");
+    expect(r.话).toContain("获取用户基本信息");
+    expect(r.话).not.toContain("获取部门基础信息");
+    expect(await 库样子()).toEqual(前);
+  });
+
+  it("只有部门没名字：一行不写，只点名「获取部门基础信息」；开好权限后下次照常同步", async () => {
+    const 前 = await 库样子();
+    await 接没名字的飞书(true, false);
+    const r = await 同步通讯录("feishu");
+    expect(r.结果).toBe("出错");
+    expect(r.话).toContain("获取部门基础信息");
+    expect(r.话).not.toContain("获取用户基本信息");
+    expect(await 库样子()).toEqual(前);
+
+    换联网(假网(飞书录).网);
+    expect((await 同步通讯录("feishu")).结果).toBe("成功");
+    expect(await prisma.entDept.count()).toBe(4);
+  });
+
   it("写库中途出错：整个撤回（部门、账号、成员都没留下）", async () => {
     await 接飞书();
     // 库里装个触发器：写成员行时报错（部门、账号这时已经写进事务里了）

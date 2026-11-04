@@ -1191,6 +1191,26 @@ it("箭头步骤条：当前块浅蓝底蓝描边橙点，别的灰底灰点，�
   } finally { await page.close(); }
 });
 
+/* 11-04 用户截图：「线索 商机 订单」那排下面一条横滑块、右边一条竖滑块，节点排下面也一条。
+   页签负 1px 下边距把页签排撑高 1px，overflow-x:auto 连带竖向也能滚 → 先出竖条、竖条吃宽再出横条。
+   playwright 默认藏滚动条，这里按样式和尺寸量：两排都不许竖着滚、都不画滚动条（节点排靠两头小箭头和触控板横滑） */
+it("页签排、节点排都不出滚动条：页签不竖着溢出，两排都不画滚动条", async () => {
+  for (const 宽 of [1024, 1280, 1366]) {
+    const { page, errors } = await open(true, 宽);
+    try {
+      for (const sel of [".proj-stage-tabs", ".proj-stage-nodes"]) {
+        const 量 = await page.locator(sel).evaluate(e => {
+          const s = getComputedStyle(e), 条 = getComputedStyle(e, "::-webkit-scrollbar");
+          return { 竖: s.overflowY, 条宽: s.scrollbarWidth, 画条: 条.display };
+        });
+        expect({ 宽, sel, ...量 }).toEqual({ 宽, sel, 竖: "hidden", 条宽: "none", 画条: "none" });
+      }
+      expect(await page.locator(".proj-stage-nodes").evaluate(e => getComputedStyle(e).overflowX)).toBe("auto");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 /* 11-02 用户：「当前项目负责人可以选择不看之前的项目沟通……通过一个按钮可以做选择」 */
 describe("沟通卡头：隐藏接手前", () => {
   const 一条 = (id: string, content: string, 接手前: boolean) => ({ id, type: "PHONE", content, occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "2026-10-03T00:00:00.000Z", 接手前 });

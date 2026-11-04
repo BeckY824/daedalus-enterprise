@@ -1307,8 +1307,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    当前进程一圈慢呼吸；系统开了「减少动态效果」就不动。名字长了折行，不撑开节点卡 */
 .proj-stages { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .proj-stage-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
-/* U-项目-01：当前进程块里页签、节点都一行排开，太长左右滑、不折行 */
-.proj-stage-tabs { display: flex; gap: 4px; align-self: stretch; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
+/* U-项目-01：当前进程块里页签、节点都一行排开，太长左右滑、不折行。
+   11-04：两排都不画滚动条（触控板 / shift+滚轮照样横滑，节点排另有两头小箭头）；
+   overflow-x:auto 会连带竖向也能滚，页签的负 1px 下边距一撑就出竖条、竖条吃宽再出横条，所以竖向写死 hidden */
+.proj-stage-tabs { display: flex; gap: 4px; align-self: stretch; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.proj-stage-tabs::-webkit-scrollbar, .proj-stage-nodes::-webkit-scrollbar { display: none; }
 /* 「完成节点 ▼」「新增沟通」（M-节点-04 / U-项目-06）：和页签同一行靠右；窄了整组换到下一行，不挤页签 */
 .proj-stage-acts { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 6px; min-width: 0; }
 .proj-stage-tip { display: inline-flex; }
@@ -1343,7 +1346,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-strip > .proj-stage-nodes { flex: 1 1 auto; }
 .proj-stage-nodes {
   list-style: none; margin: 0; padding: 2px 0 8px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
-  min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
+  min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
 }
 .proj-stage-node, .proj-stage-exit {
   --chev: 14px;
