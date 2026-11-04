@@ -1086,6 +1086,8 @@ it("画像能改：空的下拉占位写「—」；单选、多选第一项「�
     await 角色.click();
     const 角色项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
     await expect.poll(async () => (await 角色项.allInnerTexts())[0]).toBe("—");
+    // 下拉带进场动画、多选打开时还会滚到已选项：等动画收完再点，不然会点到第二项（11-04 本机 3 次挂 1 次）
+    await page.waitForFunction(() => { const d = [...document.querySelectorAll(".ant-select-dropdown")].filter(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")); return d.length === 1 && !/(appear|enter)/.test(d[0].className); });
     await 角色项.first().click();
     await page.waitForFunction(() => ((window as unknown as { __角色存?: unknown[] }).__角色存 ?? []).length === 1);
     expect(await page.evaluate(() => (window as unknown as { __角色存: unknown[][] }).__角色存[0])).toEqual(["p1", "k1", { roles: [] }]);
@@ -1096,6 +1098,8 @@ it("画像能改：空的下拉占位写「—」；单选、多选第一项「�
     await 身份.click();
     const 身份项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
     await expect.poll(async () => (await 身份项.allInnerTexts())[0]).toBe("—");
+    // 下拉带进场动画、多选打开时还会滚到已选项：等动画收完再点，不然会点到第二项（11-04 本机 3 次挂 1 次）
+    await page.waitForFunction(() => { const d = [...document.querySelectorAll(".ant-select-dropdown")].filter(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")); return d.length === 1 && !/(appear|enter)/.test(d[0].className); });
     await 身份项.first().click();
     await page.waitForFunction(() => ((window as unknown as { __身份存?: unknown[] }).__身份存 ?? []).length === 1);
     expect(await page.evaluate(() => (window as unknown as { __身份存: unknown[][] }).__身份存[0])).toEqual(["p1", "c1", []]);
