@@ -12,6 +12,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海规则, 进公海关待办尾, 转让关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 看全部 } from "@/lib/team-scope";
+import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 
 /** 界面上出不出「待办一起转」这个勾 */
 export function 换人带待办开着(): boolean {
@@ -91,7 +92,8 @@ async function 转让带待办(
     const 别的项目 = await tx.project.count({ where: { customerId: p.customerId, ownerId: 原, id: { not: p.id } } });
     const 全算 = (!c || !!c.pool || c.salesOwnerId !== 原) && !别的项目;
     const 们 = await tx.task.findMany({
-      where: { customerId: p.customerId, ownerId: 原, done: false, ...(全算 ? {} : { title: { contains: `「${p.name}」` } }) },
+      // AI 建档撞号的提醒是给原负责人本人的，转让时不带也不关（同 carry-over-db 带走一位）
+      where: { customerId: p.customerId, ownerId: 原, done: false, NOT: { title: { endsWith: 撞号提醒尾 } }, ...(全算 ? {} : { title: { contains: `「${p.name}」` } }) },
       select: { id: true, title: true },
     });
     if (!们.length) return 0;
