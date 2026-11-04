@@ -183,7 +183,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
       case "级别":
         return <Select aria-label={名} style={满宽} allowClear placeholder="选级别" value={字 || undefined} options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} onChange={(x?: string) => 改(k, x ?? null)} />;
       case "合同状态":
-        return <Select aria-label={名} style={满宽} value={字 || undefined} placeholder="选合同状态" options={合同状态们.map((x) => ({ value: x, label: x }))} onChange={(x: string) => 改(k, x)} />;
+        return <Select aria-label={名} style={满宽} allowClear value={字 || undefined} placeholder={未选占位} options={[不填项, ...合同状态们.map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
       case "联系人":
         return <Select aria-label={名} style={满宽} allowClear placeholder="选联系人" value={字 || undefined} options={联系人们.map((c) => ({ value: c.id, label: c.position ? `${c.name} · ${c.position}` : c.name }))} onChange={(x?: string) => 改(k, x ?? null)} />;
       case "渠道":

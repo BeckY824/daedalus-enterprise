@@ -2,7 +2,7 @@
  * 项目上的痛点标注、合同状态（企业版，迁移 101）的纯规矩：选项、默认值、编辑项目交上来的值怎么认。
  * 不碰库，界面、db.ts 改项目、必填判定共用。项目方案是附件（tag「方案」），规矩见 enterprise/customer-v2.ts 项目附件分类们。
  *
- * 合同状态默认「起草中」：新建项目写进去；老项目库里是空的，界面上按「起草中」显示（只是显示兜底，不改老数据）
+ * 合同状态默认「起草中」：新建项目写进去；库里空的（老项目、或用户选了「—」）界面显示「—」（11-04 用户：空值统一「—」、下拉能回到「—」）
  */
 
 /** 合同状态七项，顺序固定（界面下拉就按这个排） */
@@ -21,9 +21,9 @@ export function 新项目默认值(企业: boolean): { contractStatus?: 合同�
   return 企业 ? { contractStatus: 默认合同状态 } : {};
 }
 
-/** 显示用：库里空的（老项目）、认不出的都按默认「起草中」 */
-export function 合同状态显示(存的: string | null | undefined): 合同状态 {
-  return 是合同状态(存的) ? 存的 : 默认合同状态;
+/** 显示用：库里空的、认不出的都当没填（null，界面写「—」） */
+export function 合同状态显示(存的: string | null | undefined): 合同状态 | null {
+  return 是合同状态(存的) ? 存的 : null;
 }
 
 /** 痛点标注最多几个字：多行自由文本，比备注宽一些 */
@@ -35,8 +35,8 @@ export const 新字段键 = ["painPoints", "contractStatus"] as const;
 /**
  * 编辑项目交上来的痛点标注、合同状态 → 要存的值（改项目 合进 新 里比变没变）。
  *   痛点标注：没传 = 原样；只去首尾空白（中间换行留着），空 = 清掉；超长报错（不悄悄截断）
- *   合同状态：没传 = 原样；空 = 回到默认「起草中」（这格不让空着）；不在七项里报错；
- *             和现在显示的一样（含老项目空着显示「起草中」）= 原样
+ *   合同状态：没传 = 原样；空 = 清掉（显示「—」）；不在七项里报错；
+ *             和现在显示的一样 = 原样
  */
 export function 项目新字段改成(
   patch: Partial<Record<keyof 项目新字段, unknown>>,
@@ -51,9 +51,9 @@ export function 项目新字段改成(
   }
   let contractStatus = 原.contractStatus;
   if (patch.contractStatus !== undefined) {
-    const v = patch.contractStatus === null || patch.contractStatus === "" ? 默认合同状态 : patch.contractStatus;
-    if (!是合同状态(v)) return { ok: false, error: `合同状态「${String(v)}」认不出来，从下拉里选一个` };
-    // 和现在显示的一样就不动：老项目库里是空、界面显示「起草中」原样交回来，不算改（不写库、不过字段权限）
+    const v = patch.contractStatus === null || patch.contractStatus === "" ? null : patch.contractStatus;
+    if (v !== null && !是合同状态(v)) return { ok: false, error: `合同状态「${String(v)}」认不出来，从下拉里选一个` };
+    // 和现在显示的一样就不动（不写库、不过字段权限）：空着又交「—」、选了原来那项都算没改
     if (v !== 合同状态显示(原.contractStatus)) contractStatus = v;
   }
   return { ok: true, 值: { painPoints, contractStatus } };
