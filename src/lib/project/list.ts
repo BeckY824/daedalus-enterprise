@@ -16,11 +16,13 @@ import { 首页卡范围 } from "./home-cards-db";
 import { 字典of, 阶段与进程, 阶段们, 结局们of, 同名们, 本套名, type 阶段字典 } from "./stage-dict";
 import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
-import { 待我复核的 } from "./lead-verify";
+import { 待我复核的, 验证结果叫法, 实际待, 无效交给 } from "./lead-verify";
+import { 读市场身份 } from "@/lib/enterprise/market-view-db";
+import { 市场项目条件, 只看进度 } from "@/lib/enterprise/market-view";
 import { 历史负责人们, 我回避的公海项目, 回避豁免 } from "./pool-owner";
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
-export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string };
+export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string };
 
 /**
  * 按阶段、进程筛（10-30 用户：「项目页面没有关于进程，阶段的筛选选项」）。和列表上的显示同一套认法（阶段与进程）：
@@ -72,9 +74,13 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 卡的圈 = 卡 ? await 首页卡范围(me) : undefined;
   const 字典 = 字典of(企);
   const 阶进 = 阶段进程条件(sp, 字典);
-  const 并且 = [
+  // 企业版市场视角（11-04 P-界面-05）：市场成员 = 自己负责的 ∪ 自己建的已分出去的；市场管理 = 本人 + 实线下属，可按创建人筛；公海的都不列
+  const 市场 = 企 ? await 读市场身份(me.id) : null;
+  const 创建人 = 市场?.视角 === "市场管理" && typeof sp.creator === "string" && 市场.圈.includes(sp.creator) ? sp.creator : "";
+  const 并且: Prisma.ProjectWhereInput[] = [
     ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的圈 ? [卡的圈] : [])] : []),
     ...阶进.where,
+    ...(市场 ? [市场项目条件(me.id, 市场.圈, 创建人)] : []),
   ];
   // 企业版 C-01：公海里我是历史负责人的项目我看不到（总管理 / 管理员不算，lib/project/pool-owner.ts 回避豁免）
   const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
@@ -97,6 +103,10 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
       exceptionCategory: { select: { name: true } },
       channel: { select: { name: true } },
       logs: 算超时要的.logs,
+      ...(市场 ? {
+        entLeadVerify: { select: { verdict: true, pending: true, salesAck: true } },
+        members: { where: { userId: me.id, inviteStatus: "JOINED" }, select: { userId: true } },
+      } : {}),
     },
   });
   // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
@@ -120,6 +130,18 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     企 ? 待我复核的(me) : Promise.resolve([]),
   ]);
   const 名字 = new Map(人.map((u) => [u.id, u.name]));
+  // 市场视角：等我拍板的市场复核那几条照旧能进详情（复核要看来龙去脉）；验证结果的「待」按规则实际交给谁算（同详情页）
+  const 我复核 = new Set(待复核.filter((r) => r.步 === "市场复核").map((r) => r.projectId));
+  const 交给 = 市场 ? await 无效交给(市场.org) : "总管理终判";
+  const 市场格 = (p: (typeof rows)[number]): Pick<项目行, "只看进度" | "验证结果"> => {
+    if (!市场) return {};
+    const v = (p as { entLeadVerify?: { verdict: string; pending: string | null; salesAck: string | null } | null }).entLeadVerify;
+    const 已加入 = ((p as { members?: { userId: string }[] }).members ?? []).map((m) => m.userId);
+    return {
+      只看进度: 只看进度(市场.圈, me.id, { ownerId: p.ownerId, 已加入 }, 我复核.has(p.id)),
+      验证结果: v ? 验证结果叫法({ 判定: v.verdict, 待: 实际待(v.pending, 交给), 终验: v.salesAck }) : p.phase === "线索" && !p.result ? "暂未验证" : null,
+    };
+  };
   // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）
   const 露 = (p: (typeof rows)[number]) => 露客户(me, p, 可见);
   const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))).map((p) => ({
@@ -133,6 +155,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
     ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
+    ...市场格(p),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(),
   }));
   return {
@@ -147,7 +170,9 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     // 企业版线索验证（P12）：等我复核 / 终验 / 认领的线索
     待复核们: 待复核.map((r) => ({ ...r, 更新于: r.更新于.toISOString() })),
-    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程 },
+    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程, creator: 创建人 },
+    // 市场视角（null = 别的角色，界面照旧）；市场管理的「创建人」筛选候选 = 本人 + 实线下属
+    市场: 市场 ? { 视角: 市场.视角, 创建人们: 市场.视角 === "市场管理" ? await prisma.user.findMany({ where: { id: { in: 市场.圈 } }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [] } : null,
   };
 }
 
@@ -180,9 +205,11 @@ export type 名单项目 = {
  * 不另开权限口子。不跑超时回收（那是项目页列表的事，详情页每点一个都扫一遍太重）
  */
 export async function 读名单项目(me: { id: string; role?: string }, 字典: 阶段字典): Promise<{ rows: 名单项目[]; 取到上限: boolean }> {
+  // 市场视角：名单和项目页同一圈，但「只看进度」的那些点不进详情，名单里就不列（market-view.ts）
+  const 市场 = 企业版() ? await 读市场身份(me.id) : null;
   // 公海项目不进名单（企业版公海只在 /pool，和项目页默认列表一样）；历史负责人回避的都在公海里，也就不用另外排
   const rows = await prisma.project.findMany({
-    where: { pooledAt: null },
+    where: 市场 ? { AND: [{ pooledAt: null }, 市场项目条件(me.id, 市场.圈), { OR: [{ ownerId: { in: 市场.圈 } }, { members: { some: { userId: me.id, inviteStatus: "JOINED" } } }] }] } : { pooledAt: null },
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
     select: {

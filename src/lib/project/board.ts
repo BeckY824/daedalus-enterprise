@@ -38,6 +38,10 @@ export type 项目行 = {
   项目来源?: string | null;
   /** 企业版（P11 定稿 -2 版，迁移 093）：项目级别 S / A / B / C，null = 没分级；别的版本不给 */
   level?: string | null;
+  /** 企业版市场视角（11-04 P-看-06）：已分给圈外的人，列表看进度、点不进详情（market-view.ts 只看进度）；别的角色不给 */
+  只看进度?: boolean;
+  /** 企业版市场视角（P-界面-05）：线索验证结果（lead-verify.ts 验证结果叫法）；没走过验证、也不在线索阶段 = null；别的角色不给 */
+  验证结果?: string | null;
   amount: number;
   currency: string;
   updatedAt: string;

@@ -39,6 +39,8 @@ export type 列<T> = ColumnType<T> & {
   默认?: boolean;
   /** true = 不进列设置，永远跟着（操作列） */
   常驻?: boolean;
+  /** true = 列设置里照列着、勾着，但灰掉不让取消（11-04 P-界面-08 市场角色项目页：项目、阶段、进程、验证结果、负责人锁定）。存的设置里藏过也照样显示 */
+  锁定?: boolean;
   /** true = 这一列照旧折行写完（备注这类长文，11-04 用户：「除了备注，备注信息有时候过多」）。其余列一行、省略号、悬停看全 */
   折行?: boolean;
 };
@@ -193,12 +195,14 @@ export default function DataList<T extends { id: string }>({
     存完之后新加的列：存的时候还不存在，按它自己的默认值补上，不然加了列的人永远看不到新列。
     藏起来的默认列记成「-键」，不然它也被当成新加的列补回来、永远藏不住（见 lib/list-select 的 算可见列）
   */
-  const 可见 = useMemo(
-    () => (存的 ? 算可见列(可选的.map((c) => ({ 键: 列键(c), 默认显示: c.默认 !== false })), 存的) : 默认可见),
-    [存的, 默认可见, 可选的],
-  );
+  const 锁定的 = useMemo(() => 可选的.filter((c) => c.锁定).map(列键), [可选的]);
+  const 可见 = useMemo(() => {
+    const 算 = 存的 ? 算可见列(可选的.map((c) => ({ 键: 列键(c), 默认显示: c.默认 !== false })), 存的) : 默认可见;
+    return 锁定的.length ? [...new Set([...算, ...锁定的])] : 算;
+  }, [存的, 默认可见, 可选的, 锁定的]);
 
   function 切列(k: string, 显示: boolean) {
+    if (锁定的.includes(k)) return;
     存列(切换后存(可见, 存的, k, 显示));
     if (显示) 待露.current = k;
   }
@@ -300,12 +304,13 @@ export default function DataList<T extends { id: string }>({
                 set列单开着(开);
               }}
               menu={{
-                items: 可选的.map((c) => {
+                // 常驻又锁定的（第一列「项目」）也列出来、灰着勾上：人一眼看得到哪几列是定死的
+                items: 全部列.filter((c) => !c.常驻 || c.锁定).map((c) => {
                   const k = 列键(c);
                   return {
                     key: k,
                     label: (
-                      <Checkbox checked={可见.includes(k)} onChange={(e) => 切列(k, e.target.checked)}>
+                      <Checkbox checked={c.常驻 || 可见.includes(k)} disabled={c.锁定} onChange={(e) => 切列(k, e.target.checked)}>
                         {c.列名 ?? String(c.title)}
                       </Checkbox>
                     ),
@@ -356,7 +361,11 @@ export default function DataList<T extends { id: string }>({
         rowClassName={(r) => [新来的.includes(r.id) || 亮?.includes(r.id) ? "row-fresh" : "", 行类?.(r) ?? ""].filter(Boolean).join(" ")}
         onRow={
           行链接 || 行点击
-            ? (r) => ({
+            ? (r) => {
+              // 行链接给了空串、又没有 行点击 的行：点不动（11-04 P-看-06 市场角色「只看进度」的行），不预取、不变手形
+              const 链 = 行链接?.(r);
+              if (链 === "" && !行点击) return {};
+              return {
                 onClick: (e) => {
                   // 点在按钮、链接、勾选框上时不算「点这一行」
                   if ((e.target as HTMLElement).closest("a, button, .ant-checkbox-wrapper, .ant-select, .ant-dropdown-trigger")) return;
@@ -368,10 +377,11 @@ export default function DataList<T extends { id: string }>({
                   else 行点击?.(r);
                 },
                 // 停在哪一行就先把那一页整页取回来，点下去不用再等服务器（10-27，lib/prefetch-full）
-                onMouseEnter: 行链接 ? () => 预取.进(行链接(r)) : undefined,
-                onMouseLeave: 行链接 ? 预取.出 : undefined,
+                onMouseEnter: 链 ? () => 预取.进(链) : undefined,
+                onMouseLeave: 链 ? 预取.出 : undefined,
                 style: { cursor: "pointer" },
-              })
+              };
+            }
             : undefined
         }
         pagination={

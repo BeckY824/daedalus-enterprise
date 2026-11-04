@@ -79,14 +79,14 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null,
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null, 市场 = null,
 }: {
   行: 项目行[];
   列: 看板一列[];
   取到上限: boolean;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string };
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string };
   /** 服务端的 企业版()：结局叫法跟着字典 */
   企业版?: boolean;
   /** 企业版组织规则里改过的出口叫法 */
@@ -114,6 +114,11 @@ export default function ProjectsView({
   能新建?: boolean;
   /** 企业版：我能处理、名下还有东西没交走的离职成员几位（11-03 B7-2）；null 不摆；0 = 我是谁的直属上级，摆入口不带数 */
   待交接?: number | null;
+  /**
+   * 企业版市场角色（11-04 P-界面-05 / 08）：默认 9 列、5 列锁定、多一列「验证结果」；市场管理多一个「创建人」筛选。
+   * 已分给圈外的（只看进度）列表、看板里看得到，点不进详情。null = 别的角色，照旧
+   */
+  市场?: { 视角: "市场成员" | "市场管理"; 创建人们: { id: string; name: string }[] } | null;
 }) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -218,7 +223,7 @@ export default function ProjectsView({
   const 无 = <span style={{ color: "var(--text-muted)" }}>{空值符}</span>;
   // 企业版默认只摆 7 列（项目、客户、进程、下一步时间、金额、负责人、回公海日），其余收在「列」里（默认: false）；1366 宽不横向滚
   const 收起 = 企业版 ? { 默认: false } : {};
-  const 列表: 列<项目行>[] = [
+  const 普通列表: 列<项目行>[] = [
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「进程」挤成两个字一行
     // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）；企业版每格一行、放不下省略号悬停看全（11-01 会议 §11，DataList 单行）
     { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string) => <span className="fulltext" title={v}>{v}</span> },
@@ -253,6 +258,24 @@ export default function ProjectsView({
       )),
     }] : []),
   ];
+  // 市场角色的项目页（P-界面-05 / 08）：默认 项目、客户、阶段、进程、验证结果、负责人、金额、渠道、最近更新；
+  // 项目、阶段、进程、验证结果、负责人锁定（列设置里灰着勾上），其余照旧收在「列」里。新线索页照原来的列
+  const 市场列 = 企业版 && !!市场 && !新线索;
+  const 键of = (c: 列<项目行>) => String(c.key ?? c.dataIndex);
+  const 找列 = (k: string) => 普通列表.find((c) => 键of(c) === k);
+  const 市场默认 = ["name", "customer", "phase", "node", "verify", "owner", "amount", "source", "updatedAt"];
+  const 市场锁定 = new Set(["name", "phase", "node", "verify", "owner"]);
+  const 验证列: 列<项目行> = { title: "验证结果", key: "verify", width: 96, render: (_, r) => (有值(r.验证结果) ? <span className="fulltext" title={r.验证结果}>{r.验证结果}</span> : 无) };
+  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, render: (_, r) => (r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) };
+  const 列表: 列<项目行>[] = 市场列
+    ? [
+        ...市场默认.map((k) => (k === "verify" ? 验证列 : k === "owner" ? 负责人列 : 找列(k))).filter((c): c is 列<项目行> => !!c),
+        ...普通列表.filter((c) => !市场默认.includes(键of(c))).map((c) => ({ ...c, 默认: false })),
+      ].map((c) => {
+        const k = 键of(c);
+        return 市场默认.includes(k) ? { ...c, 默认: true, ...(市场锁定.has(k) ? { 锁定: true } : {}) } : c;
+      })
+    : 普通列表;
 
   // 进程下拉：选了阶段只列这一阶段的节点 + 没走成的出口（线索流失 / 丢单 / 异常状态；成功交付也算结局列上）；没选阶段按阶段分组。
   // 新线索页只有线索阶段。值：节点名 / 结局值（服务端 阶段进程条件 认），显示用字典的叫法
@@ -281,6 +304,19 @@ export default function ProjectsView({
           value={f.ownerId || undefined}
           onChange={(v) => apply({ ownerId: v ?? "" })}
           options={成员选项(users)}
+        />
+      )}
+      {市场?.视角 === "市场管理" && (
+        <Select
+          style={{ width: 126 }}
+          aria-label="创建人"
+          placeholder="全部创建人"
+          allowClear
+          showSearch={{ optionFilterProp: "label" }}
+          value={f.creator || undefined}
+          onChange={(v?: string) => apply({ creator: v ?? "" })}
+          options={市场.创建人们.map((u) => ({ value: u.id, label: u.name }))}
+          popupMatchSelectWidth={false}
         />
       )}
       {!新线索 && (
@@ -350,13 +386,15 @@ export default function ProjectsView({
       {看法 === "列表" ? (
         <DataList<项目行>
           // 企业版默认只摆 7 列（1366 宽不横滚），换个键让已存的旧列设置回到新默认
-          页={企业版 ? (新线索 ? "ent-leads-v2" : "ent-projects") : "projects"}
+          页={企业版 ? (新线索 ? "ent-leads-v2" : 市场列 ? "ent-projects-market" : "ent-projects") : "projects"}
           单行={企业版}
           列={列表}
           行={行}
           空库={行.length === 0 && !在筛}
           加载中={pending}
-          行链接={(r) => `/projects/${r.id}`}
+          // 只看进度（已分给圈外的人）：行在、点不进详情（服务端详情页另挡，P-看-06）
+          行链接={(r) => (r.只看进度 ? "" : `/projects/${r.id}`)}
+          行类={(r) => (r.只看进度 ? "row-readonly" : "")}
           空态={
             新线索
               ? {
@@ -402,24 +440,27 @@ export default function ProjectsView({
                     {c.行.map((r) => {
                       const 异常 = r.result === "异常状态";
                       const 小字 = 卡片小字(r, 字典);
+                      // 只看进度（市场角色、已分给圈外的人）：卡片照摆、点不进详情（P-看-06）
+                      const 能进 = !r.只看进度;
+                      const 去 = () => 能进 && router.push(`/projects/${r.id}`);
                       return (
                         <div
                           key={r.id}
-                          className="pipe-card"
+                          className={能进 ? "pipe-card" : "pipe-card pipe-card-ro"}
                           style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色] }}
-                          tabIndex={0}
-                          role="link"
-                          title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${小字}`}
-                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}`}
-                          onClick={() => router.push(`/projects/${r.id}`)}
-                          onMouseEnter={() => 预取.进(`/projects/${r.id}`)}
-                          onMouseLeave={预取.出}
-                          onFocus={() => 预取.进(`/projects/${r.id}`)}
-                          onBlur={预取.出}
+                          tabIndex={能进 ? 0 : undefined}
+                          role={能进 ? "link" : undefined}
+                          title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${小字}${能进 ? "" : " · 已分给他人，只看进度"}`}
+                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}${能进 ? "" : "，已分给他人，只看进度"}`}
+                          onClick={去}
+                          onMouseEnter={能进 ? () => 预取.进(`/projects/${r.id}`) : undefined}
+                          onMouseLeave={能进 ? 预取.出 : undefined}
+                          onFocus={能进 ? () => 预取.进(`/projects/${r.id}`) : undefined}
+                          onBlur={能进 ? 预取.出 : undefined}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
+                            if (能进 && (e.key === "Enter" || e.key === " ")) {
                               e.preventDefault();
-                              router.push(`/projects/${r.id}`);
+                              去();
                             }
                           }}
                         >

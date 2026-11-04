@@ -2513,6 +2513,16 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .chan-dash-top b { text-align: right; }
 .chan-dash-top-bar { display: block; height: 10px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
 .chan-dash-top-bar i { display: block; height: 100%; border-radius: 3px; background: var(--brand); }
+/* 右上角时间：分段 + 「自定义」的日期段一排放（11-04 P-界面-10），1024 也不折 */
+.chan-dash-when { display: inline-flex; align-items: center; gap: var(--s2); flex: none; max-width: 100%; }
+.chan-dash-busy > :not(.chan-dash-bar) { opacity: 0.55; transition: opacity var(--t-fast) var(--ease); }
+/* 进公海（11-04 P-界面-09）：一个渠道一行——名字 | 进几条·占多少 | 方式和原因，放不下「…」悬停看全 */
+.chan-dash-pool-sum { font-weight: 400; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.chan-dash-pool-who { width: 132px; margin-left: auto; font-weight: 400; }
+.chan-dash-pool-list { display: flex; flex-direction: column; gap: 6px; max-height: 232px; overflow-y: auto; margin: 0; padding: 0; list-style: none; font-size: var(--fs-min); color: var(--ink); }
+.chan-dash-pool-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 2.6fr); align-items: center; gap: var(--s3); }
+.chan-dash-pool-list b { font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chan-dash-pool-d { color: var(--text-muted); }
 .chan-dash-empty { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; padding: var(--s2) var(--s4); border: 1px dashed var(--line-strong); border-radius: var(--r-card); font-size: var(--fs-note); color: var(--text-muted); }
 @container (max-width: 900px) {
   .chan-dash-kpi { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -2688,6 +2698,9 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .pipe-card { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--r-ctl);
   padding: var(--s2) var(--s3); margin-bottom: var(--s2); cursor: grab; }
 .pipe-card:hover { border-color: var(--line-strong); }
+/* 只看进度（市场角色、已分给圈外的人，P-看-06）：卡片照摆、点不进详情，不给手型 */
+.pipe-card.pipe-card-ro { cursor: default; }
+.pipe-card.pipe-card-ro:hover { border-color: var(--line); }
 .pipe-card:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .pipe-card-t { font-weight: 500; color: var(--ink); } /* 再加 .fulltext：一行、省略号、悬停看全文（11-04） */
 .pipe-card-m { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: var(--s2); margin-top: var(--s1); }

@@ -8,6 +8,9 @@
  *   - 环形图：多种属性按属性；属性单选按负责人（只一个负责人也摆）；筛了负责人收起；超过 5 段并成「其他」
  *   - 筛渠道 和列表同一份；全部周期的数和列表的关联项目 / 商机 / 订单 / 累计成交对得上（读库）
  *   - 未录投入的个数和第一个（去补录跳它）
+ *   - 自定义（11-04 P-界面-10）：带了区间多算一份「自定义」，两头都含（开始日 00:00、结束日 23:59:59.999）；不带不算
+ *   - 进公海（11-04 P-界面-09）：一条项目一档只算一次、认最近那回；四种方式；退回 / 无效原因前三；占比 = 进 ÷ 同档同创建人新建；
+ *     创建人筛选；读库按 creatorId ∈ 圈、导入时没负责人的不算、判无效只认还在公海且客户标了无效的最近那回
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,11 +21,13 @@ import { resetDb } from "./reset";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
-import { 读看板底数 } from "@/lib/enterprise/channel-dash-db";
+import { 读看板底数, 读公海底数 } from "@/lib/enterprise/channel-dash-db";
 import {
   周期起点, 商机时间, 订单时间, 算看板底数, 算看板, 筛渠道, 环形of, 判够, 预警线索下限,
-  type 看板项目, type 看板渠道, type 渠道期数,
+  算公海底数, 算进公海, 进公海明细, 看板各档,
+  type 看板项目, type 看板渠道, type 渠道期数, type 看板入池,
 } from "@/lib/enterprise/channel-dash";
+import { 无主入池理由 } from "@/lib/enterprise-import/project-target";
 
 const Z = (s: string) => new Date(s);
 /** 北京时间写法：「2026-11-01 00:00」→ 那一刻 */
@@ -221,6 +226,98 @@ describe("纯函数", () => {
   });
 });
 
+describe("自定义时段", () => {
+  // 日期段界() 给的那一段：11-01 00:00 到 11-02 23:59:59.999（北京）
+  const 区间 = { from: 京("2026-11-01 00:00"), to: new Date(京("2026-11-03 00:00").getTime() - 1) };
+
+  it("看板各档：不带区间只有三档；带了多一档自定义，两头都含；预设档没上限", () => {
+    const 今 = 京("2026-11-03 10:00");
+    expect(看板各档(今).map(([k]) => k)).toEqual(["本月", "本季", "全部"]);
+    const 档 = 看板各档(今, 区间);
+    expect(档.map(([k]) => k)).toEqual(["本月", "本季", "全部", "自定义"]);
+    expect(档[3]).toEqual(["自定义", 区间.from.getTime(), 区间.to.getTime()]);
+    expect(档[0][2]).toBe(Infinity);
+  });
+
+  it("算看板底数：自定义按那一段算，开始日零点、结束日最后一毫秒都算，前后一毫秒都不算；不带区间没有这一份", () => {
+    const 今 = 京("2026-11-03 10:00");
+    const 项目们 = [
+      项({ channelId: "a", createdAt: 区间.from }),
+      项({ channelId: "a", createdAt: 区间.to }),
+      项({ channelId: "a", createdAt: new Date(区间.from.getTime() - 1) }),
+      项({ channelId: "a", createdAt: new Date(区间.to.getTime() + 1) }),
+      项({ channelId: "a", phase: "商机", createdAt: 京("2026-09-01 10:00"), 节点们: [{ toPhase: "商机", at: 京("2026-11-02 12:00") }] }),
+    ];
+    const 投入们 = [
+      { channelId: "a", amount: 100, currency: "CNY", date: 京("2026-11-02 00:00") },
+      { channelId: "a", amount: 999, currency: "CNY", date: 京("2026-11-03 00:00") },
+    ];
+    const 底 = 算看板底数(["a"], 项目们, 投入们, 今, 区间);
+    expect(底.自定义?.a).toMatchObject({ 线索: 2, 商机: 1, 投入: [{ 币种: "CNY", 合计: 100 }] });
+    expect(底.本月.a).toMatchObject({ 线索: 3 });
+    expect(算看板底数(["a"], 项目们, 投入们, 今).自定义).toBeUndefined();
+  });
+});
+
+describe("进公海", () => {
+  const 今 = 京("2026-11-03 10:00");
+  const 池 = (o: Partial<看板入池> & { projectId: string }): 看板入池 => ({
+    channelId: "a", creatorId: "u1", at: 京("2026-11-02 10:00"), 方式: "被退回", 原因: null, ...o,
+  });
+  const 线 = (n: number, o: { channelId?: string; creatorId?: string; createdAt?: Date } = {}) =>
+    Array.from({ length: n }, () => ({ channelId: "a", creatorId: "u1", createdAt: 京("2026-11-01 10:00"), ...o }));
+
+  it("算公海底数：一条项目一档只算一次、认这一档里最近那回；不在清单的渠道、没渠道的不算；线索按创建人分", () => {
+    const 底 = 算公海底数(["a", "b"], [
+      // p1：10 月超时回收、11 月又被退回 → 本月算被退回、全部也只算一次（最近那回）
+      池({ projectId: "p1", at: 京("2026-10-10 10:00"), 方式: "超时回收" }),
+      池({ projectId: "p1", at: 京("2026-11-02 10:00"), 方式: "被退回", 原因: "预算不足" }),
+      池({ projectId: "p2", 方式: "判无效", 原因: "空号" }),
+      池({ projectId: "p3", creatorId: "u2", 方式: "离职交接" }),
+      池({ projectId: "p4", channelId: "zz" }),
+      池({ projectId: "p5", channelId: null }),
+    ], [...线(4), ...线(2, { creatorId: "u2" }), ...线(3, { createdAt: 京("2026-08-01 10:00") })], 今);
+    expect(底.本月?.a?.u1).toMatchObject({ 线索: 4, 进: 2, 方式: { 超时回收: 0, 被退回: 1, 判无效: 1, 离职交接: 0 }, 退回因: { 预算不足: 1 }, 无效因: { 空号: 1 } });
+    expect(底.本月?.a?.u2).toMatchObject({ 线索: 2, 进: 1, 方式: { 离职交接: 1 } });
+    expect(底.本季?.a?.u1).toMatchObject({ 线索: 4, 进: 2, 方式: { 超时回收: 0, 被退回: 1 } });
+    expect(底.全部?.a?.u1).toMatchObject({ 线索: 7, 进: 2 });
+    expect(底.本月?.zz).toBeUndefined();
+    expect(底.自定义).toBeUndefined();
+    // 自定义只框 10 月那回：p1 在那一段算超时回收
+    const 段 = 算公海底数(["a"], [池({ projectId: "p1", at: 京("2026-10-10 10:00"), 方式: "超时回收" }), 池({ projectId: "p1", 方式: "被退回" })], [], 今,
+      { from: 京("2026-10-01 00:00"), to: new Date(京("2026-11-01 00:00").getTime() - 1) });
+    expect(段.自定义?.a?.u1).toMatchObject({ 进: 1, 方式: { 超时回收: 1, 被退回: 0 } });
+  });
+
+  it("算进公海：按渠道合创建人；创建人筛选；只列进过的、多的在前；原因各取前三（同数按名字）；占比可以超过 100%", () => {
+    const 入 = [
+      ...["预算不足", "预算不足", "联系不上", "联系不上", "不需要", "重复"].map((原因, i) => 池({ projectId: `r${i}`, 原因 })),
+      池({ projectId: "x1", 方式: "超时回收" }),
+      池({ projectId: "x2", 方式: "判无效", 原因: "空号", creatorId: "u2" }),
+      池({ projectId: "y1", channelId: "b", 方式: "离职交接" }),
+      池({ projectId: "y2", channelId: "b", 方式: "离职交接" }),
+    ];
+    const 底 = 算公海底数(["a", "b", "c"], 入, [...线(10), ...线(5, { creatorId: "u2" }), ...线(1, { channelId: "b" })], 今).本月!;
+    const 渠道们 = [{ id: "c", name: "渠道c" }, { id: "b", name: "渠道b" }, { id: "a", name: "渠道a" }];
+    const 全 = 算进公海(渠道们, 底);
+    expect(全.map((r) => r.id)).toEqual(["a", "b"]);
+    expect(全[0]).toMatchObject({ 进: 8, 线索: 15, 占: 8 / 15 });
+    expect(全[0].段).toEqual([
+      { 方式: "超时回收", 数: 1, 因: [] },
+      { 方式: "被退回", 数: 6, 因: [{ 名: "联系不上", 数: 2 }, { 名: "预算不足", 数: 2 }, { 名: "不需要", 数: 1 }] },
+      { 方式: "判无效", 数: 1, 因: [{ 名: "空号", 数: 1 }] },
+    ]);
+    expect(全[1]).toMatchObject({ 进: 2, 线索: 1, 占: 2 });
+    expect(进公海明细(全[1])).toBe("离职交接 2");
+    expect(进公海明细(全[0])).toBe("超时回收 1；被退回 6：联系不上 2 · 预算不足 2 · 不需要 1；判无效 1：空号 1");
+    // 只看 u2：a 渠道只剩那条判无效
+    expect(算进公海(渠道们, 底, "u2")).toEqual([{ id: "a", name: "渠道a", 进: 1, 线索: 5, 占: 0.2, 段: [{ 方式: "判无效", 数: 1, 因: [{ 名: "空号", 数: 1 }] }] }]);
+    // 没进过 / 没底数 / 同期没新建线索
+    expect(算进公海(渠道们, undefined)).toEqual([]);
+    expect(算进公海([{ id: "a", name: "a" }], 算公海底数(["a"], [池({ projectId: "z" })], [], 今).本月)[0].占).toBeNull();
+  });
+});
+
 describe("读库", () => {
   let 销售: string, 渠道: string, 渠道乙: string;
   beforeEach(async () => {
@@ -275,6 +372,48 @@ describe("读库", () => {
     // 本月：项目都是 10 月建的；商机 11-02 那条（转让日志不算）；订单都在 10 月；投入 11-01
     expect(底.本月[渠道]).toMatchObject({ 线索: 0, 商机: 1, 订单: 0, 成交: [], 投入: [{ 币种: "CNY", 合计: 250 }] });
     expect(底.本季[渠道]).toMatchObject({ 线索: 6, 商机: 3, 订单: 2, 成交: [{ 币种: "CNY", 合计: 1000 }] });
+  });
+
+  it("读公海底数：按创建人 ∈ 圈；离职交接 / 超时回收 / 被退回 / 判无效 怎么认；导入时没负责人的不算；原因读进来", async () => {
+    const 市场 = (await prisma.user.create({ data: { email: "m1", name: "市场甲", title: "", role: "MEMBER", password: "x" } })).id;
+    const 别人 = (await prisma.user.create({ data: { email: "m2", name: "市场乙", title: "", role: "MEMBER", password: "x" } })).id;
+    const 客户 = (await prisma.customer.create({ data: { name: "张三", phone: "13800000061", salesOwnerId: 销售, channelId: 渠道 } })).id;
+    const 无效客户 = (await prisma.customer.create({ data: { name: "李四", phone: "13800000062", salesOwnerId: 销售, channelId: 渠道, poolInvalidAt: 京("2026-11-02 11:00") } })).id;
+    const 建 = async (creatorId: string, 留痕: { at: string; userId?: string; reason?: string }[], o: { customerId?: string; pooledAt?: Date | null; 无效因?: string } = {}) => {
+      const p = await prisma.project.create({
+        data: { name: "p", customerId: o.customerId ?? 客户, ownerId: 销售, creatorId, phase: "线索", amount: 0, currency: "CNY", createdAt: 京("2026-11-01 09:00"), pooledAt: o.pooledAt ?? null },
+      });
+      for (const l of 留痕) {
+        await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: l.userId ?? 销售, at: 京(l.at), toPhase: "线索", toNode: "x", kind: "pool-release", reason: l.reason ?? null } });
+      }
+      if (o.无效因) await prisma.entLeadVerify.create({ data: { projectId: p.id, verdict: "无效线索", invalidReason: o.无效因 } });
+    };
+    await 建(市场, [{ at: "2026-11-02 10:00", reason: "成员停用，放进公海" }]);
+    await 建(市场, [{ at: "2026-11-02 10:00", userId: "system", reason: "30 天没跟进，自动放进公海" }]);
+    await 建(市场, [{ at: "2026-11-02 10:00", reason: "先放一放 回收原因：预算不足" }]);
+    await 建(市场, [{ at: "2026-11-02 10:00", reason: "回收原因：" }]);
+    // 先超时回收、又被领走、再判无效进公海：最近那回算判无效
+    await 建(市场, [{ at: "2026-10-20 10:00", userId: "system" }, { at: "2026-11-02 11:00" }], { customerId: 无效客户, pooledAt: 京("2026-11-02 11:00"), 无效因: " 空号 " });
+    // 导入时没负责人：不算进，线索照算
+    await 建(市场, [{ at: "2026-11-01 09:00", userId: "system", reason: 无主入池理由 }], { pooledAt: 京("2026-11-01 09:00") });
+    // 圈外的人建的：都不算
+    await 建(别人, [{ at: "2026-11-02 10:00" }]);
+
+    const 今 = 京("2026-11-03 10:00");
+    const 底 = await 读公海底数([渠道, 渠道乙], [市场], 今);
+    expect(底.本月?.[渠道]?.[市场]).toEqual({
+      线索: 6, 进: 5,
+      方式: { 超时回收: 1, 被退回: 2, 判无效: 1, 离职交接: 1 },
+      退回因: { 预算不足: 1 }, 无效因: { 空号: 1 },
+    });
+    expect(底.本月?.[渠道]?.[别人]).toBeUndefined();
+    // 全部里那条判无效的 10 月那回不另算（一条项目一档只算一次）
+    expect(底.全部?.[渠道]?.[市场]?.进).toBe(5);
+    // 自定义只框 10 月：那条算超时回收
+    const 十月 = await 读公海底数([渠道], [市场], 今, { from: 京("2026-10-01 00:00"), to: new Date(京("2026-11-01 00:00").getTime() - 1) });
+    expect(十月.自定义?.[渠道]?.[市场]).toMatchObject({ 线索: 0, 进: 1, 方式: { 超时回收: 1 } });
+    expect(await 读公海底数([], [市场], 今)).toEqual({ 本月: {}, 本季: {}, 全部: {} });
+    expect(await 读公海底数([渠道], [], 今)).toEqual({ 本月: {}, 本季: {}, 全部: {} });
   });
 
   it("没有渠道：空底数，不查库", async () => {
