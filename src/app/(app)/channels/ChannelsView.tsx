@@ -338,7 +338,7 @@ export default function ChannelsView({
     { title: "备注", key: "remark", dataIndex: "remark", width: 200, 默认: false, 折行: true, render: (v: string | null) => v ?? 无 },
     {
       /* 行上只留一个带字的按钮（规则 D）：能录投入的是「录投入」，别人是「详情」；编辑、停用、删除收进「⋯」，删除不标红 */
-      title: "", key: "act", width: 108, 常驻: true, fixed: "right",
+      title: "", key: "act", width: 124, 常驻: true, fixed: "right",
       render: (_, r) => {
         const 删因 = 删不了(r);
         const 菜单: NonNullable<MenuProps["items"]> = [

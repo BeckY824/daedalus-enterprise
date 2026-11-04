@@ -56,7 +56,7 @@ test.beforeAll(async () => {
 
 test.afterAll(收拾);
 
-test("跟进记录：所属客户下面一行公司，没公司只一行；按公司名搜得到", async ({ page }) => {
+test("跟进记录：所属客户后面同一行带公司，没公司只有人名；按公司名搜得到", async ({ page }) => {
   await 登录(page);
   await page.goto(`/follow-ups?keyword=${encodeURIComponent(前缀)}`);
   const 有 = page.locator(".ant-table-row", { hasText: `${前缀}·王建国` });
@@ -67,13 +67,16 @@ test("跟进记录：所属客户下面一行公司，没公司只一行；按�
   const 公司行 = 有.locator(".cust-link-co");
   await expect(公司行).toHaveText(公司);
   await expect(公司行).toHaveAttribute("title", 公司);
-  // 第二行在人名下面，不是挤在同一行
+  // 11-04 起全站一行（用户：「尽量所有信息都在一行显示完整」「一行显示不下的用...」）：
+  // 公司跟在人名后面同一行，放不下末尾省略号、悬停看全文，不撑破这一格
   const 名框 = (await 有.getByRole("link", { name: `${前缀}·王建国` }).boundingBox())!;
   const 公司框 = (await 公司行.boundingBox())!;
-  expect(公司框.y).toBeGreaterThanOrEqual(名框.y + 名框.height - 1);
-  // 长公司名折行显示完整（10-30 改，原来一行省略），不撑破这一格
-  expect(await 公司行.evaluate((e) => getComputedStyle(e).overflowWrap)).toBe("anywhere");
-  expect(await 公司行.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+  expect(公司框.x).toBeGreaterThanOrEqual(名框.x + 名框.width - 1);
+  expect(Math.abs(公司框.y + 公司框.height / 2 - (名框.y + 名框.height / 2))).toBeLessThan(名框.height);
+  const 样 = await 公司行.evaluate((e) => ({ ws: getComputedStyle(e).whiteSpace, to: getComputedStyle(e).textOverflow }));
+  expect(样).toEqual({ ws: "nowrap", to: "ellipsis" });
+  const 格框 = (await 公司行.locator("xpath=ancestor::td[1]").boundingBox())!;
+  expect(公司框.x + 公司框.width).toBeLessThanOrEqual(格框.x + 格框.width + 1);
   await expect(没.locator(".cust-link-co")).toHaveCount(0);
 
   // 只按公司名搜：只剩有公司的那位
@@ -83,7 +86,7 @@ test("跟进记录：所属客户下面一行公司，没公司只一行；按�
   await expect(page.locator(".ant-table-row", { hasText: `${前缀}·李没公司` })).toHaveCount(0);
 });
 
-test("商机列表：所属客户同样两行，按公司名搜得到", async ({ page }) => {
+test("商机列表：所属客户同样带公司，按公司名搜得到", async ({ page }) => {
   test.skip(企业版, "企业版只用项目：没有商机列表（src/lib/enterprise/project-only.ts）");
   await 登录(page);
   await page.goto(`/opportunities?keyword=${encodeURIComponent("临沂佳盈国际食品")}`);

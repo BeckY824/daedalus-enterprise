@@ -2423,6 +2423,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; -webkit-line-clamp: unset; line-clamp: none;
 }
 .dl-one-line .ant-table-tbody > tr > td .ant-space { flex-wrap: nowrap; max-width: 100%; }
+/* 格子里的 Space（头像 + 名字 + 标签）：名字那一项可缩、带省略号，头像 / 标签 / 按钮不缩；整组不撑出格子。操作列另算（按钮不能被裁，靠列宽） */
+.dl-one-line .ant-table-tbody > tr > td:not(.dl-act) .ant-space { min-width: 0; overflow: hidden; }
+.dl-one-line .ant-table-tbody > tr > td:not(.dl-act) .ant-space-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-one-line .ant-table-tbody > tr > td:not(.dl-act) .ant-space-item:has(> .ant-tag, > .ant-avatar, > .ant-btn, > .anticon) { flex: none; }
 /* 备注这类长文列照旧折行（11-04 用户：「除了备注」）；操作列按钮不截 */
 .dl-one-line .ant-table-tbody > tr > td.dl-wrap { white-space: normal; overflow-wrap: anywhere; }
 .dl-one-line .ant-table-tbody > tr > td.dl-wrap :is(.fulltext, .clamp, .clamp-1) { white-space: normal; overflow: visible; }
