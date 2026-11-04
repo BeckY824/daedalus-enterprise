@@ -182,7 +182,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
     // 成交需求、合同金额、定金金额（迁移 097）：和金额一样是项目自己的，都给看
     成交钱: { dealDemand: p.dealDemand, contractAmount: p.contractAmount, contractCurrency: p.contractCurrency, depositAmount: p.depositAmount, depositCurrency: p.depositCurrency },
-    // 合同状态库里空的（老项目）按「起草中」显示，不改库
+    // 合同状态库里空的给 null（界面写「—」）
     项目新字段: {
       ...(权限?.("痛点标注") !== "藏" ? { painPoints: p.painPoints } : {}),
       ...(权限?.("合同状态") !== "藏" ? { contractStatus: 合同状态显示(p.contractStatus) } : {}),

@@ -54,7 +54,7 @@ export function ProjectEditModal({
     /** 企业版才传；不传 = 不摆、不交 */
     成交钱?: 项目成交钱;
     /** 企业版才传；里面哪个键没有 = 那一项不摆、不交 */
-    项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 };
+    项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 | null };
   };
   候选: 可选成员[];
   联系人们: 联系人[];
@@ -77,7 +77,7 @@ export function ProjectEditModal({
   const [钱, set钱] = useState(p.成交钱 ? { ...p.成交钱, dealDemand: p.成交钱.dealDemand ?? "", contractCurrency: p.成交钱.contractCurrency ?? 默认币种, depositCurrency: p.成交钱.depositCurrency ?? 默认币种 } : null);
   const 新 = p.项目新字段;
   const [痛点, set痛点] = useState(新?.painPoints ?? "");
-  const [合同, set合同] = useState<合同状态 | undefined>(新?.contractStatus);
+  const [合同, set合同] = useState<合同状态 | null>(新?.contractStatus ?? null);
   const [忙, set忙] = useState(false);
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
   const 改钱 = (x: Partial<NonNullable<typeof 钱>>) => set钱((o) => (o ? { ...o, ...x } : o));
@@ -88,7 +88,7 @@ export function ProjectEditModal({
     ...(p.所在地 ? { ...地址, location: 详细.trim() || null } : {}),
     ...(钱 ? { ...钱, dealDemand: 钱.dealDemand.trim() || null } : {}),
     ...(新 && "painPoints" in 新 ? { painPoints: 痛点.trim() || null } : {}),
-    ...(新?.contractStatus ? { contractStatus: 合同 } : {}),
+    ...(新?.contractStatus !== undefined ? { contractStatus: 合同 } : {}),
   };
   const 行 = (label: string, el: React.ReactNode) => (
     <div style={{ marginBottom: 12 }}>
@@ -164,7 +164,7 @@ export function ProjectEditModal({
           <InputNumber<number> style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="待填写合同金额" value={钱.contractAmount} formatter={金额格式} onChange={(v) => 改钱({ contractAmount: v ?? null })} />
         </Space.Compact>
       ))}
-      {新?.contractStatus && 行("合同状态", <Select style={{ width: "100%" }} aria-label="合同状态" value={合同} options={合同状态们.map((v) => ({ value: v, label: v }))} onChange={(v) => set合同(v)} />)}
+      {新?.contractStatus !== undefined && 行("合同状态", <Select style={{ width: "100%" }} aria-label="合同状态" allowClear placeholder={未选占位} value={合同 ?? undefined} options={[不填项, ...合同状态们.map((v) => ({ value: v, label: v }))]} onChange={(v?: string) => set合同(去不填(v) as 合同状态 | null)} />)}
       {钱 && 行("需求描述", <Input.TextArea aria-label="需求描述" rows={2} maxLength={成交需求上限} placeholder="客户想买什么、要多少" value={钱.dealDemand} onChange={(e) => 改钱({ dealDemand: e.target.value })} />)}
       {新 && "painPoints" in 新 && 行("痛点标注", <Input.TextArea aria-label="痛点标注" rows={3} maxLength={痛点标注上限} placeholder="客户现在卡在哪、最着急解决什么" value={痛点} onChange={(e) => set痛点(e.target.value)} />)}
       {p.expectedDealAt !== undefined && 行("预计成交日期", (

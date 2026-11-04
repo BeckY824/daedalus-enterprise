@@ -136,9 +136,9 @@ export type 项目详情 = {
   成交钱?: 项目成交钱;
   /**
    * 企业版痛点标注、合同状态（迁移 101）：不是企业版不传；某一项字段权限是「藏」就没有那个键（不摆那一行、编辑框不交）。
-   * 合同状态老项目库里空的，page.tsx 已经按「起草中」兜底
+   * 合同状态空着是 null（写「—」，下拉能选回「—」）
    */
-  项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 };
+  项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 | null };
   /**
    * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推；
    * 只能靠填齐 = 不是老板、主管，手动往前推不给（往后退、点结局照旧）
@@ -874,17 +874,17 @@ export default function ProjectDetail({
               编辑器={钱编辑器("合同金额")}
             />
           </div>
-          {p.项目新字段?.contractStatus && (
+          {p.项目新字段?.contractStatus !== undefined && (
             <div style={行样}>
               <span style={键样}>合同状态</span>
-              <ProjectInlineField<string>
+              <ProjectInlineField<string | null>
                 名="合同状态"
                 值={p.项目新字段.contractStatus}
                 能改={字段能改("合同状态")}
-                显示={(v) => <span>{v}</span>}
+                显示={(v) => (v ? <span>{v}</span> : 待填("合同状态"))}
                 存={(v) => 存项目项({ contractStatus: v })}
                 编辑器={({ 草稿, 提交, 忙 }) => (
-                  <Select aria-label="合同状态" autoFocus defaultOpen disabled={忙} style={{ width: "100%" }} value={草稿} options={合同状态们.map((x) => ({ value: x, label: x }))} onChange={(v: string) => 提交(v)} />
+                  <Select aria-label="合同状态" autoFocus defaultOpen allowClear disabled={忙} placeholder={未选占位} style={{ width: "100%" }} value={草稿 ?? undefined} options={[不填项, ...合同状态们.map((x) => ({ value: x, label: x }))]} onChange={(v?: string) => 提交(去不填(v))} />
                 )}
               />
             </div>
