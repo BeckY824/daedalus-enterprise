@@ -302,11 +302,12 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     // F-项目-18：附件合成左栏一块「项目附件」，合同附件后面紧跟项目方案，最后是沟通上的附件
     expect(await 卡标题(page, ".proj-main")).toContain("项目附件（0）");
     expect(await page.locator(".proj-main .proj-att-h").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "其它附件（0）", "沟通附件（0）"]);
-    // 填了：多行照原样换行
+    // 填了：一行显示（换行压成空格，放不下「…」），悬停浮层用 data-tip 里的原文、保住分段（11-04 用户：待定第 1 点按优化来）
     await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: "交期总拖\n售后慢", contractStatus: "待我方确认" } });
     await 卡.getByText("待我方确认").waitFor();
     字 = await 卡.innerText();
-    expect(字).toMatch(/痛点标注\s*交期总拖\n售后慢/);
+    expect(字).toMatch(/痛点标注\s*交期总拖 售后慢/);
+    expect(await 卡.locator(".proj-one[data-tip]").filter({ hasText: "交期总拖" }).getAttribute("data-tip")).toBe("交期总拖\n售后慢");
     // 编辑框：两格都在，改了交上去
     await 编辑钮(page).click();
     const 框 = page.locator(".ant-modal-container");

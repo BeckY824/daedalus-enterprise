@@ -292,11 +292,14 @@ export default function MembersTab({
           width: 120,
           render: (_: unknown, r: Row) => (
             <div className="member-roles">
-              {(r.业务角色 ?? []).map((x) => (
-                <Tag key={x} color={业务角色色[x]} style={{ margin: 0, borderRadius: 6 }}>
-                  {角色名[x]}
-                </Tag>
-              ))}
+              {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；「不管设置」勾选框不截 */}
+              <span className="member-roles-tags">
+                {(r.业务角色 ?? []).map((x) => (
+                  <Tag key={x} color={业务角色色[x]} style={{ margin: 0, marginRight: 4, borderRadius: 6 }}>
+                    {角色名[x]}
+                  </Tag>
+                ))}
+              </span>
               {/* 「不管设置」只对总管理有意义（11-01 C1）：能改设置的人勾，别人只看到标记 */}
               {r.业务角色?.includes("director") &&
                 (企业版 && isAdmin ? (
