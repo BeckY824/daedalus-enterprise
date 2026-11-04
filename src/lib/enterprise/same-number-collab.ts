@@ -204,7 +204,9 @@ export async function 同号再次录入(我: 人, 号: 验好的号, 录入: �
   }
 
   const 自己负责 = 首条.salesOwnerId === 我.id || (!!项目 && 项目.ownerId === 我.id);
-  const 看得见 = 看得到(首条, await 读的我(defaultClient)) || 记.成员状态 === "JOINED" || 自己负责;
+  // 列表口径（限定层，含 11-04 市场成员「自己创建、不在公海」）看得到也算：直接按当前身份查一次
+  const 列表看得到 = async () => !!(await prisma.customer.findFirst({ where: { id: 首条.id }, select: { id: true } }));
+  const 看得见 = 看得到(首条, await 读的我(defaultClient)) || 记.成员状态 === "JOINED" || 自己负责 || (await 列表看得到());
   const 反馈 = 拼反馈(负责人名, 自己负责, !!项目, 记.邀请, 看得见 ? 首条.name : null);
 
   if (!记.已记过) {

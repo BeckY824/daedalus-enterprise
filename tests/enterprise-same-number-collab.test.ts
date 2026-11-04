@@ -200,7 +200,8 @@ describe("同号再次录入", () => {
     expect(看不到.走 && 看不到.反馈).not.toContain("编的项目甲");
     expect((await 通知们(x.销售.id))[0]?.title ?? "").not.toContain("编的");
 
-    await prisma.customer.update({ where: { id: x.客户.id }, data: { channelOwnerId: x.市场.id } });
+    // 11-04 起市场只看「自己负责」或「自己创建且不在公海」的客户（挂渠道负责人不再算）
+    await prisma.customerCreator.create({ data: { customerId: x.客户.id, userId: x.市场.id } });
     const 看得到 = await 作为(x.市场, () => 同号再次录入(x.市场, 好号(), { 入口: "手工建档" }));
     expect(看得到.走 && 看得到.反馈).toContain("编的客户甲");
   });

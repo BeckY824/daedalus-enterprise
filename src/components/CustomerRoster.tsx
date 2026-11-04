@@ -33,7 +33,7 @@ export type CustomerRosterData = {
     lastNote: string | null;
     /** 我名下的（「我的」页签） */
     mine?: boolean;
-    /** 卡片第一行：从哪儿来（渠道 / 转介绍 / 最近一次怎么联系的），见 @pane/panes.tsx */
+    /** 卡片第一行：桌面端是从哪儿来（渠道 / 转介绍 / 最近一次怎么联系的）；企业版是客户所在国家地区（11-04），见 @pane/panes.tsx */
     source?: string | null;
     /** 最近一条还没做的计划：「本周要跟」和右下角圆点看它 */
     nextPlanAt?: string | null;
