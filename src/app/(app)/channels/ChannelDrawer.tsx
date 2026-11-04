@@ -149,7 +149,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
           { key: "days", label: "累计运营天数", children: `${s?.累计运营天数 ?? 0} 天` },
           ...(不问归属 ? [] : [{ key: "owner", label: "负责人", children: <UserCell name={row.channelOwnerName} size={20} /> }]),
           { key: "createdBy", label: "创建人", children: row.createdByName ?? 无 },
-          ...(row.remark ? [{ key: "remark", label: "备注", span: "filled" as const, children: <span style={{ overflowWrap: "anywhere" }}>{row.remark}</span> }] : []),
+          ...(row.remark ? [{ key: "remark", label: "备注", span: "filled" as const, children: <span className="chan-desc-wrap">{row.remark}</span> }] : []),
         ]}
       />
 
@@ -176,7 +176,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
                 label: "同名渠道产出比",
                 span: "filled" as const,
                 children: 同名分布 ? (
-                  <span style={{ overflowWrap: "anywhere" }}>
+                  <span>
                     平均值 {同名分布.平均} · 最高值 {同名分布.最高} · 最低值 {同名分布.最低}
                     <span className="muted">（「{row.platform ?? row.name}」下 {同名分布.个数} 个来源能算）</span>
                   </span>

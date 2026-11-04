@@ -327,3 +327,7 @@
 /* 弹框标题给右上 × 让位置：antd 6 默认不让，「给 欧阳·超级长名字的外贸业务经理张三丰 加AI次数」这种长标题会钻到 × 底下（10-19 排版检查「压字」）。
    弹框挂在 body 上不在 .opx 里，用 :has 只管运营台 */
 body:has(.opx) .ant-modal-header { padding-inline-end: 36px; }
+
+.opx-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; }
+.opx-name-row > * { flex: none; }
+.opx-name-row > h1 { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

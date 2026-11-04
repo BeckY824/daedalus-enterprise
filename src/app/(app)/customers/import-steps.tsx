@@ -448,32 +448,35 @@ export function 复核({
       )}
 
       {看.待复核.length > 0 && (
+        /* 导入提示表一行显示，放不下「…」，悬停看全文（11-04 用户：待定第 5 点按优化来） */
         <Table
           size="small"
-          className="tbl-wrap"
+          tableLayout="fixed"
           pagination={{ pageSize: 8, size: "small" }}
           rowKey={(r) => `${r.列}|${r.原值}`}
           dataSource={看.待复核}
           columns={[
-            { title: "哪一列", dataIndex: "列名", width: 120 },
+            { title: "哪一列", dataIndex: "列名", width: 120, ellipsis: true },
             {
               title: "表里写的",
               dataIndex: "原值",
               width: 140,
+              ellipsis: true,
               render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
             },
             { title: "几行", dataIndex: "几行", width: 60 },
             {
               title: "会怎么处理",
+              ellipsis: true,
               render: (_: unknown, r: 预览["待复核"][number]) => (
-                <Space size={6}>
+                <span className="imp-hint-one">
                   {/* 「照收」不是问题是提示：值不在选项里，但这个字段开放，原样写进去。
                       漏了这一档的话它会掉进兜底，显示成「用默认值」——正好说反 */}
                   <Tag color={r.严重 === "拦行" ? "error" : r.严重 === "留空" ? "warning" : r.严重 === "照收" ? "blue" : "default"}>
                     {r.严重 === "拦行" ? "这一行进不来" : r.严重 === "留空" ? "这一格留空" : r.严重 === "照收" ? "按原样导入" : "用默认值 · 原文进备注"}
                   </Tag>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.说法}</Typography.Text>
-                </Space>
+                </span>
               ),
             },
             {

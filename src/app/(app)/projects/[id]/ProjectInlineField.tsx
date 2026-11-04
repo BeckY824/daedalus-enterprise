@@ -22,7 +22,7 @@ export type 编辑器参数<T> = { 草稿: T; set草稿: (v: T) => void; 提交:
  *
  * 客户页的 InlineField 绑死了 patchCustomer，不能复用，这里只借它的按键习惯
  */
-export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存, 能改, 多行 = false, 回车存 = false, 规整 }: {
+export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存, 能改, 多行 = false, 一行显示 = false, 回车存 = false, 规整 }: {
   名: string;
   值: T;
   显示: (v: T) => ReactNode;
@@ -31,6 +31,8 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
   存: (v: T) => Promise<string | null>;
   能改: boolean;
   多行?: boolean;
+  /** 多行编辑、平时一行显示（放不下打省略号，悬停看全文）。11-04 用户：一行规矩没覆盖的待定处「都按照优化来进行」 */
+  一行显示?: boolean;
   回车存?: boolean;
   /** 存之前规整（文字去首尾空白）：只多打了空格不发请求，乐观显示和服务端存的一样；草稿不动，存失败时输入原样留着 */
   规整?: (v: T) => T;
@@ -113,7 +115,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
           开();
         }}
       >
-        <div className={`proj-inline-val${多行 ? " is-multi" : ""}`}>{显示(现)}</div>
+        <div className={`proj-inline-val${多行 && !一行显示 ? " is-multi" : ""}`}>{显示(现)}</div>
         <button
           ref={笔}
           type="button"

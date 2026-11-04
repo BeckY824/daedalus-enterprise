@@ -35,7 +35,8 @@ export default function UserDetailView({ token, 详情 }: { token: string; 详�
         <div className="opx-profile">
           <头像 名={a.name} 大 />
           <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {/* 名字 + 标签一行，名字太长「…」，悬停看全文（11-04 用户：待定第 5 点按优化来） */}
+            <div className="opx-name-row">
               <h1>{a.name}</h1>
               <span className={`opx-tag${a.来路 === "桌面端" ? " opx-tag-blue" : ""}`}>{a.来路}</span>
               {a.active ? <span className="opx-tag opx-tag-ok">正常</span> : <span className="opx-tag opx-tag-dead">已停用</span>}

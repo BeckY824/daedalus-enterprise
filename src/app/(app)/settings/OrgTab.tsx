@@ -349,11 +349,12 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         <div className="team-dept-tree" data-testid="org-depts">
           {树.length === 0 && <p className="muted">还没有部门。</p>}
           {树.map(({ d, 层: n, 断 }) => (
-            /* 名字占一格定宽、缩进只在格子里：子部门前面画一道折线，按钮列上下对齐（10-28 用户：内贸一组看着没对齐） */
+            /* 名字占一格定宽、缩进只在格子里：子部门前面画一道折线，按钮列上下对齐（10-28 用户：内贸一组看着没对齐）；
+               名字太长一行显示，放不下「…」，悬停看全文（11-04 用户：待定第 4 点「其他的都按照优化来进行」） */
             <div key={d.id} className="team-dept-row">
               <span className="team-dept-name" style={{ paddingLeft: (n - 1) * 20 }}>
                 {n > 1 && <span className="team-dept-branch" aria-hidden>└</span>}
-                {d.name}
+                <span className="team-dept-text">{d.name}</span>
               </span>
               {断 && <Tag color="warning">上级断了</Tag>}
               {能改 && (

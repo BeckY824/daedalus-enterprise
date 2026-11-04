@@ -1231,7 +1231,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 卡片就地改一格（11-02，ProjectInlineField）：小笔平时藏着（占着位置、不跳字），悬停 / 键盘聚焦才显；手机这类没有悬停的常显。
    flex:1 + min-width:0：放在「键 + 值」一行里也不把卡撑宽 */
 .proj-inline { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 4px; cursor: text; }
-/* 11-04 起项目详情的值一行显示：放不下打省略号，悬停看全文（TruncTip）；需求描述 / 痛点 / 备注 / 沟通内容（多行）照旧折行 */
+/* 11-04 起项目详情的值一行显示：放不下打省略号，悬停看全文（TruncTip）；备注 / 沟通内容（多行）照旧折行；需求描述 / 痛点 11-04 晚些也改成一行（用户：待定处「都按照优化来进行」） */
 .proj-inline-val { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-inline-val.is-multi { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
 .proj-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2530,7 +2530,9 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 渠道详情里的投入记录：一笔一行，删除钮靠右 */
 .chan-invest { list-style: none; margin: 0; padding: 0; }
 .chan-invest > li { position: relative; padding: var(--s2) 32px var(--s2) 0; border-bottom: 1px solid var(--line); }
-.chan-invest-main { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; min-width: 0; }
+.chan-invest-main { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: nowrap; min-width: 0; }
+.chan-invest-main > * { flex: none; }
+.chan-invest-main > .chan-invest-who { flex: 0 1 auto; }
 .chan-invest-who { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chan-invest-remark { margin-top: 2px; overflow-wrap: anywhere; }
 .chan-invest-del { position: absolute; right: 0; top: var(--s2); }
@@ -2539,7 +2541,9 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .chan-block + .chan-block { margin-top: var(--s3); }
 .chan-block > .section-title { margin-bottom: var(--s2); }
 .chan-desc .ant-descriptions-item-label { width: 7.5em; flex: none; }
-.chan-desc .ant-descriptions-item-content { min-width: 0; overflow-wrap: anywhere; }
+/* 渠道详情正文一行显示（产出比说明、同名渠道产出比这类说明），放不下「…」，悬停看全文；只有备注折行（11-04 用户：待定第 3 点按优化来） */
+.chan-desc .ant-descriptions-item-content { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chan-desc .ant-descriptions-item-content .chan-desc-wrap { white-space: normal; overflow-wrap: anywhere; }
 /* 「重置」一直占着位置，没筛时只是看不见（审查 M17）：原来它一出现就把「列」挤到第二行，
    整张表往下跳一截。出现消失只淡入淡出，不位移。visibility 晚一拍再收，淡出才看得见 */
 .list-reset { transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s; }
@@ -3431,10 +3435,14 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .import-dup-policy .ant-radio-wrapper .ant-radio { align-self: flex-start; margin-top: 3px; }
 
 /* 设置 → 组织架构 → 部门（团队版 1b 起）：窄窗口下每行折行，不横向撑开 */
-.team-dept-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; min-height: 28px; }
-.team-dept-acts { display: inline-flex; flex-wrap: wrap; }
-.member-roles { display: flex; flex-wrap: wrap; gap: 4px; }
-.team-dept-name { display: inline-flex; align-items: center; gap: 6px; min-width: 200px; overflow-wrap: anywhere; }
+/* 部门行、成员角色一行显示，放不下「…」，悬停（TruncTip）看全文（11-04 用户：待定第 2、5 点按优化来） */
+.team-dept-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: nowrap; min-height: 28px; min-width: 0; }
+.team-dept-acts { display: inline-flex; flex-wrap: nowrap; flex: none; }
+.member-roles { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; min-width: 0; }
+.member-roles > * { flex: none; }
+.member-roles > .member-roles-tags { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-dept-name { display: inline-flex; align-items: center; gap: 6px; flex: 0 1 240px; min-width: 0; }
+.team-dept-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .team-dept-branch { color: var(--text-faint); line-height: 1; }
 .team-dept-members { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
 .team-dept-members li { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
