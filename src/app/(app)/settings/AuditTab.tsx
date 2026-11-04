@@ -121,7 +121,8 @@ export default function AuditTab({ logs, 导出 = false }: { logs: AuditRow[]; �
                       </span>
                     ),
                   },
-                  { title: "内容", dataIndex: "summary", render: (v: string) => <span style={{ wordBreak: "break-word" }}>{v}</span> },
+                  // 一行、放不下省略号，悬停看全（11-04 用户：「一行显示不下的用... 但是悬浮要做好」）
+                  { title: "内容", dataIndex: "summary", ellipsis: true, render: (v: string) => <span title={v}>{v}</span> },
                 ]}
               />
     </>

@@ -129,9 +129,10 @@ export default function ReportsView({
     {
       title: label,
       dataIndex: "name",
+      ellipsis: true, // 一行、放不下省略号、悬停看全（11-04 用户）
       render: (v: string, r: Agg) =>
         维度 && r.id !== "__none__" ? (
-          <button type="button" className="link-strong link-plain" onClick={() => { set开着的(null); set开着的人({ 维度, id: r.id, name: v }); }}>
+          <button type="button" className="link-strong link-plain" title={v} onClick={() => { set开着的(null); set开着的人({ 维度, id: r.id, name: v }); }}>
             {v}
           </button>
         ) : (
@@ -309,13 +310,14 @@ export default function ReportsView({
             {
               title: b.customer,
               dataIndex: "学员",
+              ellipsis: true,
               render: (v: string, r) => (
-                <RowLink href={`/customers/${r.学员id}`} className="link-strong">
+                <RowLink href={`/customers/${r.学员id}`} className="link-strong" title={v}>
                   {v}
                 </RowLink>
               ),
             },
-            { title: "销售", dataIndex: "销售", width: 110 },
+            { title: "销售", dataIndex: "销售", width: 110, ellipsis: true },
             { title: 外贸 ? "确认日" : "签约日", dataIndex: "日期", width: 110, render: (v: string) => <span className="muted nowrap">{fmtDate(v)}</span> },
             {
               title: "金额",

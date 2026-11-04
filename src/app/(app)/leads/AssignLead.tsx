@@ -151,14 +151,14 @@ export function AssignedOutButton() {
           locale={{ emptyText: "还没有分出去的线索" }}
           scroll={{ x: 680 }}
           columns={[
-            { title: "线索", dataIndex: "name", width: 180 },
+            { title: "线索", dataIndex: "name", width: 180, ellipsis: true },
             {
               title: "状态", dataIndex: "status", width: 90,
               render: (v: string) => <Tag color={LEAD_STATUS_COLOR[v]} style={{ margin: 0 }}>{v}</Tag>,
             },
-            { title: "接手人", dataIndex: "接手人", width: 100 },
+            { title: "接手人", dataIndex: "接手人", width: 100, ellipsis: true },
             {
-              title: "现在在谁名下", dataIndex: "当前负责人", width: 110,
+              title: "现在在谁名下", dataIndex: "当前负责人", width: 110, ellipsis: true,
               render: (v: string | null, r) => (v === r.接手人 ? <span className="muted">同接手人</span> : v ?? <span className="muted">—</span>),
             },
             { title: "业务线", dataIndex: "line", width: 80, render: (v: string | null) => v ?? <span className="muted">不限</span> },

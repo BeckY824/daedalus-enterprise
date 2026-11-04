@@ -178,8 +178,10 @@ it("企业版项目列表（11-01 会议 §11）：1024 宽每格一行不折，
   expect(量.横滚).toBe(false);
   const 名格 = page.locator(".ant-table-tbody td.dl-col-name").first();
   expect(await 名格.evaluate((td) => Array.from(td.querySelectorAll<HTMLElement>("*")).some((el) => el.scrollWidth > el.clientWidth + 1))).toBe(true);
-  await 名格.hover();
-  await expect.poll(() => 名格.getAttribute("title")).toContain(`${长名}1`);
+  // 11-04 用户：「一行显示不下的用... 但是悬浮要做好，鼠标移上去可以看完整。」全文留在格里，截了的那层带省略号；
+  // 悬停浮层是 (app) 布局里全站挂的 TruncTip（这里没挂布局），见 tests/ent-inline-phone-fit.ui.test.ts
+  expect(await 名格.innerText()).toContain(`${长名}1`);
+  expect(await 名格.evaluate((td) => Array.from(td.querySelectorAll<HTMLElement>("*")).filter((el) => el.scrollWidth > el.clientWidth + 1).every((el) => getComputedStyle(el).textOverflow === "ellipsis"))).toBe(true);
   expect(errors).toEqual([]); await page.close();
 
   const 老 = await 打开(false, 1024, false, false, { 样式: true });

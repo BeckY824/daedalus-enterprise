@@ -28,6 +28,7 @@ import { 是共享工作区 } from "@/lib/shared-ws/config";
 import { ShortcutProvider } from "@/components/Shortcut";
 import { 背调有入口 } from "@/lib/research/channel";
 import { ResearchEntryProvider } from "@/components/research/ResearchEntry";
+import TruncTip from "@/components/TruncTip";
 
 export default async function AppLayout({
   children,
@@ -146,6 +147,7 @@ export default async function AppLayout({
         {children}
       </AppShell>
       {modal}
+      <TruncTip />
       </ResearchEntryProvider>
       </AiMeterProvider>
     </BusinessProvider>

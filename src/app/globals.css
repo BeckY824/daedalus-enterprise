@@ -780,9 +780,9 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .roster-m { flex: 1; min-width: 0; }
 .roster-l0 { display: flex; align-items: baseline; gap: var(--s2); }
 .roster-src { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--text-muted); }
-/* 名单里的名字整段显示（10-30：原来最多两行省略，长公司名 / 项目名看不全）；来源、最近一句是辅助，照旧截、悬停看全 */
+/* 名单里的名字一行省略、悬停看全（11-04，推翻 10-30 整段显示）；来源、最近一句是辅助，照旧截、悬停看全 */
 .roster-m > .roster-n { display: block; margin-top: 1px; }
-.roster-n { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.roster-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .roster-t { flex: none; font-size: var(--fs-min); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .roster-l2 { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 /* 11-01 用户图 3：第三行只显示一行，后面加…（客户、项目名单一样） */
@@ -905,7 +905,7 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 
 .page-head h1 {
   margin: 0;
-  overflow-wrap: anywhere; /* 详情页标题是项目 / 客户全名：一长串没空格的英文也折行，不伸出页头（10-30） */
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; /* 详情页标题是项目 / 客户全名：11-04 起一行，放不下打省略号、悬停看全（TruncTip），推翻 10-30 折行 */
   font-family: var(--font-display);
   font-size: var(--fs-title);
   font-weight: var(--fw-display);
@@ -942,31 +942,46 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   white-space: nowrap;
 }
 
-/* 名字类的关键文本（客户名、项目名、渠道名……）一律整段显示（2026-10-30 用户：「要显示完整」）：
-   能缩到 0 宽、放不下就折行，一长串没空格的英文也从任意处断，不截、不省略号。辅助说明才用下面的 .clamp */
-.fulltext {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-/* 长名字不许把格子撑宽（2026-10-22，商机管道起头）：放在 flex / grid 的子项上——
-   自己能缩到 0 宽，字最多 --clamp 行（默认两行），多出来的打省略号；一长串没空格的英文也照样断。
-   被截掉的字要能看见：这个元素或它外面那一层写上 title="全文"，悬停看全。
-   只要一行就用 .clamp-1 */
-.clamp {
-  min-width: 0;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: var(--clamp, 2);
-  line-clamp: var(--clamp, 2);
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
+/* 一行显示，放不下打省略号，悬停看全文（2026-11-04 用户：「尽量所有信息都在一行显示完整。除了备注」
+   「一行显示不下的用... 但是悬浮要做好，鼠标移上去可以看完整」；替掉 10-30「要显示完整」的折行做法）。
+   悬停浮层是全站一个 TruncTip（src/components/TruncTip.tsx），量到真被截了才出，不用每处自己挂。
+   .fulltext / .clamp / .clamp-1 现在是同一个效果，留三个名字只为不动旧调用；备注这类长文要折行的别用它们 */
+.fulltext,
+.clamp,
 .clamp-1 {
+  display: block;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 截了就悬停看全文的浮层（TruncTip 挂在 body 上，盖过弹窗、抽屉） */
+.trunc-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2100;
+  max-width: min(480px, calc(100vw - 16px));
+  padding: 6px 10px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  border-radius: var(--r-ctl);
+  box-shadow: var(--shadow-pop);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) var(--t-fast);
+}
+.trunc-tip.is-on {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s;
 }
 
 /* 自动列宽的表（不设 ellipsis 的 antd Table）：单元格里的长串可以从任意处断开。
@@ -976,11 +991,10 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   overflow-wrap: anywhere;
 }
 
-/* 下拉框的选项（antd Select / AutoComplete，弹层挂在 body 上）：长名字折行显示完整，不再一行省略号（2026-10-30）。
+/* 下拉框的选项（antd Select / AutoComplete，弹层挂在 body 上）：11-04 起一行省略号，悬停看全（TruncTip），推翻 10-30 折行。
    选中后框里那一行还是一行省略——框宽是定死的，antd 自己给它写了 title */
 .ant-select-item-option-content {
-  white-space: normal;
-  overflow-wrap: anywhere;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .link-strong {
@@ -1017,7 +1031,9 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 /* 列表里「所属客户」那一格：头像 + 人名，有公司时人名下面一行灰字（CustomerLink） */
 .cust-link { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; min-width: 0; vertical-align: middle; }
 .cust-link-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
-.cust-link-co { color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; } /* 公司名折行显示完整（10-30，原来一行省略） */
+.cust-link-co { color: var(--text-muted); font-size: var(--fs-note); }
+/* 11-04 起客户名、公司名各一行：放不下打省略号，悬停看全文（TruncTip）；链接自己截，不出界（推翻 10-30「折行显示完整」） */
+.cust-link-t > * { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 滚动条 */
 ::-webkit-scrollbar {
@@ -1107,12 +1123,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-head-line { display: flex; align-items: center; gap: 4px; }
 .rec-star.ant-btn { color: var(--text-faint); }
 .rec-star.on.ant-btn, .rec-star.on.ant-btn:hover { color: var(--warning); }
-.rec-head-sub { margin-top: 2px; color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; } /* 简称 · 负责人：放不下折行（10-30，原来一行省略、没 title） */
+.rec-head-sub { margin-top: 2px; color: var(--text-muted); font-size: var(--fs-note); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 简称 · 负责人：11-04 起一行省略，悬停看全（TruncTip） */
 .rec-head-name { font-family: var(--font-display); font-size: var(--fs-title); font-weight: var(--fw-display); color: var(--ink); letter-spacing: -0.4px;
-  min-width: 0; overflow-wrap: anywhere; }
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 记录页名字底下那一行标签：两个状态（点得改）+ 预计 / 已签约（只读） */
 .rec-tags { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin: 0 0 var(--s3); }
-.rec-tags-n { min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-note); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.rec-tags-n { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 /* 外贸新建客户：电话 / WhatsApp / 邮箱 / 微信四格旁边同一个记号，四格填一格就行（2026-10-19 客户反馈），和必填的红星分开 */
 .cf-any-mark { color: var(--brand); font-size: 9px; margin-left: 4px; vertical-align: 2px; cursor: help; }
 /* 报错那行已经把规矩说了一遍，下面这行提示就别再重复 */
@@ -1187,11 +1203,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 企业版联系人小卡（10-27 会议：联系方式完整展示）：姓名 / 关键 / 职位一行，下面电话 / 邮箱 / 微信各一行，长了换行不截断 */
 .rec-contact { position: relative; padding: 6px 8px; border-radius: var(--r-card); font-size: var(--fs-body); }
 .rec-contact:hover { background: var(--row-hover); }
-.rec-contact-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.rec-contact-n { min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
-.rec-contact-p { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
-.rec-contact-line { padding-left: 34px; font-size: var(--fs-note); line-height: 20px; color: var(--ink-soft); overflow-wrap: anywhere; }
-.rec-contact-k { margin-right: var(--s2); color: var(--text-muted); }
+.rec-contact-h { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.rec-contact-h > .ant-tag { flex: none; }
+.rec-contact-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.rec-contact-p { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
+/* 11-04 起联系方式每行一行：放不下打省略号，悬停看全文（TruncTip）；号码链接自己截，不出界 */
+.rec-contact-line { display: flex; min-width: 0; padding-left: 34px; font-size: var(--fs-note); line-height: 20px; color: var(--ink-soft); white-space: nowrap; }
+.rec-contact-k { flex: none; margin-right: var(--s2); color: var(--text-muted); }
+.rec-contact-v { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-contact-v > a { display: block; overflow: hidden; text-overflow: ellipsis; }
 .rec-contact .rec-mini-acts { top: 4px; translate: none; }
 .rec-contact:hover .rec-mini-acts { opacity: 1; pointer-events: auto; }
 /* 联系人挂多位客户（P13）：挂到别的 / 换主客户那排是小号文字键；挑客户的格子跟号码行对齐 */
@@ -1208,11 +1228,14 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-2col { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
 /* 列要钉成 minmax(0,1fr)：默认的隐式列按内容最小宽度算，一个没空格的超长客户名能把 320 的右栏撑到上千（10-27 单测量出 1119px） */
 .proj-main, .proj-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
-.proj-side .cust-link-t { overflow-wrap: anywhere; }
 /* 卡片就地改一格（11-02，ProjectInlineField）：小笔平时藏着（占着位置、不跳字），悬停 / 键盘聚焦才显；手机这类没有悬停的常显。
    flex:1 + min-width:0：放在「键 + 值」一行里也不把卡撑宽 */
 .proj-inline { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 4px; cursor: text; }
-.proj-inline-val { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* 11-04 起项目详情的值一行显示：放不下打省略号，悬停看全文（TruncTip）；需求描述 / 痛点 / 备注 / 沟通内容（多行）照旧折行 */
+.proj-inline-val { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-inline-val.is-multi { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+.proj-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-inline-val > .proj-one { display: inline; }
 .proj-inline-pen { flex: 0 0 auto; border: 0; padding: 0 2px; background: none; cursor: pointer; color: var(--text-muted); opacity: 0; line-height: inherit; }
 .proj-inline:hover .proj-inline-pen, .proj-inline-pen:focus-visible { opacity: 1; }
 @media (hover: none) { .proj-inline-pen { opacity: 1; } }
@@ -1301,7 +1324,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-modal-row:last-child { border-bottom: none; }
 .proj-modal-clip { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-where-value { display: flex; align-items: center; min-width: 0; font-size: 18px; font-weight: 600; line-height: 28px; }
-.proj-where-node { min-width: 0; overflow-wrap: anywhere; }
+.proj-where-node { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 10-31 改版 R5：企业版节点卡里的阶段页签。颜色走 --stage-c（三阶段和数据页同一套），
    当前进程一圈慢呼吸；系统开了「减少动态效果」就不动。名字长了折行，不撑开节点卡 */
@@ -1416,7 +1439,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-rel-row:last-of-type { border-bottom: 0; padding-bottom: 0; }
 .proj-rel-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .proj-rel-name { display: flex; align-items: flex-start; gap: 6px; min-width: 0; flex: 1; }
-.proj-rel-n { min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.proj-rel-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .proj-rel-field { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0; }
 .proj-rel-key { color: var(--text-muted); white-space: nowrap; font-size: 13px; }
 .proj-rel-val { min-width: 0; }
@@ -1447,7 +1470,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: var(--fs-body);
 }
 .rec-plan-k { color: var(--brand); font-weight: 600; white-space: nowrap; }
-.rec-plan-v { flex: 1 1 100%; min-width: 0; color: var(--ink); order: 3; overflow-wrap: anywhere; } /* 不带空格的长名字也得断，不然撑出整页横滚 */
+.rec-plan-v { flex: 1 1 100%; min-width: 0; color: var(--ink); order: 3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 11-04 起一行省略、悬停看全；不撑出整页横滚 */
 .rec-plan-m { color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; margin-left: auto; }
 .rec-plan-m.is-over { color: var(--danger-text); }
 .rec-tl { padding: 4px 16px 10px; }
@@ -1477,13 +1500,13 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-sum-item .rec-tl-head { gap: 12px; flex-wrap: wrap; row-gap: 4px; }
 .rec-sum-type { flex: none; padding: 2px 10px; border-radius: var(--r-ctl); background: var(--hover); font-size: var(--dt-aux); color: var(--text-muted); }
 .rec-sum-item .rec-tl-time { margin-left: 0; }
-.rec-sum-title { margin-top: 8px; font-weight: 600; color: var(--ink); font-size: var(--dt-body); overflow-wrap: anywhere; }
+.rec-sum-title { margin-top: 8px; font-weight: 600; color: var(--ink); font-size: var(--dt-body); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rec-sum-item .rec-tl-content { margin: 6px 0 2px; }
-.rec-sum-proj { display: inline-block; margin-top: 2px; font-size: var(--dt-body); color: var(--brand); overflow-wrap: anywhere; }
+.rec-sum-proj { display: inline-block; max-width: 100%; vertical-align: top; margin-top: 2px; font-size: var(--dt-body); color: var(--brand); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rec-sum-item .rec-tl-meta { margin-top: 2px; }
-/* 「跟进」菜单里的项目（P14 第 3 条）：长名字折行显示完整（10-30，原来截断），后面跟一句「关联 / 已结束 / 在公海」 */
+/* 「跟进」菜单里的项目（P14 第 3 条）：11-04 起一行省略、悬停看全，后面跟一句「关联 / 已结束 / 在公海」 */
 .rec-go { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: min(320px, 80vw); }
-.rec-go-name { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.rec-go-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rec-go-note { flex: none; font-size: var(--fs-note); color: var(--text-muted); }
 /* 10-31 改版 R6：企业版客户页的具名按钮，单独一行摆在名字下面，按下面三栏分组对齐（列宽、间距、断点和 .rec 一样）。
    中、右两组包在 .rec-acts-r 里：三栏时它 display: contents，两组各占第 2、3 栏；两栏时它整个进第 2 栏、两组的按钮接着排（整个客户的事还是排最后靠右）；一栏时都叠起来。
@@ -1521,7 +1544,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-tl-contract { background: var(--success-bg); border: 1px solid var(--success-line); border-radius: var(--r-card); padding: 10px 14px; }
 /* 签约 / 订单卡片：金额长的时候日期折到下一行靠右，不再越出卡片（2026-10-19 排查） */
 .rec-tl-contract .rec-tl-head { flex-wrap: wrap; row-gap: 2px; }
-.rec-tl-contract .rec-tl-type { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.rec-tl-contract .rec-tl-type { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rec-nowrap { white-space: nowrap; }
 
 .rec-ai { padding: 16px 18px 14px; }
@@ -1557,8 +1580,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-side-card { padding: 14px 18px 12px; }
 .rec-side-t { font-size: var(--fs-note); font-weight: 600; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
 .rec-task { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: var(--fs-body); }
-/* 待办标题长了折行，到期时间不被挤出右栏（2026-10-19 排查） */
-.rec-task-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* 待办标题一行省略、悬停看全（11-04），到期时间不被挤出右栏 */
+.rec-task-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 待办卡里企业版多摆的「计划 / 项目」行打的小标（P14 第 2 条） */
 .rec-task-k { flex: none; font-size: var(--fs-note); color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; line-height: 18px; }
 .rec-task-due { flex: none; margin-left: auto; font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
@@ -1689,8 +1712,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .link-strong { color: var(--ink); font-weight: 500; }
 .link-strong:hover { color: var(--brand); }
 /* 数据页按负责人：名字不截断，同名的邮箱小字另起一行 */
-.stat-who { word-break: break-word; }
-.stat-who-sub { display: block; font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); word-break: break-all; }
+.stat-who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-who-sub { margin-left: 4px; font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); }
 /* 复盘 · 全周期漏斗（ProjectFunnel）：四条横条往下递减；个数写在条上、转化率写在右边，含义靠字不靠颜色。
    条只用一种色（--brand 调淡、压在 --panel 上），主题换了、暗色主题下跟着变，字用 --ink 保证看得清 */
 .pfun-note { margin: 0 0 var(--s3); font-size: var(--fs-note); color: var(--text-muted); }
@@ -2400,6 +2423,14 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; -webkit-line-clamp: unset; line-clamp: none;
 }
 .dl-one-line .ant-table-tbody > tr > td .ant-space { flex-wrap: nowrap; max-width: 100%; }
+/* 格子里的 Space（头像 + 名字 + 标签）：名字那一项可缩、带省略号，头像 / 标签 / 按钮不缩；整组不撑出格子。操作列另算（按钮不能被裁，靠列宽） */
+.dl-one-line .ant-table-tbody > tr > td:not(.dl-act) .ant-space { min-width: 0; overflow: hidden; }
+.dl-one-line .ant-table-tbody > tr > td:not(.dl-act) .ant-space-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-one-line .ant-table-tbody > tr > td:not(.dl-act) .ant-space-item:has(> .ant-tag, > .ant-avatar, > .ant-btn, > .anticon) { flex: none; }
+/* 备注这类长文列照旧折行（11-04 用户：「除了备注」）；操作列按钮不截 */
+.dl-one-line .ant-table-tbody > tr > td.dl-wrap { white-space: normal; overflow-wrap: anywhere; }
+.dl-one-line .ant-table-tbody > tr > td.dl-wrap :is(.fulltext, .clamp, .clamp-1) { white-space: normal; overflow: visible; }
+.dl-one-line .ant-table-tbody > tr > td.dl-act { overflow: visible; text-overflow: clip; }
 .dl-one-line .cust-link-t { flex-direction: row; align-items: baseline; gap: 6px; }
 .dl-one-line .cust-link-t > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dl-one-line .cust-link-t > .cust-link-co { flex: 0 1000 auto; overflow-wrap: normal; }
@@ -2425,15 +2456,15 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .chan-list .ant-table-tbody > tr:not(.ant-table-placeholder) > td { white-space: nowrap; }
 .chan-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .chan-tags { display: inline-flex; gap: 4px; flex-wrap: nowrap; }
-/* 渠道详情抽屉的标题：名字整段显示、放不下折行（「｜」两边常常没空格，任意处断），「已停用」不缩 */
-.chan-full { display: flex; align-items: flex-start; gap: var(--s2); min-width: 0; max-width: 100%; }
-.chan-full > :first-child { min-width: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-/* 选渠道的级联（ChannelPicker）：长名字在格子里折行显示完整（10-30，原来省略号；格子 title 里也有全称）。
+/* 渠道详情抽屉的标题：名字一行、放不下省略号，悬停看全（11-04 用户：「一行显示不下的用...」，推翻 10-30 折行）；「已停用」不缩 */
+.chan-full { display: flex; align-items: center; gap: var(--s2); min-width: 0; max-width: 100%; }
+.chan-full > :first-child { min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 选渠道的级联（ChannelPicker）：一行、放不下省略号，悬停看全（11-04 推翻 10-30 折行；格子 title 里也有全称）。
    每列最宽 min(300px, 30vw)：属性 / 名称 / 来源三列并排在 1024 宽的弹窗里也放得下，
    原来 44vw 不折行，三列加起来比屏幕宽，弹层被推出左边、第一列看不见。
    antd 自己的「最宽 400 + 不折行 + 省略号」选择器更重，这两条都叠上 .ant-cascader-dropdown .ant-cascader-menu 压过它 */
-.chan-picker-pop.ant-cascader-dropdown .ant-cascader-menu .ant-cascader-menu-item { max-width: min(300px, 30vw); white-space: normal; overflow-wrap: anywhere; }
-.chan-picker-pop.ant-cascader-dropdown .ant-cascader-menu .ant-cascader-menu-item-content { min-width: 0; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.chan-picker-pop.ant-cascader-dropdown .ant-cascader-menu .ant-cascader-menu-item { max-width: min(300px, 30vw); white-space: nowrap; }
+.chan-picker-pop.ant-cascader-dropdown .ant-cascader-menu .ant-cascader-menu-item-content { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chan-num { font-variant-numeric: tabular-nums; }
 /* 渠道总览看板（11-03，ChannelDash.tsx）：一排 6 个数 / 漏斗·分布·预警 / 三层转化率·TOP5。按看板自己的宽度排（container query），
    字只用正文色、次要色，颜色只给色块。分布那格收起时剩两格撑满 */
@@ -2588,7 +2619,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 分批时要摆、详情还在路上的那一行（2026-10-24）：占住位置，取到了就换成真的 */
 .plan-row-wait .plan-row-t { font-weight: 400; color: var(--text-muted); }
 .plan-row-m { flex: 1; min-width: 0; }
-.plan-row-t { display: block; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; } /* 计划标题折行显示完整（10-30，原来一行省略） */
+.plan-row-t { display: block; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 计划标题一行省略、悬停看全（11-04，推翻 10-30 折行） */
 .plan-row-s { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-note); color: var(--text-muted); }
 .plan-row-d { flex: none; font-size: var(--fs-note); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 /* 改 / 删：悬停或键盘落到这一行时才出现，平时不和截止时间抢眼（2026-10-02 排查 3-4） */
@@ -2611,7 +2642,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
    候选里名字后面跟公司和号码（同名的人靠它分）；挑中后底下一行淡字说上次谈到哪儿。
    那一行没挑之前是一句更淡的说明（--text-faint 只给弱提示），占住位置 */
 .pick-opt { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--s2); min-width: 0; }
-.pick-opt-n { min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; } /* 公司和号码整段显示，放不下折到名字下面（10-30，原来一行省略） */
+.pick-opt-n { min-width: 0; max-width: 100%; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 公司和号码：放不下先折到名字下面，再不够一行省略（11-04） */
 .pick-ctx { display: flex; flex-direction: column; font-size: var(--fs-note); color: var(--text-muted); }
 .pick-ctx-0 { color: var(--text-faint); }
 
@@ -2651,11 +2682,11 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   padding: var(--s2) var(--s3); margin-bottom: var(--s2); cursor: grab; }
 .pipe-card:hover { border-color: var(--line-strong); }
 .pipe-card:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
-.pipe-card-t { font-weight: 500; color: var(--ink); } /* 再加 .fulltext：项目名整段显示（10-30，原来 .clamp 两行截断） */
+.pipe-card-t { font-weight: 500; color: var(--ink); } /* 再加 .fulltext：一行、省略号、悬停看全文（11-04） */
 .pipe-card-m { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: var(--s2); margin-top: var(--s1); }
 /* 列宽固定以后底行放不下金额 + 负责人：金额一行写完，负责人挤不下就折到下一行，再长就换行写完，不省略 */
 .pipe-card-a { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pipe-card-o { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; max-width: 100%; word-break: break-word; }
+.pipe-card-o { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 每列先摆 50 张（2026-10-24），底下接着翻；列宽固定，卡片里的字折行写完，不撑宽列 */
 /* 客户看板（U-客户-06）：按客户属性分列，点卡片进客户页（不拖）。属性名管理员能自己加、可能很长：列头名字一行省略、悬停看全 */
 .cust-board .pipe-card { cursor: pointer; }
@@ -3372,7 +3403,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .follow-att-pic .ant-image, .follow-att-pic .ant-image-img { border-radius: 4px; display: block; }
 .follow-att-pic > .ant-btn { position: absolute; top: 0; right: 0; background: color-mix(in srgb, var(--panel) 85%, transparent); }
 .follow-att-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.follow-att-name { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-note); }
+.follow-att-name { flex: 1 1 120px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); }
 .follow-att-file audio { height: 32px; max-width: 100%; flex: 1 1 200px; min-width: 0; }
 .follow-att-add { display: flex; align-items: center; gap: 8px; }
 /* 记沟通弹窗（F-跟进-06/08）：卡点两格并排，窄了折成上下；「更多」里的格子和主区同样间距 */
@@ -3446,7 +3477,11 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .rec-mod .rec-tl { padding: 0; }
 .rec-mod .rec-task { min-width: 0; }
 /* 资料值一行放不下就省略，悬停 title 看全（U-通用-01）；多行的（地址、备注）照旧换行 */
-.rec-rail-blocks .rec-field-v.is-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
+/* 11-04 起不止左栏：所有详情页的单行值都这样（用户：「尽量所有信息都在一行显示完整。除了备注」），悬停看全文走 TruncTip */
+.rec-field-v.is-line { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; overflow-wrap: normal; }
+/* 电话这类换成链接显示的：省略号打在链接自己身上，链接不出界 */
+.rec-field-v.is-line > .rec-field-link { display: block; min-width: 0; max-width: 100%; }
+.rec-field-v.is-line > .rec-field-link > a { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 客户背调只摆一个状态标签，点开弹详情 */
 .rec-research-tag { cursor: pointer; margin-inline-end: 0; }
 .rec-research-tag:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
