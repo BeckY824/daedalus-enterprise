@@ -5,7 +5,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 /**
  * 业务员（企业版按组织看、团队版没开互看）看得到的客户，用裸 SQL 数和挑，不走 Prisma 那层 where。
  *
- * lib/team-scope 的 可见客户 = 负责人是我 OR 渠道负责人是我 OR 在公海。Prisma 把「在公海」展开成
+ * lib/team-scope 的 可见客户 = 负责人是我 OR 渠道负责人是我（企业版不算，11-04）OR 在公海。Prisma 把「在公海」展开成
  * Customer LEFT JOIN CustomerPool，OR 起来 SQLite 用不上负责人的索引，只能整张客户表扫一遍：
  * 10 万客户一次计数 ~20 ms，30 人同时开页面时排在只读连接上要等上百毫秒（2026-10-26 企业版 p95）。
  * 这里把「在公海」写成 id IN (SELECT customerId FROM CustomerPool)（customerId 是外键，硬删客户才连带删；软删的公海行还在，外层的 deletedAt 条件把它们排掉），
@@ -31,10 +31,12 @@ async function 看得到的(): Promise<{ where: string; 参数: string[] } | nul
   const 组员 = 组员名单 === null
     ? { sql: ` OR c.id IN (SELECT p."customerId" FROM "Project" p JOIN "ProjectMember" m ON m."projectId" = p.id WHERE m."userId" IN (${占}) AND m."inviteStatus" = 'JOINED' AND p."deletedAt" IS NULL)`, 参数: 们 }
     : 组员名单?.length ? { sql: ` OR c.id IN (${组员名单.map(() => "?").join(",")})`, 参数: 组员名单 } : { sql: "", 参数: [] as string[] };
+  // 企业版不认渠道负责人（11-04，同 team-scope 可见客户）
+  const 渠道 = 企业版() ? { sql: "", 参数: [] as string[] } : { sql: ` OR c."channelOwnerId" IN (${占})`, 参数: 们 };
   return {
     // 回收站里的客户（企业版软删，P9）不算：裸 SQL 不过 Prisma 扩展，自己带上。外层是 AND，三段 OR 照旧各走各的索引
-    where: `(c."salesOwnerId" IN (${占}) OR c."channelOwnerId" IN (${占}) OR c.id IN (SELECT "customerId" FROM "CustomerPool")${组员.sql}) AND c."deletedAt" IS NULL${避.sql}`,
-    参数: [...们, ...们, ...组员.参数, ...避.参数],
+    where: `(c."salesOwnerId" IN (${占})${渠道.sql} OR c.id IN (SELECT "customerId" FROM "CustomerPool")${组员.sql}) AND c."deletedAt" IS NULL${避.sql}`,
+    参数: [...们, ...渠道.参数, ...组员.参数, ...避.参数],
   };
 }
 

@@ -259,7 +259,7 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
  * 企业版只用项目时的新线索卡：走项目的建档向导，建一位客户、主要联系人和一个线索阶段的项目，首条跟进写明从对话来。
  * 不给撤销：向导一笔建了好几样，撤回去要删客户，交给人到项目页处理。
  * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 阿里国际站ID，撞了不建、提醒原负责人。
- * 不撞：创建人 = 录入人；项目负责人按分配方式（指定 → 那位销售；自动 → 建在我名下再按业务线分；暂不分配 / 个人自持 → 自己）；客户负责人照旧是录入人（客户跟不跟着走待对方确认，11-04）
+ * 不撞：创建人 = 录入人；负责人按分配方式（指定 → 那位销售，客户跟着走；自动 → 建在我名下再按业务线分；暂不分配 / 个人自持 → 自己）
  */
 async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string }> {
   const meId = me.id;
@@ -302,13 +302,13 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   if (!渠道) return { ok: false, error: `卡上的渠道「${p.source}」对不上启用中的渠道：请在卡上重新选渠道` };
   // 业务线（11-01 新建必填）：卡上没这格、项目建在我名下 → 跟我自己的内贸 / 外贸；我没设线就「暂不分配」，要改到项目页改
   const 我的线 = (await prisma.entMember.findUnique({ where: { userId: meId }, select: { line: true } }))?.line;
-  // 指定分配给了别人：项目记在那人名下；其余先建在我名下，建好再转。客户负责人先照旧留在我名下（客户跟不跟着走待对方确认，11-04）
+  // 指定分配给了别人：项目、客户都记在那人名下（和新建项目页同一条：负责人打开项目时得看得到这位客户）；其余先建在我名下，建好再转
   const 项目负责人 = (p.分配方式 === 0 || p.分配方式 === undefined) && p.ownerId ? p.ownerId : meId;
   const r = await 建档向导({
     客户: {
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
       school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
-      remark: 备注 || null, salesOwnerId: meId, channelId: 渠道.id, referrerCustomerId: null,
+      remark: 备注 || null, salesOwnerId: 项目负责人, channelId: 渠道.id, referrerCustomerId: null,
       // 国家、城市进客户地址（和新建客户同一格）；城市不带国家会被当成国内，所以没国家就不交城市
       ...(进客户 ? { 企业资料: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
     },

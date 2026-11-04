@@ -186,8 +186,8 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
       互看: false, 别人的: new Set(), 全拦: true, 话: 只读角色话, 只读: 只读角色话,
     };
   }
-  // 只看某人（V3.5.1 市管特例，规则开不开都算）：业务数据只看 那个人（和自己）是创建人或负责人的，公海照常；
-  // 按人的走 读（负责人）+ 市场（创建人、建过 / 负责项目），都只读。自己没东西能写（permissions.ts 一律拒），写范围只留自己
+  // 只看某人（V3.5.1 市管特例，规则开不开都算）：业务数据只看 那个人（和自己）是负责人、或是创建人且不在公海的，公海照常；
+  // 按人的走 读（负责人）+ 市场（11-04：负责的 + 建的且不在公海），都只读。自己没东西能写（permissions.ts 一律拒），写范围只留自己
   const 目标 = 只看的人(org, id);
   if (目标) {
     const 人们 = [id, 目标];
@@ -232,13 +232,14 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   const 读 = 范围.读;
   if (读) {
     const 那些 = await db.customer.findMany({
-      where: { OR: [{ salesOwnerId: { in: 读 } }, { channelOwnerId: { in: 读 } }] },
+      // 企业版不认渠道负责人（11-04，同 team-scope 可见客户）
+      where: { salesOwnerId: { in: 读 } },
       select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
     });
     for (const c of 那些) if (!看得到(c, 范围.写)) 别人的.add(c.id);
   }
   if (市场.length) {
-    // 市场成员相关的客户（10-31）：看得到、只能看。原来就能动的不降——自己（含实线下属）负责的、公海的，
+    // 市场成员相关的客户（11-04 改：负责的 + 建的且不在公海）：看得到、只能看。原来就能动的不降——自己（含实线下属）负责的、公海的，
     // 以及自己负责的项目挂着的客户（在项目下记沟通）都不算只读；只是进了组的照上面组员那条，只读（V3.5.1）
     const 那些 = await db.customer.findMany({
       where: 市场相关客户(市场),

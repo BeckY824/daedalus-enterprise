@@ -1,5 +1,5 @@
 /**
- * lib/scope-sql（看得到的客户：负责人 OR 渠道负责人 OR 在公海表里）和钩子给 Prisma 加的 可见客户 逐个身份对拍
+ * lib/scope-sql（看得到的客户：负责人 OR 在公海表里；渠道负责人企业版不算，11-04）和钩子给 Prisma 加的 可见客户 逐个身份对拍
  * （2026-10-26 企业版 p95）：客户数要一样；最近跟进的前 n 位，排序键逐位一样、编号一样（最后一位那组完全同键的
  * 谁先谁后两边都没定，只比那组之前的）。用拷出来的一份库、显式单连接，不碰共用的测试库。
  */
@@ -70,7 +70,7 @@ beforeAll(async () => {
         name: `客户${i}`,
         phone: `139${String(i).padStart(8, "0")}`,
         salesOwnerId: o,
-        // 外人名下有几位渠道是经理的；也有渠道负责人是自己、和负责人重了的（不能数两遍）
+        // 外人名下有几位渠道是经理的（11-04 起企业版经理看不到）；也有渠道负责人是自己、和负责人重了的（不能数两遍）
         ...(o === 外人 && i % 4 === 0 ? { channelOwnerId: 经理 } : o === 小王 && i % 3 === 0 ? { channelOwnerId: 小王 } : {}),
         lastFollowAt: i % 5 === 0 ? null : 日(1 + (i % 7), i % 2),
         createdAt: 日(1, i % 3),
@@ -126,11 +126,11 @@ describe("看得到的客户：裸 SQL 和 Prisma 范围对拍", () => {
     await raw.setting.deleteMany({ where: { key: 规则.按组织看客户.key } });
   });
 
-  it("看得到的数对：经理链（含渠道是他的外人客户）、外人、没认出人只看公海", async () => {
+  it("看得到的数对：经理链（企业版不认渠道负责人，11-04）、外人、没认出人只看公海", async () => {
     await raw.setting.create({ data: { key: 规则.按组织看客户.key, value: JSON.stringify(true) } });
     const 公海 = await raw.customerPool.count();
     expect(await 以谁的身份("ghost", 看得到的客户数)).toBe(公海);
-    const 经理看 = await raw.customer.count({ where: { OR: [{ salesOwnerId: { in: [经理, 小王, 小张, 小赵] } }, { channelOwnerId: 经理 }, { pool: { isNot: null } }], NOT: { salesOwnerId: 经理, pool: { isNot: null } } } }); // 11-03 自己退进公海的回避，下属退的照看
+    const 经理看 = await raw.customer.count({ where: { OR: [{ salesOwnerId: { in: [经理, 小王, 小张, 小赵] } }, { pool: { isNot: null } }], NOT: { salesOwnerId: 经理, pool: { isNot: null } } } }); // 11-03 自己退进公海的回避，下属退的照看
     expect(await 以谁的身份(经理, 看得到的客户数)).toBe(经理看);
     expect(await 以谁的身份(老板, 看得到的客户数)).toBe(await raw.customer.count());
     await raw.setting.deleteMany({ where: { key: 规则.按组织看客户.key } });

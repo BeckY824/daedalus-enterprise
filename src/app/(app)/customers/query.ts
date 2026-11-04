@@ -84,10 +84,13 @@ export function 在看子集(sp: Pick<客户条件, "batch" | "createdWithin" | 
   return Boolean(sp.batch || sp.directOf || sp.createdWithin === "本月");
 }
 
-/** 公海这一层：「公海」页签只要公海里的；子集里不分；其余（「客户」页签）不含公海里的 */
+/**
+ * 公海这一层：「公海」页签只要公海里的；子集里不分；其余（「客户」页签）不含公海里的。
+ * 企业版子集里也不含公海（11-04 用户：个人客户页只显示负责人非空的，公海只在公海页里看）
+ */
 function 公海条件(sp: 客户条件): Prisma.CustomerWhereInput {
   if (sp.pool === "1") return { pool: { isNot: null } };
-  if (在看子集(sp)) return {};
+  if (在看子集(sp) && !企业版()) return {};
   return { pool: { is: null } };
 }
 
@@ -224,7 +227,7 @@ const 企业版才筛: readonly string[] = ["custStatus", "customerType"];
  * 10 万客户搜「138」要 1.6–1.9 s；这样写 60–75 ms（老板）、7–10 ms（业务员）。
  *
  * 范围和 lib/team-scope.ts 的 可见客户(读的我) ∧ 公海条件 是同一个口径，化简后：
- * 「客户」页签 = 我负责（销售或渠道）∧ 不在公海；「公海」页签 = 在公海（公海人人看得到，原负责人回避的除外，11-03）；老板只剩页签条件。
+ * 「客户」页签 = 我负责（销售或渠道；企业版只认销售负责人，11-04）∧ 不在公海；「公海」页签 = 在公海（公海人人看得到，原负责人回避的除外，11-03）；老板只剩页签条件。
  * **那边的可见范围改了，这里要跟着改**（customer-keyword-page.test.ts 拿 Prisma 老路逐页对拍守着）。
  * 这里只给 id，行由调用方经限定层再取一次：范围就算写宽了，也只会多算总数，不会多给行。
  *
@@ -258,8 +261,9 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
     if (谁) {
       const ids = typeof 谁 === "string" ? [谁] : [...谁];
       const q = ids.map(() => "?").join(", ");
-      段.push(`(c."salesOwnerId" IN (${q}) OR c."channelOwnerId" IN (${q}))`);
-      值.push(...ids, ...ids);
+      // 企业版不认渠道负责人（11-04，同 team-scope 可见客户）
+      if (企业版()) { 段.push(`c."salesOwnerId" IN (${q})`); 值.push(...ids); }
+      else { 段.push(`(c."salesOwnerId" IN (${q}) OR c."channelOwnerId" IN (${q}))`); 值.push(...ids, ...ids); }
     }
     段.push('NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
   }
