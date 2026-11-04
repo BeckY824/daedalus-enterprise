@@ -1743,6 +1743,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .cli-anchor { display: inline-block; width: 0; height: 28px; vertical-align: middle; }
 .data-shell-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 16px; }
 .data-shell-who { width: 200px; max-width: 100%; }
+/* 时间预设的「自定义」（V3.5.1 P-界面-10）：跟在分段后面的日期段，两个 YYYY-MM-DD 放得下就够，不撑宽；窄了随那一排换行 */
+.custom-range { flex: none; width: 236px; max-width: 100%; }
+.custom-range.ant-picker-small { width: 216px; }
 .data-shell-who .ant-select-selection-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 复盘页两个页签（P15）：人员选择在页签上面；Tabs 只当导航，内容由服务端给、摆在 .data-shell-body 里 */
 .data-shell-bar-who { margin-bottom: var(--s2); }

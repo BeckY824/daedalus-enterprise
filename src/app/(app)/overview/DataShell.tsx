@@ -8,6 +8,8 @@ import { Segmented, Select, Tabs } from "antd";
 import { PageHead } from "@/components/ui";
 import { 视图们, type 视图 } from "./views";
 import { 读页签, 复盘页签们, 复盘页签叫法, type 复盘页签 } from "@/lib/project/board-todos";
+import CustomRangePicker from "@/components/CustomRangePicker";
+import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 
 /**
  * 「数据」页的壳：标题 + 三视图切换；企业版按项目时是「复盘」页：人员选择 + 「任务 | 卡点 | 沟通 | 数据」四个页签（P15 → P7）。
@@ -27,9 +29,12 @@ export default function DataShell({
   项目 = false,
   选人,
   页签,
+  段,
   children,
 }: {
   view: 视图;
+  /** 「自定义」看的那一段（服务端读好、缺 / 错已落到默认）；别的视图不给 */
+  段?: 日期段;
   /** 企业版只用项目：数的是项目的三大阶段，不是签约 */
   项目?: boolean;
   /**
@@ -52,6 +57,8 @@ export default function DataShell({
   const [切着, start] = useTransition();
   const [显签, set显签] = useOptimistic(页签);
   const [显人, set显人] = useOptimistic(选人?.当前 ?? "");
+  // 点了「自定义」先亮起来、日期段先摆出来（默认本月 1 号到今天，同服务端），不等那一屏回来
+  const [显视图, set显视图] = useOptimistic(view);
 
   /** 在当前地址上改几个参数：页签、人、视图都保留另外几样（看着某个人切到「数据」还是那个人，回到「待办」筛选还在） */
   const 改 = (k: Record<string, string | undefined>, 换 = false) => {
@@ -65,13 +72,18 @@ export default function DataShell({
     start(() => {
       if (k.tab) set显签(读页签(k.tab));
       if ("ownerId" in k) set显人(k.ownerId ?? "");
+      if (k.view) set显视图(k.view as 视图);
       if (换) router.replace(url, { scroll: false });
       else router.push(url, { scroll: false });
     });
   };
   const 视图条 = (
     <div className="data-shell-bar">
-      <Segmented value={view} onChange={(v) => 改({ view: String(v) })} options={[...视图们]} />
+      {/* 换到别的视图把 from / to 一起去掉；选「自定义」只写 view，那一段服务端落到本月 */}
+      <Segmented value={显视图} onChange={(v) => 改({ view: String(v), from: undefined, to: undefined })} options={[...视图们]} />
+      {显视图 === "自定义" && (
+        <CustomRangePicker 段={段 ?? 读日期段()} 改={(d) => 改({ view: "自定义", from: d.from, to: d.to })} />
+      )}
       {/* 没页签时（不按项目），选人还跟在视图后面 */}
       {!页签 && 选人 && 人下拉()}
     </div>

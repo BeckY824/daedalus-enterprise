@@ -3,7 +3,7 @@
  *   - 读卡点看板筛 / 沟通条件（纯函数）：卡点看板的地址栏只认 bm/bo/br/bt/bi/bp；沟通按 看板的人 的 谁 圈、时间段筛
  *   - 卡点看板（11-01 改成三栏，谁看得到按卡点的角色开关）：成员看自己发的 / 自己项目上的 / 认领的；
  *     经理加上直属下属发的、看不到外人的；总管理员（可看全部）全部；不是企业版给空
- *   - 复盘沟通of：只列挂在项目上的沟通，按项目负责人圈（11-01 同项目列表），谁记的都算（11-03 C6-2）；成员只看到自己项目上的；经理看到自己 + 下属的；总管理全部；时间倒序；最近几天筛
+ *   - 复盘沟通of：只列挂在项目上的沟通，按项目负责人圈（11-01 同项目列表），谁记的都算（11-03 C6-2）；成员只看到自己项目上的；经理看到自己 + 下属的；总管理全部；时间倒序；最近几天筛；自定义一段（t=custom&tf&tt，V3.5.1 P-界面-10）两头都算
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -42,6 +42,22 @@ describe("纯函数：地址栏、条件", () => {
     expect(w.projectNode).toEqual({ is: { project: { deletedAt: null, ownerId: { in: [小王] }, pooledAt: null } } });
     expect(w).not.toHaveProperty("ownerId");
     expect(dayjs((w.occurredAt as { gte: Date }).gte).format("YYYY-MM-DD HH:mm")).toBe("2026-10-25 00:00");
+  });
+
+  it("沟通条件 自定义：开始日零点到结束日 23:59:59.999（两头都算，北京日界线）；没给区间不筛时间", () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    try {
+      expect(读沟通段("custom")).toBe("custom");
+      const now = dayjs("2026-11-04T15:00:00");
+      const w = 沟通条件([小王], "custom", now, "", { from: "2026-10-01", to: "2026-10-31" });
+      const t = w.occurredAt as { gte: Date; lte: Date };
+      expect(t.gte.toISOString()).toBe("2026-09-30T16:00:00.000Z");
+      expect(t.lte.toISOString()).toBe("2026-10-31T15:59:59.999Z");
+      expect(w.projectNode).toEqual({ is: { project: { deletedAt: null, ownerId: { in: [小王] }, pooledAt: null } } });
+      expect(沟通条件([小王], "custom", now)).not.toHaveProperty("occurredAt");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -155,6 +171,19 @@ describe("库里取数和数据范围", () => {
     expect(内容(全)).toEqual(["总管聊了", "经理聊了", "小王聊了", "外人聊了", "小王上个月"].sort());
     // 卡点自带的沟通（没挂项目节点）不进沟通页签
     expect(内容(全).some((x) => x.startsWith("发卡点"))).toBe(false);
+  });
+
+  it("沟通 自定义一段：只列这一段里的，两头那天都算", async () => {
+    await 记沟通(小王, "小王上个月", 40);
+    const 日 = (n: number) => dayjs().subtract(n, "day").format("YYYY-MM-DD");
+    const 王 = await 看板的人({ id: 小王, role: "SALES" });
+    const 查 = (区间: { from: string; to: string }) => 以谁的身份(小王, () => 复盘沟通of(王.谁, { 段: "custom", 区间 }));
+    expect(内容(await 查({ from: 日(45), to: 日(35) }))).toEqual(["小王上个月"]);
+    // 两头正好落在那天
+    expect(内容(await 查({ from: 日(40), to: 日(40) }))).toEqual(["小王上个月"]);
+    expect(内容(await 查({ from: 日(1), to: 日(1) }))).toEqual(["小王聊了"]);
+    expect(内容(await 查({ from: 日(45), to: 日(0) }))).toEqual(["小王上个月", "小王聊了"].sort());
+    expect(内容(await 查({ from: 日(30), to: 日(2) }))).toEqual([]);
   });
 
   it("看全部：公海项目（ownerId 空串）上的沟通不算", async () => {
