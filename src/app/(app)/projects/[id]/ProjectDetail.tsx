@@ -794,7 +794,7 @@ export default function ProjectDetail({
       )}
       <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
       {p.来源线索 && (
-        <div style={行样}><span style={键样}>来源线索</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
+        <div style={行样}><span style={键样}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
       {/* 联系人名字、职位可能很长：在 1024 宽的项目卡里折行，不顶出卡片 */}
       {/* 11-04：企业版就地改联系人（下拉选本客户的联系人，可清空）；不是企业版照旧只读 */}
@@ -807,7 +807,7 @@ export default function ProjectDetail({
             能改
             显示={(id) => {
               const c = id === (p.contact?.id ?? null) ? p.contact : 联系人们.find((x) => x.id === id) ?? null;
-              return c ? <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{c.name}{c.position ? ` · ${c.position}` : ""}</span> : 待填("联系人");
+              return c ? <span className="proj-one">{c.name}{c.position ? ` · ${c.position}` : ""}</span> : 待填("联系人");
             }}
             存={(v) => 存项目项({ contactId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
@@ -816,7 +816,7 @@ export default function ProjectDetail({
           />
         </div>
       ) : (
-        p.contact && <div style={行样}><span style={键样}>联系人</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
+        p.contact && <div style={行样}><span style={键样}>联系人</span><span className="proj-one">{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
       )}
       {p.contact && p.联系人附件 && <div style={行样}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       {p.企业版 && p.level !== undefined && (
@@ -888,7 +888,7 @@ export default function ProjectDetail({
               />
             </div>
           )}
-          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span></div>}
+          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span className="proj-one">{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span></div>}
           <div style={多行行样}>
             <span style={键样}>需求描述</span>
             <ProjectInlineField<string>
@@ -943,7 +943,7 @@ export default function ProjectDetail({
             名="项目来源"
             值={p.channelId ?? null}
             能改={能就地改 && !!p.渠道们}
-            显示={() => <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源")}</span>}
+            显示={() => <span className="proj-one">{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源")}</span>}
             存={(v) => 存项目项({ channelId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
               <ChannelPicker aria-label="项目来源" channels={p.渠道们 ?? []} value={草稿} disabled={忙} placeholder={`不选 = 同${b.customer}来源`} style={{ width: "100%" }} onChange={(v) => 提交(v ?? null)} />
@@ -978,9 +978,9 @@ export default function ProjectDetail({
               能改={能就地改}
               规整={(v) => ({ ...v, location: v.location?.trim() || null })}
               显示={(v) => (
-                <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                <span className="proj-one">
                   {项目区域(v) || 待填("区域")}
-                  {(拼地址(v) || v.location) && <span style={{ display: "block", color: "var(--text-muted)" }}>{[拼地址(v), v.location].filter(Boolean).join(" ")}</span>}
+                  {(拼地址(v) || v.location) && <span style={{ color: "var(--text-muted)" }}>{项目区域(v) ? " · " : ""}{[拼地址(v), v.location].filter(Boolean).join(" ")}</span>}
                 </span>
               )}
               存={(v) => 存项目项({ addrCountry: v.addrCountry, addrProvince: v.addrProvince, addrCity: v.addrCity, addrDistrict: v.addrDistrict, location: v.location })}
@@ -999,12 +999,12 @@ export default function ProjectDetail({
         </>
       )}
       {p.historyOwners.length > 0 && (
-        <div style={行样}><span style={键样}>历史</span><span style={{ minWidth: 0, overflowWrap: "anywhere" }} title="历史负责人：把这个项目放回过公海的人">{p.historyOwners.join("、")}</span></div>
+        <div style={行样}><span style={键样}>历史</span><span className="proj-one" title={`历史负责人（把这个项目放回过公海的人）：${p.historyOwners.join("、")}`}>{p.historyOwners.join("、")}</span></div>
       )}
       {(p.nextStepText || p.nextStepAt) && !p.pooled && (
         <div style={行样}>
           <span style={键样}>下一步</span>
-          <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+          <span className="proj-one">
             {p.nextStepText}
             {p.nextStepText && p.nextStepAt && <span style={{ color: "var(--text-muted)" }}> · </span>}
             {p.nextStepAt && <span style={p.nextStepText ? { color: "var(--text-muted)", whiteSpace: "nowrap" } : undefined}>{p.nextStepAt}</span>}

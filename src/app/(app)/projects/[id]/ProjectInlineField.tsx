@@ -113,7 +113,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
           开();
         }}
       >
-        <div className="proj-inline-val">{显示(现)}</div>
+        <div className={`proj-inline-val${多行 ? " is-multi" : ""}`}>{显示(现)}</div>
         <button
           ref={笔}
           type="button"

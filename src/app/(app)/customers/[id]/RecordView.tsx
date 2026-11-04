@@ -1131,7 +1131,7 @@ export default function RecordView({
             {contacts.length === 0 && <div className="rec-empty">还没有联系人</div>}
             {刚加的排前(contacts, 刚加的联系人).map((c) =>
               企业 ? (
-                /* 企业版（10-27 会议：联系方式要完整展示）：一人一张小卡，电话 / 邮箱 / 微信各占一行、长了换行不截断。
+                /* 企业版（10-27 会议：联系方式要完整展示）：一人一张小卡，电话 / 邮箱 / 微信各占一行；11-04 起每行一行，放不下打省略号、悬停看全文。
                    原来一行只摆「职位或电话」其中一个，有职位就看不到电话 */
                 <div key={c.id} className={`rec-contact${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
                   <div className="rec-contact-h">
@@ -1149,20 +1149,20 @@ export default function RecordView({
                       {c.号码们.map((m, i) => (
                         <div key={`${m.kind}-${i}`} className="rec-contact-line">
                           <span className="rec-contact-k">{号码叫法(号码种类, m.kind)}</span>
-                          {m.kind === "phone" || m.kind === "landline" ? <号码链接 kind="tel" value={m.value} /> : m.kind === "email" ? <号码链接 kind="mailto" value={m.value} /> : m.value}
+                          <span className="rec-contact-v">{m.kind === "phone" || m.kind === "landline" ? <号码链接 kind="tel" value={m.value} /> : m.kind === "email" ? <号码链接 kind="mailto" value={m.value} /> : m.value}</span>
                         </div>
                       ))}
                       {c.号码们.length === 0 && 没留联系}
-                      {c.gender && <div className="rec-contact-line"><span className="rec-contact-k">性别</span>{c.gender}</div>}
-                      {c.birthday && <div className="rec-contact-line"><span className="rec-contact-k">生日</span>{c.birthday}</div>}
-                      {c.hobby && <div className="rec-contact-line"><span className="rec-contact-k">爱好</span>{c.hobby}</div>}
-                      {c.address && <div className="rec-contact-line"><span className="rec-contact-k">地址</span>{c.address}</div>}
+                      {c.gender && <div className="rec-contact-line"><span className="rec-contact-k">性别</span><span className="rec-contact-v">{c.gender}</span></div>}
+                      {c.birthday && <div className="rec-contact-line"><span className="rec-contact-k">生日</span><span className="rec-contact-v">{c.birthday}</span></div>}
+                      {c.hobby && <div className="rec-contact-line"><span className="rec-contact-k">爱好</span><span className="rec-contact-v">{c.hobby}</span></div>}
+                      {c.address && <div className="rec-contact-line"><span className="rec-contact-k">地址</span><span className="rec-contact-v">{c.address}</span></div>}
                     </>
                   ) : (
                     <>
-                      {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><号码链接 kind="tel" value={c.phone} /></div>}
-                      {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><号码链接 kind="mailto" value={c.email} /></div>}
-                      {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span>{c.wechat}</div>}
+                      {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><span className="rec-contact-v"><号码链接 kind="tel" value={c.phone} /></span></div>}
+                      {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><span className="rec-contact-v"><号码链接 kind="mailto" value={c.email} /></span></div>}
+                      {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span><span className="rec-contact-v">{c.wechat}</span></div>}
                       {!c.phone && !c.email && !c.wechat && 没留联系}
                     </>
                   )}

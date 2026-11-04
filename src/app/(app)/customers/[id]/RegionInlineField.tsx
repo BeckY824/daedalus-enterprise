@@ -81,7 +81,7 @@ export default function RegionInlineField({ customerId, value, 空时横线 = fa
           : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": "编辑所在地区" })}
       >
         <div className="rec-field-k">所在地区</div>
-        <div className={`rec-field-v${有值(文字) ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}`} style={{ overflowWrap: "anywhere" }} title={!有值(文字) && 空时横线 && !只读 ? "点击填写" : undefined}>
+        <div className={`rec-field-v is-line${有值(文字) ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}`} title={!有值(文字) && 空时横线 && !只读 ? "点击填写" : undefined}>
           {有值(文字) ? 文字 : 只读 || 空时横线 ? 空值符 : "点击填写"}
         </div>
       </div>

@@ -132,21 +132,15 @@ export default function InlineField({
     return (
       <div className="rec-field" data-field={field} {...(只读 ? { style: { cursor: "default" }, ...(权限挡 ? { title: `你的角色只能看「${label}」，改不了（设置 → 组织架构 → 字段权限）` } : {}) } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
         <div className="rec-field-k">{label}</div>
-        {/* 单行的值带 is-line + title（U-通用-01）：企业版项目模式左栏放不下就省略，悬停看全；多行的备注照旧换行。
-            换样子显示的（电话链接）不省略：省略号截在链接里，链接本身照样出界（11-04 排版闸门），放不下就换行 */}
+        {/* 一行、放不下打省略号、悬停看全文（11-04 用户：「尽量所有信息都在一行显示完整。除了备注」）；
+            悬停浮层是全站的 TruncTip，量到真截了才出。多行的备注照旧换行。
+            换样子显示的（电话链接）省略号打在链接自己身上（.rec-field-link），链接不出界（11-04 排版闸门） */}
         <div
-          className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}${kind === "textarea" || 显示 ? "" : " is-line"}`}
-          title={kind !== "textarea" && typeof display === "string" && display ? display : !display && 空时横线 && !只读 ? placeholder : undefined}
+          className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}${kind === "textarea" ? "" : " is-line"}`}
+          title={!display && 空时横线 && !只读 ? placeholder : undefined}
         >
-          {/* 邮箱放不下时在 @ 前换行，不从字母中间断开（F.1 走查：「ahmed@gulfled.a / e」） */}
           {显示 && typeof display === "string" && display ? (
-            <span onClick={(e) => (e.target as HTMLElement).closest("a") && e.stopPropagation()}>{显示(display)}</span>
-          ) : field === "email" && typeof display === "string" && display.includes("@") ? (
-            <>
-              {display.slice(0, display.indexOf("@"))}
-              <wbr />
-              {display.slice(display.indexOf("@"))}
-            </>
+            <span className="rec-field-link" onClick={(e) => (e.target as HTMLElement).closest("a") && e.stopPropagation()}>{显示(display)}</span>
           ) : (
             display || (只读 || 空时横线 ? 空值符 : placeholder)
           )}

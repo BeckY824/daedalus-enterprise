@@ -233,15 +233,20 @@ it("10-31 改版 R7：标题 26、模块标题 18、值 16 正文色、字段名
   } finally { await page.close(); }
 });
 
-it("10-31 改版 R7：字号放大后，1024 / 800 / 390 宽、超长联系人名都不横滚、不截字", async () => {
+// 11-04 用户改了规矩：「尽量所有信息都在一行显示完整」「一行显示不下的用... 但是悬浮要做好，鼠标移上去可以看完整。」
+// 超长名字不再折行：一行 + 省略号，页面照旧不许横滚
+it("10-31 改版 R7（11-04 改一行）：字号放大后，1024 / 800 / 390 宽、超长联系人名都不横滚，放不下的一行带省略号", async () => {
   for (const w of [1024, 800, 390]) {
     const { page, errors } = await open(w, 700);
     try {
       // 手机上 AppShell 不渲染图标栏和名单（AppShell「手机上没有图标栏和中栏」），这里照着拿掉
       if (w < 768) await page.evaluate(() => document.querySelectorAll(".shell > nav.rail, .pane-roster").forEach(e => e.remove()));
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${w}`).toBe(true);
-      const 溢 = await page.evaluate(() => [...document.querySelectorAll(".rec-head-name, .rec-sec-t, .rec-mod .ant-card-head-title, .rec-contact-n, .rec-field-k")].filter(e => e.scrollWidth > e.clientWidth + 1).length);
-      expect(溢, `${w}`).toBe(0);
+      const 溢 = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".rec-head-name, .rec-sec-t, .rec-mod .ant-card-head-title, .rec-contact-n, .rec-field-k")]
+        .filter(e => e.scrollWidth > e.clientWidth + 1)
+        .filter(e => { const s = getComputedStyle(e); return !(s.textOverflow === "ellipsis" && s.whiteSpace === "nowrap"); })
+        .map(e => e.className + " | " + e.innerText.slice(0, 12)));
+      expect(溢, `${w}`).toEqual([]);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
