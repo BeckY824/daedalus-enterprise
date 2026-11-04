@@ -118,3 +118,34 @@ async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: str
   }
   return ids;
 }
+
+/**
+ * 项目手动转让（改项目换了负责人），在同一笔事务里调：客户跟着项目转给 新（11-04 用户：「转让项目会一并把客户转给其他人」）。
+ * 原来只改项目、不碰客户：项目页显示已转出，客户页负责人还是原来那位，客户还留在原负责人的「我的客户」里。
+ *   - 客户在客户公海里：同领公海项目，走 单项目客户跟着领（删公海那一行、记领取、名下别的公海项目一起过来）
+ *   - 不在公海、负责人不是 新：改客户负责人，原负责人在客户上没做完的活一起跟着走，记一行换负责人；客户名下别的项目不动（11-04）
+ * 返回客户原来归谁，没动返回 null。调用方要先把手上这个项目改好负责人再调
+ */
+export async function 项目转让客户跟着转(
+  tx: Prisma.TransactionClient,
+  customerId: string,
+  新: string,
+  操作人: string,
+  带待办?: boolean,
+): Promise<string | null> {
+  if (!企业版() || !新) return null;
+  return 看全部(async () => {
+    if (await tx.customerPool.findUnique({ where: { customerId }, select: { customerId: true } })) {
+      const 领 = await 单项目客户跟着领(tx, customerId, 新, 操作人, 带待办);
+      if (领) return 领.旧;
+      // 规则关着领不过来：照下面普通转，客户出公海
+      await tx.customerPool.deleteMany({ where: { customerId } });
+    }
+    const c = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true } });
+    if (!c || c.salesOwnerId === 新) return null;
+    await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 新 } });
+    // 只转这个项目和客户：客户名下别的项目照旧归各自负责人（11-04，转一个项目不连带别的项目）
+    await 带走一位(tx, customerId, c.salesOwnerId, 新, 操作人, "assign", false);
+    return c.salesOwnerId;
+  });
+}

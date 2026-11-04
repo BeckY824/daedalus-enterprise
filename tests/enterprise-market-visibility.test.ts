@@ -1,6 +1,7 @@
 /**
  * 企业版「市场成员」（2026-10-31，lib/enterprise/market.ts + visibility.ts + team-scope）。
- * 钉的是：市场部门（没设 = 名字带「市场」的部门和下级；设了按设的）的人，自己建的、建过项目的、负责的客户转给销售后还看得到，
+ * 钉的是：市场部门（没设 = 名字带「市场」的部门和下级；设了按设的）的人，自己建的（已有负责人、不在公海）、负责的客户转给销售后还看得到
+ * （11-04 起只负责 / 建过项目的客户不再算，项目本身照看得到），
  * 连同项目，只能看（改、转、记沟通都拦）；市场管理看得到所有市场成员看得到的；市场部门以外的人照旧；
  * 本来能改的不降（自己负责的客户、自己负责的项目）；「按组织看客户」关着不起作用；市场部门只有老板和总管理员能改。
  * 用拷出来的一份库、显式单连接，不碰共用的测试库。
@@ -183,10 +184,10 @@ describe("市场部门们 / 市场成员们（纯函数）", () => {
 });
 
 describe("默认市场部门（名字带「市场」）", () => {
-  it("市场成员：自己建的（客户 / 项目）、负责的（客户 / 项目）都看得到，连项目；无关的看不到", async () => {
+  it("市场成员：自己建的（客户 / 项目）、负责的（客户 / 项目）都看得到；只负责 / 建过项目的客户看不到（11-04）；无关的看不到", async () => {
     expect(await 名单(小市)).toEqual(["A小市建的", "E小市负责的"]);
     expect(await 项目名单(小市)).toEqual(["PA小市建的"]);
-    expect(await 名单(小场)).toEqual(["B小场负责项目", "H小场建过项目"]);
+    expect(await 名单(小场)).toEqual([]); // 11-04：只负责 / 建过项目、客户不是自己的，客户不再看得到
     expect(await 项目名单(小场)).toEqual(["PB小场负责的", "PH小场建的"]);
   });
 
@@ -222,8 +223,8 @@ describe("默认市场部门（名字带「市场」）", () => {
   });
 
   it("市场管理：所有市场成员相关的都看得到（停用的人不算），只能看", async () => {
-    expect(await 名单(市场经理)).toEqual(["A小市建的", "B小场负责项目", "E小市负责的", "H小场建过项目"]);
-    // V3.5.1：市场成员建的、负责的项目都看得到（客户 B 因小场负责项目而看得到，项目本身也看得到），只能看
+    expect(await 名单(市场经理)).toEqual(["A小市建的", "E小市负责的"]);
+    // 市场成员建的、负责的项目都看得到，只能看（客户 B、H 11-04 起不因项目而看得到）
     expect(await 项目名单(市场经理)).toEqual(["PA小市建的", "PB小场负责的", "PH小场建的"]);
     const a = await 客户("A小市建的");
     expect(await 作为(市场经理, () => 只读客户(raw, a))).toBe("全");
@@ -258,7 +259,7 @@ describe("手动设的市场部门", () => {
     await expect(作为(品宣, () => db.customer.update({ where: { id: d.id }, data: { major: "x" } }))).rejects.toThrow(/市场成员/);
     // 不算市场成员了：自己负责的、渠运自己建的（V3.5.1 永久可见）、自己负责 / 建的项目挂着的客户照样看得到
     expect(await 名单(小市)).toEqual(["A小市建的", "E小市负责的"]);
-    expect(await 名单(小场)).toEqual(["B小场负责项目", "H小场建过项目"]);
+    expect(await 名单(小场)).toEqual([]); // 11-04：只负责 / 建过项目、客户不是自己的，客户不再看得到
     expect(await 名单(市场经理)).toEqual(["D品宣建的"]);
   });
 
@@ -266,7 +267,7 @@ describe("手动设的市场部门", () => {
     await 设市场([部.市场一组]);
     expect(await 名单(小市)).toEqual(["A小市建的", "E小市负责的"]);
     // 小场不算市场成员了，自己负责 / 建的项目挂着的客户照样看得到（V3.5.1）
-    expect(await 名单(小场)).toEqual(["B小场负责项目", "H小场建过项目"]);
+    expect(await 名单(小场)).toEqual([]); // 11-04：只负责 / 建过项目、客户不是自己的，客户不再看得到
   });
 });
 
@@ -278,12 +279,12 @@ describe("逐人设的市场成员（11-01）", () => {
     expect(await 作为(品宣, () => 只读客户(raw, d))).toBe("全");
     await expect(作为(品宣, () => db.customer.update({ where: { id: d.id }, data: { major: "x" } }))).rejects.toThrow(/市场成员/);
     expect(await 名单(小市)).toEqual(["A小市建的", "E小市负责的"]);
-    expect(await 名单(市场经理)).toEqual(["A小市建的", "B小场负责项目", "D品宣建的", "E小市负责的", "H小场建过项目"]);
+    expect(await 名单(市场经理)).toEqual(["A小市建的", "D品宣建的", "E小市负责的"]);
   });
 
   it("设的人停用了不算", async () => {
     await 存设置(市场成员key, [走了]);
-    expect(await 名单(市场经理)).toEqual(["A小市建的", "B小场负责项目", "E小市负责的", "H小场建过项目"]);
+    expect(await 名单(市场经理)).toEqual(["A小市建的", "E小市负责的"]);
   });
 });
 
@@ -320,7 +321,7 @@ describe("设市场部门：只有老板和总管理员能改", () => {
     expect(await 设市场部门("x")).toMatchObject({ ok: false });
     expect(await 设市场部门([])).toEqual({ ok: true });
     expect(JSON.parse((await raw.setting.findUniqueOrThrow({ where: { key: 市场部门key } })).value)).toBeNull();
-    expect(await 名单(小场)).toEqual(["B小场负责项目", "H小场建过项目"]);
+    expect(await 名单(小场)).toEqual([]); // 11-04：只负责 / 建过项目、客户不是自己的，客户不再看得到
     expect(await raw.auditLog.count({ where: { entityId: 市场部门key } })).toBe(3);
   });
 

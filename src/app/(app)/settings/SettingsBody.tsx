@@ -58,7 +58,8 @@ export default async function SettingsBody() {
     where: { email: { not: 无负责人占位邮箱 } },
     orderBy: { createdAt: "asc" },
     include: {
-      _count: { select: { salesCustomers: true, opportunities: true, followUps: true } },
+      // 客户数不算公海里的、回收站里的（11-04：公海里的负责人是原负责人，不是他手上的）
+      _count: { select: { salesCustomers: { where: { pool: { is: null }, deletedAt: null } }, opportunities: true, followUps: true } },
     },
   });
   // 企业版只用项目（10-27 用户「改成项目数」）：「商机数」换成在跟的项目数（没结局、不在公海——公海里的 ownerId 是放回的人），
