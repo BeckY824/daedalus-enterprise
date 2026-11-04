@@ -13,6 +13,7 @@ import { 带走说法 } from "@/lib/carry-over";
 import { useTransferConfirm } from "../useTransferConfirm";
 import Shortcut from "@/components/Shortcut";
 import { 释义下拉 } from "@/components/DictNote";
+import { 不填项, 去不填 } from "@/lib/enterprise/dict-kinds";
 
 type Option = { value: string; label: string };
 
@@ -158,12 +159,14 @@ export default function InlineField({
           {...common}
           defaultOpen
           value={draft ?? undefined}
-          options={options}
+          // 能清空的下拉第一项是「—」（11-04 用户）：误点了选一个值，能选回没填，不用找那个悬停才出的叉
+          options={可清空 && options ? [不填项, ...options] : options}
           {...释义下拉(释义)}
           allowClear={可清空}
-          onChange={(v) => {
-            setDraft(v ?? null);
-            void commit(v ?? null);
+          onChange={(v?: string) => {
+            const 值 = 去不填(v);
+            setDraft(值);
+            void commit(值);
           }}
           onBlur={() => setEditing(false)}
         />

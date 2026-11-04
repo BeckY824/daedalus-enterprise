@@ -11,7 +11,7 @@ import { 币种选项 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { dayjs } from "@/lib/utils";
 import { 企业客户级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
-import { 暂未确认 } from "@/lib/enterprise/dict-kinds";
+import { 未选占位, 不填项, 去不填, 去多选不填 } from "@/lib/enterprise/dict-kinds";
 import { 必填叫法, type 必填项 } from "@/lib/project/required";
 import { 项目名上限 } from "@/lib/project/wizard";
 import { 成交需求上限 } from "@/lib/project/profile-rules";
@@ -192,11 +192,11 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
         return <AddressInput value={v as 地址草稿} onChange={(a) => 改(k, a)} />;
       case "画像单选": {
         const 项 = p.画像?.项们.find((x) => x.键 === 法.键);
-        return <Select aria-label={名} style={满宽} allowClear showSearch optionFilterProp="label" placeholder={暂未确认} value={字 || undefined} options={(项?.选项 ?? []).map((x) => ({ value: x, label: x }))} onChange={(x?: string) => 改(k, x ?? null)} />;
+        return <Select aria-label={名} style={满宽} allowClear showSearch optionFilterProp="label" placeholder={未选占位} value={字 || undefined} options={[不填项, ...(项?.选项 ?? []).map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
       }
       case "画像多选": {
         const 项 = p.画像?.项们.find((x) => x.键 === "productNeeds");
-        return <Select aria-label={名} style={满宽} mode="multiple" allowClear optionFilterProp="label" placeholder={暂未确认} value={Array.isArray(v) ? v : []} options={(项?.选项 ?? []).map((x) => ({ value: x, label: x }))} onChange={(x: string[]) => 改(k, x)} />;
+        return <Select aria-label={名} style={满宽} mode="multiple" allowClear optionFilterProp="label" placeholder={未选占位} value={Array.isArray(v) ? v : []} options={[不填项, ...(项?.选项 ?? []).map((x) => ({ value: x, label: x }))]} onChange={(x: string[]) => 改(k, 去多选不填(x))} />;
       }
       case "勾":
         return <Checkbox checked={v === true} onChange={(e) => 改(k, e.target.checked)}>{名}</Checkbox>;

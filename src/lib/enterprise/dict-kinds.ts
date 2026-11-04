@@ -1,4 +1,5 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
+import { 空值符 } from "@/lib/empty-value";
 export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance", "followMethod", "projCycle", "projFit", "projValue", "projReach", "projRival", "projDeploy", "projSite", "contactTitle", "custAttr", "followInitiator"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
@@ -160,15 +161,19 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
 };
 
 /**
- * 画像、需求状态这些选项没填时显示的灰字（10-31）：只是显示，库里照旧是空，统计、筛选也照旧按空算。
- * 需求状态字典里另有一个叫「暂未确认」的选项（过渡值），那个是真存进库的值，和这里不是一回事
+ * 画像、身份、角色、立场这些选项没填时显示的灰字：只是显示，库里照旧是空，统计、筛选也照旧按空算。
+ * 10-31 写「暂未确认」，11-04 用户：统一改成「—」（和全站空值一个符号）。
+ * 需求状态字典里另有一个叫「暂未确认」的选项（过渡值），那个是真存进库的值，和这里不是一回事，不跟着改
  */
-export const 暂未确认 = "暂未确认";
-/** 单选下拉里「不填」那一项的值：选了它 = 清空（提交 null）。选项名最多 20 字、不会叫这个 */
+export const 未选占位 = 空值符;
+/** 下拉里「—」那一项的值：选了它 = 清空（单选提交 null，多选提交 []）。选项名最多 20 字、不会叫这个 */
 export const 不填值 = "__none__";
-export const 不填项 = { value: 不填值, label: "不填" } as const;
-/** 下拉的值 → 提交的值：「不填」和没选都算 null */
+/** 单选、多选下拉的第一项（11-04）：选了就回到没填，防误点之后回不去 */
+export const 不填项 = { value: 不填值, label: 空值符 } as const;
+/** 单选下拉的值 → 提交的值：「—」和没选都算 null */
 export const 去不填 = (v: string | null | undefined): string | null => (!v || v === 不填值 ? null : v);
+/** 多选下拉的值 → 提交的值：勾了「—」= 全清空 */
+export const 去多选不填 = (v: string[] | null | undefined): string[] => (!v || v.includes(不填值) ? [] : v);
 
 /** 一项字典的释义：只认默认 id（dict-<类>-<序号>），自己加的、没写释义的 = null。纯函数，界面和服务端都能用 */
 export function 字典项释义(kind: 字典种类, id: string): string | null {

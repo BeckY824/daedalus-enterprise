@@ -3295,8 +3295,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   background: conic-gradient(from 0deg, var(--brand), var(--cat-violet), var(--cat-pink), var(--cat-cyan), var(--brand));
   animation: fab-breathe 3.2s ease-in-out infinite;
 }
+/* 11-04 用户：最外那圈环去掉，只留外面的光晕和里面的圆。原来转的这层铺满 52、亮点层缩进 4，
+   两层之间露出一圈 4px 的环；现在转的这层也缩进 4，和亮点层一样大，环就没了（点按区域仍是 52） */
 .ai-fab-swirl {
-  inset: 0; box-shadow: var(--shadow-pop);
+  inset: 4px; box-shadow: var(--shadow-pop);
   background: conic-gradient(from 90deg, var(--brand), var(--cat-cyan), var(--cat-violet), var(--cat-pink), var(--brand));
   animation: fab-spin 8s linear infinite;
 }
