@@ -8,7 +8,7 @@ declare global { interface Window { __refFail?: number; __kind: string; __calls:
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "form-actions", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){}}),usePathname=()=>\"/\",useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   stub(/^@\/app\/\(app\)\/customers\/\[id\]\/pick$/, "const rows=[{id:'original',name:'原客户',附注:null},{id:'new',name:'新客户',附注:null}];export const 搜客户=async()=>rows,取客户选项=async id=>rows.find(r=>r.id===id)??null;");
