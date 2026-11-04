@@ -53,8 +53,8 @@ export async function 读公海底数(渠道ids: string[], 圈: readonly string[
   const [线索们, 留痕们] = await 看全部(() => Promise.all([
     prisma.project.findMany({ where: 谁建的, select: { channelId: true, creatorId: true, createdAt: true, customer: { select: { channelId: true } } } }),
     prisma.projectNodeLog.findMany({
-      // 导入时没负责人直接落进公海的不算「进」
-      where: { kind: "pool-release", project: 谁建的, NOT: { reason: 无主入池理由 } },
+      // 导入时没负责人直接落进公海的不算「进」。别写 NOT: { reason }：SQL 里 reason 空的那几条也会被一起滤掉
+      where: { kind: "pool-release", project: 谁建的, OR: [{ reason: null }, { reason: { not: 无主入池理由 } }] },
       select: {
         projectId: true, at: true, userId: true, reason: true,
         project: { select: { channelId: true, creatorId: true, pooledAt: true, customer: { select: { channelId: true, poolInvalidAt: true } }, entLeadVerify: { select: { invalidReason: true } } } },

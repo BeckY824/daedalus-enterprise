@@ -16,10 +16,11 @@ import { 读组织 } from "@/lib/enterprise/org";
 
 export const dynamic = "force-dynamic";
 
-export default async function ChannelsPage({ searchParams }: { searchParams: Promise<{ view?: string; from?: string; to?: string }> }) {
+// 老用例直接 Page() 调，不带 searchParams：当没选自定义
+export default async function ChannelsPage({ searchParams }: { searchParams?: Promise<{ view?: string; from?: string; to?: string }> } = {}) {
   const me = await requireUser();
   // 看板的「自定义」（11-04 P-界面-10）：地址栏 view=自定义&from=&to=，读法同数据页（缺 / 错落到本月 1 号到今天，倒过来对调）
-  const sp = await searchParams;
+  const sp = (await searchParams) ?? {};
   const 段 = sp.view === 自定义 ? 读日期段(sp.from, sp.to) : null;
   const 区间 = 段 ? 日期段界(段) : null;
   const 市场 = 企业版() ? await 读市场身份(me.id) : null;
