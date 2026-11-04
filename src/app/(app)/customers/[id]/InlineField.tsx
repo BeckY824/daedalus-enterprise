@@ -132,9 +132,10 @@ export default function InlineField({
     return (
       <div className="rec-field" data-field={field} {...(只读 ? { style: { cursor: "default" }, ...(权限挡 ? { title: `你的角色只能看「${label}」，改不了（设置 → 组织架构 → 字段权限）` } : {}) } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
         <div className="rec-field-k">{label}</div>
-        {/* 单行的值带 is-line + title（U-通用-01）：企业版项目模式左栏放不下就省略，悬停看全；多行的备注照旧换行 */}
+        {/* 单行的值带 is-line + title（U-通用-01）：企业版项目模式左栏放不下就省略，悬停看全；多行的备注照旧换行。
+            换样子显示的（电话链接）不省略：省略号截在链接里，链接本身照样出界（11-04 排版闸门），放不下就换行 */}
         <div
-          className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}${kind === "textarea" ? "" : " is-line"}`}
+          className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}${kind === "textarea" || 显示 ? "" : " is-line"}`}
           title={kind !== "textarea" && typeof display === "string" && display ? display : !display && 空时横线 && !只读 ? placeholder : undefined}
         >
           {/* 邮箱放不下时在 @ 前换行，不从字母中间断开（F.1 走查：「ahmed@gulfled.a / e」） */}
