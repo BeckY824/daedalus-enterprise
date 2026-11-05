@@ -684,7 +684,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
   if (!选.ok) return 选;
   const reason = 选.值 ? `${回收原因前缀}${选.值}` : null;
   const org = await 权限组织();
-  // M-公海-14（11-05 用户）：手动退回先查联系方式；建项目向导「公海捞取」（分配放行）不是退回，不查
+  // M-公海-15（11-05 用户）：手动退回先查联系方式；建项目向导「公海捞取」（分配放行）不是退回，不查
   const 号码表 = 企业版() && !选项?.分配放行 ? await 退回号码种类表() : null;
   const r: 结果 = await 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
