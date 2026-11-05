@@ -15,8 +15,10 @@ import { 公海规则, 单项目客户进公海理由, 客户整体进公海理�
 import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位 } from "@/lib/carry-over-db";
-import { 转让痕 } from "@/lib/project/db";
-import { 历史负责人们 } from "@/lib/project/pool-owner";
+import { 转让痕, 记转让, 能进公海的阶段 } from "@/lib/project/db";
+import { 历史负责人们, 进公海后负责人, 进公海关待办 } from "@/lib/project/pool-owner";
+import { 在推项目条件 } from "@/lib/project/active";
+import { 系统 } from "@/lib/project/timeout";
 import { 卡点随项目换人, 公海领走接手理由 } from "@/lib/project/blocker";
 import { 换负责人待办, 待办痕 } from "@/lib/project/carry-tasks";
 import { 有同事在推的客户 } from "./colleague-projects";
@@ -26,7 +28,9 @@ import { 有同事在推的客户 } from "./colleague-projects";
  * 客户和项目是同一位负责人、客户还不在公海 → 客户也放进客户公海。返回放了没有。
  * 只看同一位负责人：客户归别人、只是项目归他的，不能因为他放回项目就把别人的客户也扔进公海。
  * 操作人 = 放进去的人；超时回收没有人放，传 null（同自动掉公海）。
- * 多项目客户也进（客户整体转让）：名下有没结束的订单阶段项目、或有同事负责还没结束的项目（例外二，11-05）才不进（别的项目跟着客户待着，谁领客户谁带走）。
+ * 多项目客户也进（客户整体转让）：名下有没结束的订单阶段项目、或有同事负责还没结束的项目（例外二，11-05）才不进。
+ * 进了的：客户负责人名下别的线索 / 商机项目一起进项目公海，同手动放进公海（X-12，11-05 用户：「按手动 建议来」），
+ * 原来只放客户、别的项目还挂在原负责人名下，原负责人回避后看不到、也推不了。
  * 退回原因 = 放回项目时选的「回收原因：X」（整串），接在说明后面记进客户公海那一行，统一公海的「入池原因」列读得到（M-公海-09）
  */
 export async function 单项目客户跟进公海(
@@ -45,8 +49,45 @@ export async function 单项目客户跟进公海(
     // M-公海-02 例外二（P-公海-06，11-05）：名下有同事负责、还没结束的项目，客户不跟着进（手上这个已经进了项目公海，不算）
     if (几个 !== 1 && (await 有同事在推的客户(tx, [{ id: p.customerId, salesOwnerId: c.salesOwnerId }])).size) return false;
     const 说明 = 几个 === 1 ? 单项目客户进公海理由 : 客户整体进公海理由;
-    await tx.customerPool.create({ data: { customerId: p.customerId, userId: 操作人, reason: 退回原因 ? `${说明}；${退回原因}` : 说明, at } });
+    const 理由 = 退回原因 ? `${说明}；${退回原因}` : 说明;
+    await tx.customerPool.create({ data: { customerId: p.customerId, userId: 操作人, reason: 理由, at } });
+    // 手上这个调用方已经放进项目公海（pooledAt 有值，不算在推），这里只带别的；超时回收没有人放，留痕记系统
+    if (几个 !== 1) await 客户名下在推项目进公海(tx, [{ id: p.customerId, salesOwnerId: c.salesOwnerId }], 操作人 ?? 系统.id, 理由, at);
     return true;
+  });
+}
+
+/**
+ * 客户刚整体进了客户公海，同一笔事务里：客户负责人自己负责、还没结束的线索 / 商机项目一起进项目公海，返回这些项目 id（撤销用）。
+ * 手动放进公海（P-公海-06）和项目放回 / 超时把客户带进公海（X-12）走同一段。
+ * 项目这一半同项目放回公海：清负责人（pool-owner.ts）、原负责人记在 pool-release 的 from 上、关他在这位客户上没做完的待办。
+ * 同事的、订单阶段的不碰（调用方已经整位拦掉）。理由 = 记在每行 pool-release 上的说明，null 不记
+ */
+export async function 客户名下在推项目进公海(
+  tx: Prisma.TransactionClient,
+  们: { id: string; salesOwnerId: string }[],
+  操作人: string,
+  理由: string | null,
+  现在: Date,
+): Promise<string[]> {
+  return 看全部(async () => {
+    const 主 = new Map(们.map((c) => [c.id, c.salesOwnerId]));
+    const 放了: string[] = [];
+    for (let i = 0; i < 们.length; i += 500) {
+      const 项目 = await tx.project.findMany({
+        where: { customerId: { in: 们.slice(i, i + 500).map((c) => c.id) }, ...在推项目条件, phase: { in: [...能进公海的阶段] } },
+        select: { id: true, customerId: true, name: true, ownerId: true, phase: true, node: true, result: true },
+      });
+      for (const p of 项目) {
+        if (!p.ownerId || p.ownerId !== 主.get(p.customerId)) continue;
+        await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
+        await 记转让(tx, p, 操作人, p.ownerId, null, "pool-release", 理由, 现在);
+        // 客户这时已经在公海里：原负责人在这位客户上没做完的待办全关（pool-owner.ts 进公海关待办）
+        await 进公海关待办(tx, p, p.ownerId, 现在);
+        放了.push(p.id);
+      }
+    }
+    return 放了;
   });
 }
 
