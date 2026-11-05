@@ -35,7 +35,7 @@ import {
 import { 分配线索, 自动分配线索 } from "@/app/(app)/leads/assign-actions";
 import { 领取项目, 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
 import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
-import { 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 没业务角色不能新建话, 只读角色话 } from "@/lib/enterprise/permissions";
@@ -307,6 +307,23 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
       expect(p.ownerId).toBe(给);
       expect((await prisma.customer.findUniqueOrThrow({ where: { id: cid } })).lastFollowAt).not.toBeNull();
       expect(await prisma.followUpProject.count({ where: { projectId: r.projectId } })).toBe(1);
+    }
+  });
+
+  it("客户页给公海里的客户新建项目：谁都不给建，说先领取，项目和沟通一条不落（11-05）", async () => {
+    for (const 我 of [老板, 销售, 销售经理]) {
+      当(我, 我 === 老板 ? "ADMIN" : "SALES");
+      号++;
+      const cid = (await prisma.customer.create({ data: { name: `公海页客户${号}`, phone: `1394444${String(号).padStart(4, "0")}`, salesOwnerId: 另一销售 } })).id;
+      await prisma.customerPool.create({ data: { customerId: cid, reason: "手动" } });
+      const r = await 以谁的身份(我, () => 给客户建项目({
+        customerId: cid,
+        项目: { name: `公海页项目${号}`, amount: 0, currency: "CNY", ownerId: 我, 分配方式: 0, 业务线: "内贸" },
+        跟进: { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false },
+      }));
+      expect([我, r]).toEqual([我, { ok: false, error: 公海客户先领取话 }]);
+      expect(await prisma.project.count({ where: { customerId: cid } })).toBe(0);
+      expect(await prisma.followUp.count({ where: { customerId: cid } })).toBe(0);
     }
   });
 
