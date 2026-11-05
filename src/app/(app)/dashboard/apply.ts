@@ -30,6 +30,7 @@ import { 按名字找负责人 } from "@/lib/owners";
 import { 是项目卡, type 项目卡 } from "@/lib/agent/project-proposals";
 import { 做项目卡 } from "@/lib/agent/apply-project";
 import { 删回款 } from "../projects/payment-actions";
+import { 认渠道, 候选说明 } from "@/lib/enterprise/channel-match";
 
 /**
  * 确认之后怎么撤回去。只给能**干净还原**的两种：记了一条跟进（删掉它）、改了一个状态（改回原值）。
@@ -295,12 +296,17 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 进客户 = 去处.includes("客户") && 国家;
   const 进项目 = 去处.includes("项目") && 国家;
   const 联系人地址 = 去处.includes("联系人") ? [国家, 城市].filter(Boolean).join(" ").slice(0, 联系人地址上限) : "";
-  // 企业版新建线索要选渠道：卡上只有来源一格，来源就是某个启用中的渠道名（或只含一个渠道名）才认，认不出不猜
+  // 企业版新建线索要选渠道：卡上只有来源一格，按整名 / 只含一个渠道名 / 竖线前平台前缀唯一来认（lib/enterprise/channel-match.ts，卡片预选同一个函数），对上多个不猜
   const 渠道们 = await prisma.channel.findMany({ where: { active: true }, select: { id: true, name: true } });
-  const 来源 = p.source.trim();
-  const 含 = 渠道们.filter((c) => 来源.includes(c.name));
-  const 渠道 = 渠道们.find((c) => c.name === 来源) ?? (含.length === 1 ? 含[0] : null);
-  if (!渠道) return { ok: false, error: `卡上的渠道「${p.source}」对不上启用中的渠道：请在卡上重新选渠道` };
+  const { 渠道, 候选 } = 认渠道(p.source, 渠道们);
+  if (!渠道) {
+    return {
+      ok: false,
+      error: 候选.length > 1
+        ? `卡上的渠道「${p.source}」对上了好几个渠道（${候选说明(候选)}）：请在卡上重新选渠道`
+        : `卡上的渠道「${p.source}」对不上启用中的渠道：请在卡上重新选渠道`,
+    };
+  }
   // 业务线（11-01 新建必填）：卡上没这格、项目建在我名下 → 跟我自己的内贸 / 外贸；我没设线就「暂不分配」，要改到项目页改
   const 我的线 = (await prisma.entMember.findUnique({ where: { userId: meId }, select: { line: true } }))?.line;
   // 指定分配给了别人：项目、客户都记在那人名下（和新建项目页同一条：负责人打开项目时得看得到这位客户）；其余先建在我名下，建好再转

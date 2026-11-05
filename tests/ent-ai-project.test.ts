@@ -170,6 +170,18 @@ describe("确认新线索卡", () => {
     expect(await prisma.project.count()).toBe(1);
   });
 
+  it("只用项目：来源只写平台名，竖线前前缀唯一就认；前缀对上多个不猜，报错列候选", async () => {
+    当(乙);
+    await prisma.channel.createMany({ data: ["TikTok｜示例号", "Facebook｜品牌A", "Facebook｜品牌a"].map((name) => ({ name, channelOwnerId: 老板.id })) });
+    expect(await applyProposal(线索卡({ id: "p-tt", name: "星河甲", phone: "13700005678", source: "tiktok" }) as never)).toMatchObject({ ok: true });
+    const 跟进 = await prisma.followUp.findFirstOrThrow({ where: { customer: { name: "星河甲" } } });
+    expect(跟进.content).toBe("在首页对话里新建的线索，渠道：TikTok｜示例号");
+    expect(await applyProposal(线索卡({ id: "p-fb", name: "星河乙", phone: "", source: "Facebook" }) as never)).toEqual({
+      ok: false, error: "卡上的渠道「Facebook」对上了好几个渠道（Facebook｜品牌A、Facebook｜品牌a）：请在卡上重新选渠道",
+    });
+    expect(await prisma.project.count()).toBe(1);
+  });
+
   it("只用项目、开了超时回收：卡上没填下一步不建，说要填；填了就建，下一步时间记在项目上", async () => {
     await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
     invalidateSettingsCache();

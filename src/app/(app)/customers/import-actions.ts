@@ -30,6 +30,7 @@ import { 看全部, 限定的我, 看得到 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 能导入导出, 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 同号只记备注 } from "@/lib/enterprise/same-number-collab";
 import { getBusiness } from "@/lib/business";
@@ -64,6 +65,12 @@ export type 预览 = {
   待复核: { 列: number; 列名: string; 字段: 字段名; 原值: string; 说法: string; 严重: string; 几行: number }[];
   /** 进不了的那些行：行号 + 原因，最多列 20 条 */
   挡下: { 行号: number; 原因: string }[];
+  /**
+   * 企业版：在用的认不到、号码（没电话的按邮箱 / 微信 / 阿里 ID）撞上回收站里的那几行（P-删-08 续，11-05）。
+   * 不新建、不补空，算在 跳过 里；行号最多列 20 条。要用回那位到「新增客户」/ 首页查重里捞回
+   */
+  回收站里: number;
+  回收站行号: number[];
   /** 对不上任何字段的列名。按方案里的处置或并进备注、或丢掉 */
   没对上的列名: string[];
 };
@@ -150,8 +157,9 @@ async function 导入匹配(行: ReturnType<typeof 摊开>) {
     团队版业务员（lib/team-scope.ts）：同号的人要看全部才认得出——同事的客户也算「已经有了」，不另建一份；
     但同事的客户不替他补空（业务员改不了别人的客户），算跳过
   */
+  const 同号的 = { OR: [await 这一批同号的(prisma, 这一批), { id: { in: [...邮命中, ...微命中, ...阿命中].map((x) => x.id) } }] };
   const 命中 = await 看全部(async () => prisma.customer.findMany({
-    where: { OR: [await 这一批同号的(prisma, 这一批), { id: { in: [...邮命中, ...微命中, ...阿命中].map((x) => x.id) } }] },
+    where: 同号的,
     select: { id: true, phone: true, school: true, grade: true, major: true, expectedSignAt: true, expectedSignOn: true, remark: true, createdAt: true, updatedAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
   }));
   // 外贸档案（2026-10-05）在旁表里：补空也是「那一格空着才补」，先取一份现值
@@ -165,7 +173,25 @@ async function 导入匹配(行: ReturnType<typeof 摊开>) {
   const 微表 = 邮箱认人表(微命中.flatMap((x) => (按id.has(x.id) ? [{ 客户: 按id.get(x.id)!, 键: x.键 }] : [])), "微信号");
   const 阿表 = 邮箱认人表(阿命中.flatMap((x) => (按id.has(x.id) ? [{ 客户: 按id.get(x.id)!, 键: x.键 }] : [])), "阿里 ID");
 
-  return { 表, 邮表, 微表, 阿表, 档案们, 限定我, 命中ids: 命中.map((c) => c.id) };
+  /*
+    企业版回收站（P-删-08 续，11-05）：上面那几句裸 SQL 查出来的 id 本来就含删了的，Prisma 扩展把它们滤掉了；
+    同一个条件再在回收站里查一次（一片一次，不逐行查），认人规则和在用的一样。在用的认到了照旧按在用的走
+  */
+  const 删了的 = 企业版()
+    ? await 看已删(() => 看全部(async () => prisma.customer.findMany({ where: { AND: [同号的, { deletedAt: { not: null } }] }, select: { id: true, phone: true, createdAt: true } })))
+    : [];
+  const 回收站 = 删了的.length
+    ? (() => {
+        const 删按id = new Map(删了的.map((c) => [c.id, c]));
+        const 挑 = (命: { id: string; 键: string }[]) => 命.flatMap((x) => (删按id.has(x.id) ? [{ 客户: 删按id.get(x.id)!, 键: x.键 }] : []));
+        return { 表: 认人表(删了的, 这一批, null), 邮表: 邮箱认人表(挑(邮命中)), 微表: 邮箱认人表(挑(微命中)), 阿表: 邮箱认人表(挑(阿命中)) };
+      })()
+    : null;
+  /** 在用的认不到的这一行，号码在不在回收站里 */
+  const 在回收站 = (r: { 值: { phone?: string; email?: string; wechat?: string; alibabaId?: string } }) =>
+    !!回收站 && (r.值.phone ? 回收站.表.认(r.值.phone) : r.值.email ? 回收站.邮表.认(r.值.email) : r.值.wechat ? 回收站.微表.认(r.值.wechat) : 回收站.阿表.认(r.值.alibabaId ?? "")).n > 0;
+
+  return { 表, 邮表, 微表, 阿表, 档案们, 限定我, 命中ids: 命中.map((c) => c.id), 在回收站 };
 }
 
 function 算补空(r: ReturnType<typeof 摊开>[number], 旧: { school: string | null; grade: string | null; major: string | null; expectedSignAt: Date | null; expectedSignOn: string | null; remark: string | null }, 档案?: Partial<Record<(typeof 外贸导入字段)[number], string | null>>) {
@@ -216,9 +242,11 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
   const { 行, 合掉几行 } = await 排好(方案);
   if (行.length > 落库上限) return { ok: false, error: `一次最多导 ${落库上限} 行，这份表有 ${行.length} 行` };
 
-  const { 表, 邮表, 微表, 阿表, 档案们, 限定我 } = await 导入匹配(行);
+  const { 表, 邮表, 微表, 阿表, 档案们, 限定我, 在回收站 } = await 导入匹配(行);
 
   let 新建 = 0;
+  let 回收站里 = 0;
+  const 回收站行号: number[] = [];
   let 撞上 = 0;
   let 可补空 = 0;
   let 说不清 = 0;
@@ -240,8 +268,10 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
         const { 补, 补档案 } = 算补空(r, 旧, 档案们.get(旧.id));
         if (Object.keys(补).length || Object.keys(补档案).length) 可补空++;
       }
-    }
-    else 新建++;
+    } else if (在回收站(r)) {
+      回收站里++;
+      if (回收站行号.length < 20) 回收站行号.push(r.行号);
+    } else 新建++;
   }
 
   // 有问题的格子按「列 + 原值」归并：一列里同一个写法出现三十行，人只该改一次
@@ -273,8 +303,10 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
       说不清,
       补空: 方案.重复行 === "补空" ? 可补空 : 0,
       // 库里同号多条的那些一律算跳过：不知道该算谁的，就谁也不动
-      跳过: 撞上 - (方案.重复行 === "补空" ? 可补空 : 0) + 说不清,
+      跳过: 撞上 - (方案.重复行 === "补空" ? 可补空 : 0) + 说不清 + 回收站里,
       进不了,
+      回收站里,
+      回收站行号,
       合掉几行,
       // 拦行的排最前：那几格是真的让人进不来的
       待复核: [...归并.values()].sort((a, c) => (a.严重 === c.严重 ? c.几行 - a.几行 : a.严重 === "拦行" ? -1 : 1)),
@@ -289,11 +321,12 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
   };
 }
 
-export type 导入结果 = { ok: true; batchId: string; 新建: number; 补空: number; 跳过: number; 进不了: number } | { ok: false; error: string };
+/** 回收站里 = 号码撞上回收站里那位、没新建的几条（已算在 跳过 里） */
+export type 导入结果 = { ok: true; batchId: string; 新建: number; 补空: number; 跳过: number; 进不了: number; 回收站里: number } | { ok: false; error: string };
 
 type 排好的行 = Awaited<ReturnType<typeof 排好>>["行"];
 type 落库现场 = { batchId: string; 重复行: 导入方案["重复行"]; salesOwnerId: string; 渠道: Map<string, string>; 操作人: string };
-type 几条 = { 新建: number; 补空: number; 跳过: number; 进不了: number };
+type 几条 = { 新建: number; 补空: number; 跳过: number; 进不了: number; 回收站里: number };
 
 async function 落库准备(行: 排好的行, me: Awaited<ReturnType<typeof requireUser>>) {
   const salesOwnerId = await 唯一负责人() ?? me.id;
@@ -310,7 +343,7 @@ async function 落库准备(行: 排好的行, me: Awaited<ReturnType<typeof req
  * 接着导（续上断掉的那一段）时，这一批自己已经写过的那几位跳过、不重复计数
  */
 async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = false): Promise<几条> {
-  const { 表, 邮表, 微表, 阿表, 档案们, 限定我, 命中ids } = await 导入匹配(行);
+  const { 表, 邮表, 微表, 阿表, 档案们, 限定我, 命中ids, 在回收站 } = await 导入匹配(行);
   const 本批写过 = new Set(
     续接 ? (await prisma.importRow.findMany({ where: { batchId: 现场.batchId, customerId: { in: 命中ids }, kind: { not: 同号备注行 } }, select: { customerId: true } })).map((x) => x.customerId) : [],
   );
@@ -318,6 +351,7 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
   let 补空 = 0;
   let 跳过 = 0;
   let 进不了 = 0;
+  let 回收站里 = 0;
 
   for (const r of 行) {
     if (r.进不了) {
@@ -343,6 +377,12 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
       continue;
     }
     const 旧 = 认.旧;
+    // 在用的认不到、号码在回收站里（企业版）：不新建、不碰回收站里那位，不写导入记录（撤销这一批与它无关）
+    if (!旧 && 在回收站(r)) {
+      跳过++;
+      回收站里++;
+      continue;
+    }
     // 接着导（分段导入断了又续上）：上一趟这一批自己已经写过这位，算过了，不再记一次跳过
     if (旧 && 本批写过.has(旧.id)) continue;
 
@@ -437,16 +477,16 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
     }
   }
 
-  return { 新建, 补空, 跳过, 进不了 };
+  return { 新建, 补空, 跳过, 进不了, 回收站里 };
 }
 
-async function 记一笔(me: Awaited<ReturnType<typeof requireUser>>, 客户叫法: string, batchId: string, fileName: string, n: 几条) {
+async function 记一笔(me: Awaited<ReturnType<typeof requireUser>>, 客户叫法: string, batchId: string, fileName: string, n: Omit<几条, "回收站里"> & { 回收站里?: number }) {
   await recordAudit({
     user: me,
     action: "import",
     entity: "Customer",
     entityId: batchId,
-    summary: `从「${fileName}」导入${客户叫法}：新建 ${n.新建} 条，补空 ${n.补空} 条，跳过 ${n.跳过} 条，${n.进不了} 条没进来`,
+    summary: `从「${fileName}」导入${客户叫法}：新建 ${n.新建} 条，补空 ${n.补空} 条，跳过 ${n.跳过} 条${n.回收站里 ? `（其中 ${n.回收站里} 条号码在回收站）` : ""}，${n.进不了} 条没进来`,
     detail: { batchId, fileName, ...n },
   });
   revalidatePath("/customers");
@@ -490,7 +530,8 @@ const 每趟最长 = () => Number(process.env.IMPORT_SEGMENT_MS) || 2000;
 const 每片 = 200;
 
 export type 分段结果 =
-  | { ok: true; batchId: string; 新建: number; 补空: number; 跳过: number; 进不了: number; 下一个: number | null; 共: number }
+  /** 回收站里只数这一趟的（批次上不存这个数），抽屉逐趟加起来；其余几项是整批累计 */
+  | { ok: true; batchId: string; 新建: number; 补空: number; 跳过: number; 进不了: number; 回收站里: number; 下一个: number | null; 共: number }
   | { ok: false; error: string; 重送?: true };
 
 /**
@@ -529,12 +570,14 @@ export async function 分段导入(原方案: 导入方案, fileName: string, �
   let i = 起;
   let 跳过 = 0;
   let 进不了 = 0;
+  let 回收站里 = 0;
   // 至少写一片再看钟：排好整张表本身就可能超过一趟的时长（大表、慢机器），先看钟就永远走不动
   while (i < 行.length) {
     const 片 = 行.slice(i, i + 每片);
     const n = await 落这些行(现场, 片, Boolean(续.batchId));
     跳过 += n.跳过;
     进不了 += n.进不了;
+    回收站里 += n.回收站里;
     i += 片.length;
     if (Date.now() - 开始 >= 每趟最长()) break;
   }
@@ -547,7 +590,7 @@ export async function 分段导入(原方案: 导入方案, fileName: string, �
   const 合计 = { 新建, 补空, 跳过: 批.skipped, 进不了: 批.failed };
   const 完了 = i >= 行.length;
   if (完了) await 记一笔(me, b.customer, batchId, fileName, 合计);
-  return { ok: true, batchId, ...合计, 下一个: 完了 ? null : i, 共: 行.length };
+  return { ok: true, batchId, ...合计, 回收站里, 下一个: 完了 ? null : i, 共: 行.length };
 }
 
 export type 批次 = {

@@ -125,8 +125,8 @@ const 检查点: Record<string, string> = {
   "补-扫描留痕带项目": "D-34 自动收回的操作日志里带着收回的项目",
   "补-停用的人领不了": "D-35/36 已离职的人领公海项目被拒",
   "补-公海离职三分": "D-36 离职不再进公海（11-03 C4-4）：公海方式被拒；离职后客户、项目都原地留在 TA 名下，不进任何公海",
-  "补-扫描不动客户公海里的项目": "D-34 客户在客户公海里，项目过了时长也不收",
-  "补-领客户带走项目": "D-35/36 离职人的客户被上级手动放进客户公海，谁领了客户，客户上的项目归谁，留转移记录",
+  "补-扫描不动客户公海里的项目": "D-34 + P-公海-06（11-05）：客户手动放进客户公海时他自己的项目一起进项目公海；之后过了时长扫描不再收一次",
+  "补-领客户带走项目": "D-35/36 离职人的客户被上级手动放进客户公海，谁领了客户，客户上的项目归谁，留领取记录",
   "补-周末全库一致": "D-34~36 收尾：公海里没有订单项目、没有在职项目挂在离职人名下、进公海的都有记录",
 };
 
@@ -649,15 +649,19 @@ async function 补查() {
       P32: [公.名[p32.ownerId], p32.pooledAt],
     }).toEqual({ P30: ["内销5", null, "内销5", false], P31: ["内销5", null, "内销5", false], P32: ["内销5", null] });
   });
-  // 离职后老板把客户P31 手动放进客户公海（离职交接之外的另一条路），项目留在客户上
+  // 离职后老板把客户P31 手动放进客户公海（离职交接之外的另一条路）；P-公海-06：内销5 自己的 P31 一起进项目公海
   得(await 作为("老板", async () => 放客户进公海([客户id["P31"]], (await 退回原因选项())[0])), "老板把客户P31 放进客户公海");
   await 扫("2026-02-05 08:00");
-  await 查("补-扫描不动客户公海里的项目", async () => expect(await 在公海("P31")).toBe(false));
+  await 查("补-扫描不动客户公海里的项目", async () => {
+    expect(await 在公海("P31")).toBe(true);
+    expect(await 作为("老板", () => prisma.projectNodeLog.count({ where: { projectId: 项目id["P31"], kind: "pool-release" } }))).toBe(1);
+  });
   拨到("2026-02-05 09:00");
   await 查("补-领客户带走项目", async () => {
     得(await 作为("内销6", () => 领客户([客户id["P31"]])), "内销6 领客户P31");
     expect(公.名[(await 项目("P31")).ownerId]).toBe("内销6");
-    const l = await 作为("老板", () => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 项目id["P31"], kind: "transfer" }, orderBy: { at: "desc" } }));
+    expect(await 在公海("P31")).toBe(false);
+    const l = await 作为("老板", () => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 项目id["P31"], kind: "pool-claim" }, orderBy: { at: "desc" } }));
     expect([公.名[l.fromOwnerId ?? ""], 公.名[l.toOwnerId ?? ""]]).toEqual(["内销5", "内销6"]);
   });
   // 剩下的（P30 连客户、别人客户上的 P32）在离职交接里全部交给内销4

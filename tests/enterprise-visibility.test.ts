@@ -378,3 +378,17 @@ describe("市场管理看线索（F9 10-25）", () => {
     await expect(作为(经理, () => db.lead.update({ where: { id: "l_mkt" }, data: { remark: "x" } }))).rejects.toThrow();
   });
 });
+
+describe("P-看-12 同一位客户下同事负责的项目（V3.5.1 X-05，11-05 锁定）", () => {
+  beforeAll(() => 开规则(true));
+
+  it("客户负责人看不到同事负责的项目，他的上级也看不到；项目负责人自己看得到", async () => {
+    const c = await raw.customer.create({ data: { name: "J小王的", phone: "13900007777", salesOwnerId: 小王 } });
+    await raw.project.create({ data: { name: "J小王的项目", customerId: c.id, ownerId: 小王, creatorId: 小王 } });
+    await raw.project.create({ data: { name: "J外人的项目", customerId: c.id, ownerId: 外人, creatorId: 外人 } });
+    const 项目们 = () => db.project.findMany({ where: { customerId: c.id }, orderBy: { name: "asc" } }).then((x) => x.map((p) => p.name));
+    expect(await 作为(小王, 项目们)).toEqual(["J小王的项目"]);
+    expect(await 作为(经理, 项目们)).toEqual(["J小王的项目"]);
+    expect(await 作为(外人, 项目们)).toEqual(["J外人的项目"]);
+  });
+});

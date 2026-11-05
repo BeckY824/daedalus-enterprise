@@ -43,7 +43,8 @@ import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
+import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读角色话, 是系统管理员 } from "@/lib/enterprise/permissions";
+import { 有同事在推的客户, 同事在推不能删话 } from "@/lib/enterprise/colleague-projects";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
@@ -786,9 +787,15 @@ function revalidateCustomer(id?: string) {
   revalidatePath("/dashboard");
 }
 
-async function 删除依赖错误(db: Prisma.TransactionClient, ids: string[], 客户叫法: string): Promise<string | null> {
-  const visible = await db.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+/** 管 = 企业版系统管理员（P-判定-03）：同事负责的项目也一起删，不挡 */
+async function 删除依赖错误(db: Prisma.TransactionClient, ids: string[], 客户叫法: string, 管 = false): Promise<string | null> {
+  const visible = await db.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwnerId: true } });
   if (!visible.length) return null;
+  // 企业版 P-删-05（11-05）：名下有同事负责、还没结束的项目先挡；结束了的跟着客户进回收站
+  if (软删开着() && !管) {
+    const 有 = await 有同事在推的客户(db, visible);
+    if (有.size) return 同事在推不能删话(visible.filter((c) => 有.has(c.id)).map((c) => c.name), 客户叫法);
+  }
   // 项目模式（2026-10-23）：级联会把项目连同节点变更一起删掉，挂着项目的客户先拦；没开过项目模式的工作区这里查出来永远是空。
   // 企业版删客户是进回收站（P9）：项目跟着客户一起进、一起回来，不拦
   const 项目数 = 软删开着() ? new Map<string, number>() : await 看全部(() => 客户的项目数(visible.map((c) => c.id), db));
@@ -808,6 +815,11 @@ async function 删除依赖错误(db: Prisma.TransactionClient, ids: string[], �
   return `以下${客户叫法}仍是其他档案的推荐来源或业绩归属，删除会断开推荐链，整批已阻止：${visible.filter(c => idsBlocked.has(c.id)).map(c => c.name).join("、")}。请先调整下游档案的推荐人或业绩归属，再删除。`;
 }
 
+/** 企业版系统管理员删客户不看同事的项目（P-删-05 例外，P-判定-03） */
+async function 删同事项目也行(me: { id: string; role?: string | null }): Promise<boolean> {
+  return 企业版() && 是系统管理员(me, await 权限组织());
+}
+
 /** 要删的客户各自的负责人（看不到的不在里面，后面照旧按范围挡） */
 async function 客户负责人们(ids: string[]): Promise<(string | null)[]> {
   return (await prisma.customer.findMany({ where: { id: { in: ids } }, select: { salesOwnerId: true } })).map((c) => c.salesOwnerId);
@@ -823,7 +835,7 @@ export async function 客户删除预检(ids: string[]): Promise<{ ok: true } | 
   // 虚线下属的客户：在「确认删除…不能恢复」之前就说清楚，不等删完报「已经在别处删掉了」
   const 虚线 = await 虚线只读挡(defaultClient, ids);
   if (虚线) return { ok: false, error: 虚线 };
-  const error = await 删除依赖错误(prisma, ids, b.customer);
+  const error = await 删除依赖错误(prisma, ids, b.customer, await 删同事项目也行(me));
   return error ? { ok: false, error } : { ok: true };
 }
 
@@ -846,7 +858,8 @@ export async function deleteCustomers(
    * Prisma 在自引用关系上默认 SetNull，直接删会把下游的推荐链和业绩归属
    * 静默置空——数据看着还在，归属已经没了，且不会有任何报错。
    */
-  const dependencyError = await 删除依赖错误(prisma, ids, b.customer);
+  const 管 = await 删同事项目也行(me);
+  const dependencyError = await 删除依赖错误(prisma, ids, b.customer, 管);
   if (dependencyError) return { ok: false, error: dependencyError };
 
   // 删之前留个名字，删完就查不到了
@@ -864,7 +877,7 @@ export async function deleteCustomers(
   // 企业版（P9）：进回收站。联系人、项目、沟通记录记同一个时刻一起进，线索不动；30 天内能恢复
   if (软删开着()) {
     const 删了 = await prisma.$transaction(async (tx) => {
-      const dependencyError = await 删除依赖错误(tx, 待删.map((c) => c.id), b.customer);
+      const dependencyError = await 删除依赖错误(tx, 待删.map((c) => c.id), b.customer, 管);
       if (dependencyError) throw new 客户删除阻塞(dependencyError);
       return 软删客户(tx, 待删.map((c) => c.id));
     }).catch((e) => {

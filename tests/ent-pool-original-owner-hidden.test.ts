@@ -169,7 +169,8 @@ describe("原负责人退到公海后看不到", () => {
     expect(await 看(丙, c, p)).toMatchObject({ 客户列表: true, 公海页客户: true });
 
     当(乙);
-    const 撤 = await 以谁的身份(乙.id, () => 撤销公海("放进", [{ id: c, 值: 乙.id }]));
+    // 他在跑的项目一起进了项目公海（P-公海-06），撤销照界面带上 公海项目 一起还回来
+    const 撤 = await 以谁的身份(乙.id, () => 撤销公海("放进", [{ id: c, 值: 乙.id }], undefined, undefined, r.ok ? r.公海项目 : undefined));
     expect(撤).toMatchObject({ ok: true, updated: 1 });
     expect(await 看(乙, c, p)).toMatchObject({ 客户列表: true, 客户详情: true, 项目列表: true, 项目详情: true });
   });

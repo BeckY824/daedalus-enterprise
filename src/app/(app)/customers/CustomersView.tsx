@@ -311,6 +311,7 @@ export default function CustomersView({
       res.没权限 && `${res.没权限} 位不是你负责的，没放（只有负责人或管理员能放）`,
       res.有订单 && `${res.有订单} 位名下有没结束的订单阶段项目，没放`,
       res.交接中 && `${res.交接中} 位正在转让交接中，没放`,
+      res.同事在推 && `${res.同事在推} 位名下有同事负责、还没结束的项目，没放`,
     ].filter(Boolean);
     const 文案 = 动作 === "分配" ? `已把 ${res.updated} 位${名}${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}` : `已${名} ${res.updated} 位${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}`;
     const 原 = 动作 === "放进" ? ids.map((id) => ({ id, 值: "" })) : (res.原负责人 ?? []);

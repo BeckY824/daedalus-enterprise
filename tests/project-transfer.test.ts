@@ -166,7 +166,7 @@ describe("停用成员", () => {
     expect(new Set((await 转让痕()).map((x) => x.projectId))).toEqual(new Set([乙的.id, 丙在乙客户上的.id]));
   });
 
-  it("企业版：办离职原地不动；全部交给时他挂在别人客户上的没结局项目也给接手人，有结局的留着", async () => {
+  it("企业版：办离职原地不动；全部交给时他挂在别人客户上的没结局项目也给接手人，有结局的留着；他客户上同事的项目留同事（P-转-07）", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
     const 乙的 = await 项目("乙的", 乙);
     const 丙在乙客户上的 = await 项目("丙在乙客户上的", 丙);
@@ -179,10 +179,10 @@ describe("停用成员", () => {
     await prisma.entMember.update({ where: { userId: 甲 }, data: { bizRole: "director" } });
     expect((await 交接全部(乙, 甲)).ok).toBe(true);
     expect(await 负责人(乙的.id)).toBe(甲);
-    expect(await 负责人(丙在乙客户上的.id)).toBe(甲);
+    expect(await 负责人(丙在乙客户上的.id)).toBe(丙);
     expect(await 负责人(乙在丙客户上的.id)).toBe(甲);
     expect(await 负责人(乙收尾的.id)).toBe(乙);
-    expect(new Set((await 转让痕()).map((x) => x.projectId))).toEqual(new Set([乙的.id, 丙在乙客户上的.id, 乙在丙客户上的.id]));
+    expect(new Set((await 转让痕()).map((x) => x.projectId))).toEqual(new Set([乙的.id, 乙在丙客户上的.id]));
   });
 });
 

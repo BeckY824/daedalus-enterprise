@@ -300,6 +300,7 @@ describe("查重捞回（客户 11-05：「可以捞回且只有查重触发时�
     const r = await 从回收站捞回("手机号", "138 0000 0001");
     expect(r).toMatchObject({ ok: true, 提示: "已从回收站捞回 1 位客户（连同联系人、项目、跟进）" });
     if (!r.ok) return;
+    expect("已不在" in r).toBe(false);
     expect(r.查).toMatchObject({ ok: true });
     expect(r.查.ok && r.查.状态).not.toBe("回收站里有");
     for (const [t, id] of [["customer", 张三], ["contact", 联系人], ["project", 项目], ["followUp", 记录]] as const) expect(await 回收站里(t, id)).toBe(false);
@@ -307,7 +308,7 @@ describe("查重捞回（客户 11-05：「可以捞回且只有查重触发时�
     expect(await prisma.auditLog.findMany({ where: { action: "restore" }, select: { userId: true, entity: true, entityId: true } })).toEqual([{ userId: 销售, entity: "Customer", entityId: 张三 }]);
     // 联系人的号撞上也一样（客户已经回来了，再点就按最新结论说）
     const 再 = await 从回收站捞回("手机号", "13900000001");
-    expect(再).toMatchObject({ ok: true, 提示: "这个号码已经不在回收站里了，按最新的查重结果来" });
+    expect(再).toMatchObject({ ok: true, 已不在: true, 提示: "这个号码已不在回收站里了（可能刚被别人捞回，或已彻底删除），按最新的查重结果来" });
   });
 
   it("客户还在、只删了带这个号的联系人：只捞回那位联系人", async () => {
@@ -327,7 +328,7 @@ describe("查重捞回（客户 11-05：「可以捞回且只有查重触发时�
     expect(await 从回收站捞回("手机号", "13800000001")).toEqual({ ok: false, error: 只读角色话 });
     expect(await 回收站里("customer", 张三)).toBe(true);
     当(销售);
-    expect(await 从回收站捞回("手机号", "13800000002")).toMatchObject({ ok: true, 提示: "这个号码已经不在回收站里了，按最新的查重结果来", 查: { 状态: "我的通讯录已有" } });
+    expect(await 从回收站捞回("手机号", "13800000002")).toMatchObject({ ok: true, 已不在: true, 提示: "这个号码已不在回收站里了（可能刚被别人捞回，或已彻底删除），按最新的查重结果来", 查: { 状态: "我的通讯录已有" } });
     expect(await 从回收站捞回("手机号", "1380000")).toMatchObject({ ok: false });
     expect(await 回收站里("customer", 张三)).toBe(true);
     expect(await prisma.auditLog.count({ where: { action: "restore" } })).toBe(0);

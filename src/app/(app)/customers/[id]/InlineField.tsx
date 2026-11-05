@@ -101,7 +101,7 @@ export default function InlineField({
     setEditing(false);
     const normalized = next?.trim() ? next.trim() : null;
     if ((normalized ?? null) === (value ?? null)) return;
-    // 换销售负责人：客户名下的项目整体跟着走，先列出来问一句（D-36）；取消 = 不改
+    // 换销售负责人：客户名下的项目跟着走（企业版同事负责的留下，P-转-07），先列出来问一句（D-36）；取消 = 不改
     if (field === "salesOwnerId" && normalized && !(await 先问转走的项目([customerId], normalized))) {
       setDraft(value);
       return;

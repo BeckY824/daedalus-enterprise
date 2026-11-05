@@ -15,6 +15,7 @@ import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card
 import { 传附件 } from "@/lib/attachment-upload";
 import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
 import { 三种业务线, 分配说明, 销售自动分确认, 建议业务线 } from "@/lib/enterprise/assign-line";
+import { 认渠道 } from "@/lib/enterprise/channel-match";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
 import { 建议结果, 记下建议结果, 清掉建议结果, 记下回执, 读回执 } from "@/lib/ai-jobs";
@@ -83,12 +84,16 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   const { message, modal } = App.useApp();
   const router = useRouter();
   // 企业版新线索卡：默认值和新建向导一致 —— 分配方式按角色默认（只有一种能用就直接选上）、进程默认线索第一步、业务线按国家 / 城市猜
+  // 渠道：AI 常只写平台名（「TikTok」），按 apply.ts 落库同一个 认渠道 认出唯一一个就直接预选上；认不出（或对上多个）照原样留给人选
   const [draft, setDraft] = useState<Proposal>(() => {
-    if (proposal.kind !== "add_lead" || !企 || !渠道名们) return proposal;
+    if (proposal.kind !== "add_lead" || !渠道名们) return proposal;
+    const 认出 = 认渠道(proposal.source, 渠道名们.map((name) => ({ name }))).渠道;
+    const 预选 = 认出 ? { ...proposal, source: 认出.name } : proposal;
+    if (!企) return 预选;
     const 默认 = 企.默认分配方式;
     const 分 = 默认 !== null && 企.分配方式们.some((x) => x.i === 默认) ? 默认 : 企.分配方式们.length === 1 ? 企.分配方式们[0].i : undefined;
     return {
-      ...proposal,
+      ...预选,
       分配方式: proposal.分配方式 ?? 分,
       节点: proposal.节点 && 线索节点们.includes(proposal.节点) ? proposal.节点 : 线索节点们[0],
       业务线: proposal.业务线 ?? 建议业务线({ addrCountry: proposal.country, addrCity: proposal.city }) ?? undefined,

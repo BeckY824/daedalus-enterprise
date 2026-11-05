@@ -13,7 +13,7 @@ import { 预览列几个, type 带走数, type 转走项目预览 } from "@/lib/
  * 客户换了销售负责人，原负责人在他身上**没做完的活**跟着走（2026-10-02 排查 B3）：
  * 没完成的计划、待办，进行中的商机。原来不跟：客户转给李四以后，到点提醒、早报还发给张三，李四收不到。
  * 只动原负责人名下的——别的同事挂在这位客户上的活不碰；做完的、赢单丢单的是历史，不动。
- * 项目（团队版项目模式）不一样，见 跟着客户转的项目：客户名下整体转，不管原来是谁负责、有没有结局。
+ * 项目（团队版项目模式）不一样，见 跟着客户转的项目：团队版整体转；企业版只带原负责人自己负责的（P-转-07）。
  */
 export async function 带走没做完的(换: { customerId: string; 旧: string }[], 新: string, 操作人?: string): Promise<带走数> {
   return (await 带走并记下(换, 新, 操作人)).数;
@@ -22,10 +22,16 @@ export async function 带走没做完的(换: { customerId: string; 旧: string 
 /**
  * 客户转给别人时，哪些项目跟着走（团队版项目模式 1a，2026-10-23 定「整体转」）：这位客户名下的项目
  * 不管原来是谁负责的，都连同客户一起转给新负责人；只有放在项目公海里的不动（等人领）。
+ * 企业版 P-转-07（11-05）：只带原客户负责人（旧）自己负责的；同事负责的（含已结束的）留在各自名下，转之前列出来。
  * 改负责人、批量分配、公海领取 / 分配、停用成员都走这一处。单个项目手动转让另走 改项目
  */
-export function 跟着客户转的项目(customerId: string): Prisma.ProjectWhereInput {
-  return { customerId, pooledAt: null };
+export function 跟着客户转的项目(customerId: string, 旧?: string): Prisma.ProjectWhereInput {
+  return 企业版() && 旧 !== undefined ? { customerId, pooledAt: null, ownerId: 旧 } : { customerId, pooledAt: null };
+}
+
+/** 转客户时留在同事名下的项目（P-转-07）：没进公海、负责人不是客户负责人也不是新负责人（含已结束的） */
+function 留在同事名下(c: { id: string; salesOwnerId: string }, 新: string): Prisma.ProjectWhereInput {
+  return { customerId: c.id, pooledAt: null, ownerId: { notIn: [c.salesOwnerId, 新, ""] } };
 }
 
 /**
@@ -35,15 +41,21 @@ export function 跟着客户转的项目(customerId: string): Prisma.ProjectWher
  */
 export async function 数转走的项目(ids: string[], 新: string): Promise<转走项目预览> {
   if (!ids.length) return { 项目数: 0, 项目: [] };
-  const 换人的 = (await prisma.customer.findMany({ where: { id: { in: [...new Set(ids)] }, salesOwnerId: { not: 新 } }, select: { id: true } })).map((c) => c.id);
+  const 换人的 = await prisma.customer.findMany({ where: { id: { in: [...new Set(ids)] }, salesOwnerId: { not: 新 } }, select: { id: true, salesOwnerId: true } });
   if (!换人的.length) return { 项目数: 0, 项目: [] };
-  const where: Prisma.ProjectWhereInput = { AND: [{ OR: 换人的.map(跟着客户转的项目) }, { ownerId: { not: 新 } }] };
+  const where: Prisma.ProjectWhereInput = { AND: [{ OR: 换人的.map((c) => 跟着客户转的项目(c.id, c.salesOwnerId)) }, { ownerId: { not: 新 } }] };
+  const 留: Prisma.ProjectWhereInput = { OR: 换人的.map((c) => 留在同事名下(c, 新)) };
   return 看全部(async () => {
-    const [项目数, 们] = await Promise.all([
+    const [项目数, 们, 留下数, 留下们] = await Promise.all([
       prisma.project.count({ where }),
       prisma.project.findMany({ where, orderBy: { createdAt: "asc" }, take: 预览列几个, select: { name: true, customer: { select: { name: true } } } }),
+      企业版() ? prisma.project.count({ where: 留 }) : 0,
+      企业版() ? prisma.project.findMany({ where: 留, orderBy: { createdAt: "asc" }, take: 预览列几个, select: { name: true, ownerId: true, customer: { select: { name: true } } } }) : [],
     ]);
-    return { 项目数, 项目: 们.map((p) => ({ name: p.name, 客户: p.customer.name })) };
+    const 预: 转走项目预览 = { 项目数, 项目: 们.map((p) => ({ name: p.name, 客户: p.customer.name })) };
+    if (!留下数) return 预;
+    const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(留下们.map((p) => p.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+    return { ...预, 留下: { 项目数: 留下数, 项目: 留下们.map((p) => ({ name: p.name, 客户: p.customer.name, 负责人: 名.get(p.ownerId) ?? "" })) } };
   });
 }
 
@@ -131,7 +143,7 @@ export async function 带走一位(tx: Prisma.TransactionClient, customerId: str
   if (待办.length) await tx.task.updateMany({ where: { id: { in: 待办 } }, data: { ownerId: 新 } });
   if (商机.length) await 转交商机(tx, { id: { in: 商机 } }, 新);
   // 带项目=false：没开项目模式的离职交接只交客户，不改项目（11-03 B7-2）
-  const 项目 = 带项目 ? await 转项目(tx, 跟着客户转的项目(customerId), 新, 操作人) : [];
+  const 项目 = 带项目 ? await 转项目(tx, 跟着客户转的项目(customerId, 旧), 新, 操作人) : [];
   await 记换负责人(tx, [{ customerId, from: 旧, to: 新 }], 操作人, kind);
   return { 计划, 待办, 商机, 项目 };
 }

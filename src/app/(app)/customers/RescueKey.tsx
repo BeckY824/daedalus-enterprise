@@ -16,7 +16,8 @@ export default function RescueKey({ 类型, 值, 捞回了 }: { 类型: string; 
     try {
       const r = await 从回收站捞回(类型, 值);
       if (!r.ok) { message.error(r.error); return; }
-      message.success(r.提示);
+      if (r.已不在) message.warning(r.提示); // 没捞成，不用成功样式
+      else message.success(r.提示);
       捞回了(r.查);
     } catch {
       message.error("没捞成，请稍后再试");
