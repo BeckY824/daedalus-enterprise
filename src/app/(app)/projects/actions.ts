@@ -159,15 +159,20 @@ export async function 建档向导(输入: 建档向导输入) {
     const 向导 = 向导接着建(me, 好, 建了);
     // 企业版客户状态跟着项目算（cust-status-auto-db.ts）：开关事务外读，建好项目后在同一笔事务里算
     const 状态开 = 企 && (await 客户状态自动());
-    const 接着 = !企 ? 向导 : 登记接着建(async (tx, customerId) => {
+    // 这笔事务只写刚建的这个客户和它名下的东西，放开范围（11-05 bug）：
+    // 指定给别人时，客户一建好在我这儿就可能是只读的（市场成员建的、负责人不是我），
+    // 后面写「最后跟进时间」、联系号码、客户状态会被范围拦下，整笔回滚
+    const 接着 = !企 ? 登记接着建((tx, customerId) => 看全部(() => 向导(tx, customerId))) : 登记接着建((tx, customerId) => 看全部(async () => {
       for (const 号 of 要查) {
         const ids = await 全公司查号(tx, 号.类型, 号.值, 号.键, customerId);
         if (ids.length) throw new 联系人号码撞了(ids, 号.格);
       }
       await 向导(tx, customerId);
+      // 指定给别人：客户也跟着归接手人（普通业务员新建客户先落在自己名下，见 saveCustomer 新建只给自己）
+      if (好.项目.ownerId !== me.id) await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 好.项目.ownerId } });
       for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
       await 跟着项目重算(tx, 状态开, [customerId]);
-    });
+    }));
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {
       // 新客户的业务线跟项目走（客户那一步没另选时）
@@ -185,8 +190,9 @@ export async function 建档向导(输入: 建档向导输入) {
       summary: `建档：新建项目「${好.项目.name}」（负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同主要联系人「${好.联系人.name}」和首条跟进`,
       detail: { 项目: 好.项目.name, 负责人: 负责人.name, 金额: 好.项目.amount, 币种: 好.项目.currency, 联系人: 好.联系人.name, ...(分配 ? { 分配方式: 分配.名 } : {}) },
     });
-    // 首条跟进记在潜客培育上：配的必填建档时就齐了的，接着往前推
-    await 客户存了推项目(me, r.id);
+    // 首条跟进记在潜客培育上：配的必填建档时就齐了的，接着往前推。
+    // 客户是刚建的、名下只有这一个项目；指定给了别人时在我这儿已只读，放开范围，不然推进被拦、静默跳过
+    await 看全部(() => 客户存了推项目(me, r.id));
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
