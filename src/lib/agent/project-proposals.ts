@@ -74,7 +74,6 @@ export type 项目卡 =
       kind: "project_followup";
       type: string;
       content: string;
-      明确回复: "" | "是" | "否";
       下一步: string;
       下一步时间: string;
       要卡点: boolean;
@@ -174,8 +173,6 @@ export function buildProjectProposal(
     if (!type) return { ok: false, error: `沟通方式不认得（可选：${FOLLOW_TYPES.filter((t) => t.value !== "TASK" && t.value !== "REMIND").map((t) => t.label).join(" / ")}）` };
     const 时间 = 收日子(args.下一步时间);
     if (时间 === null) return { ok: false, error: "下一步时间看不懂，写成 YYYY-MM-DD" };
-    const 回 = str(args.明确回复, 4);
-    const 明确回复 = 回 === "是" || 回 === "否" ? 回 : args.明确回复 === true ? "是" : args.明确回复 === false ? "否" : "";
     const 卡点类型 = str(args.卡点类型, 10);
     if (卡点类型 && !(卡点类型们 as readonly string[]).includes(卡点类型)) return { ok: false, error: `卡点类型只能是 ${卡点类型们.join(" / ")}` };
     const 影响等级 = str(args.影响等级, 10);
@@ -183,7 +180,7 @@ export function buildProjectProposal(
     return {
       ok: true,
       proposal: {
-        ...共, kind, type, content: str(args.content, 2000), 明确回复, 下一步: str(args.下一步, 100), 下一步时间: 时间,
+        ...共, kind, type, content: str(args.content, 2000), 下一步: str(args.下一步, 100), 下一步时间: 时间,
         要卡点: args.要卡点 === true, 卡点类型, 影响等级, 卡点描述: str(args.卡点描述, 描述上限),
         ...(args.要时间 === true ? { 要时间: true } : {}),
       },
@@ -253,7 +250,6 @@ export function 项目卡缺(p: 项目卡): string[] {
   }
   if (p.kind === "project_followup") {
     if (!p.content.trim()) miss.push("沟通内容");
-    if (!p.明确回复) miss.push("客户明确回复了吗");
     if (!p.下一步.trim()) miss.push("下一步做什么");
     if (p.要时间 && !p.下一步时间) miss.push("下一步时间");
     if (p.要卡点 && (!p.卡点类型 || p.卡点类型 === "暂无卡点")) miss.push("卡点类型");

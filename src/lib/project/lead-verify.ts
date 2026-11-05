@@ -14,7 +14,7 @@ import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 读组织, 管理员类别们of, type 组织 } from "@/lib/enterprise/org";
+import { 读组织, 管理员类别们of, 能市场复核, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
@@ -66,15 +66,16 @@ export function 创建人是销售(org: 组织, creatorId: string, 市场: Reado
   return 们.includes("sales") || 们.includes("sales_mgr");
 }
 
-/** 这一步谁能拍板。销售两步看 能改节点（企业版只有负责人本人，C2）；市场复核只给市场管理；总管理终判给老板、总管理员 */
-export function 能拍板(me: 谁, 步: 验证步, p: { ownerId: string; pooledAt?: Date | null }, org: 组织): boolean {
-  if (步 === "市场复核") return 管理员类别们of(org, me.id).has("市场管理");
+/** 这一步谁能拍板。销售两步看 能改节点（企业版只有负责人本人，C2）；市场复核给建线索的人或他的直属市场管理（11-05，能市场复核）；
+ *  总管理终判给老板、总管理员 */
+export function 能拍板(me: 谁, 步: 验证步, p: { ownerId: string; creatorId?: string | null; pooledAt?: Date | null }, org: 组织): boolean {
+  if (步 === "市场复核") return 能市场复核(org, me.id, p);
   if (步 === "总管理终判") return 是总管理(me, org);
   return 能改节点(me, p, org);
 }
 const 拍不了: Record<验证步, string> = {
   销售初判: "只有项目负责人、老板或主管能判这条线索",
-  市场复核: "只有市场管理能复核这条线索",
+  市场复核: "只有建这条线索的人或他的直属市场管理能复核",
   销售终验: "只有项目负责人、老板或主管能终验",
   总管理终判: "只有老板或总管理员能终判",
   销售认领: "只有项目负责人、老板或主管能认领",

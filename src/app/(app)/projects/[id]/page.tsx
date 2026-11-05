@@ -1,11 +1,11 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
 import { getBusiness } from "@/lib/business";
 import { 能管项目, 能加组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
-import { 按必填走, 节点必填, 还差 } from "@/lib/project/required";
+import { 按必填走, 节点必填, 还差, 有效沟通还差, 必填叫法 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
@@ -26,9 +26,8 @@ import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, �
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
-import { 有效沟通数 } from "@/lib/project/stage-gates";
 import { 读线索验证 } from "@/lib/project/lead-verify";
-import { 市场进不了详情 } from "@/lib/enterprise/market-view-db";
+import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 可选原因们, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 // 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
@@ -78,10 +77,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 11-01 只认业务角色（lib/enterprise/permissions.ts）：企业版 org 一定读；没设业务角色的什么都看不到
   const org = await 权限组织();
   const 已加入 = p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId);
+  // 市场角色：已分给圈外的人的那条只在项目页看进度，详情（含直接输网址）一律不给（11-04 P-看-06）。
+  // 先问这个：自己建的线索分给销售后，原来存的链接点进来不再是「找不到」——转回项目页、搜上项目名、指出那一行（客户 11-05）。
+  // 只转列表里真有这一行的（建的人在我的圈里、已有负责人，同 market-view.ts 市场项目条件），别的照旧 404，不借转向露出项目名
+  if (企业版() && (await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) {
+    const 圈 = (await 读市场身份(me.id))?.圈 ?? [];
+    if (p.ownerId && 圈.includes(p.creatorId)) redirect(`/projects?q=${encodeURIComponent(p.name)}&hl=${encodeURIComponent(p.id)}`);
+    notFound();
+  }
   // 数据层（lib/team-scope.ts 看得到的项目）在「按组织看客户」开着时已经筛过；关着也按业务角色再挡一遍
   if (企业版() && !能看项目(me, { ...p, 已加入 }, org)) notFound();
-  // 市场角色：已分给圈外的人的那条只在项目页看进度，详情（含直接输网址）一律不给（11-04 P-看-06）
-  if (企业版() && (await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) notFound();
   const 能改 = 能管项目(me, p, org);
   const 能转 = 能转让项目(me, p, org);
   // 公海里同事客户的项目：只给项目本身，客户、联系人、沟通内容领了再看（lib/project/db.ts 露客户）
@@ -144,7 +149,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 节点能改 = 能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则);
   // 有结局的也算（11-03 A5-1）：改回到后面的节点同样算往前推，下拉里照样灰着
   const 必填 = !公海 && 按必填走(规则, p.node)
-    ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p)), 只能靠填齐: !是经理(me, org) }
+    ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p, 规则)), 只能靠填齐: !是经理(me, org) }
     : null;
   // 记沟通时预演回收日（10-30 P0-2，lib/enterprise/recycle-text.ts 预演回收日）：给起点日和这个进程的天数，浏览器按同一个算法算。
   // 配了必填的进程记完可能自动推到下一个进程（天数跟着换），算不准就不给，界面不显示那一句
@@ -152,8 +157,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 回收预演 = 回收天数 ? { 起点日: 计时起点(规则, 回收起点).format("YYYY-MM-DD"), 天数: 回收天数 } : null;
   // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
   const 不给推 = 企业 && !公海 ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
-  // 企业版：线索验证往后推要先有一条客户明确回复的沟通（lib/project/stage-gates.ts）
-  const 有效沟通 = 企业 && p.phase === "线索" ? await 有效沟通数(prisma, p.id) : 0;
+  // 企业版：线索验证往后推要先有有效沟通 = 线索验证节点配的其他必填项都齐（没配看需求状态，11-05；经理和缺必填一样不拦；和 lib/project/db.ts 有效沟通差of 同一个算法）
+  const 有效沟通差 = 企业 && p.phase === "线索" && !p.result && !是经理(me, org) ? 有效沟通还差(await 读必填数据(prisma, p, 规则)).map(必填叫法) : [];
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
   const 提成 = 企业 ? await 读项目提成(me, p, p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId), org, (uid) => 叫(uid)!, prisma) : null;
 
@@ -220,7 +225,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取；没这个人就是空串，界面写「暂无」
     ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
-    pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
+    pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 回收预演,

@@ -7,10 +7,10 @@ import { prisma, defaultClient } from "../prisma";
 import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
-import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, 有效线索判定, type 必填数据 } from "./required";
+import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
-import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效沟通数 } from "./stage-gates";
+import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
 import { 等复核拦, 复核判死拦 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
@@ -323,13 +323,13 @@ export async function 改节点(
     }
     if (上级代推 && !往前) return { ok: false as const, error: 只有负责人改进程 };
     const 不给 = 往前
-      ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则))
+      ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则, 是经理(me, org) ? 不差 : 有效沟通差of(tx, p, 规则)))
       : null;
     if (不给) return { ok: false as const, error: 不给 };
     // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给「经理」（企业版 = 销售管理：自己当负责人的，或「仅上级推」下的直属上级，见 是经理）；
     // 销售本人填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
     if (往前 && 按必填走(规则, p.node) && !是经理(me, org)) {
-      const 数据 = await 读必填数据(tx, p);
+      const 数据 = await 读必填数据(tx, p, 规则);
       // 线索核验判有效（lead-verify.ts 带 验证放行 进来）：先推进程、推成了才写判定，这一步的「线索验证结果」按判了有效算
       const 差 = 还差(规则, 选项?.验证放行 ? { ...数据, 线索验证: { verdict: 有效线索判定, finalResult: 有效线索判定, pending: null } } : 数据);
       if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推${企业版() ? "" : "，要先推请找老板或主管"}` };
@@ -973,7 +973,7 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
     await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
     await 记沟通编号(tx, 跟进.id, p.id, 好.nextStepAt, now);
-    await 记沟通标记(tx, 跟进.id, p.id, p.phase, input.明确回复 === true);
+    await 记沟通标记(tx, 跟进.id, p.id, p.phase, false);
     // 企业版组员不一定看得到这位客户（客户是负责人的）：最近跟进时间只是跟着记一笔，不按范围拦
     const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
     if (!c?.lastFollowAt || c.lastFollowAt < 好.occurredAt) await 看全部(() => tx.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 好.occurredAt } }));
@@ -1181,11 +1181,12 @@ type 必填项目行 = Pick<Project,
 
 /**
  * 算「还差」要的数据（企业版节点必填，D-37）：客户（含外贸字段）、客户下的联系人、项目上的沟通各在哪个节点记的。
- * 11-01 按客户矩阵加：每条沟通的发起主体 / 内容 / 方式、项目分配记录的分配方式、有效沟通数、线索验证结果。
+ * 11-01 按客户矩阵加：每条沟通的发起主体 / 内容 / 方式、项目分配记录的分配方式、线索验证结果。
+ * 带上 规则 才读「线索验证」节点配的必填项（算有效沟通用，11-05）；不带 = 有效沟通看需求状态。
  * 只用 tx：保存的那笔事务里调，刚写的也读得到
  */
-export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行): Promise<必填数据> {
-  const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 有效沟通, 验证] = await Promise.all([
+export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行, 规则?: 组织规则): Promise<必填数据> {
+  const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 验证] = await Promise.all([
     // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
     看全部(() => tx.customer.findUnique({
       where: { id: p.customerId },
@@ -1197,7 +1198,6 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     tx.entProjectPayment.count({ where: { projectId: p.id } }),
     tx.attachment.count({ where: { projectId: p.id, tag: "方案" } }),
     tx.entLeadAssign.findFirst({ where: { projectId: p.id, way: { not: null } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { way: true } }),
-    有效沟通数(tx, p.id),
     tx.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { verdict: true, finalResult: true, pending: true } }),
   ]);
   return {
@@ -1217,10 +1217,18 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     痛点标注: p.painPoints, 合同状态: p.contractStatus, 项目方案数,
     需求类型们: 读产品需求(p.productNeeds),
     分配方式: 分配?.way ?? null,
-    有效沟通数: 有效沟通,
     线索验证: 验证 ?? null,
+    线索验证必填: 规则 ? 节点必填(规则, 有效线索节点) : [],
   };
 }
+
+/** 企业版推进关 要的「有效沟通还差」：线索验证节点配的必填项（不含有效沟通、线索验证结果）缺哪几样，没配看需求状态（11-05） */
+export function 有效沟通差of(tx: Prisma.TransactionClient, p: 必填项目行, 规则: 组织规则): () => Promise<string[]> {
+  return async () => 有效沟通还差(await 读必填数据(tx, p, 规则)).map(必填叫法);
+}
+
+/** 经理（D-37 能缺着必填往前推的人）推过线索验证也不看有效沟通：有效沟通 11-05 起就是线索验证的必填项 */
+const 不差 = async (): Promise<string[]> => [];
 
 export const 自动推进理由 = "必填齐了，自动推进";
 
@@ -1278,8 +1286,8 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
     const 下 = 下一步(p, 字典of(企业版()));
     if (!下) break;
     if (!往前 && !(await 往前进来的(tx, p))) break;
-    if (还差(规则, await 读必填数据(tx, p)).length) break;
-    if (await 企业版推进关(tx, p, 下, 规则)) break;
+    if (还差(规则, await 读必填数据(tx, p, 规则)).length) break;
+    if (await 企业版推进关(tx, p, 下, 规则, 有效沟通差of(tx, p, 规则))) break;
     // 推到下一个节点：带过去的下一步不算新节点的（不然新节点配了下一步必填就直接齐了、一路连推），清掉，老值记进这行节点变更
     await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...清掉的下一步 } });
     await 节点变了的提成(tx, p.id, p.phase, 下.phase);

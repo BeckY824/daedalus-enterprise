@@ -155,11 +155,12 @@ describe("missingFields：新线索", () => {
     expect(missingFields(卡({ source: "", nextAt: undefined }))).toEqual([]);
     expect(missingFields(卡({ name: "" }))).toEqual(["名称"]);
   });
-  it("只用项目：还要来源（渠道）；开了超时回收再要下一步时间", () => {
+  it("只用项目：还要来源（渠道）；开了超时回收再要下一步时间和下一步做什么（11-05）", () => {
     const p = 卡({ source: "", nextAt: undefined });
     expect(missingFields(p, undefined, { 只用项目: true, 要下一步: false })).toEqual(["来源（渠道）"]);
-    expect(missingFields(p, undefined, { 只用项目: true, 要下一步: true })).toEqual(["来源（渠道）", "下一步时间"]);
-    expect(missingFields(卡({ nextAt: "2026-10-29" }), undefined, { 只用项目: true, 要下一步: true })).toEqual([]);
+    expect(missingFields(p, undefined, { 只用项目: true, 要下一步: true })).toEqual(["来源（渠道）", "下一步时间", "下一步做什么"]);
+    expect(missingFields(卡({ nextAt: "2026-10-29" }), undefined, { 只用项目: true, 要下一步: true })).toEqual(["下一步做什么"]);
+    expect(missingFields(卡({ nextAt: "2026-10-29", 下一步: "发报价单" }), undefined, { 只用项目: true, 要下一步: true })).toEqual([]);
   });
 });
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Progress, Radio, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
+import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Progress, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -24,7 +24,7 @@ import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } fro
 import { 阶段们, 交付还差, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
-import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
+import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
 import { ProjectFold } from "./ProjectFold";
@@ -104,8 +104,8 @@ export type 项目详情 = {
   能加组员?: boolean;
   /** 企业版组织规则里改过的出口叫法（设置 → 项目 → 阶段规则）；别的版本是空的 */
   出口叫法: 出口叫法改动;
-  /** 企业版线索阶段：客户明确回复了的沟通有几条（0 = 推不过线索验证）；别的阶段、别的版本是 0 */
-  有效沟通: number;
+  /** 企业版线索阶段：推过线索验证还差哪几样（显示名，11-05），空 = 齐了 */
+  有效沟通差: string[];
   /**
    * 企业版超时回收：nextStepAt 是最近一次沟通填的下一步时间（服务端排好的 YYYY-MM-DD）；回收日 = 哪天没人跟进就自动回公海（null = 不会）；
    * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人（11-01 起组员只能看），且不在公海（不是企业版照原来去客户页记）
@@ -465,8 +465,9 @@ export default function ProjectDetail({
   const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : 改不了话;
   const 节点可改 = p.能改节点 && !p.pooled;
   const 节点不能改 = p.能改节点 ? (p.pooled ? 不能改 : undefined) : 不能改;
-  // 企业版：线索阶段还没有客户明确回复的沟通，推不过「线索验证」（服务端 lib/project/stage-gates.ts 同一条）
-  const 没有效沟通 = p.企业版 && p.phase === "线索" && !p.result && p.有效沟通 === 0;
+  // 企业版：线索阶段线索验证的必填项还没填齐（没配就看需求状态），推不过「线索验证」（服务端 lib/project/stage-gates.ts 同一条）
+  const 没有效沟通 = p.企业版 && p.phase === "线索" && !p.result && p.有效沟通差.length > 0;
+  const 缺有效沟通话 = 没有效沟通 ? 缺有效沟通还差(p.有效沟通差) : null;
   const 卡有效沟通 = 没有效沟通 && !!下 && 节点序号(下, 字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 字典);
   // 企业版线索阶段不显示交付（QA #5）：只有订单阶段才有尾款、验收
   const 显示交付 = !p.企业版 || p.phase === "订单";
@@ -476,7 +477,7 @@ export default function ProjectDetail({
   // 「下一步」灰着的原因写在按钮下面（规则：灰按钮要写为什么），不靠悬停
   const 动不了 = (节点可改 ? undefined : 节点不能改 ?? 改不了话) ?? 等复核文字;
   // 往前推另外的关：直属上级才推 / 需求状态补全期（p.不给推）、线索验证缺有效沟通
-  const 往前不了 = p.不给推 ?? (卡有效沟通 ? 缺有效沟通 : undefined);
+  const 往前不了 = p.不给推 ?? (卡有效沟通 ? 缺有效沟通话! : undefined);
   // 配了必填、不是老板主管：缺着必填不给往前推；填齐了（占位值不算）照样能推（M-节点-05/09）
   const 缺必填 = p.必填?.只能靠填齐 && p.必填.还差.length ? `还差必填：${p.必填.还差.map(必填叫法).join("、")}；补齐再推，要先推请找总管理或销售管理` : undefined;
   const 推不了 = 动不了 ?? 往前不了 ?? 缺必填
@@ -761,8 +762,8 @@ export default function ProjectDetail({
           <Button size="small" onClick={() => set验证开着(true)}>打开线索验证</Button>
         </div>
       )}
-      {没有效沟通 && !p.线索验证?.我能 && (
-        <div style={{ marginTop: 12, color: "var(--text-muted)" }}>还没有客户明确回复的沟通：记一条、选「客户明确回复了」，才能推过线索验证</div>
+      {没有效沟通 && !p.线索验证?.我能 && !(p.必填 && p.node === 有效线索节点) && (
+        <div style={{ marginTop: 12, color: "var(--text-muted)", overflowWrap: "anywhere" }}>要推过线索验证，还要填：{p.有效沟通差.join("、")}</div>
       )}
       {p.必填 && !p.result && (
         <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
@@ -1431,7 +1432,7 @@ export default function ProjectDetail({
 
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
-          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 跑={跑} 忙={忙} 没有效沟通={没有效沟通} 不给推={p.不给推} />
+          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} />
         </Modal>
       )}
       {可改 && 编辑开着 && (
@@ -1557,7 +1558,7 @@ export default function ProjectDetail({
 }
 
 /**
- * 改项目上的一条沟通（「…」→ 修改，10-29）：沟通方式、时间、内容三格，别的（阶段、明确回复、下一步）不在这里改。
+ * 改项目上的一条沟通（「…」→ 修改，10-29）：沟通方式、时间、内容三格，别的（阶段、下一步）不在这里改。
  * 打开时的 updatedAt 一起交回去，别人先改了就报版本冲突，不悄悄盖掉
  */
 function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
@@ -1613,8 +1614,8 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
  * 在项目上记一条沟通：方式、时间、内容，加下一步做什么（必填一句话，10-29）和下一步时间（开了超时回收、线索 / 商机阶段必填，别的时候可空）。
  * 记了会挂在客户上（客户页也看得到）和项目当时的节点上；填的下一步时间决定这个项目哪天没跟进会回公海
  *
- * F-跟进-06：主区只摆 沟通方式、发起主体（11-01 答复 #2 挪出来、必填）、沟通内容、（卡点）、下一步、下一步时间；沟通时间、项目阶段、客户明确回复、AI 预填收进默认折叠的「更多」，
- * 字段和校验一个不少（客户明确回复照旧必选，没选时底下那句带「展开更多」）。
+ * F-跟进-06：主区只摆 沟通方式、发起主体（11-01 答复 #2 挪出来、必填）、沟通内容、（卡点）、下一步、下一步时间；沟通时间、项目阶段、AI 预填收进默认折叠的「更多」，
+ * 字段和校验一个不少。11-05 客户确认去掉「客户明确回复了吗」（线索验证改看必填项）。
  * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」= 不生成（11-01 答复 #5），选了别的类型记下后照发卡点那一套生成一个。
  * F-跟进-07（企业版）：可先挑截图、录音，记下之后挂到这条沟通上
  */
@@ -1648,7 +1649,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
   const [content, setContent] = useState("");
   const [下一步文字, set下一步文字] = useState("");
   const [下一步时间, set下一步时间] = useState<string | null>(null);
-  const [明确回复, set明确回复] = useState<boolean | null>(null);
   const [交中, set交中] = useState(false);
   const [更多开, set更多开] = useState(AI先);
   const [卡点类型, set卡点类型] = useState<string>("暂无卡点");
@@ -1706,7 +1706,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
     const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步 && "下一步", 填.下一步时间 && "下一步时间"].filter(Boolean);
     set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
   };
-  const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体" : p.企业版 && 明确回复 === null ? "请选客户明确回复了吗"
+  const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体"
     : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
@@ -1715,7 +1715,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
     set交中(true);
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
     const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, title: 卡点标题, reasons: 卡点原因, description: 卡点描述 } : undefined;
-    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase, 明确回复: 明确回复 === true } : {}) }, 卡点)));
+    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)));
     const r = 回.r;
     if (ok && r?.ok) {
       // A7-1：记下后的提示带「撤销」（自己刚记的、10 分钟内，服务器再判）
@@ -1818,13 +1818,6 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
             <选沟通附件框 文件们={附件们} on改={set附件们} />
           </div>
         )}
-        {/* 必填，摆在外面不折进「更多」（A7-2） */}
-        {p.企业版 && (
-          <div>
-            <div style={{ marginBottom: 4 }}>客户明确回复了吗<span style={{ color: "var(--danger-text)" }}> *</span></div>
-            <Radio.Group aria-label="客户明确回复了吗" value={明确回复} onChange={(e) => set明确回复(e.target.value as boolean)} options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
-          </div>
-        )}
         <div>
           <Button type="link" size="small" style={{ paddingInline: 0 }} icon={<DownOutlined rotate={更多开 ? 180 : 0} />} aria-expanded={更多开} onClick={() => set更多开((v) => !v)}>
             更多{p.企业版 ? "：沟通时间、项目阶段" : "：沟通时间"}{给AI ? "、AI 预填" : ""}
@@ -1849,7 +1842,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
                 <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
-                      : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填，核对无误再记下；「客户明确回复了吗」要你自己选</span>}
+                      : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填，核对无误再记下</span>}
                   </div>
                   <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
                     {解析?.结果 ? "重新解析" : "AI 解析填表"}

@@ -78,7 +78,7 @@ async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
       if (!项) return { ok: false, error: "这个项目已经不在了，或者你看不到它" };
       const 结 = await 记项目沟通Action(
         p.targetId,
-        { type: p.type, content: p.content, occurredAt: new Date().toISOString(), 下一步时间: p.下一步时间 || null, 阶段: 项.phase, 明确回复: p.明确回复 === "是", 下一步: p.下一步 },
+        { type: p.type, content: p.content, occurredAt: new Date().toISOString(), 下一步时间: p.下一步时间 || null, 阶段: 项.phase, 下一步: p.下一步 },
         p.要卡点 ? { type: p.卡点类型, impact: p.影响等级 || undefined, description: p.卡点描述 || undefined } : undefined,
       );
       if (!结.ok) return { ok: false, error: 话(结) };

@@ -39,7 +39,7 @@ beforeAll(async () => {
     const 成交钱={dealDemand:'需求'+字,contractAmount:1234567.89,contractCurrency:'USD',depositAmount:1000,depositCurrency:'CNY'};
     const 基={id:'p1',name:长,remark:'备注'+字,amount:1234567.89,currency:'CNY',customer:{id:'c1',name:'超长客户名'+串,school:'某某超长公司名有限公司'.repeat(4)},contact:{id:'k1',name:'张三',position:'采购总监'},
       来源线索:null,原因选项:{回收:[],无效:[]},ownerId:'qa',ownerName:'组长甲',creatorName:'组长甲',createdAt:'2026-10-01T00:00:00.000Z',historyOwners:[],
-      phase:'商机',node:'方案报价',result:null,exceptionReason:null,exceptionCategory:null,pooled:false,能放公海:false,能领取:false,领取不给:null,进公海:null,出口叫法:{},有效沟通:1,
+      phase:'商机',node:'方案报价',result:null,exceptionReason:null,exceptionCategory:null,pooled:false,能放公海:false,能领取:false,领取不给:null,进公海:null,出口叫法:{},有效沟通差:[],
       nextStepAt:'2026-11-01',回收日:null,expectedDealAt:'2026-12-01',要下一步:true,必填:null,不给推:null,能改节点:true,能转让:true,
       balanceSettled:false,balanceSettledBy:null,balanceSettledAt:null,acceptancePassed:false,acceptancePassedBy:null,acceptancePassedAt:null,logs:[],
       followUps:[{id:'f1',type:'PHONE',method:null,initiator:null,content:'沟通内容'+字,occurredAt:'2026-10-03T02:00:00.000Z',who:'组长甲',node:'方案报价',code:'FUL0001',提醒:null,版本:'v1',我记的:true,附件:[]}],

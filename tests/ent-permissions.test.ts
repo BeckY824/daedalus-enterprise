@@ -16,14 +16,14 @@
  *   - 只看某人：只看那个人的、公海照常、什么都不能改；角色挂着市场管理也不算管理员（不收提醒、不管渠道、不做市场复核）
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { 建组织, 规整只看某人, 上级设置问题, 填组织设置, 管理员类别们of, type 组织 } from "@/lib/enterprise/org-core";
+import { 建组织, 规整只看某人, 上级设置问题, 填组织设置, 管理员类别们of, 能市场复核, type 组织 } from "@/lib/enterprise/org-core";
 import { 能管渠道, 能录投入 } from "@/lib/enterprise/channel-stats";
 import { 满额提醒收件人 } from "@/lib/enterprise/lead-full-notice";
 import { 能拍板, 有市场管理 } from "@/lib/project/lead-verify";
 import {
   能看项目, 能编辑项目, 能转让项目, 能放回公海, 能分配线索, 能管公海, 能删除, 能恢复, 能进设置, 能改后台设置,
   只读角色, 能看全部, 是总管理, 没设业务角色, 能真删, 能领公海, 能删一些, 能转让客户, 能转出自己的, 能改客户, 只看的人, 是管理层, type 权限项目,
-  能新建和领取, 不能新建项目话, 公海分不给话, 只读角色话,
+  能新建和领取, 不能新建项目话, 公海分不给话, 只读角色话, 不能当负责人话, 市场管理不当负责人话,
 } from "@/lib/enterprise/permissions";
 import { 能切换视图 } from "@/lib/enterprise/view-as";
 import { 能加组员 } from "@/lib/project/db";
@@ -87,15 +87,19 @@ describe("角色 × 动作（项目：负责人 s、市场 mkt 建的、项目�
   });
 });
 
-describe("市管当了负责人（交接接过来的，11-03 反馈 7）：不能编辑、能转出、不能删", () => {
+describe("纯市场管理不当负责人、不能转出（客户 11-05 待确定清单第 4 条②）", () => {
   const 市管的: 权限项目 = { ownerId: "mkt", creatorId: "s", pooledAt: null };
-  it("项目和客户都一样；创建人不跟着变", () => {
+  it("就算名下有老数据，也不能编辑、不能转出、不能删，交给系统管理员处理", () => {
     const me = 当("mkt");
-    expect([能编辑项目(me, 市管的, org), 能转让项目(me, 市管的, org), 能删除(me, org, "mkt")]).toEqual([false, true, false]);
-    expect(能转让客户(me, { salesOwnerId: "mkt", 在公海: false }, org)).toBe(true);
-    expect(能转出自己的(me, org)).toBe(true);
-    // 项目组员当负责人仍不能转（只多放了市管）
+    expect([能编辑项目(me, 市管的, org), 能转让项目(me, 市管的, org), 能删除(me, org, "mkt")]).toEqual([false, false, false]);
+    expect(能转出自己的(me, org)).toBe(false);
     expect(能转出自己的(当("ops"), org)).toBe(false);
+  });
+  it("负责人候选、交接接收人挡下纯市场管理，兼渠道运营的照旧能当", () => {
+    expect(不能当负责人话(org, "mkt")).toBe(市场管理不当负责人话);
+    const 兼 = 组织of([{ id: "boss", role: "ADMIN", bizRole: "director" }, { id: "cz", bizRole: "channel_ops,marketing_mgr" }]);
+    expect(不能当负责人话(兼, "cz")).toBeNull();
+    expect(能转出自己的({ id: "cz", role: "member" } as never, 兼)).toBe(true);
   });
 });
 
@@ -356,5 +360,33 @@ describe("只看某人（V3.5.1 特例）", () => {
     expect(上级设置问题(o, "s", "w", "直属")).toMatch("只看某人");
     expect(上级设置问题(o, "s", "w", "虚线")).toBe(null);
     expect(上级设置问题(o, "s", "t", "直属")).toBe(null);
+  });
+});
+
+describe("市场复核 = 建线索的人或他的直属市场管理（客户 11-05 待确定清单第 5 条）", () => {
+  const o = 组织of([
+    { id: "dir", role: "ADMIN", bizRole: "director" },
+    { id: "市管头", bizRole: "marketing_mgr" },
+    { id: "市管乙", bizRole: "marketing_mgr" },
+    { id: "市场员", bizRole: "marketing_mgr", managerId: "市管头" },
+    { id: "销", bizRole: "sales" },
+  ]);
+  it("建的人自己能复核，他的直属市管也能，别的市管不能", () => {
+    const p = { creatorId: "市场员", ownerId: "销" };
+    expect(["市场员", "市管头", "市管乙", "销"].map((m) => 能市场复核(o, m, p))).toEqual([true, true, false, false]);
+  });
+  it("建的人没有直属市管：只有他自己", () => {
+    const p = { creatorId: "市管乙", ownerId: "销" };
+    expect(["市管乙", "市管头"].map((m) => 能市场复核(o, m, p))).toEqual([true, false]);
+  });
+  it("🔍 建的人已不在组织里：任何市管都能", () => {
+    const p = { creatorId: "走了的", ownerId: "销" };
+    expect(["市管头", "市管乙", "销"].map((m) => 能市场复核(o, m, p))).toEqual([true, true, false]);
+  });
+  it("🔍 建的人自己就是负责人：不复核自己，交直属市管", () => {
+    const p = { creatorId: "市场员", ownerId: "市场员" };
+    expect(["市场员", "市管头", "市管乙"].map((m) => 能市场复核(o, m, p))).toEqual([false, true, false]);
+    const 没上级 = { creatorId: "市管乙", ownerId: "市管乙" };
+    expect(["市管乙", "市管头"].map((m) => 能市场复核(o, m, 没上级))).toEqual([false, true]);
   });
 });

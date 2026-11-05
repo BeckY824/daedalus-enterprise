@@ -11,7 +11,7 @@ import { FOLLOW_TYPES } from "../constants";
 import { 是币种, 默认币种 } from "../currency";
 import { dayjs } from "../utils";
 import { 第一个节点, 企业版字典, 节点序号 } from "./nodes";
-import { 有效线索节点, 缺有效沟通, 记沟通标记 } from "./stage-gates";
+import { 有效线索节点, 建档不能过线索验证, 记沟通标记 } from "./stage-gates";
 import { 登记接着建, type 接着建 } from "./hook";
 import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
@@ -44,7 +44,8 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
   所在地?: 新项目所在地输入 | null };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
 /**
- * 阶段、明确回复：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看
+ * 阶段：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看。
+ * 明确回复：11-05 起不再问（有效沟通改看线索验证的必填项），老草稿、老调用方传了也不认
  */
 export type 向导跟进 = { type: string;
   /** 企业版沟通方式（10-31）：服务端先过 认跟进方式（dict.ts）定好方式和类型，这里只照带；别的版本不传 */
@@ -52,7 +53,7 @@ export type 向导跟进 = { type: string;
   /** 企业版发起主体（11-01，迁移 105）：认跟进方式 里定好（没选补「我方发起」），这里只照带；别的版本不传 */
   initiator?: string | null;
   content: string; occurredAt: string; 下一步时间?: string | null; 阶段?: string; 明确回复?: boolean | null;
-  /** 下一步做什么（一句话，10-29）：项目详情记沟通必填（要下一步文字），向导 / 别的入口可不传；时间可空 */
+  /** 下一步计划（一句话，10-29）：项目详情记沟通必填；企业版开了超时回收时新建也必填（11-05，和下一步时间一起） */
   下一步?: string | null;
   /** 企业版建档向导：项目建在线索阶段的哪个节点（跟进节点，必选）；团队版不传，一律潜客培育 */
   节点?: string | null;
@@ -66,9 +67,9 @@ export type 规整好的 = {
   联系人: { name: string; position: string | null; phone: string | null; email: string | null; wechat: string | null; address?: string | null };
   项目: { name: string; ownerId: string; amount: number; currency: string; remark: string | null };
   跟进: 规整好的沟通;
-  /** 企业版建档（10-26）：项目落在哪个线索节点、首条沟通客户是否明确回复；团队版没有 */
+  /** 企业版建档（10-26）：项目落在哪个线索节点；团队版没有 */
   企业?: {
-    节点: string; 明确回复: boolean; 项目来源?: string | null;
+    节点: string; 项目来源?: string | null;
     /** 业务线（11-01 A1）：手动选的内贸 / 外贸 / 暂不分配；没选 = null（建档向导再拦必填） */
     业务线?: 项目线 | null;
     /** 项目所在地（11-02）：规整好的四格 + 详细地址；没填全是 null */
@@ -158,10 +159,11 @@ export function 规整向导(
   const 项目 = 规整项目(p, me.id);
   if ("error" in 项目) return 项目;
 
-  const 跟进 = 规整沟通(f, { 要下一步, now, 叫法: "首条" });
+  // 企业版开了超时回收：下一步时间、下一步计划两格都必填（11-05）
+  const 跟进 = 规整沟通(f, { 要下一步, now, 叫法: "首条", 要下一步文字: 要下一步 && 企业 });
   if ("error" in 跟进) return 跟进;
 
-  // 企业版新建线索（10-26）：负责人必选（不默认自己）、跟进节点必选、客户是否明确回复必选；渠道必选在 建档向导 里查库
+  // 企业版新建线索（10-26）：负责人必选（不默认自己）、跟进节点必选；渠道必选在 建档向导 里查库
   let 企业档: 规整好的["企业"];
   if (企业) {
     // 占位值不算填了（11-03 A2-2）：「未知」「待定」「暂未确认」这类建出来详情也算缺
@@ -170,11 +172,9 @@ export function 规整向导(
     if (!文字(p.ownerId)) return { error: "请选项目负责人" };
     const 节点 = 文字(f.节点);
     if (!企业版字典.节点们.线索.includes(节点)) return { error: "请选当前进程（线索阶段的哪一步）" };
-    if (typeof f.明确回复 !== "boolean") return { error: "请选：客户明确回复了吗" };
-    if (节点序号({ phase: "线索", node: 节点 }, 企业版字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 企业版字典) && !f.明确回复) {
-      return { error: 缺有效沟通 };
-    }
-    企业档 = { 节点, 明确回复: f.明确回复 };
+    // 11-05 去掉「客户明确回复了吗」：过了线索验证要看线索验证的必填项，新建时还填不了，所以只能落在它及之前
+    if (节点序号({ phase: "线索", node: 节点 }, 企业版字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 企业版字典)) return { error: 建档不能过线索验证 };
+    企业档 = { 节点 };
     const 线 = 认业务线(p.业务线);
     if (线 === undefined) return { error: 业务线不认得 };
     企业档.业务线 = 线;
@@ -224,7 +224,7 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
     });
     await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: 项目.id, node: 落.node } });
     await 记沟通编号(tx, 跟进.id, 项目.id, 好.跟进.nextStepAt);
-    if (好.企业) await 记沟通标记(tx, 跟进.id, 项目.id, 落.phase, 好.企业.明确回复);
+    if (好.企业) await 记沟通标记(tx, 跟进.id, 项目.id, 落.phase, false);
     await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
     Object.assign(出参, { contactId: 联系人.id, projectId: 项目.id, followUpId: 跟进.id });
   });

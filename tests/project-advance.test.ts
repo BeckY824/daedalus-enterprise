@@ -140,7 +140,7 @@ describe("节点必填自动推进", () => {
     await 记有效沟通(p.id);
     const r = await 改节点(乙, p.id, { phase: "线索", node: "线索推进" });
     expect(r.ok).toBe(false);
-    expect(!r.ok && r.error).toContain("还差必填：预计成交金额、国家");
+    expect(!r.ok && r.error).toContain("还差预计成交金额、国家"); // 11-05 起线索验证的必填就是有效沟通的判断依据
     expect(await 改节点(乙, p.id, { phase: "线索", node: "潜客培育" })).toMatchObject({ ok: true });
     没推(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" }));
     // V3.5.1：缺必填往前推给「自己当负责人的销售管理」和系统管理员（老板 = 总管理、没设线）；不是负责人的销售管理改不了进程

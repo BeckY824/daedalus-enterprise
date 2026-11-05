@@ -81,7 +81,9 @@ it("字段名、分配方式必选、指定才出负责人、国家 / 城市要�
       await 选(page, "项目负责人", "乙");
       await 格(page, "国家 / 城市填到").getByText("客户", { exact: false }).first().click();
       if (await 格(page, "业务线").locator(".ant-select-selection-placeholder").count()) await 选(page, "业务线", "外贸");
-      await 格(page, "客户明确回复了吗").getByText("没有明确回复").click();
+      // 11-05：不再问客户明确回复了吗，换成下一步做什么（没开超时回收时选填）
+      expect(await 格(page, "客户明确回复了吗").count()).toBe(0);
+      await 格(page, "下一步做什么").locator("input").fill("发报价单");
 
       await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
       expect(await 不横撑(page)).toEqual({ 页: true, 出界: 0 });
@@ -90,7 +92,8 @@ it("字段名、分配方式必选、指定才出负责人、国家 / 城市要�
       await page.locator(".prop-ok").click();
       await page.waitForFunction(() => Reflect.get(window, "__交"));
       const 交 = await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>);
-      expect(交).toMatchObject({ 分配方式: 0, ownerId: "u1", country: "摩洛哥", city: "卡萨布兰卡", 明确回复: false });
+      expect(交).toMatchObject({ 分配方式: 0, ownerId: "u1", country: "摩洛哥", city: "卡萨布兰卡", 下一步: "发报价单" });
+      expect(交).not.toHaveProperty("明确回复");
       expect(交.区域去处).toContain("客户");
       expect(errors).toEqual([]);
     } finally { await page.close(); }

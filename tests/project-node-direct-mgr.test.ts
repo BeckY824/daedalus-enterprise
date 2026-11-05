@@ -11,6 +11,7 @@
  *   - 不是企业版：组织表配着也不拦
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { 缺有效沟通 } from "@/lib/project/stage-gates";
 
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
@@ -138,8 +139,8 @@ describe("企业版推节点只给负责人本人", () => {
     for (const 谁 of [经理, 虚]) {
       expect(await 改节点(谁, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 只有负责人改进程 });
     }
-    // 本人越过线索验证：还要先有一条有效沟通
-    expect(await 改节点(销售, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: false, error: expect.stringContaining("明确回复") });
+    // 本人越过线索验证：还要先有有效沟通（11-05 起 = 线索验证的必填齐；没配看需求状态）
+    expect(await 改节点(销售, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: false, error: expect.stringContaining(缺有效沟通) });
     await 记有效沟通(p.id);
     expect(await 改节点(销售, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
   });

@@ -11,6 +11,8 @@
  *   - 自定义（11-04 P-界面-10）：带了区间多算一份「自定义」，两头都含（开始日 00:00、结束日 23:59:59.999）；不带不算
  *   - 进公海（11-04 P-界面-09）：一条项目一档只算一次、认最近那回；四种方式；退回 / 无效原因前三；占比 = 进 ÷ 同档同创建人新建；
  *     创建人筛选；读库按 creatorId ∈ 圈、导入时没负责人的不算、判无效只认还在公海且客户标了无效的最近那回
+ *   - 客户 11-05（X-10）：只数现在还在公海的；多两种：回收站（现在还在回收站里的）、验证判无效（终判无效、还是线索流失的），
+ *     判无效和验证判无效分两格、原因各列各的；分母连回收站里的一起数
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -289,6 +291,23 @@ describe("进公海", () => {
     expect(段.自定义?.a?.u1).toMatchObject({ 进: 1, 方式: { 超时回收: 1, 被退回: 0 } });
   });
 
+  it("回收站、验证判无效（客户 11-05（X-10））：各占一格；判无效和验证判无效的原因分开列、各取前三；同一条项目落了几种认最近那种", () => {
+    const 底 = 算公海底数(["a"], [
+      池({ projectId: "p1", 方式: "判无效", 原因: "空号" }),
+      池({ projectId: "p2", 方式: "验证判无效", 原因: "不是目标客户" }),
+      池({ projectId: "p3", 方式: "验证判无效", 原因: "空号", creatorId: "u2" }),
+      池({ projectId: "p4", 方式: "验证判无效" }),
+      // p5：先被退回、后来删进回收站 → 只算回收站
+      池({ projectId: "p5", at: 京("2026-11-01 10:00"), 方式: "被退回", 原因: "预算不足" }),
+      池({ projectId: "p5", at: 京("2026-11-02 12:00"), 方式: "回收站" }),
+    ], 线(6), 今).本月!;
+    expect(底.a.u1).toMatchObject({ 进: 4, 方式: { 被退回: 0, 回收站: 1, 判无效: 1, 验证判无效: 2 }, 退回因: {}, 无效因: { 空号: 1 }, 验证无效因: { 不是目标客户: 1 } });
+    const [行] = 算进公海([{ id: "a", name: "a" }], 底);
+    expect(行.进).toBe(5);
+    expect(行.段.map((d) => d.方式)).toEqual(["回收站", "判无效", "验证判无效"]);
+    expect(进公海明细(行)).toBe("回收站 1；判无效 1：空号 1；验证判无效 3：不是目标客户 1 · 空号 1");
+  });
+
   it("算进公海：按渠道合创建人；创建人筛选；只列进过的、多的在前；原因各取前三（同数按名字）；占比可以超过 100%", () => {
     const 入 = [
       ...["预算不足", "预算不足", "联系不上", "联系不上", "不需要", "重复"].map((原因, i) => 池({ projectId: `r${i}`, 原因 })),
@@ -374,11 +393,12 @@ describe("读库", () => {
     expect(底.本季[渠道]).toMatchObject({ 线索: 6, 商机: 3, 订单: 2, 成交: [{ 币种: "CNY", 合计: 1000 }] });
   });
 
-  it("读公海底数：按创建人 ∈ 圈；离职交接 / 超时回收 / 被退回 / 判无效 怎么认；导入时没负责人的不算；原因读进来", async () => {
+  it("读公海底数：按创建人 ∈ 圈；离职交接 / 超时回收 / 被退回 / 判无效 怎么认；导入时没负责人的不算；原因读进来；只数现在还在公海的（客户 11-05（X-10））", async () => {
     const 市场 = (await prisma.user.create({ data: { email: "m1", name: "市场甲", title: "", role: "MEMBER", password: "x" } })).id;
     const 别人 = (await prisma.user.create({ data: { email: "m2", name: "市场乙", title: "", role: "MEMBER", password: "x" } })).id;
     const 客户 = (await prisma.customer.create({ data: { name: "张三", phone: "13800000061", salesOwnerId: 销售, channelId: 渠道 } })).id;
     const 无效客户 = (await prisma.customer.create({ data: { name: "李四", phone: "13800000062", salesOwnerId: 销售, channelId: 渠道, poolInvalidAt: 京("2026-11-02 11:00") } })).id;
+    const 在池 = 京("2026-11-02 10:00");
     const 建 = async (creatorId: string, 留痕: { at: string; userId?: string; reason?: string }[], o: { customerId?: string; pooledAt?: Date | null; 无效因?: string } = {}) => {
       const p = await prisma.project.create({
         data: { name: "p", customerId: o.customerId ?? 客户, ownerId: 销售, creatorId, phase: "线索", amount: 0, currency: "CNY", createdAt: 京("2026-11-01 09:00"), pooledAt: o.pooledAt ?? null },
@@ -387,33 +407,82 @@ describe("读库", () => {
         await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: l.userId ?? 销售, at: 京(l.at), toPhase: "线索", toNode: "x", kind: "pool-release", reason: l.reason ?? null } });
       }
       if (o.无效因) await prisma.entLeadVerify.create({ data: { projectId: p.id, verdict: "无效线索", invalidReason: o.无效因 } });
+      return p.id;
     };
-    await 建(市场, [{ at: "2026-11-02 10:00", reason: "成员停用，放进公海" }]);
-    await 建(市场, [{ at: "2026-11-02 10:00", userId: "system", reason: "30 天没跟进，自动放进公海" }]);
-    await 建(市场, [{ at: "2026-11-02 10:00", reason: "先放一放 回收原因：预算不足" }]);
-    await 建(市场, [{ at: "2026-11-02 10:00", reason: "回收原因：" }]);
+    await 建(市场, [{ at: "2026-11-02 10:00", reason: "成员停用，放进公海" }], { pooledAt: 在池 });
+    await 建(市场, [{ at: "2026-11-02 10:00", userId: "system", reason: "30 天没跟进，自动放进公海" }], { pooledAt: 在池 });
+    await 建(市场, [{ at: "2026-11-02 10:00", reason: "先放一放 回收原因：预算不足" }], { pooledAt: 在池 });
+    await 建(市场, [{ at: "2026-11-02 10:00", reason: "回收原因：" }], { pooledAt: 在池 });
     // 先超时回收、又被领走、再判无效进公海：最近那回算判无效
     await 建(市场, [{ at: "2026-10-20 10:00", userId: "system" }, { at: "2026-11-02 11:00" }], { customerId: 无效客户, pooledAt: 京("2026-11-02 11:00"), 无效因: " 空号 " });
+    // 进过公海、已经被领走 / 分走 / 捞回去了（pooledAt 空）：不算进，线索照算
+    await 建(市场, [{ at: "2026-11-02 10:00", reason: "回收原因：联系不上" }]);
+    await 建(市场, [{ at: "2026-11-02 10:00", userId: "system" }]);
     // 导入时没负责人：不算进，线索照算
     await 建(市场, [{ at: "2026-11-01 09:00", userId: "system", reason: 无主入池理由 }], { pooledAt: 京("2026-11-01 09:00") });
     // 圈外的人建的：都不算
-    await 建(别人, [{ at: "2026-11-02 10:00" }]);
+    await 建(别人, [{ at: "2026-11-02 10:00" }], { pooledAt: 在池 });
 
     const 今 = 京("2026-11-03 10:00");
     const 底 = await 读公海底数([渠道, 渠道乙], [市场], 今);
     expect(底.本月?.[渠道]?.[市场]).toEqual({
-      线索: 6, 进: 5,
-      方式: { 超时回收: 1, 被退回: 2, 判无效: 1, 离职交接: 1 },
-      退回因: { 预算不足: 1 }, 无效因: { 空号: 1 },
+      线索: 8, 进: 5,
+      方式: { 超时回收: 1, 被退回: 2, 回收站: 0, 判无效: 1, 验证判无效: 0, 离职交接: 1 },
+      退回因: { 预算不足: 1 }, 无效因: { 空号: 1 }, 验证无效因: {},
     });
     expect(底.本月?.[渠道]?.[别人]).toBeUndefined();
     // 全部里那条判无效的 10 月那回不另算（一条项目一档只算一次）
     expect(底.全部?.[渠道]?.[市场]?.进).toBe(5);
-    // 自定义只框 10 月：那条算超时回收
+    // 自定义只框 10 月：那条现在待在公海是 11 月那回，10 月那回不再算
     const 十月 = await 读公海底数([渠道], [市场], 今, { from: 京("2026-10-01 00:00"), to: new Date(京("2026-11-01 00:00").getTime() - 1) });
-    expect(十月.自定义?.[渠道]?.[市场]).toMatchObject({ 线索: 0, 进: 1, 方式: { 超时回收: 1 } });
+    expect(十月.自定义?.[渠道]?.[市场]).toBeUndefined();
     expect(await 读公海底数([], [市场], 今)).toEqual({ 本月: {}, 本季: {}, 全部: {} });
     expect(await 读公海底数([渠道], [], 今)).toEqual({ 本月: {}, 本季: {}, 全部: {} });
+  });
+
+  it("读公海底数：回收站、验证判无效各占一格（客户 11-05（X-10））；删了的不再算进公海；恢复了、被救回来的不算；分母连回收站里的一起数", async () => {
+    const 市场 = (await prisma.user.create({ data: { email: "m1", name: "市场甲", title: "", role: "MEMBER", password: "x" } })).id;
+    const 客户 = (await prisma.customer.create({ data: { name: "张三", phone: "13800000071", salesOwnerId: 销售, channelId: 渠道 } })).id;
+    const 无效客户 = (await prisma.customer.create({ data: { name: "李四", phone: "13800000072", salesOwnerId: 销售, channelId: 渠道, poolInvalidAt: 京("2026-11-02 11:00") } })).id;
+    const 建 = async (o: { customerId?: string; pooledAt?: Date | null; deletedAt?: Date | null; result?: string | null; 留痕?: string; 验证?: Record<string, unknown> } = {}) => {
+      const p = await prisma.project.create({
+        data: {
+          name: "p", customerId: o.customerId ?? 客户, ownerId: 销售, creatorId: 市场, phase: "线索", amount: 0, currency: "CNY", createdAt: 京("2026-11-01 09:00"),
+          pooledAt: o.pooledAt ?? null, deletedAt: o.deletedAt ?? null, result: o.result ?? null,
+        },
+      });
+      if (o.留痕) await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 销售, at: 京(o.留痕), toPhase: "线索", toNode: "x", kind: "pool-release", reason: "回收原因：预算不足" } });
+      if (o.验证) await prisma.entLeadVerify.create({ data: { projectId: p.id, ...o.验证 } });
+      return p.id;
+    };
+    // 回收站：一条直接删的；一条进过公海又删了的（只算回收站，不算被退回）
+    await 建({ deletedAt: 京("2026-11-02 12:00") });
+    await 建({ deletedAt: 京("2026-11-02 13:00"), pooledAt: 京("2026-11-02 10:00"), 留痕: "2026-11-02 10:00" });
+    // 删了 10 月的：本月不算、全部算
+    await 建({ deletedAt: 京("2026-10-15 12:00") });
+    // 判无效（还在公海、客户标了无效）和验证判无效分两格，原因各列各的
+    await 建({ customerId: 无效客户, pooledAt: 京("2026-11-02 11:00"), 留痕: "2026-11-02 11:00", 验证: { verdict: "无效线索", invalidReason: "空号" } });
+    // 验证判无效：总管理终判（按终判时间）、市场复核就判死（没终判时间，按复核时间）
+    const 验死 = { verdict: "无效线索", finalResult: "无效线索" };
+    await 建({ result: "线索流失", 验证: { ...验死, invalidReason: " 不是目标客户 ", verifiedAt: 京("2026-10-20 10:00"), reviewedAt: 京("2026-10-25 10:00"), finalAt: 京("2026-11-02 15:00") } });
+    await 建({ result: "线索流失", 验证: { ...验死, invalidReason: "不是目标客户", verifiedAt: 京("2026-11-02 09:00"), reviewedAt: 京("2026-11-02 10:00") } });
+    await 建({ result: "线索流失", 验证: { ...验死, invalidReason: "重复", reviewedAt: 京("2026-10-10 10:00") } });
+    // 判死过又被救回来（结局不是线索流失了）、只是初验无效：都不算
+    await 建({ result: null, 验证: { ...验死, invalidReason: "空号", reviewedAt: 京("2026-11-02 10:00") } });
+    await 建({ 验证: { verdict: "初验无效", invalidReason: "空号", verifiedAt: 京("2026-11-02 10:00") } });
+    // 判死了、又被删进回收站：只算回收站
+    await 建({ result: "线索流失", deletedAt: 京("2026-11-02 16:00"), 验证: { ...验死, invalidReason: "空号", reviewedAt: 京("2026-11-02 10:00") } });
+
+    const 今 = 京("2026-11-03 10:00");
+    const 底 = await 读公海底数([渠道], [市场], 今);
+    expect(底.本月?.[渠道]?.[市场]).toEqual({
+      线索: 10, 进: 6,
+      方式: { 超时回收: 0, 被退回: 0, 回收站: 3, 判无效: 1, 验证判无效: 2, 离职交接: 0 },
+      退回因: {}, 无效因: { 空号: 1 }, 验证无效因: { 不是目标客户: 2 },
+    });
+    expect(底.全部?.[渠道]?.[市场]).toMatchObject({ 进: 8, 方式: { 回收站: 4, 验证判无效: 3 }, 验证无效因: { 不是目标客户: 2, 重复: 1 } });
+    const 行 = 算进公海([{ id: 渠道, name: "抖音" }], 底.本月);
+    expect(进公海明细(行[0])).toBe("回收站 3；判无效 1：空号 1；验证判无效 2：不是目标客户 2");
   });
 
   it("没有渠道：空底数，不查库", async () => {

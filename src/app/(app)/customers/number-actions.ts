@@ -24,8 +24,9 @@ export type 查号码结果 =
    * 可协同 = 撞到有负责人在跟的客户：向导摆「把这次记录写进现有项目」（lib/enterprise/same-number-collab.ts）
    * 原负责人是我 = 撞的是我自己退回公海的（企业版原负责人看不到也领不回），向导不给「打开它」「去领取」（11-03 B7-3）
    * 协同 = 同时带上有没有项目、是不是自己负责、是否已在组，向导按它说那段话（11-03 B6-8 / B7-4）
+   * 回收站里有 = 在用的没撞、回收站里撞了（客户 11-05（X-10））：拦下，叫人找系统管理员恢复
    */
-  | { ok: true; 状态: "首次录入" | "公海待捞" | "我的通讯录已有" | "重复"; 提示: string; 值: string; 撞: 撞到的人 | null; 归属地: string | null; 可协同?: true; 协同?: 协同情况; 原负责人是我?: true };
+  | { ok: true; 状态: "首次录入" | "公海待捞" | "我的通讯录已有" | "重复" | "回收站里有"; 提示: string; 值: string; 撞: 撞到的人 | null; 归属地: string | null; 可协同?: true; 协同?: 协同情况; 原负责人是我?: true };
 
 export async function 查号码(类型: string, 值: string): Promise<查号码结果> {
   const me = await requireUser();

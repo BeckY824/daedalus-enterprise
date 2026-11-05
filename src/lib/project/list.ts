@@ -17,9 +17,48 @@ import { 字典of, 阶段与进程, 阶段们, 结局们of, 同名们, 本套名
 import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
 import { 待我复核的, 验证结果叫法, 实际待, 无效交给 } from "./lead-verify";
+import { 看全部 } from "../team-scope";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 市场项目条件, 只看进度 } from "@/lib/enterprise/market-view";
 import { 历史负责人们, 我回避的公海项目, 回避豁免 } from "./pool-owner";
+
+/** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
+const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
+/** 验证结果格里那一行：判无效的叫法 · 无效原因；其余只写叫法。放不下由列表一行省略、悬停看全文 */
+export function 验证摘要(叫法: 验证结果叫法, 无效原因: string | null): string {
+  const 因 = 无效原因?.trim();
+  return 带原因的叫法.has(叫法) && 因 ? `${叫法} · ${因}` : 叫法;
+}
+
+/** 每一步的叫法，和详情页线索验证时间线一致（projects/[id]/LeadVerifyPanel.tsx 步叫法） */
+const 步叫法: Record<string, string> = {
+  销售初判: "负责人初判", 市场复核: "管理员复核", 销售终验: "负责人确认", 总管理终判: "管理员最终确认", 销售认领: "负责人认领",
+};
+/** 一步在悬停全文里的那一行：哪天 谁 · 哪步 · 判定（无效原因：…；说明） */
+export function 痕一行(l: { step: string; verdict: string; reason: string | null; note: string | null; 谁: string; at: Date }): string {
+  const 头 = `${dayjs(l.at).format("YYYY-MM-DD")} ${l.谁} · ${步叫法[l.step] ?? l.step} · ${l.verdict}`;
+  const 尾 = [l.reason?.trim() ? `无效原因：${l.reason.trim()}` : null, l.note?.trim() || null].filter(Boolean).join("；");
+  return 尾 ? `${头}（${尾}）` : 头;
+}
+
+/**
+ * 这一页项目的验证全过程（项目 id → 一步一行的全文）：痕一次取（projectId in）、经手人名字一次取。
+ * 传进来的只是已经按列表范围筛过的项目，所以取痕不再套「谁在看」（复核的人多半看不到建的人，同 读线索验证）
+ */
+export async function 读验证痕们(projectIds: string[]): Promise<Map<string, string>> {
+  const 全文 = new Map<string, string>();
+  if (!projectIds.length) return 全文;
+  const 痕 = await 看全部(() => prisma.entLeadVerifyLog.findMany({ where: { projectId: { in: projectIds } }, orderBy: { at: "asc" } }));
+  if (!痕.length) return 全文;
+  const 名 = new Map((await 看全部(() => prisma.user.findMany({ where: { id: { in: [...new Set(痕.map((l) => l.userId))] } }, select: { id: true, name: true } }))).map((u) => [u.id, u.name]));
+  const 按项目 = new Map<string, string[]>();
+  for (const l of 痕) {
+    const 行 = 痕一行({ ...l, 谁: 名.get(l.userId) ?? "已不在的成员" });
+    按项目.set(l.projectId, [...(按项目.get(l.projectId) ?? []), 行]);
+  }
+  for (const [id, 行们] of 按项目) 全文.set(id, 行们.join("\n"));
+  return 全文;
+}
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string };
@@ -104,7 +143,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
       channel: { select: { name: true } },
       logs: 算超时要的.logs,
       ...(市场 ? {
-        entLeadVerify: { select: { verdict: true, pending: true, salesAck: true } },
+        entLeadVerify: { select: { verdict: true, pending: true, salesAck: true, invalidReason: true } },
         members: { where: { userId: me.id, inviteStatus: "JOINED" }, select: { userId: true } },
       } : {}),
     },
@@ -133,13 +172,17 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   // 市场视角：等我拍板的市场复核那几条照旧能进详情（复核要看来龙去脉）；验证结果的「待」按规则实际交给谁算（同详情页）
   const 我复核 = new Set(待复核.filter((r) => r.步 === "市场复核").map((r) => r.projectId));
   const 交给 = 市场 ? await 无效交给(市场.org) : "总管理终判";
-  const 市场格 = (p: (typeof rows)[number]): Pick<项目行, "只看进度" | "验证结果"> => {
+  // 验证结果悬停看全过程（客户 11-05（X-09））：这一页的痕一次取、经手人名字一次取，不按行查
+  const 痕们 = 市场 ? await 读验证痕们(rows.filter((r) => (r as { entLeadVerify?: unknown }).entLeadVerify).map((r) => r.id)) : new Map<string, string>();
+  const 市场格 = (p: (typeof rows)[number]): Pick<项目行, "只看进度" | "验证结果" | "验证全文"> => {
     if (!市场) return {};
-    const v = (p as { entLeadVerify?: { verdict: string; pending: string | null; salesAck: string | null } | null }).entLeadVerify;
+    const v = (p as { entLeadVerify?: { verdict: string; pending: string | null; salesAck: string | null; invalidReason: string | null } | null }).entLeadVerify;
     const 已加入 = ((p as { members?: { userId: string }[] }).members ?? []).map((m) => m.userId);
+    const 叫法 = v ? 验证结果叫法({ 判定: v.verdict, 待: 实际待(v.pending, 交给), 终验: v.salesAck }) : null;
     return {
       只看进度: 只看进度(市场.圈, me.id, { ownerId: p.ownerId, 已加入 }, 我复核.has(p.id)),
-      验证结果: v ? 验证结果叫法({ 判定: v.verdict, 待: 实际待(v.pending, 交给), 终验: v.salesAck }) : p.phase === "线索" && !p.result ? "暂未验证" : null,
+      验证结果: 叫法 ? 验证摘要(叫法, v?.invalidReason ?? null) : p.phase === "线索" && !p.result ? "暂未验证" : null,
+      验证全文: 痕们.get(p.id) ?? null,
     };
   };
   // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）
