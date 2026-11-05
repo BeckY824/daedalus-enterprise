@@ -40,6 +40,10 @@ import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 没业务角色不能新建话, 只读角色话 } from "@/lib/enterprise/permissions";
 import { saveCustomer } from "@/app/(app)/customers/actions";
+import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
+import { convertLead } from "@/app/(app)/leads/actions";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 市场成员key } from "@/lib/enterprise/market";
 
 let 老板: string, 总管: string, 市场: string, 销售经理: string, 销售: string, 另一销售: string, 渠道: string, 项运: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
@@ -264,6 +268,64 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect([p.ownerId, p.customer.salesOwnerId, p.pooledAt]).toEqual([销售, 销售, null]);
     // 不在我名下了：回线索列表，不跳看不到的详情页（11-03 A2-1）
     expect(r).toMatchObject({ 转走: true, 提示: expect.stringContaining("已指派给") });
+  });
+
+  it("指定分配给别人：按真身份（带限定）建档也成、最后跟进时间记上（11-05 bug：改最后跟进时间被当成改别人的只读客户，整单回滚）", async () => {
+    // 生产上「按组织看客户」开着、建档的人是市场成员：限定层按真身份算
+    await setSetting("enterprise.rule.org_scope", true);
+    await setSetting(市场成员key, [市场]);
+    忘掉企业版范围();
+    for (const [我, 给] of [[市场, 销售], [销售, 另一销售], [销售经理, 销售]] as const) {
+      当(我);
+      const r = await 以谁的身份(我, () => 向导({ 分配方式: 0, ownerId: 给 }));
+      expect(r).toMatchObject({ ok: true, 转走: true });
+      if (!r.ok) return;
+      const p = await 项目of(r.projectId);
+      expect([我, p.ownerId, p.customer.salesOwnerId]).toEqual([我, 给, 给]);
+      const c = await prisma.customer.findUniqueOrThrow({ where: { id: p.customerId } });
+      expect(c.lastFollowAt).not.toBeNull();
+      expect(await prisma.followUp.count({ where: { customerId: p.customerId } })).toBe(1);
+    }
+  });
+
+  it("客户页给自己的客户新建项目、指定给别人：按真身份（带限定）也成，首条沟通和最近跟进记上（11-05 同类排查）", async () => {
+    await setSetting("enterprise.rule.org_scope", true);
+    await setSetting(市场成员key, [市场]);
+    忘掉企业版范围();
+    for (const [我, 给] of [[市场, 销售], [销售, 另一销售], [销售经理, 销售]] as const) {
+      当(我);
+      号++;
+      const cid = (await prisma.customer.create({ data: { name: `页客户${号}`, phone: `1392222${String(号).padStart(4, "0")}`, salesOwnerId: 我 } })).id;
+      const r = await 以谁的身份(我, () => 给客户建项目({
+        customerId: cid,
+        项目: { name: `页项目${号}`, amount: 0, currency: "CNY", ownerId: 给, 分配方式: 0, 业务线: "内贸" },
+        跟进: { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false },
+      }));
+      expect([我, r]).toMatchObject([我, { ok: true }]);
+      if (!r.ok) return;
+      const p = await 项目of(r.projectId);
+      expect(p.ownerId).toBe(给);
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id: cid } })).lastFollowAt).not.toBeNull();
+      expect(await prisma.followUpProject.count({ where: { projectId: r.projectId } })).toBe(1);
+    }
+  });
+
+  it("线索负责人不是转换人：按真身份（带限定）转客户也成，首条沟通和最近跟进记上（11-05 同类排查）", async () => {
+    await setSetting("enterprise.rule.org_scope", true);
+    await setSetting(市场成员key, [市场]);
+    忘掉企业版范围();
+    for (const [我, 线索主] of [[销售经理, 销售], [老板, 市场], [老板, 销售]] as const) {
+      当(我, 我 === 老板 ? "ADMIN" : "SALES"); 号++;
+      const lid = (await prisma.lead.create({ data: { name: `转线索${号}`, phone: `1393333${String(号).padStart(4, "0")}`, ownerId: 线索主 } })).id;
+      const r = await 以谁的身份(我, () => convertLead(lid, { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false }));
+      expect([我, 线索主, r]).toMatchObject([我, 线索主, { ok: true }]);
+      if (!r.ok) return;
+      const c = await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } });
+      expect(c.salesOwnerId).toBe(线索主);
+      expect(c.lastFollowAt).not.toBeNull();
+      expect(r.projectId).toBeTruthy();
+      expect(await prisma.followUpProject.count({ where: { projectId: r.projectId! } })).toBe(1);
+    }
   });
 
   it("指定分配只能给销售 / 销售管理（11-03 A2-1）：指给渠道运营、市场管理拦下、一行不写", async () => {
