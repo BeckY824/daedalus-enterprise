@@ -19,13 +19,14 @@ import { 转让痕 } from "@/lib/project/db";
 import { 历史负责人们 } from "@/lib/project/pool-owner";
 import { 卡点随项目换人, 公海领走接手理由 } from "@/lib/project/blocker";
 import { 换负责人待办, 待办痕 } from "@/lib/project/carry-tasks";
+import { 有同事在推的客户 } from "./colleague-projects";
 
 /**
  * 项目刚进了项目公海（主动放回、超时回收），在同一笔事务里调：客户名下一共只有这一个项目、
  * 客户和项目是同一位负责人、客户还不在公海 → 客户也放进客户公海。返回放了没有。
  * 只看同一位负责人：客户归别人、只是项目归他的，不能因为他放回项目就把别人的客户也扔进公海。
  * 操作人 = 放进去的人；超时回收没有人放，传 null（同自动掉公海）。
- * 多项目客户也进（客户整体转让）：名下有没结束的订单阶段项目才不进（别的项目跟着客户待着，谁领客户谁带走）。
+ * 多项目客户也进（客户整体转让）：名下有没结束的订单阶段项目、或有同事负责还没结束的项目（例外二，11-05）才不进（别的项目跟着客户待着，谁领客户谁带走）。
  * 退回原因 = 放回项目时选的「回收原因：X」（整串），接在说明后面记进客户公海那一行，统一公海的「入池原因」列读得到（M-公海-09）
  */
 export async function 单项目客户跟进公海(
@@ -41,6 +42,8 @@ export async function 单项目客户跟进公海(
     if (!c || c.pool || c.salesOwnerId !== p.ownerId) return false;
     const 几个 = await tx.project.count({ where: { customerId: p.customerId } });
     if (几个 !== 1 && (await tx.project.count({ where: { customerId: p.customerId, phase: "订单", result: null } }))) return false;
+    // M-公海-02 例外二（P-公海-06，11-05）：名下有同事负责、还没结束的项目，客户不跟着进（手上这个已经进了项目公海，不算）
+    if (几个 !== 1 && (await 有同事在推的客户(tx, [{ id: p.customerId, salesOwnerId: c.salesOwnerId }])).size) return false;
     const 说明 = 几个 === 1 ? 单项目客户进公海理由 : 客户整体进公海理由;
     await tx.customerPool.create({ data: { customerId: p.customerId, userId: 操作人, reason: 退回原因 ? `${说明}；${退回原因}` : 说明, at } });
     return true;

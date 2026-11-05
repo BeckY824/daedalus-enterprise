@@ -1,13 +1,15 @@
 import type { Prisma } from "@/generated/prisma";
 import { 不掉公海的状态 } from "@/lib/pool";
 import { 能进公海的阶段 } from "@/lib/project/db";
+import { 有同事在推的客户 } from "@/lib/enterprise/colleague-projects";
 
 /**
  * 停用成员（离职交接，企业版 D-36，2026-10-24）：他名下的东西怎么分。停用前的清点、停用本身都按这一处分，
  * 界面上说「会转走几位、放进公海几位」和真做的对得上。
  *
  * 两种方式，默认「转交」（和原来一样，不选就不变）：
- *   转交 —— 客户、进行中的商机、没做完的计划待办、线索、渠道全给接手人；客户名下的项目整体跟着走
+ *   转交 —— 客户、进行中的商机、没做完的计划待办、线索、渠道全给接手人；客户名下的项目跟着走
+ *           （企业版只带他负责的；同事负责的留在同事名下，同 P-转-07，11-05）
  *   公海 —— 客户放进客户公海（负责人不改，谁领了谁接，领的时候他没做完的活跟着领的人走，同手动放公海），
  *           他负责、挂在别人客户上的线索 / 商机阶段项目放回项目公海（进公海客户上的项目跟着客户，谁领谁带走）；
  *           线索、渠道、不在这些客户上的活照样给接手人
@@ -16,6 +18,7 @@ import { 能进公海的阶段 } from "@/lib/project/db";
  *   - 已签约、已流失（不掉公海的状态，同自动掉公海）
  *   - 名下有订单阶段项目的：订单阶段的项目不能放公海，只能给接手人（D-36），
  *     客户进了公海、别人一领就会把这个项目整体带走，所以客户也跟着项目给接手人
+ *   - 名下有同事负责、还没结束的项目的（M-公海-02 例外二，11-05）：这类客户不进公海
  *
  * 不管哪种方式，他负责、挂在别人客户上的项目也一起处理（原来不动，要老板一个个手动转）——
  * 一次处理完一个人名下全部。只动没结局的；有结局的是历史，同赢单丢单的商机，留在他名下
@@ -41,7 +44,7 @@ export type 停用分拣结果 = {
   计划: string[];
   线索: string[];
   渠道: string[];
-  /** 转给接手人的项目：跟着转走的客户整体转 + 他负责、挂在别处、没结局的 */
+  /** 转给接手人的项目：转走的客户上他负责的（企业版；同事负责的留下）+ 他负责、挂在别处、没结局的 */
   项目: string[];
   /** 放回项目公海的（公海方式） */
   进公海项目: string[];
@@ -75,7 +78,8 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
       where: { customerId: { in: 不在公海.map((c) => c.id) }, pooledAt: null, result: null, phase: { notIn: [...可进公海阶段] } },
       select: { customerId: true },
     })).map((p) => p.customerId));
-    const 留 = (c: (typeof 客户们)[number]) => 不掉公海的状态.includes(c.followStatus) || 有订单.has(c.id);
+    const 同事在推 = await 有同事在推的客户(db, 不在公海.map((c) => ({ id: c.id, salesOwnerId: id })));
+    const 留 = (c: (typeof 客户们)[number]) => 不掉公海的状态.includes(c.followStatus) || 有订单.has(c.id) || 同事在推.has(c.id);
     留给接手人 = 不在公海.filter(留);
     去公海 = 不在公海.filter((c) => !留(c));
   }
@@ -85,7 +89,10 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
   const 给接手人 = (rows: { id: string; customerId: string | null }[]) => rows.filter((r) => !r.customerId || !去公海的.has(r.customerId)).map((r) => r.id);
 
   const 跟客户走 = 转走的客户.size
-    ? (await db.project.findMany({ where: { customerId: { in: [...转走的客户] }, pooledAt: null }, select: { id: true } })).map((p) => p.id)
+    ? (await db.project.findMany({
+        where: { customerId: { in: [...转走的客户] }, pooledAt: null, ...(企业 ? { ownerId: id } : {}) },
+        select: { id: true },
+      })).map((p) => p.id)
     : [];
   // 进公海客户上的项目跟客户待在一起：谁领客户谁整体带走（同转客户），不单独放项目公海
   const 别处的 = 他的项目.filter((p) => !转走的客户.has(p.customerId) && !去公海的.has(p.customerId));

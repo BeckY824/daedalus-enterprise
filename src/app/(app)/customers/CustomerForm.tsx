@@ -266,7 +266,7 @@ function CustomerFormInner({
     // 校验没过 antd 自己把错标在格子下面；Modal 不接 onOk 的拒绝，不吞掉就是一条未处理的报错（10-07 外贸 e2e 盯控制台抓到）
     const v = await form.validateFields().catch(() => null);
     if (!v) return;
-    // 编辑时换了销售负责人：客户名下的项目整体跟着走，先列出来问一句（D-36）；取消 = 留在表单里
+    // 编辑时换了销售负责人：客户名下的项目跟着走（企业版同事负责的留下，P-转-07），先列出来问一句（D-36）；取消 = 留在表单里
     if (editing && v.salesOwnerId && v.salesOwnerId !== editing.salesOwnerId && !(await 先问转走的项目([editing.id], v.salesOwnerId))) return;
     setSaving(true);
     try {

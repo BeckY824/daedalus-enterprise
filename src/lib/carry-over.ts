@@ -14,14 +14,30 @@ export function 带走说法(n: 带走数 | undefined): string {
 
 /** 转之前先列出会一起转走的项目（企业版 D-36，2026-10-24）。列名字最多这么多个，再多说「等 N 个」 */
 export const 预览列几个 = 8;
-export type 转走项目预览 = { 项目数: number; 项目: { name: string; 客户: string }[] };
+/** 留下：同一位客户下同事负责的项目（含已结束的），不跟着转、留在各自负责人名下（P-转-07，11-05）；没有就不带这一项 */
+export type 转走项目预览 = {
+  项目数: number;
+  项目: { name: string; 客户: string }[];
+  留下?: { 项目数: number; 项目: { name: string; 客户: string; 负责人: string }[] };
+};
+type 一段 = { 标题: string; 行: string[]; 还有: string };
 
-/** 确认框里那几行：标题「会一起转走的 3 个项目」+ 每行「项目名（客户名）」，多出来的说一句；一个都没有 = null（不弹框） */
-export function 转走项目说法(p: 转走项目预览 | null | undefined): { 标题: string; 行: string[]; 还有: string } | null {
-  if (!p?.项目数) return null;
+/**
+ * 确认框里那几行：标题「会一起转走的 3 个项目」+ 每行「项目名（客户名）」，多出来的说一句；
+ * 留下的同事项目另列一段「N 个项目留在各自负责人名下」+「项目名（客户名 · 负责人）」。两样都没有 = null（不弹框）
+ */
+export function 转走项目说法(p: 转走项目预览 | null | undefined): (一段 & { 留下: 一段 | null }) | null {
+  const 留 = p?.留下?.项目数 ? p.留下 : null;
+  if (!p || (!p.项目数 && !留)) return null;
+  const 留下 = 留 && {
+    标题: `${留.项目数} 个项目留在各自负责人名下`,
+    行: 留.项目.map((x) => `${x.name}（${x.客户} · ${x.负责人}）`),
+    还有: 留.项目数 > 留.项目.length ? `等共 ${留.项目数} 个` : "",
+  };
   return {
-    标题: `会一起转走的 ${p.项目数} 个项目`,
+    标题: p.项目数 ? `会一起转走的 ${p.项目数} 个项目` : 留下!.标题,
     行: p.项目.map((x) => `${x.name}（${x.客户}）`),
     还有: p.项目数 > p.项目.length ? `等共 ${p.项目数} 个` : "",
+    留下,
   };
 }

@@ -228,15 +228,16 @@ describe("领客户即领项目", () => {
     expect(await 项目在公海(p)).toBe(false);
   });
 
-  it("主动退回（业务员把自己的客户放进公海）：没进项目公海的项目跟着客户待着，谁领客户谁整体带走", async () => {
+  it("主动退回（业务员把自己的客户放进公海）：他在跑的项目一起进项目公海（P-公海-06，11-05），谁领客户谁整体带走", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     当(乙);
-    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true, updated: 1 });
-    expect(await 项目在公海(p)).toBe(false);
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true, updated: 1, 公海项目: [p] });
+    expect(await 项目在公海(p)).toBe(true);
     当(丙);
     expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
+    expect(await 项目在公海(p)).toBe(false);
   });
 });
 

@@ -9,6 +9,7 @@ import { 转走项目预览of } from "./actions";
 /**
  * 换客户负责人之前先问一句（企业版 D-36，2026-10-24）：客户名下的项目会整体跟着走，
  * 转之前把「会一起转走的 N 个项目」列出来。批量分配、公海领取 / 分配、详情页改负责人、编辑客户共用。
+ * 企业版 P-转-07（11-05）：只带原负责人自己的项目；同事负责的另列「留在各自负责人名下」，只有留下的也弹。
  * 没有项目 = 不弹框直接转（和原来一样）；数不出来不拦着——转本身照样会带走项目，这里只是提前说
  */
 export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: string }) {
@@ -50,14 +51,19 @@ export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: st
       title: 说法.标题,
       content: (
         <div>
-          <div style={{ marginBottom: 6 }}>这些项目的负责人会一起改成新负责人：</div>
-          <ul style={{ margin: 0, paddingInlineStart: 18, maxHeight: 220, overflowY: "auto" }}>
-            {说法.行.map((l, i) => <li key={i} style={{ wordBreak: "break-all" }}>{l}</li>)}
-          </ul>
-          {说法.还有 && <div style={{ marginTop: 6, color: "var(--ant-color-text-secondary)" }}>{说法.还有}</div>}
+          {说法.行.length > 0 && <>
+            <div style={{ marginBottom: 6 }}>这些项目的负责人会一起改成新负责人：</div>
+            <ul style={列表}>{说法.行.map((l, i) => <li key={i} style={一行} title={l}>{l}</li>)}</ul>
+            {说法.还有 && <div style={旁注}>{说法.还有}</div>}
+          </>}
+          {说法.留下 && <>
+            <div style={{ margin: 说法.行.length ? "12px 0 6px" : "0 0 6px" }}>这些项目留在各自负责人名下，不跟着转：</div>
+            <ul style={列表}>{说法.留下.行.map((l, i) => <li key={i} style={一行} title={l}>{l}</li>)}</ul>
+            {说法.留下.还有 && <div style={旁注}>{说法.留下.还有}</div>}
+          </>}
         </div>
       ),
-      okText: "一起转",
+      okText: 说法.行.length ? "一起转" : "转",
       cancelText: "取消",
     });
     return 转;
@@ -65,3 +71,8 @@ export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: st
 
   return { 先问转走的项目, 问转让原因 };
 }
+
+// 企业版全站一行：放不下「…」，悬停看全文
+const 列表 = { margin: 0, paddingInlineStart: 18, maxHeight: 220, overflowY: "auto" } as const;
+const 一行 = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as const;
+const 旁注 = { marginTop: 6, color: "var(--ant-color-text-secondary)" } as const;
