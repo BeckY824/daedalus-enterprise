@@ -36,6 +36,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 有同事在推的客户, 同事在推不能放公海话 } from "@/lib/enterprise/colleague-projects";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { Prisma } from "@/generated/prisma";
+import { 客户退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 
 export type 公海结果 =
   | {
@@ -52,6 +53,8 @@ export type 公海结果 =
       交接中?: number;
       /** 放进公海：名下有同事负责、还没结束的项目，没放的几位（企业版 P-公海-06，11-05） */
       同事在推?: number;
+      /** 放进公海：联系方式空着或有号码不对、没放的几位（企业版，M-公海-14） */
+      联系方式不全?: number;
       /** 领取时跟着过来的没做完的活 */
       带走?: 带走数;
       /** 领取前各归谁：撤销领取时还给他、放回公海 */
@@ -139,12 +142,19 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   const 交接中 = 企业版() && 有权限.length ? await 看全部(() => 交接中的客户(有权限.map((c) => c.id))) : new Set<string>();
   // P-公海-06 / M-公海-02 例外二：名下有同事负责、还没结束的项目的不能放（同事的项目不跟着进公海，客户进了他就跟不了）
   const 同事在推 = 企业版() && 有权限.length ? await 有同事在推的客户(prisma, 有权限) : new Set<string>();
-  const 能放 = 有权限.filter((c) => !有订单.has(c.id) && !交接中.has(c.id) && !同事在推.has(c.id));
+  // M-公海-14（11-05 用户）：客户电话、联系人、项目联系人的号码要有、而且全对才能放（谁放都一样）
+  const 号码错 = 企业版() && 有权限.length ? await 看全部(async () => 客户退回前查联系方式(prisma, 有权限.map((c) => c.id), await 退回号码种类表())) : new Map<string, string>();
+  const 能放 = 有权限.filter((c) => !有订单.has(c.id) && !交接中.has(c.id) && !同事在推.has(c.id) && !号码错.has(c.id));
   const 没权限 = 这些.length - 已在.length - 有权限.length;
   if (!能放.length) {
     if (有订单.size) return { ok: false, error: 有订单不能放提示(b.customer) };
     if (交接中.size) return { ok: false, error: 交接中不能放提示(b.customer) };
     if (同事在推.size) return { ok: false, error: 同事在推不能放公海话(有权限.filter((c) => 同事在推.has(c.id)).map((c) => c.name), b.customer) };
+    if (号码错.size) {
+      const [id, 话] = [...号码错][0];
+      const 名 = 有权限.length > 1 ? `「${有权限.find((c) => c.id === id)?.name ?? ""}」` : "";
+      return { ok: false, error: `${名}${话}` };
+    }
     return 没权限 ? { ok: false, error: `只有负责人或总管理、销售管理能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
   }
   // 能放了才问原因：放不了的那句（虚线、没权限、已在公海）照旧先说
@@ -166,6 +176,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   return {
     ok: true, updated: 能放.length, unchanged: 已在.length, 没权限,
     ...(有订单.size ? { 有订单: 有订单.size } : {}), ...(交接中.size ? { 交接中: 交接中.size } : {}), ...(同事在推.size ? { 同事在推: 同事在推.size } : {}),
+    ...(号码错.size ? { 联系方式不全: 号码错.size } : {}),
     ...(公海项目.length ? { 公海项目 } : {}),
   };
 }

@@ -66,7 +66,7 @@ describe("企业版线索有效性验证", () => {
         { userId: 丙.id, bizRole: "sales" },
       ],
     });
-    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 乙.id } })).id;
+    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13900001234", salesOwnerId: 乙.id } })).id;
   });
   afterEach(() => { vi.unstubAllEnvs(); invalidateSettingsCache(); });
 
@@ -161,6 +161,20 @@ describe("企业版线索有效性验证", () => {
       expect((await 现(id)).node).toBe("线索推进");
       expect((await 状态(id))?.pending).toBeNull();
       expect((await 痕(id)).map((l) => `${l.step}:${l.verdict}`)).toEqual(["销售初判:无效", "市场复核:有效", "销售终验:提交异议", "总管理终判:有效", "销售认领:认领继续"]);
+    });
+
+    it("总管理判有效 → 销售退回公海，但联系方式是空的：拦，项目不进公海、不写认领痕（M-公海-14，11-05）", async () => {
+      const id = await 项目();
+      await 判无效(id);
+      await 市场复核(市场, id, true);
+      await 销售终验(乙, id, false, "还是无效");
+      await 总管理终判(老板, id, true);
+      await prisma.customer.update({ where: { id: 客户 }, data: { phone: "" } });
+      const r = await 销售认领(乙, id, false);
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.error).toMatch(/联系方式是空的/);
+      expect((await 现(id)).pooledAt).toBeNull();
+      expect((await 痕(id)).some((x) => x.step === "销售认领")).toBe(false);
     });
 
     it("总管理判有效 → 销售退回公海：进公海，算主动退回（客户退回次数 +1）", async () => {
