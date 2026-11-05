@@ -502,6 +502,11 @@ export default function CustomersView({
       },
     },
     { title: "客户分配", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => (有值(r.assignWay) ? r.assignWay : 空) },
+    // 客户来源（11-05 用户：「列」的可选列里加「客户来源」）= 建档时选的渠道（Customer.channelId，建好就锁），默认收着；渠道名可能很长，一行省略、悬停看全
+    {
+      title: "客户来源", key: "channelName", width: 120, 默认: false,
+      render: (_: unknown, r) => (有值(r.channelName) ? <span className="clamp-1" style={{ display: "block" }} title={r.channelName}>{r.channelName}</span> : 空),
+    },
   ];
 
   const 列表: 列<CustomerRow>[] = [
