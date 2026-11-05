@@ -116,8 +116,7 @@ export async function 建档向导(输入: 建档向导输入) {
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
-    // 指定分配以外先记在我名下（占位），只挂市场管理的也能建（permissions.ts 不能当负责人话）
-    const 不行 = await 不能当负责人(好.项目.ownerId, !!分配 && 分配.i !== 0);
+    const 不行 = await 不能当负责人(好.项目.ownerId);
     if (不行) return { ok: false as const, error: 不行 };
     // 负责人选了别人 = 指派，开了持有上限的要算；自己建给自己不拦（lib/project/db.ts 超上限）
     if (好.项目.ownerId !== me.id) {

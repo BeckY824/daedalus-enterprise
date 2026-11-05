@@ -158,7 +158,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
   const 不给推 = 企业 && !公海 ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
   // 企业版：线索验证往后推要先有有效沟通 = 线索验证节点配的其他必填项都齐（没配看需求状态，11-05；经理和缺必填一样不拦；和 lib/project/db.ts 有效沟通差of 同一个算法）
-  const 有效沟通差 = 企业 && p.phase === "线索" && !p.result && !是经理(me, org) ? 有效沟通还差(await 读必填数据(prisma, p, 规则)).map(必填叫法) : [];
+  const 有效沟通差 = 企业 && p.phase === "线索" && !p.result ? 有效沟通还差(await 读必填数据(prisma, p, 规则)).map(必填叫法) : [];
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
   const 提成 = 企业 ? await 读项目提成(me, p, p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId), org, (uid) => 叫(uid)!, prisma) : null;
 

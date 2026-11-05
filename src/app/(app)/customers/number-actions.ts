@@ -5,8 +5,15 @@
  * 规矩在 lib/enterprise/contact-format.ts，查重在 lib/enterprise/contact-dedupe.ts；保存时 saveCustomer 再按同一套挡一次。
  * 手机号顺带回归属地（B7，lib/enterprise/phone-region.ts，离线）。
  * 开关关着不认（向导也不显示类型下拉，照旧走 checkDuplicate）
+ * 从回收站捞回（客户 11-05：「可以捞回且只有查重触发时可以捞回」）：查重说「回收站里有」时向导 / 首页查重框 / AI 建档卡片给的那颗键
  */
+import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
+import { 不在了 } from "@/lib/not-there";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
+import { 查重捞回, 回收站叫法 } from "@/lib/enterprise/soft-delete";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 读的我 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -24,7 +31,7 @@ export type 查号码结果 =
    * 可协同 = 撞到有负责人在跟的客户：向导摆「把这次记录写进现有项目」（lib/enterprise/same-number-collab.ts）
    * 原负责人是我 = 撞的是我自己退回公海的（企业版原负责人看不到也领不回），向导不给「打开它」「去领取」（11-03 B7-3）
    * 协同 = 同时带上有没有项目、是不是自己负责、是否已在组，向导按它说那段话（11-03 B6-8 / B7-4）
-   * 回收站里有 = 在用的没撞、回收站里撞了（客户 11-05（X-10））：拦下，叫人找系统管理员恢复
+   * 回收站里有 = 在用的没撞、回收站里撞了（客户 11-05（X-10））：拦下，向导给「从回收站捞回」（从回收站捞回）
    */
   | { ok: true; 状态: "首次录入" | "公海待捞" | "我的通讯录已有" | "重复" | "回收站里有"; 提示: string; 值: string; 撞: 撞到的人 | null; 归属地: string | null; 可协同?: true; 协同?: 协同情况; 原负责人是我?: true };
 
@@ -36,4 +43,38 @@ export async function 查号码(类型: string, 值: string): Promise<查号码�
   const 结论 = await 企业号码查重(prisma, 号, me.id, await 读的我(defaultClient));
   const 协同 = 结论.状态 !== "首次录入" ? await 同号协同情况(号, me.id) : null;
   return { ok: true, 状态: 结论.状态, 提示: 结论.提示, 值: 号.值, 撞: 结论.撞, 归属地: 号码归属地(号.类型, 号.值)?.文字 ?? null, ...(结论.状态 === "公海待捞" && 结论.原负责人是我 ? { 原负责人是我: true as const } : {}), ...(协同 ? { 可协同: true as const, 协同 } : {}) };
+}
+
+export type 捞回结果 = { ok: true; 提示: string; 查: 查号码结果 } | { ok: false; error: string };
+
+/**
+ * 查重撞上回收站里的号码，就地捞回（lib/enterprise/soft-delete.ts 查重捞回）。只认号码不认 id：服务端重查一遍，
+ * 在用的已经有了（别人先捞了 / 新建了）就不捞，回新的查重结论。谁查重撞上谁能捞，只挡没业务角色、只读管理员（和新建同一道）。
+ * 每条回来的记一笔审计 restore；回完再查一遍号，把新结论交回去（客户回到原负责人 / 公海，向导照新结论摆）
+ */
+export async function 从回收站捞回(类型: string, 值: string): Promise<捞回结果> {
+  try {
+    const me = await requireUser();
+    if (!企业版()) return { ok: false, error: "回收站只在企业版里有" };
+    const org = await 权限组织();
+    if (!org || 没设业务角色(org, me.id)) return { ok: false, error: "你还没有业务角色，不能改数据，请找总管理设置" };
+    if (只读角色(me, org)) return { ok: false, error: 只读角色话 };
+    const 号 = 验号码(类型, 值);
+    if (!号.ok) return { ok: false, error: 号.提示 };
+    const 先查 = await 查号码(类型, 值);
+    if (!先查.ok || 先查.状态 !== "回收站里有") return { ok: true, 提示: "这个号码已经不在回收站里了，按最新的查重结果来", 查: 先查 };
+    const r = await 查重捞回(号);
+    if (!r.ok) return r;
+    for (const x of r.回来的) {
+      await recordAudit({
+        user: me, action: "restore", entity: x.t, entityId: x.id,
+        summary: `查重时从回收站捞回${回收站叫法[x.t]}「${x.名}」${x.连带 ? `（连同 ${x.连带} 条一起）` : ""}`,
+      });
+    }
+    for (const p of ["/customers", "/contacts", "/projects", "/follow-ups", "/settings"]) revalidatePath(p);
+    const 客户 = r.回来的.filter((x) => x.t === "Customer").length;
+    const 联系人 = r.回来的.length - 客户;
+    const 提示 = `已从回收站捞回${客户 ? ` ${客户} 位客户（连同联系人、项目、跟进）` : ""}${客户 && 联系人 ? "、" : ""}${联系人 ? ` ${联系人} 位联系人` : ""}`;
+    return { ok: true, 提示, 查: await 查号码(类型, 值) };
+  } catch (e) { return 不在了(e); }
 }

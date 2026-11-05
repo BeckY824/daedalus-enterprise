@@ -28,6 +28,8 @@ export type 组织 = {
   回收站副手?: ReadonlySet<string>;
   /** 只看某人（V3.5.1 市管特例）：本人 → 那个人；业务数据只看那个人是创建人或负责人的。Setting enterprise.watch_only（JSON），org.ts 读组织 填 */
   只看某人?: ReadonlyMap<string, string>;
+  /** 停用（离职）的人手填的直属上级：成员里不收停用的人，市场复核要找「离职创建人的直属市场管理」（客户 11-05）时查这里。建组织 填 */
+  离职上级?: ReadonlyMap<string, string>;
 };
 
 /** 回收站副手名单存的 Setting 键（设置页存 JSON 数组；手写的逗号串也认） */
@@ -95,8 +97,13 @@ export function 建组织(
   const 行 = new Map(members.map((m) => [m.userId, m]));
   const 部门 = new Map(depts.map((d) => [d.id, d]));
   const 成员 = new Map<string, 组织成员>();
+  const 离职上级 = new Map<string, string>();
   for (const u of users) {
-    if (!u.active) continue;
+    if (!u.active) {
+      const 上 = 行.get(u.id)?.managerId;
+      if (上 && 上 !== u.id) 离职上级.set(u.id, 上);
+      continue;
+    }
     const m = 行.get(u.id);
     // 11-01 用户定「兜底不留，没设业务角色就没权限」：没有 EntMember 行、或角色串是空的 = 角色们空着，不再按账号角色推
     const 角色们 = 拆角色(m?.bizRole);
@@ -112,7 +119,7 @@ export function 建组织(
       不管设置: !!m?.noSettings,
     });
   }
-  return { 成员, 部门 };
+  return { 成员, 部门, 离职上级 };
 }
 
 /**
@@ -183,18 +190,29 @@ export function 管理员类别们of(org: 组织, userId: string): Set<管理员
   return 们;
 }
 /**
- * 「市场复核」谁能拍（11-05 客户定）：建这条线索的人本人，或他的直属上级且是市场管理。
- * 🔍 建的人不在组织里了（离职、停用）→ 任何市场管理都能拍，不让它卡死；
- * 🔍 建的人自己就是负责人（初判是他自己判的）不复核自己，交他的直属市场管理，没有就任何市场管理
+ * 「市场复核」谁能拍（11-05 客户定，同日客户回复两条兜底）：
+ * - 建的人不是负责人：建的人本人，或他的直属上级且是市场管理；
+ * - 建的人自己就是负责人（初判是他自己判的，不复核自己）、或已离职停用：只有他的直属上级且是市场管理（离职的人按离职前手填的那位）；
+ * - 上面那位找不到（没填、不是市场管理、也停用了）：只有系统总管理（业务角色总管理、没设业务线）。
+ * 不再有「任何市场管理都能拍」的兜底。虚线上级接手等虚线上级能操作以后再加（迭代备忘）
  */
 export function 能市场复核(org: 组织, me: string, p: { creatorId?: string | null; ownerId: string }): boolean {
   const 市管 = (id: string) => 管理员类别们of(org, id).has("市场管理");
+  const 我 = org.成员.get(me);
+  const 系统总管理 = !!我 && 我.角色们.includes("director") && !我.line;
   const c = p.creatorId;
-  if (!c || !org.成员.has(c)) return 市管(me);
-  if (me === c && c !== p.ownerId) return true;
-  const 上 = 直属上级of(org, c);
+  const 在 = !!c && org.成员.has(c);
+  if (在 && me === c && c !== p.ownerId) return true;
+  const 上 = !c ? null : 在 ? 直属上级of(org, c) : 离职直属上级(org, c);
   if (上 && 市管(上)) return me === 上;
-  return c === p.ownerId && me !== c && 市管(me);
+  // 建的人不是负责人、在职、又没有直属市场管理：他本人复核（上面已放行），不再推给总管理
+  if (在 && c !== p.ownerId) return false;
+  return 系统总管理;
+}
+/** 离职（停用）的人离职前手填的直属上级，且那位还在职 */
+function 离职直属上级(org: 组织, userId: string): string | null {
+  const 上 = org.离职上级?.get(userId);
+  return 上 && org.成员.has(上) ? 上 : null;
 }
 /** 最高的那一类：总管理员 > 销售管理 > 市场管理 > 管理员（只读）；只问「是不是总管理员 / 是不是管理员」时用，问别的类用 管理员类别们of */
 export function 管理员类别of(org: 组织, userId: string): 管理员类别 | null {

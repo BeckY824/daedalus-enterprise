@@ -323,7 +323,7 @@ export async function 改节点(
     }
     if (上级代推 && !往前) return { ok: false as const, error: 只有负责人改进程 };
     const 不给 = 往前
-      ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则, 是经理(me, org) ? 不差 : 有效沟通差of(tx, p, 规则)))
+      ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则, 有效沟通差of(tx, p, 规则)))
       : null;
     if (不给) return { ok: false as const, error: 不给 };
     // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给「经理」（企业版 = 销售管理：自己当负责人的，或「仅上级推」下的直属上级，见 是经理）；
@@ -1222,13 +1222,11 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
   };
 }
 
-/** 企业版推进关 要的「有效沟通还差」：线索验证节点配的必填项（不含有效沟通、线索验证结果）缺哪几样，没配看需求状态（11-05） */
+/** 企业版推进关 要的「有效沟通还差」：线索验证节点配的必填项（不含有效沟通、线索验证结果）缺哪几样，没配看需求状态（11-05）；
+ * 所有角色都走这道闸门，经理也不例外（11-05 客户：「该规则适用于所有角色」） */
 export function 有效沟通差of(tx: Prisma.TransactionClient, p: 必填项目行, 规则: 组织规则): () => Promise<string[]> {
   return async () => 有效沟通还差(await 读必填数据(tx, p, 规则)).map(必填叫法);
 }
-
-/** 经理（D-37 能缺着必填往前推的人）推过线索验证也不看有效沟通：有效沟通 11-05 起就是线索验证的必填项 */
-const 不差 = async (): Promise<string[]> => [];
 
 export const 自动推进理由 = "必填齐了，自动推进";
 

@@ -23,6 +23,7 @@ import { 看已删, 回收站保留天数, 客户连带, type 软删表名 } fro
 import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
 import { 忘掉企业版范围 } from "./visibility";
+import { 回收站里查号, 回收站里带号的联系人, type 验好的号 } from "./contact-dedupe";
 
 export { 看已删, 回收站保留天数, 客户连带, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -112,6 +113,11 @@ async function 重算最近跟进(tx: Tx, customerId: string) {
  */
 export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结果<{ 连带: number; customerId: string | null }>> {
   if (!(await 能管回收站(me))) return { ok: false, error: "只有系统管理员或回收站副手能恢复" };
+  return 恢复一条(t, id);
+}
+
+/** 恢复一条，不查谁能恢复：回收站页（恢复，先查权限）、查重捞回（查重撞上才给）共用 */
+async function 恢复一条(t: 软删表名, id: string): Promise<结果<{ 连带: number; customerId: string | null }>> {
   // 客户状态跟着项目算：项目回来了（单条或随客户连带）要重算，开关事务外读
   const 状态开 = (t === "Customer" || t === "Project") && (await 客户状态自动());
   return prisma.$transaction((tx) => 看已删(async () => {
@@ -134,6 +140,40 @@ export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结�
     await 跟着项目重算(tx, 状态开, [customerId]);
     return { ok: true as const, 连带, customerId };
   })).then((r) => { if (r.ok && (t === "Customer" || t === "Project")) 忘掉企业版范围(); return r; }); // 项目回来了，组员看得到的客户名单跟着变
+}
+
+/**
+ * 查重撞上回收站里的号码，就地捞回（客户 11-05：「可以捞回且只有查重触发时可以捞回」）。
+ * 不另查权限：谁查重撞上谁能捞（企业版里录入的人都会查重）；号码由服务端重新查一遍，不信前端给的 id。
+ *   1. 撞上的是删了的客户 → 客户连同同一时刻删的联系人、项目、跟进一起回来（恢复一条 Customer），负责人、公海照原样
+ *   2. 客户还在、带这个号的联系人删了 → 那位联系人回来
+ * 回收站页（系统管理员、回收站副手）照旧，这里只是查重时的入口
+ */
+export type 捞回的 = { t: "Customer" | "Contact"; id: string; 名: string; 连带: number };
+export async function 查重捞回(号: 验好的号): Promise<结果<{ 回来的: 捞回的[] }>> {
+  return 看全部(async () => {
+    const 没了 = { ok: false as const, error: "回收站里已经没有这个号码了，刷新看看" };
+    const ids = await 回收站里查号(prisma, 号.类型, 号.值, 号.键);
+    if (!ids.length) return 没了;
+    const 回来的: 捞回的[] = [];
+    const 删了的 = await 看已删(() => prisma.customer.findMany({ where: { id: { in: ids }, deletedAt: { not: null } }, select: { id: true, name: true } }));
+    for (const c of 删了的) {
+      const r = await 恢复一条("Customer", c.id);
+      if (!r.ok) return r;
+      回来的.push({ t: "Customer", id: c.id, 名: c.name, 连带: r.连带 });
+    }
+    // 客户回来了，带号的联系人可能是更早单独删的：再查一遍，剩下的都是「客户在、联系人删了」
+    const 还剩 = await 回收站里查号(prisma, 号.类型, 号.值, 号.键);
+    const 联系人们 = await 回收站里带号的联系人(prisma, 号, 还剩);
+    const 名们 = new Map((await 看已删(() => prisma.contact.findMany({ where: { id: { in: 联系人们 } }, select: { id: true, name: true } }))).map((c) => [c.id, c.name]));
+    for (const cid of 联系人们) {
+      const r = await 恢复一条("Contact", cid);
+      if (!r.ok) return r;
+      回来的.push({ t: "Contact", id: cid, 名: 名们.get(cid) ?? "", 连带: r.连带 });
+    }
+    if (!回来的.length) return 没了;
+    return { ok: true as const, 回来的 };
+  });
 }
 
 /** 恢复之后一位客户有两位关键联系人：留原来在的那位，回来的取消关键 */

@@ -119,7 +119,7 @@ const 检查点: Record<string, string> = {
   "补-自己建项目不算上限": "D-35 外销6 已到上限 2，自己建给自己照样能建",
   "补-必填节点销售推不动": "D-37 配了必填的节点，销售本人往前推被拒（找直属上级）",
   "补-必填填齐自动推": "D-37 销售填齐「需求」保存，项目自动推到下一节点并记一行",
-  "补-直属上级缺必填也能推": "D-37 + 11-01：「仅上级推」下直属上级（销售管理）推缺「国家」的节点也能推",
+  "补-直属上级缺必填也能推": "D-37 + 11-01：「仅上级推」下直属上级（销售管理）能推；11-05 ⑦ 线索验证的必填（这里是「国家」）就是有效沟通，所有角色都要填齐才过",
   "补-总管理员能推": "V3.5.1：系统管理员（总管理没设线）能推不在公海的项目；公海里的先领取",
   "补-直属又是虚线取并集": "D-39（默认：权限取并集）外贸经理同时是内销4 的直属和虚线上级：看得到 P8；11-01 起上级推不了，节点记录没有他",
   "补-扫描留痕带项目": "D-34 自动收回的操作日志里带着收回的项目",
@@ -583,8 +583,13 @@ async function 补查() {
     const l = await 作为("老板", () => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 项目id["P20"], kind: "node", toNode: "线索验证" } }));
     expect(公.名[l.userId ?? ""]).toBe("内销2");
   });
-  // 11-01 闭环：「仅上级推」下直属上级能往前推；组长是销售管理，缺必填也能推（D-37 原意）。推完摆回原样，不影响下一条
+  // 11-01 闭环：「仅上级推」下直属上级能往前推。11-05 客户 ⑦：过线索验证的「有效沟通」= 线索验证节点的必填都填了，
+  // 所有角色都走这道闸门，销售管理也不例外 —— 缺「国家」先拦，填上再推。推完摆回原样（节点、国家），不影响下一条
   await 查("补-直属上级缺必填也能推", async () => {
+    拒(await 作为("组长", () => 改项目节点(项目id["P20"], { phase: "线索", node: "线索推进" })), /还差国家/);
+    expect((await 项目("P20")).node).toBe("线索验证");
+    const 客户id = (await 项目("P20")).customerId;
+    await 作为("老板", () => prisma.customerExtra.upsert({ where: { customerId: 客户id }, create: { customerId: 客户id, country: "中国" }, update: { country: "中国" } }));
     得(await 作为("组长", () => 改项目节点(项目id["P20"], { phase: "线索", node: "线索推进" })), "组长推 P20");
     expect((await 项目("P20")).node).toBe("线索推进");
     await 作为("老板", async () => {
@@ -601,6 +606,7 @@ async function 补查() {
     expect((await 项目("P20")).node).toBe("线索推进");
     await 作为("老板", async () => {
       await prisma.project.update({ where: { id: 项目id["P20"] }, data: { node: "线索验证" } });
+      await prisma.customerExtra.update({ where: { customerId: (await prisma.project.findUniqueOrThrow({ where: { id: 项目id["P20"] } })).customerId }, data: { country: null } });
       await prisma.projectNodeLog.deleteMany({ where: { projectId: 项目id["P20"], toNode: "线索推进" } });
     });
   });

@@ -352,7 +352,7 @@ describe("企业版线索有效性验证", () => {
       const id = await 项目();
       await 判无效(id);
       for (const 谁 of [乙, 丙, 老板, 总管, 销售经理]) {
-        expect(await 市场复核(谁, id, false)).toEqual({ ok: false, error: "只有建这条线索的人或他的直属市场管理能复核" });
+        expect(await 市场复核(谁, id, false)).toEqual({ ok: false, error: "只有建这条线索的人或他的直属市场管理能复核；没有直属市场管理的由系统总管理复核" });
       }
       expect(await 痕(id)).toHaveLength(1);
       expect((await 现(id)).result).toBeNull();

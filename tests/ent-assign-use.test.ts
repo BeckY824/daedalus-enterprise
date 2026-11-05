@@ -332,8 +332,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     当(市场);
     for (const 谁 of [渠道, 项运, 总管]) expect(await 向导({ 分配方式: 0, ownerId: 谁 })).toMatchObject({ ok: false, error: "线索只能分给销售或销售管理" });
     当(销售);
-    // 只挂市场管理的 11-05 起先被「不当负责人」挡下（permissions.ts）
-    expect(await 向导({ 分配方式: 0, ownerId: 市场 })).toMatchObject({ ok: false, error: expect.stringMatching(/市场管理不当负责人/) });
+    expect(await 向导({ 分配方式: 0, ownerId: 市场 })).toMatchObject({ ok: false, error: "线索只能分给销售或销售管理" });
     expect(await prisma.project.count()).toBe(0);
     expect(await 向导({ 分配方式: 0, ownerId: 销售经理 })).toMatchObject({ ok: true, 转走: true });
   });

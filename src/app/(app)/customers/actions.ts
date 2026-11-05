@@ -541,8 +541,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (!salesOwnerId) return { ok: false, error: "请选择销售负责人" };
   // 换了负责人才查（老客户挂在没角色的人名下，改别的字段不拦）。11-03 完成度 D3-9
   if (salesOwnerId !== 改前?.salesOwnerId) {
-    // 建档向导（接着是服务端登记过的函数，网页端伪造不了）先记在我名下的是占位，向导已按分配方式查过（projects/actions.ts）
-    const 不行 = await 不能当负责人(salesOwnerId, 认得(接着) && salesOwnerId === me.id);
+    const 不行 = await 不能当负责人(salesOwnerId);
     if (不行) return { ok: false, error: 不行 };
   }
 
