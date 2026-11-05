@@ -106,7 +106,7 @@ function 全齐(node: string): 必填数据 {
     沟通节点们: [node],
     沟通们: [{ node, initiator: "我方", content: "聊了需求", method: "电话" }],
     合同附件数: 1, 回款笔数: 1, 痛点标注: "价格高", 合同状态: 生效的合同状态, 项目方案数: 1,
-    需求类型们: ["整机"], 分配方式: "自动分配", 有效沟通数: 1,
+    需求类型们: ["整机"], 分配方式: "自动分配",
     线索验证: { verdict: "有效线索", finalResult: null, pending: null },
   };
 }
@@ -132,7 +132,7 @@ function 去掉(d: 必填数据, 项: 必填项): 必填数据 {
     case "下一步计划": p.nextStepText = "待定"; break;
     case "下一步时间": p.nextStepAt = null; break;
     case "需求描述": p.dealDemand = ""; break;
-    case "有效沟通": x.有效沟通数 = 0; break;
+    case "有效沟通": p.demandStatus = null; break;
     case "项目级别": p.level = null; break;
     case "线索验证结果": x.线索验证 = { verdict: "有效线索", finalResult: null, pending: "等复核" }; break;
     case "需求": p.demandStatus = "暂未确认"; break;

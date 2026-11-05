@@ -182,6 +182,20 @@ export function 管理员类别们of(org: 组织, userId: string): Set<管理员
   }
   return 们;
 }
+/**
+ * 「市场复核」谁能拍（11-05 客户定）：建这条线索的人本人，或他的直属上级且是市场管理。
+ * 🔍 建的人不在组织里了（离职、停用）→ 任何市场管理都能拍，不让它卡死；
+ * 🔍 建的人自己就是负责人（初判是他自己判的）不复核自己，交他的直属市场管理，没有就任何市场管理
+ */
+export function 能市场复核(org: 组织, me: string, p: { creatorId?: string | null; ownerId: string }): boolean {
+  const 市管 = (id: string) => 管理员类别们of(org, id).has("市场管理");
+  const c = p.creatorId;
+  if (!c || !org.成员.has(c)) return 市管(me);
+  if (me === c && c !== p.ownerId) return true;
+  const 上 = 直属上级of(org, c);
+  if (上 && 市管(上)) return me === 上;
+  return c === p.ownerId && me !== c && 市管(me);
+}
 /** 最高的那一类：总管理员 > 销售管理 > 市场管理 > 管理员（只读）；只问「是不是总管理员 / 是不是管理员」时用，问别的类用 管理员类别们of */
 export function 管理员类别of(org: 组织, userId: string): 管理员类别 | null {
   const 们 = 管理员类别们of(org, userId);

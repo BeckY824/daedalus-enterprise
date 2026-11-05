@@ -4,7 +4,7 @@
  *   分配：销售选个人自持 → 创建人 = 负责人 = 自己；市场选暂不分配 → 负责人 = 自己、潜客培育、待分配；
  *         市场选指定分配 → 负责人 = 那位销售、客户跟着走；市场选自动分配 → 按业务线分给那条线的销售
  *   国家 / 城市：卡上勾哪几格填哪几格（客户地址 / 联系人地址 / 项目所在地），不进备注；老卡没勾照旧只进客户
- *   必填：分配方式、指定时的负责人、业务线、进程、明确回复、进程过了有效线索要明确回复、有国家要选填到哪
+ *   必填：分配方式、指定时的负责人、业务线、进程、进程只能到线索验证（11-05 起不问明确回复）、有国家要选填到哪
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -21,7 +21,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { applyProposal } from "@/app/(app)/dashboard/apply";
 import { missingFields } from "@/lib/agent/proposals";
 import { 企业版字典 } from "@/lib/project/stage-dict";
-import { 缺有效沟通 } from "@/lib/project/stage-gates";
+import { 建档不能过线索验证 } from "@/lib/project/stage-gates";
 
 type 人 = { id: string; name: string };
 let 老板: 人, 市场: 人, 乙: 人, 丙: 人;
@@ -34,7 +34,7 @@ let 序 = 0;
 const 卡 = (补: Record<string, unknown> = {}) => ({
   id: `p${++序}`, kind: "add_lead" as const, customerId: "", customerName: "", reason: "测试",
   name: `星河电子${序}`, contact: "周经理", phone: `1380000${String(序).padStart(4, "0")}`, source: "展会", status: "待跟进", remark: "",
-  业务线: "内贸", 节点: "潜客培育", 明确回复: false, ...补,
+  业务线: "内贸", 节点: "潜客培育", ...补,
 });
 const 唯一项目 = () => prisma.project.findFirstOrThrow({ include: { customer: true } });
 
@@ -87,6 +87,14 @@ describe("新线索卡：分配方式 × 角色", () => {
     expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.assignMode]).toEqual([市场.id, 丙.id, 丙.id, "指定分配"]);
   });
 
+  it("只挂市场管理：指定分配给自己照旧拦，不建（占位只放过暂不分配 / 自动分配，11-05）", async () => {
+    当(市场);
+    const r = await applyProposal(卡({ 分配方式: 0, ownerId: 市场.id }) as never);
+    expect(r).toMatchObject({ ok: false });
+    expect(await prisma.project.count()).toBe(0);
+    expect(await prisma.customer.count()).toBe(0);
+  });
+
   it("市场 + 自动分配：按业务线分给那条线的销售（内贸 → 乙），不待分配", async () => {
     当(市场);
     expect(await applyProposal(卡({ 分配方式: 1 }) as never)).toMatchObject({ ok: true });
@@ -130,12 +138,18 @@ describe("新线索卡：和新建项目同一套必填", () => {
   it("客户名称、联系人姓名", () => expect(缺({ name: " ", contact: "" })).toEqual(["客户名称", "联系人姓名"]));
   it("分配方式", () => expect(缺({ 分配方式: undefined })).toEqual(["分配方式"]));
   it("指定分配没选负责人", () => expect(缺({ 分配方式: 0 })).toEqual(["项目负责人"]));
-  it("业务线、进程、明确回复", () => expect(缺({ 业务线: undefined, 节点: "不存在的节点", 明确回复: undefined })).toEqual(["业务线", "当前进程", "客户明确回复了吗"]));
-  it("进程过了有效线索、客户没明确回复", () => {
+  it("业务线、进程（11-05 起不问明确回复）", () => expect(缺({ 业务线: undefined, 节点: "不存在的节点", 明确回复: undefined })).toEqual(["业务线", "当前进程"]));
+  it("进程只能到线索验证：过了就拦，老卡带明确回复也不放行（11-05）", () => {
     const 后 = 企业版字典.节点们.线索[企业版字典.节点们.线索.indexOf("线索验证") + 1];
     expect(后).toBeTruthy();
-    expect(缺({ 节点: 后 })).toEqual([缺有效沟通]);
-    expect(缺({ 节点: 后, 明确回复: true })).toEqual([]);
+    expect(缺({ 节点: 后 })).toEqual([建档不能过线索验证]);
+    expect(缺({ 节点: 后, 明确回复: true })).toEqual([建档不能过线索验证]);
+    expect(缺({ 节点: "线索验证" })).toEqual([]);
+  });
+  it("开了超时回收：下一步时间、下一步做什么都要（11-05）", () => {
+    const 要 = { ...企, 要下一步: true };
+    expect(missingFields(卡({ 分配方式: 4 }) as never, undefined, 要)).toEqual(expect.arrayContaining(["下一步时间", "下一步做什么"]));
+    expect(missingFields(卡({ 分配方式: 4, nextAt: "2099-01-01", 下一步: "约演示" }) as never, undefined, 要)).toEqual([]);
   });
   it("有国家 / 城市没选填到哪", () => {
     expect(缺({ country: "摩洛哥" })).toEqual(["国家 / 城市填到哪"]);

@@ -4,7 +4,7 @@
  * 客户页「新建项目」（企业版项目模式，2026-10-29，定稿 P5 待定 16）：给这位已有的客户再建一个项目，客户自动带上。
  * 建档向导（projects/new）是「客户 + 联系人 + 项目 + 首条沟通」一笔新建，不认已有客户；这里只建后两样，规矩照向导：
  *   项目那几格、首条沟通 —— lib/project/wizard.ts 的 规整项目 / 规整沟通（同一份）
- *   跟进节点、客户是否明确回复 —— 和向导企业版那段同一套（线索阶段的节点、过了线索验证要明确回复）
+ *   跟进节点 —— 和向导企业版那段同一套（线索阶段的节点，新建只能落在线索验证及之前，11-05）
  *   负责人在职、指派给别人算持有上限、开了超时回收必填下一步时间 —— 同 建档向导
  *   落库 —— 项目、第一行节点变更、首条沟通挂项目、沟通编号、沟通标记、客户最近跟进只往后挪（同 lib/project/from-lead.ts）
  * 分配方式（11-01 会议 §3「新增项目时新增字段分配方式」）：和向导同一套（lib/project/after-create-assign.ts）。
@@ -27,7 +27,7 @@ import { 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterpr
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 企业版字典, 节点序号 } from "@/lib/project/nodes";
-import { 有效线索节点, 缺有效沟通, 记沟通标记 } from "@/lib/project/stage-gates";
+import { 有效线索节点, 建档不能过线索验证, 记沟通标记 } from "@/lib/project/stage-gates";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 新项目默认值 } from "@/lib/project/proj-fields";
 import { 新项目所在地 } from "@/lib/project/profile-rules";
@@ -48,15 +48,12 @@ export type 给客户建项目输入 = {
 
 type 结果 = { ok: true; projectId: string; 提示?: string; 转走?: boolean } | { ok: false; error: string };
 
-/** 跟进节点、明确回复两格（和 规整向导 企业版那段同一套口径） */
-function 认节点和回复(f: 向导跟进): { 节点: string; 明确回复: boolean } | { error: string } {
+/** 跟进节点（和 规整向导 企业版那段同一套口径；11-05 去掉明确回复） */
+function 认节点和回复(f: 向导跟进): { 节点: string } | { error: string } {
   const 节点 = typeof f?.节点 === "string" ? f.节点.trim() : "";
   if (!企业版字典.节点们.线索.includes(节点)) return { error: "请选当前进程（线索阶段的哪一步）" };
-  if (typeof f.明确回复 !== "boolean") return { error: "请选：客户明确回复了吗" };
-  if (节点序号({ phase: "线索", node: 节点 }, 企业版字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 企业版字典) && !f.明确回复) {
-    return { error: 缺有效沟通 };
-  }
-  return { 节点, 明确回复: f.明确回复 };
+  if (节点序号({ phase: "线索", node: 节点 }, 企业版字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 企业版字典)) return { error: 建档不能过线索验证 };
+  return { 节点 };
 }
 
 export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式数据>> & { 客户业务线: 项目线 | null };
@@ -113,14 +110,14 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 规则 = await 生效组织规则();
     const 认 = await 认跟进方式(输入.跟进);
     if ("error" in 认) return { ok: false, error: 认.error };
-    const 跟进 = 规整沟通(认, { 要下一步: 规则.超时回收.开, 叫法: "首条" });
+    const 跟进 = 规整沟通(认, { 要下一步: 规则.超时回收.开, 叫法: "首条", 要下一步文字: 规则.超时回收.开 });
     if ("error" in 跟进) return { ok: false, error: 跟进.error };
     const 落 = 认节点和回复(输入.跟进);
     if ("error" in 落) return { ok: false, error: 落.error };
 
     const 负责人 = await prisma.user.findUnique({ where: { id: 项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false, error: "项目负责人不存在或已停用，请选一位在职成员" };
-    const 不行 = await 不能当负责人(项目.ownerId);
+    const 不行 = await 不能当负责人(项目.ownerId, !!分配 && 分配.i !== 0);
     if (不行) return { ok: false, error: 不行 };
     if (项目.ownerId !== me.id) {
       const 超 = await 超上限(prisma, 规则, 项目.ownerId, { phase: "线索", result: null });
@@ -146,7 +143,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       });
       await tx.followUpProject.create({ data: { followUpId: f.id, projectId: p.id, node: 落.节点 } });
       await 记沟通编号(tx, f.id, p.id, 跟进.nextStepAt);
-      await 记沟通标记(tx, f.id, p.id, "线索", 落.明确回复);
+      await 记沟通标记(tx, f.id, p.id, "线索", false);
       // 这位可能有更晚的跟进：只往后挪，不往回改
       await tx.customer.updateMany({
         where: { id: customerId, OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: 跟进.occurredAt } }] },

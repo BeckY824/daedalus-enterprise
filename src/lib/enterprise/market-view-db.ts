@@ -5,7 +5,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
 import { 读市场成员们 } from "./market-db";
-import { 管理员类别们of, type 组织 } from "./org-core";
+import { 能市场复核, type 组织 } from "./org-core";
 import { 市场视角of, 市场圈, 市场挡详情, type 市场视角 } from "./market-view";
 import { 无效交给 } from "@/lib/project/lead-verify";
 
@@ -22,13 +22,14 @@ export const 读市场身份 = cache(async (我: string): Promise<市场身份 |
 
 /** 等「市场复核」、我是市场管理能拍板的那几条（只看进度的例外：复核要进详情） */
 export async function 等我复核的(我: string, org: 组织, projectIds?: string[]): Promise<Set<string>> {
-  // 规则关了「市场复核」或没有市场管理时，存着的「市场复核」实际按总管理终判走（lead-verify.ts 实际待），不给例外
-  if (!管理员类别们of(org, 我).has("市场管理") || (await 无效交给(org)) !== "市场复核") return new Set();
+  // 规则关了「市场复核」或没有市场管理时，存着的「市场复核」实际按总管理终判走（lead-verify.ts 实际待），不给例外。
+  // 谁能拍按 能市场复核（11-05：建线索的人或他的直属市场管理）
+  if ((await 无效交给(org)) !== "市场复核") return new Set();
   const 行 = await 看全部(() => prisma.entLeadVerify.findMany({
     where: { pending: "市场复核", ...(projectIds ? { projectId: { in: projectIds } } : {}), project: { pooledAt: null, result: null } },
-    select: { projectId: true },
+    select: { projectId: true, project: { select: { creatorId: true, ownerId: true } } },
   }));
-  return new Set(行.map((v) => v.projectId));
+  return new Set(行.filter((v) => 能市场复核(org, 我, v.project)).map((v) => v.projectId));
 }
 
 /**

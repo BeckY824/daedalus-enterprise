@@ -6,6 +6,7 @@
  *   - 占位值（暂无、- 等）不算填了；销售本人填齐了能手动完成节点
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { 缺有效沟通还差 } from "@/lib/project/stage-gates";
 
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
@@ -211,7 +212,7 @@ describe("企业版推进 / 终止（P2）", () => {
       // 需求状态没选 / 选「暂无」一类的占位：还差需求，拦下
       await prisma.project.update({ where: { id: p.id }, data: { demandStatus: "暂无" } });
       const 拦 = await 改节点(成员, p.id, { phase: "线索", node: "线索推进" });
-      expect(拦).toEqual({ ok: false, error: "「线索验证」还差必填：需求（需求状态）；补齐再推" }); // 11-01 企业版不再提「找老板或主管」（上级改不了内容）
+      expect(拦).toEqual({ ok: false, error: 缺有效沟通还差(["需求（需求状态）"]) }); // 11-05 起线索验证的必填就是有效沟通的判断依据
       // 填了真值：没自动推的话手动也能推（这里改画像就自动推了，两种都算完成）
       const r = await 改项目画像(成员, p.id, { demandStatus: "明确需求" });
       expect(r).toMatchObject({ ok: true });

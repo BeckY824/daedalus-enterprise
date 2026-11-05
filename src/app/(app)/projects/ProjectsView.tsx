@@ -79,7 +79,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null, 市场 = null,
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null, 市场 = null, 高亮,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -119,6 +119,11 @@ export default function ProjectsView({
    * 已分给圈外的（只看进度）列表、看板里看得到，点不进详情。null = 别的角色，照旧
    */
   市场?: { 视角: "市场成员" | "市场管理"; 创建人们: { id: string; name: string }[] } | null;
+  /**
+   * 地址栏 hl：从进不了的详情页转过来时要指出的那一行（projects/[id]/page.tsx 市场挡，客户 11-05）。
+   * 这一屏临时按列表看、那一行亮一下（row-fresh）并滚到它；减弱动态时不滚动画、也不闪
+   */
+  高亮?: string;
 }) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -153,7 +158,16 @@ export default function ProjectsView({
     }
   };
   const [存的看法, set看法] = useLocalPref<"列表" | "看板">("projects-view", "看板");
-  const 看法 = 新线索 ? "列表" : 存的看法;
+  // 带着要指出的那一行来：先按列表看（不改存下的看法），自己切回看板就听他的
+  const [临时列表, set临时列表] = useState(!!高亮);
+  const 看法 = 新线索 || 临时列表 ? "列表" : 存的看法;
+  const 换看法 = (v: "列表" | "看板") => { set临时列表(false); set看法(v); };
+  // 要指出的那一行滚到视口中间（减弱动态时直接跳过去）；只在进来时滚一次，之后翻页、筛选不追着滚
+  useEffect(() => {
+    if (!高亮) return;
+    const 帧 = requestAnimationFrame(() => document.querySelector(`tr[data-row-key="${CSS.escape(高亮)}"]`)?.scrollIntoView({ block: "center", behavior: 滚法() }));
+    return () => cancelAnimationFrame(帧);
+  }, [高亮]);
   const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
   const 看板框 = useRef<HTMLDivElement>(null);
   const [右边还有, 滑一列] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null);
@@ -174,7 +188,7 @@ export default function ProjectsView({
   const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => (项目页分 ? `已分给 ${r.接手人}` : `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`);
   // 页头「分配」：分配在列表的每行和勾选里做，看板上点它先切到列表
   const 去分配 = () => {
-    if (看法 !== "列表") set看法("列表");
+    if (看法 !== "列表") 换看法("列表");
     message.info("勾选要分的线索点「自动分配」，或点行末的「分配」指定接手人");
   };
 
@@ -265,7 +279,8 @@ export default function ProjectsView({
   const 找列 = (k: string) => 普通列表.find((c) => 键of(c) === k);
   const 市场默认 = ["name", "customer", "phase", "node", "verify", "owner", "amount", "source", "updatedAt"];
   const 市场锁定 = new Set(["name", "phase", "node", "verify", "owner"]);
-  const 验证列: 列<项目行> = { title: "验证结果", key: "verify", width: 96, render: (_, r) => (有值(r.验证结果) ? <span className="fulltext" title={r.验证结果}>{r.验证结果}</span> : 无) };
+  // 判无效的写「叫法 · 原因」一行放不下就省略，悬停看每一步谁、哪天、判了什么（客户 11-05（X-09），lib/project/list.ts 读验证痕们）
+  const 验证列: 列<项目行> = { title: "验证结果", key: "verify", width: 120, render: (_, r) => (有值(r.验证结果) ? <span className="fulltext" title={r.验证全文 || r.验证结果}>{r.验证结果}</span> : 无) };
   const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, render: (_, r) => (r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) };
   const 列表: 列<项目行>[] = 市场列
     ? [
@@ -371,7 +386,7 @@ export default function ProjectsView({
             {项目页分 && 能自动分配 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
             {(新线索 || 项目页分) && 线索分配开着 && <AssignedOutButton />}
             {!新线索 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
-            {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={set看法} />}
+            {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={换看法} />}
             {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
             {(能新建 || !新线索) && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>}
           </Space>
@@ -395,6 +410,7 @@ export default function ProjectsView({
           // 只看进度（已分给圈外的人）：行在、点不进详情（服务端详情页另挡，P-看-06）
           行链接={(r) => (r.只看进度 ? "" : `/projects/${r.id}`)}
           行类={(r) => (r.只看进度 ? "row-readonly" : "")}
+          亮={高亮 ? [高亮] : undefined}
           空态={
             新线索
               ? {

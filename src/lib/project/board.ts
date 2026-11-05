@@ -42,6 +42,8 @@ export type 项目行 = {
   只看进度?: boolean;
   /** 企业版市场视角（P-界面-05）：线索验证结果（lead-verify.ts 验证结果叫法）；没走过验证、也不在线索阶段 = null；别的角色不给 */
   验证结果?: string | null;
+  /** 同上：悬停看的验证全过程，一步一行（哪天 谁 · 哪步 · 判定（原因；说明）），客户 11-05（X-09）；没有痕 = null */
+  验证全文?: string | null;
   amount: number;
   currency: string;
   updatedAt: string;

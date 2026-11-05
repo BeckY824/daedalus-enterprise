@@ -3,7 +3,7 @@
  * 钉的是：删了的从列表 / 详情 / 统计里消失（Prisma 扩展统一滤 + 裸 SQL 各自带条件）；客户连带联系人、项目、沟通记录
  * 同一时刻进回收站、一起回来；单独删的所属客户还在回收站里先不让恢复；30 天到期真删、线索退回；
  * 只认业务角色（V3.5.1）：删除 = 负责人本人或系统管理员；回收站看 / 恢复 = 系统管理员 + 回收站副手；彻底删除只给系统管理员；账号 ADMIN / MANAGER、管理员都不算；
- * 查重不算回收站里的；不是企业版照旧真删。
+ * 查重不把回收站里的当在用的撞（全公司查号 / checkDuplicate 照旧不算），另由 回收站里查号 认出来拦下（客户 11-05（X-10））；不是企业版照旧真删。
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
@@ -24,7 +24,7 @@ import { deleteContact, deleteFollowUp } from "@/app/(app)/customers/[id]/action
 import { 关键词分页 } from "@/app/(app)/customers/query";
 import { 删项目, 项目不能删提示 } from "@/lib/project/db";
 import { 看得到的客户数, 看得到的跟进数 } from "@/lib/scope-sql";
-import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
+import { 全公司查号, 回收站里查号 } from "@/lib/enterprise/contact-dedupe";
 import { 回收站列表, 恢复, 彻底删除, 清过期, 每天清一次, 看已删, 能管回收站, 能彻底删除 } from "@/lib/enterprise/soft-delete";
 import { 回收站列表动作, 恢复回收站, 彻底删除回收站 } from "@/app/(app)/settings/trash-actions";
 
@@ -266,6 +266,25 @@ describe("查重不算回收站里的", () => {
     expect(await 全公司查号(prisma, "邮箱", "z@x.com", "z@x.com")).toEqual([]);
     // 没删的照旧查得到
     expect(await checkDuplicate("13800000002")).toMatchObject({ name: "李四" });
+  });
+
+  it("回收站里查号（客户 11-05（X-10））：删了的客户、联系人的号认得出；在用的不算；恢复了就回到在用的", async () => {
+    expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([]);
+    await deleteCustomers([张三]);
+    expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([张三]);
+    expect(await 回收站里查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([张三]);
+    expect(await 回收站里查号(prisma, "邮箱", "z@x.com", "z@x.com")).toEqual([张三]);
+    expect(await 回收站里查号(prisma, "手机号", "13800000002", "13800000002")).toEqual([]);
+    expect((await 恢复({ id: 老板, role: "ADMIN" }, "Customer", 张三)).ok).toBe(true);
+    expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([]);
+    expect(await 全公司查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([张三]);
+  });
+
+  it("客户还在、只删了联系人：联系人的号算回收站里的，客户自己的号照旧在用", async () => {
+    expect((await deleteContact(联系人)).ok).toBe(true);
+    expect(await 全公司查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([]);
+    expect(await 回收站里查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([张三]);
+    expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([]);
   });
 });
 

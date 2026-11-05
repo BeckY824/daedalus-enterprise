@@ -9,7 +9,7 @@ import { requiredText } from "@/lib/form-validation";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Modal, Form, Input, Select, InputNumber, Row, Col, App, Button, Checkbox, Space, Typography, Radio } from "antd";
+import { Modal, Form, Input, Select, InputNumber, Row, Col, App, Button, Checkbox, Space, Typography } from "antd";
 import { DownOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES, 跟进类型们 } from "@/lib/constants";
 import { dayjs, fmtDateTime } from "@/lib/utils";
@@ -184,7 +184,7 @@ export default function FollowUpForm({
   const 下一步时刻 = Form.useWatch("下一步时间", form) as ReturnType<typeof dayjs> | null | undefined;
   /*
     选了关联项目（10-30 P0-3）：和项目详情「记一条沟通」走同一条路（记项目沟通Action）——
-    要选「客户明确回复了吗」、写下一步，阶段记在项目现在的阶段上。能不能走这条路问服务端（项目沟通须知，只读）：
+    要写下一步，阶段记在项目现在的阶段上（11-05 起不再问客户明确回复了吗）。能不能走这条路问服务端（项目沟通须知，只读）：
     不是组员、项目在公海、类型是待办 / 提醒，都照旧走 saveFollowUp
   */
   const 要须知 = open && !!projects && !record?.id;
@@ -213,7 +213,6 @@ export default function FollowUpForm({
   const 更多区 = useRef<HTMLDivElement>(null);
   const [卡点, set卡点] = useState<卡点值>(空卡点);
   const [附件们, set附件们] = useState<File[]>([]);
-  const 明确回复 = Form.useWatch("明确回复", form) as boolean | undefined;
   // 选了下一步时间就预演回收日：和项目详情同一个算法，算不准（没底子）就不写
   const 预演 = 项目模式 && 须知 ? 预演回收日(须知.回收预演, 沟通时刻?.format("YYYY-MM-DD"), 下一步时刻 ? 下一步时刻.format("YYYY-MM-DD") : null) : null;
 
@@ -436,7 +435,7 @@ export default function FollowUpForm({
       await onOk();
     } catch (error) {
       if (!error || typeof error !== "object" || !("errorFields" in error)) message.error("保存失败，请刷新确认结果后重试");
-      // 收起来的「更多」里有格子没过（比如客户明确回复没选）：展开让人看到
+      // 收起来的「更多」里有格子没过（比如发生时间）：展开让人看到
       else if (收起 && (error as { errorFields: { name: (string | number)[] }[] }).errorFields.some((e) => !主区格.has(String(e.name[0])))) set更多开(true);
     } finally {
       set存着(false);
@@ -560,7 +559,7 @@ export default function FollowUpForm({
     // 标题、另选的联系人、状态、时长、参与人随这一次一起交（服务端 认沟通额外），不再事后拿 saveFollowUp 补——普通成员不能改沟通了（M-权限-09）
     const r = await 记项目沟通Action(v.projectId, {
       type: v.type, method: 对得上的方式(v.type, v.method), initiator: v.initiator ?? null, content: v.content, occurredAt: v.occurredAt.toISOString(),
-      阶段: 须知.phase, 明确回复: v.明确回复 === true,
+      阶段: 须知.phase,
       下一步: v.下一步, 下一步时间: v.下一步时间 ? v.下一步时间.format("YYYY-MM-DD") : null,
       额外: {
         title: v.title ?? null, contactId: v.contactId ?? null, status: v.status ?? "已完成",
@@ -700,7 +699,7 @@ export default function FollowUpForm({
         {收起 ? (
           /*
             F-跟进-06（项目模式）：主区只摆关联项目、沟通方式、发起主体（11-01 答复 #2 挪出来）、沟通内容、卡点、下一步、下一步时间、截图录音；
-            状态、发生时间、标题、联系人、时长、参与人、客户明确回复、AI 收进默认折叠的「更多」。
+            状态、发生时间、标题、联系人、时长、参与人、AI 收进默认折叠的「更多」。
             折起来只是不显示（Form.Item 照样挂着），校验一个不少；没过的格子在「更多」里就自动展开
           */
           <Row gutter={16}>
@@ -789,8 +788,7 @@ export default function FollowUpForm({
             <Col span={24} style={{ marginBottom: 12 }}>
               <Button type="link" size="small" className="follow-more-toggle" icon={<DownOutlined rotate={更多显示 ? 180 : 0} />} aria-expanded={更多显示} onClick={切更多}>
                 <span>
-                  更多：发生时间、状态、标题、联系人、客户明确回复{showAi ? "、AI 速记" : ""}
-                  {!更多显示 && 明确回复 == null && <span className="follow-more-hint"> 客户明确回复还没选</span>}
+                  更多：发生时间、状态、标题、联系人{showAi ? "、AI 速记" : ""}
                 </span>
               </Button>
             </Col>
@@ -856,11 +854,6 @@ export default function FollowUpForm({
                       </Form.Item>
                     </Col>
                   )}
-                  <Col span={24}>
-                    <Form.Item name="明确回复" preserve={false} label="客户明确回复了吗" extra={`记在项目现在的阶段（${须知.phase}）上`} rules={[{ required: true, message: "请选客户明确回复了吗" }]}>
-                      <Radio.Group options={[{ value: true, label: "客户明确回复了" }, { value: false, label: "没有明确回复" }]} />
-                    </Form.Item>
-                  </Col>
                 </Row>
               </div>
             </Col>

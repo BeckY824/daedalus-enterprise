@@ -37,7 +37,6 @@ export type 沟通预填 = { type?: string; content?: string; occurredAt?: strin
  * - 沟通时间：模型给的且不晚于现在才填（项目沟通不记将来的时间）
  * - 下一步（做什么，10-29）：约定的下次跟进的主题优先，没有就取带日子的那条待办、再没有就第一条待办的标题；超过 100 字截掉
  * - 下一步时间：约定的下次跟进（plan）优先，没有就第一条带日子的待办；只填今天及以后的日子
- * - 「客户明确回复了吗」不猜，留给人选（线索验证往后推看这一格）
  */
 export function 项目沟通预填(草稿: FollowUpDraft, 能选类型: readonly string[], 现在: Date = new Date()): 沟通预填 {
   const 填: 沟通预填 = {};

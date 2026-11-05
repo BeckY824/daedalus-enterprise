@@ -2,7 +2,7 @@
  * 企业版节点必填（lib/project/required.ts，D-37）：没开 / 没配的节点永远不差；配了的按数据算还差哪几样。
  */
 import { describe, it, expect } from "vitest";
-import { 还差, 节点推进生效, 按必填走, 节点必填, 能配必填的节点, 建议必填, 必填项名们, 必填叫法, type 必填数据 } from "@/lib/project/required";
+import { 还差, 节点推进生效, 按必填走, 节点必填, 能配必填的节点, 建议必填, 必填项名们, 必填叫法, 有效沟通还差, type 必填数据, type 必填项 } from "@/lib/project/required";
 import { 默认组织规则, 规整组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 企业版字典, 本套节点名 } from "@/lib/project/stage-dict";
 
@@ -224,15 +224,28 @@ describe("11-01 矩阵补的必填项", () => {
     expect(还差(r, { ...空数据(), 需求类型们: ["常规标品"], 客户: { phone: null, extra: null, assignWay: "自持" }, 有客户: true })).toEqual([]);
   });
 
-  it("线索验证结果：判了有效线索、没在等复核 / 认领才算；有效沟通要至少一条", () => {
+  it("线索验证结果：判了有效线索、没在等复核 / 认领才算；有效沟通没配别的就看需求状态", () => {
     const r = 规则({ 线索验证: ["线索验证结果", "有效沟通"] });
     const d = 空数据("线索验证");
     expect(还差(r, d)).toEqual(["线索验证结果", "有效沟通"]);
-    expect(还差(r, { ...d, 线索验证: { verdict: "暂未判定", finalResult: null, pending: null }, 有效沟通数: 0 })).toEqual(["线索验证结果", "有效沟通"]);
+    expect(还差(r, { ...d, 线索验证: { verdict: "暂未判定", finalResult: null, pending: null } })).toEqual(["线索验证结果", "有效沟通"]);
     expect(还差(r, { ...d, 线索验证: { verdict: "初验无效", finalResult: null, pending: "市场复核" } })).toContain("线索验证结果");
     // 总管理终判有效后还等销售认领：不算
     expect(还差(r, { ...d, 线索验证: { verdict: "有效线索", finalResult: "有效线索", pending: "销售认领" } })).toContain("线索验证结果");
-    expect(还差(r, { ...d, 线索验证: { verdict: "有效线索", finalResult: "有效线索", pending: null }, 有效沟通数: 1 })).toEqual([]);
+    const 有需求 = { ...d, 项目: { ...d.项目, demandStatus: "明确需求" } };
+    expect(还差(r, { ...有需求, 线索验证: { verdict: "有效线索", finalResult: "有效线索", pending: null } })).toEqual([]);
+  });
+
+  it("有效沟通还差：线索验证配了别的必填就看那几样（不算它自己和线索验证结果），没配看需求状态，占位值不算", () => {
+    const d = 空数据("线索验证");
+    expect(有效沟通还差(d)).toEqual(["需求"]);
+    expect(有效沟通还差({ ...d, 项目: { ...d.项目, demandStatus: "暂未确认" } })).toEqual(["需求"]);
+    expect(有效沟通还差({ ...d, 项目: { ...d.项目, demandStatus: "方向明晰" } })).toEqual([]);
+    const 配 = { ...d, 线索验证必填: ["金额", "有效沟通", "线索验证结果"] as 必填项[] };
+    expect(有效沟通还差(配)).toEqual(["金额"]);
+    expect(有效沟通还差({ ...配, 项目: { ...配.项目, amount: 5 } })).toEqual([]);
+    // 只配了它自己和线索验证结果：等于没配，退回看需求状态
+    expect(有效沟通还差({ ...d, 线索验证必填: ["有效沟通", "线索验证结果"] })).toEqual(["需求"]);
   });
 
   it("合同金额、定金金额要大于 0；尾款结清看勾", () => {

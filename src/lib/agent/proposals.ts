@@ -14,7 +14,7 @@ import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, FOLLOW_METHODS, FOLLOW_STATUSES, DECISIO
 import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "../business-config";
 import { dayjs } from "../utils";
 import { 是币种, 金额 } from "../currency";
-import { 有效线索节点, 缺有效沟通 } from "../project/stage-gates";
+import { 有效线索节点, 建档不能过线索验证 } from "../project/stage-gates";
 import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type 项目卡, type 项目卡Kind } from "./project-proposals";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
@@ -120,12 +120,12 @@ function 收线索多的格(args: Record<string, unknown>): 线索卡多的格 {
 }
 
 /**
- * 企业版只用项目时，新线索卡和「新建项目」对齐的几格（11-04）：分配方式 / 指定的负责人 / 进程 / 明确回复由人在卡上选，
+ * 企业版只用项目时，新线索卡和「新建项目」对齐的几格（11-04）：分配方式 / 指定的负责人 / 进程由人在卡上选（11-05 去掉明确回复），
  * 模型不给；业务线、下一步文字、国家城市填到哪模型有把握才给，没把握留空让人选。别的版本不看
  */
 export type 区域去处 = "客户" | "联系人" | "项目";
 export const 区域去处叫法: Record<区域去处, string> = { 客户: "客户所在区域", 联系人: "联系人所在区域", 项目: "项目所在地" };
-export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务线?: string; 节点?: string; 明确回复?: boolean; 下一步?: string; 区域去处?: 区域去处[] };
+export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务线?: string; 节点?: string; 下一步?: string; 区域去处?: 区域去处[] };
 const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string" && Object.hasOwn(区域去处叫法, x);
 
 /** 模型给 bizLine / nextStep / regionTo；卡片回传的是收好的中文键（业务线 / 下一步 / 区域去处 + 人选的四格），两种都认，再校验一遍 */
@@ -143,7 +143,6 @@ function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
   if (负责) 出.ownerId = 负责;
   const 节 = str(args.节点, 30);
   if (节) 出.节点 = 节;
-  if (typeof args.明确回复 === "boolean") 出.明确回复 = args.明确回复;
   return 出;
 }
 
@@ -370,8 +369,8 @@ type 叫法 = Pick<BusinessConfig, "statusLabels" | "template"> | null | undefin
  */
 export type 建档必填 = { 只用项目: boolean; 要下一步: boolean;
   /**
-   * 和「新建项目」一样的那几样（11-04）：有分配方式可选就必选、选「指定分配」要选负责人、业务线、进程、明确回复，
-   * 进程排在有效线索之后要「客户明确回复了」；卡上有国家 / 城市要选填到哪。不传 = 老卡只查上面两样
+   * 和「新建项目」一样的那几样（11-04）：有分配方式可选就必选、选「指定分配」要选负责人、业务线、进程，
+   * 进程不能过线索验证（11-05）；卡上有国家 / 城市要选填到哪。不传 = 老卡只查上面两样
    */
   企业?: { 有分配方式: boolean; 节点们: readonly string[] } };
 
@@ -392,14 +391,15 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
     if (企格 && !p.contact.trim()) miss.push("联系人姓名");
     if (建档?.只用项目 && !p.source.trim()) miss.push("来源（渠道）");
     if (建档?.只用项目 && 建档.要下一步 && !p.nextAt) miss.push("下一步时间");
+    // 开了超时回收下一步计划也必填（11-05，和 建档向导 的 要下一步文字 同口径）
+    if (建档?.只用项目 && 建档.要下一步 && !p.下一步?.trim()) miss.push("下一步做什么");
     const 企 = 企格;
     if (企) {
       if (企.有分配方式 && typeof p.分配方式 !== "number") miss.push("分配方式");
       if ((!企.有分配方式 || p.分配方式 === 0) && !p.ownerId) miss.push("项目负责人");
       if (!p.业务线) miss.push("业务线");
       if (!p.节点 || !企.节点们.includes(p.节点)) miss.push("当前进程");
-      if (typeof p.明确回复 !== "boolean") miss.push("客户明确回复了吗");
-      else if (p.节点 && 企.节点们.indexOf(p.节点) > 企.节点们.indexOf(有效线索节点) && !p.明确回复) miss.push(缺有效沟通);
+      if (p.节点 && 企.节点们.indexOf(p.节点) > 企.节点们.indexOf(有效线索节点)) miss.push(建档不能过线索验证);
       if ((p.country?.trim() || p.city?.trim()) && !p.区域去处?.length) miss.push("国家 / 城市填到哪");
     }
     for (const k of p.待确认 ?? []) miss.push(`确认「${线索待确认叫法[k]}」`);

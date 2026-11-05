@@ -16,10 +16,14 @@ import ProjectsView from "./ProjectsView";
 export const dynamic = "force-dynamic";
 
 /** 项目模式关着时这一页不存在（404），侧栏也没有入口。见 设计-团队版项目模式1a 第三节 */
-export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string }> }) {
+export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; q?: string; hl?: string }> }) {
   const me = await requireUser();
   if ((await getBusiness()).projectMode !== true) notFound();
-  const sp = await searchParams;
+  const 原 = await searchParams;
+  // q / hl：进不了详情转过来的（projects/[id]/page.tsx 市场挡，客户 11-05）——q 当搜索词预填，hl 是要指出的那一行。
+  // 搜索框照旧认 keyword，q 只在没带 keyword 时顶上；之后再搜就只剩 keyword，hl 也跟着没了
+  const { q, hl, ...其余 } = 原;
+  const sp = { ...其余, keyword: 其余.keyword ?? q };
   // 企业版：项目公海统一在 /pool（P7），?pool=1 的老链接（含页签、带 recycled 收回次数筛的）转过去，关键词带上
   if (企业版() && sp.pool === "1") redirect(sp.keyword ? `/pool?${new URLSearchParams({ keyword: sp.keyword })}` : "/pool");
   // 先读列表（里面先跑超时回收），再取「我的卡点」，看到的是收完的样子
@@ -29,5 +33,5 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const 筛线索 = 企业版() && sp.phase === "线索";
   const 线索分配开着 = 筛线索 && (await 规则开着("线索分配")) && !(await 当前是共享区());
   const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
-  return <ProjectsView {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 待交接={企业版() && !(await 当前是共享区()) ? await 离职交接入口(me) : null} />;
+  return <ProjectsView {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 待交接={企业版() && !(await 当前是共享区()) ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} />;
 }

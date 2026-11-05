@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Alert, Button, Input, InputNumber, Modal, Radio, Select, Space, Steps } from "antd";
+import { App, Alert, Button, Input, InputNumber, Modal, Select, Space, Steps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import { PageHead } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -18,7 +18,8 @@ import { 成员选项, 独自一人, dayjs, type 可选成员 } from "@/lib/util
 import { 外贸精简 } from "@/lib/business-config";
 import { 项目名上限, 备注上限, 占位名提示 } from "@/lib/project/wizard";
 import { 是占位值 } from "@/lib/project/required";
-import { 有效线索节点, 缺有效沟通 } from "@/lib/project/stage-gates";
+import { 有效线索节点, 建档不能过线索验证 } from "@/lib/project/stage-gates";
+import { 下一步文字上限 } from "@/lib/project/project-fields";
 import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
 import { 查号码, type 查号码结果 } from "../../customers/number-actions";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
@@ -55,11 +56,11 @@ type 稿 = {
     所在地?: 客户地址 & { location?: string | null }; 业务线手选?: boolean;
   };
   /** 下一步时间（YYYY-MM-DD）：开了超时回收时才有这格、必填；老草稿里没有这格 */
-  /** 节点、明确回复：企业版首条沟通必选（跟进节点 = 项目落在线索阶段哪一步）；团队版没有 */
-  跟进: { type: string; method?: string | null; content: string; occurredAt: string; 下一步时间?: string | null; 节点?: string; 明确回复?: boolean | null };
+  /** 节点：企业版首条沟通必选（跟进节点 = 项目落在线索阶段哪一步，最多到线索验证）；下一步 = 下一步计划（文字，企业版；开了超时回收时必填，11-05）；团队版没有 */
+  跟进: { type: string; method?: string | null; content: string; occurredAt: string; 下一步时间?: string | null; 节点?: string; 下一步?: string | null };
 };
 
-/** 企业版新建线索（10-26）：负责人、渠道必选；只留联系方式、首次沟通记录、跟进节点、客户是否明确回复这几格预设 */
+/** 企业版新建线索（10-26）：负责人、渠道必选；只留联系方式、首次沟通记录、跟进节点、下一步这几格预设 */
 /** 分配方式们：这个人能用、还启用着的分配方式（10-27 A7：五种都生效，只有「指定分配」要选负责人） */
 /** 默认分配方式：按业务角色（11-01 会议 §1 / §3：市场 → 自动分配，销售 → 个人自持，其他 → 暂不分配）；是销售：选自动分配要再确认（A9） */
 export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式?: number | null; 是销售?: boolean; 没角色?: boolean } | null;
@@ -97,10 +98,10 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
   if (!d.跟进.content.trim()) return "请填写这次沟通的内容";
   if (企业) {
     if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) return "请选当前进程（线索阶段的哪一步）";
-    if (typeof d.跟进.明确回复 !== "boolean") return "请选：客户明确回复了吗";
-    if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点) && !d.跟进.明确回复) return 缺有效沟通;
+    if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点)) return 建档不能过线索验证;
   }
-  return 要下一步 && !d.跟进.下一步时间 ? "请填下一步时间：过了那天还没有新的沟通，项目会自动回到公海" : "";
+  if (要下一步 && !d.跟进.下一步时间) return "请填下一步时间：过了那天还没有新的沟通，项目会自动回到公海";
+  return 要下一步 && 企业 && !d.跟进.下一步?.trim() ? "请写下一步做什么" : "";
 }
 
 /**
@@ -164,7 +165,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
     // 分配方式按业务角色给默认值（服务端算好，能用的才给）；没给的、只有一种能用就直接选上
     const 默认 = 企业?.默认分配方式;
     const 分 = 默认 !== undefined && 默认 !== null && 企业?.分配方式们.some((x) => x.i === 默认) ? 默认 : 企业?.分配方式们.length === 1 ? 企业.分配方式们[0].i : undefined;
-    return 企业 ? { ...n, 号码类型: "手机号", 项目: { ...n.项目, 分配方式: 分 }, 跟进: { ...n.跟进, 节点: 企业.节点们[0], 明确回复: null } } : n;
+    return 企业 ? { ...n, 号码类型: "手机号", 项目: { ...n.项目, 分配方式: 分 }, 跟进: { ...n.跟进, 节点: 企业.节点们[0] } } : n;
   };
 
   // 上次没填完的接着填
@@ -338,7 +339,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
       )}
       {企业?.没角色 && <Alert type="warning" showIcon style={{ marginBottom: 16 }} title={没业务角色不能新建话} data-testid="wizard-no-role" />}
       <Steps current={步} size="small" style={{ marginBottom: 企业 ? 8 : 24 }} items={步骤们.map((t) => ({ title: t }))} />
-      {企业 && <div style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 12 }}>{/* 11-03 A2-5：勾了不会自动换进程，进程按「当前进程」选的落 */}项目建在「当前进程」选的那一步；要建在「{有效线索节点}」之后，首条沟通得选「客户明确回复了」。</div>}
+      {企业 && <div style={{ marginBottom: 24, color: "var(--text-muted)", fontSize: 12 }}>{/* 11-05：新建最多落在线索验证，过线索验证要在项目里填好那一步的必填项 */}项目建在「当前进程」选的那一步，最多到「{有效线索节点}」；要往后推，先在项目里填好「{有效线索节点}」的必填项。</div>}
 
       {步 === 0 && 企业版 && (
         <>
@@ -552,13 +553,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           ), true)}
           {一行("沟通内容", <Input.TextArea rows={4} value={d.跟进.content} onChange={(e) => 改("跟进", { content: e.target.value })} />, true)}
           {企业 && 一行("当前进程", (
-            <Select style={{ width: "100%" }} value={d.跟进.节点} options={企业.节点们.map((n) => ({ value: n, label: n }))} onChange={(v) => 改("跟进", { 节点: v })} />
-          ), true)}
-          {企业 && 一行("客户明确回复了吗", (
-            <Radio.Group value={d.跟进.明确回复 ?? undefined} onChange={(e) => 改("跟进", { 明确回复: e.target.value as boolean })}>
-              <Radio value={true}>客户明确回复了</Radio>
-              <Radio value={false}>没有明确回复</Radio>
-            </Radio.Group>
+            <Select style={{ width: "100%" }} value={d.跟进.节点} options={企业.节点们.slice(0, 企业.节点们.indexOf(有效线索节点) + 1 || undefined).map((n) => ({ value: n, label: n }))} onChange={(v) => 改("跟进", { 节点: v })} />
           ), true)}
           {(要下一步 || 能填下一步) && 一行("下一步时间", (
             <>
@@ -571,6 +566,16 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
               />
               <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "过了那天还没有新的沟通，或在当前这步停满规定天数，项目都会自动回到公海，哪个先到按哪个" : "选填：打算哪天再沟通，项目上会显示"}</div>
             </>
+          ), 要下一步)}
+          {企业 && (要下一步 || 能填下一步) && 一行("下一步计划", (
+            <Input
+              aria-label="下一步计划"
+              data-testid="wizard-next-step"
+              maxLength={下一步文字上限}
+              placeholder="下一步打算做什么，例如：发报价单"
+              value={d.跟进.下一步 ?? ""}
+              onChange={(e) => 改("跟进", { 下一步: e.target.value })}
+            />
           ), 要下一步)}
         </>
       )}
@@ -601,6 +606,10 @@ function 去符号(s: string): string {
 function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 协同?: React.ReactNode }) {
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
+  // 只在回收站里撞上（11-05 X-10）：没有「领取」「负责人」可说，只写在回收站里，恢复找系统管理员（提示里已写）
+  if (查.状态 === "回收站里有") {
+    return <Alert type="error" showIcon title={去符号(查.提示)} description={<div><div>{撞?.name ? `${撞.name} · ` : ""}在回收站里</div>{协同}</div>} />;
+  }
   // 自己退回公海的：企业版原负责人看不到也领不回，「打开它」「去领取」都走不通，不摆（11-03 B7-3）
   const 我退的 = 在公海 && !!查.原负责人是我;
   const 负责人 = 撞?.salesOwnerName ?? "";

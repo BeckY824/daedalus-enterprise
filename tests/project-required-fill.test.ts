@@ -67,7 +67,9 @@ describe("填法表", () => {
   });
   it("要传文件、记沟通、走判定的不假装能填，且写清去哪", () => {
     const 去 = (k: 必填项) => { const 类 = 归类(k, 环境()); return 类.类 === "去" ? 类.去 : "能填"; };
-    for (const k of ["下一步时间", "下一步计划", "本节点沟通", "沟通三项", "有效沟通"] as const) expect(去(k)).toBe("沟通");
+    for (const k of ["下一步时间", "下一步计划", "本节点沟通", "沟通三项"] as const) expect(去(k)).toBe("沟通");
+    // 有效沟通 11-05 起 = 线索验证那一步配的其他必填项都填好，不是记一条沟通能补上的
+    expect(去("有效沟通")).toBeNull();
     for (const k of ["合同附件", "项目方案"] as const) expect(去(k)).toBe("附件");
     expect(去("回款")).toBe("回款");
     expect(去("线索验证结果")).toBe("线索验证");

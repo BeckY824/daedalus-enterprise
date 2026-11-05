@@ -52,7 +52,7 @@ const 开关开能跑 = await 接口都在();
 import { 红清单 } from "./sim/红清单";
 
 // 企业版线索转项目要带首条跟进（10-26 #13）；这家开了超时回收，下一步时间也得填
-const 转化首条 = () => ({ type: "PHONE", content: "转化前电话聊了需求", occurredAt: dayjs().subtract(1, "hour").format("YYYY-MM-DD HH:mm"), 下一步时间: dayjs().add(3, "day").format("YYYY-MM-DD") });
+const 转化首条 = () => ({ type: "PHONE", content: "转化前电话聊了需求", occurredAt: dayjs().subtract(1, "hour").format("YYYY-MM-DD HH:mm"), 下一步时间: dayjs().add(3, "day").format("YYYY-MM-DD"), 下一步: "回访报价" });
 
 // ———————————————————— 检查点（开关开那组）：id → 规则号 + 断言什么 ————————————————————
 
@@ -194,7 +194,7 @@ function 向导输入(负责人: string, 名: string, 下一步: string | null, 
     },
     联系人: { name: `联系人${名}`, position: "采购", phone: `1380000${尾}` },
     项目: { name: 名, amount: 10000, currency: "CNY", 业务线: "内贸", ...(指派给 ? { ownerId: 公.id[指派给] } : {}) },
-    跟进: { type: "PHONE", content: `${名} 首次沟通`, occurredAt: 现在文本(), ...(下一步 ? { 下一步时间: 下一步 } : {}) },
+    跟进: { type: "PHONE", content: `${名} 首次沟通`, occurredAt: 现在文本(), ...(下一步 ? { 下一步时间: 下一步, 下一步: `${名} 回访` } : {}) },
   };
   // 企业版新建线索（10-26 三大阶段）：负责人、渠道、跟进节点、客户是否明确回复必选；首条沟通记成明确回复了（有效线索）
   if (渠道id) {

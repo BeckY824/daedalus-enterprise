@@ -1,7 +1,7 @@
 /**
  * 企业版建档的全公司号码查重（lib/enterprise/contact-dedupe.ts + customers/number-actions.ts 查号码 +
  * saveCustomer 的 企业号码，测试清单 B5 / B8）：不分谁名下、客户上和联系人上都比；撞到好几条认首条（建档最早）；
- * 旺旺 ID 记进联系方式子表 ContactMethod、换个大小写空格也撞。开关关着：没有号码类型、保存不认 企业号码、查重照旧
+ * 旺旺 ID 记进联系方式子表 ContactMethod、换个大小写空格也撞；回收站里的号也拦（客户 11-05（X-10））。开关关着：没有号码类型、保存不认 企业号码、查重照旧
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -16,7 +16,8 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { saveCustomer, checkDuplicate, type CustomerInput } from "@/app/(app)/customers/actions";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
-import { 全公司查号, 撞号结论 } from "@/lib/enterprise/contact-dedupe";
+import { 全公司查号, 撞号结论, 回收站里有提示 } from "@/lib/enterprise/contact-dedupe";
+import { AI建档查重 } from "@/lib/enterprise/ai-lead-dedupe";
 import { 查重提示 } from "@/lib/enterprise/contact-format";
 import { invalidateSettingsCache } from "@/lib/settings";
 
@@ -162,6 +163,27 @@ describe("企业版开着", () => {
     expect(await 查号码("旺旺ID", "SUBSHOP : kf01")).toMatchObject({ 状态: "重复" });
     // 类型不同不算撞：同一串记成微信，拿去查旺旺不撞
     expect(await 查号码("旺旺ID", "SubWx_01")).toMatchObject({ 状态: "首次录入" });
+  });
+
+  it("回收站里的号（客户 11-05（X-10））：查重、保存、AI 建档都拦下，叫人找系统管理员恢复；在用的也撞了照在用的说", async () => {
+    const 删 = new Date();
+    const c = await 建("删了的客户", 乙, { phone: "13900000301", deletedAt: 删 });
+    await prisma.contactMethod.create({ data: { customerId: c.id, kind: "wangwang", value: "DelShop", numberKey: "delshop" } });
+    const 活 = await 建("在用的客户", 乙);
+    await prisma.contact.create({ data: { customerId: 活.id, name: "删了的联系人", email: "gone@corp.com", deletedAt: 删 } });
+    const 拦 = { ok: true, 状态: "回收站里有", 提示: 回收站里有提示, 撞: { id: null, name: null, salesOwnerName: "系统管理员" } };
+    expect(await 查号码("手机号", "13900000301")).toMatchObject(拦);
+    expect(await 查号码("旺旺ID", "delshop")).toMatchObject(拦);
+    expect(await 查号码("邮箱", "GONE@corp.com")).toMatchObject(拦);
+    expect(await 查号码("手机号", "13900000302")).toMatchObject({ 状态: "首次录入" });
+    expect(await saveCustomer(客户({ name: "同号重建", 企业号码: { 类型: "手机号", 值: "13900000301" } }))).toMatchObject({ ok: false, error: 回收站里有提示 });
+    expect(await saveCustomer(客户({ name: "同号重建", 企业号码: { 类型: "旺旺ID", 值: "DelShop" } }))).toMatchObject({ ok: false, error: 回收站里有提示 });
+    expect(await prisma.customer.count({ where: { name: "同号重建" } })).toBe(0);
+    expect(await AI建档查重([{ 类型: "邮箱", 值: "gone@corp.com", 键: "gone@corp.com" }], { id: 甲, name: "甲" })).toBe(回收站里有提示);
+    expect(await prisma.task.count()).toBe(0);
+    // 在用的也有这个号：照在用的说
+    await 建("乙的新客户", 乙, { phone: "13900000301" });
+    expect(await 查号码("手机号", "13900000301")).toMatchObject({ 状态: "重复", 提示: "号码重复：客户「乙的新客户」已有此号码，本次录入已拦截，可与 乙 沟通核实" });
   });
 
   it("撞到好几条认首条（建档最早）：先建的是同事 → 提示同事；首条在公海 → 公海待捞", async () => {

@@ -331,6 +331,7 @@ describe("虚线上级批量改负责人", () => {
 
 describe("市场管理看线索（F9 10-25）", () => {
   const 市场 = "e_mkt";
+  const 市场下属 = "e_mkt_a";
   const 开分配 = async (on: boolean) => {
     await raw.setting.upsert({ where: { key: 规则.线索分配.key }, update: { value: JSON.stringify(on) }, create: { key: 规则.线索分配.key, value: JSON.stringify(on) } });
     忘掉企业版范围();
@@ -340,28 +341,40 @@ describe("市场管理看线索（F9 10-25）", () => {
     await 开规则(true);
     await raw.user.create({ data: { id: 市场, email: `${市场}@x.com`, name: "市场", password: "x", role: "SALES" } });
     await raw.entMember.create({ data: { userId: 市场, bizRole: "marketing_mgr" } });
-    await raw.lead.createMany({ data: [{ id: "l_mkt", name: "L市场的", ownerId: 市场 }, { id: "l_wai", name: "L外人的", ownerId: 外人 }, { id: "l_wang", name: "L小王的", ownerId: 小王 }] });
+    // 11-05 市场圈 = 本人 + 实线下属：挂一个下属
+    await raw.user.create({ data: { id: 市场下属, email: `${市场下属}@x.com`, name: "市场下属", password: "x", role: "SALES" } });
+    await raw.entMember.create({ data: { userId: 市场下属, bizRole: "channel_ops", managerId: 市场 } });
+    await raw.lead.createMany({
+      data: [
+        { id: "l_mkt", name: "L市场的", ownerId: 市场 },
+        { id: "l_wai", name: "L外人的", ownerId: 外人 },
+        { id: "l_wang", name: "L小王的", ownerId: 小王 },
+        { id: "l_xia", name: "L下属的", ownerId: 市场下属 },
+        { id: "l_none", name: "L没分的", ownerId: null },
+      ],
+    });
   });
   afterAll(() => 开分配(false));
 
-  it("线索分配关着：市场管理只看自己名下的线索", async () => {
+  it("线索分配关着：市场管理只看自己和实线下属名下的线索（没分的看不到）", async () => {
     await 开分配(false);
-    expect(await 作为(市场, 线索们)).toEqual(["L市场的"]);
+    expect(await 作为(市场, 线索们)).toEqual(["L下属的", "L市场的"]);
     await expect(作为(市场, () => db.lead.update({ where: { id: "l_wai" }, data: { remark: "x" } }))).rejects.toThrow();
   });
 
-  it("线索分配开着：市场管理看、改全部线索（分出去以后还看得到、分得了）；客户照旧按组织架构", async () => {
+  it("线索分配开着：市场管理看、改没分的 + 市场圈（本人 + 实线下属，11-05）负责的线索；别人负责的看不到；客户照旧按组织架构", async () => {
     await 开分配(true);
-    expect(await 作为(市场, 线索们)).toEqual(["L外人的", "L小王的", "L市场的"]);
-    await expect(作为(市场, () => db.lead.update({ where: { id: "l_wai" }, data: { ownerId: 小王 } }))).resolves.toMatchObject({ ownerId: 小王 });
+    expect(await 作为(市场, 线索们)).toEqual(["L下属的", "L市场的", "L没分的"]);
+    await expect(作为(市场, () => db.lead.update({ where: { id: "l_wai" }, data: { remark: "x" } }))).rejects.toThrow();
+    await expect(作为(市场, () => db.lead.update({ where: { id: "l_none" }, data: { ownerId: 小王 } }))).resolves.toMatchObject({ ownerId: 小王 });
     expect(await 作为(市场, 名单)).toEqual(["G公海"]);
   });
 
   it("线索分配开着：不是市场管理的照旧（经理只看自己和实线下属的）", async () => {
     await 开分配(true);
-    // 上一条把 L外人的 分给了小王：经理看得到小王名下的两条，看不到市场名下的
-    expect(await 作为(经理, 线索们)).toEqual(["L外人的", "L小王的"]);
-    expect(await 作为(外人, 线索们)).toEqual([]);
+    // 上一条把 L没分的 分给了小王：经理看得到小王名下的两条，看不到市场名下的
+    expect(await 作为(经理, 线索们)).toEqual(["L小王的", "L没分的"]);
+    expect(await 作为(外人, 线索们)).toEqual(["L外人的"]);
     await expect(作为(经理, () => db.lead.update({ where: { id: "l_mkt" }, data: { remark: "x" } }))).rejects.toThrow();
   });
 });
