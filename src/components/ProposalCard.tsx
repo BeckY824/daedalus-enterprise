@@ -7,7 +7,7 @@ import Shortcut from "./Shortcut";
 import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Select, Input, Checkbox, Radio } from "antd";
+import { App, Select, Input, Checkbox } from "antd";
 import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
@@ -24,6 +24,7 @@ import { dayjs } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
 import dynamic from "next/dynamic";
 
@@ -61,11 +62,12 @@ export const 新线索来源 = createContext<readonly string[] | null>(null);
 export const 新线索要下一步 = createContext(false);
 /**
  * 同一处（11-04）：新线索卡和「新建项目」向导走同一套分配 —— 分配方式（按业务角色能用的那几种）、
- * 指定分配时的负责人候选、业务线、当前进程、客户明确回复。服务端算好传进来（dashboard/page.tsx，同 wizard-data.ts）
+ * 指定分配时的负责人候选、业务线、当前进程（11-05 起只到线索验证，不再问客户明确回复）。服务端算好传进来（dashboard/page.tsx，同 wizard-data.ts）
  */
 export type 新线索企业格 = { 成员: { value: string; label: string }[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式: number | null; 是销售: boolean };
 export const 新线索企业 = createContext<新线索企业格 | null>(null);
-const 线索节点们 = 企业版字典.节点们.线索;
+/** 新建只能落在线索验证及之前（11-05：过了线索验证要看它的必填项，新建时填不了；lib/project/wizard.ts 同口径） */
+const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
 
 type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string };
 
@@ -493,14 +495,14 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
                 onChange={(v) => setDraft({ ...draft, source: v })}
               />
             </Field>
-            {/* 企业版建成项目：首条沟通的下一步时间（开了超时回收必填）；别的版本不显示 */}
-            {渠道名们 && 企卡 && (
+            {/* 企业版建成项目：首条沟通的下一步计划 + 时间（开了超时回收都必填，11-05）；别的版本不显示 */}
+            {渠道名们 && (企卡 || 要下一步) && (
               <Field label="下一步做什么">
-                <Input size="small" style={{ width: 200 }} placeholder="可留空" maxLength={200} value={draft.下一步 ?? ""} onChange={(e) => setDraft({ ...draft, 下一步: e.target.value || undefined })} />
+                <Input size="small" style={{ width: 200 }} placeholder={要下一步 ? "必填，一句话" : "可留空"} maxLength={100} value={draft.下一步 ?? ""} onChange={(e) => setDraft({ ...draft, 下一步: e.target.value || undefined })} />
               </Field>
             )}
             {渠道名们 && (
-              <Field label={企卡 ? "下一步时间" : "下一步"}>
+              <Field label={企卡 || 要下一步 ? "下一步时间" : "下一步"}>
                 <DatePicker
                   size="small"
                   style={{ width: 130 }}
@@ -537,12 +539,6 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
                 </Field>
                 <Field label="当前进程">
                   <Select size="small" style={{ width: 150 }} value={draft.节点} options={线索节点们.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 节点: v })} />
-                </Field>
-                <Field label="客户明确回复了吗" block>
-                  <Radio.Group size="small" value={draft.明确回复} onChange={(e) => setDraft({ ...draft, 明确回复: e.target.value })}>
-                    <Radio value={true}>客户明确回复了</Radio>
-                    <Radio value={false}>没有明确回复</Radio>
-                  </Radio.Group>
                 </Field>
               </>
             ) : 渠道名们 ? (

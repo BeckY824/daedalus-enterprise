@@ -2,7 +2,7 @@
  * 企业版「市场成员」（2026-10-31，lib/enterprise/market.ts + visibility.ts + team-scope）。
  * 钉的是：市场部门（没设 = 名字带「市场」的部门和下级；设了按设的）的人，自己建的（已有负责人、不在公海）、负责的客户转给销售后还看得到
  * （11-04 起只负责 / 建过项目的客户不再算，项目本身照看得到），
- * 连同项目，只能看（改、转、记沟通都拦）；市场管理看得到所有市场成员看得到的；市场部门以外的人照旧；
+ * 连同项目，只能看（改、转、记沟通都拦）；市场管理看得到市场圈（本人 + 实线下属，11-05）里市场成员看得到的；市场部门以外的人照旧；
  * 本来能改的不降（自己负责的客户、自己负责的项目）；「按组织看客户」关着不起作用；市场部门只有老板和总管理员能改。
  * 用拷出来的一份库、显式单连接，不碰共用的测试库。
  */
@@ -84,16 +84,17 @@ beforeAll(async () => {
   });
   await raw.entMember.createMany({
     // 11-01 权限只认业务角色：老板（账号 ADMIN）也要有总管理，不然只看公海
+    // 11-05 市场管理只看市场圈（本人 + 实线下属）：市场成员都挂在市场经理下面
     data: [
       { userId: 老板, bizRole: "director" },
       { userId: 总管, bizRole: "director" },
       { userId: 市场经理, bizRole: "marketing_mgr", deptId: 部.市场 },
-      { userId: 小市, bizRole: "channel_ops", deptId: 部.市场一组 },
-      { userId: 小场, bizRole: "channel_ops", deptId: 部.市场 },
+      { userId: 小市, bizRole: "channel_ops", deptId: 部.市场一组, managerId: 市场经理 },
+      { userId: 小场, bizRole: "channel_ops", deptId: 部.市场, managerId: 市场经理 },
       { userId: 销售, bizRole: "sales", deptId: 部.销售 },
       { userId: 外人, bizRole: "sales", deptId: 部.销售 },
-      { userId: 品宣, bizRole: "channel_ops", deptId: 部.品牌 },
-      { userId: 走了, bizRole: "channel_ops", deptId: 部.市场 },
+      { userId: 品宣, bizRole: "channel_ops", deptId: 部.品牌, managerId: 市场经理 },
+      { userId: 走了, bizRole: "channel_ops", deptId: 部.市场, managerId: 市场经理 },
     ],
   });
   const 建客户 = async (name: string, salesOwnerId: string, 创建人?: string) => {
@@ -231,6 +232,18 @@ describe("默认市场部门（名字带「市场」）", () => {
     await expect(作为(市场经理, () => db.customer.update({ where: { id: a.id }, data: { major: "x" } }))).rejects.toThrow(/市场成员/);
   });
 
+  it("市场管理只看市场圈（11-05）：不是自己实线下属的市场成员，建的、负责的都看不到", async () => {
+    await raw.entMember.update({ where: { userId: 小市 }, data: { managerId: null } });
+    忘掉企业版范围();
+    try {
+      expect(await 名单(市场经理)).toEqual([]);
+      expect(await 项目名单(市场经理)).toEqual(["PB小场负责的", "PH小场建的"]);
+    } finally {
+      await raw.entMember.update({ where: { userId: 小市 }, data: { managerId: 市场经理 } });
+      忘掉企业版范围();
+    }
+  });
+
   it("市场部门以外的人照旧：销售看、改自己的；别的销售、品牌部的人看不到", async () => {
     expect(await 名单(销售)).toEqual(["A小市建的", "B小场负责项目", "C销售自己的", "D品宣建的", "F走了的人建的", "H小场建过项目"]);
     expect(await 作为(销售, () => 有市场只读(raw))).toBe(false);
@@ -260,7 +273,8 @@ describe("手动设的市场部门", () => {
     // 不算市场成员了：自己负责的、渠运自己建的（V3.5.1 永久可见）、自己负责 / 建的项目挂着的客户照样看得到
     expect(await 名单(小市)).toEqual(["A小市建的", "E小市负责的"]);
     expect(await 名单(小场)).toEqual([]); // 11-04：只负责 / 建过项目、客户不是自己的，客户不再看得到
-    expect(await 名单(市场经理)).toEqual(["D品宣建的"]);
+    // 市场圈里只剩品宣；E 是实线下属小市自己负责的，走组织架构那条线照样看得到
+    expect(await 名单(市场经理)).toEqual(["D品宣建的", "E小市负责的"]);
   });
 
   it("设成下级部门：只算这一组（连它的下级）", async () => {

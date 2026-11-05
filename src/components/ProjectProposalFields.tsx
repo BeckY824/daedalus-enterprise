@@ -78,9 +78,6 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
           <F label="内容" block>
             <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 8 }} value={draft.content} onChange={(e) => 设({ content: e.target.value })} />
           </F>
-          <F label="客户明确回复了吗">
-            <Select size="small" style={{ width: 90 }} value={draft.明确回复 || undefined} placeholder="选" options={["是", "否"].map((v) => ({ value: v, label: v }))} onChange={(v) => 设({ 明确回复: v })} />
-          </F>
           <F label="下一步">
             <Input size="small" style={{ width: 240 }} value={draft.下一步} onChange={(e) => 设({ 下一步: e.target.value })} />
           </F>

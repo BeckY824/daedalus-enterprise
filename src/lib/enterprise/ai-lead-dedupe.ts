@@ -4,6 +4,7 @@
  *   重复：不录入，回录入的人「〈原负责人〉已有该客户信息，请及时核对」，
  *         给原负责人建一条待办挂在原客户上「〈触发人〉疑似与您负责的〈客户名〉重复，请及时核对」（看不看得到原客户都建，待办只给原负责人）
  *   公海待捞、我名下已有：照查重原提示拦
+ *   在用的没撞、回收站里撞了：照建档的提示拦，叫人找系统管理员恢复（客户 11-05（X-10））
  *   团队版服务端那边撞的：本机没有那位客户可挂待办，只回提示
  * 不加字段：邮箱、微信进联系人原有的两格，认出来的那几行从备注拿掉，认不出的原样留在备注
  */
@@ -12,7 +13,7 @@ import { 读的我, 看全部 } from "@/lib/team-scope";
 import { parseScheduleDate, calendarDay } from "@/lib/schedule-date";
 import { recordAudit } from "@/lib/audit";
 import { 验号码, 查重提示, type 号码类型 } from "./contact-format";
-import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞 } from "./contact-dedupe";
+import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞, 回收站撞没撞 } from "./contact-dedupe";
 import { notify } from "./notify";
 import { 同号再次录入, type 录入信息 } from "./same-number-collab";
 
@@ -58,6 +59,8 @@ export async function AI建档查重(号们: 认出的号[], 我: { id: string; 
   for (const 号 of 号们) {
     const ids = await 全公司查号(prisma, 号.类型, 号.值, 号.键);
     if (!ids.length) {
+      const 回收站 = await 回收站撞没撞(prisma, 号);
+      if (回收站) return 回收站.提示;
       const 那边 = await 问同事撞没撞(号.类型, 号.值);
       if (那边?.撞) return 查重提示.AI建档重复(那边.撞.salesOwnerName);
       continue;

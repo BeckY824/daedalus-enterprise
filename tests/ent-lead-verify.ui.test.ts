@@ -29,7 +29,7 @@ beforeAll(async () => {
     const 跑=async(f)=>{const r=await f();return r.ok;};
     window.__render=(我能,没有效沟通)=>root.render(<ConfigProvider locale={zhCN}><App><div style={{display:'flex',flexDirection:'column',gap:16}}>
       <LeadVerifyPanel projectId='p1' v={{判定:我能==='初判'?'暂未判定':'初验无效',待:我能==='初判'?null:我能,无效原因:我能==='初判'?null:'其他：'+词,复核结果:null,最终结果:null,终验:null,初判即终判:false,叫法:我能==='初判'?'暂未验证':'初验无效',我能,痕:我能==='初判'?[]:痕}}
-        无效原因选项={['需求不存在','联系方式无效','其他']} 跑={跑} 忙={false} 没有效沟通={没有效沟通} 不给推={null}/>
+        无效原因选项={['需求不存在','联系方式无效','其他']} 跑={跑} 忙={false} 缺有效沟通话={没有效沟通?"还差有效沟通：需求状态":null} 不给推={null}/>
       <VerifyInbox 们={[
         {projectId:'p1',项目:'超长项目名'+词,负责人:'业务员'+词,步:'市场复核',无效原因:'其他：'+词,初判说明:串,复核说明:null,异议说明:null,更新于:'2026-10-29T01:00:00.000Z'},
         {projectId:'p2',项目:'二号',负责人:'乙',步:'销售终验',无效原因:'联系方式无效',初判说明:null,复核说明:串,异议说明:null,更新于:'2026-10-29T01:00:00.000Z'},

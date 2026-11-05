@@ -13,6 +13,9 @@
  * 本机都没撞的，手机号 / 邮箱 / 微信再问一下团队版服务端（问同事，没开团队版当没撞），和原来的查重一样。
  * 撞了好几条的认「首条」：建档最早的那条（客户还没有编号，建档时间 + id 就是编号顺序），提示说首条的负责人，首条在公海的说公海待捞。
  *
+ * 回收站里的也算撞（客户 11-05（X-10），防删了再用同号重建）：本机在用的都没撞，再看回收站（删了还没过 30 天的客户 / 联系人），
+ * 撞了拦下、叫人找系统管理员恢复（状态「回收站里有」，提示原文是我们拟的）。在用的撞了照旧按在用的说，回收站只在在用的都没撞时才查。
+ *
  * B8 的七条提示做了四条：✅首次录入、⛔公海待捞、📒我的通讯录已有、号码重复（看得到的带客户名、本次录入已拦截、可与 X 沟通核实）。
  * 没做：「❎首次录入，但与 X 存在重复」（要按客户名查重，清单 A8 定了不做）；「📁请上传二维码图片」
  * 「🔀请选择号码类型」两条是格式那一半的（contact-format.ts）
@@ -28,6 +31,7 @@ import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
 import { 离职负责人找谁 } from "./departed-owner";
+import { 看已删, 在看已删 } from "./soft-delete-core";
 
 /** ContactMethod.kind：号码类型 → 库里的写法。二维码没有号，不进子表 */
 export const 号码库类型 = { 手机号: "phone", 邮箱: "email", 微信: "wechat", 旺旺ID: "wangwang" } as const satisfies Partial<Record<号码类型, string>>;
@@ -39,16 +43,20 @@ export type 验好的号 = { 类型: 号码类型; 值: string; 键: string };
 
 type 库 = Prisma.TransactionClient | typeof prisma;
 
-/** 联系人表里号码对得上的客户 id。联系人的电话存的是人填的原样，按号键比；国内号顺带认带 86 的写法。回收站里的联系人不算（P9） */
+/**
+ * 联系人表里号码对得上的客户 id。联系人的电话存的是人填的原样，按号键比；国内号顺带认带 86 的写法。
+ * 回收站里的联系人不算（P9）；包在 看已删 里（回收站里查号）连回收站里的一起算——裸 SQL 不经过软删扩展，这里自己认
+ */
 async function 联系人里的(db: 库, 类型: "手机号" | "邮箱" | "微信", 键: string): Promise<string[]> {
+  const 未删 = 在看已删() ? "" : `"deletedAt" IS NULL AND `;
   if (类型 === "手机号") {
     const 键们 = /^\d{11}$/.test(键) ? [键, `86${键}`] : [键];
     const 行 = await db.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT DISTINCT "customerId" AS id FROM "Contact" WHERE "deletedAt" IS NULL AND ${号键SQL('"phone"')} IN (${键们.map(() => "?").join(", ")})`, ...键们);
+      `SELECT DISTINCT "customerId" AS id FROM "Contact" WHERE ${未删}${号键SQL('"phone"')} IN (${键们.map(() => "?").join(", ")})`, ...键们);
     return 行.map((r) => r.id);
   }
   const 列 = 类型 === "邮箱" ? "email" : "wechat";
-  const 行 = await db.$queryRawUnsafe<{ id: string }[]>(`SELECT DISTINCT "customerId" AS id FROM "Contact" WHERE "deletedAt" IS NULL AND lower(trim("${列}")) = ?`, 键);
+  const 行 = await db.$queryRawUnsafe<{ id: string }[]>(`SELECT DISTINCT "customerId" AS id FROM "Contact" WHERE ${未删}lower(trim("${列}")) = ?`, 键);
   return 行.map((r) => r.id);
 }
 
@@ -79,6 +87,27 @@ export async function 全公司查号(db: 库, 类型: 号码类型, 值: string
   return [...ids];
 }
 
+/**
+ * 号码只在回收站里撞到的客户 id（客户 11-05（X-10））：连回收站一起查一遍，去掉在用的那些。
+ * 剩下的 = 删了的客户；或客户还在、带这个号的联系人删了。回收站过了 30 天清掉的就不再算
+ */
+export async function 回收站里查号(db: 库, 类型: 号码类型, 值: string, 键: string, 除了?: string): Promise<string[]> {
+  const 全 = await 看已删(() => 全公司查号(db, 类型, 值, 键, 除了));
+  if (!全.length) return [];
+  const 在用 = new Set(await 全公司查号(db, 类型, 值, 键, 除了));
+  return 全.filter((id) => !在用.has(id));
+}
+
+/** 回收站里撞了的提示（客户 11-05（X-10），原文是我们拟的） */
+export const 回收站里有提示 = "这个号码在回收站里，本次录入已拦截，请找系统管理员恢复";
+
+/** 在用的没撞、回收站里撞了：拦下，叫人找系统管理员恢复；回收站里也没有回 null。不给客户名、id（回收站里的不在列表里，点不进去） */
+export async function 回收站撞没撞(db: 库, 号: 验好的号): Promise<查号结论 | null> {
+  const ids = await 回收站里查号(db, 号.类型, 号.值, 号.键);
+  if (!ids.length) return null;
+  return { 状态: "回收站里有", 提示: 回收站里有提示, 撞: { id: null, name: null, school: null, salesOwnerName: "系统管理员", createdAt: null } };
+}
+
 /** 给人看的撞到的那位：和 checkDuplicate 的 DuplicateHit 一个样子 */
 export type 撞到的人 = {
   id: string | null; name: string | null; school: string | null; salesOwnerName: string; createdAt: string | null;
@@ -89,6 +118,8 @@ export type 撞到的人 = {
 export type 查号结论 =
   | { 状态: "首次录入"; 提示: string; 撞: null }
   | { 状态: "我的通讯录已有" | "重复"; 提示: string; 撞: 撞到的人 }
+  /** 在用的没撞、回收站里撞了（客户 11-05（X-10））：撞 只有「系统管理员」这个名字，没有客户名、id */
+  | { 状态: "回收站里有"; 提示: string; 撞: 撞到的人 }
   /** 原负责人是我 = 我自己放回（或被收回）公海的、企业版原负责人领不回也看不到：向导不给「打开它」「去领取」（11-03 B7-3） */
   | { 状态: "公海待捞"; 提示: string; 撞: 撞到的人; 原负责人是我?: true };
 
@@ -152,11 +183,14 @@ export async function 问同事撞没撞(类型: 号码类型, 值: string): Pro
   return 撞 ? { 状态: "重复", 提示: 查重提示.重复(撞.同事), 撞: { id: null, name: null, school: null, salesOwnerName: 撞.同事, createdAt: null } } : null;
 }
 
-/** 查重整套：全公司本机比一遍，没撞再问团队版服务端。向导的「查重」按钮和 saveCustomer 保存前都走这一个 */
+/**
+ * 查重整套：全公司本机在用的比一遍，没撞看回收站（客户 11-05（X-10）），再没撞问团队版服务端。
+ * 向导的「查重」按钮、建档向导联系人那一步、saveCustomer 保存前都走这一个
+ */
 export async function 企业号码查重(db: 库, 号: { 类型: 号码类型; 值: string; 键: string }, 我: string, 读的我: 谁 | null): Promise<查号结论> {
   const ids = await 全公司查号(db, 号.类型, 号.值, 号.键);
   if (ids.length) return 撞号结论(db, ids, 我, 读的我);
-  return (await 问同事撞没撞(号.类型, 号.值)) ?? { 状态: "首次录入", 提示: 查重提示.首次录入, 撞: null };
+  return (await 回收站撞没撞(db, 号)) ?? (await 问同事撞没撞(号.类型, 号.值)) ?? { 状态: "首次录入", 提示: 查重提示.首次录入, 撞: null };
 }
 
 /**

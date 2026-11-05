@@ -302,7 +302,7 @@ export const 建议SCHEMAS: Record<string, Schema> = {
   },
   propose_project_followup: {
     type: "object",
-    properties: { project: 串("项目名或客户名"), projectId: 串(), type: 串("沟通方式"), content: 串(), 明确回复: 串("是 / 否"), 下一步: 串(), 下一步时间: 串("YYYY-MM-DD"), reason: 串(理由) },
+    properties: { project: 串("项目名或客户名"), projectId: 串(), type: 串("沟通方式"), content: 串(), 下一步: 串(), 下一步时间: 串("YYYY-MM-DD"), reason: 串(理由) },
     required: ["content", "reason"],
     additionalProperties: false,
   },
@@ -310,7 +310,7 @@ export const 建议SCHEMAS: Record<string, Schema> = {
     type: "object",
     properties: {
       project: 串("项目名或客户名"), projectId: 串(), 卡点类型: 串(), 影响等级: 串(), 卡点描述: 串(),
-      type: 串("沟通方式"), content: 串(), 明确回复: 串("是 / 否"), 下一步: 串(), 下一步时间: 串("YYYY-MM-DD"), reason: 串(理由),
+      type: 串("沟通方式"), content: 串(), 下一步: 串(), 下一步时间: 串("YYYY-MM-DD"), reason: 串(理由),
     },
     required: ["卡点类型", "卡点描述", "reason"],
     additionalProperties: false,

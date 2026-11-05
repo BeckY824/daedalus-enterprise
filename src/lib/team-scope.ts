@@ -88,7 +88,8 @@ const 等于 = (w: 谁) => (typeof w === "string" ? w : { in: [...w] });
  * 我：业务员本机的 id（老板等 = null）；互看：团队开了同事互看；别人的：只能看的客户（互看时同事负责、不在公海的；
  * 企业版是虚线下属的），拦在它们下面新建。
  * 企业版另有：读 = 看得到谁的客户（比 我 多出虚线下属）；全拦 = 只能看的客户下面跟进也不许建；话 = 挡下时给人看的那句；
- * 线索全看 = 线索不限定（市场管理开着线索分配时要看、要分全部线索，F9 10-25），客户那条线照旧；
+ * 线索全看 = 线索按 线索圈 限定（市场管理开着线索分配时要看、要分线索，F9 10-25）：没分的 + 线索圈里的人负责的（11-05 收窄到市场圈）；
+ *   没带 线索圈 = 不限定。客户那条线照旧；
  * 市场 = 市场成员（10-31）：读另外放开这几位市场成员相关的客户（创建人、负责人、建过 / 负责项目），只读，别人的 里也有它们；
  * 按线 = 管理员设了业务线（11-02，enterprise/line-viewer.ts）：读另外按这条线放开，where 在范围里算好带下来（这里不认组织）
  */
@@ -100,7 +101,7 @@ export type 按线读 = { 本人: string; 项目: Record<string, unknown>; 客�
  */
 export type 公海回避 = { 本人: string; 客户: string[] | null; 项目: string[] | null };
 export type 限定 = {
-  我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean; 市场?: readonly string[]; 按线?: 按线读;
+  我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean; 线索圈?: readonly string[]; 市场?: readonly string[]; 按线?: 按线读;
   /** 企业版管理员（业务角色 admin，11-01）：看全部、写一律拒，这一句就是拒的时候给人看的话（加上限定 统一拦） */
   只读?: string;
   公海回避?: 公海回避;
@@ -640,7 +641,7 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           if (写操作.has(operation)) 改完推一下();
           // 企业版软删（P9）：回收站里的统一滤掉，比业务员范围先算（老板也看不到删了的，除非在 看已删() 里）
           const args = (企业版() && !在看已删() ? 去掉已删(model, operation, 原参数) : 原参数) as typeof 原参数;
-          const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看, 市场, 按线, 公海回避, 组员客户 } = await 现在的限定(db);
+          const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看, 线索圈, 市场, 按线, 公海回避, 组员客户 } = await 现在的限定(db);
           if (!我) {
             if (!公海回避) return query(args);
             // 规则关着（别人都不限定）：只加原负责人回避这一段，读写都挡
@@ -661,7 +662,8 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           }
           // 带出来的关联都是读：市场那段跟着放开。写（改、删）照旧只按 我，市场相关的改不到
           const a = 限定关联(model, (args ?? {}) as 查询参数, (m) => 限定条件(m, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户));
-          const 条件 = !限定的操作.has(operation) || (线索全看 && model === "Lead") ? null : 写操作.has(operation) ? 限定条件(model, 我, false, undefined, undefined, 公海回避) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户);
+          const 线索放 = 线索全看 && model === "Lead";
+          const 条件 = !限定的操作.has(operation) ? null : 线索放 ? (线索圈 ? { OR: [{ ownerId: null }, { ownerId: { in: [...线索圈] } }] } : null) : 写操作.has(operation) ? 限定条件(model, 我, false, undefined, undefined, 公海回避) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户);
           // 原来的 where 原样摊开、条件并进 AND：findUnique / update / delete 要求唯一键留在最外层
           const q = query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
           if (!有只读 || !条件 || !单条改删.has(operation)) return q;

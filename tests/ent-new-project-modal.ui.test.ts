@@ -36,7 +36,9 @@ it("11-01 §6：新开项目在弹窗里填完、建好不跳页（刷新 + 提�
     await 框.getByText("新增项目").waitFor();
     await 框.getByRole("button", { name: "下一步" }).click();
     await 框.locator("textarea").fill("第一次电话，聊了需求");
-    await 框.getByText("明确回复了", { exact: true }).click();
+    // 11-05：不再问客户明确回复了吗；下一步计划没开超时回收时选填，填了随这一次交
+    expect(await 框.getByText("明确回复了", { exact: true }).count()).toBe(0);
+    await 框.getByLabel("下一步计划").fill("发报价单");
     await 框.getByRole("button", { name: /建\s*好/ }).click();
     const 提示 = page.getByTestId("new-project-done");
     await 提示.waitFor();
@@ -47,6 +49,8 @@ it("11-01 §6：新开项目在弹窗里填完、建好不跳页（刷新 + 提�
     // 分配方式、业务线（A1）默认带上：业务线默认 = 客户的业务线
     expect(JSON.stringify(记.建)).toContain('"分配方式":0');
     expect(JSON.stringify(记.建)).toContain('"业务线":"内贸"');
+    expect(JSON.stringify(记.建)).toContain('"下一步":"发报价单"');
+    expect(JSON.stringify(记.建)).not.toContain("明确回复");
     expect(记.跳).toEqual([]);
     expect(记.刷新).toBe(1);
     expect(await page.getByTestId("还在客户页").count()).toBe(1);

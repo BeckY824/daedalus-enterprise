@@ -15,7 +15,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Dayjs } from "dayjs";
-import { Alert, App, Button, Form, Input, Modal, Radio, Select, Steps } from "antd";
+import { Alert, App, Button, Form, Input, Modal, Select, Steps } from "antd";
+import { 下一步文字上限 } from "@/lib/project/project-fields";
+import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
 import DatePicker from "@/components/BusinessDatePicker";
 import { useBusiness } from "@/lib/business-client";
@@ -49,8 +51,9 @@ type 表单 = {
   occurredAt: Dayjs;
   content: string;
   节点?: string;
-  明确回复?: boolean;
   下一步时间?: Dayjs | null;
+  /** 下一步计划（11-05，代替「客户明确回复了吗」）：开了超时回收时必填 */
+  下一步?: string;
 };
 
 export default function NewProjectModal({
@@ -179,7 +182,7 @@ export default function NewProjectModal({
           occurredAt: v.occurredAt.format(时间格式),
           下一步时间: v.下一步时间 ? v.下一步时间.format("YYYY-MM-DD") : null,
           节点: v.节点,
-          明确回复: v.明确回复 ?? null,
+          下一步: v.下一步?.trim() || null,
         },
       });
       if (!r.ok) {
@@ -311,13 +314,7 @@ export default function NewProjectModal({
           <Input.TextArea rows={4} />
         </Form.Item>
         <Form.Item name="节点" label="当前进程" rules={[{ required: true, message: "请选当前进程（线索阶段的哪一步）" }]}>
-          <Select options={节点们.map((n) => ({ value: n, label: n }))} />
-        </Form.Item>
-        <Form.Item name="明确回复" label="客户明确回复了吗" rules={[{ required: true, message: "请选：客户明确回复了吗" }]}>
-          <Radio.Group>
-            <Radio value={true}>明确回复了</Radio>
-            <Radio value={false}>没有明确回复</Radio>
-          </Radio.Group>
+          <Select options={节点们.slice(0, 节点们.indexOf(有效线索节点) + 1 || undefined).map((n) => ({ value: n, label: n }))} />
         </Form.Item>
         <Form.Item
           name="下一步时间"
@@ -326,6 +323,9 @@ export default function NewProjectModal({
           extra={要下一步 ? "到那天还没人跟进，项目会自动回到项目公海" : "选填：打算哪天再跟进，项目上会显示"}
         >
           <DatePicker style={{ width: "100%" }} disabledDate={(x) => x.isBefore(dayjs(), "day")} placeholder="选一天" />
+        </Form.Item>
+        <Form.Item name="下一步" label="下一步计划" rules={要下一步 ? [{ required: true, whitespace: true, message: "请写下一步做什么" }] : []}>
+          <Input aria-label="下一步计划" maxLength={下一步文字上限} placeholder="下一步打算做什么，例如：发报价单" />
         </Form.Item>
         </div>
       </Form>

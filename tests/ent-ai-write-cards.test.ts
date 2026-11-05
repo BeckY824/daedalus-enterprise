@@ -154,10 +154,10 @@ describe("推进节点 / 定结局", () => {
 });
 
 describe("沟通 + 卡点", () => {
-  it("收卡：卡点类型不认得拒；没填明确回复、下一步算缺", () => {
+  it("收卡：卡点类型不认得拒；没填下一步算缺（11-05 起不问明确回复）", () => {
     expect(收("project_followup", { targetId: 项目id, content: "x", 要卡点: true, 卡点类型: "超级卡点" })).toMatchObject({ ok: false });
     const r = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了报价", 要卡点: true, 卡点类型: "" });
-    expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["客户明确回复了吗", "下一步做什么", "卡点类型"]);
+    expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["下一步做什么", "卡点类型"]);
   });
 
   it("负责人确认：转给 记项目沟通Action（带卡点）；沟通、卡点各一条；同事确认一行不写", async () => {
@@ -172,7 +172,7 @@ describe("沟通 + 卡点", () => {
     expect(r).toMatchObject({ ok: true });
     expect(项目动作.记项目沟通Action).toHaveBeenCalledWith(
       项目id,
-      expect.objectContaining({ content: "客户嫌贵", 明确回复: false, 下一步: "下周再报价", 阶段: "线索" }),
+      expect.objectContaining({ content: "客户嫌贵", 下一步: "下周再报价", 阶段: "线索" }),
       { type: "中度卡点", impact: "短期不影响", description: "报价高" },
     );
     expect(await prisma.followUp.count()).toBe(1);

@@ -7,7 +7,7 @@ import DictSelect from "@/components/DictSelect";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
-import { 缺有效沟通, 培育计划上限, 无效原因上限, 有效线索节点 } from "@/lib/project/stage-gates";
+import { 培育计划上限, 无效原因上限, 有效线索节点 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action } from "../actions";
 
@@ -44,7 +44,7 @@ export default function LeadVerifyPanel({
   无效原因选项,
   跑,
   忙,
-  没有效沟通,
+  缺有效沟通话,
   不给推,
 }: {
   projectId: string;
@@ -52,7 +52,8 @@ export default function LeadVerifyPanel({
   无效原因选项: string[];
   跑: 跑法;
   忙: boolean;
-  没有效沟通: boolean;
+  /** 推过线索验证还差有效沟通时的话（带还差哪几项），齐了 null */
+  缺有效沟通话: string | null;
   不给推: string | null;
 }) {
   const [框, set框] = useState<null | "无效" | "培育" | "异议" | "复核有效" | "复核无效">(null);
@@ -69,7 +70,7 @@ export default function LeadVerifyPanel({
     set框(k);
   };
   // 往前推（有效 / 接受复核 / 认领继续）一样要过有效沟通、直属推进这两道门
-  const 推不了 = 没有效沟通 ? 缺有效沟通 : 不给推;
+  const 推不了 = 缺有效沟通话 ?? 不给推;
   const 推按钮 = (文字: string, 做: () => void, testid: string) => (
     <Tooltip title={推不了 ?? undefined}>
       <span>

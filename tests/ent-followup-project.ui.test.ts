@@ -6,7 +6,8 @@
  *   编辑：不摆这一格，交上去不带 projectId
  *   开关关闭（页面不给 projects）：和原来一样是「关联商机」，交上去不带 projectId
  *   Windows 1024 / 1280 / 1366：超长项目名不横向撑出，「保存」点得中
- *   选了项目且项目能记（2026-10-30 P0-3）：多出「客户明确回复了吗」「下一步」，走项目详情同一个 记项目沟通Action；
+ *   选了项目且项目能记（2026-10-30 P0-3）：多出「下一步做什么」「下一步时间」，走项目详情同一个 记项目沟通Action；
+ *     11-05 起不再问「客户明确回复了吗」，下一步做什么必填；
  *     选下一步时间时预演回收日（选这天 → 回收日变为 MM-DD）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -133,24 +134,22 @@ const 卡点默认 = { 默认类型: "轻度卡点", 默认影响: "短期不影
 const 须知 = (底子: { 起点日: string; 天数: number } | null, 能发卡点 = true) => ({ ok: true, 能记: true, phase: "线索", 要下一步: true, 回收预演: 底子, contactId: "k1", 卡点默认: 能发卡点 ? 卡点默认 : null, 卡点原因们: 能发卡点 ? ["价格", "交期"] : [] });
 const 今天 = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date());
 
-it("项目能记：问「客户明确回复了吗」（收在「更多」里），走项目同一个 action，选明天预演回收日", async () => {
+it("项目能记：不再问客户明确回复了吗，下一步做什么必填，走项目同一个 action，选明天预演回收日", async () => {
   const { page, errors } = await open({ 项目: "有", 须知: 须知({ 起点日: 今天(), 天数: 7 }) });
   try {
-    // F-跟进-06：主区只有内容、卡点、下一步、下一步时间；「客户明确回复了吗」在默认折起的「更多」里，旁边提示还没选
+    // F-跟进-06：主区只有内容、卡点、下一步、下一步时间；别的在默认折起的「更多」里
     const 更多 = page.getByRole("button", { name: /更多：/ });
     await 更多.waitFor();
     expect(await 更多.getAttribute("aria-expanded")).toBe("false");
-    expect(await page.getByText("客户明确回复还没选").count()).toBe(1);
-    const 问 = 格(page, "客户明确回复了吗");
-    expect(await 问.isVisible()).toBe(false);
+    expect(await 格(page, "客户明确回复了吗").count()).toBe(0);
+    expect(await page.getByText("客户明确回复了", { exact: true }).count()).toBe(0);
     expect(await 格(page, "标题").isVisible()).toBe(false);
     await page.locator("#content").fill("聊了报价");
-    // 没选就存：拦在「客户明确回复了吗」，「更多」自己展开
+    // 没写下一步就存：拦在主区「下一步做什么」，「更多」不用展开
     await page.getByRole("button", { name: /保\s*存/ }).click();
-    await expect.poll(() => 更多.getAttribute("aria-expanded")).toBe("true");
-    await expect.poll(() => 问.innerText()).toContain("请选客户明确回复了吗");
-    expect(await 问.innerText()).toContain("线索");
-    await 问.getByText("客户明确回复了", { exact: true }).click();
+    await expect.poll(() => 格(page, "下一步做什么").innerText()).toContain("请写下一步做什么");
+    expect(await 更多.getAttribute("aria-expanded")).toBe("false");
+    expect(await page.evaluate(() => Reflect.get(window, "__项目存"))).toBeUndefined();
     await 格(page, "下一步做什么").locator("input").fill("周五前发报价单");
     const 时 = page.locator(".ant-form-item").filter({ has: page.locator('label:text-is("下一步时间")') });
     expect(await 时.innerText()).not.toContain("回收日变为");
@@ -161,7 +160,8 @@ it("项目能记：问「客户明确回复了吗」（收在「更多」里）�
     await page.getByRole("button", { name: /保\s*存/ }).click();
     await page.waitForFunction(() => Reflect.get(window, "__项目存"));
     const 交 = await page.evaluate(() => Reflect.get(window, "__项目存") as Record<string, unknown>);
-    expect(交).toMatchObject({ id: "p1", 阶段: "线索", 明确回复: true, 下一步: "周五前发报价单", 下一步时间: 明, content: "聊了报价" });
+    expect(交).toMatchObject({ id: "p1", 阶段: "线索", 下一步: "周五前发报价单", 下一步时间: 明, content: "聊了报价" });
+    expect(交).not.toHaveProperty("明确回复");
     // 标题、状态等随这一次交（额外），不再补一刀 saveFollowUp（M-权限-09 成员改不了沟通）
     expect(交).toMatchObject({ 额外: { status: "已完成", durationMinutes: null } });
     expect(await page.evaluate(() => Reflect.get(window, "__存"))).toBeUndefined();
@@ -205,8 +205,6 @@ it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了�
     await page.locator("#content").fill("聊了报价");
     await 格(page, "下一步做什么").locator("input").fill("周五前发报价单");
     await 格(page, "下一步时间").getByRole("button", { name: "3 天后" }).click();
-    await page.getByRole("button", { name: /更多：/ }).click();
-    await 格(page, "客户明确回复了吗").getByText("没有明确回复", { exact: true }).click();
     await page.getByRole("button", { name: /保\s*存/ }).click();
     await page.waitForFunction(() => Reflect.get(window, "__项目存"));
     expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "重要卡点", impact: null, title: "", reasons: [], description: "对方法务卡合同" });
@@ -218,14 +216,12 @@ it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了�
     expect(await b.page.getByRole("combobox", { name: "卡点类型" }).count()).toBe(0);
   } finally { await b.page.close(); }
 });
-it("「更多」整行可点：点箭头、点红字提示都能展开，展开后滚进可视区，再点收起（11-04，1024/1280/1366 × 768 高）", async () => {
+it("「更多」整行可点：点箭头、点文字都能展开，展开后滚进可视区，再点收起（11-04，1024/1280/1366 × 768 高）", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await open({ 项目: "有", 须知: 须知({ 起点日: 今天(), 天数: 7 }) }, w, 768);
     try {
       const 更多 = page.getByRole("button", { name: /更多：/ });
       await 更多.scrollIntoViewIfNeeded();
-      // 红字提示在按钮里，同一个可点区域
-      expect(await 更多.getByText("客户明确回复还没选").count()).toBe(1);
       const 点 = async (sel: string) => {
         const b = (await 更多.locator(sel).first().boundingBox())!;
         const x = b.x + Math.min(b.width / 2, 6), y = b.y + b.height / 2;
@@ -234,12 +230,12 @@ it("「更多」整行可点：点箭头、点红字提示都能展开，展开�
       };
       await 点(".anticon");
       await expect.poll(() => 更多.getAttribute("aria-expanded")).toBe("true");
-      const 问 = 格(page, "客户明确回复了吗");
+      const 问 = 格(page, "标题");
       await expect.poll(async () => { const b = await 问.boundingBox(); return !!b && b.y >= 0 && b.y + b.height <= 768; }).toBe(true);
       await 更多.scrollIntoViewIfNeeded();
       await 点(".anticon");
       await expect.poll(() => 更多.getAttribute("aria-expanded")).toBe("false");
-      await 点(".follow-more-hint");
+      await 点("span");
       await expect.poll(() => 更多.getAttribute("aria-expanded")).toBe("true");
       // 整行不溢出：按钮不比所在列宽
       expect(await 更多.evaluate((e) => e.scrollWidth <= e.parentElement!.clientWidth + 1)).toBe(true);
