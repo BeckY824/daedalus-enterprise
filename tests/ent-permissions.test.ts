@@ -10,7 +10,7 @@
  *   - 管理类成员按自己的业务线（EntMember.line）过滤下属的项目
  *   - 总管理勾了「不管设置」进不了设置、改不了后台设置，别的照旧
  *   - 切换视图、进设置、回收站、真删只有系统管理员；回收站副手能恢复
- *   - 条线总管理（总管理设了业务线）：看本线、条线内转让，不编辑、不删、不进设置
+ *   - 条线总管理（总管理设了业务线）：看本线、条线内转让，别人的不编辑、本人负责的能编（X-07），不删、不进设置
  *   - 转让只到直属一级；项目组员当负责人能编辑、不能转、不能删
  *   - 没设业务角色只看公海；领公海：销售、销管、总管理
  *   - 只看某人：只看那个人的、公海照常、什么都不能改；角色挂着市场管理也不算管理员（不收提醒、不管渠道、不做市场复核）
@@ -218,9 +218,12 @@ describe("条线总管理（总管理设了业务线，V3.5.1）", () => {
   const me = { id: "线总" };
   const 外贸项目: 权限项目 = { ownerId: "外贸销售" };
   const 内贸项目: 权限项目 = { ownerId: "内贸销售" };
-  it("看本线人员的项目、看不到线外的；不编辑；条线内能转、线外不能", () => {
+  it("看本线人员的项目、看不到线外的；别人的不编辑、本人负责的能编；条线内能转、线外不能", () => {
     expect([能看项目(me, 外贸项目, o), 能看项目(me, 内贸项目, o), 能看全部(me, o)]).toEqual([true, false, false]);
-    expect([能编辑项目(me, 外贸项目, o), 能编辑项目(me, { ownerId: "线总" }, o)]).toEqual([false, false]);
+    // X-07（11-05 用户定）：本人负责的能编，条线内别人负责的只看
+    expect([能编辑项目(me, 外贸项目, o), 能编辑项目(me, { ownerId: "线总" }, o)]).toEqual([false, true]);
+    expect(能改客户(me, { salesOwnerId: "线总", 在公海: false }, o)).toBe(true);
+    expect(能编辑项目(me, { ownerId: "线总", pooledAt: new Date() }, o)).toBe(false);
     expect([能转让项目(me, 外贸项目, o), 能转让项目(me, 内贸项目, o), 能放回公海(me, 外贸项目, o)]).toEqual([true, false, true]);
     expect(能转让客户(me, { salesOwnerId: "外贸销售", 在公海: false }, o)).toBe(true);
     expect(能改客户(me, { salesOwnerId: "外贸销售", 在公海: false }, o)).toBe(false);
@@ -228,6 +231,15 @@ describe("条线总管理（总管理设了业务线，V3.5.1）", () => {
   it("不能删（自己名下的也不行）、不进设置、不切视图、不进回收站；能领公海", () => {
     expect([能删除(me, o, "外贸销售"), 能删除(me, o, "线总"), 能删一些(me, o), 能真删(me, o), 能恢复(me, o)]).toEqual([false, false, false, false, false]);
     expect([是总管理(me, o), 能进设置(me, o), 能切换视图(o, "线总"), 能领公海(me, o)]).toEqual([false, false, false, true]);
+  });
+  it("兼销管的条线总管理：本人负责的能编，下属的照样只看（P-判定-01 并集）", () => {
+    const o2 = 组织of([
+      { id: "线总2", bizRole: "director,sales_mgr", line: "外贸" },
+      { id: "外贸销售2", bizRole: "sales", line: "外贸", managerId: "线总2" },
+    ]);
+    const m2 = { id: "线总2" };
+    expect([能编辑项目(m2, { ownerId: "线总2" }, o2), 能编辑项目(m2, { ownerId: "外贸销售2" }, o2)]).toEqual([true, false]);
+    expect([能改客户(m2, { salesOwnerId: "线总2", 在公海: false }, o2), 能改客户(m2, { salesOwnerId: "外贸销售2", 在公海: false }, o2)]).toEqual([true, false]);
   });
   it("没设业务线的总管理才是系统管理员", () => {
     expect([是总管理({ id: "系统" }, o), 能切换视图(o, "系统"), 能真删({ id: "系统" }, o)]).toEqual([true, true, true]);
