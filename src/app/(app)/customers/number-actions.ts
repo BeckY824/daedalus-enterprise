@@ -45,7 +45,10 @@ export async function 查号码(类型: string, 值: string): Promise<查号码�
   return { ok: true, 状态: 结论.状态, 提示: 结论.提示, 值: 号.值, 撞: 结论.撞, 归属地: 号码归属地(号.类型, 号.值)?.文字 ?? null, ...(结论.状态 === "公海待捞" && 结论.原负责人是我 ? { 原负责人是我: true as const } : {}), ...(协同 ? { 可协同: true as const, 协同 } : {}) };
 }
 
-export type 捞回结果 = { ok: true; 提示: string; 查: 查号码结果 } | { ok: false; error: string };
+/** 已不在 = 没捞成：号码已不在回收站（被别人先捞回 / 已彻底删除），按 查 摆新结论，键上用提醒样式、不用成功样式 */
+export type 捞回结果 = { ok: true; 提示: string; 查: 查号码结果; 已不在?: true } | { ok: false; error: string };
+
+const 已不在话 = "这个号码已不在回收站里了（可能刚被别人捞回，或已彻底删除），按最新的查重结果来";
 
 /**
  * 查重撞上回收站里的号码，就地捞回（lib/enterprise/soft-delete.ts 查重捞回）。只认号码不认 id：服务端重查一遍，
@@ -62,9 +65,14 @@ export async function 从回收站捞回(类型: string, 值: string): Promise<�
     const 号 = 验号码(类型, 值);
     if (!号.ok) return { ok: false, error: 号.提示 };
     const 先查 = await 查号码(类型, 值);
-    if (!先查.ok || 先查.状态 !== "回收站里有") return { ok: true, 提示: "这个号码已经不在回收站里了，按最新的查重结果来", 查: 先查 };
+    if (!先查.ok || 先查.状态 !== "回收站里有") return { ok: true, 已不在: true, 提示: 已不在话, 查: 先查 };
     const r = await 查重捞回(号);
-    if (!r.ok) return r;
+    if (!r.ok) {
+      // 先查到捞之间被别人捞走 / 彻底删了：一样按「已不在」回新结论，不报成出错
+      const 再查 = await 查号码(类型, 值);
+      if (!再查.ok || 再查.状态 !== "回收站里有") return { ok: true, 已不在: true, 提示: 已不在话, 查: 再查 };
+      return r;
+    }
     for (const x of r.回来的) {
       await recordAudit({
         user: me, action: "restore", entity: x.t, entityId: x.id,
