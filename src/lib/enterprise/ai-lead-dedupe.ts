@@ -55,23 +55,28 @@ export function 认出备注里的号码(备注: string): { 号们: 认出的号
 
 /** 挨个查，撞了回给录入的人看的话（不建档）；都没撞回 null */
 export async function AI建档查重(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<string | null> {
+  return (await AI建档查重详(号们, 我, 录入))?.话 ?? null;
+}
+
+/** 同 AI建档查重，另带上只在回收站里撞上的那个号（卡片上给「从回收站捞回」，客户 11-05） */
+export async function AI建档查重详(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<{ 话: string; 回收站?: 认出的号 } | null> {
   const 读 = await 读的我(defaultClient);
   for (const 号 of 号们) {
     const ids = await 全公司查号(prisma, 号.类型, 号.值, 号.键);
     if (!ids.length) {
       const 回收站 = await 回收站撞没撞(prisma, 号);
-      if (回收站) return 回收站.提示;
+      if (回收站) return { 话: 回收站.提示, 回收站: 号 };
       const 那边 = await 问同事撞没撞(号.类型, 号.值);
-      if (那边?.撞) return 查重提示.AI建档重复(那边.撞.salesOwnerName);
+      if (那边?.撞) return { 话: 查重提示.AI建档重复(那边.撞.salesOwnerName) };
       continue;
     }
     const 结论 = await 撞号结论(prisma, ids, 我.id, 读);
     // 卡上录的内容也接同号协同（写进现有项目、发邀请、通知）；回 AI 卡的话照 10-27 定的原文，协同已经通知过就不再响铃
     const 协同 = 录入 ? await 同号再次录入(我, 号, 录入) : null;
-    if (结论.状态 !== "重复") return 结论.提示;
+    if (结论.状态 !== "重复") return { 话: 结论.提示 };
     const 原 = await 首条撞的(prisma, ids);
     if (原?.salesOwnerId) await 提醒原负责人(原.id, 原.name, 原.salesOwnerId, 我, !协同?.走);
-    return 查重提示.AI建档重复(结论.撞.salesOwnerName);
+    return { 话: 查重提示.AI建档重复(结论.撞.salesOwnerName) };
   }
   return null;
 }

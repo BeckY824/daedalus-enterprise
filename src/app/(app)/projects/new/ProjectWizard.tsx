@@ -22,6 +22,7 @@ import { 有效线索节点, 建档不能过线索验证 } from "@/lib/project/s
 import { 下一步文字上限 } from "@/lib/project/project-fields";
 import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
 import { 查号码, type 查号码结果 } from "../../customers/number-actions";
+import RescueKey from "../../customers/RescueKey";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import SameNumberEntry from "./SameNumberEntry";
@@ -370,7 +371,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           {企查 && 已查 === 查过键(d, true) && (
             企查.ok && 企查.状态 === "首次录入" ? <Alert type="success" showIcon title={去符号(企查.提示)} description={企查.归属地 ? `归属地：${企查.归属地}` : undefined} />
             : !企查.ok ? <Alert type="warning" showIcon title={去符号(企查.提示)} />
-            : <撞号面板 查={企查} users={users} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />
+            : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />
           )}
         </>
       )}
@@ -603,12 +604,12 @@ function 去符号(s: string): string {
  * 企业版查重撞了（P0-7）：把撞到的那条摆出来，并给出口，而不是只说「已存在」。
  * 看不到的客户不给名字（撞号结论 按 看得到 收），写「领取后可见」；在公海的给「去领取」，在同事名下的给「联系负责人」
  */
-function 撞号面板({ 查, users, 协同 }: { 查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 协同?: React.ReactNode }) {
+function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 类型: string; 捞回了: (查: 查号码结果) => void; 协同?: React.ReactNode }) {
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
-  // 只在回收站里撞上（11-05 X-10）：没有「领取」「负责人」可说，只写在回收站里，恢复找系统管理员（提示里已写）
+  // 只在回收站里撞上（11-05 X-10）：没有「领取」「负责人」可说，给「从回收站捞回」（客户 11-05：只有查重触发时可以捞回）
   if (查.状态 === "回收站里有") {
-    return <Alert type="error" showIcon title={去符号(查.提示)} description={<div><div>{撞?.name ? `${撞.name} · ` : ""}在回收站里</div>{协同}</div>} />;
+    return <Alert type="error" showIcon title={去符号(查.提示)} description={<div><div>{撞?.name ? `${撞.name} · ` : ""}在回收站里</div><Space size={8} style={{ marginTop: 8 }}><RescueKey 类型={类型} 值={查.值} 捞回了={捞回了} /></Space>{协同}</div>} />;
   }
   // 自己退回公海的：企业版原负责人看不到也领不回，「打开它」「去领取」都走不通，不摆（11-03 B7-3）
   const 我退的 = 在公海 && !!查.原负责人是我;

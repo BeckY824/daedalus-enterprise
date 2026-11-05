@@ -98,10 +98,37 @@ export async function 回收站里查号(db: 库, 类型: 号码类型, 值: str
   return 全.filter((id) => !在用.has(id));
 }
 
-/** 回收站里撞了的提示（客户 11-05（X-10），原文是我们拟的） */
-export const 回收站里有提示 = "这个号码在回收站里，本次录入已拦截，请找系统管理员恢复";
+/**
+ * 客户还在、带这个号的联系人删了：回收站里那几位联系人的 id（查重捞回用，soft-delete.ts）。
+ * 联系人自己的电话 / 邮箱 / 微信对得上的，加上号码子表里挂在这位联系人名下的
+ */
+export async function 回收站里带号的联系人(db: 库, 号: 验好的号, 客户ids: string[]): Promise<string[]> {
+  if (!客户ids.length) return [];
+  const ids = new Set<string>();
+  const 在 = `"customerId" IN (${客户ids.map(() => "?").join(", ")})`;
+  if (号.类型 === "手机号") {
+    const 键 = 号键(号.值);
+    const 键们 = /^\d{11}$/.test(键) ? [键, `86${键}`] : [键];
+    for (const r of await db.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT "id" FROM "Contact" WHERE "deletedAt" IS NOT NULL AND ${在} AND ${号键SQL('"phone"')} IN (${键们.map(() => "?").join(", ")})`, ...客户ids, ...键们)) ids.add(r.id);
+  } else if (号.类型 === "邮箱" || 号.类型 === "微信") {
+    const 列 = 号.类型 === "邮箱" ? "email" : "wechat";
+    for (const r of await db.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT "id" FROM "Contact" WHERE "deletedAt" IS NOT NULL AND ${在} AND lower(trim("${列}")) = ?`, ...客户ids, 号.键)) ids.add(r.id);
+  }
+  if (进子表(号.类型) && 号.键) {
+    const kind = 号码库类型[号.类型];
+    const 挂的 = await 看已删(() => db.contactMethod.findMany({ where: { kind, numberKey: 号.键, customerId: { in: 客户ids }, contactId: { not: null } }, select: { contactId: true } }));
+    const 删了的 = await 看已删(() => db.contact.findMany({ where: { id: { in: 挂的.map((r) => r.contactId!) }, deletedAt: { not: null } }, select: { id: true } }));
+    for (const r of 删了的) ids.add(r.id);
+  }
+  return [...ids];
+}
 
-/** 在用的没撞、回收站里撞了：拦下，叫人找系统管理员恢复；回收站里也没有回 null。不给客户名、id（回收站里的不在列表里，点不进去） */
+/** 回收站里撞了的提示（客户 11-05（X-10）；11-05 客户回复「可以捞回且只有查重触发时可以捞回」，原文是我们拟的） */
+export const 回收站里有提示 = "这个号码在回收站里，本次录入已拦截，可以从回收站捞回";
+
+/** 在用的没撞、回收站里撞了：拦下，提示里给「从回收站捞回」（查重捞回，soft-delete.ts）；回收站里也没有回 null。不给客户名、id（回收站里的不在列表里，点不进去） */
 export async function 回收站撞没撞(db: 库, 号: 验好的号): Promise<查号结论 | null> {
   const ids = await 回收站里查号(db, 号.类型, 号.值, 号.键);
   if (!ids.length) return null;

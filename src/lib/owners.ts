@@ -94,9 +94,9 @@ export async function 跟进筛选成员() {
  * 服务端指派负责人时的同一道闸（11-03 完成度 D3-9 / C3-1）：企业版没设业务角色、只读管理员不能当负责人。
  * 返回拒绝的话；能当或不是企业版 = null。在职另由各入口查
  */
-export async function 不能当负责人(userId: string, 占位 = false): Promise<string | null> {
+export async function 不能当负责人(userId: string): Promise<string | null> {
   const org = await 权限组织();
-  return org ? 不能当负责人话(org, userId, 占位) : null;
+  return org ? 不能当负责人话(org, userId) : null;
 }
 /** 公海分配（客户、项目）服务端那道：同 公海分配候选，分不过去的那一句；能分 = null */
 export async function 公海分不给(me: 谁, userId: string): Promise<string | null> {

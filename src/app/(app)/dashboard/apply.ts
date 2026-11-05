@@ -23,7 +23,7 @@ import { 客户在推项目 } from "@/lib/project/active";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
-import { 认出备注里的号码, AI建档查重 } from "@/lib/enterprise/ai-lead-dedupe";
+import { 认出备注里的号码, AI建档查重详 } from "@/lib/enterprise/ai-lead-dedupe";
 import { saveOpportunity } from "../opportunities/actions";
 import { saveChannel } from "../channels/actions";
 import { 按名字找负责人 } from "@/lib/owners";
@@ -53,7 +53,8 @@ export type 撤销凭据 =
 export type 附件去处 = { contactId: string } | { leadId: string };
 
 /** 项目：企业版新线索卡建成的项目 id，卡上「查看」直接打开它（10-30 交互审核） */
-export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string } | { ok: false; error: string };
+/** 回收站号：只在回收站里撞上的号码（客户 11-05），卡上给「从回收站捞回」（customers/number-actions.ts 从回收站捞回） */
+export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -261,7 +262,7 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
  * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 阿里国际站ID，撞了不建、提醒原负责人。
  * 不撞：创建人 = 录入人；负责人按分配方式（指定 → 那位销售，客户跟着走；自动 → 建在我名下再按业务线分；暂不分配 / 个人自持 → 自己）
  */
-async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string }> {
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } }> {
   const meId = me.id;
   const 号 = p.phone.trim();
   const { 号们: 备注号们, 剩 } = 认出备注里的号码(p.remark || "");
@@ -271,8 +272,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
     .filter((h): h is Extract<ReturnType<typeof 验号码>, { ok: true }> => Boolean(h?.ok));
   const 号们 = [...格号们, ...备注号们.filter((h) => !格号们.some((g) => g.类型 === h.类型 && g.值 === h.值))];
   const 手机 = 号 ? 验号码("手机号", 号) : null;
-  const 撞了 = await AI建档查重([...(手机?.ok ? [手机] : []), ...号们], me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
-  if (撞了) return { ok: false, error: 撞了 };
+  const 撞了 = await AI建档查重详([...(手机?.ok ? [手机] : []), ...号们], me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
+  if (撞了) return { ok: false, error: 撞了.话, ...(撞了.回收站 ? { 回收站号: { 类型: 撞了.回收站.类型, 值: 撞了.回收站.值 } } : {}) };
   const 邮箱 = 号们.find((h) => h.类型 === "邮箱")?.值 ?? null;
   const 微信 = 号们.find((h) => h.类型 === "微信")?.值 ?? null;
   // 客户只有一格企业号码：有电话放电话；没电话按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个认出的（新建客户企业号码不是手机号才免填电话）。
@@ -420,7 +421,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (只用项目 && p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
   if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
-  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string };
+  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
     done = await 建成项目(p, me);

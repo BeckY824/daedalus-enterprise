@@ -10,7 +10,8 @@
  *   - 条线总管理（director 又设了业务线）：看本线人员名下全部；不能编辑；条线内能转让；不能删（line-viewer.ts 条线范围of）
  *   - 销管（sales_mgr）：看实线下属整条链 + 自己 + 公海；只编辑自己负责的；转让直属一级（同业务线）；自己负责的能软删
  *   - 销售（sales）：自己 + 公海；编辑、转让、软删自己负责的
- *   - 市管（marketing_mgr）：看市场圈（本人 + 实线下属）+ 公海；不编辑；转让直属一级；不删。只挂市管的不当负责人（候选、交接接收人都没有他，11-05 客户定）
+ *   - 市管（marketing_mgr）：看本人 + 直属下级创建的项目（线索，不管什么状态，11-05 客户定）+ 直属市场成员相关的 + 公海；不编辑；转让直属一级；不删。
+ *     能当负责人、交接接收人（11-05 客户：「市场管理是可以当负责人的」），名下的能转出
  *   - 项目组员（project_ops）：看加入的项目；被指定为负责人才能编辑；不转、不删
  *   - 渠运（channel_ops）：本人负责的能看、编、软删，成熟后转出给销售；自己创建的客户一直看得到（market.ts）；不领公海
  *   - 设了「只看某人」的（org.只看某人，V3.5.1 市管特例）：业务数据只看 那个人 = 创建人或负责人 的，公海照常；不当负责人、不编、不转、不删
@@ -108,22 +109,14 @@ export function 能当负责人(org: 组织 | null, userId: string): boolean {
   return 不能当负责人话(org, userId) === null;
 }
 /**
- * 不能当负责人时那一句；能当 = null。
- * 占位 = 新建时除「指定分配」外先记在建的人名下、等分配 / 自动转出 / 进公海（assign-use.ts）：
- * 这时只挂市场管理的人也让建（市场建线索是客户流程），🔍 11-05 我方做法，待客户核
+ * 不能当负责人时那一句；能当 = null。市场管理也能当（11-05 客户：「市场管理是可以当负责人的」）
  */
-export function 不能当负责人话(org: 组织 | null, userId: string, 占位 = false): string | null {
+export function 不能当负责人话(org: 组织 | null, userId: string): string | null {
   if (老()) return null;
   if (没设业务角色(org, userId)) return "该成员还没设业务角色，不能当负责人，请找总管理设置";
   if (只读角色({ id: userId }, org)) return "管理员只读，不能当负责人";
   if (只看的人(org, userId)) return "设了「只看某人」的成员只能看，不能当负责人";
-  if (!占位 && 纯市场管理(org, userId)) return 市场管理不当负责人话;
   return null;
-}
-/** 只挂市场管理的那一句（11-05 客户定：市场管理不当负责人；兼销售、销管、渠运、项目组员、总管理的照旧能当） */
-export const 市场管理不当负责人话 = "市场管理不当负责人，请选销售、销售管理或渠道运营";
-function 纯市场管理(org: 组织 | null, id: string): boolean {
-  return !!org && 有(org, id, ["marketing_mgr"]) && !有(org, id, [...可编辑角色, "director"]);
 }
 /** 没设业务角色的领公海（11-03 用户定：无法领）。账号的 ADMIN / MANAGER 不算；别人分给他不在此列 */
 export const 没业务角色不能领话 = "还没设业务角色，不能领公海里的客户和项目，请找总管理设置";
@@ -181,6 +174,8 @@ export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): bool
   const 按线 = 按线范围of(org, me.id);
   if (按线) return 按线.人们.includes(p.ownerId) || (!!p.creatorId && 按线.人们.includes(p.creatorId)) || 项目业务线(p, org.成员) === 按线.线;
   if (p.creatorId === me.id && 有(org, me.id, 市场角色)) return true;
+  // 市场管理：直属下级建的项目（线索）不管什么状态都看得到（11-05 客户定；列表同 team-scope 的 市场全看）
+  if (p.creatorId && 有(org, me.id, ["marketing_mgr"]) && 实线下属(org, me.id, 1).has(p.creatorId)) return true;
   return 看得到下属的(org, me.id, p.ownerId);
 }
 
@@ -220,11 +215,11 @@ function 能转让名下(me: 谁, ownerId: string, org: 组织): boolean {
   return !!条线范围of(org, me.id)?.人们.includes(ownerId);
 }
 
-/** 负责人转出自己的（同 能转让项目 的负责人本人）：销售、销管、渠运；项目组员、市管不能转（11-05 客户定市管不当负责人，
- *  原来 11-03 反馈 7 给市管留的转出口子去掉）。转的是不是他自己的、在不在公海，调用处查 */
+/** 负责人转出自己的（同 能转让项目 的负责人本人）：销售、销管、渠运、市管（11-03 反馈 7；11-05 客户：市场管理可以当负责人）；
+ *  项目组员不能转。市管不进 负责人角色：那份名单还管软删，市管不删。转的是不是他自己的、在不在公海，调用处查 */
 export function 能转出自己的(me: 谁, org: 组织 | null): boolean {
   if (老()) return true;
-  return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, 负责人角色);
+  return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, [...负责人角色, "marketing_mgr"]);
 }
 
 /** 转让客户（客户详情「转给」、批量转让）：同项目的白名单；公海里的客户走公海分配（能管公海） */

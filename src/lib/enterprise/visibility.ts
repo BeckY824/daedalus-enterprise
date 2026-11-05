@@ -213,6 +213,8 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   // 负责的都能看能改，不然分出去就看不到、也分不了（F9 10-25；11-05 收窄到市场圈）。客户那条线还是按组织架构
   const 线索 = 类别.has("市场管理") && (await 开着(db, 规则.线索分配.key)) ? { 线索全看: true, 线索圈: 范围.写 } : {};
   const 市场 = 市场的人(org, id, 类别.has("市场管理"), 设的市场部门?.value, 设的市场人?.value);
+  // 市场管理（11-05 客户定）：本人 + 直属下级建的项目（线索）不管什么状态都看得到，只读；直属下级不论是不是市场成员
+  const 带市场全看 = 类别.has("市场管理") ? { 市场全看: [id, ...实线下属(org, id, 1)] } : {};
   // 项目组员（V3.5.1）：加入的项目挂的客户级联看得到、只能看（不记沟通、不改）。自己（含实线下属）负责的、公海的不降；
   // 自己负责的项目挂着的也不算只读（被指定为负责人才能编辑，在项目下记沟通）
   const 写 = 范围.写;
@@ -225,7 +227,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     if (!看得到(c, 写) && !c.projects.some((p) => 写.includes(p.ownerId))) 组员只读.add(c.id);
   }
   const 带组员 = 组员的.length ? { 组员客户: 组员的.length > 组员名单上限 ? null : 组员的.map((c) => c.id) } : {};
-  if (!范围.读 && !市场.length && !组员只读.size) return { 我: 写, 互看: false, 别人的: new Set(), ...线索, ...带回避, ...带组员 };
+  if (!范围.读 && !市场.length && !组员只读.size) return { 我: 写, 互看: false, 别人的: new Set(), ...线索, ...带市场全看, ...带回避, ...带组员 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）
   const 别人的 = new Set<string>(组员只读);
@@ -259,6 +261,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     我: 范围.写, 互看: false, 别人的, 全拦: true, 话, ...线索,
     ...(读 ? { 读 } : {}),
     ...(市场.length ? { 市场 } : {}),
+    ...带市场全看,
     ...带回避,
     ...带组员,
   };
@@ -316,7 +319,7 @@ async function 公海回避of(db: PrismaClient, id: string): Promise<公海回�
 }
 
 /**
- * 按「市场成员相关」放开读的是哪几位（10-31）：市场管理 = 市场圈里的市场成员（本人 + 实线下属，11-05 客户定；自己也是就带上）；
+ * 按「市场成员相关」放开读的是哪几位（10-31）：市场管理 = 本人 + 直属下级里的市场成员（11-05 客户定：只认直属下级；自己也是就带上）；
  * 市场成员、渠运 = 自己；别人 = 空（不放开）。
  * 存的部门设置读不出当没设（按名字带「市场」）；逐人设的（11-01）读不出当没有
  */
@@ -332,7 +335,7 @@ function 市场的人(org: 组织, id: string, 是市场管理: boolean, 存的:
   // 渠运（V3.5.1）：自己创建的客户一直看得到，同市场成员看自己的
   if (org.成员.get(id)?.角色们.includes("channel_ops")) 成员.add(id);
   if (是市场管理) {
-    const 下 = 实线下属(org, id);
+    const 下 = 实线下属(org, id, 1);
     return [...成员].filter((x) => x === id || 下.has(x));
   }
   return 成员.has(id) ? [id] : [];

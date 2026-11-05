@@ -134,25 +134,28 @@ describe("节点必填自动推进", () => {
     expect(await 改节点(乙, q.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
   });
 
-  it("配了必填的节点：销售手动往前推被拦并列还差；自己当负责人的销售管理、系统管理员能推，不是负责人的推不了；往后退照旧", async () => {
-    await setSetting("orgRules", 开着({ 线索验证: ["金额", "国家"] }));
+  it("配了必填的节点：销售手动往前推被拦并列还差；自己当负责人的销售管理、系统管理员能推，不是负责人的推不了；往后退照旧；越过线索验证谁都要有效沟通", async () => {
+    await setSetting("orgRules", 开着({ 潜客培育: ["金额", "国家"], 线索验证: ["金额", "国家"] }));
     const p = await 项目({ node: "线索验证" });
     await 记有效沟通(p.id);
     const r = await 改节点(乙, p.id, { phase: "线索", node: "线索推进" });
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toContain("还差预计成交金额、国家"); // 11-05 起线索验证的必填就是有效沟通的判断依据
+    // 有效沟通的闸门所有角色都走（11-05 客户），系统管理员缺着线索验证的必填也推不过去
+    const 老板推 = await 改节点(老板, p.id, { phase: "线索", node: "线索推进" });
+    expect(!老板推.ok && 老板推.error).toContain("预计成交金额、国家");
     expect(await 改节点(乙, p.id, { phase: "线索", node: "潜客培育" })).toMatchObject({ ok: true });
-    没推(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" }));
+    expect((await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).ok).toBe(false);
     // V3.5.1：缺必填往前推给「自己当负责人的销售管理」和系统管理员（老板 = 总管理、没设线）；不是负责人的销售管理改不了进程
-    expect(await 改节点(老板, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true, 变了: true });
-    await prisma.project.update({ where: { id: p.id }, data: { node: "线索验证" } });
+    expect(await 改节点(老板, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true, 变了: true });
+    await prisma.project.update({ where: { id: p.id }, data: { node: "潜客培育" } });
     const 主管 = await 人("mgr", "MANAGER");
     await prisma.entMember.create({ data: { userId: 主管.id, bizRole: "sales_mgr" } });
-    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索推进" })).toEqual({ ok: false, error: 只有负责人改进程 });
+    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索验证" })).toEqual({ ok: false, error: 只有负责人改进程 });
     await prisma.project.update({ where: { id: p.id }, data: { ownerId: 主管.id } });
-    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索推进" })).toMatchObject({ ok: true });
+    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
     // 结局不算往前，照旧能点（负责人现在是主管）
-    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索推进", result: "线索流失" }, { 备注: "联系不上" })).toMatchObject({ ok: true });
+    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索验证", result: "线索流失" }, { 备注: "联系不上" })).toMatchObject({ ok: true });
   });
 
   it("没配的节点：销售照样手动推，不自动推", async () => {

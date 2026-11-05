@@ -87,12 +87,11 @@ describe("新线索卡：分配方式 × 角色", () => {
     expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.assignMode]).toEqual([市场.id, 丙.id, 丙.id, "指定分配"]);
   });
 
-  it("只挂市场管理：指定分配给自己照旧拦，不建（占位只放过暂不分配 / 自动分配，11-05）", async () => {
+  it("只挂市场管理：指定分配给自己也能建，自己当负责人（客户 11-05 ⑧「市场管理是可以当负责人的」）", async () => {
     当(市场);
-    const r = await applyProposal(卡({ 分配方式: 0, ownerId: 市场.id }) as never);
-    expect(r).toMatchObject({ ok: false });
-    expect(await prisma.project.count()).toBe(0);
-    expect(await prisma.customer.count()).toBe(0);
+    expect(await applyProposal(卡({ 分配方式: 0, ownerId: 市场.id }) as never)).toMatchObject({ ok: true });
+    const p = await 唯一项目();
+    expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.assignMode]).toEqual([市场.id, 市场.id, 市场.id, "指定分配"]);
   });
 
   it("市场 + 自动分配：按业务线分给那条线的销售（内贸 → 乙），不待分配", async () => {

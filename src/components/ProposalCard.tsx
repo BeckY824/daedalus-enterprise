@@ -27,6 +27,7 @@ import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
 import dynamic from "next/dynamic";
+import RescueKey from "@/app/(app)/customers/RescueKey";
 
 // 项目类卡的格子（11-01 速度闸门）：AI 面板每一页都在，这块只有项目卡用到，出卡时才去拿，不进每页首屏
 const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposalFields"), { ssr: false });
@@ -99,6 +100,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
     if (记号 && (s === "done" || s === "denied")) 记下建议结果(记号, s);
   };
   const [err, setErr] = useState("");
+  /** 只在回收站里撞上的号：错误旁边摆「从回收站捞回」（客户 11-05：只有查重触发时可以捞回） */
+  const [回收站号, set回收站号] = useState<{ 类型: string; 值: string } | null>(null);
   /**
    * 确认之后的回执：几点写入、怎么撤、建成的项目（企业版新线索卡，「查看」直接打开它）。
    * 存在任务表里（lib/ai-jobs 的 落印回执），卡片重挂也还在，刷新页面才没
@@ -135,6 +138,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   async function 提交() {
     setState("saving");
     setErr("");
+    set回收站号(null);
     // 确认完这张卡就没有输入框了：焦点原来在卡里的，送回对话框，让人接着说下一句
     const 焦点在卡里 = !!根.current?.contains(document.activeElement);
     const 对话框 = 找对话框(根.current);
@@ -166,6 +170,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
     } else {
       setState("idle");
       setErr(r.error);
+      set回收站号(r.回收站号 ?? null);
     }
   }
 
@@ -564,7 +569,25 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
         })()}
       </div>
 
-      {err && <div className="prop-err">{err}</div>}
+      {err && (
+        <div className="prop-err">
+          {err}
+          {回收站号 && (
+            <div style={{ marginTop: 6 }}>
+              <RescueKey
+                类型={回收站号.类型}
+                值={回收站号.值}
+                捞回了={(查) => {
+                  // 捞回来以后这个号就有主了：按服务端重查的结论说一句，卡片不再重复建档
+                  set回收站号(null);
+                  setErr(查.ok && 查.状态 !== "首次录入" ? 查.提示 : "");
+                  router.refresh();
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="prop-foot">
         <button type="button" className="prop-ok" onClick={confirm} disabled={!能确认}>

@@ -27,6 +27,8 @@ import { 看得到的客户数, 看得到的跟进数 } from "@/lib/scope-sql";
 import { 全公司查号, 回收站里查号 } from "@/lib/enterprise/contact-dedupe";
 import { 回收站列表, 恢复, 彻底删除, 清过期, 每天清一次, 看已删, 能管回收站, 能彻底删除 } from "@/lib/enterprise/soft-delete";
 import { 回收站列表动作, 恢复回收站, 彻底删除回收站 } from "@/app/(app)/settings/trash-actions";
+import { 从回收站捞回 } from "@/app/(app)/customers/number-actions";
+import { 只读角色话 } from "@/lib/enterprise/permissions";
 
 let 老板: string, 管员: string, 总管: string, 销售经理: string, 市场: string, 销售: string, 主管: string;
 let 张三: string, 李四: string, 联系人: string, 记录: string, 项目: string;
@@ -285,6 +287,50 @@ describe("查重不算回收站里的", () => {
     expect(await 全公司查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([]);
     expect(await 回收站里查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([张三]);
     expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([]);
+  });
+});
+
+describe("查重捞回（客户 11-05：「可以捞回且只有查重触发时可以捞回」）", () => {
+  const 回收站里 = (t: "customer" | "contact" | "project" | "followUp", id: string) =>
+    看已删(() => (prisma[t] as unknown as { findUnique: (a: object) => Promise<{ deletedAt: Date | null } | null> }).findUnique({ where: { id }, select: { deletedAt: true } })).then((r) => !!r?.deletedAt);
+
+  it("业务员查重撞上删了的客户：客户连同联系人、项目、跟进一起回来，负责人照原样；记一条审计；再查就不是回收站了", async () => {
+    await deleteCustomers([张三]);
+    当(销售);
+    const r = await 从回收站捞回("手机号", "138 0000 0001");
+    expect(r).toMatchObject({ ok: true, 提示: "已从回收站捞回 1 位客户（连同联系人、项目、跟进）" });
+    if (!r.ok) return;
+    expect(r.查).toMatchObject({ ok: true });
+    expect(r.查.ok && r.查.状态).not.toBe("回收站里有");
+    for (const [t, id] of [["customer", 张三], ["contact", 联系人], ["project", 项目], ["followUp", 记录]] as const) expect(await 回收站里(t, id)).toBe(false);
+    expect((await prisma.customer.findUnique({ where: { id: 张三 } }))?.salesOwnerId).toBe(销售);
+    expect(await prisma.auditLog.findMany({ where: { action: "restore" }, select: { userId: true, entity: true, entityId: true } })).toEqual([{ userId: 销售, entity: "Customer", entityId: 张三 }]);
+    // 联系人的号撞上也一样（客户已经回来了，再点就按最新结论说）
+    const 再 = await 从回收站捞回("手机号", "13900000001");
+    expect(再).toMatchObject({ ok: true, 提示: "这个号码已经不在回收站里了，按最新的查重结果来" });
+  });
+
+  it("客户还在、只删了带这个号的联系人：只捞回那位联系人", async () => {
+    expect((await deleteContact(联系人)).ok).toBe(true);
+    当(销售);
+    expect(await 从回收站捞回("邮箱", "Z@x.com")).toMatchObject({ ok: true, 提示: "已从回收站捞回 1 位联系人" });
+    expect(await 回收站里("contact", 联系人)).toBe(false);
+    expect(await prisma.auditLog.count({ where: { action: "restore", entity: "Contact", entityId: 联系人 } })).toBe(1);
+  });
+
+  it("没设业务角色、只读管理员捞不了；号码不在回收站里不捞任何东西；格式不对当场说", async () => {
+    await deleteCustomers([张三]);
+    const 没角色 = (await prisma.user.create({ data: { email: "nobody", name: "没角色", title: "", role: "SALES", password: "x" } })).id;
+    当(没角色);
+    expect(await 从回收站捞回("手机号", "13800000001")).toEqual({ ok: false, error: "你还没有业务角色，不能改数据，请找总管理设置" });
+    当(管员, "ADMIN");
+    expect(await 从回收站捞回("手机号", "13800000001")).toEqual({ ok: false, error: 只读角色话 });
+    expect(await 回收站里("customer", 张三)).toBe(true);
+    当(销售);
+    expect(await 从回收站捞回("手机号", "13800000002")).toMatchObject({ ok: true, 提示: "这个号码已经不在回收站里了，按最新的查重结果来", 查: { 状态: "我的通讯录已有" } });
+    expect(await 从回收站捞回("手机号", "1380000")).toMatchObject({ ok: false });
+    expect(await 回收站里("customer", 张三)).toBe(true);
+    expect(await prisma.auditLog.count({ where: { action: "restore" } })).toBe(0);
   });
 });
 
