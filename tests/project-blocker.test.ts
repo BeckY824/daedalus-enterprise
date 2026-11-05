@@ -103,7 +103,7 @@ describe("企业版卡点", () => {
         { userId: 没角色.id, bizRole: "" }, // 库里默认是 sales，这里明着清空
       ],
     });
-    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 销售.id } })).id;
+    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13900001234", salesOwnerId: 销售.id } })).id;
     项目 = (await prisma.project.create({ data: { name: "一期", customerId: 客户, ownerId: 销售.id, creatorId: 销售.id } })).id;
     await prisma.projectMember.create({ data: { projectId: 项目, userId: 组员.id, inviteStatus: "JOINED" } });
     vi.stubEnv("CRM_ENTERPRISE", "1");

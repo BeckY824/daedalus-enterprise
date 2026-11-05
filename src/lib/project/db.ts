@@ -2,6 +2,7 @@
  * 团队版项目模式 1a 的读写（2026-10-23，D-31）。取值规矩在 lib/project/nodes.ts，界面的写在 app/(app)/projects/actions.ts。
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
+import { 项目退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
 import { 不能当负责人 } from "../owners";
@@ -683,6 +684,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
   if (!选.ok) return 选;
   const reason = 选.值 ? `${回收原因前缀}${选.值}` : null;
   const org = await 权限组织();
+  // M-公海-15（11-05 用户）：手动退回先查联系方式；建项目向导「公海捞取」（分配放行）不是退回，不查
+  const 号码表 = 企业版() && !选项?.分配放行 ? await 退回号码种类表() : null;
   const r: 结果 = await 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
@@ -691,6 +694,10 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     if (!(能进公海的阶段 as readonly string[]).includes(p.phase)) return { ok: false as const, error: "订单阶段的项目不能放回公海" };
     // 客户正在转让交接中（11-03 完成度 C3-2）：项目跟着客户走，这时放了，接手人确认后拿不到。别人发起的交接也算
     if (企业版() && (await 看全部(() => 交接中的客户([p.customerId], tx))).size) return { ok: false as const, error: "这个项目的客户正在转让交接中，先撤回交接再放回公海" };
+    if (号码表) {
+      const 错 = await 看全部(() => 项目退回前查联系方式(tx, p.id, 号码表));
+      if (错) return { ok: false as const, error: 错 };
+    }
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
     const 现在 = new Date();

@@ -23,6 +23,7 @@ import { getBusiness } from "@/lib/business";
 import { 同事的客户, 只读话 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
+import { 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
@@ -83,6 +84,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } });
     if (!客户) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
     if (await 同事的客户(defaultClient, customerId)) return { ok: false, error: await 只读话(defaultClient) };
+    // 11-05：公海里的客户不能直接建项目，先领取（建了项目客户还挂在公海、负责人还是空，见 V3.5.1 P-公海-08）
+    if (await prisma.customerPool.findUnique({ where: { customerId }, select: { customerId: true } })) return { ok: false, error: 公海客户先领取话 };
 
     // 11-02：只认业务角色。没设的、管理员（只读）不给建
     const org = await 权限组织();

@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
-import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 原负责人不能领回提示, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 号码保护of } from "@/lib/enterprise/contact-guard";
 import {
   DownOutlined,
@@ -546,6 +546,11 @@ export default function RecordView({
   }
 
   const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读);
+  /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦 */
+  function 开建项目() {
+    if (customer.pool) return void message.info(公海客户先领取话);
+    set建项目开着(true);
+  }
   /**
    * 「新建沟通」（11-01 会议 §5：客户详情也不跳转，弹窗填）：企业版只用项目时，这位客户有没结束的项目（主客户的 + 关联进来的）
    * 就开记跟进的弹窗，「关联项目」默认选最近动过的那个，保存走项目那条（记项目沟通Action，同项目详情）；
@@ -559,7 +564,7 @@ export default function RecordView({
     // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
     if (全只读) return void message.info(全只读话);
     if (!去项目跟进 || 记沟通项目?.length) return void openFollow(null);
-    if (能建项目) return set建项目开着(true);
+    if (能建项目) return 开建项目();
     message.info(`这位${b.customer}还没有在推的项目：跟进记在项目里，请先新建项目`);
   }
 
@@ -892,7 +897,7 @@ export default function RecordView({
             <div className="acts-g">
               {(能建项目 || 能转让 || 能退回公海) && (
                 <span className="acts-whole">
-                  {能建项目 && <Button onClick={() => set建项目开着(true)}>新开项目</Button>}
+                  {能建项目 && <Button onClick={开建项目}>新开项目</Button>}
                   {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>转让项目</Button>}
                   {能退回公海 && <Button onClick={() => void 公海动作("放进")}>退回公海</Button>}
                 </span>
@@ -1201,7 +1206,7 @@ export default function RecordView({
               「开项目」给这位客户再建一个项目（待定 16）：客户自动带上 */}
           {项目们 ? 节("项目", 项目们.length, (
                 <Space size={4}>
-                  {摆法.新建项目 && 新建项目 && !只读 && !去项目跟进 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => set建项目开着(true)}>开项目</Button>}
+                  {摆法.新建项目 && 新建项目 && !只读 && !去项目跟进 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={开建项目}>开项目</Button>}
                   <Link href="/projects">全部 ›</Link>
                 </Space>
               ), <>
