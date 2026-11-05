@@ -8,8 +8,8 @@
  * 不加字段：邮箱、微信进联系人原有的两格，认出来的那几行从备注拿掉，认不出的原样留在备注
  */
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 读的我 } from "@/lib/team-scope";
-import { parseScheduleDate } from "@/lib/schedule-date";
+import { 读的我, 看全部 } from "@/lib/team-scope";
+import { parseScheduleDate, calendarDay } from "@/lib/schedule-date";
 import { recordAudit } from "@/lib/audit";
 import { 验号码, 查重提示, type 号码类型 } from "./contact-format";
 import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞 } from "./contact-dedupe";
@@ -73,12 +73,20 @@ export async function AI建档查重(号们: 认出的号[], 我: { id: string; 
   return null;
 }
 
-/** 同一位客户还挂着一条没做完的同样提醒就不再加（同一张卡点两次、两个号都撞同一位，只提醒一次） */
+/**
+ * 同一位客户还挂着一条没做完的同样提醒就不再加（同一张卡点两次、两个号都撞同一位，只提醒一次）。
+ * 查有没有要在 看全部 里查：待办是原负责人的，触发人照自己的可见范围看不到，之前每点一次确认就多一条（11-04 线上 5 条重复）。
+ * 只记今天、不带时刻：带上建的那一刻，一建出来就算已逾期
+ */
 async function 提醒原负责人(客户id: string, 客户名: string, 原负责人: string, 我: { id: string; name: string }, 响铃: boolean) {
+  if (原负责人 === 我.id) return;
   const title = 查重提示.提醒原负责人(我.name, 客户名);
-  if (await prisma.task.findFirst({ where: { customerId: 客户id, ownerId: 原负责人, title, done: false }, select: { id: true } })) return;
-  const 时间 = parseScheduleDate(new Date().toISOString())!;
-  const t = await prisma.task.create({ data: { title, dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: 客户id, ownerId: 原负责人 } });
+  const t = await 看全部(async () => {
+    if (await prisma.task.findFirst({ where: { customerId: 客户id, ownerId: 原负责人, title, done: false }, select: { id: true } })) return null;
+    const 时间 = parseScheduleDate(calendarDay(new Date()))!;
+    return prisma.task.create({ data: { title, dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: 客户id, ownerId: 原负责人 } });
+  });
+  if (!t) return;
   await recordAudit({ user: 我, action: "create", entity: "Task", entityId: t.id, summary: `AI 建档撞号，给原负责人加了待办「${title}」` });
-  if (响铃 && 原负责人 !== 我.id) await notify([原负责人], { kind: "撞号", title, link: `/customers/${客户id}`, key: `ai-dup:${t.id}` });
+  if (响铃) await notify([原负责人], { kind: "撞号", title, link: `/customers/${客户id}`, key: `ai-dup:${t.id}` });
 }

@@ -28,6 +28,7 @@ import { 放回公海, 领取公海项目, 改项目 } from "@/lib/project/db";
 import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
 import { 公海规则, 进公海关待办尾, 转让关待办尾 } from "@/lib/enterprise/pool-rules";
+import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人;
@@ -91,6 +92,14 @@ describe("转让（改项目 换负责人）", () => {
     expect(await 看(没做完.id)).toMatchObject({ ownerId: 丙.id, done: false, title: "回个电话", dueOn: "2026-11-20" });
     expect(await 看(做完了.id)).toMatchObject({ ownerId: 乙.id, done: true, title: "发资料" });
     expect(await 痕(p, "transfer")).toContain("原负责人没做完的待办带过来 1 条");
+  });
+
+  it("AI 建档撞号提醒是给原负责人本人的（11-04）：勾着转让也留在乙名下、不关", async () => {
+    const { c, p, 没做完 } = await 底子();
+    const 撞号 = await 待办(c, 乙.id, `某某疑似与您负责的测试客户${撞号提醒尾}`);
+    await 改项目(老板, p, { name: "一号项目", ownerId: 丙.id, amount: 0 }, true);
+    expect(await 看(撞号.id)).toMatchObject({ ownerId: 乙.id, done: false });
+    expect((await 看(没做完.id)).ownerId).toBe(丙.id);
   });
 
   it("不勾：乙没做完的待办关掉、标题说明原因，还在乙名下；留痕记关掉 1 条", async () => {

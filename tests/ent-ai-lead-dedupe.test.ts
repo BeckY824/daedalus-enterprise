@@ -18,7 +18,10 @@ vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
-import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
+import { 规则 } from "@/lib/enterprise/rules";
+import { 带走一位 } from "@/lib/carry-over-db";
+import { calendarDay } from "@/lib/schedule-date";
 import { 认出备注里的号码 } from "@/lib/enterprise/ai-lead-dedupe";
 import { 查重提示 } from "@/lib/enterprise/contact-format";
 import { applyProposal } from "@/app/(app)/dashboard/apply";
@@ -113,6 +116,37 @@ describe("撞了：不建、提醒原负责人", () => {
     await applyProposal(卡({ phone: "13700001234" }) as never);
     await applyProposal(卡({ phone: "13700001234" }) as never);
     expect(await prisma.task.count()).toBe(1);
+  });
+
+  it("按真实可见范围跑（触发人看不到原负责人的待办）：点五次也只一条；待办只记今天、不带时刻，不会一建就逾期", async () => {
+    await setSetting(规则.按组织看客户.key, true);
+    const 老客户 = await 甲先建({ phone: "13700001234" });
+    当(乙);
+    for (let i = 0; i < 5; i++) {
+      忘掉企业版范围();
+      const r = await 以谁的身份(乙.id, () => applyProposal(卡({ id: "same-card", phone: "13700001234" }) as never));
+      expect(r).toEqual({ ok: false, error: 查重提示.AI建档重复("小甲") });
+    }
+    const 待办 = await prisma.task.findMany();
+    expect(待办).toHaveLength(1);
+    expect(待办[0]).toMatchObject({ ownerId: 甲.id, customerId: 老客户.id, dueOn: calendarDay(new Date()), dueHasTime: false });
+  });
+
+  it("原负责人把客户转给别人：撞号提醒留在原负责人名下，不跟着转", async () => {
+    const 老客户 = await 甲先建({ phone: "13700001234" });
+    当(乙);
+    await applyProposal(卡({ phone: "13700001234" }) as never);
+    await prisma.$transaction((tx) => 带走一位(tx, 老客户.id, 甲.id, 乙.id, 甲.id, "assign"));
+    expect(await prisma.task.findFirstOrThrow()).toMatchObject({ ownerId: 甲.id, done: false });
+  });
+
+  it("原负责人离职交接：撞号提醒跟着交给接手人（还得有人核对）", async () => {
+    const 老客户 = await 甲先建({ phone: "13700001235" });
+    当(乙);
+    await applyProposal(卡({ phone: "13700001235" }) as never);
+    const 丙 = await 造人("bing", "小丙");
+    await prisma.$transaction((tx) => 带走一位(tx, 老客户.id, 甲.id, 丙.id, 甲.id, "deactivate"));
+    expect(await prisma.task.findFirstOrThrow()).toMatchObject({ ownerId: 丙.id, done: false });
   });
 
   it("公海待捞：照原提示拦，不加待办", async () => {
