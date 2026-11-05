@@ -118,3 +118,21 @@ it("渠道下拉显示全名：375（手机）和 1024 宽都不省略、不出�
     } finally { await page.close(); }
   }
 });
+
+// 11-05 客户：「来源只能采用选项，不能采用填写（无相关选项需和上级沟通）」——渠道格只能选，打字只是搜，回车不会把字当成渠道
+it("渠道只能选、不能手填：输入清单外的字回车后仍是原来的渠道", async () => {
+  const { page, errors } = await open(1280);
+  try {
+    const 框 = 格(page, "渠道").locator(".ant-select");
+    await 框.click();
+    await page.keyboard.type("随便写的来源");
+    await expect.poll(() => page.locator(".ant-select-dropdown:visible").innerText()).toContain("没有这个渠道，请找上级添加");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape");
+    await page.locator("body").click({ position: { x: 2, y: 2 } });
+    const 显示 = await 框.innerText();
+    expect(显示).toContain(长渠道);
+    expect(显示).not.toContain("随便写的来源");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

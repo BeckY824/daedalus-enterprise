@@ -88,7 +88,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   const [draft, setDraft] = useState<Proposal>(() => {
     if (proposal.kind !== "add_lead" || !渠道名们) return proposal;
     const 认出 = 认渠道(proposal.source, 渠道名们.map((name) => ({ name }))).渠道;
-    const 预选 = 认出 ? { ...proposal, source: 认出.name } : proposal;
+    // 企业版来源只能从渠道里选（11-05 客户：「来源只能采用选项，不能采用填写」）：认不出就空着让人选，不留 AI 原文
+    const 预选 = { ...proposal, source: 认出 ? 认出.name : "" };
     if (!企) return 预选;
     const 默认 = 企.默认分配方式;
     const 分 = 默认 !== null && 企.分配方式们.some((x) => x.i === 默认) ? 默认 : 企.分配方式们.length === 1 ? 企.分配方式们[0].i : undefined;
@@ -494,16 +495,24 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
               </Field>
             )}
             <Field label={渠道名们 ? "渠道" : "来源"}>
-              {/* 企业版渠道名常很长：下拉不跟输入框同宽，按内容撑开、最宽到屏幕边，长名折行显示全（11-04） */}
-              <OptionInput
-                size="small"
-                style={{ width: 渠道名们 ? 200 : 130 }}
-                allowClear={false}
-                value={draft.source}
-                options={渠道名们 ? [...渠道名们] : b.sources}
-                {...(渠道名们 ? { popupMatchSelectWidth: false } : {})}
-                onChange={(v) => setDraft({ ...draft, source: v })}
-              />
+              {/* 企业版：只能从启用中的渠道里选，不能自己填（11-05 客户：「来源只能采用选项，不能采用填写（无相关选项需和上级沟通）」）。
+                  渠道名常很长：下拉不跟输入框同宽，按内容撑开（11-04） */}
+              {渠道名们 ? (
+                <Select
+                  size="small"
+                  style={{ width: 200 }}
+                  showSearch
+                  placeholder="选渠道"
+                  value={draft.source || undefined}
+                  options={渠道名们.map((n) => ({ value: n, label: n }))}
+                  popupMatchSelectWidth={false}
+                  classNames={{ popup: { root: "opt-popup-full" } }}
+                  notFoundContent="没有这个渠道，请找上级添加"
+                  onChange={(v: string) => setDraft({ ...draft, source: v })}
+                />
+              ) : (
+                <OptionInput size="small" style={{ width: 130 }} allowClear={false} value={draft.source} options={b.sources} onChange={(v) => setDraft({ ...draft, source: v })} />
+              )}
             </Field>
             {/* 企业版建成项目：首条沟通的下一步计划 + 时间（开了超时回收都必填，11-05）；别的版本不显示 */}
             {渠道名们 && (企卡 || 要下一步) && (

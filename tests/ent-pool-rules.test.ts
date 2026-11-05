@@ -299,15 +299,15 @@ describe("没人负责的公海客户：领错、分错都能撤（11-02）", ()
 });
 
 describe("领项目把客户带出客户公海：名下别的公海项目一起过来（10-31）", () => {
-  /** 乙的客户 c 下三个项目：p1、p2 放回项目公海（客户整体进客户公海），p3 不在公海、归经理；另一位客户 d 的 q 也在项目公海 */
+  /** 乙的客户 c 下三个项目：p1、p2 在项目公海（放回 p1，客户整体进客户公海、p2 跟着进），p3 不在公海、归经理；另一位客户 d 的 q 也在项目公海 */
   async function 摆() {
     const c = await 客户(乙.id);
     const p1 = await 项目(乙.id, c);
     const p2 = await 项目(乙.id, c);
     const p3 = await 项目(乙.id, c);
+    // 放回 p1：客户整体进客户公海，p2、p3 一起进项目公海（X-12，11-05）；p3 再挪出公海归经理
     expect(await 放回公海(乙, p1)).toEqual({ ok: true });
-    expect(await 放回公海(乙, p2)).toEqual({ ok: true });
-    await prisma.project.update({ where: { id: p3 }, data: { ownerId: 经理.id } });
+    await prisma.project.update({ where: { id: p3 }, data: { ownerId: 经理.id, pooledAt: null } });
     const d = await 客户(乙.id);
     const q = await 项目(乙.id, d);
     await 项目(乙.id, d);
@@ -513,7 +513,8 @@ describe("多项目客户：项目随客户整体转让（10-27 会议定固定�
     const p2 = await 项目(乙.id, c);
     expect(await 放回公海(乙, p1)).toEqual({ ok: true });
     expect(await prisma.customerPool.findUniqueOrThrow({ where: { customerId: c } })).toMatchObject({ userId: 乙.id, reason: 客户整体进公海理由 });
-    expect(await 项目在公海(p2)).toBe(false);
+    // X-12（11-05）：同手动放进公海，乙名下别的线索 / 商机项目一起进项目公海
+    expect(await 项目在公海(p2)).toBe(true);
     expect(await 领取公海项目(丙, p1)).toEqual({ ok: true });
     expect(await 负责人(c)).toBe(丙.id);
     expect(await 在客户公海(c)).toBe(false);
@@ -530,6 +531,43 @@ describe("多项目客户：项目随客户整体转让（10-27 会议定固定�
     expect(await 公海超时收回(老板, 今)).toBe(1);
     expect(await 项目在公海(超期)).toBe(true);
     expect(await prisma.customerPool.findUniqueOrThrow({ where: { customerId: c } })).toMatchObject({ userId: null, reason: 客户整体进公海理由 });
+  });
+
+  it("X-12 放回：乙名下别的线索、商机项目一起进项目公海，留痕记放回的人和原因、关乙在客户上的待办；结束了的、已在公海的、订单结束了的不动", async () => {
+    const c = await 客户(乙.id);
+    const p1 = await 项目(乙.id, c);
+    const 商机 = await 项目(乙.id, c, { phase: "商机", node: "明确需求" });
+    const 输了 = await 项目(乙.id, c, { result: "输单" });
+    const 交付了 = await 项目(乙.id, c, { phase: "订单", node: "生产备货", result: "成功交付" });
+    const 早进的 = await 项目(乙.id, c, { pooledAt: 天前(2, 今) });
+    const 待办 = await prisma.task.create({ data: { title: "回访", customerId: c, ownerId: 乙.id } });
+    expect(await 放回公海(乙, p1)).toEqual({ ok: true });
+    const 商 = await prisma.project.findUniqueOrThrow({ where: { id: 商机 } });
+    expect(商.pooledAt?.getTime()).toBe((await prisma.project.findUniqueOrThrow({ where: { id: p1 } })).pooledAt?.getTime());
+    expect(商.ownerId).not.toBe(乙.id);
+    expect(await prisma.projectNodeLog.findFirst({ where: { projectId: 商机, kind: "pool-release" } })).toMatchObject({ userId: 乙.id, fromOwnerId: 乙.id, toOwnerId: null, reason: 客户整体进公海理由 });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 输了 } })).pooledAt).toBeNull();
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 交付了 } })).pooledAt).toBeNull();
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 早进的 } })).pooledAt?.getTime()).toBe(天前(2, 今).getTime());
+    expect(await prisma.projectNodeLog.count({ where: { projectId: 早进的 } })).toBe(0);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: 待办.id } })).doneAt).not.toBeNull();
+    // 丙领客户：两个公海项目一起归丙
+    当(丙);
+    expect((await 领取([c])).ok).toBe(true);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 商机 } })).ownerId).toBe(丙.id);
+  });
+
+  it("X-12 超时回收：一个项目超期把客户带进公海，乙名下另一个没超期的项目一起进项目公海，留痕记系统；不给它另发收回提醒", async () => {
+    await 选("客户可转让", { 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
+    const c = await 客户(乙.id);
+    const 超期 = await 项目(乙.id, c, { createdAt: 天前(10, 今) });
+    const 没超 = await 项目(乙.id, c, { createdAt: 天前(1, 今) });
+    expect(await 公海超时收回(老板, 今)).toBe(1);
+    expect(await 项目在公海(超期)).toBe(true);
+    expect(await 项目在公海(没超)).toBe(true);
+    expect(await prisma.projectNodeLog.findFirst({ where: { projectId: 没超, kind: "pool-release" } })).toMatchObject({ userId: 系统.id, fromOwnerId: 乙.id, reason: 客户整体进公海理由 });
+    expect(await prisma.projectNodeLog.findFirst({ where: { projectId: 超期, kind: "pool-release" } })).toMatchObject({ reason: 超时理由 });
+    expect(await prisma.task.count({ where: { customerId: c, ownerId: 乙.id, doneAt: null } })).toBe(1);
   });
 
   it("名下有没结束的订单阶段项目：客户不跟着进（订单不进公海），领项目也不带客户；订单结束了的不挡", async () => {

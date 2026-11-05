@@ -1521,7 +1521,7 @@ export default function ProjectDetail({
           if (ok) { set放回框(false); router.push("/projects"); }
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户也归你时，客户会一起进公海，客户名下别的项目跟着客户走，你也都看不到了（名下有没结束的订单项目时客户不动）。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户也归你时，客户会一起进公海，客户名下你负责的线索、商机项目也一起进项目公海，你也都看不到了（名下有没结束的订单项目、或有同事在跟的项目时客户不动）。</div>
         <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
       </Modal>
 

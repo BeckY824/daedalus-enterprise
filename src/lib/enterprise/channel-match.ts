@@ -6,6 +6,7 @@
  *   3. 来源里包含渠道名（原样比较，只含一个才认；含多个直接认不出）
  *   4. 竖线（全角｜、半角 |）前的平台前缀——没竖线的整个名字当前缀：来源（去空格、忽略大小写）等于前缀优先，
  *      否则看来源里包含哪些前缀
+ *   5. 都没认出、来源里写了「微信」：按「视频号」再认一遍前缀（11-05 客户：「微信也是视频号」）
  * 停用渠道（active === false）不参与。卡片预选（components/ProposalCard.tsx）和确认落库（dashboard/apply.ts）共用。
  * 纯函数，客户端组件也 import。
  */
@@ -31,8 +32,18 @@ export function 认渠道<T extends { name: string; active?: boolean }>(来源: 
   const 带前缀 = 启用.map((c) => ({ c, k: 前缀(c.name) })).filter((x) => x.k);
   const 等 = 唯一(带前缀.filter((x) => x.k === 规源).map((x) => x.c));
   if (等) return 等;
-  return 唯一(带前缀.filter((x) => 规源.includes(x.k)).map((x) => x.c)) ?? { 渠道: null, 候选: [] };
+  const 包含 = 唯一(带前缀.filter((x) => 规源.includes(x.k)).map((x) => x.c));
+  if (包含) return 包含; // 对上多个时也在这里返回候选，别名不抢
+  for (const [别名, 本名] of 平台别名) {
+    if (!规源.includes(别名)) continue;
+    const r = 唯一(带前缀.filter((x) => x.k === 本名).map((x) => x.c));
+    if (r) return r;
+  }
+  return { 渠道: null, 候选: [] };
 }
+
+/** 平台别名 → 渠道名前缀（规整后）。11-05 客户：「微信也是视频号」 */
+const 平台别名: readonly (readonly [string, string])[] = [["微信", "视频号"]];
 
 /** 认不出时报错里列候选：最多 3 个，用「、」连，多了带「等 N 个」 */
 export function 候选说明(候选: readonly { name: string }[]): string {

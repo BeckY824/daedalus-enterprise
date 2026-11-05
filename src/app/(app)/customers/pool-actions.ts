@@ -20,7 +20,7 @@ import { 带走并记下, 还项目, type 带走的 } from "@/lib/carry-over-db"
 import { 记换负责人, 是我刚换的, 撤销时限毫秒 } from "@/lib/owner-log-db";
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
-import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
+import { 领客户带走公海项目, 客户名下在推项目进公海 } from "@/lib/enterprise/pool-link";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -29,9 +29,8 @@ import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
 import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 能进公海的阶段, 记转让 } from "@/lib/project/db";
-import { 历史负责人们, 进公海后负责人, 进公海关待办 } from "@/lib/project/pool-owner";
-import { 在推项目条件 } from "@/lib/project/active";
+import { 能进公海的阶段 } from "@/lib/project/db";
+import { 历史负责人们 } from "@/lib/project/pool-owner";
 import { 换负责人待办 } from "@/lib/project/carry-tasks";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 有同事在推的客户, 同事在推不能放公海话 } from "@/lib/enterprise/colleague-projects";
@@ -172,31 +171,13 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
 }
 
 /**
- * 企业版放进公海（P-公海-06）：客户进客户公海，客户负责人自己负责、还没结束的线索 / 商机项目一起进项目公海，返回这些项目 id（撤销用）。
- * 项目这一半同项目放回公海：清负责人（pool-owner.ts）、原负责人记在 pool-release 的 from 上、关他没做完的待办。
- * 同事的、订单阶段的上面已经整位拦掉；退回次数客户这边 +1（记退回），项目不再另加。看全部：放完原负责人就看不到了
+ * 企业版放进公海（P-公海-06）：客户进客户公海，客户负责人自己负责、还没结束的线索 / 商机项目一起进项目公海（pool-link.ts 客户名下在推项目进公海），
+ * 返回这些项目 id（撤销用）。同事的、订单阶段的上面已经整位拦掉；退回次数客户这边 +1（记退回），项目不再另加
  */
 async function 放进公海连项目(tx: Prisma.TransactionClient, 们: { id: string; salesOwnerId: string }[], 操作人: string, reason: string): Promise<string[]> {
   return 看全部(async () => {
     await tx.customerPool.createMany({ data: 们.map((c) => ({ customerId: c.id, userId: 操作人, reason })) });
-    const 主 = new Map(们.map((c) => [c.id, c.salesOwnerId]));
-    const 现在 = new Date();
-    const 放了: string[] = [];
-    for (let i = 0; i < 们.length; i += 500) {
-      const 项目 = await tx.project.findMany({
-        where: { customerId: { in: 们.slice(i, i + 500).map((c) => c.id) }, ...在推项目条件, phase: { in: [...能进公海的阶段] } },
-        select: { id: true, customerId: true, name: true, ownerId: true, phase: true, node: true, result: true },
-      });
-      for (const p of 项目) {
-        if (!p.ownerId || p.ownerId !== 主.get(p.customerId)) continue;
-        await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
-        await 记转让(tx, p, 操作人, p.ownerId, null, "pool-release", reason === "手动" ? null : reason, 现在);
-        // 客户这时已经在公海里：原负责人在这位客户上没做完的待办全关（pool-owner.ts 进公海关待办）
-        await 进公海关待办(tx, p, p.ownerId, 现在);
-        放了.push(p.id);
-      }
-    }
-    return 放了;
+    return 客户名下在推项目进公海(tx, 们, 操作人, reason === "手动" ? null : reason, new Date());
   });
 }
 
