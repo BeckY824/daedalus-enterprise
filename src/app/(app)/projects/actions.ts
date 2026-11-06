@@ -28,7 +28,7 @@ import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, typ
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 } from "@/lib/enterprise/notice-sources";
+import { 分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 } from "@/lib/enterprise/notice-sources";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走, 是占位值 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -196,8 +196,10 @@ export async function 建档向导(输入: 建档向导输入) {
     刷新项目(建了.projectId, r.id);
     revalidatePath("/follow-ups");
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
-    const 分了 = 分配 ? (await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null))
-      ?? (好.项目.ownerId !== me.id ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : null) : null;
+    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null) : null;
+    // 指定给了别人：告诉接手人，链客户详情（看得到联系方式）。自动分配、进公海走 建好再分 里自己的通知，这里不重复
+    if (!再分 && 好.项目.ownerId !== me.id) await 分给你通知(me, 好.项目.ownerId, [r.id], 好.项目.name);
+    const 分了 = 分配 ? 再分 ?? (好.项目.ownerId !== me.id ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : null) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
     return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
   } catch (e) { return 不在了(e); }

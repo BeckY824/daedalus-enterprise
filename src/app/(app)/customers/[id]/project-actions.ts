@@ -37,6 +37,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 定分配方式, 建好再分, 新建分配方式数据 } from "@/lib/project/after-create-assign";
+import { 项目分给你通知 } from "@/lib/enterprise/notice-sources";
 import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
 
 export type 给客户建项目输入 = {
@@ -168,6 +169,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     revalidatePath(`/customers/${customerId}`);
     revalidatePath("/follow-ups");
     const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线) : null;
+    // 自动 / 公海 / 暂不分配 建好再分 自己管（返回对象）；指定别人走这里，自己留着函数里不发
+    if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId);
     return { ok: true, projectId, ...(分了 ?? {}) };
   } catch (e) {
     return 不在了(e);

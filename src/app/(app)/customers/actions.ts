@@ -62,7 +62,7 @@ import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type �
 import { 认业务线, 业务线不认得 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
-import { 交接通知, 改负责人通知 } from "@/lib/enterprise/notice-sources";
+import { 交接通知, 分给你通知, 改负责人通知 } from "@/lib/enterprise/notice-sources";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 
 
@@ -615,6 +615,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       user: me, action: "create", entity: "Customer", entityId: created.id,
       summary: `新建${b.customer}「${created.name}」`,
     });
+    // 建好就归了别人：告诉接手人。建档向导那条路（带 接着）它自己发，带上项目名，这里不重复
+    if (!认得(接着)) await 分给你通知(me, created.salesOwnerId, [created.id]);
     revalidateCustomer();
     return { ok: true, id: created.id };
   }
@@ -663,6 +665,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     const 带走 = 改前 && 改前.salesOwnerId !== data.salesOwnerId
       ? await 带走没做完的([{ customerId: input.id, 旧: 改前.salesOwnerId }], data.salesOwnerId, me.id)
       : undefined;
+    if (改前 && 改前.salesOwnerId !== data.salesOwnerId) await 分给你通知(me, data.salesOwnerId, [input.id]);
     revalidateCustomer(input.id);
     await 客户存了推项目(me, input.id);
     return { ok: true, id: input.id, 带走 };
@@ -747,6 +750,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       const 带走 = mine.includes("salesOwnerId")
         ? await 带走没做完的([{ customerId: input.id, 旧: current.salesOwnerId }], data.salesOwnerId, me.id)
         : undefined;
+      if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId) await 分给你通知(me, data.salesOwnerId, [input.id]);
       revalidateCustomer(input.id);
       await 客户存了推项目(me, input.id);
       return { ok: true, id: input.id, 带走 };
@@ -1127,6 +1131,7 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   });
   const { 数: 带走, 记下: 带过来 } = await 带走并记下(换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, me.id);
   await 改负责人通知(me, 换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId);
+  await 分给你通知(me, salesOwnerId, 换成了.map((c) => c.id));
 
   if (res.count) {
     await recordAudit({
@@ -1731,6 +1736,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   const 带走 = key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId
     ? await 带走没做完的([{ customerId: id, 旧: 原负责人 }], data.salesOwnerId as string, me.id)
     : undefined;
+  if (key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId) await 分给你通知(me, data.salesOwnerId as string, [id]);
   revalidatePath(`/customers/${id}`);
   revalidatePath("/customers");
   await 客户存了推项目(me, id);

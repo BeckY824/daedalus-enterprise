@@ -12,7 +12,7 @@ import type { 演示组 } from "@/lib/enterprise/demo-switch";
  * 演示部署的门（CRM_DEMO_SWITCH=1，见 lib/enterprise/demo-switch.ts）：不要密码，按业务角色列出所有人，点谁就以谁进。
  * 进去以后左下角头像菜单里还能随时换人（AppShell 的「切换身份」），所以这里不用解释每个角色能干什么——进去看。
  */
-export default function DemoLogin({ 名单, 产品名 }: { 名单: 演示组[]; 产品名?: string }) {
+export default function DemoLogin({ 名单, 产品名, 去处 }: { 名单: 演示组[]; 产品名?: string; 去处?: string }) {
   const [正在, set正在] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +26,7 @@ export default function DemoLogin({ 名单, 产品名 }: { 名单: 演示组[]; 
     };
     const res = await 演示登录(id).catch(() => ({ ok: false as const, error: "登录请求失败，请检查网络连接后重试" }));
     if (!res.ok) return 停(res.error);
-    await 登录之后(res, 停);
+    await 登录之后(res, 停, 去处);
   }
 
   return (

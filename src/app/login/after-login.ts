@@ -10,7 +10,7 @@ const 跳转超时毫秒 = 15000;
  *
  * 报错就回一句话（调用方显示出来、停止转圈）；回 null 表示已经在跳了，保持转圈别闪。
  */
-export async function 登录之后(res: Extract<LoginResult, { ok: true }>, 报错: (msg: string) => void): Promise<void> {
+export async function 登录之后(res: Extract<LoginResult, { ok: true }>, 报错: (msg: string) => void, 去处?: string): Promise<void> {
   /**
    * 用整页跳转，不用 router.push。
    * 软导航只拉 RSC 数据，会话 cookie 万一没生效（HTTP 下的 secure cookie、
@@ -22,7 +22,8 @@ export async function 登录之后(res: Extract<LoginResult, { ok: true }>, 报�
    */
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   // 先到选模版那一页：新用户在进主界面之前选；不该选的它当场 307 去首页（app/start/page.tsx）
-  window.location.assign(res.选工作区 ? "/workspaces" : "/start");
+  // 去处：点通知没登录被弹过来的（已在 login/page.tsx 校验过），登录完回那一页。/start 现在只是转去首页，跳过不损失什么
+  window.location.assign(res.选工作区 ? "/workspaces" : 去处 ?? "/start");
 
   // 跳转没能真正离开本页时的兜底提示（页面一旦卸载，这个定时器随之消失）
   setTimeout(() => 报错("登录成功但页面未能跳转，请刷新重试；若反复出现请联系管理员"), 跳转超时毫秒);
