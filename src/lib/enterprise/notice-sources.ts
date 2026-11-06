@@ -11,6 +11,7 @@ import { notify } from "./notify";
 import { 读组织, 管理员类别们of, 负责人和上级 } from "./org";
 import { 企业版 } from "./switch";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
+import { 无负责人占位邮箱 } from "@/lib/pool";
 
 type 人 = { id: string; name: string };
 
@@ -269,6 +270,12 @@ async function 交接客户名(customerIds: string): Promise<string> {
   return `：${名们.join("、")}${ids.length > 名们.length ? ` 等 ${ids.length} 位` : ""}`;
 }
 
+/** 占位账号（公海客户挂的「无负责人」）和停用的人不是真接手人，不发提醒 */
+async function 收得到分配(toUserId: string): Promise<boolean> {
+  const u = await 看全部(() => prisma.user.findUnique({ where: { id: toUserId }, select: { active: true, email: true } }));
+  return !!u && u.active && u.email !== 无负责人占位邮箱;
+}
+
 /**
  * 把客户分给谁（11-06）：运营分发实际是直接改负责人和新建时指定别人，之前接手人收不到提醒。
  * 单条链客户详情（负责人在那儿能看到全部联系方式），多条链客户列表。标题和正文都推到飞书，所以不放手机号
@@ -277,6 +284,7 @@ export async function 分给你通知(谁点的: 人, toUserId: string, customer
   await 稳("分给你通知", async () => {
     const ids = [...new Set(customerIds)];
     if (!ids.length || !toUserId || toUserId === 谁点的.id) return;
+    if (!(await 收得到分配(toUserId))) return;
     const 行们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }));
     const 名 = new Map(行们.map((r) => [r.id, r.name]));
     const 名们 = ids.map((id) => 名.get(id)).filter((n): n is string => !!n);
@@ -291,6 +299,27 @@ export async function 分给你通知(谁点的: 人, toUserId: string, customer
     });
   });
 }
+
+/**
+ * 客户页给已有客户新建项目、指定别人负责：客户不跟着转，接手人多半打不开客户详情，所以链项目详情；
+ * 接手人本来就是这位客户的负责人，才链客户详情。自己留着不发
+ */
+export async function 项目分给你通知(谁点的: 人, toUserId: string, projectId: string, 项目名: string, customerId: string): Promise<void> {
+  await 稳("项目分给你通知", async () => {
+    if (!toUserId || toUserId === 谁点的.id) return;
+    if (!(await 收得到分配(toUserId))) return;
+    const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: { name: true, salesOwnerId: true } }));
+    if (!c) return;
+    await notify([toUserId], {
+      kind: "分配",
+      title: `${谁点的.name} 把项目分给你：${项目名}`,
+      body: `客户：${c.name}`,
+      link: c.salesOwnerId === toUserId ? `/customers/${customerId}` : `/projects/${projectId}`,
+      key: `project-assign:${projectId}:${toUserId}:${分钟()}`,
+    });
+  });
+}
+
 
 /** 直接改负责人（转给自己、规则关着）当场就换了：告诉原负责人一声（11-03 C3-3）。不发给操作人自己；新负责人走上面的 分给你通知 */
 export async function 改负责人通知(me: 人, 换了: readonly { customerId: string; 旧: string }[], 新: string): Promise<void> {
