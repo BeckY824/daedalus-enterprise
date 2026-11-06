@@ -66,7 +66,7 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       orderBy: { pool: { at: "desc" } },
       take: 公海取上限,
       select: {
-        id: true, name: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true,
+        id: true, name: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true, channelId: true,
         pool: { select: { userId: true, reason: true, at: true } },
       },
     }),
@@ -76,8 +76,8 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       orderBy: { pooledAt: "desc" },
       take: 公海取上限,
       select: {
-        id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, createdAt: true,
-        customer: { select: { name: true, lastFollowAt: true, poolReturns: true } },
+        id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, createdAt: true, channelId: true,
+        customer: { select: { name: true, lastFollowAt: true, poolReturns: true, channelId: true } },
       },
     }),
     生效组织规则(),
@@ -146,6 +146,7 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       创建时间: c.createdAt.toISOString(),
       类, 累计: c.poolReturns, 入池原因: 入池原因文字(原类, c.pool!.reason), 快捷: 归到快捷({ 类, 累计: c.poolReturns }),
       原负责人是我: 拦 && c.salesOwnerId === me.id,
+      来源id: c.channelId,
     };
   });
   const 项目行: 公海行[] = 项目们.filter((p) => !(回避 && 最近放回.get(p.id)?.fromOwnerId === me.id)).map((p) => {
@@ -165,6 +166,7 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       类, 累计, 入池原因: 入池原因文字(类, 留痕?.reason), 快捷: 归到快捷({ 类, 累计 }),
       // 项目公海原负责人一律领不回（企业版看规则，别的版本本来就不能）
       原负责人是我: (留痕?.fromOwnerId || p.ownerId) === me.id,
+      来源id: p.channelId ?? (露客户(me, p, 可见) ? p.customer.channelId : null),
     };
   });
   return { 行: [...客户行, ...项目行], 截断: 客户们.length >= 公海取上限 || 项目们.length >= 公海取上限 };

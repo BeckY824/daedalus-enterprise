@@ -7,6 +7,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 能管公海, 能恢复, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 规整公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
+import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 公海分配候选 } from "@/lib/owners";
 import { 持有数 } from "@/lib/project/db";
 import { 持有上限of } from "@/lib/project/org-rules";
@@ -23,7 +24,7 @@ export default async function PoolPage({
   searchParams,
 }: {
   /** attr：公海属性；quick：快捷按钮；sort：pooled / follow / created */
-  searchParams: Promise<{ keyword?: string; attr?: string; quick?: string; sort?: string; page?: string; pageSize?: string }>;
+  searchParams: Promise<{ keyword?: string; attr?: string; quick?: string; sort?: string; channelId?: string; page?: string; pageSize?: string }>;
 }) {
   const me = await requireUser();
   if (!企业版() || (await getBusiness()).projectMode !== true) notFound();
@@ -39,15 +40,17 @@ export default async function PoolPage({
     quick: 是快捷(sp.quick) ? sp.quick : "",
     // 默认排序不写进地址：筛选栏的「重置」看得出没在筛
     sort: sp.sort && 规整排序(sp.sort) === sp.sort ? sp.sort : "",
+    channelId: (sp.channelId ?? "").trim(),
   };
   const 权限org = await 权限组织();
   const 能分配 = 能管公海(me, 权限org);
-  const [d, users, 规则, 有] = await Promise.all([
-    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword }, 正整数(sp.page, 1), pageSize),
+  const [d, users, 规则, 有, 渠道筛选项] = await Promise.all([
+    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId }, 正整数(sp.page, 1), pageSize),
     // 分配给谁：老板、主管才用得上；只列能当负责人的，不是系统管理员只列同业务线的（11-03 B2-7）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
     生效组织规则(),
     持有数(prisma, me.id),
+    渠道筛选选项(),
   ]);
   // 持有上限开着（且我不是不限）才在页头写「我手上 N / 上限 M」，领取按钮到上限时灰着写原因（交互规则 A、C）
   const 上限 = 持有上限of(规则, me.id);
@@ -56,6 +59,7 @@ export default async function PoolPage({
       {...d}
       pageSize={pageSize}
       filters={筛}
+      渠道筛选项={渠道筛选项}
       能标无效={能分配}
       能恢复={能恢复(me, 权限org)}
       能分配={能分配}

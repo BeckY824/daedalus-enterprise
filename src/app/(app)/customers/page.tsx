@@ -23,6 +23,7 @@ import { 能管公海, 能转出自己的, 能删除, 能新建和领取 } from 
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
+import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 建档向导数据 } from "../projects/new/wizard-data";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
@@ -49,6 +50,8 @@ type SP = Promise<{
   level?: string;
   /** 团队版部门（1b，2026-10-23）：负责人在这个部门连下级里的 */
   dept?: string;
+  /** 客户来源（企业版，11-06） */
+  channelId?: string;
   page?: string;
   pageSize?: string;
   sort?: string;
@@ -148,7 +151,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
-    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接,
+    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项,
   ] = await Promise.all([
     行P,
     负责人候选(),
@@ -180,6 +183,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 ? 页面客户释义() : undefined,
     // 离职交接入口（11-03 B7-2）：开了项目模式摆在项目页头，没开摆在这里
     企 && !b.projectMode ? 当前是共享区().then((共享) => (共享 ? null : 离职交接入口(me))) : null,
+    // 「客户来源」筛选的候选（11-06 自定义筛选）：含停用的，老客户还挂着
+    企 ? 渠道筛选选项() : [],
   ]);
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
   const 旧职位 = 用着的职位.map((c) => c.grade!.trim()).filter((g) => g && !b.grades.includes(g)).sort();
@@ -213,6 +218,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       排序币种={sortCurrency}
       users={users}
       channels={channels}
+      渠道筛选项={渠道筛选项}
       直接新建={sp.new === "1"}
       // 企业版项目模式：「新建客户」在本页弹向导框「新增客户」（U-新建-01），向导要的数据一起给
       建档={建档}
@@ -235,7 +241,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         level: sp.level ?? "",
         dept: sp.dept ?? "",
         // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
-        ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "" } : {}),
+        ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", channelId: sp.channelId ?? "" } : {}),
       }}
       企业版={企业版()}
       客户状态选项={客户状态选项}

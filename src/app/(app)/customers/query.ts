@@ -42,6 +42,8 @@ export type 客户条件 = {
   level?: string;
   /** 团队版部门（1b，2026-10-23）：负责人在这个部门（连下级）里的。没有部门数据（个人版、老云端）时不筛 */
   dept?: string;
+  /** 客户来源（企业版，11-06）：建档时选的渠道 Customer.channelId。放 AND：directOf 单键也用 channelId，不能互相盖 */
+  channelId?: string;
 };
 
 /** 等级筛选：A–D 按字母筛；「未分级」= 没有档案行或等级空着的。别的值不筛（地址栏手改的） */
@@ -125,7 +127,7 @@ export async function 客户筛选条件(
   const 等级 = 等级条件(sp.level);
   const 部门 = 部门条件(sp.dept);
   return {
-    AND: [keyword, ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : [])],
+    AND: [keyword, ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
     ...(sp.grade ? { grade: sp.grade } : {}),
     ...(sp.followStatus ? { followStatus: sp.followStatus } : {}),
     ...(sp.decisionStatus ? { decisionStatus: sp.decisionStatus } : {}),
@@ -217,9 +219,9 @@ export async function 客户金额分页(where: Prisma.CustomerWhereInput, order
 }
 
 /** 快路径接得住的本表等值筛选（列名固定，值参数绑定） */
-const 等值列 = ["grade", "followStatus", "decisionStatus", "custStatus", "customerType", "salesOwnerId", "channelOwnerId"] as const;
+const 等值列 = ["grade", "followStatus", "decisionStatus", "custStatus", "customerType", "salesOwnerId", "channelOwnerId", "channelId"] as const;
 /** 等值列里只有企业版认的（开关关着地址栏带了也当没带） */
-const 企业版才筛: readonly string[] = ["custStatus", "customerType"];
+const 企业版才筛: readonly string[] = ["custStatus", "customerType", "channelId"];
 
 /**
  * 带关键词的列表：总数、钳过的页码和这一页的 id 用一条 SQL 出（P2，2026-10-28）。

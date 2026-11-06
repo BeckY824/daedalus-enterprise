@@ -1,7 +1,7 @@
 "use client";
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
@@ -12,6 +12,7 @@ import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
 import ResetFilters from "@/components/ResetFilters";
+import { useCustomFilters } from "@/components/CustomFilters";
 import { useBusiness } from "@/lib/business-client";
 import { useLocalPref } from "@/lib/local-pref";
 import { useUrlFilters } from "@/lib/url-filters";
@@ -24,7 +25,8 @@ import { 主题颜色 } from "@/lib/chart-theme";
 import { categorical } from "@/lib/palette";
 import { 认首页卡, 首页卡口径 } from "@/lib/project/home-cards";
 import { 按预计成交排 } from "@/lib/project/project-fields";
-import { 企业级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
+import { 企业级别, 企业级别说明, 级别选项 } from "@/lib/enterprise/customer-v2";
+import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, type 项目行, type 看板一列 } from "@/lib/project/board";
@@ -79,14 +81,15 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null, 市场 = null, 高亮,
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
   取到上限: boolean;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string };
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string };
+  渠道筛选项?: { value: string; label: string }[];
   /** 服务端的 企业版()：结局叫法跟着字典 */
   企业版?: boolean;
   /** 企业版组织规则里改过的出口叫法 */
@@ -302,6 +305,68 @@ export default function ProjectsView({
     ],
   });
   const 进程选项: SelectProps["options"] = 新线索 ? 进程组("线索").options : f.phase ? 进程组(f.phase as 阶段).options : 阶段们.map(进程组);
+  // 自定义筛选（11-06）：默认摆的和原来一样，「渠道」「级别」收在更多筛选；新线索页只摆默认的，不给自定义
+  const { 外露: 筛选外露, 更多按钮: 更多筛选按钮 } = useCustomFilters(
+    "projects",
+    [
+      ...(!不问归属
+        ? [{
+            键: "ownerId", 名: "负责人", 宽: 126, 默认外露: true, 有值: !!f.ownerId,
+            渲染: (style: CSSProperties) => (
+              <Select style={style} aria-label="负责人" placeholder="全部成员" allowClear value={f.ownerId || undefined} onChange={(v) => apply({ ownerId: v ?? "" })} options={成员选项(users)} />
+            ),
+          }]
+        : []),
+      ...(市场?.视角 === "市场管理"
+        ? [{
+            键: "creator", 名: "创建人", 宽: 126, 默认外露: true, 有值: !!f.creator,
+            渲染: (style: CSSProperties) => (
+              <Select style={style} aria-label="创建人" placeholder="全部创建人" allowClear showSearch={{ optionFilterProp: "label" }} value={f.creator || undefined} onChange={(v?: string) => apply({ creator: v ?? "" })} options={市场.创建人们.map((u) => ({ value: u.id, label: u.name }))} popupMatchSelectWidth={false} />
+            ),
+          }]
+        : []),
+      ...(!新线索
+        ? [{
+            键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 有值: !!f.phase,
+            渲染: (style: CSSProperties) => (
+              <Select style={style} aria-label="阶段" value={f.phase || ""} onChange={(v: string) => apply({ phase: v, node: "" })} options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]} />
+            ),
+          }]
+        : []),
+      {
+        键: "node", 名: "进程", 宽: 130, 默认外露: true, 有值: !!f.node,
+        渲染: (style: CSSProperties) => (
+          <Select style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} popupMatchSelectWidth={false} />
+        ),
+      },
+      /* 企业版公海只有一处（左栏「公海」，/pool）：这里不再摆「项目公海」筛选，只给一条去那儿的路 */
+      ...(!企业版
+        ? [{
+            键: "pool", 名: "项目公海", 宽: 120, 默认外露: true, 有值: !!f.pool,
+            渲染: (style: CSSProperties) => (
+              <Select style={style} aria-label="项目公海" value={f.pool || ""} onChange={(v: string) => apply({ pool: v, recycled: "" })} options={[{ value: "", label: "全部项目" }, { value: "1", label: "项目公海" }]} />
+            ),
+          }]
+        : []),
+      ...(企业版 && !新线索
+        ? [
+            {
+              键: "channelId", 名: "渠道", 宽: 150, 默认外露: false, 有值: !!f.channelId,
+              渲染: (style: CSSProperties) => (
+                <Select style={style} aria-label="渠道" placeholder="全部渠道" allowClear showSearch={{ optionFilterProp: "label" }} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} popupMatchSelectWidth={false} />
+              ),
+            },
+            {
+              键: "level", 名: "级别", 宽: 120, 默认外露: false, 有值: !!f.level,
+              渲染: (style: CSSProperties) => (
+                <Select style={style} aria-label="级别" placeholder="全部级别" allowClear value={f.level || undefined} onChange={(v?: string) => apply({ level: v ?? "" })} options={[...级别选项(), { value: 未分级, label: 未分级 }]} popupMatchSelectWidth={false} />
+              ),
+            },
+          ]
+        : []),
+    ],
+    { 停用: 新线索 },
+  );
   const 筛选 = (
     <Space wrap size={[10, 10]}>
       <ListSearch
@@ -311,58 +376,8 @@ export default function ProjectsView({
         onChange={(v) => setF({ ...f, keyword: v })}
         onSearch={(v) => apply({ keyword: v })}
       />
-      {!不问归属 && (
-        <Select
-          style={{ width: 126 }}
-          placeholder="全部成员"
-          allowClear
-          value={f.ownerId || undefined}
-          onChange={(v) => apply({ ownerId: v ?? "" })}
-          options={成员选项(users)}
-        />
-      )}
-      {市场?.视角 === "市场管理" && (
-        <Select
-          style={{ width: 126 }}
-          aria-label="创建人"
-          placeholder="全部创建人"
-          allowClear
-          showSearch={{ optionFilterProp: "label" }}
-          value={f.creator || undefined}
-          onChange={(v?: string) => apply({ creator: v ?? "" })}
-          options={市场.创建人们.map((u) => ({ value: u.id, label: u.name }))}
-          popupMatchSelectWidth={false}
-        />
-      )}
-      {!新线索 && (
-        <Select
-          style={{ width: 110 }}
-          aria-label="阶段"
-          value={f.phase || ""}
-          onChange={(v: string) => apply({ phase: v, node: "" })}
-          options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]}
-        />
-      )}
-      <Select
-        style={{ width: 130 }}
-        aria-label="进程"
-        placeholder="全部进程"
-        allowClear
-        value={f.node || undefined}
-        onChange={(v?: string | null) => apply({ node: v ?? "" })}
-        options={进程选项}
-        popupMatchSelectWidth={false}
-      />
-      {/* 企业版公海只有一处（左栏「公海」，/pool）：这里不再摆「项目公海」筛选，只给一条去那儿的路 */}
-      {!企业版 && (
-        <Select
-          style={{ width: 120 }}
-          aria-label="项目公海"
-          value={f.pool || ""}
-          onChange={(v: string) => apply({ pool: v, recycled: "" })}
-          options={[{ value: "", label: "全部项目" }, { value: "1", label: "项目公海" }]}
-        />
-      )}
+      {筛选外露}
+      {更多筛选按钮}
       <ResetFilters 显示={Object.values(f).some(Boolean)} onClick={reset} />
       {/* 企业版项目首页只留看板、列表（U-项目-08）：「新线索列表」「沟通记录」入口去掉，/leads、/follow-ups 路由还在，⌘K 搜得到 */}
     </Space>

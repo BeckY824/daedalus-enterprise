@@ -150,8 +150,8 @@ export function 算看板底数(渠道ids: string[], 项目们: 看板项目[], 
   return out;
 }
 
-export type 渠道筛选 = { kw: string; attr: string; ownerId: string; active: string };
-type 可筛 = { name: string; platform: string | null; attr: string | null; remark: string | null; channelOwnerId: string; active: boolean };
+export type 渠道筛选 = { kw: string; attr: string; ownerId: string; active: string; creator?: string };
+type 可筛 = { name: string; platform: string | null; attr: string | null; remark: string | null; channelOwnerId: string; active: boolean; createdByName?: string | null };
 
 /** 渠道列表的筛选（列表和看板都用它，所以两边一定是同一批渠道）：关键词搜全称、名称、属性、备注；属性、负责人精确；状态 on / off */
 export function 筛渠道<T extends 可筛>(行: T[], f: 渠道筛选): T[] {
@@ -161,6 +161,7 @@ export function 筛渠道<T extends 可筛>(行: T[], f: 渠道筛选): T[] {
       (!k || [r.name, r.platform, r.attr, r.remark].some((x) => (x ?? "").toLowerCase().includes(k))) &&
       (!f.attr || r.attr === f.attr) &&
       (!f.ownerId || r.channelOwnerId === f.ownerId) &&
+      (!f.creator || r.createdByName === f.creator) &&
       (!f.active || (f.active === "on") === r.active),
   );
 }

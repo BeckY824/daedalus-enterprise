@@ -170,6 +170,37 @@ describe("关键词分页 = 老路", () => {
     expect(只读SQL(await 那句("138"))).toBe(false);
   });
 
+  it("客户来源（11-06）：关键词 + 来源和老路对拍，只出这个来源的；没开企业版时当没带", async () => {
+    const 渠道 = await raw.channel.create({ data: { name: "来源筛选用", channelOwnerId: 经理 } });
+    const 挂上的 = (await raw.customer.findMany({ where: { name: { startsWith: "甲" }, pool: null }, select: { id: true }, orderBy: { id: "asc" } })).slice(0, 6).map((c) => c.id);
+    await raw.customer.updateMany({ where: { id: { in: 挂上的 } }, data: { channelId: 渠道.id } });
+    try {
+      const sp: 客户条件 = { keyword: "甲", channelId: 渠道.id };
+      for (const 谁 of [老板, 经理, 小王, 外人]) {
+        const 老 = await 以谁的身份(谁, () => 老路(sp, 1, 20));
+        const 快 = await 以谁的身份(谁, () => 关键词分页(sp, 1, 20));
+        // 关键词分页接不住这个组合时回 null，走老路：那样结果就是老路本身
+        if (快) expect(快).toEqual(老);
+        expect(老.ids.every((id) => 挂上的.includes(id))).toBe(true);
+      }
+      expect((await 以谁的身份(老板, () => 老路(sp, 1, 20))).ids.slice().sort()).toEqual(挂上的.slice().sort());
+
+      delete process.env.CRM_ENTERPRISE;
+      忘掉企业版范围();
+      try {
+        const where = await 客户筛选条件({ channelId: 渠道.id });
+        const 全 = await 客户筛选条件({});
+        expect(await raw.customer.count({ where })).toBe(await raw.customer.count({ where: 全 }));
+      } finally {
+        process.env.CRM_ENTERPRISE = "1";
+        忘掉企业版范围();
+      }
+    } finally {
+      await raw.customer.updateMany({ where: { id: { in: 挂上的 } }, data: { channelId: null } });
+      await raw.channel.delete({ where: { id: 渠道.id } });
+    }
+  });
+
   it("开关关着（没开企业版）也和老路一样", async () => {
     delete process.env.CRM_ENTERPRISE;
     忘掉企业版范围();

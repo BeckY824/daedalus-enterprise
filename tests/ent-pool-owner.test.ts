@@ -18,7 +18,8 @@ vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { invalidateSettingsCache } from "@/lib/settings";
+import { invalidateSettingsCache, setSetting } from "@/lib/settings";
+import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 放回公海, 领取公海项目 } from "@/lib/project/db";
 import { 读项目列表 } from "@/lib/project/list";
@@ -65,6 +66,40 @@ afterEach(() => {
   公海规则.项目能单独领 = false;
   公海规则.原负责人看得到公海项目 = false;
   忘掉企业版范围();
+});
+
+describe("公海按客户来源筛不漏客户（11-06 自定义筛选）", () => {
+  const 造渠道 = async (name: string) => (await prisma.channel.create({ data: { name, channelOwnerId: 老板.id } })).id;
+  const 按来源 = (u: 人, channelId: string) => { 当(u); return 以谁的身份(u.id, async () => (await 读项目列表(u, { pool: "1", channelId })).行.map((r) => r.id)); };
+  const 公海页按来源 = (u: 人, 来源: string) => { 当(u); return 以谁的身份(u.id, async () => (await 读公海页(u, { 来源 }, 1, 100)).行.filter((r) => r.种 === "项目").map((r) => r.projectId)); };
+
+  it("公海里同事客户的项目：业务员看不到客户，就不能用客户的来源筛中它；项目自己选的来源能筛；老板都能", async () => {
+    // 规则「按组织看客户」关着时谁都看得到客户，要开着才分得出来
+    await setSetting(规则.按组织看客户.key, true);
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const [客户来源, 项目来源] = [await 造渠道("客户的来源"), await 造渠道("项目的来源")];
+    // 客户归丙、项目归丁：放回项目时客户不跟进公海（负责人不同，pool-link.ts），乙就看不到这位客户。
+    // 项目各挂一位客户，否则同负责人的多项目客户会整体连带进公海（X-12）
+    const 丁 = await 造人("ding", "丁", "SALES");
+    const [c1, c2] = [await 客户(丙.id, "客户一"), await 客户(丙.id, "客户二")];
+    await prisma.customer.updateMany({ where: { id: { in: [c1, c2] } }, data: { channelId: 客户来源 } });
+    const 没选 = await 项目(丁.id, c1, "没选来源");
+    const 选了 = await 项目(丁.id, c2, "选了来源");
+    await prisma.project.update({ where: { id: 选了 }, data: { channelId: 项目来源 } });
+    当(丁);
+    expect(await 放回公海(丁, 没选)).toEqual({ ok: true });
+    expect(await 放回公海(丁, 选了)).toEqual({ ok: true });
+
+    expect(await 列表(乙)).toEqual(expect.arrayContaining([没选, 选了]));
+    expect(await 按来源(乙, 客户来源)).toEqual([]);
+    expect(await 公海页按来源(乙, 客户来源)).toEqual([]);
+    expect(await 按来源(乙, 项目来源)).toEqual([选了]);
+    expect(await 公海页按来源(乙, 项目来源)).toEqual([选了]);
+
+    expect(await 按来源(老板, 客户来源)).toEqual([没选]);
+    expect(await 公海页按来源(老板, 客户来源)).toEqual([没选]);
+  });
 });
 
 describe("进公海清负责人", () => {

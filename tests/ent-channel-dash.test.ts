@@ -212,6 +212,19 @@ describe("纯函数", () => {
     expect(k.榜.map((x) => x.id)).toEqual(["a", "c"]);
   });
 
+  it("筛渠道按创建人（11-06 自定义筛选）：没带时全出，带了只留这个人建的，老数据没写创建人的不出", () => {
+    const 行 = [
+      { id: "a", name: "甲", platform: null, attr: null, remark: null, channelOwnerId: "u1", channelOwnerName: "销售甲", active: true, createdByName: "管理员" },
+      { id: "b", name: "乙", platform: null, attr: null, remark: null, channelOwnerId: "u1", channelOwnerName: "销售甲", active: true, createdByName: "销售甲" },
+      { id: "c", name: "丙", platform: null, attr: null, remark: null, channelOwnerId: "u1", channelOwnerName: "销售甲", active: true },
+    ];
+    const 空 = { kw: "", attr: "", ownerId: "", active: "" };
+    expect(筛渠道(行, 空).map((r) => r.id)).toEqual(["a", "b", "c"]);
+    expect(筛渠道(行, { ...空, creator: "" }).map((r) => r.id)).toEqual(["a", "b", "c"]);
+    expect(筛渠道(行, { ...空, creator: "管理员" }).map((r) => r.id)).toEqual(["a"]);
+    expect(筛渠道(行, { ...空, creator: "没这人" }).map((r) => r.id)).toEqual([]);
+  });
+
   it("未录投入：这批渠道里一笔没录的个数和第一个（按列表顺序）；成交、投入跨渠道按币种合", () => {
     const 底 = {
       a: 期({ 成交: [{ 币种: "CNY", 合计: 100 }], 投入: [{ 币种: "CNY", 合计: 40 }] }),

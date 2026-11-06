@@ -2,10 +2,10 @@
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import Heat from "@/components/Heat";
-import { useEffect, useState, useSyncExternalStore, useRef } from "react";
+import { useEffect, useState, useSyncExternalStore, useRef, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Select, Space, Dropdown, App, Tag, Popover, Segmented, type MenuProps } from "antd";
+import { Button, Select, Space, Dropdown, App, Tag, Segmented, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
   PlusOutlined,
@@ -15,7 +15,6 @@ import {
   TagsOutlined,
   DeleteOutlined,
   MoreOutlined,
-  FilterOutlined,
   InboxOutlined,
   UserAddOutlined,
 } from "@ant-design/icons";
@@ -49,6 +48,7 @@ import { 公海标签, type 客户页签归属 } from "@/lib/pool";
 import { 放进公海, 领取, 分配公海, 撤销公海, type 公海结果 } from "./pool-actions";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import ResetFilters from "@/components/ResetFilters";
+import { useCustomFilters } from "@/components/CustomFilters";
 import CurrencySelect from "@/components/CurrencySelect";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import dynamic from "next/dynamic";
@@ -173,7 +173,11 @@ type Props = {
     custStatus?: string;
     /** 客户类型（企业版才有这一格，字典 custType，P13） */
     customerType?: string;
+    /** 客户来源（企业版，11-06）：Customer.channelId */
+    channelId?: string;
   };
+  /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
+  渠道筛选项?: { value: string; label: string }[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
   部门选项?: { value: string; label: string }[];
   /** 能删客户：企业版有能删的角色（系统管理员；销售、销管、渠运删自己负责的，V3.5.1）；别的版本 true。false 时行菜单、批量工具条都不摆删除 */
@@ -225,7 +229,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -411,8 +415,6 @@ export default function CustomersView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 收起来的那三个里还筛着几个。收起来不等于可以不告诉人 */
-  const 更多筛了 = [f.grade, f.decisionStatus, f.channelOwnerId, f.source, 企业 ? f.level : "", 企业 ? f.customerType : ""].filter(Boolean).length;
   /** 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选 */
   const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v).length;
   /** 重置留在当前页签：在「公海」里点重置，回到的是全部公海，不是跳回「客户」 */
@@ -428,6 +430,143 @@ export default function CustomersView({
 
   /** 外贸模版（2026-10-05 外贸客户建议），见 lib/business-config.ts 外贸精简 */
   const 外贸 = 外贸精简(b);
+
+  /** 筛选项（11-06 可自定义）：默认外露 = 系统原来摆在外面的；顺序也是原来的顺序 */
+  const { 外露: 筛选外露, 更多按钮: 更多筛选按钮 } = useCustomFilters("customers", [
+    ...(企业
+      ? [{
+          键: "custStatus", 名: "客户状态", 宽: 140, 默认外露: true, 有值: !!f.custStatus,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部客户状态" allowClear aria-label="客户状态"
+              popupRender={(menu) => <>{下拉说明(字典定义.custStatus.说明)}{menu}</>} popupMatchSelectWidth={false}
+              {...释义下拉(字典释义?.状态)}
+              value={f.custStatus || undefined} onChange={(v) => apply({ custStatus: v ?? "" })}
+              options={[...new Set([...客户状态选项, ...(f.custStatus ? [f.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
+          ),
+        }]
+      : [{
+          键: "followStatus", 名: "跟进状态", 宽: 140, 默认外露: true, 有值: !!f.followStatus,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部跟进状态" allowClear
+              value={f.followStatus || undefined} onChange={(v) => apply({ followStatus: v ?? "" })}
+              options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
+          ),
+        }]),
+    // 外贸：国家是第一眼要分的（时差、市场、报价口径），摆在外面；只给库里真有的国家
+    ...(外贸 && !企业 && (国家们.length > 0 || f.country)
+      ? [{
+          键: "country", 名: "国家", 宽: 130, 默认外露: true, 有值: !!f.country,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部国家" allowClear showSearch
+              value={f.country || undefined} onChange={(v) => apply({ country: v ?? "" })}
+              options={[...new Set([...国家们, ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
+          ),
+        }]
+      : []),
+    // 客户等级（2026-10-16）：和国家一样摆在外面——按等级挑今天先跟谁
+    ...(外贸 && !企业
+      ? [{
+          键: "level", 名: "客户等级", 宽: 120, 默认外露: true, 有值: !!f.level,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部等级" allowClear aria-label="客户等级"
+              value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
+              options={[...客户等级.map((x) => ({ value: x, label: 客户等级说明[x] })), { value: 未分级, label: 未分级 }]} />
+          ),
+        }]
+      : []),
+    // 团队版部门（1b）：总管理、管理员默认看全公司，按部门挑着看。选上级部门连下级一起
+    // 地址栏里的部门删掉了：列表不按它筛（query.ts 部门条件），下拉也显示「全部部门」，两边对得上
+    ...(部门选项.length > 0
+      ? [{
+          键: "dept", 名: "部门", 宽: 140, 默认外露: true, 有值: 部门选项.some((o) => o.value === f.dept),
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部部门" allowClear aria-label="部门"
+              value={部门选项.some((o) => o.value === f.dept) ? f.dept : undefined} onChange={(v) => apply({ dept: v ?? "" })}
+              options={部门选项} />
+          ),
+        }]
+      : []),
+    // 公海原来是这个下拉的第一项，2026-10-13 起由页签代替。「公海」页签上不摆（除非地址上正筛着某人，不然看不见自己筛了什么）
+    ...(!不问归属 && (!f.pool || 子集 || f.salesOwnerId)
+      ? [{
+          键: "salesOwnerId", 名: "负责人", 宽: 150, 默认外露: true, 有值: !!f.salesOwnerId,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部负责人" allowClear
+              value={f.salesOwnerId || undefined}
+              onChange={(v) => apply({ salesOwnerId: v ?? "" })}
+              options={成员选项(users)} />
+          ),
+        }]
+      : []),
+    {
+      键: "grade", 名: b.fields.grade, 宽: 130, 默认外露: false, 有值: !!f.grade,
+      渲染: (style: CSSProperties) => (
+        <Select style={style} placeholder={`全部${b.fields.grade}`} allowClear
+          value={f.grade || undefined} onChange={(v) => apply({ grade: v ?? "" })}
+          options={[...b.grades.map((g) => ({ value: g, label: g })), ...旧职位.map((g) => ({ value: g, label: `${g}（已不在选项里）` }))]} />
+      ),
+    },
+    // 企业版级别默认收着：摆外面 1024 宽会把筛选行挤成两行；列表里「级别」一列默认摆着
+    ...(企业
+      ? [{
+          键: "level", 名: "级别", 宽: 120, 默认外露: false, 有值: !!f.level,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部级别" allowClear aria-label="客户级别"
+              value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
+              options={[...级别选项(), { value: 未分级, label: 未分级 }]} />
+          ),
+        }, {
+          键: "customerType", 名: "客户类型", 宽: 140, 默认外露: false, 有值: !!f.customerType,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部客户类型" allowClear aria-label="客户类型"
+              popupRender={(menu) => <>{下拉说明(字典定义.custType.说明)}{menu}</>}
+              popupMatchSelectWidth={false}
+              {...释义下拉(字典释义?.类型)}
+              value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
+              options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
+          ),
+        }, {
+          // 客户来源（11-06）：建档时选的渠道（Customer.channelId），停用的渠道也能筛，老客户还挂着
+          键: "channelId", 名: "客户来源", 宽: 150, 默认外露: false, 有值: !!f.channelId,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部客户来源" allowClear aria-label="客户来源" showSearch={{ optionFilterProp: "label" }}
+              popupMatchSelectWidth={false}
+              value={f.channelId || undefined} onChange={(v) => apply({ channelId: v ?? "" })}
+              options={渠道筛选项} />
+          ),
+        }]
+      : []),
+    ...(!企业
+      ? [{
+          键: "decisionStatus", 名: "决策状态", 宽: 140, 默认外露: false, 有值: !!f.decisionStatus,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部决策状态" allowClear
+              value={f.decisionStatus || undefined} onChange={(v) => apply({ decisionStatus: v ?? "" })}
+              options={DECISION_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
+          ),
+        }]
+      : []),
+    ...(外贸
+      ? [{
+          键: "source", 名: "来源", 宽: 130, 默认外露: false, 有值: !!f.source,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部来源" allowClear showSearch
+              value={f.source || undefined} onChange={(v) => apply({ source: v ?? "" })}
+              options={[...new Set([...b.sources, ...(f.source ? [f.source] : [])])].map((x) => ({ value: x, label: x }))} />
+          ),
+        }]
+      : []),
+    ...(!不问归属 && !外贸 && !企业
+      ? [{
+          键: "channelOwnerId", 名: "渠道负责人", 宽: 150, 默认外露: false, 有值: !!f.channelOwnerId,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部渠道负责人" allowClear
+              value={f.channelOwnerId || undefined} onChange={(v) => apply({ channelOwnerId: v ?? "" })}
+              options={成员选项(users)} />
+          ),
+        }]
+      : []),
+  ]);
   // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
   const 空 = <span className="muted">{空值符}</span>;
   const 外贸列: 列<CustomerRow>[] = [
@@ -742,9 +881,8 @@ export default function CustomersView({
         }}
         筛选={
           /*
-            摆出来的只有三个：搜一句、跟进状态、销售负责人——每天都在用的就这三个。
-            年级 / 决策状态 / 渠道负责人收进「更多筛选」，但正筛着几个要写在按钮上：
-            收起来不等于可以不告诉人，否则人会对着一张筛过的表当成全部。
+            默认摆出来的只有每天都在用的：搜一句、状态、负责人；其余收进「更多筛选」，用户可以自己挑哪些摆外面（筛选项定义在上面）。
+            收着的正筛着几个要写在按钮上：收起来不等于可以不告诉人，否则人会对着一张筛过的表当成全部。
           */
           <Space wrap size={[10, 10]}>
             {子集 && f.pool && (
@@ -774,84 +912,8 @@ export default function CustomersView({
               onChange={(v) => setF({ ...f, keyword: v })}
               onSearch={(v) => apply({ keyword: v })}
             />
-            {企业 ? (
-              <Select style={{ width: 140 }} placeholder="全部客户状态" allowClear aria-label="客户状态"
-                popupRender={(menu) => <>{下拉说明(字典定义.custStatus.说明)}{menu}</>} popupMatchSelectWidth={false}
-                {...释义下拉(字典释义?.状态)}
-                value={f.custStatus || undefined} onChange={(v) => apply({ custStatus: v ?? "" })}
-                options={[...new Set([...客户状态选项, ...(f.custStatus ? [f.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
-            ) : (
-              <Select style={{ width: 140 }} placeholder="全部跟进状态" allowClear
-                value={f.followStatus || undefined} onChange={(v) => apply({ followStatus: v ?? "" })}
-                options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
-            )}
-            {/* 外贸：国家是第一眼要分的（时差、市场、报价口径），摆在外面；只给库里真有的国家 */}
-            {外贸 && !企业 && (国家们.length > 0 || f.country) && (
-              <Select style={{ width: 130 }} placeholder="全部国家" allowClear showSearch
-                value={f.country || undefined} onChange={(v) => apply({ country: v ?? "" })}
-                options={[...new Set([...国家们, ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
-            )}
-            {/* 客户等级（2026-10-16）：和国家一样摆在外面——按等级挑今天先跟谁 */}
-            {外贸 && !企业 && (
-              <Select style={{ width: 120 }} placeholder="全部等级" allowClear aria-label="客户等级"
-                value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
-                options={[...客户等级.map((x) => ({ value: x, label: 客户等级说明[x] })), { value: 未分级, label: 未分级 }]} />
-            )}
-            {/* 团队版部门（1b）：总管理、管理员默认看全公司，按部门挑着看。选上级部门连下级一起 */}
-            {/* 地址栏里的部门删掉了：列表不按它筛（query.ts 部门条件），下拉也显示「全部部门」，两边对得上 */}
-            {部门选项.length > 0 && (
-              <Select style={{ width: 140 }} placeholder="全部部门" allowClear aria-label="部门"
-                value={部门选项.some((o) => o.value === f.dept) ? f.dept : undefined} onChange={(v) => apply({ dept: v ?? "" })}
-                options={部门选项} />
-            )}
-            {/* 公海原来是这个下拉的第一项，2026-10-13 起由页签代替。「公海」页签上不摆（除非地址上正筛着某人，不然看不见自己筛了什么） */}
-            {!不问归属 && (!f.pool || 子集 || f.salesOwnerId) && (
-              <Select style={{ width: 150 }} placeholder="全部负责人" allowClear
-                value={f.salesOwnerId || undefined}
-                onChange={(v) => apply({ salesOwnerId: v ?? "" })}
-                options={成员选项(users)} />
-            )}
-            <Popover
-              trigger="click"
-              placement="bottomLeft"
-              content={
-                <Space orientation="vertical" size={10} style={{ width: 220 }}>
-                  <Select style={{ width: "100%" }} placeholder={`全部${b.fields.grade}`} allowClear
-                    value={f.grade || undefined} onChange={(v) => apply({ grade: v ?? "" })}
-                    options={[...b.grades.map((g) => ({ value: g, label: g })), ...旧职位.map((g) => ({ value: g, label: `${g}（已不在选项里）` }))]} />
-                  {/* 企业版级别收在这里：摆外面 1024 宽会把筛选行挤成两行；列表里「级别」一列默认摆着 */}
-                  {企业 && (
-                    <Select style={{ width: "100%" }} placeholder="全部级别" allowClear aria-label="客户级别"
-                      value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
-                      options={[...级别选项(), { value: 未分级, label: 未分级 }]} />
-                  )}
-                  {企业 && (
-                    <Select style={{ width: "100%" }} placeholder="全部客户类型" allowClear aria-label="客户类型"
-                      popupRender={(menu) => <>{下拉说明(字典定义.custType.说明)}{menu}</>}
-                      {...释义下拉(字典释义?.类型)}
-                      value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
-                      options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
-                  )}
-                  {!企业 && (
-                    <Select style={{ width: "100%" }} placeholder="全部决策状态" allowClear
-                      value={f.decisionStatus || undefined} onChange={(v) => apply({ decisionStatus: v ?? "" })}
-                      options={DECISION_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
-                  )}
-                  {外贸 && (
-                    <Select style={{ width: "100%" }} placeholder="全部来源" allowClear showSearch
-                      value={f.source || undefined} onChange={(v) => apply({ source: v ?? "" })}
-                      options={[...new Set([...b.sources, ...(f.source ? [f.source] : [])])].map((x) => ({ value: x, label: x }))} />
-                  )}
-                  {!不问归属 && !外贸 && !企业 && (
-                    <Select style={{ width: "100%" }} placeholder="全部渠道负责人" allowClear
-                      value={f.channelOwnerId || undefined} onChange={(v) => apply({ channelOwnerId: v ?? "" })}
-                      options={成员选项(users)} />
-                  )}
-                </Space>
-              }
-            >
-              <Button icon={<FilterOutlined />}>更多筛选{更多筛了 > 0 ? ` · ${更多筛了}` : ""}</Button>
-            </Popover>
+            {筛选外露}
+            {更多筛选按钮}
             {/* 没有「搜索」按钮：下拉改了就生效，关键词回车或清空就生效。
                 一个要再点一下才算数的筛选栏，会让人以为自己已经筛了其实没有。
                 「重置」只在真筛了东西的时候看得见；位置一直留着，筛的那一下表格不往下跳（M17） */}

@@ -12,3 +12,12 @@ export async function 可选渠道们(选着?: string | null): Promise<可选渠
     orderBy: [{ active: "desc" }, { createdAt: "desc" }],
   });
 }
+
+/** 列表「客户来源 / 渠道」筛选的选项：老客户、老项目还挂着停用的渠道，所以停用的也给（排在后面、标出来） */
+export async function 渠道筛选选项(): Promise<{ value: string; label: string }[]> {
+  const 们 = await prisma.channel.findMany({
+    select: { id: true, name: true, active: true },
+    orderBy: [{ active: "desc" }, { name: "asc" }],
+  });
+  return 们.map((c) => ({ value: c.id, label: c.active ? c.name : `${c.name}（已停用）` }));
+}
