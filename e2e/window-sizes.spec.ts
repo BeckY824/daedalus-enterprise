@@ -76,6 +76,15 @@ test("15 寸 1512 宽、面板收着：记录页的时间线至少 480，AI 栏�
 
 test("最小窗口 1024：列表筛选行一行摆下，「列」不被挤到第二行", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 700 });
+  // 空库不摆筛选行（DataList）：模拟数据没给这个账号造项目，渠道也不一定落在他名下，先各造一条
+  if (企业版) {
+    const p = 连库();
+    const 我 = await p.user.findFirstOrThrow({ where: { email: 账号.用户名 } });
+    const c = await p.customer.create({ data: { name: "筛选行量宽度", phone: "13900005353", salesOwnerId: 我.id } });
+    await p.project.create({ data: { name: "筛选行量宽度项目", customerId: c.id, ownerId: 我.id, creatorId: 我.id } });
+    await p.channel.create({ data: { name: "筛选行量宽度渠道", channelOwnerId: 我.id } });
+    await p.$disconnect();
+  }
   await 登录(page);
   // 企业版只用项目：/opportunities 转去项目页，项目页默认看板，切到「列表」才有这条筛选行
   for (const 路 of 企业版 ? ["/customers", "/projects", "/channels", "/follow-ups"] : ["/customers", "/opportunities", "/follow-ups"]) {
