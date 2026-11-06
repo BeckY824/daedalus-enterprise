@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 企业版跳转 } from "@/lib/enterprise/web-paths";
+import { 站内路径 } from "@/lib/safe-next";
 
 /**
  * 与 lib/auth.ts 保持一致：生产环境缺少 AUTH_SECRET 时直接失败，
@@ -59,6 +60,19 @@ async function 顺延(payload: JWTPayload): Promise<string | null> {
   return new SignJWT(留).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${SESSION_DAYS}d`).sign(SECRET);
 }
 
+/**
+ * 没登录打开某一页，登录后要回到这一页（11-06）：飞书里点通知的人多半是这样进来的，登录完进首页就丢了目标。
+ * 只记打开页面（GET），首页类的不用记。查询串里的 _rsc 是 Next 自己的，不留
+ */
+function 登录后回来(request: NextRequest): string | null {
+  const { pathname, search } = request.nextUrl;
+  if (request.method !== "GET" || pathname === "/" || pathname === "/start" || pathname === "/dashboard") return null;
+  const q = new URLSearchParams(search);
+  q.delete("_rsc");
+  const 串 = q.toString();
+  return 站内路径(串 ? `${pathname}?${串}` : pathname);
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   // 企业版网页里不留我们云端 / 桌面端的页面（注册、条款、手机伴侣、反馈），见 lib/enterprise/web-paths.ts
@@ -86,6 +100,11 @@ export async function proxy(request: NextRequest) {
   if (!valid && !公开) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    const 回来 = 登录后回来(request);
+    if (回来) {
+      url.search = "";
+      url.searchParams.set("next", 回来);
+    }
     const res = NextResponse.redirect(url);
     // 过期/损坏的 Cookie 就地清掉，避免下一次请求再走一遍
     res.cookies.delete(COOKIE);
@@ -98,7 +117,17 @@ export async function proxy(request: NextRequest) {
   //              弹回去他就没路走了（应用内还没有改密码的入口）。
   if (valid && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    // 已经登录了又点到带 next 的登录页（比如开着两个标签）：直接去要去的那页
+    const 去处 = pathname === "/login" ? 站内路径(url.searchParams.get("next")) : null;
+    if (去处) {
+      const 目标 = new URL(去处, "http://x.invalid");
+      url.pathname = 目标.pathname;
+      url.search = 目标.search;
+      url.hash = 目标.hash;
+    } else {
+      url.pathname = "/dashboard";
+      url.searchParams.delete("next");
+    }
     return NextResponse.redirect(url);
   }
 

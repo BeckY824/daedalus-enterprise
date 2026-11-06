@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import LoginForm from "./LoginForm";
 import { 能找回密码 } from "@/lib/tenant/password-reset";
 import { multiTenant } from "@/lib/tenant/context";
@@ -7,6 +9,7 @@ import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import DemoLogin from "./DemoLogin";
 import { 飞书登录凭据, type 飞书登录失败 } from "@/lib/enterprise/feishu-login";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 站内路径, 飞书登录地址 } from "@/lib/safe-next";
 
 /** 飞书登录没成时，回调带回来的原因（/login?reason=feishu-<原因>）怎么跟人说 */
 const 飞书原因: Record<飞书登录失败, string> = {
@@ -26,10 +29,15 @@ const 飞书原因: Record<飞书登录失败, string> = {
  */
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ reason?: string | string[]; admin?: string | string[] }> }) {
+/** 飞书内置浏览器的 UA 带 Lark/x.y 或 Feishu/x.y */
+const 在飞书里 = (ua: string) => /\b(lark|feishu)\b/i.test(ua);
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ reason?: string | string[]; admin?: string | string[]; next?: string | string[] }> }) {
   /* 演示部署（CRM_DEMO_SWITCH=1）：不要密码，选人就进。开关关着读出来是 null，走下面的正常登录 */
   const 演示名单 = await 读演示名单();
-  if (演示名单) return <DemoLogin 名单={演示名单} 产品名={自定产品名() ?? undefined} />;
+  const { reason, admin, next } = await searchParams;
+  const 去处 = 站内路径(next) ?? undefined;
+  if (演示名单) return <DemoLogin 名单={演示名单} 产品名={自定产品名() ?? undefined} 去处={去处} />;
 
   /*
     登录框那一格叫什么，取决于这个部署里账号长什么样：
@@ -37,12 +45,18 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       自部署  —— 管理员在设置里建的成员，登录名是 admin、zhangsan 这样的用户名
     写死一个的话，另一半人会对着一个填不进去的框反复试。
   */
-  const { reason, admin } = await searchParams;
+  const 有飞书 = (await 飞书登录凭据()) !== null;
+  /*
+    在飞书里点通知进来的（11-06）：本来就是飞书身份，不用再多按一下「用飞书登录」，直接走授权，回到那一页。
+    只在带 next 时：退出登录后回到的 /login 不带 next，不会被自动登回去；
+    带 reason 的是刚失败回来的，不再自动走，免得来回跳；?admin=1 是管理员要用密码。
+  */
+  if (有飞书 && 去处 && !reason && admin !== "1" && 在飞书里((await headers()).get("user-agent") ?? "")) redirect(飞书登录地址(去处));
   const 飞书没成 = typeof reason === "string" && reason.startsWith("feishu-") ? 飞书原因[reason.slice(7) as 飞书登录失败] : undefined;
   return (
     <LoginForm
       /* 企业版配了飞书应用才有「用飞书登录」（lib/enterprise/feishu-login.ts） */
-      飞书登录={(await 飞书登录凭据()) !== null}
+      飞书登录={有飞书}
       初始错误={飞书没成}
       可找回密码={能找回密码()}
       用邮箱={multiTenant()}
@@ -56,6 +70,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       居中={企业版() && !multiTenant()}
       /* 隐藏的系统管理员入口 /login?admin=1：配了飞书时才有意义，只露表单；能不能登服务端另判（lib/enterprise/password-login.ts） */
       管理员入口={admin === "1"}
+      去处={去处}
     />
   );
 }

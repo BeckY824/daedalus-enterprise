@@ -10,6 +10,7 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import { PixelLogo } from "@/components/Logo";
 import AuthSide from "./AuthSide";
 import {记找回邮箱,useLoginEmail} from "@/lib/auth-email-prefill";
+import { 飞书登录地址 } from "@/lib/safe-next";
 
 /** server action 迟迟不返回时的等待上限。链路正常时登录在 3 秒内完成。 */
 const 请求超时毫秒 = 20000;
@@ -35,6 +36,7 @@ export default function LoginForm({
   初始错误,
   居中 = false,
   管理员入口 = false,
+  去处,
 }: {
   可找回密码: boolean;
   用邮箱: boolean;
@@ -51,6 +53,8 @@ export default function LoginForm({
   居中?: boolean;
   /** 登录页带 ?admin=1：企业版配了飞书时露出账号密码表单，给系统管理员兜底（服务端另有角色校验，见 lib/enterprise/password-login.ts） */
   管理员入口?: boolean;
+  /** 登录后回哪（?next=，page.tsx 已校验）：点通知没登录被弹过来的，登录完回那一页 */
+  去处?: string;
 }) {
   const { 曲线, 时长 } = useMotionTheme();
   /** 托管版的账号是邮箱，自部署是管理员建的登录名。见 page.tsx */
@@ -119,7 +123,7 @@ export default function LoginForm({
     await 登录之后(res, (msg) => {
       报错(msg);
       setLoading(false);
-    });
+    }, 去处);
   }
 
   return (
@@ -159,7 +163,7 @@ export default function LoginForm({
             {只飞书 && (
               <>
                 {/* 整页跳走（不是客户端路由）：去的是接口，它再跳飞书授权页 */}
-                <Button type="primary" size="large" block href="/api/auth/feishu">
+                <Button type="primary" size="large" block href={飞书登录地址(去处)}>
                   用飞书登录
                 </Button>
                 <p className="auth-alt auth-solo-alt">无法登录请联系管理员</p>
@@ -168,7 +172,7 @@ export default function LoginForm({
             {飞书登录 && !居中 && (
               <>
                 {/* 整页跳走（不是客户端路由）：去的是接口，它再跳飞书授权页 */}
-                <Button size="large" block href="/api/auth/feishu">
+                <Button size="large" block href={飞书登录地址(去处)}>
                   用飞书登录
                 </Button>
                 <p className="auth-or">或用用户名和密码</p>
@@ -213,7 +217,7 @@ export default function LoginForm({
             )}
             {管理员登录 && (
               <p className="auth-alt auth-solo-alt">
-                <a href="/api/auth/feishu">改用飞书登录</a>
+                <a href={飞书登录地址(去处)}>改用飞书登录</a>
               </p>
             )}
             {!只飞书 && (可找回密码 || (可注册 && 注册地址)) && (
