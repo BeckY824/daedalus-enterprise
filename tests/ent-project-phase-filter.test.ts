@@ -17,6 +17,7 @@ import { resetDb } from "./reset";
 import { 读项目列表, 读名单项目 } from "@/lib/project/list";
 import { 看板分列 } from "@/lib/project/board";
 import { 字典of } from "@/lib/project/nodes";
+import { 未分级 } from "@/app/(app)/customers/query-shared";
 
 let 老板: { id: string; name: string; role: string };
 
@@ -46,6 +47,46 @@ afterAll(() => prisma.$disconnect());
 
 const 名们 = async (sp: { phase?: string; node?: string }, 只看阶段?: "线索") =>
   (await 读项目列表(老板, sp, 只看阶段)).行.map((r) => r.name.replace("项目", "")).sort();
+
+describe("渠道和级别（11-06 自定义筛选）", () => {
+  const 造渠道 = async (name: string) => (await prisma.channel.create({ data: { name, channelOwnerId: 老板.id } })).id;
+  const 名们筛 = async (sp: Record<string, string>) => (await 读项目列表(老板, sp)).行.map((r) => r.name.replace("项目", "")).sort();
+
+  it("项目自己选了渠道就按项目的；没选才跟客户的", async () => {
+    const [A, B] = [await 造渠道("渠道A"), await 造渠道("渠道B")];
+    await prisma.customer.updateMany({ data: { channelId: A } });
+    await prisma.project.updateMany({ where: { name: "项目需求" }, data: { channelId: B } });
+    expect(await 名们筛({ channelId: B })).toEqual(["需求"]);
+    const 筛A = await 名们筛({ channelId: A });
+    expect(筛A).not.toContain("需求");
+    expect(筛A).toContain("培育");
+    expect(筛A).toHaveLength(6);
+    expect(await 名们筛({ channelId: "没有这个渠道" })).toEqual([]);
+  });
+
+  it("级别：按库里的值筛；未分级 = 没填的；乱传当没筛；filters 回认出的值", async () => {
+    await prisma.project.updateMany({ where: { name: "项目需求" }, data: { level: "A" } });
+    await prisma.project.updateMany({ where: { name: "项目备货" }, data: { level: "B" } });
+    expect(await 名们筛({ level: "A" })).toEqual(["需求"]);
+    const 未分 = await 名们筛({ level: 未分级 });
+    expect(未分).toHaveLength(5);
+    expect(未分).not.toContain("需求");
+    expect(await 名们筛({ level: "乱传" })).toHaveLength(7);
+    expect((await 读项目列表(老板, { level: "乱传" })).filters.level).toBe("");
+    expect((await 读项目列表(老板, { level: "A" })).filters.level).toBe("A");
+    expect((await 读项目列表(老板, { channelId: "x" })).filters.channelId).toBe("x");
+  });
+
+  it("渠道和级别的下拉只给企业版；开关关着 channelId、level 都当没带", async () => {
+    const A = await 造渠道("渠道A");
+    await prisma.project.updateMany({ where: { name: "项目需求" }, data: { channelId: A, level: "A" } });
+    expect((await 读项目列表(老板, {})).渠道筛选项.map((x: { value: string }) => x.value)).toContain(A);
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect(await 名们筛({ channelId: A })).toHaveLength(7);
+    expect(await 名们筛({ level: "A" })).toHaveLength(7);
+    expect((await 读项目列表(老板, {})).渠道筛选项).toEqual([]);
+  });
+});
 
 describe("公海项目只在 /pool（11-02）", () => {
   const 进公海 = async () => {

@@ -21,6 +21,9 @@ import { 看全部 } from "../team-scope";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 市场项目条件, 只看进度 } from "@/lib/enterprise/market-view";
 import { 历史负责人们, 我回避的公海项目, 回避豁免 } from "./pool-owner";
+import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
+import { 企业级别 } from "@/lib/enterprise/customer-v2";
+import { 未分级 } from "@/app/(app)/customers/query-shared";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
 const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
@@ -61,7 +64,7 @@ export async function 读验证痕们(projectIds: string[]): Promise<Map<string,
 }
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
-export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string };
+export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string };
 
 /**
  * 按阶段、进程筛（10-30 用户：「项目页面没有关于进程，阶段的筛选选项」）。和列表上的显示同一套认法（阶段与进程）：
@@ -116,7 +119,12 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   // 企业版市场视角（11-04 P-界面-05）：市场成员 = 自己负责的 ∪ 自己建的已分出去的；市场管理 = 本人 + 实线下属，可按创建人筛；公海的都不列
   const 市场 = 企 ? await 读市场身份(me.id) : null;
   const 创建人 = 市场?.视角 === "市场管理" && typeof sp.creator === "string" && 市场.圈.includes(sp.creator) ? sp.creator : "";
+  // 自定义筛选（11-06）：渠道和列表上「渠道」一列同一条规则——项目自己选的优先，没选跟客户来源（channel-stats.ts 项目算哪个渠道）
+  const 来源 = 企 && typeof sp.channelId === "string" ? sp.channelId : "";
+  const 级别筛 = !企 ? "" : sp.level === 未分级 ? 未分级 : (企业级别(sp.level) ?? "");
   const 并且: Prisma.ProjectWhereInput[] = [
+    ...(来源 ? [{ OR: [{ channelId: 来源 }, { channelId: null, customer: { channelId: 来源 } }] }] : []),
+    ...(级别筛 ? [{ level: 级别筛 === 未分级 ? null : 级别筛 }] : []),
     ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的圈 ? [卡的圈] : [])] : []),
     ...阶进.where,
     ...(市场 ? [市场项目条件(me.id, 市场.圈, 创建人)] : []),
@@ -138,7 +146,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
     include: {
-      customer: { select: { name: true, lastFollowAt: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
+      customer: { select: { name: true, lastFollowAt: true, channelId: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
       exceptionCategory: { select: { name: true } },
       channel: { select: { name: true } },
       logs: 算超时要的.logs,
@@ -187,7 +195,9 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   };
   // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）
   const 露 = (p: (typeof rows)[number]) => 露客户(me, p, 可见);
-  const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))).map((p) => ({
+  const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))
+    // 客户不露时不拿客户的来源（同列上的「渠道」）：否则筛一下就试出同事客户从哪来
+    && (!来源 || p.channelId === 来源 || 露(p))).map((p) => ({
     id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null,
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
@@ -213,7 +223,9 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     // 企业版线索验证（P12）：等我复核 / 终验 / 认领的线索
     待复核们: 待复核.map((r) => ({ ...r, 更新于: r.更新于.toISOString() })),
-    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程, creator: 创建人 },
+    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程, creator: 创建人, channelId: 来源, level: 级别筛 },
+    // 自定义筛选「渠道」的候选；新线索页不摆
+    渠道筛选项: 企 && !只看阶段 ? await 渠道筛选选项() : [],
     // 市场视角（null = 别的角色，界面照旧）；市场管理的「创建人」筛选候选 = 本人 + 实线下属
     市场: 市场 ? { 视角: 市场.视角, 创建人们: 市场.视角 === "市场管理" ? await prisma.user.findMany({ where: { id: { in: 市场.圈 } }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [] } : null,
   };

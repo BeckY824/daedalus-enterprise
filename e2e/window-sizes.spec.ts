@@ -77,9 +77,10 @@ test("15 寸 1512 宽、面板收着：记录页的时间线至少 480，AI 栏�
 test("最小窗口 1024：列表筛选行一行摆下，「列」不被挤到第二行", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 700 });
   await 登录(page);
-  // 企业版只用项目：/opportunities 转去项目页，项目页没有这条筛选行
-  for (const 路 of 企业版 ? ["/customers", "/follow-ups"] : ["/customers", "/opportunities", "/follow-ups"]) {
+  // 企业版只用项目：/opportunities 转去项目页，项目页默认看板，切到「列表」才有这条筛选行
+  for (const 路 of 企业版 ? ["/customers", "/projects", "/channels", "/follow-ups"] : ["/customers", "/opportunities", "/follow-ups"]) {
     await page.goto(路);
+    if (路 === "/projects") await page.getByText("列表", { exact: true }).first().click();
     await page.waitForSelector(".list-bar");
     const 顶 = await page.locator(".list-bar").evaluate((b) => {
       const 项 = [...b.querySelectorAll(":scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")];

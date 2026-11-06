@@ -200,9 +200,11 @@ export type 公海行 = {
   快捷: 快捷 | null;
   /** 原负责人是我：企业版原负责人领不回，领取按钮灰着（接口也拦） */
   原负责人是我: boolean;
+  /** 客户来源（渠道 id），只用来筛。项目行：项目自己选的优先，没选跟客户——客户不露（同事的客户）就当没有，不能筛一下试出同事客户从哪来 */
+  来源id?: string | null;
 };
 
-export type 公海筛选 = { 属性?: string; 快捷?: string; 排序?: string; keyword?: string };
+export type 公海筛选 = { 属性?: string; 快捷?: string; 排序?: string; keyword?: string; 来源?: string };
 
 export const 是公海属性 = (v: unknown): v is 公海属性 => typeof v === "string" && (公海属性们 as readonly string[]).includes(v);
 /** 以前的叫法（收藏的老链接 ?attr=公海客户、?attr=线索 之类）→ 现在的 */
@@ -221,10 +223,12 @@ export function 数快捷(行: readonly Pick<公海行, "快捷">[]): Record<快
 
 const 时 = (v: string | null) => (v ? new Date(v).getTime() : Number.NEGATIVE_INFINITY);
 
-/** 筛、数、排：属性 → 关键词 → （数快捷）→ 快捷 → 排序。同一刻的按 id 定序，翻页不跳 */
+/** 筛、数、排：关键词、客户来源 → 属性 → （数快捷）→ 快捷 → 排序。同一刻的按 id 定序，翻页不跳 */
 export function 筛排(全部: readonly 公海行[], sp: 公海筛选): { 行: 公海行[]; 快捷数: Record<快捷, number>; 属性数: Record<公海属性 | "全部", number> } {
   const 词 = (sp.keyword ?? "").trim().toLowerCase();
-  const 搜 = 词 ? 全部.filter((r) => (r.客户名 ?? "").toLowerCase().includes(词) || (r.项目名 ?? "").toLowerCase().includes(词)) : [...全部];
+  const 搜到 = 词 ? 全部.filter((r) => (r.客户名 ?? "").toLowerCase().includes(词) || (r.项目名 ?? "").toLowerCase().includes(词)) : [...全部];
+  // 客户来源和关键词一样算在所有计数前面：属性、入池方式后面的数都是「这个来源里的」
+  const 搜 = sp.来源 ? 搜到.filter((r) => r.来源id === sp.来源) : 搜到;
   const 属性数 = { 全部: 搜.length, 线索池: 0, 商机池: 0, 其他: 0 } as Record<公海属性 | "全部", number>;
   for (const r of 搜) 属性数[r.属性]++;
   const 属性 = 规整公海属性(sp.属性);

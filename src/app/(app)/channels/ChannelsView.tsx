@@ -3,12 +3,13 @@
 import { isFormValidationError } from "@/lib/form-validation";
 
 import { useMe, 默认负责人 } from "@/lib/me-client";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Space, Tag, Modal, Form, Input, Select, App, Tooltip, Row as 行, Col, Radio, Dropdown, type MenuProps } from "antd";
 import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import ResetFilters from "@/components/ResetFilters";
+import { useCustomFilters } from "@/components/CustomFilters";
 import DatePicker from "@/components/BusinessDatePicker";
 import { 列表不问归属 } from "@/lib/solo";
 import { PageHead, UserCell } from "@/components/ui";
@@ -144,8 +145,9 @@ export default function ChannelsView({
   const [attr, setAttr] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [active, setActive] = useState("");
+  const [creator, setCreator] = useState("");
   // 看板也吃这一份：列表剩几个渠道，看板就按这几个算
-  const rows = useMemo(() => 筛渠道(全部行, { kw, attr, ownerId, active }), [全部行, kw, attr, ownerId, active]);
+  const rows = useMemo(() => 筛渠道(全部行, { kw, attr, ownerId, active, creator }), [全部行, kw, attr, ownerId, active, creator]);
   /** 属性筛选：字典里的 + 表里实际出现的（停用了的旧属性也能筛出来） */
   const 筛选属性 = useMemo(() => [...new Set([...属性选项, ...全部行.map((r) => r.attr).filter((x): x is string => Boolean(x))])], [属性选项, 全部行]);
   const [open, setOpen] = useState(false);
@@ -164,6 +166,14 @@ export default function ChannelsView({
   const 守 = useFormGuard({ open, form, 草稿键: editing ? null : "新建渠道", 关: () => { setOpen(false); setEditing(null); }, 忙: saving, afterOpenChange: 聚焦首项 });
   /** 只有一个人：渠道负责人那一列和筛选都不摆（审查 D2 / M3） */
   const 不问归属 = !ownerId && 列表不问归属(users, 全部行.map((r) => r.channelOwnerName));
+  const 创建人们 = useMemo(() => [...new Set(全部行.map((r) => r.createdByName).filter((x): x is string => Boolean(x)))], [全部行]);
+  // 自定义筛选（11-06）：搜索框固定；默认摆的和原来一样（属性、负责人、状态），「创建人」收在更多筛选
+  const { 外露: 筛选外露, 更多按钮: 更多筛选按钮 } = useCustomFilters("channels", [
+    { 键: "attr", 名: "属性", 宽: 140, 默认外露: true, 有值: !!attr, 渲染: (style: CSSProperties) => <Select style={style} aria-label="属性" placeholder="全部属性" allowClear value={attr || undefined} onChange={(v?: string) => setAttr(v ?? "")} options={筛选属性.map((x) => ({ value: x, label: x }))} /> },
+    ...(!不问归属 ? [{ 键: "ownerId", 名: "负责人", 宽: 150, 默认外露: true, 有值: !!ownerId, 渲染: (style: CSSProperties) => <Select style={style} aria-label="负责人" placeholder="全部负责人" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={ownerId || undefined} onChange={(v?: string) => setOwnerId(v ?? "")} options={成员选项(users)} /> }] : []),
+    { 键: "active", 名: "状态", 宽: 130, 默认外露: true, 有值: !!active, 渲染: (style: CSSProperties) => <Select style={style} aria-label="状态" placeholder="全部状态" allowClear value={active || undefined} onChange={(v?: string) => setActive(v ?? "")} options={[{ value: "on", label: "已启用" }, { value: "off", label: "已停用" }]} /> },
+    ...(!不问归属 ? [{ 键: "creator", 名: "创建人", 宽: 130, 默认外露: false, 有值: !!creator, 渲染: (style: CSSProperties) => <Select style={style} aria-label="创建人" placeholder="全部创建人" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={creator || undefined} onChange={(v?: string) => setCreator(v ?? "")} options={创建人们.map((x) => ({ value: x, label: x }))} /> }] : []),
+  ]);
   /** 刚停用 / 恢复的那一行亮两秒（row-fresh） */
   const [亮行, set亮行] = useState<string[]>([]);
   const 亮计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -446,33 +456,9 @@ export default function ChannelsView({
               allowClear
               onChange={(e) => setKw(e.target.value)}
             />
-            <Select
-              style={{ width: 140 }}
-              placeholder="全部属性"
-              allowClear
-              value={attr || undefined}
-              onChange={(v) => setAttr(v ?? "")}
-              options={筛选属性.map((x) => ({ value: x, label: x }))}
-            />
-            {!不问归属 && (
-              <Select
-                style={{ width: 150 }}
-                placeholder="全部负责人"
-                allowClear
-                value={ownerId || undefined}
-                onChange={(v) => setOwnerId(v ?? "")}
-                options={成员选项(users)}
-              />
-            )}
-            <Select
-              style={{ width: 130 }}
-              placeholder="全部状态"
-              allowClear
-              value={active || undefined}
-              onChange={(v) => setActive(v ?? "")}
-              options={[{ value: "on", label: "已启用" }, { value: "off", label: "已停用" }]}
-            />
-            <ResetFilters 显示={Boolean(kw || attr || ownerId || active)} onClick={() => { setKw(""); setAttr(""); setOwnerId(""); setActive(""); }} />
+            {筛选外露}
+            {更多筛选按钮}
+            <ResetFilters 显示={Boolean(kw || attr || ownerId || active || creator)} onClick={() => { setKw(""); setAttr(""); setOwnerId(""); setActive(""); setCreator(""); }} />
           </Space>
         }
       />

@@ -10,7 +10,7 @@
  * 10-30 交互改版：领取、分配都带 6 秒撤销（规则 B）；老板、主管行内「⋯」和批量里有「分配给…」，业务员没有；
  * 领取灰着时原因写在按钮下面（规则 A）；持有上限开着时页头写「我手上 N / 上限 M」；批量有没领到的，提示条能展开看每一条为什么
  */
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Checkbox, Dropdown, Segmented, Select, Space, Tag } from "antd";
 import type { MenuProps } from "antd";
@@ -18,6 +18,7 @@ import { MoreOutlined } from "@ant-design/icons";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
 import ResetFilters from "@/components/ResetFilters";
+import { useCustomFilters } from "@/components/CustomFilters";
 import { PageHead, RowLink } from "@/components/ui";
 import { fmtDateTime, smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
 import { useUrlFilters } from "@/lib/url-filters";
@@ -37,7 +38,9 @@ type Props = {
   属性数: Record<公海属性 | "全部", number>;
   截断: boolean;
   库里有: boolean;
-  filters: { keyword: string; attr: string; quick: string; sort: string };
+  filters: { keyword: string; attr: string; quick: string; sort: string; channelId: string };
+  /** 自定义筛选「客户来源」的候选 */
+  渠道筛选项: { value: string; label: string }[];
   /** 老板、主管 */
   能标无效: boolean;
   /** 只有老板 */
@@ -93,11 +96,11 @@ function ResultBar({ 文案, 没领到, 撤销 }: { 文案: string; 没领到: {
   );
 }
 
-export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 能标无效, 能恢复, 能分配, users, 持有, 只读 = false }: Props) {
+export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, users, 持有, 只读 = false }: Props) {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
-  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort);
+  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId);
   const 到上限 = !!持有 && 持有.有 >= 持有.上限;
   const 分给谁 = 成员选项(users);
   /** 企业版 C-06：领取、分配时，进公海时关掉的原负责人待办一起转给新负责人（默认勾，可以手动关掉；pool-rules.ts） */
@@ -286,8 +289,36 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   ];
   const 列们 = 全部列.filter((c) => !(只读 && c.key === "操作" && !能分配 && !能标无效 && !能恢复));
 
+  // 自定义筛选（11-06）：属性分段、排序、搜索固定；默认摆的和原来一样只有入池方式，「客户来源」收在更多筛选
+  const { 外露: 筛选外露, 更多按钮: 更多筛选按钮 } = useCustomFilters("pool", [
+    {
+      键: "quick", 名: "入池方式", 宽: 150, 默认外露: true, 有值: !!f.quick,
+      渲染: (style: CSSProperties) => (
+        <Select style={style} aria-label="入池方式" placeholder="入池方式" allowClear
+          popupMatchSelectWidth={260}
+          value={f.quick || undefined}
+          onChange={(v) => apply({ quick: v ?? "" })}
+          // 离职交接只在有这种数据（或正选着）时出（A-14）
+          options={快捷们.filter((k) => !有数才出的快捷.includes(k) || 快捷数[k] > 0 || f.quick === k).map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
+          optionRender={(o) => (
+            <div>
+              <div>{o.label}</div>
+              <div className="muted" style={{ fontSize: 12, whiteSpace: "normal" }}>{快捷说明[o.value as 快捷]}</div>
+            </div>
+          )}
+        />
+      ),
+    },
+    {
+      键: "channelId", 名: "客户来源", 宽: 150, 默认外露: false, 有值: !!f.channelId,
+      渲染: (style: CSSProperties) => (
+        <Select style={style} aria-label="客户来源" placeholder="全部客户来源" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} />
+      ),
+    },
+  ]);
+
   const 筛选 = (
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 8px", minWidth: 0 }}>
+    <div className="pool-filters" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 8px", minWidth: 0 }}>
       <div style={{ overflowX: "auto", maxWidth: "100%" }}>
         <Segmented
           aria-label="公海属性"
@@ -297,19 +328,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
           options={(["全部", ...公海属性们] as const).map((k) => ({ value: k, label: `${k} ${属性数[k]}` }))}
         />
       </div>
-      <Select style={{ width: 150 }} aria-label="入池方式" placeholder="入池方式" allowClear
-        popupMatchSelectWidth={260}
-        value={f.quick || undefined}
-        onChange={(v) => apply({ quick: v ?? "" })}
-        // 离职交接只在有这种数据（或正选着）时出（A-14）
-        options={快捷们.filter((k) => !有数才出的快捷.includes(k) || 快捷数[k] > 0 || f.quick === k).map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
-        optionRender={(o) => (
-          <div>
-            <div>{o.label}</div>
-            <div className="muted" style={{ fontSize: 12, whiteSpace: "normal" }}>{快捷说明[o.value as 快捷]}</div>
-          </div>
-        )}
-      />
+      {筛选外露}
       <Select style={{ width: 132 }} aria-label="排序"
         value={f.sort || 默认排序}
         onChange={(v) => apply({ sort: v === 默认排序 ? "" : v })}
@@ -322,6 +341,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         placeholder="搜客户名 / 项目名"
         width={200}
       />
+      {更多筛选按钮}
       <ResetFilters 显示={在筛} onClick={reset} />
     </div>
   );

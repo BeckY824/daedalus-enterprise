@@ -5,6 +5,9 @@
  *   渠道名很长：一行省略号、悬停（title）看全文，1024 宽表格不横向撑出页面
  *   没挂渠道的客户写「—」
  *   不是企业版：列设置里没有这一项
+ *
+ * 自定义筛选（11-06）：默认外露的筛选不变，「客户来源」收在「更多筛选」里；
+ * 可以钉到外面，恢复默认回去。勾选列不截，框旁不出小点。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -39,15 +42,15 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true},{id:'boss',name:'老板',email:'b',role:'ADMIN',active:true}];
     const row={id:'c1',name:长,phone:'13800000001',school:长,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:null,signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:'ch1',channelName:window.__来源??null,expectedSignAt:null,remark:null};
-    window.__render=({what,能,锁,空,粘贴,编辑,企,来源})=>{window.__来源=来源;const row2={...row,channelName:来源??null};root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}><TruncTip/>{
-      what==='list'?<CustomersView rows={空?[]:[row2]} total={空?0:1} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{}} 能导入导出={能} 负责人只能自己={锁} 直接粘贴={粘贴} 客户数={空?0:1} 企业版={!!企}/>:
+    window.__render=({what,能,锁,空,粘贴,编辑,企,来源,渠道})=>{window.__来源=来源;const row2={...row,channelName:来源??null};root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}><TruncTip/>{
+      what==='list'?<CustomersView rows={空?[]:[row2]} total={空?0:1} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{}} 能导入导出={能} 负责人只能自己={锁} 直接粘贴={粘贴} 客户数={空?0:1} 企业版={!!企} 渠道筛选项={渠道}/>:
       <CustomerForm open editing={编辑?{id:'c1',name:'老客户',phone:'13800000001',salesOwnerId:'u2',salesOwnerName:'小张',followStatus:'待跟进',decisionStatus:'了解中',updatedAt:'2026-10-01T00:00:00.000Z'}:null} users={users} channels={[]} 负责人只能自己={锁} onClose={()=>{}}/>
     }</我Provider></BusinessProvider></App></ConfigProvider>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 参数 = { what: "list" | "form"; 能?: boolean; 锁?: boolean; 空?: boolean; 粘贴?: boolean; 编辑?: boolean; 企?: boolean; 来源?: string | null };
+type 参数 = { what: "list" | "form"; 能?: boolean; 锁?: boolean; 空?: boolean; 粘贴?: boolean; 编辑?: boolean; 企?: boolean; 来源?: string | null; 渠道?: { value: string; label: string }[] };
 async function open(p: 参数, width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -103,6 +106,59 @@ it("不是企业版：列设置里没有「客户来源」", async () => {
   try {
     await 打开列设置(page);
     expect(await page.locator(".ant-dropdown").getByText("客户来源", { exact: true }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+const 渠道 = [{ value: "ch1", label: "展会渠道" }, { value: "ch2", label: "转介绍（已停用）" }];
+const 外面的筛选 = (page: import("playwright").Page) => page.locator(".list-bar .ant-select").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? e.querySelector("[aria-label]")?.getAttribute("aria-label") ?? e.textContent?.trim() ?? ""));
+const 更多筛选 = (page: import("playwright").Page) => page.locator(".list-bar").getByRole("button", { name: /更多筛选/ });
+
+it("勾选列不截：选择框旁不出省略号小点（1024 宽）", async () => {
+  const { page, errors } = await open({ what: "list", 企: true, 来源: 长渠道 }, 1024);
+  try {
+    const 样式 = await page.locator("tr.ant-table-row td.ant-table-selection-column").first().evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { overflow: s.overflow, ellipsis: s.textOverflow };
+    });
+    expect(样式).toEqual({ overflow: "visible", ellipsis: "clip" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("自定义筛选：默认「客户来源」收着；钉到外面弹层不关、记进本地；恢复默认收回去", async () => {
+  const { page, errors } = await open({ what: "list", 企: true, 渠道 }, 1280);
+  try {
+    const 默认 = await 外面的筛选(page);
+    expect(默认.some((t) => t.includes("客户来源"))).toBe(false);
+
+    await 更多筛选(page).click();
+    const 弹层 = page.locator(".ant-popover:visible");
+    await expect.poll(() => 弹层.getByLabel("客户来源").count()).toBe(1);
+    await 弹层.getByText("自定义筛选项").click();
+    await 弹层.locator("label.ant-checkbox-wrapper", { hasText: "客户来源" }).click();
+    await expect.poll(() => 弹层.locator("label.ant-checkbox-wrapper-checked", { hasText: "客户来源" }).count()).toBe(1);
+    await 弹层.getByRole("button", { name: "返回" }).click();
+    await page.keyboard.press("Escape");
+    await expect.poll(async () => (await 外面的筛选(page)).some((t) => t.includes("客户来源"))).toBe(true);
+    expect(await page.evaluate(() => localStorage.getItem("list-filters:customers"))).toContain("channelId");
+
+    await 更多筛选(page).click();
+    await 弹层.getByText("自定义筛选项").click();
+    await 弹层.getByRole("button", { name: "恢复默认" }).click();
+    await page.keyboard.press("Escape");
+    await expect.poll(async () => 外面的筛选(page)).toEqual(默认);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("1024 宽默认状态：加了「更多筛选」也不折行，按钮只留图标", async () => {
+  const { page, errors } = await open({ what: "list", 企: true, 渠道 }, 1024);
+  try {
+    expect(await page.locator(".list-bar .cf-more-t").evaluate((el) => getComputedStyle(el).display)).toBe("none");
+    const 顶 = await page.locator(".list-bar").evaluate((b) => [...b.querySelectorAll(":scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")].map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(new Set(顶).size).toBe(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
