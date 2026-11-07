@@ -8,7 +8,7 @@
  *   - 客户名用团队钥匙封起来存着，查到时只回给问的人，由他本机解开：只露同事名 + 客户名，客户的其它资料一概不给
  *   - 换钥匙（移除成员）后旧哈希对不上新钥匙：每条记着钥匙编号，各台按新钥匙重报一遍
  *
- * 这里只放电脑（node）和手机（浏览器）共用的纯规则；算 HMAC 在 crypto.ts / crypto-web.ts，服务端在 tenant/sync-scoped.ts（收查重索引 / 查查重）。
+ * 这里只放纯规则；算 HMAC 在 crypto.ts，服务端在 tenant/sync-scoped.ts（收查重索引 / 查查重）。
  */
 import { 号键 } from "@/lib/phone";
 

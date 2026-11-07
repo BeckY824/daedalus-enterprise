@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { 拆字段, type 框 } from "@/lib/card-scan/parse";
 import { 名片转表单, 只补空格, 空名片表单, 国家名, 带译文 } from "@/lib/card-scan/form";
 import { 该换的语言 } from "@/lib/card-scan/ocr";
-import * as 手机 from "@/lib/mobile/sync";
 import 二十张 from "./fixtures/card-scan/v6tiny-20张.json";
 import 多语言 from "./fixtures/card-scan/多语言-中英第一遍.json";
 import 新增 from "./fixtures/card-scan/新增样例-最终框.json";
@@ -159,21 +158,5 @@ describe("10-20 用户反馈：WhatsApp、换成候选、备注里的标语（�
   });
   it("泰文「จำกัด」NFKC 后拼回原样（不变成 ํ + า）", () => {
     expect(拆("n08-th-thai").company).toContain("จำกัด");
-  });
-});
-
-describe("手机新建客户带上名片里多出来的", () => {
-  it("外贸：微信、官网进档案，备注进客户；备注截 2000 字", async () => {
-    const 库 = new 手机.内存库();
-    const 状态 = 手机.新状态();
-    const 钟 = { 钟: { name: "x" } };
-    await 库.放({ t: "User", k: "acct_li", r: { id: "acct_li", name: "李娜" }, ...钟 });
-    await 库.放({ t: "Setting", k: "business", r: { key: "business", value: JSON.stringify({ template: "trade", currency: "USD" }) }, ...钟 });
-    const 机 = { teamId: "t1", device: "m_phone", key: "", epoch: 0, keys: {}, userId: "acct_li", 私钥: new Uint8Array() } as unknown as 手机.手机团队;
-    const { id } = await 手机.新建客户(机, 库, 状态, { name: "Harbourline Lighting Ltd", phone: "+447700900123", wechat: "wx_ob", website: "harbourline.co.uk", remark: `联系人：Oliver Bennett\n${"x".repeat(3000)}`, source: "2026 迪拜展" });
-    const 客 = (await 库.取("Customer", id))!.r;
-    expect(String(客.remark).startsWith("联系人：Oliver Bennett\n")).toBe(true);
-    expect(String(客.remark).length).toBe(2000);
-    expect((await 库.取("CustomerExtra", id))?.r).toMatchObject({ wechat: "wx_ob", website: "harbourline.co.uk", source: "2026 迪拜展" });
   });
 });

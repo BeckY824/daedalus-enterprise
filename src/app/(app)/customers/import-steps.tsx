@@ -110,7 +110,7 @@ export function 页脚({
  * （见文件头「AI 不自动跑」）。按钮在没接模型、没粘东西、粘超了三种情况下都是灰的，
  * 每一种旁边都写着为什么，而不是灰在那儿让人猜。
  */
-export function PastePanel({
+function PastePanel({
   原文, set原文, 忙, aiEnabled, 整理, 进度, b,
 }: {
   原文: string; set原文: (v: string) => void; 忙: boolean; aiEnabled: boolean; 整理: () => void;

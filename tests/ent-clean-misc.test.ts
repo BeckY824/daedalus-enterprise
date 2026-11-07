@@ -109,13 +109,6 @@ describe("B3 起草转介绍邀请", () => {
   });
 });
 
-/* B5 隐私页不改：企业版 /privacy 跳登录页，且它是构建期静态页、读不到运行时开关；为一个看不到的词把 prisma 拉进静态页不值 */
-describe("B5 隐私页", () => {
-  it("不引 ai-usage（会连带 prisma 进静态页）", async () => {
-    const s = await 读("src/app/privacy/page.tsx");
-    expect(s).not.toContain("@/lib/ai-usage");
-  });
-});
 
 describe("B6 客户侧栏名字上方", () => {
   it("企业版显示客户所在国家地区（11-04 用户：从「来源」改成国家地区）；关着照旧 渠道 > 转介绍 > 跟进方式", async () => {

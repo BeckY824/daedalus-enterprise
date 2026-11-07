@@ -172,7 +172,7 @@ const 云: 传输 = async (方法, 路径, body) => {
 export function 设传输(t: 传输 | null) {
   原传输 = t ?? HTTP;
 }
-/** 别的模块（手机授权，sync/mobile-desktop.ts）和云端说话也走这一条：测试里换掉传输时一起换 */
+/** 别的模块和云端说话也走这一条：测试里换掉传输时一起换 */
 export const 调云: 传输 = (方法, 路径, body) => 云(方法, 路径, body);
 
 /** 本机手上的全部钥匙（之前的 + 现在这把） */
@@ -887,7 +887,7 @@ export async function 团队状态() {
     能管理: 能管理团队(c),
     我: 读云端凭据()?.accountId ?? null,
     成员: 团?.成员 ?? [],
-    /** 手机批准连上的电脑没有入队口令（lib/sync/device-link.ts）：不给一个拼坏的码 */
+    /** 没有入队口令的电脑：不给一个拼坏的码 */
     邀请码: c.joinSecret ? 邀请码(c) : "",
     lastSyncAt: c.lastSyncAt ?? null,
     lastOkAt: c.lastOkAt ?? null,

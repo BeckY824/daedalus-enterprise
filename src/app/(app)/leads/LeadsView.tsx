@@ -29,8 +29,8 @@ import { useUrlFilters } from "@/lib/url-filters";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import { 转化会带上 } from "@/lib/lead-convert";
-import { 自动分配线索, 批量自动分配, type 自动分配结果 } from "./assign-actions";
-import { AssignLeadModal, AssignedOutButton } from "./AssignLead";
+import { 自动分配线索, type 自动分配结果 } from "./assign-actions";
+import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "./AssignLead";
 import LeadFullNotices from "./LeadFullNotices";
 import ConvertProjectModal from "./ConvertProjectModal";
 import type { 向导跟进 } from "@/lib/project/wizard";
@@ -195,33 +195,7 @@ export default function LeadsView({
     }
   }
 
-  async function 批量自动分(ids: string[], 清空: () => void) {
-    let res: Awaited<ReturnType<typeof 批量自动分配>>;
-    try {
-      res = await 批量自动分配(ids);
-    } catch {
-      return void message.error("没分成，请稍后再试");
-    }
-    if (!res.ok) return void message.error(res.error);
-    清空();
-    router.refresh();
-    const 成 = res.结果.filter((x) => x.ok).length;
-    modal.info({
-      title: `自动分配：${成} 条分出去了${成 < res.结果.length ? `，${res.结果.length - 成} 条没分` : ""}`,
-      width: 560,
-      okText: "知道了",
-      content: (
-        <ul className="lead-auto-assign-list" data-testid="lead-auto-assign-result">
-          {res.结果.map((x) => (
-            <li key={x.leadId}>
-              <span className="lead-auto-assign-name" title={x.name}>{x.name}</span>
-              {x.ok ? <span>{分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
-            </li>
-          ))}
-        </ul>
-      ),
-    });
-  }
+  const 批量自动分 = useBatchAutoAssign(分给了);
 
   /** 只有一个人：负责人列不摆（审查 D2），见 lib/solo.ts */
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, rows.map((r) => r.ownerId));

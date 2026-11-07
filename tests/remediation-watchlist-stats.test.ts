@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 const state = vi.hoisted(() => ({ user: { id: "", name: "QA", email: "qa", role: "ADMIN", title: "管理员" } }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => state.user }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => true, listModelOptions: async () => [] }));
-vi.mock("@/lib/onboarding", () => ({ 要选模版: async () => false }));
 vi.mock("@/lib/pool-db", () => ({ 自动掉公海: async () => {} }));
 vi.mock("@/app/(app)/dashboard/threads", () => ({ 读对话: async () => null }));
 vi.mock("@/app/(app)/dashboard/HomeChat", () => ({ default: () => null }));

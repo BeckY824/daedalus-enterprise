@@ -32,7 +32,6 @@ import { 认等级, 规整官网, 官网网址, 官网短写, 规整外贸格, �
 import { 对方当地, 国家时区 } from "@/lib/country-time";
 import { 国家候选 } from "@/lib/customer-extra";
 import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, FOLLOW_METHODS, 跟进类型们 } from "@/lib/constants";
-import { 手机跟进类型 } from "@/lib/mobile/sync";
 import { 方式到类型, 下次主题, 默认完成类型 } from "@/app/(app)/customers/[id]/CompletePlanModal";
 import { 客户关键词条件, 网址域名 } from "@/lib/search-keyword";
 
@@ -132,7 +131,6 @@ describe("规则（不碰库）", () => {
     expect(跟进类型们(false)).toBe(FOLLOW_TYPES);
     expect(跟进类型们(false)[0].value).toBe("PHONE");
     expect(FOLLOW_METHODS).toContain("WhatsApp");
-    expect(手机跟进类型).toContain("WHATSAPP");
   });
 
   it("完成计划小框：计划上的方式认成跟进类型；下次的主题取这句话的第一句", () => {

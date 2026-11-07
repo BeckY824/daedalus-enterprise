@@ -88,7 +88,6 @@ async function 清空(d: PrismaClient) {
 }
 const 轮 = async (w: 谁) => { 当(w); return client.同步一轮(); };
 const 都轮 = async (...ws: 谁[]) => { for (const w of ws) expect(await 轮(w)).toMatchObject({ ok: true }); };
-const 全轮 = () => 都轮("li", "zhao", "boss", "li", "zhao");
 const 读配置 = (w: 谁) => { 当(w); return client.读团队()!; };
 
 beforeAll(async () => {

@@ -12,8 +12,6 @@ import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { 标识 } from "./net";
 
-export { IP库署名 } from "./mail";
-
 /** 桌面端：数据目录下（跟着用户数据走）；服务器 / 实验：RESEARCH_CACHE_DIR；都没有放临时目录 */
 export function IP库目录(env: Record<string, string | undefined> = process.env): string {
   if (env.RESEARCH_CACHE_DIR?.trim()) return env.RESEARCH_CACHE_DIR.trim();

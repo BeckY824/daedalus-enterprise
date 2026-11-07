@@ -30,7 +30,6 @@ export function 合同状态显示(存的: string | null | undefined): 合同状
 export const 痛点标注上限 = 2000;
 
 export type 项目新字段 = { painPoints: string | null; contractStatus: string | null };
-export const 新字段键 = ["painPoints", "contractStatus"] as const;
 
 /**
  * 编辑项目交上来的痛点标注、合同状态 → 要存的值（改项目 合进 新 里比变没变）。

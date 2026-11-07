@@ -26,7 +26,6 @@ import { 订单 } from "./features";
  * 教培招生那套措辞还在，但它算「通用」模版（用户：「我们应该只有通用模版，以及外贸模版」）。
  */
 export type BusinessTemplate = "general" | "trade";
-export const 模版名: Record<BusinessTemplate, string> = { general: "通用", trade: "外贸" };
 
 export type BusinessConfig = {
   /** 一段话：卖什么、客户是谁、怎么成交。注入全部 AI 提示词 */

@@ -25,7 +25,7 @@ import { 卡点脱离沟通 } from "../project/blocker";
 import { 忘掉企业版范围 } from "./visibility";
 import { 回收站里查号, 回收站里带号的联系人, type 验好的号 } from "./contact-dedupe";
 
-export { 看已删, 回收站保留天数, 客户连带, 软删表, type 软删表名 } from "./soft-delete-core";
+export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
 type 谁 = { id: string; role: string };
 type Tx = Prisma.TransactionClient;

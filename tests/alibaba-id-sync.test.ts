@@ -190,28 +190,3 @@ it("旧 → 新：老版本那台改国家、或者给同一位新建档案行�
   expect((await 没同步上(新)).条数).toBe(0);
   expect((await 没同步上(旧)).条数).toBe(0);
 });
-
-it("手机伴侣新建只有阿里 ID 的客户（插入带全部列）：老版本电脑回放不报错，客户落下来；新版电脑连阿里 ID 一起落下", async () => {
-  const 手机 = await import("@/lib/mobile/sync");
-  const 库 = new 手机.内存库();
-  const 状态 = 手机.新状态();
-  const 钟 = { 钟: { name: "x" } };
-  await 库.放({ t: "User", k: 管理员.id, r: { id: 管理员.id, name: 管理员.name }, ...钟 });
-  await 库.放({ t: "Setting", k: "business", r: { key: "business", value: JSON.stringify({ template: "trade", currency: "USD" }) }, ...钟 });
-  const 机 = { teamId: "t1", device: "m_phone", key: "", epoch: 0, keys: {}, userId: 管理员.id, 私钥: new Uint8Array() } as unknown as import("@/lib/mobile/sync").手机团队;
-  const { id } = await 手机.新建客户(机, 库, 状态, { name: "Omar", alibabaId: "sa88" });
-  const 包 = 拆(封(状态.待推, 钥匙), 钥匙) as 改动[];
-  expect(包.find((x) => x.t === "CustomerExtra")?.r).toMatchObject({ alibabaId: "sa88", email: null });
-
-  const 旧库 = 拷库("old3");
-  拆成老库(旧库);
-  const 旧 = await 开(旧库);
-  await 回放(旧, 包, "O");
-  expect((await 没同步上(旧)).条数).toBe(0);
-  expect((await 旧.customer.findUniqueOrThrow({ where: { id } })).name).toBe("Omar");
-
-  const 新 = await 开(拷库("new3"));
-  await 回放(新, 包, "N");
-  expect(await 新.customerExtra.findUniqueOrThrow({ where: { customerId: id } })).toMatchObject({ alibabaId: "sa88" });
-  expect((await 没同步上(新)).条数).toBe(0);
-});

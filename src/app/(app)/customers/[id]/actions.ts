@@ -207,9 +207,9 @@ export async function saveFollowUp(input: FollowUpInput) {
       participants: input.participants || null, customerId: input.customerId,
     };
     /*
-      公海客户：记跟进 = 领取（2026-10-19 用户拍板，和手机 lib/mobile/sync.ts 记跟进 同一条）。新记的跟进先领过来再记，
+      公海客户：记跟进 = 领取（2026-10-19 用户拍板）。新记的跟进先领过来再记，
       领取照电脑上原来那一套（改负责人、记领取时间、原负责人没做完的活跟过来、操作日志）；同步时和别人抢，先同步上的拿到，
-      后到的那台改负责人、领取和这条跟进都进「待核对」（tests/team-qa-sync.test.ts D4）
+      后到的那台改负责人、领取和这条跟进都进「待核对」
     */
     const 在公海 = !input.id && !!(await prisma.customerPool.findUnique({ where: { customerId: input.customerId }, select: { customerId: true } }));
     // 没设业务角色的领不了（11-03）：记了就等于没领到却留了条沟通，直接说清楚，不记

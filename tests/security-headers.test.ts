@@ -21,10 +21,10 @@ describe("安全响应头", () => {
   });
 
   /**
-   * 2026-10-20：手机伴侣扫名片「点了没反应」，/m 也带着 camera=()。/m 放开相机给自己，别的路径不变。
-   * Next 的规则按顺序叠，同名头后面的覆盖前面的，所以这里按 Next 的路径匹配把每条规则过一遍，取最后一个
+   * Next 的规则按顺序叠，同名头后面的覆盖前面的，所以这里按 Next 的路径匹配把每条规则过一遍。
+   * 手机上拍名片走 <input capture>（dashboard/CardScanKey.tsx），是系统相机，不靠这个头放开。
    */
-  it("手机伴侣 /m 放开相机（只给自己），其余路径照旧关着", async () => {
+  it("所有路径相机、话筒、定位都关着", async () => {
     const { getPathMatch } = await import("next/dist/shared/lib/router/utils/path-match");
     const 规则 = await nextConfig.headers!();
     const 头 = (路径: string) => {
@@ -35,8 +35,7 @@ describe("安全响应头", () => {
       }
       return 值;
     };
-    for (const p of ["/m", "/m/sw.js", "/m/manifest.webmanifest"]) expect(头(p), p).toBe("camera=(self), microphone=(), geolocation=()");
-    for (const p of ["/login", "/customers", "/api/mobile/sync", "/mobile", "/ma", "/ocr/v1/paddle.js"]) {
+    for (const p of ["/login", "/dashboard", "/customers", "/api/mobile/scan", "/m", "/ocr/v1/paddle.js"]) {
       expect(头(p), p).toBe("camera=(), microphone=(), geolocation=()");
     }
   });

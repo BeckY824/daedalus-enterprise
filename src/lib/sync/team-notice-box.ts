@@ -15,9 +15,3 @@ export function 记新插(e: { t: string; k: string; h: string }) {
   if (a.length > 箱子上限) a.splice(0, a.length - 箱子上限);
 }
 
-export function 取走新插(): 新插[] {
-  const a = 箱.__同事新插 ?? [];
-  箱.__同事新插 = [];
-  return a;
-}
-

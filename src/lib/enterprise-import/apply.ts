@@ -35,6 +35,7 @@ import { 客户类型空着 } from "./mapping";
 import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目, 无主入池理由, 无主项目进公海 } from "./project-target";
+import { 规, 写不进, type 值表, type 标量 } from "./values";
 import { 无负责人占位名, 无负责人占位邮箱 } from "../pool";
 import { 同号标题, 同号只记备注 } from "../enterprise/same-number-collab";
 import { 公海无负责人 } from "../project/pool-owner";
@@ -45,8 +46,6 @@ import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-statu
 import { 企业版字典, 本套名 } from "../project/stage-dict";
 
 type Tx = Prisma.TransactionClient;
-export type 标量 = string | number | boolean | null;
-export type 值表 = Record<string, 标量>;
 type 结果 = "新建" | "更新" | "跳过" | "冲突";
 
 /** 每类拿来比对、记进对照表的格子（落库的列名；客户的外贸几格、商机的结单日期在附表里） */
@@ -84,8 +83,6 @@ export type 写入结果 = {
   失败: number;
 };
 
-/** 这一条写不进去（给人看的原因） */
-export class 写不进 extends Error {}
 /** 别的地方正在写这一批：游标被挪过了 */
 class 让位 extends Error {}
 
@@ -115,12 +112,6 @@ function 解<T>(s: string | null | undefined, 缺: T): T {
   }
 }
 
-/** 比对前规整："" / undefined → null，日期 → ISO */
-export function 规(v: unknown): 标量 {
-  if (v === undefined || v === null || v === "") return null;
-  if (v instanceof Date) return v.toISOString();
-  return v as 标量;
-}
 const 同 = (a: 标量, b: 标量) => a === b;
 const 空 = (v: unknown) => 规(v) === null;
 const 日 = (v: 标量): Date | null => (v ? new Date(String(v)) : null);

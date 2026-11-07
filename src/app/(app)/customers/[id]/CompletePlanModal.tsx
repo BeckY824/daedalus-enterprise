@@ -22,7 +22,6 @@ import { useFormGuard } from "@/lib/form-guard";
  * 多半就没记；下一次什么时候也常常没排。现在三件事一个框做完：
  *   保存并完成 = 记一条已完成的跟进 + 完成这条计划 + （选了的话）排下一次，一个事务（saveFollowUp 的「附带」）
  *   跳过，直接完成 = 交回页面，和原来一样只把计划勾掉
- * 手机上「记一笔」那张面板是同一个样子（app/m/MobileApp.tsx RecordSheet）：下次的主题、方式也照它的规矩取。
  */
 
 export type 要完成的计划 = {

@@ -59,8 +59,6 @@ export const 缺沟通最多 = 5;
 /** 卡点分布：按阻碍主体（多的在前，没填的叫「没填」放最后）+ 按状态 */
 export type 卡点分布 = { 总数: number; 按主体: { 主体: string; 数: number }[]; 按状态: { 状态: string; 数: number }[] };
 export const 卡点状态序 = ["待接受", "处理中", "已解决"] as const;
-/** 状态在页面上怎么叫（卡点 v2 只剩这三种，老的「看板」迁移 107 已并进待接受） */
-export const 卡点状态叫法: Record<string, string> = { 待接受: "待接受", 处理中: "处理中", 已解决: "已解决" };
 
 export function 排卡点分布(
   主体们: readonly { obstacle: string; _count: { _all: number } }[],

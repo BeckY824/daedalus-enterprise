@@ -67,7 +67,6 @@ export const 标准字段 = {
   opportunity: ["id", "customerRef", "customerName", "name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "owner", "remark", "dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"],
   followup: ["id", "customerRef", "customerName", "opportunityRef", "opportunityName", "type", "title", "content", "occurredAt", "owner", "status"],
 } as const satisfies Record<实体, readonly string[]>;
-export type 标准字段名<E extends 实体 = 实体> = (typeof 标准字段)[E][number];
 
 export const 字段中文: Record<string, string> = {
   id: "原系统 ID",

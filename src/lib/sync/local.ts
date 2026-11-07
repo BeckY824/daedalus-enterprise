@@ -273,7 +273,7 @@ export async function 回放(db: PrismaClient, 批: 改动[], 本机设备: stri
   let 撞 = 0;
   let 跳 = 0;
   const 动过的客户 = new Set<string>();
-  // 别人新建、本机原来没有的客户 / 商机 / 跟进：提交之后记给老板提醒（team-notice.ts）。本人的（含本人）不记
+  // 别人新建、本机原来没有的客户 / 商机 / 跟进：提交之后记给老板提醒。本人的（含本人）不记
   const 新插们: 改动[] = [];
   let 本条新插 = false;
   await db.$transaction(async (tx) => {

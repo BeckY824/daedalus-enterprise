@@ -33,7 +33,7 @@ import { 结局默认节点, 节点所在阶段 } from "./project-values";
 import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
 import { 默认币种, 认币种 } from "../currency";
 import { 成交需求上限 } from "../project/profile-rules";
-import { 实体顺序, 必填, 实体名, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
+import { 实体顺序, 必填, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
 export type 本地索引 = {
@@ -950,4 +950,3 @@ export function 数一数(结果: 清洗结果): Record<实体, { 待写: number
   return out;
 }
 
-export { 实体名 };

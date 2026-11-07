@@ -13,8 +13,6 @@
  * 记录挂在本机还看得到的记录上：清理失权副本、业务员离开团队时跟着清掉（不在这台留别人客户的内容）。
  */
 import type { PrismaClient, Prisma } from "@/generated/prisma";
-import { businessDayjs } from "../business-clock";
-import { 列的叫法, 表的叫法 } from "./labels";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -74,51 +72,9 @@ export async function 记被盖(tx: Db, x: { t: string; k: string; 本机设备:
   await tx.$executeRawUnsafe(`DELETE FROM _sync_overwritten WHERE id NOT IN (SELECT id FROM _sync_overwritten ORDER BY id DESC LIMIT ${最多存})`);
 }
 
-/** 存的是库里的原样（日期是毫秒数、开关是 0/1）：给人看时换成日期时间、是 / 否 */
-function 显示值(col: string, v: string | null): string | null {
-  if (v == null || v === "") return v;
-  if (/(At|On)$/.test(col) && /^\d{12,14}$/.test(v)) {
-    return businessDayjs(Number(v)).format("YYYY-MM-DD HH:mm");
-  }
-  if (["done", "isPrimary", "closed"].includes(col) && (v === "1" || v === "0" || v === "true" || v === "false")) return v === "1" || v === "true" ? "是" : "否";
-  return v;
-}
-
 export type 被盖条目 = { id: number; 表: string; 名称: string; 列: string; 我写的: string | null; 现在: string | null; 我改的时间: string; 同事改的时间: string; href: string | null };
 const q = (s: string) => `"${s.replaceAll('"', '""')}"`;
 const 主键列: Record<string, string> = { CustomerExtra: "customerId" };
-
-/** 设置 → 团队要列的：没看过的、记录还在这台电脑上的（不在了的不列，也不留） */
-export async function 列出被盖(db: Db): Promise<被盖条目[]> {
-  await 建被盖表(db);
-  const rows = await db.$queryRawUnsafe<{ id: bigint; tbl: string; pk: string; col: string; mine: string | null; theirs: string | null; mineAt: bigint; theirAt: bigint }[]>("SELECT * FROM _sync_overwritten WHERE seenAt IS NULL ORDER BY id DESC LIMIT 100");
-  const out: 被盖条目[] = [];
-  for (const r of rows) {
-    const pk = 主键列[r.tbl] ?? "id";
-    const 行 = (await db.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT * FROM ${q(r.tbl)} WHERE ${q(pk)} = ?`, r.pk).catch(() => []))[0];
-    if (!行) continue;
-    const 客户id = r.tbl === "Customer" ? r.pk : typeof 行.customerId === "string" ? 行.customerId : null;
-    let 名称 = String(行.name ?? 行.title ?? 行.subject ?? "");
-    if (r.tbl !== "Customer" && 客户id) {
-      const 客户 = (await db.$queryRawUnsafe<{ name: string }[]>('SELECT name FROM "Customer" WHERE id = ?', 客户id))[0]?.name;
-      if (客户) 名称 = 名称 ? `${客户} · ${名称}` : 客户;
-    }
-    out.push({
-      id: Number(r.id), 表: 表的叫法(r.tbl), 名称: 名称 || "（没名字的一条）", 列: 列的叫法(r.tbl, [r.col])[0] ?? r.col,
-      我写的: 显示值(r.col, r.mine), 现在: 显示值(r.col, r.theirs), 我改的时间: new Date(数(r.mineAt)).toISOString(), 同事改的时间: new Date(数(r.theirAt)).toISOString(),
-      href: 客户id ? `/customers/${encodeURIComponent(客户id)}` : null,
-    });
-  }
-  return out;
-}
-
-/** 「知道了」：标成看过，不再提示 */
-export async function 看过被盖(db: Db, ids: number[]) {
-  await 建被盖表(db);
-  let n = 0;
-  for (const id of ids.filter(Number.isSafeInteger)) n += Number(await db.$executeRawUnsafe("UPDATE _sync_overwritten SET seenAt = ? WHERE id = ? AND seenAt IS NULL", Date.now(), id));
-  return n;
-}
 
 /** 记录已经不在这台电脑上（失权清掉、离开团队）：它的被盖记录一起删，不留别人客户的内容 */
 export async function 清掉不在的被盖(db: Db) {

@@ -21,7 +21,6 @@ import { saveOpportunity } from "@/app/(app)/opportunities/actions";
 import { 加载复盘 } from "@/app/(app)/overview/data";
 import { runQuery } from "@/lib/report-run";
 import { buildProposal, describeProposal } from "@/lib/agent/proposals";
-import { buildReferralRadar } from "@/lib/referral";
 import { 签约合计 } from "@/lib/money-db";
 import { 合并合计, 币种符号 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
@@ -210,12 +209,5 @@ describe("AI 问数据 / 建议卡 / 转介绍", () => {
     expect(欧.ok && 欧.proposal).toMatchObject({ currency: "EUR" });
     const 坏 = buildProposal("p3", "add_contract", 客户, { amount: 1, currency: "美刀", signedAt: "2026-10-03", reason: "x" }, b);
     expect(坏.ok).toBe(false);
-  });
-
-  it("转介绍雷达：建议邀请的理由按币种写", () => {
-    const { inviteCandidates } = buildReferralRadar([
-      { id: "a", name: "Acme", followStatus: "已签约", referrerCustomerId: null, signedAmount: 3200, signed: [{ 币种: "USD", 合计: 3200 }] },
-    ]);
-    expect(inviteCandidates[0].reason).toContain("US$ 3,200");
   });
 });

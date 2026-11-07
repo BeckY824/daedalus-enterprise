@@ -182,7 +182,7 @@ export function 拆范围<T>(封好: string, 钥匙: string | 钥匙环, 绑: �
   return JSON.parse(gunzipSync(解密(b.subarray(5), k, 范围附加(b.subarray(0, 5), 绑))).toString("utf8")) as T;
 }
 
-/** 跨成员查重的哈希（lib/sync/dedupe.ts）：团队钥匙做 HMAC-SHA256（hex）。手机端 crypto-web.ts 同名函数同一算法 */
+/** 跨成员查重的哈希（lib/sync/dedupe.ts）：团队钥匙做 HMAC-SHA256（hex）。 */
 export function 查重哈希(钥匙: string, 原文: string): string {
   return createHmac("sha256", 钥(钥匙)).update(原文, "utf8").digest("hex");
 }

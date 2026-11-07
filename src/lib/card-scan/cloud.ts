@@ -4,7 +4,7 @@
  * 手机把压好的照片（长边 1600、几百 KB）传上去，服务器用同一套 PaddleOCR 认出框和字，字段照旧在手机上拆（parse.ts）。
  * 服务器不行（不是团队版 / 自部署没有这个接口、排队太久、超次数、坏了、没网）就抛 服务器不认，认名片改在手机上认（ocr.ts）。
  *
- * 这个文件要轻：MobileApp 一打开就 import 它来设令牌，识别那一大套（ocr.ts）还是点了扫名片才载
+ * 这个文件要轻：识别那一大套（ocr.ts）还是点了扫名片才载
  */
 import type { 名片语言 } from "./langs";
 import type { 名片行 } from "./ai";
@@ -25,7 +25,7 @@ let 停用 = false;
 /** 这次打开期间服务器没有 AI 整理（不是团队版、没配模型、自部署没有接口）：不再每张都问 */
 let 不整理 = false;
 
-/** MobileApp 登录 / 退出时设 */
+/** 带 Bearer 的调用方登录 / 退出时设（网页走 Cookie，不用它） */
 export function 设识别令牌(t: string | null): void {
   if (t !== 令牌) { 停用 = false; 不整理 = false; }
   令牌 = t;

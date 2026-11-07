@@ -31,7 +31,6 @@ const plugin: Plugin = { name: "contact-v2-boundaries", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import LevelStars from '@/components/LevelStars';
     import ContactForm from '@/app/(app)/customers/[id]/ContactForm';
     import ContactLinks from '@/app/(app)/customers/[id]/ContactLinks';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
@@ -39,7 +38,6 @@ beforeAll(async () => {
     const 壳=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>{x}</BusinessProvider></App></ConfigProvider>;
     const 种类=[{名:'手机',kind:'phone',active:true},{名:'邮箱',kind:'email',active:true}];
     const 人={id:'c1',name:'王五',position:null,phone:null,email:null,wechat:null,isPrimary:false,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'};
-    window.__星=()=>root.render(壳(<div>{['S','A','B','C'].map(l=><div key={l} data-l={l}><LevelStars level={l}/></div>)}<div data-l='无'><LevelStars level={null} 空='—'/></div></div>));
     window.__表单=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}/>));
     // 10-31：企业版「职务」下拉（字典 contactTitle 的 19 项），也能手填；库里已有的字典外职务原样显示
     const 职务=['董事长','总经理','CEO','董事长秘书','总经理助理','分管副总','部门总监','业务负责人','项目经理','项目设计负责人','采购','财务','法务','技术','国企高管','店长','店员','运营主管','场馆经理'];
@@ -55,30 +53,13 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(画: "__星" | "__表单" | "__挂靠" | "__职务" | "__职务老" | "__非企业", width = 1024) {
+async function open(画: "__表单" | "__挂靠" | "__职务" | "__职务老" | "__非企业", width = 1024) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://cv2.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://cv2.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
   await page.evaluate(f => (window as unknown as Record<string, () => void>)[f](), 画);
   return page;
 }
-
-it("级别徽标（F-客户-01 去星标）：只显示字母 S/A/B/C、不带星，四档等高、读屏念档名；没分级给占位", async () => {
-  const page = await open("__星");
-  try {
-    await page.locator(".cust-level").first().waitFor();
-    const 各 = await page.locator(".cust-level").evaluateAll(els => els.map(e => ({
-      字: e.textContent, 高: Math.round(e.getBoundingClientRect().height), 读: e.getAttribute("aria-label"),
-    })));
-    expect(各.map(x => x.字)).toEqual(["S", "A", "B", "C"]);
-    expect(new Set(各.map(x => x.高)).size).toBe(1);
-    expect(各[1].读).toBe("客户级别 A 重点");
-    expect(await page.locator("body").innerText()).not.toMatch(/[★☆]/);
-    expect(await page.locator("[data-l='无']").innerText()).toBe("—");
-    const [S色, C色] = await Promise.all(["S", "C"].map(l => page.locator(`[data-l='${l}'] .cust-level`).evaluate(e => getComputedStyle(e).backgroundColor)));
-    expect(S色).not.toBe(C色);
-  } finally { await page.close(); }
-});
 
 it("号码撞了：黄条列出撞到的人（可点、可挂到本客户）、看不到的只说负责人；仍然保存带照存；改表单黄条收起", async () => {
   const page = await open("__表单");

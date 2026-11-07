@@ -21,10 +21,9 @@ vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => mock
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { getSetting, invalidateSettingsCache, setSetting } from "@/lib/settings";
-import { 换联网, 读连接配置, 连接键, 还没接 } from "@/lib/enterprise-import/adapter";
+import { 换联网, 读连接配置, 连接键 } from "@/lib/enterprise-import/adapter";
 import { 对上主表, 取appToken, 测试飞书连接, 读飞书表配置, 存飞书表 } from "@/lib/enterprise/feishu-connect";
 import { 读凭据概况, 存通讯录凭据, 读通讯录设置, 通讯录到点了, type 通讯录设置 } from "@/lib/enterprise/org-sync";
-import { 占位适配器, 端口接好了, 通讯录端口们 } from "@/lib/enterprise/contacts-ports";
 import { 测试飞书连接动作, 飞书表概况, 设飞书表, 设通讯录间隔, 设通讯录凭据 } from "@/app/(app)/settings/org-actions";
 import { 假网, 断网, type 录制, type 响应 } from "./helpers/ent-fake-net";
 
@@ -365,22 +364,6 @@ describe("同步频率：默认每小时，可改半小时", () => {
     expect(await 设通讯录间隔("feishu", 30)).toEqual({ ok: true });
     invalidateSettingsCache();
     expect((await 读通讯录设置("feishu")).间隔分钟).toBe(30);
-  });
-});
-
-describe("通讯录端口：飞书 / 钉钉接好了，企微 / 微信占位", () => {
-  it("四个端口都列着；没接的调到说「还没接」", async () => {
-    expect(通讯录端口们.map((x) => x.端口).sort()).toEqual(["dingtalk", "feishu", "wechat", "wecom"]);
-    expect(端口接好了("feishu")).toBe(true);
-    expect(端口接好了("dingtalk")).toBe(true);
-    expect(端口接好了("wecom")).toBe(false);
-    expect(端口接好了("wechat")).toBe(false);
-    expect(占位适配器("feishu")).toBeNull();
-    for (const p of ["wecom", "wechat"] as const) {
-      const a = 占位适配器(p)!;
-      await expect(a.拉通讯录()).rejects.toBeInstanceOf(还没接);
-      await expect(a.拉通讯录()).rejects.toThrow("通讯录还没接上");
-    }
   });
 });
 

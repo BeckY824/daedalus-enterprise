@@ -36,8 +36,8 @@ import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type �
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
-import { 自动分配线索, 批量自动分配, type 自动分配结果 } from "../leads/assign-actions";
-import { AssignLeadModal, AssignedOutButton } from "../leads/AssignLead";
+import { 自动分配线索, type 自动分配结果 } from "../leads/assign-actions";
+import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "../leads/AssignLead";
 import LeadFullNotices from "../leads/LeadFullNotices";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
 import { 取客户近况 } from "../customers/[id]/pick";
@@ -130,7 +130,7 @@ export default function ProjectsView({
 }) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
@@ -208,33 +208,7 @@ export default function ProjectsView({
     }
   }
 
-  async function 批量自动分(ids: string[], 清空: () => void) {
-    let res: Awaited<ReturnType<typeof 批量自动分配>>;
-    try {
-      res = await 批量自动分配(ids, { 项目: true });
-    } catch {
-      return void message.error("没分成，请稍后再试");
-    }
-    if (!res.ok) return void message.error(res.error);
-    清空();
-    router.refresh();
-    const 成 = res.结果.filter((x) => x.ok).length;
-    modal.info({
-      title: `自动分配：${成} 条分出去了${成 < res.结果.length ? `，${res.结果.length - 成} 条没分` : ""}`,
-      width: 560,
-      okText: "知道了",
-      content: (
-        <ul className="lead-auto-assign-list" data-testid="lead-auto-assign-result">
-          {res.结果.map((x) => (
-            <li key={x.leadId}>
-              <span className="lead-auto-assign-name" title={x.name}>{x.name}</span>
-              {x.ok ? <span>{分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
-            </li>
-          ))}
-        </ul>
-      ),
-    });
-  }
+  const 批量自动分 = useBatchAutoAssign(分给了, { 项目: true });
 
   // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
   const 无 = <span style={{ color: "var(--text-muted)" }}>{空值符}</span>;
