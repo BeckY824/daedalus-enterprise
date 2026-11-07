@@ -73,7 +73,9 @@ describe("下一步：自己写一句话，时间可空", () => {
   });
 
   it("文字 + 时间一起存；下一条只写文字，时间跟着清掉（整体换成这一条的）", async () => {
-    expect(await 记项目沟通Action(项目, 沟通({ 下一步时间: "2026-11-06" }))).toMatchObject({ ok: true });
+    // 下一步时间不能早于今天，写死日期到期就红，这里用「一周后」
+    const 一周后 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    expect(await 记项目沟通Action(项目, 沟通({ 下一步时间: 一周后 }))).toMatchObject({ ok: true });
     const 一 = await prisma.project.findUnique({ where: { id: 项目 }, select: { nextStepText: true, nextStepAt: true } });
     expect(一!.nextStepText).toBe("周五前发报价单");
     expect(一!.nextStepAt).not.toBeNull();

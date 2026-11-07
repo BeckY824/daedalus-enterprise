@@ -11,7 +11,6 @@ import path from "node:path";
 
 afterEach(() => {
   delete process.env.DESKTOP_LOCAL;
-  delete process.env.DESKTOP_TOKEN;
 });
 
 describe("应用壳：本地模式下令牌没了就不给进", () => {
@@ -59,7 +58,6 @@ describe("换了账号但目录还没换：哪儿都不给进", () => {
 
   beforeEach(() => {
     process.env.DESKTOP_LOCAL = "1";
-    process.env.DESKTOP_TOKEN = "desktop-token-for-tests";
     process.env.CRM_DATA_DIR = 目录;
     fs.rmSync(令牌文件, { force: true });
     fs.rmSync(归属文件, { force: true });

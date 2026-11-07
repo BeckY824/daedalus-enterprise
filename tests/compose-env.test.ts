@@ -19,7 +19,6 @@ const 不用进容器: Record<string, string> = {
   IMPORT_SEGMENT_MS: "测试调短每趟时长用，不配走默认 2 秒",
   // 桌面端壳（desktop/main.js）起本地服务时传的，托管版没有这回事
   DESKTOP_LOCAL: "桌面端壳传",
-  DESKTOP_TOKEN: "桌面端壳传",
   CRM_DATA_DIR: "桌面端壳传",
   CRM_CLOUD_URL: "桌面端壳传（本机联调指到别处）",
   CRM_SERVER_FILE: "桌面端壳传（数据根里专属服务器的设置文件）",

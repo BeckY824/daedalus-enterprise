@@ -42,7 +42,9 @@ export default defineConfig({
       AUTH_SECRET: "e2e-only-secret-not-used-in-production-0123456789",
       COOKIE_SECURE: "false",
       TZ: "Asia/Shanghai",
-      LLM_API_KEY: "",
+      // 假配置：手机首页的拍名片入口要有 AI 才摆；地址是本机打不通的端口，不发真实请求
+      LLM_API_KEY: "fake-for-e2e",
+      LLM_BASE_URL: "http://127.0.0.1:9/v1",
       JEV_API_KEY: "",
       CRM_RESEARCH_CHANNEL: "mock",
       CRM_ENTERPRISE: "1",
