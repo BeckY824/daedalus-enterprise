@@ -151,6 +151,26 @@ const 根目录图标: Record<根目录图, React.ReactNode> = {
   项目: <ProjectOutlined />,
 };
 
+/** 账号菜单里按角色分组的人名（切换视图、切换演示身份共用）：key 前缀决定点了走哪条，当前这位打勾且不能点 */
+function 身份分组(名单: 演示组[], 前缀: "view" | "demo", 我: string) {
+  return 名单.map((g) => ({
+    type: "group" as const,
+    key: `${前缀}-g:${g.角色}`,
+    label: g.名,
+    children: g.人.map((p) => ({
+      key: `${前缀}:${p.id}`,
+      icon: p.id === 我 ? <CheckOutlined /> : <span className="demo-switch-gap" />,
+      disabled: p.id === 我,
+      label: (
+        <span className="demo-switch-person">
+          <b>{p.name}</b>
+          {p.说明 && <span>{p.说明}</span>}
+        </span>
+      ),
+    })),
+  }));
+}
+
 export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
@@ -457,22 +477,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           icon: <SwapOutlined />,
           label: 正在视图 ? "换一个人的视图" : "切换视图（只读）",
           popupClassName: "demo-switch-pop",
-          children: 视图名单.map((g) => ({
-            type: "group" as const,
-            key: `view-g:${g.角色}`,
-            label: g.名,
-            children: g.人.map((p) => ({
-              key: `view:${p.id}`,
-              icon: p.id === user.id ? <CheckOutlined /> : <span className="demo-switch-gap" />,
-              disabled: p.id === user.id,
-              label: (
-                <span className="demo-switch-person">
-                  <b>{p.name}</b>
-                  {p.说明 && <span>{p.说明}</span>}
-                </span>
-              ),
-            })),
-          })),
+          children: 身份分组(视图名单, "view", user.id),
         },
       ]
     : [];
@@ -502,22 +507,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           icon: <SwapOutlined />,
           label: "切换身份（演示）",
           popupClassName: "demo-switch-pop",
-          children: 演示名单.map((g) => ({
-            type: "group" as const,
-            key: `demo-g:${g.角色}`,
-            label: g.名,
-            children: g.人.map((p) => ({
-              key: `demo:${p.id}`,
-              icon: p.id === user.id ? <CheckOutlined /> : <span className="demo-switch-gap" />,
-              disabled: p.id === user.id,
-              label: (
-                <span className="demo-switch-person">
-                  <b>{p.name}</b>
-                  {p.说明 && <span>{p.说明}</span>}
-                </span>
-              ),
-            })),
-          })),
+          children: 身份分组(演示名单, "demo", user.id),
         },
       ]
     : [];

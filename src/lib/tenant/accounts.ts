@@ -189,8 +189,7 @@ export async function verifyAccount(target: string, password: string): Promise<A
  * 登录校验根本不看它，跟着改反而会让人以为那边也是一把真钥匙。
  *
  * 作废旧会话是调用方的事（见 lib/tenant/session-cutoff.ts）：
- * 那一步要写另一张表，放在这里会让「桌面端改密码」这类还没有会话的调用方
- * 平白依赖一套会话机制。
+ * 那一步要写另一张表，放在这里会让还没有会话的调用方平白依赖一套会话机制。
  */
 export async function updatePassword(accountId: string, password: string): Promise<void> {
   const hash = await 哈希密码(password);

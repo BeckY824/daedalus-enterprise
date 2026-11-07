@@ -1,12 +1,9 @@
 /**
- * 跨成员查重的纯规则（lib/sync/dedupe.ts）和两边算法对得上（2026-10-19）：
- * 电脑（node crypto）报上去的哈希、封的客户名，手机（WebCrypto）算出来、解得开，反过来也一样。
- * 整条链路（报 → 问 → 挡下）在 tests/team-qa-sync.test.ts F2。
+ * 跨成员查重的纯规则（lib/sync/dedupe.ts，2026-10-19）。
  */
 import { describe, expect, it } from "vitest";
-import { 客户查重值, 查重键, 查重原文, 查重标签绑定, 同事撞号说法, 查重指纹 } from "@/lib/sync/dedupe";
+import { 客户查重值, 查重键, 查重原文, 同事撞号说法, 查重指纹 } from "@/lib/sync/dedupe";
 import * as 电脑 from "@/lib/sync/crypto";
-import * as 手机 from "@/lib/sync/crypto-web";
 
 describe("规整：和本机查重同一把尺子", () => {
   it("电话按号键：空格、横杠不算；邮箱 / 微信号去空格、不分大小写", () => {
@@ -38,22 +35,5 @@ describe("规整：和本机查重同一把尺子", () => {
   it("那句话只有同事名 + 客户名", () => {
     expect(同事撞号说法("手机号 139", "赵业务", "某某")).toBe("手机号 139 已是同事 赵业务 名下的客户（某某），请勿重复录入；要接手请找 赵业务 或老板");
     expect(同事撞号说法("邮箱 a@b.com", "赵业务", "", "学员")).toBe("邮箱 a@b.com 已是同事 赵业务 名下的学员，请勿重复录入；要接手请找 赵业务 或老板");
-  });
-});
-
-describe("电脑和手机两边对得上", () => {
-  const 钥 = 电脑.新钥匙();
-  const 原文 = 查重原文("team-1", "phone", 查重键("phone", "+44 7700 900123"));
-
-  it("同一个号码，node 和 WebCrypto 算出同一个哈希；换一把钥匙就对不上", async () => {
-    expect(await 手机.查重哈希(钥, 原文)).toBe(电脑.查重哈希(钥, 原文));
-    expect(电脑.查重哈希(电脑.新钥匙(), 原文)).not.toBe(电脑.查重哈希(钥, 原文));
-  });
-
-  it("客户名：电脑封的手机解得开，手机封的电脑解得开；换个团队就解不开", async () => {
-    const 绑 = 查重标签绑定("team-1");
-    expect(await 手机.拆<string>(电脑.封("SCANDI PAK EUROPE LTD", 钥, 3, 绑), { "3": 钥 }, 绑)).toBe("SCANDI PAK EUROPE LTD");
-    expect(电脑.拆<string>(await 手机.封("阿里·穆罕默德", 钥, 3, 绑), { "3": 钥 }, 绑)).toBe("阿里·穆罕默德");
-    expect(() => 电脑.拆<string>(电脑.封("x", 钥, 3, 绑), { "3": 钥 }, 查重标签绑定("team-2"))).toThrow();
   });
 });

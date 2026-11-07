@@ -1,5 +1,5 @@
 /**
- * 头像上的字（手机伴侣、运营台共用；2026-10-19 团队版主动排查从 lib/mobile/view.ts 挪出来）。
+ * 头像上的字（运营台用）。
  */
 const 汉字类 = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const 拼音字母 = /[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}]/u;

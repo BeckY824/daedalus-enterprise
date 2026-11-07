@@ -14,9 +14,8 @@ import { 公海无负责人 } from "../project/pool-owner";
 import { 回收原因前缀 } from "../project/timeout";
 import { 卡点随项目换人, 转让接手理由 } from "../project/blocker";
 import { 将回收提醒跟着换人 } from "../project/db";
-import { 规, 写不进, type 值表, type 标量 } from "./apply";
+import { 规, 写不进, type 值表, type 标量 } from "./values";
 import { 节点所在阶段 } from "./project-values";
-export { 项目阶段值, 项目节点对值, 节点所在阶段, 结局默认节点 } from "./project-values";
 
 type Tx = Prisma.TransactionClient;
 

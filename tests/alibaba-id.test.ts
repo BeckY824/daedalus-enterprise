@@ -5,7 +5,7 @@
  *   - 有电话的照旧只按电话认：两位联系人留了同一个阿里 ID 不挡
  *   - 通用模版不收这一格：电话照旧必填
  *   - Excel 导入认「阿里 ID / 国际站 ID / Alibaba ID / Buyer ID」这类表头；只有阿里 ID 的行进得来，再导一次认出是同一位
- *   - 团队：问同事用「alibaba」这一种（服务端只见哈希）；手机新建也收、也挡
+ *   - 团队：问同事用「alibaba」这一种（服务端只见哈希）
  * 和老版本客户端同步（最要紧的一条）在 tests/alibaba-id-sync.test.ts。
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
@@ -29,9 +29,6 @@ import { 摊开, 并重复行 } from "@/lib/import/plan";
 import { 规整阿里ID, 外贸键 } from "@/lib/customer-extra";
 import { 客户查重值, 查重键 } from "@/lib/sync/dedupe";
 import { 客户导出表 } from "@/app/(app)/customers/export-table";
-import * as 手机 from "@/lib/mobile/sync";
-import * as 电脑密 from "@/lib/sync/crypto";
-import { 客户们, 分表 } from "@/lib/mobile/view";
 
 const 外贸配置 = BUSINESS_PRESETS["外贸出口"];
 async function 外贸() {
@@ -187,62 +184,5 @@ describe("团队查重索引", () => {
     expect(客户查重值({ phone: "", email: "", wechat: "", alibaba: "US001" })).toEqual([{ 种: "alibaba", 键: "us001" }]);
     expect(客户查重值({ phone: "13900009100", alibaba: "us001" }).map((x) => x.种)).toEqual(["phone", "alibaba"]);
     expect(查重键("alibaba", " AbC ")).toBe("abc");
-  });
-});
-
-describe("手机新建客户", () => {
-  const 钥 = 电脑密.新钥匙();
-  const 机 = { teamId: "t1", device: "m_phone", key: 钥, epoch: 0, keys: { "0": 钥 }, userId: "acct_li", 私钥: new Uint8Array() } as unknown as 手机.手机团队;
-  const 钟 = { 钟: { name: "x" } };
-  async function 新手机() {
-    const 库 = new 手机.内存库();
-    const 状态 = 手机.新状态();
-    await 库.放({ t: "User", k: "acct_li", r: { id: "acct_li", name: "李娜" }, ...钟 });
-    await 库.放({ t: "User", k: "acct_zhao", r: { id: "acct_zhao", name: "赵业务" }, ...钟 });
-    await 库.放({ t: "Setting", k: "business", r: { key: "business", value: JSON.stringify({ template: "trade", currency: "USD" }) }, ...钟 });
-    return { 库, 状态 };
-  }
-
-  it("只填阿里 ID 能建，进档案；手机上已有同一个阿里 ID 的挡下", async () => {
-    const { 库, 状态 } = await 新手机();
-    const { id } = await 手机.新建客户(机, 库, 状态, { name: "Omar", alibabaId: "Buyer ID: SA88" });
-    expect((await 库.取("Customer", id))?.r).toMatchObject({ phone: "" });
-    expect((await 库.取("CustomerExtra", id))?.r).toMatchObject({ alibabaId: "SA88", email: null, wechat: null });
-    await expect(手机.新建客户(机, 库, 状态, { name: "Omar 2", alibabaId: "sa88" })).rejects.toThrow("阿里 ID sa88 已经有了：Omar");
-  });
-
-  it("联网时问服务端：同事名下的同一个阿里 ID 挡下，问的哈希就是 alibaba 那一种", async () => {
-    const { 库, 状态 } = await 新手机();
-    const 问过: unknown[] = [];
-    const 云 = (async (_m: string, _p: string, body: { action: string; hashes?: string[] }) => {
-      问过.push(body);
-      return { 状态: 200, json: body.action === "dedupe-find" ? { hits: [{ k: "c_zhao", owner: "acct_zhao", label: "坏的" }] } : {} };
-    }) as unknown as Parameters<typeof 手机.新建客户>[5];
-    await expect(手机.新建客户(机, 库, 状态, { name: "Omar", alibabaId: "sa99" }, Date.now(), 云)).rejects.toThrow("阿里 ID sa99 已是同事 赵业务 名下的客户");
-    const 期望 = 电脑密.查重哈希(钥, `dedupe-v1|t1|alibaba|sa99`);
-    expect(问过).toEqual([expect.objectContaining({ action: "dedupe-find", hashes: [期望] })]);
-    expect(状态.待推).toEqual([]);
-  });
-
-  it("团队分了两个一级部门：别部门的命中带部门名；部门名超长不认", async () => {
-    const { 库, 状态 } = await 新手机();
-    let dept = "外贸";
-    const 云 = (async (_m: string, _p: string, body: { action: string }) =>
-      ({ 状态: 200, json: body.action === "dedupe-find" ? { hits: [{ k: "c_zhao", owner: "acct_zhao", label: "坏的", dept }] } : {} })) as unknown as Parameters<typeof 手机.新建客户>[5];
-    await expect(手机.新建客户(机, 库, 状态, { name: "Omar", alibabaId: "sa98" }, Date.now(), 云)).rejects.toThrow("阿里 ID sa98 已是同事 外贸 · 赵业务 名下的客户");
-    dept = "长".repeat(101);
-    await expect(手机.新建客户(机, 库, 状态, { name: "Omar", alibabaId: "sa98" }, Date.now(), 云)).rejects.toThrow("阿里 ID sa98 已是同事 赵业务 名下的客户");
-  });
-
-  it("手机客户详情带出阿里 ID", async () => {
-    const { 库, 状态 } = await 新手机();
-    const { id } = await 手机.新建客户(机, 库, 状态, { name: "Omar", alibabaId: "sa1", email: "o@x.co" });
-    const 行们 = [];
-    for (const key of await 库.键们()) {
-      const [表, k] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
-      const x = await 库.取(表, k);
-      if (x) 行们.push(x);
-    }
-    expect(客户们(分表(行们), "acct_li", new Set()).find((c) => c.id === id)?.alibabaId).toBe("sa1");
   });
 });

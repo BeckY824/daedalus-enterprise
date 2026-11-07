@@ -392,6 +392,15 @@ describe("没设业务角色不能领", () => {
     expect(await raw.customerPool.count({ where: { customerId: c } })).toBe(1);
   });
 
+  it("设了业务角色的给公海客户记跟进：顺手领过来，回包说领取了，跟进记上，公海行没了", async () => {
+    const { c } = await 导入的(乙.id, "丙记跟进领");
+    当(丙);
+    expect(await 以谁的身份(丙.id, () => 记(c))).toMatchObject({ ok: true, 领取了: true });
+    expect((await raw.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(丙.id);
+    expect(await raw.customerPool.count({ where: { customerId: c } })).toBe(0);
+    expect(await raw.followUp.count({ where: { customerId: c } })).toBe(1);
+  });
+
   it("设了业务角色的正常领；别人分给没业务角色的也拦", async () => {
     const 无角色 = await 造人("none4@x", "无角色四", "SALES", null);
     const 甲 = await 导入的(乙.id, "丙来领");

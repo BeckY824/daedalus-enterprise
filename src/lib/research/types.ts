@@ -61,11 +61,6 @@ export type 价目回应 = { 扣次: number; 还剩: number; 不限?: true };
 /** 这次背调到现在估计花了多少钱、上限多少（元）。搜索 / 读页的回应里带着，桌面端到了上限就停手 */
 export type 花费 = { 已花元: number; 上限元: number };
 
-/**
- * runId 和 X-Question-Id 同一个规矩：1–64 位 [A-Za-z0-9_-]。
- * 走我们的模型：老字段，服务器不再看——10-16 起背调的搜索和分析一律走我们的服务器、一律照价扣（price.ts）
- */
-export type 开始请求 = { runId: string; 走我们的模型?: boolean };
 export type 开始回应 =
   | {
       ok: true;
@@ -81,17 +76,10 @@ export type 开始回应 =
     }
   | { ok: false; error: string };
 
-export type 搜索请求 = { runId: string; query: string };
 export type 搜索回应 = { results: 搜索结果[]; 花费?: 花费 };
 
-export type 读页请求 = { runId: string; url: string };
 export type 读页回应 = 读页结果 & { 花费?: 花费 };
 
-/**
- * 收尾。ok = 桌面端这边 6 步都跑完了（只记账用）；取消 = 用户自己停的（点了停、关了页面），不退。
- * **退不退服务器自己判断**（credits.ts 的 收尾背调）：最后一步交没交出去、我们这边失败过没有，都是服务器自己记的
- */
-export type 收尾请求 = { runId: string; ok: boolean; 取消?: boolean; searches?: number; pages?: number };
 export type 收尾回应 = { ok: true; 退了: number; 还剩: number };
 
 /* ---------- 背调过程的事件流（本机 /api/ai/stream → 浏览器） ----------

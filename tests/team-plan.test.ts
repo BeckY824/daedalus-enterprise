@@ -15,7 +15,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { closeTestDatabases } from "./close-databases";
 import { 封, 设备钥匙对 } from "@/lib/sync/crypto";
 import { 加月, 新到期日, 剩几天, 应收, 北京日期, 解析日期, 当天结束, 同步闸, 人满话 } from "@/lib/team-pricing";
@@ -233,18 +232,6 @@ describe("开通 / 续费 / 到期暂停", () => {
 describe("席位：满了要拦（2026-10-19）", () => {
   const 机 = () => ({ device: `d${Math.random().toString(36).slice(2, 10)}`, pubKey: 设备钥匙对().公钥 });
 
-  /** 手机申请 + 挑战核过，直接走到「允许」那一步（挑战的封 / 解在 mobile-link.test.ts 里测过） */
-  async function 批一台手机(accountId: string, teamId: string, 批的设备: string) {
-    const { control } = await import("@/lib/tenant/control");
-    const link = await import("@/lib/tenant/mobile-link");
-    const nonce = `n${n++}`;
-    const r = await control.syncMobileLink.create({
-      data: { accountId, tokenId: `tk${n++}`, device: `m_${Math.random().toString(36).slice(2, 10)}`, pubKey: 设备钥匙对().公钥, label: "手机", status: "pending",
-        proofHash: createHash("sha256").update(nonce).digest("hex"), proofDevice: 批的设备, proofAt: new Date() },
-    });
-    return link.允许(accountId, r.id, teamId, "封好的", nonce);
-  }
-
   it("运营台开 2 人：老板 + 1 位满了，第三个人拿邀请码进不来，提示人满；改成 3 人马上能进", async () => {
     const r = await import("@/lib/tenant/sync-relay");
     const p = await import("@/lib/tenant/team-plan");
@@ -281,25 +268,6 @@ describe("席位：满了要拦（2026-10-19）", () => {
     expect((await r.入队(赵, t.teamId, 移.joinSecret, 机())).ok).toBe(true);
     // 李被移出、赵占了位子：李拿新邀请码也进不来
     expect(await r.入队(李, t.teamId, 移.joinSecret, 机())).toMatchObject({ ok: false, 状态: 409, error: 人满话(2) });
-  });
-
-  it("批准新设备：满员时本人加手机照常；人数已经超过上限（运营台改小了）就拦", async () => {
-    const r = await import("@/lib/tenant/sync-relay");
-    const p = await import("@/lib/tenant/team-plan");
-    const 老板 = await 账号("席位老板"), 李 = await 账号("李"), 赵 = await 账号("赵");
-    const 老板电脑 = 机(), 李电脑 = 机();
-    const t = await r.建团队(老板, "批设备", 老板电脑);
-    if (!t.ok) throw new Error(t.error);
-    await p.开通续费({ teamId: t.teamId, 时长: { months: 1 }, seats: 3, amount: 89.7, by: "口令" });
-    expect((await r.入队(李, t.teamId, t.joinSecret, 李电脑)).ok).toBe(true);
-    expect((await r.入队(赵, t.teamId, t.joinSecret, 机())).ok).toBe(true);
-    // 正好满：李在电脑上批自己的手机，不多占人
-    expect(await 批一台手机(李, t.teamId, 李电脑.device)).toEqual({ ok: true });
-    // 运营台改成 2 人（比现在的 3 人少）：已经在的人不踢，但新设备批不了
-    expect((await p.改人数({ teamId: t.teamId, seats: 2, by: "口令" })).ok).toBe(true);
-    expect(await 批一台手机(老板, t.teamId, 老板电脑.device)).toEqual({ ok: false, 状态: 409, error: 人满话(2) });
-    expect(await p.席位闸(t.teamId, false)).toBe(人满话(2));
-    expect(await p.席位闸(t.teamId, true)).toBe(人满话(2));
   });
 
   it("没设人数的老团队（10-19 之前开的）不拦", async () => {

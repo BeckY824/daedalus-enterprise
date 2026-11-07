@@ -16,8 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 金额, 是币种, 规整币种, 币种选项, 按币种合计, 合计文字, 内置币种, 币种名 } from "@/lib/currency";
 import { mergeBusiness, BUSINESS_PRESETS, DEFAULT_BUSINESS, 推断模版 } from "@/lib/business-config";
-import { invalidateSettingsCache, setSetting } from "@/lib/settings";
-import { 要选模版 } from "@/lib/onboarding";
+import { invalidateSettingsCache } from "@/lib/settings";
 
 const 原值 = process.env.DESKTOP_LOCAL;
 
@@ -101,24 +100,5 @@ describe("模版", () => {
   it("存了的照存的来：外贸模版但本位币改成欧元，读回来还是欧元", () => {
     expect(mergeBusiness({ ...BUSINESS_PRESETS["外贸出口"], currency: "EUR" }).currency).toBe("EUR");
     expect(mergeBusiness({ ...BUSINESS_PRESETS["通用销售"], template: "trade" }).template).toBe("trade");
-  });
-});
-
-describe("新用户选模版", () => {
-  it("桌面端、新库：要选", async () => {
-    expect(await 要选模版()).toBe(true);
-  });
-
-  it("网页版不弹", async () => {
-    delete process.env.DESKTOP_LOCAL;
-    expect(await 要选模版()).toBe(false);
-  });
-
-  it("老用户不弹：库里有客户，或者存过业务配置", async () => {
-    await prisma.customer.create({ data: { name: "老客户", phone: "13800000000", salesOwnerId: mocks.user.id } });
-    expect(await 要选模版()).toBe(false);
-    await prisma.customer.deleteMany();
-    await setSetting("business", BUSINESS_PRESETS["通用销售"]);
-    expect(await 要选模版()).toBe(false);
   });
 });

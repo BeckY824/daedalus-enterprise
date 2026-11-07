@@ -17,7 +17,7 @@
  *      是把电话导进备注栏、把学费导进姓名栏——而且没有任何报错。
  *      这一条破了就不该合，哪怕召回再高。
  */
-import { 字段表, 猜列, type 字段名 } from "@/lib/import/fields";
+import { 字段表, type 字段名 } from "@/lib/import/fields";
 import { 组问题, 并进来, 置信阈值 } from "@/lib/jev/columns";
 import { 问选择, 判断可用 } from "@/lib/jev/client";
 

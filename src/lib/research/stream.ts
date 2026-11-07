@@ -15,7 +15,7 @@ import { 报告文本 } from "./report";
 import type { 研究事件 } from "./types";
 import { 初始状态, 归约, type 背调状态 } from "./state";
 import { 合并线索, 认线索, type 线索 } from "./verify/clues";
-import { 收邮件信号, type 邮件信号 } from "./verify/mail";
+import { 收邮件信号 } from "./verify/mail";
 import { 是免费邮箱, 主机 } from "./verify/domain";
 import { 取IP库, 查IP } from "./verify/ip-country";
 import { 模拟查IP } from "./mock";
@@ -229,5 +229,3 @@ async function 查发件IP(ip: string): Promise<string | null> {
   if (!库) throw new Error("IP 库没下下来");
   return 查IP(库, ip);
 }
-
-export type { 邮件信号 };

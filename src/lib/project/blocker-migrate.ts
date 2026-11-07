@@ -58,8 +58,3 @@ export function 卡点改版一次(): Promise<number> {
   });
   return g.__entBlockerV2;
 }
-
-/** 测试用：忘掉这个进程跑过 */
-export function 忘掉卡点改版(): void {
-  g.__entBlockerV2 = undefined;
-}

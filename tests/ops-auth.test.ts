@@ -11,7 +11,6 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 
-const 根 = path.resolve(__dirname, "..");
 const 临时根 = path.join(os.tmpdir(), `crm-ops-auth-${process.pid}`);
 
 beforeAll(() => {

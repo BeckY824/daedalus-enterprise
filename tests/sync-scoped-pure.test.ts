@@ -9,14 +9,14 @@ import { Prisma } from "@/generated/prisma";
 import { 同步表 } from "@/lib/sync/tables";
 import { 主键表 } from "@/lib/sync/scoped-pure";
 
-describe("手机端用的主键表", () => {
+describe("同步主键表", () => {
   it("和 schema 一致，同步表一张不少、一张不多", () => {
     const m = new Map(Prisma.dmmf.datamodel.models.map((x) => [x.name, x]));
     const 期望 = Object.fromEntries(同步表.map((t) => [t, m.get(t)!.fields.find((f) => f.isId)!.name]));
     expect(主键表).toEqual(期望);
   });
-  it("手机端会打包的几个文件不 import node: 模块（浏览器里没有）", () => {
-    for (const f of ["src/lib/sync/canon.ts", "src/lib/sync/crypto-web.ts", "src/lib/sync/scope-policy.ts", "src/lib/sync/scoped-pure.ts", "src/lib/sync/tables.ts", "src/lib/mobile/sync.ts"]) {
+  it("同步的这几个纯函数文件不 import node: 模块（要能在浏览器里打包）", () => {
+    for (const f of ["src/lib/sync/canon.ts", "src/lib/sync/scope-policy.ts", "src/lib/sync/scoped-pure.ts", "src/lib/sync/tables.ts"]) {
       const s = fs.readFileSync(path.resolve(__dirname, "..", f), "utf8");
       const 非类型导入 = [...s.matchAll(/^import (?!type )[^;]*from "([^"]+)"/gm)].map((x) => x[1]);
       expect(非类型导入.filter((x) => x.startsWith("node:") || x.includes("generated/prisma") || x.endsWith("/local") || x.endsWith("/crypto") || x.endsWith("/scoped-local")), f).toEqual([]);

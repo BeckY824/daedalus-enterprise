@@ -297,6 +297,40 @@ test("交接要确认：老板把销售甲的客户转给销售乙，确认前�
   expect((await db.project.findFirstOrThrow({ where: { name: "线索乙" } })).ownerId).toBe(销售2.id);
 });
 
+test("手机（飞书里打开）：登录回到要去的页，首页有拍名片入口带相机，「+」里能选；认名片接口要登录", async ({ browser, baseURL }) => {
+  const 手机 = await browser.newContext({
+    baseURL,
+    locale: "zh-CN",
+    timezoneId: "Asia/Shanghai",
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 2,
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Lark/7.20.0 LarkLocale/zh_CN",
+  });
+  try {
+    expect((await 手机.request.get("/api/mobile/scan")).status()).toBe(401);
+    const page = await 手机.newPage();
+    const 报错: string[] = [];
+    page.on("pageerror", (e) => 报错.push(e.message));
+    await page.goto("/login?next=/projects");
+    await page.getByPlaceholder("用户名").fill(账号.销售1);
+    await page.getByPlaceholder("登录密码").fill(种.密码);
+    await page.getByRole("button", { name: /登\s*录/ }).click();
+    // 看路径，不看整串：登录页自己的网址 /login?next=/projects 也含 /projects
+    await page.waitForURL((u) => u.pathname === "/projects");
+    await page.goto("/dashboard");
+    await expect(page.locator('input[type="file"][capture="environment"]').first()).toBeAttached();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.getByRole("button", { name: "更多入口" }).click();
+    for (const 项 of ["拍名片", "查重", "背调"]) await expect(page.getByText(项, { exact: true }).first()).toBeVisible();
+    expect((await page.request.get("/api/mobile/scan")).status()).toBe(200);
+    expect(报错).toEqual([]);
+  } finally {
+    await 手机.close();
+  }
+});
+
 test("项目公海：原负责人看不到公海里的项目；别的销售项目不能单独领（灰着），在公海领客户，项目、客户、同客户的另一个项目一起归他", async ({ page }) => {
   await 登录(page, "销售1");
   // 11-01 C-01：项目进了公海，历史负责人没有任何权限，详情找不到（pool-owner.ts 原负责人回避）

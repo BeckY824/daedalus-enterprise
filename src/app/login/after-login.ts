@@ -18,9 +18,8 @@ export async function 登录之后(res: Extract<LoginResult, { ok: true }>, 报�
    * loading 永远停在 true，同样表现为无限转圈且零报错。
    * 整页跳转让浏览器重新走一遍完整请求，成败都看得见。
    * 这正是 @next/next/no-location-assign-relative-destination 要拦的写法，
-   * 但登录是会话状态的变更点，此处硬跳转是有意的，故就地豁免。
+   * 但登录是会话状态的变更点，此处硬跳转是有意的。
    */
-  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   // 先到选模版那一页：新用户在进主界面之前选；不该选的它当场 307 去首页（app/start/page.tsx）
   // 去处：点通知没登录被弹过来的（已在 login/page.tsx 校验过），登录完回那一页。/start 现在只是转去首页，跳过不损失什么
   window.location.assign(res.选工作区 ? "/workspaces" : 去处 ?? "/start");

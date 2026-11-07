@@ -23,7 +23,7 @@ import { 成记录, 拆联系人, 拆出的客户ID列, type 读出的表 } from
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 猜映射, 说明键, 值对照, 值叫法, 值说法, 进备注, type 建议器, type 成员, type 表概要 } from "./mapping";
-import { 实体顺序, 字段中文, 实体名, 格式类们, type 格式类, type 来源, type 实体, type 映射, type 原始记录, type 问题, type 待写, type 值对照名, type 列映射 } from "./types";
+import { 实体顺序, 字段中文, 格式类们, type 格式类, type 来源, type 实体, type 映射, type 原始记录, type 问题, type 待写, type 值对照名, type 列映射 } from "./types";
 
 /** 报告里最多列多少条问题（存进库的那份）；总数另记，界面上说「还有 N 条没列出」 */
 const 问题上限 = 5000;
@@ -544,5 +544,3 @@ function 成报告(p: {
   };
 }
 
-/** 报告里一类数据的中文名（界面用） */
-export { 实体名 };

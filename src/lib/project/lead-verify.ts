@@ -26,12 +26,10 @@ import { 判MQL, MQL合格去 } from "./mql";
 import { 有效线索节点, 无效原因上限 } from "./stage-gates";
 export { 无效原因上限 };
 import { 原因上限 } from "./nodes";
-export { 等复核的, 等复核拦 } from "./lead-verify-guard";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true; 自动推到?: string[] } | { ok: false; error: string };
 
-export type 线索判定 = "有效线索" | "暂未判定" | "初验无效" | "无效线索";
 export type 待哪步 = "市场复核" | "销售终验" | "总管理终判" | "销售认领";
 export type 验证步 = "销售初判" | 待哪步;
 export const 说明上限 = 原因上限;

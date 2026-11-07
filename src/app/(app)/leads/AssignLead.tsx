@@ -13,12 +13,45 @@ import { App, Button, Checkbox, Form, Modal, Select, Table, Tag } from "antd";
 import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
-import { 分配线索, 本月分配情况, 我分出去的线索, 项目分配线, type 分配情况 } from "./assign-actions";
+import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, type 分配情况, type 自动分配结果 } from "./assign-actions";
 import type { 项目线 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 
 const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}${p.加额 > 0 ? `（含无效补 ${p.加额}）` : ""}`;
+
+/** 勾选后批量自动分配，弹一张名单说清每条分给了谁：线索页和项目页共用，分给了 = 各页自己的说法 */
+export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true }) {
+  const router = useRouter();
+  const { message, modal } = App.useApp();
+  return async function 批量自动分(ids: string[], 清空: () => void) {
+    let res: Awaited<ReturnType<typeof 批量自动分配>>;
+    try {
+      res = await 批量自动分配(ids, 选项);
+    } catch {
+      return void message.error("没分成，请稍后再试");
+    }
+    if (!res.ok) return void message.error(res.error);
+    清空();
+    router.refresh();
+    const 成 = res.结果.filter((x) => x.ok).length;
+    modal.info({
+      title: `自动分配：${成} 条分出去了${成 < res.结果.length ? `，${res.结果.length - 成} 条没分` : ""}`,
+      width: 560,
+      okText: "知道了",
+      content: (
+        <ul className="lead-auto-assign-list" data-testid="lead-auto-assign-result">
+          {res.结果.map((x) => (
+            <li key={x.leadId}>
+              <span className="lead-auto-assign-name" title={x.name}>{x.name}</span>
+              {x.ok ? <span>{分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
+            </li>
+          ))}
+        </ul>
+      ),
+    });
+  };
+}
 
 /**
  * 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的。

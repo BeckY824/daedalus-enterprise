@@ -4,7 +4,7 @@
 import { 视图外部拦 } from "@/lib/enterprise/view-as";
 import { 退避, 请求超时毫秒, 连不上重试 } from "./net-limits";
 
-export { 退避, 请求超时毫秒, 连不上重试, 单个请求最长毫秒 } from "./net-limits";
+export { 退避, 连不上重试, 单个请求最长毫秒 } from "./net-limits";
 
 export type 联网 = {
   fetch: (url: string, init?: RequestInit) => Promise<Response>;

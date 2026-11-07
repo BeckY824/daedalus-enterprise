@@ -82,7 +82,7 @@ export default function AiDock({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [开着]);
+  }, [开着, set开着]);
 
   // 这一页上列着的名字（DataList 登记的）。Hook 要在早退之前调，顺序每次一样
   const b = useBusiness();

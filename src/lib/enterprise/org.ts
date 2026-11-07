@@ -11,7 +11,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
-import { 回收站副手键, 只看某人键, 填组织设置, 建组织, 直属上级of, 虚线上级of, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
+import { 回收站副手键, 只看某人键, 填组织设置, 建组织, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
 
 export * from "./org-core";
 // 部门树在 org-tree.ts（客户端组件也用，不能带 prisma）；这里转出去，服务端照旧从 org 拿
@@ -31,8 +31,6 @@ export const 读组织 = cache(async (): Promise<组织> => {
   return 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value);
 });
 
-export const 直属上级 = async (userId: string): Promise<string | null> => 直属上级of(await 读组织(), userId);
-export const 虚线上级 = async (userId: string): Promise<string | null> => 虚线上级of(await 读组织(), userId);
 // 类型和读库的函数同名（老写法），类型在这里再转一次
 export type 管理员类别 = 类别;
 export const 管理员类别 = async (userId: string): Promise<类别 | null> => 管理员类别of(await 读组织(), userId);

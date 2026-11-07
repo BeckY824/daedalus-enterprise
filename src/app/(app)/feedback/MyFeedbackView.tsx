@@ -76,6 +76,7 @@ export default function MyFeedbackView({ 去向 }: { 去向: "cloud" | "github" 
     if (去向 === "cloud") void 刷新我的反馈({ 新: true });
   }, [去向]);
 
+  const 有反馈 = s.反馈.length > 0;
   useLayoutEffect(() => {
     const el = 盒.current;
     if (!el) return;
@@ -84,7 +85,7 @@ export default function MyFeedbackView({ 去向 }: { 去向: "cloud" | "github" 
     const ro = new ResizeObserver(量);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [s.载好, s.反馈.length > 0]);
+  }, [s.载好, 有反馈]);
 
   const 显示的 = s.反馈.find((f) => f.id === 选中) ?? (窄 === false ? (s.反馈[0] ?? null) : null);
 

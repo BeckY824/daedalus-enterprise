@@ -25,7 +25,7 @@ import { recordAudit, type Actor } from "@/lib/audit";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 建组织, 上级设置问题, 拆角色, 合角色 } from "@/lib/enterprise/org-core";
-import { 是业务角色, 部门最多层数, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
+import { 是业务角色, 部门最多层数, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 连接键, 当前联网, 读连接配置 } from "@/lib/enterprise-import/adapter";
 import { 飞书适配器 } from "@/lib/enterprise-import/feishu";
 import { 钉钉适配器 } from "@/lib/enterprise-import/dingtalk";
@@ -198,7 +198,6 @@ type 现有 = {
   用户: { id: string; email: string; name: string; role: string; active: boolean; feishuOpenId: string | null; password: string }[];
 };
 
-type 部门计划 = { 外部ID: string; id: string | null; name: string; 上级外部ID: string | null; sort: number };
 type 人计划 = {
   外部ID: string;
   userId: string | null;
@@ -568,4 +567,3 @@ export async function 定时同步通讯录(现在 = new Date()): Promise<void> 
   }
 }
 
-export { 角色名 };

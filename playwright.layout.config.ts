@@ -12,7 +12,7 @@ import { 企业版地址, 企业版库, 企业版目录, 企业版端口 } from 
  *   LAYOUT_SHARD=2 E2E_PORT=3520 npx playwright test -c playwright.layout.config.ts   # 只跑 CI 第 2 片
  *   E2E_PROD=1 LAYOUT_SHARD=1 npx playwright test -c playwright.layout.config.ts       # 同 CI：先 next build 再 next start
  *
- * 手机伴侣 /m 那一份在默认套里（e2e/team-qa-mobile.spec.ts，360–430 宽）。检查规则见 e2e/layout-audit.ts
+ * 检查规则见 e2e/layout-audit.ts
  */
 
 /*

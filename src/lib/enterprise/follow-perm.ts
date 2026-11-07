@@ -33,7 +33,6 @@ export function 能删沟通of(me: 谁, 负责人们: readonly (string | null | 
  * 刚记下的本人可以撤销（删）：AI 卡片确认后的「撤销」、记错了马上撤，都走 deleteFollowUp。
  * 只认本人记的、记下 撤销窗口分钟 以内的；过了这个时间就和别的沟通一样，负责人本人或系统管理员能删
  */
-export { 撤销窗口分钟 } from "./follow-undo";
 export function 刚记的能撤(me: { id: string }, f: { ownerId: string | null; createdAt: Date }, now: Date = new Date()): boolean {
   return 撤销拦(me, f, now) === null;
 }

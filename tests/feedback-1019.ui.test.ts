@@ -100,7 +100,10 @@ it("填了一半按 Esc：先问；「继续填」留在原地；「留着草稿
   expect(await page.getByText("接着上次没填完的继续填").count()).toBe(0);
   // 焦点在「继续填」上：顺手按回车不会把填的扔掉
   await expect.poll(() => page.evaluate(() => document.activeElement?.textContent)).toBe("继续填");
-  if (process.env.FB_SHOT) await page.waitForTimeout(500), await page.screenshot({ path: `${process.env.FB_SHOT}/confirm.png` });
+  if (process.env.FB_SHOT) {
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${process.env.FB_SHOT}/confirm.png` });
+  }
   await page.getByRole("button", { name: "继续填" }).click();
   await expect.poll(() => 问框(page).count()).toBe(0);
   expect(await 框(page).getByLabel("客户姓名").inputValue()).toBe("Wang Wei");

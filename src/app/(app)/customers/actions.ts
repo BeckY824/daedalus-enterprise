@@ -246,6 +246,47 @@ function 企业版客户太长(叫法: string, 交: { name?: string | null; rema
   return null;
 }
 
+/**
+ * 企业版主表新几格（迁移 072）：简称、地址、分配方式、客户类型、客户属性、业务线。没交的格不进结果（不写、不比对）。
+ * 字典格（分配方式 custAssign、客户类型 custType 迁移 092、客户属性 custAttr 迁移 104）：得是字典里启用中的一项，
+ * 原值停用了（10-31 换过一套）原样交回也认
+ */
+async function 规整企业资料(
+  交: Partial<企业客户资料>,
+  改前: { assignWay: string | null; customerType: string | null; customerAttr: string | null } | null,
+): Promise<{ ok: true; 值: Partial<企业客户资料> } | { ok: false; error: string }> {
+  let 企资料: Partial<企业客户资料> = {};
+  if (交.shortName !== undefined) {
+    const 简 = (交.shortName ?? "").trim().replace(/\s+/g, " ") || null;
+    if (简 && 简.length > 简称上限) return { ok: false, error: `客户简称最多 ${简称上限} 个字` };
+    企资料.shortName = 简;
+  }
+  if ((["addrCountry", "addrProvince", "addrCity", "addrDistrict"] as const).some((k) => 交[k] !== undefined)) {
+    const 址 = 规整地址(交);
+    if (!址.ok) return { ok: false, error: 址.error };
+    企资料 = { ...企资料, ...址.值 };
+  }
+  if (交.addrDetail !== undefined) {
+    const 详 = 规整详细地址(交.addrDetail);
+    if (!详.ok) return { ok: false, error: 详.error };
+    企资料.addrDetail = 详.值;
+  }
+  for (const [格, 字典, 叫法] of [["assignWay", "custAssign", "客户分配"], ["customerType", "custType", "客户类型"], ["customerAttr", "custAttr", "客户属性"]] as const) {
+    const 交的 = 交[格];
+    if (交的 === undefined) continue;
+    const v = (交的 ?? "").trim() || null;
+    if (v && v !== 改前?.[格] && !(await 可选项(字典)).includes(v)) return { ok: false, error: `${叫法}「${v}」不在可选范围内，请刷新后重选` };
+    企资料[格] = v;
+  }
+  // 业务线（迁移 106）：只认内贸 / 外贸 / 暂不分配，空 = 清掉
+  if (交.bizLine !== undefined) {
+    const 线 = 认业务线(交.bizLine);
+    if (线 === undefined) return { ok: false, error: 业务线不认得 };
+    企资料.bizLine = 线;
+  }
+  return { ok: true, 值: 企资料 };
+}
+
 export async function saveCustomer(input: CustomerInput, 接着?: unknown): Promise<SaveCustomerResult> {
   const me = await requireUser();
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
@@ -351,40 +392,35 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     编辑时号码原样没动的不查（R-067，2026-10-04）：查重改成按号键比之后，老库里本来就重了的两份
     （「138 0000 1111」和「13800001111」）会互相挡着，谁都改不了备注。号码没动就没有新添重复
   */
-  if (phone && !(改前 && phone === 改前.phone)) {
-    // 看全部：业务员把自己客户的号改成同事客户的号，原来这里只看得到自己的、查不出来，悄悄存成两份同号档案
+  // 看全部：业务员把自己客户的号改成同事客户的号，原来这里只看得到自己的、查不出来，悄悄存成两份同号档案
+  const 撞别人 = async (条件: () => Promise<Prisma.CustomerWhereInput>, 说法: string) => {
     const dup = await 看全部(async () => prisma.customer.findFirst({
-      where: { AND: [await 同号条件(prisma, phone, await 分机留存起()), ...(input.id ? [{ id: { not: input.id } }] : [])] },
+      where: { AND: [await 条件(), ...(input.id ? [{ id: { not: input.id } }] : [])] },
       select: 撞到的字段,
     }));
-    if (dup) return { ok: false, error: await 撞号说法(`手机号 ${phone}`, dup, await 读的我(defaultClient), b.customer) };
+    return dup ? 撞号说法(说法, dup, await 读的我(defaultClient), b.customer) : null;
+  };
+  if (phone && !(改前 && phone === 改前.phone)) {
+    const 撞 = await 撞别人(async () => 同号条件(prisma, phone, await 分机留存起()), `手机号 ${phone}`);
+    if (撞) return { ok: false, error: 撞 };
   }
   // 按邮箱认的：邮箱没动的不查（同上面号码没动不查）。有电话的不拿邮箱挡——同一公司几位联系人共用 info@ 常见
   const 查邮箱 = 按邮箱认 && !phone && !(改前 && 邮箱键(交的邮箱) === 邮箱键(改前邮箱));
   if (查邮箱) {
-    const dup = await 看全部(async () => prisma.customer.findFirst({
-      where: { AND: [await 同邮箱条件(prisma, 交的邮箱), ...(input.id ? [{ id: { not: input.id } }] : [])] },
-      select: 撞到的字段,
-    }));
-    if (dup) return { ok: false, error: await 撞号说法(`邮箱 ${交的邮箱}`, dup, await 读的我(defaultClient), b.customer) };
+    const 撞 = await 撞别人(() => 同邮箱条件(prisma, 交的邮箱), `邮箱 ${交的邮箱}`);
+    if (撞) return { ok: false, error: 撞 };
   }
   // 按微信认的：同上，微信号没动的不查；有电话或邮箱的不拿微信挡
   const 查微信 = 按微信认 && !phone && !(改前 && 邮箱键(交的微信) === 邮箱键(改前微信));
   if (查微信) {
-    const dup = await 看全部(async () => prisma.customer.findFirst({
-      where: { AND: [await 同微信条件(prisma, 交的微信), ...(input.id ? [{ id: { not: input.id } }] : [])] },
-      select: 撞到的字段,
-    }));
-    if (dup) return { ok: false, error: await 撞号说法(`微信 ${交的微信}`, dup, await 读的我(defaultClient), b.customer) };
+    const 撞 = await 撞别人(() => 同微信条件(prisma, 交的微信), `微信 ${交的微信}`);
+    if (撞) return { ok: false, error: 撞 };
   }
   // 按阿里 ID 认的：同上，没动的不查；有电话、邮箱或微信的不拿阿里 ID 挡
   const 查阿里 = 按阿里认 && !phone && !(改前 && 邮箱键(交的阿里) === 邮箱键(改前阿里));
   if (查阿里) {
-    const dup = await 看全部(async () => prisma.customer.findFirst({
-      where: { AND: [await 同阿里条件(prisma, 交的阿里), ...(input.id ? [{ id: { not: input.id } }] : [])] },
-      select: 撞到的字段,
-    }));
-    if (dup) return { ok: false, error: await 撞号说法(`阿里 ID ${交的阿里}`, dup, await 读的我(defaultClient), b.customer) };
+    const 撞 = await 撞别人(() => 同阿里条件(prisma, 交的阿里), `阿里 ID ${交的阿里}`);
+    if (撞) return { ok: false, error: 撞 };
   }
 
   /*
@@ -456,49 +492,9 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (!档案原.ok) return { ok: false, error: 档案原.error };
   const 档案 = 企级别 !== undefined ? { ...档案原, data: { ...档案原.data, level: 企级别 } } : 档案原;
 
-  // 企业版主表新几格（迁移 072）：简称、地址、分配方式。分配方式要是字典 custAssign 里启用中的（原值停用了原样交回也认）
-  let 企资料: Partial<企业客户资料> = {};
-  if (企业版() && input.企业资料) {
-    const 交 = input.企业资料;
-    if (交.shortName !== undefined) {
-      const 简 = (交.shortName ?? "").trim().replace(/\s+/g, " ") || null;
-      if (简 && 简.length > 简称上限) return { ok: false, error: `客户简称最多 ${简称上限} 个字` };
-      企资料.shortName = 简;
-    }
-    if ((["addrCountry", "addrProvince", "addrCity", "addrDistrict"] as const).some((k) => 交[k] !== undefined)) {
-      const 址 = 规整地址(交);
-      if (!址.ok) return { ok: false, error: 址.error };
-      企资料 = { ...企资料, ...址.值 };
-    }
-    if (交.addrDetail !== undefined) {
-      const 详 = 规整详细地址(交.addrDetail);
-      if (!详.ok) return { ok: false, error: 详.error };
-      企资料.addrDetail = 详.值;
-    }
-    if (交.assignWay !== undefined) {
-      const v = (交.assignWay ?? "").trim() || null;
-      if (v && v !== 改前?.assignWay && !(await 可选项("custAssign")).includes(v)) return { ok: false, error: `客户分配「${v}」不在可选范围内，请刷新后重选` };
-      企资料.assignWay = v;
-    }
-    // 客户类型（迁移 092）：同分配方式，得是字典 custType 里启用中的一项（原值停用了原样交回也认）
-    if (交.customerType !== undefined) {
-      const v = (交.customerType ?? "").trim() || null;
-      if (v && v !== 改前?.customerType && !(await 可选项("custType")).includes(v)) return { ok: false, error: `客户类型「${v}」不在可选范围内，请刷新后重选` };
-      企资料.customerType = v;
-    }
-    // 客户属性（迁移 104）：同客户类型，字典 custAttr 里启用中的一项；原值停用了（10-31 换过一套）原样交回也认
-    if (交.customerAttr !== undefined) {
-      const v = (交.customerAttr ?? "").trim() || null;
-      if (v && v !== 改前?.customerAttr && !(await 可选项("custAttr")).includes(v)) return { ok: false, error: `客户属性「${v}」不在可选范围内，请刷新后重选` };
-      企资料.customerAttr = v;
-    }
-    // 业务线（迁移 106）：只认内贸 / 外贸 / 暂不分配，空 = 清掉
-    if (交.bizLine !== undefined) {
-      const 线 = 认业务线(交.bizLine);
-      if (线 === undefined) return { ok: false, error: 业务线不认得 };
-      企资料.bizLine = 线;
-    }
-  }
+  const 企资料结果 = 企业版() && input.企业资料 ? await 规整企业资料(input.企业资料, 改前) : null;
+  if (企资料结果 && !企资料结果.ok) return { ok: false, error: 企资料结果.error };
+  const 企资料 = 企资料结果?.值 ?? {};
 
   /**
    * 归属字段什么时候重算。

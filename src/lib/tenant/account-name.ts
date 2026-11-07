@@ -14,7 +14,6 @@ export const 名字最长 = 20;
 /** 去掉首尾空白、把中间连串空白（含换行、制表）并成一个空格；控制字符不收 */
 export function 规整名字(raw: unknown): { ok: true; name: string } | { ok: false; error: string } {
   if (typeof raw !== "string") return { ok: false, error: "名字要是文字" };
-  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(raw)) return { ok: false, error: "名字里有看不见的字符，重新输一下" };
   const name = raw.replace(/\s+/g, " ").trim();
   if (!name) return { ok: false, error: "名字不能为空" };

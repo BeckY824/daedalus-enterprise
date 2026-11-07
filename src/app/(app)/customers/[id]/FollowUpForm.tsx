@@ -421,6 +421,8 @@ export default function FollowUpForm({
         projectId: 默认项目,
       });
     }
+  // 只在开关面板、换记录时重置：runParse、initialAiText 这些每次渲染都变，放进来会把填到一半的表单清掉
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, record, form, 有WhatsApp, 默认项目, 方式们, 主体们]);
 
   /*
