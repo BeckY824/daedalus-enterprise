@@ -69,7 +69,9 @@ const 可写: Record<string, string[]> = {
     // 企业版客户业务线（2026-11-01，迁移 106，清单 A1）：客户表单 saveCustomer 的 企业资料（内贸 / 外贸 / 暂不分配）
     "bizLine"],
   // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
-  Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate"],
+  Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate", "strategies"],
+  // 企业版主渠道（2026-11-08 渠道两层）：渠道页「主渠道」里建、改名、拨开关（channels/actions.ts 的 saveMainChannel / toggleMainChannel）
+  EntChannelMain: ["name", "allowSub", "selfDev", "category", "active"],
   // 企业版渠道投入（2026-10-29）：渠道详情抽屉里录一笔（channels/actions.ts 的 addChannelInvest）
   EntChannelInvest: ["amount", "currency", "date", "remark"],
   Lead: ["name", "contact", "phone", "email", "industry", "source", "status", "remark", "ownerId"],
@@ -134,7 +136,11 @@ const 派生: Record<string, Record<string, string>> = {
     way: "分配方式（字典「分配方式」当时的叫法），按谁点的系统记：手动分=指定分配，自动分=自动分配，不让人填",
   },
   EntLeadQuota: { setById: "最后改配额的人，当前登录账号" },
-  Channel: { createdById: "新建时打上当前登录账号；批量导入时按表里「创建人」对上的员工，对不上留空" },
+  Channel: {
+    createdById: "新建时打上当前登录账号；批量导入时按表里「创建人」对上的员工，对不上留空",
+    mainId: "按选的主渠道（platform）找到的那一行，表单里不直接交 id；老渠道由渠道页打开时补挂（channel-main.ts 补主渠道）",
+  },
+  EntChannelMain: { sort: "新建时排在最后，系统打的；清单顺序由落库脚本定，界面不改" },
   EntChannelInvest: { channelId: "哪个渠道，在那个渠道的详情里录，不改", userId: "录的那个人，当前登录账号" },
   EntFollowUpMark: { followUpId: "主键：标的是哪条沟通（一条沟通只挂一个项目，一行一条）", projectId: "哪个项目，记沟通时跟 FollowUpProject 一起写" },
   EntCommission: {

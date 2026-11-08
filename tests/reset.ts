@@ -64,6 +64,7 @@ async function 清空() {
   await prisma.entBlockerReason.deleteMany();
   await prisma.entChannelInvest.deleteMany();
   await prisma.channel.deleteMany();
+  await prisma.entChannelMain.deleteMany();
   // 企业版组织架构（迁移 044）：不建外键，不会被级联带走（2026-10-24）
   await prisma.entMember.deleteMany();
   await prisma.entLeadAssign.deleteMany();

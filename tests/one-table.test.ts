@@ -63,6 +63,9 @@ const 不算列表页 = [
   // 导入抽屉：一张列文件的列，一张列读不懂的格子。都还没进库
   "src/app/(app)/customers/ImportDrawer.tsx",
   "src/app/(app)/customers/import-steps.tsx",
+  // 企业版主渠道弹窗（11-08 渠道两层）：管的是主渠道字典（名字、可设子渠道、支持自拓、停用），一页放得下；
+  // 只有搜索和改名停用，没有分页、批量、列设置，渠道本身的列表页还是 ChannelsView
+  "src/app/(app)/channels/MainChannels.tsx",
 ];
 
 async function 全部源码(dir: string): Promise<string[]> {

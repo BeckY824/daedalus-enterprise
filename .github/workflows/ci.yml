@@ -322,9 +322,17 @@ jobs:
           fetch-depth: 0
       # 直接跑二进制而不用 gitleaks-action：后者对只有一个提交的历史会在 git log 上报
       # "stderr is not empty"（根提交没有父提交）。扫全部历史，不只是这次 push 的差量。
+      # 11-08 发布文件下载连续三次 504（拿到的是错误页，tar 报 not in gzip format）：
+      # curl 失败就重试，还不行改走 API（gh release download，另一条下载路径）
       - name: 安装 gitleaks
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar xz gitleaks
+          f=gitleaks_8.24.3_linux_x64.tar.gz
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$f" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/$f" \
+            || { rm -f "$f"; gh release download v8.24.3 -R gitleaks/gitleaks -p "$f"; }
+          tar xzf "$f" gitleaks
           ./gitleaks version
       - name: 扫描全部提交
         run: ./gitleaks git --redact --no-banner --exit-code 1 .

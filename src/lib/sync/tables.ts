@@ -86,6 +86,8 @@ export const 不同步表 = [
   "EntProjectPayment",
   // 企业版站内通知（2026-11-01）：同上
   "EntNotice",
+  // 企业版主渠道（2026-11-08，migrations/111）：同上
+  "EntChannelMain",
 ] as const;
 
 /**

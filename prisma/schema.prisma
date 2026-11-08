@@ -91,6 +91,12 @@ model Channel {
   endDate        DateTime?
   /// 企业版创建人（迁移 070）：老渠道、导入时对不上人的留空。不建外键
   createdById    String?
+  /// 企业版主渠道（2026-11-08，迁移 112）：这一行是挂在哪个主渠道下的子渠道。platform 存主渠道名（保存时跟着同步），
+  /// name 是「主渠道|子渠道」的全称；子渠道名空 = 单一入口，name 就是主渠道名。老渠道空着，渠道页打开时按 platform 补
+  mainId         String?
+  main           EntChannelMain? @relation(fields: [mainId], references: [id], onDelete: SetNull)
+  /// 企业版运营策略（迁移 113）：字典 channelStrategy 的名字，多选，存 JSON 数组的字符串
+  strategies     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -106,6 +112,23 @@ model Channel {
 
   @@index([channelOwnerId])
   @@index([createdById])
+  @@index([mainId])
+}
+
+/// 企业版主渠道（2026-11-08，迁移 111）：渠道两层的上一层。名字唯一；
+/// allowSub = 可设子渠道（不可设的，下面只有一行名字等于主渠道名的渠道）；selfDev = 支持自拓（和 allowSub 互不相关，只是标记）；
+/// category = 分类（三方平台、展会……，可空，只用来排和筛）。停用的不出现在新建渠道的下拉里，已挂的渠道照旧
+model EntChannelMain {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  allowSub  Boolean   @default(true)
+  selfDev   Boolean   @default(false)
+  category  String?
+  active    Boolean   @default(true)
+  sort      Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  channels  Channel[]
 }
 
 /// 学员（潜在或已签约）

@@ -22,6 +22,9 @@ import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../overview/funnel";
+import OptionInput from "@/components/OptionInput";
+import { 子渠道名, 子渠道提示, 主渠道名上限, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
+import MainChannels from "./MainChannels";
 import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
 import { 筛渠道, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
@@ -37,8 +40,12 @@ export type 渠道行 = {
   active: boolean;
   /** 渠道属性；老渠道可能没有 */
   attr: string | null;
-  /** 渠道名称；老渠道可能没有 */
+  /** 渠道名称（企业版两层后 = 主渠道名）；老渠道可能没有 */
   platform: string | null;
+  /** 挂在哪个主渠道下（企业版渠道两层，11-08）；还没补挂的是 null */
+  mainId?: string | null;
+  /** 运营策略（字典 channelStrategy 多选） */
+  strategies?: string[];
   endDate: string | null;
   createdAt: string;
   /** 编辑框的版本号（排查 D3） */
@@ -75,7 +82,9 @@ function 编辑初值(r: Row) {
   return {
     attr: r.attr ?? undefined,
     platform,
-    source: 拆来源(r.name, platform),
+    // 两层后子渠道可以空：全称就是主渠道名 → 子渠道留空（子渠道名 认「|」和全角「｜」）
+    source: r.platform ? 子渠道名(r.name, platform) : 拆来源(r.name, platform),
+    strategies: r.strategies ?? [],
     name: r.name,
     endDate: r.endDate ? dayjs(r.endDate) : undefined,
     channelOwnerId: r.channelOwnerId,
@@ -88,16 +97,19 @@ function 编辑初值(r: Row) {
  * 渠道全称（P16）：不让手填，永远是「渠道名称|来源」拼出来的（服务端 saveChannel 也照这个重拼）。
  * 这里只给预览；编辑一条老渠道、拼出来和原来的全称不一样时，写清保存后会从什么改成什么，免得悄悄被换掉
  */
-function FullNamePreview({ 原名 }: { 原名: string | null }) {
+function FullNamePreview({ 原名, 两层 }: { 原名: string | null; 两层: boolean }) {
   const form = Form.useFormInstance();
   const platform = Form.useWatch("platform", form) as string | undefined;
   const source = Form.useWatch("source", form) as string | undefined;
   const 新 = 拼全称(platform, source);
   const 会改 = 原名 !== null && 新 !== "" && 新 !== 原名;
   return (
-    <Form.Item label="渠道全称" extra="按「渠道名称|来源」自动拼，不用填；改全称就改上面两项。全称不能和别的渠道重名">
+    <Form.Item
+      label="渠道全称"
+      extra={两层 ? "按「主渠道|子渠道」自动拼，不用填；子渠道留空时全称就是主渠道。全称不能和别的渠道重名" : "按「渠道名称|来源」自动拼，不用填；改全称就改上面两项。全称不能和别的渠道重名"}
+    >
       <div aria-live="polite" style={{ overflowWrap: "anywhere", minHeight: 22 }}>
-        {新 ? <strong>{新}</strong> : <span className="muted">填了渠道名称和来源后自动出来</span>}
+        {新 ? <strong>{新}</strong> : <span className="muted">{两层 ? "填了主渠道后自动出来" : "填了渠道名称和来源后自动出来"}</span>}
       </div>
       {会改 && (
         <div className="muted" style={{ fontSize: 12, marginTop: 4, overflowWrap: "anywhere" }}>
@@ -117,6 +129,9 @@ export default function ChannelsView({
   看板底数,
   看板段 = null,
   公海 = null,
+  主渠道们 = [],
+  策略选项 = [],
+  两层: 开两层 = false,
 }: {
   rows: Row[];
   users: 可选成员[];
@@ -135,6 +150,12 @@ export default function ChannelsView({
   看板段?: 日期段 | null;
   /** 看板的「进公海」那段（11-04 P-界面-09，只给市场成员 / 市场管理）；别人 null 不摆 */
   公海?: 看板公海 | null;
+  /** 主渠道清单（企业版渠道两层，11-08）；是不是两层看下面的「两层」，不看这里空不空 */
+  主渠道们?: 主渠道行[];
+  /** 企业版渠道两层（11-08）：开着时主渠道一个都还没有，也照样走「主渠道 + 子渠道」表单，不退回老的单个名字 */
+  两层?: boolean;
+  /** 字典里启用着的运营策略（设置 → 字典 → 运营策略），没有默认项 */
+  策略选项?: string[];
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -146,8 +167,21 @@ export default function ChannelsView({
   const [ownerId, setOwnerId] = useState("");
   const [active, setActive] = useState("");
   const [creator, setCreator] = useState("");
+  const [主, set主] = useState("");
+  const 两层 = 开两层;
   // 看板也吃这一份：列表剩几个渠道，看板就按这几个算
-  const rows = useMemo(() => 筛渠道(全部行, { kw, attr, ownerId, active, creator }), [全部行, kw, attr, ownerId, active, creator]);
+  const rows = useMemo(() => {
+    const 筛过 = 筛渠道(全部行, { kw, attr, ownerId, active, creator });
+    return 主 ? 筛过.filter((r) => r.mainId === 主) : 筛过;
+  }, [全部行, kw, attr, ownerId, active, creator, 主]);
+  /** 每个主渠道下挂了几个渠道（主渠道管理里摆） */
+  const 子渠道数 = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of 全部行) if (r.mainId) m.set(r.mainId, (m.get(r.mainId) ?? 0) + 1);
+    return m;
+  }, [全部行]);
+  const 按名找主 = useMemo(() => new Map(主渠道们.map((m) => [m.name, m])), [主渠道们]);
+  const [开主渠道, set开主渠道] = useState(false);
   /** 属性筛选：字典里的 + 表里实际出现的（停用了的旧属性也能筛出来） */
   const 筛选属性 = useMemo(() => [...new Set([...属性选项, ...全部行.map((r) => r.attr).filter((x): x is string => Boolean(x))])], [属性选项, 全部行]);
   const [open, setOpen] = useState(false);
@@ -168,10 +202,12 @@ export default function ChannelsView({
   const 不问归属 = !ownerId && 列表不问归属(users, 全部行.map((r) => r.channelOwnerName));
   const 创建人们 = useMemo(() => [...new Set(全部行.map((r) => r.createdByName).filter((x): x is string => Boolean(x)))], [全部行]);
   // 自定义筛选（11-06）：搜索框固定；默认摆的和原来一样（属性、负责人、状态），「创建人」收在更多筛选
+  // 两层（11-08）多了「主渠道」：「状态」默认也收进更多筛选，否则 1024 宽筛选行摆不下一行（e2e window-sizes 守着）；有值时照样外露
   const { 外露: 筛选外露, 更多按钮: 更多筛选按钮 } = useCustomFilters("channels", [
+    ...(两层 ? [{ 键: "main", 名: "主渠道", 宽: 160, 默认外露: true, 有值: !!主, 渲染: (style: CSSProperties) => <Select style={style} aria-label="主渠道" placeholder="全部主渠道" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={主 || undefined} onChange={(v?: string) => set主(v ?? "")} options={主渠道们.filter((m) => m.active || 子渠道数.get(m.id)).map((m) => ({ value: m.id, label: m.active ? m.name : `${m.name}（已停用）` }))} /> }] : []),
     { 键: "attr", 名: "属性", 宽: 140, 默认外露: true, 有值: !!attr, 渲染: (style: CSSProperties) => <Select style={style} aria-label="属性" placeholder="全部属性" allowClear value={attr || undefined} onChange={(v?: string) => setAttr(v ?? "")} options={筛选属性.map((x) => ({ value: x, label: x }))} /> },
     ...(!不问归属 ? [{ 键: "ownerId", 名: "负责人", 宽: 150, 默认外露: true, 有值: !!ownerId, 渲染: (style: CSSProperties) => <Select style={style} aria-label="负责人" placeholder="全部负责人" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={ownerId || undefined} onChange={(v?: string) => setOwnerId(v ?? "")} options={成员选项(users)} /> }] : []),
-    { 键: "active", 名: "状态", 宽: 130, 默认外露: true, 有值: !!active, 渲染: (style: CSSProperties) => <Select style={style} aria-label="状态" placeholder="全部状态" allowClear value={active || undefined} onChange={(v?: string) => setActive(v ?? "")} options={[{ value: "on", label: "已启用" }, { value: "off", label: "已停用" }]} /> },
+    { 键: "active", 名: "状态", 宽: 130, 默认外露: !两层, 有值: !!active, 渲染: (style: CSSProperties) => <Select style={style} aria-label="状态" placeholder="全部状态" allowClear value={active || undefined} onChange={(v?: string) => setActive(v ?? "")} options={[{ value: "on", label: "已启用" }, { value: "off", label: "已停用" }]} /> },
     ...(!不问归属 ? [{ 键: "creator", 名: "创建人", 宽: 130, 默认外露: false, 有值: !!creator, 渲染: (style: CSSProperties) => <Select style={style} aria-label="创建人" placeholder="全部创建人" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={creator || undefined} onChange={(v?: string) => setCreator(v ?? "")} options={创建人们.map((x) => ({ value: x, label: x }))} /> }] : []),
   ]);
   /** 刚停用 / 恢复的那一行亮两秒（row-fresh） */
@@ -204,6 +240,7 @@ export default function ChannelsView({
         attr: v.attr ?? "",
         platform: v.platform ?? "",
         source: v.source ?? "",
+        ...(两层 ? { strategies: (v.strategies as string[] | undefined) ?? [] } : {}),
         endDate: v.endDate ? (v.endDate as Dayjs).format("YYYY-MM-DD") : null,
         active: v.active !== false,
       });
@@ -341,6 +378,12 @@ export default function ChannelsView({
       },
     },
     ...分布列,
+    ...(两层
+      ? [{
+          title: "运营策略", key: "strategies", width: 160, 默认: false, ellipsis: true,
+          render: (_: unknown, r: Row) => (r.strategies?.length ? <span title={r.strategies.join("、")}>{r.strategies.join("、")}</span> : 无),
+        } as 列<Row>]
+      : []),
     { title: "创建日期", key: "createdAt", dataIndex: "createdAt", width: 112, 默认: false, sorter: (a, b2) => a.createdAt.localeCompare(b2.createdAt), render: (v: string) => <span className="muted nowrap">{fmtDate(v)}</span> },
     {
       title: <Tooltip title="从创建日期到结束日期；没填结束日期就算到今天">累计运营天数</Tooltip>, key: "累计运营天数", width: 116, align: "right", 默认: false,
@@ -417,6 +460,23 @@ export default function ChannelsView({
 
   /** 表单下拉：字典里启用的 + 正在编辑的这条原来的属性（后来停用了也照旧能留着） */
   const 表单属性 = editing?.attr && !属性选项.includes(editing.attr) ? [...属性选项, editing.attr] : 属性选项;
+  /** 运营策略下拉：字典里启用的 + 这条原来就有的（后来停用了也照旧留着） */
+  const 表单策略 = [...new Set([...策略选项, ...(editing?.strategies ?? [])])];
+  /** 主渠道候选：启用的；编辑时原来挂的那个停用了也列上 */
+  const 主候选 = 主渠道们.filter((m) => m.active || m.id === editing?.mainId).map((m) => m.name);
+  const 填的主 = ((Form.useWatch("platform", form) as string | undefined) ?? "").trim();
+  const 选的主 = 填的主 ? 按名找主.get(填的主) ?? null : null;
+  const 原子 = editing ? 编辑初值(editing).source : "";
+  const 主没动 = Boolean(editing && 选的主 && editing.mainId === 选的主.id);
+  /** 选的主渠道不设子渠道：子渠道锁住留空；编辑老渠道、主渠道没换、原来就有子渠道的照留（服务端同一个口径） */
+  const 锁子 = 两层 && Boolean(选的主 && !选的主.allowSub);
+  const 主提示 = !两层 || !填的主
+    ? undefined
+    : !选的主
+      ? `保存时新建主渠道「${填的主}」`
+      : !选的主.active && !主没动
+        ? `主渠道「${填的主}」已停用，换一个或先到「主渠道」里启用`
+        : undefined;
 
   return (
     <>
@@ -424,9 +484,12 @@ export default function ChannelsView({
         title="渠道"
         extra={
           能管 && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
-              新建渠道
-            </Button>
+            <Space size={8} wrap>
+              {两层 && <Button onClick={() => set开主渠道(true)}>主渠道</Button>}
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
+                新建渠道
+              </Button>
+            </Space>
           )
         }
       />
@@ -458,11 +521,13 @@ export default function ChannelsView({
             />
             {筛选外露}
             {更多筛选按钮}
-            <ResetFilters 显示={Boolean(kw || attr || ownerId || active || creator)} onClick={() => { setKw(""); setAttr(""); setOwnerId(""); setActive(""); setCreator(""); }} />
+            <ResetFilters 显示={Boolean(kw || attr || ownerId || active || creator || 主)} onClick={() => { setKw(""); setAttr(""); setOwnerId(""); setActive(""); setCreator(""); set主(""); }} />
           </Space>
         }
       />
       </div>
+
+      {开主渠道 && <MainChannels 主渠道们={主渠道们} 子渠道数={子渠道数} onClose={() => set开主渠道(false)} />}
 
       {详情 && <ChannelDrawer key={详情.id} row={详情} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={能管 ? () => openForm(详情) : undefined} />}
 
@@ -482,7 +547,15 @@ export default function ChannelsView({
             form={form}
             layout="vertical"
             style={{ marginTop: 8 }}
-            onValuesChange={() => 守.改了()}
+            onValuesChange={(改: { platform?: string }) => {
+              守.改了();
+              // 换到一个不设子渠道的主渠道：子渠道清空（主渠道没换回原来那个、原来的子渠道才照留）
+              if (两层 && 改.platform !== undefined) {
+                const m = 按名找主.get(改.platform.trim());
+                if (m && !m.allowSub && !(editing && editing.mainId === m.id)) form.setFieldValue("source", "");
+                if (m && !m.allowSub && editing && editing.mainId === m.id) form.setFieldValue("source", 原子);
+              }
+            }}
             // 新建时渠道负责人默认是我（团队同步之后候选里有同事）
             initialValues={editing ? 编辑初值(editing) : { active: true, channelOwnerId: 默认负责人(我, users) }}
           >
@@ -498,32 +571,77 @@ export default function ChannelsView({
                   <Radio.Group optionType="button" options={[{ value: true, label: "启用" }, { value: false, label: "停用" }]} />
                 </Form.Item>
               </Col>
+              {两层 ? (
+                <>
+                  <Col span={24}>
+                    <Form.Item
+                      label="主渠道"
+                      name="platform"
+                      extra={主提示}
+                      rules={[
+                        { required: true, whitespace: true, message: "请选择或填写主渠道" },
+                        { pattern: /^[^|｜]*$/, message: "主渠道名里不能有「|」" },
+                      ]}
+                    >
+                      <OptionInput options={主候选} maxLength={主渠道名上限} placeholder="选一个主渠道，没有的直接填" popupMatchSelectWidth={false} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={24}>
+                    <Form.Item
+                      label="子渠道"
+                      name="source"
+                      dependencies={["platform"]}
+                      extra={锁子 ? (主没动 && 原子 ? `主渠道「${填的主}」不设子渠道，原来的子渠道照留` : `主渠道「${填的主}」不设子渠道，子渠道留空`) : 子渠道提示}
+                      rules={[
+                        ({ getFieldValue }) => ({
+                          validator: (_, v: string | undefined) =>
+                            拼全称(getFieldValue("platform"), v).length > 全称上限
+                              ? Promise.reject(new Error(`主渠道加子渠道拼成的全称最多 ${全称上限} 个字，请缩短`))
+                              : Promise.resolve(),
+                        }),
+                      ]}
+                    >
+                      <Input placeholder={锁子 ? "留空" : "可留空"} maxLength={全称上限} disabled={锁子} />
+                    </Form.Item>
+                  </Col>
+                </>
+              ) : (
+                <>
+                <Col span={24}>
+                  <Form.Item label="渠道名称" name="platform" rules={[{ required: true, whitespace: true, message: "请填写渠道名称" }]}>
+                    <Input placeholder="如：短视频平台" maxLength={全称上限} />
+                  </Form.Item>
+                </Col>
+                <Col span={24}>
+                  <Form.Item
+                    label="来源"
+                    name="source"
+                    dependencies={["platform"]}
+                    rules={[
+                      { required: true, whitespace: true, message: "请填写来源" },
+                      ({ getFieldValue }) => ({
+                        validator: (_, v: string | undefined) =>
+                          拼全称(getFieldValue("platform"), v).length > 全称上限
+                            ? Promise.reject(new Error(`渠道名称加来源拼成的全称最多 ${全称上限} 个字，请缩短`))
+                            : Promise.resolve(),
+                      }),
+                    ]}
+                  >
+                    <Input placeholder="如：官方账号" maxLength={全称上限} />
+                  </Form.Item>
+                </Col>
+                </>
+              )}
               <Col span={24}>
-                <Form.Item label="渠道名称" name="platform" rules={[{ required: true, whitespace: true, message: "请填写渠道名称" }]}>
-                  <Input placeholder="如：短视频平台" maxLength={全称上限} />
-                </Form.Item>
+                <FullNamePreview 原名={editing?.name ?? null} 两层={两层} />
               </Col>
-              <Col span={24}>
-                <Form.Item
-                  label="来源"
-                  name="source"
-                  dependencies={["platform"]}
-                  rules={[
-                    { required: true, whitespace: true, message: "请填写来源" },
-                    ({ getFieldValue }) => ({
-                      validator: (_, v: string | undefined) =>
-                        拼全称(getFieldValue("platform"), v).length > 全称上限
-                          ? Promise.reject(new Error(`渠道名称加来源拼成的全称最多 ${全称上限} 个字，请缩短`))
-                          : Promise.resolve(),
-                    }),
-                  ]}
-                >
-                  <Input placeholder="如：官方账号" maxLength={全称上限} />
-                </Form.Item>
-              </Col>
-              <Col span={24}>
-                <FullNamePreview 原名={editing?.name ?? null} />
-              </Col>
+              {两层 && (
+                <Col span={24}>
+                  <Form.Item label="运营策略" name="strategies" extra="可多选；选项在 设置 → 字典 → 运营策略 里加">
+                    <Select mode="multiple" allowClear placeholder="请选择" options={表单策略.map((x) => ({ value: x, label: x }))} notFoundContent="还没有运营策略选项，到 设置 → 字典 → 运营策略 里加" />
+                  </Form.Item>
+                </Col>
+              )}
               <Col span={24}>
                 <Form.Item label="结束日期" name="endDate" extra="不填 = 还在运营，天数算到今天">
                   <DatePicker style={{ width: "100%" }} format="YYYY-MM-DD" />
