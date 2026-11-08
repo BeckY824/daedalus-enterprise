@@ -2434,6 +2434,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 @media (min-width: 768px) and (max-width: 1199px) {
   .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 160px !important; }
   .list-bar > .ant-space > .ant-space-item > .ant-select { width: auto !important; min-width: 96px; max-width: 132px; }
+  /* 渠道页两层后多一个「主渠道」下拉，搜索框再收一点留余量（选了长主渠道名也不折行） */
+  .chan-list .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 140px !important; }
 }
 /* 「更多筛选」1280 以下只留图标和数字：加了这颗按钮，默认状态也不能比原来多占一行（1024 宽筛选行要一行）。
    公海多一排分段，到 1440 才放得下全尺寸；这段宽度把两个下拉和搜索也收一点 */

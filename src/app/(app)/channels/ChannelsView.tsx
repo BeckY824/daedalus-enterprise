@@ -202,11 +202,12 @@ export default function ChannelsView({
   const 不问归属 = !ownerId && 列表不问归属(users, 全部行.map((r) => r.channelOwnerName));
   const 创建人们 = useMemo(() => [...new Set(全部行.map((r) => r.createdByName).filter((x): x is string => Boolean(x)))], [全部行]);
   // 自定义筛选（11-06）：搜索框固定；默认摆的和原来一样（属性、负责人、状态），「创建人」收在更多筛选
+  // 两层（11-08）多了「主渠道」：「状态」默认也收进更多筛选，否则 1024 宽筛选行摆不下一行（e2e window-sizes 守着）；有值时照样外露
   const { 外露: 筛选外露, 更多按钮: 更多筛选按钮 } = useCustomFilters("channels", [
     ...(两层 ? [{ 键: "main", 名: "主渠道", 宽: 160, 默认外露: true, 有值: !!主, 渲染: (style: CSSProperties) => <Select style={style} aria-label="主渠道" placeholder="全部主渠道" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={主 || undefined} onChange={(v?: string) => set主(v ?? "")} options={主渠道们.filter((m) => m.active || 子渠道数.get(m.id)).map((m) => ({ value: m.id, label: m.active ? m.name : `${m.name}（已停用）` }))} /> }] : []),
     { 键: "attr", 名: "属性", 宽: 140, 默认外露: true, 有值: !!attr, 渲染: (style: CSSProperties) => <Select style={style} aria-label="属性" placeholder="全部属性" allowClear value={attr || undefined} onChange={(v?: string) => setAttr(v ?? "")} options={筛选属性.map((x) => ({ value: x, label: x }))} /> },
     ...(!不问归属 ? [{ 键: "ownerId", 名: "负责人", 宽: 150, 默认外露: true, 有值: !!ownerId, 渲染: (style: CSSProperties) => <Select style={style} aria-label="负责人" placeholder="全部负责人" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={ownerId || undefined} onChange={(v?: string) => setOwnerId(v ?? "")} options={成员选项(users)} /> }] : []),
-    { 键: "active", 名: "状态", 宽: 130, 默认外露: true, 有值: !!active, 渲染: (style: CSSProperties) => <Select style={style} aria-label="状态" placeholder="全部状态" allowClear value={active || undefined} onChange={(v?: string) => setActive(v ?? "")} options={[{ value: "on", label: "已启用" }, { value: "off", label: "已停用" }]} /> },
+    { 键: "active", 名: "状态", 宽: 130, 默认外露: !两层, 有值: !!active, 渲染: (style: CSSProperties) => <Select style={style} aria-label="状态" placeholder="全部状态" allowClear value={active || undefined} onChange={(v?: string) => setActive(v ?? "")} options={[{ value: "on", label: "已启用" }, { value: "off", label: "已停用" }]} /> },
     ...(!不问归属 ? [{ 键: "creator", 名: "创建人", 宽: 130, 默认外露: false, 有值: !!creator, 渲染: (style: CSSProperties) => <Select style={style} aria-label="创建人" placeholder="全部创建人" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={creator || undefined} onChange={(v?: string) => setCreator(v ?? "")} options={创建人们.map((x) => ({ value: x, label: x }))} /> }] : []),
   ]);
   /** 刚停用 / 恢复的那一行亮两秒（row-fresh） */
