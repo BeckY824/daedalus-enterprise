@@ -14,7 +14,7 @@ const plugin: Plugin = { name: "fulltext-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>\"/channels\";export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/^\.\/actions$/, "export const saveChannel=async()=>({ok:false}),toggleChannel=saveChannel,deleteChannel=saveChannel;");
+  stub(/^\.\/actions$/, "export const saveChannel=async()=>({ok:false}),toggleChannel=saveChannel,deleteChannel=saveChannel,saveMainChannel=saveChannel,toggleMainChannel=saveChannel;");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/ChannelDrawer$/, "export default function D(){return null}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));

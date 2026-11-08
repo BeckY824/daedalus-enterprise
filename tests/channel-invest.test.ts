@@ -69,13 +69,16 @@ describe("saveChannel 企业表单", () => {
     expect((await prisma.channel.findUniqueOrThrow({ where: { id } })).name).toBe("小红书|某店");
   });
 
-  it("三样必填、属性要在字典里、全称不能重复、不能太长", async () => {
+  it("属性、主渠道必填，子渠道可空；属性要在字典里、全称不能重复、不能太长", async () => {
     expect(await 交({ attr: "" })).toEqual({ ok: false, error: "请选择渠道属性" });
-    expect(await 交({ platform: " " })).toEqual({ ok: false, error: "请填写渠道名称" });
-    expect(await 交({ source: "" })).toEqual({ ok: false, error: "请填写来源" });
+    expect(await 交({ platform: " " })).toEqual({ ok: false, error: "请选择主渠道" });
+    // 11-08 渠道两层：子渠道留空 = 单一入口，全称就是主渠道名
+    const 空子 = await 交({ source: "" });
+    expect(空子.ok).toBe(true);
+    expect((await prisma.channel.findUniqueOrThrow({ where: { id: (空子 as { id: string }).id } })).name).toBe("小红书");
     expect((await 交({ attr: "瞎写的" })).ok).toBe(false);
     expect(await 交({ platform: "抖音", source: "官方号" })).toEqual({ ok: false, error: "渠道「抖音|官方号」已存在" });
-    expect(await 交({ platform: "长".repeat(40), source: "短".repeat(40) })).toEqual({ ok: false, error: "渠道名称加来源拼成的全称最多 80 个字，请缩短" });
+    expect(await 交({ platform: "长".repeat(40), source: "短".repeat(40) })).toEqual({ ok: false, error: "主渠道加子渠道拼成的全称最多 80 个字，请缩短" });
     expect((await 交({ platform: "长".repeat(40), source: "短".repeat(39) })).ok).toBe(true);
     expect((await 交({ endDate: "不是日期" })).ok).toBe(false);
   });

@@ -19,6 +19,7 @@ import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
 import { 拆来源, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 子渠道名 } from "@/lib/enterprise/channel-main-core";
 import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
 import type { 渠道行 } from "./ChannelsView";
@@ -141,8 +142,17 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
         column={1}
         items={[
           { key: "attr", label: "渠道属性", children: row.attr ?? 无 },
-          { key: "platform", label: "渠道名称", children: row.platform ?? 无 },
-          { key: "source", label: "来源", children: row.platform ? 拆来源(row.name, row.platform) : 无 },
+          ...(row.mainId !== undefined
+            ? [
+                // 企业版渠道两层（11-08）：主渠道 / 子渠道，子渠道留空 = 单一入口
+                { key: "platform", label: "主渠道", children: row.platform ?? 无 },
+                { key: "source", label: "子渠道", children: (row.platform ? 子渠道名(row.name, row.platform) : "") || 无 },
+                ...(row.strategies?.length ? [{ key: "strategies", label: "运营策略", children: <span className="chan-desc-wrap">{row.strategies.join("、")}</span> }] : []),
+              ]
+            : [
+                { key: "platform", label: "渠道名称", children: row.platform ?? 无 },
+                { key: "source", label: "来源", children: row.platform ? 拆来源(row.name, row.platform) : 无 },
+              ]),
           { key: "active", label: "渠道状态", children: row.active ? "启用" : "停用" },
           { key: "createdAt", label: "创建日期", children: fmtDate(row.createdAt) },
           { key: "endDate", label: "结束日期", children: row.endDate ? fmtDate(row.endDate) : 无 },

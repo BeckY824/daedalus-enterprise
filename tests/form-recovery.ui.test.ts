@@ -23,7 +23,7 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
     export const saveContract=async x=>window.__duplicate&&!x.force?{duplicate:{amount:123,currency:'CNY',signedAt:new Date().toISOString()}}:save(x);
     export const listContractLinks=async()=>({商机:[],计划:[],待办:[]});
     export const 供应商候选=async()=>[];
-    export const toggleChannel=save,deleteChannel=save;
+    export const toggleChannel=save,deleteChannel=save,saveMainChannel=save,toggleMainChannel=save;
     export const listChannelInvests=async()=>({ok:true,rows:[],能录:false}),addChannelInvest=save,deleteChannelInvest=save;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
   `);

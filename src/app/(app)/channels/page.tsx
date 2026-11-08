@@ -11,8 +11,10 @@ import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 读日期段, 日期段界 } from "@/lib/custom-date-range";
 import { 自定义 } from "@/lib/enterprise/channel-dash";
 import { 能录投入, 能管渠道 } from "@/lib/enterprise/channel-stats";
-import { 看全部 } from "@/lib/team-scope";
+import { 看全部, 系统写 } from "@/lib/team-scope";
 import { 读组织 } from "@/lib/enterprise/org";
+import { 补主渠道, 读主渠道们 } from "@/lib/enterprise/channel-main";
+import { 读策略 } from "@/lib/enterprise/channel-main-core";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,9 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
   const 段 = sp.view === 自定义 ? 读日期段(sp.from, sp.to) : null;
   const 区间 = 段 ? 日期段界(段) : null;
   const 市场 = 企业版() ? await 读市场身份(me.id) : null;
+  // 渠道两层（11-08）：还没挂主渠道的渠道（老数据、导入、别处新建的）先按名字补挂上，补过的不再动。
+  // 是系统补数据不是用户改：只读管理员打开也要能补，不然整页被只读拦挡掉
+  if (企业版()) await 系统写(() => 补主渠道());
 
   const [channels, users] = await Promise.all([
     prisma.channel.findMany({
@@ -31,6 +36,7 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
       select: {
         id: true, name: true, phone: true, remark: true, active: true, createdAt: true, updatedAt: true,
         attr: true, platform: true, endDate: true, createdById: true,
+        mainId: true, strategies: true,
         channelOwnerId: true,
         channelOwner: { select: { name: true } },
       },
@@ -55,7 +61,7 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
     有就把删除项变灰、原因写在旁边，不等点了确认才说删不了。只读，删不删照旧由 deleteChannel 判
   */
   const 渠道ids = channels.map((c) => c.id);
-  const [统计, 看板底数, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管, 公海底数, 圈里的人] = await Promise.all([
+  const [统计, 看板底数, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管, 公海底数, 圈里的人, 主渠道们, 策略选项] = await Promise.all([
     读渠道统计(channels),
     // 总览看板（11-03）：每个渠道 × 本月 / 本季 / 全部（带了「自定义」再加那一段）的底数，界面按列表的筛选结果再合，口径见 channel-dash.ts
     企业版() ? 读看板底数(渠道ids, new Date(), 区间) : Promise.resolve(null),
@@ -80,6 +86,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
     // 进公海那一段（11-04 P-界面-09）：只给市场成员 / 市场管理，按创建人归
     市场 ? 读公海底数(渠道ids, 市场.圈, new Date(), 区间) : Promise.resolve(null),
     市场?.视角 === "市场管理" ? prisma.user.findMany({ where: { id: { in: 市场.圈 } }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : Promise.resolve([]),
+    企业版() ? 读主渠道们() : Promise.resolve([]),
+    企业版() ? 可选项("channelStrategy") : Promise.resolve([] as string[]),
   ]);
   const 创建人 = new Map(创建人们.map((u) => [u.id, u.name]));
   const 客户数 = new Map<string, number>();
@@ -99,6 +107,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
       能管={能管}
       看板底数={看板底数}
       看板段={段}
+      主渠道们={主渠道们}
+      策略选项={策略选项}
       公海={市场 && 公海底数 ? { 底: 公海底数, 视角: 市场.视角, 创建人们: 圈里的人 } : null}
       rows={channels.map((c) => ({
         id: c.id,
@@ -109,6 +119,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
         active: c.active,
         attr: c.attr,
         platform: c.platform,
+        mainId: c.mainId,
+        strategies: 读策略(c.strategies),
         endDate: c.endDate ? c.endDate.toISOString() : null,
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
