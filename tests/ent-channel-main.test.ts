@@ -184,3 +184,48 @@ describe("saveMainChannel / toggleMainChannel", () => {
     expect(await prisma.entChannelMain.count()).toBe(0);
   });
 });
+
+describe("review 补的几条（11-08）", () => {
+  it("老数据里带「|」、超长的主渠道：拨开关照收，改名才挡", async () => {
+    const 长 = "长".repeat(45);
+    const m = await prisma.entChannelMain.create({ data: { name: 长, allowSub: true, selfDev: false } });
+    expect((await saveMainChannel({ id: m.id, name: 长, allowSub: false, selfDev: true })).ok).toBe(true);
+    expect(await prisma.entChannelMain.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({ allowSub: false, selfDev: true });
+    expect(await saveMainChannel({ id: m.id, name: 长 + "x", allowSub: false, selfDev: true })).toMatchObject({ ok: false });
+  });
+
+  it("老渠道挂在超长主渠道下：编辑别的格子照收", async () => {
+    const 长 = "长".repeat(45);
+    const m = await prisma.entChannelMain.create({ data: { name: 长, allowSub: true, selfDev: false } });
+    const c = await prisma.channel.create({ data: { name: 长, platform: 长, mainId: m.id, attr: "公域引流", channelOwnerId: 负责人 } });
+    expect((await 交({ id: c.id, platform: 长, source: "", remark: "改个备注" })).ok).toBe(true);
+    expect((await 取(c.id)).remark).toBe("改个备注");
+    // 新渠道挂这个超长主渠道名就挡
+    expect(await 交({ platform: "新" + 长, source: "" })).toMatchObject({ ok: false });
+  });
+
+  it("改名后同组两个子渠道拼成同一个全称：报错，什么都不改", async () => {
+    const m = await prisma.entChannelMain.create({ data: { name: "甲", allowSub: true, selfDev: false } });
+    await prisma.channel.create({ data: { name: "甲|A", platform: "甲", mainId: m.id, channelOwnerId: 负责人 } });
+    await prisma.channel.create({ data: { name: "甲｜A ", platform: "甲", mainId: m.id, channelOwnerId: 负责人 } });
+    expect(await saveMainChannel({ id: m.id, name: "乙", allowSub: true, selfDev: false })).toEqual({ ok: false, error: "改名后有两个子渠道都叫「乙|A」，请先改掉其中一个" });
+    expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: m.id } })).name).toBe("甲");
+  });
+
+  it("不走渠道表单新建（客户表单就地建、AI）：停用的主渠道、不设子渠道的主渠道照样挡", async () => {
+    await prisma.entChannelMain.create({ data: { name: "停了", allowSub: true, selfDev: false, active: false } });
+    await prisma.entChannelMain.create({ data: { name: "单入口", allowSub: false, selfDev: false } });
+    const 直建 = (name: string) => saveChannel({ name, phone: null, remark: null, channelOwnerId: 负责人 });
+    expect(await 直建("停了|号1")).toMatchObject({ ok: false });
+    expect(await 直建("单入口|号1")).toMatchObject({ ok: false });
+    expect((await 直建("单入口")).ok).toBe(true);
+    expect((await 直建("没见过|号1")).ok).toBe(true);
+  });
+
+  it("不是企业版：拨主渠道开关不收", async () => {
+    const m = await prisma.entChannelMain.create({ data: { name: "甲", allowSub: true, selfDev: false } });
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect(await toggleMainChannel(m.id, false)).toEqual({ ok: false, error: "主渠道只在企业版里用" });
+    expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: m.id } })).active).toBe(true);
+  });
+});

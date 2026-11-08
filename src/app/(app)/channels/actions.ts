@@ -17,7 +17,7 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 拼全称, 全称上限, 能录投入, 不能录投入, 能管渠道, 不能管渠道 } from "@/lib/enterprise/channel-stats";
 import { 看全部 } from "@/lib/team-scope";
 import { 找或建主渠道 } from "@/lib/enterprise/channel-main";
-import { 主渠道名上限, 写策略, 读策略, 子渠道名 } from "@/lib/enterprise/channel-main-core";
+import { 主渠道名上限, 写策略, 读策略, 子渠道名, 拆主子 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 规整币种, 是币种 } from "@/lib/currency";
 
@@ -76,7 +76,6 @@ export async function saveChannel(input: {
     }
     const 主名 = (input.platform ?? "").trim();
     if (!主名) return { ok: false, error: "请选择主渠道" };
-    if (主名.length > 主渠道名上限) return { ok: false, error: `主渠道名最多 ${主渠道名上限} 个字` };
     // 子渠道和主渠道写成一样的，当没写（全称就是主渠道名）
     const 子 = (input.source ?? "").trim() === 主名 ? "" : (input.source ?? "").trim();
     const 结束 = input.endDate ? parseDateInput(input.endDate) : null;
@@ -85,6 +84,8 @@ export async function saveChannel(input: {
     if (input.name.length > 全称上限) return { ok: false, error: `主渠道加子渠道拼成的全称最多 ${全称上限} 个字，请缩短` };
     const 有主 = await prisma.entChannelMain.findUnique({ where: { name: 主名 }, select: { id: true, allowSub: true, active: true } });
     const 主没动 = Boolean(原 && 有主 && 原.mainId === 有主.id);
+    // 字数、「|」只挡新挂的主渠道：老数据里超长、带竖线的主渠道名照收，编辑这些老渠道别的格子不被卡住
+    if (主名.length > 主渠道名上限 && !主没动) return { ok: false, error: `主渠道名最多 ${主渠道名上限} 个字` };
     // 主渠道名里带「|」会和全称的分隔撞（拆不回来）；老数据里已经这样挂着的照收
     if (/[|｜]/.test(主名) && !主没动) return { ok: false, error: "主渠道名里不能有「|」" };
     // 停用的主渠道不再挂新渠道；编辑老渠道、主渠道没换的照收
@@ -113,6 +114,13 @@ export async function saveChannel(input: {
   }
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false, error: "请填写渠道名称" };
+  // 企业版里不走渠道表单新建的（客户表单就地建、AI 建）：名字按「主|子」拆开，主渠道停用、不设子渠道的照样挡（11-08 渠道两层）
+  if (企业版() && !企业表单 && !input.id) {
+    const { 主, 子 } = 拆主子(input.name.trim());
+    const 有主 = 主 ? await prisma.entChannelMain.findUnique({ where: { name: 主 }, select: { active: true, allowSub: true } }) : null;
+    if (有主 && !有主.active) return { ok: false, error: `主渠道「${主}」已停用，请换一个` };
+    if (有主 && !有主.allowSub && 子) return { ok: false, error: `主渠道「${主}」不设子渠道，渠道名请只写「${主}」` };
+  }
   const b = await getBusiness();
   const name = input.name.trim();
   const channelOwnerId = input.channelOwnerId || (await 唯一负责人());
@@ -264,8 +272,13 @@ export async function saveMainChannel(input: {
   if (!企业版()) return { ok: false, error: "主渠道只在企业版里用" };
   const name = (input.name ?? "").trim();
   if (!name) return { ok: false, error: "请填写主渠道名" };
-  if (name.length > 主渠道名上限) return { ok: false, error: `主渠道名最多 ${主渠道名上限} 个字` };
-  if (/[|｜]/.test(name)) return { ok: false, error: "主渠道名里不能有「|」，它是主渠道和子渠道的分隔" };
+  const 原 = input.id ? await prisma.entChannelMain.findUnique({ where: { id: input.id }, select: { name: true } }) : null;
+  if (input.id && !原) return { ok: false, error: "这个主渠道已经不在了，刷新看看" };
+  // 字数、「|」只在新建或改名时挡：老数据里超长、带竖线的主渠道名照样能拨开关
+  if (!原 || 原.name !== name) {
+    if (name.length > 主渠道名上限) return { ok: false, error: `主渠道名最多 ${主渠道名上限} 个字` };
+    if (/[|｜]/.test(name)) return { ok: false, error: "主渠道名里不能有「|」，它是主渠道和子渠道的分隔" };
+  }
   const category = input.category?.trim() || null;
   const 撞 = await prisma.entChannelMain.findFirst({ where: { name, ...(input.id ? { id: { not: input.id } } : {}) }, select: { id: true } });
   if (撞) return { ok: false, error: `主渠道「${name}」已存在` };
@@ -279,22 +292,32 @@ export async function saveMainChannel(input: {
     return { ok: true, id: m.id };
   }
 
-  const 原 = await prisma.entChannelMain.findUnique({ where: { id: input.id }, select: { name: true } });
   if (!原) return { ok: false, error: "这个主渠道已经不在了，刷新看看" };
   const 改名 = 原.name !== name;
   const 子们 = 改名 ? await prisma.channel.findMany({ where: { mainId: input.id }, select: { id: true, name: true } }) : [];
   const 新全称 = 子们.map((c) => ({ id: c.id, 旧: c.name, 新: 拼全称(name, 子渠道名(c.name, 原.name)) }));
+  const 见过 = new Set<string>();
   for (const x of 新全称) {
+    // 同组里两个老子渠道改名后拼成同一个全称（例：「旧名|A」和老数据里写成「新名|A」的），也算撞
+    if (见过.has(x.新)) return { ok: false, error: `改名后有两个子渠道都叫「${x.新}」，请先改掉其中一个` };
+    见过.add(x.新);
     if (x.新.length > 全称上限) return { ok: false, error: `改名后「${x.新}」超过 ${全称上限} 个字，请缩短` };
     const 重 = await prisma.channel.findFirst({ where: { name: x.新, id: { notIn: 新全称.map((y) => y.id) } }, select: { id: true } });
     if (重) return { ok: false, error: `改名后「${x.新}」和已有渠道重名，请先处理那个渠道` };
   }
-  await prisma.$transaction(async (tx) => {
-    await tx.entChannelMain.update({ where: { id: input.id }, data: { name, ...开关 } });
-    // 先挪到临时名再改成新名，防止两个子渠道新旧名字互换时撞唯一约束
-    for (const x of 新全称) await tx.channel.update({ where: { id: x.id }, data: { name: `__改名中__${x.id}` } });
-    for (const x of 新全称) await tx.channel.update({ where: { id: x.id }, data: { name: x.新, platform: name } });
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.entChannelMain.update({ where: { id: input.id }, data: { name, ...开关 } });
+      // 先挪到临时名再改成新名，防止两个子渠道新旧名字互换时撞唯一约束
+      for (const x of 新全称) await tx.channel.update({ where: { id: x.id }, data: { name: `__改名中__${x.id}` } });
+      for (const x of 新全称) await tx.channel.update({ where: { id: x.id }, data: { name: x.新, platform: name } });
+    });
+  } catch (e) {
+    // 查完到写之间别处刚建了同名的主渠道 / 渠道：整笔撤回，说一句，不抛
+    if ((e as { code?: string })?.code === "P2002") return { ok: false, error: "改名时撞上了刚建的同名主渠道或渠道，刷新后再试" };
+    if ((e as { code?: string })?.code === "P2025") return { ok: false, error: "这个主渠道已经不在了，刷新看看" };
+    throw e;
+  }
   await recordAudit({
     user: me, action: "update", entity: "EntChannelMain", entityId: input.id,
     summary: `修改主渠道「${name}」` + (改名 ? `（原名「${原.name}」，${新全称.length} 个子渠道全称跟着改）` : ""),
@@ -310,6 +333,7 @@ export async function toggleMainChannel(id: string, active: boolean): Promise<{ 
   const me = await requireUser();
   const 挡 = await 挡管(me);
   if (挡) return { ok: false, error: 挡 };
+  if (!企业版()) return { ok: false, error: "主渠道只在企业版里用" };
   let m: { name: string };
   try {
     m = await prisma.entChannelMain.update({ where: { id }, data: { active }, select: { name: true } });

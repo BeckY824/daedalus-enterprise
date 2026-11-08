@@ -108,6 +108,7 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
       看板底数={看板底数}
       看板段={段}
       主渠道们={主渠道们}
+      两层={企业版()}
       策略选项={策略选项}
       公海={市场 && 公海底数 ? { 底: 公海底数, 视角: 市场.视角, 创建人们: 圈里的人 } : null}
       rows={channels.map((c) => ({

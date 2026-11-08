@@ -131,6 +131,7 @@ export default function ChannelsView({
   公海 = null,
   主渠道们 = [],
   策略选项 = [],
+  两层: 开两层 = false,
 }: {
   rows: Row[];
   users: 可选成员[];
@@ -149,8 +150,10 @@ export default function ChannelsView({
   看板段?: 日期段 | null;
   /** 看板的「进公海」那段（11-04 P-界面-09，只给市场成员 / 市场管理）；别人 null 不摆 */
   公海?: 看板公海 | null;
-  /** 主渠道清单（企业版渠道两层，11-08）；空 = 不是企业版，表单照老样子「渠道名称 + 来源」 */
+  /** 主渠道清单（企业版渠道两层，11-08）；是不是两层看下面的「两层」，不看这里空不空 */
   主渠道们?: 主渠道行[];
+  /** 企业版渠道两层（11-08）：开着时主渠道一个都还没有，也照样走「主渠道 + 子渠道」表单，不退回老的单个名字 */
+  两层?: boolean;
   /** 字典里启用着的运营策略（设置 → 字典 → 运营策略），没有默认项 */
   策略选项?: string[];
 }) {
@@ -165,7 +168,7 @@ export default function ChannelsView({
   const [active, setActive] = useState("");
   const [creator, setCreator] = useState("");
   const [主, set主] = useState("");
-  const 两层 = 主渠道们.length > 0;
+  const 两层 = 开两层;
   // 看板也吃这一份：列表剩几个渠道，看板就按这几个算
   const rows = useMemo(() => {
     const 筛过 = 筛渠道(全部行, { kw, attr, ownerId, active, creator });
