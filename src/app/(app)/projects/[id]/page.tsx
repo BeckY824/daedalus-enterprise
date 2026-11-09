@@ -28,6 +28,7 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 读线索验证 } from "@/lib/project/lead-verify";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
+import { 只读卡放行 } from "@/lib/enterprise/customer-readonly-card";
 import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 可选原因们, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 // 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
@@ -90,7 +91,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 能改 = 能管项目(me, p, org);
   const 能转 = 能转让项目(me, p, org);
   // 公海里同事客户的项目：只给项目本身，客户、联系人、沟通内容领了再看（lib/project/db.ts 露客户）
-  const 露 = 露客户(me, p, await 看得到的客户([p.customerId]));
+  const 看得到客户 = await 看得到的客户([p.customerId]);
+  const 露 = 露客户(me, p, 看得到客户);
+  // 客户那一格点了去哪（E①）：看得到客户 = 客户详情；只负责项目的人和实线上级 = 只读卡；只露名字的（比如虚线上级）= 文字，不链到一个报「没有找到」的页。
+  // 露 的含义不变，只读卡不改限定层
+  const 客户入口 = !企业版() || 看得到客户.has(p.customerId) ? "详情" as const
+    : (await 只读卡放行(me, { ...p, 已加入, 客户在公海: !!p.customer.pool }, org)) ? "只读卡" as const : "文字" as const;
   const [候选, 在职, 联系人们, 角色们, 类别们, 放回过, 规则] = await Promise.all([
     负责人候选(),
     prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
@@ -222,6 +228,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     收藏了: await 项目收藏了吗(me.id, id),
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
+    客户入口, 客户卡名: 客户入口 === "只读卡" ? { name: p.customer.name, school: p.customer.school } : null,
     // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取；没这个人就是空串，界面写「暂无」
     ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,

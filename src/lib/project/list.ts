@@ -198,7 +198,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))
     // 客户不露时不拿客户的来源（同列上的「渠道」）：否则筛一下就试出同事客户从哪来
     && (!来源 || p.channelId === 来源 || 露(p))).map((p) => ({
-    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null,
+    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
     ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,

@@ -29,6 +29,7 @@ import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
 import { ProjectFold } from "./ProjectFold";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
+import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import type { 窗外去处, 草稿们 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
 import ProjectStarButton from "./ProjectStarButton";
@@ -73,6 +74,10 @@ export type 项目详情 = {
   只能看字段?: string[];
   /** null = 公海里同事客户的项目，领取后再给（page.tsx 露客户）；联系人、沟通这时也是空的 */
   customer: { id: string; name: string; school: string | null } | null;
+  /** 客户那一格点了去哪（E①）：没给 = 详情；只读卡 = 只负责项目的人和实线上级；文字 = 只露名字、进不去（客户在公海、要回避） */
+  客户入口?: "详情" | "只读卡" | "文字";
+  /** 开只读卡时摆的客户名：实线上级的 customer 可能是 null（露客户），名字单给 */
+  客户卡名?: { name: string; school: string | null } | null;
   contact: { id: string; name: string; position: string | null } | null;
   /** 企业版联系人附件（2026-10-28）：联系人那一行下面的「附件」入口；只读 = 同事的 / 虚线下属的客户，只能看。别的版本、看不到这位联系人时没有这个字段 */
   联系人附件?: { 个数: number; 只读: boolean };
@@ -793,7 +798,7 @@ export default function ProjectDetail({
           </Button>
         </div>
       )}
-      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
+      <div style={行样}><span style={键样}>{b.customer}</span>{p.客户入口 === "只读卡" && p.客户卡名 ? <CustomerReadonlyCard projectId={p.id} name={p.客户卡名.name} company={p.客户卡名.school} /> : p.customer ? <CustomerLink id={p.客户入口 === "文字" ? null : p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}

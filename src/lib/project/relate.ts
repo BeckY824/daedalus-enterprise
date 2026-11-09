@@ -258,6 +258,8 @@ export type 关联客户行 = {
   主: boolean;
   /** 能不能点进客户页、看名字 */
   看得到: boolean;
+  /** 进得了客户详情（限定层说了算）。只负责项目的人看得到主客户的名字，但进不去，界面不给链接 */
+  能进详情: boolean;
 };
 export type 关联联系人行 = {
   contactId: string;
@@ -265,7 +267,7 @@ export type 关联联系人行 = {
   名: string;
   /** 原名（悬停看、看不到的为空） */
   姓名: string;
-  /** 隶属客户：看得到才给，点过去 */
+  /** 隶属客户：进得了客户详情才给，点过去（只负责项目的人不给，免得点到「没有找到」） */
   customerId: string | null;
   角色: string[];
   立场: string | null;
@@ -313,7 +315,7 @@ export async function 项目关联们(me: { id: string }, projectId: string): Pr
   const 客户们: 关联客户行[] = [];
   const 一家 = (c: { id: string; name: string; shortName: string | null }, roles: string | null, 主: boolean) => {
     const 见 = 露(c.id);
-    客户们.push({ customerId: c.id, 名: 见 ? 客户显名(c) : `${看不到的客户} ${短号(c.id)}`, 全称: 见 ? c.name : "", 身份: 读多选(roles), 主, 看得到: 见 });
+    客户们.push({ customerId: c.id, 名: 见 ? 客户显名(c) : `${看不到的客户} ${短号(c.id)}`, 全称: 见 ? c.name : "", 身份: 读多选(roles), 主, 看得到: 见, 能进详情: 见客户.has(c.id) });
   };
   if (主客户) 一家(主客户, 客户行.find((r) => r.customerId === p.customerId)?.roles ?? null, true);
   for (const r of 客户行) if (r.customerId !== p.customerId) 一家(r.customer, r.roles, false);
@@ -327,7 +329,7 @@ export async function 项目关联们(me: { id: string }, projectId: string): Pr
       // 隶属客户是同事的（只是挂在我看得到的客户上）：客户那段写占位，姓名照常
       名: !见 ? `${看不到的联系人} ${短号(c.id)}` : 主客户见 ? 引用联系人(c) : 引用联系人({ ...c, customer: { id: c.customerId, name: 看不到的客户 } }),
       姓名: 见 ? c.name : "",
-      customerId: 见 && 主客户见 ? c.customerId : null,
+      customerId: 见 && 主客户见 && 见客户.has(c.customerId) ? c.customerId : null,
       角色: 读多选(row?.roles), 立场: row?.stance ?? null, 主, 看得到: 见,
     });
   };

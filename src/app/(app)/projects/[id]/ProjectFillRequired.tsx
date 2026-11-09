@@ -210,7 +210,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     if (类.类 === "去" && 类.去 && !已存.includes(k) && !首个去处.has(类.去)) 首个去处.set(类.去, k);
   }
   const 窗外行 = (项: 必填项, 去: 窗外去处 | null, 原因: string) => {
-    const 能去 = 去 === "沟通" ? p.能记沟通 : 去 === "附件" ? !!p.项目附件 : 去 === "回款" ? !!p.回款们 : 去 === "线索验证" ? !!p.线索验证 : 去 === "客户" ? !!p.customer : false;
+    const 能去 = 去 === "沟通" ? p.能记沟通 : 去 === "附件" ? !!p.项目附件 : 去 === "回款" ? !!p.回款们 : 去 === "线索验证" ? !!p.线索验证 : 去 === "客户" ? !!p.customer && (p.客户入口 ?? "详情") === "详情" : false;
     return (
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px", minWidth: 0 }}>
         <span style={{ ...灰字, flex: "1 1 200px", minWidth: 0 }}>{原因}</span>

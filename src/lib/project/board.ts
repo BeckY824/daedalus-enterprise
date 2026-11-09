@@ -13,6 +13,8 @@ export type 项目行 = {
   customerId: string;
   /** 公海里同事客户的项目不给客户名（lib/project/db.ts 露客户），领了再看 */
   customerName: string | null;
+  /** 企业版只负责项目、看不到客户的：名字照显示，但不链到客户详情（点了只会报「没有找到」）；只读卡只从项目详情开 */
+  进不了客户详情?: boolean;
   ownerId: string;
   ownerName: string;
   phase: string;
