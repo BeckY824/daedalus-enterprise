@@ -24,7 +24,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { BUSINESS_PRESETS } from "@/lib/business-config";
 import { saveContract, deleteContract, patchCustomer } from "@/app/(app)/customers/actions";
-import { saveFollowUp, deleteFollowUp, restoreFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { saveFollowUp, deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { setOppStatus } from "@/app/(app)/opportunities/actions";
 
 const 种子数 = Number(process.env.FUZZ_SEEDS ?? 3);
@@ -82,7 +82,6 @@ async function 跑一个种子(seed: number) {
   for (let i = 0; i < 3; i++) {
     客户们.push(await prisma.customer.create({ data: { name: `客户${i}`, phone: `1380000${seed % 1000}${i}`.slice(0, 11), salesOwnerId: 甲 } }));
   }
-  const 删掉的跟进: Awaited<ReturnType<typeof deleteFollowUp>>[] = [];
   for (let 步 = 0; 步 < 步数; 步++) {
     const c = r.挑(客户们);
     const 动作 = r.整(12);
@@ -119,12 +118,11 @@ async function 跑一个种子(seed: number) {
       } else if (动作 === 7) {
         const f = await prisma.followUp.findFirst({ where: { customerId: c.id } });
         if (f) {
-          const d = await deleteFollowUp(f.id, c.id);
-          if (d.ok) 删掉的跟进.push(d);
+          await deleteFollowUp(f.id, c.id);
         }
       } else if (动作 === 8) {
-        const d = 删掉的跟进.pop();
-        if (d && d.ok) await restoreFollowUp(d.快照);
+        // 原来是撤销删跟进；11-09 删了 restoreFollowUp，这一步改成再记一条
+        await saveFollowUp({ customerId: c.id, type: "PHONE", content: `补记${步}`, status: "已完成", occurredAt: new Date().toISOString() });
       } else if (动作 === 9) {
         await patchCustomer(c.id, r.挑(["country", "whatsapp", "email", "source", "wechat"] as const), r.挑([null, "美国", "+1 415 555 0101", "a@b.com", "展会"]));
       } else if (动作 === 10) {

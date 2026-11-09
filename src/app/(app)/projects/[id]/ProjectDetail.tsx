@@ -48,7 +48,7 @@ import { 文字格改动, 沟通正文改动, 钱格改动, type 钱格值 } fro
 import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
+import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
@@ -120,9 +120,9 @@ export type 项目详情 = {
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
-  /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版还要是总管理员或经理（M-权限-09，普通成员不能改删） */
+  /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版改 = 身为负责人的管理（M-权限-09 原口径 11-09，管理以下含负责人本人不能改删） */
   可改沟通?: boolean;
-  /** 沟通能删：负责人本人或系统管理员（V3.5.1，和 可改沟通 分开） */
+  /** 沟通能删：系统管理员或身为负责人的管理（M-权限-09 原口径 11-09，和 可改沟通 分开） */
   可删沟通?: boolean;
   /**
    * 企业版（10-29 P6）：项目来源 = 项目自己选的渠道（没选 = 跟客户来源走，null = 客户也没有）；已立项天数从建项目那天按自然日数；
@@ -167,7 +167,7 @@ export type 项目详情 = {
   }[];
   /** 企业版：code 是沟通编号（只在服务端用，界面不摆），提醒按下一步时间写事实（page.tsx 时限标签），没填下一步时间不给 */
   followUps: { id: string; type: string; method?: string | null; /** 发起主体（企业版，11-01） */ initiator?: string | null; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null;
-    /** 企业版沟通上的截图、录音（F-跟进-07）；我记的 = 这条是我记的（记的人能往上加附件，删 = 负责人本人或系统管理员，V3.5.1） */
+    /** 企业版沟通上的截图、录音（F-跟进-07）；我记的 = 这条是我记的（记的人能往上加附件，删 = 系统管理员或身为负责人的管理，M-权限-09 原口径 11-09） */
     附件?: 附件[]; 我记的?: boolean;
     /** 企业版：这条沟通的归属人不是当前负责人（负责人可以点一下不看，11-02） */
     接手前?: boolean }[];
@@ -526,7 +526,7 @@ export default function ProjectDetail({
     }
   };
 
-  /** 删项目上的一条沟通：企业版软删进回收站；提示条上给一次撤销（和客户页删跟进一样 6 秒） */
+  /** 删项目上的一条沟通：企业版软删进回收站；不给撤销（11-09），找回走回收站 */
   const 删沟通 = async (id: string) => {
     set忙(true);
     let r: Awaited<ReturnType<typeof 删项目沟通>>;
@@ -539,27 +539,7 @@ export default function ProjectDetail({
     }
     if (!r.ok) return void message.error(r.error);
     router.refresh();
-    const 快照 = r.快照;
-    const key = `project-follow-${id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          已删除，30 天内可在「设置 → 回收站」恢复
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              await 跑(() => 撤销删项目沟通(p.id, 快照), "这条沟通回来了");
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
-    });
+    message.success("已删除，30 天内可在「设置 → 回收站」恢复");
   };
 
   /** 终止 = true：异常框 / 没成框 点确定走 终止项目进程（M-节点-04，审计写「终止进程」）；成了 = 改成了以后的提示 */

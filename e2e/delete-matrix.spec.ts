@@ -211,14 +211,9 @@ test("企业版删项目上的一条沟通：「…」→ 删除，就地确认�
     return 提示;
   };
 
-  // 删了点撤销：回来了
+  // 删了不给撤销（11-09 删 restoreFollowUp）：提示条上没有撤销，去设置 → 回收站 恢复
   const 提示 = await 删一次();
-  await 提示.getByRole("button", { name: /撤\s*销/ }).click();
-  await expect(page.locator(".ant-message")).toContainText("这条沟通回来了");
-  await expect(那条).toBeVisible();
-
-  // 再删一次，这回去设置 → 回收站 恢复
-  await 删一次();
+  await expect(提示.getByRole("button", { name: /撤\s*销/ })).toHaveCount(0);
   const q = 连库();
   expect((await q.followUp.findUnique({ where: { id: f.id }, select: { deletedAt: true } }))?.deletedAt).toBeInstanceOf(Date);
   await q.$disconnect();

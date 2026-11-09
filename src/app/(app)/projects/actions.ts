@@ -39,7 +39,7 @@ import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
 import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, type 初判 } from "@/lib/project/lead-verify";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
-import { saveFollowUp, deleteFollowUp, restoreFollowUp, type 删掉的跟进 } from "../customers/[id]/actions";
+import { saveFollowUp, deleteFollowUp } from "../customers/[id]/actions";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
@@ -766,7 +766,7 @@ export async function 改项目沟通(projectId: string, followUpId: string, inp
   } catch (e) { return 不在了(e); }
 }
 
-/** 删项目上的一条沟通：企业版软删进回收站。回给前端快照，提示条上的「撤销」拿它调 restoreFollowUp */
+/** 删项目上的一条沟通：企业版软删进回收站（11-09 起不给本人撤回，找回走回收站） */
 export async function 删项目沟通(projectId: string, followUpId: string) {
   try {
     await requireUser();
@@ -777,18 +777,6 @@ export async function 删项目沟通(projectId: string, followUpId: string) {
     const r = await deleteFollowUp(followUpId, 查.f.customerId);
     if (!r.ok) return r;
     刷新项目(projectId, 查.f.customerId);
-    return { ok: true as const, 快照: r.快照 };
-  } catch (e) { return 不在了(e); }
-}
-
-/** 撤销刚删的那条项目沟通：企业版就是把 deletedAt 清掉（restoreFollowUp 里走 撤销软删），再刷项目页 */
-export async function 撤销删项目沟通(projectId: string, 快照: 删掉的跟进) {
-  try {
-    await requireUser();
-    if (!(await 开着())) return 没开;
-    const r = await restoreFollowUp(快照);
-    if (!r.ok) return r;
-    刷新项目(projectId, 快照.customerId);
     return { ok: true as const };
   } catch (e) { return 不在了(e); }
 }

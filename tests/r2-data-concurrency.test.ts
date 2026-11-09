@@ -20,7 +20,7 @@ import { resetDb } from "./reset";
 import { 造本人, 造客户, 结局 } from "./r2-data-helpers";
 import { saveCustomer, deleteCustomers, saveContract, patchCustomer } from "@/app/(app)/customers/actions";
 import {
-  saveFollowUp, deleteFollowUp, restoreFollowUp, saveTask, toggleTask, deleteTask,
+  saveFollowUp, deleteFollowUp, saveTask, toggleTask, deleteTask,
   savePlan, deletePlan, completePlan, saveContact, deleteContact, restoreContact,
   detachContact, undoDetachContact,
 } from "@/app/(app)/customers/[id]/actions";
@@ -239,11 +239,11 @@ describe("商机拖阶段 / 改状态后撤销", () => {
 });
 
 describe("删客户之后再点各处的「撤销」", () => {
-  it("撤销删跟进 / 撤销移出联系人 / 撤销删商机 / 撤销删联系人：都说一句、不抛、不建出孤儿", async () => {
+  it("删了跟进再删客户；撤销移出联系人 / 撤销删商机 / 撤销删联系人：都说一句、不抛、不建出孤儿", async () => {
     const c = await 造客户(我);
     const f = await 跟进(c.id);
     if (!f.ok) throw new Error("x");
-    const 删跟进 = await deleteFollowUp(f.id, c.id);
+    await deleteFollowUp(f.id, c.id);
     await saveContact({ customerId: c.id, name: "王总", isPrimary: true });
     await saveContact({ customerId: c.id, name: "李工", isPrimary: false });
     const [王, 李] = await prisma.contact.findMany({ orderBy: { name: "asc" } });
@@ -256,7 +256,6 @@ describe("删客户之后再点各处的「撤销」", () => {
     await deleteCustomers([c.id]);
 
     const 结果 = {
-      跟进: await 结局(restoreFollowUp(删跟进.ok ? 删跟进.快照 : (null as never))),
       移出: await 结局(undoDetachContact(王.id, 移出.ok ? 移出.原来是关键 : false)),
       联系人: await 结局(restoreContact(删联系人.ok ? 删联系人.快照 : (null as never))),
       商机: await 结局(restoreOpportunities(删商机.ok ? 删商机.快照 : (null as never))),
@@ -321,17 +320,6 @@ describe("连点：同一个动作并发调两次（B：第二下应是无事发
     expect(rs.filter((r) => r.抛了).length, rs.map((r) => (r.抛了 ? r.错 : "")).join(" | ")).toBe(0);
     expect(await prisma.customer.count()).toBe(0);
     expect((await prisma.unassignedContact.findMany()).map((u) => u.fromCustomerName).sort()).toEqual([甲.name, 乙.name, 丙.name].sort());
-  });
-
-  it("撤销删跟进连点两下", async () => {
-    const c = await 造客户(我);
-    const f = await 跟进(c.id);
-    if (!f.ok) throw new Error("x");
-    const d = await deleteFollowUp(f.id, c.id);
-    if (!d.ok) throw new Error("x");
-    const rs = await Promise.all([结局(restoreFollowUp(d.快照)), 结局(restoreFollowUp(d.快照))]);
-    expect(rs.filter((r) => r.抛了).length).toBe(0);
-    expect(await prisma.followUp.count()).toBe(1);
   });
 
   it("撤销删商机连点两下", async () => {

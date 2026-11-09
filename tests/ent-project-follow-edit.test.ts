@@ -1,6 +1,6 @@
 /**
  * 项目详情里一条沟通的「…」→ 修改 / 删除，和项目「下一步」= 自己写的一句话 + 可选时间（10-29，projects/actions.ts、lib/project/wizard.ts）。
- * 钉的是：改只动方式 / 时间 / 内容，别的格子原样；版本对不上不盖；删是软删、进回收站、能撤销也能在回收站恢复；
+ * 钉的是：改只动方式 / 时间 / 内容，别的格子原样；版本对不上不盖；删是软删、进回收站、不给撤销、在回收站恢复；
  * 不挂在这个项目上的、同事的客户改不了删不了；AI 记的沟通点撤销也是软删；下一步文字必填、限 100 字、时间可空。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -19,7 +19,7 @@ vi.mock("@/lib/business", async (原) => {
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通 } from "@/app/(app)/projects/actions";
+import { 记项目沟通Action, 改项目沟通, 删项目沟通 } from "@/app/(app)/projects/actions";
 import { 回收站列表, 恢复 } from "@/lib/enterprise/soft-delete";
 import { 规整沟通, 要下一步文字 } from "@/lib/project/wizard";
 import { undoProposal } from "@/app/(app)/dashboard/apply";
@@ -44,7 +44,8 @@ beforeEach(async () => {
   };
   // 11-01 权限只认业务角色：老板 = 总管理（改、删沟通，看回收站都只认 director）
   老板 = await 人("boss", "老板", "ADMIN", "director");
-  销售 = await 人("s1", "小王", "SALES", "sales");
+  // M-权限-09 原口径（11-09）：管理以下（销售负责人本人也算）改不了、删不了沟通，所以这里的负责人是销售管理（销售被拒见 ent-followup-p3.test.ts）
+  销售 = await 人("s1", "小王", "SALES", "sales_mgr");
   同事 = await 人("s2", "小李", "SALES", "sales");
   客户 = (await prisma.customer.create({ data: { name: "示例客户", phone: "13800000001", salesOwnerId: 销售 } })).id;
   项目 = (await prisma.project.create({ data: { customerId: 客户, ownerId: 销售, creatorId: 销售, name: "示例项目", phase: "线索", node: "潜客培育" } })).id;
@@ -88,7 +89,7 @@ describe("改项目上的一条沟通", () => {
   it("改方式 / 时间 / 内容；标题、状态这些原样；拿旧版本再改报冲突、不盖", async () => {
     await 记项目沟通Action(项目, 沟通());
     const id = await 最新沟通(项目);
-    // 11-02 改沟通是负责人的事（同事、总管理被拒见 ent-followup-p3.test.ts）
+    // 改沟通 = 身为负责人的管理（同事、总管理、销售负责人被拒见 ent-followup-p3.test.ts）
     const 前 = (await prisma.followUp.findUnique({ where: { id } }))!;
     expect(await 改项目沟通(项目, id, { type: "WECHAT", content: "改成微信聊的", occurredAt: "2026-10-19 09:30", 版本: 前.updatedAt.toISOString() })).toEqual({ ok: true });
     const 后 = (await prisma.followUp.findUnique({ where: { id } }))!;
@@ -118,22 +119,17 @@ describe("改项目上的一条沟通", () => {
 });
 
 describe("删项目上的一条沟通：软删进回收站", () => {
-  it("删了项目上看不到、行还在；提示条上撤销能拿回来", async () => {
-    // 销售是项目负责人，按 V3.5.1 负责人本人能删；不是负责人的本人刚记的也删不了（P-沟通-01），见 ent-followup-p3.test.ts
+  it("删了项目上看不到、行还在；不给撤销（11-09），找回走回收站", async () => {
+    // 负责人是销售管理：身为负责人的管理能删；销售负责人、不是负责人的本人刚记的都删不了（M-权限-09、P-沟通-01），见 ent-followup-p3.test.ts
     await 记项目沟通Action(项目, 沟通());
     const id = await 最新沟通(项目);
     const r = await 删项目沟通(项目, id);
-    expect(r).toMatchObject({ ok: true, 快照: { id, customerId: 客户 } });
+    expect(r).toEqual({ ok: true });
     expect(await prisma.followUp.findUnique({ where: { id } })).toBeNull();
     const 项目页 = await prisma.project.findUnique({ where: { id: 项目 }, select: { followUps: { select: { followUpId: true } } } });
     expect(项目页!.followUps).toEqual([]);
     const 行 = await raw.followUp.findUnique({ where: { id }, select: { deletedAt: true } });
     expect(行?.deletedAt).toBeInstanceOf(Date);
-
-    if (!r.ok) throw new Error(r.error);
-    expect(await 撤销删项目沟通(项目, r.快照)).toEqual({ ok: true });
-    expect(await prisma.followUp.findUnique({ where: { id }, select: { id: true } })).toEqual({ id });
-    expect((await prisma.project.findUnique({ where: { id: 项目 }, select: { followUps: { select: { followUpId: true } } } }))!.followUps).toEqual([{ followUpId: id }]);
   });
 
   it("老板在回收站里看得到这一条，恢复后回到项目上", async () => {

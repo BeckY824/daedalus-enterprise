@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma";
 import { 不掉公海的状态 } from "@/lib/pool";
-import { 能进公海的阶段 } from "@/lib/project/db";
+import { 能进公海的阶段, 算持有的项目 } from "@/lib/project/db";
 import { 有同事在推的客户 } from "@/lib/enterprise/colleague-projects";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 
@@ -122,4 +122,17 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
     进公海项目,
     订单项目: 公海 ? 他的项目.filter((p) => !可进公海阶段.includes(p.phase)).length : 0,
   };
+}
+
+/**
+ * 离职的这一份此刻交给 接手人，会新进他手上几个算持有的项目（M-公海-18 拦持有上限用；确认离职交接、离职交接看板「全部交给」共用）：
+ * 按此刻重新分拣，给接手人的项目里算持有的——离职的人自己的、挂在别处的，同事待分配的清了也算；接手人自己本来就负责的不算新进。
+ * 调用方放开范围（看全部）
+ */
+export async function 离职进手的持有项目(db: 读库, fromId: string, 方式: 停用方式, 接手人: string): Promise<number> {
+  const 分 = await 停用分拣(db, fromId, 方式, true);
+  if (!分.项目.length) return 0;
+  return db.project.count({
+    where: { AND: [算持有的项目, { id: { in: 分.项目 }, pooledAt: null }, { OR: [{ id: { in: 分.清待分配 } }, { awaitAssignAt: null, ownerId: { not: 接手人 } }] }] },
+  });
 }

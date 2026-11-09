@@ -30,7 +30,7 @@ import { resetDb } from "./reset";
 import { 造本人 } from "./r2-data-helpers";
 import { deleteCustomers, saveContract, deleteContract } from "@/app/(app)/customers/actions";
 import {
-  saveFollowUp, deleteFollowUp, restoreFollowUp, savePlan, deletePlan, saveTask, deleteTask,
+  saveFollowUp, deleteFollowUp, savePlan, deletePlan, saveTask, deleteTask,
   saveContact, detachContact, undoDetachContact, saveUnassignedContact, deleteContact, deleteUnassignedContact, restoreContact,
 } from "@/app/(app)/customers/[id]/actions";
 import { saveOpportunity, deleteOpportunities, restoreOpportunities } from "@/app/(app)/opportunities/actions";
@@ -322,17 +322,15 @@ describe("删除矩阵（2a）：每一种删法 × 每一处看到的", () => {
     expect(await 看一遍()).toEqual(前);
   });
 
-  it("删跟进（普通一条）：只有跟进页少了它；撤销后一模一样", async () => {
+  it("删跟进（普通一条）：只有跟进页少了它", async () => {
     const w = await 造全套();
     const 前 = await 看一遍();
     const r = await deleteFollowUp(w.甲的.聊, w.甲.id);
     if (!r.ok) throw new Error(r.error);
     expect(变化(前, await 看一遍())).toEqual({ 跟进页: { 少: ["甲|甲聊报价|跟甲王总"], 多: [] } });
-    expect(await restoreFollowUp(r.快照)).toEqual({ ok: true });
-    expect(await 看一遍()).toEqual(前);
   });
 
-  it("删跟进（顺带建了待办的提醒）：跟进页、待办计划、首页逾期一起少；撤销后一模一样", async () => {
+  it("删跟进（顺带建了待办的提醒）：跟进页、待办计划、首页逾期一起少", async () => {
     const w = await 造全套();
     const 前 = await 看一遍();
     const r = await deleteFollowUp(w.甲的.提醒, w.甲.id);
@@ -344,8 +342,6 @@ describe("删除矩阵（2a）：每一种删法 × 每一处看到的", () => {
       首页: { 逾期: -1, 今天要跟: -1 },
     });
     expect(变.待办计划.少[0]).not.toBe("甲|待办|甲发合同");
-    expect(await restoreFollowUp(r.快照)).toEqual({ ok: true });
-    expect(await 看一遍()).toEqual(前);
   });
 
   it("删签约（登记时顺手赢下了试单）：签约业绩、首页本月签约少；试单在商机表里退回进行中；别的不动", async () => {

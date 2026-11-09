@@ -29,8 +29,7 @@ const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
     export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
     export async function saveFollowUp(x){window.__saved=x;const row=window.__rows[x.customerId].find(r=>r.id===x.id);Object.assign(row,x,{updatedAt:'2026-10-08T12:00:00.000Z'});return {ok:true,id:x.id}}
-    export async function deleteFollowUp(id,customerId){const rows=window.__rows[customerId],i=rows.findIndex(r=>r.id===id);return {ok:true,快照:{...rows.splice(i,1)[0],customerId}}}
-    export async function restoreFollowUp(snapshot){window.__rows[snapshot.customerId].push(snapshot);window.__rows[snapshot.customerId].sort((a,b)=>b.id.localeCompare(a.id));return {ok:true}}
+    export async function deleteFollowUp(id,customerId){const rows=window.__rows[customerId],i=rows.findIndex(r=>r.id===id);rows.splice(i,1);return {ok:true}}
   
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -53,7 +52,7 @@ async function open() {
   await page.route("http://history.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://history.test"); await page.addScriptTag({ content: bundle }); await page.locator("#fu-a-0152").waitFor(); return page;
 }
-it("真实详情页加载第51条及153条，旧记录表单编辑/删除/撤销及时更新，筛选与重载可用", async () => {
+it("真实详情页加载第51条及153条，旧记录表单编辑/删除及时更新（删了不给撤销），筛选与重载可用", async () => {
   const page = await open(); const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   try {
     expect(await page.locator(".rec-tl-item[id^='fu-']").count()).toBe(50);
@@ -69,12 +68,11 @@ it("真实详情页加载第51条及153条，旧记录表单编辑/删除/撤销
     expect(await page.evaluate(() => (Reflect.get(window, "__saved") as unknown as { 版本: string }).版本)).toBe("2026-01-01T02:00:00.000Z");
     await row.getByRole("button", { name: "删除跟进" }).click(); await row.locator(".inlc-yes").click();
     await expect.poll(() => row.count()).toBe(0);
-    await page.getByRole("button", { name: /撤\s*销/ }).click();
-    await expect.poll(() => row.locator(".rec-tl-content").innerText()).toBe("第51条已改好");
+    expect(await page.getByRole("button", { name: /撤\s*销/ }).count()).toBe(0);
     await page.getByRole("button", { name: "加载更早的跟进" }).click(); await page.locator("#fu-a-0003").waitFor();
     await page.getByRole("button", { name: "加载更早的跟进" }).click(); await page.locator("#fu-a-0000").waitFor();
-    expect(await page.locator(".rec-tl-item[id^='fu-']").count()).toBe(153); expect(await page.getByRole("button", { name: "加载更早的跟进" }).count()).toBe(0);
-    await page.locator(".rec-chip").filter({ hasText: /邮件/ }).click(); await expect.poll(() => page.locator(".rec-tl-item[id^='fu-']").count()).toBe(77);
+    expect(await page.locator(".rec-tl-item[id^='fu-']").count()).toBe(152); expect(await page.getByRole("button", { name: "加载更早的跟进" }).count()).toBe(0);
+    await page.locator(".rec-chip").filter({ hasText: /邮件/ }).click(); await expect.poll(() => page.locator(".rec-tl-item[id^='fu-']").count()).toBe(76);
     await page.getByRole("button", { name: "重新加载历史" }).click();
     await expect.poll(() => page.locator(".rec-tl-item[id^='fu-']").count()).toBe(25);
     expect(errors).toEqual([]);

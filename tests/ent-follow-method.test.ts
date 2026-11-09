@@ -39,7 +39,8 @@ beforeEach(async () => {
     return id;
   };
   老板 = await 人("boss", "老板", "ADMIN", "director"); // 11-01 权限只认业务角色
-  销售 = await 人("s1", "小王", "SALES", "sales");
+  // M-权限-09 原口径（11-09）：改沟通只给身为负责人的管理，这里的负责人用销售管理
+  销售 = await 人("s1", "小王", "SALES", "sales_mgr");
   客户 = (await prisma.customer.create({ data: { name: "示例客户", phone: "13800000001", salesOwnerId: 销售 } })).id;
   项目 = (await prisma.project.create({ data: { customerId: 客户, ownerId: 销售, creatorId: 销售, name: "示例项目", phase: "线索", node: "潜客培育" } })).id;
   当(销售);

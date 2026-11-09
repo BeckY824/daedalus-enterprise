@@ -14,7 +14,7 @@ import { 已立项天数 } from "@/lib/project/project-fields";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 是经理, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
-import { 能删沟通 } from "@/lib/enterprise/follow-perm";
+import { 能改这条沟通, 能改沟通of, 能删沟通, 能删沟通of } from "@/lib/enterprise/follow-perm";
 import { 沟通附件们 } from "@/lib/attachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -145,10 +145,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 11-01：企业版组员只能看，沟通只有负责人记（和 lib/project/db.ts 记项目沟通 同一个判断）
   const 能记沟通 = 企业 && !公海 && 能改;
   // 沟通的「…」菜单（改 / 删，10-29）：不在公海、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
-  // M-权限-09（11-02）：改 = 负责人（能记沟通 就是负责人），删 = 负责人本人或系统管理员（V3.5.1），两样分开给（lib/enterprise/follow-perm.ts）
+  // M-权限-09（11-09 原口径）：管理（销售管理 / 市场管理 / 总管理）以下的人，负责人本人也算，不能改、不能删。
+  // 改 = 身为负责人（项目或客户的）的管理，删 = 系统管理员或身为负责人的管理（V3.5.1），两样分开给，和服务端同一套（lib/enterprise/follow-perm.ts）
   const 沟通能动 = 企业 && !公海 && 露 && !(await 只读客户(defaultClient, p.customer));
-  const 可改沟通 = 沟通能动 && 能记沟通;
-  const 可删沟通 = 沟通能动 && (能删除(me, org, p.ownerId) || (!!p.customerId && (await 能删沟通(me, { customerId: p.customerId }))));
+  const 可改沟通 = 沟通能动 && (能改沟通of(me, [p.ownerId], org) || (!!p.customerId && (await 能改这条沟通(me, { customerId: p.customerId }))));
+  const 可删沟通 = 沟通能动 && (能删沟通of(me, [p.ownerId], org) || (!!p.customerId && (await 能删沟通(me, { customerId: p.customerId }))));
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
   // 「仅上级推」开着：直属上级也给节点这块（服务端只放往前推，往后退、点结局照拦）

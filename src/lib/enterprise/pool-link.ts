@@ -15,7 +15,8 @@ import { 公海规则, 单项目客户进公海理由, 客户整体进公海理�
 import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位, 带走公海项目 } from "@/lib/carry-over-db";
-import { 记转让, 能进公海的阶段 } from "@/lib/project/db";
+import { 记转让, 能进公海的阶段, 超上限n, 算持有的项目 } from "@/lib/project/db";
+import type { 组织规则 } from "@/lib/project/org-rules";
 import { 进公海后负责人, 进公海关待办 } from "@/lib/project/pool-owner";
 import { 在推项目条件 } from "@/lib/project/active";
 import { 系统 } from "@/lib/project/timeout";
@@ -110,6 +111,29 @@ export async function 客户名下在推项目进公海(
     }
     return 放了;
   });
+}
+
+/**
+ * 领 / 分线索公海里的一个项目给 新 之前（事务里、改负责人之前）核持有上限（M-公海-18）：
+ * 手上这个算持有就进 1 个；开关 领项目带走单项目客户 开着、客户在客户公海里时，单项目客户跟着领 还会把客户名下别的公海项目一起带过来，
+ * 照领多项目的公海客户（#203）一起数（客户原负责人自己的项目进客户公海时已进线索公海，剩下的不算持有）。开关关着时同 超上限，话术一字不差。
+ * 另进：调用方另外要进手的（分项目给 市场转客户带过来的同事待分配项目）。不是企业版 / 没开上限回 null
+ */
+export async function 领项目连带超上限(
+  tx: Prisma.TransactionClient,
+  规则: 组织规则,
+  新: string,
+  p: { id: string; customerId: string; phase: string; result: string | null },
+  另进 = 0,
+): Promise<string | null> {
+  if (!企业版()) return null;
+  const 一 = !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase) ? 1 : 0;
+  const 带 = 公海规则.领项目带走单项目客户 && 公海规则.领客户带走公海里的项目
+    ? await 看全部(async () => (await tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))
+      ? tx.project.count({ where: { customerId: p.customerId, pooledAt: { not: null }, id: { not: p.id }, ...算持有的项目 } })
+      : 0)
+    : 0;
+  return 超上限n(tx, 规则, 新, 一 + 带 + 另进);
 }
 
 /**

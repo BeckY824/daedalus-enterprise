@@ -5,7 +5,7 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => state.user }));
 vi.mock("@/app/(app)/follow-ups/plans/PlansView", () => ({ default: () => null }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { savePlan, saveTask, saveFollowUp, deleteFollowUp, restoreFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { savePlan, saveTask, saveFollowUp, deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
 import PlansPage from "@/app/(app)/follow-ups/plans/page";
 import { 取提醒项 } from "@/lib/reminders-db";
 import { 算提醒 } from "@/lib/reminders";
@@ -63,7 +63,7 @@ it("真实旧记录不反推选择；仅改标题保留未知，显式选择日�
   await plan("2026-10-08", { id: p.id });
   expect(await prisma.followPlan.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ plannedOn: "2026-10-08", plannedHasTime: false });
 });
-it("跟进日期提醒、附加AI日期任务/计划及删除撤销均保留日历语义；今天日期不误要求历史确认", async () => {
+it("跟进日期提醒、附加AI日期任务/计划均保留日历语义、删除带走提醒待办；今天日期不误要求历史确认", async () => {
   now("2026-10-08T13:00:00+08:00");
   const draft = sanitizeFollowUpDraft({ followUp: { content: "明天回访" }, tasks: [{ title: "寄资料", dueAt: "2026-10-09" }], plan: { subject: "问进展", plannedAt: "2026-10-09" } }, { contactIds: [], opportunityIds: [] });
   expect(draft.tasks[0].dueAt).toBe("2026-10-09"); expect(draft.plan!.plannedAt).toBe("2026-10-09");
@@ -73,8 +73,7 @@ it("跟进日期提醒、附加AI日期任务/计划及删除撤销均保留日�
   expect(await prisma.followUp.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ dueOn: "2026-10-08", dueHasTime: false });
   expect(await prisma.task.findMany({ orderBy: { title: "asc" } })).toEqual(expect.arrayContaining([expect.objectContaining({ dueOn: "2026-10-08", dueHasTime: false }), expect.objectContaining({ dueOn: "2026-10-09", dueHasTime: false })]));
   const deleted = await deleteFollowUp(r.id, customerId); if (!deleted.ok) throw Error(deleted.error);
-  expect((await restoreFollowUp(deleted.快照)).ok).toBe(true);
-  expect(await prisma.task.findMany({ where: { title: "今天回电" } })).toEqual([expect.objectContaining({ dueOn: "2026-10-08", dueHasTime: false })]);
+  expect(await prisma.task.findMany({ where: { title: "今天回电" } })).toEqual([]);
   process.env.TZ = "America/New_York"; now("2026-10-08T13:00:00-04:00");
   expect(算提醒(await 取提醒项(state.user.id))).toMatchObject({ 定时: [], 错过: [] });
 });
