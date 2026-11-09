@@ -279,12 +279,12 @@ export async function saveFollowUp(input: FollowUpInput) {
 export async function deleteFollowUp(id: string, customerId: string) {
   try {
     const me = await requireUser();
-    // 删之前先取内容：删完这条记录就无从还原了。整条连 AI 速记的原文一起留着，给撤销用（排查 D2）
-    const 待删 = await prisma.followUp.findUnique({ where: { id }, include: { source: true } });
+    // 删之前先取内容：审计要记类型和内容。删了不给本人撤回（11-09 删 restoreFollowUp），要找回只能总管理去回收站恢复
+    const 待删 = await prisma.followUp.findUnique({ where: { id } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
     // 企业版 V3.5.1：负责人本人或系统管理员能删沟通（软删进回收站）。本人刚记的不再例外（P-沟通-01），只有 AI 卡片撤销那一条放行
     if (!(在卡片撤销里(id) && 卡片刚记的能撤(me, 待删)) && !(await 能删沟通(me, { customerId: 待删.customerId, id }))) return { ok: false as const, error: 不能删沟通话 };
-    // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（撤销 / 恢复时按跟进补回来）
+    // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（回收站恢复时按跟进补回来）
     if (软删开着()) await prisma.followUp.update({ where: { id }, data: { deletedAt: new Date() } });
     else await prisma.followUp.delete({ where: { id } });
     await 跟着改待办(customerId, 待删, null);
@@ -306,87 +306,12 @@ export async function deleteFollowUp(id: string, customerId: string) {
   
     revalidatePath(`/customers/${customerId}`);
     revalidatePath("/follow-ups");
-    const { source, ...行 } = 待删;
-    const 快照: 删掉的跟进 = {
-      ...行,
-      occurredAt: 行.occurredAt.toISOString(), dueAt: 行.dueAt?.toISOString() ?? null,
-      createdAt: 行.createdAt.toISOString(), updatedAt: 行.updatedAt.toISOString(),
-      原文: source?.text ?? null,
-    };
-    return { ok: true as const, 快照 };
-  } catch (e) {
-    return 不在了(e);
-  }
-}
-
-export type 删掉的跟进 = {
-  id: string; type: string; method?: string | null; initiator?: string | null; title: string; content: string; status: string; duration: number | null;
-  occurredAt: string; dueAt: string | null; dueOn?: string | null; dueHasTime?: boolean | null; participants: string | null;
-  customerId: string; contactId: string | null; opportunityId: string | null; ownerId: string;
-  createdAt: string; updatedAt: string;
-  /** AI 速记时粘贴的原文，没有就是 null */
-  原文: string | null;
-};
-
-/** 撤销删除一条跟进：原样建回来，连 AI 速记的原文（排查 D2）。联系人、商机这会儿已经不在了的，那一格空着 */
-export async function restoreFollowUp(快照: 删掉的跟进) {
-  try {
-    const me = await requireUser();
-    // 企业版：只认回收站里那一条（不照快照新建，快照是前端交上来的）；系统管理员、回收站副手能恢复；本人刚记的（10 分钟内）删了能撤回
-    if (企业版()) {
-      const 行 = await 看已删(() => defaultClient.followUp.findUnique({ where: { id: 快照.id }, select: { ownerId: true, createdAt: true, deletedAt: true, customerId: true } }));
-      if (!行 || 行.customerId !== 快照.customerId) return { ok: false as const, error: "这条跟进已经不在了，撤不回来" };
-      if (行.deletedAt && !卡片刚记的能撤(me, 行) && !能恢复(me, await 权限组织())) return { ok: false as const, error: 只有总管理能恢复话 };
-    }
-    if (await prisma.followUp.findUnique({ where: { id: 快照.id }, select: { id: true } })) return { ok: true as const };
-    if (!(await prisma.customer.findUnique({ where: { id: 快照.customerId }, select: { id: true } }))) {
-      return { ok: false as const, error: "这位客户已经不在了，撤不回来" };
-    }
-    const [联系人在, 商机在] = await Promise.all([
-      快照.contactId ? prisma.contact.findUnique({ where: { id: 快照.contactId }, select: { id: true } }) : null,
-      快照.opportunityId ? prisma.opportunity.findUnique({ where: { id: 快照.opportunityId }, select: { id: true } }) : null,
-    ]);
-    // 企业版（P9）：删的时候只进了回收站，撤销就是把那一条拿回来，不再建一条
-    if (!(await 撤销软删("FollowUp", 快照.id))) await prisma.followUp.create({
-      data: {
-        id: 快照.id, type: 快照.type, method: 快照.method ?? null, initiator: 快照.initiator ?? null, title: 快照.title, content: 快照.content, status: 快照.status, duration: 快照.duration,
-        occurredAt: new Date(快照.occurredAt), dueAt: 快照.dueAt ? new Date(快照.dueAt) : null, dueOn: 快照.dueOn ?? null, dueHasTime: 快照.dueHasTime ?? null, participants: 快照.participants,
-        customerId: 快照.customerId, contactId: 联系人在 ? 快照.contactId : null, opportunityId: 商机在 ? 快照.opportunityId : null,
-        ownerId: 快照.ownerId, createdAt: new Date(快照.createdAt),
-        ...(快照.原文 ? { source: { create: { text: 快照.原文 } } } : {}),
-      },
-    });
-    // 删的时候顺带的待办一起删了：撤销时一起回来
-    const 回来的 = { ...快照, dueAt: 快照.dueAt ? new Date(快照.dueAt) : null };
-    if (会带待办(回来的) && 快照.status !== "已完成") {
-      /*
-        按条数补齐（第四轮 C1）：同标题同时间的提醒有两条、删一条再撤销时，另一条的待办还在，
-        原来看到「有一条」就不补了，结果两条提醒一条待办。现在数一下这类跟进有几条，待办少几条补几条
-      */
-      const 标题 = 待办标题(回来的);
-      const 同样的跟进 = (
-        await prisma.followUp.findMany({
-          where: { customerId: 快照.customerId, dueAt: 回来的.dueAt!, dueOn: 快照.dueOn ?? null, dueHasTime: 快照.dueHasTime ?? null, type: { in: ["TASK", "REMIND"] }, NOT: { status: "已完成" } },
-          select: { type: true, title: true, content: true, status: true, dueAt: true, dueOn: true, dueHasTime: true },
-        })
-      ).filter((f) => 待办标题(f) === 标题).length;
-      const 在 = await prisma.task.count({ where: { customerId: 快照.customerId, title: 标题, dueAt: 回来的.dueAt!, dueOn: 快照.dueOn ?? null, dueHasTime: 快照.dueHasTime ?? null, done: false } });
-      if (在 < 同样的跟进) await prisma.task.create({ data: { title: 标题, dueAt: 回来的.dueAt!, dueOn: 快照.dueOn ?? null, dueHasTime: 快照.dueHasTime ?? null, customerId: 快照.customerId, ownerId: 快照.ownerId } });
-      刷新待办(快照.customerId);
-    }
-    const latest = await prisma.followUp.findFirst({ where: { customerId: 快照.customerId, occurredAt: { lte: new Date() } }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
-    await prisma.customer.update({ where: { id: 快照.customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
-    await recordAudit({
-      user: me, action: "create", entity: "FollowUp", entityId: 快照.id,
-      summary: `撤销删除：${await 客户名(快照.customerId)}的一条${类型名(快照.type)}跟进回来了`,
-    });
-    revalidatePath(`/customers/${快照.customerId}`);
-    revalidatePath("/follow-ups");
     return { ok: true as const };
   } catch (e) {
     return 不在了(e);
   }
 }
+
 
 /* ---------------- 待办任务 ---------------- */
 

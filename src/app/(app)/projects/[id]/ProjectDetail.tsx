@@ -48,7 +48,7 @@ import { 文字格改动, 沟通正文改动, 钱格改动, type 钱格值 } fro
 import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通, 编辑项目 } from "../actions";
+import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
@@ -526,7 +526,7 @@ export default function ProjectDetail({
     }
   };
 
-  /** 删项目上的一条沟通：企业版软删进回收站；提示条上给一次撤销（和客户页删跟进一样 6 秒） */
+  /** 删项目上的一条沟通：企业版软删进回收站；不给撤销（11-09），找回走回收站 */
   const 删沟通 = async (id: string) => {
     set忙(true);
     let r: Awaited<ReturnType<typeof 删项目沟通>>;
@@ -539,27 +539,7 @@ export default function ProjectDetail({
     }
     if (!r.ok) return void message.error(r.error);
     router.refresh();
-    const 快照 = r.快照;
-    const key = `project-follow-${id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          已删除，30 天内可在「设置 → 回收站」恢复
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              await 跑(() => 撤销删项目沟通(p.id, 快照), "这条沟通回来了");
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
-    });
+    message.success("已删除，30 天内可在「设置 → 回收站」恢复");
   };
 
   /** 终止 = true：异常框 / 没成框 点确定走 终止项目进程（M-节点-04，审计写「终止进程」）；成了 = 改成了以后的提示 */

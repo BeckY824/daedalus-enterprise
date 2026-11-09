@@ -19,7 +19,7 @@ vi.mock("@/lib/business", async (原) => {
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 记项目沟通Action, 改项目沟通, 删项目沟通, 撤销删项目沟通 } from "@/app/(app)/projects/actions";
+import { 记项目沟通Action, 改项目沟通, 删项目沟通 } from "@/app/(app)/projects/actions";
 import { 回收站列表, 恢复 } from "@/lib/enterprise/soft-delete";
 import { 规整沟通, 要下一步文字 } from "@/lib/project/wizard";
 import { undoProposal } from "@/app/(app)/dashboard/apply";
@@ -118,22 +118,17 @@ describe("改项目上的一条沟通", () => {
 });
 
 describe("删项目上的一条沟通：软删进回收站", () => {
-  it("删了项目上看不到、行还在；提示条上撤销能拿回来", async () => {
+  it("删了项目上看不到、行还在；不给撤销（11-09），找回走回收站", async () => {
     // 销售是项目负责人，按 V3.5.1 负责人本人能删；不是负责人的本人刚记的也删不了（P-沟通-01），见 ent-followup-p3.test.ts
     await 记项目沟通Action(项目, 沟通());
     const id = await 最新沟通(项目);
     const r = await 删项目沟通(项目, id);
-    expect(r).toMatchObject({ ok: true, 快照: { id, customerId: 客户 } });
+    expect(r).toEqual({ ok: true });
     expect(await prisma.followUp.findUnique({ where: { id } })).toBeNull();
     const 项目页 = await prisma.project.findUnique({ where: { id: 项目 }, select: { followUps: { select: { followUpId: true } } } });
     expect(项目页!.followUps).toEqual([]);
     const 行 = await raw.followUp.findUnique({ where: { id }, select: { deletedAt: true } });
     expect(行?.deletedAt).toBeInstanceOf(Date);
-
-    if (!r.ok) throw new Error(r.error);
-    expect(await 撤销删项目沟通(项目, r.快照)).toEqual({ ok: true });
-    expect(await prisma.followUp.findUnique({ where: { id }, select: { id: true } })).toEqual({ id });
-    expect((await prisma.project.findUnique({ where: { id: 项目 }, select: { followUps: { select: { followUpId: true } } } }))!.followUps).toEqual([{ followUpId: id }]);
   });
 
   it("老板在回收站里看得到这一条，恢复后回到项目上", async () => {

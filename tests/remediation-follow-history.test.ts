@@ -11,7 +11,7 @@ import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 忘掉限定 } from "@/lib/team-scope";
 import { loadFollowHistory, readFollowHistoryRow, type FollowHistoryCursor } from "@/app/(app)/customers/[id]/follow-history-actions";
-import { saveFollowUp, deleteFollowUp, restoreFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { saveFollowUp, deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
 import DetailPage from "@/app/(app)/customers/[id]/page";
 import {客户删除预检,deleteCustomers} from "@/app/(app)/customers/actions";
 import { 搜客户, 取客户选项 } from "@/app/(app)/customers/[id]/pick";
@@ -61,8 +61,6 @@ it("第51条可带原文/日历语义读取，编辑版本闸门、删除及撤�
   expect(await readFollowHistoryRow(customerId, id)).toMatchObject({ ok: true, row: { content: "旧记录改好了" } });
   const deleted = await deleteFollowUp(id, customerId); if (!deleted.ok) throw Error(deleted.error);
   expect(await readFollowHistoryRow(customerId, id)).toMatchObject({ ok: true, row: null });
-  expect(await restoreFollowUp(deleted.快照)).toMatchObject({ ok: true });
-  expect(await readFollowHistoryRow(customerId, id)).toMatchObject({ ok: true, row: { content: "旧记录改好了", sourceText: "历史原文", dueAt: "2026-01-02" } });
 });
 it("业务员分页/单条重读受真实限定层保护，不能通过客户ID或记录ID读同事资料", async () => {
   const other = await raw.user.create({ data: { name: "同事", email: "other-history", password: "qa" } });
