@@ -1072,6 +1072,27 @@ describe("放回一个项目，只动这个项目的待办（P-公海-02，四�
     await 开着的(二号的, 甲.id, "跟进「二号」");
   });
 
+  it("超时同刻：标题同时点了两个项目的，第一个领的人带走，后面领的不再动；点的项目都没领走之前不归别的项目", async () => {
+    const 今 = new Date("2026-10-26T10:00:00+08:00");
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
+    invalidateSettingsCache();
+    const c = await 客户(甲.id);
+    const 一号 = await 项目(c, 丙.id, { name: "一号" });
+    const 二号 = await 项目(c, 丙.id, { name: "二号" });
+    const 三号 = await 项目(c, 丙.id, { name: "三号" });
+    const 两个都点 = "一起跟进「一号」「二号」";
+    const 点两个 = await 待办(c, 丙.id, 两个都点);
+    await prisma.project.updateMany({ where: { customerId: c }, data: { createdAt: new Date(今.getTime() - 10 * 86400_000) } });
+    expect(await 以(丙, () => 公海超时收回(丙, 今))).toBe(3);
+    await 关着的(点两个, 丙.id, 两个都点);
+    await 以(乙, () => 领取公海项目(乙, 三号, true));
+    await 关着的(点两个, 丙.id, 两个都点);
+    await 以(乙, () => 领取公海项目(乙, 一号, true));
+    await 开着的(点两个, 乙.id, 两个都点);
+    await 以(甲, () => 领取公海项目(甲, 二号, true));
+    await 开着的(点两个, 乙.id, 两个都点);
+  });
+
   it("不是客户负责人、这是他最后一个项目：照旧全关，领的人全部接走", async () => {
     const c = await 客户(甲.id);
     const p = await 项目(c, 丙.id, { name: "一号" });
@@ -1150,6 +1171,18 @@ describe("放回一个项目，只动这个项目的待办（P-公海-02，四�
       expect(new Set(刻.map((t) => t.doneAt?.getTime())).size).toBe(1);
       expect(await 以(丙, () => 领取([c], true))).toMatchObject({ ok: true, updated: 1 });
       for (const [id, title] of 们) await 开着的(id, 丙.id, title);
+    });
+
+    it("标题同时点了两个项目的：领客户的人照样接走", async () => {
+      const c = await 客户(甲.id);
+      await 项目(c, 甲.id, { name: "一号" });
+      await 项目(c, 甲.id, { name: "二号" });
+      const 两个都点 = "一起跟进「一号」「二号」";
+      const 点两个 = await 待办(c, 甲.id, 两个都点);
+      expect(await 以(甲, () => 放进公海([c], "客户主动终止"))).toMatchObject({ ok: true, updated: 1 });
+      await 关着的(点两个, 甲.id, 两个都点);
+      expect(await 以(丙, () => 领取([c], true))).toMatchObject({ ok: true, updated: 1 });
+      await 开着的(点两个, 丙.id, 两个都点);
     });
 
     it("撤销：全部还给原负责人", async () => {
