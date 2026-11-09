@@ -2,7 +2,8 @@
 
 /**
  * 「项目 → 离职交接」（11-03 B7-2）的服务端动作：交一位客户、交一个项目、全部交给一个人。
- * 谁能交、交给谁、怎么交见 lib/enterprise/offboard-handover.ts。不是企业版一律 FORBIDDEN
+ * 谁能交、交给谁、怎么交见 lib/enterprise/offboard-handover.ts。不是企业版一律 FORBIDDEN。
+ * 交之前核持有上限（交了超上限，M-公海-18）：超了不交，说清谁、上限、现有几个
  */
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
@@ -10,7 +11,7 @@ import { recordAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
-import { 交接挡, 交一位客户, 交一个项目, 全部交给 } from "@/lib/enterprise/offboard-handover";
+import { 交接挡, 交了超上限, 交一位客户, 交一个项目, 全部交给 } from "@/lib/enterprise/offboard-handover";
 
 type 结果 = { ok: true; message: string } | { ok: false; error: string };
 
@@ -32,6 +33,8 @@ export async function 交接客户(fromId: string, customerId: string, toId: str
   const { me, 话, 从, 给 } = await 先挡(fromId, toId);
   if (话) return { ok: false, error: 话 };
   if (typeof customerId !== "string" || !customerId) return { ok: false, error: "这位客户已不在 TA 名下" };
+  const 超 = await 交了超上限(fromId, toId, { 客户: customerId });
+  if (超) return { ok: false, error: 超 };
   if (!(await 交一位客户(me, fromId, customerId, toId))) return { ok: false, error: "这位客户已不在 TA 名下，刷新看看" };
   const 客户 = (await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } }))?.name ?? "";
   await recordAudit({ user: me, action: "handover", entity: "Customer", entityId: customerId, summary: `离职交接：客户「${客户}」从「${从}」交给「${给}」`, detail: { from: fromId, to: toId } });
@@ -42,7 +45,10 @@ export async function 交接客户(fromId: string, customerId: string, toId: str
 export async function 交接项目(fromId: string, projectId: string, toId: string): Promise<结果> {
   const { me, 话, 从, 给 } = await 先挡(fromId, toId);
   if (话) return { ok: false, error: 话 };
-  if (typeof projectId !== "string" || !projectId || !(await 交一个项目(me, fromId, projectId, toId))) return { ok: false, error: "这个项目已不在 TA 名下，刷新看看" };
+  if (typeof projectId !== "string" || !projectId) return { ok: false, error: "这个项目已不在 TA 名下，刷新看看" };
+  const 超 = await 交了超上限(fromId, toId, { 项目: projectId });
+  if (超) return { ok: false, error: 超 };
+  if (!(await 交一个项目(me, fromId, projectId, toId))) return { ok: false, error: "这个项目已不在 TA 名下，刷新看看" };
   const 项目 = (await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }))?.name ?? "";
   await recordAudit({ user: me, action: "handover", entity: "Project", entityId: projectId, summary: `离职交接：项目「${项目}」从「${从}」交给「${给}」`, detail: { from: fromId, to: toId } });
   刷新();
@@ -52,6 +58,8 @@ export async function 交接项目(fromId: string, projectId: string, toId: stri
 export async function 交接全部(fromId: string, toId: string): Promise<结果> {
   const { me, 话, 从, 给 } = await 先挡(fromId, toId);
   if (话) return { ok: false, error: 话 };
+  const 超 = await 交了超上限(fromId, toId, "全部");
+  if (超) return { ok: false, error: 超 };
   const r = await 全部交给(me, fromId, toId);
   const 段 = [
     r.客户.length && `${r.客户.length} 位客户`,

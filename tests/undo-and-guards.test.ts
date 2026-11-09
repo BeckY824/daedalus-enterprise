@@ -13,7 +13,7 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { saveOpportunity, moveStage, deleteOpportunities, restoreOpportunities, 删商机前清点 } from "@/app/(app)/opportunities/actions";
-import { deleteFollowUp, restoreFollowUp, saveContact } from "@/app/(app)/customers/[id]/actions";
+import { saveContact } from "@/app/(app)/customers/[id]/actions";
 import { saveChannel } from "@/app/(app)/channels/actions";
 import { saveLead } from "@/app/(app)/leads/actions";
 import { applyProposal } from "@/app/(app)/dashboard/apply";
@@ -138,7 +138,7 @@ describe("D1 批量改负责人、批量改状态：回原值，撤销能改回�
   });
 });
 
-describe("D2 删商机、删跟进都能撤销，撤回去是原样", () => {
+describe("D2 删商机能撤销，撤回去是原样（删跟进的撤销 11-09 已删）", () => {
   it("删商机：先说关联了几条跟进；撤销后同一个 id 回来，跟进重新挂上，赢单时刻也在", async () => {
     await saveOpportunity({ name: "暑期班", customerId: 客户.id, amount: 5000, stage: "赢单成交", status: "WON", probability: 100, ownerId: mocks.user.id });
     const o = await prisma.opportunity.findFirstOrThrow({ include: { closed: true } });
@@ -153,20 +153,6 @@ describe("D2 删商机、删跟进都能撤销，撤回去是原样", () => {
     expect(回来).toMatchObject({ name: "暑期班", status: "WON", amount: 5000 });
     expect(回来.closed?.closedAt.getTime()).toBe(o.closed!.closedAt.getTime());
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).opportunityId).toBe(o.id);
-  });
-
-  it("删跟进：AI 速记的原文一起回来", async () => {
-    const f = await prisma.followUp.create({
-      data: { customerId: 客户.id, ownerId: mocks.user.id, type: "PHONE", title: "首次电话", content: "聊了报价", status: "已完成", occurredAt: new Date(), source: { create: { text: "粘贴的聊天记录原文" } } },
-    });
-    const r = await deleteFollowUp(f.id, 客户.id);
-    if (!r.ok) throw new Error(r.error);
-    expect(await prisma.followUp.count()).toBe(0);
-    expect(await restoreFollowUp(r.快照)).toMatchObject({ ok: true });
-    const 回来 = await prisma.followUp.findUniqueOrThrow({ where: { id: f.id }, include: { source: true } });
-    expect(回来).toMatchObject({ title: "首次电话", content: "聊了报价" });
-    expect(回来.source?.text).toBe("粘贴的聊天记录原文");
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户.id } })).lastFollowAt).not.toBeNull();
   });
 });
 

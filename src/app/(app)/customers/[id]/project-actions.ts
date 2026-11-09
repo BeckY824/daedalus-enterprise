@@ -33,14 +33,14 @@ import { 有效线索节点, 建档不能过线索验证, 记沟通标记 } from
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 新项目默认值 } from "@/lib/project/proj-fields";
 import { 新项目所在地 } from "@/lib/project/profile-rules";
-import { 超上限 } from "@/lib/project/db";
+import { 超上限n } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 定分配方式, 建好再分, 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 项目分给你通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
-import { 分配带走的同事项目 } from "@/lib/carry-over-db";
+import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
@@ -160,8 +160,14 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (!负责人?.active) return { ok: false, error: "项目负责人不存在或已停用，请选一位在职成员" };
     const 不行 = await 不能当负责人(项目.ownerId);
     if (不行) return { ok: false, error: 不行 };
+    // 指定给别人，客户在市场手里、接手的是销售：算转客户（X-18，和自动分配同一条）
+    const 指定给别人 = 指定分配名 !== null && 项目.ownerId !== me.id;
+    const 读客户 = (db: Parameters<typeof 转客户给销售>[0]) => 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
+    const 市场转客户 = 指定给别人 && 算市场转客户(org, await 读客户(prisma), 项目.ownerId);
     if (项目.ownerId !== me.id) {
-      const 超 = await 超上限(prisma, 规则, 项目.ownerId, { phase: "线索", result: null });
+      // 新建的是线索阶段，算 1 个；市场转客户时客户上同事待分配的项目随客户一起进手，照接待分配一起数（M-公海-18）
+      const 另进 = 市场转客户 ? await 数进手的持有项目([customerId], 项目.ownerId, { 同事待分配: true }) : 0;
+      const 超 = await 超上限n(prisma, 规则, 项目.ownerId, 1 + 另进);
       if (超) return { ok: false, error: 超 };
     }
 
@@ -171,10 +177,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (输入.联系人Id && !联系人) return { ok: false, error: "选的联系人已经不在这位客户名下了，刷新后再选" };
 
     const 状态开 = await 客户状态自动();
-    // 指定给别人，客户在市场手里、接手的是销售：算转客户（X-18，和自动分配同一条）。换负责人之前钉住老签约（事务外，它用全局连接）
-    const 指定给别人 = 指定分配名 !== null && 项目.ownerId !== me.id;
-    const 读客户 = (db: Parameters<typeof 转客户给销售>[0]) => 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
-    if (指定给别人 && 算市场转客户(org, await 读客户(prisma), 项目.ownerId)) await 钉住老签约();
+    // 算转客户的：换负责人之前钉住老签约（事务外，它用全局连接）
+    if (市场转客户) await 钉住老签约();
     const { projectId, 留下 } = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
         data: {

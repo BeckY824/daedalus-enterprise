@@ -46,7 +46,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { patchCustomer } from "@/app/(app)/customers/actions";
-import { restoreFollowUp, restoreContact, 撤销记一笔, type 删掉的跟进, type 删掉的联系人 } from "@/app/(app)/customers/[id]/actions";
+import { restoreContact, 撤销记一笔, type 删掉的联系人 } from "@/app/(app)/customers/[id]/actions";
 import { deleteOpportunities } from "@/app/(app)/opportunities/actions";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 认父记录 } from "@/app/api/attachments/access";
@@ -174,30 +174,7 @@ describe("【高】规则关着时改客户字段不核负责人（patchCustomer
   });
 });
 
-describe("【高】restoreFollowUp / restoreContact 不做任何权限检查（customers/[id]/actions.ts:320、:1022）", () => {
-  const 跟进快照 = (f: { id: string; customerId: string; ownerId: string; createdAt: Date }): 删掉的跟进 => ({
-    id: f.id, type: "PHONE", method: null, initiator: null, title: "", content: "聊了报价", status: "已完成", duration: null,
-    occurredAt: f.createdAt.toISOString(), dueAt: null, dueOn: null, dueHasTime: null, participants: null,
-    customerId: f.customerId, contactId: null, opportunityId: null, ownerId: f.ownerId,
-    createdAt: f.createdAt.toISOString(), updatedAt: f.createdAt.toISOString(), 原文: null,
-  });
-
-  it("总管理删进回收站的沟通，销售甲拿 id 调 restoreFollowUp 恢复 → 应被拒（恢复只给总管理），还在回收站", async () => {
-    await 开规则(false);
-    const f = await raw.followUp.create({ data: { type: "PHONE", title: "", content: "聊了报价", occurredAt: new Date(), customerId: 客户.甲的, ownerId: 人.销售乙, deletedAt: new Date() } });
-    const r = await 试("销售甲", () => restoreFollowUp(跟进快照(f)));
-    expect((await raw.followUp.findUniqueOrThrow({ where: { id: f.id } })).deletedAt, `restoreFollowUp 回 ${JSON.stringify(r.回)}`).not.toBeNull();
-    expect(r.成了).toBe(false);
-  });
-
-  it("销售甲用不存在的 id、ownerId=销售乙、两年前的 createdAt 伪造一条沟通 → 应被拒，库里不该多出这条", async () => {
-    await 开规则(false);
-    const 假 = 跟进快照({ id: "forged-follow-1", customerId: 客户.甲的, ownerId: 人.销售乙, createdAt: new Date("2024-01-01T00:00:00Z") });
-    const r = await 试("销售甲", () => restoreFollowUp(假));
-    const 行 = await raw.followUp.findUnique({ where: { id: 假.id }, select: { ownerId: true, createdAt: true } });
-    expect(行, `restoreFollowUp 回 ${JSON.stringify(r.回)}，库里多了 ${JSON.stringify(行)}`).toBeNull();
-  });
-
+describe("【高】restoreContact 不做任何权限检查（customers/[id]/actions.ts:1022；restoreFollowUp 11-09 已删）", () => {
   it("总管理删进回收站的联系人，销售甲调 restoreContact 恢复 → 应被拒，还在回收站", async () => {
     await 开规则(false);
     const c = await raw.contact.create({ data: { name: "甲客户的联系人", phone: "13900220001", customerId: 客户.甲的, deletedAt: new Date() } });

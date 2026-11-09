@@ -101,22 +101,29 @@ export async function 数转走的项目(ids: string[], 新: string, 除了: str
  *   公海：名下在线索公海里的（领 / 分公海客户、转客户都带走）；
  *   自己的：原负责人（公海里的客户：进公海前负责人）自己的、不在待分配的（跟着客户转；直接转原来就不拦，只有确认交接算）；
  *   同事待分配：不在公海的客户上别人占着、正在待分配的（转客户时随客户给 新 并清待分配，= 接待分配；新 自己占着的清了也开始算）。
+ * 除了：不数的项目（分项目给时手上这个另按 1 个算）。db：事务里调传 tx（事务占着唯一连接），默认全局连接。
  * 不是企业版回 0
  */
-export async function 数进手的持有项目(ids: string[], 新: string, 算: { 公海?: boolean; 自己的?: boolean; 同事待分配?: boolean }): Promise<number> {
+export async function 数进手的持有项目(
+  ids: string[],
+  新: string,
+  算: { 公海?: boolean; 自己的?: boolean; 同事待分配?: boolean; 除了?: string[] },
+  db: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog"> = prisma,
+): Promise<number> {
   if (!企业版() || !ids.length) return 0;
   return 看全部(async () => {
-    const 们 = await prisma.customer.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+    const 们 = await db.customer.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
     const 条件: Prisma.ProjectWhereInput[] = [];
     for (const c of 们) {
       if (算.公海) 条件.push({ customerId: c.id, pooledAt: { not: null } });
       if (c.salesOwnerId === 新 || !(算.自己的 || 算.同事待分配)) continue;
-      const 主人 = await 公海前负责人(prisma, c.id, c.salesOwnerId);
+      const 主人 = await 公海前负责人(db, c.id, c.salesOwnerId);
       if (算.自己的 && 主人 !== 新) 条件.push({ customerId: c.id, pooledAt: null, awaitAssignAt: null, ownerId: 主人 });
       if (算.同事待分配 && !c.pool) 条件.push({ customerId: c.id, pooledAt: null, awaitAssignAt: { not: null }, ownerId: { notIn: [主人, ""] } });
     }
     if (!条件.length) return 0;
-    return prisma.project.count({ where: { AND: [{ OR: 条件 }, 算持有的项目] } });
+    const 除了 = 算.除了?.length ? [{ id: { notIn: 算.除了 } }] : [];
+    return db.project.count({ where: { AND: [{ OR: 条件 }, 算持有的项目, ...除了] } });
   });
 }
 

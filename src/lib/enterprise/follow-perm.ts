@@ -1,9 +1,11 @@
 /**
- * 企业版沟通记录谁能改、谁能删（2026-10-31 M-权限-09，11-02 再定）：
- * - 改 = 负责人（11-02「负责人都可以对其中的内容进行编辑」）：这条沟通挂的项目的负责人，或客户的负责人；
- *   负责人要有销售 / 销售管理 / 渠运角色，项目、客户在公海里不算，管理员（admin）只读。上级、总管理只看、只转让（11-01），不改。
- * - 删 = 系统管理员，或负责人本人（V3.5.1，同 permissions.ts 能删除）。删了照旧软删进回收站。
+ * 企业版沟通记录谁能改、谁能删（2026-10-31 M-权限-09，11-02 再定，11-09 按 M-权限-09 原口径收紧）：
+ * - 管理（销售管理 / 市场管理 / 总管理）以下都算普通用户，负责人本人也算：单条沟通不能改、不能删。界面不给入口，服务端也拒。
+ * - 改 = 负责人（这条沟通挂的项目的负责人，或客户的负责人；项目、客户在公海里不算），且是管理：
+ *   负责人要有销售 / 销售管理 / 渠运角色（同 负责人能改of），再要有管理角色。管理员（admin）只读。
+ * - 删 = 系统管理员，或负责人本人（V3.5.1，同 permissions.ts 能删除）且是管理。删了照旧软删进回收站。
  *   本人刚记的不再能自己撤（P-沟通-01，11-09）；只有 AI 卡片「撤销」、完成小框「撤销记一笔」按 卡片刚记的能撤 单独放行。
+ * - 批量删（PLUS 成员）不在这里。
  * 账号是管理员 / 主管不算，只认业务角色。改这个口径只改这里。
  *
  * 不是企业版一律 true：团队版 / 桌面端还按原来的规矩（同事的客户只读那条）。
@@ -16,20 +18,33 @@ import { 限定的我 } from "@/lib/team-scope";
 import { 看得到的客户 } from "@/lib/project/db";
 import { 全进程上下文 } from "@/lib/process-als";
 
-export const 不能改沟通话 = "只有负责人能改沟通记录";
-export const 不能删沟通话 = "只有负责人本人或系统管理员能删沟通记录";
+export const 不能改沟通话 = "沟通记录只有管理（销售管理、市场管理、总管理）能改";
+export const 不能删沟通话 = "沟通记录只有管理（销售管理、市场管理、总管理）或系统管理员能删";
 
 type 谁 = { id: string; role: string };
 
-/** 纯函数：负责人们 = 这条沟通挂的项目负责人、客户负责人（在公海的不给）。企业版 org 没给 = 拒 */
-export function 能改沟通of(me: 谁, 负责人们: readonly (string | null | undefined)[], org: 组织 | null): boolean {
+/**
+ * 纯函数：是不是负责人（负责人们里有自己、有销售 / 销售管理 / 渠运角色、不是只读角色）。
+ * 客户事项挡（待办、计划、联系人）照这个；沟通的改、删还要再是管理（能改沟通of / 能删沟通of）
+ */
+export function 负责人能改of(me: 谁, 负责人们: readonly (string | null | undefined)[], org: 组织 | null): boolean {
   if (!org || 只读角色(me, org)) return false;
   return 负责人们.includes(me.id) && 有业务角色(me, org, "sales", "sales_mgr", "channel_ops");
 }
 
-/** 纯函数：删 = 系统管理员，或负责人们里有自己（负责人们同 能改沟通of） */
+/** 纯函数：管理（销售管理 / 市场管理 / 总管理）。M-权限-09：这以下的人单条沟通不能改、不能删 */
+export function 管沟通的(me: 谁, org: 组织 | null): boolean {
+  return 有业务角色(me, org, "sales_mgr", "marketing_mgr", "director");
+}
+
+/** 纯函数：改 = 负责人且是管理。负责人们 = 这条沟通挂的项目负责人、客户负责人（在公海的不给）。企业版 org 没给 = 拒 */
+export function 能改沟通of(me: 谁, 负责人们: readonly (string | null | undefined)[], org: 组织 | null): boolean {
+  return 管沟通的(me, org) && 负责人能改of(me, 负责人们, org);
+}
+
+/** 纯函数：删 = 系统管理员，或负责人们里有自己且是管理（负责人们同 能改沟通of） */
 export function 能删沟通of(me: 谁, 负责人们: readonly (string | null | undefined)[], org: 组织 | null): boolean {
-  return [null, ...负责人们].some((x) => 能删除(me, org, x));
+  return 管沟通的(me, org) && [null, ...负责人们].some((x) => 能删除(me, org, x));
 }
 
 /** AI 卡片「撤销」、完成小框「撤销记一笔」能撤的窗口（P-沟通-01：本人撤销沟通去掉了，这两处单独判定） */
@@ -96,7 +111,7 @@ export async function 客户事项挡(me: 谁, customerId: string | null | undef
   if (c.pool) return "这位客户在公海里，先领取再改";
   if (能改客户(me, { salesOwnerId: c.salesOwnerId, 在公海: false }, org)) return null;
   const 项目 = await defaultClient.project.findMany({ where: { customerId, pooledAt: null }, select: { ownerId: true } });
-  return 能改沟通of(me, 项目.map((x) => x.ownerId), org) ? null : 不能改客户事项话;
+  return 负责人能改of(me, 项目.map((x) => x.ownerId), org) ? null : 不能改客户事项话;
 }
 
 /**
@@ -127,7 +142,7 @@ export async function 名下事项够不着(me: 谁): Promise<{ 进不了: strin
   if (!进不了.length) return { 进不了: [], 改不了: [] };
   const org = await 权限组织();
   // 同 客户事项挡：项目负责人要有销售一类角色、项目不在公海、已结束的也算
-  const 我的项目 = 能改沟通of(me, [me.id], org)
+  const 我的项目 = 负责人能改of(me, [me.id], org)
     ? await defaultClient.project.findMany({ where: { ownerId: me.id, pooledAt: null, customerId: { in: 进不了 } }, distinct: ["customerId"], select: { customerId: true } })
     : [];
   const 能改 = new Set(我的项目.map((x) => x.customerId));

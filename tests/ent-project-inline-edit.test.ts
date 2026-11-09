@@ -28,6 +28,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 版本冲突 } from "@/lib/edit-version";
 import { 文字格改动, 沟通正文改动, 钱格改动 } from "@/lib/project/inline-edit";
 import { 合并附件 } from "@/lib/attachment-rules";
+import { 不能改沟通话 } from "@/lib/enterprise/follow-perm";
 
 let 销售: string, 同事: string, 客户: string, 项目: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
@@ -174,6 +175,8 @@ describe("权限没有新路", () => {
 });
 
 describe("沟通正文", () => {
+  // M-权限-09 原口径（11-09）：管理以下（销售负责人本人也算）改不了沟通，这一组的负责人升成销售管理；销售负责人被拒见最后一条
+  beforeEach(async () => { await prisma.entMember.update({ where: { userId: 销售 }, data: { bizRole: "sales_mgr" } }); });
   const 记一条 = async () => {
     const r = await 记项目沟通Action(项目, { type: "PHONE", content: "电话聊了报价", occurredAt: "2026-10-20 10:00", 阶段: "线索", 明确回复: true, 下一步: "周五前发报价单" });
     expect(r.ok).toBe(true);
@@ -208,6 +211,15 @@ describe("沟通正文", () => {
     const 交 = 沟通正文改动({ type: f.type, occurredAt: f.occurredAt.toISOString() }, "同事改的");
     if ("error" in 交) throw new Error(交.error);
     expect((await 改项目沟通(项目, f.id, 交.改动)).ok).toBe(false);
+    expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).content).toBe("电话聊了报价");
+  });
+
+  it("负责人是销售（不是管理）：自己记的也改不了", async () => {
+    await prisma.entMember.update({ where: { userId: 销售 }, data: { bizRole: "sales" } });
+    const f = await 记一条();
+    const 交 = 沟通正文改动({ type: f.type, occurredAt: f.occurredAt.toISOString(), 版本: f.updatedAt.toISOString() }, "销售改的");
+    if ("error" in 交) throw new Error(交.error);
+    expect(await 改项目沟通(项目, f.id, 交.改动)).toEqual({ ok: false, error: 不能改沟通话 });
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).content).toBe("电话聊了报价");
   });
 });

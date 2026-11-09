@@ -23,12 +23,12 @@ import { 发满额提醒, 读满额提醒, 关掉满额提醒, type 满额提醒
 import { 分配通知, type 分配条, type 留下的活 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
-import { 超上限, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
-import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 超上限n, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
+import { 单项目客户跟着领, 领项目连带超上限 } from "@/lib/enterprise/pool-link";
 import { 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
-import { 分配带走的同事项目 } from "@/lib/carry-over-db";
+import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
@@ -252,8 +252,15 @@ async function 分项目给(
       const 配额 = await 配额of(input.toUserId, tx);
       if (满了(已分, 配额)) return { ok: false, 满: true, error: `他这个月已经分了 ${已分} 条，配额 ${配额} 条，分满了：找他的上级调配额，或者分给别人` };
     }
+    // 唯一例外（规划第五节问题 1）：客户负责人有市场角色且没有销售角色（兼任按销售算）、接手人是销售角色 = 市场第一次分给销售，算转客户。
+    // 其他项目层动作都不碰客户。下面改的只是项目，客户在这里先读，拦上限和后面转客户都用它
+    const 客户 = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+    const 市场转客户 = 算市场转客户(org, 客户, input.toUserId);
     if (!input.自动) {
-      const 超 = await 超上限(tx, 规则, input.toUserId, p);
+      // 市场转客户时客户上同事待分配的项目随客户一起进手（市场转一位），照接待分配一起数（M-公海-18）；
+      // 在公海里的、开关开着时还连带客户名下别的公海项目（领项目连带超上限）；这里只分线索阶段没结局的，手上这个一定算 1 个
+      const 另进 = 市场转客户 ? await 数进手的持有项目([p.customerId], input.toUserId, { 同事待分配: true, 除了: [p.id] }, tx) : 0;
+      const 超 = p.pooledAt ? await 领项目连带超上限(tx, 规则, input.toUserId, p, 另进) : await 超上限n(tx, 规则, input.toUserId, 1 + 另进);
       if (超) return { ok: false, 满: true, error: 超 };
     }
     // 分之前的负责人：在公海里的取历史负责人（企业版进公海清了负责人，lib/project/pool-owner.ts）
@@ -265,10 +272,7 @@ async function 分项目给(
       data: { ownerId: input.toUserId, pooledAt: null, awaitAssignAt: null },
     });
     if (改.count !== 1) return 已被分配;
-    // 唯一例外（规划第五节问题 1）：客户负责人有市场角色且没有销售角色（兼任按销售算）、接手人是销售角色 = 市场第一次分给销售，算转客户。
-    // 其他项目层动作都不碰客户。要在动待办之前判：这条路径上传来的勾不算数
-    const 客户 = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
-    const 市场转客户 = 算市场转客户(org, 客户, input.toUserId);
+    // 市场转客户要在动待办之前判（上面判好了）：这条路径上传来的勾不算数
     const 带待办 = 市场转客户 ? undefined : input.带待办;
     await 将回收提醒跟着换人(tx, p, 原, input.toUserId);
     const 几条 = await 换负责人待办(tx, p, 原, input.toUserId, 带待办);

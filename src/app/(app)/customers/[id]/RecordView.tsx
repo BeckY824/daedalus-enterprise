@@ -57,7 +57,7 @@ import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, �
 import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
-import { toggleTask, deleteTask, deleteFollowUp, restoreFollowUp, completePlan, saveFollowUp } from "./actions";
+import { toggleTask, deleteTask, deleteFollowUp, completePlan, saveFollowUp } from "./actions";
 import { useContactRemoval } from "./useContactRemoval";
 import { useTransferConfirm } from "../useTransferConfirm";
 import { usePoolReturnConfirm } from "../usePoolReturnConfirm";
@@ -1621,31 +1621,8 @@ export default function RecordView({
     router.refresh();
     if (!r.ok) return void message.error(r.error);
     history.remove(f.id);
-    // 给一次撤销（排查 D2）：AI 速记的跟进连原文一起删，原来删了就再也找不回来
-    const key = `follow-${f.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          已删除这条跟进
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              const u = await restoreFollowUp(r.快照);
-              if (!u.ok) return void message.error(u.error);
-              await history.refreshRow(f.id).catch(() => message.warning("跟进已恢复，请刷新页面核对最新内容"));
-              message.success("这条跟进回来了");
-              router.refresh();
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
-    });
+    // 删了不给撤销（11-09 删 restoreFollowUp）：企业版进回收站，总管理能恢复
+    message.success("已删除这条跟进");
   }
 
   async function confirmDeleteContract(r: ContractRow) {
