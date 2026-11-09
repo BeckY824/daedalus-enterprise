@@ -82,6 +82,8 @@ import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 客户在公海项目不单领提示, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 给客户建项目, 建项目带走的项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
+/** 11-09 起销售成员默认不能「指定」：这几条钉的是销售指定给同事以后怎么走，先按管理员把「指定」开给销售成员存一份 */
+const 指定开给销售成员 = () => setSetting("enterprise.assign_use", { "dict-assign-0": ["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"] });
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 
@@ -910,6 +912,7 @@ describe("新建时指定给销售走同一条 X-18（客户页、新客户向�
   }
 
   it("客户页·市场指定给市场管理自己 / 总管理给销售 / 销售给同事：客户负责人都不动（P-转-03）", async () => {
+    await 指定开给销售成员();
     const 市的 = await 客户(市场.id);
     expect(await 以(市场, () => 页建(市的, { 分配方式: 0, ownerId: 市场.id }))).toMatchObject({ ok: true });
     expect(await 客户负责人(市的)).toBe(市场.id);
@@ -939,6 +942,7 @@ describe("新建时指定给销售走同一条 X-18（客户页、新客户向�
   });
 
   it("新客户向导：市场指定给销售，客户归销售并留一行换负责人记录；销售 / 总管理指定给别人，客户留在建的人名下", async () => {
+    await 指定开给销售成员();
     const r市 = await 以(市场, () => 向导({ 分配方式: 0, ownerId: 甲.id }));
     expect(r市).toMatchObject({ ok: true, 转走: true });
     if (!r市.ok) return;

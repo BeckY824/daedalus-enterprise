@@ -169,6 +169,8 @@ describe("A① 项目层动作只改项目负责人，客户负责人不动", ()
   it("A① 矩阵·项目分配：销售把自己名下的线索向导自动分配给同事，客户负责人不变", async () => {
     const c = await 客户(甲.id);
     const p = await 项目(c, 甲.id);
+    // 11-09 起销售默认不能「自动」（只按建议留个人自持 / 暂不分配）：这里测的是客户负责人不动，先把「自动」开给销售
+    await setSetting("enterprise.assign_use", { "dict-assign-1": ["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"] });
     expect(await 以(甲, () => 向导自动分配(p))).toMatchObject({ ok: true });
     expect((await 项目of(p)).ownerId).not.toBe(甲.id);
     expect(await 客户负责人(c)).toBe(甲.id);

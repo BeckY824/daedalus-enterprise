@@ -88,6 +88,8 @@ describe("新线索卡：分配方式 × 角色", () => {
   });
 
   it("销售 / 总管理指定给别人：负责人 = 选的那位销售，客户留在建的人名下（P-转-03，只有市场首次分给销售才转）", async () => {
+    // 11-09 起销售默认不能「指定」（只按建议留个人自持 / 暂不分配）：这里测的是客户归属，先把「指定」开给销售
+    await setSetting("enterprise.assign_use", { "dict-assign-0": ["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"] });
     当(乙);
     expect(await applyProposal(卡({ 分配方式: 0, ownerId: 丙.id, 业务线: "外贸" }) as never)).toMatchObject({ ok: true });
     const p = await 唯一项目();
