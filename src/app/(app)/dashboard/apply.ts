@@ -17,6 +17,7 @@ import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 卡片刚记的能撤, 卡片撤销放行, 卡片撤销过时话 } from "@/lib/enterprise/follow-perm";
 import { 是业务线 } from "@/lib/enterprise/assign-line";
 import { 要下一步时间, 联系人地址上限 } from "@/lib/project/wizard";
 import { 客户在推项目 } from "@/lib/project/active";
@@ -521,10 +522,12 @@ export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok
 
   if (u.kind === "add_followup") {
     // 只删这位客户名下的那一条：凭据里的 id 对不上客户就不动
-    const f = await prisma.followUp.findFirst({ where: { id: String(u.id), customerId: u.customerId }, select: { id: true } });
+    const f = await prisma.followUp.findFirst({ where: { id: String(u.id), customerId: u.customerId }, select: { id: true, ownerId: true, createdAt: true } });
     if (!f) return { ok: false, error: "那条跟进已经不在了，可能已被删掉" };
+    // 企业版 P-沟通-01（11-09）：本人撤销沟通去掉了，AI 卡片撤销单独判定——本人记的、10 分钟内；放行只给这一条
+    if (企业版() && !卡片刚记的能撤(me, f)) return { ok: false, error: 卡片撤销过时话 };
     // 企业版（P9）删跟进是软删、进回收站（10-29 起撤销也一样，不再真删）：点错了撤销，30 天内老板还能在回收站恢复
-    const 删 = await deleteFollowUp(f.id, u.customerId);
+    const 删 = await 卡片撤销放行(f.id, () => deleteFollowUp(f.id, u.customerId));
     if (!删.ok) return 删;
   } else if (u.kind === "set_status" && (u.field === "followStatus" || u.field === "decisionStatus")) {
     /*

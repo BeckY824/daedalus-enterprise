@@ -20,8 +20,7 @@ import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
-import { 撤销拦 } from "@/lib/enterprise/follow-undo";
+import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
@@ -283,8 +282,8 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 删之前先取内容：删完这条记录就无从还原了。整条连 AI 速记的原文一起留着，给撤销用（排查 D2）
     const 待删 = await prisma.followUp.findUnique({ where: { id }, include: { source: true } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
-    // 企业版 V3.5.1：负责人本人或系统管理员能删沟通（软删进回收站）；本人刚记的（AI 卡片撤销）例外
-    if (!刚记的能撤(me, 待删) && !(await 能删沟通(me, { customerId: 待删.customerId, id }))) return { ok: false as const, error: 不能删沟通话 };
+    // 企业版 V3.5.1：负责人本人或系统管理员能删沟通（软删进回收站）。本人刚记的不再例外（P-沟通-01），只有 AI 卡片撤销那一条放行
+    if (!(在卡片撤销里(id) && 卡片刚记的能撤(me, 待删)) && !(await 能删沟通(me, { customerId: 待删.customerId, id }))) return { ok: false as const, error: 不能删沟通话 };
     // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（撤销 / 恢复时按跟进补回来）
     if (软删开着()) await prisma.followUp.update({ where: { id }, data: { deletedAt: new Date() } });
     else await prisma.followUp.delete({ where: { id } });
@@ -320,32 +319,6 @@ export async function deleteFollowUp(id: string, customerId: string) {
   }
 }
 
-/**
- * A7-1（11-03）：刚记的沟通「撤销」——提示条上、时间线上本人 10 分钟内的那条都走这里。
- * 服务器再判一次（本人 + 服务器时间 10 分钟内），过了给一句说清楚的话；能撤就走 deleteFollowUp（软删进回收站 + 审计）。
- * 挂在项目上的连项目页一起刷。撤销不回退记这条时顺带推的项目节点（和删沟通一样）
- */
-export async function 撤销刚记的沟通(id: string) {
-  try {
-    const me = await requireUser();
-    if (typeof id !== "string" || !id) return { ok: false as const, error: "这条沟通的信息不完整，刷新看看" };
-    const f = await prisma.followUp.findUnique({ where: { id }, select: { customerId: true, ownerId: true, createdAt: true } });
-    if (!f) return { ok: false as const, error: "这条沟通已经不在了，刷新看看" };
-    const 拦 = 撤销拦(me, f);
-    if (拦) return { ok: false as const, error: 拦 };
-    const 挂 = await prisma.followUpProject.findUnique({ where: { followUpId: id }, select: { projectId: true } });
-    const r = await deleteFollowUp(id, f.customerId);
-    if (!r.ok) return r;
-    if (挂) {
-      revalidatePath("/projects");
-      revalidatePath(`/projects/${挂.projectId}`);
-    }
-    return { ok: true as const };
-  } catch (e) {
-    return 不在了(e);
-  }
-}
-
 export type 删掉的跟进 = {
   id: string; type: string; method?: string | null; initiator?: string | null; title: string; content: string; status: string; duration: number | null;
   occurredAt: string; dueAt: string | null; dueOn?: string | null; dueHasTime?: boolean | null; participants: string | null;
@@ -359,11 +332,11 @@ export type 删掉的跟进 = {
 export async function restoreFollowUp(快照: 删掉的跟进) {
   try {
     const me = await requireUser();
-    // 企业版：只认回收站里那一条（不照快照新建，快照是前端交上来的）；系统管理员、回收站副手能恢复，本人刚记的 10 分钟内能撤
+    // 企业版：只认回收站里那一条（不照快照新建，快照是前端交上来的）；系统管理员、回收站副手能恢复；本人刚记的（10 分钟内）删了能撤回
     if (企业版()) {
       const 行 = await 看已删(() => defaultClient.followUp.findUnique({ where: { id: 快照.id }, select: { ownerId: true, createdAt: true, deletedAt: true, customerId: true } }));
       if (!行 || 行.customerId !== 快照.customerId) return { ok: false as const, error: "这条跟进已经不在了，撤不回来" };
-      if (行.deletedAt && !刚记的能撤(me, 行) && !能恢复(me, await 权限组织())) return { ok: false as const, error: 只有总管理能恢复话 };
+      if (行.deletedAt && !卡片刚记的能撤(me, 行) && !能恢复(me, await 权限组织())) return { ok: false as const, error: 只有总管理能恢复话 };
     }
     if (await prisma.followUp.findUnique({ where: { id: 快照.id }, select: { id: true } })) return { ok: true as const };
     if (!(await prisma.customer.findUnique({ where: { id: 快照.customerId }, select: { id: true } }))) {
@@ -654,7 +627,7 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
       const audits: Parameters<typeof recordAudit>[0][] = [];
       const 跟进 = await tx.followUp.findFirst({ where: { id: input.跟进id, customerId: input.customerId }, select: { id: true, type: true, occurredAt: true, ownerId: true, createdAt: true } });
       // 企业版：只撤自己 10 分钟内刚记的那笔，别人的、早先的去时间线（删只给总管理）
-      if (跟进 && 企业版() && !刚记的能撤(user, 跟进)) return { ok: false as const, error: "只能撤销自己刚记的（10 分钟内），这条去时间线上处理" };
+      if (跟进 && 企业版() && !卡片刚记的能撤(user, 跟进)) return { ok: false as const, error: 卡片撤销过时话 };
       if (跟进) {
         // 11-01 卡点 B13：这条沟通上发过卡点的，卡点脱开照旧留着；老库脱不开就不撤
         if ((await 卡点脱离沟通(tx, [跟进.id])).size) return { ok: false as const, error: "这条跟进上已经发过卡点，撤不回来了，去时间线上删" };

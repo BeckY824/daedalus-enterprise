@@ -7,7 +7,7 @@
  *   - 记项目沟通Action 带卡点：生成的卡点挂在这条沟通上；暂无 + 空描述一个卡点都不建；客户页带的标题 / 状态 / 时长 / 参与人 / 联系人一次存好
  *   - 附件：?followUpId= 记这条的本人能传截图、录音（m4a 没类型按扩展名认），别的文件 415；同事传 403；
  *     删只有总管理员、经理能删，普通成员 403 附件原样；没挂项目的沟通、项目模式关着 404；沟通进回收站附件不当孤儿清
- *   - 权限：普通成员改沟通被拒、删老的沟通被拒（原样还在）；本人刚记的 10 分钟内能撤；
+ *   - 权限：普通成员改沟通被拒、删老的沟通被拒（原样还在）；本人刚记的也删不了（P-沟通-01，11-09），AI 卡片撤销照常；
  *     经理（账号主管 / 组织里销售管理）能改能删，删了是软删、老板回收站里看得到
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -32,8 +32,9 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 记项目沟通Action, 改项目沟通, 删项目沟通 } from "@/app/(app)/projects/actions";
 import { deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { undoProposal } from "@/app/(app)/dashboard/apply";
 import { 沟通卡点, 沟通卡点占位描述, 默认卡点默认 } from "@/lib/project/blocker-rules";
-import { 能改沟通of, 能删沟通of, 能改这条沟通, 能删沟通, 刚记的能撤, 不能改沟通话, 不能删沟通话 } from "@/lib/enterprise/follow-perm";
+import { 能改沟通of, 能删沟通of, 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话 } from "@/lib/enterprise/follow-perm";
 import { 建组织 } from "@/lib/enterprise/org-core";
 import { 回收站列表 } from "@/lib/enterprise/soft-delete";
 import { 清孤儿 } from "@/lib/attachments";
@@ -58,7 +59,7 @@ const 记一条 = async (x: Record<string, unknown> = {}, 卡点?: Parameters<ty
   if (!r.ok) throw new Error(r.error);
   return r;
 };
-/** 记下来超过撤销窗口了：本人也不能自己删 */
+/** 记下来超过 AI 卡片撤销窗口（10 分钟）了 */
 const 变老 = (id: string) => raw.followUp.update({ where: { id }, data: { createdAt: new Date(Date.now() - 60 * 60_000) } });
 
 const 字节 = (s: string) => new TextEncoder().encode(s) as Uint8Array<ArrayBuffer>;
@@ -259,15 +260,6 @@ describe("M-权限-09 谁能改删沟通", () => {
     expect(能删沟通of({ id: "市", role: "SALES" }, ["市"], org)).toBe(false);
   });
 
-  it("刚记的能撤：本人、10 分钟内；过了、别人的、没记人的都不行", () => {
-    const 现在 = new Date("2026-10-31T12:00:00Z");
-    const 前 = (分: number) => new Date(现在.getTime() - 分 * 60_000);
-    expect(刚记的能撤({ id: "我" }, { ownerId: "我", createdAt: 前(5) }, 现在)).toBe(true);
-    expect(刚记的能撤({ id: "我" }, { ownerId: "我", createdAt: 前(11) }, 现在)).toBe(false);
-    expect(刚记的能撤({ id: "我" }, { ownerId: "他", createdAt: 前(1) }, 现在)).toBe(false);
-    expect(刚记的能撤({ id: "我" }, { ownerId: null, createdAt: 前(1) }, 现在)).toBe(false);
-  });
-
   it("不是企业版：照旧谁都能改删（团队版的规矩不在这里管）", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await 能改这条沟通({ id: 销售, role: "SALES" }, { customerId: 客户 })).toBe(true);
@@ -289,10 +281,28 @@ describe("M-权限-09 谁能改删沟通", () => {
     expect((await raw.followUp.findUnique({ where: { id }, select: { deletedAt: true } }))?.deletedAt).toBeInstanceOf(Date);
   });
 
-  it("本人刚记的（AI 卡片撤销、记错马上撤）能删，照样软删", async () => {
-    const { followUpId } = await 记一条();
-    expect(await deleteFollowUp(followUpId!, 客户)).toMatchObject({ ok: true });
-    expect((await raw.followUp.findUnique({ where: { id: followUpId! }, select: { deletedAt: true } }))?.deletedAt).toBeInstanceOf(Date);
+  it("P-沟通-01：不是负责人的本人刚记的也删不了（本人撤销去掉了），原样还在", async () => {
+    const f = await prisma.followUp.create({ data: { customerId: 客户, ownerId: 同事, type: "PHONE", title: "", content: "同事刚记的", status: "已完成", occurredAt: new Date() } });
+    当(同事);
+    expect(await deleteFollowUp(f.id, 客户)).toEqual({ ok: false, error: 不能删沟通话 });
+    expect((await raw.followUp.findUnique({ where: { id: f.id }, select: { deletedAt: true } }))?.deletedAt).toBeNull();
+  });
+
+  it("P-沟通-01：AI 卡片撤销照常——本人 10 分钟内的能撤（软删）；别人的、过了 10 分钟的不撤", async () => {
+    const 新 = () => prisma.followUp.create({ data: { customerId: 客户, ownerId: 同事, type: "PHONE", title: "", content: "AI 记的", status: "已完成", occurredAt: new Date() } });
+    const 软删了 = async (id: string) => (await raw.followUp.findUnique({ where: { id }, select: { deletedAt: true } }))?.deletedAt instanceof Date;
+    const 一 = await 新();
+    当(同事);
+    expect(await undoProposal({ kind: "add_followup", id: 一.id, customerId: 客户 } as never)).toEqual({ ok: true });
+    expect(await 软删了(一.id)).toBe(true);
+    const 二 = await 新();
+    当(销管);
+    expect(await undoProposal({ kind: "add_followup", id: 二.id, customerId: 客户 } as never)).toMatchObject({ ok: false });
+    expect(await 软删了(二.id)).toBe(false);
+    当(同事);
+    await 变老(二.id);
+    expect(await undoProposal({ kind: "add_followup", id: 二.id, customerId: 客户 } as never)).toMatchObject({ ok: false, error: expect.stringContaining("10 分钟") });
+    expect(await 软删了(二.id)).toBe(false);
   });
 
   it("经理（账号主管）改不了；总管理改不了但删得了，删了是软删、老板回收站里看得到", async () => {

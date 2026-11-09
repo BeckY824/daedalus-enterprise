@@ -1142,7 +1142,8 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 本来就归他的不算「改动」，分开统计才对得上操作人看到的选中条数
   const already = await prisma.customer.count({ where: { id: { in: ids }, salesOwnerId } });
   // 企业版「交接中」：转给别人的先不换负责人，等接手人确认（转给自己 = 自己就是接手人，不用确认）
-  if (await 转让走交接(me, salesOwnerId)) return 发起转让交接(me, ids, salesOwnerId, already, reason);
+  // 市场成员的客户分给销售不走确认（P-转-17），当场转、只通知；一批里混着别人的客户就整批照旧确认
+  if ((await 转让走交接(me, salesOwnerId)) && !(await 都是市场转销售(ids, salesOwnerId))) return 发起转让交接(me, ids, salesOwnerId, already, reason);
   const 超 = await 接待分配超上限(ids, salesOwnerId);
   if (超) return { ok: false, error: 超 };
   await 钉住老签约();
@@ -1208,7 +1209,7 @@ async function 转让走交接(me: { id: string }, to: string): Promise<boolean>
 
 /**
  * 这批要换人的客户全在市场成员手里、接手人是销售（P-转-17）：不走确认，当场转、只通知。看客户负责人，不看谁点的。
- * 单条换负责人（编辑页、就地改）用；批量转让那条路 fix/pool-hint-notify-undo 里有同名同实现，合并时去重
+ * 批量转让（assignSalesOwner）和单条换负责人（编辑页 saveCustomer、就地改 patchCustomer）共用这一份
  */
 async function 都是市场转销售(ids: string[], 接手人: string): Promise<boolean> {
   const org = await 权限组织();

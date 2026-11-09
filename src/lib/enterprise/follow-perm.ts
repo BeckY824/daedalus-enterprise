@@ -2,7 +2,8 @@
  * 企业版沟通记录谁能改、谁能删（2026-10-31 M-权限-09，11-02 再定）：
  * - 改 = 负责人（11-02「负责人都可以对其中的内容进行编辑」）：这条沟通挂的项目的负责人，或客户的负责人；
  *   负责人要有销售 / 销售管理 / 渠运角色，项目、客户在公海里不算，管理员（admin）只读。上级、总管理只看、只转让（11-01），不改。
- * - 删 = 系统管理员，或负责人本人（V3.5.1，同 permissions.ts 能删除）；本人刚记的 撤销窗口分钟 以内能撤。删了照旧软删进回收站。
+ * - 删 = 系统管理员，或负责人本人（V3.5.1，同 permissions.ts 能删除）。删了照旧软删进回收站。
+ *   本人刚记的不再能自己撤（P-沟通-01，11-09）；只有 AI 卡片「撤销」、完成小框「撤销记一笔」按 卡片刚记的能撤 单独放行。
  * 账号是管理员 / 主管不算，只认业务角色。改这个口径只改这里。
  *
  * 不是企业版一律 true：团队版 / 桌面端还按原来的规矩（同事的客户只读那条）。
@@ -13,7 +14,7 @@ import { 能删除, 有业务角色, 只读角色, 只读角色话, 没设业务
 import { defaultClient, prisma } from "@/lib/prisma";
 import { 限定的我 } from "@/lib/team-scope";
 import { 看得到的客户 } from "@/lib/project/db";
-import { 撤销拦 } from "./follow-undo";
+import { 全进程上下文 } from "@/lib/process-als";
 
 export const 不能改沟通话 = "只有负责人能改沟通记录";
 export const 不能删沟通话 = "只有负责人本人或系统管理员能删沟通记录";
@@ -31,12 +32,26 @@ export function 能删沟通of(me: 谁, 负责人们: readonly (string | null | 
   return [null, ...负责人们].some((x) => 能删除(me, org, x));
 }
 
-/**
- * 刚记下的本人可以撤销（删）：AI 卡片确认后的「撤销」、记错了马上撤，都走 deleteFollowUp。
- * 只认本人记的、记下 撤销窗口分钟 以内的；过了这个时间就和别的沟通一样，负责人本人或系统管理员能删
+/** AI 卡片「撤销」、完成小框「撤销记一笔」能撤的窗口（P-沟通-01：本人撤销沟通去掉了，这两处单独判定） */
+export const 卡片撤销窗口分钟 = 10;
+export const 卡片撤销过时话 = `只能撤销自己刚记的（${卡片撤销窗口分钟} 分钟内），这条撤不了了`;
+
+/** 纯函数：AI 卡片撤销 / 撤销记一笔——本人记的、记下 卡片撤销窗口分钟 以内。普通删沟通不认它 */
+export function 卡片刚记的能撤(me: { id: string }, f: { ownerId: string | null; createdAt: Date }, now: Date = new Date()): boolean {
+  if (!f.ownerId || f.ownerId !== me.id) return false;
+  return now.getTime() - f.createdAt.getTime() <= 卡片撤销窗口分钟 * 60_000;
+}
+
+/*
+ * AI 卡片撤销走 deleteFollowUp（软删、审计、最近跟进重算都在里面），但 deleteFollowUp 是谁都能调的服务端动作，
+ * 不能凭「本人刚记的」放行（那就是去掉的本人撤销）。只有 undoProposal 在这里面调的那一条才放行；这个文件不是服务端动作文件，前端调不到
  */
-export function 刚记的能撤(me: { id: string }, f: { ownerId: string | null; createdAt: Date }, now: Date = new Date()): boolean {
-  return 撤销拦(me, f, now) === null;
+const 卡片撤销中 = 全进程上下文<string>("ai-card-undo");
+export function 卡片撤销放行<T>(followUpId: string, fn: () => Promise<T>): Promise<T> {
+  return 卡片撤销中.run(followUpId, fn);
+}
+export function 在卡片撤销里(followUpId: string): boolean {
+  return 卡片撤销中.getStore() === followUpId;
 }
 
 /** 这条沟通的负责人们：客户负责人（客户不在公海）+ 挂的项目的负责人（项目不在公海） */
