@@ -44,9 +44,10 @@ import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 不能改客户事项话, 没业务角色话 } from "@/lib/enterprise/follow-perm";
 import { 只读角色话 } from "@/lib/enterprise/permissions";
 import { 销售初判, 市场复核 } from "@/lib/project/lead-verify";
-import { 放进公海, 领取 } from "@/app/(app)/customers/pool-actions";
-import { 放回公海, 改项目 } from "@/lib/project/db";
-import { 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
+import { 放进公海, 领取, 撤销公海 } from "@/app/(app)/customers/pool-actions";
+import { 放回公海, 改项目, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
+import { 默认组织规则 } from "@/lib/project/org-rules";
+import { 客户在公海项目不单领提示, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 给客户建项目, 建项目带走的项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
 
@@ -1001,5 +1002,162 @@ describe("「我分出去的」显示随客户走的项目（标「随客户」�
     expect((await 项目of(p)).ownerId).toBe(乙.id);
     expect(await 行of(甲, p)).toBeUndefined();
     expect(await 行of(总管, p)).toBeUndefined();
+  });
+});
+
+describe("放回一个项目，只动这个项目的待办（P-公海-02，四审 A1）", () => {
+  /** 客户归甲，丙负责「一号」「二号」，名下待办三条 */
+  const 底子 = async () => {
+    const c = await 客户(甲.id);
+    const 一号 = await 项目(c, 丙.id, { name: "一号" });
+    const 二号 = await 项目(c, 丙.id, { name: "二号" });
+    return {
+      c, 一号, 二号,
+      一号的: await 待办(c, 丙.id, "跟进「一号」"),
+      二号的: await 待办(c, 丙.id, "跟进「二号」"),
+      别的事: await 待办(c, 丙.id, "别的事"),
+    };
+  };
+  const 开着的 = (id: string, ownerId: string, title: string) => expect(待办of(id)).resolves.toMatchObject({ ownerId, title, done: false, doneAt: null });
+  const 关着的 = (id: string, ownerId: string, title: string) => expect(待办of(id)).resolves.toMatchObject({ ownerId, title: `${title}${进公海关待办尾}`, done: true });
+
+  it("不是客户负责人、还管着别的项目：放回只关这个项目的，别的项目和没点名的留给他", async () => {
+    const { 一号, 一号的, 二号的, 别的事 } = await 底子();
+    expect(await 以(丙, () => 放回公海(丙, 一号))).toEqual({ ok: true });
+    await 关着的(一号的, 丙.id, "跟进「一号」");
+    await 开着的(二号的, 丙.id, "跟进「二号」");
+    await 开着的(别的事, 丙.id, "别的事");
+  });
+
+  it("接着领：领的人只带走这个项目的，留痕也只数这一条；「二号」还归丙", async () => {
+    const { 一号, 二号, 一号的, 二号的, 别的事 } = await 底子();
+    await 以(丙, () => 放回公海(丙, 一号));
+    expect(await 以(乙, () => 领取公海项目(乙, 一号, true))).toEqual({ ok: true });
+    await 开着的(一号的, 乙.id, "跟进「一号」");
+    await 开着的(二号的, 丙.id, "跟进「二号」");
+    await 开着的(别的事, 丙.id, "别的事");
+    expect((await 项目of(二号)).ownerId).toBe(丙.id);
+    const 痕 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 一号, kind: "pool-claim" } });
+    expect(痕.reason).toContain("带过来 1 条");
+  });
+
+  it("先后放回两个：各关各的；放最后一个才关没点名的，各自的领取人各带各的", async () => {
+    const { 一号, 二号, 一号的, 二号的, 别的事 } = await 底子();
+    await 以(丙, () => 放回公海(丙, 一号));
+    await 以(丙, () => 放回公海(丙, 二号));
+    await 关着的(二号的, 丙.id, "跟进「二号」");
+    await 关着的(别的事, 丙.id, "别的事");
+    await 以(乙, () => 领取公海项目(乙, 一号, true));
+    await 开着的(一号的, 乙.id, "跟进「一号」");
+    await 关着的(二号的, 丙.id, "跟进「二号」");
+    await 关着的(别的事, 丙.id, "别的事");
+    await 以(甲, () => 领取公海项目(甲, 二号, true));
+    await 开着的(二号的, 甲.id, "跟进「二号」");
+    await 开着的(别的事, 甲.id, "别的事");
+  });
+
+  it("超时回收一次收走两个（同一刻）：领一号的不带走点名二号的；二号的留给领二号的人", async () => {
+    const 今 = new Date("2026-10-26T10:00:00+08:00");
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
+    invalidateSettingsCache();
+    const { c, 一号, 二号, 一号的, 二号的 } = await 底子();
+    await prisma.project.updateMany({ where: { customerId: c }, data: { createdAt: new Date(今.getTime() - 10 * 86400_000) } });
+    expect(await 以(丙, () => 公海超时收回(丙, 今))).toBe(2);
+    await 关着的(一号的, 丙.id, "跟进「一号」");
+    await 关着的(二号的, 丙.id, "跟进「二号」");
+    await 以(乙, () => 领取公海项目(乙, 一号, true));
+    await 开着的(一号的, 乙.id, "跟进「一号」");
+    await 关着的(二号的, 丙.id, "跟进「二号」");
+    await 以(甲, () => 领取公海项目(甲, 二号, true));
+    await 开着的(二号的, 甲.id, "跟进「二号」");
+  });
+
+  it("不是客户负责人、这是他最后一个项目：照旧全关，领的人全部接走", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 丙.id, { name: "一号" });
+    const 点名 = await 待办(c, 丙.id, "跟进「一号」");
+    const 没点名 = await 待办(c, 丙.id, "别的事");
+    await 以(丙, () => 放回公海(丙, p));
+    await 关着的(点名, 丙.id, "跟进「一号」");
+    await 关着的(没点名, 丙.id, "别的事");
+    await 以(乙, () => 领取公海项目(乙, p, true));
+    await 开着的(点名, 乙.id, "跟进「一号」");
+    await 开着的(没点名, 乙.id, "别的事");
+  });
+
+  it("判断只在放回时算：放回后他又接了别的项目，领的人带回的还是当时关掉的那一批", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 丙.id, { name: "一号" });
+    const 没点名 = await 待办(c, 丙.id, "别的事");
+    await 以(丙, () => 放回公海(丙, p));
+    await 项目(c, 丙.id, { name: "二号" });
+    await 以(乙, () => 领取公海项目(乙, p, true));
+    await 开着的(没点名, 乙.id, "别的事");
+  });
+
+  it("他别的项目已经结束了，不算还管着：照旧全关", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 丙.id, { name: "一号" });
+    await 项目(c, 丙.id, { name: "二号", result: "丢单" });
+    const 没点名 = await 待办(c, 丙.id, "别的事");
+    await 以(丙, () => 放回公海(丙, p));
+    await 关着的(没点名, 丙.id, "别的事");
+  });
+
+  it("客户负责人本人放回：只关点名这个项目的（没变）", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id, { name: "一号" });
+    await 项目(c, 甲.id, { name: "二号" });
+    const 点名 = await 待办(c, 甲.id, "跟进「一号」");
+    const 没点名 = await 待办(c, 甲.id, "别的事");
+    await 以(甲, () => 放回公海(甲, p));
+    await 关着的(点名, 甲.id, "跟进「一号」");
+    await 开着的(没点名, 甲.id, "别的事");
+  });
+
+  it("客户负责人最后一个项目放回（客户不跟进公海）：客户还归他，只关点名的（没变）", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id, { name: "一号" });
+    const 点名 = await 待办(c, 甲.id, "跟进「一号」");
+    const 没点名 = await 待办(c, 甲.id, "别的事");
+    await 以(甲, () => 放回公海(甲, p));
+    await 关着的(点名, 甲.id, "跟进「一号」");
+    await 开着的(没点名, 甲.id, "别的事");
+  });
+
+  describe("客户整包进公海（没变）", () => {
+    /** 甲两个在推项目 + 一个已结束的，名下四条待办，其中一条点名已结束的那个 */
+    const 整包 = async () => {
+      const c = await 客户(甲.id);
+      await 项目(c, 甲.id, { name: "一号" });
+      await 项目(c, 甲.id, { name: "二号" });
+      await 项目(c, 甲.id, { name: "结束的", result: "丢单" });
+      const 们 = [
+        [await 待办(c, 甲.id, "跟进「一号」"), "跟进「一号」"],
+        [await 待办(c, 甲.id, "跟进「二号」"), "跟进「二号」"],
+        [await 待办(c, 甲.id, "跟进「结束的」"), "跟进「结束的」"],
+        [await 待办(c, 甲.id, "别的事"), "别的事"],
+      ] as const;
+      const 放 = await 以(甲, () => 放进公海([c], "客户主动终止"));
+      expect(放).toMatchObject({ ok: true, updated: 1 });
+      for (const [id, title] of 们) await 关着的(id, 甲.id, title);
+      return { c, 们, 放 };
+    };
+
+    it("全关，且同一刻；领客户的人全部接走", async () => {
+      const { c, 们 } = await 整包();
+      const 刻 = await prisma.task.findMany({ where: { customerId: c, ownerId: 甲.id }, select: { doneAt: true } });
+      expect(new Set(刻.map((t) => t.doneAt?.getTime())).size).toBe(1);
+      expect(await 以(丙, () => 领取([c], true))).toMatchObject({ ok: true, updated: 1 });
+      for (const [id, title] of 们) await 开着的(id, 丙.id, title);
+    });
+
+    it("撤销：全部还给原负责人", async () => {
+      const { c, 们, 放 } = await 整包();
+      const 公海项目 = (放 as { 公海项目?: string[] }).公海项目;
+      expect(公海项目).toHaveLength(2);
+      expect(await 以(甲, () => 撤销公海("放进", [{ id: c, 值: 甲.id }], undefined, undefined, 公海项目))).toMatchObject({ ok: true, updated: 1 });
+      for (const [id, title] of 们) await 开着的(id, 甲.id, title);
+    });
   });
 });
