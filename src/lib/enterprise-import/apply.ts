@@ -30,7 +30,7 @@ import { 同号条件, 分机留存起 } from "../phone-dedupe";
 import { 看全部 } from "../team-scope";
 import { 记号码, 号码库类型, type 验好的号 } from "../enterprise/contact-dedupe";
 import { 验号码 } from "../enterprise/contact-format";
-import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
+import { 客户附加列, 客户新列, 联系人新列, 是归档导入 } from "./clean";
 import { 客户类型空着 } from "./mapping";
 import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
@@ -144,6 +144,7 @@ export async function 读现值(tx: Tx, e: 实体, id: string): Promise<值表 |
         addrCity: true,
         addrDistrict: true,
         assignWay: true,
+        archiveTier: true,
         channelId: true,
       },
     });
@@ -588,6 +589,8 @@ async function 写一条(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
   if (w.实体 === "customer") {
     const 定 = w.目标?.方式 === "同号" && (await tx.customer.findUnique({ where: { id: w.目标.本地ID }, select: { id: true } }));
     const 目标 = 定 ? w.目标!.本地ID : await 再认同号(tx, 现, String(w.值.phone ?? ""));
+    // 归档导入（M-导入-24）：试跑之后才冒出来的同号客户也不连、不补空，这一条不导
+    if (目标 && 是归档导入(现.m)) return "跳过";
     if (目标) return 补空(tx, 现, w, 目标);
   }
   return 新建(tx, 现, w);
