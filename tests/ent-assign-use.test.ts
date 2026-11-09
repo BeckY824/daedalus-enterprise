@@ -372,10 +372,10 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
   });
 
-  it("公海捞取：建好放进项目公海", async () => {
+  it("公海捞取：建好放进线索公海", async () => {
     当(市场);
     const r = await 向导({ 分配方式: 2 });
-    expect(r).toMatchObject({ ok: true, 转走: true, 提示: "已放进项目公海，等人捞取" });
+    expect(r).toMatchObject({ ok: true, 转走: true, 提示: "已放进线索公海，等人捞取" });
     if (r.ok) expect((await 项目of(r.projectId)).pooledAt).not.toBeNull();
   });
 

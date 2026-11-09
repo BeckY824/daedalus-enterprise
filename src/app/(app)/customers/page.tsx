@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { 我放出去的公海客户 } from "@/lib/owner-log-db";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import CustomersView from "./CustomersView";
@@ -257,7 +258,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       部门选项={部门选项}
       只读ids={只读ids}
       // 企业版「非原负责人均可领取」（10-26 定稿）：这一页公海里原负责人是我的，领取按钮灰着（接口也拦，pool-actions.ts 领取）
-      原负责人领不回ids={拦原负责人() ? rows.filter((r) => r.pool && r.salesOwnerId === me.id).map((r) => r.id) : []}
+      原负责人领不回ids={拦原负责人() ? await 我放出去的公海客户(rows.map((r) => ({ id: r.id, 在公海: !!r.pool, salesOwnerId: r.salesOwnerId })), me.id) : []}
       // 企业版批量转给别人时可选的转让原因（字典「转让原因」，10-27）；别的版本空 = 不问
       转让原因={{ 选项: 转让选项, 自己: me.id }}
       本月新增={sp.createdWithin === "本月"}

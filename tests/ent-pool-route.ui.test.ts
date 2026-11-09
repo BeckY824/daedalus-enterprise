@@ -72,7 +72,7 @@ it("多项目客户的公海走法：只读说明，没有二选一", async () =
   try {
     const 卡 = page.locator(".ant-card").filter({ hasText: "多项目客户的公海走法" });
     await 卡.waitFor();
-    expect(await 卡.innerText()).toContain("项目随客户整体转让");
+    expect(await 卡.innerText()).toContain("项目退回、超时只进线索公海，客户不动");
     expect(await 卡.locator("input[type=radio]").count()).toBe(0);
     expect(await page.locator("[aria-label='多项目客户公海']").count()).toBe(0);
     expect(await page.getByText("项目可转让").count()).toBe(0);

@@ -17,10 +17,10 @@ import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 带走并记下, 还项目, type 带走的 } from "@/lib/carry-over-db";
-import { 记换负责人, 是我刚换的, 撤销时限毫秒 } from "@/lib/owner-log-db";
+import { 记换负责人, 是我刚换的, 撤销时限毫秒, 公海前负责人, 公海客户原负责人是, 删被撤的换负责人记录, 还原进公海前负责人 } from "@/lib/owner-log-db";
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
-import { 领客户带走公海项目, 客户名下在推项目进公海 } from "@/lib/enterprise/pool-link";
+import { 领客户带走公海项目, 客户名下在推项目进公海, 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -111,7 +111,8 @@ const 交接中不能放提示 = (客户: string) => `这位${客户}正在转�
 
 /**
  * 放进公海：负责人本人或管理员才能放（别人的客户你放不进去——那等于替同事把人扔了）。可批量，
- * 不是自己的那几位跳过并说一声。原负责人不动，领的人来了才换。
+ * 不是自己的那几位跳过并说一声。企业版负责人清空、原负责人记历史（M-公海-03，pool-link.ts 客户进公海清负责人）；
+ * 别的版本原负责人不动，领的人来了才换。
  * 企业版要选退回原因（字典「回收原因」，字典里一项都没启用时不拦），存成「回收原因：X」，统一公海「入池原因」列读它（M-公海-09）；
  * 别的版本不问，照旧记「手动」
  * 企业版 P-公海-06（11-05）：客户负责人自己负责、还没结束的项目一起进项目公海（同项目放回公海：清负责人、记 pool-release、关待办）；
@@ -162,6 +163,8 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   if (!选.ok) return 选;
   if (企业版() && !选.值 && (await 可选项("recycle")).length) return { ok: false, error: 要选退回原因提示 };
   const reason = 选.值 ? `${回收原因前缀}${选.值}` : "手动";
+  // 负责人要清空，也算一次换负责人：先钉住老签约「签约那一刻是谁的」（事务外，同领取）
+  if (企业版()) await 钉住老签约();
   const 公海项目 = 企业版()
     ? await 查完再写((tx) => 放进公海连项目(tx, 能放, me.id, reason))
     : (await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason })) }), []);
@@ -182,13 +185,16 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
 }
 
 /**
- * 企业版放进公海（P-公海-06）：客户进客户公海，客户负责人自己负责、还没结束的线索 / 商机项目一起进项目公海（pool-link.ts 客户名下在推项目进公海），
- * 返回这些项目 id（撤销用）。同事的、订单阶段的上面已经整位拦掉；退回次数客户这边 +1（记退回），项目不再另加
+ * 企业版放进公海（P-公海-06）：客户进客户公海，客户负责人自己负责、还没结束的线索 / 商机项目一起进线索公海（pool-link.ts 客户名下在推项目进公海），
+ * 客户负责人清空、原负责人记历史（M-公海-03），返回这些项目 id（撤销用）。同事的、订单阶段的上面已经整位拦掉；退回次数客户这边 +1（记退回），项目不再另加
  */
 async function 放进公海连项目(tx: Prisma.TransactionClient, 们: { id: string; salesOwnerId: string }[], 操作人: string, reason: string): Promise<string[]> {
   return 看全部(async () => {
     await tx.customerPool.createMany({ data: 们.map((c) => ({ customerId: c.id, userId: 操作人, reason })) });
-    return 客户名下在推项目进公海(tx, 们, 操作人, reason === "手动" ? null : reason, new Date());
+    // 先项目后清负责人：项目那边靠客户原来的负责人认「他自己负责的」
+    const 项目 = await 客户名下在推项目进公海(tx, 们, 操作人, reason === "手动" ? null : reason, new Date());
+    await 客户进公海清负责人(tx, 们, 操作人);
+    return 项目;
   });
 }
 
@@ -229,10 +235,16 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: 没业务角色不能领话 };
   // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）
   if (企业版() && !能领公海(me, await 权限组织())) return { ok: false, error: 不能领公海话 };
-  // 企业版「非原负责人均可领取」（pool-rules.ts，10-26 定稿）：公海里负责人一直留着原来那位，是他的就不让他自己领回
+  // 企业版「非原负责人均可领取」（pool-rules.ts，10-26 定稿）：不让原负责人自己领回。
+  // 负责人还是他的 = 部署前进公海的老数据（存量脚本没跑到的空档也挡住），新进的认下面 公海客户原负责人是
   const 不能领 = 拦原负责人()
     ? new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: me.id, pool: { isNot: null } }, select: { id: true } }))).map((c) => c.id))
     : new Set<string>();
+  // M-公海-03 起进公海负责人清空：最近一次进公海时的负责人是我的，也领不回（只认最近一次，曾经负责过、后来转走的不拦）
+  if (拦原负责人()) {
+    const 我放的 = await 看全部(() => 公海客户原负责人是(prisma, [me.id], ids));
+    for (const id of 我放的.keys()) 不能领.add(id);
+  }
   // 客户挂在「没人负责」占位账号下（导入的原系统公海、离职转公海）：客户上看不出原负责人，
   // 按名下公海项目的历史负责人认，是我放回的就领不回（11-03 完成度 B4-3；领客户会把这些项目一起带走）
   if (拦原负责人()) {
@@ -348,7 +360,7 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
 }
 
 /**
- * 撤销放进公海：把这几位从公海里拿回来，负责人本来就没动过。
+ * 撤销放进公海：把这几位从公海里拿回来。企业版负责人按那条 pool-release 还回去、那条删掉（P-撤销-01）；别的版本负责人本来就没动过。
  * 撤销领取：负责人还给原来的人、再放回公海；**只还领取时带过来的那几条活**（带过来），
  * 领取之前就归我的计划、待办、商机不动（复查：原来按「我名下没做完的」整个转回去，把我自己的也送走了）。
  * 只撤自己刚才那一下：只认「现在还归我、不在公海」的那几位；原负责人已经停用的不还（还给停用的人等于丢进黑洞），留在我这儿。
@@ -356,6 +368,7 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
  * 撤销分配（老板）：同撤销领取，「我」换成分到的那位（给谁）——只认现在还归他、不在公海的，他名下带过去的活还回去
  * 负责人真换过的还要对上换负责人记录（2026-10-28）：最近一条得是我把他从原负责人换到现在这位的。
  * 不然业务员把自己的客户当「刚领的」撤，原负责人随手填个同事，就绕过交接把客户塞到同事名下
+ * 企业版被撤的那条换负责人记录删掉、不另记（P-撤销-01，操作日志 AuditLog 由界面按动作记）；进公海那条 pool-release 留着，它记着原负责人
  * 企业版跟着客户一起领 / 分过来的项目公海里的项目（公海项目）放回项目公海，认不认由 撤回项目公海 看留痕（10-30）
  */
 export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: { id: string; 值: string }[], 带过来?: 带走的, 给谁?: string, 公海项目?: string[]): Promise<公海结果> {
@@ -371,17 +384,24 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     const 时限内 = 企业版() ? { at: { gte: new Date(Date.now() - 撤销时限毫秒) } } : {};
     // 原负责人放进去之后自己看不到这位（回避，11-03），包 看全部 才撤得动；只认自己放进去的、时限内的，范围没放宽
     const 撤 = (await 看全部(() => prisma.customerPool.findMany({ where: { customerId: { in: ids }, userId: me.id, ...时限内 }, select: { customerId: true } }))).map((x) => x.customerId);
-    // 企业版：跟着一起进项目公海的那几个项目同一个事务里还给原负责人（P-公海-06）
-    const r = 企业版() && Array.isArray(公海项目) && 公海项目.length
-      ? await 查完再写(async (tx) => {
-          const 删 = await 看全部(() => tx.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } }));
-          await 撤回连带项目(tx, 撤, 公海项目, me.id);
+    // 企业版：负责人还回去（P-撤销-01）；跟着一起进线索公海的那几个项目同一个事务里还给原负责人（P-公海-06）
+    if (企业版() && 撤.length) await 钉住老签约();
+    const r = 企业版()
+      ? await 查完再写((tx) => 看全部(async () => {
+          const 删 = await tx.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } });
+          if (Array.isArray(公海项目) && 公海项目.length) await 撤回连带项目(tx, 撤, 公海项目, me.id);
+          await 还原进公海前负责人(tx, 撤);
           return 删;
-        })
+        }))
       : await 看全部(() => prisma.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } }));
     if (r.count) {
       忘掉企业版范围();
       await 记退回(撤, -1);
+      await recordAudit({
+        user: me, action: "pool", entity: "Customer", entityId: 撤.length === 1 ? 撤[0] : null,
+        summary: `撤销了刚才的放进公海：${r.count} 位客户回到原负责人名下`,
+        detail: { ids: 撤 },
+      });
     }
     刷新(ids);
     return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0 };
@@ -406,15 +426,18 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       // 先放回公海、再把负责人还回去（团队范围同步：放回公海那一刻还归我，之后人人可写；反过来还完负责人我就写不了公海那一行）
       await tx.customerPool.create({ data: { customerId: x.id, userId: me.id, reason: "手动" } });
       // 历史负责人记在还负责人之前：业务员互看时，还完这位就是同事的客户，挂在下面新建会被挡
-      await 记换负责人(tx, [{ customerId: x.id, from: 现, to: x.值 }], me.id, "undo");
+      if (企业版()) await 删被撤的换负责人记录(tx, x.id, x.值, 现);
+      else await 记换负责人(tx, [{ customerId: x.id, from: 现, to: x.值 }], me.id, "undo");
       await tx.customer.update({ where: { id: x.id }, data: { salesOwnerId: x.值 } });
       await tx.customerClaim.deleteMany({ where: { customerId: x.id, userId: 现 } });
-      // 领取 / 分配时带过来的活还回去：还挂在领到的人名下、还没做完的才还
+      // 领取 / 分配时带过来的活还回去：还挂在领到的人名下、还没做完的才还。
+      // 还给谁：x.值 是占位账号时活本来挂在进公海前的负责人名下，按 pool-release 认；客户本身回占位账号
       if (带过来) {
-        await tx.followPlan.updateMany({ where: { id: { in: 带过来.计划 }, customerId: x.id, ownerId: 现, done: false }, data: { ownerId: x.值 } });
-        await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: x.id, ownerId: 现, done: false }, data: { ownerId: x.值 } });
-        await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: x.id, ownerId: 现, status: "OPEN" }, x.值);
-        await 还项目(tx, 带过来.项目, x.id, 现, x.值, me.id);
+        const 实际旧 = 企业版() ? await 公海前负责人(tx, x.id, x.值) : x.值;
+        await tx.followPlan.updateMany({ where: { id: { in: 带过来.计划 }, customerId: x.id, ownerId: 现, done: false }, data: { ownerId: 实际旧 } });
+        await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: x.id, ownerId: 现, done: false }, data: { ownerId: 实际旧 } });
+        await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: x.id, ownerId: 现, status: "OPEN" }, 实际旧);
+        await 还项目(tx, 带过来.项目, x.id, 现, 实际旧, me.id);
       }
       if (企业版() && Array.isArray(公海项目) && 公海项目.length) {
         // 包 看全部：客户刚放回公海，限定着查不到它下面的项目
@@ -423,6 +446,13 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
           for (const p of 们) await 撤回项目公海(tx, p.id, 现, me.id);
         });
       }
+    });
+  }
+  if (退.length) {
+    await recordAudit({
+      user: me, action: 动作 === "分配" ? "assign" : "claim", entity: "Customer", entityId: 退.length === 1 ? 退[0].id : null,
+      summary: `撤销了刚才的公海${动作 === "分配" ? "分配" : "领取"}：${退.length} 位客户放回公海`,
+      detail: { ids: 退.map((x) => x.id), 原负责人: 退.map((x) => ({ id: x.id, salesOwnerId: x.值 })) },
     });
   }
   刷新(ids);

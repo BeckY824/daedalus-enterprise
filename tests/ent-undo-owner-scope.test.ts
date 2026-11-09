@@ -93,7 +93,10 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 1 });
     expect(await 归谁(c.id)).toBe(小王.id);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: t.id } })).ownerId).toBe(小王.id);
-    expect(await 撤销记录数(c.id)).toBe(1);
+    // P-撤销-01：被撤的那条换负责人记录删掉，不另记一条；操作日志还在
+    expect(await 撤销记录数(c.id)).toBe(0);
+    expect(await prisma.customerOwnerLog.count({ where: { customerId: c.id } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { action: "assign", summary: { contains: "撤销了刚才的批量分配" } } })).toBe(1);
   });
 
   it("老板、业务主管撤自己刚才那一下照常", async () => {

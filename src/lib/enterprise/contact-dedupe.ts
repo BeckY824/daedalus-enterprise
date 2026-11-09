@@ -21,11 +21,13 @@
  * 「🔀请选择号码类型」两条是格式那一半的（contact-format.ts）
  */
 import type { Prisma } from "@/generated/prisma";
+import { 负责人显示名 } from "@/lib/pool";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 号键 } from "@/lib/phone";
 import { 号键SQL, 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件 } from "@/lib/email-dedupe";
 import { 看全部, 看得到, 限定的我, 只读错误, 现在的公海回避, type 谁 } from "@/lib/team-scope";
+import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 问同事 } from "@/lib/sync/dedupe-client";
 import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
 import { 号码归属地 } from "./phone-region";
@@ -159,7 +161,7 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
   const 挑 = await 首条撞的(db, ids);
   if (!挑) return { 状态: "首次录入", 提示: 查重提示.首次录入, 撞: null };
   const 看得见 = 看得到(挑, 读的我);
-  const 同事 = 挑.salesOwner?.name ?? "同事";
+  const 同事 = 负责人显示名(挑.salesOwner?.name ?? "同事");
   const 撞: 撞到的人 = {
     id: 看得见 ? 挑.id : null,
     name: 看得见 ? 挑.name : null,
@@ -181,6 +183,7 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
 async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | null }, 我: string): Promise<boolean> {
   if (!拦原负责人()) return false;
   if (挑.salesOwnerId === 我) return true;
+  if ((await 看全部(() => 公海客户原负责人是(db, [我], [挑.id]))).size) return true;
   const 避 = await 现在的公海回避(defaultClient);
   if (!避 || 避.本人 !== 我) return false;
   if (避.客户) return 避.客户.includes(挑.id);
@@ -346,7 +349,7 @@ export async function 联系人查重(
       name: 见 ? p.name : null,
       customerId: 见 ? p.customer.id : null,
       customerName: 见 ? p.customer.name : null,
-      同事: p.customer.salesOwner?.name ?? "同事",
+      同事: 负责人显示名(p.customer.salesOwner?.name ?? "同事"),
       kind: 号.kind,
       value: 号.value,
     };

@@ -71,7 +71,7 @@ export async function 建好再分(me: 我, 分配: 定好的分配, projectId: 
     const r = await 放回公海(me, projectId, null, { 分配放行: true });
     if (!r.ok) return { 提示: `项目先建在你名下，没放进公海：${r.error}`, 转走: false };
     刷新(projectId);
-    return { 提示: "已放进项目公海，等人捞取", 转走: true };
+    return { 提示: "已放进线索公海，等人捞取", 转走: true };
   }
   return null;
 }

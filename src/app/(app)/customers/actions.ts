@@ -1,6 +1,7 @@
 "use server";
 
 import { 新建只给自己 } from "@/lib/enterprise/import-perm";
+import { 负责人显示名 } from "@/lib/pool";
 import { 软删开着, 软删客户, 回收站保留天数, 删除挡 } from "@/lib/enterprise/soft-delete";
 import { businessDayjs } from "@/lib/business-clock";
 import { 转交商机 } from "@/lib/opportunity-activity";
@@ -41,7 +42,8 @@ import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
 import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
-import { 记换负责人, 是我刚换的 } from "@/lib/owner-log-db";
+import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
+import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读角色话, 是系统管理员 } from "@/lib/enterprise/permissions";
 import { 有同事在推的客户, 同事在推不能删话 } from "@/lib/enterprise/colleague-projects";
@@ -181,7 +183,7 @@ async function 撞号说法(依据: string, dup: 撞到的, 我: 谁 | null, 客
   const 找谁 = await 离职负责人找谁(dup.salesOwnerId);
   if (看得到(dup, 我)) return `${依据} 已存在（${dup.name}），请勿重复录入${找谁 ? `；${离职负责人说法(找谁)}` : ""}`;
   if (找谁) return `${依据} 已是${dup.name ? `${客户}「${dup.name}」` : `同事名下的${客户}`}，请勿重复录入；${离职负责人说法(找谁)}`;
-  return 同事撞号说法(依据, dup.salesOwner?.name ?? "同事", dup.name, 客户);
+  return 同事撞号说法(依据, 负责人显示名(dup.salesOwner?.name ?? "同事"), dup.name, 客户);
 }
 
 /** 按手机号查重。手机号唯一性最可靠，姓名可能重名。和保存那一步一样先规整：「138 0000 1111」就是 13800001111 */
@@ -206,7 +208,7 @@ export async function checkDuplicate(phone: string, excludeId?: string): Promise
     id: 看得见 ? hit.id : null,
     name: hit.name,
     school: 看得见 ? hit.school : null,
-    salesOwnerName: hit.salesOwner?.name ?? "同事",
+    salesOwnerName: 负责人显示名(hit.salesOwner?.name ?? "同事"),
     createdAt: 看得见 ? hit.createdAt.toISOString() : null,
     ...(找谁 ? { 负责人已离职找: 找谁 } : {}),
   };
@@ -1210,12 +1212,19 @@ export async function 撤销改负责人(原值: { id: string; 值: string }[], 
       // 条件里再带一次新负责人：查完到这里之间被人改走了就不动
       const r = await tx.customer.updateMany({ where: { id: x.id, salesOwnerId: 新负责人 }, data: { salesOwnerId: x.值 } });
       if (!r.count) return false;
-      await 记换负责人(tx, [{ customerId: x.id, from: 新负责人, to: x.值 }], me.id, "undo");
+      // 企业版被撤的那条记录删掉、不另记（P-撤销-01），操作日志照记（下面 recordAudit）
+      if (企业版()) await 删被撤的换负责人记录(tx, x.id, x.值, 新负责人);
+      else await 记换负责人(tx, [{ customerId: x.id, from: 新负责人, to: x.值 }], me.id, "undo");
       if (带过来) {
         await tx.followPlan.updateMany({ where: { id: { in: 带过来.计划 }, customerId: x.id, ownerId: 新负责人, done: false }, data: { ownerId: x.值 } });
         await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: x.id, ownerId: 新负责人, done: false }, data: { ownerId: x.值 } });
         await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: x.id, ownerId: 新负责人, status: "OPEN" }, x.值);
         await 还项目(tx, 带过来.项目, x.id, 新负责人, x.值, me.id);
+        // 转客户时一起从线索公海带过来的（P-转-07）：放回线索公海
+        if (企业版()) {
+          const 们 = await tx.project.findMany({ where: { id: { in: (带过来.公海项目 ?? []).filter((p) => typeof p === "string") }, customerId: x.id }, select: { id: true } });
+          for (const p of 们) await 撤回项目公海(tx, p.id, 新负责人, me.id);
+        }
       }
       return true;
     }));

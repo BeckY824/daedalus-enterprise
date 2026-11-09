@@ -92,7 +92,7 @@ describe("市场管理分配别人名下的线索（范围限定开着）", () =
     expect(await 项目归(p)).toBe(市场);
   });
 
-  it("市场建档的线索分出去：客户只这一个项目就跟着走；还有别的项目就不动（A3-3）", async () => {
+  it("市场建档的线索分给销售：客户整体交给销售，不管名下几个项目（11-09 落地规划第五节问题 1，取代 A3-3 的「还有别的项目就不动」）", async () => {
     const 单个 = await 线索项目(市场);
     expect(await 市场分({ projectId: 单个.p, toUserId: 小王 })).toEqual({ ok: true });
     expect(await 项目归(单个.p)).toBe(小王);
@@ -101,9 +101,10 @@ describe("市场管理分配别人名下的线索（范围限定开着）", () =
     expect(换负责人).toMatchObject({ fromOwnerId: 市场, toOwnerId: 小王 });
 
     const 多个 = await 线索项目(市场);
-    await prisma.project.create({ data: { name: "同客户另一个", customerId: 多个.c, ownerId: 市场, creatorId: 市场, phase: "线索" } });
+    const 另一个 = await prisma.project.create({ data: { name: "同客户另一个", customerId: 多个.c, ownerId: 市场, creatorId: 市场, phase: "线索" } });
     expect(await 市场分({ projectId: 多个.p, toUserId: 小王 })).toEqual({ ok: true });
     expect(await 项目归(多个.p)).toBe(小王);
-    expect(await 客户归(多个.c)).toBe(市场);
+    expect(await 客户归(多个.c)).toBe(小王);
+    expect(await 项目归(另一个.id)).toBe(小王);
   });
 });

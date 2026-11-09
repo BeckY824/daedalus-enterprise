@@ -74,16 +74,16 @@ describe("每条换负责人的路都留记录", () => {
     expect(await 记录of(c.id)).toMatchObject([{ userId: 甲, fromOwnerId: 乙, toOwnerId: 丙, kind: "assign" }]);
   });
 
-  it("撤销批量分配：再记一行 undo，从新负责人还回原负责人", async () => {
+  it("撤销批量分配：负责人还回原负责人，被撤的那条记录删掉、不另记（P-撤销-01）", async () => {
     const c = await 客户("乙的", 乙);
     const r = await assignSalesOwner([c.id], 丙);
     if (!r.ok) throw new Error("没分成");
     await 撤销改负责人(r.原值!, 丙, r.带过来);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(乙);
-    expect((await 记录of(c.id)).map((x) => [x.kind, x.fromOwnerId, x.toOwnerId])).toEqual([["assign", 乙, 丙], ["undo", 丙, 乙]]);
+    expect((await 记录of(c.id)).map((x) => [x.kind, x.fromOwnerId, x.toOwnerId])).toEqual([]);
   });
 
-  it("公海领取 claim、撤销领取 undo（操作人是领的人）", async () => {
+  it("公海领取记 claim（操作人是领的人）；撤销领取删掉这条、不另记（P-撤销-01）", async () => {
     const c = await 客户("乙放的", 乙);
     await 放公海(c.id, 乙);
     mocks.user = { ...mocks.user, id: 丙, role: "SALES" };
@@ -91,7 +91,7 @@ describe("每条换负责人的路都留记录", () => {
     if (!r.ok) throw new Error(r.error);
     expect(await 记录of(c.id)).toMatchObject([{ userId: 丙, fromOwnerId: 乙, toOwnerId: 丙, kind: "claim" }]);
     await 撤销公海("领取", r.原负责人!, r.带过来);
-    expect((await 记录of(c.id)).map((x) => [x.kind, x.userId, x.fromOwnerId, x.toOwnerId])).toEqual([["claim", 丙, 乙, 丙], ["undo", 丙, 丙, 乙]]);
+    expect((await 记录of(c.id)).map((x) => [x.kind, x.userId, x.fromOwnerId, x.toOwnerId])).toEqual([]);
   });
 
   it("老板分配公海：记 pool-assign，操作人是老板", async () => {
@@ -144,7 +144,7 @@ describe("历史负责人", () => {
 });
 
 describe("转之前先列出会一起转走的项目", () => {
-  it("数出来的 = 真转走的：只带原负责人自己负责的；新负责人本来负责的、本来就归他的客户、公海里的都不算", async () => {
+  it("数出来的 = 真转走的（P-转-07）：名下全部，同事负责的、线索公海里的写明；新负责人本来负责的、本来就归他的客户不算", async () => {
     const c = await 客户("乙的", 乙);
     const 本来 = await 客户("丙的", 丙);
     await 项目("乙负责", 乙, c.id);
@@ -154,43 +154,44 @@ describe("转之前先列出会一起转走的项目", () => {
     await 项目("丙客户上的", 乙, 本来.id);
 
     const 预 = await 转走项目预览of([c.id, 本来.id], 丙);
-    expect(预.项目数).toBe(1);
-    expect(预.项目.map((p) => p.name)).toEqual(["乙负责"]);
+    expect(预.项目数).toBe(3);
+    expect(预.项目.map((p) => p.name)).toEqual(["乙负责", "同事负责", "在公海"]);
     expect(预.项目[0].客户).toBe("乙的");
-    // P-转-07：同事负责的留在他名下，转之前列出来
-    expect(预.留下).toEqual({ 项目数: 1, 项目: [{ name: "同事负责", 客户: "乙的", 负责人: "甲" }] });
+    // P-转-07：同事负责的一起转走，转之前点名
+    expect(预.项目[1]).toEqual({ name: "同事负责", 客户: "乙的", 负责人: "甲" });
+    expect(预.项目[2]).toEqual({ name: "在公海", 客户: "乙的", 负责人: "线索公海" });
 
     const r = await assignSalesOwner([c.id, 本来.id], 丙);
     if (!r.ok) throw new Error("没分成");
     expect(r.带走?.项目).toBe(预.项目数);
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: 同事.id } })).ownerId).toBe(甲);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 同事.id } })).ownerId).toBe(丙);
   });
 
-  it("P-转-07：同事负责的项目（含已结束的）留在各自负责人名下；原负责人结束了的照样跟着走", async () => {
+  it("P-转-07：转客户带名下全部项目，同事负责的（含已结束的）、原负责人结束了的都跟着走", async () => {
     const c = await 客户("乙的", 乙);
     const 同事在推 = await 项目("同事在推", 甲, c.id);
     const 同事结束 = await prisma.project.update({ where: { id: (await 项目("同事赢单", 甲, c.id)).id }, data: { result: "赢单" } });
     const 自己结束 = await prisma.project.update({ where: { id: (await 项目("乙丢单", 乙, c.id)).id }, data: { result: "丢单" } });
 
     const 预 = await 转走项目预览of([c.id], 丙);
-    expect(预.项目数).toBe(1);
-    expect(预.留下?.项目数).toBe(2);
+    expect(预.项目数).toBe(3);
+    expect(预.项目.filter((x) => x.负责人 === "甲").length).toBe(2);
 
     const r = await assignSalesOwner([c.id], 丙);
     if (!r.ok) throw new Error("没分成");
     const 主 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).ownerId;
-    expect(await 主(同事在推.id)).toBe(甲);
-    expect(await 主(同事结束.id)).toBe(甲);
+    expect(await 主(同事在推.id)).toBe(丙);
+    expect(await 主(同事结束.id)).toBe(丙);
     expect(await 主(自己结束.id)).toBe(丙);
   });
 
-  it("P-转-07 单个改负责人（详情页）也只带原负责人的", async () => {
+  it("P-转-07 单个改负责人（详情页）也带名下全部", async () => {
     const c = await 客户("乙的", 乙);
     const 自己 = await 项目("乙负责", 乙, c.id);
     const 同事 = await 项目("同事负责", 甲, c.id);
     expect((await patchCustomer(c.id, "salesOwnerId", 丙)).ok).toBe(true);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 自己.id } })).ownerId).toBe(丙);
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: 同事.id } })).ownerId).toBe(甲);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 同事.id } })).ownerId).toBe(丙);
   });
 
   it("不传新负责人 = 转给自己（公海领取前问）", async () => {
@@ -205,18 +206,18 @@ describe("转之前先列出会一起转走的项目", () => {
     expect(转走项目说法({ 项目数: 0, 项目: [] })).toBeNull();
     expect(转走项目说法(null)).toBeNull();
     const 列 = Array.from({ length: 预览列几个 }, (_, i) => ({ name: `项目${i}`, 客户: "李总" }));
-    expect(转走项目说法({ 项目数: 预览列几个, 项目: 列 })).toEqual({ 标题: `会一起转走的 ${预览列几个} 个项目`, 行: 列.map((x) => `${x.name}（李总）`), 还有: "", 留下: null });
+    expect(转走项目说法({ 项目数: 预览列几个, 项目: 列 })).toEqual({ 标题: `会一起转走的 ${预览列几个} 个项目`, 行: 列.map((x) => `${x.name}（李总）`), 还有: "" });
     expect(转走项目说法({ 项目数: 12, 项目: 列 })?.还有).toBe("等共 12 个");
-    expect(转走项目说法({ 项目数: 1, 项目: [列[0]] })?.留下).toBeNull();
+    expect(转走项目说法({ 项目数: 1, 项目: [列[0]] })?.还有).toBe("");
   });
 
-  it("说法：留下的同事项目另列一段；一个都不转、只有留下的也弹", () => {
-    const 留下 = { 项目数: 9, 项目: Array.from({ length: 预览列几个 }, (_, i) => ({ name: `同事${i}`, 客户: "李总", 负责人: "甲" })) };
-    const 说 = 转走项目说法({ 项目数: 0, 项目: [], 留下 });
-    expect(说?.行).toEqual([]);
-    expect(说?.留下).toEqual({ 标题: "9 个项目留在各自负责人名下", 行: 留下.项目.map((x) => `${x.name}（李总 · 甲）`), 还有: "等共 9 个" });
-    expect(说?.标题).toBe("9 个项目留在各自负责人名下");
-    expect(转走项目说法({ 项目数: 2, 项目: [], 留下 })?.标题).toBe("会一起转走的 2 个项目");
+  it("说法：同事的、公海里的写明负责人（P-转-07）；一个都没有不弹", () => {
+    const 列 = Array.from({ length: 预览列几个 }, (_, i) => ({ name: `同事${i}`, 客户: "李总", 负责人: "甲" }));
+    const 说 = 转走项目说法({ 项目数: 9, 项目: 列 });
+    expect(说?.行).toEqual(列.map((x) => `${x.name}（李总 · 甲）`));
+    expect(说?.还有).toBe("等共 9 个");
+    expect(说?.标题).toBe("会一起转走的 9 个项目");
+    expect(转走项目说法({ 项目数: 0, 项目: [] })).toBeNull();
   });
 
   it("不是企业版：不问（0 个、不弹），转了照样记一行", async () => {

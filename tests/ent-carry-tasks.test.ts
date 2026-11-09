@@ -112,34 +112,35 @@ describe("转让（改项目 换负责人）", () => {
     expect(await 痕(p, "transfer")).toContain("原负责人没做完的待办没带，关掉 1 条");
   });
 
-  it("客户跟着项目转（11-04）：项目的待办和客户上的待办都归丙，客户负责人也是丙", async () => {
+  it("转项目客户不动（P-转-04）：点了项目名的待办归丙，客户上的待办和客户负责人还是乙", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c, "一号项目");
     const 这个 = await 待办(c, 乙.id, "「一号项目」该跟进了");
     const 客户上的 = await 待办(c, 乙.id, "回个电话");
     await 改项目(老板, p, { name: "一号项目", ownerId: 丙.id, amount: 0 }, true);
     expect((await 看(这个.id)).ownerId).toBe(丙.id);
-    expect((await 看(客户上的.id)).ownerId).toBe(丙.id);
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(丙.id);
+    expect((await 看(客户上的.id)).ownerId).toBe(乙.id);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(乙.id);
   });
 
-  it("转让一个项目（11-04）：客户跟着转，客户名下别的项目照旧归乙", async () => {
+  it("转让一个项目（P-转-04）：客户不动，客户名下别的项目照旧归乙", async () => {
     const c = await 客户(乙.id);
     const p1 = await 项目(乙.id, c, "一号项目");
     const p2 = await 项目(乙.id, c, "二号项目");
     await 改项目(老板, p1, { name: "一号项目", ownerId: 丙.id, amount: 0 }, true);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p1 } })).ownerId).toBe(丙.id);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p2 } })).ownerId).toBe(乙.id);
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(丙.id);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(乙.id);
   });
 
-  it("转让项目时客户在公海（11-04）：客户出公海，负责人是丙", async () => {
+  it("转让项目时客户在公海（P-转-04）：客户不出公海，客户负责人不变，项目归丙", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c, "一号项目");
     await prisma.customerPool.create({ data: { customerId: c } });
     await 改项目(老板, p, { name: "一号项目", ownerId: 丙.id, amount: 0 }, true);
-    expect(await prisma.customerPool.findUnique({ where: { customerId: c } })).toBeNull();
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(丙.id);
+    expect(await prisma.customerPool.findUnique({ where: { customerId: c } })).not.toBeNull();
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(乙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
   });
 
   it("原负责人没有待办：照样转，留痕写 0 条", async () => {

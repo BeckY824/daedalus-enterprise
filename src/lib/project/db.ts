@@ -32,8 +32,8 @@ import { 看全部, 只读身份中, 系统写 } from "../team-scope";
 import { FOLLOW_RECORD_STATUSES } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
-import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
-import { 单项目客户跟进公海, 单项目客户跟着领, 项目转让客户跟着转 } from "@/lib/enterprise/pool-link";
+import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
+import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
@@ -594,8 +594,6 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       const 几条 = await 换负责人待办(tx, p, 原, 新.ownerId, 带待办);
       await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条));
       await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
-      // 企业版：客户跟着项目一起转（11-04），在公海里的一起出公海
-      await 项目转让客户跟着转(tx, p.customerId, 新.ownerId, me.id, 带待办);
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
@@ -704,7 +702,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     // 企业版进公海清空负责人（pool-owner.ts），原负责人记在这行 pool-release 的 from 上
     await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
-    // 企业版：客户名下只有这一个项目，客户也一起进客户公海（pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
+    // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
     await 进公海关待办(tx, p, p.ownerId, 现在);
     // 企业版统一公海（P7，迁移 080）：客户累计主动退回 +1（超时回收、离职交接不走这里，不算）。裸 SQL 不顶 updatedAt
@@ -745,7 +743,7 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     }
     if (!p.pooledAt) return 领走了;
     if (!(await 在职(tx, me.id))) return { ok: false as const, error: "账号已停用" };
-    // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了（领项目会把客户一起带走）
+    // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了
     if (企业版()) {
       const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } }));
       if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要总管理先恢复" };
@@ -754,15 +752,17 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     // 原负责人 = 留痕里最后一次进公海前的负责人（企业版进公海清了 ownerId，pool-owner.ts）
     const 原 = (await 历史负责人(tx, p.id)) ?? (p.ownerId || null);
     if (me.id === 原 && !(企业版() && 公海规则.原负责人能领回)) return { ok: false as const, error: 企业版() ? 原负责人不能领回提示 : "自己放回公海的项目不能自己领回" };
-    // 企业版项目不单独领（10-31 晚定；无效客户、原负责人先说更具体的原因），只能随客户一起领（pool-actions 领取）或主管分配
+    // 规则关着时项目不单独领（无效客户、原负责人先说更具体的原因）；11-09 起开着（M-公海-06）
     if (拦单独领项目()) return { ok: false as const, error: 项目不能单独领提示 };
+    // 客户在客户公海里的，项目随整包（M-公海-06），要领客户
+    if (拦客户公海里的项目(!!(await 看全部(() => tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))))) return { ok: false as const, error: 客户在公海项目不单领提示 };
     const 超 = await 超上限(tx, 规则, me.id, p);
     if (超) return { ok: false as const, error: 超 };
     await tx.project.update({ where: { id: p.id }, data: { ownerId: me.id, pooledAt: null } });
     // 进公海时关掉的那批待办（C-06）：勾着重新打开给我
     const 几条 = await 换负责人待办(tx, p, 原, me.id, 带待办);
     await 记转让(tx, p, me.id, 原, me.id, "pool-claim", 待办痕(带待办, 几条));
-    // 企业版：客户在客户公海里、名下只有这一个项目，客户一起领过来（pool-link.ts）
+    // 企业版线索公海的项目单独领，客户负责人不变（M-公海-06；开关 领项目带走单项目客户 关着，pool-link.ts）
     await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带待办);
     return { ok: true as const };
   });
@@ -840,7 +840,9 @@ export async function 超时预览(规则: 组织规则, 今: Date = new Date())
  * me 只用来定团队模式下扫谁名下的；留痕、操作日志一律记在「系统」名下（QA #16）
  */
 /** 超时收回提醒的标题结尾。这条提醒是给原负责人的：客户跟着换人时不跟着转（carry-over-db 带走一位） */
-export const 收回提醒尾 = "已回到项目公海";
+export const 收回提醒尾 = "已回到线索公海";
+/** 改名前写进库的待办标题还是这个尾巴（只读着认，不再写） */
+export const 旧收回提醒尾 = "已回到项目公海";
 
 export async function 公海超时收回(me: { id: string; name: string }, 今: Date = new Date()): Promise<number> {
   // 总管理员切换视图（只读预览，M-权限-08）期间、管理员（admin，只读）打开页面时不扫：渲染时顺手写库会被拒
@@ -890,7 +892,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     忘掉企业版范围(); // 超时回到公海的也算他退的（pool-release 留痕），回避名单变了
     await recordAudit({
       user: 系统, action: "pool", entity: "Project",
-      summary: `${收了.length} 个项目超过进程处理时长没跟进，自动回到项目公海`,
+      summary: `${收了.length} 个项目超过进程处理时长没跟进，自动回到线索公海`,
       detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数, 外贸节点天数: 规则.超时回收.外贸节点天数 ?? {} },
     });
   }

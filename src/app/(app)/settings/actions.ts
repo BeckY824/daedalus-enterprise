@@ -395,7 +395,7 @@ export async function deactivateUser(id: string, transferToId: string, 方式: �
     summary: `停用成员「${被停?.name ?? id}」，转交给「${接手?.name ?? transferToId}」：` +
       `${转走了.客户.length} 位客户、${转走了.商机.length} 个进行中商机、${转走了.计划.length + 转走了.待办.length} 条没完成的计划和待办、` +
       `${转走了.线索.length} 条线索、${转走了.渠道.length} 个渠道` + (转走了.项目.length ? `、${转走了.项目.length} 个项目` : "") +
-      (方式 === "公海" ? `；${进公海} 位客户放回公海` + (转走了.进公海项目.length ? `、${转走了.进公海项目.length} 个项目放回项目公海` : "") : "") +
+      (方式 === "公海" ? `；${进公海} 位客户放回公海` + (转走了.进公海项目.length ? `、${转走了.进公海项目.length} 个项目放回线索公海` : "") : "") +
       "（历史业绩不动）",
     // 转交时详情和开关加入前一字不差（差分测试逐字段比）；只有放进公海才多记方式和进公海的清单
     detail: 方式 === "公海"
@@ -504,7 +504,7 @@ async function 发起离职交接(me: Awaited<ReturnType<typeof requireUser>>, i
         `${分.客户.length} 位客户、${分.商机.length} 个进行中商机、${分.计划.length + 分.待办.length} 条没完成的计划和待办、` +
         `${分.线索.length} 条线索、${分.渠道.length} 个渠道` + (分.项目.length ? `、${分.项目.length} 个项目` : "")
       : `停用成员「${被停?.name ?? id}」，名下没有要交给「${接手?.name ?? transferToId}」的，没发起交接`) +
-      (方式 === "公海" ? `；${进公海} 位客户已放回公海` + (分.进公海项目.length ? `、${分.进公海项目.length} 个项目已放回项目公海` : "") : ""),
+      (方式 === "公海" ? `；${进公海} 位客户已放回公海` + (分.进公海项目.length ? `、${分.进公海项目.length} 个项目已放回线索公海` : "") : ""),
     detail: { userId: id, transferToId, 方式, 交接, 交接中: !!交接, 进公海客户: 分.进公海客户, 进公海项目: 分.进公海项目 },
   });
 

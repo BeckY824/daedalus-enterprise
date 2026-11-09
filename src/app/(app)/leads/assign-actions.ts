@@ -14,7 +14,7 @@ import { 不在了 } from "@/lib/not-there";
 import { getSetting, setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 import { 读组织, type 组织 } from "@/lib/enterprise/org";
-import { 能改后台设置 } from "@/lib/enterprise/permissions";
+import { 能改后台设置, 是市场角色, 是销售角色 } from "@/lib/enterprise/permissions";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -25,6 +25,8 @@ import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 钉住老签约 } from "@/lib/contract-owner";
+import { 带走一位 } from "@/lib/carry-over-db";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
@@ -160,7 +162,7 @@ async function 分给(
   if (问题) return { ok: false, error: 问题 };
   // 分配方式（10-27，字典「分配方式」前两项的叫法）：事务外读好，记进分配记录和审计
   const way = await 分配方式叫法(input.自动 ? 1 : 0);
-  if (input.projectId !== undefined) return 分项目给(me, { ...input, projectId: input.projectId, way });
+  if (input.projectId !== undefined) return 分项目给(me, org, { ...input, projectId: input.projectId, way });
 
   // 走限定过的连接：「按组织架构看客户」开着时，看不到的线索当不在
   const lead = await prisma.lead.findFirst({ where: { id: input.leadId }, select: { id: true, name: true } });
@@ -213,10 +215,13 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
  * 带待办（C-06）：手动分才有，原负责人的待办按 lib/project/carry-tasks.ts 带过去或关掉；自动分配不传、不碰
  */
 async function 分项目给(
-  me: SessionUser, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean },
+  me: SessionUser, org: 组织, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean },
 ): Promise<分给结果> {
-  const p0 = await prisma.project.findFirst({ where: { id: input.projectId }, select: { id: true, name: true } });
+  const p0 = await prisma.project.findFirst({ where: { id: input.projectId }, select: { id: true, name: true, customerId: true } });
   if (!p0) return { ok: false, error: 项目不在 };
+  // 客户负责人是市场、接手的是销售：这一下算转客户（见事务里那段），换负责人之前钉住老签约（事务外，它用全局连接）
+  const 客户0 = await 看全部(() => prisma.customer.findUnique({ where: { id: p0.customerId }, select: { salesOwnerId: true } }));
+  if (客户0 && 是市场角色(org, 客户0.salesOwnerId) && 是销售角色(org, input.toUserId)) await 钉住老签约();
   const counted = 计不计数(input.kind, await getSetting<boolean>(企划线索计数key));
   // 规则在进事务前读好：事务占着库的唯一连接，事务里再读设置会等到超时
   const 规则 = await 生效组织规则();
@@ -253,16 +258,14 @@ async function 分项目给(
     const 几条 = await 换负责人待办(tx, p, 原, input.toUserId, input.带待办);
     await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", 接上待办痕(`分配方式：${input.way}`, 待办痕(input.带待办, 几条)));
     await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: input.toUserId }, new Date());
-    // 从公海里分出去：客户名下只有这一个项目的，客户跟着走（同领取）
+    // 只改项目，客户负责人不动（P-转-03、M-公海-06；开关 领项目带走单项目客户 关着）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, input.带待办);
-    // 不在公海：客户名下就这一个项目、客户还归原负责人（市场建档后分出去这种），客户也跟着走（11-03 A3-3：
-    // 客户留在原负责人名下，接手的人打不开项目，原负责人还看得到）。客户名下还有别的项目的不动。
-    // 只换客户负责人、记一笔；客户上的待办照「带不带待办」那条规矩走（C-06：只带标题点了项目名的）
-    else if (原 && 原 !== input.toUserId && (await tx.project.count({ where: { customerId: p.customerId } })) === 1) {
-      const 改客户 = await tx.customer.updateMany({ where: { id: p.customerId, salesOwnerId: 原 }, data: { salesOwnerId: input.toUserId } });
-      if (改客户.count === 1) {
-        await tx.customerOwnerLog.create({ data: { customerId: p.customerId, userId: me.id, fromOwnerId: 原, toOwnerId: input.toUserId, kind: "assign" } });
-      }
+    // 唯一例外（规划第五节问题 1）：客户负责人是市场角色、接手人是销售角色 = 市场第一次分给销售，算转客户，
+    // 客户连同名下全部项目、联系人交给销售（带走一位 kind=assign）。其他项目层动作都不碰客户。角色只认业务角色
+    const 客户 = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+    if (客户 && !客户.pool && 客户.salesOwnerId !== input.toUserId && 是市场角色(org, 客户.salesOwnerId) && 是销售角色(org, input.toUserId)) {
+      await tx.customer.update({ where: { id: p.customerId }, data: { salesOwnerId: input.toUserId } });
+      await 带走一位(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, "assign");
     }
     await tx.entLeadAssign.create({
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
@@ -375,7 +378,8 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
 }
 
 /**
- * 建档向导选了「自动分配」（A7，10-27）：项目刚建在我名下，按自动分配挑人转过去，客户跟着给接手的人（向导建的客户只有这一个项目）。
+ * 建档向导选了「自动分配」（A7，10-27）：项目刚建在我名下，按自动分配挑人转过去。只改项目，客户负责人不动（P-转-03）；
+ * 市场建档分给销售例外，算转客户（分项目给 里那段，X-18）。
  * 只认我自己是负责人、线索阶段、没进公海的项目。不查「能分配」（总管理 / 市场管理 / 销售管理）：向导里能不能自动分只看分配方式的「谁能用」
  */
 export async function 向导自动分配(projectId: string): Promise<自动分配结果> {
@@ -384,14 +388,9 @@ export async function 向导自动分配(projectId: string): Promise<自动分�
   try {
     const 方式挡 = await 挡分配方式(me, 1);
     if (方式挡) return { ok: false, error: 方式挡 };
-    const p = await prisma.project.findFirst({ where: { id: String(projectId ?? "") }, select: { ownerId: true, phase: true, pooledAt: true, customerId: true } });
+    const p = await prisma.project.findFirst({ where: { id: String(projectId ?? "") }, select: { ownerId: true, phase: true, pooledAt: true } });
     if (!p || p.ownerId !== me.id || p.phase !== "线索" || p.pooledAt) return { ok: false, error: "只能自动分配自己名下、还在线索阶段的项目" };
     const r = await 自动分给(me, await 读组织(), { projectId }, null, "营销");
-    // 客户跟着给接手的人（A7）：只在客户名下就这一个项目时跟（向导新建的客户都是这样）；
-    // 客户页给老客户加项目的，客户名下还有别的项目，客户不动
-    if (r.ok && (await prisma.project.count({ where: { customerId: p.customerId } })) === 1) {
-      await prisma.customer.updateMany({ where: { id: p.customerId, salesOwnerId: me.id }, data: { salesOwnerId: r.toUserId } });
-    }
     if (r.ok) await 分配通知(me, [{ projectId, toUserId: r.toUserId }], true);
     return r;
   } catch (e) {

@@ -1,4 +1,5 @@
 import { scheduleValue } from "@/lib/schedule-date";
+import { 负责人显示名 } from "@/lib/pool";
 import { prisma, defaultClient } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 import { dayjs } from "@/lib/utils";
@@ -329,7 +330,7 @@ export function 成客户行(r: 取到的行, 号: (p: string) => string) {
     channelOwnerId: r.channelOwnerId,
     channelOwnerName: r.channelOwner?.name ?? null,
     salesOwnerId: r.salesOwnerId,
-    salesOwnerName: r.salesOwner.name,
+    salesOwnerName: 负责人显示名(r.salesOwner.name),
     signedAmount: r.contracts.reduce((s, c) => s + 签约金额(c), 0),
     signedTotals: 签约合计(r.contracts),
     /** 在公海里：负责人那一格写「公海（原 X）」，行上能领取。null = 不在 */

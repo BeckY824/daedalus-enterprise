@@ -46,6 +46,11 @@ const 领公海角色: readonly 业务角色[] = ["sales", "sales_mgr", "directo
 const 角色们 = (org: 组织, id: string): readonly 业务角色[] => org.成员.get(id)?.角色们 ?? [];
 const 有 = (org: 组织, id: string, 们: readonly 业务角色[]) => 角色们(org, id).some((r) => 们.includes(r));
 
+/** 销售：销售、销售管理（市场分给销售算转客户时认这两个，只看业务角色） */
+const 销售角色: readonly 业务角色[] = ["sales", "sales_mgr"];
+export const 是市场角色 = (org: 组织, id: string): boolean => 有(org, id, 市场角色);
+export const 是销售角色 = (org: 组织, id: string): boolean => 有(org, id, 销售角色);
+
 /** 设了「只看某人」（V3.5.1 市管特例）：回那个人的 id；没设 null。企业版里才有 */
 export function 只看的人(org: 组织 | null, id: string): string | null {
   return (!老() && org?.只看某人?.get(id)) || null;

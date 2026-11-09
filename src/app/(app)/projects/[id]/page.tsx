@@ -22,7 +22,7 @@ import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
 import { 超时回收日, 超时起点, 超时理由, 系统, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
-import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
+import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
@@ -239,9 +239,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     能加组员: 能加组员(me, p, org, 已加入.includes(me.id)),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
     // 没设业务角色、只读管理员（11-03 D3-7 ④）：「领取」整个不摆，灰的也不摆
-    能领取: 公海 && 能领 && (企业 ? !原负责人领不回 && !拦单独领项目() : me.id !== 上一任),
+    能领取: 公海 && 能领 && (企业 ? !原负责人领不回 && !拦单独领项目() && !拦客户公海里的项目(!!p.customer.pool) : me.id !== 上一任),
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户
-    领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 拦单独领项目() ? 项目不能单独领提示 : null,
+    领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 拦单独领项目() ? 项目不能单独领提示 : 公海 && 拦客户公海里的项目(!!p.customer.pool) ? 客户在公海项目不单领提示 : null,
     进公海: 最近放回 ? { 方式: 认放回(最近放回.reason), 谁: 叫(最近放回.userId)! } : null,
     balanceSettled: p.balanceSettled, balanceSettledBy: 叫(p.balanceSettledById), balanceSettledAt: p.balanceSettledAt?.toISOString() ?? null,
     acceptancePassed: p.acceptancePassed, acceptancePassedBy: 叫(p.acceptancePassedById), acceptancePassedAt: p.acceptancePassedAt?.toISOString() ?? null,

@@ -20,6 +20,7 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
+import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 放进公海, 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 
 type 人 = { id: string; role: string };
@@ -35,6 +36,8 @@ const 客户 = (salesOwnerId: string) =>
   prisma.customer.create({ data: { name: `客户${++号}`, phone: `1390000${String(号).padStart(4, "0")}`, salesOwnerId } });
 const 归谁 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).salesOwnerId;
 const 在公海 = async (id: string) => (await prisma.customerPool.count({ where: { customerId: id } })) > 0;
+const 占位 = async () => (await prisma.user.findUniqueOrThrow({ where: { email: 无负责人占位邮箱 } })).id;
+const 原负责人记录 = async (customerId: string) => (await prisma.customerOwnerLog.findFirst({ where: { customerId, kind: "pool-release" }, orderBy: { at: "desc" } }))?.fromOwnerId;
 const 撤销记录数 = (customerId: string) => prisma.customerOwnerLog.count({ where: { customerId, kind: "undo" } });
 /** 把这位客户的换负责人记录往前挪 分钟 分钟（模拟「隔了一阵子才撤」） */
 const 记录挪到 = async (customerId: string, 分钟: number) => {
@@ -80,7 +83,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
     expect(await 撤销记录数(c.id)).toBe(0);
   });
 
-  it("真从公海领的照常撤：还给原负责人、放回公海", async () => {
+  it("真从公海领的照常撤：回到公海、负责人清空，原负责人记录还在（M-公海-03、P-撤销-01）", async () => {
     const c = await 客户(小李.id);
     当(小李);
     expect(await 放进公海([c.id], "客户主动终止")).toMatchObject({ ok: true, updated: 1 });
@@ -89,9 +92,10 @@ describe("公海撤销只撤自己刚才那一下", () => {
     if (!r.ok) throw new Error(r.error);
     expect(await 归谁(c.id)).toBe(小王.id);
     expect(await 撤销公海("领取", r.原负责人!, r.带过来)).toMatchObject({ ok: true, updated: 1 });
-    expect(await 归谁(c.id)).toBe(小李.id);
+    expect(await 归谁(c.id)).toBe(await 占位());
     expect(await 在公海(c.id)).toBe(true);
-    expect(await 撤销记录数(c.id)).toBe(1);
+    expect(await 原负责人记录(c.id)).toBe(小李.id);
+    expect(await 撤销记录数(c.id)).toBe(0);
   });
 
   it("老板撤自己的分配照常；另一位老板拿同样的数据撤不了", async () => {
@@ -106,8 +110,9 @@ describe("公海撤销只撤自己刚才那一下", () => {
     expect(await 归谁(c.id)).toBe(小王.id);
     当(老板);
     expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小王.id)).toMatchObject({ ok: true, updated: 1 });
-    expect(await 归谁(c.id)).toBe(小李.id);
+    expect(await 归谁(c.id)).toBe(await 占位());
     expect(await 在公海(c.id)).toBe(true);
+    expect(await 原负责人记录(c.id)).toBe(小李.id);
   });
 
   it("只认 30 分钟内的那一下：31 分钟前领的撤不了，不还、不进公海、不写撤销记录", async () => {

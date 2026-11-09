@@ -323,7 +323,7 @@ describe("客户页新建项目", () => {
 });
 
 describe("项目层转让（原有通知）", () => {
-  it("接手人收「转项目」一条，客户跟着转，不再多发「分给你」", async () => {
+  it("接手人收「转项目」一条，客户不动（P-转-04），不再多发「分给你」", async () => {
     const c = await 客户("转让客户", 运营);
     const p = await 建项目给(c, 运营);
     const r = await 编辑项目(p, { ownerId: 销售 });
@@ -332,6 +332,6 @@ describe("项目层转让（原有通知）", () => {
     const 转 = await prisma.entNotice.findMany({ where: { kind: "转项目" } });
     expect(转).toHaveLength(1);
     expect(转[0]).toMatchObject({ userId: 销售, link: `/projects/${p}` });
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(销售);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(运营);
   });
 });

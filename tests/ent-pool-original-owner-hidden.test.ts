@@ -1,7 +1,8 @@
 /**
  * 企业版「原负责人退到公海后就看不到」（11-03 用户定）和「没设业务角色不能领公海」：
  *   - 原负责人：客户列表、客户详情、项目列表、项目详情、公海页、关键词分页、页签数都没有这位客户和项目；客户下面的沟通也跟着
- *   - 两种认法都对：客户 salesOwnerId 还留着他（放进公海、跟项目进公海）；导入的占位负责人、项目 ownerId 空，认最后一条 pool-release 的 fromOwnerId
+ *   - 客户放进公海：客户和他的项目都回避；项目退回：只有项目回避，客户还归他（M-公海-02，11-09）
+ *   - 认法：认最后一条 pool-release 的 fromOwnerId；旧数据客户 salesOwnerId 还留着他的也认（部署空档）
  *   - 同事照常看得到才能领；上级、总管理不受影响；上级自己是原负责人也回避
  *   - 新负责人领走：原负责人还是看不到（仍是组员看得到项目）；只认最后一次放回
  *   - 规则「按组织看客户」关着（别人都不限定）：照样回避
@@ -94,6 +95,14 @@ async function 页签对得上(u: 人) {
   });
 }
 
+/** 客户级放进公海（客户和他自己的项目一起进）。项目退回不带客户了（M-公海-02），要看「整位客户回避」走这个 */
+async function 退客户(u: 人, c: string) {
+  当(u);
+  const r = await 以谁的身份(u.id, async () => 放进公海([c], (await 退回原因选项())[0]));
+  expect(r).toMatchObject({ ok: true, updated: 1 });
+  忘掉企业版范围();
+}
+
 const 开规则 = async () => {
   await raw.setting.upsert({ where: { key: 规则.按组织看客户.key }, update: { value: JSON.stringify(true) }, create: { key: 规则.按组织看客户.key, value: JSON.stringify(true) } });
   invalidateSettingsCache();
@@ -123,13 +132,26 @@ afterEach(() => {
 });
 
 describe("原负责人退到公海后看不到", () => {
-  it("退项目（客户跟着进公海）：原负责人哪都看不到；同事、上级、总管理照常", async () => {
+  it("退项目：客户不动（M-公海-02），原负责人看不到这个项目，客户和沟通还看得到；同事、上级、总管理能看到公海里的项目", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     const 沟通 = await raw.followUp.create({ data: { customerId: c, ownerId: 乙.id, type: "PHONE", title: "电话", content: "聊过", status: "已完成", occurredAt: new Date() } as never });
     当(乙);
     expect(await 以谁的身份(乙.id, () => 放回公海(乙, p))).toEqual({ ok: true });
     忘掉企业版范围();
+
+    expect(await 看(乙, c, p)).toEqual({ 客户列表: true, 客户详情: true, 项目列表: false, 项目公海: false, 项目详情: false, 公海页客户: false, 公海页项目: false, 搜索: false });
+    expect(await 以谁的身份(乙.id, () => prisma.followUp.findUnique({ where: { id: 沟通.id } }))).not.toBeNull();
+    for (const u of [丙, 经理, 老板]) {
+      expect(await 看(u, c, p), u.name).toMatchObject({ 项目公海: true, 项目详情: true, 公海页项目: true });
+    }
+  });
+
+  it("退客户（项目一起进公海）：原负责人哪都看不到；同事、上级、总管理照常", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    const 沟通 = await raw.followUp.create({ data: { customerId: c, ownerId: 乙.id, type: "PHONE", title: "电话", content: "聊过", status: "已完成", occurredAt: new Date() } as never });
+    await 退客户(乙, c);
 
     expect(await 看(乙, c, p)).toEqual(都看不到);
     expect(await 以谁的身份(乙.id, () => prisma.followUp.findUnique({ where: { id: 沟通.id } }))).toBeNull();
@@ -143,12 +165,12 @@ describe("原负责人退到公海后看不到", () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c, "能读到名字的项目");
     当(乙);
-    // 客户名下就这一个项目，客户跟着进了公海：action 带回 客户跟着，提示条据此说清（11-03 B4-2）
-    expect(await 以谁的身份(乙.id, () => 放回项目公海(p))).toEqual({ ok: true, 客户跟着: true });
+    // 客户不跟着进（M-公海-02）：action 不带 客户跟着
+    expect(await 以谁的身份(乙.id, () => 放回项目公海(p))).toEqual({ ok: true });
     const 记 = await raw.auditLog.findFirst({ where: { entityId: p, action: "update" }, orderBy: { at: "desc" } });
     expect(记?.summary).toContain("能读到名字的项目");
     // action 里忘掉过范围：不用等 10 秒缓存
-    expect(await 看(乙, c, p)).toEqual(都看不到);
+    expect(await 看(乙, c, p)).toMatchObject({ 客户详情: true, 项目列表: false, 项目公海: false, 项目详情: false, 公海页项目: false });
   });
 
   it("放回项目公海：客户归别人、没跟着进公海时不带 客户跟着（11-03 B4-2）", async () => {
@@ -186,20 +208,31 @@ describe("原负责人退到公海后看不到", () => {
   it("上级看下属退的照旧；上级自己退的自己也回避，他的上级不受影响", async () => {
     const c = await 客户(经理.id);
     const p = await 项目(经理.id, c);
-    当(经理);
-    await 以谁的身份(经理.id, () => 放回公海(经理, p));
-    忘掉企业版范围();
+    await 退客户(经理, c);
     expect(await 看(经理, c, p)).toEqual(都看不到);
     expect(await 看(老板, c, p)).toMatchObject({ 客户详情: true, 项目详情: true });
   });
 
-  it("新负责人领走：丙和丙的上级看得到；乙看不到，乙的上级也按组织看不到", async () => {
+  it("退项目、丙单独领走：丙和丙的上级看得到项目；客户还归乙，乙看得到客户、看不到项目", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     当(乙);
     await 以谁的身份(乙.id, () => 放回公海(乙, p));
     当(丙);
     expect(await 以谁的身份(丙.id, () => 领取公海项目(丙, p))).toEqual({ ok: true });
+    忘掉企业版范围();
+    expect(await 看(丙, c, p)).toMatchObject({ 项目详情: true });
+    expect(await 看(丁, c, p)).toMatchObject({ 项目详情: true });
+    expect(await 看(乙, c, p)).toMatchObject({ 客户详情: true, 项目详情: false });
+    expect((await raw.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(乙.id);
+  });
+
+  it("退客户、新负责人领走：丙和丙的上级看得到；乙看不到，乙的上级也按组织看不到", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await 退客户(乙, c);
+    当(丙);
+    expect(await 以谁的身份(丙.id, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
     忘掉企业版范围();
     expect(await 看(丙, c, p)).toMatchObject({ 客户详情: true, 项目详情: true });
     expect(await 看(丁, c, p)).toMatchObject({ 客户详情: true, 项目详情: true });
@@ -237,9 +270,7 @@ describe("原负责人退到公海后看不到", () => {
   it("写也挡：原负责人改不到退掉的客户和项目", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
-    当(乙);
-    await 以谁的身份(乙.id, () => 放回公海(乙, p));
-    忘掉企业版范围();
+    await 退客户(乙, c);
     await 以谁的身份(乙.id, async () => {
       expect((await prisma.customer.updateMany({ where: { id: c }, data: { name: "改一下" } })).count).toBe(0);
       expect((await prisma.project.updateMany({ where: { id: p }, data: { name: "改一下" } })).count).toBe(0);
@@ -265,9 +296,7 @@ describe("原负责人退到公海后看不到", () => {
     const 别人的 = await 客户(丙.id, "别人退的");
     const 别人的项目 = await 项目(丙.id, 别人的, "别人退的项目");
     await raw.customer.update({ where: { id: 别人的 }, data: { channelOwnerId: 乙.id } });
-    当(丙);
-    await 以谁的身份(丙.id, () => 放回公海(丙, 别人的项目));
-    忘掉企业版范围();
+    await 退客户(丙, 别人的);
     expect(await 看(乙, 自己的, 自己的项目)).toMatchObject({ 客户详情: true, 项目详情: true });
     expect(await 看(乙, 别人的, 别人的项目)).toMatchObject({ 客户详情: true, 项目详情: true, 公海页客户: true });
   });
@@ -275,9 +304,8 @@ describe("原负责人退到公海后看不到", () => {
   it("页签数 = 列表条数：原负责人、同事、上级、总管理、没业务角色，软删的也对得上", async () => {
     const 无角色 = await 造人("none@x", "无角色", "SALES", null);
     const a = await 客户(乙.id, "乙退的");
-    const ap = await 项目(乙.id, a);
-    当(乙);
-    await 以谁的身份(乙.id, () => 放回公海(乙, ap));
+    await 项目(乙.id, a);
+    await 退客户(乙, a);
     await 导入的(乙.id, "导入甲");
     await 导入的(丙.id, "导入乙");
     await 客户(乙.id, "乙自己的");
@@ -306,15 +334,13 @@ describe("原负责人退到公海后看不到", () => {
 
   it("负责人是他的线索挂在回避客户上也不出；没挂客户的、别的客户上的照常", async () => {
     const c = await 客户(乙.id);
-    const p = await 项目(乙.id, c);
+    await 项目(乙.id, c);
     const 别的 = await 客户(乙.id, "别的客户");
     const 挂回避 = await raw.lead.create({ data: { name: "挂回避", ownerId: 乙.id, customerId: c } });
     const 挂别的 = await raw.lead.create({ data: { name: "挂别的", ownerId: 乙.id, customerId: 别的 } });
     const 没挂 = await raw.lead.create({ data: { name: "没挂", ownerId: 乙.id } });
     const 乙看 = () => 以谁的身份(乙.id, () => prisma.lead.findMany({ select: { id: true } })).then((r) => r.map((x) => x.id));
-    当(乙);
-    await 以谁的身份(乙.id, () => 放回公海(乙, p));
-    忘掉企业版范围();
+    await 退客户(乙, c);
     当(乙);
     expect((await 乙看()).sort()).toEqual([挂别的.id, 没挂.id].sort());
     await raw.setting.deleteMany({ where: { key: 规则.按组织看客户.key } });
@@ -345,9 +371,7 @@ describe("规则「按组织看客户」关着", () => {
     const p = await 项目(乙.id, c);
     const 导 = await 导入的(乙.id);
     const 丙的 = await 客户(丙.id, "丙的客户");
-    当(乙);
-    await 以谁的身份(乙.id, () => 放回公海(乙, p));
-    忘掉企业版范围();
+    await 退客户(乙, c);
     expect(await 看(乙, c, p)).toEqual(都看不到);
     expect(await 看(乙, 导.c, 导.p)).toEqual(都看不到);
     当(乙);

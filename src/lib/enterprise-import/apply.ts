@@ -36,7 +36,8 @@ import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目, 无主入池理由, 无主项目进公海 } from "./project-target";
 import { 规, 写不进, type 值表, type 标量 } from "./values";
-import { 无负责人占位名, 无负责人占位邮箱 } from "../pool";
+import { 无负责人占位邮箱 } from "../pool";
+import { 无负责人占位Id } from "../no-owner-db";
 import { 同号标题, 同号只记备注 } from "../enterprise/same-number-collab";
 import { 公海无负责人 } from "../project/pool-owner";
 import { 线索建项目 } from "../project/from-lead";
@@ -298,18 +299,10 @@ export async function 摘联系人号(tx: Tx, contactId: string): Promise<void> 
 }
 
 /**
- * 没有负责人时挂的占位账号（11-02，常量和说明在 lib/pool.ts）：停用、不能登录，所以进不了 可任，也不会被候选名单选中。
- * 按邮箱认，没有就建，一个库只有一个。在事务里取、不存在现场上：预演会回滚，存下来下一条就连不上了
+ * 没有负责人时挂的占位账号（11-02，常量和说明在 lib/pool.ts，取 id 在 lib/no-owner-db.ts）：停用、不能登录，
+ * 所以进不了 可任，也不会被候选名单选中。在事务里取、不存在现场上：预演会回滚，存下来下一条就连不上了
  */
-export async function 无负责人占位Id(tx: Tx): Promise<string> {
-  const u = await tx.user.upsert({
-    where: { email: 无负责人占位邮箱 },
-    update: {},
-    create: { email: 无负责人占位邮箱, name: 无负责人占位名, password: "!不能登录", active: false },
-    select: { id: true },
-  });
-  return u.id;
-}
+export { 无负责人占位Id };
 
 const 是占位账号 = async (tx: Tx, id: string) =>
   (await tx.user.findUnique({ where: { email: 无负责人占位邮箱 }, select: { id: true } }))?.id === id;

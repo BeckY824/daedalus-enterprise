@@ -710,28 +710,43 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
   });
 
   it("手动分带待办（C-06）：勾着改给接手人，不勾关掉；自动分配不碰", async () => {
-    const 待办 = (title: string) => prisma.task.create({ data: { title, customerId: 客户, ownerId: 市场, dueOn: "2026-11-20" } });
+    // 客户和项目归一位销售（不是市场首次分给销售，那条见下一个用例）：只分项目，客户负责人不动（P-转-03）
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 两边 } });
+    const 待办 = (title: string) => prisma.task.create({ data: { title, customerId: 客户, ownerId: 两边, dueOn: "2026-11-20" } });
     const 看 = (id: string) => prisma.task.findUniqueOrThrow({ where: { id } });
-    // 客户归市场（原负责人）：只算标题点了项目名的。客户名下另有项目，分出去客户不跟着走（A3-3），一直归市场
-    await 建项目("占位");
-    const P = await 建项目("P");
+    当(老板, "ADMIN");
+    // 客户归原负责人：只算标题点了项目名的
+    await 建项目("占位", { ownerId: 两边 });
+    const P = await 建项目("P", { ownerId: 两边 });
     const 这个 = await 待办("「P」回电话");
     const 客户上的 = await 待办("回个电话");
     expect(await 分配线索({ projectId: P, toUserId: 内贸, 带待办: true })).toEqual({ ok: true });
     expect(await 看(这个.id)).toMatchObject({ ownerId: 内贸, done: false, title: "「P」回电话", dueOn: "2026-11-20" });
-    expect((await 看(客户上的.id)).ownerId).toBe(市场);
+    expect((await 看(客户上的.id)).ownerId).toBe(两边);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(两边);
     expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: P, kind: "transfer" } })).reason).toBe("分配方式：指定分配；原负责人没做完的待办带过来 1 条");
 
-    const Q = await 建项目("Q");
+    const Q = await 建项目("Q", { ownerId: 两边 });
     const 那个 = await 待办("「Q」回电话");
     expect(await 分配线索({ projectId: Q, toUserId: 内贸, 带待办: false })).toEqual({ ok: true });
-    expect(await 看(那个.id)).toMatchObject({ ownerId: 市场, done: true, title: expect.stringMatching(/^「Q」回电话（项目转给了别人/) });
+    expect(await 看(那个.id)).toMatchObject({ ownerId: 两边, done: true, title: expect.stringMatching(/^「Q」回电话（项目转给了别人/) });
     expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: Q, kind: "transfer" } })).reason).toBe("分配方式：指定分配；原负责人没做完的待办没带，关掉 1 条");
 
-    const R = await 建项目("R");
+    const R = await 建项目("R", { ownerId: 两边 });
     const 自动的 = await 待办("「R」回电话");
     expect(await 自动分配线索(R, { 项目: true })).toMatchObject({ ok: true });
-    expect(await 看(自动的.id)).toMatchObject({ ownerId: 市场, done: false });
+    expect(await 看(自动的.id)).toMatchObject({ ownerId: 两边, done: false });
+  });
+
+  it("客户归市场、首次分给销售：客户整体交过去，名下别的项目和客户上的活跟着客户走（第五节问题 1 + P-转-07）", async () => {
+    const 别的 = await 建项目("别的项目");
+    const P = await 建项目("P");
+    const 客户上的 = await prisma.task.create({ data: { title: "回个电话", customerId: 客户, ownerId: 市场, dueOn: "2026-11-20" } });
+    expect(await 分配线索({ projectId: P, toUserId: 内贸, 带待办: true })).toEqual({ ok: true });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(内贸);
+    expect((await 项目(P)).ownerId).toBe(内贸);
+    expect((await 项目(别的)).ownerId).toBe(内贸);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: 客户上的.id } })).ownerId).toBe(内贸);
   });
 
   it("转了商机的、线索流失的不分；已在他名下的不重复分", async () => {

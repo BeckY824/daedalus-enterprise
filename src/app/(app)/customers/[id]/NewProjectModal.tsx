@@ -319,8 +319,8 @@ export default function NewProjectModal({
         <Form.Item
           name="下一步时间"
           label="下一步时间"
-          rules={要下一步 ? [{ required: true, message: "请填下一步时间：到那天还没跟进，项目会自动回到项目公海" }] : []}
-          extra={要下一步 ? "到那天还没人跟进，项目会自动回到项目公海" : "选填：打算哪天再跟进，项目上会显示"}
+          rules={要下一步 ? [{ required: true, message: "请填下一步时间：到那天还没跟进，项目会自动回到线索公海" }] : []}
+          extra={要下一步 ? "到那天还没人跟进，项目会自动回到线索公海" : "选填：打算哪天再跟进，项目上会显示"}
         >
           <DatePicker style={{ width: "100%" }} disabledDate={(x) => x.isBefore(dayjs(), "day")} placeholder="选一天" />
         </Form.Item>

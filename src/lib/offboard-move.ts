@@ -4,6 +4,7 @@ import { 转项目 } from "@/lib/carry-over-db";
 import { 记换负责人 } from "@/lib/owner-log-db";
 import { 转让痕 } from "@/lib/project/db";
 import { 进公海清负责人, 公海无负责人 } from "@/lib/project/pool-owner";
+import { 客户名下在推项目进公海, 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
 import { 月份 } from "@/lib/enterprise/lead-assign";
 import { 停用进公海理由, 停用项目进公海理由, type 停用分拣结果 } from "@/lib/offboard-db";
 
@@ -24,7 +25,7 @@ export async function 离职转给接手人(
   记分配: boolean,
 ): Promise<string[]> {
   await tx.customer.updateMany({ where: { id: { in: 分.客户 } }, data: { salesOwnerId: 接手人 } });
-  // 历史负责人：每位转走的客户记一行「他 → 接手人」（D-36）；进公海的负责人不改，等领的时候再记
+  // 历史负责人：每位转走的客户记一行「他 → 接手人」（D-36）；进公海的另记，见 离职放进公海
   await 记换负责人(tx, 分.客户.map((customerId) => ({ customerId, from: id, to: 接手人 })), 操作人, "deactivate");
   await 转交商机(tx, { id: { in: 分.商机 }, ownerId: id, status: "OPEN" }, 接手人);
   await tx.task.updateMany({ where: { id: { in: 分.待办 } }, data: { ownerId: 接手人 } });
@@ -42,10 +43,17 @@ export async function 离职转给接手人(
   return 分.项目.length ? await 转项目(tx, { id: { in: 分.项目 }, pooledAt: null }, 接手人, 操作人, false) : [];
 }
 
-/** 放进公海的那半（企业版「放进公海」方式）：客户进客户公海，他负责、挂在别人客户上的线索 / 商机阶段项目放回项目公海 */
+/**
+ * 放进公海的那半（企业版「放进公海」方式，企业版入口现在拒绝这种方式，底层先按规则做好）：
+ * 客户进客户公海，他自己负责的线索 / 商机项目一起进线索公海，客户负责人清空、他记历史（M-公海-03）；
+ * 他负责、挂在别人客户上的线索 / 商机阶段项目放回线索公海。调用方要在事务外先 钉住老签约
+ */
 export async function 离职放进公海(tx: Prisma.TransactionClient, 分: 停用分拣结果, 操作人: string): Promise<void> {
   if (分.进公海客户.length) {
+    const 客户们 = await tx.customer.findMany({ where: { id: { in: 分.进公海客户 } }, select: { id: true, salesOwnerId: true } });
     await tx.customerPool.createMany({ data: 分.进公海客户.map((customerId) => ({ customerId, userId: 操作人, reason: 停用进公海理由 })) });
+    await 客户名下在推项目进公海(tx, 客户们, 操作人, 停用进公海理由, new Date());
+    await 客户进公海清负责人(tx, 客户们, 操作人);
   }
   if (分.进公海项目.length) {
     const 们 = await tx.project.findMany({ where: { id: { in: 分.进公海项目 } }, select: { id: true, ownerId: true, phase: true, node: true, result: true } });

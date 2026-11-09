@@ -3,6 +3,7 @@
  * 首页（AI 对话的建议 chip）、盯盘清单页和 AI 的 get_watchlist 共用，避免各写一遍查询。
  */
 import { scheduleValue } from "./schedule-date";
+import { 负责人显示名 } from "@/lib/pool";
 import { 今天零点, 逾期条件 } from "./overdue";
 import { prisma, defaultClient } from "./prisma";
 import { 限定的我 } from "./team-scope";
@@ -130,7 +131,7 @@ async function 取沉睡客户(a: { 谁的?: string; 肯定没睡: Date; now: Da
     },
     select: { id: true, name: true, followStatus: true, lastFollowAt: true, createdAt: true, salesOwner: { select: { name: true } } },
   });
-  return rows.map((c) => ({ id: c.id, name: c.name, followStatus: c.followStatus, lastFollowAt: c.lastFollowAt, createdAt: c.createdAt, ownerName: c.salesOwner.name }));
+  return rows.map((c) => ({ id: c.id, name: c.name, followStatus: c.followStatus, lastFollowAt: c.lastFollowAt, createdAt: c.createdAt, ownerName: 负责人显示名(c.salesOwner.name) }));
 }
 
 /** 沉睡分数里天数封顶 40（sentinel.ts）：40 天以上都一样 */

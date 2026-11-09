@@ -316,9 +316,9 @@ export default function ProjectsView({
       /* 企业版公海只有一处（左栏「公海」，/pool）：这里不再摆「项目公海」筛选，只给一条去那儿的路 */
       ...(!企业版
         ? [{
-            键: "pool", 名: "项目公海", 宽: 120, 默认外露: true, 有值: !!f.pool,
+            键: "pool", 名: "线索公海", 宽: 120, 默认外露: true, 有值: !!f.pool,
             渲染: (style: CSSProperties) => (
-              <Select style={style} aria-label="项目公海" value={f.pool || ""} onChange={(v: string) => apply({ pool: v, recycled: "" })} options={[{ value: "", label: "全部项目" }, { value: "1", label: "项目公海" }]} />
+              <Select style={style} aria-label="线索公海" value={f.pool || ""} onChange={(v: string) => apply({ pool: v, recycled: "" })} options={[{ value: "", label: "全部项目" }, { value: "1", label: "线索公海" }]} />
             ),
           }]
         : []),

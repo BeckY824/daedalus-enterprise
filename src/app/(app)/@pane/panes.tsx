@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { 负责人显示名 } from "@/lib/pool";
 import { 看得到的客户数, 最近跟进的客户 } from "@/lib/scope-sql";
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
 import { requireUser } from "@/lib/auth";
@@ -83,7 +84,7 @@ export async function 学员名单() {
             id: c.id, name: c.name, followStatus: c.followStatus,
             ...(企业 ? { custStatus: c.custStatus } : {}),
             lastFollowAt: c.lastFollowAt ? c.lastFollowAt.toISOString() : null,
-            ownerName: c.salesOwner.name,
+            ownerName: 负责人显示名(c.salesOwner.name),
             mine: c.salesOwnerId === me.id,
             lastNote: c.followUps[0]?.content?.trim().slice(0, 60) || null,
             // 渠道名 > 转介绍 > 最近一次跟进方式，都没有就留空。

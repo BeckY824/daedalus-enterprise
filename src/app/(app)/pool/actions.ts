@@ -22,6 +22,7 @@ import { 记转让, 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
+import { 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 历史负责人 } from "@/lib/project/pool-owner";
 import { 换负责人待办, 待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
@@ -90,9 +91,9 @@ export type 分项目结果 =
   | { ok: false; error: string };
 
 /**
- * 老板、主管把项目公海里的项目分给同事（10-30，P0 #6）：权限同客户公海的 分配公海，持有上限照拦指派（超上限）。
+ * 老板、主管把线索公海里的项目分给同事（10-30，P0 #6）：权限同客户公海的 分配公海，持有上限照拦指派（超上限）。
  * 规矩同 领取公海项目：标了无效的客户的项目分不了；记一行 pool-claim（操作人 = 我，到 = 给的那位），撤销认的就是这一行；
- * 客户在客户公海里、名下只有这一个项目的，客户跟着一起过去。一个一个分，分不了的说原因，不整批失败。
+ * 客户在客户公海里的项目分不了（M-公海-06，项目随客户整包，要分客户）；分到的只换项目负责人，客户负责人不变。一个一个分，分不了的说原因，不整批失败。
  * 带待办（C-06，公海页页头的勾，没传按默认勾）：进公海时关掉的那批待办重新打开给分到的人
  */
 export async function 分配公海项目(ids: string[], userId: string, 带待办?: boolean): Promise<分项目结果> {
@@ -116,6 +117,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       if (!p.pooledAt) return "已经被人领走了";
       const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
       if (c?.pool && c.poolInvalidAt) return "客户标了无效，要总管理先恢复";
+      if (拦客户公海里的项目(!!c?.pool)) return 客户在公海项目不单领提示;
       const 超 = await 超上限(tx, 规则, 给.id, p);
       if (超) return 超;
       await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
@@ -132,7 +134,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
   if (分到.length) {
     await recordAudit({
       user: me, action: "pool-assign", entity: "Project", entityId: 分到.length === 1 ? 分到[0] : null,
-      summary: `把项目公海里 ${分到.length} 个项目分给 ${给.name}`,
+      summary: `把线索公海里 ${分到.length} 个项目分给 ${给.name}`,
       detail: { ids: 分到, 给: 给.id },
     });
     刷新();
@@ -159,7 +161,7 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
     忘掉企业版范围(); // 回到公海，原负责人回避名单变了
     await recordAudit({
       user: me, action: "update", entity: "Project", entityId: 们.length === 1 ? 们[0] : null,
-      summary: `撤销${动作}：${撤了} 个项目放回项目公海`,
+      summary: `撤销${动作}：${撤了} 个项目放回线索公海`,
       detail: { ids: 们 },
     });
     刷新();

@@ -1,6 +1,7 @@
 "use server";
 
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
+import { 无负责人占位名 } from "@/lib/pool";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { consumeUserAiQuota } from "@/lib/ai-quota";
@@ -244,7 +245,7 @@ async function 生成简报(input: {
   const 已签 = 签约合计(customer.contracts).filter((x) => x.合计 > 0);
 
   const prompt = `现在时间：${现在带周几()}
-你要为销售「${customer.salesOwner.name}」生成联系${b.customer}前的一页简报。
+你要为${customer.salesOwner.name === 无负责人占位名 ? "接手的销售" : `销售「${customer.salesOwner.name}」`}生成联系${b.customer}前的一页简报。
 
 【${b.customer}档案】
 姓名：${customer.name}

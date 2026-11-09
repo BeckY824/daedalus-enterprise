@@ -7,6 +7,7 @@
  *   records：这次读到的跟进记录（带编号），最终回答里的 [n] 引用它们
  */
 import type { Dayjs } from "dayjs";
+import { 负责人显示名 } from "@/lib/pool";
 import type { Prisma } from "@/generated/prisma";
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
 import { calendarColumns, readCalendarSorted } from "./calendar-query";
@@ -173,7 +174,7 @@ export const TOOLS: Tool[] = [
       const data = {
         total,
         shown: rows.length,
-        customers: rows.map((r) => ({ id: r.id, name: r.name, phone: 号(r.phone), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: r.salesOwner.name, channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
+        customers: rows.map((r) => ({ id: r.id, name: r.name, phone: 号(r.phone), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 负责人显示名(r.salesOwner.name), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
       };
       const 区间说法 = (r: { from?: Dayjs; to?: Dayjs }, 名: string) =>
         r.from || r.to ? `${名} ${r.from ? r.from.format("YYYY-MM-DD") : "最早"}~${r.to ? r.to.format("YYYY-MM-DD") : "今天"}` : "";
@@ -254,7 +255,7 @@ export const TOOLS: Tool[] = [
         if (候选.length > 1)
           return {
             summary: `叫「${name}」的有 ${候选.length} 位，要哪一位`,
-            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: c.name, 学校: c.school, 电话: 号(c.phone), 负责人: c.salesOwner.name })) },
+            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: c.name, 学校: c.school, 电话: 号(c.phone), 负责人: 负责人显示名(c.salesOwner.name) })) },
           };
         id = 候选[0].id;
       }
@@ -326,7 +327,7 @@ export const TOOLS: Tool[] = [
         // 电话一定要给：不给的话模型会如实说「系统里没存电话」，
         // 然后建议人去补一条**本来就存在**的数据——比缺功能更伤，
         // 它是在向用户断言 CRM 丢了东西
-        profile: `${[c.school, c.grade, c.major].filter(Boolean).join(" / ") || "档案未填"}；电话 ${号(c.phone) || "未填"}；${外贸说法(c.extra && { ...c.extra, whatsapp: c.extra.whatsapp && 号(c.extra.whatsapp) })}跟进状态「${statusLabel(b, c.followStatus)}」，决策状态「${statusLabel(b, c.decisionStatus)}」；负责人 ${c.salesOwner.name}；${
+        profile: `${[c.school, c.grade, c.major].filter(Boolean).join(" / ") || "档案未填"}；电话 ${号(c.phone) || "未填"}；${外贸说法(c.extra && { ...c.extra, whatsapp: c.extra.whatsapp && 号(c.extra.whatsapp) })}跟进状态「${statusLabel(b, c.followStatus)}」，决策状态「${statusLabel(b, c.decisionStatus)}」；负责人 ${负责人显示名(c.salesOwner.name)}；${
           外贸精简(b)
             ? // 外贸模版（2026-10-05）：不说推荐来源、预计签约（界面上没有）；签约就叫订单（订单号那张表 2026-10-29 删了）
               `订单 ${c.contracts.length ? 合计文字(签约合计(c.contracts)) : "无"}`

@@ -261,7 +261,7 @@ export async function 放回项目公海(projectId: string, 原因?: string | nu
       // 放回之后他自己看不到这个项目了（原负责人回避，11-03），留痕要的名字绕开限定读
       const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, pooledAt: true, customer: { select: { pool: { select: { at: true } } } } } }));
       const 选了 = 企业版() && typeof 原因 === "string" && 原因.trim() ? 原因.trim() : null;
-      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `把项目「${p?.name ?? ""}」放回项目公海${选了 ? `（${选了}）` : ""}`, ...(选了 ? { detail: { 回收原因: 选了 } } : {}) });
+      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `把项目「${p?.name ?? ""}」放回线索公海${选了 ? `（${选了}）` : ""}`, ...(选了 ? { detail: { 回收原因: 选了 } } : {}) });
       刷新项目(projectId, p?.customerId);
       // 客户同一笔跟着进了客户公海（pool-link.ts 单项目客户跟进公海，两边同一个时刻）：告诉页面，提示条说清（11-03 B4-2）
       const 进的 = p?.customer.pool?.at;
@@ -279,7 +279,7 @@ export async function 领取项目(projectId: string, 带待办?: boolean) {
     const r = await 领取公海项目(me, projectId, 带待办勾(带待办));
     if (r.ok) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
-      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `从项目公海领取项目「${p?.name ?? ""}」` });
+      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `从线索公海领取项目「${p?.name ?? ""}」` });
       刷新项目(projectId, p?.customerId);
     }
     return r;
