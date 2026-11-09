@@ -56,6 +56,8 @@ export type CustomerRow = {
   customerAttr?: string | null;
   /** 业务线（企业版，迁移 106，11-01 清单 A1）：内贸 / 外贸 / 暂不分配，手动选；列表行没带 = undefined，不交、不清 */
   bizLine?: string | null;
+  /** 归档档位（企业版，迁移 114，M-导入-23）：A1 / A2 / B / C / D / E，只由归档导入写，详情页只读；空 = 不是归档导入来的 */
+  archiveTier?: string | null;
   expectedSignAt: string | null;
   lastFollowAt: string | null;
   remark: string | null;
