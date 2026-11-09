@@ -34,7 +34,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 分配线索, 自动分配线索, 向导自动分配, 批量自动分配, 项目分配线 } from "@/app/(app)/leads/assign-actions";
+import { 分配线索, 自动分配线索, 向导自动分配, 批量自动分配, 项目分配线, 分配带走的项目 } from "@/app/(app)/leads/assign-actions";
 import { 自动分配不参与key, 不设配额key, 本月加额, 本月已分, 我分出去的 } from "@/lib/enterprise/lead-assign";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { toggleTask, completePlan, saveTask, deleteTask, savePlan, deletePlan } from "@/app/(app)/customers/[id]/actions";
@@ -639,6 +639,85 @@ describe("客户公海里的项目不能经转让单独动（M-公海-06、X-13�
     expect(r).not.toEqual(拦的话);
     expect(r.ok).toBe(true);
     expect(await 项目of(p)).toMatchObject({ ownerId: 乙.id });
+  });
+});
+
+describe("分配前列出要一起转走的同事项目（P-转-07，只在 X-18 且真带走同事项目时）", () => {
+  it("市场手里的客户、名下有同事的项目：列出来（除了选中的这条），人名点明；真分完这些都到接手人名下", async () => {
+    const c = await 客户(市场.id);
+    const 选中 = await 项目(c, 市场.id);
+    const 自己的 = await 项目(c, 市场.id);
+    const 同事的 = await 项目(c, 乙.id);
+    const r = await 以(市场, () => 分配带走的项目([选中], 甲.id));
+    expect(r.项目数).toBe(2);
+    expect(r.项目.map((x) => x.负责人).sort()).toEqual([undefined, 乙.name].sort());
+    expect(r.项目.map((x) => x.name)).not.toContain((await 项目of(选中)).name);
+    expect((await 分配线索({ projectId: 选中, toUserId: 甲.id, kind: "营销", 原负责人: 市场.id })).ok).toBe(true);
+    for (const p of [选中, 自己的, 同事的]) expect((await 项目of(p)).ownerId).toBe(甲.id);
+  });
+
+  it("名下只有市场自己的、线索公海里的：不是同事项目，不弹", async () => {
+    const c = await 客户(市场.id);
+    const 选中 = await 项目(c, 市场.id);
+    await 项目(c, 市场.id);
+    await 项目(c, "", { pooledAt: new Date() });
+    expect((await 以(市场, () => 分配带走的项目([选中], 甲.id))).项目数).toBe(0);
+  });
+
+  it("不是 X-18 的不弹：客户负责人已是销售、客户在公海、接手人不是销售", async () => {
+    const 销售的 = await 客户(甲.id);
+    const p1 = await 项目(销售的, 市场.id);
+    await 项目(销售的, 乙.id);
+    expect((await 以(总管, () => 分配带走的项目([p1], 丙.id))).项目数).toBe(0);
+
+    const 公海的 = await 客户(市场.id);
+    const p2 = await 项目(公海的, 市场.id);
+    await 项目(公海的, 乙.id);
+    await prisma.customerPool.create({ data: { customerId: 公海的, reason: "手动" } });
+    expect((await 以(总管, () => 分配带走的项目([p2], 丙.id))).项目数).toBe(0);
+
+    const 市场的 = await 客户(市场.id);
+    const p3 = await 项目(市场的, 市场.id);
+    await 项目(市场的, 乙.id);
+    expect((await 以(总管, () => 分配带走的项目([p3], 总管.id))).项目数).toBe(0);
+  });
+
+  it("同事的项目其实归接手人、或就是选中的这条：不算要带走的，不弹", async () => {
+    const c = await 客户(市场.id);
+    const 选中 = await 项目(c, 市场.id);
+    await 项目(c, 甲.id);
+    expect((await 以(市场, () => 分配带走的项目([选中], 甲.id))).项目数).toBe(0);
+
+    const d = await 客户(市场.id);
+    const 同事的选中 = await 项目(d, 乙.id);
+    expect((await 以(市场, () => 分配带走的项目([同事的选中], 甲.id))).项目数).toBe(0);
+  });
+
+  it("批量（接手人还没挑）：只算会走 X-18 的客户，暂不分配的不算；同客户的几条只列没选中的", async () => {
+    const C = await 客户(市场.id);
+    const [L1, L2] = [await 项目(C, 市场.id), await 项目(C, 市场.id)];
+    const 同事的 = await 项目(C, 乙.id);
+    const 没同事 = await 客户(市场.id);
+    const L3 = await 项目(没同事, 市场.id);
+    const r = await 以(市场, () => 分配带走的项目([L1, L2, L3]));
+    expect(r).toEqual({ 项目数: 1, 项目: [{ name: (await 项目of(同事的)).name, 客户: expect.any(String), 负责人: 乙.name }] });
+
+    const 暂不 = await 客户(市场.id);
+    const L4 = await 项目(暂不, 市场.id, { bizLine: "暂不分配" });
+    await 项目(暂不, 乙.id);
+    expect((await 以(市场, () => 分配带走的项目([L4]))).项目数).toBe(0);
+    // 同一条，手动指派能分：要问
+    expect((await 以(市场, () => 分配带走的项目([L4], 甲.id))).项目数).toBe(1);
+  });
+
+  it("不能分配的人拿不到；不是企业版回 0 个", async () => {
+    const c = await 客户(市场.id);
+    const 选中 = await 项目(c, 市场.id);
+    await 项目(c, 乙.id);
+    expect((await 以(甲, () => 分配带走的项目([选中], 丙.id))).项目数).toBe(0);
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    忘掉企业版范围();
+    expect((await 以(市场, () => 分配带走的项目([选中], 丙.id))).项目数).toBe(0);
   });
 });
 

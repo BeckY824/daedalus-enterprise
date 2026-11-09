@@ -16,6 +16,7 @@ const plugin: Plugin = { name: "ent-assign-tick", setup(b) {
     export const 分配线索=记('分配线索',{ok:true}),批量自动分配=记('批量自动分配',{ok:true,结果:[]}),我分出去的线索=async()=>window.__分出去的||[];
     export const 本月分配情况=async()=>[{userId:'u1',name:'王一',line:'内贸',配额:null,已分:0,加额:0,暂停:false}];
     export const 项目分配线=async()=>({线:'内贸',可选:['u1'],市场转客户:window.__市场转客户});
+    export const 分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);if(window.__带走失败)throw new Error('断网');return window.__带走||{项目数:0,项目:[]}};
   `);
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -23,8 +24,9 @@ const plugin: Plugin = { name: "ent-assign-tick", setup(b) {
 beforeAll(async () => {
   const r = await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
-    import {AssignLeadModal,AssignedOutButton} from '@/app/(app)/leads/AssignLead';
-    function 壳(){const [lead,set]=React.useState(null);return <App><button onClick={()=>set({id:'p1',name:'某项目',ownerId:'m1',项目:true})}>开弹窗</button><AssignLeadModal lead={lead} 关={()=>set(null)}/><AssignedOutButton/></App>}
+    import {AssignLeadModal,AssignedOutButton,useBatchAutoAssign} from '@/app/(app)/leads/AssignLead';
+    function 批量({选项,名}){const 分=useBatchAutoAssign(()=>'分了',选项);return <button onClick={()=>void 分(['p1','p2'],()=>{})}>{名}</button>}
+    function 壳(){const [lead,set]=React.useState(null);return <App><button onClick={()=>set({id:'p1',name:'某项目',ownerId:'m1',项目:true})}>开弹窗</button><button onClick={()=>set({id:'l1',name:'老线索',ownerId:'m1'})}>开老线索</button><批量 选项={{项目:true}} 名="批量分项目"/><批量 名="批量分老线索"/><AssignLeadModal lead={lead} 关={()=>set(null)}/><AssignedOutButton/></App>}
     window.__画=()=>createRoot(document.getElementById('root')).render(<壳/>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
@@ -93,3 +95,101 @@ for (const width of [1024, 1280, 1366]) {
     expect(errors).toEqual([]); await page.close();
   });
 }
+
+// P-转-07：市场首次分给销售（X-18）会带走同事项目时，分之前列出来；别的情况不弹
+const 带走预览 = { 项目数: 2, 项目: [{ name: "同事的项目", 客户: "某客户", 负责人: "王二" }, { name: "公海的项目", 客户: "某客户", 负责人: "线索公海" }] };
+type 窗 = { __带走?: unknown; __带走失败?: boolean; __画: () => void; __调?: unknown[][] };
+async function 开页(设: { 带走?: unknown; 失败?: boolean }): Promise<{ page: Page; errors: string[] }> {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+  await page.goto("http://ent.test/leads");
+  await page.addScriptTag({ content: bundle });
+  await page.evaluate((v) => { const w = window as unknown as 窗; w.__带走 = v.带走; w.__带走失败 = v.失败; w.__画(); }, 设);
+  return { page, errors };
+}
+const 调了 = (page: Page, 名: string) => page.evaluate((n) => ((window as unknown as 窗).__调 ?? []).filter((x) => x[0] === n), 名);
+const 确认框 = (page: Page) => page.locator(".ant-modal-confirm");
+const 选人再分 = async (page: Page) => {
+  await page.locator("#toUserId").click();
+  await page.locator(".ant-select-item-option", { hasText: "王一" }).click();
+  await page.locator(".ant-modal-footer .ant-btn-primary").click();
+};
+
+it("分配弹窗·会带走同事项目：先列出来，取消就不分；点「一起转」才分", async () => {
+  const { page, errors } = await 开页({ 带走: 带走预览 });
+  await page.getByRole("button", { name: "开弹窗" }).click();
+  await page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
+  await 选人再分(page);
+  await 确认框(page).locator(".ant-modal-confirm-title", { hasText: "会一起转走的 2 个项目" }).waitFor();
+  expect(await 确认框(page).innerText()).toContain("同事的项目（某客户 · 王二）");
+  expect(await 调了(page, "分配带走的项目")).toEqual([["分配带走的项目", ["p1"], "u1"]]);
+  await 确认框(page).locator(".ant-btn:not(.ant-btn-primary)").click();
+  await 确认框(page).waitFor({ state: "detached" });
+  expect(await 调了(page, "分配线索")).toEqual([]);
+  // 弹窗还开着，再点一次，这回确定
+  await page.locator(".ant-modal-footer .ant-btn-primary").click();
+  await 确认框(page).getByRole("button", { name: "一起转" }).click();
+  await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "分配线索"));
+  expect((await 调了(page, "分配线索")).length).toBe(1);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("分配弹窗·没有要带走的同事项目：不弹，直接分", async () => {
+  const { page, errors } = await 开页({});
+  await page.getByRole("button", { name: "开弹窗" }).click();
+  await page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
+  await 选人再分(page);
+  await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "分配线索"));
+  expect(await 调了(page, "分配带走的项目")).toHaveLength(1);
+  expect(await 确认框(page).count()).toBe(0);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("分配弹窗·取预览失败不拦着（同客户页的约定）；老线索不问", async () => {
+  const { page, errors } = await 开页({ 失败: true });
+  await page.getByRole("button", { name: "开弹窗" }).click();
+  await page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
+  await 选人再分(page);
+  await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "分配线索"));
+  expect(await 确认框(page).count()).toBe(0);
+  expect(errors).toEqual([]); await page.close();
+
+  const 老 = await 开页({ 带走: 带走预览 });
+  await 老.page.getByRole("button", { name: "开老线索" }).click();
+  await 老.page.locator(".ant-modal-footer .ant-btn-primary").waitFor();
+  await 老.page.waitForTimeout(400); // 弹窗动画走完再点下拉
+  await 选人再分(老.page);
+  await 老.page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "分配线索"));
+  expect(await 调了(老.page, "分配带走的项目")).toEqual([]);
+  expect(await 确认框(老.page).count()).toBe(0);
+  expect(老.errors).toEqual([]); await 老.page.close();
+});
+
+it("批量自动分配·会带走同事项目：先列出来，取消就不分；点「一起转」才分", async () => {
+  const { page, errors } = await 开页({ 带走: 带走预览 });
+  await page.getByRole("button", { name: "批量分项目" }).click();
+  await 确认框(page).locator(".ant-modal-confirm-title", { hasText: "会一起转走的 2 个项目" }).waitFor();
+  expect(await 调了(page, "分配带走的项目")).toEqual([["分配带走的项目", ["p1", "p2"]]]);
+  await 确认框(page).locator(".ant-btn:not(.ant-btn-primary)").click();
+  await 确认框(page).waitFor({ state: "detached" });
+  expect(await 调了(page, "批量自动分配")).toEqual([]);
+  await page.getByRole("button", { name: "批量分项目" }).click();
+  await 确认框(page).getByRole("button", { name: "一起转" }).click();
+  await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "批量自动分配"));
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("批量自动分配·没有要带走的同事项目、老线索：不弹，直接分", async () => {
+  const { page, errors } = await 开页({});
+  await page.getByRole("button", { name: "批量分项目" }).click();
+  await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "批量自动分配"));
+  expect(await 调了(page, "分配带走的项目")).toHaveLength(1);
+  expect(errors).toEqual([]); await page.close();
+
+  const 老 = await 开页({ 带走: 带走预览 });
+  await 老.page.getByRole("button", { name: "批量分老线索" }).click();
+  await 老.page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "批量自动分配"));
+  expect(await 调了(老.page, "分配带走的项目")).toEqual([]);
+  expect(老.errors).toEqual([]); await 老.page.close();
+});

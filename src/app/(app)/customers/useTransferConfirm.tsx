@@ -3,8 +3,8 @@
 import { App } from "antd";
 import DictSelect from "@/components/DictSelect";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
-import { 转走项目说法 } from "@/lib/carry-over";
 import { 转走项目预览of } from "./actions";
+import { useCarryConfirm } from "./useCarryConfirm";
 
 /**
  * 换客户负责人之前先问一句（企业版 D-36，2026-10-24）：客户名下的项目会整体跟着走，
@@ -14,6 +14,7 @@ import { 转走项目预览of } from "./actions";
  */
 export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: string }) {
   const { modal } = App.useApp();
+  const 问一起转 = useCarryConfirm();
 
   /**
    * 企业版批量转给别人：问一句转让原因（字典「转让原因」，10-27，可不选）。
@@ -40,32 +41,8 @@ export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: st
   /** true = 接着转；false = 点了取消。新负责人不传 = 转给自己（领取） */
   async function 先问转走的项目(ids: string[], 新负责人?: string): Promise<boolean> {
     if (!ids.length) return true;
-    let 说法: ReturnType<typeof 转走项目说法>;
-    try {
-      说法 = 转走项目说法(await 转走项目预览of(ids, 新负责人));
-    } catch {
-      return true;
-    }
-    if (!说法) return true;
-    const 转 = await modal.confirm({
-      title: 说法.标题,
-      content: (
-        <div>
-          <div style={{ marginBottom: 6 }}>这些项目的负责人会一起改成新负责人：</div>
-          <ul style={列表}>{说法.行.map((l, i) => <li key={i} style={一行} title={l}>{l}</li>)}</ul>
-          {说法.还有 && <div style={旁注}>{说法.还有}</div>}
-        </div>
-      ),
-      okText: "一起转",
-      cancelText: "取消",
-    });
-    return 转;
+    return 问一起转(() => 转走项目预览of(ids, 新负责人));
   }
 
   return { 先问转走的项目, 问转让原因 };
 }
-
-// 企业版全站一行：放不下「…」，悬停看全文
-const 列表 = { margin: 0, paddingInlineStart: 18, maxHeight: 220, overflowY: "auto" } as const;
-const 一行 = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as const;
-const 旁注 = { marginTop: 6, color: "var(--ant-color-text-secondary)" } as const;

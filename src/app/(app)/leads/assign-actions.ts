@@ -28,6 +28,8 @@ import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 分配带走的同事项目 } from "@/lib/carry-over-db";
+import type { 转走项目预览 } from "@/lib/carry-over";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
@@ -341,6 +343,36 @@ export async function 项目分配线(projectId: string): Promise<{ 线: 项目�
     return { 线, 可选: await 指派可选(org, 线), 市场转客户: 客户在市场手里(org, 项目?.customer ?? null) };
   } catch {
     return null;
+  }
+}
+
+/**
+ * 分配之前列出会一起转走的同事项目（P-转-07）：只有市场首次分给销售（X-18）、真会带走同事的项目才有；别的情况 0 个 = 不弹。只读。
+ * 接手人不传 = 批量 / 单条自动分配，还没挑人（挑的都是销售）；暂不分配的不进自动分配，不算。
+ * 分不了的、看不到的、算不出来的都回 0 个：不拦，分的时候服务端照常查
+ */
+export async function 分配带走的项目(projectIds: string[], 接手人?: string): Promise<转走项目预览> {
+  const 不弹: 转走项目预览 = { 项目数: 0, 项目: [] };
+  const me = await 进门();
+  if (!me) return 不弹;
+  const ids = [...new Set(Array.isArray(projectIds) ? projectIds.filter((x) => typeof x === "string") : [])];
+  if (!ids.length || ids.length > 批量最多 || (接手人 !== undefined && typeof 接手人 !== "string")) return 不弹;
+  try {
+    const org = await 读组织();
+    if (!能分配(org, me)) return 不弹;
+    const 能分的: string[] = [];
+    for (const id of ids) {
+      const 看 = await 分前看({ projectId: id }, org);
+      if (看.ok && (接手人 !== undefined || 是业务线(看.线))) 能分的.push(id);
+    }
+    return await 看全部(async () => {
+      const 行 = await prisma.project.findMany({ where: { id: { in: 能分的 } }, select: { customer: { select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } } } });
+      const 客户们 = [...new Map(行.map((p) => [p.customer.id, p.customer])).values()]
+        .filter((c) => (接手人 === undefined ? 客户在市场手里(org, c) : 算市场转客户(org, c, 接手人)));
+      return 分配带走的同事项目(客户们, 接手人 ?? "", ids);
+    });
+  } catch {
+    return 不弹;
   }
 }
 

@@ -19,7 +19,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true});");
   // 分配那几个 server action：记下调了什么，回成功
-  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'});");
+  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
@@ -278,6 +278,24 @@ it("新线索页照旧：自动分配的提示带配额", async () => {
   const { page } = await 打开(true, 1280, true);
   await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
   await page.getByText("配额 不限", { exact: false }).first().waitFor();
+  await page.close();
+});
+
+it("新线索页·单条自动分配会带走同事项目（P-转-07）：先列出来，取消就不分；点「一起转」才分", async () => {
+  const { page, errors } = await 打开(true, 1280, true);
+  await page.evaluate(() => { (window as unknown as { __带走: unknown }).__带走 = { 项目数: 1, 项目: [{ name: "同事的项目", 客户: "甲公司", 负责人: "乙" }] }; });
+  const 框 = page.locator(".ant-modal-confirm");
+  const 调了 = (n: string) => page.evaluate((名) => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).filter((x) => x[0] === 名), n);
+  await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
+  await 框.locator(".ant-modal-confirm-title", { hasText: "会一起转走的 1 个项目" }).waitFor();
+  expect((await 调了("分配带走的项目"))[0][2]).toBeUndefined();
+  await 框.locator(".ant-btn:not(.ant-btn-primary)").click();
+  await 框.waitFor({ state: "detached" });
+  expect(await 调了("自动分配线索")).toEqual([]);
+  await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
+  await 框.locator(".ant-btn-primary").click();
+  await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "自动分配线索"));
+  expect(errors).toEqual([]);
   await page.close();
 });
 

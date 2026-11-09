@@ -36,7 +36,8 @@ import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type �
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
-import { 自动分配线索, type 自动分配结果 } from "../leads/assign-actions";
+import { 自动分配线索, 分配带走的项目, type 自动分配结果 } from "../leads/assign-actions";
+import { useCarryConfirm } from "../customers/useCarryConfirm";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "../leads/AssignLead";
 import LeadFullNotices from "../leads/LeadFullNotices";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
@@ -131,6 +132,7 @@ export default function ProjectsView({
   const router = useRouter();
   const 预取 = useHoverPrefetch();
   const { message } = App.useApp();
+  const 问一起转 = useCarryConfirm();
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
@@ -197,6 +199,8 @@ export default function ProjectsView({
 
   async function 自动分(r: 项目行) {
     try {
+      // P-转-07：同批量，会带走同事的项目先列出来
+      if (!(await 问一起转(() => 分配带走的项目([r.id])))) return;
       // 原负责人 = 这一行看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 自动分配线索(r.id, { 项目: true, 原负责人: r.ownerId });
       // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派

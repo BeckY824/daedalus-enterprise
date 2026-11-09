@@ -39,7 +39,7 @@ export function 跟着客户转的项目(customerId: string, 旧?: string): Pris
  * 同事负责的、公海里的在预览里写明负责人（转之前要看清）。
  * 客户按调用方能看到的算（限定着查，看不到的本来也转不了）；项目看全部：会带走同事负责的，那些也得列出来
  */
-export async function 数转走的项目(ids: string[], 新: string): Promise<转走项目预览> {
+export async function 数转走的项目(ids: string[], 新: string, 除了: string[] = []): Promise<转走项目预览> {
   if (!ids.length) return { 项目数: 0, 项目: [] };
   const 换人的 = await prisma.customer.findMany({ where: { id: { in: [...new Set(ids)] }, salesOwnerId: { not: 新 } }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
   if (!换人的.length) return { 项目数: 0, 项目: [] };
@@ -60,7 +60,8 @@ export async function 数转走的项目(ids: string[], 新: string): Promise<�
         条件.push({ customerId: c.id, pooledAt: null, ownerId: await 公海前负责人(prisma, c.id, c.salesOwnerId) });
       }
     }
-    const where: Prisma.ProjectWhereInput = { AND: [{ OR: 条件 }, { ownerId: { not: 新 } }] };
+    // 新 是空串 = 接手人还没挑（批量自动分配）；线索公海里的 ownerId 也是空串，不能拿它排除
+    const where: Prisma.ProjectWhereInput = { AND: [{ OR: 条件 }, ...(新 ? [{ ownerId: { not: 新 } }] : []), ...(除了.length ? [{ id: { notIn: 除了 } }] : [])] };
     const [项目数, 们] = await Promise.all([
       prisma.project.count({ where }),
       prisma.project.findMany({ where, orderBy: { createdAt: "asc" }, take: 预览列几个, select: { name: true, ownerId: true, pooledAt: true, customerId: true, customer: { select: { name: true } } } }),
@@ -76,6 +77,19 @@ export async function 数转走的项目(ids: string[], 新: string): Promise<�
       }),
     };
   });
+}
+
+/**
+ * 市场首次分给销售（X-18）之前要不要先说一句（P-转-07）：这几位客户里，名下有同事负责的项目的（不是客户负责人、不是接手人、不是本次选中的、不在公海），
+ * 才列他们会一起转走的项目（同客户页的预览，除了本次选中的）；都没有 = 0 个，不弹。接手人没挑（批量自动分配）传空串。调用方先判好 X-18、放开范围
+ */
+export async function 分配带走的同事项目(客户们: { id: string; salesOwnerId: string }[], 接手人: string, 选中: string[]): Promise<转走项目预览> {
+  if (!客户们.length) return { 项目数: 0, 项目: [] };
+  const 有同事的 = await prisma.project.findMany({
+    where: { id: { notIn: 选中 }, OR: 客户们.map((c) => ({ customerId: c.id, pooledAt: null, ownerId: { notIn: ["", c.salesOwnerId, ...(接手人 ? [接手人] : [])] } })) },
+    distinct: ["customerId"], select: { customerId: true },
+  });
+  return 数转走的项目(有同事的.map((p) => p.customerId), 接手人, 选中);
 }
 
 /**

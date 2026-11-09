@@ -13,7 +13,8 @@ import { App, Button, Checkbox, Form, Modal, Select, Table, Tag } from "antd";
 import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
-import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, type 分配情况, type 自动分配结果 } from "./assign-actions";
+import { useCarryConfirm } from "@/app/(app)/customers/useCarryConfirm";
+import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, 分配带走的项目, type 分配情况, type 自动分配结果 } from "./assign-actions";
 import type { 项目线 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
@@ -24,7 +25,10 @@ const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配�
 export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
+  const 问一起转 = useCarryConfirm();
   return async function 批量自动分(ids: string[], 清空: () => void) {
+    // P-转-07：市场客户名下有同事的项目，分之前列出来（接手人这时还没挑）
+    if (选项?.项目 && !(await 问一起转(() => 分配带走的项目(ids)))) return;
     let res: Awaited<ReturnType<typeof 批量自动分配>>;
     try {
       res = await 批量自动分配(ids, 选项);
@@ -60,6 +64,7 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
 export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean }) {
   const router = useRouter();
   const { message } = App.useApp();
+  const 问一起转 = useCarryConfirm();
   const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划"; 带待办: boolean }>();
   const [人们, set人们] = useState<分配情况 | null>(null);
   const [忙, set忙] = useState(false);
@@ -88,6 +93,8 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     if (!v) return;
     set忙(true);
     try {
+      // P-转-07：市场首次分给销售会带走同事的项目，分之前列出来；点了取消就不分，弹窗留着
+      if (lead.项目 && !(await 问一起转(() => 分配带走的项目([lead.id], v.toUserId)))) return;
       const 哪条 = lead.项目 ? { projectId: lead.id } : { leadId: lead.id };
       // 原负责人 = 打开弹窗时看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind, 原负责人: lead.ownerId, ...(带待办勾出 ? { 带待办: v.带待办 } : {}) });
