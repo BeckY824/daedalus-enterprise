@@ -30,6 +30,8 @@ import { 建档向导, 编辑项目, type 建档向导输入 } from "@/app/(app)
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+/** 11-09 起销售成员默认不能「指定」：这几条钉的是销售指定给同事以后怎么走，先按管理员把「指定」开给销售成员存一份 */
+const 指定开给销售成员 = () => setSetting("enterprise.assign_use", { "dict-assign-0": ["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"] });
 
 let 运营: string;
 let 销售: string;
@@ -268,6 +270,7 @@ describe("建档向导", () => {
   });
 
   it("销售指定给同事（P-转-03）：客户留在自己名下，接手人那条链项目详情", async () => {
+    await 指定开给销售成员();
     当(销售, "销售甲");
     const r = await 向导({ 分配方式: 0, ownerId: 另一销售 });
     expect(r).toMatchObject({ ok: true, 转走: true });
@@ -352,6 +355,7 @@ describe("客户页新建项目", () => {
   });
 
   it("销售把自己的客户指定给同事：客户不转（P-转-03），链项目详情（他打不开客户详情）", async () => {
+    await 指定开给销售成员();
     当(销售, "销售甲");
     const c = await 客户("页客户销售的", 销售);
     const r = await 建(c, { 分配方式: 0, ownerId: 另一销售 });

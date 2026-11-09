@@ -16,7 +16,9 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接卡点 } from "@/lib/project/blocker";
-import { 带走并记下 } from "@/lib/carry-over-db";
+import { 带走并记下, 数进手的持有项目 } from "@/lib/carry-over-db";
+import { 算持有的项目, 超上限n } from "@/lib/project/db";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
 import { 待确认, 了结, 读ids, 能撤回别人的交接, type 交接种类 } from "@/lib/enterprise/handover-db";
@@ -106,6 +108,28 @@ function 刷新() {
 }
 
 /**
+ * 确认了会一次进好几个算持有的项目（M-公海-18，11-09）：加上手上已有的超了持有上限就不让确认，交接还是待确认，
+ * 回一句说清谁、上限、现有几个（推进或放回一些再确认，或让发起人撤回换人）。在事务外按此刻的数据先数一遍：
+ *   离职：此刻重新分拣给接手人的项目里，算持有的（他自己的、挂在别处的；同事待分配的清了也算）；
+ *   转让：此刻还归原负责人、不在公海的客户会一起带过来的（他自己的、线索公海里的、同事待分配的），同 带走并记下
+ */
+async function 确认了超上限(h: { kind: string; way: string | null; fromUserId: string; customerIds: string }, 接手人: string): Promise<string | null> {
+  let 进 = 0;
+  if (h.kind === "离职") {
+    const 方式: 停用方式 = (停用方式们 as readonly string[]).includes(h.way ?? "") ? (h.way as 停用方式) : "转交";
+    const 分 = await 看全部(() => 停用分拣(prisma, h.fromUserId, 方式, true));
+    if (!分.项目.length) return null;
+    进 = await 看全部(() => prisma.project.count({
+      where: { AND: [算持有的项目, { id: { in: 分.项目 }, pooledAt: null }, { OR: [{ id: { in: 分.清待分配 } }, { awaitAssignAt: null, ownerId: { not: 接手人 } }] }] },
+    }));
+  } else {
+    const 还归他 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: 读ids(h.customerIds) }, salesOwnerId: h.fromUserId, pool: null }, select: { id: true } }))).map((c) => c.id);
+    进 = await 数进手的持有项目(还归他, 接手人, { 公海: true, 自己的: true, 同事待分配: true });
+  }
+  return 进 ? 超上限n(prisma, await 生效组织规则(), 接手人, 进) : null;
+}
+
+/**
  * 接手人确认：到这时才真转。离职按此刻重新分拣（发起之后他名下又多出、少了的都对得上），给接手人的那半照离职老规矩转；
  * 转让只转此刻还归原负责人的（中间被人改给了别人的不动），名下的活照老规矩一起走（同事负责的项目不动，P-转-07）。
  * 「待确认 → 已确认」带着条件改，和撤回、拒收同时点只成一个
@@ -116,6 +140,8 @@ export async function 确认交接(id: string): Promise<结果> {
   const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id } }));
   if (!h || h.status !== 待确认) return { ok: false, error: 已处理 };
   if (h.toUserId !== me.id) return { ok: false, error: "只有接手人自己能确认" };
+  const 超 = await 确认了超上限(h, me.id);
+  if (超) return { ok: false, error: 超 };
   const b = await getBusiness();
   await 钉住老签约();
 
