@@ -479,7 +479,7 @@ describe("决定二：批量自动分配按客户算一份", () => {
     expect(await 记录们()).toHaveLength(2);
   });
 
-  it("判无效补名额：随客户那条没有分配记录，判无效照样给现负责人 +1", async () => {
+  it("判无效补名额：随客户那条没有分配记录、没占过额度，判无效不补", async () => {
     await 只留参与(甲);
     await prisma.entLeadQuota.create({ data: { userId: 甲.id, quota: 5, setById: 总管.id } });
     const C = await 客户(市场.id);
@@ -490,7 +490,7 @@ describe("决定二：批量自动分配按客户算一份", () => {
     expect((await 销售初判(甲身份, L2, "无效", { invalidReason: "联系方式无效", verifyNote: "打了三次" })).ok).toBe(true);
     expect((await 市场复核({ id: 市场.id, role: 市场.role }, L2, false)).ok).toBe(true);
     expect((await 项目of(L2)).result).toBe("线索流失");
-    expect(await 本月加额(甲.id)).toBe(1);
+    expect(await 本月加额(甲.id)).toBe(0);
   });
 });
 

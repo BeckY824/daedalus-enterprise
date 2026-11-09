@@ -190,7 +190,7 @@ export async function 本月已分(userId: string, 月 = 月份(), db: 库 = pri
 }
 
 /**
- * 生效配额 = 设的每月配额 + 本月加的额（线索验证：最终判无效的线索给负责人本月 +1，lib/project/lead-verify.ts）。
+ * 生效配额 = 设的每月配额 + 本月加的额（线索验证：最终判无效、负责人占过额度的线索给他本月 +1，lib/project/lead-verify.ts）。
  * 没设配额 = null，加额不起作用：手动分本来不限、自动分配本来不挑他
  */
 export const 生效配额 = (基: number | null, 加: number): number | null => (基 === null ? null : 基 + 加);
@@ -208,7 +208,15 @@ export async function 本月加额们(ids: string[], 月 = 月份(), db: Pick<�
 }
 
 /**
- * 给 userId 本月配额 +1（线索最终判无效时调）。没设配额的人不加，返回 false：
+ * 这条线索占过 userId 的额度没有：有他算数的分配记录才算（不限哪个月，有几行都只是占过）。
+ * 批量分配时随客户走的、老数据、手工建的、转给他的都没有这一行；不算数的（counted=false）本来就没占
+ */
+export async function 占过名额(db: Pick<库, "entLeadAssign">, projectId: string, userId: string): Promise<boolean> {
+  return !!(await db.entLeadAssign.findFirst({ where: { projectId, toUserId: userId, counted: true }, select: { id: true } }));
+}
+
+/**
+ * 给 userId 本月配额 +1（线索最终判无效、占过他额度时调）。没设配额的人不加，返回 false：
  * 他不参与自动分配、手动分也不限，加了没意义，还会让以后设配额的那个月凭空多出来
  */
 export async function 加一条配额(db: Pick<库, "entLeadQuota" | "entLeadQuotaBonus">, userId: string, 月 = 月份()): Promise<boolean> {

@@ -161,7 +161,7 @@ export default function LeadVerifyPanel({
         身: (
           <>
             <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>
-              {有效 ? "判有效会交回负责人继续跟。" : "判无效后这条线索结束（记为线索流失）；负责人设了本月自动分配名额的，名额 +1。"}
+              {有效 ? "判有效会交回负责人继续跟。" : "判无效后这条线索结束（记为线索流失）；负责人分到这条时占过本月自动分配名额的，补回 1 个（随客户分到的、没设配额的不补）。"}
             </div>
             <Input.TextArea rows={4} maxLength={原因上限} showCount value={说明} onChange={(e) => set说明(e.target.value)} placeholder="复核说明（可不写）" aria-label="复核说明" />
           </>
