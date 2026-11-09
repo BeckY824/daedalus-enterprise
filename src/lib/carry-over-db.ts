@@ -152,6 +152,16 @@ export async function 带走并记下(换: { customerId: string; 旧: string }[]
 }
 
 /**
+ * 换负责人时不跟着转的系统提醒（待办的查询条件）。分配通知数「客户上还有几条待办」也用这份，不算这些。
+ * 超时收回的提醒是给原负责人的，不跟着转（企业版单项目客户随项目进了公海，领客户时提醒别落到新负责人头上）；
+ * AI 建档撞号的提醒同理：是告诉原负责人「某某撞了你的客户」，客户转给触发人后跟过去就成了「你撞了你自己」（11-04 线上）；
+ * 离职交接例外：接手人接的是原负责人的位置，撞号还得有人核对，跟着交过去
+ */
+export function 不跟着转的提醒(kind: 换负责人种类): Prisma.TaskWhereInput[] {
+  return [收回提醒尾, 旧收回提醒尾, ...(kind === "deactivate" ? [] : [撞号提醒尾])].map((尾) => ({ NOT: { title: { endsWith: 尾 } } }));
+}
+
+/**
  * 带走并记下 里一位客户的那一段，放在调用方自己的事务里做（市场分给销售时客户和项目在同一笔事务里换人；事务里不能再开事务）。
  * 调用方自己管限定（要转哪几条由条件定，不靠限定）。调用前客户要已经归 新（带走公海项目 按这个认）。
  *
@@ -160,15 +170,14 @@ export async function 带走并记下(换: { customerId: string; 旧: string }[]
  *   kind = assign（转客户）：名下全部，含同事负责的、线索公海里的（P-转-07）；
  *   claim / pool-assign（从客户公海领 / 分）：进公海前负责人自己的；线索公海里的由调用方 领客户带走公海项目 带（M-公海-05）；
  *   deactivate（离职转交）：照旧只带他自己的（规划第二节「不改的」）
+ * 留下待办计划（只有市场首次分给销售传，X-18 / P-转-10）：原负责人的待办、计划不搬、不关，还归他；
+ * 客户负责人、项目、公海项目、联系人（跟客户走）、进行中的商机照走。别的入口不传，照旧带活
  */
-export async function 带走一位(tx: Prisma.TransactionClient, customerId: string, 旧: string, 新: string, 操作人: string, kind: 换负责人种类, 带项目 = true) {
+export async function 带走一位(tx: Prisma.TransactionClient, customerId: string, 旧: string, 新: string, 操作人: string, kind: 换负责人种类, 带项目 = true, 选项: { 留下待办计划?: boolean } = {}) {
   const 实际旧 = 企业版() ? await 公海前负责人(tx, customerId, 旧) : 旧;
-  const 计划 = (await tx.followPlan.findMany({ where: { customerId, ownerId: 实际旧, done: false }, select: { id: true } })).map((x) => x.id);
-  // 超时收回的提醒是给原负责人的，不跟着转（企业版单项目客户随项目进了公海，领客户时提醒别落到新负责人头上）；
-  // AI 建档撞号的提醒同理：是告诉原负责人「某某撞了你的客户」，客户转给触发人后跟过去就成了「你撞了你自己」（11-04 线上）；
-  // 离职交接例外：接手人接的是原负责人的位置，撞号还得有人核对，跟着交过去
-  const 不跟着转 = [收回提醒尾, 旧收回提醒尾, ...(kind === "deactivate" ? [] : [撞号提醒尾])].map((尾) => ({ NOT: { title: { endsWith: 尾 } } }));
-  const 待办 = (await tx.task.findMany({ where: { customerId, ownerId: 实际旧, done: false, AND: 不跟着转 }, select: { id: true } })).map((x) => x.id);
+  const 留下 = 选项.留下待办计划 === true;
+  const 计划 = 留下 ? [] : (await tx.followPlan.findMany({ where: { customerId, ownerId: 实际旧, done: false }, select: { id: true } })).map((x) => x.id);
+  const 待办 = 留下 ? [] : (await tx.task.findMany({ where: { customerId, ownerId: 实际旧, done: false, AND: 不跟着转的提醒(kind) }, select: { id: true } })).map((x) => x.id);
   const 商机 = (await tx.opportunity.findMany({ where: { customerId, ownerId: 实际旧, status: "OPEN" }, select: { id: true } })).map((x) => x.id);
   if (计划.length) await tx.followPlan.updateMany({ where: { id: { in: 计划 } }, data: { ownerId: 新 } });
   if (待办.length) await tx.task.updateMany({ where: { id: { in: 待办 } }, data: { ownerId: 新 } });

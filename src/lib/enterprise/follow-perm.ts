@@ -81,3 +81,12 @@ export async function 客户事项挡(me: 谁, customerId: string | null | undef
   const 项目 = await defaultClient.project.findMany({ where: { customerId, pooledAt: null }, select: { ownerId: true } });
   return 能改沟通of(me, 项目.map((x) => x.ownerId), org) ? null : 不能改客户事项话;
 }
+
+/**
+ * 勾完成 / 取消完成自己名下的待办、计划（11-09，P-转-10）：市场把客户分给销售后这些活还归他，人已经不是负责人，
+ * 只放开「不是负责人」这一条。没业务角色、只读角色、公海里的照旧拒；编辑、删除不走这里
+ */
+export async function 本人勾完成挡(me: 谁, customerId: string | null | undefined, ownerId: string | null | undefined): Promise<string | null> {
+  const 挡 = await 客户事项挡(me, customerId);
+  return 挡 === 不能改客户事项话 && ownerId === me.id ? null : 挡;
+}

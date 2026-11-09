@@ -12,6 +12,7 @@ import { 读组织, 管理员类别们of, 负责人和上级 } from "./org";
 import { 企业版 } from "./switch";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
 import { 无负责人占位邮箱 } from "@/lib/pool";
+import { 不跟着转的提醒 } from "@/lib/carry-over-db";
 
 type 人 = { id: string; name: string };
 
@@ -29,7 +30,32 @@ const 分钟 = () => Math.floor(Date.now() / 60_000);
 
 /* ───────────────────────── 分配线索 ───────────────────────── */
 
-export type 分配条 = { toUserId: string; leadId?: string; projectId?: string };
+/** 市场首次分给销售（X-18）时留在原负责人名下的活：哪位客户、原负责人是谁（P-转-10） */
+export type 留下的活 = { customerId: string; 原: string };
+export type 分配条 = { toUserId: string; leadId?: string; projectId?: string; 留下?: 留下的活 };
+
+/**
+ * 接手人要知道客户上还有多少活在原负责人手里。几位客户合起来数；都是 0 回 null。
+ * 口径同 带走一位 不搬的那些：系统提醒（收回、撞号）是给原负责人本人的，不算。
+ * 只算客户原负责人的，项目负责人是另一位时他的不算
+ */
+async function 客户上还留着(们: readonly 分配条[]): Promise<string | null> {
+  const 留下们 = new Map(们.flatMap((c) => (c.留下 ? [[`${c.留下.customerId}:${c.留下.原}`, c.留下] as const] : []))).values();
+  let 待办 = 0;
+  let 计划 = 0;
+  for (const { customerId, 原 } of 留下们) {
+    const [n, m] = await 看全部(() => Promise.all([
+      prisma.task.count({ where: { customerId, ownerId: 原, done: false, AND: 不跟着转的提醒("assign") } }),
+      prisma.followPlan.count({ where: { customerId, ownerId: 原, done: false } }),
+    ]));
+    待办 += n;
+    计划 += m;
+  }
+  return 待办 || 计划 ? `客户上还有原负责人 ${待办} 条未完成待办、${计划} 条未完成计划` : null;
+}
+
+/** 通知正文后面接一句 */
+const 接一句 = (正文: string, 句: string | null) => (!句 ? 正文 : !正文 ? 句 : 正文.endsWith("。") ? `${正文}${句}` : `${正文}。${句}`);
 
 /**
  * 线索分出去了：按接手人合并成一条（批量自动分配 10 条给同一个人 = 他收一条「自动分配给你 10 条新线索」）。
@@ -56,7 +82,7 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
       await notify([toUserId], {
         kind: 自动 ? "自动分配" : "分配",
         title: n === 1 ? `${头}一条新线索：${名们[0]}` : `${头} ${n} 条新线索`,
-        body: n === 1 ? (自动 ? `${谁点的.name} 点的自动分配，轮到了你。` : "") : 名单(名们),
+        body: 接一句(n === 1 ? (自动 ? `${谁点的.name} 点的自动分配，轮到了你。` : "") : 名单(名们), await 客户上还留着(们)),
         link: 只一条项目 ? `/projects/${们[0].projectId}` : "/leads",
         key: `assign:${自动 ? "auto" : "manual"}:${们.map((c) => c.projectId ?? c.leadId).sort().join(",").slice(0, 400)}:${分钟()}`,
       });

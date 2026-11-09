@@ -6,7 +6,8 @@
  * 那一批怎么认：最近一条 pool-release 的 fromOwnerId（原负责人）+ at（进公海那一刻，放回 / 超时回收把 pooledAt 同一刻写进留痕和 doneAt），
  * 再加标题结尾 进公海关待办尾。同一刻进公海的几个项目（超时回收一次扫的、同一位客户的）是同一批，谁先出公海谁带走。
  * 已经做完的待办（doneAt 对不上、标题没那句尾巴）不会被重新打开。
- * 开关在 lib/enterprise/pool-rules.ts（换负责人带待办、带待办默认勾）；不是企业版、开关关着、调用方没传勾（自动分配）都不碰
+ * 开关在 lib/enterprise/pool-rules.ts（换负责人带待办、带待办默认勾）；不是企业版、开关关着、调用方没传勾都不碰。
+ * 没传勾的有两种：自动分配；市场首次分给销售（X-18，手动、自动都算，分项目给 不看弹窗的勾，待办、计划还归原负责人，P-转-10）
  */
 import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";

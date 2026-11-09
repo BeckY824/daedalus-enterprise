@@ -679,7 +679,7 @@ describe("分配弹框不让线索页首帧对不上（10-25 #191 E2E：#418、m
 describe("企业版「新线索」= 项目的线索阶段：分配、自动分配分的是项目（10-26 三大阶段）", () => {
   let 客户: string;
   // 没给 bizLine 的项目：负责人（市场）没设业务线 → 按内贸（项目业务线）
-  const 建项目 = async (name: string, data: Partial<{ ownerId: string; phase: string; node: string; result: string | null; pooledAt: Date | null; bizLine: string | null }> = {}) =>
+  const 建项目 = async (name: string, data: Partial<{ customerId: string; ownerId: string; phase: string; node: string; result: string | null; pooledAt: Date | null; bizLine: string | null }> = {}) =>
     (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, ...data } })).id;
   const 项目 = (id: string) => prisma.project.findUniqueOrThrow({ where: { id } });
 
@@ -700,7 +700,7 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
     expect(await 项目(P)).toMatchObject({ ownerId: 内贸, nextStepAt: 下一步, nextStepText: "约客户看样", pooledAt: null });
     expect(await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: P } })).toMatchObject({ leadId: "", toUserId: 内贸, fromUserId: 市场, byUserId: 市场, counted: true });
     expect(await prisma.projectNodeLog.count({ where: { projectId: P, kind: "transfer", fromOwnerId: 市场, toOwnerId: 内贸 } })).toBe(1);
-    expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: P, kind: "transfer" } })).toMatchObject({ reason: "分配方式：指定分配；原负责人没做完的待办带过来 0 条" }); // C-06：手动分没传勾按默认勾
+    expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: P, kind: "transfer" } })).toMatchObject({ reason: "分配方式：指定分配" }); // 客户在市场手里 = 转客户（X-18）：待办不带（P-转-10），不留「带过来」这句；C-06 的默认勾在客户负责人是销售时才算
     expect((await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: P } })).way).toBe("指定分配");
     await 配(外贸, 1);
     expect(await 分配线索({ projectId: await 建项目("Q", { bizLine: "外贸" }), toUserId: 外贸 })).toEqual({ ok: true });
@@ -738,7 +738,7 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
     expect(await 看(自动的.id)).toMatchObject({ ownerId: 两边, done: false });
   });
 
-  it("客户归市场、首次分给销售：客户整体交过去，名下别的项目和客户上的活跟着客户走（第五节问题 1 + P-转-07）", async () => {
+  it("客户归市场、首次分给销售：客户整体交过去，名下别的项目跟着客户走，客户上的待办还归原负责人（第五节问题 1 + P-转-07 + P-转-10）", async () => {
     const 别的 = await 建项目("别的项目");
     const P = await 建项目("P");
     const 客户上的 = await prisma.task.create({ data: { title: "回个电话", customerId: 客户, ownerId: 市场, dueOn: "2026-11-20" } });
@@ -746,7 +746,7 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(内贸);
     expect((await 项目(P)).ownerId).toBe(内贸);
     expect((await 项目(别的)).ownerId).toBe(内贸);
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: 客户上的.id } })).ownerId).toBe(内贸);
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: 客户上的.id } })).toMatchObject({ ownerId: 市场, done: false }); // 勾选伪造也不搬
   });
 
   it("转了商机的、线索流失的不分；已在他名下的不重复分", async () => {
@@ -780,7 +780,7 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
     expect((await 项目(P)).ownerId).toBe(内贸);
   });
 
-  it("批量自动分配：一条条分、结果按项目名列出", async () => {
+  it("批量自动分配：同一市场客户下的线索按客户算一份，结果按项目名列出", async () => {
     const A = await 建项目("A");
     const B = await 建项目("B");
     const 流失 = await 建项目("流失", { result: "线索流失" });
@@ -788,6 +788,18 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.结果.map((x) => [x.name, x.ok])).toEqual([["A", true], ["B", true], ["流失", false]]);
+    expect(new Set([(await 项目(A)).ownerId, (await 项目(B)).ownerId]).size).toBe(1);
+    expect(r.结果[1]).toMatchObject({ ok: true, 随客户: true });
+  });
+
+  it("批量自动分配：不同客户仍轮流分", async () => {
+    const 另一位 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13900009999", salesOwnerId: 市场 } })).id;
+    const A = await 建项目("A");
+    const B = await 建项目("B", { customerId: 另一位 });
+    const r = await 批量自动分配([A, B], { 项目: true });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.结果.map((x) => [x.name, x.ok])).toEqual([["A", true], ["B", true]]);
     expect(new Set([(await 项目(A)).ownerId, (await 项目(B)).ownerId]).size).toBe(2);
   });
 
@@ -1093,8 +1105,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     const 内 = await 建项目("内", { bizLine: "内贸" });
     const 外 = await 建项目("外", { bizLine: "外贸" });
     const 暂 = await 建项目("暂", { bizLine: "暂不分配" });
-    expect(await 项目分配线(内)).toEqual({ 线: "内贸", 可选: [内贸] });
-    expect(await 项目分配线(外)).toEqual({ 线: "外贸", 可选: [外贸] });
+    expect(await 项目分配线(内)).toEqual({ 线: "内贸", 可选: [内贸], 市场转客户: true });
+    expect(await 项目分配线(外)).toEqual({ 线: "外贸", 可选: [外贸], 市场转客户: true });
     const 暂的 = await 项目分配线(暂);
     expect(暂的?.线).toBe("暂不分配");
     expect([...(暂的?.可选 ?? [])].sort()).toEqual([内贸, 外贸].sort());

@@ -44,7 +44,7 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
           {res.结果.map((x) => (
             <li key={x.leadId}>
               <span className="lead-auto-assign-name" title={x.name}>{x.name}</span>
-              {x.ok ? <span>{分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
+              {x.ok ? <span>{x.随客户 ? `已随客户给 ${x.接手人}` : 分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
             </li>
           ))}
         </ul>
@@ -61,12 +61,15 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
   const router = useRouter();
   const { message } = App.useApp();
   const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划"; 带待办: boolean }>();
-  /** 企业版 C-06：分的是新线索（项目）才摆「待办一起转」的勾，默认勾、可以关（pool-rules.ts） */
-  const 带待办勾出 = !!lead?.项目 && 公海规则.换负责人带待办;
   const [人们, set人们] = useState<分配情况 | null>(null);
   const [忙, set忙] = useState(false);
   // 新线索（项目）的业务线（只读）和能指派的人（正常参与、线对得上的销售）；undefined = 还在取，null = 取不到
-  const [项目线, set项目线] = useState<{ 线: 项目线; 可选: string[] } | null | undefined>(undefined);
+  const [项目线, set项目线] = useState<{ 线: 项目线; 可选: string[]; 市场转客户?: boolean } | null | undefined>(undefined);
+  /**
+   * 企业版 C-06：分的是新线索（项目）才摆「待办一起转」的勾，默认勾、可以关（pool-rules.ts）。
+   * 市场首次分给销售（X-18）不摆：待办、计划还归原负责人（P-转-10），服务端也不看这个勾；没取到之前不摆，免得闪一下
+   */
+  const 带待办勾出 = !!lead?.项目 && 公海规则.换负责人带待办 && 项目线 !== undefined && !项目线?.市场转客户;
   const 可选 = lead?.项目 ? (项目线 ? new Set(项目线.可选) : null) : undefined;
 
   // 每次打开重取一遍：配额、已分随时在变
