@@ -199,6 +199,8 @@ model Customer {
   customerAttr String?
   /// 企业版业务线（迁移 106，2026-11-01 清单 A1）：内贸 / 外贸 / 暂不分配，新建客户时手动选，可空；客户页新开项目时当项目业务线的默认值
   bizLine      String?
+  /// 企业版归档档位（迁移 114，M-导入-23）：A1 / A2 / B / C / D / E，只由归档导入写；空 = 不是归档导入来的。取值见 lib/enterprise/archive-tier.ts
+  archiveTier  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
