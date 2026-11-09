@@ -37,13 +37,15 @@ beforeAll(async () => {
     window.__画 = () => createRoot(document.getElementById('root')).render(
       <ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS} timeZone={null}>
         <PlansView meId="me" 全员 预选客户={null} 直接新建={false}
-          plans={[计划('p1', 'c-lost', ${JSON.stringify(长名)}), 计划('p2', 'c-ok', '进得去的客户')]} tasks={[待办]}
+          plans={[计划('p1', 'c-lost', ${JSON.stringify(长名)}), 计划('p2', 'c-ok', '进得去的客户'), { ...计划('p3', 'c-mine', '我分出去的客户'), ownerId: 'me', ownerName: '我' }]}
+          tasks={[待办, { ...待办, id: 't2', title: '我留下的待办', customerId: 'c-mine', customerName: '我分出去的客户', ownerId: 'me', ownerName: '我' }]}
+          /* 本人名下、客户却改不了（市场成员分配后留下的）：见「本人名下的事项」那条 */
           done={[做完('plan:d1', 'c-lost', ${JSON.stringify(长名)}), 做完('plan:d2', 'c-ok', '进得去的客户')]}
           项目下一步={[
             { key: 'project:p-lost', id: 'p-lost', 项目名: ${JSON.stringify(项目长名)}, 下一步: '进不了的下一步', 时间: 老, ownerId: 'u1', ownerName: '下属', 进不了: true },
             { key: 'project:p-ok', id: 'p-ok', 项目名: '进得去的项目', 下一步: '进得去的下一步', 时间: 老, ownerId: 'u1', ownerName: '下属' },
           ]}
-          进不了的客户={['c-lost']} 改不了的客户={['c-lost']} />
+          进不了的客户={['c-lost', 'c-mine']} 改不了的客户={['c-lost', 'c-mine']} />
       </BusinessProvider></App></ConfigProvider>
     );
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
@@ -103,6 +105,18 @@ it("改不了的客户那行：不给 ✓（计划、待办都是），进得去
   expect(await page.getByRole("button", { name: "完成 打电话" }).count()).toBe(0);
   const 左 = (标题: string) => page.locator(".plan-row-t", { hasText: 标题 }).evaluate((e) => e.getBoundingClientRect().left);
   expect(await 左("回访p1")).toBe(await 左("回访p2"));
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("改不了的客户上本人名下的事项：照旧给 ✓（计划、待办都是，服务端 本人勾完成挡 放行，P-转-10），改、删、客户链接还是不给", async () => {
+  const { page, errors } = await 打开();
+  await page.getByRole("button", { name: "完成 回访p3" }).waitFor();
+  expect(await page.getByRole("button", { name: "完成 我留下的待办" }).count()).toBe(1);
+  for (const 标题 of ["回访p3", "我留下的待办"]) {
+    expect(await page.getByRole("button", { name: `改 ${标题}` }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: `删除 ${标题}` }).count()).toBe(0);
+  }
+  expect(await page.locator('a[href="/customers/c-mine"]').count()).toBe(0);
   expect(errors).toEqual([]); await page.close();
 });
 

@@ -341,10 +341,10 @@ test("项目公海：原负责人看不到公海里的项目；客户在公海�
 
   await page.context().clearCookies();
   await 登录(page, "销售2");
-  // 11-09 起线索公海的项目能单独领（M-公海-06）；但这位客户本身在客户公海里，项目还是要连客户一起领（pool-rules.ts 拦客户公海里的项目）
+  // 11-09 起线索公海的项目能单独领（M-公海-06）；但这位客户本身在客户公海里，项目不能单独领，要先去客户公海领客户（pool-rules.ts 拦客户公海里的项目）
   await page.goto(`/projects/${种.项目1}`);
   await expect(正文.getByText("这个项目在线索公海里", { exact: true })).toBeVisible();
-  await expect(正文.getByText("这位客户在客户公海里，项目要连客户一起领", { exact: true })).toBeVisible();
+  await expect(正文.getByText("这位客户在客户公海里，项目不能单独领、分或转：请先到客户公海领取或分配这位客户", { exact: true })).toBeVisible();
   await expect(正文.getByText(/你是原负责人/)).toHaveCount(0);
   await expect(正文.getByRole("button", { name: /领\s*取/ })).toBeDisabled();
 
