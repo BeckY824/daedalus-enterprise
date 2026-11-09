@@ -44,7 +44,7 @@ import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 不能改客户事项话, 没业务角色话 } from "@/lib/enterprise/follow-perm";
 import { 只读角色话 } from "@/lib/enterprise/permissions";
 import { 销售初判, 市场复核 } from "@/lib/project/lead-verify";
-import { 放进公海 } from "@/app/(app)/customers/pool-actions";
+import { 放进公海, 领取 } from "@/app/(app)/customers/pool-actions";
 import { 放回公海, 改项目 } from "@/lib/project/db";
 import { 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 给客户建项目, 建项目带走的项目 } from "@/app/(app)/customers/[id]/project-actions";
@@ -627,6 +627,43 @@ describe("客户公海里的项目不能经转让单独动（M-公海-06、X-13�
     const p = await 项目(c, 乙.id);
     await prisma.customerPool.create({ data: { customerId: c, reason: "手动" } });
     expect(await 转(总管, p, 乙)).toEqual({ ok: true, 变了: [] });
+  });
+
+  const 老数据 = async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 乙.id);
+    await prisma.customerPool.create({ data: { customerId: c, reason: "手动" } });
+    return { c, p };
+  };
+
+  it("老数据：拦住转让时告诉用户下一步（先到客户公海领取或分配这位客户），不只说不能转", async () => {
+    const { p } = await 老数据();
+    const r = await 转(总管, p, 丙);
+    expect(r.ok).toBe(false);
+    const 话 = (r as { error: string }).error;
+    expect(话).toMatch(/转/);
+    expect(话).toMatch(/先到客户公海领取或分配/);
+  });
+
+  it("老数据：按提示先领取客户，客户出公海；别人负责的项目不跟着走（领客户只带公海里的项目），之后能转", async () => {
+    const { c, p } = await 老数据();
+    expect(await 以(丙, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
+    expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(0);
+    expect(await 客户负责人(c)).toBe(丙.id);
+    expect(await 项目of(p)).toMatchObject({ ownerId: 乙.id, pooledAt: null });
+    expect(await 转(总管, p, 丙)).toMatchObject({ ok: true, 变了: ["ownerId"] });
+    expect(await 项目of(p)).toMatchObject({ ownerId: 丙.id, pooledAt: null });
+  });
+
+  it("老数据：负责人本人改名称、金额不受影响（不换负责人不走拦截），带上同一个负责人也一样", async () => {
+    const { c, p } = await 老数据();
+    const 改 = (patch: Record<string, unknown>) => 以(乙, () => 改项目({ id: 乙.id, role: 乙.role }, p, patch));
+    expect(await 改({ name: "改过的名称", amount: 123 })).toMatchObject({ ok: true });
+    expect(await 项目of(p)).toMatchObject({ name: "改过的名称", amount: 123, ownerId: 乙.id, pooledAt: null });
+    expect(await 改({ name: "再改一次", ownerId: 乙.id })).toMatchObject({ ok: true });
+    expect(await 项目of(p)).toMatchObject({ name: "再改一次", ownerId: 乙.id, pooledAt: null });
+    expect(await prisma.projectNodeLog.count({ where: { projectId: p, kind: "transfer" } })).toBe(0);
+    expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
   });
 
   it("不是企业版不受影响：团队版老规矩照旧", async () => {
