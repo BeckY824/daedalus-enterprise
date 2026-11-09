@@ -177,7 +177,7 @@ export function AssignedOutButton() {
     <>
       <Button icon={<SendOutlined />} onClick={打开}>我分出去的</Button>
       <Modal open={开} title="我分出去的线索" footer={null} width={760} onCancel={() => set开(false)} destroyOnHidden>
-        <p className="muted" style={{ marginTop: 0 }}>你分出去、或原来在你名下被分走的线索；同一条分了几次只算最近一次。</p>
+        <p className="muted" style={{ marginTop: 0 }}>你分出去、或原来在你名下被分走的线索；同一条分了几次只算最近一次。标「随客户」的是客户转给销售时跟着走的项目，不占额度。</p>
         <Table<分出去的线索>
           size="small"
           rowKey={(r) => r.projectId ?? r.leadId ?? ""}
@@ -187,7 +187,16 @@ export function AssignedOutButton() {
           locale={{ emptyText: "还没有分出去的线索" }}
           scroll={{ x: 680 }}
           columns={[
-            { title: "线索", dataIndex: "name", width: 180, ellipsis: true },
+            {
+              // 长名字在标签前面截断，标签不被挤掉（Windows 窄宽度）
+              title: "线索", dataIndex: "name", width: 180,
+              render: (v: string, r) => (
+                <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  <span data-testid="out-name" title={v} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{v}</span>
+                  {r.随客户 && <Tag style={{ margin: 0, flexShrink: 0 }}>随客户</Tag>}
+                </span>
+              ),
+            },
             {
               title: "状态", dataIndex: "status", width: 90,
               render: (v: string) => <Tag color={LEAD_STATUS_COLOR[v]} style={{ margin: 0 }}>{v}</Tag>,

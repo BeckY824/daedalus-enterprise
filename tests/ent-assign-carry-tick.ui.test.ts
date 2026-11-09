@@ -13,7 +13,7 @@ const plugin: Plugin = { name: "ent-assign-tick", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){},replace(){}});");
   stub(/assign-actions$/, `
     const 记=(n,回)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return 回};
-    export const 分配线索=记('分配线索',{ok:true}),批量自动分配=记('批量自动分配',{ok:true,结果:[]}),我分出去的线索=记('我分出去的线索',[]);
+    export const 分配线索=记('分配线索',{ok:true}),批量自动分配=记('批量自动分配',{ok:true,结果:[]}),我分出去的线索=async()=>window.__分出去的||[];
     export const 本月分配情况=async()=>[{userId:'u1',name:'王一',line:'内贸',配额:null,已分:0,加额:0,暂停:false}];
     export const 项目分配线=async()=>({线:'内贸',可选:['u1'],市场转客户:window.__市场转客户});
   `);
@@ -23,8 +23,8 @@ const plugin: Plugin = { name: "ent-assign-tick", setup(b) {
 beforeAll(async () => {
   const r = await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
-    import {AssignLeadModal} from '@/app/(app)/leads/AssignLead';
-    function 壳(){const [lead,set]=React.useState(null);return <App><button onClick={()=>set({id:'p1',name:'某项目',ownerId:'m1',项目:true})}>开弹窗</button><AssignLeadModal lead={lead} 关={()=>set(null)}/></App>}
+    import {AssignLeadModal,AssignedOutButton} from '@/app/(app)/leads/AssignLead';
+    function 壳(){const [lead,set]=React.useState(null);return <App><button onClick={()=>set({id:'p1',name:'某项目',ownerId:'m1',项目:true})}>开弹窗</button><AssignLeadModal lead={lead} 关={()=>set(null)}/><AssignedOutButton/></App>}
     window.__画=()=>createRoot(document.getElementById('root')).render(<壳/>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
@@ -56,3 +56,40 @@ it("别的情况：照旧摆勾，默认勾上", async () => {
   expect(await page.getByRole("checkbox", { name: 勾的话 }).isChecked()).toBe(true);
   expect(errors).toEqual([]); await page.close();
 });
+
+const 长名 = "这是一个名字特别特别长的项目用来量随客户标签会不会被挤出列外面去一直写到放不下为止";
+const 分出去的 = [
+  { leadId: null, projectId: "p1", name: 长名, status: "线索 · 线索验证", convertedAt: null, customerId: "c1", 接手人: "王一", 当前负责人: "王一", line: "内贸", kind: "随客户", 分配时间: "2026-11-09T01:00:00.000Z", 随客户: true },
+  { leadId: null, projectId: "p2", name: "自己分的那条", status: "线索 · 线索验证", convertedAt: null, customerId: "c1", 接手人: "王一", 当前负责人: "王一", line: "内贸", kind: "营销", 分配时间: "2026-11-09T01:00:00.000Z" },
+];
+
+for (const width of [1024, 1280, 1366]) {
+  it(`我分出去的（${width} 宽）：随客户走的那行有标签，长名字截断、标签不被挤掉；分配的那行没有`, async () => {
+    const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+    await page.goto("http://ent.test/leads");
+    await page.addScriptTag({ content: bundle });
+    await page.evaluate((v) => { const w = window as unknown as { __分出去的: unknown; __画: () => void }; w.__分出去的 = v; w.__画(); }, 分出去的);
+    await page.getByRole("button", { name: "我分出去的" }).click();
+    const 行1 = page.locator("tr", { hasText: "这是一个名字" });
+    const 标签 = 行1.getByText("随客户", { exact: true });
+    await 标签.waitFor();
+    expect(await page.locator("tr", { hasText: "自己分的那条" }).getByText("随客户", { exact: true }).count()).toBe(0);
+    // 标签整个在这一格里，名字在标签前面截断
+    const 量 = await 标签.evaluate((el) => {
+      const 格 = el.closest("td")!.getBoundingClientRect();
+      const 签 = el.getBoundingClientRect();
+      const 名 = el.parentElement!.querySelector("[data-testid='out-name']") as HTMLElement;
+      return { 格左: 格.left, 格右: 格.right, 签左: 签.left, 签右: 签.right, 签宽: 签.width, 名右: 名.getBoundingClientRect().right, 名截断: 名.scrollWidth > 名.clientWidth, 页宽: document.documentElement.scrollWidth, 窗宽: window.innerWidth };
+    });
+    expect(量.签宽).toBeGreaterThan(20);
+    expect(量.签左).toBeGreaterThanOrEqual(量.格左);
+    expect(量.签右).toBeLessThanOrEqual(量.格右);
+    expect(量.名右).toBeLessThanOrEqual(量.签左);
+    expect(量.名截断).toBe(true);
+    expect(量.页宽).toBeLessThanOrEqual(量.窗宽);
+    expect(await 行1.locator("[data-testid='out-name']").getAttribute("title")).toBe(长名);
+    expect(errors).toEqual([]); await page.close();
+  });
+}

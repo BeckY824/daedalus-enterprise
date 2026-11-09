@@ -50,6 +50,12 @@ export function 待办痕(带: boolean | undefined, 几条: number | null): stri
   return 几条 ? `原负责人没做完的待办没带，关掉 ${几条} 条` : "原负责人没做完的待办没带";
 }
 
+/**
+ * 市场首次分给销售（X-18）时跟着客户走的项目，转让痕的 reason 记这一句。
+ * 这些项目不写分配记录（不占额度），「我分出去的」（lead-assign.ts）靠这一句认；项目详情的换人记录里也原样淡色显示
+ */
+export const 随客户痕 = "随客户转走";
+
 /** 留痕原来的说明后面接上 待办痕 */
 export function 接上待办痕(reason: string | null, 痕: string | null): string | null {
   return [reason, 痕].filter(Boolean).join("；") || null;

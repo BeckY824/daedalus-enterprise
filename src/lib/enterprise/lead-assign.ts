@@ -18,6 +18,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { businessDayjs } from "@/lib/business-clock";
+import { 随客户痕 } from "@/lib/project/carry-tasks";
 import type { 组织 } from "./org-core";
 import { 能分配线索, 是总管理 } from "./permissions";
 import { 能改设置, type 改权限配置 } from "./edit-perm-table";
@@ -239,13 +240,18 @@ export type 分出去的线索 = {
   接手人: string;
   当前负责人: string | null;
   line: string | null;
+  /** 营销 / 营销企划；随客户走的没有分配种类，写「随客户」 */
   kind: string;
   分配时间: string;
+  /** 不是单独分的：市场首次分给销售时跟着客户走的项目（X-18），没有分配记录、不占额度。分配时间 = 跟着走的时刻 */
+  随客户?: true;
 };
 
 /**
  * 我分出去的线索和它们现在的转化情况（10-24：「线索分出去以后，原来的市场人员仍能看到转化情况」）。
  * 我 = 分之前的负责人（fromUserId）或者点分配的人（byUserId）。同一条线索分了几次只留最近一次。
+ * 跟着客户走的项目（X-18）没有分配记录，从转让痕里读（转客户给销售 记的 随客户痕），我 同样是原项目负责人或操作人；
+ * 普通改客户负责人带走的没这句，不算分配、不列。这里只读，不补分配记录（要占额度）。
  *
  * 线索走不限定的那个连接：分出去以后线索在别人名下，「按组织架构看客户」开着时我按负责人是看不到它的；
  * 这里只取名称、状态、转化时间这几列，不带电话、邮箱。
@@ -262,9 +268,31 @@ export async function 我分出去的(我: string, 最多 = 200): Promise<分出
     const k = r.projectId ? `p:${r.projectId}` : r.leadId ? `l:${r.leadId}` : null;
     if (k && !最近.has(k)) 最近.set(k, r);
   }
-  const 留 = [...最近.values()].slice(0, 最多);
-  const leadIds = 留.flatMap((r) => (r.projectId || !r.leadId ? [] : [r.leadId]));
-  const projectIds = 留.flatMap((r) => (r.projectId ? [r.projectId] : []));
+  // 留痕走不限定的连接：客户转走以后这些项目我多半看不到了
+  const 痕们 = await defaultClient.projectNodeLog.findMany({
+    where: { kind: { in: ["transfer", "pool-claim"] }, reason: { startsWith: 随客户痕 }, OR: [{ fromOwnerId: 我 }, { userId: 我 }] },
+    orderBy: { at: "desc" },
+    take: 最多 * 2,
+    select: { projectId: true, toOwnerId: true, at: true },
+  });
+  const 随走 = new Map<string, (typeof 痕们)[number]>();
+  for (const l of 痕们) if (!随走.has(l.projectId)) 随走.set(l.projectId, l);
+  // 同一个项目分配记录和随客户都有的（跟走以后又被单独分过，或者反过来）：哪次晚算哪次，一样晚算分配
+  const 这次随走 = (r: (typeof 记录)[number]) => {
+    const l = r.projectId ? 随走.get(r.projectId) : undefined;
+    return !!l && l.at > r.createdAt;
+  };
+  const 分的 = [...最近.values()].filter((r) => !这次随走(r));
+  const 占了 = new Set(分的.flatMap((r) => (r.projectId ? [r.projectId] : [])));
+  const 随的 = [...随走.values()].filter((l) => !占了.has(l.projectId));
+  const 留 = [
+    ...分的.map((r) => ({ 时: r.createdAt, 分: r, 随: null })),
+    ...随的.map((l) => ({ 时: l.at, 分: null, 随: l })),
+  ].sort((a, b) => b.时.getTime() - a.时.getTime()).slice(0, 最多);
+  const 留分 = 留.flatMap((x) => (x.分 ? [x.分] : []));
+  const 留随 = 留.flatMap((x) => (x.随 ? [x.随] : []));
+  const leadIds = 留分.flatMap((r) => (r.projectId || !r.leadId ? [] : [r.leadId]));
+  const projectIds = [...留分.flatMap((r) => (r.projectId ? [r.projectId] : [])), ...留随.map((l) => l.projectId)];
   const [leads, projects] = await Promise.all([
     leadIds.length
       ? defaultClient.lead.findMany({
@@ -276,7 +304,7 @@ export async function 我分出去的(我: string, 最多 = 200): Promise<分出
       ? defaultClient.project.findMany({
           // 不限定的连接不过软删扩展：回收站里的项目（P9）当删了，自己带上
           where: { id: { in: projectIds }, deletedAt: null, customer: { deletedAt: null } },
-          select: { id: true, name: true, phase: true, node: true, result: true, customerId: true, ownerId: true, pooledAt: true },
+          select: { id: true, name: true, phase: true, node: true, result: true, customerId: true, ownerId: true, pooledAt: true, bizLine: true },
         })
       : [],
   ]);
@@ -284,11 +312,30 @@ export async function 我分出去的(我: string, 最多 = 200): Promise<分出
   const 项目 = new Map(projects.map((p) => [p.id, p]));
   const 人名 = new Map(
     (await defaultClient.user.findMany({
-      where: { id: { in: [...new Set([...留.map((r) => r.toUserId), ...projects.map((p) => p.ownerId)])] } },
+      where: { id: { in: [...new Set([...留分.map((r) => r.toUserId), ...留随.flatMap((l) => (l.toOwnerId ? [l.toOwnerId] : [])), ...projects.map((p) => p.ownerId)])] } },
       select: { id: true, name: true },
     })).map((u) => [u.id, u.name]),
   );
-  return 留.flatMap((r): 分出去的线索[] => {
+  return 留.flatMap(({ 分: r, 随: l0 }): 分出去的线索[] => {
+    if (l0) {
+      const p = 项目.get(l0.projectId);
+      if (!p) return [];
+      return [{
+        leadId: null,
+        projectId: p.id,
+        name: p.name,
+        status: p.result ?? `${p.phase} · ${p.node}`,
+        convertedAt: null,
+        customerId: p.customerId,
+        当前负责人: p.pooledAt ? "公海" : (人名.get(p.ownerId) ?? null),
+        接手人: (l0.toOwnerId && 人名.get(l0.toOwnerId)) || "—",
+        line: p.bizLine,
+        kind: "随客户",
+        分配时间: l0.at.toISOString(),
+        随客户: true,
+      }];
+    }
+    if (!r) return [];
     const 共 = { 接手人: 人名.get(r.toUserId) ?? "—", line: r.line, kind: r.kind, 分配时间: r.createdAt.toISOString() };
     if (r.projectId) {
       const p = 项目.get(r.projectId);

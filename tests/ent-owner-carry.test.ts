@@ -35,7 +35,7 @@ import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 分配线索, 自动分配线索, 向导自动分配, 批量自动分配, 项目分配线 } from "@/app/(app)/leads/assign-actions";
-import { 自动分配不参与key, 不设配额key, 本月加额, 本月已分 } from "@/lib/enterprise/lead-assign";
+import { 自动分配不参与key, 不设配额key, 本月加额, 本月已分, 我分出去的 } from "@/lib/enterprise/lead-assign";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { toggleTask, completePlan, saveTask, deleteTask, savePlan, deletePlan } from "@/app/(app)/customers/[id]/actions";
 import { 交接客户 } from "@/app/(app)/projects/handover/actions";
@@ -672,5 +672,92 @@ describe("新建时指定给销售走同一条 X-18（客户页、新客户向�
       expect(await 客户负责人(r.customerId)).toBe(谁.id);
       expect((await 项目of(r.projectId)).ownerId).toBe(给.id);
     }
+  });
+});
+
+describe("「我分出去的」显示随客户走的项目（标「随客户」，不占额度，不写分配行）", () => {
+  const 行of = async (u: 人, p: string) => (await 以(u, () => 我分出去的(u.id))).find((x) => x.projectId === p);
+
+  it("批量自动分配：本批随客户走的那条也在，标随客户；不写分配行、不占额度", async () => {
+    await 只留参与(甲);
+    const c = await 客户(市场.id);
+    const [p, p2] = [await 项目(c, 市场.id), await 项目(c, 市场.id)];
+    await 以(市场, () => 批量自动分配([p, p2], { 项目: true }));
+    const 们 = await 以(市场, () => 我分出去的(市场.id));
+    expect(们.map((x) => x.projectId).sort()).toEqual([p, p2].sort());
+    expect(们.find((x) => x.projectId === p)?.随客户).toBeUndefined();
+    expect(们.find((x) => x.projectId === p2)).toMatchObject({ 随客户: true, 接手人: 甲.name, 当前负责人: 甲.name });
+    expect(await prisma.entLeadAssign.count({ where: { projectId: p2 } })).toBe(0);
+    expect(await 本月已分(甲.id)).toBe(1);
+  });
+
+  it("单点分配带走的：商机阶段的、线索公海里的都在；状态跟现在走", async () => {
+    const c = await 客户(市场.id);
+    const p = await 项目(c, 市场.id);
+    const 商机的 = await 项目(c, 市场.id, { phase: "商机", node: "方案报价" });
+    const 公海的 = await 项目(c, 市场.id, { pooledAt: new Date() });
+    await prisma.projectNodeLog.create({ data: { projectId: 公海的, userId: 市场.id, kind: "pool-release", fromOwnerId: 市场.id, toOwnerId: null, toPhase: "线索", toNode: "潜客培育" } });
+    expect(await 以(市场, () => 分配线索({ projectId: p, toUserId: 甲.id }))).toMatchObject({ ok: true });
+    expect(await 行of(市场, 商机的)).toMatchObject({ 随客户: true, 接手人: 甲.name, status: "商机 · 方案报价" });
+    expect(await 行of(市场, 公海的)).toMatchObject({ 随客户: true, 接手人: 甲.name, 当前负责人: 甲.name });
+    expect(await prisma.entLeadAssign.count({ where: { projectId: { in: [商机的, 公海的] } } })).toBe(0);
+  });
+
+  it("点分配的人和原项目负责人都看得到；接手人和不相干的人看不到", async () => {
+    const c = await 客户(市场.id);
+    const p = await 项目(c, 市场.id);
+    const 同事的 = await 项目(c, 丙.id);
+    expect(await 以(总管, () => 分配线索({ projectId: p, toUserId: 甲.id }))).toMatchObject({ ok: true });
+    expect(await 行of(总管, 同事的)).toMatchObject({ 随客户: true });
+    expect(await 行of(丙, 同事的)).toMatchObject({ 随客户: true });
+    expect(await 行of(甲, 同事的)).toBeUndefined();
+    expect(await 行of(乙, 同事的)).toBeUndefined();
+  });
+
+  it("客户页指定分配带走的同样显示", async () => {
+    await setSetting("business", { projectMode: true });
+    invalidateSettingsCache();
+    const c = await 客户(市场.id);
+    const 老项目 = await 项目(c, 市场.id);
+    const r = await 以(市场, () => 给客户建项目({ customerId: c, 项目: { name: "页新建", amount: 0, currency: "CNY", ownerId: 甲.id, 分配方式: 0, 业务线: "内贸" }, 跟进: { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false } } as Parameters<typeof 给客户建项目>[0]));
+    expect(r).toMatchObject({ ok: true, 转走: true });
+    expect(await 行of(市场, 老项目)).toMatchObject({ 随客户: true, 接手人: 甲.name });
+  });
+
+  it("后来又被我单独分出去：只留最近一次，那一次是分配行，不再标随客户", async () => {
+    await 只留参与(甲);
+    const c = await 客户(市场.id);
+    const [p, p2] = [await 项目(c, 市场.id), await 项目(c, 市场.id)];
+    await 以(市场, () => 批量自动分配([p, p2], { 项目: true }));
+    await 只留参与(乙);
+    const 再分 = await 以(市场, () => 批量自动分配([p2], { 项目: true }));
+    expect(再分).toMatchObject({ ok: true, 结果: [{ ok: true, toUserId: 乙.id }] });
+    const 们 = (await 以(市场, () => 我分出去的(市场.id))).filter((x) => x.projectId === p2);
+    expect(们).toHaveLength(1);
+    expect(们[0].随客户).toBeUndefined();
+    expect(们[0].接手人).toBe(乙.name);
+  });
+
+  it("先单独分过、后来又随客户走：只留最近一次，标随客户，接手人是后来这位", async () => {
+    const c = await 客户(市场.id);
+    const q = await 项目(c, 市场.id);
+    expect(await 以(市场, () => 分配线索({ projectId: q, toUserId: 甲.id }))).toMatchObject({ ok: true });
+    // 客户转回市场（带全部项目），市场再新分一条给乙：q 这回是随客户走的
+    expect(await 以(总管, () => assignSalesOwner([c], 市场.id))).toMatchObject({ ok: true });
+    const q2 = await 项目(c, 市场.id);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await 以(市场, () => 分配线索({ projectId: q2, toUserId: 乙.id }))).toMatchObject({ ok: true });
+    const 们 = (await 以(市场, () => 我分出去的(市场.id))).filter((x) => x.projectId === q);
+    expect(们).toHaveLength(1);
+    expect(们[0]).toMatchObject({ 随客户: true, 接手人: 乙.name });
+  });
+
+  it("普通转客户（改客户负责人）带走的项目不算：不是分配", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id);
+    expect(await 以(总管, () => assignSalesOwner([c], 乙.id))).toMatchObject({ ok: true });
+    expect((await 项目of(p)).ownerId).toBe(乙.id);
+    expect(await 行of(甲, p)).toBeUndefined();
+    expect(await 行of(总管, p)).toBeUndefined();
   });
 });
