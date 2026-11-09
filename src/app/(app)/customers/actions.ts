@@ -583,9 +583,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   }
   /*
     编辑里换了负责人、交接要确认开着（转给自己除外）：同批量转让一条路（11-09）。
-    负责人这一格先按原样存，别的格照存；存完再发起交接，接手人确认后才换（带走 / 通知都在确认那一步）
+    负责人这一格先按原样存，别的格照存；存完再发起交接，接手人确认后才换（带走 / 通知都在确认那一步）。
+    市场成员的客户转给销售不走确认（P-转-17），当场换、只发分给你通知
   */
-  const 交接给 = 改前 && salesOwnerId !== 改前.salesOwnerId && (await 转让走交接(me, salesOwnerId)) ? salesOwnerId : null;
+  const 交接给 = 改前 && input.id && salesOwnerId !== 改前.salesOwnerId && (await 转让走交接(me, salesOwnerId)) && !(await 都是市场转销售([input.id], salesOwnerId)) ? salesOwnerId : null;
   if (交接给 && 改前?.salesOwnerId) data.salesOwnerId = 改前.salesOwnerId;
   const 发起交接 = async () => (交接给 && input.id ? 交接结果(await 发起转让交接(me, [input.id], 交接给, 0, null)) : {});
   if (!交接给 && 改前 && input.id && salesOwnerId !== 改前.salesOwnerId) {
@@ -1204,6 +1205,20 @@ async function 接待分配超上限(ids: string[], 新: string): Promise<string
 async function 转让走交接(me: { id: string }, to: string): Promise<boolean> {
   return to !== me.id && (await 交接要确认());
 }
+
+/**
+ * 这批要换人的客户全在市场成员手里、接手人是销售（P-转-17）：不走确认，当场转、只通知。看客户负责人，不看谁点的。
+ * 单条换负责人（编辑页、就地改）用；批量转让那条路 fix/pool-hint-notify-undo 里有同名同实现，合并时去重
+ */
+async function 都是市场转销售(ids: string[], 接手人: string): Promise<boolean> {
+  const org = await 权限组织();
+  if (!org) return false;
+  const 们 = await prisma.customer.findMany({
+    where: { id: { in: ids }, salesOwnerId: { not: 接手人 } },
+    select: { salesOwnerId: true, pool: { select: { customerId: true } } },
+  });
+  return 们.length > 0 && 们.every((c) => 算市场转客户(org, c, 接手人));
+}
 function 交接结果(r: BulkResult): { 交接中?: number; 交接已在路上?: number } {
   return r.ok ? { 交接中: r.交接中 ?? 0, 交接已在路上: r.交接已在路上 ?? 0 } : {};
 }
@@ -1729,8 +1744,8 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     if (typeof v !== "string" || !v || !(await 在职(v))) return { ok: false, error: "负责人不存在或已停用" };
     const 不行 = await 不能当负责人(v);
     if (不行) return { ok: false, error: 不行 };
-    // 交接要确认开着、转给别人：同批量转让，先发起交接，负责人不换（11-09）
-    if (await 转让走交接(me, v)) {
+    // 交接要确认开着、转给别人：同批量转让，先发起交接，负责人不换（11-09）；市场成员的客户转给销售不走确认（P-转-17）
+    if ((await 转让走交接(me, v)) && !(await 都是市场转销售([id], v))) {
       const 现 = await prisma.customer.findUnique({ where: { id }, select: { salesOwnerId: true } });
       if (!现) return { ok: false, error: `这条${b.customer}已被删除` };
       if (现.salesOwnerId !== v) {

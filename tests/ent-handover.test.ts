@@ -329,6 +329,34 @@ describe("单条换负责人也走交接（11-09：客户编辑页 / 就地改�
     expect(await prisma.entHandover.count()).toBe(0);
   });
 
+  it("客户在市场成员手里、转给销售（P-转-17）：编辑页、就地改都不走确认，当场换，只发分给你通知；看客户负责人，不看谁点的", async () => {
+    const 市场 = await 建("mkt", "SALES");
+    await prisma.entMember.create({ data: { userId: 市场.id, bizRole: "marketing_mgr" } });
+    const a = await 客户(市场.id);
+    const b = await 客户(市场.id);
+    expect(await 编辑(a.id, { salesOwnerId: 接手.id })).toMatchObject({ ok: true });
+    当(市场);
+    expect(await patchCustomer(b.id, "salesOwnerId", 接手.id)).toMatchObject({ ok: true });
+    expect([await 归谁(a.id), await 归谁(b.id)]).toEqual([接手.id, 接手.id]);
+    expect(await prisma.entHandover.count()).toBe(0);
+    const 通知 = await prisma.entNotice.findMany({ where: { userId: 接手.id }, orderBy: { createdAt: "asc" } });
+    expect(通知.map((n) => n.kind)).toEqual(["分配", "分配"]);
+    expect(通知.map((n) => n.title)).toEqual([`${老板.id} 把客户分给你：${a.name}`, `${市场.id} 把客户分给你：${b.name}`]);
+  });
+
+  it("豁免只给市场转销售：负责人兼任市场和销售的、市场转给市场的照旧走确认", async () => {
+    const 兼任 = await 建("dual", "SALES");
+    const 市场乙 = await 建("mkt2", "SALES");
+    await prisma.entMember.createMany({ data: [{ userId: 兼任.id, bizRole: "marketing_mgr,sales" }, { userId: 市场乙.id, bizRole: "marketing_mgr" }] });
+    const a = await 客户(兼任.id);
+    expect(await patchCustomer(a.id, "salesOwnerId", 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
+    const 市场 = await 建("mkt", "SALES");
+    await prisma.entMember.create({ data: { userId: 市场.id, bizRole: "marketing_mgr" } });
+    const b = await 客户(市场.id);
+    expect(await 编辑(b.id, { salesOwnerId: 市场乙.id })).toMatchObject({ ok: true, 交接中: 1 });
+    expect([await 归谁(a.id), await 归谁(b.id)]).toEqual([兼任.id, 市场.id]);
+  });
+
   for (const 情形 of ["没设", "关着"] as const) it(`规则${情形}：编辑页、就地改照旧当场换，一行交接都不写`, async () => {
     if (情形 === "关着") await setSetting("enterprise.rule.handover_confirm", false);
     else {
