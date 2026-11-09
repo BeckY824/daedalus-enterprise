@@ -48,10 +48,11 @@ async function 跟进计划行({ 日, 零点, 次日 }: 日范围) {
   const 行们 = await prisma.followPlan.findMany({
     // 日历日的写法同 lib/overdue.ts 逾期条件：有 plannedOn 认它，老数据才看 plannedAt
     where: { done: false, customer: { pool: null }, OR: [{ plannedOn: 日 }, { plannedOn: null, plannedAt: { gte: 零点, lt: 次日 } }] },
-    select: { id: true, subject: true, method: true, ownerId: true, customerId: true, customer: { select: { name: true } } },
+    select: { id: true, subject: true, method: true, ownerId: true, customerId: true, customer: { select: { name: true, salesOwnerId: true } } },
   });
   if (!行们.length) return [];
-  // 计划不挂项目：这位负责人在这个客户下有进行中的项目就点去项目页（取最近动过的），不然去客户页。别人的项目他不一定打得开
+  // 计划不挂项目：这位负责人在这个客户下有进行中的项目就点去项目页（取最近动过的），不然他是客户负责人就去客户页。
+  // 别人的项目他不一定打得开；客户也不是他的（市场分出去后活还归他 P-转-10、项目已结束）客户页多半 404，去计划页，那里能勾完成
   const 项目们 = await prisma.project.findMany({
     where: { customerId: { in: [...new Set(行们.map((p) => p.customerId))] }, result: null, pooledAt: null },
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
@@ -64,7 +65,8 @@ async function 跟进计划行({ 日, 零点, 次日 }: 日范围) {
   }
   return 行们.map((p) => {
     const 项目 = 他的项目.get(`${p.customerId}\n${p.ownerId}`);
-    return { ...p, link: 项目 ? `/projects/${encodeURIComponent(项目)}` : `/customers/${encodeURIComponent(p.customerId)}` };
+    const link = 项目 ? `/projects/${encodeURIComponent(项目)}` : p.customer.salesOwnerId === p.ownerId ? `/customers/${encodeURIComponent(p.customerId)}` : "/follow-ups/plans";
+    return { ...p, link };
   });
 }
 

@@ -10,7 +10,7 @@ import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符 } from "@/lib/empty-value";
-import { 项目不能单独领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 项目不能单独领提示, 客户在公海项目不单领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -1367,7 +1367,7 @@ export default function ProjectDetail({
       )}
 
       {p.pooled && (
-        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 ? 项目不能单独领提示 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 || p.领取不给 === 客户在公海项目不单领提示 ? p.领取不给 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
       )}
 
       {异常 && (

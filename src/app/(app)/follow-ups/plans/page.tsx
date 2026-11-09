@@ -10,6 +10,7 @@ import { 压轻 } from "@/lib/plans-light";
 import { 读每组 } from "@/lib/plans-groups";
 import { 补计划详情 } from "./plan-rows";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 名下事项够不着 } from "@/lib/enterprise/follow-perm";
 
 export const dynamic = "force-dynamic";
 
@@ -48,12 +49,13 @@ export default async function PlansPage({
     const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     return rows.map((r) => ({ key: `project:${r.id}`, id: r.id, 项目名: r.name, 下一步: r.nextStepText, 时间: calendarDay(r.nextStepAt!), ownerId: r.ownerId, ownerName: 名.get(r.ownerId) ?? "已不在的成员" }));
   };
-  const [{ plans, tasks, 轻, 负责人 }, teamPlans, teamTasks, myPlans, myTasks, 预选客户, 项目下一步] = await Promise.all([
+  const [{ plans, tasks, 轻, 负责人 }, teamPlans, teamTasks, myPlans, myTasks, 预选客户, 项目下一步, 够不着] = await Promise.all([
     // 不限定（老板、个人版、企业版没开按组织看）时轻列表走短时缓存（lib/plans-page.ts）
     (async () => 取计划页(prisma, 每组, me.id, (await 限定的我(defaultClient)) ? undefined : 缓存着))(),
     completedPlans(), completedTasks(), completedPlans(me.id), completedTasks(me.id),
     带过来的客户(sp.customer),
     项目下一步们(),
+    名下事项够不着(me),
   ]);
 
   // 轻列表按列压紧再给页面（lib/plans-light.ts）：企业版 1.5 万条时页面小一半；压不了的照原样给
@@ -68,6 +70,8 @@ export default async function PlansPage({
       plans={plans}
       tasks={tasks}
       项目下一步={项目下一步}
+      进不了的客户={够不着.进不了}
+      改不了的客户={够不着.改不了}
       {...(轻 ? { ...(紧 ? { 紧 } : { 轻, 负责人 }), 每组, 补详情: 补计划详情 } : {})}
       done={[
         ...[...new Map([...teamPlans, ...myPlans].map(p => [p.id, p])).values()].map((p) => ({

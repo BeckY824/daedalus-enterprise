@@ -86,8 +86,8 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
       // 「全部待办」默认三列看板（lay=list 回到表格）；四张卡筛的时候照旧是表格（首页链接 f=today 落表格）
     const 布局 = 卡 === "all" ? 读布局(sp.lay) : "list";
     const [d, 板, 回公海] = await Promise.all([
-      布局 === "list" ? 复盘待办of(范围, { 卡, 页: 读页码(sp.p) }) : undefined,
-      布局 === "board" ? 复盘看板of(范围) : undefined,
+      布局 === "list" ? 复盘待办of(范围, { 卡, 页: 读页码(sp.p), 我id: user.id }) : undefined,
+      布局 === "board" ? 复盘看板of(范围, { 我id: user.id }) : undefined,
       将回公海of(范围),
     ]);
     return (
