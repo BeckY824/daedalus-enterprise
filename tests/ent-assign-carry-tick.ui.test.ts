@@ -77,6 +77,12 @@ for (const width of [1024, 1280, 1366]) {
     const 行1 = page.locator("tr", { hasText: "这是一个名字" });
     const 标签 = 行1.getByText("随客户", { exact: true });
     await 标签.waitFor();
+    // 弹窗有入场缩放（antd zoom，从 0.2 倍放大）：标签一出现就量，会量到缩小中的尺寸（CI 上 1024 宽量到过 10.4 = 52 × 0.2）。
+    // 等弹窗上的 ant-zoom-* 动画类撤掉、外框不再缩放再量
+    await page.waitForFunction(() => {
+      const m = document.querySelector<HTMLElement>(".ant-modal");
+      return !!m && !/\bant-zoom-/.test(m.className) && Math.abs(m.getBoundingClientRect().width - m.offsetWidth) < 1;
+    });
     expect(await page.locator("tr", { hasText: "自己分的那条" }).getByText("随客户", { exact: true }).count()).toBe(0);
     // 标签整个在这一格里，名字在标签前面截断
     const 量 = await 标签.evaluate((el) => {
