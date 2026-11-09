@@ -198,11 +198,12 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))
     // 客户不露时不拿客户的来源（同列上的「渠道」）：否则筛一下就试出同事客户从哪来
     && (!来源 || p.channelId === 来源 || 露(p))).map((p) => ({
-    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null,
+    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
     ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
+    ...(企 && p.customer.pool ? { 客户在公海: true } : {}),
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源

@@ -93,15 +93,19 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   }
 
   async function 撤销(x: 复盘待办行) {
-    if (x.kind === "plan") await completePlan(x.id, false);
-    else await toggleTask(x.id, false);
+    const r = x.kind === "plan" ? await completePlan(x.id, false) : await toggleTask(x.id, false);
     set刚完成((v) => v.filter((k) => k !== x.key));
+    if (!r.ok) {
+      message.error("error" in r && r.error ? r.error : "没改回来，刷新看看");
+      router.refresh();
+      return;
+    }
     message.success(`「${x.内容}」已改回未完成`);
     void window.desktopReminders?.刷新();
     router.refresh();
   }
 
-  const 去 = (x: 复盘待办行) => router.push(x.去);
+  const 去 = (x: 复盘待办行) => { if (x.去) router.push(x.去); };
 
   const cols = [
     {
@@ -257,14 +261,14 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
           }}
           // 窄了在表格里横滚，不伸出页面；宽的时候内容、客户名照常省略
           scroll={{ x: 最窄 }}
-          rowClassName={(x) => `btodo-row${刚完成.includes(x.key) ? " btodo-row-done" : ""}${x.组 === "逾期" ? " btodo-row-late" : ""}`}
-          onRow={(x) => ({
+          rowClassName={(x) => `btodo-row${刚完成.includes(x.key) ? " btodo-row-done" : ""}${x.组 === "逾期" ? " btodo-row-late" : ""}${x.去 ? "" : " btodo-row-nolink"}`}
+          onRow={(x) => x.去 ? {
             onClick: () => 去(x),
             onKeyDown: (e) => { if (e.key === "Enter") 去(x); },
             tabIndex: 0,
             role: "link",
             "aria-label": `${x.内容}，${x.customerName}`,
-          })}
+          } : {}}
           locale={表格空态({ title: "没有待办", hint: 空提示, demo: false })}
         />
         )}
@@ -297,7 +301,7 @@ function 待办卡片({ x, 完成中, 看全员, 完成 }: { x: 复盘待办行;
           <span className="btodo-time nowrap">{x.时间 ? fmtDateTime(x.时间) : "没定日期"}</span>
           {逾 > 0 && <span className="btodo-k-over nowrap" suppressHydrationWarning>逾 {逾} 天</span>}
           {看全员 && <span className="btodo-k-owner">{x.ownerName}</span>}
-          <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›</Link>
+          {x.去 && <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›</Link>}
         </div>
       </div>
     </article>

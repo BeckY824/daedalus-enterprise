@@ -3,7 +3,11 @@
  * 真正转交在 lib/carry-over-db.ts 的「带走没做完的」（改负责人、批量分配、公海领取共用）。
  */
 /** 项目：团队版项目模式里跟着客户走的项目，开关从没开过就是 0（老版本没这一项） */
-export type 带走数 = { 计划和待办: number; 商机: number; 项目?: number };
+export type 带走数 = {
+  计划和待办: number; 商机: number; 项目?: number;
+  /** 市场转给销售时，改完负责人又被别人改走、这次没转的客户数（见 带走并记下）；没有就不带这一项 */
+  没转成?: number;
+};
 
 /** 「，连同 2 条没做完的计划和待办、1 个进行中商机」；什么都没带走就是空串 */
 export function 带走说法(n: 带走数 | undefined): string {
@@ -12,19 +16,34 @@ export function 带走说法(n: 带走数 | undefined): string {
   return 项.length ? `，连同${项.join("、")}` : "";
 }
 
+/** 批量操作结果的那句提示。「刚被别人改了负责人」和「已不存在」要分开说 */
+export function 批量结果说法(res: { updated: number; unchanged: number; missing: number; 没转?: number; 带走?: 带走数 }, action: string): string {
+  const parts = [`${action}：${res.updated} 条`];
+  if (res.unchanged) parts.push(`${res.unchanged} 条本来就是`);
+  if (res.missing) parts.push(`${res.missing} 条已不存在（可能已删除）`);
+  const 没转 = (res.没转 ?? 0) + (res.带走?.没转成 ?? 0);
+  if (没转) parts.push(`${没转} 条刚被别人改了负责人，没转`);
+  // 改负责人时原负责人没做完的活一起转了（排查 B3）。带走说法自带开头的逗号
+  return parts.join("，") + 带走说法(res.带走);
+}
+
 /** 转之前先列出会一起转走的项目（企业版 D-36，2026-10-24）。列名字最多这么多个，再多说「等 N 个」 */
 export const 预览列几个 = 8;
-/** 留下：同一位客户下同事负责的项目（含已结束的），不跟着转、留在各自负责人名下（P-转-07，11-05）；没有就不带这一项 */
+/**
+ * 项目：转客户时一起转走的（企业版 P-转-07，用户 11-09 定）：原负责人自己的、线索公海里的、同事负责但正在待分配的。
+ * 负责人：不是原负责人自己的才写（「线索公海」或「待分配」），确认框里点出来。
+ * 留下：同一位客户下同事负责的项目（含已结束的），不跟着转、留在各自负责人名下；没有就不带这一项
+ */
 export type 转走项目预览 = {
   项目数: number;
-  项目: { name: string; 客户: string }[];
+  项目: { name: string; 客户: string; 负责人?: string }[];
   留下?: { 项目数: number; 项目: { name: string; 客户: string; 负责人: string }[] };
 };
 type 一段 = { 标题: string; 行: string[]; 还有: string };
 
 /**
- * 确认框里那几行：标题「会一起转走的 3 个项目」+ 每行「项目名（客户名）」，多出来的说一句；
- * 留下的同事项目另列一段「N 个项目留在各自负责人名下」+「项目名（客户名 · 负责人）」。两样都没有 = null（不弹框）
+ * 确认框里那几行：标题「会一起转走的 3 个项目」+ 每行「项目名（客户名）」，公海里的 / 待分配的写「项目名（客户名 · 线索公海）」，
+ * 多出来的说一句；留在同事名下的另列一段（只有留下的也弹）。都没有 = null（不弹框）
  */
 export function 转走项目说法(p: 转走项目预览 | null | undefined): (一段 & { 留下: 一段 | null }) | null {
   const 留 = p?.留下?.项目数 ? p.留下 : null;
@@ -36,7 +55,7 @@ export function 转走项目说法(p: 转走项目预览 | null | undefined): (�
   };
   return {
     标题: p.项目数 ? `会一起转走的 ${p.项目数} 个项目` : 留下!.标题,
-    行: p.项目.map((x) => `${x.name}（${x.客户}）`),
+    行: p.项目.map((x) => `${x.name}（${x.客户}${x.负责人 ? ` · ${x.负责人}` : ""}）`),
     还有: p.项目数 > p.项目.length ? `等共 ${p.项目数} 个` : "",
     留下,
   };

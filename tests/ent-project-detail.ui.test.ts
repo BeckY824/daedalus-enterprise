@@ -15,6 +15,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=f,撤销删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
+  stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async(...a)=>{(window.__开卡||=[]).push(a);return window.__卡结果??{ok:false,error:'打不开'}};");
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);
   // 沟通撤销（A7-1）：FollowUndo 用 @/ 路径引客户页 actions
   stub(/customers\/\[id\]\/actions$/, "export const 撤销刚记的沟通=async()=>({ok:true});");
@@ -50,7 +51,7 @@ beforeAll(async () => {
     window.__转=()=>root.render(包(<ProjectDetail p={详情(true).props.p} 能改={true} 候选={[{id:'qa',name:'组长甲',email:'qa@x.test'},{id:'u3',name:'接手乙',email:'u3@x.test'}]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* P17 关联客户 / 联系人：超长客户名、超长联系人显名、选满身份，挂在右栏 */
     const 关联={客户们:[{customerId:'c1',名:'超长客户名'+串,全称:'某某超长公司名有限公司'.repeat(4),身份:['业主方','总包方','分包方','投资方'],主:true,看得到:true},
-      {customerId:'c2',名:'关联客户'+串,全称:'',身份:['监理方','设计方','引荐方'],主:false,看得到:true},{customerId:'c3',名:'同事的客户 #ABC123',全称:'',身份:[],主:false,看得到:false}],
+      {customerId:'c2',名:'关联客户'+串,全称:'',身份:['监理方','设计方','引荐方'],主:false,看得到:true,能进详情:true},{customerId:'c3',名:'同事的客户 #ABC123',全称:'',身份:[],主:false,看得到:false}],
       联系人们:[{contactId:'k1',名:'超长客户名'+串+'|张先生',姓名:'张三',customerId:'c1',角色:['决策人','审批人','影响人','使用人','经办人'],立场:'盟友',主:true,看得到:true},
       {contactId:'k2',名:'关联客户'+串+'|🔥姓名暂未核实',姓名:'王总',customerId:'c2',角色:[],立场:null,主:false,看得到:true}],
       选项:{身份:['业主方','总包方','分包方','投资方','垫资方','运营方','引荐方','监理方','设计方'],角色:['决策人','审批人','影响人','使用人','经办人'],立场:['待定','中立','对手','线人','军师','盟友']},上限:30};
@@ -177,6 +178,45 @@ it.each([1024, 1280])("P17 %ipx：右栏关联客户 / 关联联系人跟在画�
     expect(await page.getByRole("button", { name: /^解除和 关联客户/ }).count()).toBe(2);
     expect(await 卡.locator("a", { hasText: "同事的客户" }).count()).toBe(0);
     expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("E① 客户只读卡：客户名是按钮，不链客户详情；点开才取内容，弹窗只读、长名字不横滚；打不开给一句话", async () => {
+  const { page, errors } = await open(true, 1024);
+  try {
+    const 串 = "超长公司名".repeat(30);
+    const 卡 = { 客户: { name: "只读客户" + 串, shortName: null, school: 串, customerType: null, customerAttr: null, 地区: "", addrDetail: null, website: null },
+      联系人: [{ name: "王联系", position: "总经理", 给联系方式: true, phone: "13700000001", email: null, wechat: null, 号码们: [{ 叫法: "手机", value: "13700000001" }] },
+        { name: "李联系", position: "财务", 给联系方式: false, phone: null, email: null, wechat: null, 号码们: [] }] };
+    await page.evaluate(({ 卡 }) => { const w = window as unknown as { __卡结果: unknown; __over: (x: unknown) => void }; w.__卡结果 = { ok: true, 卡 };
+      w.__over({ customer: null, 客户入口: "只读卡", 客户卡名: { name: "只读客户名", school: "只读公司" } }); }, { 卡 });
+    const 名 = page.getByRole("button", { name: "只读客户名" });
+    await 名.waitFor();
+    expect(await page.locator('a[href^="/customers/"]').filter({ hasText: "只读客户名" }).count()).toBe(0);
+    expect(await page.evaluate(() => (window as unknown as { __开卡?: unknown[] }).__开卡?.length ?? 0)).toBe(0);
+    await 名.click();
+    const 弹 = page.getByTestId("customer-readonly-card");
+    await 弹.waitFor();
+    const 字 = await 弹.innerText();
+    expect(字).toContain("13700000001");
+    expect(字).toContain("联系方式不显示");
+    expect(await page.evaluate(() => (window as unknown as { __开卡: unknown[][] }).__开卡[0])).toEqual(["p1"]);
+    expect(await 弹.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.getByRole("button", { name: "关闭" }).click();
+    await page.evaluate(() => { (window as unknown as { __卡结果: unknown }).__卡结果 = { ok: false, error: "这张客户卡现在打不开了" }; });
+    await 名.click();
+    await page.getByText("这张客户卡现在打不开了").waitFor();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("E① 入口是文字：有名字没链接，也没有按钮", async () => {
+  const { page } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ customer: { id: "c9", name: "只露名字客户", school: null }, 客户入口: "文字", 客户卡名: null }));
+    await page.getByText("只露名字客户").first().waitFor();
+    expect(await page.locator('a[href="/customers/c9"]').count()).toBe(0);
+    expect(await page.getByRole("button", { name: "只露名字客户" }).count()).toBe(0);
   } finally { await page.close(); }
 });
 

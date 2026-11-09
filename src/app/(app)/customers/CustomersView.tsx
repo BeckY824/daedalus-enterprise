@@ -33,7 +33,7 @@ import { assignSalesOwner, bulkFollowStatus, 撤销改负责人, type BulkResult
 import { useDeleteCustomers } from "./useDeleteCustomers";
 import { useTransferConfirm } from "./useTransferConfirm";
 import { usePoolReturnConfirm } from "./usePoolReturnConfirm";
-import { 带走说法 } from "@/lib/carry-over";
+import { 带走说法, 批量结果说法 } from "@/lib/carry-over";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { WhatsApp网址, 官网网址, 官网短写, 客户等级, 客户等级说明, type 客户等级 as 等级 } from "@/lib/customer-extra";
@@ -70,14 +70,6 @@ const 建档弹窗 = dynamic(() => import("../projects/new/ProjectWizard").then(
 /** 筛选下拉顶上一行：这一项筛的是什么（交互方案 P2，10-30）。每个值各自的含义在选项下面一行灰字（components/DictNote.tsx） */
 function 下拉说明(话: string) {
   return <div className="muted" style={{ padding: "4px 12px 6px", fontSize: "var(--fs-note)", borderBottom: "1px solid var(--line)", marginBottom: 4 }}>{话}</div>;
-}
-
-function bulkSummary(res: Extract<BulkResult, { ok: true }>, action: string): string {
-  const parts = [`${action}：${res.updated} 条`];
-  if (res.unchanged) parts.push(`${res.unchanged} 条本来就是`);
-  if (res.missing) parts.push(`${res.missing} 条已不存在（可能已删除）`);
-  // 改负责人时原负责人没做完的活一起转了（排查 B3）。带走说法自带开头的逗号
-  return parts.join("，") + 带走说法(res.带走);
 }
 
 type Option = { id: string; name: string };
@@ -959,12 +951,12 @@ export default function CustomersView({
                     if (!res.ok) return void message.error(res.error);
                     // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的
                     if (res.交接中 !== undefined) {
-                      const 已在 = res.交接已在路上 ? `；${res.交接已在路上} 名已在另一笔交接里，没再发起` : "";
+                      const 已在 = (res.交接已在路上 ? `；${res.交接已在路上} 名已在另一笔交接里，没再发起` : "") + (res.没转 ? `；${res.没转} 名刚被别人改了负责人，没转` : "") + (res.missing ? `；${res.missing} 名已不存在（可能已删除）` : "");
                       return void (res.交接中
                         ? message.success(`已发起交接：${res.交接中} 名等 ${o.label} 确认，确认前仍在原负责人名下${已在}`)
                         : message.info(`没有发起新的交接${已在 || "：选中的都已归 " + o.label}`));
                     }
-                    可撤销提示(res, bulkSummary(res, `已转给 ${o.label}`), assignSalesOwner, () => 撤销改负责人(res.原值 ?? [], o.value, res.带过来));
+                    可撤销提示(res, 批量结果说法(res, `已转给 ${o.label}`), assignSalesOwner, () => 撤销改负责人(res.原值 ?? [], o.value, res.带过来));
                   },
                 })),
               }}
@@ -1019,7 +1011,7 @@ export default function CustomersView({
                     清空();
                     router.refresh();
                     if (!res.ok) return void message.error(res.error);
-                    可撤销提示(res, bulkSummary(res, `已改为「${statusLabel(b, s)}」`), bulkFollowStatus);
+                    可撤销提示(res, 批量结果说法(res, `已改为「${statusLabel(b, s)}」`), bulkFollowStatus);
                   },
                 })),
               }}

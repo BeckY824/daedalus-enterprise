@@ -169,7 +169,7 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
           columns={客户列}
           dataSource={p.客户}
           pagination={p.客户.length > 20 ? { pageSize: 20, size: "small", showSizeChanger: false } : false}
-          title={() => `${b.customer}（${p.客户.length}）${项目模式 ? "：交出去时上面的项目一起走" : ""}`}
+          title={() => `${b.customer}（${p.客户.length}）${项目模式 ? "：交出去时 TA 负责的项目一起走，同事负责的不动（待分配的也走）" : ""}`}
           style={{ marginBottom: p.项目.length ? 12 : 0 }}
         />
       )}

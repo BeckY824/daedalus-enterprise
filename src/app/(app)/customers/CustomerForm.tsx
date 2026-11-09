@@ -363,7 +363,8 @@ function CustomerFormInner({
       }
       // 换了负责人时，原负责人没做完的活一起转了过去，说一声（排查 B3）
       const 带走 = 带走说法(res.带走);
-      message.success(editing ? (带走 ? `已保存${带走}一起转给了新负责人` : "已保存") : `${b.customer}已创建`);
+      if (res.带走?.没转成) message.warning("已保存，但负责人刚被别人改了，这次没转");
+      else message.success(editing ? (带走 ? `已保存${带走}一起转给了新负责人` : "已保存") : `${b.customer}已创建`);
       守.存好了();
       onClose(true);
     } finally {

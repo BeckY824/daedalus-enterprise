@@ -131,8 +131,8 @@ export type 复盘待办行 = {
   ownerId: string;
   ownerName: string;
   组: 组;
-  /** 点这一行去哪：客户有进行中的项目就去项目页，没有去客户页 */
-  去: string;
+  /** 点这一行去哪：客户有进行中的项目就去项目页，没有去客户页；客户详情进不去的去自己看得到的项目，都没有 = null（行不能点，只能勾） */
+  去: string | null;
 };
 
 export type 复盘待办 = { 计数: Record<待办卡, number>; 总数: number; 页: number; 行: 复盘待办行[] };

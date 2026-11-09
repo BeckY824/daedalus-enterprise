@@ -161,7 +161,7 @@ export default function LeadVerifyPanel({
         身: (
           <>
             <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>
-              {有效 ? "判有效会交回负责人继续跟。" : "判无效后这条线索结束（记为线索流失）；负责人设了本月自动分配名额的，名额 +1。"}
+              {有效 ? "判有效会交回负责人继续跟。" : "判无效后这条线索结束（记为线索流失）；现负责人的分配占过额度的（自动、指定都算，不限哪个月），给他本月补回 1 个；随客户分到的、转来的、没分配记录的、没设配额的不补。"}
             </div>
             <Input.TextArea rows={4} maxLength={原因上限} showCount value={说明} onChange={(e) => set说明(e.target.value)} placeholder="复核说明（可不写）" aria-label="复核说明" />
           </>
@@ -197,7 +197,7 @@ export default function LeadVerifyPanel({
           {v.我能 === "销售认领" && (
             <>
               {推按钮("认领继续", () => void 跑(() => 销售认领Action(projectId, true), "已认领，推到线索推进"), "lead-verify-claim")}
-              <Popconfirm title="退回项目公海？" description="算你主动退回，别人可以领走" okText="退回" cancelText="再想想" onConfirm={() => void 跑(() => 销售认领Action(projectId, false), "已退回项目公海")}>
+              <Popconfirm title="退回线索公海？" description="算你主动退回，别人可以领走" okText="退回" cancelText="再想想" onConfirm={() => void 跑(() => 销售认领Action(projectId, false), "已退回线索公海")}>
                 <Button size="small" disabled={忙} data-testid="lead-verify-return">放回公海</Button>
               </Popconfirm>
             </>

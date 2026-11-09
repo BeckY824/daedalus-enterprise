@@ -13,7 +13,8 @@ import { App, Button, Checkbox, Form, Modal, Select, Table, Tag } from "antd";
 import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
-import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, type 分配情况, type 自动分配结果 } from "./assign-actions";
+import { useCarryConfirm } from "@/app/(app)/customers/useCarryConfirm";
+import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, 分配带走的项目, type 分配情况, type 自动分配结果 } from "./assign-actions";
 import type { 项目线 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
@@ -24,7 +25,10 @@ const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配�
 export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
+  const 问一起转 = useCarryConfirm();
   return async function 批量自动分(ids: string[], 清空: () => void) {
+    // P-转-07：市场客户名下有同事的项目，分之前列出来（接手人这时还没挑）
+    if (选项?.项目 && !(await 问一起转(() => 分配带走的项目(ids)))) return;
     let res: Awaited<ReturnType<typeof 批量自动分配>>;
     try {
       res = await 批量自动分配(ids, 选项);
@@ -44,7 +48,7 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
           {res.结果.map((x) => (
             <li key={x.leadId}>
               <span className="lead-auto-assign-name" title={x.name}>{x.name}</span>
-              {x.ok ? <span>{分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
+              {x.ok ? <span>{x.随客户 ? `已随客户给 ${x.接手人}` : 分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
             </li>
           ))}
         </ul>
@@ -60,13 +64,17 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
 export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean }) {
   const router = useRouter();
   const { message } = App.useApp();
+  const 问一起转 = useCarryConfirm();
   const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划"; 带待办: boolean }>();
-  /** 企业版 C-06：分的是新线索（项目）才摆「待办一起转」的勾，默认勾、可以关（pool-rules.ts） */
-  const 带待办勾出 = !!lead?.项目 && 公海规则.换负责人带待办;
   const [人们, set人们] = useState<分配情况 | null>(null);
   const [忙, set忙] = useState(false);
   // 新线索（项目）的业务线（只读）和能指派的人（正常参与、线对得上的销售）；undefined = 还在取，null = 取不到
-  const [项目线, set项目线] = useState<{ 线: 项目线; 可选: string[] } | null | undefined>(undefined);
+  const [项目线, set项目线] = useState<{ 线: 项目线; 可选: string[]; 市场转客户?: boolean } | null | undefined>(undefined);
+  /**
+   * 企业版 C-06：分的是新线索（项目）才摆「待办一起转」的勾，默认勾、可以关（pool-rules.ts）。
+   * 市场首次分给销售（X-18）不摆：待办、计划还归原负责人（P-转-10），服务端也不看这个勾；没取到之前不摆，免得闪一下
+   */
+  const 带待办勾出 = !!lead?.项目 && 公海规则.换负责人带待办 && 项目线 !== undefined && !项目线?.市场转客户;
   const 可选 = lead?.项目 ? (项目线 ? new Set(项目线.可选) : null) : undefined;
 
   // 每次打开重取一遍：配额、已分随时在变
@@ -85,6 +93,8 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     if (!v) return;
     set忙(true);
     try {
+      // P-转-07：市场首次分给销售、客户名下有同事的项目，转走的和留下的分之前列出来；点了取消就不分，弹窗留着
+      if (lead.项目 && !(await 问一起转(() => 分配带走的项目([lead.id], v.toUserId)))) return;
       const 哪条 = lead.项目 ? { projectId: lead.id } : { leadId: lead.id };
       // 原负责人 = 打开弹窗时看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind, 原负责人: lead.ownerId, ...(带待办勾出 ? { 带待办: v.带待办 } : {}) });
@@ -123,9 +133,11 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
             notFoundContent={
               人们 === null || (lead?.项目 && 项目线 === undefined)
                 ? "加载中…"
-                : lead?.项目
-                  ? "这条线现在没有正常参与自动分配的销售：请总管理员在 设置 → 组织架构 里看参与状态和各条线的部门"
-                  : "组织里还没有销售：先在 设置 → 组织架构 里排好"
+                : lead?.项目 && 项目线 === null
+                  ? "这条现在分不了（比如客户已进公海），刷新页面看看"
+                  : lead?.项目
+                    ? "这条线现在没有正常参与自动分配的销售：请总管理员在 设置 → 组织架构 里看参与状态和各条线的部门"
+                    : "组织里还没有销售：先在 设置 → 组织架构 里排好"
             }
             options={(人们 ?? [])
               .filter((p) => p.userId !== lead?.ownerId && (可选 === undefined || (可选 !== null && 可选.has(p.userId))))
@@ -174,7 +186,7 @@ export function AssignedOutButton() {
     <>
       <Button icon={<SendOutlined />} onClick={打开}>我分出去的</Button>
       <Modal open={开} title="我分出去的线索" footer={null} width={760} onCancel={() => set开(false)} destroyOnHidden>
-        <p className="muted" style={{ marginTop: 0 }}>你分出去、或原来在你名下被分走的线索；同一条分了几次只算最近一次。</p>
+        <p className="muted" style={{ marginTop: 0 }}>你分出去、或原来在你名下被分走的线索；同一条分了几次只算最近一次。标「随客户」的是客户转给销售时跟着走的项目，不占额度。</p>
         <Table<分出去的线索>
           size="small"
           rowKey={(r) => r.projectId ?? r.leadId ?? ""}
@@ -184,7 +196,16 @@ export function AssignedOutButton() {
           locale={{ emptyText: "还没有分出去的线索" }}
           scroll={{ x: 680 }}
           columns={[
-            { title: "线索", dataIndex: "name", width: 180, ellipsis: true },
+            {
+              // 长名字在标签前面截断，标签不被挤掉（Windows 窄宽度）
+              title: "线索", dataIndex: "name", width: 180,
+              render: (v: string, r) => (
+                <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  <span data-testid="out-name" title={v} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{v}</span>
+                  {r.随客户 && <Tag style={{ margin: 0, flexShrink: 0 }}>随客户</Tag>}
+                </span>
+              ),
+            },
             {
               title: "状态", dataIndex: "status", width: 90,
               render: (v: string) => <Tag color={LEAD_STATUS_COLOR[v]} style={{ margin: 0 }}>{v}</Tag>,

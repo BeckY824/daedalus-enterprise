@@ -22,6 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 放回公海, 领取公海项目 } from "@/lib/project/db";
 import { 放进公海, 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 标无效客户, 恢复有效客户 } from "@/app/(app)/pool/actions";
@@ -242,19 +243,19 @@ describe("退回次数", () => {
     expect(await 退回数(c)).toBe(0);
   });
 
-  it("放回项目公海 +1，入池原因列写退回原因（没选「—」），入池方式进首次 / 二次退回", async () => {
+  it("放回线索公海 +1，入池原因列写退回原因（没选「—」），入池方式进首次 / 二次退回", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     expect(await 放回公海(乙, p, "线索质量不达标")).toEqual({ ok: true });
     expect(await 退回数(c)).toBe(1);
     当(丙);
     const 页 = await 读公海页(丙, {}, 1, 20);
-    // 单项目客户：客户跟着进客户公海，只列一行客户行（领客户即领项目）
+    // 项目退回只进线索公海，客户不动（M-公海-02）：列一行项目行
     expect(页.行).toHaveLength(1);
-    expect(页.行[0]).toMatchObject({ 种: "客户", customerId: c, 属性: "线索池", 入池原因: "线索质量不达标", 快捷: "首次退回" });
+    expect(页.行[0]).toMatchObject({ 种: "项目", customerId: c, projectId: p, 属性: "线索池", 入池原因: "线索质量不达标", 快捷: "首次退回" });
     expect(页.快捷数.首次退回).toBe(1);
     // 丙领了、又放回：第二次
-    expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
+    expect(await 领取公海项目(丙, p)).toEqual({ ok: true });
     expect(await 放回公海(丙, p)).toEqual({ ok: true });
     expect(await 退回数(c)).toBe(2);
     const 页2 = await 读公海页(老板, { 快捷: "二次退回" }, 1, 20);
@@ -317,7 +318,7 @@ describe("无效客户", () => {
     当(丙);
     const 领 = await 领取([c]);
     expect(领).toEqual({ ok: false, error: "标了无效的客户不能领取，要总管理先恢复" });
-    expect(await 负责人(c)).toBe(乙.id);
+    expect(await 负责人(c)).toBe((await prisma.user.findUniqueOrThrow({ where: { email: 无负责人占位邮箱 } })).id); // 进公海负责人已清空（M-公海-03），被拦不动
     当(老板);
     expect(await 分配公海([c], 丙.id)).toMatchObject({ ok: false });
     const 页 = await 读公海页(老板, { 快捷: "无效客户" }, 1, 20);
@@ -336,10 +337,11 @@ describe("无效客户", () => {
     expect(审计.map((a) => a.action)).toEqual(["pool-invalid", "pool-restore"]);
   });
 
-  it("单项目客户标了无效：从项目公海领项目也被拦", async () => {
+  it("客户标了无效：从线索公海领它的项目也被拦", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
-    await 放回公海(乙, p);
+    当(乙);
+    await 放进公海([c], "客户主动终止");
     当(老板);
     await 标无效客户([c]);
     const r = await 领取公海项目(丙, p);

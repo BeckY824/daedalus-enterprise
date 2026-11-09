@@ -30,7 +30,8 @@ import { 项目名上限 } from "@/lib/project/wizard";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
-import { 给客户建项目, 新项目分配数据, type 新项目分配数据 as 分配数据 } from "./project-actions";
+import { 给客户建项目, 建项目带走的项目, 新项目分配数据, type 新项目分配数据 as 分配数据 } from "./project-actions";
+import { useCarryConfirm } from "../useCarryConfirm";
 import { 三种业务线, 分配说明, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -81,6 +82,7 @@ export default function NewProjectModal({
   要下一步: boolean;
 }) {
   const { message, modal } = App.useApp();
+  const 问一起转 = useCarryConfirm();
   const router = useRouter();
   const b = useBusiness();
   const [form] = Form.useForm<表单>();
@@ -166,12 +168,15 @@ export default function NewProjectModal({
     }
     set存着(true);
     try {
+      // P-转-07：这次走 X-18、客户名下有同事的项目，转走的和留下的先列出来（同分配弹窗）；取消就不建，弹窗留着
+      const 负责人 = 要负责人 ? v.ownerId ?? null : null;
+      if (!(await 问一起转(() => 建项目带走的项目(customerId, { ownerId: 负责人, ...(有分配 ? { 分配方式: v.分配方式 ?? null, 业务线: v.业务线 ?? null } : {}) })))) return;
       const r = await 给客户建项目({
         customerId,
         联系人Id: v.联系人Id ?? null,
         项目: {
           name: v.name,
-          ownerId: 要负责人 ? v.ownerId ?? null : null,
+          ownerId: 负责人,
           ...(有分配 ? { 分配方式: v.分配方式 ?? null, 业务线: v.业务线 ?? null } : {}),
           所在地: { ...地址, location: 详细.trim() || null },
         },
@@ -187,6 +192,13 @@ export default function NewProjectModal({
       });
       if (!r.ok) {
         message.error(r.error);
+        return;
+      }
+      // 市场把客户分给了销售（X-18）：这位客户我看不到了，留着刷新就是 404，回客户列表
+      if (r.看不到客户了) {
+        message.info(r.提示 ?? "客户已转出");
+        关();
+        router.push("/customers");
         return;
       }
       // 11-01 会议 §6：整套在弹窗里走完，不跳页；建好留在客户页（刷新出新项目），提示里给一个「去看看」
@@ -319,8 +331,8 @@ export default function NewProjectModal({
         <Form.Item
           name="下一步时间"
           label="下一步时间"
-          rules={要下一步 ? [{ required: true, message: "请填下一步时间：到那天还没跟进，项目会自动回到项目公海" }] : []}
-          extra={要下一步 ? "到那天还没人跟进，项目会自动回到项目公海" : "选填：打算哪天再跟进，项目上会显示"}
+          rules={要下一步 ? [{ required: true, message: "请填下一步时间：到那天还没跟进，项目会自动回到线索公海" }] : []}
+          extra={要下一步 ? "到那天还没人跟进，项目会自动回到线索公海" : "选填：打算哪天再跟进，项目上会显示"}
         >
           <DatePicker style={{ width: "100%" }} disabledDate={(x) => x.isBefore(dayjs(), "day")} placeholder="选一天" />
         </Form.Item>

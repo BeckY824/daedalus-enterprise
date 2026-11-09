@@ -10,7 +10,7 @@ import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符 } from "@/lib/empty-value";
-import { 项目不能单独领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 项目不能单独领提示, 客户在公海项目不单领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -29,6 +29,7 @@ import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
 import { ProjectFold } from "./ProjectFold";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
+import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import type { 窗外去处, 草稿们 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
 import ProjectStarButton from "./ProjectStarButton";
@@ -73,6 +74,10 @@ export type 项目详情 = {
   只能看字段?: string[];
   /** null = 公海里同事客户的项目，领取后再给（page.tsx 露客户）；联系人、沟通这时也是空的 */
   customer: { id: string; name: string; school: string | null } | null;
+  /** 客户那一格点了去哪（E①）：没给 = 详情；只读卡 = 只负责项目的人和实线上级；文字 = 只露名字、进不去（客户在公海、要回避） */
+  客户入口?: "详情" | "只读卡" | "文字";
+  /** 开只读卡时摆的客户名：实线上级的 customer 可能是 null（露客户），名字单给 */
+  客户卡名?: { name: string; school: string | null } | null;
   contact: { id: string; name: string; position: string | null } | null;
   /** 企业版联系人附件（2026-10-28）：联系人那一行下面的「附件」入口；只读 = 同事的 / 虚线下属的客户，只能看。别的版本、看不到这位联系人时没有这个字段 */
   联系人附件?: { 个数: number; 只读: boolean };
@@ -285,11 +290,11 @@ function 换人文字(l: 项目详情["logs"][number]): string {
   if (l.kind === "pool-release") {
     // 老数据没带方式的按理由认超时
     const 方式 = l.放回方式 ?? (l.reason === 超时理由 ? "超时" : "手动");
-    if (方式 === "超时") return `${t.from} 的项目超时没跟进，系统自动收回到项目公海`;
-    if (方式 === "停用") return `${l.who} 办成员停用，把 ${t.from} 的项目放回项目公海`;
-    return l.who === t.from ? `${t.from} 把项目放回项目公海` : `${l.who} 把 ${t.from} 的项目放回项目公海`;
+    if (方式 === "超时") return `${t.from} 的项目超时没跟进，系统自动收回到线索公海`;
+    if (方式 === "停用") return `${l.who} 办成员停用，把 ${t.from} 的项目放回线索公海`;
+    return l.who === t.from ? `${t.from} 把项目放回线索公海` : `${l.who} 把 ${t.from} 的项目放回线索公海`;
   }
-  if (l.kind === "pool-claim") return `${t.to} 从项目公海领取，成为负责人`;
+  if (l.kind === "pool-claim") return `${t.to} 从线索公海领取，成为负责人`;
   return `负责人从 ${t.from} 转给 ${t.to}`;
 }
 
@@ -462,7 +467,7 @@ export default function ProjectDetail({
   const 可改 = 能改 && !p.pooled;
   // 企业版 11-01：只有负责人能改内容，总管理、上级、组员都只能看
   const 改不了话 = p.企业版 ? "只有项目负责人能改，其他人只能看" : "只有项目负责人、老板或主管能改";
-  const 不能改 = p.pooled ? "这个项目在项目公海里，领取了才能改" : 能改 ? undefined : 改不了话;
+  const 不能改 = p.pooled ? "这个项目在线索公海里，领取了才能改" : 能改 ? undefined : 改不了话;
   const 节点可改 = p.能改节点 && !p.pooled;
   const 节点不能改 = p.能改节点 ? (p.pooled ? 不能改 : undefined) : 不能改;
   // 企业版：线索阶段线索验证的必填项还没填齐（没配就看需求状态），推不过「线索验证」（服务端 lib/project/stage-gates.ts 同一条）
@@ -793,7 +798,7 @@ export default function ProjectDetail({
           </Button>
         </div>
       )}
-      <div style={行样}><span style={键样}>{b.customer}</span>{p.customer ? <CustomerLink id={p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
+      <div style={行样}><span style={键样}>{b.customer}</span>{p.客户入口 === "只读卡" && p.客户卡名 ? <CustomerReadonlyCard projectId={p.id} name={p.客户卡名.name} company={p.客户卡名.school} /> : p.customer ? <CustomerLink id={p.客户入口 === "文字" ? null : p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
       {p.来源线索 && (
         <div style={行样}><span style={键样}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
@@ -1237,7 +1242,7 @@ export default function ProjectDetail({
   const 放回问 = () => {
     // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
     if (p.企业版) { set回收原因(null); set放回框(true); return; }
-    modal.confirm({ title: "放回项目公海？", content: "放回去以后谁都能领，你自己不能再领回来", okText: "放回公海", onOk: () => 跑(() => 放回项目公海(p.id), "已放回项目公海") });
+    modal.confirm({ title: "放回线索公海？", content: "放回去以后谁都能领，你自己不能再领回来", okText: "放回公海", onOk: () => 跑(() => 放回项目公海(p.id), "已放回线索公海") });
   };
   const 删问 = () => modal.confirm({ title: "删除这个项目？", content: 删除说明(p.删前清点, b.customer, p.企业版), okText: "删除", okButtonProps: { danger: true }, onOk: 删 });
 
@@ -1362,7 +1367,7 @@ export default function ProjectDetail({
       )}
 
       {p.pooled && (
-        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在项目公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 ? 项目不能单独领提示 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 || p.领取不给 === 客户在公海项目不单领提示 ? p.领取不给 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
       )}
 
       {异常 && (
@@ -1509,19 +1514,18 @@ export default function ProjectDetail({
 
       <Modal
         open={放回框}
-        title="放回项目公海？"
+        title="放回线索公海？"
         okText="放回公海"
         okButtonProps={{ loading: 忙, disabled: !!其他没写好(回收原因) }}
         onCancel={() => set放回框(false)}
         onOk={async () => {
-          let 客户跟着 = false;
-          const ok = await 跑(async () => { const r = await 放回项目公海(p.id, 回收原因); 客户跟着 = r.ok && "客户跟着" in r && !!r.客户跟着; return r; });
-          if (ok) message.success(客户跟着 ? "已放回项目公海，客户和名下别的项目一起进了公海" : "已放回项目公海");
+          const ok = await 跑(() => 放回项目公海(p.id, 回收原因));
+          if (ok) message.success("已放回线索公海");
           // 企业版放回后原负责人看不到这个项目了（C-01，lib/project/pool-owner.ts 原负责人回避），回项目列表
           if (ok) { set放回框(false); router.push("/projects"); }
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户也归你时，客户会一起进公海，客户名下你负责的线索、商机项目也一起进项目公海，你也都看不到了（名下有没结束的订单项目、或有同事在跟的项目时客户不动）。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户和客户负责人不动。</div>
         <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
       </Modal>
 
@@ -1810,7 +1814,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
           </Space>
           {预演 ? (
             <div style={{ marginTop: 4, fontSize: "var(--dt-aux, 12px)", color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>选这天 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
-          ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>到那天还没人跟进，项目会自动回到项目公海</div>}
+          ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>到那天还没人跟进，项目会自动回到线索公海</div>}
         </div>
         {p.企业版 && (
           <div>

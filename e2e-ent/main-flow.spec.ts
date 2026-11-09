@@ -331,7 +331,7 @@ test("手机（飞书里打开）：登录回到要去的页，首页有拍名�
   }
 });
 
-test("项目公海：原负责人看不到公海里的项目；别的销售项目不能单独领（灰着），在公海领客户，项目、客户、同客户的另一个项目一起归他", async ({ page }) => {
+test("项目公海：原负责人看不到公海里的项目；客户在公海里时别的销售不能单领项目（灰着），在公海领客户，项目、客户、同客户的另一个项目一起归他", async ({ page }) => {
   await 登录(page, "销售1");
   // 11-01 C-01：项目进了公海，历史负责人没有任何权限，详情找不到（pool-owner.ts 原负责人回避）
   await page.goto(`/projects/${种.项目1}`);
@@ -341,10 +341,11 @@ test("项目公海：原负责人看不到公海里的项目；别的销售项�
 
   await page.context().clearCookies();
   await 登录(page, "销售2");
-  // 10-31 起项目不能单独领（pool-rules.ts 项目能单独领=false）：别的销售在项目详情也是灰着，说要连客户一起领
+  // 11-09 起线索公海的项目能单独领（M-公海-06）；但这位客户本身在客户公海里，项目不能单独领，要先去客户公海领客户（pool-rules.ts 拦客户公海里的项目）
   await page.goto(`/projects/${种.项目1}`);
-  await expect(正文.getByText("这个项目在项目公海里", { exact: true })).toBeVisible();
-  await expect(正文.getByText("项目不能单独领，要连客户一起领；客户不在公海里的请主管分配")).toBeVisible();
+  await expect(正文.getByText("这个项目在线索公海里", { exact: true })).toBeVisible();
+  await expect(正文.getByText("这位客户在客户公海里，项目不能单独领、分或转：请先到客户公海领取或分配这位客户", { exact: true })).toBeVisible();
+  await expect(正文.getByText(/你是原负责人/)).toHaveCount(0);
   await expect(正文.getByRole("button", { name: /领\s*取/ })).toBeDisabled();
 
   // 去公海领客户：客户在公海里，项目不另列一行；领客户即领项目
@@ -357,7 +358,7 @@ test("项目公海：原负责人看不到公海里的项目；别的销售项�
   await expect(正文.getByRole("button", { name: "领取 公海客户甲" })).toHaveCount(0);
   await page.goto(`/projects/${种.项目1}`);
   await expect(正文.locator(".page-head h1")).toHaveText("公海项目一");
-  await expect(正文.getByText("这个项目在项目公海里")).toHaveCount(0);
+  await expect(正文.getByText("这个项目在线索公海里")).toHaveCount(0);
 
   const 销售2 = await db.user.findFirstOrThrow({ where: { email: 账号.销售2 } });
   const [项目1, 项目2, 客户] = await Promise.all([

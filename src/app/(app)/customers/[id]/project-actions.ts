@@ -9,7 +9,8 @@
  *   落库 —— 项目、第一行节点变更、首条沟通挂项目、沟通编号、沟通标记、客户最近跟进只往后挪（同 lib/project/from-lead.ts）
  * 分配方式（11-01 会议 §3「新增项目时新增字段分配方式」）：和向导同一套（lib/project/after-create-assign.ts）。
  *   指定分配 = 负责人是选的那位；其余先建在我名下，建好按分配方式走（自动分配没分出去 / 暂不分配 = 留在新线索待分配）。
- *   没传（老调用）= 和原来一样：负责人直接选，不记分配方式、建好不再动。客户名下已有别的项目，自动分出去时客户负责人不跟着动
+ *   没传（老调用）= 和原来一样：负责人直接选，不记分配方式、建好不再动。
+ *   客户负责人一般不动（P-转-03）；市场名下的客户首次分给销售算转客户（X-18），指定、自动、老弹窗同一条（lib/enterprise/market-transfer.ts）
  * 业务线（A1，11-01 16:1x）：内贸 / 外贸 / 暂不分配三选一，带了分配方式（企业版新弹窗）就必填；没传分配方式的老调用不要求
  * 项目所在地（11-02）：选填，四格 + 详细地址，规整同编辑项目；弹窗按所在地给业务线建议，人确认（提交即确认），服务端不按地址改线
  */
@@ -20,7 +21,7 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
-import { 同事的客户, 只读话 } from "@/lib/team-scope";
+import { 同事的客户, 只读话, 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
@@ -37,7 +38,11 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 定分配方式, 建好再分, 新建分配方式数据 } from "@/lib/project/after-create-assign";
-import { 项目分给你通知 } from "@/lib/enterprise/notice-sources";
+import { 项目分给你通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
+import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 分配带走的同事项目 } from "@/lib/carry-over-db";
+import type { 转走项目预览 } from "@/lib/carry-over";
+import { 钉住老签约 } from "@/lib/contract-owner";
 import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
 
 export type 给客户建项目输入 = {
@@ -48,7 +53,7 @@ export type 给客户建项目输入 = {
   联系人Id?: string | null;
 };
 
-type 结果 = { ok: true; projectId: string; 提示?: string; 转走?: boolean } | { ok: false; error: string };
+type 结果 = { ok: true; projectId: string; 提示?: string; 转走?: boolean; 看不到客户了?: boolean } | { ok: false; error: string };
 
 /** 跟进节点（和 规整向导 企业版那段同一套口径；11-05 去掉明确回复） */
 function 认节点和回复(f: 向导跟进): { 节点: string } | { error: string } {
@@ -73,6 +78,36 @@ export async function 新项目分配数据(customerId: string): Promise<新项�
   }
 }
 
+/**
+ * 客户页新建项目之前列出会一起转走的和留在同事名下的项目（P-转-07）：这次建完会走 X-18（指定给销售 / 自动分配）、客户名下有同事的项目才有，条件同分配弹窗（分配带走的项目）。
+ * 门和 给客户建项目 一样；看不到的、建不了的、算不出来的都回 0 个：不拦，建的时候服务端照常查。只读
+ */
+export async function 建项目带走的项目(customerId: string, 项目: { 分配方式?: number | null; ownerId?: string | null; 业务线?: string | null }): Promise<转走项目预览> {
+  const 不弹: 转走项目预览 = { 项目数: 0, 项目: [] };
+  const me = await requireUser();
+  try {
+    if (!企业版() || (await getBusiness()).projectMode !== true || typeof customerId !== "string" || !项目 || typeof 项目 !== "object") return 不弹;
+    if (!(await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } })) || (await 同事的客户(defaultClient, customerId))) return 不弹;
+    const org = await 权限组织();
+    if (!org || 没设业务角色(org, me.id) || 只读角色(me, org)) return 不弹;
+    const 接手人 = typeof 项目.ownerId === "string" ? 项目.ownerId : "";
+    // 没带分配方式、负责人又不是自己 = 指定给别人（同 给客户建项目）
+    const 分配 = await 定分配方式(me, { 分配方式: 项目.分配方式 ?? 0, ownerId: 接手人 });
+    if ("error" in 分配) return 不弹;
+    // 自动分配还没挑人（挑的都是销售）；业务线暂不分配的不自动分（建好再分）
+    const 自动 = 分配.i === 1 && 项目.业务线 !== "暂不分配";
+    const 指定给别人 = 分配.i === 0 && !!接手人 && 接手人 !== me.id;
+    if (!自动 && !指定给别人) return 不弹;
+    return await 看全部(async () => {
+      const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+      if (!客户 || !(自动 ? 客户在市场手里(org, 客户) : 算市场转客户(org, 客户, 接手人))) return 不弹;
+      return 分配带走的同事项目([客户], 自动 ? "" : 接手人, []);
+    });
+  } catch {
+    return 不弹;
+  }
+}
+
 export async function 给客户建项目(输入: 给客户建项目输入): Promise<结果> {
   try {
     const me = await requireUser();
@@ -94,10 +129,12 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (只读角色(me, org)) return { ok: false, error: 只读角色话 };
     const 分配 = 输入.项目.分配方式 === undefined || 输入.项目.分配方式 === null ? null : await 定分配方式(me, 输入.项目);
     if (分配 && "error" in 分配) return { ok: false, error: 分配.error };
+    let 指定分配名 = 分配?.i === 0 ? 分配.名 : null;
     // 没带分配方式、负责人又不是自己 = 指定给别人：照「指定分配」查能不能用
     if (!分配 && 输入.项目.ownerId && 输入.项目.ownerId !== me.id) {
       const 指定 = await 定分配方式(me, { 分配方式: 0, ownerId: 输入.项目.ownerId });
       if ("error" in 指定) return { ok: false, error: 指定.error };
+      指定分配名 = 指定.名;
     }
     // 指定分配以外：先建在我名下，建好再按分配方式走
     const 项目输入 = !分配 || 分配.i === 0 ? 输入.项目 : { ...输入.项目, ownerId: me.id };
@@ -134,7 +171,11 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (输入.联系人Id && !联系人) return { ok: false, error: "选的联系人已经不在这位客户名下了，刷新后再选" };
 
     const 状态开 = await 客户状态自动();
-    const projectId = await prisma.$transaction(async (tx) => {
+    // 指定给别人，客户在市场手里、接手的是销售：算转客户（X-18，和自动分配同一条）。换负责人之前钉住老签约（事务外，它用全局连接）
+    const 指定给别人 = 指定分配名 !== null && 项目.ownerId !== me.id;
+    const 读客户 = (db: Parameters<typeof 转客户给销售>[0]) => 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
+    if (指定给别人 && 算市场转客户(org, await 读客户(prisma), 项目.ownerId)) await 钉住老签约();
+    const { projectId, 留下 } = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
         data: {
           ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
@@ -153,25 +194,35 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
         where: { id: customerId, OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: 跟进.occurredAt } }] },
         data: { lastFollowAt: 跟进.occurredAt },
       });
+      // 事务里再判一次；转走后我可能就看不到这位客户了，这一段放开范围（同 分项目给）
+      const 现客户 = 指定给别人 ? await 读客户(tx) : null;
+      const 留下: 留下的活 | undefined = 现客户 && 算市场转客户(org, 现客户, 项目.ownerId)
+        ? await 看全部(() => 转客户给销售(tx, customerId, 现客户.salesOwnerId, 项目.ownerId, me.id, 指定分配名!))
+        : undefined;
       // 企业版客户状态跟着项目算：多了一个项目（没项目的客户从空变潜在）
-      await 跟着项目重算(tx, 状态开, [customerId]);
-      return p.id;
+      await 看全部(() => 跟着项目重算(tx, 状态开, [customerId]));
+      return { projectId: p.id, 留下 };
     });
 
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: projectId,
       summary: `客户页新建项目「${项目.name}」（客户「${客户.name}」，负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同首条沟通`,
-      detail: { 项目: 项目.name, 客户: 客户.name, 负责人: 负责人.name, 金额: 项目.amount, 币种: 项目.currency, 节点: 落.节点, ...(分配 ? { 分配方式: 分配.名 } : {}) },
+      detail: { 项目: 项目.name, 客户: 客户.name, 负责人: 负责人.name, 金额: 项目.amount, 币种: 项目.currency, 节点: 落.节点, ...(分配 ? { 分配方式: 分配.名 } : {}), ...(留下 ? { 客户转给: 负责人.name } : {}) },
     });
-    await 客户存了推项目(me, customerId);
+    // 转走了：这位客户我可能已经看不到了，放开范围，不然推进被拦、静默跳过（同 建档向导）
+    if (留下) await 看全部(() => 客户存了推项目(me, customerId));
+    else await 客户存了推项目(me, customerId);
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/customers/${customerId}`);
     revalidatePath("/follow-ups");
     const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线) : null;
     // 自动 / 公海 / 暂不分配 建好再分 自己管（返回对象）；指定别人走这里，自己留着函数里不发
-    if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId);
-    return { ok: true, projectId, ...(分了 ?? {}) };
+    if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId, 留下);
+    const 去向 = { ...(分了 ?? {}), ...(留下 ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : {}) };
+    // 分走之后这位客户我可能看不到了（市场转给销售）：弹窗据此离开客户页，留着刷新就是 404
+    const 还看得到 = !去向.转走 || !!(await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } }));
+    return { ok: true, projectId, ...去向, ...(还看得到 ? {} : { 看不到客户了: true }) };
   } catch (e) {
     return 不在了(e);
   }

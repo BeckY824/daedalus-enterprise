@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma";
+import { 负责人显示名 } from "@/lib/pool";
 import { prisma } from "../prisma";
 import { dayjs } from "../utils";
 
@@ -33,7 +34,7 @@ export function 现值表(found: 现值客户): Record<string, string> {
     decisionStatus: found.decisionStatus,
     expectedSignAt: found.expectedSignOn ?? (found.expectedSignAt ? dayjs(found.expectedSignAt).format("YYYY-MM-DD") : ""),
     remark: found.remark ?? "",
-    salesOwnerName: found.salesOwner?.name ?? "",
+    salesOwnerName: 负责人显示名(found.salesOwner?.name ?? ""),
     channelOwnerName: found.channelOwner?.name ?? "",
     channelName: found.channel?.name ?? "",
     referrerName: found.referrerCustomer?.name ?? "",

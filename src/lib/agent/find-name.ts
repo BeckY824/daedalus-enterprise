@@ -15,6 +15,7 @@
  * 只查有人名、且人会问「他电话多少」的四张表。商机、合同不查——那不是人。
  */
 import { prisma } from "../prisma";
+import { 负责人显示名, 无负责人占位邮箱 } from "@/lib/pool";
 
 /** 一张表里的命中 */
 export type 别处命中 = {
@@ -60,7 +61,7 @@ export async function 名字在别处(名: string, 号: (p: string | null) => st
       select: { name: true, contact: true, phone: true, status: true },
     }),
     prisma.user.findMany({
-      where: { name: { contains: q } },
+      where: { name: { contains: q }, email: { not: 无负责人占位邮箱 } },
       take: 每表最多,
       select: { name: true, title: true, role: true, active: true },
     }),
@@ -135,7 +136,7 @@ export async function 找人(名: string, 号: (p: string | null) => string | nu
     out.push({
       表: "客户",
       条数: 客户.length,
-      记录: 客户.map((c) => ({ id: c.id, 姓名: c.name, 电话: 号(c.phone), 学校或公司: c.school, 年级或职位: c.grade, 跟进状态: 叫(c.followStatus), 负责人: c.salesOwner.name })),
+      记录: 客户.map((c) => ({ id: c.id, 姓名: c.name, 电话: 号(c.phone), 学校或公司: c.school, 年级或职位: c.grade, 跟进状态: 叫(c.followStatus), 负责人: 负责人显示名(c.salesOwner.name) })),
       怎么查: `get_customer（id=…）读这一位的完整档案和跟进时间线`,
     });
   return [...out, ...其余];

@@ -136,7 +136,7 @@ describe("c1 60 天：真库扫", () => {
     // 前一天（11-10）扫的时候先发了一条「明天会收」的提醒；收的那天再一条「已收回」
     const 待办 = await prisma.task.findMany({ where: { ownerId: 销售甲.id }, orderBy: { createdAt: "asc" } });
     expect(待办.map((t) => t.title)).toEqual([
-      expect.stringContaining("2026-11-11 会自动回到项目公海"),
+      expect.stringContaining("2026-11-11 会自动回到线索公海"),
       expect.stringContaining("「一号项目」在「潜客培育」超过处理时长"),
     ]);
     const 铃 = await prisma.entNotice.findMany({ where: { userId: 销售甲.id, kind: "回收" } });

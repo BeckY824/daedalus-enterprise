@@ -20,7 +20,7 @@ import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤, 客户事项挡 } from "@/lib/enterprise/follow-perm";
+import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 刚记的能撤, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
 import { 撤销拦 } from "@/lib/enterprise/follow-undo";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
@@ -482,10 +482,19 @@ export async function saveTask(input: {
   }
 }
 
+/** 只给「勾完成 / 取消完成」用：自己名下的放行（见 本人勾完成挡）。别的动作走 事项挡。不是企业版 null */
+async function 勾完成挡(me: Awaited<ReturnType<typeof requireUser>>, 哪种: "task" | "plan", id: string): Promise<string | null> {
+  if (!企业版()) return null;
+  const 原 = 哪种 === "task"
+    ? await defaultClient.task.findUnique({ where: { id }, select: { customerId: true, ownerId: true } })
+    : await defaultClient.followPlan.findUnique({ where: { id }, select: { customerId: true, ownerId: true } });
+  return 本人勾完成挡(me, 原?.customerId, 原?.ownerId);
+}
+
 export async function toggleTask(id: string, done: boolean) {
   try {
     const me = await requireUser();
-    const 挡 = await 事项挡(me, null, "task", id);
+    const 挡 = await 勾完成挡(me, "task", id);
     if (挡) return { ok: false as const, error: 挡 };
     const t = await prisma.task.update({
       where: { id },
@@ -608,7 +617,7 @@ export async function deletePlan(id: string) {
 export async function completePlan(id: string, 完成 = true) {
   try {
     const me = await requireUser();
-    const 挡 = await 事项挡(me, null, "plan", id);
+    const 挡 = await 勾完成挡(me, "plan", id);
     if (挡) return { ok: false as const, error: 挡 };
     // 同状态重复提交不重写首次完成时间。撤销时清空，再完成才记录新时刻。
     await prisma.followPlan.updateMany({ where: { id, done: !完成 }, data: { done: 完成, doneAt: 完成 ? new Date() : null } });
@@ -616,8 +625,9 @@ export async function completePlan(id: string, 完成 = true) {
     await recordAudit({
       user: me, action: "update", entity: "FollowPlan", entityId: id,
       summary: 完成
-        ? `完成跟进计划「${p.subject}」（${await 客户名(p.customerId)}）`
-        : `撤销完成跟进计划「${p.subject}」（${await 客户名(p.customerId)}）`,
+        // 看全部：计划主人可能已经看不到这位客户了（市场分给销售后），审计还要写客户名
+        ? `完成跟进计划「${p.subject}」（${await 看全部(() => 客户名(p.customerId))}）`
+        : `撤销完成跟进计划「${p.subject}」（${await 看全部(() => 客户名(p.customerId))}）`,
     });
     revalidatePath(`/customers/${p.customerId}`);
     revalidatePath("/follow-ups/plans");

@@ -309,7 +309,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   }
   // 业务线（11-01 新建必填）：卡上没这格、项目建在我名下 → 跟我自己的内贸 / 外贸；我没设线就「暂不分配」，要改到项目页改
   const 我的线 = (await prisma.entMember.findUnique({ where: { userId: meId }, select: { line: true } }))?.line;
-  // 指定分配给了别人：项目、客户都记在那人名下（和新建项目页同一条：负责人打开项目时得看得到这位客户）；其余先建在我名下，建好再转
+  // 指定分配给了别人：项目归那人；客户归谁由 建档向导 定（企业版客户留在我名下，市场给销售才转，P-转-03、X-18）。其余先建在我名下，建好再转
   const 项目负责人 = (p.分配方式 === 0 || p.分配方式 === undefined) && p.ownerId ? p.ownerId : meId;
   const r = await 建档向导({
     客户: {

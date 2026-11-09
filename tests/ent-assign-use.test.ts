@@ -281,7 +281,8 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
       expect(r).toMatchObject({ ok: true, 转走: true });
       if (!r.ok) return;
       const p = await 项目of(r.projectId);
-      expect([我, p.ownerId, p.customer.salesOwnerId]).toEqual([我, 给, 给]);
+      // 客户只有市场首次分给销售才跟着走（X-18）；别的角色指定给别人，客户留在建的人名下（P-转-03）
+      expect([我, p.ownerId, p.customer.salesOwnerId]).toEqual([我, 给, 我 === 市场 ? 给 : 我]);
       const c = await prisma.customer.findUniqueOrThrow({ where: { id: p.customerId } });
       expect(c.lastFollowAt).not.toBeNull();
       expect(await prisma.followUp.count({ where: { customerId: p.customerId } })).toBe(1);
@@ -305,7 +306,9 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
       if (!r.ok) return;
       const p = await 项目of(r.projectId);
       expect(p.ownerId).toBe(给);
-      expect((await prisma.customer.findUniqueOrThrow({ where: { id: cid } })).lastFollowAt).not.toBeNull();
+      const 客 = await prisma.customer.findUniqueOrThrow({ where: { id: cid } });
+      expect(客.salesOwnerId).toBe(我 === 市场 ? 给 : 我); // 同建档向导：只有 X-18 客户才转
+      expect(客.lastFollowAt).not.toBeNull();
       expect(await prisma.followUpProject.count({ where: { projectId: r.projectId } })).toBe(1);
     }
   });
@@ -372,10 +375,10 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
   });
 
-  it("公海捞取：建好放进项目公海", async () => {
+  it("公海捞取：建好放进线索公海", async () => {
     当(市场);
     const r = await 向导({ 分配方式: 2 });
-    expect(r).toMatchObject({ ok: true, 转走: true, 提示: "已放进项目公海，等人捞取" });
+    expect(r).toMatchObject({ ok: true, 转走: true, 提示: "已放进线索公海，等人捞取" });
     if (r.ok) expect((await 项目of(r.projectId)).pooledAt).not.toBeNull();
   });
 

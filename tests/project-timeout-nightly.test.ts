@@ -165,7 +165,7 @@ describe("夜里定时扫", () => {
 });
 
 describe("回收前一天提醒 + 即将回收（10-27）", () => {
-  const 提醒们 = () => prisma.task.findMany({ where: { ownerId: 乙, title: { contains: "会自动回到项目公海" } } });
+  const 提醒们 = () => prisma.task.findMany({ where: { ownerId: 乙, title: { contains: "会自动回到线索公海" } } });
 
   it("即将回收：回收日是明天或今天才算，后天不算，不会收不算", () => {
     expect(即将回收("2026-10-26", 时("2026-10-25 23:00"))).toBe(true);

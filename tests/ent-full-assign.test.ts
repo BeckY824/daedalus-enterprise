@@ -28,11 +28,14 @@ const 当 = (id: string, name: string, role = "SALES") => { mocks.user = { ...mo
 let 老板: string, 市场: string;
 let 外一: string, 外二: string, 外三: string, 外组长: string, 档口销售: string, 外客服: string, 外没角色: string, 外停用: string;
 let 内一: string, 内二: string;
-let 客户: string;
+let 客户号 = 0;
 let 外贸部: string, 外贸一组: string, 外贸一组下: string, 外贸二组: string, 档口: string, 内贸部: string, 内贸组: string, 内贸小组: string;
 
-const 建项目 = async (name: string, bizLine: string | null) =>
-  (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, bizLine } })).id;
+// 一条线索一位客户：市场分给销售算转客户（11-09 第五节问题 1），同一位客户的别的项目会一起过去，那种情况不是这里钉的公平轮询
+const 建项目 = async (name: string, bizLine: string | null) => {
+  const 客户 = (await prisma.customer.create({ data: { name: `客户${++客户号}`, phone: `1390000${String(客户号).padStart(4, "0")}`, salesOwnerId: 市场 } })).id;
+  return (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, bizLine } })).id;
+};
 const 负责人 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).ownerId;
 
 beforeEach(async () => {
@@ -68,8 +71,6 @@ beforeEach(async () => {
   外停用 = await 人("woff", "停用销售", "sales", 外贸二组, { active: false });
   内一 = await 人("n1", "内贸销售一", "sales", 内贸小组);
   内二 = await 人("n2", "内贸销售二", "sales", 内贸部);
-
-  客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13900000001", salesOwnerId: 市场 } })).id;
 
   // c1 开关组合
   for (const k of [规则.按组织看客户.key, 规则.线索分配.key, 规则.市场复核.key]) await setSetting(k, true);

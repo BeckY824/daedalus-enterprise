@@ -2,6 +2,8 @@
  * 客户的「历史负责人」怎么摆（企业版 D-36，2026-10-24）。只管排和说，界面也引（不能碰 prisma）；
  * 读库在 owner-log-db.ts 的 历史负责人of
  */
+import { 无负责人占位名 } from "./pool";
+
 export type 换负责人记录 = {
   at: string;
   /** 谁转的；人删了是 null */
@@ -17,6 +19,7 @@ const 种类说法: Record<string, string> = {
   "pool-assign": "从公海分配",
   deactivate: "成员停用转交",
   undo: "撤销",
+  "pool-release": "进公海",
 };
 export const 换负责人怎么来的 = (kind: string) => 种类说法[kind] ?? "改负责人";
 
@@ -28,7 +31,8 @@ export function 历史负责人们(记录: 换负责人记录[], 现任: string)
   const 们: string[] = [];
   for (let i = 记录.length - 1; i >= 0; i--) {
     const 从 = 记录[i].从;
-    if (从 && 从 !== 现任 && !们.includes(从)) 们.push(从);
+    // 占位账号不是人（进公海清负责人后领走：从 = 占位账号），不列
+    if (从 && 从 !== 现任 && 从 !== 无负责人占位名 && !们.includes(从)) 们.push(从);
   }
   return 们;
 }

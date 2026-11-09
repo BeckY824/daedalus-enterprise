@@ -2,6 +2,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 不掉公海的状态 } from "@/lib/pool";
 import { 能进公海的阶段 } from "@/lib/project/db";
 import { 有同事在推的客户 } from "@/lib/enterprise/colleague-projects";
+import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 
 /**
  * 停用成员（离职交接，企业版 D-36，2026-10-24）：他名下的东西怎么分。停用前的清点、停用本身都按这一处分，
@@ -9,9 +10,9 @@ import { 有同事在推的客户 } from "@/lib/enterprise/colleague-projects";
  *
  * 两种方式，默认「转交」（和原来一样，不选就不变）：
  *   转交 —— 客户、进行中的商机、没做完的计划待办、线索、渠道全给接手人；客户名下的项目跟着走
- *           （企业版只带他负责的；同事负责的留在同事名下，同 P-转-07，11-05）
- *   公海 —— 客户放进客户公海（负责人不改，谁领了谁接，领的时候他没做完的活跟着领的人走，同手动放公海），
- *           他负责、挂在别人客户上的线索 / 商机阶段项目放回项目公海（进公海客户上的项目跟着客户，谁领谁带走）；
+ *           （企业版只带他负责的；在职同事负责的留在同事名下，同事待分配的随客户给接手人，同 P-转-07，11-09）
+ *   公海 —— 客户放进客户公海（负责人清空、他记历史，M-公海-03，谁领了谁接，领的时候他没做完的活跟着领的人走，同手动放公海），
+ *           他自己负责的线索 / 商机项目一起进线索公海（离职放进公海）；他负责、挂在别人客户上的线索 / 商机阶段项目放回线索公海；
  *           线索、渠道、不在这些客户上的活照样给接手人
  *
  * 公海方式下仍然给接手人的客户：
@@ -37,22 +38,24 @@ export type 停用分拣结果 = {
   客户: string[];
   /** 新放进客户公海的（公海方式） */
   进公海客户: string[];
-  /** 本来就在公海里、这次不动的（企业版两种方式都算；负责人留他） */
+  /** 本来就在公海里、这次不动的（企业版两种方式都算：负责人是他的老数据 + 最近一次进公海时负责人是他的） */
   本来在公海: string[];
   商机: string[];
   待办: string[];
   计划: string[];
   线索: string[];
   渠道: string[];
-  /** 转给接手人的项目：转走的客户上他负责的（企业版；同事负责的留下）+ 他负责、挂在别处、没结局的 */
+  /** 转给接手人的项目：转走的客户上他负责的（企业版；同事负责的留下，待分配的除外）+ 他负责、挂在别处、没结局的 */
   项目: string[];
+  /** 项目 里同事负责、正在待分配的（用户 11-09 定）：随客户给接手人并清待分配 */
+  清待分配: string[];
   /** 放回项目公海的（公海方式） */
   进公海项目: string[];
   /** 公海方式下因为订单阶段只能给接手人的项目数（界面提示用；转交方式为 0） */
   订单项目: number;
 };
 
-type 读库 = Pick<Prisma.TransactionClient, "customer" | "opportunity" | "task" | "followPlan" | "lead" | "channel" | "project">;
+type 读库 = Pick<Prisma.TransactionClient, "customer" | "opportunity" | "task" | "followPlan" | "lead" | "channel" | "project" | "user" | "customerOwnerLog">;
 
 export async function 停用分拣(db: 读库, id: string, 方式: 停用方式, 企业: boolean): Promise<停用分拣结果> {
   const 公海 = 企业 && 方式 === "公海";
@@ -67,8 +70,10 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
   ]);
   const 可进公海阶段 = 能进公海的阶段 as readonly string[];
 
-  // 本来就在公海里的（企业版两种方式都一样）：不给接手人、不重复放，负责人留他（历史负责人），
-  // 挂在上面的活也留着，谁领谁带走。原来转交方式把这些也改到接手人名下，公海那行还在，接手人看不到也领不到（11-03 完成度 C4-1）
+  // 本来就在公海里的（企业版两种方式都一样）：不给接手人、不重复放，
+  // 挂在上面的活也留着，谁领谁带走。原来转交方式把这些也改到接手人名下，公海那行还在，接手人看不到也领不到（11-03 完成度 C4-1）。
+  // M-公海-03 起进公海负责人清空，客户不在他名下了，按「最近一次进公海时的负责人是他」认（活还挂在他名下）
+  const 放走的 = 企业 ? await 公海客户原负责人是(db, [id]) : new Map<string, string>();
   const 本来在公海 = 企业 ? 客户们.filter((c) => c.pool) : [];
   const 不在公海 = 企业 ? 客户们.filter((c) => !c.pool) : 客户们;
   let 留给接手人 = 不在公海;
@@ -83,18 +88,21 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
     留给接手人 = 不在公海.filter(留);
     去公海 = 不在公海.filter((c) => !留(c));
   }
-  const 去公海的 = new Set([...去公海, ...本来在公海].map((c) => c.id));
+  const 本来在公海们 = [...new Set([...本来在公海.map((c) => c.id), ...放走的.keys()])];
+  const 去公海的 = new Set([...去公海.map((c) => c.id), ...本来在公海们]);
   const 转走的客户 = new Set(留给接手人.map((c) => c.id));
   // 挂在进公海、本来在公海客户上的活留在他名下，谁领客户谁带走（同手动放公海）
   const 给接手人 = (rows: { id: string; customerId: string | null }[]) => rows.filter((r) => !r.customerId || !去公海的.has(r.customerId)).map((r) => r.id);
 
-  const 跟客户走 = 转走的客户.size
-    ? (await db.project.findMany({
-        where: { customerId: { in: [...转走的客户] }, pooledAt: null, ...(企业 ? { ownerId: id } : {}) },
-        select: { id: true },
-      })).map((p) => p.id)
+  const 跟客户走的项目 = 转走的客户.size
+    ? await db.project.findMany({
+        where: { customerId: { in: [...转走的客户] }, pooledAt: null, ...(企业 ? { OR: [{ ownerId: id }, { awaitAssignAt: { not: null }, ownerId: { not: "" } }] } : {}) },
+        select: { id: true, ownerId: true },
+      })
     : [];
-  // 进公海客户上的项目跟客户待在一起：谁领客户谁整体带走（同转客户），不单独放项目公海
+  const 跟客户走 = 跟客户走的项目.map((p) => p.id);
+  // 进公海客户上他自己负责的线索 / 商机项目由 离职放进公海 一起放进线索公海（客户名下在推项目进公海），这里不重复算；
+  // 本来在公海的客户上，还归他的（没进线索公海的）留着，谁领客户谁带走
   const 别处的 = 他的项目.filter((p) => !转走的客户.has(p.customerId) && !去公海的.has(p.customerId));
   const 进公海项目 = 公海 ? 别处的.filter((p) => 可进公海阶段.includes(p.phase)).map((p) => p.id) : [];
   const 进公海项目集 = new Set(进公海项目);
@@ -103,13 +111,14 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
   return {
     客户: [...转走的客户],
     进公海客户: 去公海.map((c) => c.id),
-    本来在公海: 本来在公海.map((c) => c.id),
+    本来在公海: 本来在公海们,
     商机: 给接手人(商机们),
     待办: 给接手人(待办们),
     计划: 给接手人(计划们),
     线索: 线索们.map((r) => r.id),
     渠道: 渠道们.map((r) => r.id),
     项目,
+    清待分配: 企业 ? 跟客户走的项目.filter((p) => p.ownerId !== id).map((p) => p.id) : [],
     进公海项目,
     订单项目: 公海 ? 他的项目.filter((p) => !可进公海阶段.includes(p.phase)).length : 0,
   };

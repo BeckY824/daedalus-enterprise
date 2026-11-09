@@ -7,7 +7,7 @@
  *   4. 总管理终判（老板 / 总管理员）：判无效 → 结束；判有效 → 回销售，销售认领继续推，或自己退回公海（算主动退回）。
  * 后台规则「无效线索要市场复核」（默认开）关了、或组织里没有市场管理：销售判无效直接交总管理终判。
  * 判死（市场复核 / 总管理终判判无效）：项目结局记 线索流失（和手动点线索流失同一格「没成」），节点变更留一行带无效原因；
- * 负责人本月自动分配配额 +1（没设配额的不加，见 lead-assign.ts 加一条配额）。
+ * 负责人占过额度的（这条线索上有他算数的分配记录）本月自动分配配额 +1，没占过的、没设配额的不加（见 lead-assign.ts 占过名额、加一条配额）。
  * 每一步记一行 EntLeadVerifyLog（谁、何时、判了什么、说明），详情页小时间线读它。不是企业版一律拦，一行不写。
  */
 import { prisma } from "../prisma";
@@ -18,7 +18,7 @@ import { 读组织, 管理员类别们of, 能市场复核, type 组织 } from "@
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
-import { 加一条配额 } from "@/lib/enterprise/lead-assign";
+import { 加一条配额, 占过名额 } from "@/lib/enterprise/lead-assign";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 改节点, 能改节点, 放回公海 } from "./db";
 import { 是总管理 } from "@/lib/enterprise/permissions";
@@ -112,7 +112,7 @@ async function 写状态(projectId: string, data: Record<string, unknown>, 痕: 
 }
 
 /**
- * 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、负责人本月配额 +1。都在一个事务里，项目先被人动了就作废。
+ * 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、占过额度的负责人本月配额 +1。都在一个事务里，项目先被人动了就作废。
  * 销售初判直接判死（创建人是销售）：带上这次的无效原因，不加配额——不是分来的线索，不补名额
  */
 async function 判死(me: 谁, projectId: string, 步: "销售初判" | "市场复核" | "总管理终判", 说明: string, 段: Record<string, unknown>): Promise<结果> {
@@ -136,7 +136,7 @@ async function 判死(me: 谁, projectId: string, 步: "销售初判" | "市场�
     const data = { ...段, verdict: "无效线索", finalResult: "无效线索", pending: null };
     await tx.entLeadVerify.upsert({ where: { projectId }, create: { projectId, ...data }, update: data });
     await tx.entLeadVerifyLog.create({ data: { projectId, step: 步, verdict: "无效", reason: 步 === "销售初判" ? 无效原因 : null, note: 说明 || null, userId: me.id } });
-    if (步 !== "销售初判") await 加一条配额(tx, p.ownerId);
+    if (步 !== "销售初判" && (await 占过名额(tx, p.id, p.ownerId))) await 加一条配额(tx, p.ownerId);
     await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const };
   }));

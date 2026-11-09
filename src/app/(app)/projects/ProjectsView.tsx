@@ -36,7 +36,8 @@ import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type �
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
-import { 自动分配线索, type 自动分配结果 } from "../leads/assign-actions";
+import { 自动分配线索, 分配带走的项目, type 自动分配结果 } from "../leads/assign-actions";
+import { useCarryConfirm } from "../customers/useCarryConfirm";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "../leads/AssignLead";
 import LeadFullNotices from "../leads/LeadFullNotices";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
@@ -131,6 +132,7 @@ export default function ProjectsView({
   const router = useRouter();
   const 预取 = useHoverPrefetch();
   const { message } = App.useApp();
+  const 问一起转 = useCarryConfirm();
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
@@ -197,6 +199,8 @@ export default function ProjectsView({
 
   async function 自动分(r: 项目行) {
     try {
+      // P-转-07：同批量，客户名下有同事的项目先列出来
+      if (!(await 问一起转(() => 分配带走的项目([r.id])))) return;
       // 原负责人 = 这一行看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 自动分配线索(r.id, { 项目: true, 原负责人: r.ownerId });
       // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派
@@ -218,7 +222,7 @@ export default function ProjectsView({
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「进程」挤成两个字一行
     // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）；企业版每格一行、放不下省略号悬停看全（11-01 会议 §11，DataList 单行）
     { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string) => <span className="fulltext" title={v}>{v}</span> },
-    { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看(r)}</span> : <CustomerLink id={r.customerId} name={r.customerName} />) },
+    { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看(r)}</span> : <CustomerLink id={r.进不了客户详情 ? null : r.customerId} name={r.customerName} />) },
     // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列
     ...(新线索 ? [] : [{ title: "阶段", key: "phase", width: 72, ...收起, render: (_: unknown, r: 项目行) => 阶段与进程(r, 字典).阶段 }]),
     { title: "进程", key: "node", width: 130, render: (_, r) => <>{节点文字(r, 字典)}{!企业版 && r.即将回收 && <> <将收标 日={r.即将回收} /></>}</> },
@@ -241,7 +245,8 @@ export default function ProjectsView({
     // 已线索流失的不再分（服务端也拦）；两颗带字的键（规则 D）
     ...(可分 ? [{
       title: "", key: "act", width: 150, fixed: "right" as const,
-      render: (_: unknown, r: 项目行) => (r.result ? null : (
+      // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）
+      render: (_: unknown, r: 项目行) => (r.result || r.客户在公海 ? null : (
         <Space size={2}>
           <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
           <Button aria-label={`自动分配 ${r.name}`} type="link" size="small" onClick={() => void 自动分(r)}>自动分配</Button>
@@ -316,9 +321,9 @@ export default function ProjectsView({
       /* 企业版公海只有一处（左栏「公海」，/pool）：这里不再摆「项目公海」筛选，只给一条去那儿的路 */
       ...(!企业版
         ? [{
-            键: "pool", 名: "项目公海", 宽: 120, 默认外露: true, 有值: !!f.pool,
+            键: "pool", 名: "线索公海", 宽: 120, 默认外露: true, 有值: !!f.pool,
             渲染: (style: CSSProperties) => (
-              <Select style={style} aria-label="项目公海" value={f.pool || ""} onChange={(v: string) => apply({ pool: v, recycled: "" })} options={[{ value: "", label: "全部项目" }, { value: "1", label: "项目公海" }]} />
+              <Select style={style} aria-label="线索公海" value={f.pool || ""} onChange={(v: string) => apply({ pool: v, recycled: "" })} options={[{ value: "", label: "全部项目" }, { value: "1", label: "线索公海" }]} />
             ),
           }]
         : []),

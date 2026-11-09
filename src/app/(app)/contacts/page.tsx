@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { 负责人显示名 } from "@/lib/pool";
 import { requireUser } from "@/lib/auth";
 import { 搜索词, 号码片段, 号码藏着 } from "@/lib/search-keyword";
 import ContactsView from "./ContactsView";
@@ -99,7 +100,7 @@ export default async function ContactsPage({
         customerId: c.customer.id,
         customerName: c.customer.name,
         school: c.customer.school,
-        ownerName: c.customer.salesOwner.name,
+        ownerName: 负责人显示名(c.customer.salesOwner.name),
         ownerId: c.customer.salesOwner.id,
         ownerEmail: c.customer.salesOwner.email,
         也挂在: (另挂[c.id] ?? []).map((x) => x.name),

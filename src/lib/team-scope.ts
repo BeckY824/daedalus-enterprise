@@ -424,8 +424,10 @@ function 跟客户走(model: string, 客户: Record<string, unknown>): Record<st
 const 跟项目的表 = new Set(["ProjectMember", "ProjectNodeLog", "FollowUpProject", "EntFollowUpMeta", "ProjectCustomer", "ProjectContact"]);
 
 /**
- * 他看不到的公海客户。负责人是他且在公海：客户级放进公海、跟项目进公海、超时扫描都留着 salesOwnerId，一句写完，不用名单；
- * 占位负责人（导入）和别人名下的按名单。不认 CustomerPool.userId：那是操作的人，可能是上级，超时的是空。
+ * 他看不到的公海客户。负责人是他且在公海（部署前进公海的老数据）：一句写完，不用名单；
+ * M-公海-03 起进公海负责人清空挂占位账号，最近一次进公海时的负责人是他的、占位负责人（导入）和别人名下的按名单。
+ * 名单超上限（null）退回按关联写的条件：曾有 pool-release 就算，比名单宽（写不出「最近一次」），同项目那一半。
+ * 不认 CustomerPool.userId：那是操作的人，可能是上级，超时的是空。
  * salesOwnerId 非空，NOT 里算得出真（channelOwnerId 那种可空的才会踩 可见客户 上面说的坑）
  */
 function 回避客户条件(避: 公海回避): Record<string, unknown> {
@@ -434,7 +436,7 @@ function 回避客户条件(避: 公海回避): Record<string, unknown> {
     AND: [
       { NOT: { salesOwnerId: 避.本人, pool: { isNot: null } } },
       ...(避.客户 === null
-        ? [{ NOT: { pool: { isNot: null }, projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } } }]
+        ? [{ NOT: { pool: { isNot: null }, OR: [{ projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } }, { ownerLogs: { some: 留痕 } }] } }]
         : 避.客户.length ? [{ NOT: { id: { in: 避.客户 } } }] : []),
     ],
   };
@@ -446,6 +448,7 @@ function 回避项目条件(避: 公海回避): Record<string, unknown> {
     return { NOT: { OR: [
       { pooledAt: { not: null }, logs: { some: { kind: "pool-release", fromOwnerId: 避.本人 } } },
       { customer: { salesOwnerId: 避.本人, pool: { isNot: null } } },
+      { customer: { pool: { isNot: null }, ownerLogs: { some: { kind: "pool-release", fromOwnerId: 避.本人 } } } },
     ] } };
   }
   return 避.项目.length ? { NOT: { id: { in: 避.项目 } } } : {};

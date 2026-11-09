@@ -1750,6 +1750,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-head-r .ant-segmented { max-width: 100%; overflow-x: auto; }
 .btodo-proj { color: var(--text-muted); }
 .btodo .btodo-row { cursor: pointer; }
+.btodo .btodo-row-nolink { cursor: default; }
 .btodo .btodo-row > td { transition: background var(--t-press) var(--ease); }
 .btodo .ant-table-tbody > tr.btodo-row.ant-table-row:active > td { background: var(--hover); }
 .btodo .btodo-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }

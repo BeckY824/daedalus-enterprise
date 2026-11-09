@@ -166,7 +166,7 @@ function CustomerRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: st
   return (
     <div className="proj-rel-row">
       <div className="proj-rel-head">
-        <名字 名={x.名} 全称={x.全称} href={x.看得到 ? `/customers/${encodeURIComponent(x.customerId)}` : null} 主={x.主} 主叫="主客户" />
+        <名字 名={x.名} 全称={x.全称} href={x.能进详情 ? `/customers/${encodeURIComponent(x.customerId)}` : null} 主={x.主} 主叫="主客户" />
         {能改 && !x.主 && (
           <InlineConfirm 问="解除这家关联？" 是="解除" 做={async () => void (await 跑(() => 解除关联客户Action(projectId, x.customerId), undefined, "已解除"))}>
             <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label={`解除和 ${x.名} 的关联`} />

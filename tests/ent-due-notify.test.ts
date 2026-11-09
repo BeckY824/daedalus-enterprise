@@ -116,6 +116,22 @@ describe("今天到期才提醒", () => {
     expect((await 通知们())[0].link).toBe(`/customers/${客户}`);
   });
 
+  it("负责人不是客户负责人、手上也没有进行中项目（客户详情他进不去）：去计划页，不指 404", async () => {
+    const 乙的客户 = await 新客户({ salesOwnerId: 乙 });
+    await 项目({ customerId: 乙的客户, result: "丢单" });
+    await 计划({ customerId: 乙的客户 });
+    await 到期提醒扫一遍(今早);
+    expect((await 通知们())[0].link).toBe("/follow-ups/plans");
+  });
+
+  it("负责人不是客户负责人、有进行中项目：去项目", async () => {
+    const 乙的客户 = await 新客户({ salesOwnerId: 乙 });
+    const 他的 = await 项目({ customerId: 乙的客户 });
+    await 计划({ customerId: 乙的客户 });
+    await 到期提醒扫一遍(今早);
+    expect((await 通知们())[0].link).toBe(`/projects/${他的.id}`);
+  });
+
   it("老计划没有 plannedOn：按 plannedAt 落在北京今天算", async () => {
     const a = await 计划({ plannedOn: null, plannedAt: 京("2026-11-02 08:00") });
     await 计划({ plannedOn: null, plannedAt: 京("2026-11-03 08:00") });

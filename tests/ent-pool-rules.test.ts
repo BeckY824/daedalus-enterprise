@@ -26,7 +26,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
-import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由, 原负责人不能领回提示, 项目不能单独领提示, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由, 原负责人不能领回提示, 项目不能单独领提示, 客户在公海项目不单领提示, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 系统, 超时理由 } from "@/lib/project/timeout";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 放回公海, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
@@ -55,6 +55,7 @@ async function 客户(ownerId: string, 补: Record<string, unknown> = {}) {
 async function 项目(ownerId: string, customerId: string, 补: Record<string, unknown> = {}) {
   return (await prisma.project.create({ data: { name: `项目${++序}`, customerId, ownerId, creatorId: ownerId, ...补 } })).id;
 }
+const 占位Id = async () => (await prisma.user.findUniqueOrThrow({ where: { email: 无负责人占位邮箱 } })).id;
 const 在客户公海 = async (id: string) => !!(await prisma.customerPool.findUnique({ where: { customerId: id } }));
 const 负责人 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).salesOwnerId;
 const 项目在公海 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).pooledAt !== null;
@@ -75,8 +76,10 @@ beforeEach(async () => {
   invalidateSettingsCache();
   忘掉企业版范围();
   Object.assign(公海规则, 原规则);
-  // 下面多数用例测「领项目」这条路的连带（带走客户、名下别的公海项目……），开关打开测；默认不让单独领见末尾一组
-  公海规则.项目能单独领 = true;
+  // 11-09 起默认项目层动作不碰客户（M-公海-02、M-公海-06，默认行为见 ent-pool-customer-owner、ent-owner-matrix 和本文件末尾一组）。
+  // 下面多数用例测这两个开关打开时的连带（放回带客户进公海、领项目带走客户……），代码还留着这条路，显式打开测
+  公海规则.单项目客户跟着进公海 = true;
+  公海规则.领项目带走单项目客户 = true;
   vi.stubEnv("CRM_ENTERPRISE", "1");
   mocks.团队 = null;
   老板 = await 造人("boss", "老板", "ADMIN");
@@ -127,8 +130,8 @@ describe("单项目客户（D6）", () => {
     expect(await 项目在公海(p)).toBe(true);
     const 行 = await prisma.customerPool.findUniqueOrThrow({ where: { customerId: c } });
     expect(行).toMatchObject({ userId: 乙.id, reason: 单项目客户进公海理由 });
-    // 负责人不动，谁领了谁接（同客户公海）
-    expect(await 负责人(c)).toBe(乙.id);
+    // 进公海负责人清空（M-公海-03），谁领了谁接（同客户公海）
+    expect(await 负责人(c)).toBe(await 占位Id());
   });
 
   it("客户归别人的：客户不进公海（客户留原负责人，只换项目负责人）；名下几个项目的见「项目随客户整体转让」", async () => {
@@ -152,7 +155,7 @@ describe("单项目客户（D6）", () => {
     // 丙领走：客户一起过来，但给乙的收回提醒还留在乙名下
     expect(await 领取公海项目(丙, p)).toEqual({ ok: true });
     expect(await 负责人(c)).toBe(丙.id);
-    expect(await prisma.task.count({ where: { customerId: c, ownerId: 乙.id, title: { contains: "已回到项目公海" } } })).toBe(1);
+    expect(await prisma.task.count({ where: { customerId: c, ownerId: 乙.id, title: { contains: "已回到线索公海" } } })).toBe(1);
   });
 
   it("丙领这个项目：客户一起归丙，客户公海那一行删掉、记领取时间；乙在这位客户上没做完的待办进公海时已关掉（11-01 C-01），留在乙名下不跟过来", async () => {
@@ -181,8 +184,10 @@ describe("单项目客户（D6）", () => {
     const c2 = await 客户(乙.id);
     const p2 = await 项目(乙.id, c2);
     await 放回公海(乙, p2);
-    expect(await 领取公海项目(丙, p2)).toEqual({ ok: true });
-    expect(await 负责人(c2)).toBe(乙.id);
+    // 客户在客户公海、又不随项目带走：项目不单领，要连客户一起领（M-公海-06）
+    expect(await 领取公海项目(丙, p2)).toEqual({ ok: false, error: 客户在公海项目不单领提示 });
+    expect(await 项目在公海(p2)).toBe(true);
+    expect(await 负责人(c2)).toBe(await 占位Id());
     expect(await 在客户公海(c2)).toBe(true);
   });
 });
@@ -379,7 +384,7 @@ describe("原负责人不能领回（10-26 定稿）", () => {
     await 放进公海([c], "客户主动终止");
     expect(await 领取([c])).toEqual({ ok: false, error: 原负责人不能领回提示 });
     expect(await 在客户公海(c)).toBe(true);
-    expect(await 负责人(c)).toBe(乙.id);
+    expect(await 负责人(c)).toBe(await 占位Id());
     await 放回公海(乙, p);
     expect(await 领取公海项目(乙, p)).toEqual({ ok: false, error: 原负责人不能领回提示 });
     expect(await 项目在公海(p)).toBe(true);
@@ -685,12 +690,41 @@ describe("开关关着照旧", () => {
   });
 });
 
-describe("项目不能单独领，只能随客户一起领（10-31 晚定）", () => {
+describe("默认：线索公海的项目能单独领，客户不动（11-09，M-公海-02、M-公海-06）", () => {
+  beforeEach(() => { Object.assign(公海规则, 原规则); });
+
+  it("三个开关的默认值；放回项目客户留在原负责人名下；丙单独领走项目，客户负责人不变", async () => {
+    expect(公海规则).toMatchObject({ 单项目客户跟着进公海: false, 领项目带走单项目客户: false, 项目能单独领: true });
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await 放回公海(乙, p);
+    expect(await 项目在公海(p)).toBe(true);
+    expect(await 在客户公海(c)).toBe(false);
+    expect(await 领取公海项目(丙, p)).toEqual({ ok: true });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
+    expect(await 负责人(c)).toBe(乙.id);
+  });
+
+  it("客户在客户公海里：项目不能单独领，也不能单独分（随整包，M-公海-06）；领客户项目一起过来", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    当(乙);
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true, 公海项目: [p] });
+    expect(await 领取公海项目(丙, p)).toEqual({ ok: false, error: 客户在公海项目不单领提示 });
+    当(老板);
+    expect(await 分配公海项目([p], 丙.id)).toMatchObject({ ok: true, 分到: [], 没分到: [{ id: p, 原因: 客户在公海项目不单领提示 }] });
+    expect(await 项目在公海(p)).toBe(true);
+    当(丙);
+    expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
+    expect(await 负责人(c)).toBe(丙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
+  });
+});
+
+describe("开关：项目能单独领 = false（10-31 晚那条，11-09 起默认不再这样）", () => {
   beforeEach(() => { 公海规则.项目能单独领 = false; });
 
-  it("默认：丙从项目公海单独领被拒、项目留在公海；丙领客户，项目跟着一起过来", async () => {
-    Object.assign(公海规则, 原规则);
-    expect(公海规则.项目能单独领).toBe(false);
+  it("丙从项目公海单独领被拒、项目留在公海；丙领客户，项目跟着一起过来", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     await 放回公海(乙, p);

@@ -13,6 +13,8 @@ export type 项目行 = {
   customerId: string;
   /** 公海里同事客户的项目不给客户名（lib/project/db.ts 露客户），领了再看 */
   customerName: string | null;
+  /** 企业版只负责项目、看不到客户的：名字照显示，但不链到客户详情（点了只会报「没有找到」）；只读卡只从项目详情开 */
+  进不了客户详情?: boolean;
   ownerId: string;
   ownerName: string;
   phase: string;
@@ -23,6 +25,8 @@ export type 项目行 = {
   exceptionReason: string | null;
   /** 在项目公海里（ownerId 还是放回去的人，界面写「公海」） */
   pooled: boolean;
+  /** 企业版：客户在客户公海里，项目跟客户走，不单独分（线索公海的 pooled 也是真，分不分看这个） */
+  客户在公海?: boolean;
   /** 企业版新线索待分配（11-01 A7 / A10）：建好没分出去，负责人那一格只是建的人占着 */
   待分配?: boolean;
   /** 企业版超时回收：明天（或今天）就要回到项目公海的回收日，看板 / 列表标「即将回收」；不会收 = 不带（10-27） */

@@ -63,7 +63,7 @@ function Body({
 }) {
   const [f, setF] = useState<向导跟进>({ type: 能选类型[0]?.value ?? "PHONE", content: "", occurredAt: dayjs().format(时间格式), 下一步时间: null });
   const [交中, set交中] = useState(false);
-  const 差 = !f.content.trim() ? "请填写首条跟进的沟通内容" : 要下一步 && !f.下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到项目公海" : "";
+  const 差 = !f.content.trim() ? "请填写首条跟进的沟通内容" : 要下一步 && !f.下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到线索公海" : "";
   const 行 = (label: string, el: React.ReactNode, 必填 = false) => (
     <div style={{ marginBottom: 12 }}>
       <div style={{ marginBottom: 4 }}>{必填 && <span style={{ color: "var(--danger)" }}>* </span>}{label}</div>
@@ -98,7 +98,7 @@ function Body({
             onChange={(v) => setF({ ...f, 下一步时间: v ? v.format("YYYY-MM-DD") : null })}
             placeholder="选一天"
           />
-          <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "到那天还没人跟进，项目会自动回到项目公海" : "选填：打算哪天再跟进，项目上会显示"}</div>
+          <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{要下一步 ? "到那天还没人跟进，项目会自动回到线索公海" : "选填：打算哪天再跟进，项目上会显示"}</div>
         </>
       ), 要下一步)}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>

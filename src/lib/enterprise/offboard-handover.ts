@@ -5,6 +5,7 @@ import { 带走一位, 转项目 } from "@/lib/carry-over-db";
 import { 看全部 } from "@/lib/team-scope";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 停用分拣 } from "@/lib/offboard-db";
+import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 离职转给接手人 } from "@/lib/offboard-move";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 离职交接中 } from "@/lib/enterprise/handover-db";
@@ -79,15 +80,17 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
     const 上级名 = new Map((await prisma.user.findMany({ where: { id: { in: 上级ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     const 结果: 离职待交接[] = [];
     for (const u of 人们) {
+      // M-公海-03 起进公海负责人清空：最近一次进公海时负责人是他的，客户不在他名下了，上面的活还是谁领谁带（同 停用分拣）
+      const 放走的 = [...(await 公海客户原负责人是(prisma, [u.id])).keys()];
       // 同 停用分拣：在公海里的不算他的（谁领谁接）
       const 客户们 = await prisma.customer.findMany({
         where: { salesOwnerId: u.id, pool: { is: null } },
-        select: { id: true, name: true, ...(带项目 ? { _count: { select: { projects: { where: { pooledAt: null } } } } } : {}) },
+        select: { id: true, name: true, ...(带项目 ? { _count: { select: { projects: { where: { pooledAt: null, OR: [{ ownerId: u.id }, { awaitAssignAt: { not: null } }] } } } } } : {}) },
         orderBy: { name: "asc" },
       });
       const 项目们 = 带项目
         ? await prisma.project.findMany({
-            where: { ownerId: u.id, pooledAt: null, result: null, customer: { salesOwnerId: { not: u.id } } },
+            where: { ownerId: u.id, pooledAt: null, result: null, customer: { salesOwnerId: { not: u.id } }, customerId: { notIn: 放走的 } },
             select: { id: true, name: true, customer: { select: { name: true } } },
             orderBy: { name: "asc" },
           })
@@ -96,7 +99,7 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
         prisma.lead.count({ where: { ownerId: u.id } }),
         prisma.channel.count({ where: { channelOwnerId: u.id } }),
         // 同 停用分拣：他名下客户上的待办跟着客户走（在公海里的谁领谁带），这里数挂在别人客户上的
-        prisma.task.count({ where: { ownerId: u.id, done: false, customer: { salesOwnerId: { not: u.id } } } }),
+        prisma.task.count({ where: { ownerId: u.id, done: false, customer: { salesOwnerId: { not: u.id } }, customerId: { notIn: 放走的 } } }),
       ]);
       if (!客户们.length && !项目们.length && !线索 && !渠道 && !待办) continue;
       结果.push({

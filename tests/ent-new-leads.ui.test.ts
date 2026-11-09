@@ -19,12 +19,12 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true});");
   // 分配那几个 server action：记下调了什么，回成功
-  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'});");
+  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>[],取客户近况=async()=>null;");
-  stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;");
+  stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
   // 「新增项目」→「新客户」：取向导数据记一笔；向导框本身换成一块写着标题的牌子（向导另有测试）
   stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>{(window.__调||=[]).push(['取建档数据']);return {users:[],要下一步:false,企业:null}};");
   stub(/new\/ProjectWizard$/, "export const 建档弹窗=()=>null;");
@@ -44,14 +44,14 @@ beforeAll(async () => {
     // 看板五列（11-01 C12 测「→ 还有 N 列」）：每列一张卡
     const 五列=['线索','商机','订单','成功交付','没成'].map((列,i)=>({列,数:1,合计:[],行:[{...row(10+i,'潜客培育'),phase:列==='没成'?'线索':列}]}));
     window.__画=(阶段,能分,企,o={})=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <Projects 行={行} 列={o.看板?五列:[]} 取到上限={false} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 企业版={!!企}/>
+      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.看板?五列:[]} 取到上限={false} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 企业版={!!企}/>
     </BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean; 公海?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -278,5 +278,33 @@ it("新线索页照旧：自动分配的提示带配额", async () => {
   const { page } = await 打开(true, 1280, true);
   await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
   await page.getByText("配额 不限", { exact: false }).first().waitFor();
+  await page.close();
+});
+
+it("新线索页·单条自动分配有项目一起转（P-转-07）：先列出来，取消就不分；点「一起转」才分", async () => {
+  const { page, errors } = await 打开(true, 1280, true);
+  await page.evaluate(() => { (window as unknown as { __带走: unknown }).__带走 = { 项目数: 1, 项目: [{ name: "公海的项目", 客户: "甲公司", 负责人: "线索公海" }] }; });
+  const 框 = page.locator(".ant-modal-confirm");
+  const 调了 = (n: string) => page.evaluate((名) => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).filter((x) => x[0] === 名), n);
+  await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
+  await 框.locator(".ant-modal-confirm-title", { hasText: "会一起转走的 1 个项目" }).waitFor();
+  expect((await 调了("分配带走的项目"))[0][2]).toBeUndefined();
+  await 框.locator(".ant-btn:not(.ant-btn-primary)").click();
+  await 框.waitFor({ state: "detached" });
+  expect(await 调了("自动分配线索")).toEqual([]);
+  await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
+  await 框.locator(".ant-btn-primary").click();
+  await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "自动分配线索"));
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("客户公海里的项目不给「分配」「自动分配」键；线索公海（客户不在公海）的照给", async () => {
+  const { page, errors } = await 打开(true, 1280, true, true, { 公海: true });
+  await page.getByRole("button", { name: /^分配 .*5$/ }).waitFor();
+  expect(await page.getByRole("button", { name: /^自动分配 .*5$/ }).count()).toBe(1);
+  expect(await page.getByRole("button", { name: /^分配 .*4$/ }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: /^自动分配 .*4$/ }).count()).toBe(0);
+  expect(errors).toEqual([]);
   await page.close();
 });

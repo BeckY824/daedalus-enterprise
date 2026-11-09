@@ -22,6 +22,8 @@ import CompletePlanModal, { 提示记完了, type 要完成的计划, type 记�
 
 /** 无空格的长客户名（AlRashidTrading…FreeZoneAuthority）曾把后面两个标签挤出这一行、压住「逾期 N 天」，1024 宽整页横滚（10-19 排版闸门）：名字可断行 */
 const 客户名样式 = { minWidth: 0, overflowWrap: "anywhere" } as const;
+/** 进不了的客户 / 改不了的客户 的默认值：放外面，引用不变，useMemo 才不白跑 */
+const 没有: string[] = [];
 
 /** 只用来认「水合完了没有」（见下面的 已水合） */
 const 无订阅 = () => () => {};
@@ -87,7 +89,7 @@ type 事项 = {
 };
 
 /** 企业版：项目上填的下一步时间（page.tsx 只读取来），和计划按同一套时间分组，只能点进项目去改 */
-export type 项目下一步 = { key: string; id: string; 项目名: string; 下一步: string | null; 时间: string; ownerId: string; ownerName: string };
+export type 项目下一步 = { key: string; id: string; 项目名: string; 下一步: string | null; 时间: string; ownerId: string; ownerName: string; /** 市场视角进不了这个项目详情：只写名字，不给链接 */ 进不了?: boolean };
 
 /** 分组只要这三样：分批时页面手里只有「全部」的这三样，详情只有要摆出来的那些（lib/plans-page.ts） */
 type 轻事项 = { key: string; 时间: string | null; ownerId: string };
@@ -125,6 +127,8 @@ export default function PlansView({
   紧,
   每组,
   补详情,
+  进不了的客户 = 没有,
+  改不了的客户 = 没有,
 }: {
   plans: Plan[];
   tasks: Task[];
@@ -153,7 +157,13 @@ export default function PlansView({
   每组?: number[];
   /** 要摆、手里却没详情的那几条去取（plan-rows.ts）：刚新建的、浏览器和服务器时区不同分组差了的 */
   补详情?: (keys: string[]) => Promise<{ plans: Plan[]; tasks: Task[] }>;
+  /** 企业版：我名下事项里客户详情开不了的客户（follow-perm.ts 名下事项够不着）：客户名不给链接，计划点完成不弹小框（记不了沟通） */
+  进不了的客户?: string[];
+  /** 企业版：上面那些里连改删都不行的（本人名下的只能勾完成，别人名下的勾也不行）：不给改、删 */
+  改不了的客户?: string[];
 }) {
+  const 进不了 = useMemo(() => new Set(进不了的客户), [进不了的客户]);
+  const 改不了 = useMemo(() => new Set(改不了的客户), [改不了的客户]);
   const timeZone = useBusinessTimeZone();
   const router = useRouter();
   const { message } = App.useApp();
@@ -282,7 +292,7 @@ export default function PlansView({
 
   /** 点了计划前面的 ✓：先弹小框（方式 + 一句话 + 下次），待办照旧直接完成 */
   function 点完成(x: 事项) {
-    if (x.kind === "plan") return void set在完成({ id: x.id, subject: x.标题, method: x.方式 ?? "", customerId: x.customerId, customerName: x.customerName, 有WhatsApp: x.有WhatsApp, key: x.key, 标题: x.标题 });
+    if (x.kind === "plan" && !进不了.has(x.customerId)) return void set在完成({ id: x.id, subject: x.标题, method: x.方式 ?? "", customerId: x.customerId, customerName: x.customerName, 有WhatsApp: x.有WhatsApp, key: x.key, 标题: x.标题 });
     void 完成(x);
   }
 
@@ -303,8 +313,13 @@ export default function PlansView({
 
   async function 完成(x: 事项) {
     set刚完成((v) => [...v, x.key]);
-    if (x.kind === "plan") await completePlan(x.id);
-    else await toggleTask(x.id, true);
+    const r = x.kind === "plan" ? await completePlan(x.id) : await toggleTask(x.id, true);
+    if (!r.ok) {
+      set刚完成((v) => v.filter((k) => k !== x.key));
+      message.error(r.error || "没完成成，刷新看看");
+      router.refresh();
+      return;
+    }
     /*
       提示里带「撤销」，计划还带「排下一次」（审查 M10）：原来点完 600ms 这条就没了，
       点错了只能去「已完成」里找也改不回来；做完一次跟进，下一次什么时候也没人问
@@ -319,7 +334,7 @@ export default function PlansView({
           <Button type="link" size="small" onClick={() => { message.destroy(key); void 撤销完成(x); }}>
             撤销
           </Button>
-          {x.kind === "plan" && (
+          {x.kind === "plan" && !改不了.has(x.customerId) && (
             <Button type="link" size="small" onClick={() => { message.destroy(key); set排给({ customerId: x.customerId, 有WhatsApp: x.有WhatsApp }); }}>
               排下一次
             </Button>
@@ -337,9 +352,13 @@ export default function PlansView({
   }
 
   async function 撤销完成(x: 事项) {
-    if (x.kind === "plan") await completePlan(x.id, false);
-    else await toggleTask(x.id, false);
+    const r = x.kind === "plan" ? await completePlan(x.id, false) : await toggleTask(x.id, false);
     set刚完成((v) => v.filter((k) => k !== x.key));
+    if (!r.ok) {
+      message.error(r.error || "没改回来，刷新看看");
+      router.refresh();
+      return;
+    }
     message.success(`「${x.标题}」已改回未完成`);
     void window.desktopReminders?.刷新();
     router.refresh();
@@ -411,7 +430,7 @@ export default function PlansView({
                       <span className="plan-row-m">
                         <span className="plan-row-t">{x.标题}</span>
                         <span className="plan-row-s">
-                          <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>
+                          {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
                           {x.方式 && <Tag style={{ margin: 0, borderRadius: 6 }}>{x.方式}</Tag>}
                           <Tag style={{ margin: 0, borderRadius: 6 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                           {/* 原定什么时候做，和实际什么时候做完，是两件事——两个都留着 */}
@@ -429,11 +448,11 @@ export default function PlansView({
           <div className="plans">
             {/* 三组的空文案各不相同：全写「这一组是空的」，人分不出
                 「今天没排」和「已经全做完了」——那是两件完全不同的事 */}
-            <组块 名="逾期" 说明="计划时间已经过去了，先处理这些" 空话="没有逾期的，都跟上了" 行={摆.逾期.行} 项目={项目组.逾期} 共={组.逾期.length} 还有={摆.逾期.还有} 再看={() => 再看(0)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 危险 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
-            <组块 名="今天" 说明="今天之内要做的" 空话="今天没有排计划" 行={摆.今天.行} 项目={项目组.今天} 共={组.今天.length} 还有={摆.今天.还有} 再看={() => 再看(1)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
-            <组块 名="本周" 说明="这周剩下的几天" 空话="这周剩下的几天还没排" 行={摆.本周.行} 项目={项目组.本周} 共={组.本周.length} 还有={摆.本周.还有} 再看={() => 再看(2)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+            <组块 meId={meId} 名="逾期" 进不了={进不了} 改不了={改不了} 说明="计划时间已经过去了，先处理这些" 空话="没有逾期的，都跟上了" 行={摆.逾期.行} 项目={项目组.逾期} 共={组.逾期.length} 还有={摆.逾期.还有} 再看={() => 再看(0)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 危险 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+            <组块 meId={meId} 名="今天" 进不了={进不了} 改不了={改不了} 说明="今天之内要做的" 空话="今天没有排计划" 行={摆.今天.行} 项目={项目组.今天} 共={组.今天.length} 还有={摆.今天.还有} 再看={() => 再看(1)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+            <组块 meId={meId} 名="本周" 进不了={进不了} 改不了={改不了} 说明="这周剩下的几天" 空话="这周剩下的几天还没排" 行={摆.本周.行} 项目={项目组.本周} 共={组.本周.length} 还有={摆.本周.还有} 再看={() => 再看(2)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
             {组.以后.length + 项目组.以后.length > 0 && (
-              <组块 名="以后" 说明="更远的，和还没定时间的" 空话="没有更远的" 行={摆.以后.行} 项目={项目组.以后} 共={组.以后.length} 还有={摆.以后.还有} 再看={() => 再看(3)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+              <组块 meId={meId} 名="以后" 进不了={进不了} 改不了={改不了} 说明="更远的，和还没定时间的" 空话="没有更远的" 行={摆.以后.行} 项目={项目组.以后} 共={组.以后.length} 还有={摆.以后.还有} 再看={() => 再看(3)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
             )}
           </div>
           )}
@@ -495,13 +514,19 @@ export default function PlansView({
 type 待取 = { key: string; 待取: true };
 
 function 组块({
-  名, 说明, 空话, 行, 项目, 共, 还有, 再看, 翻着, 没取到, 危险, 完成, 刚完成, 刚建, 刚建那行, scope, 只有我, 改, 删,
+  meId, 进不了, 改不了, 名, 说明, 空话, 行, 项目, 共, 还有, 再看, 翻着, 没取到, 危险, 完成, 刚完成, 刚建, 刚建那行, scope, 只有我, 改, 删,
 }: {
   /** 改这一条：计划开计划表单，待办开待办表单（2026-10-02 排查 3-4：原来计划页上只能「完成」） */
   改: (x: 事项) => void;
   删: (x: 事项) => Promise<void>;
   名: string;
   说明: string;
+  /** 客户详情开不了的客户：客户名不给链接 */
+  进不了: ReadonlySet<string>;
+  /** 当前登录人：本人名下的事项才能在 改不了 的客户上勾完成 */
+  meId: string;
+  /** 不让改删的客户：不给改、删；✓ 只留给本人名下的事项 */
+  改不了: ReadonlySet<string>;
   /** 这一组空着时说的那句话。每组都不一样 */
   空话: string;
   /** 摆出来的那些（不分批时就是这一组全部） */
@@ -554,18 +579,23 @@ function 组块({
               ref={x.key === 刚建 ? 刚建那行 : undefined}
               className={`plan-row${完了 ? " plan-row-done" : ""}${x.key === 刚建 ? " row-fresh" : ""}`}
             >
-              <Button
-                type="text"
-                size="small"
-                aria-label={`完成 ${x.标题}`}
-                icon={<CheckCircleOutlined style={{ color: 完了 ? "var(--success)" : undefined }} />}
-                disabled={完了}
-                onClick={() => 完成(x)}
-              />
+              {/* 改不了的客户上，本人名下的事项还能勾（服务端 本人勾完成挡，P-转-10）；别人的（下属留下、我没在上面负责项目）点了只报错，不摆 ✓，留个空位让标题对齐 */}
+              {改不了.has(x.customerId) && x.ownerId !== meId ? (
+                <span aria-hidden style={{ flex: "none", width: 24 }} />
+              ) : (
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label={`完成 ${x.标题}`}
+                  icon={<CheckCircleOutlined style={{ color: 完了 ? "var(--success)" : undefined }} />}
+                  disabled={完了}
+                  onClick={() => 完成(x)}
+                />
+              )}
               <span className="plan-row-m">
                 <span className="plan-row-t">{x.标题}</span>
                 <span className="plan-row-s">
-                  <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>
+                  {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
                   {x.方式 && <Tag style={{ margin: 0, borderRadius: 6 }}>{x.方式}</Tag>}
                   <Tag style={{ margin: 0, borderRadius: 6 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                 </span>
@@ -573,7 +603,7 @@ function 组块({
               {!只有我 && scope === "全部成员" && <UserCell name={x.ownerName} size={22} />}
               {/* 截止时间一种说法：逾期 N 天 / 今天 / 明天 / M 月 D 日（审查 D1，lib/deadline.ts） */}
               <span className="plan-row-d" title={x.时间 ? fmtDateTime(x.时间) : undefined}>{截止说法(x.时间)}</span>
-              {!完了 && (
+              {!完了 && !改不了.has(x.customerId) && (
                 <span className="plan-row-act">
                   <Button type="text" size="small" icon={<EditOutlined />} aria-label={`改 ${x.标题}`} onClick={() => 改(x)} />
                   <InlineConfirm 问="删除这条？" 做={() => 删(x)}>
@@ -591,7 +621,7 @@ function 组块({
           <span className="plan-row-m">
             <span className="plan-row-t">{x.下一步 || "下一步"}</span>
             <span className="plan-row-s">
-              <a href={`/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>
+              {x.进不了 ? <span style={客户名样式}>{x.项目名}</span> : <a href={`/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>}
               <Tag style={{ margin: 0, borderRadius: 6 }}>来自项目</Tag>
             </span>
           </span>

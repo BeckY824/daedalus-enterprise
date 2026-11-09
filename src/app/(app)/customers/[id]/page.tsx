@@ -1,8 +1,9 @@
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
+import { 负责人显示名 } from "@/lib/pool";
 import { notFound } from "next/navigation";
 import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 历史负责人of } from "@/lib/owner-log-db";
+import { 历史负责人of, 我放出去的公海客户 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 能改这条沟通, 能删沟通 } from "@/lib/enterprise/follow-perm";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
@@ -202,7 +203,7 @@ export default async function CustomerDetailPage({
       已收藏={已收藏}
       能放公海={能管公海(me, await 权限组织()) || customer.salesOwnerId === me.id}
       能转让客户={!企 || 能管公海(me, await 权限组织()) || (customer.salesOwnerId === me.id && 能转出自己的(me, await 权限组织()))}
-      原负责人领不回={!!customer.pool && customer.salesOwnerId === me.id && 拦原负责人()}
+      原负责人领不回={!!customer.pool && 拦原负责人() && (await 我放出去的公海客户([{ id: customer.id, 在公海: true, salesOwnerId: customer.salesOwnerId }], me.id)).length > 0}
       换负责人记录={换负责人记录}
       旺旺们={旺旺们}
       项目们={项目们}
@@ -263,7 +264,7 @@ export default async function CustomerDetailPage({
         channelOwnerId: customer.channelOwnerId,
         channelOwnerName: customer.channelOwner?.name ?? null,
         salesOwnerId: customer.salesOwnerId,
-        salesOwnerName: customer.salesOwner.name,
+        salesOwnerName: 负责人显示名(customer.salesOwner.name),
         signedAmount: customer.contracts.reduce((a, c) => a + 签约金额(c), 0),
         signedTotals: 签约合计(customer.contracts),
         pool: customer.pool ? { reason: customer.pool.reason } : null,

@@ -253,7 +253,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           ...(企业版 ? { 企业号码: { 类型: d.号码类型 ?? "", 值: d.phone } } : {}),
           school: d.客户.school || null, grade: null, major: null,
           followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: d.客户.remark || null,
-          // 客户也记在项目负责人名下：负责人打开项目时得看得到这位客户
+          // 团队版客户记在项目负责人名下；企业版客户归谁由 建档向导 定（P-转-03、X-18）
           salesOwnerId: 负责人 || null, channelId: 企业 ? d.客户.渠道 || null : null, referrerCustomerId: null,
         },
         联系人: d.联系人,

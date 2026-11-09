@@ -20,7 +20,7 @@ export default function HandoverPending({ 等我确认, 我发起的 }: { 等我
     const 走 = await modal.confirm({
       title: 做 === "确认" ? `接手「${h.从}」的 ${h.客户总数} 位客户？` : `${做}这笔交接？`,
       content: 做 === "确认"
-        ? "确认后这些客户和名下的联系人、沟通记录、项目、没做完的活都转到你名下。"
+        ? h.确认说明
         : "什么都不转，数据留在原负责人名下。",
       okText: 做, cancelText: "取消", okButtonProps: { danger: 做 !== "确认" },
     });

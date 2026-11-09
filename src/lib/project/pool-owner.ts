@@ -11,6 +11,7 @@ import { 公海规则, 进公海关待办尾 } from "@/lib/enterprise/pool-rules
 import { 看全部 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看全部, 只读按线, type 谁 } from "@/lib/enterprise/permissions";
+import { 在推项目条件 } from "./active";
 
 /** 项目在公海里时 ownerId 写这个 */
 export const 公海无负责人 = "";
@@ -90,20 +91,23 @@ export async function 我回避的公海项目(db: 读痕, meId: string): Promis
 
 /**
  * 项目刚进公海（同一笔事务里、单项目客户跟进公海 之后调）：原负责人在这个项目上没做完的待办标成已完成，记录留着。
- * 待办挂在客户上、不挂项目：客户也进了公海或客户本来就不归他 → 他在这位客户上没做完的都关；
- * 客户还归他（名下别的项目留着客户）→ 只关标题里点了这个项目名的（「项目名」，超时提醒、回收前一天提醒都是这样写的）。
+ * 待办挂在客户上、不挂项目：客户也进了公海或客户本来就不归他，且他在这位客户下没有别的在推项目 → 他在这位客户上没做完的都关；
+ * 不然（客户还归他、或他还在推别的项目）→ 只关标题里点了这个项目名的（「项目名」，超时提醒、回收前一天提醒都是这样写的）。
+ * 别的项目只数在推的：已结束的、已进公海的不算。一次进公海几个项目的（客户整包、超时回收），前面的只关点名的，轮到最后一个才关其余的，
+ * 都是同一刻（at）。这个判断只在这里算一次：领取时按 doneAt 认这一批（carry-tasks.ts 出公海带回待办），不按领取时的状态重算。
  * 标题后面接一句 进公海关待办尾。返回关了几条
  */
 export async function 进公海关待办(
   tx: Prisma.TransactionClient,
-  p: { customerId: string; name: string },
+  p: { id: string; customerId: string; name: string },
   原: string,
   at: Date = new Date(),
 ): Promise<number> {
   if (!企业版() || !公海规则.进公海关原负责人待办 || !原) return 0;
   return 看全部(async () => {
     const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
-    const 全关 = !c || !!c.pool || c.salesOwnerId !== 原;
+    const 别的在推 = await tx.project.count({ where: { customerId: p.customerId, ownerId: 原, id: { not: p.id }, deletedAt: null, ...在推项目条件 } });
+    const 全关 = (!c || !!c.pool || c.salesOwnerId !== 原) && !别的在推;
     const 们 = await tx.task.findMany({
       where: { customerId: p.customerId, ownerId: 原, done: false, ...(全关 ? {} : { title: { contains: `「${p.name}」` } }) },
       select: { id: true, title: true },

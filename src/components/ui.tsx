@@ -236,17 +236,26 @@ export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, ...props 
 /**
  * 列表里「所属客户」那一格。给了 company（Customer.school，外贸叫公司、教培叫学校）就摆两行：
  * 上面人名可点，下面公司灰色小字、一行省略、悬停看全名（2026-10-19 用户定：不加新列，同一格两行）。
- * 没填公司不占第二行。logo={false} 给本来就不摆头像的列表（订单一览）用
+ * 没填公司不占第二行。logo={false} 给本来就不摆头像的列表（订单一览）用。
+ * id 给 null：这位进不了客户详情（企业版只负责项目的人），名字不链过去，免得点了报「没有找到这条记录」；再给 点 = 名字是个按钮（项目详情开只读卡）。
  */
-export function CustomerLink({ id, name, company, logo = true }: { id: string; name: string; company?: string | null; logo?: boolean }) {
+export function CustomerLink({ id, name, company, logo = true, 点 }: { id: string | null; name: string; company?: string | null; logo?: boolean; 点?: () => void }) {
   const 公司 = company?.trim();
   return (
     <span className="cust-link">
       {logo && <CompanyLogo name={name} />}
       <span className="cust-link-t">
-        <RowLink href={`/customers/${id}`} className="link-strong">
-          {name}
-        </RowLink>
+        {id != null ? (
+          <RowLink href={`/customers/${id}`} className="link-strong">
+            {name}
+          </RowLink>
+        ) : 点 ? (
+          <button type="button" className="link-plain link-strong" title={name} style={{ color: "var(--brand)" }} onClick={点}>
+            {name}
+          </button>
+        ) : (
+          <span title={name}>{name}</span>
+        )}
         {公司 && (
           <span className="cust-link-co" title={公司}>
             {公司}

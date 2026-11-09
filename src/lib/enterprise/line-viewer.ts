@@ -62,7 +62,7 @@ function 范围(org: 组织, id: string, 线: 业务线): 按线范围 {
 }
 
 /** 标签是这条线；标签没填（或存坏了）按负责人的线算 */
-function 标签条件(x: 按线范围, 负责人列: "ownerId" | "salesOwnerId"): Record<string, unknown> {
+function 标签条件(x: 按线范围, 负责人列: "ownerId"): Record<string, unknown> {
   const 未填 = { OR: [{ bizLine: null }, { bizLine: { notIn: [...三种业务线] } }] };
   const 负责人 = { [负责人列]: x.线 === "外贸" ? { in: x.外贸们 } : { notIn: x.外贸们 } };
   return { OR: [{ bizLine: x.线 }, { AND: [未填, 负责人] }] };
@@ -73,7 +73,19 @@ export function 按线项目(x: 按线范围): Record<string, unknown> {
   return { OR: [{ ownerId: { in: x.人们 } }, { creatorId: { in: x.人们 } }, 标签条件(x, "ownerId")] };
 }
 
+/**
+ * 客户的标签条件：同 标签条件，只多一件——公海里的客户负责人清空了（M-公海-03，挂占位账号，占位账号不在 外贸们 里），
+ * 标签没填时按历史负责人判线：曾由外贸的人放进公海的算外贸。写不出「最近一次」，曾有 pool-release 就算（待解决：只认最近一次要不要收窄）
+ */
+function 客户标签条件(x: 按线范围): Record<string, unknown> {
+  const 未填 = { OR: [{ bizLine: null }, { bizLine: { notIn: [...三种业务线] } }] };
+  const 曾属外贸 = { pool: { isNot: null }, ownerLogs: { some: { kind: "pool-release", fromOwnerId: { in: x.外贸们 } } } };
+  return x.线 === "外贸"
+    ? { OR: [{ bizLine: x.线 }, { AND: [未填, { salesOwnerId: { in: x.外贸们 } }] }, { AND: [未填, 曾属外贸] }] }
+    : { OR: [{ bizLine: x.线 }, { AND: [未填, { salesOwnerId: { notIn: x.外贸们 } }, { NOT: 曾属外贸 }] }] };
+}
+
 /** 客户：标签是这条线，或名下有这条线的项目。「按人」那一半（负责人、创建人、建过 / 负责项目）走 市场相关客户(人们) */
 export function 按线客户(x: 按线范围): Record<string, unknown> {
-  return { OR: [标签条件(x, "salesOwnerId"), { projects: { some: { deletedAt: null, ...标签条件(x, "ownerId") } } }] };
+  return { OR: [客户标签条件(x), { projects: { some: { deletedAt: null, ...标签条件(x, "ownerId") } } }] };
 }

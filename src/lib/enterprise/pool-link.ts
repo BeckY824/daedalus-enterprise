@@ -1,11 +1,11 @@
 /**
- * 企业版两级公海的联动（2026-10-26）：客户公海和项目公海不拆开。规则开关在 pool-rules.ts，只企业版做。
- *   - 单项目客户：客户名下只有这一个项目，项目进项目公海 → 客户也进客户公海；领这个项目 → 客户一起领过来
- *   - 领客户即领项目：领 / 分配客户公海里的客户，名下放在项目公海里的项目一起归领的人
- *     （领项目把客户一起带出客户公海时也一样，10-31，见 单项目客户跟着领）
- *     （没进项目公海的项目本来就跟着客户整体转，见 carry-over-db 跟着客户转的项目）
- *   - 多项目客户（10-27 晚会议定固定 客户可转让，不再二选一，见 org-rules.ts 多项目客户走法们）：不数项目，客户是一个整体：
- *     项目进项目公海 → 客户也进（名下有没结束的订单阶段项目除外，订单不进公海）；领这个项目 → 客户连同名下别的项目一起领过来
+ * 企业版两级公海的联动（2026-10-26，11-09 按 M-公海-01/02/06 拆开）：客户公海和线索公海（代码里仍叫项目公海）分开。
+ * 规则开关在 pool-rules.ts，只企业版做。
+ *   - 项目层动作（放回、超时收回、单独领、分配、转让）只动项目，客户负责人不动（开关 单项目客户跟着进公海、领项目带走单项目客户 关着）
+ *   - 客户进客户公海（手动放进公海、离职公海方式）：客户负责人自己负责的线索 / 商机项目一起进线索公海，
+ *     客户负责人清空，原负责人记历史（客户进公海清负责人，M-公海-03）
+ *   - 领客户即领项目：领 / 分配客户公海里的客户，名下放在线索公海里的项目一起归领的人（M-公海-05）
+ *     （没进线索公海的项目本来就跟着客户转，见 carry-over-db 跟着客户转的项目）
  *
  * 查和改都包在 看全部() 里：按组织看客户开着时请求带着打开页面那个人的范围，判「名下只有一个项目」不能只数他看得到的
  */
@@ -14,16 +14,36 @@ import { 企业版 } from "./switch";
 import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由 } from "./pool-rules";
 import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 带走一位 } from "@/lib/carry-over-db";
-import { 转让痕, 记转让, 能进公海的阶段 } from "@/lib/project/db";
-import { 历史负责人们, 进公海后负责人, 进公海关待办 } from "@/lib/project/pool-owner";
+import { 带走一位, 带走公海项目 } from "@/lib/carry-over-db";
+import { 记转让, 能进公海的阶段 } from "@/lib/project/db";
+import { 进公海后负责人, 进公海关待办 } from "@/lib/project/pool-owner";
 import { 在推项目条件 } from "@/lib/project/active";
 import { 系统 } from "@/lib/project/timeout";
-import { 卡点随项目换人, 公海领走接手理由 } from "@/lib/project/blocker";
-import { 换负责人待办, 待办痕 } from "@/lib/project/carry-tasks";
 import { 有同事在推的客户 } from "./colleague-projects";
+import { 记换负责人 } from "@/lib/owner-log-db";
+import { 无负责人占位Id } from "@/lib/no-owner-db";
 
 /**
+ * 客户刚进了客户公海（手动放进公海、离职公海方式），同一笔事务里：负责人清空（M-公海-03）。
+ * salesOwnerId 必填外键，写占位账号；原负责人记一行 pool-release（from = 原负责人，to = 占位账号），领 / 分 / 撤销都按它认。
+ * 要排在 客户名下在推项目进公海 之后：那边靠客户原来的负责人认「他自己负责的」项目。
+ * 换负责人之前调用方要在事务外先 钉住老签约（这也是一次换负责人）。操作人 null = 系统（超时）
+ */
+export async function 客户进公海清负责人(tx: Prisma.TransactionClient, 们: { id: string; salesOwnerId: string }[], 操作人: string | null): Promise<void> {
+  if (!企业版() || !公海规则.进公海清负责人 || !们.length) return;
+  await 看全部(async () => {
+    const 占位 = await 无负责人占位Id(tx);
+    const 要清 = 们.filter((c) => c.salesOwnerId !== 占位);
+    if (!要清.length) return;
+    await 记换负责人(tx, 要清.map((c) => ({ customerId: c.id, from: c.salesOwnerId, to: 占位 })), 操作人 ?? 系统.id, "pool-release");
+    for (let i = 0; i < 要清.length; i += 500) {
+      await tx.customer.updateMany({ where: { id: { in: 要清.slice(i, i + 500).map((c) => c.id) } }, data: { salesOwnerId: 占位 } });
+    }
+  });
+}
+
+/**
+ * 开关 单项目客户跟着进公海 11-09 起关着，下面是打开时的做法。
  * 项目刚进了项目公海（主动放回、超时回收），在同一笔事务里调：客户名下一共只有这一个项目、
  * 客户和项目是同一位负责人、客户还不在公海 → 客户也放进客户公海。返回放了没有。
  * 只看同一位负责人：客户归别人、只是项目归他的，不能因为他放回项目就把别人的客户也扔进公海。
@@ -53,6 +73,7 @@ export async function 单项目客户跟进公海(
     await tx.customerPool.create({ data: { customerId: p.customerId, userId: 操作人, reason: 理由, at } });
     // 手上这个调用方已经放进项目公海（pooledAt 有值，不算在推），这里只带别的；超时回收没有人放，留痕记系统
     if (几个 !== 1) await 客户名下在推项目进公海(tx, [{ id: p.customerId, salesOwnerId: c.salesOwnerId }], 操作人 ?? 系统.id, 理由, at);
+    await 客户进公海清负责人(tx, [{ id: p.customerId, salesOwnerId: c.salesOwnerId }], 操作人);
     return true;
   });
 }
@@ -92,6 +113,7 @@ export async function 客户名下在推项目进公海(
 }
 
 /**
+ * 开关 领项目带走单项目客户 11-09 起关着，下面是打开时的做法。
  * 刚从项目公海领了一个项目，在同一笔事务里调：客户在客户公海里、名下只有这一个项目 → 客户也归领的人，
  * 规矩同客户公海领取（记领取时间、删公海那一行、原负责人没做完的活跟着过来、记一行换负责人）。
  * 返回领过来的客户（原来归谁），没领返回 null。不数项目（客户整体转让），客户在客户公海就一起领，
@@ -132,64 +154,3 @@ export async function 领客户带走公海项目(customerIds: string[], 新: st
   return 看全部(() => 查完再写((tx) => 带走公海项目(tx, customerIds, 新, 操作人, 带待办)));
 }
 
-/**
- * 同一笔事务里：这几位客户（已经归 新）名下还在项目公海里的项目一起归 新——负责人改成 新、出项目公海、清下一步，
- * 每个记一行 pool-claim（同单独领项目）。不在项目公海里的不碰（那些归谁由 带走一位 / 跟着客户转的项目 管）。
- * 带待办：每个项目进公海时关掉的那批待办照勾重新打开（carry-tasks.ts），几条写进各自那行 pool-claim
- */
-async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: string[], 新: string, 操作人: string, 带待办?: boolean): Promise<string[]> {
-  // 只认现在真归 新 的客户：领的事务和这里之间又被人改给了别人的不带
-  // 带否定条件 Prisma 不会自己拆批，一次分过 999 位客户报 P2029（11-03 B2-3）：500 位一批查
-  const 们 = [];
-  for (let i = 0; i < customerIds.length; i += 500) {
-    们.push(...(await tx.project.findMany({
-      where: { customerId: { in: customerIds.slice(i, i + 500) }, pooledAt: { not: null }, customer: { salesOwnerId: 新 } },
-      select: { id: true, ownerId: true, phase: true, node: true, result: true, customerId: true, name: true, pooledAt: true },
-    })));
-  }
-  if (!们.length) return [];
-  const ids = 们.map((p) => p.id);
-  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, pooledAt: null, nextStepAt: null, nextStepText: null } });
-  // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
-  const 原 = await 历史负责人们(tx, ids);
-  const 痕: Map<string, string | null> = new Map();
-  for (const p of 们) 痕.set(p.id, 待办痕(带待办, await 换负责人待办(tx, p, 原.get(p.id) ?? null, 新, 带待办)));
-  await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, 原.get(p.id) ?? (p.ownerId || null), 新, "pool-claim", 痕.get(p.id) ?? null)) });
-  // B5：历史负责人没完成的卡点认领行给领走的人（同单独领项目走 记转让）
-  for (const p of 们) {
-    const 从 = 原.get(p.id) ?? p.ownerId;
-    if (从) await 卡点随项目换人(tx, p.id, 从, 新, 操作人, 公海领走接手理由);
-  }
-  return ids;
-}
-
-/**
- * 项目手动转让（改项目换了负责人），在同一笔事务里调：客户跟着项目转给 新（11-04 用户：「转让项目会一并把客户转给其他人」）。
- * 原来只改项目、不碰客户：项目页显示已转出，客户页负责人还是原来那位，客户还留在原负责人的「我的客户」里。
- *   - 客户在客户公海里：同领公海项目，走 单项目客户跟着领（删公海那一行、记领取、名下别的公海项目一起过来）
- *   - 不在公海、负责人不是 新：改客户负责人，原负责人在客户上没做完的活一起跟着走，记一行换负责人；客户名下别的项目不动（11-04）
- * 返回客户原来归谁，没动返回 null。调用方要先把手上这个项目改好负责人再调
- */
-export async function 项目转让客户跟着转(
-  tx: Prisma.TransactionClient,
-  customerId: string,
-  新: string,
-  操作人: string,
-  带待办?: boolean,
-): Promise<string | null> {
-  if (!企业版() || !新) return null;
-  return 看全部(async () => {
-    if (await tx.customerPool.findUnique({ where: { customerId }, select: { customerId: true } })) {
-      const 领 = await 单项目客户跟着领(tx, customerId, 新, 操作人, 带待办);
-      if (领) return 领.旧;
-      // 规则关着领不过来：照下面普通转，客户出公海
-      await tx.customerPool.deleteMany({ where: { customerId } });
-    }
-    const c = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true } });
-    if (!c || c.salesOwnerId === 新) return null;
-    await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 新 } });
-    // 只转这个项目和客户：客户名下别的项目照旧归各自负责人（11-04，转一个项目不连带别的项目）
-    await 带走一位(tx, customerId, c.salesOwnerId, 新, 操作人, "assign", false);
-    return c.salesOwnerId;
-  });
-}

@@ -14,6 +14,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
+import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
 import { 字典of, 本套位置 } from "@/lib/project/nodes";
 import { 阶段与进程 } from "@/lib/project/stage-dict";
@@ -126,6 +127,8 @@ export async function 读公海行(me: { id: string; name: string; role?: string
   const 最近放回 = new Map<string, (typeof 留痕们)[number]>();
   for (const l of 留痕们) if (!最近放回.has(l.projectId)) 最近放回.set(l.projectId, l);
   const 拦 = 拦原负责人();
+  // 客户进公海清负责人后（M-公海-03）原负责人在历史记录里；管理员不回避、看得到这一行，按钮照样要灰
+  const 我放走的 = 拦 ? await 看全部(() => 公海客户原负责人是(prisma, [me.id], 客户们.map((c) => c.id))) : new Map<string, string>();
   // 历史负责人看不到公海里的这个项目（总管理 / 管理员不算）
   const 回避 = 原负责人回避() && !(await 回避豁免(me));
 
@@ -145,7 +148,7 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       入池时间: c.pool!.at.toISOString(),
       创建时间: c.createdAt.toISOString(),
       类, 累计: c.poolReturns, 入池原因: 入池原因文字(原类, c.pool!.reason), 快捷: 归到快捷({ 类, 累计: c.poolReturns }),
-      原负责人是我: 拦 && c.salesOwnerId === me.id,
+      原负责人是我: 拦 && (c.salesOwnerId === me.id || 我放走的.has(c.id)),
       来源id: c.channelId,
     };
   });

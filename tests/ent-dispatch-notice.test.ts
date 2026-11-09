@@ -242,6 +242,18 @@ describe("建档向导", () => {
     expect(们[0].body).toContain("向导项目");
   });
 
+  it("销售指定给同事（P-转-03）：客户留在自己名下，接手人那条链项目详情", async () => {
+    当(销售, "销售甲");
+    const r = await 向导({ 分配方式: 0, ownerId: 另一销售 });
+    expect(r).toMatchObject({ ok: true, 转走: true });
+    if (!r.ok) return;
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).salesOwnerId).toBe(销售);
+    const 们 = await 分配通知们();
+    expect(们).toHaveLength(1);
+    expect(们[0]).toMatchObject({ userId: 另一销售, link: `/projects/${r.projectId}` });
+    expect(们[0].title).toContain("把项目分给你");
+  });
+
   it("指定给自己 / 暂不分配：不发", async () => {
     expect(await 向导({ 分配方式: 0, ownerId: 运营 })).toMatchObject({ ok: true });
     expect(await 向导({ 分配方式: 3 })).toMatchObject({ ok: true });
@@ -284,23 +296,49 @@ describe("客户页新建项目", () => {
     } as Parameters<typeof 给客户建项目>[0]);
   };
 
-  it("指定别人：接手人收一条，链项目详情（客户不转，他打不开客户详情），正文有客户名、无手机号", async () => {
+  it("市场把自己的客户指定给销售（X-18，和自动分配同一条）：客户转给接手人，接手人收一条，链客户详情，正文有客户名、无手机号", async () => {
     const c = await 客户("页客户甲", 运营);
     const r = await 建(c, { 分配方式: 0, ownerId: 销售 });
-    expect(r).toMatchObject({ ok: true });
+    expect(r).toMatchObject({ ok: true, 转走: true, 提示: expect.stringContaining("已指派给") });
     if (!r.ok) return;
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(销售);
     const 们 = await 分配通知们();
     expect(们).toHaveLength(1);
-    expect(们[0]).toMatchObject({ userId: 销售, link: `/projects/${r.projectId}` });
+    expect(们[0]).toMatchObject({ userId: 销售, link: `/customers/${c}` });
     expect(们[0].body).toContain("页客户甲");
     expect(JSON.stringify(们[0])).not.toContain("13900000001");
-    // 为什么不链客户详情：接手人真身份下查不到这位客户，详情页会 404
+    // 为什么能链客户详情：接手人真身份下查得到这位客户
     await setSetting("enterprise.rule.org_scope", true);
     忘掉企业版范围();
     const 他看 = (id: string) => 以谁的身份(销售, () => prisma.customer.findUnique({ where: { id }, select: { id: true } }));
     expect(await 他看(await 客户("别人的客户", 运营))).toBeNull(); // 对照：限定确实生效
-    expect(await 他看(c)).toBeNull();
-    expect(await 他看(await 客户("他自己的客户", 销售))).not.toBeNull();
+    expect(await 他看(c)).not.toBeNull();
+  });
+
+  it("市场转客户时客户上还有市场的活：接手人那条多一句（P-转-10）", async () => {
+    const c = await 客户("页客户带活", 运营);
+    await prisma.task.create({ data: { title: "打电话", customerId: c, ownerId: 运营 } });
+    await prisma.followPlan.create({ data: { subject: "回访", plannedAt: new Date(), customerId: c, ownerId: 运营 } });
+    expect(await 建(c, { 分配方式: 0, ownerId: 销售 })).toMatchObject({ ok: true });
+    const 们 = await 分配通知们();
+    expect(们).toHaveLength(1);
+    expect(们[0].body).toContain("客户上还有原负责人 1 条未完成待办、1 条未完成计划");
+  });
+
+  it("销售把自己的客户指定给同事：客户不转（P-转-03），链项目详情（他打不开客户详情）", async () => {
+    当(销售, "销售甲");
+    const c = await 客户("页客户销售的", 销售);
+    const r = await 建(c, { 分配方式: 0, ownerId: 另一销售 });
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) return;
+    expect((r as { 转走?: boolean }).转走).toBeUndefined();
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(销售);
+    const 们 = await 分配通知们();
+    expect(们).toHaveLength(1);
+    expect(们[0]).toMatchObject({ userId: 另一销售, link: `/projects/${r.projectId}` });
+    await setSetting("enterprise.rule.org_scope", true);
+    忘掉企业版范围();
+    expect(await 以谁的身份(另一销售, () => prisma.customer.findUnique({ where: { id: c }, select: { id: true } }))).toBeNull();
   });
 
   it("接手人本来就是客户负责人：链客户详情", async () => {
@@ -323,7 +361,7 @@ describe("客户页新建项目", () => {
 });
 
 describe("项目层转让（原有通知）", () => {
-  it("接手人收「转项目」一条，客户跟着转，不再多发「分给你」", async () => {
+  it("接手人收「转项目」一条，客户不动（P-转-04），不再多发「分给你」", async () => {
     const c = await 客户("转让客户", 运营);
     const p = await 建项目给(c, 运营);
     const r = await 编辑项目(p, { ownerId: 销售 });
@@ -332,6 +370,6 @@ describe("项目层转让（原有通知）", () => {
     const 转 = await prisma.entNotice.findMany({ where: { kind: "转项目" } });
     expect(转).toHaveLength(1);
     expect(转[0]).toMatchObject({ userId: 销售, link: `/projects/${p}` });
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(销售);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(运营);
   });
 });

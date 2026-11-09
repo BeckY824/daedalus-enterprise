@@ -284,8 +284,9 @@ const 回避名单上限 = 100;
  * 这个人要回避哪些公海客户和项目（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。
  * 判「原负责人」用已有字段，不加 schema：
  *   - 项目：最后一次 pool-release 留痕的 fromOwnerId（退项目、超时回收、离职都写；公海项目 ownerId 已清空）
- *   - 客户：负责人（放进公海、超时扫描都留着 salesOwnerId；导入的是占位账号，走不到这条）；
- *     或者他退的项目挂着的公海客户（占位负责人、别人名下的都靠这条）
+ *   - 客户：最近一次进公海时的负责人是他（M-公海-03 起进公海负责人清空挂占位账号，按 pool-release 认，owner-log-db 公海客户原负责人是）；
+ *     负责人还是他（部署前进公海的老数据，存量脚本没跑到的空档也挡住）；
+ *     或者他退的项目挂着的公海客户（占位负责人、别人名下的都靠这条）。只认最近一次，曾经负责过、后来转走的不算
  * 不看 CustomerPool.userId：那是操作的人，可能是上级，超时的是空。
  * 客户在公海，下面的项目都算回避（客户都看不到，项目点进去也打不开）。别人领走客户、项目后自然从名单出来，
  * 他是不是还能看回到原来的范围（负责人、组员、上级）。什么都没有的人回 undefined，查询不多任何条件。
@@ -294,7 +295,9 @@ const 回避名单上限 = 100;
 async function 公海回避of(db: PrismaClient, id: string): Promise<公海回避 | undefined> {
   const { 原负责人回避, 公海里历史负责人是, 一批id数 } = await import("@/lib/project/pool-owner");
   if (!原负责人回避()) return undefined;
+  const { 公海客户原负责人是 } = await import("@/lib/owner-log-db");
   const 放回的 = await 公海里历史负责人是(db, [id]);
+  const 放走的 = [...(await 公海客户原负责人是(db, [id])).keys()];
   const 他公海客户 = { salesOwnerId: id, pool: { isNot: null }, deletedAt: null };
   const [有客户, 挂着的] = await Promise.all([
     db.customer.findFirst({ where: 他公海客户, select: { id: true } }),
@@ -309,7 +312,13 @@ async function 公海回避of(db: PrismaClient, id: string): Promise<公海回�
     });
     for (const r of 行) 客户们.add(r.customerId);
   }
+  for (const c of 放走的) 客户们.add(c);
   const 项目们 = new Set([...放回的, ...挂着的.map((p) => p.id)]);
+  // 客户在公海，下面的项目都算回避：放走的客户名下的项目也进名单。名单超上限就退回按关联写的条件，不用数全
+  for (let i = 0; i < 放走的.length && 项目们.size <= 回避名单上限; i += 一批id数) {
+    const 行 = await db.project.findMany({ where: { customerId: { in: 放走的.slice(i, i + 一批id数) }, deletedAt: null }, select: { id: true }, take: 回避名单上限 + 1 });
+    for (const r of 行) 项目们.add(r.id);
+  }
   if (!有客户 && !客户们.size && !项目们.size) return undefined;
   return {
     本人: id,

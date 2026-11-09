@@ -28,7 +28,8 @@ import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, typ
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 } from "@/lib/enterprise/notice-sources";
+import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 } from "@/lib/enterprise/notice-sources";
+import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走, 是占位值 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -119,11 +120,15 @@ export async function 建档向导(输入: 建档向导输入) {
     const 不行 = await 不能当负责人(好.项目.ownerId);
     if (不行) return { ok: false as const, error: 不行 };
     // 负责人选了别人 = 指派，开了持有上限的要算；自己建给自己不拦（lib/project/db.ts 超上限）
+    let 转客户 = false;
     if (好.项目.ownerId !== me.id) {
       // 企业版指定分配给别人：和分配线索同一条（11-03 A2-1）——只能给销售 / 销售管理；业务线这里不比
       if (企业版()) {
-        const 问题 = 接手问题(await 读组织(), 好.项目.ownerId, null);
+        const org = await 读组织();
+        const 问题 = 接手问题(org, 好.项目.ownerId, null);
         if (问题) return { ok: false as const, error: 问题 };
+        // 市场指定给销售 = 市场首次分配，算转客户（X-18，和自动分配同一条）；其余角色指定给别人，客户留在建的人名下（P-转-03）
+        转客户 = 算市场转客户(org, { salesOwnerId: me.id, pool: null }, 好.项目.ownerId);
       }
       const 超 = await 超上限(prisma, 规则, 好.项目.ownerId, { phase: "线索", result: null });
       if (超) return { ok: false as const, error: 超 };
@@ -168,8 +173,8 @@ export async function 建档向导(输入: 建档向导输入) {
         if (ids.length) throw new 联系人号码撞了(ids, 号.格);
       }
       await 向导(tx, customerId);
-      // 指定给别人：客户也跟着归接手人（普通业务员新建客户先落在自己名下，见 saveCustomer 新建只给自己）
-      if (好.项目.ownerId !== me.id) await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 好.项目.ownerId } });
+      // 客户先落在我名下（下面 saveCustomer 那一格）；市场指定给销售才转过去
+      if (转客户) await 转客户给销售(tx, customerId, me.id, 好.项目.ownerId, me.id, 分配?.名 ?? "指定分配");
       for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
       await 跟着项目重算(tx, 状态开, [customerId]);
     }));
@@ -179,7 +184,9 @@ export async function 建档向导(输入: 建档向导输入) {
       const 客户线 = 企 && 好.企业?.业务线 && input.客户.企业资料?.bizLine === undefined
         ? { 企业资料: { ...(input.客户.企业资料 ?? {}), bizLine: 好.企业.业务线 } }
         : {};
-      r = await saveCustomer({ ...input.客户, ...客户线, id: undefined, updatedAt: null, base: null }, 接着);
+      // 企业版指定给别人：项目归接手人，客户不跟着改（P-转-03，三处同一条）。总管理不走 新建只给自己，这里统一落到建的人
+      const 客户负责人 = 企 && 好.项目.ownerId !== me.id ? { salesOwnerId: me.id } : {};
+      r = await saveCustomer({ ...input.客户, ...客户线, ...客户负责人, id: undefined, updatedAt: null, base: null }, 接着);
     } catch (e) {
       if (!(e instanceof 联系人号码撞了)) throw e;
       return { ok: false as const, error: `${e.格}：${(await 撞号结论(prisma, e.ids, me.id, await 读的我(defaultClient))).提示}` };
@@ -197,8 +204,11 @@ export async function 建档向导(输入: 建档向导输入) {
     revalidatePath("/follow-ups");
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
     const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null) : null;
-    // 指定给了别人：告诉接手人，链客户详情（看得到联系方式）。自动分配、进公海走 建好再分 里自己的通知，这里不重复
-    if (!再分 && 好.项目.ownerId !== me.id) await 分给你通知(me, 好.项目.ownerId, [r.id], 好.项目.name);
+    // 指定给了别人：告诉接手人。客户转过去了链客户详情（看得到联系方式）；客户没转就是项目分给他，链项目详情。自动分配、进公海走 建好再分 里自己的通知，这里不重复
+    if (!再分 && 好.项目.ownerId !== me.id) {
+      if (转客户 || !企) await 分给你通知(me, 好.项目.ownerId, [r.id], 好.项目.name);
+      else await 项目分给你通知(me, 好.项目.ownerId, 建了.projectId!, 好.项目.name, r.id);
+    }
     const 分了 = 分配 ? 再分 ?? (好.项目.ownerId !== me.id ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : null) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
     return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
@@ -261,7 +271,7 @@ export async function 放回项目公海(projectId: string, 原因?: string | nu
       // 放回之后他自己看不到这个项目了（原负责人回避，11-03），留痕要的名字绕开限定读
       const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, pooledAt: true, customer: { select: { pool: { select: { at: true } } } } } }));
       const 选了 = 企业版() && typeof 原因 === "string" && 原因.trim() ? 原因.trim() : null;
-      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `把项目「${p?.name ?? ""}」放回项目公海${选了 ? `（${选了}）` : ""}`, ...(选了 ? { detail: { 回收原因: 选了 } } : {}) });
+      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `把项目「${p?.name ?? ""}」放回线索公海${选了 ? `（${选了}）` : ""}`, ...(选了 ? { detail: { 回收原因: 选了 } } : {}) });
       刷新项目(projectId, p?.customerId);
       // 客户同一笔跟着进了客户公海（pool-link.ts 单项目客户跟进公海，两边同一个时刻）：告诉页面，提示条说清（11-03 B4-2）
       const 进的 = p?.customer.pool?.at;
@@ -279,7 +289,7 @@ export async function 领取项目(projectId: string, 带待办?: boolean) {
     const r = await 领取公海项目(me, projectId, 带待办勾(带待办));
     if (r.ok) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
-      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `从项目公海领取项目「${p?.name ?? ""}」` });
+      await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `从线索公海领取项目「${p?.name ?? ""}」` });
       刷新项目(projectId, p?.customerId);
     }
     return r;
