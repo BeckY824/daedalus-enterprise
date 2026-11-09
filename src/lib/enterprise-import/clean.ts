@@ -17,6 +17,11 @@
  *   - 电话格里写的是邮箱 / 微信 / WhatsApp 的放进对应的格子；一格几个号的第一个当电话，其余进备注
  *   - 联系人的手机 / 邮箱 / 微信和我们这边已有的联系人、或本批前面一条撞了（同类型同查重键，P13 第 2 条）：照写，
  *     提醒「号码重复」并带上撞到的那位（报告里能点进去），不并、不跳过——是不是同一个人、要不要挂过去由人定
+ *   - 客户的「座机」列（M-导入-24）不单独落库：电话那格空着就当电话认，否则进备注「座机：…」（和它以前算电话别名时一个结果）
+ *   - 客户的「归档档位」列（M-导入-23）：A1 / A2 / B / C / D / E 认出来落 archiveTier，认不出原样进备注 + 提醒
+ *   - 归档导入（是归档导入：映射.归档 打开，或客户列里映射了「归档档位」，M-导入-24）：没导过的客户只要电话 / WhatsApp / 座机
+ *     任一个号撞了我们这边客户的号（本地索引.归档号），或客户名称一样（名键），整条跳过、记原因，不连上、不补空；
+ *     本批内部同号合并、同名提醒照老规矩
  */
 import { createHash } from "node:crypto";
 import { CUSTOMER_SOURCES, FOLLOW_TYPES, OPP_STAGES, STAGE_PROBABILITY, TRADE_SOURCES } from "../constants";
@@ -32,6 +37,7 @@ import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
 import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
 import { 默认币种, 认币种 } from "../currency";
+import { 认归档档位 } from "../enterprise/archive-tier";
 import { 成交需求上限 } from "../project/profile-rules";
 import { 实体顺序, 必填, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
 
@@ -57,6 +63,11 @@ export type 本地索引 = {
   客户类型?: readonly string[];
   /** `${kind}|${查重键}` → 我们这边有这个号的联系人（kind = phone / email / wechat，键见 联系人号查重键）。没给 = 不查 */
   联系人号?: Map<string, 已有联系人[]>;
+  /**
+   * 归档导入查重（M-导入-24）：归档号键 → 有这个号的客户 id 们。号取客户电话、客户 WhatsApp、联系人手机、
+   * 子表里客户 / 联系人身上的手机 / 座机 / WhatsApp。没给 = 归档导入只按客户名查
+   */
+  归档号?: Map<string, string[]>;
 };
 
 /** 号码撞到的我们这边那位联系人：名字 + 主客户（报告里点进主客户页） */
@@ -66,6 +77,20 @@ export type 已有联系人 = { id: string; name: string; customerId: string; cu
 export const 联系人查重格 = [["phone", "phone", "手机"], ["email", "email", "邮箱"], ["wechat", "wechat", "微信"]] as const;
 
 export const 空索引 = (): 本地索引 => ({ 引用: new Map(), 客户名: new Map(), 客户号: new Map(), 商机名: new Map() });
+
+/**
+ * 归档导入查重用的号键（M-导入-24）：联系人号查重键 的 phone 口径（去空格横杠括号、+86 / 0086 前缀不算），
+ * 规整完得是 10 位以上的纯数字才算——11 位手机、带区号的座机、带国家码的 WhatsApp；光 7、8 位的本地座机号不拿来撞（别的城市可能同号）
+ */
+export function 归档号键(v: string | null | undefined): string {
+  const k = 联系人号查重键("phone", v);
+  return /^\d{10,}$/.test(k) ? k : "";
+}
+
+/** 归档导入（M-导入-24）：映射.归档 明说了就照它；没说的，客户列里映射了「归档档位」就算 */
+export function 是归档导入(m: 映射): boolean {
+  return m.归档 ?? Object.values(m.列.customer ?? {}).includes("archiveTier");
+}
 
 /** 名字比较用的键：去空白、全角转半角、小写 */
 export function 名键(s: string): string {
@@ -231,7 +256,7 @@ type 新格 = Record<string, string>;
 /** 客户的外贸几格：落 CustomerExtra，写的时候从 值 里分出来 */
 export const 客户附加列 = ["email", "wechat", "whatsapp", "country", "source", "level", "website"] as const;
 /** 客户主表上企业版的新几格（迁移 072）：简称、地址四格、分配方式 */
-export const 客户新列 = ["shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay"] as const;
+export const 客户新列 = ["shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay", "archiveTier"] as const;
 /** 联系人主表上企业版的新几格（迁移 072）：性别、生日、爱好、地址 */
 export const 联系人新列 = ["gender", "birthday", "hobby", "address"] as const;
 
@@ -444,6 +469,22 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     }
   };
 
+  const 归档 = 是归档导入(m);
+  /** 归档导入：号（电话 / 另一个号 / WhatsApp / 座机）或客户名撞了我们这边的客户 → 撞在哪的说法；没撞 = null */
+  const 归档撞了 = (name: string, 号们: (string | null | undefined)[]): string | null => {
+    for (const v of 号们) {
+      for (const 段 of String(v ?? "").split(/[,，;；/、\n]+/)) {
+        // 归档号键 之外再按 号键 整串比一遍客户电话（和老的同号连上一个口径，短号也算）
+        const k = 归档号键(段);
+        const 们 = (k ? 本地.归档号?.get(k) : undefined) ?? (段.trim() ? 本地.客户号.get(号键(段.trim())) : undefined) ?? [];
+        if (们.length) return `号码 ${段.trim()} 和我们这边已有的${们.length > 1 ? ` ${们.length} 个` : ""}客户撞了`;
+      }
+    }
+    const 同名 = 本地.客户名.get(名键(name)) ?? [];
+    if (同名.length) return `我们这边已经有叫「${name}」的客户${同名.length > 1 ? `（${同名.length} 个）` : ""}`;
+    return null;
+  };
+
   const 缺必填 = (r: 原始记录, s: 标准): boolean => {
     const 缺 = 必填[r.实体].filter((f) => !s.值[f]);
     if (!缺.length) return false;
@@ -540,6 +581,15 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     }
     const 分配 = 认分配方式(r, v.assignWay, 附加);
     if (分配) o.assignWay = 分配;
+    const 档位原 = v.archiveTier?.trim();
+    if (档位原) {
+      const 档位 = 认归档档位(档位原);
+      if (档位) o.archiveTier = 档位;
+      else {
+        附加.push(`归档档位：${档位原}`);
+        出问题(r, "提醒", "格式不对", `归档档位「${档位原}」认不出（只认 A1 / A2 / B / C / D / E），没落档位，原样放进了备注`);
+      }
+    }
     return o;
   };
 
@@ -634,7 +684,10 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
 
       if (e === "customer") {
         const 起 = 问题们.length;
-        const 号 = 认电话(r, s.值.phone, 附加);
+        // 座机（M-导入-24）：电话那格空着就当电话认；有电话就进备注
+        const 座机 = s.值.landline?.trim();
+        const 号 = 认电话(r, s.值.phone || 座机, 附加);
+        if (座机 && s.值.phone) 附加.push(`座机：${座机}`);
         const phone = 号.phone;
         附加.push(...号.另.map((x) => `另一个电话：${x}`));
         // 级别那格空着、原表客户类型写的是意向客户 → B 级（10-30 对方给的对照）
@@ -668,6 +721,15 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           ...(channelId ? { channelId } : {}),
           ...新,
         };
+        // 归档导入：没导过的撞了我们这边的客户（号或名），整条不导（M-导入-24）
+        if (归档 && !目标) {
+          const 撞 = 归档撞了(s.值.name, [phone, ...号.另, whatsapp, 座机]);
+          if (撞) {
+            问题们.splice(起);
+            出问题(r, "跳过", "重名", `归档导入：${撞}，这一条不导`);
+            continue;
+          }
+        }
         // 同号：并进前一条（外部 ID 不同，原系统里重复建了）。和我们这边「一个号一位客户」的查重一个口径，名字不同也并，提醒人看
         const 键 = phone ? 号键(phone) : "";
         const 前 = 键 ? 同号.get(键) : undefined;

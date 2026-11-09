@@ -61,7 +61,7 @@ export type 通讯录 = { 部门们: 通讯录部门[]; 人们: 通讯录人[] }
  * customerRef / customerName 认客户，opportunityRef / opportunityName 认商机（跟进用）
  */
 export const 标准字段 = {
-  customer: ["id", "name", "phone", "owner", "followStatus", "custStatus", "customerType", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website", "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay"],
+  customer: ["id", "name", "phone", "owner", "followStatus", "custStatus", "customerType", "remark", "email", "wechat", "whatsapp", "country", "source", "level", "website", "shortName", "addrCountry", "addrProvince", "addrCity", "addrDistrict", "assignWay", "landline", "archiveTier"],
   contact: ["id", "customerRef", "customerName", "name", "position", "phone", "email", "wechat", "isPrimary", "remark", "gender", "birthday", "hobby", "address"],
   lead: ["id", "name", "contact", "phone", "email", "industry", "source", "status", "owner", "remark"],
   opportunity: ["id", "customerRef", "customerName", "name", "amount", "stage", "status", "probability", "expectedDealAt", "closedAt", "owner", "remark", "dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"],
@@ -91,6 +91,10 @@ export const 字段中文: Record<string, string> = {
   addrCity: "城市",
   addrDistrict: "区县",
   assignWay: "分配方式",
+  // 客户的座机（M-导入-24）：不单独落库——电话那格空着就当电话，否则进备注「座机：…」；归档导入时也拿它查重
+  landline: "座机",
+  // 客户归档档位（迁移 114，M-导入-23）：A1 / A2 / B / C / D / E
+  archiveTier: "归档档位",
   gender: "性别",
   birthday: "生日",
   hobby: "爱好",
@@ -156,6 +160,14 @@ export type 映射 = {
    * 正式导入前必选；更新已有的不动它们的业务线。之后的同步照这一份走，老映射没选过的新建一律暂不分配（不进自动分配）
    */
   业务线?: "内贸" | "外贸" | "暂不分配";
+  /**
+   * 归档导入（M-导入-23 / 24，内贸归档那批）：客户和我们这边已有的撞了就整条跳过，不连上、不补空。
+   * 撞的口径：电话 / WhatsApp / 座机三格任一个号（联系人号查重键，+86 / 0086 前缀不算）和我们这边客户的电话、WhatsApp、
+   * 客户和联系人身上的手机 / 座机 / WhatsApp 一样；或客户名称一样（名键：空白、全角半角、大小写不算）。
+   * 没开 = 老规矩（同号连上它只补空，同名提醒照建）。没写（undefined）时客户列里映射了「归档档位」就算开（clean.ts 是归档导入）；
+   * 报告页上没有单独的开关
+   */
+  归档?: boolean;
   /**
    * 规则认不出的格子 → 我们的写法（AI 清洗补认的，或人在报告里改的）。null = 认不出，照规则原样进备注。
    * 金额写数字串、日期写 YYYY-MM-DD、时间写 YYYY-MM-DD HH:mm、国家 / 来源写候选里的叫法；清洗时照规则再认一遍，认不出不用

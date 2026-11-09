@@ -17,7 +17,7 @@ import { 号键 } from "@/lib/phone";
 import { 不掉公海的状态, 公海截止 } from "@/lib/pool";
 import { AI补清洗, 去掉AI清洗, 格式说明键, 同一家说明键, type 清洗器 } from "./ai-clean";
 import { 预演, type 预演计数 } from "./apply";
-import { 清洗, 数一数, 名键, 联系人查重格, type 本地索引, type 清洗结果, type 已有联系人 } from "./clean";
+import { 清洗, 数一数, 名键, 联系人查重格, 归档号键, type 本地索引, type 清洗结果, type 已有联系人 } from "./clean";
 import { 联系人号查重键 } from "@/lib/enterprise/customer-v2";
 import { 成记录, 拆联系人, 拆出的客户ID列, type 读出的表 } from "./excel";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
@@ -81,7 +81,7 @@ export type 试跑报告 = {
  * 电话按号键整串比；带分机认主号那种细的，正式写入时 查完再写 里再认一次
  */
 export async function 读本地索引(源: 来源): Promise<本地索引> {
-  const [客户们, 商机们, 对照们, 渠道们, 联系人们, 子表号] = await 看全部(async () =>
+  const [客户们, 商机们, 对照们, 渠道们, 联系人们, 子表号, 客户WA, 归档子表号] = await 看全部(async () =>
     Promise.all([
       prisma.customer.findMany({ select: { id: true, name: true, phone: true } }),
       prisma.opportunity.findMany({ select: { id: true, customerId: true, name: true } }),
@@ -90,6 +90,9 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
       prisma.contact.findMany({ select: { id: true, name: true, customerId: true, phone: true, email: true, wechat: true, customer: { select: { name: true } } } }),
       // 联系方式子表里挂在联系人身上的手机 / 邮箱 / 微信（企业版客户页填的多个号都在这里）
       prisma.contactMethod.findMany({ where: { contactId: { not: null }, kind: { in: 联系人查重格.map((x) => x[1]) } }, select: { contactId: true, kind: true, value: true } }),
+      // 归档导入查重（M-导入-24）：客户的 WhatsApp + 子表里客户 / 联系人身上的手机、座机、WhatsApp
+      prisma.customerExtra.findMany({ where: { whatsapp: { not: null } }, select: { customerId: true, whatsapp: true } }),
+      prisma.contactMethod.findMany({ where: { kind: { in: ["phone", "landline", "whatsapp"] } }, select: { customerId: true, value: true } }),
     ]),
   );
   const 索引: 本地索引 = {
@@ -128,6 +131,22 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
   for (const c of 联系人们) for (const [格, kind] of 联系人查重格) 记号(kind, c[格], c.id);
   for (const m of 子表号) 记号(m.kind, m.value, m.contactId);
   索引.联系人号 = 联系人号;
+  // 归档导入查重的号（M-导入-24）：客户电话、客户 WhatsApp、联系人手机、子表的手机 / 座机 / WhatsApp，都按 联系人号查重键 规整；
+  // 只算看得见的客户（删了进回收站的不算撞）
+  const 归档号 = new Map<string, string[]>();
+  const 看得见 = new Set(客户们.map((c) => c.id));
+  const 记归档号 = (v: string | null | undefined, customerId: string) => {
+    const 键 = 归档号键(v);
+    if (!键 || !看得见.has(customerId)) return;
+    const 们 = 归档号.get(键);
+    if (!们) 归档号.set(键, [customerId]);
+    else if (!们.includes(customerId)) 们.push(customerId);
+  };
+  for (const c of 客户们) 记归档号(c.phone, c.id);
+  for (const x of 客户WA) 记归档号(x.whatsapp, x.customerId);
+  for (const c of 联系人们) 记归档号(c.phone, c.customerId);
+  for (const x of 归档子表号) 记归档号(x.value, x.customerId);
+  索引.归档号 = 归档号;
   for (const r of 对照们) {
     索引.引用.set(`${r.entity}|${r.externalId}`, r.targetId);
     索引.指纹!.set(`${r.entity}|${r.externalId}`, r.fingerprint);

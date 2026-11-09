@@ -1038,6 +1038,13 @@ export default function RecordView({
                   <InlineField 空时横线={企业} customerId={customer.id} field="assignWay" label="客户分配" value={去空(customer.assignWay)} kind="select"
                     options={[...new Set([...分配方式选项, ...(有值(customer.assignWay) ? [customer.assignWay] : [])])].map((x) => ({ value: x, label: x }))} placeholder={空值符} 可清空 />
                 )}
+                {/* 归档档位（M-导入-23）：只由归档导入写，只读；空的（不是归档导入来的）不摆，资料全开也不摆 */}
+                {有值(customer.archiveTier) && (
+                  <div className="rec-field" style={{ cursor: "default" }} data-testid="customer-archive-tier" title="归档导入时带进来的档位，只能看">
+                    <div className="rec-field-k">归档档位</div>
+                    <div className="rec-field-v">{customer.archiveTier}</div>
+                  </div>
+                )}
               </>
             )}
             {摆法.旧字段 && 摆档案组 && (
