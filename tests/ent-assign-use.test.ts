@@ -1,6 +1,6 @@
 /**
  * 分配方式「谁能用」（10-27 批注，lib/enterprise/assign-use.ts + dict.ts 挡分配方式 / 改分配谁能用）。
- * 钉的是：默认表（指定 / 自动 / 暂不分配 = 市场 + 销售 + 其他（11-01 会议 §1 / §3 按角色给默认值），公海捞取 = 市场 + 其他，个人自持 = 销售）；
+ * 钉的是：默认表（指定 / 自动 = 市场 + 销售管理 + 其他（11-09 销售成员默认关），暂不分配 = 市场 + 销售 + 其他（11-01 会议 §1 / §3 按角色给默认值），公海捞取 = 市场 + 其他，个人自持 = 销售）；
  * 老板、总管理、管理员每样都能用；后加的项默认所有人；存坏了当没存；
  * 改了以后 分配线索 / 自动分配线索 照着拦；「公海捞取」= 谁能把线索放去公海分，不管领：从公海领照旧非原负责人都能领（10-26）；
  * 谁能改同字典一行、只认字典里有的项；不是企业版一条都不管。
@@ -49,6 +49,8 @@ let 老板: string, 总管: string, 市场: string, 销售经理: string, 销售
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
 const 建线索 = async (name: string, ownerId: string | null = 市场) => (await prisma.lead.create({ data: { name, ownerId } })).id;
 let 序 = 0;
+/** 11-09 起销售成员默认不能「指定」：这几条钉的是销售指定给同事以后怎么走，先按管理员把「指定」开给销售成员存一份 */
+const 指定开给销售成员 = () => setSetting("enterprise.assign_use", { "dict-assign-0": ["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"] });
 async function 公海项目(phase: string, 原负责人: string) {
   序++;
   const c = (await prisma.customer.create({ data: { name: `客户${序}`, phone: `1380000${String(序).padStart(4, "0")}`, salesOwnerId: 原负责人 } })).id;
@@ -86,16 +88,17 @@ beforeEach(async () => {
 });
 
 describe("纯函数", () => {
-  it("默认表：市场除自持外都有；销售 = 指定、自动、暂不分配、自持；其他角色 = 指定、自动、公海捞取、暂不分配（11-01）", () => {
-    expect(分配默认谁能用[分配方式id.指定]).toEqual(["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"]);
-    expect(分配默认谁能用[分配方式id.自动]).toEqual(["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"]);
+  it("默认表：市场除自持外都有；销售成员 = 暂不分配、自持（11-09 指定 / 自动默认关）；销售管理 = 指定、自动、暂不分配、自持；其他角色 = 指定、自动、公海捞取、暂不分配", () => {
+    expect(分配默认谁能用[分配方式id.指定]).toEqual(["marketing_mgr", "sales_mgr", "channel_ops", "project_ops"]);
+    expect(分配默认谁能用[分配方式id.自动]).toEqual(["marketing_mgr", "sales_mgr", "channel_ops", "project_ops"]);
     expect(分配默认谁能用[分配方式id.公海捞取]).toEqual(["marketing_mgr", "channel_ops", "project_ops"]);
     expect(分配默认谁能用[分配方式id.暂不分配]).toEqual(["marketing_mgr", "sales_mgr", "sales", "channel_ops", "project_ops"]);
     expect(分配默认谁能用[分配方式id.个人自持]).toEqual(["sales_mgr", "sales"]);
     // 按角色看：其他角色（渠道运营、项目组员）默认 = 指定、自动、公海捞取、暂不分配（默认值是暂不分配，所以得能用）；销售没有公海捞取
     const 有的 = (r: string) => Object.entries(分配默认谁能用).filter(([, v]) => v.includes(r as never)).map(([id]) => id);
     for (const r of ["channel_ops", "project_ops"]) expect(有的(r)).toEqual([分配方式id.指定, 分配方式id.自动, 分配方式id.公海捞取, 分配方式id.暂不分配]);
-    for (const r of ["sales", "sales_mgr"]) expect(有的(r)).toEqual([分配方式id.指定, 分配方式id.自动, 分配方式id.暂不分配, 分配方式id.个人自持]);
+    expect(有的("sales_mgr")).toEqual([分配方式id.指定, 分配方式id.自动, 分配方式id.暂不分配, 分配方式id.个人自持]);
+    expect(有的("sales")).toEqual([分配方式id.暂不分配, 分配方式id.个人自持]);
     expect(谁能用("dict-assign-9", {})).toBe("所有人");
     expect(谁能用(分配方式id.自动, { [分配方式id.自动]: [] })).toEqual([]);
   });
@@ -116,7 +119,11 @@ describe("纯函数", () => {
     expect(能(分配方式id.暂不分配, 管理员)).toBe(true);
     expect(能(分配方式id.暂不分配, 市场)).toBe(true);
     expect(能(分配方式id.暂不分配, 销售)).toBe(true);
-    expect(能(分配方式id.自动, 销售)).toBe(true);
+    expect(能(分配方式id.自动, 销售)).toBe(false);
+    expect(能(分配方式id.指定, 销售)).toBe(false);
+    expect(能(分配方式id.自动, 销售经理)).toBe(true);
+    // 存过的照存的算（11-09 只改默认、不动已存）
+    expect(能(分配方式id.指定, 销售, "SALES", { [分配方式id.指定]: ["sales"] })).toBe(true);
     expect(能(分配方式id.公海捞取, 销售)).toBe(false);
     expect(能(分配方式id.公海捞取, 渠道)).toBe(true);
     expect(能(分配方式id.公海捞取, 市场)).toBe(true);
@@ -220,9 +227,10 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
   };
   const 项目of = (id: string) => prisma.project.findUniqueOrThrow({ where: { id }, include: { customer: { select: { salesOwnerId: true } } } });
 
-  it("下拉只给能用、还启用着的：市场 = 指定 / 自动 / 公海捞取 / 暂不分配，销售 = 指定 / 自动 / 暂不分配 / 个人自持；停用的不出", async () => {
+  it("下拉只给能用、还启用着的：市场 = 指定 / 自动 / 公海捞取 / 暂不分配，销售成员 = 暂不分配 / 个人自持，销售管理 = 指定 / 自动 / 暂不分配 / 个人自持；停用的不出", async () => {
     expect((await 我能用的分配方式({ id: 市场, role: "SALES" })).map((x) => x.i)).toEqual([0, 1, 2, 3]);
-    expect((await 我能用的分配方式({ id: 销售, role: "SALES" })).map((x) => x.i)).toEqual([0, 1, 3, 4]);
+    expect((await 我能用的分配方式({ id: 销售, role: "SALES" })).map((x) => x.i)).toEqual([3, 4]);
+    expect((await 我能用的分配方式({ id: 销售经理, role: "SALES" })).map((x) => x.i)).toEqual([0, 1, 3, 4]);
     expect((await 我能用的分配方式({ id: 老板, role: "ADMIN" })).map((x) => x.i)).toEqual([0, 1, 2, 3, 4]);
     await prisma.entDictItem.update({ where: { id: 分配方式id.暂不分配 }, data: { active: false } });
     expect((await 我能用的分配方式({ id: 市场, role: "SALES" })).map((x) => x.i)).toEqual([0, 1, 2]);
@@ -271,6 +279,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
   });
 
   it("指定分配给别人：按真身份（带限定）建档也成、最后跟进时间记上（11-05 bug：改最后跟进时间被当成改别人的只读客户，整单回滚）", async () => {
+    await 指定开给销售成员();
     // 生产上「按组织看客户」开着、建档的人是市场成员：限定层按真身份算
     await setSetting("enterprise.rule.org_scope", true);
     await setSetting(市场成员key, [市场]);
@@ -290,6 +299,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
   });
 
   it("客户页给自己的客户新建项目、指定给别人：按真身份（带限定）也成，首条沟通和最近跟进记上（11-05 同类排查）", async () => {
+    await 指定开给销售成员();
     await setSetting("enterprise.rule.org_scope", true);
     await setSetting(市场成员key, [市场]);
     忘掉企业版范围();
@@ -349,6 +359,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
   });
 
   it("指定分配只能给销售 / 销售管理（11-03 A2-1）：指给渠道运营、市场管理拦下、一行不写", async () => {
+    await 指定开给销售成员();
     当(市场);
     for (const 谁 of [渠道, 项运, 总管]) expect(await 向导({ 分配方式: 0, ownerId: 谁 })).toMatchObject({ ok: false, error: "线索只能分给销售或销售管理" });
     当(销售);
@@ -458,7 +469,12 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
 
   it("没传分配方式（老草稿）：选了别人 = 指定，建给自己 = 个人自持，用不了个人自持的 = 暂不分配", async () => {
     当(销售);
+    // 11-09 起销售成员默认不能指定：老草稿选了别人照样当指定，被拦下、一行不写
+    expect(await 向导({ ownerId: 另一销售 })).toMatchObject({ ok: false });
+    expect(await prisma.project.count()).toBe(0);
+    当(销售经理);
     const a = await 向导({ ownerId: 另一销售 });
+    当(销售);
     const b = await 向导({});
     当(市场);
     const c = await 向导({});
