@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { 转交商机 } from "@/lib/opportunity-activity";
 import { prisma } from "@/lib/prisma";
-import { 记转让, 转让痕, 收回提醒尾, 旧收回提醒尾, 将回收提醒跟着换人 } from "@/lib/project/db";
+import { 记转让, 转让痕, 收回提醒尾, 旧收回提醒尾, 将回收提醒跟着换人, 算持有的项目 } from "@/lib/project/db";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
 import { 卡点随项目换人, 转让接手理由 } from "@/lib/project/blocker";
@@ -92,6 +92,31 @@ export async function 数转走的项目(ids: string[], 新: string, 除了: str
     if (!留下数) return 预;
     const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(留下们.map((p) => p.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     return { ...预, 留下: { 项目数: 留下数, 项目: 留下们.map((p) => ({ name: p.name, 客户: p.customer.name, 负责人: 名.get(p.ownerId) ?? "" })) } };
+  });
+}
+
+/**
+ * 转 / 领这几位客户时，会新进 新 手上、算持有的项目有几个（M-公海-18 拦持有上限用，算法同 持有数：线索 / 商机阶段、没结局、不在公海、不在待分配）。
+ * 条件同真转（带走一位、带走公海项目），哪几样算由调用方挑：
+ *   公海：名下在线索公海里的（领 / 分公海客户、转客户都带走）；
+ *   自己的：原负责人（公海里的客户：进公海前负责人）自己的、不在待分配的（跟着客户转；直接转原来就不拦，只有确认交接算）；
+ *   同事待分配：不在公海的客户上别人占着、正在待分配的（转客户时随客户给 新 并清待分配，= 接待分配；新 自己占着的清了也开始算）。
+ * 不是企业版回 0
+ */
+export async function 数进手的持有项目(ids: string[], 新: string, 算: { 公海?: boolean; 自己的?: boolean; 同事待分配?: boolean }): Promise<number> {
+  if (!企业版() || !ids.length) return 0;
+  return 看全部(async () => {
+    const 们 = await prisma.customer.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+    const 条件: Prisma.ProjectWhereInput[] = [];
+    for (const c of 们) {
+      if (算.公海) 条件.push({ customerId: c.id, pooledAt: { not: null } });
+      if (c.salesOwnerId === 新 || !(算.自己的 || 算.同事待分配)) continue;
+      const 主人 = await 公海前负责人(prisma, c.id, c.salesOwnerId);
+      if (算.自己的 && 主人 !== 新) 条件.push({ customerId: c.id, pooledAt: null, awaitAssignAt: null, ownerId: 主人 });
+      if (算.同事待分配 && !c.pool) 条件.push({ customerId: c.id, pooledAt: null, awaitAssignAt: { not: null }, ownerId: { notIn: [主人, ""] } });
+    }
+    if (!条件.length) return 0;
+    return prisma.project.count({ where: { AND: [{ OR: 条件 }, 算持有的项目] } });
   });
 }
 

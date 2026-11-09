@@ -645,7 +645,8 @@ export async function 持有数(db: Pick<Prisma.TransactionClient, "project">, u
 
 /**
  * 再把这个项目给 userId 会不会超持有上限：超了返回一句报错，没超 / 不是企业版 / 没开上限 / 这个项目不算持有（订单阶段、有结局）返回 null。
- * 拦领取、拦指派（改负责人、建档时负责人选别人）、自动分配也调这个；自己建档、跟着客户转、离职交接不拦。
+ * 拦领取、拦指派（改负责人、建档时负责人选别人）、自动分配也调这个；自己建档、直接转客户时原负责人自己的项目跟着走、直接离职不拦。
+ * 一次进好几个的（领多项目的公海客户、确认交接、接待分配）走 超上限n（M-公海-18）。
  * 规则在进事务前读好传进来：事务占着库的唯一连接，事务里再走 getSetting 会等到超时
  */
 export async function 超上限(
@@ -656,12 +657,30 @@ export async function 超上限(
 ): Promise<string | null> {
   if (!企业版()) return null;
   if (p.result || !(能进公海的阶段 as readonly string[]).includes(p.phase)) return null;
+  return 超上限n(db, 规则, userId, 1);
+}
+
+/** 算持有的项目条件（同 持有数 去掉 ownerId / awaitAssignAt）：线索 / 商机阶段、没结局 */
+export const 算持有的项目 = { result: null, phase: { in: [...能进公海的阶段] as string[] } };
+
+/**
+ * 一次再给 userId 进 进 个算持有的项目，会不会超持有上限（同 超上限 的算法，进 = 1 时报错一字不差）。
+ * 11-09 M-公海-18：领多项目的公海客户、确认交接、接待分配（客户换人带走同事待分配的项目）这三处一次进好几个，用这个拦
+ */
+export async function 超上限n(
+  db: Pick<Prisma.TransactionClient, "project" | "user">,
+  规则: 组织规则,
+  userId: string,
+  进: number,
+): Promise<string | null> {
+  if (!企业版() || 进 <= 0) return null;
   const 上限 = 持有上限of(规则, userId);
   if (上限 === null) return null;
   const 有 = await 持有数(db, userId);
-  if (有 < 上限) return null;
+  if (有 + 进 <= 上限) return null;
   const 谁 = (await db.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name ?? "这位成员";
-  return `${谁}手上已经有 ${有} 个线索 / 商机阶段的项目，到持有上限（${上限} 个）了，先推进或放回一些再接`;
+  if (进 === 1) return `${谁}手上已经有 ${有} 个线索 / 商机阶段的项目，到持有上限（${上限} 个）了，先推进或放回一些再接`;
+  return `${谁}手上已经有 ${有} 个线索 / 商机阶段的项目，再接这 ${进} 个就超持有上限（${上限} 个）了，先推进或放回一些再接`;
 }
 
 /**

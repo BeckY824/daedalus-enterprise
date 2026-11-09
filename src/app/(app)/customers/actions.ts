@@ -41,7 +41,7 @@ import { 查电话, 规整手机号, 认回打码号 } from "@/lib/phone";
 import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
 import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
-import { 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
+import { 带走并记下, 还项目, 数转走的项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
@@ -58,7 +58,8 @@ import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/lib/enterprise/contact-dedupe";
 import { setOppStatus } from "../opportunities/actions";
 import { 认得 } from "@/lib/project/hook";
-import { 客户的项目数 } from "@/lib/project/db";
+import { 客户的项目数, 超上限n } from "@/lib/project/db";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整外贸档案, 规整阿里ID, 认国家, type 外贸档案 } from "@/lib/customer-extra";
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
@@ -587,6 +588,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   const 交接给 = 改前 && salesOwnerId !== 改前.salesOwnerId && (await 转让走交接(me, salesOwnerId)) ? salesOwnerId : null;
   if (交接给 && 改前?.salesOwnerId) data.salesOwnerId = 改前.salesOwnerId;
   const 发起交接 = async () => (交接给 && input.id ? 交接结果(await 发起转让交接(me, [input.id], 交接给, 0, null)) : {});
+  if (!交接给 && 改前 && input.id && salesOwnerId !== 改前.salesOwnerId) {
+    const 超 = await 接待分配超上限([input.id], salesOwnerId);
+    if (超) return { ok: false, error: 超 };
+  }
 
   if (!input.id) {
     /*
@@ -1137,6 +1142,8 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   const already = await prisma.customer.count({ where: { id: { in: ids }, salesOwnerId } });
   // 企业版「交接中」：转给别人的先不换负责人，等接手人确认（转给自己 = 自己就是接手人，不用确认）
   if (await 转让走交接(me, salesOwnerId)) return 发起转让交接(me, ids, salesOwnerId, already, reason);
+  const 超 = await 接待分配超上限(ids, salesOwnerId);
+  if (超) return { ok: false, error: 超 };
   await 钉住老签约();
   // 先记下每位原来归谁：他们没做完的活要跟着走（排查 B3）
   const 换人的 = await prisma.customer.findMany({
@@ -1184,12 +1191,15 @@ async function 没转和不存在(ids: string[], 算过: number): Promise<{ miss
 }
 
 /**
- * 企业版「交接中」的转让（规则「交接要接手人确认」开着、转给别人，测试清单 D10「交接完成前接手人看不到」）：
- * 负责人先不换，按原负责人一人一行记待确认（EntHandover），接手人在客户页确认了才换，
- * 联系人、沟通记录、原负责人自己的项目（同事的不动，P-转-07）、没做完的活照老规矩一起走（customers/handover-actions.ts 确认交接）。
- * 已经在另一笔交接里的客户这次不再发起：同一位客户不能同时交给两个人（查和写在同一笔事务里，两人同时发起只成一笔）。
- * 只读的客户（虚线下属的）上面 虚线只读挡 已经整批拦了；企业版没有互看，这里看得到的就是改得动的
+ * 直接转客户（不走交接）会随客户带给新负责人的同事待分配项目（= 接待分配，转过去清待分配就算持有；P-转-07）：
+ * 加上手上已有的超了持有上限就不转，回一句说清谁、上限、现有几个（M-公海-18，11-09）。
+ * 原负责人自己的项目跟着客户走照旧不拦（超上限 的说明）；走交接的到确认那一步再核
  */
+async function 接待分配超上限(ids: string[], 新: string): Promise<string | null> {
+  const 进 = await 数进手的持有项目(ids, 新, { 同事待分配: true });
+  return 进 ? 超上限n(prisma, await 生效组织规则(), 新, 进) : null;
+}
+
 /** 换负责人要不要先走交接：企业版「交接要确认」开着、转给的不是自己（转给自己 = 自己就是接手人）。批量转让、编辑页、就地改同一句（11-09） */
 async function 转让走交接(me: { id: string }, to: string): Promise<boolean> {
   return to !== me.id && (await 交接要确认());
@@ -1198,6 +1208,13 @@ function 交接结果(r: BulkResult): { 交接中?: number; 交接已在路上?:
   return r.ok ? { 交接中: r.交接中 ?? 0, 交接已在路上: r.交接已在路上 ?? 0 } : {};
 }
 
+/**
+ * 企业版「交接中」的转让（规则「交接要接手人确认」开着、转给别人，测试清单 D10「交接完成前接手人看不到」）：
+ * 负责人先不换，按原负责人一人一行记待确认（EntHandover），接手人在客户页确认了才换，
+ * 联系人、沟通记录、原负责人自己的项目（同事的不动，P-转-07）、没做完的活照老规矩一起走（customers/handover-actions.ts 确认交接）。
+ * 已经在另一笔交接里的客户这次不再发起：同一位客户不能同时交给两个人（查和写在同一笔事务里，两人同时发起只成一笔）。
+ * 只读的客户（虚线下属的）上面 虚线只读挡 已经整批拦了；企业版没有互看，这里看得到的就是改得动的
+ */
 async function 发起转让交接(me: { id: string; name: string }, ids: string[], to: string, already: number, reason: string | null): Promise<BulkResult> {
   const b = await getBusiness();
   const 候选 = await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: to } }, select: { id: true, salesOwnerId: true } });
@@ -1721,6 +1738,8 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
         return r.ok ? { ok: true, ...交接结果(r) } : r;
       }
     }
+    const 超 = await 接待分配超上限([id], v);
+    if (超) return { ok: false, error: 超 };
     data.salesOwnerId = v;
   } else if (key === "channelOwnerId") {
     // 清空 = 恢复跟着推荐链走；给了人 = 手工钉死。只动这一条学员，不影响任何其他人

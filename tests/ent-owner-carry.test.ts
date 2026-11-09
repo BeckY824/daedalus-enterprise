@@ -76,7 +76,7 @@ import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 不能改客户事项话, 没业务角色话 } from "@/lib/enterprise/follow-perm";
 import { 只读角色话 } from "@/lib/enterprise/permissions";
 import { 销售初判, 市场复核 } from "@/lib/project/lead-verify";
-import { 放进公海, 领取, 撤销公海 } from "@/app/(app)/customers/pool-actions";
+import { 放进公海, 领取, 撤销公海, 分配公海 } from "@/app/(app)/customers/pool-actions";
 import { 放回公海, 改项目, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 客户在公海项目不单领提示, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
@@ -1928,24 +1928,131 @@ describe("转客户：同事负责的项目负责人不变（用户 11-09，X-05
     });
   });
 
-  describe("规则 3：持有上限只算实际转到接手人名下的，超上限不拦", () => {
+  describe("规则 3：持有上限只算实际转到接手人名下的；直接转客户带的原负责人项目不拦，接同事的待分配项目超了拦（M-公海-18，11-09）", () => {
     const 上限 = async (n: number) => { await setSetting("orgRules", { ...默认组织规则, 公海: { ...默认组织规则.公海, 持有上限开: true, 默认上限: n } }); invalidateSettingsCache(); };
 
-    it("接手人已到上限：转客户不拦；只加他实际接到的；同事的还算同事的", async () => {
+    it("接手人已到上限：只带原负责人自己的项目，转客户不拦；只加他实际接到的；同事的还算同事的", async () => {
       await 上限(1);
       const 已有 = await 客户(甲.id);
       await 项目(已有, 甲.id);
       const c = await 客户(市场.id);
       await 项目(c, 市场.id);
       await 项目(c, 乙.id);
-      await 项目(c, 丙.id, { awaitAssignAt: new Date() });
       expect(await 持有数(prisma, 甲.id)).toBe(1);
+      expect(await 以(市场, () => assignSalesOwner([c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
+      expect(await 持有数(prisma, 甲.id)).toBe(2);
       expect(await 持有数(prisma, 乙.id)).toBe(1);
-      expect(await 持有数(prisma, 丙.id)).toBe(0);
+    });
+
+    it("接待分配：客户上挂着同事的待分配项目，接手人超上限就拦，说清谁、上限、现有数；什么都不动", async () => {
+      await 上限(1);
+      const 已有 = await 客户(甲.id);
+      await 项目(已有, 甲.id);
+      const c = await 客户(市场.id);
+      const 自己的 = await 项目(c, 市场.id);
+      const 待分配 = await 项目(c, 丙.id, { awaitAssignAt: new Date() });
+      for (const 转 of [
+        () => 以(市场, () => assignSalesOwner([c], 甲.id)),
+        () => 以(市场, () => patchCustomer(c, "salesOwnerId", 甲.id)),
+      ]) {
+        const r = await 转();
+        expect(r.ok).toBe(false);
+        const 话 = (r as { error: string }).error;
+        expect(话).toContain("销售甲某");
+        expect(话).toContain("已经有 1 个");
+        expect(话).toContain("持有上限（1 个）");
+        expect(await 客户负责人(c)).toBe(市场.id);
+        expect(await 项目of(自己的)).toMatchObject({ ownerId: 市场.id });
+        expect(await 项目of(待分配)).toMatchObject({ ownerId: 丙.id });
+        expect((await 项目of(待分配)).awaitAssignAt).not.toBeNull();
+      }
+      expect(await 持有数(prisma, 甲.id)).toBe(1);
+      // 放宽到 2 就能接：他自己的 1 + 同事待分配 1 = 2，市场自己的项目不算进拦的数
+      await 上限(2);
       expect(await 以(市场, () => assignSalesOwner([c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
       expect(await 持有数(prisma, 甲.id)).toBe(3);
-      expect(await 持有数(prisma, 乙.id)).toBe(1);
-      expect(await 持有数(prisma, 丙.id)).toBe(0);
+    });
+
+    const 公海客户 = async (项目数: number) => {
+      const c = await 客户(甲.id);
+      for (let i = 0; i < 项目数; i++) await 项目(c, 甲.id, { pooledAt: new Date() });
+      await prisma.customerPool.create({ data: { customerId: c, reason: "手动" } });
+      return c;
+    };
+    const 丙先有一个 = async () => { await 项目(await 客户(丙.id), 丙.id); };
+
+    it("领多项目的公海客户：超上限整批拦，说清再接几个；客户还在公海；放宽后能领", async () => {
+      await 上限(2);
+      await 丙先有一个();
+      const c = await 公海客户(2);
+      const r = await 以(丙, () => 领取([c]));
+      expect(r.ok).toBe(false);
+      const 话 = (r as { error: string }).error;
+      expect(话).toContain("销售丙某");
+      expect(话).toContain("已经有 1 个");
+      expect(话).toContain("再接这 2 个");
+      expect(话).toContain("持有上限（2 个）");
+      expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
+      expect(await 持有数(prisma, 丙.id)).toBe(1);
+      await 上限(3);
+      expect(await 以(丙, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
+      expect(await 持有数(prisma, 丙.id)).toBe(3);
+    });
+
+    it("把多项目的公海客户分给同事：同样拦", async () => {
+      await 上限(2);
+      await 丙先有一个();
+      const c = await 公海客户(2);
+      const r = await 以(总管, () => 分配公海([c], 丙.id));
+      expect(r.ok).toBe(false);
+      expect((r as { error: string }).error).toContain("再接这 2 个");
+      expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
+    });
+
+    it("确认转让交接：接手人确认时超上限拦，交接还挂着；放宽后能确认", async () => {
+      await setSetting(规则.交接要确认.key, true);
+      await 上限(2);
+      await 丙先有一个();
+      const c = await 客户(甲.id);
+      await 项目(c, 甲.id);
+      await 项目(c, 甲.id);
+      expect(await 以(总管, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, 交接中: 1 });
+      const [h] = (await 以(丙, () => 待确认的交接())).等我确认;
+      const r = await 以(丙, () => 确认交接(h.id));
+      expect(r.ok).toBe(false);
+      expect((r as { error: string }).error).toContain("再接这 2 个");
+      expect(await 客户负责人(c)).toBe(甲.id);
+      expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: h.id } })).status).toBe("待确认");
+      await 上限(3);
+      expect(await 以(丙, () => 确认交接(h.id))).toMatchObject({ ok: true });
+      expect(await 客户负责人(c)).toBe(丙.id);
+      expect(await 持有数(prisma, 丙.id)).toBe(3);
+    });
+
+    it("确认离职交接：按交出去会走的项目数拦", async () => {
+      await 上限(2);
+      await 丙先有一个();
+      const c = await 客户(甲.id);
+      await 项目(c, 甲.id);
+      await 项目(c, 甲.id);
+      const h = await prisma.entHandover.create({ data: { kind: "离职", way: "转交", fromUserId: 甲.id, toUserId: 丙.id, byUserId: 总管.id, customerIds: JSON.stringify([c]), counts: JSON.stringify({ 客户: 1 }) } });
+      const r = await 以(丙, () => 确认交接(h.id));
+      expect(r.ok).toBe(false);
+      expect((r as { error: string }).error).toContain("再接这 2 个");
+      expect(await 客户负责人(c)).toBe(甲.id);
+      await 上限(3);
+      expect(await 以(丙, () => 确认交接(h.id))).toMatchObject({ ok: true });
+      expect(await 持有数(prisma, 丙.id)).toBe(3);
+    });
+
+    it("上限没开（现状 999 / 默认关）：三处都照旧", async () => {
+      await 丙先有一个();
+      const c = await 公海客户(3);
+      expect(await 以(丙, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
+      const d = await 客户(市场.id);
+      await 项目(d, 乙.id, { awaitAssignAt: new Date() });
+      expect(await 以(市场, () => assignSalesOwner([d], 丙.id))).toMatchObject({ ok: true, updated: 1 });
+      expect(await 持有数(prisma, 丙.id)).toBe(5);
     });
   });
 });

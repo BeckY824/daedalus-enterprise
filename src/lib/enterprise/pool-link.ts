@@ -146,7 +146,7 @@ export async function 单项目客户跟着领(
 
 /**
  * 客户公海里的客户刚被领走 / 分走（已经归 新）：名下放在项目公海里的项目一起归 新，每个记一行 pool-claim。
- * 不拦持有上限：同跟着客户转（超上限 的说明）。返回带过来的项目 id。
+ * 持有上限这里不拦：领取 / 分配公海在动手之前整批核过（pool-actions 带走公海项目超上限，M-公海-18，11-09）。返回带过来的项目 id。
  * 带待办（C-06，领取 / 分配客户时的勾）：这些项目进公海时关掉的那批待办重新打开给 新；没传不碰
  */
 export async function 领客户带走公海项目(customerIds: string[], 新: string, 操作人: string, 带待办?: boolean): Promise<string[]> {
