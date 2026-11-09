@@ -45,7 +45,7 @@ import { 不能改客户事项话, 没业务角色话 } from "@/lib/enterprise/f
 import { 只读角色话 } from "@/lib/enterprise/permissions";
 import { 销售初判, 市场复核 } from "@/lib/project/lead-verify";
 import { 放进公海 } from "@/app/(app)/customers/pool-actions";
-import { 放回公海 } from "@/lib/project/db";
+import { 放回公海, 改项目 } from "@/lib/project/db";
 import { 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
@@ -578,6 +578,67 @@ describe("客户公海里的项目不能单独分配（M-公海-06、X-13）", (
     const r = await 以(总管, () => 批量自动分配([d.p], { 项目: true }));
     expect(r).toMatchObject({ ok: true, 结果: [{ ok: true, toUserId: 丙.id }] });
     expect(await 客户负责人(d.c)).toBe(甲.id);
+  });
+});
+
+describe("客户公海里的项目不能经转让单独动（M-公海-06、X-13）", () => {
+  const 拦的话 = { ok: false, error: 客户在公海项目不单领提示 };
+  const 放进去 = async () => {
+    const c = await 客户(甲.id);
+    const 们 = [await 项目(c, 甲.id), await 项目(c, 甲.id)];
+    expect(await 以(甲, () => 放进公海([c], "客户主动终止"))).toMatchObject({ ok: true, updated: 1 });
+    return { c, 们 };
+  };
+  const 转 = (me: 人, p: string, 给: 人) => 以(me, () => 改项目({ id: me.id, role: me.role }, p, { ownerId: 给.id }));
+
+  it("客户整包进了公海：总管理转让其中一个项目被拒，项目还在公海、没负责人，没留转让痕", async () => {
+    const { c, 们: [a, b] } = await 放进去();
+    expect(await 转(总管, a, 丙)).toEqual(拦的话);
+    for (const p of [a, b]) {
+      expect(await 项目of(p)).toMatchObject({ ownerId: "" });
+      expect((await 项目of(p)).pooledAt).not.toBeNull();
+    }
+    expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
+    expect(await prisma.projectNodeLog.count({ where: { projectId: a, kind: "transfer" } })).toBe(0);
+  });
+
+  it("客户在公海、项目不在公海还有人负责（老数据）：总管理转给别人也拒", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 乙.id);
+    await prisma.customerPool.create({ data: { customerId: c, reason: "手动" } });
+    expect(await 转(总管, p, 丙)).toEqual(拦的话);
+    expect(await 项目of(p)).toMatchObject({ ownerId: 乙.id, pooledAt: null });
+  });
+
+  it("线索公海（客户不在公海）的项目照样能转，出公海；客户不在公海的普通转让不受影响", async () => {
+    const c = await 客户(甲.id);
+    const 进公海的 = await 项目(c, 甲.id);
+    const 普通的 = await 项目(c, 甲.id);
+    expect((await 以(甲, () => 放回公海({ id: 甲.id, role: 甲.role }, 进公海的))).ok).toBe(true);
+    expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(0);
+    expect(await 转(总管, 进公海的, 丙)).toMatchObject({ ok: true, 变了: ["ownerId"] });
+    expect(await 项目of(进公海的)).toMatchObject({ ownerId: 丙.id, pooledAt: null });
+    expect(await 转(总管, 普通的, 丙)).toMatchObject({ ok: true, 变了: ["ownerId"] });
+    expect(await 客户负责人(c)).toBe(甲.id);
+  });
+
+  it("没换负责人的不算转让，不走这条拦截（负责人还是原来的，只传同一个人 = 没变）", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 乙.id);
+    await prisma.customerPool.create({ data: { customerId: c, reason: "手动" } });
+    expect(await 转(总管, p, 乙)).toEqual({ ok: true, 变了: [] });
+  });
+
+  it("不是企业版不受影响：团队版老规矩照旧", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    忘掉企业版范围();
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id);
+    await prisma.customerPool.create({ data: { customerId: c, reason: "手动" } });
+    const r = await 转(甲, p, 乙);
+    expect(r).not.toEqual(拦的话);
+    expect(r.ok).toBe(true);
+    expect(await 项目of(p)).toMatchObject({ ownerId: 乙.id });
   });
 });
 

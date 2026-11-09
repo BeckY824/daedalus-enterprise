@@ -579,6 +579,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (挡) return { ok: false as const, error: 挡 };
     const 换人 = 新.ownerId !== p.ownerId;
     if (换人) {
+      // 客户在客户公海里的，项目随整包，不能转出去（M-公海-06、X-13）；放在事务里，弹框开着时客户刚进公海也拦。线索公海（客户不在公海）照转
+      if (拦客户公海里的项目(!!(await 看全部(() => tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))))) return { ok: false as const, error: 客户在公海项目不单领提示 };
       // 这里改不了阶段和结局（规整项目只出名称、负责人、金额、备注），p 的阶段 / 结局就是改完的
       const 超 = await 超上限(tx, 规则, 新.ownerId, p);
       if (超) return { ok: false as const, error: 超 };

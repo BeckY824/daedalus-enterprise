@@ -133,14 +133,15 @@ describe("转让（改项目 换负责人）", () => {
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(乙.id);
   });
 
-  it("转让项目时客户在公海（P-转-04）：客户不出公海，客户负责人不变，项目归丙", async () => {
+  it("转让项目时客户在公海（M-公海-06）：不能单独转，客户不出公海，客户负责人不变，项目还归乙", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c, "一号项目");
     await prisma.customerPool.create({ data: { customerId: c } });
-    await 改项目(老板, p, { name: "一号项目", ownerId: 丙.id, amount: 0 }, true);
+    const 结果 = await 改项目(老板, p, { name: "一号项目", ownerId: 丙.id, amount: 0 }, true);
+    expect(结果.ok).toBe(false);
     expect(await prisma.customerPool.findUnique({ where: { customerId: c } })).not.toBeNull();
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(乙.id);
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(乙.id);
   });
 
   it("原负责人没有待办：照样转，留痕写 0 条", async () => {
