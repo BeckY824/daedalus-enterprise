@@ -85,7 +85,7 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
       // 同 停用分拣：在公海里的不算他的（谁领谁接）
       const 客户们 = await prisma.customer.findMany({
         where: { salesOwnerId: u.id, pool: { is: null } },
-        select: { id: true, name: true, ...(带项目 ? { _count: { select: { projects: { where: { pooledAt: null } } } } } : {}) },
+        select: { id: true, name: true, ...(带项目 ? { _count: { select: { projects: { where: { pooledAt: null, OR: [{ ownerId: u.id }, { awaitAssignAt: { not: null } }] } } } } } : {}) },
         orderBy: { name: "asc" },
       });
       const 项目们 = 带项目

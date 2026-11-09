@@ -38,9 +38,16 @@ export async function 离职转给接手人(
   await tx.lead.updateMany({ where: { id: { in: 分.线索 } }, data: { ownerId: 接手人 } });
   if (记分配) await 记交接分配(tx, 分.线索, id, 接手人, 操作人);
   await tx.channel.updateMany({ where: { id: { in: 分.渠道 } }, data: { channelOwnerId: 接手人 } });
-  // 项目：跟着转走的客户整体转（同转让客户，跟着客户转的项目），企业版再加上他负责、挂在别人客户上的。
-  // 卡点认领行不在这里跟着走：停用的事务里另调 交接卡点（有交接人 / 直属上级 / 去掉三种去向）
-  return 分.项目.length ? await 转项目(tx, { id: { in: 分.项目 }, pooledAt: null }, 接手人, 操作人, false) : [];
+  // 项目：跟着转走的客户转（团队版整体转；企业版只带他负责的、同事待分配的，同转让客户），企业版再加上他负责、挂在别人客户上的。
+  // 他的卡点认领行不在这里跟着走：停用的事务里另调 交接卡点（有交接人 / 直属上级 / 去掉三种去向）；
+  // 同事待分配的认领行是在职同事的，交接卡点管不到，跟着项目走（同转客户）。分.项目 被调用方清空时（没开项目模式）不动
+  const 待分配 = new Set(分.清待分配);
+  const 同事的 = 分.项目.filter((p) => 待分配.has(p));
+  const 其余 = 分.项目.filter((p) => !待分配.has(p));
+  const 转了 = 其余.length ? await 转项目(tx, { id: { in: 其余 }, pooledAt: null }, 接手人, 操作人, false) : [];
+  const 转了同事 = 同事的.length ? await 转项目(tx, { id: { in: 同事的 }, pooledAt: null }, 接手人, 操作人, true) : [];
+  if (同事的.length) await tx.project.updateMany({ where: { id: { in: 同事的 } }, data: { awaitAssignAt: null } });
+  return [...转了, ...转了同事];
 }
 
 /**

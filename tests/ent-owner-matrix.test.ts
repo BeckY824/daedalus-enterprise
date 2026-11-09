@@ -222,15 +222,15 @@ describe("A① 项目层动作只改项目负责人，客户负责人不动", ()
   });
 });
 
-describe("A② 转客户：名下全部项目和联系人一起走", () => {
-  it("A② 矩阵·转客户：同事在推的项目也一起走", async () => {
+describe("A② 转客户：原负责人自己的项目、公海项目和联系人一起走，同事的不动（用户 11-09）", () => {
+  it("A② 矩阵·转客户：同事在推的项目负责人不变", async () => {
     const c = await 客户(甲.id);
     const 自己的 = await 项目(c, 甲.id);
     const 同事的 = await 项目(c, 乙.id);
     expect(await 以(总管, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(c)).toBe(丙.id);
     expect((await 项目of(自己的)).ownerId).toBe(丙.id);
-    expect((await 项目of(同事的)).ownerId).toBe(丙.id);
+    expect((await 项目of(同事的)).ownerId).toBe(乙.id);
   });
 
   it("A② 矩阵·转客户：还挂在线索公海的项目也一起走", async () => {
@@ -254,12 +254,12 @@ describe("A② 转客户：名下全部项目和联系人一起走", () => {
     expect(await 联系人们(c)).toEqual([联]);
   });
 
-  it("A② 矩阵·上级裁决移交：销售管理移交客户，同事的项目一起走", async () => {
+  it("A② 矩阵·上级裁决移交：销售管理移交客户，同事的项目负责人不变", async () => {
     const c = await 客户(甲.id);
     const 同事的 = await 项目(c, 乙.id);
     expect(await 以(销售管理, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(c)).toBe(丙.id);
-    expect((await 项目of(同事的)).ownerId).toBe(丙.id);
+    expect((await 项目of(同事的)).ownerId).toBe(乙.id);
   });
 
   it("第五节 3 / X-20（照现状不改）：负责人本人转客户直接转成，不走申请", async () => {
@@ -279,7 +279,18 @@ describe("A③ 离职交接", () => {
     expect((await 项目of(p)).ownerId).toBe(丙.id);
   });
 
-  it.todo("A③ 矩阵·离职交接「名下全部」：同事负责的项目跟不跟走？矩阵写全部，现状留在同事名下，待确认后补");
+  it("A③ 矩阵·离职交接（用户 11-09）：在职同事负责的不动，同事待分配的随客户给接手人并清状态", async () => {
+    const c = await 客户(甲.id);
+    const 自己的 = await 项目(c, 甲.id);
+    const 同事的 = await 项目(c, 乙.id);
+    const 待分配 = await 项目(c, 乙.id, { awaitAssignAt: new Date() });
+    await prisma.user.update({ where: { id: 甲.id }, data: { active: false } });
+    expect(await 以(总管, () => 交接客户(甲.id, c, 丙.id))).toMatchObject({ ok: true });
+    expect(await 客户负责人(c)).toBe(丙.id);
+    expect((await 项目of(自己的)).ownerId).toBe(丙.id);
+    expect((await 项目of(同事的)).ownerId).toBe(乙.id);
+    expect(await 项目of(待分配)).toMatchObject({ ownerId: 丙.id, awaitAssignAt: null });
+  });
 
   it("A③ 离职「公海」方式：客户负责人清空，名下项目随客户包进公海并清负责人", async () => {
     const c = await 客户(甲.id);

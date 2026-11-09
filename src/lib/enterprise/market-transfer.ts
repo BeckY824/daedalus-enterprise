@@ -25,7 +25,7 @@ export function 算市场转客户(org: 组织, 客户: { salesOwnerId: string; 
 }
 
 /**
- * 客户连同名下全部项目、公海项目、联系人、进行中的商机交给销售；待办、计划还归市场（P-转-10）。
+ * 客户连同原负责人自己的项目、公海项目、同事待分配的项目、联系人、进行中的商机交给销售；同事的别的项目负责人不变（P-转-07）；待办、计划还归市场（P-转-10）。
  * 被带走的项目不写分配记录（不占额度），转让痕记 随客户痕，「我分出去的」靠它显示。
  * 要在事务里、放开范围调（市场转走后就看不到这位客户了）；老签约要在事务外先钉住（钉住老签约 用全局连接），刚建的客户没有签约不用钉。
  * 调用前客户要已经归 接手人：这里不写客户负责人。项目入口由 转客户给销售 在同一笔事务里写；
@@ -41,7 +41,7 @@ export async function 市场转一位(tx: Prisma.TransactionClient, customerId: 
   const 带走的项目 = [...带走.项目, ...带走.公海项目];
   const 补方式 = 带走的项目.length ? (await tx.project.findMany({ where: { id: { in: 带走的项目 }, phase: "线索", assignMode: null }, select: { id: true } })).map((p) => p.id) : [];
   if (补方式.length) await tx.project.updateMany({ where: { id: { in: 补方式 } }, data: { assignMode: way } });
-  return { ...带走, 清待分配: 待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() })), 补方式 };
+  return { ...带走, 清待分配: [...带走.清待分配, ...待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() }))], 补方式 };
 }
 
 /** 项目入口用：回 留下，分配通知据此告诉接手人客户上还有多少原负责人的活 */

@@ -281,9 +281,9 @@ it("新线索页照旧：自动分配的提示带配额", async () => {
   await page.close();
 });
 
-it("新线索页·单条自动分配会带走同事项目（P-转-07）：先列出来，取消就不分；点「一起转」才分", async () => {
+it("新线索页·单条自动分配有项目一起转（P-转-07）：先列出来，取消就不分；点「一起转」才分", async () => {
   const { page, errors } = await 打开(true, 1280, true);
-  await page.evaluate(() => { (window as unknown as { __带走: unknown }).__带走 = { 项目数: 1, 项目: [{ name: "同事的项目", 客户: "甲公司", 负责人: "乙" }] }; });
+  await page.evaluate(() => { (window as unknown as { __带走: unknown }).__带走 = { 项目数: 1, 项目: [{ name: "公海的项目", 客户: "甲公司", 负责人: "线索公海" }] }; });
   const 框 = page.locator(".ant-modal-confirm");
   const 调了 = (n: string) => page.evaluate((名) => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).filter((x) => x[0] === 名), n);
   await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();

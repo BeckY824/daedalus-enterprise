@@ -168,7 +168,7 @@ export default function NewProjectModal({
     }
     set存着(true);
     try {
-      // P-转-07：这次走 X-18、会带走同事的项目，先列出来（同分配弹窗）；取消就不建，弹窗留着
+      // P-转-07：这次走 X-18、客户名下有同事的项目，转走的和留下的先列出来（同分配弹窗）；取消就不建，弹窗留着
       const 负责人 = 要负责人 ? v.ownerId ?? null : null;
       if (!(await 问一起转(() => 建项目带走的项目(customerId, { ownerId: 负责人, ...(有分配 ? { 分配方式: v.分配方式 ?? null, 业务线: v.业务线 ?? null } : {}) })))) return;
       const r = await 给客户建项目({

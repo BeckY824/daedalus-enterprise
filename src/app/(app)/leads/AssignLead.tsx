@@ -93,7 +93,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     if (!v) return;
     set忙(true);
     try {
-      // P-转-07：市场首次分给销售会带走同事的项目，分之前列出来；点了取消就不分，弹窗留着
+      // P-转-07：市场首次分给销售、客户名下有同事的项目，转走的和留下的分之前列出来；点了取消就不分，弹窗留着
       if (lead.项目 && !(await 问一起转(() => 分配带走的项目([lead.id], v.toUserId)))) return;
       const 哪条 = lead.项目 ? { projectId: lead.id } : { leadId: lead.id };
       // 原负责人 = 打开弹窗时看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖

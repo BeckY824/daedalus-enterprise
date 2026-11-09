@@ -10,7 +10,7 @@ import { 公海客户原负责人是 } from "@/lib/owner-log-db";
  *
  * 两种方式，默认「转交」（和原来一样，不选就不变）：
  *   转交 —— 客户、进行中的商机、没做完的计划待办、线索、渠道全给接手人；客户名下的项目跟着走
- *           （企业版只带他负责的；同事负责的留在同事名下，同 P-转-07，11-05）
+ *           （企业版只带他负责的；在职同事负责的留在同事名下，同事待分配的随客户给接手人，同 P-转-07，11-09）
  *   公海 —— 客户放进客户公海（负责人清空、他记历史，M-公海-03，谁领了谁接，领的时候他没做完的活跟着领的人走，同手动放公海），
  *           他自己负责的线索 / 商机项目一起进线索公海（离职放进公海）；他负责、挂在别人客户上的线索 / 商机阶段项目放回线索公海；
  *           线索、渠道、不在这些客户上的活照样给接手人
@@ -45,8 +45,10 @@ export type 停用分拣结果 = {
   计划: string[];
   线索: string[];
   渠道: string[];
-  /** 转给接手人的项目：转走的客户上他负责的（企业版；同事负责的留下）+ 他负责、挂在别处、没结局的 */
+  /** 转给接手人的项目：转走的客户上他负责的（企业版；同事负责的留下，待分配的除外）+ 他负责、挂在别处、没结局的 */
   项目: string[];
+  /** 项目 里同事负责、正在待分配的（用户 11-09 定）：随客户给接手人并清待分配 */
+  清待分配: string[];
   /** 放回项目公海的（公海方式） */
   进公海项目: string[];
   /** 公海方式下因为订单阶段只能给接手人的项目数（界面提示用；转交方式为 0） */
@@ -92,12 +94,13 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
   // 挂在进公海、本来在公海客户上的活留在他名下，谁领客户谁带走（同手动放公海）
   const 给接手人 = (rows: { id: string; customerId: string | null }[]) => rows.filter((r) => !r.customerId || !去公海的.has(r.customerId)).map((r) => r.id);
 
-  const 跟客户走 = 转走的客户.size
-    ? (await db.project.findMany({
-        where: { customerId: { in: [...转走的客户] }, pooledAt: null, ...(企业 ? { ownerId: id } : {}) },
-        select: { id: true },
-      })).map((p) => p.id)
+  const 跟客户走的项目 = 转走的客户.size
+    ? await db.project.findMany({
+        where: { customerId: { in: [...转走的客户] }, pooledAt: null, ...(企业 ? { OR: [{ ownerId: id }, { awaitAssignAt: { not: null }, ownerId: { not: "" } }] } : {}) },
+        select: { id: true, ownerId: true },
+      })
     : [];
+  const 跟客户走 = 跟客户走的项目.map((p) => p.id);
   // 进公海客户上他自己负责的线索 / 商机项目由 离职放进公海 一起放进线索公海（客户名下在推项目进公海），这里不重复算；
   // 本来在公海的客户上，还归他的（没进线索公海的）留着，谁领客户谁带走
   const 别处的 = 他的项目.filter((p) => !转走的客户.has(p.customerId) && !去公海的.has(p.customerId));
@@ -115,6 +118,7 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
     线索: 线索们.map((r) => r.id),
     渠道: 渠道们.map((r) => r.id),
     项目,
+    清待分配: 企业 ? 跟客户走的项目.filter((p) => p.ownerId !== id).map((p) => p.id) : [],
     进公海项目,
     订单项目: 公海 ? 他的项目.filter((p) => !可进公海阶段.includes(p.phase)).length : 0,
   };

@@ -19,7 +19,7 @@ import type { 留下的活 } from "@/lib/enterprise/notice-sources";
  * 客户换了销售负责人，原负责人在他身上**没做完的活**跟着走（2026-10-02 排查 B3）：
  * 没完成的计划、待办，进行中的商机。原来不跟：客户转给李四以后，到点提醒、早报还发给张三，李四收不到。
  * 只动原负责人名下的——别的同事挂在这位客户上的活不碰；做完的、赢单丢单的是历史，不动。
- * 项目（团队版项目模式）不一样，见 跟着客户转的项目：团队版整体转；企业版见 带走一位（转客户带全部，领 / 分带原负责人自己的）。
+ * 项目（团队版项目模式）不一样，见 跟着客户转的项目：团队版整体转；企业版见 带走一位（只带原负责人自己的，同事的不动）。
  */
 export async function 带走没做完的(换: { customerId: string; 旧: string }[], 新: string, 操作人?: string): Promise<带走数> {
   return (await 带走并记下(换, 新, 操作人)).数;
@@ -28,19 +28,24 @@ export async function 带走没做完的(换: { customerId: string; 旧: string 
 /**
  * 客户换人时，哪些项目跟着走（团队版项目模式 1a，2026-10-23 定「整体转」）：这位客户名下的项目
  * 不管原来是谁负责的，都连同客户一起转给新负责人；只有放在项目公海里的不动（等人领）。
- * 企业版传 旧：只带他自己负责的（从公海领 / 分走，同事负责的留在各自名下）。
- * 企业版转客户不传 旧：全部项目，含同事负责的（P-转-07，11-09）；公海里的另走 带走公海项目
+ * 企业版传 旧：只带他自己负责的，同事负责的留在各自名下（P-转-07，用户 11-09 定）；公海里的另走 带走公海项目，
+ * 同事负责、正在待分配的见 带走一位
  */
 export function 跟着客户转的项目(customerId: string, 旧?: string): Prisma.ProjectWhereInput {
   return 企业版() && 旧 !== undefined ? { customerId, pooledAt: null, ownerId: 旧 } : { customerId, pooledAt: null };
 }
 
+/** 转客户时留在同事名下的项目（P-转-07）：没进公海、负责人不是客户负责人也不是新负责人（含已结束的）；不在公海的客户上，待分配的跟客户走，不算留下 */
+function 留在同事名下(c: { id: string; pool: { customerId: string } | null }, 主人: string, 新: string): Prisma.ProjectWhereInput {
+  return { customerId: c.id, pooledAt: null, ...(c.pool ? {} : { awaitAssignAt: null }), ownerId: { notIn: [主人, 新, ""] } };
+}
+
 /**
- * 转之前先数一数会一起转走哪些项目（企业版 D-36「转之前先列出会一起转走的 N 个项目」，2026-10-24；P-转-07 11-09）。
- * 条件和真转的一样，数出来的就是转完说的那个数：
- *   不在公海的客户：名下全部项目（含同事负责的、线索公海里的）；公海里的客户（领 / 分）：线索公海里的 + 进公海前负责人自己的。
- * 同事负责的、公海里的在预览里写明负责人（转之前要看清）。
- * 客户按调用方能看到的算（限定着查，看不到的本来也转不了）；项目看全部：会带走同事负责的，那些也得列出来
+ * 转之前先数一数会一起转走哪些项目（企业版 D-36「转之前先列出会一起转走的 N 个项目」，2026-10-24；P-转-07 用户 11-09 定）。
+ * 条件和真转的一样，数出来的就是转完说的那个数：线索公海里的 + 原负责人（公海里的客户：进公海前负责人）自己的；
+ * 不在公海的客户再加同事负责、正在待分配的（见 带走一位）。
+ * 公海里的、待分配的在预览里写明，同事负责的另列 留下（转之前要看清）。
+ * 客户按调用方能看到的算（限定着查，看不到的本来也转不了）；项目看全部：同事负责的也得列出来
  */
 export async function 数转走的项目(ids: string[], 新: string, 除了: string[] = []): Promise<转走项目预览> {
   if (!ids.length) return { 项目数: 0, 项目: [] };
@@ -56,35 +61,43 @@ export async function 数转走的项目(ids: string[], 新: string, 除了: str
       return { 项目数, 项目: 们.map((p) => ({ name: p.name, 客户: p.customer.name })) };
     }
     const 条件: Prisma.ProjectWhereInput[] = [];
+    const 留下条件: Prisma.ProjectWhereInput[] = [];
+    const 主 = new Map<string, string>();
     for (const c of 换人的) {
-      if (!c.pool) 条件.push({ customerId: c.id });
-      else {
-        条件.push({ customerId: c.id, pooledAt: { not: null } });
-        条件.push({ customerId: c.id, pooledAt: null, ownerId: await 公海前负责人(prisma, c.id, c.salesOwnerId) });
-      }
+      const 主人 = await 公海前负责人(prisma, c.id, c.salesOwnerId);
+      主.set(c.id, 主人);
+      条件.push({ customerId: c.id, pooledAt: { not: null } }, { customerId: c.id, pooledAt: null, ownerId: 主人 });
+      if (!c.pool) 条件.push({ customerId: c.id, pooledAt: null, awaitAssignAt: { not: null } });
+      留下条件.push(留在同事名下(c, 主人, 新));
     }
+    const 没选中 = 除了.length ? [{ id: { notIn: 除了 } }] : [];
     // 新 是空串 = 接手人还没挑（批量自动分配）；线索公海里的 ownerId 也是空串，不能拿它排除
-    const where: Prisma.ProjectWhereInput = { AND: [{ OR: 条件 }, ...(新 ? [{ ownerId: { not: 新 } }] : []), ...(除了.length ? [{ id: { notIn: 除了 } }] : [])] };
-    const [项目数, 们] = await Promise.all([
+    const where: Prisma.ProjectWhereInput = { AND: [{ OR: 条件 }, ...(新 ? [{ ownerId: { not: 新 } }] : []), ...没选中] };
+    const 留下where: Prisma.ProjectWhereInput = { AND: [{ OR: 留下条件 }, ...没选中] };
+    const 列 = { orderBy: { createdAt: "asc" as const }, take: 预览列几个 };
+    const [项目数, 们, 留下数, 留下们] = await Promise.all([
       prisma.project.count({ where }),
-      prisma.project.findMany({ where, orderBy: { createdAt: "asc" }, take: 预览列几个, select: { name: true, ownerId: true, pooledAt: true, customerId: true, customer: { select: { name: true } } } }),
+      prisma.project.findMany({ where, ...列, select: { name: true, ownerId: true, pooledAt: true, customerId: true, customer: { select: { name: true } } } }),
+      prisma.project.count({ where: 留下where }),
+      prisma.project.findMany({ where: 留下where, ...列, select: { name: true, ownerId: true, customer: { select: { name: true } } } }),
     ]);
-    const 主 = new Map(换人的.map((c) => [c.id, c.salesOwnerId]));
-    const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(们.map((p) => p.ownerId).filter(Boolean))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
-    return {
+    const 预: 转走项目预览 = {
       项目数,
       项目: 们.map((p) => {
-        // 客户负责人自己的不用写；同事负责的写名字，公海里的写「线索公海」（P-转-07：转之前列清楚）
-        const 负责人 = p.pooledAt ? "线索公海" : p.ownerId && p.ownerId !== 主.get(p.customerId) ? (名.get(p.ownerId) ?? "") : "";
+        // 客户负责人自己的不用写；公海里的写「线索公海」，同事占着、待分配的写「待分配」（P-转-07：转之前列清楚）
+        const 负责人 = p.pooledAt ? "线索公海" : p.ownerId && p.ownerId !== 主.get(p.customerId) ? "待分配" : "";
         return { name: p.name, 客户: p.customer.name, ...(负责人 ? { 负责人 } : {}) };
       }),
     };
+    if (!留下数) return 预;
+    const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(留下们.map((p) => p.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+    return { ...预, 留下: { 项目数: 留下数, 项目: 留下们.map((p) => ({ name: p.name, 客户: p.customer.name, 负责人: 名.get(p.ownerId) ?? "" })) } };
   });
 }
 
 /**
  * 市场首次分给销售（X-18）之前要不要先说一句（P-转-07）：这几位客户里，名下有同事负责的项目的（不是客户负责人、不是接手人、不是本次选中的、不在公海），
- * 才列他们会一起转走的项目（同客户页的预览，除了本次选中的）；都没有 = 0 个，不弹。接手人没挑（批量自动分配）传空串。调用方先判好 X-18、放开范围
+ * 才列他们会一起转走的项目和留在同事名下的项目（同客户页的预览，除了本次选中的）；都没有 = 0 个，不弹。接手人没挑（批量自动分配）传空串。调用方先判好 X-18、放开范围
  */
 export async function 分配带走的同事项目(客户们: { id: string; salesOwnerId: string }[], 接手人: string, 选中: string[]): Promise<转走项目预览> {
   if (!客户们.length) return { 项目数: 0, 项目: [] };
@@ -115,7 +128,7 @@ export async function 转项目(tx: Prisma.TransactionClient, where: Prisma.Proj
 
 /**
  * 撤销时把带过来的项目还回去：只还「还在这位客户下、还归现负责人、没进公海」的。
- * 整体转会带走别的同事负责的项目，所以各还各的：按这个项目最近一行「转给现负责人」的转让痕还给当时的负责人，
+ * 同事负责、正在待分配的也会被带走，所以各还各的：按这个项目最近一行「转给现负责人」的转让痕还给当时的负责人，
  * 找不到痕的（老数据）还给客户原负责人。
  * 企业版按原样回滚（P-撤销-01）：被撤的那行转让痕删掉，不另记一行；卡点认领行照样还回去
  */
@@ -213,9 +226,10 @@ export function 不跟着转的提醒(kind: 换负责人种类): Prisma.TaskWher
  *
  * 旧 可能是占位账号（公海里的客户，M-公海-03）：活都还在进公海前那位名下，按 公海前负责人 找；换负责人记录照旧记 旧 → 新。
  * 项目（企业版）：
- *   kind = assign（转客户）：名下全部，含同事负责的、线索公海里的（P-转-07）；
- *   claim / pool-assign（从客户公海领 / 分）：进公海前负责人自己的；线索公海里的由调用方 领客户带走公海项目 带（M-公海-05）；
- *   deactivate（离职转交）：照旧只带他自己的（规划第二节「不改的」）
+ *   都只带原负责人自己的，同事负责的负责人不变（P-转-07，用户 11-09 定）；
+ *   kind = assign（转客户）：再加线索公海里的；
+ *   assign、deactivate（离职转交）：再加同事负责、正在待分配的（建的人只是占着那一格），随客户给接手人并清待分配，撤销按 清待分配 还；
+ *   claim / pool-assign（从客户公海领 / 分）：线索公海里的由调用方 领客户带走公海项目 带（M-公海-05）；
  * 留下待办计划（只有市场转给销售传，X-18 / X-45 / P-转-10）：原负责人的待办、计划不搬、不关，还归他；
  * 客户负责人、项目、公海项目、联系人（跟客户走）、进行中的商机照走。别的入口不传，照旧带活
  * 项目痕（同样只有市场转给销售传）：被带走的项目那行转让痕记这一句，「我分出去的」按它认
@@ -230,11 +244,18 @@ export async function 带走一位(tx: Prisma.TransactionClient, customerId: str
   if (待办.length) await tx.task.updateMany({ where: { id: { in: 待办 } }, data: { ownerId: 新 } });
   if (商机.length) await 转交商机(tx, { id: { in: 商机 } }, 新);
   const 转客户 = 企业版() && kind === "assign";
+  const 项目痕 = 选项.项目痕 ?? null;
+  // 同事负责、正在待分配的（用户 11-09 定）：先查（原负责人自己的转完也归 新，不能混进来）；转项目 跳过接手人自己占着的，那些只清状态
+  const 待分配 = 带项目 && 企业版() && (kind === "assign" || kind === "deactivate")
+    ? await tx.project.findMany({ where: { customerId, pooledAt: null, awaitAssignAt: { not: null }, ownerId: { notIn: [实际旧, ""] } }, select: { id: true, awaitAssignAt: true } })
+    : [];
   // 带项目=false：没开项目模式的离职交接只交客户，不改项目（11-03 B7-2）
-  const 项目 = 带项目 ? await 转项目(tx, 转客户 ? 跟着客户转的项目(customerId) : 跟着客户转的项目(customerId, 实际旧), 新, 操作人, true, 选项.项目痕 ?? null) : [];
-  const 公海项目 = 带项目 && 转客户 ? await 带走公海项目(tx, [customerId], 新, 操作人, undefined, 选项.项目痕 ?? null) : [];
+  const 项目 = 带项目 ? await 转项目(tx, 跟着客户转的项目(customerId, 实际旧), 新, 操作人, true, 项目痕) : [];
+  const 公海项目 = 带项目 && 转客户 ? await 带走公海项目(tx, [customerId], 新, 操作人, undefined, 项目痕) : [];
+  const 同事待分配 = 待分配.length ? await 转项目(tx, { id: { in: 待分配.map((p) => p.id) } }, 新, 操作人, true, 项目痕) : [];
+  if (待分配.length) await tx.project.updateMany({ where: { id: { in: 待分配.map((p) => p.id) } }, data: { awaitAssignAt: null } });
   await 记换负责人(tx, [{ customerId, from: 旧, to: 新 }], 操作人, kind);
-  return { 计划, 待办, 商机, 项目, 公海项目 };
+  return { 计划, 待办, 商机, 项目: [...项目, ...同事待分配], 公海项目, 清待分配: 待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() })) };
 }
 
 /**

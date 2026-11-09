@@ -96,8 +96,9 @@ for (const width of [1024, 1280, 1366]) {
   });
 }
 
-// P-转-07：市场首次分给销售（X-18）会带走同事项目时，分之前列出来；别的情况不弹
-const 带走预览 = { 项目数: 2, 项目: [{ name: "同事的项目", 客户: "某客户", 负责人: "王二" }, { name: "公海的项目", 客户: "某客户", 负责人: "线索公海" }] };
+// P-转-07：市场首次分给销售（X-18）有项目一起转、或有同事项目留下时，分之前列出来；别的情况不弹
+const 留下预览 = { 项目数: 1, 项目: [{ name: "同事的项目", 客户: "某客户", 负责人: "王二" }] };
+const 带走预览 = { 项目数: 2, 项目: [{ name: "自己的项目", 客户: "某客户" }, { name: "公海的项目", 客户: "某客户", 负责人: "线索公海" }], 留下: 留下预览 };
 type 窗 = { __带走?: unknown; __带走失败?: boolean; __画: () => void; __调?: unknown[][] };
 async function 开页(设: { 带走?: unknown; 失败?: boolean }): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); page.setDefaultTimeout(5000);
@@ -116,13 +117,32 @@ const 选人再分 = async (page: Page) => {
   await page.locator(".ant-modal-footer .ant-btn-primary").click();
 };
 
-it("分配弹窗·会带走同事项目：先列出来，取消就不分；点「一起转」才分", async () => {
+it("分配弹窗·只有留在同事名下的项目：也弹，写明不跟着转，按钮叫「转」", async () => {
+  const { page, errors } = await 开页({ 带走: { 项目数: 0, 项目: [], 留下: 留下预览 } });
+  await page.getByRole("button", { name: "开弹窗" }).click();
+  await page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
+  await 选人再分(page);
+  await 确认框(page).locator(".ant-modal-confirm-title", { hasText: "1 个项目留在各自负责人名下" }).waitFor();
+  const 字 = await 确认框(page).innerText();
+  expect(字).toContain("这些项目留在各自负责人名下，不跟着转：");
+  expect(字).toContain("同事的项目（某客户 · 王二）");
+  expect(字).not.toContain("这些项目的负责人会一起改成新负责人：");
+  await 确认框(page).getByRole("button", { name: "转", exact: true }).click();
+  await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "分配线索"));
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("分配弹窗·有项目一起转：先列出来，同事的另列一段；取消就不分；点「一起转」才分", async () => {
   const { page, errors } = await 开页({ 带走: 带走预览 });
   await page.getByRole("button", { name: "开弹窗" }).click();
   await page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
   await 选人再分(page);
   await 确认框(page).locator(".ant-modal-confirm-title", { hasText: "会一起转走的 2 个项目" }).waitFor();
-  expect(await 确认框(page).innerText()).toContain("同事的项目（某客户 · 王二）");
+  const 框字 = await 确认框(page).innerText();
+  expect(框字).toContain("这些项目的负责人会一起改成新负责人：");
+  expect(框字).toContain("公海的项目（某客户 · 线索公海）");
+  expect(框字).toContain("这些项目留在各自负责人名下，不跟着转：");
+  expect(框字).toContain("同事的项目（某客户 · 王二）");
   expect(await 调了(page, "分配带走的项目")).toEqual([["分配带走的项目", ["p1"], "u1"]]);
   await 确认框(page).locator(".ant-btn:not(.ant-btn-primary)").click();
   await 确认框(page).waitFor({ state: "detached" });
@@ -135,7 +155,7 @@ it("分配弹窗·会带走同事项目：先列出来，取消就不分；点�
   expect(errors).toEqual([]); await page.close();
 });
 
-it("分配弹窗·没有要带走的同事项目：不弹，直接分", async () => {
+it("分配弹窗·没有要转的、也没有留下的：不弹，直接分", async () => {
   const { page, errors } = await 开页({});
   await page.getByRole("button", { name: "开弹窗" }).click();
   await page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
@@ -188,7 +208,7 @@ it("分配弹窗·这条分不了（客户在公海、取不到）：提示刷�
   expect(没人.errors).toEqual([]); await 没人.page.close();
 });
 
-it("批量自动分配·会带走同事项目：先列出来，取消就不分；点「一起转」才分", async () => {
+it("批量自动分配·有项目一起转：先列出来，取消就不分；点「一起转」才分", async () => {
   const { page, errors } = await 开页({ 带走: 带走预览 });
   await page.getByRole("button", { name: "批量分项目" }).click();
   await 确认框(page).locator(".ant-modal-confirm-title", { hasText: "会一起转走的 2 个项目" }).waitFor();

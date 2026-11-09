@@ -199,7 +199,7 @@ export default function ProjectsView({
 
   async function 自动分(r: 项目行) {
     try {
-      // P-转-07：同批量，会带走同事的项目先列出来
+      // P-转-07：同批量，客户名下有同事的项目先列出来
       if (!(await 问一起转(() => 分配带走的项目([r.id])))) return;
       // 原负责人 = 这一行看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 自动分配线索(r.id, { 项目: true, 原负责人: r.ownerId });

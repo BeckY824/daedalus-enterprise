@@ -4,8 +4,8 @@ import { App } from "antd";
 import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
 
 /**
- * 「会一起转走的 N 个项目」确认框：客户页转让（useTransferConfirm）、分配线索、自动分配（P-转-07）共用。
- * 取 = 现取预览。true = 接着转；false = 点了取消。没有项目不弹；取不到不拦着——转本身照样会带走项目，这里只是提前说
+ * 「会一起转走的 N 个项目」确认框：客户页转让（useTransferConfirm）、分配线索、自动分配（P-转-07）共用；留在同事名下的另列一段。
+ * 取 = 现取预览。true = 接着转；false = 点了取消。转走的、留下的都没有才不弹；取不到不拦着——转本身照样会带走项目，这里只是提前说
  */
 export function useCarryConfirm() {
   const { modal } = App.useApp();
@@ -21,12 +21,23 @@ export function useCarryConfirm() {
       title: 说法.标题,
       content: (
         <div>
-          <div style={{ marginBottom: 6 }}>这些项目的负责人会一起改成新负责人：</div>
-          <ul style={列表}>{说法.行.map((l, i) => <li key={i} style={一行} title={l}>{l}</li>)}</ul>
-          {说法.还有 && <div style={旁注}>{说法.还有}</div>}
+          {说法.行.length > 0 && (
+            <>
+              <div style={{ marginBottom: 6 }}>这些项目的负责人会一起改成新负责人：</div>
+              <ul style={列表}>{说法.行.map((l, i) => <li key={i} style={一行} title={l}>{l}</li>)}</ul>
+              {说法.还有 && <div style={旁注}>{说法.还有}</div>}
+            </>
+          )}
+          {说法.留下 && (
+            <>
+              <div style={{ margin: 说法.行.length ? "12px 0 6px" : "0 0 6px" }}>这些项目留在各自负责人名下，不跟着转：</div>
+              <ul style={列表}>{说法.留下.行.map((l, i) => <li key={i} style={一行} title={l}>{l}</li>)}</ul>
+              {说法.留下.还有 && <div style={旁注}>{说法.留下.还有}</div>}
+            </>
+          )}
         </div>
       ),
-      okText: "一起转",
+      okText: 说法.行.length ? "一起转" : "转",
       cancelText: "取消",
     });
   };
