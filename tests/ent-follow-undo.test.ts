@@ -1,50 +1,56 @@
 /**
- * A7-1（11-03）：刚记的沟通撤销——只认本人、服务器时间 10 分钟内；过了说清楚
+ * P-沟通-01（11-09）：沟通记录本人也不能撤销——时间线、项目详情上的「撤销」键和服务端入口都去掉。
+ * AI 卡片的「撤销」、完成小框的「撤销记一笔」改成单独判定（卡片刚记的能撤），继续可用。
+ *
+ * 钉的是：
+ *   - 入口没了：撤销刚记的沟通 不再是服务端动作；FollowUndo 组件、follow-undo 前后端共用口径删掉；时间线、项目详情、记沟通的表单不再引
+ *   - 卡片刚记的能撤：本人、10 分钟内；过了、别人的、没记人的都不行
+ *   - 卡片撤销放行：只在 放行 里、只认那一条 id
+ * 真走库的（普通成员删不了刚记的、AI 卡片撤销照常）见 ent-followup-p3.test.ts「P-沟通-01」
  */
 import { describe, it, expect } from "vitest";
-import { 撤销拦, 时间线可撤, 撤销剩余毫秒, 撤销窗口分钟, 不是本人记的话, 撤销过时话 } from "@/lib/enterprise/follow-undo";
-import { 刚记的能撤 } from "@/lib/enterprise/follow-perm";
+import fs from "node:fs";
+import path from "node:path";
+import { 卡片刚记的能撤, 卡片撤销窗口分钟, 卡片撤销放行, 在卡片撤销里 } from "@/lib/enterprise/follow-perm";
 
-const 记下 = new Date("2026-11-03T10:00:00Z");
-const 过 = (分: number) => new Date(记下.getTime() + 分 * 60_000);
+const 根 = path.resolve(__dirname, "..");
+const 读 = (p: string) => fs.readFileSync(path.join(根, p), "utf8");
 
-describe("撤销拦（服务器判）", () => {
-  it("本人、10 分钟内：能撤", () => {
-    expect(撤销拦({ id: "u1" }, { ownerId: "u1", createdAt: 记下 }, 过(0))).toBeNull();
-    expect(撤销拦({ id: "u1" }, { ownerId: "u1", createdAt: 记下 }, 过(撤销窗口分钟))).toBeNull();
+describe("本人撤销沟通的入口没了", () => {
+  it("撤销刚记的沟通 不再是服务端动作", () => {
+    expect(读("src/app/(app)/customers/[id]/actions.ts")).not.toMatch(/export\s+async\s+function\s+撤销刚记的沟通/);
   });
-  it("别人记的：不能撤，说只能撤自己的", () => {
-    expect(撤销拦({ id: "u2" }, { ownerId: "u1", createdAt: 记下 }, 过(1))).toBe(不是本人记的话);
-    expect(撤销拦({ id: "u2" }, { ownerId: null, createdAt: 记下 }, 过(1))).toBe(不是本人记的话);
+  it("FollowUndo 组件、follow-undo 口径文件都删了", () => {
+    expect(fs.existsSync(path.join(根, "src/components/FollowUndo.tsx"))).toBe(false);
+    expect(fs.existsSync(path.join(根, "src/lib/enterprise/follow-undo.ts"))).toBe(false);
   });
-  it("过了 10 分钟：说清超时、去「…」删", () => {
-    expect(撤销拦({ id: "u1" }, { ownerId: "u1", createdAt: 记下 }, 过(10.01))).toBe(撤销过时话);
-    expect(撤销过时话).toContain("10 分钟");
-  });
-  it("字符串时间也认；坏时间当过时", () => {
-    expect(撤销拦({ id: "u1" }, { ownerId: "u1", createdAt: 记下.toISOString() }, 过(3))).toBeNull();
-    expect(撤销拦({ id: "u1" }, { ownerId: "u1", createdAt: "不是时间" }, 过(3))).toBe(撤销过时话);
-  });
-  it("刚记的能撤 和 撤销拦 口径一致", () => {
-    expect(刚记的能撤({ id: "u1" }, { ownerId: "u1", createdAt: 记下 }, 过(9))).toBe(true);
-    expect(刚记的能撤({ id: "u1" }, { ownerId: "u1", createdAt: 记下 }, 过(11))).toBe(false);
-    expect(刚记的能撤({ id: "u2" }, { ownerId: "u1", createdAt: 记下 }, 过(1))).toBe(false);
+  it("时间线、项目详情、记沟通表单不再摆「撤销」", () => {
+    for (const p of ["src/app/(app)/customers/[id]/RecordView.tsx", "src/app/(app)/projects/[id]/ProjectDetail.tsx", "src/app/(app)/customers/[id]/FollowUpForm.tsx"]) {
+      const s = 读(p);
+      expect(s, p).not.toContain("UndoRecentFollow");
+      expect(s, p).not.toContain("记下带撤销");
+      expect(s, p).not.toContain("FollowUndo");
+    }
   });
 });
 
-describe("时间线上摆不摆「撤销」", () => {
-  const 现在 = (分: number) => 过(分).getTime();
-  it("我记的、不到 10 分钟：摆", () => {
-    expect(时间线可撤(true, 记下.toISOString(), 现在(5))).toBe(true);
+describe("卡片刚记的能撤（AI 卡片撤销、撤销记一笔）", () => {
+  const 记下 = new Date("2026-11-09T10:00:00Z");
+  const 过 = (分: number) => new Date(记下.getTime() + 分 * 60_000);
+  it("本人、10 分钟内：能撤（含正好 10 分钟）", () => {
+    expect(卡片撤销窗口分钟).toBe(10);
+    expect(卡片刚记的能撤({ id: "u1" }, { ownerId: "u1", createdAt: 记下 }, 过(0))).toBe(true);
+    expect(卡片刚记的能撤({ id: "u1" }, { ownerId: "u1", createdAt: 记下 }, 过(10))).toBe(true);
   });
-  it("不是我记的、没带记下时间、过了 10 分钟：不摆", () => {
-    expect(时间线可撤(false, 记下.toISOString(), 现在(5))).toBe(false);
-    expect(时间线可撤(undefined, 记下.toISOString(), 现在(5))).toBe(false);
-    expect(时间线可撤(true, undefined, 现在(5))).toBe(false);
-    expect(时间线可撤(true, 记下.toISOString(), 现在(11))).toBe(false);
+  it("过了 10 分钟、别人记的、没记人的：不能撤", () => {
+    expect(卡片刚记的能撤({ id: "u1" }, { ownerId: "u1", createdAt: 记下 }, 过(10.01))).toBe(false);
+    expect(卡片刚记的能撤({ id: "u2" }, { ownerId: "u1", createdAt: 记下 }, 过(1))).toBe(false);
+    expect(卡片刚记的能撤({ id: "u2" }, { ownerId: null, createdAt: 记下 }, 过(1))).toBe(false);
   });
-  it("剩余毫秒：到点收起按钮用，过了是 0", () => {
-    expect(撤销剩余毫秒(记下.toISOString(), 现在(4))).toBe(6 * 60_000);
-    expect(撤销剩余毫秒(记下.toISOString(), 现在(20))).toBe(0);
+  it("卡片撤销放行：只在放行里、只认那一条", async () => {
+    expect(在卡片撤销里("f1")).toBe(false);
+    const 里 = await 卡片撤销放行("f1", async () => [在卡片撤销里("f1"), 在卡片撤销里("f2")]);
+    expect(里).toEqual([true, false]);
+    expect(在卡片撤销里("f1")).toBe(false);
   });
 });

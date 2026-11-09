@@ -64,7 +64,6 @@ import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源, 能隐藏�
 import type { 回款 } from "@/lib/project/payment-db";
 import ProjectRelate from "./ProjectRelate";
 import type { 项目关联 } from "@/lib/project/relate";
-import { 记下带撤销, UndoRecentFollow } from "@/components/FollowUndo";
 
 export type 项目详情 = {
   id: string; name: string; remark: string | null; amount: number; currency: string;
@@ -170,8 +169,6 @@ export type 项目详情 = {
   followUps: { id: string; type: string; method?: string | null; /** 发起主体（企业版，11-01） */ initiator?: string | null; content: string; occurredAt: string; who: string; node: string; /** 打开修改时的 updatedAt：别人先改了就报版本冲突 */ 版本?: string; code?: string | null; 提醒?: { 级别: "稳" | "拿捏" | "超时"; 文字: string } | null;
     /** 企业版沟通上的截图、录音（F-跟进-07）；我记的 = 这条是我记的（记的人能往上加附件，删 = 负责人本人或系统管理员，V3.5.1） */
     附件?: 附件[]; 我记的?: boolean;
-    /** 这条什么时候记下的（服务器时间，A7-1 撤销窗口用；企业版才带） */
-    记下于?: string;
     /** 企业版：这条沟通的归属人不是当前负责人（负责人可以点一下不看，11-02） */
     接手前?: boolean }[];
   members: 组员[];
@@ -1140,8 +1137,6 @@ export default function ProjectDetail({
             <Tag>{f.node}</Tag>
             {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
             <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-            {/* A7-1：自己刚记的（10 分钟内）给一个「撤销」，到点自己收起来 */}
-            {f.我记的 && f.记下于 && <UndoRecentFollow id={f.id} 我记的 createdAt={f.记下于} 撤完={() => router.refresh()} />}
             {(p.可改沟通 || p.可删沟通 || 卡点?.能发) && (
               // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
               <span style={{ marginLeft: "auto" }}>
@@ -1722,8 +1717,8 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
     const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)));
     const r = 回.r;
     if (ok && r?.ok) {
-      // A7-1：记下后的提示带「撤销」（自己刚记的、10 分钟内，服务器再判）
-      记下带撤销(message, "已记下这条沟通", r.followUpId, () => router.refresh());
+      // 本人撤销沟通去掉了（P-沟通-01，11-09），提示里不摆「撤销」
+      message.success("已记下这条沟通");
       if ("卡点" in r && r.卡点) message.success(`已生成卡点 ${r.卡点}`);
       if ("卡点没发" in r && r.卡点没发) message.warning(`沟通记下了，卡点没生成：${r.卡点没发}`);
       if (附件们.length && r.followUpId) {

@@ -28,7 +28,7 @@ export type FollowUpRow = {
   contactId: string | null;
   opportunityId: string | null;
   opportunity?: { id: string; name: string } | null;
-  /** 记下的时间（服务器时间）：本人 10 分钟内能撤销（A7-1） */
+  /** 记下的时间（服务器时间） */
   createdAt?: string;
   /** 编辑框的版本号（2026-10-04 J-105） */
   updatedAt: string;
