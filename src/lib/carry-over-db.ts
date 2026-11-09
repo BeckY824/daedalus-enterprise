@@ -13,6 +13,7 @@ import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 预览列几个, type 带走数, type 转走项目预览 } from "@/lib/carry-over";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 算市场转客户, 市场转一位, 客户层分配方式 } from "@/lib/enterprise/market-transfer";
+import type { 留下的活 } from "@/lib/enterprise/notice-sources";
 
 /**
  * 客户换了销售负责人，原负责人在他身上**没做完的活**跟着走（2026-10-02 排查 B3）：
@@ -146,12 +147,14 @@ export type 带走的 = {
  * kind = assign 是客户层转让（批量转、确认交接、客户页改负责人）：企业版里算市场转客户的走 市场转一位，
  * 结果和项目分配入口一样，待办、计划不搬（X-45 / P-转-10），别的照旧带活。要在换负责人之前就定好的只有 旧，由调用方传。
  * 调用方是先改负责人、再调这里，两步不在一笔事务：市场转客户这一段进事务后再核对客户还归 新，
- * 中间被别人改走（或进了公海）的什么都不动、不记撤销数据，算没转成，id 回在 没转成、个数回在 数.没转成，调用方别按转成了通知和计数
+ * 中间被别人改走（或进了公海）的什么都不动、不记撤销数据，算没转成，id 回在 没转成、个数回在 数.没转成，调用方别按转成了通知和计数。
+ * 留下：真按市场转客户转成的那几位，待办、计划还在原负责人名下，分配 / 交接通知据此写条数（P-转-10）；只给通知用，不回浏览器
  */
-export async function 带走并记下(换: { customerId: string; 旧: string }[], 新: string, 操作人: string = 新, kind: 换负责人种类 = "assign"): Promise<{ 数: 带走数; 记下: 带走的; 没转成: string[] }> {
+export async function 带走并记下(换: { customerId: string; 旧: string }[], 新: string, 操作人: string = 新, kind: 换负责人种类 = "assign"): Promise<{ 数: 带走数; 记下: 带走的; 没转成: string[]; 留下: 留下的活[] }> {
   const 数: 带走数 = { 计划和待办: 0, 商机: 0, 项目: 0 };
   const 记下: 带走的 = { 计划: [], 待办: [], 商机: [], 项目: [], 公海项目: [] };
   const 没转成: string[] = [];
+  const 留下: 留下的活[] = [];
   // 事务外读：事务占着库的唯一连接，事务里读组织会等到超时
   const org = kind === "assign" && 换.length ? await 权限组织() : null;
   for (const { customerId, 旧 } of 换) {
@@ -165,11 +168,11 @@ export async function 带走并记下(换: { customerId: string; 旧: string }[]
       看全部（团队版业务员，lib/team-scope.ts）：业务员把自己的客户交给同事，客户一换负责人他就看不到了，
       限定着查会漏掉这位客户上的商机（商机跟着客户可见），活带不过去（2026-10-04 五人实测）。要转哪几条由上面的条件定，不靠限定
     */
-    const 这位: (带走的 & { 项目: string[]; 公海项目: string[] }) | null = await 看全部(() => prisma.$transaction(async (tx) => {
+    const 这位: (带走的 & { 项目: string[]; 公海项目: string[]; 留在原负责人?: boolean }) | null = await 看全部(() => prisma.$transaction(async (tx) => {
       if (org && 算市场转客户(org, { salesOwnerId: 旧, pool: null }, 新)) {
         const 现在 = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
         if (现在?.salesOwnerId !== 新) return null;
-        if (!现在.pool) return 市场转一位(tx, customerId, 旧, 新, 操作人, 客户层分配方式);
+        if (!现在.pool) return { ...(await 市场转一位(tx, customerId, 旧, 新, 操作人, 客户层分配方式)), 留在原负责人: true };
       }
       return 带走一位(tx, customerId, 旧, 新, 操作人, kind);
     }));
@@ -177,6 +180,7 @@ export async function 带走并记下(换: { customerId: string; 旧: string }[]
       没转成.push(customerId);
       continue;
     }
+    if (这位.留在原负责人) 留下.push({ customerId, 原: 旧 });
     const { 计划, 待办, 商机, 项目, 公海项目 } = 这位;
     if (这位.清待分配?.length) (记下.清待分配 ??= []).push(...这位.清待分配);
     if (这位.补方式?.length) (记下.补方式 ??= []).push(...这位.补方式);
@@ -190,7 +194,7 @@ export async function 带走并记下(换: { customerId: string; 旧: string }[]
     记下.商机.push(...商机);
   }
   if (没转成.length) 数.没转成 = 没转成.length;
-  return { 数, 记下, 没转成 };
+  return { 数, 记下, 没转成, 留下 };
 }
 
 /**

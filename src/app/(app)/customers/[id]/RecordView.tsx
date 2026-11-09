@@ -572,9 +572,9 @@ export default function RecordView({
     if (res.交接中 !== undefined) {
       return void (res.交接中
         ? message.success(`已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
-        : message.info(res.交接已在路上 ? "这位已在另一笔交接里，没再发起" : `没有发起新的交接：已归 ${o.label}`));
+        : message.info(res.交接已在路上 ? "这位已在另一笔交接里，没再发起" : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}`));
     }
-    if (!res.updated) return void message.info(res.带走?.没转成 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}`);
+    if (!res.updated) return void message.info(res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}`);
     const key = `transfer-${customer.id}`;
     message.success({
       key,

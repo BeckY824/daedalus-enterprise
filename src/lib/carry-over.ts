@@ -16,6 +16,17 @@ export function 带走说法(n: 带走数 | undefined): string {
   return 项.length ? `，连同${项.join("、")}` : "";
 }
 
+/** 批量操作结果的那句提示。「刚被别人改了负责人」和「已不存在」要分开说 */
+export function 批量结果说法(res: { updated: number; unchanged: number; missing: number; 没转?: number; 带走?: 带走数 }, action: string): string {
+  const parts = [`${action}：${res.updated} 条`];
+  if (res.unchanged) parts.push(`${res.unchanged} 条本来就是`);
+  if (res.missing) parts.push(`${res.missing} 条已不存在（可能已删除）`);
+  const 没转 = (res.没转 ?? 0) + (res.带走?.没转成 ?? 0);
+  if (没转) parts.push(`${没转} 条刚被别人改了负责人，没转`);
+  // 改负责人时原负责人没做完的活一起转了（排查 B3）。带走说法自带开头的逗号
+  return parts.join("，") + 带走说法(res.带走);
+}
+
 /** 转之前先列出会一起转走的项目（企业版 D-36，2026-10-24）。列名字最多这么多个，再多说「等 N 个」 */
 export const 预览列几个 = 8;
 /**

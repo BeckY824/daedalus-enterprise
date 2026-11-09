@@ -156,7 +156,7 @@ export async function 确认交接(id: string): Promise<结果> {
   }));
   if (!换) return { ok: false, error: 已处理 };
   // 名下的活、项目跟着走，每位记一行换负责人（操作人记发起的那位：是他定的转给谁）
-  const { 数, 记下, 没转成 } = await 带走并记下(换.map((customerId) => ({ customerId, 旧: h.fromUserId })), me.id, h.byUserId);
+  const { 数, 记下, 没转成, 留下 } = await 带走并记下(换.map((customerId) => ({ customerId, 旧: h.fromUserId })), me.id, h.byUserId);
   // 确认后又被别人改走的不算接手（带走并记下 什么都没动）
   const 转成了 = 换.filter((id) => !没转成.includes(id));
   const 从 = (await prisma.user.findUnique({ where: { id: h.fromUserId }, select: { name: true } }))?.name ?? h.fromUserId;
@@ -165,7 +165,7 @@ export async function 确认交接(id: string): Promise<结果> {
     summary: `确认接手「${从}」转来的 ${转成了.length} 名${b.customer}，销售负责人改为「${me.name}」` + (ids.length > 转成了.length ? `（${ids.length - 转成了.length} 名在交接期间已换了人或进了公海，没动）` : ""),
     detail: { 交接: h.id, ids: 转成了, salesOwnerId: me.id, 原负责人: 转成了.map((id) => ({ id, salesOwnerId: h.fromUserId })), 带走: 数, 带过来: 记下 },
   });
-  await 交接通知(me, h.id, "已确认");
+  await 交接通知(me, h.id, "已确认", 留下);
   刷新();
   return { ok: true, 客户: 转成了.length };
 }

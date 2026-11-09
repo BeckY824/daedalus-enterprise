@@ -242,7 +242,7 @@ export type 交接事件 = "发起" | "已确认" | "已拒收" | "已撤回";
  * 11-03 C3-3：确认了也告诉原负责人（转让的；离职的人已停用不发），别人撤回的也告诉发起人。
  * 11-03 C3-5 / C4-7 / C8-1：了结之后接手人那条「等你确认」标成已读，免得一直挂着；确认的标题带客户名，发起多笔分得清
  */
-export async function 交接通知(me: 人, handoverId: string, 事件: 交接事件): Promise<void> {
+export async function 交接通知(me: 人, handoverId: string, 事件: 交接事件, 留下?: readonly 留下的活[]): Promise<void> {
   await 稳("交接通知", async () => {
     const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id: handoverId } }));
     if (!h) return;
@@ -266,7 +266,10 @@ export async function 交接通知(me: 人, handoverId: string, 事件: 交接�
     await notify([收].filter((id) => id !== me.id), {
       kind: "交接",
       title,
-      body: 事件 === "发起" ? "确认之前这些客户还在原负责人名下，确认后才转到你名下。" : "",
+      body: 接一句(
+        事件 === "发起" ? "确认之前这些客户还在原负责人名下，确认后才转到你名下。" : "",
+        留下?.length ? await 客户上还留着(留下.map((l) => ({ toUserId: h.toUserId, 留下: l }))) : null,
+      ),
       link: "/customers",
       key,
     });
@@ -306,7 +309,7 @@ async function 收得到分配(toUserId: string): Promise<boolean> {
  * 把客户分给谁（11-06）：运营分发实际是直接改负责人和新建时指定别人，之前接手人收不到提醒。
  * 单条链客户详情（负责人在那儿能看到全部联系方式），多条链客户列表。标题和正文都推到飞书，所以不放手机号
  */
-export async function 分给你通知(谁点的: 人, toUserId: string, customerIds: readonly string[], 项目名?: string): Promise<void> {
+export async function 分给你通知(谁点的: 人, toUserId: string, customerIds: readonly string[], 项目名?: string, 留下: readonly 留下的活[] = []): Promise<void> {
   await 稳("分给你通知", async () => {
     const ids = [...new Set(customerIds)];
     if (!ids.length || !toUserId || toUserId === 谁点的.id) return;
@@ -319,7 +322,7 @@ export async function 分给你通知(谁点的: 人, toUserId: string, customer
     await notify([toUserId], {
       kind: "分配",
       title: 单条 ? `${谁点的.name} 把客户分给你：${名们[0]}` : `${谁点的.name} 把 ${ids.length} 位客户分给你`,
-      body: 单条 ? (项目名 ? `项目：${项目名}` : "") : 名单(名们),
+      body: 接一句(单条 ? (项目名 ? `项目：${项目名}` : "") : 名单(名们), 留下.length ? await 客户上还留着(留下.map((l) => ({ toUserId, 留下: l }))) : null),
       link: 单条 ? `/customers/${ids[0]}` : "/customers",
       key: `owner-assign:${[...ids].sort().join(",").slice(0, 400)}:${toUserId}:${分钟()}`,
     });

@@ -11,7 +11,21 @@ const mocks = vi.hoisted(() => ({
   插队: null as null | (() => Promise<void>),
   /** 带走并记下 进事务前读组织时插一手（外层已改完负责人）：模拟这一下客户又被别人改走。返回 true 算插完 */
   读组织前: null as null | (() => Promise<boolean>),
+  /** 批量转过了权限闸门之后插一手：模拟另一页这时抢先把客户转走 */
+  挡字段前: null as null | (() => Promise<void>),
 }));
+vi.mock("@/lib/enterprise/field-perm", async (原) => {
+  const 真 = await 原<typeof import("@/lib/enterprise/field-perm")>();
+  return {
+    ...真,
+    挡字段: async (...a: Parameters<typeof 真.挡字段>) => {
+      const 手 = mocks.挡字段前;
+      mocks.挡字段前 = null;
+      if (手) await 手();
+      return 真.挡字段(...a);
+    },
+  };
+});
 vi.mock("@/lib/enterprise/org", async (原) => {
   const 真 = await 原<typeof import("@/lib/enterprise/org")>();
   return {
@@ -51,6 +65,7 @@ import { 分配线索, 自动分配线索, 向导自动分配, 批量自动分�
 import { 自动分配不参与key, 不设配额key, 本月加额, 本月已分, 我分出去的 } from "@/lib/enterprise/lead-assign";
 import { assignSalesOwner, patchCustomer, saveCustomer, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接 } from "@/app/(app)/customers/handover-actions";
+import { 批量结果说法 } from "@/lib/carry-over";
 import { 持有数 } from "@/lib/project/db";
 import { 读项目列表 } from "@/lib/project/list";
 import { toggleTask, completePlan, saveTask, deleteTask, savePlan, deletePlan } from "@/app/(app)/customers/[id]/actions";
@@ -333,18 +348,19 @@ describe("决定一 3：本人勾完成", () => {
   });
 });
 
-describe("决定一 4：分配通知加一句", () => {
-  const 造活 = async (c: string, 主人: string) => {
-    await 待办(c, 主人);
-    await 待办(c, 主人, "第二条");
-    await 待办(c, 主人, `某某${收回提醒尾}`);
-    await 待办(c, 主人, `某某${旧收回提醒尾}`);
-    await 待办(c, 主人, `某某${撞号提醒尾}`);
-    await prisma.task.create({ data: { title: "做完了", customerId: c, ownerId: 主人, done: true, doneAt: new Date() } });
-    await 计划(c, 主人);
-    await prisma.followPlan.create({ data: { subject: "做完了", plannedAt: new Date(), customerId: c, ownerId: 主人, done: true } });
-  };
+/** 2 条算数的待办、1 条算数的计划，外加系统提醒和做完的（不算） */
+const 造活 = async (c: string, 主人: string) => {
+  await 待办(c, 主人);
+  await 待办(c, 主人, "第二条");
+  await 待办(c, 主人, `某某${收回提醒尾}`);
+  await 待办(c, 主人, `某某${旧收回提醒尾}`);
+  await 待办(c, 主人, `某某${撞号提醒尾}`);
+  await prisma.task.create({ data: { title: "做完了", customerId: c, ownerId: 主人, done: true, doneAt: new Date() } });
+  await 计划(c, 主人);
+  await prisma.followPlan.create({ data: { subject: "做完了", plannedAt: new Date(), customerId: c, ownerId: 主人, done: true } });
+};
 
+describe("决定一 4：分配通知加一句", () => {
   it("手动：写 N、M，系统提醒和做完的不算；只发接手人", async () => {
     const c = await 客户(市场.id);
     const p = await 项目(c, 市场.id);
@@ -1462,5 +1478,219 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
     expect(await 项目of(x.普通)).toMatchObject({ ownerId: 市场.id, assignMode: null });
     expect(await 项目of(x.已选)).toMatchObject({ ownerId: 市场.id, assignMode: "公海捞取" });
     expect(await 持有数(prisma, 甲.id)).toBe(0);
+  });
+});
+
+describe("两页竞争转同一位客户：慢的一页怎么报", () => {
+  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
+  /** 慢页过了权限闸门，快页这时抢先把客户转走 */
+  const 快页转走 = (c: string, 给: 人) => { mocks.挡字段前 = async () => { await 看全部(() => prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 给.id } })); }; };
+  afterEach(() => { mocks.挡字段前 = null; });
+
+  it("被转给别人：没转，不说已不存在；客户还归抢先那位", async () => {
+    const c = await 客户(市场.id);
+    快页转走(c, 甲);
+    const r = await 以(市场, () => assignSalesOwner([c], 乙.id));
+    expect(r).toMatchObject({ ok: true, updated: 0, unchanged: 0, missing: 0, 没转: 1 });
+    expect(await 客户负责人(c)).toBe(甲.id);
+    expect(await 通知们(乙.id)).toHaveLength(0);
+  });
+
+  it("被转给同一位接手人：同样报没转", async () => {
+    const c = await 客户(市场.id);
+    快页转走(c, 甲);
+    expect(await 以(市场, () => assignSalesOwner([c], 甲.id))).toMatchObject({ ok: true, updated: 0, unchanged: 0, missing: 0, 没转: 1 });
+  });
+
+  it("真删了（硬删、进回收站）：还是已不存在，不算没转", async () => {
+    const 硬删 = await 客户(市场.id);
+    const 软删 = await 客户(市场.id);
+    mocks.挡字段前 = async () => {
+      await 看全部(async () => {
+        await prisma.customer.delete({ where: { id: 硬删 } });
+        await prisma.customer.update({ where: { id: 软删 }, data: { deletedAt: new Date() } });
+      });
+    };
+    const r = await 以(市场, () => assignSalesOwner([硬删, 软删], 甲.id));
+    expect(r).toMatchObject({ ok: true, updated: 0, unchanged: 0, missing: 2 });
+    if (r.ok) expect(r.没转).toBeUndefined();
+  });
+
+  it("一批混着：转成的、被转走的、删了的各算各的", async () => {
+    const 转成 = await 客户(市场.id);
+    const 被转走 = await 客户(市场.id);
+    const 删了 = await 客户(市场.id);
+    mocks.挡字段前 = async () => {
+      await 看全部(async () => {
+        await prisma.customer.update({ where: { id: 被转走 }, data: { salesOwnerId: 丙.id } });
+        await prisma.customer.delete({ where: { id: 删了 } });
+      });
+    };
+    const r = await 以(市场, () => assignSalesOwner([转成, 被转走, 删了], 甲.id));
+    expect(r).toMatchObject({ ok: true, updated: 1, unchanged: 0, missing: 1, 没转: 1 });
+    expect(await 客户负责人(转成)).toBe(甲.id);
+    expect(await 客户负责人(被转走)).toBe(丙.id);
+  });
+
+  it("开着交接确认：慢页同样报没转，不发起交接", async () => {
+    await 开交接确认();
+    const c = await 客户(市场.id);
+    快页转走(c, 甲);
+    const r = await 以(市场, () => assignSalesOwner([c], 乙.id));
+    expect(r).toMatchObject({ ok: true, updated: 0, missing: 0, 没转: 1, 交接中: 0 });
+    expect(await prisma.entHandover.count()).toBe(0);
+  });
+
+  it("开着交接确认、真删了：已不存在", async () => {
+    await 开交接确认();
+    const c = await 客户(市场.id);
+    mocks.挡字段前 = async () => { await 看全部(() => prisma.customer.delete({ where: { id: c } })); };
+    const r = await 以(市场, () => assignSalesOwner([c], 乙.id));
+    expect(r).toMatchObject({ ok: true, updated: 0, missing: 1, 交接中: 0 });
+    if (r.ok) expect(r.没转).toBeUndefined();
+  });
+
+  it("两页不重叠（快页全做完慢页才点）：过不了转让权限，被拦下，客户不动", async () => {
+    const c = await 客户(市场.id);
+    await 以(市场, () => assignSalesOwner([c], 甲.id));
+    expect(await 以(市场, () => assignSalesOwner([c], 乙.id))).toEqual({ ok: false, error: "只能转出自己的或直属下属的客户；别的找系统管理员转" });
+    expect(await 客户负责人(c)).toBe(甲.id);
+  });
+
+  describe("提示原文（批量分配那条）", () => {
+    const 基 = { updated: 0, unchanged: 0, missing: 0 };
+    it("被转走", () => {
+      expect(批量结果说法({ ...基, 没转: 1 }, "已转给 销售甲某")).toBe("已转给 销售甲某：0 条，1 条刚被别人改了负责人，没转");
+    });
+    it("真删了", () => {
+      expect(批量结果说法({ ...基, missing: 1 }, "已转给 销售甲某")).toBe("已转给 销售甲某：0 条，1 条已不存在（可能已删除）");
+    });
+    it("外层被转走和进事务后被改走，合成一句", () => {
+      expect(批量结果说法({ ...基, updated: 1, 没转: 1, 带走: { 计划和待办: 0, 商机: 0, 没转成: 2 } }, "已转给 销售甲某")).toBe("已转给 销售甲某：1 条，3 条刚被别人改了负责人，没转");
+    });
+  });
+});
+
+describe("市场转销售：客户层三个入口的通知也写条数（P-转-10，口径同项目分配）", () => {
+  const 句 = "客户上还有原负责人 2 条未完成待办、1 条未完成计划";
+  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
+  const 分配 = async (u: 人) => (await 通知们(u.id)).filter((n) => n.kind === "分配");
+  const 交接 = async (u: 人) => (await 通知们(u.id)).filter((n) => n.kind === "交接");
+  const 市场带活 = async () => { const c = await 客户(市场.id); await 造活(c, 市场.id); await 待办(c, 乙.id, "同事的不算"); return c; };
+  /** 渠运是市场角色，改得了客户资料：整表保存走这条 */
+  const 渠运带活 = async () => {
+    const u = await 造人("qy", "渠运同事", "SALES", "channel_ops");
+    const c = await 客户(u.id);
+    await 造活(c, u.id);
+    const r = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
+    const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
+    return { u, c, r, base };
+  };
+  const 存 = (x: Awaited<ReturnType<typeof 渠运带活>>, 给: 人, updatedAt: Date) =>
+    以(x.u, () => saveCustomer({ id: x.c, updatedAt: updatedAt.toISOString(), base: x.base, ...x.base, salesOwnerId: 给.id } as unknown as Parameters<typeof saveCustomer>[0]));
+
+  it("批量转一位：正文就是这句，只发接手人", async () => {
+    const c = await 市场带活();
+    await 以(市场, () => assignSalesOwner([c], 甲.id));
+    const [n, ...多] = await 分配(甲);
+    expect(多).toEqual([]);
+    expect(n.body).toBe(句);
+    expect(await 分配(市场)).toEqual([]);
+  });
+
+  it("批量转几位：名单后面接一句，合起来数", async () => {
+    const a = await 市场带活();
+    const b = await 市场带活();
+    await 以(市场, () => assignSalesOwner([a, b], 甲.id));
+    const [n] = await 分配(甲);
+    const 名 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).name;
+    expect(n.body).toBe(`${await 名(a)}、${await 名(b)}。客户上还有原负责人 4 条未完成待办、2 条未完成计划`);
+  });
+
+  it("一批混着销售的客户：销售那位带走了，不算", async () => {
+    const a = await 市场带活();
+    const b = await 客户(乙.id);
+    await 待办(b, 乙.id);
+    await 以(总管, () => assignSalesOwner([a, b], 甲.id));
+    expect((await 分配(甲))[0].body).toContain(句);
+  });
+
+  it("客户页单字段改负责人", async () => {
+    const c = await 市场带活();
+    await 以(市场, () => patchCustomer(c, "salesOwnerId", 甲.id));
+    expect((await 分配(甲))[0].body).toBe(句);
+  });
+
+  it("编辑表单改负责人（直接存）", async () => {
+    const x = await 渠运带活();
+    expect(await 存(x, 甲, x.r.updatedAt)).toMatchObject({ ok: true });
+    expect((await 分配(甲))[0].body).toBe(句);
+  });
+
+  it("编辑表单改负责人（别人先改了别的字段，合并存）", async () => {
+    const x = await 渠运带活();
+    await prisma.customer.update({ where: { id: x.c }, data: { remark: "同事先改的" } });
+    expect(await 存(x, 甲, x.r.updatedAt)).toMatchObject({ ok: true });
+    expect(await 客户负责人(x.c)).toBe(甲.id);
+    expect((await 分配(甲))[0].body).toBe(句);
+  });
+
+  it("确认交接：接手人发起时那条就写，确认后发起人那条也写（按确认那刻数）", async () => {
+    await 开交接确认();
+    const c = await 市场带活();
+    await 以(总管, () => assignSalesOwner([c], 甲.id));
+    expect((await 交接(甲))[0].body).toBe(`确认之前这些客户还在原负责人名下，确认后才转到你名下。${句}`);
+    await 待办(c, 市场.id, "发起后又多一条");
+    const h = (await 以(甲, () => 待确认的交接())).等我确认[0];
+    await 以(甲, () => 确认交接(h.id));
+    const 确认那条 = (await 交接(总管)).find((n) => n.title.includes("确认接手"));
+    expect(确认那条?.body).toBe("客户上还有原负责人 3 条未完成待办、1 条未完成计划");
+    // 原负责人那条只说客户已交出去
+    const 原那条 = (await 交接(市场)).find((n) => n.title.includes("已交给"));
+    expect(原那条?.body ?? "").toBe("");
+  });
+
+  it("都是 0 不加：批量转、确认交接", async () => {
+    const c = await 客户(市场.id);
+    await 待办(c, 市场.id, `某某${收回提醒尾}`);
+    await 以(市场, () => assignSalesOwner([c], 甲.id));
+    expect((await 分配(甲))[0].body).toBe("");
+    await 开交接确认();
+    const d = await 客户(市场.id);
+    await 以(总管, () => assignSalesOwner([d], 乙.id));
+    expect((await 交接(乙))[0].body).toBe("确认之前这些客户还在原负责人名下，确认后才转到你名下。");
+  });
+
+  it("销售转销售不加：批量转、改负责人、确认交接", async () => {
+    const a = await 客户(乙.id);
+    await 造活(a, 乙.id);
+    await 以(总管, () => assignSalesOwner([a], 甲.id));
+    const b = await 客户(乙.id);
+    await 造活(b, 乙.id);
+    await 以(乙, () => patchCustomer(b, "salesOwnerId", 甲.id));
+    for (const n of await 分配(甲)) expect(n.body).not.toContain("未完成");
+    expect(await 分配(甲)).toHaveLength(2);
+
+    await 开交接确认();
+    const c = await 客户(乙.id);
+    await 造活(c, 乙.id);
+    await 以(总管, () => assignSalesOwner([c], 丙.id));
+    const h = (await 以(丙, () => 待确认的交接())).等我确认[0];
+    await 以(丙, () => 确认交接(h.id));
+    for (const n of [...(await 交接(丙)), ...(await 交接(总管)), ...(await 交接(乙))]) expect(n.body).not.toContain("未完成");
+  });
+
+  it("接手的不是销售（市场转市场管理）不加", async () => {
+    const 市场二 = await 造人("mkt2", "市场二", "SALES", "marketing_mgr");
+    const c = await 市场带活();
+    await 以(总管, () => assignSalesOwner([c], 市场二.id));
+    expect((await 分配(市场二))[0].body).not.toContain("未完成");
+  });
+
+  it("离职交接确认不加", async () => {
+    const c = await 市场带活();
+    const h = await prisma.entHandover.create({ data: { kind: "离职", way: "转交", fromUserId: 市场.id, toUserId: 甲.id, byUserId: 总管.id, customerIds: JSON.stringify([c]), counts: JSON.stringify({ 客户: 1 }) } });
+    expect(await 以(甲, () => 确认交接(h.id))).toMatchObject({ ok: true });
+    for (const n of await 交接(总管)) expect(n.body).not.toContain("未完成");
   });
 });
