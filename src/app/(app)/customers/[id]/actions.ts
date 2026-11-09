@@ -282,7 +282,7 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 删之前先取内容：审计要记类型和内容。删了不给本人撤回（11-09 删 restoreFollowUp），要找回只能总管理去回收站恢复
     const 待删 = await prisma.followUp.findUnique({ where: { id } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
-    // 企业版 V3.5.1：负责人本人或系统管理员能删沟通（软删进回收站）。本人刚记的不再例外（P-沟通-01），只有 AI 卡片撤销那一条放行
+    // 企业版：系统管理员或身为负责人的管理能删沟通（软删进回收站，M-权限-09 原口径 11-09，销售负责人本人也删不了）。本人刚记的不再例外（P-沟通-01），只有 AI 卡片撤销那一条放行
     if (!(在卡片撤销里(id) && 卡片刚记的能撤(me, 待删)) && !(await 能删沟通(me, { customerId: 待删.customerId, id }))) return { ok: false as const, error: 不能删沟通话 };
     // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（回收站恢复时按跟进补回来）
     if (软删开着()) await prisma.followUp.update({ where: { id }, data: { deletedAt: new Date() } });
