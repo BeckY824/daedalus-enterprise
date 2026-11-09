@@ -227,7 +227,8 @@ export type SaveConflict = {
 };
 
 export type SaveCustomerResult =
-  | { ok: true; id: string; 带走?: 带走数 }
+  /** 交接中 / 交接已在路上：编辑里换了负责人、交接要确认开着时，负责人先不换，等接手人确认（11-09，同批量转让） */
+  | { ok: true; id: string; 带走?: 带走数; 交接中?: number; 交接已在路上?: number }
   /** 同号协同 = 没新建，这次录的已写进现有项目（error 是给添加人的反馈，不是出错） */
   | { ok: false; error: string; conflict?: SaveConflict; 同号协同?: true };
 
@@ -579,6 +580,13 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     const 挡 = await 挡字段(me.id, 动了);
     if (挡) return { ok: false, error: 挡 };
   }
+  /*
+    编辑里换了负责人、交接要确认开着（转给自己除外）：同批量转让一条路（11-09）。
+    负责人这一格先按原样存，别的格照存；存完再发起交接，接手人确认后才换（带走 / 通知都在确认那一步）
+  */
+  const 交接给 = 改前 && salesOwnerId !== 改前.salesOwnerId && (await 转让走交接(me, salesOwnerId)) ? salesOwnerId : null;
+  if (交接给 && 改前?.salesOwnerId) data.salesOwnerId = 改前.salesOwnerId;
+  const 发起交接 = async () => (交接给 && input.id ? 交接结果(await 发起转让交接(me, [input.id], 交接给, 0, null)) : {});
 
   if (!input.id) {
     /*
@@ -669,7 +677,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     if (改前 && 改前.salesOwnerId !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
     revalidateCustomer(input.id);
     await 客户存了推项目(me, input.id);
-    return { ok: true, id: input.id, 带走 };
+    return { ok: true, id: input.id, 带走, ...(await 发起交接()) };
   }
 
   /**
@@ -727,7 +735,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     if (!mine.length) {
       await 改外贸档案(me, input.id, data.name, 档案.data, b.customer);
       await 客户存了推项目(me, input.id);
-      return { ok: true, id: input.id };
+      return { ok: true, id: input.id, ...(await 发起交接()) };
     }
 
     // 只写我改动的那几个字段，对方改的原样保留
@@ -755,7 +763,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
       revalidateCustomer(input.id);
       await 客户存了推项目(me, input.id);
-      return { ok: true, id: input.id, 带走 };
+      return { ok: true, id: input.id, 带走, ...(await 发起交接()) };
     }
   }
 
@@ -1128,7 +1136,7 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 本来就归他的不算「改动」，分开统计才对得上操作人看到的选中条数
   const already = await prisma.customer.count({ where: { id: { in: ids }, salesOwnerId } });
   // 企业版「交接中」：转给别人的先不换负责人，等接手人确认（转给自己 = 自己就是接手人，不用确认）
-  if (salesOwnerId !== me.id && (await 交接要确认())) return 发起转让交接(me, ids, salesOwnerId, already, reason);
+  if (await 转让走交接(me, salesOwnerId)) return 发起转让交接(me, ids, salesOwnerId, already, reason);
   await 钉住老签约();
   // 先记下每位原来归谁：他们没做完的活要跟着走（排查 B3）
   const 换人的 = await prisma.customer.findMany({
@@ -1182,6 +1190,14 @@ async function 没转和不存在(ids: string[], 算过: number): Promise<{ miss
  * 已经在另一笔交接里的客户这次不再发起：同一位客户不能同时交给两个人（查和写在同一笔事务里，两人同时发起只成一笔）。
  * 只读的客户（虚线下属的）上面 虚线只读挡 已经整批拦了；企业版没有互看，这里看得到的就是改得动的
  */
+/** 换负责人要不要先走交接：企业版「交接要确认」开着、转给的不是自己（转给自己 = 自己就是接手人）。批量转让、编辑页、就地改同一句（11-09） */
+async function 转让走交接(me: { id: string }, to: string): Promise<boolean> {
+  return to !== me.id && (await 交接要确认());
+}
+function 交接结果(r: BulkResult): { 交接中?: number; 交接已在路上?: number } {
+  return r.ok ? { 交接中: r.交接中 ?? 0, 交接已在路上: r.交接已在路上 ?? 0 } : {};
+}
+
 async function 发起转让交接(me: { id: string; name: string }, ids: string[], to: string, already: number, reason: string | null): Promise<BulkResult> {
   const b = await getBusiness();
   const 候选 = await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: to } }, select: { id: true, salesOwnerId: true } });
@@ -1630,7 +1646,7 @@ export type PatchableKey = (typeof PATCHABLE)[number];
  * 只改一个字段。和 saveCustomer 的整表提交不同，单字段写入天然不会覆盖别人改的其它字段，
  * 所以不需要快照比对；留痕照记。
  */
-export async function patchCustomer(id: string, key: PatchableKey, value: string | null): Promise<{ ok: true; 带走?: 带走数 } | { ok: false; error: string }> {
+export async function patchCustomer(id: string, key: PatchableKey, value: string | null): Promise<{ ok: true; 带走?: 带走数; 交接中?: number; 交接已在路上?: number } | { ok: false; error: string }> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!PATCHABLE.includes(key) || (企业版才有的格.includes(key) && !企业版())) return { ok: false, error: "这个字段不能在这里改" };
@@ -1696,6 +1712,15 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     if (typeof v !== "string" || !v || !(await 在职(v))) return { ok: false, error: "负责人不存在或已停用" };
     const 不行 = await 不能当负责人(v);
     if (不行) return { ok: false, error: 不行 };
+    // 交接要确认开着、转给别人：同批量转让，先发起交接，负责人不换（11-09）
+    if (await 转让走交接(me, v)) {
+      const 现 = await prisma.customer.findUnique({ where: { id }, select: { salesOwnerId: true } });
+      if (!现) return { ok: false, error: `这条${b.customer}已被删除` };
+      if (现.salesOwnerId !== v) {
+        const r = await 发起转让交接(me, [id], v, 0, null);
+        return r.ok ? { ok: true, ...交接结果(r) } : r;
+      }
+    }
     data.salesOwnerId = v;
   } else if (key === "channelOwnerId") {
     // 清空 = 恢复跟着推荐链走；给了人 = 手工钉死。只动这一条学员，不影响任何其他人
