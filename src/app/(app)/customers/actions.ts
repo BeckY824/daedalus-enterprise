@@ -1128,7 +1128,8 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 本来就归他的不算「改动」，分开统计才对得上操作人看到的选中条数
   const already = await prisma.customer.count({ where: { id: { in: ids }, salesOwnerId } });
   // 企业版「交接中」：转给别人的先不换负责人，等接手人确认（转给自己 = 自己就是接手人，不用确认）
-  if (salesOwnerId !== me.id && (await 交接要确认())) return 发起转让交接(me, ids, salesOwnerId, already, reason);
+  // 市场成员的客户分给销售不走确认（P-转-17），当场转、只通知；一批里混着别人的客户就整批照旧确认
+  if (salesOwnerId !== me.id && (await 交接要确认()) && !(await 都是市场转销售(ids, salesOwnerId))) return 发起转让交接(me, ids, salesOwnerId, already, reason);
   await 钉住老签约();
   // 先记下每位原来归谁：他们没做完的活要跟着走（排查 B3）
   const 换人的 = await prisma.customer.findMany({
@@ -1182,6 +1183,17 @@ async function 没转和不存在(ids: string[], 算过: number): Promise<{ miss
  * 已经在另一笔交接里的客户这次不再发起：同一位客户不能同时交给两个人（查和写在同一笔事务里，两人同时发起只成一笔）。
  * 只读的客户（虚线下属的）上面 虚线只读挡 已经整批拦了；企业版没有互看，这里看得到的就是改得动的
  */
+/** 这批要换人的客户全在市场成员手里、接手人是销售（P-转-17） */
+async function 都是市场转销售(ids: string[], 接手人: string): Promise<boolean> {
+  const org = await 权限组织();
+  if (!org) return false;
+  const 们 = await prisma.customer.findMany({
+    where: { id: { in: ids }, salesOwnerId: { not: 接手人 } },
+    select: { salesOwnerId: true, pool: { select: { customerId: true } } },
+  });
+  return 们.length > 0 && 们.every((c) => 算市场转客户(org, c, 接手人));
+}
+
 async function 发起转让交接(me: { id: string; name: string }, ids: string[], to: string, already: number, reason: string | null): Promise<BulkResult> {
   const b = await getBusiness();
   const 候选 = await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: to } }, select: { id: true, salesOwnerId: true } });

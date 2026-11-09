@@ -57,6 +57,15 @@ async function 客户上还留着(们: readonly 分配条[]): Promise<string | n
 /** 通知正文后面接一句 */
 const 接一句 = (正文: string, 句: string | null) => (!句 ? 正文 : !正文 ? 句 : 正文.endsWith("。") ? `${正文}${句}` : `${正文}。${句}`);
 
+/** 市场转给销售时客户也一起转了（P-转-17）：一位写名字，几位写个数；没转客户回 null */
+async function 客户也转给你(们: readonly 分配条[]): Promise<string | null> {
+  const ids = [...new Set(们.flatMap((c) => (c.留下 ? [c.留下.customerId] : [])))];
+  if (!ids.length) return null;
+  if (ids.length > 1) return `${ids.length} 位客户也转给你`;
+  const c = await 看全部(() => prisma.customer.findUnique({ where: { id: ids[0] }, select: { name: true } }));
+  return c ? `客户「${c.name}」也转给你` : "客户也转给你";
+}
+
 /**
  * 线索分出去了：按接手人合并成一条（批量自动分配 10 条给同一个人 = 他收一条「自动分配给你 10 条新线索」）。
  * 自动 = 自动分配 / 批量自动分配 / 建档向导的自动分配；手动 = 指定分配
@@ -82,7 +91,7 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
       await notify([toUserId], {
         kind: 自动 ? "自动分配" : "分配",
         title: n === 1 ? `${头}一条新线索：${名们[0]}` : `${头} ${n} 条新线索`,
-        body: 接一句(n === 1 ? (自动 ? `${谁点的.name} 点的自动分配，轮到了你。` : "") : 名单(名们), await 客户上还留着(们)),
+        body: 接一句(接一句(n === 1 ? (自动 ? `${谁点的.name} 点的自动分配，轮到了你。` : "") : 名单(名们), await 客户也转给你(们)), await 客户上还留着(们)),
         link: 只一条项目 ? `/projects/${们[0].projectId}` : "/leads",
         key: `assign:${自动 ? "auto" : "manual"}:${们.map((c) => c.projectId ?? c.leadId).sort().join(",").slice(0, 400)}:${分钟()}`,
       });
@@ -342,7 +351,7 @@ export async function 项目分给你通知(谁点的: 人, toUserId: string, pr
     await notify([toUserId], {
       kind: "分配",
       title: `${谁点的.name} 把项目分给你：${项目名}`,
-      body: 接一句(`客户：${c.name}`, 留下 ? await 客户上还留着([{ toUserId, 留下 }]) : null),
+      body: 接一句(接一句(`客户：${c.name}`, 留下 ? "客户也转给你" : null), 留下 ? await 客户上还留着([{ toUserId, 留下 }]) : null),
       link: c.salesOwnerId === toUserId ? `/customers/${customerId}` : `/projects/${projectId}`,
       key: `project-assign:${projectId}:${toUserId}:${分钟()}`,
     });

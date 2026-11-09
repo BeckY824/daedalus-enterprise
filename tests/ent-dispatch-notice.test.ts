@@ -166,13 +166,38 @@ describe("assignSalesOwner（直接换负责人）", () => {
     expect(await 分配通知们()).toEqual([]);
   });
 
-  it("「交接要确认」开着：走交接通知，不发分给你（确认前还不是他的）", async () => {
+  it("「交接要确认」开着、销售转销售：走交接通知，不发分给你（确认前还不是他的）", async () => {
     await setSetting(规则.交接要确认.key, true);
     invalidateSettingsCache();
-    const c = await 客户("客户一", 运营);
-    expect(await assignSalesOwner([c], 销售)).toMatchObject({ ok: true });
+    const c = await 客户("客户一", 销售);
+    当(老板, "老板", "ADMIN");
+    expect(await assignSalesOwner([c], 另一销售)).toMatchObject({ ok: true });
     expect(await 分配通知们()).toEqual([]);
-    expect(await prisma.entNotice.count({ where: { kind: "交接", userId: 销售 } })).toBe(1);
+    expect(await prisma.entNotice.count({ where: { kind: "交接", userId: 另一销售 } })).toBe(1);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(销售);
+  });
+
+  it("「交接要确认」开着、市场分给销售（P-转-17）：不走确认，当场转、只发分给你", async () => {
+    await setSetting(规则.交接要确认.key, true);
+    invalidateSettingsCache();
+    const a = await 客户("客户一", 运营);
+    const b = await 客户("客户二", 运营, "13900000002");
+    expect(await assignSalesOwner([a, b], 销售)).toMatchObject({ ok: true, updated: 2 });
+    expect((await prisma.customer.findMany({ where: { id: { in: [a, b] } } })).map((c) => c.salesOwnerId)).toEqual([销售, 销售]);
+    expect(await prisma.entHandover.count()).toBe(0);
+    expect(await prisma.entNotice.count({ where: { kind: "交接" } })).toBe(0);
+    expect(await 分配通知们()).toMatchObject([{ userId: 销售, link: "/customers" }]);
+  });
+
+  it("「交接要确认」开着、一批里混着销售的客户：整批照旧走确认", async () => {
+    await setSetting(规则.交接要确认.key, true);
+    invalidateSettingsCache();
+    const a = await 客户("客户一", 运营);
+    const b = await 客户("客户二", 另一销售, "13900000002");
+    当(老板, "老板", "ADMIN");
+    expect(await assignSalesOwner([a, b], 销售)).toMatchObject({ ok: true });
+    expect(await 分配通知们()).toEqual([]);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: a } })).salesOwnerId).toBe(运营);
   });
 });
 
@@ -306,6 +331,7 @@ describe("客户页新建项目", () => {
     expect(们).toHaveLength(1);
     expect(们[0]).toMatchObject({ userId: 销售, link: `/customers/${c}` });
     expect(们[0].body).toContain("页客户甲");
+    expect(们[0].body).toContain("客户也转给你"); // P-转-17
     expect(JSON.stringify(们[0])).not.toContain("13900000001");
     // 为什么能链客户详情：接手人真身份下查得到这位客户
     await setSetting("enterprise.rule.org_scope", true);
