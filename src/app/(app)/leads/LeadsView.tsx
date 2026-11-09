@@ -1,5 +1,6 @@
 "use client";
 
+import CopyValue from "@/components/CopyValue";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { requiredText } from "@/lib/form-validation";
 
@@ -215,9 +216,9 @@ export default function LeadsView({
     ...(不问归属 ? [] : [{ title: "负责人", key: "ownerName", dataIndex: "ownerName", width: 120, render: (v: string) => <UserCell name={v} size={24} /> }]),
     { title: "创建时间", key: "createdAt", dataIndex: "createdAt", width: 116, render: (v) => <span className="muted nowrap">{smartTime(v)}</span> },
 
-    { title: "联系电话", key: "phone", dataIndex: "phone", width: 140, 默认: false, render: (v) => v ?? <span className="muted">—</span> },
+    { title: "联系电话", key: "phone", dataIndex: "phone", width: 140, 默认: false, render: (v) => (v ? <CopyValue 叫法="电话" value={v} style={{ maxWidth: 120 }} /> : <span className="muted">—</span>) },
     { title: "所属行业", key: "industry", dataIndex: "industry", width: 130, 默认: false, render: (v) => <span className="muted">{v ?? "—"}</span> },
-    { title: "邮箱", key: "email", dataIndex: "email", width: 200, 默认: false, render: (v) => v ?? <span className="muted">—</span> },
+    { title: "邮箱", key: "email", dataIndex: "email", width: 200, 默认: false, render: (v) => (v ? <CopyValue 种类="邮箱" 叫法="邮箱" value={v} style={{ maxWidth: 180 }} /> : <span className="muted">—</span>) },
     {
       title: "", key: "act", width: 能自动分配 ? 210 : 150, 常驻: true, fixed: "right",
       render: (_, r) =>

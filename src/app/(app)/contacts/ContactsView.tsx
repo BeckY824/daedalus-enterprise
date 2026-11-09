@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Space, Avatar, Tag, Select, Tooltip } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
+import CopyValue from "@/components/CopyValue";
 import ResetFilters from "@/components/ResetFilters";
 import { 列表不问归属ID } from "@/lib/solo";
 import { 关系候选 } from "@/lib/business-config";
@@ -142,9 +143,9 @@ export default function ContactsView({
       title: "电话 · 微信", 列名: "电话 · 微信", key: "phone", width: 220,
       render: (_, r) =>
         r.phone || r.wechat ? (
-          <span className="nowrap">
-            {r.phone ?? "—"}
-            {r.wechat && <span className="muted"> · {r.wechat}</span>}
+          <span className="copy-val-row" style={{ maxWidth: 200 }}>
+            {r.phone ? <CopyValue 叫法="电话" value={r.phone} /> : "—"}
+            {r.wechat && <span className="muted copy-val-t"> · {r.wechat}</span>}
           </span>
         ) : (
           <span className="muted">—</span>
@@ -153,7 +154,7 @@ export default function ContactsView({
     ...(不问归属 ? [] : [{ title: "负责人", 列名: "负责人", key: "ownerName", dataIndex: "ownerName", width: 140, render: (v: string, r: Row) => (r.未归属 ? <span className="muted">—</span> : <UserCell name={v} size={24} />) }]),
 
     { title: b.fields.school, key: "school", dataIndex: "school", width: 180, 默认: false, render: (v, r) => <span className="muted">{(!r.未归属 && v) || "—"}</span> },
-    { title: "邮箱", key: "email", dataIndex: "email", width: 220, 默认: false, render: (v) => v ?? <span className="muted">—</span> },
+    { title: "邮箱", key: "email", dataIndex: "email", width: 220, 默认: false, render: (v) => (v ? <CopyValue 种类="邮箱" 叫法="邮箱" value={v} style={{ maxWidth: 200 }} /> : <span className="muted">—</span>) },
   ];
 
   function search(v: string) {

@@ -61,8 +61,8 @@ export default function InlineField({
    */
   空时横线?: boolean;
   /**
-   * 有值时换个样子显示（11-04：企业版客户电话就地改，号码照旧点了能拨）。
-   * 里面的链接点了只拨号、不进编辑；点这一行别处才进编辑
+   * 有值时换个样子显示（11-09：企业版电话、邮箱是文字 + 复制键）。
+   * 复制键点了只复制、不进编辑（CopyValue 自己拦）；点这一行别处才进编辑
    */
   显示?: (v: string) => React.ReactNode;
 }) {
@@ -135,13 +135,13 @@ export default function InlineField({
         <div className="rec-field-k">{label}</div>
         {/* 一行、放不下打省略号、悬停看全文（11-04 用户：「尽量所有信息都在一行显示完整。除了备注」）；
             悬停浮层是全站的 TruncTip，量到真截了才出。多行的备注照旧换行。
-            换样子显示的（电话链接）省略号打在链接自己身上（.rec-field-link），链接不出界（11-04 排版闸门） */}
+            换样子显示的（电话、邮箱）省略号打在文字自己身上，复制键不被挤出去（.copy-val） */}
         <div
           className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}${kind === "textarea" ? "" : " is-line"}`}
           title={!display && 空时横线 && !只读 ? placeholder : undefined}
         >
           {显示 && typeof display === "string" && display ? (
-            <span className="rec-field-link" onClick={(e) => (e.target as HTMLElement).closest("a") && e.stopPropagation()}>{显示(display)}</span>
+            <span className="rec-field-link">{显示(display)}</span>
           ) : (
             display || (只读 || 空时横线 ? 空值符 : placeholder)
           )}

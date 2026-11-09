@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { App, Alert, Button, Input, InputNumber, Modal, Select, Space, Steps } from "antd";
+import CopyValue from "@/components/CopyValue";
 import DatePicker from "@/components/BusinessDatePicker";
 import { PageHead } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -617,7 +618,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<
   // 负责人已离职（11-03 C4-5）：不叫人找他，指他的直属上级（没有就系统管理员）
   const 离职找 = 撞?.负责人已离职找 ?? "";
   // 同名同事不止一位时不猜是谁，只写名字。
-  // 企业版登录名放在 email 列里、多半不是邮箱（11-03 A2-6）：像邮箱的才给 mailto，不然只写名字
+  // 企业版登录名放在 email 列里、多半不是邮箱（11-03 A2-6）：像邮箱的才给复制键，不然只写名字
   const 同名 = users.filter((u) => u.name === 负责人);
   const 邮箱 = 同名.length === 1 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(同名[0].email ?? "") ? 同名[0].email : "";
   return (
@@ -640,7 +641,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<
             {在公海 && !我退的 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
             {查.状态 === "重复" && 离职找 && <span style={{ color: "var(--text-muted)" }}>负责人已离职，请联系 {离职找}</span>}
             {查.状态 === "重复" && 负责人 && !离职找 && (邮箱
-              ? <Button size="small" href={`mailto:${邮箱}`}>联系负责人：{负责人}</Button>
+              ? <CopyValue 种类="邮箱" 叫法="负责人邮箱" value={邮箱} 文字={`联系负责人：${负责人}`} style={{ color: "var(--text-muted)" }} />
               : <span style={{ color: "var(--text-muted)" }}>联系负责人：{负责人}</span>)}
           </Space>
           {协同}

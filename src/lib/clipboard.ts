@@ -16,7 +16,32 @@ export async function 复制文字(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
+    // 客户服务器可能不是 https：那里没有 navigator.clipboard，退回浏览器的老办法
+    return 老办法复制(text);
+  }
+}
+
+/** 放一个看不见的输入框、选中、execCommand("copy")。弹窗开着时放进弹窗里，不然焦点被弹窗抢回去就选不中了 */
+function 老办法复制(text: string): boolean {
+  if (typeof document === "undefined" || !document.body) return false;
+  const 原焦点 = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const 框 = document.createElement("textarea");
+  框.value = text;
+  框.readOnly = true;
+  框.setAttribute("aria-hidden", "true");
+  框.tabIndex = -1;
+  框.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none";
+  (原焦点?.closest('[role="dialog"]') ?? document.body).appendChild(框);
+  try {
+    框.focus({ preventScroll: true });
+    框.select();
+    框.setSelectionRange(0, text.length);
+    return document.execCommand("copy");
+  } catch {
     return false;
+  } finally {
+    框.remove();
+    原焦点?.focus({ preventScroll: true });
   }
 }
 

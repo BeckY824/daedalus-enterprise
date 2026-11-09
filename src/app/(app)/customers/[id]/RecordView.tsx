@@ -27,6 +27,7 @@ import {
   ThunderboltOutlined as AiOutlined,
 } from "@ant-design/icons";
 import { motion, AnimatePresence } from "motion/react";
+import CopyValue from "@/components/CopyValue";
 import InlineConfirm from "@/components/InlineConfirm";
 import { useMe } from "@/lib/me-client";
 import { UndoRecentFollow } from "@/components/FollowUndo";
@@ -103,18 +104,6 @@ type Entry =
   | { kind: "contract"; at: string; c: ContractRow };
 
 /** 负责人下拉的选项：现任不在候选里（管理员、已停用）时补进去，标上「（不在候选里）」，别显示成一串 id */
-/**
- * 企业版的电话 / 邮箱点一下就拨 / 写信（10-27 会议）。电话已在服务端过了脱敏器，打了码（带 *）的号拨不出去，只显示不加链接
- */
-function 号码链接({ kind, value }: { kind: "tel" | "mailto"; value: string }) {
-  if (kind === "tel") {
-    const 拨 = value.replace(/[^\d+]/g, "");
-    if (value.includes("*") || !拨) return <>{value}</>;
-    return <a href={`tel:${拨}`}>{value}</a>;
-  }
-  return <a href={`mailto:${value}`}>{value}</a>;
-}
-
 /** 联系方式那一行的叫法：字典里有就用字典的名字；自定义种类存成 custom:<叫法>，停用了也照样显示 */
 /** 企业版联系人卡上的「号码保护：已开启 / 已关闭」（10-31）：只展示，不能点；为什么开 / 关鼠标停上去看 */
 function 号码保护标签({ c, 客户 }: { c: ContactRow; 客户: Parameters<typeof 号码保护of>[1] }) {
@@ -1012,11 +1001,11 @@ export default function RecordView({
         <aside className={`rec-rail rec-card${去项目跟进 ? " rec-rail-blocks" : ""}`}>
           {/* 名字和头像不在这儿重画一遍：页头上已经有了（设计稿 12/PAGE 的「基本资料」卡第一行就是电话）。
               11-04 用户：所有字段点了直接改，不再摆「编辑全部」。电话也就地改：查重、打码号认回都在服务端；
-              点号码本身照旧拨号，点别处才进编辑 */}
+              点号码右边的小键复制，点别处才进编辑 */}
           {节("基本资料", undefined, undefined, <>
             {摆(customer.phone) && (
               <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
-                显示={企业 ? (v) => <号码链接 kind="tel" value={v} /> : undefined} />
+                显示={企业 ? (v) => <CopyValue 叫法="电话" value={v} /> : undefined} />
             )}
             {sourceLead && <div className="rec-field" style={{cursor:"default"}} data-testid="customer-lead-origin">
               <div className="rec-field-k">来源线索</div>
@@ -1057,7 +1046,7 @@ export default function RecordView({
               <>
                 {摆(档?.country) && <InlineField 空时横线={企业} customerId={customer.id} field="country" label="国家" value={档?.country ?? null} kind="combo" options={国家候选.flatMap((g) => g.国家).map((x) => ({ value: x, label: x }))} />}
                 {摆(档?.whatsapp) && <InlineField 空时横线={企业} customerId={customer.id} field="whatsapp" label="WhatsApp" value={档?.whatsapp ?? null} />}
-                {摆(档?.email) && <InlineField 空时横线={企业} customerId={customer.id} field="email" label="邮箱" value={档?.email ?? null} />}
+                {摆(档?.email) && <InlineField 空时横线={企业} customerId={customer.id} field="email" label="邮箱" value={档?.email ?? null} 显示={企业 ? (v) => <CopyValue 种类="邮箱" 叫法="邮箱" value={v} /> : undefined} />}
                 {摆(档?.wechat) && <InlineField 空时横线={企业} customerId={customer.id} field="wechat" label="微信" value={档?.wechat ?? null} />}
                 {摆(档?.alibabaId) && <InlineField 空时横线={企业} customerId={customer.id} field="alibabaId" label="阿里 ID" value={档?.alibabaId ?? null} />}
                 {摆(档?.source) && <InlineField 空时横线={企业} customerId={customer.id} field="source" label="来源" value={档?.source ?? null} kind="combo" options={b.sources.map((x) => ({ value: x, label: x }))} />}
@@ -1154,7 +1143,7 @@ export default function RecordView({
                       {c.号码们.map((m, i) => (
                         <div key={`${m.kind}-${i}`} className="rec-contact-line">
                           <span className="rec-contact-k">{号码叫法(号码种类, m.kind)}</span>
-                          <span className="rec-contact-v">{m.kind === "phone" || m.kind === "landline" ? <号码链接 kind="tel" value={m.value} /> : m.kind === "email" ? <号码链接 kind="mailto" value={m.value} /> : m.value}</span>
+                          <span className="rec-contact-v">{m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value}</span>
                         </div>
                       ))}
                       {c.号码们.length === 0 && 没留联系}
@@ -1165,8 +1154,8 @@ export default function RecordView({
                     </>
                   ) : (
                     <>
-                      {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><span className="rec-contact-v"><号码链接 kind="tel" value={c.phone} /></span></div>}
-                      {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><span className="rec-contact-v"><号码链接 kind="mailto" value={c.email} /></span></div>}
+                      {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><span className="rec-contact-v"><CopyValue 叫法="电话" value={c.phone} /></span></div>}
+                      {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><span className="rec-contact-v"><CopyValue 种类="邮箱" 叫法="邮箱" value={c.email} /></span></div>}
                       {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span><span className="rec-contact-v">{c.wechat}</span></div>}
                       {!c.phone && !c.email && !c.wechat && 没留联系}
                     </>
