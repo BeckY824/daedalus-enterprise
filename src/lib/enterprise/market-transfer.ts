@@ -28,10 +28,11 @@ export function 算市场转客户(org: 组织, 客户: { salesOwnerId: string; 
  * 客户连同名下全部项目、公海项目、联系人、进行中的商机交给销售；待办、计划还归市场（P-转-10）。
  * 被带走的项目不写分配记录（不占额度），转让痕记 随客户痕，「我分出去的」靠它显示。
  * 要在事务里、放开范围调（市场转走后就看不到这位客户了）；老签约要在事务外先钉住（钉住老签约 用全局连接），刚建的客户没有签约不用钉。
+ * 调用前客户要已经归 接手人：这里不写客户负责人。项目入口由 转客户给销售 在同一笔事务里写；
+ * 客户层是外层先改好，带走并记下 进事务后核对还归接手人才调（中间被人改走的，写在这里就把人家的改动盖掉了）。
  * 回带走了什么，连同清掉的待分配、补上的分配方式：客户层撤销按它原样还（还待分配状态）
  */
 export async function 市场转一位(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string) {
-  await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 接手人 } });
   const 带走 = await 带走一位(tx, customerId, 原, 接手人, 操作人, "assign", true, { 留下待办计划: true, 项目痕: 随客户痕 });
   // 带过来的都有负责人了：清掉待分配，不然批量里后面几条还会被当成没分的，再分给别人
   const 待分配 = await tx.project.findMany({ where: { customerId, ownerId: 接手人, awaitAssignAt: { not: null } }, select: { id: true, awaitAssignAt: true } });
@@ -45,6 +46,7 @@ export async function 市场转一位(tx: Prisma.TransactionClient, customerId: 
 
 /** 项目入口用：回 留下，分配通知据此告诉接手人客户上还有多少原负责人的活 */
 export async function 转客户给销售(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string): Promise<留下的活> {
+  await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 接手人 } });
   await 市场转一位(tx, customerId, 原, 接手人, 操作人, way);
   return { customerId, 原 };
 }

@@ -664,7 +664,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     const 带走 = 改前 && 改前.salesOwnerId !== data.salesOwnerId
       ? await 带走没做完的([{ customerId: input.id, 旧: 改前.salesOwnerId }], data.salesOwnerId, me.id)
       : undefined;
-    if (改前 && 改前.salesOwnerId !== data.salesOwnerId) await 分给你通知(me, data.salesOwnerId, [input.id]);
+    if (改前 && 改前.salesOwnerId !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId, [input.id]);
     revalidateCustomer(input.id);
     await 客户存了推项目(me, input.id);
     return { ok: true, id: input.id, 带走 };
@@ -749,7 +749,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       const 带走 = mine.includes("salesOwnerId")
         ? await 带走没做完的([{ customerId: input.id, 旧: current.salesOwnerId }], data.salesOwnerId, me.id)
         : undefined;
-      if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId) await 分给你通知(me, data.salesOwnerId, [input.id]);
+      if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId, [input.id]);
       revalidateCustomer(input.id);
       await 客户存了推项目(me, input.id);
       return { ok: true, id: input.id, 带走 };
@@ -1139,22 +1139,24 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
     const 已换 = new Set((await prisma.customer.findMany({ where: { id: { in: 换人的.map((c) => c.id) }, salesOwnerId }, select: { id: true } })).map((c) => c.id));
     return 换人的.filter((c) => 已换.has(c.id));
   });
-  const { 数: 带走, 记下: 带过来 } = await 带走并记下(换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, me.id);
-  await 改负责人通知(me, 换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId);
-  await 分给你通知(me, salesOwnerId, 换成了.map((c) => c.id));
+  const { 数: 带走, 记下: 带过来, 没转成 } = await 带走并记下(换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, me.id);
+  // 改完又被别人改走的不算转成：不通知、不计数、不进撤销（撤销会把别人的改动盖掉）
+  const 转成了 = 换成了.filter((c) => !没转成.includes(c.id));
+  await 改负责人通知(me, 转成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId);
+  await 分给你通知(me, salesOwnerId, 转成了.map((c) => c.id));
 
   if (res.count) {
     await recordAudit({
       user: me, action: "assign", entity: "Customer",
-      summary: `把 ${res.count} 名${b.customer}的销售负责人改为「${(await prisma.user.findUnique({ where: { id: salesOwnerId }, select: { name: true } }))?.name ?? salesOwnerId}」${reason ? `（${reason}）` : ""}`,
+      summary: `把 ${转成了.length} 名${b.customer}的销售负责人改为「${(await prisma.user.findUnique({ where: { id: salesOwnerId }, select: { name: true } }))?.name ?? salesOwnerId}」${reason ? `（${reason}）` : ""}${没转成.length ? `（${没转成.length} 名刚被别人改了负责人，没转）` : ""}`,
       // 原值也记下：撤销提示条过了 6 秒，还能照着这里手工改回去（排查 D1）
-      detail: { ids, salesOwnerId, 原负责人: 换成了.map((c) => ({ id: c.id, salesOwnerId: c.salesOwnerId })), ...(reason ? { 转让原因: reason } : {}) },
+      detail: { ids, salesOwnerId, 原负责人: 转成了.map((c) => ({ id: c.id, salesOwnerId: c.salesOwnerId })), ...(没转成.length ? { 没转成 } : {}), ...(reason ? { 转让原因: reason } : {}) },
     });
   }
   revalidateCustomer();
   return {
-    ok: true, updated: res.count, unchanged: already, missing: ids.length - res.count - already, 带走, 带过来,
-    原值: 换成了.map((c) => ({ id: c.id, 值: c.salesOwnerId })),
+    ok: true, updated: 转成了.length, unchanged: already, missing: ids.length - res.count - already, 带走, 带过来,
+    原值: 转成了.map((c) => ({ id: c.id, 值: c.salesOwnerId })),
   };
 }
 
@@ -1754,7 +1756,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   const 带走 = key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId
     ? await 带走没做完的([{ customerId: id, 旧: 原负责人 }], data.salesOwnerId as string, me.id)
     : undefined;
-  if (key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId) await 分给你通知(me, data.salesOwnerId as string, [id]);
+  if (key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId as string, [id]);
   revalidatePath(`/customers/${id}`);
   revalidatePath("/customers");
   await 客户存了推项目(me, id);

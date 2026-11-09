@@ -76,6 +76,7 @@ function bulkSummary(res: Extract<BulkResult, { ok: true }>, action: string): st
   const parts = [`${action}：${res.updated} 条`];
   if (res.unchanged) parts.push(`${res.unchanged} 条本来就是`);
   if (res.missing) parts.push(`${res.missing} 条已不存在（可能已删除）`);
+  if (res.带走?.没转成) parts.push(`${res.带走.没转成} 条刚被别人改了负责人，没转`);
   // 改负责人时原负责人没做完的活一起转了（排查 B3）。带走说法自带开头的逗号
   return parts.join("，") + 带走说法(res.带走);
 }

@@ -17,6 +17,8 @@ import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接卡点 } from "@/lib/project/blocker";
 import { 带走并记下 } from "@/lib/carry-over-db";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
 import { 待确认, 了结, 读ids, 能撤回别人的交接, type 交接种类 } from "@/lib/enterprise/handover-db";
 import { getBusiness } from "@/lib/business";
 import { 交接通知 } from "@/lib/enterprise/notice-sources";
@@ -34,6 +36,8 @@ export type 交接行 = {
   /** 企业版转让原因（字典「转让原因」，没选为空） */
   reason: string | null;
   个数: Record<string, number>;
+  /** 确认框里那句：这笔确认后什么转给接手人、什么留下，和 确认交接 实际做的一致 */
+  确认说明: string;
   /** 前几位客户的名字（接手人确认前要知道接的是谁）；客户总数另给 */
   客户: string[];
   客户总数: number;
@@ -60,6 +64,7 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
   if (!企业版()) return { 等我确认: [], 我发起的: [] };
   // 看全部还没确认的：总管理（11-01 只认业务角色，同 能撤回别人的交接）
   const 管 = await 能撤回别人的交接(me);
+  const org = await 权限组织();
   // 看全部：交接里的客户还不归接手人，限定着查他一个名字都拿不到
   return 看全部(async () => {
     const 行 = await prisma.entHandover.findMany({
@@ -78,6 +83,10 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
         id: h.id, kind: h.kind as 交接种类, way: h.way, reason: h.reason,
         从: 人.get(h.fromUserId) ?? "（已删除的成员）", 给: 人.get(h.toUserId) ?? "（已删除的成员）", 发起人: 人.get(h.byUserId) ?? "（已删除的成员）",
         自己的: h.fromUserId === h.byUserId,
+        // 转让里市场转给销售的待办、计划不搬（P-转-10）；离职和别的转让都带走。确认时只转不在公海的，这里同样按不在公海判
+        确认说明: h.kind === "转让" && org && 算市场转客户(org, { salesOwnerId: h.fromUserId, pool: null }, h.toUserId)
+          ? "确认后这些客户和名下的联系人、沟通记录、项目都转到你名下，原负责人没做完的待办和计划不转过来，你也能看到。"
+          : "确认后这些客户和名下的联系人、沟通记录、项目，连同原负责人没做完的待办和计划，都转到你名下。",
         个数: 读个数(h.counts), 客户: ids.slice(0, 列几位).map((id) => 名.get(id)).filter((x): x is string => !!x), 客户总数: ids.length,
         createdAt: h.createdAt.toISOString(),
         我能确认: h.toUserId === me.id, 我能撤回: h.byUserId === me.id || 管,
@@ -147,16 +156,18 @@ export async function 确认交接(id: string): Promise<结果> {
   }));
   if (!换) return { ok: false, error: 已处理 };
   // 名下的活、项目跟着走，每位记一行换负责人（操作人记发起的那位：是他定的转给谁）
-  const { 数, 记下 } = await 带走并记下(换.map((customerId) => ({ customerId, 旧: h.fromUserId })), me.id, h.byUserId);
+  const { 数, 记下, 没转成 } = await 带走并记下(换.map((customerId) => ({ customerId, 旧: h.fromUserId })), me.id, h.byUserId);
+  // 确认后又被别人改走的不算接手（带走并记下 什么都没动）
+  const 转成了 = 换.filter((id) => !没转成.includes(id));
   const 从 = (await prisma.user.findUnique({ where: { id: h.fromUserId }, select: { name: true } }))?.name ?? h.fromUserId;
   await recordAudit({
     user: me, action: "assign", entity: "Customer",
-    summary: `确认接手「${从}」转来的 ${换.length} 名${b.customer}，销售负责人改为「${me.name}」` + (ids.length > 换.length ? `（${ids.length - 换.length} 名在交接期间已换了人或进了公海，没动）` : ""),
-    detail: { 交接: h.id, ids: 换, salesOwnerId: me.id, 原负责人: 换.map((id) => ({ id, salesOwnerId: h.fromUserId })), 带走: 数, 带过来: 记下 },
+    summary: `确认接手「${从}」转来的 ${转成了.length} 名${b.customer}，销售负责人改为「${me.name}」` + (ids.length > 转成了.length ? `（${ids.length - 转成了.length} 名在交接期间已换了人或进了公海，没动）` : ""),
+    detail: { 交接: h.id, ids: 转成了, salesOwnerId: me.id, 原负责人: 转成了.map((id) => ({ id, salesOwnerId: h.fromUserId })), 带走: 数, 带过来: 记下 },
   });
   await 交接通知(me, h.id, "已确认");
   刷新();
-  return { ok: true, 客户: 换.length };
+  return { ok: true, 客户: 转成了.length };
 }
 
 /** 发起人或总管理撤回：什么都不转，数据留在原负责人名下。离职的成员仍是停用的（要换接手人就再办一次离职，或恢复成员） */
