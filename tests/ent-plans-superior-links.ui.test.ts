@@ -96,6 +96,16 @@ it("进不了的客户那行：不给改、删，进得去的照旧给", async (
   expect(errors).toEqual([]); await page.close();
 });
 
+it("改不了的客户那行：不给 ✓（计划、待办都是），进得去的照旧给；标题还对齐", async () => {
+  const { page, errors } = await 打开();
+  await page.getByRole("button", { name: "完成 回访p2" }).waitFor();
+  expect(await page.getByRole("button", { name: "完成 回访p1" }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: "完成 打电话" }).count()).toBe(0);
+  const 左 = (标题: string) => page.locator(".plan-row-t", { hasText: 标题 }).evaluate((e) => e.getBoundingClientRect().left);
+  expect(await 左("回访p1")).toBe(await 左("回访p2"));
+  expect(errors).toEqual([]); await page.close();
+});
+
 it("市场进不了详情的项目：下一步只写项目名，不给链接；进得去的照旧", async () => {
   const { page, errors } = await 打开();
   await page.getByText("进不了的下一步").waitFor();

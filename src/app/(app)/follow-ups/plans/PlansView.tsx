@@ -577,14 +577,19 @@ function 组块({
               ref={x.key === 刚建 ? 刚建那行 : undefined}
               className={`plan-row${完了 ? " plan-row-done" : ""}${x.key === 刚建 ? " row-fresh" : ""}`}
             >
-              <Button
-                type="text"
-                size="small"
-                aria-label={`完成 ${x.标题}`}
-                icon={<CheckCircleOutlined style={{ color: 完了 ? "var(--success)" : undefined }} />}
-                disabled={完了}
-                onClick={() => 完成(x)}
-              />
+              {/* 改不了的（下属留下、我没在上面负责项目）：点了只报错，不摆 ✓，留个空位让标题对齐 */}
+              {改不了.has(x.customerId) ? (
+                <span aria-hidden style={{ flex: "none", width: 24 }} />
+              ) : (
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label={`完成 ${x.标题}`}
+                  icon={<CheckCircleOutlined style={{ color: 完了 ? "var(--success)" : undefined }} />}
+                  disabled={完了}
+                  onClick={() => 完成(x)}
+                />
+              )}
               <span className="plan-row-m">
                 <span className="plan-row-t">{x.标题}</span>
                 <span className="plan-row-s">
