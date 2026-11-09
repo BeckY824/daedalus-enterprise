@@ -89,7 +89,7 @@ type 事项 = {
 };
 
 /** 企业版：项目上填的下一步时间（page.tsx 只读取来），和计划按同一套时间分组，只能点进项目去改 */
-export type 项目下一步 = { key: string; id: string; 项目名: string; 下一步: string | null; 时间: string; ownerId: string; ownerName: string };
+export type 项目下一步 = { key: string; id: string; 项目名: string; 下一步: string | null; 时间: string; ownerId: string; ownerName: string; /** 市场视角进不了这个项目详情：只写名字，不给链接 */ 进不了?: boolean };
 
 /** 分组只要这三样：分批时页面手里只有「全部」的这三样，详情只有要摆出来的那些（lib/plans-page.ts） */
 type 轻事项 = { key: string; 时间: string | null; ownerId: string };
@@ -430,7 +430,7 @@ export default function PlansView({
                       <span className="plan-row-m">
                         <span className="plan-row-t">{x.标题}</span>
                         <span className="plan-row-s">
-                          {进不了.has(x.customerId) ? <span>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
+                          {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
                           {x.方式 && <Tag style={{ margin: 0, borderRadius: 6 }}>{x.方式}</Tag>}
                           <Tag style={{ margin: 0, borderRadius: 6 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                           {/* 原定什么时候做，和实际什么时候做完，是两件事——两个都留着 */}
@@ -588,7 +588,7 @@ function 组块({
               <span className="plan-row-m">
                 <span className="plan-row-t">{x.标题}</span>
                 <span className="plan-row-s">
-                  {进不了.has(x.customerId) ? <span>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
+                  {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
                   {x.方式 && <Tag style={{ margin: 0, borderRadius: 6 }}>{x.方式}</Tag>}
                   <Tag style={{ margin: 0, borderRadius: 6 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                 </span>
@@ -614,7 +614,7 @@ function 组块({
           <span className="plan-row-m">
             <span className="plan-row-t">{x.下一步 || "下一步"}</span>
             <span className="plan-row-s">
-              <a href={`/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>
+              {x.进不了 ? <span style={客户名样式}>{x.项目名}</span> : <a href={`/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>}
               <Tag style={{ margin: 0, borderRadius: 6 }}>来自项目</Tag>
             </span>
           </span>

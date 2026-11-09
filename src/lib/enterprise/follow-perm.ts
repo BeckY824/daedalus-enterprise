@@ -94,21 +94,21 @@ export async function 本人勾完成挡(me: 谁, customerId: string | null | un
 }
 
 /**
- * 计划页上我名下的事项有哪些够不着（11-09）：限定层放行自己名下的待办、计划，客户却可能进不去（只负责项目的人，
- * 市场分出去后活还归他 P-转-10）。
+ * 计划页上我看得到的事项有哪些够不着（11-09）：限定层放行自己和下属名下的待办、计划，客户却可能进不去（只负责项目的人，
+ * 市场分出去后活还归他 P-转-10；上级看下属留下的这些也一样）。只管页面上给不给入口，谁能看、谁能改的范围不在这里定。
  * - 进不了：客户详情开不了，也记不了沟通（saveFollowUp 走限定层）。客户名不给链接，计划点完成不弹记沟通的小框
- * - 改不了：进不了里头，这位客户下也没有我负责的项目，客户事项挡 不让改删（只能勾完成）。改、删按钮不给
+ * - 改不了：进不了里头，这位客户下也没有我负责的项目，客户事项挡 不让改删。改、删按钮不给
  * 不限定的（个人版、团队版不走这里，老板、没开按组织看的）两样都空
  */
 export async function 名下事项够不着(me: 谁): Promise<{ 进不了: string[]; 改不了: string[] }> {
   if (!企业版() || !(await 限定的我(defaultClient))) return { 进不了: [], 改不了: [] };
   const [计划们, 待办们] = await Promise.all([
-    prisma.followPlan.findMany({ where: { ownerId: me.id }, distinct: ["customerId"], select: { customerId: true } }),
-    prisma.task.findMany({ where: { ownerId: me.id }, distinct: ["customerId"], select: { customerId: true } }),
+    prisma.followPlan.findMany({ distinct: ["customerId"], select: { customerId: true } }),
+    prisma.task.findMany({ distinct: ["customerId"], select: { customerId: true } }),
   ]);
-  const 名下 = [...new Set([...计划们, ...待办们].map((x) => x.customerId))];
-  const 进得去 = await 看得到的客户(名下);
-  const 进不了 = 名下.filter((c) => !进得去.has(c));
+  const 事项的客户 = [...new Set([...计划们, ...待办们].map((x) => x.customerId))];
+  const 进得去 = await 看得到的客户(事项的客户);
+  const 进不了 = 事项的客户.filter((c) => !进得去.has(c));
   if (!进不了.length) return { 进不了: [], 改不了: [] };
   const org = await 权限组织();
   // 同 客户事项挡：项目负责人要有销售一类角色、项目不在公海、已结束的也算
