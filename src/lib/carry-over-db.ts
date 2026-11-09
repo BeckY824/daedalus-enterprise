@@ -11,6 +11,8 @@ import { 公海领走接手理由 } from "@/lib/project/blocker";
 import { 换负责人待办, 待办痕, 接上待办痕 } from "@/lib/project/carry-tasks";
 import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 预览列几个, type 带走数, type 转走项目预览 } from "@/lib/carry-over";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 算市场转客户, 市场转一位, 客户层分配方式 } from "@/lib/enterprise/market-transfer";
 
 /**
  * 客户换了销售负责人，原负责人在他身上**没做完的活**跟着走（2026-10-02 排查 B3）：
@@ -132,15 +134,23 @@ export async function 还项目(tx: Prisma.TransactionClient, ids: string[] | un
 }
 
 /** 转走的是哪几条（撤销时只还这几条，不碰「转之前就归新负责人」的那些——0.46.15 公海复查）。项目可能没有：老版本撤销条上带回来的没这一项 */
-export type 带走的 = { 计划: string[]; 待办: string[]; 商机: string[]; 项目?: string[]; 公海项目?: string[] };
+export type 带走的 = {
+  计划: string[]; 待办: string[]; 商机: string[]; 项目?: string[]; 公海项目?: string[];
+  /** 市场转给销售时清掉的待分配（项目 id、原来的时刻）、补上分配方式的项目：撤销按原样还 */
+  清待分配?: { id: string; at: string }[]; 补方式?: string[];
+};
 
 /**
  * 同 带走没做完的，另外返回转走的那几条的 id。操作人记在项目的转让痕上，不给就记新负责人。
  * 同一个事务里记一行换负责人（kind 分得出是改负责人、公海领取还是公海分配，见 owner-log-db.ts）
+ * kind = assign 是客户层转让（批量转、确认交接、客户页改负责人）：企业版里算市场转客户的走 市场转一位，
+ * 结果和项目分配入口一样，待办、计划不搬（X-45 / P-转-10），别的照旧带活。要在换负责人之前就定好的只有 旧，由调用方传
  */
 export async function 带走并记下(换: { customerId: string; 旧: string }[], 新: string, 操作人: string = 新, kind: 换负责人种类 = "assign"): Promise<{ 数: 带走数; 记下: 带走的 }> {
   const 数: 带走数 = { 计划和待办: 0, 商机: 0, 项目: 0 };
   const 记下: 带走的 = { 计划: [], 待办: [], 商机: [], 项目: [], 公海项目: [] };
+  // 事务外读：事务占着库的唯一连接，事务里读组织会等到超时
+  const org = kind === "assign" && 换.length ? await 权限组织() : null;
   for (const { customerId, 旧 } of 换) {
     if (旧 === 新) continue;
     /*
@@ -152,7 +162,15 @@ export async function 带走并记下(换: { customerId: string; 旧: string }[]
       看全部（团队版业务员，lib/team-scope.ts）：业务员把自己的客户交给同事，客户一换负责人他就看不到了，
       限定着查会漏掉这位客户上的商机（商机跟着客户可见），活带不过去（2026-10-04 五人实测）。要转哪几条由上面的条件定，不靠限定
     */
-    const { 计划, 待办, 商机, 项目, 公海项目 } = await 看全部(() => prisma.$transaction((tx) => 带走一位(tx, customerId, 旧, 新, 操作人, kind)));
+    const 这位: 带走的 & { 项目: string[]; 公海项目: string[] } = await 看全部(() => prisma.$transaction(async (tx) => {
+      const 客户 = org && await tx.customer.findUnique({ where: { id: customerId }, select: { pool: { select: { customerId: true } } } });
+      return org && 客户 && 算市场转客户(org, { salesOwnerId: 旧, pool: 客户.pool }, 新)
+        ? 市场转一位(tx, customerId, 旧, 新, 操作人, 客户层分配方式)
+        : 带走一位(tx, customerId, 旧, 新, 操作人, kind);
+    }));
+    const { 计划, 待办, 商机, 项目, 公海项目 } = 这位;
+    if (这位.清待分配?.length) (记下.清待分配 ??= []).push(...这位.清待分配);
+    if (这位.补方式?.length) (记下.补方式 ??= []).push(...这位.补方式);
     数.计划和待办 += 计划.length + 待办.length;
     数.商机 += 商机.length;
     数.项目 = (数.项目 ?? 0) + 项目.length + 公海项目.length;
@@ -184,9 +202,9 @@ export function 不跟着转的提醒(kind: 换负责人种类): Prisma.TaskWher
  *   kind = assign（转客户）：名下全部，含同事负责的、线索公海里的（P-转-07）；
  *   claim / pool-assign（从客户公海领 / 分）：进公海前负责人自己的；线索公海里的由调用方 领客户带走公海项目 带（M-公海-05）；
  *   deactivate（离职转交）：照旧只带他自己的（规划第二节「不改的」）
- * 留下待办计划（只有市场首次分给销售传，X-18 / P-转-10）：原负责人的待办、计划不搬、不关，还归他；
+ * 留下待办计划（只有市场转给销售传，X-18 / X-45 / P-转-10）：原负责人的待办、计划不搬、不关，还归他；
  * 客户负责人、项目、公海项目、联系人（跟客户走）、进行中的商机照走。别的入口不传，照旧带活
- * 项目痕（同样只有市场首次分给销售传）：被带走的项目那行转让痕记这一句，「我分出去的」按它认
+ * 项目痕（同样只有市场转给销售传）：被带走的项目那行转让痕记这一句，「我分出去的」按它认
  */
 export async function 带走一位(tx: Prisma.TransactionClient, customerId: string, 旧: string, 新: string, 操作人: string, kind: 换负责人种类, 带项目 = true, 选项: { 留下待办计划?: boolean; 项目痕?: string } = {}) {
   const 实际旧 = 企业版() ? await 公海前负责人(tx, customerId, 旧) : 旧;

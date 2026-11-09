@@ -36,7 +36,10 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 分配线索, 自动分配线索, 向导自动分配, 批量自动分配, 项目分配线, 分配带走的项目 } from "@/app/(app)/leads/assign-actions";
 import { 自动分配不参与key, 不设配额key, 本月加额, 本月已分, 我分出去的 } from "@/lib/enterprise/lead-assign";
-import { assignSalesOwner } from "@/app/(app)/customers/actions";
+import { assignSalesOwner, patchCustomer, saveCustomer, 撤销改负责人 } from "@/app/(app)/customers/actions";
+import { 待确认的交接, 确认交接 } from "@/app/(app)/customers/handover-actions";
+import { 持有数 } from "@/lib/project/db";
+import { 读项目列表 } from "@/lib/project/list";
 import { toggleTask, completePlan, saveTask, deleteTask, savePlan, deletePlan } from "@/app/(app)/customers/[id]/actions";
 import { 交接客户 } from "@/app/(app)/projects/handover/actions";
 import { 收回提醒尾, 旧收回提醒尾 } from "@/lib/project/db";
@@ -178,11 +181,11 @@ describe("决定一 1：市场首次分给销售，待办、计划不搬、不�
 });
 
 describe("决定一 1：别的入口带活不变", () => {
-  it("普通转客户：待办、计划跟新负责人（原负责人是市场也一样，这个入口不传 留下）", async () => {
-    const c = await 客户(市场.id);
-    await 项目(c, 市场.id);
-    const t = await 待办(c, 市场.id);
-    const pl = await 计划(c, 市场.id);
+  it("普通转客户：销售转销售，待办、计划跟新负责人", async () => {
+    const c = await 客户(乙.id);
+    await 项目(c, 乙.id);
+    const t = await 待办(c, 乙.id);
+    const pl = await 计划(c, 乙.id);
     expect(await 以(总管, () => assignSalesOwner([c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
     expect((await 待办of(t)).ownerId).toBe(甲.id);
     expect((await 计划of(pl)).ownerId).toBe(甲.id);
@@ -1192,5 +1195,142 @@ describe("放回一个项目，只动这个项目的待办（P-公海-02，四�
       expect(await 以(甲, () => 撤销公海("放进", [{ id: c, 值: 甲.id }], undefined, undefined, 公海项目))).toMatchObject({ ok: true, updated: 1 });
       for (const [id, title] of 们) await 开着的(id, 甲.id, title);
     });
+  });
+});
+
+/**
+ * 四审 A2 / X-45，用户定「不搬」：市场成员在客户层把客户转给销售，结果和项目分配入口一样（P-转-10）。
+ * 判定同项目入口（算市场转客户）：看客户负责人和接手人的业务角色，不看谁点的
+ */
+describe("A2：客户层把市场成员的客户转给销售", () => {
+  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
+  const 列表行 = async (u: 人, p: string) => (await 以(u, () => 读项目列表(u as never, {} as never))).行.find((r: { id: string }) => r.id === p) as { 待分配?: boolean } | undefined;
+  /** 市场手里一位客户：一个待分配项目、一个普通项目、一个已选分配方式的，加市场的待办、计划 */
+  const 市场客户 = async () => {
+    const c = await 客户(市场.id);
+    const 等分 = await 项目(c, 市场.id, { awaitAssignAt: new Date(), phase: "线索" });
+    const 普通 = await 项目(c, 市场.id, { phase: "线索" });
+    const 已选 = await 项目(c, 市场.id, { phase: "线索", assignMode: "公海捞取" });
+    return { c, 等分, 普通, 已选, t: await 待办(c, 市场.id), pl: await 计划(c, 市场.id) };
+  };
+  const 都对 = async (x: Awaited<ReturnType<typeof 市场客户>>, 接手: 人) => {
+    expect(await 客户负责人(x.c)).toBe(接手.id);
+    await 活还在(x.t, x.pl, 市场.id);
+    // 新负责人也看得到留下的待办、计划
+    expect((await 以(接手, () => prisma.task.findMany({ where: { customerId: x.c } }))).map((r) => r.id)).toContain(x.t);
+    expect((await 以(接手, () => prisma.followPlan.findMany({ where: { customerId: x.c } }))).map((r) => r.id)).toContain(x.pl);
+    expect(await 项目of(x.等分)).toMatchObject({ ownerId: 接手.id, awaitAssignAt: null, assignMode: "指定分配" });
+    expect(await 项目of(x.普通)).toMatchObject({ ownerId: 接手.id, assignMode: "指定分配" });
+    expect(await 项目of(x.已选)).toMatchObject({ ownerId: 接手.id, assignMode: "公海捞取" });
+    // 三个都算接手人手上的，待分配那个不再漏数
+    expect(await 持有数(prisma, 接手.id)).toBe(3);
+    expect((await 列表行(接手, x.等分))?.待分配).toBeUndefined();
+    expect(await 列表行(接手, x.等分)).toBeDefined();
+  };
+
+  it("批量转（没开交接确认）：不搬不关、清待分配、补分配方式、计入持有", async () => {
+    const x = await 市场客户();
+    expect(await 持有数(prisma, 甲.id)).toBe(0);
+    expect(await 以(市场, () => assignSalesOwner([x.c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
+    await 都对(x, 甲);
+  });
+
+  it("开交接确认：确认前什么都不动，确认后结果同上；痕的操作人是发起的那位", async () => {
+    await 开交接确认();
+    const x = await 市场客户();
+    expect(await 以(市场, () => assignSalesOwner([x.c], 甲.id))).toMatchObject({ ok: true, 交接中: 1 });
+    expect(await 项目of(x.等分)).toMatchObject({ ownerId: 市场.id, assignMode: null });
+    expect((await 项目of(x.等分)).awaitAssignAt).not.toBeNull();
+    const h = (await 以(甲, () => 待确认的交接())).等我确认[0];
+    expect(await 以(甲, () => 确认交接(h.id))).toEqual({ ok: true, 客户: 1 });
+    await 都对(x, 甲);
+    expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: x.普通, kind: "transfer", toOwnerId: 甲.id } })).userId).toBe(市场.id);
+  });
+
+  it("判定同项目入口，不看谁点的：总管理转走市场成员的客户也算", async () => {
+    const x = await 市场客户();
+    expect(await 以(总管, () => assignSalesOwner([x.c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
+    await 都对(x, 甲);
+  });
+
+  it("客户页改负责人（单字段、整表保存）走同一段", async () => {
+    const x = await 市场客户();
+    expect(await 以(市场, () => patchCustomer(x.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
+    await 都对(x, 甲);
+
+    // 整表保存：要负责人本人且能按负责人编辑，市场管理改不了客户资料；市场角色里渠运能改，用渠运走这条
+    const 市场成员 = await 造人("mkt3", "渠运同事", "SALES", "channel_ops");
+    const y = await 市场客户();
+    await prisma.customer.update({ where: { id: y.c }, data: { salesOwnerId: 市场成员.id } });
+    await prisma.project.updateMany({ where: { customerId: y.c }, data: { ownerId: 市场成员.id } });
+    await prisma.task.update({ where: { id: y.t }, data: { ownerId: 市场成员.id } });
+    await prisma.followPlan.update({ where: { id: y.pl }, data: { ownerId: 市场成员.id } });
+    const r = await prisma.customer.findUniqueOrThrow({ where: { id: y.c } });
+    const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
+    expect(await 以(市场成员, () => saveCustomer({ id: y.c, updatedAt: r.updatedAt.toISOString(), base, ...base, salesOwnerId: 乙.id } as unknown as Parameters<typeof saveCustomer>[0]))).toMatchObject({ ok: true });
+    expect(await 客户负责人(y.c)).toBe(乙.id);
+    await 活还在(y.t, y.pl, 市场成员.id);
+    expect(await 项目of(y.等分)).toMatchObject({ ownerId: 乙.id, awaitAssignAt: null, assignMode: "指定分配" });
+  });
+
+  it("一批混着：市场的不搬，销售的照旧带走", async () => {
+    const x = await 市场客户();
+    const s = await 客户(乙.id);
+    const st = await 待办(s, 乙.id);
+    const spl = await 计划(s, 乙.id);
+    const r = await 以(总管, () => assignSalesOwner([x.c, s], 甲.id));
+    expect(r).toMatchObject({ ok: true, updated: 2 });
+    await 活还在(x.t, x.pl, 市场.id);
+    expect((await 待办of(st)).ownerId).toBe(甲.id);
+    expect((await 计划of(spl)).ownerId).toBe(甲.id);
+    if (r.ok) expect(r.带走).toMatchObject({ 计划和待办: 2 });
+  });
+
+  it("销售转销售（直转、确认交接）：照旧带走，待分配和分配方式不动", async () => {
+    for (const 走交接 of [false, true]) {
+      if (走交接) await 开交接确认();
+      const c = await 客户(乙.id);
+      const 等分 = await 项目(c, 乙.id, { awaitAssignAt: new Date(), phase: "线索" });
+      const t = await 待办(c, 乙.id);
+      const pl = await 计划(c, 乙.id);
+      await 以(总管, () => assignSalesOwner([c], 甲.id));
+      if (走交接) {
+        const h = (await 以(甲, () => 待确认的交接())).等我确认[0];
+        expect(await 以(甲, () => 确认交接(h.id))).toEqual({ ok: true, 客户: 1 });
+      }
+      expect(await 客户负责人(c)).toBe(甲.id);
+      expect((await 待办of(t)).ownerId).toBe(甲.id);
+      expect((await 计划of(pl)).ownerId).toBe(甲.id);
+      const p = await 项目of(等分);
+      expect(p.ownerId).toBe(甲.id);
+      expect(p.awaitAssignAt).not.toBeNull();
+      expect(p.assignMode).toBeNull();
+    }
+  });
+
+  it("接手的不是销售（市场转市场管理）：照旧带走", async () => {
+    const 市场二 = await 造人("mkt2", "市场二", "SALES", "marketing_mgr");
+    const c = await 客户(市场.id);
+    const t = await 待办(c, 市场.id);
+    await 以(总管, () => assignSalesOwner([c], 市场二.id));
+    expect((await 待办of(t)).ownerId).toBe(市场二.id);
+  });
+
+  it("撤销（P-撤销-01 按原样回滚）：负责人、待分配时刻、分配方式都还原，留下的活还在市场手里；已选的分配方式不动", async () => {
+    const x = await 市场客户();
+    const 原时刻 = (await 项目of(x.等分)).awaitAssignAt!;
+    const r = await 以(市场, () => assignSalesOwner([x.c], 甲.id));
+    if (!r.ok) throw new Error(r.error);
+    // 前端拿到的结果走一趟序列化再传回来
+    const 带过来 = JSON.parse(JSON.stringify(r.带过来));
+    expect(await 以(市场, () => 撤销改负责人(r.原值 ?? [], 甲.id, 带过来))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 客户负责人(x.c)).toBe(市场.id);
+    await 活还在(x.t, x.pl, 市场.id);
+    const 回来 = await 项目of(x.等分);
+    expect(回来).toMatchObject({ ownerId: 市场.id, assignMode: null });
+    expect(回来.awaitAssignAt?.getTime()).toBe(原时刻.getTime());
+    expect(await 项目of(x.普通)).toMatchObject({ ownerId: 市场.id, assignMode: null });
+    expect(await 项目of(x.已选)).toMatchObject({ ownerId: 市场.id, assignMode: "公海捞取" });
+    expect(await 持有数(prisma, 甲.id)).toBe(0);
   });
 });

@@ -42,6 +42,7 @@ import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
 import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
 import { 带走没做完的, 带走并记下, 还项目, 数转走的项目, type 带走的 } from "@/lib/carry-over-db";
+import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -1230,6 +1231,7 @@ export async function 撤销改负责人(原值: { id: string; 值: string }[], 
         await tx.followPlan.updateMany({ where: { id: { in: 带过来.计划 }, customerId: x.id, ownerId: 新负责人, done: false }, data: { ownerId: x.值 } });
         await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: x.id, ownerId: 新负责人, done: false }, data: { ownerId: x.值 } });
         await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: x.id, ownerId: 新负责人, status: "OPEN" }, x.值);
+        if (企业版()) await 还待分配状态(tx, 带过来, x.id, 新负责人);
         await 还项目(tx, 带过来.项目, x.id, 新负责人, x.值, me.id);
         // 转客户时一起从线索公海带过来的（P-转-07）：放回线索公海
         if (企业版()) {
