@@ -122,6 +122,7 @@
     "动作 app/(app)/customers/[id]/pick.ts#取客户选项": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/[id]/pick.ts#搜客户": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/[id]/project-actions.ts#新项目分配数据": {"未登录":"允许","销售":"允许","市场":"允许","经理":"允许","老板":"允许","注":"未登录放行：requireUser 抛错被 catch 住回 null，不漏数据也不写库（project-actions.ts:60–69）"},
+    "动作 app/(app)/customers/[id]/project-actions.ts#建项目带走的项目": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/[id]/project-actions.ts#给客户建项目": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/actions.ts#assignSalesOwner": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/actions.ts#bulkFollowStatus": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},

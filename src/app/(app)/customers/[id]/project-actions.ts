@@ -39,7 +39,9 @@ import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 定分配方式, 建好再分, 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 项目分给你通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
-import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 分配带走的同事项目 } from "@/lib/carry-over-db";
+import type { 转走项目预览 } from "@/lib/carry-over";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
 
@@ -73,6 +75,36 @@ export async function 新项目分配数据(customerId: string): Promise<新项�
     return { ...(await 新建分配方式数据(me)), 客户业务线: 是项目线(客户.bizLine) ? 客户.bizLine : null };
   } catch {
     return null;
+  }
+}
+
+/**
+ * 客户页新建项目之前列出会一起转走的同事项目（P-转-07）：这次建完会走 X-18（指定给销售 / 自动分配）、真会带走同事的项目才有，条件同分配弹窗（分配带走的项目）。
+ * 门和 给客户建项目 一样；看不到的、建不了的、算不出来的都回 0 个：不拦，建的时候服务端照常查。只读
+ */
+export async function 建项目带走的项目(customerId: string, 项目: { 分配方式?: number | null; ownerId?: string | null; 业务线?: string | null }): Promise<转走项目预览> {
+  const 不弹: 转走项目预览 = { 项目数: 0, 项目: [] };
+  const me = await requireUser();
+  try {
+    if (!企业版() || (await getBusiness()).projectMode !== true || typeof customerId !== "string" || !项目 || typeof 项目 !== "object") return 不弹;
+    if (!(await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } })) || (await 同事的客户(defaultClient, customerId))) return 不弹;
+    const org = await 权限组织();
+    if (!org || 没设业务角色(org, me.id) || 只读角色(me, org)) return 不弹;
+    const 接手人 = typeof 项目.ownerId === "string" ? 项目.ownerId : "";
+    // 没带分配方式、负责人又不是自己 = 指定给别人（同 给客户建项目）
+    const 分配 = await 定分配方式(me, { 分配方式: 项目.分配方式 ?? 0, ownerId: 接手人 });
+    if ("error" in 分配) return 不弹;
+    // 自动分配还没挑人（挑的都是销售）；业务线暂不分配的不自动分（建好再分）
+    const 自动 = 分配.i === 1 && 项目.业务线 !== "暂不分配";
+    const 指定给别人 = 分配.i === 0 && !!接手人 && 接手人 !== me.id;
+    if (!自动 && !指定给别人) return 不弹;
+    return await 看全部(async () => {
+      const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+      if (!客户 || !(自动 ? 客户在市场手里(org, 客户) : 算市场转客户(org, 客户, 接手人))) return 不弹;
+      return 分配带走的同事项目([客户], 自动 ? "" : 接手人, []);
+    });
+  } catch {
+    return 不弹;
   }
 }
 

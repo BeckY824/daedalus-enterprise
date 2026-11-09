@@ -47,7 +47,7 @@ import { 销售初判, 市场复核 } from "@/lib/project/lead-verify";
 import { 放进公海 } from "@/app/(app)/customers/pool-actions";
 import { 放回公海, 改项目 } from "@/lib/project/db";
 import { 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
-import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
+import { 给客户建项目, 建项目带走的项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
@@ -639,6 +639,71 @@ describe("客户公海里的项目不能经转让单独动（M-公海-06、X-13�
     expect(r).not.toEqual(拦的话);
     expect(r.ok).toBe(true);
     expect(await 项目of(p)).toMatchObject({ ownerId: 乙.id });
+  });
+});
+
+describe("客户页新建项目之前列出要一起转走的同事项目（P-转-07，X-18 同分配弹窗一个条件）", () => {
+  const 开项目模式 = async () => { await setSetting("business", { projectMode: true }); invalidateSettingsCache(); };
+  const 建 = (me: 人, customerId: string, 分配方式: number, ownerId: string | null, 业务线 = "内贸") => 以(me, () => 给客户建项目({ customerId, 项目: { name: "页新建", amount: 0, currency: "CNY", ownerId, 分配方式, 业务线 }, 跟进: { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育" } } as Parameters<typeof 给客户建项目>[0]));
+  const 看 = (me: 人, customerId: string, 分配方式: number | null, ownerId: string | null, 业务线 = "内贸") => 以(me, () => 建项目带走的项目(customerId, { 分配方式, ownerId, 业务线 }));
+
+  it("指定分配给销售：列出同事的和市场自己的项目、点明同事；真建完全部到接手人名下", async () => {
+    await 开项目模式();
+    const c = await 客户(市场.id);
+    const 自己的 = await 项目(c, 市场.id);
+    const 同事的 = await 项目(c, 乙.id);
+    const r = await 看(市场, c, 0, 甲.id);
+    expect(r.项目数).toBe(2);
+    expect(r.项目.map((x) => x.负责人).sort()).toEqual([undefined, 乙.name].sort());
+    expect(await 建(市场, c, 0, 甲.id)).toMatchObject({ ok: true, 转走: true });
+    for (const p of [自己的, 同事的]) expect((await 项目of(p)).ownerId).toBe(甲.id);
+    expect(await 客户负责人(c)).toBe(甲.id);
+  });
+
+  it("自动分配：还没挑人也列出来；真建完同事的项目同样到挑中的人名下", async () => {
+    await 开项目模式();
+    await 只留参与(甲);
+    const c = await 客户(市场.id);
+    const 同事的 = await 项目(c, 乙.id);
+    const r = await 看(市场, c, 1, null);
+    expect(r.项目.map((x) => x.负责人)).toEqual([乙.name]);
+    expect(await 建(市场, c, 1, null)).toMatchObject({ ok: true, 转走: true });
+    expect((await 项目of(同事的)).ownerId).toBe(甲.id);
+  });
+
+  it("这次不会转客户的不弹：公海捞取、暂不分配、自动但业务线暂不分配、没指定别人", async () => {
+    await 开项目模式();
+    const c = await 客户(市场.id);
+    await 项目(c, 乙.id);
+    expect((await 看(市场, c, 2, null)).项目数).toBe(0);
+    expect((await 看(市场, c, 3, null)).项目数).toBe(0);
+    expect((await 看(市场, c, 1, null, "暂不分配")).项目数).toBe(0);
+    expect((await 看(市场, c, 0, 市场.id)).项目数).toBe(0);
+    expect((await 看(市场, c, 0, null)).项目数).toBe(0);
+  });
+
+  it("不是 X-18 的不弹：客户负责人已是销售、客户在公海、接手人不是销售、名下没有同事的项目", async () => {
+    await 开项目模式();
+    const 销售的 = await 客户(甲.id);
+    await 项目(销售的, 乙.id);
+    expect((await 看(总管, 销售的, 0, 丙.id)).项目数).toBe(0);
+    const 公海的 = await 客户(市场.id);
+    await 项目(公海的, 乙.id);
+    await prisma.customerPool.create({ data: { customerId: 公海的, reason: "手动" } });
+    expect((await 看(总管, 公海的, 0, 丙.id)).项目数).toBe(0);
+    const 给总管 = await 客户(市场.id);
+    await 项目(给总管, 乙.id);
+    expect((await 看(市场, 给总管, 0, 总管.id)).项目数).toBe(0);
+    const 只有自己的 = await 客户(市场.id);
+    await 项目(只有自己的, 市场.id);
+    expect((await 看(市场, 只有自己的, 0, 甲.id)).项目数).toBe(0);
+  });
+
+  it("看不到这位客户的：不泄露项目名，回 0 个", async () => {
+    const c = await 客户(市场.id);
+    await 项目(c, 乙.id);
+    await 开项目模式();
+    expect((await 看(丙, c, 0, 甲.id)).项目数).toBe(0);
   });
 });
 

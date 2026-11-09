@@ -9,7 +9,7 @@ const plugin: Plugin = { name: "new-project-modal-boundaries", setup(b) {
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新??0)+1},push(u){(window.__跳=window.__跳??[]).push(u)},replace(u){(window.__跳=window.__跳??[]).push(u)}});export const usePathname=()=>\"/customers/a\";");
   stub(/^next\/link$/, "export default function L({href,children,...p}){return <a href={href} {...p}>{children}</a>}");
-  stub(/(^|\/)project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return window.__回??{ok:true,projectId:'np1'}};export const 新项目分配数据=async()=>({分配方式们:[{i:0,名:'指定分配'}],默认分配方式:0,是销售:false,客户业务线:'内贸'});");
+  stub(/(^|\/)project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return window.__回??{ok:true,projectId:'np1'}};export const 新项目分配数据=async()=>({分配方式们:[{i:0,名:'指定分配'}],默认分配方式:0,是销售:false,客户业务线:'内贸'});export const 建项目带走的项目=async(...a)=>{(window.__预览=window.__预览??[]).push(a);if(window.__预览失败)throw new Error('断网');return window.__带走??{项目数:0,项目:[]}};");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -75,5 +75,67 @@ it("X-18：客户转给销售后我看不到这位客户了：不刷新（会 40
     expect(记.跳).toEqual(["/customers"]);
     expect(记.刷新).toBe(0);
     expect(await page.getByTestId("new-project-done").count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+/* P-转-07：客户页指定 / 自动分配走 X-18 时会把同事的项目一起转走，和分配弹窗一样先列出来 */
+const 带走一个 = { 项目数: 1, 项目: [{ name: "同事的老项目", 客户: "测试客户甲", 负责人: "销售乙" }] };
+type 窗 = { __建?: unknown; __预览?: unknown[][]; __带走?: unknown; __预览失败?: boolean };
+async function 填到建好(设: (w: 窗, 带走: unknown) => void) {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 800 } }); page.setDefaultTimeout(5000);
+  await page.route("http://npm.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+  await page.goto("http://npm.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  await page.evaluate(`(${设.toString()})(window, ${JSON.stringify(带走一个)})`);
+  await page.addScriptTag({ content: bundle });
+  const 框 = page.getByRole("dialog", { name: "新增项目" });
+  await 框.getByText("新增项目").waitFor();
+  await 框.getByRole("button", { name: "下一步" }).click();
+  await 框.locator("textarea").fill("第一次电话");
+  const 点建好 = () => 框.getByRole("button", { name: /建\s*好/ }).click();
+  return { page, 框, 点建好 };
+}
+const 确认标题 = "会一起转走的 1 个项目";
+
+it("P-转-07：会带走同事项目时先列出来；取消不建、弹窗还在、可再点；一起转才建", async () => {
+  const { page, 框, 点建好 } = await 填到建好((w, 带走) => { w.__带走 = 带走; });
+  try {
+    await 点建好();
+    const 问 = page.locator(".ant-modal-confirm");
+    await 问.locator(".ant-modal-confirm-title", { hasText: 确认标题 }).waitFor();
+    expect(await 问.innerText()).toContain("同事的老项目");
+    expect(await 问.innerText()).toContain("销售乙");
+    expect(await page.evaluate(() => (window as unknown as 窗).__建 ?? null)).toBeNull();
+    await 问.locator(".ant-btn:not(.ant-btn-primary)").click();
+    await 问.waitFor({ state: "detached" });
+    expect(await page.evaluate(() => (window as unknown as 窗).__建 ?? null)).toBeNull();
+    await 框.getByRole("button", { name: /建\s*好/ }).waitFor();
+    expect(await 框.getByRole("button", { name: /建\s*好/ }).isEnabled()).toBe(true);
+    await 点建好();
+    await 问.locator(".ant-modal-confirm-title", { hasText: 确认标题 }).waitFor();
+    await 问.locator(".ant-btn-primary").click();
+    await page.getByTestId("new-project-done").waitFor();
+    expect(await page.evaluate(() => JSON.stringify((window as unknown as 窗).__建))).toContain('"分配方式":0');
+  } finally { await page.close(); }
+});
+
+it("P-转-07：不会带走同事项目的不弹，直接建；问的时候带上这次的分配方式、负责人、业务线", async () => {
+  const { page, 点建好 } = await 填到建好(() => {});
+  try {
+    await 点建好();
+    await page.getByTestId("new-project-done").waitFor();
+    expect(await page.locator(".ant-modal-confirm").count()).toBe(0);
+    const 预览 = await page.evaluate(() => (window as unknown as 窗).__预览 ?? []);
+    expect(预览).toHaveLength(1);
+    expect(预览[0][0]).toBe("a");
+    expect(预览[0][1]).toMatchObject({ 分配方式: 0, ownerId: "u1", 业务线: "内贸" });
+  } finally { await page.close(); }
+});
+
+it("P-转-07：取预览失败不拦着建（断网时服务端照常查）", async () => {
+  const { page, 点建好 } = await 填到建好((w) => { w.__预览失败 = true; });
+  try {
+    await 点建好();
+    await page.getByTestId("new-project-done").waitFor();
+    expect(await page.locator(".ant-modal-confirm").count()).toBe(0);
   } finally { await page.close(); }
 });
