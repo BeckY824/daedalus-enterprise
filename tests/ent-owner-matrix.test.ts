@@ -420,6 +420,75 @@ describe("C 客户进公海：清空负责人、记历史负责人、原负责�
     expect(r.ok === false || (r as { updated?: number }).updated === 0).toBe(true);
   });
 
+  describe("批量转让不收公海客户（P-公海-04，四审 A3）", () => {
+    const 放好 = async () => {
+      const c = await 客户(甲.id);
+      const p = await 项目(c, 甲.id);
+      await 以(甲, () => 放进公海([c], "客户主动终止"));
+      忘掉企业版范围();
+      return { c, p };
+    };
+    const 全没动 = async (c: string, p: string) => {
+      expect(await 负责人已清空(c)).toBe(true);
+      expect(await 客户在公海(c)).toBe(true);
+      expect(await 项目of(p)).toMatchObject({ ownerId: "" });
+      expect((await 项目of(p)).pooledAt).not.toBeNull();
+    };
+
+    it("销售管理转公海客户：拒，说先领取或分配；客户、项目都没动", async () => {
+      const { c, p } = await 放好();
+      const r = await 以(销售管理, () => assignSalesOwner([c], 丙.id));
+      expect(r).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
+      await 全没动(c, p);
+    });
+
+    it("被拒之后原负责人还是领不回", async () => {
+      const { c } = await 放好();
+      await 以(销售管理, () => assignSalesOwner([c], 丙.id));
+      忘掉企业版范围();
+      const r = await 以(甲, () => 领取([c]));
+      expect(r.ok === false || (r as { updated?: number }).updated === 0).toBe(true);
+      expect(await 客户在公海(c)).toBe(true);
+    });
+
+    it("一批里混着公海客户：整批拒，同批不在公海的也不换（同 虚线只读挡、转让挡）", async () => {
+      const { c, p } = await 放好();
+      const 普通 = await 客户(甲.id);
+      const r = await 以(销售管理, () => assignSalesOwner([普通, c], 丙.id));
+      expect(r).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
+      await 全没动(c, p);
+      expect(await 客户负责人(普通)).toBe(甲.id);
+    });
+
+    it("交接要确认开着：也拒，不生成交接", async () => {
+      await setSetting(规则.交接要确认.key, true);
+      invalidateSettingsCache();
+      const { c, p } = await 放好();
+      const r = await 以(销售管理, () => assignSalesOwner([c], 丙.id));
+      expect(r).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
+      expect(await prisma.entHandover.count()).toBe(0);
+      await 全没动(c, p);
+    });
+
+    it("不归他管的人先说没权限：负责人转不了公海客户，话不变", async () => {
+      const { c, p } = await 放好();
+      const r = await 以(丙, () => assignSalesOwner([c], 乙.id));
+      expect(r).toMatchObject({ ok: false, error: expect.stringContaining("只能转出") });
+      await 全没动(c, p);
+    });
+
+    it("不在公海的照旧能转；不是企业版不受影响", async () => {
+      const 普通 = await 客户(甲.id);
+      expect(await 以(销售管理, () => assignSalesOwner([普通], 丙.id))).toMatchObject({ ok: true, updated: 1 });
+      expect(await 客户负责人(普通)).toBe(丙.id);
+      vi.stubEnv("CRM_ENTERPRISE", "");
+      const 老 = await 客户(甲.id);
+      await prisma.customerPool.create({ data: { customerId: 老, reason: "老规矩" } });
+      expect(await 以(总管, () => assignSalesOwner([老], 丙.id))).toMatchObject({ ok: true, updated: 1 });
+      expect(await 客户负责人(老)).toBe(丙.id);
+    });
+  });
+
   it.todo("C 矩阵·超时回收（客户级）：企业版 poolDays 锁 0、客户级超时没有入口，定入口后补");
 
   it("第五节 4（保留）：名下有同事在推的项目，不能放公海", async () => {

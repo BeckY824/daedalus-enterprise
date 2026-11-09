@@ -1070,6 +1070,15 @@ const 只有负责人改客户话 = "只有负责人或系统管理员能改客�
 const 公海先领话 = "公海里的客户先领取或分配，再改";
 
 /**
+ * 企业版公海里的客户不走转让（P-公海-04）：先领取或分配，不然客户有了负责人却还在公海，原负责人回避失效。
+ * 一批里混着公海客户整批拒，同 虚线只读挡、转让挡
+ */
+async function 公海挡(ids: string[]): Promise<string | null> {
+  if (!企业版()) return null;
+  return (await defaultClient.customerPool.count({ where: { customerId: { in: ids } } })) ? 公海先领话 : null;
+}
+
+/**
  * 企业版改客户详情挡（11-02，permissions.ts 能改客户）：负责人本人（销售、销售管理）才能改；公海里的谁都不能改；
  * 没设业务角色的一律拒。规则「按组织看客户」关着时限定层不拦，这里照样拦。新建（id 空）只挡没设业务角色的
  */
@@ -1105,6 +1114,8 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 企业版转让 / 重新分配：管理、总管理（11-02：「这些都是管理来做。就是销售的上级」）；负责人只转自己的（同 能转让项目）。虚线 / 市场那句更具体，排它后面
   const 不让 = await 转让挡(me, ids);
   if (不让) return { ok: false, error: 不让 };
+  const 在公海 = await 公海挡(ids);
+  if (在公海) return { ok: false, error: 在公海 };
   const 挡 = await 挡字段(me.id, ["销售负责人"]);
   if (挡) return { ok: false, error: 挡 };
 
@@ -1602,7 +1613,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   // 团队互看：同事的客户读得到、改不了（lib/team-scope.ts），外贸档案那几格也一样
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
   // 企业版：换负责人走转让那条规矩（只转自己的；管理、总管理随便转），公海里的走领取 / 分配；别的格只有负责人能改
-  const 归属挡 = key === "salesOwnerId" ? await 转让挡(me, [id]) ?? (企业版() && await defaultClient.customerPool.findUnique({ where: { customerId: id }, select: { customerId: true } }) ? 公海先领话 : null) : await 改客户挡(me, id);
+  const 归属挡 = key === "salesOwnerId" ? await 转让挡(me, [id]) ?? await 公海挡([id]) : await 改客户挡(me, id);
   if (归属挡) return { ok: false, error: 归属挡 };
   const 挡 = 客户列字段[key] ? await 挡字段(me.id, [客户列字段[key]]) : null;
   if (挡) return { ok: false, error: 挡 };
