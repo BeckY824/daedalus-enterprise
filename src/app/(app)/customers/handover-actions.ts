@@ -13,11 +13,11 @@ import { 钉住老签约 } from "@/lib/contract-owner";
 import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则开着 } from "@/lib/enterprise/rules";
-import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
+import { 停用分拣, 停用方式们, 离职进手的持有项目, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接卡点 } from "@/lib/project/blocker";
 import { 带走并记下, 数进手的持有项目 } from "@/lib/carry-over-db";
-import { 算持有的项目, 超上限n } from "@/lib/project/db";
+import { 超上限n } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
@@ -117,11 +117,7 @@ async function 确认了超上限(h: { kind: string; way: string | null; fromUse
   let 进 = 0;
   if (h.kind === "离职") {
     const 方式: 停用方式 = (停用方式们 as readonly string[]).includes(h.way ?? "") ? (h.way as 停用方式) : "转交";
-    const 分 = await 看全部(() => 停用分拣(prisma, h.fromUserId, 方式, true));
-    if (!分.项目.length) return null;
-    进 = await 看全部(() => prisma.project.count({
-      where: { AND: [算持有的项目, { id: { in: 分.项目 }, pooledAt: null }, { OR: [{ id: { in: 分.清待分配 } }, { awaitAssignAt: null, ownerId: { not: 接手人 } }] }] },
-    }));
+    进 = await 看全部(() => 离职进手的持有项目(prisma, h.fromUserId, 方式, 接手人));
   } else {
     const 还归他 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: 读ids(h.customerIds) }, salesOwnerId: h.fromUserId, pool: null }, select: { id: true } }))).map((c) => c.id);
     进 = await 数进手的持有项目(还归他, 接手人, { 公海: true, 自己的: true, 同事待分配: true });

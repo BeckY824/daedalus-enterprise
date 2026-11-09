@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 钉住老签约 } from "@/lib/contract-owner";
-import { 带走一位, 转项目 } from "@/lib/carry-over-db";
+import { 带走一位, 转项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import { 看全部 } from "@/lib/team-scope";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 停用分拣 } from "@/lib/offboard-db";
+import { 停用分拣, 离职进手的持有项目 } from "@/lib/offboard-db";
+import { 算持有的项目, 超上限n } from "@/lib/project/db";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 离职转给接手人 } from "@/lib/offboard-move";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -156,6 +158,24 @@ export async function 交接挡(me: 谁, fromId: string, toId: string): Promise<
   if (typeof toId !== "string" || !toId || toId === fromId) return "先选接手人";
   const org = await 权限组织();
   return 公海分不给话(me, org, toId);
+}
+
+/**
+ * 交之前核持有上限（M-公海-18，11-09，同确认离职交接）：这一下会新进接手人手上几个算持有的项目，加上他手上已有的超了就不交，回那句话。
+ * 按此刻数据数，条件同真交：交一位客户 = 跟着客户走的他自己的 + 同事待分配的（带走一位 deactivate）；交一个项目 = 这一个（不在待分配的）；
+ * 全部交给 = 此刻重新分拣给接手人的（同确认离职交接）。没开项目模式不动项目，不拦
+ */
+export async function 交了超上限(fromId: string, toId: string, 交: { 客户: string } | { 项目: string } | "全部"): Promise<string | null> {
+  if (!(await 项目模式())) return null;
+  const 进 = await 看全部(async () => {
+    if (交 === "全部") return 离职进手的持有项目(prisma, fromId, "转交", toId);
+    if ("客户" in 交) {
+      const c = await prisma.customer.findFirst({ where: { id: 交.客户, salesOwnerId: fromId, pool: { is: null } }, select: { id: true } });
+      return c ? 数进手的持有项目([c.id], toId, { 自己的: true, 同事待分配: true }) : 0;
+    }
+    return prisma.project.count({ where: { id: 交.项目, ownerId: fromId, pooledAt: null, awaitAssignAt: null, ...算持有的项目 } });
+  });
+  return 进 ? 超上限n(prisma, await 生效组织规则(), toId, 进) : null;
 }
 
 /** 交一位客户：负责人还是他、不在公海才交；没做完的活跟着走，开了项目模式项目跟着客户走 */

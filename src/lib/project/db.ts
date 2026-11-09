@@ -33,7 +33,7 @@ import { FOLLOW_RECORD_STATUSES } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
-import { 单项目客户跟进公海, 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 单项目客户跟进公海, 单项目客户跟着领, 领项目连带超上限 } from "@/lib/enterprise/pool-link";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
@@ -777,7 +777,8 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     if (拦单独领项目()) return { ok: false as const, error: 项目不能单独领提示 };
     // 客户在客户公海里的，项目随整包（M-公海-06），要领客户
     if (拦客户公海里的项目(!!(await 看全部(() => tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))))) return { ok: false as const, error: 客户在公海项目不单领提示 };
-    const 超 = await 超上限(tx, 规则, me.id, p);
+    // 开关 领项目带走单项目客户 开着时客户名下别的公海项目一起来，一起数（M-公海-18）
+    const 超 = await 领项目连带超上限(tx, 规则, me.id, p);
     if (超) return { ok: false as const, error: 超 };
     await tx.project.update({ where: { id: p.id }, data: { ownerId: me.id, pooledAt: null } });
     // 进公海时关掉的那批待办（C-06）：勾着重新打开给我
