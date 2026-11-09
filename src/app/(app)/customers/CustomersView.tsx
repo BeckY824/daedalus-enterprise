@@ -1,6 +1,7 @@
 "use client";
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
+import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
 import { useEffect, useState, useSyncExternalStore, useRef, type CSSProperties } from "react";
 import Link from "next/link";
@@ -594,7 +595,7 @@ export default function CustomersView({
     },
     {
       title: "邮箱", key: "email", width: 190,
-      render: (_: unknown, r) => (有值(r.extra?.email) ? <a href={`mailto:${r.extra.email}`} onClick={(e) => e.stopPropagation()} style={{ display: "inline-block", maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }} title={r.extra.email}>{r.extra.email}</a> : 空),
+      render: (_: unknown, r) => (有值(r.extra?.email) ? <CopyValue 种类="邮箱" 叫法="邮箱" value={r.extra.email} style={{ maxWidth: 170 }} /> : 空),
     },
     { title: "微信", key: "wechat", width: 120, 默认: false, render: (_: unknown, r) => (有值(r.extra?.wechat) ? r.extra.wechat : 空) },
     { title: "阿里国际站 ID", key: "alibabaId", width: 150, 默认: false, render: (_: unknown, r) => (有值(r.extra?.alibabaId) ? <span style={{ display: "inline-block", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }} title={r.extra.alibabaId}>{r.extra.alibabaId}</span> : 空) },
@@ -713,6 +714,7 @@ export default function CustomersView({
       ),
     },
 
+    // 这一列一律打码显示，不给复制键：v 没打码时复制了就比屏幕上看到的多（电话、邮箱复制键见 CopyValue）
     { title: "联系电话", key: "phone", dataIndex: "phone", width: 140, 默认: false, render: (v) => <span className="nowrap">{maskPhone(v)}</span> },
     { title: b.fields.grade, key: "grade", dataIndex: "grade", width: 90, 默认: false, render: (v) => v ?? <span className="muted">—</span> },
     // 企业版不摆决策状态、签约金额（10-28 去遗留 A1 / A4）

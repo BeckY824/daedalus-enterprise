@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
-/* 10-27 会议：企业版客户页左栏——联系人一人一卡、电话 / 邮箱 / 微信完整显示可点，空字段收起，推荐 / 报价 / 签约不摆（纪要：客户页仅保留基础信息、联系人、关联项目三类）。
+/* 10-27 会议：企业版客户页左栏——联系人一人一卡、电话 / 邮箱 / 微信完整显示（11-09 起电话、邮箱不是链接，右边一个复制键），空字段收起，推荐 / 报价 / 签约不摆（纪要：客户页仅保留基础信息、联系人、关联项目三类）。
    开关关闭（不传 项目们）时左栏保持原样 */
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
@@ -63,23 +63,30 @@ async function open(企业: boolean, width = 1366, 项目模式 = false, 加?: R
   await page.getByText("联系人", { exact: false }).first().waitFor();
   return page;
 }
-it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在、可点；打码号不加链接；没留的写明", async () => {
+it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在；电话、邮箱是文字 + 复制键，不是链接；打码号不给复制键；没留的写明", async () => {
   const page = await open(true);
   try {
     const cards = page.locator(".rec-contact");
     expect(await cards.count()).toBe(3);
     const first = cards.nth(0);
     expect(await first.innerText()).toContain("采购总监兼华东大区负责人");
-    expect(await first.getByRole("link", { name: "+86 138-0013-8000" }).getAttribute("href")).toBe("tel:+8613800138000");
-    expect(await first.getByRole("link", { name: /very\.long\.mailbox/ }).getAttribute("href")).toBe("mailto:very.long.mailbox.name.for.purchasing@example-supplier-company.com");
+    expect(await first.innerText()).toContain("+86 138-0013-8000");
+    expect(await first.innerText()).toContain("very.long.mailbox");
+    expect(await first.locator("a[href^='tel:'], a[href^='mailto:']").count()).toBe(0);
+    expect(await first.getByRole("button", { name: "复制电话" }).count()).toBe(1);
+    expect(await first.getByRole("button", { name: "复制邮箱" }).count()).toBe(1);
     expect(await first.innerText()).toContain("wx_buyer_2026");
     expect(await cards.nth(1).innerText()).toContain("138****8001");
     expect(await cards.nth(1).getByRole("link").count()).toBe(0);
+    expect(await cards.nth(1).getByRole("button", { name: /^复制/ }).count()).toBe(0);
     // 11-01 会议：未填一律写 —，悬停说没留联系方式
     expect(await cards.nth(2).innerText()).toMatch(/联系方式\s*—/);
     expect(await cards.nth(2).getByTitle("没留联系方式").count()).toBe(1);
-    // 客户电话也能拨；联系方式子表里的旺旺号摆出来，10-29 起叫「阿里国际站ID」
-    expect(await page.getByRole("link", { name: "13800138000" }).getAttribute("href")).toBe("tel:13800138000");
+    // 客户电话也是文字 + 复制键；联系方式子表里的旺旺号摆出来，10-29 起叫「阿里国际站ID」
+    const 客户电话 = page.locator("[data-field='phone']");
+    expect(await 客户电话.innerText()).toContain("13800138000");
+    expect(await 客户电话.locator("a").count()).toBe(0);
+    expect(await 客户电话.getByRole("button", { name: "复制电话" }).count()).toBe(1);
     expect(await page.getByText("ww_buyer").count()).toBe(1);
     expect(await page.getByText("阿里国际站ID", { exact: true }).count()).toBe(1);
     expect(await page.getByText("旺旺 ID").count()).toBe(0);
@@ -258,4 +265,41 @@ it("号码保护：每张卡一枚；有电话 + 客户有负责人 → 已开�
   try {
     expect(await 关.locator(".rec-contact-guard").count()).toBe(0);
   } finally { await 关.close(); }
+});
+/* 11-09：联系人卡片里的电话、邮箱是真 RecordView + 真 CopyValue + globals.css；老三格和改版后的「号码们」都量 */
+it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧贴在格内能点到，不出卡片；打码号没有键", async () => {
+  const 长号 = "+86 138-0013-8000 转 1234567890 分机 0987654321 备用 13800138001";
+  const 长邮箱 = "very.long.mailbox.name.for.purchasing.department.and.more@example-supplier-company-with-long-name.com";
+  const 联系人 = (id: string, 加: Record<string, unknown>) => ({ id, name: "赵六", position: null, phone: null, email: null, wechat: null, isPrimary: false, remark: null, updatedAt: "2026-01-01T00:00:00.000Z", ...加 });
+  const contacts = [
+    联系人("c1", { phone: 长号, email: 长邮箱 }),
+    联系人("c2", { 号码们: [{ kind: "phone", value: 长号 }, { kind: "landline", value: 长号 }, { kind: "email", value: 长邮箱 }, { kind: "phone", value: "138****8001" }] }),
+  ];
+  const 号码种类 = [{ kind: "phone", 名: "手机" }, { kind: "landline", 名: "座机" }, { kind: "email", 名: "邮箱" }];
+  for (const w of [1024, 1280, 1366]) {
+    const page = await open(true, w, false, { contacts, 号码种类 });
+    try {
+      const 量 = await page.locator(".rec-contact .copy-val").evaluateAll((vs: HTMLElement[]) => vs.map(v => {
+        const 字 = v.querySelector<HTMLElement>(".copy-val-t")!, 键 = v.querySelector<HTMLElement>("button");
+        const 卡 = v.closest<HTMLElement>(".rec-contact")!.getBoundingClientRect(), 格 = v.closest<HTMLElement>(".rec-contact-v")!;
+        if (!键) return { 文字: 字.textContent, 无键: true };
+        const r = 键.getBoundingClientRect(), 字框 = 字.getBoundingClientRect();
+        const 点到 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          文字: 字.textContent, 无键: false, 被截: 字.scrollWidth > 字.clientWidth, title: 字.title,
+          键能点到: !!点到 && 键.contains(点到), 键宽: r.width,
+          紧贴: r.left - 字框.right, 不重叠: 字框.right <= r.left + 0.5, 在格内: r.right <= 格.getBoundingClientRect().right + 0.5 && r.right <= 卡.right + 0.5,
+          格不出界: 格.scrollWidth <= 格.clientWidth + 1,
+        };
+      }));
+      expect(量.length).toBe(6);
+      for (const x of 量.filter(y => !y.无键)) {
+        expect(x, `宽 ${w}：${x.文字}`).toMatchObject({ 键能点到: true, 键宽: 20, 不重叠: true, 在格内: true, 格不出界: true, title: x.文字 });
+        expect(x.紧贴!).toBeLessThanOrEqual(3);
+      }
+      expect(量.filter(x => x.无键).map(x => x.文字)).toEqual(["138****8001"]);
+      expect(量.filter(y => !y.无键 && y.被截).length).toBeGreaterThan(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    } finally { await page.close(); }
+  }
 });
