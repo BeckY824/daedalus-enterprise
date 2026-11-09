@@ -15,7 +15,7 @@ const plugin: Plugin = { name: "ent-assign-tick", setup(b) {
     const 记=(n,回)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return 回};
     export const 分配线索=记('分配线索',{ok:true}),批量自动分配=记('批量自动分配',{ok:true,结果:[]}),我分出去的线索=async()=>window.__分出去的||[];
     export const 本月分配情况=async()=>[{userId:'u1',name:'王一',line:'内贸',配额:null,已分:0,加额:0,暂停:false}];
-    export const 项目分配线=async()=>({线:'内贸',可选:['u1'],市场转客户:window.__市场转客户});
+    export const 项目分配线=async()=>window.__分配线空?null:({线:'内贸',可选:window.__可选空?[]:['u1'],市场转客户:window.__市场转客户});
     export const 分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);if(window.__带走失败)throw new Error('断网');return window.__带走||{项目数:0,项目:[]}};
   `);
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -164,6 +164,28 @@ it("分配弹窗·取预览失败不拦着（同客户页的约定）；老线�
   expect(await 调了(老.page, "分配带走的项目")).toEqual([]);
   expect(await 确认框(老.page).count()).toBe(0);
   expect(老.errors).toEqual([]); await 老.page.close();
+});
+
+it("分配弹窗·这条分不了（客户在公海、取不到）：提示刷新看看，不引去查组织架构；真没人才说组织架构", async () => {
+  const 下拉提示 = async (page: Page) => {
+    await page.locator("#toUserId").click();
+    return page.locator(".ant-select-dropdown").last().innerText();
+  };
+  const 空 = await 开页({});
+  await 空.page.evaluate(() => { (window as unknown as { __分配线空: boolean }).__分配线空 = true; });
+  await 空.page.getByRole("button", { name: "开弹窗" }).click();
+  await 空.page.locator('[data-testid="assign-line-readonly"]', { hasText: "取不到" }).waitFor();
+  const 话 = await 下拉提示(空.page);
+  expect(话).toContain("这条现在分不了");
+  expect(话).not.toContain("组织架构");
+  expect(空.errors).toEqual([]); await 空.page.close();
+
+  const 没人 = await 开页({});
+  await 没人.page.evaluate(() => { (window as unknown as { __可选空: boolean }).__可选空 = true; });
+  await 没人.page.getByRole("button", { name: "开弹窗" }).click();
+  await 没人.page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
+  expect(await 下拉提示(没人.page)).toContain("组织架构");
+  expect(没人.errors).toEqual([]); await 没人.page.close();
 });
 
 it("批量自动分配·会带走同事项目：先列出来，取消就不分；点「一起转」才分", async () => {

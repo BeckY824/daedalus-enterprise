@@ -133,9 +133,11 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
             notFoundContent={
               人们 === null || (lead?.项目 && 项目线 === undefined)
                 ? "加载中…"
-                : lead?.项目
-                  ? "这条线现在没有正常参与自动分配的销售：请总管理员在 设置 → 组织架构 里看参与状态和各条线的部门"
-                  : "组织里还没有销售：先在 设置 → 组织架构 里排好"
+                : lead?.项目 && 项目线 === null
+                  ? "这条现在分不了（比如客户已进公海），刷新页面看看"
+                  : lead?.项目
+                    ? "这条线现在没有正常参与自动分配的销售：请总管理员在 设置 → 组织架构 里看参与状态和各条线的部门"
+                    : "组织里还没有销售：先在 设置 → 组织架构 里排好"
             }
             options={(人们 ?? [])
               .filter((p) => p.userId !== lead?.ownerId && (可选 === undefined || (可选 !== null && 可选.has(p.userId))))
