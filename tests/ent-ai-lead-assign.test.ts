@@ -87,6 +87,21 @@ describe("新线索卡：分配方式 × 角色", () => {
     expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.assignMode]).toEqual([市场.id, 丙.id, 丙.id, "指定分配"]);
   });
 
+  it("销售 / 总管理指定给别人：负责人 = 选的那位销售，客户留在建的人名下（P-转-03，只有市场首次分给销售才转）", async () => {
+    当(乙);
+    expect(await applyProposal(卡({ 分配方式: 0, ownerId: 丙.id, 业务线: "外贸" }) as never)).toMatchObject({ ok: true });
+    const p = await 唯一项目();
+    expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.assignMode]).toEqual([乙.id, 丙.id, 乙.id, "指定分配"]);
+    await prisma.followUpProject.deleteMany();
+    await prisma.followUp.deleteMany();
+    await prisma.projectNodeLog.deleteMany();
+    await prisma.project.deleteMany();
+    当(老板);
+    expect(await applyProposal(卡({ name: "老板录的客户", phone: "13911112222", 分配方式: 0, ownerId: 丙.id, 业务线: "外贸" }) as never)).toMatchObject({ ok: true });
+    const q = await 唯一项目();
+    expect([q.creatorId, q.ownerId, q.customer.salesOwnerId]).toEqual([老板.id, 丙.id, 老板.id]);
+  });
+
   it("只挂市场管理：指定分配给自己也能建，自己当负责人（客户 11-05 ⑧「市场管理是可以当负责人的」）", async () => {
     当(市场);
     expect(await applyProposal(卡({ 分配方式: 0, ownerId: 市场.id }) as never)).toMatchObject({ ok: true });

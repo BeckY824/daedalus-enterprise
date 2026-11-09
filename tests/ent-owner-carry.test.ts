@@ -47,6 +47,8 @@ import { 销售初判, 市场复核 } from "@/lib/project/lead-verify";
 import { 放进公海 } from "@/app/(app)/customers/pool-actions";
 import { 放回公海 } from "@/lib/project/db";
 import { 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
+import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
+import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 
@@ -576,5 +578,99 @@ describe("客户公海里的项目不能单独分配（M-公海-06、X-13）", (
     const r = await 以(总管, () => 批量自动分配([d.p], { 项目: true }));
     expect(r).toMatchObject({ ok: true, 结果: [{ ok: true, toUserId: 丙.id }] });
     expect(await 客户负责人(d.c)).toBe(甲.id);
+  });
+});
+
+describe("新建时指定给销售走同一条 X-18（客户页、新客户向导；P-转-03 三处同一条）", () => {
+  beforeEach(async () => {
+    await setSetting("business", { projectMode: true });
+    invalidateSettingsCache();
+  });
+  const 跟进 = { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false };
+  const 页建 = (customerId: string, 项目: Record<string, unknown>) => {
+    序号 += 1;
+    return 给客户建项目({ customerId, 项目: { name: `页项目${序号}`, amount: 0, currency: "CNY", ownerId: mocks.user.id, 业务线: "内贸", ...项目 }, 跟进 } as Parameters<typeof 给客户建项目>[0]);
+  };
+  const 向导 = async (项目: Record<string, unknown>) => {
+    序号 += 1;
+    const 渠 = await prisma.channel.create({ data: { name: `渠道${序号}`, channelOwnerId: 总管.id } });
+    return 建档向导({
+      客户: { name: `向导客户${序号}`, phone: `1391${String(序号).padStart(7, "0")}`, school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null, salesOwnerId: 项目.ownerId ?? mocks.user.id, channelId: 渠.id, referrerCustomerId: null },
+      联系人: { name: "王联系", position: "采购", phone: "" },
+      项目: { name: `向导项目${序号}`, amount: 0, currency: "CNY", ownerId: mocks.user.id, 业务线: "内贸", ...项目 },
+      跟进,
+    } as 建档向导输入);
+  };
+
+  for (const 口 of ["指定", "自动"] as const) {
+    it(`客户页·${口}分配：市场的客户转给销售，名下别的项目跟走，待办计划留在市场；两条结果一样`, async () => {
+      await 只留参与(甲);
+      const c = await 客户(市场.id);
+      const 老项目 = await 项目(c, 市场.id);
+      const 待分配的 = await 项目(c, 市场.id, { awaitAssignAt: new Date() });
+      const 公海的 = await 项目(c, 市场.id, { pooledAt: new Date() });
+      const t = await 待办(c, 市场.id);
+      const pl = await 计划(c, 市场.id);
+      const r = await 以(市场, () => 页建(c, 口 === "指定" ? { 分配方式: 0, ownerId: 甲.id } : { 分配方式: 1 }));
+      // 市场转走后这位客户就看不到了：弹窗要离开客户页，留着刷新是 404
+      expect(r).toMatchObject({ ok: true, 转走: true, 看不到客户了: true });
+      if (!r.ok) return;
+      expect(await 客户负责人(c)).toBe(甲.id);
+      expect((await 项目of(r.projectId)).ownerId).toBe(甲.id);
+      expect(await 项目of(老项目)).toMatchObject({ ownerId: 甲.id, assignMode: `${口}分配` });
+      expect(await 项目of(待分配的)).toMatchObject({ ownerId: 甲.id, awaitAssignAt: null });
+      expect(await 项目of(公海的)).toMatchObject({ ownerId: 甲.id, pooledAt: null });
+      await 活还在(t, pl, 市场.id);
+      expect(await prisma.customerOwnerLog.findMany({ where: { customerId: c }, select: { fromOwnerId: true, toOwnerId: true } })).toEqual([{ fromOwnerId: 市场.id, toOwnerId: 甲.id }]);
+      // 随客户走的不写分配记录；指定建的这条本来也不写（自动分配占额度那条才写一行）
+      expect(await prisma.entLeadAssign.count({ where: { projectId: { in: [老项目, 待分配的, 公海的] } } })).toBe(0);
+      expect(await prisma.entLeadAssign.count({ where: { projectId: r.projectId } })).toBe(口 === "指定" ? 0 : 1);
+    });
+  }
+
+  it("客户页·市场指定给市场管理自己 / 总管理给销售 / 销售给同事：客户负责人都不动（P-转-03）", async () => {
+    const 市的 = await 客户(市场.id);
+    expect(await 以(市场, () => 页建(市的, { 分配方式: 0, ownerId: 市场.id }))).toMatchObject({ ok: true });
+    expect(await 客户负责人(市的)).toBe(市场.id);
+
+    const 销的 = await 客户(甲.id);
+    const 带着 = await 项目(销的, 甲.id);
+    const r = await 以(甲, () => 页建(销的, { 分配方式: 0, ownerId: 乙.id }));
+    expect(r).toMatchObject({ ok: true });
+    expect(await 客户负责人(销的)).toBe(甲.id);
+    expect((await 项目of(带着)).ownerId).toBe(甲.id);
+
+    const 总管的 = await 客户(总管.id);
+    expect(await 以(总管, () => 页建(总管的, { 分配方式: 0, ownerId: 乙.id }))).toMatchObject({ ok: true });
+    expect(await 客户负责人(总管的)).toBe(总管.id);
+
+    // 总管理给市场客户指定销售：客户在市场手里、接手人是销售，同样是 X-18
+    const 又市的 = await 客户(市场.id);
+    expect(await 以(总管, () => 页建(又市的, { 分配方式: 0, ownerId: 乙.id }))).toMatchObject({ ok: true, 转走: true });
+    expect(await 客户负责人(又市的)).toBe(乙.id);
+  });
+
+  it("客户页·没带分配方式、负责人选了销售（老弹窗）：一样走 X-18", async () => {
+    const c = await 客户(市场.id);
+    const r = await 以(市场, () => 页建(c, { ownerId: 甲.id }));
+    expect(r).toMatchObject({ ok: true, 转走: true });
+    expect(await 客户负责人(c)).toBe(甲.id);
+  });
+
+  it("新客户向导：市场指定给销售，客户归销售并留一行换负责人记录；销售 / 总管理指定给别人，客户留在建的人名下", async () => {
+    const r市 = await 以(市场, () => 向导({ 分配方式: 0, ownerId: 甲.id }));
+    expect(r市).toMatchObject({ ok: true, 转走: true });
+    if (!r市.ok) return;
+    expect(await 客户负责人(r市.customerId)).toBe(甲.id);
+    expect(await prisma.customerOwnerLog.findMany({ where: { customerId: r市.customerId }, select: { fromOwnerId: true, toOwnerId: true } })).toEqual([{ fromOwnerId: 市场.id, toOwnerId: 甲.id }]);
+    expect(await prisma.entLeadAssign.count({ where: { projectId: r市.projectId } })).toBe(0);
+
+    for (const [谁, 给] of [[甲, 乙], [总管, 乙]] as const) {
+      const r = await 以(谁, () => 向导({ 分配方式: 0, ownerId: 给.id }));
+      expect(r).toMatchObject({ ok: true, 转走: true });
+      if (!r.ok) return;
+      expect(await 客户负责人(r.customerId)).toBe(谁.id);
+      expect((await 项目of(r.projectId)).ownerId).toBe(给.id);
+    }
   });
 });

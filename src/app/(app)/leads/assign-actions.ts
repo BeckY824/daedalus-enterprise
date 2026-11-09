@@ -27,7 +27,7 @@ import { 超上限, 记转让, 将回收提醒跟着换人, 勾掉将回收提�
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
 import { 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
-import { 带走一位 } from "@/lib/carry-over-db";
+import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
@@ -218,11 +218,6 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
  * 市场首次分给销售（X-18，手动、自动都一样）：服务端不信传来的勾，待办、计划不搬、不关，还归原负责人（P-转-10）；
  * 回 留下 = 这一下走了这条路，分配通知据此告诉接手人客户上还有多少原负责人的活
  */
-/** 客户负责人是市场角色、客户不在公海：分给销售就是市场首次分配（X-18）。角色只认业务角色。弹窗隐藏勾和服务端都用这一句 */
-function 客户在市场手里(org: 组织, 客户: { salesOwnerId: string; pool: { customerId: string } | null } | null): boolean {
-  return !!客户 && !客户.pool && 是市场角色(org, 客户.salesOwnerId);
-}
-
 const 留下字段 = (留下: 留下的活 | undefined): { 留下?: 留下的活 } => (留下 ? { 留下 } : {});
 
 async function 分项目给(
@@ -271,7 +266,7 @@ async function 分项目给(
     // 唯一例外（规划第五节问题 1）：客户负责人是市场角色、接手人是销售角色 = 市场第一次分给销售，算转客户。
     // 其他项目层动作都不碰客户。要在动待办之前判：这条路径上传来的勾不算数
     const 客户 = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
-    const 市场转客户 = 客户在市场手里(org, 客户) && 客户?.salesOwnerId !== input.toUserId && 是销售角色(org, input.toUserId);
+    const 市场转客户 = 算市场转客户(org, 客户, input.toUserId);
     const 带待办 = 市场转客户 ? undefined : input.带待办;
     await 将回收提醒跟着换人(tx, p, 原, input.toUserId);
     const 几条 = await 换负责人待办(tx, p, 原, input.toUserId, 带待办);
@@ -279,18 +274,7 @@ async function 分项目给(
     await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: input.toUserId }, new Date());
     // 只改项目，客户负责人不动（P-转-03、M-公海-06；开关 领项目带走单项目客户 关着）
     if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, 带待办);
-    let 留下: 留下的活 | undefined;
-    if (市场转客户 && 客户) {
-      // 客户连同名下全部项目、公海项目、联系人、进行中的商机交给销售；待办、计划还归市场（P-转-10）
-      await tx.customer.update({ where: { id: p.customerId }, data: { salesOwnerId: input.toUserId } });
-      const 带走 = await 带走一位(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, "assign", true, { 留下待办计划: true });
-      // 带过来的都有负责人了：清掉待分配，不然批量里后面几条还会被当成没分的，再分给别人
-      await tx.project.updateMany({ where: { customerId: p.customerId, ownerId: input.toUserId, awaitAssignAt: { not: null } }, data: { awaitAssignAt: null } });
-      // 被带走的项目不写分配记录（不占额度），节点必填「分配方式」靠项目上这一格（required.ts）；建的时候已选的不改
-      const 带走的项目 = [...带走.项目, ...带走.公海项目];
-      if (带走的项目.length) await tx.project.updateMany({ where: { id: { in: 带走的项目 }, phase: "线索", assignMode: null }, data: { assignMode: input.way } });
-      留下 = { customerId: p.customerId, 原: 客户.salesOwnerId };
-    }
+    const 留下 = 市场转客户 && 客户 ? await 转客户给销售(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, input.way) : undefined;
     await tx.entLeadAssign.create({
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });

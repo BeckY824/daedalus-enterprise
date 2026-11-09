@@ -9,7 +9,7 @@ const plugin: Plugin = { name: "new-project-modal-boundaries", setup(b) {
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新??0)+1},push(u){(window.__跳=window.__跳??[]).push(u)},replace(u){(window.__跳=window.__跳??[]).push(u)}});export const usePathname=()=>\"/customers/a\";");
   stub(/^next\/link$/, "export default function L({href,children,...p}){return <a href={href} {...p}>{children}</a>}");
-  stub(/(^|\/)project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return{ok:true,projectId:'np1'}};export const 新项目分配数据=async()=>({分配方式们:[{i:0,名:'指定分配'}],默认分配方式:0,是销售:false,客户业务线:'内贸'});");
+  stub(/(^|\/)project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return window.__回??{ok:true,projectId:'np1'}};export const 新项目分配数据=async()=>({分配方式们:[{i:0,名:'指定分配'}],默认分配方式:0,是销售:false,客户业务线:'内贸'});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -55,5 +55,25 @@ it("11-01 §6：新开项目在弹窗里填完、建好不跳页（刷新 + 提�
     expect(记.刷新).toBe(1);
     expect(await page.getByTestId("还在客户页").count()).toBe(1);
     await expect.poll(() => page.getByRole("dialog").count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("X-18：客户转给销售后我看不到这位客户了：不刷新（会 404）、不给「去看看」，回客户列表，提示去向", async () => {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 800 } }); page.setDefaultTimeout(5000);
+  try {
+    await page.route("http://npm.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+    await page.goto("http://npm.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.evaluate(() => { (window as unknown as { __回: unknown }).__回 = { ok: true, projectId: "np2", 提示: "已指派给 销售甲", 转走: true, 看不到客户了: true }; });
+    await page.addScriptTag({ content: bundle });
+    const 框 = page.getByRole("dialog");
+    await 框.getByText("新增项目").waitFor();
+    await 框.getByRole("button", { name: "下一步" }).click();
+    await 框.locator("textarea").fill("第一次电话");
+    await 框.getByRole("button", { name: /建\s*好/ }).click();
+    await page.getByText("已指派给 销售甲").waitFor();
+    const 记 = await page.evaluate(() => { const w = window as unknown as { __跳?: string[]; __刷新?: number }; return { 跳: w.__跳 ?? [], 刷新: w.__刷新 ?? 0 }; });
+    expect(记.跳).toEqual(["/customers"]);
+    expect(记.刷新).toBe(0);
+    expect(await page.getByTestId("new-project-done").count()).toBe(0);
   } finally { await page.close(); }
 });

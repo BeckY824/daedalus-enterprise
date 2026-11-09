@@ -189,6 +189,13 @@ export default function NewProjectModal({
         message.error(r.error);
         return;
       }
+      // 市场把客户分给了销售（X-18）：这位客户我看不到了，留着刷新就是 404，回客户列表
+      if (r.看不到客户了) {
+        message.info(r.提示 ?? "客户已转出");
+        关();
+        router.push("/customers");
+        return;
+      }
       // 11-01 会议 §6：整套在弹窗里走完，不跳页；建好留在客户页（刷新出新项目），提示里给一个「去看看」
       message.success({
         content: (

@@ -330,7 +330,7 @@ export async function 分给你通知(谁点的: 人, toUserId: string, customer
  * 客户页给已有客户新建项目、指定别人负责：客户不跟着转，接手人多半打不开客户详情，所以链项目详情；
  * 接手人本来就是这位客户的负责人，才链客户详情。自己留着不发
  */
-export async function 项目分给你通知(谁点的: 人, toUserId: string, projectId: string, 项目名: string, customerId: string): Promise<void> {
+export async function 项目分给你通知(谁点的: 人, toUserId: string, projectId: string, 项目名: string, customerId: string, 留下?: 留下的活): Promise<void> {
   await 稳("项目分给你通知", async () => {
     if (!toUserId || toUserId === 谁点的.id) return;
     if (!(await 收得到分配(toUserId))) return;
@@ -339,7 +339,7 @@ export async function 项目分给你通知(谁点的: 人, toUserId: string, pr
     await notify([toUserId], {
       kind: "分配",
       title: `${谁点的.name} 把项目分给你：${项目名}`,
-      body: `客户：${c.name}`,
+      body: 接一句(`客户：${c.name}`, 留下 ? await 客户上还留着([{ toUserId, 留下 }]) : null),
       link: c.salesOwnerId === toUserId ? `/customers/${customerId}` : `/projects/${projectId}`,
       key: `project-assign:${projectId}:${toUserId}:${分钟()}`,
     });
