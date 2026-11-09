@@ -1945,3 +1945,95 @@ describe("转客户：同事负责的项目负责人不变（用户 11-09，X-05
     });
   });
 });
+
+describe("负责人兼任市场和销售：按销售算，转出时待办和计划一起搬（用户 11-09）", () => {
+  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
+  const 兼任写法 = ["marketing_mgr,sales", "channel_ops,sales"];
+  const 造兼任 = (写法: string) => 造人(`dual-${写法.replace(/\W/g, "-")}`, "兼任某某", "SALES", 写法);
+  const 他的客户 = async (主人: string) => {
+    const c = await 客户(主人);
+    return { c, p: await 项目(c, 主人), t: await 待办(c, 主人), pl: await 计划(c, 主人) };
+  };
+  const 都归 = async (x: { c: string; p: string; t: string; pl: string }, 谁: string) => {
+    expect(await 客户负责人(x.c)).toBe(谁);
+    expect((await 项目of(x.p)).ownerId).toBe(谁);
+    expect((await 待办of(x.t)).ownerId).toBe(谁);
+    expect((await 计划of(x.pl)).ownerId).toBe(谁);
+  };
+
+  describe.each(兼任写法)("业务角色 %s", (写法) => {
+    it("批量转：待办和计划跟着走，通知不写留下的条数；撤销后都回来", async () => {
+      const 兼任 = await 造兼任(写法);
+      const x = await 他的客户(兼任.id);
+      const r = await 以(兼任, () => assignSalesOwner([x.c], 甲.id));
+      if (!r.ok) throw new Error(r.error);
+      expect(r.updated).toBe(1);
+      await 都归(x, 甲.id);
+      expect(JSON.stringify(await 通知们(甲.id))).not.toContain("客户上还有原负责人");
+      expect(await 以(兼任, () => 撤销改负责人(r.原值 ?? [], 甲.id, JSON.parse(JSON.stringify(r.带过来))))).toMatchObject({ ok: true, updated: 1 });
+      await 都归(x, 兼任.id);
+    });
+
+    it("客户页改负责人：待办和计划跟着走", async () => {
+      const 兼任 = await 造兼任(写法);
+      const x = await 他的客户(兼任.id);
+      expect(await 以(兼任, () => patchCustomer(x.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
+      await 都归(x, 甲.id);
+    });
+
+    it("确认交接：确认前不动，确认后待办和计划跟着走；接手确认框说待办和计划一起转", async () => {
+      await 开交接确认();
+      const 兼任 = await 造兼任(写法);
+      const x = await 他的客户(兼任.id);
+      expect(await 以(兼任, () => assignSalesOwner([x.c], 甲.id))).toMatchObject({ ok: true, 交接中: 1 });
+      await 都归(x, 兼任.id);
+      const h = (await 以(甲, () => 待确认的交接())).等我确认[0];
+      expect(h.确认说明).toContain("没做完的待办和计划，都转到你名下");
+      expect(h.确认说明).not.toContain("不转过来");
+      expect(await 以(甲, () => 确认交接(h.id))).toEqual({ ok: true, 客户: 1 });
+      await 都归(x, 甲.id);
+      expect(JSON.stringify(await 通知们(兼任.id))).not.toContain("客户上还有原负责人");
+    });
+
+    it("项目分配不再算转客户：弹窗判断同销售，只动这一条项目，客户和别的项目不动（P-转-03）", async () => {
+      const 兼任 = await 造兼任(写法);
+      const x = await 他的客户(兼任.id);
+      const 别的项目 = await 项目(x.c, 兼任.id);
+      // 总管理来分：只有 channel_ops 和 sales 的人自己没有分配权
+      expect(await 以(总管, () => 项目分配线(x.p))).toMatchObject({ 市场转客户: false });
+      expect((await 以(总管, () => 分配带走的项目([x.p], 甲.id))).项目数).toBe(0);
+      expect(await 以(总管, () => 分配线索({ projectId: x.p, toUserId: 甲.id, line: "内贸" }))).toEqual({ ok: true });
+      expect((await 项目of(x.p)).ownerId).toBe(甲.id);
+      expect(await 客户负责人(x.c)).toBe(兼任.id);
+      expect((await 项目of(别的项目)).ownerId).toBe(兼任.id);
+    });
+  });
+
+  it("对照：纯市场角色同样三个入口仍不搬", async () => {
+    await setSetting(规则.交接要确认.key, false);
+    invalidateSettingsCache();
+    const a = await 他的客户(市场.id);
+    expect(await 以(市场, () => assignSalesOwner([a.c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
+    const b = await 他的客户(市场.id);
+    expect(await 以(市场, () => patchCustomer(b.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
+    await 开交接确认();
+    const d = await 他的客户(市场.id);
+    await 以(市场, () => assignSalesOwner([d.c], 甲.id));
+    const h = (await 以(甲, () => 待确认的交接())).等我确认[0];
+    expect(await 以(甲, () => 确认交接(h.id))).toEqual({ ok: true, 客户: 1 });
+    for (const x of [a, b, d]) {
+      expect(await 客户负责人(x.c)).toBe(甲.id);
+      expect((await 待办of(x.t)).ownerId).toBe(市场.id);
+      expect((await 计划of(x.pl)).ownerId).toBe(市场.id);
+    }
+  });
+
+  it("接手人是兼任、原负责人是纯市场：还是市场转销售，不搬", async () => {
+    const 兼任 = await 造兼任("marketing_mgr,sales");
+    const x = await 他的客户(市场.id);
+    expect(await 以(市场, () => assignSalesOwner([x.c], 兼任.id))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 客户负责人(x.c)).toBe(兼任.id);
+    expect((await 待办of(x.t)).ownerId).toBe(市场.id);
+    expect((await 计划of(x.pl)).ownerId).toBe(市场.id);
+  });
+});

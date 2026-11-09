@@ -265,7 +265,7 @@ async function 分项目给(
       data: { ownerId: input.toUserId, pooledAt: null, awaitAssignAt: null },
     });
     if (改.count !== 1) return 已被分配;
-    // 唯一例外（规划第五节问题 1）：客户负责人是市场角色、接手人是销售角色 = 市场第一次分给销售，算转客户。
+    // 唯一例外（规划第五节问题 1）：客户负责人有市场角色且没有销售角色（兼任按销售算）、接手人是销售角色 = 市场第一次分给销售，算转客户。
     // 其他项目层动作都不碰客户。要在动待办之前判：这条路径上传来的勾不算数
     const 客户 = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
     const 市场转客户 = 算市场转客户(org, 客户, input.toUserId);

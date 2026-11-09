@@ -14,9 +14,12 @@ import { 是市场角色, 是销售角色 } from "./permissions";
 /** 客户层没有「分配方式」这一格可选，转给销售就是指定了人（同 新客户向导 没选方式时的兜底） */
 export const 客户层分配方式 = "指定分配";
 
-/** 客户负责人是市场角色、客户不在公海。角色只认业务角色。弹窗隐藏「待办一起转」的勾和服务端都用这一句 */
+/**
+ * 客户负责人有市场角色且没有销售角色、客户不在公海；兼任的按销售算（用户 11-09）。角色只认业务角色。
+ * 弹窗隐藏「待办一起转」的勾和服务端都用这一句
+ */
 export function 客户在市场手里(org: 组织, 客户: { salesOwnerId: string; pool: { customerId: string } | null } | null): boolean {
-  return !!客户 && !客户.pool && 是市场角色(org, 客户.salesOwnerId);
+  return !!客户 && !客户.pool && 是市场角色(org, 客户.salesOwnerId) && !是销售角色(org, 客户.salesOwnerId);
 }
 
 /** 这位客户分给这个接手人，算不算转客户：客户在市场手里、接手的是另一位销售 */
