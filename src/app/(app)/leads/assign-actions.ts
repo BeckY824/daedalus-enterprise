@@ -25,6 +25,7 @@ import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
 import { 单项目客户跟着领 } from "@/lib/enterprise/pool-link";
+import { 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 带走一位 } from "@/lib/carry-over-db";
 import { 看全部 } from "@/lib/team-scope";
@@ -241,6 +242,9 @@ async function 分项目给(
   const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null; 留下?: 留下的活 } | Exclude<分给结果, { ok: true }>> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
     if (!p) return { ok: false, error: 项目不在 };
+    // 分前看查过一次；这里再查：弹框开着时客户可能刚被放进公海（放在乐观锁前面，说的是真原因）
+    const 在公海 = await tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } });
+    if (拦客户公海里的项目(!!在公海)) return { ok: false, error: 客户在公海项目不单领提示 };
     // 进公海清了负责人的（C-01）ownerId 是空串，和界面交来的「没人」(null) 当一回事
     if (input.原负责人 !== undefined && (p.ownerId || null) !== input.原负责人) return 已被分配;
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分：去「项目」里转让负责人" };
@@ -316,9 +320,11 @@ async function 分前看(
   if (哪条.projectId !== undefined) {
     const p = await prisma.project.findFirst({
       where: { id: 哪条.projectId },
-      select: { ownerId: true, pooledAt: true, awaitAssignAt: true, phase: true, result: true, name: true, bizLine: true },
+      select: { ownerId: true, pooledAt: true, awaitAssignAt: true, phase: true, result: true, name: true, bizLine: true, customer: { select: { pool: { select: { customerId: true } } } } },
     });
     if (!p) return { ok: false, error: 项目不在 };
+    // 客户公海里的项目跟客户走，不单独分（M-公海-06、X-13）；线索公海（客户不在公海）照分
+    if (拦客户公海里的项目(!!p.customer.pool)) return { ok: false, error: 客户在公海项目不单领提示 };
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
     // 公海里的、待分配的（A7 / A10，负责人那一格只是建的人占着）：原负责人也能被挑中

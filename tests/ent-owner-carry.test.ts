@@ -7,6 +7,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null },
+  /** 分前看 之后、事务之前插一手（分项目给 进事务前读组织规则）：模拟这一下客户刚被放进公海 */
+  插队: null as null | (() => Promise<void>),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
@@ -14,6 +16,18 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
+vi.mock("@/lib/project/org-rules-store", async (原) => {
+  const 真 = await 原<typeof import("@/lib/project/org-rules-store")>();
+  return {
+    ...真,
+    生效组织规则: async () => {
+      const 手 = mocks.插队;
+      mocks.插队 = null;
+      if (手) await 手();
+      return 真.生效组织规则();
+    },
+  };
+});
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -30,6 +44,9 @@ import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 不能改客户事项话, 没业务角色话 } from "@/lib/enterprise/follow-perm";
 import { 只读角色话 } from "@/lib/enterprise/permissions";
 import { 销售初判, 市场复核 } from "@/lib/project/lead-verify";
+import { 放进公海 } from "@/app/(app)/customers/pool-actions";
+import { 放回公海 } from "@/lib/project/db";
+import { 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 
@@ -80,6 +97,7 @@ const 活还在 = async (t: string, p: string, 主人: string, 标题 = "打电�
 };
 
 beforeEach(async () => {
+  mocks.插队 = null;
   await resetDb();
   invalidateSettingsCache();
   忘掉企业版范围();
@@ -192,7 +210,7 @@ describe("决定一 1：别的入口带活不变", () => {
 });
 
 describe("决定一 2：弹窗要的判断（项目分配线）", () => {
-  it("客户在市场手里 = 市场转客户；负责人是销售、客户在公海都不是", async () => {
+  it("客户在市场手里 = 市场转客户；负责人是销售的不是；客户在公海的不能分，弹窗拿不到可选", async () => {
     const 市场的 = await 客户(市场.id);
     const p1 = await 项目(市场的, 市场.id);
     expect(await 以(市场, () => 项目分配线(p1))).toMatchObject({ 市场转客户: true });
@@ -204,7 +222,7 @@ describe("决定一 2：弹窗要的判断（项目分配线）", () => {
     const 公海的 = await 客户(市场.id);
     const p3 = await 项目(公海的, 市场.id);
     await prisma.customerPool.create({ data: { customerId: 公海的, reason: "手动" } });
-    expect(await 以(总管, () => 项目分配线(p3))).toMatchObject({ 市场转客户: false });
+    expect(await 以(总管, () => 项目分配线(p3))).toBeNull();
   });
 });
 
@@ -471,5 +489,92 @@ describe("决定二：批量自动分配按客户算一份", () => {
     expect((await 市场复核({ id: 市场.id, role: 市场.role }, L2, false)).ok).toBe(true);
     expect((await 项目of(L2)).result).toBe("线索流失");
     expect(await 本月加额(甲.id)).toBe(1);
+  });
+});
+
+describe("客户公海里的项目不能单独分配（M-公海-06、X-13）", () => {
+  const 拦的话 = { ok: false, error: 客户在公海项目不单领提示 };
+  const 放进去 = async () => {
+    const c = await 客户(甲.id);
+    const 们 = [await 项目(c, 甲.id), await 项目(c, 甲.id), await 项目(c, 甲.id)];
+    expect(await 以(甲, () => 放进公海([c], "客户主动终止"))).toMatchObject({ ok: true, updated: 1 });
+    return { c, 们, 占位: await 客户负责人(c) };
+  };
+  /** 被拦 = 项目还在公海、没负责人，客户也没人接，没写分配记录 */
+  const 没动 = async (c: string, p: string, 占位: string) => {
+    expect(await 项目of(p)).toMatchObject({ ownerId: "" });
+    expect((await 项目of(p)).pooledAt).not.toBeNull();
+    expect(await 客户负责人(c)).toBe(占位);
+    expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
+    expect(await prisma.entLeadAssign.count({ where: { projectId: p } })).toBe(0);
+  };
+
+  it("指定分配：拦，提示和领取时一样", async () => {
+    const { c, 们, 占位 } = await 放进去();
+    expect(await 以(总管, () => 分配线索({ projectId: 们[0], toUserId: 乙.id, line: "内贸" }))).toEqual(拦的话);
+    await 没动(c, 们[0], 占位);
+  });
+
+  it("自动分配：拦", async () => {
+    await 只留参与(丙);
+    const { c, 们, 占位 } = await 放进去();
+    expect(await 以(总管, () => 自动分配线索(们[0], { 项目: true }))).toEqual(拦的话);
+    await 没动(c, 们[0], 占位);
+  });
+
+  it("批量自动分配：被拦的行 ok:false，同批别的客户的线索照分", async () => {
+    await 只留参与(丙);
+    const { c, 们, 占位 } = await 放进去();
+    const 别的客户 = await 客户(甲.id);
+    const 正常 = await 项目(别的客户, 甲.id);
+    const r = await 以(总管, () => 批量自动分配([们[0], 正常, 们[1]], { 项目: true }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.结果.map((x) => x.ok)).toEqual([false, true, false]);
+    expect(r.结果[0]).toMatchObject(拦的话);
+    expect(r.结果[2]).toMatchObject(拦的话);
+    await 没动(c, 们[0], 占位);
+    await 没动(c, 们[1], 占位);
+    expect((await 项目of(正常)).ownerId).toBe(丙.id);
+    expect(await 客户负责人(别的客户)).toBe(甲.id);
+  });
+
+  it("过了分前看才进公海：事务里也拦（线索公海项目，负责人本来就空，乐观锁挡不住）", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id);
+    await 项目(c, 甲.id);
+    expect((await 以(甲, () => 放回公海({ id: 甲.id, role: 甲.role }, p))).ok).toBe(true);
+    mocks.插队 = async () => { await prisma.customerPool.create({ data: { customerId: c, reason: "手动" } }); };
+    expect(await 以(总管, () => 分配线索({ projectId: p, toUserId: 乙.id, line: "内贸", 原负责人: null }))).toEqual(拦的话);
+    expect(mocks.插队).toBeNull(); // 确实走到了分前看之后那一步
+    expect(await 项目of(p)).toMatchObject({ ownerId: "" });
+    expect((await 项目of(p)).pooledAt).not.toBeNull();
+    expect(await prisma.entLeadAssign.count({ where: { projectId: p } })).toBe(0);
+  });
+
+  it("线索公海（单个项目进公海，客户不在公海）：指定、自动、批量都照分，客户负责人不动", async () => {
+    await 只留参与(丙);
+    const 造 = async () => {
+      const c = await 客户(甲.id);
+      const p = await 项目(c, 甲.id);
+      await 项目(c, 甲.id); // 名下还有别的项目：客户不跟着进公海
+      expect((await 以(甲, () => 放回公海({ id: 甲.id, role: 甲.role }, p))).ok).toBe(true);
+      expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(0);
+      expect((await 项目of(p)).pooledAt).not.toBeNull();
+      return { c, p };
+    };
+    const a = await 造();
+    expect(await 以(总管, () => 分配线索({ projectId: a.p, toUserId: 丙.id, line: "内贸" }))).toEqual({ ok: true });
+    expect(await 项目of(a.p)).toMatchObject({ ownerId: 丙.id, pooledAt: null });
+    expect(await 客户负责人(a.c)).toBe(甲.id);
+
+    const b = await 造();
+    expect(await 以(总管, () => 自动分配线索(b.p, { 项目: true }))).toMatchObject({ ok: true, toUserId: 丙.id });
+    expect(await 客户负责人(b.c)).toBe(甲.id);
+
+    const d = await 造();
+    const r = await 以(总管, () => 批量自动分配([d.p], { 项目: true }));
+    expect(r).toMatchObject({ ok: true, 结果: [{ ok: true, toUserId: 丙.id }] });
+    expect(await 客户负责人(d.c)).toBe(甲.id);
   });
 });

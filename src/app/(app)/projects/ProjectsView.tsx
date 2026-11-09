@@ -241,7 +241,8 @@ export default function ProjectsView({
     // 已线索流失的不再分（服务端也拦）；两颗带字的键（规则 D）
     ...(可分 ? [{
       title: "", key: "act", width: 150, fixed: "right" as const,
-      render: (_: unknown, r: 项目行) => (r.result ? null : (
+      // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）
+      render: (_: unknown, r: 项目行) => (r.result || r.客户在公海 ? null : (
         <Space size={2}>
           <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
           <Button aria-label={`自动分配 ${r.name}`} type="link" size="small" onClick={() => void 自动分(r)}>自动分配</Button>
