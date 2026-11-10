@@ -12,7 +12,7 @@ const prisma = new PrismaClient();
 async function main() {
   const pwd = await bcrypt.hash("admin123", 10);
 
-  const [admin, zhangsan, customer] = await Promise.all([
+  const [, zhangsan, customer] = await Promise.all([
     prisma.user.upsert({ where: { email: "admin" }, update: {},
       create: { email: "admin", name: "管理员", title: "系统管理员", role: "ADMIN", password: pwd } }),
     prisma.user.upsert({ where: { email: "zhangsan" }, update: {},
