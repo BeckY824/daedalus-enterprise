@@ -17,6 +17,17 @@ export async function 等复核拦(db: Pick<Prisma.TransactionClient, "entLeadVe
 }
 
 /**
+ * 验证中（等复核、等销售：pending 有值）的线索不能分配、不能改负责人（X-77、M-线索-02）：复核人、终验销售跟着负责人走，改派会把在等的那一步换了人。
+ * 手动 / 自动 / 批量分配（assign-actions.ts 分前看、分项目给事务里）和改项目换负责人都问它。不是企业版 null
+ */
+export async function 验证中不能改派(db: Pick<Prisma.TransactionClient, "entLeadVerify">, projectId: string): Promise<string | null> {
+  if (!企业版()) return null;
+  const v = await db.entLeadVerify.findUnique({ where: { projectId }, select: { pending: true } });
+  if (!v?.pending) return null;
+  return `这条线索在验证中（等${v.pending}），不能分配、不能改负责人；验证走完再分`;
+}
+
+/**
  * 复核判死（市场复核 / 总管理终判判了无效线索）是终局（11-03 测试 A4-1）：结局改不回进行中，谁都不行，免得一人推翻别的角色的裁决。
  * 销售初判即终判（创建人是销售，自己判的）不算复核，照旧能自己改回。不是企业版 null
  */

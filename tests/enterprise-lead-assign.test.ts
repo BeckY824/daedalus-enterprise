@@ -28,6 +28,7 @@ import { 企划线索计数key, 月份, 计不计数, 满了, 有配额, 挑接�
 import { 建组织 } from "@/lib/enterprise/org-core";
 import { 规则 } from "@/lib/enterprise/rules";
 import { saveLead } from "@/app/(app)/leads/actions";
+import { 改项目 } from "@/lib/project/db";
 import { 存组织规则 } from "@/lib/project/org-rules-store";
 import { 合上改动, 默认组织规则 } from "@/lib/project/org-rules";
 
@@ -1030,6 +1031,26 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     expect([a, b].filter((r) => r.ok)).toHaveLength(1);
     expect([a, b].find((r) => !r.ok)).toMatchObject({ 已被分配: true });
     expect(await prisma.entLeadAssign.count({ where: { projectId: P } })).toBe(1);
+  });
+
+  it("X-77 验证中（等复核、等销售）的线索不能分配、不能改负责人：手动、自动、批量、改项目都拦，负责人不动、不留分配行", async () => {
+    const 等复核 = await 建项目("验甲", { bizLine: "内贸" });
+    await prisma.entLeadVerify.create({ data: { projectId: 等复核, verdict: "初验无效", pending: "市场复核" } });
+    const 客户丁 = (await prisma.customer.create({ data: { name: "客户丁", phone: "13900000002", salesOwnerId: 市场 } })).id;
+    const 等销售 = (await prisma.project.create({ data: { name: "验乙", customerId: 客户丁, ownerId: 市场, creatorId: 市场, bizLine: "内贸" } })).id;
+    await prisma.entLeadVerify.create({ data: { projectId: 等销售, verdict: "初验无效", pending: "销售终验" } });
+    expect(await 分配线索({ projectId: 等复核, toUserId: 内贸 })).toMatchObject({ ok: false, error: expect.stringContaining("验证中") });
+    expect(await 自动分配线索(等销售, { 项目: true })).toMatchObject({ ok: false, error: expect.stringContaining("验证中") });
+    const r = await 批量自动分配([等复核, 等销售], { 项目: true });
+    expect(r.ok && r.结果.map((x) => x.ok)).toEqual([false, false]);
+    expect(await 改项目({ id: 市场, role: "SALES" }, 等销售, { ownerId: 内贸 })).toMatchObject({ ok: false, error: expect.stringContaining("验证中") });
+    for (const id of [等复核, 等销售]) expect((await 项目(id)).ownerId).toBe(市场);
+    expect(await prisma.entLeadAssign.count()).toBe(0);
+    // 挑不到人才标待分配：验证中被拦的不标
+    expect((await 项目(等复核)).awaitAssignAt).toBeNull();
+    // 验证走完（pending 清空）照常能分
+    await prisma.entLeadVerify.update({ where: { projectId: 等复核 }, data: { pending: null } });
+    expect(await 分配线索({ projectId: 等复核, toUserId: 内贸 })).toEqual({ ok: true });
   });
 
   it("X-89 批量自动分配带每行看到的负责人：哪行被别人先分走就只那行回「已被分配」，其余照分", async () => {

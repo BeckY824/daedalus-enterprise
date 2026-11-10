@@ -21,6 +21,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 分配方式叫法, 挡分配方式 } from "@/lib/enterprise/dict";
 import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
+import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 分配通知, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -252,6 +253,9 @@ async function 分项目给(
     if (input.原负责人 !== undefined && (p.ownerId || null) !== input.原负责人) return 已被分配;
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分：去「项目」里转让负责人" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
+    // 验证中不能改派（X-77）：分前看查过一次，弹框开着时可能刚进验证，事务里再查
+    const 验证中 = await 验证中不能改派(tx, p.id);
+    if (验证中) return { ok: false, error: 验证中 };
     if (p.ownerId === input.toUserId && !p.pooledAt && !p.awaitAssignAt) return { ok: false, error: "这条新线索已经在他名下了" };
     if (查额) {
       const 已分 = await 本月已分(input.toUserId, 月, tx);
@@ -335,6 +339,8 @@ async function 分前看(
     if (公海客户 !== "整包" && 拦客户公海里的项目(!!p.customer.pool)) return { ok: false, error: 公海客户拦的话(公海客户) };
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
+    const 验证中 = await 验证中不能改派(prisma, 哪条.projectId);
+    if (验证中) return { ok: false, error: 验证中 };
     // 公海里的、待分配的（A7 / A10，负责人那一格只是建的人占着）：原负责人也能被挑中
     return {
       ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId || null, 实际负责人: p.ownerId || null,

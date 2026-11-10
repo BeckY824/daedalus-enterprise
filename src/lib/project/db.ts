@@ -12,7 +12,7 @@ import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, �
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
-import { 等复核拦, 复核判死拦 } from "./lead-verify-guard";
+import { 等复核拦, 复核判死拦, 验证中不能改派 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
@@ -587,6 +587,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       const 客 = 企业版() ? await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } })) : null;
       if (客?.pool && 客.poolInvalidAt) return { ok: false as const, error: 无效客户项目不能转提示 };
       if (拦客户公海里的项目(!!客?.pool)) return { ok: false as const, error: 客户在公海项目不单领提示 };
+      // 验证中（等复核、等销售）的线索不能改负责人（X-77）
+      const 验证中 = await 验证中不能改派(tx, p.id);
+      if (验证中) return { ok: false as const, error: 验证中 };
       // 这里改不了阶段和结局（规整项目只出名称、负责人、金额、备注），p 的阶段 / 结局就是改完的
       const 超 = await 超上限(tx, 规则, 新.ownerId, p);
       if (超) return { ok: false as const, error: 超 };
