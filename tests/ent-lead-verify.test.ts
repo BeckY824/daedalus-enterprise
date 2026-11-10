@@ -411,6 +411,66 @@ describe("企业版线索有效性验证", () => {
     });
   });
 
+  describe("同一步两个人同时判：后到的不盖先到的（X-81，M-线索-02）", () => {
+    const 判过了 = { ok: false, error: "这条线索已被别人判过，刷新看看" };
+    const 流失痕 = (id: string) => prisma.projectNodeLog.count({ where: { projectId: id, toResult: "线索流失" } });
+
+    it("市场复核一个判有效、一个判无效同时提交：只有一个算数，另一个回「已被别人判过」，项目和状态对得上", async () => {
+      const id = await 项目();
+      await 判无效(id);
+      const [有效, 无效] = await Promise.all([市场复核(市场, id, true, "有兴趣"), 市场复核(市场, id, false, "空号")]);
+      expect([有效.ok, 无效.ok].filter(Boolean)).toHaveLength(1);
+      expect(有效.ok ? 无效 : 有效).toEqual(判过了);
+      expect((await 痕(id)).filter((l) => l.step === "市场复核")).toHaveLength(1);
+      const p = await 现(id);
+      const s = await 状态(id);
+      if (无效.ok) {
+        expect(p.result).toBe("线索流失");
+        expect(s).toMatchObject({ verdict: "无效线索", reviewResult: "无效", pending: null });
+        expect(await 流失痕(id)).toBe(1);
+      } else {
+        // 判死没抢到：项目一点没动（原来先改项目、后核，return 作废时项目已经流失还提交了）
+        expect(p.result).toBeNull();
+        expect(s).toMatchObject({ reviewResult: "有效", pending: "销售终验" });
+        expect(await 流失痕(id)).toBe(0);
+      }
+    });
+
+    it("两个市场复核都判无效：只判死一次（一行节点变更、一行痕）", async () => {
+      const id = await 项目();
+      await 判无效(id);
+      const rs = await Promise.all([市场复核(市场, id, false, "一"), 市场复核(市场, id, false, "二")]);
+      expect(rs.filter((r) => r.ok)).toHaveLength(1);
+      expect(rs.find((r) => !r.ok)).toEqual(判过了);
+      expect(await 流失痕(id)).toBe(1);
+      expect((await 痕(id)).filter((l) => l.step === "市场复核")).toHaveLength(1);
+    });
+
+    it("总管理终判两人同时一有效一无效：只有一个算数", async () => {
+      const id = await 项目();
+      await 判无效(id);
+      await 市场复核(市场, id, true);
+      await 销售终验(乙, id, false, "坚持无效");
+      const [有效, 无效] = await Promise.all([总管理终判(老板, id, true, "再跟"), 总管理终判(总管, id, false, "同意无效")]);
+      expect([有效.ok, 无效.ok].filter(Boolean)).toHaveLength(1);
+      expect(有效.ok ? 无效 : 有效).toEqual(判过了);
+      expect((await 痕(id)).filter((l) => l.step === "总管理终判")).toHaveLength(1);
+      const p = await 现(id);
+      const s = await 状态(id);
+      if (无效.ok) expect([p.result, s?.pending, s?.finalById]).toEqual(["线索流失", null, 总管.id]);
+      else expect([p.result, s?.pending, s?.finalById, await 流失痕(id)]).toEqual([null, "销售认领", 老板.id, 0]);
+    });
+
+    it("销售初判同时点了两次无效：只交一次复核、一行痕", async () => {
+      const id = await 项目();
+      const rs = await Promise.all([判无效(id), 判无效(id)]);
+      expect(rs.filter((r) => r.ok)).toHaveLength(1);
+      expect(rs.find((r) => !r.ok)).toEqual(判过了);
+      expect((await 痕(id)).map((l) => `${l.step}:${l.verdict}`)).toEqual(["销售初判:无效"]);
+      expect((await 状态(id))?.pending).toBe("市场复核");
+    });
+  });
+
   describe("等着的时候别的入口拦住", () => {
     it("等复核：改节点、点结局、放回公海、判 MQL 都拦（老板也不行）；有结果等销售时也拦", async () => {
       const id = await 项目();
