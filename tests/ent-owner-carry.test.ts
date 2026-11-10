@@ -1434,7 +1434,7 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
     if (r.ok) expect(r.带走).toMatchObject({ 计划和待办: 2 });
   });
 
-  it("销售转销售（直转、确认交接）：照旧带走，待分配和分配方式不动", async () => {
+  it("销售转销售（直转、确认交接）：照旧带走；原负责人自己占着的待分配清掉（P-转-20），分配方式不动", async () => {
     for (const 走交接 of [false, true]) {
       if (走交接) await 开交接确认();
       const c = await 客户(乙.id);
@@ -1451,7 +1451,7 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
       expect((await 计划of(pl)).ownerId).toBe(甲.id);
       const p = await 项目of(等分);
       expect(p.ownerId).toBe(甲.id);
-      expect(p.awaitAssignAt).not.toBeNull();
+      expect(p.awaitAssignAt).toBeNull();
       expect(p.assignMode).toBeNull();
     }
   });
@@ -2334,6 +2334,108 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       await 项目(d, 乙.id, { awaitAssignAt: new Date() });
       expect(await 以(市场, () => assignSalesOwner([d], 丙.id))).toMatchObject({ ok: true, updated: 1 });
       expect(await 持有数(prisma, 丙.id)).toBe(5);
+    });
+  });
+
+  describe("P-转-20：原负责人自己名下待分配的项目随客户转走，也清待分配、算接手人持有（X-68、X-84）", () => {
+    const 上限 = async (n: number) => { await setSetting("orgRules", { ...默认组织规则, 公海: { ...默认组织规则.公海, 持有上限开: true, 默认上限: n } }); invalidateSettingsCache(); };
+    const 时刻 = new Date("2026-11-01T08:00:00.000Z");
+
+    it("销售转销售（批量转）：自己占着的待分配随客户给接手人、清掉、算持有；不发同事通知；撤销负责人和时刻都还原", async () => {
+      const c = await 客户(甲.id);
+      const 自己待分配 = await 项目(c, 甲.id, { awaitAssignAt: 时刻 });
+      const r = await 以(总管, () => assignSalesOwner([c], 丙.id));
+      if (!r.ok) throw new Error(r.error);
+      expect(await 负责人of(自己待分配)).toBe(丙.id);
+      expect(await 待分配of(自己待分配)).toBeNull();
+      expect(await 持有数(prisma, 丙.id)).toBe(1);
+      expect((await 通知们(甲.id)).filter((n) => n.title.includes("待分配"))).toHaveLength(0);
+      await 以(总管, () => 撤销改负责人(r.原值 ?? [], 丙.id, JSON.parse(JSON.stringify(r.带过来))));
+      expect(await 负责人of(自己待分配)).toBe(甲.id);
+      expect(await 待分配of(自己待分配)).toEqual(时刻);
+    });
+
+    it("客户页改负责人：同样清掉", async () => {
+      const c = await 客户(甲.id);
+      const 自己待分配 = await 项目(c, 甲.id, { awaitAssignAt: 时刻 });
+      expect(await 以(总管, () => patchCustomer(c, "salesOwnerId", 丙.id))).toMatchObject({ ok: true });
+      expect(await 负责人of(自己待分配)).toBe(丙.id);
+      expect(await 待分配of(自己待分配)).toBeNull();
+    });
+
+    describe("离职交接：离职的人自己待分配的项目给接手人、清掉", () => {
+      const 场景 = async () => {
+        await setSetting("business", { projectMode: true }); invalidateSettingsCache();
+        const c = await 客户(甲.id);
+        const 自己待分配 = await 项目(c, 甲.id, { awaitAssignAt: 时刻 });
+        const 挂别处待分配 = await 项目(await 客户(乙.id), 甲.id, { awaitAssignAt: 时刻 });
+        await prisma.user.update({ where: { id: 甲.id }, data: { active: false } });
+        return { c, 自己待分配, 挂别处待分配 };
+      };
+      const 清了 = async (p: string) => {
+        expect(await 负责人of(p)).toBe(丙.id);
+        expect(await 待分配of(p)).toBeNull();
+      };
+      it("交一位客户", async () => {
+        const x = await 场景();
+        expect(await 以(总管, () => 交接客户(甲.id, x.c, 丙.id))).toMatchObject({ ok: true });
+        await 清了(x.自己待分配);
+        expect(await 持有数(prisma, 丙.id)).toBe(1);
+      });
+      it("交一个项目", async () => {
+        const x = await 场景();
+        expect(await 以(总管, () => 交接项目(甲.id, x.挂别处待分配, 丙.id))).toMatchObject({ ok: true });
+        await 清了(x.挂别处待分配);
+      });
+      it("全部交给：客户上的、挂在别人客户上的都清", async () => {
+        const x = await 场景();
+        expect(await 以(总管, () => 交接全部(甲.id, 丙.id))).toMatchObject({ ok: true });
+        await 清了(x.自己待分配);
+        await 清了(x.挂别处待分配);
+        expect(await 持有数(prisma, 丙.id)).toBe(2);
+      });
+      it("确认离职交接（升级前留下的那笔）", async () => {
+        const x = await 场景();
+        const h = await prisma.entHandover.create({ data: { kind: "离职", way: "转交", fromUserId: 甲.id, toUserId: 丙.id, byUserId: 总管.id, customerIds: JSON.stringify([x.c]), counts: JSON.stringify({ 客户: 1 }) } });
+        await 以(丙, () => 确认交接(h.id));
+        await 清了(x.自己待分配);
+        await 清了(x.挂别处待分配);
+      });
+
+      it("持有上限：自己待分配的也算进手（交一位客户 / 交一个项目 / 全部交给）", async () => {
+        const x = await 场景();
+        await 项目(await 客户(丙.id), 丙.id);
+        await 上限(1);
+        const r1 = await 以(总管, () => 交接客户(甲.id, x.c, 丙.id));
+        expect(r1.ok).toBe(false);
+        expect((r1 as { error: string }).error).toContain("到持有上限（1 个）了");
+        const r2 = await 以(总管, () => 交接项目(甲.id, x.挂别处待分配, 丙.id));
+        expect(r2.ok).toBe(false);
+        expect((r2 as { error: string }).error).toContain("到持有上限（1 个）了");
+        await 上限(2);
+        const r3 = await 以(总管, () => 交接全部(甲.id, 丙.id));
+        expect(r3.ok).toBe(false);
+        expect((r3 as { error: string }).error).toContain("再接这 2 个");
+        await 上限(3);
+        expect(await 以(总管, () => 交接全部(甲.id, 丙.id))).toMatchObject({ ok: true });
+        expect(await 持有数(prisma, 丙.id)).toBe(3);
+      });
+    });
+
+    it("确认转让交接：原负责人自己待分配的也算进手，超了拦", async () => {
+      await setSetting(规则.交接要确认.key, true);
+      await 上限(1);
+      await 项目(await 客户(丙.id), 丙.id);
+      const c = await 客户(甲.id);
+      await 项目(c, 甲.id, { awaitAssignAt: 时刻 });
+      expect(await 以(甲, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, 交接中: 1 });
+      const [h] = (await 以(丙, () => 待确认的交接())).等我确认;
+      const r = await 以(丙, () => 确认交接(h.id));
+      expect(r.ok).toBe(false);
+      expect((r as { error: string }).error).toContain("到持有上限（1 个）了");
+      await 上限(2);
+      expect(await 以(丙, () => 确认交接(h.id))).toMatchObject({ ok: true });
+      expect(await 持有数(prisma, 丙.id)).toBe(2);
     });
   });
 });

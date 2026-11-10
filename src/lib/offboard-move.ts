@@ -47,8 +47,9 @@ export async function 离职转给接手人(
   const 其余 = 分.项目.filter((p) => !同事项目.has(p));
   const 转了 = 其余.length ? await 转项目(tx, { id: { in: 其余 }, pooledAt: null }, 接手人, 操作人, false) : [];
   const 转了同事 = 同事的.length ? await 转项目(tx, { id: { in: 同事的 }, pooledAt: null }, 接手人, 操作人, true) : [];
-  const 清的 = 同事的.filter((p) => 待分配.has(p));
-  if (清的.length) await tx.project.updateMany({ where: { id: { in: 清的 } }, data: { awaitAssignAt: null } });
+  // 清待分配：同事待分配的；离职的人自己占着待分配、这次转过去的也清（P-转-20、X-84），转过去就是接手人的、算他持有
+  const 清的 = [...同事的.filter((p) => 待分配.has(p)), ...转了];
+  if (清的.length) await tx.project.updateMany({ where: { id: { in: 清的 }, awaitAssignAt: { not: null } }, data: { awaitAssignAt: null } });
   return [...转了, ...转了同事];
 }
 

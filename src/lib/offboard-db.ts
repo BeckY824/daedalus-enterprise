@@ -142,13 +142,14 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
 
 /**
  * 离职的这一份此刻交给 接手人，会新进他手上几个算持有的项目（M-公海-18 拦持有上限用；确认离职交接、离职交接看板「全部交给」共用）：
- * 按此刻重新分拣，给接手人的项目里算持有的——离职的人自己的、挂在别处的，同事待分配的清了也算；接手人自己本来就负责的不算新进。
+ * 按此刻重新分拣，给接手人的项目里算持有的——离职的人自己的（含他自己占着待分配的）、挂在别处的，同事待分配的清了也算；接手人自己本来就负责的不算新进。
  * 调用方放开范围（看全部）
  */
 export async function 离职进手的持有项目(db: 读库, fromId: string, 方式: 停用方式, 接手人: string): Promise<number> {
   const 分 = await 停用分拣(db, fromId, 方式, true);
   if (!分.项目.length) return 0;
   return db.project.count({
-    where: { AND: [算持有的项目, { id: { in: 分.项目 }, pooledAt: null }, { OR: [{ id: { in: 分.清待分配 } }, { awaitAssignAt: null, ownerId: { not: 接手人 } }] }] },
+    // 离职的人自己的（含他自己占着待分配的，交过去清待分配，P-转-20）、同事待分配的、已停用同事进行中的
+    where: { AND: [算持有的项目, { id: { in: 分.项目 }, pooledAt: null }, { OR: [{ id: { in: 分.清待分配 } }, { ownerId: fromId }, { awaitAssignAt: null, ownerId: { not: 接手人 } }] }] },
   });
 }
