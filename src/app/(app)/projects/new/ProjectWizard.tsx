@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { App, Alert, Button, Input, InputNumber, Modal, Select, Space, Steps } from "antd";
@@ -21,7 +21,8 @@ import { 项目名上限, 备注上限, 占位名提示 } from "@/lib/project/wi
 import { 是占位值 } from "@/lib/project/required";
 import { 有效线索节点, 建档不能过线索验证 } from "@/lib/project/stage-gates";
 import { 下一步文字上限 } from "@/lib/project/project-fields";
-import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
+import { checkDuplicate, 推荐人候选, type DuplicateHit } from "../../customers/actions";
+import { 渠道触点们, 客户介绍触点, 新建来源还差 } from "@/lib/enterprise/touchpoint";
 import { 查号码, 查客户名, type 查号码结果 } from "../../customers/number-actions";
 import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
@@ -49,8 +50,8 @@ type 稿 = {
   联系人: { name: string; position: string; phone: string; email: string; wechat: string };
   /** 企业版：上一次查重带进联系人那几格的值（人没动过的，再查一个号时跟着换）；开关关着没有这格 */
   带过?: Partial<联系人三格>;
-  /** 渠道：企业版新建线索必选（老草稿里没有） */
-  客户: { name: string; school: string; remark: string; 渠道?: string };
+  /** 渠道 / 触点：企业版新建线索至少选一个（P-渠道-08，老草稿里没有）；介绍人：触点 = 客户介绍时挂的已有客户（P-渠道-09） */
+  客户: { name: string; school: string; remark: string; 渠道?: string; 触点?: string; 介绍人?: string };
   /** 分配方式：企业版才有（默认五项的序号，0 指定 / 1 自动 / 2 公海捞取 / 3 暂不分配 / 4 个人自持）；老草稿里没有 */
   /** 渠道 = 项目来源（企业版，迁移 077）：没另选（空）= 跟客户的渠道；老草稿里没有 */
   /** 业务线（企业版，11-01 A1）：内贸 / 外贸 / 暂不分配，企业版必填；老草稿里没有 = 没填 */
@@ -97,7 +98,7 @@ function 这步还差(步: number, d: 稿, 已查: string | null, 要下一步: 
   if (步 === 0) return !d.phone.trim() ? "先填电话再查" : 已查 !== d.phone.trim() ? "点「查重」看看这个号码有没有人录过" : "";
   // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
   if (步 === 1) return !d.联系人.name.trim() ? "请填写联系人姓名" : 企 && 是占位值(d.联系人.name) ? 占位名提示("联系人姓名") : "";
-  if (步 === 2) return !d.客户.name.trim() ? "请填写名称" : 企 && 是占位值(d.客户.name) ? 占位名提示("客户名称") : 企业 && !d.客户.渠道 ? "请选渠道" : "";
+  if (步 === 2) return !d.客户.name.trim() ? "请填写名称" : 企 && 是占位值(d.客户.name) ? 占位名提示("客户名称") : 企业 ? 新建来源还差(d.客户.渠道, d.客户.触点) : "";
   if (步 === 3) return !d.项目.name.trim() ? "请填写项目名称" : 企 && 是占位值(d.项目.name) ? 占位名提示("项目名称") : d.项目.name.trim().length > 项目名上限 ? `项目名称请控制在 ${项目名上限} 字以内` : 企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined ? "请选分配方式" : 企业 && !d.项目.业务线 ? 业务线必填 : 要选负责人(d, 企业) && !d.项目.ownerId ? "请选项目负责人" : "";
   if (!d.跟进.content.trim()) return "请填写这次沟通的内容";
   if (企业) {
@@ -123,6 +124,32 @@ export default function ProjectWizard({ users, 要下一步, 企业 = null, 新�
 }
 
 const 不订阅 = () => () => {};
+
+/** 介绍人客户下拉（P-渠道-09）：选了「客户介绍」才挂上，挂上才取客户名单（和客户表单同一个 推荐人候选） */
+function 介绍人选择({ value, 叫法, onChange }: { value?: string; 叫法: string; onChange: (v: string | undefined) => void }) {
+  const [候选, set候选] = useState<{ id: string; name: string }[] | null>(null);
+  const [出错, set出错] = useState(false);
+  useEffect(() => {
+    let 作废 = false;
+    推荐人候选().then((r) => { if (!作废) set候选(r); }, () => { if (!作废) set出错(true); });
+    return () => { 作废 = true; };
+  }, []);
+  return (
+    <Select
+      aria-label={`介绍人${叫法}`}
+      style={{ width: "100%" }}
+      showSearch
+      allowClear
+      placeholder={`选择介绍他来的已有${叫法}（可不选）`}
+      optionFilterProp="label"
+      value={value || undefined}
+      loading={候选 === null && !出错}
+      notFoundContent={出错 ? `${叫法}名单没取到，关掉这格重选一次触点再试` : 候选 === null ? "正在取…" : undefined}
+      options={(候选 ?? []).map((c) => ({ value: c.id, label: c.name }))}
+      onChange={(v?: string) => onChange(v || undefined)}
+    />
+  );
+}
 
 /**
  * 「新增客户」「新增项目」弹窗（U-新建-01，10-31 会议）：和 /projects/new 同一个向导、同一套查重（含联系人查重），只是摆在弹窗里。
@@ -277,7 +304,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           school: d.客户.school || null, grade: null, major: null,
           followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: d.客户.remark || null,
           // 团队版客户记在项目负责人名下；企业版客户归谁由 建档向导 定（P-转-03、X-18）
-          salesOwnerId: 负责人 || null, channelId: 企业 ? d.客户.渠道 || null : null, referrerCustomerId: null,
+          salesOwnerId: 负责人 || null, channelId: 企业 ? d.客户.渠道 || null : null,
+          // 渠道触点（P-渠道-08）：选了客户介绍才带介绍人（P-渠道-09）
+          referrerCustomerId: 企业 && d.客户.触点 === 客户介绍触点 ? d.客户.介绍人 || null : null,
+          ...(企业 ? { touchpoint: d.客户.触点 || null } : {}),
         },
         联系人: d.联系人,
         项目: {
@@ -472,18 +502,34 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           )}
           {企业 && 一行("渠道", (
             <>
-              {/* P16：先选渠道名称再选具体来源（一个级联到底），选了来源渠道就定了；也能直接打字搜全称 */}
+              {/* P16：先选渠道名称再选具体来源（一个级联到底），选了来源渠道就定了；也能直接打字搜全称。渠道和触点至少一个（P-渠道-08） */}
               <ChannelPicker
                 aria-label="渠道"
                 层级="两级"
                 channels={企业.渠道们}
                 value={d.客户.渠道 || null}
-                allowClear={false}
+                allowClear={!!d.客户.触点}
                 placeholder="这条线索从哪个渠道、哪个来源来"
                 onChange={(v) => 改("客户", { 渠道: v ?? undefined })}
               />
             </>
-          ), true)}
+          ), !d.客户.触点)}
+          {/* 渠道触点（P-渠道-08，和客户表单同一格）：公司资源 / 客户介绍来的主渠道留空、选这里；选了触点就不卡渠道 */}
+          {企业 && 一行("渠道触点", (
+            <Select
+              aria-label="渠道触点"
+              style={{ width: "100%" }}
+              allowClear
+              placeholder="公司资源 / 客户介绍（公司分配的资源、客户介绍来的不选渠道，在这里标）"
+              value={d.客户.触点 || undefined}
+              options={渠道触点们.map((x) => ({ value: x, label: x }))}
+              onChange={(v?: string) => 改("客户", { 触点: v || undefined, ...(v === 客户介绍触点 ? {} : { 介绍人: undefined }) })}
+            />
+          ))}
+          {/* 介绍人客户（P-渠道-09）：只在触点 = 客户介绍时出现，挂一个已有客户 */}
+          {企业 && d.客户.触点 === 客户介绍触点 && 一行(`介绍人${b.customer}`, (
+            <介绍人选择 value={d.客户.介绍人} 叫法={b.customer} onChange={(v) => 改("客户", { 介绍人: v })} />
+          ))}
           {!企业 && 一行(b.fields.school, <Input value={d.客户.school} onChange={(e) => 改("客户", { school: e.target.value })} />)}
           {!企业 && 一行("备注", <Input.TextArea rows={3} value={d.客户.remark} onChange={(e) => 改("客户", { remark: e.target.value })} />)}
         </>
@@ -506,7 +552,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
                 onChange={(v) => 改("项目", { 渠道: v === d.客户.渠道 ? null : v })}
               />
               <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>
-                {d.项目.渠道 && d.项目.渠道 !== d.客户.渠道 ? "和客户的渠道不同：渠道统计里这个项目算在这里" : "默认跟客户的渠道；这一单从别的渠道来就改"}
+                {d.项目.渠道 && d.项目.渠道 !== d.客户.渠道 ? "和客户的渠道不同：渠道统计里这个项目算在这里" : d.客户.渠道 ? "默认跟客户的渠道；这一单从别的渠道来就改" : "客户只选了渠道触点：项目来源可以空着，这一单从哪个渠道来就选上"}
               </div>
             </>
           ))}

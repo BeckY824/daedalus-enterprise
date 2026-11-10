@@ -170,6 +170,27 @@ describe("确认新线索卡", () => {
     expect(await prisma.project.count()).toBe(1);
   });
 
+  it("P-渠道-13：主渠道停用了，底下的子渠道卡上认不出、不建（和新建的渠道下拉同一个可选渠道条件）", async () => {
+    当(乙);
+    const 主 = await prisma.entChannelMain.create({ data: { name: "展会主", category: "线下活动", active: false } });
+    await prisma.channel.update({ where: { id: 展会 }, data: { mainId: 主.id } });
+    expect(await applyProposal(线索卡() as never)).toEqual({ ok: false, error: "卡上的渠道「展会」对不上启用中的渠道：请在卡上重新选渠道" });
+    expect(await prisma.project.count()).toBe(0);
+    // 主渠道重新启用就认
+    await prisma.entChannelMain.update({ where: { id: 主.id }, data: { active: true } });
+    expect(await applyProposal(线索卡() as never)).toMatchObject({ ok: true });
+  });
+
+  it("P-渠道-08：卡上来源选的是渠道触点（公司资源）：主渠道留空、触点记上，项目来源空着", async () => {
+    当(乙);
+    expect(await applyProposal(线索卡({ source: "公司资源" }) as never)).toMatchObject({ ok: true });
+    const p = await prisma.project.findFirstOrThrow({ include: { customer: true } });
+    expect(p.customer).toMatchObject({ touchpoint: "公司资源", channelId: null });
+    expect(p.channelId).toBeNull();
+    const 跟进 = await prisma.followUp.findFirstOrThrow({ where: { customerId: p.customerId } });
+    expect(跟进.content).toBe("在首页对话里新建的线索，渠道触点：公司资源");
+  });
+
   it("只用项目：来源只写平台名，竖线前前缀唯一就认；前缀对上多个不猜，报错列候选", async () => {
     当(乙);
     await prisma.channel.createMany({ data: ["TikTok｜示例号", "Facebook｜品牌A", "Facebook｜品牌a"].map((name) => ({ name, channelOwnerId: 老板.id })) });

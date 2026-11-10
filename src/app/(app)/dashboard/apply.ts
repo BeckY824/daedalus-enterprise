@@ -6,7 +6,8 @@ import { 读现值 } from "@/lib/agent/current-values";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 认回打码号 } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
-import { 在售渠道条件 } from "@/lib/enterprise/channel-main";
+import { 可选渠道条件 } from "@/lib/enterprise/channel-main";
+import { 认渠道触点 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
@@ -299,10 +300,13 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 进项目 = 去处.includes("项目") && 国家;
   const 联系人地址 = 去处.includes("联系人") ? [国家, 城市].filter(Boolean).join(" ").slice(0, 联系人地址上限) : "";
   // 企业版新建线索要选渠道：卡上只有来源一格，按整名 / 只含一个渠道名 / 竖线前平台前缀唯一来认（lib/enterprise/channel-match.ts，卡片预选同一个函数），对上多个不猜
-  // 历史渠道（P-渠道-06）只承载历史客户，AI 新建线索也不认
-  const 渠道们 = await prisma.channel.findMany({ where: { active: true, ...在售渠道条件 }, select: { id: true, name: true } });
-  const { 渠道, 候选 } = 认渠道(p.source, 渠道们);
-  if (!渠道) {
+  // 历史渠道（P-渠道-06）只承载历史客户、主渠道停用了的子渠道（P-渠道-13）也不能选：AI 新建线索同样不认（可选渠道条件，和新建的渠道下拉同一个）
+  const 渠道们 = await prisma.channel.findMany({ where: 可选渠道条件, select: { id: true, name: true } });
+  // 渠道和渠道触点至少一个（P-渠道-08）：卡上来源一字不差是触点（公司资源 / 客户介绍），又没有同名渠道，就主渠道留空、记触点
+  const 卡上触点 = 认渠道触点(p.source);
+  const 触点 = 卡上触点 && !渠道们.some((c) => c.name === 卡上触点) ? 卡上触点 : null;
+  const { 渠道, 候选 } = 触点 ? { 渠道: null, 候选: [] } : 认渠道(p.source, 渠道们);
+  if (!渠道 && !触点) {
     return {
       ok: false,
       error: 候选.length > 1
@@ -318,7 +322,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
     客户: {
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
       school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
-      remark: 备注 || null, salesOwnerId: 项目负责人, channelId: 渠道.id, referrerCustomerId: null,
+      remark: 备注 || null, salesOwnerId: 项目负责人, channelId: 渠道?.id ?? null, referrerCustomerId: null, ...(触点 ? { touchpoint: 触点 } : {}),
       // 国家、城市进客户地址（和新建客户同一格）；城市不带国家会被当成国内，所以没国家就不交城市
       ...(进客户 ? { 企业资料: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
     },
@@ -336,7 +340,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       ...(进项目 ? { 所在地: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
     },
     跟进: {
-      type: "OTHER", content: `在首页对话里新建的线索，渠道：${渠道.name}`, occurredAt: new Date().toISOString(),
+      type: "OTHER", content: 渠道 ? `在首页对话里新建的线索，渠道：${渠道.name}` : `在首页对话里新建的线索，渠道触点：${触点}`, occurredAt: new Date().toISOString(),
       下一步时间: p.nextAt || null,
       ...(p.下一步?.trim() ? { 下一步: p.下一步.trim() } : {}),
       节点: p.节点 ?? 企业版字典.节点们.线索[0],

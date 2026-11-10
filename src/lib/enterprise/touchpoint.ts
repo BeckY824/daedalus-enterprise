@@ -19,3 +19,7 @@ export function 认渠道触点(v: string | null | undefined): 渠道触点 | nu
   if (!s) return null;
   return (渠道触点们 as readonly string[]).includes(s) ? (s as 渠道触点) : undefined;
 }
+
+/** 新建（建档向导、AI 建档）原来要渠道的地方：渠道和触点至少一个（P-渠道-08）；服务端、向导第二步同一句 */
+export const 渠道或触点必填 = "请选渠道或渠道触点";
+export const 新建来源还差 = (渠道: string | null | undefined, 触点: string | null | undefined): string => (!渠道 && !触点 ? 渠道或触点必填 : "");
