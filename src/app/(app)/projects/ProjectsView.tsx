@@ -425,8 +425,8 @@ export default function ProjectsView({
                 }
           }
           筛选={筛选}
-          批量={可分 ? (选中, 清空) => (
-            <Button size="small" icon={<ThunderboltOutlined />} onClick={() => void 批量自动分(选中, 清空)}>自动分配</Button>
+          批量={可分 ? (选中, 清空, 选中行) => (
+            <Button size="small" icon={<ThunderboltOutlined />} onClick={() => void 批量自动分(选中, 清空, 选中行)}>自动分配</Button>
           ) : undefined}
         />
       ) : (

@@ -39,7 +39,7 @@ import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
-import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, type 初判 } from "@/lib/project/lead-verify";
+import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, 撤回验证, type 初判 } from "@/lib/project/lead-verify";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { saveFollowUp, deleteFollowUp } from "../customers/[id]/actions";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
@@ -524,6 +524,11 @@ export async function 销售认领Action(projectId: string, 继续: boolean) {
     (me) => 销售认领(me, projectId, 继续 === true));
 }
 
+/** 撤回验证（X-77）：提交验证的人、系统管理员；线索回到提交验证前，之后能改派 */
+export async function 撤回验证Action(projectId: string) {
+  return 验证一步(projectId, (名) => `项目「${名}」撤回线索验证`, (me) => 撤回验证(me, projectId));
+}
+
 async function 组员说法(projectId: string, userId: string) {
   const [p, u] = await Promise.all([
     // 回邀请的人同意前看不到项目：这里只取名字写日志
@@ -717,7 +722,9 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     const 规则 = await 生效组织规则();
     const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
     let 回收预演: 回收预演底子 | null = null;
-    if (要下一步 && !按必填走(规则, p.node)) {
+    // 验证中的线索不参与超时回收（X-78）：不预演回收日
+    const 验证中 = !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
+    if (要下一步 && !按必填走(规则, p.node) && !验证中) {
       const 字典 = 字典of(true, 规则.阶段.出口叫法);
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
       const 起点 = 超时起点(p.createdAt, p.logs[0]?.at, c?.lastFollowAt);

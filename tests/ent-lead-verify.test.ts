@@ -187,8 +187,9 @@ describe("企业版线索有效性验证", () => {
       expect((await 现(id)).pooledAt).toBeInstanceOf(Date);
       expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).poolReturns).toBe(1);
       expect((await prisma.projectNodeLog.findFirst({ where: { projectId: id, kind: "pool-release" } }))?.reason ?? null).toBeNull();
-      expect((await 状态(id))?.pending).toBeNull();
-      expect((await 痕(id)).at(-1)).toMatchObject({ step: "销售认领", verdict: "退回公海", userId: 乙.id });
+      // 进公海清掉验证状态（9f）：行没了，痕留着，认领那行排在清掉那行前面
+      expect(await 状态(id)).toBeNull();
+      expect((await 痕(id)).slice(-2).map((l) => [l.step, l.verdict, l.userId])).toEqual([["销售认领", "退回公海", 乙.id], ["进公海清验证", "有效线索", 乙.id]]);
     });
 
     it("市场复核判无效：项目 线索流失（closedAt），节点变更一行带无效原因，判定 无效线索", async () => {

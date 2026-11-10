@@ -95,6 +95,8 @@ describe("组员客户名单", () => {
     忘掉企业版范围();
     expect(await 乙看得到(c)).toBe(true);
     当(老板);
+    // 客户只剩最后一个项目不能单删（X-74）：再挂一个没组员的
+    await raw.project.create({ data: { name: "二号项目", customerId: c, ownerId: 丙.id, creatorId: 丙.id } });
     expect((await 以谁的身份(老板.id, () => 删项目(老板, p))).ok).toBe(true);
     expect(await 乙看得到(c)).toBe(false);
   });

@@ -62,6 +62,7 @@ import { setOppStatus } from "../opportunities/actions";
 import { 认得 } from "@/lib/project/hook";
 import { 客户的项目数, 超上限n } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整外贸档案, 规整阿里ID, 认国家, type 外贸档案 } from "@/lib/customer-extra";
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
@@ -631,6 +632,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     市场成员的客户转给销售不走确认（P-转-17），当场换、只发分给你通知
   */
   const 换人 = !!(改前 && input.id && salesOwnerId !== 改前.salesOwnerId);
+  if (换人 && input.id) {
+    const 验 = await 验证中挡([input.id], salesOwnerId);
+    if (验) return { ok: false, error: 验 };
+  }
   const 走法 = 换人 && input.id ? await 转让走交接(me, salesOwnerId, [input.id]) : null;
   const 交接给 = 走法 ? salesOwnerId : null;
   if (交接给 && 改前?.salesOwnerId) data.salesOwnerId = 改前.salesOwnerId;
@@ -1194,6 +1199,8 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   if (不让) return { ok: false, error: 不让 };
   const 在公海 = await 公海挡(ids);
   if (在公海) return { ok: false, error: 在公海 };
+  const 验 = await 验证中挡(ids, salesOwnerId);
+  if (验) return { ok: false, error: 验 };
   const 挡 = await 挡字段(me.id, ["销售负责人"]);
   if (挡) return { ok: false, error: 挡 };
 
@@ -1294,6 +1301,13 @@ async function 移交中挡(ids: string[], to: string): Promise<string | null> {
   if (!中.size) return null;
   const b = await getBusiness();
   return `${中.size} 名${b.customer}正在移交（等接手人确认），不能再转；要换人先撤回，或等对方拒收${中.size < 要换.length ? "，整批已阻止" : ""}`;
+}
+
+/** 换负责人前（当场换、发起交接都问）：要换人的客户名下有验证中的线索就整批拦（X-77，同 移交中挡 只看真要换的） */
+async function 验证中挡(ids: string[], to: string): Promise<string | null> {
+  if (!企业版()) return null;
+  const 要换 = (await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: to } }, select: { id: true } })).map((c) => c.id);
+  return 客户有验证中线索(prisma, 要换);
 }
 
 /**
@@ -1867,6 +1881,8 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     if (typeof v !== "string" || !v || !(await 在职(v))) return { ok: false, error: "负责人不存在或已停用" };
     const 不行 = await 不能当负责人(v);
     if (不行) return { ok: false, error: 不行 };
+    const 验 = await 验证中挡([id], v);
+    if (验) return { ok: false, error: 验 };
     // 负责人本人转自己的（申请移交，X-20、P-转-16，不看开关）：先发起申请，负责人不换；上级、系统管理员直接转；市场成员的客户转给销售不走确认（P-转-17）
     const 走法 = await 转让走交接(me, v, [id]);
     if (走法) {

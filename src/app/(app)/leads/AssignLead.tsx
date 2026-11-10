@@ -21,17 +21,21 @@ import { 公海规则 } from "@/lib/enterprise/pool-rules";
 
 const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}${p.加额 > 0 ? `（含无效补 ${p.加额}）` : ""}`;
 
-/** 勾选后批量自动分配，弹一张名单说清每条分给了谁：线索页和项目页共用，分给了 = 各页自己的说法 */
+/**
+ * 勾选后批量自动分配，弹一张名单说清每条分给了谁：线索页和项目页共用，分给了 = 各页自己的说法。
+ * 选中行 = 勾选时看到的每行负责人，交给服务端逐行比（乐观锁，X-89）：被别人先分走的那行回「已被分配」
+ */
 export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const 问一起转 = useCarryConfirm();
-  return async function 批量自动分(ids: string[], 清空: () => void) {
+  return async function 批量自动分(ids: string[], 清空: () => void, 选中行: readonly { id: string; ownerId: string | null }[] = []) {
     // P-转-07：市场客户名下有同事的项目，分之前列出来（接手人这时还没挑）
     if (选项?.项目 && !(await 问一起转(() => 分配带走的项目(ids)))) return;
     let res: Awaited<ReturnType<typeof 批量自动分配>>;
     try {
-      res = await 批量自动分配(ids, 选项);
+      const 原负责人们 = Object.fromEntries(选中行.map((r) => [r.id, r.ownerId]));
+      res = await 批量自动分配(ids, { ...选项, 原负责人们 });
     } catch {
       return void message.error("没分成，请稍后再试");
     }

@@ -11,7 +11,7 @@ const plugin: Plugin = { name: "lead-verify-boundaries", setup(b) {
   const 记 = "(n)=>async(...a)=>{(window.__calls||(window.__calls=[])).push([n,...a]);return {ok:true}}";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  const 动作 = `const r=${记};export const 线索初判Action=r('初判'),市场复核Action=r('市场复核'),销售终验Action=r('销售终验'),总管理终判Action=r('总管理终判'),销售认领Action=r('销售认领');`;
+  const 动作 = `const r=${记};export const 线索初判Action=r('初判'),市场复核Action=r('市场复核'),销售终验Action=r('销售终验'),总管理终判Action=r('总管理终判'),销售认领Action=r('销售认领'),撤回验证Action=r('撤回验证');`;
   stub(/^\.\.\/actions$/, 动作);
   stub(/^\.\/actions$/, 动作);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -28,7 +28,7 @@ beforeAll(async () => {
     ];
     const 跑=async(f)=>{const r=await f();return r.ok;};
     window.__render=(我能,没有效沟通)=>root.render(<ConfigProvider locale={zhCN}><App><div style={{display:'flex',flexDirection:'column',gap:16}}>
-      <LeadVerifyPanel projectId='p1' v={{判定:我能==='初判'?'暂未判定':'初验无效',待:我能==='初判'?null:我能,无效原因:我能==='初判'?null:'其他：'+词,复核结果:null,最终结果:null,终验:null,初判即终判:false,叫法:我能==='初判'?'暂未验证':'初验无效',我能,痕:我能==='初判'?[]:痕}}
+      <LeadVerifyPanel projectId='p1' v={{判定:我能==='初判'?'暂未判定':'初验无效',待:我能==='初判'?null:我能,无效原因:我能==='初判'?null:'其他：'+词,复核结果:null,最终结果:null,终验:null,初判即终判:false,叫法:我能==='初判'?'暂未验证':'初验无效',我能,能撤回:我能!=='初判',痕:我能==='初判'?[]:痕}}
         无效原因选项={['需求不存在','联系方式无效','其他']} 跑={跑} 忙={false} 缺有效沟通话={没有效沟通?"还差有效沟通：需求状态":null} 不给推={null}/>
       <VerifyInbox 们={[
         {projectId:'p1',项目:'超长项目名'+词,负责人:'业务员'+词,步:'市场复核',无效原因:'其他：'+词,初判说明:串,复核说明:null,异议说明:null,更新于:'2026-10-29T01:00:00.000Z'},
@@ -67,6 +67,8 @@ it.each([1024, 1280, 1366])("Windows %ipx：长无效原因、长说明、长名
     const 右界 = 主栏 + 16;
     expect((await 点得中(page, "判有效", 右界)).replace(/\s/g, "")).toBe("判有效");
     expect((await 点得中(page, "判无效", 右界)).replace(/\s/g, "")).toBe("判无效");
+    // 提交验证的人 / 系统管理员：撤回验证按钮也点得中（X-77）
+    expect((await 点得中(page, "撤回验证", 右界)).replace(/\s/g, "")).toBe("撤回验证");
     expect(await page.getByTestId("lead-verify-trail").innerText()).toContain("管理员复核 · 有效");
     expect(await page.getByTestId("lead-verify-pending").innerText()).toBe("等管理员复核");
     // 列表里的销售终验行只给链接，不给判

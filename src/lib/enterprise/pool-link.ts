@@ -17,7 +17,8 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位, 带走公海项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记转让, 能进公海的阶段, 超上限n, 算持有的项目 } from "@/lib/project/db";
 import type { 组织规则 } from "@/lib/project/org-rules";
-import { 进公海后负责人, 进公海关待办 } from "@/lib/project/pool-owner";
+import { 进公海后负责人, 进公海关待办, 进公海清组员 } from "@/lib/project/pool-owner";
+import { 进公海清验证 } from "@/lib/project/lead-verify-guard";
 import { 在推项目条件 } from "@/lib/project/active";
 import { 系统 } from "@/lib/project/timeout";
 import { 有同事在推的客户 } from "./colleague-projects";
@@ -107,6 +108,8 @@ export async function 客户名下在推项目进公海(
       for (const p of 项目) {
         if (!p.ownerId || p.ownerId !== 主.get(p.customerId)) continue;
         await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
+        await 进公海清组员(tx, [p.id], 操作人);
+        await 进公海清验证(tx, [p.id], 操作人);
         await 记转让(tx, p, 操作人, p.ownerId, null, "pool-release", 理由, 现在);
         // 客户这时已经在公海里：原负责人在这位客户上没做完的待办全关（pool-owner.ts 进公海关待办）
         await 进公海关待办(tx, p, p.ownerId, 现在);

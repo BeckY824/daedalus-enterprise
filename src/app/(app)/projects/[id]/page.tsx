@@ -4,7 +4,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能加组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
+import { 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差, 有效沟通还差, 必填叫法 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -142,6 +142,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
   const 回收线 = 超时线(p, 规则.超时回收.开 ? await 超时成员线(规则) : null);
   const 回收日 = 超时回收日(规则, p, 回收起点, 字典, 回收线);
+  // 验证中（等复核 / 等销售……）的线索不参与超时回收（X-78 → M-线索-02，和 lib/project/db.ts 验证中不收 同一个条件）：不写回收日，写「验证中，不回收」，记沟通也不预演
+  const 验证不收 = 企业 && !!回收日 && !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
   // 11-01：企业版组员只能看，沟通只有负责人记（和 lib/project/db.ts 记项目沟通 同一个判断）
   const 能记沟通 = 企业 && !公海 && 能改;
   // 沟通的「…」菜单（改 / 删，10-29）：不在公海、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
@@ -160,7 +162,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     : null;
   // 记沟通时预演回收日（10-30 P0-2，lib/enterprise/recycle-text.ts 预演回收日）：给起点日和这个进程的天数，浏览器按同一个算法算。
   // 配了必填的进程记完可能自动推到下一个进程（天数跟着换），算不准就不给，界面不显示那一句
-  const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 ? 节点超时天数(规则, p.node, 字典, 回收线) : null;
+  const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 && !验证不收 ? 节点超时天数(规则, p.node, 字典, 回收线) : null;
   const 回收预演 = 回收天数 ? { 起点日: 计时起点(规则, 回收起点).format("YYYY-MM-DD"), 天数: 回收天数 } : null;
   // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
   const 不给推 = 企业 && !公海 ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
@@ -236,20 +238,22 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
-    nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 回收预演,
+    nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 验证不收, 回收预演,
     ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
-    能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase),
+    能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）
     // 企业版删项目：项目负责人本人或系统管理员（V3.5.1，进回收站）；别的版本照旧按 能改
     能删: 企业 ? 能删除(me, org, 公海 ? null : p.ownerId) : 能改,
     // 项目组员（V3.5.1）：进了组就能往组里拉人
     能加组员: 能加组员(me, p, org, 已加入.includes(me.id)),
+    // 公海里的项目系统管理员能改组员（X-72）
+    能改组员: 能改组员(me, p, org),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
     // 没设业务角色、只读管理员（11-03 D3-7 ④）：「领取」整个不摆，灰的也不摆
-    能领取: 公海 && 能领 && (企业 ? !原负责人领不回 && !拦单独领项目() && !拦客户公海里的项目(!!p.customer.pool) : me.id !== 上一任),
+    能领取: 公海 && 能领 && (企业 ? !原负责人领不回 && !p.result && !拦单独领项目() && !拦客户公海里的项目(!!p.customer.pool) : me.id !== 上一任),
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户
-    领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 拦单独领项目() ? 项目不能单独领提示 : 公海 && 拦客户公海里的项目(!!p.customer.pool) ? 客户在公海项目不单领提示 : null,
+    领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 企业 && p.result ? `这个项目已经结束（${p.result}），不能单独领取` : 公海 && 拦单独领项目() ? 项目不能单独领提示 : 公海 && 拦客户公海里的项目(!!p.customer.pool) ? 客户在公海项目不单领提示 : null,
     进公海: 最近放回 ? { 方式: 认放回(最近放回.reason), 谁: 叫(最近放回.userId)! } : null,
     balanceSettled: p.balanceSettled, balanceSettledBy: 叫(p.balanceSettledById), balanceSettledAt: p.balanceSettledAt?.toISOString() ?? null,
     acceptancePassed: p.acceptancePassed, acceptancePassedBy: 叫(p.acceptancePassedById), acceptancePassedAt: p.acceptancePassedAt?.toISOString() ?? null,

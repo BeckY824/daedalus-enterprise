@@ -106,6 +106,8 @@ export type 项目详情 = {
   能删?: boolean;
   /** 能往项目组里拉人：能改的人，企业版加上已进组的项目组员（V3.5.1） */
   能加组员?: boolean;
+  /** 能换组员角色、移出组员：能改内容的人；公海里的项目系统管理员也能（X-72） */
+  能改组员?: boolean;
   /** 企业版组织规则里改过的出口叫法（设置 → 项目 → 阶段规则）；别的版本是空的 */
   出口叫法: 出口叫法改动;
   /** 企业版线索阶段：推过线索验证还差哪几样（显示名，11-05），空 = 齐了 */
@@ -116,6 +118,8 @@ export type 项目详情 = {
    * nextStepText = 下一步做什么（10-29 起记沟通时自己写一句话，时间可空）；老数据只有时间没有这句，就只摆时间
    */
   nextStepAt: string | null; nextStepText?: string | null; 回收日: string | null;
+  /** 线索在验证中（X-78）：不参与超时回收，回收日那格写「验证中，不回收」（page.tsx） */
+  验证不收?: boolean;
   /** 企业版记沟通时预演回收日的底子（page.tsx，lib/enterprise/recycle-text.ts 预演回收日）；算不准（规则关着、配了必填会自动推）= null，弹窗里不写那一句 */
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
@@ -694,7 +698,9 @@ export default function ProjectDetail({
             return (
               <div style={{ minWidth: 0 }}>
                 <div className="proj-where-label">回收日</div>
-                <div style={{ lineHeight: "28px", color: 回公海颜色[回.级别], fontWeight: 回.级别 === "常" ? undefined : 600 }}>{回.文字}</div>
+                {p.验证不收
+                  ? <div data-testid="proj-recycle-verifying" style={{ lineHeight: "28px", color: "var(--text-muted)" }}>验证中，不回收</div>
+                  : <div style={{ lineHeight: "28px", color: 回公海颜色[回.级别], fontWeight: 回.级别 === "常" ? undefined : 600 }}>{回.文字}</div>}
               </div>
             );
           })()}
@@ -1049,7 +1055,7 @@ export default function ProjectDetail({
       )}
     </Card>
   );
-  const 项目组卡 = <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改} 能加={!!p.能加组员 || 可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />;
+  const 项目组卡 = <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改 || !!p.能改组员} 能加={!!p.能加组员 || 可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />;
   const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑}  />;
   const 变更卡 = (
     <Card title="进程变更">

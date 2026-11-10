@@ -19,7 +19,9 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 分配方式叫法, 挡分配方式 } from "@/lib/enterprise/dict";
-import { 发满额提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 标待分配 } from "@/lib/enterprise/await-assign";
+import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 分配通知, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -251,6 +253,9 @@ async function 分项目给(
     if (input.原负责人 !== undefined && (p.ownerId || null) !== input.原负责人) return 已被分配;
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分：去「项目」里转让负责人" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
+    // 验证中不能改派（X-77）：分前看查过一次，弹框开着时可能刚进验证，事务里再查
+    const 验证中 = await 验证中不能改派(tx, p.id);
+    if (验证中) return { ok: false, error: 验证中 };
     if (p.ownerId === input.toUserId && !p.pooledAt && !p.awaitAssignAt) return { ok: false, error: "这条新线索已经在他名下了" };
     if (查额) {
       const 已分 = await 本月已分(input.toUserId, 月, tx);
@@ -334,6 +339,8 @@ async function 分前看(
     if (公海客户 !== "整包" && 拦客户公海里的项目(!!p.customer.pool)) return { ok: false, error: 公海客户拦的话(公海客户) };
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
+    const 验证中 = await 验证中不能改派(prisma, 哪条.projectId);
+    if (验证中) return { ok: false, error: 验证中 };
     // 公海里的、待分配的（A7 / A10，负责人那一格只是建的人占着）：原负责人也能被挑中
     return {
       ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId || null, 实际负责人: p.ownerId || null,
@@ -400,12 +407,27 @@ export async function 分配带走的项目(projectIds: string[], 接手人?: st
 export type 自动分配结果 =
   | { ok: true; toUserId: string; 接手人: string; 已分: number; 配额: number | null; 为什么: string; 随客户?: true }
   | { ok: false; error: string; 都满额?: true; 暂不分配?: true; 已被分配?: true; 待分配?: true };
-/** 服务端自己用：多带 留下（分配通知要，不给浏览器） */
-type 内部自动结果 = 自动分配结果 & { 留下?: 留下的活 };
+/**
+ * 服务端自己用：多带 留下（分配通知要）、要标（挑不到人、还没待分配的新线索：调用方标待分配、发提醒，X-85），不给浏览器
+ */
+type 内部自动结果 = 自动分配结果 & { 留下?: 留下的活; 要标?: { 名: string; 为什么: string } };
 
 function 对外(r: 内部自动结果): 自动分配结果 {
-  const { 留下: _留下, ...外 } = r;
+  const { 留下: _留下, 要标: _要标, ...外 } = r;
   return 外;
+}
+
+/** 挑不到人标了待分配之后回给界面的那句（X-85） */
+const 标了待分配话 = (为什么: string) => `${为什么}。已标成待分配、留在新线索，已提醒能分配的人手动指派`;
+
+/**
+ * 点自动分配（单条、批量）挑不到人、还没待分配的新线索：标成待分配（X-85，11-01 A10），回去的那句改成已标。
+ * 提醒由调用方合成一条发（批量不按条刷屏）；建档向导不走这里，建好再分 自己标
+ */
+async function 挑不到就标(projectId: string, r: 内部自动结果): Promise<内部自动结果> {
+  if (r.ok || !r.要标) return r;
+  await 标待分配(projectId, null);
+  return { ...r, error: 标了待分配话(r.要标.为什么) };
 }
 
 /** 每人参与状态（暂停 / 禁止的才在表里）；老格式 string[] 读成禁止，存坏了当人人允许 */
@@ -437,9 +459,13 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
     if (方式挡) return { ok: false, error: 方式挡 };
     const 哪条 = 目标of(opts.项目 ? { projectId: id } : { leadId: id });
     if (!哪条) return { ok: false, error: "要分哪一条？刷新看看" };
-    const r = await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人));
+    const r = 哪条.projectId !== undefined
+      ? await 挑不到就标(哪条.projectId, await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人)))
+      : await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人));
     if (r.ok) await 分配通知(me, [{ ...哪条, toUserId: r.toUserId, ...留下字段(r.留下) }], true);
-    if (!r.ok && r.都满额) {
+    if (!r.ok && r.要标) {
+      await 发待分配提醒(org, [r.要标.名], me.name, r.要标.为什么).catch((e) => console.error("[待分配提醒] 没发出去", e));
+    } else if (!r.ok && r.都满额) {
       const 看 = await 分前看(哪条).catch(() => null);
       await 发满额提醒(org, [看?.ok ? 看.名 : id], me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
     }
@@ -482,9 +508,13 @@ async function 自动分给(
   const 比谁 = 原负责人 === undefined ? 看.实际负责人 : 原负责人;
   if (比谁 !== 看.实际负责人) return 已被分配;
   // 新线索（项目）挑不到人（QA #5）：不抛错、不动它，回 待分配: true 让界面提示「留在新线索待分配，手动指派」
-  const 挑不到 = (为什么: string, 都满额?: true): 自动分配结果 =>
+  // 还没待分配的带上 要标：点自动分配的调用方标待分配、提醒（X-85）；建档向导由 建好再分 标
+  const 挑不到 = (为什么: string, 都满额?: true): 内部自动结果 =>
     哪条.projectId !== undefined
-      ? { ok: false, 待分配: true, ...(都满额 ? { 都满额 } : {}), error: `${为什么}。${看.待分配 ? "已留在新线索待分配" : "这条新线索留在原处"}，可以手动指派` }
+      ? {
+        ok: false, 待分配: true, ...(都满额 ? { 都满额 } : {}), error: `${为什么}。${看.待分配 ? "已留在新线索待分配" : "这条新线索留在原处"}，可以手动指派`,
+        ...(看.待分配 ? {} : { 要标: { 名: 看.名, 为什么 } }),
+      }
       : { ok: false, ...(都满额 ? { 都满额 } : {}), error: 为什么 };
 
   // 新线索（项目）：线看项目业务线（A1，三选一；老项目按负责人的线、再没有按内贸），不认弹窗传来的；
@@ -564,9 +594,12 @@ async function 本批已随客户走(id: string, 本批: ReadonlyMap<string, { t
 /**
  * 勾了几条一起自动分配（D-38）：一条一条按顺序分，前一条分完再挑下一条的人；每条成没成都列出来。一次最多 200 条。
  * 市场客户按客户算一份（11-09，只在 X-18 下）：一位客户下几条线索，第一条分给谁，客户和其余几条就都归谁，后面几条结果行写「已随客户给 A」。
- * 客户负责人已是销售的不算转客户，还是一条条分（和点几次单条一样）
+ * 客户负责人已是销售的不算转客户，还是一条条分（和点几次单条一样）。
+ * 原负责人们 = 每行勾选时界面上看到的负责人（乐观锁，X-89 / QA #4）：哪行被别人先分走了只那行回「已被分配」；没交的行按刚读到的比
  */
-export async function 批量自动分配(leadIds: string[], opts: { 项目?: boolean } = {}): Promise<{ ok: true; 结果: 批量自动分配结果[] } | { ok: false; error: string }> {
+export async function 批量自动分配(
+  leadIds: string[], opts: { 项目?: boolean; 原负责人们?: Record<string, string | null> } = {},
+): Promise<{ ok: true; 结果: 批量自动分配结果[] } | { ok: false; error: string }> {
   const me = await 进门();
   if (!me) return 没开;
   const ids = [...new Set(Array.isArray(leadIds) ? leadIds.filter((x) => typeof x === "string") : [])];
@@ -578,6 +611,8 @@ export async function 批量自动分配(leadIds: string[], opts: { 项目?: boo
     const 方式挡 = await 挡分配方式(me, 1);
     if (方式挡) return { ok: false, error: 方式挡 };
     const 项目 = opts?.项目 === true;
+    const 原们 = opts?.原负责人们 && typeof opts.原负责人们 === "object" && !Array.isArray(opts.原负责人们) ? opts.原负责人们 : {};
+    const 原of = (id: string) => (Object.prototype.hasOwnProperty.call(原们, id) ? 认原负责人(原们[id]) : undefined);
     const 名 = new Map((项目
       ? await prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
       : await prisma.lead.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]));
@@ -585,11 +620,14 @@ export async function 批量自动分配(leadIds: string[], opts: { 项目?: boo
     const 通知条: 分配条[] = [];
     // 本批已转给销售的客户：客户 id → 接手人。分配人看不到的那条（名 里没有）不走这里，照原样报
     const 本批随客户 = new Map<string, { toUserId: string; 接手人: string }>();
+    const 标了的: { id: string; 名: string; 为什么: string }[] = [];
     for (const id of ids) {
       let r: 内部自动结果;
       try {
         r = (项目 && 名.has(id) ? await 本批已随客户走(id, 本批随客户) : null)
-          ?? await 自动分给(me, org, 项目 ? { projectId: id } : { leadId: id }, null, "营销");
+          ?? (项目
+            ? await 挑不到就标(id, await 自动分给(me, org, { projectId: id }, null, "营销", 原of(id)))
+            : await 自动分给(me, org, { leadId: id }, null, "营销", 原of(id)));
       } catch (e) {
         r = 不在了(e);
       }
@@ -597,12 +635,18 @@ export async function 批量自动分配(leadIds: string[], opts: { 项目?: boo
         通知条.push({ toUserId: r.toUserId, [项目 ? "projectId" : "leadId"]: id, ...留下字段(r.留下) });
         if (r.留下) 本批随客户.set(r.留下.customerId, { toUserId: r.toUserId, 接手人: r.接手人 });
       }
+      if (!r.ok && r.要标) 标了的.push({ id, ...r.要标 });
       结果.push({ leadId: id, name: 名.get(id) ?? "（看不到这条）", ...对外(r) });
     }
     await 分配通知(me, 通知条, true);
-    // 因都已满额没分出去的，这一次点击合成一条提醒，不按条刷屏
+    // 这一次点击合成一条提醒，不按条刷屏：这次标成待分配的发待分配（X-85）；其余因都已满额没分出去的发满额
     // 提醒没发出去不能连累已经分好的结果
-    await 发满额提醒(org, 结果.filter((x) => !x.ok && x.都满额).map((x) => x.name), me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
+    if (标了的.length) {
+      const 为什么们 = [...new Set(标了的.map((x) => x.为什么))];
+      await 发待分配提醒(org, 标了的.map((x) => x.名), me.name, 为什么们.join("；")).catch((e) => console.error("[待分配提醒] 没发出去", e));
+    }
+    const 标了ids = new Set(标了的.map((x) => x.id));
+    await 发满额提醒(org, 结果.filter((x) => !x.ok && x.都满额 && !标了ids.has(x.leadId)).map((x) => x.name), me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
     return { ok: true, 结果 };
   } catch (e) {
     return 不在了(e);
