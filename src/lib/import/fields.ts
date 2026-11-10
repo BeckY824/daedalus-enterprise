@@ -14,6 +14,7 @@
  *     来源渠道**只在新建那条路上生效**，见 plan.ts 的 补空字段名单。
  */
 import { FOLLOW_STATUSES, DECISION_STATUSES } from "../constants";
+import { 全角转半角 } from "../fullwidth";
 
 export type 字段名 =
   | "name"
@@ -142,8 +143,7 @@ function 通用字段(b: { fields: { school: string; grade: string; major: strin
  * 而「必填」恰恰是最常见的那种注脚。
  */
 export function 规整表头(s: string): string {
-  return s
-    .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+  return 全角转半角(s)
     .replace(/[(\uFF08\[\u3010][^)\uFF09\]\u3011]*[)\uFF09\]\u3011]/g, "")
     .replace(/[\s\u3000]/g, "")
     .replace(/[\uFF1A:()\uFF08\uFF09\u3010\u3011\[\]*\uFF0A\u3001,\uFF0C\u3002.\-_/\\|"'`]/g, "")

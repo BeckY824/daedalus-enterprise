@@ -44,6 +44,7 @@ import { 默认币种, 认币种 } from "../currency";
 import { 认归档档位 } from "../enterprise/archive-tier";
 import { 成交需求上限 } from "../project/profile-rules";
 import { 实体顺序, 必填, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
+import { 全角数字和点转半角, 全角转半角 } from "../fullwidth";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
 export type 本地索引 = {
@@ -93,8 +94,7 @@ export function 归档号键(v: string | null | undefined): string {
 
 /** 名字比较用的键：去空白、全角转半角、小写 */
 export function 名键(s: string): string {
-  return s
-    .replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+  return 全角转半角(s)
     .replace(/[\s　]/g, "")
     .toLowerCase();
 }
@@ -187,11 +187,9 @@ function 认是否(v: string): boolean {
   return /^(是|y|yes|true|1|√|✓|主|主要|关键)$/i.test(v.trim());
 }
 
-const 全角数字 = (s: string) => s.replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-
 /** 金额：去掉货币符号、千分位、「元 / 元整 / 整」，「k / 千 / 万 / 亿」乘上去，全角数字也认。认不出返回 null */
 export function 认金额(v: string): number | null {
-  let s = 全角数字(v.trim())
+  let s = 全角数字和点转半角(v.trim())
     .replace(/[,，\s]/g, "")
     .replace(/^(¥|￥|\$|US\$|RMB|CNY|USD)/i, "")
     .replace(/(元整|整|元|人民币|rmb|cny|usd)$/i, "");
