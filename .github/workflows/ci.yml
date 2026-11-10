@@ -71,9 +71,25 @@ jobs:
         # 与生产（Dockerfile 的 ENV TZ=Asia/Shanghai）一致。
         # vitest.config.ts 里也钉了一道，这里再写一次是为了让人看 workflow 就知道。
         # 每片在自己的机器上跑，测试库 prisma/test.db 各建各的，互不干扰
-      - run: npx vitest run --shard=${{ matrix.shard }}/4 --reporter=dot
+        # 多挂一个 json 报告只为留逐文件耗时（dot 不带），过不过仍由 vitest 退出码定
+      - run: npx vitest run --shard=${{ matrix.shard }}/4 --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
         env:
           TZ: Asia/Shanghai
+      # 下面两步只看耗时，自己出错不许把这一片变红
+      - name: 最慢的 20 个测试文件
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          jq -r '[.testResults[] | {s: ((.endTime - .startTime) / 1000), f: (.name | sub("^.*/tests/"; "tests/"))}]
+            | sort_by(-.s) | .[:20][] | "\(.s * 10 | round / 10)s\t\(.f)"' \
+            test-results/vitest-timing-${{ matrix.shard }}.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: vitest-timing-${{ matrix.shard }}
+          path: test-results/vitest-timing-${{ matrix.shard }}.json
+          retention-days: 14
 
   check:
     name: 类型 / 代码检查 / 单元测试
@@ -329,10 +345,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           f=gitleaks_8.24.3_linux_x64.tar.gz
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$f" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/$f" \
-            || { rm -f "$f"; gh release download v8.24.3 -R gitleaks/gitleaks -p "$f"; }
-          tar xzf "$f" gitleaks
-          ./gitleaks version
+          # 官方 gitleaks_8.24.3_checksums.txt 里这个包的 sha256；升版本时一起换
+          sum=9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
+          # 下载 → 校验和 → 解包 → 能报版本，四步有一步不过就整轮重来，最多 3 轮。
+          # 以前只重试下载：拿到坏包（下载成功但内容不对）时 tar 直接让整个任务红。
+          # 3 轮都不过照旧红，不放行——扫描那一步不变。
+          for i in 1 2 3; do
+            rm -f "$f" gitleaks
+            { curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 -o "$f" \
+                "https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/$f" \
+                || { rm -f "$f"; gh release download v8.24.3 -R gitleaks/gitleaks -p "$f"; }; } \
+              && echo "$sum  $f" | sha256sum -c - \
+              && tar xzf "$f" gitleaks \
+              && ./gitleaks version \
+              && break
+            if [ "$i" = 3 ]; then echo "::error::gitleaks 下载 / 校验 3 轮都没过"; exit 1; fi
+            echo "gitleaks 第 $i 轮下载或校验失败，10 秒后重试"; sleep 10
+          done
       - name: 扫描全部提交
         run: ./gitleaks git --redact --no-banner --exit-code 1 .
