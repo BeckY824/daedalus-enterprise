@@ -35,6 +35,7 @@ import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "./Assign
 import LeadFullNotices from "./LeadFullNotices";
 import ConvertProjectModal from "./ConvertProjectModal";
 import type { 向导跟进 } from "@/lib/project/wizard";
+import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 
 type Row = {
@@ -164,6 +165,11 @@ export default function LeadsView({
   function 撞号了(r: Row, 撞: 线索撞号, 说法: string, 跟进?: 向导跟进) {
     if (!撞.能并 || !撞.customerId) {
       modal.info({ title: 撞.客户名 ? `电话已经是「${撞.客户名}」的号码` : `电话已经在同事 ${撞.负责人} 名下`, content: 说法, okText: "知道了" });
+      return;
+    }
+    // P-公海-08：撞上的客户在客户公海里，不给并，说先领取（服务端同一句）
+    if (撞.先领取) {
+      modal.info({ title: `电话已经是${b.customer}「${撞.客户名}」的号码`, content: 公海线索先领取话, okText: "知道了" });
       return;
     }
     const 到 = 撞.customerId;

@@ -30,6 +30,7 @@ import { 第一个节点 } from "@/lib/project/nodes";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { dayjs } from "@/lib/utils";
+import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 
 let 甲: string;
 let 乙: string;
@@ -85,6 +86,24 @@ describe("企业版 + 项目模式", () => {
     expect(p.sourceLeadId).toBe(l.id);
     expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(1);
     expect(await prisma.followUpProject.count({ where: { projectId: p.id, node: 第一个节点.node } })).toBe(1);
+  });
+
+  it("撞上的客户在客户公海里（P-公海-08）：转时说先领取、不给并；直接并也拦，线索、项目、公海都不动；领出来之后能并", async () => {
+    const c = await prisma.customer.create({ data: { name: "公海老客户", phone: "13800001111", salesOwnerId: 甲, pool: { create: { reason: "手动", userId: 甲 } } } });
+    const l = await 线索();
+    const r = await convertLead(l.id, 首条());
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining(公海线索先领取话), 撞号: { 在公海: true, 先领取: true } });
+    if (!r.ok) expect(r.error).not.toContain("可以把这条线索并到");
+    expect(await mergeLeadInto(l.id, c.id, 首条())).toEqual({ ok: false, error: 公海线索先领取话 });
+    expect(await prisma.project.count()).toBe(0);
+    expect(await prisma.followUp.count()).toBe(0);
+    expect(await prisma.lead.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ customerId: null, convertedAt: null, status: "待跟进" });
+    expect(await prisma.customerPool.count({ where: { customerId: c.id } })).toBe(1);
+    // 领出来（这里直接删公海行）之后照常并
+    await prisma.customerPool.delete({ where: { customerId: c.id } });
+    expect(await convertLead(l.id, 首条())).toMatchObject({ ok: false, 撞号: { 能并: true } });
+    expect((await convertLead(l.id, 首条()) as { 撞号?: { 先领取?: boolean } }).撞号?.先领取).toBeUndefined();
+    expect((await mergeLeadInto(l.id, c.id, 首条())).ok).toBe(true);
   });
 
   it("线索负责人到了持有上限：整个不转，客户、项目都不建，线索不动", async () => {

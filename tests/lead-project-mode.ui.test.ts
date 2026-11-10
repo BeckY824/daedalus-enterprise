@@ -16,7 +16,7 @@ const plugin: Plugin = { name: "leads-ui", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){window.__去.push(u)},refresh(){},replace(){}});");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/components\/DataList$/, "export default function D(p){const 动=p.列.find(c=>c.key==='act');return <div data-testid='rows'>{p.行.map(r=><div key={r.id}>{动.render(null,r)}</div>)}</div>}");
-  stub(/^\.\/actions$/, "export const saveLead=async()=>({ok:true});export const deleteLeads=async()=>({ok:true});export const mergeLeadInto=async()=>({ok:true});export const convertLead=async()=>window.__转;");
+  stub(/^\.\/actions$/, "export const saveLead=async()=>({ok:true});export const deleteLeads=async()=>({ok:true});export const mergeLeadInto=async()=>{window.__并=(window.__并||0)+1;return {ok:true}};export const convertLead=async()=>window.__转;");
   stub(/^\.\/assign-actions$/, "export const 分配带走的项目=async()=>({项目数:0,项目:[]});export const 自动分配线索=async()=>({});export const 批量自动分配=async()=>({});export const 分配线索=async()=>({});export const 本月分配情况=async()=>[];export const 我分出去的线索=async()=>[];export const 关满额提醒=async()=>({ok:true});export const 项目分配线=async()=>({线:null});");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -91,6 +91,34 @@ it("页头：企业版项目叫「新线索」，开关关照旧叫「线索」�
   for (const [企业版项目, 名] of [[true, "新线索"], [false, "线索"]] as const) {
     const { page, errors } = await 打开(企业版项目);
     expect((await page.locator("h1").first().innerText()).trim()).toBe(名);
+    expect(errors).toEqual([]); await page.close();
+  }
+});
+
+it("撞上的客户在客户公海里（P-公海-08）：只说先领取，不给「并到」按钮；1024 / 1280 / 1366 不溢出", async () => {
+  const 长名 = "超长公司名".repeat(12);
+  for (const 宽 of [1024, 1280, 1366]) {
+    const { page, errors } = await 打开(true);
+    await page.setViewportSize({ width: 宽, height: 768 });
+    await page.evaluate((名) => { (window as unknown as { __转: unknown }).__转 = { ok: false, error: "电话已经是客户的号码", 撞号: { 客户名: 名, 负责人: "公海", customerId: "c1", 能并: true, 在公海: true, 先领取: true } }; }, 长名);
+    await page.getByTestId("rows").getByRole("button", { name: /转项目/ }).click();
+    await page.getByLabel("沟通内容").fill("电话聊了需求");
+    await page.getByTestId("lead-convert-follow").getByRole("button", { name: "转为项目" }).click();
+    const 框 = page.locator(".ant-modal-confirm");
+    await expect.poll(() => 框.count()).toBe(1);
+    expect(await 框.innerText()).toContain("这位客户在公海里，先领取再并入线索");
+    expect(await 框.getByRole("button", { name: /并到/ }).count()).toBe(0);
+    expect(await 框.getByRole("button").count()).toBe(1);
+    const 量 = await 框.evaluate((el) => {
+      const 身 = (el.querySelector(".ant-modal-content, .ant-modal-container") ?? el) as HTMLElement;
+      const r = 身.getBoundingClientRect();
+      const 题 = el.querySelector(".ant-modal-confirm-title") as HTMLElement;
+      // 标题最右一个字还在框里（长客户名要折行，不能顶出去）
+      return { 页: document.documentElement.scrollWidth - document.documentElement.clientWidth, 右: r.right - window.innerWidth, 左: r.left, 内: Math.max(身.scrollWidth - 身.clientWidth, 题.getBoundingClientRect().right - r.right) };
+    });
+    expect([宽, 量.页 <= 0, 量.右 <= 0, 量.左 >= 0, 量.内 <= 0]).toEqual([宽, true, true, true, true]);
+    await 框.getByRole("button").click();
+    expect(await page.evaluate(() => (window as unknown as { __并?: number }).__并 ?? 0)).toBe(0);
     expect(errors).toEqual([]); await page.close();
   }
 });

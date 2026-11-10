@@ -25,6 +25,7 @@ import { recordAudit, type Actor } from "@/lib/audit";
 import { getBusiness } from "@/lib/business";
 import { 线索转档案 } from "@/lib/lead-convert";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 import { 真删挡 } from "@/lib/enterprise/soft-delete";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 线索建项目 } from "@/lib/project/from-lead";
@@ -214,7 +215,8 @@ async function 转项目之后(user: Actor, lead: { name: string }, customerId: 
  * 转客户时撞了号，撞的是谁（J-024）。业务员撞到同事的客户：**只给负责人**，不给名字、不给 id、不能并
  * （10-04 用户拍板，和客户表单查重一个口径）；看得到那位客户的人（老板、负责人自己、公海里的）可以「并到这位客户」。
  */
-export type 线索撞号 = { 客户名: string | null; 负责人: string; customerId: string | null; 能并: boolean; 在公海?: boolean };
+/** 先领取：企业版撞上的客户在客户公海里，不能并，要先去公海领取（P-公海-08）。界面只提示、不摆「并到」 */
+export type 线索撞号 = { 客户名: string | null; 负责人: string; customerId: string | null; 能并: boolean; 在公海?: boolean; 先领取?: boolean };
 
 export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
   { ok: true; customerId: string; projectId?: string } | { ok: false; error: string; 撞号?: 线索撞号 }
@@ -263,14 +265,18 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
       // 公海里的客户没有负责人：salesOwner 还挂着原负责人或占位账号「（无负责人）」，别说成现负责人（11-03 测试 B7-5）
       const 在公海 = !!dup.pool || /^（.*）$/.test(dup.salesOwner.name);
       const 负责人 = 在公海 ? "公海" : dup.salesOwner.name;
+      // P-公海-08：客户公海里的客户并不过去，先领取（只认公海行；占位负责人但不在公海的照旧能并）
+      const 先领取 = 能并 && 企业版() && !!dup.pool;
       return {
         ok: false as const,
-        error: 能并
+        error: 先领取
+          ? `${phone ? "电话" : "邮箱"}已经是${b.customer}「${dup.name}」（在公海里）的${依据}。${公海线索先领取话}`
+          : 能并
           ? `${phone ? "电话" : "邮箱"}已经是${b.customer}「${dup.name}」（${在公海 ? "在公海里" : `负责人：${负责人}`}）的${依据}，可以把这条线索并到这位${b.customer}，不用另建档案`
           : 看得到(dup, 读我)
           ? `${phone ? "电话" : "邮箱"}已经是同事 ${负责人} 的${b.customer}「${dup.name}」的${依据}。同事的${b.customer}只能看，并不过去：可以把线索负责人改成 ${负责人} 由他来并，或者请${企业版() ? "总管理" : "老板"}并`
           : `${phone ? "电话" : "邮箱"}已经是同事 ${负责人} 名下一位${b.customer}的${依据}。你看不到这位${b.customer}，并不过去：可以把线索负责人改成 ${负责人} 由他来并，或者请${企业版() ? "总管理" : "老板"}并`,
-        撞号: { 客户名: 能并 ? dup.name : null, 负责人, customerId: 能并 ? dup.id : null, 能并, ...(在公海 ? { 在公海 } : {}) } satisfies 线索撞号,
+        撞号: { 客户名: 能并 ? dup.name : null, 负责人, customerId: 能并 ? dup.id : null, 能并, ...(在公海 ? { 在公海 } : {}), ...(先领取 ? { 先领取 } : {}) } satisfies 线索撞号,
       };
     }
 
@@ -357,6 +363,8 @@ export async function mergeLeadInto(leadId: string, customerId: string, 跟进?:
   if (lead.customerId || lead.status === "已转化") return { ok: false, error: "该线索已转化" };
   const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, name: true } });
   if (!customer) return { ok: false, error: `你看不到这位${b.customer}，并不过去：请找负责人或${企业版() ? "总管理" : "老板"}` };
+  // P-公海-08（11-09 X-40）：客户在客户公海里不能并，先领取——并了会在公海客户名下建出有负责人的项目
+  if (企业版() && (await prisma.customerPool.findUnique({ where: { customerId }, select: { customerId: true } }))) return { ok: false, error: 公海线索先领取话 };
   const 邮箱 = 线索认人邮箱(lead, b.template === "trade");
   const 电话 = 查电话(lead.phone, { 必填: true });
   const 条件 = 邮箱 ? await 同邮箱条件(prisma, 邮箱) : 电话.ok ? await 同号条件(prisma, 电话.phone, await 分机留存起()) : null;
