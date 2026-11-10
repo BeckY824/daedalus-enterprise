@@ -492,7 +492,7 @@ describe("企业版卡点", () => {
       看板: Object.values((await 卡点看板(me, { 只看自己: true })).栏).flat().map((x) => x.id).sort(),
     });
 
-    it("进公海：认领行原样留着；历史负责人凭认领行、创建人都看不到（C-01），总管理员和组员照看；从公海领走 → 认领行给领走的人", async () => {
+    it("进公海：认领行原样留着；历史负责人凭认领行、创建人都看不到（C-01），总管理员照看、组员已清（X-72）；从公海领走 → 认领行给领走的人", async () => {
       const 甲 = await 发(); // 销售发的
       const 乙 = await 组员发的(); // 组员发的，销售认领
       await 认领卡点(销售, 甲.id);
@@ -508,8 +508,9 @@ describe("企业版卡点", () => {
       expect(await 看到(销售)).toEqual({ 项目里: [], 我的: [], 看板: [] });
       expect(await 完成卡点(销售, 乙.id, { solution: "x", result: "y" })).toMatchObject({ ok: false, error: "这个卡点已经不在了，刷新看看" });
       expect(await 认领卡点(销售, 乙.id)).toMatchObject({ ok: false, error: "这个卡点已经不在了，刷新看看" });
-      // 组员（项目组还在）、总管理员照看；不公开：别组的看不到
-      expect((await 项目的卡点(组员, 项目)).map((x) => x.id).sort()).toEqual([甲.id, 乙.id].sort());
+      // 进公海清组员（X-72）：原组员不再凭组员看；总管理员照看；不公开：别组的看不到
+      expect(await prisma.projectMember.count({ where: { projectId: 项目 } })).toBe(0);
+      expect((await 项目的卡点(组员, 项目)).map((x) => x.id).sort()).toEqual([乙.id]);
       expect((await 项目的卡点(总管, 项目)).length).toBe(2);
       expect(await 项目的卡点(散, 项目)).toEqual([]);
       // 规则改成原负责人看得到公海项目：回到凭认领行 / 创建人看
@@ -564,12 +565,12 @@ describe("企业版卡点", () => {
       expect(await 谁认领(甲.id)).toEqual([散.id]);
     });
 
-    it("公海里移出组员：没负责人，认领行原样留着；不是企业版什么都不挪", async () => {
+    it("进公海清组员（X-72）：没负责人，组员的认领行原样留着；不是企业版什么都不挪", async () => {
       const 甲 = await 发();
       await 认领卡点(组员, 甲.id);
       expect(await 放回公海(销售, 项目)).toEqual({ ok: true });
-      const m = await prisma.projectMember.findFirstOrThrow({ where: { projectId: 项目, userId: 组员.id } });
-      expect(await prisma.$transaction(async (tx) => { await tx.projectMember.delete({ where: { id: m.id } }); return 卡点随项目换人(tx, 项目, 组员.id, "", 总管.id); })).toBe(0);
+      expect(await prisma.projectMember.count({ where: { projectId: 项目, userId: 组员.id } })).toBe(0);
+      expect(await prisma.$transaction((tx) => 卡点随项目换人(tx, 项目, 组员.id, "", 总管.id))).toBe(0);
       expect(await 谁认领(甲.id)).toEqual([组员.id]);
       vi.stubEnv("CRM_ENTERPRISE", "");
       expect(await prisma.$transaction((tx) => 卡点随项目换人(tx, 项目, 组员.id, 散.id))).toBe(0);

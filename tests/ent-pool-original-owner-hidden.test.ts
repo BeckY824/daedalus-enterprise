@@ -240,7 +240,7 @@ describe("原负责人退到公海后看不到", () => {
     expect(await 看(经理, c, p)).toMatchObject({ 客户详情: false, 项目详情: false });
   });
 
-  it("仍是点了同意的组员：在公海时回避，领走后看得到项目和级联的客户（V3.5.1）", async () => {
+  it("原负责人也是组员：进公海清组员（X-72），在公海时回避，领走后也不再凭组员看到", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     await raw.projectMember.create({ data: { projectId: p, userId: 乙.id, inviteStatus: "JOINED" } as never });
@@ -251,7 +251,8 @@ describe("原负责人退到公海后看不到", () => {
     当(丙);
     await 以谁的身份(丙.id, () => 领取公海项目(丙, p));
     忘掉企业版范围();
-    expect(await 看(乙, c, p)).toMatchObject({ 项目详情: true, 客户详情: true });
+    expect(await raw.projectMember.count({ where: { projectId: p } })).toBe(0);
+    expect(await 看(乙, c, p)).toMatchObject({ 项目详情: false });
   });
 
   it("只认最后一次放回：乙放、丙领、丙放，回避的是丙，乙又看得到能领", async () => {

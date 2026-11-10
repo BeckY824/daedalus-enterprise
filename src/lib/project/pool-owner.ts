@@ -26,6 +26,17 @@ export function 进公海后负责人(原: string): string {
   return 进公海清负责人() ? 公海无负责人 : 原;
 }
 
+/**
+ * 项目进线索公海时清掉组员（X-72、P-组员-01，企业版）：进组的、等回邀请的、拒绝过的都删。放回、超时回收、
+ * 客户整体进公海连带、离职放进公海四处同一笔事务里调。领走后新负责人自己再拉组；系统管理员能改公海项目的组员（db.ts 能改组员）
+ */
+export async function 进公海清组员(tx: Pick<Prisma.TransactionClient, "projectMember">, projectIds: string[]): Promise<void> {
+  if (!企业版() || !projectIds.length) return;
+  for (let i = 0; i < projectIds.length; i += 一批id数) {
+    await 看全部(() => tx.projectMember.deleteMany({ where: { projectId: { in: projectIds.slice(i, i + 一批id数) } } }));
+  }
+}
+
 /** 企业版、且规则不让历史负责人看公海里的这个项目 */
 export function 原负责人回避(): boolean {
   return 企业版() && !公海规则.原负责人看得到公海项目;

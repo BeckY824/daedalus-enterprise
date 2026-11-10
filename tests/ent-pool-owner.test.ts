@@ -21,7 +21,8 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 放回公海, 领取公海项目 } from "@/lib/project/db";
+import { 放回公海, 领取公海项目, 加组员, 移出组员, 换组员角色, 能加组员 } from "@/lib/project/db";
+import { 权限组织 } from "@/lib/enterprise/org";
 import { 读项目列表 } from "@/lib/project/list";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 公海规则, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
@@ -143,6 +144,51 @@ describe("领取：只认历史负责人", () => {
     expect(await 历史负责人(prisma, p)).toBe(丙.id);
     expect(await 领取公海项目(丙, p)).toEqual({ ok: false, error: "原负责人不能领回" });
     expect(await 领取公海项目(乙, p)).toEqual({ ok: true });
+  });
+});
+
+describe("进公海清组员；系统管理员能改公海项目的组员（X-72、P-组员-01）", () => {
+  it("放回公海清掉组员（进组的、等回的都清）；领走后旧组员不在", async () => {
+    const p = await 项目(乙.id, await 客户(老板.id));
+    await prisma.projectMember.createMany({ data: [
+      { projectId: p, userId: 经理.id, inviteStatus: "JOINED" },
+      { projectId: p, userId: 丙.id, inviteStatus: "INVITED" },
+    ] });
+    expect(await 放回公海(乙, p)).toEqual({ ok: true });
+    expect(await prisma.projectMember.count({ where: { projectId: p } })).toBe(0);
+    expect(await 领取公海项目(丙, p)).toEqual({ ok: true });
+    expect(await prisma.projectMember.count({ where: { projectId: p } })).toBe(0);
+  });
+
+  it("客户整体进公海连带进去的项目也清组员", async () => {
+    const { 客户名下在推项目进公海 } = await import("@/lib/enterprise/pool-link");
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await prisma.projectMember.create({ data: { projectId: p, userId: 丙.id, inviteStatus: "JOINED" } });
+    await prisma.$transaction((tx) => 客户名下在推项目进公海(tx, [{ id: c, salesOwnerId: 乙.id }], 老板.id, null, new Date()));
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await prisma.projectMember.count({ where: { projectId: p } })).toBe(0);
+  });
+
+  it("公海里的项目：系统管理员能加、换角色、移出组员；销售、销售管理不行", async () => {
+    const p = await 项目(乙.id, await 客户(老板.id));
+    await 放回公海(乙, p);
+    const org = await 权限组织();
+    const 公海里 = await prisma.project.findUniqueOrThrow({ where: { id: p } });
+    expect(能加组员(老板, 公海里, org, false)).toBe(true);
+    expect(能加组员(经理, 公海里, org, false)).toBe(false);
+    当(经理);
+    expect(await 加组员(经理, p, 丙.id)).toMatchObject({ ok: false });
+    当(老板);
+    expect(await 加组员(老板, p, 丙.id)).toEqual({ ok: true });
+    const m = await prisma.projectMember.findFirstOrThrow({ where: { projectId: p, userId: 丙.id } });
+    const 角色 = await prisma.projectRole.create({ data: { name: "测试角色" } });
+    expect(await 换组员角色(老板, m.id, 角色.id)).toEqual({ ok: true });
+    当(经理);
+    expect(await 移出组员(经理, m.id)).toMatchObject({ ok: false });
+    当(老板);
+    expect(await 移出组员(老板, m.id)).toEqual({ ok: true });
+    expect(await prisma.projectMember.count({ where: { projectId: p } })).toBe(0);
   });
 });
 

@@ -16,7 +16,7 @@ import { 等复核拦, 复核判死拦, 验证中不能改派 } from "./lead-ver
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读角色话, 有业务角色 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读角色话, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -42,7 +42,7 @@ import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/li
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
-import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数 } from "./pool-owner";
+import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
@@ -70,11 +70,17 @@ export function 能管项目(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
   return 能编辑项目(me, p, org);
 }
 /**
+ * 能改组员（换角色、移出、拉人）：能管项目的人；企业版公海里的项目再加上系统管理员（X-72、P-组员-01，公海项目没负责人、能管项目都是 false）
+ */
+export function 能改组员(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null): boolean {
+  return 能管项目(me, p, org) || (企业版() && !!p.pooledAt && 是系统管理员(me, org));
+}
+/**
  * 能往项目组里加人（V3.5.1）：能管项目的人；企业版再加上已进组的项目组员（project_ops，不是负责人也能拉人），公海里的不算。
  * 组员拉的人照旧发邀请、对方同意才进组，并通知负责人
  */
 export function 能加组员(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null, 我在组里: boolean): boolean {
-  if (能管项目(me, p, org)) return true;
+  if (能改组员(me, p, org)) return true;
   return 企业版() && !!org && 我在组里 && !p.pooledAt && 有业务角色(me, org, "project_ops") && !只读角色(me, org);
 }
 /** 节点这一块和别的内容一个口径（11-01 起直属上级、总管理不再代推，C2） */
@@ -733,6 +739,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     const 现在 = new Date();
     // 企业版进公海清空负责人（pool-owner.ts），原负责人记在这行 pool-release 的 from 上
     await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
+    await 进公海清组员(tx, [p.id]);
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
@@ -923,6 +930,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今, 成员)) return false;
       if (企业版() && (await 交接中的客户([p.customerId], tx)).size) return false;
       await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 今, nextStepAt: null, nextStepText: null } });
+      await 进公海清组员(tx, [p.id]);
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
       await 单项目客户跟进公海(tx, p, null, 今);
@@ -1132,7 +1140,7 @@ export async function 加组员(me: 谁, projectId: string, userId: string, role
   const r = await 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, ownerId: true, pooledAt: true } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    const 负责人拉 = 能管项目(me, p, org);
+    const 负责人拉 = 能改组员(me, p, org);
     if (!负责人拉) {
       const 我 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
       if (!能加组员(me, p, org, 我?.inviteStatus === "JOINED")) return { ok: false as const, error: "只有项目负责人和项目组员能加组员" };
@@ -1210,7 +1218,7 @@ export async function 换组员角色(me: 谁, memberId: string, roleId: string 
   return 查完再写(async (tx) => {
     const m = await tx.projectMember.findUnique({ where: { id: String(memberId ?? "") }, include: { project: { select: { ownerId: true, pooledAt: true } } } });
     if (!m) return { ok: false as const, error: "这位已经不在项目组里了，刷新看看" };
-    if (!能管项目(me, m.project, org)) return { ok: false as const, error: "只有项目负责人能改组员" };
+    if (!能改组员(me, m.project, org)) return { ok: false as const, error: "只有项目负责人能改组员" };
     if ((roleId || null) === m.roleId) return { ok: true as const };
     const 角色 = await 可用角色(tx, roleId);
     if (typeof 角色 === "object" && 角色) return 角色;
@@ -1228,7 +1236,7 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
   return 查完再写(async (tx) => {
     const m = await tx.projectMember.findUnique({ where: { id: String(memberId ?? "") }, include: { project: { select: { ownerId: true, pooledAt: true } } } });
     if (!m) return { ok: true as const };
-    if (!能管项目(me, m.project, org)) return { ok: false as const, error: "只有项目负责人能改组员" };
+    if (!能改组员(me, m.project, org)) return { ok: false as const, error: "只有项目负责人能改组员" };
     await tx.projectMember.delete({ where: { id: m.id } });
     if (m.project.pooledAt === null && m.project.ownerId && m.userId !== m.project.ownerId) {
       await 卡点随项目换人(tx, m.projectId, m.userId, m.project.ownerId, me.id, 移出组员接手理由);

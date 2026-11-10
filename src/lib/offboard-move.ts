@@ -3,7 +3,7 @@ import { 转交商机 } from "@/lib/opportunity-activity";
 import { 转项目 } from "@/lib/carry-over-db";
 import { 记换负责人 } from "@/lib/owner-log-db";
 import { 转让痕 } from "@/lib/project/db";
-import { 进公海清负责人, 公海无负责人 } from "@/lib/project/pool-owner";
+import { 进公海清负责人, 公海无负责人, 进公海清组员 } from "@/lib/project/pool-owner";
 import { 客户名下在推项目进公海, 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
 import { 月份 } from "@/lib/enterprise/lead-assign";
 import { 停用进公海理由, 停用项目进公海理由, type 停用分拣结果 } from "@/lib/offboard-db";
@@ -72,6 +72,7 @@ export async function 离职放进公海(tx: Prisma.TransactionClient, 分: 停�
     // 他没做完的待办不在这里关：离职交接里待办归接手人（停用分拣 待办）
     await tx.project.updateMany({ where: { id: { in: 分.进公海项目 } }, data: { pooledAt: new Date(), nextStepAt: null, nextStepText: null, awaitAssignAt: null, ...(进公海清负责人() ? 换负责人(公海无负责人) : {}) } });
     await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, p.ownerId, null, "pool-release", 停用项目进公海理由)) });
+    await 进公海清组员(tx, 分.进公海项目);
   }
 }
 

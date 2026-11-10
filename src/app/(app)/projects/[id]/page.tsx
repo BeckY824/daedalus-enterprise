@@ -4,7 +4,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 能加组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
+import { 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
 import { 按必填走, 节点必填, 还差, 有效沟通还差, 必填叫法 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -245,6 +245,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     能删: 企业 ? 能删除(me, org, 公海 ? null : p.ownerId) : 能改,
     // 项目组员（V3.5.1）：进了组就能往组里拉人
     能加组员: 能加组员(me, p, org, 已加入.includes(me.id)),
+    // 公海里的项目系统管理员能改组员（X-72）
+    能改组员: 能改组员(me, p, org),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
     // 没设业务角色、只读管理员（11-03 D3-7 ④）：「领取」整个不摆，灰的也不摆
     能领取: 公海 && 能领 && (企业 ? !原负责人领不回 && !p.result && !拦单独领项目() && !拦客户公海里的项目(!!p.customer.pool) : me.id !== 上一任),
