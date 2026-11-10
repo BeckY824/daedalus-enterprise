@@ -224,15 +224,15 @@ describe("A① 项目层动作只改项目负责人，客户负责人不动", ()
   });
 });
 
-describe("A② 转客户：原负责人自己的项目、公海项目和联系人一起走，同事的不动（用户 11-09）", () => {
-  it("A② 矩阵·转客户：同事在推的项目负责人不变", async () => {
+describe("A② 转客户：名下全部项目（含同事在推的）、公海项目和联系人一起走（Even 11-08 决策一②，用户 11-10 按 Even）", () => {
+  it("A② 矩阵·转客户：同事在推的项目一起给接手人", async () => {
     const c = await 客户(甲.id);
     const 自己的 = await 项目(c, 甲.id);
     const 同事的 = await 项目(c, 乙.id);
     expect(await 以(总管, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(c)).toBe(丙.id);
     expect((await 项目of(自己的)).ownerId).toBe(丙.id);
-    expect((await 项目of(同事的)).ownerId).toBe(乙.id);
+    expect((await 项目of(同事的)).ownerId).toBe(丙.id);
   });
 
   it("A② 矩阵·转客户：还挂在线索公海的项目也一起走", async () => {
@@ -256,12 +256,12 @@ describe("A② 转客户：原负责人自己的项目、公海项目和联系�
     expect(await 联系人们(c)).toEqual([联]);
   });
 
-  it("A② 矩阵·上级裁决移交：销售管理移交客户，同事的项目负责人不变", async () => {
+  it("A② 矩阵·上级裁决移交：销售管理移交客户，同事在推的项目一起给接手人", async () => {
     const c = await 客户(甲.id);
     const 同事的 = await 项目(c, 乙.id);
     expect(await 以(销售管理, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(c)).toBe(丙.id);
-    expect((await 项目of(同事的)).ownerId).toBe(乙.id);
+    expect((await 项目of(同事的)).ownerId).toBe(丙.id);
   });
 
   it("第五节 3 / X-20（客户 11-09 回执 X4 改）：负责人本人转客户 = 申请移交，接手人确认前不生效", async () => {
@@ -519,6 +519,23 @@ describe("C 客户进公海：清空负责人、记历史负责人、原负责�
     const r = await 以(甲, () => 放进公海([c], "客户主动终止"));
     expect(r).toMatchObject({ ok: false });
     expect(await 客户在公海(c)).toBe(false);
+  });
+
+  it("P-看-12 例外：订单项目拦住放公海时，自己负责的写项目名，同事的只写个数", async () => {
+    const c = await 客户(甲.id);
+    await 项目(c, 甲.id, { phase: "订单", name: "自己的大单" });
+    await 项目(c, 乙.id, { phase: "订单", name: "同事的单子" });
+    const r = await 以(甲, () => 放进公海([c], "客户主动终止"));
+    if (r.ok) throw new Error("应被拦");
+    expect(r.error).toContain("「自己的大单」");
+    expect(r.error).toContain("另外有 1 个同事在推的项目");
+    expect(r.error).not.toContain("同事的单子");
+    expect(r.error).not.toContain(乙.name);
+    // 一位能放、一位被订单拦：提示条也带上名字
+    const 能放的 = await 客户(甲.id);
+    const 部分 = await 以(甲, () => 放进公海([c, 能放的], "客户主动终止"));
+    expect(部分).toMatchObject({ ok: true, updated: 1, 有订单: 1 });
+    if (部分.ok) expect(部分.订单项目).toBe("「自己的大单」；另外有 1 个同事在推的项目");
   });
 });
 

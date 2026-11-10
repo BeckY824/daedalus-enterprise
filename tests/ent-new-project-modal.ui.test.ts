@@ -78,8 +78,8 @@ it("X-18：客户转给销售后我看不到这位客户了：不刷新（会 40
   } finally { await page.close(); }
 });
 
-/* P-转-07：客户页指定 / 自动分配走 X-18 时，一起转的和留在同事名下的项目，和分配弹窗一样先列出来 */
-const 带走一个 = { 项目数: 1, 项目: [{ name: "市场的老项目", 客户: "测试客户甲" }], 留下: { 项目数: 1, 项目: [{ name: "同事的老项目", 客户: "测试客户甲", 负责人: "销售乙" }] } };
+/* P-转-07：客户页指定 / 自动分配走 X-18 时，一起转的项目（含同事在推的，只给个数），和分配弹窗一样先列出来 */
+const 带走一个 = { 项目数: 2, 项目: [{ name: "市场的老项目", 客户: "测试客户甲" }], 同事: { 项目数: 1 } };
 type 窗 = { __建?: unknown; __预览?: unknown[][]; __带走?: unknown; __预览失败?: boolean };
 async function 填到建好(设: (w: 窗, 带走: unknown) => void) {
   const page = await browser.newPage({ viewport: { width: 1024, height: 800 } }); page.setDefaultTimeout(5000);
@@ -94,16 +94,15 @@ async function 填到建好(设: (w: 窗, 带走: unknown) => void) {
   const 点建好 = () => 框.getByRole("button", { name: /建\s*好/ }).click();
   return { page, 框, 点建好 };
 }
-const 确认标题 = "会一起转走的 1 个项目";
+const 确认标题 = "会一起转走的 2 个项目";
 
-it("P-转-07：有项目一起转时先列出来，同事的另列；取消不建、弹窗还在、可再点；一起转才建", async () => {
+it("P-转-07：有项目一起转时先列出来，同事在推的只给个数；取消不建、弹窗还在、可再点；一起转才建", async () => {
   const { page, 框, 点建好 } = await 填到建好((w, 带走) => { w.__带走 = 带走; });
   try {
     await 点建好();
     const 问 = page.locator(".ant-modal-confirm");
     await 问.locator(".ant-modal-confirm-title", { hasText: 确认标题 }).waitFor();
-    expect(await 问.innerText()).toContain("同事的老项目");
-    expect(await 问.innerText()).toContain("销售乙");
+    expect(await 问.innerText()).toContain("另外有 1 个同事在推的项目，负责人也一起改成新负责人");
     expect(await page.evaluate(() => (window as unknown as 窗).__建 ?? null)).toBeNull();
     await 问.locator(".ant-btn:not(.ant-btn-primary)").click();
     await 问.waitFor({ state: "detached" });
@@ -118,7 +117,7 @@ it("P-转-07：有项目一起转时先列出来，同事的另列；取消不�
   } finally { await page.close(); }
 });
 
-it("P-转-07：没有要转的、也没有留下的不弹，直接建；问的时候带上这次的分配方式、负责人、业务线", async () => {
+it("P-转-07：没有要转的不弹，直接建；问的时候带上这次的分配方式、负责人、业务线", async () => {
   const { page, 点建好 } = await 填到建好(() => {});
   try {
     await 点建好();

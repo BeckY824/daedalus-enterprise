@@ -68,7 +68,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     const t = await prisma.task.create({ data: { title: "回电", customerId: c.id, ownerId: 小李.id } });
     当(小王);
     const r = await 撤销改负责人([{ id: c.id, 值: 小王.id }], 小李.id, { 计划: [], 待办: [t.id], 商机: [], 项目: [] });
-    expect(r).toMatchObject({ ok: true, updated: 0 });
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining("现在撤不了") }); // 企业版撤不了就拒、说原因（4B，不半撤）
     expect(await 归谁(c.id)).toBe(小李.id);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: t.id } })).ownerId).toBe(小李.id);
     expect(await 撤销记录数(c.id)).toBe(0);
@@ -79,7 +79,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     当(老板);
     expect(await assignSalesOwner([c.id], 小李.id)).toMatchObject({ ok: true, updated: 1 });
     当(小王);
-    expect(await 撤销改负责人([{ id: c.id, 值: 小王.id }], 小李.id)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 撤销改负责人([{ id: c.id, 值: 小王.id }], 小李.id)).toMatchObject({ ok: false, error: expect.stringContaining("现在撤不了") });
     expect(await 归谁(c.id)).toBe(小李.id);
   });
 
@@ -126,7 +126,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     当(老板);
     await assignSalesOwner([c.id], 小李.id);
     当(组长);
-    expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: false, error: expect.stringContaining("现在撤不了") });
     expect(await 归谁(c.id)).toBe(小李.id);
   });
 
@@ -137,7 +137,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     const r = await assignSalesOwner([c.id], 小李.id);
     if (!r.ok) throw new Error(r.error);
     await 记录挪到(c.id, 31);
-    expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: false, error: expect.stringContaining("现在撤不了") });
     expect(await 归谁(c.id)).toBe(小李.id);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: t.id } })).ownerId).toBe(小李.id);
     expect(await 撤销记录数(c.id)).toBe(0);

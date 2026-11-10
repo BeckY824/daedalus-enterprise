@@ -15,6 +15,7 @@ export type 换负责人记录 = {
 
 const 种类说法: Record<string, string> = {
   assign: "改负责人",
+  "market-assign": "分配",
   claim: "从公海领取",
   "pool-assign": "从公海分配",
   deactivate: "成员停用转交",

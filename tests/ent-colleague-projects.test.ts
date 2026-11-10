@@ -162,15 +162,20 @@ describe("P-公海-06 手动放进公海：客户负责人自己的项目一起�
     expect(await raw.task.findFirstOrThrow({ where: { customerId: c } })).toMatchObject({ ownerId: 乙.id, done: false, title: `跟进「${名}」` });
   });
 
-  it("名下有同事在跑的项目：整位拦住，说清是哪位、拦住的是同事哪个项目和负责人（P-看-12 例外）；客户、项目都不动", async () => {
+  it("名下有同事在跑的项目：整位拦住，说清是哪位、几个同事在推的项目，不写项目名和负责人（P-看-12 例外、Even C4）；客户、项目都不动", async () => {
     const c = await 客户(乙.id);
     const 自己 = await 项目(乙.id, c);
     const 丙的 = await 项目(丙.id, c);
+    await 项目(丙.id, c);
     当(乙);
-    expect(await 放进公海([c], "客户主动终止")).toEqual({
+    const r = await 放进公海([c], "客户主动终止");
+    expect(r).toEqual({
       ok: false,
-      error: `「${(await 客户of(c)).name}」名下有同事负责、还没结束的项目：${(await 项目of(丙的)).name}（丙），先转走或结束再放进公海`,
+      error: `「${(await 客户of(c)).name}」名下有 2 个同事在推的项目，先转走或结束再放进公海`,
     });
+    if (r.ok) throw new Error("应该被拦");
+    expect(r.error).not.toContain((await 项目of(丙的)).name);
+    expect(r.error).not.toContain("丙");
     expect(await 在客户公海(c)).toBe(false);
     expect(await 项目of(自己)).toMatchObject({ ownerId: 乙.id, pooledAt: null });
     expect(await 项目of(丙的)).toMatchObject({ ownerId: 丙.id, pooledAt: null });
@@ -181,12 +186,12 @@ describe("P-公海-06 手动放进公海：客户负责人自己的项目一起�
     await 项目(丙.id, 挡);
     const 放 = await 客户(乙.id);
     当(乙);
-    expect(await 放进公海([挡, 放], "客户主动终止")).toMatchObject({ ok: true, updated: 1, 同事在推: 1, 同事项目: `「${(await 客户of(挡)).name}」${(await raw.project.findFirstOrThrow({ where: { customerId: 挡 } })).name}（丙）` });
+    expect(await 放进公海([挡, 放], "客户主动终止")).toMatchObject({ ok: true, updated: 1, 同事在推: 1, 同事项目: `「${(await 客户of(挡)).name}」有 1 个同事在推的项目` });
     expect(await 在客户公海(挡)).toBe(false);
     expect(await 在客户公海(放)).toBe(true);
   });
 
-  it("几位都被拦：逐位写出同事的项目名和负责人，多了写「等共 N 个」", async () => {
+  it("几位都被拦：逐位写各有几个同事在推的项目，不写项目名", async () => {
     const 甲客 = await 客户(乙.id);
     const 丙的 = await 项目(丙.id, 甲客);
     const 丁客 = await 客户(乙.id);
@@ -196,11 +201,11 @@ describe("P-公海-06 手动放进公海：客户负责人自己的项目一起�
     当(乙);
     const r = await 放进公海([甲客, 丁客], "客户主动终止");
     if (r.ok) throw new Error("应该被拦");
-    const 名 = async (id: string) => (await 项目of(id)).name;
     expect(r.error).toBe(
-      `2 位客户名下有同事负责、还没结束的项目：「${(await 客户of(甲客)).name}」${await 名(丙的)}（丙）；` +
-        `「${(await 客户of(丁客)).name}」${(await Promise.all(丙的2.slice(0, 4).map(名))).map((n) => `${n}（丙）`).join("、")}等共 6 个，先转走或结束再放进公海`,
+      `2 位客户名下有同事负责、还没结束的项目：「${(await 客户of(甲客)).name}」有 1 个同事在推的项目；` +
+        `「${(await 客户of(丁客)).name}」有 5 个同事在推的项目，先转走或结束再放进公海`,
     );
+    for (const id of [丙的, ...丙的2]) expect(r.error).not.toContain((await 项目of(id)).name);
   });
 });
 

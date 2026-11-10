@@ -34,7 +34,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 历史负责人们 } from "@/lib/project/pool-owner";
 import { 换负责人待办 } from "@/lib/project/carry-tasks";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 有同事在推的客户, 同事在推不能放公海话, 同事在推项目说法 } from "@/lib/enterprise/colleague-projects";
+import { 有同事在推的客户, 同事在推不能放公海话, 同事在推项目说法, 订单项目说法 } from "@/lib/enterprise/colleague-projects";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { Prisma } from "@/generated/prisma";
 import { 客户退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
@@ -50,11 +50,13 @@ export type 公海结果 =
       没权限: number;
       /** 放进公海：名下有没结束的订单阶段项目、没放的几位（企业版，B1-4） */
       有订单?: number;
+      /** 拦住那几位的订单项目：自己负责的写名字，同事的只给个数（P-看-12 例外） */
+      订单项目?: string;
       /** 放进公海：正在转让交接中、没放的几位（企业版，C3-2） */
       交接中?: number;
       /** 放进公海：名下有同事负责、还没结束的项目，没放的几位（企业版 P-公海-06，11-05） */
       同事在推?: number;
-      /** 拦住那几位的同事项目和负责人：「客户A」项目X（张三）…（P-看-12 例外，11-09） */
+      /** 拦住那几位的同事项目个数：「客户A」有 2 个同事在推的项目…（P-看-12 例外，只写个数，Even C4） */
       同事项目?: string;
       /** 放进公海：联系方式空着或有号码不对、没放的几位（企业版，M-公海-15） */
       联系方式不全?: number;
@@ -109,7 +111,7 @@ export async function 退回原因选项(): Promise<string[]> {
   return 可选项("recycle");
 }
 
-const 有订单不能放提示 = (客户: string) => `${客户}名下有没结束的订单阶段项目，不能放回公海`;
+const 有订单不能放提示 = (客户: string, 订单项目: string) => `${客户}名下有没结束的订单阶段项目${订单项目 ? `（${订单项目}）` : ""}，不能放回公海`;
 const 交接中不能放提示 = (客户: string) => `这位${客户}正在转让交接中，先撤回交接再放回公海`;
 
 /**
@@ -136,12 +138,14 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   const 有权限 = 这些.filter((c) => !c.pool && (管 || (自己能放 && c.salesOwnerId === me.id)));
   // 企业版：名下有没结束的订单阶段项目的不能放（11-03 完成度 B1-4，同项目放回公海「订单阶段的项目不能放回公海」）。
   // 不按谁在看限定：别人负责的订单项目也算
-  const 有订单 = 企业版() && 有权限.length
-    ? new Set((await 看全部(() => prisma.project.findMany({
+  const 订单们 = 企业版() && 有权限.length
+    ? await 看全部(() => prisma.project.findMany({
         where: { customerId: { in: 有权限.map((c) => c.id) }, pooledAt: null, result: null, phase: { notIn: [...能进公海的阶段] } },
-        select: { customerId: true },
-      }))).map((p) => p.customerId))
-    : new Set<string>();
+        select: { customerId: true, name: true, ownerId: true }, orderBy: { createdAt: "asc" },
+      }))
+    : [];
+  const 有订单 = new Set(订单们.map((p) => p.customerId));
+  const 订单项目 = 订单项目说法(订单们, me.id);
   // 正在转让交接中的不能放（11-03 完成度 C3-2）：放了接手人确认后客户归他、公海那行还在，他看不到也领不到。别人发起的交接也算
   const 交接中 = 企业版() && 有权限.length ? await 看全部(() => 交接中的客户(有权限.map((c) => c.id))) : new Set<string>();
   // P-公海-06 / M-公海-02 例外二：名下有同事负责、还没结束的项目的不能放（同事的项目不跟着进公海，客户进了他就跟不了）
@@ -149,13 +153,13 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   // M-公海-15（11-05 用户）：客户电话、联系人、项目联系人的号码要有、而且全对才能放（谁放都一样）
   const 号码错 = 企业版() && 有权限.length ? await 看全部(async () => 客户退回前查联系方式(prisma, 有权限.map((c) => c.id), await 退回号码种类表())) : new Map<string, string>();
   const 能放 = 有权限.filter((c) => !有订单.has(c.id) && !交接中.has(c.id) && !同事在推.has(c.id) && !号码错.has(c.id));
-  // 同事的项目平时看不到，被拦时例外写出项目名和负责人（P-看-12），按选的先后列
+  // 同事的项目平时看不到，被拦时只说个数（P-看-12 例外、Even C4），按选的先后列
   const 被同事拦 = 有权限.filter((c) => 同事在推.has(c.id)).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
   // 别的照放时提示条只说「N 位…没放」，那就带上客户名
   const 同事项目 = 被同事拦.length ? await 同事在推项目说法(prisma, 被同事拦, 被同事拦.length > 1 || 能放.length > 0) : "";
   const 没权限 = 这些.length - 已在.length - 有权限.length;
   if (!能放.length) {
-    if (有订单.size) return { ok: false, error: 有订单不能放提示(b.customer) };
+    if (有订单.size) return { ok: false, error: 有订单不能放提示(b.customer, 订单项目) };
     if (交接中.size) return { ok: false, error: 交接中不能放提示(b.customer) };
     if (同事在推.size) return { ok: false, error: 同事在推不能放公海话(被同事拦.map((c) => c.name), b.customer, 同事项目) };
     if (号码错.size) {
@@ -185,7 +189,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   刷新(ids);
   return {
     ok: true, updated: 能放.length, unchanged: 已在.length, 没权限,
-    ...(有订单.size ? { 有订单: 有订单.size } : {}), ...(交接中.size ? { 交接中: 交接中.size } : {}), ...(同事在推.size ? { 同事在推: 同事在推.size, 同事项目 } : {}),
+    ...(有订单.size ? { 有订单: 有订单.size, 订单项目 } : {}), ...(交接中.size ? { 交接中: 交接中.size } : {}), ...(同事在推.size ? { 同事在推: 同事在推.size, 同事项目 } : {}),
     ...(号码错.size ? { 联系方式不全: 号码错.size } : {}),
     ...(公海项目.length ? { 公海项目 } : {}),
   };

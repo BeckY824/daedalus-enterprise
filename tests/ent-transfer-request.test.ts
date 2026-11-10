@@ -25,8 +25,8 @@ vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), �
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { setSetting } from "@/lib/settings";
-import { assignSalesOwner, patchCustomer, deleteCustomers } from "@/app/(app)/customers/actions";
+import { invalidateSettingsCache, setSetting } from "@/lib/settings";
+import { assignSalesOwner, patchCustomer, deleteCustomers, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接, 改接手人 } from "@/app/(app)/customers/handover-actions";
 import { 挂起移交提醒, 挂起提醒键 } from "@/lib/enterprise/handover-remind";
 import { 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
@@ -103,6 +103,59 @@ describe("负责人本人转客户 = 申请移交", () => {
     expect(await 归谁(a.id)).toBe(接手.id);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).ownerId).toBe(接手.id);
     expect(await 通知(销售.id, "已确认", h.id)).not.toBeNull();
+  });
+
+  /*
+   * 申请移交确认这条路转客户，和另外四个入口（批量转让、详情页转让、编辑页、就地改）一套（P-转-07 Even 口径、P-转-19、X-49）：
+   * 全部项目一起走（本人的、同事在推的；同事已结束的不动），同事收到通知，确认框只写个数，撤销时还给原负责人
+   */
+  it("接手人确认：同事在推的项目一起走、同事收到通知；确认框只写个数；撤销时各还各的", async () => {
+    const 项 = (name: string, ownerId: string, extra: Record<string, unknown> = {}) =>
+      prisma.project.create({ data: { name, customerId: a.id, ownerId, creatorId: ownerId, phase: "线索", ...extra } });
+    const a = await 客户(销售.id);
+    const 本人的 = await 项("本人的", 销售.id);
+    const 在推 = await 项("同事在推的", 同事.id);
+    const 结束 = await 项("同事结束的", 同事.id, { result: "丢单" });
+    const 负责 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).ownerId;
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1, 申请移交: true });
+    const h = await 一笔();
+
+    当(接手);
+    const 说明 = (await 待确认的交接()).等我确认[0].确认说明;
+    expect(说明).toContain("全部 2 个项目（含 1 个同事在推的");
+    expect(说明).not.toContain("同事在推的」");
+    expect(await 确认交接(h.id)).toEqual({ ok: true, 客户: 1 });
+    expect([await 负责(本人的.id), await 负责(在推.id), await 负责(结束.id)]).toEqual([接手.id, 接手.id, 同事.id]);
+    const 知 = await prisma.entNotice.findFirst({ where: { userId: 同事.id, title: { contains: "随客户一起给了" } } });
+    expect(知?.title).toContain("「同事在推的」");
+
+    // 撤销（发起人本人，按确认那一步记下的带过来）：同事的还给同事，本人的还给本人
+    当(销售);
+    const 记 = await prisma.auditLog.findFirstOrThrow({ where: { summary: { contains: "确认接手" } }, orderBy: { at: "desc" } });
+    const d = JSON.parse(记.detail ?? "{}");
+    expect(await 撤销改负责人([{ id: a.id, 值: 销售.id }], 接手.id, d.带过来)).toMatchObject({ ok: true, updated: 1 });
+    expect(await 归谁(a.id)).toBe(销售.id);
+    expect([await 负责(本人的.id), await 负责(在推.id), await 负责(结束.id)]).toEqual([销售.id, 同事.id, 同事.id]);
+  });
+
+  it("接手人确认时持有上限把同事在推的也算上（M-公海-18）：超了拦、交接还挂着；放宽后能确认", async () => {
+    const 上限 = async (n: number) => { await setSetting("orgRules", { ...默认组织规则, 公海: { ...默认组织规则.公海, 持有上限开: true, 默认上限: n } }); invalidateSettingsCache(); };
+    const 已有 = await 客户(接手.id);
+    await prisma.project.create({ data: { name: "接手已有", customerId: 已有.id, ownerId: 接手.id, creatorId: 接手.id, phase: "线索" } });
+    const a = await 客户(销售.id);
+    await prisma.project.create({ data: { name: "本人的", customerId: a.id, ownerId: 销售.id, creatorId: 销售.id, phase: "线索" } });
+    await prisma.project.create({ data: { name: "同事在推的", customerId: a.id, ownerId: 同事.id, creatorId: 同事.id, phase: "线索" } });
+    await assignSalesOwner([a.id], 接手.id);
+    const h = await 一笔();
+    await 上限(2);
+    当(接手);
+    const r = await 确认交接(h.id);
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toContain("再接这 2 个");
+    expect(await 归谁(a.id)).toBe(销售.id);
+    expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: h.id } })).status).toBe("待确认");
+    await 上限(3);
+    expect(await 确认交接(h.id)).toEqual({ ok: true, 客户: 1 });
   });
 
   it("拒收：不生效，本人收到「拒绝了移交申请」", async () => {
