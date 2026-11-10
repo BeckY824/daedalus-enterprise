@@ -4,9 +4,9 @@
  * 撞号台账（EntDupeHit）里点了「申请挂靠」、状态待处理的那一行就是一条挂靠申请（dupe-ledger.ts 申请挂靠 写进来）：
  *   - 审批人 = 客户现在的负责人（Customer.salesOwnerId），不是申请那一刻的：客户换负责人（转让、交接、离职交接、公海领取 / 分配、撤销）
  *     时，还没转过上级的待处理申请跟着换到新负责人（owner-log-db.ts 记换负责人 / 删被撤的换负责人记录，换负责人的几条路都走那两处）。
- *     负责人已离职也还是他，不另找兜底的人（用户定：不留兜底）；他收不到，24 小时后照常转他的实线上级。
- *   - 24 小时没人处理：转给客户现在负责人的实线上级（直属上级；离职的 = 他手填的那位），通知他；只转一次。转过之后只有新审批人能批，原负责人不能再批，
- *     之后客户再换负责人也不跟着换。没有上级可转（没填、停用了、上级就是现在的审批人）= 审批人不变，也记上转过的时刻，不再每分钟扫它。
+ *     负责人已离职也还是他；审批人已停用的，下一遍扫就按没人往上找（11-10 新口径），不等 24 小时。
+ *   - 24 小时没人处理：转给现审批人的实线上级（直属上级；离职的 = 他手填的那位），通知他。转过之后只有新审批人能批，原负责人不能再批，
+ *     之后客户再换负责人也不跟着换。没有上级、上级停用了 → 给总管理（director）；转过之后再满 24 小时接着往上，到总管理为止，不作废（11-10 新口径，见 挂靠超时转上级）。
  *   - 批准：客户负责人不变、不加项目组；申请人拿这家客户的只读卡（P-看-13，customer-readonly-card.ts 同一张卡），通知客户现在的负责人（批的就是他自己就不发）。
  *   - 批准 / 拒绝都告诉申请人一声（站内通知）。
  *   - 只读卡：客户资料 + 联系人姓名、职务；只有申请人自己项目上的联系人给联系方式；不给负责人、级别、状态；
@@ -24,6 +24,8 @@ import { 视图中跳过 } from "./view-as";
 import { 读卡底子, 拼卡, type 客户只读卡 } from "./customer-readonly-card";
 import type { 谁 } from "./permissions";
 import { 挂靠进公海状态 } from "@/lib/owner-log-db";
+import { recordAudit } from "@/lib/audit";
+import { 系统 } from "@/lib/project/timeout";
 
 export const 挂靠超时小时 = 24;
 const 小时毫秒 = 3_600_000;
@@ -206,39 +208,83 @@ export async function 补挂靠审批人(): Promise<number> {
   return n;
 }
 
-/** 夜扫的钟上每分钟一次：先补存量审批人；申请等了 24 小时还待处理的，转给客户现在负责人的实线上级。回新转了几条 */
+/** 在职的总管理（业务角色 director；只读管理员 admin 不算）。几位时先同业务线的、再没设业务线的，同档按 id 排，每次挑到同一位 */
+function 总管理of(org: 组织, line: string | null, 排除: string | null): string | null {
+  const 档 = (m: { line: string | null }) => (line && m.line === line ? 0 : m.line === null ? 1 : 2);
+  const 们 = [...org.成员.values()].filter((m) => m.角色们.includes("director") && m.userId !== 排除);
+  们.sort((a, b) => 档(a) - 档(b) || (a.userId < b.userId ? -1 : 1));
+  return 们[0]?.userId ?? null;
+}
+
+/**
+ * 超时了该转给谁（11-10 新口径）：现审批人的实线直属上级；没有上级、上级已停用 → 总管理；现审批人已是在职总管理 → 到顶，回 null。
+ * 现审批人已停用 = 按没人算：他手填的上级还在职给上级，否则给总管理。没有在职总管理可给也回 null（原样不动，下一遍再看）
+ */
+export function 挂靠下一位审批人(org: 组织, 现审批人: string | null): string | null {
+  const m = 现审批人 ? org.成员.get(现审批人) : undefined;
+  if (m?.角色们.includes("director")) return null;
+  const 上 = 实线上级(org, 现审批人);
+  if (上 && 上 !== 现审批人) return 上;
+  return 总管理of(org, m?.line ?? null, 现审批人);
+}
+
+/**
+ * 夜扫的钟上每分钟一次：先补存量审批人；再把超时的申请往上转一级（P-挂靠-02，11-10 新口径）：
+ *   - 等了 24 小时还待处理 → 转给现审批人的实线直属上级；没有上级、上级已停用 → 总管理；
+ *   - 转过之后再满 24 小时（从上次转的时刻算）还没人处理 → 接着往上，直到总管理；到了总管理就停在他那，不作废；
+ *   - 现审批人已停用 → 不等 24 小时，这一遍就往上找；
+ *   - 按「状态、审批人、上次转的时刻都没变」条件写（命中 0 行 = 刚被人批了 / 换了审批人，跳过，不通知不留痕）；
+ *   - 每转一级通知新审批人一次（key 带新审批人）、记一条操作日志（记在「系统」名下）。
+ * 回新转了几条
+ */
 export async function 挂靠超时转上级(现在: Date = new Date()): Promise<number> {
   if (!企业版()) return 0;
   try {
     if (await 视图中跳过()) return 0;
     await 补挂靠审批人();
+    const org = await 读组织();
     const 截止 = new Date(现在.getTime() - 挂靠超时小时 * 小时毫秒);
+    const 在职 = [...org.成员.keys()];
     const 行们 = await prisma.entDupeHit.findMany({
-      where: { ...申请, status: "待处理", escalatedAt: null, actionAt: { lte: 截止 } },
-      take: 200,
+      where: {
+        ...申请,
+        status: "待处理",
+        OR: [{ escalatedAt: null, actionAt: { lte: 截止 } }, { escalatedAt: { lte: 截止 } }, { approverId: { notIn: 在职 } }],
+      },
+      orderBy: { actionAt: "asc" },
+      take: 500,
     });
     if (!行们.length) return 0;
-    const org = await 读组织();
     const 客户 = await 客户们(行们.map((r) => r.customerId));
-    const 人 = await 名字们(行们.flatMap((r) => [r.userId, 客户.get(r.customerId)?.负责人 ?? null]));
+    const 人 = await 名字们(行们.flatMap((r) => [r.userId, r.approverId, 客户.get(r.customerId)?.负责人 ?? null]));
     let n = 0;
     for (const 行 of 行们) {
-      // 客户现在的负责人的实线上级（客户删了查不到 = 不转，只记转过）
-      const 负责人 = 客户.get(行.customerId)?.负责人 ?? null;
-      const 上 = 实线上级(org, 负责人);
-      const 转 = !!上 && 上 !== 行.approverId;
+      // 客户删了查不到：没有可审批的对象，不转
+      if (!客户.has(行.customerId)) continue;
+      const 上 = 挂靠下一位审批人(org, 行.approverId);
+      if (!上) continue;
       const r = await prisma.entDupeHit.updateMany({
-        where: { id: 行.id, status: "待处理", escalatedAt: null },
-        data: { escalatedAt: 现在, ...(转 ? { approverId: 上 } : {}) },
+        where: { id: 行.id, status: "待处理", approverId: 行.approverId, escalatedAt: 行.escalatedAt },
+        data: { escalatedAt: 现在, approverId: 上 },
       });
-      if (!r.count || !转) continue;
+      if (!r.count) continue;
       n++;
+      const 客户名 = 客户.get(行.customerId)?.名 ?? "";
+      const 负责人 = 客户.get(行.customerId)?.负责人 ?? null;
+      const 原 = 行.approverId ? (人.get(行.approverId) ?? "") : "";
+      const 原停用 = !!行.approverId && !org.成员.has(行.approverId);
+      const 上名 = (await 名字们([上])).get(上) ?? "";
+      await recordAudit({
+        user: 系统, action: "assign", entity: "EntDupeHit", entityId: 行.id,
+        summary: `挂靠申请（客户「${客户名}」）${原停用 ? `审批人「${原}」已停用` : `${挂靠超时小时} 小时没人处理`}，审批人从「${原 || "（没有）"}」转给「${上名}」`,
+        detail: { 挂靠申请: 行.id, customerId: 行.customerId, 申请人: 行.userId, 原审批人: 行.approverId, 新审批人: 上, 原因: 原停用 ? "审批人已停用" : "超时" },
+      });
       await notify([上], {
         kind: "挂靠",
-        title: `挂靠申请 ${挂靠超时小时} 小时没人处理，转给你审批：客户「${客户.get(行.customerId)?.名 ?? ""}」`,
-        body: `${人.get(行.userId) ?? ""} 申请挂靠 ${(负责人 && 人.get(负责人)) || "已离职同事"} 负责的这位客户，负责人 ${挂靠超时小时} 小时没处理。到「挂靠申请」里批准或拒绝`,
+        title: `挂靠申请${原停用 ? "的审批人已停用" : ` ${挂靠超时小时} 小时没人处理`}，转给你审批：客户「${客户名}」`,
+        body: `${人.get(行.userId) ?? ""} 申请挂靠 ${(负责人 && 人.get(负责人)) || "已离职同事"} 负责的这位客户，${原停用 ? "原审批人已停用" : `${原 || "原审批人"} ${挂靠超时小时} 小时没处理`}。到「挂靠申请」里批准或拒绝`,
         link: 挂靠页,
-        key: `挂靠升级:${行.id}`,
+        key: `挂靠升级:${行.id}:${上}`,
       });
     }
     return n;

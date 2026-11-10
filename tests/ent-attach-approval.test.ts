@@ -2,11 +2,25 @@
  * 企业版挂靠审批（lib/enterprise/attach-approval.ts，2026-11-10，P-挂靠-02 / P-看-13）：
  * 申请挂靠 → 客户现在的负责人审批（客户换负责人，审批人跟着换）；24 小时没人处理转给负责人的实线上级；批准后客户负责人不变、申请人拿这家客户的只读卡、通知客户负责人。
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({ user: null as null | { id: string; name: string; role: string; email: string } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}, unstable_cache: (f: unknown) => f }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user, currentUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
+/** 撞车用：布好以后，下一次 看全部 那一读回来之后先跑它（只跑一次），模拟「扫到之后、写之前被人处理了」 */
+const 撞车 = vi.hoisted(() => ({ 读完后: null as null | (() => Promise<unknown>) }));
+vi.mock("@/lib/team-scope", async (原) => {
+  const m = await 原<typeof import("@/lib/team-scope")>();
+  return {
+    ...m,
+    看全部: async <T,>(f: () => Promise<T>): Promise<T> => {
+      const r = await m.看全部(f);
+      const 跑 = 撞车.读完后;
+      if (跑) { 撞车.读完后 = null; await 跑(); }
+      return r;
+    },
+  };
+});
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 
 import { resetDb } from "./reset";
@@ -187,7 +201,7 @@ describe("审批", () => {
 });
 
 describe("24 小时没人处理转实线上级", () => {
-  it("超过 24 小时：转给负责人的直属上级、通知他；只转一次；转过之后原负责人不能再批，上级批准后通知客户负责人", async () => {
+  it("超过 24 小时：转给负责人的直属上级、通知他；没满下一个 24 小时不再转；转过之后原负责人不能再批，上级批准后通知客户负责人", async () => {
     const x = await 现场();
     const id = await 申请(x);
     const 现在 = new Date();
@@ -225,15 +239,13 @@ describe("24 小时没人处理转实线上级", () => {
     expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ approverId: x.负责人.id, escalatedAt: null });
   });
 
-  it("负责人没有实线上级：审批人不变，记下转过（不再每分钟扫它）", async () => {
+  it("负责人没有实线上级、组织里也没有总管理：没人可转，原样不动", async () => {
     const x = await 现场({ 主管: false });
     const id = await 申请(x);
     const 现在 = new Date();
     await prisma.entDupeHit.update({ where: { id }, data: { actionAt: new Date(现在.getTime() - (挂靠超时小时 + 1) * 小时) } });
     expect(await 挂靠超时转上级(现在)).toBe(0);
-    const 行 = await prisma.entDupeHit.findUnique({ where: { id } });
-    expect(行).toMatchObject({ status: "待处理", approverId: x.负责人.id });
-    expect(行?.escalatedAt).toBeTruthy();
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "待处理", approverId: x.负责人.id, escalatedAt: null });
   });
 
   it("已经处理了的不转", async () => {
@@ -244,6 +256,146 @@ describe("24 小时没人处理转实线上级", () => {
     await prisma.entDupeHit.update({ where: { id }, data: { actionAt: new Date(现在.getTime() - (挂靠超时小时 + 1) * 小时) } });
     expect(await 挂靠超时转上级(现在)).toBe(0);
     expect(await 通知们(x.主管.id)).toHaveLength(0);
+  });
+});
+
+describe("超时出口（11-10 新口径）：没有上级 / 上级停用给总管理；每 24 小时往上一级，到总管理为止，不作废", () => {
+  /** 钟拨到这一刻（只假 Date，库照常走），按「现在」扫一遍 */
+  const 到 = async (t: number) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(t));
+    const n = await 挂靠超时转上级();
+    await 等通知推完();
+    return n;
+  };
+  const 行of = (id: string) => prisma.entDupeHit.findUniqueOrThrow({ where: { id } });
+  const 痕们 = () => prisma.auditLog.findMany({ where: { userId: "system", entity: "EntDupeHit" }, orderBy: { at: "asc" } });
+  afterEach(() => { vi.useRealTimers(); 撞车.读完后 = null; });
+
+  it("没有上级 → 总管理（bizRole = director；只读管理员 admin 不算）", async () => {
+    const x = await 现场({ 主管: false });
+    await 人("admin1", "只读管理员", "admin");
+    const 总 = await 人("dir1", "总管理", "director");
+    const id = await 申请(x);
+    const t0 = (await 行of(id)).actionAt!.getTime();
+    expect(await 到(t0 + 23 * 小时)).toBe(0);
+    expect(await 到(t0 + 24 * 小时 + 60_000)).toBe(1);
+    expect(await 行of(id)).toMatchObject({ status: "待处理", approverId: 总.id });
+    expect(await 通知们(总.id)).toHaveLength(1);
+    expect(await 通知们("admin1")).toHaveLength(0);
+    expect(await 作为(总, () => 待我审批的挂靠(总))).toMatchObject([{ id, 转来的: true }]);
+    // 留痕：记在「系统」名下，写清从谁转给谁
+    const 痕 = await 痕们();
+    expect(痕).toHaveLength(1);
+    expect(痕[0]).toMatchObject({ entityId: id });
+    expect(JSON.parse(痕[0].detail ?? "{}")).toMatchObject({ 原审批人: x.负责人.id, 新审批人: 总.id });
+    vi.useRealTimers();
+    expect(await 作为(总, () => 批准挂靠(id))).toMatchObject({ ok: true });
+  });
+
+  it("上级已停用 → 总管理", async () => {
+    const x = await 现场();
+    const 总 = await 人("dir1", "总管理", "director");
+    const id = await 申请(x);
+    await prisma.user.update({ where: { id: x.主管.id }, data: { active: false } });
+    const t0 = (await 行of(id)).actionAt!.getTime();
+    expect(await 到(t0 + 24 * 小时 + 60_000)).toBe(1);
+    expect(await 行of(id)).toMatchObject({ status: "待处理", approverId: 总.id });
+    expect(await 通知们(x.主管.id)).toHaveLength(0);
+  });
+
+  it("审批人本人已停用：不等 24 小时，按没人直接往上找（他手填的上级在职给上级，否则给总管理）", async () => {
+    const x = await 现场();
+    const 总 = await 人("dir1", "总管理", "director");
+    const id = await 申请(x);
+    const t0 = (await 行of(id)).actionAt!.getTime();
+    await prisma.user.update({ where: { id: x.负责人.id }, data: { active: false } });
+    expect(await 到(t0 + 小时)).toBe(1);
+    expect(await 行of(id)).toMatchObject({ status: "待处理", approverId: x.主管.id });
+    // 接手的上级也停用了：同样不等，给总管理
+    await prisma.user.update({ where: { id: x.主管.id }, data: { active: false } });
+    expect(await 到(t0 + 2 * 小时)).toBe(1);
+    expect(await 行of(id)).toMatchObject({ status: "待处理", approverId: 总.id });
+    expect(await 到(t0 + 3 * 小时)).toBe(0);
+  });
+
+  it("逐级升级：负责人 → 直属上级 → 上级的上级 → 总管理，每级各等 24 小时；到总管理后不再动，也不作废；每级只通知一次", async () => {
+    const x = await 现场();
+    const 大主管 = await 人("mgr9", "小庚", "sales_mgr");
+    await prisma.entMember.update({ where: { userId: x.主管.id }, data: { managerId: 大主管.id } });
+    const 总 = await 人("dir1", "总管理", "director");
+    const id = await 申请(x);
+    const t0 = (await 行of(id)).actionAt!.getTime();
+    const t1 = t0 + 24 * 小时 + 60_000;
+    expect(await 到(t1)).toBe(1);
+    expect(await 行of(id)).toMatchObject({ approverId: x.主管.id });
+    // 重复跑、没满下一个 24 小时：不动
+    expect(await 到(t1 + 60_000)).toBe(0);
+    expect(await 到(t1 + 23 * 小时)).toBe(0);
+    expect(await 行of(id)).toMatchObject({ approverId: x.主管.id });
+    const t2 = t1 + 24 * 小时;
+    expect(await 到(t2)).toBe(1);
+    expect(await 行of(id)).toMatchObject({ approverId: 大主管.id });
+    expect(await 到(t2 + 23 * 小时)).toBe(0);
+    const t3 = t2 + 24 * 小时;
+    expect(await 到(t3)).toBe(1);
+    expect(await 行of(id)).toMatchObject({ status: "待处理", approverId: 总.id });
+    // 到了总管理：再过多久都停在他那，仍待处理
+    expect(await 到(t3 + 24 * 小时)).toBe(0);
+    expect(await 到(t3 + 30 * 24 * 小时)).toBe(0);
+    expect(await 行of(id)).toMatchObject({ status: "待处理", approverId: 总.id, decidedAt: null });
+    expect((await 行of(id)).escalatedAt?.getTime()).toBe(t3);
+    for (const u of [x.主管, 大主管, 总]) expect(await 通知们(u.id)).toHaveLength(1);
+    expect(await 痕们()).toHaveLength(3);
+    // 原来的审批人都批不了，只有总管理能批
+    vi.useRealTimers();
+    expect(await 作为(x.主管, () => 批准挂靠(id))).toMatchObject({ ok: false });
+    expect(await 作为(大主管, () => 拒绝挂靠(id))).toMatchObject({ ok: false });
+    expect(await 作为(总, () => 拒绝挂靠(id))).toMatchObject({ ok: true });
+  });
+
+  it("人工先处理了就不动：上级已批的不再往上转", async () => {
+    const x = await 现场();
+    const 总 = await 人("dir1", "总管理", "director");
+    const id = await 申请(x);
+    const t0 = (await 行of(id)).actionAt!.getTime();
+    expect(await 到(t0 + 24 * 小时 + 60_000)).toBe(1);
+    vi.useRealTimers();
+    expect(await 作为(x.主管, () => 批准挂靠(id))).toMatchObject({ ok: true });
+    expect(await 到(t0 + 72 * 小时)).toBe(0);
+    expect(await 行of(id)).toMatchObject({ status: "已批准", approverId: x.主管.id });
+    expect(await 通知们(总.id)).toHaveLength(0);
+  });
+
+  it("扫到之后、写之前被人批了（撞车）：按「状态、审批人没变」条件写，命中 0 行就跳过，不通知、不留痕", async () => {
+    const x = await 现场();
+    const id = await 申请(x);
+    const t0 = (await 行of(id)).actionAt!.getTime();
+    let 撞了 = false;
+    // 扫的那一读之后的第一次 看全部 是读客户（写之前）：这时负责人点了批准
+    撞车.读完后 = async () => {
+      撞了 = true;
+      await prisma.entDupeHit.update({ where: { id }, data: { status: "已批准", decidedById: x.负责人.id, decidedAt: new Date() } });
+    };
+    expect(await 到(t0 + 24 * 小时 + 60_000)).toBe(0);
+    expect(撞了).toBe(true);
+    expect(await 行of(id)).toMatchObject({ status: "已批准", approverId: x.负责人.id, escalatedAt: null });
+    expect(await 通知们(x.主管.id)).toHaveLength(0);
+    expect(await 痕们()).toHaveLength(0);
+  });
+
+  it("总管理本人停用：换给另一位在职总管理；都没有就停在原处", async () => {
+    const x = await 现场({ 主管: false });
+    const 总 = await 人("dir1", "总管理", "director");
+    const id = await 申请(x);
+    const t0 = (await 行of(id)).actionAt!.getTime();
+    expect(await 到(t0 + 24 * 小时 + 60_000)).toBe(1);
+    await prisma.user.update({ where: { id: 总.id }, data: { active: false } });
+    expect(await 到(t0 + 25 * 小时)).toBe(0);
+    expect(await 行of(id)).toMatchObject({ approverId: 总.id });
+    const 总2 = await 人("dir2", "总管理二", "director");
+    expect(await 到(t0 + 26 * 小时)).toBe(1);
+    expect(await 行of(id)).toMatchObject({ status: "待处理", approverId: 总2.id });
   });
 });
 

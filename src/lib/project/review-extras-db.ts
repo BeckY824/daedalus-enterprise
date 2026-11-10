@@ -5,7 +5,7 @@ import { dayjs } from "@/lib/utils";
 import { 生效组织规则 } from "./org-rules-store";
 import { 项目回收日, 算超时要的 } from "./db";
 import { 字典of } from "./stage-dict";
-import { 首页卡条件, 即将逾期, 即将逾期粗筛 } from "./home-cards";
+import { 首页卡条件, 即将逾期, 即将逾期紧筛 } from "./home-cards";
 import { 卡点看板范围 } from "./blocker";
 import { 复盘待办计数 } from "./board-todos-db";
 
@@ -32,12 +32,12 @@ async function 叫们(ids: readonly string[]): Promise<Map<string, string>> {
 
 /**
  * 3 天内回公海的项目：任务页签的「回收提醒」（按节点几条）和数据页签的「超时预警」（最早的几个）同一次查。
- * 库里先用首页卡同一个粗筛，再逐个算回收日（同 即将逾期的项目）
+ * 库里先用首页卡同一个筛（即将逾期紧筛），再逐个算回收日（同 即将逾期的项目）
  */
 export async function 将回公海of(范围: 范围, 今: Date = new Date()): Promise<{ 提醒: 回收提醒; 预警: 预警行[] }> {
   const 规则 = await 生效组织规则();
   const 字典 = 字典of(企业版());
-  const 粗 = 即将逾期粗筛(规则, 字典, 今);
+  const 粗 = 即将逾期紧筛(规则, 字典, 今);
   if (!粗) return { 提醒: 回收条们(规则, 字典, new Map()), 预警: [] };
   const 人 = 负责人条件(范围);
   const 们 = (await prisma.project.findMany({ where: { AND: [粗, ...(人 ? [人] : [])] }, select: 算超时要的 }))
