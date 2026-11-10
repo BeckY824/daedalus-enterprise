@@ -37,7 +37,7 @@ import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
-import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, type 初判 } from "@/lib/project/lead-verify";
+import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, 撤回验证, type 初判 } from "@/lib/project/lead-verify";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { saveFollowUp, deleteFollowUp } from "../customers/[id]/actions";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
@@ -513,6 +513,11 @@ export async function 总管理终判Action(projectId: string, 有效: boolean, 
 export async function 销售认领Action(projectId: string, 继续: boolean) {
   return 验证一步(projectId, (名) => `项目「${名}」终判有效后${继续 ? "认领继续推进" : "放回公海"}`,
     (me) => 销售认领(me, projectId, 继续 === true));
+}
+
+/** 撤回验证（X-77）：提交验证的人、系统管理员；线索回到提交验证前，之后能改派 */
+export async function 撤回验证Action(projectId: string) {
+  return 验证一步(projectId, (名) => `项目「${名}」撤回线索验证`, (me) => 撤回验证(me, projectId));
 }
 
 async function 组员说法(projectId: string, userId: string) {

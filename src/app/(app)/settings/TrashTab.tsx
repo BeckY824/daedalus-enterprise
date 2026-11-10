@@ -5,6 +5,7 @@ import { App, Button, Table, Tag, Typography } from "antd";
 import { smartTime } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { 回收站列表动作, 恢复回收站, 彻底删除回收站 } from "./trash-actions";
+import { 撤回验证Action } from "@/app/(app)/projects/actions";
 import type { 回收站条目 } from "@/lib/enterprise/soft-delete";
 
 /**
@@ -36,10 +37,25 @@ export default function TrashTab() {
       .catch(() => { set读不到("回收站没读出来。"); set行([]); });
   useEffect(() => { void 拉(); }, []);
 
+  /** 项目恢复要换负责人、线索在验证中（X-77）：问一句，撤回验证再恢复（撤回只有提交验证的人和系统管理员能做，后台再核） */
+  function 撤了再恢(r: 回收站条目, 原因: string) {
+    modal.confirm({
+      title: "撤回验证再恢复？",
+      content: `${原因}。撤回后线索回到提交验证前（暂未判定），留一行痕。`,
+      okText: "撤回验证并恢复",
+      onOk: async () => {
+        const w = await 撤回验证Action(r.id).catch(() => ({ ok: false as const, error: "撤回没能完成，请重试" }));
+        if (!w.ok) { message.error(w.error); return; }
+        await 恢(r);
+      },
+    });
+  }
+
   async function 恢(r: 回收站条目) {
     set忙(r.id);
     try {
       const x = await 恢复回收站(r.表, r.id).catch(() => ({ ok: false as const, error: "恢复没能完成，请重试" }));
+      if (!x.ok && r.表 === "Project" && x.error.includes("先撤回验证")) return 撤了再恢(r, x.error);
       if (!x.ok) return message.error(x.error);
       message.success(`已恢复${叫(r.表)}「${r.名称}」${x.连带 ? `，连同 ${x.连带} 条一起` : ""}`);
       await 拉();

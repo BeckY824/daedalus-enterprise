@@ -13,6 +13,7 @@
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 管理员类别们of, 能市场复核, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -32,6 +33,8 @@ type 结果 = { ok: true; 自动推到?: string[] } | { ok: false; error: string
 
 export type 待哪步 = "市场复核" | "销售终验" | "总管理终判" | "销售认领";
 export type 验证步 = "销售初判" | 待哪步;
+/** 痕里的步：四步之外还有撤回验证 */
+type 痕步 = 验证步 | "撤回验证";
 export const 说明上限 = 原因上限;
 const 开不了 = { ok: false as const, error: "线索验证只在企业版有" };
 const 作废 = { ok: false as const, error: "这条线索已经不在「线索验证」了（可能改了进程、点了结局或回了公海），这次复核作废，刷新看看" };
@@ -137,7 +140,7 @@ async function 不在验证(tx: 事务, projectId: string, 读: 读到) {
  * 写验证状态 + 痕，一个事务：先抢这一步，抢不到回「已被别人判过」、一行不写。
  * 核项目：这一步前面没推进程的（初判交复核、复核判有效、提交异议、终判判有效），事务里再看一眼项目还在线索验证
  */
-async function 写状态(projectId: string, 读: 读到, data: Record<string, unknown>, 痕: { step: 验证步; verdict: string; reason?: string | null; note?: string | null; userId: string }, 核项目 = false): Promise<结果> {
+async function 写状态(projectId: string, 读: 读到, data: Record<string, unknown>, 痕: { step: 痕步; verdict: string; reason?: string | null; note?: string | null; userId: string }, 核项目 = false): Promise<结果> {
   return 看全部(() => 查完再写(async (tx) => {
     if (核项目) {
       const p = await tx.project.findUnique({ where: { id: projectId }, select: 项目列 });
@@ -302,6 +305,31 @@ export async function 销售认领(me: 谁, projectId: string, 继续: boolean):
   return 写状态(核.p.id, 核.读, { pending: null }, { step: "销售认领", verdict: "退回公海", userId: me.id });
 }
 
+/** 撤回验证（X-77「验证中不能改派，要改先撤回验证」）：提交验证的人（初判无效交复核的那位）、系统管理员能撤 */
+function 能撤回(me: 谁, v: { pending: string | null; verifiedById: string | null } | null, org: 组织): boolean {
+  return !!v?.pending && (v.verifiedById === me.id || 是总管理(me, org));
+}
+
+/**
+ * 撤回验证：验证中（pending 有值）的线索回到提交验证前（暂未判定、不在等哪步，初判、复核、终验、终判那几格都清掉），
+ * 项目本身不动（交复核那一步没动过项目），留一行痕「撤回验证」。之后能改派，也能重新初判。
+ * 和别人判同一步前后脚：抢这一步，后到的回「已被别人判过」
+ */
+export async function 撤回验证(me: 谁, projectId: string): Promise<结果> {
+  if (!企业版()) return 开不了;
+  // 回收站里的项目也能撤（恢复要换负责人、验证中拦着，回收站那头先撤再恢复）
+  return 看已删(() => 撤回这条(me, projectId));
+}
+async function 撤回这条(me: 谁, projectId: string): Promise<结果> {
+  const { p, v, org, 待 } = await 读当前(projectId);
+  if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
+  if (!v?.pending || !待) return { ok: false, error: "这条线索没在验证中，不用撤回，刷新看看" };
+  if (!能撤回(me, v, org)) return { ok: false, error: "只有提交验证的人或系统管理员能撤回验证" };
+  return 写状态(p.id, 快照(v), {
+    ...清空, verdict: "暂未判定", pending: null, invalidReason: null, verifyNote: null, verifiedById: null, verifiedAt: null,
+  }, { step: "撤回验证", verdict: "撤回", note: `撤回前等${待}`, userId: me.id });
+}
+
 export type 验证痕 = { id: string; step: string; verdict: string; reason: string | null; note: string | null; 谁: string; at: string };
 export type 线索验证 = {
   判定: string; 待: 待哪步 | null; 无效原因: string | null;
@@ -316,6 +344,8 @@ export type 线索验证 = {
   叫法: 验证结果叫法;
   /** 我现在能做的：初判 / 终验 / 认领；复核两步在列表的「待复核的线索」里 */
   我能: "初判" | "销售终验" | "销售认领" | "市场复核" | "总管理终判" | null;
+  /** 我能撤回验证（验证中，我是提交验证的人或系统管理员，X-77） */
+  能撤回?: boolean;
   痕: 验证痕[];
 };
 
@@ -341,7 +371,7 @@ export async function 读线索验证(me: 谁, p: 项目): Promise<线索验证 
   return {
     // 最后判成有效线索：当初初判写的无效原因不再挂在结果旁边（痕里照留）
     判定, 待, 无效原因: 叫法 === "有效线索" ? null : v?.invalidReason ?? null, 叫法,
-    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 无效交给: 交给, 我能,
+    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 无效交给: 交给, 我能, 能撤回: !!待 && 能撤回(me, v ?? null, org),
     痕: 痕.map((l) => ({ id: l.id, step: l.step, verdict: l.verdict, reason: l.reason, note: l.note, 谁: 名.get(l.userId) ?? "已不在的成员", at: l.at.toISOString() })),
   };
 }

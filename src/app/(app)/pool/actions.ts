@@ -31,6 +31,7 @@ import { 分配方式叫法 } from "@/lib/enterprise/dict";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import type { 带走的 } from "@/lib/carry-over-db";
 import { 换负责人 } from "@/lib/project/owner-write";
+import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 
 export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
 
@@ -142,6 +143,9 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       if (!p.pooledAt) return "已经被人领走了";
       // 已结束的项目不能单独分（X-70、P-公海-02，同 领取公海项目）：老数据里已在公海又有结局的，要分走客户整包
       if (企业版() && p.result) return `这个项目已经结束（${p.result}），不能单独分配`;
+      // 验证中不能改派（X-77）：进公海时验证已清（老数据可能还挂着），挂着的先撤回验证
+      const 验 = await 验证中不能改派(tx, id);
+      if (验) return 验;
       const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
       if (c?.pool && c.poolInvalidAt) return "客户标了无效，要总管理先恢复";
       const 出整包 = 企业版() && !!c?.pool;

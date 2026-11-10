@@ -5,6 +5,7 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 看全部 } from "@/lib/team-scope";
 
 export const 等复核的 = ["市场复核", "总管理终判"] as const;
 
@@ -24,7 +25,21 @@ export async function 验证中不能改派(db: Pick<Prisma.TransactionClient, "
   if (!企业版()) return null;
   const v = await db.entLeadVerify.findUnique({ where: { projectId }, select: { pending: true } });
   if (!v?.pending) return null;
-  return `这条线索在验证中（等${v.pending}），不能分配、不能改负责人；验证走完再分`;
+  return `这条线索在验证中（等${v.pending}），不能分配、不能改负责人；验证走完或先撤回验证再分`;
+}
+
+/**
+ * 客户换负责人（转让、交接确认）时名下项目跟着走（P-转-07）：名下有验证中的线索就整批拦（X-77「验证中不能改派，要改先撤回验证」），
+ * 不然复核人、终验销售跟着负责人一起换了。看全部：同事负责的项目也跟着走，不受操作人范围限制。在公海里的项目不跟着走，不算。不是企业版 null
+ */
+export async function 客户有验证中线索(db: Pick<Prisma.TransactionClient, "entLeadVerify">, customerIds: string[]): Promise<string | null> {
+  if (!企业版() || !customerIds.length) return null;
+  const v = await 看全部(() => db.entLeadVerify.findFirst({
+    where: { pending: { not: null }, project: { customerId: { in: customerIds }, pooledAt: null, deletedAt: null } },
+    select: { pending: true, project: { select: { name: true } } },
+  }));
+  if (!v) return null;
+  return `名下项目「${v.project.name}」的线索在验证中（等${v.pending}），不能换负责人；验证走完或先撤回验证再转`;
 }
 
 /**
