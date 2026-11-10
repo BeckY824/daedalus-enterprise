@@ -38,6 +38,7 @@ import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
 import { 公海规则, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 新建分配方式数据, 暂不分配提示 } from "@/lib/project/after-create-assign";
+import { 改项目 } from "@/lib/project/db";
 import { 没业务角色不能新建话, 只读角色话 } from "@/lib/enterprise/permissions";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
@@ -247,6 +248,31 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     当(没角色);
     expect(await 向导({ 分配方式: 0, ownerId: 销售 })).toMatchObject({ ok: false, error: 没业务角色不能新建话 });
     expect(await prisma.project.count()).toBe(0);
+  });
+
+  it("X-79「线索分配」开关关着：新建页不给自动分配（默认也不落在它上），硬传也拦；已在待分配的由系统管理员改负责人处理", async () => {
+    const 人 = (id: string) => ({ id, role: "SALES", name: "", email: "", title: "" });
+    当(市场);
+    const 待 = await 向导({ 分配方式: 0, ownerId: 市场 });
+    expect(待).toMatchObject({ ok: true });
+    const 待分配 = (await prisma.project.findFirstOrThrow({ where: { ownerId: 市场 } })).id;
+    await prisma.project.update({ where: { id: 待分配 }, data: { awaitAssignAt: new Date() } });
+
+    await setSetting(规则.线索分配.key, false);
+    invalidateSettingsCache();
+    expect((await 我能用的分配方式({ id: 市场, role: "SALES" })).map((x) => x.i)).toEqual([0, 2, 3]);
+    expect((await 我能用的分配方式({ id: 老板, role: "ADMIN" })).map((x) => x.i)).toEqual([0, 2, 3, 4]);
+    expect(await 新建分配方式数据(人(市场))).toMatchObject({ 默认分配方式: 0 });
+    expect(await 挡分配方式({ id: 市场, role: "SALES" }, 1)).toContain(规则.线索分配.名);
+    const 拦 = await 向导({ 分配方式: 1 });
+    expect(拦).toMatchObject({ ok: false });
+    expect(拦.ok ? "" : 拦.error).toContain(规则.线索分配.名);
+
+    // 已经在待分配里的：开关关着分配动作都不让用，系统管理员（总管理、不带条线）照样能在项目上改负责人，改了就不再待分配
+    expect(await 改项目({ id: 老板, role: "ADMIN" }, 待分配, { ownerId: 销售 })).toMatchObject({ ok: true });
+    const 后 = await prisma.project.findUniqueOrThrow({ where: { id: 待分配 } });
+    expect(后.ownerId).toBe(销售);
+    expect(后.awaitAssignAt).toBeNull();
   });
 
   it("X-93 新线索默认分配方式的「市场」= 市场管理 + 渠运 + 按部门认的市场成员（营销企划部不算）", async () => {
