@@ -16,6 +16,7 @@ import { 写一批 } from "@/lib/enterprise-import/apply";
 import { 说明键, type AI输入, type 建议器 } from "@/lib/enterprise-import/mapping";
 import { 读文件们, type 读出的表 } from "@/lib/enterprise-import/excel";
 import type { 实体, 映射 } from "@/lib/enterprise-import/types";
+import { 北京日期 } from "./helpers/beijing-date";
 
 function 表(名: string, 实体: 实体 | null, 表头: string[], 行: string[][]): 读出的表 {
   return { 名, 实体, 表头, 行, 行号: 行.map((_, i) => i + 2), 提醒: [] };
@@ -23,9 +24,7 @@ function 表(名: string, 实体: 实体 | null, 表头: string[], 行: string[]
 
 /** 几天前的日期（YYYY-MM-DD） */
 function 天前(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return 北京日期(-n);
 }
 
 const 客户表 = () =>

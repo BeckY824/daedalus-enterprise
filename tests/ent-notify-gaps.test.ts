@@ -38,6 +38,7 @@ import { 发布卡点Action } from "@/app/(app)/projects/blocker-actions";
 import { 记项目沟通Action } from "@/app/(app)/projects/actions";
 import { 分配公海 } from "@/app/(app)/customers/pool-actions";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
+import { 北京日期 } from "./helpers/beijing-date";
 
 const 名字 = new Map<string, string>();
 let 总管: string, 组长: string, 甲: string, 乙: string, 独行: string, 客户: string, 项目: string;
@@ -102,7 +103,7 @@ describe("负责人和上级", () => {
 describe("发布卡点", () => {
   const 卡 = { title: "预算没批", reasons: ["价格预算分歧"], description: "报价比别家高一成" };
   const 记一条 = async (owner = 甲, pid = 项目) => {
-    const r = await 记项目沟通({ id: owner, role: "SALES" }, pid, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+    const r = await 记项目沟通({ id: owner, role: "SALES" }, pid, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true });
     expect(r.ok, JSON.stringify(r)).toBe(true);
     return r.followUpId!;
   };
@@ -121,7 +122,7 @@ describe("发布卡点", () => {
 
   it("记沟通时顺带发卡点：同样通知上级", async () => {
     当(甲);
-    const r = await 记项目沟通Action(项目, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true, 下一步: "再聊", 下一步时间: dayjs().format("YYYY-MM-DD") }, { type: "中度卡点", description: "报价比别家高一成" });
+    const r = await 记项目沟通Action(项目, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true, 下一步: "再聊", 下一步时间: dayjs().format("YYYY-MM-DD") }, { type: "中度卡点", description: "报价比别家高一成" });
     expect(r, JSON.stringify(r)).toMatchObject({ ok: true, 卡点: expect.any(String) });
     expect(await 收件人("卡点")).toEqual([组长]);
   });

@@ -43,6 +43,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { saveTask, toggleTask, deleteTask, savePlan, deletePlan, completePlan, detachContact, undoDetachContact, saveUnassignedContact } from "@/app/(app)/customers/[id]/actions";
 import { bulkFollowStatus } from "@/app/(app)/customers/actions";
+import { 北京日期 } from "./helpers/beijing-date";
 
 /** 人：代称 → 用户 id */
 const 人 = {
@@ -126,7 +127,7 @@ afterAll(async () => {
   fs.rmSync(临时.dir, { recursive: true, force: true });
 });
 
-const 明天 = () => new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const 明天 = () => 北京日期(1);
 const 建待办 = (customerId: string, ownerId: string) => raw.task.create({ data: { title: "寄样", customerId, ownerId } });
 const 建计划 = (customerId: string, ownerId: string) => raw.followPlan.create({ data: { subject: "回访", plannedAt: new Date(Date.now() + 86400000), method: "电话", customerId, ownerId } });
 

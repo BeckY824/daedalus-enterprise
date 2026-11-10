@@ -25,6 +25,7 @@ import {
   新增原因Action, 改原因名Action, 改原因状态Action, 删原因Action, 合并原因Action, 我的卡点Action,
 } from "@/app/(app)/projects/blocker-actions";
 import { invalidateSettingsCache } from "@/lib/settings";
+import { 北京日期 } from "./helpers/beijing-date";
 
 let 甲: string;
 let 项目id: string;
@@ -42,7 +43,7 @@ beforeEach(async () => {
   await prisma.entMember.create({ data: { userId: 甲, bizRole: "sales_mgr,director" } });
   const c = await prisma.customer.create({ data: { name: "客户", phone: "13800000001", salesOwnerId: 甲 } });
   项目id = (await prisma.project.create({ data: { name: "一期", customerId: c.id, ownerId: 甲, creatorId: 甲 } })).id;
-  const r = await 记项目沟通({ id: 甲, role: "ADMIN" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+  const r = await 记项目沟通({ id: 甲, role: "ADMIN" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true });
   沟通id = r.followUpId!;
 });
 afterEach(() => { vi.unstubAllEnvs(); });

@@ -30,6 +30,7 @@ import { 缓存着, 清首页缓存, 首页缓存条数 } from "@/lib/home-cache
 import { 取计划页, type 计划页 } from "@/lib/plans-page";
 import { 压轻 } from "@/lib/plans-light";
 import { 读每组 } from "@/lib/plans-groups";
+import { 北京日 } from "./helpers/beijing-date";
 
 const 原环境 = { ...process.env };
 const 设 = (k: string, v: string | undefined) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
@@ -57,7 +58,7 @@ beforeAll(async () => {
   await raw.followPlan.createMany({
     data: Array.from({ length: 360 }, (_, i) => {
       const d = new Date(now + (i % 2 ? 1 : -1) * (1 + (i % 40)) * 天 + (i % 7 ? i * 60_000 : 0));
-      return { id: `cp${i}`, subject: `计划${i}`, plannedAt: d, plannedOn: i % 5 ? null : d.toISOString().slice(0, 10), customerId: 客户, ownerId: i % 3 ? 老板 : 业务员 };
+      return { id: `cp${i}`, subject: `计划${i}`, plannedAt: d, plannedOn: i % 5 ? null : 北京日(d), customerId: 客户, ownerId: i % 3 ? 老板 : 业务员 };
     }),
   });
   await raw.task.createMany({

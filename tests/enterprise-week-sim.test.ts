@@ -50,6 +50,7 @@ import { 当前人, type 会话人 } from "./sim/身份";
 import { 接口都在, 要, 可有 } from "./sim/适配";
 const 开关开能跑 = await 接口都在();
 import { 红清单 } from "./sim/红清单";
+import { 北京日 } from "./helpers/beijing-date";
 
 // 企业版线索转项目要带首条跟进（10-26 #13）；这家开了超时回收，下一步时间也得填
 const 转化首条 = () => ({ type: "PHONE", content: "转化前电话聊了需求", occurredAt: dayjs().subtract(1, "hour").format("YYYY-MM-DD HH:mm"), 下一步时间: dayjs().add(3, "day").format("YYYY-MM-DD"), 下一步: "回访报价" });
@@ -464,7 +465,7 @@ async function 剧本开() {
   });
   await 查("D4-历任负责人", async () => {
     const ls = await 作为("老板", () => prisma.projectNodeLog.findMany({ where: { projectId: 项目id["P2"], kind: { not: "node" } }, orderBy: { at: "asc" } }));
-    expect(ls.map((l) => [l.kind, 公.名[l.fromOwnerId ?? ""] ?? null, 公.名[l.toOwnerId ?? ""] ?? null, l.at.toISOString().slice(0, 10)]))
+    expect(ls.map((l) => [l.kind, 公.名[l.fromOwnerId ?? ""] ?? null, 公.名[l.toOwnerId ?? ""] ?? null, 北京日(l.at)]))
       .toEqual([["pool-release", "内销2", null, "2026-01-28"], ["pool-claim", "内销2", "内销1", "2026-01-29"]]);
   });
 

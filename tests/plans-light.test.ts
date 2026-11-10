@@ -19,6 +19,7 @@ import { resetDb } from "./reset";
 import PlansPage from "@/app/(app)/follow-ups/plans/page";
 import { 取计划页 } from "@/lib/plans-page";
 import { 读每组 } from "@/lib/plans-groups";
+import { 北京日 } from "./helpers/beijing-date";
 
 function 随机(种子: number) {
   let s = 种子 >>> 0;
@@ -134,7 +135,7 @@ describe("整页", () => {
       data: Array.from({ length: 条数 }, (_, i) => {
         const d = new Date(Date.now() + Math.floor((r() - 0.5) * 40 * 24 * 60) * 60_000);
         const 只日期 = r() < 0.2;
-        return { id: id(i), subject: `计划${i}`, plannedAt: d, plannedOn: 只日期 ? d.toISOString().slice(0, 10) : null, customerId: c.id, ownerId: r() < 0.5 ? state.user.id : 别人.id };
+        return { id: id(i), subject: `计划${i}`, plannedAt: d, plannedOn: 只日期 ? 北京日(d) : null, customerId: c.id, ownerId: r() < 0.5 ? state.user.id : 别人.id };
       }),
     });
     await prisma.task.createMany({
