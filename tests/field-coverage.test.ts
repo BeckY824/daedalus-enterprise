@@ -73,7 +73,8 @@ const 可写: Record<string, string[]> = {
   // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
   Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate", "strategies"],
   // 企业版主渠道（2026-11-08 渠道两层）：渠道页「主渠道」里建、改名、拨开关（channels/actions.ts 的 saveMainChannel / toggleMainChannel）
-  EntChannelMain: ["name", "allowSub", "selfDev", "category", "active"],
+  // 11-10（迁移 118）：主渠道自己的负责人、渠道属性（获客方式），同一个 saveMainChannel 收
+  EntChannelMain: ["name", "allowSub", "selfDev", "category", "active", "ownerId", "attr"],
   // 企业版渠道投入（2026-10-29）：渠道详情抽屉里录一笔（channels/actions.ts 的 addChannelInvest）
   EntChannelInvest: ["amount", "currency", "date", "remark"],
   Lead: ["name", "contact", "phone", "email", "industry", "source", "status", "remark", "ownerId"],

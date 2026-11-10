@@ -3,7 +3,7 @@
  *
  *   表头多一列「分类」，在「主渠道」和「可设子渠道」之间；格里原样显示中文大类名
  *   没分类的写「—」
- *   分类只显示：改名弹窗里没有分类这一项；改名 / 拨开关时原分类照带回去，不被冲掉
+ *   分类只显示：编辑弹窗里没有分类这一项；编辑 / 拨开关时原分类照带回去，不被冲掉（11-10 行上「改名」改叫「编辑」，弹窗多了负责人、渠道属性）
  *   1024 宽：分类长了一行省略、悬停（title）看全，弹窗不横向撑出页面
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -72,11 +72,11 @@ it("主渠道表有「分类」列，排在主渠道后面；独立站=自有阵
   } finally { await page.close(); }
 });
 
-it("分类只显示：改名弹窗里没有分类；改名、拨开关存回去时原分类照带", async () => {
+it("分类只显示：编辑弹窗里没有分类；编辑、拨开关存回去时原分类照带", async () => {
   const { page, errors } = await open();
   try {
-    await 行格(page, "独立站").last().getByRole("button", { name: "改名" }).click();
-    const 弹窗 = page.locator(".ant-modal").filter({ hasText: "改名：独立站" });
+    await 行格(page, "独立站").last().getByRole("button", { name: "编辑" }).click();
+    const 弹窗 = page.locator(".ant-modal").filter({ hasText: "编辑：独立站" });
     await 弹窗.waitFor();
     expect(await 弹窗.getByText("分类").count()).toBe(0);
     await 弹窗.getByRole("button", { name: /保\s*存/ }).click();

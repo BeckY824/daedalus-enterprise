@@ -55,6 +55,7 @@ import * as 联系人动作 from "@/app/(app)/customers/[id]/actions";
 import * as 客户动作 from "@/app/(app)/customers/actions";
 import { 记回款 as 库记回款 } from "@/lib/project/payment-db";
 import { 记项目沟通 } from "@/lib/project/db";
+import { 北京日期 } from "./helpers/beijing-date";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 乙: 人, 丙: 人;
@@ -182,7 +183,7 @@ describe("沟通 + 卡点", () => {
 
 describe("解决卡点", () => {
   async function 一个处理中的卡点(handler: string) {
-    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true });
     return prisma.entBlocker.create({
       data: {
         code: "BLK-20261101-001", title: "报价高", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "价格", description: "报价高", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",
@@ -226,7 +227,7 @@ describe("解决卡点：方案 / 结果只有最后一个完成的人必填（1
   });
 
   it("两人认领：别人没完成时我的卡不要方案、点完成只记说明；别人完成了我的卡就要方案；旧卡被抢先时落库再挡一次", async () => {
-    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true });
     const k = await prisma.entBlocker.create({
       data: {
         code: "BLK-20261101-002", title: "交期紧", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "中度卡点", impact: "短期不影响", obstacle: "其他", description: "交期紧", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",
@@ -255,7 +256,7 @@ describe("解决卡点：方案 / 结果只有最后一个完成的人必填（1
   });
 
   it("不是最后一个：点完成只写自己的处理说明，卡点还在处理中", async () => {
-    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: new Date().toISOString().slice(0, 10), 阶段: "线索", 明确回复: true });
+    const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true });
     const k = await prisma.entBlocker.create({
       data: {
         code: "BLK-20261101-003", title: "样品没到", projectId: 项目id, followUpId: f.followUpId!, customerId: 客户id, phase: "线索", type: "轻度卡点", impact: "短期不影响", obstacle: "其他", description: "样品没到", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status: "处理中",

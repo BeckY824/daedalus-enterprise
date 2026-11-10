@@ -10,6 +10,8 @@ import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 读组织, 管理员类别们of, 负责人和上级 } from "./org";
 import { 企业版 } from "./switch";
+import { 公海入口 } from "./nav";
+import { 能改后台设置, 只读角色 } from "./permissions";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒 } from "@/lib/carry-over-db";
@@ -550,6 +552,73 @@ export async function 项目放回公海通知(me: 人, projectId: string, 原�
       link: 客户还归他 ? `/customers/${p.customerId}` : null,
       key: `pool-return:project:${projectId}:${原}:${分钟()}`,
     });
+  });
+}
+
+/* ───────────────────────── 恢复到停用的人名下（P-删-06） ───────────────────────── */
+
+/** 离职交接看板：停用的人的直属上级、系统管理员都打得开，恢复回来的客户就列在那位停用的人的卡里 */
+const 离职交接看板 = "/projects/handover";
+
+/**
+ * P-删-06：从回收站恢复（或查重捞回）客户时原负责人已停用（restore-inactive-owner.ts）。告诉停用负责人的直属上级
+ * （手填的、在职、不是只读管理员）；没有这样的上级就告诉系统管理员。两种各一条：
+ *   - 进了公海：知会一声，客户恢复后因原负责人已停用进了客户公海
+ *   - 例外挡住没进（M-公海-02 / X-31，已签约 / 已流失、交接中同离职分拣）：还挂在停用的人名下、没人跟，按实际命中的原因写，请到离职交接看板指定接手人
+ * 操作恢复的人自己不收（上级自己恢复的不发）；一次回来几位按收件人合成一条
+ */
+export async function 恢复到停用负责人通知(me: 人, 条: readonly { id: string; 原: string; 进了公海: boolean; 没进原因?: readonly string[] }[]): Promise<void> {
+  await 稳("恢复到停用负责人通知", async () => {
+    if (!条.length) return;
+    const [客户行, 人行, org] = await Promise.all([
+      看全部(() => prisma.customer.findMany({ where: { id: { in: 条.map((c) => c.id) } }, select: { id: true, name: true } })),
+      prisma.user.findMany({ where: { id: { in: [...new Set(条.map((c) => c.原))] } }, select: { id: true, name: true } }),
+      读组织(),
+    ]);
+    const 客户名 = new Map(客户行.map((c) => [c.id, c.name]));
+    const 人名 = new Map(人行.map((u) => [u.id, u.name]));
+    const 系统管理员们 = [...org.成员.keys()].filter((id) => 能改后台设置({ id }, org));
+    type 一位 = { id: string; name: string; 原名: string; 没进原因: readonly string[] };
+    const 按收件人 = new Map<string, { 公海: 一位[]; 留下: 一位[] }>();
+    for (const c of [...条].sort((a, b) => (客户名.get(a.id) ?? "").localeCompare(客户名.get(b.id) ?? ""))) {
+      if (!客户名.has(c.id)) continue;
+      const 上 = org.离职上级?.get(c.原);
+      const 收 = 上 && org.成员.has(上) && !只读角色({ id: 上 }, org) ? [上] : 系统管理员们;
+      for (const 谁 of 收) {
+        if (谁 === me.id) continue;
+        const 份 = 按收件人.get(谁) ?? { 公海: [], 留下: [] };
+        (c.进了公海 ? 份.公海 : 份.留下).push({ id: c.id, name: 客户名.get(c.id)!, 原名: 人名.get(c.原) ?? "", 没进原因: c.没进原因 ?? [] });
+        按收件人.set(谁, 份);
+      }
+    }
+    const 列 = (们: 一位[]) => `客户：${名单(们.map((c) => `${c.name}（${c.原名}）`))}`;
+    const 键 = (们: 一位[]) => 们.map((c) => c.id).sort().join(",").slice(0, 400);
+    for (const [谁, { 公海, 留下 }] of 按收件人) {
+      if (公海.length) {
+        const 单条 = 公海.length === 1;
+        await notify([谁], {
+          kind: "回收",
+          title: 单条 ? `${me.name} 从回收站恢复了客户「${公海[0].name}」，原负责人 ${公海[0].原名} 已停用，客户进了客户公海` : `${me.name} 从回收站恢复了 ${公海.length} 位客户，原负责人已停用，客户进了客户公海`,
+          body: 接一句(单条 ? "" : 列(公海), "原负责人自己负责、还没结束的线索 / 商机项目一起进了线索公海，可以从公海领取或分配。"),
+          link: 公海入口,
+          key: `restore-inactive-owner:pool:${键(公海)}:${谁}:${分钟()}`,
+        });
+      }
+      if (留下.length) {
+        const 单条 = 留下.length === 1;
+        const 原因们 = [...new Set(留下.flatMap((c) => c.没进原因))];
+        await notify([谁], {
+          kind: "交接",
+          title: 单条 ? `${me.name} 从回收站恢复了客户「${留下[0].name}」，负责人 ${留下[0].原名} 已停用` : `${me.name} 从回收站恢复了 ${留下.length} 位客户，负责人已停用`,
+          body: 接一句(
+            单条 ? "" : 列(留下),
+            `${单条 ? "这位客户" : "这些客户"}${原因们.length ? `不能进公海（${原因们.join("、")}）` : "没能放进公海"}，还挂在已停用的人名下、没人跟进，请到「项目 → 离职交接」指定接手人。`,
+          ),
+          link: 离职交接看板,
+          key: `restore-inactive-owner:${键(留下)}:${谁}:${分钟()}`,
+        });
+      }
+    }
   });
 }
 

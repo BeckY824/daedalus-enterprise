@@ -15,6 +15,7 @@ import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
 import { 公司名键, 名键, 国家们, 拆, 来源们, 校验格式, 认时间, 认金额 } from "./clean";
 import { 格式类们, type 原始记录, type 映射, type 格式类 } from "./types";
+import { 全角数字和点转半角 } from "../fullwidth";
 
 /** 每类最多问多少：太多时只问出现最多的那些，剩下的照规则进备注 */
 const 每类上限 = 60;
@@ -179,8 +180,6 @@ export const AI清洗: 清洗器 = async (输入) => {
   return (out && typeof out === "object" ? out : {}) as 清洗输出;
 };
 
-const 全角 = (s: string) => s.replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-
 /**
  * 模拟模式（ENT_IMPORT_AI=mock）：不联网、不花钱，用来走通「问 AI → 校验 → 落进映射」这条路。
  * 金额「约 5 万」这种去掉前后的字再认；日期 / 时间去掉「左右 / 前后」再认；国家 / 来源找候选里被包含的；
@@ -188,7 +187,7 @@ const 全角 = (s: string) => s.replace(/[０-９．]/g, (c) => String.fromCharC
  */
 export const 模拟清洗: 清洗器 = async (输入) => {
   const 格式: 清洗输出["格式"] = {};
-  const 去饰 = (v: string) => 全角(v).replace(/^(约|大约|大概|预计|共)/, "").replace(/(左右|上下|前后|以内|多)$/, "").trim();
+  const 去饰 = (v: string) => 全角数字和点转半角(v).replace(/^(约|大约|大概|预计|共)/, "").replace(/(左右|上下|前后|以内|多)$/, "").trim();
   for (const v of 输入.格式.金额 ?? []) {
     const n = 认金额(去饰(v));
     (格式.金额 ??= {})[v] = n === null ? null : String(n);

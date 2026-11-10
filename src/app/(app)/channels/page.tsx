@@ -14,7 +14,7 @@ import { 能录投入, 能管渠道 } from "@/lib/enterprise/channel-stats";
 import { 看全部, 系统写 } from "@/lib/team-scope";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 补主渠道, 读主渠道们 } from "@/lib/enterprise/channel-main";
-import { 读策略 } from "@/lib/enterprise/channel-main-core";
+import { 读策略, 沿用主渠道属性 } from "@/lib/enterprise/channel-main-core";
 
 export const dynamic = "force-dynamic";
 
@@ -111,7 +111,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
       两层={企业版()}
       策略选项={策略选项}
       公海={市场 && 公海底数 ? { 底: 公海底数, 视角: 市场.视角, 创建人们: 圈里的人 } : null}
-      rows={channels.map((c) => ({
+      // 子渠道自己没填属性的沿用主渠道的（迁移 118，P-渠道-11）：列表、属性筛选、看板「按属性分布」吃的都是沿用后的；只读时带出，不回写
+      rows={沿用主渠道属性(channels, 主渠道们).map((c) => ({
         id: c.id,
         name: c.name,
         // 表单里不再问电话，编辑时原样交回去（打码的由 认回打码号 认回原号，不会被抹掉）

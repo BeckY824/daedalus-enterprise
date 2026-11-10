@@ -16,6 +16,7 @@
  * 开关关着这份不被调（没有类型可选、保存不认 企业号码），见 saveCustomer
  */
 import { 是占位号, 占位号提示 } from "../placeholder-phone";
+import { 全角数字转半角 } from "../fullwidth";
 
 export const 号码类型们 = ["手机号", "邮箱", "微信", "旺旺ID", "二维码"] as const;
 export type 号码类型 = (typeof 号码类型们)[number];
@@ -54,7 +55,7 @@ const 认不出: 验号结果 = { ok: false, 状态: "无法识别", 提示: 号
 
 /** 全角数字、全角加号、全角冒号换成半角 */
 function 半角(s: string): string {
-  return s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/＋/g, "+").replace(/：/g, ":");
+  return 全角数字转半角(s).replace(/＋/g, "+").replace(/：/g, ":");
 }
 
 /**
