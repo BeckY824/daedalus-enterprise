@@ -476,7 +476,7 @@ async function 发起离职交接(me: Awaited<ReturnType<typeof requireUser>>, i
     const 分 = await 停用分拣(tx, id, 方式, true);
     await 离职放进公海(tx, 分, me.id);
     // 给接手人的一样都没有（比如公海方式全进了公海、名下本来就空）：不建交接、不发「等你确认」，当场停用（11-03 C4-2）
-    if (![分.客户, 分.商机, 分.待办, 分.计划, 分.线索, 分.渠道, 分.项目].some((x) => x.length)) {
+    if (![分.客户, 分.商机, 分.待办, 分.计划, 分.线索, 分.渠道, 分.主渠道, 分.项目].some((x) => x.length)) {
       await 交接卡点(tx, id, transferToId, me.id, 分.进公海项目);
       await tx.user.update({ where: { id }, data: { active: false } });
       return { 分, 交接: null };
