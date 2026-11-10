@@ -329,10 +329,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           f=gitleaks_8.24.3_linux_x64.tar.gz
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$f" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/$f" \
-            || { rm -f "$f"; gh release download v8.24.3 -R gitleaks/gitleaks -p "$f"; }
-          tar xzf "$f" gitleaks
-          ./gitleaks version
+          # 官方 gitleaks_8.24.3_checksums.txt 里这个包的 sha256；升版本时一起换
+          sum=9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
+          # 下载 → 校验和 → 解包 → 能报版本，四步有一步不过就整轮重来，最多 3 轮。
+          # 以前只重试下载：拿到坏包（下载成功但内容不对）时 tar 直接让整个任务红。
+          # 3 轮都不过照旧红，不放行——扫描那一步不变。
+          for i in 1 2 3; do
+            rm -f "$f" gitleaks
+            { curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 -o "$f" \
+                "https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/$f" \
+                || { rm -f "$f"; gh release download v8.24.3 -R gitleaks/gitleaks -p "$f"; }; } \
+              && echo "$sum  $f" | sha256sum -c - \
+              && tar xzf "$f" gitleaks \
+              && ./gitleaks version \
+              && break
+            if [ "$i" = 3 ]; then echo "::error::gitleaks 下载 / 校验 3 轮都没过"; exit 1; fi
+            echo "gitleaks 第 $i 轮下载或校验失败，10 秒后重试"; sleep 10
+          done
       - name: 扫描全部提交
         run: ./gitleaks git --redact --no-banner --exit-code 1 .
