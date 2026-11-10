@@ -84,6 +84,8 @@ export type 项目详情 = {
   来源线索: { name: string | null; convertedAt: string | null } | null;
   /** 企业版字典下拉（10-27）：放回公海选「回收原因」、线索流失选「无效原因」；不是企业版两个都是空的，界面照旧 */
   原因选项: { 回收: string[]; 无效: string[] };
+  /** 企业版线索验证框里培育计划、无效原因的字数上限（M-节点-03，组织规则）：null = 不设；没给 = 不设 */
+  字数上限?: { 培育计划: number | null; 无效原因: number | null };
   /** 企业版线索阶段：线索有效性验证（P12）的判定、待哪步、时间线 */
   线索验证?: 线索验证;
   ownerId: string; ownerName: string; creatorName: string; createdAt: string;
@@ -185,7 +187,7 @@ export type 项目详情 = {
   /** 企业版关联客户 / 联系人（P17）：不是企业版、公海里没领的不给 */
   关联?: 项目关联;
   /** 企业版项目附件（P11）：看得到才有；只读 = 不能改这个项目（api/attachments/access.ts 项目附件入口） */
-  项目附件?: { 合同: number; 方案: number; 其它: number; 只读: boolean };
+  项目附件?: { 合同: number; 方案: number; 验收报告?: number; 其它: number; 只读: boolean };
   /** 企业版项目回款（10-31，迁移 100）：一笔一行；项目卡上写「当前回款」= 按币种加 */
   回款们?: 回款[];
 };
@@ -1188,7 +1190,7 @@ export default function ProjectDetail({
   );
 
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
-  // 项目附件合成一块（F-项目-18）：合同附件、项目方案、其它附件各一格（节点必填「合同附件」「项目方案」各看自己那一格；没分格的老附件算在「其它」里），
+  // 项目附件合成一块（F-项目-18）：合同附件、项目方案、验收报告、其它附件各一格（节点必填「合同附件」「项目方案」「验收报告」各看自己那一格；没分格的老附件算在「其它」里），
   // 最后一格把挂在各条沟通上的截图、录音收过来，写明来自哪条沟通，点了跳到那条（在这里只看、下载，传和删回那条沟通上）
   const 沟通附件们: 沟通附件组[] = p.followUps
     .filter((f) => f.附件?.length)
@@ -1421,7 +1423,7 @@ export default function ProjectDetail({
 
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
-          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} />
+          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} />
         </Modal>
       )}
       {可改 && 编辑开着 && (

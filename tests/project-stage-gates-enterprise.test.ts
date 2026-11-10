@@ -198,7 +198,6 @@ describe("企业版三大阶段的门", () => {
       expect(await 判MQL(乙, p.id, false, dayjs().subtract(1, "day").format("YYYY-MM-DD"))).toEqual({ ok: false, error: "下一次培育跟进不能早于今天" });
       expect(await 判MQL(乙, p.id, false, 明天())).toEqual({ ok: false, error: "MQL 不合格要写下一次培育跟进的计划内容" });
       expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "   ")).toEqual({ ok: false, error: "MQL 不合格要写下一次培育跟进的计划内容" });
-      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "长".repeat(201))).toEqual({ ok: false, error: "计划内容最多 200 个字" });
       expect((await 现(p.id)).node).toBe("线索验证");
       expect(await prisma.followPlan.count()).toBe(0);
 
@@ -209,6 +208,20 @@ describe("企业版三大阶段的门", () => {
       const 计划 = await prisma.followPlan.findFirstOrThrow();
       expect(计划).toMatchObject({ customerId: 客户, ownerId: 乙.id, plannedOn: 明天(), done: false });
       expect(计划.subject).toBe("潜客培育：下月再问预算");
+    });
+
+    it("培育计划字数上限（M-节点-03）：默认不设，很长也收；管理员设了才拦，拦下一行不写", async () => {
+      const p = await 项目({ node: "线索验证" });
+      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "长".repeat(1000))).toEqual({ ok: true });
+      expect((await prisma.followPlan.findFirstOrThrow()).subject).toBe(`潜客培育：${"长".repeat(1000)}`);
+
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 培育计划上限: 10 } });
+      invalidateSettingsCache();
+      const q = await 项目({ node: "线索验证", name: "二号" });
+      expect(await 判MQL(乙, q.id, false, 明天(), new Date(), "长".repeat(11))).toEqual({ ok: false, error: "计划内容最多 10 个字" });
+      expect((await 现(q.id)).node).toBe("线索验证");
+      expect(await prisma.followPlan.count()).toBe(1);
+      expect(await 判MQL(乙, q.id, false, 明天(), new Date(), "长".repeat(10))).toEqual({ ok: true });
     });
 
     it("只有停在线索验证的能判；不是企业版判不了，一行不写", async () => {

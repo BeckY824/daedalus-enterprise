@@ -1340,7 +1340,7 @@ type 必填项目行 = Pick<Project,
  * 只用 tx：保存的那笔事务里调，刚写的也读得到
  */
 export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行, 规则?: 组织规则): Promise<必填数据> {
-  const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 验证] = await Promise.all([
+  const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 验证, 验收报告数] = await Promise.all([
     // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
     看全部(() => tx.customer.findUnique({
       where: { id: p.customerId },
@@ -1353,6 +1353,8 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     tx.attachment.count({ where: { projectId: p.id, tag: "方案" } }),
     tx.entLeadAssign.findFirst({ where: { projectId: p.id, way: { not: null } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { way: true } }),
     tx.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { verdict: true, finalResult: true, pending: true } }),
+    // 验收报告（M-必填-11）：「项目附件」里验收报告那一格传了几份
+    tx.attachment.count({ where: { projectId: p.id, tag: "验收报告" } }),
   ]);
   return {
     项目: {
@@ -1368,7 +1370,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     沟通节点们: [...new Set(沟通.map((x) => x.node))],
     沟通们: 沟通.map((x) => ({ node: x.node, initiator: x.followUp.initiator, content: x.followUp.content, method: x.followUp.method })),
     合同附件数, 回款笔数,
-    痛点标注: p.painPoints, 合同状态: p.contractStatus, 项目方案数,
+    痛点标注: p.painPoints, 合同状态: p.contractStatus, 项目方案数, 验收报告数,
     需求类型们: 读产品需求(p.productNeeds),
     分配方式: 分配?.way ?? null,
     线索验证: 验证 ?? null,

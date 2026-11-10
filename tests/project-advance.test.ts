@@ -62,9 +62,9 @@ describe("节点必填自动推进", () => {
     没推(半);
     expect((await 现(p.id)).node).toBe("潜客培育");
 
-    // 「需求」看需求状态（10-31）：只写备注不算；选「暂未确认」也不算
+    // 「需求」看需求状态（10-31）：只写备注不算；「暂未确认」11-09 起不在字典里（M-必填-03），选不上
     没推(await 改项目(乙, p.id, { name: "一号项目", amount: 100, remark: "要 200 台" }));
-    没推(await 改项目画像(乙, p.id, { demandStatus: "暂未确认" }));
+    expect(await 改项目画像(乙, p.id, { demandStatus: "暂未确认" })).toMatchObject({ ok: false });
     expect((await 现(p.id)).node).toBe("潜客培育");
     const r = await 改项目画像(乙, p.id, { demandStatus: "明确需求" });
     expect(r).toMatchObject({ ok: true, 自动推到: ["线索验证"] });

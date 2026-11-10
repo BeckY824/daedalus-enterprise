@@ -96,17 +96,17 @@ describe("企业版项目附件：看 = 看得到项目，传 / 删 = 能改项�
     expect(列表.status).toBe(200);
     expect(((await 列表.json()) as { 附件: unknown[] }).附件).toHaveLength(1);
     expect((await 取一个(id)).status).toBe(200);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 1, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 验收报告: 0, 其它: 1, 只读: false });
     expect((await 删一个(id)).status).toBe(200);
     expect(await 还在(id)).toBe(false);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 0, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 验收报告: 0, 其它: 0, 只读: false });
   });
 
   it("分两格：tag=合同 记成合同；列合同只列合同，列其它连没打标签的；认不出的 tag 400", async () => {
     expect((await 传一个(项目id, "合同.pdf", "application/pdf", "合同")).status).toBe(200);
     expect((await 传一个(项目id, "图纸.pdf")).status).toBe(200);
     expect((await 传一个(项目id, "报价.pdf", "application/pdf", "其它")).status).toBe(200);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 0, 其它: 2, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 0, 验收报告: 0, 其它: 2, 只读: false });
     const 名们 = async (tag: string) => ((await (await 列出(项目id, tag)).json()) as { 附件: { name: string }[] }).附件.map((x) => x.name).sort();
     expect(await 名们("合同")).toEqual(["合同.pdf"]);
     expect(await 名们("其它")).toEqual(["图纸.pdf", "报价.pdf"].sort());
@@ -135,15 +135,15 @@ describe("企业版项目附件：看 = 看得到项目，传 / 删 = 能改项�
     const 一 = ((await (await 传一个(项目id, "方案一.pdf", "application/pdf", "方案")).json()) as { 附件: { id: string } }).附件.id;
     const 二 = ((await (await 传一个(项目id, "方案二.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "方案")).json()) as { 附件: { id: string } }).附件.id;
     expect((await prisma.attachment.findUniqueOrThrow({ where: { id: 一 } })).tag).toBe("方案");
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 2, 其它: 1, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 2, 验收报告: 0, 其它: 1, 只读: false });
     const 名们 = async (tag: string) => ((await (await 列出(项目id, tag)).json()) as { 附件: { name: string }[] }).附件.map((x) => x.name).sort();
     expect(await 名们("方案")).toEqual(["方案一.pdf", "方案二.docx"].sort());
     expect(await 名们("其它")).toEqual(["图纸.pdf"]);
     expect(await 名们("合同")).toEqual(["合同.pdf"]);
     expect((await 删一个(一)).status).toBe(200);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 1, 其它: 1, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 1, 验收报告: 0, 其它: 1, 只读: false });
     expect((await 删一个(二)).status).toBe(200);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 0, 其它: 1, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 0, 验收报告: 0, 其它: 1, 只读: false });
   });
 
   it("项目方案：同事传、删都 403（照合同附件的权限）", async () => {
@@ -152,7 +152,7 @@ describe("企业版项目附件：看 = 看得到项目，传 / 删 = 能改项�
     expect((await 列出(项目id, "方案")).status).toBe(200);
     expect((await 传一个(项目id, "我也传.pdf", "application/pdf", "方案")).status).toBe(403);
     expect((await 删一个(id)).status).toBe(403);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 1, 其它: 0, 只读: true });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 1, 验收报告: 0, 其它: 0, 只读: true });
   });
 
   it("节点必填配了「项目方案」：只有合同附件不推；传项目方案那一下就推", async () => {
@@ -170,15 +170,35 @@ describe("企业版项目附件：看 = 看得到项目，传 / 删 = 能改项�
     expect(await 节点()).not.toBe(起);
   });
 
+  it("验收报告（M-必填-11）：tag=验收报告 记成验收报告、单独一格；节点必填配了「验收报告」，传别的不推，传验收报告那一下就推", async () => {
+    const { setSetting, invalidateSettingsCache } = await import("@/lib/settings");
+    const { 默认组织规则 } = await import("@/lib/project/org-rules");
+    const 节点 = async () => (await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).node;
+    const 起 = await 节点();
+    await setSetting("orgRules", { ...默认组织规则, 节点推进: { 开: true, 必填: { [起]: ["验收报告"] } } });
+    invalidateSettingsCache();
+    const 合同 = (await (await 传一个(项目id, "合同.pdf", "application/pdf", "合同")).json()) as { 自动推到?: string[] };
+    expect(合同.自动推到).toBeUndefined();
+    expect(await 节点()).toBe(起);
+    const 报告 = (await (await 传一个(项目id, "验收报告.pdf", "application/pdf", "验收报告")).json()) as { 附件: { id: string }; 自动推到?: string[] };
+    expect((await prisma.attachment.findUniqueOrThrow({ where: { id: 报告.附件.id } })).tag).toBe("验收报告");
+    expect(报告.自动推到?.length).toBeGreaterThan(0);
+    expect(await 节点()).not.toBe(起);
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 1, 方案: 0, 验收报告: 1, 其它: 0, 只读: false });
+    const 名们 = async (tag: string) => ((await (await 列出(项目id, tag)).json()) as { 附件: { name: string }[] }).附件.map((x) => x.name);
+    expect(await 名们("验收报告")).toEqual(["验收报告.pdf"]);
+    expect(await 名们("其它")).toEqual([]);
+  });
+
   it("老板（系统管理员）：别人负责的项目也能传（V3.5.1）；负责人传表格之类不是图片的照收", async () => {
     // 附件跟编辑项目一个口径：系统管理员能改所有非公海项目
     作为(老板, "ADMIN");
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 0, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 验收报告: 0, 其它: 0, 只读: false });
     expect((await 传一个(项目id, "老板传.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")).status).toBe(200);
     作为(乙, "SALES");
     const r = await 传一个(项目id, "报价单.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     expect(r.status).toBe(200);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 2, 只读: false });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 验收报告: 0, 其它: 2, 只读: false });
   });
 
   it("同事：列、取得到；传、删 403，附件原样还在；入口只读", async () => {
@@ -191,7 +211,7 @@ describe("企业版项目附件：看 = 看得到项目，传 / 删 = 能改项�
     expect(((await 传了.json()) as { error: string }).error).toMatch(/项目负责人/);
     expect((await 删一个(id)).status).toBe(403);
     expect(await 还在(id)).toBe(true);
-    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 其它: 1, 只读: true });
+    expect(await 项目附件入口(项目id)).toEqual({ 合同: 0, 方案: 0, 验收报告: 0, 其它: 1, 只读: true });
     expect(await prisma.attachment.count()).toBe(1);
   });
 

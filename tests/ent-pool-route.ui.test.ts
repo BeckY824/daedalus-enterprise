@@ -95,6 +95,25 @@ it.each([1024, 1280, 1366])("Windows %ipx：设置页不横向撑出", async (w)
   } finally { await page.close(); }
 });
 
+it.each([1024, 1280, 1366])("Windows %ipx：阶段规则里的字数上限（M-节点-03）两格都在、默认空着写「不设」，不出卡片、不横向撑出", async (w) => {
+  const { page, errors } = await open(true, w);
+  try {
+    const 卡 = page.locator(".ant-card").filter({ hasText: "线索验证的字数上限" });
+    await 卡.waitFor();
+    const 卡框 = (await 卡.boundingBox())!;
+    for (const k of ["培育计划", "无效原因"]) {
+      const 格 = 卡.locator(`input[aria-label='${k}字数上限']`);
+      expect(await 格.inputValue(), k).toBe("");
+      expect(await 格.getAttribute("placeholder"), k).toBe("不设");
+      const 框 = (await 格.boundingBox())!;
+      expect(框.x + 框.width, k).toBeLessThanOrEqual(卡框.x + 卡框.width);
+    }
+    expect(await 卡.getByRole("button", { name: "保存字数上限" }).isDisabled()).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it.each([1024, 1280])("公海页 %ipx：属性筛选 全部 / 线索池 / 商机池 / 其他 一排不折行，页面不横向撑出", async (w) => {
   const page = await browser.newPage({ viewport: { width: w, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));

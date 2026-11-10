@@ -337,9 +337,9 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     expect(await 卡.locator('[data-empty="痛点标注"]').innerText()).toBe("—");
     expect(字.indexOf("合同金额")).toBeLessThan(字.indexOf("合同状态"));
     expect(字.indexOf("成交需求")).toBeLessThan(字.indexOf("痛点标注"));
-    // F-项目-18：附件合成左栏一块「项目附件」，合同附件后面紧跟项目方案，最后是沟通上的附件
+    // F-项目-18：附件合成左栏一块「项目附件」，合同附件后面紧跟项目方案，再是验收报告（M-必填-11），最后是沟通上的附件
     expect(await 卡标题(page, ".proj-main")).toContain("项目附件（0）");
-    expect(await page.locator(".proj-main .proj-att-h").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "其它附件（0）", "沟通附件（0）"]);
+    expect(await page.locator(".proj-main .proj-att-h").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（0）"]);
     // 填了：一行显示（换行压成空格，放不下「…」），悬停浮层用 data-tip 里的原文、保住分段（11-04 用户：待定第 1 点按优化来）
     await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: "交期总拖\n售后慢", contractStatus: "待我方确认" } });
     await 卡.getByText("待我方确认").waitFor();
@@ -1217,7 +1217,7 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
     // 三格的个数以接口拿回来的为准（这里接口回空），沟通附件从沟通上收过来：合计 = 0 + 0 + 0 + 1
     await page.getByText("项目附件（1）").waitFor();
     expect((await 卡标题(page, ".proj-main")).slice(0, 4)).toEqual(["", "沟通（2）", "卡点与任务（0）", "项目附件（1）"]);
-    expect(await 块.locator(".proj-att-h").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "其它附件（0）", "沟通附件（1）"]);
+    expect(await 块.locator(".proj-att-h").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（1）"]);
     const 组 = 块.getByTestId("follow-att-group");
     expect(await 组.count()).toBe(1);
     const 字 = await 组.innerText();

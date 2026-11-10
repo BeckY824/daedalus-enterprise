@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { 企业版字典, 按本套名 } from "@/lib/project/stage-dict";
-import { 规整组织规则, 合上改动, 持有上限of, 默认组织规则, 默认起算日, 负责人可推, 不能单独转项目 } from "@/lib/project/org-rules";
+import { 规整组织规则, 合上改动, 持有上限of, 默认组织规则, 默认起算日, 负责人可推, 不能单独转项目, 字数上限最大 } from "@/lib/project/org-rules";
 
 describe("规整组织规则", () => {
   it("没存过、存坏了：全是默认（上限关着）", () => {
@@ -197,10 +197,10 @@ describe("企业版 10-31 改名：存着旧节点名的设置读成新名", () 
 
 describe("阶段规则（企业版 10-26：往前推权限 + 出口叫法）", () => {
   it("默认负责人可推、没改叫法；存坏的退回默认、坏了的阶段丢掉", () => {
-    expect(默认组织规则.阶段).toEqual({ 推进权限: "负责人可推", 出口叫法: {}, 前两节点要沟通: false, 需求补全期: false });
+    expect(默认组织规则.阶段).toEqual({ 推进权限: "负责人可推", 出口叫法: {}, 前两节点要沟通: false, 需求补全期: false, 培育计划上限: null, 无效原因上限: null });
     expect(规整组织规则({ 阶段: { 推进权限: "谁都能推", 出口叫法: "乱" } }).阶段).toEqual(默认组织规则.阶段);
     expect(规整组织规则({ 阶段: { 推进权限: "仅上级推", 出口叫法: { 线索: ["转了", null], 商机: ["x".repeat(20), "y"], 别的: ["a", "b"] } } }).阶段)
-      .toEqual({ 推进权限: "仅上级推", 出口叫法: { 线索: ["转了", null] }, 前两节点要沟通: false, 需求补全期: false });
+      .toEqual({ 推进权限: "仅上级推", 出口叫法: { 线索: ["转了", null] }, 前两节点要沟通: false, 需求补全期: false, 培育计划上限: null, 无效原因上限: null });
   });
 
   it("合上改动：只改传了的；填错的报出来", () => {
@@ -229,5 +229,26 @@ describe("阶段规则（企业版 10-26：往前推权限 + 出口叫法）", (
     expect(规整组织规则({ 阶段: { 需求补全期: true } }).阶段.需求补全期).toBe(true);
     expect(合上改动(默认组织规则, { 阶段: { 需求补全期: true } })).toMatchObject({ 阶段: { 需求补全期: true, 推进权限: "负责人可推", 前两节点要沟通: false } });
     expect(合上改动(默认组织规则, { 阶段: { 需求补全期: "开" as never } })).toMatchObject({ error: expect.stringContaining("需求状态补全期") });
+  });
+
+  it("字数上限（M-节点-03）：培育计划、无效原因默认不设（null = 不限）；存的 1–上限最大 的整数认，坏的退回不设", () => {
+    expect(默认组织规则.阶段).toMatchObject({ 培育计划上限: null, 无效原因上限: null });
+    expect(规整组织规则({ 阶段: { 培育计划上限: 300, 无效原因上限: "50" } }).阶段).toMatchObject({ 培育计划上限: 300, 无效原因上限: 50 });
+    for (const 坏 of [0, -1, 1.5, 字数上限最大 + 1, "乱", true]) {
+      expect(规整组织规则({ 阶段: { 培育计划上限: 坏, 无效原因上限: 坏 } }).阶段).toMatchObject({ 培育计划上限: null, 无效原因上限: null });
+    }
+  });
+
+  it("字数上限改动：填了存上，null / 空 = 不设，填错的报出来；只改一个不动另一个和别的规则", () => {
+    const 设了 = 合上改动(默认组织规则, { 阶段: { 培育计划上限: 200 } });
+    expect(设了).toMatchObject({ 阶段: { 培育计划上限: 200, 无效原因上限: null, 推进权限: "负责人可推" } });
+    const 又设 = 合上改动(设了 as never, { 阶段: { 无效原因上限: "80" as never } });
+    expect(又设).toMatchObject({ 阶段: { 培育计划上限: 200, 无效原因上限: 80 } });
+    expect(合上改动(又设 as never, { 阶段: { 培育计划上限: null } })).toMatchObject({ 阶段: { 培育计划上限: null, 无效原因上限: 80 } });
+    expect(合上改动(又设 as never, { 阶段: { 无效原因上限: "" as never } })).toMatchObject({ 阶段: { 培育计划上限: 200, 无效原因上限: null } });
+    for (const 坏 of [0, 1.5, 字数上限最大 + 1, "乱"]) {
+      expect(合上改动(默认组织规则, { 阶段: { 培育计划上限: 坏 as never } })).toMatchObject({ error: expect.stringContaining("培育计划") });
+      expect(合上改动(默认组织规则, { 阶段: { 无效原因上限: 坏 as never } })).toMatchObject({ error: expect.stringContaining("无效原因") });
+    }
   });
 });

@@ -2,7 +2,7 @@
  * 企业版节点必填（lib/project/required.ts，D-37）：没开 / 没配的节点永远不差；配了的按数据算还差哪几样。
  */
 import { describe, it, expect } from "vitest";
-import { 还差, 节点推进生效, 按必填走, 节点必填, 能配必填的节点, 建议必填, 必填项名们, 必填叫法, 有效沟通还差, type 必填数据, type 必填项 } from "@/lib/project/required";
+import { 必填项们, 还差, 节点推进生效, 按必填走, 节点必填, 能配必填的节点, 建议必填, 必填项名们, 必填叫法, 有效沟通还差, type 必填数据, type 必填项 } from "@/lib/project/required";
 import { 默认组织规则, 规整组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 企业版字典, 本套节点名 } from "@/lib/project/stage-dict";
 
@@ -45,7 +45,8 @@ describe("目录", () => {
     expect(另外("生产备货")).toEqual([]);
     expect(另外("物流运输")).toEqual([]);
     expect(另外("安装实施")).toEqual(["场地现状"]);
-    expect(另外("验收交付")).toEqual(["验收通过"]);
+    // M-必填-11（11-08）：交付验收认「验收报告」附件，不再用「验收通过」勾
+    expect(另外("验收交付")).toEqual(["验收报告"]);
     // 只要「有一条沟通」的旧项不再建议（换成沟通三项）
     expect(Object.values(建议必填).flat()).not.toContain("本节点沟通");
   });
@@ -106,6 +107,7 @@ describe("还差", () => {
       痛点标注: "交期总拖",
       合同状态: "已生效",
       项目方案数: 1,
+      验收报告数: 1,
     };
     // 11-01 矩阵加的几样
     Object.assign(d.项目, {
@@ -120,6 +122,17 @@ describe("还差", () => {
       线索验证: { verdict: "有效线索", finalResult: "有效线索", pending: null },
     });
     expect(还差(全部, d)).toEqual([]);
+  });
+
+  it("验收报告（M-必填-11）：「验收报告」附件传了至少一份就算，没读 / 0 份 = 差；验收通过的勾不算它", () => {
+    const r = 规则({ 交付验收: ["验收报告"] });
+    const 在 = (补: Partial<必填数据> = {}, 勾 = false): 必填数据 => ({ ...空数据("交付验收"), ...补, 项目: { ...空数据("交付验收").项目, acceptancePassed: 勾 } });
+    expect(还差(r, 在())).toEqual(["验收报告"]);
+    expect(还差(r, 在({ 验收报告数: 0 }, true))).toEqual(["验收报告"]);
+    expect(还差(r, 在({ 合同附件数: 3, 项目方案数: 2 }))).toEqual(["验收报告"]);
+    expect(还差(r, 在({ 验收报告数: 1 }))).toEqual([]);
+    expect(还差(r, 在({ 验收报告数: 4 }))).toEqual([]);
+    expect(必填叫法("验收报告")).toBe("验收报告");
   });
 
   it("分配方式（11-01 会议 §1）：建的时候选了才算；老项目没有 = 差；只在必填开关开着时管", () => {
@@ -158,6 +171,8 @@ describe("还差", () => {
     expect(还差(r, d)).toEqual(["金额", "需求", "本节点沟通"]);
     d.项目.demandStatus = "暂未确认";
     expect(还差(r, d)).toContain("需求");
+    // M-必填-03：「暂未确认」不在字典里了，说明里也不再提它
+    expect(必填项们.find((x) => x.key === "需求")?.说明).not.toContain("暂未确认");
     d.项目.amount = 1;
     d.项目.demandStatus = "表面触达";
     d.沟通节点们.push("线索验证");

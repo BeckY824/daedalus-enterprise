@@ -9,7 +9,8 @@ import { prisma } from "../prisma";
 import { parseDateInput } from "../date-input";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 改节点 } from "./db";
-import { 有效线索节点, 培育计划上限 } from "./stage-gates";
+import { 有效线索节点 } from "./stage-gates";
+import { 生效组织规则 } from "./org-rules-store";
 import { 等复核拦 } from "./lead-verify-guard";
 
 type 谁 = { id: string; role: string };
@@ -32,7 +33,9 @@ export async function 判MQL(
   if (dayjs(日).format("YYYY-MM-DD") < dayjs(now).format("YYYY-MM-DD")) return { ok: false, error: "下一次培育跟进不能早于今天" };
   const 内容 = String(计划内容 ?? "").trim();
   if (!内容) return { ok: false, error: "MQL 不合格要写下一次培育跟进的计划内容" };
-  if (内容.length > 培育计划上限) return { ok: false, error: `计划内容最多 ${培育计划上限} 个字` };
+  // 字数上限按组织规则（M-节点-03）：默认不设，管理员在设置里设了才拦
+  const 上限 = (await 生效组织规则()).阶段.培育计划上限;
+  if (上限 !== null && 内容.length > 上限) return { ok: false, error: `计划内容最多 ${上限} 个字` };
   const r = await 改节点(me, p.id, { phase: "线索", node: MQL不合格去 });
   if (!r.ok) return r;
   await prisma.$transaction(async (tx) => {
