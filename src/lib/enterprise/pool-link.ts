@@ -22,6 +22,7 @@ import { 系统 } from "@/lib/project/timeout";
 import { 卡点随项目换人, 公海领走接手理由 } from "@/lib/project/blocker";
 import { 换负责人待办, 待办痕 } from "@/lib/project/carry-tasks";
 import { 有同事在推的客户 } from "./colleague-projects";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 /**
  * 项目刚进了项目公海（主动放回、超时回收），在同一笔事务里调：客户名下一共只有这一个项目、
@@ -80,7 +81,7 @@ export async function 客户名下在推项目进公海(
       });
       for (const p of 项目) {
         if (!p.ownerId || p.ownerId !== 主.get(p.customerId)) continue;
-        await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
+        await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
         await 记转让(tx, p, 操作人, p.ownerId, null, "pool-release", 理由, 现在);
         // 客户这时已经在公海里：原负责人在这位客户上没做完的待办全关（pool-owner.ts 进公海关待办）
         await 进公海关待办(tx, p, p.ownerId, 现在);
@@ -149,7 +150,7 @@ async function 带走公海项目(tx: Prisma.TransactionClient, customerIds: str
   }
   if (!们.length) return [];
   const ids = 们.map((p) => p.id);
-  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, pooledAt: null, nextStepAt: null, nextStepText: null } });
+  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ...换负责人(新), pooledAt: null, nextStepAt: null, nextStepText: null } });
   // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
   const 原 = await 历史负责人们(tx, ids);
   const 痕: Map<string, string | null> = new Map();

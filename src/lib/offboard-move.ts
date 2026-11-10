@@ -6,6 +6,7 @@ import { 转让痕 } from "@/lib/project/db";
 import { 进公海清负责人, 公海无负责人 } from "@/lib/project/pool-owner";
 import { 月份 } from "@/lib/enterprise/lead-assign";
 import { 停用进公海理由, 停用项目进公海理由, type 停用分拣结果 } from "@/lib/offboard-db";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 /**
  * 离职交接真动数据的两半（原来写在 settings/actions.ts deactivateUser 的事务里，2026-10-26 抽出来）：
@@ -51,7 +52,7 @@ export async function 离职放进公海(tx: Prisma.TransactionClient, 分: 停�
     const 们 = await tx.project.findMany({ where: { id: { in: 分.进公海项目 } }, select: { id: true, ownerId: true, phase: true, node: true, result: true } });
     // 企业版进公海清空负责人（pool-owner.ts），离职的人记在 pool-release 的 from 上 = 历史负责人。
     // 他没做完的待办不在这里关：离职交接里待办归接手人（停用分拣 待办）
-    await tx.project.updateMany({ where: { id: { in: 分.进公海项目 } }, data: { pooledAt: new Date(), nextStepAt: null, nextStepText: null, ...(进公海清负责人() ? { ownerId: 公海无负责人 } : {}) } });
+    await tx.project.updateMany({ where: { id: { in: 分.进公海项目 } }, data: { pooledAt: new Date(), nextStepAt: null, nextStepText: null, awaitAssignAt: null, ...(进公海清负责人() ? 换负责人(公海无负责人) : {}) } });
     await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, p.ownerId, null, "pool-release", 停用项目进公海理由)) });
   }
 }

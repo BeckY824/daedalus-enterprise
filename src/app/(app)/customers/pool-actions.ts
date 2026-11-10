@@ -37,6 +37,7 @@ import { 有同事在推的客户, 同事在推不能放公海话 } from "@/lib/
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { Prisma } from "@/generated/prisma";
 import { 客户退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
+import { 还负责人 } from "@/lib/project/owner-write";
 
 export type 公海结果 =
   | {
@@ -206,7 +207,7 @@ async function 撤回连带项目(tx: Prisma.TransactionClient, 客户们: strin
       if (!痕 || 痕.kind !== "pool-release" || 痕.userId !== 操作人 || !痕.fromOwnerId) continue;
       if (痕.at.getTime() < Date.now() - 撤销时限毫秒) continue;
       await 换负责人待办(tx, p, null, 痕.fromOwnerId, true);
-      await tx.project.update({ where: { id: p.id }, data: { ownerId: 痕.fromOwnerId, pooledAt: null } });
+      await tx.project.update({ where: { id: p.id }, data: { ...还负责人(痕.fromOwnerId), pooledAt: null } });
       await tx.projectNodeLog.delete({ where: { id: 痕.id } });
     }
   });
