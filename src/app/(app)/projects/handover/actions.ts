@@ -72,11 +72,12 @@ export async function 交接全部(fromId: string, toId: string): Promise<结果
     r.待办.length + r.计划.length && `${r.待办.length + r.计划.length} 条待办和计划`,
     r.线索.length && `${r.线索.length} 条线索`,
     r.渠道.length && `${r.渠道.length} 个渠道`,
+    r.主渠道.length && `${r.主渠道.length} 个主渠道`,
   ].filter(Boolean).join("、");
   await recordAudit({
     user: me, action: "handover", entity: "User", entityId: fromId,
     summary: `离职交接：「${从}」名下${段 || "没有要交的"}全部交给「${给}」`,
-    detail: { to: toId, 客户: r.客户.length, 项目: r.项目.length, 商机: r.商机.length, 待办: r.待办.length, 计划: r.计划.length, 线索: r.线索.length, 渠道: r.渠道.length },
+    detail: { to: toId, 客户: r.客户.length, 项目: r.项目.length, 商机: r.商机.length, 待办: r.待办.length, 计划: r.计划.length, 线索: r.线索.length, 渠道: r.渠道.length, 主渠道: r.主渠道.length },
   });
   if (段) await 离职交接通知(me, 从, toId, r.客户, r.项目, 段);
   刷新();

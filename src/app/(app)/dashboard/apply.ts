@@ -6,7 +6,7 @@ import { 读现值 } from "@/lib/agent/current-values";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 认回打码号 } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
-import { 可选渠道条件 } from "@/lib/enterprise/channel-main";
+import { 可选渠道条件, 主渠道入口们 } from "@/lib/enterprise/channel-main";
 import { 认渠道触点 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
@@ -301,7 +301,11 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 联系人地址 = 去处.includes("联系人") ? [国家, 城市].filter(Boolean).join(" ").slice(0, 联系人地址上限) : "";
   // 企业版新建线索要选渠道：卡上只有来源一格，按整名 / 只含一个渠道名 / 竖线前平台前缀唯一来认（lib/enterprise/channel-match.ts，卡片预选同一个函数），对上多个不猜
   // 历史渠道（P-渠道-06）只承载历史客户、主渠道停用了的子渠道（P-渠道-13）也不能选：AI 新建线索同样不认（可选渠道条件，和新建的渠道下拉同一个）
-  const 渠道们 = await prisma.channel.findMany({ where: 可选渠道条件, select: { id: true, name: true } });
+  // 只有主渠道（没有子渠道）的也认：按主渠道名对，对上的是占位 id，建档向导里落成子渠道名留空的那条渠道（channel-main.ts 落到渠道）
+  const 渠道们 = [
+    ...(await prisma.channel.findMany({ where: 可选渠道条件, select: { id: true, name: true } })),
+    ...(await 主渠道入口们()).map((m) => ({ id: m.id, name: m.name })),
+  ];
   // 渠道和渠道触点至少一个（P-渠道-08）：卡上来源一字不差是触点（公司资源 / 客户介绍），又没有同名渠道，就主渠道留空、记触点
   const 卡上触点 = 认渠道触点(p.source);
   const 触点 = 卡上触点 && !渠道们.some((c) => c.name === 卡上触点) ? 卡上触点 : null;

@@ -17,7 +17,7 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, 离职进手的持有项目, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接卡点 } from "@/lib/project/blocker";
-import { 带走并记下, 数进手的持有项目, 数转走的项目 } from "@/lib/carry-over-db";
+import { 带走并记下, 数进手的持有项目 } from "@/lib/carry-over-db";
 import { 超上限n } from "@/lib/project/db";
 import { 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -70,6 +70,62 @@ function 读个数(s: string): Record<string, number> {
   }
 }
 
+/** 一次 in 查带多少个 id：SQLite 一句的参数个数有上限，客户多的交接分段查 */
+const 每段 = 500;
+async function 分段查<T>(ids: string[], 查: (段: string[]) => Promise<T[]>): Promise<T[]> {
+  const 出: T[] = [];
+  for (let i = 0; i < ids.length; i += 每段) 出.push(...(await 查(ids.slice(i, i + 每段))));
+  return 出;
+}
+
+/**
+ * 每笔待确认的转让，确认那一刻会一起转来几个项目（「全部 N 个项目（含 M 个同事在推的…）」那半句）。
+ * 口径同原来逐笔调的 数转走的项目（carry-over-db.ts，企业版那一支）：只数此刻还归原负责人、不在公海的客户；
+ * 线索公海里的 + 原负责人（客户挂占位账号的：进公海前负责人）自己的 + 同事占着待分配的，去掉已经归接手人的；另加同事在推的。
+ * 原来每笔查一轮、每位客户再查一条进公海记录，客户页每次加载都调（代码体检 5.2 N+1 第 2 条）：
+ * 改成所有笔的客户、进公海记录、项目各一次 in 查，内存里按笔分，查库次数不随笔数、客户数涨。在 看全部 里调
+ */
+async function 转让项目句(行: { id: string; fromUserId: string; toUserId: string; customerIds: string }[]): Promise<Map<string, string>> {
+  const 句 = new Map<string, string>(行.map((h) => [h.id, "全部项目"]));
+  const 全部 = [...new Set(行.flatMap((h) => 读ids(h.customerIds)))];
+  if (!全部.length) return 句;
+  const 负责人 = new Map((await 分段查(全部, (段) => prisma.customer.findMany({ where: { id: { in: 段 }, pool: null }, select: { id: true, salesOwnerId: true } }))).map((c) => [c.id, c.salesOwnerId]));
+  // 接手人就是原负责人的不用数（没有换人的）
+  const 每笔 = 行.map((h) => ({ h, 还归他: h.fromUserId === h.toUserId ? [] : [...new Set(读ids(h.customerIds))].filter((id) => 负责人.get(id) === h.fromUserId) }));
+  const 要数 = [...new Set(每笔.flatMap((x) => x.还归他))];
+  if (!要数.length) return 句;
+  // 进公海前负责人（同 公海前负责人）：最近一条「换到现负责人」的进公海记录的 from，没有就是现负责人
+  const 进公海前 = new Map<string, string | null>();
+  const 记录 = await 分段查(要数, (段) => prisma.customerOwnerLog.findMany({
+    where: { customerId: { in: 段 }, kind: "pool-release" },
+    orderBy: [{ at: "desc" }, { id: "desc" }],
+    select: { customerId: true, toOwnerId: true, fromOwnerId: true, at: true, id: true },
+  }));
+  // 分段查出来的各段各自有序，合起来再排一遍，保证每位取到的是最近那条
+  记录.sort((a, b) => b.at.getTime() - a.at.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  for (const r of 记录) if (!进公海前.has(`${r.customerId}|${r.toOwnerId}`)) 进公海前.set(`${r.customerId}|${r.toOwnerId}`, r.fromOwnerId);
+  const 项目 = new Map<string, { ownerId: string; pooledAt: Date | null; awaitAssignAt: Date | null; result: string | null }[]>();
+  for (const p of await 分段查(要数, (段) => prisma.project.findMany({ where: { customerId: { in: 段 } }, select: { customerId: true, ownerId: true, pooledAt: true, awaitAssignAt: true, result: true } }))) {
+    const 组 = 项目.get(p.customerId);
+    if (组) 组.push(p);
+    else 项目.set(p.customerId, [p]);
+  }
+  for (const { h, 还归他 } of 每笔) {
+    let 列名的 = 0, 同事的 = 0;
+    for (const c of 还归他) {
+      const 主人 = 进公海前.get(`${c}|${h.fromUserId}`) ?? h.fromUserId;
+      for (const p of 项目.get(c) ?? []) {
+        if (p.ownerId !== h.toUserId && (p.pooledAt || p.ownerId === 主人 || p.awaitAssignAt)) 列名的++;
+        // 同 同事在推的项目（carry-over-db.ts）
+        if (!p.pooledAt && !p.awaitAssignAt && p.result === null && p.ownerId !== 主人 && p.ownerId !== h.toUserId && p.ownerId !== "") 同事的++;
+      }
+    }
+    const 项目数 = 列名的 + 同事的;
+    if (项目数) 句.set(h.id, `全部 ${项目数} 个项目${同事的 ? `（含 ${同事的} 个同事在推的，负责人一起改成你）` : ""}`);
+  }
+  return 句;
+}
+
 /**
  * 客户页顶上那条：等我确认的 + 我发起、还没确认的（管理员看全部还没确认的）。
  * 我发起的申请移交被系统作废了的（挂满 7 天没人处理）也列在「我发起的」里，状态「已作废（超 7 天未处理）」，作废后留 7 天
@@ -94,13 +150,7 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
     const 前几位 = 行.flatMap((h) => 读ids(h.customerIds).slice(0, 列几位));
     const 名 = new Map((await prisma.customer.findMany({ where: { id: { in: 前几位 } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
     // 转让：确认那一刻会一起转来的项目，按此刻的数据数（同 确认交接：还归原负责人、不在公海的才转）；同事在推的只给个数（P-转-07、X-49）
-    const 项目句 = new Map<string, string>();
-    for (const h of 行) {
-      if (h.kind !== "转让") continue;
-      const 还归他 = (await prisma.customer.findMany({ where: { id: { in: 读ids(h.customerIds) }, salesOwnerId: h.fromUserId, pool: null }, select: { id: true } })).map((c) => c.id);
-      const 预 = await 数转走的项目(还归他, h.toUserId);
-      项目句.set(h.id, !预.项目数 ? "全部项目" : `全部 ${预.项目数} 个项目${预.同事?.项目数 ? `（含 ${预.同事.项目数} 个同事在推的，负责人一起改成你）` : ""}`);
-    }
+    const 项目句 = await 转让项目句(行.filter((h) => h.kind === "转让"));
     const 成行 = (h: (typeof 行)[number]): 交接行 => {
       const ids = 读ids(h.customerIds);
       const 等 = h.status === 待确认;

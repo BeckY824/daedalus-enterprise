@@ -410,6 +410,9 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
   return { ok: true, updated: 分到.length, unchanged: ids.length - 分到.length - 无效.size, 没权限: 无效.size, 带走, 原负责人: 分到, 带过来, 给谁: 给, 公海项目 };
 }
 
+/** 撤销时负责人已经不是领到 / 分到的那位了（事务里抛、整笔回滚，也是回给人看的话的前半句） */
+const 负责人被改过 = "负责人刚被别人改过，这次没有撤销";
+
 /**
  * 撤销放进公海：把这几位从公海里拿回来。企业版负责人按那条 pool-release 还回去、那条删掉（P-撤销-01）；别的版本负责人本来就没动过。
  * 撤销领取：负责人还给原来的人、再放回公海；**只还领取时带过来的那几条活**（带过来），
@@ -474,14 +477,20 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     : []);
   const 退 = 原.filter((x) => 还归我.some((c) => c.id === x.id) && 在职的.has(x.值) && (x.值 === 现 ? 刚领的.has(x.id) : 我换的.has(x.id)));
   await 钉住老签约();
+  /*
+    上面认「还归我」和下面写之间有缝（代码体检 C1，仿 X-81）：这时主管把这位转给了别人，原来照样放回公海、负责人改回旧值，
+    盖掉刚做的转让。事务里按「负责人还是 现」条件写，改到 0 行整笔回滚（公海那一行、删掉的换负责人记录都不留），这一位不算撤成
+  */
+  const 撤成: typeof 退 = [];
   for (const x of 退) {
-    await prisma.$transaction(async (tx) => {
+    const 成 = await prisma.$transaction(async (tx) => {
       // 先放回公海、再把负责人还回去（团队范围同步：放回公海那一刻还归我，之后人人可写；反过来还完负责人我就写不了公海那一行）
       await tx.customerPool.create({ data: { customerId: x.id, userId: me.id, reason: "手动" } });
       // 历史负责人记在还负责人之前：业务员互看时，还完这位就是同事的客户，挂在下面新建会被挡
       if (企业版()) await 删被撤的换负责人记录(tx, x.id, x.值, 现);
       else await 记换负责人(tx, [{ customerId: x.id, from: 现, to: x.值 }], me.id, "undo");
-      await tx.customer.update({ where: { id: x.id }, data: { salesOwnerId: x.值 } });
+      const 还 = await tx.customer.updateMany({ where: { id: x.id, salesOwnerId: 现 }, data: { salesOwnerId: x.值 } });
+      if (!还.count) throw new Error(负责人被改过);
       await tx.customerClaim.deleteMany({ where: { customerId: x.id, userId: 现 } });
       // 领取 / 分配时带过来的活还回去：还挂在领到的人名下、还没做完的才还。
       // 还给谁：x.值 是占位账号时活本来挂在进公海前的负责人名下，按 pool-release 认；客户本身回占位账号
@@ -499,15 +508,22 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
           for (const p of 们) await 撤回项目公海(tx, p.id, 现, me.id);
         });
       }
+      return true;
+    }).catch((e) => {
+      if (e instanceof Error && e.message === 负责人被改过) return false;
+      throw e;
     });
+    if (成) 撤成.push(x);
   }
-  if (退.length) {
+  if (撤成.length) {
     await recordAudit({
-      user: me, action: 动作 === "分配" ? "assign" : "claim", entity: "Customer", entityId: 退.length === 1 ? 退[0].id : null,
-      summary: `撤销了刚才的公海${动作 === "分配" ? "分配" : "领取"}：${退.length} 位客户放回公海`,
-      detail: { ids: 退.map((x) => x.id), 原负责人: 退.map((x) => ({ id: x.id, salesOwnerId: x.值 })) },
+      user: me, action: 动作 === "分配" ? "assign" : "claim", entity: "Customer", entityId: 撤成.length === 1 ? 撤成[0].id : null,
+      summary: `撤销了刚才的公海${动作 === "分配" ? "分配" : "领取"}：${撤成.length} 位客户放回公海`,
+      detail: { ids: 撤成.map((x) => x.id), 原负责人: 撤成.map((x) => ({ id: x.id, salesOwnerId: x.值 })) },
     });
   }
   刷新(ids);
-  return { ok: true, updated: 退.length, unchanged: ids.length - 退.length, 没权限: 0 };
+  // 一位都没撤成、全是刚被别人改走的：明说，别让界面报「已撤销」
+  if (退.length && !撤成.length) return { ok: false, error: `${负责人被改过}，刷新看看` };
+  return { ok: true, updated: 撤成.length, unchanged: ids.length - 撤成.length, 没权限: 0 };
 }

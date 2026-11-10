@@ -26,7 +26,8 @@ import { 不能新建项目话 } from "@/lib/enterprise/permissions";
 import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
-import { 新数据渠道不行 } from "@/lib/enterprise/channel-main";
+import { 新数据渠道不行, 落到渠道 } from "@/lib/enterprise/channel-main";
+import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/enterprise/touchpoint";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
@@ -82,9 +83,19 @@ export async function 建档向导(输入: 建档向导输入) {
     // 指定分配 = 负责人是选的那位；另外四种都先建在我名下，自动分配建好后按自动分配转出去、公海捞取建好后放进项目公海
     const 分配 = 企业版() ? await 定分配方式(me, 输入.项目) : null;
     if (分配 && "error" in 分配) return { ok: false as const, error: 分配.error };
-    const input = 分配 && 分配.i !== 0
+    let input = 分配 && 分配.i !== 0
       ? { ...输入, 客户: { ...输入.客户, salesOwnerId: me.id }, 项目: { ...输入.项目, ownerId: me.id } }
       : 输入;
+    // 来源选的是「只有主渠道」的占位（没有子渠道的主渠道）：先落成子渠道名留空的那条渠道，后面一律按真的渠道 id 走（channel-main.ts 落到渠道）
+    if (企业版()) {
+      const 客源 = await 落到渠道(input.客户.channelId ? String(input.客户.channelId) : null, me);
+      if (!客源.ok) return { ok: false as const, error: 客源.error };
+      const 项源 = await 落到渠道(input.项目?.channelId ? String(input.项目.channelId) : null, me);
+      if (!项源.ok) return { ok: false as const, error: 项源.error };
+      if (是主渠道入口(input.客户.channelId) || 是主渠道入口(input.项目?.channelId)) {
+        input = { ...input, 客户: { ...input.客户, channelId: 客源.id }, 项目: input.项目 ? { ...input.项目, channelId: 项源.id } : input.项目 };
+      }
+    }
     // 开了超时回收：项目建在线索阶段，首条跟进也得填下一步时间
     const 规则 = await 生效组织规则();
     // 下一步时间：开了超时回收必填；企业版没开也能选填（验收 #4）；不是企业版没有这格，老草稿里留着的也不认、不写，和原来一样
