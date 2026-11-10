@@ -14,6 +14,7 @@ import { dayjs } from "@/lib/utils";
 import { 不掉公海的状态, 公海截止, 自动理由 } from "@/lib/pool";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 
 /** 本机记的「今天扫过了」。不进团队同步（同步的设置 只有 business），每台各扫各的 */
 const 扫过键 = "poolSweptOn";
@@ -56,6 +57,12 @@ async function 按天扫(me: { id: string; name: string }, 今: Date): Promise<n
     },
     select: { id: true },
   });
+  // 申请移交 / 转让交接还没确认的不掉（X-38 → P-转-05：移交中不能领、不能转、不能删，挂到对方确认为止）。
+  // 企业版业务配置锁 poolDays = 0，按天扫平时走不到这里；留着挡，免得哪天放开天数时把交接中的扔进公海
+  if (企业版() && 要掉.length) {
+    const 中 = await 交接中的客户(要掉.map((c) => c.id));
+    if (中.size) 要掉.splice(0, 要掉.length, ...要掉.filter((c) => !中.has(c.id)));
+  }
   if (要掉.length) {
     const 理由 = 自动理由(b.poolDays);
     const 行 = 要掉.map((c) => ({ customerId: c.id, reason: 理由, at: 今 }));

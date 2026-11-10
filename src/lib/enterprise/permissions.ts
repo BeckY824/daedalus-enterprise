@@ -24,7 +24,7 @@
  */
 import type { 业务角色, 业务线 } from "@/lib/sync/dept-policy";
 import { 项目业务线 } from "./assign-line";
-import { 按线的线, 按线范围of, 条线的线, 条线范围of } from "./line-viewer";
+import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
 import { 实线下属, 虚线下属, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
 
@@ -221,11 +221,12 @@ function 能转让名下(me: 谁, ownerId: string, org: 组织): boolean {
   return !!条线范围of(org, me.id)?.人们.includes(ownerId);
 }
 
-/** 负责人转出自己的（同 能转让项目 的负责人本人）：销售、销管、渠运、市管（11-03 反馈 7；11-05 客户：市场管理可以当负责人）；
- *  项目组员不能转。市管不进 负责人角色：那份名单还管软删，市管不删。转的是不是他自己的、在不在公海，调用处查 */
+/** 负责人转出自己的（同 能转让项目 的负责人本人）：销售、销管、渠运、市管（11-03 反馈 7；11-05 客户：市场管理可以当负责人）、
+ *  总管理（P-转-01 ①「负责人本人」只排除只有项目组员角色的：纯 director 是负责人时也能转，客户走申请移交，见 转自己客户要申请）；
+ *  项目组员不能转。市管、总管理不进 负责人角色：那份名单还管软删，他们不删。转的是不是他自己的、在不在公海，调用处查 */
 export function 能转出自己的(me: 谁, org: 组织 | null): boolean {
   if (老()) return true;
-  return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, [...负责人角色, "marketing_mgr"]);
+  return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, [...负责人角色, "marketing_mgr", "director"]);
 }
 
 /** 转让客户（客户详情「转给」、批量转让）：同项目的白名单；公海里的客户走公海分配（能管公海） */
@@ -239,13 +240,12 @@ export function 能转让客户(me: 谁, c: { salesOwnerId: string | null; 在�
 
 /**
  * 负责人本人转自己的客户要不要走「申请移交」（P-转-01 ①、X-20，客户 11-09 回执 X4：「负责人转客户走申请移交，接手人确认后生效；不确认不生效」）。
- * 只有白名单 ① 这一条要申请；本人同时占着 ③ 条线总管理（自己就在自己这条线）或 ④ 系统管理员的，按 ③④ 直接转。
- * 实线上级（②）转的是下属的客户，不是「本人」，调用处按客户负责人判。不是企业版：没有这一说
+ * 本人转自己的都算 ①、走申请，条线总管理也一样（和销售本人一样，11-10 总控定）：③ 管的是条线里别人的客户。
+ * 只有 ④ 系统管理员直接转。实线上级（②）转的是下属的客户，不是「本人」，调用处按客户负责人判。不是企业版：没有这一说
  */
 export function 转自己客户要申请(me: 谁, org: 组织 | null): boolean {
   if (老() || !org) return false;
-  if (是系统管理员(me, org)) return false;
-  return !条线的线(org, me.id);
+  return !是系统管理员(me, org);
 }
 
 /**

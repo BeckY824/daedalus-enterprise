@@ -23,6 +23,7 @@ import { 系统 } from "@/lib/project/timeout";
 import { 有同事在推的客户 } from "./colleague-projects";
 import { 记换负责人, type 换负责人种类 } from "@/lib/owner-log-db";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
+import { 交接中的客户 } from "./handover-db";
 
 /**
  * 客户刚进了客户公海（手动放进公海、离职公海方式），同一笔事务里：负责人清空（M-公海-03）。
@@ -65,6 +66,8 @@ export async function 单项目客户跟进公海(
   return 看全部(async () => {
     const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
     if (!c || c.pool || c.salesOwnerId !== p.ownerId) return false;
+    // 申请移交 / 转让交接还没确认的客户不跟着进公海（X-38 → P-转-05）
+    if ((await 交接中的客户([p.customerId], tx)).size) return false;
     const 几个 = await tx.project.count({ where: { customerId: p.customerId } });
     if (几个 !== 1 && (await tx.project.count({ where: { customerId: p.customerId, phase: "订单", result: null } }))) return false;
     // M-公海-02 例外二（P-公海-06，11-05）：名下有同事负责、还没结束的项目，客户不跟着进（手上这个已经进了项目公海，不算）

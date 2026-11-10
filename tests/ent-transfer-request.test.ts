@@ -3,7 +3,7 @@
  *   - 负责人本人转自己的客户：不当场换，记一行交接（byUserId = fromUserId = 本人），接手人收到「申请移交」通知；
  *     「交接要确认」开着关着都一样（这条是规则本身，不是开关）
  *   - 接手人确认 → 才换负责人，名下自己的项目跟着走（P-转-07，沿用确认交接那一步）；拒收、本人撤回 → 什么都不转，本人收到通知
- *   - 实线直属上级、系统管理员、条线总管理（本人在自己这条线）直接转（P-转-01 ②③④）；市场成员的客户给销售照旧当场转（P-转-17 / X-46 ⑤）
+ *   - 实线直属上级、系统管理员、条线总管理（转条线里别人的）直接转（P-转-01 ②③④）；条线总管理转自己的也走申请（同 ①）；市场成员的客户给销售照旧当场转（P-转-17 / X-46 ⑤）
  *   - 申请中（X-38 → P-转-05）：能编辑；不能再转（上级直转也拦）、不能领取、不能分配公海、不能删（P-删-10）
  *   - 没有超时（X-46 ⑥ 未答，默认）：一直挂着，直到确认、拒收或撤回
  *   - 不是企业版：照旧当场换
@@ -12,7 +12,13 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null },
+  /** 企业版业务配置锁 poolDays = 0；测按天扫要临时放开 */
+  poolDays: 0,
 }));
+vi.mock("@/lib/business", async (原) => {
+  const m = await 原<typeof import("@/lib/business")>();
+  return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), ...(mocks.poolDays ? { poolDays: mocks.poolDays } : {}) }) };
+});
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
 vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
@@ -23,6 +29,11 @@ import { setSetting } from "@/lib/settings";
 import { assignSalesOwner, patchCustomer, deleteCustomers } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接 } from "@/app/(app)/customers/handover-actions";
 import { 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
+import { 自动掉公海 } from "@/lib/pool-db";
+import { 公海超时收回 } from "@/lib/project/db";
+import { 单项目客户跟进公海 } from "@/lib/enterprise/pool-link";
+import { 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 默认组织规则 } from "@/lib/project/org-rules";
 
 type 人 = { id: string; role: string };
 let 老板: 人, 组长: 人, 销售: 人, 接手: 人, 同事: 人;
@@ -62,7 +73,7 @@ beforeEach(async () => {
   await setSetting("enterprise.rule.handover_confirm", false);
   当(销售);
 });
-afterEach(() => { vi.unstubAllEnvs(); });
+afterEach(() => { vi.unstubAllEnvs(); mocks.poolDays = 0; });
 afterAll(async () => { await prisma.$disconnect(); });
 
 describe("负责人本人转客户 = 申请移交", () => {
@@ -147,17 +158,25 @@ describe("白名单 ②③④ 直接转（不走申请）", () => {
     expect(await prisma.entHandover.count()).toBe(0);
   });
 
-  it("系统管理员、条线总管理转自己名下的：直接转", async () => {
-    const 条总 = await 建("linehead");
-    await prisma.entMember.create({ data: { userId: 条总.id, bizRole: "director,sales", line: "外贸" } }); // 条线总管理兼销售（纯 director 本来就不能转出自己的，见 能转出自己的）
-    await prisma.entMember.update({ where: { userId: 接手.id }, data: { line: "外贸" } });
+  it("系统管理员转自己名下的：直接转", async () => {
     const a = await 客户(老板.id);
-    const b = await 客户(条总.id);
     当(老板);
     expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, updated: 1 });
-    当(条总);
-    expect(await assignSalesOwner([b.id], 接手.id)).toMatchObject({ ok: true, updated: 1 });
     expect(await prisma.entHandover.count()).toBe(0);
+  });
+
+  it("纯总管理（条线总管理）是负责人：能转自己的客户，走申请移交，和销售本人一样（P-转-01 ①）", async () => {
+    const 条总 = await 建("linehead", "ADMIN");
+    await prisma.entMember.create({ data: { userId: 条总.id, bizRole: "director", line: "外贸" } });
+    await prisma.entMember.update({ where: { userId: 接手.id }, data: { line: "外贸" } });
+    const b = await 客户(条总.id);
+    当(条总);
+    expect(await assignSalesOwner([b.id], 接手.id)).toMatchObject({ ok: true, updated: 0, 交接中: 1, 申请移交: true });
+    expect(await 归谁(b.id)).toBe(条总.id);
+    expect(await 一笔()).toMatchObject({ kind: "转让", fromUserId: 条总.id, toUserId: 接手.id, byUserId: 条总.id, status: "待确认" });
+    当(接手);
+    await 确认交接((await 一笔()).id);
+    expect(await 归谁(b.id)).toBe(接手.id);
   });
 
   it("转给自己：当场换", async () => {
@@ -228,5 +247,42 @@ describe("不是企业版", () => {
     expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, updated: 1 });
     expect(await 归谁(a.id)).toBe(接手.id);
     expect(await prisma.entHandover.count()).toBe(0);
+  });
+});
+
+describe("申请中不自动掉公海（X-38 → P-转-05：挂到对方确认为止）", () => {
+  const 今 = new Date();
+  const 天前 = (n: number) => new Date(今.getTime() - n * 86400_000);
+
+  it("按天扫、项目超时回收、单项目客户跟着进公海都跳过申请中的客户和它名下的项目；别的照收", async () => {
+    mocks.poolDays = 30;
+    const 申 = await 客户(销售.id);
+    const 别 = await 客户(销售.id);
+    await prisma.customer.updateMany({ data: { lastFollowAt: 天前(40), createdAt: 天前(40) } });
+    const 申项 = await prisma.project.create({ data: { name: "项目甲", customerId: 申.id, ownerId: 销售.id, creatorId: 销售.id, createdAt: 天前(10) } });
+    const 别项 = await prisma.project.create({ data: { name: "项目乙", customerId: 别.id, ownerId: 销售.id, creatorId: 销售.id, createdAt: 天前(10) } });
+    expect(await assignSalesOwner([申.id], 接手.id)).toMatchObject({ 申请移交: true });
+
+    expect(await 自动掉公海({ ...销售, name: "销售" }, 今)).toBe(1);
+    expect(await prisma.customerPool.findUnique({ where: { customerId: 申.id } })).toBeNull();
+    expect(await prisma.customerPool.findUnique({ where: { customerId: 别.id } })).not.toBeNull();
+
+    // 别的客户已在公海，它名下的项目本来就不收；再放一个不在公海的对照
+    const 对 = await 客户(销售.id);
+    const 对项 = await prisma.project.create({ data: { name: "项目丙", customerId: 对.id, ownerId: 销售.id, creatorId: 销售.id, createdAt: 天前(10) } });
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
+    expect(await 公海超时收回({ ...销售, name: "销售" }, 今)).toBe(1);
+    const 在公海 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).pooledAt !== null;
+    expect([await 在公海(申项.id), await 在公海(对项.id), await 在公海(别项.id)]).toEqual([false, true, false]);
+    expect(await 归谁(申.id)).toBe(销售.id);
+
+    const 原 = 公海规则.单项目客户跟着进公海;
+    公海规则.单项目客户跟着进公海 = true;
+    try {
+      expect(await prisma.$transaction((tx) => 单项目客户跟进公海(tx, { customerId: 申.id, ownerId: 销售.id }, null, 今))).toBe(false);
+    } finally {
+      公海规则.单项目客户跟着进公海 = 原;
+    }
+    expect(await prisma.customerPool.findUnique({ where: { customerId: 申.id } })).toBeNull();
   });
 });
