@@ -130,7 +130,7 @@ async function 恢复一条(t: 软删表名, id: string, 操作人 = ""): Promis
 }
 
 /** 停用负责人：恢复的是客户、原负责人已停用时才有（P-删-06），进了公海没有、原负责人是谁，调用方发通知用 */
-export type 恢复了 = { 连带: number; customerId: string | null; 停用负责人?: { 原: string; 进了公海: boolean } | null };
+export type 恢复了 = { 连带: number; customerId: string | null; 停用负责人?: { 原: string; 进了公海: boolean; 没进原因?: string[] } | null };
 
 async function 只恢复(t: 软删表名, id: string, 操作人 = ""): Promise<结果<{ 连带: number; customerId: string | null }>> {
   // 客户状态跟着项目算：项目回来了（单条或随客户连带）要重算，开关事务外读
@@ -185,7 +185,7 @@ async function 只恢复(t: 软删表名, id: string, 操作人 = ""): Promise<�
  *   2. 客户还在、带这个号的联系人删了 → 那位联系人回来
  * 回收站页（系统管理员、回收站副手）照旧，这里只是查重时的入口
  */
-export type 捞回的 = { t: "Customer" | "Contact"; id: string; 名: string; 连带: number; 停用负责人?: { 原: string; 进了公海: boolean } | null };
+export type 捞回的 = { t: "Customer" | "Contact"; id: string; 名: string; 连带: number; 停用负责人?: { 原: string; 进了公海: boolean; 没进原因?: string[] } | null };
 export async function 查重捞回(号: 验好的号, 操作人 = ""): Promise<结果<{ 回来的: 捞回的[] }>> {
   return 看全部(async () => {
     const 没了 = { ok: false as const, error: "回收站里已经没有这个号码了，刷新看看" };

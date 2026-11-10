@@ -24,8 +24,8 @@ import { 有同事在推的客户 } from "./colleague-projects";
 import { 交接中的客户 } from "./handover-db";
 import { 进公海挂靠通知 } from "./attach-approval";
 
-/** 原 = 已停用的原负责人；进了公海 false = 例外挡住，还挂在他名下 */
-export type 停用负责人去向 = { 原: string; 进了公海: boolean };
+/** 原 = 已停用的原负责人；进了公海 false = 例外挡住，还挂在他名下，没进原因 = 命中的那几条（通知里照着写；进公海那笔没做成时空着） */
+export type 停用负责人去向 = { 原: string; 进了公海: boolean; 没进原因?: string[] };
 
 /** 客户刚恢复回来（事务已提交）时调。原负责人在职、客户本来就在公海、不是企业版 → null，什么都不动。操作人空 = 系统 */
 export async function 恢复后停用负责人去向(customerId: string, 操作人: string): Promise<停用负责人去向 | null> {
@@ -38,12 +38,13 @@ export async function 恢复后停用负责人去向(customerId: string, 操作�
   const 原 = c.salesOwnerId;
   const 这位 = [{ id: customerId, salesOwnerId: 原 }];
   try {
-    const 不能进 = await 看全部(async () =>
-      不掉公海的状态.includes(c.followStatus)
-      || (await prisma.project.count({ where: { customerId, pooledAt: null, result: null, phase: { notIn: [...能进公海的阶段] } } })) > 0
-      || (await 有同事在推的客户(prisma, 这位)).size > 0
-      || (await 交接中的客户([customerId])).size > 0);
-    if (不能进) return { 原, 进了公海: false };
+    const 没进原因 = await 看全部(async () => [
+      (await prisma.project.count({ where: { customerId, pooledAt: null, result: null, phase: { notIn: [...能进公海的阶段] } } })) > 0 ? "有没结束的订单阶段项目" : null,
+      (await 有同事在推的客户(prisma, 这位)).size > 0 ? "有同事在推的项目" : null,
+      不掉公海的状态.includes(c.followStatus) ? c.followStatus : null,
+      (await 交接中的客户([customerId])).size > 0 ? "正在交接中" : null,
+    ].filter((x): x is string => !!x));
+    if (没进原因.length) return { 原, 进了公海: false, 没进原因 };
     // 负责人要清空，也算一次换负责人：先钉住老签约（事务外，同手动放进公海）
     await 钉住老签约();
     await 查完再写((tx) => 看全部(async () => {

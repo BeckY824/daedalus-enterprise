@@ -105,7 +105,7 @@ describe("P-删-06 恢复客户、原负责人已停用：清空负责人进客�
     expect(收到[0].title).toContain("恢复回来的客户");
     expect(收到[0].title).toContain("公海");
     expect(`${收到[0].title}${收到[0].body}`).toContain("销售乙");
-    expect(收到[0].link).not.toBe("/projects/handover");
+    expect(收到[0].link).toBe("/pool");
     for (const u of [总管, 总管二, 丙, 乙]) expect(await 通知of(u)).toHaveLength(0);
   });
 
@@ -167,6 +167,8 @@ describe("P-删-06 例外（M-公海-02 / X-31）：不能进公海的照原样�
     expect(收到[0].title).toContain("有订单的客户");
     expect(`${收到[0].title}${收到[0].body}`).toContain("销售乙");
     expect(收到[0].body).toContain("离职交接");
+    expect(收到[0].body).toContain("有没结束的订单阶段项目");
+    expect(收到[0].body).not.toContain("同事在推");
     expect(收到[0].link).toBe("/projects/handover");
     for (const u of [总管, 总管二, 丙, 乙]) expect(await 通知of(u)).toHaveLength(0);
   });
@@ -182,7 +184,22 @@ describe("P-删-06 例外（M-公海-02 / X-31）：不能进公海的照原样�
     const 收到 = await 通知of(总管二);
     expect(收到).toHaveLength(1);
     expect(收到[0].link).toBe("/projects/handover");
+    expect(收到[0].body).toContain("有同事在推的项目");
+    expect(收到[0].body).not.toContain("订单");
     expect(await 通知of(总管)).toHaveLength(0);
+  });
+
+  it("已签约的客户：不进公海，通知里写的是已签约", async () => {
+    const c = await 删了的客户(乙.id, "签了约的客户");
+    await raw.customer.update({ where: { id: c.id }, data: { followStatus: "已签约" } });
+    await 停用(乙);
+    expect(await 以(总管, () => 恢复回收站("Customer", c.id))).toMatchObject({ ok: true });
+    expect(await 客户现状(c.id)).toMatchObject({ salesOwnerId: 乙.id, pool: null });
+    const 收到 = await 通知of(上级);
+    expect(收到).toHaveLength(1);
+    expect(收到[0].body).toContain("已签约");
+    expect(收到[0].body).not.toContain("订单");
+    expect(收到[0].link).toBe("/projects/handover");
   });
 
   it("一次回来几位：按收件人合成一条，进公海的和留在停用的人名下的分开说", async () => {
