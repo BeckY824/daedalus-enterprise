@@ -2505,6 +2505,28 @@ describe("市场第一次分给销售记成「分配」，不算转客户（P-�
       expect(await 项目of(x.p)).toMatchObject({ ownerId: 丙.id, creatorId: 市场.id });
       await 活还在(x.t, x.pl, 市场.id);
     });
+
+    it("总管理分配：客户已归销售乙 → 客户仍归乙，只换项目负责人（创建人是市场也不动）", async () => {
+      const x = await 市场客户的公海项目(市场.id, 乙.id);
+      expect(await 以(总管, () => 分配公海项目([x.p], 丙.id))).toMatchObject({ ok: true, 分到: [x.p] });
+      expect(await 客户负责人(x.c)).toBe(乙.id);
+      expect(await 种类(x.c)).toEqual([]);
+      expect((await 项目of(x.p)).ownerId).toBe(丙.id);
+    });
+
+    it("兼任市场和销售按销售算（P-转-20）：总管理分配、销售自己领，客户都留在兼任名下", async () => {
+      const 兼任 = await 造人("dual-pool", "兼任某某", "SALES", "marketing_mgr,sales");
+      const 分 = await 市场客户的公海项目(兼任.id, 兼任.id);
+      expect(await 以(总管, () => 分配公海项目([分.p], 丙.id))).toMatchObject({ ok: true, 分到: [分.p] });
+      expect(await 客户负责人(分.c)).toBe(兼任.id);
+      expect(await 种类(分.c)).toEqual([]);
+
+      const 领 = await 市场客户的公海项目(兼任.id, 兼任.id);
+      expect(await 以(甲, () => 领取公海项目(甲, 领.p))).toEqual({ ok: true });
+      expect(await 客户负责人(领.c)).toBe(兼任.id);
+      expect(await 种类(领.c)).toEqual([]);
+      expect((await 项目of(领.p)).ownerId).toBe(甲.id);
+    });
   });
 
   it("市场分出去再撤销：那条「分配」记录删掉、客户回到市场", async () => {
