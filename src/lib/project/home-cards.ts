@@ -27,7 +27,7 @@ import type { Prisma } from "@/generated/prisma";
 import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
 import { 节点超时天数 } from "./timeout";
-import type { 阶段字典 } from "./stage-dict";
+import { 同名们, type 阶段字典 } from "./stage-dict";
 
 /** 能当项目页筛选（/projects?f=…）的卡 */
 export const 项目卡键们 = ["month-new", "key", "no-follow", "due-soon", "month-won"] as const;
@@ -91,6 +91,24 @@ const 在推 = { result: null, pooledAt: null } satisfies Prisma.ProjectWhereInp
  * 这是必要条件，不是充分条件——剩下的在 JS 里用 项目回收日 逐个算。超时回收没开 = null（一个都不会有）
  */
 export function 即将逾期粗筛(规则: 组织规则, 字典: 阶段字典, 今: Date | string = new Date()): Prisma.ProjectWhereInput | null {
+  const 线 = 逾期线(规则, 字典, 今);
+  return 线 && { ...会逾期的, OR: [{ createdAt: { lt: 线.起点 } }, { nextStepAt: { lt: 线.下一步 } }] };
+}
+
+/** 两种筛共用的底：在推的线索 / 商机、客户不在客户公海、不在验证中 */
+const 会逾期的 = {
+  ...在推,
+  phase: { in: ["线索", "商机"] },
+  customer: { pool: { is: null } },
+  // 验证中（等复核 / 等销售……）的线索不收回，也就不算 3 天内回公海（X-78，和 lib/project/db.ts 验证中不收 同一条；只有企业版有验证行）
+  NOT: { entLeadVerify: { is: { pending: { not: null } } } },
+} satisfies Prisma.ProjectWhereInput;
+
+/**
+ * 粗筛的两条线：建项目早于哪一刻才可能按天数到期（按全部节点里最短的天数）、下一步早于哪一刻才可能按下一步到期。
+ * 超时回收没开、一个天数都没有 = null
+ */
+function 逾期线(规则: 组织规则, 字典: 阶段字典, 今: Date | string): { 起点: Date; 下一步: Date } | null {
   if (!规则.超时回收.开) return null;
   // 外贸那套单设的天数（C7）也算进最短，不然外贸项目时长更短时会被粗筛漏掉
   const 天数们 = [
@@ -101,17 +119,59 @@ export function 即将逾期粗筛(规则: 组织规则, 字典: 阶段字典, �
   if (!天数们.length) return null;
   const 最短 = Math.min(...天数们);
   const 今天 = dayjs(今).startOf("day");
-  return {
-    ...在推,
-    phase: { in: ["线索", "商机"] },
-    customer: { pool: { is: null } },
-    // 验证中（等复核 / 等销售……）的线索不收回，也就不算 3 天内回公海（X-78，和 lib/project/db.ts 验证中不收 同一条；只有企业版有验证行）
-    NOT: { entLeadVerify: { is: { pending: { not: null } } } },
-    OR: [
-      { createdAt: { lt: 今天.add(即将逾期天数 - 最短 + 1, "day").toDate() } },
-      { nextStepAt: { lt: 今天.add(即将逾期天数, "day").toDate() } },
-    ],
-  };
+  return { 起点: 今天.add(即将逾期天数 - 最短 + 1, "day").toDate(), 下一步: 今天.add(即将逾期天数, "day").toDate() };
+}
+
+/**
+ * 比 即将逾期粗筛 再紧一层的必要条件（11-10，代码体检 P3）：首页卡「即将逾期」、复盘「将回公海」只数不列的用。
+ * 粗筛只卡建项目那天、且按所有节点里最短的天数卡，开了超时回收后几乎每个在推项目都过得去，首页每次加载都把它们连客户、最近留痕取回来算一遍。
+ * 回收日 = min(起 + 节点天数, 下一步那天 + 1)，起 = max(建项目, 最近一条留痕, 客户最近跟进, 起算日)（timeout.ts 超时回收日 / 计时起点），所以回收日落在 今 + N 天以内，必然是：
+ *   - 按天数到的：建项目、最近留痕、客户最近跟进三样都不晚于 今 + N − 这个节点的天数（粗筛只卡了第一样、天数用的是全部节点里最短的）；
+ *     从起算日算、按这个节点的天数都到不了 N 天以内的，这一路一个都不会有
+ *   - 或按下一步到的：下一步不晚于 今 + N − 1，且不早于起算日（下一步早于起点的不算数）
+ * 仍是必要条件，取回来照旧用 项目回收日 逐个算，数出来的和粗筛一样（tests/ent-due-soon-prefilter.test.ts 两种筛对拍）。
+ * 项目列表 f=due-soon 仍用粗筛（首页卡条件）：那边取到 500 条为止，换筛会改它满 500 时列出来的东西
+ */
+export function 即将逾期紧筛(规则: 组织规则, 字典: 阶段字典, 今: Date | string = new Date()): Prisma.ProjectWhereInput | null {
+  const 线 = 逾期线(规则, 字典, 今);
+  if (!线) return null;
+  const 今天 = dayjs(今).startOf("day");
+  const 算 = 规则.超时回收.起算日 ? dayjs(规则.超时回收.起算日).startOf("day") : null;
+  const 起算 = 算 && 算.isValid() ? 算 : null;
+  const 按天数: Prisma.ProjectWhereInput[] = [];
+  for (const { 节点, 天数 } of 按天数的几路(规则, 字典)) {
+    // 天数不是正数（存坏了，规整时本来就拦）：这一路不另卡，和粗筛一样只卡建项目那天
+    if (天数 <= 0) { 按天数.push({ node: 节点, createdAt: { lt: 线.起点 } }); continue; }
+    // 起点最早也是起算日：从起算日算、按这个天数都到不了 N 天以内，这一路就一个都没有
+    if (起算 && !即将逾期(起算.add(天数, "day").format("YYYY-MM-DD"), 今)) continue;
+    const 起点早于 = 今天.add(即将逾期天数 - 天数 + 1, "day").toDate();
+    按天数.push({
+      node: 节点,
+      createdAt: { lt: 起点早于 },
+      customer: { OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: 起点早于 } }] },
+      logs: { none: { at: { gte: 起点早于 } } },
+    });
+  }
+  return { ...会逾期的, OR: [...按天数, { nextStepAt: { lt: 线.下一步, ...(起算 ? { gte: 起算.toDate() } : {}) } }] };
+}
+
+/**
+ * 按天数到期分几路：天数一样的节点一路，没单设天数的节点（按字典默认）一路。
+ * 一个节点内贸、外贸两套天数不一样时取短的（项目按哪条线算要看项目和负责人，库里不分，取短的不会漏）；
+ * 节点名连旧名一起认（同 节点超时天数）；两套都没有天数、字典也没有默认的节点不会被收，不在任何一路里
+ */
+function 按天数的几路(规则: 组织规则, 字典: 阶段字典): { 节点: Prisma.StringFilter; 天数: number }[] {
+  const 设了的 = [...new Set([...Object.keys(规则.超时回收.节点天数), ...Object.keys(规则.超时回收.外贸节点天数 ?? {})].flatMap(同名们))];
+  const 路 = new Map<number, string[]>();
+  for (const n of 设了的) {
+    const 两套 = [节点超时天数(规则, n, 字典), 节点超时天数(规则, n, 字典, "外贸")].filter((d): d is number => d !== null);
+    if (!两套.length) continue;
+    const 天数 = Math.min(...两套);
+    路.set(天数, [...(路.get(天数) ?? []), n]);
+  }
+  const 出: { 节点: Prisma.StringFilter; 天数: number }[] = [...路].map(([天数, 节点]) => ({ 节点: { in: 节点 }, 天数 }));
+  if (字典.默认超时天数) 出.push({ 节点: { notIn: 设了的 }, 天数: 字典.默认超时天数 });
+  return 出;
 }
 
 /** 回收日在 即将逾期天数 以内（含今天、含已过的——已过的夜扫 / 打开页面时会先收走） */

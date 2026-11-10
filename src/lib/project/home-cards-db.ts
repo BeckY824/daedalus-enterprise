@@ -4,7 +4,7 @@
  * 总管理 / 管理员全员，别的上级自己 + 实线下属整条链 + 虚线下属；没设业务角色谁都不数。
  * 11-01 起和复盘一样只按负责人数：市场「自己建的项目」那一圈（M-角色-03/04）不再算进首页卡，项目列表里照样看得到（只读）。
  * 在带限定的 prisma 之上再加这一圈的条件（首页卡范围），和点进 /projects?f=… 用的是同一个 prisma、同一组条件、同一圈人。
- * 项目卡一条 count；即将逾期要算回收日（起点取建项目、最近留痕、客户最近跟进三者最晚的），库里粗筛后只读算日子要的几列。
+ * 项目卡一条 count；即将逾期要算回收日（起点取建项目、最近留痕、客户最近跟进三者最晚的），库里先按三样都够早筛一遍（即将逾期紧筛）再只读算日子要的几列。
  * 只数 首页摆的卡 里的，没摆的不查。
  */
 import { prisma } from "@/lib/prisma";
@@ -15,7 +15,7 @@ import { 字典of } from "./stage-dict";
 import type { 组织规则 } from "./org-rules";
 import { 看板的人 } from "./board-member";
 import type { Prisma } from "@/generated/prisma";
-import { 首页卡条件, 即将逾期, 即将逾期粗筛, 首页摆的卡, type 首页卡键, type 首页卡数 } from "./home-cards";
+import { 首页卡条件, 即将逾期, 即将逾期紧筛, 首页摆的卡, type 首页卡键, type 首页卡数 } from "./home-cards";
 
 /** 卡和项目页按哪一圈负责人筛：undefined = 不另筛（老板 / 总管理员、或不是企业版） */
 export async function 首页卡的人(user: { id: string; role: string }): Promise<readonly string[] | undefined> {
@@ -32,9 +32,9 @@ export async function 首页卡范围(user: { id: string; role: string }): Promi
   return { ownerId: { in: [...谁] } };
 }
 
-/** 粗筛出来的项目里，回收日真在 即将逾期天数 以内的 id（项目页 f=due-soon 也用它）；圈 = 首页卡范围（undefined = 不另筛） */
+/** 库里先筛（即将逾期紧筛）出来的项目里，回收日真在 即将逾期天数 以内的 id（项目页 f=due-soon 也用它）；圈 = 首页卡范围（undefined = 不另筛） */
 export async function 即将逾期的项目(规则: 组织规则, 今: Date = new Date(), 圈?: Prisma.ProjectWhereInput): Promise<string[]> {
-  const 粗 = 即将逾期粗筛(规则, 字典of(企业版()), 今);
+  const 粗 = 即将逾期紧筛(规则, 字典of(企业版()), 今);
   if (!粗) return [];
   const [们, 成员] = await Promise.all([prisma.project.findMany({ where: { AND: [粗, ...(圈 ? [圈] : [])] }, select: 算超时要的 }), 超时成员线(规则)]);
   return 们.filter((p) => 即将逾期(项目回收日(规则, p, 成员), 今)).map((p) => p.id);
