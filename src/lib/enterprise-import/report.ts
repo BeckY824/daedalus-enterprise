@@ -162,8 +162,18 @@ export function 渠道索引(渠道们: readonly { id: string; name: string; pla
   const m = new Map<string, string>();
   for (const [k, id] of 段) if (id) m.set(k, id);
   for (const [k, id] of 全称) m.set(k, id);
+  // 渠道别名（同 AI 建档卡「微信→视频号」的做法）：别名自己对不上启用中的渠道时，按本名再认一次。
+  // 只认启用中的本名渠道；本名也不在就照旧对不上（进备注、提醒），不新建
+  for (const [别名, 本名] of 来源渠道别名) {
+    const 别 = 名键(别名);
+    const 本 = m.get(名键(本名));
+    if (!m.has(别) && 本) m.set(别, 本);
+  }
   return m;
 }
+
+/** 来源写的渠道别名 → 本名。P-渠道-04（11-10）：「义乌门店」并进「义乌展厅」，门店那条已停用不删 */
+export const 来源渠道别名: readonly (readonly [string, string])[] = [["义乌门店", "义乌展厅"]];
 
 /* ───────────────────────── 试跑 ───────────────────────── */
 
