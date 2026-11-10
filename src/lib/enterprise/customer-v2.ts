@@ -13,6 +13,7 @@
  */
 import { 验号码, type 号码类型 } from "./contact-format";
 import { 号键 } from "../phone";
+import { 是占位号, 占位号提示 } from "../placeholder-phone";
 
 // ---------- 客户级别 ----------
 
@@ -192,18 +193,20 @@ export function 认号码种类(项: { id: string; name: string }): 号码种类
  * 验一个号（联系人表单交上来的一行）。按种类：有 验 的走 验号码；其余去首尾空格、压空白，长度不超；
  * 座机 / WhatsApp / 传真要有至少 5 位数字、只许数字和 + - ( ) 空格 #（分机）；Telegram 见 验Telegram。键 = 查重 / 去重比的规整值
  */
-export function 验一行号码(种: 号码种类, 原: unknown): { ok: true; 值: string; 键: string } | { ok: false; error: string } {
+export function 验一行号码(种: 号码种类, 原: unknown, 选项: { 放过占位?: boolean } = {}): { ok: true; 值: string; 键: string } | { ok: false; error: string } {
   const s = typeof 原 === "string" ? 原.trim().replace(/\s+/g, " ") : "";
   if (!s) return { ok: false, error: `${种.名}没填` };
   if (s.length > 号码上限) return { ok: false, error: `${种.名}最多 ${号码上限} 个字` };
   if (种.验) {
-    const r = 验号码(种.验, s);
+    const r = 验号码(种.验, s, 选项);
     return r.ok ? { ok: true, 值: r.值, 键: r.键 } : { ok: false, error: `${种.名}「${s}」：${r.提示}` };
   }
   if (种.kind === "telegram") return 验Telegram(种.名, s);
   if (数字类.has(种.kind)) {
     const 数字 = s.replace(/\D/g, "");
     if (!/^[\d+\-()（）\s#]+$/.test(s.replace(/[０-９]/g, "0")) || 数字.length < 5 || 数字.length > 20) return { ok: false, error: `${种.名}「${s}」格式不对：只填数字（可以带 + - 和括号）` };
+    // 座机 / WhatsApp / 传真填占位假号（P-全局-06）：拦下、叫人填真实号码
+    if (!选项.放过占位 && 是占位号(s)) return { ok: false, error: `${种.名}「${s}」：${占位号提示(种.名)}` };
     return { ok: true, 值: s, 键: 数字 };
   }
   return { ok: true, 值: s, 键: 自定号码键(s) };

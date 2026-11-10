@@ -44,6 +44,7 @@ export const CUSTOMER_FIELD_LABELS: Record<string, string> = {
   customerType: "客户类型",
   customerAttr: "客户属性",
   bizLine: "业务线",
+  touchpoint: "渠道触点",
 };
 
 type 叫法 = { customer: string; fields: { school: string; grade: string; major: string } };

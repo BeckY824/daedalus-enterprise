@@ -1258,7 +1258,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
     看全部(() => tx.customer.findUnique({
       where: { id: p.customerId },
-      select: { phone: true, assignWay: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
+      select: { phone: true, assignWay: true, touchpoint: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
     })),
     看全部(() => tx.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, phone: true, email: true, wechat: true } })),
     tx.followUpProject.findMany({ where: { projectId: p.id, followUp: { deletedAt: null } }, select: { node: true, followUp: { select: { initiator: true, content: true, method: true } } } }),
@@ -1276,7 +1276,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
       budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, purchaseCycle: p.purchaseCycle, productFit: p.productFit,
       valueFit: p.valueFit, decisionReach: p.decisionReach, competitor: p.competitor, deployFit: p.deployFit, siteStatus: p.siteStatus,
     },
-    客户: { phone: c?.phone ?? null, extra: c?.extra ?? null, assignWay: c?.assignWay ?? null },
+    客户: { phone: c?.phone ?? null, extra: c?.extra ?? null, assignWay: c?.assignWay ?? null, touchpoint: c?.touchpoint ?? null },
     有客户: !!c,
     联系人们,
     沟通节点们: [...new Set(沟通.map((x) => x.node))],

@@ -21,6 +21,7 @@ import { 问同事 } from "@/lib/sync/dedupe-client";
 import { requireUser } from "@/lib/auth";
 import { 可选客户 } from "@/lib/options";
 import { resolveAttribution, wouldCreateCycle } from "@/lib/attribution";
+import { 认渠道触点, 渠道触点们 } from "@/lib/enterprise/touchpoint";
 import {
   conflictingFields,
   diffKeys,
@@ -70,6 +71,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 交接通知, 分给你通知, 改负责人通知 } from "@/lib/enterprise/notice-sources";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
+import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 
 
 /** 状态不在取值表里就给那句报错，合法给 null。建客户、批量改、撤销、行内改四处共用，报错文案一字不改 */
@@ -131,6 +133,11 @@ export type CustomerInput = {
    * 字符串 = 手工钉死为这个人。用于登记错误的单个订正，不影响任何其他学员。
    */
   channelOwnerId?: string | null;
+  /**
+   * 企业版渠道触点（P-渠道-08，迁移 116，lib/enterprise/touchpoint.ts）：公司资源 / 客户介绍，这两类主渠道留空、由触点承载。
+   * 主渠道和触点至少填一个；触点 = 客户介绍时 referrerCustomerId 是介绍人客户（P-渠道-09）。不给 = 不碰；开关关着一律不看
+   */
+  touchpoint?: string | null;
   /** 外贸档案（2026-10-05，外贸模版的表单才交）：国家、WhatsApp、微信、邮箱、来源。不给 = 不碰 */
   extra?: Partial<Record<keyof 外贸档案, string | null>>;
   /**
@@ -161,7 +168,7 @@ export type CustomerSnapshot = Pick<
   | "name" | "phone" | "school" | "grade" | "major"
   | "followStatus" | "decisionStatus" | "custStatus" | "expectedSignAt" | "remark"
   | "salesOwnerId" | "channelId" | "referrerCustomerId"
-> & { channelOwnerId?: string | null } & Partial<企业客户资料>;
+> & { channelOwnerId?: string | null; touchpoint?: string | null } & Partial<企业客户资料>;
 
 /**
  * 撞号时给界面的那位。业务员撞到同事名下、自己看不到的（团队版两档权限）：**只给负责人 + 客户名**，
@@ -486,6 +493,18 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     return { ok: false, error: "请选择渠道" };
   }
   /*
+    渠道触点（P-渠道-08）：只认公司资源 / 客户介绍；不交 = 照原样。原来有渠道或触点的，编辑后两样都空拦下（主渠道和触点至少填一个）。
+    新建的「至少一个」由表单和建档向导管，别的入口（AI 建档、找客）照旧放行
+  */
+  const 交的触点 = 企业版() && input.touchpoint !== undefined ? 认渠道触点(input.touchpoint) : undefined;
+  if (企业版() && input.touchpoint !== undefined && 交的触点 === undefined) {
+    return { ok: false, error: `渠道触点只能是 ${渠道触点们.join(" / ")}` };
+  }
+  const 存后触点 = 交的触点 !== undefined ? 交的触点 : (改前?.touchpoint ?? null);
+  if (企业版() && 改前 && (改前.channelId || 改前.touchpoint) && !input.channelId && !存后触点) {
+    return { ok: false, error: "请选择渠道或渠道触点" };
+  }
+  /*
     客户来源 = 第一次的渠道（定稿 P5 第 22 条：「客户来源只记第一个渠道，之后不变」）：原来有渠道的，换成别的渠道不收。
     后来又从别的渠道来的，记在项目的来源上（P6），客户这一格不跟着变
   */
@@ -500,6 +519,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     共享试用区里 WhatsApp 和电话一样是打了码给人看的：交回来还带着 * 就是没动它，不碰这一格（同电话的 认回打码号）
   */
   const 交的档案原 = input.extra && typeof input.extra.whatsapp === "string" && input.extra.whatsapp.includes("*") ? { ...input.extra, whatsapp: undefined } : input.extra;
+  // WhatsApp 填占位假号（P-全局-06）：拦下、叫人填真实号码；库里原样没动的老号照存
+  const 交的瓦 = typeof 交的档案原?.whatsapp === "string" ? 交的档案原.whatsapp.trim() : "";
+  if (交的瓦 && 是占位号(交的瓦)) {
+    const 原瓦 = 改前 ? (await prisma.customerExtra.findUnique({ where: { customerId: 改前.id }, select: { whatsapp: true } }))?.whatsapp : null;
+    if (交的瓦 !== String(原瓦 ?? "").trim()) return { ok: false, error: 占位号提示("WhatsApp") };
+  }
   /*
     企业版客户级别只剩 S / A / B / C（定稿 P5 第 23 条）：还是存 CustomerExtra.level，但不走外贸那套 A–D 的校验，
     先在这里按企业版的四档认好，再并回档案
@@ -541,6 +566,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
         attributionCustomerId: 改前!.attributionCustomerId,
         channelOwnerId: 改前!.channelOwnerId,
       };
+  /*
+    有触点、没交渠道的（公司资源 / 客户介绍，P-渠道-08）：主渠道留空，不从介绍人那边继承渠道；介绍人、渠道负责人照推荐链算
+  */
+  if (企业版() && 存后触点 && !input.channelId && 推荐链变了) attribution.channelId = null;
   // 显式指定压过推荐链：登记错误的单个订正走这里。null 表示清掉手工值、按推荐链重算
   if (input.channelOwnerId !== undefined) {
     if (input.channelOwnerId) {
@@ -580,6 +609,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     salesOwnerId,
     referrerCustomerId: input.referrerCustomerId,
     ...attribution,
+    // 开关关着、没交这一格不进 data：不写、也不参与比对和留痕
+    ...(交的触点 !== undefined ? { touchpoint: 交的触点 } : {}),
   };
 
   // 企业版字段权限（规则没开不读库）：编辑时动了「只能看」的字段就拒；新建不拦，电话是必填的

@@ -27,6 +27,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 新数据渠道不行 } from "@/lib/enterprise/channel-main";
+import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/enterprise/touchpoint";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知 } from "@/lib/enterprise/notice-sources";
@@ -93,16 +94,21 @@ export async function 建档向导(输入: 建档向导输入) {
     const 带方式 = 认 ? { ...input, 跟进: 认 } : input;
     const 好 = 规整向导(me, 要下一步 || 企业版() || !带方式.跟进 ? 带方式 : { ...带方式, 跟进: { ...带方式.跟进, 下一步时间: null } }, new Date(), 要下一步, 企业版());
     if ("error" in 好) return { ok: false as const, error: 好.error };
-    // 企业版新建线索要选渠道（10-26：直接选渠道，不是来源类型）
+    // 企业版新建线索要选渠道或渠道触点（10-26：直接选渠道，不是来源类型；P-渠道-08 起触点也算）
     if (企业版()) {
       if (是占位值(String(input.客户.name ?? ""))) return { ok: false as const, error: 占位名提示("客户名称") };
-      if (!input.客户.channelId) return { ok: false as const, error: "请选渠道" };
+      // 渠道和渠道触点至少一个（P-渠道-08）：公司资源 / 客户介绍来的主渠道留空、选触点
+      const 触点 = 认渠道触点(input.客户.touchpoint);
+      if (触点 === undefined) return { ok: false as const, error: `渠道触点只能是 ${渠道触点们.join(" / ")}` };
+      const 来源还差 = 新建来源还差(input.客户.channelId, 触点);
+      if (来源还差) return { ok: false as const, error: 来源还差 };
       // 历史渠道（P-渠道-06）只承载历史客户：新建线索不收，和停用的一样挡
-      const 渠道不行 = await 新数据渠道不行(String(input.客户.channelId));
+      const 渠道不行 = input.客户.channelId ? await 新数据渠道不行(String(input.客户.channelId)) : null;
       if (渠道不行) return { ok: false as const, error: 渠道不行 === "停用" ? "这个渠道不存在或已停用，换一个" : 渠道不行 };
-      // 项目来源（迁移 077）：没另选 = 跟客户来源；另选了也得是还启用着、不是历史渠道的
-      const 来源 = 项目来源默认(input.项目?.channelId, String(input.客户.channelId));
-      if (来源 !== String(input.客户.channelId)) {
+      // 项目来源（迁移 077）：没另选 = 跟客户来源；另选了也得是还启用着、不是历史渠道的。只选了触点、项目也没选渠道的 = 空着
+      const 客户渠道 = input.客户.channelId ? String(input.客户.channelId) : null;
+      const 来源 = 项目来源默认(input.项目?.channelId, 客户渠道);
+      if (来源 && 来源 !== 客户渠道) {
         const 项目渠道不行 = await 新数据渠道不行(来源!);
         if (项目渠道不行) return { ok: false as const, error: 项目渠道不行 === "停用" ? "项目来源这个渠道不存在或已停用，换一个" : 项目渠道不行 };
       }

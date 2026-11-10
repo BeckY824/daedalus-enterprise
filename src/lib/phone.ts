@@ -9,6 +9,7 @@
  * 纯函数，浏览器和服务端都能用。
  */
 import { maskPhone } from "./utils";
+import { 是占位号, 占位号提示 } from "./placeholder-phone";
 
 /**
  * 手机号规整：只留数字，去掉国家码和分隔符。
@@ -154,11 +155,15 @@ export function 像手机号(s: string): boolean {
  *
  * 空着的电话**不参与查重**（调用方照这个返回的空串跳过）：两个都没留电话的人不是同一个人。
  */
-export function 查电话(v: string | null | undefined, opts: { 必填: boolean }): { ok: true; phone: string } | { ok: false; error: string } {
+/**
+ * 占位假号（全同数字、一串 0、顺序数字）拦下、叫人填真实号码（P-全局-06）；放过占位 只给查老数据的地方用（放回公海前查联系方式）
+ */
+export function 查电话(v: string | null | undefined, opts: { 必填: boolean; 放过占位?: boolean }): { ok: true; phone: string } | { ok: false; error: string } {
   const 原 = (v ?? "").trim();
   if (!原) return opts.必填 ? { ok: false, error: "请输入联系电话" } : { ok: true, phone: "" };
   // 带 * 的是打了码给人看的样子（共享试用区），不是号码。规整会把 * 去掉、剩下的 7 位数字照样「像号码」，所以在规整之前拦
   if (原.includes("*")) return { ok: false, error: "电话里不能有 *" };
+  if (!opts.放过占位 && 是占位号(原)) return { ok: false, error: 占位号提示("电话") };
   const phone = 规整手机号(原);
   if (!像手机号(phone)) return { ok: false, error: "电话看不出是个号码（6–20 位数字，可以带 +）" };
   return { ok: true, phone };

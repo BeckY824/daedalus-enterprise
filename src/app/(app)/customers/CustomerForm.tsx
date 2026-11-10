@@ -29,6 +29,7 @@ import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限
 import { 三种业务线 } from "@/lib/enterprise/assign-line";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
+import { 渠道触点们, 客户介绍触点 } from "@/lib/enterprise/touchpoint";
 
 export type CustomerRow = {
   id: string;
@@ -58,6 +59,8 @@ export type CustomerRow = {
   bizLine?: string | null;
   /** 归档档位（企业版，迁移 114，M-导入-23）：A1 / A2 / B / C / D / E，只由归档导入写，详情页只读；空 = 不是归档导入来的 */
   archiveTier?: string | null;
+  /** 渠道触点（企业版，迁移 116，P-渠道-08）：公司资源 / 客户介绍，这两类主渠道留空；列表行没带 = undefined，不交、不清 */
+  touchpoint?: string | null;
   expectedSignAt: string | null;
   lastFollowAt: string | null;
   remark: string | null;
@@ -196,8 +199,11 @@ function CustomerFormInner({
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
   // 先看推荐人再看渠道：转介绍的人 channelId 也有值（排查 A1，见 lib/referrer-kind.ts）
   const [referrerType, setReferrerType] = useState<"channel" | "customer" | "none">(推荐方式(editing));
+  /** 企业版渠道触点（P-渠道-08）：选了客户介绍才出「介绍人客户」（P-渠道-09），那时才取客户名单 */
+  const 触点 = Form.useWatch("touchpoint", form) as string | null | undefined;
+  const 选了客户介绍 = 企业 && 触点 === 客户介绍触点;
   const 推荐人 = useReferrerCandidates(
-    !外贸 && !企业,
+    (!外贸 && !企业) || 选了客户介绍,
     editing?.referrerCustomerId ? { id: editing.referrerCustomerId, name: editing.referrerName ?? editing.referrerCustomerId } : null,
   );
   /**
@@ -212,8 +218,11 @@ function CustomerFormInner({
    */
   /** 新建必填；编辑时只有原来就有号码的才必填（和 saveCustomer 同一条，见 lib/phone.ts） */
   const 电话必填 = !editing || Boolean(editing.phone);
-  /** 企业版渠道同理：新建必填；编辑时只有原来挂着渠道的才必填（和 saveCustomer 同一条）——老线索转来没渠道的，改备注不该被拦 */
-  const 渠道必填 = !editing || Boolean(editing.channelId);
+  /**
+   * 企业版主渠道和触点至少填一个（P-渠道-08）：新建、原来挂着渠道或触点的都要；选了触点，渠道就可以空着（公司资源 / 客户介绍主渠道留空）。
+   * 编辑时两样原来都没有的（老线索转来）不拦，改备注不该被拦。和 saveCustomer 同一条
+   */
+  const 企业来源必填 = (!editing || Boolean(editing.channelId) || Boolean(editing.touchpoint)) && !触点;
   /**
    * 外贸：电话 / WhatsApp / 邮箱 / 微信至少填一个（2026-10-19 客户反馈「联系电话没星号却是必填；只知道微信号怎么办」）；
    * 2026-10-21 加阿里国际站 ID，成了五选一（客户反馈：国际站来的询盘很多只有买家 ID）。
@@ -303,6 +312,7 @@ function CustomerFormInner({
               channelOwnerId: editing.channelOwnerId,
               // 自动算的客户状态不交、也不进比对基准：项目一动它就变，别算成「别人改了」
               ...(企业 ? { ...(手选状态 ? { custStatus: editing.custStatus ?? null } : {}), ...企业资料基准(editing) } : {}),
+              ...(企业 && editing.touchpoint !== undefined ? { touchpoint: editing.touchpoint ?? null } : {}),
             }
           : null,
         name: v.name,
@@ -327,8 +337,11 @@ function CustomerFormInner({
           换了渠道就是直接挂这个渠道，推荐人清空
         */
         channelId: 企业 ? (v.channelId ?? null) : 外贸 ? (editing?.channelId ?? null) : referrerType === "channel" ? (v.channelId ?? null) : null,
+        /*
+          企业版触点 = 客户介绍（P-渠道-09）：交表单上选的介绍人客户；别的照旧——没换渠道就把原来的推荐链原样交回
+        */
         referrerCustomerId: 企业
-          ? (editing && v.channelId === editing.channelId ? editing.referrerCustomerId : null)
+          ? (v.touchpoint === 客户介绍触点 ? (v.referrerCustomerId ?? null) : editing && v.channelId === editing.channelId ? editing.referrerCustomerId : null)
           : 外贸 ? (editing?.referrerCustomerId ?? null) : referrerType === "customer" ? (v.referrerCustomerId ?? null) : null,
         /*
           外贸档案只交改过的那几格（2026-10-05 复查）：开着框的这会儿同事在记录页改了国家，我只改名字就保存，
@@ -357,6 +370,8 @@ function CustomerFormInner({
               },
             }
           : {}),
+        // 渠道触点（P-渠道-08）：新建、或打开时带着这一格的才交（列表行没带时不交，免得把库里的清掉）
+        ...(企业 && (!editing || editing.touchpoint !== undefined || v.touchpoint) ? { touchpoint: v.touchpoint ?? null } : {}),
         /*
           新建不传（按推荐链算）。编辑时**只有人动过这一格才传**：选了就钉死，清空就 null（恢复按推荐链）。
           原来每次都传——这一格的初值就是现在的渠道负责人，于是换了推荐渠道，负责人还被当成「手工指定」钉在旧的人身上（排查 A4）
@@ -780,11 +795,45 @@ function CustomerFormInner({
           <Form.Item
             label="客户来源"
             name="channelId"
-            rules={[{ required: 渠道必填, message: "请选择渠道" }]}
+            dependencies={["touchpoint"]}
+            rules={[{ required: 企业来源必填, message: "请选择渠道或渠道触点" }]}
             extra={来源锁着 ? "客户来源记的是第一次带来的渠道，建好之后不改；后来又从别的渠道来的，记在项目上" : undefined}
           >
             {/* A2-8：一个渠道都没有，不摆空下拉（ChannelPicker 自己写「请系统管理员先添加渠道」）；先选主渠道再选子渠道，也能打字搜全称 */}
             <ChannelPicker aria-label="客户来源" channels={企业渠道们} disabled={来源锁着} placeholder="先选主渠道，再选子渠道" />
+          </Form.Item>
+        )}
+        {/* 渠道触点（P-渠道-08）：公司资源 / 客户介绍来的客户主渠道留空、选这里；渠道和触点至少填一个 */}
+        {企业 && (
+          <Form.Item label="渠道触点" name="touchpoint" extra="公司分配的资源、客户介绍来的客户不选主渠道，在这里标">
+            <Select
+              aria-label="渠道触点"
+              allowClear
+              placeholder="公司资源 / 客户介绍"
+              options={渠道触点们.map((x) => ({ value: x, label: x }))}
+              onChange={() => void form.validateFields(["channelId"]).catch(() => undefined)}
+            />
+          </Form.Item>
+        )}
+        {/* 介绍人客户（P-渠道-09）：只在触点 = 客户介绍时出现，挂一个已有客户 */}
+        {选了客户介绍 && (
+          <Form.Item label={`介绍人${b.customer}`} name="referrerCustomerId">
+            <Select
+              aria-label={`介绍人${b.customer}`}
+              showSearch
+              allowClear
+              placeholder={`选择介绍他来的已有${b.customer}`}
+              optionFilterProp="label"
+              options={推荐人选项}
+              loading={推荐人.加载中}
+              notFoundContent={推荐人状态 ?? undefined}
+              popupRender={(menu) => (
+                <>
+                  {menu}
+                  {推荐人选项.length > 0 && 推荐人状态}
+                </>
+              )}
+            />
           </Form.Item>
         )}
 

@@ -43,7 +43,8 @@ function 查联系人(表: 种类表, c: 联系人行): [number, string | null] 
   const 号们 = 联系人号码们(c, c.contactMethods);
   for (const 号 of 号们) {
     const 种 = 表.find((x) => x.kind === 号.kind) ?? { 名: 种类叫法(表, 号.kind), kind: 号.kind };
-    const r = 验一行号码(种, 号.value);
+    // 查的是库里已有的号，占位号这条（P-全局-06）管的是新填，这里照旧放过
+    const r = 验一行号码(种, 号.value, { 放过占位: true });
     if (!r.ok) return [号们.length, `联系人「${c.name || "未注明"}」的${r.error}${退回补号尾}`];
   }
   return [号们.length, null];
@@ -55,7 +56,7 @@ function 判(phone: string, 联系人们: readonly 联系人行[], 表: 种类�
   const 电 = phone.trim();
   if (电) {
     个数++;
-    const r = 查电话(电, { 必填: true });
+    const r = 查电话(电, { 必填: true, 放过占位: true });
     if (!r.ok) return `客户电话「${电}」不对：${r.error}${退回补号尾}`;
   }
   for (const c of 联系人们) {
