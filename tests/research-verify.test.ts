@@ -22,8 +22,9 @@ import type { 核验项 } from "@/lib/research/verify/types";
 import { 初始状态, 归约 } from "@/lib/research/state";
 import { 报告文本 } from "@/lib/research/report";
 import type { 研究事件 } from "@/lib/research/types";
+import { 北京日期 } from "./helpers/beijing-date";
 
-const 前 = (天: number) => new Date(Date.now() - 天 * 86400_000).toISOString().slice(0, 10);
+const 前 = (天: number) => 北京日期(-天);
 const 年龄 = (天: number) => async () => ({ 有: true as const, 日期: 前(天), 依据: "RDAP" as const, 下限: false, 链接: "https://rdap.example/x" });
 const 有MX = async () => true;
 
