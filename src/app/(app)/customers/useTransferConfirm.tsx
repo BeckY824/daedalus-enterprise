@@ -20,18 +20,19 @@ export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: st
    * 企业版批量转给别人：问一句转让原因（字典「转让原因」，10-27，可不选）。
    * 返回选的原因 / null = 不选或不用问；false = 点了取消。转给自己、没有选项（别的版本）不弹
    */
-  async function 问转让原因(给谁: string, 新负责人: string): Promise<string | null | false> {
+  /** 申请 = 负责人本人转自己的（申请移交，X4）：标题、按钮说「申请移交」 */
+  async function 问转让原因(给谁: string, 新负责人: string, 申请 = false): Promise<string | null | false> {
     if (!转让原因?.选项.length || 新负责人 === 转让原因.自己) return null;
     let 选: string | null = null;
     // 选了「其他」没写具体内容时「转让」点不了
     const 框 = modal.confirm({
-      title: `转给「${给谁}」`,
+      title: 申请 ? `申请移交给「${给谁}」` : `转给「${给谁}」`,
       icon: null,
       content: (
-        <DictSelect placeholder="转让原因（可不选）" style={{ width: "100%" }} aria-label="转让原因" options={转让原因.选项}
-          onChange={(v) => { 选 = v; 框.update({ okButtonProps: { disabled: !!其他没写好(v) } }); }} />
+        <>{申请 && <div style={{ marginBottom: 8 }}>对方确认后才转到他名下；确认前仍在你名下，对方不确认不生效。</div>}<DictSelect placeholder="转让原因（可不选）" style={{ width: "100%" }} aria-label="转让原因" options={转让原因.选项}
+          onChange={(v) => { 选 = v; 框.update({ okButtonProps: { disabled: !!其他没写好(v) } }); }} /></>
       ),
-      okText: "转让",
+      okText: 申请 ? "发出申请" : "转让",
       cancelText: "取消",
     });
     const 转 = await 框;

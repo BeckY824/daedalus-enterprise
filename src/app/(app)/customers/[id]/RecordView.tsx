@@ -160,6 +160,7 @@ export default function RecordView({
   已收藏 = false,
   能放公海 = false,
   能转让客户 = true,
+  转让要申请 = false,
   原负责人领不回 = false,
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
@@ -561,7 +562,7 @@ export default function RecordView({
    */
   async function 转让给(o: { value: string; label: string }) {
     if (!(await 先问转走的项目([customer.id], o.value))) return;
-    const 原因 = await 问转让原因(o.label, o.value);
+    const 原因 = await 问转让原因(o.label, o.value, 转让要申请);
     if (原因 === false) return;
     const res = await assignSalesOwner([customer.id], o.value, 原因);
     router.refresh();
@@ -569,8 +570,8 @@ export default function RecordView({
     // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的
     if (res.交接中 !== undefined) {
       return void (res.交接中
-        ? message.success(`已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
-        : message.info(res.交接已在路上 ? "这位已在另一笔交接里，没再发起" : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}`));
+        ? message.success(res.申请移交 ? `已申请移交：等 ${o.label} 确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
+        : message.info(res.交接已在路上 ? `这位${b.customer}已在移交中（等对方确认），没再发起` : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}`));
     }
     if (!res.updated) return void message.info(res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}`);
     const key = `transfer-${customer.id}`;
@@ -885,7 +886,7 @@ export default function RecordView({
               {(能建项目 || 能转让 || 能退回公海) && (
                 <span className="acts-whole">
                   {能建项目 && <Button onClick={开建项目}>新开项目</Button>}
-                  {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>转让项目</Button>}
+                  {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>{转让要申请 ? "申请移交" : "转让项目"}</Button>}
                   {能退回公海 && <Button onClick={() => void 公海动作("放进")}>退回公海</Button>}
                 </span>
               )}
@@ -1536,14 +1537,15 @@ export default function RecordView({
         }}
       />
       {头部框 && (
-        <Modal open title={`${客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
+        <Modal open title={`${头部框 === "转让" && 转让要申请 ? "申请移交" : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
           {头部框 === "转让" && (
             <div className="proj-modal-sec">
+              {转让要申请 && <div className="rec-transfer-hint">这是你名下的{b.customer}：发出后要对方确认才转到他名下；确认前仍在你名下，对方不确认不生效。</div>}
               <Select
                 autoFocus
                 showSearch
                 optionFilterProp="label"
-                placeholder="转给谁"
+                placeholder={转让要申请 ? "移交给谁" : "转给谁"}
                 options={转让候选}
                 value={转给谁}
                 onChange={(v: string) => set转给谁(v)}

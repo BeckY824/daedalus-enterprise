@@ -22,7 +22,7 @@ import { 满额提醒收件人 } from "@/lib/enterprise/lead-full-notice";
 import { 能拍板, 有市场管理 } from "@/lib/project/lead-verify";
 import {
   能看项目, 能编辑项目, 能转让项目, 能放回公海, 能分配线索, 能管公海, 能删除, 能恢复, 能进设置, 能改后台设置,
-  只读角色, 能看全部, 是总管理, 没设业务角色, 能真删, 能领公海, 能删一些, 能转让客户, 能转出自己的, 能改客户, 只看的人, 是管理层, type 权限项目,
+  只读角色, 能看全部, 是总管理, 没设业务角色, 能真删, 能领公海, 能删一些, 能转让客户, 能转出自己的, 转自己客户要申请, 能改客户, 只看的人, 是管理层, type 权限项目,
   能新建和领取, 不能新建项目话, 公海分不给话, 只读角色话, 不能当负责人话,
 } from "@/lib/enterprise/permissions";
 import { 能切换视图 } from "@/lib/enterprise/view-as";
@@ -95,6 +95,19 @@ describe("市场管理能当负责人（客户 11-05：「市场管理是可以�
     expect(能转出自己的(me, org)).toBe(true);
     expect([能转让项目(me, 市管的, org), 能编辑项目(me, 市管的, org), 能删除(me, org, "mkt")]).toEqual([true, false, false]);
     expect(能转出自己的(当("ops"), org)).toBe(false);
+  });
+});
+
+describe("纯总管理是负责人（P-转-01 ①：只排除只有项目组员角色的）", () => {
+  const o = 组织of([{ id: "line", role: "ADMIN", bizRole: "director", line: "外贸" }, { id: "dir", role: "ADMIN", bizRole: "director" }, { id: "ops", bizRole: "project_ops" }]);
+  it("条线总管理、系统管理员都能转出自己的；本人负责的项目直接转（项目层不走申请），客户层条线总管理走申请、系统管理员直接转", () => {
+    const 条总 = { id: "line", role: "ADMIN" };
+    expect(能转出自己的(条总, o)).toBe(true);
+    expect(能转让项目(条总, { ownerId: "line", pooledAt: null }, o)).toBe(true);
+    expect(能转让客户(条总, { salesOwnerId: "line", 在公海: false }, o)).toBe(true);
+    expect(转自己客户要申请(条总, o)).toBe(true);
+    expect(转自己客户要申请({ id: "dir", role: "ADMIN" }, o)).toBe(false);
+    expect(能转出自己的({ id: "ops", role: "SALES" }, o)).toBe(false);
   });
 });
 

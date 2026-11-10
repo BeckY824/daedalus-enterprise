@@ -24,6 +24,8 @@ import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
 import { 待确认, 了结, 读ids, 能撤回别人的交接, type 交接种类 } from "@/lib/enterprise/handover-db";
 import { getBusiness } from "@/lib/business";
 import { 交接通知 } from "@/lib/enterprise/notice-sources";
+import { 不能当负责人 } from "@/lib/owners";
+import { notify } from "@/lib/enterprise/notify";
 
 export type 交接行 = {
   id: string;
@@ -46,6 +48,9 @@ export type 交接行 = {
   createdAt: string;
   我能确认: boolean;
   我能撤回: boolean;
+  /** 申请移交的发起人本人：可以改接手人（X-46 ⑥）；接手人 id 给下拉排除当前那位 */
+  我能改接手人: boolean;
+  接手人id: string;
 };
 
 const 列几位 = 10;
@@ -92,6 +97,7 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
         个数: 读个数(h.counts), 客户: ids.slice(0, 列几位).map((id) => 名.get(id)).filter((x): x is string => !!x), 客户总数: ids.length,
         createdAt: h.createdAt.toISOString(),
         我能确认: h.toUserId === me.id, 我能撤回: h.byUserId === me.id || 管,
+        我能改接手人: h.kind === "转让" && h.byUserId === me.id && h.fromUserId === me.id, 接手人id: h.toUserId,
       };
     };
     return { 等我确认: 行.filter((h) => h.toUserId === me.id).map(成行), 我发起的: 行.filter((h) => h.toUserId !== me.id).map(成行) };
@@ -203,6 +209,43 @@ export async function 撤回交接(id: string): Promise<结果> {
 export async function 拒收交接(id: string): Promise<结果> {
   const me = await requireUser();
   return 了结一笔(me, id, "已拒收", (h) => h.toUserId === me.id, "只有接手人自己能拒收");
+}
+
+/**
+ * 申请移交改接手人（X-46 ⑥）：负责人本人发起的申请移交还没确认时，发起人可以换一位接手人，申请接着等新接手人确认。
+ * 只有发起人本人（= 原负责人）能改；管理发起的交接、离职交接不在这里改（要换就撤回重发）。
+ * 新接手人同发起时的闸：在职、有业务角色、不是只读管理员，不能是自己、不能是原接手人。
+ * 带着 status、toUserId 条件改，和接手人同时确认 / 拒收只成一个。原接手人那条「等你确认」标已读并告诉他不用管了，新接手人收「等你确认」
+ */
+export async function 改接手人(id: string, toUserId: string): Promise<结果> {
+  const me = await requireUser();
+  if (!企业版() || typeof id !== "string" || !id || typeof toUserId !== "string" || !toUserId) return { ok: false, error: 已处理 };
+  const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id } }));
+  if (!h || h.status !== 待确认) return { ok: false, error: 已处理 };
+  if (h.kind !== "转让" || h.byUserId !== me.id || h.fromUserId !== me.id) return { ok: false, error: "只有发起申请移交的负责人本人能改接手人" };
+  if (toUserId === h.toUserId) return { ok: false, error: "接手人没变" };
+  if (toUserId === me.id) return { ok: false, error: "不能改成自己；不想移交了就撤回申请" };
+  const 新 = await prisma.user.findUnique({ where: { id: toUserId }, select: { name: true, active: true } });
+  if (!新?.active) return { ok: false, error: "该成员不存在或已停用，请选择一位在职成员" };
+  const 不行 = await 不能当负责人(toUserId);
+  if (不行) return { ok: false, error: 不行 };
+  const r = await 看全部(() => prisma.entHandover.updateMany({ where: { id, status: 待确认, toUserId: h.toUserId, byUserId: me.id }, data: { toUserId } }));
+  if (r.count !== 1) return { ok: false, error: 已处理 };
+  const 原 = await prisma.user.findUnique({ where: { id: h.toUserId }, select: { name: true } });
+  const n = 读ids(h.customerIds).length;
+  await recordAudit({
+    user: me, action: "assign", entity: "Customer", entityId: null,
+    summary: `把移交申请（${n} 位客户）的接手人从「${原?.name ?? h.toUserId}」改成「${新.name}」，等对方确认`,
+    detail: { 交接: h.id, 改接手人: true, 原接手人: h.toUserId, toUserId, 客户: 读ids(h.customerIds) },
+  });
+  // 原接手人：「等你确认」标已读，再说一句不用管了（key 带时间：来回改也每次都说）
+  await prisma.entNotice.updateMany({ where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null }, data: { readAt: new Date() } });
+  await notify([h.toUserId], { kind: "交接", title: `${me.name} 把移交申请改给了别人，不用确认了`, link: "/customers", key: `handover:${h.id}:改走:${Date.now()}` });
+  // 新接手人：改回以前收过「等你确认」的那位，把那条重新标未读（唯一键挡着不会再记一条）
+  await prisma.entNotice.updateMany({ where: { userId: toUserId, dedupeKey: `handover:${h.id}:发起` }, data: { readAt: null } });
+  await 交接通知(me, h.id, "发起");
+  刷新();
+  return { ok: true, 客户: 0 };
 }
 
 async function 了结一笔(

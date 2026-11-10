@@ -281,7 +281,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   if (!交接 || (!交接.等我确认.length && !交接.我发起的.length)) return 视图;
   return (
     <>
-      <HandoverPending {...交接} />
+      <HandoverPending {...交接} 候选={users} 我={me.id} />
       {视图}
     </>
   );

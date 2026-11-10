@@ -46,6 +46,15 @@ const 以 = <T,>(u: 人, fn: () => Promise<T>): Promise<T> => {
   return 以谁的身份(u.id, fn);
 };
 
+/** 早先转走一次：负责人本人转自己的要申请移交（X4），这里只要转成的结果，由总管理直接转 */
+const 总管转 = async (c: string, to: string) => {
+  const 总管 = await 造人(`dir${++序号}`, "总管理");
+  await prisma.entMember.update({ where: { userId: 总管.id }, data: { bizRole: "director", line: null } });
+  忘掉企业版范围();
+  const r = await 以(总管, () => assignSalesOwner([c], to));
+  expect(r).toMatchObject({ ok: true, updated: 1 });
+};
+
 let 序号 = 0;
 const 客户 = async (ownerId: string) => {
   序号 += 1;
@@ -84,7 +93,7 @@ afterEach(() => {
 describe("P-公海-04 原负责人只认最近一次进公海时那位", () => {
   it("曾经负责、早就转走的人不算原负责人，领得到；最近放的人领不回", async () => {
     const c = await 客户(甲.id);
-    await 以(甲, () => assignSalesOwner([c], 乙.id));
+    await 总管转(c, 乙.id);
     await 以(乙, () => 放进公海([c], "客户主动终止"));
     const 原 = await 公海客户原负责人是(prisma, [甲.id, 乙.id], [c]);
     expect([...原.entries()]).toEqual([[c, 乙.id]]);
@@ -215,7 +224,7 @@ describe("领客户按真正的原负责人找活", () => {
     const 新 = await 提醒(收回提醒尾);
     const 旧 = await 提醒(旧收回提醒尾);
     const 活 = await prisma.task.create({ data: { title: "打电话", customerId: c, ownerId: 甲.id, dueAt: new Date() } });
-    await 以(甲, () => assignSalesOwner([c], 丙.id));
+    await 总管转(c, 丙.id);
     const 主 = async (id: string) => (await prisma.task.findUniqueOrThrow({ where: { id } })).ownerId;
     expect(await 主(新.id)).toBe(甲.id);
     expect(await 主(旧.id)).toBe(甲.id);
@@ -228,7 +237,7 @@ describe("X-03 离职交接只列不在公海的客户", () => {
     const 他放的 = await 客户(甲.id);
     await 以(甲, () => 放进公海([他放的], "客户主动终止"));
     const 早转走 = await 客户(甲.id);
-    await 以(甲, () => assignSalesOwner([早转走], 乙.id));
+    await 总管转(早转走, 乙.id);
     await 以(乙, () => 放进公海([早转走], "客户主动终止"));
     const 他的 = await 客户(甲.id);
     const 分 = await 停用分拣(prisma, 甲.id, "转交", true);
