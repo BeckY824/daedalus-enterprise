@@ -3,6 +3,8 @@
  * 弹框里预览的「新到期日、应收」和确认后服务端写进去的一定一样。
  * 到期日都按北京时间说（客户都在国内）：「到期 11-15」= 11-15 当天还能用。
  */
+import { beijingDay } from "./business-clock";
+
 /** 运营台能选的时长。label 也是桌面端价格表上的名字 */
 export const 时长们 = [
   { months: 1, label: "1 个月" },
@@ -32,7 +34,7 @@ export const 应收 = (perSeat: number, seats: number) => Math.round(perSeat * 1
 
 const 北京偏移 = 8 * 3600_000;
 /** 北京时间的日期 YYYY-MM-DD（客户都在国内，到期日按北京时间说） */
-export const 北京日期 = (d: Date) => new Date(d.getTime() + 北京偏移).toISOString().slice(0, 10);
+export const 北京日期 = beijingDay;
 /** 北京时间那一天的最后一刻：到期日写「11-15」就是 11-15 当天还能用 */
 export function 当天结束(d: Date): Date {
   const 北 = new Date(d.getTime() + 北京偏移);

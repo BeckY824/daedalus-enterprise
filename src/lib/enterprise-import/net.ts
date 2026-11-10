@@ -3,6 +3,7 @@
  */
 import { 视图外部拦 } from "@/lib/enterprise/view-as";
 import { 退避, 请求超时毫秒, 连不上重试 } from "./net-limits";
+import { beijingWallClock } from "@/lib/business-clock";
 
 export { 退避, 连不上重试, 单个请求最长毫秒 } from "./net-limits";
 
@@ -60,7 +61,7 @@ export async function 请求(网: 联网, 谁: string, url: string, init: Reques
 
 /** 毫秒时间戳 → 北京时间「2026-10-24 09:30」；整点零分的只给日期 */
 export function 北京时间串(ms: number): string {
-  const d = new Date(ms + 8 * 3600_000);
+  const d = beijingWallClock(ms);
   const p = (n: number) => String(n).padStart(2, "0");
   const 日 = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
   const 时 = d.getUTCHours();
