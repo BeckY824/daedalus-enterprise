@@ -120,6 +120,61 @@ describe("M-导入-29 旧导入抽屉查重（企业版）", () => {
     expect(撞).toEqual([{ 行号: 302, 原因: expect.stringContaining("acme trading") }]);
   });
 
+  it("电话那格也守 10 位门槛：不到 10 位的号整串相同也不算撞，照建", async () => {
+    const 我 = await 总管();
+    const 短 = await prisma.customer.create({ data: { name: "编的短号客户", phone: "88886666", salesOwnerId: 我.id } });
+    const 看 = await 预览导入(await 方案([["编的另一家", "8888-6666", "", "", "新备注"]], "补空"));
+    if (!看.ok) throw new Error(看.error);
+    expect(看.预览).toMatchObject({ 新建: 1, 跳过: 0, 已在库里: 0 });
+    const r = await 执行导入(await 方案([["编的另一家", "8888-6666", "", "", "新备注"]], "补空"), "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect(r).toMatchObject({ 新建: 1, 跳过: 0 });
+    expect(r.撞已有).toEqual([]);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 短.id } })).remark).toBeNull();
+    expect(await prisma.customer.count({ where: { name: "编的另一家" } })).toBe(1);
+  });
+
+  it("电话撞上有人在跟的客户：整条跳过，不给已有客户的项目记同号备注、不写导入记录", async () => {
+    const 我 = await 总管();
+    const { 甲 } = await 已有(我.id);
+    await prisma.project.create({ data: { name: "编的项目", customerId: 甲.id, ownerId: 我.id, creatorId: 我.id, phase: "线索", node: "潜客培育" } });
+    const r = await 执行导入(await 方案([["编的客户甲（新）", "13800138000", "", "", "补一句"]], "补空"), "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect(r).toMatchObject({ 新建: 0, 补空: 0, 跳过: 1 });
+    expect(r.撞已有?.[0]?.原因).toContain("13800138000");
+    expect(await prisma.followUp.count({ where: { customerId: 甲.id } })).toBe(0);
+    expect(await prisma.importRow.count({ where: { customerId: 甲.id } })).toBe(0);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 甲.id } })).remark).toBeNull();
+  });
+
+  it("同一份表里同号的行照 #207 并一条：后一行的名字记又名、座机 / WhatsApp 不丢；先撞已有客户的那行单独跳过；同名不同号照写两条", async () => {
+    const 我 = await 总管();
+    await 已有(我.id);
+    const r = await 执行导入(
+      await 方案([
+        ["编的同号客户", "13611112222", "", "", "第一行"],
+        ["编的同号客户分号", "136-1111-2222", "+44 7700 900123", "010-6555 7777", "第二行"],
+        ["Acme  TRADING", "13611112222", "+44 7700 900999", "", "第三行"],
+        ["编的同名客户", "13622223333", "", "", ""],
+        ["编的同名客户", "13622224444", "", "", ""],
+      ]),
+      "a.xlsx",
+    );
+    if (!r.ok) throw new Error(r.error);
+    expect(r).toMatchObject({ 新建: 3, 跳过: 1 });
+    expect(r.撞已有).toEqual([{ 行号: 4, 原因: expect.stringContaining("Acme  TRADING") }]);
+    const 并 = await prisma.customer.findFirstOrThrow({ where: { name: "编的同号客户" }, include: { extra: true } });
+    const 全 = `${并.remark ?? ""}\n${并.extra?.whatsapp ?? ""}`;
+    expect(并.remark).toContain("又名：编的同号客户分号");
+    expect(并.remark).toContain("第二行");
+    expect(全).toContain("7700 900123");
+    expect(全).toContain("010-6555 7777");
+    // 第三行撞了已有客户，整条不导，它的号和备注不并进来
+    expect(全).not.toContain("900999");
+    expect(并.remark).not.toContain("第三行");
+    expect(await prisma.customer.count({ where: { name: "编的同名客户" } })).toBe(2);
+  });
+
   it("不是企业版：照旧同号补空，不按名称 / WhatsApp 查重", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     const 我 = await 总管();

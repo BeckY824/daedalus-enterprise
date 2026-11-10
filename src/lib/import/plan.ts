@@ -60,7 +60,15 @@ export type 一行 = {
    * 非外贸的字段表里没有 WhatsApp 这一项，那一列落成没对上的列
    */
   另号?: string[];
+  /**
+   * 企业版（M-导入-29）：合并同号行之前就撞上已有客户（号或名）的说法。有值的这一行不和同号的行合并、整条跳过——
+   * 和 #207 归档导入的 清洗 一个次序：先一行一行查已有客户，撞了的那行跳过，剩下的同号行再并成一条
+   */
+  撞已有?: string;
 };
+
+/** 企业版合并同号行按 #207 的 带过去（lib/enterprise-import/clean.ts）：名字不同记「又名」、别的格子两行不同的记进备注 */
+export type 按归档并 = { 叫法: (k: 字段名) => string; 名键: (s: string) => string };
 
 /** 表头规整后是这几个的列算座机（公司总机）：不拿它认人，企业版拿它查重 */
 const 座机表头 = /^(座机|固话|总机|公司电话|办公电话)$/;
@@ -406,8 +414,12 @@ export function 添行(原: string | null | undefined, 新行: readonly string[]
  *
  * 合并方向是「先来的赢」：第一次出现的那行是主，后面几行只填它没填的格。
  * 反过来（后来的覆盖）意味着表格末尾一个残缺的补录行能抹掉前面完整的那条。
+ *
+ * 企业版（给了 归档，M-导入-29）照 #207 归档导入同文件同号并一条的取法：前一条空着的格子拿后一条的补上，
+ * 名字不同记「又名：…」、别的格子（WhatsApp 等）两行不同的记「字段：值」进备注，座机那类没对上的列本来就并进备注；
+ * 另号（查重用的座机 / WhatsApp 原值）两行的都留。已经撞上已有客户的行（撞已有）不参与合并。同名不同号不并，照写两条
  */
-export function 并重复行(rows: 一行[]): { 行: 一行[]; 合掉几行: number } {
+export function 并重复行(rows: 一行[], 归档?: 按归档并): { 行: 一行[]; 合掉几行: number } {
   const 按号: Map<string, 一行> = new Map();
   const 出: 一行[] = [];
   let 合掉几行 = 0;
@@ -432,7 +444,7 @@ export function 并重复行(rows: 一行[]): { 行: 一行[]; 合掉几行: num
     (r.值.wechat ? 有号的微信.get(邮箱键(r.值.wechat)) ?? `wx:${邮箱键(r.值.wechat)}` : "") ||
     (r.值.alibabaId ? 有号的阿里.get(邮箱键(r.值.alibabaId)) ?? `ali:${邮箱键(r.值.alibabaId)}` : "");
   for (const r of rows) {
-    if (r.进不了 || !键(r)) {
+    if (r.进不了 || r.撞已有 || !键(r)) {
       出.push(r);
       continue;
     }
@@ -442,21 +454,28 @@ export function 并重复行(rows: 一行[]): { 行: 一行[]; 合掉几行: num
       出.push(r);
       continue;
     }
+    /** 企业版按 #207 记进备注的那几段（又名、两行不同的格子），排在后一行自己的备注前面 */
+    const 段: string[] = [];
     for (const [k, v] of Object.entries(r.值)) {
       /*
         备注例外：它是越记越多的那一格，后一行的备注（连同并进来的「微信号：…」）添在后面，不是「前面有了就整段丢」。
         原来第一行有备注，第二行的整段备注、没对上的列一个字都不进，预览也不说（2026-10-04 J-051）。
         其余字段照旧先来的赢
       */
-      if (k === "remark") {
-        if (v) 已有.值.remark = 添行(已有.值.remark, v.split("\n"));
-        continue;
-      }
-      if (v && !已有.值[k as 字段名]) 已有.值[k as 字段名] = v;
+      if (k === "remark" || !v) continue;
+      const 前 = 已有.值[k as 字段名];
+      if (!前) 已有.值[k as 字段名] = v;
+      else if (!归档 || k === "phone") continue;
+      else if (k === "name") {
+        if (归档.名键(v) !== 归档.名键(前)) 段.push(`又名：${v}`);
+      } else if (前 !== v) 段.push(`${归档.叫法(k as 字段名)}：${v}`);
     }
+    const 后备注 = [...段, ...(r.值.remark ? r.值.remark.split("\n") : [])];
+    if (后备注.length) 已有.值.remark = 添行(已有.值.remark, 后备注);
     if (r.并进备注?.length) 已有.并进备注 = [...(已有.并进备注 ?? []), ...r.并进备注];
+    if (r.另号?.length) 已有.另号 = [...new Set([...(已有.另号 ?? []), ...r.另号])];
     已有.问题.push(...r.问题);
     合掉几行++;
   }
-  return { 行: 出.filter((r) => r.进不了 || !键(r) || 按号.get(键(r)) === r), 合掉几行 };
+  return { 行: 出.filter((r) => r.进不了 || r.撞已有 || !键(r) || 按号.get(键(r)) === r), 合掉几行 };
 }
