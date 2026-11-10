@@ -23,7 +23,8 @@ import { 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
-import { 待确认, 了结, 读ids, 能撤回别人的交接, type 交接种类 } from "@/lib/enterprise/handover-db";
+import { 待确认, 已作废, 了结, 读ids, 能撤回别人的交接, type 交接种类 } from "@/lib/enterprise/handover-db";
+import { 移交作废天数, 移交作废说法 } from "@/lib/enterprise/handover-expire";
 import { getBusiness } from "@/lib/business";
 import { 交接通知 } from "@/lib/enterprise/notice-sources";
 import { 不能当负责人 } from "@/lib/owners";
@@ -53,6 +54,8 @@ export type 交接行 = {
   /** 申请移交的发起人本人：可以改接手人（X-46 ⑥）；接手人 id 给下拉排除当前那位 */
   我能改接手人: boolean;
   接手人id: string;
+  /** 待确认；系统作废的申请移交 =「已作废（超 7 天未处理）」，只给发起人看、没有可点的（11-10） */
+  状态: string;
 };
 
 const 列几位 = 10;
@@ -67,7 +70,10 @@ function 读个数(s: string): Record<string, number> {
   }
 }
 
-/** 客户页顶上那条：等我确认的 + 我发起、还没确认的（管理员看全部还没确认的） */
+/**
+ * 客户页顶上那条：等我确认的 + 我发起、还没确认的（管理员看全部还没确认的）。
+ * 我发起的申请移交被系统作废了的（挂满 7 天没人处理）也列在「我发起的」里，状态「已作废（超 7 天未处理）」，作废后留 7 天
+ */
 export async function 待确认的交接(): Promise<{ 等我确认: 交接行[]; 我发起的: 交接行[] }> {
   const me = await requireUser();
   if (!企业版()) return { 等我确认: [], 我发起的: [] };
@@ -76,9 +82,10 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
   const org = await 权限组织();
   // 看全部：交接里的客户还不归接手人，限定着查他一个名字都拿不到
   return 看全部(async () => {
+    const 作废的 = { status: 已作废, byUserId: me.id, doneAt: { gte: new Date(Date.now() - 移交作废天数 * 24 * 3_600_000) } };
     const 行 = await prisma.entHandover.findMany({
       // 管理员看全部还没确认的；别人只看给自己的、自己发起的（OR 里放空对象 Prisma 不当「全部」，分开写）
-      where: 管 ? { status: 待确认 } : { status: 待确认, OR: [{ toUserId: me.id }, { byUserId: me.id }] },
+      where: { OR: [管 ? { status: 待确认 } : { status: 待确认, OR: [{ toUserId: me.id }, { byUserId: me.id }] }, 作废的] },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
@@ -96,6 +103,7 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
     }
     const 成行 = (h: (typeof 行)[number]): 交接行 => {
       const ids = 读ids(h.customerIds);
+      const 等 = h.status === 待确认;
       return {
         id: h.id, kind: h.kind as 交接种类, way: h.way, reason: h.reason,
         从: 人.get(h.fromUserId) ?? "（已删除的成员）", 给: 人.get(h.toUserId) ?? "（已删除的成员）", 发起人: 人.get(h.byUserId) ?? "（已删除的成员）",
@@ -109,11 +117,12 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
             : `确认后这些客户和名下的联系人、沟通记录、${项目句.get(h.id)}，连同原负责人没做完的待办和计划，都转到你名下。`,
         个数: 读个数(h.counts), 客户: ids.slice(0, 列几位).map((id) => 名.get(id)).filter((x): x is string => !!x), 客户总数: ids.length,
         createdAt: h.createdAt.toISOString(),
-        我能确认: h.toUserId === me.id, 我能撤回: h.byUserId === me.id || 管,
-        我能改接手人: h.kind === "转让" && h.byUserId === me.id && h.fromUserId === me.id, 接手人id: h.toUserId,
+        我能确认: 等 && h.toUserId === me.id, 我能撤回: 等 && (h.byUserId === me.id || 管),
+        我能改接手人: 等 && h.kind === "转让" && h.byUserId === me.id && h.fromUserId === me.id, 接手人id: h.toUserId,
+        状态: 等 ? 待确认 : 移交作废说法,
       };
     };
-    return { 等我确认: 行.filter((h) => h.toUserId === me.id).map(成行), 我发起的: 行.filter((h) => h.toUserId !== me.id).map(成行) };
+    return { 等我确认: 行.filter((h) => h.status === 待确认 && h.toUserId === me.id).map(成行), 我发起的: 行.filter((h) => h.status !== 待确认 || h.toUserId !== me.id).map(成行) };
   });
 }
 

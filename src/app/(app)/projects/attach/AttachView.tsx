@@ -64,7 +64,7 @@ export default function AttachView({ 待批, 我的 }: { 待批: 待审批挂靠
 
   return (
     <div>
-      <PageHead title="挂靠申请" subtitle="同事撞上你负责的客户、申请一起跟：你批准后客户负责人不变，对方只拿到这家客户的只读卡；24 小时没处理会转给负责人的直属上级" />
+      <PageHead title="挂靠申请" subtitle="同事撞上你负责的客户、申请一起跟：你批准后客户负责人不变，对方只拿到这家客户的只读卡；24 小时没处理会转给直属上级，没有上级转给总管理" />
       <Space orientation="vertical" size={16} style={{ width: "100%" }}>
         <Card title="等我审批" size="small">
           {待批.length ? <Table rowKey="id" size="small" columns={待批列} dataSource={待批} pagination={false} tableLayout="fixed" scroll={{ x: 880 }} /> : <Empty description="没有等你审批的挂靠申请" />}
