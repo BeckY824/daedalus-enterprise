@@ -185,3 +185,16 @@ export function 沿用主渠道属性<T extends { attr: string | null; mainId?: 
   const 主属性 = new Map(主渠道们.map((m) => [m.id, m.attr?.trim() || null]));
   return 行们.map((r) => (r.attr?.trim() ? r : { ...r, attr: (r.mainId ? 主属性.get(r.mainId) : null) ?? null }));
 }
+
+/**
+ * 只有主渠道（一个子渠道都没有）的主渠道在来源选择里怎么选（P-渠道-01「没有子渠道时只有一个子渠道名留空的入口」）：
+ * 清单里给它摆一行占位，id =「main:主渠道 id」、名字就是主渠道名（两级选择里落在第一列，不用再点第二级）。
+ * 存的时候服务端（channel-main.ts 的 落到渠道）才在它下面建那条子渠道名留空的渠道，客户 / 项目照老样子挂这条渠道。
+ * 没人选过的主渠道不建，渠道数不会凭空多出来
+ */
+export const 主渠道入口前缀 = "main:";
+
+/** 这个 id 是不是「只有主渠道」的占位（还没落成渠道） */
+export function 是主渠道入口(id: string | null | undefined): boolean {
+  return typeof id === "string" && id.startsWith(主渠道入口前缀);
+}
