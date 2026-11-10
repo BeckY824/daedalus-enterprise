@@ -260,6 +260,18 @@ export function 能改客户(me: 谁, c: { salesOwnerId: string | null; 在公�
   return c.salesOwnerId === me.id && 能按负责人编辑(org, me.id);
 }
 
+/**
+ * 客户放回公海（P-公海-02：能放回 = 能转让，白名单见 P-转-01）：负责人本人（只有项目组员角色的不算）、实线直属上级（只一级、同业务线）、
+ * 条线总管理（负责人在他这条线）、系统管理员；虚线上级、只读管理员不能。已在公海的没得放。
+ * 服务端（pool-actions 放进公海）和按钮（客户详情、客户列表批量，P-公海-05）都调这一处。
+ * 不在公海又没负责人的照 能转让客户 给能管公海的（X-41，11-09 用户：目前没有这种情况，不改）。不是企业版照旧：负责人本人或管理账号
+ */
+export function 能放回客户公海(me: 谁, c: { salesOwnerId: string | null; 在公海: boolean }, org: 组织 | null): boolean {
+  if (c.在公海) return false;
+  if (老()) return 老管(me) || (!!c.salesOwnerId && c.salesOwnerId === me.id);
+  return 能转让客户(me, c, org);
+}
+
 /** 放回公海：能转让的才能放回（负责人本人、直属一级上级、条线总管理、系统管理员） */
 export function 能放回公海(me: 谁, p: 权限项目, org: 组织 | null): boolean {
   return !p.pooledAt && 能转让项目(me, p, org);
