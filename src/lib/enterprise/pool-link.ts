@@ -14,7 +14,7 @@ import { 企业版 } from "./switch";
 import { 公海规则, 单项目客户进公海理由, 客户整体进公海理由 } from "./pool-rules";
 import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 带走一位, 带走公海项目 } from "@/lib/carry-over-db";
+import { 带走一位, 带走公海项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记转让, 能进公海的阶段, 超上限n, 算持有的项目 } from "@/lib/project/db";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 进公海后负责人, 进公海关待办 } from "@/lib/project/pool-owner";
@@ -172,7 +172,7 @@ export async function 客户整包出公海(
   操作人: string = 新,
   带待办?: boolean,
   kind: 换负责人种类 = "claim",
-): Promise<{ customerId: string; 旧: string; 公海项目: string[] } | null> {
+): Promise<整包出公海 | null> {
   if (!企业版()) return null;
   return 看全部(async () => {
     if (!(await tx.customerPool.findUnique({ where: { customerId }, select: { customerId: true } }))) return null;
@@ -182,11 +182,16 @@ export async function 客户整包出公海(
     if (c.salesOwnerId !== 新) await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 新 } });
     await tx.customerClaim.upsert({ where: { customerId }, update: { userId: 新, at: new Date() }, create: { customerId, userId: 新 } });
     await tx.customerPool.deleteMany({ where: { customerId } });
-    if (c.salesOwnerId !== 新) await 带走一位(tx, customerId, c.salesOwnerId, 新, kind === "claim" ? 新 : 操作人, kind);
+    const 带 = c.salesOwnerId !== 新 ? await 带走一位(tx, customerId, c.salesOwnerId, 新, kind === "claim" ? 新 : 操作人, kind) : null;
     const 公海项目 = 公海规则.领客户带走公海里的项目 ? await 带走公海项目(tx, [customerId], 新, 操作人, 带待办) : [];
-    return { customerId, 旧: c.salesOwnerId, 公海项目 };
+    // 撤销整包退回（P-公海-10）只还这次带过来的活，同客户公海分配的 带过来
+    const 带过来: 带走的 = { 计划: 带?.计划 ?? [], 待办: 带?.待办 ?? [], 商机: 带?.商机 ?? [], 项目: 带?.项目 ?? [] };
+    return { customerId, 旧: c.salesOwnerId, 公海项目, 带过来 };
   });
 }
+
+/** 客户整包出公海带走了什么：旧 = 出公海前的负责人（一般是无负责人占位账号），撤销整包退回时按它还 */
+export type 整包出公海 = { customerId: string; 旧: string; 公海项目: string[]; 带过来: 带走的 };
 
 /**
  * 客户公海里的客户刚被领走 / 分走（已经归 新）：名下放在项目公海里的项目一起归 新，每个记一行 pool-claim。

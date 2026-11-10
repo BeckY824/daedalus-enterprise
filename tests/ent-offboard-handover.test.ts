@@ -26,7 +26,9 @@ vi.mock("@/lib/business", async (原) => {
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { invalidateSettingsCache } from "@/lib/settings";
+import { invalidateSettingsCache, setSetting } from "@/lib/settings";
+import { 等通知推完 } from "@/lib/enterprise/notify";
+import { 飞书推送开关键, 清飞书推送令牌 } from "@/lib/enterprise/feishu-push";
 import { deactivateUser, reactivateUser, 停用清点 } from "@/app/(app)/settings/actions";
 import { 交接客户, 交接项目, 交接全部 } from "@/app/(app)/projects/handover/actions";
 import { 读离职交接, 离职交接入口 } from "@/lib/enterprise/offboard-handover";
@@ -298,6 +300,82 @@ describe("离职交接看板", () => {
     expect((await 交接全部(离职, 接手)).ok).toBe(true);
     expect(await 项目归谁(d.p单独.id)).toBe(离职);
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: d.lead.id } })).ownerId).toBe(接手);
+  });
+});
+
+/** P-转-05：离职交接看板上交完，接手人收到通知（站内待办 + 飞书），同 #197「转让通知接手人」那套发法；操作的上级自己不收 */
+describe("P-转-05 离职交接完通知接手人", () => {
+  const 交接通知们 = (userId: string) => prisma.entNotice.findMany({ where: { userId, kind: "交接" }, orderBy: { createdAt: "asc" } });
+  beforeEach(async () => {
+    当(系统, "ADMIN");
+  });
+
+  it("单条交客户：接手人收到一条，标题带离职的人和客户名，链客户详情；上级、离职的人不收", async () => {
+    const d = await 摆数据();
+    await deactivateUser(离职, "");
+    当(上级);
+    expect((await 交接客户(离职, d.c.id, 接手)).ok).toBe(true);
+    await 等通知推完();
+    const 收到 = await 交接通知们(接手);
+    expect(收到).toHaveLength(1);
+    expect(收到[0].title).toContain("leaver");
+    expect(收到[0].title).toContain(d.c.name);
+    expect(收到[0].link).toBe(`/customers/${d.c.id}`);
+    expect(`${收到[0].title}${收到[0].body}`).not.toContain(d.c.phone!);
+    expect(await prisma.entNotice.count({ where: { userId: { in: [上级, 离职] } } })).toBe(0);
+    // 再交一次没交成：不再发
+    expect((await 交接客户(离职, d.c.id, 别的销售)).ok).toBe(false);
+    expect(await prisma.entNotice.count({ where: { userId: 别的销售 } })).toBe(0);
+  });
+
+  it("单条交项目：链项目详情", async () => {
+    const d = await 摆数据();
+    await deactivateUser(离职, "");
+    当(上级);
+    expect((await 交接项目(离职, d.p单独.id, 接手)).ok).toBe(true);
+    await 等通知推完();
+    const 收到 = await 交接通知们(接手);
+    expect(收到).toHaveLength(1);
+    expect(收到[0].title).toContain(d.p单独.name);
+    expect(收到[0].link).toBe(`/projects/${d.p单独.id}`);
+  });
+
+  it("一键全部交给：接手人收到一条汇总（几位客户、几个项目），并推到飞书", async () => {
+    清飞书推送令牌();
+    vi.stubEnv("ENT_FEISHU_APP_ID", "cli_test");
+    vi.stubEnv("ENT_FEISHU_APP_SECRET", "secret");
+    vi.stubEnv("ENT_PUBLIC_URL", "https://crm.example.test/");
+    await setSetting(飞书推送开关键, true);
+    await prisma.user.update({ where: { id: 接手 }, data: { feishuOpenId: "ou_taker" } });
+    const 发出: { url: string; body: string }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      发出.push({ url, body: String(init?.body ?? "") });
+      return new Response(JSON.stringify({ code: 0, tenant_access_token: "t", expire: 7200 }), { status: 200 });
+    });
+    try {
+      const d = await 摆数据();
+      await deactivateUser(离职, "");
+      当(上级);
+      expect((await 交接全部(离职, 接手)).ok).toBe(true);
+      await 等通知推完();
+      const 收到 = await 交接通知们(接手);
+      expect(收到).toHaveLength(1);
+      expect(收到[0].title).toContain("1 位客户");
+      expect(收到[0].title).toContain("2 个项目");
+      expect(收到[0].body).toContain(d.c.name);
+      expect(收到[0].feishuStatus).toBe("已推");
+      const 消息 = 发出.filter((f) => f.url.includes("/im/v1/messages"));
+      expect(消息).toHaveLength(1);
+      expect((JSON.parse(消息[0].body) as { receive_id: string }).receive_id).toBe("ou_taker");
+      expect(await prisma.entNotice.count({ where: { userId: 上级 } })).toBe(0);
+      // 交完再点一次：没东西交，不发第二条
+      expect((await 交接全部(离职, 接手)).ok).toBe(true);
+      await 等通知推完();
+      expect(await 交接通知们(接手)).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+      清飞书推送令牌();
+    }
   });
 });
 

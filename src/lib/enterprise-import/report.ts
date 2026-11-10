@@ -17,7 +17,7 @@ import { 号键 } from "@/lib/phone";
 import { 不掉公海的状态, 公海截止 } from "@/lib/pool";
 import { AI补清洗, 去掉AI清洗, 格式说明键, 同一家说明键, type 清洗器 } from "./ai-clean";
 import { 预演, type 预演计数 } from "./apply";
-import { 清洗, 数一数, 名键, 联系人查重格, 归档号键, type 本地索引, type 清洗结果, type 已有联系人 } from "./clean";
+import { 清洗, 数一数, 名键, 联系人查重格, 归档号索引, type 本地索引, type 清洗结果, type 已有联系人 } from "./clean";
 import { 联系人号查重键 } from "@/lib/enterprise/customer-v2";
 import { 成记录, 拆联系人, 拆出的客户ID列, type 读出的表 } from "./excel";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
@@ -133,20 +133,12 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
   索引.联系人号 = 联系人号;
   // 导入查重的号（M-导入-24 / 29）：客户电话、客户 WhatsApp、联系人手机、子表的手机 / 座机 / WhatsApp，都按 联系人号查重键 规整；
   // 只算看得见的客户（删了进回收站的不算撞）
-  const 归档号 = new Map<string, string[]>();
-  const 看得见 = new Set(客户们.map((c) => c.id));
-  const 记归档号 = (v: string | null | undefined, customerId: string) => {
-    const 键 = 归档号键(v);
-    if (!键 || !看得见.has(customerId)) return;
-    const 们 = 归档号.get(键);
-    if (!们) 归档号.set(键, [customerId]);
-    else if (!们.includes(customerId)) 们.push(customerId);
-  };
-  for (const c of 客户们) 记归档号(c.phone, c.id);
-  for (const x of 客户WA) 记归档号(x.whatsapp, x.customerId);
-  for (const c of 联系人们) 记归档号(c.phone, c.customerId);
-  for (const x of 归档子表号) 记归档号(x.value, x.customerId);
-  索引.归档号 = 归档号;
+  索引.归档号 = 归档号索引(new Set(客户们.map((c) => c.id)), [
+    ...客户们.map((c) => ({ v: c.phone, customerId: c.id })),
+    ...客户WA.map((x) => ({ v: x.whatsapp, customerId: x.customerId })),
+    ...联系人们.map((c) => ({ v: c.phone, customerId: c.customerId })),
+    ...归档子表号.map((x) => ({ v: x.value, customerId: x.customerId })),
+  ]);
   for (const r of 对照们) {
     索引.引用.set(`${r.entity}|${r.externalId}`, r.targetId);
     索引.指纹!.set(`${r.entity}|${r.externalId}`, r.fingerprint);
