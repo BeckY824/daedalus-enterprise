@@ -68,7 +68,7 @@ export default function OverviewView({ token, 数 }: { token: string; 数: 总�
         </卡片>
         <卡片 标题="设备" 说明="还在用的设备，按系统">
           <系统分段 分={数.设备} />
-          <div style={{ marginTop: 20, fontSize: 12.5, color: "var(--x-muted)", marginBottom: 4 }}>版本</div>
+          <div style={{ marginTop: 20, fontSize: 13, color: "var(--x-muted)", marginBottom: 4 }}>版本</div>
           {数.版本分布.length ? (
             <>
               <Chart option={横条图(数.版本分布.map((v) => ({ 名: v.版本 === "未知" ? "未知" : `v${v.版本}`, 数: v.台数 })), "台")} height={Math.max(90, 数.版本分布.length * 30 + 10)} />
@@ -119,7 +119,7 @@ export default function OverviewView({ token, 数 }: { token: string; 数: 总�
           )}
         </卡片>
 
-        <卡片 标题="最近注册" 右={<Link href={站内(token, "/users")} style={{ fontSize: 12.5 }}><LinkPending />全部用户 →</Link>}>
+        <卡片 标题="最近注册" 右={<Link href={站内(token, "/users")} style={{ fontSize: 13 }}><LinkPending />全部用户 →</Link>}>
           {最近注册.length ? (
             <div className="opx-list">
               {最近注册.map((a) => (
@@ -142,7 +142,7 @@ export default function OverviewView({ token, 数 }: { token: string; 数: 总�
           )}
         </卡片>
 
-        <卡片 标题="最新反馈" 右={<Link href={站内(token, "/feedback")} style={{ fontSize: 12.5 }}><LinkPending />全部反馈 →</Link>}>
+        <卡片 标题="最新反馈" 右={<Link href={站内(token, "/feedback")} style={{ fontSize: 13 }}><LinkPending />全部反馈 →</Link>}>
           {数.反馈.最新.length ? (
             <div className="opx-list">
               {数.反馈.最新.map((f) => (
@@ -150,7 +150,7 @@ export default function OverviewView({ token, 数 }: { token: string; 数: 总�
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <b style={{ fontSize: 13 }}>{f.who || "（不知道是谁）"}</b>
                     <span
-                      style={{ display: "block", fontSize: 12.5, color: "var(--x-ink-2)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      style={{ display: "block", fontSize: 13, color: "var(--x-ink-2)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     >
                       {f.body}
                     </span>

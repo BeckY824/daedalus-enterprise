@@ -89,7 +89,7 @@ export default function WorkspacesView({ token, rows }: { token: string; rows: �
         说明={`共 ${rows.length} 个`}
         右={
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8, paddingRight: 20 }}>
-            <span className="opx-muted" style={{ fontSize: 12.5 }}>
+            <span className="opx-muted" style={{ fontSize: 13 }}>
               开通用的套餐
             </span>
             <Select
@@ -182,7 +182,7 @@ export default function WorkspacesView({ token, rows }: { token: string; rows: �
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        fontSize: 12.5,
+                        fontSize: 13,
                         color: r.note.includes("[待核对]") ? "var(--x-warn)" : "var(--x-muted)",
                       }}
                     >

@@ -719,7 +719,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
                 而且右边那个小箭头说的就是「点我」——两者得是一回事 */}
             <Dropdown placement="topLeft" trigger={["click"]} menu={userMenu}>
               <button type="button" className="rail-user" aria-label={`${user.name}，账号菜单`}>
-                <Avatar size={24} style={{ background: avatarColor(user.name), color: AVATAR_TEXT, fontSize: 11, fontWeight: 600, flex: "none" }}>
+                <Avatar size={24} style={{ background: avatarColor(user.name), color: AVATAR_TEXT, fontSize: 12, fontWeight: 600, flex: "none" }}>
                   {initial(user.name)}
                 </Avatar>
                 {/* 名字长了就省略号收尾，不再把整行吃掉；右边那个小箭头是「这儿能点开」的唯一信号——

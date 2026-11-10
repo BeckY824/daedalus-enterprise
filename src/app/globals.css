@@ -229,7 +229,7 @@ html.glass.web-glass {
 .auth-side { display: flex; flex-direction: column; gap: var(--s4); padding: calc(var(--drag-h) + var(--s5)) var(--s6) var(--s6); background: var(--page-bg); border-right: 1px solid var(--line-soft); }
 .auth-mark { margin-top: auto; display: flex; align-items: center; gap: var(--s4); }
 /* 名字打字机（login/TypeBrand.tsx）：没打到的字占位不显示，方块光标贴在刚打出的字后面 */
-.auth-brand { display: inline-flex; align-items: baseline; font-family: var(--font-num); font-size: 26px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; }
+.auth-brand { display: inline-flex; align-items: baseline; font-family: var(--font-num); font-size: var(--fs-num); font-weight: 700; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; }
 .auth-brand > span { position: relative; }
 .auth-brand > span[data-ai] { color: var(--brand); }
 .auth-brand-todo { visibility: hidden; }
@@ -262,7 +262,7 @@ html.glass.web-glass {
 }
 .member-feishu > .ant-typography {
   flex: 1 1 260px;
-  font-size: 13px;
+  font-size: var(--fs-note);
 }
 
 .auth-or { display: flex; align-items: center; gap: var(--s3); margin: var(--s1) 0 0; font-size: var(--fs-note); color: var(--text-muted); }
@@ -454,7 +454,7 @@ html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, trans
 .rail-fav-i { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: var(--r-card); color: var(--ink-soft); font-size: var(--fs-body); transition: background var(--t-fast) var(--ease); }
 .rail-fav-i:hover { background: var(--hover); color: var(--ink); }
 .rail-fav-i.on { background: var(--nav-on-bg); color: var(--nav-on-fg); }
-.rail-fav-av { width: 20px; height: 20px; flex: none; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 600; }
+.rail-fav-av { width: 20px; height: 20px; flex: none; border-radius: 6px; display: grid; place-items: center; font-size: var(--fs-min); font-weight: 600; }
 .rail-fav-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 毛玻璃下：当前项是一块白玻璃（原型第 4 版），字压深一档；悬停也是薄薄一层白 */
 html.glass .rail-item { color: var(--ink-soft); }
@@ -536,7 +536,7 @@ html.glass .rail-upd.hot { background: color-mix(in srgb, var(--brand-bg) 85%, t
    等于没开这个口子。改成品牌色的线 + 一层浅蓝底：看得见、认得出是能点的，
    但比更新键的 .hot 轻一档（那个是「有事发生了」，这个是「随时可以说」） */
 .rail-fb { flex: none; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 999px; background: var(--brand-bg); color: var(--brand); font-size: 14px; cursor: pointer;
+  border: 0; border-radius: 999px; background: var(--brand-bg); color: var(--brand); font-size: var(--fs-body); cursor: pointer;
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .rail-fb:hover { background: color-mix(in srgb, var(--brand) 16%, var(--brand-bg)); color: var(--brand-deep); }
 html.glass .rail-fb { background: color-mix(in srgb, var(--brand-bg) 85%, transparent); }
@@ -579,7 +579,7 @@ html.glass .fbt { background: color-mix(in srgb, var(--panel) 88%, transparent);
 .fbt-go { flex: none; padding: 4px 10px; border: 0; border-radius: var(--r-ctl); background: var(--brand-bg); color: var(--brand); font: inherit; font-size: var(--fs-note); font-weight: 500; cursor: pointer; }
 .fbt-go:hover { background: color-mix(in srgb, var(--brand) 16%, var(--brand-bg)); }
 .fbt-x { flex: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r-ctl);
-  background: none; color: var(--text-faint); font-size: 11px; cursor: pointer; }
+  background: none; color: var(--text-faint); font-size: var(--fs-min); cursor: pointer; }
 .fbt-x:hover { background: var(--hover); color: var(--ink); }
 .fbt-go:focus-visible, .fbt-x:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 @media (max-width: 767px) { .fbt { left: 12px; width: calc(100vw - 24px); } }
@@ -612,7 +612,7 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
   cursor: pointer; text-align: left;
   transition: gap var(--t) var(--ease), padding var(--t) var(--ease), filter var(--t-fast) var(--ease), scale var(--t-fast) var(--ease);
 }
-.rail-up-ico { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+.rail-up-ico { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-note); }
 .rail-up-lab { display: grid; grid-template-columns: 0fr; transition: grid-template-columns var(--t) var(--ease); }
 .rail-up-lab > span { overflow: hidden; white-space: nowrap; }
 .rail-up:hover, .rail-up:focus-visible { filter: brightness(1.08); }
@@ -1101,7 +1101,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; row-gap: 8px; }
 /* 记录页页头左边那一块：名字 + 一行「年级 · 专业 · 负责人」。至少留八个字宽，再长的名字折行显示完整（10-30，原来省略） */
 .rec-head-id { min-width: 8em; flex: 0 1 auto; }
-.rec-head-av { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center; font-size: 18px; font-weight: 600; }
+.rec-head-av { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center; font-size: var(--fs-section); font-weight: 600; }
 .rec-head-line { display: flex; align-items: center; gap: 4px; }
 .rec-star.ant-btn { color: var(--text-faint); }
 .rec-star.on.ant-btn, .rec-star.on.ant-btn:hover { color: var(--warning); }
@@ -1117,8 +1117,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .ant-form-item-has-error .cf-any-hint { display: none; }
 /* 对方当地时间（2026-10-16 外贸基础）：夜里压暗、带一个「夜里」小标；客户等级是一枚小字母章 */
 .local-time-night { opacity: 0.7; }
-.local-time-tag { margin-left: 4px; padding: 0 4px; border-radius: 4px; font-size: 11px; line-height: 16px; background: var(--warning-bg); color: var(--warning-text); }
-.cust-level { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 6px; font-size: 12px; font-weight: 600; line-height: 1; border: 1px solid var(--line); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.local-time-tag { margin-left: 4px; padding: 0 4px; border-radius: 4px; font-size: var(--fs-min); line-height: 16px; background: var(--warning-bg); color: var(--warning-text); }
+.cust-level { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 6px; font-size: var(--fs-min); font-weight: 600; line-height: 1; border: 1px solid var(--line); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .cust-level-A { border-color: var(--danger-line); color: var(--danger-text); background: var(--danger-bg); }
 /* 完成计划时弹的小框（2026-10-16）：三行，左边一个短标签 */
 .done-plan-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
@@ -1127,7 +1127,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .done-plan-row .ant-select { flex: 0 0 auto; }
 .done-plan-tip { margin-left: 60px; color: var(--text-muted); font-size: var(--fs-note); }
 .country-cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
-.country-cell-t { font-size: 12px; font-variant-numeric: tabular-nums; }
+.country-cell-t { font-size: var(--fs-min); font-variant-numeric: tabular-nums; }
 .cust-level-B { border-color: var(--warning-line); color: var(--warning-text); background: var(--warning-bg); }
 /* 企业版级别只显示字母（F-客户-01，复用 .cust-level 方块）：S 最重，A 红、B 黄、C 灰同外贸等级 */
 .cust-level-S { border-color: var(--danger); color: var(--on-ink); background: var(--danger); }
@@ -1304,7 +1304,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-modal-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
 .proj-modal-row:last-child { border-bottom: none; }
 .proj-modal-clip { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.proj-where-value { display: flex; align-items: center; min-width: 0; font-size: 18px; font-weight: 600; line-height: 28px; }
+.proj-where-value { display: flex; align-items: center; min-width: 0; font-size: var(--fs-title); font-weight: 600; line-height: max(28px, 1.25em); }
 .proj-where-node { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 10-31 改版 R5：企业版节点卡里的阶段页签。颜色走 --stage-c（三阶段和数据页同一套），
@@ -1382,7 +1382,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-node.is-cur::before { inset: 2px; background: var(--brand-bg); }
 .proj-stage-node.is-cur .proj-stage-mark { background: var(--warning); animation: proj-stage-ring 2.4s ease-in-out infinite; }
 .proj-stage-node.is-cur .ant-tag { flex: none; }
-.proj-stage-cur { flex: none; font-size: var(--fs-min, 11px); font-weight: 400; color: var(--brand); }
+.proj-stage-cur { flex: none; font-size: var(--fs-min); font-weight: 400; color: var(--brand); }
 @keyframes proj-stage-ring {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 45%, transparent); }
   50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 0%, transparent); }
@@ -1422,7 +1422,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-rel-name { display: flex; align-items: flex-start; gap: 6px; min-width: 0; flex: 1; }
 .proj-rel-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .proj-rel-field { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0; }
-.proj-rel-key { color: var(--text-muted); white-space: nowrap; font-size: 13px; }
+.proj-rel-key { color: var(--text-muted); white-space: nowrap; font-size: var(--fs-note); }
 .proj-rel-val { min-width: 0; }
 .proj-rel-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-rel-add { display: grid; gap: 8px; min-width: 0; padding-top: 4px; }
@@ -1775,7 +1775,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rblk-stat { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s2); min-width: 0; }
 .rblk-stat-grow { flex: 1 1 240px; }
 .rblk-stat-k { color: var(--text-muted); font-size: var(--fs-note); }
-.rblk-stat-v { font-size: 18px; margin-right: var(--s2); }
+.rblk-stat-v { font-size: var(--fs-title); margin-right: var(--s2); }
 .rblk-impact { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-note); white-space: nowrap; }
 .rblk-impact-k { color: var(--text-muted); }
 .rblk-impact-bar { display: inline-block; width: 48px; height: 6px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
@@ -1793,7 +1793,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .blk-reason-row { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border, rgba(0,0,0,.06)); min-width: 0; }
 .blk-reason-name { display: inline-flex; gap: 6px; align-items: center; flex: 1 1 180px; min-width: 0; }
 .blk-reason-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.blk-reason-used { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.blk-reason-used { color: var(--text-muted); font-size: var(--fs-min); white-space: nowrap; }
 .blk-reason-ops { margin-left: auto; }
 .blk-reason-merge { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .rtalk-tip { display: block; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1908,7 +1908,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .rkpi-i:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 .rkpi-k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
-.rkpi-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 20px; font-weight: 600; line-height: 28px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rkpi-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-title); font-weight: 600; line-height: max(28px, 1.25em); color: var(--ink); font-variant-numeric: tabular-nums; }
 .rkpi-v-hot { color: var(--danger-text); }
 @media (max-width: 1180px) { .rkpi { grid-template-columns: repeat(3, minmax(0, 1fr)); } .rkpi-i:nth-child(3n + 1) { border-left: 0; } .rkpi-i:nth-child(n + 4) { border-top: 1px solid var(--line-soft); } }
 @media (max-width: 560px) { .rkpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rkpi-i { border-left: 1px solid var(--line-soft); border-top: 0; } .rkpi-i:nth-child(odd) { border-left: 0; } .rkpi-i:nth-child(n + 3) { border-top: 1px solid var(--line-soft); } }
@@ -2031,7 +2031,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
    照 Claude 桌面端首页的比例——一个大字、一个输入框、一排可点的，别的都不抢眼（2026-09-17） */
 .cli-empty .cli-col { justify-content: center; margin: 0 auto; max-width: 760px; }
 .cli-empty .cli-welcome { text-align: center; }
-.cli-empty .cli-welcome-t { font-size: 30px; letter-spacing: -0.6px; }
+.cli-empty .cli-welcome-t { font-size: var(--fs-num); letter-spacing: -0.6px; }
 .cli-empty .signals { justify-content: center; border-bottom: 0; padding-bottom: 0; }
 .cli-empty .cli-welcome-hints { border-top: 0; padding-top: 0; }
 .cli-mono, .cli-prompt, .cli-step, .cli-sum, .cli-cmd-k, .cli-hints kbd, .cli-menu-row kbd { font-family: var(--font-mono); }
@@ -2476,7 +2476,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .chan-dash-k-empty .chan-dash-kv { color: var(--text-muted); }
 .chan-dash-kk, .chan-dash-ks { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--text-muted); }
 .chan-dash-kk { font-size: var(--fs-note); }
-.chan-dash-kv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 20px; font-weight: 600; line-height: 28px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.chan-dash-kv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-title); font-weight: 600; line-height: max(28px, 1.25em); color: var(--ink); font-variant-numeric: tabular-nums; }
 .chan-dash-row2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
 .chan-dash-row2-two { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
 .chan-dash-row3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
@@ -2501,7 +2501,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .chan-dash-warn-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
 .chan-dash-tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
 .chan-dash-tier { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: var(--s2) var(--s3); border-radius: var(--r-ctl); background: var(--brand-bg); text-align: center; }
-.chan-dash-tier b { font-size: 18px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.chan-dash-tier b { font-size: var(--fs-title); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .chan-dash-tier span { font-size: var(--fs-note); color: var(--ink); }
 .chan-dash-tier small { font-size: var(--fs-min); color: var(--text-muted); overflow-wrap: anywhere; }
 .chan-dash-top { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-min); color: var(--ink); }
@@ -3459,7 +3459,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .org-field-perm th, .org-field-perm td { padding: 4px 6px; text-align: left; white-space: nowrap; }
 .org-field-perm thead th { font-weight: 600; }
 .org-field-perm tbody th { font-weight: 500; }
-.org-field-perm tbody th .muted { font-size: 12px; font-weight: 400; }
+.org-field-perm tbody th .muted { font-size: var(--fs-min); font-weight: 400; }
 /* 表头和行头可以折行（10-27）：设置弹窗 1280 宽时字段权限表 820 比 712 宽，要左右拖；格子里的下拉框不折 */
 .org-field-perm thead th, .org-field-perm tbody th { white-space: normal; }
 .seg-wrap { max-width: 100%; }

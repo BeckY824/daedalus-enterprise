@@ -44,7 +44,7 @@ export default function ProfileTab({ me }: {
   return (
     <div className="set-body">
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-        <Avatar size={44} style={{ background: avatarColor(预览 || me.name), color: AVATAR_TEXT, fontSize: 18, fontWeight: 600, flex: "none" }}>
+        <Avatar size={44} style={{ background: avatarColor(预览 || me.name), color: AVATAR_TEXT, fontSize: 15, fontWeight: 600, flex: "none" }}>
           {initial(预览 || me.name)}
         </Avatar>
         <div style={{ minWidth: 0 }}>
