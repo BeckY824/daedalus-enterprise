@@ -42,6 +42,7 @@ import { 同号标题, 同号只记备注 } from "../enterprise/same-number-coll
 import { 公海无负责人 } from "../project/pool-owner";
 import { 线索建项目 } from "../project/from-lead";
 import { 是项目线 } from "../enterprise/assign-line";
+import { 公海客户要先领取, 公海客户先领取说 } from "../enterprise/pool-customer-guard";
 import { 负责人口径 } from "../owners";
 import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-status-auto-db";
 import { 企业版字典, 本套名 } from "../project/stage-dict";
@@ -628,6 +629,8 @@ export const 线索带出 = (外部ID: string) => `线索:${外部ID}`;
  * 建出来的客户、联系人、项目各记一行导入记录（externalId 加前缀），整批撤回时倒着一起退掉。
  * Lead 行不标已转化、不连客户：标了撤回会被「已经转成客户了」拦住。
  * 线索没负责人（11-02）：新建的客户挂占位账号进客户公海，项目进项目公海；连上的同号客户不动，只有项目进公海。创建人记导入的人。
+ * 同号客户在客户公海里、线索有负责人（P-公海-08，同单条转项目）：这一条不导（Lead 行一起退掉），记成没写进去、写原因，先领取再导；
+ * 没负责人的照挂：项目也进项目公海，不会建出「项目有人、客户在公海」。
  */
 async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v: 值表): Promise<void> {
   if (v.status === "已转化" || v.status === "已放弃") return;
@@ -637,6 +640,8 @@ async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v
       data: { batchId: 现.批次Id, entity: e, externalId: 线索带出(w.外部ID), targetId: id, kind: "create", written: J(await 读现值(tx, e, id)) },
     });
   let customerId = await 再认同号(tx, 现, String(v.phone ?? ""));
+  const 公海 = customerId && 负责人 ? await 公海客户要先领取(tx, customerId) : null;
+  if (公海) throw new 写不进(`同号${公海客户先领取说(公海.客户名, "导这条线索")}`);
   if (customerId) await 记同号备注(tx, 现, w, customerId, v, 线索带出(w.外部ID));
   let 联系人Id: string | null = null;
   if (!customerId) {

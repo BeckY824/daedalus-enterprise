@@ -5,6 +5,7 @@
  *   客户：连着的用它、唯一同号的挂它、都没有新建（有联系人名字顺手建主要联系人）
  *   线索没负责人跟最早的管理员；Lead 行不动
  *   跑第二次不动（记号）；不是企业版、或没开项目模式一行不建
+ *   客户在客户公海里（连着的、唯一同号的）：这条不转，逐条记原因，别的照转（P-公海-08，同单条转项目）
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,7 +50,7 @@ describe("老线索转项目", () => {
     await 线索({ name: "丙公司", status: "已转化", ownerId: 张伟 });
     await 线索({ name: "丁公司", status: "已放弃", ownerId: 张伟 });
 
-    expect(await 老线索转项目()).toEqual({ 项目: 2, 新客户: 2, 新联系人: 1 });
+    expect(await 老线索转项目()).toEqual({ 项目: 2, 新客户: 2, 新联系人: 1, 跳过: [] });
 
     const 项目们 = await prisma.project.findMany({ include: { customer: true, contact: true }, orderBy: { name: "asc" } });
     expect(项目们.map((p) => p.sourceLeadId).sort()).toEqual([a.id, b.id].sort());
@@ -79,12 +80,33 @@ describe("老线索转项目", () => {
     const y = await 线索({ name: "同号的", phone: "138 0000 0002", contact: "不建", ownerId: 张伟 });
     const z = await 线索({ name: "重号的", phone: "13800000003", ownerId: 张伟 });
 
-    expect(await 老线索转项目()).toEqual({ 项目: 3, 新客户: 1, 新联系人: 0 });
+    expect(await 老线索转项目()).toEqual({ 项目: 3, 新客户: 1, 新联系人: 0, 跳过: [] });
     const 按 = async (id: string) => prisma.project.findFirstOrThrow({ where: { sourceLeadId: id } });
     expect((await 按(x.id)).customerId).toBe(连着.id);
     expect(await 按(y.id)).toMatchObject({ customerId: 同号.id, contactId: 主联.id });
     const zc = await prisma.customer.findUniqueOrThrow({ where: { id: (await 按(z.id)).customerId } });
     expect(zc.name).toBe("重号的");
+  });
+
+  it("客户在客户公海里：连着的、唯一同号的都不转，逐条说原因；别的照转", async () => {
+    const 公海连着 = await prisma.customer.create({ data: { name: "公海老客户", phone: "13900000009", salesOwnerId: 张伟 } });
+    const 公海同号 = await prisma.customer.create({ data: { name: "公海同号客户", phone: "13800000008", salesOwnerId: 张伟 } });
+    await prisma.customerPool.createMany({ data: [{ customerId: 公海连着.id, userId: 张伟 }, { customerId: 公海同号.id, userId: 张伟 }] });
+    const x = await 线索({ name: "连着公海的", customerId: 公海连着.id, ownerId: 张伟 });
+    const y = await 线索({ name: "同号公海的", phone: "13800000008", ownerId: 张伟 });
+    const z = await 线索({ name: "正常的", ownerId: 张伟 });
+
+    const 计 = await 老线索转项目();
+    expect(计).toMatchObject({ 项目: 1, 新客户: 1, 新联系人: 0 });
+    expect(计!.跳过).toEqual([
+      { leadId: x.id, 线索: "连着公海的", 原因: "客户「公海老客户」在公海里，先领取再建项目" },
+      { leadId: y.id, 线索: "同号公海的", 原因: "客户「公海同号客户」在公海里，先领取再建项目" },
+    ]);
+    expect((await prisma.project.findMany()).map((p) => p.sourceLeadId)).toEqual([z.id]);
+    expect(await prisma.project.count({ where: { customerId: { in: [公海连着.id, 公海同号.id] } } })).toBe(0);
+    // 公海客户不动：还在公海、没多出客户
+    expect(await prisma.customerPool.count()).toBe(2);
+    expect(await prisma.customer.count()).toBe(3);
   });
 
   it("没负责人跟最早的管理员；已有来源项目的跳过；第二次不动", async () => {
@@ -95,7 +117,7 @@ describe("老线索转项目", () => {
       data: { name: "转过", customerId: c.id, ownerId: 张伟, creatorId: 张伟, amount: 0, phase: 第一个节点.phase, node: 第一个节点.node, sourceLeadId: 转过.id },
     });
 
-    expect(await 转项目一次()).toEqual({ 项目: 1, 新客户: 1, 新联系人: 0 });
+    expect(await 转项目一次()).toEqual({ 项目: 1, 新客户: 1, 新联系人: 0, 跳过: [] });
     expect((await prisma.project.findFirstOrThrow({ where: { sourceLeadId: 无主.id } })).ownerId).toBe(管理员);
 
     await 线索({ name: "后来的", ownerId: 张伟 });
