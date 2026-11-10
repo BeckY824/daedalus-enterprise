@@ -16,11 +16,11 @@ import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
 import { 钉住老签约 } from "@/lib/contract-owner";
-import { 带走并记下, 还项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
+import { 带走并记下在事务里, 还项目, 带走公海项目, type 带走的 } from "@/lib/carry-over-db";
 import { 记换负责人, 是我刚换的, 撤销时限毫秒, 公海前负责人, 公海客户原负责人是, 删被撤的换负责人记录, 还原进公海前负责人 } from "@/lib/owner-log-db";
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示, 公海规则 } from "@/lib/enterprise/pool-rules";
-import { 领客户带走公海项目, 客户名下在推项目进公海, 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
+import { 客户名下在推项目进公海, 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -28,9 +28,9 @@ import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
-import { 公海分配通知, 客户放回公海通知, 客户撤销放回通知 } from "@/lib/enterprise/notice-sources";
+import { 公海分配通知, 客户放回公海通知, 客户撤销放回通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 能进公海的阶段, 超上限n } from "@/lib/project/db";
+import { 能进公海的阶段, 持有上限起点, 整批核上限, 整批或不做, 领公海项目准备, 领取公海项目们, 在事务里领公海项目们, type 领项目上下文 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 历史负责人们, 还原清掉的组员 } from "@/lib/project/pool-owner";
 import { 换负责人待办 } from "@/lib/project/carry-tasks";
@@ -73,6 +73,8 @@ export type 公海结果 =
       /** 企业版：跟着客户一起领 / 分过来的项目公海里的项目，撤销时放回项目公海（交互规则 B，10-30）；
        *  放进公海时 = 跟着一起进项目公海的客户负责人自己的项目，撤销时还给他（P-公海-06，11-05） */
       公海项目?: string[];
+      /** 领取时一起勾的项目行（领取 带 项目ids）：领到哪几个、没领到的各为什么；和客户同一个事务、同一次核持有上限 */
+      项目?: { 领到: string[]; 没领到: { id: string; 原因: string }[] };
     }
   | { ok: false; error: string };
 
@@ -241,9 +243,17 @@ async function 撤回连带项目(tx: Prisma.TransactionClient, 客户们: strin
  * 领的时间记进 CustomerClaim：自动掉公海从它算起，领走当天没跟进，第二天不会又被扫回去。
  * 带待办（企业版 C-06，公海页页头的勾，没传按默认勾）：跟着带过来的公海项目，进公海时关掉的那批待办重新打开给我
  */
-export async function 领取(ids: string[], 带待办?: boolean): Promise<公海结果> {
+export async function 领取(ids: string[], 带待办?: boolean, 项目ids: string[] = []): Promise<公海结果> {
   const me = await requireUser();
   const b = await getBusiness();
+  const 项目们 = Array.isArray(项目ids) ? [...new Set(项目ids.filter((x): x is string => typeof x === "string" && !!x))] : [];
+  // 只勾了项目行：同 领取公海项目们（一个事务、整批核持有上限）
+  if (!ids.length && 项目们.length) {
+    const r = await 领取公海项目们(me, 项目们, 带待办勾(带待办));
+    if (!r.ok) return r;
+    await 记项目领取(me, r.领到);
+    return { ok: true, updated: 0, unchanged: 0, 没权限: 0, 项目: { 领到: r.领到, 没领到: r.没领到 } };
+  }
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
   // 管理员只读（11-02）：公海看得到、领不走。下面的事务包着 看全部，team-scope 拦不到
   if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读角色话 };
@@ -279,45 +289,23 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
   const 原负责人的 = 不能领.size;
   for (const id of 无效) 不能领.add(id);
   if (不能领.size && 不能领.size === new Set(ids).size) return { ok: false, error: 原负责人的 ? 原负责人不能领回提示 : 无效不能领提示 };
-  const 超 = await 带走公海项目超上限([...new Set(ids)].filter((x) => !不能领.has(x)), me.id);
-  if (超) return { ok: false, error: 超 };
+  // 一起勾的项目行：事务外先备好（进门、钉老签约）；进不了门的整批项目各记一句，客户照领
+  const 项目备 = 项目们.length ? await 领公海项目准备(me, 项目们, 带待办勾(带待办)) : null;
   // 换负责人之前先把老签约「签约那一刻是谁的」钉住（排查 X1，和批量分配一样）
   await 钉住老签约();
-  const 领到: { id: string; 值: string }[] = [];
-  for (const id of [...new Set(ids)].filter((x) => !不能领.has(x))) {
-    /*
-      看全部（团队版业务员，lib/team-scope.ts）：业务员能领，是因为这位在公海里；删掉公海那一行之后、负责人改成我之前，
-      他在业务员眼里「不见了」——限定着读会读不到、返回 null，公海那一行却已经删了：客户出了公海、没归任何领的人（2026-10-04 五人实测）。
-      能不能领只看「删到了公海那一行」，事务里不用再限定
-    */
-    /*
-      团队范围同步（2026-10-14）：先改负责人、最后删公海那一行。同步日志按这个顺序推，
-      哪怕被切进前后两次推送（或连的是还没修的旧服务端，逐包按前一包落下后的状态核）也都过得去：
-      改负责人那一刻还在公海（人人可写），删公海那一刻已经归我。反过来先删公海，客户在服务端眼里就成了原负责人的私客、
-      这台再改负责人被拒——各台负责人对不上（五台实测）。能不能领仍只看「删到了公海那一行」：删到 0 行就整个回滚。
-    */
-    const 原 = await 看全部(() => prisma.$transaction(async (tx) => {
-      if (!(await tx.customerPool.findUnique({ where: { customerId: id }, select: { customerId: true } }))) return null;
-      const c = await tx.customer.findUnique({ where: { id }, select: { salesOwnerId: true, poolInvalidAt: true } });
-      // 客户没了：抛出去整个回滚
-      if (!c) throw new Error("客户不在了");
-      // 查完到这一刻之间被标了无效（企业版统一公海）：不领
-      if (企业版() && c.poolInvalidAt) throw new Error("已标无效");
-      if (c.salesOwnerId !== me.id) await tx.customer.update({ where: { id }, data: { salesOwnerId: me.id } });
-      await tx.customerClaim.upsert({ where: { customerId: id }, update: { userId: me.id, at: new Date() }, create: { customerId: id, userId: me.id } });
-      const 删 = await tx.customerPool.deleteMany({ where: { customerId: id } });
-      if (!删.count) throw new Error("已被领走");
-      return c.salesOwnerId;
-    })).catch((e) => {
-      if (e instanceof Error && (e.message === "客户不在了" || e.message === "已被领走" || e.message === "已标无效")) return null;
-      throw e;
-    });
-    if (原 !== null) 领到.push({ id, 值: 原 });
+  const r = await 公海客户出手([...new Set(ids)].filter((x) => !不能领.has(x)), me.id, me.id, "claim", 带待办勾(带待办),
+    项目备?.ok ? { me, 上下文: 项目备.上下文, ids: 项目们 } : undefined);
+  if (!r.ok) return { ok: false, error: r.超 };
+  const { 到: 领到, 数: 带走, 记下: 带过来, 公海项目, 项目结果 } = r.值;
+  const 项目 = 项目们.length
+    ? 项目备?.ok ? { 领到: 项目结果?.领到 ?? [], 没领到: 项目结果?.没领到 ?? [] } : { 领到: [], 没领到: 项目们.map((id) => ({ id, 原因: (项目备 as { error: string }).error })) }
+    : undefined;
+  if (项目结果?.同事待分配.length) await 同事待分配随客户通知(me.id, me.id, 项目结果.同事待分配);
+  await 记项目领取(me, 项目结果?.领到 ?? []);
+  if (!领到.length) {
+    if (项目?.领到.length) 刷新(ids);
+    return { ok: true, updated: 0, unchanged: ids.length - 不能领.size, 没权限: 不能领.size, ...(项目 ? { 项目 } : {}) };
   }
-  if (!领到.length) return { ok: true, updated: 0, unchanged: ids.length - 不能领.size, 没权限: 不能领.size };
-  const { 数: 带走, 记下: 带过来 } = await 带走并记下(领到.map((x) => ({ customerId: x.id, 旧: x.值 })), me.id, me.id, "claim");
-  // 企业版：名下放在项目公海里的项目一起归我（领客户即领项目，pool-link.ts）
-  const 公海项目 = await 领客户带走公海项目(领到.map((x) => x.id), me.id, me.id, 带待办勾(带待办));
   if (公海项目.length) 带走.项目 = (带走.项目 ?? 0) + 公海项目.length;
   await recordAudit({
     user: me, action: "claim", entity: "Customer", entityId: 领到.length === 1 ? 领到[0].id : null,
@@ -325,7 +313,62 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
     detail: { ids: 领到.map((x) => x.id), 原负责人: 领到.map((x) => ({ id: x.id, salesOwnerId: x.值 })) },
   });
   刷新(ids);
-  return { ok: true, updated: 领到.length, unchanged: ids.length - 领到.length - 不能领.size, 没权限: 不能领.size, 带走, 原负责人: 领到, 带过来, 公海项目 };
+  return { ok: true, updated: 领到.length, unchanged: ids.length - 领到.length - 不能领.size, 没权限: 不能领.size, 带走, 原负责人: 领到, 带过来, 公海项目, ...(项目 ? { 项目 } : {}) };
+}
+
+/** 一起领到的项目行：操作日志一条、刷新项目页（单个领 领取项目 那边按个记，这里一批一条） */
+async function 记项目领取(me: { id: string; name: string }, 领到: string[]): Promise<void> {
+  if (!领到.length) return;
+  const 名 = 领到.length === 1 ? (await prisma.project.findUnique({ where: { id: 领到[0] }, select: { name: true } }))?.name ?? "" : "";
+  await recordAudit({
+    user: me, action: "update", entity: "Project", entityId: 领到.length === 1 ? 领到[0] : null,
+    summary: 领到.length === 1 ? `从线索公海领取项目「${名}」` : `从线索公海领取 ${领到.length} 个项目`, ...(领到.length > 1 ? { detail: { ids: 领到 } } : {}),
+  });
+  revalidatePath("/projects");
+  revalidatePath("/pool");
+  revalidatePath("/dashboard");
+}
+
+/**
+ * 公海客户出手（领取、分配公海共用）：一个事务里逐位出公海归 给、名下的活带过来、名下线索公海里的项目一起归他，
+ * 领取时一起勾的项目行也在这个事务里领（项目）。持有上限整批核（M-公海-18，11-10 用户定）：动手前记下名下原有几个，全部写完再数，
+ * 超了就抛 整批超上限、整个事务回滚，一个都不出公海（回 ok: false + 那句话）；并发的两次后到的那次整批失败（事务一个接一个跑）。
+ * 能不能领只看事务里「还在公海、客户还在、没标无效」：被人先领走的、刚标了无效的跳过，不算没领成的那批。
+ * 团队范围同步的顺序照旧：每位先改负责人、最后删公海那一行
+ */
+async function 公海客户出手(
+  ids: string[], 给: string, 操作人: string, kind: "claim" | "pool-assign", 带待办: boolean | undefined,
+  项目?: { me: Parameters<typeof 在事务里领公海项目们>[1]; 上下文: 领项目上下文; ids: string[] },
+) {
+  const 规则 = await 生效组织规则();
+  return 整批或不做(() => 查完再写(async (tx) => {
+    const 起 = await 持有上限起点(tx, 规则, 给);
+    /*
+      看全部（团队版业务员，lib/team-scope.ts）：业务员能领，是因为这位在公海里；删掉公海那一行之后、负责人改成我之前，
+      他在业务员眼里「不见了」——限定着读会读不到。能不能领只看事务里还在公海，不用再限定
+    */
+    const 客户部分 = await 看全部(async () => {
+      const 到: { id: string; 值: string }[] = [];
+      for (const id of ids) {
+        if (!(await tx.customerPool.findUnique({ where: { customerId: id }, select: { customerId: true } }))) continue;
+        const c = await tx.customer.findUnique({ where: { id }, select: { salesOwnerId: true, poolInvalidAt: true } });
+        // 客户没了、查完到这一刻之间被标了无效（企业版统一公海）：不领
+        if (!c || (企业版() && c.poolInvalidAt)) continue;
+        // 团队范围同步（2026-10-14）：先改负责人、最后删公海那一行
+        if (c.salesOwnerId !== 给) await tx.customer.update({ where: { id }, data: { salesOwnerId: 给 } });
+        await tx.customerClaim.upsert({ where: { customerId: id }, update: { userId: 给, at: new Date() }, create: { customerId: id, userId: 给 } });
+        await tx.customerPool.deleteMany({ where: { customerId: id } });
+        到.push({ id, 值: c.salesOwnerId });
+      }
+      const { 数, 记下 } = await 带走并记下在事务里(tx, 到.map((x) => ({ customerId: x.id, 旧: x.值 })), 给, 操作人, kind);
+      // 企业版：名下放在项目公海里的项目一起归他（领客户即领项目，pool-link.ts）
+      const 公海项目 = 企业版() && 公海规则.领客户带走公海里的项目 && 到.length ? await 带走公海项目(tx, 到.map((x) => x.id), 给, 操作人, 带待办) : [];
+      return { 到, 数, 记下, 公海项目 };
+    });
+    const 项目结果 = 项目?.ids.length ? await 在事务里领公海项目们(tx, 项目.me, 项目.ids, 项目.上下文) : null;
+    await 整批核上限(tx, 起, kind === "claim" ? "领" : "接");
+    return { ...客户部分, 项目结果 };
+  }));
 }
 
 /**
@@ -338,18 +381,6 @@ async function 移交中不能领(ids: string[], 动作: "领" | "分"): Promise
   if (!中.size) return null;
   const b = await getBusiness();
   return `${中.size} 名${b.customer}正在移交（等接手人确认），${动作 === "领" ? "不能领取" : "不能分配"}；等对方确认、拒收或撤回后再${动作 === "领" ? "领" : "分"}${中.size < new Set(ids).size ? "，整批已阻止" : ""}`;
-}
-
-/**
- * 领 / 分公海客户会把名下线索公海里的项目一起带走（pool-link 领客户带走公海项目）：一次进好几个，
- * 加上手上已有的超了持有上限就整批不领、不分，回一句说清谁、上限、现有几个（M-公海-18，11-09）。
- * 只数还在公海里的客户；规则在这里（事务外）读
- */
-async function 带走公海项目超上限(ids: string[], 给: string): Promise<string | null> {
-  if (!企业版() || !公海规则.领客户带走公海里的项目 || !ids.length) return null;
-  const 在公海 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, pool: { isNot: null } }, select: { id: true } }))).map((c) => c.id);
-  const 进 = await 数进手的持有项目(在公海, 给, { 公海: true });
-  return 进 ? 超上限n(prisma, await 生效组织规则(), 给, 进) : null;
 }
 
 /**
@@ -373,30 +404,12 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
   // 企业版：标了无效的分不出去（统一公海 P7），算「没权限」那几位
   const 无效 = await 无效的(ids);
   if (无效.size && 无效.size === new Set(ids).size) return { ok: false, error: "标了无效的客户不能分配，要系统管理员先恢复" };
-  const 超 = await 带走公海项目超上限([...new Set(ids)].filter((x) => !无效.has(x)), 给.id);
-  if (超) return { ok: false, error: 超 };
   await 钉住老签约();
-  const 分到: { id: string; 值: string }[] = [];
-  for (const id of [...new Set(ids)].filter((x) => !无效.has(x))) {
-    const 原 = await 看全部(() => prisma.$transaction(async (tx) => {
-      if (!(await tx.customerPool.findUnique({ where: { customerId: id }, select: { customerId: true } }))) return null;
-      const c = await tx.customer.findUnique({ where: { id }, select: { salesOwnerId: true, poolInvalidAt: true } });
-      if (!c) throw new Error("客户不在了");
-      if (企业版() && c.poolInvalidAt) throw new Error("已标无效");
-      if (c.salesOwnerId !== 给.id) await tx.customer.update({ where: { id }, data: { salesOwnerId: 给.id } });
-      await tx.customerClaim.upsert({ where: { customerId: id }, update: { userId: 给.id, at: new Date() }, create: { customerId: id, userId: 给.id } });
-      const 删 = await tx.customerPool.deleteMany({ where: { customerId: id } });
-      if (!删.count) throw new Error("已被领走");
-      return c.salesOwnerId;
-    })).catch((e) => {
-      if (e instanceof Error && (e.message === "客户不在了" || e.message === "已被领走" || e.message === "已标无效")) return null;
-      throw e;
-    });
-    if (原 !== null) 分到.push({ id, 值: 原 });
-  }
+  // 一个事务分完、整批核持有上限（M-公海-18，11-10）：超了一个都不分
+  const r = await 公海客户出手([...new Set(ids)].filter((x) => !无效.has(x)), 给.id, me.id, "pool-assign", 带待办勾(带待办));
+  if (!r.ok) return { ok: false, error: r.超 };
+  const { 到: 分到, 数: 带走, 记下: 带过来, 公海项目 } = r.值;
   if (!分到.length) return { ok: true, updated: 0, unchanged: ids.length - 无效.size, 没权限: 无效.size };
-  const { 数: 带走, 记下: 带过来 } = await 带走并记下(分到.map((x) => ({ customerId: x.id, 旧: x.值 })), 给.id, me.id, "pool-assign");
-  const 公海项目 = await 领客户带走公海项目(分到.map((x) => x.id), 给.id, me.id, 带待办勾(带待办));
   if (公海项目.length) 带走.项目 = (带走.项目 ?? 0) + 公海项目.length;
   await recordAudit({
     user: me, action: "assign", entity: "Customer", entityId: 分到.length === 1 ? 分到[0].id : null,
