@@ -92,8 +92,10 @@ function Cite({ r, n }: { r?: BriefRecord; n: number }) {
         </div>
       }
     >
-      <span
+      <button
+        type="button"
         className="cite"
+        aria-label={`引用 ${n}：${r.date} ${r.label}，点了跳到这条记录`}
         onClick={() => {
           const el = document.getElementById(`fu-${r.id}`);
           if (el) {
@@ -104,7 +106,7 @@ function Cite({ r, n }: { r?: BriefRecord; n: number }) {
         }}
       >
         {n}
-      </span>
+      </button>
     </Popover>
   );
 }

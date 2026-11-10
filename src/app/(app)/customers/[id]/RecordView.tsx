@@ -761,9 +761,9 @@ export default function RecordView({
       {["全部", ...跟进类型们(外贸).map((t) => t.value), ...(摆法.沟通汇总 ? [] : ["CONTRACT"])].map((k) => {
         const label = k === "全部" ? "全部" : k === "CONTRACT" ? 叫 : FOLLOW_TYPE_MAP[k]?.label ?? k;
         return (
-          <span key={k} className={`rec-chip${filter === k ? " rec-chip-on" : ""}`} onClick={() => setFilter(k)}>
+          <button type="button" key={k} className={`rec-chip${filter === k ? " rec-chip-on" : ""}`} aria-pressed={filter === k} onClick={() => setFilter(k)}>
             {label}
-          </span>
+          </button>
         );
       })}
     </div>

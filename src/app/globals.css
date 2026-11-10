@@ -2010,10 +2010,11 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 引用圆标 */
 .cite {
   display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; margin: 0 2px;
-  border-radius: 999px; background: var(--brand-bg); color: var(--text-muted); font-size: var(--fs-min); font-weight: 600; vertical-align: 2px; cursor: pointer;
+  border: 0; border-radius: 999px; background: var(--brand-bg); color: var(--text-muted); font: inherit; font-size: var(--fs-min); font-weight: 600; line-height: 1; vertical-align: 2px; cursor: pointer;
   transition: background var(--t-fast) var(--ease);
 }
 .cite:hover { background: var(--brand-bg); color: var(--brand); }
+.cite:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .rec-tl-item-flash { animation: rec-flash 1.6s var(--ease); border-radius: var(--r-card); }
 @keyframes rec-flash { 0% { background: var(--brand-bg); } 100% { background: transparent; } }
 /* 到点提醒点进来要指出的那一条（计划块 / 待办行）：它们自己就带浅蓝底，再闪一层浅蓝看不出来——改成边上一圈，只动阴影不动尺寸 */
