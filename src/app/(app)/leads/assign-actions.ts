@@ -39,6 +39,7 @@ import {
   认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们,
   type 分出去的线索, type 线,
 } from "@/lib/enterprise/lead-assign";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 /** 分哪一条：老的线索表，或者企业版「新线索」= 线索阶段的项目 */
@@ -273,7 +274,7 @@ async function 分项目给(
     // 下一步（时间 + 文字）跟着项目走、不清（11-03 A2-3，同 改项目 转让）
     const 改 = await tx.project.updateMany({
       where: { id: p.id, ownerId: p.ownerId, pooledAt: p.pooledAt, awaitAssignAt: p.awaitAssignAt, phase: "线索", result: null },
-      data: { ownerId: input.toUserId, pooledAt: null, awaitAssignAt: null },
+      data: { ...换负责人(input.toUserId), pooledAt: null },
     });
     if (改.count !== 1) return 已被分配;
     // 市场转客户要在动待办之前判（上面判好了）：这条路径上传来的勾不算数

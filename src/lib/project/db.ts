@@ -45,6 +45,7 @@ import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, typ
 import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -592,7 +593,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     }
     // 换了人：企业版下一步（时间 + 文字）跟着项目走、不清（11-03 A2-3）；超时回收照样从接手那天重新算（转让留痕），
     // 上一位填的、早于接手那天的下一步时间不会把回收日往前拉（超时回收日 只认起点以后的）。不是企业版照旧清掉
-    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 && !企业版() ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}) } });
+    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 && !企业版() ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}), ...(换人 ? 换负责人(新.ownerId) : {}) } });
     // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
     if (换人) {
       const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
@@ -726,7 +727,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     if (等着) return { ok: false as const, error: 等着 };
     const 现在 = new Date();
     // 企业版进公海清空负责人（pool-owner.ts），原负责人记在这行 pool-release 的 from 上
-    await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
+    await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
@@ -796,7 +797,7 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     const 转 = 市场 && org ? await 市场.公海项目市场转(tx, org, p, me.id, true) : null;
     const 超 = await 领项目连带超上限(tx, 规则, me.id, p, 转?.另进 ?? 0);
     if (超) return { ok: false as const, error: 超 };
-    await tx.project.update({ where: { id: p.id }, data: { ownerId: me.id, pooledAt: null } });
+    await tx.project.update({ where: { id: p.id }, data: { ...换负责人(me.id), pooledAt: null } });
     // 进公海时关掉的那批待办（C-06）：勾着重新打开给我；市场转客户的待办计划还归市场（P-转-10），勾不算数
     const 带 = 转 ? undefined : 带待办;
     const 几条 = await 换负责人待办(tx, p, 原, me.id, 带);
@@ -914,7 +915,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       const 现 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
       if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今, 成员)) return false;
       if (企业版() && (await 交接中的客户([p.customerId], tx)).size) return false;
-      await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 今, nextStepAt: null, nextStepText: null } });
+      await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 今, nextStepAt: null, nextStepText: null } });
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
       await 单项目客户跟进公海(tx, p, null, 今);

@@ -15,6 +15,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 算市场转客户, 市场转一位, 客户层分配方式 } from "@/lib/enterprise/market-transfer";
 import { 同事待分配随客户通知, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 停用的同事 } from "@/lib/offboard-db";
+import { 换负责人, 还负责人 } from "@/lib/project/owner-write";
 
 /**
  * 客户换了销售负责人，原负责人在他身上**没做完的活**跟着走（2026-10-02 排查 B3）：
@@ -159,7 +160,7 @@ export async function 转项目(tx: Prisma.TransactionClient, where: Prisma.Proj
   const 们 = await tx.project.findMany({ where: { AND: [where, { ownerId: { not: 新 } }] }, select: { id: true, name: true, customerId: true, ownerId: true, phase: true, node: true, result: true } });
   if (!们.length) return [];
   const ids = 们.map((p) => p.id);
-  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, ...(企业版() ? {} : { nextStepAt: null, nextStepText: null }) } });
+  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ...换负责人(新), ...(企业版() ? {} : { nextStepAt: null, nextStepText: null }) } });
   for (const p of 们) await 将回收提醒跟着换人(tx, p, p.ownerId || null, 新);
   await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, p.ownerId, 新, "transfer", 痕说明)) });
   if (卡点跟着) for (const p of 们) if (p.ownerId) await 卡点随项目换人(tx, p.id, p.ownerId, 新, 操作人, 转让接手理由);
@@ -187,7 +188,7 @@ export async function 还项目(tx: Prisma.TransactionClient, ids: string[] | un
     if (还给 !== 现) 组.set(还给, [...(组.get(还给) ?? []), p]);
   }
   for (const [还给, ps] of 组) {
-    await tx.project.updateMany({ where: { id: { in: ps.map((p) => p.id) } }, data: { ownerId: 还给 } });
+    await tx.project.updateMany({ where: { id: { in: ps.map((p) => p.id) } }, data: 还负责人(还给) });
     if (企业版()) for (const p of ps) await 卡点随项目换人(tx, p.id, 现, 还给, 操作人, 转让接手理由);
     else for (const p of ps) await 记转让(tx, p, 操作人, 现, 还给);
   }
@@ -338,8 +339,8 @@ export async function 带走一位(tx: Prisma.TransactionClient, customerId: str
     : [];
   // 带项目=false：没开项目模式的离职交接只交客户，不改项目（11-03 B7-2）
   const 项目 = 带项目 ? await 转项目(tx, 跟着客户转的项目(customerId, 实际旧), 新, 操作人, true, 项目痕) : [];
+  // 转项目 换负责人时已清待分配（owner-write.ts 换负责人，P-转-21）；这里只记下转了哪几个、原来的时刻，撤销按 清待分配 还
   const 清自己的 = 自己待分配.filter((p) => 项目.includes(p.id));
-  if (清自己的.length) await tx.project.updateMany({ where: { id: { in: 清自己的.map((p) => p.id) } }, data: { awaitAssignAt: null } });
   const 同事在推 = 在推.length ? await 转项目(tx, { id: { in: 在推.map((p) => p.id) } }, 新, 操作人, true, 项目痕) : [];
   const 公海项目 = 带项目 && 转客户 ? await 带走公海项目(tx, [customerId], 新, 操作人, undefined, 项目痕) : [];
   const 同事待分配 = 待分配.length ? await 转项目(tx, { id: { in: 待分配.map((p) => p.id) } }, 新, 操作人, true, 项目痕) : [];
@@ -376,7 +377,7 @@ export async function 带走公海项目(tx: Prisma.TransactionClient, customerI
   }
   if (!们.length) return [];
   const ids = 们.map((p) => p.id);
-  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ownerId: 新, pooledAt: null, nextStepAt: null, nextStepText: null } });
+  await tx.project.updateMany({ where: { id: { in: ids } }, data: { ...换负责人(新), pooledAt: null, nextStepAt: null, nextStepText: null } });
   // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
   const 原 = await 历史负责人们(tx, ids);
   const 痕: Map<string, string | null> = new Map();

@@ -12,6 +12,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { 撤销时限毫秒 } from "@/lib/owner-log-db";
 import { 进公海清负责人, 公海无负责人 } from "@/lib/project/pool-owner";
+import { 还负责人 } from "@/lib/project/owner-write";
 
 export async function 撤回项目公海(tx: Prisma.TransactionClient, projectId: string, 现: string, 操作人: string): Promise<boolean> {
   const p = await tx.project.findUnique({ where: { id: projectId }, select: { ownerId: true, pooledAt: true } });
@@ -31,7 +32,7 @@ export async function 撤回项目公海(tx: Prisma.TransactionClient, projectId
     orderBy: [{ at: "desc" }, { id: "desc" }],
     select: { at: true },
   });
-  await tx.project.update({ where: { id: projectId }, data: { ownerId: 还给 ?? 公海无负责人, pooledAt: 放?.at ?? 痕.at } });
+  await tx.project.update({ where: { id: projectId }, data: { ...还负责人(还给 ?? 公海无负责人), pooledAt: 放?.at ?? 痕.at } });
   await tx.projectNodeLog.delete({ where: { id: 痕.id } });
   return true;
 }

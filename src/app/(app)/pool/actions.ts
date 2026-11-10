@@ -30,6 +30,7 @@ import { 公海项目市场转, 转客户给销售 } from "@/lib/enterprise/mark
 import { 分配方式叫法 } from "@/lib/enterprise/dict";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import type { 带走的 } from "@/lib/carry-over-db";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
 
@@ -146,7 +147,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       const 转 = 出整包 || !org ? null : await 公海项目市场转(tx, org, p, 给.id, false);
       const 超 = await 领项目连带超上限(tx, 规则, 给.id, p, 转?.另进 ?? 0, 出整包);
       if (超) return 超;
-      await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
+      await tx.project.update({ where: { id }, data: { ...换负责人(给.id), pooledAt: null, nextStepAt: null, nextStepText: null } });
       // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
       const 原 = (await 历史负责人(tx, id)) ?? (p.ownerId || null);
       // 市场转客户的待办计划还归市场（P-转-10），勾不算数

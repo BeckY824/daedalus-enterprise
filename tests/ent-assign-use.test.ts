@@ -37,7 +37,7 @@ import { 领取项目, 建档向导, type 建档向导输入 } from "@/app/(app)
 import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
 import { 公海规则, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
-import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
+import { 新建分配方式数据, 暂不分配提示 } from "@/lib/project/after-create-assign";
 import { 没业务角色不能新建话, 只读角色话 } from "@/lib/enterprise/permissions";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
@@ -368,7 +368,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect(await 向导({ 分配方式: 0, ownerId: 销售经理 })).toMatchObject({ ok: true, 转走: true });
   });
 
-  it("暂不分配 / 个人自持：选了别人也记在自己名下；暂不分配留在新线索待分配、不发提醒，个人自持不待分配；分配方式记在项目上", async () => {
+  it("暂不分配 / 个人自持：选了别人也记在自己名下；暂不分配记在自己名下、不标待分配（P-转-03）、不发提醒，个人自持不待分配；分配方式记在项目上", async () => {
     当(市场);
     const a = await 向导({ 分配方式: 3, ownerId: 销售 });
     当(销售);
@@ -378,10 +378,10 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
       if (r.ok) expect((await 项目of(r.projectId)).ownerId).toBe(谁);
     }
     if (!a.ok || !b.ok) return;
-    expect(a).toMatchObject({ 转走: false, 提示: "已留在新线索待分配，等市场管理、销售管理、总管理员分" });
+    expect(a).toMatchObject({ 转走: false, 提示: 暂不分配提示 });
     expect("提示" in b).toBe(false);
     const [pa, pb] = [await 项目of(a.projectId), await 项目of(b.projectId)];
-    expect([pa.assignMode, pa.awaitAssignAt === null]).toEqual(["暂不分配", false]);
+    expect([pa.assignMode, pa.awaitAssignAt]).toEqual(["暂不分配", null]);
     expect([pb.assignMode, pb.awaitAssignAt]).toEqual(["个人自持", null]);
     expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
   });
