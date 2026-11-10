@@ -249,6 +249,22 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect(await prisma.project.count()).toBe(0);
   });
 
+  it("X-93 新线索默认分配方式的「市场」= 市场管理 + 渠运 + 按部门认的市场成员（营销企划部不算）", async () => {
+    const 人 = (id: string) => ({ id, role: "SALES", name: "", email: "", title: "" });
+    const 市场部 = (await prisma.entDept.create({ data: { name: "市场运营部" } })).id;
+    const 下级 = (await prisma.entDept.create({ data: { name: "一组", parentId: 市场部 } })).id;
+    const 企划 = (await prisma.entDept.create({ data: { name: "营销企划部" } })).id;
+    await prisma.entMember.update({ where: { userId: 项运 }, data: { deptId: 下级 } });
+    await prisma.entMember.update({ where: { userId: 另一销售 }, data: { deptId: 市场部 } });
+    const 企划人 = (await prisma.user.create({ data: { email: "plan", name: "企划", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 企划人, bizRole: "project_ops", deptId: 企划 } });
+    expect(await 新建分配方式数据(人(渠道))).toMatchObject({ 默认分配方式: 1, 是销售: false });
+    expect(await 新建分配方式数据(人(项运))).toMatchObject({ 默认分配方式: 1, 是销售: false });
+    expect(await 新建分配方式数据(人(另一销售))).toMatchObject({ 是销售: false });
+    expect(await 新建分配方式数据(人(企划人))).toMatchObject({ 默认分配方式: 3 });
+    expect(await 新建分配方式数据(人(销售))).toMatchObject({ 默认分配方式: 4, 是销售: true });
+  });
+
   it("只读管理员（11-03 D3-7 ④）：新线索向导、新建客户都拦，一行不写", async () => {
     const 管 = (await prisma.user.create({ data: { email: "ad", name: "管理员", title: "", role: "ADMIN", password: "x" } })).id;
     await prisma.entMember.create({ data: { userId: 管, bizRole: "admin" } });

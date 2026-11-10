@@ -9,6 +9,7 @@ import { 放回公海 } from "@/lib/project/db";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 没设业务角色 } from "@/lib/enterprise/permissions";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
+import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 默认分配方式, 是销售角色, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 向导自动分配 } from "@/app/(app)/leads/assign-actions";
 
@@ -30,7 +31,7 @@ function 刷新(projectId: string) {
 /**
  * 这次用哪种分配方式：传了就用传的；没传（老草稿、老调用）照负责人推：选了别人 / 没选 = 指定分配（没选照旧拦「请选项目负责人」），
  * 建给自己 = 个人自持，用不了个人自持的 = 暂不分配。推出来的也要过「谁能用」。
- * 界面上的默认值（市场 → 自动，销售 → 个人自持，其他 → 暂不分配）在 assign-line.ts 默认分配方式，由页面先填好
+ * 界面上的默认值（市场 → 自动，销售 → 个人自持，其他 → 暂不分配；市场 = 市场管理 + 渠运 + 按部门认的市场成员，X-93）在 assign-line.ts 默认分配方式，由页面先填好
  */
 export async function 定分配方式(me: 我, 项目: { 分配方式?: number | null; ownerId?: string | null } | undefined): Promise<定好的分配 | { error: string }> {
   const 能用 = await 我能用的分配方式(me);
@@ -85,7 +86,9 @@ export async function 建好再分(me: 我, 分配: 定好的分配, projectId: 
 export async function 新建分配方式数据(me: 我): Promise<{ 分配方式们: 定好的分配[]; 默认分配方式: number | null; 是销售: boolean; 没角色: boolean }> {
   const [能用, org] = await Promise.all([我能用的分配方式(me), 读组织()]);
   const 角色们 = org.成员.get(me.id)?.角色们 ?? [];
-  const 默认 = 默认分配方式(角色们, 能用.map((x) => x.i));
+  // 「市场」含按部门认的市场成员（X-93）
+  const 部门市场 = (await 读市场成员们(org)).has(me.id);
+  const 默认 = 默认分配方式(角色们, 能用.map((x) => x.i), 部门市场);
   // 没角色：向导一进来就提示、不让往下填，免得填完五步才被服务端拦（D3-6）
-  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们), 没角色: 没设业务角色(org, me.id) };
+  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们, 部门市场), 没角色: 没设业务角色(org, me.id) };
 }

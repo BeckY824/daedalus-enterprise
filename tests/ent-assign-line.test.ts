@@ -105,9 +105,17 @@ describe("分配方式默认值（A6）", () => {
     expect(默认分配方式(["marketing_mgr"], 全)).toBe(分配方式序号.自动分配);
     expect(默认分配方式(["sales"], 全)).toBe(分配方式序号.个人自持);
     expect(默认分配方式(["sales_mgr"], 全)).toBe(分配方式序号.个人自持);
-    expect(默认分配方式(["channel_ops"], 全)).toBe(分配方式序号.暂不分配);
     expect(默认分配方式(["director"], 全)).toBe(分配方式序号.暂不分配);
     expect(默认分配方式(["marketing_mgr", "sales"], 全)).toBe(分配方式序号.自动分配);
+  });
+  it("X-93 市场 = 市场管理 + 渠运 + 按部门认的市场成员：都默认自动分配，不算要确认的销售", () => {
+    expect(默认分配方式(["channel_ops"], 全)).toBe(分配方式序号.自动分配);
+    expect(默认分配方式(["sales"], 全, true)).toBe(分配方式序号.自动分配);
+    expect(默认分配方式(["project_ops"], 全, true)).toBe(分配方式序号.自动分配);
+    expect(默认分配方式(["project_ops"], 全)).toBe(分配方式序号.暂不分配);
+    expect(是销售角色(["sales"], true)).toBe(false);
+    expect(是销售角色(["channel_ops", "sales"])).toBe(false);
+    expect(是销售角色(["sales"], false)).toBe(true);
   });
   it("默认的那个用不了退到能用的第一个；都用不了 = undefined", () => {
     expect(默认分配方式(["sales"], [分配方式序号.指定分配, 分配方式序号.自动分配])).toBe(分配方式序号.指定分配);

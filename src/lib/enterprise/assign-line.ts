@@ -166,10 +166,14 @@ export const 分配方式序号 = { 指定分配: 0, 自动分配: 1, 公海捞�
 
 /**
  * 新建线索 / 项目时「分配方式」的默认值（会议 §1 / §3）：市场 → 自动分配；销售 → 个人自持；其他 → 暂不分配。
- * 兼着市场和销售的按市场算。默认的那个这人用不了（后台按角色关掉了）时退到他能用的第一个；都用不了 = undefined
+ * 这里的「市场」（X-93、M-角色-02）= 市场管理 + 渠运 + 按部门认的市场成员（部门名带「市场」及其下级；营销企划部不算），
+ * 按部门认的由调用方读库算好传 部门市场成员。兼着市场和销售的按市场算。
+ * 默认的那个这人用不了（后台按角色关掉了）时退到他能用的第一个；都用不了 = undefined
  */
-export function 默认分配方式(角色们: readonly string[], 能用: readonly number[]): number | undefined {
-  const 想 = 角色们.includes("marketing_mgr")
+const 算市场 = (角色们: readonly string[], 部门市场成员: boolean) => 部门市场成员 || 角色们.includes("marketing_mgr") || 角色们.includes("channel_ops");
+
+export function 默认分配方式(角色们: readonly string[], 能用: readonly number[], 部门市场成员 = false): number | undefined {
+  const 想 = 算市场(角色们, 部门市场成员)
     ? 分配方式序号.自动分配
     : 角色们.some((r) => 销售角色.has(r))
       ? 分配方式序号.个人自持
@@ -177,8 +181,8 @@ export function 默认分配方式(角色们: readonly string[], 能用: readonl
   return 能用.includes(想) ? 想 : 能用[0];
 }
 
-/** 选自动分配要不要再确认（A9）：有销售业务角色、又不兼市场的（市场建的分出去后还能看，销售分出去就看不到了） */
-export const 是销售角色 = (角色们: readonly string[]): boolean => !角色们.includes("marketing_mgr") && 角色们.some((r) => 销售角色.has(r));
+/** 选自动分配要不要再确认（A9）：有销售业务角色、又不算市场的（市场建的分出去后还能看，销售分出去就看不到了；市场口径同上，X-93） */
+export const 是销售角色 = (角色们: readonly string[], 部门市场成员 = false): boolean => !算市场(角色们, 部门市场成员) && 角色们.some((r) => 销售角色.has(r));
 
 /** 销售选「自动分配」时的确认话（A9）：分出去以后这个项目就不在他名下了 */
 export const 销售自动分确认 = "分出去后你将看不到这个项目，确定按自动分配建吗？";
