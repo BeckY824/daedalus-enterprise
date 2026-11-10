@@ -3,6 +3,7 @@
  *   - 钟拨到 00:05，没人打开页面，超时的项目照样回公海；00:04 还不收
  *   - 同一天跑两遍（或夜里扫过白天再打开页面），第二遍一条都不收；第二天 00:05 接着收
  *   - 服务停着错过 00:05，开机补收；当天重启不多收
+ *   - 停机漏了「回收前一天」提醒的：先补发提醒、宽限一天，次日再收（11-10），只宽限一次
  *   - 不是企业版：不起钟、扫也不收；没有账号老板照扫（11-02 操作人用 系统）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -15,7 +16,7 @@ vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 公海超时收回, 收回提醒尾, 记项目沟通 } from "@/lib/project/db";
+import { 公海超时收回, 收回提醒尾, 记项目沟通, 补提醒说明 } from "@/lib/project/db";
 import { 夜里扫超时, 启动夜扫, 停夜扫, 夜扫在跑, 过了夜扫时刻 } from "@/lib/project/nightly";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 超时理由, 将回收提醒, 即将回收 } from "@/lib/project/timeout";
@@ -293,6 +294,7 @@ describe("内贸、外贸分开算时长（C7）", () => {
     expect(await 夜里扫超时(时("2026-10-23 00:05"))).toBe(1);
     expect(await 在公海(外.id)).toBe(true);
     expect(await 在公海(内.id)).toBe(false);
+    expect(await 夜里扫超时(时("2026-10-29 00:05"))).toBe(0); // 前一天那遍发提醒（中间几天没扫 = 停过机，会宽限一天，这里补上那一遍）
     expect(await 夜里扫超时(时("2026-10-30 00:05"))).toBe(1);
     expect(await 在公海(内.id)).toBe(true);
   });
@@ -315,6 +317,7 @@ describe("内贸、外贸分开算时长（C7）", () => {
     expect(await 夜里扫超时(时("2026-10-23 00:05"))).toBe(1);
     expect(await 在公海(没线.id)).toBe(true);
     expect(await 在公海(随外贸.id)).toBe(false);
+    expect(await 夜里扫超时(时("2026-10-29 00:05"))).toBe(0); // 前一天那遍发提醒
     expect(await 夜里扫超时(时("2026-10-30 00:05"))).toBe(1);
     expect(await 在公海(随外贸.id)).toBe(true);
   });
@@ -351,7 +354,10 @@ describe("服务停过后启动：补跑（10c）", () => {
   const 收回通知 = async (id: string) => prisma.entNotice.findMany({ where: { dedupeKey: { startsWith: `recall:${id}:` } } });
   const 补跑日志 = (log: { mock: { calls: unknown[][] } }) => log.mock.calls.map((c) => String(c[0])).filter((s) => s.startsWith("[定时补跑]"));
 
-  it("停两天后启动：启动那一遍就补收（不等下一分钟），豁免照旧；没赶上提前一天提醒的，收回通知里说明；写一条补跑日志", async () => {
+  const 再不跟进 = () => prisma.task.findMany({ where: { title: { contains: "会自动回到线索公海" } }, });
+  const 将回收通知 = async (id: string) => prisma.entNotice.findMany({ where: { dedupeKey: { startsWith: `due-soon:${id}:` } } });
+
+  it("停两天后启动：漏了前一天提醒的当天不收，先补发提醒（说明停过、明天收）；豁免照旧；写一条补跑日志；当天重启不重发", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     const 停机时到期 = await 单项目("2026-10-23 10:00", "停机时到期"); // 3 天 → 10-26 收，提醒本该 10-25 发
     const 验证中 = await 单项目("2026-10-01 10:00", "验证中的");
@@ -367,30 +373,67 @@ describe("服务停过后启动：补跑（10c）", () => {
     启动夜扫();
     await 夜扫在跑();
 
-    expect(await 在公海(停机时到期.id)).toBe(true);
-    expect(await 在公海(验证中.id)).toBe(false); // 验证中不回收：补跑也不绕过
+    expect(await 在公海(停机时到期.id)).toBe(false); // 宽限一天
+    expect(await 在公海(验证中.id)).toBe(false); // 验证中不回收、也不补提醒
     expect(await 在公海(明天收.id)).toBe(false);
-    const [通知] = await 收回通知(停机时到期.id);
-    expect(通知.dedupeKey).toBe(`recall:${停机时到期.id}:2026-10-27`);
-    expect(通知.body).toContain("没来得及提前一天提醒");
-    // 明天才收的：提醒照发，写的是真实回收日，不说错日子
-    expect((await prisma.task.findMany({ where: { title: { contains: "会自动回到线索公海" } } })).map((t) => t.title)).toEqual([
-      将回收提醒("明天收的", "潜客培育", "2026-10-28"),
-    ]);
+    expect(await 收回通知(停机时到期.id)).toHaveLength(0);
+    // 补发的那条写明天（10-28）收、说明停过机；明天才收的照常提醒，写真实回收日
+    expect((await 再不跟进()).map((t) => ({ title: t.title, dueOn: t.dueOn }))).toEqual(expect.arrayContaining([
+      { title: `${将回收提醒("停机时到期", "潜客培育", "2026-10-28")}${补提醒说明}`, dueOn: "2026-10-27" },
+      { title: 将回收提醒("明天收的", "潜客培育", "2026-10-28"), dueOn: "2026-10-27" },
+    ]));
+    expect(await 再不跟进()).toHaveLength(2);
+    const [铃] = await 将回收通知(停机时到期.id);
+    expect(铃.dedupeKey).toBe(`due-soon:${停机时到期.id}:2026-10-27`);
+    expect(铃.title).toContain("服务停过");
     const 行 = 补跑日志(log);
     expect(行).toHaveLength(1);
     expect(行[0]).toContain("启动");
     expect(行[0]).toContain("2026-10-24");
-    expect(行[0]).toMatch(/超时回收 1 个/);
+    expect(行[0]).toMatch(/超时回收 0 个（另有 1 个停机漏了前一天提醒，已补发、宽限一天）/);
     expect(行[0]).toMatch(/将回收提醒 1 条/);
 
-    // 当天再重启：不重收、不重发
+    // 当天再重启、跑几遍，再加老板当天改时长重扫：不收、不重发
     const 之前 = { 留痕: await prisma.projectNodeLog.count(), 待办: await prisma.task.count(), 通知: await prisma.entNotice.count() };
     停夜扫();
     启动夜扫();
     await 夜扫在跑();
     for (let i = 0; i < 2; i++) await 走一分钟();
+    await setSetting("orgRules", 开着({ 潜客培育: 3, 线索验证: 5 }));
+    invalidateSettingsCache();
+    expect(await 公海超时收回(老板, 时("2026-10-27 15:00"))).toBe(0);
     expect({ 留痕: await prisma.projectNodeLog.count(), 待办: await prisma.task.count(), 通知: await prisma.entNotice.count() }).toEqual(之前);
+    expect(await 在公海(停机时到期.id)).toBe(false);
+  });
+
+  it("补发提醒的次日：照常收回（只宽限一次，不再补发）；收回通知不带停机说明", async () => {
+    const p = await 单项目("2026-10-23 10:00", "宽限后收"); // → 10-26
+    await 夜里扫超时(时("2026-10-24 00:05"));
+    expect(await 夜里扫超时(时("2026-10-27 00:05"))).toBe(0); // 停了 10-25、10-26
+    expect(await 在公海(p.id)).toBe(false);
+    expect(await 夜里扫超时(时("2026-10-28 00:05"))).toBe(1);
+    expect(await 在公海(p.id)).toBe(true);
+    const [通知] = await 收回通知(p.id);
+    expect(通知.body).not.toContain("停");
+    expect(await 将回收通知(p.id)).toHaveLength(1);
+    expect((await 再不跟进()).filter((t) => t.title.includes(补提醒说明))).toHaveLength(1);
+  });
+
+  it("次日又停了一天（10-28 没扫，10-29 才起）：补发过的照收，不再补发第二次", async () => {
+    const p = await 单项目("2026-10-23 10:00", "又停了"); // → 10-26
+    await 夜里扫超时(时("2026-10-24 00:05"));
+    expect(await 夜里扫超时(时("2026-10-27 00:05"))).toBe(0);
+    expect(await 夜里扫超时(时("2026-10-29 08:00"))).toBe(1);
+    expect(await 将回收通知(p.id)).toHaveLength(1);
+  });
+
+  it("宽限这天负责人记了跟进：回收日往后推，次日不收", async () => {
+    const p = await 单项目("2026-10-23 10:00", "宽限中跟进");
+    await 夜里扫超时(时("2026-10-24 00:05"));
+    expect(await 夜里扫超时(时("2026-10-27 00:05"))).toBe(0);
+    await prisma.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 时("2026-10-27 11:00") } });
+    expect(await 夜里扫超时(时("2026-10-28 00:05"))).toBe(0);
+    expect(await 在公海(p.id)).toBe(false);
   });
 
   it("没停过：前一天提醒过、当天收回，收回通知不带那句说明", async () => {
@@ -399,15 +442,26 @@ describe("服务停过后启动：补跑（10c）", () => {
     expect(await prisma.task.count({ where: { title: 将回收提醒("正常的", "潜客培育", "2026-10-26") } })).toBe(1);
     expect(await 夜里扫超时(时("2026-10-26 00:05"))).toBe(1);
     const [通知] = await 收回通知(p.id);
-    expect(通知.body).not.toContain("提前一天提醒");
+    expect(通知.body).not.toContain("停");
   });
 
-  it("停机前已经提醒过的（提醒在 10-25 发了，10-26 起停两天）：补收时不带那句说明", async () => {
+  it("停机前已经提醒过的（提醒在 10-25 发了，10-26 起停两天）：起来当天就收，不补发、不宽限", async () => {
     const p = await 单项目("2026-10-23 10:00", "提醒过的"); // → 10-26
     await 夜里扫超时(时("2026-10-25 00:05"));
     expect(await 夜里扫超时(时("2026-10-28 08:00"))).toBe(1);
-    const [通知] = await 收回通知(p.id);
-    expect(通知.body).not.toContain("提前一天提醒");
+    expect((await 再不跟进()).filter((t) => t.title.includes(补提醒说明))).toHaveLength(0);
+    expect(await 将回收通知(p.id)).toHaveLength(1);
+  });
+
+  it("没停过、没发过前一天提醒（老板当天缩短了时长）：照旧当天收，不宽限", async () => {
+    const p = await 单项目("2026-10-20 10:00", "缩短时长"); // 10 天 → 10-30
+    await setSetting("orgRules", 开着({ 潜客培育: 10 }));
+    invalidateSettingsCache();
+    expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
+    await setSetting("orgRules", 开着({ 潜客培育: 3 }));
+    invalidateSettingsCache();
+    expect(await 公海超时收回(老板, 时("2026-10-25 10:00"))).toBe(1);
+    expect(await 在公海(p.id)).toBe(true);
   });
 
   it("启动时没停过（昨天扫过）：日志照写一条，各类都是 0 也写", async () => {
