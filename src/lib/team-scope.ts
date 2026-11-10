@@ -60,8 +60,9 @@ const 系统写这段 = 全进程上下文<true>("系统写");
 export function 系统写<T>(fn: () => Promise<T>): Promise<T> {
   return 系统写这段.run(true, async () => await fn());
 }
-/** 管理员（admin）只读时，这几张表的写照样放：留痕、自己的 AI 对话、自己的账号（登录改密、改名；别人的账号在设置 action 里按 能改后台设置 拦）、铃铛通知（标已读，只改得到自己那几行） */
-const 只读也能写 = new Set(["AuditLog", "AiConversation", "AiMessage", "AiProject", "User", "EntNotice"]);
+/** 管理员（admin）只读时，这几张表的写照样放：留痕、自己的 AI 对话、自己的账号（登录改密、改名；别人的账号在设置 action 里按 能改后台设置 拦）、铃铛通知（标已读，只改得到自己那几行）、
+ *  撞号台账（查重撞了系统记一笔，也是留痕；11-10） */
+const 只读也能写 = new Set(["AuditLog", "AiConversation", "AiMessage", "AiProject", "User", "EntNotice", "EntDupeHit"]);
 /** 切换视图的写拦。系统写这段同样放：不然切视图时第一次读字典，建默认项被拒，整页崩 */
 async function 视图拦(): Promise<void> {
   if (!系统写这段.getStore()) await 视图写拦();

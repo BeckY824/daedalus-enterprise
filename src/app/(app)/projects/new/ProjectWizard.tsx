@@ -22,7 +22,9 @@ import { 是占位值 } from "@/lib/project/required";
 import { 有效线索节点, 建档不能过线索验证 } from "@/lib/project/stage-gates";
 import { 下一步文字上限 } from "@/lib/project/project-fields";
 import { checkDuplicate, type DuplicateHit } from "../../customers/actions";
-import { 查号码, type 查号码结果 } from "../../customers/number-actions";
+import { 查号码, 查客户名, type 查号码结果 } from "../../customers/number-actions";
+import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
+import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
 import RescueKey from "../../customers/RescueKey";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
@@ -179,6 +181,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
   // 企业版「查重」回来的那句（格式不对 / 首次录入 / 撞了哪种）
   const [企查, set企查] = useState<查号码结果 | null>(null);
   const [查中, set查中] = useState(false);
+  // 企业版客户名查重（P-挂靠-01，11-10）：第三步点「下一步」时按名字查；撞了停在这一步，改了名字再查
+  const [名查, set名查] = useState<{ 名: string; 撞: 名撞结论; 提示: string } | null>(null);
   const [交中, set交中] = useState(false);
   const [接着填, set接着填] = useState(!!旧);
 
@@ -229,7 +233,26 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
 
   const 差 = 这步还差(步, d, 已查, 要下一步, 企业);
   const 企拦 = 企业版 && !!企查 && 已查 === 查过键(d, true) && !(企查.ok && 企查.状态 === "首次录入");
-  const 拦着 = 步 === 0 && (!!撞 || 企拦);
+  const 名拦 = 企业版 && 步 === 2 && !!名查 && 名查.名 === d.客户.name.trim();
+  const 拦着 = (步 === 0 && (!!撞 || 企拦)) || 名拦;
+
+  // 客户那一步往下走：企业版先按名字查一次重（同名和撞号同一套：露出负责人、记台账、给申请挂靠）
+  const 下一步 = async () => {
+    if (!(企业版 && 步 === 2)) return 去(步 + 1);
+    const 名 = d.客户.name.trim();
+    set查中(true);
+    try {
+      const r = await 查客户名(名);
+      if (!r.ok) return void message.error(r.error);
+      if (r.撞) return void set名查({ 名, 撞: r.撞, 提示: r.提示 });
+      set名查(null);
+      去(步 + 1);
+    } catch {
+      message.error("查重没查成，请稍后再试");
+    } finally {
+      set查中(false);
+    }
+  };
 
   // 销售选自动分配：分出去后就看不到这个项目了，先确认一次（A9）
   const 点建好 = () => {
@@ -275,6 +298,13 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
         else router.push(新线索 || 企业版 ? "/leads" : "/projects");
         return;
       }
+      // 填的这段时间有人录了同名客户（saveCustomer 按名字挡）：回客户那一步，摆出负责人和申请挂靠
+      const 名撞 = !r.ok && "撞号" in r ? (r.撞号 as 名撞结论 | undefined) : undefined;
+      if (!r.ok && 名撞 && ("我名下" in 名撞 || 名撞.撞.键类型 === "客户名" || 名撞.撞.键类型 === "公司名")) {
+        set名查({ 名: d.客户.name.trim(), 撞: 名撞, 提示: r.error });
+        去(2);
+        return;
+      }
       if (!r.ok) {
         message.error(r.error);
         return;
@@ -310,6 +340,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
     set已查(null);
     set撞(null);
     set企查(null);
+    set名查(null);
     set接着填(false);
   };
 
@@ -429,6 +460,16 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
       {步 === 2 && (
         <>
           {一行(`${b.customer}名称`, <Input value={d.客户.name} onChange={(e) => 改("客户", { name: e.target.value })} />, true)}
+          {名拦 && 名查 && (
+            <Alert
+              data-testid="wizard-name-dupe"
+              type="error"
+              showIcon
+              style={{ marginBottom: 16, overflowWrap: "anywhere" }}
+              title={名查.提示}
+              description={"我名下" in 名查.撞 ? <div style={{ marginTop: 8 }}><我名下入口 客户id={名查.撞.我名下.客户id} /></div> : <AttachEntry key={名查.撞.撞.撞号id ?? 名查.名} 露出={名查.撞.撞} />}
+            />
+          )}
           {企业 && 一行("渠道", (
             <>
               {/* P16：先选渠道名称再选具体来源（一个级联到底），选了来源渠道就定了；也能直接打字搜全称 */}
@@ -585,7 +626,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
       <Space style={{ marginTop: 8 }}>
         {步 > 0 && <Button onClick={() => 去(步 - 1)}>上一步</Button>}
         {步 < 步骤们.length - 1 ? (
-          <Button type="primary" disabled={!!差 || 拦着} title={差 || undefined} onClick={() => 去(步 + 1)}>下一步</Button>
+          <Button type="primary" disabled={!!差 || 拦着} title={差 || undefined} loading={步 === 2 && 查中} onClick={() => void 下一步()}>下一步</Button>
         ) : (
           <Button type="primary" disabled={!!差} title={差 || undefined} loading={交中} onClick={点建好}>建好项目</Button>
         )}
@@ -632,7 +673,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<
             {撞?.name ?? "领取后可见"}
             {撞?.school ? ` · ${撞.school}` : ""}
             {" · "}
-            {在公海 ? "在公海" : 查.状态 === "我的通讯录已有" ? "在你名下" : `负责人：${负责人}${离职找 ? "（已离职）" : ""}`}
+            {在公海 ? "在公海" : 查.状态 === "我的通讯录已有" ? "在你名下" : 查.挂靠 ? `负责人：${负责人说法({ ...查.挂靠.负责人, 离职找: undefined })}` : `负责人：${负责人}${离职找 ? "（已离职）" : ""}`}
             {查.归属地 ? ` · 归属地：${查.归属地}` : ""}
           </div>
           <Space size={8} style={{ marginTop: 8 }} wrap>
@@ -644,6 +685,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<
               ? <CopyValue 种类="邮箱" 叫法="负责人邮箱" value={邮箱} 文字={`联系负责人：${负责人}`} style={{ color: "var(--text-muted)" }} />
               : <span style={{ color: "var(--text-muted)" }}>联系负责人：{负责人}</span>)}
           </Space>
+          {查.状态 === "重复" && 查.挂靠 && <AttachEntry key={查.挂靠.撞号id ?? 查.值} 露出={查.挂靠} 不给打开 />}
           {协同}
         </div>
       }

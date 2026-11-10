@@ -519,6 +519,13 @@ const 派生: Record<string, Record<string, string>> = {
     dedupeKey: "同一事件不重复发的键，系统生成", readAt: "铃铛里点已读 / 全部已读时系统写",
     feishuStatus: "推飞书的结果，系统写", feishuError: "没推 / 失败的原因，系统写", feishuAt: "推飞书的时刻，系统写",
   },
+  // 企业版撞号台账（2026-11-10，迁移 115）：lib/enterprise/dupe-ledger.ts 系统写，用户只能点「申请挂靠」
+  EntDupeHit: {
+    userId: "查询人，当前登录账号", keyType: "撞的是哪种键（手机号 / 客户名……），查重时系统定", keyValue: "撞的值，查重时系统写",
+    customerId: "撞到哪位客户，查重时系统定", ownerId: "那一刻的负责人，查重时系统写", sameGroup: "查询人在不在那位客户的项目组，系统算",
+    action: "点「申请挂靠」时系统写", actionAt: "点的那一刻，系统写", result: "拦截 / 写进现有项目 / 同组提示，系统写",
+    status: "申请挂靠后系统改成待处理", warnTier: "触发了第几档预警，系统写",
+  },
 };
 
 /** 已知缺口：有字段、没写入路径。留在这里是为了让它一直显眼 */

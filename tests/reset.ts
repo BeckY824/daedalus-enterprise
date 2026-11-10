@@ -32,6 +32,7 @@ async function 清空() {
   await prisma.entSnapshot.deleteMany();
   // 站内通知（11-01）：userId 不挂外键，单独清
   await prisma.entNotice.deleteMany();
+  await prisma.entDupeHit.deleteMany();
   await prisma.task.deleteMany();
   await prisma.followPlan.deleteMany();
   await prisma.followUpSource.deleteMany();

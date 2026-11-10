@@ -46,7 +46,8 @@ afterAll(() => prisma.$disconnect());
 
 const 新建 = (改: Record<string, unknown> = {}) =>
   saveCustomer({
-    name: "测试客户", phone: "13800000001", school: null, grade: null, major: null,
+    // 名字跟着号码变：企业版新建按客户名查重（11-10），同名的第二个会被挡
+    name: `测试客户${String(改.phone ?? "13800000001").slice(-2)}`, phone: "13800000001", school: null, grade: null, major: null,
     followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
     // 11-02：只有负责人能改，客户归测试员（销售）
     salesOwnerId: "tester-id", channelId: null, referrerCustomerId: null,
