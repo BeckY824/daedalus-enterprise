@@ -27,6 +27,7 @@ import { 读项目列表 } from "@/lib/project/list";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 公海规则, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 历史负责人, 我回避的公海项目, 原负责人挡着, 公海无负责人 } from "@/lib/project/pool-owner";
+import { 分配公海项目 } from "@/app/(app)/pool/actions";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人;
@@ -209,6 +210,20 @@ describe("已结束的项目不能单独放回、不能单独领（X-70、P-公�
     const 没结 = await 项目(乙.id, await 客户(老板.id, "客户三"), "在跟");
     expect(await 放回公海(乙, 没结)).toEqual({ ok: true });
     expect(await 领取公海项目(丙, 没结)).toEqual({ ok: true });
+  });
+
+  it("分配公海项目也拦有结局的：分不到、说原因、还在公海；没结局的照分", async () => {
+    await setSetting("business", { projectMode: true, poolDays: 30 });
+    invalidateSettingsCache();
+    const 结了 = await 项目(乙.id, await 客户(老板.id, "客户四"), "老流失");
+    await 放回公海(乙, 结了);
+    await prisma.project.update({ where: { id: 结了 }, data: { result: "线索流失", closedAt: new Date() } });
+    const 没结 = await 项目(乙.id, await 客户(老板.id, "客户五"), "在跟");
+    await 放回公海(乙, 没结);
+    当(老板);
+    const r = await 分配公海项目([结了, 没结], 丙.id);
+    expect(r).toMatchObject({ ok: true, 分到: [没结], 没分到: [{ id: 结了, 原因: expect.stringContaining("已经结束") }] });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 结了 } })).pooledAt).not.toBeNull();
   });
 });
 
