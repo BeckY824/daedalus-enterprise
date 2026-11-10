@@ -6,7 +6,7 @@
  * 只认客户公海那一行（CustomerPool），占位负责人但不在公海的不拦；不是企业版不拦。
  * 拦了怎么办由调用方定：单条回提示，批量跳过这条记原因，导入记成没写进去。
  */
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 企业版 } from "./switch";
 
