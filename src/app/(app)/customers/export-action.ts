@@ -122,7 +122,8 @@ export async function 开始完整导出(条件: 客户条件) {
     prisma.customer.count({ where }),
     prisma.followUp.count({ where: { customer: where, ...截止前有(截止) } }),
   ]);
-  return { 截止: 截止.toISOString(), 客户数, 跟进数, ...await 导出归属省略(where) };
+  // 企业版渠道两层（P-渠道-01 附.5）：客户表来源拆主渠道、子渠道两列。企业版() 只在服务端读得到，随起点带给 worker
+  return { 截止: 截止.toISOString(), 客户数, 跟进数, 渠道两层: 企业版(), ...await 导出归属省略(where) };
 }
 
 export async function 读取完整导出批次(条件: 客户条件, 截止文本: string, 类别: "客户" | "跟进", 游标?: string) {

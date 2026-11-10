@@ -28,6 +28,7 @@ import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 企业级别, 企业级别说明, 级别选项 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
+import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, type 项目行, type 看板一列 } from "@/lib/project/board";
 import type { 看板列 } from "@/lib/project/nodes";
@@ -231,13 +232,13 @@ export default function ProjectsView({
     ...(企业版 ? [{ title: "下一步时间", key: "nextStepAt", width: 100, render: (_: unknown, r: 项目行) => (r.下一步时间 ? dayjs(r.下一步时间).format("MM-DD") : 无) }] : []),
     { title: "金额", key: "amount", width: 110, align: "right", render: (_, r) => 金额(r.amount, r.currency) },
     // 企业版项目公海：被收回过几次（放回、超时回收都算）
-    // 企业版（10-29 P6）：预计成交日期（能排，没填的总在最后）、已立项几天、渠道（项目没选跟客户的渠道走）
+    // 企业版（10-29 P6）：预计成交日期（能排，没填的总在最后）、已立项几天、渠道（项目没选跟客户的渠道走；P-渠道-01 列里只显示主渠道，悬停看全称）
     // P11 定稿 -2 版：项目级别显示成实心星（S 4 颗 … C 1 颗），悬停看档名；没分级的是 —
     ...(企业版 ? [
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
       { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
       { title: "已立项", key: "age", width: 80, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
-      { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
+      { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={渠道显示名(r.项目来源)}>{主渠道显示名(r.项目来源)}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
     ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),

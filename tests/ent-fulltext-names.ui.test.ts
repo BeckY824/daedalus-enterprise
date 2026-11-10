@@ -28,8 +28,8 @@ beforeAll(async () => {
     const 行=(id,name,attr,active)=>({id,name,phone:null,remark:'备注',active,attr,platform:null,endDate:null,createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',createdByName:'QA',channelOwnerId:'qa',channelOwnerName:'QA'});
     const rows=[行('c1',${JSON.stringify(长名)},'公域引流',true),行('c2',${JSON.stringify(无空格名)},'个人自拓',false),行('c3','短名','公域引流',true)];
     window.__render=()=>root.render(<ConfigProvider locale={zhCN} theme={themeConfig}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'qa',name:'QA'}}><ChannelsView rows={rows} users={[{id:'qa',name:'QA'}]} 属性选项={['公域引流','个人自拓']}/></我Provider></BusinessProvider></App></ConfigProvider>);
-    // 选渠道的级联：属性 / 名称 / 来源三列，放在 1024 宽的弹窗那么宽的格子里
-    window.__picker=()=>root.render(<ConfigProvider locale={zhCN}><div style={{width:472,margin:'420px 0 0 276px'}}><ChannelPicker aria-label='渠道' channels={[{id:'c1',name:${JSON.stringify(长名)},attr:'公域引流',platform:'Facebook',active:true},{id:'c2',name:${JSON.stringify(无空格名)},attr:'个人自拓',platform:null,active:true}]}/></div></ConfigProvider>);
+    // 选渠道的级联：属性 / 名称 / 来源三列，放在 1024 宽的弹窗那么宽的格子里（11-10 起默认两级，这里明说三级量最宽的情形）
+    window.__picker=()=>root.render(<ConfigProvider locale={zhCN}><div style={{width:472,margin:'420px 0 0 276px'}}><ChannelPicker aria-label='渠道' 层级='三级' channels={[{id:'c1',name:${JSON.stringify(长名)},attr:'公域引流',platform:'Facebook',active:true},{id:'c2',name:${JSON.stringify(无空格名)},attr:'个人自拓',platform:null,active:true}]}/></div></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);

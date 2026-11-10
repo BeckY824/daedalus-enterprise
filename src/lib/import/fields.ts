@@ -26,6 +26,8 @@ export type 字段名 =
   | "expectedSignAt"
   | "remark"
   | "channelName"
+  // 企业版渠道两层（P-渠道-01 附.5，11-10）：子渠道单独一列时和「主渠道」那列拼成全称再认
+  | "subChannel"
   // 外贸档案（2026-10-05，只在外贸模版下开）：落到 CustomerExtra，见 lib/customer-extra.ts
   | "country"
   | "whatsapp"
@@ -87,7 +89,7 @@ export function 字段表(b: { fields: { school: string; grade: string; major: s
   */
   if (b.template === "trade") {
     return [
-      ...通用字段(b).filter((f) => f.名 !== "channelName" && f.名 !== "expectedSignAt"),
+      ...通用字段(b).filter((f) => f.名 !== "channelName" && f.名 !== "subChannel" && f.名 !== "expectedSignAt"),
       { 名: "country", label: "国家", kind: "text", 别名: ["国家", "国家地区", "国家/地区", "所在国家", "地区", "country", "region", "nation", "countryregion"] },
       { 名: "whatsapp", label: "WhatsApp", kind: "text", 别名: ["whatsapp", "whatsapp号", "whatsapp号码", "wa", "whatsappnumber"] },
       { 名: "wechat", label: "微信", kind: "text", 别名: ["微信", "微信号", "wechat", "weixin", "wx", "wechatid"] },
@@ -123,7 +125,9 @@ function 通用字段(b: { fields: { school: string; grade: string; major: strin
     { 名: "decisionStatus", label: "决策状态", kind: "enum", values: DECISION_STATUSES, 显示名: b.statusLabels, 别名: ["决策状态", "意向", "意向度", "决策阶段", "decisionstatus"] },
     { 名: "expectedSignAt", label: "预计签约", kind: "date", 别名: ["预计签约", "预计签约时间", "预计成交", "预计签约日期", "expectedsign", "expectedsignat"] },
     { 名: "remark", label: "备注", kind: "text", 别名: ["备注", "说明", "描述", "note", "notes", "remark", "comment"] },
-    { 名: "channelName", label: "来源渠道", kind: "name", 别名: ["来源渠道", "渠道", "来源", "获客渠道", "渠道名称", "channel", "source"] },
+    { 名: "channelName", label: "来源渠道", kind: "name", 别名: ["来源渠道", "渠道", "来源", "获客渠道", "渠道名称", "主渠道", "channel", "source"] },
+    // 两层（P-渠道-01 附.5）：表里主渠道、子渠道分两列时，这一列和上面那列拼成「主渠道|子渠道」再对库里的渠道
+    { 名: "subChannel", label: "子渠道", kind: "name", 别名: ["子渠道", "子渠道名", "渠道触点"] },
   ];
 }
 
