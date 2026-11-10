@@ -951,18 +951,38 @@ export const 收回提醒尾 = "已回到线索公海";
 export const 旧收回提醒尾 = "已回到项目公海";
 
 export async function 公海超时收回(me: { id: string; name: string }, 今: Date = new Date()): Promise<number> {
+  return (await 公海超时收回明细(me, 今)).收回;
+}
+
+/**
+ * 一遍扫下来的明细（夜扫的补跑日志用，10c）。
+ * 上次扫 = 这一遍之前「扫过了」的记号里的日期；漏扫天数 = 上次扫和今天之间有几个整天没扫（服务停着）。
+ * 停机不改怎么收：到了回收日的照现行规则收（验证中、交接中、客户在公海的照样不收）。只是停着的那天本该发的「回收前一天」提醒已经发不了，
+ * 这样的项目收回时在通知说明里写一句（没提前提醒 = 几个）
+ */
+export type 超时收回明细 = { 收回: number; 将回收提醒: number; 上次扫: string | null; 漏扫天数: number; 没提前提醒: number };
+const 没扫 = (): 超时收回明细 => ({ 收回: 0, 将回收提醒: 0, 上次扫: null, 漏扫天数: 0, 没提前提醒: 0 });
+/** 停机漏了「回收前一天」提醒的项目，收回通知说明里加的那句 */
+export const 没提前提醒说明 = "系统停过机，这个项目没来得及提前一天提醒";
+
+export async function 公海超时收回明细(me: { id: string; name: string }, 今: Date = new Date()): Promise<超时收回明细> {
   // 总管理员切换视图（只读预览，M-权限-08）期间、管理员（admin，只读）打开页面时不扫：渲染时顺手写库会被拒
-  if (企业版() && ((await 视图中跳过()) || (await 只读身份中(defaultClient)))) return 0;
+  if (企业版() && ((await 视图中跳过()) || (await 只读身份中(defaultClient)))) return 没扫();
   return 看全部(() => 按规则收回(me, 今));
 }
 
-async function 按规则收回(me: { id: string; name: string }, 今: Date): Promise<number> {
+async function 按规则收回(me: { id: string; name: string }, 今: Date): Promise<超时收回明细> {
   const 规则 = await 生效组织规则();
-  if (!规则.超时回收.开) return 0;
+  if (!规则.超时回收.开) return 没扫();
   const 只扫 = 读团队() ? me.id : undefined;
   const 键 = 只扫 ? `${超时扫过键}:${只扫}` : 超时扫过键;
-  const 记号 = `${dayjs(今).format("YYYY-MM-DD")} ${JSON.stringify(规则.超时回收)}`;
-  if ((await getSetting<string>(键)) === 记号) return 0;
+  const 今天 = dayjs(今).format("YYYY-MM-DD");
+  const 记号 = `${今天} ${JSON.stringify(规则.超时回收)}`;
+  const 旧记号 = await getSetting<string>(键);
+  if (旧记号 === 记号) return 没扫();
+  const 上次扫 = typeof 旧记号 === "string" && /^\d{4}-\d{2}-\d{2} /.test(旧记号) ? 旧记号.slice(0, 10) : null;
+  const 漏扫天数 = 上次扫 ? Math.max(0, dayjs(今天).diff(dayjs(上次扫), "day") - 1) : 0;
+  let 没提前提醒 = 0;
 
   const 成员 = await 超时成员线(规则);
   const 们 = await 超时的项目(规则, 今, 成员, 只扫);
@@ -970,6 +990,14 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
   const 收了: string[] = [];
   const 客户也进了 = new Set<string>();
   for (const p of 们) {
+    // 停过机才查：这个项目的「回收前一天」提醒发过没有（收回时那条待办会被关、标题接一句，所以按开头找，且要在收之前查）
+    const 回收日 = 漏扫天数 ? 项目回收日(规则, p, 成员) : null;
+    const 漏了提醒 =
+      !!回收日 &&
+      !(await prisma.task.findFirst({
+        where: { ownerId: p.ownerId, title: { startsWith: 将回收提醒(p.name, 本套名(p.node, 字典of(企业版())), 回收日) } },
+        select: { id: true },
+      }));
     // 逐个一笔事务：查出来到写下去之间有人刚推了节点、领了、记了沟通，就不收
     const 收 = await 查完再写(async (tx) => {
       const 现 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
@@ -996,7 +1024,9 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     if (收) 收了.push(p.id);
     if (收) {
       const 发给 = await 查收件人(p.ownerId);
-      await notify(发给.人们, { kind: "回收", title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`, body: 发给.说明, link: "/projects", key: `recall:${p.id}:${dayjs(今).format("YYYY-MM-DD")}` });
+      if (漏了提醒) 没提前提醒++;
+      const body = [发给.说明, 漏了提醒 ? 没提前提醒说明 : ""].filter(Boolean).join(" · ");
+      await notify(发给.人们, { kind: "回收", title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`, body, link: "/projects", key: `recall:${p.id}:${今天}` });
     }
   }
   if (客户也进了.size) await 进公海挂靠通知了([...客户也进了]);
@@ -1008,9 +1038,9 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数, 外贸节点天数: 规则.超时回收.外贸节点天数 ?? {} },
     });
   }
-  await 提醒明天收(规则, 今, 成员, 查收件人, 只扫);
+  const 将回收提醒数 = await 提醒明天收(规则, 今, 成员, 查收件人, 只扫);
   await setSetting(键, 记号);
-  return 收了.length;
+  return { 收回: 收了.length, 将回收提醒: 将回收提醒数, 上次扫, 漏扫天数, 没提前提醒 };
 }
 
 type 回收收件人查 = (ownerId: string) => Promise<{ 人们: string[]; 说明: string }>;
@@ -1042,8 +1072,9 @@ function 回收通知收件人(): 回收收件人查 {
  * 回收前一天（10-27）：明天就要收回的项目，给负责人一条待办提醒（和收回那条同一个地方：首页待办、提醒），铃铛同时告诉他的直属上级。
  * 跟着超时扫走（夜里 00:05 或白天第一次打开页面），同一天同一个项目只提醒一次：老板当天改了时长再扫也不重复
  */
-async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员线查 | null, 查收件人: 回收收件人查, 只扫?: string): Promise<void> {
+async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员线查 | null, 查收件人: 回收收件人查, 只扫?: string): Promise<number> {
   const 今天 = dayjs(今).format("YYYY-MM-DD");
+  let 发了 = 0;
   for (const p of await 会收的项目(规则, 成员, 只扫)) {
     const 日 = 项目回收日(规则, p, 成员);
     if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
@@ -1054,7 +1085,9 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
     });
     const 发给 = await 查收件人(p.ownerId);
     await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
+    发了++;
   }
+  return 发了;
 }
 
 /**

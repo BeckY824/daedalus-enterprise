@@ -58,6 +58,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   停夜扫();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllEnvs();
 });
@@ -336,5 +337,89 @@ describe("内贸、外贸分开算时长（C7）", () => {
     const 列 = await 读项目列表({ id: 老板.id, name: 老板.name, role: "ADMIN" } as never, {});
     const 标 = Object.fromEntries(列.行.map((r) => [r.id, r.即将回收]));
     expect(标).toEqual({ [内.id]: "2026-10-23", [外.id]: null });
+  });
+});
+
+describe("服务停过后启动：补跑（10c）", () => {
+  let 序 = 0;
+  /** 每个项目各挂一位客户（企业版单项目客户会跟着项目进公海，互不影响） */
+  async function 单项目(createdAt: string, name: string, 补: Record<string, unknown> = {}) {
+    序 += 1;
+    const c = await prisma.customer.create({ data: { name: `补客户${序}`, phone: `1370000${String(序).padStart(4, "0")}`, salesOwnerId: 乙 } });
+    return 项目(createdAt, { customerId: c.id, name, ...补 });
+  }
+  const 收回通知 = async (id: string) => prisma.entNotice.findMany({ where: { dedupeKey: { startsWith: `recall:${id}:` } } });
+  const 补跑日志 = (log: { mock: { calls: unknown[][] } }) => log.mock.calls.map((c) => String(c[0])).filter((s) => s.startsWith("[定时补跑]"));
+
+  it("停两天后启动：启动那一遍就补收（不等下一分钟），豁免照旧；没赶上提前一天提醒的，收回通知里说明；写一条补跑日志", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const 停机时到期 = await 单项目("2026-10-23 10:00", "停机时到期"); // 3 天 → 10-26 收，提醒本该 10-25 发
+    const 验证中 = await 单项目("2026-10-01 10:00", "验证中的");
+    await prisma.entLeadVerify.create({ data: { projectId: 验证中.id, verdict: "初验无效", pending: "市场复核" } });
+    const 明天收 = await 单项目("2026-10-25 10:00", "明天收的"); // → 10-28
+    // 10-24 正常扫过一遍
+    expect(await 夜里扫超时(时("2026-10-24 00:05"))).toBe(0);
+    expect(await prisma.task.count()).toBe(0);
+
+    // 10-25、10-26 服务停着，10-27 08:00 启动
+    vi.setSystemTime(时("2026-10-27 08:00"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    启动夜扫();
+    await 夜扫在跑();
+
+    expect(await 在公海(停机时到期.id)).toBe(true);
+    expect(await 在公海(验证中.id)).toBe(false); // 验证中不回收：补跑也不绕过
+    expect(await 在公海(明天收.id)).toBe(false);
+    const [通知] = await 收回通知(停机时到期.id);
+    expect(通知.dedupeKey).toBe(`recall:${停机时到期.id}:2026-10-27`);
+    expect(通知.body).toContain("没来得及提前一天提醒");
+    // 明天才收的：提醒照发，写的是真实回收日，不说错日子
+    expect((await prisma.task.findMany({ where: { title: { contains: "会自动回到线索公海" } } })).map((t) => t.title)).toEqual([
+      将回收提醒("明天收的", "潜客培育", "2026-10-28"),
+    ]);
+    const 行 = 补跑日志(log);
+    expect(行).toHaveLength(1);
+    expect(行[0]).toContain("启动");
+    expect(行[0]).toContain("2026-10-24");
+    expect(行[0]).toMatch(/超时回收 1 个/);
+    expect(行[0]).toMatch(/将回收提醒 1 条/);
+
+    // 当天再重启：不重收、不重发
+    const 之前 = { 留痕: await prisma.projectNodeLog.count(), 待办: await prisma.task.count(), 通知: await prisma.entNotice.count() };
+    停夜扫();
+    启动夜扫();
+    await 夜扫在跑();
+    for (let i = 0; i < 2; i++) await 走一分钟();
+    expect({ 留痕: await prisma.projectNodeLog.count(), 待办: await prisma.task.count(), 通知: await prisma.entNotice.count() }).toEqual(之前);
+  });
+
+  it("没停过：前一天提醒过、当天收回，收回通知不带那句说明", async () => {
+    const p = await 单项目("2026-10-23 10:00", "正常的"); // → 10-26
+    await 夜里扫超时(时("2026-10-25 00:05"));
+    expect(await prisma.task.count({ where: { title: 将回收提醒("正常的", "潜客培育", "2026-10-26") } })).toBe(1);
+    expect(await 夜里扫超时(时("2026-10-26 00:05"))).toBe(1);
+    const [通知] = await 收回通知(p.id);
+    expect(通知.body).not.toContain("提前一天提醒");
+  });
+
+  it("停机前已经提醒过的（提醒在 10-25 发了，10-26 起停两天）：补收时不带那句说明", async () => {
+    const p = await 单项目("2026-10-23 10:00", "提醒过的"); // → 10-26
+    await 夜里扫超时(时("2026-10-25 00:05"));
+    expect(await 夜里扫超时(时("2026-10-28 08:00"))).toBe(1);
+    const [通知] = await 收回通知(p.id);
+    expect(通知.body).not.toContain("提前一天提醒");
+  });
+
+  it("启动时没停过（昨天扫过）：日志照写一条，各类都是 0 也写", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    await 夜里扫超时(时("2026-10-26 00:05"));
+    vi.setSystemTime(时("2026-10-27 08:00"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    启动夜扫();
+    await 夜扫在跑();
+    expect(补跑日志(log)).toHaveLength(1);
+    // 之后每分钟那遍没有补到东西，不再写
+    for (let i = 0; i < 2; i++) await 走一分钟();
+    expect(补跑日志(log)).toHaveLength(1);
   });
 });
