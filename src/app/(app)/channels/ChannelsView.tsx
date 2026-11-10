@@ -544,24 +544,28 @@ export default function ChannelsView({
     <>
       <PageHead
         title="渠道"
+        /*
+          统计按两层看（P-渠道-01 附.5）：放页头不放筛选行，1024 宽筛选行照旧一行摆得下。
+          摆标题旁边（照客户页「客户 / 公海」），不进右上那组动作：.page-head-a 不收缩，
+          1024 宽 + AI 栏常驻时切换 + 「主渠道」+「新建渠道」一排会撑出页头；标题那块能折行，放不下就掉到标题下面
+        */
+        titleAside={
+          两层 ? (
+            <Segmented
+              aria-label="统计口径"
+              value={按主看 ? "主" : "子"}
+              onChange={(v) => set按主看(v === "主")}
+              options={[{ value: "子", label: "按子渠道" }, { value: "主", label: "按主渠道" }]}
+            />
+          ) : undefined
+        }
         extra={
-          (两层 || 能管) && (
+          能管 && (
             <Space size={8} wrap>
-              {/* 统计按两层看（P-渠道-01 附.5）：放页头不放筛选行，1024 宽筛选行照旧一行摆得下 */}
-              {两层 && (
-                <Segmented
-                  aria-label="统计口径"
-                  value={按主看 ? "主" : "子"}
-                  onChange={(v) => set按主看(v === "主")}
-                  options={[{ value: "子", label: "按子渠道" }, { value: "主", label: "按主渠道" }]}
-                />
-              )}
-              {能管 && 两层 && <Button onClick={() => set开主渠道(true)}>主渠道</Button>}
-              {能管 && (
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
-                  新建渠道
-                </Button>
-              )}
+              {两层 && <Button onClick={() => set开主渠道(true)}>主渠道</Button>}
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
+                新建渠道
+              </Button>
             </Space>
           )
         }
