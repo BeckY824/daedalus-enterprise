@@ -46,6 +46,7 @@ import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
+import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -311,6 +312,8 @@ export async function 改节点(
     // 「仅上级推」开着（企业版组织规则）：负责人自己推不动，直属上级只给往前推这一步，别的照旧只给负责人（11-01 闭环）
     const 上级代推 = !能改节点(me, p, org) && 上级只推(me, p, 推的组织, 规则);
     if (!能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
+    // 待分配期间占着负责人一格的建的人不能推进、退回、点结局（P-转-21、X-68）：节点、结局都不给动，字段照改
+    if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
     // 企业版线索验证（P12）在等复核 / 等销售处理：别从这里绕过去（lead-verify.ts 带 验证放行 进来）
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
@@ -444,9 +447,11 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
   if (企业版()) {
     if (!能删一些(me, org)) return { ok: false, error: 项目不能删提示 };
     return 查完再写(async (tx) => {
-      const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true } });
+      const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, awaitAssignAt: true } });
       if (!p) return { ok: false as const, error: 能删除(me, org, null) ? "这个项目已经不在了，刷新看看" : 项目不能删提示 };
       if (!能删除(me, org, p.pooledAt ? null : p.ownerId)) return { ok: false as const, error: 项目不能删提示 };
+      // 待分配期间占着负责人一格的建的人不能删（P-转-21、X-68）；系统管理员照删
+      if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
       // 状态拦（X-74、P-删-10）：交接中客户的项目、验证中的线索不能删；客户只剩这一个项目不能单删（M-公海-14 不再有零项目客户）
       if ((await 看全部(() => 交接中的客户([p.customerId], tx))).size) return { ok: false as const, error: "这个项目的客户正在转让交接中，先撤回交接或等接手人确认再删" };
       const 验 = await 看全部(() => tx.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }));
@@ -1380,6 +1385,8 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
   for (;;) {
     const p = await tx.project.findUnique({ where: { id: projectId } });
     if (!p || p.pooledAt || p.result || !按必填走(规则, p.node)) break;
+    // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
+    if (待分配占位(me, p)) break;
     const 下 = 下一步(p, 字典of(企业版()));
     if (!下) break;
     if (!往前 && !(await 往前进来的(tx, p))) break;
