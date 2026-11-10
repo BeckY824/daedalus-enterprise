@@ -24,7 +24,7 @@ import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
-import { 能管公海, 能转出自己的, 只读角色, 能新建和领取, 转自己客户要申请 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请 } from "@/lib/enterprise/permissions";
 import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
@@ -202,7 +202,8 @@ export default async function CustomerDetailPage({
       channels={channels}
       aiEnabled={aiEnabled}
       已收藏={已收藏}
-      能放公海={能管公海(me, await 权限组织()) || customer.salesOwnerId === me.id}
+      // P-公海-05：和服务端 放进公海 同一个判定（能放回 = 能转让，P-公海-02）
+      能放公海={能放回客户公海(me, { salesOwnerId: customer.salesOwnerId, 在公海: !!customer.pool }, await 权限组织())}
       能转让客户={!企 || 能管公海(me, await 权限组织()) || (customer.salesOwnerId === me.id && 能转出自己的(me, await 权限组织()))}
       // 负责人本人转自己的 = 申请移交（X4）；市场成员手里的转给销售照旧直接转（P-转-17），按钮不改说法，结果按服务端回的
       转让要申请={

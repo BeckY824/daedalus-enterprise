@@ -290,7 +290,7 @@ describe("客户放回公海选退回原因（M-公海-09）", () => {
   it("没权限的那句照旧先说，不先要原因", async () => {
     const c = await 客户(乙.id);
     当(丙);
-    expect(await 放进公海([c])).toMatchObject({ ok: false, error: expect.stringContaining("只有负责人或总管理、销售管理") });
+    expect(await 放进公海([c])).toMatchObject({ ok: false, error: expect.stringContaining("只有负责人、直属上级或总管理") });
   });
 
   it("不是企业版：不问原因，照旧记「手动」", async () => {

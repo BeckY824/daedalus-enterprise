@@ -181,6 +181,9 @@ type Props = {
   能删?: boolean;
   /** 企业版这一页里我删不了的（不是我负责的、在公海的；系统管理员一律空）：行菜单不摆删除，批量勾到了先说清 */
   删不了ids?: string[];
+  /** 这一页里我放不回公海的（P-公海-05，同服务端 能放回客户公海：不是能转让这位的、已在公海的）：勾的里一位都放不了时批量条不摆「放回公海」；
+   *  有放得了的照摆，放不了的服务端跳过、提示几位没放 */
+  放不了ids?: string[];
   /** 企业版虚线下属的客户（这一页里的）：只能看——不摆编辑 / 删除、不让勾批量（10-25 实测 F4）。团队版一律空 */
   只读ids?: string[];
   /** 企业版这一页公海里原负责人是我的：领取按钮灰着、悬停说「原负责人不能领回」（lib/enterprise/pool-rules.ts）。别的版本一律空 */
@@ -226,11 +229,12 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
   const 删不了 = new Set(删不了ids);
+  const 放不了 = new Set(放不了ids);
   const 领不回 = new Set(原负责人领不回ids);
   const 分给们 = 公海分给 ?? users;
   // 服务端已取有效页的数据；只修正地址，避免二次请求与开发模式流式重定向错误。
@@ -309,7 +313,7 @@ export default function CustomersView({
     }
     const 另 = [
       res.unchanged && (动作 === "放进" ? `${res.unchanged} 位本来就在公海` : `${res.unchanged} 位已被别人领走或不在公海`),
-      res.没权限 && `${res.没权限} 位不是你负责的，没放（只有负责人或管理员能放）`,
+      res.没权限 && `${res.没权限} 位你放不了，没放（只有负责人、直属上级或总管理能放）`,
       res.有订单 && `${res.有订单} 位名下有没结束的订单阶段项目，没放${res.订单项目 ? `（${res.订单项目}）` : ""}`,
       res.交接中 && `${res.交接中} 位正在转让交接中，没放`,
       res.同事在推 && `${res.同事在推} 位名下有同事负责、还没结束的项目，没放${res.同事项目 ? `（${res.同事项目}）` : ""}`,
@@ -993,7 +997,7 @@ export default function CustomersView({
                 </Button>
                 {全领不回 && <span className="muted" style={{ fontSize: 12 }}>{原负责人不能领回提示}</span>}
               </>
-            ) : (
+            ) : (选中行.some((r) => !r.pool && !放不了.has(r.id)) &&
               <Button size="small" icon={<InboxOutlined />}
                 // 一批转出去先问一声（交互规则 B），放完照旧 6 秒内能撤；企业版还要选退回原因、写明联系人和项目一起退（U-客户-04）
                 onClick={async () => {

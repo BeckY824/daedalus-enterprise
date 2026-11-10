@@ -11,7 +11,7 @@ import { 公海分不给 } from "@/lib/owners";
 import { 看全部, 虚线只读挡 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 能管公海, 能转出自己的, 只读角色, 只读角色话, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能放回客户公海, 只读角色, 只读角色话, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话 } from "@/lib/enterprise/permissions";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
@@ -117,8 +117,8 @@ const 有订单不能放提示 = (客户: string, 订单项目: string) => `${�
 const 交接中不能放提示 = (客户: string) => `这位${客户}正在转让交接中，先撤回交接再放回公海`;
 
 /**
- * 放进公海：负责人本人或管理员才能放（别人的客户你放不进去——那等于替同事把人扔了）。可批量，
- * 不是自己的那几位跳过并说一声。企业版负责人清空、原负责人记历史（M-公海-03，pool-link.ts 客户进公海清负责人）；
+ * 放进公海：能转让这位客户的才能放（permissions.ts 能放回客户公海，P-公海-02；别人的客户你放不进去——那等于替同事把人扔了）。可批量，
+ * 放不了的那几位跳过并说一声。企业版负责人清空、原负责人记历史（M-公海-03，pool-link.ts 客户进公海清负责人）；
  * 别的版本原负责人不动，领的人来了才换。
  * 企业版要选退回原因（字典「回收原因」，字典里一项都没启用时不拦），存成「回收原因：X」，统一公海「入池原因」列读它（M-公海-09）；
  * 别的版本不问，照旧记「手动」
@@ -134,10 +134,8 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   const 这些 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
   const 已在 = 这些.filter((c) => c.pool);
   const 组织 = await 权限组织();
-  const 管 = 能管公海(me, 组织);
-  // 11-02：自己的也得是销售 / 销售管理才能放（管理员只读、没设业务角色的没权限）
-  const 自己能放 = 能转出自己的(me, 组织);
-  const 有权限 = 这些.filter((c) => !c.pool && (管 || (自己能放 && c.salesOwnerId === me.id)));
+  // P-公海-02：能放回 = 能转让（负责人本人、实线直属上级、条线总管理、系统管理员），逐位判；按钮同一处判（P-公海-05）
+  const 有权限 = 这些.filter((c) => 能放回客户公海(me, { salesOwnerId: c.salesOwnerId, 在公海: !!c.pool }, 组织));
   // 企业版：名下有没结束的订单阶段项目的不能放（11-03 完成度 B1-4，同项目放回公海「订单阶段的项目不能放回公海」）。
   // 不按谁在看限定：别人负责的订单项目也算
   const 订单们 = 企业版() && 有权限.length
@@ -169,7 +167,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
       const 名 = 有权限.length > 1 ? `「${有权限.find((c) => c.id === id)?.name ?? ""}」` : "";
       return { ok: false, error: `${名}${话}` };
     }
-    return 没权限 ? { ok: false, error: `只有负责人或总管理、销售管理能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
+    return 没权限 ? { ok: false, error: `只有负责人、直属上级或总管理能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
   }
   // 能放了才问原因：放不了的那句（虚线、没权限、已在公海）照旧先说
   const 选 = await 选的原因("recycle", 原因);
