@@ -876,13 +876,21 @@ async function 超时的项目(规则: 组织规则, 今: Date, 成员: 成员�
   return (await 会收的项目(规则, 成员, ownerId)).filter((p) => 超时了(规则, p, 今, 成员));
 }
 
+/** 验证中（等复核 / 等销售……）的线索不收、也不发「明天收回」、不算即将逾期（X-78 → M-线索-02，三态上线前的过渡期）。不是企业版 {} */
+export function 验证中不收(): Prisma.ProjectWhereInput {
+  return 企业版() ? { NOT: { entLeadVerify: { is: { pending: { not: null } } } } } : {};
+}
+
 /** 按这份规则会被收回的项目（不管哪天收） */
 async function 会收的项目(规则: 组织规则, 成员: 成员线查 | null, ownerId?: string): Promise<待查项目[]> {
   const 节点 = [...new Set([...Object.keys(规则.超时回收.节点天数), ...Object.keys(规则.超时回收.外贸节点天数 ?? {})])];
   const 有默认 = !!字典of(企业版()).默认超时天数;
   if (!规则.超时回收.开 || (!节点.length && !有默认)) return [];
   const 们 = await prisma.project.findMany({
-    where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] }, ...(有默认 ? {} : { node: { in: 节点 } }), customer: { pool: { is: null } }, ...(ownerId ? { ownerId } : {}) },
+    where: {
+      pooledAt: null, result: null, phase: { in: [...能进公海的阶段] }, ...(有默认 ? {} : { node: { in: 节点 } }), customer: { pool: { is: null } }, ...(ownerId ? { ownerId } : {}),
+      ...验证中不收(),
+    },
     select: 算超时要的,
   });
   // 客户在申请移交 / 转让交接里、还没确认的：名下项目不收（X-38 → P-转-05，挂到对方确认为止），也不发「明天收回」提醒
@@ -934,6 +942,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       const 现 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
       if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今, 成员)) return false;
       if (企业版() && (await 交接中的客户([p.customerId], tx)).size) return false;
+      if (await 验证中不能改派(tx, p.id)) return false; // 查完到写之间刚提交了验证（X-78）
       await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 今, nextStepAt: null, nextStepText: null } });
       await 进公海清组员(tx, [p.id]);
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
