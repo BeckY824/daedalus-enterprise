@@ -159,7 +159,7 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
           <span className="roster-l0">
             <span className="roster-src" title={r.source ?? undefined}>
               {带状态 && (
-                <Tag color={状态色(行状态(r))} style={{ margin: "0 6px 0 0", borderRadius: 5, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
+                <Tag color={状态色(行状态(r))} style={{ margin: "0 6px 0 0", fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
                   {状态名(行状态(r))}
                 </Tag>
               )}

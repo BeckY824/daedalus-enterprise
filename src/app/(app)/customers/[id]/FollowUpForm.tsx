@@ -631,7 +631,7 @@ export default function FollowUpForm({
     style={{
       background: "var(--brand-bg)",
       border: "1px solid var(--brand-line)",
-      borderRadius: 8,
+      borderRadius: 10,
       padding: "12px 14px",
       marginBottom: 8,
     }}

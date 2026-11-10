@@ -111,7 +111,7 @@ export default function UserDetailView({ token, 详情 }: { token: string; 详�
           {详情.功能分布.length ? (
             <>
               <Chart option={横条图(详情.功能分布.map((f) => ({ 名: f.功能, 数: f.次数 })))} height={Math.max(90, 详情.功能分布.length * 30 + 10)} />
-              <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--x-muted)" }}>
+              <div style={{ marginTop: 12, fontSize: 13, color: "var(--x-muted)" }}>
                 模型：
                 {详情.模型分布.map((m) => `${m.模型} ${千分位(m.次数)} 次`).join(" · ")}
               </div>
@@ -167,7 +167,7 @@ export default function UserDetailView({ token, 详情 }: { token: string; 详�
           />
         </卡片>
 
-        <卡片 标题="他发过的反馈" 右={<Link href={站内(token, "/feedback")} style={{ fontSize: 12.5 }}><LinkPending />全部反馈 →</Link>}>
+        <卡片 标题="他发过的反馈" 右={<Link href={站内(token, "/feedback")} style={{ fontSize: 13 }}><LinkPending />全部反馈 →</Link>}>
           {详情.反馈.length ? (
             详情.反馈.map((f) => (
               <div key={f.id} className={`opx-fb ${f.handled ? "opx-fb-done" : "opx-fb-todo"}`}>

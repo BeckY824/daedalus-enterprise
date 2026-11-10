@@ -32,7 +32,7 @@ export default function WorkspacePicker({ list, current }: { list: Workspace[]; 
     {error && <p role="alert">{error}</p>}
     <div style={{ display: "grid", gap: 12 }}>
       {list.map(w => <button key={w.id} type="button" disabled={busy !== null} onClick={() => void choose(w.id)}
-        style={{ textAlign: "left", padding: 16, borderRadius: 12, border: "1px solid var(--line-soft)", background: "var(--page-bg)", color: "inherit", cursor: "pointer" }}>
+        style={{ textAlign: "left", padding: 16, borderRadius: 10, border: "1px solid var(--line-soft)", background: "var(--page-bg)", color: "inherit", cursor: "pointer" }}>
         <strong>{w.name}</strong>{w.id === current && <span> · 当前</span>}
         <div>{w.role === "OWNER" ? "所有者" : "成员"} · {w.writable ? "可编辑" : "只读"}{busy === w.id ? " · 正在进入…" : ""}</div>
       </button>)}

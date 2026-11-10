@@ -131,7 +131,7 @@ function PastePanel({
   ].join("\n");
   return (
     <>
-      <div style={{ background: "var(--brand-bg)", border: "1px solid var(--brand-line)", borderRadius: 8, padding: "12px 14px" }}>
+      <div style={{ background: "var(--brand-bg)", border: "1px solid var(--brand-line)", borderRadius: 10, padding: "12px 14px" }}>
         <Input.TextArea
           value={原文}
           onChange={(e) => set原文(e.target.value)}

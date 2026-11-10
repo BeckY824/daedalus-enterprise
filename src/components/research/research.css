@@ -38,7 +38,7 @@
 
 /* ---------- 6 步进度 ---------- */
 .rs-rail-wrap { position: relative; }
-.rs-rail { position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--line-soft); border-radius: 2px; overflow: hidden; }
+.rs-rail { position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--line-soft); border-radius: 999px; overflow: hidden; }
 .rs-rail-fill { position: absolute; inset: 0; background: var(--brand); transform-origin: top; transform: scaleY(0); }
 .rs-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .rs-stage { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 12px; align-items: start; padding: 3px 0; }
@@ -316,7 +316,7 @@
 .cli-narrow .rs-musts-3 .rs-must-l, .rec-ai .rs-musts-3 .rs-must-l { font-size: var(--fs-min); font-weight: 600; }
 .cli-narrow .rs-must-do:not(:empty)::before, .rec-ai .rs-must-do:not(:empty)::before { content: "应对："; color: var(--text-muted); }
 .cli-narrow .rs-verified li, .rec-ai .rs-verified li { grid-template-columns: 8px 64px minmax(0, 1fr); }
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .rs-musts-3 .rs-must { grid-template-columns: minmax(0, 1fr); gap: 0; padding-bottom: 4px; border-bottom: 1px solid var(--line-soft); }
   .rs-must-head { display: none; }
   .rs-musts-3 .rs-must-l { font-size: var(--fs-min); font-weight: 600; }

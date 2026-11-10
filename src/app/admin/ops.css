@@ -35,6 +35,9 @@
   --x-hover: #f5f8fc;
   --x-head: #f7f9fc;
   --x-shadow: 0 1px 2px rgba(16, 38, 76, 0.04), 0 4px 16px rgba(16, 38, 76, 0.04);
+  /* 字号用 globals.css 的六档，但钉回默认值：主题（skins/*.css）会改 --fs-*，运营台不跟主题走。
+     tests/font-size-tokens.test.ts 核对这里和 :root 一字不差 */
+  --fs-title: 22px; --fs-section: 15px; --fs-body: 14px; --fs-note: 13px; --fs-min: 12px; --fs-num: 26px;
 
   color-scheme: light;
   display: grid;
@@ -42,7 +45,7 @@
   min-height: 100vh;
   background: var(--x-bg);
   color: var(--x-ink);
-  font-size: 14px;
+  font-size: var(--fs-body);
 }
 .opx .num, .opx-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 
@@ -56,22 +59,22 @@
 }
 .opx-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 20px; }
 .opx-logo {
-  width: 32px; height: 32px; border-radius: 9px; flex: none;
+  width: 32px; height: 32px; border-radius: 10px; flex: none;
   display: grid; place-items: center;
   background: linear-gradient(145deg, var(--x-blue-light), var(--x-blue-deep));
-  color: var(--x-panel); font-weight: 700; font-size: 15px; letter-spacing: -0.5px;
+  color: var(--x-panel); font-weight: 700; font-size: var(--fs-section); letter-spacing: -0.5px;
   box-shadow: 0 4px 10px rgba(42, 120, 214, 0.28);
 }
-.opx-brand b { display: block; font-size: 15px; font-weight: 650; letter-spacing: -0.2px; }
-.opx-brand small { display: block; font-size: 12px; color: var(--x-muted); margin-top: 1px; }
+.opx-brand b { display: block; font-size: var(--fs-section); font-weight: 650; letter-spacing: -0.2px; }
+.opx-brand small { display: block; font-size: var(--fs-min); color: var(--x-muted); margin-top: 1px; }
 .opx-env {
-  margin-left: auto; font-size: 10.5px; font-weight: 650; letter-spacing: 0.4px;
+  margin-left: auto; font-size: var(--fs-min); font-weight: 650; letter-spacing: 0.4px;
   padding: 2px 7px; border-radius: 999px; border: 1px solid var(--x-line); color: var(--x-muted);
 }
 /* 对着线上库时要一眼看出来：这一格是状态色，不是装饰 */
 .opx-env-live { color: var(--x-danger); border-color: var(--x-danger-line); background: var(--x-danger-bg); }
 
-.opx-nav-h { padding: 14px 12px 6px; font-size: 11.5px; font-weight: 600; color: var(--x-faint); letter-spacing: 0.6px; }
+.opx-nav-h { padding: 14px 12px 6px; font-size: var(--fs-min); font-weight: 600; color: var(--x-faint); letter-spacing: 0.6px; }
 .opx-nav a {
   position: relative;
   display: flex; align-items: center; gap: 10px;
@@ -85,21 +88,21 @@
 .opx-nav a.on .anticon { color: var(--x-blue); }
 .opx-nav a.on::before {
   content: ""; position: absolute; left: -14px; top: 9px; bottom: 9px; width: 3px;
-  border-radius: 0 3px 3px 0; background: var(--x-blue);
+  border-radius: 0 4px 4px 0; background: var(--x-blue);
 }
 .opx-nav-n {
   margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
-  display: grid; place-items: center; font-size: 11.5px; font-weight: 650;
+  display: grid; place-items: center; font-size: var(--fs-min); font-weight: 650;
   background: var(--x-danger); color: var(--x-panel);
 }
 .opx-side-foot {
   margin-top: auto; padding: 14px 10px 0; border-top: 1px solid var(--x-line-soft);
-  font-size: 12px; color: var(--x-muted); line-height: 1.7;
+  font-size: var(--fs-min); color: var(--x-muted); line-height: 1.7;
 }
 .opx-side-foot button {
   margin-top: 6px; display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--x-line); background: var(--x-panel); color: var(--x-ink-2);
-  height: 28px; padding: 0 10px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 12.5px;
+  height: 28px; padding: 0 10px; border-radius: 6px; cursor: pointer; font: inherit; font-size: var(--fs-note);
   transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .opx-side-foot button:hover { border-color: var(--x-blue); color: var(--x-blue-deep); }
@@ -118,10 +121,10 @@
 .opx-nav a:has(.opx-pending) .anticon { color: var(--x-blue); }
 .opx-side-foot button:disabled { cursor: progress; opacity: 0.7; }
 .opx-head { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
-.opx-head h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.4px; color: var(--x-ink); }
-.opx-head p { margin: 4px 0 0; color: var(--x-muted); font-size: 13px; }
+.opx-head h1 { margin: 0; font-size: var(--fs-title); font-weight: 650; letter-spacing: -0.4px; color: var(--x-ink); }
+.opx-head p { margin: 4px 0 0; color: var(--x-muted); font-size: var(--fs-note); }
 .opx-head-r { margin-left: auto; display: flex; gap: 8px; align-items: center; }
-.opx-crumb { font-size: 13px; color: var(--x-muted); margin-bottom: 6px; }
+.opx-crumb { font-size: var(--fs-note); color: var(--x-muted); margin-bottom: 6px; }
 .opx-crumb a { color: var(--x-blue-deep); text-decoration: none; }
 .opx-crumb a:hover { text-decoration: underline; }
 
@@ -130,12 +133,12 @@
   background: var(--x-panel); border: 1px solid var(--x-line); border-radius: 14px;
   padding: 16px 18px 14px; box-shadow: var(--x-shadow); min-width: 0;
 }
-.opx-kpi-k { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--x-muted); font-weight: 500; }
-.opx-kpi-k .anticon { color: var(--x-blue); font-size: 13px; }
-.opx-kpi-v { margin-top: 8px; font-size: 28px; font-weight: 650; letter-spacing: -0.6px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.opx-kpi-v i { font-style: normal; font-size: 13px; font-weight: 500; color: var(--x-muted); margin-left: 3px; letter-spacing: 0; }
+.opx-kpi-k { display: flex; align-items: center; gap: 6px; font-size: var(--fs-note); color: var(--x-muted); font-weight: 500; }
+.opx-kpi-k .anticon { color: var(--x-blue); font-size: var(--fs-note); }
+.opx-kpi-v { margin-top: 8px; font-size: var(--fs-num); font-weight: 650; letter-spacing: -0.6px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.opx-kpi-v i { font-style: normal; font-size: var(--fs-note); font-weight: 500; color: var(--x-muted); margin-left: 3px; letter-spacing: 0; }
 /* 注一行写不下就换行（10-19 排查：1024 宽「送了 30 次，问了 24 …」被省略号吃掉的正是要看的数） */
-.opx-kpi-n { margin-top: 6px; font-size: 12px; color: var(--x-muted); overflow-wrap: anywhere; }
+.opx-kpi-n { margin-top: 6px; font-size: var(--fs-min); color: var(--x-muted); overflow-wrap: anywhere; }
 .opx-kpi-warn .opx-kpi-v { color: var(--x-danger); }
 .opx-kpi-warn .opx-kpi-k .anticon { color: var(--x-danger); }
 .opx-kpi-quiet .opx-kpi-v { color: var(--x-faint); }
@@ -146,8 +149,8 @@
 }
 .opx-card + .opx-card { margin-top: 14px; }
 .opx-card-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-.opx-card-h h2 { margin: 0; font-size: 15px; font-weight: 620; color: var(--x-ink); }
-.opx-card-h span { font-size: 12.5px; color: var(--x-muted); }
+.opx-card-h h2 { margin: 0; font-size: var(--fs-section); font-weight: 620; color: var(--x-ink); }
+.opx-card-h span { font-size: var(--fs-note); color: var(--x-muted); }
 .opx-card-h .opx-card-r { margin-left: auto; }
 .opx-card-flush { padding: 0; overflow: hidden; }
 .opx-card-flush > .opx-card-h { padding: 18px 20px 0; }
@@ -157,10 +160,10 @@
 .opx-grid-11 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .opx-grid-111 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .opx-grid > .opx-card + .opx-card { margin-top: 0; }
-@media (max-width: 1180px) {
+@media (max-width: 1199px) {
   .opx-grid-21, .opx-grid-111 { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 900px) {
+@media (max-width: 767px) {
   .opx { grid-template-columns: 1fr; }
   .opx-side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; padding: 12px; }
   .opx-brand { padding: 0 8px 0 0; }
@@ -171,24 +174,24 @@
   .opx-grid-11 { grid-template-columns: minmax(0, 1fr); }
 }
 
-.opx-empty { padding: 28px 0; text-align: center; color: var(--x-faint); font-size: 13px; }
+.opx-empty { padding: 28px 0; text-align: center; color: var(--x-faint); font-size: var(--fs-note); }
 .opx-muted { color: var(--x-muted); }
 .opx-faint { color: var(--x-faint); }
-.opx-mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--x-muted); }
+.opx-mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: var(--fs-min); color: var(--x-muted); }
 
 /* ---------- 人 ---------- */
 .opx-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .opx-av {
   width: 32px; height: 32px; border-radius: 50%; flex: none;
-  display: grid; place-items: center; font-weight: 600; font-size: 13px;
+  display: grid; place-items: center; font-weight: 600; font-size: var(--fs-note);
   background: var(--x-blue-50); color: var(--x-blue-deep); border: 1px solid var(--x-blue-100);
 }
-.opx-av-lg { width: 56px; height: 56px; font-size: 22px; }
+.opx-av-lg { width: 56px; height: 56px; font-size: var(--fs-title); }
 .opx-who b { display: block; font-weight: 600; color: var(--x-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.opx-who small { display: block; font-size: 12px; color: var(--x-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opx-who small { display: block; font-size: var(--fs-min); color: var(--x-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* 系统：一个色点 + 字。颜色只是辅助，名字永远写出来 */
-.opx-os { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--x-ink-2); white-space: nowrap; }
+.opx-os { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-note); color: var(--x-ink-2); white-space: nowrap; }
 .opx-os::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--x-gray-dot); }
 .opx-os-mac::before { background: var(--x-blue); }
 .opx-os-win::before { background: var(--x-orange); }
@@ -196,7 +199,7 @@
 
 .opx-tag {
   display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px;
-  font-size: 12px; font-weight: 500; background: var(--x-tint); color: var(--x-ink-2); white-space: nowrap;
+  font-size: var(--fs-min); font-weight: 500; background: var(--x-tint); color: var(--x-ink-2); white-space: nowrap;
 }
 .opx-tag-blue { background: var(--x-blue-50); color: var(--x-blue-deep); }
 .opx-tag-ok { background: var(--x-ok-bg); color: var(--x-ok); }
@@ -207,7 +210,7 @@
 .opx-meter { display: inline-flex; align-items: center; gap: 8px; min-width: 110px; }
 .opx-meter-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--x-line-soft); overflow: hidden; min-width: 48px; }
 .opx-meter-bar i { display: block; height: 100%; border-radius: 999px; background: var(--x-blue); transition: width var(--t) var(--ease); }
-.opx-meter-t { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--x-ink); white-space: nowrap; }
+.opx-meter-t { font-size: var(--fs-note); font-variant-numeric: tabular-nums; color: var(--x-ink); white-space: nowrap; }
 .opx-meter-t s { text-decoration: none; color: var(--x-faint); }
 .opx-meter-low .opx-meter-bar i { background: var(--x-orange); }
 .opx-meter-out .opx-meter-bar i { background: var(--x-danger); }
@@ -218,7 +221,7 @@
 .opx-split i { display: block; height: 100%; }
 .opx-split-legend { display: flex; gap: 18px; margin-top: 12px; flex-wrap: wrap; }
 .opx-split-legend > div { display: flex; flex-direction: column; gap: 2px; }
-.opx-split-legend b { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.4px; }
+.opx-split-legend b { font-size: var(--fs-title); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.4px; }
 
 /* 一行一件事的清单（需要关注 / 最近注册 / 最新反馈） */
 .opx-list { display: flex; flex-direction: column; }
@@ -231,12 +234,12 @@
 /* 名字 / 邮箱一长串不断行，把卡片和整页撑出横滚（10-19 排查：总览「最新反馈」） */
 .opx-list > a b, .opx-list > div b { overflow-wrap: anywhere; }
 .opx-list > * + * { border-top: 1px solid var(--x-line-soft); }
-.opx-list-r { margin-left: auto; font-size: 12.5px; color: var(--x-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.opx-list-r { margin-left: auto; font-size: var(--fs-note); color: var(--x-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* antd 表格收进卡片里：表头浅一档，行可点 */
 .opx .ant-table { background: transparent; }
 .opx .ant-table-thead > tr > th {
-  background: var(--x-head) !important; color: var(--x-muted); font-size: 12.5px; font-weight: 600;
+  background: var(--x-head) !important; color: var(--x-muted); font-size: var(--fs-note); font-weight: 600;
   border-bottom: 1px solid var(--x-line) !important;
 }
 .opx .ant-table-thead > tr > th::before { display: none; }
@@ -247,39 +250,39 @@
 
 /* 工具条：搜索 + 筛选，一行，在表格上面 */
 .opx-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--x-line-soft); }
-.opx-bar .opx-bar-r { margin-left: auto; font-size: 12.5px; color: var(--x-muted); }
+.opx-bar .opx-bar-r { margin-left: auto; font-size: var(--fs-note); color: var(--x-muted); }
 
 /* 用户详情的头 */
 .opx-profile { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-.opx-profile h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.4px; }
-.opx-profile-meta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; font-size: 13px; color: var(--x-muted); }
+.opx-profile h1 { margin: 0; font-size: var(--fs-title); font-weight: 650; letter-spacing: -0.4px; }
+.opx-profile-meta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; font-size: var(--fs-note); color: var(--x-muted); }
 .opx-profile-meta b { color: var(--x-ink-2); font-weight: 500; }
 
 /* 键值两列 */
-.opx-kv { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 14px; font-size: 13px; }
+.opx-kv { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 14px; font-size: var(--fs-note); }
 .opx-kv dt { color: var(--x-muted); }
 .opx-kv dd { margin: 0; color: var(--x-ink); min-width: 0; overflow-wrap: anywhere; }
 
 /* 反馈 */
-.opx-fb { padding: 14px 16px; border: 1px solid var(--x-line); border-radius: 12px; background: var(--x-panel); }
+.opx-fb { padding: 14px 16px; border: 1px solid var(--x-line); border-radius: 14px; background: var(--x-panel); }
 .opx-fb + .opx-fb { margin-top: 10px; }
 .opx-fb-todo { border-left: 3px solid var(--x-blue); }
 .opx-fb-done { background: var(--x-head); }
 .opx-fb-done p { color: var(--x-muted); }
-.opx-fb-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--x-muted); }
-.opx-fb-h b { color: var(--x-ink); font-size: 13.5px; }
+.opx-fb-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--fs-note); color: var(--x-muted); }
+.opx-fb-h b { color: var(--x-ink); font-size: var(--fs-body); }
 .opx-fb p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; color: var(--x-ink); }
 /* 反馈时所在页面的地址：一长串不断行，伸出卡片（10-19 排查）；截成一行，悬停看全 */
 .opx-fb-h .opx-mono { flex: 1 1 0; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opx-fb-reply { margin-top: 10px; padding: 8px 12px; border-left: 2px solid var(--x-line); }
-.opx-fb-reply-h { font-size: 12px; color: var(--x-muted); }
+.opx-fb-reply-h { font-size: var(--fs-min); color: var(--x-muted); }
 .opx-fb-reply p { margin-top: 4px; color: var(--x-muted); }
 .opx-fb-compose { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.opx-fb-compose-to { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--x-muted); }
+.opx-fb-compose-to { display: flex; align-items: center; gap: 8px; font-size: var(--fs-note); color: var(--x-muted); }
 .opx-fb-compose-to .ant-input { max-width: 320px; }
-.opx-fb-compose-err { font-size: 12.5px; color: var(--x-danger); }
+.opx-fb-compose-err { font-size: var(--fs-note); color: var(--x-danger); }
 .opx-fb-compose-f { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
-.opx-fb-compose-hint { flex: 1; font-size: 12px; color: var(--x-muted); }
+.opx-fb-compose-hint { flex: 1; font-size: var(--fs-min); color: var(--x-muted); }
 /* 一整串（10-19）：我们回的靠左一道灰线，对方接着说的一道蓝线，一眼分得出谁说的 */
 .opx-fb-thread { margin-top: 4px; }
 .opx-fb-user { border-left-color: var(--x-blue); }
@@ -287,38 +290,38 @@
 .opx-fb-mail-bad { color: var(--x-danger); }
 .opx-fb-reply-h { overflow-wrap: anywhere; }
 .opx-fb-compose-f { flex-wrap: wrap; }
-.opx-fb-compose-mail { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; font-size: 12.5px; }
+.opx-fb-compose-mail { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; font-size: var(--fs-note); }
 .opx-fb-compose-mail .opx-mono { overflow-wrap: anywhere; }
-.opx-fb-compose-why { font-size: 12px; color: var(--x-muted); }
+.opx-fb-compose-why { font-size: var(--fs-min); color: var(--x-muted); }
 
 .opx-hand { white-space: pre-wrap; padding: 12px 14px; background: var(--x-hover); border: 1px solid var(--x-line); border-radius: 10px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; user-select: all; }
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: var(--fs-note); user-select: all; }
 
 /* ---------- 团队同步：价格表、到期、开通弹框（2026-10-15 按时长开通） ---------- */
 .opx-prices { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .opx-price { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--x-line); border-radius: 10px; background: var(--x-head); }
-.opx-price span { color: var(--x-muted); font-size: 12.5px; }
-.opx-price b { font-size: 20px; font-weight: 600; color: var(--x-ink); }
-.opx-price small { color: var(--x-muted); font-size: 12px; }
+.opx-price span { color: var(--x-muted); font-size: var(--fs-note); }
+.opx-price b { font-size: var(--fs-title); font-weight: 600; color: var(--x-ink); }
+.opx-price small { color: var(--x-muted); font-size: var(--fs-min); }
 .opx-due { display: inline-flex; flex-direction: column; line-height: 1.3; }
-.opx-due small { color: var(--x-muted); font-size: 12px; }
+.opx-due small { color: var(--x-muted); font-size: var(--fs-min); }
 .opx-due-warn, .opx-due-warn small { color: var(--x-warn); }
 .opx-due-bad, .opx-due-bad small { color: var(--x-danger); font-weight: 600; }
 .opx-row-acts { display: inline-flex; align-items: center; gap: 4px; }
 .opx-nowrap { white-space: nowrap; }
 .opx-two { display: inline-flex; flex-direction: column; line-height: 1.35; min-width: 0; }
-.opx-two small { color: var(--x-muted); font-size: 12px; overflow-wrap: anywhere; }
+.opx-two small { color: var(--x-muted); font-size: var(--fs-min); overflow-wrap: anywhere; }
 /* 团队同步列表里团队名可以点进去（2026-10-19：看成员、加次数） */
 .opx-team-link { display: inline-flex; flex-direction: column; line-height: 1.35; font-weight: 500; }
-.opx-team-link small { color: var(--x-faint); font-weight: 400; font-size: 12px; }
+.opx-team-link small { color: var(--x-faint); font-weight: 400; font-size: var(--fs-min); }
 .opx-team-link:hover small { color: inherit; }
-.opx-plan-log { list-style: none; margin: 0; padding: 4px 0; display: grid; gap: 6px; font-size: 13px; }
+.opx-plan-log { list-style: none; margin: 0; padding: 4px 0; display: grid; gap: 6px; font-size: var(--fs-note); }
 .opx-plan-log li { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; gap: 12px; color: var(--x-ink-2); }
 .opx-form { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 12px 14px; margin-top: 8px; }
-.opx-form > label { color: var(--x-muted); font-size: 13px; }
-.opx-form-tip { margin-left: 10px; font-size: 12.5px; }
-.opx-form-big { font-size: 20px; font-weight: 600; color: var(--x-ink); }
-.opx-form-lead { margin: 0 0 4px; font-size: 13px; }
+.opx-form > label { color: var(--x-muted); font-size: var(--fs-note); }
+.opx-form-tip { margin-left: 10px; font-size: var(--fs-note); }
+.opx-form-big { font-size: var(--fs-title); font-weight: 600; color: var(--x-ink); }
+.opx-form-lead { margin: 0 0 4px; font-size: var(--fs-note); }
 
 @media (prefers-reduced-motion: reduce) {
   .opx *, .opx *::before { transition: none !important; }

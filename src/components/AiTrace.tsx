@@ -37,7 +37,20 @@ export default function AiTrace({ steps, done, ms, compact = false }: { steps: S
   }
 
   return (
-    <div className={`trace${compact ? " trace-compact" : ""}`} onClick={() => done && setOpen(false)} role={done ? "button" : undefined}>
+    <div
+      className={`trace${compact ? " trace-compact" : ""}`}
+      onClick={() => done && setOpen(false)}
+      /* 展开后整块点一下收起；里面是一行行块级的步骤，所以还是 div，但补上键盘：Tab 能到、回车/空格收起 */
+      role={done ? "button" : undefined}
+      tabIndex={done ? 0 : undefined}
+      aria-label={done ? "收起过程" : undefined}
+      onKeyDown={(e) => {
+        if (done && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          setOpen(false);
+        }
+      }}
+    >
       <AnimatePresence initial={false}>
         {steps.map((s) => (
           <motion.div key={s.id} className="trace-row" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 时长.base, ease: 曲线.ease }}>

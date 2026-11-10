@@ -80,7 +80,7 @@ function 选项(区: 地图区[], 色: 配色, 档们: ReturnType<typeof 色档�
       backgroundColor: 色.底,
       borderColor: 色.线,
       textStyle: { color: 色.字, fontSize: 12 },
-      extraCssText: "box-shadow:var(--shadow-pop);border-radius:8px;",
+      extraCssText: "box-shadow:var(--shadow-pop);border-radius:10px;",
       formatter: (p: { data?: 地图区; name: string }) => 地图提示(p.data ?? { name: p.name, value: 0, 含: [] }),
     },
     visualMap: {

@@ -686,7 +686,7 @@ export default function CustomersView({
     } satisfies 列<CustomerRow>]),
     // 企业版：跟进状态换成客户状态（字典 custStatus，10-28 去遗留 A1）
     企业
-      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 110, render: (v: string | null) => (有值(v) ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : 空) }
+      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 110, render: (v: string | null) => (有值(v) ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0 }}>{v}</Tag> : 空) }
       : { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v: string) => <FollowStatusTag status={v} /> },
     // 外贸不摆预计签约（2026-10-05 外贸客户：「没有意义」——采购时间点看商机的询盘时间）
     ...(外贸 ? [] : [{
@@ -734,7 +734,7 @@ export default function CustomersView({
       { title: "推荐人", key: "referrerName", dataIndex: "referrerName", width: 120, 默认: false, render: (v: string | null) => v ?? <span className="muted">自然流量</span> },
       {
         title: "渠道归属", key: "attributionName", dataIndex: "attributionName", width: 120, 默认: false,
-        render: (v: string | null) => (v ? <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> : <span className="muted">—</span>),
+        render: (v: string | null) => (v ? <Tag style={{ margin: 0 }}>{v}</Tag> : <span className="muted">—</span>),
       },
     ]),
     ...(不问归属 || 外贸 || 企业 ? [] : [{
@@ -892,23 +892,23 @@ export default function CustomersView({
           */
           <Space wrap size={[10, 10]}>
             {子集 && f.pool && (
-              <Tag closable onClose={() => apply({ pool: "" })} color="processing" style={{ margin: 0, borderRadius: 999, padding: "3px 10px" }}>
+              <Tag closable onClose={() => apply({ pool: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
                 只看公海里的
               </Tag>
             )}
             {/* 从「数据」页那张卡走进来的：说清这是一个子集，并给一条回到全部的路 */}
             {本月新增 && (
-              <Tag closable onClose={() => apply({ createdWithin: "" })} color="processing" style={{ margin: 0, borderRadius: 999, padding: "3px 10px" }}>
+              <Tag closable onClose={() => apply({ createdWithin: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
                 只看本月新增
               </Tag>
             )}
             {直接推荐 && (
-              <Tag closable onClose={() => apply({ directOf: "" })} color="processing" style={{ margin: 0, borderRadius: 999, padding: "3px 10px" }}>
+              <Tag closable onClose={() => apply({ directOf: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
                 只看「{直接推荐}」直接带来的 · {total} 位
               </Tag>
             )}
             {本批 && (
-              <Tag closable onClose={() => apply({ batch: "" })} color="processing" style={{ margin: 0, borderRadius: 999, padding: "3px 10px" }}>
+              <Tag closable onClose={() => apply({ batch: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
                 只看刚导入的这一批 · {本批.几位} 位
               </Tag>
             )}

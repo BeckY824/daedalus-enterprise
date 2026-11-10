@@ -111,7 +111,7 @@ export const themeConfig: ThemeConfig = {
       cellPaddingInlineSM: 12,
       /* 表格正文就是正文，和别处一样 14。13.5 是上一版为了多塞一列凑出来的 */
       fontSize: 14,
-      headerBorderRadius: 8,
+      headerBorderRadius: 10,
     },
     Button: {
       primaryShadow: "none",
@@ -128,10 +128,10 @@ export const themeConfig: ThemeConfig = {
     Tabs: { titleFontSize: 14, horizontalItemPadding: "10px 0", inkBarColor: palette.ink, itemSelectedColor: palette.ink, itemHoverColor: palette.ink },
     Segmented: { trackPadding: 2, trackBg: palette.hover },
     Tag: { fontSizeSM: 12, borderRadiusSM: 999 },
-    Modal: { titleFontSize: 16, borderRadiusLG: 12 },
+    Modal: { titleFontSize: 16, borderRadiusLG: 14 },
     Form: { labelFontSize: 13, verticalLabelPadding: "0 0 4px", labelColor: palette.textMuted },
     Breadcrumb: { fontSize: 13 },
     Dropdown: { borderRadiusLG: 10 },
-    Alert: { borderRadiusLG: 8 },
+    Alert: { borderRadiusLG: 10 },
   },
 };

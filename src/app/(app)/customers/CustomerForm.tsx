@@ -943,7 +943,7 @@ function CustomerFormInner({
               {客户状态自动 ? (
                 <Form.Item label="客户状态" tooltip="按这位客户名下的项目自动算，不能手改">
                   {editing?.custStatus
-                    ? <Tag color={客户状态色of(客户状态色, editing.custStatus)} style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{editing.custStatus}</Tag>
+                    ? <Tag color={客户状态色of(客户状态色, editing.custStatus)} style={{ margin: 0 }} aria-label="客户状态">{editing.custStatus}</Tag>
                     : <Typography.Text type="secondary">建了项目后自动算</Typography.Text>}
                 </Form.Item>
               ) : (

@@ -29,7 +29,7 @@ const tooltip = {
   backgroundColor: palette.panel,
   borderColor: palette.lineSoft,
   textStyle: { color: palette.inkSoft, fontSize: 12 },
-  extraCssText: "box-shadow:var(--shadow-pop);border-radius:8px;",
+  extraCssText: "box-shadow:var(--shadow-pop);border-radius:10px;",
 };
 const 轴字 = { color: palette.textMuted, fontSize: 12 };
 
@@ -208,7 +208,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
       grid: { left: 8, right: 12, top: 34, bottom: 4, containLabel: true },
       xAxis: { type: "category", data: 数.trend.map((b) => b.label), axisLine: { lineStyle: { color: palette.lineSoft } }, axisTick: { show: false }, axisLabel: 轴字 },
       yAxis: { type: "value", minInterval: 1, splitLine: { lineStyle: { color: palette.lineSoft } }, axisLabel: 轴字 },
-      series: 系列.map((s) => ({ name: s.k === "转商机" ? "转商机阶段" : s.k === "成功交付" ? "交付结清" : s.k, type: "bar", barMaxWidth: 14, itemStyle: { color: s.c, borderRadius: [3, 3, 0, 0] }, data: 数.trend.map((b) => b[s.k]) })),
+      series: 系列.map((s) => ({ name: s.k === "转商机" ? "转商机阶段" : s.k === "成功交付" ? "交付结清" : s.k, type: "bar", barMaxWidth: 14, itemStyle: { color: s.c, borderRadius: [4, 4, 0, 0] }, data: 数.trend.map((b) => b[s.k]) })),
     };
   }, [数.trend]);
 

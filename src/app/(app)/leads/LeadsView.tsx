@@ -204,11 +204,11 @@ export default function LeadsView({
   const 列表: 列<Row>[] = [
     { title: "线索", key: "name", dataIndex: "name", width: 200, 常驻: true, render: (v) => <span className="link-strong">{v}</span> },
     { title: "联系人", key: "contact", dataIndex: "contact", width: 104, render: (v) => v ?? <span className="muted">—</span> },
-    { title: "来源", key: "source", dataIndex: "source", width: 100, render: (v) => <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag> },
+    { title: "来源", key: "source", dataIndex: "source", width: 100, render: (v) => <Tag style={{ margin: 0 }}>{v}</Tag> },
     {
       title: "状态", key: "status", dataIndex: "status", width: 96,
       render: (v) => (
-        <Tag color={LEAD_STATUS_COLOR[v] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
+        <Tag color={LEAD_STATUS_COLOR[v] ?? "default"} style={{ margin: 0 }}>
           {v}
         </Tag>
       ),

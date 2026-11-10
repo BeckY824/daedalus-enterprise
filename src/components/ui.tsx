@@ -170,7 +170,7 @@ export function UserCell({ name, size = 28 }: { name: string; size?: number }) {
 export function FollowStatusTag({ status }: { status: string }) {
   const b = useBusiness();
   return (
-    <Tag color={FOLLOW_STATUS_COLOR[status] ?? "default"} style={{ margin: 0, borderRadius: 6, fontSize: 13 }}>
+    <Tag color={FOLLOW_STATUS_COLOR[status] ?? "default"} style={{ margin: 0, fontSize: 13 }}>
       {statusLabel(b, status)}
     </Tag>
   );
@@ -179,7 +179,7 @@ export function FollowStatusTag({ status }: { status: string }) {
 export function DecisionStatusTag({ status }: { status: string }) {
   const b = useBusiness();
   return (
-    <Tag color={DECISION_STATUS_COLOR[status] ?? "default"} style={{ margin: 0, borderRadius: 6, fontSize: 13 }}>
+    <Tag color={DECISION_STATUS_COLOR[status] ?? "default"} style={{ margin: 0, fontSize: 13 }}>
       {statusLabel(b, status)}
     </Tag>
   );
@@ -190,7 +190,7 @@ export function StageTag({ stage }: { stage: string }) {
   // DOM使用CSS变量和color-mix，切主题时不依赖组件重渲染。
   const c = 主题颜色(OPP_STAGE_COLOR[stage] ?? palette.textMuted);
   return (
-    <Tag style={{ margin: 0, borderRadius: 6, fontSize: 13, color: c, background: `color-mix(in srgb, ${c} 9.4%, transparent)`, borderColor: `color-mix(in srgb, ${c} 20.8%, transparent)` }}>
+    <Tag style={{ margin: 0, fontSize: 13, color: c, background: `color-mix(in srgb, ${c} 9.4%, transparent)`, borderColor: `color-mix(in srgb, ${c} 20.8%, transparent)` }}>
       {stageLabel(b, stage)}
     </Tag>
   );

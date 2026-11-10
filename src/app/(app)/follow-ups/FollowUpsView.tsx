@@ -140,7 +140,7 @@ export default function FollowUpsView({
     {
       title: "状态", key: "status", dataIndex: "status", width: 100, 默认: false,
       render: (v) => (
-        <Tag color={FOLLOW_RECORD_STATUS_COLOR[v] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
+        <Tag color={FOLLOW_RECORD_STATUS_COLOR[v] ?? "default"} style={{ margin: 0 }}>
           {v}
         </Tag>
       ),
