@@ -102,7 +102,7 @@ export async function 从回收站捞回(类型: string, 值: string): Promise<�
     if (!号.ok) return { ok: false, error: 号.提示 };
     const 先查 = await 查号码(类型, 值);
     if (!先查.ok || 先查.状态 !== "回收站里有") return { ok: true, 已不在: true, 提示: 已不在话, 查: 先查 };
-    const r = await 查重捞回(号);
+    const r = await 查重捞回(号, me.id);
     if (!r.ok) {
       // 先查到捞之间被别人捞走 / 彻底删了：一样按「已不在」回新结论，不报成出错
       const 再查 = await 查号码(类型, 值);
@@ -112,11 +112,11 @@ export async function 从回收站捞回(类型: string, 值: string): Promise<�
     for (const x of r.回来的) {
       await recordAudit({
         user: me, action: "restore", entity: x.t, entityId: x.id,
-        summary: `查重时从回收站捞回${回收站叫法[x.t]}「${x.名}」${x.连带 ? `（连同 ${x.连带} 条一起）` : ""}`,
+        summary: `查重时从回收站捞回${回收站叫法[x.t]}「${x.名}」${x.连带 ? `（连同 ${x.连带} 条一起）` : ""}${x.停用负责人?.进了公海 ? "，原负责人已停用，放进了客户公海" : ""}`,
       });
     }
-    // P-删-06：捞回的客户也是照原样挂回原负责人名下；他已停用就告诉他的直属上级（没有就系统管理员），几位合成一条
-    await 恢复到停用负责人通知(me, r.回来的.filter((x) => x.t === "Customer").map((x) => x.id));
+    // P-删-06：捞回的客户原负责人已停用，进了客户公海 / 例外留在他名下，告诉他的直属上级（没有就系统管理员），几位合成一条
+    await 恢复到停用负责人通知(me, r.回来的.flatMap((x) => (x.停用负责人 ? [{ id: x.id, ...x.停用负责人 }] : [])));
     for (const p of ["/customers", "/contacts", "/projects", "/follow-ups", "/settings"]) revalidatePath(p);
     const 客户 = r.回来的.filter((x) => x.t === "Customer").length;
     const 联系人 = r.回来的.length - 客户;

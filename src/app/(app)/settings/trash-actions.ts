@@ -40,10 +40,10 @@ export async function 恢复回收站(t: 软删表名, id: string) {
     const 名 = await 名字(t, id);
     await recordAudit({
       user: me, action: "restore", entity: t, entityId: id,
-      summary: `从回收站恢复${回收站叫法[t]}「${名}」${r.连带 ? `（连同 ${r.连带} 条一起）` : ""}`,
+      summary: `从回收站恢复${回收站叫法[t]}「${名}」${r.连带 ? `（连同 ${r.连带} 条一起）` : ""}${r.停用负责人?.进了公海 ? "，原负责人已停用，放进了客户公海" : ""}`,
     });
-    // P-删-06：客户照原样挂回原负责人名下；他已停用就告诉他的直属上级（没有就系统管理员）去离职交接看板指定接手人
-    if (t === "Customer") await 恢复到停用负责人通知(me, [id]);
+    // P-删-06：原负责人已停用，进了客户公海 / 例外留在他名下，告诉他的直属上级（没有就系统管理员）
+    if (r.停用负责人) await 恢复到停用负责人通知(me, [{ id, ...r.停用负责人 }]);
     刷新();
     return { ok: true as const, 连带: r.连带 };
   } catch (e) { return 不在了(e); }

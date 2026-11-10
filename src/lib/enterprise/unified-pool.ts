@@ -51,7 +51,7 @@ export type 排序 = (typeof 排序们)[number]["value"];
 export const 默认排序: 排序 = "pooled";
 
 /** 离职交接放进来的那两句（lib/offboard-db.ts）。这里抄一份不引过来：那边引了 prisma，浏览器用不了 */
-export const 离职理由们: readonly string[] = ["成员停用，放进公海", "成员停用，放回项目公海"];
+export const 离职理由们: readonly string[] = ["成员停用，放进公海", "成员停用，放回项目公海", "成员停用，从回收站恢复时放进公海"];
 /** 超时回收在项目留痕里记的操作人（lib/project/timeout.ts 系统） */
 export const 系统操作人 = "system";
 
