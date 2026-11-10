@@ -105,7 +105,7 @@ async function 无效的(ids: string[]): Promise<Set<string>> {
   }
   return 无效;
 }
-const 无效不能领提示 = "标了无效的客户不能领取，要总管理先恢复";
+const 无效不能领提示 = "标了无效的客户不能领取，要系统管理员先恢复";
 
 /** 客户放回公海时能选的退回原因（企业版字典「回收原因」，停用的不出）；别的版本 = 空，不问 */
 export async function 退回原因选项(): Promise<string[]> {
@@ -372,7 +372,7 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
   if (移交中) return { ok: false, error: 移交中 };
   // 企业版：标了无效的分不出去（统一公海 P7），算「没权限」那几位
   const 无效 = await 无效的(ids);
-  if (无效.size && 无效.size === new Set(ids).size) return { ok: false, error: "标了无效的客户不能分配，要总管理先恢复" };
+  if (无效.size && 无效.size === new Set(ids).size) return { ok: false, error: "标了无效的客户不能分配，要系统管理员先恢复" };
   const 超 = await 带走公海项目超上限([...new Set(ids)].filter((x) => !无效.has(x)), 给.id);
   if (超) return { ok: false, error: 超 };
   await 钉住老签约();

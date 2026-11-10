@@ -2,7 +2,7 @@
  * 企业版项目来源与项目字段（10-29 P6）：
  *   - 渠道统计按项目来源算，项目没填的退回客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）
  *   - 建档向导：项目来源默认 = 客户来源，可以换；停用的渠道拦下
- *   - 编辑项目：能换、能清；停用的拦下；不是企业版不收这一格
+ *   - 编辑项目（11-10 P-删-03，同客户来源）：空着可补一次；有值就锁，换、清空都拦下；停用的拦下；不是企业版不收这一格
  *   - 已立项天数、按预计成交排、AI 草稿 → 记一条沟通的预填
  *   - AI 解析只出草稿、不写库；项目模式关着时建档向导照旧拦下、什么都不建
  */
@@ -28,7 +28,7 @@ import { 项目算哪个渠道 } from "@/lib/enterprise/channel-stats";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { 项目来源默认 } from "@/lib/project/wizard";
-import { 改项目 } from "@/lib/project/db";
+import { 改项目, 项目来源不能改, 项目来源不能清空 } from "@/lib/project/db";
 import { 读项目列表 } from "@/lib/project/list";
 import { 已立项天数, 按预计成交排, 项目沟通预填 } from "@/lib/project/project-fields";
 import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
@@ -124,16 +124,29 @@ describe("建档向导：项目来源", () => {
 });
 
 describe("编辑项目：项目来源", () => {
-  it("能换、能清；停用的拦下；不传不动", async () => {
+  it("空着可补一次（停用的拦下）；补了就锁：换、清空都拦下，不传、交原值照常存", async () => {
     const p = await 项目(await 客户(抖音));
+    expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0, channelId: 停了 })).toMatchObject({ ok: false, error: expect.stringContaining("项目来源") });
+    expect((await 现(p.id)).channelId).toBeNull();
     expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0, channelId: 小红 })).toMatchObject({ ok: true });
     expect((await 现(p.id)).channelId).toBe(小红);
     expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0 })).toMatchObject({ ok: true });
     expect((await 现(p.id)).channelId).toBe(小红);
-    expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0, channelId: 停了 })).toMatchObject({ ok: false, error: expect.stringContaining("项目来源") });
+    expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0, channelId: 抖音 })).toMatchObject({ ok: false, error: 项目来源不能改 });
+    expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0, channelId: 停了 })).toMatchObject({ ok: false, error: 项目来源不能改 });
+    expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0, channelId: null })).toMatchObject({ ok: false, error: 项目来源不能清空 });
+    expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0, channelId: "  " })).toMatchObject({ ok: false, error: 项目来源不能清空 });
     expect((await 现(p.id)).channelId).toBe(小红);
-    expect(await 改项目(我(), p.id, { name: "一号项目", amount: 0, channelId: null })).toMatchObject({ ok: true });
-    expect((await 现(p.id)).channelId).toBeNull();
+    // 交原值（编辑框整框交回来）不算改，别的格照常存
+    expect(await 改项目(我(), p.id, { name: "改个名", amount: 0, channelId: 小红 })).toMatchObject({ ok: true });
+    expect(await 现(p.id)).toMatchObject({ name: "改个名", channelId: 小红 });
+  });
+
+  it("建档时带上的来源（跟客户来源）也算有值：建好就锁", async () => {
+    const p = await 项目(await 客户(抖音), { channelId: 抖音 });
+    expect(await 改项目(我(), p.id, { channelId: 小红 })).toMatchObject({ ok: false, error: 项目来源不能改 });
+    expect(await 改项目(我(), p.id, { channelId: null })).toMatchObject({ ok: false, error: 项目来源不能清空 });
+    expect((await 现(p.id)).channelId).toBe(抖音);
   });
 
   it("老项目原来的来源后来停用了：不换来源照样能存别的", async () => {

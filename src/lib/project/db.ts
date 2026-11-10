@@ -569,6 +569,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 日 = 预计成交日(patch.expectedDealAt, p.expectedDealAt);
     if (日 === undefined) return { ok: false as const, error: "预计成交日期格式不对，请选一个日期" };
     const 来源 = 项目来源改成(patch.channelId, p.channelId);
+    // 项目来源有值就锁住（P-删-03，和客户来源同一条）：不给换、不给清空；空着的可以补一次。界面锁住只是辅助，这里是防线
+    if (p.channelId && 来源 !== p.channelId) return { ok: false as const, error: 来源 ? 项目来源不能改 : 项目来源不能清空 };
     if (来源 !== p.channelId && 来源) {
       const 渠道 = await tx.channel.findUnique({ where: { id: 来源 }, select: { active: true } });
       if (!渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
@@ -648,9 +650,12 @@ function 预计成交日(v: string | null | undefined, 原: Date | null): Date |
 }
 
 /**
- * 项目来源（企业版，迁移 077）：没传 = 不动；空 = 清掉（渠道统计回落到客户来源）；传了 id 就换（调用方查渠道在不在、启用没）。
+ * 项目来源（企业版，迁移 077）：没传 = 不动；传了就算出要存的值（空 = null），调用方查渠道在不在、启用没。
+ * 11-10 起（P-删-03）有值就锁：调用方拿结果和原值比，原来有值又不一样（换了或清空）一律拒；原来空着的可以补一次。
  * 不是企业版界面上没有这格，传了也不动
  */
+export const 项目来源不能改 = "项目来源记的是这一单从哪个渠道来，建好之后不能改";
+export const 项目来源不能清空 = "项目来源建好之后不能清空";
 function 项目来源改成(v: string | null | undefined, 原: string | null): string | null {
   if (v === undefined || !企业版()) return 原;
   return (typeof v === "string" && v.trim()) || null;
@@ -811,7 +816,7 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了
     if (企业版()) {
       const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } }));
-      if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要总管理先恢复" };
+      if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要系统管理员先恢复" };
     }
     // 原负责人领不回：企业版看 公海规则（10-26 定稿「非原负责人均可领取」），别的版本照旧。
     // 原负责人 = 留痕里最后一次进公海前的负责人（企业版进公海清了 ownerId，pool-owner.ts）

@@ -147,7 +147,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       const 验 = await 验证中不能改派(tx, id);
       if (验) return 验;
       const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
-      if (c?.pool && c.poolInvalidAt) return "客户标了无效，要总管理先恢复";
+      if (c?.pool && c.poolInvalidAt) return "客户标了无效，要系统管理员先恢复";
       const 出整包 = 企业版() && !!c?.pool;
       // 客户还在市场手里、分给销售 = 市场第一次分给销售，客户整体给他，记「分配」（P-公海-11；不看客户创建人），同事待分配的随客户进手一起数
       const 转 = 出整包 || !org ? null : await 公海项目市场转(tx, org, p, 给.id, false);
