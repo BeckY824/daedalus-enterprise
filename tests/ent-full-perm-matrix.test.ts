@@ -173,15 +173,21 @@ describe("删除项目：总管理（含不管设置的）、负责人本人（V
 });
 
 describe("assignSalesOwner（客户转让 / 分配）", () => {
-  const 表: [谁, string, boolean][] = [
-    ["销售甲", "甲的", true], ["销售甲", "乙的", false], ["组长", "甲的", true], ["老板", "甲的", true], ["组长二", "甲的", false],
+  // 负责人本人转自己的 = 申请移交（客户 11-09 回执 X4）：发得出，确认前不生效
+  const 表: [谁, string, boolean | "申请"][] = [
+    ["销售甲", "甲的", "申请"], ["销售甲", "乙的", false], ["组长", "甲的", true], ["老板", "甲的", true], ["组长二", "甲的", false],
     ["管理员", "甲的", false], ["没角色", "甲的", false], ["市场", "甲的", false],
   ];
   for (const [r, 谁的, 应] of 表) {
-    it(`${r} 把${谁的}客户转给销售丙 → ${应 ? "能" : "拒"}`, async () => {
+    it(`${r} 把${谁的}客户转给销售丙 → ${应 === "申请" ? "申请移交" : 应 ? "能" : "拒"}`, async () => {
       const id = 客户[谁的 as keyof typeof 客户];
       const 原 = await 客户负责人(id);
       const x = await 试(r, () => assignSalesOwner([id], 人.销售丙));
+      if (应 === "申请") {
+        expect(x.回, JSON.stringify(x.回)).toMatchObject({ ok: true, updated: 0, 申请移交: true });
+        expect(await 客户负责人(id)).toBe(原);
+        return;
+      }
       const 真成 = x.成了 && (x.回 as { updated?: number })?.updated !== 0;
       expect(真成, JSON.stringify(x.回)).toBe(应);
       expect(await 客户负责人(id)).toBe(应 ? 人.销售丙 : 原);

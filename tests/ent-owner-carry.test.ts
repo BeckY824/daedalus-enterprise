@@ -1711,7 +1711,7 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
     await 以(总管, () => assignSalesOwner([a], 甲.id));
     const b = await 客户(乙.id);
     await 造活(b, 乙.id);
-    await 以(乙, () => patchCustomer(b, "salesOwnerId", 甲.id));
+    await 以(总管, () => patchCustomer(b, "salesOwnerId", 甲.id));
     for (const n of await 分配(甲)) expect(n.body).not.toContain("未完成");
     expect(await 分配(甲)).toHaveLength(2);
 
@@ -1782,7 +1782,7 @@ describe("转客户：同事负责的项目负责人不变（用户 11-09，X-05
       const a = await 客户(甲.id);
       const 甲的a = await 项目(a, 甲.id);
       const 乙的a = await 项目(a, 乙.id);
-      await 以(甲, () => assignSalesOwner([a], 丙.id));
+      await 以(总管, () => assignSalesOwner([a], 丙.id));
       expect([await 负责人of(甲的a), await 负责人of(乙的a)]).toEqual([丙.id, 乙.id]);
       const b = await 客户(甲.id);
       const 甲的b = await 项目(b, 甲.id);
@@ -1818,10 +1818,10 @@ describe("转客户：同事负责的项目负责人不变（用户 11-09，X-05
       const c = await 客户(甲.id);
       const 自己的 = await 项目(c, 甲.id);
       const 同事的 = await 项目(c, 乙.id);
-      const r = await 以(甲, () => assignSalesOwner([c], 丙.id));
+      const r = await 以(总管, () => assignSalesOwner([c], 丙.id));
       if (!r.ok) throw new Error(r.error);
       expect(await 负责人of(同事的)).toBe(乙.id);
-      expect(await 以(甲, () => 撤销改负责人(r.原值 ?? [], 丙.id, JSON.parse(JSON.stringify(r.带过来))))).toMatchObject({ ok: true, updated: 1 });
+      expect(await 以(总管, () => 撤销改负责人(r.原值 ?? [], 丙.id, JSON.parse(JSON.stringify(r.带过来))))).toMatchObject({ ok: true, updated: 1 });
       expect(await 客户负责人(c)).toBe(甲.id);
       expect([await 负责人of(自己的), await 负责人of(同事的)]).toEqual([甲.id, 乙.id]);
     });
@@ -1904,11 +1904,11 @@ describe("转客户：同事负责的项目负责人不变（用户 11-09，X-05
       const 时刻 = new Date("2026-11-01T08:00:00.000Z");
       const c = await 客户(甲.id);
       const 待分配 = await 项目(c, 乙.id, { awaitAssignAt: 时刻 });
-      const r = await 以(甲, () => assignSalesOwner([c], 丙.id));
+      const r = await 以(总管, () => assignSalesOwner([c], 丙.id));
       if (!r.ok) throw new Error(r.error);
       expect(await 负责人of(待分配)).toBe(丙.id);
       expect(await 待分配of(待分配)).toBeNull();
-      await 以(甲, () => 撤销改负责人(r.原值 ?? [], 丙.id, JSON.parse(JSON.stringify(r.带过来))));
+      await 以(总管, () => 撤销改负责人(r.原值 ?? [], 丙.id, JSON.parse(JSON.stringify(r.带过来))));
       expect(await 负责人of(待分配)).toBe(乙.id);
       expect(await 待分配of(待分配)).toEqual(时刻);
     });
@@ -1929,10 +1929,10 @@ describe("转客户：同事负责的项目负责人不变（用户 11-09，X-05
       const 时刻 = new Date("2026-11-01T08:00:00.000Z");
       const c = await 客户(甲.id);
       const 他占的 = await 项目(c, 丙.id, { awaitAssignAt: 时刻 });
-      const r = await 以(甲, () => assignSalesOwner([c], 丙.id));
+      const r = await 以(总管, () => assignSalesOwner([c], 丙.id));
       if (!r.ok) throw new Error(r.error);
       expect(await 待分配of(他占的)).toBeNull();
-      await 以(甲, () => 撤销改负责人(r.原值 ?? [], 丙.id, JSON.parse(JSON.stringify(r.带过来))));
+      await 以(总管, () => 撤销改负责人(r.原值 ?? [], 丙.id, JSON.parse(JSON.stringify(r.带过来))));
       expect(await 负责人of(他占的)).toBe(丙.id);
       expect(await 待分配of(他占的)).toEqual(时刻);
     });
@@ -2238,6 +2238,7 @@ describe("转客户：同事负责的项目负责人不变（用户 11-09，X-05
 });
 
 describe("负责人兼任市场和销售：按销售算，转出时待办和计划一起搬（用户 11-09）", () => {
+  // 负责人本人转自己的走申请移交（X4），直接转由总管理来点；确认交接那条照旧由本人发起
   const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
   const 兼任写法 = ["marketing_mgr,sales", "channel_ops,sales"];
   const 造兼任 = (写法: string) => 造人(`dual-${写法.replace(/\W/g, "-")}`, "兼任某某", "SALES", 写法);
@@ -2256,19 +2257,19 @@ describe("负责人兼任市场和销售：按销售算，转出时待办和计�
     it("批量转：待办和计划跟着走，通知不写留下的条数；撤销后都回来", async () => {
       const 兼任 = await 造兼任(写法);
       const x = await 他的客户(兼任.id);
-      const r = await 以(兼任, () => assignSalesOwner([x.c], 甲.id));
+      const r = await 以(总管, () => assignSalesOwner([x.c], 甲.id));
       if (!r.ok) throw new Error(r.error);
       expect(r.updated).toBe(1);
       await 都归(x, 甲.id);
       expect(JSON.stringify(await 通知们(甲.id))).not.toContain("客户上还有原负责人");
-      expect(await 以(兼任, () => 撤销改负责人(r.原值 ?? [], 甲.id, JSON.parse(JSON.stringify(r.带过来))))).toMatchObject({ ok: true, updated: 1 });
+      expect(await 以(总管, () => 撤销改负责人(r.原值 ?? [], 甲.id, JSON.parse(JSON.stringify(r.带过来))))).toMatchObject({ ok: true, updated: 1 });
       await 都归(x, 兼任.id);
     });
 
     it("客户页改负责人：待办和计划跟着走", async () => {
       const 兼任 = await 造兼任(写法);
       const x = await 他的客户(兼任.id);
-      expect(await 以(兼任, () => patchCustomer(x.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
+      expect(await 以(总管, () => patchCustomer(x.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
       await 都归(x, 甲.id);
     });
 

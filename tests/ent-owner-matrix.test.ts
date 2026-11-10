@@ -264,10 +264,10 @@ describe("A② 转客户：原负责人自己的项目、公海项目和联系�
     expect((await 项目of(同事的)).ownerId).toBe(乙.id);
   });
 
-  it("第五节 3 / X-20（照现状不改）：负责人本人转客户直接转成，不走申请", async () => {
+  it("第五节 3 / X-20（客户 11-09 回执 X4 改）：负责人本人转客户 = 申请移交，接手人确认前不生效", async () => {
     const c = await 客户(甲.id);
-    expect(await 以(甲, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, updated: 1 });
-    expect(await 客户负责人(c)).toBe(丙.id);
+    expect(await 以(甲, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, updated: 0, 交接中: 1, 申请移交: true });
+    expect(await 客户负责人(c)).toBe(甲.id);
   });
 });
 

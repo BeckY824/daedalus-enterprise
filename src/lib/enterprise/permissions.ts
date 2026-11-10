@@ -24,7 +24,7 @@
  */
 import type { 业务角色, 业务线 } from "@/lib/sync/dept-policy";
 import { 项目业务线 } from "./assign-line";
-import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
+import { 按线的线, 按线范围of, 条线的线, 条线范围of } from "./line-viewer";
 import { 实线下属, 虚线下属, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
 
@@ -235,6 +235,17 @@ export function 能转让客户(me: 谁, c: { salesOwnerId: string | null; 在�
   if (是系统管理员(me, org)) return true;
   if (c.在公海 || !c.salesOwnerId) return 能管公海(me, org);
   return 能转让名下(me, c.salesOwnerId, org);
+}
+
+/**
+ * 负责人本人转自己的客户要不要走「申请移交」（P-转-01 ①、X-20，客户 11-09 回执 X4：「负责人转客户走申请移交，接手人确认后生效；不确认不生效」）。
+ * 只有白名单 ① 这一条要申请；本人同时占着 ③ 条线总管理（自己就在自己这条线）或 ④ 系统管理员的，按 ③④ 直接转。
+ * 实线上级（②）转的是下属的客户，不是「本人」，调用处按客户负责人判。不是企业版：没有这一说
+ */
+export function 转自己客户要申请(me: 谁, org: 组织 | null): boolean {
+  if (老() || !org) return false;
+  if (是系统管理员(me, org)) return false;
+  return !条线的线(org, me.id);
 }
 
 /**
