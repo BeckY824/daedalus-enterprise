@@ -10,6 +10,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 读组织, 管理员类别们of, 负责人和上级 } from "./org";
 import { 企业版 } from "./switch";
+import { 能改后台设置, 只读角色 } from "./permissions";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒 } from "@/lib/carry-over-db";
@@ -550,6 +551,51 @@ export async function 项目放回公海通知(me: 人, projectId: string, 原�
       link: 客户还归他 ? `/customers/${p.customerId}` : null,
       key: `pool-return:project:${projectId}:${原}:${分钟()}`,
     });
+  });
+}
+
+/* ───────────────────────── 恢复到停用的人名下（P-删-06） ───────────────────────── */
+
+/** 离职交接看板：停用的人的直属上级、系统管理员都打得开，恢复回来的客户就列在那位停用的人的卡里 */
+const 离职交接看板 = "/projects/handover";
+
+/**
+ * P-删-06 通知缺口：从回收站恢复（或查重捞回）的客户照原样挂回原负责人名下；原负责人已停用时没人跟，
+ * 只出现在离职交接看板里。恢复成功后告诉停用负责人的直属上级（手填的、在职、不是只读管理员）；
+ * 没有这样的上级就告诉系统管理员。只提醒，不改归属（指定接手人、进公海在看板上办）。
+ * 操作恢复的人自己不收（上级自己恢复的不发）；一次回来几位按收件人合成一条。在公海里的客户不算（负责人是占位账号）
+ */
+export async function 恢复到停用负责人通知(me: 人, 客户ids: readonly string[]): Promise<void> {
+  await 稳("恢复到停用负责人通知", async () => {
+    const ids = [...new Set(客户ids)].filter(Boolean);
+    if (!ids.length) return;
+    const 行 = await 看全部(() => prisma.customer.findMany({
+      where: { id: { in: ids }, pool: { is: null }, salesOwner: { active: false, email: { not: 无负责人占位邮箱 } } },
+      select: { id: true, name: true, salesOwnerId: true, salesOwner: { select: { name: true } } },
+      orderBy: { name: "asc" },
+    }));
+    if (!行.length) return;
+    const org = await 读组织();
+    const 系统管理员们 = [...org.成员.keys()].filter((id) => 能改后台设置({ id }, org));
+    const 按收件人 = new Map<string, typeof 行>();
+    for (const c of 行) {
+      const 上 = org.离职上级?.get(c.salesOwnerId);
+      const 收 = 上 && org.成员.has(上) && !只读角色({ id: 上 }, org) ? [上] : 系统管理员们;
+      for (const 谁 of 收) if (谁 !== me.id) 按收件人.set(谁, [...(按收件人.get(谁) ?? []), c]);
+    }
+    for (const [谁, 我的] of 按收件人) {
+      const 单条 = 我的.length === 1;
+      await notify([谁], {
+        kind: "交接",
+        title: 单条 ? `${me.name} 从回收站恢复了客户「${我的[0].name}」，负责人 ${我的[0].salesOwner.name} 已停用` : `${me.name} 从回收站恢复了 ${我的.length} 位客户，负责人已停用`,
+        body: 接一句(
+          单条 ? "" : `客户：${名单(我的.map((c) => `${c.name}（${c.salesOwner.name}）`))}`,
+          `${单条 ? "这位客户" : "这些客户"}挂在已停用的人名下，没人跟进，请到「项目 → 离职交接」指定接手人。`,
+        ),
+        link: 离职交接看板,
+        key: `restore-inactive-owner:${我的.map((c) => c.id).sort().join(",").slice(0, 400)}:${谁}:${分钟()}`,
+      });
+    }
   });
 }
 

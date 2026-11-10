@@ -17,6 +17,7 @@ import { 查重捞回, 回收站叫法 } from "@/lib/enterprise/soft-delete";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 读的我 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 恢复到停用负责人通知 } from "@/lib/enterprise/notice-sources";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, type 撞到的人 } from "@/lib/enterprise/contact-dedupe";
 import { 号码归属地 } from "@/lib/enterprise/phone-region";
@@ -114,6 +115,8 @@ export async function 从回收站捞回(类型: string, 值: string): Promise<�
         summary: `查重时从回收站捞回${回收站叫法[x.t]}「${x.名}」${x.连带 ? `（连同 ${x.连带} 条一起）` : ""}`,
       });
     }
+    // P-删-06：捞回的客户也是照原样挂回原负责人名下；他已停用就告诉他的直属上级（没有就系统管理员），几位合成一条
+    await 恢复到停用负责人通知(me, r.回来的.filter((x) => x.t === "Customer").map((x) => x.id));
     for (const p of ["/customers", "/contacts", "/projects", "/follow-ups", "/settings"]) revalidatePath(p);
     const 客户 = r.回来的.filter((x) => x.t === "Customer").length;
     const 联系人 = r.回来的.length - 客户;

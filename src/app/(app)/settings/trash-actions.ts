@@ -9,6 +9,7 @@ import { recordAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { 不在了 } from "@/lib/not-there";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 恢复到停用负责人通知 } from "@/lib/enterprise/notice-sources";
 import {
   回收站列表, 恢复, 彻底删除, 能管回收站, 能彻底删除, 回收站叫法, 软删表,
   type 回收站条目, type 软删表名,
@@ -41,6 +42,8 @@ export async function 恢复回收站(t: 软删表名, id: string) {
       user: me, action: "restore", entity: t, entityId: id,
       summary: `从回收站恢复${回收站叫法[t]}「${名}」${r.连带 ? `（连同 ${r.连带} 条一起）` : ""}`,
     });
+    // P-删-06：客户照原样挂回原负责人名下；他已停用就告诉他的直属上级（没有就系统管理员）去离职交接看板指定接手人
+    if (t === "Customer") await 恢复到停用负责人通知(me, [id]);
     刷新();
     return { ok: true as const, 连带: r.连带 };
   } catch (e) { return 不在了(e); }
