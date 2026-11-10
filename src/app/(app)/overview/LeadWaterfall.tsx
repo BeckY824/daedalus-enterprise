@@ -19,7 +19,7 @@ const tooltip = {
   backgroundColor: palette.panel,
   borderColor: palette.lineSoft,
   textStyle: { color: palette.inkSoft, fontSize: 12 },
-  extraCssText: "box-shadow:var(--shadow-pop);border-radius:8px;",
+  extraCssText: "box-shadow:var(--shadow-pop);border-radius:10px;",
 };
 
 /** 每条拆成哪几段、什么颜色：停着的是中性色，流出去的三样按轻重给红 / 橙 / 灰，转商机是好出口给绿，合计用品牌色 */

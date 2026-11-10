@@ -11,7 +11,7 @@ html.glass .mfb { background: color-mix(in srgb, var(--panel) 72%, transparent);
 
 /* ---------- 左：列表 ---------- */
 .mfb-list { margin: 0; padding: 6px; list-style: none; overflow-y: auto; min-height: 0; border-right: 1px solid var(--line-soft); }
-.mfb-item { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; padding: 10px 12px; border: 0; border-radius: var(--r-ctl, 8px);
+.mfb-item { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; padding: 10px 12px; border: 0; border-radius: var(--r-ctl);
   background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .mfb-item:hover { background: var(--hover); }
 .mfb-item.on { background: var(--brand-bg); }
@@ -34,7 +34,7 @@ html.glass .mfb { background: color-mix(in srgb, var(--panel) 72%, transparent);
 .mfb-th-t { display: flex; flex-direction: column; min-width: 0; }
 .mfb-th-t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--ink); }
 .mfb-th-t span { font-size: var(--fs-min); color: var(--text-muted); }
-.mfb-back { flex: none; padding: 4px 8px; border: 0; border-radius: var(--r-ctl, 8px); background: none; color: var(--brand); font: inherit; font-size: var(--fs-note); white-space: nowrap; cursor: pointer; }
+.mfb-back { flex: none; padding: 4px 8px; border: 0; border-radius: var(--r-ctl); background: none; color: var(--brand); font: inherit; font-size: var(--fs-note); white-space: nowrap; cursor: pointer; }
 .mfb-back:hover { background: var(--hover); }
 .mfb-back:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
@@ -46,13 +46,13 @@ html.glass .mfb { background: color-mix(in srgb, var(--panel) 72%, transparent);
 .mfb-msg-h b { font-weight: 600; color: var(--ink-soft); }
 .mfb-msg.me .mfb-msg-h b { display: none; }
 /* 原样换行；长英文、长链接、没空格的长串一律折行，不许撑破气泡 */
-.mfb-bubble { max-width: 100%; min-width: 0; padding: 9px 12px; border-radius: 12px; line-height: 1.65;
+.mfb-bubble { max-width: 100%; min-width: 0; padding: 9px 12px; border-radius: 14px; line-height: 1.65;
   white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; unicode-bidi: plaintext; }
 .mfb-msg.me .mfb-bubble { background: var(--brand-bg); color: var(--ink); border-top-right-radius: 4px; }
 .mfb-msg.team .mfb-bubble { background: var(--page-bg); color: var(--ink); border: 1px solid var(--line-soft); border-top-left-radius: 4px; }
 html.glass .mfb-msg.team .mfb-bubble { background: color-mix(in srgb, var(--page-bg) 70%, transparent); }
 .mfb-bubble a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
-.mfb-wait { align-self: flex-start; margin: 0; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 12px; font-size: var(--fs-note); color: var(--text-muted); }
+.mfb-wait { align-self: flex-start; margin: 0; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 14px; font-size: var(--fs-note); color: var(--text-muted); }
 .mfb-st { font-size: var(--fs-min); color: var(--text-muted); }
 .mfb-st.bad { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; color: var(--danger-text); }
 .mfb-st button { padding: 0 8px; border: 1px solid var(--danger-line); border-radius: 999px; background: var(--panel); color: var(--danger-text); font: inherit; line-height: 20px; cursor: pointer; }

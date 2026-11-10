@@ -107,7 +107,7 @@ type Entry =
 function 号码保护标签({ c, 客户 }: { c: ContactRow; 客户: Parameters<typeof 号码保护of>[1] }) {
   const { 状态, 原因 } = 号码保护of(c, 客户);
   return (
-    <Tag className="rec-contact-guard" color={状态 === "已开启" ? "green" : undefined} title={原因} style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
+    <Tag className="rec-contact-guard" color={状态 === "已开启" ? "green" : undefined} title={原因} style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
       号码保护：{状态}
     </Tag>
   );
@@ -918,12 +918,12 @@ export default function RecordView({
         {/* 项目模式按名下项目自动算（10-30）：章只读，不套 StatusPicker */}
         {企业 && (客户状态自动 ? (
           <Tooltip title="按这位客户名下的项目自动算">
-            <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{customer.custStatus ?? "暂无项目"}</Tag>
+            <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0 }} aria-label="客户状态">{customer.custStatus ?? "暂无项目"}</Tag>
           </Tooltip>
         ) : (
           <StatusPicker customerId={customer.id} field="custStatus" value={customer.custStatus ?? ""} 释义={字典释义?.状态}
             options={[...new Set([...客户状态选项, ...(customer.custStatus ? [customer.custStatus] : [])])].map((s) => ({ value: s, label: s }))}>
-            <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0, borderRadius: 6 }} aria-label="客户状态">{customer.custStatus ?? "未设客户状态"}</Tag>
+            <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0 }} aria-label="客户状态">{customer.custStatus ?? "未设客户状态"}</Tag>
           </StatusPicker>
         ))}
         {/* 来源（照毛玻璃原型的那枚「来源：WhatsApp」）：渠道或推荐人。自然流量不摆——没有来源就不占位 */}
@@ -1137,8 +1137,8 @@ export default function RecordView({
                   <div className="rec-contact-h">
                     <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(c.name)}</Avatar>
                     <span className="rec-contact-n">{c.name}</span>
-                    {c.isPrimary && <Tag color="blue" style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
-                    {c.挂靠 && <Tag style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
+                    {c.isPrimary && <Tag color="blue" style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+                    {c.挂靠 && <Tag style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
                     {c.position && <span className="rec-contact-p">{c.position}</span>}
                     {/* 号码保护（10-31）：只展示，不能点，任何逻辑都不看它（lib/enterprise/contact-guard.ts） */}
                     <号码保护标签 c={c} 客户={customer} />
@@ -1183,7 +1183,7 @@ export default function RecordView({
                 {/* 截断成「母亲…」之后，鼠标停上去得看得到全名 */}
                 <span className="rec-mini-n" title={c.name}>
                   {c.name}
-                  {c.isPrimary && <Tag color="blue" style={{ marginLeft: 6, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+                  {c.isPrimary && <Tag color="blue" style={{ marginLeft: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
                 </span>
                 <span className="rec-mini-m">{c.position ?? c.phone ?? ""}</span>
                 {/* 编辑 / 删除平时不占位（审查 M4）：原来两颗图标常驻，三个字的名字被挤成「周明远…」。
@@ -1211,7 +1211,7 @@ export default function RecordView({
                 <RowLink key={p.id} href={`/projects/${encodeURIComponent(p.id)}`} className="rec-mini rec-mini-2">
                   <span className="rec-mini-n" title={p.name}>{p.name}</span>
                   <span className="rec-mini-sub">
-                    <Tag style={{ margin: 0, borderRadius: 6 }}>{p.phase}</Tag>
+                    <Tag style={{ margin: 0 }}>{p.phase}</Tag>
                     <span className="rec-mini-m" title={p.result ?? p.node}>{p.result === "异常状态" ? `异常 · ${p.node}` : p.result ?? p.node}</span>
                     <span className="rec-mini-m rec-mini-money">{金额或空(p.amount, p.currency, true)}</span>
                     {主项目身份.get(p.id)?.length ? <span className="rec-mini-m" title={`项目身份：${主项目身份.get(p.id)!.join("、")}`}>{主项目身份.get(p.id)!.join("、")}</span> : null}
@@ -1225,7 +1225,7 @@ export default function RecordView({
                 <RowLink key={x.projectId} href={`/projects/${encodeURIComponent(x.projectId)}`} className="rec-mini rec-mini-2">
                   <span className="rec-mini-n" title={x.名}>{x.名}</span>
                   <span className="rec-mini-sub">
-                    {x.身份.length ? x.身份.map((t) => <Tag key={t} style={{ margin: 0, borderRadius: 6 }}>{t}</Tag>) : <span className="rec-mini-m">没勾身份</span>}
+                    {x.身份.length ? x.身份.map((t) => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>) : <span className="rec-mini-m">没勾身份</span>}
                   </span>
                 </RowLink>
               ))}
@@ -1257,7 +1257,7 @@ export default function RecordView({
                     <StageTag stage={o.stage} />
                     {/* 赢单 / 丢单挂个标（J-088），和商机列表名称列一样；不挂的话丢掉的单看着也像还在谈 */}
                     {o.status !== "OPEN" && (
-                      <Tag color={o.status === "WON" ? "success" : "error"} style={{ margin: 0, borderRadius: 6 }}>
+                      <Tag color={o.status === "WON" ? "success" : "error"} style={{ margin: 0 }}>
                         {o.status === "WON" ? (是订单 ? "已转订单" : "已赢单") : "已丢单"}
                       </Tag>
                     )}
@@ -1751,7 +1751,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
             exit={{ opacity: 0, height: 0 }}
             style={{
               marginTop: 6, marginBottom: 0, padding: "10px 12px", background: "var(--workbench)", border: "1px solid var(--line-soft)",
-              borderRadius: 8, fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word",
+              borderRadius: 10, fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word",
               fontFamily: "inherit", color: "var(--ink-soft)", maxHeight: 320, overflow: "auto",
             }}
           >
@@ -1776,7 +1776,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
           <span className="rec-sum-type">{f.method || meta.label}</span>
           {时间}
           {f.status !== "已完成" && (
-            <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
+            <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0 }}>
               {f.status}
             </Tag>
           )}
@@ -1808,7 +1808,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
           {/* 企业版沟通记录（P14 第 6 条）：每条标出是哪个项目的，点了去项目详情的「沟通」卡记 */}
           {f.项目 && <RowLink href={`/projects/${encodeURIComponent(f.项目.id)}#project-follow`} className="rec-tl-order rec-tl-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink>}
           {f.status !== "已完成" && (
-            <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
+            <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0 }}>
               {f.status}
             </Tag>
           )}

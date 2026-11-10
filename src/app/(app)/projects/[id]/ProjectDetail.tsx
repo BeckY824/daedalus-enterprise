@@ -1814,7 +1814,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
               <Button size="small" icon={<ThunderboltOutlined />} style={{ justifySelf: "start" }} onClick={() => setAI开(true)}>用 AI 从原话预填</Button>
             )}
             {给AI && AI开 && (
-              <div style={{ border: "1px solid var(--brand-line)", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ border: "1px solid var(--brand-line)", borderRadius: 10, padding: "10px 12px" }}>
                 <Input.TextArea
                   aria-label="沟通原话"
                   autoFocus={AI先}

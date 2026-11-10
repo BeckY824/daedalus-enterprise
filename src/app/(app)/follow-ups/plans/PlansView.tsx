@@ -431,8 +431,8 @@ export default function PlansView({
                         <span className="plan-row-t">{x.标题}</span>
                         <span className="plan-row-s">
                           {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
-                          {x.方式 && <Tag style={{ margin: 0, borderRadius: 6 }}>{x.方式}</Tag>}
-                          <Tag style={{ margin: 0, borderRadius: 6 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
+                          {x.方式 && <Tag style={{ margin: 0 }}>{x.方式}</Tag>}
+                          <Tag style={{ margin: 0 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                           {/* 原定什么时候做，和实际什么时候做完，是两件事——两个都留着 */}
                           {x.计划时间 && <span className="plan-row-was-p">原定 {fmtDateTime(x.计划时间)}</span>}
                         </span>
@@ -596,8 +596,8 @@ function 组块({
                 <span className="plan-row-t">{x.标题}</span>
                 <span className="plan-row-s">
                   {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
-                  {x.方式 && <Tag style={{ margin: 0, borderRadius: 6 }}>{x.方式}</Tag>}
-                  <Tag style={{ margin: 0, borderRadius: 6 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
+                  {x.方式 && <Tag style={{ margin: 0 }}>{x.方式}</Tag>}
+                  <Tag style={{ margin: 0 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                 </span>
               </span>
               {!只有我 && scope === "全部成员" && <UserCell name={x.ownerName} size={22} />}
@@ -622,7 +622,7 @@ function 组块({
             <span className="plan-row-t">{x.下一步 || "下一步"}</span>
             <span className="plan-row-s">
               {x.进不了 ? <span style={客户名样式}>{x.项目名}</span> : <a href={`/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>}
-              <Tag style={{ margin: 0, borderRadius: 6 }}>来自项目</Tag>
+              <Tag style={{ margin: 0 }}>来自项目</Tag>
             </span>
           </span>
           {!只有我 && scope === "全部成员" && <UserCell name={x.ownerName} size={22} />}

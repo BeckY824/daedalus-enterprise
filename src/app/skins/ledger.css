@@ -59,6 +59,6 @@
 /* 6. 标题字距放开，宋体不加粗到发黑 */
 :root[data-skin="ledger"] :is(.page-head h1, .rec-head-name, .cli-welcome-t) { letter-spacing: .06em; }
 /* 7. 印：朱红实底、白字、方角，歪一点——唯一一处朱红 */
-:root[data-skin="ledger"] .prop-seal { background: var(--seal); color: var(--on-ink); border-radius: 2px; rotate: -4deg; }
+:root[data-skin="ledger"] .prop-seal { background: var(--seal); color: var(--on-ink); border-radius: var(--r-ctl); rotate: -4deg; }
 /* 8. 按下像落笔：不缩放，往下压 1px（减弱动态时由 globals.css 撤掉） */
 :root[data-skin="ledger"] .ant-btn:not(:disabled):active { scale: none; translate: 0 1px; }

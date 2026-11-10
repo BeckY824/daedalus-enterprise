@@ -97,7 +97,7 @@ function 名字({ 名, 全称, href, 主, 主叫 }: { 名: string; 全称: strin
       <span className="proj-rel-n" title={全称 && 全称 !== 名 ? `${名}（${全称}）` : 名}>
         {href ? <Link href={href}>{名}</Link> : 名}
       </span>
-      {主 && <Tag color="blue" style={{ margin: 0, borderRadius: 6, flex: "none" }}>{主叫}</Tag>}
+      {主 && <Tag color="blue" style={{ margin: 0, flex: "none" }}>{主叫}</Tag>}
     </span>
   );
 }

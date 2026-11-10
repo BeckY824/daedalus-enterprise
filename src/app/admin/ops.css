@@ -59,7 +59,7 @@
 }
 .opx-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 20px; }
 .opx-logo {
-  width: 32px; height: 32px; border-radius: 9px; flex: none;
+  width: 32px; height: 32px; border-radius: 10px; flex: none;
   display: grid; place-items: center;
   background: linear-gradient(145deg, var(--x-blue-light), var(--x-blue-deep));
   color: var(--x-panel); font-weight: 700; font-size: var(--fs-section); letter-spacing: -0.5px;
@@ -88,7 +88,7 @@
 .opx-nav a.on .anticon { color: var(--x-blue); }
 .opx-nav a.on::before {
   content: ""; position: absolute; left: -14px; top: 9px; bottom: 9px; width: 3px;
-  border-radius: 0 3px 3px 0; background: var(--x-blue);
+  border-radius: 0 4px 4px 0; background: var(--x-blue);
 }
 .opx-nav-n {
   margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
@@ -102,7 +102,7 @@
 .opx-side-foot button {
   margin-top: 6px; display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--x-line); background: var(--x-panel); color: var(--x-ink-2);
-  height: 28px; padding: 0 10px; border-radius: 8px; cursor: pointer; font: inherit; font-size: var(--fs-note);
+  height: 28px; padding: 0 10px; border-radius: 6px; cursor: pointer; font: inherit; font-size: var(--fs-note);
   transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .opx-side-foot button:hover { border-color: var(--x-blue); color: var(--x-blue-deep); }
@@ -264,7 +264,7 @@
 .opx-kv dd { margin: 0; color: var(--x-ink); min-width: 0; overflow-wrap: anywhere; }
 
 /* 反馈 */
-.opx-fb { padding: 14px 16px; border: 1px solid var(--x-line); border-radius: 12px; background: var(--x-panel); }
+.opx-fb { padding: 14px 16px; border: 1px solid var(--x-line); border-radius: 14px; background: var(--x-panel); }
 .opx-fb + .opx-fb { margin-top: 10px; }
 .opx-fb-todo { border-left: 3px solid var(--x-blue); }
 .opx-fb-done { background: var(--x-head); }

@@ -359,8 +359,8 @@ export default function ChannelsView({
       title: "渠道属性", key: "attr", dataIndex: "attr", width: 属性列宽,
       render: (v: string, r) => (v || !r.active ? (
         <span className="chan-tags">
-          {v && <Tag style={{ margin: 0, borderRadius: 6 }}>{v}</Tag>}
-          {!r.active && <Tag style={{ margin: 0, borderRadius: 6 }}>已停用</Tag>}
+          {v && <Tag style={{ margin: 0 }}>{v}</Tag>}
+          {!r.active && <Tag style={{ margin: 0 }}>已停用</Tag>}
         </span>
       ) : 无),
     },
@@ -477,8 +477,8 @@ export default function ChannelsView({
           ) : (
             <span className="chan-name" style={{ minWidth: 0 }} title={`${v}（还没挂到主渠道上）`}>{v}</span>
           )}
-          {r.历史 && <Tag style={{ margin: 0, borderRadius: 6, flex: "none" }} title="历史渠道：只承载历史客户，新数据不能选">历史渠道</Tag>}
-          {!r.active && <Tag style={{ margin: 0, borderRadius: 6, flex: "none" }}>已停用</Tag>}
+          {r.历史 && <Tag style={{ margin: 0, flex: "none" }} title="历史渠道：只承载历史客户，新数据不能选">历史渠道</Tag>}
+          {!r.active && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}
         </span>
       ),
     },

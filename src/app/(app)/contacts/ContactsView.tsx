@@ -110,7 +110,7 @@ export default function ContactsView({
           <Avatar size={24} style={{ background: avatarColor(v), color: AVATAR_TEXT, fontSize: 12 }}>{initial(v)}</Avatar>
           <span style={{ fontWeight: 500 }}>{v}</span>
           {r.isPrimary && (
-            <Tag color="blue" style={{ margin: 0, borderRadius: 6 }}>
+            <Tag color="blue" style={{ margin: 0 }}>
               关键
             </Tag>
           )}

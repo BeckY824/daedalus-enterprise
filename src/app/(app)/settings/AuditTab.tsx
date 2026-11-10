@@ -115,7 +115,7 @@ export default function AuditTab({ logs, 导出 = false }: { logs: AuditRow[]; �
                     width: 96,
                     render: (v: string, r: AuditRow) => (
                       <span className="audit-act">
-                        <Tag color={ACTION_COLOR[v] ?? "default"} style={{ margin: 0, borderRadius: 6 }}>
+                        <Tag color={ACTION_COLOR[v] ?? "default"} style={{ margin: 0 }}>
                           {ACTION_LABEL[v] ?? v}
                         </Tag>
                         <span className="muted">{r.entity === "Customer" ? b.customer : ENTITY_LABEL[r.entity] ?? r.entity}</span>

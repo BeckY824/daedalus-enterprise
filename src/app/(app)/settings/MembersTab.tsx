@@ -295,7 +295,7 @@ export default function MembersTab({
               {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；「不管设置」勾选框不截 */}
               <span className="member-roles-tags">
                 {(r.业务角色 ?? []).map((x) => (
-                  <Tag key={x} color={业务角色色[x]} style={{ margin: 0, marginRight: 4, borderRadius: 6 }}>
+                  <Tag key={x} color={业务角色色[x]} style={{ margin: 0, marginRight: 4 }}>
                     {角色名[x]}
                   </Tag>
                 ))}
@@ -314,7 +314,7 @@ export default function MembersTab({
                     不管设置
                   </Checkbox>
                 ) : r.不管设置 ? (
-                  <Tag style={{ margin: 0, borderRadius: 6 }}>不管设置</Tag>
+                  <Tag style={{ margin: 0 }}>不管设置</Tag>
                 ) : null)}
             </div>
           ),
@@ -324,7 +324,7 @@ export default function MembersTab({
           dataIndex: "role",
           width: 90,
           render: (v: string) => (
-            <Tag color={v === "ADMIN" ? "red" : v === "MANAGER" ? "blue" : "default"} style={{ margin: 0, borderRadius: 6 }}>
+            <Tag color={v === "ADMIN" ? "red" : v === "MANAGER" ? "blue" : "default"} style={{ margin: 0 }}>
               {ROLES.find((r) => r.value === v)?.label ?? v}
             </Tag>
           ),
@@ -353,7 +353,7 @@ export default function MembersTab({
       dataIndex: "active",
       width: 84,
       render: (v) => (
-        <Tag color={v ? "success" : "default"} style={{ margin: 0, borderRadius: 6 }}>
+        <Tag color={v ? "success" : "default"} style={{ margin: 0 }}>
           {v ? "在职" : "已停用"}
         </Tag>
       ),

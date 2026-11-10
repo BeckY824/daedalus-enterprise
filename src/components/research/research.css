@@ -38,7 +38,7 @@
 
 /* ---------- 6 步进度 ---------- */
 .rs-rail-wrap { position: relative; }
-.rs-rail { position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--line-soft); border-radius: 2px; overflow: hidden; }
+.rs-rail { position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--line-soft); border-radius: 999px; overflow: hidden; }
 .rs-rail-fill { position: absolute; inset: 0; background: var(--brand); transform-origin: top; transform: scaleY(0); }
 .rs-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .rs-stage { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 12px; align-items: start; padding: 3px 0; }

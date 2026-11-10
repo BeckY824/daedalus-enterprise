@@ -99,7 +99,7 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
           <span className="roster-l0">
             <span className="roster-src" title={[r.阶段?.trim(), r.pooled ? "公海" : null, 方式].filter(Boolean).join(" · ") || undefined}>
               {带阶段 && (
-                <Tag style={{ margin: "0 6px 0 0", borderRadius: 5, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>{r.阶段?.trim() || 未填写组}</Tag>
+                <Tag style={{ margin: "0 6px 0 0", fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>{r.阶段?.trim() || 未填写组}</Tag>
               )}
               {[r.pooled ? "公海" : null, 方式].filter(Boolean).join(" · ")}
             </span>
