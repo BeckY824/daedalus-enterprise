@@ -44,14 +44,14 @@ beforeAll(async () => {
     // 看板五列（11-01 C12 测「→ 还有 N 列」）：每列一张卡
     const 五列=['线索','商机','订单','成功交付','没成'].map((列,i)=>({列,数:1,合计:[],行:[{...row(10+i,'潜客培育'),phase:列==='没成'?'线索':列}]}));
     window.__画=(阶段,能分,企,o={})=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.看板?五列:[]} 取到上限={false} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 企业版={!!企}/>
+      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.看板?五列:[]} 取到上限={false} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企}/>
     </BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean; 公海?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean; 公海?: boolean; 管公海?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -305,6 +305,15 @@ it("客户公海里的项目不给「分配」「自动分配」键；线索公�
   expect(await page.getByRole("button", { name: /^自动分配 .*5$/ }).count()).toBe(1);
   expect(await page.getByRole("button", { name: /^分配 .*4$/ }).count()).toBe(0);
   expect(await page.getByRole("button", { name: /^自动分配 .*4$/ }).count()).toBe(0);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("P-公海-10：销售管理 / 总管理看客户公海里的项目有「分配」（整包），没有「自动分配」", async () => {
+  const { page, errors } = await 打开(true, 1280, true, true, { 公海: true, 管公海: true });
+  await page.getByRole("button", { name: /^分配 .*4$/ }).waitFor();
+  expect(await page.getByRole("button", { name: /^自动分配 .*4$/ }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: /^自动分配 .*5$/ }).count()).toBe(1);
   expect(errors).toEqual([]);
   await page.close();
 });

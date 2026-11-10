@@ -21,7 +21,7 @@ import { 进公海后负责人, 进公海关待办 } from "@/lib/project/pool-ow
 import { 在推项目条件 } from "@/lib/project/active";
 import { 系统 } from "@/lib/project/timeout";
 import { 有同事在推的客户 } from "./colleague-projects";
-import { 记换负责人 } from "@/lib/owner-log-db";
+import { 记换负责人, type 换负责人种类 } from "@/lib/owner-log-db";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 
 /**
@@ -117,7 +117,8 @@ export async function 客户名下在推项目进公海(
  * 领 / 分线索公海里的一个项目给 新 之前（事务里、改负责人之前）核持有上限（M-公海-18）：
  * 手上这个算持有就进 1 个；开关 领项目带走单项目客户 开着、客户在客户公海里时，单项目客户跟着领 还会把客户名下别的公海项目一起带过来，
  * 照领多项目的公海客户（#203）一起数（客户原负责人自己的项目进客户公海时已进线索公海，剩下的不算持有）。开关关着时同 超上限，话术一字不差。
- * 另进：调用方另外要进手的（分项目给 市场转客户带过来的同事待分配项目）。不是企业版 / 没开上限回 null
+ * 另进：调用方另外要进手的（分项目给 市场转客户带过来的同事待分配项目）。
+ * 整包：销售管理、总管理分客户在客户公海里的项目（P-公海-10，客户整包出公海），不看开关、照样把名下别的公海项目一起数。不是企业版 / 没开上限回 null
  */
 export async function 领项目连带超上限(
   tx: Prisma.TransactionClient,
@@ -125,10 +126,11 @@ export async function 领项目连带超上限(
   新: string,
   p: { id: string; customerId: string; phase: string; result: string | null },
   另进 = 0,
+  整包 = false,
 ): Promise<string | null> {
   if (!企业版()) return null;
   const 一 = !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase) ? 1 : 0;
-  const 带 = 公海规则.领项目带走单项目客户 && 公海规则.领客户带走公海里的项目
+  const 带 = (整包 || 公海规则.领项目带走单项目客户) && 公海规则.领客户带走公海里的项目
     ? await 看全部(async () => (await tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))
       ? tx.project.count({ where: { customerId: p.customerId, pooledAt: { not: null }, id: { not: p.id }, ...算持有的项目 } })
       : 0)
@@ -154,6 +156,24 @@ export async function 单项目客户跟着领(
   带待办?: boolean,
 ): Promise<{ customerId: string; 旧: string } | null> {
   if (!企业版() || !公海规则.领项目带走单项目客户) return null;
+  return 客户整包出公海(tx, customerId, 新, 操作人, 带待办);
+}
+
+/**
+ * 客户在客户公海里，销售管理 / 总管理把他名下一个项目从线索公海、项目公海分给销售（P-公海-10，11-09 定）：客户和名下别的公海项目一起出公海归 新，
+ * 不看开关 领项目带走单项目客户。同一笔事务里、手上这个项目已移出公海之后调。规矩同客户公海分配：先改负责人、记领取、删公海那一行，
+ * 原负责人（进公海前那位）没做完的活跟着过来，记一行换负责人（kind 默认 claim；管理分配传 pool-assign、操作人 = 分的人）；
+ * 名下还在公海里的项目每个记一行 pool-claim。客户不在客户公海里回 null。返回原负责人（占位账号）和一起带过来的公海项目
+ */
+export async function 客户整包出公海(
+  tx: Prisma.TransactionClient,
+  customerId: string,
+  新: string,
+  操作人: string = 新,
+  带待办?: boolean,
+  kind: 换负责人种类 = "claim",
+): Promise<{ customerId: string; 旧: string; 公海项目: string[] } | null> {
+  if (!企业版()) return null;
   return 看全部(async () => {
     if (!(await tx.customerPool.findUnique({ where: { customerId }, select: { customerId: true } }))) return null;
     const c = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true } });
@@ -162,9 +182,9 @@ export async function 单项目客户跟着领(
     if (c.salesOwnerId !== 新) await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 新 } });
     await tx.customerClaim.upsert({ where: { customerId }, update: { userId: 新, at: new Date() }, create: { customerId, userId: 新 } });
     await tx.customerPool.deleteMany({ where: { customerId } });
-    if (c.salesOwnerId !== 新) await 带走一位(tx, customerId, c.salesOwnerId, 新, 新, "claim");
-    if (公海规则.领客户带走公海里的项目) await 带走公海项目(tx, [customerId], 新, 操作人, 带待办);
-    return { customerId, 旧: c.salesOwnerId };
+    if (c.salesOwnerId !== 新) await 带走一位(tx, customerId, c.salesOwnerId, 新, kind === "claim" ? 新 : 操作人, kind);
+    const 公海项目 = 公海规则.领客户带走公海里的项目 ? await 带走公海项目(tx, [customerId], 新, 操作人, 带待办) : [];
+    return { customerId, 旧: c.salesOwnerId, 公海项目 };
   });
 }
 

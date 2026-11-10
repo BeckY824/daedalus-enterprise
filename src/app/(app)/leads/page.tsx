@@ -8,7 +8,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 负责人候选 } from "@/lib/owners";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
-import { 能新建和领取 } from "@/lib/enterprise/permissions";
+import { 能新建和领取, 能管公海 } from "@/lib/enterprise/permissions";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
@@ -37,7 +37,7 @@ export default async function LeadsPage({
     const 线索分配开着 = (await 规则开着("线索分配")) && !(await 当前是共享区());
     const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
     const 满额提醒们 = await 读满额提醒(me.id);
-    return <ProjectsView {...d} 列={看板分列(d.行)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 满额提醒={满额提醒们} 能新建={能新建和领取(me, await 权限组织())} />;
+    return <ProjectsView {...d} 列={看板分列(d.行)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 满额提醒={满额提醒们} 能新建={能新建和领取(me, await 权限组织())} />;
   }
   const where: Prisma.LeadWhereInput = {
     AND: [await 线索关键词条件(sp.keyword)],

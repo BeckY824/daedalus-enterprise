@@ -113,13 +113,16 @@ async function 重算最近跟进(tx: Tx, customerId: string) {
  */
 export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结果<{ 连带: number; customerId: string | null }>> {
   if (!(await 能管回收站(me))) return { ok: false, error: "只有系统管理员或回收站副手能恢复" };
-  return 恢复一条(t, id);
+  return 恢复一条(t, id, me.id);
 }
 
 /** 恢复一条，不查谁能恢复：回收站页（恢复，先查权限）、查重捞回（查重撞上才给）共用 */
-async function 恢复一条(t: 软删表名, id: string): Promise<结果<{ 连带: number; customerId: string | null }>> {
+async function 恢复一条(t: 软删表名, id: string, 操作人 = ""): Promise<结果<{ 连带: number; customerId: string | null }>> {
   // 客户状态跟着项目算：项目回来了（单条或随客户连带）要重算，开关事务外读
   const 状态开 = (t === "Customer" || t === "Project") && (await 客户状态自动());
+  // P-删-09：企业版单条恢复项目跟客户现负责人走（project/db 引着本文件，转让痕按需取，免得互相引用）
+  const 项目跟客户 = t === "Project" && 企业版();
+  const { 记转让 } = 项目跟客户 ? await import("../project/db") : { 记转让: null };
   return prisma.$transaction((tx) => 看已删(async () => {
     const 行 = await 表(tx, t).findUnique({ where: { id }, select: t === "Customer" ? { id: true, deletedAt: true } : { id: true, deletedAt: true, customerId: true } });
     const 时刻 = 行?.deletedAt as Date | null | undefined;
@@ -130,7 +133,20 @@ async function 恢复一条(t: 软删表名, id: string): Promise<结果<{ 连�
       if (!c) return { ok: false as const, error: "所属客户已经不在了，恢复不了" };
       if (c.deletedAt) return { ok: false as const, error: `所属客户「${c.name}」也在回收站里，先恢复客户` };
     }
+    // P-删-09：客户在客户公海就拦（不然客户在公海、项目有人）；不在公海、项目不在项目公海的，归客户现负责人
+    let 改归: { p: { id: string; phase: string; node: string; result: string | null }; 从: string; 到: string } | null = null;
+    if (项目跟客户) {
+      const c = await tx.customer.findUnique({ where: { id: customerId }, select: { name: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+      if (c?.pool) return { ok: false as const, error: `所属客户「${c.name}」在客户公海里，先把客户领出来或分给销售，再恢复项目` };
+      const p = await tx.project.findUnique({ where: { id }, select: { id: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true } });
+      const 到 = c?.salesOwnerId ?? "";
+      if (p && !p.pooledAt && 到 && p.ownerId !== 到) 改归 = { p, 从: p.ownerId, 到 };
+    }
     await 表(tx, t).updateMany({ where: { id, deletedAt: 时刻 }, data: { deletedAt: null } });
+    if (改归 && 记转让) {
+      await tx.project.update({ where: { id }, data: { ownerId: 改归.到 } });
+      await 记转让(tx, 改归.p, 操作人 || 改归.到, 改归.从 || null, 改归.到, "transfer", "从回收站恢复，跟客户现负责人");
+    }
     let 连带 = 0;
     if (t === "Customer") {
       for (const x of 客户连带) 连带 += (await 看全部(() => 表(tx, x).updateMany({ where: { customerId: id, deletedAt: 时刻 }, data: { deletedAt: null } }))).count;

@@ -705,19 +705,32 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     expect(await 负责人(c)).toBe(乙.id);
   });
 
-  it("客户在客户公海里：项目不能单独领，也不能单独分（随整包，M-公海-06）；领客户项目一起过来", async () => {
+  it("客户在客户公海里：项目不能单独领（M-公海-06）；领客户项目一起过来", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
     当(乙);
     expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true, 公海项目: [p] });
     expect(await 领取公海项目(丙, p)).toEqual({ ok: false, error: 客户在公海项目不单领提示 });
-    当(老板);
-    expect(await 分配公海项目([p], 丙.id)).toMatchObject({ ok: true, 分到: [], 没分到: [{ id: p, 原因: 客户在公海项目不单领提示 }] });
-    expect(await 项目在公海(p)).toBe(true);
     当(丙);
     expect(await 领取([c])).toMatchObject({ ok: true, updated: 1 });
     expect(await 负责人(c)).toBe(丙.id);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
+  });
+
+  it("P-公海-10 客户在客户公海里：总管理从公海分项目，客户和名下别的公海项目整包给这位销售", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    const p2 = await 项目(乙.id, c);
+    当(乙);
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true });
+    当(老板);
+    expect(await 分配公海项目([p], 丙.id)).toMatchObject({ ok: true, 分到: [p], 没分到: [] });
+    expect(await 在客户公海(c)).toBe(false);
+    expect(await 负责人(c)).toBe(丙.id);
+    for (const x of [p, p2]) {
+      expect(await 项目在公海(x)).toBe(false);
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: x } })).ownerId).toBe(丙.id);
+    }
   });
 });
 

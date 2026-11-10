@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { 带走一位, type 带走的 } from "@/lib/carry-over-db";
 import { 随客户痕 } from "@/lib/project/carry-tasks";
-import type { 留下的活 } from "./notice-sources";
+import type { 留下的活, 同事待分配条 } from "./notice-sources";
 import type { 组织 } from "./org-core";
 import { 是市场角色, 是销售角色 } from "./permissions";
 
@@ -47,11 +47,14 @@ export async function 市场转一位(tx: Prisma.TransactionClient, customerId: 
   return { ...带走, 清待分配: [...带走.清待分配, ...待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() }))], 补方式 };
 }
 
-/** 项目入口用：回 留下，分配通知据此告诉接手人客户上还有多少原负责人的活 */
-export async function 转客户给销售(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string): Promise<留下的活> {
+/**
+ * 项目入口用：回 留下，分配通知据此告诉接手人客户上还有多少原负责人的活；
+ * 同事待分配 = 随客户换了负责人的同事待分配项目，调用方事务提交后发 同事待分配随客户通知（P-转-19）
+ */
+export async function 转客户给销售(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string): Promise<{ 留下: 留下的活; 同事待分配: 同事待分配条[] }> {
   await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 接手人 } });
-  await 市场转一位(tx, customerId, 原, 接手人, 操作人, way);
-  return { customerId, 原 };
+  const 带走 = await 市场转一位(tx, customerId, 原, 接手人, 操作人, way);
+  return { 留下: { customerId, 原 }, 同事待分配: 带走.同事待分配 };
 }
 
 /**

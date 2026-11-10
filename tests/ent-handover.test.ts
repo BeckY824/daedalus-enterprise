@@ -22,7 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { deactivateUser, reactivateUser, 停用清点 } from "@/app/(app)/settings/actions";
-import { assignSalesOwner, patchCustomer, saveCustomer } from "@/app/(app)/customers/actions";
+import { assignSalesOwner, patchCustomer, saveCustomer, deleteCustomers } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接 } from "@/app/(app)/customers/handover-actions";
 import { 了结 } from "@/lib/enterprise/handover-db";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
@@ -244,6 +244,20 @@ describe("转让交接中放公海（11-03 完成度 C3-2）", () => {
   });
 });
 
+describe("交接中的客户不能删（P-删-10）", () => {
+  it("转让交接待确认时删不掉（单删、批量里夹着都拦）；撤回后能删", async () => {
+    const a = await 客户(销售.id);
+    const b = await 客户(销售.id);
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
+    当(老板);
+    expect(await deleteCustomers([a.id])).toMatchObject({ ok: false, error: expect.stringContaining("交接") });
+    expect(await deleteCustomers([a.id, b.id])).toMatchObject({ ok: false, error: expect.stringContaining(a.name) });
+    expect(await prisma.customer.count()).toBe(2);
+    expect(await 撤回交接((await 一笔()).id)).toMatchObject({ ok: true });
+    expect(await deleteCustomers([a.id])).toMatchObject({ ok: true });
+  });
+});
+
 describe("离职交接时本来在公海的客户（11-03 完成度 C4-1）", () => {
   // 原来：转交把公海里的也改到接手人名下，公海那行还在，接手人成了「原负责人」，看不到也领不到
   it("老的离职交接确认时、离职交接看板全部交给时：在公海的都不转；清点不算公海里的", async () => {
@@ -403,6 +417,38 @@ describe("开关关掉", () => {
 
 describe("交接通知（11-03 C3-3 / C3-5 / C4-7 / C8-1）", () => {
   const 通知 = (userId: string, 事件: string, hid: string) => prisma.entNotice.findFirst({ where: { userId, dedupeKey: `handover:${hid}:${事件}` } });
+
+  it("P-删-10 确认后的通知按实际转成的个数和客户名写，交接期间换了人的不算", async () => {
+    const a = await 客户(销售.id);
+    const b = await 客户(销售.id);
+    当(组长);
+    expect(await assignSalesOwner([a.id, b.id], 接手.id)).toMatchObject({ ok: true, 交接中: 2 });
+    const h = await 一笔();
+    await prisma.customer.update({ where: { id: b.id }, data: { salesOwnerId: 组长.id } });
+    当(接手);
+    expect(await 确认交接(h.id)).toEqual({ ok: true, 客户: 1 });
+    const 给发起人 = (await 通知(组长.id, "已确认", h.id))?.title ?? "";
+    expect(给发起人).toContain("1 位客户");
+    expect(给发起人).toContain(a.name);
+    expect(给发起人).not.toContain(b.name);
+    const 给原负责人 = (await 通知(销售.id, "已确认", h.id))?.title ?? "";
+    expect(给原负责人).toContain("1 位客户");
+    expect(给原负责人).not.toContain(b.name);
+  });
+
+  it("P-删-10 一位都没转成：通知照实说没转", async () => {
+    const a = await 客户(销售.id);
+    当(组长);
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1 });
+    const h = await 一笔();
+    await prisma.customer.update({ where: { id: a.id }, data: { salesOwnerId: 组长.id } });
+    当(接手);
+    expect(await 确认交接(h.id)).toEqual({ ok: true, 客户: 0 });
+    const t = (await 通知(组长.id, "已确认", h.id))?.title ?? "";
+    expect(t).toContain("没有转");
+    expect(t).not.toContain("1 位客户");
+    expect(await 通知(销售.id, "已确认", h.id)).toBeNull();
+  });
 
   it("确认后：接手人那条「等你确认」标成已读；发起人和原负责人都收到，标题带客户名", async () => {
     const a = await 客户(销售.id);

@@ -1,5 +1,5 @@
 import type { Prisma } from "@/generated/prisma";
-import { 不掉公海的状态 } from "@/lib/pool";
+import { 不掉公海的状态, 无负责人占位邮箱 } from "@/lib/pool";
 import { 能进公海的阶段, 算持有的项目 } from "@/lib/project/db";
 import { 有同事在推的客户 } from "@/lib/enterprise/colleague-projects";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
@@ -49,6 +49,8 @@ export type 停用分拣结果 = {
   项目: string[];
   /** 项目 里同事负责、正在待分配的（用户 11-09 定）：随客户给接手人并清待分配 */
   清待分配: string[];
+  /** 项目 里已停用同事负责、没结局、不在待分配的（P-转-18，11-09 定）：随客户给接手人，接手人再定继续还是放回公海 */
+  停用同事: string[];
   /** 放回项目公海的（公海方式） */
   进公海项目: string[];
   /** 公海方式下因为订单阶段只能给接手人的项目数（界面提示用；转交方式为 0） */
@@ -56,6 +58,14 @@ export type 停用分拣结果 = {
 };
 
 type 读库 = Pick<Prisma.TransactionClient, "customer" | "opportunity" | "task" | "followPlan" | "lead" | "channel" | "project" | "user" | "customerOwnerLog">;
+
+/**
+ * 已停用的同事（不含占位账号、不含 除了 里的人）：他们负责、挂在要转走的客户上的进行中项目随客户给接手人（P-转-18，11-09 定），
+ * 不然项目留在停用账号名下没人管。有结局的是历史，不动
+ */
+export async function 停用的同事(db: Pick<Prisma.TransactionClient, "user">, 除了: string[]): Promise<string[]> {
+  return (await db.user.findMany({ where: { active: false, id: { notIn: 除了 }, email: { not: 无负责人占位邮箱 } }, select: { id: true } })).map((u) => u.id);
+}
 
 export async function 停用分拣(db: 读库, id: string, 方式: 停用方式, 企业: boolean): Promise<停用分拣结果> {
   const 公海 = 企业 && 方式 === "公海";
@@ -94,10 +104,15 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
   // 挂在进公海、本来在公海客户上的活留在他名下，谁领客户谁带走（同手动放公海）
   const 给接手人 = (rows: { id: string; customerId: string | null }[]) => rows.filter((r) => !r.customerId || !去公海的.has(r.customerId)).map((r) => r.id);
 
+  // 企业版：他自己的 + 同事待分配的 + 已停用同事进行中的（P-转-18）
+  const 停用 = 企业 && 转走的客户.size ? await 停用的同事(db, [id]) : [];
   const 跟客户走的项目 = 转走的客户.size
     ? await db.project.findMany({
-        where: { customerId: { in: [...转走的客户] }, pooledAt: null, ...(企业 ? { OR: [{ ownerId: id }, { awaitAssignAt: { not: null }, ownerId: { not: "" } }] } : {}) },
-        select: { id: true, ownerId: true },
+        where: {
+          customerId: { in: [...转走的客户] }, pooledAt: null,
+          ...(企业 ? { OR: [{ ownerId: id }, { awaitAssignAt: { not: null }, ownerId: { not: "" } }, ...(停用.length ? [{ ownerId: { in: 停用 }, result: null }] : [])] } : {}),
+        },
+        select: { id: true, ownerId: true, awaitAssignAt: true },
       })
     : [];
   const 跟客户走 = 跟客户走的项目.map((p) => p.id);
@@ -118,7 +133,8 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
     线索: 线索们.map((r) => r.id),
     渠道: 渠道们.map((r) => r.id),
     项目,
-    清待分配: 企业 ? 跟客户走的项目.filter((p) => p.ownerId !== id).map((p) => p.id) : [],
+    清待分配: 企业 ? 跟客户走的项目.filter((p) => p.ownerId !== id && p.awaitAssignAt).map((p) => p.id) : [],
+    停用同事: 企业 ? 跟客户走的项目.filter((p) => p.ownerId !== id && !p.awaitAssignAt).map((p) => p.id) : [],
     进公海项目,
     订单项目: 公海 ? 他的项目.filter((p) => !可进公海阶段.includes(p.phase)).length : 0,
   };

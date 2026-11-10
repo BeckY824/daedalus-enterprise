@@ -811,6 +811,14 @@ function revalidateCustomer(id?: string) {
 async function 删除依赖错误(db: Prisma.TransactionClient, ids: string[], 客户叫法: string, 管 = false): Promise<string | null> {
   const visible = await db.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwnerId: true } });
   if (!visible.length) return null;
+  // 企业版 P-删-10：转让交接等接手人确认的客户不能删（不然接手人确认时客户已在回收站）；系统管理员也一样，先撤回交接
+  if (软删开着()) {
+    const 中 = await 交接中的客户(visible.map((c) => c.id), db);
+    if (中.size) {
+      const 名 = visible.filter((c) => 中.has(c.id)).map((c) => `「${c.name}」`).join("、");
+      return `${名}正在转让交接中（等接手人确认），不能删；要删先撤回交接${visible.length > 1 ? "，整批已阻止" : ""}`;
+    }
+  }
   // 企业版 P-删-05（11-05）：名下有同事负责、还没结束的项目先挡；结束了的跟着客户进回收站
   if (软删开着() && !管) {
     const 有 = await 有同事在推的客户(db, visible);

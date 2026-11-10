@@ -20,9 +20,9 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 记转让 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
-import { 单项目客户跟着领, 领项目连带超上限 } from "@/lib/enterprise/pool-link";
+import { 单项目客户跟着领, 客户整包出公海, 领项目连带超上限 } from "@/lib/enterprise/pool-link";
+import { 钉住老签约 } from "@/lib/contract-owner";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
-import { 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 历史负责人 } from "@/lib/project/pool-owner";
 import { 换负责人待办, 待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
@@ -93,7 +93,8 @@ export type 分项目结果 =
 /**
  * 老板、主管把线索公海里的项目分给同事（10-30，P0 #6）：权限同客户公海的 分配公海，持有上限照拦指派（超上限）。
  * 规矩同 领取公海项目：标了无效的客户的项目分不了；记一行 pool-claim（操作人 = 我，到 = 给的那位），撤销认的就是这一行；
- * 客户在客户公海里的项目分不了（M-公海-06，项目随客户整包，要分客户）；分到的只换项目负责人，客户负责人不变。一个一个分，分不了的说原因，不整批失败。
+ * 客户不在客户公海里：分到的只换项目负责人，客户负责人不变；客户在客户公海里：客户和名下别的公海项目整包出公海给这位（P-公海-10，11-09 定，
+ * 只有能管公海的销售管理、总管理走得到这里）。一个一个分，分不了的说原因，不整批失败。
  * 带待办（C-06，公海页页头的勾，没传按默认勾）：进公海时关掉的那批待办重新打开给分到的人
  */
 export async function 分配公海项目(ids: string[], userId: string, 带待办?: boolean): Promise<分项目结果> {
@@ -110,26 +111,36 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
   const 带 = 带待办勾(带待办);
   const 分到: string[] = [];
   const 没分到: { id: string; 原因: string }[] = [];
+  let 跟来 = 0;
+  let 连客户 = 0;
+  // 客户在客户公海里的会整包换客户负责人（P-公海-10）：同客户公海分配，事务外先钉住老签约（没缺的就不写）
+  if (企业版()) await 钉住老签约();
   for (const id of 们) {
+    // 整包带过来的：事务撞上别的写入会重跑，每轮先清零，成了才加
+    let 包: { 公海项目: string[] } | null = null;
     const 原因 = await 看全部(() => 查完再写(async (tx) => {
+      包 = null;
       const p = await tx.project.findUnique({ where: { id }, select: { id: true, name: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true, customerId: true } });
       if (!p) return "这个项目已经不在了";
       if (!p.pooledAt) return "已经被人领走了";
       const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
       if (c?.pool && c.poolInvalidAt) return "客户标了无效，要总管理先恢复";
-      if (拦客户公海里的项目(!!c?.pool)) return 客户在公海项目不单领提示;
-      const 超 = await 领项目连带超上限(tx, 规则, 给.id, p);
+      const 整包 = 企业版() && !!c?.pool;
+      const 超 = await 领项目连带超上限(tx, 规则, 给.id, p, 0, 整包);
       if (超) return 超;
       await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
       // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
       const 原 = (await 历史负责人(tx, id)) ?? (p.ownerId || null);
       const 几条 = await 换负责人待办(tx, p, 原, 给.id, 带);
       await 记转让(tx, p, me.id, 原, 给.id, "pool-claim", 待办痕(带, 几条));
-      await 单项目客户跟着领(tx, p.customerId, 给.id, me.id, 带);
+      if (整包) 包 = await 客户整包出公海(tx, p.customerId, 给.id, me.id, 带, "pool-assign");
+      else await 单项目客户跟着领(tx, p.customerId, 给.id, me.id, 带);
       return null;
     }));
     if (原因) 没分到.push({ id, 原因 });
     else 分到.push(id);
+    const 带来 = 包 as { 公海项目: string[] } | null;
+    if (!原因 && 带来) { 连客户 += 1; 跟来 += 带来.公海项目.length; }
   }
   if (分到.length) {
     await recordAudit({
@@ -138,7 +149,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       detail: { ids: 分到, 给: 给.id },
     });
     刷新();
-    await 公海分配通知(me, 给.id, "项目", 分到);
+    await 公海分配通知(me, 给.id, "项目", 分到, 跟来, 连客户);
   }
   return { ok: true, 分到, 没分到, 给谁: 给 };
 }
