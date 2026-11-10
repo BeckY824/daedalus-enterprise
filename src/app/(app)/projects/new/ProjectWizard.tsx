@@ -126,7 +126,7 @@ export default function ProjectWizard({ users, 要下一步, 企业 = null, 新�
 const 不订阅 = () => () => {};
 
 /** 介绍人客户下拉（P-渠道-09）：选了「客户介绍」才挂上，挂上才取客户名单（和客户表单同一个 推荐人候选） */
-function 介绍人选择({ value, 叫法, onChange }: { value?: string; 叫法: string; onChange: (v: string | undefined) => void }) {
+function ReferrerPicker({ value, 叫法, onChange }: { value?: string; 叫法: string; onChange: (v: string | undefined) => void }) {
   const [候选, set候选] = useState<{ id: string; name: string }[] | null>(null);
   const [出错, set出错] = useState(false);
   useEffect(() => {
@@ -528,7 +528,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 全名, �
           ))}
           {/* 介绍人客户（P-渠道-09）：只在触点 = 客户介绍时出现，挂一个已有客户 */}
           {企业 && d.客户.触点 === 客户介绍触点 && 一行(`介绍人${b.customer}`, (
-            <介绍人选择 value={d.客户.介绍人} 叫法={b.customer} onChange={(v) => 改("客户", { 介绍人: v })} />
+            <ReferrerPicker value={d.客户.介绍人} 叫法={b.customer} onChange={(v) => 改("客户", { 介绍人: v })} />
           ))}
           {!企业 && 一行(b.fields.school, <Input value={d.客户.school} onChange={(e) => 改("客户", { school: e.target.value })} />)}
           {!企业 && 一行("备注", <Input.TextArea rows={3} value={d.客户.remark} onChange={(e) => 改("客户", { remark: e.target.value })} />)}
