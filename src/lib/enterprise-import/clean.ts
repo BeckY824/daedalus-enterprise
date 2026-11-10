@@ -95,6 +95,41 @@ export function 名键(s: string): string {
     .toLowerCase();
 }
 
+/**
+ * 导入查重（M-导入-24 归档导入定的口径，M-导入-29 起普通导入和客户页旧导入抽屉都用这一个）：
+ * 号（电话 / 另一个号 / WhatsApp / 座机，一格几个号逐个比）或客户名撞了我们这边的客户 → 撞在哪的说法（带上撞的号或名字）；没撞 = null。
+ * 号按 归档号键 比（+86 / 0086、空格横杠不算，不足 10 位不比）；给了 客户号 的再按 号键 整串比一遍客户电话（短号也算）。
+ * 名字按 名键 比（空白、全半角、大小写不算）
+ */
+export function 撞已有客户(本地: Pick<本地索引, "客户名" | "客户号" | "归档号">, name: string, 号们: readonly (string | null | undefined)[]): string | null {
+  for (const v of 号们) {
+    for (const 段 of String(v ?? "").split(/[,，;；/、\n]+/)) {
+      const k = 归档号键(段);
+      const 们 = (k ? 本地.归档号?.get(k) : undefined) ?? (段.trim() ? 本地.客户号.get(号键(段.trim())) : undefined) ?? [];
+      if (们.length) return `号码 ${段.trim()} 和我们这边已有的${们.length > 1 ? ` ${们.length} 个` : ""}客户撞了`;
+    }
+  }
+  const 同名 = name ? (本地.客户名.get(名键(name)) ?? []) : [];
+  if (同名.length) return `我们这边已经有叫「${name}」的客户${同名.length > 1 ? `（${同名.length} 个）` : ""}`;
+  return null;
+}
+
+/**
+ * 导入查重的号索引（M-导入-24 / 29）：客户电话、客户 WhatsApp、联系人手机、子表里客户 / 联系人身上的手机 / 座机 / WhatsApp，
+ * 都按 归档号键 规整 → 有这个号的客户 id 们。只算 看得见 里的客户（删了进回收站的不算撞）
+ */
+export function 归档号索引(看得见: ReadonlySet<string>, 号们: Iterable<{ v: string | null | undefined; customerId: string }>): Map<string, string[]> {
+  const 归档号 = new Map<string, string[]>();
+  for (const { v, customerId } of 号们) {
+    const 键 = 归档号键(v);
+    if (!键 || !看得见.has(customerId)) continue;
+    const 们 = 归档号.get(键);
+    if (!们) 归档号.set(键, [customerId]);
+    else if (!们.includes(customerId)) 们.push(customerId);
+  }
+  return 归档号;
+}
+
 /** 疑似重名用的公司名键：再去掉括号、标点和「有限公司」这类尾巴。只用来提醒，不拿来合并 */
 export function 公司名键(s: string): string {
   return 名键(s)
@@ -464,21 +499,6 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     }
   };
 
-  /** 查重（归档 / 普通导入一个口径）：号（电话 / 另一个号 / WhatsApp / 座机）或客户名撞了我们这边的客户 → 撞在哪的说法；没撞 = null */
-  const 撞已有客户 = (name: string, 号们: (string | null | undefined)[]): string | null => {
-    for (const v of 号们) {
-      for (const 段 of String(v ?? "").split(/[,，;；/、\n]+/)) {
-        // 归档号键 之外再按 号键 整串比一遍客户电话（客户电话整串一样也算撞，短号也算）
-        const k = 归档号键(段);
-        const 们 = (k ? 本地.归档号?.get(k) : undefined) ?? (段.trim() ? 本地.客户号.get(号键(段.trim())) : undefined) ?? [];
-        if (们.length) return `号码 ${段.trim()} 和我们这边已有的${们.length > 1 ? ` ${们.length} 个` : ""}客户撞了`;
-      }
-    }
-    const 同名 = 本地.客户名.get(名键(name)) ?? [];
-    if (同名.length) return `我们这边已经有叫「${name}」的客户${同名.length > 1 ? `（${同名.length} 个）` : ""}`;
-    return null;
-  };
-
   const 缺必填 = (r: 原始记录, s: 标准): boolean => {
     const 缺 = 必填[r.实体].filter((f) => !s.值[f]);
     if (!缺.length) return false;
@@ -717,7 +737,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         };
         // 没导过的撞了我们这边的客户（号或名），整条不导（M-导入-24 / 29）
         if (!目标) {
-          const 撞 = 撞已有客户(s.值.name, [phone, ...号.另, whatsapp, 座机]);
+          const 撞 = 撞已有客户(本地, s.值.name, [phone, ...号.另, whatsapp, 座机]);
           if (撞) {
             问题们.splice(起);
             出问题(r, "跳过", "重名", `${撞}，这一条不导`);

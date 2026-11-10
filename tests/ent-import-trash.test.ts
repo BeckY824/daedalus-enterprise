@@ -46,7 +46,7 @@ afterAll(async () => { await prisma.$disconnect(); });
 
 const 三行 = [
   ["张三新写法", "13800000001", "表里的备注"], // 第 2 行：号码在回收站
-  ["李四", "13800000002", "补一格备注"], // 第 3 行：在用的，补空
+  ["李四", "13800000002", "补一格备注"], // 第 3 行：在用的，撞上已有客户跳过（M-导入-29 起企业版不补空）
   ["王五", "13800000009", ""], // 第 4 行：新建
 ];
 
@@ -54,13 +54,14 @@ describe("导入撞上回收站里的号码", () => {
   it("预览：单独数出来、标行号，算进跳过，不算新建", async () => {
     const r = await 预览导入(await 方案(三行));
     if (!r.ok) throw new Error(r.error);
-    expect(r.预览).toMatchObject({ 新建: 1, 已在库里: 1, 补空: 1, 回收站里: 1, 回收站行号: [2], 跳过: 1 });
+    expect(r.预览).toMatchObject({ 新建: 1, 已在库里: 1, 补空: 0, 回收站里: 1, 回收站行号: [2], 跳过: 2 });
   });
 
   it("执行：不新建、不补空、回收站里那位一个字不动；结果里报出几条；撤销整批照旧", async () => {
     const r = await 执行导入(await 方案(三行), "a.xlsx");
     if (!r.ok) throw new Error(r.error);
-    expect(r).toMatchObject({ 新建: 1, 补空: 1, 跳过: 1, 回收站里: 1 });
+    expect(r).toMatchObject({ 新建: 1, 补空: 0, 跳过: 2, 回收站里: 1 });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 李四 } })).remark).toBeNull();
     // 在用的只有李四、王五；回收站里还是那一位张三
     expect((await prisma.customer.findMany({ select: { name: true }, orderBy: { name: "asc" } })).map((c) => c.name).sort()).toEqual(["李四", "王五"].sort());
     const 回收站里的 = await 连回收站(() => prisma.customer.findMany({ where: { phone: "13800000001" } }));
@@ -84,14 +85,14 @@ describe("导入撞上回收站里的号码", () => {
     expect(await prisma.customer.count()).toBe(2);
   });
 
-  it("在用的和回收站里同号：照旧按在用的那位补空，不算回收站", async () => {
+  it("在用的和回收站里同号：照旧按在用的那位算（撞上已有、跳过），不算回收站", async () => {
     await prisma.customer.create({ data: { name: "张三另一位", phone: "13800000001", salesOwnerId: 老板 } });
     const 看 = await 预览导入(await 方案([三行[0]]));
     if (!看.ok) throw new Error(看.error);
     expect(看.预览).toMatchObject({ 新建: 0, 已在库里: 1, 回收站里: 0, 回收站行号: [] });
     const r = await 执行导入(await 方案([三行[0]]), "a.xlsx");
     if (!r.ok) throw new Error(r.error);
-    expect(r).toMatchObject({ 新建: 0, 补空: 1, 回收站里: 0 });
+    expect(r).toMatchObject({ 新建: 0, 补空: 0, 跳过: 1, 回收站里: 0 });
     expect((await 连回收站(() => prisma.customer.findUniqueOrThrow({ where: { id: 张三 } }))).remark).toBeNull();
   });
 

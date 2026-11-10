@@ -7,7 +7,7 @@ import { 字段表, 像表头, type 字段名 } from "@/lib/import/fields";
 import { 改动键 } from "@/lib/import/plan";
 import { 粘贴字数上限, type 编造格, type 粘贴结果 } from "@/lib/import/paste";
 import { 样例行数 } from "@/lib/jev/columns";
-import type { 预览, 导入方案 } from "./import-actions";
+import type { 预览, 导入方案, 撞已有 } from "./import-actions";
 import { 外贸精简, type BusinessConfig } from "@/lib/business-config";
 import AiWait from "@/components/AiWait";
 import { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
@@ -515,8 +515,36 @@ export function 复核({
  * 人到第 4 步改成「只补空」不重算的话：界面写「补空 0」，表里的人全在库里时「开始导入」一直是灰的（2026-10-02 排查）
  */
 export function 按处置(看: 预览, 重复行: 导入方案["重复行"]): 预览 {
-  const 补空 = 重复行 === "补空" ? (看.可补空 ?? 0) : 0;
-  return { ...看, 补空, 跳过: 看.已在库里 - 补空 + 看.说不清 + (看.回收站里 ?? 0) };
+  // 企业版撞上已有客户一律跳过（M-导入-29），处置选什么都不补空
+  const 补空 = 重复行 === "补空" && !看.只跳过 ? (看.可补空 ?? 0) : 0;
+  return { ...看, 补空, 跳过: 看.已在库里 - 补空 + 看.说不清 + (看.回收站里 ?? 0) + (看.撞号名 ?? 0) };
+}
+
+/**
+ * 撞上已有客户的那几行（企业版，M-导入-29）：确认那一步和导完那一步列行号和撞的号或名，最多 20 条
+ */
+export function 撞已有清单({ 撞, 共, 粘贴 = false, b, 导完 = false }: { 撞?: 撞已有[]; 共: number; 粘贴?: boolean; b: BusinessConfig; 导完?: boolean }) {
+  if (!撞?.length) return null;
+  return (
+    <Alert
+      type="info"
+      showIcon
+      data-testid="import-hit-existing"
+      style={{ marginTop: 12, marginBottom: 14 }}
+      title={导完 ? `这些行撞上了已有${b.customer}，跳过了` : `撞上已有${b.customer}的行整条跳过，不新建、不补空`}
+      description={
+        <>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
+            电话 / WhatsApp / 座机（含联系人和联系方式里的号）或{b.customer}名称撞上就算；号码不看 +86、空格、横杠，不到 10 位的不比，名称不看空格、全半角、大小写
+          </div>
+          {撞.map((x) => (
+            <div key={x.行号}>{第几行(x.行号, 粘贴)}：{x.原因}</div>
+          ))}
+          {共 > 撞.length && <div>……只列前 {撞.length} 条</div>}
+        </>
+      }
+    />
+  );
 }
 
 /**
@@ -552,13 +580,16 @@ export function 确认({
   // 号码在回收站的几行也算在 跳过 里（服务端一个数），这里单拎出来另报
   const 回收 = 看.回收站里 ?? 0;
   const 已有 = 看.跳过 - 回收 + 看.补空;
+  // 企业版只跳过（M-导入-29）：不出「补空」那道题
+  const 补空题 = !看.只跳过;
+  const 补 = 重复行 === "补空" && 补空题;
   return (
     <>
       <Typography.Paragraph type="secondary">以下按当前数据和权限预览；执行前数据变化时，以完成结果为准。</Typography.Paragraph>
       <Space size={24} wrap style={{ marginBottom: 18 }}>
         {([
           ["新建", 看.新建],
-          ...(已有 > 0 ? [[重复行 === "补空" ? "补空字段" : "跳过（已有）", 重复行 === "补空" ? 看.补空 : 看.跳过 - 回收], ...(重复行 === "补空" ? [["跳过（无需补空/不可修改）", 看.跳过 - 回收]] : [])] : []),
+          ...(已有 > 0 ? [[补 ? "补空字段" : "跳过（已有）", 补 ? 看.补空 : 看.跳过 - 回收], ...(补 ? [["跳过（无需补空/不可修改）", 看.跳过 - 回收]] : [])] : []),
           ...(回收 > 0 ? [["号码在回收站", 回收]] : []),
           ["进不来", 看.进不了],
         ] as [string, number][]).map(([k, v]) => (
@@ -580,8 +611,9 @@ export function 确认({
       )}
 
       <回收站提示 几行={回收} 行号们={看.回收站行号} 粘贴={粘贴} b={b} />
+      <撞已有清单 撞={看.撞已有} 共={看.跳过 - 回收} 粘贴={粘贴} b={b} />
 
-      {已有 > 0 && (<>
+      {已有 > 0 && 补空题 && (<>
       <Typography.Title level={5} style={{ fontSize: 14, marginBottom: 8 }}>
         {外贸精简(b) ? "已经在库里的那些行怎么办" : "手机号已经在库里的那些行怎么办"}
       </Typography.Title>

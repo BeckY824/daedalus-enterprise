@@ -4,6 +4,7 @@
  * 「项目 → 离职交接」（11-03 B7-2）的服务端动作：交一位客户、交一个项目、全部交给一个人。
  * 谁能交、交给谁、怎么交见 lib/enterprise/offboard-handover.ts。不是企业版一律 FORBIDDEN。
  * 交之前核持有上限（交了超上限，M-公海-18）：超了不交，说清谁、上限、现有几个
+ * 交成了给接手人发通知（P-转-05，站内待办 + 飞书，同转让通知接手人）；没交成不发
  */
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
@@ -12,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 交接挡, 交了超上限, 交一位客户, 交一个项目, 全部交给 } from "@/lib/enterprise/offboard-handover";
+import { 离职交接通知 } from "@/lib/enterprise/notice-sources";
 
 type 结果 = { ok: true; message: string } | { ok: false; error: string };
 
@@ -38,6 +40,7 @@ export async function 交接客户(fromId: string, customerId: string, toId: str
   if (!(await 交一位客户(me, fromId, customerId, toId))) return { ok: false, error: "这位客户已不在 TA 名下，刷新看看" };
   const 客户 = (await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } }))?.name ?? "";
   await recordAudit({ user: me, action: "handover", entity: "Customer", entityId: customerId, summary: `离职交接：客户「${客户}」从「${从}」交给「${给}」`, detail: { from: fromId, to: toId } });
+  await 离职交接通知(me, 从, toId, [customerId]);
   刷新();
   return { ok: true, message: `已交给 ${给}` };
 }
@@ -51,6 +54,7 @@ export async function 交接项目(fromId: string, projectId: string, toId: stri
   if (!(await 交一个项目(me, fromId, projectId, toId))) return { ok: false, error: "这个项目已不在 TA 名下，刷新看看" };
   const 项目 = (await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }))?.name ?? "";
   await recordAudit({ user: me, action: "handover", entity: "Project", entityId: projectId, summary: `离职交接：项目「${项目}」从「${从}」交给「${给}」`, detail: { from: fromId, to: toId } });
+  await 离职交接通知(me, 从, toId, [], [projectId]);
   刷新();
   return { ok: true, message: `已交给 ${给}` };
 }
@@ -74,6 +78,7 @@ export async function 交接全部(fromId: string, toId: string): Promise<结果
     summary: `离职交接：「${从}」名下${段 || "没有要交的"}全部交给「${给}」`,
     detail: { to: toId, 客户: r.客户.length, 项目: r.项目.length, 商机: r.商机.length, 待办: r.待办.length, 计划: r.计划.length, 线索: r.线索.length, 渠道: r.渠道.length },
   });
+  if (段) await 离职交接通知(me, 从, toId, r.客户, r.项目, 段);
   刷新();
   return { ok: true, message: 段 ? `已把 ${段} 交给 ${给}` : "TA 名下已经没有要交的了" };
 }
