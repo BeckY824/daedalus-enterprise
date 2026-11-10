@@ -71,9 +71,25 @@ jobs:
         # 与生产（Dockerfile 的 ENV TZ=Asia/Shanghai）一致。
         # vitest.config.ts 里也钉了一道，这里再写一次是为了让人看 workflow 就知道。
         # 每片在自己的机器上跑，测试库 prisma/test.db 各建各的，互不干扰
-      - run: npx vitest run --shard=${{ matrix.shard }}/4 --reporter=dot
+        # 多挂一个 json 报告只为留逐文件耗时（dot 不带），过不过仍由 vitest 退出码定
+      - run: npx vitest run --shard=${{ matrix.shard }}/4 --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
         env:
           TZ: Asia/Shanghai
+      # 下面两步只看耗时，自己出错不许把这一片变红
+      - name: 最慢的 20 个测试文件
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          jq -r '[.testResults[] | {s: ((.endTime - .startTime) / 1000), f: (.name | sub("^.*/tests/"; "tests/"))}]
+            | sort_by(-.s) | .[:20][] | "\(.s * 10 | round / 10)s\t\(.f)"' \
+            test-results/vitest-timing-${{ matrix.shard }}.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: vitest-timing-${{ matrix.shard }}
+          path: test-results/vitest-timing-${{ matrix.shard }}.json
+          retention-days: 14
 
   check:
     name: 类型 / 代码检查 / 单元测试
