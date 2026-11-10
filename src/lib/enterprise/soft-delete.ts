@@ -24,6 +24,7 @@ import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
 import { 忘掉企业版范围 } from "./visibility";
 import { 回收站里查号, 回收站里带号的联系人, type 验好的号 } from "./contact-dedupe";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -144,7 +145,7 @@ async function 恢复一条(t: 软删表名, id: string, 操作人 = ""): Promis
     }
     await 表(tx, t).updateMany({ where: { id, deletedAt: 时刻 }, data: { deletedAt: null } });
     if (改归 && 记转让) {
-      await tx.project.update({ where: { id }, data: { ownerId: 改归.到 } });
+      await tx.project.update({ where: { id }, data: 换负责人(改归.到) });
       await 记转让(tx, 改归.p, 操作人 || 改归.到, 改归.从 || null, 改归.到, "transfer", "从回收站恢复，跟客户现负责人");
     }
     let 连带 = 0;

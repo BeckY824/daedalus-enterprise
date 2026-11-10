@@ -72,6 +72,9 @@ import { 读项目列表 } from "@/lib/project/list";
 import { toggleTask, completePlan, saveTask, deleteTask, savePlan, deletePlan } from "@/app/(app)/customers/[id]/actions";
 import { 交接客户, 交接项目, 交接全部 } from "@/app/(app)/projects/handover/actions";
 import { 读离职交接 } from "@/lib/enterprise/offboard-handover";
+import { 停用分拣 } from "@/lib/offboard-db";
+import { 离职放进公海 } from "@/lib/offboard-move";
+import { 暂不分配提示 } from "@/lib/project/after-create-assign";
 import { 收回提醒尾, 旧收回提醒尾 } from "@/lib/project/db";
 import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 不能改客户事项话, 没业务角色话 } from "@/lib/enterprise/follow-perm";
@@ -2701,5 +2704,115 @@ describe("市场第一次分给销售记成「分配」，不算转客户（P-�
     expect(await 以(市场, () => 撤销改负责人(r.原值 ?? [], 甲.id, JSON.parse(JSON.stringify(r.带过来))))).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(c)).toBe(市场.id);
     expect(await prisma.customerOwnerLog.count({ where: { customerId: c } })).toBe(0);
+  });
+});
+
+describe("待分配：暂不分配不标（P-转-03、X-90）；凡换负责人就清（P-转-21、X-68）", () => {
+  const 时刻 = new Date("2026-11-01T10:00:00+08:00");
+  const 跟进 = { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false };
+  beforeEach(async () => {
+    await setSetting("business", { projectMode: true });
+    invalidateSettingsCache();
+  });
+  const 向导 = async (项目: Record<string, unknown>) => {
+    序号 += 1;
+    const 渠 = await prisma.channel.create({ data: { name: `渠道${序号}`, channelOwnerId: 总管.id } });
+    return 建档向导({
+      客户: { name: `向导客户${序号}`, phone: `1392${String(序号).padStart(7, "0")}`, school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null, salesOwnerId: mocks.user.id, channelId: 渠.id, referrerCustomerId: null },
+      联系人: { name: "王联系", position: "采购", phone: "" },
+      项目: { name: `向导项目${序号}`, amount: 0, currency: "CNY", ownerId: mocks.user.id, 业务线: "内贸", ...项目 },
+      跟进,
+    } as 建档向导输入);
+  };
+  const 页建 = (customerId: string, 项目: Record<string, unknown>) => {
+    序号 += 1;
+    return 给客户建项目({ customerId, 项目: { name: `页项目${序号}`, amount: 0, currency: "CNY", ownerId: mocks.user.id, 业务线: "内贸", ...项目 }, 跟进 } as Parameters<typeof 给客户建项目>[0]);
+  };
+  const 没标 = async (p: string, 主: string) => expect(await 项目of(p)).toMatchObject({ ownerId: 主, awaitAssignAt: null, assignMode: "暂不分配", phase: "线索", node: "潜客培育" });
+
+  it("暂不分配新建（新建项目、客户页新建项目）：记在建的人名下、潜客培育、不标待分配，算他持有", async () => {
+    const r1 = await 以(市场, () => 向导({ 分配方式: 3, ownerId: 甲.id }));
+    expect(r1).toMatchObject({ ok: true, 转走: false, 提示: 暂不分配提示 });
+    if (!r1.ok) return;
+    await 没标(r1.projectId, 市场.id);
+    const c = await 客户(市场.id);
+    const r2 = await 以(市场, () => 页建(c, { 分配方式: 3 }));
+    expect(r2).toMatchObject({ ok: true });
+    if (!r2.ok) return;
+    await 没标(r2.projectId, 市场.id);
+    expect(await 持有数(prisma, 市场.id)).toBe(2);
+  });
+
+  it("线上那条：市场暂不分配建好，再在客户层把客户分给销售 → 项目归销售、不是待分配", async () => {
+    const r = await 以(市场, () => 向导({ 分配方式: 3 }));
+    if (!r.ok) throw new Error(r.error);
+    const c = (await 项目of(r.projectId)).customerId;
+    // 老数据：暂不分配当时标过待分配的，也一起清
+    const 老的 = await 项目(c, 市场.id, { awaitAssignAt: 时刻, phase: "线索", assignMode: "暂不分配" });
+    expect(await 以(市场, () => assignSalesOwner([c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
+    for (const p of [r.projectId, 老的]) expect(await 项目of(p)).toMatchObject({ ownerId: 甲.id, awaitAssignAt: null });
+    expect(await 持有数(prisma, 甲.id)).toBe(2);
+    expect(await 持有数(prisma, 市场.id)).toBe(0);
+  });
+
+  it("分配线索：清", async () => {
+    const p = await 项目(await 客户(市场.id), 市场.id, { awaitAssignAt: 时刻, phase: "线索" });
+    expect(await 以(市场, () => 分配线索({ projectId: p, toUserId: 甲.id, line: "内贸" }))).toEqual({ ok: true });
+    expect(await 项目of(p)).toMatchObject({ ownerId: 甲.id, awaitAssignAt: null });
+  });
+
+  it("编辑项目改负责人：清；不换人只改别的格子：不动", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id, { awaitAssignAt: 时刻, phase: "线索" });
+    expect(await 以(甲, () => 改项目({ id: 甲.id, role: 甲.role }, p, { remark: "改个备注" }))).toMatchObject({ ok: true });
+    expect((await 项目of(p)).awaitAssignAt).not.toBeNull();
+    expect(await 以(甲, () => 改项目({ id: 甲.id, role: 甲.role }, p, { ownerId: 乙.id }))).toMatchObject({ ok: true });
+    expect(await 项目of(p)).toMatchObject({ ownerId: 乙.id, awaitAssignAt: null });
+  });
+
+  it("放回公海、领取公海项目、分配公海项目：都清", async () => {
+    const c = await 客户(甲.id);
+    const 放 = await 项目(c, 甲.id, { awaitAssignAt: 时刻, phase: "线索" });
+    expect(await 以(甲, () => 放回公海({ id: 甲.id, role: 甲.role }, 放))).toEqual({ ok: true });
+    expect((await 项目of(放)).awaitAssignAt).toBeNull();
+    // 进公海时还带着标记的老数据：领、分都清
+    const 领 = await 项目(c, 甲.id, { awaitAssignAt: 时刻, phase: "线索", pooledAt: 时刻 });
+    expect(await 以(乙, () => 领取公海项目({ id: 乙.id, role: 乙.role }, 领))).toEqual({ ok: true });
+    expect(await 项目of(领)).toMatchObject({ ownerId: 乙.id, awaitAssignAt: null, pooledAt: null });
+    const 分 = await 项目(c, 甲.id, { awaitAssignAt: 时刻, phase: "线索", pooledAt: 时刻 });
+    expect(await 以(总管, () => 分配公海项目([分], 丙.id))).toMatchObject({ ok: true });
+    expect(await 项目of(分)).toMatchObject({ ownerId: 丙.id, awaitAssignAt: null });
+  });
+
+  it("超时收回：清", async () => {
+    const 今 = new Date("2026-10-26T10:00:00+08:00");
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
+    invalidateSettingsCache();
+    const p = await 项目(await 客户(甲.id), 丙.id, { awaitAssignAt: 时刻, createdAt: new Date(今.getTime() - 10 * 86400_000) });
+    expect(await 以(丙, () => 公海超时收回(丙, 今))).toBe(1);
+    expect(await 项目of(p)).toMatchObject({ awaitAssignAt: null });
+    expect((await 项目of(p)).pooledAt).not.toBeNull();
+  });
+
+  it("客户进客户公海、在推项目跟进线索公海：清", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id, { awaitAssignAt: 时刻, phase: "线索" });
+    expect(await 以(甲, () => 放进公海([c], "客户主动终止"))).toMatchObject({ ok: true, updated: 1 });
+    expect((await 项目of(p)).awaitAssignAt).toBeNull();
+  });
+
+  it("离职放进公海（客户整包、挂别人客户上的）：清", async () => {
+    const c = await 客户(甲.id);
+    const 客户上的 = await 项目(c, 甲.id, { awaitAssignAt: 时刻, phase: "线索" });
+    const 挂别处 = await 项目(await 客户(乙.id), 甲.id, { awaitAssignAt: 时刻, phase: "线索" });
+    await 以(总管, () => prisma.$transaction(async (tx) => 离职放进公海(tx, await 停用分拣(tx, 甲.id, "公海", true), 总管.id)));
+    for (const p of [客户上的, 挂别处]) expect((await 项目of(p)).awaitAssignAt).toBeNull();
+  });
+
+  it("离职交接给同事（交一个项目）：清", async () => {
+    const 挂别处 = await 项目(await 客户(乙.id), 甲.id, { awaitAssignAt: 时刻, phase: "线索" });
+    await prisma.user.update({ where: { id: 甲.id }, data: { active: false } });
+    expect(await 以(总管, () => 交接项目(甲.id, 挂别处, 丙.id))).toMatchObject({ ok: true });
+    expect(await 项目of(挂别处)).toMatchObject({ ownerId: 丙.id, awaitAssignAt: null });
   });
 });

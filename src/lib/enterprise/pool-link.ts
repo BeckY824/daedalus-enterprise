@@ -24,6 +24,7 @@ import { 有同事在推的客户 } from "./colleague-projects";
 import { 记换负责人, type 换负责人种类 } from "@/lib/owner-log-db";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 交接中的客户 } from "./handover-db";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 /**
  * 客户刚进了客户公海（手动放进公海、离职公海方式），同一笔事务里：负责人清空（M-公海-03）。
@@ -105,7 +106,7 @@ export async function 客户名下在推项目进公海(
       });
       for (const p of 项目) {
         if (!p.ownerId || p.ownerId !== 主.get(p.customerId)) continue;
-        await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
+        await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
         await 记转让(tx, p, 操作人, p.ownerId, null, "pool-release", 理由, 现在);
         // 客户这时已经在公海里：原负责人在这位客户上没做完的待办全关（pool-owner.ts 进公海关待办）
         await 进公海关待办(tx, p, p.ownerId, 现在);
