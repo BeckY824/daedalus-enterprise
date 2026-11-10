@@ -411,6 +411,43 @@ export async function 项目分给你通知(谁点的: 人, toUserId: string, pr
 }
 
 
+/**
+ * P-转-05：「项目 → 离职交接」看板上交完（单条客户、单条项目、一键全部），告诉接手人一声。
+ * 同 分给你通知（#197 转让通知接手人）一套发法：站内待办 + 飞书，不带手机号；上级自己交给自己不发。
+ * 单位客户链客户详情、只交项目链项目，多条链客户列表。概要 = 一键全部时动作里拼好的「N 位客户、M 个项目…」。
+ * 交接要确认那条路（发起 → 接手人确认）走 交接通知，不在这里
+ */
+export async function 离职交接通知(me: 人, 离职的: string, toUserId: string, 客户ids: readonly string[], 项目ids: readonly string[] = [], 概要 = ""): Promise<void> {
+  await 稳("离职交接通知", async () => {
+    if (!toUserId || toUserId === me.id) return;
+    const 客户们 = [...new Set(客户ids)];
+    const 项目们 = [...new Set(项目ids)];
+    if (!客户们.length && !项目们.length && !概要) return;
+    if (!(await 收得到分配(toUserId))) return;
+    const [客户行, 项目行] = await 看全部(() => Promise.all([
+      客户们.length ? prisma.customer.findMany({ where: { id: { in: 客户们 } }, select: { id: true, name: true } }) : [],
+      项目们.length ? prisma.project.findMany({ where: { id: { in: 项目们 } }, select: { id: true, name: true } }) : [],
+    ]));
+    const 客户名 = new Map(客户行.map((r) => [r.id, r.name]));
+    const 项目名 = new Map(项目行.map((r) => [r.id, r.name]));
+    const 客户名们 = 客户们.map((id) => 客户名.get(id)).filter((n): n is string => !!n);
+    const 项目名们 = 项目们.map((id) => 项目名.get(id)).filter((n): n is string => !!n);
+    const 谁 = `${离职的 ? `${离职的} 离职，` : ""}${me.name}`;
+    const 单客户 = !概要 && 客户们.length === 1 && !项目们.length;
+    const 单项目 = !概要 && !客户们.length && 项目们.length === 1;
+    const 段 = 概要 || [客户们.length && `${客户们.length} 位客户`, 项目们.length && `${项目们.length} 个项目`].filter(Boolean).join("、");
+    await notify([toUserId], {
+      kind: "交接",
+      title: 单客户 && 客户名们.length ? `${谁} 把客户交接给你：${客户名们[0]}`
+        : 单项目 && 项目名们.length ? `${谁} 把项目交接给你：${项目名们[0]}`
+        : `${谁} 把${离职的 ? "他名下的" : ""} ${段} 交接给你`,
+      body: 接一句(客户名们.length && !单客户 ? `客户：${名单(客户名们)}` : "", 项目名们.length && !单项目 ? `项目：${名单(项目名们)}` : null),
+      link: 单客户 ? `/customers/${客户们[0]}` : 单项目 ? `/projects/${项目们[0]}` : !客户们.length && 项目们.length ? "/projects" : "/customers",
+      key: `offboard-handover:${[...客户们, ...项目们].sort().join(",").slice(0, 400)}:${toUserId}:${分钟()}`,
+    });
+  });
+}
+
 /** P-删-10：别人（系统管理员）删了你负责的项目，告诉你一声；进了回收站，30 天内找系统管理员能恢复。停用的不发 */
 export async function 项目被删通知(me: 人, ownerId: string, 项目名: string, customerId: string): Promise<void> {
   await 稳("项目被删通知", async () => {

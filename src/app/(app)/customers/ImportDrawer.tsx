@@ -7,10 +7,10 @@ import { 解析CSV带行号, 解码CSV, 成表, 文件太大, 读不出来的话
 import { 字段表, 猜列, type 字段名 } from "@/lib/import/fields";
 import { type 编造格, type 粘贴结果, type 粘贴续作 } from "@/lib/import/paste";
 import { 并进来, 样例行数 } from "@/lib/jev/columns";
-import { 预览导入, 分段导入, 暂存导入表, 撤销批次, type 预览, type 导入方案, type 分段结果 } from "./import-actions";
+import { 预览导入, 分段导入, 暂存导入表, 撤销批次, type 预览, type 导入方案, type 分段结果, type 撞已有 } from "./import-actions";
 import { 粘成表格, 猜列建议, 导入认列状态 } from "./ai";
 import { 外贸精简, type BusinessConfig } from "@/lib/business-config";
-import { 页脚, 粘贴面板, 对列, 复核, 确认, 按处置, 回收站提示 } from "./import-steps";
+import { 页脚, 粘贴面板, 对列, 复核, 确认, 按处置, 回收站提示, 撞已有清单 } from "./import-steps";
 import { clearJob, runJob } from "@/lib/ai-jobs";
 
 /**
@@ -187,9 +187,12 @@ export default function ImportDrawer({
       算数 = false;
     };
   }, [open, 认列状态]);
-  const [结果, set结果] = useState<{ batchId: string; 新建: number; 补空: number; 跳过: number; 进不了: number; 回收站里?: number } | null>(null);
-  /** 回收站里：号码撞上回收站、没新建的（企业版）。服务端每趟只报那一趟的，这里逐趟加起来 */
-  type 合计 = { 新建: number; 补空: number; 跳过: number; 进不了: number; 回收站里?: number };
+  const [结果, set结果] = useState<{ batchId: string; 新建: number; 补空: number; 跳过: number; 进不了: number; 回收站里?: number; 撞已有?: 撞已有[] } | null>(null);
+  /**
+   * 回收站里：号码撞上回收站、没新建的（企业版）。撞已有：撞上已有客户跳过的行和撞的号或名（企业版 M-导入-29，最多 20 条）。
+   * 这两样服务端每趟只报那一趟的，这里逐趟加起来
+   */
+  type 合计 = { 新建: number; 补空: number; 跳过: number; 进不了: number; 回收站里?: number; 撞已有?: 撞已有[] };
   /** 正在写：写到第几条、这一轮从哪条、什么时候开始的（估剩余时间用） */
   const [进度, set进度] = useState<({ 已: number; 共: number; 起点: number; 起时: number } & 合计) | null>(null);
   /**
@@ -453,10 +456,13 @@ export default function ImportDrawer({
         重送过 = false;
         续 = { batchId: r.batchId, 起: r.下一个 ?? r.共 };
         共 = r.共;
-        合 = { 新建: r.新建, 补空: r.补空, 跳过: r.跳过, 进不了: r.进不了, 回收站里: (合.回收站里 ?? 0) + (r.回收站里 ?? 0) };
+        合 = {
+          新建: r.新建, 补空: r.补空, 跳过: r.跳过, 进不了: r.进不了, 回收站里: (合.回收站里 ?? 0) + (r.回收站里 ?? 0),
+          ...(r.撞已有 ? { 撞已有: [...(合.撞已有 ?? []), ...r.撞已有].slice(0, 20) } : {}),
+        };
         set进度({ 已: 续.起, 共, 起点, 起时, ...合 });
         if (r.下一个 === null) {
-          set结果({ ...r, 回收站里: 合.回收站里 });
+          set结果({ ...r, 回收站里: 合.回收站里, 撞已有: 合.撞已有 });
           set进度(null);
           set步(4);
           onDone();
@@ -641,6 +647,7 @@ export default function ImportDrawer({
             description={`新建 ${结果.新建.toLocaleString()} 条，补空 ${结果.补空.toLocaleString()} 条，跳过 ${结果.跳过.toLocaleString()} 条${结果.回收站里 ? `（其中 ${结果.回收站里.toLocaleString()} 条号码在回收站）` : ""}，${结果.进不了.toLocaleString()} 条没进来。`}
           />
           <回收站提示 几行={结果.回收站里 ?? 0} b={b} 导完 />
+          <撞已有清单 撞={结果.撞已有} 共={结果.跳过 - (结果.回收站里 ?? 0)} 粘贴={文件名.startsWith("粘贴的文本")} b={b} 导完 />
           {只导了前面的话(截断了, 数据.length) && (
             <Alert type="warning" showIcon style={{ marginTop: 12 }} title={只导了前面的话(截断了, 数据.length)} />
           )}

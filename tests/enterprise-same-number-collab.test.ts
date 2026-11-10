@@ -23,7 +23,7 @@ import { saveLead } from "@/app/(app)/leads/actions";
 import { 待我回的邀请, 读必填数据 } from "@/lib/project/db";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
-import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
+import { 执行导入 } from "@/app/(app)/customers/import-actions";
 import { 字段表, 猜列 } from "@/lib/import/fields";
 import { getBusiness } from "@/lib/business";
 import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
@@ -412,30 +412,24 @@ describe("老 Excel 导入撞号", () => {
   const 表头 = ["姓名", "手机号", "来源"];
   const 方案 = async (数据: string[][]) => ({ 表头, 数据, 映射: 猜列(表头, 字段表(await getBusiness())), 重复行: "跳过" as const });
 
-  it("有人在跟：记一条备注和来源，不邀请不通知、不新建；重导不重复；撤销这批把备注退掉，客户不动", async () => {
+  it("有人在跟：整行跳过，不记备注、不写导入记录、不邀请不通知、不新建，已有客户不动（M-导入-29）", async () => {
     const x = await 现场();
     const 总 = await 人("boss1", "总管", "director");
+    const 前 = await prisma.customer.findUniqueOrThrow({ where: { id: x.客户.id } });
     const r = await 作为(总, async () => 执行导入(await 方案([["再导一次", 号码, x.渠道新.name]]), "a.xlsx"));
     if (!r.ok) throw new Error(r.error);
     await 等通知推完();
     expect(r.新建).toBe(0);
+    expect(r.跳过).toBe(1);
     expect(await prisma.customer.count()).toBe(1);
-    const f = await prisma.followUp.findFirstOrThrow({ where: { customerId: x.客户.id } });
-    expect(f.title).toBe("同号再次录入（来源不同）");
-    expect(f.content).toContain(x.渠道新.name);
-    expect(await prisma.followUpProject.count({ where: { projectId: x.项目!.id, node: 同号节点 } })).toBe(1);
-    expect(await prisma.projectMember.count()).toBe(0);
-    expect(await prisma.entNotice.count()).toBe(0);
-
-    const 二 = await 作为(总, async () => 执行导入(await 方案([["再导一次", 号码, x.渠道新.name]]), "b.xlsx"));
-    if (!二.ok) throw new Error(二.error);
-    expect(await prisma.followUp.count()).toBe(1);
-
-    const 撤 = await 作为(总, () => 撤销批次(r.batchId));
-    expect(撤).toMatchObject({ ok: true });
     expect(await prisma.followUp.count()).toBe(0);
     expect(await prisma.followUpProject.count()).toBe(0);
-    expect(await prisma.customer.count()).toBe(1);
+    expect(await prisma.importRow.count()).toBe(0);
+    expect(await prisma.projectMember.count()).toBe(0);
+    expect(await prisma.entNotice.count()).toBe(0);
+    const 后 = await prisma.customer.findUniqueOrThrow({ where: { id: x.客户.id } });
+    expect(后.remark).toBe(前.remark);
+    expect(后.updatedAt).toEqual(前.updatedAt);
   });
 
   it("撞公海客户不记备注，照旧跳过", async () => {

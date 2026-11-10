@@ -35,7 +35,7 @@ import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 放进公海, 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 无负责人占位邮箱, 无负责人占位名 } from "@/lib/pool";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
-import { 分配公海项目 } from "@/app/(app)/pool/actions";
+import { 分配公海项目, 撤销公海项目 } from "@/app/(app)/pool/actions";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人;
@@ -731,6 +731,65 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
       expect(await 项目在公海(x)).toBe(false);
       expect((await prisma.project.findUniqueOrThrow({ where: { id: x } })).ownerId).toBe(丙.id);
     }
+  });
+
+  it("P-公海-10 撤销这次分配 = 整包退回：客户和这次一起带出的项目都回公海、负责人和入池时间原样，别的不碰（P-撤销-01、M-公海-01）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    const p2 = await 项目(乙.id, c);
+    // 别的：另一位公海客户和它的项目、丙自己原来的客户和项目，撤销都不该碰
+    const c2 = await 客户(乙.id);
+    const q = await 项目(乙.id, c2);
+    const 丙的 = await 客户(丙.id);
+    const 丙项目 = await 项目(丙.id, 丙的);
+    当(乙);
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true });
+    expect(await 放进公海([c2], "客户主动终止")).toMatchObject({ ok: true });
+    const 前 = {
+      负责人: await 负责人(c),
+      项目: await prisma.project.findMany({ where: { id: { in: [p, p2] } }, select: { id: true, ownerId: true, pooledAt: true }, orderBy: { id: "asc" } }),
+      客户痕: await prisma.customerOwnerLog.count({ where: { customerId: c } }),
+      项目痕: await prisma.projectNodeLog.count({ where: { projectId: { in: [p, p2] } } }),
+    };
+    当(老板);
+    const r = await 分配公海项目([p], 丙.id);
+    expect(r).toMatchObject({ ok: true, 分到: [p] });
+    if (!r.ok) throw new Error("没分到");
+    expect(await 负责人(c)).toBe(丙.id);
+    expect(r.整包?.原).toEqual([{ id: c, 值: 前.负责人 }]);
+    expect(r.整包?.公海项目).toEqual([p2]);
+
+    expect(await 撤销公海项目("分配", r.分到, 丙.id, r.整包)).toMatchObject({ ok: true, updated: 1 });
+    // 客户回客户公海、负责人原样，领取记录没了
+    expect(await 在客户公海(c)).toBe(true);
+    expect(await 负责人(c)).toBe(前.负责人);
+    expect(await prisma.customerClaim.findUnique({ where: { customerId: c } })).toBeNull();
+    // 分配的那个和一起带出的那个都回线索公海，负责人、入池时间原样
+    expect(await prisma.project.findMany({ where: { id: { in: [p, p2] } }, select: { id: true, ownerId: true, pooledAt: true }, orderBy: { id: "asc" } })).toEqual(前.项目);
+    // 被撤的历史负责人记录删掉、不另记（P-撤销-01）
+    expect(await prisma.customerOwnerLog.count({ where: { customerId: c } })).toBe(前.客户痕);
+    expect(await prisma.projectNodeLog.count({ where: { projectId: { in: [p, p2] } } })).toBe(前.项目痕);
+    // 别的不碰
+    expect(await 在客户公海(c2)).toBe(true);
+    expect(await 项目在公海(q)).toBe(true);
+    expect(await 负责人(丙的)).toBe(丙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 丙项目 } })).ownerId).toBe(丙.id);
+  });
+
+  it("P-公海-10 撤销整包：前端塞进别的客户不认（只认这次分配记下的换负责人）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    const 丙的 = await 客户(丙.id);
+    当(乙);
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true });
+    当(老板);
+    const r = await 分配公海项目([p], 丙.id);
+    if (!r.ok || !r.整包) throw new Error("没整包");
+    const 假 = { ...r.整包, 原: [...r.整包.原, { id: 丙的, 值: 乙.id }] };
+    expect(await 撤销公海项目("分配", r.分到, 丙.id, 假)).toMatchObject({ ok: true, updated: 1 });
+    expect(await 在客户公海(c)).toBe(true);
+    expect(await 在客户公海(丙的)).toBe(false);
+    expect(await 负责人(丙的)).toBe(丙.id);
   });
 });
 

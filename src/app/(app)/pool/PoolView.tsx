@@ -27,7 +27,7 @@ import { 公海规则, 原负责人不能领回提示, 项目不能单独领提�
 import { 公海属性们, 快捷们, 有数才出的快捷, 排序们, 默认排序, 多次退回起, 没原因, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
 import { 领取项目 } from "../projects/actions";
-import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目 } from "./actions";
+import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
 
 type Props = {
   行: 公海行[];
@@ -139,6 +139,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       }
     }
     const 项目到: string[] = [];
+    // 分配时客户整包出了客户公海（P-公海-10）：撤销时整包退回
+    let 整包: 整包撤销 | undefined;
     let 给谁: { id: string; name: string } | undefined = 客户res?.ok ? 客户res.给谁 : undefined;
     if (项目们.length && 动作 === "领取") {
       for (const r of 项目们) {
@@ -150,6 +152,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       const res = await 分配公海项目(项目们.map((r) => r.projectId!), 给!, 带);
       if (res.ok) {
         给谁 = res.给谁;
+        整包 = res.整包;
         项目到.push(...res.分到);
         for (const x of res.没分到) 没领到.push({ 名: 行名(项目们.find((r) => r.projectId === x.id)!), 原因: x.原因 });
       } else for (const r of 项目们) 没领到.push({ 名: 行名(r), 原因: res.error });
@@ -175,7 +178,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         if (r.ok) 撤了 += r.updated; else 错 = r.error;
       }
       if (项目到.length) {
-        const r = await 撤销公海项目(动作, 项目到, 给谁?.id);
+        const r = await 撤销公海项目(动作, 项目到, 给谁?.id, 整包);
         if (r.ok) 撤了 += r.updated; else 错 = r.error;
       }
       router.refresh();
