@@ -26,6 +26,7 @@ import { 不能新建项目话 } from "@/lib/enterprise/permissions";
 import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
+import { 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知 } from "@/lib/enterprise/notice-sources";
@@ -95,13 +96,15 @@ export async function 建档向导(输入: 建档向导输入) {
     // 企业版新建线索要选渠道（10-26：直接选渠道，不是来源类型）
     if (企业版()) {
       if (是占位值(String(input.客户.name ?? ""))) return { ok: false as const, error: 占位名提示("客户名称") };
-      const 渠道 = input.客户.channelId ? await prisma.channel.findUnique({ where: { id: String(input.客户.channelId) }, select: { active: true } }) : null;
-      if (!渠道?.active) return { ok: false as const, error: input.客户.channelId ? "这个渠道不存在或已停用，换一个" : "请选渠道" };
-      // 项目来源（迁移 077）：没另选 = 跟客户来源；另选了也得是还启用着的渠道
+      if (!input.客户.channelId) return { ok: false as const, error: "请选渠道" };
+      // 历史渠道（P-渠道-06）只承载历史客户：新建线索不收，和停用的一样挡
+      const 渠道不行 = await 新数据渠道不行(String(input.客户.channelId));
+      if (渠道不行) return { ok: false as const, error: 渠道不行 === "停用" ? "这个渠道不存在或已停用，换一个" : 渠道不行 };
+      // 项目来源（迁移 077）：没另选 = 跟客户来源；另选了也得是还启用着、不是历史渠道的
       const 来源 = 项目来源默认(input.项目?.channelId, String(input.客户.channelId));
       if (来源 !== String(input.客户.channelId)) {
-        const 项目渠道 = await prisma.channel.findUnique({ where: { id: 来源! }, select: { active: true } });
-        if (!项目渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
+        const 项目渠道不行 = await 新数据渠道不行(来源!);
+        if (项目渠道不行) return { ok: false as const, error: 项目渠道不行 === "停用" ? "项目来源这个渠道不存在或已停用，换一个" : 项目渠道不行 };
       }
       if (好.企业) {
         好.企业.项目来源 = 来源;

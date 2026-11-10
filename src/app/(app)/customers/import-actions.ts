@@ -34,6 +34,8 @@ import { 看全部, 限定的我, 看得到 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 能导入导出, 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 在售渠道条件 } from "@/lib/enterprise/channel-main";
+import { 是历史渠道 } from "@/lib/enterprise/channel-main-core";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { getBusiness } from "@/lib/business";
 import { resolveAttribution } from "@/lib/attribution";
@@ -190,8 +192,11 @@ async function 排好(方案: 导入方案, 查重: 导入查重索引 | null = 
   const 表 = 字段表(b);
   // 来源渠道当场对库里的名单：对不上的预览里就标出来、原文并进备注，和落库是同一个结果
   const 用到渠道 = 方案.映射.includes("channelName");
-  const 认得的渠道 = 用到渠道 ? new Set((await prisma.channel.findMany({ select: { name: true } })).map((c) => c.name)) : undefined;
-  const rows = 摊开({ ...方案, 字段表: 表, 认得的渠道 });
+  const 库里渠道 = 用到渠道 ? await prisma.channel.findMany({ select: { name: true, main: { select: { category: true } } } }) : [];
+  const 认得的渠道 = 用到渠道 ? new Set(库里渠道.map((c) => c.name)) : undefined;
+  // 历史渠道（P-渠道-06）只承载历史客户：新导入的不落到上面，预览里说清（企业版才有主渠道分类）
+  const 历史渠道 = 用到渠道 && 企业版() ? new Set(库里渠道.filter((c) => 是历史渠道(c.main?.category)).map((c) => c.name)) : undefined;
+  const rows = 摊开({ ...方案, 字段表: 表, 认得的渠道, 历史渠道 });
   if (查重) {
     for (const r of rows) {
       const 撞 = r.进不了 ? null : 撞号名(查重, r);
@@ -418,7 +423,7 @@ async function 落库准备(行: 排好的行, me: Awaited<ReturnType<typeof req
   // 渠道名 → id。对不上的在 排好 里已经留空、并进备注、预览里标过了
   const 渠道名单 = [...new Set(行.map((r) => r.值.channelName).filter(Boolean) as string[])];
   const 渠道 = new Map(
-    (await prisma.channel.findMany({ where: { name: { in: 渠道名单 } }, select: { id: true, name: true } })).map((c) => [c.name, c.id]),
+    (await prisma.channel.findMany({ where: { name: { in: 渠道名单 }, ...在售渠道条件 }, select: { id: true, name: true } })).map((c) => [c.name, c.id]),
   );
   return { salesOwnerId, 渠道, 操作人: me.id };
 }

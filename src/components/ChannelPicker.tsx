@@ -6,14 +6,16 @@
  * 两级（层级="两级"，P16 新建线索用）：「渠道名称 → 来源」，不先问属性；一个渠道名称下只有一个来源、
  * 而且来源就是名称本身的（如转介绍人），不再多点一层，直接在第一列选。
  * 只能选到最末一级（具体来源 = 一个渠道），选了来源渠道就定了。
+ * 企业版渠道两层后（P-渠道-01 附.5，11-10）默认就是两级 =「主渠道 → 子渠道」：先选主渠道再选子渠道，各处一个口径；
+ * 三级（先问属性）只在明说 层级="三级" 时用。
  *
  * 只认渠道 id：value / onChange 都是 id，外面不用管路径。
  * 停用的渠道不列出来——除非它正是现在选着的那个（编辑一条老记录时不能把它的渠道弄丢）。
- * 客户表单换成它是下一批的事，这里只出组件。
+ * 「历史渠道」组的渠道由服务端清单（channel-options.ts）挡在外面，同样只带现在选着的那个。
  */
 import { useMemo } from "react";
 import { Cascader } from "antd";
-import { 拆来源 } from "@/lib/enterprise/channel-stats";
+import { 子渠道名, 渠道显示名, 主渠道显示名 } from "@/lib/enterprise/channel-main-core";
 
 export type 可选渠道 = { id: string; name: string; attr: string | null; platform: string | null; active: boolean };
 
@@ -37,7 +39,8 @@ export function 两级渠道树(channels: 可选渠道[], 选着?: string | null
   const 名们 = new Map<string, 节点>();
   for (const c of channels) {
     if (!c.active && c.id !== 选着) continue;
-    const p = c.platform?.trim() || c.name;
+    // 第一列 = 主渠道：两层后 platform 就是主渠道名；老渠道没有的按竖线拆全称取前半段
+    const p = 主渠道显示名(c.name, c.platform);
     let 名 = 名们.get(p);
     if (!名) {
       名 = { value: 前缀.名称 + p, label: p, children: [] };
@@ -50,7 +53,15 @@ export function 两级渠道树(channels: 可选渠道[], 选着?: string | null
   return 树.map((名) => (名.children!.length === 1 && 名.children![0].全称 === 名.label ? 名.children![0] : 名));
 }
 
-const 叶 = (c: 可选渠道): 节点 => ({ value: c.id, label: 拆来源(c.name, c.platform) + (c.active ? "" : "（已停用）"), 全称: c.name });
+/**
+ * 叶子：标签是子渠道名（认半角「|」和全角「｜」）；子渠道留空的写主渠道名本身。
+ * 全称按 渠道显示名 规整：老数据尾巴上挂着的「|」「｜」不显示，全角竖线显示成半角（P-渠道-01）
+ */
+const 叶 = (c: 可选渠道): 节点 => ({
+  value: c.id,
+  label: (子渠道名(c.name, c.platform) || c.platform?.trim() || 渠道显示名(c.name)) + (c.active ? "" : "（已停用）"),
+  全称: 渠道显示名(c.name),
+});
 
 /** 渠道清单 → 三级树；每一级按出现顺序排（服务端已按 启用在前、新建在前 排好） */
 export function 渠道树(channels: 可选渠道[], 选着?: string | null): 节点[] {
@@ -105,7 +116,7 @@ export default function ChannelPicker({
   disabled,
   placeholder = "选渠道，或输入渠道全称搜",
   style,
-  层级 = "三级",
+  层级 = "两级",
   "aria-label": ariaLabel,
 }: {
   channels: 可选渠道[];

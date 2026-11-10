@@ -188,6 +188,18 @@ describe("建档向导", () => {
       expect(await 各表行数()).toEqual(前);
     });
 
+    it("P-渠道-06：渠道挂在「历史渠道」组的主渠道下，新建线索服务端拒，一行不写", async () => {
+      const 好 = await 企业输入();
+      const 旧 = await prisma.entChannelMain.create({ data: { name: "旧平台", category: "历史渠道" } });
+      await prisma.channel.update({ where: { id: 好.客户.channelId! }, data: { mainId: 旧.id } });
+      const 前 = await 各表行数();
+      expect(await 建档向导(好)).toMatchObject({ ok: false, error: expect.stringContaining("历史渠道") });
+      expect(await 各表行数()).toEqual(前);
+      // 分类改回在售大类就能建
+      await prisma.entChannelMain.update({ where: { id: 旧.id }, data: { category: "三方平台" } });
+      expect(await 建档向导(好)).toMatchObject({ ok: true });
+    });
+
     it("建成：项目落在选的节点（线索验证也能选），首条沟通记上阶段，明确回复一律不记", async () => {
       const r = await 建档向导(await 企业输入({ 跟进: { type: "PHONE", content: "回了", occurredAt: "2026-10-20 10:00", 节点: "线索验证", 明确回复: true } as never }));
       expect(r).toMatchObject({ ok: true });

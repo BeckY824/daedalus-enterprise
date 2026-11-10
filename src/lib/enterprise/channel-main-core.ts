@@ -9,7 +9,7 @@
  * - 子渠道命名：平台账号类写账号名，展会写「年份+展会名」，单一入口留空（表单里的提示）。
  * - 运营策略（Channel.strategies）：字典 channelStrategy 里多选，存 JSON 数组。
  */
-import { 拆来源 } from "@/lib/enterprise/channel-stats";
+import { 拆来源, 合并统计, type 渠道统计 } from "@/lib/enterprise/channel-stats";
 
 /** 主渠道名最多几个字（全称上限 80 里要给子渠道留地方） */
 export const 主渠道名上限 = 40;
@@ -65,4 +65,76 @@ export type 主渠道行 = {
 /** 主渠道表「分类」那一格：存的就是中文大类名，原样显示；没分类写「—」 */
 export function 分类文字(category: string | null | undefined): string {
   return category?.trim() || "—";
+}
+
+/**
+ * 「历史渠道」组（P-渠道-06，11-10）：主渠道的分类写成这四个字 = 已启用、只承载历史客户，新数据不得选。
+ * 不另加字段：分类本来就存中文大类名，主渠道表「分类」列照样显示「历史渠道」。
+ * 历史渠道照常启用（老客户、老项目照样显示、统计、筛选），只是新建表单、AI 新线索、导入模板的可选清单里不列，服务端新建线索也拒。
+ */
+export const 历史渠道分类 = "历史渠道";
+
+/** 这个主渠道分类是不是「历史渠道」组（前后空格不算） */
+export function 是历史渠道(category: string | null | undefined): boolean {
+  return (category ?? "").trim() === 历史渠道分类;
+}
+
+/** 新数据选了历史渠道时的报错（表单、导入、服务端同一句） */
+export function 历史渠道报错(全称: string): string {
+  return `「${全称}」是历史渠道，只承载历史客户，新数据不能选`;
+}
+
+/**
+ * 来源列只显示主渠道（P-渠道-01，11-10）：有 platform（两层后 = 主渠道名）用它，老数据没有就按竖线拆全称取前半段。
+ * 不带「|」「｜」；全称为空给空串
+ */
+export function 主渠道显示名(全称: string | null | undefined, platform?: string | null): string {
+  return platform?.trim() || 拆主子(全称 ?? "").主;
+}
+
+/**
+ * 全称显示规整（P-渠道-01）：没子渠道、或子渠道和主渠道同名时只显示主渠道，不留尾巴上的「|」；
+ * 有子渠道的统一显示成「主|子」（半角，和库里拼的一样）
+ */
+export function 渠道显示名(全称: string | null | undefined): string {
+  const { 主, 子 } = 拆主子(全称 ?? "");
+  return !子 || 子 === 主 ? 主 : `${主}|${子}`;
+}
+
+/** 渠道页「按主渠道」看时的一行（P-渠道-01 附.5 统计按两层） */
+export type 主渠道汇总 = {
+  /** 行键：挂了主渠道的是主渠道 id，还没补挂的老渠道按主渠道名归一组 */
+  id: string;
+  name: string;
+  mainId: string | null;
+  子渠道数: number;
+  /** 主渠道启用着（没补挂的：底下有一个启用的子渠道就算） */
+  active: boolean;
+  历史: boolean;
+  统计: 渠道统计;
+};
+
+/**
+ * 把（已经筛过的）子渠道行按主渠道并成一行：统计用 合并统计；没补挂主渠道的老渠道按全称前半段归组。
+ * 顺序跟着行里第一次出现的顺序走
+ */
+export function 按主渠道汇总(
+  行们: readonly { name: string; platform: string | null; mainId?: string | null; active: boolean; 统计?: 渠道统计 }[],
+  主渠道们: readonly 主渠道行[],
+): 主渠道汇总[] {
+  const 主表 = new Map(主渠道们.map((m) => [m.id, m]));
+  const 组 = new Map<string, { 名: string; mainId: string | null; 启用: boolean; 统计们: 渠道统计[]; 数: number }>();
+  for (const r of 行们) {
+    const m = r.mainId ? 主表.get(r.mainId) : undefined;
+    const 名 = m?.name ?? 主渠道显示名(r.name, r.platform);
+    const 键 = m ? m.id : `名:${名}`;
+    const g = 组.get(键) ?? 组.set(键, { 名, mainId: m?.id ?? null, 启用: false, 统计们: [], 数: 0 }).get(键)!;
+    g.数 += 1;
+    if (r.统计) g.统计们.push(r.统计);
+    if (!m && r.active) g.启用 = true;
+  }
+  return [...组.entries()].map(([键, g]) => {
+    const m = g.mainId ? 主表.get(g.mainId) : undefined;
+    return { id: 键, name: g.名, mainId: g.mainId, 子渠道数: g.数, active: m ? m.active : g.启用, 历史: 是历史渠道(m?.category), 统计: 合并统计(g.统计们) };
+  });
 }

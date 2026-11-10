@@ -5,7 +5,7 @@ import { isFormValidationError } from "@/lib/form-validation";
 import { useMe, 默认负责人 } from "@/lib/me-client";
 import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Space, Tag, Modal, Form, Input, Select, App, Tooltip, Row as 行, Col, Radio, Dropdown, type MenuProps } from "antd";
+import { Button, Space, Tag, Modal, Form, Input, Select, App, Tooltip, Row as 行, Col, Radio, Dropdown, Segmented, type MenuProps } from "antd";
 import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import ResetFilters from "@/components/ResetFilters";
@@ -23,7 +23,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../overview/funnel";
 import OptionInput from "@/components/OptionInput";
-import { 子渠道名, 子渠道提示, 主渠道名上限, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
+import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, type 主渠道行, type 主渠道汇总 } from "@/lib/enterprise/channel-main-core";
 import MainChannels from "./MainChannels";
 import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
@@ -65,7 +65,8 @@ type Row = 渠道行;
 
 const 空转化: 转化 = { 分子: 0, 分母: 0, 比例: null };
 const 空统计: 渠道统计 = { 关联线索: 0, 有效线索: 0, 关联商机: 0, 关联订单: 0, 关联项目: 0, 累计成交: [], 当前投入: [], 产出比: null, 产出比说明: "还没录投入", 累计运营天数: 0, 线索转商机: 空转化, 商机转订单: 空转化 };
-const 统计 = (r: { 统计?: 渠道统计 }) => r.统计 ?? 空统计;
+type 有统计 = { 统计?: 渠道统计 };
+const 统计 = (r: 有统计) => r.统计 ?? 空统计;
 const 无 = <span className="muted">—</span>;
 /** 渠道名那一列最宽多少（再长省略、悬停看全称）：这一列钉在左边，1024 宽也得给后面的数留地方 */
 const 名字最宽 = 480;
@@ -169,11 +170,15 @@ export default function ChannelsView({
   const [creator, setCreator] = useState("");
   const [主, set主] = useState("");
   const 两层 = 开两层;
+  /** 统计按两层看（P-渠道-01 附.5）：按子渠道一行（原样）/ 按主渠道并成一行；只有两层时才有这个切换 */
+  const [按主看, set按主看] = useState(false);
   // 看板也吃这一份：列表剩几个渠道，看板就按这几个算
   const rows = useMemo(() => {
     const 筛过 = 筛渠道(全部行, { kw, attr, ownerId, active, creator });
     return 主 ? 筛过.filter((r) => r.mainId === 主) : 筛过;
   }, [全部行, kw, attr, ownerId, active, creator, 主]);
+  /** 按主渠道看：筛过的子渠道按主渠道并行，数照 合并统计 加（转化率按分子分母重算、钱按币种加） */
+  const 主行们 = useMemo(() => (两层 && 按主看 ? 按主渠道汇总(rows, 主渠道们) : []), [两层, 按主看, rows, 主渠道们]);
   /** 每个主渠道下挂了几个渠道（主渠道管理里摆） */
   const 子渠道数 = useMemo(() => {
     const m = new Map<string, number>();
@@ -258,26 +263,27 @@ export default function ChannelsView({
   }
 
   type 数键 = "关联线索" | "有效线索" | "关联商机" | "关联订单" | "关联项目";
-  const 数列 = (键: 数键, 说明: string, 标题: string = 键): 列<Row> => ({
+  // 列工厂对「按子渠道」「按主渠道」两种行都能用（只看 统计）
+  const 数列 = <T extends 有统计,>(键: 数键, 说明: string, 标题: string = 键): 列<T> => ({
     title: <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 104, align: "right",
     sorter: (a, b2) => 统计(a)[键] - 统计(b2)[键],
-    render: (_: unknown, r: Row) => (统计(r)[键] > 0 ? <span className="chan-num">{统计(r)[键]}</span> : 无),
+    render: (_: unknown, r: T) => (统计(r)[键] > 0 ? <span className="chan-num">{统计(r)[键]}</span> : 无),
   });
   /** 两个转化率列（10-30 B5）：分母 0 显示「—」，鼠标停上去看几个里有几个；口径见 channel-stats.ts 的 算转化 */
-  const 转化列 = (键: "线索转商机" | "商机转订单", 标题: string, 说明: string): 列<Row> => ({
+  const 转化列 = <T extends 有统计,>(键: "线索转商机" | "商机转订单", 标题: string, 说明: string): 列<T> => ({
     title: <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 112, align: "right",
     sorter: (a, b2) => (统计(a)[键].比例 ?? -1) - (统计(b2)[键].比例 ?? -1),
-    render: (_: unknown, r: Row) => {
+    render: (_: unknown, r: T) => {
       const z = 统计(r)[键];
       return z.比例 === null ? 无 : <Tooltip title={`${z.分母} 个里 ${z.分子} 个`}><span className="chan-num">{转化率字(z.比例)}</span></Tooltip>;
     },
   });
   const 本位 = (x: { 币种: string; 合计: number }[]) => x.find((y) => y.币种 === b.currency)?.合计 ?? 0;
-  const 钱列 = (键: "累计成交" | "当前投入", 说明: string): 列<Row> => ({
+  const 钱列 = <T extends 有统计,>(键: "累计成交" | "当前投入", 说明: string): 列<T> => ({
     title: <Tooltip title={说明}><span className="nowrap">{键}</span></Tooltip>, key: 键, width: 144, align: "right",
     // 排序只看本位币那一份（不换汇）
     sorter: (a, b2) => 本位(统计(a)[键]) - 本位(统计(b2)[键]),
-    render: (_: unknown, r: Row) => (统计(r)[键].length ? <span className="chan-num nowrap">{合计文字(统计(r)[键], b.currency)}</span> : 无),
+    render: (_: unknown, r: T) => (统计(r)[键].length ? <span className="chan-num nowrap">{合计文字(统计(r)[键], b.currency)}</span> : 无),
   });
 
   /** 产出比平均值 / 最高值 / 最低值（显示产出比分布 打开才摆）：同一个「渠道名称」下各来源的产出比，抽屉里也用 */
@@ -359,16 +365,16 @@ export default function ChannelsView({
       ) : 无),
     },
     ...(线索一样
-      ? [数列("关联线索", `${线索说明}。有效线索是其中有效的那些，现在还没有判无效的记号、两个数一样，合成这一列`, "线索")]
-      : [数列("关联线索", 线索说明), 数列("有效线索", "关联线索里有效的那些")]),
-    数列("关联商机", "眼下在商机阶段的项目"),
-    数列("关联订单", "眼下在订单阶段的项目"),
-    转化列("线索转商机", "线索→商机", "从线索起步的项目里，后来到过商机（含已进订单）的占几成；退回去的也算到过。导入时直接落在商机、订单的不算在里面"),
-    转化列("商机转订单", "商机→订单", "到过商机的项目里，后来到过订单的占几成；导入时直接落在订单的不算在里面"),
+      ? [数列<Row>("关联线索", `${线索说明}。有效线索是其中有效的那些，现在还没有判无效的记号、两个数一样，合成这一列`, "线索")]
+      : [数列<Row>("关联线索", 线索说明), 数列<Row>("有效线索", "关联线索里有效的那些")]),
+    数列<Row>("关联商机", "眼下在商机阶段的项目"),
+    数列<Row>("关联订单", "眼下在订单阶段的项目"),
+    转化列<Row>("线索转商机", "线索→商机", "从线索起步的项目里，后来到过商机（含已进订单）的占几成；退回去的也算到过。导入时直接落在商机、订单的不算在里面"),
+    转化列<Row>("商机转订单", "商机→订单", "到过商机的项目里，后来到过订单的占几成；导入时直接落在订单的不算在里面"),
     // 1366 宽放得下（规则 G）：关联项目、创建日期、累计运营天数默认收进「列」里，要看再勾
-    { ...数列("关联项目", "这个渠道带来的全部项目，各阶段都算"), 默认: false },
-    钱列("累计成交", "订单阶段、不是异常状态的项目金额；按币种分开写，不换汇"),
-    钱列("当前投入", "在渠道详情里录的投入合计"),
+    { ...数列<Row>("关联项目", "这个渠道带来的全部项目，各阶段都算"), 默认: false },
+    钱列<Row>("累计成交", "订单阶段、不是异常状态的项目金额；按币种分开写，不换汇"),
+    钱列<Row>("当前投入", "在渠道详情里录的投入合计"),
     {
       title: <Tooltip title="累计成交 ÷ 当前投入"><span className="nowrap">投入产出比</span></Tooltip>, key: "产出比", width: 116, align: "right",
       sorter: (a, b2) => (统计(a).产出比 ?? -1) - (统计(b2).产出比 ?? -1),
@@ -458,6 +464,45 @@ export default function ChannelsView({
     },
   ];
 
+  /** 按主渠道看的列：只摆能相加的统计；点主渠道名 = 回到按子渠道、筛这个主渠道 */
+  const 主名列宽 = Math.min(名字最宽, Math.max(120, ...主行们.map((r) => 名字宽(r.name) + (r.历史 || !r.active ? 84 : 0))));
+  const 主列表: 列<主渠道汇总>[] = [
+    {
+      title: "主渠道", key: "name", dataIndex: "name", width: 主名列宽, 常驻: true,
+      render: (v: string, r) => (
+        // 名字可缩、标签不缩：超长主渠道名省略，「历史渠道」「已停用」不被挤出格子（1024 宽量过）
+        <span className="chan-tags" style={{ display: "flex", alignItems: "center", flexWrap: "nowrap", minWidth: 0, maxWidth: "100%" }}>
+          {r.mainId ? (
+            <button type="button" className="link-plain link-strong chan-name" style={{ minWidth: 0 }} title={`${v}：看底下的子渠道`} onClick={() => { set主(r.mainId!); set按主看(false); }}>{v}</button>
+          ) : (
+            <span className="chan-name" style={{ minWidth: 0 }} title={`${v}（还没挂到主渠道上）`}>{v}</span>
+          )}
+          {r.历史 && <Tag style={{ margin: 0, borderRadius: 6, flex: "none" }} title="历史渠道：只承载历史客户，新数据不能选">历史渠道</Tag>}
+          {!r.active && <Tag style={{ margin: 0, borderRadius: 6, flex: "none" }}>已停用</Tag>}
+        </span>
+      ),
+    },
+    { title: "子渠道数", key: "子渠道数", dataIndex: "子渠道数", width: 96, align: "right", sorter: (a, b2) => a.子渠道数 - b2.子渠道数, render: (v: number) => <span className="chan-num">{v}</span> },
+    ...(线索一样
+      ? [数列<主渠道汇总>("关联线索", `${线索说明}，这个主渠道下各子渠道加起来`, "线索")]
+      : [数列<主渠道汇总>("关联线索", 线索说明), 数列<主渠道汇总>("有效线索", "关联线索里有效的那些")]),
+    数列<主渠道汇总>("关联商机", "眼下在商机阶段的项目"),
+    数列<主渠道汇总>("关联订单", "眼下在订单阶段的项目"),
+    转化列<主渠道汇总>("线索转商机", "线索→商机", "各子渠道的分子、分母分别加起来再算，不是把比例平均"),
+    转化列<主渠道汇总>("商机转订单", "商机→订单", "各子渠道的分子、分母分别加起来再算，不是把比例平均"),
+    { ...数列<主渠道汇总>("关联项目", "这个主渠道下各子渠道带来的全部项目"), 默认: false },
+    钱列<主渠道汇总>("累计成交", "各子渠道加起来；按币种分开写，不换汇"),
+    钱列<主渠道汇总>("当前投入", "各子渠道录的投入加起来"),
+    {
+      title: <Tooltip title="合起来的累计成交 ÷ 合起来的当前投入"><span className="nowrap">投入产出比</span></Tooltip>, 列名: "投入产出比", key: "产出比", width: 116, align: "right",
+      sorter: (a, b2) => (统计(a).产出比 ?? -1) - (统计(b2).产出比 ?? -1),
+      render: (_: unknown, r) => {
+        const s = 统计(r);
+        return s.产出比 === null ? <Tooltip title={s.产出比说明}>{无}</Tooltip> : <span className="chan-num">{s.产出比}</span>;
+      },
+    },
+  ];
+
   /** 表单下拉：字典里启用的 + 正在编辑的这条原来的属性（后来停用了也照旧能留着） */
   const 表单属性 = editing?.attr && !属性选项.includes(editing.attr) ? [...属性选项, editing.attr] : 属性选项;
   /** 运营策略下拉：字典里启用的 + 这条原来就有的（后来停用了也照旧留着） */
@@ -478,23 +523,63 @@ export default function ChannelsView({
         ? `主渠道「${填的主}」已停用，换一个或先到「主渠道」里启用`
         : undefined;
 
+  /* 渠道页一次就把行全拿下来了（没有服务端分页），所以筛在本地做；按主渠道看时筛的还是子渠道，筛完再并 */
+  const 筛选条 = (
+    <Space wrap size={[10, 10]}>
+      <Input
+        style={{ width: 240, maxWidth: "100%" }}
+        placeholder="搜索渠道全称、名称、属性"
+        prefix={<SearchOutlined style={{ color: "var(--text-muted)" }} />}
+        value={kw}
+        allowClear
+        onChange={(e) => setKw(e.target.value)}
+      />
+      {筛选外露}
+      {更多筛选按钮}
+      <ResetFilters 显示={Boolean(kw || attr || ownerId || active || creator || 主)} onClick={() => { setKw(""); setAttr(""); setOwnerId(""); setActive(""); setCreator(""); set主(""); }} />
+    </Space>
+  );
+
   return (
     <>
       <PageHead
         title="渠道"
         extra={
-          能管 && (
+          (两层 || 能管) && (
             <Space size={8} wrap>
-              {两层 && <Button onClick={() => set开主渠道(true)}>主渠道</Button>}
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
-                新建渠道
-              </Button>
+              {/* 统计按两层看（P-渠道-01 附.5）：放页头不放筛选行，1024 宽筛选行照旧一行摆得下 */}
+              {两层 && (
+                <Segmented
+                  aria-label="统计口径"
+                  value={按主看 ? "主" : "子"}
+                  onChange={(v) => set按主看(v === "主")}
+                  options={[{ value: "子", label: "按子渠道" }, { value: "主", label: "按主渠道" }]}
+                />
+              )}
+              {能管 && 两层 && <Button onClick={() => set开主渠道(true)}>主渠道</Button>}
+              {能管 && (
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
+                  新建渠道
+                </Button>
+              )}
             </Space>
           )
         }
       />
 
       <div className="chan-list">
+      {两层 && 按主看 ? (
+        <DataList<主渠道汇总>
+          页="channels-main"
+          空库={全部行.length === 0}
+          列={主列表}
+          行={主行们}
+          行类={(r) => (r.active ? undefined : "row-off")}
+          汇总={看板底数 && rows.length > 0 ? <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} /> : undefined}
+          空态={{ title: "还没有渠道", hint: "先建主渠道和子渠道，这里按主渠道把各子渠道的数加起来。" }}
+          筛选={筛选条}
+        />
+      ) : (
       <DataList<Row>
         页="channels"
         空库={全部行.length === 0}
@@ -508,23 +593,9 @@ export default function ChannelsView({
           hint: `渠道是${b.customer}从哪来的：按「渠道属性 → 渠道名称 → 来源」建一条，新建${b.customer}时从清单里选；在渠道详情里录投入，这里就算得出投入产出比。不再用的渠道停用即可。`,
           primary: 能管 ? { label: "新建第一个渠道", onClick: () => openForm(null) } : undefined,
         }}
-        筛选={
-          /* 渠道页一次就把行全拿下来了（没有服务端分页），所以筛在本地做 */
-          <Space wrap size={[10, 10]}>
-            <Input
-              style={{ width: 240, maxWidth: "100%" }}
-              placeholder="搜索渠道全称、名称、属性"
-              prefix={<SearchOutlined style={{ color: "var(--text-muted)" }} />}
-              value={kw}
-              allowClear
-              onChange={(e) => setKw(e.target.value)}
-            />
-            {筛选外露}
-            {更多筛选按钮}
-            <ResetFilters 显示={Boolean(kw || attr || ownerId || active || creator || 主)} onClick={() => { setKw(""); setAttr(""); setOwnerId(""); setActive(""); setCreator(""); set主(""); }} />
-          </Space>
-        }
+        筛选={筛选条}
       />
+      )}
       </div>
 
       {开主渠道 && <MainChannels 主渠道们={主渠道们} 子渠道数={子渠道数} onClose={() => set开主渠道(false)} />}

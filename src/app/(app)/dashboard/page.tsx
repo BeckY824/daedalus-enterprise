@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { 在售渠道条件 } from "@/lib/enterprise/channel-main";
 import { requireUser } from "@/lib/auth";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 公海超时收回 } from "@/lib/project/db";
@@ -98,7 +99,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
       prisma.task.count({ where: { ownerId: user.id, done: false } }),
       数首页卡(user),
-      prisma.channel.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } }),
+      prisma.channel.findMany({ where: { active: true, ...在售渠道条件 }, select: { name: true }, orderBy: { name: "asc" } }), // 历史渠道（P-渠道-06）新数据不能选，AI 卡也不列
       生效组织规则(),
       企 ? 负责人候选() : null,
       企 ? 新建分配方式数据(user) : null,

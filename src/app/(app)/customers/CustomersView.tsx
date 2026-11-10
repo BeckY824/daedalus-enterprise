@@ -38,6 +38,7 @@ import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { WhatsApp网址, 官网网址, 官网短写, 客户等级, 客户等级说明, type 客户等级 as 等级 } from "@/lib/customer-extra";
 import { 级别选项, 拼地址 } from "@/lib/enterprise/customer-v2";
+import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import LevelLetter from "@/components/LevelLetter";
 import { useLocalPref } from "@/lib/local-pref";
@@ -636,10 +637,10 @@ export default function CustomersView({
       },
     },
     { title: "客户分配", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => (有值(r.assignWay) ? r.assignWay : 空) },
-    // 客户来源（11-05 用户：「列」的可选列里加「客户来源」）= 建档时选的渠道（Customer.channelId，建好就锁），默认收着；渠道名可能很长，一行省略、悬停看全
+    // 客户来源（11-05 用户：「列」的可选列里加「客户来源」；P-渠道-01 列里只显示主渠道，悬停看「主|子」全称）= 建档时选的渠道（Customer.channelId，建好就锁），默认收着；渠道名可能很长，一行省略、悬停看全
     {
       title: "客户来源", key: "channelName", width: 120, 默认: false,
-      render: (_: unknown, r) => (有值(r.channelName) ? <span className="clamp-1" style={{ display: "block" }} title={r.channelName}>{r.channelName}</span> : 空),
+      render: (_: unknown, r) => (有值(r.channelName) ? <span className="clamp-1" style={{ display: "block" }} title={渠道显示名(r.channelName)}>{主渠道显示名(r.channelName)}</span> : 空),
     },
   ];
 

@@ -13,7 +13,7 @@ self.onmessage = (event: MessageEvent<导出指令>) => {
     if (task.动作 === "分批") {
       configureBrowserBusinessTimeZone(task.timeZone);
       const { 批次, b } = task;
-      const table = 批次.类别 === "客户" ? 客户导出表(批次.rows, b, task.隐藏负责人) : 跟进导出表(批次.rows, b);
+      const table = 批次.类别 === "客户" ? 客户导出表(批次.rows, b, task.隐藏负责人, task.渠道两层) : 跟进导出表(批次.rows, b);
       // 编号是核对关系的稳定键，同名/同电话不会混在一起；放最后保持导入识别习惯。
       const ids = 批次.rows.map((r) => "customerId" in r ? [r.customerId, r.id] : [r.id]);
       const name = `${批次.类别}-${String(parts.filter((p) => p.类别 === 批次.类别).length + 1).padStart(3, "0")}.xlsx`;
