@@ -10,9 +10,10 @@
  *
  * 只有企业版；开关关着什么都不写
  */
+import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
-import { 发待分配提醒 } from "./lead-full-notice";
+import { 发待分配提醒, 满额提醒收件人 } from "./lead-full-notice";
 import type { 组织 } from "./org-core";
 
 export async function 标待分配(
@@ -24,4 +25,21 @@ export async function 标待分配(
   await prisma.project.updateMany({ where: { id: projectId, phase: "线索", result: null, pooledAt: null }, data: { awaitAssignAt: 今 } });
   // 提醒没发出去不能连累已经建好的项目
   if (提醒) await 发待分配提醒(提醒.org, [提醒.名], 提醒.谁建的, 提醒.为什么, 今).catch((e) => console.error("[待分配提醒] 没发出去", e));
+}
+
+/**
+ * 这家客户是不是被一条待分配的线索占着（X-87）：客户负责人就是那条待分配线索里占着负责人一格的建的人。
+ * 是 = 这家客户其实还没有负责人，同号协同按没有负责人办（写进客户、通知能分配的人、不邀请不通知建的人）。回那条项目
+ */
+export async function 待分配占着(db: Prisma.TransactionClient | typeof prisma, customerId: string, salesOwnerId: string): Promise<{ id: string } | null> {
+  return db.project.findFirst({
+    where: { customerId, ownerId: salesOwnerId, awaitAssignAt: { not: null }, phase: "线索", result: null, pooledAt: null, deletedAt: null },
+    orderBy: { awaitAssignAt: "desc" },
+    select: { id: true },
+  });
+}
+
+/** 能分配待分配线索的人：市场管理、销售管理、总管理员（同待分配提醒的收件人，A7 / A10） */
+export function 能分配的人们(org: 组织): string[] {
+  return 满额提醒收件人(org, "待分配");
 }
