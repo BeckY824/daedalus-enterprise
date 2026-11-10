@@ -5,7 +5,7 @@
  *   - 接手人确认 → 才换负责人，名下自己的项目跟着走（P-转-07，沿用确认交接那一步）；拒收、本人撤回 → 什么都不转，本人收到通知
  *   - 实线直属上级、系统管理员、条线总管理（转条线里别人的）直接转（P-转-01 ②③④）；条线总管理转自己的也走申请（同 ①）；市场成员的客户给销售照旧当场转（P-转-17 / X-46 ⑤）
  *   - 申请中（X-38 → P-转-05）：能编辑；不能再转（上级直转也拦）、不能领取、不能分配公海、不能删（P-删-10）
- *   - 没有超时（X-46 ⑥ 未答，默认）：一直挂着，直到确认、拒收或撤回
+ *   - 挂起 7 天（X-46 ⑥）：提醒接手人和发起人各一次，不自动生效、不自动作废，之后接着等；发起人可撤回，也可改接手人
  *   - 不是企业版：照旧当场换
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -27,7 +27,8 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
 import { assignSalesOwner, patchCustomer, deleteCustomers } from "@/app/(app)/customers/actions";
-import { 待确认的交接, 确认交接, 撤回交接, 拒收交接 } from "@/app/(app)/customers/handover-actions";
+import { 待确认的交接, 确认交接, 撤回交接, 拒收交接, 改接手人 } from "@/app/(app)/customers/handover-actions";
+import { 挂起移交提醒, 挂起提醒键 } from "@/lib/enterprise/handover-remind";
 import { 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 公海超时收回 } from "@/lib/project/db";
@@ -284,5 +285,51 @@ describe("申请中不自动掉公海（X-38 → P-转-05：挂到对方确认�
       公海规则.单项目客户跟着进公海 = 原;
     }
     expect(await prisma.customerPool.findUnique({ where: { customerId: 申.id } })).toBeNull();
+  });
+});
+
+describe("挂起 7 天（X-46 ⑥）：提醒一次，不生效不作废；发起人可改接手人", () => {
+  const 天 = 24 * 60 * 60_000;
+  const 提醒 = (userId: string, hid: string) => prisma.entNotice.findMany({ where: { userId, dedupeKey: 挂起提醒键(hid) } });
+
+  it("不满 7 天不提醒；满 7 天接手人、发起人各一条；再扫不重发；仍待确认，之后照样能确认", async () => {
+    const a = await 客户(销售.id);
+    await assignSalesOwner([a.id], 接手.id);
+    const h = await 一笔();
+    expect(await 挂起移交提醒(new Date(h.createdAt.getTime() + 6 * 天))).toBe(0);
+    const 到 = new Date(h.createdAt.getTime() + 7 * 天 + 60_000);
+    expect(await 挂起移交提醒(到)).toBe(2);
+    expect((await 提醒(接手.id, h.id))[0]?.title).toContain("7 天");
+    expect((await 提醒(销售.id, h.id))[0]?.title).toContain("还没确认");
+    expect(await 挂起移交提醒(new Date(到.getTime() + 3 * 天))).toBe(0);
+    expect((await 一笔()).status).toBe("待确认");
+    expect(await 归谁(a.id)).toBe(销售.id);
+    // 上级发起的普通交接不在这条提醒里
+    expect(await prisma.entNotice.count({ where: { dedupeKey: { contains: "挂起" }, userId: { notIn: [接手.id, 销售.id] } } })).toBe(0);
+    当(接手);
+    expect(await 确认交接(h.id)).toEqual({ ok: true, 客户: 1 });
+  });
+
+  it("发起人改接手人：新接手人收到、能确认；原接手人不用管了、确认不了；别人改不了", async () => {
+    const a = await 客户(销售.id);
+    await assignSalesOwner([a.id], 接手.id);
+    const h = await 一笔();
+    expect((await 待确认的交接()).我发起的[0]).toMatchObject({ id: h.id, 我能改接手人: true, 接手人id: 接手.id });
+    当(组长);
+    expect(await 改接手人(h.id, 同事.id)).toMatchObject({ ok: false });
+    当(销售);
+    expect(await 改接手人(h.id, 接手.id)).toMatchObject({ ok: false });
+    expect(await 改接手人(h.id, 销售.id)).toMatchObject({ ok: false });
+    expect(await 改接手人(h.id, 同事.id)).toEqual({ ok: true, 客户: 0 });
+    expect(await 一笔()).toMatchObject({ toUserId: 同事.id, status: "待确认", byUserId: 销售.id });
+    expect((await 通知(接手.id, "发起", h.id))?.readAt).not.toBeNull();
+    expect((await 通知(同事.id, "发起", h.id))?.title).toContain("申请");
+    expect(await prisma.entNotice.count({ where: { userId: 接手.id, dedupeKey: { startsWith: `handover:${h.id}:改走:` } } })).toBe(1);
+
+    当(接手);
+    expect(await 确认交接(h.id)).toMatchObject({ ok: false });
+    当(同事);
+    expect(await 确认交接(h.id)).toEqual({ ok: true, 客户: 1 });
+    expect(await 归谁(a.id)).toBe(同事.id);
   });
 });

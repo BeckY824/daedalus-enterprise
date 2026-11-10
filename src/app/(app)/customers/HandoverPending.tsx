@@ -2,18 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, App, Button, Space } from "antd";
-import { 确认交接, 撤回交接, 拒收交接, type 交接行 } from "./handover-actions";
+import { Alert, App, Button, Modal, Select, Space } from "antd";
+import { 确认交接, 撤回交接, 拒收交接, 改接手人, type 交接行 } from "./handover-actions";
 
 /**
  * 企业版「交接中」（D10）：客户页顶上列出等我确认的交接、我发起还没被确认的。
  * 确认前这些客户还归原负责人，接手人的客户列表里没有；这里只给个数和前几位的名字，好决定接不接。
  * 没有待确认的交接 = 什么都不显示（不是企业版的页面根本不放这个组件）
  */
-export default function HandoverPending({ 等我确认, 我发起的 }: { 等我确认: 交接行[]; 我发起的: 交接行[] }) {
+export default function HandoverPending({ 等我确认, 我发起的, 候选 = [], 我 }: {
+  等我确认: 交接行[]; 我发起的: 交接行[];
+  /** 改接手人的下拉（X-46 ⑥）：同转让的负责人候选，服务端再挡一遍 */
+  候选?: { id: string; name: string }[]; 我?: string;
+}) {
   const { message, modal } = App.useApp();
   const router = useRouter();
   const [忙, set忙] = useState<string | null>(null);
+  const [改, set改] = useState<交接行 | null>(null);
+  const [新, set新] = useState<string | undefined>();
   if (!等我确认.length && !我发起的.length) return null;
 
   /** 负责人本人转自己的 = 申请移交（X4）：说「接受 / 拒绝 / 撤回申请」 */
@@ -34,6 +40,21 @@ export default function HandoverPending({ 等我确认, 我发起的 }: { 等我
       const r = await (做 === "确认" ? 确认交接 : 做 === "拒收" ? 拒收交接 : 撤回交接)(h.id);
       if (!r.ok) message.error(r.error);
       else message.success(做 === "确认" ? `已接手 ${r.客户} 位客户` : `已${叫}`);
+    } catch {
+      message.error("没办成，刷新再试");
+    } finally {
+      set忙(null);
+      router.refresh();
+    }
+  }
+
+  async function 改成() {
+    if (!改 || !新) return;
+    set忙(改.id);
+    try {
+      const r = await 改接手人(改.id, 新);
+      if (!r.ok) message.error(r.error);
+      else { message.success("已改接手人，等对方确认"); set改(null); }
     } catch {
       message.error("没办成，刷新再试");
     } finally {
@@ -68,9 +89,18 @@ export default function HandoverPending({ 等我确认, 我发起的 }: { 等我
       {我发起的.map((h) => (
         <Alert key={h.id} type="info" showIcon
           title={是申请(h) ? `移交申请中：${说(h)}，等「${h.给}」确认，确认前仍在原负责人名下` : `交接中：${说(h)}，等「${h.给}」确认`}
-          action={h.我能撤回 ? <Button size="small" disabled={忙 === h.id} onClick={() => 办(h, "撤回")}>{是申请(h) ? "撤回申请" : "撤回"}</Button> : undefined}
+          action={<Space>
+            {h.我能改接手人 ? <Button size="small" disabled={忙 === h.id} onClick={() => { set新(undefined); set改(h); }}>改接手人</Button> : null}
+            {h.我能撤回 ? <Button size="small" disabled={忙 === h.id} onClick={() => 办(h, "撤回")}>{是申请(h) ? "撤回申请" : "撤回"}</Button> : null}
+          </Space>}
         />
       ))}
+      <Modal open={!!改} title="改接手人" okText="改" cancelText="取消" onCancel={() => set改(null)} onOk={改成}
+        okButtonProps={{ disabled: !新, loading: !!改 && 忙 === 改.id }} destroyOnHidden>
+        <p>移交申请改给另一位，等新接手人确认；原接手人「{改?.给}」不用再确认。</p>
+        <Select showSearch optionFilterProp="label" style={{ width: "100%" }} placeholder="选新接手人" value={新} onChange={set新}
+          options={候选.filter((u) => u.id !== 改?.接手人id && u.id !== 我).map((u) => ({ value: u.id, label: u.name }))} />
+      </Modal>
     </Space>
   );
 }
