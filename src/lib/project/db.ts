@@ -431,7 +431,7 @@ export const 项目不能删提示 = "只有项目负责人本人或系统管理
  * 企业版（V3.5.1，11-03）：系统管理员，或项目负责人本人（销售、销管、渠运，项目不在公海）能删，删了进回收站（软删，能恢复）；
  * 别人（条线总管理、组员、管理员 admin）一律拒，不存在的 id 对非系统管理员也回同一句（不先露「不在了」）
  */
-export async function 删项目(me: 谁, projectId: string): Promise<结果 & { name?: string; customerId?: string }> {
+export async function 删项目(me: 谁, projectId: string): Promise<结果 & { name?: string; customerId?: string; ownerId?: string }> {
   const 状态开 = await 客户状态自动();
   const org = await 权限组织();
   if (企业版()) {
@@ -443,7 +443,8 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
       await 软删一条(tx, "Project", p.id);
       // 进了回收站的项目不算进客户状态
       await 跟着项目重算(tx, 状态开, [p.customerId]);
-      return { ok: true as const, name: p.name, customerId: p.customerId };
+      // P-删-10：删的时候谁负责（项目公海里的没有），删除入口据此通知负责人
+      return { ok: true as const, name: p.name, customerId: p.customerId, ownerId: p.pooledAt ? "" : p.ownerId };
     }).then((r) => { if (r.ok) 忘掉企业版范围(); return r; }); // 组员看得到的客户名单跟着项目算
   }
   return 查完再写(async (tx) => {

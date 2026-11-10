@@ -125,6 +125,45 @@ export async function 公海分配通知(谁点的: 人, toUserId: string, 对�
   });
 }
 
+/** 转客户时随客户换了负责人的同事待分配项目：哪个项目、原来占着那格的同事、哪位客户 */
+export type 同事待分配条 = { id: string; 原: string; customerId: string };
+
+/**
+ * 转客户把同事名下待分配的项目一起给了接手人（P-转-07 / P-转-19）：告诉这位同事。
+ * 他在这些客户上的待办和计划不搬、不关，还在他名下，能照常勾完成，通知里写清。
+ * 点转让的人自己、接手人、已停用的不发；一位同事一条
+ */
+export async function 同事待分配随客户通知(操作人: string, 新: string, 条们: readonly 同事待分配条[]): Promise<void> {
+  await 稳("同事待分配随客户通知", async () => {
+    const 按人 = new Map<string, 同事待分配条[]>();
+    for (const x of 条们) if (x.原 && x.原 !== 操作人 && x.原 !== 新) 按人.set(x.原, [...(按人.get(x.原) ?? []), x]);
+    if (!按人.size) return;
+    const 人们 = await prisma.user.findMany({ where: { id: { in: [...按人.keys(), 操作人, 新] } }, select: { id: true, name: true, active: true } });
+    const 人 = new Map(人们.map((u) => [u.id, u]));
+    const 全部 = [...按人.values()].flat();
+    const [项目们, 客户们] = await 看全部(() => Promise.all([
+      prisma.project.findMany({ where: { id: { in: 全部.map((x) => x.id) } }, select: { id: true, name: true } }),
+      prisma.customer.findMany({ where: { id: { in: [...new Set(全部.map((x) => x.customerId))] } }, select: { id: true, name: true } }),
+    ]));
+    const 项目名 = new Map(项目们.map((x) => [x.id, x.name]));
+    const 客户名 = new Map(客户们.map((x) => [x.id, x.name]));
+    const 新名 = 人.get(新)?.name ?? "";
+    const 谁 = 人.get(操作人)?.name ?? "";
+    for (const [原, 们] of 按人) {
+      if (!人.get(原)?.active) continue;
+      const 客户 = [...new Set(们.map((x) => 客户名.get(x.customerId) ?? "（一位客户）"))];
+      const 项目 = 们.map((x) => `「${项目名.get(x.id) ?? "（一个项目）"}」`);
+      await notify([原], {
+        kind: "交接",
+        title: `${谁} 把客户${客户.map((c) => `「${c}」`).join("、")}转给了 ${新名}，你名下待分配的项目${项目.length > 3 ? `${项目.slice(0, 3).join("")} 等 ${项目.length} 个` : 项目.join("")}随客户一起给了 ${新名}`,
+        body: "这些客户上你的待办和计划还在你名下，没做完的可以照常勾完成。",
+        link: 们.length === 1 ? `/projects/${们[0].id}` : "/projects",
+        key: `awaiting-carry:${原}:${们.map((x) => x.id).sort().join(",").slice(0, 300)}:${分钟()}`,
+      });
+    }
+  });
+}
+
 /* ───────────────────────── 线索验证（P12） ───────────────────────── */
 
 const 验证标题: Record<待哪步, (项目: string) => string> = {
@@ -252,7 +291,7 @@ export type 交接事件 = "发起" | "已确认" | "已拒收" | "已撤回";
  * 11-03 C3-3：确认了也告诉原负责人（转让的；离职的人已停用不发），别人撤回的也告诉发起人。
  * 11-03 C3-5 / C4-7 / C8-1：了结之后接手人那条「等你确认」标成已读，免得一直挂着；确认的标题带客户名，发起多笔分得清
  */
-export async function 交接通知(me: 人, handoverId: string, 事件: 交接事件, 留下?: readonly 留下的活[]): Promise<void> {
+export async function 交接通知(me: 人, handoverId: string, 事件: 交接事件, 留下?: readonly 留下的活[], 实转?: readonly string[]): Promise<void> {
   await 稳("交接通知", async () => {
     const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id: handoverId } }));
     if (!h) return;
@@ -263,12 +302,16 @@ export async function 交接通知(me: 人, handoverId: string, 事件: 交接�
     } catch {
       /* counts 坏了就不报个数 */
     }
+    // P-删-10：确认了按实际转成的写（交接期间换了人、进了公海、删了的不算），发起时的个数只用在发起 / 撤回 / 拒收
+    if (事件 === "已确认" && 实转) 客户 = 实转.length;
     const 几位 = 客户 ? ` ${客户} 位客户` : "客户";
     const 从 = 名.get(h.fromUserId) ?? "";
     const 收 = 事件 === "发起" || 事件 === "已撤回" ? h.toUserId : h.byUserId;
-    const 客户名 = 事件 === "已确认" ? await 交接客户名(h.customerIds) : "";
+    const 客户名 = 事件 === "已确认" ? await 交接客户名(实转 ?? 读ids(h.customerIds)) : "";
+    const 一位没转 = 事件 === "已确认" && !!实转 && !实转.length;
     const title =
       事件 === "发起" ? (h.kind === "离职" ? `${从} 离职，${me.name} 把他的${几位}交接给你，等你确认` : `${me.name} 把${从 && 从 !== me.name ? ` ${从} 的` : ""}${几位}交接给你，等你确认`)
+      : 一位没转 ? `${me.name} 确认了交接，但客户在交接期间已换了人、进了公海或被删，没有转到 ${me.name} 名下`
       : 事件 === "已确认" ? `${me.name} 确认接手了${几位}${客户名}`
       : 事件 === "已拒收" ? `${me.name} 拒收了你发起的交接，数据留在 ${从} 名下`
       : `${me.name} 撤回了交给你的交接，不用确认了`;
@@ -285,7 +328,7 @@ export async function 交接通知(me: 人, handoverId: string, 事件: 交接�
     });
     if (事件 === "发起") return;
     await prisma.entNotice.updateMany({ where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null }, data: { readAt: new Date() } });
-    if (事件 === "已确认" && h.kind !== "离职" && ![me.id, h.byUserId].includes(h.fromUserId)) {
+    if (事件 === "已确认" && !一位没转 && h.kind !== "离职" && ![me.id, h.byUserId].includes(h.fromUserId)) {
       await notify([h.fromUserId], { kind: "交接", title: `你名下的${几位}${客户名} 已交给 ${me.name}`, link: "/customers", key });
     }
     if (事件 === "已撤回" && ![me.id, h.toUserId].includes(h.byUserId)) {
@@ -294,15 +337,18 @@ export async function 交接通知(me: 人, handoverId: string, 事件: 交接�
   });
 }
 
-/** 交接里的客户名，最多列 3 个：「：甲、乙、丙 等 5 位」；查不到就空 */
-async function 交接客户名(customerIds: string): Promise<string> {
-  let ids: string[] = [];
+/** 交接 customerIds（JSON 数组）读成 id；坏了就空 */
+function 读ids(customerIds: string): string[] {
   try {
     const v: unknown = JSON.parse(customerIds);
-    if (Array.isArray(v)) ids = v.filter((x): x is string => typeof x === "string");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
   } catch {
-    return "";
+    return [];
   }
+}
+
+/** 交接里的客户名，最多列 3 个：「：甲、乙、丙 等 5 位」；查不到就空 */
+async function 交接客户名(ids: readonly string[]): Promise<string> {
   if (!ids.length) return "";
   const 名们 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids.slice(0, 3) } }, select: { name: true } }))).map((c) => c.name);
   if (!名们.length) return "";
@@ -360,6 +406,21 @@ export async function 项目分给你通知(谁点的: 人, toUserId: string, pr
 }
 
 
+/** P-删-10：别人（系统管理员）删了你负责的项目，告诉你一声；进了回收站，30 天内找系统管理员能恢复。停用的不发 */
+export async function 项目被删通知(me: 人, ownerId: string, 项目名: string, customerId: string): Promise<void> {
+  await 稳("项目被删通知", async () => {
+    if (!ownerId || ownerId === me.id) return;
+    const u = await 看全部(() => prisma.user.findUnique({ where: { id: ownerId }, select: { active: true } }));
+    if (!u?.active) return;
+    await notify([ownerId], {
+      kind: "回收",
+      title: `${me.name} 删除了你负责的项目「${项目名}」`,
+      body: "项目进了回收站，30 天内可以找系统管理员恢复。",
+      link: customerId ? `/customers/${customerId}` : "/projects",
+    });
+  });
+}
+
 /** 直接改负责人（转给自己、规则关着）当场就换了：告诉原负责人一声（11-03 C3-3）。不发给操作人自己；新负责人走上面的 分给你通知 */
 export async function 改负责人通知(me: 人, 换了: readonly { customerId: string; 旧: string }[], 新: string): Promise<void> {
   await 稳("改负责人通知", async () => {
@@ -370,7 +431,7 @@ export async function 改负责人通知(me: 人, 换了: readonly { customerId:
     const 新名 = 新 === me.id ? me.name : (await prisma.user.findUnique({ where: { id: 新 }, select: { name: true } }))?.name ?? "";
     for (const [旧, ids] of 按人) {
       if (!在职.has(旧)) continue;
-      const 客户名 = await 交接客户名(JSON.stringify(ids));
+      const 客户名 = await 交接客户名(ids);
       await notify([旧], {
         kind: "交接",
         title: `${me.name} 把你名下的 ${ids.length} 位客户${客户名} 改给了 ${新名}`,

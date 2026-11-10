@@ -1868,6 +1868,38 @@ describe("转客户：同事负责的项目负责人不变（用户 11-09，X-05
       expect(await 负责人of(同事的)).toBe(丙.id);
     });
 
+    it.each(四入口)("P-转-19 %s：这位同事收到通知，写清项目、接手人，他的待办和计划留在他名下、能勾完成", async (_名, 转) => {
+      const c = await 客户(市场.id);
+      const 选中 = await 项目(c, 市场.id);
+      const 待分配 = await 项目(c, 乙.id, { awaitAssignAt: new Date() });
+      const t = await 待办(c, 乙.id, "回访");
+      await 转(市场, c, 选中, 甲);
+      expect(await 负责人of(待分配)).toBe(甲.id);
+      expect((await 待办of(t)).ownerId).toBe(乙.id);
+      const 他的 = (await 通知们(乙.id)).filter((n) => n.title.includes("待分配"));
+      expect(他的).toHaveLength(1);
+      expect(他的[0].title).toContain((await 项目of(待分配)).name);
+      expect(他的[0].title).toContain(甲.name);
+      expect(他的[0].body).toContain("待办和计划还在你名下");
+      expect(他的[0].body).toContain("勾完成");
+      // 不相干的、接手人不收这一条
+      expect((await 通知们(丙.id)).filter((n) => n.title.includes("待分配"))).toHaveLength(0);
+      expect((await 通知们(甲.id)).filter((n) => n.title.includes("你名下待分配"))).toHaveLength(0);
+    });
+
+    it("P-转-19 停用的同事、点转让的人自己不收", async () => {
+      const c = await 客户(甲.id);
+      const 自己的 = await 项目(c, 总管.id, { awaitAssignAt: new Date() });
+      const 停了 = await 项目(c, 乙.id, { awaitAssignAt: new Date() });
+      await prisma.user.update({ where: { id: 乙.id }, data: { active: false } });
+      const r = await 以(总管, () => assignSalesOwner([c], 丙.id));
+      if (!r.ok) throw new Error(r.error);
+      expect(await 负责人of(自己的)).toBe(丙.id);
+      expect(await 负责人of(停了)).toBe(丙.id);
+      expect((await 通知们(总管.id)).filter((n) => n.title.includes("你名下待分配"))).toHaveLength(0);
+      expect((await 通知们(乙.id)).filter((n) => n.title.includes("你名下待分配"))).toHaveLength(0);
+    });
+
     it("销售转销售也一样；撤销后负责人和待分配时刻都还原", async () => {
       const 时刻 = new Date("2026-11-01T08:00:00.000Z");
       const c = await 客户(甲.id);

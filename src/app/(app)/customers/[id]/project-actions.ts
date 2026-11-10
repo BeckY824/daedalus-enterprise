@@ -38,7 +38,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 定分配方式, 建好再分, 新建分配方式数据 } from "@/lib/project/after-create-assign";
-import { 项目分给你通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
+import { 项目分给你通知, 同事待分配随客户通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
@@ -179,7 +179,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 状态开 = await 客户状态自动();
     // 算转客户的：换负责人之前钉住老签约（事务外，它用全局连接）
     if (市场转客户) await 钉住老签约();
-    const { projectId, 留下 } = await prisma.$transaction(async (tx) => {
+    const { projectId, 留下, 同事待分配 } = await prisma.$transaction(async (tx) => {
       const p = await tx.project.create({
         data: {
           ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
@@ -200,12 +200,13 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       });
       // 事务里再判一次；转走后我可能就看不到这位客户了，这一段放开范围（同 分项目给）
       const 现客户 = 指定给别人 ? await 读客户(tx) : null;
-      const 留下: 留下的活 | undefined = 现客户 && 算市场转客户(org, 现客户, 项目.ownerId)
+      const 转 = 现客户 && 算市场转客户(org, 现客户, 项目.ownerId)
         ? await 看全部(() => 转客户给销售(tx, customerId, 现客户.salesOwnerId, 项目.ownerId, me.id, 指定分配名!))
         : undefined;
+      const 留下: 留下的活 | undefined = 转?.留下;
       // 企业版客户状态跟着项目算：多了一个项目（没项目的客户从空变潜在）
       await 看全部(() => 跟着项目重算(tx, 状态开, [customerId]));
-      return { projectId: p.id, 留下 };
+      return { projectId: p.id, 留下, 同事待分配: 转?.同事待分配 ?? [] };
     });
 
     await recordAudit({
@@ -223,6 +224,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线) : null;
     // 自动 / 公海 / 暂不分配 建好再分 自己管（返回对象）；指定别人走这里，自己留着函数里不发
     if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId, 留下);
+    if (同事待分配.length) await 同事待分配随客户通知(me.id, 项目.ownerId, 同事待分配);
     const 去向 = { ...(分了 ?? {}), ...(留下 ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : {}) };
     // 分走之后这位客户我可能看不到了（市场转给销售）：弹窗据此离开客户页，留着刷新就是 404
     const 还看得到 = !去向.转走 || !!(await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } }));

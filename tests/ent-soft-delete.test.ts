@@ -28,6 +28,7 @@ import { 全公司查号, 回收站里查号 } from "@/lib/enterprise/contact-de
 import { 回收站列表, 恢复, 彻底删除, 清过期, 每天清一次, 看已删, 能管回收站, 能彻底删除 } from "@/lib/enterprise/soft-delete";
 import { 回收站列表动作, 恢复回收站, 彻底删除回收站 } from "@/app/(app)/settings/trash-actions";
 import { 从回收站捞回 } from "@/app/(app)/customers/number-actions";
+import { 删除项目 } from "@/app/(app)/projects/actions";
 import { 只读角色话 } from "@/lib/enterprise/permissions";
 
 let 老板: string, 管员: string, 总管: string, 销售经理: string, 市场: string, 销售: string, 主管: string;
@@ -167,6 +168,46 @@ describe("回收站列表与恢复", () => {
     expect(await prisma.project.count()).toBe(1);
     expect(await prisma.followUp.count()).toBe(1);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 张三 } })).lastFollowAt).not.toBeNull();
+  });
+
+  it("P-删-09 恢复项目归客户现负责人；客户在客户公海就拦", async () => {
+    expect(await 删项目({ id: 老板, role: "ADMIN" }, 项目)).toMatchObject({ ok: true });
+    // 删了以后客户转给销售经理
+    await prisma.customer.update({ where: { id: 张三 }, data: { salesOwnerId: 销售经理 } });
+    await prisma.customerPool.create({ data: { customerId: 张三, reason: "手动" } });
+    const 拦 = await 恢复({ id: 老板, role: "ADMIN" }, "Project", 项目);
+    expect(拦).toMatchObject({ ok: false });
+    expect(拦.ok ? "" : 拦.error).toContain("客户公海");
+    expect(await prisma.project.count()).toBe(0);
+
+    await prisma.customerPool.delete({ where: { customerId: 张三 } });
+    expect(await 恢复({ id: 老板, role: "ADMIN" }, "Project", 项目)).toMatchObject({ ok: true });
+    const p = await prisma.project.findUniqueOrThrow({ where: { id: 项目 } });
+    expect(p.ownerId).toBe(销售经理);
+    const 痕 = await prisma.projectNodeLog.findFirst({ where: { projectId: 项目, kind: "transfer" } });
+    expect(痕).toMatchObject({ fromOwnerId: 销售, toOwnerId: 销售经理 });
+  });
+
+  it("P-删-09 客户负责人没变：恢复后负责人照旧、不留转让痕", async () => {
+    expect(await 删项目({ id: 老板, role: "ADMIN" }, 项目)).toMatchObject({ ok: true });
+    expect(await 恢复({ id: 老板, role: "ADMIN" }, "Project", 项目)).toMatchObject({ ok: true });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目 } })).ownerId).toBe(销售);
+    expect(await prisma.projectNodeLog.count({ where: { projectId: 项目, kind: "transfer" } })).toBe(0);
+  });
+
+  it("P-删-10 系统管理员删同事负责的项目：通知这位项目负责人；负责人自己删不通知", async () => {
+    当(老板, "ADMIN");
+    expect(await 删除项目(项目)).toMatchObject({ ok: true });
+    const 收到 = await prisma.entNotice.findMany({ where: { userId: 销售 } });
+    expect(收到).toHaveLength(1);
+    expect(收到[0].title).toContain("官网改版");
+    expect(收到[0].title).toContain("老板");
+    expect(await prisma.entNotice.count({ where: { userId: 老板 } })).toBe(0);
+
+    const 自己的 = (await prisma.project.create({ data: { customerId: 张三, ownerId: 销售, creatorId: 销售, name: "自己删", phase: "售前", node: "初步接洽" } })).id;
+    当(销售);
+    expect(await 删除项目(自己的)).toMatchObject({ ok: true });
+    expect(await prisma.entNotice.count({ where: { userId: 销售 } })).toBe(1);
   });
 
   it("回收站里的行改不到（update / updateMany 只碰没删的）", async () => {

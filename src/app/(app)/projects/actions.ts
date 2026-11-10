@@ -28,7 +28,7 @@ import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, typ
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知 } from "@/lib/enterprise/notice-sources";
+import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走, 是占位值 } from "@/lib/project/required";
@@ -321,6 +321,7 @@ export async function 删除项目(projectId: string) {
     const r = await 删项目(me, projectId);
     if (r.ok) {
       await recordAudit({ user: me, action: "delete", entity: "Project", entityId: projectId, summary: `删除项目「${r.name}」` });
+      if (r.ownerId && r.ownerId !== me.id) await 项目被删通知(me, r.ownerId, r.name ?? "", r.customerId ?? "");
       刷新项目(undefined, r.customerId);
     }
     return r.ok ? { ok: true as const } : r;

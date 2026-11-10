@@ -163,7 +163,7 @@ export async function 确认交接(id: string): Promise<结果> {
         `${分.计划.length + 分.待办.length} 条没完成的计划和待办、${分.线索.length} 条线索、${分.渠道.length} 个渠道` + (项目.length ? `、${项目.length} 个项目` : ""),
       detail: { 交接: h.id, userId: h.fromUserId, transferToId: me.id, 方式, 客户: 分.客户, 商机: 分.商机, 待办: 分.待办, 计划: 分.计划, 线索: 分.线索, 渠道: 分.渠道, 项目, 进公海客户: 分.进公海客户, 进公海项目: 分.进公海项目 },
     });
-    await 交接通知(me, h.id, "已确认");
+    await 交接通知(me, h.id, "已确认", undefined, 分.客户);
     刷新();
     return { ok: true, 客户: 分.客户.length };
   }
@@ -187,7 +187,7 @@ export async function 确认交接(id: string): Promise<结果> {
     summary: `确认接手「${从}」转来的 ${转成了.length} 名${b.customer}，销售负责人改为「${me.name}」` + (ids.length > 转成了.length ? `（${ids.length - 转成了.length} 名在交接期间已换了人或进了公海，没动）` : ""),
     detail: { 交接: h.id, ids: 转成了, salesOwnerId: me.id, 原负责人: 转成了.map((id) => ({ id, salesOwnerId: h.fromUserId })), 带走: 数, 带过来: 记下 },
   });
-  await 交接通知(me, h.id, "已确认", 留下);
+  await 交接通知(me, h.id, "已确认", 留下, 转成了);
   刷新();
   return { ok: true, 客户: 转成了.length };
 }

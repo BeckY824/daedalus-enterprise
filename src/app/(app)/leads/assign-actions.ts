@@ -20,7 +20,7 @@ import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 分配方式叫法, 挡分配方式 } from "@/lib/enterprise/dict";
 import { 发满额提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
-import { 分配通知, type 分配条, type 留下的活 } from "@/lib/enterprise/notice-sources";
+import { 分配通知, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限n, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
@@ -238,7 +238,7 @@ async function 分项目给(
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
   // 同老线索：入口查过能分配、看得到，事务里看全部（11-03 A3-4 市场管理分别人名下的假报「已被分配」）
-  const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null; 留下?: 留下的活 } | Exclude<分给结果, { ok: true }>> => {
+  const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null; 留下?: 留下的活; 同事待分配?: 同事待分配条[] } | Exclude<分给结果, { ok: true }>> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
     if (!p) return { ok: false, error: 项目不在 };
     // 分前看查过一次；这里再查：弹框开着时客户可能刚被放进公海（放在乐观锁前面，说的是真原因）
@@ -285,13 +285,14 @@ async function 分项目给(
     // 只改项目，客户负责人不动（P-转-03、M-公海-06；开关 领项目带走单项目客户 关着）
     if (整包) await 客户整包出公海(tx, p.customerId, input.toUserId, me.id, 带待办, "pool-assign");
     else if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, 带待办);
-    const 留下 = !整包 && 市场转客户 && 客户 ? await 转客户给销售(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, input.way) : undefined;
+    const 转 = !整包 && 市场转客户 && 客户 ? await 转客户给销售(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, input.way) : undefined;
     await tx.entLeadAssign.create({
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });
-    return { ok: true, fromUserId: 原, 留下 };
+    return { ok: true, fromUserId: 原, 留下: 转?.留下, 同事待分配: 转?.同事待分配 };
   }));
   if (!落库.ok) return 落库;
+  if (落库.同事待分配?.length) await 同事待分配随客户通知(me.id, input.toUserId, 落库.同事待分配);
 
   const { line } = input;
   const 接手 = await prisma.user.findUnique({ where: { id: input.toUserId }, select: { name: true } });
