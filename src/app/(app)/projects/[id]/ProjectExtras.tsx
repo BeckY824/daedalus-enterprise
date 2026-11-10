@@ -117,27 +117,27 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
 
 /** 挂在一条沟通上的附件（F-项目-18）：来源 = 「谁 · 什么时候 · 头几个字」（lib/project/detail-search.ts 沟通来源） */
 export type 沟通附件组 = { followUpId: string; 来源: string; 附件: 附件[] };
-type 项目附件格 = "合同" | "方案" | "其它";
-const 附件格们: [项目附件格, string][] = [["合同", "合同附件"], ["方案", "项目方案"], ["其它", "其它附件"]];
+type 项目附件格 = "合同" | "方案" | "验收报告" | "其它";
+const 附件格们: [项目附件格, string][] = [["合同", "合同附件"], ["方案", "项目方案"], ["验收报告", "验收报告"], ["其它", "其它附件"]];
 
 /**
- * 「项目附件」一块（企业版 P11；F-项目-18 起合成一块）：合同附件 / 项目方案 / 其它附件各一格（分类 = Attachment.tag），
+ * 「项目附件」一块（企业版 P11；F-项目-18 起合成一块）：合同附件 / 项目方案 / 验收报告（M-必填-11）/ 其它附件各一格（分类 = Attachment.tag），
  * 看得到项目就能看、能改项目才能传和删（接口 api/attachments/access.ts 认项目）；
  * 最后一格「沟通附件」把各条沟通上的截图、录音收过来，每组写明来自哪条沟通（去看 = 跳到那条），这里只看、下载，传和删回那条沟通上
  */
 export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通们, 去看 }: {
-  projectId: string; 起始个数: Record<项目附件格, number>; 只读: boolean; 沟通们: 沟通附件组[]; 去看?: (followUpId: string) => void;
+  projectId: string; 起始个数: Omit<Record<项目附件格, number>, "验收报告"> & { 验收报告?: number }; 只读: boolean; 沟通们: 沟通附件组[]; 去看?: (followUpId: string) => void;
 }) {
-  // 传完、删完刷新项目：节点必填（合同、方案）和页上别处跟着变；这一格的列表自己已经更新了（AttachmentsPanel）
+  // 传完、删完刷新项目：节点必填（合同、方案、验收报告）和页上别处跟着变；这一格的列表自己已经更新了（AttachmentsPanel）
   const router = useRouter();
-  const [个数, set个数] = useState<Record<项目附件格, number>>({ 合同: 起始个数.合同, 方案: 起始个数.方案, 其它: 起始个数.其它 });
+  const [个数, set个数] = useState<Record<项目附件格, number>>({ 合同: 起始个数.合同, 方案: 起始个数.方案, 验收报告: 起始个数.验收报告 ?? 0, 其它: 起始个数.其它 });
   // AttachmentsPanel 拿 on个数 当 effect 依赖：每格一个稳定的回调
   const 记个数 = useMemo(
     () => Object.fromEntries(附件格们.map(([k]) => [k, (n: number) => set个数((x) => (x[k] === n ? x : { ...x, [k]: n }))])) as Record<项目附件格, (n: number) => void>,
     [],
   );
   const 沟通个数 = 沟通们.reduce((n, g) => n + g.附件.length, 0);
-  const 合计 = 个数.合同 + 个数.方案 + 个数.其它 + 沟通个数;
+  const 合计 = 个数.合同 + 个数.方案 + 个数.验收报告 + 个数.其它 + 沟通个数;
   return (
     <Card title={`项目附件（${合计}）`} className="proj-att-card" data-testid="project-attachments">
       {附件格们.map(([k, 名]) => (

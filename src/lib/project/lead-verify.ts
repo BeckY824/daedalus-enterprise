@@ -25,8 +25,8 @@ import { 改节点, 能改节点, 放回公海 } from "./db";
 import { 是总管理 } from "@/lib/enterprise/permissions";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
 import { 判MQL, MQL合格去 } from "./mql";
-import { 有效线索节点, 无效原因上限 } from "./stage-gates";
-export { 无效原因上限 };
+import { 有效线索节点 } from "./stage-gates";
+import { 生效组织规则 } from "./org-rules-store";
 import { 原因上限 } from "./nodes";
 
 type 谁 = { id: string; role: string };
@@ -184,11 +184,16 @@ async function 判死(me: 谁, projectId: string, 读: 读到, 步: "销售初�
   }));
 }
 
-/** 无效原因：字典里有启用的无效原因就得从里面选（「其他」要写一句）；字典空着（没配）写一句也行 */
+/** 无效原因：字典里有启用的无效原因就得从里面选（「其他」要写一句）；字典空着（没配）写一句也行（字数上限看组织规则，默认不设） */
 async function 核无效原因(v: unknown): Promise<{ ok: true; 值: string } | { ok: false; error: string }> {
-  const 写的 = 字(v, 无效原因上限);
+  const 写的 = 字(v, Infinity);
   if (!写的) return { ok: false, error: "判无效要选或写一个无效原因" };
-  if (!(await 可选项("invalid")).length) return { ok: true, 值: 写的 };
+  if (!(await 可选项("invalid")).length) {
+    // 自由写的字数上限按组织规则（M-节点-03）：数据交接期默认不设，管理员设了才拦（原来写死 200、超了悄悄截掉）
+    const 上限 = (await 生效组织规则()).阶段.无效原因上限;
+    if (上限 !== null && 写的.length > 上限) return { ok: false, error: `无效原因最多 ${上限} 个字` };
+    return { ok: true, 值: 写的 };
+  }
   const 选 = await 选的原因("invalid", 写的);
   if (!选.ok) return 选;
   return { ok: true, 值: 选.值 ?? 写的 };

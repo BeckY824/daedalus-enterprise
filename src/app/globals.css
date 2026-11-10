@@ -1251,7 +1251,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    原来每块限高 60vh 自己滚、滚到底也不往外传，鼠标停在沟通 / 待办上整栏就拉不下去。现在内容全铺开，滚的是整栏 */
 .proj-mod-body { min-width: 0; }
 .proj-search { min-width: 0; }
-/* 项目附件一块（F-项目-18）：合同附件 / 项目方案 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
+/* 设置 → 阶段规则里的字数上限（M-节点-03）：两格一行放不下就折行，名字可以折，输入框不缩 */
+.org-len-h { font-weight: 500; margin-bottom: 4px; }
+.org-len-tip { color: var(--text-muted); margin-bottom: 8px; }
+.org-len-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; min-width: 0; }
+.org-len-item { display: flex; gap: 8px; align-items: center; flex: 1 1 260px; min-width: 0; }
+.org-len-name { min-width: 0; overflow-wrap: anywhere; }
+.org-len-input.ant-input-number, .org-len-input.ant-input-number-affix-wrapper { width: 120px; flex: none; }
+.org-len-save.ant-btn { margin-bottom: 16px; }
+/* 项目附件一块（F-项目-18）：合同附件 / 项目方案 / 验收报告 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
 .proj-att-sec { min-width: 0; }
 .proj-att-sec + .proj-att-sec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .proj-att-h { font-weight: 600; margin-bottom: 8px; }

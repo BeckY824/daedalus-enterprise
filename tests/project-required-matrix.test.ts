@@ -76,8 +76,12 @@ describe("节点必填按矩阵（真库）", () => {
     expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
     await prisma.project.update({ where: { id: p.id }, data: { siteStatus: "已有场地" } });
     expect(await 存一下(p.id)).toMatchObject({ ok: true, 自动推到: ["交付验收"] });
-    // 交付验收差验收通过
+    // 交付验收差验收报告（M-必填-11）：勾了验收通过也不推，传一份验收报告附件才推
     expect((await 现(p.id)).node).toBe("交付验收");
+    await prisma.project.update({ where: { id: p.id }, data: { acceptancePassed: true, ...下一步 } });
+    expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
+    await prisma.attachment.create({ data: { projectId: p.id, tag: "验收报告", name: "验收.pdf", mime: "application/pdf", size: 1, sha256: "m11-1", userId: 乙.id } });
+    expect(await 存一下(p.id)).toMatchObject({ ok: true, 自动推到: ["尾款结算"] });
   });
 
   it("带着上个节点的下一步进生产备货（手动推进来）：不自动推；在生产备货写了下一步才推，且只推一步", async () => {

@@ -2,7 +2,7 @@
  * 「完成节点」框一窗填完（lib/project/required-fill.ts）：每个必填对到哪种控件、占位值判定和服务端同一个口径、部分失败不丢、自动推进不多走一步。
  */
 import { describe, it, expect, vi } from "vitest";
-import { 必填项们, 还差, 占位值们, 需求未确认, type 必填项, type 必填数据 } from "@/lib/project/required";
+import { 必填项们, 还差, 占位值们, type 必填项, type 必填数据 } from "@/lib/project/required";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import {
   填法表, 归类, 初始草稿, 草稿问题, 草稿是空的, 现值不算的话, 这项的改动, 算窗口状态, 依次保存, 存完怎么走, 按目录排,
@@ -105,7 +105,7 @@ describe("这个人能不能当场填", () => {
 describe("占位值：和服务端一个口径", () => {
   const 文字项: 必填项[] = ["需求描述", "痛点标注", "项目名称", "项目级别", "预算能力", "需求"];
   it.each(文字项)("%s：占位值、空白都不算", (k) => {
-    for (const v of [...占位值们, 需求未确认, " 暂无 ", "0"]) {
+    for (const v of [...占位值们, "暂未确认", " 暂无 ", "0"]) {
       expect(草稿问题(k, v), v).toMatch(/占位值/);
       expect(服务端算不算(k, v), v).toBe(false);
     }
@@ -168,12 +168,12 @@ describe("打开时格子里的值", () => {
     expect(现值不算的话("金额", p)).toBeNull();
   });
   it("真值带进来；币种跟现值；合同状态带现值（不是已生效会当场提示）", () => {
-    const p = 项目({ amount: 12, currency: "EUR", 项目新字段: { contractStatus: "起草中" }, 画像: { 值: { budgetLevel: "预算充足", demandStatus: 需求未确认, productNeeds: ["产品甲", "暂无"] } } });
+    const p = 项目({ amount: 12, currency: "EUR", 项目新字段: { contractStatus: "起草中" }, 画像: { 值: { budgetLevel: "预算充足", demandStatus: "暂未确认", productNeeds: ["产品甲", "暂无"] } } });
     expect(初始草稿("金额", p)).toEqual({ 数: 12, 币: "EUR" });
     expect(初始草稿("合同已生效", p)).toBe("起草中");
     expect(初始草稿("预算能力", p)).toBe("预算充足");
     expect(初始草稿("需求", p)).toBeNull();
-    expect(现值不算的话("需求", p)).toMatch(需求未确认);
+    expect(现值不算的话("需求", p)).toMatch("暂未确认");
     expect(初始草稿("需求类型", p)).toEqual(["产品甲"]);
   });
 });

@@ -116,6 +116,24 @@ describe("企业版线索有效性验证", () => {
       expect((await 判无效(id)).ok).toBe(false);
     });
 
+    it("无效原因字数上限（M-节点-03）：字典空着自由写时默认不设，很长也收；管理员设了才拦", async () => {
+      const { 默认组织规则 } = await import("@/lib/project/org-rules");
+      const { 企业字典 } = await import("@/lib/enterprise/dict");
+      await 企业字典("invalid");
+      await prisma.entDictItem.updateMany({ where: { kind: "invalid" }, data: { active: false } });
+      const 长 = "长".repeat(500);
+      const id = await 项目();
+      expect(await 销售初判(乙, id, "无效", { invalidReason: 长 })).toEqual({ ok: true });
+      expect((await 状态(id))?.invalidReason).toBe(长);
+
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 无效原因上限: 10 } });
+      invalidateSettingsCache();
+      const id2 = await 项目({ name: "二号" });
+      expect(await 销售初判(乙, id2, "无效", { invalidReason: "长".repeat(11) })).toEqual({ ok: false, error: "无效原因最多 10 个字" });
+      expect(await 状态(id2)).toBeNull();
+      expect(await 销售初判(乙, id2, "无效", { invalidReason: "长".repeat(10) })).toEqual({ ok: true });
+    });
+
     it("只有停在线索验证的能判", async () => {
       const id = await 项目({ node: "潜客培育" });
       expect((await 判无效(id)).ok).toBe(false);

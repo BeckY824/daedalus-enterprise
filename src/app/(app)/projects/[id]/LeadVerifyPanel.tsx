@@ -7,7 +7,7 @@ import DictSelect from "@/components/DictSelect";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
-import { 培育计划上限, 无效原因上限, 有效线索节点 } from "@/lib/project/stage-gates";
+import { 有效线索节点 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action, 撤回验证Action } from "../actions";
 
@@ -42,6 +42,7 @@ export default function LeadVerifyPanel({
   projectId,
   v,
   无效原因选项,
+  字数上限,
   跑,
   忙,
   缺有效沟通话,
@@ -50,6 +51,8 @@ export default function LeadVerifyPanel({
   projectId: string;
   v: 线索验证;
   无效原因选项: string[];
+  /** 培育计划、无效原因的字数上限（M-节点-03，组织规则）：null / 没给 = 不设，输入框不限字数 */
+  字数上限?: { 培育计划: number | null; 无效原因: number | null };
   跑: 跑法;
   忙: boolean;
   /** 推过线索验证还差有效沟通时的话（带还差哪几项），齐了 null */
@@ -101,7 +104,7 @@ export default function LeadVerifyPanel({
             {有字典 ? (
               <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因（必选）" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={无效原因选项} />
             ) : (
-              <Input style={{ marginBottom: 8 }} maxLength={无效原因上限} placeholder="无效原因（必填）" aria-label="无效原因" value={无效原因 ?? ""} onChange={(e) => set无效原因(e.target.value)} />
+              <Input style={{ marginBottom: 8 }} maxLength={字数上限?.无效原因 ?? undefined} showCount={!!字数上限?.无效原因} placeholder="无效原因（必填）" aria-label="无效原因" value={无效原因 ?? ""} onChange={(e) => set无效原因(e.target.value)} />
             )}
             <Input.TextArea rows={3} maxLength={原因上限} showCount value={说明} onChange={(e) => set说明(e.target.value)} placeholder="说明（可不写）" aria-label="初判说明" />
           </>
@@ -125,7 +128,7 @@ export default function LeadVerifyPanel({
             />
             <Input.TextArea
               rows={3}
-              maxLength={培育计划上限}
+              maxLength={字数上限?.培育计划 ?? undefined}
               showCount
               style={{ marginTop: 8 }}
               value={培育计划}

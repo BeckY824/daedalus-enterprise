@@ -12,6 +12,8 @@ import { 必填项名们, 能配必填的节点 } from "./required";
 export const 上限最大 = 999;
 /** 这个数算不算「不限」 */
 export const 是不限 = (n: number | null | undefined): boolean => typeof n === "number" && n >= 上限最大;
+/** 培育计划、无效原因字数上限最多填多少（M-节点-03）：防手滑多打几个 0；不设 = null = 不限 */
+export const 字数上限最大 = 2000;
 /** 节点处理时长最多填多少天 */
 export const 时长最大 = 365;
 /** 能设处理时长的节点：线索、商机阶段的；订单阶段永远不回收。两套字典的并集（企业版 10-31 改了名，两套的名字都认） */
@@ -93,6 +95,13 @@ export type 组织规则 = {
      * 记沟通、改字段、往后退、终止照旧（lib/project/db.ts 补全期不给）
      */
     需求补全期: boolean;
+    /**
+     * 字数上限（M-节点-03，客户更新版 B2：数据交接期不设上限，正式使用后由管理员设；覆盖原来写死的各 200）：
+     * 培育计划 = MQL 不合格 / 还需培育时写的下一步计划内容（lib/project/mql.ts），无效原因 = 线索验证判无效、字典空着自由写的那句（lead-verify.ts）。
+     * null = 不设（默认），设了 1–字数上限最大
+     */
+    培育计划上限: number | null;
+    无效原因上限: number | null;
   };
 };
 
@@ -111,7 +120,7 @@ export const 默认组织规则: 组织规则 = {
   公海: { 持有上限开: false, 默认上限: 30, 每人上限: {}, 多项目客户: "客户可转让" },
   超时回收: { 开: false, 节点天数: {}, 外贸节点天数: {}, 起算日: 默认起算日 },
   节点推进: { 开: false, 必填: {} },
-  阶段: { 推进权限: "负责人可推", 出口叫法: {}, 前两节点要沟通: false, 需求补全期: false },
+  阶段: { 推进权限: "负责人可推", 出口叫法: {}, 前两节点要沟通: false, 需求补全期: false, 培育计划上限: null, 无效原因上限: null },
 };
 
 /** 规整一个出口叫法：去空格，空的 = null；太长 / 不是字串返回 undefined（读的时候丢掉，改的时候报错） */
@@ -217,6 +226,8 @@ function 规整阶段块(raw: unknown): 组织规则["阶段"] {
     出口叫法: 叫法,
     前两节点要沟通: a.前两节点要沟通 === true,
     需求补全期: a.需求补全期 === true,
+    培育计划上限: 整数(a.培育计划上限, 1, 字数上限最大),
+    无效原因上限: 整数(a.无效原因上限, 1, 字数上限最大),
   };
 }
 
@@ -228,7 +239,7 @@ export type 规则改动 = {
   /** 必填整份替换（界面每次带全），传 null / 空的节点 = 不配、照原来手动推 */
   节点推进?: { 开?: boolean; 必填?: Record<string, string[] | null> };
   /** 出口叫法整份替换（界面每次带全） */
-  阶段?: { 推进权限?: 推进权限; 出口叫法?: Record<string, readonly [string | null, string | null] | null>; 前两节点要沟通?: boolean; 需求补全期?: boolean };
+  阶段?: { 推进权限?: 推进权限; 出口叫法?: Record<string, readonly [string | null, string | null] | null>; 前两节点要沟通?: boolean; 需求补全期?: boolean; 培育计划上限?: number | null; 无效原因上限?: number | null };
 };
 
 /**
@@ -346,6 +357,14 @@ export function 合上改动(现在: 组织规则, 改: 规则改动): 组织规
     if (a.需求补全期 !== undefined) {
       if (typeof a.需求补全期 !== "boolean") return { error: "需求状态补全期的开关只能开或关" };
       阶段.需求补全期 = a.需求补全期;
+    }
+    for (const [k, 叫] of [["培育计划上限", "培育计划"], ["无效原因上限", "无效原因"]] as const) {
+      const v = a[k] as unknown;
+      if (v === undefined) continue;
+      if (v === null || v === "") { 阶段[k] = null; continue; }
+      const n = 整数(v, 1, 字数上限最大);
+      if (n === null) return { error: `${叫}字数上限请填 1–${字数上限最大} 的整数（空着 = 不设）` };
+      阶段[k] = n;
     }
   }
   return { ...现在, 公海, 超时回收, 节点推进, 阶段 };

@@ -240,6 +240,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
     pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
+    // 培育计划、无效原因字数上限（M-节点-03）：组织规则里管理员设的，没设 = null = 不限
+    ...(企业 ? { 字数上限: { 培育计划: 规则.阶段.培育计划上限, 无效原因: 规则.阶段.无效原因上限 } } : {}),
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 验证不收, 回收预演,
     ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,

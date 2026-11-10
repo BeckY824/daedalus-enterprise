@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
-import { 上限最大, 时长最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+import { 上限最大, 时长最大, 字数上限最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
@@ -896,6 +896,10 @@ function StageRuleCard({
   const 原来 = (s: (typeof 阶段们)[number]): [string, string] => [规则.出口叫法[s]?.[0] ?? "", 规则.出口叫法[s]?.[1] ?? ""];
   const [叫法, set叫法] = useState<Record<string, [string, string]>>(() => Object.fromEntries(阶段们.map((s) => [s, 原来(s)])));
   const 改了 = 阶段们.some((s) => 叫法[s][0] !== 原来(s)[0] || 叫法[s][1] !== 原来(s)[1]);
+  // 字数上限（M-节点-03）：空着 = 不设（数据交接期默认不设，正式使用后管理员来设）
+  const [上限, set上限] = useState<{ 培育计划: number | null; 无效原因: number | null }>({ 培育计划: 规则.培育计划上限, 无效原因: 规则.无效原因上限 });
+  const 上限改了 = 上限.培育计划 !== 规则.培育计划上限 || 上限.无效原因 !== 规则.无效原因上限;
+  const 存上限 = () => 跑(() => 改组织规则({ 阶段: { 培育计划上限: 上限.培育计划, 无效原因上限: 上限.无效原因 } }), "已保存字数上限");
   const 存 = () => 跑(() => 改组织规则({
     阶段: { 出口叫法: Object.fromEntries(阶段们.map((s) => [s, [叫法[s][0].trim() || null, 叫法[s][1].trim() || null] as const])) },
   }), "已保存");
@@ -943,6 +947,29 @@ function StageRuleCard({
           <div style={{ color: "var(--text-muted)" }}>开了：只有销售管理、总管理能往前推进程，负责人只补字段、记沟通；填齐必填也不自动推。往回退、终止进程照常。补完了记得关。默认关</div>
         </div>
       </div>
+      {/* 字数上限（M-节点-03）：样式在 globals.css .org-len-*（行内样式只减不增） */}
+      <div className="org-len-h">线索验证的字数上限</div>
+      <div className="org-len-tip">空着 = 不设、不限字数（数据交接期先不设，正式使用后再设）。只管以后新写的，已经写下的不动。</div>
+      <div className="org-len-row">
+        {([["培育计划", "培育计划（还需培育时写的下一步计划）"], ["无效原因", "无效原因（字典空着、自己写的那句）"]] as const).map(([k, 名]) => (
+          <div key={k} className="org-len-item">
+            <span className="org-len-name">{名}</span>
+            <InputNumber<number>
+              aria-label={`${k}字数上限`}
+              className="org-len-input"
+              min={1}
+              max={字数上限最大}
+              precision={0}
+              suffix="字"
+              placeholder="不设"
+              disabled={!!挡}
+              value={上限[k]}
+              onChange={(v) => set上限((m) => ({ ...m, [k]: typeof v === "number" ? v : null }))}
+            />
+          </div>
+        ))}
+      </div>
+      {!挡 && <Button className="org-len-save" disabled={忙 || !上限改了} onClick={() => void 存上限()}>保存字数上限</Button>}
       <div style={{ fontWeight: 500, marginBottom: 8 }}>结束状态叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
       {阶段们.map((s) => {
         const [成, 没成] = 企业版字典.出口们[s];

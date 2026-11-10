@@ -222,6 +222,16 @@ describe("真库：改项目 / 读必填数据 / 新建项目", () => {
     expect(await 读数据()).toMatchObject({ 项目方案数: 2, 痛点标注: "交期", 合同状态: "已生效" });
   });
 
+  it("读必填数据：验收报告数只数 tag「验收报告」（M-必填-11），合同、方案、其它、没分类的都不算", async () => {
+    const 附 = (tag: string | null, i: number) =>
+      prisma.attachment.create({ data: { projectId: 项目id, tag, name: `y${i}.pdf`, mime: "application/pdf", size: 1, sha256: `m11-${i}`, userId: 乙.id } });
+    for (const [i, t] of (["合同", "方案", "其它", null] as const).entries()) await 附(t, i);
+    const 读数据 = async () => 读必填数据(prisma, await prisma.project.findUniqueOrThrow({ where: { id: 项目id } }));
+    expect(await 读数据()).toMatchObject({ 验收报告数: 0 });
+    await 附("验收报告", 9);
+    expect(await 读数据()).toMatchObject({ 验收报告数: 1, 合同附件数: 1, 项目方案数: 1 });
+  });
+
   it("节点必填配了「痛点标注」：编辑项目填上那一下就推", async () => {
     const 起 = (await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).node;
     await setSetting("orgRules", { ...默认组织规则, 节点推进: { 开: true, 必填: { [起]: ["痛点标注"] } } });
