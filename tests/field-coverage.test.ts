@@ -67,7 +67,9 @@ const 可写: Record<string, string[]> = {
     // 企业版客户地址第五格「客户地址」（2026-10-29，迁移 091，P14 第 7 条）：客户表单 saveCustomer 的 企业资料
     "addrDetail",
     // 企业版客户业务线（2026-11-01，迁移 106，清单 A1）：客户表单 saveCustomer 的 企业资料（内贸 / 外贸 / 暂不分配）
-    "bizLine"],
+    "bizLine",
+    // 企业版渠道触点（迁移 116，P-渠道-08）：客户表单 / 建档向导 / 首页 AI 建档的 saveCustomer（公司资源 / 客户介绍）
+    "touchpoint"],
   // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
   Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate", "strategies"],
   // 企业版主渠道（2026-11-08 渠道两层）：渠道页「主渠道」里建、改名、拨开关（channels/actions.ts 的 saveMainChannel / toggleMainChannel）

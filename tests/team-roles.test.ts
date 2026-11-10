@@ -99,7 +99,8 @@ async function 种数据() {
     await raw.user.create({ data: { id, email: `${id}@x.com`, name, password: "x", role: "ADMIN" } });
   }
   const 建 = async (key: string, owner: string, extra: Record<string, unknown> = {}) => {
-    const c = await raw.customer.create({ data: { name: key, phone: `1380000${String(Object.keys(ids).length).padStart(4, "0")}`, salesOwnerId: owner, ...extra } });
+    // 序号从 1 起：第一个若是 13800000000，按 P-全局-06「连续 0」算占位假号，会被查电话拦下
+    const c = await raw.customer.create({ data: { name: key, phone: `1380000${String(Object.keys(ids).length + 1).padStart(4, "0")}`, salesOwnerId: owner, ...extra } });
     ids[key] = c.id;
     await raw.followUp.create({ data: { customerId: c.id, ownerId: owner, type: "电话", title: "电话", content: `${key} 的跟进` } });
     await raw.opportunity.create({ data: { customerId: c.id, ownerId: owner, name: `${key} 的商机`, amount: 1000 } });
