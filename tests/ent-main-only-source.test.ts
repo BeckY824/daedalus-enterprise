@@ -26,7 +26,7 @@ import { 主渠道入口们, 落到渠道 } from "@/lib/enterprise/channel-main"
 import { 主渠道入口前缀, 是主渠道入口, 历史渠道分类 } from "@/lib/enterprise/channel-main-core";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { 可选渠道 } from "@/lib/options";
-import { 两级渠道树 } from "@/components/ChannelPicker";
+import { 两级渠道树, 渠道树 } from "@/components/ChannelPicker";
 import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
 import { 改项目 } from "@/lib/project/db";
 import { saveCustomer } from "@/app/(app)/customers/actions";
@@ -103,6 +103,30 @@ describe("来源清单：只有主渠道的也摆出来", () => {
   it("不是企业版：客户表单的渠道清单不带占位", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect((await 可选渠道()).map((c) => c.id)).toEqual([抖音号]);
+  });
+});
+
+describe("来源选择器的属性沿用主渠道（P-渠道-11）", () => {
+  it("子渠道自己没填属性的，清单里带主渠道的；自己填了的不动；主渠道也没填、没挂主渠道的还是空；不回写库", async () => {
+    const 自填 = (await prisma.channel.create({ data: { name: "抖音|小号", platform: "抖音", mainId: 抖音, channelOwnerId: 运营, attr: "公域引流" } })).id;
+    const 空主 = await prisma.entChannelMain.create({ data: { name: "空属性主" } });
+    const 都空 = (await prisma.channel.create({ data: { name: "空属性主|甲", platform: "空属性主", mainId: 空主.id, channelOwnerId: 运营 } })).id;
+    const 没挂 = (await prisma.channel.create({ data: { name: "老渠道", channelOwnerId: 运营, attr: "  " } })).id;
+    for (const 们 of [await 可选渠道们(), await 可选渠道()]) {
+      const 属性 = new Map(们.map((c) => [c.id, c.attr]));
+      expect(属性.get(抖音号)).toBe("主动自拓");
+      expect(属性.get(自填)).toBe("公域引流");
+      expect(属性.get(都空) ?? null).toBeNull();
+      expect(属性.get(没挂)?.trim() || null).toBeNull();
+    }
+    // 三级选择（先问属性）跟着归到主渠道的属性下，不再掉进「未分属性」
+    expect(渠道树(await 可选渠道们()).find((n) => n.label === "主动自拓")?.children?.[0]).toMatchObject({ label: "抖音" });
+    expect((await prisma.channel.findUniqueOrThrow({ where: { id: 抖音号 } })).attr).toBeNull();
+  });
+
+  it("现在选着的停用渠道（编辑老项目带上的）一样沿用", async () => {
+    await prisma.channel.update({ where: { id: 抖音号 }, data: { active: false } });
+    expect((await 可选渠道们(抖音号)).find((c) => c.id === 抖音号)).toMatchObject({ attr: "主动自拓", active: false });
   });
 });
 

@@ -75,6 +75,17 @@ export const 可选渠道条件 = {
 /** 来源选择里的一行（components/ChannelPicker.tsx 的 可选渠道 同一个形状；这里不从客户端组件 import） */
 export type 来源选项 = { id: string; name: string; attr: string | null; platform: string | null; active: boolean };
 
+/** 来源选择的清单要读的列：自己的几格 + 主渠道的属性（给 带主属性 用） */
+export const 来源选项列 = { id: true, name: true, attr: true, platform: true, active: true, main: { select: { attr: true } } } as const;
+
+/**
+ * 来源选择器的属性沿用（迁移 118，P-渠道-11）：子渠道自己没填属性的，清单里带主渠道的（和渠道页 沿用主渠道属性 一个口径）。
+ * 只是读的时候带出来，不回写库；自己填了的不动，主渠道也没填、没挂主渠道的还是原样
+ */
+export function 带主属性(行们: readonly (来源选项 & { main: { attr: string | null } | null })[]): 来源选项[] {
+  return 行们.map(({ main, ...c }) => (c.attr?.trim() ? c : { ...c, attr: main?.attr?.trim() || c.attr }));
+}
+
 /**
  * 只有主渠道的那些，给来源选择摆的占位行（见 channel-main-core.ts 主渠道入口前缀）：
  * 主渠道启用、不是「历史渠道」组（P-渠道-06）、底下一条渠道都没有（停用的也算有：停掉的单一入口不再冒出来）。

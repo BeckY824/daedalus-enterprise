@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { 可选渠道条件, 主渠道入口们 } from "./enterprise/channel-main";
+import { 可选渠道条件, 主渠道入口们, 来源选项列, 带主属性 } from "./enterprise/channel-main";
 import { 企业版 } from "./enterprise/switch";
 
 /**
@@ -9,7 +9,8 @@ import { 企业版 } from "./enterprise/switch";
  */
 
 export async function 可选渠道() {
-  const 们 = await prisma.channel.findMany({ where: 可选渠道条件, select: { id: true, name: true, attr: true, platform: true, active: true }, orderBy: { name: "asc" } });
+  // 子渠道自己没填属性的带主渠道的（P-渠道-11，带主属性）
+  const 们 = 带主属性(await prisma.channel.findMany({ where: 可选渠道条件, select: 来源选项列, orderBy: { name: "asc" } }));
   // 企业版：只有主渠道（没有子渠道）的也能选，摆一行占位、存的时候才落成渠道（channel-main.ts 落到渠道）；一起按名字排
   if (!企业版()) return 们;
   return [...们, ...(await 主渠道入口们())].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
