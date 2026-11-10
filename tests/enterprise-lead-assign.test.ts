@@ -22,6 +22,7 @@ import { resetDb } from "./reset";
 import { 改权限key } from "@/lib/enterprise/edit-perm-table";
 import { 分配线索, 设配额, 我分出去的线索, 本月分配情况, 自动分配线索, 批量自动分配, 设自动分配参与, 读不设配额, 设不设配额, 项目分配线, 设线部门, 读线部门设置 } from "@/app/(app)/leads/assign-actions";
 import { 线部门key } from "@/lib/enterprise/assign-line";
+import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { getSetting } from "@/lib/settings";
 import { 企划线索计数key, 月份, 计不计数, 满了, 有配额, 挑接手人, 挑的理由, 自动分配不参与key, 认参与状态, 不设配额key, 自动候选人们 } from "@/lib/enterprise/lead-assign";
 import { 建组织 } from "@/lib/enterprise/org-core";
@@ -1080,8 +1081,14 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     const r = await 自动分配线索(待, { 项目: true });
     expect(r).toMatchObject({ ok: false, 待分配: true, error: expect.stringContaining("已留在新线索待分配") });
     expect(await 项目(待)).toMatchObject({ ownerId: 市场, awaitAssignAt: expect.any(Date), pooledAt: null });
+    // 已经待分配的：不再提醒
+    expect(await 读满额提醒(总管)).toEqual([]);
+    // X-85（A10）：还没待分配的挑不到人 = 标成待分配，提醒能分配的人（总管理、市场管理、销售管理）
     const 普通 = await 建项目("普通的", { bizLine: "外贸" });
-    expect(await 自动分配线索(普通, { 项目: true })).toMatchObject({ ok: false, 待分配: true, error: expect.stringContaining("留在原处") });
+    expect(await 自动分配线索(普通, { 项目: true })).toMatchObject({ ok: false, 待分配: true, error: expect.stringContaining("已标成待分配") });
+    expect(await 项目(普通)).toMatchObject({ ownerId: 市场, awaitAssignAt: expect.any(Date), pooledAt: null });
+    for (const 谁 of [总管, 市场, 销售经理]) expect(await 读满额提醒(谁)).toMatchObject([{ 原因: "待分配", 线索: ["普通的"] }]);
+    expect(await 读满额提醒(内贸)).toEqual([]);
     // 内贸这条线还有人：照常分给内贸
     expect(await 自动分配线索(await 建项目("内贸的", { bizLine: "内贸" }), { 项目: true })).toMatchObject({ ok: true, toUserId: 内贸 });
     // 按配额分时都满额，也一样不抛错
@@ -1090,6 +1097,20 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     for (const id of [外贸, 两边]) await 配(id, 0);
     expect(await 自动分配线索(普通, { 项目: true })).toMatchObject({ ok: false, 待分配: true });
     expect(await prisma.entLeadAssign.count({ where: { projectId: { in: [待, 普通] } } })).toBe(0);
+  });
+
+  it("X-85 批量：挑不到人的几条都标成待分配，合成一条待分配提醒；已待分配的不重复提醒，也不另发满额", async () => {
+    await setSetting(自动分配不参与key, { [销售经理]: "禁止", [虚线经理]: "禁止", [外贸]: "暂停", [两边]: "禁止" });
+    const 甲 = await 建项目("甲", { bizLine: "外贸" });
+    const 乙 = await 建项目("乙", { bizLine: "外贸" });
+    const 早 = await 建项目("早就待分配", { bizLine: "外贸", awaitAssignAt: new Date(2026, 0, 1) });
+    const r = await 批量自动分配([甲, 乙, 早], { 项目: true });
+    expect(r.ok && r.结果.map((x) => [x.ok, !x.ok && x.待分配])).toEqual([[false, true], [false, true], [false, true]]);
+    for (const id of [甲, 乙]) expect((await 项目(id)).awaitAssignAt).toEqual(expect.any(Date));
+    expect((await 项目(早)).awaitAssignAt).toEqual(new Date(2026, 0, 1));
+    const 提醒 = await 读满额提醒(总管);
+    expect(提醒).toHaveLength(1);
+    expect(提醒[0]).toMatchObject({ 原因: "待分配", 线索: ["甲", "乙"] });
   });
 
   it("老项目没填业务线：按负责人的线（负责人没设 = 内贸）", async () => {

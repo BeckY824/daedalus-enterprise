@@ -213,14 +213,15 @@ describe("分配通知只给接手人", () => {
 });
 
 describe("挑不到人", () => {
-  it("外贸三人都暂停 / 禁止：回待分配，不抛错，项目负责人不动，没有分配记录和通知", async () => {
+  it("外贸三人都暂停 / 禁止：回待分配，不抛错，项目负责人不动，没有分配记录；标成待分配，只发待分配提醒（X-85）", async () => {
     await setSetting(自动分配不参与key, { [外一]: "暂停", [外二]: "禁止", [外三]: "暂停", [外组长]: "禁止" });
     const P = await 建项目("没人", "外贸");
     const r = await 自动分配线索(P, { 项目: true });
     expect(r).toMatchObject({ ok: false, 待分配: true });
     expect(await 负责人(P)).toBe(市场);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: P } })).awaitAssignAt).toEqual(expect.any(Date));
     expect(await prisma.entLeadAssign.count()).toBe(0);
-    expect(await prisma.entNotice.count()).toBe(0);
+    expect(await prisma.entNotice.count({ where: { kind: { not: "待分配" } } })).toBe(0);
   });
 
   it("勾的部门里的人全停用：同样待分配", async () => {
