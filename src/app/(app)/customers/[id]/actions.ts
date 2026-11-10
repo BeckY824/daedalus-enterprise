@@ -18,6 +18,7 @@ import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
+import { 查完再写 } from "@/lib/check-then-write";
 import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
@@ -295,14 +296,17 @@ export async function deleteFollowUp(id: string, customerId: string) {
       detail: { 类型: 类型名(待删?.type ?? ""), 内容: 待删?.content?.slice(0, 200) ?? null },
     });
   
-    const latest = await prisma.followUp.findFirst({
-      where: { customerId, occurredAt: { lte: new Date() } },
-      orderBy: { occurredAt: "desc" },
-      select: { occurredAt: true },
-    });
-    await prisma.customer.update({
-      where: { id: customerId },
-      data: { lastFollowAt: latest?.occurredAt ?? null },
+    // 重算最近跟进：读和写放进同一个事务（代码体检 C10）。原来分两步，读完那一刻同事刚记了一条新的，这里会把旧值写回去
+    await 查完再写(async (tx) => {
+      const latest = await tx.followUp.findFirst({
+        where: { customerId, occurredAt: { lte: new Date() } },
+        orderBy: { occurredAt: "desc" },
+        select: { occurredAt: true },
+      });
+      await tx.customer.update({
+        where: { id: customerId },
+        data: { lastFollowAt: latest?.occurredAt ?? null },
+      });
     });
   
     revalidatePath(`/customers/${customerId}`);
