@@ -259,21 +259,23 @@ describe("新列三方比对", () => {
     expect(await prisma.customer.findUniqueOrThrow({ where: { id: 乙.id } })).toMatchObject({ channelId: 渠道丙, attributionChannelId: 渠道丙, channelOwnerId: 李娜 });
   });
 
-  it("同号连上我们早有的客户：新几格只补空，已有归属的不挂渠道", async () => {
+  it("撞了我们早有的同号客户：整条跳过，新几格不补、渠道不挂，老客户一格不动（M-导入-29）", async () => {
     const 甲老 = await prisma.customer.create({ data: { name: "甲（老档）", phone: "13800000001", salesOwnerId: 张伟, followStatus: "跟进中", addrCity: "我们填的城市" } });
     const 推荐人 = await prisma.customer.create({ data: { name: "虚构推荐人", phone: "13900000000", salesOwnerId: 张伟, followStatus: "跟进中" } });
     const 乙老 = await prisma.customer.create({ data: { name: "乙（老档）", phone: "13800000002", salesOwnerId: 李娜, followStatus: "跟进中", referrerCustomerId: 推荐人.id } });
     const 乙改 = [...乙行];
     乙改[7] = "虚构渠道甲";
-    await 导([客户表([甲行, 乙改])]);
+    const { r } = await 导([客户表([甲行, 乙改])]);
+    expect(r).toMatchObject({ 新建: 0, 更新: 0, 失败: 0 });
     expect(await prisma.customer.findUniqueOrThrow({ where: { id: 甲老.id } })).toMatchObject({
       name: "甲（老档）",
-      shortName: "测试甲",
-      assignWay: "自持",
+      shortName: null,
+      assignWay: null,
       addrCity: "我们填的城市",
-      channelId: 渠道甲,
+      channelId: null,
     });
     expect(await prisma.customer.findUniqueOrThrow({ where: { id: 乙老.id } })).toMatchObject({ channelId: null, referrerCustomerId: 推荐人.id });
+    expect(await prisma.customer.count()).toBe(3);
   });
 });
 
@@ -324,23 +326,18 @@ describe("整批撤回 / 恢复带上新列和子表的号", () => {
     expect((await 号们(甲.id)).filter((x) => x.contactId === null)).toEqual([{ contactId: null, kind: "phone", value: "13800000001" }]);
   });
 
-  it("同号连上早有的客户：补的新几格、挂的渠道撤回后改回空；恢复再补上", async () => {
+  it("撞了早有的同号客户、整条跳过的：撤回 / 恢复都不碰老客户（M-导入-29）", async () => {
     const 老 = await prisma.customer.create({ data: { name: "甲（老档）", phone: "13800000001", salesOwnerId: 张伟, followStatus: "跟进中" } });
     const id = await 跑([客户表([甲行])]);
     await 写一批(id, 我);
-    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).toMatchObject({ shortName: "测试甲", channelId: 渠道甲 });
+    const 原样 = { shortName: null, addrCountry: null, addrCity: null, assignWay: null, channelId: null, attributionChannelId: null };
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).toMatchObject(原样);
 
-    expect(await 撤回一批(id, 我)).toMatchObject({ 还原: 1, 留下数: 0 });
-    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).toMatchObject({
-      shortName: null,
-      addrCountry: null,
-      addrCity: null,
-      assignWay: null,
-      channelId: null,
-      attributionChannelId: null,
-    });
+    expect(await 撤回一批(id, 我)).toMatchObject({ 还原: 0, 留下数: 0 });
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).toMatchObject(原样);
 
     await 恢复一批(id, 我);
-    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).toMatchObject({ shortName: "测试甲", assignWay: "自持", channelId: 渠道甲 });
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).toMatchObject(原样);
+    expect(await prisma.customer.count()).toBe(1);
   });
 });

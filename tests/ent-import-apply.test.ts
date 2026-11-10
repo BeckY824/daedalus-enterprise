@@ -1,6 +1,6 @@
 /**
  * 企业版导入 · 正式写入：试跑出 preview 批次 → 写一批。
- * 新建五类、同号连上已有客户只补空、本批同号并入、重跑不重复、三方比对 / 冲突、本地已删、结单日期、负责人退回、分段续写。
+ * 新建五类、撞了已有客户的号整条跳过（M-导入-29）、本批同号并入、重跑不重复、三方比对 / 冲突、本地已删、结单日期、负责人退回、分段续写。
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -335,14 +335,14 @@ describe("企业版客户类型（10-30 暂不确认）", () => {
 });
 
 describe("同号", () => {
-  it("我们这边早有同号客户：连上它，只补空格，负责人和名字不动", async () => {
+  it("我们这边早有同号客户：这一条整条跳过，不连上、不补空，老客户一格不动（M-导入-29）", async () => {
     const 老 = await prisma.customer.create({ data: { name: "云帆（老档）", phone: "13800000001", salesOwnerId: 李娜, followStatus: "跟进中" } });
     const { r } = await 导([客户表()]);
-    expect(r).toMatchObject({ 新建: 1, 更新: 1 });
+    expect(r).toMatchObject({ 新建: 1, 更新: 0, 失败: 0 });
     const c = await prisma.customer.findUniqueOrThrow({ where: { id: 老.id }, include: { extra: true } });
-    expect(c).toMatchObject({ name: "云帆（老档）", salesOwnerId: 李娜, followStatus: "跟进中", remark: "老客户" });
-    expect(c.extra?.level).toBe("A");
-    expect((await 对照("customer", "C1")).targetId).toBe(老.id);
+    expect(c).toMatchObject({ name: "云帆（老档）", salesOwnerId: 李娜, followStatus: "跟进中", remark: null });
+    expect(c.extra?.level ?? null).toBeNull();
+    expect(await prisma.entExternalRef.count({ where: { entity: "customer", externalId: "C1" } })).toBe(0);
     expect(await prisma.customer.count()).toBe(2);
   });
 
