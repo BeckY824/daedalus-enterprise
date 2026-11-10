@@ -10,7 +10,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 离职转给接手人 } from "@/lib/offboard-move";
 import { 规则开着 } from "@/lib/enterprise/rules";
-import { 离职交接中 } from "@/lib/enterprise/handover-db";
+import { 离职交接中, 待确认 } from "@/lib/enterprise/handover-db";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 只读角色, 公海分不给话, type 谁 } from "@/lib/enterprise/permissions";
 
@@ -70,7 +70,29 @@ async function 我管的离职(me: 谁): Promise<string[]> {
 
 const 项目模式 = async () => (await getBusiness()).projectMode === true;
 
-/** 看板的数据：只列名下还有东西（客户、项目、线索、渠道、待办）的人 */
+/** 一句里最多点名这么多位离职成员（每位要拼一段「负责人是他、客户不归他」的条件；再多就分几句） */
+const 一批人 = 200;
+/** 数客户上的项目时，客户不超过这么多位就按 id 点名 */
+const 一批客户 = 400;
+const 分批 = <T,>(们: readonly T[]): T[][] => Array.from({ length: Math.ceil(们.length / 一批人) }, (_, i) => 们.slice(i * 一批人, (i + 1) * 一批人));
+/** 「负责人是他、挂的客户不归他」：每位离职成员一段，拼成一句（原来是每位各查一遍） */
+const 挂在别人客户上 = (ids: readonly string[]) => ids.map((id) => ({ ownerId: id, customer: { salesOwnerId: { not: id } } }));
+const 按人分 = <T,>(们: readonly T[], 谁: (x: T) => string | null): Map<string, T[]> => {
+  const 出 = new Map<string, T[]>();
+  for (const x of 们) {
+    const k = 谁(x);
+    if (k === null) continue;
+    const 有 = 出.get(k);
+    if (有) 有.push(x);
+    else 出.set(k, [x]);
+  }
+  return 出;
+};
+
+/**
+ * 看板的数据：只列名下还有东西（客户、项目、线索、渠道、待办）的人。
+ * 所有离职成员一起查、内存里按人分（代码体检 5.2 N+1 第 3 条）：查库次数不随人数涨（过 一批人 位才多一轮），每位的数和原来逐位查的一样
+ */
 export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
   const ids = await 我管的离职(me);
   if (!ids.length) return [];
@@ -80,40 +102,73 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
     const 上级of = new Map((await prisma.entMember.findMany({ where: { userId: { in: ids } }, select: { userId: true, managerId: true } })).map((m) => [m.userId, m.managerId]));
     const 上级ids = [...new Set([...上级of.values()].filter((x): x is string => !!x))];
     const 上级名 = new Map((await prisma.user.findMany({ where: { id: { in: 上级ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
-    const 结果: 离职待交接[] = [];
     // 同 停用分拣：客户上已停用同事进行中的项目随客户交（P-转-18），项目数算上
-    const 停用 = 带项目 ? await 停用的同事(prisma, []) : [];
-    for (const u of 人们) {
-      const 别的停用 = 停用.filter((x) => x !== u.id);
-      // M-公海-03 起进公海负责人清空：最近一次进公海时负责人是他的，客户不在他名下了，上面的活还是谁领谁带（同 停用分拣）
-      const 放走的 = [...(await 公海客户原负责人是(prisma, [u.id])).keys()];
+    const 停用 = new Set(带项目 ? await 停用的同事(prisma, []) : []);
+    // M-公海-03 起进公海负责人清空：最近一次进公海时负责人是他的，客户不在他名下了，上面的活还是谁领谁带（同 停用分拣）
+    const 放走的of = new Map<string, Set<string>>();
+    for (const [客户id, 人] of await 公海客户原负责人是(prisma, ids)) {
+      const 有 = 放走的of.get(人);
+      if (有) 有.add(客户id);
+      else 放走的of.set(人, new Set([客户id]));
+    }
+    const 没放走 = (x: { ownerId: string; customerId: string }) => !放走的of.get(x.ownerId)?.has(x.customerId);
+    const 客户们of = new Map<string, { id: string; name: string; salesOwnerId: string }[]>();
+    const 客户上的项目of = new Map<string, { ownerId: string; awaitAssignAt: Date | null; result: string | null }[]>();
+    const 项目们of = new Map<string, { id: string; name: string; ownerId: string; customerId: string; customer: { name: string } }[]>();
+    const 数 = { 线索: new Map<string, number>(), 渠道: new Map<string, number>(), 主渠道: new Map<string, number>(), 待办: new Map<string, number>() };
+    const 交接中 = new Set<string>();
+    for (const 批 of 分批(ids)) {
+      const 人 = { in: 批 };
       // 同 停用分拣：在公海里的不算他的（谁领谁接）
-      const 客户们 = await prisma.customer.findMany({
-        where: { salesOwnerId: u.id, pool: { is: null } },
-        select: { id: true, name: true, ...(带项目 ? { _count: { select: { projects: { where: { pooledAt: null, OR: [{ ownerId: u.id }, { awaitAssignAt: { not: null } }, ...(别的停用.length ? [{ ownerId: { in: 别的停用 }, result: null }] : [])] } } } } } : {}) },
-        orderBy: { name: "asc" },
-      });
-      const 项目们 = 带项目
+      const 他的客户 = { salesOwnerId: 人, pool: { is: null } };
+      const [客户们, 项目们, 线索, 渠道, 主渠道, 待办们, 交接们] = await Promise.all([
+        prisma.customer.findMany({ where: 他的客户, select: { id: true, name: true, salesOwnerId: true }, orderBy: { name: "asc" } }),
+        带项目
+          ? prisma.project.findMany({
+              where: { ownerId: 人, pooledAt: null, result: null, OR: 挂在别人客户上(批) },
+              select: { id: true, name: true, ownerId: true, customerId: true, customer: { select: { name: true } } },
+              orderBy: { name: "asc" },
+            })
+          : [],
+        prisma.lead.groupBy({ by: ["ownerId"], where: { ownerId: 人 }, _count: { _all: true } }),
+        prisma.channel.groupBy({ by: ["channelOwnerId"], where: { channelOwnerId: 人 }, _count: { _all: true } }),
+        prisma.entChannelMain.groupBy({ by: ["ownerId"], where: { ownerId: 人 }, _count: { _all: true } }),
+        // 同 停用分拣：他名下客户上的待办跟着客户走（在公海里的谁领谁带），这里数挂在别人客户上的
+        prisma.task.findMany({ where: { ownerId: 人, done: false, OR: 挂在别人客户上(批) }, select: { ownerId: true, customerId: true } }),
+        prisma.entHandover.findMany({ where: { kind: "离职", fromUserId: 人, status: 待确认 }, select: { fromUserId: true } }),
+      ]);
+      // 每位客户的项目数：取这些客户上没进公海的项目，下面按「他自己的、待分配的、别的停用同事进行中的」数。
+      // 客户不多就点名（走客户 id 的索引），多了按「他的客户」框，不拼过长的名单
+      const 客户上的项目 = 带项目 && 客户们.length
         ? await prisma.project.findMany({
-            where: { ownerId: u.id, pooledAt: null, result: null, customer: { salesOwnerId: { not: u.id } }, customerId: { notIn: 放走的 } },
-            select: { id: true, name: true, customer: { select: { name: true } } },
-            orderBy: { name: "asc" },
+            where: { pooledAt: null, ...(客户们.length <= 一批客户 ? { customerId: { in: 客户们.map((c) => c.id) } } : { customer: 他的客户 }) },
+            select: { customerId: true, ownerId: true, awaitAssignAt: true, result: true },
           })
         : [];
-      const [线索, 渠道, 主渠道, 待办] = await Promise.all([
-        prisma.lead.count({ where: { ownerId: u.id } }),
-        prisma.channel.count({ where: { channelOwnerId: u.id } }),
-        prisma.entChannelMain.count({ where: { ownerId: u.id } }),
-        // 同 停用分拣：他名下客户上的待办跟着客户走（在公海里的谁领谁带），这里数挂在别人客户上的
-        prisma.task.count({ where: { ownerId: u.id, done: false, customer: { salesOwnerId: { not: u.id } }, customerId: { notIn: 放走的 } } }),
-      ]);
+      for (const [k, v] of 按人分(客户们, (c) => c.salesOwnerId)) 客户们of.set(k, v);
+      for (const [k, v] of 按人分(客户上的项目, (p) => p.customerId)) 客户上的项目of.set(k, v);
+      for (const [k, v] of 按人分(项目们.filter(没放走), (p) => p.ownerId)) 项目们of.set(k, v);
+      for (const g of 线索) if (g.ownerId) 数.线索.set(g.ownerId, g._count._all);
+      for (const g of 渠道) if (g.channelOwnerId) 数.渠道.set(g.channelOwnerId, g._count._all);
+      for (const g of 主渠道) if (g.ownerId) 数.主渠道.set(g.ownerId, g._count._all);
+      for (const [k, v] of 按人分(待办们.filter(没放走), (t) => t.ownerId)) 数.待办.set(k, v.length);
+      for (const h of 交接们) 交接中.add(h.fromUserId);
+    }
+    const 结果: 离职待交接[] = [];
+    for (const u of 人们) {
+      const 客户们 = 客户们of.get(u.id) ?? [];
+      const 项目们 = 项目们of.get(u.id) ?? [];
+      const [线索, 渠道, 主渠道, 待办] = [数.线索.get(u.id) ?? 0, 数.渠道.get(u.id) ?? 0, 数.主渠道.get(u.id) ?? 0, 数.待办.get(u.id) ?? 0];
       if (!客户们.length && !项目们.length && !线索 && !渠道 && !主渠道 && !待办) continue;
+      // 他自己的、待分配的、别的已停用同事进行中的
+      const 算项目 = (p: { ownerId: string; awaitAssignAt: Date | null; result: string | null }) =>
+        p.ownerId === u.id || p.awaitAssignAt !== null || (停用.has(p.ownerId) && p.result === null);
       结果.push({
         id: u.id,
         name: u.name,
         上级: 上级of.get(u.id) ? 上级名.get(上级of.get(u.id)!) ?? null : null,
-        交接中: !!(await 离职交接中(u.id)),
-        客户: 客户们.map((c) => ({ id: c.id, name: c.name, 项目数: "_count" in c ? (c._count as { projects: number }).projects : 0 })),
+        交接中: 交接中.has(u.id),
+        客户: 客户们.map((c) => ({ id: c.id, name: c.name, 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length })),
         项目: 项目们.map((p) => ({ id: p.id, name: p.name, 客户: p.customer.name })),
         其余: { 线索, 渠道, 主渠道, 待办 },
       });
@@ -122,22 +177,32 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
   });
 }
 
-/** 页头入口上的数：我能处理、名下还有东西的离职成员几位 */
+/**
+ * 页头入口上的数：我能处理、名下还有东西的离职成员几位。
+ * 客户页每次加载都调：原来每位离职成员最多 5 条 count，现在每样东西一句 groupBy（代码体检 5.2 N+1 第 1 条），查库次数不随人数涨
+ */
 export async function 待交接人数(me: 谁): Promise<number> {
   const ids = await 我管的离职(me);
   if (!ids.length) return 0;
   const 带项目 = await 项目模式();
   return 看全部(async () => {
-    let n = 0;
-    for (const id of ids) {
-      const 有 = (await prisma.customer.count({ where: { salesOwnerId: id, pool: { is: null } } }))
-        || (带项目 && (await prisma.project.count({ where: { ownerId: id, pooledAt: null, result: null, customer: { salesOwnerId: { not: id } } } })))
-        || (await prisma.lead.count({ where: { ownerId: id } }))
-        || (await prisma.channel.count({ where: { channelOwnerId: id } }))
-        || (await prisma.entChannelMain.count({ where: { ownerId: id } }));
-      if (有) n++;
+    const 有 = new Set<string>();
+    for (const 批 of 分批(ids)) {
+      const 人 = { in: 批 };
+      const [客户, 项目, 线索, 渠道, 主渠道] = await Promise.all([
+        prisma.customer.groupBy({ by: ["salesOwnerId"], where: { salesOwnerId: 人, pool: { is: null } } }),
+        带项目 ? prisma.project.groupBy({ by: ["ownerId"], where: { ownerId: 人, pooledAt: null, result: null, OR: 挂在别人客户上(批) } }) : [],
+        prisma.lead.groupBy({ by: ["ownerId"], where: { ownerId: 人 } }),
+        prisma.channel.groupBy({ by: ["channelOwnerId"], where: { channelOwnerId: 人 } }),
+        prisma.entChannelMain.groupBy({ by: ["ownerId"], where: { ownerId: 人 } }),
+      ]);
+      for (const g of 客户) 有.add(g.salesOwnerId);
+      for (const g of 项目) 有.add(g.ownerId);
+      for (const g of 线索) if (g.ownerId) 有.add(g.ownerId);
+      for (const g of 渠道) if (g.channelOwnerId) 有.add(g.channelOwnerId);
+      for (const g of 主渠道) if (g.ownerId) 有.add(g.ownerId);
     }
-    return n;
+    return 有.size;
   });
 }
 
