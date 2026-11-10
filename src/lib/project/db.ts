@@ -744,7 +744,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     const 现在 = new Date();
     // 企业版进公海清空负责人（pool-owner.ts），原负责人记在这行 pool-release 的 from 上
     await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
-    await 进公海清组员(tx, [p.id]);
+    await 进公海清组员(tx, [p.id], me.id);
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
@@ -944,7 +944,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       if (企业版() && (await 交接中的客户([p.customerId], tx)).size) return false;
       if (await 验证中不能改派(tx, p.id)) return false; // 查完到写之间刚提交了验证（X-78）
       await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 今, nextStepAt: null, nextStepText: null } });
-      await 进公海清组员(tx, [p.id]);
+      await 进公海清组员(tx, [p.id], 系统.id);
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
       await 单项目客户跟进公海(tx, p, null, 今);

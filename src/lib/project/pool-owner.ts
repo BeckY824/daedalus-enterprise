@@ -26,15 +26,56 @@ export function 进公海后负责人(原: string): string {
   return 进公海清负责人() ? 公海无负责人 : 原;
 }
 
+/** 进公海清组员时记下的组员快照：操作日志 AuditLog 一个项目一行，action 是这个，detail 是组员数组 */
+export const 清组员快照 = "pool-members";
+type 组员快照 = { userId: string; roleId: string | null; inviteStatus: string; invitedById: string | null };
+
 /**
  * 项目进线索公海时清掉组员（X-72、P-组员-01，企业版）：进组的、等回邀请的、拒绝过的都删。放回、超时回收、
- * 客户整体进公海连带、离职放进公海四处同一笔事务里调。领走后新负责人自己再拉组；系统管理员能改公海项目的组员（db.ts 能改组员）
+ * 客户整体进公海连带、离职放进公海四处同一笔事务里调。领走后新负责人自己再拉组；系统管理员能改公海项目的组员（db.ts 能改组员）。
+ * 清之前把组员记进操作日志（一个项目一行，清组员快照），撤销放进公海时按它还原（撤回清掉的组员）
  */
-export async function 进公海清组员(tx: Pick<Prisma.TransactionClient, "projectMember">, projectIds: string[]): Promise<void> {
+export async function 进公海清组员(tx: Pick<Prisma.TransactionClient, "projectMember" | "auditLog" | "user">, projectIds: string[], 操作人: string): Promise<void> {
   if (!企业版() || !projectIds.length) return;
   for (let i = 0; i < projectIds.length; i += 一批id数) {
-    await 看全部(() => tx.projectMember.deleteMany({ where: { projectId: { in: projectIds.slice(i, i + 一批id数) } } }));
+    const 这批 = projectIds.slice(i, i + 一批id数);
+    const 们 = await 看全部(() => tx.projectMember.findMany({ where: { projectId: { in: 这批 } }, select: { projectId: true, userId: true, roleId: true, inviteStatus: true, invitedById: true } }));
+    if (!们.length) continue;
+    const 按项目 = new Map<string, 组员快照[]>();
+    for (const m of 们) {
+      const { projectId, ...快照 } = m;
+      按项目.set(projectId, [...(按项目.get(projectId) ?? []), 快照]);
+    }
+    const 名 = (await tx.user.findUnique({ where: { id: 操作人 }, select: { name: true } }))?.name ?? "系统";
+    await tx.auditLog.createMany({ data: [...按项目].map(([projectId, 组员]) => ({
+      userId: 操作人, userName: 名, action: 清组员快照, entity: "Project", entityId: projectId,
+      summary: `项目进公海，清掉 ${组员.length} 位组员`, detail: JSON.stringify(组员),
+    })) });
+    await 看全部(() => tx.projectMember.deleteMany({ where: { projectId: { in: 这批 } } }));
   }
+}
+
+/**
+ * 撤销放进公海时把那次清掉的组员还回去（X-72）：认 不早于 那次 pool-release 的最近一条清组员快照；
+ * 已停用的、还回去的负责人自己不再进组；快照读不出来就不还。调用方在事务里、看全部 里调
+ */
+export async function 还原清掉的组员(tx: Pick<Prisma.TransactionClient, "projectMember" | "auditLog" | "user">, projectId: string, 放回时间: Date, 负责人: string): Promise<number> {
+  if (!企业版()) return 0;
+  const 快照行 = await tx.auditLog.findFirst({ where: { entity: "Project", entityId: projectId, action: 清组员快照, at: { gte: 放回时间 } }, orderBy: { at: "desc" }, select: { detail: true } });
+  if (!快照行?.detail) return 0;
+  let 组员: 组员快照[];
+  try {
+    const x = JSON.parse(快照行.detail) as unknown;
+    组员 = Array.isArray(x) ? x.filter((m): m is 组员快照 => !!m && typeof m === "object" && typeof (m as 组员快照).userId === "string") : [];
+  } catch {
+    return 0;
+  }
+  const 在职 = new Set((await tx.user.findMany({ where: { id: { in: 组员.map((m) => m.userId) }, active: true }, select: { id: true } })).map((u) => u.id));
+  const 已在 = new Set((await tx.projectMember.findMany({ where: { projectId }, select: { userId: true } })).map((m) => m.userId));
+  const 还 = 组员.filter((m) => 在职.has(m.userId) && m.userId !== 负责人 && !已在.has(m.userId));
+  if (!还.length) return 0;
+  await tx.projectMember.createMany({ data: 还.map((m) => ({ projectId, userId: m.userId, roleId: m.roleId ?? null, inviteStatus: m.inviteStatus || "JOINED", invitedById: m.invitedById ?? null })) });
+  return 还.length;
 }
 
 /** 企业版、且规则不让历史负责人看公海里的这个项目 */

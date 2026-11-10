@@ -26,7 +26,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 读项目列表 } from "@/lib/project/list";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 公海规则, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
-import { 历史负责人, 我回避的公海项目, 原负责人挡着, 公海无负责人 } from "@/lib/project/pool-owner";
+import { 历史负责人, 我回避的公海项目, 原负责人挡着, 公海无负责人, 清组员快照 } from "@/lib/project/pool-owner";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
 
 type 人 = { id: string; name: string; role: string };
@@ -167,6 +167,60 @@ describe("进公海清组员；系统管理员能改公海项目的组员（X-72
     const p = await 项目(乙.id, c);
     await prisma.projectMember.create({ data: { projectId: p, userId: 丙.id, inviteStatus: "JOINED" } });
     await prisma.$transaction((tx) => 客户名下在推项目进公海(tx, [{ id: c, salesOwnerId: 乙.id }], 老板.id, null, new Date()));
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await prisma.projectMember.count({ where: { projectId: p } })).toBe(0);
+  });
+
+  it("撤销放进公海：项目还给原负责人，进公海时清掉的组员按快照还回去（角色、邀请状态照旧）；停用了的不还", async () => {
+    await setSetting("business", { projectMode: true, poolDays: 30 });
+    invalidateSettingsCache();
+    const { 放进公海, 撤销公海 } = await import("@/app/(app)/customers/pool-actions");
+    const 丁 = await 造人("ding", "丁", "SALES");
+    const 角色 = await prisma.projectRole.create({ data: { name: "技术支持" } });
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await prisma.projectMember.createMany({ data: [
+      { projectId: p, userId: 丙.id, roleId: 角色.id, inviteStatus: "JOINED", invitedById: 乙.id },
+      { projectId: p, userId: 经理.id, inviteStatus: "INVITED", invitedById: 乙.id },
+      { projectId: p, userId: 丁.id, inviteStatus: "JOINED" },
+    ] });
+    当(乙);
+    const r = await 以谁的身份(乙.id, () => 放进公海([c], "客户主动终止"));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.公海项目).toEqual([p]);
+    expect(await prisma.projectMember.count({ where: { projectId: p } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { entity: "Project", entityId: p, action: 清组员快照 } })).toBe(1);
+    await prisma.user.update({ where: { id: 丁.id }, data: { active: false } });
+    await 以谁的身份(乙.id, () => 撤销公海("放进", [{ id: c, 值: 公海无负责人 }], undefined, undefined, r.公海项目));
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: p } })).toMatchObject({ ownerId: 乙.id, pooledAt: null });
+    const 回来 = await prisma.projectMember.findMany({ where: { projectId: p }, select: { userId: true, roleId: true, inviteStatus: true, invitedById: true }, orderBy: { userId: "asc" } });
+    expect(回来).toEqual([
+      { userId: 丙.id, roleId: 角色.id, inviteStatus: "JOINED", invitedById: 乙.id },
+      { userId: 经理.id, roleId: null, inviteStatus: "INVITED", invitedById: 乙.id },
+    ].sort((a, b) => a.userId.localeCompare(b.userId)));
+  });
+
+  it("超时回收进公海也清组员（快照记在系统名下）", async () => {
+    const { 公海超时收回 } = await import("@/lib/project/db");
+    const { 默认组织规则 } = await import("@/lib/project/org-rules");
+    const { 系统 } = await import("@/lib/project/timeout");
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
+    invalidateSettingsCache();
+    const 今 = new Date();
+    const p = (await prisma.project.create({ data: { name: "超时项目", customerId: await 客户(老板.id), ownerId: 乙.id, creatorId: 乙.id, createdAt: new Date(今.getTime() - 10 * 86400000) } })).id;
+    await prisma.projectMember.create({ data: { projectId: p, userId: 丙.id, inviteStatus: "JOINED" } });
+    expect(await 以谁的身份(乙.id, () => 公海超时收回(乙, 今))).toBe(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await prisma.projectMember.count({ where: { projectId: p } })).toBe(0);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { entityId: p, action: 清组员快照 } })).toMatchObject({ userId: 系统.id, userName: "系统" });
+  });
+
+  it("离职放进公海也清组员", async () => {
+    const { 离职放进公海 } = await import("@/lib/offboard-move");
+    const { 停用分拣 } = await import("@/lib/offboard-db");
+    const p = await 项目(乙.id, await 客户(老板.id));
+    await prisma.projectMember.create({ data: { projectId: p, userId: 丙.id, inviteStatus: "JOINED" } });
+    await 以谁的身份(老板.id, () => prisma.$transaction(async (tx) => 离职放进公海(tx, await 停用分拣(tx, 乙.id, "公海", true), 老板.id)));
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
     expect(await prisma.projectMember.count({ where: { projectId: p } })).toBe(0);
   });

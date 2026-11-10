@@ -72,7 +72,7 @@ export async function 离职放进公海(tx: Prisma.TransactionClient, 分: 停�
     // 他没做完的待办不在这里关：离职交接里待办归接手人（停用分拣 待办）
     await tx.project.updateMany({ where: { id: { in: 分.进公海项目 } }, data: { pooledAt: new Date(), nextStepAt: null, nextStepText: null, awaitAssignAt: null, ...(进公海清负责人() ? 换负责人(公海无负责人) : {}) } });
     await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, p.ownerId, null, "pool-release", 停用项目进公海理由)) });
-    await 进公海清组员(tx, 分.进公海项目);
+    await 进公海清组员(tx, 分.进公海项目, 操作人);
   }
 }
 
