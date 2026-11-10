@@ -285,7 +285,7 @@ html.glass .auth-fine { color: var(--ink-soft); }
 /* 窄窗口（Windows 上有人把窗口拉到很小）：只留表单那一半 */
 /* 窄屏左栏收起，表单上方补一枚小标（网页版会在手机上打开；桌面端窗口不会这么窄） */
 .auth-mobile-mark { display: none; }
-@media (max-width: 760px) { .auth { grid-template-columns: 1fr; } .auth-side { display: none; } .auth-mobile-mark { display: block; margin-bottom: var(--s2); } }
+@media (max-width: 767px) { .auth { grid-template-columns: 1fr; } .auth-side { display: none; } .auth-mobile-mark { display: block; margin-bottom: var(--s2); } }
 /* 企业版登录（U-登录-01，10-31）：没有左栏，页面正中一张卡；标和产品名居中，产品名再长也折行不撑出去 */
 .auth-solo { grid-template-columns: minmax(0, 1fr); }
 .auth-solo .auth-main { background: var(--page-bg); padding: var(--s6) var(--s4); }
@@ -1039,7 +1039,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   white-space: nowrap;
 }
 
-@media (max-width: 992px) {
+@media (max-width: 767px) {
 
   .page-head h1 {
     font-size: var(--fs-title);
@@ -1910,10 +1910,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .rkpi-k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
 .rkpi-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-title); font-weight: 600; line-height: max(28px, 1.25em); color: var(--ink); font-variant-numeric: tabular-nums; }
 .rkpi-v-hot { color: var(--danger-text); }
-@media (max-width: 1180px) { .rkpi { grid-template-columns: repeat(3, minmax(0, 1fr)); } .rkpi-i:nth-child(3n + 1) { border-left: 0; } .rkpi-i:nth-child(n + 4) { border-top: 1px solid var(--line-soft); } }
-@media (max-width: 560px) { .rkpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rkpi-i { border-left: 1px solid var(--line-soft); border-top: 0; } .rkpi-i:nth-child(odd) { border-left: 0; } .rkpi-i:nth-child(n + 3) { border-top: 1px solid var(--line-soft); } }
+@media (max-width: 1199px) { .rkpi { grid-template-columns: repeat(3, minmax(0, 1fr)); } .rkpi-i:nth-child(3n + 1) { border-left: 0; } .rkpi-i:nth-child(n + 4) { border-top: 1px solid var(--line-soft); } }
+@media (max-width: 767px) { .rkpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rkpi-i { border-left: 1px solid var(--line-soft); border-top: 0; } .rkpi-i:nth-child(odd) { border-left: 0; } .rkpi-i:nth-child(n + 3) { border-top: 1px solid var(--line-soft); } }
 .rkpi-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); margin-top: var(--s4); }
-@media (max-width: 900px) { .rkpi-pair { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 767px) { .rkpi-pair { grid-template-columns: minmax(0, 1fr); } }
 .rkpi-pair > .btodo-list { container-type: inline-size; }
 /* 客户分布（11-03）：按国家那块是世界地图 + 榜单，要整宽；按业务线跟在下面。区块够宽时榜单在地图右边，不够宽落到地图下面 */
 .rkpi-pair.is-stacked { grid-template-columns: minmax(0, 1fr); }
@@ -2438,9 +2438,9 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   /* 渠道页两层后多一个「主渠道」下拉，搜索框再收一点留余量（选了长主渠道名也不折行） */
   .chan-list .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 140px !important; }
 }
-/* 「更多筛选」1280 以下只留图标和数字：加了这颗按钮，默认状态也不能比原来多占一行（1024 宽筛选行要一行）。
+/* 「更多筛选」1440 以下只留图标和数字：加了这颗按钮，默认状态也不能比原来多占一行（1024 宽筛选行要一行）。
    公海多一排分段，到 1440 才放得下全尺寸；这段宽度把两个下拉和搜索也收一点 */
-@media (min-width: 768px) and (max-width: 1279px) { .cf-more-t { display: none; } }
+@media (min-width: 768px) and (max-width: 1439px) { .cf-more-t { display: none; } }
 @media (min-width: 768px) and (max-width: 1439px) {
   .pool-filters .cf-more-t { display: none; }
   .pool-filters > .ant-select { width: 120px !important; }
@@ -2609,7 +2609,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .start-step-t { color: var(--ink); font-size: var(--fs-body); }
 .start-a { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s5); }
 .start-note { margin: var(--s3) 0 0; color: var(--text-muted); font-size: var(--fs-min); }
-@media (max-width: 900px) { .start-steps { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .start-steps { grid-template-columns: 1fr; } }
 
 /* ---------- 跟进计划：按时间分三组 ----------
    原来是左右两张卡：左边「待办任务」、右边「跟进计划」。可早上打开这一页想知道的
@@ -2803,7 +2803,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
    表格是数据，宽度该由列决定 */
 .set-col { max-width: 680px; }
 .set-body { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s4); }
-@media (max-width: 1023px) {
+@media (max-width: 767px) {
   /* 窄屏下目录压到正文上面，**仍然是单列**——横过来会变成一排挤不下的页签 */
   .set { grid-template-columns: minmax(0, 1fr); }
   .set-nav { position: static; }
@@ -2855,7 +2855,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .legal-body li { margin: 2px 0; }
 .legal-body a { color: var(--brand); }
 /* 窄屏：目录压到正文上面，横着排成一行 */
-@media (max-width: 899px) {
+@media (max-width: 767px) {
   .legal-cols { grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
   .legal-toc { position: static; flex-direction: row; flex-wrap: wrap; }
 }

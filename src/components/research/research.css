@@ -316,7 +316,7 @@
 .cli-narrow .rs-musts-3 .rs-must-l, .rec-ai .rs-musts-3 .rs-must-l { font-size: var(--fs-min); font-weight: 600; }
 .cli-narrow .rs-must-do:not(:empty)::before, .rec-ai .rs-must-do:not(:empty)::before { content: "应对："; color: var(--text-muted); }
 .cli-narrow .rs-verified li, .rec-ai .rs-verified li { grid-template-columns: 8px 64px minmax(0, 1fr); }
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .rs-musts-3 .rs-must { grid-template-columns: minmax(0, 1fr); gap: 0; padding-bottom: 4px; border-bottom: 1px solid var(--line-soft); }
   .rs-must-head { display: none; }
   .rs-musts-3 .rs-must-l { font-size: var(--fs-min); font-weight: 600; }
