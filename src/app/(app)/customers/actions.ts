@@ -1818,6 +1818,9 @@ export async function deleteContract(
 
 /* ---------- 记录页的行内编辑 ---------- */
 
+/** 单格改负责人：检查的这会儿负责人被别人改走了（代码体检 C2） */
+const 负责人刚被改过 = "负责人刚被别人改过，这次没有改，刷新后再看";
+
 /**
  * 记录页里能直接点着改的字段。姓名、推荐关系（要重算归属）仍走完整表单。
  * 电话、客户地址 11-04 起也能直接改（用户：改成直接可编辑，不用再点按钮）：电话照完整表单那套查重（见下面 phone 那段），
@@ -1838,6 +1841,9 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   if (!PATCHABLE.includes(key) || (企业版才有的格.includes(key) && !企业版())) return { ok: false, error: "这个字段不能在这里改" };
   // 团队互看：同事的客户读得到、改不了（lib/team-scope.ts），外贸档案那几格也一样
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
+  // 改负责人：进来先记下这一刻的负责人，下面各道检查都按它判，最后按「还是这位」条件写（代码体检 C2，仿 X-89）。
+  // 读不到（删了、看不到）不在这里回，留给下面各道检查说各自的原因
+  const 进来时负责人 = key === "salesOwnerId" ? (await prisma.customer.findUnique({ where: { id }, select: { salesOwnerId: true } }))?.salesOwnerId : undefined;
   // 企业版：换负责人走转让那条规矩（只转自己的；管理、总管理随便转），公海里的走领取 / 分配；别的格只有负责人能改
   const 归属挡 = key === "salesOwnerId" ? await 转让挡(me, [id]) ?? await 公海挡([id]) : await 改客户挡(me, id);
   if (归属挡) return { ok: false, error: 归属挡 };
@@ -1982,7 +1988,21 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
 
   const before = await prisma.customer.findUnique({ where: { id }, select: { name: true, expectedSignOn: true, [key]: true } as never });
   if (!before) return { ok: false, error: `这条${b.customer}已被删除` };
-  await prisma.customer.update({ where: { id }, data });
+  if (key === "salesOwnerId" && 进来时负责人 !== undefined) {
+    /*
+      两个人同时把同一位改给不同的人：原来无条件写，后到的盖先到的，两位接手人都收到「分给你」。
+      按「负责人还是进来时那位」条件写；0 行 = 检查的这会儿被别人改走了：不写、不留痕、不带走活、不通知
+    */
+    if ((before as { salesOwnerId?: string }).salesOwnerId !== 进来时负责人) return { ok: false, error: 负责人刚被改过 };
+    const 改 = await prisma.customer.updateMany({ where: { id, salesOwnerId: 进来时负责人 }, data });
+    if (!改.count) {
+      const 现 = await 看全部(() => prisma.customer.findUnique({ where: { id }, select: { salesOwnerId: true } }));
+      if (!现) return { ok: false, error: `这条${b.customer}已被删除` };
+      if (现.salesOwnerId !== 进来时负责人) return { ok: false, error: 负责人刚被改过 };
+      // 负责人没变却改不到：限定层挡的（只读的客户），原来单条 update 在这里抛，照旧说只读
+      return { ok: false, error: await 只读话(defaultClient) };
+    }
+  } else await prisma.customer.update({ where: { id }, data });
   const labels = customerFieldLabels(b);
   await recordAudit({
     user: me, action: "update", entity: "Customer", entityId: id,
