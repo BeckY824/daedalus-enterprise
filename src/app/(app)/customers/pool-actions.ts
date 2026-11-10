@@ -28,7 +28,7 @@ import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
-import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
+import { 公海分配通知, 客户放回公海通知, 客户撤销放回通知 } from "@/lib/enterprise/notice-sources";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 能进公海的阶段, 超上限n } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -185,6 +185,8 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   // 进公海关掉的挂靠申请：事务提交了再通知申请人（P-挂靠-01 / 02）
   if (企业版()) await 进公海挂靠通知(能放.map((c) => c.id));
   await 记退回(能放.map((c) => c.id), 1);
+  // P-公海-03：别人放的，告诉原负责人一声（自己放自己的不发）
+  await 客户放回公海通知(me, 能放, 选.值, 公海项目);
   await recordAudit({
     user: me, action: "pool", entity: "Customer", entityId: 能放.length === 1 ? 能放[0].id : null,
     summary: `把 ${能放.length} 名${b.customer}放进公海`,
@@ -446,6 +448,8 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     if (r.count) {
       忘掉企业版范围();
       await 记退回(撤, -1);
+      // 前面那条「放回了公海」已经发给原负责人了：告诉他客户回来了
+      await 客户撤销放回通知(me, 撤);
       await recordAudit({
         user: me, action: "pool", entity: "Customer", entityId: 撤.length === 1 ? 撤[0] : null,
         summary: `撤销了刚才的放进公海：${r.count} 位客户回到原负责人名下`,

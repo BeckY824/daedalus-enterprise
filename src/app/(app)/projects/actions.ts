@@ -30,7 +30,7 @@ import { 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/enterprise/touchpoint";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知 } from "@/lib/enterprise/notice-sources";
+import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走, 是占位值 } from "@/lib/project/required";
@@ -282,6 +282,8 @@ export async function 放回项目公海(projectId: string, 原因?: string | nu
       const 选了 = 企业版() && typeof 原因 === "string" && 原因.trim() ? 原因.trim() : null;
       await recordAudit({ user: me, action: "update", entity: "Project", entityId: projectId, summary: `把项目「${p?.name ?? ""}」放回线索公海${选了 ? `（${选了}）` : ""}`, ...(选了 ? { detail: { 回收原因: 选了 } } : {}) });
       刷新项目(projectId, p?.customerId);
+      // P-公海-03：别人放的，告诉原负责人一声（自己放自己的不发）
+      await 项目放回公海通知(me, projectId, 选了);
       // 客户同一笔跟着进了客户公海（pool-link.ts 单项目客户跟进公海，两边同一个时刻）：告诉页面，提示条说清（11-03 B4-2）
       const 进的 = p?.customer.pool?.at;
       if (进的 && p?.pooledAt && 进的.getTime() === p.pooledAt.getTime()) return { ...r, 客户跟着: true as const };

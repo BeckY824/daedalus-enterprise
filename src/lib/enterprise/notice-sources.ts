@@ -463,6 +463,96 @@ export async function 项目被删通知(me: 人, ownerId: string, 项目名: st
   });
 }
 
+/* ───────────────────────── 放回公海（P-公海-03） ───────────────────────── */
+
+/** 原负责人里收得到的：在职、不是操作人自己、不是公海占位账号 */
+async function 在职的原负责人(me: 人, ids: readonly string[]): Promise<Set<string>> {
+  const 们 = [...new Set(ids)].filter((id) => !!id && id !== me.id);
+  if (!们.length) return new Set();
+  const 行 = await 看全部(() => prisma.user.findMany({ where: { id: { in: 们 }, active: true, email: { not: 无负责人占位邮箱 } }, select: { id: true } }));
+  return new Set(行.map((u) => u.id));
+}
+
+const 放回原因 = (原因?: string | null) => (typeof 原因 === "string" && 原因.trim() ? `原因：${原因.trim()}` : null);
+
+/**
+ * P-公海-03：别人（上级、销售管理、总管理）把我的客户放回公海，告诉原负责人一声；自己放回自己的不发。
+ * 只发给原负责人本人，按人各发一条、只列他自己的客户（公海里不露原负责人，P-公海-04）。
+ * 放回后原负责人看不到这位客户（回避），所以不给链接。公海项目 = 跟着进线索公海的项目 id（客户原负责人自己负责的）
+ */
+export async function 客户放回公海通知(me: 人, 客户们: readonly { id: string; name: string; salesOwnerId: string }[], 原因?: string | null, 公海项目: readonly string[] = []): Promise<void> {
+  await 稳("客户放回公海通知", async () => {
+    const 收 = await 在职的原负责人(me, 客户们.map((c) => c.salesOwnerId));
+    if (!收.size) return;
+    const 项目行 = 公海项目.length ? await 看全部(() => prisma.project.findMany({ where: { id: { in: [...公海项目] } }, select: { customerId: true } })) : [];
+    for (const 原 of 收) {
+      const 我的 = 客户们.filter((c) => c.salesOwnerId === 原);
+      const ids = new Set(我的.map((c) => c.id));
+      const 项目数 = 项目行.filter((p) => ids.has(p.customerId)).length;
+      const 单条 = 我的.length === 1;
+      const 正文 = [
+        单条 ? "" : `客户：${名单(我的.map((c) => c.name))}`,
+        放回原因(原因),
+        项目数 ? `你在${单条 ? "这位客户" : "这些客户"}上负责的 ${项目数} 个项目一起进了线索公海` : null,
+        `放回后你看不到${单条 ? "这位客户" : "这些客户"}，也不能自己领回`,
+      ].reduce<string>((a, b) => 接一句(a, b ? `${b}。` : null), "");
+      await notify([原], {
+        kind: "回收",
+        title: 单条 ? `${me.name} 把你名下的客户放回了公海：${我的[0].name}` : `${me.name} 把你名下的 ${我的.length} 位客户放回了公海`,
+        body: 正文,
+        link: null,
+        key: `pool-return:customer:${[...ids].sort().join(",").slice(0, 400)}:${原}:${分钟()}`,
+      });
+    }
+  });
+}
+
+/** 撤销了刚才的放进公海：前面那条「放回了公海」已经发出去了，再告诉原负责人客户回到他名下。现 = 撤销后的客户（负责人已还回去） */
+export async function 客户撤销放回通知(me: 人, 客户ids: readonly string[]): Promise<void> {
+  await 稳("客户撤销放回通知", async () => {
+    if (!客户ids.length) return;
+    const 现 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: [...客户ids] }, pool: { is: null } }, select: { id: true, name: true, salesOwnerId: true } }));
+    const 收 = await 在职的原负责人(me, 现.map((c) => c.salesOwnerId));
+    for (const 原 of 收) {
+      const 我的 = 现.filter((c) => c.salesOwnerId === 原);
+      const 单条 = 我的.length === 1;
+      await notify([原], {
+        kind: "回收",
+        title: 单条 ? `${me.name} 撤销了刚才的放回公海，客户回到你名下：${我的[0].name}` : `${me.name} 撤销了刚才的放回公海，${我的.length} 位客户回到你名下`,
+        body: 单条 ? "" : `客户：${名单(我的.map((c) => c.name))}`,
+        link: 单条 ? `/customers/${我的[0].id}` : "/customers",
+        key: `pool-return-undo:${我的.map((c) => c.id).sort().join(",").slice(0, 400)}:${原}:${分钟()}`,
+      });
+    }
+  });
+}
+
+/**
+ * P-公海-03：别人把我的项目放回线索公海，告诉原负责人一声；自己放回自己的不发。
+ * 原负责人认刚记的那行 pool-release（进公海后项目上的负责人已清空）：最近一条、操作人是我的才算。
+ * 放回后他打不开这个项目（回避）：客户还归他就链客户详情，不然不给链接
+ */
+export async function 项目放回公海通知(me: 人, projectId: string, 原因?: string | null): Promise<void> {
+  await 稳("项目放回公海通知", async () => {
+    const 痕 = await 看全部(() => prisma.projectNodeLog.findFirst({
+      where: { projectId, kind: "pool-release" }, orderBy: [{ at: "desc" }, { id: "desc" }], select: { userId: true, fromOwnerId: true },
+    }));
+    if (!痕?.fromOwnerId || 痕.userId !== me.id) return;
+    const 原 = 痕.fromOwnerId;
+    if (!(await 在职的原负责人(me, [原])).has(原)) return;
+    const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, customer: { select: { name: true, salesOwnerId: true, pool: { select: { customerId: true } } } } } }));
+    if (!p) return;
+    const 客户还归他 = p.customer.salesOwnerId === 原 && !p.customer.pool;
+    await notify([原], {
+      kind: "回收",
+      title: `${me.name} 把你名下的项目放回了线索公海：${p.name}`,
+      body: [`客户：${p.customer.name}`, 放回原因(原因), "放回后你看不到这个项目，也不能自己领回"].reduce<string>((a, b) => 接一句(a, b ? `${b}。` : null), ""),
+      link: 客户还归他 ? `/customers/${p.customerId}` : null,
+      key: `pool-return:project:${projectId}:${原}:${分钟()}`,
+    });
+  });
+}
+
 /** 直接改负责人（转给自己、规则关着）当场就换了：告诉原负责人一声（11-03 C3-3）。不发给操作人自己；新负责人走上面的 分给你通知 */
 export async function 改负责人通知(me: 人, 换了: readonly { customerId: string; 旧: string }[], 新: string): Promise<void> {
   await 稳("改负责人通知", async () => {
