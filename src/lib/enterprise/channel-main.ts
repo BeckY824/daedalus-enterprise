@@ -144,7 +144,9 @@ export async function 落到渠道(
   const 用 = (c: { id: string; active: boolean }) => (c.active ? { ok: true as const, id: c.id } : { ok: false as const, error: "这个渠道不存在或已停用，换一个" });
   const 有 = await 读();
   if (有) return 用(有);
-  if (await db.channel.count({ where: { mainId: m.id } })) return { ok: false, error: `主渠道「${m.name}」下已经有子渠道了，请刷新后选具体的子渠道` };
+  // 「已经有子渠道」不算入口自己（全称 = 主渠道名的那条）：两个人同时选时，后到的在这里看到的是先到的刚建好的入口，
+  // 不能当成「有子渠道了」报错，让它往下走建，撞唯一约束后回头读先到的那条
+  if (await db.channel.count({ where: { mainId: m.id, name: { not: m.name } } })) return { ok: false, error: `主渠道「${m.name}」下已经有子渠道了，请刷新后选具体的子渠道` };
   const 负责人 = await 入口负责人(m.ownerId);
   if (!负责人) return { ok: false, error: `主渠道「${m.name}」还没指定负责人（或负责人已停用），请渠道管理员先在渠道页给它指定负责人` };
   try {
