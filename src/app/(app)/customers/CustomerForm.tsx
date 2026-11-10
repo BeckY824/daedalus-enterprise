@@ -269,6 +269,8 @@ function CustomerFormInner({
   const 国内址 = !地址国家 || 是国内(地址国家);
   /** 企业版客户来源建好就锁（原来没挂渠道的老客户还能补一次） */
   const 来源锁着 = 企业 && Boolean(editing?.channelId);
+  /** 渠道触点同样是来源（P-删-03）：原来有值的锁住，空的能补一次；服务端 saveCustomer 同一条 */
+  const 触点锁着 = 企业 && Boolean(editing?.touchpoint);
 
   /** 就地新建渠道的子弹窗 */
   const [channelModal, setChannelModal] = useState(false);
@@ -805,10 +807,15 @@ function CustomerFormInner({
         )}
         {/* 渠道触点（P-渠道-08）：公司资源 / 客户介绍来的客户主渠道留空、选这里；渠道和触点至少填一个 */}
         {企业 && (
-          <Form.Item label="渠道触点" name="touchpoint" extra="公司分配的资源、客户介绍来的客户不选主渠道，在这里标">
+          <Form.Item
+            label="渠道触点"
+            name="touchpoint"
+            extra={触点锁着 ? "渠道触点记的是第一次的来源，建好之后不改" : "公司分配的资源、客户介绍来的客户不选主渠道，在这里标"}
+          >
             <Select
               aria-label="渠道触点"
-              allowClear
+              disabled={触点锁着}
+              allowClear={!触点锁着}
               placeholder="公司资源 / 客户介绍"
               options={渠道触点们.map((x) => ({ value: x, label: x }))}
               onChange={() => void form.validateFields(["channelId"]).catch(() => undefined)}

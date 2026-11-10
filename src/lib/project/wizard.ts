@@ -30,7 +30,7 @@ export type 向导联系人 = { name: string; position?: string | null; phone?: 
 export const 联系人地址上限 = 100;
 /** 分配方式：企业版才有，默认五项的序号（lib/enterprise/dict.ts 分配方式序号），只在 projects/actions.ts 建档向导里认 */
 export type 向导项目 = { name: string; ownerId?: string | null; amount?: number | null; currency?: string | null; remark?: string | null; 分配方式?: number | null;
-  /** 项目来源（企业版，迁移 077）：这个项目从哪个渠道来。建档向导没选 = 跟客户来源（项目来源默认）；编辑里改。团队版不传、不认 */
+  /** 项目来源（企业版，迁移 077）：这个项目从哪个渠道来。建档向导没选 = 跟客户来源（项目来源默认）；建好有值就锁、空着的可补一次（P-删-03，lib/project/db.ts 改项目）。团队版不传、不认 */
   channelId?: string | null;
   /**
    * 业务线（企业版，11-01 清单 A1，16:1x 拍板三选一）：内贸 / 外贸 / 暂不分配；企业版新建必填（projects/actions.ts 建档向导、
@@ -81,7 +81,7 @@ export type 规整好的 = {
 
 /**
  * 项目来源默认值（企业版建档向导）：这个项目自己选了渠道就用它；没选（空 / 没传）就带客户的来源。
- * 客户来源记的是客户第一次从哪来，项目来源各记各的——老客户再来一单可以是别的渠道，所以界面上能改
+ * 客户来源记的是客户第一次从哪来，项目来源各记各的——老客户再来一单可以是别的渠道，所以建档时能另选；建好之后有值就锁（P-删-03）
  */
 export function 项目来源默认(项目选的: string | null | undefined, 客户来源: string | null | undefined): string | null {
   return 文字(项目选的) || 文字(客户来源) || null;

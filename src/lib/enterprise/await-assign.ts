@@ -39,6 +39,16 @@ export async function 待分配占着(db: Prisma.TransactionClient | typeof pris
   });
 }
 
+/**
+ * 待分配期间占着负责人一格的人（建的人）只能看和改字段，不能初判、推进、删除（P-转-21、X-68，11-10 定）。
+ * 是 = 拦。认的是占位的人（ownerId），不是 creatorId：离职交接后接手人占着的待分配同样拦。
+ * 能分配的人、系统管理员不是占位的人，照各自原来的权限；进了公海（pooledAt）的不算待分配
+ */
+export function 待分配占位(me: { id: string }, p: { ownerId: string; awaitAssignAt?: Date | null; pooledAt?: Date | null }): boolean {
+  return 企业版() && !!p.awaitAssignAt && !p.pooledAt && p.ownerId === me.id;
+}
+export const 待分配不能动 = "这条新线索在等分配，你只是先占着负责人一格：能看、能改字段，初判、推进、删除要等分给负责人以后";
+
 /** 能分配待分配线索的人：市场管理、销售管理、总管理员（同待分配提醒的收件人，A7 / A10） */
 export function 能分配的人们(org: 组织): string[] {
   return 满额提醒收件人(org, "待分配");

@@ -113,6 +113,24 @@ describe("保存客户（企业版）", () => {
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).touchpoint).toBe("公司资源");
   });
 
+  it("触点也是来源（P-删-03）：空的补一次可以；有值的换别的、清空、改挂主渠道都拦", async () => {
+    const c = await prisma.customer.create({ data: { name: "示例客户四", phone: "13900001108", salesOwnerId: "tester-id", followStatus: "待跟进" } });
+    const 补 = await 存客户({ id: c.id, name: "示例客户四", phone: "13900001108", touchpoint: "公司资源", updatedAt: c.updatedAt.toISOString() });
+    expect(补.ok).toBe(true);
+    const 锁 = "客户来源（渠道触点）记的是第一次的来源，建好之后不能改";
+    const 渠道 = await prisma.channel.create({ data: { name: "示例渠道二", active: true, channelOwnerId: "tester-id" } });
+    for (const 改 of [{ touchpoint: "客户介绍" }, { touchpoint: null }, { touchpoint: null, channelId: 渠道.id }]) {
+      const 前 = await prisma.customer.findUniqueOrThrow({ where: { id: c.id } });
+      const r = await 存客户({ id: c.id, name: "示例客户四", phone: "13900001108", updatedAt: 前.updatedAt.toISOString(), ...改 });
+      expect(r).toMatchObject({ ok: false, error: 锁 });
+    }
+    const 后 = await prisma.customer.findUniqueOrThrow({ where: { id: c.id } });
+    expect(后).toMatchObject({ touchpoint: "公司资源", channelId: null });
+    // 照原样交回来（表单整表保存）= 没改，放行
+    const 原样 = await 存客户({ id: c.id, name: "示例客户四", phone: "13900001108", touchpoint: "公司资源", remark: "改备注", updatedAt: 后.updatedAt.toISOString() });
+    expect(原样.ok).toBe(true);
+  });
+
   it("没开企业版：触点不看、不写", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     const r = await 存客户({ phone: "13900001107", touchpoint: "朋友介绍" });

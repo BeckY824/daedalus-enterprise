@@ -27,6 +27,7 @@ import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 读线索验证 } from "@/lib/project/lead-verify";
+import { 待分配占位 } from "@/lib/enterprise/await-assign";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 只读卡放行 } from "@/lib/enterprise/customer-readonly-card";
 import { dayjs } from "@/lib/utils";
@@ -155,7 +156,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
   // 「仅上级推」开着：直属上级也给节点这块（服务端只放往前推，往后退、点结局照拦）
-  const 节点能改 = 能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则);
+  // 待分配期间占着负责人一格的建的人：只能看和改字段，节点、删除都不给（P-转-21、X-68，和 lib/project/db.ts 改节点、删项目 同一个判断）
+  const 占位 = 待分配占位(me, p);
+  const 节点能改 = !占位 && (能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则));
   // 有结局的也算（11-03 A5-1）：改回到后面的节点同样算往前推，下拉里照样灰着
   const 必填 = !公海 && 按必填走(规则, p.node)
     ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p, 规则)), 只能靠填齐: !是经理(me, org) }
@@ -244,7 +247,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）
     // 企业版删项目：项目负责人本人或系统管理员（V3.5.1，进回收站）；别的版本照旧按 能改
-    能删: 企业 ? 能删除(me, org, 公海 ? null : p.ownerId) : 能改,
+    能删: 企业 ? !占位 && 能删除(me, org, 公海 ? null : p.ownerId) : 能改,
     // 项目组员（V3.5.1）：进了组就能往组里拉人
     能加组员: 能加组员(me, p, org, 已加入.includes(me.id)),
     // 公海里的项目系统管理员能改组员（X-72）

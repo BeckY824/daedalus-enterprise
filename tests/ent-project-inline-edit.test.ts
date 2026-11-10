@@ -271,19 +271,23 @@ describe("联系人 / 项目来源 / 业务线：就地改也只交一格", () =
     expect((await 读()).contactId).toBeNull();
   });
 
-  it("项目来源：在用的渠道落库；停用的拦下；交 null 清掉；别的格不动", async () => {
+  it("项目来源（P-删-03）：空着可补一次（停用的拦下）；补了就锁，换、清空都拦下；别的格不动", async () => {
     const 展会 = (await prisma.channel.create({ data: { name: "展会", channelOwnerId: 销售 } })).id;
+    const 网站 = (await prisma.channel.create({ data: { name: "网站", channelOwnerId: 销售 } })).id;
     const 停了 = (await prisma.channel.create({ data: { name: "停用渠道", channelOwnerId: 销售, active: false } })).id;
+    expect((await 读()).channelId).toBeNull();
+
+    expect((await 编辑项目(项目, { channelId: 停了 })).ok).toBe(false);
+    expect((await 读()).channelId).toBeNull();
 
     expect(await 编辑项目(项目, { channelId: 展会 })).toMatchObject({ ok: true });
     expect((await 读()).channelId).toBe(展会);
     await 核别的格没动();
 
-    expect((await 编辑项目(项目, { channelId: 停了 })).ok).toBe(false);
+    expect(await 编辑项目(项目, { channelId: 网站 })).toMatchObject({ ok: false, error: expect.stringContaining("不能改") });
+    expect(await 编辑项目(项目, { channelId: null })).toMatchObject({ ok: false, error: expect.stringContaining("不能清空") });
     expect((await 读()).channelId).toBe(展会);
-
-    expect(await 编辑项目(项目, { channelId: null })).toMatchObject({ ok: true });
-    expect((await 读()).channelId).toBeNull();
+    await 核别的格没动();
   });
 
   it("业务线：改成外贸落库、负责人不跟着重分；清空和不认得的值拦下", async () => {

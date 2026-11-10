@@ -46,6 +46,7 @@ import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
+import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -311,6 +312,8 @@ export async function 改节点(
     // 「仅上级推」开着（企业版组织规则）：负责人自己推不动，直属上级只给往前推这一步，别的照旧只给负责人（11-01 闭环）
     const 上级代推 = !能改节点(me, p, org) && 上级只推(me, p, 推的组织, 规则);
     if (!能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
+    // 待分配期间占着负责人一格的建的人不能推进、退回、点结局（P-转-21、X-68）：节点、结局都不给动，字段照改
+    if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
     // 企业版线索验证（P12）在等复核 / 等销售处理：别从这里绕过去（lead-verify.ts 带 验证放行 进来）
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };
@@ -444,9 +447,11 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
   if (企业版()) {
     if (!能删一些(me, org)) return { ok: false, error: 项目不能删提示 };
     return 查完再写(async (tx) => {
-      const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true } });
+      const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, awaitAssignAt: true } });
       if (!p) return { ok: false as const, error: 能删除(me, org, null) ? "这个项目已经不在了，刷新看看" : 项目不能删提示 };
       if (!能删除(me, org, p.pooledAt ? null : p.ownerId)) return { ok: false as const, error: 项目不能删提示 };
+      // 待分配期间占着负责人一格的建的人不能删（P-转-21、X-68）；系统管理员照删
+      if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
       // 状态拦（X-74、P-删-10）：交接中客户的项目、验证中的线索不能删；客户只剩这一个项目不能单删（M-公海-14 不再有零项目客户）
       if ((await 看全部(() => 交接中的客户([p.customerId], tx))).size) return { ok: false as const, error: "这个项目的客户正在转让交接中，先撤回交接或等接手人确认再删" };
       const 验 = await 看全部(() => tx.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }));
@@ -564,6 +569,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 日 = 预计成交日(patch.expectedDealAt, p.expectedDealAt);
     if (日 === undefined) return { ok: false as const, error: "预计成交日期格式不对，请选一个日期" };
     const 来源 = 项目来源改成(patch.channelId, p.channelId);
+    // 项目来源有值就锁住（P-删-03，和客户来源同一条）：不给换、不给清空；空着的可以补一次。界面锁住只是辅助，这里是防线
+    if (p.channelId && 来源 !== p.channelId) return { ok: false as const, error: 来源 ? 项目来源不能改 : 项目来源不能清空 };
     if (来源 !== p.channelId && 来源) {
       const 渠道 = await tx.channel.findUnique({ where: { id: 来源 }, select: { active: true } });
       if (!渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
@@ -643,9 +650,12 @@ function 预计成交日(v: string | null | undefined, 原: Date | null): Date |
 }
 
 /**
- * 项目来源（企业版，迁移 077）：没传 = 不动；空 = 清掉（渠道统计回落到客户来源）；传了 id 就换（调用方查渠道在不在、启用没）。
+ * 项目来源（企业版，迁移 077）：没传 = 不动；传了就算出要存的值（空 = null），调用方查渠道在不在、启用没。
+ * 11-10 起（P-删-03）有值就锁：调用方拿结果和原值比，原来有值又不一样（换了或清空）一律拒；原来空着的可以补一次。
  * 不是企业版界面上没有这格，传了也不动
  */
+export const 项目来源不能改 = "项目来源记的是这一单从哪个渠道来，建好之后不能改";
+export const 项目来源不能清空 = "项目来源建好之后不能清空";
 function 项目来源改成(v: string | null | undefined, 原: string | null): string | null {
   if (v === undefined || !企业版()) return 原;
   return (typeof v === "string" && v.trim()) || null;
@@ -806,7 +816,7 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了
     if (企业版()) {
       const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } }));
-      if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要总管理先恢复" };
+      if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要系统管理员先恢复" };
     }
     // 原负责人领不回：企业版看 公海规则（10-26 定稿「非原负责人均可领取」），别的版本照旧。
     // 原负责人 = 留痕里最后一次进公海前的负责人（企业版进公海清了 ownerId，pool-owner.ts）
@@ -1380,6 +1390,8 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
   for (;;) {
     const p = await tx.project.findUnique({ where: { id: projectId } });
     if (!p || p.pooledAt || p.result || !按必填走(规则, p.node)) break;
+    // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
+    if (待分配占位(me, p)) break;
     const 下 = 下一步(p, 字典of(企业版()));
     if (!下) break;
     if (!往前 && !(await 往前进来的(tx, p))) break;

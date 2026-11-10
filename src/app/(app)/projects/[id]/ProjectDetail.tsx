@@ -930,15 +930,18 @@ export default function ProjectDetail({
       {p.企业版 && p.项目来源 !== undefined && (
         <div style={行样}>
           <span style={键样}>项目来源</span>
-          {/* 11-04 就地改：选渠道存项目自己的来源；清空 = 跟客户来源走。显示等 refresh 带回服务端拼好的名字 */}
+          {/*
+            项目来源（P-删-03，11-10 起同客户来源）：项目自己的来源有值就锁，这里只读；空着（跟客户来源走）的可以就地补一次，
+            补了就锁、不给清空。服务端 改项目 同样拒换、拒清空，这里只是辅助。显示等 refresh 带回服务端拼好的名字
+          */}
           <ProjectInlineField<string | null>
             名="项目来源"
             值={p.channelId ?? null}
-            能改={能就地改 && !!p.渠道们}
+            能改={能就地改 && !!p.渠道们 && !p.channelId}
             显示={() => <span className="proj-one">{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源")}</span>}
             存={(v) => 存项目项({ channelId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
-              <ChannelPicker aria-label="项目来源" channels={p.渠道们 ?? []} value={草稿} disabled={忙} placeholder={`不选 = 同${b.customer}来源`} style={{ width: "100%" }} onChange={(v) => 提交(v ?? null)} />
+              <ChannelPicker aria-label="项目来源" channels={p.渠道们 ?? []} value={草稿} disabled={忙} allowClear={false} placeholder="补一次项目来源，补了就不能改" style={{ width: "100%" }} onChange={(v) => { if (v) 提交(v); }} />
             )}
           />
         </div>

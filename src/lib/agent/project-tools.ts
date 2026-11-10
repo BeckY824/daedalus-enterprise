@@ -24,8 +24,8 @@ const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0,
 /** 一次最多给人挑几个 */
 const 候选上限 = 10;
 
-const 项目列 = { id: true, name: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, phase: true, node: true, result: true, customer: { select: { name: true } } } as const;
-type 项目行 = { id: string; name: string; customerId: string; ownerId: string; creatorId: string; pooledAt: Date | null; phase: string; node: string; result: string | null; customer: { name: string } };
+const 项目列 = { id: true, name: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, phase: true, node: true, result: true, customer: { select: { name: true } } } as const;
+type 项目行 = { id: string; name: string; customerId: string; ownerId: string; creatorId: string; pooledAt: Date | null; awaitAssignAt: Date | null; phase: string; node: string; result: string | null; customer: { name: string } };
 
 type 找到 = { ok: true; 行: 项目行[]; 露: (p: 项目行) => boolean } | { ok: false; 话: string };
 

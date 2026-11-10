@@ -23,6 +23,7 @@ import { 加一条配额, 占过名额 } from "@/lib/enterprise/lead-assign";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 改节点, 能改节点, 放回公海 } from "./db";
 import { 是总管理 } from "@/lib/enterprise/permissions";
+import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
 import { 判MQL, MQL合格去 } from "./mql";
 import { 有效线索节点, 无效原因上限 } from "./stage-gates";
 export { 无效原因上限 };
@@ -70,11 +71,11 @@ export function 创建人是销售(org: 组织, creatorId: string, 市场: Reado
 }
 
 /** 这一步谁能拍板。销售两步看 能改节点（企业版只有负责人本人，C2）；市场复核给建线索的人或他的直属市场管理（11-05，能市场复核）；
- *  总管理终判给老板、总管理员 */
-export function 能拍板(me: 谁, 步: 验证步, p: { ownerId: string; creatorId?: string | null; pooledAt?: Date | null }, org: 组织): boolean {
+ *  总管理终判给老板、总管理员。待分配期间占着负责人一格的建的人不能初判、终验、认领（P-转-21、X-68） */
+export function 能拍板(me: 谁, 步: 验证步, p: { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; awaitAssignAt?: Date | null }, org: 组织): boolean {
   if (步 === "市场复核") return 能市场复核(org, me.id, p);
   if (步 === "总管理终判") return 是总管理(me, org);
-  return 能改节点(me, p, org);
+  return 能改节点(me, p, org) && !待分配占位(me, p);
 }
 const 拍不了: Record<验证步, string> = {
   销售初判: "只有项目负责人、老板或主管能判这条线索",
@@ -86,8 +87,8 @@ const 拍不了: Record<验证步, string> = {
 
 const 字 = (v: unknown, 上限: number) => (typeof v === "string" ? v.trim().slice(0, 上限) : "");
 
-type 项目 = { id: string; name: string; phase: string; node: string; result: string | null; ownerId: string; creatorId: string; pooledAt: Date | null; customerId: string };
-const 项目列 = { id: true, name: true, phase: true, node: true, result: true, ownerId: true, creatorId: true, pooledAt: true, customerId: true } as const;
+type 项目 = { id: string; name: string; phase: string; node: string; result: string | null; ownerId: string; creatorId: string; pooledAt: Date | null; awaitAssignAt: Date | null; customerId: string };
+const 项目列 = { id: true, name: true, phase: true, node: true, result: true, ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, customerId: true } as const;
 const 在验证 = (p: 项目) => p.phase === "线索" && p.node === 有效线索节点 && !p.result && !p.pooledAt;
 
 /** 读项目 + 验证状态 + 现在实际等哪步（看全部：复核的人多半看不到这位销售的项目） */
@@ -208,6 +209,7 @@ export async function 销售初判(
   if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
   if (!在验证(p)) return { ok: false, error: `只有停在「${有效线索节点}」的线索能判` };
   if (待) return { ok: false, error: `这条线索在等${待}，不用再判` };
+  if (待分配占位(me, p)) return { ok: false, error: 待分配不能动 };
   if (!能拍板(me, "销售初判", p, org)) return { ok: false, error: 拍不了.销售初判 };
   const 说明 = 字(附.verifyNote, 说明上限);
   const 验证人 = { verifiedById: me.id, verifiedAt: now, verifyNote: 说明 || null };
@@ -269,6 +271,7 @@ async function 核销售(me: 谁, projectId: string, 步: "销售终验" | "销�
   if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
   if (待 !== 步) return { ok: false as const, error: 待 ? `这条线索现在等的是${待}` : "这条线索没在等你处理，刷新看看" };
   if (!在验证(p)) return 作废;
+  if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
   if (!能拍板(me, 步, p, org)) return { ok: false as const, error: 拍不了[步] };
   return { ok: true as const, p, 读: 快照(v) };
 }

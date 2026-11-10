@@ -501,8 +501,18 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (企业版() && input.touchpoint !== undefined && 交的触点 === undefined) {
     return { ok: false, error: `渠道触点只能是 ${渠道触点们.join(" / ")}` };
   }
+  /*
+    触点也是来源（P-删-03，11-10）：公司资源 / 客户介绍这两类的来源记在触点上，和主渠道一样建好就锁——
+    原来空着的可以补一次，有值的不许换、不许清（系统管理员也一样）；不交 = 照原样
+  */
+  if (企业版() && 改前?.touchpoint && 交的触点 !== undefined && 交的触点 !== 改前.touchpoint) {
+    return { ok: false, error: "客户来源（渠道触点）记的是第一次的来源，建好之后不能改" };
+  }
   const 存后触点 = 交的触点 !== undefined ? 交的触点 : (改前?.touchpoint ?? null);
-  if (企业版() && 改前 && (改前.channelId || 改前.touchpoint) && !input.channelId && !存后触点) {
+  /*
+    交了推荐人的，主渠道由推荐链顶算（同上面「请选择渠道」那条）；算完换掉 / 清空来源的由后面来源锁的最后一道拦
+  */
+  if (企业版() && 改前 && (改前.channelId || 改前.touchpoint) && !input.channelId && !存后触点 && !input.referrerCustomerId) {
     return { ok: false, error: "请选择渠道或渠道触点" };
   }
   /*
@@ -571,6 +581,13 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     有触点、没交渠道的（公司资源 / 客户介绍，P-渠道-08）：主渠道留空，不从介绍人那边继承渠道；介绍人、渠道负责人照推荐链算
   */
   if (企业版() && 存后触点 && !input.channelId && 推荐链变了) attribution.channelId = null;
+  /*
+    来源锁的最后一道（P-删-03，11-10）：上面只比了交来的 channelId；换推荐人时 channelId 是推荐链顶端算出来的，
+    原来有来源的客户换个推荐人（或推荐链顶没渠道）就会把来源换掉 / 清空。算完再比一次，有值就不许变（系统管理员也一样）
+  */
+  if (企业版() && 改前?.channelId && attribution.channelId !== 改前.channelId) {
+    return { ok: false, error: "客户来源记的是第一次带来的渠道，建好之后不能改" };
+  }
   // 显式指定压过推荐链：登记错误的单个订正走这里。null 表示清掉手工值、按推荐链重算
   if (input.channelOwnerId !== undefined) {
     if (input.channelOwnerId) {
