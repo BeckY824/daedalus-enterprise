@@ -5,6 +5,8 @@
  *   有唯一同号客户就挂上去，没有就新建客户 + 主要联系人；已转化 / 已放弃的不建项目
  *   整批撤回：线索、多建的客户 / 联系人 / 项目一起退掉
  *   开关关：照旧只建 Lead
+ *   唯一同号客户在客户公海里：有负责人的这条不导，记成没写进去并写原因（P-公海-08，同单条转项目）；
+ *   没负责人的照挂（项目也进项目公海，不会出现「项目有人、客户在公海」）
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -80,6 +82,35 @@ describe("企业版只用项目：导入线索建线索阶段的项目", () => {
     expect(await prisma.customer.count()).toBe(1);
     expect(await prisma.contact.count()).toBe(0);
     expect((await prisma.project.findFirstOrThrow()).customerId).toBe(老.id);
+  });
+
+  it("同号客户在客户公海里：有负责人的这条不导、记原因，别的照写；没负责人的照挂进公海", async () => {
+    const 公海客户 = await prisma.customer.create({ data: { name: "公海里的客户", phone: "13600000001", salesOwnerId: 我.id } });
+    await prisma.customerPool.create({ data: { customerId: 公海客户.id, userId: 我.id } });
+    const { 批次Id } = await 试跑({
+      来源: "excel",
+      用户Id: 我.id,
+      表: [
+        线索表([
+          ["L1", "撞公海的", "陈总", "13600000001", "李娜", ""],
+          ["L2", "正常的", "王总", "13600000002", "李娜", ""],
+          ["L3", "无主撞公海的", "赵总", "13600000001", "", ""],
+        ]),
+      ],
+      建议器: null,
+    });
+    const r = await 写一批(批次Id, 我);
+    expect(r).toMatchObject({ 完了: true, 失败: 1 });
+    const note = JSON.parse((await prisma.entImportBatch.findUniqueOrThrow({ where: { id: 批次Id } })).note!);
+    expect(note).toEqual([expect.objectContaining({ 实体: "lead", 外部ID: "L1", 原因: "同号客户「公海里的客户」在公海里，先领取再导这条线索" })]);
+    // 撞公海的那条整条没写：没有 Lead 行、没有项目
+    expect((await prisma.lead.findMany()).map((l) => l.name).sort()).toEqual(["无主撞公海的", "正常的"].sort());
+    const 项目们 = await prisma.project.findMany();
+    expect(项目们.map((p) => p.name).sort()).toEqual(["无主撞公海的", "正常的"].sort());
+    const 无主 = 项目们.find((p) => p.name === "无主撞公海的")!;
+    expect(无主.customerId).toBe(公海客户.id);
+    expect(无主.pooledAt).not.toBeNull();
+    expect(项目们.find((p) => p.name === "正常的")!.ownerId).toBe(李娜);
   });
 
   it("业务线：线索建的客户、项目落这批选的线；挂到已有客户的不改客户的线", async () => {

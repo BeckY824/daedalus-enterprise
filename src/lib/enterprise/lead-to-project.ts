@@ -7,6 +7,7 @@
  *   - 联系人：新建的客户、线索上有联系人名字才建一位主要联系人，项目挂上它
  *   - 项目负责人跟线索负责人走（线索没负责人：最早的管理员）；没有首条沟通，项目不带下一步时间；来源线索记这条 Lead
  * 已转化 / 已放弃的不转；已经有项目记它为来源线索的跳过（导入建过的、转化建过的、上次转过的）。
+ * 要挂的客户（连着的、唯一同号的）在客户公海里：这条不转，记进「跳过」写原因，别的照转（P-公海-08，同单条转项目：先领取）。
  * Lead 行不动（不标已转化、不连客户）。
  *
  * 只做一次：跟着服务启动（instrumentation.ts）跑，做完记一个记号。不是企业版只用项目：什么都不做
@@ -17,10 +18,12 @@ import { 分机留存起, 同号条件 } from "../phone-dedupe";
 import { 线索建项目 } from "../project/from-lead";
 import { 企业版只用项目 } from "./project-only";
 import { 重算客户状态 } from "./cust-status-auto-db";
+import { 公海客户要先领取, 公海客户先领取说 } from "./pool-customer-guard";
 
 export const 转项目记号键 = "entLeadToProject.v1";
 
-export type 转项目计数 = { 项目: number; 新客户: number; 新联系人: number };
+/** 跳过：没转的线索逐条说原因（客户在公海里要先领取） */
+export type 转项目计数 = { 项目: number; 新客户: number; 新联系人: number; 跳过: { leadId: string; 线索: string; 原因: string }[] };
 
 const g = globalThis as unknown as { __entLeadToProject?: Promise<转项目计数 | null> };
 
@@ -32,7 +35,7 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
   const 起 = await 分机留存起();
   const 计 = await prisma.$transaction(
     async (tx) => {
-      const 计: 转项目计数 = { 项目: 0, 新客户: 0, 新联系人: 0 };
+      const 计: 转项目计数 = { 项目: 0, 新客户: 0, 新联系人: 0, 跳过: [] };
       const 已有 = new Set(
         (await tx.project.findMany({ where: { sourceLeadId: { not: null } }, select: { sourceLeadId: true } })).map((p) => p.sourceLeadId!),
       );
@@ -51,6 +54,12 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
         if (!customerId && l.phone?.trim()) {
           const 同号 = await tx.customer.findMany({ where: await 同号条件(tx, l.phone, 起), select: { id: true }, take: 2 });
           if (同号.length === 1) customerId = 同号[0].id;
+        }
+        // P-公海-08：客户在客户公海里不挂，先领取；这条跳过，别的照转
+        const 公海 = customerId ? await 公海客户要先领取(tx, customerId) : null;
+        if (公海) {
+          计.跳过.push({ leadId: l.id, 线索: l.name, 原因: 公海客户先领取说(公海.客户名, "建项目") });
+          continue;
         }
         if (!customerId) {
           customerId = (await tx.customer.create({ data: { name: l.name, phone: l.phone?.trim() ?? "", salesOwnerId: 负责人 }, select: { id: true } })).id;
@@ -79,7 +88,8 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
   );
 
   await setSetting(转项目记号键, true);
-  console.log(`[老线索转项目] 项目 ${计.项目}、新客户 ${计.新客户}、新联系人 ${计.新联系人}`);
+  console.log(`[老线索转项目] 项目 ${计.项目}、新客户 ${计.新客户}、新联系人 ${计.新联系人}、跳过 ${计.跳过.length}`);
+  for (const t of 计.跳过) console.log(`[老线索转项目] 跳过线索「${t.线索}」（${t.leadId}）：${t.原因}`);
   return 计;
 }
 
