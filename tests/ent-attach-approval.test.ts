@@ -18,6 +18,9 @@ import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 撞号预警 } from "@/lib/enterprise/dupe-ledger";
 import { 挂靠超时小时, 挂靠超时转上级, 补挂靠审批人, 待我审批的挂靠, 我的挂靠申请 } from "@/lib/enterprise/attach-approval";
 import { 记换负责人, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
+import { 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
+import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
+import { 放进公海 } from "@/app/(app)/customers/pool-actions";
 import { 查客户名, 申请挂靠 } from "@/app/(app)/customers/number-actions";
 import { 批准挂靠, 拒绝挂靠, 打开挂靠只读卡 } from "@/app/(app)/projects/attach/actions";
 
@@ -295,7 +298,50 @@ describe("审批人跟着客户现在的负责人走", () => {
   });
 });
 
-describe("存量回填（迁移 116 之前的待处理申请没有审批人）", () => {
+describe("客户进公海：待处理的挂靠申请直接关（P-挂靠-01 公海客户不是挂靠对象）", () => {
+  it("负责人把客户放进公海：申请关成「客户已进公海」，处理人留空、记处理时刻，申请人收到「可去公海领取」；审批人不跟到占位账号上", async () => {
+    const x = await 现场();
+    const id = await 申请(x);
+    const r = await 作为(x.负责人, () => 放进公海([x.客户.id], "客户主动终止"));
+    expect(r).toMatchObject({ ok: true, updated: 1 });
+    await 等通知推完();
+    const 行 = await prisma.entDupeHit.findUnique({ where: { id } });
+    expect(行).toMatchObject({ status: "客户已进公海", decidedById: null, approverId: x.负责人.id });
+    expect(行?.decidedAt).toBeTruthy();
+    const 收到 = await 通知们(x.乙.id);
+    expect(收到).toHaveLength(1);
+    expect(收到[0]).toMatchObject({ title: "挂靠申请已关闭：客户「编的客户 甲」已进公海", link: "/pool" });
+    expect(收到[0].body).toContain("可去公海领取");
+    // 谁的待审批里都没有了；申请人自己的申请里是「客户已进公海」
+    expect(await 作为(x.负责人, () => 待我审批的挂靠(x.负责人))).toHaveLength(0);
+    expect(await 作为(x.乙, () => 我的挂靠申请(x.乙))).toMatchObject([{ id, 状态: "客户已进公海" }]);
+    // 关了的不再超时转上级；重发通知不重复
+    expect(await 挂靠超时转上级(new Date(Date.now() + (挂靠超时小时 + 1) * 小时))).toBe(0);
+    await 进公海挂靠通知([x.客户.id]);
+    expect(await 通知们(x.乙.id)).toHaveLength(1);
+  });
+
+  it("已转给实线上级、还待处理的申请，客户进公海也关；已处理的不动", async () => {
+    const x = await 现场();
+    const id = await 申请(x);
+    const 拒了 = await 申请(x, x.丙);
+    await 作为(x.负责人, () => 拒绝挂靠(拒了));
+    await 挂靠超时转上级(new Date(Date.now() + (挂靠超时小时 + 1) * 小时));
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "待处理", approverId: x.主管.id });
+    // 离职放进公海、手动放进公海都走 客户进公海清负责人（事务里关），事务提交后调方发通知
+    await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: x.负责人.id } });
+    await prisma.$transaction((tx) => 客户进公海清负责人(tx, [{ id: x.客户.id, salesOwnerId: x.负责人.id }], x.负责人.id));
+    await 进公海挂靠通知([x.客户.id]);
+    await 等通知推完();
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "客户已进公海", decidedById: null, approverId: x.主管.id });
+    expect(await prisma.entDupeHit.findUnique({ where: { id: 拒了 } })).toMatchObject({ status: "已拒绝", decidedById: x.负责人.id });
+    expect(await 作为(x.主管, () => 待我审批的挂靠(x.主管))).toHaveLength(0);
+    expect((await 通知们(x.乙.id)).map((n) => n.link)).toContain("/pool");
+    expect((await 通知们(x.丙.id)).map((n) => n.link)).not.toContain("/pool");
+  });
+});
+
+describe("存量回填（迁移 117 之前的待处理申请没有审批人）", () => {
   it("补成客户现在的负责人；转过上级的、已处理的不补；重跑不再改", async () => {
     const x = await 现场();
     const id = await 申请(x);

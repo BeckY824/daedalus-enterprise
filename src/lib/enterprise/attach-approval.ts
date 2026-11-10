@@ -23,6 +23,7 @@ import { notify } from "./notify";
 import { 视图中跳过 } from "./view-as";
 import { 读卡底子, 拼卡, type 客户只读卡 } from "./customer-readonly-card";
 import type { 谁 } from "./permissions";
+import { 挂靠进公海状态 } from "@/lib/owner-log-db";
 
 export const 挂靠超时小时 = 24;
 const 小时毫秒 = 3_600_000;
@@ -93,7 +94,7 @@ export type 我的挂靠 = {
   /** 批准了才给；没批准前只有按客户名撞上的给（撞的时候就露出过名字），按号码撞上的不给 */
   客户名: string | null;
   撞的: string;
-  状态: "待审批" | "已批准" | "没批准";
+  状态: "待审批" | "已批准" | "没批准" | "客户已进公海";
   申请时间: Date;
   处理时间: Date | null;
 };
@@ -102,13 +103,13 @@ export type 我的挂靠 = {
 export async function 我的挂靠申请(me: 谁): Promise<我的挂靠[]> {
   if (!企业版()) return [];
   const 行们 = await prisma.entDupeHit.findMany({
-    where: { ...申请, userId: me.id, status: { in: ["待处理", "已批准", "已拒绝"] } },
+    where: { ...申请, userId: me.id, status: { in: ["待处理", "已批准", "已拒绝", 挂靠进公海状态] } },
     orderBy: { actionAt: "desc" },
     take: 200,
   });
   const 客户 = await 客户们(行们.map((r) => r.customerId));
   return 行们.map((r) => {
-    const 状态 = r.status === "已批准" ? "已批准" : r.status === "已拒绝" ? "没批准" : "待审批";
+    const 状态 = r.status === "已批准" ? "已批准" : r.status === "已拒绝" ? "没批准" : r.status === 挂靠进公海状态 ? 挂靠进公海状态 : "待审批";
     return {
       id: r.id,
       客户名: 状态 === "已批准" || r.keyType === "客户名" ? 客户.get(r.customerId)?.名 ?? null : null,
@@ -159,7 +160,33 @@ export async function 审批挂靠(me: { id: string; name: string }, 撞号id: s
 }
 
 /**
- * 存量回填（迁移 116 之前就待处理的申请没有审批人）：补成客户现在的负责人。迁移目录不许 UPDATE（tests/migrations.test.ts），
+ * 客户进公海时关掉的挂靠申请（owner-log-db.ts 挂靠申请进公海关，P-挂靠-01 / 02）：给申请人各发一条「客户已进公海，可去公海领取」。
+ * 调用方在进公海那笔事务提交后调，传这次进公海的客户；按客户找出刚关的（近 1 小时），key 按申请行，重调不重发。
+ * 只发在职成员；客户名同「我的挂靠申请」：按客户名撞上的才写名字，按号码撞上的写撞的号码
+ */
+export async function 进公海挂靠通知(customerIds: readonly string[]): Promise<void> {
+  if (!企业版() || !customerIds.length) return;
+  const 关的 = await prisma.entDupeHit.findMany({
+    where: { ...申请, customerId: { in: [...new Set(customerIds)] }, status: 挂靠进公海状态, decidedAt: { gte: new Date(Date.now() - 小时毫秒) } },
+    select: { id: true, userId: true, customerId: true, keyType: true, keyValue: true },
+  });
+  if (!关的.length) return;
+  const [org, 客户] = await Promise.all([读组织(), 客户们(关的.map((r) => r.customerId))]);
+  for (const r of 关的) {
+    if (!org.成员.has(r.userId)) continue;
+    const 哪家 = r.keyType === "客户名" ? `客户「${客户.get(r.customerId)?.名 ?? r.keyValue}」` : `撞到的客户（${r.keyType}：${r.keyValue}）`;
+    await notify([r.userId], {
+      kind: "挂靠",
+      title: `挂靠申请已关闭：${哪家}已进公海`,
+      body: "客户进了公海，没有负责人审批这次挂靠；要跟这家客户，可去公海领取",
+      link: "/pool",
+      key: `挂靠进公海:${r.id}`,
+    });
+  }
+}
+
+/**
+ * 存量回填（迁移 117 之前就待处理的申请没有审批人）：补成客户现在的负责人。迁移目录不许 UPDATE（tests/migrations.test.ts），
  * 所以放在每分钟那一遍的开头；只认审批人为空、还没转过上级的，补过一次就不再命中，可重复跑。回补了几条
  */
 export async function 补挂靠审批人(): Promise<number> {

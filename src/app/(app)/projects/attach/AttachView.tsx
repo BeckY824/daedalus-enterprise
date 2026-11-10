@@ -57,7 +57,7 @@ export default function AttachView({ 待批, 我的 }: { 待批: 待审批挂靠
   const 我的列: ColumnsType<我的挂靠> = [
     { title: "客户", dataIndex: "客户名", width: 180, ...省略, render: (v: string | null) => v ?? "—" },
     { title: "撞的", dataIndex: "撞的", width: 180, ...省略 },
-    { title: "状态", dataIndex: "状态", width: 90, render: (v: 我的挂靠["状态"]) => <Tag color={v === "已批准" ? "green" : v === "没批准" ? "default" : "blue"}>{v}</Tag> },
+    { title: "状态", dataIndex: "状态", width: 120, render: (v: 我的挂靠["状态"]) => <Tag color={v === "已批准" ? "green" : v === "没批准" ? "default" : v === "客户已进公海" ? "orange" : "blue"}>{v}</Tag> },
     { title: "申请时间", dataIndex: "申请时间", width: 150, render: 时刻 },
     { title: "", key: "op", width: 110, render: (_, r) => r.状态 === "已批准" && <Button size="small" onClick={() => void 开卡(r.id)}>打开只读卡</Button> },
   ];

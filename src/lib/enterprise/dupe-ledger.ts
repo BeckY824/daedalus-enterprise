@@ -19,6 +19,7 @@ import { 拆角色, 直属上级of } from "./org-core";
 import { 读组织 } from "./org";
 import { notify } from "./notify";
 import { 挂靠超时小时, 挂靠页 } from "./attach-approval";
+import { 挂靠进公海状态 } from "@/lib/owner-log-db";
 import { 离职负责人找谁 } from "./departed-owner";
 import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedupe";
 
@@ -254,6 +255,7 @@ export async function 申请挂靠(我: { id: string; name: string }, 撞号id: 
   const 已有话 = (status: string) =>
     status === "已批准" ? "这位客户的挂靠已批准，到「挂靠申请」里打开只读卡"
       : status === "已拒绝" ? "这位客户的挂靠申请刚没批准，过几天再申请"
+        : status === 挂靠进公海状态 ? "这位客户已进公海，挂靠申请已关闭，可去公海领取"
         : "已经申请过了，等负责人处理";
   if (行.action === "申请挂靠") return { ok: true, 提示: 已有话(行.status) };
   const 起 = new Date(Date.now() - 撞号预警.天数 * 86_400_000);
