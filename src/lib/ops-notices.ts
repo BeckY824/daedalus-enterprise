@@ -1,6 +1,7 @@
 import { control } from "./tenant/control";
 import { 测试账号们 } from "./tenant/test-accounts";
 import { 附件磁盘 } from "./tenant/sync-attach";
+import { beijingWallIso } from "./business-clock";
 
 /**
  * 运营通知（2026-10-02）：运营台里有事，**只推给运营名单里那一个账号的桌面端**。
@@ -74,7 +75,7 @@ export function 磁盘通知(盘: { 剩: number; 用: number } | null, now: Date
 const 截 = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 const 一行 = (s: string) => s.replace(/\s+/g, " ").trim();
 /** 北京时间的 YYYY-MM-DDTHH / YYYY-MM-DD：键和「今天」都按用户那边的钟点算 */
-const 北京 = (d: Date) => new Date(d.getTime() + 8 * 3600_000).toISOString();
+const 北京 = beijingWallIso;
 
 /** since 不合法、太早、在未来：都规整到 [now-24h, now] */
 export function 规整起点(since: string | null | undefined, now: Date): Date | null {
