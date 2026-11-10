@@ -2456,6 +2456,11 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .chan-list .ant-table-tbody > tr:not(.ant-table-placeholder) > td { white-space: nowrap; }
 .chan-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .chan-tags { display: inline-flex; gap: 4px; flex-wrap: nowrap; }
+/* 按主渠道那张表：名字在 flex 里要能缩（配 .chan-name 的省略）；属性标签一行省略、不撑出格子 */
+.chan-shrink { min-width: 0; }
+.chan-attr.ant-tag { margin: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+/* 主渠道编辑弹窗的表单（MainChannels.tsx 的 MainChannelEdit）：标题下面留一点 */
+.chan-main-form { margin-top: 8px; }
 /* 渠道详情抽屉的标题：名字一行、放不下省略号，悬停看全（11-04 用户：「一行显示不下的用...」，推翻 10-30 折行）；「已停用」不缩 */
 .chan-full { display: flex; align-items: center; gap: var(--s2); min-width: 0; max-width: 100%; }
 .chan-full > :first-child { min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

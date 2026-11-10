@@ -126,6 +126,11 @@ model EntChannelMain {
   category  String?
   active    Boolean   @default(true)
   sort      Int       @default(0)
+  /// 主渠道负责人（迁移 118，P-渠道-10）：User.id，不建外键（同 Channel.createdById）。空 = 还没指定。
+  /// 只是主渠道这一层的归属：改它不回写下面子渠道、已有客户 / 项目身上的渠道负责人；新建子渠道没单独填负责人时沿用它
+  ownerId   String?
+  /// 主渠道的渠道属性 = 获客方式（迁移 118，P-渠道-11）：字典 channelAttr 的名字。下面的子渠道自己没填属性时沿用它
+  attr      String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   channels  Channel[]

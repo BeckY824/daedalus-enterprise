@@ -7,11 +7,14 @@ import { 拆主子, 历史渠道分类, 是历史渠道, 历史渠道报错, typ
 
 type 库 = Prisma.TransactionClient | typeof prisma;
 
-const 选列 = { id: true, name: true, allowSub: true, selfDev: true, category: true, active: true, sort: true } as const;
+const 选列 = { id: true, name: true, allowSub: true, selfDev: true, category: true, active: true, sort: true, ownerId: true, attr: true } as const;
 
-/** 全部主渠道（含停用），按排序、名字 */
+/** 全部主渠道（含停用），按排序、名字；负责人名字一并带出（ownerId 不建外键，另查一趟，停用的人名字照给） */
 export async function 读主渠道们(db: 库 = prisma): Promise<主渠道行[]> {
-  return db.entChannelMain.findMany({ select: 选列, orderBy: [{ sort: "asc" }, { name: "asc" }] });
+  const 们 = await db.entChannelMain.findMany({ select: 选列, orderBy: [{ sort: "asc" }, { name: "asc" }] });
+  const ids = [...new Set(们.map((m) => m.ownerId).filter((x): x is string => Boolean(x)))];
+  const 人 = new Map((ids.length ? await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]));
+  return 们.map((m) => ({ ...m, ownerName: m.ownerId ? 人.get(m.ownerId) ?? null : null }));
 }
 
 /** 按名字找主渠道，没有就建一个（默认可设子渠道、不支持自拓），排在最后 */
