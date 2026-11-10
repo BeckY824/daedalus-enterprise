@@ -21,6 +21,7 @@ import { 问同事 } from "@/lib/sync/dedupe-client";
 import { requireUser } from "@/lib/auth";
 import { 可选客户 } from "@/lib/options";
 import { resolveAttribution, wouldCreateCycle } from "@/lib/attribution";
+import { 认渠道触点, 渠道触点们 } from "@/lib/enterprise/touchpoint";
 import {
   conflictingFields,
   diffKeys,
@@ -132,6 +133,11 @@ export type CustomerInput = {
    * 字符串 = 手工钉死为这个人。用于登记错误的单个订正，不影响任何其他学员。
    */
   channelOwnerId?: string | null;
+  /**
+   * 企业版渠道触点（P-渠道-08，迁移 116，lib/enterprise/touchpoint.ts）：公司资源 / 客户介绍，这两类主渠道留空、由触点承载。
+   * 主渠道和触点至少填一个；触点 = 客户介绍时 referrerCustomerId 是介绍人客户（P-渠道-09）。不给 = 不碰；开关关着一律不看
+   */
+  touchpoint?: string | null;
   /** 外贸档案（2026-10-05，外贸模版的表单才交）：国家、WhatsApp、微信、邮箱、来源。不给 = 不碰 */
   extra?: Partial<Record<keyof 外贸档案, string | null>>;
   /**
@@ -162,7 +168,7 @@ export type CustomerSnapshot = Pick<
   | "name" | "phone" | "school" | "grade" | "major"
   | "followStatus" | "decisionStatus" | "custStatus" | "expectedSignAt" | "remark"
   | "salesOwnerId" | "channelId" | "referrerCustomerId"
-> & { channelOwnerId?: string | null } & Partial<企业客户资料>;
+> & { channelOwnerId?: string | null; touchpoint?: string | null } & Partial<企业客户资料>;
 
 /**
  * 撞号时给界面的那位。业务员撞到同事名下、自己看不到的（团队版两档权限）：**只给负责人 + 客户名**，
@@ -487,6 +493,18 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     return { ok: false, error: "请选择渠道" };
   }
   /*
+    渠道触点（P-渠道-08）：只认公司资源 / 客户介绍；不交 = 照原样。原来有渠道或触点的，编辑后两样都空拦下（主渠道和触点至少填一个）。
+    新建的「至少一个」由表单和建档向导管，别的入口（AI 建档、找客）照旧放行
+  */
+  const 交的触点 = 企业版() && input.touchpoint !== undefined ? 认渠道触点(input.touchpoint) : undefined;
+  if (企业版() && input.touchpoint !== undefined && 交的触点 === undefined) {
+    return { ok: false, error: `渠道触点只能是 ${渠道触点们.join(" / ")}` };
+  }
+  const 存后触点 = 交的触点 !== undefined ? 交的触点 : (改前?.touchpoint ?? null);
+  if (企业版() && 改前 && (改前.channelId || 改前.touchpoint) && !input.channelId && !存后触点) {
+    return { ok: false, error: "请选择渠道或渠道触点" };
+  }
+  /*
     客户来源 = 第一次的渠道（定稿 P5 第 22 条：「客户来源只记第一个渠道，之后不变」）：原来有渠道的，换成别的渠道不收。
     后来又从别的渠道来的，记在项目的来源上（P6），客户这一格不跟着变
   */
@@ -548,6 +566,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
         attributionCustomerId: 改前!.attributionCustomerId,
         channelOwnerId: 改前!.channelOwnerId,
       };
+  /*
+    有触点、没交渠道的（公司资源 / 客户介绍，P-渠道-08）：主渠道留空，不从介绍人那边继承渠道；介绍人、渠道负责人照推荐链算
+  */
+  if (企业版() && 存后触点 && !input.channelId && 推荐链变了) attribution.channelId = null;
   // 显式指定压过推荐链：登记错误的单个订正走这里。null 表示清掉手工值、按推荐链重算
   if (input.channelOwnerId !== undefined) {
     if (input.channelOwnerId) {
@@ -587,6 +609,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     salesOwnerId,
     referrerCustomerId: input.referrerCustomerId,
     ...attribution,
+    // 开关关着、没交这一格不进 data：不写、也不参与比对和留痕
+    ...(交的触点 !== undefined ? { touchpoint: 交的触点 } : {}),
   };
 
   // 企业版字段权限（规则没开不读库）：编辑时动了「只能看」的字段就拒；新建不拦，电话是必填的

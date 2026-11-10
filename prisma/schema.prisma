@@ -201,6 +201,8 @@ model Customer {
   bizLine      String?
   /// 企业版归档档位（迁移 114，M-导入-23）：A1 / A2 / B / C / D / E，只由归档导入写；空 = 不是归档导入来的。取值见 lib/enterprise/archive-tier.ts
   archiveTier  String?
+  /// 企业版渠道触点（迁移 116，P-渠道-08）：公司资源 / 客户介绍，这两类主渠道留空、由触点承载；主渠道和触点至少填一个。取值见 lib/enterprise/touchpoint.ts
+  touchpoint   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
