@@ -6,6 +6,7 @@ import { 读现值 } from "@/lib/agent/current-values";
 import { 号码脱敏器 } from "@/lib/shared-ws/current";
 import { 认回打码号 } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
+import { 在售渠道条件 } from "@/lib/enterprise/channel-main";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
@@ -298,7 +299,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 进项目 = 去处.includes("项目") && 国家;
   const 联系人地址 = 去处.includes("联系人") ? [国家, 城市].filter(Boolean).join(" ").slice(0, 联系人地址上限) : "";
   // 企业版新建线索要选渠道：卡上只有来源一格，按整名 / 只含一个渠道名 / 竖线前平台前缀唯一来认（lib/enterprise/channel-match.ts，卡片预选同一个函数），对上多个不猜
-  const 渠道们 = await prisma.channel.findMany({ where: { active: true }, select: { id: true, name: true } });
+  // 历史渠道（P-渠道-06）只承载历史客户，AI 新建线索也不认
+  const 渠道们 = await prisma.channel.findMany({ where: { active: true, ...在售渠道条件 }, select: { id: true, name: true } });
   const { 渠道, 候选 } = 认渠道(p.source, 渠道们);
   if (!渠道) {
     return {

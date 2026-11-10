@@ -3,7 +3,7 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { 拆主子, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
+import { 拆主子, 历史渠道分类, 是历史渠道, 历史渠道报错, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
 
 type 库 = Prisma.TransactionClient | typeof prisma;
 
@@ -42,3 +42,18 @@ export async function 补主渠道(db: 库 = prisma): Promise<number> {
   }
   return 没挂.length;
 }
+
+/**
+ * 新数据能不能选这个渠道（P-渠道-06，11-10）：不存在 / 停用的不行；挂在「历史渠道」组主渠道下的也不行（只承载历史客户）。
+ * 能选给 null，不能选给报错。停用那句由调用处给（各处原来的话不一样），这里只回「停用」两个字让它认
+ */
+export async function 新数据渠道不行(id: string, db: 库 = prisma): Promise<"停用" | string | null> {
+  const c = await db.channel.findUnique({ where: { id }, select: { name: true, active: true, main: { select: { category: true } } } });
+  if (!c?.active) return "停用";
+  return 是历史渠道(c.main?.category) ? 历史渠道报错(c.name) : null;
+}
+
+/** 列表查询里「不是历史渠道」的条件：没挂主渠道的、主渠道分类不是「历史渠道」的（分类空也算在售） */
+export const 在售渠道条件 = {
+  OR: [{ mainId: null }, { main: { is: { OR: [{ category: null }, { category: { not: 历史渠道分类 } }] } } }],
+} satisfies Prisma.ChannelWhereInput;

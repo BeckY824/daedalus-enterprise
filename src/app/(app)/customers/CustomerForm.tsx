@@ -28,7 +28,7 @@ import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 地址叫法, 详细地址上限, 简称上限 } from "@/lib/enterprise/customer-v2";
 import { 三种业务线 } from "@/lib/enterprise/assign-line";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
-import { 没渠道提示 } from "@/components/ChannelPicker";
+import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 
 export type CustomerRow = {
   id: string;
@@ -85,7 +85,8 @@ export type CustomerRow = {
   updatedAt: string;
 };
 
-type Option = { id: string; name: string };
+/** 渠道候选：企业版选渠道要按「主渠道 → 子渠道」两级点，多带属性、主渠道名、启用（lib/options.ts 的 可选渠道） */
+type Option = { id: string; name: string; attr?: string | null; platform?: string | null; active?: boolean };
 
 type FormProps = {
   open: boolean;
@@ -240,6 +241,14 @@ function CustomerFormInner({
   ) : null;
   if (editing?.channelId && !channelOptions.some(c => c.id === editing.channelId)) {
     渠道选项.push({ value: editing.channelId, label: `${editing.channelName ?? editing.referrerName ?? "原渠道"}（已停用）` });
+  }
+  /**
+   * 企业版客户来源按两级选（P-渠道-01 附.5：先选主渠道再选子渠道，同建档向导）。
+   * 原来挂着的渠道已停用、或是「历史渠道」组的（候选里没有）：照样带上，锁着只显示
+   */
+  const 企业渠道们: 可选渠道[] = channelOptions.map((c) => ({ id: c.id, name: c.name, attr: c.attr ?? null, platform: c.platform ?? null, active: c.active ?? true }));
+  if (editing?.channelId && !channelOptions.some((c) => c.id === editing.channelId)) {
+    企业渠道们.push({ id: editing.channelId, name: editing.channelName ?? editing.referrerName ?? "原渠道", attr: null, platform: null, active: false });
   }
   const 渠道负责人选项 = 成员选项(users);
   if (editing?.channelOwnerId && !渠道负责人选项.some(u => u.value === editing.channelOwnerId)) {
@@ -774,10 +783,8 @@ function CustomerFormInner({
             rules={[{ required: 渠道必填, message: "请选择渠道" }]}
             extra={来源锁着 ? "客户来源记的是第一次带来的渠道，建好之后不改；后来又从别的渠道来的，记在项目上" : undefined}
           >
-            {/* A2-8：一个渠道都没有，不摆空下拉 */}
-            {渠道选项.length === 0 && !来源锁着
-              ? <Select placeholder={没渠道提示} options={[]} disabled />
-              : <Select showSearch placeholder="选择渠道" optionFilterProp="label" options={渠道选项} disabled={来源锁着} />}
+            {/* A2-8：一个渠道都没有，不摆空下拉（ChannelPicker 自己写「请系统管理员先添加渠道」）；先选主渠道再选子渠道，也能打字搜全称 */}
+            <ChannelPicker aria-label="客户来源" channels={企业渠道们} disabled={来源锁着} placeholder="先选主渠道，再选子渠道" />
           </Form.Item>
         )}
 
