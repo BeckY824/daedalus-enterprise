@@ -117,7 +117,7 @@ export default function InlineField({
     // 换了销售负责人，原负责人没做完的活一起转过去了：说一声，不然人不知道计划和待办换了主（排查 B3）
     const 带走 = 带走说法(res.带走);
     // 企业版「交接中」（11-09）：同转让，负责人还没换，等接手人确认
-    if (res.交接中) message.success("已发起交接：等接手人确认，确认前仍在原负责人名下");
+    if (res.交接中) message.success(res.申请移交 ? "已申请移交：等接手人确认后生效，确认前仍在你名下" : "已发起交接：等接手人确认，确认前仍在原负责人名下");
     else if (res.交接已在路上) message.info("这位已在另一笔交接里，没再发起");
     else if (res.带走?.没转成) message.warning("负责人刚被别人改了，这次没转");
     else if (带走) message.success(`已转给新负责人${带走}`);

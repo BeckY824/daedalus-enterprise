@@ -844,7 +844,9 @@ async function 会收的项目(规则: 组织规则, 成员: 成员线查 | null
     where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] }, ...(有默认 ? {} : { node: { in: 节点 } }), customer: { pool: { is: null } }, ...(ownerId ? { ownerId } : {}) },
     select: 算超时要的,
   });
-  return 们.filter((p) => !!项目回收日(规则, p, 成员));
+  // 客户在申请移交 / 转让交接里、还没确认的：名下项目不收（X-38 → P-转-05，挂到对方确认为止），也不发「明天收回」提醒
+  const 中 = 企业版() && 们.length ? await 交接中的客户([...new Set(们.map((p) => p.customerId))]) : new Set<string>();
+  return 们.filter((p) => !中.has(p.customerId) && !!项目回收日(规则, p, 成员));
 }
 
 /** 老板改时长前先看：按这份规则现在会有几个项目回到公海（不分谁的，全看） */
@@ -890,6 +892,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     const 收 = await 查完再写(async (tx) => {
       const 现 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
       if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今, 成员)) return false;
+      if (企业版() && (await 交接中的客户([p.customerId], tx)).size) return false;
       await tx.project.update({ where: { id: p.id }, data: { ownerId: 进公海后负责人(p.ownerId), pooledAt: 今, nextStepAt: null, nextStepText: null } });
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);

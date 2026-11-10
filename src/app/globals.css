@@ -1508,6 +1508,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 页头按钮开的框：小标题、底部按钮（框开在 .rec-page 外面，字号带兜底） */
 .rec-acts-hint { font-size: var(--dt-aux, 12px); color: var(--text-muted); margin-bottom: -8px; }
 .rec-modal-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
+.rec-transfer-hint { margin-bottom: var(--s2); color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; }
 .rec-tl-head > .ant-tag { flex: none; }
 .rec-tl-time { flex: none; margin-left: auto; font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rec-tl-when { flex: none; position: relative; margin-left: auto; display: inline-flex; align-items: center; }

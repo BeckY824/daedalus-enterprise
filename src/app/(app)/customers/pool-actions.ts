@@ -246,6 +246,9 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: 没业务角色不能领话 };
   // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）
   if (企业版() && !能领公海(me, await 权限组织())) return { ok: false, error: 不能领公海话 };
+  // 正在移交 / 交接中的不能领（X-38 → P-转-05）：自动回收可能把等确认的客户放进公海，领走了接手人确认时就落空
+  const 移交中 = await 移交中不能领(ids, "领");
+  if (移交中) return { ok: false, error: 移交中 };
   // 企业版「非原负责人均可领取」（pool-rules.ts，10-26 定稿）：不让原负责人自己领回。
   // 负责人还是他的 = 部署前进公海的老数据（存量脚本没跑到的空档也挡住），新进的认下面 公海客户原负责人是
   const 不能领 = 拦原负责人()
@@ -321,6 +324,18 @@ export async function 领取(ids: string[], 带待办?: boolean): Promise<公海
 }
 
 /**
+ * 企业版正在移交 / 交接中的客户（申请移交、交接要确认，X-38 → P-转-05）领不走、分不出去，整批拒：
+ * 等接手人确认、拒收或发起人撤回之后再领。别人发起的也算（看全部）
+ */
+async function 移交中不能领(ids: string[], 动作: "领" | "分"): Promise<string | null> {
+  if (!企业版() || !ids.length) return null;
+  const 中 = await 看全部(() => 交接中的客户([...new Set(ids)]));
+  if (!中.size) return null;
+  const b = await getBusiness();
+  return `${中.size} 名${b.customer}正在移交（等接手人确认），${动作 === "领" ? "不能领取" : "不能分配"}；等对方确认、拒收或撤回后再${动作 === "领" ? "领" : "分"}${中.size < new Set(ids).size ? "，整批已阻止" : ""}`;
+}
+
+/**
  * 领 / 分公海客户会把名下线索公海里的项目一起带走（pool-link 领客户带走公海项目）：一次进好几个，
  * 加上手上已有的超了持有上限就整批不领、不分，回一句说清谁、上限、现有几个（M-公海-18，11-09）。
  * 只数还在公海里的客户；规则在这里（事务外）读
@@ -348,6 +363,8 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
   const 不行 = await 公海分不给(me, 给.id);
   if (不行) return { ok: false, error: 不行 };
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
+  const 移交中 = await 移交中不能领(ids, "分");
+  if (移交中) return { ok: false, error: 移交中 };
   // 企业版：标了无效的分不出去（统一公海 P7），算「没权限」那几位
   const 无效 = await 无效的(ids);
   if (无效.size && 无效.size === new Set(ids).size) return { ok: false, error: "标了无效的客户不能分配，要总管理先恢复" };
