@@ -3,6 +3,7 @@ import { avatarBg } from "./palette";
 import relativeTime from "dayjs/plugin/relativeTime";
 import "dayjs/locale/zh-cn";
 import { isCalendarDate } from "./schedule-date";
+import { 全角数字转半角 } from "./fullwidth";
 
 dayjs.extend(relativeTime);
 dayjs.locale("zh-cn");
@@ -88,7 +89,6 @@ export function maskPhone(p?: string | null): string {
  *   - 其余文字（摘要、跟进内容、备注）：全角数字先转半角；带分隔符、连起来 7 位以上的数字就打码（日期除外）；
  *     不带分隔符的只认手机号、0 开头的座机、400/800、+ 开头的号——纯数字的金额和编号不误伤
  */
-const 全角数字 = (s: string) => s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
 const 号码样 = /^(?:\+?86)?1[3-9]\d{9}$|^0\d{9,11}$|^[48]00\d{7}$/;
 const 日期样 = /^\d{4}[-./]\d{1,2}[-./]\d{1,2}$/;
 // WhatsApp 也是号码（2026-10-05 外贸档案）：日志里「字段：WhatsApp」那一格照电话打码
@@ -101,7 +101,7 @@ function 打这一串(串: string): string {
 }
 
 function 文本里打码(s: string): string {
-  return 全角数字(s).replace(/\+?\(?\d[\d\s\-.()（）]*\d/g, (m) => {
+  return 全角数字转半角(s).replace(/\+?\(?\d[\d\s\-.()（）]*\d/g, (m) => {
     const 数字 = m.replace(/\D/g, "");
     const 有分隔 = /[\s\-.()（）]/.test(m.replace(/^\+/, ""));
     if (日期样.test(m)) return m;
@@ -111,7 +111,7 @@ function 文本里打码(s: string): string {
 }
 
 function 走一遍(v: unknown, 是电话: boolean): unknown {
-  if (typeof v === "string") return 是电话 ? (/\d/.test(v) ? 打这一串(全角数字(v)) : v) : 文本里打码(v);
+  if (typeof v === "string") return 是电话 ? (/\d/.test(v) ? 打这一串(全角数字转半角(v)) : v) : 文本里打码(v);
   if (Array.isArray(v)) return v.map((x) => 走一遍(x, 是电话));
   if (v && typeof v === "object") {
     const o = v as Record<string, unknown>;

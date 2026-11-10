@@ -8,14 +8,15 @@
  * 只认「整串都是」的：中间夹着几个 0 的真号（13900000001）、带字母的（微信号）、不足 5 位的都不算。
  * 带分机的看主号；+86 / 0086 国家码不算进去。
  */
+import { 全角数字转半角 } from "./fullwidth";
+
 
 const 分机 = /(?:转|分机|ext\.?|x|#)\s*\d{1,6}\s*$/i;
 
 /** 是不是占位假号。空的、带字母或汉字的、不足 5 位的都返回 false */
 export function 是占位号(v: string | null | undefined): boolean {
   if (!v) return false;
-  let s = String(v)
-    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+  let s = 全角数字转半角(String(v))
     .replace(/＋/g, "+")
     .trim();
   s = s.replace(分机, "");

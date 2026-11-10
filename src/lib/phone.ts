@@ -10,6 +10,7 @@
  */
 import { maskPhone } from "./utils";
 import { 是占位号, 占位号提示 } from "./placeholder-phone";
+import { 全角数字转半角 } from "./fullwidth";
 
 /**
  * 手机号规整：只留数字，去掉国家码和分隔符。
@@ -21,7 +22,7 @@ import { 是占位号, 占位号提示 } from "./placeholder-phone";
  * 表单那条路也走这里：人手敲的「138 0000 1111」和导入进来的「13800001111」得是同一个人。
  */
 export function 规整手机号(v: string): string {
-  let s = v.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/＋/g, "+").trim();
+  let s = 全角数字转半角(v).replace(/＋/g, "+").trim();
   s = s.replace(/^'/, "");
   // 有的系统导出 CSV 时把号码当数字写成「13800001111.0」：先把这个尾巴去掉，不然点被删后成了 12 位的另一个号（2026-10-02 排查）
   s = s.replace(/^(\+?\d[\d\s\-]*)\.0+$/, "$1");
