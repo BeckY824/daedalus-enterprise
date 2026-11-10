@@ -77,8 +77,6 @@
    - **用自己的 Key**：在「设置 → AI 接入」填自己的模型 API Key（推荐 DeepSeek），继续用、不计次。Key 加密存在这台电脑上，只发给你自己填的那个接口地址
 4. **换个行业说法**：「设置 → 业务配置」里改名词和三个档案字段（教培招生有现成预设，点一下整套换过去），全站同步
 
-Mac 使用**差量更新**，Windows 使用完整安装包覆盖更新。Windows 安装包未签名，安装说明见 [Windows 版](docs/Windows版.md)。
-安装、放行与更新见 [docs/桌面端安装.md](docs/桌面端安装.md)；
 接 Claude Code / Codex 见 [docs/MCP接入.md](docs/MCP接入.md)；
 官网要提供的下载页与版本信息见 [docs/网站对接.md](docs/网站对接.md)。
 
@@ -185,9 +183,9 @@ Esc 关掉回到原处。桌面端再把系统标题栏去掉，红黄绿钮嵌�
 |---|---|
 | ![](docs/shots/04-customers.jpg) | ![](docs/shots/05-customer-detail.jpg) |
 
-| 商机管道 | 数据看板 |
-|---|---|
-| ![](docs/shots/08-pipeline.jpg) | ![](docs/shots/02b-overview.jpg) |
+| 数据看板 |
+|---|
+| ![](docs/shots/02b-overview.jpg) |
 
 更多截图见 [docs/shots](docs/shots)。
 

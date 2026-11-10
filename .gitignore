@@ -78,11 +78,6 @@ prisma/shots.db*
 prisma/control.db*
 prisma/ws/
 
-prisma/e2e-hosted/
-# 网页对桌面截图对比的库（playwright.parity.config.ts，每轮重建）
-/prisma/e2e-parity.db*
-# 运营台排版压测（playwright.team-qa-ops.config.ts）
-/prisma/e2e-team-qa-ops/
 # 另换的 next 构建目录（next.config.ts 的 distDir；排版闸门开发模式用 .next-layout-ent）
 /.next-*/
 # 企业版主流程（playwright.enterprise.config.ts）：库和每轮随机的测试密码

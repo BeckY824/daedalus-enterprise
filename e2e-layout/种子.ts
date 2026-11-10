@@ -4,9 +4,8 @@
  * 照客户手上真有的样子造：商机名一整句英文（品名 + 条款 + 目的国 + 目标价 + 数量）、英国公司全大写长名、
  * T/T 30/70、US$ 1,234,567.89、一位客户挂好几个商机、几种状态和等级（供应商 / 订单 2026-10-29 连表删了）。
  * 名字、号码都是编的，不是任何真客户。id 固定前缀 gate-，重复跑先删后建。
- * 10-28 起排版闸门只跑企业版：长名字、长句给 e2e-layout/企业版.ts 造项目用；灌真客户 只剩 e2e-parity/网页对桌面.spec.ts 在用（直接写它自己那份库）
+ * 10-28 起排版闸门只跑企业版：长名字、长句给 e2e-layout/企业版.ts 造项目用。
  */
-import type { PrismaClient } from "../src/generated/prisma";
 
 export const 长句商机 = "chicken breast BFQ. Exw. 10kg/Box. Country is Turkmenistan / Tadjikistan. Target price is 1300$, quantity 500 tons";
 export const 客户们 = [
@@ -19,62 +18,6 @@ export const 客户们 = [
   { k: "cn-long", name: "深圳市宝安区福永街道某某照明电器科技股份有限公司东莞分公司（外贸二部 / 中东大区）", country: "沙特阿拉伯", level: "B 级", source: "老客户返单", follow: "跟进中", decision: "意向强" },
   { k: "arabic", name: "شركة النور للتجارة والمقاولات الكهربائية المحدودة", country: "沙特阿拉伯", level: "A 级", source: "领英", follow: "待跟进", decision: "了解中" },
 ];
-
-const 天 = 86400_000;
-
-export async function 灌真客户(db: PrismaClient, 我: string) {
-  await db.customer.deleteMany({ where: { id: { startsWith: "gate-" } } });
-  await db.lead.deleteMany({ where: { id: { startsWith: "gate-" } } });
-  const 现在 = Date.now();
-  for (const [i, c] of 客户们.entries()) {
-    const id = `gate-${c.k}`;
-    await db.customer.create({
-      data: {
-        id, name: c.name, school: "school" in c ? c.school : undefined, grade: "grade" in c ? c.grade : undefined, major: "major" in c ? c.major : undefined, phone: `+44 20 7946 ${String(1000 + i)}`, salesOwnerId: 我, followStatus: c.follow, decisionStatus: c.decision,
-        lastFollowAt: new Date(现在 - i * 天), remark: "Incoterms 2020 EXW Shenzhen; payment T/T 30/70; samples DHL account 123456789; 每月 15 号前对账",
-        extra: { create: { country: c.country, whatsapp: `+44 7700 900${String(100 + i)}`, email: `procurement.department.${c.k}@international-group-holdings.example.co.uk`, source: c.source, level: c.level, website: `https://www.${c.k}-international-group-holdings.example.co.uk/products/frozen-chicken-breast` } },
-        contacts: { create: [
-          { name: "Mr. Alexander Christopher Montgomery-Smythe", position: "Head of Global Procurement & Supply Chain", phone: "+44 7700 900123", email: "alexander.montgomery-smythe@scandipak-europe.example.co.uk", isPrimary: true },
-          { name: "Ms. Aigul Berdimuhamedova", position: "Import Manager (Ashgabat office)", phone: "+993 12 345678", email: "aigul@altynasyr.example.tm" },
-        ] },
-      },
-    });
-    const 商机们 = [
-      { id: `${id}-o1`, name: 长句商机, amount: 1234567.89, stage: "方案报价" },
-      { id: `${id}-o2`, name: "Frozen whole chicken grade A halal certified, 1000g–1200g, IQF, 40ft reefer container × 12, CIF Mersin port", amount: 987654.32, stage: "需求确认" },
-      { id: `${id}-o3`, name: "冷冻鸡胸肉 BFQ 10kg/箱 · 土库曼斯坦 / 塔吉克斯坦 · 目标价 1300$/吨 · 500 吨 · 年度框架合同", amount: 12345678.9, stage: "谈判审核" },
-    ];
-    for (const o of 商机们) {
-      await db.opportunity.create({ data: { ...o, customerId: id, ownerId: 我, probability: 60, expectedDealAt: new Date(现在 + 20 * 天), remark: "客户要求先寄样 3 箱，样品费到付；报价有效期 15 天", activityAt: new Date(现在 - 天), money: { create: { currency: "USD" } } } });
-      await db.quote.create({ data: { opportunityId: o.id, currency: "USD", lines: { create: [
-        { sort: 0, product: "Frozen chicken breast BFQ skinless boneless", spec: "10kg/Box, IQF, 150–250g/pc, Halal", qty: 500, unit: "tons", unitPrice: 1300 },
-        { sort: 1, product: "冷冻鸡全翅（中翅 + 翅根）", spec: "10kg/箱，单冻", qty: 120000, unit: "kg", unitPrice: 2.35 },
-      ] } } });
-    }
-    for (let j = 0; j < 4; j++) {
-      await db.followUp.create({
-        data: {
-          customerId: id, ownerId: 我, type: ["PHONE", "EMAIL", "WHATSAPP", "MEETING"][j], title: "", status: "已完成", occurredAt: new Date(现在 - j * 天 - i * 3600_000),
-          opportunityId: j < 3 ? `${id}-o${j + 1}` : null,
-          content: j === 1
-            ? "客户发来询价：https://www.scandipak-europe.example.co.uk/procurement/rfq/2026/10/frozen-chicken-breast-bfq-exw-10kg-box-turkmenistan-tadjikistan?ref=whatsapp&lang=en"
-            : `${长句商机}。客户说下周三之前要确认价格，T/T 30/70，US$ 1,234,567.89，问能不能做 CIF Turkmenbashi。`,
-        },
-      });
-    }
-    for (const [j, 差] of [-3, 0, 2].entries()) {
-      await db.followPlan.create({ data: { customerId: id, ownerId: 我, subject: `${j === 0 ? "【逾期】" : ""}催 ${c.name} 回签 PI 并确认 30% 定金到账时间（${长句商机.slice(0, 40)}…）`, plannedAt: new Date(现在 + 差 * 天), method: ["电话沟通", "WhatsApp", "邮件"][j] } });
-    }
-  }
-  // 线索：长来源、长行业（10-22 排版普查 #6：线索页来源 Tag 盖住「状态」列）
-  for (const [i, l] of [
-    { name: "AlRashidTradingAndContractingCompanyLimitedJebelAliFreeZoneAuthority", source: "LinkedInSalesNavigatorOutboundCampaignAutumn2026", industry: "冷冻禽肉水产品及清真认证肉类产品进出口批发与零售连锁" },
-    { name: "THE INTERNATIONAL GROUP OF SCANDINAVIAN FOOD PACKAGING HOLDINGS LIMITED", source: "Alibaba International Station · RFQ 询盘 · 2026 秋季广交会线下展位 1", industry: "Frozen poultry, seafood & halal-certified meat import / wholesale 第1" },
-    { name: "شركة النور للتجارة والمقاولات الكهربائية المحدودة", source: "领英", industry: "照明电器" },
-  ].entries()) {
-    await db.lead.create({ data: { id: `gate-lead-${i}`, ...l, contact: "Mr. Alexander Christopher Montgomery-Smythe", phone: `+971 4 555 ${String(1000 + i)}`, email: `buyer.${i}@international-group-holdings.example.ae`, status: "待跟进", ownerId: 我 } });
-  }
-}
 
 /**
  * D-25 验收后进闸门的长名字（2026-10-22）：一整段询盘、长网址、长中文、中英混排，各一条；再加一个长英文名的同事挂大额卡。

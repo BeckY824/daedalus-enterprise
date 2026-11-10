@@ -34,13 +34,7 @@ export default defineConfig({
    * 且依赖开发库里的真实跟进记录，而这里跑的是每次重建的空 e2e 库。
    * 跑法见 e2e/ai-acceptance.spec.ts 顶部说明。
    */
-  /**
-   * 两套都不进默认 e2e：
-   *   ai-acceptance 真调中转站（慢、花钱），跑法见它顶部说明
-   *   hosted 要 MULTI_TENANT=1 和另一套库，有自己的 config（npm run test:hosted）
-   *   team-qa-ops 是运营台排版压测，托管模式 + 自己的库（playwright.team-qa-ops.config.ts）
-   */
-  testIgnore: ["**/ai-acceptance.spec.ts", "**/hosted.spec.ts", "**/team-qa-ops.spec.ts", ...企业版跳过],
+  testIgnore: ["**/ai-acceptance.spec.ts", ...企业版跳过],
   globalSetup: "./e2e/global-setup.ts",
   // 冒烟用例共用一个库、按业务链条前后依赖，必须串行
   fullyParallel: false,
