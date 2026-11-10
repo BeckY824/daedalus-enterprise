@@ -160,6 +160,8 @@ describe("编辑项目 · 改负责人（转让）：负责人转自己的、实
 });
 
 describe("删除项目：总管理（含不管设置的）、负责人本人（V3.5.1 软删）", () => {
+  // 客户只剩最后一个项目不能单删（X-74）：这里只测谁能删，给客户再挂一个
+  beforeEach(async () => { await raw.project.create({ data: { name: "甲的二期", customerId: 客户.甲的, ownerId: 人.销售甲, creatorId: 人.销售甲 } }); });
   const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", true], ["销售乙", false], ["组长", false], ["管理员", false], ["没角色", false], ["市场", false]];
   for (const [r, 应] of 表) {
     it(`${r} 删甲的项目 → ${应 ? "能" : "拒"}`, async () => {

@@ -447,6 +447,11 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
       const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true } });
       if (!p) return { ok: false as const, error: 能删除(me, org, null) ? "这个项目已经不在了，刷新看看" : 项目不能删提示 };
       if (!能删除(me, org, p.pooledAt ? null : p.ownerId)) return { ok: false as const, error: 项目不能删提示 };
+      // 状态拦（X-74、P-删-10）：交接中客户的项目、验证中的线索不能删；客户只剩这一个项目不能单删（M-公海-14 不再有零项目客户）
+      if ((await 看全部(() => 交接中的客户([p.customerId], tx))).size) return { ok: false as const, error: "这个项目的客户正在转让交接中，先撤回交接或等接手人确认再删" };
+      const 验 = await 看全部(() => tx.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }));
+      if (验?.pending) return { ok: false as const, error: `这条线索在验证中（等${验.pending}），不能删；验证走完再删` };
+      if (!(await 看全部(() => tx.project.count({ where: { customerId: p.customerId, id: { not: p.id } } })))) return { ok: false as const, error: "这是客户名下最后一个项目，不能单删；要删就删客户" };
       await 软删一条(tx, "Project", p.id);
       // 进了回收站的项目不算进客户状态
       await 跟着项目重算(tx, 状态开, [p.customerId]);
