@@ -114,7 +114,7 @@ async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
       // 复核的人多半看不到这位销售的项目：和 lib/project/lead-verify.ts 一样看全部读；能不能拍板交给各步的 Action 判
       const 项 = await 看全部(() => prisma.project.findUnique({
         where: { id: p.targetId },
-        select: { id: true, name: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true, customerId: true, creatorId: true },
+        select: { id: true, name: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true, awaitAssignAt: true, customerId: true, creatorId: true },
       }));
       if (!项) return { ok: false, error: "这个项目已经不在了" };
       const 字典 = 字典of(true, (await 生效组织规则()).阶段.出口叫法);
