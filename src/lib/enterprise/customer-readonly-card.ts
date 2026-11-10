@@ -77,10 +77,23 @@ export async function 读客户只读卡(me: 谁, projectId: string): Promise<�
   });
   if (!p) return null;
   // 客户本身多半看不到（这张卡就是给这种情况的），从这往下绕开限定层，所以字段全部写明，只取白名单
-  const [org, 客户, 自己项目] = await Promise.all([
-    权限组织(),
+  const [org, 底] = await Promise.all([权限组织(), 读卡底子(p.customerId, p.ownerId)]);
+  if (!底) return null;
+  const 放行 = await 只读卡放行(me, { ...p, 已加入: p.members.map((m) => m.userId), 客户在公海: 底.在公海 }, org);
+  if (!放行) return null;
+  return 拼卡(me, p.customerId, 底);
+}
+
+type 卡底子 = NonNullable<Awaited<ReturnType<typeof 读卡底子>>>;
+
+/**
+ * 卡的底子：客户白名单字段 + 「谁的项目」上的联系人（只有这些给联系方式）。客户删了 = null。
+ * 项目详情点开的卡按项目负责人算；挂靠批准后的卡（attach-approval.ts）按申请人自己算（P-看-13）
+ */
+export async function 读卡底子(customerId: string, 项目负责人: string) {
+  const [客户, 自己项目] = await Promise.all([
     看全部(() => prisma.customer.findFirst({
-      where: { id: p.customerId, deletedAt: null },
+      where: { id: customerId, deletedAt: null },
       select: {
         name: true, shortName: true, school: true, customerType: true, customerAttr: true,
         addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true, addrDetail: true,
@@ -89,19 +102,21 @@ export async function 读客户只读卡(me: 谁, projectId: string): Promise<�
       },
     })),
     看全部(() => prisma.project.findMany({
-      where: { customerId: p.customerId, ownerId: p.ownerId, pooledAt: null, deletedAt: null },
+      where: { customerId, ownerId: 项目负责人, pooledAt: null, deletedAt: null },
       select: { contactId: true, contactLinks: { select: { contactId: true } } },
     })),
   ]);
   if (!客户) return null;
-  const 放行 = await 只读卡放行(me, { ...p, 已加入: p.members.map((m) => m.userId), 客户在公海: !!客户.pool }, org);
-  if (!放行) return null;
-
   const 自己项目的人 = new Set(自己项目.flatMap((x) => [...(x.contactId ? [x.contactId] : []), ...x.contactLinks.map((l) => l.contactId)]));
+  return { 客户, 自己项目的人, 在公海: !!客户.pool };
+}
+
+/** 放行之后拼卡：客户白名单 + 联系人（不在自己项目上的只给姓名、职务） */
+export async function 拼卡(me: 谁, customerId: string, { 客户, 自己项目的人 }: 卡底子): Promise<客户只读卡> {
   // 这家客户的联系人，含挂靠过来的（同客户详情页）；只隶属别家、没挂到这家的不列
   const [联系人行, 号, 种类表] = await Promise.all([
     看全部(() => prisma.contact.findMany({
-      where: { deletedAt: null, OR: [{ customerId: p.customerId }, { customerLinks: { some: { customerId: p.customerId } } }] },
+      where: { deletedAt: null, OR: [{ customerId }, { customerLinks: { some: { customerId } } }] },
       orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
       select: {
         id: true, name: true, position: true, phone: true, email: true, wechat: true,

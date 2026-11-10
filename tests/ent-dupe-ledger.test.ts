@@ -234,7 +234,7 @@ describe("申请挂靠", () => {
     await 等通知推完();
     const 发 = await 通知们(x.负责人.id, "挂靠");
     expect(发).toHaveLength(1);
-    expect(发[0]).toMatchObject({ link: `/customers/${x.客户.id}` });
+    expect(发[0]).toMatchObject({ link: "/projects/attach" });
     // 再查一次：露出里带已申请
     await 挪旧();
     const 再 = await 作为(x.乙, () => 客户名查重(x.乙.id, [x.乙.id], "编的客户甲"));
