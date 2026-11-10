@@ -33,7 +33,7 @@ beforeAll(async () => {
   const 公海插件: Plugin = { name: "pool-view-boundaries", setup(b) {
     const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
     const 好 = "async()=>({ok:true,updated:0})";
-    stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
+    stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){(window.__去=window.__去||[]).push(u)},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
     stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
     stub(/customers\/pool-actions$/, `const f=${好};export const 领取=f,分配公海=f,撤销公海=f;`);
     stub(/\/projects\/actions$/, `export const 领取项目=${好};`);
@@ -49,9 +49,9 @@ beforeAll(async () => {
     const 快捷数=Object.fromEntries(快捷们.map(k=>[k,9999]));
     const 行=[{id:'c1',种:'客户',customerId:'c1',projectId:null,客户名:'某某超长名字的智能制造装备与工业自动化系统集成有限公司',项目名:null,进程:null,属性:'其他',最后跟进:null,入池时间:new Date().toISOString(),创建时间:new Date().toISOString(),类:'主动退回',累计:1,进程明细:null,入池原因:'—',快捷:'首次退回',原负责人是我:false}];
     // 1024 宽：左边 220 的导航 + 内容区 24 内边距，同 app 外框
-    window.__render=()=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
+    window.__render=(quick='')=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
-        <Pool 行={行} 总数={1} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:99999,线索池:33333,商机池:33333,其他:33333}} 截断={false} 库里有 filters={{keyword:'',attr:'其他',quick:'',sort:''}} 能标无效 能恢复 能分配 users={[]} 持有={null}/>
+        <Pool 行={行} 总数={1} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:99999,线索池:33333,商机池:33333,其他:33333}} 截断={false} 库里有 filters={{keyword:'',attr:'其他',quick,sort:''}} 能标无效 能恢复 能分配 users={[]} 持有={null}/>
       </main></div></BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [公海插件], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -117,6 +117,41 @@ it.each([1024, 1280])("公海页 %ipx：属性筛选 全部 / 线索池 / 商机
       expect(Math.max(...中) - Math.min(...中)).toBeLessThanOrEqual(3);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// P-公海-09（客户 11-09 回执 X1 = A）：「公海 + 标无效」在界面上统一叫「公海回收站」，公海页有入口（= 筛标了无效的）
+it.each([1024, 1280, 1366])("公海页 %ipx：有「公海回收站」入口，点了筛无效；入池方式里不再叫「无效客户」；不横向撑出", async (w) => {
+  const page = await browser.newPage({ viewport: { width: w, height: 800 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://route.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+    await page.goto("http://route.test/pool"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 公海bundle });
+    await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
+    const 入口 = page.getByRole("button", { name: /公海回收站/ });
+    await 入口.waitFor();
+    expect((await 入口.innerText()).replace(/\s+/g, " ").trim()).toBe("公海回收站 9999");
+    expect(await 入口.getAttribute("aria-pressed")).toBe("false");
+    // 入口整个在屏里、单行，页面不横向撑出
+    const 框 = await 入口.evaluate(e => { const r = e.getBoundingClientRect(); return { 右: r.right, 左: r.left, 高: r.height, 挡: !e.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) }; });
+    expect([框.左 >= 0, 框.右 <= w, 框.高 <= 34, 框.挡]).toEqual([true, true, true, false]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // 入池方式下拉：那一项叫「公海回收站」
+    await page.getByLabel("入池方式").click();
+    const 项 = await page.locator(".ant-select-item-option").evaluateAll(els => els.map(e => (e.firstElementChild?.firstElementChild?.firstElementChild?.textContent ?? "").trim()));
+    expect(项).toContain("公海回收站 9999");
+    expect(项.join("|")).not.toContain("无效客户");
+    await page.keyboard.press("Escape");
+    // 点入口 = 筛标了无效的（地址栏参数照旧，老链接不坏）；再点一次取消
+    await 入口.click();
+    expect(await page.evaluate(() => (window as unknown as { __去: string[] }).__去.map(u => new URL(u, location.href).searchParams.get("quick")))).toEqual(["无效客户"]);
+    expect(await 入口.getAttribute("aria-pressed")).toBe("true");
+    expect(await page.locator(".ant-select").first().innerText()).toContain("公海回收站");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await 入口.click();
+    expect(await page.evaluate(() => (window as unknown as { __去: string[] }).__去.map(u => new URL(u, location.href).searchParams.get("quick")))).toEqual(["无效客户", null]);
+    expect(await 入口.getAttribute("aria-pressed")).toBe("false");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

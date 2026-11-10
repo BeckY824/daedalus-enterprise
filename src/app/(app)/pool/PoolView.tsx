@@ -67,8 +67,15 @@ const 快捷说明: Record<快捷, string> = {
   二次退回: "被同事主动放回公海，累计第 2 次",
   三次退回: "被同事主动放回公海，累计第 3 次",
   多次退回: `被同事主动放回公海，累计 ${多次退回起} 次及以上`,
-  无效客户: "总管理或销售管理标了无效：领不了，系统管理员能恢复",
+  无效客户: "总管理或销售管理标了无效的客户：全员看得到、查重查得到，领不了，系统管理员能恢复",
 };
+
+/**
+ * 「公海 + 标无效」在界面上统一叫「公海回收站」（P-公海-09，客户 11-09 回执 X1 = A）：只改显示，
+ * 筛选值、地址栏参数还是「无效客户」（老链接不坏）。和 设置 → 回收站（删掉的记录，30 天后清）是两回事
+ */
+const 公海回收站 = "公海回收站";
+const 快捷叫法 = (k: 快捷): string => (k === "无效客户" ? 公海回收站 : k);
 
 const 无效原因 = "标了无效，要系统管理员先恢复";
 
@@ -191,7 +198,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   function 标记(r: 公海行, 动作: "无效" | "恢复") {
     modal.confirm({
       title: 动作 === "无效" ? `把「${行名(r)}」标成无效客户？` : `把「${行名(r)}」恢复成有效客户？`,
-      content: 动作 === "无效" ? "标了以后谁都领不了，只有系统管理员或回收站副手能恢复" : "恢复后留在公海里，谁都能领",
+      content: 动作 === "无效" ? `标了以后进${公海回收站}：全员还看得到，谁都领不了，只有系统管理员或回收站副手能恢复` : "恢复后留在公海里，谁都能领",
       okText: 动作 === "无效" ? "标无效" : "恢复",
       cancelText: "取消",
       onOk: async () => {
@@ -199,7 +206,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         router.refresh();
         if (!res.ok) return void message.error(res.error);
         if (!res.updated) return void message.info(动作 === "无效" ? "已经是无效客户，或者已被领走" : "已经恢复过了");
-        message.success(动作 === "无效" ? `已把「${行名(r)}」标成无效客户` : `已恢复「${行名(r)}」，现在能领了`);
+        message.success(动作 === "无效" ? `已把「${行名(r)}」标成无效客户，放进${公海回收站}` : `已恢复「${行名(r)}」，现在能领了`);
       },
     });
   }
@@ -300,7 +307,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
           popupMatchSelectWidth={260}
           value={f.quick || undefined}
           onChange={(v) => apply({ quick: v ?? "" })}
-          options={快捷们.map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
+          options={快捷们.map((k) => ({ value: k, label: `${快捷叫法(k)} ${快捷数[k]}` }))}
           optionRender={(o) => (
             <div>
               <div>{o.label}</div>
@@ -343,6 +350,12 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         width={200}
       />
       {更多筛选按钮}
+      {/* 公海回收站入口（P-公海-09）= 入池方式筛「无效客户」，再点一次取消 */}
+      <Button className="nowrap" aria-pressed={f.quick === "无效客户"} type={f.quick === "无效客户" ? "primary" : "default"} ghost={f.quick === "无效客户"}
+        title="标了无效的客户都在这里：全员看得到、查重查得到，不会自动删"
+        onClick={() => apply({ quick: f.quick === "无效客户" ? "" : "无效客户" })}>
+        {公海回收站} {快捷数.无效客户}
+      </Button>
       <ResetFilters 显示={在筛} onClick={reset} />
     </div>
   );
