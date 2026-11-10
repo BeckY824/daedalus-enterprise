@@ -349,7 +349,7 @@ describe("服务停过后启动：补跑（10c）", () => {
     return 项目(createdAt, { customerId: c.id, name, ...补 });
   }
   const 收回通知 = async (id: string) => prisma.entNotice.findMany({ where: { dedupeKey: { startsWith: `recall:${id}:` } } });
-  const 补跑日志 = (log: ReturnType<typeof vi.spyOn>) => log.mock.calls.map((c) => String(c[0])).filter((s) => s.startsWith("[定时补跑]"));
+  const 补跑日志 = (log: { mock: { calls: unknown[][] } }) => log.mock.calls.map((c) => String(c[0])).filter((s) => s.startsWith("[定时补跑]"));
 
   it("停两天后启动：启动那一遍就补收（不等下一分钟），豁免照旧；没赶上提前一天提醒的，收回通知里说明；写一条补跑日志", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
