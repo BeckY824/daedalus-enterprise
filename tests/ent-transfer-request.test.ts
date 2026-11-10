@@ -209,15 +209,17 @@ describe("负责人本人转客户 = 申请移交", () => {
     expect(await prisma.entHandover.count()).toBe(0);
   });
 
-  it("「交接要确认」开着：本人发起的同样是申请；上级发起的是普通交接", async () => {
+  it("「交接要确认」开着：批量转让同单条（P-转-16，11-10）——本人发起的是申请；上级发起的直接转，不写交接", async () => {
     await setSetting("enterprise.rule.handover_confirm", true);
     const a = await 客户(销售.id);
     const b = await 客户(销售.id);
     expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1, 申请移交: true });
     当(组长);
     const r = await assignSalesOwner([b.id], 接手.id);
-    expect(r).toMatchObject({ ok: true, 交接中: 1 });
-    expect(r.ok && r.申请移交).toBeFalsy();
+    expect(r).toMatchObject({ ok: true, updated: 1 });
+    expect(r).not.toHaveProperty("交接中");
+    expect(await 归谁(b.id)).toBe(接手.id);
+    expect(await prisma.entHandover.count()).toBe(1);
   });
 });
 
