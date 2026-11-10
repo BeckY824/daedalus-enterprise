@@ -1032,6 +1032,31 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     expect(await prisma.entLeadAssign.count({ where: { projectId: P } })).toBe(1);
   });
 
+  it("X-89 批量自动分配带每行看到的负责人：哪行被别人先分走就只那行回「已被分配」，其余照分", async () => {
+    const 甲 = await 建项目("批甲", { bizLine: "内贸" });
+    // 乙另一位客户：分乙时客户连名下项目转给销售（X-18），不能把甲也带走
+    const 客户丙 = (await prisma.customer.create({ data: { name: "客户丙", phone: "13900000001", salesOwnerId: 市场 } })).id;
+    const 乙 = (await prisma.project.create({ data: { name: "批乙", customerId: 客户丙, ownerId: 市场, creatorId: 市场, bizLine: "内贸" } })).id;
+    // 乙在界面上看到的是市场，点之前被别人手动分给了内贸
+    expect(await 分配线索({ projectId: 乙, toUserId: 内贸, 原负责人: 市场 })).toEqual({ ok: true });
+    const r = await 批量自动分配([甲, 乙], { 项目: true, 原负责人们: { [甲]: 市场, [乙]: 市场 } });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.结果[0]).toMatchObject({ leadId: 甲, ok: true });
+    expect(r.结果[1]).toMatchObject({ leadId: 乙, ok: false, 已被分配: true });
+    expect((await 项目(乙)).ownerId).toBe(内贸);
+    expect(await prisma.entLeadAssign.count({ where: { projectId: 乙 } })).toBe(1);
+    // 老线索表同样；没交的行（老页面）照常按刚读到的分
+    const L = await 建线索("批老", 市场);
+    expect(await 分配线索({ leadId: L, toUserId: 内贸, 原负责人: 市场 })).toEqual({ ok: true });
+    const r2 = await 批量自动分配([L], { 原负责人们: { [L]: 市场 } });
+    expect(r2.ok && r2.结果[0]).toMatchObject({ ok: false, 已被分配: true });
+    expect(await 负责人(L)).toBe(内贸);
+    // 公海里清了负责人的（ownerId 空串）：交空串 = 没人，照常分
+    const 丙 = await 建项目("批丙", { bizLine: "外贸", ownerId: "", pooledAt: new Date() });
+    const r3 = await 批量自动分配([丙], { 项目: true, 原负责人们: { [丙]: "" } });
+    expect(r3.ok && r3.结果[0]).toMatchObject({ ok: true });
+  });
+
   it("QA #4 界面上看到的负责人过时了（别人刚分走）：手动、自动都回「已被分配」，负责人不动", async () => {
     const P = await 建项目("过时", { bizLine: "内贸" });
     expect(await 分配线索({ projectId: P, toUserId: 内贸, 原负责人: 市场 })).toEqual({ ok: true });

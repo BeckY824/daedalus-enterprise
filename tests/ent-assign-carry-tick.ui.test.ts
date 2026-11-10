@@ -25,7 +25,7 @@ beforeAll(async () => {
   const r = await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
     import {AssignLeadModal,AssignedOutButton,useBatchAutoAssign} from '@/app/(app)/leads/AssignLead';
-    function 批量({选项,名}){const 分=useBatchAutoAssign(()=>'分了',选项);return <button onClick={()=>void 分(['p1','p2'],()=>{})}>{名}</button>}
+    function 批量({选项,名}){const 分=useBatchAutoAssign(()=>'分了',选项);return <button onClick={()=>void 分(['p1','p2'],()=>{},[{id:'p1',ownerId:'m1'},{id:'p2',ownerId:null}])}>{名}</button>}
     function 壳(){const [lead,set]=React.useState(null);return <App><button onClick={()=>set({id:'p1',name:'某项目',ownerId:'m1',项目:true})}>开弹窗</button><button onClick={()=>set({id:'l1',name:'老线索',ownerId:'m1'})}>开老线索</button><批量 选项={{项目:true}} 名="批量分项目"/><批量 名="批量分老线索"/><AssignLeadModal lead={lead} 关={()=>set(null)}/><AssignedOutButton/></App>}
     window.__画=()=>createRoot(document.getElementById('root')).render(<壳/>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
@@ -235,6 +235,8 @@ it("批量自动分配·没有要带走的同事项目、老线索：不弹，�
   await page.getByRole("button", { name: "批量分项目" }).click();
   await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "批量自动分配"));
   expect(await 调了(page, "分配带走的项目")).toHaveLength(1);
+  // X-89：每行勾选时看到的负责人一起交上去，服务端逐行比
+  expect(await 调了(page, "批量自动分配")).toEqual([["批量自动分配", ["p1", "p2"], { 项目: true, 原负责人们: { p1: "m1", p2: null } }]]);
   expect(errors).toEqual([]); await page.close();
 
   const 老 = await 开页({ 带走: 带走预览 });

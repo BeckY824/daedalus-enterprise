@@ -588,9 +588,12 @@ async function 本批已随客户走(id: string, 本批: ReadonlyMap<string, { t
 /**
  * 勾了几条一起自动分配（D-38）：一条一条按顺序分，前一条分完再挑下一条的人；每条成没成都列出来。一次最多 200 条。
  * 市场客户按客户算一份（11-09，只在 X-18 下）：一位客户下几条线索，第一条分给谁，客户和其余几条就都归谁，后面几条结果行写「已随客户给 A」。
- * 客户负责人已是销售的不算转客户，还是一条条分（和点几次单条一样）
+ * 客户负责人已是销售的不算转客户，还是一条条分（和点几次单条一样）。
+ * 原负责人们 = 每行勾选时界面上看到的负责人（乐观锁，X-89 / QA #4）：哪行被别人先分走了只那行回「已被分配」；没交的行按刚读到的比
  */
-export async function 批量自动分配(leadIds: string[], opts: { 项目?: boolean } = {}): Promise<{ ok: true; 结果: 批量自动分配结果[] } | { ok: false; error: string }> {
+export async function 批量自动分配(
+  leadIds: string[], opts: { 项目?: boolean; 原负责人们?: Record<string, string | null> } = {},
+): Promise<{ ok: true; 结果: 批量自动分配结果[] } | { ok: false; error: string }> {
   const me = await 进门();
   if (!me) return 没开;
   const ids = [...new Set(Array.isArray(leadIds) ? leadIds.filter((x) => typeof x === "string") : [])];
@@ -602,6 +605,8 @@ export async function 批量自动分配(leadIds: string[], opts: { 项目?: boo
     const 方式挡 = await 挡分配方式(me, 1);
     if (方式挡) return { ok: false, error: 方式挡 };
     const 项目 = opts?.项目 === true;
+    const 原们 = opts?.原负责人们 && typeof opts.原负责人们 === "object" && !Array.isArray(opts.原负责人们) ? opts.原负责人们 : {};
+    const 原of = (id: string) => (Object.prototype.hasOwnProperty.call(原们, id) ? 认原负责人(原们[id]) : undefined);
     const 名 = new Map((项目
       ? await prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
       : await prisma.lead.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]));
@@ -615,8 +620,8 @@ export async function 批量自动分配(leadIds: string[], opts: { 项目?: boo
       try {
         r = (项目 && 名.has(id) ? await 本批已随客户走(id, 本批随客户) : null)
           ?? (项目
-            ? await 挑不到就标(id, await 自动分给(me, org, { projectId: id }, null, "营销"))
-            : await 自动分给(me, org, { leadId: id }, null, "营销"));
+            ? await 挑不到就标(id, await 自动分给(me, org, { projectId: id }, null, "营销", 原of(id)))
+            : await 自动分给(me, org, { leadId: id }, null, "营销", 原of(id)));
       } catch (e) {
         r = 不在了(e);
       }
