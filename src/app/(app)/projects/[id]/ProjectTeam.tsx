@@ -65,6 +65,7 @@ export function ProjectEditModal({
 }) {
   // 父组件每次打开时才挂上，初值就是最新的
   const [d, setD] = useState({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contactId, expectedDealAt: p.expectedDealAt, channelId: 渠道们 ? (p.channelId ?? null) : undefined });
+  const 来源锁着 = Boolean(p.channelId);
   const [级别, set级别] = useState(p.level ?? null);
   const [地址, set地址] = useState<客户地址>(p.所在地 ? { addrCountry: p.所在地.addrCountry, addrProvince: p.所在地.addrProvince, addrCity: p.所在地.addrCity, addrDistrict: p.所在地.addrDistrict } : 空地址);
   const [详细, set详细] = useState(p.所在地?.location ?? "");
@@ -175,16 +176,21 @@ export function ProjectEditModal({
           placeholder="选一天"
         />
       ))}
+      {/* 项目来源（P-删-03，同客户来源）：项目自己的来源有值就锁住只读；空着的可以补一次。服务端 改项目 同样拒换、拒清空 */}
       {渠道们 && 行("项目来源", (
-        <ChannelPicker
-          channels={渠道们}
-          value={d.channelId ?? null}
-          onChange={(v) => 改({ channelId: v })}
-          allowClear
-          placeholder="不填 = 渠道统计跟客户来源走"
-          style={{ width: "100%" }}
-          aria-label="项目来源"
-        />
+        <>
+          <ChannelPicker
+            channels={渠道们}
+            value={d.channelId ?? null}
+            onChange={(v) => 改({ channelId: v })}
+            disabled={来源锁着}
+            allowClear={!来源锁着}
+            placeholder="不填 = 渠道统计跟客户来源走；补了就不能改"
+            style={{ width: "100%" }}
+            aria-label="项目来源"
+          />
+          {来源锁着 && <div style={{ marginTop: 4, color: "var(--text-muted)" }}>项目来源记的是这一单从哪个渠道来，建好之后不能改</div>}
+        </>
       ))}
       {p.所在地 && 行("所在地", (
         <>

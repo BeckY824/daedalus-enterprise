@@ -234,6 +234,21 @@ describe("saveCustomer 企业版几格", () => {
     const 空 = await 新建id();
     expect((await 整表保存(空, { channelId: 乙 })).ok).toBe(true);
   });
+
+  it("来源锁（P-删-03）：换推荐人也不能把已有来源换掉或清空；推荐链顶还是原渠道的照常存", async () => {
+    const 甲 = (await prisma.channel.create({ data: { name: "甲渠道", channelOwnerId: 销售 } })).id;
+    const 乙 = (await prisma.channel.create({ data: { name: "乙渠道", channelOwnerId: 销售 } })).id;
+    const id = await 新建id({ channelId: 甲 });
+    const 乙的人 = (await prisma.customer.create({ data: { name: "乙渠道来的", phone: "13900000091", salesOwnerId: 销售, channelId: 乙 } })).id;
+    const 没渠道的人 = (await prisma.customer.create({ data: { name: "没渠道的", phone: "13900000092", salesOwnerId: 销售 } })).id;
+    const 甲的人 = (await prisma.customer.create({ data: { name: "甲渠道来的", phone: "13900000093", salesOwnerId: 销售, channelId: 甲 } })).id;
+    const 锁 = { ok: false, error: "客户来源记的是第一次带来的渠道，建好之后不能改" };
+    expect(await 整表保存(id, { channelId: null, referrerCustomerId: 乙的人 })).toMatchObject(锁);
+    expect(await 整表保存(id, { channelId: null, referrerCustomerId: 没渠道的人 })).toMatchObject(锁);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id } })).channelId).toBe(甲);
+    expect((await 整表保存(id, { channelId: null, referrerCustomerId: 甲的人 })).ok).toBe(true);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id } })).channelId).toBe(甲);
+  });
 });
 
 describe("patchCustomer 企业版几格", () => {

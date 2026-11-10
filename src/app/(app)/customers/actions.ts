@@ -541,6 +541,13 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
         attributionCustomerId: 改前!.attributionCustomerId,
         channelOwnerId: 改前!.channelOwnerId,
       };
+  /*
+    来源锁的最后一道（P-删-03，11-10）：上面只比了交来的 channelId；换推荐人时 channelId 是推荐链顶端算出来的，
+    原来有来源的客户换个推荐人（或推荐链顶没渠道）就会把来源换掉 / 清空。算完再比一次，有值就不许变（系统管理员也一样）
+  */
+  if (企业版() && 改前?.channelId && attribution.channelId !== 改前.channelId) {
+    return { ok: false, error: "客户来源记的是第一次带来的渠道，建好之后不能改" };
+  }
   // 显式指定压过推荐链：登记错误的单个订正走这里。null 表示清掉手工值、按推荐链重算
   if (input.channelOwnerId !== undefined) {
     if (input.channelOwnerId) {
