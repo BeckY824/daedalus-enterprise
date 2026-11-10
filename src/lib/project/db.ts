@@ -751,7 +751,16 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
   // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）
   if (企业版() && !能领公海(me, await 权限组织())) return { ok: false, error: 不能领公海话 };
   const 规则 = await 生效组织规则();
-  return 查完再写(async (tx) => {
+  // 客户创建人、负责人都是市场的，销售领了公海项目客户也给他（P-公海-11、X-60）：老签约要在事务外、换负责人之前钉住；分配方式记「公海捞取」。
+  // 动态引：market-transfer → carry-over-db → 本文件
+  const 市场 = 企业版() ? await import("@/lib/enterprise/market-transfer") : null;
+  const org = 市场 ? await 权限组织() : null;
+  if (市场 && org) {
+    const p0 = await 看全部(() => prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, customerId: true } }));
+    if (p0 && (await 市场.公海项目市场转(prisma, org, p0, me.id, true))) await (await import("@/lib/contract-owner")).钉住老签约();
+  }
+  const way = 市场 ? await (await import("@/lib/enterprise/dict")).分配方式叫法(2) : "";
+  const r = await 查完再写(async (tx) => {
     const id = String(projectId ?? "");
     const p = await tx.project.findUnique({ where: { id } });
     // 两人同时领：先进来的领走了，项目就落到后进来那位的范围外（业务员只看自己的 + 公海），带限定查是空的；
@@ -779,16 +788,24 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     // 客户在客户公海里的，项目随整包（M-公海-06），要领客户
     if (拦客户公海里的项目(!!(await 看全部(() => tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))))) return { ok: false as const, error: 客户在公海项目不单领提示 };
     // 开关 领项目带走单项目客户 开着时客户名下别的公海项目一起来，一起数（M-公海-18）
-    const 超 = await 领项目连带超上限(tx, 规则, me.id, p);
+    // 市场转客户时客户上同事待分配的项目随客户一起进手，一起数（同 分配线索，M-公海-18）
+    const 转 = 市场 && org ? await 市场.公海项目市场转(tx, org, p, me.id, true) : null;
+    const 超 = await 领项目连带超上限(tx, 规则, me.id, p, 转?.另进 ?? 0);
     if (超) return { ok: false as const, error: 超 };
     await tx.project.update({ where: { id: p.id }, data: { ownerId: me.id, pooledAt: null } });
-    // 进公海时关掉的那批待办（C-06）：勾着重新打开给我
-    const 几条 = await 换负责人待办(tx, p, 原, me.id, 带待办);
-    await 记转让(tx, p, me.id, 原, me.id, "pool-claim", 待办痕(带待办, 几条));
+    // 进公海时关掉的那批待办（C-06）：勾着重新打开给我；市场转客户的待办计划还归市场（P-转-10），勾不算数
+    const 带 = 转 ? undefined : 带待办;
+    const 几条 = await 换负责人待办(tx, p, 原, me.id, 带);
+    await 记转让(tx, p, me.id, 原, me.id, "pool-claim", 待办痕(带, 几条));
     // 企业版线索公海的项目单独领，客户负责人不变（M-公海-06；开关 领项目带走单项目客户 关着，pool-link.ts）
-    await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带待办);
-    return { ok: true as const };
+    await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带);
+    // 例外：客户创建人、负责人都是市场 → 客户整体给领的销售，记「分配」不算转客户（P-公海-11、X-60）
+    const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way))).同事待分配 : [];
+    return { ok: true as const, 同事待分配 };
   });
+  if (!r.ok) return r;
+  if (r.同事待分配.length) await (await import("@/lib/enterprise/notice-sources")).同事待分配随客户通知(me.id, me.id, r.同事待分配);
+  return { ok: true };
 }
 
 /** 本机记的「今天按这份规则扫过了」：值 = 日期 + 规则，老板改了时长当天再扫一遍 */

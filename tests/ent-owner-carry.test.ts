@@ -2448,6 +2448,51 @@ describe("市场第一次分给销售记成「分配」，不算转客户（P-�
     expect(换负责人怎么来的("market-assign")).toBe("分配");
   });
 
+  describe("公海项目领 / 分给销售，客户还在市场手里（P-公海-11、X-60）", () => {
+    /** 市场建的客户（有创建人那一行）、市场名下：一个放进线索公海的项目 + 市场自己的待办、计划 */
+    const 市场客户的公海项目 = async (创建人: string = 市场.id, 负责人: string = 市场.id) => {
+      const c = await 客户(负责人);
+      await prisma.customerCreator.create({ data: { customerId: c, userId: 创建人 } });
+      const p = await 项目(c, 市场.id, { pooledAt: new Date(), phase: "线索" });
+      return { c, p, t: await 待办(c, 负责人), pl: await 计划(c, 负责人) };
+    };
+    const 种类 = async (c: string) => (await prisma.customerOwnerLog.findMany({ where: { customerId: c }, select: { kind: true, fromOwnerId: true, toOwnerId: true } }));
+
+    it("销售自己领：客户创建人、负责人都是市场 → 客户负责人变成领的销售，记「分配」（market-assign）；项目创建人不变，市场的待办、计划不搬", async () => {
+      const x = await 市场客户的公海项目();
+      expect(await 以(甲, () => 领取公海项目(甲, x.p, true))).toEqual({ ok: true });
+      expect(await 客户负责人(x.c)).toBe(甲.id);
+      expect(await 种类(x.c)).toEqual([{ kind: "market-assign", fromOwnerId: 市场.id, toOwnerId: 甲.id }]);
+      expect(await 项目of(x.p)).toMatchObject({ ownerId: 甲.id, creatorId: 市场.id, pooledAt: null });
+      await 活还在(x.t, x.pl, 市场.id);
+    });
+
+    it("销售自己领：客户创建人不是市场 → 客户留在市场名下，只换项目负责人", async () => {
+      const x = await 市场客户的公海项目(乙.id);
+      expect(await 以(甲, () => 领取公海项目(甲, x.p))).toEqual({ ok: true });
+      expect(await 客户负责人(x.c)).toBe(市场.id);
+      expect(await 种类(x.c)).toEqual([]);
+      expect((await 项目of(x.p)).ownerId).toBe(甲.id);
+    });
+
+    it("客户已归销售乙：销售甲再领同客户的公海项目，客户仍归乙", async () => {
+      const x = await 市场客户的公海项目(市场.id, 乙.id);
+      expect(await 以(甲, () => 领取公海项目(甲, x.p))).toEqual({ ok: true });
+      expect(await 客户负责人(x.c)).toBe(乙.id);
+      expect(await 种类(x.c)).toEqual([]);
+    });
+
+    it("总管理把公海项目分给销售：客户还在市场手里 → 整体给这位销售，记「分配」；不看客户创建人", async () => {
+      const x = await 市场客户的公海项目(乙.id);
+      const r = await 以(总管, () => 分配公海项目([x.p], 丙.id));
+      expect(r).toMatchObject({ ok: true, 分到: [x.p], 没分到: [] });
+      expect(await 客户负责人(x.c)).toBe(丙.id);
+      expect(await 种类(x.c)).toEqual([{ kind: "market-assign", fromOwnerId: 市场.id, toOwnerId: 丙.id }]);
+      expect(await 项目of(x.p)).toMatchObject({ ownerId: 丙.id, creatorId: 市场.id });
+      await 活还在(x.t, x.pl, 市场.id);
+    });
+  });
+
   it("市场分出去再撤销：那条「分配」记录删掉、客户回到市场", async () => {
     const c = await 客户(市场.id);
     const r = await 以(市场, () => assignSalesOwner([c], 甲.id));

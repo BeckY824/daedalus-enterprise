@@ -1,9 +1,11 @@
 import type { Prisma } from "@/generated/prisma";
-import { 带走一位, type 带走的 } from "@/lib/carry-over-db";
+import { 带走一位, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
+import { 看全部 } from "@/lib/team-scope";
 import { 随客户痕 } from "@/lib/project/carry-tasks";
 import type { 留下的活, 同事待分配条 } from "./notice-sources";
 import type { 组织 } from "./org-core";
 import { 是市场角色, 是销售角色 } from "./permissions";
+import { 企业版 } from "./switch";
 
 /**
  * 市场首次分给销售 = 转客户（X-18）。分配线索、自动分配、客户页新建项目、新客户向导、首页 AI 录入（走向导）都走这一份：
@@ -25,6 +27,39 @@ export function 客户在市场手里(org: 组织, 客户: { salesOwnerId: strin
 /** 这位客户分给这个接手人，算不算转客户：客户在市场手里、接手的是另一位销售 */
 export function 算市场转客户(org: 组织, 客户: { salesOwnerId: string; pool: { customerId: string } | null } | null, 接手人: string): boolean {
   return 客户在市场手里(org, 客户) && 客户?.salesOwnerId !== 接手人 && 是销售角色(org, 接手人);
+}
+
+/**
+ * 公海项目给销售时客户还在市场手里，算不算转客户（P-公海-11、X-60，11-10）：同 算市场转客户；
+ * 销售自己领的还要客户创建人是市场（有市场角色、没有销售角色；兼任按销售算），没有创建人那一行的不算。管理分配不看创建人
+ */
+export function 公海项目算市场转(
+  org: 组织,
+  客户: { salesOwnerId: string; pool: { customerId: string } | null; creator: { userId: string } | null } | null,
+  接手人: string,
+  自己领: boolean,
+): boolean {
+  if (!算市场转客户(org, 客户, 接手人)) return false;
+  if (!自己领) return true;
+  const 建 = 客户?.creator?.userId;
+  return !!建 && 是市场角色(org, 建) && !是销售角色(org, 建);
+}
+
+/**
+ * 公海项目（线索公海、项目公海）领 / 分给销售之前读客户、放开范围判 公海项目算市场转：算的回原负责人和随客户另进手的持有项目数（拦持有上限用，同 分配线索）。
+ * 事务外（钉住老签约 前）传全局连接、事务里传 tx；不是企业版回 null
+ */
+export async function 公海项目市场转(
+  db: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user">,
+  org: 组织,
+  p: { id: string; customerId: string },
+  接手人: string,
+  自己领: boolean,
+): Promise<{ 原: string; 另进: number } | null> {
+  if (!企业版()) return null;
+  const 客户 = await 看全部(() => db.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } }, creator: { select: { userId: true } } } }));
+  if (!客户 || !公海项目算市场转(org, 客户, 接手人, 自己领)) return null;
+  return { 原: 客户.salesOwnerId, 另进: await 数进手的持有项目([p.customerId], 接手人, { 同事待分配: true, 除了: [p.id] }, db) };
 }
 
 /**
