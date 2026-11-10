@@ -26,7 +26,6 @@ import { 带走说法 } from "@/lib/carry-over";
 import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, 没原因, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
-import { 领取项目 } from "../projects/actions";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
 
 type Props = {
@@ -123,7 +122,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   }
 
   /**
-   * 领取 / 分配一行或几行：客户行一次交给 领取 / 分配公海，项目行逐个领（领取项目）或一次分（分配公海项目）。
+   * 领取 / 分配一行或几行：领取时客户行、项目行一次交给 领取（同一个事务，持有上限整批核）；分配时客户行交给 分配公海、项目行一次分（分配公海项目）。
    * 提示条说清领到几个、几个没领到（能展开看原因），带一次撤销：客户行走 撤销公海，项目行走 撤销公海项目
    */
   async function 动手(动作: "领取" | "分配", 们: 公海行[], 给?: string) {
@@ -132,9 +131,22 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     const 客户们 = 们.filter((r) => r.种 === "客户");
     const 项目们 = 们.filter((r) => r.种 === "项目" && r.projectId);
     const 没领到: { 名: string; 原因: string }[] = [];
+    const 项目到: string[] = [];
     let 客户res: 公海结果 | null = null;
-    if (客户们.length) {
+    /** 整批没做成的那句（超持有上限等）：一个都没到手时直接说它，不让人展开逐条看同一句 */
+    let 整批错: string | null = null;
+    // 领取：客户行、项目行一次交给 领取（同一个事务、整批核持有上限，超了一个都不领，M-公海-18）
+    if (动作 === "领取" && 项目们.length) {
+      客户res = await 领取(客户们.map((r) => r.customerId), 带, 项目们.map((r) => r.projectId!));
+      if (客户res.ok) {
+        项目到.push(...(客户res.项目?.领到 ?? []));
+        for (const x of 客户res.项目?.没领到 ?? []) 没领到.push({ 名: 行名(项目们.find((r) => r.projectId === x.id)!), 原因: x.原因 });
+      } else for (const r of 项目们) 没领到.push({ 名: 行名(r), 原因: 客户res.error });
+    } else if (客户们.length) {
       客户res = 动作 === "领取" ? await 领取(客户们.map((r) => r.customerId), 带) : await 分配公海(客户们.map((r) => r.customerId), 给!, 带);
+    }
+    if (客户res && !客户res.ok) 整批错 = 客户res.error;
+    if (客户们.length && 客户res) {
       const 到 = new Set(客户res.ok ? (客户res.原负责人 ?? []).map((x) => x.id) : []);
       for (const r of 客户们) {
         if (到.has(r.customerId)) continue;
@@ -144,18 +156,14 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         });
       }
     }
-    const 项目到: string[] = [];
     // 分配时客户整包出了客户公海（P-公海-10）：撤销时整包退回
     let 整包: 整包撤销 | undefined;
     let 给谁: { id: string; name: string } | undefined = 客户res?.ok ? 客户res.给谁 : undefined;
-    if (项目们.length && 动作 === "领取") {
-      for (const r of 项目们) {
-        const res = await 领取项目(r.projectId!, 带);
-        if (res.ok) 项目到.push(r.projectId!);
-        else 没领到.push({ 名: 行名(r), 原因: res.error });
-      }
-    } else if (项目们.length) {
+    // 分配时客户行整批没分成（如超了持有上限）：项目行也不再分，别一半分出去一半没有
+    if (项目们.length && 动作 === "分配" && 客户res && !客户res.ok) for (const r of 项目们) 没领到.push({ 名: 行名(r), 原因: 客户res.error });
+    else if (项目们.length && 动作 === "分配") {
       const res = await 分配公海项目(项目们.map((r) => r.projectId!), 给!, 带);
+      if (!res.ok) 整批错 = res.error;
       if (res.ok) {
         给谁 = res.给谁;
         整包 = res.整包;
@@ -168,6 +176,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     const 到数 = 客户到 + 项目到.length;
     if (!到数) {
       if (们.length === 1) return void message.error(没领到[0]?.原因 ?? "没领到，刷新看看");
+      if (整批错) return void message.error({ content: 整批错, duration: 8 });
       return void message.error({ content: <ResultBar 文案={`${动作 === "领取" ? "一个都没领到" : "一个都没分出去"}`} 没领到={没领到} />, duration: 6 });
     }
     const 带走 = 客户res?.ok ? 带走说法(客户res.带走) : "";

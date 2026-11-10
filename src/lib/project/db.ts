@@ -726,6 +726,55 @@ export async function 超上限n(
 }
 
 /**
+ * 一次领 / 分好几个（批量领公海、批量分公海、客户带着几个项目）超了持有上限就整批不做（M-公海-18，11-10 用户定）：
+ * 在同一个事务里，动手前 持有上限起点 记下名下原有几个，全部写完再 整批核上限 数一遍：比原来多了、又超了上限就抛 整批超上限，
+ * 整个事务回滚，一个都没进手。并发的两次领取：SQLite 写事务一个接一个跑（check-then-write.ts），后到的那次数的时候先到的已经写完，整批失败。
+ * 写完再数而不是先估：带过来几个（客户名下公海项目、连带的、同事待分配的）以真改了的为准，不会估多估少
+ */
+export class 整批超上限 extends Error {
+  constructor(readonly 话: string) {
+    super(话);
+  }
+}
+
+/** 动手前记下：上限、名下原有几个。不是企业版 / 没开上限 / 这位不限 = null（不核） */
+export async function 持有上限起点(
+  db: Pick<Prisma.TransactionClient, "project">, 规则: 组织规则, userId: string,
+): Promise<{ userId: string; 上限: number; 有: number } | null> {
+  if (!企业版()) return null;
+  const 上限 = 持有上限of(规则, userId);
+  if (上限 === null) return null;
+  return { userId, 上限, 有: await 持有数(db, userId) };
+}
+
+/** 超了持有上限整批没做的那句：上限多少、现在名下多少、这次要进多少、最多还能进多少 */
+export function 整批超上限话(谁: string, 起: { 上限: number; 有: number }, 要: number, 动作: "领" | "接" = "接"): string {
+  const 剩 = Math.max(0, 起.上限 - 起.有);
+  return `${谁}名下现在有 ${起.有} 个线索 / 商机阶段的项目，持有上限 ${起.上限} 个，这次要${动作} ${要} 个，最多还能${动作} ${剩} 个；超了上限，这一批一个都没${动作}，先推进或放回一些，或者少选几个再${动作}`;
+}
+
+/** 全部写完再数（同一个事务里）：比原来多了、又超了上限就抛 整批超上限（调用方让事务回滚、回这句话） */
+export async function 整批核上限(
+  tx: Pick<Prisma.TransactionClient, "project" | "user">, 起: { userId: string; 上限: number; 有: number } | null, 动作: "领" | "接" = "接",
+): Promise<void> {
+  if (!起) return;
+  const 现 = await 持有数(tx, 起.userId);
+  if (现 <= 起.有 || 现 <= 起.上限) return;
+  const 谁 = (await tx.user.findUnique({ where: { id: 起.userId }, select: { name: true } }))?.name ?? "这位成员";
+  throw new 整批超上限(整批超上限话(谁, 起, 现 - 起.有, 动作));
+}
+
+/** 跑一段整批的事务：超了上限（整批超上限）回 { 超: 话 }，别的错照抛 */
+export async function 整批或不做<T>(跑: () => Promise<T>): Promise<{ ok: true; 值: T } | { ok: false; 超: string }> {
+  try {
+    return { ok: true, 值: await 跑() };
+  } catch (e) {
+    if (e instanceof 整批超上限) return { ok: false, 超: e.话 };
+    throw e;
+  }
+}
+
+/**
  * 谁能把项目放回公海（11-01 用户「项目详情页没有退回公海」）：权限在 permissions.ts 能放回公海——
  * 企业版 = 能编辑的负责人，或能转让的总管理 / 实线上级；不是企业版 = 负责人本人、老板、业务主管。阶段另核
  */
@@ -792,6 +841,66 @@ const 领走了 = { ok: false as const, error: "这个项目已经被人领走�
  * 开了持有上限的，到上限了领不了。带待办（C-06）：进公海时关掉的那批待办重新打开给我，没传不碰
  */
 export async function 领取公海项目(me: 谁, projectId: string, 带待办?: boolean): Promise<结果> {
+  const 备 = await 领公海项目准备(me, [projectId], 带待办);
+  if (!备.ok) return 备;
+  const r = await 查完再写((tx) => 领一个公海项目(tx, me, String(projectId ?? ""), 备.上下文, true));
+  if (!r.ok) return r;
+  if (r.同事待分配.length) await (await import("@/lib/enterprise/notice-sources")).同事待分配随客户通知(me.id, me.id, r.同事待分配);
+  return { ok: true };
+}
+
+/**
+ * 批量领公海项目（公海页勾了几行项目一起领）：一个事务里逐个领，领不了的（被人领走、原负责人、已结束……）各说各的原因、不拦别的；
+ * 持有上限整批核（M-公海-18，11-10）：这一批领完会超上限就一个都不领，回 超 那句话。客户行一起勾了的走 pool-actions 领取（带 项目ids），同一个事务
+ */
+export async function 领取公海项目们(me: 谁, projectIds: string[], 带待办?: boolean): Promise<{ ok: true; 领到: string[]; 没领到: { id: string; 原因: string }[] } | { ok: false; error: string }> {
+  const ids = [...new Set(projectIds.filter((x) => typeof x === "string" && x))];
+  if (!ids.length) return { ok: true, 领到: [], 没领到: [] };
+  const 备 = await 领公海项目准备(me, ids, 带待办);
+  if (!备.ok) return 备;
+  const r = await 整批或不做(() => 查完再写(async (tx) => {
+    const 起 = await 持有上限起点(tx, 备.上下文.规则, me.id);
+    const 结果 = await 在事务里领公海项目们(tx, me, ids, 备.上下文);
+    await 整批核上限(tx, 起, "领");
+    return 结果;
+  }));
+  if (!r.ok) return { ok: false, error: r.超 };
+  if (r.值.同事待分配.length) await (await import("@/lib/enterprise/notice-sources")).同事待分配随客户通知(me.id, me.id, r.值.同事待分配);
+  return { ok: true, 领到: r.值.领到, 没领到: r.值.没领到 };
+}
+
+/** 同一个事务里逐个领（不核上限，调用方整批核） */
+export async function 在事务里领公海项目们(
+  tx: Prisma.TransactionClient, me: 谁, ids: string[], 上下文: 领项目上下文,
+): Promise<{ 领到: string[]; 没领到: { id: string; 原因: string }[]; 同事待分配: 同事待分配们 }> {
+  const 领到: string[] = [];
+  const 没领到: { id: string; 原因: string }[] = [];
+  const 同事待分配: 同事待分配们 = [];
+  for (const id of ids) {
+    const x = await 领一个公海项目(tx, me, id, 上下文, false);
+    if (x.ok) {
+      领到.push(id);
+      同事待分配.push(...x.同事待分配);
+    } else 没领到.push({ id, 原因: x.error });
+  }
+  return { 领到, 没领到, 同事待分配 };
+}
+
+/** 领公海项目事务外先备好的：规则、市场转客户那一套（动态引）、带不带待办 */
+export type 领项目上下文 = {
+  规则: 组织规则;
+  市场: typeof import("@/lib/enterprise/market-transfer") | null;
+  org: 组织 | null;
+  way: string;
+  带待办?: boolean;
+};
+type 同事待分配们 = Awaited<ReturnType<typeof import("@/lib/enterprise/market-transfer")["转客户给销售"]>>["同事待分配"];
+
+/**
+ * 领公海项目（单个、批量都走）事务外那一段：进门（业务角色、只读、能不能领）、读规则；
+ * 客户创建人、负责人都是市场的，销售领了公海项目客户也给他（P-公海-11、X-60）：老签约要在事务外、换负责人之前钉住；分配方式记「公海捞取」
+ */
+export async function 领公海项目准备(me: 谁, projectIds: string[], 带待办?: boolean): Promise<{ ok: true; 上下文: 领项目上下文 } | { ok: false; error: string }> {
   // 没设业务角色的不能领（11-03 用户定）：权限只认业务角色。分配（别人分给他）不走这里
   // 停用的人业务角色已清，先说停用，话才准
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: (await 在职(prisma, me.id)) ? 没业务角色不能领话 : "账号已停用" };
@@ -800,63 +909,72 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
   // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）
   if (企业版() && !能领公海(me, await 权限组织())) return { ok: false, error: 不能领公海话 };
   const 规则 = await 生效组织规则();
-  // 客户创建人、负责人都是市场的，销售领了公海项目客户也给他（P-公海-11、X-60）：老签约要在事务外、换负责人之前钉住；分配方式记「公海捞取」。
   // 动态引：market-transfer → carry-over-db → 本文件
   const 市场 = 企业版() ? await import("@/lib/enterprise/market-transfer") : null;
   const org = 市场 ? await 权限组织() : null;
   if (市场 && org) {
-    const p0 = await 看全部(() => prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { id: true, customerId: true } }));
-    if (p0 && (await 市场.公海项目市场转(prisma, org, p0, me.id, true))) await (await import("@/lib/contract-owner")).钉住老签约();
+    let 钉 = false;
+    for (const id of projectIds) {
+      const p0 = await 看全部(() => prisma.project.findUnique({ where: { id: String(id ?? "") }, select: { id: true, customerId: true } }));
+      if (p0 && (await 市场.公海项目市场转(prisma, org, p0, me.id, true))) 钉 = true;
+    }
+    if (钉) await (await import("@/lib/contract-owner")).钉住老签约();
   }
   const way = 市场 ? await (await import("@/lib/enterprise/dict")).分配方式叫法(2) : "";
-  const r = await 查完再写(async (tx) => {
-    const id = String(projectId ?? "");
-    const p = await tx.project.findUnique({ where: { id } });
-    // 两人同时领：先进来的领走了，项目就落到后进来那位的范围外（业务员只看自己的 + 公海），带限定查是空的；
-    // 不带限定再看一眼，还在就是被人领走了，不是删了（D-35）
-    if (!p) {
-      const 真 = await 看全部(() => tx.project.findUnique({ where: { id }, select: { id: true, pooledAt: true } }));
-      if (!真) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-      // 还在公海、只是我看不到：是我放回的（原负责人回避），话说准（11-03 完成度 B4-3）
-      if (真.pooledAt && 企业版() && !公海规则.原负责人能领回 && (await 历史负责人(tx, id)) === me.id) return { ok: false as const, error: 原负责人不能领回提示 };
-      return 领走了;
-    }
-    if (!p.pooledAt) return 领走了;
-    if (!(await 在职(tx, me.id))) return { ok: false as const, error: "账号已停用" };
-    // 已结束的项目不能单独领（X-70、P-公海-02）：老数据里已在公海、又有结局的，要领走客户整包
-    if (企业版() && p.result) return { ok: false as const, error: `这个项目已经结束（${p.result}），不能单独领取` };
-    // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了
-    if (企业版()) {
-      const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } }));
-      if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要系统管理员先恢复" };
-    }
-    // 原负责人领不回：企业版看 公海规则（10-26 定稿「非原负责人均可领取」），别的版本照旧。
-    // 原负责人 = 留痕里最后一次进公海前的负责人（企业版进公海清了 ownerId，pool-owner.ts）
-    const 原 = (await 历史负责人(tx, p.id)) ?? (p.ownerId || null);
-    if (me.id === 原 && !(企业版() && 公海规则.原负责人能领回)) return { ok: false as const, error: 企业版() ? 原负责人不能领回提示 : "自己放回公海的项目不能自己领回" };
-    // 规则关着时项目不单独领（无效客户、原负责人先说更具体的原因）；11-09 起开着（M-公海-06）
-    if (拦单独领项目()) return { ok: false as const, error: 项目不能单独领提示 };
-    // 客户在客户公海里的，项目随整包（M-公海-06），要领客户
-    if (拦客户公海里的项目(!!(await 看全部(() => tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))))) return { ok: false as const, error: 客户在公海项目不单领提示 };
-    // 开关 领项目带走单项目客户 开着时客户名下别的公海项目一起来，一起数（M-公海-18）
-    // 市场转客户时客户上同事待分配的项目随客户一起进手，一起数（同 分配线索，M-公海-18）
-    const 转 = 市场 && org ? await 市场.公海项目市场转(tx, org, p, me.id, true) : null;
+  return { ok: true, 上下文: { 规则, 市场, org, way, 带待办 } };
+}
+
+/**
+ * 在事务里领一个公海项目。查上限 = true：这一个自己核持有上限（单个领）；批量领传 false，整批写完由调用方 整批核上限 一次核（M-公海-18，11-10 超了整批不领）
+ */
+export async function 领一个公海项目(
+  tx: Prisma.TransactionClient, me: 谁, id: string, 上下文: 领项目上下文, 查上限: boolean,
+): Promise<{ ok: true; 同事待分配: 同事待分配们 } | { ok: false; error: string }> {
+  const { 规则, 市场, org, way, 带待办 } = 上下文;
+  const p = await tx.project.findUnique({ where: { id } });
+  // 两人同时领：先进来的领走了，项目就落到后进来那位的范围外（业务员只看自己的 + 公海），带限定查是空的；
+  // 不带限定再看一眼，还在就是被人领走了，不是删了（D-35）
+  if (!p) {
+    const 真 = await 看全部(() => tx.project.findUnique({ where: { id }, select: { id: true, pooledAt: true } }));
+    if (!真) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+    // 还在公海、只是我看不到：是我放回的（原负责人回避），话说准（11-03 完成度 B4-3）
+    if (真.pooledAt && 企业版() && !公海规则.原负责人能领回 && (await 历史负责人(tx, id)) === me.id) return { ok: false as const, error: 原负责人不能领回提示 };
+    return 领走了;
+  }
+  if (!p.pooledAt) return 领走了;
+  if (!(await 在职(tx, me.id))) return { ok: false as const, error: "账号已停用" };
+  // 已结束的项目不能单独领（X-70、P-公海-02）：老数据里已在公海、又有结局的，要领走客户整包
+  if (企业版() && p.result) return { ok: false as const, error: `这个项目已经结束（${p.result}），不能单独领取` };
+  // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了
+  if (企业版()) {
+    const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } }));
+    if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要系统管理员先恢复" };
+  }
+  // 原负责人领不回：企业版看 公海规则（10-26 定稿「非原负责人均可领取」），别的版本照旧。
+  // 原负责人 = 留痕里最后一次进公海前的负责人（企业版进公海清了 ownerId，pool-owner.ts）
+  const 原 = (await 历史负责人(tx, p.id)) ?? (p.ownerId || null);
+  if (me.id === 原 && !(企业版() && 公海规则.原负责人能领回)) return { ok: false as const, error: 企业版() ? 原负责人不能领回提示 : "自己放回公海的项目不能自己领回" };
+  // 规则关着时项目不单独领（无效客户、原负责人先说更具体的原因）；11-09 起开着（M-公海-06）
+  if (拦单独领项目()) return { ok: false as const, error: 项目不能单独领提示 };
+  // 客户在客户公海里的，项目随整包（M-公海-06），要领客户
+  if (拦客户公海里的项目(!!(await 看全部(() => tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))))) return { ok: false as const, error: 客户在公海项目不单领提示 };
+  // 开关 领项目带走单项目客户 开着时客户名下别的公海项目一起来，一起数（M-公海-18）
+  // 市场转客户时客户上同事待分配的项目随客户一起进手，一起数（同 分配线索，M-公海-18）
+  const 转 = 市场 && org ? await 市场.公海项目市场转(tx, org, p, me.id, true) : null;
+  if (查上限) {
     const 超 = await 领项目连带超上限(tx, 规则, me.id, p, 转?.另进 ?? 0);
     if (超) return { ok: false as const, error: 超 };
-    await tx.project.update({ where: { id: p.id }, data: { ...换负责人(me.id), pooledAt: null } });
-    // 进公海时关掉的那批待办（C-06）：勾着重新打开给我；市场转客户的待办计划还归市场（P-转-10），勾不算数
-    const 带 = 转 ? undefined : 带待办;
-    const 几条 = await 换负责人待办(tx, p, 原, me.id, 带);
-    await 记转让(tx, p, me.id, 原, me.id, "pool-claim", 待办痕(带, 几条));
-    // 企业版线索公海的项目单独领，客户负责人不变（M-公海-06；开关 领项目带走单项目客户 关着，pool-link.ts）
-    await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带);
-    // 例外：客户创建人、负责人都是市场 → 客户整体给领的销售，记「分配」不算转客户（P-公海-11、X-60）
-    const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way))).同事待分配 : [];
-    return { ok: true as const, 同事待分配 };
-  });
-  if (!r.ok) return r;
-  if (r.同事待分配.length) await (await import("@/lib/enterprise/notice-sources")).同事待分配随客户通知(me.id, me.id, r.同事待分配);
-  return { ok: true };
+  }
+  await tx.project.update({ where: { id: p.id }, data: { ...换负责人(me.id), pooledAt: null } });
+  // 进公海时关掉的那批待办（C-06）：勾着重新打开给我；市场转客户的待办计划还归市场（P-转-10），勾不算数
+  const 带 = 转 ? undefined : 带待办;
+  const 几条 = await 换负责人待办(tx, p, 原, me.id, 带);
+  await 记转让(tx, p, me.id, 原, me.id, "pool-claim", 待办痕(带, 几条));
+  // 企业版线索公海的项目单独领，客户负责人不变（M-公海-06；开关 领项目带走单项目客户 关着，pool-link.ts）
+  await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带);
+  // 例外：客户创建人、负责人都是市场 → 客户整体给领的销售，记「分配」不算转客户（P-公海-11、X-60）
+  const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way))).同事待分配 : [];
+  return { ok: true as const, 同事待分配 };
 }
 
 /** 本机记的「今天按这份规则扫过了」：值 = 日期 + 规则，老板改了时长当天再扫一遍 */
@@ -957,13 +1075,15 @@ export async function 公海超时收回(me: { id: string; name: string }, 今: 
 /**
  * 一遍扫下来的明细（夜扫的补跑日志用，10c）。
  * 上次扫 = 这一遍之前「扫过了」的记号里的日期；漏扫天数 = 上次扫和今天之间有几个整天没扫（服务停着）。
- * 停机不改怎么收：到了回收日的照现行规则收（验证中、交接中、客户在公海的照样不收）。只是停着的那天本该发的「回收前一天」提醒已经发不了，
- * 这样的项目收回时在通知说明里写一句（没提前提醒 = 几个）
+ * 停机漏了「回收前一天」提醒（11-10 新口径）：到了回收日、但这一轮的提醒没发过的项目，这一遍不收，先补发那条提醒（说明服务停过、提醒晚了、明天收），
+ * 宽限一天，下一遍（次日）照常收。只宽限一次：认「这一轮提醒发过没有」= 负责人名下这位客户、这个项目这个节点开头的提醒，日期不早于回收日前一天
+ * （正常那条是回收日前一天发的，补发那条是补发当天）；补发当天再扫不重发也不收，次日认得到那条就收。宽限这天记了跟进，回收日往后推，自然不收。
+ * 补提醒 = 这一遍补发了几条。没停过（漏扫天数 = 0）的照旧：到了回收日就收
  */
-export type 超时收回明细 = { 收回: number; 将回收提醒: number; 上次扫: string | null; 漏扫天数: number; 没提前提醒: number };
-const 没扫 = (): 超时收回明细 => ({ 收回: 0, 将回收提醒: 0, 上次扫: null, 漏扫天数: 0, 没提前提醒: 0 });
-/** 停机漏了「回收前一天」提醒的项目，收回通知说明里加的那句 */
-export const 没提前提醒说明 = "系统停过机，这个项目没来得及提前一天提醒";
+export type 超时收回明细 = { 收回: number; 将回收提醒: number; 上次扫: string | null; 漏扫天数: number; 补提醒: number };
+const 没扫 = (): 超时收回明细 => ({ 收回: 0, 将回收提醒: 0, 上次扫: null, 漏扫天数: 0, 补提醒: 0 });
+/** 停机漏了「回收前一天」提醒、补发的那条提醒标题后面接的说明 */
+export const 补提醒说明 = "（服务停过，这条提醒晚了，宽限一天）";
 
 export async function 公海超时收回明细(me: { id: string; name: string }, 今: Date = new Date()): Promise<超时收回明细> {
   // 总管理员切换视图（只读预览，M-权限-08）期间、管理员（admin，只读）打开页面时不扫：渲染时顺手写库会被拒
@@ -982,7 +1102,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
   if (旧记号 === 记号) return 没扫();
   const 上次扫 = typeof 旧记号 === "string" && /^\d{4}-\d{2}-\d{2} /.test(旧记号) ? 旧记号.slice(0, 10) : null;
   const 漏扫天数 = 上次扫 ? Math.max(0, dayjs(今天).diff(dayjs(上次扫), "day") - 1) : 0;
-  let 没提前提醒 = 0;
+  let 补提醒 = 0;
 
   const 成员 = await 超时成员线(规则);
   const 们 = await 超时的项目(规则, 今, 成员, 只扫);
@@ -990,14 +1110,28 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
   const 收了: string[] = [];
   const 客户也进了 = new Set<string>();
   for (const p of 们) {
-    // 停过机才查：这个项目的「回收前一天」提醒发过没有（收回时那条待办会被关、标题接一句，所以按开头找，且要在收之前查）
-    const 回收日 = 漏扫天数 ? 项目回收日(规则, p, 成员) : null;
-    const 漏了提醒 =
-      !!回收日 &&
-      !(await prisma.task.findFirst({
-        where: { ownerId: p.ownerId, title: { startsWith: 将回收提醒(p.name, 本套名(p.node, 字典of(企业版())), 回收日) } },
-        select: { id: true },
-      }));
+    // 这一轮「回收前一天」提醒发过没有（收回、勾掉时标题会接一句，所以按开头找）：正常那条 dueOn = 回收日前一天，补发那条 dueOn = 补发当天
+    const 节点名 = 本套名(p.node, 字典of(企业版()));
+    const 回收日 = 项目回收日(规则, p, 成员);
+    const 提醒过 = 回收日
+      ? await prisma.task.findFirst({
+          where: { ownerId: p.ownerId, customerId: p.customerId, title: { startsWith: 将回收提醒头(p.name, 节点名) }, dueOn: { gte: dayjs(回收日).subtract(1, "day").format("YYYY-MM-DD") } },
+          orderBy: { dueOn: "desc" },
+          select: { dueOn: true, title: true },
+        })
+      : null;
+    // 今天补发过（停机补发的那条）：宽限到明天，同一天再扫（老板改了时长等）不收、不重发
+    if (提醒过 && 提醒过.dueOn === 今天 && 提醒过.title.includes(补提醒说明)) continue;
+    // 停过机、这一轮的提醒没发出去：先补发，宽限一天
+    if (!提醒过 && 漏扫天数 > 0) {
+      const 明天 = dayjs(今天).add(1, "day").format("YYYY-MM-DD");
+      const title = `${将回收提醒(p.name, 节点名, 明天)}${补提醒说明}`;
+      await prisma.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+      const 发给 = await 查收件人(p.ownerId);
+      await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
+      补提醒++;
+      continue;
+    }
     // 逐个一笔事务：查出来到写下去之间有人刚推了节点、领了、记了沟通，就不收
     const 收 = await 查完再写(async (tx) => {
       const 现 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
@@ -1024,9 +1158,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     if (收) 收了.push(p.id);
     if (收) {
       const 发给 = await 查收件人(p.ownerId);
-      if (漏了提醒) 没提前提醒++;
-      const body = [发给.说明, 漏了提醒 ? 没提前提醒说明 : ""].filter(Boolean).join(" · ");
-      await notify(发给.人们, { kind: "回收", title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`, body, link: "/projects", key: `recall:${p.id}:${今天}` });
+      await notify(发给.人们, { kind: "回收", title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`, body: 发给.说明, link: "/projects", key: `recall:${p.id}:${今天}` });
     }
   }
   if (客户也进了.size) await 进公海挂靠通知了([...客户也进了]);
@@ -1040,7 +1172,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
   }
   const 将回收提醒数 = await 提醒明天收(规则, 今, 成员, 查收件人, 只扫);
   await setSetting(键, 记号);
-  return { 收回: 收了.length, 将回收提醒: 将回收提醒数, 上次扫, 漏扫天数, 没提前提醒 };
+  return { 收回: 收了.length, 将回收提醒: 将回收提醒数, 上次扫, 漏扫天数, 补提醒 };
 }
 
 type 回收收件人查 = (ownerId: string) => Promise<{ 人们: string[]; 说明: string }>;

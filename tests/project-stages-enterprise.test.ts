@@ -276,6 +276,7 @@ describe("读写库（CRM_ENTERPRISE 开 / 关）", () => {
     expect(await 超时预览(开着({}), new Date())).toBe(1);
     expect(await 公海超时收回(老板, new Date())).toBe(0);
     expect((await 现(p.id)).pooledAt).toBeNull();
+    expect(await 公海超时收回(老板, 天后(1))).toBe(0); // 回收前一天那遍发提醒（中间整天没扫 = 停过机，会先补提醒宽限一天）
     expect(await 公海超时收回(老板, 天后(3))).toBe(1);
   });
 

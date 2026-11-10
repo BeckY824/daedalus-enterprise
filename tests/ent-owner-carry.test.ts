@@ -2157,10 +2157,8 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       const r = await 以(丙, () => 领取([c]));
       expect(r.ok).toBe(false);
       const 话 = (r as { error: string }).error;
-      expect(话).toContain("销售丙某");
-      expect(话).toContain("已经有 1 个");
-      expect(话).toContain("再接这 2 个");
-      expect(话).toContain("持有上限（2 个）");
+      // 11-10 超了整批不领：话里说清上限、名下现有、这次要领、最多还能领
+      expect(话).toBe("销售丙某名下现在有 1 个线索 / 商机阶段的项目，持有上限 2 个，这次要领 2 个，最多还能领 1 个；超了上限，这一批一个都没领，先推进或放回一些，或者少选几个再领");
       expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
       expect(await 持有数(prisma, 丙.id)).toBe(1);
       await 上限(3);
@@ -2174,7 +2172,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       const c = await 公海客户(2);
       const r = await 以(总管, () => 分配公海([c], 丙.id));
       expect(r.ok).toBe(false);
-      expect((r as { error: string }).error).toContain("再接这 2 个");
+      expect((r as { error: string }).error).toContain("这次要接 2 个，最多还能接 1 个");
       expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
     });
 
@@ -2271,8 +2269,9 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
           expect(r.ok).toBe(false);
           const 话 = (r as { error: string }).error;
           expect(话).toContain("销售丙某");
-          expect(话).toContain("再接这 2 个");
-          expect(话).toContain("持有上限（2 个）");
+          // 单个领照旧那句；总管理分（分配公海项目，11-10 起整批核）说「这次要接 2 个，最多还能接 1 个」
+          expect(话).toMatch(/再接这 2 个|这次要接 2 个，最多还能接 1 个/);
+          expect(话).toMatch(/持有上限(（| )2 个/);
           expect((await 项目of(p)).pooledAt).not.toBeNull();
           expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
           expect(await 持有数(prisma, 丙.id)).toBe(1);
