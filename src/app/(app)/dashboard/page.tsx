@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { 在售渠道条件 } from "@/lib/enterprise/channel-main";
+import { 可选渠道条件 } from "@/lib/enterprise/channel-main";
+import { 渠道触点们 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 公海超时收回 } from "@/lib/project/db";
@@ -99,7 +100,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
       prisma.task.count({ where: { ownerId: user.id, done: false } }),
       数首页卡(user),
-      prisma.channel.findMany({ where: { active: true, ...在售渠道条件 }, select: { name: true }, orderBy: { name: "asc" } }), // 历史渠道（P-渠道-06）新数据不能选，AI 卡也不列
+      prisma.channel.findMany({ where: 可选渠道条件, select: { name: true }, orderBy: { name: "asc" } }), // 历史渠道（P-渠道-06）、主渠道停用了的子渠道（P-渠道-13）新数据不能选，AI 卡也不列
       生效组织规则(),
       企 ? 负责人候选() : null,
       企 ? 新建分配方式数据(user) : null,
@@ -124,7 +125,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         企业版
         产品名={自定产品名() ?? undefined}
         满额提醒={满额提醒们}
-        渠道名们={渠道.map((c) => c.name)}
+        渠道名们={[...渠道.map((c) => c.name), /* 渠道触点（P-渠道-08）也能选：主渠道留空、记触点（apply.ts） */ ...渠道触点们.filter((x) => !渠道.some((c) => c.name === x))]}
         要下一步={规则.超时回收.开}
         新线索企业={新线索企业格}
         空库={学员数 === 0 && 线索数 === 0 && myPlans === 0 && 没做完的待办 === 0}

@@ -99,9 +99,11 @@ export type 按线读 = { 本人: string; 项目: Record<string, unknown>; 客�
 /**
  * 原负责人回避（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。范围里算好带下来，钩子里不现查（enterprise/visibility.ts 公海回避of）：
  * 本人 = 这个人；客户 = 负责人不是他、但他退过项目的公海客户；项目 = 他退的公海项目 + 他负责的公海客户下面的项目。
- * 名单过上限是 null：退回按关联写的条件（不认「最后一次」，多挡不漏），裸 SQL 快路走回 Prisma。没东西要回避的人没有这一项，查询不多任何条件
+ * 名单过上限是 null：退回按关联写的条件（关联写不出「最后一次」，会多挡），裸 SQL 快路走回 Prisma。没东西要回避的人没有这一项，查询不多任何条件。
+ * 客户例外 / 项目例外（X-76，P-公海-04）：名单 null 时，关联条件多挡的那几条（他早先退过、最后一次不是他退的）按 id 放出来，
+ * 于是过上限也只认最后一次；例外本身也过上限就没有这一项，照旧宽挡
  */
-export type 公海回避 = { 本人: string; 客户: string[] | null; 项目: string[] | null };
+export type 公海回避 = { 本人: string; 客户: string[] | null; 项目: string[] | null; 客户例外?: string[]; 项目例外?: string[] };
 export type 限定 = {
   我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean; 线索圈?: readonly string[]; 市场?: readonly string[]; 按线?: 按线读; 市场全看?: readonly string[];
   /** 企业版管理员（业务角色 admin，11-01）：看全部、写一律拒，这一句就是拒的时候给人看的话（加上限定 统一拦） */
@@ -427,7 +429,8 @@ const 跟项目的表 = new Set(["ProjectMember", "ProjectNodeLog", "FollowUpPro
 /**
  * 他看不到的公海客户。负责人是他且在公海（部署前进公海的老数据）：一句写完，不用名单；
  * M-公海-03 起进公海负责人清空挂占位账号，最近一次进公海时的负责人是他的、占位负责人（导入）和别人名下的按名单。
- * 名单超上限（null）退回按关联写的条件：曾有 pool-release 就算，比名单宽（写不出「最近一次」），同项目那一半。
+ * 名单超上限（null）退回按关联写的条件：曾有 pool-release 就算，比名单宽（写不出「最近一次」），同项目那一半；
+ * 宽出来的那几位在 客户例外 里按 id 放出来（X-76），所以照样只认最近一次。
  * 不认 CustomerPool.userId：那是操作的人，可能是上级，超时的是空。
  * salesOwnerId 非空，NOT 里算得出真（channelOwnerId 那种可空的才会踩 可见客户 上面说的坑）
  */
@@ -437,7 +440,7 @@ function 回避客户条件(避: 公海回避): Record<string, unknown> {
     AND: [
       { NOT: { salesOwnerId: 避.本人, pool: { isNot: null } } },
       ...(避.客户 === null
-        ? [{ NOT: { pool: { isNot: null }, OR: [{ projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } }, { ownerLogs: { some: 留痕 } }] } }]
+        ? [{ NOT: { pool: { isNot: null }, OR: [{ projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } }, { ownerLogs: { some: 留痕 } }], ...(避.客户例外?.length ? { id: { notIn: 避.客户例外 } } : {}) } }]
         : 避.客户.length ? [{ NOT: { id: { in: 避.客户 } } }] : []),
     ],
   };
@@ -450,7 +453,7 @@ function 回避项目条件(避: 公海回避): Record<string, unknown> {
       { pooledAt: { not: null }, logs: { some: { kind: "pool-release", fromOwnerId: 避.本人 } } },
       { customer: { salesOwnerId: 避.本人, pool: { isNot: null } } },
       { customer: { pool: { isNot: null }, ownerLogs: { some: { kind: "pool-release", fromOwnerId: 避.本人 } } } },
-    ] } };
+    ], ...(避.项目例外?.length ? { id: { notIn: 避.项目例外 } } : {}) } };
   }
   return 避.项目.length ? { NOT: { id: { in: 避.项目 } } } : {};
 }

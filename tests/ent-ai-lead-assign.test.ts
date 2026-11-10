@@ -1,7 +1,7 @@
 /**
  * 首页新线索卡和「新建项目」同一套（11-04 用户：首页录入要和新建项目 / 新建客户一致，含必填项；国家 / 地区放进对应字段，分不清的交给用户判断）。
  *
- *   分配：销售选个人自持 → 创建人 = 负责人 = 自己；市场选暂不分配 → 负责人 = 自己、潜客培育、待分配；
+ *   分配：销售选个人自持 → 创建人 = 负责人 = 自己；市场选暂不分配 → 负责人 = 自己、潜客培育、不标待分配（P-转-03）；
  *         市场选指定分配 → 负责人 = 那位销售、客户跟着走；市场选自动分配 → 按业务线分给那条线的销售
  *   国家 / 城市：卡上勾哪几格填哪几格（客户地址 / 联系人地址 / 项目所在地），不进备注；老卡没勾照旧只进客户
  *   必填：分配方式、指定时的负责人、业务线、进程、进程只能到线索验证（11-05 起不问明确回复）、有国家要选填到哪
@@ -72,12 +72,12 @@ describe("新线索卡：分配方式 × 角色", () => {
     expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.assignMode]).toEqual([乙.id, 乙.id, 乙.id, "个人自持"]);
   });
 
-  it("市场 + 暂不分配：负责人 = 自己、潜客培育、标待分配", async () => {
+  it("市场 + 暂不分配：负责人 = 自己、潜客培育、不标待分配（P-转-03）", async () => {
     当(市场);
     expect(await applyProposal(卡({ 分配方式: 3 }) as never)).toMatchObject({ ok: true });
     const p = await 唯一项目();
     expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.node, p.assignMode]).toEqual([市场.id, 市场.id, 市场.id, "潜客培育", "暂不分配"]);
-    expect(p.awaitAssignAt).not.toBeNull();
+    expect(p.awaitAssignAt).toBeNull();
   });
 
   it("市场 + 指定分配：负责人 = 选的那位销售，客户跟着走，创建人还是自己", async () => {

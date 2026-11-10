@@ -260,6 +260,7 @@ export default async function CustomerDetailPage({
         customerAttr: customer.customerAttr,
         bizLine: customer.bizLine,
         archiveTier: customer.archiveTier,
+        touchpoint: customer.touchpoint,
         expectedSignAt: scheduleValue(customer.expectedSignAt, customer.expectedSignOn),
         lastFollowAt: customer.lastFollowAt?.toISOString() ?? null,
         remark: customer.remark,

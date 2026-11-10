@@ -172,4 +172,23 @@ describe("c1 60 天：真库扫", () => {
     expect(await 扫(沪("2027-01-29T09:00:00"))).toBe(0);
     expect(await 扫(沪("2027-01-30T09:00:00"))).toBe(1);
   });
+  it("X-78 验证中（等复核 / 等销售）的线索不参与超时回收、也不发「明天收回」；验证走完（没在等）照常收", async () => {
+    const 等复核 = await 项目(销售甲.id, "等复核的线索", { node: "线索验证" });
+    const 等销售 = await 项目(销售甲.id, "等销售的线索", { node: "线索验证" });
+    const 走完 = await 项目(销售甲.id, "验证走完的线索", { node: "线索验证" });
+    await prisma.entLeadVerify.createMany({
+      data: [
+        { projectId: 等复核.id, verdict: "初验无效", pending: "市场复核" },
+        { projectId: 等销售.id, verdict: "初验无效", pending: "销售终验" },
+        { projectId: 走完.id, verdict: "有效线索", pending: null },
+      ],
+    });
+    expect(await 扫(沪("2026-12-30T09:00:00"))).toBe(0);
+    const 提醒 = await prisma.task.findMany({ where: { ownerId: 销售甲.id } });
+    expect(提醒.map((t) => t.title).join("|")).not.toMatch(/等复核|等销售/);
+    expect(await 超时预览(规则, 沪("2026-12-31T09:00:00"))).toBe(1);
+    expect(await 扫(沪("2026-12-31T09:00:00"))).toBe(1);
+    for (const p of [等复核, 等销售]) expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).pooledAt).toBeNull();
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 走完.id } })).pooledAt).not.toBeNull();
+  });
 });

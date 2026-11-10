@@ -320,11 +320,50 @@ async function 公海回避of(db: PrismaClient, id: string): Promise<公海回�
     for (const r of 行) 项目们.add(r.id);
   }
   if (!有客户 && !客户们.size && !项目们.size) return undefined;
+  const 客户过 = 客户们.size > 回避名单上限;
+  const 项目过 = 项目们.size > 回避名单上限;
+  const [客户例外, 项目例外] = await Promise.all([
+    客户过 ? 宽挡多出的客户(db, id, 客户们) : undefined,
+    项目过 ? 宽挡多出的项目(db, id, new Set(放回的), new Set(放走的)) : undefined,
+  ]);
   return {
     本人: id,
-    客户: 客户们.size > 回避名单上限 ? null : [...客户们],
-    项目: 项目们.size > 回避名单上限 ? null : [...项目们],
+    客户: 客户过 ? null : [...客户们],
+    项目: 项目过 ? null : [...项目们],
+    ...(客户例外?.length ? { 客户例外 } : {}),
+    ...(项目例外?.length ? { 项目例外 } : {}),
   };
+}
+
+/**
+ * 名单过上限时 team-scope 退回按关联写的条件，关联写不出「最后一次」，会多挡他早先退过、后来别人领走又退的（X-76，P-公海-04）。
+ * 这里把宽条件挡到的（正着查一遍，只取 id）减掉准名单，多出的就是例外，范围里按 id 放出来。
+ * 只在过上限的人身上多一句查询；例外也过上限回 undefined，照旧宽挡（多挡不漏）。
+ * 客户：准名单 = 客户们（他退的项目挂着的、最近一次放走的是他）+ 负责人是他的（一句条件带上，这里排掉）
+ */
+async function 宽挡多出的客户(db: PrismaClient, id: string, 准: ReadonlySet<string>): Promise<string[] | undefined> {
+  const 留痕 = { kind: "pool-release", fromOwnerId: id };
+  const 宽 = await db.customer.findMany({
+    where: { pool: { isNot: null }, deletedAt: null, salesOwnerId: { not: id }, OR: [{ projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } }, { ownerLogs: { some: 留痕 } }] },
+    select: { id: true },
+  });
+  const 出 = 宽.map((c) => c.id).filter((c) => !准.has(c));
+  return 出.length > 回避名单上限 ? undefined : 出;
+}
+
+/** 项目：准名单 = 他最后放回的 + 负责人是他的公海客户下面的 + 他最近一次放走的公海客户下面的；宽条件挡到、又不在这三样里的是例外 */
+async function 宽挡多出的项目(db: PrismaClient, id: string, 放回的: ReadonlySet<string>, 放走的: ReadonlySet<string>): Promise<string[] | undefined> {
+  const 留痕 = { kind: "pool-release", fromOwnerId: id };
+  const 宽 = await db.project.findMany({
+    where: {
+      deletedAt: null,
+      NOT: { customer: { salesOwnerId: id, pool: { isNot: null } } },
+      OR: [{ pooledAt: { not: null }, logs: { some: 留痕 } }, { customer: { pool: { isNot: null }, ownerLogs: { some: 留痕 } } }],
+    },
+    select: { id: true, customerId: true },
+  });
+  const 出 = 宽.filter((p) => !放回的.has(p.id) && !放走的.has(p.customerId)).map((p) => p.id);
+  return 出.length > 回避名单上限 ? undefined : 出;
 }
 
 /**

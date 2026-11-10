@@ -105,6 +105,8 @@ export function 即将逾期粗筛(规则: 组织规则, 字典: 阶段字典, �
     ...在推,
     phase: { in: ["线索", "商机"] },
     customer: { pool: { is: null } },
+    // 验证中（等复核 / 等销售……）的线索不收回，也就不算 3 天内回公海（X-78，和 lib/project/db.ts 验证中不收 同一条；只有企业版有验证行）
+    NOT: { entLeadVerify: { is: { pending: { not: null } } } },
     OR: [
       { createdAt: { lt: 今天.add(即将逾期天数 - 最短 + 1, "day").toDate() } },
       { nextStepAt: { lt: 今天.add(即将逾期天数, "day").toDate() } },

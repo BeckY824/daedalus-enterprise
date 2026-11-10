@@ -42,6 +42,8 @@ type SP = Promise<{
   custStatus?: string;
   /** 客户类型（企业版字典 custType，2026-10-29 P13）；别的版本不认 */
   customerType?: string;
+  /** 归档档位（企业版，M-导入-23）；别的版本不认 */
+  archiveTier?: string;
   salesOwnerId?: string;
   channelOwnerId?: string;
   /** 外贸档案的国家 / 来源（2026-10-05） */
@@ -242,7 +244,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         level: sp.level ?? "",
         dept: sp.dept ?? "",
         // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
-        ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", channelId: sp.channelId ?? "" } : {}),
+        ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", archiveTier: sp.archiveTier ?? "", channelId: sp.channelId ?? "" } : {}),
       }}
       企业版={企业版()}
       客户状态选项={客户状态选项}

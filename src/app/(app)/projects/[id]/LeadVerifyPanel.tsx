@@ -9,7 +9,7 @@ import { dayjs, fmtDateTime } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
 import { 培育计划上限, 无效原因上限, 有效线索节点 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
-import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action } from "../actions";
+import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action, 撤回验证Action } from "../actions";
 
 type 跑法 = (f: () => Promise<{ ok: boolean; error?: string; 自动推到?: string[] }>, 成了?: string) => Promise<boolean>;
 
@@ -23,7 +23,7 @@ const 等谁: Record<string, string> = {
   销售认领: "管理员判有效，等负责人认领",
 };
 const 步叫法: Record<string, string> = {
-  销售初判: "负责人初判", 市场复核: "管理员复核", 销售终验: "负责人确认", 总管理终判: "管理员最终确认", 销售认领: "负责人认领",
+  销售初判: "负责人初判", 市场复核: "管理员复核", 销售终验: "负责人确认", 总管理终判: "管理员最终确认", 销售认领: "负责人认领", 撤回验证: "撤回验证", 进公海清验证: "进公海清掉验证",
 };
 
 /** 一条痕在时间线上的说法 */
@@ -208,6 +208,19 @@ export default function LeadVerifyPanel({
               <Button size="small" danger disabled={忙} onClick={() => 开("复核无效")} data-testid="lead-verify-review-invalid">判无效</Button>
             </>
           )}
+        </div>
+      )}
+      {v.能撤回 && (
+        <div style={{ marginTop: 8 }}>
+          <Popconfirm
+            title="撤回这次验证？"
+            description="线索回到验证前（暂未验证），之后能改负责人、重新判"
+            okText="撤回"
+            cancelText="再想想"
+            onConfirm={() => void 跑(() => 撤回验证Action(projectId), "已撤回验证")}
+          >
+            <Button size="small" disabled={忙} data-testid="lead-verify-withdraw">撤回验证</Button>
+          </Popconfirm>
         </div>
       )}
       {推不了 && (v.我能 === "初判" || v.我能 === "销售终验" || v.我能 === "销售认领") && (

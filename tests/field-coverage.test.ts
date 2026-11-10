@@ -67,7 +67,9 @@ const 可写: Record<string, string[]> = {
     // 企业版客户地址第五格「客户地址」（2026-10-29，迁移 091，P14 第 7 条）：客户表单 saveCustomer 的 企业资料
     "addrDetail",
     // 企业版客户业务线（2026-11-01，迁移 106，清单 A1）：客户表单 saveCustomer 的 企业资料（内贸 / 外贸 / 暂不分配）
-    "bizLine"],
+    "bizLine",
+    // 企业版渠道触点（迁移 116，P-渠道-08）：客户表单 / 建档向导 / 首页 AI 建档的 saveCustomer（公司资源 / 客户介绍）
+    "touchpoint"],
   // 渠道改版（2026-10-29）：渠道表单收 渠道属性 / 渠道名称 / 结束日期；全称还是 name
   Channel: ["name", "phone", "remark", "channelOwnerId", "active", "attr", "platform", "endDate", "strategies"],
   // 企业版主渠道（2026-11-08 渠道两层）：渠道页「主渠道」里建、改名、拨开关（channels/actions.ts 的 saveMainChannel / toggleMainChannel）
@@ -524,7 +526,9 @@ const 派生: Record<string, Record<string, string>> = {
     userId: "查询人，当前登录账号", keyType: "撞的是哪种键（手机号 / 客户名……），查重时系统定", keyValue: "撞的值，查重时系统写",
     customerId: "撞到哪位客户，查重时系统定", ownerId: "那一刻的负责人，查重时系统写", sameGroup: "查询人在不在那位客户的项目组，系统算",
     action: "点「申请挂靠」时系统写", actionAt: "点的那一刻，系统写", result: "拦截 / 写进现有项目 / 同组提示，系统写",
-    status: "申请挂靠后系统改成待处理", warnTier: "触发了第几档预警，系统写",
+    status: "申请挂靠后系统改成待处理，审批人批准 / 拒绝后系统改成已批准 / 已拒绝，待处理时客户进了公海系统改成客户已进公海", warnTier: "触发了第几档预警，系统写",
+    approverId: "挂靠审批人，申请时系统定（客户现在的负责人），客户换负责人时跟着换（还没转过上级的），客户进公海时申请直接关，24 小时没处理系统转实线上级（迁移 117，回填现有待处理行）",
+    escalatedAt: "转实线上级的时刻，系统写", decidedById: "点批准 / 拒绝的人，当前登录账号；客户进公海自动关的留空", decidedAt: "点批准 / 拒绝的时刻，或客户进公海自动关的时刻，系统写",
   },
 };
 

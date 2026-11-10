@@ -37,7 +37,8 @@ import { 领取项目, 建档向导, type 建档向导输入 } from "@/app/(app)
 import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
 import { 公海规则, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
-import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
+import { 新建分配方式数据, 暂不分配提示 } from "@/lib/project/after-create-assign";
+import { 改项目 } from "@/lib/project/db";
 import { 没业务角色不能新建话, 只读角色话 } from "@/lib/enterprise/permissions";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
@@ -249,6 +250,47 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect(await prisma.project.count()).toBe(0);
   });
 
+  it("X-79「线索分配」开关关着：新建页不给自动分配（默认也不落在它上），硬传也拦；已在待分配的由系统管理员改负责人处理", async () => {
+    const 人 = (id: string) => ({ id, role: "SALES", name: "", email: "", title: "" });
+    当(市场);
+    const 待 = await 向导({ 分配方式: 0, ownerId: 市场 });
+    expect(待).toMatchObject({ ok: true });
+    const 待分配 = (await prisma.project.findFirstOrThrow({ where: { ownerId: 市场 } })).id;
+    await prisma.project.update({ where: { id: 待分配 }, data: { awaitAssignAt: new Date() } });
+
+    await setSetting(规则.线索分配.key, false);
+    invalidateSettingsCache();
+    expect((await 我能用的分配方式({ id: 市场, role: "SALES" })).map((x) => x.i)).toEqual([0, 2, 3]);
+    expect((await 我能用的分配方式({ id: 老板, role: "ADMIN" })).map((x) => x.i)).toEqual([0, 2, 3, 4]);
+    expect(await 新建分配方式数据(人(市场))).toMatchObject({ 默认分配方式: 0 });
+    expect(await 挡分配方式({ id: 市场, role: "SALES" }, 1)).toContain(规则.线索分配.名);
+    const 拦 = await 向导({ 分配方式: 1 });
+    expect(拦).toMatchObject({ ok: false });
+    expect(拦.ok ? "" : 拦.error).toContain(规则.线索分配.名);
+
+    // 已经在待分配里的：开关关着分配动作都不让用，系统管理员（总管理、不带条线）照样能在项目上改负责人，改了就不再待分配
+    expect(await 改项目({ id: 老板, role: "ADMIN" }, 待分配, { ownerId: 销售 })).toMatchObject({ ok: true });
+    const 后 = await prisma.project.findUniqueOrThrow({ where: { id: 待分配 } });
+    expect(后.ownerId).toBe(销售);
+    expect(后.awaitAssignAt).toBeNull();
+  });
+
+  it("X-93 新线索默认分配方式的「市场」= 市场管理 + 渠运 + 按部门认的市场成员（营销企划部不算）", async () => {
+    const 人 = (id: string) => ({ id, role: "SALES", name: "", email: "", title: "" });
+    const 市场部 = (await prisma.entDept.create({ data: { name: "市场运营部" } })).id;
+    const 下级 = (await prisma.entDept.create({ data: { name: "一组", parentId: 市场部 } })).id;
+    const 企划 = (await prisma.entDept.create({ data: { name: "营销企划部" } })).id;
+    await prisma.entMember.update({ where: { userId: 项运 }, data: { deptId: 下级 } });
+    await prisma.entMember.update({ where: { userId: 另一销售 }, data: { deptId: 市场部 } });
+    const 企划人 = (await prisma.user.create({ data: { email: "plan", name: "企划", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 企划人, bizRole: "project_ops", deptId: 企划 } });
+    expect(await 新建分配方式数据(人(渠道))).toMatchObject({ 默认分配方式: 1, 是销售: false });
+    expect(await 新建分配方式数据(人(项运))).toMatchObject({ 默认分配方式: 1, 是销售: false });
+    expect(await 新建分配方式数据(人(另一销售))).toMatchObject({ 是销售: false });
+    expect(await 新建分配方式数据(人(企划人))).toMatchObject({ 默认分配方式: 3 });
+    expect(await 新建分配方式数据(人(销售))).toMatchObject({ 默认分配方式: 4, 是销售: true });
+  });
+
   it("只读管理员（11-03 D3-7 ④）：新线索向导、新建客户都拦，一行不写", async () => {
     const 管 = (await prisma.user.create({ data: { email: "ad", name: "管理员", title: "", role: "ADMIN", password: "x" } })).id;
     await prisma.entMember.create({ data: { userId: 管, bizRole: "admin" } });
@@ -368,7 +410,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect(await 向导({ 分配方式: 0, ownerId: 销售经理 })).toMatchObject({ ok: true, 转走: true });
   });
 
-  it("暂不分配 / 个人自持：选了别人也记在自己名下；暂不分配留在新线索待分配、不发提醒，个人自持不待分配；分配方式记在项目上", async () => {
+  it("暂不分配 / 个人自持：选了别人也记在自己名下；暂不分配记在自己名下、不标待分配（P-转-03）、不发提醒，个人自持不待分配；分配方式记在项目上", async () => {
     当(市场);
     const a = await 向导({ 分配方式: 3, ownerId: 销售 });
     当(销售);
@@ -378,10 +420,10 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
       if (r.ok) expect((await 项目of(r.projectId)).ownerId).toBe(谁);
     }
     if (!a.ok || !b.ok) return;
-    expect(a).toMatchObject({ 转走: false, 提示: "已留在新线索待分配，等市场管理、销售管理、总管理员分" });
+    expect(a).toMatchObject({ 转走: false, 提示: 暂不分配提示 });
     expect("提示" in b).toBe(false);
     const [pa, pb] = [await 项目of(a.projectId), await 项目of(b.projectId)];
-    expect([pa.assignMode, pa.awaitAssignAt === null]).toEqual(["暂不分配", false]);
+    expect([pa.assignMode, pa.awaitAssignAt]).toEqual(["暂不分配", null]);
     expect([pb.assignMode, pb.awaitAssignAt]).toEqual(["个人自持", null]);
     expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
   });

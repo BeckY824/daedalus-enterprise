@@ -203,6 +203,16 @@ describe("取数和项目页筛选", () => {
     expect(await 列("due-soon")).toEqual(["业务员的", "重点新"]);
   });
 
+  it("X-78 验证中（等复核）的线索不收回，也不算即将逾期", async () => {
+    await 存组织规则(开超时);
+    await prisma.project.update({ where: { id: 项["重点新"] }, data: { createdAt: dayjs().subtract(5, "day").toDate() } });
+    await prisma.project.update({ where: { id: 项["业务员的"] }, data: { nextStepAt: dayjs().add(1, "day").toDate() } });
+    await prisma.project.update({ where: { id: 项["重点跟过"] }, data: { createdAt: new Date() } });
+    await prisma.entLeadVerify.create({ data: { projectId: 项["业务员的"], verdict: "初验无效", pending: "市场复核" } });
+    expect((await 数首页卡(老板, new Date(), 老四张))["due-soon"]).toBe(1);
+    expect(await 列("due-soon")).toEqual(["重点新"]);
+  });
+
   it("默认只数首页摆的四张；本月赢单（不摆，项目页能筛）= 本月商机 → 订单的项目，点进去行对得上", async () => {
     const 本月 = dayjs().startOf("month").add(1, "hour").toDate();
     const 上月 = dayjs().startOf("month").subtract(3, "day").toDate();

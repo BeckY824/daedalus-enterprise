@@ -30,6 +30,8 @@ import { 公海项目市场转, 转客户给销售 } from "@/lib/enterprise/mark
 import { 分配方式叫法 } from "@/lib/enterprise/dict";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import type { 带走的 } from "@/lib/carry-over-db";
+import { 换负责人 } from "@/lib/project/owner-write";
+import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 
 export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
 
@@ -102,7 +104,7 @@ export type 分项目结果 =
 
 /**
  * 老板、主管把线索公海里的项目分给同事（10-30，P0 #6）：权限同客户公海的 分配公海，持有上限照拦指派（超上限）。
- * 规矩同 领取公海项目：标了无效的客户的项目分不了；记一行 pool-claim（操作人 = 我，到 = 给的那位），撤销认的就是这一行；
+ * 规矩同 领取公海项目：标了无效的客户的项目分不了、已结束的项目分不了（X-70）；记一行 pool-claim（操作人 = 我，到 = 给的那位），撤销认的就是这一行；
  * 客户不在客户公海里：分到的只换项目负责人，客户负责人不变；客户在客户公海里：客户和名下别的公海项目整包出公海给这位（P-公海-10，11-09 定，
  * 只有能管公海的销售管理、总管理走得到这里）。一个一个分，分不了的说原因，不整批失败。
  * 带待办（C-06，公海页页头的勾，没传按默认勾）：进公海时关掉的那批待办重新打开给分到的人
@@ -139,6 +141,11 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       const p = await tx.project.findUnique({ where: { id }, select: { id: true, name: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true, customerId: true } });
       if (!p) return "这个项目已经不在了";
       if (!p.pooledAt) return "已经被人领走了";
+      // 已结束的项目不能单独分（X-70、P-公海-02，同 领取公海项目）：老数据里已在公海又有结局的，要分走客户整包
+      if (企业版() && p.result) return `这个项目已经结束（${p.result}），不能单独分配`;
+      // 验证中不能改派（X-77）：进公海时验证已清（老数据可能还挂着），挂着的先撤回验证
+      const 验 = await 验证中不能改派(tx, id);
+      if (验) return 验;
       const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
       if (c?.pool && c.poolInvalidAt) return "客户标了无效，要系统管理员先恢复";
       const 出整包 = 企业版() && !!c?.pool;
@@ -146,7 +153,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       const 转 = 出整包 || !org ? null : await 公海项目市场转(tx, org, p, 给.id, false);
       const 超 = await 领项目连带超上限(tx, 规则, 给.id, p, 转?.另进 ?? 0, 出整包);
       if (超) return 超;
-      await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
+      await tx.project.update({ where: { id }, data: { ...换负责人(给.id), pooledAt: null, nextStepAt: null, nextStepText: null } });
       // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
       const 原 = (await 历史负责人(tx, id)) ?? (p.ownerId || null);
       // 市场转客户的待办计划还归市场（P-转-10），勾不算数

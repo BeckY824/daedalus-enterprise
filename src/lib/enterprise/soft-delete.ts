@@ -24,6 +24,8 @@ import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
 import { 忘掉企业版范围 } from "./visibility";
 import { 回收站里查号, 回收站里带号的联系人, type 验好的号 } from "./contact-dedupe";
+import { 换负责人 } from "@/lib/project/owner-write";
+import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 
 export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -140,11 +142,15 @@ async function 恢复一条(t: 软删表名, id: string, 操作人 = ""): Promis
       if (c?.pool) return { ok: false as const, error: `所属客户「${c.name}」在客户公海里，先把客户领出来或分给销售，再恢复项目` };
       const p = await tx.project.findUnique({ where: { id }, select: { id: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true } });
       const 到 = c?.salesOwnerId ?? "";
-      if (p && !p.pooledAt && 到 && p.ownerId !== 到) 改归 = { p, 从: p.ownerId, 到 };
+      if (p && !p.pooledAt && 到 && p.ownerId !== 到) {
+        // 要换负责人的（跟客户现负责人）在验证中就不恢复（X-77）：先撤回验证再恢复
+        if (await 验证中不能改派(tx, id)) return { ok: false as const, error: "这条线索在验证中，恢复要换成客户现负责人、验证中不能改负责人：先撤回验证再恢复" };
+        改归 = { p, 从: p.ownerId, 到 };
+      }
     }
     await 表(tx, t).updateMany({ where: { id, deletedAt: 时刻 }, data: { deletedAt: null } });
     if (改归 && 记转让) {
-      await tx.project.update({ where: { id }, data: { ownerId: 改归.到 } });
+      await tx.project.update({ where: { id }, data: 换负责人(改归.到) });
       await 记转让(tx, 改归.p, 操作人 || 改归.到, 改归.从 || null, 改归.到, "transfer", "从回收站恢复，跟客户现负责人");
     }
     let 连带 = 0;

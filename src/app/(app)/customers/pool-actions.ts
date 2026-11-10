@@ -24,6 +24,7 @@ import { 领客户带走公海项目, 客户名下在推项目进公海, 客户�
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
@@ -31,13 +32,14 @@ import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 能进公海的阶段, 超上限n } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
-import { 历史负责人们 } from "@/lib/project/pool-owner";
+import { 历史负责人们, 还原清掉的组员 } from "@/lib/project/pool-owner";
 import { 换负责人待办 } from "@/lib/project/carry-tasks";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 有同事在推的客户, 同事在推不能放公海话, 同事在推项目说法, 订单项目说法 } from "@/lib/enterprise/colleague-projects";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { Prisma } from "@/generated/prisma";
 import { 客户退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
+import { 还负责人 } from "@/lib/project/owner-write";
 
 export type 公海结果 =
   | {
@@ -180,6 +182,8 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
     ? await 查完再写((tx) => 放进公海连项目(tx, 能放, me.id, reason))
     : (await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason })) }), []);
   忘掉企业版范围(); // 原负责人回避名单变了，这一下就要看不到（范围缓存 10 秒）
+  // 进公海关掉的挂靠申请：事务提交了再通知申请人（P-挂靠-01 / 02）
+  if (企业版()) await 进公海挂靠通知(能放.map((c) => c.id));
   await 记退回(能放.map((c) => c.id), 1);
   await recordAudit({
     user: me, action: "pool", entity: "Customer", entityId: 能放.length === 1 ? 能放[0].id : null,
@@ -211,7 +215,7 @@ async function 放进公海连项目(tx: Prisma.TransactionClient, 们: { id: st
 
 /**
  * 撤销放进公海时把跟着进项目公海的项目还给原负责人（P-公海-06）：只认最近一条是我在撤销时限内放的 pool-release、项目还在公海里的；
- * 关掉的待办重新打开给他，那行 pool-release 删掉——只是撤回，不算放回过一次
+ * 关掉的待办重新打开给他，进公海时清掉的组员按快照还回去（X-72），那行 pool-release 删掉——只是撤回，不算放回过一次
  */
 async function 撤回连带项目(tx: Prisma.TransactionClient, 客户们: string[], 项目们: unknown[], 操作人: string): Promise<void> {
   const ids = 项目们.filter((x): x is string => typeof x === "string");
@@ -223,7 +227,8 @@ async function 撤回连带项目(tx: Prisma.TransactionClient, 客户们: strin
       if (!痕 || 痕.kind !== "pool-release" || 痕.userId !== 操作人 || !痕.fromOwnerId) continue;
       if (痕.at.getTime() < Date.now() - 撤销时限毫秒) continue;
       await 换负责人待办(tx, p, null, 痕.fromOwnerId, true);
-      await tx.project.update({ where: { id: p.id }, data: { ownerId: 痕.fromOwnerId, pooledAt: null } });
+      await tx.project.update({ where: { id: p.id }, data: { ...还负责人(痕.fromOwnerId), pooledAt: null } });
+      await 还原清掉的组员(tx, p.id, 痕.at, 痕.fromOwnerId);
       await tx.projectNodeLog.delete({ where: { id: 痕.id } });
     }
   });

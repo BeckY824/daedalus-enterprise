@@ -176,7 +176,7 @@ describe("建档向导", () => {
       const 前 = await 各表行数();
       const 无负责人 = { ...好, 项目: { ...好.项目, ownerId: null } };
       expect(await 建档向导(无负责人 as never)).toMatchObject({ ok: false, error: "请选项目负责人" });
-      expect(await 建档向导({ ...好, 客户: { ...好.客户, channelId: null } })).toMatchObject({ ok: false, error: "请选渠道" });
+      expect(await 建档向导({ ...好, 客户: { ...好.客户, channelId: null } })).toMatchObject({ ok: false, error: "请选渠道或渠道触点" });
       await prisma.channel.updateMany({ data: { active: false } });
       expect(await 建档向导(好)).toMatchObject({ ok: false, error: "这个渠道不存在或已停用，换一个" });
       await prisma.channel.updateMany({ data: { active: true } });

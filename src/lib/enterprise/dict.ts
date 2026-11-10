@@ -15,6 +15,8 @@ import { 字典种类们, 字典定义, 项目画像项, 选项名上限, 其他
 import { 分配谁能用key, 规整分配谁能用, 能用分配方式, 谁能用的话, type 分配谁能用配置 } from "./assign-use";
 import { 读组织 } from "./org";
 import { 没设业务角色, 没业务角色不能新建话 } from "./permissions";
+import { 规则开着 } from "./rules";
+import { 规则 } from "./rules-table";
 import { 方式对类型, 类型对方式 } from "@/lib/follow-method";
 
 export * from "./dict-kinds";
@@ -260,11 +262,15 @@ export async function 读分配谁能用(): Promise<分配谁能用配置> {
  * 用某个分配方式之前查：这个人的业务角色能不能用（i 是默认项序号）。
  * null = 能用，否则是挡住的那句；不是企业版 = null（不管）。事务外调
  */
+/** 「线索分配」开关关着：自动分配没人能分，新建页不给（X-79 → P-转-03）；已在待分配的由系统管理员在项目上改负责人 */
+const 线索分配没开话 = `规则「${规则.线索分配.名}」没开，不能自动分配：换一种分配方式`;
+const 自动分配关着 = async (i: 分配方式序号) => i === 1 && !(await 规则开着("线索分配"));
+
 export async function 挡分配方式(me: { id: string; role: string }, i: 分配方式序号): Promise<string | null> {
   if (!企业版()) return null;
   const id = 默认id("assign", i);
   const [org, 配置] = await Promise.all([读组织(), 读分配谁能用()]);
-  if (能用分配方式(org, me, id, 配置)) return null;
+  if (能用分配方式(org, me, id, 配置)) return (await 自动分配关着(i)) ? 线索分配没开话 : null;
   // 没设角色的哪种都用不了，直说没设角色，别报「只有……能用」让人以为换一种就行（D3-6）
   if (没设业务角色(org, me.id)) return 没业务角色不能新建话;
   return 谁能用的话(id, await 分配方式叫法(i), 配置);
@@ -273,11 +279,12 @@ export async function 挡分配方式(me: { id: string; role: string }, i: 分�
 /** 建档向导的「分配方式」下拉：默认五项里这个人能用、还启用着的，按字典顺序；不是企业版 = 空 */
 export async function 我能用的分配方式(me: { id: string; role: string }): Promise<{ i: 分配方式序号; 名: string }[]> {
   if (!企业版()) return [];
-  const [项们, org, 配置] = await Promise.all([企业字典("assign"), 读组织(), 读分配谁能用()]);
+  const [项们, org, 配置, 分配开着] = await Promise.all([企业字典("assign"), 读组织(), 读分配谁能用(), 规则开着("线索分配")]);
   const 出: { i: 分配方式序号; 名: string }[] = [];
   for (const x of 项们) {
     const i = [0, 1, 2, 3, 4].find((k) => 默认id("assign", k) === x.id);
     if (!是分配方式序号(i) || !x.active) continue;
+    if (i === 1 && !分配开着) continue; // 「线索分配」开关关着不给自动分配（X-79 → P-转-03）
     if (能用分配方式(org, me, x.id, 配置)) 出.push({ i, 名: x.name });
   }
   return 出;

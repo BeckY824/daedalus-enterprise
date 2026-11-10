@@ -16,6 +16,7 @@ import { 卡点随项目换人, 转让接手理由 } from "../project/blocker";
 import { 将回收提醒跟着换人 } from "../project/db";
 import { 规, 写不进, type 值表, type 标量 } from "./values";
 import { 节点所在阶段 } from "./project-values";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 type Tx = Prisma.TransactionClient;
 
@@ -108,7 +109,7 @@ function 无主留痕(p: { phase: string; node: string; result: string | null },
 export async function 无主项目进公海(tx: Tx, id: string, 操作人: string, 现在: string): Promise<void> {
   const p = await tx.project.update({
     where: { id },
-    data: { ownerId: 公海无负责人, pooledAt: new Date(现在) },
+    data: { ...换负责人(公海无负责人), pooledAt: new Date(现在) },
     select: { phase: true, node: true, result: true },
   });
   await tx.projectNodeLog.create({ data: 无主留痕(p, id, 操作人, null, 现在) });
@@ -155,7 +156,7 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
   const 有 = (k: string) => k in 改动;
   const data: Prisma.ProjectUncheckedUpdateInput = {};
   if (有("name")) data.name = String(改动.name);
-  if (有("ownerId")) data.ownerId = 串(改动.ownerId) || 公海无负责人; // 撤回、采用原系统改回「没负责人」是空的，别写成字符串 null
+  if (有("ownerId")) Object.assign(data, 换负责人(串(改动.ownerId) || 公海无负责人)); // 撤回、采用原系统改回「没负责人」是空的，别写成字符串 null
   if (有("amount")) data.amount = Number(改动.amount ?? 0);
   if (有("remark")) data.remark = 串(改动.remark);
   if (有("expectedDealAt")) data.expectedDealAt = 日(改动.expectedDealAt);

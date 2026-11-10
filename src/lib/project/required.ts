@@ -19,7 +19,7 @@ import { 生效的合同状态 } from "./proj-fields";
 
 export const 必填项们 = [
   { key: "联系方式", 说明: "电话、WhatsApp、微信、邮箱、阿里国际站 ID 任一（客户或联系人上的都算）" },
-  { key: "来源", 说明: "客户来源" },
+  { key: "来源", 说明: "客户来源或渠道触点（P-渠道-08：公司资源 / 客户介绍的客户主渠道留空、由触点承载）" },
   { key: "国家", 说明: "国家 / 地区" },
   { key: "客户等级", 说明: "A / B / C / D" },
   { key: "主联系人", 叫法: "所属联系人", 说明: "项目上选了主联系人（所属联系人）" },
@@ -121,6 +121,8 @@ export type 必填数据 = {
     extra: { country?: string | null; whatsapp?: string | null; wechat?: string | null; email?: string | null; source?: string | null; level?: string | null; alibabaId?: string | null } | null;
     /** 分配方式（客户）Customer.assignWay */
     assignWay?: string | null;
+    /** 渠道触点 Customer.touchpoint（迁移 116，P-渠道-08）：「来源」有它也算齐 */
+    touchpoint?: string | null;
   };
   /** 客户还在（所属客户）；没读 = 不在 */
   有客户?: boolean;
@@ -174,7 +176,7 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "联系方式":
       return 有(d.客户.phone) || 有(x?.whatsapp) || 有(x?.wechat) || 有(x?.email) || 有(x?.alibabaId)
         || d.联系人们.some((c) => 有(c.phone) || 有(c.email) || 有(c.wechat));
-    case "来源": return 有(x?.source);
+    case "来源": return 有(x?.source) || 有(d.客户.touchpoint);
     case "国家": return 有(x?.country);
     case "客户等级": return 有(x?.level);
     // 挂着的那位姓名是「未知」这类占位不算（11-03 A2-2）；没读姓名的照旧只看挂没挂

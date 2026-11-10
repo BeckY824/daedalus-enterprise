@@ -62,6 +62,7 @@ export function 企业版页名(pathname: string, pool: string | null, 客户叫
   if (在(pathname, "/contacts")) return "联系人";
   if (在(pathname, "/settings")) return "设置";
   if (在(pathname, "/projects/handover")) return "离职交接";
+  if (在(pathname, "/projects/attach")) return "挂靠申请";
   const k = 企业版亮项(pathname, pool);
   return 企业版根目录(客户叫法).find((x) => x.key === k)?.label ?? "";
 }

@@ -66,7 +66,7 @@ export async function 查客户名(名: string, 公司?: string | null): Promise
 }
 
 /**
- * 「申请挂靠」（P-挂靠-01 第一期）：撞号台账那一行记上申请、通知负责人。审批流（P-挂靠-02）还没做。
+ * 「申请挂靠」（P-挂靠-01）：撞号台账那一行记上申请、定审批人、通知他；审批在「挂靠申请」页（P-挂靠-02，lib/enterprise/attach-approval.ts）。
  * 和新建同一道挡：没业务角色、只读管理员不行
  */
 export async function 申请挂靠(撞号id: string): Promise<{ ok: true; 提示: string } | { ok: false; error: string }> {

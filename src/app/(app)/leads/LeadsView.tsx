@@ -352,8 +352,8 @@ export default function LeadsView({
           hint: `线索是还没确认要不要跟的人。确认要跟了就转成${b.customer}，之后的跟进、商机、${签约叫(b)}都在${b.customer}那边走。`,
           primary: { label: "新建第一条线索", onClick: 新建 },
         }}
-        批量={能自动分配 ? (选中, 清空) => (
-          <Button size="small" icon={<ThunderboltOutlined />} onClick={() => void 批量自动分(选中, 清空)}>自动分配</Button>
+        批量={能自动分配 ? (选中, 清空, 选中行) => (
+          <Button size="small" icon={<ThunderboltOutlined />} onClick={() => void 批量自动分(选中, 清空, 选中行)}>自动分配</Button>
         ) : undefined}
         筛选={
           <Space wrap size={[10, 10]}>

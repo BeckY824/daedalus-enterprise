@@ -12,12 +12,14 @@ import { recordAudit } from "@/lib/audit";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, 离职进手的持有项目, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接卡点 } from "@/lib/project/blocker";
 import { 带走并记下, 数进手的持有项目, 数转走的项目 } from "@/lib/carry-over-db";
 import { 超上限n } from "@/lib/project/db";
+import { 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
@@ -173,6 +175,7 @@ export async function 确认交接(id: string): Promise<结果> {
     }, { timeout: 30_000 }));
     if (!成) return { ok: false, error: 已处理 };
     const { 分, 项目 } = 成;
+    await 进公海挂靠通知(分.进公海客户); // 进公海关掉的挂靠申请，事务提交了再通知申请人（P-挂靠-01 / 02）
     const 从 = (await prisma.user.findUnique({ where: { id: h.fromUserId }, select: { name: true } }))?.name ?? h.fromUserId;
     await recordAudit({
       user: me, action: "deactivate", entity: "User", entityId: h.fromUserId,
@@ -186,6 +189,9 @@ export async function 确认交接(id: string): Promise<结果> {
   }
 
   const ids = 读ids(h.customerIds);
+  // 发起之后名下线索进了验证（X-77）：先不确认，验证走完或撤回验证再来；交接留在待确认
+  const 验 = await 客户有验证中线索(prisma, (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId }, select: { id: true } }))).map((c) => c.id));
+  if (验) return { ok: false, error: 验 };
   const 换 = await 看全部(() => prisma.$transaction(async (tx) => {
     if (!(await 了结(tx, h.id, "已确认", me))) return null;
     // 交接期间进了公海的不转（11-03 完成度 C3-2）：转了负责人是接手人、人却在公海里，他看不到也领不到

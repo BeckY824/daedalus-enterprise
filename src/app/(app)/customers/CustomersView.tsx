@@ -57,6 +57,7 @@ import dynamic from "next/dynamic";
 import type { 建档数据 } from "../projects/new/ProjectWizard";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
+import { 归档档位们 } from "@/lib/enterprise/archive-tier";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -167,6 +168,8 @@ type Props = {
     custStatus?: string;
     /** 客户类型（企业版才有这一格，字典 custType，P13） */
     customerType?: string;
+    /** 归档档位（企业版才有这一格，M-导入-23）：A1 / A2 / B / C / D / E */
+    archiveTier?: string;
     /** 客户来源（企业版，11-06）：Customer.channelId */
     channelId?: string;
   };
@@ -518,6 +521,14 @@ export default function CustomersView({
               {...释义下拉(字典释义?.类型)}
               value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
               options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
+          ),
+        }, {
+          // 归档档位（M-导入-23 / X-63）：归档导入来的客户按档位看；默认收着
+          键: "archiveTier", 名: "归档档位", 宽: 130, 默认外露: false, 有值: !!f.archiveTier,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部归档档位" allowClear aria-label="归档档位"
+              value={f.archiveTier || undefined} onChange={(v) => apply({ archiveTier: v ?? "" })}
+              options={归档档位们.map((x) => ({ value: x, label: x }))} />
           ),
         }, {
           // 客户来源（11-06）：建档时选的渠道（Customer.channelId），停用的渠道也能筛，老客户还挂着

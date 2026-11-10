@@ -41,6 +41,8 @@ const 还在 = async () => {
 };
 
 describe("企业版：删项目 = 项目负责人本人或系统管理员（V3.5.1）", () => {
+  // 客户只剩最后一个项目不能单删（X-74）：这组只测谁能删，给客户再挂一个
+  beforeEach(async () => { await prisma.project.create({ data: { customerId: 客户, ownerId: 销售, creatorId: 销售, name: "二期", phase: "商机", node: "明确需求" } }); });
   it("没设业务角色的账号 ADMIN 调 server action：拒，项目原样还在、不记删除审计", async () => {
     expect(await 删除项目(项目)).toEqual({ ok: false, error: 项目不能删提示 });
     expect(await 还在()).toBe(true);
@@ -67,6 +69,34 @@ describe("企业版：删项目 = 项目负责人本人或系统管理员（V3.5
     const p = await raw.project.findUnique({ where: { id: 项目 }, select: { deletedAt: true } });
     expect(p?.deletedAt).not.toBeNull();
     expect(await raw.auditLog.count({ where: { entity: "Project", action: "delete" } })).toBe(1);
+  });
+});
+
+describe("企业版删项目的状态拦（X-74、P-删-10）", () => {
+  const 总管删 = (id: string) => 删项目({ id: 总管, role: "SALES" }, id);
+  it("客户只剩这一个项目：不能单删，要删就删客户；有第二个就能删一个", async () => {
+    expect(await 总管删(项目)).toMatchObject({ ok: false, error: expect.stringContaining("最后一个项目") });
+    expect(await 还在()).toBe(true);
+    const 二期 = (await prisma.project.create({ data: { customerId: 客户, ownerId: 销售, creatorId: 销售, name: "二期", phase: "商机", node: "明确需求" } })).id;
+    expect(await 总管删(二期)).toMatchObject({ ok: true });
+    expect(await 总管删(项目)).toMatchObject({ ok: false, error: expect.stringContaining("最后一个项目") });
+  });
+
+  it("客户正在转让交接中：项目不能删", async () => {
+    await prisma.project.create({ data: { customerId: 客户, ownerId: 销售, creatorId: 销售, name: "二期", phase: "商机", node: "明确需求" } });
+    await prisma.entHandover.create({ data: { kind: "转让", fromUserId: 销售, toUserId: 总管, byUserId: 总管, customerIds: JSON.stringify([客户]) } });
+    expect(await 总管删(项目)).toMatchObject({ ok: false, error: expect.stringContaining("交接") });
+    expect(await 还在()).toBe(true);
+  });
+
+  it("线索在验证中（等复核 / 等认领）：不能删；验证走完能删", async () => {
+    await prisma.project.create({ data: { customerId: 客户, ownerId: 销售, creatorId: 销售, name: "二期", phase: "商机", node: "明确需求" } });
+    await prisma.project.update({ where: { id: 项目 }, data: { phase: "线索", node: "线索验证" } });
+    await prisma.entLeadVerify.create({ data: { projectId: 项目, pending: "市场复核" } });
+    expect(await 总管删(项目)).toMatchObject({ ok: false, error: expect.stringContaining("验证中") });
+    expect(await 还在()).toBe(true);
+    await prisma.entLeadVerify.update({ where: { projectId: 项目 }, data: { pending: null } });
+    expect(await 总管删(项目)).toMatchObject({ ok: true });
   });
 });
 

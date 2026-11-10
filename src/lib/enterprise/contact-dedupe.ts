@@ -178,7 +178,7 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
 
 /**
  * 这位公海客户是不是我退的、我领不回也看不到（11-03 B7-3）：和 team-scope 公海回避 同一套——负责人是我，或在我的回避名单里；
- * 名单过上限（null）时照回避的退路，看有没有我退的公海项目
+ * 名单过上限（null）时照回避的退路，看有没有我退的公海项目；客户例外里的（最近一次不是我）不算
  */
 async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | null }, 我: string): Promise<boolean> {
   if (!拦原负责人()) return false;
@@ -187,6 +187,7 @@ async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | n
   const 避 = await 现在的公海回避(defaultClient);
   if (!避 || 避.本人 !== 我) return false;
   if (避.客户) return 避.客户.includes(挑.id);
+  if (避.客户例外?.includes(挑.id)) return false; // 早先退过、最近一次不是我（X-76）
   return 看全部(async () => !!(await db.project.findFirst({ where: { customerId: 挑.id, pooledAt: { not: null }, logs: { some: { kind: "pool-release", fromOwnerId: 我 } } }, select: { id: true } })));
 }
 

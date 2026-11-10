@@ -57,3 +57,12 @@ export async function 新数据渠道不行(id: string, db: 库 = prisma): Promi
 export const 在售渠道条件 = {
   OR: [{ mainId: null }, { main: { is: { OR: [{ category: null }, { category: { not: 历史渠道分类 } }] } } }],
 } satisfies Prisma.ChannelWhereInput;
+
+/**
+ * 来源选择里能列的渠道（P-渠道-13）：自己启用、不是历史渠道、主渠道也启用（主渠道停用，下面的子渠道一起不列；没挂主渠道的照列）。
+ * 只管选择器的候选；导入按名字认渠道、老客户已挂着的不受影响
+ */
+export const 可选渠道条件 = {
+  active: true,
+  AND: [在售渠道条件, { OR: [{ mainId: null }, { main: { is: { active: true } } }] }],
+} satisfies Prisma.ChannelWhereInput;

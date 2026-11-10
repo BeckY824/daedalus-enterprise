@@ -3,10 +3,12 @@ import { 转交商机 } from "@/lib/opportunity-activity";
 import { 转项目 } from "@/lib/carry-over-db";
 import { 记换负责人 } from "@/lib/owner-log-db";
 import { 转让痕 } from "@/lib/project/db";
-import { 进公海清负责人, 公海无负责人 } from "@/lib/project/pool-owner";
+import { 进公海清负责人, 公海无负责人, 进公海清组员 } from "@/lib/project/pool-owner";
+import { 进公海清验证 } from "@/lib/project/lead-verify-guard";
 import { 客户名下在推项目进公海, 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
 import { 月份 } from "@/lib/enterprise/lead-assign";
 import { 停用进公海理由, 停用项目进公海理由, type 停用分拣结果 } from "@/lib/offboard-db";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 /**
  * 离职交接真动数据的两半（原来写在 settings/actions.ts deactivateUser 的事务里，2026-10-26 抽出来）：
@@ -47,8 +49,9 @@ export async function 离职转给接手人(
   const 其余 = 分.项目.filter((p) => !同事项目.has(p));
   const 转了 = 其余.length ? await 转项目(tx, { id: { in: 其余 }, pooledAt: null }, 接手人, 操作人, false) : [];
   const 转了同事 = 同事的.length ? await 转项目(tx, { id: { in: 同事的 }, pooledAt: null }, 接手人, 操作人, true) : [];
-  const 清的 = 同事的.filter((p) => 待分配.has(p));
-  if (清的.length) await tx.project.updateMany({ where: { id: { in: 清的 } }, data: { awaitAssignAt: null } });
+  // 清待分配：同事待分配的；离职的人自己占着待分配、这次转过去的也清（P-转-20、X-84），转过去就是接手人的、算他持有
+  const 清的 = [...同事的.filter((p) => 待分配.has(p)), ...转了];
+  if (清的.length) await tx.project.updateMany({ where: { id: { in: 清的 }, awaitAssignAt: { not: null } }, data: { awaitAssignAt: null } });
   return [...转了, ...转了同事];
 }
 
@@ -68,8 +71,10 @@ export async function 离职放进公海(tx: Prisma.TransactionClient, 分: 停�
     const 们 = await tx.project.findMany({ where: { id: { in: 分.进公海项目 } }, select: { id: true, ownerId: true, phase: true, node: true, result: true } });
     // 企业版进公海清空负责人（pool-owner.ts），离职的人记在 pool-release 的 from 上 = 历史负责人。
     // 他没做完的待办不在这里关：离职交接里待办归接手人（停用分拣 待办）
-    await tx.project.updateMany({ where: { id: { in: 分.进公海项目 } }, data: { pooledAt: new Date(), nextStepAt: null, nextStepText: null, ...(进公海清负责人() ? { ownerId: 公海无负责人 } : {}) } });
+    await tx.project.updateMany({ where: { id: { in: 分.进公海项目 } }, data: { pooledAt: new Date(), nextStepAt: null, nextStepText: null, awaitAssignAt: null, ...(进公海清负责人() ? 换负责人(公海无负责人) : {}) } });
     await tx.projectNodeLog.createMany({ data: 们.map((p) => 转让痕(p, 操作人, p.ownerId, null, "pool-release", 停用项目进公海理由)) });
+    await 进公海清组员(tx, 分.进公海项目, 操作人);
+    await 进公海清验证(tx, 分.进公海项目, 操作人);
   }
 }
 

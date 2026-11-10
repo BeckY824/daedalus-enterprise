@@ -13,6 +13,7 @@
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 管理员类别们of, 能市场复核, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -32,9 +33,13 @@ type 结果 = { ok: true; 自动推到?: string[] } | { ok: false; error: string
 
 export type 待哪步 = "市场复核" | "销售终验" | "总管理终判" | "销售认领";
 export type 验证步 = "销售初判" | 待哪步;
+/** 痕里的步：四步之外还有撤回验证 */
+type 痕步 = 验证步 | "撤回验证";
 export const 说明上限 = 原因上限;
 const 开不了 = { ok: false as const, error: "线索验证只在企业版有" };
 const 作废 = { ok: false as const, error: "这条线索已经不在「线索验证」了（可能改了进程、点了结局或回了公海），这次复核作废，刷新看看" };
+/** 同一步两个人前后脚判（X-81，M-线索-02）：后到的写不进去，回这句，不盖先到的 */
+const 判过了 = { ok: false as const, error: "这条线索已被别人判过，刷新看看" };
 
 /** 组织里有没有在职的「市场管理」 */
 export function 有市场管理(org: 组织): boolean {
@@ -104,27 +109,65 @@ const 清空 = {
   finalResult: null, finalNote: null, finalById: null, finalAt: null,
 };
 
-async function 写状态(projectId: string, data: Record<string, unknown>, 痕: { step: 验证步; verdict: string; reason?: string | null; note?: string | null; userId: string }) {
-  await 看全部(() => prisma.$transaction(async (tx) => {
-    await tx.entLeadVerify.upsert({ where: { projectId }, create: { projectId, ...data }, update: data });
+/** 判的人核步骤时读到的验证状态（没有这一行 = null）。写的时候拿它当条件：这期间别人判过，pending / updatedAt 就变了 */
+type 读到 = { pending: string | null; updatedAt: Date } | null;
+const 快照 = (v: { pending: string | null; updatedAt: Date } | null): 读到 => (v ? { pending: v.pending, updatedAt: v.updatedAt } : null);
+type 事务 = Parameters<Parameters<typeof 查完再写>[0]>[0];
+
+/**
+ * 在事务里抢这一步（X-81）：只有验证状态还是核的时候读到的那样（等的步没变、没被别人写过）才写，命中 0 行 = 别人先判了。
+ * 没有这一行的（第一次初判）：事务里再看一眼，已经有了就是别人先建的
+ */
+async function 抢这一步(tx: 事务, projectId: string, 读: 读到, data: Record<string, unknown>): Promise<boolean> {
+  if (!读) {
+    if (await tx.entLeadVerify.findUnique({ where: { projectId }, select: { projectId: true } })) return false;
+    await tx.entLeadVerify.create({ data: { projectId, ...data } });
+    return true;
+  }
+  const r = await tx.entLeadVerify.updateMany({ where: { projectId, pending: 读.pending, updatedAt: 读.updatedAt }, data });
+  return r.count === 1;
+}
+
+/** 项目已经不在线索验证了：是别人这一步先判死的（验证状态跟着变了）回「已被别人判过」，不然（改了进程、点了结局、回了公海）照旧作废 */
+async function 不在验证(tx: 事务, projectId: string, 读: 读到) {
+  const 还在 = 读
+    ? await tx.entLeadVerify.count({ where: { projectId, pending: 读.pending, updatedAt: 读.updatedAt } })
+    : 1 - (await tx.entLeadVerify.count({ where: { projectId } }));
+  return 还在 ? 作废 : 判过了;
+}
+
+/**
+ * 写验证状态 + 痕，一个事务：先抢这一步，抢不到回「已被别人判过」、一行不写。
+ * 核项目：这一步前面没推进程的（初判交复核、复核判有效、提交异议、终判判有效），事务里再看一眼项目还在线索验证
+ */
+async function 写状态(projectId: string, 读: 读到, data: Record<string, unknown>, 痕: { step: 痕步; verdict: string; reason?: string | null; note?: string | null; userId: string }, 核项目 = false): Promise<结果> {
+  return 看全部(() => 查完再写(async (tx) => {
+    if (核项目) {
+      const p = await tx.project.findUnique({ where: { id: projectId }, select: 项目列 });
+      if (!p || !在验证(p)) return 不在验证(tx, projectId, 读);
+    }
+    if (!(await 抢这一步(tx, projectId, 读, data))) return 判过了;
     await tx.entLeadVerifyLog.create({ data: { projectId, ...痕, reason: 痕.reason ?? null, note: 痕.note || null } });
+    return { ok: true as const };
   }));
 }
 
 /**
  * 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、占过额度的负责人本月配额 +1。都在一个事务里，项目先被人动了就作废。
+ * 先抢这一步（X-81）：别人先判过（复核判了有效、另一位也判了无效、初判已交了复核）回「已被别人判过」，项目一点不动——
+ * 原来先改项目再核，核不过 return 了事务照样提交，项目白白流失。
  * 销售初判直接判死（创建人是销售）：带上这次的无效原因，不加配额——不是分来的线索，不补名额
  */
-async function 判死(me: 谁, projectId: string, 步: "销售初判" | "市场复核" | "总管理终判", 说明: string, 段: Record<string, unknown>): Promise<结果> {
+async function 判死(me: 谁, projectId: string, 读: 读到, 步: "销售初判" | "市场复核" | "总管理终判", 说明: string, 段: Record<string, unknown>): Promise<结果> {
   const 状态开 = await 客户状态自动();
   return 看全部(() => 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: projectId }, select: 项目列 });
-    if (!p || !在验证(p)) return 作废;
-    const v = await tx.entLeadVerify.findUnique({ where: { projectId } });
+    if (!p || !在验证(p)) return 不在验证(tx, projectId, 读);
+    const v = await tx.entLeadVerify.findUnique({ where: { projectId }, select: { invalidReason: true } });
+    if (!(await 抢这一步(tx, projectId, 读, { ...段, verdict: "无效线索", finalResult: "无效线索", pending: null }))) return 判过了;
     const 现在 = new Date();
     await tx.project.update({ where: { id: p.id }, data: { result: "线索流失", closedAt: 现在 } });
     const 无效原因 = 步 === "销售初判" ? (段.invalidReason as string) : v?.invalidReason;
-    if (步 === "销售初判" && v?.pending) return 作废; // 判的这会儿别人已经判过、交了复核
     const 原因 = [无效原因 ? `无效原因：${无效原因}` : "", 步 === "销售初判" ? "负责人初判无效（创建人是销售，初判即终判）" : `${步}判无效`, 说明].filter(Boolean).join("；").slice(0, 原因上限);
     await tx.projectNodeLog.create({
       data: {
@@ -133,8 +176,6 @@ async function 判死(me: 谁, projectId: string, 步: "销售初判" | "市场�
         toPhase: p.phase, toNode: p.node, toResult: "线索流失", reason: 原因,
       },
     });
-    const data = { ...段, verdict: "无效线索", finalResult: "无效线索", pending: null };
-    await tx.entLeadVerify.upsert({ where: { projectId }, create: { projectId, ...data }, update: data });
     await tx.entLeadVerifyLog.create({ data: { projectId, step: 步, verdict: "无效", reason: 步 === "销售初判" ? 无效原因 : null, note: 说明 || null, userId: me.id } });
     if (步 !== "销售初判" && (await 占过名额(tx, p.id, p.ownerId))) await 加一条配额(tx, p.ownerId);
     await 跟着项目重算(tx, 状态开, [p.customerId]);
@@ -162,7 +203,8 @@ export async function 销售初判(
 ): Promise<结果> {
   if (!企业版()) return 开不了;
   if (判 !== "有效" && 判 !== "无效" && 判 !== "还需培育") return { ok: false, error: "请选有效、无效或还需培育" };
-  const { p, org, 待 } = await 读当前(projectId);
+  const { p, v, org, 待 } = await 读当前(projectId);
+  const 读 = 快照(v);
   if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
   if (!在验证(p)) return { ok: false, error: `只有停在「${有效线索节点}」的线索能判` };
   if (待) return { ok: false, error: `这条线索在等${待}，不用再判` };
@@ -173,32 +215,31 @@ export async function 销售初判(
     // 先推进程（门槛不过什么都不写），推成了再记
     const r = await 改节点(me, p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true });
     if (!r.ok) return r;
-    await 写状态(p.id, { ...清空, ...验证人, invalidReason: null, verdict: "有效线索", finalResult: "有效线索", pending: null }, { step: "销售初判", verdict: "有效", note: 说明, userId: me.id });
+    const w = await 写状态(p.id, 读, { ...清空, ...验证人, invalidReason: null, verdict: "有效线索", finalResult: "有效线索", pending: null }, { step: "销售初判", verdict: "有效", note: 说明, userId: me.id });
+    if (!w.ok) return w;
     return { ok: true, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) };
   }
   if (判 === "还需培育") {
     const r = await 判MQL(me, p.id, false, 附.下一步时间, now, 附.计划内容);
     if (!r.ok) return r;
-    await 写状态(p.id, { ...清空, ...验证人, invalidReason: null, verdict: "暂未判定", pending: null }, { step: "销售初判", verdict: "还需培育", note: 说明 || 字(附.计划内容, 说明上限), userId: me.id });
-    return { ok: true };
+    return 写状态(p.id, 读, { ...清空, ...验证人, invalidReason: null, verdict: "暂未判定", pending: null }, { step: "销售初判", verdict: "还需培育", note: 说明 || 字(附.计划内容, 说明上限), userId: me.id });
   }
   const 原因 = await 核无效原因(附.invalidReason);
   if (!原因.ok) return 原因;
-  if (创建人是销售(org, p.creatorId, await 读市场成员们(org))) return 判死(me, p.id, "销售初判", 说明, { ...清空, ...验证人, invalidReason: 原因.值 });
+  if (创建人是销售(org, p.creatorId, await 读市场成员们(org))) return 判死(me, p.id, 读, "销售初判", 说明, { ...清空, ...验证人, invalidReason: 原因.值 });
   const 交给 = await 无效交给(org);
-  await 写状态(p.id, { ...清空, ...验证人, invalidReason: 原因.值, verdict: "初验无效", pending: 交给 }, { step: "销售初判", verdict: "无效", reason: 原因.值, note: 说明, userId: me.id });
-  return { ok: true };
+  return 写状态(p.id, 读, { ...清空, ...验证人, invalidReason: 原因.值, verdict: "初验无效", pending: 交给 }, { step: "销售初判", verdict: "无效", reason: 原因.值, note: 说明, userId: me.id }, true);
 }
 
 /** 复核两步（市场复核、总管理终判）共用：先核是不是轮到这一步、这人能不能拍板 */
 async function 核复核(me: 谁, projectId: string, 步: "市场复核" | "总管理终判") {
   if (!企业版()) return 开不了;
-  const { p, org, 待 } = await 读当前(projectId);
+  const { p, v, org, 待 } = await 读当前(projectId);
   if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
   if (待 !== 步) return { ok: false as const, error: 待 ? `这条线索现在等的是${待}，不是${步}` : "这条线索没在等复核，刷新看看" };
   if (!在验证(p)) return 作废;
   if (!能拍板(me, 步, p, org)) return { ok: false as const, error: 拍不了[步] };
-  return { ok: true as const, p };
+  return { ok: true as const, p, 读: 快照(v) };
 }
 
 /** 2. 市场复核：有效 → 回销售终验；无效 → 判死 */
@@ -207,9 +248,8 @@ export async function 市场复核(me: 谁, projectId: string, 有效: boolean, 
   if (!核.ok) return 核;
   const 说明 = 字(reviewNote, 说明上限);
   const 段 = { reviewResult: 有效 ? "有效" : "无效", reviewNote: 说明 || null, reviewedById: me.id, reviewedAt: new Date() };
-  if (!有效) return 判死(me, 核.p.id, "市场复核", 说明, 段);
-  await 写状态(核.p.id, { ...段, pending: "销售终验" }, { step: "市场复核", verdict: "有效", note: 说明, userId: me.id });
-  return { ok: true };
+  if (!有效) return 判死(me, 核.p.id, 核.读, "市场复核", 说明, 段);
+  return 写状态(核.p.id, 核.读, { ...段, pending: "销售终验" }, { step: "市场复核", verdict: "有效", note: 说明, userId: me.id }, true);
 }
 
 /** 4. 总管理终判：有效 → 等销售认领或退回公海；无效 → 判死 */
@@ -218,20 +258,19 @@ export async function 总管理终判(me: 谁, projectId: string, 有效: boolea
   if (!核.ok) return 核;
   const 说明 = 字(finalNote, 说明上限);
   const 段 = { finalNote: 说明 || null, finalById: me.id, finalAt: new Date() };
-  if (!有效) return 判死(me, 核.p.id, "总管理终判", 说明, 段);
-  await 写状态(核.p.id, { ...段, verdict: "有效线索", finalResult: "有效线索", pending: "销售认领" }, { step: "总管理终判", verdict: "有效", note: 说明, userId: me.id });
-  return { ok: true };
+  if (!有效) return 判死(me, 核.p.id, 核.读, "总管理终判", 说明, 段);
+  return 写状态(核.p.id, 核.读, { ...段, verdict: "有效线索", finalResult: "有效线索", pending: "销售认领" }, { step: "总管理终判", verdict: "有效", note: 说明, userId: me.id }, true);
 }
 
 /** 销售两步（终验、认领）共用的核 */
 async function 核销售(me: 谁, projectId: string, 步: "销售终验" | "销售认领") {
   if (!企业版()) return 开不了;
-  const { p, org, 待 } = await 读当前(projectId);
+  const { p, v, org, 待 } = await 读当前(projectId);
   if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
   if (待 !== 步) return { ok: false as const, error: 待 ? `这条线索现在等的是${待}` : "这条线索没在等你处理，刷新看看" };
   if (!在验证(p)) return 作废;
   if (!能拍板(me, 步, p, org)) return { ok: false as const, error: 拍不了[步] };
-  return { ok: true as const, p };
+  return { ok: true as const, p, 读: 快照(v) };
 }
 
 /** 3. 销售终验：接受复核 → 推到 线索推进；提交异议（要写说明）→ 交总管理终判 */
@@ -242,12 +281,12 @@ export async function 销售终验(me: 谁, projectId: string, 接受: boolean, 
   if (接受) {
     const r = await 改节点(me, 核.p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true });
     if (!r.ok) return r;
-    await 写状态(核.p.id, { salesAck: "接受复核", ackedAt: new Date(), verdict: "有效线索", finalResult: "有效线索", pending: null }, { step: "销售终验", verdict: "接受复核", note: 说明, userId: me.id });
+    const w = await 写状态(核.p.id, 核.读, { salesAck: "接受复核", ackedAt: new Date(), verdict: "有效线索", finalResult: "有效线索", pending: null }, { step: "销售终验", verdict: "接受复核", note: 说明, userId: me.id });
+    if (!w.ok) return w;
     return { ok: true, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) };
   }
   if (!说明) return { ok: false, error: "提交异议要写一句为什么还认为无效" };
-  await 写状态(核.p.id, { salesAck: "提交异议", disputeNote: 说明, ackedAt: new Date(), pending: "总管理终判" }, { step: "销售终验", verdict: "提交异议", note: 说明, userId: me.id });
-  return { ok: true };
+  return 写状态(核.p.id, 核.读, { salesAck: "提交异议", disputeNote: 说明, ackedAt: new Date(), pending: "总管理终判" }, { step: "销售终验", verdict: "提交异议", note: 说明, userId: me.id }, true);
 }
 
 /** 总管理判有效之后：认领继续 → 推到 线索推进；退回公海 → 放回公海（不带原因 = 主动退回，客户退回次数 +1） */
@@ -257,13 +296,41 @@ export async function 销售认领(me: 谁, projectId: string, 继续: boolean):
   if (继续) {
     const r = await 改节点(me, 核.p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true });
     if (!r.ok) return r;
-    await 写状态(核.p.id, { pending: null }, { step: "销售认领", verdict: "认领继续", userId: me.id });
+    const w = await 写状态(核.p.id, 核.读, { pending: null }, { step: "销售认领", verdict: "认领继续", userId: me.id });
+    if (!w.ok) return w;
     return { ok: true, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) };
   }
+  // 进公海那一笔把验证状态清了（进公海清验证，9f）：这一步只留痕，时间记在放回之前，排在「进公海清验证」那行前面
+  const 时 = new Date();
   const r = await 放回公海(me, 核.p.id, undefined, { 验证放行: true });
   if (!r.ok) return r;
-  await 写状态(核.p.id, { pending: null }, { step: "销售认领", verdict: "退回公海", userId: me.id });
+  await 看全部(() => prisma.entLeadVerifyLog.create({ data: { projectId: 核.p.id, step: "销售认领", verdict: "退回公海", userId: me.id, at: 时 } }));
   return { ok: true };
+}
+
+/** 撤回验证（X-77「验证中不能改派，要改先撤回验证」）：提交验证的人（初判无效交复核的那位）、系统管理员能撤 */
+function 能撤回(me: 谁, v: { pending: string | null; verifiedById: string | null } | null, org: 组织): boolean {
+  return !!v?.pending && (v.verifiedById === me.id || 是总管理(me, org));
+}
+
+/**
+ * 撤回验证：验证中（pending 有值）的线索回到提交验证前（暂未判定、不在等哪步，初判、复核、终验、终判那几格都清掉），
+ * 项目本身不动（交复核那一步没动过项目），留一行痕「撤回验证」。之后能改派，也能重新初判。
+ * 和别人判同一步前后脚：抢这一步，后到的回「已被别人判过」
+ */
+export async function 撤回验证(me: 谁, projectId: string): Promise<结果> {
+  if (!企业版()) return 开不了;
+  // 回收站里的项目也能撤（恢复要换负责人、验证中拦着，回收站那头先撤再恢复）
+  return 看已删(() => 撤回这条(me, projectId));
+}
+async function 撤回这条(me: 谁, projectId: string): Promise<结果> {
+  const { p, v, org, 待 } = await 读当前(projectId);
+  if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
+  if (!v?.pending || !待) return { ok: false, error: "这条线索没在验证中，不用撤回，刷新看看" };
+  if (!能撤回(me, v, org)) return { ok: false, error: "只有提交验证的人或系统管理员能撤回验证" };
+  return 写状态(p.id, 快照(v), {
+    ...清空, verdict: "暂未判定", pending: null, invalidReason: null, verifyNote: null, verifiedById: null, verifiedAt: null,
+  }, { step: "撤回验证", verdict: "撤回", note: `撤回前等${待}`, userId: me.id });
 }
 
 export type 验证痕 = { id: string; step: string; verdict: string; reason: string | null; note: string | null; 谁: string; at: string };
@@ -280,6 +347,8 @@ export type 线索验证 = {
   叫法: 验证结果叫法;
   /** 我现在能做的：初判 / 终验 / 认领；复核两步在列表的「待复核的线索」里 */
   我能: "初判" | "销售终验" | "销售认领" | "市场复核" | "总管理终判" | null;
+  /** 我能撤回验证（验证中，我是提交验证的人或系统管理员，X-77） */
+  能撤回?: boolean;
   痕: 验证痕[];
 };
 
@@ -305,7 +374,7 @@ export async function 读线索验证(me: 谁, p: 项目): Promise<线索验证 
   return {
     // 最后判成有效线索：当初初判写的无效原因不再挂在结果旁边（痕里照留）
     判定, 待, 无效原因: 叫法 === "有效线索" ? null : v?.invalidReason ?? null, 叫法,
-    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 无效交给: 交给, 我能,
+    复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 无效交给: 交给, 我能, 能撤回: !!待 && 能撤回(me, v ?? null, org),
     痕: 痕.map((l) => ({ id: l.id, step: l.step, verdict: l.verdict, reason: l.reason, note: l.note, 谁: 名.get(l.userId) ?? "已不在的成员", at: l.at.toISOString() })),
   };
 }

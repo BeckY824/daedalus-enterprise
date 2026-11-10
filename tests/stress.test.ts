@@ -55,7 +55,8 @@ describe("五人同时在线", () => {
         try {
           const 建档 = await saveCustomer({
             name: `压测${idx}-${r}`,
-            phone: `137${String(idx)}${String(r).padStart(2, "0")}0000`.slice(0, 11),
+            // idx 从 1 起：idx=0、r=0 拼出 1370000000，按 P-全局-06「连续 0」算占位假号会被拦
+            phone: `137${String(idx + 1)}${String(r).padStart(2, "0")}0000`.slice(0, 11),
             school: null, grade: null, major: null,
             followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
             remark: null, salesOwnerId: 销售[idx].id, channelId: null, referrerCustomerId: null,
@@ -102,7 +103,7 @@ describe("五人同时在线", () => {
     const ids: string[] = [];
     for (let i = 0; i < 10; i++) {
       const r = await saveCustomer({
-        name: `批量${i}`, phone: `13600000${String(i).padStart(3, "0")}`,
+        name: `批量${i}`, phone: `13600000${String(i + 1).padStart(3, "0")}`, // i+1：13600000000 是占位假号（P-全局-06 连续 0）
         school: null, grade: null, major: null,
         followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
         remark: null, salesOwnerId: 销售[0].id, channelId: null, referrerCustomerId: null,
