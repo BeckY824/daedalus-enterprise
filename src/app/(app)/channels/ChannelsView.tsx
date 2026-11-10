@@ -224,7 +224,10 @@ export default function ChannelsView({
     requestAnimationFrame(() => set亮行([id]));
     亮计时.current = setTimeout(() => set亮行([]), 2000);
   }
+  /** 新建渠道表单里，属性、负责人哪几项是人自己动过的：没动过的才跟着选的主渠道带（迁移 118） */
+  const 自己动过 = useRef(new Set<string>());
   function openForm(r: Row | null) {
+    自己动过.current = new Set();
     setEditing(r);
     setOpen(true);
   }
@@ -602,7 +605,7 @@ export default function ChannelsView({
       )}
       </div>
 
-      {开主渠道 && <MainChannels 主渠道们={主渠道们} 子渠道数={子渠道数} onClose={() => set开主渠道(false)} />}
+      {开主渠道 && <MainChannels 主渠道们={主渠道们} 子渠道数={子渠道数} users={users} 属性选项={属性选项} onClose={() => set开主渠道(false)} />}
 
       {详情 && <ChannelDrawer key={详情.id} row={详情} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={能管 ? () => openForm(详情) : undefined} />}
 
@@ -622,13 +625,20 @@ export default function ChannelsView({
             form={form}
             layout="vertical"
             style={{ marginTop: 8 }}
-            onValuesChange={(改: { platform?: string }) => {
+            onValuesChange={(改: { platform?: string; attr?: string; channelOwnerId?: string }) => {
               守.改了();
+              // 只有人手改才走到这儿（setFieldValue 不触发），记下属性、负责人是不是自己动过
+              for (const k of ["attr", "channelOwnerId"] as const) if (k in 改) 自己动过.current.add(k);
               // 换到一个不设子渠道的主渠道：子渠道清空（主渠道没换回原来那个、原来的子渠道才照留）
               if (两层 && 改.platform !== undefined) {
                 const m = 按名找主.get(改.platform.trim());
                 if (m && !m.allowSub && !(editing && editing.mainId === m.id)) form.setFieldValue("source", "");
                 if (m && !m.allowSub && editing && editing.mainId === m.id) form.setFieldValue("source", 原子);
+                // 新建时选了主渠道：属性、负责人自己还没动过的，先带主渠道的（迁移 118，子渠道没单独填时沿用主渠道的）；动过的不盖
+                if (m && !editing) {
+                  if (m.attr && !自己动过.current.has("attr")) form.setFieldValue("attr", m.attr);
+                  if (m.ownerId && !自己动过.current.has("channelOwnerId") && users.some((u) => u.id === m.ownerId)) form.setFieldValue("channelOwnerId", m.ownerId);
+                }
               }
             }}
             // 新建时渠道负责人默认是我（团队同步之后候选里有同事）
