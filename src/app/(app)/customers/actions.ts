@@ -70,6 +70,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 交接通知, 分给你通知, 改负责人通知 } from "@/lib/enterprise/notice-sources";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
+import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 
 
 /** 状态不在取值表里就给那句报错，合法给 null。建客户、批量改、撤销、行内改四处共用，报错文案一字不改 */
@@ -500,6 +501,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     共享试用区里 WhatsApp 和电话一样是打了码给人看的：交回来还带着 * 就是没动它，不碰这一格（同电话的 认回打码号）
   */
   const 交的档案原 = input.extra && typeof input.extra.whatsapp === "string" && input.extra.whatsapp.includes("*") ? { ...input.extra, whatsapp: undefined } : input.extra;
+  // WhatsApp 填占位假号（P-全局-06）：拦下、叫人填真实号码；库里原样没动的老号照存
+  const 交的瓦 = typeof 交的档案原?.whatsapp === "string" ? 交的档案原.whatsapp.trim() : "";
+  if (交的瓦 && 是占位号(交的瓦)) {
+    const 原瓦 = 改前 ? (await prisma.customerExtra.findUnique({ where: { customerId: 改前.id }, select: { whatsapp: true } }))?.whatsapp : null;
+    if (交的瓦 !== String(原瓦 ?? "").trim()) return { ok: false, error: 占位号提示("WhatsApp") };
+  }
   /*
     企业版客户级别只剩 S / A / B / C（定稿 P5 第 23 条）：还是存 CustomerExtra.level，但不走外贸那套 A–D 的校验，
     先在这里按企业版的四档认好，再并回档案

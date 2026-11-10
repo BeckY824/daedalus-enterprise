@@ -90,7 +90,7 @@ describe("企业版 + 项目模式", () => {
   it("线索负责人到了持有上限：整个不转，客户、项目都不建，线索不动", async () => {
     await setSetting("orgRules", { 公海: { 持有上限开: true, 默认上限: 1 } });
     invalidateSettingsCache();
-    const c = await prisma.customer.create({ data: { name: "别家", phone: "13900000000", salesOwnerId: 乙 } });
+    const c = await prisma.customer.create({ data: { name: "别家", phone: "13900000091", salesOwnerId: 乙 } });
     await prisma.project.create({ data: { name: "手上一个", customerId: c.id, ownerId: 乙, creatorId: 乙 } });
     const l = await 线索();
     expect(await convertLead(l.id, 首条())).toMatchObject({ ok: false, error: expect.stringContaining("持有上限（1 个）") });
@@ -134,8 +134,8 @@ describe("企业版 + 项目模式", () => {
     invalidateSettingsCache();
     const l = await 线索();
     expect(await convertLead(l.id, 首条())).toMatchObject({ ok: false, error: expect.stringContaining("下一步时间") });
-    const c = await prisma.customer.create({ data: { name: "老客户", phone: "13600000000", salesOwnerId: 甲 } });
-    const l2 = await 线索({ phone: "13600000000" });
+    const c = await prisma.customer.create({ data: { name: "老客户", phone: "13600000061", salesOwnerId: 甲 } });
+    const l2 = await 线索({ phone: "13600000061" });
     expect(await mergeLeadInto(l2.id, c.id, 首条())).toMatchObject({ ok: false, error: expect.stringContaining("下一步时间") });
     expect(await prisma.project.count()).toBe(0);
     expect(await prisma.followUp.count()).toBe(0);
@@ -157,8 +157,8 @@ describe("开关关着：和原来一样只转客户", () => {
     mocks.开 = false;
     const r = await convertLead((await 线索()).id);
     expect(r).toEqual({ ok: true, customerId: expect.any(String) });
-    const c = await prisma.customer.create({ data: { name: "老客户", phone: "13700000000", salesOwnerId: 甲 } });
-    const l = await 线索({ phone: "13700000000" });
+    const c = await prisma.customer.create({ data: { name: "老客户", phone: "13700000071", salesOwnerId: 甲 } });
+    const l = await 线索({ phone: "13700000071" });
     expect(await mergeLeadInto(l.id, c.id)).toEqual({ ok: true, customerId: c.id });
     expect(await prisma.project.count()).toBe(0);
   });

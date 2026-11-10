@@ -173,10 +173,10 @@ describe("企业版：转客户、并进老客户", () => {
   });
 
   it("并进老客户：挂到电话对得上的那位联系人，不挂关键联系人", async () => {
-    const c = await prisma.customer.create({ data: { name: "QA-老客户", phone: "13700000000", salesOwnerId: 我 } });
-    const 关键 = await prisma.contact.create({ data: { name: "QA-关键", customerId: c.id, isPrimary: true, phone: "13600000000" } });
-    const 对上 = await prisma.contact.create({ data: { name: "QA-对上", customerId: c.id, phone: "13700000000" } });
-    const l = await 线索({ phone: "13700000000" });
+    const c = await prisma.customer.create({ data: { name: "QA-老客户", phone: "13700000071", salesOwnerId: 我 } });
+    const 关键 = await prisma.contact.create({ data: { name: "QA-关键", customerId: c.id, isPrimary: true, phone: "13600000061" } });
+    const 对上 = await prisma.contact.create({ data: { name: "QA-对上", customerId: c.id, phone: "13700000071" } });
+    const l = await 线索({ phone: "13700000071" });
     await 传一个(`leadId=${l.id}`, 字节("卡"));
     const r = await mergeLeadInto(l.id, c.id);
     if (!r.ok) throw Error(r.error);

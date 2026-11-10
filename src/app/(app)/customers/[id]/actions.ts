@@ -34,6 +34,7 @@ import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "@/lib
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, type 交上来的号 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
+import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 
 const 只有总管理能恢复话 = "只有系统管理员或回收站副手能恢复删掉的记录";
 
@@ -618,6 +619,8 @@ type 联系人字段 = {
 function 联系人电话(交回: string | null | undefined, 原: string | null | undefined): { ok: true; phone: string | null } | { ok: false; error: string } {
   const v = String(认回打码号(交回, 原) ?? "").trim();
   if (v.includes("*")) return { ok: false, error: "电话里不能有 *" };
+  // 占位假号（P-全局-06）：新填、改过的拦下；库里原样没动的老号照存
+  if (v !== String(原 ?? "").trim() && 是占位号(v)) return { ok: false, error: 占位号提示("电话") };
   return { ok: true, phone: v || null };
 }
 

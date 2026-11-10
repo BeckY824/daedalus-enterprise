@@ -15,6 +15,7 @@
  * 「无法识别」= 清掉空白和符号以后什么都不剩，或者是打了码的样子（带 *）：不是填错了位数，是根本看不出是个号码。
  * 开关关着这份不被调（没有类型可选、保存不认 企业号码），见 saveCustomer
  */
+import { 是占位号, 占位号提示 } from "../placeholder-phone";
 
 export const 号码类型们 = ["手机号", "邮箱", "微信", "旺旺ID", "二维码"] as const;
 export type 号码类型 = (typeof 号码类型们)[number];
@@ -60,7 +61,13 @@ function 半角(s: string): string {
  * 手机号（B1 / B2）。分隔符（空格、横杠、括号、点）去掉；00 开头当 +。
  * 去完还夹着字母、汉字的算格式错误（不猜，和 lib/phone 的「号码中间夹字母不猜」一个意思）
  */
-function 验手机(原: string): 验号结果 {
+function 验手机(原: string, 放过占位 = false): 验号结果 {
+  const r = 验手机格式(原);
+  // 占位假号（P-全局-06）：建档向导、AI 建档、线索录入、号码子表都走这里。格式对了再看，拦下、叫人填真实号码
+  return r.ok && !放过占位 && 是占位号(原) ? { ok: false, 状态: "格式错误", 提示: `⚠️${占位号提示("手机号")}` } : r;
+}
+
+function 验手机格式(原: string): 验号结果 {
   let s = 半角(原).trim().replace(/^'/, "");
   if (s.includes("*")) return 认不出;
   s = s.replace(/[\s\-()（）.－—–‐‑‒―]/g, "");
@@ -116,13 +123,13 @@ function 验旺旺(原: string): 验号结果 {
 /**
  * 按选的类型验一个号码。二维码看 有图（号码那格不用填）；其余类型 有图 不看
  */
-export function 验号码(类型: unknown, 原: unknown, 选项: { 有图?: boolean } = {}): 验号结果 {
+export function 验号码(类型: unknown, 原: unknown, 选项: { 有图?: boolean; 放过占位?: boolean } = {}): 验号结果 {
   if (!是号码类型(类型)) return { ok: false, 状态: "未选类型", 提示: 号码提示.未选类型 };
   if (类型 === "二维码") {
     return 选项.有图 ? { ok: true, 类型, 值: "", 键: "" } : { ok: false, 状态: "待上传", 提示: 号码提示.待上传 };
   }
   const s = typeof 原 === "string" ? 原 : "";
-  if (类型 === "手机号") return 验手机(s);
+  if (类型 === "手机号") return 验手机(s, 选项.放过占位);
   if (类型 === "邮箱") return 验邮箱(s);
   if (类型 === "微信") return 验微信(s);
   return 验旺旺(s);
