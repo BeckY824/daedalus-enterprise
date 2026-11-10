@@ -720,6 +720,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     if (p.pooledAt) return { ok: false as const, error: "这个项目已经在公海里了" };
     if (!选项?.分配放行 && !能放回公海(me, p, org)) return { ok: false as const, error: "只有项目负责人、上级或总管理能放回公海" };
     if (!(能进公海的阶段 as readonly string[]).includes(p.phase)) return { ok: false as const, error: "订单阶段的项目不能放回公海" };
+    // 已结束的项目（有结局）不能单独放回公海（X-70、P-公海-02）；客户整体进公海时连带进去的不在这里（M-公海-02）
+    if (企业版() && p.result) return { ok: false as const, error: `这个项目已经结束（${p.result}），不能单独放回公海` };
     // 客户正在转让交接中（11-03 完成度 C3-2）：项目跟着客户走，这时放了，接手人确认后拿不到。别人发起的交接也算
     if (企业版() && (await 看全部(() => 交接中的客户([p.customerId], tx))).size) return { ok: false as const, error: "这个项目的客户正在转让交接中，先撤回交接再放回公海" };
     if (号码表) {
@@ -782,6 +784,8 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
     }
     if (!p.pooledAt) return 领走了;
     if (!(await 在职(tx, me.id))) return { ok: false as const, error: "账号已停用" };
+    // 已结束的项目不能单独领（X-70、P-公海-02）：老数据里已在公海、又有结局的，要领走客户整包
+    if (企业版() && p.result) return { ok: false as const, error: `这个项目已经结束（${p.result}），不能单独领取` };
     // 企业版统一公海（P7，迁移 079）：客户在客户公海里且标了无效，项目也领不了
     if (企业版()) {
       const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } }));

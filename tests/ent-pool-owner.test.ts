@@ -146,6 +146,26 @@ describe("领取：只认历史负责人", () => {
   });
 });
 
+describe("已结束的项目不能单独放回、不能单独领（X-70、P-公海-02）", () => {
+  it("有结局的放回公海拒、不动；已在公海里的有结局项目领不了；没结局的照常", async () => {
+    const c = await 客户(老板.id);
+    const 结了 = await 项目(乙.id, c, "流失项目");
+    await prisma.project.update({ where: { id: 结了 }, data: { result: "线索流失", closedAt: new Date() } });
+    expect(await 放回公海(乙, 结了)).toMatchObject({ ok: false, error: expect.stringContaining("已经结束") });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 结了 } })).pooledAt).toBeNull();
+    // 老数据：已经在公海里的有结局项目（客户整体进公海连带进来的，照 M-公海-02 不在这里管）
+    const c2 = await 客户(老板.id, "客户二");
+    const 公海里结了 = await 项目(乙.id, c2, "老流失");
+    await 放回公海(乙, 公海里结了);
+    await prisma.project.update({ where: { id: 公海里结了 }, data: { result: "线索流失", closedAt: new Date() } });
+    expect(await 领取公海项目(丙, 公海里结了)).toMatchObject({ ok: false, error: expect.stringContaining("已经结束") });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 公海里结了 } })).pooledAt).not.toBeNull();
+    const 没结 = await 项目(乙.id, await 客户(老板.id, "客户三"), "在跟");
+    expect(await 放回公海(乙, 没结)).toEqual({ ok: true });
+    expect(await 领取公海项目(丙, 没结)).toEqual({ ok: true });
+  });
+});
+
 describe("历史负责人看不到", () => {
   it("项目公海列表、统一公海页、单个项目认权限都挡乙；丙、老板、主管看得到", async () => {
     const c = await 客户(老板.id);

@@ -240,16 +240,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
-    能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase),
+    能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）
     // 企业版删项目：项目负责人本人或系统管理员（V3.5.1，进回收站）；别的版本照旧按 能改
     能删: 企业 ? 能删除(me, org, 公海 ? null : p.ownerId) : 能改,
     // 项目组员（V3.5.1）：进了组就能往组里拉人
     能加组员: 能加组员(me, p, org, 已加入.includes(me.id)),
     // 原负责人领不回（企业版按 pool-rules.ts，别的版本本来就不能自己领回）；企业版按钮灰着摆、别的版本照旧不摆
     // 没设业务角色、只读管理员（11-03 D3-7 ④）：「领取」整个不摆，灰的也不摆
-    能领取: 公海 && 能领 && (企业 ? !原负责人领不回 && !拦单独领项目() && !拦客户公海里的项目(!!p.customer.pool) : me.id !== 上一任),
+    能领取: 公海 && 能领 && (企业 ? !原负责人领不回 && !p.result && !拦单独领项目() && !拦客户公海里的项目(!!p.customer.pool) : me.id !== 上一任),
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户
-    领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 拦单独领项目() ? 项目不能单独领提示 : 公海 && 拦客户公海里的项目(!!p.customer.pool) ? 客户在公海项目不单领提示 : null,
+    领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 企业 && p.result ? `这个项目已经结束（${p.result}），不能单独领取` : 公海 && 拦单独领项目() ? 项目不能单独领提示 : 公海 && 拦客户公海里的项目(!!p.customer.pool) ? 客户在公海项目不单领提示 : null,
     进公海: 最近放回 ? { 方式: 认放回(最近放回.reason), 谁: 叫(最近放回.userId)! } : null,
     balanceSettled: p.balanceSettled, balanceSettledBy: 叫(p.balanceSettledById), balanceSettledAt: p.balanceSettledAt?.toISOString() ?? null,
     acceptancePassed: p.acceptancePassed, acceptancePassedBy: 叫(p.acceptancePassedById), acceptancePassedAt: p.acceptancePassedAt?.toISOString() ?? null,
