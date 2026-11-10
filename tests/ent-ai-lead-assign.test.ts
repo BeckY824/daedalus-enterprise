@@ -72,12 +72,12 @@ describe("新线索卡：分配方式 × 角色", () => {
     expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.assignMode]).toEqual([乙.id, 乙.id, 乙.id, "个人自持"]);
   });
 
-  it("市场 + 暂不分配：负责人 = 自己、潜客培育、标待分配", async () => {
+  it("市场 + 暂不分配：负责人 = 自己、潜客培育、不标待分配（P-转-03）", async () => {
     当(市场);
     expect(await applyProposal(卡({ 分配方式: 3 }) as never)).toMatchObject({ ok: true });
     const p = await 唯一项目();
     expect([p.creatorId, p.ownerId, p.customer.salesOwnerId, p.node, p.assignMode]).toEqual([市场.id, 市场.id, 市场.id, "潜客培育", "暂不分配"]);
-    expect(p.awaitAssignAt).not.toBeNull();
+    expect(p.awaitAssignAt).toBeNull();
   });
 
   it("市场 + 指定分配：负责人 = 选的那位销售，客户跟着走，创建人还是自己", async () => {

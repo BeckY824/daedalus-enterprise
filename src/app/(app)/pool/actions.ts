@@ -25,6 +25,7 @@ import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 历史负责人 } from "@/lib/project/pool-owner";
 import { 换负责人待办, 待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
+import { 换负责人 } from "@/lib/project/owner-write";
 
 export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
 
@@ -118,7 +119,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
       if (c?.pool && c.poolInvalidAt) return "客户标了无效，要总管理先恢复";
       const 超 = await 超上限(tx, 规则, 给.id, p);
       if (超) return 超;
-      await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
+      await tx.project.update({ where: { id }, data: { ...换负责人(给.id), pooledAt: null, nextStepAt: null, nextStepText: null } });
       // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
       const 原 = (await 历史负责人(tx, id)) ?? (p.ownerId || null);
       const 几条 = await 换负责人待办(tx, p, 原, 给.id, 带);
