@@ -130,7 +130,9 @@ export async function saveChannel(input: {
   const name = input.name.trim();
   // 没交负责人：新建的先沿用主渠道的负责人（P-渠道-10），再退到「只有一个人」；编辑的不拿主渠道的去换，原负责人照留
   const 原负责人 = input.id && !input.channelOwnerId ? (await prisma.channel.findUnique({ where: { id: input.id }, select: { channelOwnerId: true } }))?.channelOwnerId : null;
-  const channelOwnerId = input.channelOwnerId || 原负责人 || (!input.id ? 主负责人 : null) || (await 唯一负责人());
+  // 主渠道负责人已经停用 / 不能当负责人了的不沿用：不把新渠道挂到离职的人头上
+  const 沿用 = !input.id && !input.channelOwnerId && 主负责人 && (await 负责人候选()).some((u) => u.id === 主负责人) ? 主负责人 : null;
+  const channelOwnerId = input.channelOwnerId || 原负责人 || 沿用 || (await 唯一负责人());
   if (!channelOwnerId) return { ok: false, error: "请选择渠道负责人" };
 
   const dup = await prisma.channel.findFirst({

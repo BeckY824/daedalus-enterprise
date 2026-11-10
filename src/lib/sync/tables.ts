@@ -162,6 +162,8 @@ export const 指向人的列: [string, string][] = [
   ["EntDupeHit", "decidedById"],
   // 企业版渠道投入是谁录的（2026-10-29）
   ["EntChannelInvest", "userId"],
+  // 主渠道负责人（2026-11-10，migrations/118）：不建外键
+  ["EntChannelMain", "ownerId"],
   // 企业版关联客户是谁关联的（2026-10-29）：不建外键
   ["EntCustomerLink", "userId"],
   ["ProjectNodeLog", "fromOwnerId"],

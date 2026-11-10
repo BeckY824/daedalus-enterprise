@@ -23,8 +23,8 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../overview/funnel";
 import OptionInput from "@/components/OptionInput";
-import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, type 主渠道行, type 主渠道汇总 } from "@/lib/enterprise/channel-main-core";
-import MainChannels from "./MainChannels";
+import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, 只有主渠道的, type 主渠道行, type 主渠道汇总 } from "@/lib/enterprise/channel-main-core";
+import MainChannels, { MainChannelEdit, 主渠道编辑初值, type 主渠道编辑中 } from "./MainChannels";
 import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
 import { 筛渠道, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
@@ -177,18 +177,28 @@ export default function ChannelsView({
     const 筛过 = 筛渠道(全部行, { kw, attr, ownerId, active, creator });
     return 主 ? 筛过.filter((r) => r.mainId === 主) : 筛过;
   }, [全部行, kw, attr, ownerId, active, creator, 主]);
-  /** 按主渠道看：筛过的子渠道按主渠道并行，数照 合并统计 加（转化率按分子分母重算、钱按币种加） */
-  const 主行们 = useMemo(() => (两层 && 按主看 ? 按主渠道汇总(rows, 主渠道们) : []), [两层, 按主看, rows, 主渠道们]);
   /** 每个主渠道下挂了几个渠道（主渠道管理里摆） */
   const 子渠道数 = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of 全部行) if (r.mainId) m.set(r.mainId, (m.get(r.mainId) ?? 0) + 1);
     return m;
   }, [全部行]);
+  /**
+   * 按主渠道看：筛过的子渠道按主渠道并行，数照 合并统计 加（转化率按分子分母重算、钱按币种加）；
+   * 一个子渠道都没有的主渠道接在后面各出一行（迁移 118），按主渠道自己的负责人、属性、名字、状态筛
+   */
+  const 主行们 = useMemo(
+    () => (两层 && 按主看 ? [...按主渠道汇总(rows, 主渠道们), ...只有主渠道的(主渠道们, new Set(子渠道数.keys()), { kw, attr, ownerId, active, creator, 主 })] : []),
+    [两层, 按主看, rows, 主渠道们, 子渠道数, kw, attr, ownerId, active, creator, 主],
+  );
+  /** 从「按主渠道」那张表打开的主渠道编辑弹窗（能管渠道的人才有） */
+  const [改主, set改主] = useState<主渠道编辑中 | null>(null);
+  const 按id找主 = useMemo(() => new Map(主渠道们.map((m) => [m.id, m])), [主渠道们]);
+  const 开改主 = (id: string) => { const m = 按id找主.get(id); if (m) set改主(主渠道编辑初值(m)); };
   const 按名找主 = useMemo(() => new Map(主渠道们.map((m) => [m.name, m])), [主渠道们]);
   const [开主渠道, set开主渠道] = useState(false);
   /** 属性筛选：字典里的 + 表里实际出现的（停用了的旧属性也能筛出来） */
-  const 筛选属性 = useMemo(() => [...new Set([...属性选项, ...全部行.map((r) => r.attr).filter((x): x is string => Boolean(x))])], [属性选项, 全部行]);
+  const 筛选属性 = useMemo(() => [...new Set([...属性选项, ...全部行.map((r) => r.attr), ...主渠道们.map((m) => m.attr)].filter((x): x is string => Boolean(x)))], [属性选项, 全部行, 主渠道们]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [详情id, set详情id] = useState<string | null>(null);
@@ -475,7 +485,11 @@ export default function ChannelsView({
       render: (v: string, r) => (
         // 名字可缩、标签不缩：超长主渠道名省略，「历史渠道」「已停用」不被挤出格子（1024 宽量过）
         <span className="chan-tags" style={{ display: "flex", alignItems: "center", flexWrap: "nowrap", minWidth: 0, maxWidth: "100%" }}>
-          {r.mainId ? (
+          {r.mainId && r.子渠道数 === 0 ? (
+            // 一个子渠道都没有：底下没东西可看，点名字就是编辑这个主渠道（能管的人）；别人只看名字
+            能管 ? <button type="button" className="link-plain link-strong chan-name chan-shrink" title={`${v}：还没有子渠道，点开编辑`} onClick={() => 开改主(r.mainId!)}>{v}</button>
+              : <span className="chan-name chan-shrink" title={`${v}（还没有子渠道）`}>{v}</span>
+          ) : r.mainId ? (
             <button type="button" className="link-plain link-strong chan-name" style={{ minWidth: 0 }} title={`${v}：看底下的子渠道`} onClick={() => { set主(r.mainId!); set按主看(false); }}>{v}</button>
           ) : (
             <span className="chan-name" style={{ minWidth: 0 }} title={`${v}（还没挂到主渠道上）`}>{v}</span>
@@ -484,6 +498,11 @@ export default function ChannelsView({
           {!r.active && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}
         </span>
       ),
+    },
+    // 主渠道自己的渠道属性（= 获客方式）、负责人（迁移 118）：和按子渠道那张表同名同位——属性紧跟名字、负责人靠后
+    {
+      title: <Tooltip title="主渠道自己的渠道属性，即获客方式；下面的子渠道没单独填时沿用"><span className="nowrap">渠道属性</span></Tooltip>, 列名: "渠道属性", key: "属性", dataIndex: "属性", width: 108, ellipsis: true,
+      render: (v: string | null) => (v ? <Tag className="chan-attr" title={v}>{v}</Tag> : 无),
     },
     { title: "子渠道数", key: "子渠道数", dataIndex: "子渠道数", width: 96, align: "right", sorter: (a, b2) => a.子渠道数 - b2.子渠道数, render: (v: number) => <span className="chan-num">{v}</span> },
     ...(线索一样
@@ -504,6 +523,15 @@ export default function ChannelsView({
         return s.产出比 === null ? <Tooltip title={s.产出比说明}>{无}</Tooltip> : <span className="chan-num">{s.产出比}</span>;
       },
     },
+    ...(不问归属 ? [] : [{
+      title: <Tooltip title="主渠道自己的负责人；换人不影响下面的子渠道和已有客户"><span className="nowrap">负责人</span></Tooltip>, 列名: "负责人", key: "负责人", dataIndex: "负责人", width: 112,
+      render: (_: unknown, r: 主渠道汇总) => (r.负责人id ? <UserCell name={r.负责人 ?? "已不在的成员"} size={24} /> : 无),
+    } as 列<主渠道汇总>]),
+    // 行尾「编辑」：改这个主渠道的名字、负责人、渠道属性（能管渠道的人才有；还没补挂主渠道的老渠道那几行没有）
+    ...(能管 ? [{
+      title: "", key: "act", width: 72, 常驻: true, fixed: "right",
+      render: (_: unknown, r: 主渠道汇总) => (r.mainId ? <Button className="row-act" aria-label={`编辑主渠道 ${r.name}`} size="small" onClick={() => 开改主(r.mainId!)}>编辑</Button> : null),
+    } as 列<主渠道汇总>] : []),
   ];
 
   /** 表单下拉：字典里启用的 + 正在编辑的这条原来的属性（后来停用了也照旧能留着） */
@@ -578,7 +606,7 @@ export default function ChannelsView({
       {两层 && 按主看 ? (
         <DataList<主渠道汇总>
           页="channels-main"
-          空库={全部行.length === 0}
+          空库={全部行.length === 0 && 主渠道们.length === 0}
           列={主列表}
           行={主行们}
           行类={(r) => (r.active ? undefined : "row-off")}
@@ -606,6 +634,8 @@ export default function ChannelsView({
       </div>
 
       {开主渠道 && <MainChannels 主渠道们={主渠道们} 子渠道数={子渠道数} users={users} 属性选项={属性选项} onClose={() => set开主渠道(false)} />}
+
+      {改主 && <MainChannelEdit key={改主.id ?? "新"} 编辑={改主} users={users} 属性选项={属性选项} 子渠道数={改主.id ? 子渠道数.get(改主.id) ?? 0 : 0} onClose={() => set改主(null)} />}
 
       {详情 && <ChannelDrawer key={详情.id} row={详情} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={能管 ? () => openForm(详情) : undefined} />}
 

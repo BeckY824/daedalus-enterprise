@@ -1,6 +1,10 @@
 /**
  * 渠道页：只有主渠道（一个子渠道都没有）的主渠道也看得到、筛得到、改得了（11-10，P-渠道-10 / P-渠道-11，迁移 118）。
  *
+ *   切「按主渠道」：一个子渠道都没有的主渠道也各出一行（子渠道数 0），带负责人、渠道属性两列；没填写「—」
+ *   筛「负责人」：只有主渠道的按主渠道自己的负责人筛得出来
+ *   行尾「编辑」（能管渠道的人才有）打开主渠道编辑弹窗；只有主渠道的那几行点名字也是编辑（底下没子渠道可看）
+ *   超长主渠道名、超长人名一行省略，标签、按钮点得中，页面不横滚
  *   新建渠道：选了主渠道，属性、负责人先带主渠道的；自己动过的不被盖
  *
  * 1024 / 1280 / 1366 三个宽度都量（scrollWidth 看横滚）
@@ -92,6 +96,77 @@ it("新建渠道：选了主渠道，属性、负责人先带主渠道的；自�
     await expect.poll(async () => (await 存的(page)).length).toBe(1);
     expect((await 存的(page))[0]).toMatchObject(["saveChannel", { platform: "百度", source: "", attr: "公域引流", channelOwnerId: "u1" }]);
     expect(await 页不横滚(page)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/** 元素中心点上最顶层的是不是它自己（或它里面的东西） */
+const 点得中 = (loc: ReturnType<Page["locator"]>) => loc.evaluate((el) => {
+  const r = el.getBoundingClientRect();
+  const 中 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return !!中 && (el === 中 || el.contains(中));
+});
+const 主行 = (page: Page, 名: string) => page.locator(".ant-table-tbody tr.ant-table-row", { hasText: 名 }).first();
+const 行名们 = (page: Page) => page.locator(".ant-table-tbody tr.ant-table-row .chan-name").evaluateAll((els) => els.filter((e) => e.closest("td")?.matches(":first-child")).map((e) => e.textContent));
+
+for (const width of [1024, 1280, 1366]) {
+  it(`按主渠道：只有主渠道的也出一行，带负责人、渠道属性；按负责人筛得出来；长名字不撑破、不横滚（${width} 宽）`, async () => {
+    const { page, errors } = await open(width);
+    try {
+      await page.getByText("按主渠道", { exact: true }).click();
+      await 主行(page, "百度").waitFor();
+      expect(await 行名们(page)).toEqual(["抖音", "百度", 长主, "没人管的主渠道", "停了的空主渠道"]);
+      const 表头 = (await page.locator(".ant-table-thead th").allInnerTexts()).map((t) => t.trim());
+      const [属性列, 数列, 人列] = [表头.indexOf("渠道属性"), 表头.indexOf("子渠道数"), 表头.indexOf("负责人")];
+      expect(Math.min(属性列, 数列, 人列)).toBeGreaterThan(0);
+      const 格 = (名: string, i: number) => 主行(page, 名).locator("td").nth(i).innerText().then((t) => t.trim());
+      expect([await 格("百度", 属性列), await 格("百度", 数列), await 格("百度", 人列)]).toEqual(["主动自拓", "0", expect.stringContaining("运营甲")]);
+      expect([await 格("抖音", 属性列), await 格("抖音", 数列), await 格("抖音", 人列)]).toEqual(["公域引流", "2", expect.stringContaining("小王")]);
+      expect([await 格("没人管的主渠道", 属性列), await 格("没人管的主渠道", 人列)]).toEqual(["—", "—"]);
+      expect(await 主行(page, "停了的空主渠道").locator(".ant-tag", { hasText: "已停用" }).count()).toBe(1);
+
+      // 超长主渠道名一行省略；行尾「编辑」钉在右边、点得中；页面不横滚
+      const 长格 = 主行(page, 长主).locator(".chan-name").first();
+      expect(await 长格.evaluate((el) => ({ 一行: el.getBoundingClientRect().height < 30, 省略: el.scrollWidth > el.clientWidth }))).toEqual({ 一行: true, 省略: true });
+      const 编辑钮 = 主行(page, 长主).getByRole("button", { name: `编辑主渠道 ${长主}` });
+      expect(await 点得中(编辑钮)).toBe(true);
+      const 钮框 = (await 编辑钮.boundingBox())!;
+      expect(钮框.x >= 0 && 钮框.x + 钮框.width <= width).toBe(true);
+      // 超长人名不撑出自己那一格
+      const 人格 = 主行(page, 长主).locator("td").nth(人列);
+      await 人格.scrollIntoViewIfNeeded();
+      expect(await 人格.evaluate((td) => { const r = td.getBoundingClientRect(); return [...td.querySelectorAll("*")].every((e) => e.getBoundingClientRect().right <= r.right + 1); })).toBe(true);
+      expect(await 页不横滚(page)).toBe(true);
+
+      // 筛负责人 = 运营甲：抖音（子渠道都是小王的）不出，只有主渠道的百度、停了的空主渠道按自己的负责人出
+      await page.getByLabel("负责人", { exact: true }).click();
+      await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: "运营甲" }).first().click();
+      await expect.poll(() => 行名们(page)).toEqual(["百度", "停了的空主渠道"]);
+      expect(await 页不横滚(page)).toBe(true);
+
+      // 只有主渠道的：点名字 = 编辑（底下没有子渠道可看）；保存交的是这个主渠道
+      await 主行(page, "百度").locator(".chan-name").first().click();
+      const 弹窗 = page.locator(".ant-modal").filter({ hasText: "编辑：百度" });
+      await 弹窗.waitFor();
+      const 窗 = (await 弹窗.boundingBox())!;
+      expect(窗.x >= 0 && 窗.x + 窗.width <= width).toBe(true);
+      await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
+      await expect.poll(async () => (await 存的(page)).length).toBe(1);
+      expect((await 存的(page))[0]).toMatchObject(["saveMainChannel", { id: "m2", name: "百度", ownerId: "u1", attr: "主动自拓" }]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("有子渠道的主渠道：点名字照旧回到按子渠道；行尾「编辑」打开主渠道编辑", async () => {
+  const { page, errors } = await open(1366);
+  try {
+    await page.getByText("按主渠道", { exact: true }).click();
+    await 主行(page, "抖音").getByRole("button", { name: "编辑主渠道 抖音" }).click();
+    await page.locator(".ant-modal").filter({ hasText: "编辑：抖音" }).waitFor();
+    await page.locator(".ant-modal").filter({ hasText: "编辑：抖音" }).getByRole("button", { name: /取\s*消/ }).click();
+    await 主行(page, "抖音").locator(".chan-name").first().click();
+    await expect.poll(() => 行名们(page)).toEqual(["抖音|官方号", "抖音|小号"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
