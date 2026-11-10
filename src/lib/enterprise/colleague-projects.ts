@@ -57,3 +57,13 @@ export function 同事在推不能放公海话(名: string[], 客户叫法 = "�
   if (名.length === 1) return `「${名[0]}」名下${项目 || "有同事负责、还没结束的项目"}，先转走或结束再放进公海`;
   return `${名.length} 位${客户叫法}名下有同事负责、还没结束的项目${项目 ? `：${项目}` : ""}，先转走或结束再放进公海`;
 }
+
+/** 放公海被拦的订单项目怎么说（P-看-12 例外）：点的人自己负责的写名字（最多 3 个，再多说「等 N 个」），别人负责的只给个数（同事项目几个话） */
+export function 订单项目说法(们: readonly { name: string; ownerId: string }[], 我: string): string {
+  const 我的 = 们.filter((p) => p.ownerId === 我).map((p) => `「${p.name}」`);
+  const 别人 = 们.length - 我的.length;
+  return [
+    我的.length ? `${我的.slice(0, 3).join("")}${我的.length > 3 ? ` 等 ${我的.length} 个` : ""}` : "",
+    别人 ? `${我的.length ? "另外" : ""}${同事项目几个话(别人)}` : "",
+  ].filter(Boolean).join("；");
+}

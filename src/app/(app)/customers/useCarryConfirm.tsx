@@ -4,8 +4,8 @@ import { App } from "antd";
 import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
 
 /**
- * 「会一起转走的 N 个项目」确认框：客户页转让（useTransferConfirm）、分配线索、自动分配（P-转-07）共用；留在同事名下的只说个数（同事项目几个话）。
- * 取 = 现取预览。true = 接着转；false = 点了取消。转走的、留下的都没有才不弹；取不到不拦着——转本身照样会带走项目，这里只是提前说
+ * 「会一起转走的 N 个项目」确认框：客户页转让（useTransferConfirm）、分配线索、自动分配（P-转-07）共用；一起转走的同事在推项目只说个数（同事项目几个话）。
+ * 取 = 现取预览。true = 接着转；false = 点了取消。没有要转走的项目才不弹；取不到不拦着——转本身照样会带走项目，这里只是提前说
  */
 export function useCarryConfirm() {
   const { modal } = App.useApp();
@@ -28,10 +28,10 @@ export function useCarryConfirm() {
               {说法.还有 && <div style={旁注}>{说法.还有}</div>}
             </>
           )}
-          {说法.留下 && <div style={{ marginTop: 说法.行.length ? 12 : 0 }}>{说法.留下}</div>}
+          {说法.同事 && <div style={{ marginTop: 说法.行.length ? 12 : 0 }}>{说法.同事}</div>}
         </div>
       ),
-      okText: 说法.行.length ? "一起转" : "转",
+      okText: "一起转",
       cancelText: "取消",
     });
   };
