@@ -14,7 +14,7 @@ import { 不在了 } from "@/lib/not-there";
 import { getSetting, setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 import { 读组织, type 组织 } from "@/lib/enterprise/org";
-import { 能改后台设置, 是市场角色, 是销售角色 } from "@/lib/enterprise/permissions";
+import { 能改后台设置, 是市场角色, 是销售角色, 能管公海 } from "@/lib/enterprise/permissions";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -24,8 +24,8 @@ import { 分配通知, type 分配条, type 留下的活 } from "@/lib/enterpris
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限n, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
-import { 单项目客户跟着领, 领项目连带超上限 } from "@/lib/enterprise/pool-link";
-import { 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
+import { 单项目客户跟着领, 领项目连带超上限, 客户整包出公海 } from "@/lib/enterprise/pool-link";
+import { 拦客户公海里的项目, 客户在公海项目不单领提示, 客户在公海找销管提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
@@ -126,7 +126,9 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
     // 新线索（项目）走哪条线看项目业务线（A1：三选一，老项目按负责人的线、再没有按内贸），不认界面传来的；
     // 只能指派给正常参与、业务线对得上的销售（暂不分配 = 全部正常参与的销售）
     if (哪条.projectId !== undefined) {
-      const 看 = await 分前看(哪条, org);
+      // 客户在客户公海里：销售管理 / 总管理指定分配 = 客户连名下公海项目整包给这位销售（P-公海-10），市场管理照拦、提示找销售管理
+      const 公海客户 = 能管公海(me, org) ? "整包" as const : "找销管" as const;
+      const 看 = await 分前看(哪条, org, 公海客户);
       if (!看.ok) return 看;
       if (!(await 指派可选(org, 看.线 ?? "暂不分配")).includes(input.toUserId)) {
         // 不是销售、停用了这类更具体的原因先说
@@ -136,7 +138,7 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
       // 人已经按线（部门 / 标记）筛过了，这里不再查标记
       // 界面没交看到的负责人（老页面）：按这次请求开头读到的比
       const 原负责人 = 看到的 === undefined ? 看.实际负责人 : 看到的;
-      const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line: 用线, 查线: null, kind, 自动: false, 原负责人, 带待办: 带待办勾(input.带待办) });
+      const r = await 分给(me, org, { ...哪条, toUserId: input.toUserId, line: 用线, 查线: null, kind, 自动: false, 原负责人, 带待办: 带待办勾(input.带待办), 公海客户 });
       if (r.ok) await 分配通知(me, [{ ...哪条, toUserId: input.toUserId, ...留下字段(r.留下) }], false);
       return r.ok ? { ok: true } : r.已被分配 ? 已被分配 : { ok: false, error: r.error };
     }
@@ -159,7 +161,7 @@ type 分给结果 = { ok: true; 留下?: 留下的活 } | { ok: false; error: st
 const 已被分配: { ok: false; error: string; 已被分配: true } = { ok: false, error: 已被分配的话, 已被分配: true };
 
 async function 分给(
-  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean; 查线?: 线 | null; 原负责人?: string | null; 带待办?: boolean },
+  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean; 查线?: 线 | null; 原负责人?: string | null; 带待办?: boolean; 公海客户?: 公海客户分法 },
 ): Promise<分给结果> {
   // 查线：核对接手人内贸 / 外贸标记用的线；这条线勾了部门时传 null（按部门挑，不看标记）。没传 = 就用 line
   const 问题 = 接手问题(org, input.toUserId, input.查线 === undefined ? input.line : input.查线);
@@ -223,13 +225,13 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
 const 留下字段 = (留下: 留下的活 | undefined): { 留下?: 留下的活 } => (留下 ? { 留下 } : {});
 
 async function 分项目给(
-  me: SessionUser, org: 组织, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean },
+  me: SessionUser, org: 组织, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean; 公海客户?: 公海客户分法 },
 ): Promise<分给结果> {
   const p0 = await prisma.project.findFirst({ where: { id: input.projectId }, select: { id: true, name: true, customerId: true } });
   if (!p0) return { ok: false, error: 项目不在 };
   // 客户负责人是市场、接手的是销售：这一下算转客户（见事务里那段），换负责人之前钉住老签约（事务外，它用全局连接）
   const 客户0 = await 看全部(() => prisma.customer.findUnique({ where: { id: p0.customerId }, select: { salesOwnerId: true } }));
-  if (客户0 && 是市场角色(org, 客户0.salesOwnerId) && 是销售角色(org, input.toUserId)) await 钉住老签约();
+  if ((客户0 && 是市场角色(org, 客户0.salesOwnerId) && 是销售角色(org, input.toUserId)) || input.公海客户 === "整包") await 钉住老签约();
   const counted = 计不计数(input.kind, await getSetting<boolean>(企划线索计数key));
   // 规则在进事务前读好：事务占着库的唯一连接，事务里再读设置会等到超时
   const 规则 = await 生效组织规则();
@@ -241,7 +243,9 @@ async function 分项目给(
     if (!p) return { ok: false, error: 项目不在 };
     // 分前看查过一次；这里再查：弹框开着时客户可能刚被放进公海（放在乐观锁前面，说的是真原因）
     const 在公海 = await tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } });
-    if (拦客户公海里的项目(!!在公海)) return { ok: false, error: 客户在公海项目不单领提示 };
+    // 销售管理 / 总管理指定分配：客户连名下公海项目整包出公海给这位销售（P-公海-10）；别的入口照拦
+    const 整包 = 企业版() && !!在公海 && input.公海客户 === "整包";
+    if (!整包 && 拦客户公海里的项目(!!在公海)) return { ok: false, error: 公海客户拦的话(input.公海客户) };
     // 进公海清了负责人的（C-01）ownerId 是空串，和界面交来的「没人」(null) 当一回事
     if (input.原负责人 !== undefined && (p.ownerId || null) !== input.原负责人) return 已被分配;
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分：去「项目」里转让负责人" };
@@ -260,7 +264,7 @@ async function 分项目给(
       // 市场转客户时客户上同事待分配的项目随客户一起进手（市场转一位），照接待分配一起数（M-公海-18）；
       // 在公海里的、开关开着时还连带客户名下别的公海项目（领项目连带超上限）；这里只分线索阶段没结局的，手上这个一定算 1 个
       const 另进 = 市场转客户 ? await 数进手的持有项目([p.customerId], input.toUserId, { 同事待分配: true, 除了: [p.id] }, tx) : 0;
-      const 超 = p.pooledAt ? await 领项目连带超上限(tx, 规则, input.toUserId, p, 另进) : await 超上限n(tx, 规则, input.toUserId, 1 + 另进);
+      const 超 = p.pooledAt || 整包 ? await 领项目连带超上限(tx, 规则, input.toUserId, p, 另进, 整包) : await 超上限n(tx, 规则, input.toUserId, 1 + 另进);
       if (超) return { ok: false, 满: true, error: 超 };
     }
     // 分之前的负责人：在公海里的取历史负责人（企业版进公海清了负责人，lib/project/pool-owner.ts）
@@ -279,8 +283,9 @@ async function 分项目给(
     await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", 接上待办痕(`分配方式：${input.way}`, 待办痕(带待办, 几条)));
     await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: input.toUserId }, new Date());
     // 只改项目，客户负责人不动（P-转-03、M-公海-06；开关 领项目带走单项目客户 关着）
-    if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, 带待办);
-    const 留下 = 市场转客户 && 客户 ? await 转客户给销售(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, input.way) : undefined;
+    if (整包) await 客户整包出公海(tx, p.customerId, input.toUserId, me.id, 带待办, "pool-assign");
+    else if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, 带待办);
+    const 留下 = !整包 && 市场转客户 && 客户 ? await 转客户给销售(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, input.way) : undefined;
     await tx.entLeadAssign.create({
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });
@@ -301,11 +306,20 @@ async function 分项目给(
 }
 
 /**
+ * 客户在客户公海里的项目怎么分（P-公海-10）：整包 = 销售管理 / 总管理指定分配，客户和名下公海项目一起给这位销售；
+ * 找销管 = 市场管理指定分配，拦下、提示找销售管理；不传 = 自动分配等别的入口，照旧拦（项目跟客户走、不单分）
+ */
+type 公海客户分法 = "整包" | "找销管";
+function 公海客户拦的话(分法?: 公海客户分法): string {
+  return 分法 === "找销管" ? 客户在公海找销管提示 : 客户在公海项目不单领提示;
+}
+
+/**
  * 分配之前看一眼：现在的负责人（挑人时跳过他）、走哪条线，不能分就给原因。
  * 新线索（项目）的线 = 项目业务线（三选一；老项目没填按负责人的线、再没有按内贸，要传 org 才看负责人）；老线索表 = null
  */
 async function 分前看(
-  哪条: 目标, org?: 组织,
+  哪条: 目标, org?: 组织, 公海客户?: 公海客户分法,
 ): Promise<{ ok: true; ownerId: string | null; 实际负责人: string | null; 待分配: boolean; 名: string; 线: 项目线 | null } | { ok: false; error: string }> {
   if (哪条.projectId !== undefined) {
     const p = await prisma.project.findFirst({
@@ -314,7 +328,8 @@ async function 分前看(
     });
     if (!p) return { ok: false, error: 项目不在 };
     // 客户公海里的项目跟客户走，不单独分（M-公海-06、X-13）；线索公海（客户不在公海）照分
-    if (拦客户公海里的项目(!!p.customer.pool)) return { ok: false, error: 客户在公海项目不单领提示 };
+    // 例外：销售管理 / 总管理指定分配，客户整包出公海（P-公海-10，见 分项目给）
+    if (公海客户 !== "整包" && 拦客户公海里的项目(!!p.customer.pool)) return { ok: false, error: 公海客户拦的话(公海客户) };
     if (p.phase !== "线索") return { ok: false, error: "已经转了商机，不用再分" };
     if (p.result) return { ok: false, error: `这条新线索已经${p.result}，不用再分` };
     // 公海里的、待分配的（A7 / A10，负责人那一格只是建的人占着）：原负责人也能被挑中
@@ -340,7 +355,7 @@ export async function 项目分配线(projectId: string): Promise<{ 线: 项目�
   try {
     const org = await 读组织();
     if (!能分配(org, me)) return null;
-    const 看 = await 分前看({ projectId: String(projectId ?? "") }, org);
+    const 看 = await 分前看({ projectId: String(projectId ?? "") }, org, 能管公海(me, org) ? "整包" : "找销管");
     if (!看.ok) return null;
     const 线 = 看.线 ?? "内贸";
     const 项目 = await 看全部(() => prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { customer: { select: { salesOwnerId: true, pool: { select: { customerId: true } } } } } }));

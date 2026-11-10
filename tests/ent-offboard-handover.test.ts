@@ -246,6 +246,44 @@ describe("离职交接看板", () => {
     expect(await 离职交接入口({ id: 上级, role: "SALES" })).toBe(0);
   });
 
+  /** P-转-18：他客户上已停用同事的进行中项目，交接时随客户给接手人；在职同事的、已结束的不动 */
+  async function 摆停用同事项目() {
+    const d = await 摆数据();
+    const 早走 = await 建人("gone", "sales", 上级);
+    const 在职 = await 建人("still", "sales", 上级);
+    const p停用 = await 建项目(d.c.id, 早走);
+    const p结束 = await prisma.project.update({ where: { id: (await 建项目(d.c.id, 早走)).id }, data: { result: "成功交付" } });
+    const p在职 = await 建项目(d.c.id, 在职);
+    await prisma.user.update({ where: { id: 早走 }, data: { active: false } });
+    await deactivateUser(离职, "");
+    return { ...d, 早走, 在职, p停用, p结束, p在职 };
+  }
+
+  it("P-转-18 看板：他客户的项目数算上已停用同事的进行中项目", async () => {
+    const d = await 摆停用同事项目();
+    const 们 = await 读离职交接({ id: 上级, role: "SALES" });
+    expect(们.find((x) => x.id === 离职)?.客户).toEqual([expect.objectContaining({ id: d.c.id, 项目数: 2 })]);
+  });
+
+  it("P-转-18 单条交客户：已停用同事的进行中项目跟客户给接手人，记转让痕；在职同事的、已结束的不动", async () => {
+    const d = await 摆停用同事项目();
+    当(上级);
+    expect(await 交接客户(离职, d.c.id, 接手)).toMatchObject({ ok: true });
+    expect(await 项目归谁(d.p停用.id)).toBe(接手);
+    expect(await prisma.projectNodeLog.findFirst({ where: { projectId: d.p停用.id, kind: "transfer" } })).toMatchObject({ fromOwnerId: d.早走, toOwnerId: 接手 });
+    expect(await 项目归谁(d.p结束.id)).toBe(d.早走);
+    expect(await 项目归谁(d.p在职.id)).toBe(d.在职);
+  });
+
+  it("P-转-18 一键全部交给：已停用同事的进行中项目一起给接手人；在职同事的、已结束的不动", async () => {
+    const d = await 摆停用同事项目();
+    当(上级);
+    expect(await 交接全部(离职, 接手)).toMatchObject({ ok: true });
+    expect(await 项目归谁(d.p停用.id)).toBe(接手);
+    expect(await 项目归谁(d.p结束.id)).toBe(d.早走);
+    expect(await 项目归谁(d.p在职.id)).toBe(d.在职);
+  });
+
   it("没开项目模式：只列客户；交客户、全部交给都不动项目；交项目回不成", async () => {
     mocks.项目模式 = false;
     const d = await 摆数据();

@@ -4,7 +4,7 @@ import { 钉住老签约 } from "@/lib/contract-owner";
 import { 带走一位, 转项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import { 看全部 } from "@/lib/team-scope";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 停用分拣, 离职进手的持有项目 } from "@/lib/offboard-db";
+import { 停用分拣, 停用的同事, 离职进手的持有项目 } from "@/lib/offboard-db";
 import { 算持有的项目, 超上限n } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
@@ -81,13 +81,16 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
     const 上级ids = [...new Set([...上级of.values()].filter((x): x is string => !!x))];
     const 上级名 = new Map((await prisma.user.findMany({ where: { id: { in: 上级ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     const 结果: 离职待交接[] = [];
+    // 同 停用分拣：客户上已停用同事进行中的项目随客户交（P-转-18），项目数算上
+    const 停用 = 带项目 ? await 停用的同事(prisma, []) : [];
     for (const u of 人们) {
+      const 别的停用 = 停用.filter((x) => x !== u.id);
       // M-公海-03 起进公海负责人清空：最近一次进公海时负责人是他的，客户不在他名下了，上面的活还是谁领谁带（同 停用分拣）
       const 放走的 = [...(await 公海客户原负责人是(prisma, [u.id])).keys()];
       // 同 停用分拣：在公海里的不算他的（谁领谁接）
       const 客户们 = await prisma.customer.findMany({
         where: { salesOwnerId: u.id, pool: { is: null } },
-        select: { id: true, name: true, ...(带项目 ? { _count: { select: { projects: { where: { pooledAt: null, OR: [{ ownerId: u.id }, { awaitAssignAt: { not: null } }] } } } } } : {}) },
+        select: { id: true, name: true, ...(带项目 ? { _count: { select: { projects: { where: { pooledAt: null, OR: [{ ownerId: u.id }, { awaitAssignAt: { not: null } }, ...(别的停用.length ? [{ ownerId: { in: 别的停用 }, result: null }] : [])] } } } } } : {}) },
         orderBy: { name: "asc" },
       });
       const 项目们 = 带项目
@@ -162,7 +165,7 @@ export async function 交接挡(me: 谁, fromId: string, toId: string): Promise<
 
 /**
  * 交之前核持有上限（M-公海-18，11-09，同确认离职交接）：这一下会新进接手人手上几个算持有的项目，加上他手上已有的超了就不交，回那句话。
- * 按此刻数据数，条件同真交：交一位客户 = 跟着客户走的他自己的 + 同事待分配的（带走一位 deactivate）；交一个项目 = 这一个（不在待分配的）；
+ * 按此刻数据数，条件同真交：交一位客户 = 跟着客户走的他自己的 + 同事待分配的 + 已停用同事进行中的（带走一位 deactivate）；交一个项目 = 这一个（不在待分配的）；
  * 全部交给 = 此刻重新分拣给接手人的（同确认离职交接）。没开项目模式不动项目，不拦
  */
 export async function 交了超上限(fromId: string, toId: string, 交: { 客户: string } | { 项目: string } | "全部"): Promise<string | null> {
@@ -171,7 +174,7 @@ export async function 交了超上限(fromId: string, toId: string, 交: { 客�
     if (交 === "全部") return 离职进手的持有项目(prisma, fromId, "转交", toId);
     if ("客户" in 交) {
       const c = await prisma.customer.findFirst({ where: { id: 交.客户, salesOwnerId: fromId, pool: { is: null } }, select: { id: true } });
-      return c ? 数进手的持有项目([c.id], toId, { 自己的: true, 同事待分配: true }) : 0;
+      return c ? 数进手的持有项目([c.id], toId, { 自己的: true, 同事待分配: true, 停用同事: true }) : 0;
     }
     return prisma.project.count({ where: { id: 交.项目, ownerId: fromId, pooledAt: null, awaitAssignAt: null, ...算持有的项目 } });
   });

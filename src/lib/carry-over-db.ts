@@ -14,6 +14,7 @@ import { 预览列几个, type 带走数, type 转走项目预览 } from "@/lib/
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 算市场转客户, 市场转一位, 客户层分配方式 } from "@/lib/enterprise/market-transfer";
 import type { 留下的活 } from "@/lib/enterprise/notice-sources";
+import { 停用的同事 } from "@/lib/offboard-db";
 
 /**
  * 客户换了销售负责人，原负责人在他身上**没做完的活**跟着走（2026-10-02 排查 B3）：
@@ -100,26 +101,30 @@ export async function 数转走的项目(ids: string[], 新: string, 除了: str
  * 条件同真转（带走一位、带走公海项目），哪几样算由调用方挑：
  *   公海：名下在线索公海里的（领 / 分公海客户、转客户都带走）；
  *   自己的：原负责人（公海里的客户：进公海前负责人）自己的、不在待分配的（跟着客户转；直接转原来就不拦，只有确认交接算）；
- *   同事待分配：不在公海的客户上别人占着、正在待分配的（转客户时随客户给 新 并清待分配，= 接待分配；新 自己占着的清了也开始算）。
+ *   同事待分配：不在公海的客户上别人占着、正在待分配的（转客户时随客户给 新 并清待分配，= 接待分配；新 自己占着的清了也开始算）；
+ *   停用同事：不在公海的客户上已停用同事负责、不在待分配的（离职交接随客户给接手人，P-转-18）。
  * 除了：不数的项目（分项目给时手上这个另按 1 个算）。db：事务里调传 tx（事务占着唯一连接），默认全局连接。
  * 不是企业版回 0
  */
 export async function 数进手的持有项目(
   ids: string[],
   新: string,
-  算: { 公海?: boolean; 自己的?: boolean; 同事待分配?: boolean; 除了?: string[] },
-  db: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog"> = prisma,
+  算: { 公海?: boolean; 自己的?: boolean; 同事待分配?: boolean; 停用同事?: boolean; 除了?: string[] },
+  db: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user"> = prisma,
 ): Promise<number> {
   if (!企业版() || !ids.length) return 0;
   return 看全部(async () => {
     const 们 = await db.customer.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
     const 条件: Prisma.ProjectWhereInput[] = [];
+    const 停用 = 算.停用同事 ? await 停用的同事(db, [新]) : [];
     for (const c of 们) {
       if (算.公海) 条件.push({ customerId: c.id, pooledAt: { not: null } });
-      if (c.salesOwnerId === 新 || !(算.自己的 || 算.同事待分配)) continue;
+      if (c.salesOwnerId === 新 || !(算.自己的 || 算.同事待分配 || 停用.length)) continue;
       const 主人 = await 公海前负责人(db, c.id, c.salesOwnerId);
       if (算.自己的 && 主人 !== 新) 条件.push({ customerId: c.id, pooledAt: null, awaitAssignAt: null, ownerId: 主人 });
       if (算.同事待分配 && !c.pool) 条件.push({ customerId: c.id, pooledAt: null, awaitAssignAt: { not: null }, ownerId: { notIn: [主人, ""] } });
+      const 别的停用 = 停用.filter((u) => u !== 主人);
+      if (别的停用.length && !c.pool) 条件.push({ customerId: c.id, pooledAt: null, awaitAssignAt: null, ownerId: { in: 别的停用 } });
     }
     if (!条件.length) return 0;
     const 除了 = 算.除了?.length ? [{ id: { notIn: 算.除了 } }] : [];
@@ -261,6 +266,7 @@ export function 不跟着转的提醒(kind: 换负责人种类): Prisma.TaskWher
  *   都只带原负责人自己的，同事负责的负责人不变（P-转-07，用户 11-09 定）；
  *   kind = assign（转客户）：再加线索公海里的；
  *   assign、deactivate（离职转交）：再加同事负责、正在待分配的（建的人只是占着那一格），随客户给接手人并清待分配，撤销按 清待分配 还；
+ *   deactivate：再加已停用同事负责、没结局的（P-转-18，11-09 定），接手人再定继续还是放回公海；
  *   claim / pool-assign（从客户公海领 / 分）：线索公海里的由调用方 领客户带走公海项目 带（M-公海-05）；
  * 留下待办计划（只有市场转给销售传，X-18 / X-45 / P-转-10）：原负责人的待办、计划不搬、不关，还归他；
  * 客户负责人、项目、公海项目、联系人（跟客户走）、进行中的商机照走。别的入口不传，照旧带活
@@ -286,8 +292,12 @@ export async function 带走一位(tx: Prisma.TransactionClient, customerId: str
   const 公海项目 = 带项目 && 转客户 ? await 带走公海项目(tx, [customerId], 新, 操作人, undefined, 项目痕) : [];
   const 同事待分配 = 待分配.length ? await 转项目(tx, { id: { in: 待分配.map((p) => p.id) } }, 新, 操作人, true, 项目痕) : [];
   if (待分配.length) await tx.project.updateMany({ where: { id: { in: 待分配.map((p) => p.id) } }, data: { awaitAssignAt: null } });
+  const 停用 = 带项目 && 企业版() && kind === "deactivate" ? await 停用的同事(tx, [实际旧, 新]) : [];
+  const 停用同事 = 停用.length
+    ? await 转项目(tx, { customerId, pooledAt: null, result: null, awaitAssignAt: null, ownerId: { in: 停用 } }, 新, 操作人, true, 项目痕)
+    : [];
   await 记换负责人(tx, [{ customerId, from: 旧, to: 新 }], 操作人, kind);
-  return { 计划, 待办, 商机, 项目: [...项目, ...同事待分配], 公海项目, 清待分配: 待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() })) };
+  return { 计划, 待办, 商机, 项目: [...项目, ...同事待分配, ...停用同事], 公海项目, 清待分配: 待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() })) };
 }
 
 /**

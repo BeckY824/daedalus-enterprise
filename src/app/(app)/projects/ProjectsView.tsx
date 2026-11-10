@@ -82,7 +82,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [],
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -112,6 +112,8 @@ export default function ProjectsView({
    * 新线索页一直有；企业版项目页阶段筛到「线索」时也有（11-01 会议 §5：分配入口搬进项目列表），那里不显示配额
    */
   能自动分配?: boolean;
+  /** 销售管理 / 总管理：客户在客户公海里的项目也摆「分配」（客户连名下公海项目整包给这位销售，P-公海-10）；自动分配照不摆 */
+  能分公海客户项目?: boolean;
   /** 自动分配因都已满额没分出去的提醒 */
   满额提醒?: 满额提醒[];
   /** 新线索页摆不摆「新线索」（11-03 D3-7 ④：没设业务角色、只读管理员不摆；服务端向导另拦）。默认摆 */
@@ -245,8 +247,11 @@ export default function ProjectsView({
     // 已线索流失的不再分（服务端也拦）；两颗带字的键（规则 D）
     ...(可分 ? [{
       title: "", key: "act", width: 150, fixed: "right" as const,
-      // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）
-      render: (_: unknown, r: 项目行) => (r.result || r.客户在公海 ? null : (
+      // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）；
+      // 例外：销售管理 / 总管理能「分配」，客户整包出公海（P-公海-10），不摆自动分配
+      render: (_: unknown, r: 项目行) => (r.result ? null : r.客户在公海 ? (能分公海客户项目 ? (
+        <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
+      ) : null) : (
         <Space size={2}>
           <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
           <Button aria-label={`自动分配 ${r.name}`} type="link" size="small" onClick={() => void 自动分(r)}>自动分配</Button>

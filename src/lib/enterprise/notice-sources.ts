@@ -101,9 +101,9 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
 
 /**
  * 公海里分出去了：同 分配通知 的口径（自己分给自己不发；一次分配接手人只收一条）。
- * 跟来 = 分客户时名下跟着过来的公海项目数
+ * 跟来 = 分客户时名下跟着过来的公海项目数；连客户 = 分项目时客户在客户公海里、整包一起给过来的客户数（P-公海-10）
  */
-export async function 公海分配通知(谁点的: 人, toUserId: string, 对象: "客户" | "项目", ids: readonly string[], 跟来 = 0): Promise<void> {
+export async function 公海分配通知(谁点的: 人, toUserId: string, 对象: "客户" | "项目", ids: readonly string[], 跟来 = 0, 连客户 = 0): Promise<void> {
   await 稳("公海分配通知", async () => {
     if (!ids.length || toUserId === 谁点的.id) return;
     const 行们 = await 看全部(async () => (对象 === "客户"
@@ -113,7 +113,8 @@ export async function 公海分配通知(谁点的: 人, toUserId: string, 对�
     const 名们 = ids.map((id) => 名.get(id) ?? `（一个${对象}）`);
     const n = ids.length;
     const 页 = 对象 === "客户" ? "/customers" : "/projects";
-    const 跟来话 = 跟来 ? `名下 ${跟来} 个公海里的项目也一起给你了。` : "";
+    const 跟来话 = (连客户 ? (n === 1 && 连客户 === 1 ? "客户也一起给你了。" : `${连客户} 位客户也一起给你了。`) : "")
+      + (跟来 ? `名下 ${跟来} 个公海里的项目也一起给你了。` : "");
     await notify([toUserId], {
       kind: "分配",
       title: n === 1 ? `${谁点的.name} 把公海里的${对象}分给你：${名们[0]}` : `${谁点的.name} 把公海里 ${n} 个${对象}分给你`,
