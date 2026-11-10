@@ -1091,6 +1091,8 @@ model ProjectNodeLog {
   toOwnerId   String?
 
   @@index([projectId, at])
+  // 回避名单 / 统一公海 / 渠道看板按 kind = pool-release（+ 原负责人）查；projectId 垫在最后免回表（migrations/119）
+  @@index([kind, fromOwnerId, projectId])
 }
 
 /// 沟通记录挂项目（原来照 FollowUpOrder 的样子，那张表 2026-10-29 删了）：跟进照旧挂客户，客户时间线里照样看得到
