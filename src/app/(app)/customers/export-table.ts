@@ -8,6 +8,7 @@ import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
 import { 跟进方式名 } from "@/lib/follow-method";
 import type { 外贸档案 } from "@/lib/customer-extra";
+import { 拆主子 } from "@/lib/enterprise/channel-main-core";
 
 /** 导出要用到的那几样。CustomerRow（列表行）和 客户行（导出取数）都满足 */
 export type 导出行 = {
@@ -17,6 +18,8 @@ export type 导出行 = {
   major: string | null;
   grade: string | null;
   referrerName?: string | null;
+  /** 客户来源渠道全称（企业版两层时拆成主渠道、子渠道两列） */
+  channelName?: string | null;
   attributionName?: string | null;
   followStatus: string;
   decisionStatus: string;
@@ -43,7 +46,13 @@ export function 签约各币(r: { signedAmount: number; signedTotals?: { 币种:
   return r.signedTotals ?? (r.signedAmount ? [{ 币种: "CNY", 合计: r.signedAmount }] : []);
 }
 
-export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负责人 = false): { head: string[]; body: string[][] } {
+/** 企业版渠道两层（P-渠道-01 附.5）：全称「主|子」拆成两格；没子渠道、或子和主同名时子渠道留空 */
+export function 拆导出渠道(全称: string | null | undefined): [string, string] {
+  const { 主, 子 } = 拆主子(全称 ?? "");
+  return [主, 子 === 主 ? "" : 子];
+}
+
+export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负责人 = false, 渠道两层 = false): { head: string[]; body: string[][] } {
   /*
     外贸模版（2026-10-05）：多国家 / WhatsApp / 微信 / 邮箱 / 来源五列，不写推荐人、渠道归属、渠道负责人、预计签约
     （界面上不摆的，导出也不写）。表头和导入认的别名一致（lib/import/fields.ts），导回来各落各的格
@@ -65,10 +74,13 @@ export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负�
     不会变成「某某：…」并进别处（2026-10-04 J-073）
   */
   // 姓名那一列跟叫法走（L-057：叫「学员」的库导出来还写「客户姓名」）；导入的别名认 `${b.customer}姓名`，导回来照样认得
-  const head = [`${b.customer}姓名`, "联系电话", b.fields.school, b.fields.major, b.fields.grade, "推荐人", "渠道归属", "跟进状态", "决策状态", "预计签约", "签约金额", ...(隐藏负责人 ? [] : ["销售负责人", "渠道负责人"]), "图片张数", "备注"];
+  const head = [`${b.customer}姓名`, "联系电话", b.fields.school, b.fields.major, b.fields.grade, "推荐人", "渠道归属", ...(渠道两层 ? ["主渠道", "子渠道"] : []), "跟进状态", "决策状态", "预计签约", "签约金额", ...(隐藏负责人 ? [] : ["销售负责人", "渠道负责人"]), "图片张数", "备注"];
   const body = rows.map((r) => [
     r.name, r.phone, r.school ?? "", r.major ?? "", r.grade ?? "",
-    r.referrerName ?? "", r.attributionName ?? "", statusLabel(b, r.followStatus), statusLabel(b, r.decisionStatus),
+    r.referrerName ?? "", r.attributionName ?? "",
+    // 企业版两层：主渠道、子渠道各一格，表头和导入别名一致（lib/import/fields.ts），导回来拼回全称
+    ...(渠道两层 ? 拆导出渠道(r.channelName) : []),
+    statusLabel(b, r.followStatus), statusLabel(b, r.decisionStatus),
     // 导出写「USD 3,200 · CNY 19,800」：只写数字的话，美元单在表里就成了人民币
     r.expectedSignAt ? fmtDate(r.expectedSignAt) : "", 签约各币(r).filter((x) => x.合计 > 0).map((x) => `${x.币种} ${x.合计}`).join(" · "),
     ...(隐藏负责人 ? [] : [r.salesOwnerName, r.channelOwnerName ?? ""]),
