@@ -7,7 +7,7 @@
  * - 公海客户、没负责人（占位）的客户不提示（P-挂靠-01「公海客户、要回避的客户不提示」）；撞的是我自己名下的，只说「你名下已有」，不记台账、不给申请挂靠。
  * - 查询人在那位客户的项目组里（负责人或已加入的组员）= 同组：提示「同组协作」带项目名和组员，台账照记但标同组、不算预警（回执 X6「不记风险」）。
  * - 第一期不做强录：命中只拦截提示 + 台账留痕；第三档（绕过强录）随强录推迟，常量留着、不触发。
- * - 申请挂靠记下来、定审批人（负责人，离职了 = 他手填的直属上级）、通知他；审批、24 小时转实线上级、批准后的只读卡在 attach-approval.ts（P-挂靠-02 / P-看-13）。
+ * - 申请挂靠记下来、定审批人（客户现在的负责人，换负责人时跟着换）、在职就通知他；审批、24 小时转实线上级、批准后的只读卡在 attach-approval.ts（P-挂靠-02 / P-看-13）。
  */
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
@@ -18,7 +18,7 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 拆角色, 直属上级of } from "./org-core";
 import { 读组织 } from "./org";
 import { notify } from "./notify";
-import { 挂靠审批人, 挂靠超时小时, 挂靠页 } from "./attach-approval";
+import { 挂靠超时小时, 挂靠页 } from "./attach-approval";
 import { 离职负责人找谁 } from "./departed-owner";
 import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedupe";
 
@@ -243,7 +243,7 @@ export type 挂靠结果 = { ok: true; 提示: string } | { ok: false; error: st
 
 /**
  * 申请挂靠：台账那一行记上动作。这家客户还没有我在等的 / 已批准的申请（拒绝过的 7 天内也算）= 一条新申请：
- * 改成待处理、定审批人（挂靠审批人：负责人，离职了 = 他手填的直属上级），通知审批人去「挂靠申请」页处理（P-挂靠-02，attach-approval.ts）。
+ * 改成待处理、定审批人（客户现在的负责人；离职了也是他、不另找兜底，24 小时后转他的实线上级），在职就通知他去「挂靠申请」页处理（P-挂靠-02，attach-approval.ts）。
  * 已有的只记动作、状态留无需处置，不再通知
  */
 export async function 申请挂靠(我: { id: string; name: string }, 撞号id: string): Promise<挂靠结果> {
@@ -270,18 +270,18 @@ export async function 申请挂靠(我: { id: string; name: string }, 撞号id: 
     return { ok: true, 提示: 已有话(早.status) };
   }
 
-  const org = await 读组织();
-  const owner = 行.ownerId;
-  const 收 = 挂靠审批人(org, owner);
+  // 审批人 = 客户现在的负责人（P-挂靠-02；之后客户换负责人，审批人跟着换，见 owner-log-db.ts）。离职了也还是他、不另找人，24 小时后转他的实线上级
+  const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { name: true, salesOwnerId: true } }));
+  const 收 = 客户?.salesOwnerId ?? null;
   await prisma.entDupeHit.update({ where: { id: 行.id }, data: { action: "申请挂靠", actionAt: new Date(), status: "待处理", approverId: 收 } });
-  const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { name: true } }));
-  const n = 收 ? await notify([收], {
+  const org = await 读组织();
+  const n = 收 && org.成员.has(收) ? await notify([收], {
     kind: "挂靠",
-    title: `${我.name} 申请挂靠${收 === owner ? "你负责的" : "已离职同事名下的"}客户「${客户?.name ?? ""}」`,
-    body: `新建客户时按${行.keyType}撞上（${行.keyValue}），申请一起跟这位客户。到「挂靠申请」里批准或拒绝；批准后客户负责人不变，对方只拿到这家客户的只读卡`
-      + (收 === owner ? `。${挂靠超时小时} 小时没处理会转给你的直属上级` : ""),
+    title: `${我.name} 申请挂靠你负责的客户「${客户?.name ?? ""}」`,
+    body: `新建客户时按${行.keyType}撞上（${行.keyValue}），申请一起跟这位客户。到「挂靠申请」里批准或拒绝；批准后客户负责人不变，对方只拿到这家客户的只读卡。`
+      + `${挂靠超时小时} 小时没处理会转给你的直属上级`,
     link: 挂靠页,
     key: `挂靠:${行.id}`,
   }) : 0;
-  return { ok: true, 提示: n ? "已申请挂靠，等负责人处理" : "已记下申请挂靠；负责人那边暂时没人能收到通知，请联系系统管理员" };
+  return { ok: true, 提示: n ? "已申请挂靠，等负责人处理" : `已记下申请挂靠；负责人现在收不到通知，${挂靠超时小时} 小时没人处理会转给他的直属上级` };
 }

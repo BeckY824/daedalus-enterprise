@@ -1,6 +1,6 @@
 /**
  * 企业版挂靠审批（lib/enterprise/attach-approval.ts，2026-11-10，P-挂靠-02 / P-看-13）：
- * 申请挂靠 → 客户负责人审批；24 小时没人处理转给负责人的实线上级；批准后客户负责人不变、申请人拿这家客户的只读卡、通知客户负责人。
+ * 申请挂靠 → 客户现在的负责人审批（客户换负责人，审批人跟着换）；24 小时没人处理转给负责人的实线上级；批准后客户负责人不变、申请人拿这家客户的只读卡、通知客户负责人。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -16,7 +16,8 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 撞号预警 } from "@/lib/enterprise/dupe-ledger";
-import { 挂靠超时小时, 挂靠超时转上级, 待我审批的挂靠, 我的挂靠申请 } from "@/lib/enterprise/attach-approval";
+import { 挂靠超时小时, 挂靠超时转上级, 补挂靠审批人, 待我审批的挂靠, 我的挂靠申请 } from "@/lib/enterprise/attach-approval";
+import { 记换负责人, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
 import { 查客户名, 申请挂靠 } from "@/app/(app)/customers/number-actions";
 import { 批准挂靠, 拒绝挂靠, 打开挂靠只读卡 } from "@/app/(app)/projects/attach/actions";
 
@@ -82,11 +83,15 @@ describe("申请挂靠 → 待审批", () => {
     expect((await 通知们(x.负责人.id))[0]).toMatchObject({ link: "/projects/attach" });
   });
 
-  it("负责人已离职：审批人 = 他手填的直属上级", async () => {
+  it("负责人已离职：审批人还是他（不另找兜底），不发通知；24 小时后照常转他手填的直属上级", async () => {
     const x = await 现场();
     await prisma.user.update({ where: { id: x.负责人.id }, data: { active: false } });
     const id = await 申请(x);
-    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "待处理", approverId: x.主管.id });
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "待处理", approverId: x.负责人.id });
+    expect(await 通知们(x.负责人.id)).toHaveLength(0);
+    expect(await 通知们(x.主管.id)).toHaveLength(0);
+    expect(await 挂靠超时转上级(new Date(Date.now() + (挂靠超时小时 + 1) * 小时))).toBe(1);
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ approverId: x.主管.id });
   });
 
   it("还在等审批时再申请：不另起一条，不再通知", async () => {
@@ -236,5 +241,82 @@ describe("24 小时没人处理转实线上级", () => {
     await prisma.entDupeHit.update({ where: { id }, data: { actionAt: new Date(现在.getTime() - (挂靠超时小时 + 1) * 小时) } });
     expect(await 挂靠超时转上级(现在)).toBe(0);
     expect(await 通知们(x.主管.id)).toHaveLength(0);
+  });
+});
+
+describe("审批人跟着客户现在的负责人走", () => {
+  /** 换负责人的几条路都在同一个事务里改 salesOwnerId + 记换负责人；这里照那个样子换 */
+  async function 换负责人(customerId: string, from: string, to: string) {
+    await prisma.$transaction(async (tx) => {
+      await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: to } });
+      await 记换负责人(tx, [{ customerId, from, to }], to, "assign");
+    });
+  }
+
+  it("客户换负责人：待处理、没转过上级的申请转给新负责人；原负责人批不了，新负责人能批，超时转新负责人的上级", async () => {
+    const x = await 现场();
+    const 主管2 = await 人("mgr2", "小己", "sales_mgr");
+    await prisma.entMember.update({ where: { userId: x.丙.id }, data: { managerId: 主管2.id } });
+    const id = await 申请(x);
+    await 换负责人(x.客户.id, x.负责人.id, x.丙.id);
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "待处理", approverId: x.丙.id });
+    expect(await 作为(x.负责人, () => 待我审批的挂靠(x.负责人))).toHaveLength(0);
+    expect(await 作为(x.丙, () => 待我审批的挂靠(x.丙))).toMatchObject([{ id, 负责人: "小丙", 转来的: false }]);
+    expect(await 作为(x.负责人, () => 批准挂靠(id))).toMatchObject({ ok: false });
+    // 24 小时没人处理：转给新负责人的实线上级，不是原负责人的
+    expect(await 挂靠超时转上级(new Date(Date.now() + (挂靠超时小时 + 1) * 小时))).toBe(1);
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ approverId: 主管2.id });
+    expect(await 作为(主管2, () => 待我审批的挂靠(主管2))).toMatchObject([{ id, 转来的: true }]);
+  });
+
+  it("转过上级的不跟着换；撤销换负责人时审批人也还回去", async () => {
+    const x = await 现场();
+    const id = await 申请(x);
+    await 换负责人(x.客户.id, x.负责人.id, x.丙.id);
+    // 撤销（企业版删那条记录、负责人还回原来的）
+    await prisma.$transaction(async (tx) => {
+      await tx.customer.update({ where: { id: x.客户.id }, data: { salesOwnerId: x.负责人.id } });
+      await 删被撤的换负责人记录(tx, x.客户.id, x.负责人.id, x.丙.id);
+    });
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ approverId: x.负责人.id });
+    // 转过上级之后再换负责人：审批人留在上级手里
+    await 挂靠超时转上级(new Date(Date.now() + (挂靠超时小时 + 1) * 小时));
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ approverId: x.主管.id });
+    await 换负责人(x.客户.id, x.负责人.id, x.丙.id);
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ approverId: x.主管.id });
+  });
+
+  it("已处理的申请不跟着换", async () => {
+    const x = await 现场();
+    const id = await 申请(x);
+    await 作为(x.负责人, () => 拒绝挂靠(id));
+    await 换负责人(x.客户.id, x.负责人.id, x.丙.id);
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "已拒绝", approverId: x.负责人.id });
+  });
+});
+
+describe("存量回填（迁移 116 之前的待处理申请没有审批人）", () => {
+  it("补成客户现在的负责人；转过上级的、已处理的不补；重跑不再改", async () => {
+    const x = await 现场();
+    const id = await 申请(x);
+    await prisma.entDupeHit.update({ where: { id }, data: { approverId: null } });
+    const 已转 = await prisma.entDupeHit.create({ data: { userId: x.丙.id, keyType: "客户名", keyValue: "编的客户甲", customerId: x.客户.id, ownerId: x.负责人.id, action: "申请挂靠", actionAt: new Date(), status: "待处理", escalatedAt: new Date() } });
+    const 已拒 = await prisma.entDupeHit.create({ data: { userId: x.丙.id, keyType: "客户名", keyValue: "编的客户甲", customerId: x.客户.id, ownerId: x.负责人.id, action: "申请挂靠", actionAt: new Date(), status: "已拒绝" } });
+    // 负责人换过：按现在的负责人补，不按撞的那一刻记下的 ownerId
+    await prisma.customer.update({ where: { id: x.客户.id }, data: { salesOwnerId: x.丙.id } });
+    expect(await 补挂靠审批人()).toBe(1);
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ approverId: x.丙.id, escalatedAt: null });
+    expect(await prisma.entDupeHit.findUnique({ where: { id: 已转.id } })).toMatchObject({ approverId: null });
+    expect(await prisma.entDupeHit.findUnique({ where: { id: 已拒.id } })).toMatchObject({ approverId: null });
+    expect(await 补挂靠审批人()).toBe(0);
+  });
+
+  it("每分钟那一遍顺手补：没到 24 小时的补完不转", async () => {
+    const x = await 现场();
+    const id = await 申请(x);
+    await prisma.entDupeHit.update({ where: { id }, data: { approverId: null } });
+    expect(await 挂靠超时转上级(new Date(Date.now() + 小时))).toBe(0);
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ approverId: x.负责人.id, escalatedAt: null });
+    expect(await 作为(x.负责人, () => 待我审批的挂靠(x.负责人))).toHaveLength(1);
   });
 });
