@@ -80,7 +80,7 @@ import { 销售初判, 市场复核 } from "@/lib/project/lead-verify";
 import { 放进公海, 领取, 撤销公海, 分配公海 } from "@/app/(app)/customers/pool-actions";
 import { 放回公海, 改项目, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
 import { 默认组织规则 } from "@/lib/project/org-rules";
-import { 公海规则, 客户在公海项目不单领提示, 客户在公海找销管提示, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 客户在公海项目不单领提示, 客户在公海找销管提示, 进公海关待办尾, 无效客户项目不能转提示 } from "@/lib/enterprise/pool-rules";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
 import { 给客户建项目, 建项目带走的项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
@@ -717,6 +717,69 @@ describe("客户公海里的项目不能经转让单独动（M-公海-06、X-13�
     expect(await 项目of(p)).toMatchObject({ name: "再改一次", ownerId: 乙.id, pooledAt: null });
     expect(await prisma.projectNodeLog.count({ where: { projectId: p, kind: "transfer" } })).toBe(0);
     expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
+  });
+
+  describe("改项目换人也拦无效客户、客户公海（M-公海-01、M-公海-06、P-转-02、X-42）", () => {
+    const 销管 = () => 造人("smgr", "销管某", "SALES", "sales_mgr");
+    const 无效的话 = { ok: false, error: 无效客户项目不能转提示 };
+    /** 被拦 = 项目还在公海、没负责人，客户还在公海、负责人没换，没留转让痕 */
+    const 没动 = async (c: string, p: string, 占位: string | null) => {
+      expect(await 项目of(p)).toMatchObject({ ownerId: "" });
+      expect((await 项目of(p)).pooledAt).not.toBeNull();
+      expect(await 客户负责人(c)).toBe(占位);
+      expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
+      expect(await prisma.projectNodeLog.count({ where: { projectId: p, kind: "transfer" } })).toBe(0);
+    };
+    const 标无效 = (c: string) => prisma.customer.update({ where: { id: c }, data: { poolInvalidAt: new Date() } });
+
+    it("客户标了无效：销售管理、总管理改项目换人都被拒，话说是无效（不叫人去领客户）", async () => {
+      const { c, 们: [a] } = await 放进去();
+      await 标无效(c);
+      const 占位 = await 客户负责人(c);
+      const 管 = await 销管();
+      expect(await 转(管, a, 丙)).toEqual(无效的话);
+      expect(await 转(总管, a, 丙)).toEqual(无效的话);
+      await 没动(c, a, 占位);
+    });
+
+    it("客户标了无效：开关「领项目带走单项目客户」开着也拒（无效不随开关放行）", async () => {
+      const 原 = 公海规则.领项目带走单项目客户;
+      公海规则.领项目带走单项目客户 = true;
+      try {
+        const { c, 们: [a] } = await 放进去();
+        await 标无效(c);
+        const 占位 = await 客户负责人(c);
+        expect(await 转(await 销管(), a, 丙)).toEqual(无效的话);
+        await 没动(c, a, 占位);
+      } finally {
+        公海规则.领项目带走单项目客户 = 原;
+      }
+    });
+
+    it("客户在客户公海（没标无效）：销售管理改项目换人被拒，提示先到客户公海领取或分配", async () => {
+      const { c, 们: [a] } = await 放进去();
+      const 占位 = await 客户负责人(c);
+      expect(await 转(await 销管(), a, 丙)).toEqual(拦的话);
+      await 没动(c, a, 占位);
+    });
+
+    it("恢复成有效后客户还在公海：照旧按客户公海拦，不再说无效", async () => {
+      const { c, 们: [a] } = await 放进去();
+      await 标无效(c);
+      await prisma.customer.update({ where: { id: c }, data: { poolInvalidAt: null } });
+      expect(await 转(await 销管(), a, 丙)).toEqual(拦的话);
+    });
+
+    it("正常换人照过：销售管理把线索公海（客户不在公海）的项目转给销售，出公海、留转让痕，客户负责人不动", async () => {
+      const c = await 客户(甲.id);
+      const p = await 项目(c, 甲.id);
+      await 项目(c, 甲.id);
+      expect((await 以(甲, () => 放回公海({ id: 甲.id, role: 甲.role }, p))).ok).toBe(true);
+      expect(await 转(await 销管(), p, 丙)).toMatchObject({ ok: true, 变了: ["ownerId"] });
+      expect(await 项目of(p)).toMatchObject({ ownerId: 丙.id, pooledAt: null });
+      expect(await prisma.projectNodeLog.count({ where: { projectId: p, kind: "transfer", toOwnerId: 丙.id } })).toBe(1);
+      expect(await 客户负责人(c)).toBe(甲.id);
+    });
   });
 
   it("不是企业版不受影响：团队版老规矩照旧", async () => {

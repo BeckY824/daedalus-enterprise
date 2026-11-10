@@ -32,7 +32,7 @@ import { 看全部, 只读身份中, 系统写 } from "../team-scope";
 import { FOLLOW_RECORD_STATUSES } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 节点变了的提成 } from "./commission-db";
-import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示, 无效客户项目不能转提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领, 领项目连带超上限 } from "@/lib/enterprise/pool-link";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
@@ -580,8 +580,12 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (挡) return { ok: false as const, error: 挡 };
     const 换人 = 新.ownerId !== p.ownerId;
     if (换人) {
-      // 客户在客户公海里的，项目随整包，不能转出去（M-公海-06、X-13）；放在事务里，弹框开着时客户刚进公海也拦。线索公海（客户不在公海）照转
-      if (拦客户公海里的项目(!!(await 看全部(() => tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))))) return { ok: false as const, error: 客户在公海项目不单领提示 };
+      // 客户在客户公海里的，项目随整包，不能转出去（M-公海-06、X-13）；放在事务里，弹框开着时客户刚进公海也拦。线索公海（客户不在公海）照转。
+      // 标了无效的先拦、话说准（M-权限-03、X-42，同 领取项目 / 分配公海项目 的「c.pool && c.poolInvalidAt」）：
+      // 不随 领项目带走单项目客户 开关放行，能管公海的人也不能经改项目把无效客户的项目分出去
+      const 客 = 企业版() ? await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } })) : null;
+      if (客?.pool && 客.poolInvalidAt) return { ok: false as const, error: 无效客户项目不能转提示 };
+      if (拦客户公海里的项目(!!客?.pool)) return { ok: false as const, error: 客户在公海项目不单领提示 };
       // 这里改不了阶段和结局（规整项目只出名称、负责人、金额、备注），p 的阶段 / 结局就是改完的
       const 超 = await 超上限(tx, 规则, 新.ownerId, p);
       if (超) return { ok: false as const, error: 超 };
