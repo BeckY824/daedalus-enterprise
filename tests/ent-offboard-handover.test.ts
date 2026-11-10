@@ -248,6 +248,49 @@ describe("离职交接看板", () => {
     expect(await 离职交接入口({ id: 上级, role: "SALES" })).toBe(0);
   });
 
+  /** 主渠道负责人（迁移 118，P-渠道-10）：和子渠道负责人同一处交——看板「其余」里数出来、「全部交给」时一起走 */
+  it("主渠道负责人：名下只剩主渠道也上看板、入口算他；全部交给后主渠道负责人换成接手人，别人的主渠道、已有客户身上的渠道负责人不动", async () => {
+    const 他的 = await prisma.entChannelMain.create({ data: { name: "只有主渠道的", ownerId: 离职 } });
+    const 他的二 = await prisma.entChannelMain.create({ data: { name: "有子渠道的主", ownerId: 离职 } });
+    const 别人的 = await prisma.entChannelMain.create({ data: { name: "别人的主", ownerId: 别的销售 } });
+    const 老客户 = await prisma.customer.create({ data: { name: "老客户", phone: "13911110000", salesOwnerId: 别的销售, channelOwnerId: 离职 } });
+    await deactivateUser(离职, "");
+    for (const me of [{ id: 上级, role: "SALES" }, { id: 系统, role: "ADMIN" }]) {
+      const 们 = await 读离职交接(me);
+      expect(们).toHaveLength(1);
+      expect(们[0]).toMatchObject({ id: 离职, 客户: [], 项目: [], 其余: { 线索: 0, 渠道: 0, 主渠道: 2, 待办: 0 } });
+    }
+    expect(await 离职交接入口({ id: 上级, role: "SALES" })).toBe(1);
+    // 别的销售、只读管理员照旧办不了，主渠道负责人一格不动
+    for (const [id, role] of [[别的销售, "SALES"], [只读, "ADMIN"]] as const) {
+      当(id, role);
+      await expect(交接全部(离职, 接手)).rejects.toThrow("FORBIDDEN");
+    }
+    expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: 他的.id } })).ownerId).toBe(离职);
+    当(上级);
+    const r = await 交接全部(离职, 接手);
+    expect(r).toMatchObject({ ok: true, message: expect.stringContaining("2 个主渠道") });
+    expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: 他的.id } })).ownerId).toBe(接手);
+    expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: 他的二.id } })).ownerId).toBe(接手);
+    expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: 别人的.id } })).ownerId).toBe(别的销售);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 老客户.id } })).channelOwnerId).toBe(离职);
+    expect(await 读离职交接({ id: 上级, role: "SALES" })).toEqual([]);
+    const 痕 = await prisma.auditLog.findFirstOrThrow({ where: { action: "handover", entityId: 离职 }, orderBy: { at: "desc" } });
+    expect(痕.summary).toContain("2 个主渠道");
+  });
+
+  it("主渠道负责人：和子渠道、客户一起全部交给；单条交客户不带主渠道", async () => {
+    const d = await 摆数据();
+    const 主 = await prisma.entChannelMain.create({ data: { name: "渠道甲", ownerId: 离职 } });
+    await deactivateUser(离职, "");
+    当(上级);
+    expect(await 交接客户(离职, d.c.id, 接手)).toMatchObject({ ok: true });
+    expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: 主.id } })).ownerId).toBe(离职);
+    expect(await 交接全部(离职, 接手)).toMatchObject({ ok: true });
+    expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: 主.id } })).ownerId).toBe(接手);
+    expect((await prisma.channel.findUniqueOrThrow({ where: { id: d.ch.id } })).channelOwnerId).toBe(接手);
+  });
+
   /** P-转-18：他客户上已停用同事的进行中项目，交接时随客户给接手人；在职同事的、已结束的不动 */
   async function 摆停用同事项目() {
     const d = await 摆数据();

@@ -32,6 +32,8 @@ export const 停用方式们: readonly 停用方式[] = ["转交", "公海"];
 
 export const 停用进公海理由 = "成员停用，放进公海";
 export const 停用项目进公海理由 = "成员停用，放回项目公海";
+/** P-删-06：从回收站恢复（或查重捞回）客户时原负责人已停用，没有接手人，清空负责人进客户公海；名下他自己的线索 / 商机项目的 pool-release 也记这句 */
+export const 恢复进公海理由 = "成员停用，从回收站恢复时放进公海";
 
 export type 停用分拣结果 = {
   /** 负责人改成接手人的客户 */
@@ -45,6 +47,8 @@ export type 停用分拣结果 = {
   计划: string[];
   线索: string[];
   渠道: string[];
+  /** 企业版他当负责人的主渠道（EntChannelMain.ownerId，迁移 118）：和渠道一样给接手人；不是企业版恒为空 */
+  主渠道: string[];
   /** 转给接手人的项目：转走的客户上他负责的（企业版；同事负责的留下，待分配的除外）+ 他负责、挂在别处、没结局的 */
   项目: string[];
   /** 项目 里同事负责、正在待分配的（用户 11-09 定）：随客户给接手人并清待分配 */
@@ -57,7 +61,7 @@ export type 停用分拣结果 = {
   订单项目: number;
 };
 
-type 读库 = Pick<Prisma.TransactionClient, "customer" | "opportunity" | "task" | "followPlan" | "lead" | "channel" | "project" | "user" | "customerOwnerLog">;
+type 读库 = Pick<Prisma.TransactionClient, "customer" | "opportunity" | "task" | "followPlan" | "lead" | "channel" | "entChannelMain" | "project" | "user" | "customerOwnerLog">;
 
 /**
  * 已停用的同事（不含占位账号、不含 除了 里的人）：他们负责、挂在要转走的客户上的进行中项目随客户给接手人（P-转-18，11-09 定），
@@ -69,7 +73,7 @@ export async function 停用的同事(db: Pick<Prisma.TransactionClient, "user">
 
 export async function 停用分拣(db: 读库, id: string, 方式: 停用方式, 企业: boolean): Promise<停用分拣结果> {
   const 公海 = 企业 && 方式 === "公海";
-  const [客户们, 商机们, 待办们, 计划们, 线索们, 渠道们, 他的项目] = await Promise.all([
+  const [客户们, 商机们, 待办们, 计划们, 线索们, 渠道们, 他的项目, 主渠道们] = await Promise.all([
     db.customer.findMany({ where: { salesOwnerId: id }, select: { id: true, followStatus: true, pool: { select: { customerId: true } } } }),
     db.opportunity.findMany({ where: { ownerId: id, status: "OPEN" }, select: { id: true, customerId: true } }),
     db.task.findMany({ where: { ownerId: id, done: false }, select: { id: true, customerId: true } }),
@@ -77,6 +81,8 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
     db.lead.findMany({ where: { ownerId: id }, select: { id: true } }),
     db.channel.findMany({ where: { channelOwnerId: id }, select: { id: true } }),
     企业 ? db.project.findMany({ where: { ownerId: id, pooledAt: null, result: null }, select: { id: true, customerId: true, phase: true } }) : [],
+    // 主渠道负责人那格也指着他的（没有子渠道的主渠道只有这一格记负责人）：不交的话新落的来源还会挂到离职的人头上
+    企业 ? db.entChannelMain.findMany({ where: { ownerId: id }, select: { id: true } }) : [],
   ]);
   const 可进公海阶段 = 能进公海的阶段 as readonly string[];
 
@@ -132,6 +138,7 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
     计划: 给接手人(计划们),
     线索: 线索们.map((r) => r.id),
     渠道: 渠道们.map((r) => r.id),
+    主渠道: 主渠道们.map((r) => r.id),
     项目,
     清待分配: 企业 ? 跟客户走的项目.filter((p) => p.ownerId !== id && p.awaitAssignAt).map((p) => p.id) : [],
     停用同事: 企业 ? 跟客户走的项目.filter((p) => p.ownerId !== id && !p.awaitAssignAt).map((p) => p.id) : [],

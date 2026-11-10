@@ -14,6 +14,8 @@ import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules"
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
 import { 等复核拦, 复核判死拦, 验证中不能改派, 进公海清验证 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 落到渠道 } from "@/lib/enterprise/channel-main";
+import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
 import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读角色话, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
@@ -542,6 +544,16 @@ export type 编辑项目改动 = Partial<向导项目> & { contactId?: string | 
   & Partial<{ [K in keyof 项目成交钱]: 项目成交钱[K] }> & Partial<项目新字段>;
 export async function 改项目(me: 谁, projectId: string, patch: 编辑项目改动, 带待办?: boolean): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
+  // 项目来源补的是「只有主渠道」的占位：先看这人改不改得了这个项目，再落成子渠道名留空的那条渠道（channel-main.ts 落到渠道，在事务外）
+  if (企业版() && 是主渠道入口(patch.channelId)) {
+    const 现 = await prisma.project.findUnique({ where: { id: String(projectId ?? "") } });
+    if (!现) return { ok: false, error: "这个项目已经不在了，刷新看看" };
+    if (!能管项目(me, 现, await 权限组织())) return { ok: false, error: 现.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
+    if (现.channelId) return { ok: false, error: 项目来源不能改 };
+    const 落 = await 落到渠道(patch.channelId, me);
+    if (!落.ok) return { ok: false, error: 落.error };
+    patch = { ...patch, channelId: 落.id };
+  }
   const 规则 = await 生效组织规则();
   const 级别 = await 字段权限of(me.id);
   const 状态开 = await 客户状态自动();

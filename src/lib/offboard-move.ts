@@ -17,7 +17,7 @@ import { 换负责人 } from "@/lib/project/owner-write";
  * 两半都在调用方的事务里跑，分拣（停用分拣）也由调用方在同一笔事务里先做
  */
 
-/** 给接手人的那半：客户改负责人（记历史负责人）、进行中商机、没做完的待办计划、线索、渠道、项目。返回转走的项目 id */
+/** 给接手人的那半：客户改负责人（记历史负责人）、进行中商机、没做完的待办计划、线索、渠道（企业版连主渠道负责人）、项目。返回转走的项目 id */
 export async function 离职转给接手人(
   tx: Prisma.TransactionClient,
   分: 停用分拣结果,
@@ -40,6 +40,8 @@ export async function 离职转给接手人(
   await tx.lead.updateMany({ where: { id: { in: 分.线索 } }, data: { ownerId: 接手人 } });
   if (记分配) await 记交接分配(tx, 分.线索, id, 接手人, 操作人);
   await tx.channel.updateMany({ where: { id: { in: 分.渠道 } }, data: { channelOwnerId: 接手人 } });
+  // 主渠道负责人（迁移 118）同渠道负责人：只换主渠道这一格，下面的子渠道各按自己的负责人走（上一句），已有客户身上的渠道负责人不动
+  if (分.主渠道?.length) await tx.entChannelMain.updateMany({ where: { id: { in: 分.主渠道 }, ownerId: id }, data: { ownerId: 接手人 } });
   // 项目：跟着转走的客户转（团队版整体转；企业版只带他负责的、同事待分配的，同转让客户），企业版再加上他负责、挂在别人客户上的。
   // 他的卡点认领行不在这里跟着走：停用的事务里另调 交接卡点（有交接人 / 直属上级 / 去掉三种去向）；
   // 同事待分配的、已停用同事进行中的（P-转-18）认领行是同事的，交接卡点管不到，跟着项目走（同转客户）。分.项目 被调用方清空时（没开项目模式）不动

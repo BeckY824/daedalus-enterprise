@@ -28,6 +28,7 @@
  * 它会说没问题。
  */
 import { 列数上限 } from "./parse";
+import { 全角转半角 } from "../fullwidth";
 
 /** 一次最多粘多少字。够一份几十人的名单或一段几十条的聊天记录 */
 export const 粘贴字数上限 = 6000;
@@ -58,11 +59,6 @@ export function 合并粘贴批次(批次: 粘贴批表[]): 粘贴批表 {
   return { 表头, 数据: 批次.flatMap((x) => x.数据.map((row) => 表头.map((h) => row[x.表头.indexOf(h)] ?? ""))) };
 }
 
-/** 全角转半角。微信和网页上复制下来的号码里全角数字是常事 */
-function 半角(s: string): string {
-  return s.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-}
-
 /**
  * 比对用的规整：全角转半角、去空白、去常见标点、转小写。
  *
@@ -72,7 +68,8 @@ function 半角(s: string): string {
  * ——误报会让人学会忽略这条提示，那它就等于不存在了。
  */
 export function 规整比对(s: string): string {
-  return 半角(s)
+  // 全角转半角：微信和网页上复制下来的号码里全角数字是常事
+  return 全角转半角(s)
     .replace(/[\s　]/g, "")
     .replace(/[-_/\\|.,、，。:：;；'"`()（）\[\]【】<>《》*#+~!?！？]/g, "")
     .toLowerCase();
@@ -99,7 +96,7 @@ export function 规整比对(s: string): string {
  */
 export function 抽手机号(text: string): string[] {
   const out = new Set<string>();
-  for (const m of 半角(text).matchAll(/\d[\d \t\-]*\d/g)) {
+  for (const m of 全角转半角(text).matchAll(/\d[\d \t\-]*\d/g)) {
     const 整 = 认号(m[0]);
     if (整) {
       out.add(整);

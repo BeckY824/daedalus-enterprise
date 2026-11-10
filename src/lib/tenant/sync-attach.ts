@@ -19,6 +19,7 @@ import { 拉取前提, 范围错误 } from "./sync-scoped";
 import { 团队索引 } from "./scoped-index";
 import { 范围可读, 范围可写, 行键 } from "../sync/scope-policy";
 import { 是附件编号, 附件上限字节 } from "../attachment-rules";
+import { beijingDay } from "../business-clock";
 
 const GB = 1024 ** 3;
 /** 每位席位多少空间（团队合用）：默认 1 GB，ATTACH_SEAT_GB 可调 */
@@ -228,8 +229,6 @@ export async function 有哪些附件(accountId: string, teamId: string, ids: un
 
 /* ---------------- 删除 ---------------- */
 
-const 北京日期 = (d: Date) => new Date(d.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
-
 /** 附件行删掉了：删文件（含没传齐的），传齐过的编号记进当天的删除清单，给异地备份照单删 */
 export function 删云端附件(teamId: string, ids: string[], 现在 = new Date()): number {
   if (!团队编号对(teamId)) return 0;
@@ -248,7 +247,7 @@ export function 删云端附件(teamId: string, ids: string[], 现在 = new Date
   if (删了.length) {
     const d = path.join(dir, ".deleted");
     fs.mkdirSync(d, { recursive: true });
-    fs.appendFileSync(path.join(d, `${北京日期(现在)}.txt`), 删了.map((x) => `${x}\n`).join(""));
+    fs.appendFileSync(path.join(d, `${beijingDay(现在)}.txt`), 删了.map((x) => `${x}\n`).join(""));
   }
   return 删了.length;
 }

@@ -44,6 +44,20 @@ nativeDayjs.extend((_options, Dayjs) => {
 let browserTimeZone: "Asia/Shanghai" | null = null;
 
 /**
+ * 固定 UTC+8 的北京墙钟，不看 businessTimeZone()（没开企业版、宿主 TZ 不是北京也一样）：
+ * 到期日、运营通知的键、删除清单文件名、给客户信里的钟点这类「永远按北京说」的地方用。
+ * 跟着业务钟开关走的（没开时按本机钟）用 businessDayjs。tests/g2-beijing-date-sites.test.ts 钉边界。
+ */
+/** 瞬间挪 8 小时的 Date：它的 UTC 字段（getUTCFullYear / getUTCHours…）就是北京墙钟，别当真实瞬间用 */
+export function beijingWallClock(at: Date | number): Date {
+  return new Date((typeof at === "number" ? at : at.getTime()) + offsetMs);
+}
+/** 北京墙钟的 ISO 写法 YYYY-MM-DDTHH:mm:ss.sssZ（末尾的 Z 只是写法）；切前 10 位是日期、前 13 位到钟头 */
+export const beijingWallIso = (at: Date): string => beijingWallClock(at).toISOString();
+/** 北京日期 YYYY-MM-DD */
+export const beijingDay = (at: Date): string => beijingWallIso(at).slice(0, 10);
+
+/**
  * 服务端不接受浏览器全局状态；托管、企业版业务日为北京时间，本地桌面和开源自部署为本机。
  * 企业版（CRM_ENTERPRISE=1，2026-10-25 F3）：公司在国内、夜扫和到期按北京日界线，
  * 人在伦敦打开网页也按北京显示和划「今天」；不跟着容器 TZ 走，TZ 设错了也不漂。

@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { 认回打码号, 查电话, 号码带着字 } from "@/lib/phone";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
-import { 唯一负责人 } from "@/lib/owners";
+import { 唯一负责人, 负责人候选 } from "@/lib/owners";
 import { getBusiness } from "@/lib/business";
 import { 不在了 } from "@/lib/not-there";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -63,9 +63,14 @@ export async function saveChannel(input: {
   if (挡) return { ok: false, error: 挡 };
   const 企业表单 = input.attr !== undefined;
   let 企业列: { attr: string | null; platform: string; endDate: Date | null; mainId: string; strategies?: string | null } | null = null;
+  /** 挂的主渠道自己的负责人（迁移 118）：新建子渠道没单独填负责人时沿用 */
+  let 主负责人: string | null = null;
   if (企业表单) {
     const 原 = input.id ? await prisma.channel.findUnique({ where: { id: input.id }, select: { attr: true, name: true, mainId: true, strategies: true } }) : null;
-    const 属性 = (input.attr ?? "").trim();
+    const 主名 = (input.platform ?? "").trim();
+    const 有主 = 主名 ? await prisma.entChannelMain.findUnique({ where: { name: 主名 }, select: { id: true, allowSub: true, active: true, ownerId: true, attr: true } }) : null;
+    // 子渠道没单独填属性：沿用主渠道的（迁移 118，P-渠道-11）；主渠道也没填才报
+    const 属性 = (input.attr ?? "").trim() || (有主?.attr ?? "").trim();
     if (!属性) return { ok: false, error: "请选择渠道属性" };
     // 编辑老渠道时属性没动：那一项后来停用了也照旧收
     let attr: string | null = 属性;
@@ -74,7 +79,6 @@ export async function saveChannel(input: {
       if (!查.ok) return 查;
       attr = 查.值 ?? (企业版() ? null : 属性);
     }
-    const 主名 = (input.platform ?? "").trim();
     if (!主名) return { ok: false, error: "请选择主渠道" };
     // 子渠道和主渠道写成一样的，当没写（全称就是主渠道名）
     const 子 = (input.source ?? "").trim() === 主名 ? "" : (input.source ?? "").trim();
@@ -82,7 +86,6 @@ export async function saveChannel(input: {
     if (input.endDate && !结束) return { ok: false, error: "结束日期不对，请重新选" };
     input = { ...input, name: 拼全称(主名, 子) };
     if (input.name.length > 全称上限) return { ok: false, error: `主渠道加子渠道拼成的全称最多 ${全称上限} 个字，请缩短` };
-    const 有主 = await prisma.entChannelMain.findUnique({ where: { name: 主名 }, select: { id: true, allowSub: true, active: true } });
     const 主没动 = Boolean(原 && 有主 && 原.mainId === 有主.id);
     // 字数、「|」只挡新挂的主渠道：老数据里超长、带竖线的主渠道名照收，编辑这些老渠道别的格子不被卡住
     if (主名.length > 主渠道名上限 && !主没动) return { ok: false, error: `主渠道名最多 ${主渠道名上限} 个字` };
@@ -111,19 +114,25 @@ export async function saveChannel(input: {
       strategies = 写策略(们);
     }
     企业列 = { attr, platform: 主名, endDate: 结束, mainId: 有主?.id ?? "", ...(strategies !== undefined ? { strategies } : {}) };
+    主负责人 = 有主?.ownerId ?? null;
   }
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false, error: "请填写渠道名称" };
   // 企业版里不走渠道表单新建的（客户表单就地建、AI 建）：名字按「主|子」拆开，主渠道停用、不设子渠道的照样挡（11-08 渠道两层）
   if (企业版() && !企业表单 && !input.id) {
     const { 主, 子 } = 拆主子(input.name.trim());
-    const 有主 = 主 ? await prisma.entChannelMain.findUnique({ where: { name: 主 }, select: { active: true, allowSub: true } }) : null;
+    const 有主 = 主 ? await prisma.entChannelMain.findUnique({ where: { name: 主 }, select: { active: true, allowSub: true, ownerId: true } }) : null;
     if (有主 && !有主.active) return { ok: false, error: `主渠道「${主}」已停用，请换一个` };
     if (有主 && !有主.allowSub && 子) return { ok: false, error: `主渠道「${主}」不设子渠道，渠道名请只写「${主}」` };
+    主负责人 = 有主?.ownerId ?? null;
   }
   const b = await getBusiness();
   const name = input.name.trim();
-  const channelOwnerId = input.channelOwnerId || (await 唯一负责人());
+  // 没交负责人：新建的先沿用主渠道的负责人（P-渠道-10），再退到「只有一个人」；编辑的不拿主渠道的去换，原负责人照留
+  const 原负责人 = input.id && !input.channelOwnerId ? (await prisma.channel.findUnique({ where: { id: input.id }, select: { channelOwnerId: true } }))?.channelOwnerId : null;
+  // 主渠道负责人已经停用 / 不能当负责人了的不沿用：不把新渠道挂到离职的人头上
+  const 沿用 = !input.id && !input.channelOwnerId && 主负责人 && (await 负责人候选()).some((u) => u.id === 主负责人) ? 主负责人 : null;
+  const channelOwnerId = input.channelOwnerId || 原负责人 || 沿用 || (await 唯一负责人());
   if (!channelOwnerId) return { ok: false, error: "请选择渠道负责人" };
 
   const dup = await prisma.channel.findFirst({
@@ -265,6 +274,13 @@ export async function saveMainChannel(input: {
   selfDev: boolean;
   category?: string | null;
   active?: boolean;
+  /**
+   * 主渠道负责人、渠道属性（获客方式）（迁移 118，P-渠道-10 / P-渠道-11）：不交 = 不动（行上拨开关不带这两样），null / 空 = 清空。
+   * 新换的负责人要在负责人候选里、属性要在字典 channelAttr 里；原值没动的照收（人后来停用、属性后来停用，改名不被卡住）。
+   * 只改主渠道这一行：下面的子渠道、已有客户 / 项目身上的渠道负责人都不动
+   */
+  ownerId?: string | null;
+  attr?: string | null;
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const me = await requireUser();
   const 挡 = await 挡管(me);
@@ -272,7 +288,7 @@ export async function saveMainChannel(input: {
   if (!企业版()) return { ok: false, error: "主渠道只在企业版里用" };
   const name = (input.name ?? "").trim();
   if (!name) return { ok: false, error: "请填写主渠道名" };
-  const 原 = input.id ? await prisma.entChannelMain.findUnique({ where: { id: input.id }, select: { name: true } }) : null;
+  const 原 = input.id ? await prisma.entChannelMain.findUnique({ where: { id: input.id }, select: { name: true, ownerId: true, attr: true } }) : null;
   if (input.id && !原) return { ok: false, error: "这个主渠道已经不在了，刷新看看" };
   // 字数、「|」只在新建或改名时挡：老数据里超长、带竖线的主渠道名照样能拨开关
   if (!原 || 原.name !== name) {
@@ -282,7 +298,21 @@ export async function saveMainChannel(input: {
   const category = input.category?.trim() || null;
   const 撞 = await prisma.entChannelMain.findFirst({ where: { name, ...(input.id ? { id: { not: input.id } } : {}) }, select: { id: true } });
   if (撞) return { ok: false, error: `主渠道「${name}」已存在` };
-  const 开关 = { allowSub: Boolean(input.allowSub), selfDev: Boolean(input.selfDev), category, ...(typeof input.active === "boolean" ? { active: input.active } : {}) };
+  const 归属: { ownerId?: string | null; attr?: string | null } = {};
+  if (input.ownerId !== undefined) {
+    const 人 = (typeof input.ownerId === "string" ? input.ownerId : "").trim() || null;
+    if (人 && 人 !== 原?.ownerId && !(await 负责人候选()).some((u) => u.id === 人)) return { ok: false, error: "主渠道负责人不存在或已停用，请重新选" };
+    归属.ownerId = 人;
+  }
+  if (input.attr !== undefined) {
+    const 属性 = (typeof input.attr === "string" ? input.attr : "").trim() || null;
+    if (属性 && 属性 !== 原?.attr) {
+      const 查 = await 选的原因("channelAttr", 属性);
+      if (!查.ok) return 查;
+      归属.attr = 查.值;
+    } else 归属.attr = 属性;
+  }
+  const 开关 = { allowSub: Boolean(input.allowSub), selfDev: Boolean(input.selfDev), category, ...(typeof input.active === "boolean" ? { active: input.active } : {}), ...归属 };
 
   if (!input.id) {
     const 最后 = await prisma.entChannelMain.aggregate({ _max: { sort: true } });
@@ -320,8 +350,9 @@ export async function saveMainChannel(input: {
   }
   await recordAudit({
     user: me, action: "update", entity: "EntChannelMain", entityId: input.id,
-    summary: `修改主渠道「${name}」` + (改名 ? `（原名「${原.name}」，${新全称.length} 个子渠道全称跟着改）` : ""),
-    detail: { 原名: 原.name, 新名: name, ...开关 },
+    summary: `修改主渠道「${name}」` + (改名 ? `（原名「${原.name}」，${新全称.length} 个子渠道全称跟着改）` : "")
+      + (归属.ownerId !== undefined && 归属.ownerId !== 原.ownerId ? "，主渠道负责人变更，下面的子渠道和已有客户保持原归属" : ""),
+    detail: { 原名: 原.name, 新名: name, ...开关, ...(归属.ownerId !== undefined ? { 原负责人: 原.ownerId } : {}) },
   });
   revalidatePath("/channels");
   revalidatePath("/customers");

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { 可选渠道条件 } from "@/lib/enterprise/channel-main";
+import { 可选渠道条件, 主渠道入口们 } from "@/lib/enterprise/channel-main";
 import { 渠道触点们 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
 import { 自动掉公海 } from "@/lib/pool-db";
@@ -100,7 +100,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
       prisma.task.count({ where: { ownerId: user.id, done: false } }),
       数首页卡(user),
-      prisma.channel.findMany({ where: 可选渠道条件, select: { name: true }, orderBy: { name: "asc" } }), // 历史渠道（P-渠道-06）、主渠道停用了的子渠道（P-渠道-13）新数据不能选，AI 卡也不列
+      // 企业版里只有主渠道（没有子渠道）的也列：名字就是主渠道名，确认时落成子渠道名留空的那条渠道（apply.ts）
+      Promise.all([prisma.channel.findMany({ where: 可选渠道条件, select: { name: true } }), 企 ? 主渠道入口们() : []])
+        .then(([a, b]) => [...a, ...b.map((m) => ({ name: m.name }))].sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0))), // 历史渠道（P-渠道-06）、主渠道停用了的子渠道（P-渠道-13）新数据不能选，AI 卡也不列
       生效组织规则(),
       企 ? 负责人候选() : null,
       企 ? 新建分配方式数据(user) : null,

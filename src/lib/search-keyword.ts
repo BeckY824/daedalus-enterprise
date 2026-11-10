@@ -10,6 +10,7 @@ import { 企业版 } from "./enterprise/switch";
 import { 号键SQL } from "./phone-dedupe";
 import { prisma } from "./prisma";
 import type { Prisma } from "@/generated/prisma";
+import { 全角数字转半角 } from "./fullwidth";
 
 /** 去掉前后空白（含全角空格 U+3000，String.trim 本就认）。不是字符串的当没搜 */
 export function 搜索词(v: unknown): string {
@@ -21,7 +22,7 @@ export function 搜索词(v: unknown): string {
  * 全角数字也认。库里电话是规整后的纯数字，所以只能拿纯数字去比
  */
 export function 号码片段(k: string): string | null {
-  const 半角 = k.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/＋/g, "+");
+  const 半角 = 全角数字转半角(k).replace(/＋/g, "+");
   if (!/^[\d\s\-+()（）－]+$/.test(半角)) return null;
   const 数字 = 半角.replace(/\D/g, "");
   // 完整大陆手机号去国家码，与保存规则相同；短片段和海外号不猜。

@@ -1,5 +1,6 @@
 import { isEmail } from "./tenant/accounts";
 import { 建立SMTP, smtpConfigured } from "./tenant/notify";
+import { beijingWallIso } from "./business-clock";
 
 /**
  * 运营台回复反馈的**邮件那一半**（2026-10-02）。10-19 起回复默认进应用（lib/feedback-thread.ts），邮件是勾了才发的那一份。
@@ -57,7 +58,7 @@ export function 组回复邮件(
 
 /** 服务器跑在 UTC，信里写的是用户那边的钟点 */
 function 北京时间(d: Date): string {
-  const t = new Date(d.getTime() + 8 * 3600_000).toISOString();
+  const t = beijingWallIso(d);
   return `${t.slice(5, 7)}-${t.slice(8, 10)} ${t.slice(11, 16)}`;
 }
 

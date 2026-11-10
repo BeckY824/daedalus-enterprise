@@ -126,6 +126,11 @@ model EntChannelMain {
   category  String?
   active    Boolean   @default(true)
   sort      Int       @default(0)
+  /// 主渠道负责人（迁移 118，P-渠道-10）：User.id，不建外键（同 Channel.createdById）。空 = 还没指定。
+  /// 只是主渠道这一层的归属：改它不回写下面子渠道、已有客户 / 项目身上的渠道负责人；新建子渠道没单独填负责人时沿用它
+  ownerId   String?
+  /// 主渠道的渠道属性 = 获客方式（迁移 118，P-渠道-11）：字典 channelAttr 的名字。下面的子渠道自己没填属性时沿用它
+  attr      String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   channels  Channel[]
@@ -1086,6 +1091,8 @@ model ProjectNodeLog {
   toOwnerId   String?
 
   @@index([projectId, at])
+  // 回避名单 / 统一公海 / 渠道看板按 kind = pool-release（+ 原负责人）查；projectId 垫在最后免回表（migrations/119）
+  @@index([kind, fromOwnerId, projectId])
 }
 
 /// 沟通记录挂项目（原来照 FollowUpOrder 的样子，那张表 2026-10-29 删了）：跟进照旧挂客户，客户时间线里照样看得到
