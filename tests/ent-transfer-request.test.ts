@@ -42,7 +42,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { assignSalesOwner, patchCustomer, saveCustomer, deleteCustomers, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接, 改接手人 } from "@/app/(app)/customers/handover-actions";
-import { 挂起移交作废, 移交作废键 } from "@/lib/enterprise/handover-expire";
+import { 挂起移交作废, 移交作废键, 移交预告键 } from "@/lib/enterprise/handover-expire";
 import { 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 公海超时收回 } from "@/lib/project/db";
@@ -378,9 +378,10 @@ describe("申请中不自动掉公海（X-38 → P-转-05：挂到对方确认�
   });
 });
 
-describe("挂满 7 天没人处理：自动作废（11-10 新口径，覆盖 X-46 ⑥ 的「一直挂着」）；发起人可改接手人", () => {
+describe("挂满 7 天没人处理：第 6 天预告、预告满 24 小时后自动作废（11-10 新口径，覆盖 X-46 ⑥ 的「一直挂着」）；发起人可改接手人", () => {
   const 天 = 24 * 60 * 60_000;
   const 作废通知 = (userId: string, hid: string) => prisma.entNotice.findMany({ where: { userId, dedupeKey: 移交作废键(hid) } });
+  const 预告 = (userId: string, hid: string) => prisma.entNotice.findMany({ where: { userId, dedupeKey: 移交预告键(hid) } });
   /** 钟拨到发起后这么久（只假 Date，库照常走），按「现在」扫一遍 */
   const 过了 = async (h: { createdAt: Date }, 毫秒: number) => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -389,12 +390,23 @@ describe("挂满 7 天没人处理：自动作废（11-10 新口径，覆盖 X-4
   };
   afterEach(() => { vi.useRealTimers(); 撞车.读完后 = null; });
 
-  it("第 6 天不作废；满 7 天作废、只通知申请人一次、留痕；归属不变；重复跑不重复通知", async () => {
+  it("不满 6 天不预告；第 6 天给申请人、接手人各预告一次、不重复、不作废；满 7 天作废、只通知申请人一次、留痕；归属不变；重复跑不重复通知", async () => {
     const a = await 客户(销售.id);
     const p = await prisma.project.create({ data: { name: "项目甲", customerId: a.id, ownerId: 销售.id, creatorId: 销售.id } });
     await assignSalesOwner([a.id], 接手.id);
     const h = await 一笔();
+    expect(await 过了(h, 5 * 天 + 23 * 3_600_000)).toBe(0);
+    expect(await prisma.entNotice.count({ where: { dedupeKey: 移交预告键(h.id) } })).toBe(0);
+    // 第 6 天：预告两人各一条，说清明天作废；再扫不重发；还是待确认
+    expect(await 过了(h, 6 * 天 + 60_000)).toBe(0);
+    expect(await 过了(h, 6 * 天 + 120_000)).toBe(0);
     expect(await 过了(h, 6 * 天 + 23 * 3_600_000)).toBe(0);
+    for (const u of [销售, 接手]) {
+      const 告 = await 预告(u.id, h.id);
+      expect(告).toHaveLength(1);
+      expect(告[0].title).toContain("明天（满 7 天）自动作废");
+      expect(告[0].title).toContain("请尽快处理");
+    }
     expect((await 一笔()).status).toBe("待确认");
     expect(await 作废通知(销售.id, h.id)).toHaveLength(0);
 
@@ -440,6 +452,7 @@ describe("挂满 7 天没人处理：自动作废（11-10 新口径，覆盖 X-4
     const a = await 客户(销售.id);
     await assignSalesOwner([a.id], 接手.id);
     const h = await 一笔();
+    expect(await 过了(h, 6 * 天)).toBe(0);
     expect(await 过了(h, 7 * 天 + 60_000)).toBe(1);
     const 列 = await 待确认的交接();
     expect(列.我发起的).toHaveLength(1);
@@ -481,6 +494,7 @@ describe("挂满 7 天没人处理：自动作废（11-10 新口径，覆盖 X-4
     const a = await 客户(销售.id);
     await assignSalesOwner([a.id], 接手.id);
     const h = await 一笔();
+    expect(await 过了(h, 6 * 天)).toBe(0);
     // 扫的那一读回来还是待确认，写之前接手人确认了
     let 撞了 = false;
     撞车.读完后 = async () => {
@@ -494,6 +508,70 @@ describe("挂满 7 天没人处理：自动作废（11-10 新口径，覆盖 X-4
     expect(await prisma.auditLog.count({ where: { userId: "system" } })).toBe(0);
   });
 
+  it("存量已经挂了 10 天（上线前没预告过）：第一遍只预告不作废；不满 24 小时不作废；预告满 24 小时才作废", async () => {
+    const a = await 客户(销售.id);
+    await assignSalesOwner([a.id], 接手.id);
+    const h = await 一笔();
+    expect(await 过了(h, 10 * 天)).toBe(0);
+    expect((await 一笔()).status).toBe("待确认");
+    for (const u of [销售, 接手]) {
+      const 告 = await 预告(u.id, h.id);
+      expect(告).toHaveLength(1);
+      expect(告[0].title).toContain("24 小时后自动作废");
+    }
+    expect(await 作废通知(销售.id, h.id)).toHaveLength(0);
+    // 紧接着再扫、23 小时后再扫：都不作废，预告不重发
+    expect(await 过了(h, 10 * 天 + 60_000)).toBe(0);
+    expect(await 过了(h, 10 * 天 + 23 * 3_600_000)).toBe(0);
+    expect((await 一笔()).status).toBe("待确认");
+    expect(await prisma.entNotice.count({ where: { dedupeKey: 移交预告键(h.id) } })).toBe(2);
+    expect(await 过了(h, 11 * 天)).toBe(1);
+    expect((await 一笔()).status).toBe("已作废");
+    expect(await 作废通知(销售.id, h.id)).toHaveLength(1);
+    expect(await 归谁(a.id)).toBe(销售.id);
+  });
+
+  it("预告之后人工处理了就不作废：接手人确认 / 发起人撤回的，预告满 24 小时也不动、不发作废通知", async () => {
+    const [a, b] = [await 客户(销售.id), await 客户(销售.id)];
+    await assignSalesOwner([a.id], 接手.id);
+    const ha = await 一笔();
+    await assignSalesOwner([b.id], 同事.id);
+    const hb = await prisma.entHandover.findFirstOrThrow({ where: { toUserId: 同事.id } });
+    expect(await 过了(hb, 6 * 天 + 60_000)).toBe(0);
+    expect(await 预告(接手.id, ha.id)).toHaveLength(1);
+    expect(await 预告(同事.id, hb.id)).toHaveLength(1);
+    vi.useRealTimers();
+    当(接手);
+    expect(await 确认交接(ha.id)).toEqual({ ok: true, 客户: 1 });
+    当(销售);
+    expect(await 撤回交接(hb.id)).toMatchObject({ ok: true });
+    expect(await 过了(hb, 8 * 天)).toBe(0);
+    expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: ha.id } })).status).toBe("已确认");
+    expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: hb.id } })).status).toBe("已撤回");
+    expect(await prisma.entNotice.count({ where: { dedupeKey: { endsWith: ":作废" } } })).toBe(0);
+    expect(await 归谁(a.id)).toBe(接手.id);
+    expect(await 归谁(b.id)).toBe(销售.id);
+  });
+
+  it("改过接手人：新接手人没收过预告的补一条；作废仍按最早那条预告满 24 小时算；两位都停用的不等预告", async () => {
+    const [a, b] = [await 客户(销售.id), await 客户(同事.id)];
+    await assignSalesOwner([a.id], 接手.id);
+    const h = await 一笔();
+    expect(await 过了(h, 6 * 天 + 60_000)).toBe(0);
+    vi.useRealTimers();
+    expect(await 改接手人(h.id, 同事.id)).toEqual({ ok: true, 客户: 0 });
+    expect(await 过了(h, 6 * 天 + 12 * 3_600_000)).toBe(0);
+    expect(await 预告(同事.id, h.id)).toHaveLength(1);
+    expect(await 预告(销售.id, h.id)).toHaveLength(1);
+    expect(await 过了(h, 7 * 天 + 60_000)).toBe(1);
+    // 两位都停用：没人可预告，满 7 天直接作废
+    vi.useRealTimers();
+    const 没人 = await prisma.entHandover.create({ data: { kind: "转让", fromUserId: 同事.id, toUserId: 接手.id, byUserId: 同事.id, customerIds: JSON.stringify([b.id]) } });
+    await prisma.user.updateMany({ where: { id: { in: [同事.id, 接手.id] } }, data: { active: false } });
+    expect(await 过了(没人, 7 * 天 + 60_000)).toBe(1);
+    expect(await prisma.entNotice.count({ where: { dedupeKey: 移交预告键(没人.id) } })).toBe(0);
+  });
+
   it("只管负责人本人的申请移交：离职交接、上级发起要确认的交接不作废；发起人已停用的照样作废、不发通知", async () => {
     const [a, b, c] = [await 客户(同事.id), await 客户(销售.id), await 客户(同事.id)];
     // 上级发起、要接手人确认的转让；离职交接：都不是「申请移交」
@@ -502,6 +580,10 @@ describe("挂满 7 天没人处理：自动作废（11-10 新口径，覆盖 X-4
     await assignSalesOwner([b.id], 接手.id);
     const 申 = await prisma.entHandover.findFirstOrThrow({ where: { byUserId: 销售.id } });
     await prisma.user.update({ where: { id: 销售.id }, data: { active: false } });
+    expect(await 过了(申, 7 * 天)).toBe(0);
+    expect(await 预告(销售.id, 申.id)).toHaveLength(0);
+    expect(await 预告(接手.id, 申.id)).toHaveLength(1);
+    expect(await prisma.entNotice.count({ where: { dedupeKey: { contains: "作废预告" } } })).toBe(1);
     expect(await 过了(申, 8 * 天)).toBe(1);
     expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: 上级发的.id } })).status).toBe("待确认");
     expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: 离职的.id } })).status).toBe("待确认");
