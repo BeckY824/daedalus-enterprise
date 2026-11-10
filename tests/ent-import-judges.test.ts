@@ -28,7 +28,7 @@ const 表名: Record<实体, string> = { customer: "customer", contact: "contact
 
 /** 说明.md 里放的、该跳过的脏数据（类别 → 条数） */
 const 该跳过: Partial<Record<实体, Record<string, number>>> = {
-  customer: { 缺必填: 1, "ID 重复": 1 },
+  customer: { 缺必填: 1, "ID 重复": 1, 重名: 1 }, // 重名：和测试机上那家已有客户同号，整条不导（M-导入-29）
   contact: { 客户不唯一: 2, 找不到客户: 2, 缺必填: 1 },
   opportunity: { 找不到客户: 1 },
   followup: { 找不到客户: 1 },
@@ -137,8 +137,8 @@ describe("裁判 · 对账", () => {
     expect(合("没变")).toBe(0);
     // 报告上先演一遍的数 = 写完的数，五项一项不差
     expect(报告1.预演?.合计).toEqual({ 新建: 写1.新建, 更新: 写1.更新, 跳过: 写1.跳过, 冲突: 写1.冲突, 失败: 写1.失败 });
-    // 同电话的三对并成三家；测试机上那家已有客户被连上（更新一条），不另建
-    expect(报告1.按类.customer).toMatchObject({ 并入: 3, 更新: 1 });
+    // 同电话的三对并成三家；和测试机上那家已有客户同号的整条跳过（M-导入-29），不连上、不另建
+    expect(报告1.按类.customer).toMatchObject({ 并入: 3, 更新: 0 });
   });
 
   it("试跑不动库：先演一遍写进去的全回滚了，除批次本身外一行不多", async () => {
@@ -193,7 +193,7 @@ describe("裁判 · 零丢失", () => {
     expect(报告1.合计.记录).toBe(报告1.合计.待写 + 报告1.合计.跳过);
   });
 
-  it("写进去的客户：名称、电话和源表一样；同号并入的指向同一家；已有客户只补空，名字和负责人不动", async () => {
+  it("写进去的客户：名称、电话和源表一样；同号并入的指向同一家；已有客户同号的那条跳过，已有客户一格不动", async () => {
     const t = 表们[0];
     const [编号, 名称, 电话] = ["客户编号", "客户名称", "联系电话"].map((h) => 列(t, h));
     const 跳 = new Set(报告1.问题.filter((q) => q.实体 === "customer" && q.级别 === "跳过").map((q) => q.行号));
@@ -204,12 +204,13 @@ describe("裁判 · 零丢失", () => {
       const ref = await prisma.entExternalRef.findUniqueOrThrow({ where: { source_entity_externalId: { source: "excel", entity: "customer", externalId: 编号[i] } } });
       const c = await prisma.customer.findUniqueOrThrow({ where: { id: ref.targetId } });
       expect(数字(c.phone ?? ""), 编号[i]).toBe(数字(电话[i]));
-      expect(c.name, 编号[i]).toBe(c.id === 已有客户Id ? 已有.name : 名称[i]);
+      expect(c.id, 编号[i]).not.toBe(已有客户Id);
+      expect(c.name, 编号[i]).toBe(名称[i]);
       比了++;
     }
     expect(比了).toBe(编号.length - 跳.size);
     expect(已有).toMatchObject({ salesOwnerId: 我.id });
-    expect(已有.remark).toContain("测试机上本来就有");
+    expect(已有.remark).toBe("测试机上本来就有");
     // 两家不同电话的「华信电子有限公司」照写两家
     expect(await prisma.customer.count({ where: { name: "华信电子有限公司" } })).toBe(2);
   });
@@ -230,7 +231,7 @@ describe("裁判 · 零丢失", () => {
     const 邮箱到人 = new Map(用户们.map((u) => [u.email, u.id]));
     const 见过 = { 邮箱: 0, 落默认: 0 };
     for (let i = 0; i < 编号.length; i++) {
-      if (跳.has(t.行号[i]) || 并入的.has(编号[i])) continue; // 并入 / 连上已有的：负责人跟着那一家
+      if (跳.has(t.行号[i]) || 并入的.has(编号[i])) continue; // 同批并入的：负责人跟着那一家
       const ref = await prisma.entExternalRef.findUniqueOrThrow({ where: { source_entity_externalId: { source: "excel", entity: "customer", externalId: 编号[i] } } });
       const c = await prisma.customer.findUniqueOrThrow({ where: { id: ref.targetId } });
       const 写法 = 负责人[i];
@@ -287,13 +288,13 @@ describe("裁判 · 幂等", () => {
 });
 
 describe("裁判 · 来回", () => {
-  it("两批倒着撤回：除日志表外每张表和导入前逐行一样（已有客户补的空也退回去）", async () => {
+  it("两批倒着撤回：除日志表外每张表和导入前逐行一样（已有客户一直没被碰）", async () => {
     for (const id of [批2, 批1]) {
       const r = await 撤回一批(id, 我);
       expect(r, id).toMatchObject({ 状态: "reverted", 完了: true, 留下数: 0 });
     }
     const 撤后 = await 拍();
-    // 撤回把值退回去了，但 Prisma 的 @updatedAt 会跟着动（补过空的那家已有客户）：只这一项不比
+    // 撤回把值退回去了，但 Prisma 的 @updatedAt 会跟着动（被同步更新过的行）：只这一项不比
     const 去时间 = (行们: string[] = []) => 行们.map((r) => r.replace(/"updatedAt":"[^"]*"/, "")).sort();
     for (const k of Object.keys(导入前)) expect(去时间(撤后[k]), k).toEqual(去时间(导入前[k]));
   });

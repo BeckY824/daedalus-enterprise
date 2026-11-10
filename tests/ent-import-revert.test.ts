@@ -150,24 +150,25 @@ describe("撤回", () => {
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c2.id } })).lastFollowAt).toBeNull();
   });
 
-  it("同号连上我们早有的客户：补的空格改回空，客户留着，对照删掉；恢复再补上", async () => {
+  it("我们这边早有同号客户：导入时整条跳过；撤回 / 恢复都不碰这个老客户（M-导入-29）", async () => {
     const 老 = await prisma.customer.create({ data: { name: "云帆（老档）", phone: "13800000001", salesOwnerId: 张伟, followStatus: "跟进中" } });
     const id = await 导([客户表()]);
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).remark).toBe("老客户");
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).remark).toBeNull();
+    expect(await 对照("customer", "C1")).toBeNull();
 
     const r = await 撤回一批(id, 我);
-    expect(r).toMatchObject({ 删掉: 1, 还原: 1, 留下数: 0 });
+    expect(r).toMatchObject({ 删掉: 1, 还原: 0, 留下数: 0 });
     const c = await prisma.customer.findUniqueOrThrow({ where: { id: 老.id }, include: { extra: true } });
     expect(c).toMatchObject({ name: "云帆（老档）", remark: null, followStatus: "跟进中" });
     expect(c.extra?.level ?? null).toBeNull();
-    expect(await 对照("customer", "C1")).toBeNull();
     expect(await prisma.customer.count()).toBe(1);
 
-    expect(await 恢复一批(id, 我)).toMatchObject({ 状态: "done", 恢复: 2 });
+    expect(await 恢复一批(id, 我)).toMatchObject({ 状态: "done", 恢复: 1 });
     const 又 = await prisma.customer.findUniqueOrThrow({ where: { id: 老.id }, include: { extra: true } });
-    expect(又.remark).toBe("老客户");
-    expect(又.extra?.level).toBe("A");
-    expect((await 对照("customer", "C1"))?.targetId).toBe(老.id);
+    expect(又.remark).toBeNull();
+    expect(又.extra?.level ?? null).toBeNull();
+    expect(await 对照("customer", "C1")).toBeNull();
+    expect(await prisma.customer.count()).toBe(2);
   });
 
   it("同一批里同号并入的：两条对照都退掉，客户删掉", async () => {

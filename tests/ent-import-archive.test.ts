@@ -3,7 +3,7 @@
  *   - 「归档档位」列落 Customer.archiveTier（A1 / A2 / B / C / D / E），认不出的不落、原样进备注
  *   - 「座机」列：电话空着当电话，有电话进备注
  *   - 归档导入查重：电话 / WhatsApp / 座机任一个号、或客户名称撞了我们这边的客户 → 整条跳过、给原因；不撞照建
- *   - 没开归档（老映射）照老规矩：同号连上只补空，同名提醒照建
+ *   - 普通导入（没映射归档档位，M-导入-29）查重和归档导入一样：撞了整条跳过，不再「同号连上只补空、同名只提醒」
  * 名字、号码全是编造的
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 认归档档位 } from "@/lib/enterprise/archive-tier";
-import { 清洗, 空索引, 名键, 归档号键, 是归档导入, type 本地索引 } from "@/lib/enterprise-import/clean";
+import { 清洗, 空索引, 名键, 归档号键, type 本地索引 } from "@/lib/enterprise-import/clean";
 import { 规则猜列 } from "@/lib/enterprise-import/mapping";
 import { 试跑 } from "@/lib/enterprise-import/report";
 import { 写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
@@ -88,13 +88,6 @@ describe("归档导入查重（M-导入-24）", () => {
     expect(归档号键("")).toBe("");
   });
 
-  it("映射了「归档档位」就算归档导入；映射.归档 明写了照它", () => {
-    expect(是归档导入(映射样(归档列))).toBe(true);
-    expect(是归档导入(映射样({ 电话: "phone" }))).toBe(false);
-    expect(是归档导入(映射样({ 电话: "phone" }, { 归档: true }))).toBe(true);
-    expect(是归档导入(映射样(归档列, { 归档: false }))).toBe(false);
-  });
-
   const 跳过了 = (r: ReturnType<typeof 清洗>, 外部ID: string) =>
     r.问题.filter((q) => q.外部ID === 外部ID && q.级别 === "跳过" && q.类别 === "重名");
 
@@ -138,11 +131,48 @@ describe("归档导入查重（M-导入-24）", () => {
     expect(r.待写[0]).toMatchObject({ 外部ID: "R1", 目标: { 本地ID: "c-old", 方式: "对照" } });
   });
 
-  it("没开归档：老规矩——同号连上只补空，同名只提醒照建", () => {
+  it("普通导入（没映射归档档位，M-导入-29）一样查：同号、撞 WhatsApp / 座机、同名都整条跳过，不连上、不补空", () => {
     const m = 映射样({ 电话: "phone", WhatsApp: "whatsapp", 座机: "landline" });
-    const r = 清洗([条({ 外部: "X1", 名称: "示例新客户五", 电话: "13900000001" }), 条({ 外部: "X2", 名称: "示例老客户", 电话: "13900000007" })], m, 本地有());
-    expect(r.待写.find((w) => w.外部ID === "X1")?.目标).toEqual({ 本地ID: "c-old", 方式: "同号" });
-    expect(r.待写.find((w) => w.外部ID === "X2")).toBeTruthy();
+    const r = 清洗(
+      [
+        条({ 外部: "X1", 名称: "示例新客户五", 电话: "13900000001" }),
+        条({ 外部: "X2", 名称: "示例　老客户", 电话: "13900000007" }),
+        条({ 外部: "X3", 名称: "示例新客户六", WhatsApp: "+1 415 555 0101" }),
+        条({ 外部: "X4", 名称: "示例新客户七", 座机: "021 5555 0101" }),
+        条({ 外部: "X5", 名称: "示例新客户八", 电话: "13900000006" }),
+      ],
+      m,
+      本地有(),
+    );
+    expect(r.待写.map((w) => w.外部ID)).toEqual(["X5"]);
+    expect(r.待写[0].目标).toBeUndefined();
+    for (const id of ["X1", "X2", "X3", "X4"]) expect(跳过了(r, id), id).toHaveLength(1);
+    expect(跳过了(r, "X1")[0].说明).toMatch(/号码 13900000001 和我们这边已有的客户撞了，这一条不导/);
+    expect(跳过了(r, "X2")[0].说明).toMatch(/已经有叫「示例\s*老客户」的客户，这一条不导/);
+    expect(r.问题.some((q) => q.说明.includes("只补空") || q.说明.includes("照新建")), "不再有「连上只补空 / 同名照新建」").toBe(false);
+  });
+
+  it("名称比较：空白、全半角、大小写不算，但不是逐字（多一个字不算撞）", () => {
+    const 本地 = 空索引();
+    本地.客户名.set(名键("Acme 示例贸易"), ["c-x"]);
+    const r = 清洗(
+      [条({ 外部: "M1", 名称: "ＡＣＭＥ示例贸易" }), 条({ 外部: "M2", 名称: " acme  示例 贸易 " }), 条({ 外部: "M3", 名称: "Acme 示例贸易公司" })],
+      映射样({}),
+      本地,
+    );
+    expect(r.待写.map((w) => w.外部ID)).toEqual(["M3"]);
+  });
+
+  it("号码不到 10 位不拿来跟子表 / WhatsApp 比", () => {
+    const 本地 = 空索引();
+    本地.归档号 = new Map();
+    const r = 清洗([条({ 外部: "S1", 名称: "示例短号", 座机: "5555-0101" })], 映射样({ 座机: "landline" }), 本地);
+    expect(r.待写).toHaveLength(1);
+  });
+
+  it("同一批文件里互相重复：照老规矩——同号并成一条、提醒；都不撞我们这边", () => {
+    const r = 清洗([条({ 外部: "B1", 名称: "示例批内甲", 电话: "13900000011" }), 条({ 外部: "B2", 名称: "示例批内乙", 电话: "139-0000-0011" })], 映射样({ 电话: "phone" }), 本地有());
+    expect(r.待写.find((w) => w.外部ID === "B2")?.并入).toBe("B1");
     expect(r.问题.filter((q) => q.级别 === "跳过")).toHaveLength(0);
   });
 });
@@ -183,5 +213,19 @@ describe("归档导入：试跑 → 写入（读本地索引 + apply）", () => 
     expect(新.archiveTier).toBe("A2");
     expect(await prisma.customer.count()).toBe(3);
     expect(await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).toMatchObject({ archiveTier: null, phone: "13900000001" });
+  });
+
+  it("普通导入（没有归档档位列）：试跑之后才冒出来的同号客户，写入时也不连、不补空，这一条不导（M-导入-29）", async () => {
+    const 普通表: 读出的表 = {
+      名: "客户.xlsx", 实体: "customer", 表头: ["记录ID", "客户名称", "手机号码", "备注", "客户负责人"],
+      行: [["P1", "示例普通新客户", "13900000021", "原系统备注", "示例销售"]], 行号: [2], 提醒: [],
+    };
+    const { 批次Id } = await 试跑({ 来源: "excel", 用户Id: 我.id, 建议器: null, 表: [普通表] });
+    await 定这批业务线(批次Id, "内贸");
+    const 后来 = await prisma.customer.create({ data: { name: "示例后来建的", phone: "13900000021", salesOwnerId: 销售 } });
+    const r = await 写一批(批次Id, 我);
+    expect(r).toMatchObject({ 新建: 0, 更新: 0, 失败: 0 });
+    expect(await prisma.customer.count()).toBe(1);
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 后来.id } })).toMatchObject({ name: "示例后来建的", remark: null });
   });
 });

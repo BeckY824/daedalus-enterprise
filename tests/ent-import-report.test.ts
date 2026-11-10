@@ -101,7 +101,7 @@ describe("试跑", () => {
     expect(报告.公海).toBeNull();
   });
 
-  it("认出我们这边已有的：同号连上、对照表里有的走对照", async () => {
+  it("认出我们这边已有的：对照表里有的走对照；没导过但撞了同号客户的整条跳过、说撞了哪个号（M-导入-29）", async () => {
     const 老 = await prisma.customer.create({ data: { name: "苏州老客户（本地）", phone: "13900000009", salesOwnerId: 张伟 } });
     const 导过 = await prisma.customer.create({ data: { name: "宁波海川", phone: "13500000000", salesOwnerId: 李娜 } });
     await prisma.entExternalRef.create({
@@ -117,19 +117,22 @@ describe("试跑", () => {
     const 看 = (id: string) => plan.find((w: { 外部ID: string }) => w.外部ID === id);
     expect(看("C1").目标).toBeUndefined();
     expect(看("C2").目标).toEqual({ 本地ID: 导过.id, 方式: "对照" });
-    expect(看("C3").目标).toEqual({ 本地ID: 老.id, 方式: "同号" });
-    expect(报告.问题).toContainEqual(expect.objectContaining({ 外部ID: "C3", 类别: "重名", 出处: "客户.xlsx", 行号: 4 }));
+    expect(看("C3")).toBeUndefined();
+    expect(报告.问题).toContainEqual(
+      expect.objectContaining({ 外部ID: "C3", 级别: "跳过", 类别: "重名", 出处: "客户.xlsx", 行号: 4, 说明: expect.stringContaining("号码 13900000009") }),
+    );
+    expect(老.id).toBeTruthy();
     expect(await prisma.customer.count()).toBe(2);
   });
 
   it("开了自动掉公海：只数新建、超过天数没跟进、状态不是已签约 / 已流失的客户", async () => {
     await saveBusiness({ ...DEFAULT_BUSINESS, poolDays: 30 });
     invalidateSettingsCache();
-    // C3 连上本地同号客户，不算
+    // C3 撞了本地同号客户、整条跳过，不算
     await prisma.customer.create({ data: { name: "苏州老客户", phone: "13900000009", salesOwnerId: 张伟 } });
 
     const { 报告 } = await 试跑({ 来源: "excel", 用户Id: "tester-id", 表: [客户表(), 跟进表()], 建议器: null });
-    // C1 90 天前跟进 → 会掉；C2 3 天前 → 不掉；C3 连上已有 → 不算
+    // C1 90 天前跟进 → 会掉；C2 3 天前 → 不掉；C3 跳过 → 不算
     expect(报告.公海).toEqual({ 天数: 30, 会掉: 1 });
     expect(报告.提醒.some((s) => s.includes("30 天没跟进放进公海") && s.includes("有 1 个"))).toBe(true);
   });

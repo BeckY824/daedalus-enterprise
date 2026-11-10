@@ -12,7 +12,7 @@
  *     原系统没改的格子不动；我们这边没改过的照原系统改；两边都改了、改得不一样 → 不覆盖，记一笔冲突等人定。
  *     我们这边已经删了 → 也记一笔冲突（本地已删），不重建
  *   - 本批同号的后一条（并入）→ 不另建，只记一条对照指向前一条写出来的那位
- *   - 没导过、我们这边有同号客户 → 连上它，只补空着的格子（客户状态、备注、外贸档案），负责人和跟进状态不动
+ *   - 没导过、我们这边有同号客户（试跑时没有、写之前才冒出来的）→ 这一条不导，不连上、不补空（M-导入-24 / 29，归档和普通导入一样）
  *   - 否则新建；赢单 / 输单带上结单日期（看板按它算月份），跟进写完给客户补「最近跟进」
  * 负责人对不上在职的业务员（离职、被改成管理员）：退回上次的负责人 → 默认负责人 → 都没有就不落到任何真人（11-02，见 落值）：
  * 已有的记录负责人不动；新建的客户挂占位账号「（无负责人）」进客户公海，项目没负责人进项目公海，跟进和老商机挂占位账号，线索空着
@@ -30,7 +30,7 @@ import { 同号条件, 分机留存起 } from "../phone-dedupe";
 import { 看全部 } from "../team-scope";
 import { 记号码, 号码库类型, type 验好的号 } from "../enterprise/contact-dedupe";
 import { 验号码 } from "../enterprise/contact-format";
-import { 客户附加列, 客户新列, 联系人新列, 是归档导入 } from "./clean";
+import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
 import { 客户类型空着 } from "./mapping";
 import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
@@ -58,8 +58,6 @@ export const 比对字段: Record<实体, readonly string[]> = {
   followup: ["type", "title", "content", "status", "occurredAt", "ownerId", "customerId", "opportunityId", "projectId"],
 };
 const 负责人列: Record<实体, string> = { customer: "salesOwnerId", lead: "ownerId", contact: "", opportunity: "ownerId", followup: "ownerId" };
-/** 同号连上已有客户时只补这几格（渠道还要归属没定才补，见 可挂渠道） */
-const 补空格 = ["custStatus", "customerType", "remark", ...客户附加列, ...客户新列, "channelId"] as const;
 /**
  * 企业版的新几格和渠道（P8）、项目的成交需求 / 合同金额 / 定金金额（迁移 097）：原系统认得出才带这一格（清洗时逐格留空），没带 = 这次不碰，不算原系统清空了、也不算冲突。
  * 渠道只补空：我们这边已经挂了渠道 / 定了归属的不动、不记冲突（归属固化）
@@ -586,17 +584,19 @@ async function 写一条(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
     }
   }
   if (ref) return 对照(tx, 现, w, ref);
-  if (w.实体 === "customer") {
-    const 定 = w.目标?.方式 === "同号" && (await tx.customer.findUnique({ where: { id: w.目标.本地ID }, select: { id: true } }));
-    const 目标 = 定 ? w.目标!.本地ID : await 再认同号(tx, 现, String(w.值.phone ?? ""));
-    // 归档导入（M-导入-24）：试跑之后才冒出来的同号客户也不连、不补空，这一条不导
-    if (目标 && 是归档导入(现.m)) return "跳过";
-    if (目标) return 补空(tx, 现, w, 目标);
-  }
+  // 没导过的客户撞了我们这边的号：不连、不补空，这一条不导（M-导入-24 / 29）。
+  // 试跑时撞的清洗已经跳过了，这里管试跑之后才冒出来的同号客户；老批次里还记着「同号」目标的也一样不导
+  if (w.实体 === "customer" && (w.目标?.方式 === "同号" || (await 有同号客户(tx, 现, String(w.值.phone ?? ""))))) return "跳过";
   return 新建(tx, 现, w);
 }
 
-/** 试跑之后、或别的窗口刚建了这个号：写之前在事务里再认一次。只认唯一的那位，多位同号照新建（试跑报告里提醒过人工合并） */
+/** 写之前在事务里再查一次这个号有没有客户（一位、几位都算撞） */
+async function 有同号客户(tx: Tx, 现: 现场, phone: string): Promise<boolean> {
+  if (!phone) return false;
+  return Boolean(await tx.customer.findFirst({ where: await 同号条件(tx, phone, 现.分机起), select: { id: true } }));
+}
+
+/** 线索落项目用：写之前在事务里认这个号的客户。只认唯一的那位，多位同号照新建 */
 async function 再认同号(tx: Tx, 现: 现场, phone: string): Promise<string | null> {
   if (!phone) return null;
   const 有 = await tx.customer.findMany({ where: await 同号条件(tx, phone, 现.分机起), select: { id: true }, take: 2 });
@@ -661,31 +661,6 @@ async function 记同号备注(tx: Tx, 现: 现场, w: 待写, customerId: strin
   if (!号.ok) return;
   const id = await 同号只记备注(tx, { customerId, 操作人: 现.操作人, 号, 入口: 来源名[现.源], 渠道id: 串(v.channelId ?? null), 来源: 串(v.source ?? null) });
   if (id) await tx.entImportRow.create({ data: { batchId: 现.批次Id, entity: "followup", externalId, targetId: id, kind: "create", written: J(await 读现值(tx, "followup", id)) } });
-}
-
-/** 连上我们这边早就有的同号客户：只补空着的格子；对照表记原系统这次的值，之后同步照三方比对 */
-async function 补空(tx: Tx, 现: 现场, w: 待写, 目标: string): Promise<结果> {
-  const 现值 = (await 读现值(tx, "customer", 目标))!;
-  const v = await 落值(tx, 现, w, null, 现值);
-  await 记同号备注(tx, 现, w, 目标, v, `同号:${w.外部ID}`);
-  const 补: 值表 = {};
-  const before: 值表 = {};
-  const 挂得上 = !空(v.channelId) && (await 可挂渠道(tx, 目标));
-  for (const k of 补空格) {
-    if (k === "channelId" && !挂得上) continue;
-    if (空(现值[k]) && !空(v[k])) {
-      补[k] = v[k];
-      before[k] = 现值[k];
-    }
-  }
-  if (Object.keys(补).length) await 改(tx, "customer", 目标, 补, 现值, 现.现在);
-  await tx.entExternalRef.create({
-    data: { source: 现.源, entity: w.实体, externalId: w.外部ID, targetId: 目标, fingerprint: w.指纹, written: J(v), raw: J(w.原始), batchId: 现.批次Id },
-  });
-  await tx.entImportRow.create({
-    data: { batchId: 现.批次Id, entity: w.实体, externalId: w.外部ID, targetId: 目标, kind: "update", before: J(before), written: J(补) },
-  });
-  return Object.keys(补).length ? "更新" : "跳过";
 }
 
 /**

@@ -90,7 +90,7 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
       prisma.contact.findMany({ select: { id: true, name: true, customerId: true, phone: true, email: true, wechat: true, customer: { select: { name: true } } } }),
       // 联系方式子表里挂在联系人身上的手机 / 邮箱 / 微信（企业版客户页填的多个号都在这里）
       prisma.contactMethod.findMany({ where: { contactId: { not: null }, kind: { in: 联系人查重格.map((x) => x[1]) } }, select: { contactId: true, kind: true, value: true } }),
-      // 归档导入查重（M-导入-24）：客户的 WhatsApp + 子表里客户 / 联系人身上的手机、座机、WhatsApp
+      // 导入查重（M-导入-24 / 29）：客户的 WhatsApp + 子表里客户 / 联系人身上的手机、座机、WhatsApp
       prisma.customerExtra.findMany({ where: { whatsapp: { not: null } }, select: { customerId: true, whatsapp: true } }),
       prisma.contactMethod.findMany({ where: { kind: { in: ["phone", "landline", "whatsapp"] } }, select: { customerId: true, value: true } }),
     ]),
@@ -131,7 +131,7 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
   for (const c of 联系人们) for (const [格, kind] of 联系人查重格) 记号(kind, c[格], c.id);
   for (const m of 子表号) 记号(m.kind, m.value, m.contactId);
   索引.联系人号 = 联系人号;
-  // 归档导入查重的号（M-导入-24）：客户电话、客户 WhatsApp、联系人手机、子表的手机 / 座机 / WhatsApp，都按 联系人号查重键 规整；
+  // 导入查重的号（M-导入-24 / 29）：客户电话、客户 WhatsApp、联系人手机、子表的手机 / 座机 / WhatsApp，都按 联系人号查重键 规整；
   // 只算看得见的客户（删了进回收站的不算撞）
   const 归档号 = new Map<string, string[]>();
   const 看得见 = new Set(客户们.map((c) => c.id));
