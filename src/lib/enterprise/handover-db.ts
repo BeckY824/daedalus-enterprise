@@ -9,7 +9,8 @@
  * 确认之前数据还归原负责人，接手人的列表里自然没有；接手人只在「等你确认的交接」里看到个数和客户名。
  * 规则关着、不是企业版：一行都不写，离职、转让和原来一样当场转（开关关掉的测试见 tests/ent-handover.test.ts）。
  *
- * 状态：待确认 → 已确认（接手人）/ 已撤回（发起人、管理员；成员重新启用也会撤）/ 已拒收（接手人）。
+ * 状态：待确认 → 已确认（接手人）/ 已撤回（发起人、管理员；成员重新启用也会撤）/ 已拒收（接手人）/
+ *       已作废（系统：负责人本人的申请移交挂满 7 天没人处理，handover-expire.ts，11-10）。
  * 离职交接撤回或拒收后成员仍是停用的，数据留在他名下：要换接手人就再办一次离职，或先恢复成员
  */
 import type { Prisma } from "@/generated/prisma";
@@ -25,8 +26,9 @@ export async function 能撤回别人的交接(我: { id: string; role: string }
 }
 
 export type 交接种类 = "离职" | "转让";
-export type 交接状态 = "待确认" | "已确认" | "已撤回" | "已拒收";
+export type 交接状态 = "待确认" | "已确认" | "已撤回" | "已拒收" | "已作废";
 export const 待确认: 交接状态 = "待确认";
+export const 已作废: 交接状态 = "已作废";
 
 /** 现在要不要走「交接中」：企业版且规则开着 */
 export function 交接要确认(): Promise<boolean> {
@@ -69,7 +71,7 @@ export function 离职交接中(userId: string, db: 库 = prisma) {
  * 不是这几位的一律改不成、返回 false（和「已经被别人了结」同一个说法）。
  * 撤回才读组织表；撤回不在事务里调（SQLite 只有一个连接，事务里再读会卡住）
  */
-export async function 了结(db: 库, id: string, 状态: Exclude<交接状态, "待确认">, 我: { id: string; role: string }): Promise<boolean> {
+export async function 了结(db: 库, id: string, 状态: Exclude<交接状态, "待确认" | "已作废">, 我: { id: string; role: string }): Promise<boolean> {
   const 谁能 = 状态 === "已撤回" ? ((await 能撤回别人的交接(我)) ? {} : { byUserId: 我.id }) : { toUserId: 我.id };
   const r = await db.entHandover.updateMany({
     where: { id, status: 待确认, ...谁能 },

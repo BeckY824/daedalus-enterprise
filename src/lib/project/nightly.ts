@@ -9,7 +9,7 @@
  *   - 操作人一律是「系统」（timeout.ts 系统，QA #16）：夜扫不靠哪个账号，权限只认业务角色后找账号老板找不到人也照样扫（11-02）
  *   - 同一个钟顺带清回收站（P9）：删了满 30 天的真删掉，每天一遍，不看项目模式（lib/enterprise/soft-delete.ts 每天清一次）
  *   - 同一个钟顺带发到期提醒（lib/enterprise/due-notice.ts）：北京 09:00 起，跟进计划、项目下一步今天到期的和昨天逾期的
- *   - 同一个钟顺带提醒挂起 7 天的申请移交（lib/enterprise/handover-remind.ts，X-46 ⑥）：只提醒一次，不自动生效、不作废
+ *   - 同一个钟顺带作废挂满 7 天没人处理的申请移交（lib/enterprise/handover-expire.ts，11-10 新口径）：作废、通知申请人一次，归属不变
  *
  * 服务停过怎么补（10c，2026-11-10）：这些活都挂在本进程的钟上，服务停着就不跑。
  *   - 起钟时马上跑一遍（不等第一分钟），各自的时点照旧（00:05 / 09:00 没到的那几样等到点）
@@ -24,7 +24,7 @@ import { 公海超时收回明细, type 超时收回明细 } from "./db";
 import { 系统 } from "./timeout";
 import { 每天清一次 } from "@/lib/enterprise/soft-delete";
 import { 钟上到期提醒明细, type 到期提醒明细 } from "@/lib/enterprise/due-notice";
-import { 挂起移交提醒 } from "@/lib/enterprise/handover-remind";
+import { 挂起移交作废 } from "@/lib/enterprise/handover-expire";
 import { 挂靠超时转上级 } from "@/lib/enterprise/attach-approval";
 import { dayjs } from "../utils";
 
@@ -98,9 +98,9 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       .then(() => 钟上到期提醒明细(现在))
       .then((x) => { r.到期 = x; })
       .then(() => undefined, (e) => console.error("[到期提醒] 出错，下一遍再试", e))
-      .then(() => 挂起移交提醒(现在))
-      .then(() => undefined, (e) => console.error("[移交提醒] 出错，下一遍再试", e))
-      // 挂靠申请 24 小时没人处理转实线上级（P-挂靠-02）：自己不抛，这里再兜一道
+      .then(() => 挂起移交作废(现在))
+      .then(() => undefined, (e) => console.error("[移交作废] 出错，下一遍再试", e))
+      // 挂靠申请 24 小时没人处理往上转一级，到总管理为止（P-挂靠-02）：自己不抛，这里再兜一道
       .then(() => 挂靠超时转上级(现在))
       .then(() => undefined, (e) => console.error("[挂靠审批] 出错，下一遍再试", e))
       .then(() => { if (启动 || 补了停机的(r)) console.log(补跑日志行(r, 启动)); });

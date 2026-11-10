@@ -35,7 +35,7 @@ const ENTITY_LABEL: Record<string, string> = {
   EntCommission: "提成", EntLeadVerify: "线索验证",
   // 2026-11-03 D6-2：这几类原来直接露英文表名；新加 recordAudit 记得补（tests/audit-labels 守着）
   EntBlockerReason: "阻碍原因", EntProjectPayment: "回款", EntDictItem: "字典", EntOrgSync: "通讯录同步", EntConn: "连接设置",
-  EntChannelMain: "主渠道",
+  EntChannelMain: "主渠道", EntDupeHit: "挂靠申请",
 };
 /** 明细是入库时序列化的 JSON，格式化给人看；万一存了非法内容也不能让页面崩 */
 function safeJson(raw: string | null): string {

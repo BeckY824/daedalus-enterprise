@@ -86,7 +86,13 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
           </Space>}
         />
       ))}
-      {我发起的.map((h) => (
+      {我发起的.map((h) => h.状态 !== "待确认" ? (
+        // 系统作废的申请移交（挂满 7 天没人处理，11-10）：只说明，没有可点的
+        <Alert key={h.id} type="warning" showIcon
+          title={`移交申请${h.状态}：${说(h, true)}，原接手人「${h.给}」`}
+          description="客户仍在你名下，归属没有变；需要的话可以重新申请移交。"
+        />
+      ) : (
         <Alert key={h.id} type="info" showIcon
           title={是申请(h) ? `移交申请中：${说(h)}，等「${h.给}」确认，确认前仍在原负责人名下` : `交接中：${说(h)}，等「${h.给}」确认`}
           action={<Space>
