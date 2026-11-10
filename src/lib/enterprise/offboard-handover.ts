@@ -22,7 +22,7 @@ import { 能改后台设置, 只读角色, 公海分不给话, type 谁 } from "
  * - 接手人候选同公海分配（B2-7，公海分不给话）：在职、有业务角色、不是只读；条线的上级只能交给同线的
  * - 单条交走现有改负责人的逻辑（带走一位：没做完的活跟着走、项目跟着客户、记历史负责人 kind=deactivate；
  *   项目走 转项目，记转让痕、卡点认领跟着）；一键全部交给 = 原来办离职时的「全部转交」（停用分拣 + 离职转给接手人），
- *   线索、渠道也一起给
+ *   线索、渠道（连他当负责人的主渠道，迁移 118）也一起给
  * - 没开项目模式：只列客户，不动项目（单条不带项目，一键时项目那份清空）
  * - 查的、改的都包 看全部：按组织看客户开着时，上级的范围里不一定有离职下属的客户
  */
@@ -39,8 +39,8 @@ export type 离职待交接 = {
   客户: 交接客户[];
   /** 他负责、不跟着他名下客户走的项目（项目模式才有） */
   项目: 交接项目[];
-  /** 一键全部交给时才一起走的：线索、渠道、挂在别人客户上的待办 */
-  其余: { 线索: number; 渠道: number; 待办: number };
+  /** 一键全部交给时才一起走的：线索、渠道、他当负责人的主渠道（迁移 118）、挂在别人客户上的待办 */
+  其余: { 线索: number; 渠道: number; 主渠道: number; 待办: number };
 };
 
 /** 我能不能处理这位离职成员：系统管理员都能；别人只能处理手填直属上级是自己的。只读管理员一律不能 */
@@ -100,13 +100,14 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
             orderBy: { name: "asc" },
           })
         : [];
-      const [线索, 渠道, 待办] = await Promise.all([
+      const [线索, 渠道, 主渠道, 待办] = await Promise.all([
         prisma.lead.count({ where: { ownerId: u.id } }),
         prisma.channel.count({ where: { channelOwnerId: u.id } }),
+        prisma.entChannelMain.count({ where: { ownerId: u.id } }),
         // 同 停用分拣：他名下客户上的待办跟着客户走（在公海里的谁领谁带），这里数挂在别人客户上的
         prisma.task.count({ where: { ownerId: u.id, done: false, customer: { salesOwnerId: { not: u.id } }, customerId: { notIn: 放走的 } } }),
       ]);
-      if (!客户们.length && !项目们.length && !线索 && !渠道 && !待办) continue;
+      if (!客户们.length && !项目们.length && !线索 && !渠道 && !主渠道 && !待办) continue;
       结果.push({
         id: u.id,
         name: u.name,
@@ -114,7 +115,7 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
         交接中: !!(await 离职交接中(u.id)),
         客户: 客户们.map((c) => ({ id: c.id, name: c.name, 项目数: "_count" in c ? (c._count as { projects: number }).projects : 0 })),
         项目: 项目们.map((p) => ({ id: p.id, name: p.name, 客户: p.customer.name })),
-        其余: { 线索, 渠道, 待办 },
+        其余: { 线索, 渠道, 主渠道, 待办 },
       });
     }
     return 结果;
@@ -132,7 +133,8 @@ export async function 待交接人数(me: 谁): Promise<number> {
       const 有 = (await prisma.customer.count({ where: { salesOwnerId: id, pool: { is: null } } }))
         || (带项目 && (await prisma.project.count({ where: { ownerId: id, pooledAt: null, result: null, customer: { salesOwnerId: { not: id } } } })))
         || (await prisma.lead.count({ where: { ownerId: id } }))
-        || (await prisma.channel.count({ where: { channelOwnerId: id } }));
+        || (await prisma.channel.count({ where: { channelOwnerId: id } }))
+        || (await prisma.entChannelMain.count({ where: { ownerId: id } }));
       if (有) n++;
     }
     return n;
@@ -206,7 +208,7 @@ export async function 交一个项目(me: 谁, fromId: string, projectId: string
   return ids.length > 0;
 }
 
-/** 一键全部交给一个人：同原来办离职的「全部转交」，客户、商机、待办计划、线索、渠道，开了项目模式再加项目 */
+/** 一键全部交给一个人：同原来办离职的「全部转交」，客户、商机、待办计划、线索、渠道（连他当负责人的主渠道），开了项目模式再加项目 */
 export async function 全部交给(me: 谁, fromId: string, toId: string) {
   const 带项目 = await 项目模式();
   await 钉住老签约();
@@ -215,6 +217,6 @@ export async function 全部交给(me: 谁, fromId: string, toId: string) {
     const 分 = await 停用分拣(tx, fromId, "转交", true);
     if (!带项目) 分.项目 = [];
     const 项目 = await 离职转给接手人(tx, 分, fromId, toId, me.id, 记分配);
-    return { 客户: 分.客户, 商机: 分.商机, 待办: 分.待办, 计划: 分.计划, 线索: 分.线索, 渠道: 分.渠道, 项目 };
+    return { 客户: 分.客户, 商机: 分.商机, 待办: 分.待办, 计划: 分.计划, 线索: 分.线索, 渠道: 分.渠道, 主渠道: 分.主渠道, 项目 };
   }, { timeout: 30_000 }));
 }

@@ -26,6 +26,7 @@ import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 企业版 } from "./switch";
 import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedupe";
 import { notify } from "./notify";
+import { 主渠道入口前缀, 是主渠道入口 } from "./channel-main-core";
 import { 读组织 } from "./org";
 import { 待分配占着, 能分配的人们 } from "./await-assign";
 
@@ -126,7 +127,11 @@ export async function 同号协同情况(号: 验好的号, 我id: string): Prom
 
 /** 这次的来源文字：选了渠道用渠道名，否则用来源格；「其他」这种不算来源 */
 async function 这次来源(db: 库, 录入: Pick<录入信息, "渠道id" | "来源">): Promise<string> {
-  if (录入.渠道id) {
+  // 选的是「只有主渠道」的占位（没有子渠道的主渠道）：这里只要来源的名字，不落渠道
+  if (是主渠道入口(录入.渠道id)) {
+    const m = await db.entChannelMain.findUnique({ where: { id: 录入.渠道id!.slice(主渠道入口前缀.length) }, select: { name: true } });
+    if (m?.name) return m.name;
+  } else if (录入.渠道id) {
     const c = await db.channel.findUnique({ where: { id: 录入.渠道id }, select: { name: true } });
     if (c?.name) return c.name;
   }

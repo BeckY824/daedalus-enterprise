@@ -47,6 +47,8 @@ import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 落到渠道 } from "@/lib/enterprise/channel-main";
+import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读角色话, 是系统管理员, 转自己客户要申请 } from "@/lib/enterprise/permissions";
 import { 有同事在推的客户, 同事在推不能删话 } from "@/lib/enterprise/colleague-projects";
 import { 权限组织 } from "@/lib/enterprise/org";
@@ -322,6 +324,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (改前 && input.salesOwnerId && input.salesOwnerId !== 改前.salesOwnerId) {
     const 转挡 = await 转让挡(me, [改前.id]);
     if (转挡) return { ok: false, error: 转挡 };
+  }
+  // 来源选的是「只有主渠道」的占位（没有子渠道的主渠道）：先落成子渠道名留空的那条渠道，后面一律按真的渠道 id 走（channel-main.ts 落到渠道）
+  if (企业版() && 是主渠道入口(input.channelId)) {
+    const 落 = await 落到渠道(input.channelId, me);
+    if (!落.ok) return { ok: false, error: 落.error };
+    input = { ...input, channelId: 落.id };
   }
   /*
     编辑之前先把老签约的「签约那一刻是谁的」钉住（排查 X1）。不只换负责人：改来源渠道 / 推荐人也会重算渠道负责人（复查 R）。
