@@ -12,6 +12,7 @@ import { recordAudit } from "@/lib/audit";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, 离职进手的持有项目, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
@@ -173,6 +174,7 @@ export async function 确认交接(id: string): Promise<结果> {
     }, { timeout: 30_000 }));
     if (!成) return { ok: false, error: 已处理 };
     const { 分, 项目 } = 成;
+    await 进公海挂靠通知(分.进公海客户); // 进公海关掉的挂靠申请，事务提交了再通知申请人（P-挂靠-01 / 02）
     const 从 = (await prisma.user.findUnique({ where: { id: h.fromUserId }, select: { name: true } }))?.name ?? h.fromUserId;
     await recordAudit({
       user: me, action: "deactivate", entity: "User", entityId: h.fromUserId,

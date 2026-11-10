@@ -18,6 +18,7 @@ import { 系统 } from "./timeout";
 import { 每天清一次 } from "@/lib/enterprise/soft-delete";
 import { 钟上到期提醒 } from "@/lib/enterprise/due-notice";
 import { 挂起移交提醒 } from "@/lib/enterprise/handover-remind";
+import { 挂靠超时转上级 } from "@/lib/enterprise/attach-approval";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -57,6 +58,9 @@ export function 启动夜扫(间隔毫秒 = 60_000): void {
       .then(() => undefined, (e) => console.error("[到期提醒] 出错，下一遍再试", e))
       .then(() => 挂起移交提醒(现在))
       .then(() => undefined, (e) => console.error("[移交提醒] 出错，下一遍再试", e))
+      // 挂靠申请 24 小时没人处理转实线上级（P-挂靠-02）：自己不抛，这里再兜一道
+      .then(() => 挂靠超时转上级(现在))
+      .then(() => undefined, (e) => console.error("[挂靠审批] 出错，下一遍再试", e))
       .finally(() => { g.__entNightlyRun = undefined; });
   }, 间隔毫秒);
   g.__entNightlyTimer.unref?.();

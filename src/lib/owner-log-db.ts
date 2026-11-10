@@ -8,13 +8,29 @@ import { 系统 } from "@/lib/project/timeout";
 /**
  * 客户换负责人的记录（企业版 D-36，2026-10-24）：谁转的、从谁到谁、什么时候；from = 「历史负责人」。
  * 换负责人的几条路都走这一处：改负责人 / 批量分配 / 公海领取 / 公海分配（带走并记下）、成员停用转交、两种撤销。
+ * 挂靠申请的审批人也在这里跟着换（挂靠审批跟着换，P-挂靠-02）；进公海（pool-release）那次不跟，直接关掉（挂靠申请进公海关）。
  * 放在换负责人的同一个事务里写：负责人改了、记录没写上的情况不会有
  */
 /** market-assign = 客户第一次从市场成员分给销售（P-转-03、P-公海-11）：算分配、不算转客户，只是记录分得出 */
 export type 换负责人种类 = "assign" | "market-assign" | "claim" | "pool-assign" | "deactivate" | "undo" | "pool-release";
 
+/**
+ * 挂靠审批人跟着客户负责人走（P-挂靠-02，企业版 11-10）：客户换了负责人，还待处理、还没转过上级的挂靠申请，审批人换成新负责人。
+ * 转过上级的不动（已经在实线上级手里）。别的版本没有挂靠申请，这一句什么都改不到
+ */
+async function 挂靠审批跟着换(tx: Pick<Prisma.TransactionClient, "entDupeHit">, 换: readonly { customerId: string; to: string }[]): Promise<void> {
+  const 按人 = new Map<string, string[]>();
+  for (const x of 换) 按人.set(x.to, [...(按人.get(x.to) ?? []), x.customerId]);
+  for (const [to, cs] of 按人) {
+    await tx.entDupeHit.updateMany({
+      where: { customerId: { in: cs }, action: "申请挂靠", status: "待处理", escalatedAt: null },
+      data: { approverId: to },
+    });
+  }
+}
+
 export async function 记换负责人(
-  tx: Pick<Prisma.TransactionClient, "customerOwnerLog">,
+  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit">,
   换: { customerId: string; from: string | null; to: string }[],
   操作人: string,
   kind: 换负责人种类,
@@ -24,6 +40,29 @@ export async function 记换负责人(
   await tx.customerOwnerLog.createMany({
     data: 真换了.map((x) => ({ customerId: x.customerId, userId: 操作人, fromOwnerId: x.from, toOwnerId: x.to, kind })),
   });
+  // 进公海：公海客户没有负责人、也不是挂靠对象（P-挂靠-01），审批人不跟到占位账号上，待处理的直接关
+  if (kind === "pool-release") await 挂靠申请进公海关(tx, 真换了.map((x) => x.customerId));
+  else await 挂靠审批跟着换(tx, 真换了);
+}
+
+/** 挂靠申请（EntDupeHit）客户进了公海被关掉时记的状态，同 已批准 / 已拒绝 一列 */
+export const 挂靠进公海状态 = "客户已进公海";
+
+/**
+ * 客户进公海（换到公海占位账号那次，P-挂靠-01 / 02，企业版 11-10）：客户下还待处理的挂靠申请都关掉，
+ * 转没转过上级都关；处理人留空（不是谁拒的）、处理时刻记当时。
+ * 给申请人的通知不在这里发（notify 走外面的 prisma，SQLite 下要等这笔事务提交，会卡住），
+ * 调用方事务提交后调 attach-approval.ts 进公海挂靠通知。
+ * 撤销放进公海时不复活（还原进公海前负责人 不碰挂靠申请）：简单起见，申请人要挂靠再申请一次
+ */
+async function 挂靠申请进公海关(tx: Pick<Prisma.TransactionClient, "entDupeHit">, customerIds: readonly string[]): Promise<void> {
+  const 现在 = new Date();
+  for (let i = 0; i < customerIds.length; i += 500) {
+    await tx.entDupeHit.updateMany({
+      where: { customerId: { in: customerIds.slice(i, i + 500) }, action: "申请挂靠", status: "待处理" },
+      data: { status: 挂靠进公海状态, decidedById: null, decidedAt: 现在 },
+    });
+  }
 }
 
 /**
@@ -125,7 +164,7 @@ export async function 我放出去的公海客户(们: { id: string; 在公海: 
  * 只删最近那条且不是 pool-release：撤领取时被撤的是 占位 → 我 那条，进公海那条还得留着，它记着原负责人。
  * 要在把负责人还回去之前或之后调都行，条件只看记录本身
  */
-export async function 删被撤的换负责人记录(tx: Pick<Prisma.TransactionClient, "customerOwnerLog">, customerId: string | string[], from: string, to: string): Promise<void> {
+export async function 删被撤的换负责人记录(tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit">, customerId: string | string[], from: string, to: string): Promise<void> {
   // 一批客户（同一个 from → to）一次查、一次删：每位只删自己最近那条
   const 们 = await tx.customerOwnerLog.findMany({
     where: { customerId: { in: typeof customerId === "string" ? [customerId] : customerId }, fromOwnerId: from, toOwnerId: to, NOT: { kind: "pool-release" } },
@@ -135,10 +174,13 @@ export async function 删被撤的换负责人记录(tx: Pick<Prisma.Transaction
   const 最近 = new Map<string, string>();
   for (const r of 们) if (!最近.has(r.customerId)) 最近.set(r.customerId, r.id);
   if (最近.size) await tx.customerOwnerLog.deleteMany({ where: { id: { in: [...最近.values()] } } });
+  // 撤销 = 负责人还回 from：挂靠审批人也跟着还（P-挂靠-02）
+  await 挂靠审批跟着换(tx, [...最近.keys()].map((c) => ({ customerId: c, to: from })));
 }
 
 /**
  * 撤销放进公海（P-撤销-01，企业版）：负责人按进公海那条 pool-release 还回去，那条删掉。不信前端传的值。
+ * 进公海时关掉的挂靠申请不跟着复活（挂靠申请进公海关），简单起见。
  * 老数据进公海没清负责人、没有这条的不动（负责人本来就是他）
  */
 export async function 还原进公海前负责人(tx: Pick<Prisma.TransactionClient, "customer" | "customerOwnerLog">, 客户们: string[]): Promise<void> {

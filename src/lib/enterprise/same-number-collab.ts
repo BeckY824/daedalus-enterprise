@@ -7,6 +7,8 @@
  * - 通知负责人（站内铃铛 + 现有飞书通道）；项目详情顶上一条醒目提醒（同号提醒们，SameNumberBanner）
  * - 给添加人一句明确反馈，看不到这位客户时只说负责人名字
  * 公海客户、负责人是占位账号、负责人停用：不走这里，入口照原来的查重走。只读管理员写不了，同样不走。
+ * 撞到待分配的线索（X-87，2026-11-10）：客户负责人只是占着待分配那一格的建的人、这家客户也没有别的真人在跟的项目 = 按没有负责人办：
+ * 记录写进客户沟通，通知能分配的人（市场管理、销售管理、总管理员），不邀请、不通知建的人，反馈不把建的人说成负责人。
  *
  * 不加字段：沟通记录挂项目时节点写 同号节点，不是真实节点——节点必填和阶段门槛按节点名认，所以这条替负责人满足不了必填；
  * 也不记有效沟通标记、不动客户最近跟进，不替负责人续回收时钟。
@@ -24,6 +26,8 @@ import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 企业版 } from "./switch";
 import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedupe";
 import { notify } from "./notify";
+import { 读组织 } from "./org";
+import { 待分配占着, 能分配的人们 } from "./await-assign";
 
 export const 同号标题 = "同号再次录入";
 const 重点标题 = "同号再次录入（来源不同）";
@@ -93,7 +97,9 @@ async function 找目标(号: 验好的号) {
     if (!负责人 || 负责人.email === 无负责人占位邮箱) return { 走: false as const, 原因: "负责人是占位账号" };
     if (!负责人.active) return { 走: false as const, 原因: "负责人已停用" };
     const 项目 = await 挑项目(prisma, 首条.id);
-    return { 走: true as const, 首条, 负责人名: 项目?.负责人名 ?? (负责人.name || 负责人.email), 项目 };
+    // 没有真人在跟的项目、客户负责人只是占着待分配线索的建的人（X-87）：按没有负责人办
+    const 待分配 = 项目 ? null : await 待分配占着(prisma, 首条.id, 首条.salesOwnerId);
+    return { 走: true as const, 首条, 负责人名: 项目?.负责人名 ?? (负责人.name || 负责人.email), 项目, 待分配 };
   });
 }
 
@@ -105,16 +111,16 @@ export async function 同号可协同(号: 验好的号): Promise<boolean> {
 }
 
 /** 向导那段话按情况说（11-03 B6-8 / B7-4）：没项目写进客户沟通、不提邀请；自己负责、已在组也不提邀请。和真写时同一套判断 */
-export type 协同情况 = { 有项目: boolean; 自己负责: boolean; 已在组: boolean };
+export type 协同情况 = { 有项目: boolean; 自己负责: boolean; 已在组: boolean; 待分配: boolean };
 export async function 同号协同情况(号: 验好的号, 我id: string): Promise<协同情况 | null> {
   if (!(await 同号可协同(号))) return null;
   return 看全部(async () => {
     const 目标 = await 找目标(号);
     if (!目标.走) return null;
-    const { 首条, 项目 } = 目标;
-    const 自己负责 = 首条.salesOwnerId === 我id || (!!项目 && 项目.ownerId === 我id);
+    const { 首条, 项目, 待分配 } = 目标;
+    const 自己负责 = !待分配 && (首条.salesOwnerId === 我id || (!!项目 && 项目.ownerId === 我id));
     const 成员 = 项目 && !自己负责 ? await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: 项目.id, userId: 我id } }, select: { inviteStatus: true } }) : null;
-    return { 有项目: !!项目, 自己负责, 已在组: 成员?.inviteStatus === "JOINED" };
+    return { 有项目: !!项目, 自己负责, 已在组: 成员?.inviteStatus === "JOINED", 待分配: !!待分配 };
   });
 }
 
@@ -146,8 +152,9 @@ function 拼内容(号: 验好的号, 谁: string, 入口: string, 来源: strin
   return { 不同, 标题: 不同 ? 重点标题 : 同号标题, 内容: 行们.join("\n") };
 }
 
-function 拼反馈(负责人名: string, 自己负责: boolean, 有项目: boolean, 邀请: 邀请结果, 客户名: string | null): string {
+function 拼反馈(负责人名: string, 自己负责: boolean, 有项目: boolean, 邀请: 邀请结果, 客户名: string | null, 待分配 = false): string {
   const 位置 = 客户名 ? `「${客户名}」` : "";
+  if (待分配) return `这个号码已在待分配的客户${位置}里（还没有负责人），已把你的记录写进客户沟通记录并通知了能分配的人`;
   if (自己负责) return `这个号码已在你自己的${有项目 ? "项目" : "客户"}${位置}里，已把记录写进去`;
   if (!有项目) return `这个号码已在 ${负责人名} 名下的客户${位置}里，已把你的记录写进客户沟通记录并通知了 ${负责人名}`;
   const 尾 = 邀请 === "发了" ? "并发了组员邀请" : 邀请 === "等回复" ? "，组员邀请已发过，同意后可进组" : "（你已在项目组）";
@@ -163,7 +170,7 @@ export async function 同号再次录入(我: 人, 号: 验好的号, 录入: �
   if (await 只读身份中(defaultClient)) return { 走: false, 原因: "只读身份" };
   const 目标 = await 找目标(号);
   if (!目标.走) return { 走: false, 原因: 目标.原因 };
-  const { 首条, 负责人名, 项目 } = 目标;
+  const { 首条, 负责人名, 项目, 待分配 } = 目标;
   const 来源 = await 看全部(() => 这次来源(prisma, 录入));
   const 现有 = await 看全部(() => 现有来源们(prisma, 首条.id, 项目?.channel?.name));
   const 拼 = 拼内容(号, 我.name, 录入.入口, 来源, 现有, 录入.内容);
@@ -203,15 +210,17 @@ export async function 同号再次录入(我: 人, 号: 验好的号, 录入: �
     throw e;
   }
 
-  const 自己负责 = 首条.salesOwnerId === 我.id || (!!项目 && 项目.ownerId === 我.id);
+  const 自己负责 = !待分配 && (首条.salesOwnerId === 我.id || (!!项目 && 项目.ownerId === 我.id));
   // 列表口径（限定层，含 11-04 市场成员「自己创建、不在公海」）看得到也算：直接按当前身份查一次
   const 列表看得到 = async () => !!(await prisma.customer.findFirst({ where: { id: 首条.id }, select: { id: true } }));
   const 看得见 = 看得到(首条, await 读的我(defaultClient)) || 记.成员状态 === "JOINED" || 自己负责 || (await 列表看得到());
-  const 反馈 = 拼反馈(负责人名, 自己负责, !!项目, 记.邀请, 看得见 ? 首条.name : null);
+  const 反馈 = 拼反馈(负责人名, 自己负责, !!项目, 记.邀请, 看得见 ? 首条.name : null, !!待分配);
 
   if (!记.已记过) {
-    const 链接 = 项目 ? `/projects/${项目.id}` : `/customers/${首条.id}`;
-    await notify([项目?.ownerId, 首条.salesOwnerId].filter((u) => u !== 我.id), {
+    // 待分配（X-87）：链到那条待分配线索，能分配的人从那里分；建的人只是占位，不发
+    const 链接 = 待分配 ? `/projects/${待分配.id}` : 项目 ? `/projects/${项目.id}` : `/customers/${首条.id}`;
+    const 收 = 待分配 ? 能分配的人们(await 读组织()) : [项目?.ownerId, 首条.salesOwnerId];
+    await notify(收.filter((u) => u !== 我.id), {
       kind: "撞号",
       title: `${我.name} 再次录入了同一号码${拼.不同 ? "（来源不同）" : ""}：${首条.name}`,
       body: 拼.内容,
@@ -232,8 +241,8 @@ export async function 同号再次录入(我: 人, 号: 验好的号, 录入: �
       action: "create",
       entity: "FollowUp",
       entityId: 记.followUpId,
-      summary: `${拼.标题}：${我.name} 录入「${首条.name}」的号码，记录写入${项目 ? "现有项目" : "客户沟通记录"}${记.邀请 === "发了" ? "；系统因撞号发出组员邀请" : ""}`,
-      detail: { 客户: 首条.id, 项目: 项目?.id ?? null, 入口: 录入.入口, 来源, 现有来源: 现有, 来源不同: 拼.不同, 邀请: 记.邀请 },
+      summary: `${拼.标题}：${我.name} 录入「${首条.name}」的号码，记录写入${项目 ? "现有项目" : "客户沟通记录"}${待分配 ? "（待分配，通知能分配的人）" : ""}${记.邀请 === "发了" ? "；系统因撞号发出组员邀请" : ""}`,
+      detail: { 客户: 首条.id, 项目: 项目?.id ?? null, 待分配项目: 待分配?.id ?? null, 入口: 录入.入口, 来源, 现有来源: 现有, 来源不同: 拼.不同, 邀请: 记.邀请 },
     });
   }
 

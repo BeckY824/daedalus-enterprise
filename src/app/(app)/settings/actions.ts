@@ -4,6 +4,7 @@ import { 补来源 } from "@/lib/customer-extra-db";
 
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 解绑飞书 } from "@/lib/enterprise/feishu-login";
 import { 读组织, 直属上级of, 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 是总管理, 只读角色 } from "@/lib/enterprise/permissions";
@@ -384,6 +385,7 @@ export async function deactivateUser(id: string, transferToId: string, 方式: �
   }, { timeout: 30_000 });
 
   await 撤托管成员(id);
+  await 进公海挂靠通知(转走了.进公海客户); // 进公海关掉的挂靠申请，事务提交了再通知申请人（P-挂靠-01 / 02）
 
   const [被停, 接手] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: { name: true } }),
@@ -490,6 +492,7 @@ async function 发起离职交接(me: Awaited<ReturnType<typeof requireUser>>, i
     return { 分, 交接: h.id };
   }, { timeout: 30_000 });
   await 撤托管成员(id);
+  await 进公海挂靠通知(分.进公海客户); // 同上
   if (交接) await 交接通知(me, 交接, "发起");
 
   const [被停, 接手] = await Promise.all([

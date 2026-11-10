@@ -1713,8 +1713,16 @@ model EntDupeHit {
   actionAt   DateTime?
   /// 结果：拦截 / 写进现有项目 / 同组提示
   result     String    @default("拦截")
-  /// 处置状态：无需处置 / 待处理（申请挂靠后）
+  /// 处置状态：无需处置 / 待处理（申请挂靠后，等审批）/ 已批准 / 已拒绝 / 客户已进公海（待处理时客户进了公海，自动关，迁移 117，P-挂靠-02）
   status     String    @default("无需处置")
+  /// 挂靠申请当前的审批人（迁移 117）：= 客户现在的负责人，换负责人跟着换；24 小时没人处理转负责人的实线上级；客户进公海时申请直接关
+  approverId  String?
+  /// 24 小时没处理、转过实线上级的时刻（迁移 117）；没有上级可转也记上，只转一次
+  escalatedAt DateTime?
+  /// 谁批准 / 拒绝的（迁移 117）；客户进公海自动关的留空
+  decidedById String?
+  /// 几时批准 / 拒绝 / 进公海关掉的（迁移 117）
+  decidedAt   DateTime?
   /// 这一行触发的预警，按位记：1 = 第一档（同一人同一客户 7 天 ≥3 次）、2 = 第二档（同一客户 7 天 ≥3 个人）；0 = 没触发。
   /// 第三档（绕过强录）随强录推迟，第一期不写
   warnTier   Int       @default(0)
@@ -1722,6 +1730,7 @@ model EntDupeHit {
 
   @@index([userId, customerId, createdAt])
   @@index([customerId, createdAt])
+  @@index([approverId, status])
 }
 
 /// 企业版选项字典（2026-10-26，迁移 057）：分配方式、回收原因、无效原因、转让原因、验证结果、客户状态、项目标签，

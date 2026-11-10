@@ -16,7 +16,8 @@ function 行({ 名, 值 }: { 名: string; 值: ReactNode }) {
   );
 }
 
-function 卡内容({ 卡 }: { 卡: 客户只读卡 }) {
+/** 卡里面那一块；挂靠批准后的只读卡（projects/attach）也用它，那边联系方式按申请人自己的项目给，说法另传 */
+export function 卡内容({ 卡, 没给的说法 = "不在这位负责人的项目上，联系方式不显示" }: { 卡: 客户只读卡; 没给的说法?: string }) {
   const c = 卡.客户;
   const 资料: [string, string | null][] = [
     ["客户", c.name], ["简称", c.shortName], ["公司", c.school], ["客户类型", c.customerType], ["客户属性", c.customerAttr],
@@ -31,7 +32,7 @@ function 卡内容({ 卡 }: { 卡: 客户只读卡 }) {
         <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line)", minWidth: 0 }}>
           <div style={{ overflowWrap: "anywhere" }}>{x.name}{x.position && <span style={{ ...灰字, marginInlineStart: 8 }}>{x.position}</span>}</div>
           {x.号码们.map((m, j) => <行 key={j} 名={m.叫法} 值={m.value} />)}
-          {!x.号码们.length && <div style={{ ...灰字, fontSize: "var(--fs-note)" }}>{x.给联系方式 ? "没留联系方式" : "不在这位负责人的项目上，联系方式不显示"}</div>}
+          {!x.号码们.length && <div style={{ ...灰字, fontSize: "var(--fs-note)" }}>{x.给联系方式 ? "没留联系方式" : 没给的说法}</div>}
         </div>
       ))}
     </div>

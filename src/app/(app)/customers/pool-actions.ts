@@ -24,6 +24,7 @@ import { 领客户带走公海项目, 客户名下在推项目进公海, 客户�
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
 import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 要选退回原因提示 } from "@/lib/enterprise/unified-pool";
@@ -181,6 +182,8 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
     ? await 查完再写((tx) => 放进公海连项目(tx, 能放, me.id, reason))
     : (await prisma.customerPool.createMany({ data: 能放.map((c) => ({ customerId: c.id, userId: me.id, reason })) }), []);
   忘掉企业版范围(); // 原负责人回避名单变了，这一下就要看不到（范围缓存 10 秒）
+  // 进公海关掉的挂靠申请：事务提交了再通知申请人（P-挂靠-01 / 02）
+  if (企业版()) await 进公海挂靠通知(能放.map((c) => c.id));
   await 记退回(能放.map((c) => c.id), 1);
   await recordAudit({
     user: me, action: "pool", entity: "Customer", entityId: 能放.length === 1 ? 能放[0].id : null,

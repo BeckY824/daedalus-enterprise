@@ -711,7 +711,9 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
   const org = await 权限组织();
   // M-公海-15（11-05 用户）：手动退回先查联系方式；建项目向导「公海捞取」（分配放行）不是退回，不查
   const 号码表 = 企业版() && !选项?.分配放行 ? await 退回号码种类表() : null;
+  let 客户也进了: string | null = null;
   const r: 结果 = await 查完再写(async (tx) => {
+    客户也进了 = null;
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (p.pooledAt) return { ok: false as const, error: "这个项目已经在公海里了" };
@@ -730,7 +732,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
-    await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
+    if (await 单项目客户跟进公海(tx, p, me.id, 现在, reason)) 客户也进了 = p.customerId;
     await 进公海关待办(tx, p, p.ownerId, 现在);
     // 企业版统一公海（P7，迁移 080）：客户累计主动退回 +1（超时回收、离职交接不走这里，不算）。裸 SQL 不顶 updatedAt
     if (企业版()) await tx.$executeRaw(Prisma.sql`UPDATE "Customer" SET "poolReturns" = "poolReturns" + 1 WHERE "id" = ${p.customerId}`);
@@ -738,6 +740,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
   });
   // 原负责人回避名单变了（11-03），这一下就要看不到，不等范围缓存的 10 秒
   if (r.ok) 忘掉企业版范围();
+  // 客户跟着进了客户公海：关掉的挂靠申请事务提交了再通知申请人（P-挂靠-01 / 02）
+  if (r.ok && 客户也进了) await 进公海挂靠通知了([客户也进了]);
   return r;
 }
 
@@ -887,6 +891,11 @@ export async function 超时预览(规则: 组织规则, 今: Date = new Date())
  * me 只用来定团队模式下扫谁名下的；留痕、操作日志一律记在「系统」名下（QA #16）
  */
 /** 超时收回提醒的标题结尾。这条提醒是给原负责人的：客户跟着换人时不跟着转（carry-over-db 带走一位） */
+/** 客户跟着进了客户公海时关掉的挂靠申请，事务提交后通知申请人。动态引：attach-approval 那条引用链不往本文件里拉 */
+async function 进公海挂靠通知了(customerIds: string[]): Promise<void> {
+  await (await import("@/lib/enterprise/attach-approval")).进公海挂靠通知(customerIds);
+}
+
 export const 收回提醒尾 = "已回到线索公海";
 /** 改名前写进库的待办标题还是这个尾巴（只读着认，不再写） */
 export const 旧收回提醒尾 = "已回到项目公海";
@@ -909,6 +918,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
   const 们 = await 超时的项目(规则, 今, 成员, 只扫);
   const 查收件人 = 回收通知收件人();
   const 收了: string[] = [];
+  const 客户也进了 = new Set<string>();
   for (const p of 们) {
     // 逐个一笔事务：查出来到写下去之间有人刚推了节点、领了、记了沟通，就不收
     const 收 = await 查完再写(async (tx) => {
@@ -918,7 +928,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 今, nextStepAt: null, nextStepText: null } });
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
-      await 单项目客户跟进公海(tx, p, null, 今);
+      if (await 单项目客户跟进公海(tx, p, null, 今)) 客户也进了.add(p.customerId);
       // 先关他手上这个项目的待办，再给他发收回提醒（提醒留着不关）
       await 进公海关待办(tx, p, p.ownerId, 今);
       await tx.task.create({
@@ -936,6 +946,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       await notify(发给.人们, { kind: "回收", title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`, body: 发给.说明, link: "/projects", key: `recall:${p.id}:${dayjs(今).format("YYYY-MM-DD")}` });
     }
   }
+  if (客户也进了.size) await 进公海挂靠通知了([...客户也进了]);
   if (收了.length) {
     忘掉企业版范围(); // 超时回到公海的也算他退的（pool-release 留痕），回避名单变了
     await recordAudit({

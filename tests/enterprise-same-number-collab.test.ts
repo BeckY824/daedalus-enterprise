@@ -465,3 +465,80 @@ describe("导入走完整流程", () => {
     expect(await prisma.customer.count({ where: { id: x.客户.id } })).toBe(1);
   });
 });
+
+describe("撞到待分配项目（X-87，P-挂靠-01）：按没有负责人处理", () => {
+  /** 市场建的线索没分出去：客户和项目都还挂在建的人名下（占位），项目标了待分配 */
+  async function 待分配现场() {
+    const 建的人 = await 人("mkt9", "小庚", "channel_ops");
+    const 市管 = await 人("mmgr9", "小辛", "marketing_mgr");
+    const 销管 = await 人("smgr9", "小壬", "sales_mgr");
+    const 销售 = await 人("sales9", "小癸", "sales");
+    const 客户 = await prisma.customer.create({ data: { name: "编的客户庚", phone: 号码, salesOwnerId: 建的人.id } });
+    const 项目 = await prisma.project.create({
+      data: { name: "编的线索庚", customerId: 客户.id, ownerId: 建的人.id, creatorId: 建的人.id, phase: "线索", node: "潜客培育", awaitAssignAt: new Date() },
+    });
+    return { 建的人, 市管, 销管, 销售, 客户, 项目 };
+  }
+
+  it("记到客户上、通知能分配的人，不通知也不邀请占位的创建人，反馈不把创建人当负责人", async () => {
+    const x = await 待分配现场();
+    const r = await 作为(x.销售, () => 同号再次录入(x.销售, 好号(), { 入口: "手工建档", 内容: "又来问了" }));
+    await 等通知推完();
+    expect(r.走).toBe(true);
+    if (!r.走) return;
+    expect(r.项目id).toBeNull();
+    expect(r.邀请).toBe("不用");
+    expect(r.反馈).toContain("待分配");
+    expect(r.反馈).not.toContain("小庚");
+    const f = await prisma.followUp.findMany({ where: { customerId: x.客户.id } });
+    expect(f).toHaveLength(1);
+    expect(await prisma.followUpProject.count()).toBe(0);
+    expect(await prisma.projectMember.count()).toBe(0);
+    expect((await 通知们(x.建的人.id)).filter((n) => n.kind === "撞号")).toHaveLength(0);
+    for (const 谁 of [x.市管, x.销管]) {
+      const 发 = (await 通知们(谁.id)).filter((n) => n.kind === "撞号");
+      expect(发).toHaveLength(1);
+      expect(发[0].link).toBe(`/projects/${x.项目.id}`);
+    }
+    // 负责人、待分配都不动
+    expect(await prisma.customer.findUnique({ where: { id: x.客户.id } })).toMatchObject({ salesOwnerId: x.建的人.id });
+    expect((await prisma.project.findUnique({ where: { id: x.项目.id } }))?.awaitAssignAt).not.toBeNull();
+  });
+
+  it("能分配的人自己录：不给自己发", async () => {
+    const x = await 待分配现场();
+    const r = await 作为(x.销管, () => 同号再次录入(x.销管, 好号(), { 入口: "手工建档" }));
+    await 等通知推完();
+    expect(r.走).toBe(true);
+    expect((await 通知们(x.销管.id)).filter((n) => n.kind === "撞号")).toHaveLength(0);
+    expect((await 通知们(x.市管.id)).filter((n) => n.kind === "撞号")).toHaveLength(1);
+  });
+
+  it("查号码的协同情况带待分配，不算谁自己负责", async () => {
+    const x = await 待分配现场();
+    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 可协同: true, 协同: { 有项目: false, 自己负责: false, 已在组: false, 待分配: true } });
+    expect(await 作为(x.建的人, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: false, 自己负责: false, 待分配: true } });
+  });
+
+  it("同一客户另有真人在跟的项目：照旧写进那个项目、邀请、通知那位负责人", async () => {
+    const x = await 待分配现场();
+    const 甲 = await 人("owner9", "小甲", "sales");
+    const 真 = await prisma.project.create({ data: { name: "编的项目庚", customerId: x.客户.id, ownerId: 甲.id, creatorId: 甲.id, phase: "线索", node: "潜客培育" } });
+    const r = await 作为(x.销售, () => 同号再次录入(x.销售, 好号(), { 入口: "手工建档" }));
+    await 等通知推完();
+    expect(r.走 && r.项目id).toBe(真.id);
+    expect(r.走 && r.邀请).toBe("发了");
+    expect((await 通知们(x.市管.id)).filter((n) => n.kind === "撞号")).toHaveLength(0);
+  });
+
+  it("客户负责人是另一位真人（不是占着待分配的建的人）：照旧按没项目通知客户负责人", async () => {
+    const x = await 待分配现场();
+    const 甲 = await 人("owner9", "小甲", "sales");
+    await prisma.customer.update({ where: { id: x.客户.id }, data: { salesOwnerId: 甲.id } });
+    const r = await 作为(x.销售, () => 同号再次录入(x.销售, 好号(), { 入口: "手工建档" }));
+    await 等通知推完();
+    expect(r.走 && r.反馈).toContain("小甲");
+    expect((await 通知们(甲.id)).filter((n) => n.kind === "撞号")).toHaveLength(1);
+    expect((await 通知们(x.市管.id)).filter((n) => n.kind === "撞号")).toHaveLength(0);
+  });
+});

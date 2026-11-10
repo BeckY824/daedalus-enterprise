@@ -234,7 +234,7 @@ describe("申请挂靠", () => {
     await 等通知推完();
     const 发 = await 通知们(x.负责人.id, "挂靠");
     expect(发).toHaveLength(1);
-    expect(发[0]).toMatchObject({ link: `/customers/${x.客户.id}` });
+    expect(发[0]).toMatchObject({ link: "/projects/attach" });
     // 再查一次：露出里带已申请
     await 挪旧();
     const 再 = await 作为(x.乙, () => 客户名查重(x.乙.id, [x.乙.id], "编的客户甲"));
@@ -251,13 +251,14 @@ describe("申请挂靠", () => {
     expect(await prisma.entDupeHit.count({ where: { action: "申请挂靠" } })).toBe(0);
   });
 
-  it("负责人已离职：通知他手填的直属上级", async () => {
+  it("负责人已离职：审批人还是他、当下不通知别人（P-挂靠-02 不留兜底，11-10 改）；24 小时后转他的实线上级，见 ent-attach-approval", async () => {
     const x = await 现场();
     await prisma.user.update({ where: { id: x.负责人.id }, data: { active: false } });
     const r = await 作为(x.乙, () => 查客户名("编的客户甲"));
     const id = r.ok && r.撞 && "撞" in r.撞 ? r.撞.撞.撞号id! : "";
-    expect(await 作为(x.乙, () => 申请挂靠(id))).toMatchObject({ ok: true, 提示: "已申请挂靠，等负责人处理" });
+    expect(await 作为(x.乙, () => 申请挂靠(id))).toMatchObject({ ok: true, 提示: "已记下申请挂靠；负责人现在收不到通知，24 小时没人处理会转给他的直属上级" });
     await 等通知推完();
-    expect((await 通知们(x.主管.id, "挂靠"))[0]?.title).toContain("已离职同事名下的");
+    expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "待处理", approverId: x.负责人.id });
+    expect(await 通知们(x.主管.id, "挂靠")).toHaveLength(0);
   });
 });

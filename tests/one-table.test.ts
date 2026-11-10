@@ -54,6 +54,9 @@ const 不算列表页 = [
   // 冲突那张有分页勾选，但只为「采用原系统 / 保留我们」两颗，没有筛选、列设置、空态这些 DataList 的事
   "src/app/(app)/settings/EnterpriseImportTab.tsx",
   "src/app/(app)/settings/EnterpriseImportReport.tsx",
+  // 企业版挂靠审批页（P-挂靠-02，11-10）：列的是撞号台账里的挂靠申请（等我审批、我的申请），只有批准 / 拒绝两颗、一页放得下；
+  // 没有筛选、分页、批量、列设置，客户和项目本身的列表页还是各自的 DataList
+  "src/app/(app)/projects/attach/AttachView.tsx",
   // 企业版「我分出去的」弹窗（2026-10-25）：列的是分配账本（每条线索最近一次分配），同导入记录；
   // 只读、没有筛选、批量、列设置，线索本身的列表页还是 LeadsView
   "src/app/(app)/leads/AssignLead.tsx",
