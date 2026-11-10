@@ -11,7 +11,8 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 试跑 } from "@/lib/enterprise-import/report";
+import { 试跑, 渠道索引, 来源渠道别名 } from "@/lib/enterprise-import/report";
+import { 名键 } from "@/lib/enterprise-import/clean";
 import { 写一批 as 只写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
 import { 撤回一批, 恢复一批 } from "@/lib/enterprise-import/revert";
 import { 规则猜列, 进备注 } from "@/lib/enterprise-import/mapping";
@@ -139,6 +140,41 @@ describe("新字段导进来", () => {
     const 丁 = (await 客户("测试丁有限公司"))!;
     expect(丁.channelId).toBeNull();
     expect(丁.remark).toContain("来源：虚构渠道乙");
+  });
+
+  it("P-渠道-04：来源写「义乌门店」的挂到启用中的「义乌展厅」，不落停用的门店、不新建渠道", async () => {
+    const 展厅 = (await prisma.channel.create({ data: { name: "义乌展厅", platform: "义乌展厅", channelOwnerId: 张伟 } })).id;
+    const 门店 = (await prisma.channel.create({ data: { name: "义乌门店", platform: "义乌门店", channelOwnerId: 张伟, active: false } })).id;
+    const 渠道数 = await prisma.channel.count();
+    const 行 = (id: string, 名: string, 号: string, 来源: string) => [id, 名, "", 号, "张伟", "A", "", 来源, "", "", "", "", "", ""];
+    const { r } = await 导([客户表([行("C1", "测试戊有限公司", "13800000005", "义乌门店"), 行("C2", "测试己有限公司", "13800000006", " 义乌门店 ")])]);
+    expect(r.失败).toBe(0);
+    for (const 名 of ["测试戊有限公司", "测试己有限公司"]) {
+      const c = (await 客户(名))!;
+      expect(c).toMatchObject({ channelId: 展厅, attributionChannelId: 展厅 });
+      expect(c.channelId).not.toBe(门店);
+      expect(c.remark ?? "").not.toContain("来源：义乌门店");
+    }
+    expect(await prisma.channel.count()).toBe(渠道数);
+  });
+
+  it("P-渠道-04：「义乌展厅」不在（或停用）时「义乌门店」照旧对不上，进备注", async () => {
+    await prisma.channel.create({ data: { name: "义乌展厅", platform: "义乌展厅", channelOwnerId: 张伟, active: false } });
+    await prisma.channel.create({ data: { name: "义乌门店", platform: "义乌门店", channelOwnerId: 张伟, active: false } });
+    const 渠道数 = await prisma.channel.count();
+    await 导([客户表([["C1", "测试庚有限公司", "", "13800000007", "张伟", "A", "", "义乌门店", "", "", "", "", "", ""]])]);
+    const c = (await 客户("测试庚有限公司"))!;
+    expect(c.channelId).toBeNull();
+    expect(c.remark).toContain("来源：义乌门店");
+    expect(await prisma.channel.count()).toBe(渠道数);
+  });
+
+  it("渠道索引 · 来源别名：别名按本名认；别名自己是启用中的渠道时先认它自己；本名不在就不加", () => {
+    const 展厅 = { id: "z", name: "义乌展厅", platform: "义乌展厅" };
+    expect(渠道索引([展厅]).get(名键("义乌门店"))).toBe("z");
+    expect(渠道索引([展厅, { id: "m", name: "义乌门店", platform: "义乌门店" }]).get(名键("义乌门店"))).toBe("m");
+    expect(渠道索引([{ id: "x", name: "虚构渠道甲|线上", platform: "虚构渠道甲" }]).has(名键("义乌门店"))).toBe(false);
+    expect(来源渠道别名).toContainEqual(["义乌门店", "义乌展厅"]);
   });
 
   it("联系人：性别、生日、爱好、地址落对；认不出的性别进备注", async () => {

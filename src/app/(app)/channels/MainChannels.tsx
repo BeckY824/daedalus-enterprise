@@ -2,7 +2,8 @@
 
 /**
  * 主渠道管理（2026-11-08 渠道两层）：渠道页「主渠道」按钮打开。只给能管渠道的人（服务端 挡管 再挡一道）。
- * 一行一个主渠道：名字、可设子渠道、支持自拓、下面几个子渠道、启用。两个开关互不相关。
+ * 一行一个主渠道：名字、分类、可设子渠道、支持自拓、下面几个子渠道、启用。两个开关互不相关。
+ * 分类（11-10 P-渠道-04：独立站→自有阵地、公司资源 / 客户介绍→转介绍要能在页面上核对）只显示，表单里没有这一项、不在这里改
  * 改名时下面子渠道的全称一起改（saveMainChannel 一个事务）；停用后新建渠道选不到，已挂的照旧
  */
 import { useMemo, useState } from "react";
@@ -10,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { App, Button, Form, Input, Modal, Space, Switch, Table, Tag, Tooltip } from "antd";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { saveMainChannel, toggleMainChannel } from "./actions";
-import { 主渠道名上限, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
+import { 主渠道名上限, 分类文字, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
 
 type 编辑中 = { id?: string; name: string; allowSub: boolean; selfDev: boolean; category: string | null };
 
@@ -66,7 +67,7 @@ export default function MainChannels({ 主渠道们, 子渠道数, onClose }: { 
   }
 
   return (
-    <Modal open title="主渠道" onCancel={onClose} footer={null} width={720} destroyOnHidden>
+    <Modal open title="主渠道" onCancel={onClose} footer={null} width={800} destroyOnHidden>
       <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         每个渠道挂在一个主渠道下。「可设子渠道」关掉的主渠道只能当单一入口用，子渠道留空；「支持自拓」标出业务员自己能拓客的主渠道，和前一项互不相关。
       </div>
@@ -93,6 +94,13 @@ export default function MainChannels({ 主渠道们, 子渠道数, onClose }: { 
                 {!m.active && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}
               </div>
             ),
+          },
+          {
+            title: <span className="nowrap">分类</span>, key: "category", dataIndex: "category", width: 96, ellipsis: true,
+            render: (v: string | null) => {
+              const t = 分类文字(v);
+              return <span title={v ? t : undefined} className={v ? undefined : "muted"} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t}</span>;
+            },
           },
           {
             title: <Tooltip title="关掉 = 单一入口，新建、改渠道时子渠道留空；已有的子渠道名不会被拆掉"><span className="nowrap">可设子渠道</span></Tooltip>,

@@ -1,7 +1,8 @@
 /**
  * 企业版渠道两层（2026-11-08）：主渠道 + 子渠道。纯函数，客户端组件也 import；读写库在 channel-main.ts。
  *
- * - 主渠道一张表（EntChannelMain）：名字、可设子渠道、支持自拓、分类（预留）、启用。两个开关互不相关。
+ * - 主渠道一张表（EntChannelMain）：名字、可设子渠道、支持自拓、分类、启用。两个开关互不相关。
+ *   分类存的就是中文大类名（11-08 主渠道清单的大类，如「三方平台」「自有阵地」「转介绍」），主渠道表里只显示、不在页面上改。
  * - 原来的每个渠道（Channel）算一个子渠道，挂在主渠道下（Channel.mainId）。Channel.platform 存主渠道名，
  *   Channel.name 仍是全称「主渠道|子渠道」；子渠道留空（单一入口）时全称就是主渠道名。
  *   客户、项目、统计、导入照旧认 Channel，不用改。
@@ -60,3 +61,8 @@ export type 主渠道行 = {
   active: boolean;
   sort: number;
 };
+
+/** 主渠道表「分类」那一格：存的就是中文大类名，原样显示；没分类写「—」 */
+export function 分类文字(category: string | null | undefined): string {
+  return category?.trim() || "—";
+}
