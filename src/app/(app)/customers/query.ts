@@ -26,6 +26,8 @@ export type 客户条件 = {
   custStatus?: string;
   /** 客户类型（企业版字典 custType，2026-10-29 P13，迁移 092） */
   customerType?: string;
+  /** 归档档位（企业版，M-导入-23 / X-63）：A1 / A2 / B / C / D / E，Customer.archiveTier */
+  archiveTier?: string;
   salesOwnerId?: string;
   channelOwnerId?: string;
   createdWithin?: string;
@@ -135,6 +137,7 @@ export async function 客户筛选条件(
     // 客户状态只有企业版认；开关关着地址栏带了也当没带
     ...(sp.custStatus && 企业版() ? { custStatus: sp.custStatus } : {}),
     ...(sp.customerType && 企业版() ? { customerType: sp.customerType } : {}),
+    ...(sp.archiveTier && 企业版() ? { archiveTier: sp.archiveTier } : {}),
     ...(sp.salesOwnerId ? { salesOwnerId: sp.salesOwnerId } : {}),
     ...(sp.channelOwnerId ? { channelOwnerId: sp.channelOwnerId } : {}),
     ...(sp.createdWithin === "本月"
@@ -220,9 +223,9 @@ export async function 客户金额分页(where: Prisma.CustomerWhereInput, order
 }
 
 /** 快路径接得住的本表等值筛选（列名固定，值参数绑定） */
-const 等值列 = ["grade", "followStatus", "decisionStatus", "custStatus", "customerType", "salesOwnerId", "channelOwnerId", "channelId"] as const;
+const 等值列 = ["grade", "followStatus", "decisionStatus", "custStatus", "customerType", "archiveTier", "salesOwnerId", "channelOwnerId", "channelId"] as const;
 /** 等值列里只有企业版认的（开关关着地址栏带了也当没带） */
-const 企业版才筛: readonly string[] = ["custStatus", "customerType", "channelId"];
+const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archiveTier", "channelId"];
 
 /**
  * 带关键词的列表：总数、钳过的页码和这一页的 id 用一条 SQL 出（P2，2026-10-28）。
