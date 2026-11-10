@@ -332,6 +332,30 @@ describe("原负责人退到公海后看不到", () => {
     expect(await 看(丙, 们[0].c, 们[0].p)).toMatchObject({ 客户详情: true, 项目详情: true });
   });
 
+  it("退得多（名单过上限）也只认最近一次：乙早先退过、后来丙领走又退的，乙看得到，丙回避（X-76，P-公海-04）", async () => {
+    for (let i = 0; i < 130; i++) await 导入的(乙.id, `批量${i}`);
+    // 项目级：乙退过，后来丙那一条更晚（领走再退）
+    const 转手 = await 导入的(乙.id, "转手项目");
+    await raw.projectNodeLog.create({ data: { projectId: 转手.p, userId: 丙.id, kind: "pool-release", fromOwnerId: 丙.id, toPhase: "线索", toNode: "线索", at: new Date(Date.now() + 60_000) } });
+    // 客户级：乙放进公海、丙领走、丙再放进公海
+    const c = await 客户(乙.id, "转手客户");
+    const p = await 项目(乙.id, c);
+    await 退客户(乙, c);
+    当(丙);
+    expect(await 以谁的身份(丙.id, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
+    await 退客户(丙, c);
+    当(乙);
+    const 避 = await 以谁的身份(乙.id, async () => (await import("@/lib/team-scope")).现在的公海回避(raw));
+    expect(避).toMatchObject({ 客户: null, 项目: null });
+    expect(await 看(乙, 转手.c, 转手.p)).toMatchObject({ 客户列表: true, 客户详情: true, 项目详情: true, 项目公海: true });
+    expect(await 看(乙, c, p)).toMatchObject({ 客户列表: true, 客户详情: true, 项目详情: true, 项目公海: true });
+    expect(await 看(丙, 转手.c, 转手.p)).toEqual(都看不到);
+    expect(await 看(丙, c, p)).toEqual(都看不到);
+    const 还避 = await 导入的(乙.id, "还是乙最后退的");
+    expect(await 看(乙, 还避.c, 还避.p)).toEqual(都看不到);
+    await 页签对得上(乙);
+  });
+
   it("负责人是他的线索挂在回避客户上也不出；没挂客户的、别的客户上的照常", async () => {
     const c = await 客户(乙.id);
     await 项目(乙.id, c);
