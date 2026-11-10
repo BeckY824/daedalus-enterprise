@@ -158,6 +158,8 @@ export const 指向人的列: [string, string][] = [
   // 企业版撞号台账（2026-11-10）：查询人、命中负责人，不建外键
   ["EntDupeHit", "userId"],
   ["EntDupeHit", "ownerId"],
+  ["EntDupeHit", "approverId"],
+  ["EntDupeHit", "decidedById"],
   // 企业版渠道投入是谁录的（2026-10-29）
   ["EntChannelInvest", "userId"],
   // 企业版关联客户是谁关联的（2026-10-29）：不建外键
