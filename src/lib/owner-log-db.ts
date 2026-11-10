@@ -10,7 +10,8 @@ import { 系统 } from "@/lib/project/timeout";
  * 换负责人的几条路都走这一处：改负责人 / 批量分配 / 公海领取 / 公海分配（带走并记下）、成员停用转交、两种撤销。
  * 放在换负责人的同一个事务里写：负责人改了、记录没写上的情况不会有
  */
-export type 换负责人种类 = "assign" | "claim" | "pool-assign" | "deactivate" | "undo" | "pool-release";
+/** market-assign = 客户第一次从市场成员分给销售（P-转-03、P-公海-11）：算分配、不算转客户，只是记录分得出 */
+export type 换负责人种类 = "assign" | "market-assign" | "claim" | "pool-assign" | "deactivate" | "undo" | "pool-release";
 
 export async function 记换负责人(
   tx: Pick<Prisma.TransactionClient, "customerOwnerLog">,
@@ -124,13 +125,16 @@ export async function 我放出去的公海客户(们: { id: string; 在公海: 
  * 只删最近那条且不是 pool-release：撤领取时被撤的是 占位 → 我 那条，进公海那条还得留着，它记着原负责人。
  * 要在把负责人还回去之前或之后调都行，条件只看记录本身
  */
-export async function 删被撤的换负责人记录(tx: Pick<Prisma.TransactionClient, "customerOwnerLog">, customerId: string, from: string, to: string): Promise<void> {
-  const r = await tx.customerOwnerLog.findFirst({
-    where: { customerId, fromOwnerId: from, toOwnerId: to, NOT: { kind: "pool-release" } },
+export async function 删被撤的换负责人记录(tx: Pick<Prisma.TransactionClient, "customerOwnerLog">, customerId: string | string[], from: string, to: string): Promise<void> {
+  // 一批客户（同一个 from → to）一次查、一次删：每位只删自己最近那条
+  const 们 = await tx.customerOwnerLog.findMany({
+    where: { customerId: { in: typeof customerId === "string" ? [customerId] : customerId }, fromOwnerId: from, toOwnerId: to, NOT: { kind: "pool-release" } },
     orderBy: [{ at: "desc" }, { id: "desc" }],
-    select: { id: true },
+    select: { id: true, customerId: true },
   });
-  if (r) await tx.customerOwnerLog.delete({ where: { id: r.id } });
+  const 最近 = new Map<string, string>();
+  for (const r of 们) if (!最近.has(r.customerId)) 最近.set(r.customerId, r.id);
+  if (最近.size) await tx.customerOwnerLog.deleteMany({ where: { id: { in: [...最近.values()] } } });
 }
 
 /**

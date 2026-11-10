@@ -41,7 +41,7 @@ import { 查电话, 规整手机号, 认回打码号 } from "@/lib/phone";
 import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
 import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
-import { 带走并记下, 还项目, 数转走的项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
+import { 带走并记下, 还项目, 带过来对不上, 数转走的项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
@@ -1283,45 +1283,75 @@ async function 发起转让交接(me: { id: string; name: string }, ids: string[
  *   - 带过来的活也只还「还挂在新负责人名下、还没做完」的
  * 看全部（团队版，lib/team-scope.ts）：业务员把自己的客户转给同事，客户一换人他就看不到了，限定着查撤不回来。
  * 所以要撤哪几位不靠限定定：要么是还给我自己（我刚转出去的），要么是我现在看得到的（公海里的）；
- * 并且这位最近一条换负责人记录得是我把他从原负责人换给新负责人的（是我刚换的）——原值是前端传的，不能光信它
+ * 并且这位最近一条换负责人记录得是我把他从原负责人换给新负责人的（是我刚换的）——原值是前端传的，不能光信它。
+ * 企业版按原样回滚、不半撤（P-撤销-01，4B）：这一批里有一位撤不了、或带过来的活有一条已经不是转过去时的样子
+ * （被删、被人改走、做完了），整批不动、回原因让人手工改；团队版照旧能撤的撤、撤不了的跳过。
+ * 写都在一个事务里，按原负责人分组成批改（原来一位客户一个事务、项目逐个查逐个改）
  */
 export async function 撤销改负责人(原值: { id: string; 值: string }[], 新负责人: string, 带过来?: 带走的): Promise<BulkResult> {
   const me = await requireUser();
   const b = await getBusiness();
-  const ids = [...new Set(原值.map((x) => x.id))];
+  const 去重 = [...new Map(原值.map((x) => [x.id, x])).values()];
+  const ids = 去重.map((x) => x.id);
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, missing: 0 };
+  const 严 = 企业版();
   const 看得到 = new Set((await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((c) => c.id));
   const 还归他 = new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: 新负责人 }, select: { id: true } }))).map((c) => c.id));
-  const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 原值.map((x) => x.值) }, active: true }, select: { id: true } })).map((u) => u.id));
+  const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 去重.map((x) => x.值) }, active: true }, select: { id: true } })).map((u) => u.id));
   // 只撤我自己刚才那一下（2026-10-28 越权排查）：原值、新负责人都是前端传的，不对上换负责人记录，业务员能把同事的客户「撤」给自己
-  const 我换的 = await 是我刚换的(原值.map((x) => ({ customerId: x.id, 原: x.值, 现: 新负责人 })), me.id);
-  const 退 = 原值.filter((x) => 我换的.has(x.id) && 还归他.has(x.id) && 在职的.has(x.值) && (x.值 === me.id || 看得到.has(x.id)));
+  const 我换的 = await 是我刚换的(去重.map((x) => ({ customerId: x.id, 原: x.值, 现: 新负责人 })), me.id);
+  const 能撤 = (x: { id: string; 值: string }) => 我换的.has(x.id) && 还归他.has(x.id) && (x.值 === me.id || 看得到.has(x.id));
+  const 退 = 去重.filter((x) => 能撤(x) && 在职的.has(x.值));
+  const 拒 = (原因: string) => ({ ok: false as const, error: `${原因}${ids.length > 1 ? "；为了不撤一半，这次一条都没改" : ""}，要改回请手工改` });
+  if (严 && 退.length < ids.length) {
+    const 改过 = 去重.filter((x) => !能撤(x)).length;
+    const 停用 = 去重.filter((x) => 能撤(x) && !在职的.has(x.值)).length;
+    return 拒([改过 ? `${改过} 位${b.customer}现在撤不了（负责人又改过，或过了撤销时限）` : "", 停用 ? `${停用} 位${b.customer}的原负责人已停用` : ""].filter(Boolean).join("；"));
+  }
+  if (!退.length) {
+    revalidateCustomer();
+    return { ok: true, updated: 0, unchanged: ids.length, missing: 0 };
+  }
   await 钉住老签约();
-  const 退了: { id: string; salesOwnerId: string }[] = [];
-  for (const x of 退) {
-    const 成 = await 看全部(() => prisma.$transaction(async (tx) => {
-      // 条件里再带一次新负责人：查完到这里之间被人改走了就不动
-      const r = await tx.customer.updateMany({ where: { id: x.id, salesOwnerId: 新负责人 }, data: { salesOwnerId: x.值 } });
-      if (!r.count) return false;
-      // 企业版被撤的那条记录删掉、不另记（P-撤销-01），操作日志照记（下面 recordAudit）
-      if (企业版()) await 删被撤的换负责人记录(tx, x.id, x.值, 新负责人);
-      else await 记换负责人(tx, [{ customerId: x.id, from: 新负责人, to: x.值 }], me.id, "undo");
-      if (带过来) {
-        await tx.followPlan.updateMany({ where: { id: { in: 带过来.计划 }, customerId: x.id, ownerId: 新负责人, done: false }, data: { ownerId: x.值 } });
-        await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: x.id, ownerId: 新负责人, done: false }, data: { ownerId: x.值 } });
-        await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: x.id, ownerId: 新负责人, status: "OPEN" }, x.值);
-        if (企业版()) await 还待分配状态(tx, 带过来, x.id, 新负责人);
-        await 还项目(tx, 带过来.项目, x.id, 新负责人, x.值, me.id);
-        // 转客户时一起从线索公海带过来的（P-转-07）：放回线索公海
-        if (企业版()) {
-          const 们 = await tx.project.findMany({ where: { id: { in: (带过来.公海项目 ?? []).filter((p) => typeof p === "string") }, customerId: x.id }, select: { id: true } });
-          for (const p of 们) await 撤回项目公海(tx, p.id, 新负责人, me.id);
+  let 结果: { 退了: { id: string; salesOwnerId: string }[] } | { 错: string };
+  try {
+    结果 = await 看全部(() => 查完再写(async (tx) => {
+      // 条件里再带一次新负责人：查完到这里之间被人改走了就不动（企业版：整批不动）
+      const 还在 = new Set((await tx.customer.findMany({ where: { id: { in: 退.map((x) => x.id) }, salesOwnerId: 新负责人 }, select: { id: true } })).map((c) => c.id));
+      const 这批 = 退.filter((x) => 还在.has(x.id));
+      if (严 && 这批.length < 退.length) return { 错: `${退.length - 这批.length} 位${b.customer}的负责人刚又被改过` };
+      if (严 && 带过来) {
+        const 差 = await 带过来对不上(tx, 带过来, 这批.map((x) => x.id), 新负责人);
+        if (差) return { 错: `一起转过去的计划、待办、商机、项目里有 ${差} 条已经被改过（换了人、做完了或删了）` };
+      }
+      const 组 = new Map<string, string[]>();
+      for (const x of 这批) 组.set(x.值, [...(组.get(x.值) ?? []), x.id]);
+      for (const [原, cs] of 组) {
+        await tx.customer.updateMany({ where: { id: { in: cs }, salesOwnerId: 新负责人 }, data: { salesOwnerId: 原 } });
+        // 企业版被撤的那条记录删掉、不另记（P-撤销-01），操作日志照记（下面 recordAudit）
+        if (严) await 删被撤的换负责人记录(tx, cs, 原, 新负责人);
+        else await 记换负责人(tx, cs.map((customerId) => ({ customerId, from: 新负责人, to: 原 })), me.id, "undo");
+        if (!带过来) continue;
+        const 这几位 = { in: cs };
+        await tx.followPlan.updateMany({ where: { id: { in: 带过来.计划 }, customerId: 这几位, ownerId: 新负责人, done: false }, data: { ownerId: 原 } });
+        await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: 这几位, ownerId: 新负责人, done: false }, data: { ownerId: 原 } });
+        await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: 这几位, ownerId: 新负责人, status: "OPEN" }, 原);
+        if (严) await 还待分配状态(tx, 带过来, cs, 新负责人);
+        await 还项目(tx, 带过来.项目, cs, 新负责人, 原, me.id);
+        // 转客户时一起从线索公海带过来的（P-转-07）：放回线索公海；放不回去整批回滚
+        if (严) {
+          const 们 = await tx.project.findMany({ where: { id: { in: (带过来.公海项目 ?? []).filter((p) => typeof p === "string") }, customerId: 这几位 }, select: { id: true } });
+          for (const p of 们) if (!(await 撤回项目公海(tx, p.id, 新负责人, me.id))) throw new 撤销对不上("一起从线索公海带过来的项目放不回去了");
         }
       }
-      return true;
+      return { 退了: 这批.map((x) => ({ id: x.id, salesOwnerId: x.值 })) };
     }));
-    if (成) 退了.push({ id: x.id, salesOwnerId: x.值 });
+  } catch (e) {
+    if (e instanceof 撤销对不上) 结果 = { 错: e.message };
+    else throw e;
   }
+  if ("错" in 结果) return 拒(结果.错);
+  const { 退了 } = 结果;
   if (退了.length) {
     await recordAudit({
       user: me, action: "assign", entity: "Customer",
@@ -1332,6 +1362,9 @@ export async function 撤销改负责人(原值: { id: string; 值: string }[], 
   revalidateCustomer();
   return { ok: true, updated: 退了.length, unchanged: ids.length - 退了.length, missing: 0 };
 }
+
+/** 撤销做到一半发现对不上：抛它让事务整个回滚（查完再写 只对 SQLite 忙重试，这个原样抛出来） */
+class 撤销对不上 extends Error {}
 
 export async function bulkFollowStatus(ids: string[], followStatus: string): Promise<BulkResult> {
   const me = await requireUser();

@@ -103,7 +103,7 @@ for (const width of [1024, 1280, 1366]) {
 }
 
 // P-转-07：市场首次分给销售（X-18）有项目一起转、或有同事项目留下时，分之前列出来；别的情况不弹
-const 留下预览 = { 项目数: 1, 项目: [{ name: "同事的项目", 客户: "某客户", 负责人: "王二" }] };
+const 留下预览 = { 项目数: 1 }; // 同事项目只给个数（Even C4，4B）
 const 带走预览 = { 项目数: 2, 项目: [{ name: "自己的项目", 客户: "某客户" }, { name: "公海的项目", 客户: "某客户", 负责人: "线索公海" }], 留下: 留下预览 };
 type 窗 = { __带走?: unknown; __带走失败?: boolean; __画: () => void; __调?: unknown[][] };
 async function 开页(设: { 带走?: unknown; 失败?: boolean }): Promise<{ page: Page; errors: string[] }> {
@@ -130,8 +130,8 @@ it("分配弹窗·只有留在同事名下的项目：也弹，写明不跟着�
   await 选人再分(page);
   await 确认框(page).locator(".ant-modal-confirm-title", { hasText: "1 个项目留在各自负责人名下" }).waitFor();
   const 字 = await 确认框(page).innerText();
-  expect(字).toContain("这些项目留在各自负责人名下，不跟着转：");
-  expect(字).toContain("同事的项目（某客户 · 王二）");
+  expect(字).toContain("有 1 个同事在推的项目，留在各自负责人名下，不跟着转");
+  expect(字).not.toContain("王二");
   expect(字).not.toContain("这些项目的负责人会一起改成新负责人：");
   await 确认框(page).getByRole("button", { name: "转", exact: true }).click();
   await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "分配线索"));
@@ -147,8 +147,8 @@ it("分配弹窗·有项目一起转：先列出来，同事的另列一段；�
   const 框字 = await 确认框(page).innerText();
   expect(框字).toContain("这些项目的负责人会一起改成新负责人：");
   expect(框字).toContain("公海的项目（某客户 · 线索公海）");
-  expect(框字).toContain("这些项目留在各自负责人名下，不跟着转：");
-  expect(框字).toContain("同事的项目（某客户 · 王二）");
+  expect(框字).toContain("有 1 个同事在推的项目，留在各自负责人名下，不跟着转");
+  expect(框字).not.toContain("王二");
   expect(await 调了(page, "分配带走的项目")).toEqual([["分配带走的项目", ["p1"], "u1"]]);
   await 确认框(page).locator(".ant-btn:not(.ant-btn-primary)").click();
   await 确认框(page).waitFor({ state: "detached" });

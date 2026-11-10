@@ -54,7 +54,7 @@ export type 公海结果 =
       交接中?: number;
       /** 放进公海：名下有同事负责、还没结束的项目，没放的几位（企业版 P-公海-06，11-05） */
       同事在推?: number;
-      /** 拦住那几位的同事项目和负责人：「客户A」项目X（张三）…（P-看-12 例外，11-09） */
+      /** 拦住那几位的同事项目个数：「客户A」有 2 个同事在推的项目…（P-看-12 例外，只写个数，Even C4） */
       同事项目?: string;
       /** 放进公海：联系方式空着或有号码不对、没放的几位（企业版，M-公海-15） */
       联系方式不全?: number;
@@ -149,7 +149,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   // M-公海-15（11-05 用户）：客户电话、联系人、项目联系人的号码要有、而且全对才能放（谁放都一样）
   const 号码错 = 企业版() && 有权限.length ? await 看全部(async () => 客户退回前查联系方式(prisma, 有权限.map((c) => c.id), await 退回号码种类表())) : new Map<string, string>();
   const 能放 = 有权限.filter((c) => !有订单.has(c.id) && !交接中.has(c.id) && !同事在推.has(c.id) && !号码错.has(c.id));
-  // 同事的项目平时看不到，被拦时例外写出项目名和负责人（P-看-12），按选的先后列
+  // 同事的项目平时看不到，被拦时只说个数（P-看-12 例外、Even C4），按选的先后列
   const 被同事拦 = 有权限.filter((c) => 同事在推.has(c.id)).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
   // 别的照放时提示条只说「N 位…没放」，那就带上客户名
   const 同事项目 = 被同事拦.length ? await 同事在推项目说法(prisma, 被同事拦, 被同事拦.length > 1 || 能放.length > 0) : "";
