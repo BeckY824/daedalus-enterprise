@@ -17,6 +17,9 @@
  *   - 电话格里写的是邮箱 / 微信 / WhatsApp 的放进对应的格子；一格几个号的第一个当电话，其余进备注
  *   - 联系人的手机 / 邮箱 / 微信和我们这边已有的联系人、或本批前面一条撞了（同类型同查重键，P13 第 2 条）：照写，
  *     提醒「号码重复」并带上撞到的那位（报告里能点进去），不并、不跳过——是不是同一个人、要不要挂过去由人定
+ *   - 占位假号（全同数字、一串 0、顺序数字，M-导入-36）：电话 / WhatsApp / 座机里的不写进去、不参与查重（不撞我们这边、本批不拿它并），提醒一笔
+ *   - 内贸归档（映射了归档档位）的「全部电话」（M-导入-34）：按「 / 」拆，一家多号全留——纯数字的第一个当电话、其余进备注「另一个电话」；
+ *     带字母的整段当微信（不截数字），第一个进微信、其余进备注「另一个微信」；看不出是号也不带字母的（「无」这类）原样进备注
  *   - 客户的「座机」列（M-导入-24）不单独落库：电话那格空着就当电话认，否则进备注「座机：…」（和它以前算电话别名时一个结果）
  *   - 客户的「归档档位」列（M-导入-23）：A1 / A2 / B / C / D / E 认出来落 archiveTier，认不出原样进备注 + 提醒
  *   - 查重（M-导入-24 归档导入定的口径，M-导入-29 起普通导入也一样，不再分）：没导过的客户只要电话 / WhatsApp / 座机
@@ -31,6 +34,7 @@ import { businessDayjs } from "../business-clock";
 import { parseDateInput } from "../date-input";
 import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
+import { 是占位号 } from "../placeholder-phone";
 import { 无负责人占位名 } from "../pool";
 import { 拆多人, 进备注, 输单, 对客户类型, 客户类型空着, 客户类型等级, 值说法 } from "./mapping";
 import { 第一个节点, 是结局 } from "../project/nodes";
@@ -104,6 +108,8 @@ export function 名键(s: string): string {
 export function 撞已有客户(本地: Pick<本地索引, "客户名" | "客户号" | "归档号">, name: string, 号们: readonly (string | null | undefined)[]): string | null {
   for (const v of 号们) {
     for (const 段 of String(v ?? "").split(/[,，;；/、\n]+/)) {
+      // 占位假号不参与查重（M-导入-36）：十几家客户都写 11111111111，不能拿它认成同一家
+      if (是占位号(段)) continue;
       const k = 归档号键(段);
       const 们 = (k ? 本地.归档号?.get(k) : undefined) ?? (段.trim() ? 本地.客户号.get(号键(段.trim())) : undefined) ?? [];
       if (们.length) return `号码 ${段.trim()} 和我们这边已有的${们.length > 1 ? ` ${们.length} 个` : ""}客户撞了`;
@@ -297,6 +303,9 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
   const 出问题 = (r: 原始记录, 级别: 问题["级别"], 类别: 问题["类别"], 说明: string) =>
     问题们.push({ 级别, 类别, 实体: r.实体, 外部ID: r.外部ID, 行号: r.行号, 出处: r.出处, 说明 });
 
+  /** 内贸归档导入（映射里有归档档位那一列）：客户电话格按「全部电话」拆（M-导入-34） */
+  const 归档导入 = Object.values(m.列.customer ?? {}).includes("archiveTier");
+
   const 按类: Record<实体, 原始记录[]> = { customer: [], contact: [], lead: [], opportunity: [], followup: [] };
   for (const r of 记录) 按类[r.实体]?.push(r);
 
@@ -329,7 +338,63 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
    * 电话格：是号码就规整；写的是邮箱 / 「微信：xx」/「WhatsApp：xx」的放进对应的格子；
    * 一格几个号（逗号、斜杠、顿号隔开）第一个当电话，其余的放进「另」；都不是就原样进备注
    */
-  const 认电话 = (r: 原始记录, v: string | undefined, 附加: string[]): 号 => {
+  /** 占位假号（M-导入-36）：是就记一笔提醒、返回 true，调用方丢掉这个号 */
+  const 丢占位 = (r: 原始记录, v: string | undefined, 标签: string): boolean => {
+    if (!v || !是占位号(v)) return false;
+    出问题(r, "提醒", "格式不对", `${标签}「${v.trim()}」是占位号码（全同数字、一串 0 或顺序数字），没写进去、不拿来查重`);
+    return true;
+  };
+
+  /**
+   * 内贸归档的「全部电话」（M-导入-34）：按「 / 」（和逗号顿号这些）拆，一家多号全留。
+   * 纯数字的认成电话；带字母的整段当微信、不截数字；带「微信：」「WhatsApp：」前缀的照前缀放；
+   * 带汉字的有 7 位以上连续数字才当号认（「13800001111（微信同号）」），否则原样进备注；占位号丢掉
+   */
+  const 拆全部电话 = (r: 原始记录, t: string, 附加: string[]): 号 => {
+    const 号们: string[] = [];
+    const 微信们: string[] = [];
+    let whatsapp: string | undefined;
+    const 段们 = t.split(/[,，;；/／、\n]+/).map((x) => x.trim()).filter(Boolean);
+    for (const x of 段们) {
+      if (丢占位(r, x, "电话")) continue;
+      const 前缀 = /^(微信|weixin|wechat|wx|vx|whatsapp|wa)号?\s*[:：\s]\s*(\S.*)$/i.exec(x);
+      if (前缀 && /^(微信|weixin|wechat|wx|vx)$/i.test(前缀[1])) {
+        微信们.push(前缀[2].trim());
+        continue;
+      }
+      if (前缀) {
+        if (!丢占位(r, 前缀[2], "WhatsApp")) {
+          if (!whatsapp) whatsapp = 前缀[2].trim();
+          else 附加.push(`另一个 WhatsApp：${前缀[2].trim()}`);
+        }
+        continue;
+      }
+      // 带字母的：英文分机写法（「… ext 12」「… x12」）还是号，其余整段当微信
+      const 分机号 = /^\+?[\d\s\-()（）.]+(?:ext\.?|x)\s*\d{1,6}$/i.test(x);
+      if (/[A-Za-z]/.test(x) && !分机号) {
+        微信们.push(x);
+        continue;
+      }
+      const 纯数字 = 分机号 || /^[+＋]?[\d０-９\s\-()（）.－—–]+(?:(?:转|分机|#)\d{1,6})?$/.test(x);
+      if (纯数字 || /\d{7,}/.test(x.replace(/[\s\-]/g, ""))) {
+        const p = 查电话(x, { 必填: false });
+        if (p.ok && p.phone) {
+          号们.push(p.phone);
+          continue;
+        }
+      }
+      附加.push(`电话：${x}`);
+      出问题(r, "提醒", "格式不对", `电话「${x}」看不出是个号码，原样放进了备注`);
+    }
+    const [首, ...余] = 号们;
+    const [微信, ...余微信] = 微信们;
+    附加.push(...余微信.map((x) => `另一个微信：${x}`));
+    if (段们.length > 1 && 号们.length + 微信们.length > 1)
+      出问题(r, "提醒", "格式不对", `全部电话里拆出 ${号们.length} 个号${微信们.length ? `、${微信们.length} 个微信` : ""}，第一个号当电话、第一个微信进微信，其余放进了备注`);
+    return { phone: 首 ?? "", 另: 余, ...(微信 ? { wechat: 微信 } : {}), ...(whatsapp ? { whatsapp } : {}) };
+  };
+
+  const 认电话 = (r: 原始记录, v: string | undefined, 附加: string[], 全部电话 = false): 号 => {
     if (!v) return { phone: "", 另: [] };
     // 前缀和分隔符先看：「WhatsApp: +1 415…」「138…/139…」整格丢给 查电话 也能认出一个号，会把其余的吞掉
     const t = v.trim();
@@ -340,10 +405,14 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     const 前缀 = /^(微信|weixin|wechat|wx|vx|whatsapp|wa)号?\s*[:：\s]\s*(\S.*)$/i.exec(t);
     if (前缀) {
       const 微信 = /^(微信|weixin|wechat|wx|vx)$/i.test(前缀[1]);
+      if (!微信 && 丢占位(r, 前缀[2], "WhatsApp")) return { phone: "", 另: [] };
       出问题(r, "提醒", "格式不对", `电话格里写的是${微信 ? "微信" : " WhatsApp "}「${t}」，放进了${微信 ? "微信" : " WhatsApp "}`);
       return 微信 ? { phone: "", wechat: 前缀[2].trim(), 另: [] } : { phone: "", whatsapp: 前缀[2].trim(), 另: [] };
     }
-    const 段 = t.split(/[,，;；/、\n]+/).map((x) => x.trim()).filter(Boolean);
+    if (全部电话) return 拆全部电话(r, t, 附加);
+    const 全段 = t.split(/[,，;；/、\n]+/).map((x) => x.trim()).filter(Boolean);
+    const 段 = 全段.filter((x) => !丢占位(r, x, "电话"));
+    if (!段.length) return { phone: "", 另: [] };
     if (段.length > 1) {
       const 号们 = 段.map((x) => 查电话(x, { 必填: false }));
       if (号们.every((x) => x.ok)) {
@@ -352,6 +421,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         return { phone: 首, 另: 余 };
       }
     }
+    // 去掉了占位号的，剩下的那一个号单独认
+    if (段.length < 全段.length) v = 段.join(" / ");
     const p = 查电话(v, { 必填: false });
     if (p.ok) return { phone: p.phone, 另: [] };
     附加.unshift(`电话：${v}`);
@@ -699,8 +770,11 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
       if (e === "customer") {
         const 起 = 问题们.length;
         // 座机（M-导入-24）：电话那格空着就当电话认；有电话就进备注
-        const 座机 = s.值.landline?.trim();
-        const 号 = 认电话(r, s.值.phone || 座机, 附加);
+        // 占位假号（M-导入-36）：座机、WhatsApp 那格是占位号的丢掉，不写、不查重
+        const 座机原 = s.值.landline?.trim();
+        const 座机 = 座机原 && !丢占位(r, 座机原, "座机") ? 座机原 : undefined;
+        const 原WhatsApp = s.值.whatsapp && !丢占位(r, s.值.whatsapp, "WhatsApp") ? s.值.whatsapp : undefined;
+        const 号 = 认电话(r, s.值.phone || 座机, 附加, 归档导入 && !!s.值.phone);
         if (座机 && s.值.phone) 附加.push(`座机：${座机}`);
         const phone = 号.phone;
         附加.push(...号.另.map((x) => `另一个电话：${x}`));
@@ -709,7 +783,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         if (s.值.level && !level) 附加.push(`客户等级：${s.值.level}`);
         const email = 补格(s.值.email, 号.email, "邮箱", 附加);
         const wechat = 补格(s.值.wechat, 号.wechat, "微信", 附加);
-        const whatsapp = 补格(s.值.whatsapp, 号.whatsapp, "WhatsApp", 附加);
+        const whatsapp = 补格(原WhatsApp, 号.whatsapp, "WhatsApp", 附加);
         const custStatus = 认字典(r, s.值.custStatus, 附加, "客户状态", 本地.客户状态);
         const customerType = 认客户类型(r, s.值.customerType, 附加);
         const source = s.值.source ? (查格式("来源", s.值.source) ?? s.值.source) : null;
