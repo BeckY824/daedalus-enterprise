@@ -548,6 +548,33 @@ export function 撞已有清单({ 撞, 共, 粘贴 = false, b, 导完 = false }:
 }
 
 /**
+ * 同一份表里名字很像、号不同的几行（企业版，M-导入-29，同 #207 的「疑似重名」）：只提醒，照写两条
+ */
+export function 疑似重名清单({ 像, 粘贴 = false, b }: { 像?: 预览["疑似重名"]; 粘贴?: boolean; b: BusinessConfig }) {
+  if (!像?.length) return null;
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      data-testid="import-similar-name"
+      style={{ marginTop: 12, marginBottom: 14 }}
+      title={`表里有几行${b.customer}名称很像、电话不同，照写成几条，请人看一眼`}
+      description={
+        <>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
+            名称不看空格、全半角、大小写、括号、标点和「有限公司」这类尾巴；是同一家的话，导完后合并或删掉多的那条
+          </div>
+          {像.map((x) => (
+            <div key={x.行号}>{第几行(x.行号, 粘贴)}：和{第几行(x.像行号, 粘贴)}{x.原因.replace(/^和/, "")}</div>
+          ))}
+          {像.length >= 20 && <div>……只列前 20 条</div>}
+        </>
+      }
+    />
+  );
+}
+
+/**
  * 号码撞上回收站里那位的几行（企业版，P-删-08 续）：确认那一步列行号，导完那一步报条数。
  * 不做逐行捞回键：导入的号码可能带分机、外国号写法，过不了查重的格式；捞回后这份预览也就过期了。
  * 指去建档 / 查重那颗「从回收站捞回」——那里只认号码、服务端重查一遍
@@ -612,6 +639,7 @@ export function 确认({
 
       <回收站提示 几行={回收} 行号们={看.回收站行号} 粘贴={粘贴} b={b} />
       <撞已有清单 撞={看.撞已有} 共={看.跳过 - 回收} 粘贴={粘贴} b={b} />
+      <疑似重名清单 像={看.疑似重名} 粘贴={粘贴} b={b} />
 
       {已有 > 0 && 补空题 && (<>
       <Typography.Title level={5} style={{ fontSize: 14, marginBottom: 8 }}>

@@ -25,7 +25,9 @@ import { 钉住老签约 } from "@/lib/contract-owner";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 历史负责人 } from "@/lib/project/pool-owner";
 import { 换负责人待办, 待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
-import { 公海分配通知 } from "@/lib/enterprise/notice-sources";
+import { 公海分配通知, 同事待分配随客户通知, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
+import { 公海项目市场转, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 分配方式叫法 } from "@/lib/enterprise/dict";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import type { 带走的 } from "@/lib/carry-over-db";
 
@@ -107,7 +109,8 @@ export type 分项目结果 =
  */
 export async function 分配公海项目(ids: string[], userId: string, 带待办?: boolean): Promise<分项目结果> {
   const me = await requireUser();
-  if (!能管公海(me, await 权限组织())) return { ok: false, error: "只有总管理和销售管理能把公海里的项目分给同事" };
+  const org = await 权限组织();
+  if (!能管公海(me, org)) return { ok: false, error: "只有总管理和销售管理能把公海里的项目分给同事" };
   if (!(await 开着())) return 只企业版项目模式;
   const 给 = await prisma.user.findFirst({ where: { id: String(userId ?? ""), active: true }, select: { id: true, name: true } });
   if (!给) return { ok: false, error: "这位同事不在了或已停用，换一位" };
@@ -122,32 +125,44 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
   let 跟来 = 0;
   let 连客户 = 0;
   const 整包: 整包撤销 = { 原: [], 带过来: { 计划: [], 待办: [], 商机: [], 项目: [] }, 公海项目: [] };
-  // 客户在客户公海里的会整包换客户负责人（P-公海-10）：同客户公海分配，事务外先钉住老签约（没缺的就不写）
+  // 客户在客户公海里的会整包换客户负责人（P-公海-10）、客户还在市场手里的整体给这位销售（P-公海-11）：事务外先钉住老签约（没缺的就不写）
   if (企业版()) await 钉住老签约();
+  const way = 企业版() ? await 分配方式叫法(0) : "";
+  const 随客户: 同事待分配条[] = [];
   for (const id of 们) {
     // 整包带过来的：事务撞上别的写入会重跑，每轮先清零，成了才加
     let 包: 整包出公海 | null = null;
+    let 同事待分配: 同事待分配条[] = [];
     const 原因 = await 看全部(() => 查完再写(async (tx) => {
       包 = null;
+      同事待分配 = [];
       const p = await tx.project.findUnique({ where: { id }, select: { id: true, name: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true, customerId: true } });
       if (!p) return "这个项目已经不在了";
       if (!p.pooledAt) return "已经被人领走了";
       const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
       if (c?.pool && c.poolInvalidAt) return "客户标了无效，要总管理先恢复";
       const 出整包 = 企业版() && !!c?.pool;
-      const 超 = await 领项目连带超上限(tx, 规则, 给.id, p, 0, 出整包);
+      // 客户还在市场手里、分给销售 = 市场第一次分给销售，客户整体给他，记「分配」（P-公海-11；不看客户创建人），同事待分配的随客户进手一起数
+      const 转 = 出整包 || !org ? null : await 公海项目市场转(tx, org, p, 给.id, false);
+      const 超 = await 领项目连带超上限(tx, 规则, 给.id, p, 转?.另进 ?? 0, 出整包);
       if (超) return 超;
       await tx.project.update({ where: { id }, data: { ownerId: 给.id, pooledAt: null, nextStepAt: null, nextStepText: null } });
       // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
       const 原 = (await 历史负责人(tx, id)) ?? (p.ownerId || null);
-      const 几条 = await 换负责人待办(tx, p, 原, 给.id, 带);
-      await 记转让(tx, p, me.id, 原, 给.id, "pool-claim", 待办痕(带, 几条));
+      // 市场转客户的待办计划还归市场（P-转-10），勾不算数
+      const 这带 = 转 ? undefined : 带;
+      const 几条 = await 换负责人待办(tx, p, 原, 给.id, 这带);
+      await 记转让(tx, p, me.id, 原, 给.id, "pool-claim", 待办痕(这带, 几条));
       if (出整包) 包 = await 客户整包出公海(tx, p.customerId, 给.id, me.id, 带, "pool-assign");
-      else await 单项目客户跟着领(tx, p.customerId, 给.id, me.id, 带);
+      else await 单项目客户跟着领(tx, p.customerId, 给.id, me.id, 这带);
+      if (转) 同事待分配 = (await 转客户给销售(tx, p.customerId, 转.原, 给.id, me.id, way)).同事待分配;
       return null;
     }));
     if (原因) 没分到.push({ id, 原因 });
-    else 分到.push(id);
+    else {
+      分到.push(id);
+      随客户.push(...同事待分配);
+    }
     const 带来 = 包 as 整包出公海 | null;
     if (!原因 && 带来) {
       连客户 += 1;
@@ -165,6 +180,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
     });
     刷新();
     await 公海分配通知(me, 给.id, "项目", 分到, 跟来, 连客户);
+    if (随客户.length) await 同事待分配随客户通知(me.id, 给.id, 随客户);
   }
   return { ok: true, 分到, 没分到, 给谁: 给, ...(整包.原.length ? { 整包 } : {}) };
 }

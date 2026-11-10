@@ -52,7 +52,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
-import { 交接要确认, 交接中的客户 } from "@/lib/enterprise/handover-db";
+import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 选的原因, 可选项 } from "@/lib/enterprise/dict";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/lib/enterprise/contact-dedupe";
@@ -228,7 +228,7 @@ export type SaveConflict = {
 };
 
 export type SaveCustomerResult =
-  /** 交接中 / 交接已在路上：编辑里换了负责人、交接要确认开着时，负责人先不换，等接手人确认（11-09，同批量转让）；申请移交 = 负责人本人发起的（X-20） */
+  /** 交接中 / 交接已在路上：编辑里负责人本人换负责人 = 申请移交（X-20、P-转-16，不看「交接要确认」开关），负责人先不换，等接手人确认 */
   | { ok: true; id: string; 带走?: 带走数; 交接中?: number; 交接已在路上?: number; 申请移交?: boolean }
   /** 同号协同 = 没新建，这次录的已写进现有项目（error 是给添加人的反馈，不是出错） */
   | { ok: false; error: string; conflict?: SaveConflict; 同号协同?: true };
@@ -582,7 +582,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     if (挡) return { ok: false, error: 挡 };
   }
   /*
-    编辑里换了负责人、交接要确认开着（转给自己除外）或负责人本人转自己的（申请移交，X-20）：同批量转让一条路（11-09）。
+    编辑里负责人本人转自己的（申请移交，X-20、P-转-16）：不看「交接要确认」开关；上级、系统管理员直接转（P-转-01 ②③④）。
     负责人这一格先按原样存，别的格照存；存完再发起交接，接手人确认后才换（带走 / 通知都在确认那一步）。
     市场成员的客户转给销售不走确认（P-转-17），当场换、只发分给你通知
   */
@@ -1155,8 +1155,8 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
 
   // 本来就归他的不算「改动」，分开统计才对得上操作人看到的选中条数
   const already = await prisma.customer.count({ where: { id: { in: ids }, salesOwnerId } });
-  // 企业版「交接中」：转给别人的先不换负责人，等接手人确认（转给自己 = 自己就是接手人，不用确认）
-  // 负责人本人转自己的 = 申请移交（X-20），开关关着也走；市场成员的客户分给销售不走确认（P-转-17），当场转、只通知；一批里混着别人的客户就整批照旧确认
+  // 负责人本人转自己的 = 申请移交（X-20、P-转-16），先不换负责人，等接手人确认（转给自己 = 自己就是接手人，不用确认）；不看「交接要确认」开关，同单条。
+  // 上级、条线总管理、系统管理员直接转（P-转-01）；市场成员的客户分给销售不走确认（P-转-17），当场转、只通知
   const 走法 = await 转让走交接(me, salesOwnerId, ids);
   if (走法) return 发起转让交接(me, ids, salesOwnerId, already, reason, 走法 === "申请");
   // 当场换：正在移交 / 交接中的不能再转（X-38 → P-转-05），上级、系统管理员也一样，先撤回或等对方拒收
@@ -1225,16 +1225,17 @@ async function 接待分配超上限(ids: string[], 新: string): Promise<string
  *   null —— 当场换：转给自己（自己就是接手人）、不是企业版、市场成员的客户全给销售（P-转-17，X-46 ⑤ 也不走申请）
  *   "申请" —— 负责人本人转自己的客户（P-转-01 ①、X-20，客户 11-09 回执 X4）：申请移交，接手人确认后生效，「交接要确认」关着也走。
  *             一批里混着自己的和下属的，整批走申请（同 P-转-17「混了就整批确认」）；只有系统管理员转自己的按 ③ 直接转（条线总管理转自己的也走申请）
- *   "交接" —— 企业版「交接要确认」开着
+ * 单条（客户编辑页、就地改）和批量转让同一套（P-转-16，11-10）：不看「交接要确认」开关，负责人本人的走申请，别的（上级、条线总管理、系统管理员）直接转。
+ * 开关「交接要确认」只剩离职交接还读（settings/actions.ts），这里不再读
  */
-async function 转让走交接(me: { id: string; role: string }, to: string, ids: string[]): Promise<"申请" | "交接" | null> {
+async function 转让走交接(me: { id: string; role: string }, to: string, ids: string[]): Promise<"申请" | null> {
   if (to === me.id || !企业版()) return null;
   if (await 都是市场转销售(ids, to)) return null;
   if (转自己客户要申请(me, await 权限组织())) {
     const 自己的 = await prisma.customer.count({ where: { id: { in: ids }, salesOwnerId: me.id, pool: { is: null } } });
     if (自己的) return "申请";
   }
-  return (await 交接要确认()) ? "交接" : null;
+  return null;
 }
 
 /**
@@ -1822,7 +1823,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     if (typeof v !== "string" || !v || !(await 在职(v))) return { ok: false, error: "负责人不存在或已停用" };
     const 不行 = await 不能当负责人(v);
     if (不行) return { ok: false, error: 不行 };
-    // 交接要确认开着、转给别人，或负责人本人转自己的（申请移交，X-20）：同批量转让，先发起交接，负责人不换（11-09）；市场成员的客户转给销售不走确认（P-转-17）
+    // 负责人本人转自己的（申请移交，X-20、P-转-16，不看开关）：先发起申请，负责人不换；上级、系统管理员直接转；市场成员的客户转给销售不走确认（P-转-17）
     const 走法 = await 转让走交接(me, v, [id]);
     if (走法) {
       const 现 = await prisma.customer.findUnique({ where: { id }, select: { salesOwnerId: true } });

@@ -172,7 +172,8 @@ describe("assignSalesOwner（直接换负责人）", () => {
     await setSetting(规则.交接要确认.key, true);
     invalidateSettingsCache();
     const c = await 客户("客户一", 销售);
-    当(老板, "老板", "ADMIN");
+    // P-转-16（11-10）起批量转同单条：系统管理员直接转，负责人本人转自己的走申请——由负责人本人发起
+    当(销售, "销售甲");
     expect(await assignSalesOwner([c], 另一销售)).toMatchObject({ ok: true });
     expect(await 分配通知们()).toEqual([]);
     expect(await prisma.entNotice.count({ where: { kind: "交接", userId: 另一销售 } })).toBe(1);
@@ -196,8 +197,10 @@ describe("assignSalesOwner（直接换负责人）", () => {
     invalidateSettingsCache();
     const a = await 客户("客户一", 运营);
     const b = await 客户("客户二", 另一销售, "13900000002");
-    当(老板, "老板", "ADMIN");
-    expect(await assignSalesOwner([a, b], 销售)).toMatchObject({ ok: true });
+    // P-转-16（11-10）起系统管理员批量转直接转；混批改由运营（另一销售的实线上级）把自己的连同下属的一起转，整批走申请
+    await prisma.entMember.update({ where: { userId: 另一销售 }, data: { managerId: 运营 } });
+    忘掉企业版范围();
+    expect(await assignSalesOwner([a, b], 销售)).toMatchObject({ ok: true, 交接中: 2 });
     expect(await 分配通知们()).toEqual([]);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: a } })).salesOwnerId).toBe(运营);
   });

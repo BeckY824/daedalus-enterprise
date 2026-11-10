@@ -44,7 +44,7 @@ import { 摊开, 并重复行, 添行, type 排布 } from "@/lib/import/plan";
 import { 认人表, 分机留存起, 同号条件, 这一批同号的 } from "@/lib/phone-dedupe";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 收块, 取暂存, type 一块 } from "@/lib/import/staging";
-import { 名键, 归档号键, 撞已有客户 } from "@/lib/enterprise-import/clean";
+import { 名键, 公司名键, 归档号键, 撞已有客户 } from "@/lib/enterprise-import/clean";
 import { 读导入查重索引, type 导入查重索引 } from "@/lib/enterprise-import/dedup";
 
 /** 一次导入最多落多少条。和 parse.ts 的行数上限一致，服务端再收一道 */
@@ -84,6 +84,11 @@ export type 预览 = {
   只跳过?: true;
   撞已有?: 撞已有[];
   撞号名?: number;
+  /**
+   * 企业版（M-导入-29，同 #207 归档导入的「疑似重名」）：同一份表里要新建的行，名字很像（公司名键：再去括号、标点、「有限公司」这类尾巴）、
+   * 号不同——只提醒，照写两条。像行号 = 前面那一行；最多列 20 条
+   */
+  疑似重名?: { 行号: number; 像行号: number; 原因: string }[];
 };
 
 /** 一行撞上已有客户：行号 + 撞的号或名 */
@@ -301,6 +306,16 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
     if (撞了.length < 撞已有上限) 撞了.push({ 行号, 原因 });
   };
   let 撞号名几行 = 0;
+  const 像名 = new Map<string, { 行号: number; 名: string }>();
+  const 疑似重名: NonNullable<预览["疑似重名"]> = [];
+  const 记像名 = (r: (typeof 行)[number]) => {
+    const 名 = r.值.name ?? "";
+    const k = 名 ? 公司名键(名) : "";
+    if (!k) return;
+    const 像 = 像名.get(k);
+    if (!像) 像名.set(k, { 行号: r.行号, 名 });
+    else if (疑似重名.length < 撞已有上限) 疑似重名.push({ 行号: r.行号, 像行号: 像.行号, 原因: `和「${像.名}」名字很像、电话不同，照写两条，请人看一眼` });
+  };
 
   let 新建 = 0;
   let 回收站里 = 0;
@@ -335,7 +350,11 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
       // 企业版：认人认不到，但合并之前就撞上已有客户的号或名（#207 的次序，排好 里标的），整条跳过
       撞号名几行++;
       记撞(r.行号, r.撞已有);
-    } else 新建++;
+    } else {
+      新建++;
+      // 同号的行 排好 里已经并成一条，走到这里的同表像名行号都不同
+      if (查重) 记像名(r);
+    }
   }
 
   // 有问题的格子按「列 + 原值」归并：一列里同一个写法出现三十行，人只该改一次
@@ -381,7 +400,7 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
         const h = (方案.表头[列] ?? "").trim();
         return h ? [h] : 方案.数据.some((r) => (r[列] ?? "").trim()) ? [`第 ${列 + 1} 列`] : [];
       }),
-      ...(查重 ? { 只跳过: true as const, 撞已有: 撞了, 撞号名: 撞号名几行 } : {}),
+      ...(查重 ? { 只跳过: true as const, 撞已有: 撞了, 撞号名: 撞号名几行, 疑似重名 } : {}),
     },
   };
 }

@@ -264,13 +264,13 @@ test("字段权限：销售的备注只能看就改不了；电话看不到就�
   expect(改后.phone).toBe("13900000002");
 });
 
-// 规则「交接要接手人确认」开着：转让先挂起，接手人确认了才换人，项目跟着走。放在字段权限后面（那条要销售甲还管着这位客户）
-test("交接要确认：老板把销售甲的客户转给销售乙，确认前还归销售甲、销售乙看不到；销售乙确认接手后客户和项目都归他", async ({ page }) => {
+// 负责人本人转自己的客户 = 申请移交（P-转-16，不看「交接要确认」开关；系统管理员、上级转的直接转）：先挂起，接手人接受了才换人，项目跟着走。放在字段权限后面（那条要销售甲还管着这位客户）
+test("申请移交：销售甲把自己的客户转给销售乙，接受前还归销售甲、销售乙看不到；销售乙接受后客户和项目都归他", async ({ page }) => {
   const 正文 = page.getByRole("main");
   const 归谁 = async () => (await db.customer.findUniqueOrThrow({ where: { id: 种.自己客户 } })).salesOwnerId;
   const [销售1, 销售2] = await Promise.all([账号.销售1, 账号.销售2].map((email) => db.user.findFirstOrThrow({ where: { email } })));
 
-  await 登录(page, "老板");
+  await 登录(page, "销售1");
   await page.goto("/customers");
   await 正文.getByRole("row", { name: /销售甲的客户/ }).getByRole("checkbox").check();
   await 正文.getByRole("button", { name: /批量分配/ }).click();
@@ -279,7 +279,7 @@ test("交接要确认：老板把销售甲的客户转给销售乙，确认前�
   // 名下有项目（线索乙）先问一起转，再问转让原因（可不选）
   await page.getByRole("dialog").getByRole("button", { name: "一起转" }).click();
   await page.getByRole("dialog").filter({ hasText: `转给「${种.名字.销售2}」` }).getByRole("button", { name: /转\s*让/ }).click();
-  await expect(提示(page, `已发起交接：1 名等 ${种.名字.销售2} 确认`)).toBeVisible();
+  await expect(提示(page, `已申请移交：1 名等 ${种.名字.销售2} 确认后生效`)).toBeVisible();
   expect(await 归谁()).toBe(销售1.id);
 
   await page.context().clearCookies();
@@ -287,10 +287,10 @@ test("交接要确认：老板把销售甲的客户转给销售乙，确认前�
   await page.goto("/customers");
   const 待确认 = 正文.locator(".ant-alert", { hasText: "等你确认" });
   // 接手人确认前看得到接的是谁（客户名；前面的用例可能改过名，只认开头）
-  await expect(待确认).toContainText(new RegExp(`「${种.名字.老板}」把「${种.名字.销售1}」名下的 1 位客户：销售甲的客户\\S*交接给你`));
+  await expect(待确认).toContainText(new RegExp(`「${种.名字.销售1}」申请把自己名下的 1 位客户：销售甲的客户\\S*移交给你`));
   await expect(正文.getByRole("row", { name: /销售甲的客户/ })).toHaveCount(0);
-  await 待确认.getByRole("button", { name: "确认接手" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: /确\s*认/ }).click();
+  await 待确认.getByRole("button", { name: "接受" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /接\s*受/ }).click();
   await expect(提示(page, "已接手 1 位客户")).toBeVisible();
   await expect(正文.getByRole("row", { name: /销售甲的客户/ })).toBeVisible();
   expect(await 归谁()).toBe(销售2.id);

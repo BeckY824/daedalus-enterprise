@@ -26,7 +26,7 @@ vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), �
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
-import { assignSalesOwner, patchCustomer, deleteCustomers, 撤销改负责人 } from "@/app/(app)/customers/actions";
+import { assignSalesOwner, patchCustomer, saveCustomer, deleteCustomers, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接, 改接手人 } from "@/app/(app)/customers/handover-actions";
 import { 挂起移交提醒, 挂起提醒键 } from "@/lib/enterprise/handover-remind";
 import { 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
@@ -188,15 +188,38 @@ describe("负责人本人转客户 = 申请移交", () => {
     expect(await 归谁(a.id)).toBe(销售.id);
   });
 
-  it("「交接要确认」开着：本人发起的同样是申请；上级发起的是普通交接", async () => {
+  it("编辑页整表保存换负责人也走申请（P-转-16）；开关开着关着一样", async () => {
+    for (const 开 of [false, true]) {
+      await setSetting("enterprise.rule.handover_confirm", 开);
+      const a = await 客户(销售.id);
+      const r = await prisma.customer.findUniqueOrThrow({ where: { id: a.id } });
+      const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
+      const res = await saveCustomer({ id: a.id, updatedAt: r.updatedAt.toISOString(), base, ...base, salesOwnerId: 接手.id } as Parameters<typeof saveCustomer>[0]);
+      expect(res).toMatchObject({ ok: true, 交接中: 1, 申请移交: true });
+      expect(await 归谁(a.id)).toBe(销售.id);
+    }
+  });
+
+  it("「交接要确认」开着：上级单条换负责人直接转（P-转-16）", async () => {
+    await setSetting("enterprise.rule.handover_confirm", true);
+    const c = await 客户(销售.id);
+    当(组长);
+    expect(await patchCustomer(c.id, "salesOwnerId", 接手.id)).not.toHaveProperty("交接中");
+    expect(await 归谁(c.id)).toBe(接手.id);
+    expect(await prisma.entHandover.count()).toBe(0);
+  });
+
+  it("「交接要确认」开着：批量转让同单条（P-转-16，11-10）——本人发起的是申请；上级发起的直接转，不写交接", async () => {
     await setSetting("enterprise.rule.handover_confirm", true);
     const a = await 客户(销售.id);
     const b = await 客户(销售.id);
     expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, 交接中: 1, 申请移交: true });
     当(组长);
     const r = await assignSalesOwner([b.id], 接手.id);
-    expect(r).toMatchObject({ ok: true, 交接中: 1 });
-    expect(r.ok && r.申请移交).toBeFalsy();
+    expect(r).toMatchObject({ ok: true, updated: 1 });
+    expect(r).not.toHaveProperty("交接中");
+    expect(await 归谁(b.id)).toBe(接手.id);
+    expect(await prisma.entHandover.count()).toBe(1);
   });
 });
 

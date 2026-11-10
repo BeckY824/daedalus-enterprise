@@ -24,7 +24,7 @@ import { fmtDateTime, smartTime, 成员选项, type 可选成员 } from "@/lib/u
 import { useUrlFilters } from "@/lib/url-filters";
 import { 带走说法 } from "@/lib/carry-over";
 import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
-import { 公海属性们, 快捷们, 有数才出的快捷, 排序们, 默认排序, 多次退回起, 没原因, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
+import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, 没原因, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
 import { 领取项目 } from "../projects/actions";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
@@ -68,7 +68,6 @@ const 快捷说明: Record<快捷, string> = {
   三次退回: "被同事主动放回公海，累计第 3 次",
   多次退回: `被同事主动放回公海，累计 ${多次退回起} 次及以上`,
   无效客户: "总管理或销售管理标了无效：领不了，系统管理员能恢复",
-  离职交接: "成员停用时交接方式选了放进公海",
 };
 
 const 无效原因 = "标了无效，要系统管理员先恢复";
@@ -301,8 +300,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
           popupMatchSelectWidth={260}
           value={f.quick || undefined}
           onChange={(v) => apply({ quick: v ?? "" })}
-          // 离职交接只在有这种数据（或正选着）时出（A-14）
-          options={快捷们.filter((k) => !有数才出的快捷.includes(k) || 快捷数[k] > 0 || f.quick === k).map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
+          options={快捷们.map((k) => ({ value: k, label: `${k} ${快捷数[k]}` }))}
           optionRender={(o) => (
             <div>
               <div>{o.label}</div>

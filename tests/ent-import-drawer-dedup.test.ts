@@ -175,6 +175,38 @@ describe("M-导入-29 旧导入抽屉查重（企业版）", () => {
     expect(await prisma.customer.count({ where: { name: "编的同名客户" } })).toBe(2);
   });
 
+  it("同一份表里名字很像、号不同：预览出「疑似重名」提醒（同 #207），照写两条", async () => {
+    const 我 = await 总管();
+    await 已有(我.id);
+    const 数据 = [
+      ["编的像名贸易有限公司", "13622223333", "", "", ""],
+      ["全新客户", "13600000007", "", "", ""],
+      ["编的像名贸易（上海）有限公司", "13622224444", "", "", ""],
+      ["编的同名客户", "13633330001", "", "", ""],
+      ["编的同名客户", "13633330002", "", "", ""],
+    ];
+    const 看 = await 预览导入(await 方案(数据));
+    if (!看.ok) throw new Error(看.error);
+    expect(看.预览.新建).toBe(5);
+    expect(看.预览.疑似重名).toEqual([
+      { 行号: 4, 像行号: 2, 原因: "和「编的像名贸易有限公司」名字很像、电话不同，照写两条，请人看一眼" },
+      { 行号: 6, 像行号: 5, 原因: expect.stringContaining("名字很像、电话不同") },
+    ]);
+    const r = await 执行导入(await 方案(数据), "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect(r).toMatchObject({ 新建: 5, 跳过: 0 });
+    expect(await prisma.customer.count({ where: { name: "编的同名客户" } })).toBe(2);
+  });
+
+  it("不是企业版：不出「疑似重名」", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    await 总管();
+    mocks.user = { ...mocks.user!, role: "ADMIN" };
+    const 看 = await 预览导入(await 方案([["编的同名客户", "13633330001", "", "", ""], ["编的同名客户", "13633330002", "", "", ""]]));
+    if (!看.ok) throw new Error(看.error);
+    expect(看.预览.疑似重名).toBeUndefined();
+  });
+
   it("不是企业版：照旧同号补空，不按名称 / WhatsApp 查重", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     const 我 = await 总管();
