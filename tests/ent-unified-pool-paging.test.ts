@@ -1,0 +1,337 @@
+/**
+ * 统一公海不再每翻一页把公海全部的项目名 / 当前进程 / 原负责人 / 客户可见都取一遍（11-10，代码体检 P1）：
+ * 这几样只为这一页的行查；筛、数、排的口径不动。
+ *   - 对拍：改前的写法原样留在 tests/helpers/unified-pool-old.ts，和现在的 读公海页 对每种身份、每个筛选组合、每一页，整个返回值完全相同
+ *     （可见范围、原负责人回避 P-公海-04、排序、总数、按钮上的数、原负责人是我、客户不露时的名字和来源）
+ *   - 量：没搜关键词时取回的行数比改前少，翻到哪一页都一样
+ */
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  user: { id: "", name: "x", email: "x@local", role: "SALES", title: "", avatar: null as string | null },
+}));
+vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
+vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
+vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
+
+import { prisma, defaultClient as raw } from "@/lib/prisma";
+import { resetDb } from "./reset";
+import { invalidateSettingsCache } from "@/lib/settings";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 规则 } from "@/lib/enterprise/rules";
+import { 市场成员key } from "@/lib/enterprise/market";
+import { 无负责人占位邮箱, 自动理由 } from "@/lib/pool";
+import { 读公海页, 公海取上限 } from "@/lib/enterprise/unified-pool-db";
+import { 系统操作人, 快捷们, type 公海筛选 } from "@/lib/enterprise/unified-pool";
+import { 旧读公海页 } from "./helpers/unified-pool-old";
+
+type 人 = { id: string; name: string; role: string };
+
+async function 造人(key: string, 业务?: { bizRole: string; line?: string; managerId?: string; dottedManagerId?: string }, 补: { email?: string; active?: boolean } = {}): Promise<人> {
+  const u = await raw.user.create({ data: { email: 补.email ?? `${key}@test`, name: key, title: "", role: "SALES", password: "x", active: 补.active ?? true } });
+  if (业务) await raw.entMember.create({ data: { userId: u.id, ...业务 } });
+  return { id: u.id, name: key, role: "SALES" };
+}
+
+let 组: Record<"总管理" | "全看管理员" | "按线管理员" | "销售管理" | "销售" | "同事" | "市场管理" | "没设角色", 人>;
+let 占位: 人;
+const 来源 = { 甲: "ch-a", 乙: "ch-b" };
+const 时刻 = (i: number) => new Date(Date.UTC(2026, 9, 1) + i * 60_000);
+const 取 = <T,>(们: readonly T[], i: number): T => 们[i % 们.length];
+
+/** 客户公海里的客户：各种入池说明、退回次数、无效、来源、跟进时间（有空的、有同一刻的）、负责人（占位 / 还挂着真人的老数据）、名下项目 0～3 个 */
+async function 造公海客户(n: number) {
+  const 入池 = [
+    { userId: null, reason: 自动理由(30) },
+    { userId: () => 组.销售.id, reason: "手动" },
+    { userId: () => 组.同事.id, reason: "回收原因：客户主动终止" },
+    { userId: () => 组.总管理.id, reason: "成员停用，放进公海" },
+    { userId: null, reason: "项目超时" },
+    { userId: () => 组.销售.id, reason: "名下唯一的项目进了项目公海，客户一起放进公海；回收原因：其他：预算砍了" },
+  ];
+  // 名下项目的几种摆法：[阶段, 结局, 负责人, 在不在项目公海, 进没进回收站]
+  type 摆 = [string, string | null, () => string, boolean?, boolean?];
+  const 名下: 摆[][] = [
+    [],
+    [["线索", null, () => 组.销售.id]],
+    [["商机", null, () => 组.同事.id]],
+    [["订单", null, () => 组.销售.id], ["线索", null, () => 组.同事.id]],
+    [["线索", "线索流失", () => 组.销售.id], ["商机", "丢单", () => 组.同事.id]],
+    [["线索", null, () => 组.同事.id, true], ["商机", null, () => 组.销售.id, true]],
+    [["线索", null, () => 组.销售.id], ["线索", null, () => 组.销售.id], ["商机", "异常状态", () => 组.同事.id]],
+    [["订单", "成功交付", () => 组.同事.id]],
+    [["商机", null, () => 组.销售.id, false, true]],
+    [["线索", null, () => 组.销售.id], ["订单", null, () => 组.同事.id, false, true]],
+  ];
+  // 全看管理员也当过负责人：管理员不回避，自己放走的照样看得到、按钮灰着
+  const 原负责人 = [() => 组.销售.id, () => 组.同事.id, () => 组.销售管理.id, () => 组.全看管理员.id];
+  for (let i = 0; i < n; i++) {
+    const 原 = 取(原负责人, i)();
+    // 三种挂法：清了负责人挂占位（M-公海-03，原负责人在历史记录里）、还挂着原负责人的老数据、挂占位但历史上最近一次不是他
+    const 挂 = i % 3;
+    const id = `c${String(i).padStart(3, "0")}`;
+    await raw.customer.create({
+      data: {
+        id,
+        // 大小写混着，关键词不分大小写；每 7 位里一位名字带「alpha」
+        name: i % 7 === 0 ? `Alpha 客户${i}` : `客户${i}`,
+        phone: `13${String(i).padStart(9, "0")}`,
+        salesOwnerId: 挂 === 1 ? 原 : 占位.id,
+        channelId: i % 4 === 0 ? 来源.甲 : i % 4 === 1 ? 来源.乙 : null,
+        // 同一刻的成对出现：排序靠 id 定序
+        lastFollowAt: i % 5 === 0 ? null : 时刻(1000 + Math.floor(i / 2)),
+        createdAt: 时刻(Math.floor((i * 37) % 50)),
+        poolInvalidAt: i % 11 === 0 ? 时刻(5000) : null,
+        poolReturns: Math.floor(i / 6) % 6,
+        deletedAt: i % 23 === 22 ? 时刻(9000) : null,
+      },
+    });
+    const p = 取(入池, i);
+    await raw.customerPool.create({ data: { customerId: id, userId: typeof p.userId === "function" ? p.userId() : null, reason: p.reason, at: 时刻(2000 + Math.floor(i / 3)) } });
+    if (挂 !== 1) {
+      await raw.customerOwnerLog.create({ data: { customerId: id, fromOwnerId: 原, toOwnerId: 占位.id, userId: 原, kind: "pool-release", at: 时刻(100 + i) } });
+      // 后来被别人领走又放回来：最近一次的原负责人是那个人
+      if (挂 === 2 && i % 2 === 0) await raw.customerOwnerLog.create({ data: { customerId: id, fromOwnerId: 组.同事.id, toOwnerId: 占位.id, userId: 组.同事.id, kind: "pool-release", at: 时刻(500 + i) } });
+    }
+    for (const [j, [phase, result, owner, 在公海, 已删]] of 取(名下, i).entries()) {
+      await raw.project.create({
+        data: {
+          id: `${id}-p${j}`, name: j === 1 ? `ALPHA 项目${i}-${j}` : `项目${i}-${j}`, customerId: id, ownerId: owner(), creatorId: owner(),
+          phase, node: phase === "线索" ? "线索验证" : phase === "商机" ? "明确需求" : "签订合同", result,
+          pooledAt: 在公海 ? 时刻(1500 + i) : null, deletedAt: 已删 ? 时刻(9000) : null,
+          // 后建的排前面的也有：名下顺序认创建时间，不认 id
+          createdAt: 时刻(300 - j * 10 + (i % 2 ? j * 25 : 0)),
+        },
+      });
+    }
+  }
+}
+
+/** 项目公海里、客户不在客户公海的项目：客户归不同的人（有的身份看不到客户）、各种放回留痕、来源有的在项目上有的跟客户 */
+async function 造公海项目(n: number) {
+  const 客户归 = [() => 组.销售.id, () => 组.同事.id, () => 组.销售管理.id, () => 组.市场管理.id];
+  const 原负责人 = [() => 组.销售.id, () => 组.同事.id, () => 组.销售管理.id, () => 组.全看管理员.id];
+  const 阶段 = [["线索", null], ["商机", null], ["订单", null], ["线索", "线索流失"], ["商机", "丢单"]] as const;
+  for (let i = 0; i < n; i++) {
+    const cid = `xc${String(i).padStart(3, "0")}`;
+    const pid = `xp${String(i).padStart(3, "0")}`;
+    const 原 = 取(原负责人, i)();
+    await raw.customer.create({
+      data: {
+        id: cid, name: i % 5 === 0 ? `alpha 老客户${i}` : `老客户${i}`, phone: `15${String(i).padStart(9, "0")}`, salesOwnerId: 取(客户归, i)(),
+        channelId: i % 3 === 0 ? 来源.甲 : i % 3 === 1 ? 来源.乙 : null,
+        lastFollowAt: i % 4 === 0 ? null : 时刻(1000 + Math.floor(i / 2)), poolReturns: Math.floor(i / 5) % 5,
+      },
+    });
+    const [phase, result] = 取(阶段, i);
+    await raw.project.create({
+      data: {
+        id: pid, name: i % 6 === 0 ? `公海项目 Alpha${i}` : `公海项目${i}`, customerId: cid,
+        // 11-01 C-01 起进公海清负责人（只在留痕里）；老数据还留着
+        ownerId: i % 4 === 3 ? 原 : "", creatorId: 原, phase, node: phase === "线索" ? "线索验证" : "明确需求", result,
+        pooledAt: 时刻(2000 + Math.floor(i / 3)), createdAt: 时刻(Math.floor((i * 29) % 40)),
+        channelId: i % 2 === 0 ? null : i % 4 === 1 ? 来源.甲 : 来源.乙,
+        deletedAt: i % 17 === 16 ? 时刻(9000) : null,
+      },
+    });
+    // 留痕：没有的（老数据）、本人放的带回收原因、系统收的、离职放回的、先本人后系统两条（认最近一条）
+    const 痕 = (userId: string, reason: string | null, at: Date, from = 原) =>
+      raw.projectNodeLog.create({ data: { projectId: pid, kind: "pool-release", fromOwnerId: from, userId, reason, toPhase: phase, toNode: "x", at } });
+    const 哪 = i % 5;
+    if (哪 === 1) await 痕(原, "回收原因：客户没需求", 时刻(1900 + i));
+    if (哪 === 2) await 痕(系统操作人, null, 时刻(1900 + i));
+    if (哪 === 3) await 痕(组.总管理.id, "成员停用，放回项目公海", 时刻(1900 + i));
+    if (哪 === 4) {
+      await 痕(组.同事.id, "回收原因：其他", 时刻(1800 + i), 组.同事.id);
+      await 痕(系统操作人, null, 时刻(1900 + i));
+    }
+  }
+  // 再来一个客户也在客户公海的公海项目（算在客户行里，不单列）已经在 造公海客户 里有了
+}
+
+const 当 = (u: 人) => { mocks.user = { ...mocks.user, id: u.id, name: u.name, role: u.role }; };
+const 新 = (u: 人, sp: 公海筛选, page: number, pageSize: number) => { 当(u); return 以谁的身份(u.id, () => 读公海页(u, sp, page, pageSize)); };
+const 旧 = (u: 人, sp: 公海筛选, page: number, pageSize: number) => { 当(u); return 以谁的身份(u.id, () => 旧读公海页(u, sp, page, pageSize)); };
+
+/** 这段取回了多少行（含带出来的关联行）、查了几次库 */
+async function 量<T>(fn: () => Promise<T>): Promise<{ 值: T; 次: number; 行: number }> {
+  // 一行算一行；带出来的关联（列表里的每一行、单个的那一行）也各算一行。带 $type 的是引擎回的日期这类值，不是行
+  const 数行 = (x: unknown): number => {
+    if (Array.isArray(x)) return x.reduce((s: number, y) => s + 1 + 带出来的(y), 0);
+    return 带出来的(x);
+  };
+  const 带出来的 = (o: unknown): number => {
+    if (!o || typeof o !== "object" || Array.isArray(o)) return 0;
+    let n = 0;
+    for (const v of Object.values(o)) if (v && typeof v === "object" && !("$type" in v)) n += Array.isArray(v) ? 数行(v) : 1 + 带出来的(v);
+    return n;
+  };
+  const 引擎 = (raw as unknown as { _engine: { request: (...a: unknown[]) => Promise<{ data?: unknown }> } })._engine;
+  const 原 = 引擎.request;
+  let 次 = 0, 行 = 0;
+  引擎.request = async function (this: unknown, ...a: unknown[]) {
+    次++;
+    const r = await 原.apply(this, a);
+    行 += 数行(r?.data);
+    return r;
+  };
+  try {
+    return { 值: await fn(), 次, 行 };
+  } finally {
+    引擎.request = 原;
+  }
+}
+
+const 客户几位 = 46;
+const 项目几个 = 34;
+
+beforeAll(async () => {
+  vi.stubEnv("CRM_ENTERPRISE", "1");
+  vi.stubEnv("CRM_READ_POOL", "0");
+  await resetDb();
+  invalidateSettingsCache();
+  await prisma.setting.upsert({ where: { key: 规则.按组织看客户.key }, update: { value: "true" }, create: { key: 规则.按组织看客户.key, value: "true" } });
+  const 总管理 = await 造人("director", { bizRole: "director" });
+  const 全看管理员 = await 造人("admin", { bizRole: "admin" });
+  const 按线管理员 = await 造人("admin-line", { bizRole: "admin", line: "内贸" });
+  const 销售管理 = await 造人("mgr", { bizRole: "sales_mgr" });
+  const 销售 = await 造人("sales", { bizRole: "sales", managerId: 销售管理.id });
+  const 同事 = await 造人("peer", { bizRole: "sales", line: "外贸" });
+  const 市场管理 = await 造人("market", { bizRole: "marketing_mgr" });
+  const 没设角色 = await 造人("none");
+  await prisma.setting.create({ data: { key: 市场成员key, value: JSON.stringify([市场管理.id]) } });
+  组 = { 总管理, 全看管理员, 按线管理员, 销售管理, 销售, 同事, 市场管理, 没设角色 };
+  // 占位账号：进公海清负责人后客户挂在它名下（M-公海-03）
+  占位 = await 造人("placeholder", undefined, { email: 无负责人占位邮箱, active: false });
+  await raw.channel.createMany({ data: [{ id: 来源.甲, name: "来源甲|其他", channelOwnerId: 总管理.id }, { id: 来源.乙, name: "来源乙|其他", channelOwnerId: 总管理.id }] });
+  await 造公海客户(客户几位);
+  await 造公海项目(项目几个);
+  忘掉企业版范围();
+}, 120_000);
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  忘掉企业版范围();
+  await prisma.$disconnect();
+});
+
+const 属性们 = [undefined, "线索池", "商机池", "其他", "公海线索"];
+const 快捷选 = [undefined, ...快捷们];
+const 排序选 = [undefined, "follow", "created"];
+const 词们 = [undefined, "alpha", "项目1", "  "];
+const 来源们 = [undefined, 来源.甲];
+
+describe("统一公海：和改前的写法对拍", () => {
+  it("造的数据各种情况都有：两种行、每种入池方式、三种属性、回避、客户不露", async () => {
+    const 全 = await 旧(组.总管理, {}, 1, 1000);
+    expect(全.行.filter((r) => r.种 === "客户").length).toBe(客户几位 - 2); // 两位进了回收站
+    expect(全.行.filter((r) => r.种 === "项目").length).toBe(项目几个 - 2);
+    for (const k of 快捷们) expect([k, 全.快捷数[k] > 0]).toEqual([k, true]);
+    expect(全.行.some((r) => r.类 === "离职交接")).toBe(true);
+    for (const a of ["线索池", "商机池", "其他"] as const) expect([a, 全.属性数[a] > 0]).toEqual([a, true]);
+    expect(全.行.some((r) => r.进程明细)).toBe(true);
+    // 销售：自己放进公海的客户（P-公海-04）、自己是历史负责人的公海项目都看不到；别人客户上的项目不露客户名；自己还挂着的老数据按钮灰
+    const 销售看 = await 旧(组.销售, {}, 1, 1000);
+    expect(销售看.总数).toBeLessThan(全.总数);
+    expect(销售看.行.filter((r) => r.种 === "客户").length).toBeLessThan(客户几位 - 2);
+    expect(销售看.行.filter((r) => r.种 === "项目").length).toBeLessThan(项目几个 - 2);
+    expect(销售看.行.some((r) => r.种 === "项目" && r.客户名 === null)).toBe(true);
+    expect(销售看.行.some((r) => r.种 === "项目" && r.客户名 !== null)).toBe(true);
+    expect(销售看.行.some((r) => r.种 === "客户" && r.项目名 === null) && 销售看.行.some((r) => r.种 === "客户" && r.项目名 !== null)).toBe(true);
+    // 管理员不回避，原负责人是我 照样要认出来（挂占位的认历史记录、老数据认负责人）
+    const 管理看 = await 旧(组.全看管理员, {}, 1, 1000);
+    expect(管理看.总数).toBe(全.总数);
+    const 灰 = 管理看.行.filter((r) => r.种 === "客户" && r.原负责人是我).map((r) => r.customerId);
+    const 挂占位的 = new Set((await raw.customer.findMany({ where: { salesOwnerId: 占位.id }, select: { id: true } })).map((c) => c.id));
+    expect(灰.some((id) => 挂占位的.has(id)) && 灰.some((id) => !挂占位的.has(id))).toBe(true);
+    expect(管理看.行.filter((r) => r.种 === "客户" && !r.原负责人是我).length).toBeGreaterThan(灰.length);
+    expect(管理看.行.filter((r) => r.种 === "项目" && r.原负责人是我).length).toBeGreaterThan(0);
+    // 销售管理不是管理员，一样回避自己放走的
+    expect((await 旧(组.销售管理, {}, 1, 1000)).总数).toBeLessThan(全.总数);
+  });
+
+  /** 一种身份、一批筛选组合，新旧逐页比。每页都比 = true 时外加第 0 页（当第 1 页）和越界的一页（当最后一页），false 时只比头尾两页 */
+  async function 对拍(u: 人, 组合: 公海筛选[], 页大小: number, 每页都比: boolean) {
+    let 比了 = 0, 有行的 = 0;
+    for (const sp of 组合) {
+      const 一 = await 旧(u, sp, 1, 页大小);
+      const 页数 = Math.max(1, Math.ceil(一.总数 / 页大小));
+      const 页们 = 每页都比 ? [0, ...Array.from({ length: 页数 + 1 }, (_, i) => i + 1)] : [1, 页数];
+      for (const page of new Set(页们)) {
+        const 应 = page === 1 ? 一 : await 旧(u, sp, page, 页大小);
+        expect(await 新(u, sp, page, 页大小), `${u.name} ${JSON.stringify(sp)} 第 ${page} 页`).toEqual(应);
+        比了++;
+        if (应.行.length) 有行的++;
+      }
+    }
+    return { 比了, 有行的 };
+  }
+  const 全部组合: 公海筛选[] = [];
+  for (const 属性 of 属性们) for (const 快捷 of 快捷选) for (const 排序 of 排序选) for (const keyword of 词们) for (const 来源 of 来源们) 全部组合.push({ 属性, 快捷, 排序, keyword, 来源 });
+  // 关键词、来源决定哪几样只查这一页（全取）；属性、入池方式、排序只决定哪些行落在这一页
+  const 要紧组合 = 全部组合.filter((sp) => [undefined, "线索池"].includes(sp.属性) && [undefined, "超时回收"].includes(sp.快捷) && sp.排序 !== "created");
+
+  // 条件最多的身份（受限、还要回避自己放走的销售）：每个筛选组合都比
+  it(`销售：${全部组合.length} 个筛选组合，头尾两页都和改前一样`, async () => {
+    const r = await 对拍(组.销售, 全部组合, 9, false);
+    expect(r.比了).toBeGreaterThan(全部组合.length);
+    expect(r.有行的).toBeGreaterThan(300);
+  }, 120_000);
+  // 每种身份：关键词 × 来源 × 排序 × 几种属性和入池方式，每一页都比
+  for (const 名 of ["总管理", "全看管理员", "按线管理员", "销售管理", "销售", "同事", "市场管理", "没设角色"] as const) {
+    it(`${名}：${要紧组合.length} 个筛选组合，每一页都和改前一样`, async () => {
+      const r = await 对拍(组[名], 要紧组合, 20, true);
+      expect(r.比了).toBeGreaterThan(要紧组合.length * 2);
+      expect(r.有行的).toBeGreaterThan(40);
+    }, 120_000);
+  }
+
+  it("不筛时每一页逐页对（页大小 7、100，一页装得下全部的也对）", async () => {
+    for (const u of [组.全看管理员, 组.销售, 组.市场管理]) {
+      for (const 页大小 of [7, 100, 1000]) {
+        for (const 排序 of 排序选) {
+          const 页数 = Math.ceil((await 旧(u, { 排序 }, 1, 页大小)).总数 / 页大小);
+          for (let page = 1; page <= 页数 + 1; page++) {
+            expect(await 新(u, { 排序 }, page, 页大小), `${u.name} ${排序} ${页大小} 第 ${page} 页`).toEqual(await 旧(u, { 排序 }, page, 页大小));
+          }
+        }
+      }
+    }
+  }, 120_000);
+});
+
+describe("统一公海：每翻一页少取多少", () => {
+  it("没搜关键词：取回的行数比改前少，翻到哪页都一样；查库次数最多比改前多一句", async () => {
+    for (const u of [组.全看管理员, 组.销售]) {
+      await 新(u, {}, 1, 20); // 热一下：范围、组织、设置缓存
+      await 旧(u, {}, 1, 20);
+      const 旧量 = await 量(() => 旧(u, {}, 1, 20));
+      const 新量 = await 量(() => 新(u, {}, 1, 20));
+      const 新量后页 = await 量(() => 新(u, {}, 3, 20));
+      expect(新量.值).toEqual(旧量.值);
+      expect(新量.行).toBeLessThan(旧量.行);
+      // 进公海那一行改成单独一句取，多这一句（换掉的是关联加载那句大 IN，引擎里不算次数）
+      expect(新量.次).toBeLessThanOrEqual(旧量.次 + 1);
+      expect(新量后页.次).toBe(新量.次);
+    }
+  });
+});
+
+describe("统一公海：过上限、同一刻入池的卡在上限那条线上", () => {
+  it("取哪些行、每行的入池时间和入池原因都和改前一样", async () => {
+    // 再放 公海取上限 位进客户公海，入池时间全是同一刻、比前面那些都早：前面的全留下，这一批只留得下一部分
+    const 批 = Array.from({ length: 公海取上限 }, (_, i) => ({ id: `t${String(i).padStart(4, "0")}`, name: `同刻客户${i}`, phone: `17${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id }));
+    await raw.customer.createMany({ data: 批 });
+    // 进公海那一行倒着建：同一刻的谁先谁后，按客户取和按进公海那一行取排出来不一样，卡在线上的要按 id 补才对得上
+    await raw.customerPool.createMany({ data: 批.map((c, i) => ({ customerId: c.id, userId: i % 2 ? 组.同事.id : null, reason: i % 2 ? "回收原因：同刻" : "项目超时", at: 时刻(10) })).reverse() });
+    for (const u of [组.总管理, 组.销售]) {
+      const 应 = await 旧(u, {}, 1, 100000);
+      expect(应.截断).toBe(true);
+      expect(应.行.filter((r) => r.种 === "客户")).toHaveLength(公海取上限);
+      expect(await 新(u, {}, 1, 100000), u.name).toEqual(应);
+      for (const sp of [{ 快捷: "超时回收" }, { keyword: "同刻客户1" }, { 排序: "created", 来源: 来源.甲 }] as 公海筛选[]) {
+        for (const page of [1, 3, 9999]) expect(await 新(u, sp, page, 50), `${u.name} ${JSON.stringify(sp)} 第 ${page} 页`).toEqual(await 旧(u, sp, page, 50));
+      }
+    }
+  }, 120_000);
+});
