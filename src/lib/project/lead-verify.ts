@@ -300,9 +300,12 @@ export async function 销售认领(me: 谁, projectId: string, 继续: boolean):
     if (!w.ok) return w;
     return { ok: true, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) };
   }
+  // 进公海那一笔把验证状态清了（进公海清验证，9f）：这一步只留痕，时间记在放回之前，排在「进公海清验证」那行前面
+  const 时 = new Date();
   const r = await 放回公海(me, 核.p.id, undefined, { 验证放行: true });
   if (!r.ok) return r;
-  return 写状态(核.p.id, 核.读, { pending: null }, { step: "销售认领", verdict: "退回公海", userId: me.id });
+  await 看全部(() => prisma.entLeadVerifyLog.create({ data: { projectId: 核.p.id, step: "销售认领", verdict: "退回公海", userId: me.id, at: 时 } }));
+  return { ok: true };
 }
 
 /** 撤回验证（X-77「验证中不能改派，要改先撤回验证」）：提交验证的人（初判无效交复核的那位）、系统管理员能撤 */

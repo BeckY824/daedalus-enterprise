@@ -644,6 +644,21 @@ async function 覆盖(width: number, x: Record<string, unknown>) {
   return { page, errors };
 }
 
+// 9f（X-78）：线索验证中不参与超时回收，回收日那格写「验证中，不回收」，不写日期
+it("验证中的线索：回收日写「验证中，不回收」；不在验证中照写日期", async () => {
+  const { page, errors } = await 覆盖(1280, { 回收日: "2026-12-01", 验证不收: true });
+  try {
+    expect(await page.getByTestId("proj-recycle-verifying").innerText()).toBe("验证中，不回收");
+    expect(await page.locator(".proj-where-label").count()).toBe(1);
+    expect(await page.locator(".proj-where-label").locator("..").innerText()).not.toContain("回公海");
+    await page.evaluate(v => (window as unknown as { __over: (x: unknown) => void }).__over(v), { 回收日: "2026-12-01" });
+    await page.locator(".proj-where-label").waitFor();
+    expect(await page.getByTestId("proj-recycle-verifying").count()).toBe(0);
+    expect(await page.locator(".proj-where-label").locator("..").innerText()).toContain("回公海");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 // 11-02 项目详情标清项目负责人、项目创建人：页头写各一次，负责人空着写「暂无」；项目卡不再摆一遍
 it.each<[string, Record<string, unknown>, string]>([
   ["两个不同的人", { ownerName: "负责人乙", creatorName: "创建人丙" }, "项目负责人：负责人乙 · 项目创建人：创建人丙 · 创建于 "],

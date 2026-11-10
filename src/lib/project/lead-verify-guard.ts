@@ -54,3 +54,22 @@ export async function 复核判死拦(db: Pick<Prisma.TransactionClient, "entLea
   if (!末 || 末.step === "销售初判") return null;
   return `这条线索${末.step}判了无效线索，是终局，改不回进行中`;
 }
+
+/** 进公海清掉旧验证状态时留的那行痕的步骤名（EntLeadVerifyLog.step） */
+export const 进公海清验证步 = "进公海清验证";
+
+/**
+ * 线索进公海时清掉旧验证状态（X-78 → M-线索-02，9f）：删掉验证状态那一行（= 回到暂未判定、不在等），
+ * 领走的人从头验证，旧的判定、等哪步不跟着复现；有过状态的留一行痕「进公海清验证」，以前的痕都留着。
+ * 放回、超时回收、客户整体进公海连带、离职放进公海四处同一笔事务里调（和 进公海清组员 并排）。不是企业版不动
+ */
+export async function 进公海清验证(tx: Pick<Prisma.TransactionClient, "entLeadVerify" | "entLeadVerifyLog">, projectIds: string[], 操作人: string): Promise<void> {
+  if (!企业版() || !projectIds.length) return;
+  for (let i = 0; i < projectIds.length; i += 500) {
+    const 这批 = projectIds.slice(i, i + 500);
+    const 有 = await 看全部(() => tx.entLeadVerify.findMany({ where: { projectId: { in: 这批 } }, select: { projectId: true, verdict: true, pending: true } }));
+    if (!有.length) continue;
+    await tx.entLeadVerifyLog.createMany({ data: 有.map((v) => ({ projectId: v.projectId, step: 进公海清验证步, verdict: v.verdict, note: v.pending ? `清之前等${v.pending}` : null, userId: 操作人 })) });
+    await 看全部(() => tx.entLeadVerify.deleteMany({ where: { projectId: { in: 有.map((v) => v.projectId) } } }));
+  }
+}

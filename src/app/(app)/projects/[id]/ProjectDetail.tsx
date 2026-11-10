@@ -118,6 +118,8 @@ export type 项目详情 = {
    * nextStepText = 下一步做什么（10-29 起记沟通时自己写一句话，时间可空）；老数据只有时间没有这句，就只摆时间
    */
   nextStepAt: string | null; nextStepText?: string | null; 回收日: string | null;
+  /** 线索在验证中（X-78）：不参与超时回收，回收日那格写「验证中，不回收」（page.tsx） */
+  验证不收?: boolean;
   /** 企业版记沟通时预演回收日的底子（page.tsx，lib/enterprise/recycle-text.ts 预演回收日）；算不准（规则关着、配了必填会自动推）= null，弹窗里不写那一句 */
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
@@ -696,7 +698,9 @@ export default function ProjectDetail({
             return (
               <div style={{ minWidth: 0 }}>
                 <div className="proj-where-label">回收日</div>
-                <div style={{ lineHeight: "28px", color: 回公海颜色[回.级别], fontWeight: 回.级别 === "常" ? undefined : 600 }}>{回.文字}</div>
+                {p.验证不收
+                  ? <div data-testid="proj-recycle-verifying" style={{ lineHeight: "28px", color: "var(--text-muted)" }}>验证中，不回收</div>
+                  : <div style={{ lineHeight: "28px", color: 回公海颜色[回.级别], fontWeight: 回.级别 === "常" ? undefined : 600 }}>{回.文字}</div>}
               </div>
             );
           })()}

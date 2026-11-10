@@ -12,7 +12,7 @@ import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, �
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
-import { 等复核拦, 复核判死拦, 验证中不能改派 } from "./lead-verify-guard";
+import { 等复核拦, 复核判死拦, 验证中不能改派, 进公海清验证 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
@@ -745,6 +745,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     // 企业版进公海清空负责人（pool-owner.ts），原负责人记在这行 pool-release 的 from 上
     await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
     await 进公海清组员(tx, [p.id], me.id);
+    await 进公海清验证(tx, [p.id], me.id);
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     await 单项目客户跟进公海(tx, p, me.id, 现在, reason);
@@ -945,6 +946,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       if (await 验证中不能改派(tx, p.id)) return false; // 查完到写之间刚提交了验证（X-78）
       await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 今, nextStepAt: null, nextStepText: null } });
       await 进公海清组员(tx, [p.id], 系统.id);
+      await 进公海清验证(tx, [p.id], 系统.id);
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
       await 单项目客户跟进公海(tx, p, null, 今);

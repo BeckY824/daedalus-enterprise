@@ -713,7 +713,9 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     const 规则 = await 生效组织规则();
     const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
     let 回收预演: 回收预演底子 | null = null;
-    if (要下一步 && !按必填走(规则, p.node)) {
+    // 验证中的线索不参与超时回收（X-78）：不预演回收日
+    const 验证中 = !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
+    if (要下一步 && !按必填走(规则, p.node) && !验证中) {
       const 字典 = 字典of(true, 规则.阶段.出口叫法);
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
       const 起点 = 超时起点(p.createdAt, p.logs[0]?.at, c?.lastFollowAt);

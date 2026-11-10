@@ -3,6 +3,7 @@
  *   - 客户转让（批量转让、就地改、申请移交确认那一步）：名下有验证中的线索整批拦，客户、项目都不动
  *   - 分配公海项目：验证中的（老数据）不分
  *   - 回收站恢复项目：要跟客户现负责人换人的、验证中就不恢复
+ * 线索进公海（放回、超时回收、离职、客户跟着进）清掉旧验证状态（9f）：验证那行删掉、留一行「进公海清验证」痕；领回来从暂未判定重新走
  * 撤回验证：提交验证的人（初判无效交复核的那位）、系统管理员能撤；线索回到提交验证前（暂未判定、不在等），留一行痕；撤完能改派
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -23,8 +24,9 @@ import { 确认交接 } from "@/app/(app)/customers/handover-actions";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
 import { 恢复, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 销售初判, 撤回验证, 读线索验证 } from "@/lib/project/lead-verify";
-import { 改项目 } from "@/lib/project/db";
-import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 改项目, 放回公海, 领取公海项目 } from "@/lib/project/db";
+import { 进公海清验证步 } from "@/lib/project/lead-verify-guard";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 
 type 人 = { id: string; role: string };
 let 老板: 人, 组长: 人, 销售: 人, 接手: 人, 市场: 人;
@@ -179,5 +181,55 @@ describe("撤回验证", () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect((await 撤回验证(老板, p)).ok).toBe(false);
     expect((await prisma.entLeadVerify.findUniqueOrThrow({ where: { projectId: p } })).pending).toBe("销售终验");
+  });
+});
+
+describe("9f 线索进公海清掉旧验证状态", () => {
+  const 清痕 = (p: string) => prisma.entLeadVerifyLog.findMany({ where: { projectId: p, step: 进公海清验证步 } });
+
+  it("负责人放回公海：判过的验证状态清掉、留痕；别人领回来是暂未判定、不在等，能重新初判", async () => {
+    const p = await 项目(await 客户(销售.id), 销售.id);
+    await prisma.entLeadVerify.create({ data: { projectId: p, verdict: "初验无效", invalidReason: "联系方式无效", reviewResult: "有效", verifiedById: 销售.id, verifiedAt: new Date() } });
+    当(销售);
+    expect((await 放回公海(销售, p)).ok).toBe(true);
+    expect(await prisma.entLeadVerify.findUnique({ where: { projectId: p } })).toBeNull();
+    expect((await 清痕(p)).map((l) => [l.verdict, l.note, l.userId])).toEqual([["初验无效", null, 销售.id]]);
+    当(接手);
+    expect((await 领取公海项目(接手, p)).ok).toBe(true);
+    const 回 = await prisma.project.findUniqueOrThrow({ where: { id: p } });
+    expect(await 读线索验证(接手, 回)).toMatchObject({ 判定: "暂未判定", 待: null, 无效原因: null, 复核结果: null, 我能: "初判" });
+    expect(await 销售初判(接手, p, "无效", { invalidReason: "联系方式无效" })).toEqual({ ok: true });
+    expect((await prisma.entLeadVerify.findUniqueOrThrow({ where: { projectId: p } })).pending).toBe("市场复核");
+  });
+
+  it("超时回收进公海也清（不在等的老状态）；验证中的不收、状态不动", async () => {
+    const { 公海超时收回 } = await import("@/lib/project/db");
+    const { 默认组织规则 } = await import("@/lib/project/org-rules");
+    const { 系统 } = await import("@/lib/project/timeout");
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 线索验证: 3 } } });
+    invalidateSettingsCache();
+    const 今 = new Date();
+    const 旧 = new Date(今.getTime() - 10 * 86400000);
+    const p = await 项目(await 客户(销售.id), 销售.id, { createdAt: 旧 });
+    const q = await 项目(await 客户(销售.id), 销售.id, { createdAt: 旧 });
+    await prisma.entLeadVerify.create({ data: { projectId: p, verdict: "有效线索", finalResult: "有效线索" } });
+    await 挂验证(q);
+    expect(await 以谁的身份(销售.id, () => 公海超时收回({ id: 销售.id, name: "销售" }, 今))).toBe(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await prisma.entLeadVerify.findUnique({ where: { projectId: p } })).toBeNull();
+    expect((await 清痕(p)).map((l) => [l.verdict, l.userId])).toEqual([["有效线索", 系统.id]]);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: q } })).pooledAt).toBeNull();
+    expect((await prisma.entLeadVerify.findUniqueOrThrow({ where: { projectId: q } })).pending).toBe("市场复核");
+  });
+
+  it("离职放进公海：验证中的也清，痕里记清之前在等哪步", async () => {
+    const { 离职放进公海 } = await import("@/lib/offboard-move");
+    const { 停用分拣 } = await import("@/lib/offboard-db");
+    const p = await 项目(await 客户(老板.id), 销售.id);
+    await 挂验证(p, "销售终验");
+    await 以谁的身份(老板.id, () => prisma.$transaction(async (tx) => 离职放进公海(tx, await 停用分拣(tx, 销售.id, "公海", true), 老板.id)));
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await prisma.entLeadVerify.findUnique({ where: { projectId: p } })).toBeNull();
+    expect((await 清痕(p)).map((l) => [l.verdict, l.note, l.userId])).toEqual([["初验无效", "清之前等销售终验", 老板.id]]);
   });
 });
