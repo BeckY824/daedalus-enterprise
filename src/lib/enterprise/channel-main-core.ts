@@ -60,6 +60,12 @@ export type 主渠道行 = {
   category: string | null;
   active: boolean;
   sort: number;
+  /** 主渠道负责人（迁移 118，P-渠道-10）：User.id；空 = 还没指定。改它不回写子渠道和已有客户 */
+  ownerId?: string | null;
+  /** 负责人名字（读主渠道们 带出来，只显示用）；人已经不在了给 null */
+  ownerName?: string | null;
+  /** 主渠道的渠道属性 = 获客方式（迁移 118，P-渠道-11）：字典 channelAttr 的名字 */
+  attr?: string | null;
 };
 
 /** 主渠道表「分类」那一格：存的就是中文大类名，原样显示；没分类写「—」 */
