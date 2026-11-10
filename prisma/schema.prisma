@@ -1691,6 +1691,39 @@ model EntNotice {
   @@index([userId, createdAt])
 }
 
+/// 企业版撞号台账（2026-11-10，迁移 115，机制表 P-挂靠-01 / X-48）：新建客户时号码或客户名撞上已有客户，一次命中一行。
+/// 同一人同一客户同一键 10 分钟内重复查只算一行。只在企业版写；桌面端、团队版也建这张空表，不读。
+/// userId / ownerId 不建外键（账号停用不删）；customerId 也不建（客户软删后台账照留）。
+model EntDupeHit {
+  id         String    @id @default(cuid())
+  /// 查询人
+  userId     String
+  /// 键类型：手机号 / 邮箱 / 微信 / 旺旺ID / 客户名 / 公司名
+  keyType    String
+  /// 查询值（号码按规范化后的写）
+  keyValue   String
+  /// 命中客户
+  customerId String
+  /// 命中时那位客户的负责人
+  ownerId    String?
+  /// 查询人是不是在这位客户的项目组里（负责人或已加入的组员）
+  sameGroup  Boolean   @default(false)
+  /// 动作：空 = 还没选；申请挂靠（放弃、强录第一期不记）
+  action     String?
+  actionAt   DateTime?
+  /// 结果：拦截 / 写进现有项目 / 同组提示
+  result     String    @default("拦截")
+  /// 处置状态：无需处置 / 待处理（申请挂靠后）
+  status     String    @default("无需处置")
+  /// 这一行触发的预警，按位记：1 = 第一档（同一人同一客户 7 天 ≥3 次）、2 = 第二档（同一客户 7 天 ≥3 个人）；0 = 没触发。
+  /// 第三档（绕过强录）随强录推迟，第一期不写
+  warnTier   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, customerId, createdAt])
+  @@index([customerId, createdAt])
+}
+
 /// 企业版选项字典（2026-10-26，迁移 057）：分配方式、回收原因、无效原因、转让原因、验证结果、客户状态、项目标签，
 /// 一张表按 kind 分。默认值由 lib/enterprise/dict.ts 第一次读时补上（迁移不许 INSERT），只停用不删。
 /// 只给选项、不设必填；谁能改同项目字典（「后台设置谁能改」的字典一行）

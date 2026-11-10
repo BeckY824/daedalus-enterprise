@@ -56,6 +56,7 @@ import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 选的原因, 可选项 } from "@/lib/enterprise/dict";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/lib/enterprise/contact-dedupe";
+import { 号码撞上, 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import { setOppStatus } from "../opportunities/actions";
 import { 认得 } from "@/lib/project/hook";
 import { 客户的项目数, 超上限n } from "@/lib/project/db";
@@ -230,8 +231,9 @@ export type SaveConflict = {
 export type SaveCustomerResult =
   /** 交接中 / 交接已在路上：编辑里负责人本人换负责人 = 申请移交（X-20、P-转-16，不看「交接要确认」开关），负责人先不换，等接手人确认 */
   | { ok: true; id: string; 带走?: 带走数; 交接中?: number; 交接已在路上?: number; 申请移交?: boolean }
-  /** 同号协同 = 没新建，这次录的已写进现有项目（error 是给添加人的反馈，不是出错） */
-  | { ok: false; error: string; conflict?: SaveConflict; 同号协同?: true };
+  /** 同号协同 = 没新建，这次录的已写进现有项目（error 是给添加人的反馈，不是出错）。
+   *  撞号 = 企业版新建时客户名 / 号码撞上已有客户（P-挂靠-01）：露出负责人、台账 id，向导摆「申请挂靠」 */
+  | { ok: false; error: string; conflict?: SaveConflict; 同号协同?: true; 撞号?: 名撞结论 };
 
 /**
  * 第二个参数只给项目模式的建档向导用：新建时在建客户的同一个事务里接着建联系人、项目、首条跟进，
@@ -330,8 +332,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     const 结论 = await 企业号码查重(prisma, 企号, me.id, await 读的我(defaultClient));
     if (结论.状态 !== "首次录入") {
       const 协同 = await 同号再次录入(me, 企号, { 入口: "手工建档", 渠道id: input.channelId, 内容: input.remark });
+      // 撞了有人在跟的：记撞号台账（P-挂靠-01），向导查重时记过的 10 分钟内并成一行
+      const 撞 = 结论.状态 === "重复" ? await 号码撞上(me.id, await 读的我(defaultClient), 企号, 协同.走 ? "写进现有项目" : "拦截") : null;
       if (协同.走) return { ok: false, error: 协同.反馈, 同号协同: true };
-      return { ok: false, error: 结论.提示 };
+      return { ok: false, error: 结论.提示, ...(撞 ? { 撞号: { 撞 } } : {}) };
     }
   }
   const 企号别的 = 企号?.ok === true && 企号.类型 !== "手机号";
@@ -441,6 +445,15 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (问的) {
     const 撞 = await 问同事(问的[0], 问的[1], input.id);
     if (撞) return { ok: false, error: 同事撞号说法(问的[2], 撞.同事, 撞.客户名, b.customer) };
+  }
+
+  /*
+    企业版新建按客户名（和公司）查重（2026-11-10，P-挂靠-01 / X-48）：和号码同一套，撞上有人在跟的客户拦下、露出负责人、记撞号台账；
+    撞的是自己名下的只说「你名下已有」；公海、没负责人的不提示。第一期不做强录。编辑不查（改名不算新建）
+  */
+  if (企业版() && !改前) {
+    const 名撞 = await 客户名查重(me.id, await 读的我(defaultClient), input.name, input.school);
+    if (名撞) return { ok: false, error: 名撞说法(名撞, b.customer), 撞号: 名撞 };
   }
 
   // 推荐链不能成环。只挡「推荐人是自己」不够：A→B→A 两步就能绕过去

@@ -88,6 +88,8 @@ export const 不同步表 = [
   "EntNotice",
   // 企业版主渠道（2026-11-08，migrations/111）：同上
   "EntChannelMain",
+  // 企业版撞号台账（2026-11-10，migrations/115）：同上
+  "EntDupeHit",
 ] as const;
 
 /**
@@ -153,6 +155,9 @@ export const 指向人的列: [string, string][] = [
   ["EntBlockerLog", "toUserId"],
   // 企业版站内通知（2026-11-01）：不建外键
   ["EntNotice", "userId"],
+  // 企业版撞号台账（2026-11-10）：查询人、命中负责人，不建外键
+  ["EntDupeHit", "userId"],
+  ["EntDupeHit", "ownerId"],
   // 企业版渠道投入是谁录的（2026-10-29）
   ["EntChannelInvest", "userId"],
   // 企业版关联客户是谁关联的（2026-10-29）：不建外键
