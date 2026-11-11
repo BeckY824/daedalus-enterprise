@@ -19,7 +19,7 @@ import { 规整向导, 向导接着建, 项目来源默认, 占位名提示, typ
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
-import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
+import { 合上改动, 是不限, 三态改动摘要, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 不能新建项目话 } from "@/lib/enterprise/permissions";
@@ -620,7 +620,9 @@ export async function 移出项目组员(memberId: string) {
  * （「后台设置谁能改」，lib/enterprise/edit-perm-table.ts；老板总能改）
  */
 async function 挡组织规则(me: { id: string; role: string }, 改: 规则改动): Promise<string | null> {
-  const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各进程时限"], ["节点推进", "必填字段", "进程必填字段"], ["阶段", "阶段规则", "阶段结束状态叫法和往前推权限"]];
+  const 块: [keyof 规则改动, 设置项名, string][] = [["公海", "持有上限", "项目持有上限"], ["超时回收", "节点时限", "各进程时限"], ["节点推进", "必填字段", "进程必填字段"], ["阶段", "阶段规则", "阶段结束状态叫法和往前推权限"],
+    // 客户三态接的是超时回收的班，过同一道门：这一项「可选」是空，只有系统管理员能改（M-公海-20）
+    ["三态", "节点时限", "客户三态规则"]];
   // 一块都没传就不过任何门，不能当「允许」放过去（10-29 权限枚举表扫出：空改动谁都能存一次规则、留审计）
   if (!块.some(([k]) => 改?.[k] !== undefined)) return "没有要改的规则";
   for (const [k, 项, 叫法] of 块) {
@@ -645,12 +647,15 @@ export async function 改组织规则(改: 规则改动) {
     if (!企业版()) return { ok: false as const, error: "组织规则是企业版的功能" };
     const 挡 = await 挡组织规则(me, 改);
     if (挡) return { ok: false as const, error: 挡 };
-    const 新 = 合上改动(await 读组织规则(), 改);
+    const 旧 = await 读组织规则();
+    const 新 = 合上改动(旧, 改);
     if ("error" in 新) return { ok: false as const, error: 新.error };
     await 存组织规则(新);
     const g = 新.公海, t = 新.超时回收;
     const 推 = 新.节点推进;
-    const 说 = 改.阶段 !== undefined
+    const 说 = 改.三态 !== undefined
+      ? 三态改动摘要(旧.三态, 新.三态)
+      : 改.阶段 !== undefined
       ? 改.阶段.培育计划上限 !== undefined || 改.阶段.无效原因上限 !== undefined
         ? `组织规则：培育计划字数上限 ${新.阶段.培育计划上限 ?? "不设"}，无效原因字数上限 ${新.阶段.无效原因上限 ?? "不设"}`
         : `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的结束状态叫法`
