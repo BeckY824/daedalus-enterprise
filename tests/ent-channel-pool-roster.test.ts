@@ -24,6 +24,9 @@ import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
 import { 名单链接, 公海名单链接, 数字链接, 名单段, 名单键们, type 名单键 } from "@/lib/enterprise/channel-stats";
 import { 读项目列表 } from "@/lib/project/list";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
+import { 读看板底数 } from "@/lib/enterprise/channel-dash-db";
+import { 算看板, 看板时段, 榜链接, 自定义, type 档 } from "@/lib/enterprise/channel-dash";
+import { 日期段界 } from "@/lib/custom-date-range";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 销售: 人, 销售乙: 人, 市场: 人;
@@ -34,12 +37,12 @@ const 设 = (谁: 人) => { mocks.user = { ...mocks.user, id: 谁.id, name: 谁.
 const 统计of = (谁: 人) => { 设(谁); return 以谁的身份(谁.id, () => 读渠道统计([甲渠道, 全公海].map((id) => ({ id, createdAt: new Date("2026-01-01T00:00:00Z"), endDate: null })), new Date(), 谁)); };
 const spof = (链: string) => Object.fromEntries(new URL(链, "http://x").searchParams);
 const 列表总数 = async (谁: 人, 链: string) => { 设(谁); return (await 以谁的身份(谁.id, () => 读项目列表(谁, spof(链)))).总数; };
-/** 照公海页 page.tsx 认地址栏：projChannel + phase 是渠道名单 */
+/** 照公海页 page.tsx 认地址栏：projChannel + phase 是渠道名单，createdFrom / createdTo 是项目创建时间 */
 const 公海页 = async (谁: 人, 链: string) => {
   设(谁);
   const q = spof(链);
   expect(new URL(链, "http://x").pathname).toBe("/pool");
-  return 以谁的身份(谁.id, () => 读公海页(谁, {}, 1, 100, { channelId: q.projChannel, phase: q.phase ?? "" }));
+  return 以谁的身份(谁.id, () => 读公海页(谁, {}, 1, 100, { channelId: q.projChannel, phase: q.phase ?? "", createdFrom: q.createdFrom, createdTo: q.createdTo }));
 };
 
 beforeEach(async () => {
@@ -171,5 +174,76 @@ describe("渠道「另 M 条在公海」点到公海页，落地条数 = M", () 
     expect(名单段(5, { 列表: 2, 公海: 1 })).toEqual({ 列表: 2, 公海: 1, 其余: 2 });
     expect(名单段(3, { 列表: 3, 公海: 0 })).toBeNull();
     expect(名单段(3, { 列表: 0, 公海: 9 })).toEqual({ 列表: 0, 公海: 3, 其余: 0 });
+  });
+});
+
+/**
+ * 渠道看板 TOP5（11-11）：线索 = 这段时间新建的项目（按创建时间、含公海、不分阶段）；每行的数点进去带「渠道 + 同一段创建时间（北京日）」，
+ * 拆成项目列表 N 条、公海页 M 条，N + M（+ 只能数到的）= 看板的数，落地条数各自对得上。
+ * 时间：8 月一段，北京 8-01 凌晨建的算进来（UTC 还是 7-31），北京 9-01 凌晨建的不算（UTC 还是 8-31）
+ */
+describe("渠道看板 TOP5：数字点进去 = 项目列表 N + 公海页 M", () => {
+  const 八月 = { from: "2026-08-01", to: "2026-08-31" };
+  const 今 = new Date("2026-08-31T12:00:00Z");
+  const 设时间 = async () => {
+    await prisma.project.updateMany({ data: { createdAt: new Date("2026-08-15T03:00:00Z") } });
+    await prisma.project.updateMany({ where: { name: "一商机" }, data: { createdAt: new Date("2026-07-31T17:00:00Z") } });
+    await prisma.project.updateMany({ where: { name: "公海客户二" }, data: { createdAt: new Date("2026-08-31T16:30:00Z") } });
+    await prisma.project.updateMany({ where: { name: "全公海一" }, data: { createdAt: new Date("2026-06-01T03:00:00Z") } });
+  };
+  const 榜of = async (谁: 人, 期: 档) => {
+    设(谁);
+    const 底 = await 以谁的身份(谁.id, () => 读看板底数([甲渠道, 全公海], 今, 期 === 自定义 ? 日期段界(八月) : null, 谁));
+    const 渠道们 = [甲渠道, 全公海].map((id) => ({ id, name: id, attr: null, channelOwnerName: "老板" }));
+    return 算看板(渠道们, 期 === 自定义 ? 底.自定义! : 底[期], false);
+  };
+
+  it("各人 × 本月 / 自定义 / 全部：每行 N = 项目列表总数，M = 公海页总数，N + M ≤ 看板数；老板正好相等", async () => {
+    await 设时间();
+    for (const 谁 of [老板, 销售, 销售乙, 市场]) {
+      for (const 期 of ["本月", 自定义, "全部"] as 档[]) {
+        const k = await 榜of(谁, 期);
+        const 时段 = 看板时段(期, 今, 八月);
+        for (const x of k.榜) {
+          const 名 = `${谁.name} ${期} ${x.id === 甲渠道 ? "甲" : "全公海"}`;
+          expect(x.名单, 名).toBeDefined();
+          expect(x.名单!.列表, 名).toBe(await 列表总数(谁, 榜链接(x.id, 时段, "列表")));
+          expect(x.名单!.公海, 名).toBe((await 公海页(谁, 榜链接(x.id, 时段, "公海"))).总数);
+          expect(x.名单!.列表 + x.名单!.公海, 名).toBeLessThanOrEqual(x.线索);
+          if (谁 === 老板) expect(x.名单!.列表 + x.名单!.公海, 名).toBe(x.线索);
+        }
+        // 卡片上的「含公海 M 条」= 各行 M 加起来
+        expect(k.公海!.线索).toBe(k.榜.reduce((s, x) => s + x.名单!.公海, 0));
+      }
+    }
+  });
+
+  it("老板 8 月：甲渠道 = 两条在列表（含北京 8-01 凌晨建的）+ 五条公海（不分阶段；北京 9-01 建的那条不算）；全公海只剩一条、直接去公海页", async () => {
+    await 设时间();
+    const k = await 榜of(老板, 自定义);
+    const 甲 = k.榜.find((x) => x.id === 甲渠道)!;
+    expect(甲.线索).toBe(7);
+    expect(甲.名单).toEqual({ 列表: 2, 公海: 5 });
+    const 时段 = 看板时段(自定义, 今, 八月)!;
+    expect(时段).toEqual({ createdFrom: "2026-08-01", createdTo: "2026-08-31" });
+    expect((await 公海页(老板, 榜链接(甲渠道, 时段, "公海"))).行.map((r) => r.项目名).sort()).toEqual(["乙公海线索", "乙公海自选", "公海客户一", "公海客户流失", "甲放回的"].sort());
+    const 全 = k.榜.find((x) => x.id === 全公海)!;
+    expect(全).toMatchObject({ 线索: 1, 名单: { 列表: 0, 公海: 1 } });
+    // 全部：不带时间段
+    expect(榜链接(全公海, 看板时段("全部", 今), "公海")).toBe(`/pool?projChannel=${全公海}`);
+    // 本月：从北京 8-01 起、不写止（看板这档也没有上限）
+    expect(看板时段("本月", 今)).toEqual({ createdFrom: "2026-08-01" });
+    expect(榜链接(甲渠道, 看板时段("本月", 今), "列表")).toBe(`/projects?channelId=${甲渠道}&createdFrom=2026-08-01`);
+  });
+
+  it("公海页只按创建时间筛（不带渠道）：按项目一条一行，范围外的不列", async () => {
+    await 设时间();
+    设(老板);
+    const d = await 以谁的身份(老板.id, () => 读公海页(老板, {}, 1, 100, { createdFrom: "2026-08-01", createdTo: "2026-08-31" }));
+    const 名 = d.行.map((r) => r.项目名).sort();
+    expect(名).not.toContain("公海客户二");
+    expect(名).not.toContain("全公海一");
+    expect(名).toContain("全公海二");
+    expect(new Set(d.行.map((r) => r.id)).size).toBe(d.行.length);
   });
 });

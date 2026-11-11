@@ -24,7 +24,7 @@ import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
 import { 原负责人回避, 回避豁免, 一批id数 } from "@/lib/project/pool-owner";
 import type { Prisma } from "@/generated/prisma";
-import { 公海名单条件, 渠道阶段候选 } from "@/lib/project/list";
+import { 公海名单条件, 公海名单候选, type 公海名单筛 } from "@/lib/project/list";
 import {
   客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
@@ -258,11 +258,13 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
  * 每翻一页不再把公海全部的项目名、当前进程、原负责人、客户可见都取一遍；筛、数、排的口径和原来逐条一致
  * （tests/ent-unified-pool-paging.test.ts 拿改前的写法逐个筛选组合、逐页对）
  */
-export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: { channelId: string; phase: string }) {
+export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: 公海名单筛) {
   // 和 筛排 认关键词、来源用的是同一个判断
   const 有词 = !!(sp.keyword ?? "").trim().toLowerCase();
   // 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：按项目一条一行，和渠道页数的是同一句（list.ts 公海名单条件）
-  const 名单条件 = 名单?.channelId ? await 公海名单条件(me, 渠道阶段候选(名单.channelId, 名单.phase)) : null;
+  // 按创建时间筛（11-11，渠道看板 TOP5 点进来带时间段）也走名单：时间是项目的创建时间，客户行按项目拆开才数得对
+  const 候选 = 名单 ? 公海名单候选(名单) : null;
+  const 名单条件 = 候选 ? await 公海名单条件(me, 候选) : null;
   const 骨 = await 读公海骨架(me, { 客户的项目: 有词 || !!名单条件, 客户可见: 有词 || !!sp.来源 || !!名单条件, ...(名单条件 ? { 只要: 名单条件 } : {}) });
   const 全部行 = 名单条件 ? await 按名单展开(骨, 名单条件) : 骨.行;
   const { 行, 快捷数, 属性数 } = 筛排(全部行, sp);

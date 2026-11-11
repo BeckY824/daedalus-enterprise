@@ -5,21 +5,24 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 项目算哪个渠道 } from "./channel-stats";
-import { 渠道项目条件 } from "./channel-stats-db";
+import { 渠道项目条件, 名单落点 } from "./channel-stats-db";
 import { 算看板底数, 算公海底数, type 看板底数, type 看板区间, type 看板入池, type 公海底数, type 入池方式 } from "./channel-dash";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 离职理由们, 系统操作人, 拆退回原因 } from "./unified-pool";
 import { 无主入池理由 } from "@/lib/enterprise-import/project-target";
 
-/** 区间 = 地址栏「自定义」那一段（日期段界() 算好的两个瞬间）；不带就只算三个预设档 */
-export async function 读看板底数(渠道ids: string[], 今: Date = new Date(), 区间?: 看板区间 | null): Promise<看板底数> {
+/**
+ * 区间 = 地址栏「自定义」那一段（日期段界() 算好的两个瞬间）；不带就只算三个预设档。
+ * 看的人（11-11）：带了再分每条项目点进去在项目列表 / 公海页 / 两边都不列（名单落点，同渠道列表），TOP5 拆「列表里 N 条、另 M 条在公海」
+ */
+export async function 读看板底数(渠道ids: string[], 今: Date = new Date(), 区间?: 看板区间 | null, 看的人?: { id: string }): Promise<看板底数> {
   if (渠道ids.length === 0) return 算看板底数([], [], [], 今, 区间);
-  const [项目们, 投入们] = await Promise.all([
+  const [项目们, 投入们, 落点] = await Promise.all([
     prisma.project.findMany({
       where: 渠道项目条件(渠道ids),
       select: {
-        channelId: true, phase: true, result: true, amount: true, currency: true, createdAt: true,
+        id: true, channelId: true, phase: true, result: true, amount: true, currency: true, createdAt: true,
         customer: { select: { channelId: true } },
         entLeadVerify: { select: { verdict: true } },
         // 不 orderBy（父行过千会让 Prisma 6.16 崩，见 channel-stats-db.ts）；起步要按时间排了取头一条（同列表），别的取最早一条
@@ -27,6 +30,7 @@ export async function 读看板底数(渠道ids: string[], 今: Date = new Date(
       },
     }),
     prisma.entChannelInvest.findMany({ where: { channelId: { in: 渠道ids } }, select: { channelId: true, amount: true, currency: true, date: true } }),
+    名单落点(渠道ids, 看的人),
   ]);
   return 算看板底数(
     渠道ids,
@@ -36,6 +40,7 @@ export async function 读看板底数(渠道ids: string[], 今: Date = new Date(
       判定: p.entLeadVerify?.verdict ?? null,
       起步: [...p.logs].sort((x, y) => x.at.getTime() - y.at.getTime()).find((l) => l.fromPhase === null)?.toPhase ?? "线索",
       节点们: p.logs.map((l) => ({ toPhase: l.toPhase, at: l.at })),
+      ...(落点 ? { 名单: 落点.列表里.has(p.id) ? ("列表" as const) : 落点.公海里.has(p.id) ? ("公海" as const) : null } : {}),
     })),
     投入们,
     今,

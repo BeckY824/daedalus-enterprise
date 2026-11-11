@@ -18,6 +18,7 @@ import { CloseOutlined, MoreOutlined } from "@ant-design/icons";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
 import ResetFilters from "@/components/ResetFilters";
+import CreatedRangeFilter from "@/components/CreatedRangeFilter";
 import { useCustomFilters } from "@/components/CustomFilters";
 import { PageHead, RowLink } from "@/components/ui";
 import { fmtDateTime, smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
@@ -37,8 +38,11 @@ type Props = {
   属性数: Record<公海属性 | "全部", number>;
   截断: boolean;
   库里有: boolean;
-  /** projChannel / phase：渠道名单（渠道页「另 M 条在公海」点进来）；不进筛选栏，页头挂一枚能关掉的标签 */
-  filters: { keyword: string; attr: string; quick: string; sort: string; channelId: string; projChannel: string; phase: string };
+  /**
+   * projChannel / phase：渠道名单（渠道页「另 M 条在公海」点进来）；不进筛选栏，页头挂一枚能关掉的标签。
+   * createdFrom / createdTo：项目创建时间（「更多筛选」里的「创建时间」，渠道看板 TOP5 点进来也带）；筛了按项目一条一行
+   */
+  filters: { keyword: string; attr: string; quick: string; sort: string; channelId: string; projChannel: string; phase: string; createdFrom: string; createdTo: string };
   /** 自定义筛选「客户来源」的候选 */
   渠道筛选项: { value: string; label: string }[];
   /** 老板、主管 */
@@ -109,7 +113,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
-  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel);
+  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel || f.createdFrom || f.createdTo);
   // 渠道名单：说清现在只看哪个渠道、哪个阶段的公海项目（一条一行，条数 = 渠道页的「另 M 条在公海」），能关掉
   const 名单渠道 = filters.projChannel ? (渠道筛选项.find((o) => o.value === filters.projChannel)?.label ?? "这个渠道") : "";
   const 名单标 = filters.projChannel ? (
@@ -337,6 +341,13 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
             </div>
           )}
         />
+      ),
+    },
+    {
+      // 项目创建时间（11-11）：按项目算，筛了客户公海里的客户按名下项目拆成几行（同渠道名单），条数和渠道看板对得上
+      键: "created", 名: "创建时间", 宽: 240, 默认外露: false, 有值: !!(f.createdFrom || f.createdTo),
+      渲染: (style: CSSProperties) => (
+        <CreatedRangeFilter style={style} from={f.createdFrom} to={f.createdTo} 改={(v) => apply(v)} />
       ),
     },
     {

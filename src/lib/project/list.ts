@@ -408,9 +408,21 @@ export async function 公海名单条件(me: { id: string }, 候选: Prisma.Proj
   return { AND: [候选, { pooledAt: { not: null } }, ...(露 ? [{ OR: [{ channelId: { not: null } }, 露] }] : [])] };
 }
 
-/** 公海页渠道名单的候选：这个渠道（项目来源优先，没填跟客户来源）+ 同口径的阶段（阶段进程条件；空 = 不筛阶段） */
-export function 渠道阶段候选(channelId: string, phase: string): Prisma.ProjectWhereInput {
-  return { AND: [{ OR: [{ channelId }, { channelId: null, customer: { channelId } }] }, ...阶段进程条件({ phase }, 字典of(企业版())).where] };
+/** 公海页按项目一条一行时的筛选（地址栏 projChannel / phase / createdFrom / createdTo）；空的那项不筛 */
+export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string };
+
+/**
+ * 公海页渠道名单的候选：这个渠道（项目来源优先，没填跟客户来源）+ 同口径的阶段（阶段进程条件）+ 项目创建时间段
+ * （北京日，和项目列表 createdFrom / createdTo 同一个 创建时间段）。哪项都没有 = null（不按名单列）
+ */
+export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput | null {
+  const 建于 = 创建时间段(f.createdFrom, f.createdTo);
+  const 并: Prisma.ProjectWhereInput[] = [
+    ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }] }] : []),
+    ...(建于 ? [{ createdAt: 建于 }] : []),
+  ];
+  if (!并.length) return null;
+  return { AND: [...并, ...(f.phase ? 阶段进程条件({ phase: f.phase }, 字典of(企业版())).where : [])] };
 }
 
 /**

@@ -15,9 +15,12 @@ import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 import { beijingDay } from "@/lib/business-clock";
 import {
-  周期们, 周期起点, 算看板, 判够占比, 预警线索下限, 自定义, 算进公海, 进公海明细, 原因最多,
+  周期们, 周期起点, 算看板, 判够占比, 预警线索下限, 自定义, 算进公海, 进公海明细, 原因最多, 看板时段, 榜链接,
   type 档, type 看板底数, type 看板渠道, type 看板公海,
 } from "@/lib/enterprise/channel-dash";
+import { 名单段 } from "@/lib/enterprise/channel-stats";
+import Link from "next/link";
+import { RosterNote } from "./RosterNote";
 
 /** 一位小数的百分比；算不了是「—」 */
 function 百分(r: number | null): string {
@@ -89,6 +92,10 @@ export default function ChannelDash({
   const 投入空 = k.投入.length === 0;
   const 环合计 = k.环?.段.reduce((s, x) => s + x.数, 0) ?? 0;
   const 榜顶 = k.榜[0]?.线索 ?? 0;
+  // TOP5 点进去带的创建时间段（北京日）：和这一档数线索的那一段一样
+  const 时段 = 看板时段(期, new Date(), 显段);
+  /** 卡片上「含公海 M 条」：带了名单才写数，没带只写口径 */
+  const 含公海 = (m: number | undefined) => (m === undefined ? "含公海" : `含公海 ${数(m)} 条`);
 
   const 漏斗 = [
     { 名: "总线索", 值: 数(k.线索), 旁: null as string | null, 说: null as string | null },
@@ -113,7 +120,8 @@ export default function ChannelDash({
         <div className="chan-dash-k">
           <span className="chan-dash-kk">总线索</span>
           <span className="chan-dash-kv">{数(k.线索)}</span>
-          <span className="chan-dash-ks">按项目创建时间</span>
+          {/* 跨渠道的合计：项目列表按渠道只能单选，只带时间段的链接会混进别的渠道、没渠道的项目，所以这里不链（TOP5 每行能点） */}
+          <span className="chan-dash-ks">按项目创建时间，{含公海(k.公海?.线索)}</span>
         </div>
         <div className="chan-dash-k">
           <span className="chan-dash-kk">MQL 有效线索</span>
@@ -121,12 +129,22 @@ export default function ChannelDash({
           <span className="chan-dash-ks">{k.已判定 ? `有效率 ${百分(k.有效率)} · ` : ""}已判定 {数(k.已判定)} 条</span>
         </div>
         <div className="chan-dash-k">
-          <span className="chan-dash-kk">商机</span>
+          <span className="chan-dash-kk">
+            商机
+            <Tooltip title={`按头一回到商机（或直接到订单）的时间数，${含公海(k.公海?.商机)}。项目列表只能按创建时间筛，时间口径对不上，所以不链`}>
+              <span className="chan-dash-q" tabIndex={0} aria-label="商机怎么数">?</span>
+            </Tooltip>
+          </span>
           <span className="chan-dash-kv">{数(k.商机)}</span>
           <span className="chan-dash-ks">线索→商机 {百分(k.转商机.比例)}</span>
         </div>
         <div className="chan-dash-k">
-          <span className="chan-dash-kk">订单</span>
+          <span className="chan-dash-kk">
+            订单
+            <Tooltip title={`按头一回进订单的时间数，${含公海(k.公海?.订单)}。项目列表只能按创建时间筛，时间口径对不上，所以不链`}>
+              <span className="chan-dash-q" tabIndex={0} aria-label="订单怎么数">?</span>
+            </Tooltip>
+          </span>
           <span className="chan-dash-kv">{数(k.订单)}</span>
           <span className="chan-dash-ks">商机→订单 {百分(k.转订单)}</span>
         </div>
@@ -252,13 +270,19 @@ export default function ChannelDash({
             <p className="chan-dash-none">这段时间没有新线索</p>
           ) : (
             <ul className="chan-dash-top">
-              {k.榜.map((x) => (
-                <li key={x.id}>
-                  <button type="button" className="link-plain chan-dash-ell" title={x.name} onClick={() => 看详情(x.id)}>{x.name}</button>
-                  <span className="chan-dash-top-bar"><i style={{ width: `${(x.线索 / 榜顶) * 100}%` }} /></span>
-                  <b>{数(x.线索)}</b>
-                </li>
-              ))}
+              {k.榜.map((x) => {
+                // 数字点进去：这个渠道 + 同一段创建时间（11-11）；项目列表里一条没有、全在公海的直接去公海页。对不上的悬停里拆开说
+                const 链 = { 列表: 榜链接(x.id, 时段, "列表"), 公海: 榜链接(x.id, 时段, "公海") };
+                const 去 = x.名单 && x.名单.列表 === 0 && x.名单.公海 > 0 ? 链.公海 : 链.列表;
+                const 数字 = <Link href={去} className="chan-dash-top-n"><b>{数(x.线索)}</b></Link>;
+                return (
+                  <li key={x.id}>
+                    <button type="button" className="link-plain chan-dash-ell" title={x.name} onClick={() => 看详情(x.id)}>{x.name}</button>
+                    <span className="chan-dash-top-bar"><i style={{ width: `${(x.线索 / 榜顶) * 100}%` }} /></span>
+                    {名单段(x.线索, x.名单) ? <Tooltip title={<RosterNote 总数={x.线索} 名单={x.名单} channelId={x.id} 链={链} />}>{数字}</Tooltip> : 数字}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
