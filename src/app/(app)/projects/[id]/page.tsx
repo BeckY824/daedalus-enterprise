@@ -41,6 +41,7 @@ import { 合同状态显示 } from "@/lib/project/proj-fields";
 import type { 项目画像 } from "./ProjectExtras";
 import ProjectDetail, { type 项目详情, type 项目卡点, type 放回方式 } from "./ProjectDetail";
 import SameNumberBanner from "./SameNumberBanner";
+import { 去空, 有值 } from "@/lib/empty-value";
 
 export const dynamic = "force-dynamic";
 
@@ -203,11 +204,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const 画像: 项目画像 | null = !企业 || !露 ? null : {
     项们: await Promise.all(项目画像项.map(async (项) => {
       // 选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示成一串值）；「其他」要另写一句，这里一改就存，不给选
-      const 存着 = 项.多选 ? 存的需求 : [p[项.键]].filter((x): x is string => !!x);
+      const 存着 = 项.多选 ? 存的需求 : [p[项.键]].filter((x): x is string => 有值(x));
       const 启用 = (await 可选项(项.种类)).filter((x) => x !== 其他项);
       return { 键: 项.键, 名: 字典定义[项.种类].名, 多选: 项.多选, 选项: [...启用, ...存着.filter((x) => !启用.includes(x))] };
     })),
-    值: Object.fromEntries(项目画像项.map((项) => [项.键, 项.多选 ? 存的需求 : p[项.键]])) as 项目画像["值"],
+    // 老库存的「暂未确认」这类占位按没选显示「—」（11-11）
+    值: Object.fromEntries(项目画像项.map((项) => [项.键, 项.多选 ? 存的需求 : 去空(p[项.键])])) as 项目画像["值"],
   };
   const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
   // 企业版沟通记录的截图、录音（F-跟进-07）：和沟通记录同一个口径（露客户才给）；传 = 记这条的本人或能改沟通的，删 = 能改沟通的（api/attachments/access.ts 认沟通）

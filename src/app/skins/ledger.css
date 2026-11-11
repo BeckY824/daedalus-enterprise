@@ -28,6 +28,7 @@
 
   --r-ctl: 2px; --r-card: 0px; --r-pop: 2px; --r-tag: 2px;
   --shadow-card: none;
+  --card-line: var(--line);
   --shadow-pop: 0 10px 30px -12px rgba(28, 36, 32, 0.22);
   --page-pattern: repeating-linear-gradient(to bottom, transparent 0 31px, #dde9e0 31px 32px);
   --row-h: 44px;

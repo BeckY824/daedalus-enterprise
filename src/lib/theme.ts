@@ -1,5 +1,6 @@
 import type { ThemeConfig } from "antd";
 import { palette, alpha } from "@/lib/palette";
+import { antd动效 } from "@/lib/motion";
 
 /**
  * antd 这边的 token。
@@ -33,7 +34,8 @@ export const themeConfig: ThemeConfig = {
     colorSuccess: palette.success,
     colorWarning: palette.warning,
     colorError: palette.danger,
-    borderRadius: 6,
+    /* 16a：控件 8（--r-ctl）、卡片 10（--r-card）；浮层、卡片外壳另在组件里给 14（--r-pop） */
+    borderRadius: 8,
     borderRadiusLG: 10,
     borderRadiusSM: 4,
     fontSize: 14,
@@ -42,7 +44,8 @@ export const themeConfig: ThemeConfig = {
     /* 页面标题 22 / 区块标题 15，和 --fs-title / --fs-section 对齐 */
     fontSizeHeading4: 22,
     fontSizeHeading5: 15,
-    controlHeight: 34,
+    /* 控件三档（16a）：小 28、默认 32、主操作 40 */
+    controlHeight: 32,
     controlHeightSM: 28,
     controlHeightLG: 40,
     colorTextBase: palette.ink,
@@ -58,8 +61,10 @@ export const themeConfig: ThemeConfig = {
     colorBgLayout: palette.workbench,
     colorBgContainer: palette.panel,
     colorFillTertiary: palette.hover,
-    boxShadow: "0 1px 2px rgba(17, 24, 39, 0.04)",
-    boxShadowSecondary: "0 8px 24px rgba(17, 24, 39, 0.08)",
+    /* 和 :root 的 --shadow-card / --shadow-pop 一字不差 */
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05)",
+    boxShadowSecondary: "0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10)",
+    ...antd动效,
     fontFamily:
       'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "SF Pro SC", "PingFang SC", "Noto Sans SC", "Daedalus YaHei", "Microsoft YaHei", Roboto, sans-serif',
   },
@@ -76,26 +81,28 @@ export const themeConfig: ThemeConfig = {
       itemColor: palette.inkSoft,
       itemHoverBg: palette.hover,
       itemHoverColor: palette.ink,
-      itemSelectedBg: palette.brandBg,
-      itemSelectedColor: palette.brandDeep,
+      /* 16a：选中浅灰底深字，不用蓝底 */
+      itemSelectedBg: palette.hover,
+      itemSelectedColor: palette.ink,
       itemMarginInline: 10,
       itemMarginBlock: 2,
       itemHeight: 34,
-      itemBorderRadius: 6,
+      itemBorderRadius: 8,
       iconSize: 15,
       fontSize: 14,
       collapsedIconSize: 16,
     },
     Card: {
-      borderRadiusLG: 10,
-      paddingLG: 18,
-      headerHeight: 46,
+      /* 16a：卡片外壳圆角 14、不画边框（globals.css .ant-card 接 --card-line / --shadow-card，换主题时边框回来） */
+      borderRadiusLG: 14,
+      paddingLG: 16,
+      headerHeight: 48,
       headerFontSize: 15,
-      colorBorderSecondary: palette.line,
+      colorBorderSecondary: palette.lineSoft,
       boxShadowTertiary: "none",
     },
     Table: {
-      headerBg: palette.workbench,
+      headerBg: palette.panel,
       headerColor: palette.textMuted,
       headerSplitColor: "transparent",
       rowHoverBg: palette.rowHover,
@@ -111,7 +118,7 @@ export const themeConfig: ThemeConfig = {
       cellPaddingInlineSM: 12,
       /* 表格正文就是正文，和别处一样 14。13.5 是上一版为了多塞一列凑出来的 */
       fontSize: 14,
-      headerBorderRadius: 8,
+      headerBorderRadius: 14,
     },
     Button: {
       primaryShadow: "none",
@@ -122,16 +129,21 @@ export const themeConfig: ThemeConfig = {
       defaultHoverBorderColor: palette.lineStrong,
       defaultHoverColor: palette.ink,
     },
-    Input: { activeShadow: "0 0 0 3px rgba(47, 107, 255, 0.12)" },
-    Select: { optionSelectedBg: palette.brandBg },
+    Input: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.14)}` },
     Statistic: { contentFontSize: 26, titleFontSize: 13 },
     Tabs: { titleFontSize: 14, horizontalItemPadding: "10px 0", inkBarColor: palette.ink, itemSelectedColor: palette.ink, itemHoverColor: palette.ink },
-    Segmented: { trackPadding: 2, trackBg: palette.hover },
+    /* 未选中那几段的字用次一级正文 inkSoft（照苹果分段控件：没选中的字也是正文色，选中靠白滑块区分）。
+       默认 colorTextLabel = textMuted #6e6e73，压在 hover #ececee 的轨道上只有 4.30:1，过不了说明文字 4.5 的线；
+       inkSoft #424245 是 8.49:1。其他主题在 skins/shared.css 同一条里跟着换 */
+    Segmented: { trackPadding: 2, trackBg: palette.hover, itemColor: palette.inkSoft },
     Tag: { fontSizeSM: 12, borderRadiusSM: 999 },
-    Modal: { titleFontSize: 16, borderRadiusLG: 12 },
+    Modal: { titleFontSize: 15, borderRadiusLG: 14 },
+    Drawer: { borderRadiusLG: 14 },
+    Popover: { borderRadiusLG: 14 },
     Form: { labelFontSize: 13, verticalLabelPadding: "0 0 4px", labelColor: palette.textMuted },
     Breadcrumb: { fontSize: 13 },
-    Dropdown: { borderRadiusLG: 10 },
-    Alert: { borderRadiusLG: 8 },
+    Dropdown: { borderRadiusLG: 14 },
+    Select: { optionSelectedBg: palette.brandBg, borderRadiusLG: 14 },
+    Alert: { borderRadiusLG: 10 },
   },
 };

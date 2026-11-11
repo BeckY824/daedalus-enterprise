@@ -535,7 +535,7 @@ export default function CustomersView({
               popupMatchSelectWidth={false}
               {...释义下拉(字典释义?.类型)}
               value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
-              options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
+              options={[...new Set([...客户类型选项, ...(有值(f.customerType) ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
           ),
         }, {
           // 客户来源（11-06）：建档时选的渠道（Customer.channelId），停用的渠道也能筛，老客户还挂着

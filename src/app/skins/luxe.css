@@ -29,6 +29,7 @@
   --r-ctl: 2px; --r-card: 4px; --r-pop: 6px; --r-tag: 0px;
   --draft: dotted;
   --shadow-card: none;
+  --card-line: var(--line);
   --shadow-pop: 0 24px 48px -24px rgba(22, 22, 22, 0.18);
   --row-h: 44px; --th-h: 44px;
 

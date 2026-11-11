@@ -34,6 +34,7 @@
 
   --r-ctl: 2px; --r-card: 2px; --r-pop: 2px; --r-tag: 0px;
   --shadow-card: 0 0 0 1px rgba(94, 224, 255, 0.04), 0 0 32px -12px rgba(94, 224, 255, 0.18);
+  --card-line: var(--line);
   --shadow-pop: 0 0 0 1px rgba(94, 224, 255, 0.2), 0 0 40px -10px rgba(94, 224, 255, 0.35);
   --page-pattern: linear-gradient(#0e1b21 1px, transparent 1px), linear-gradient(90deg, #0e1b21 1px, transparent 1px);
   --page-pattern-size: 24px 24px;

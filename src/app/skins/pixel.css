@@ -31,6 +31,7 @@
   --r-ctl: 0px; --r-card: 0px; --r-pop: 0px; --r-tag: 0px;
   --bw: 2px;
   --shadow-card: 4px 4px 0 #111111;
+  --card-line: var(--line);
   --shadow-pop: 6px 6px 0 #111111;
   --page-pattern: radial-gradient(#cdced1 1px, transparent 1.2px);
   --page-pattern-size: 8px 8px;

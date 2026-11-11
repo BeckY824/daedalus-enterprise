@@ -27,7 +27,7 @@ import { parseDateInput } from "../date-input";
 import { 认日期 } from "../import/plan";
 import { 查电话, 号键 } from "../phone";
 import { 无负责人占位名 } from "../pool";
-import { 拆多人, 进备注, 输单, 对客户类型, 客户类型空着, 客户类型等级, 值说法 } from "./mapping";
+import { 拆多人, 进备注, 输单, 对客户类型, 客户类型留空, 客户类型未定, 客户类型等级, 值说法 } from "./mapping";
 import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
 import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
@@ -409,13 +409,13 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
   };
 
   /**
-   * 客户类型：空着的落「暂不确认」；先过对照表，对上的（还启用着）就落；其余照 认字典，原值进备注。
-   * 「暂不确认」被管理员停用 / 改名了就不落、也不提醒（空格本来就没什么可进备注的）
+   * 客户类型：空着的留空（11-11 起不再落「暂不确认」）；先过对照表，对成留空的（一般客户、意向客户这类阶段写法）也留空、不进备注、不提醒；
+   * 对上的（还启用着）就落；其余照 认字典，原值进备注
    */
   const 认客户类型 = (r: 原始记录, v: string | undefined, 附加: string[]): string | null => {
-    if (!v?.trim()) return 本地.客户类型?.includes(客户类型空着) ? 客户类型空着 : null;
+    if (!v?.trim()) return null;
     const 对 = 对客户类型(v);
-    if (对 === 客户类型空着 && !本地.客户类型?.includes(对)) return null;
+    if (对 === 客户类型留空) return null;
     if (对 && 本地.客户类型?.includes(对)) return 对;
     return 认字典(r, v, 附加, "客户类型", 本地.客户类型);
   };
@@ -590,8 +590,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     else if (b.phone && 号键(String(b.phone)) !== 号键(String(a.phone))) 段.push(`另一个电话：${b.phone}`);
     if (b.custStatus && !a.custStatus) a.custStatus = b.custStatus;
     else if (b.custStatus && a.custStatus !== b.custStatus) 段.push(`客户状态：${b.custStatus}`);
-    // 「暂不确认」是原表空着 / 写的阶段落的（10-30）：当空的看，后一条有真类型就换上，后一条是暂不确认的不进备注
-    const 未定 = (v: unknown) => !v || v === 客户类型空着;
+    // 没定的（空、老库落过的「暂不确认」）当空的看：后一条有真类型就换上，后一条没定的不进备注
+    const 未定 = (v: unknown) => !v || 客户类型未定(v);
     if (!未定(b.customerType) && 未定(a.customerType)) a.customerType = b.customerType;
     else if (b.customerType && !a.customerType) a.customerType = b.customerType;
     else if (!未定(b.customerType) && a.customerType !== b.customerType) 段.push(`客户类型：${b.customerType}`);

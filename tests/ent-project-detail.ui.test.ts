@@ -53,7 +53,7 @@ beforeAll(async () => {
       {customerId:'c2',名:'关联客户'+串,全称:'',身份:['监理方','设计方','引荐方'],主:false,看得到:true},{customerId:'c3',名:'同事的客户 #ABC123',全称:'',身份:[],主:false,看得到:false}],
       联系人们:[{contactId:'k1',名:'超长客户名'+串+'|张先生',姓名:'张三',customerId:'c1',角色:['决策人','审批人','影响人','使用人','经办人'],立场:'盟友',主:true,看得到:true},
       {contactId:'k2',名:'关联客户'+串+'|🔥姓名暂未核实',姓名:'王总',customerId:'c2',角色:[],立场:null,主:false,看得到:true}],
-      选项:{身份:['业主方','总包方','分包方','投资方','垫资方','运营方','引荐方','监理方','设计方'],角色:['决策人','审批人','影响人','使用人','经办人'],立场:['待定','中立','对手','线人','军师','盟友']},上限:30};
+      选项:{身份:['业主方','总包方','分包方','投资方','垫资方','运营方','引荐方','监理方','设计方'],角色:['决策人','审批人','影响人','使用人','经办人'],立场:['中立','对手','线人','军师','盟友']},上限:30};
     window.__relate=(能改)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,关联}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* 10-31 画像十二项（后七项新加）、空的写灰字（11-04 起「—」）；单选、多选下拉第一项「—」。和 P17 关联一起摆，看关联里空的角色 / 立场 */
     const 画像={项们:项目画像项.map(x=>({键:x.键,名:字典定义[x.种类].名,多选:x.多选,选项:[...字典定义[x.种类].默认]})),
@@ -62,7 +62,7 @@ beforeAll(async () => {
     /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content > 换页那层 div。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
     const 行=(id,name,阶段,进程,x)=>({id,name,阶段,进程,结局:null,pooled:false,customerName:'超长客户名'+串,lastType:'PHONE',lastAt:'2026-10-20T00:00:00.000Z',lastNote:'最近一句'+串,nextAt:null,...x});
     const 名单={取到上限:false,rows:[行('p1',长,'订单','生产备货'+'备'.repeat(20)),行('p2','线索项目'+串,'线索','初次接触'),行('p5','没填阶段的项目',null,null,{lastAt:null,lastNote:null}),行('p3',串,'商机','方案报价',{pooled:true,结局:'输单'}),行('p4','商机二','商机','首款支付',{nextAt:'2026-10-01'})]};
-    window.__shell=(fab)=>root.render(包(<div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/><ProjectRoster data={名单}/><main className='main app-content' style={{padding:'22px 26px'}}><div style={{maxWidth:1720,margin:'0 auto'}}>{详情(true)}</div></main></div>));
+    window.__shell=(fab,x)=>root.render(包(<div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/><ProjectRoster data={名单}/><main className='main app-content' style={{padding:'22px 26px'}}><div style={{maxWidth:1720,margin:'0 auto'}}>{x?<ProjectDetail {...详情(true).props} p={{...详情(true).props.p,...x}}/>:详情(true)}</div></main></div>));
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -351,7 +351,8 @@ it("迁移 101：没给项目新字段（不是企业版 / 藏了）就不摆这
   } finally { await page.close(); }
 });
 
-it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标题 18、值 16 正文色、字段名 16 灰、辅助 14 灰、待填 16 浅灰；0 照正文色", async () => {
+// 16a（11-11）：客户、项目详情一起回全站六档（原来大一号 26 / 18 / 16 / 16 / 14，和列表页不是一套）
+it("10-31 改版 R7（16a 回六档）：和客户详情同一套字阶——标题 22、卡片标题 15、值 14 正文色、字段名 13 灰、辅助 13 灰、待填 14 浅灰；0 照正文色", async () => {
   const { page, errors } = await open(true);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
@@ -361,15 +362,15 @@ it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标�
     const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = `var(${v})`; document.querySelector(".proj-wrap")!.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
     const 样 = (l: import("playwright").Locator) => l.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; });
     const [墨, 灰, 浅] = [await 色("--ink"), await 色("--text-muted"), await 色("--text-faint")];
-    expect(await 样(page.locator(".proj-wrap .page-head h1"))).toEqual({ 字: "26px", 色: 墨 });
-    expect(await 样(卡.locator(".ant-card-head-title"))).toEqual({ 字: "18px", 色: 墨 });
-    expect(await 样(卡.getByText("定金金额", { exact: true }))).toEqual({ 字: "16px", 色: 灰 });
+    expect(await 样(page.locator(".proj-wrap .page-head h1"))).toEqual({ 字: "22px", 色: 墨 });
+    expect(await 样(卡.locator(".ant-card-head-title"))).toEqual({ 字: "15px", 色: 墨 });
+    expect(await 样(卡.getByText("定金金额", { exact: true }))).toEqual({ 字: "13px", 色: 灰 });
     const 零 = 卡.locator("div").filter({ hasText: /^定金金额/ }).last();
-    expect(await 零.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; })).toEqual({ 字: "16px", 色: 墨 });
-    expect(await 样(卡.locator('[data-empty="合同金额"]'))).toEqual({ 字: "16px", 色: 浅 });
+    expect(await 零.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; })).toEqual({ 字: "14px", 色: 墨 });
+    expect(await 样(卡.locator('[data-empty="合同金额"]'))).toEqual({ 字: "14px", 色: 浅 });
     // 「阶段 / 进程」两格企业版不显示了（F-项目-19），.proj-where-label 只在有回收日时出现，这里不再量
     const 辅 = page.locator(".proj-main .ant-card span").filter({ hasText: / · \d{4}-\d{2}-\d{2}/ }).first();
-    expect(await 样(辅)).toEqual({ 字: "14px", 色: 灰 });
+    expect(await 样(辅)).toEqual({ 字: "13px", 色: 灰 });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -609,10 +610,10 @@ async function 覆盖(width: number, x: Record<string, unknown>) {
 // 11-02 项目详情标清项目负责人、项目创建人：页头写各一次，负责人空着写「暂无」；项目卡不再摆一遍
 it.each<[string, Record<string, unknown>, string]>([
   ["两个不同的人", { ownerName: "负责人乙", creatorName: "创建人丙" }, "项目负责人：负责人乙 · 项目创建人：创建人丙 · 创建于 "],
-  ["负责人空着", { ownerId: "", ownerName: "", creatorName: "创建人丙" }, "项目负责人：暂无 · 项目创建人：创建人丙 · 创建于 "],
+  ["负责人空着", { ownerId: "", ownerName: "", creatorName: "创建人丙" }, "项目负责人：— · 项目创建人：创建人丙 · 创建于 "],
   ["创建人是停用占位账号，照实写", { ownerName: "负责人乙", creatorName: "（无负责人）" }, "项目负责人：负责人乙 · 项目创建人：（无负责人） · 创建于 "],
-  ["公海里，系统收回：ownerName 是原负责人，不算负责人", { pooled: true, ownerId: "", ownerName: "负责人乙", creatorName: "创建人丙", 进公海: { 方式: "超时", 谁: "系统" } }, "项目负责人：暂无（在公海里，原负责人 负责人乙 · 超时没跟进，系统自动收回） · 项目创建人：创建人丙 · 创建于 "],
-  ["公海里，查不到原负责人", { pooled: true, ownerId: "", ownerName: "", creatorName: "创建人丙" }, "项目负责人：暂无（在公海里） · 项目创建人：创建人丙 · 创建于 "],
+  ["公海里，系统收回：ownerName 是原负责人，不算负责人", { pooled: true, ownerId: "", ownerName: "负责人乙", creatorName: "创建人丙", 进公海: { 方式: "超时", 谁: "系统" } }, "项目负责人：—（在公海里，原负责人 负责人乙 · 超时没跟进，系统自动收回） · 项目创建人：创建人丙 · 创建于 "],
+  ["公海里，查不到原负责人", { pooled: true, ownerId: "", ownerName: "", creatorName: "创建人丙" }, "项目负责人：—（在公海里） · 项目创建人：创建人丙 · 创建于 "],
 ])("页头标清项目负责人、项目创建人：%s", async (_, x, 开头) => {
   const { page, errors } = await 覆盖(1280, x);
   try {
@@ -1346,3 +1347,40 @@ describe("沟通卡头：隐藏接手前", () => {
     } finally { await page.close(); }
   });
 });
+
+/* 11-11 用户（客户详情「沟通记录模块设最长长度、整页给待办留位置，多的在模块内上下移动」，项目详情同样）：
+   30 条沟通时，三档笔记本窗口下首屏看得到「卡点与任务」卡头；沟通卡身在卡内滚，卡头不动；两栏第一张卡同一条顶线 */
+for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]] as const) {
+  it(`${w}×${h} 30 条沟通：沟通卡身限高卡内滚，卡点与任务卡头在首屏，两栏顶线齐`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://proj.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+      await page.goto("http://proj.test/projects/p1"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+      const 多 = Array.from({ length: 30 }, (_, i) => ({ id: "f" + i, type: "PHONE", content: "沟通内容，谈了交期和价格。".repeat(3), occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL" + i, 提醒: null }));
+      await page.evaluate(x => (window as unknown as { __shell: (fab: boolean, x: unknown) => void }).__shell(false, x), { followUps: 多 });
+      await page.getByText("进程变更").first().waitFor();
+      const 量 = () => page.evaluate(() => {
+        const 主 = document.querySelector(".proj-main") as HTMLElement, 侧 = document.querySelector(".proj-side") as HTMLElement;
+        const 身 = document.getElementById("project-follow-body") as HTMLElement;
+        const 卡点头 = document.querySelector("#project-blockers .ant-card-head, #project-blockers") as HTMLElement;
+        const 首 = (e: HTMLElement) => (e.querySelector(":scope > .ant-card, :scope > .proj-fold, :scope > *") as HTMLElement).getBoundingClientRect().top;
+        return { 身滚: getComputedStyle(身).overflowY, 身溢: 身.scrollHeight - 身.clientHeight, 身顶: 身.scrollTop, 主顶: 主.scrollTop,
+          沟通头: (身.closest(".ant-card")!.querySelector(".ant-card-head") as HTMLElement).getBoundingClientRect().top,
+          卡点底: 卡点头.getBoundingClientRect().bottom, 主底: Math.min(主.getBoundingClientRect().bottom, window.innerHeight),
+          顶线: [首(主), 首(侧)].map(Math.round), 横滚: document.documentElement.scrollWidth - window.innerWidth };
+      });
+      const 起 = await 量();
+      expect(起.横滚).toBeLessThanOrEqual(0);
+      expect(起.身滚).toBe("auto");
+      expect(起.身溢).toBeGreaterThan(0);
+      expect(起.卡点底).toBeLessThanOrEqual(起.主底);
+      expect(起.顶线[0]).toBe(起.顶线[1]);
+      await page.locator("#project-follow-body").evaluate(e => { e.scrollTop = 300; });
+      const 滚 = await 量();
+      expect(滚.身顶).toBeGreaterThan(0);
+      expect([滚.沟通头, 滚.主顶]).toEqual([起.沟通头, 起.主顶]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}

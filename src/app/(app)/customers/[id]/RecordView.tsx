@@ -6,7 +6,7 @@ import { loadCustomerFeed } from "./follow-history-actions";
 import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch";
 
 
-import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -76,7 +76,7 @@ import { 记下最近客户 } from "@/lib/last-customer";
 import { 金额, 金额或空, 合计文字 } from "@/lib/currency";
 import { 公海标签 } from "@/lib/pool";
 import { 带走说法 } from "@/lib/carry-over";
-import { 滚法 } from "@/lib/reduced-motion";
+import { 少动, 滚法 } from "@/lib/reduced-motion";
 import { 放进公海, 领取, 撤销公海 } from "../pool-actions";
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
@@ -756,6 +756,22 @@ export default function RecordView({
         {身}
       </div>
     );
+  /* 第一屏记录的进场（J-213）：页面接管那一下，已经显出来的记录逐条从下面 6px 落到位，只挪位置、不碰透明度——
+     服务端渲染出来就是不透明的，不会再「记录区先空几秒」（11-11）。间隔照时间线 70ms、八条以后一起，最晚一条 0.88 秒落定。
+     用浏览器自己的 Element.animate、translate 属性：和 motion 的 layout（写 transform）互不覆盖；开了「减弱动态」不动 */
+  const 时间线框 = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const 框 = 时间线框.current;
+    if (!框 || typeof 框.animate !== "function" || 少动()) return;
+    // 曲线直接取样式表里当前主题的 --ease（像素主题是 steps(…)，motion 那边读成函数，Element.animate 认的是 CSS 写法）
+    const 曲 = getComputedStyle(document.documentElement).getPropertyValue("--ease").trim() || "ease-out";
+    const 动 = [...框.querySelectorAll<HTMLElement>(":scope > .rec-tl-item")].map((el, i) =>
+      el.animate([{ translate: "0 6px" }, { translate: "0 0" }], { duration: 时长.morph * 1000, delay: Math.min(i, 8) * 间隔 * 1000, easing: 曲, fill: "backwards" }),
+    );
+    return () => 动.forEach((a) => a.cancel());
+    // 只在第一屏跑一次：之后换主题、换筛选不重放（新出现的那几条走 motion 的淡入）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /* 沟通记录的筛选条和时间线：项目模式装进「沟通记录」卡，其余照旧摊在中栏 */
   const 筛选条 = (
     <div className="rec-filters">
@@ -770,15 +786,16 @@ export default function RecordView({
     </div>
   );
   const 时间线 = (
-    <div className="rec-tl">
+    <div className="rec-tl" ref={时间线框}>
       {entries.length === 0 && (
         <div style={{ padding: "36px 0", textAlign: "center", color: "var(--text-muted)" }}>
           {filter !== "CONTRACT" && history.hasMore ? "已加载的记录中暂无此类型，可继续加载更早的跟进。" : filter === "全部" ? (摆法.沟通汇总 ? 去项目跟进 ? "还没有沟通记录。点右上「新建沟通」记一条" : `还没有沟通记录。点上方「${跟进按钮字}」记一条` : "还没有任何记录。上面随手记一笔，或粘一段聊天记录让 AI 整理。") : "这个类型下还没有记录"}
         </div>
       )}
-      {/* 打开一位的记录时逐条进场（间隔 70ms、八条以后一起）——原来 initial={false}，
-          下面算好的 delay 从来没机会生效，整条时间线是「啪」一下出来的 */}
-      <AnimatePresence>
+      {/* 淡入只给之后新出现的（换筛选、加载更多、新记一条）：打开页面时第一屏的记录不做淡入（11-11）。
+          原来第一屏也逐条淡入，服务端渲染出来的是透明的，要等页面接管（真页面 4～6 秒）才显出来，
+          卡头、筛选先到、记录区空一大块；现在和卡头同时出现。第一屏的进场改成上面 useLayoutEffect 里那段只挪位置的 */}
+      <AnimatePresence initial={false}>
         {entries.map((e, i) =>
           e.kind === "contract" ? (
             <motion.div key={`c-${e.c.id}`} className="rec-tl-item" layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: Math.min(i, 8) * 间隔, duration: 时长.base, ease: 曲线.ease }}>
@@ -814,7 +831,8 @@ export default function RecordView({
   const 有右栏 = (aiEnabled && !AI在抽屉里) || !去项目跟进 || (!plan && 摆法.下次跟进);
 
   return (
-    <div className="rec-page">
+    /* ui-v2：16a 客户详情的排版（左栏加宽、联系人两行、备注折叠、筛选一行），样式在 globals.css 末尾 16a 那块 */
+    <div className="rec-page ui-v2">
       {醒目条}
       <div className="rec-head">
         {/*
@@ -1131,8 +1149,8 @@ export default function RecordView({
                   <div className="rec-contact-h">
                     <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(c.name)}</Avatar>
                     <span className="rec-contact-n">{c.name}</span>
-                    {c.isPrimary && <Tag color="blue" style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
-                    {c.挂靠 && <Tag style={{ margin: 0, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
+                    {c.isPrimary && <Tag className="tag-key" style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+                    {c.挂靠 && <Tag style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
                     {c.position && <span className="rec-contact-p">{c.position}</span>}
                     {/* 号码保护（10-31）：只展示，不能点，任何逻辑都不看它（lib/enterprise/contact-guard.ts） */}
                     <号码保护标签 c={c} 客户={customer} />
@@ -1177,7 +1195,7 @@ export default function RecordView({
                 {/* 截断成「母亲…」之后，鼠标停上去得看得到全名 */}
                 <span className="rec-mini-n" title={c.name}>
                   {c.name}
-                  {c.isPrimary && <Tag color="blue" style={{ marginLeft: 6, borderRadius: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+                  {c.isPrimary && <Tag className="tag-key" style={{ marginLeft: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
                 </span>
                 <span className="rec-mini-m">{c.position ?? c.phone ?? ""}</span>
                 {/* 编辑 / 删除平时不占位（审查 M4）：原来两颗图标常驻，三个字的名字被挤成「周明远…」。

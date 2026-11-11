@@ -21,6 +21,7 @@
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
+import { 去空 } from "@/lib/empty-value";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 选的原因, type 字典种类 } from "@/lib/enterprise/dict";
 import { 能管项目, 露客户, 看得到的客户 } from "./db";
@@ -328,7 +329,7 @@ export async function 项目关联们(me: { id: string }, projectId: string): Pr
       名: !见 ? `${看不到的联系人} ${短号(c.id)}` : 主客户见 ? 引用联系人(c) : 引用联系人({ ...c, customer: { id: c.customerId, name: 看不到的客户 } }),
       姓名: 见 ? c.name : "",
       customerId: 见 && 主客户见 ? c.customerId : null,
-      角色: 读多选(row?.roles), 立场: row?.stance ?? null, 主, 看得到: 见,
+      角色: 读多选(row?.roles), 立场: 去空(row?.stance), 主, 看得到: 见, // 老库存的「待定」按没选显示「—」（11-11）
     });
   };
   if (主联系人) 一位(主联系人, 联系人行.find((r) => r.contactId === 主联系人.id), true);

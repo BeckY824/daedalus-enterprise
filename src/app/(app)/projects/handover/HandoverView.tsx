@@ -1,5 +1,6 @@
 "use client";
 
+import { 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -145,7 +146,7 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
           <Tag style={{ marginInlineEnd: 0 }}>已离职</Tag>
           {p.交接中 && <Tag color="orange" style={{ marginInlineEnd: 0 }}>交接中</Tag>}
           <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400, minWidth: 0, maxWidth: 240, ...省略 }} title={p.上级 ?? undefined}>
-            直属上级：{p.上级 ?? "没填"}
+            直属上级：{p.上级 ?? 空值符}
           </Typography.Text>
         </div>
       }

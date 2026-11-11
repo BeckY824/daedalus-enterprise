@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { 系统写 } from "@/lib/team-scope";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
+import { 旧占位词 } from "@/lib/empty-value";
 import { 挡改设置 } from "./edit-perm";
 import { 字典种类们, 字典定义, 项目画像项, 选项名上限, 其他项, 其他前缀, 拆其他, 其他没写好, 字典项释义, 默认号of, 默认序号of, type 字典种类 } from "./dict-kinds";
 import { 分配谁能用key, 规整分配谁能用, 能用分配方式, 谁能用的话, type 分配谁能用配置 } from "./assign-use";
@@ -190,8 +191,11 @@ export async function 全部企业字典() {
 /** 下拉里能选的名字（停用的不出）；不是企业版 = 空 */
 export async function 可选项(kind: 字典种类): Promise<string[]> {
   if (!企业版()) return [];
-  return (await 企业字典(kind)).filter((x) => x.active).map((x) => x.name);
+  return (await 企业字典(kind)).filter(能选).map((x) => x.name);
 }
+
+/** 下拉里能选的：启用着、且不是以前当「没填」用的占位词（暂不确认 / 暂未确认 / 待定，11-11：没填就显示「—」，不给选） */
+const 能选 = (x: EntDictItem) => x.active && !旧占位词.includes(x.name.trim());
 
 /**
  * 页面渲染用的读法：同一次请求里同一类只读一次（React cache，10-29）。客户页一屏要读好几类、中栏名单也要读客户状态，
@@ -201,7 +205,7 @@ export const 页面字典 = cache((kind: 字典种类): Promise<EntDictItem[]> =
 /** 同 可选项，走 页面字典 */
 export const 页面可选项 = cache(async (kind: 字典种类): Promise<string[]> => {
   if (!企业版()) return [];
-  return (await 页面字典(kind)).filter((x) => x.active).map((x) => x.name);
+  return (await 页面字典(kind)).filter(能选).map((x) => x.name);
 });
 
 /**

@@ -1,5 +1,6 @@
 "use client";
 
+import { 空值符 } from "@/lib/empty-value";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, InputNumber, Segmented, Tag } from "antd";
@@ -102,7 +103,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
                           onChange={(v) => set草稿((d) => ({ ...d, [r.userId]: typeof v === "number" ? v : null }))}
                           onBlur={() => 存配额(r)} onPressEnter={() => 存配额(r)} />
                       ) : (
-                        <span className={不限额 ? "muted" : undefined}>{r.设的配额 ?? "没填"}</span>
+                        <span className={不限额 ? "muted" : undefined}>{r.设的配额 ?? 空值符}</span>
                       )}
                       {!不限额 && r.加额 > 0 && (
                         <span className="muted" title={`本月有 ${r.加额} 条线索最终判成无效，配额多给 ${r.加额} 条，下月清零`} data-testid={`org-lead-bonus-${r.userId}`}>

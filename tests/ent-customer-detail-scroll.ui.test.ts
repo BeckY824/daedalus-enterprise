@@ -43,18 +43,20 @@ beforeAll(async () => {
     const followUps=Array.from({length:30},(_,i)=>({id:'f'+i,type:'PHONE',title:'沟通'+i,content:'谈了交期和价格，'.repeat(3),status:'已完成',duration:null,occurredAt:'2026-10-'+String(30-(i%28)).padStart(2,'0')+'T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-20T02:00:00.000Z',项目:{id:'p1',名:'项目一'}}));
     const 项目={跟进去处:[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null}],待办计划:[],followUps};
     const 名单=<aside className='pane pane-roster'><div className='pane-h'><span className='pane-t'>客户</span></div><div className='pane-rows'>{Array.from({length:80},(_,i)=><div key={i} style={{height:40}}>客户{i}</div>)}</div></aside>;
-    window.__render=(fab,老)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/>{名单}<main className='main app-content' style={{padding:'22px 26px'}}><div><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={[]} opportunities={[]} tasks={tasks} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} 项目们={[]} 旺旺们={[]} {...(老?{followUps}:项目)}/></div></main></div></BusinessProvider></App></ConfigProvider>);
+    window.__render=(fab,老)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/>{名单}<main className='main app-content' style={{padding:'22px 26px'}}><div><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={[]} opportunities={[]} tasks={tasks} plan={null} users={[]} channels={[]} aiEnabled={!!window.__ai} followUps={[]} followUpsHasMore={false} 项目们={[]} 旺旺们={[]} {...(老?{followUps}:项目)}/></div></main></div></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 /** 老 = 没开项目模式（待办在右栏、三栏）；默认企业版项目模式：待办在沟通记录下方、AI 关着时没有右栏 */
-async function open(width: number, height = 560, fab = false, 老 = false) {
+async function open(width: number, height = 560, fab = false, 老 = false, 没量 = false) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
   await page.route("http://cust-scroll.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-  await page.goto("http://cust-scroll.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+  await page.goto("http://cust-scroll.test");
+  // 没量：开着 AI、量宽度的 ResizeObserver 不回话——等于服务端渲染出来、页面还没接管的那一帧
+  if (没量) await page.evaluate(() => { const w = window as unknown as { __ai: boolean; ResizeObserver: unknown }; w.__ai = true; w.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }; }); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
   await page.evaluate(([f, o]) => (window as unknown as { __render: (fab: boolean, 老: boolean) => void }).__render(f, o), [fab, 老] as const);
   await page.locator(".rec-contact").first().waitFor();
   return { page, errors };
@@ -204,8 +206,10 @@ it("800px 退成一栏：整页不滚，整格一起滚、页头不动；390 手
 });
 
 /* 10-31 改版 R7：和项目详情同一套字阶（ent-project-detail.ui 里同样的数）。档案字段这里是桩，
-   照 InlineField 的结构在资料栏里补一行有值、一行没填的 */
-it("10-31 改版 R7：标题 26、模块标题 18、值 16 正文色、字段名 16 灰、辅助 14 灰、没填 16 浅灰、链接品牌色", async () => {
+   照 InlineField 的结构在资料栏里补一行有值、一行没填的。
+   16a 界面样板（.ui-v2）起客户详情回到全站六档：标题 22、模块标题 15、值 14、字段名 13、辅助 13
+   （原来大一号的 26 / 18 / 16 / 16 / 14 和列表页 22 / 15 / 14 不是一套）；项目详情（.proj-wrap）不在样板里，照旧大一号 */
+it("10-31 改版 R7（16a 样板回六档）：标题 22、模块标题 15、值 14 正文色、字段名 13 灰、辅助 13 灰、没填 14 浅灰、链接品牌色", async () => {
   const { page, errors } = await open(1680, 900);
   try {
     await page.evaluate(() => {
@@ -216,17 +220,17 @@ it("10-31 改版 R7：标题 26、模块标题 18、值 16 正文色、字段名
     const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = `var(${v})`; document.querySelector(".rec-page")!.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
     const 样 = (sel: string) => page.locator(sel).first().evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; });
     const [墨, 灰, 浅, 蓝] = [await 色("--ink"), await 色("--text-muted"), await 色("--text-faint"), await 色("--brand")];
-    expect(await 样(".rec-head-name")).toEqual({ 字: "26px", 色: 墨 });
+    expect(await 样(".rec-head-name")).toEqual({ 字: "22px", 色: 墨 });
     // 项目模式（11-01 起）模块是卡，模块标题在卡头
-    expect(await 样(".rec-sec-t, .rec-mod > .ant-card-head")).toEqual({ 字: "18px", 色: 墨 });
-    expect(await 样("#r7-有 .rec-field-k")).toEqual({ 字: "16px", 色: 灰 });
-    expect(await 样("#r7-有 .rec-field-v")).toEqual({ 字: "16px", 色: 墨 });
-    expect(await 样("#r7-空 .rec-field-empty")).toEqual({ 字: "16px", 色: 浅 });
-    expect(await 样(".rec-tl-time")).toEqual({ 字: "14px", 色: 灰 });
-    expect(await 样(".rec-contact-p")).toEqual({ 字: "14px", 色: 灰 });
-    expect((await 样(".rec-tl-content")).字).toBe("16px");
+    expect(await 样(".rec-sec-t, .rec-mod > .ant-card-head")).toEqual({ 字: "15px", 色: 墨 });
+    expect(await 样("#r7-有 .rec-field-k")).toEqual({ 字: "13px", 色: 灰 });
+    expect(await 样("#r7-有 .rec-field-v")).toEqual({ 字: "14px", 色: 墨 });
+    expect(await 样("#r7-空 .rec-field-empty")).toEqual({ 字: "14px", 色: 浅 });
+    expect(await 样(".rec-tl-time")).toEqual({ 字: "13px", 色: 灰 });
+    expect(await 样(".rec-contact-p")).toEqual({ 字: "13px", 色: 灰 });
+    expect((await 样(".rec-tl-content")).字).toBe("14px");
     const 链 = ".rec-sec-t a, .rec-mod > .ant-card-head .ant-card-extra a";
-    if (await page.locator(链).count()) expect(await 样(链)).toEqual({ 字: "16px", 色: 蓝 });
+    if (await page.locator(链).count()) expect(await 样(链)).toEqual({ 字: "14px", 色: 蓝 });
     // 最长的内置字段名五个字一行放下
     expect(await page.locator("#r7-有 .rec-field-k").evaluate(e => e.getBoundingClientRect().height)).toBeLessThanOrEqual(25);
     expect(errors).toEqual([]);
@@ -295,3 +299,69 @@ it("带 AI 浮标、反馈提示出着：栏照样铺到底，滚到底让出提
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+/* 11-11 用户：「沟通记录模块，目前是无限长度。但是我需要你给他设一个最长的长度（整页显示上给待办留位置）。多的就在模块内上下移动。」
+   项目模式 30 条沟通：三档常见笔记本窗口下，首屏同时看得到沟通记录卡头 + 筛选行和待办卡标题；记录列表在卡里滚，卡头、筛选行不动；
+   列表滚到底再滚交给整栏（不套死，11-01 拿掉 60vh 限高就是因为滚不下去） */
+for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]] as const) {
+  it(`${w}×${h} 项目模式 30 条沟通：沟通记录限高、列表卡内滚，待办标题在首屏；列表滚到底整栏接着滚`, async () => {
+    const { page, errors } = await open(w, h);
+    try {
+      const 量2 = () => page.evaluate(() => {
+        const 栏 = document.querySelector(".rec > .rec-col") as HTMLElement;
+        const 列表 = 栏.querySelector(".proj-mod-body > .rec-tl") as HTMLElement;
+        const 沟通卡 = 列表.closest(".ant-card") as HTMLElement;
+        const 待办 = [...栏.querySelectorAll<HTMLElement>(".proj-fold")].find(e => e.querySelector('.proj-fold-btn[aria-label="收起待办"]'))!;
+        const 待办头 = (待办.querySelector(".ant-card-head") ?? 待办) as HTMLElement;
+        const 栏框 = 栏.getBoundingClientRect();
+        return {
+          列表滚: getComputedStyle(列表).overflowY, 列表溢: 列表.scrollHeight - 列表.clientHeight, 列表顶: 列表.scrollTop, 栏顶: 栏.scrollTop,
+          卡头顶: (沟通卡.querySelector(".ant-card-head") as HTMLElement).getBoundingClientRect().top, 筛选顶: (沟通卡.querySelector(".rec-filters") as HTMLElement).getBoundingClientRect().top,
+          待办头底: 待办头.getBoundingClientRect().bottom, 栏底: Math.min(栏框.bottom, window.innerHeight), 栏上: 栏框.top,
+          横滚: document.documentElement.scrollWidth - window.innerWidth, 页滚: document.documentElement.scrollHeight - window.innerHeight,
+        };
+      });
+      const 起 = await 量2();
+      expect([起.横滚 <= 0, 起.页滚 <= 0]).toEqual([true, true]);
+      expect(起.列表滚).toBe("auto");
+      expect(起.列表溢).toBeGreaterThan(0);
+      // 待办卡标题整条落在这一栏的可见窗里（不用先把沟通记录滚完）
+      expect(起.待办头底).toBeLessThanOrEqual(起.栏底);
+      expect(起.卡头顶).toBeGreaterThanOrEqual(起.栏上 - 1);
+      // 滚记录列表：卡头、筛选行不动，整栏不动
+      await page.locator(".rec > .rec-col .proj-mod-body > .rec-tl").evaluate(e => { e.scrollTop = 300; });
+      const 滚 = await 量2();
+      expect(滚.列表顶).toBeGreaterThan(0);
+      expect([滚.卡头顶, 滚.筛选顶, 滚.栏顶]).toEqual([起.卡头顶, 起.筛选顶, 起.栏顶]);
+      // 列表到底以后，鼠标停在列表上接着滚：交给整栏（不套死）
+      await page.locator(".rec > .rec-col .proj-mod-body > .rec-tl").evaluate(e => { e.scrollTop = e.scrollHeight; });
+      const 框 = await page.locator(".rec > .rec-col .proj-mod-body > .rec-tl").boundingBox();
+      await page.mouse.move(框!.x + 40, 框!.y + 40);
+      // 滚轮一格一格停顿着滚（Chrome 一串连续滚轮锁在开头那层，停一下新的一串才交给外层；人手滚就是这样）
+      for (let i = 0; i < 20; i++) { await page.mouse.wheel(0, 300); await page.waitForTimeout(150); }
+      // 三栏时沟通栏自己滚，两栏时（容器 < 1090）第 2 列跟着整格滚：哪一层往下走了都算接上
+      await page.waitForFunction(() => (document.querySelector(".rec > .rec-col") as HTMLElement).scrollTop + (document.querySelector(".rec-page > .rec") as HTMLElement).scrollTop > 0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+/* 11-11 3702 真页面：打开后沟通记录先空 4～6 秒（第一屏记录做淡入，服务端渲染出来是透明的，要等页面接管）；
+   两栏时右边沟通卡比左边资料卡低一截（还没量到宽度时右栏那张猜着摆的 AI 栏藏着、却占了第一行）。
+   这里停在「没量到」那一帧看：记录一出来就不透明，两栏第一张卡同一条顶线 */
+for (const w of [1024, 1366]) {
+  it(`${w}px 页面还没接管那一帧：沟通记录和卡头同时出现（不透明），资料、沟通两栏顶线齐`, async () => {
+    const { page, errors } = await open(w, 768, false, false, true);
+    try {
+      const v = await page.evaluate(() => {
+        const 项 = document.querySelector(".rec > .rec-col .rec-tl .rec-tl-item") as HTMLElement;
+        const 首 = (s: string) => (document.querySelector(s) as HTMLElement).getBoundingClientRect().top;
+        return { 透明: getComputedStyle(项).opacity, 左: Math.round(首(".rec > .rec-rail:first-child > .proj-fold")), 右: Math.round(首(".rec > .rec-col > .proj-fold")), 右栏: !!document.querySelector(".rec > .rec-right") };
+      });
+      expect(v.右栏).toBe(true); // 确实停在「没量到」那一帧：猜着摆的右栏在
+      expect(v.透明).toBe("1");
+      expect(v.右).toBe(v.左);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
