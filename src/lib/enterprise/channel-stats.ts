@@ -76,7 +76,10 @@ export type 统计用项目 = {
   起步阶段?: string;
   /** 节点日志里到过的阶段（每条 toPhase）；不给就只看眼下的 phase */
   到过阶段们?: string[];
-  /** 读库时给（企业版、带了是谁在看）：这个项目在不在这个人的项目列表里（list.ts 列表里的项目）、在不在公海。不给就不算 名单 */
+  /**
+   * 读库时给（企业版、带了是谁在看）：这个项目在不在这个人的项目列表里（list.ts 列表里的项目）、
+   * 在不在公海页「渠道名单」里（list.ts 公海名单条件：在公海、按同一条归属规则这个人看得到）。不给就不算 名单
+   */
   在列表?: boolean;
   在公海?: boolean;
 };
@@ -117,15 +120,36 @@ export function 名单链接(channelId: string, 键: 名单键): string {
   return `/projects?${q}`;
 }
 
-/** 数字旁边那句：列表里比这个数少几条、为什么；对得上给 null */
-export function 名单差话(总数: number, 名单: { 列表: number; 公海: number } | undefined): string | null {
+/**
+ * 点「另 M 条在公海」去的公海页（11-11）：公海页的渠道名单，筛好这个渠道 + 同口径的阶段（P-看-03 公海只在公海页出现，不放进项目列表）。
+ * 公海页按项目一条一行列（客户在客户公海的，领的是整位客户），条数 = 名单.公海
+ */
+export function 公海名单链接(channelId: string, 键: 名单键): string {
+  const q = new URLSearchParams({ projChannel: channelId });
+  if (名单键们[键]) q.set("phase", 名单键们[键]);
+  return `/pool?${q}`;
+}
+
+/** 数字旁边那句拆成几段（界面上前两段各自能点）：项目列表里 N 条、另 M 条在公海、其余只能数到的；对得上给 null */
+export function 名单段(总数: number, 名单: { 列表: number; 公海: number } | undefined): { 列表: number; 公海: number; 其余: number } | null {
   if (!名单 || 名单.列表 === 总数) return null;
-  const 差 = 总数 - 名单.列表;
-  if (差 < 0) return `项目列表里 ${名单.列表} 条`;
+  const 差 = Math.max(0, 总数 - 名单.列表);
   const 公海 = Math.min(名单.公海, 差);
-  const 其余 = 差 - 公海;
-  const 段 = [公海 ? `${公海} 条在公海，到公海页看` : "", 其余 ? `${其余} 条你只能数到、项目列表不列` : ""].filter(Boolean).join("；");
-  return `项目列表里 ${名单.列表} 条（另 ${段}）`;
+  return { 列表: 名单.列表, 公海, 其余: 差 - 公海 };
+}
+
+/** 点这个数先去哪：项目列表里一条都没有、全在公海的，直接去公海页（不先落到空的项目列表）；两边都没有就还去项目列表 */
+export function 数字链接(channelId: string, 键: 名单键, 名单: { 列表: number; 公海: number } | undefined): string {
+  return 名单 && 名单.列表 === 0 && 名单.公海 > 0 ? 公海名单链接(channelId, 键) : 名单链接(channelId, 键);
+}
+
+/** 数字旁边那句（纯文字，悬停提示用）：列表里比这个数少几条、为什么；对得上给 null */
+export function 名单差话(总数: number, 名单: { 列表: number; 公海: number } | undefined): string | null {
+  const 段 = 名单段(总数, 名单);
+  if (!段) return null;
+  if (!段.公海 && !段.其余) return `项目列表里 ${段.列表} 条`;
+  const 另 = [段.公海 ? `${段.公海} 条在公海，到公海页看` : "", 段.其余 ? `${段.其余} 条你只能数到、项目列表不列` : ""].filter(Boolean).join("；");
+  return `项目列表里 ${段.列表} 条（另 ${另}）`;
 }
 
 export type 转化 = { 分子: number; 分母: number; 比例: number | null };

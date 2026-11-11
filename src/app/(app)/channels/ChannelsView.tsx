@@ -21,7 +21,8 @@ import { useBusiness } from "@/lib/business-client";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import Link from "next/link";
-import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, 名单链接, 名单差话, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
+import { RosterNote } from "./RosterNote";
+import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, 数字链接, 名单段, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../overview/funnel";
 import OptionInput from "@/components/OptionInput";
 import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, 只有主渠道的, type 主渠道行, type 主渠道汇总 } from "@/lib/enterprise/channel-main-core";
@@ -288,8 +289,11 @@ export default function ChannelsView({
       const 名单 = 统计(r).名单;
       const id = (r as { id?: string }).id;
       if (!名单 || !id) return <span className="chan-num">{n}</span>;
-      const 差话 = 名单差话(n, 名单[键]);
-      return <Link href={名单链接(id, 键)} className="chan-num" title={差话 ?? `在项目列表里看这 ${n} 条`}>{n}</Link>;
+      // 差额说明放进悬停提示，两段各自能点（项目列表 / 公海页渠道名单）；全在公海的数字直接去公海页
+      const 链 = <Link href={数字链接(id, 键, 名单[键])} className="chan-num">{n}</Link>;
+      return 名单段(n, 名单[键])
+        ? <Tooltip title={<RosterNote 总数={n} 名单={名单[键]} channelId={id} 键={键} />}>{链}</Tooltip>
+        : <Tooltip title={`在项目列表里看这 ${n} 条`}>{链}</Tooltip>;
     },
   });
   /** 两个转化率列（10-30 B5）：分母 0 显示「—」，鼠标停上去看几个里有几个；口径见 channel-stats.ts 的 算转化 */

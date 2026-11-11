@@ -1028,6 +1028,8 @@ model Project {
   /// 项目页不筛阶段时按最近更新倒序取前 500（迁移 065）
   @@index([updatedAt])
   @@index([deletedAt])
+  /// 项目列表按创建时间排、按创建时间段筛（11-11 服务端分页，迁移 120）
+  @@index([createdAt])
 }
 
 /// 项目组成员，多对多。1a 负责人直接加人写 JOINED；1b 的进组邀请用 INVITED / DECLINED 和 invitedById
