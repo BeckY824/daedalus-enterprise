@@ -1,6 +1,6 @@
 /**
  * 全站币种 · 第 2 块（2026-10-03）：商机 / 签约存币种，各处合计按币种分开、不换汇。
- *   - 存：saveOpportunity / saveContract 收 currency；不给用本位币；编辑不给就不动；认不得的拦
+ *   - 存：saveContract 收 currency；不给用本位币；编辑不给就不动；认不得的拦（商机的保存入口 2026-11-11 删了，企业版走不到）
  *   - 签约：外币留到分（ContractMoney.amountExact），Contract.amount 照旧写整数
  *   - 查重：同日同额要**同币种**才算可能重复
  *   - 合计：数据页回看只算一种币、给切换；AI 问数据按币种分行；建议卡带币种
@@ -17,15 +17,14 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 造本人, 造客户 } from "./r2-data-helpers";
 import { saveContract, listContractLinks } from "@/app/(app)/customers/actions";
-import { saveOpportunity } from "@/app/(app)/opportunities/actions";
 import { 加载复盘 } from "@/app/(app)/overview/data";
 import { runQuery } from "@/lib/report-run";
 import { buildProposal, describeProposal } from "@/lib/agent/proposals";
 import { 签约合计 } from "@/lib/money-db";
 import { 合并合计, 币种符号 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
-import { invalidateSettingsCache, setSetting } from "@/lib/settings";
-import { BUSINESS_PRESETS, DEFAULT_BUSINESS } from "@/lib/business-config";
+import { invalidateSettingsCache } from "@/lib/settings";
+import { DEFAULT_BUSINESS } from "@/lib/business-config";
 
 let 我: string;
 beforeEach(async () => {
@@ -36,13 +35,9 @@ beforeEach(async () => {
 });
 afterAll(async () => { await prisma.$disconnect(); });
 
-const 外贸 = async () => {
-  await setSetting("business", BUSINESS_PRESETS["外贸出口"]);
-  invalidateSettingsCache();
-};
-const 商机 = (customerId: string, patch: Partial<Parameters<typeof saveOpportunity>[0]> = {}) =>
-  saveOpportunity({ name: "询盘", customerId, amount: 1000, stage: "初步沟通", status: "OPEN", probability: 20, ownerId: 我, ...patch });
-const 币种行 = (opportunityId: string) => prisma.opportunityMoney.findUnique({ where: { opportunityId } });
+/** 造一个带币种的商机（直接写库：商机的保存入口 2026-11-11 删了） */
+const 商机 = (customerId: string, currency: string) =>
+  prisma.opportunity.create({ data: { name: "询盘", customerId, amount: 1000, stage: "初步沟通", status: "OPEN", probability: 20, ownerId: 我, money: { create: { currency } } } });
 
 describe("纯函数", () => {
   it("金额框：小数只在整数部分加千分位（原来 1234.5678 会写成 1,234.5,678）", () => {
@@ -66,44 +61,6 @@ describe("纯函数", () => {
       { amount: 100, money: { currency: "USD", amountExact: null } },
       { amount: 19800 },
     ])).toEqual([{ 币种: "CNY", 合计: 19800 }, { 币种: "USD", 合计: 3350.5 }]);
-  });
-});
-
-describe("商机存币种", () => {
-  it("新建不给币种用本位币：通用是人民币，外贸是美元", async () => {
-    const c = await 造客户(我);
-    const r1 = await 商机(c.id, { name: "通用" });
-    expect(r1.ok).toBe(true);
-    await 外贸();
-    const r2 = await 商机(c.id, { name: "外贸" });
-    expect(r2.ok).toBe(true);
-    const 两个 = await prisma.opportunity.findMany({ orderBy: { createdAt: "asc" }, include: { money: true } });
-    expect(两个.map((o) => o.money?.currency)).toEqual(["CNY", "USD"]);
-  });
-
-  it("给了就存；小写也认；认不得的拦下、一行都不写", async () => {
-    const c = await 造客户(我);
-    expect((await 商机(c.id, { currency: "eur" })).ok).toBe(true);
-    const o = await prisma.opportunity.findFirstOrThrow({ include: { money: true } });
-    expect(o.money?.currency).toBe("EUR");
-    const 坏 = await 商机(c.id, { name: "坏", currency: "XYZ" });
-    expect(坏).toEqual({ ok: false, error: "不认识这个币种" });
-    expect(await prisma.opportunity.count()).toBe(1);
-  });
-
-  it("编辑不给币种：原来是什么还是什么（不被本位币冲掉）", async () => {
-    const c = await 造客户(我);
-    await 商机(c.id, { currency: "JPY" });
-    const o = await prisma.opportunity.findFirstOrThrow();
-    expect((await 商机(c.id, { id: o.id, name: "改了名" })).ok).toBe(true);
-    expect((await 币种行(o.id))?.currency).toBe("JPY");
-  });
-
-  it("日志里金额带币种符号", async () => {
-    const c = await 造客户(我);
-    await 商机(c.id, { amount: 3250.5, currency: "USD" });
-    const log = await prisma.auditLog.findFirstOrThrow({ where: { entity: "Opportunity" }, orderBy: { at: "desc" } });
-    expect(log.summary).toMatch(/US\$ 3,250\.5/);
   });
 });
 
@@ -138,7 +95,7 @@ describe("签约存币种和精确金额", () => {
 
   it("登记签约弹窗列的商机带币种（勾上时币种跟着带）", async () => {
     const c = await 造客户(我);
-    await 商机(c.id, { currency: "GBP" });
+    await 商机(c.id, "GBP");
     const r = await listContractLinks(c.id);
     expect(r.商机.map((o) => o.currency)).toEqual(["GBP"]);
   });

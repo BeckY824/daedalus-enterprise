@@ -47,7 +47,6 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { patchCustomer } from "@/app/(app)/customers/actions";
 import { restoreContact, 撤销记一笔, type 删掉的联系人 } from "@/app/(app)/customers/[id]/actions";
-import { deleteOpportunities } from "@/app/(app)/opportunities/actions";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 认父记录 } from "@/app/api/attachments/access";
 
@@ -200,16 +199,6 @@ describe("【中】撤销记一笔 硬删同一客户下任何人、任何时候
     const 计划 = await raw.followPlan.create({ data: { subject: "回访", plannedAt: new Date(), customerId: 客户.甲的, ownerId: 人.销售甲, done: true, doneAt: new Date() } });
     const r = await 试("销售甲", () => 撤销记一笔({ customerId: 客户.甲的, 跟进id: f.id, 计划id: 计划.id }));
     expect(await raw.followUp.findUnique({ where: { id: f.id } }), `撤销记一笔 回 ${JSON.stringify(r.回)}`).not.toBeNull();
-  });
-});
-
-describe("【中】deleteOpportunities 没有删除检查、还是硬删（opportunities/actions.ts:322）", () => {
-  it("销售甲删自己客户的商机 → 应被拒（删除只给总管理；项目模式下商机入口也该关）", async () => {
-    await 开规则(true);
-    const o = await raw.opportunity.create({ data: { name: "甲的商机", customerId: 客户.甲的, ownerId: 人.销售甲 } });
-    const r = await 试("销售甲", () => deleteOpportunities([o.id]));
-    expect(await raw.opportunity.findUnique({ where: { id: o.id } }), `deleteOpportunities 回 ${JSON.stringify(r.回)}`).not.toBeNull();
-    expect(r.成了).toBe(false);
   });
 });
 

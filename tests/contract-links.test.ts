@@ -17,7 +17,8 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { saveContract, listContractLinks, deleteContract } from "@/app/(app)/customers/actions";
-import { setOppStatus, saveOpportunity, moveStage } from "@/app/(app)/opportunities/actions";
+// 商机的保存 / 拖阶段入口 2026-11-11 删了（企业版只用项目，走不到）；人手动改状态这里都走 setOppStatus
+import { setOppStatus } from "@/app/(app)/opportunities/actions";
 
 let jia: { id: string };
 
@@ -224,16 +225,16 @@ describe("删签约：顺手标成赢单的商机退回去", () => {
 
   it("赢单之后人又手动改过（改成丢单）→ 删签约不动商机：人改过的不许被盖掉", async () => {
     const { c, o, ct } = await 签约并赢单();
-    await saveOpportunity({ id: o.id, name: o.name, customerId: c.id, amount: 86000, stage: "赢单成交", status: "LOST", probability: 0, ownerId: jia.id });
+    expect((await setOppStatus(o.id, "LOST")).ok).toBe(true);
     const r = await deleteContract(ct.id, c.id, null);
     expect(r).toMatchObject({ ok: true, 退回商机: 0 });
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("LOST");
   });
 
-  it("赢单后人拖回方案报价、又拖进赢单成交 → 删签约不动：这次赢单是人自己定的", async () => {
+  it("赢单后人改回进行中、又标回赢单 → 删签约不动：这次赢单是人自己定的", async () => {
     const { c, o, ct } = await 签约并赢单();
-    await moveStage(o.id, "方案报价");
-    await moveStage(o.id, "赢单成交");
+    await setOppStatus(o.id, "OPEN");
+    await setOppStatus(o.id, "WON");
     expect(await prisma.contractWin.count()).toBe(0);
     expect(await deleteContract(ct.id, c.id, null)).toMatchObject({ ok: true, 退回商机: 0 });
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("WON");

@@ -21,7 +21,6 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 规整字段配置, 字段级别of, 改不了的话, 字段权限of, 字段权限key, 推荐字段配置 } from "@/lib/enterprise/field-perm";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { patchCustomer, assignSalesOwner, bulkFollowStatus } from "@/app/(app)/customers/actions";
-import { saveOpportunity, moveStage } from "@/app/(app)/opportunities/actions";
 import { 设字段权限 } from "@/app/(app)/settings/org-actions";
 import { 改节点, 改项目 } from "@/lib/project/db";
 
@@ -114,15 +113,6 @@ describe("规则开关", () => {
     const 主管 = (await prisma.user.create({ data: { email: "m1", name: "主管", title: "", role: "MANAGER", password: "x" } })).id;
     expect((await 字段权限of(主管))("跟进状态")).toBe("藏");
     expect((await 字段权限of(主管))("电话")).toBe("藏");
-  });
-
-  it("商机：企业版只用项目，老入口在字段权限之前就拦（阶段·金额的字段权限改管项目，见下）", async () => {
-    await 开规则();
-    const o = await prisma.opportunity.create({ data: { name: "商机A", customerId: 客户, ownerId: 销售, amount: 100, stage: "方案报价", status: "OPEN", probability: 75 } });
-    expect(await moveStage(o.id, "谈判审核")).toMatchObject({ ok: false, error: expect.stringContaining("并进项目") });
-    const 原样 = { id: o.id, name: "商机A", customerId: 客户, ownerId: 销售, amount: 100, stage: "方案报价", status: "OPEN", probability: 75 };
-    expect(await saveOpportunity({ ...原样, name: "商机B" })).toMatchObject({ ok: false, error: expect.stringContaining("并进项目") });
-    expect(await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({ name: "商机A", stage: "方案报价" });
   });
 });
 

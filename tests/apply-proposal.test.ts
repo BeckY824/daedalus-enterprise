@@ -137,25 +137,13 @@ describe("该拦的必须拦住——这些校验都在 saveCustomer 里，绕�
   });
 });
 
-describe("商机与签约也走原有 action", () => {
-  it("新建商机：负责人跟着客户的销售负责人走", async () => {
+describe("签约也走原有 action", () => {
+  it("商机卡一律拦下（propose_opportunity 和商机保存入口 2026-11-11 删了），一行不写", async () => {
     const r = await applyProposal({
       id: "p2", kind: "add_opportunity", customerId: 客户, customerName: "陈同学", reason: "测试",
       name: "秋季班", amount: 19800, stage: "谈判审核", probability: 70, expectedDealAt: "", remark: "",
     });
-    expect(r.ok).toBe(true);
-    const o = await prisma.opportunity.findFirst({ where: { customerId: 客户 } });
-    expect(o!.amount).toBe(19800);
-    expect(o!.ownerId).toBe(销售A);
-    expect(o!.status).toBe("OPEN");
-  });
-
-  it("商机金额为负要被原有校验拦住", async () => {
-    const r = await applyProposal({
-      id: "p3", kind: "add_opportunity", customerId: 客户, customerName: "陈同学", reason: "测试",
-      name: "秋季班", amount: -5, stage: "初步沟通", probability: 10, expectedDealAt: "", remark: "",
-    });
-    expect(r.ok).toBe(false);
+    expect(r).toEqual({ ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" });
     expect(await prisma.opportunity.count()).toBe(0);
   });
 

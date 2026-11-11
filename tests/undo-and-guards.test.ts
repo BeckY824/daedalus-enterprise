@@ -12,7 +12,7 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { saveOpportunity, moveStage, deleteOpportunities, restoreOpportunities, 删商机前清点 } from "@/app/(app)/opportunities/actions";
+// 商机的拖阶段撤销（D6）、删除撤销（D2）、编辑框版本闸门（D3 商机两条）随入口 2026-11-11 删了：企业版只用项目，走不到
 import { saveContact } from "@/app/(app)/customers/[id]/actions";
 import { saveChannel } from "@/app/(app)/channels/actions";
 import { saveLead } from "@/app/(app)/leads/actions";
@@ -43,17 +43,6 @@ describe("D5 改了业务配置，旧线索还存得了", () => {
     expect(await saveLead({ id: l.id, name: "老线索", source: "视频号直播间", status: "待跟进" })).toMatchObject({ ok: true });
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: l.id } })).source).toBe("视频号直播间");
     expect(await saveLead({ id: l.id, name: "老线索", source: "长".repeat(31), status: "待跟进" })).toMatchObject({ ok: false });
-  });
-});
-
-describe("D6 拖进赢单成交再撤销，手填的概率回得来", () => {
-  it("75% 拖进赢单成交变成 100，撤销回到方案报价：还是 75，不是方案报价的默认值", async () => {
-    await saveOpportunity({ name: "单", customerId: 客户.id, amount: 1000, stage: "方案报价", status: "OPEN", probability: 75, ownerId: mocks.user.id });
-    const o = await prisma.opportunity.findFirstOrThrow();
-    await moveStage(o.id, "赢单成交");
-    expect(await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({ probability: 100, status: "WON" });
-    await moveStage(o.id, "方案报价", 75);
-    expect(await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({ probability: 75, status: "OPEN", stage: "方案报价" });
   });
 });
 
@@ -138,45 +127,8 @@ describe("D1 批量改负责人、批量改状态：回原值，撤销能改回�
   });
 });
 
-describe("D2 删商机能撤销，撤回去是原样（删跟进的撤销 11-09 已删）", () => {
-  it("删商机：先说关联了几条跟进；撤销后同一个 id 回来，跟进重新挂上，赢单时刻也在", async () => {
-    await saveOpportunity({ name: "暑期班", customerId: 客户.id, amount: 5000, stage: "赢单成交", status: "WON", probability: 100, ownerId: mocks.user.id });
-    const o = await prisma.opportunity.findFirstOrThrow({ include: { closed: true } });
-    const f = await prisma.followUp.create({ data: { customerId: 客户.id, ownerId: mocks.user.id, opportunityId: o.id, type: "PHONE", title: "谈价", content: "谈了", status: "已完成", occurredAt: new Date() } });
-    expect(await 删商机前清点([o.id])).toEqual({ 跟进: 1, 赢单: 1 });
-
-    const r = await deleteOpportunities([o.id]);
-    expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).opportunityId).toBeNull();
-    if (!r.ok) throw new Error(r.error);
-    expect(await restoreOpportunities(r.快照)).toMatchObject({ 回来: 1, 没回来: 0 });
-    const 回来 = await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id }, include: { closed: true } });
-    expect(回来).toMatchObject({ name: "暑期班", status: "WON", amount: 5000 });
-    expect(回来.closed?.closedAt.getTime()).toBe(o.closed!.closedAt.getTime());
-    expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).opportunityId).toBe(o.id);
-  });
-});
-
 describe("D3 编辑框开着时同事改过：保存不盖掉", () => {
   const 早一点 = (d: Date) => new Date(d.getTime() - 1000).toISOString();
-
-  it("商机：同事在管道上拖了阶段，这边拿旧版本保存，被拦下，阶段还是同事拖的", async () => {
-    await saveOpportunity({ name: "单", customerId: 客户.id, amount: 1000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: mocks.user.id });
-    const o = await prisma.opportunity.findFirstOrThrow();
-    const 打开时 = o.updatedAt.toISOString();
-    await new Promise((r) => setTimeout(r, 5));
-    await moveStage(o.id, "谈判审核"); // 同事拖的
-    const r = await saveOpportunity({ id: o.id, 版本: 打开时, name: "单", customerId: 客户.id, amount: 2000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: mocks.user.id });
-    expect(r.ok).toBe(false);
-    expect(await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({ stage: "谈判审核", amount: 1000 });
-  });
-
-  it("商机：没人动过，照常保存", async () => {
-    await saveOpportunity({ name: "单", customerId: 客户.id, amount: 1000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: mocks.user.id });
-    const o = await prisma.opportunity.findFirstOrThrow();
-    const r = await saveOpportunity({ id: o.id, 版本: o.updatedAt.toISOString(), name: "单", customerId: 客户.id, amount: 2000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: mocks.user.id });
-    expect(r.ok).toBe(true);
-    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).amount).toBe(2000);
-  });
 
   it("线索、渠道、联系人：版本对不上一样拦", async () => {
     const l = await prisma.lead.create({ data: { name: "线索", ownerId: mocks.user.id } });

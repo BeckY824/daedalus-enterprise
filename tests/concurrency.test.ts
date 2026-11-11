@@ -25,7 +25,6 @@ import {
 } from "@/app/(app)/customers/actions";
 import { saveFollowUp, saveContact } from "@/app/(app)/customers/[id]/actions";
 import { convertLead } from "@/app/(app)/leads/actions";
-import { saveOpportunity, moveStage } from "@/app/(app)/opportunities/actions";
 import { deactivateUser, saveUser, changeMyPassword } from "@/app/(app)/settings/actions";
 
 let jia: { id: string };
@@ -472,33 +471,6 @@ describe("成员停用与转交的完整性", () => {
 });
 
 describe("接口直调能写进来的脏数据", () => {
-  it("商机金额不能为负、概率不能越界", async () => {
-    const c = await newCustomer("学员", "13800000001");
-    const base = { name: "商机", customerId: c.id, stage: "初步沟通", status: "OPEN", ownerId: jia.id };
-    expect((await saveOpportunity({ ...base, amount: -1, probability: 20 })).ok).toBe(false);
-    expect((await saveOpportunity({ ...base, amount: 100, probability: 500 })).ok).toBe(false);
-    expect((await saveOpportunity({ ...base, amount: 100, probability: -1 })).ok).toBe(false);
-    expect((await saveOpportunity({ ...base, amount: 100, probability: 20 })).ok).toBe(true);
-  });
-
-  it("商机阶段与状态有白名单", async () => {
-    const c = await newCustomer("学员", "13800000001");
-    const base = { name: "商机", customerId: c.id, amount: 100, probability: 20, ownerId: jia.id };
-    expect((await saveOpportunity({ ...base, stage: "随便写的", status: "OPEN" })).ok).toBe(false);
-    expect((await saveOpportunity({ ...base, stage: "初步沟通", status: "随便写的" })).ok).toBe(false);
-  });
-
-  it("已丢单的商机换个阶段不会被静默改回进行中", async () => {
-    const c = await newCustomer("学员", "13800000001");
-    const o = await prisma.opportunity.create({
-      data: { customerId: c.id, name: "丢了的", amount: 100, ownerId: jia.id, stage: "方案报价", status: "LOST" },
-    });
-    expect((await moveStage(o.id, "需求确认")).ok).toBe(true);
-    const after = await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } });
-    expect(after.stage).toBe("需求确认");
-    expect(after.status).toBe("LOST");
-  });
-
   it("跟进标题选填：不填能存，填了原样保留", async () => {
     /**
      * 标题原本必填却从不在时间线上展示，等于逼销售每条编一句没人看的话，

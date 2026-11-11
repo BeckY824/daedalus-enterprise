@@ -101,18 +101,6 @@ export const 只读SCHEMAS: Record<string, Schema> = {
     },
     additionalProperties: false,
   },
-  list_opportunities: {
-    type: "object",
-    properties: {
-      stage: 串(),
-      status: 串("默认 OPEN"),
-      customerName: 串(),
-      minAmount: 数("金额下限"),
-      dealFrom: 串("预计成交起 YYYY-MM-DD"),
-      dealTo: 串("预计成交止，含当天"),
-    },
-    additionalProperties: false,
-  },
   list_users: {
     type: "object",
     properties: { keyword: 串(), includeInactive: 真假("连停用的一起列") },
@@ -257,22 +245,6 @@ export const 建议SCHEMAS: Record<string, Schema> = {
       reason: 串(理由),
     },
     required: ["id", "changes", "reason"],
-    additionalProperties: false,
-  },
-  propose_opportunity: {
-    type: "object",
-    properties: {
-      id: 串("客户 id"),
-      name: 串("商机名称"),
-      amount: 数("金额"),
-      currency: 串(币种),
-      stage: 串("商机阶段"),
-      probability: 数("0~100"),
-      expectedDealAt: 串("YYYY-MM-DD"),
-      remark: 串(),
-      reason: 串(理由),
-    },
-    required: ["id", "name", "amount", "stage", "reason"],
     additionalProperties: false,
   },
   propose_contract: {

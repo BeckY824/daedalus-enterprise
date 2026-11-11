@@ -17,8 +17,6 @@ import { 可选渠道 } from "@/lib/options";
 import { llmEnabled } from "@/lib/llm";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 带币种, 签约金额, 签约币种, 签约合计, 商机币种 } from "@/lib/money-db";
-import { 客户报价记录 } from "@/lib/quote-db";
-import { 报价明细 } from "@/lib/features";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
@@ -103,7 +101,7 @@ export default async function CustomerDetailPage({
   const [
     号, users, channels, 挂来的, 另挂, 只项目四样,
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
-    联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数, 报价记录,
+    联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数,
     可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义,
   ] = await Promise.all([
     // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
@@ -158,7 +156,6 @@ export default async function CustomerDetailPage({
     企 ? 页面可选项("custType") : undefined,
     规则P,
     企 ? 全部联系人idP.then(async (ids) => Object.fromEntries((await 附件个数(defaultClient, { contactIds: ids })).联系人)) : null,
-    报价明细 ? 客户报价记录(customer.id) : [],
     // 下面这几样原来在 JSX 里一个个 await，各等一轮库（11-01 速度闸门：按组织看那组客户详情超 300ms），并进来一起取
     // 沟通（11-09 M-权限-09 原口径）：改 = 身为负责人的管理，删 = 系统管理员或身为负责人的管理（lib/enterprise/follow-perm.ts，服务端 saveFollowUp / deleteFollowUp 同样拦）
     企 ? 能改这条沟通(me, { customerId: customer.id }) : true,
@@ -290,7 +287,6 @@ export default async function CustomerDetailPage({
           挂靠: { linkId: x.linkId, note: x.note, 主客户Id: x.主客户.id, 主客户名: x.主客户.name, 主客户看得到: x.主客户.看得到, 能改: x.主客户.能改 },
         })),
       ]}
-      报价记录={报价记录}
       contracts={customer.contracts.map((c) => ({
         id: c.id,
         amount: 签约金额(c),

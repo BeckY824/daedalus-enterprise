@@ -24,9 +24,11 @@ import { 卡点类型们, 影响等级们 } from "../project/blocker-rules";
 /**
  * 企业版只用项目时没有的老表工具：线索、商机、订单都是项目的阶段了，问它们走 list_projects。
  * 合同的老入口 10-28 也关了（只用项目挡老入口），提议签约 / 查老表只会落到看不见的数据上。
- * 直连里写死的工具不在表里就跳过，交给模型选（订单页和 list_orders 10-28 已删）
+ * 直连里写死的工具不在表里就跳过，交给模型选（订单页和 list_orders 10-28 已删）。
+ * 商机的两个工具（list_opportunities、propose_opportunity）2026-11-11 连定义一起删了：企业版只用项目恒真，它们一直被滤掉；
+ * 直连和页面说明里写死的 list_opportunities 照旧由下面 换成项目 换成 list_projects（phase=商机）。
  */
-export const 只用项目不给 = ["list_leads", "list_opportunities", "propose_opportunity", "propose_contract", "list_contracts"];
+export const 只用项目不给 = ["list_leads", "propose_contract", "list_contracts"];
 
 /**
  * 这一家这一问能用的工具。

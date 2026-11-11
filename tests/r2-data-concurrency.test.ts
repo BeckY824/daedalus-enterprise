@@ -17,14 +17,15 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 造本人, 造客户, 结局 } from "./r2-data-helpers";
+import { 造本人, 造客户, 结局, 造商机 } from "./r2-data-helpers";
 import { saveCustomer, deleteCustomers, saveContract, patchCustomer } from "@/app/(app)/customers/actions";
 import {
   saveFollowUp, deleteFollowUp, saveTask, toggleTask, deleteTask,
   savePlan, deletePlan, completePlan, saveContact, deleteContact, restoreContact,
   detachContact, undoDetachContact,
 } from "@/app/(app)/customers/[id]/actions";
-import { saveOpportunity, moveStage, setOppStatus, deleteOpportunities, restoreOpportunities } from "@/app/(app)/opportunities/actions";
+// 商机的保存 / 拖阶段 / 删除撤销入口 2026-11-11 删了（企业版只用项目，走不到），只剩 setOppStatus
+import { setOppStatus } from "@/app/(app)/opportunities/actions";
 import { 执行导入, 撤销批次, type 导入方案 } from "@/app/(app)/customers/import-actions";
 import { 解析CSV, 成表 } from "@/lib/import/parse";
 import { 字段表, 猜列 } from "@/lib/import/fields";
@@ -188,33 +189,10 @@ describe("完成 / 撤销完成 时那一条已经没了", () => {
   });
 });
 
-describe("商机拖阶段 / 改状态后撤销", () => {
-  async function 商机(customerId: string, extra: Record<string, unknown> = {}) {
-    const r = await saveOpportunity({ name: "年框", customerId, amount: 50000, stage: "方案报价", status: "OPEN", probability: 75, ownerId: 我, ...extra });
-    if (!r.ok) throw new Error(r.error);
-    return prisma.opportunity.findFirstOrThrow({ orderBy: { createdAt: "desc" } });
+describe("商机改状态后撤销", () => {
+  async function 商机(customerId: string, extra: { name?: string } = {}) {
+    return 造商机({ name: "年框", customerId, amount: 50000, stage: "方案报价", status: "OPEN", probability: 75, ownerId: 我, ...extra });
   }
-
-  it("拖进赢单成交再撤销：阶段、手填概率、进行中、结单时刻都回去", async () => {
-    const c = await 造客户(我);
-    const o = await 商机(c.id);
-    await moveStage(o.id, "赢单成交");
-    expect(await prisma.opportunityClose.count()).toBe(1);
-    await moveStage(o.id, "方案报价", 75); // 撤销就是这么调的（原商机管道页 PipelineView 推进(…, 是撤销)，页面 10-28 删了，动作还留着）
-    const 现 = await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } });
-    expect([现.stage, 现.probability, 现.status]).toEqual(["方案报价", 75, "OPEN"]);
-    expect(await prisma.opportunityClose.count()).toBe(0);
-  });
-
-  it("拖完后商机在另一个窗口被删，再点撤销：说一句", async () => {
-    const c = await 造客户(我);
-    const o = await 商机(c.id);
-    await moveStage(o.id, "谈判审核");
-    await deleteOpportunities([o.id]);
-    const r = await 结局(moveStage(o.id, "方案报价", 75));
-    expect(r.抛了).toBe(false);
-    if (!r.抛了) expect(r.值.ok).toBe(false);
-  });
 
   it("标丢单后撤销：阶段和概率原样回来、不留结单时刻", async () => {
     const c = await 造客户(我);
@@ -226,20 +204,10 @@ describe("商机拖阶段 / 改状态后撤销", () => {
     expect(await prisma.opportunityClose.count()).toBe(0);
   });
 
-  it("两个窗口：一边编辑框开着，一边把它拖了阶段，编辑框再保存被拦", async () => {
-    const c = await 造客户(我);
-    const o = await 商机(c.id);
-    const 版本 = o.updatedAt.toISOString();
-    await new Promise((r) => setTimeout(r, 5));
-    await moveStage(o.id, "谈判审核");
-    const r = await saveOpportunity({ id: o.id, 版本, name: "年框（改名）", customerId: c.id, amount: 50000, stage: "方案报价", status: "OPEN", probability: 75, ownerId: 我 });
-    expect(r.ok).toBe(false);
-    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).stage).toBe("谈判审核");
-  });
 });
 
 describe("删客户之后再点各处的「撤销」", () => {
-  it("删了跟进再删客户；撤销移出联系人 / 撤销删商机 / 撤销删联系人：都说一句、不抛、不建出孤儿", async () => {
+  it("删了跟进再删客户；撤销移出联系人 / 撤销删联系人：都说一句、不抛、不建出孤儿", async () => {
     const c = await 造客户(我);
     const f = await 跟进(c.id);
     if (!f.ok) throw new Error("x");
@@ -249,20 +217,15 @@ describe("删客户之后再点各处的「撤销」", () => {
     const [王, 李] = await prisma.contact.findMany({ orderBy: { name: "asc" } });
     const 移出 = await detachContact(王.id);
     const 删联系人 = await deleteContact(李.id);
-    const o = await saveOpportunity({ name: "x", customerId: c.id, amount: 1, stage: "初步沟通", status: "OPEN", probability: 20, ownerId: 我 });
-    expect(o.ok).toBe(true);
-    const 删商机 = await deleteOpportunities((await prisma.opportunity.findMany()).map((x) => x.id));
 
     await deleteCustomers([c.id]);
 
     const 结果 = {
       移出: await 结局(undoDetachContact(王.id, 移出.ok ? 移出.原来是关键 : false)),
       联系人: await 结局(restoreContact(删联系人.ok ? 删联系人.快照 : (null as never))),
-      商机: await 结局(restoreOpportunities(删商机.ok ? 删商机.快照 : (null as never))),
     };
     expect(Object.values(结果).every((r) => !r.抛了)).toBe(true);
     expect(await prisma.followUp.count()).toBe(0);
-    expect(await prisma.opportunity.count()).toBe(0);
     expect(await prisma.contact.count()).toBe(0);
   });
 });
@@ -320,16 +283,6 @@ describe("连点：同一个动作并发调两次（B：第二下应是无事发
     expect(rs.filter((r) => r.抛了).length, rs.map((r) => (r.抛了 ? r.错 : "")).join(" | ")).toBe(0);
     expect(await prisma.customer.count()).toBe(0);
     expect((await prisma.unassignedContact.findMany()).map((u) => u.fromCustomerName).sort()).toEqual([甲.name, 乙.name, 丙.name].sort());
-  });
-
-  it("撤销删商机连点两下", async () => {
-    const c = await 造客户(我);
-    await saveOpportunity({ name: "x", customerId: c.id, amount: 1, stage: "初步沟通", status: "OPEN", probability: 20, ownerId: 我 });
-    const d = await deleteOpportunities((await prisma.opportunity.findMany()).map((x) => x.id));
-    if (!d.ok) throw new Error(d.error);
-    const rs = await Promise.all([结局(restoreOpportunities(d.快照)), 结局(restoreOpportunities(d.快照))]);
-    expect(rs.filter((r) => r.抛了).length).toBe(0);
-    expect(await prisma.opportunity.count()).toBe(1);
   });
 
   it("撤销删联系人连点两下", async () => {

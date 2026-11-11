@@ -15,9 +15,7 @@ import { getBusiness } from "@/lib/business";
 import { BUSINESS_PRESETS, DEFAULT_BUSINESS, mergeBusiness, stageLabel, 阶段值, 阶段名问题, 外贸阶段名 } from "@/lib/business-config";
 import { OPP_STAGES } from "@/lib/constants";
 import { saveBusinessSettings } from "@/app/(app)/settings/actions";
-import { saveOpportunity } from "@/app/(app)/opportunities/actions";
-import { TOOLS } from "@/lib/agent/tools";
-import { 造客户 } from "./r2-data-helpers";
+import { 造客户, 造商机 } from "./r2-data-helpers";
 
 const 外贸 = BUSINESS_PRESETS["外贸出口"];
 const 项目制 = { 初步沟通: "线索", 需求确认: "现场勘查", 方案报价: "出方案", 谈判审核: "投标", 赢单成交: "中标" };
@@ -91,12 +89,12 @@ describe("保存后全队生效，商机不动", () => {
     expect(await prisma.auditLog.count()).toBe(0);
   });
 
-  it.each([["通用", DEFAULT_BUSINESS], ["外贸", 外贸]] as const)("%s：改名后商机阶段值、赢单状态不变，AI 按新名字也筛得到", async (_n, base) => {
+  it.each([["通用", DEFAULT_BUSINESS], ["外贸", 外贸]] as const)("%s：改名后商机阶段值、赢单状态不变", async (_n, base) => {
     await setSetting("business", base);
     invalidateSettingsCache();
     const c = await 造客户(我);
-    await saveOpportunity({ name: "展厅灯具", customerId: c.id, amount: 100, stage: "谈判审核", status: "OPEN", probability: 70, ownerId: 我 });
-    await saveOpportunity({ name: "办公楼", customerId: c.id, amount: 300, stage: "初步沟通", status: "OPEN", probability: 10, ownerId: 我 });
+    await 造商机({ name: "展厅灯具", customerId: c.id, amount: 100, stage: "谈判审核", status: "OPEN", probability: 70, ownerId: 我 });
+    await 造商机({ name: "办公楼", customerId: c.id, amount: 300, stage: "初步沟通", status: "OPEN", probability: 10, ownerId: 我 });
     const 前 = await prisma.opportunity.findMany({ orderBy: { name: "asc" }, select: { id: true, stage: true, status: true, amount: true } });
 
     expect(await saveBusinessSettings({ ...base, stageLabels: 项目制 })).toMatchObject({ ok: true });
@@ -105,10 +103,6 @@ describe("保存后全队生效，商机不动", () => {
     expect(b.stageLabels).toEqual(项目制);
     expect(b.template).toBe(base.template);
     expect(await prisma.opportunity.findMany({ orderBy: { name: "asc" }, select: { id: true, stage: true, status: true, amount: true } })).toEqual(前);
-
-    const ctx = { userId: 我, userName: "QA", b, recordOffset: 0, proposals: [] };
-    const 工具 = TOOLS.find((t) => t.name === "list_opportunities")!;
-    const r = await 工具.run({ stage: "投标" }, ctx);
-    expect((r.data as { 商机: { 名称: string; 阶段: string }[] }).商机).toEqual([expect.objectContaining({ 名称: "展厅灯具", 阶段: "投标" })]);
+    // AI 按新名字筛（list_opportunities）那一段随工具 2026-11-11 删了：企业版只用项目，那个工具一直被滤掉
   });
 });

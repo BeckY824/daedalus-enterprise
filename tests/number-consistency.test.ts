@@ -12,7 +12,8 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { saveOpportunity, moveStage, setOppStatus } from "@/app/(app)/opportunities/actions";
+// 商机的保存 / 拖阶段入口和 list_opportunities 工具 2026-11-11 删了（企业版只用项目，走不到），只剩 setOppStatus
+import { setOppStatus } from "@/app/(app)/opportunities/actions";
 
 let 客户: { id: string };
 
@@ -25,26 +26,14 @@ beforeEach(async () => {
 
 afterAll(async () => { await prisma.$disconnect(); });
 
-const 商机 = (extra: Partial<Parameters<typeof saveOpportunity>[0]> = {}) => ({
+const 建商机 = (extra: { name?: string } = {}) => prisma.opportunity.create({ data: {
   name: "暑期班", customerId: 客户.id, amount: 5000, stage: "初步沟通", status: "OPEN", probability: 10, ownerId: mocks.user.id, ...extra,
-});
+} });
 const 读 = (id: string) => prisma.opportunity.findUniqueOrThrow({ where: { id }, include: { closed: true } });
 
 describe("C6 商机的阶段和状态绑在一起；赢单时刻单独记", () => {
-  it("阶段选了「赢单成交」就是赢单；状态标了赢单，阶段就推到「赢单成交」", async () => {
-    await saveOpportunity(商机({ stage: "赢单成交", status: "OPEN" }));
-    await saveOpportunity(商机({ name: "第二单", stage: "方案报价", status: "WON" }));
-    const 全部 = await prisma.opportunity.findMany({ orderBy: { name: "asc" } });
-    expect(全部.map((o) => [o.stage, o.status])).toEqual([["赢单成交", "WON"], ["赢单成交", "WON"]]);
-  });
-
-  it("丢单不限阶段：丢在哪一步本身有用", async () => {
-    await saveOpportunity(商机({ stage: "方案报价", status: "LOST" }));
-    expect(await prisma.opportunity.findFirstOrThrow()).toMatchObject({ stage: "方案报价", status: "LOST" });
-  });
-
-  it("赢单时记下那一刻；之后改备注不挪它；重新打开就删掉", async () => {
-    await saveOpportunity(商机());
+  it("赢单时记下那一刻；重新打开就删掉", async () => {
+    await 建商机();
     const o = await prisma.opportunity.findFirstOrThrow();
     expect((await 读(o.id)).closed).toBeNull();
 
@@ -52,24 +41,13 @@ describe("C6 商机的阶段和状态绑在一起；赢单时刻单独记", () =
     const 赢时 = (await 读(o.id)).closed!.closedAt;
     expect(赢时).toBeInstanceOf(Date);
 
-    // 往回拨一个月，装作是上个月赢的：改备注之后它还得是上个月的
-    const 上月 = new Date(Date.now() - 30 * 86400_000);
-    await prisma.opportunityClose.update({ where: { opportunityId: o.id }, data: { closedAt: 上月 } });
-    const 现在 = await 读(o.id);
-    await saveOpportunity({ ...商机({ stage: 现在.stage, status: 现在.status, probability: 现在.probability }), id: o.id, remark: "补个备注" });
-    expect((await 读(o.id)).closed!.closedAt.getTime()).toBe(上月.getTime());
-
     await setOppStatus(o.id, "OPEN", { stage: "方案报价", probability: 60 });
     expect((await 读(o.id)).closed).toBeNull();
   });
 
-  it("拖进「赢单成交」也记；丢单也记", async () => {
-    await saveOpportunity(商机());
-    await saveOpportunity(商机({ name: "要丢的" }));
-    const [a, b] = await prisma.opportunity.findMany({ orderBy: { name: "asc" } });
-    await moveStage(a.id, "赢单成交");
+  it("丢单也记", async () => {
+    const b = await 建商机({ name: "要丢的" });
     await setOppStatus(b.id, "LOST");
-    expect((await 读(a.id)).closed).not.toBeNull();
     expect((await 读(b.id)).closed).not.toBeNull();
   });
 });
@@ -100,12 +78,6 @@ describe("C4 AI 报的数和页面一个口径", () => {
     await prisma.customer.create({ data: { name: "室友", phone: "13800000012", salesOwnerId: mocks.user.id, channelId: 小红.id, referrerCustomerId: 小明.id } });
     const r = await 跑("list_channels");
     expect((r.data as unknown as Record<string, unknown>[])[0]).toMatchObject({ 名称: "小红", 直接带来: 1, 连转介绍一共: 2 });
-  });
-
-  it("商机合计按全量算，不是前 30 个", async () => {
-    for (let i = 0; i < 32; i++) await saveOpportunity(商机({ name: `单${i}`, amount: 100 }));
-    const r = await 跑("list_opportunities");
-    expect(r.summary).toContain("32 个商机，合计 ¥ 3,200");
   });
 
   it("我的回顾：笔数数全量，不是前 50 笔", async () => {

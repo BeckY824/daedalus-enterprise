@@ -117,7 +117,9 @@ describe("给哪些工具、直连换成什么", () => {
 
   it("项目模式但不是企业版：两套都在；没开项目模式：没有 list_projects", () => {
     const 团队 = 名({ projectMode: true }, false);
-    for (const x of ["list_projects", "list_leads", "list_opportunities", "propose_contract", "list_contracts"]) expect(团队).toContain(x);
+    for (const x of ["list_projects", "list_leads", "propose_contract", "list_contracts"]) expect(团队).toContain(x);
+    // 商机的两个工具 2026-11-11 连定义删了（企业版只用项目恒真，一直被滤掉），哪一套都不再有
+    for (const x of ["list_opportunities", "propose_opportunity"]) expect(团队).not.toContain(x);
     const 关 = 名({ projectMode: false }, false);
     expect(关).not.toContain("list_projects");
     expect(关).toContain("list_leads");
