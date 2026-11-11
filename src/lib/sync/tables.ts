@@ -90,6 +90,8 @@ export const 不同步表 = [
   "EntChannelMain",
   // 企业版撞号台账（2026-11-10，migrations/115）：同上
   "EntDupeHit",
+  // 企业版客户三态：客户钟、状态留痕、冷项目（2026-11-11，migrations/121–123）：同上
+  "EntCustomerClock", "EntCustomerStateLog", "EntProjectCold",
 ] as const;
 
 /**
@@ -160,6 +162,8 @@ export const 指向人的列: [string, string][] = [
   ["EntDupeHit", "ownerId"],
   ["EntDupeHit", "approverId"],
   ["EntDupeHit", "decidedById"],
+  // 企业版客户三态状态留痕（2026-11-11）：谁改的，不建外键
+  ["EntCustomerStateLog", "userId"],
   // 企业版渠道投入是谁录的（2026-10-29）
   ["EntChannelInvest", "userId"],
   // 主渠道负责人（2026-11-10，migrations/118）：不建外键

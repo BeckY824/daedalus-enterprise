@@ -53,6 +53,10 @@ async function 清空() {
   // 企业版项目关联客户 / 联系人：随项目 / 客户 / 联系人级联，同上（2026-10-29 P17）
   await prisma.projectCustomer.deleteMany();
   await prisma.projectContact.deleteMany();
+  // 企业版客户三态：客户钟、状态留痕、冷项目随客户 / 项目级联，同上（2026-11-11，迁移 121–123）
+  await prisma.entCustomerClock.deleteMany();
+  await prisma.entCustomerStateLog.deleteMany();
+  await prisma.entProjectCold.deleteMany();
   // 自引用先断开，否则删学员时互相牵制
   await prisma.customer.updateMany({
     data: { referrerCustomerId: null, attributionCustomerId: null },
