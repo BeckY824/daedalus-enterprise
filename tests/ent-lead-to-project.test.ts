@@ -60,7 +60,8 @@ describe("老线索转项目", () => {
       expect(p.nextStepAt).toBeNull();
     }
     const 甲 = 项目们.find((p) => p.sourceLeadId === a.id)!;
-    expect(甲.customer).toMatchObject({ name: "甲公司", phone: "13800000001", salesOwnerId: 张伟 });
+    // 客户业务线必填（M-必填-13）：新建的客户记「暂不分配」
+    expect(甲.customer).toMatchObject({ name: "甲公司", phone: "13800000001", salesOwnerId: 张伟, bizLine: "暂不分配" });
     expect(甲.contact).toMatchObject({ name: "王经理", isPrimary: true, customerId: 甲.customerId });
     expect(项目们.find((p) => p.sourceLeadId === b.id)!.contactId).toBeNull();
     expect(await prisma.projectNodeLog.count()).toBe(2);
@@ -86,6 +87,10 @@ describe("老线索转项目", () => {
     expect(await 按(y.id)).toMatchObject({ customerId: 同号.id, contactId: 主联.id });
     const zc = await prisma.customer.findUniqueOrThrow({ where: { id: (await 按(z.id)).customerId } });
     expect(zc.name).toBe("重号的");
+    expect(zc.bizLine).toBe("暂不分配");
+    // 挂已有客户的不动它的业务线（空着的也不顺手补）
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 连着.id } })).bizLine).toBeNull();
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 同号.id } })).bizLine).toBeNull();
   });
 
   it("客户在客户公海里：连着的、唯一同号的都不转，逐条说原因；别的照转", async () => {

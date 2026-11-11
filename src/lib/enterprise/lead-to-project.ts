@@ -62,7 +62,8 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
           continue;
         }
         if (!customerId) {
-          customerId = (await tx.customer.create({ data: { name: l.name, phone: l.phone?.trim() ?? "", salesOwnerId: 负责人 }, select: { id: true } })).id;
+          // 企业版客户业务线必填（M-必填-13）：老线索没有业务线，新建的记「暂不分配」（同归档导入没选线时）；挂已有客户的不动它的线
+          customerId = (await tx.customer.create({ data: { name: l.name, phone: l.phone?.trim() ?? "", salesOwnerId: 负责人, bizLine: "暂不分配" }, select: { id: true } })).id;
           计.新客户++;
           联系人Id = null;
           if (l.contact?.trim()) {

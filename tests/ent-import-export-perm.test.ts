@@ -161,3 +161,30 @@ describe("开关关闭", () => {
     expect((await prisma.customer.findFirstOrThrow({ where: { name: "个人版建" } })).salesOwnerId).toBe(另一销售);
   });
 });
+
+describe("Excel 导入新建客户的业务线（M-必填-13）", () => {
+  const 补空方案 = (数据: string[][]) => ({ ...方案(数据), 重复行: "补空" as const });
+  it("企业版：新建的记「暂不分配」；撞上已有客户整条跳过，它空着的业务线不顺手补", async () => {
+    await prisma.customer.create({ data: { name: "老客户", phone: "13800000005", salesOwnerId: 老板 } });
+    const r = await 执行导入(补空方案([["新客户甲", "13800000004"], ["老客户", "13800000005"]]), "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect(r.新建).toBe(1);
+    expect((await prisma.customer.findFirstOrThrow({ where: { phone: "13800000004" } })).bizLine).toBe("暂不分配");
+    expect((await prisma.customer.findFirstOrThrow({ where: { phone: "13800000005" } })).bizLine).toBeNull();
+  });
+  it("企业版：已有客户的业务线（填过的）导入不改", async () => {
+    await prisma.customer.create({ data: { name: "老客户", phone: "13800000006", salesOwnerId: 老板, bizLine: "外贸" } });
+    const r = await 执行导入(补空方案([["老客户", "13800000006"]]), "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect((await prisma.customer.findFirstOrThrow({ where: { phone: "13800000006" } })).bizLine).toBe("外贸");
+  });
+  it("不是企业版：新建的业务线照旧不写；补空更新也不碰业务线", async () => {
+    mocks.企业版 = false;
+    await prisma.customer.create({ data: { name: "老客户", phone: "13800000008", salesOwnerId: 老板 } });
+    const r = await 执行导入(补空方案([["新客户乙", "13800000007"], ["老客户", "13800000008"]]), "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect(r.新建).toBe(1);
+    expect((await prisma.customer.findFirstOrThrow({ where: { phone: "13800000007" } })).bizLine).toBeNull();
+    expect((await prisma.customer.findFirstOrThrow({ where: { phone: "13800000008" } })).bizLine).toBeNull();
+  });
+});
