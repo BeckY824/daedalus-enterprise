@@ -399,6 +399,21 @@ export async function 列表里的项目(me: { id: string; role?: string }, 候�
 }
 
 /**
+ * 渠道页「另 M 条在公海」（11-11）：一批候选项目里，在公海、并且会出现在公海页「渠道名单」里的那些（P-看-03 公海只在公海页出现，不放进项目列表）。
+ * 和项目列表按渠道筛同一条归属规则：项目自己选了来源的照算；没选、跟客户来源算的，客户要露（露客户条件；公海里的项目只认客户看不看得到）。
+ * 可见范围（含原负责人回避）由限定层管，这里不另放宽。公海页渠道名单（unified-pool-db.ts 读公海页 的 名单）用同一句，条数对得上
+ */
+export async function 公海名单条件(me: { id: string }, 候选: Prisma.ProjectWhereInput): Promise<Prisma.ProjectWhereInput> {
+  const 露 = await 露客户条件(me);
+  return { AND: [候选, { pooledAt: { not: null } }, ...(露 ? [{ OR: [{ channelId: { not: null } }, 露] }] : [])] };
+}
+
+/** 公海页渠道名单的候选：这个渠道（项目来源优先，没填跟客户来源）+ 同口径的阶段（阶段进程条件；空 = 不筛阶段） */
+export function 渠道阶段候选(channelId: string, phase: string): Prisma.ProjectWhereInput {
+  return { AND: [{ OR: [{ channelId }, { channelId: null, customer: { channelId } }] }, ...阶段进程条件({ phase }, 字典of(企业版())).where] };
+}
+
+/**
  * 项目详情页中栏名单的一行（P11，照客户记录页的名单）：名字、在哪个阶段 / 进程、最近一次沟通。
  * 客户名和沟通内容只在露客户时给（公海里同事客户的项目不露，lib/project/db.ts 露客户），不露时这几格都是 null
  */

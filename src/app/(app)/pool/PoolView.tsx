@@ -14,7 +14,7 @@ import { useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Checkbox, Dropdown, Segmented, Select, Space, Tag } from "antd";
 import type { MenuProps } from "antd";
-import { MoreOutlined } from "@ant-design/icons";
+import { CloseOutlined, MoreOutlined } from "@ant-design/icons";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
 import ResetFilters from "@/components/ResetFilters";
@@ -37,7 +37,8 @@ type Props = {
   属性数: Record<公海属性 | "全部", number>;
   截断: boolean;
   库里有: boolean;
-  filters: { keyword: string; attr: string; quick: string; sort: string; channelId: string };
+  /** projChannel / phase：渠道名单（渠道页「另 M 条在公海」点进来）；不进筛选栏，页头挂一枚能关掉的标签 */
+  filters: { keyword: string; attr: string; quick: string; sort: string; channelId: string; projChannel: string; phase: string };
   /** 自定义筛选「客户来源」的候选 */
   渠道筛选项: { value: string; label: string }[];
   /** 老板、主管 */
@@ -108,7 +109,14 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
-  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId);
+  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel);
+  // 渠道名单：说清现在只看哪个渠道、哪个阶段的公海项目（一条一行，条数 = 渠道页的「另 M 条在公海」），能关掉
+  const 名单渠道 = filters.projChannel ? (渠道筛选项.find((o) => o.value === filters.projChannel)?.label ?? "这个渠道") : "";
+  const 名单标 = filters.projChannel ? (
+    <Tag closable title="从渠道页点进来的：这个渠道（项目没填来源的跟客户来源）在公海里的项目，一个一行" onClose={(e) => { e.preventDefault(); apply({ projChannel: "", phase: "" }); }} closeIcon={<CloseOutlined aria-label="清掉渠道名单筛选" />}>
+      渠道名单：{名单渠道}{filters.phase ? ` · ${filters.phase}` : ""}
+    </Tag>
+  ) : undefined;
   const 到上限 = !!持有 && 持有.有 >= 持有.上限;
   const 分给谁 = 成员选项(users);
   /** 企业版 C-06：领取、分配时，进公海时关掉的原负责人待办一起转给新负责人（默认勾，可以手动关掉；pool-rules.ts） */
@@ -378,6 +386,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     <>
       <PageHead
         title="公海"
+        titleAside={名单标}
         subtitle="没人负责的客户和项目都在这里：领了就归你"
         extra={
           <Space size={12} wrap>
