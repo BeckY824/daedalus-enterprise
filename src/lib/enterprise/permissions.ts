@@ -341,16 +341,12 @@ export function 不能新建项目话(me: 谁, org: 组织 | null): string | nul
 }
 
 /**
- * 公海「分配给…」能不能分给这个人（11-03 B2-7）：先得能当负责人（在职、有业务角色、不是只读）；
- * 分的人不是系统管理员、自己又有业务线时，只能分给同业务线的（对方没设线也不行）。能分 = null。不是企业版不管线
+ * 公海「分配给…」、离职交接能不能交给这个人：只看能不能当负责人（在职、有业务角色、不是只读，P-转-01）。
+ * 接手人不限业务线（P-转-08，用户 11-04「不需要必须在一条业务线，可以跨业务线」，覆盖 11-03 B2-7 的同线限制）。
+ * 操作人能动哪条线的客户、项目是另一回事，归 P-公海-07（pool-line-guard.ts），不在这里。能分 = null
  */
-export function 公海分不给话(me: 谁, org: 组织 | null, 目标: string): string | null {
-  const 不行 = 不能当负责人话(org, 目标);
-  if (不行) return 不行;
-  if (老() || !org || 是系统管理员(me, org)) return null;
-  const 我线 = org.成员.get(me.id)?.line ?? null;
-  if (!我线) return null;
-  return org.成员.get(目标)?.line === 我线 ? null : "只能分给同业务线的同事";
+export function 公海分不给话(_me: 谁, org: 组织 | null, 目标: string): string | null {
+  return 不能当负责人话(org, 目标);
 }
 
 /** 进设置页：只有系统管理员（V3.5.1 后台设置只给系统管理员），勾了「不管设置」的不行（C1） */

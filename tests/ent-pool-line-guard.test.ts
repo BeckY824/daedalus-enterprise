@@ -22,6 +22,7 @@ import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目 } from "@/app/(app)/pool/actions";
 import { 改项目 } from "@/lib/project/db";
+import { 公海分配候选 } from "@/lib/owners";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 let 系统管理员: 人, 内贸销管: 人, 外贸条线: 人, 内贸销售: 人, 外贸销售: 人, 没线销售: 人;
@@ -133,6 +134,46 @@ describe("公海分配按线（客户）", () => {
     const 外 = await 公海客户({ 标签: "外贸" });
     const 内 = await 公海客户({ 标签: "内贸" });
     expect(await 以(系统管理员, () => 分配公海([外.id, 内.id], 没线销售.id))).toMatchObject({ ok: true, updated: 2 });
+  });
+});
+
+describe("接手人跨业务线（P-转-08）：限的是动哪条线的，不是分给谁", () => {
+  it("销管把本线公海客户、本线公海项目分给别线的销售、没设线的销售：成功", async () => {
+    const 客 = await 公海客户({ 标签: "内贸" });
+    expect(await 以(内贸销管, () => 分配公海([客.id], 外贸销售.id))).toMatchObject({ ok: true, updated: 1 });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客.id } })).salesOwnerId).toBe(外贸销售.id);
+    const 客2 = await 公海客户({ 标签: "内贸" });
+    expect(await 以(内贸销管, () => 分配公海([客2.id], 没线销售.id))).toMatchObject({ ok: true, updated: 1 });
+    const 项 = await 公海项目({ 标签: "内贸" });
+    expect(await 以(内贸销管, () => 分配公海项目([项.id], 外贸销售.id))).toMatchObject({ ok: true, 分到: [项.id] });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 项.id } })).ownerId).toBe(外贸销售.id);
+  });
+
+  it("别线的公海客户、项目照旧动不了（P-公海-07），分给哪条线的人都一样", async () => {
+    const 别 = await 公海客户({ 标签: "外贸" });
+    expect(await 以(内贸销管, () => 分配公海([别.id], 外贸销售.id))).toMatchObject({ ok: false, error: expect.stringContaining("不是内贸线的") });
+    expect(await 在公海(别.id)).toBe(true);
+    const 别项 = await 公海项目({ 标签: "外贸" });
+    expect(await 以(内贸销管, () => 分配公海项目([别项.id], 外贸销售.id))).toMatchObject({ ok: false });
+    expect(await 项目在公海(别项.id)).toBe(true);
+  });
+
+  it("接手人是只读管理员、停用的、没业务角色的：照拦；下拉里也没有他们，别线的销售在", async () => {
+    const 只读 = await 造人("ro", "只读管理员", "ADMIN", "admin", null);
+    const 没角色 = await 造人("nr", "没角色", "SALES", "", "外贸");
+    const 停用 = await 造人("off", "停用销售", "SALES", "sales", "外贸");
+    await prisma.user.update({ where: { id: 停用.id }, data: { active: false } });
+    忘掉企业版范围();
+    for (const 给 of [只读, 没角色, 停用]) {
+      const c = await 公海客户({ 标签: "内贸" });
+      expect(await 以(内贸销管, () => 分配公海([c.id], 给.id))).toMatchObject({ ok: false });
+      expect(await 在公海(c.id)).toBe(true);
+      const p = await 公海项目({ 标签: "内贸" });
+      expect(await 以(内贸销管, () => 分配公海项目([p.id], 给.id))).toMatchObject({ ok: false });
+    }
+    const 候选 = (await 以(内贸销管, () => 公海分配候选(内贸销管))).map((u) => u.id);
+    expect(候选).toEqual(expect.arrayContaining([内贸销售.id, 外贸销售.id, 没线销售.id]));
+    for (const 不该 of [只读, 没角色, 停用]) expect(候选).not.toContain(不该.id);
   });
 });
 

@@ -3,7 +3,7 @@
  *   - 办离职只停用：名下客户、项目、线索、渠道原地不动（负责人仍是他），「放进公海」被拒；上级不用开「按组织看客户」也能办
  *   - 看板只给他手填的直属上级和系统管理员；别的销售、只读管理员 FORBIDDEN、一行不改
  *   - 单条交客户（记 deactivate 历史负责人，项目模式下项目跟着走）、单条交项目（记转让痕）、一键全部交给（线索、渠道一起走）
- *   - 接手人候选同 B2-7：停用的、只读的不能接
+ *   - 接手人只看能不能当负责人：停用的、只读的、没业务角色的不能接；不限业务线（P-转-08，覆盖 B2-7）
  *   - 没开项目模式：看板只列客户、交客户不动项目、交项目回 false
  *   - 查重撞到离职负责人的客户：提示「负责人已离职，请联系 直属上级」，没上级 = 系统管理员
  *   - 重新启用：没交走的还在他名下，不动
@@ -195,7 +195,7 @@ describe("离职交接看板", () => {
     expect(await 归谁(在职的.id)).toBe(接手);
   });
 
-  it("接手人候选同 B2-7：停用的、只读的接不了；不能交给自己", async () => {
+  it("接手人只看能不能当负责人：停用的、只读的接不了；不能交给自己", async () => {
     const c = await 建客户(离职);
     const 也走了 = await 建人("gone", "sales", 上级);
     await prisma.user.update({ where: { id: 也走了 }, data: { active: false } });
@@ -205,6 +205,24 @@ describe("离职交接看板", () => {
       expect((await 交接客户(离职, c.id, to)).ok).toBe(false);
     }
     expect(await 归谁(c.id)).toBe(离职);
+  });
+
+  it("P-转-08 接手人不限业务线：内贸的上级能交给外贸的销售（单条客户、单条项目、全部交给）；没业务角色的照拦", async () => {
+    await prisma.entMember.updateMany({ where: { userId: { in: [上级, 离职] } }, data: { line: "内贸" } });
+    const 外贸 = await 建人("wm", "sales");
+    await prisma.entMember.update({ where: { userId: 外贸 }, data: { line: "外贸" } });
+    const 没角色 = await 建人("norole", "");
+    const d = await 摆数据();
+    await deactivateUser(离职, "");
+    当(上级);
+    expect((await 交接客户(离职, d.c.id, 没角色)).ok).toBe(false);
+    expect(await 归谁(d.c.id)).toBe(离职);
+    expect(await 交接客户(离职, d.c.id, 外贸)).toMatchObject({ ok: true });
+    expect(await 归谁(d.c.id)).toBe(外贸);
+    expect(await 交接项目(离职, d.p单独.id, 外贸)).toMatchObject({ ok: true });
+    expect(await 项目归谁(d.p单独.id)).toBe(外贸);
+    expect(await 交接全部(离职, 外贸)).toMatchObject({ ok: true });
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: d.lead.id } })).ownerId).toBe(外贸);
   });
 
   it("单条交客户：项目、待办跟着走，记 deactivate 历史负责人；单独的项目不动", async () => {
