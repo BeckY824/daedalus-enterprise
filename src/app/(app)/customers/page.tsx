@@ -21,6 +21,7 @@ import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能管公海, 能转出自己的, 能删除, 能新建和领取, 能放回客户公海 } from "@/lib/enterprise/permissions";
+import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
@@ -212,6 +213,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       删不了ids={企 ? rows.filter((r) => !能删除(me, 删权限org, r.pool ? null : r.salesOwnerId)).map((r) => r.id) : []}
       // P-公海-05：这一页里我放不回公海的（和服务端 放进公海 同一个判定）；勾的全是放不了的，批量条不摆「放回公海」
       放不了ids={rows.filter((r) => !能放回客户公海(me, { salesOwnerId: r.salesOwnerId, 在公海: !!r.pool }, 删权限org)).map((r) => r.id)}
+      // P-公海-07：公海里不是我这条业务线的（销管、条线总管理），不摆「分配给…」；服务端 分配公海 另拦
+      公海别线ids={企 && 能管公海(me, 删权限org) ? (await 公海别线的(prisma, me, 删权限org, { 客户: rows.filter((r) => r.pool).map((r) => r.id) })).客户.map((x) => x.id) : []}
       负责人只能自己={只给自己}
       rows={rows.map((r) => 成客户行(r, 号))}
       total={total}

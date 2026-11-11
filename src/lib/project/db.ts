@@ -19,6 +19,7 @@ import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
 import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读角色话, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
+import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 规则开着 } from "@/lib/enterprise/rules";
@@ -617,6 +618,11 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       const 客 = 企业版() ? await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } })) : null;
       if (客?.pool && 客.poolInvalidAt) return { ok: false as const, error: 无效客户项目不能转提示 };
       if (拦客户公海里的项目(!!客?.pool)) return { ok: false as const, error: 客户在公海项目不单领提示 };
+      // 公海里的项目改负责人 = 公海分配：销管、条线总管理只能分本业务线的（P-公海-07；能转让项目 按负责人判线，公海里负责人清空了判不出）
+      if (p.pooledAt) {
+        const 别线 = await 公海按线拦(tx, me, org, { 项目: [p.id] }, "分配");
+        if (别线) return { ok: false as const, error: 别线 };
+      }
       // 验证中（等复核、等销售）的线索不能改负责人（X-77）
       const 验证中 = await 验证中不能改派(tx, p.id);
       if (验证中) return { ok: false as const, error: 验证中 };

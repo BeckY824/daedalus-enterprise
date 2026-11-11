@@ -27,6 +27,7 @@ import { 公海分配通知, 同事待分配随客户通知 } from "@/lib/enterp
 import { 分配方式叫法 } from "@/lib/enterprise/dict";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 在事务里分公海项目们, type 整包撤销 } from "@/lib/enterprise/pool-assign-projects";
+import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 
 export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
 
@@ -51,10 +52,14 @@ function 刷新() {
 /** 老板、主管把公海里的客户标成无效：标了的领不了、分不了。已经是无效的算没变 */
 export async function 标无效客户(ids: string[]): Promise<标记结果> {
   const me = await requireUser();
-  if (!能管公海(me, await 权限组织())) return { ok: false, error: "只有总管理和销售管理能标无效客户" };
+  const org = await 权限组织();
+  if (!能管公海(me, org)) return { ok: false, error: "只有总管理和销售管理能标无效客户" };
   if (!(await 开着())) return 只企业版项目模式;
   const 们 = 规整ids(ids);
   if (!们.length) return { ok: true, updated: 0, unchanged: 0 };
+  // 销管、条线总管理只能标本业务线的（P-公海-07）：混了别线的整批不标
+  const 别线 = await 公海按线拦(prisma, me, org, { 客户: 们 }, "标无效");
+  if (别线) return { ok: false, error: 别线 };
   // 只改还在公海里、还没标的：领走了的不标（标了也没意义，还会在他以后再进公海时冒出来）
   const r = await prisma.customer.updateMany({ where: { id: { in: 们 }, pool: { isNot: null }, poolInvalidAt: null }, data: { poolInvalidAt: new Date() } });
   if (r.count) {
@@ -71,10 +76,14 @@ export async function 标无效客户(ids: string[]): Promise<标记结果> {
 /** 系统管理员、回收站副手能恢复：清掉无效标记，客户还在公海里，照常能领 */
 export async function 恢复有效客户(ids: string[]): Promise<标记结果> {
   const me = await requireUser();
-  if (!能恢复(me, await 权限组织())) return { ok: false, error: "只有系统管理员或回收站副手能恢复无效客户" };
+  const org = await 权限组织();
+  if (!能恢复(me, org)) return { ok: false, error: "只有系统管理员或回收站副手能恢复无效客户" };
   if (!(await 开着())) return 只企业版项目模式;
   const 们 = 规整ids(ids);
   if (!们.length) return { ok: true, updated: 0, unchanged: 0 };
+  // 设了业务线的回收站副手（销管、条线总管理）只能恢复本业务线的（P-公海-07）；系统管理员不限
+  const 别线 = await 公海按线拦(prisma, me, org, { 客户: 们 }, "恢复");
+  if (别线) return { ok: false, error: 别线 };
   const r = await prisma.customer.updateMany({ where: { id: { in: 们 }, poolInvalidAt: { not: null } }, data: { poolInvalidAt: null } });
   if (r.count) {
     await recordAudit({
@@ -112,6 +121,9 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
   const 不行 = await 公海分不给(me, 给.id);
   if (不行) return { ok: false, error: 不行 };
   const 们 = 规整ids(ids);
+  // 销管、条线总管理只能分本业务线的（P-公海-07）：混了别线的整批不分
+  const 别线 = await 公海按线拦(prisma, me, org, { 项目: 们 }, "分配");
+  if (别线) return { ok: false, error: 别线 };
   const 规则 = await 生效组织规则();
   // 客户在客户公海里的会整包换客户负责人（P-公海-10）、客户还在市场手里的整体给这位销售（P-公海-11）：事务外先钉住老签约（没缺的就不写）
   if (企业版()) await 钉住老签约();
@@ -161,15 +173,21 @@ function 规整整包(x: unknown): 整包撤销 | null {
  */
 export async function 撤销公海项目(动作: "领取" | "分配", ids: string[], 给谁?: string, 整包?: 整包撤销): Promise<标记结果> {
   const me = await requireUser();
-  if (动作 === "分配" && (!能管公海(me, await 权限组织()) || !给谁)) return { ok: false, error: "只有总管理和销售管理能撤销分配" };
+  const org = 动作 === "分配" ? await 权限组织() : null;
+  if (动作 === "分配" && (!能管公海(me, org) || !给谁)) return { ok: false, error: "只有总管理和销售管理能撤销分配" };
   if (!(await 开着())) return 只企业版项目模式;
   const 现 = 动作 === "分配" ? String(给谁) : me.id;
   const 们 = 规整ids(ids);
+  const 包 = 动作 === "分配" ? 规整整包(整包) : null;
+  if (动作 === "分配") {
+    // 销管、条线总管理只能撤本业务线的（P-公海-07）：连整包带出的客户、项目一起核
+    const 别线 = await 公海按线拦(prisma, me, org, { 项目: [...们, ...(包?.公海项目 ?? [])], 客户: 包?.原.map((x) => x.id) ?? [] }, "撤销分配");
+    if (别线) return { ok: false, error: 别线 };
+  }
   let 撤了 = 0;
   for (const id of 们) {
     if (await 看全部(() => 查完再写((tx) => 撤回项目公海(tx, id, 现, me.id)))) 撤了++;
   }
-  const 包 = 动作 === "分配" ? 规整整包(整包) : null;
   if (包) {
     const r = await 撤销公海("分配", 包.原, 包.带过来, 现, 包.公海项目);
     if (!r.ok) return r;

@@ -46,6 +46,8 @@ type Props = {
   能恢复: boolean;
   /** 老板、主管：行内和批量里有「分配给…」 */
   能分配: boolean;
+  /** 不是我这条业务线的行（「c:客户 id」/「p:项目 id」，P-公海-07）：不摆分配、标无效、恢复；批量里混了服务端整批拦 */
+  别线ids?: string[];
   /** 分配给谁（能分配时才有） */
   users: 可选成员[];
   /** 持有上限开着、我不是不限：手上几个（同 超上限 的口径） / 上限几个；没开为 null */
@@ -101,7 +103,8 @@ function ResultBar({ 文案, 没领到, 撤销 }: { 文案: string; 没领到: {
   );
 }
 
-export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, users, 持有, 只读 = false }: Props) {
+export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 持有, 只读 = false }: Props) {
+  const 别线 = new Set(别线ids);
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
@@ -225,6 +228,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   function 更多(r: 公海行): MenuProps["items"] {
     const 无效 = r.类 === "无效";
     const items: NonNullable<MenuProps["items"]> = [];
+    if (别线.has(r.id)) return items;
     if (能分配 && !无效 && 分给谁.length) {
       items.push({
         key: "分配", label: "分配给…",

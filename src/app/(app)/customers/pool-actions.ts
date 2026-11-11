@@ -32,6 +32,7 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 在事务里分公海项目们, type 分项目上下文, type 分项目们结果, type 整包撤销 } from "@/lib/enterprise/pool-assign-projects";
 import { 能进公海的阶段, 持有上限起点, 整批核上限, 整批或不做, 领公海项目准备, 领取公海项目们, 在事务里领公海项目们, type 领项目上下文 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 历史负责人们, 还原清掉的组员 } from "@/lib/project/pool-owner";
 import { 换负责人待办 } from "@/lib/project/carry-tasks";
 import { 查完再写 } from "@/lib/check-then-write";
@@ -408,6 +409,9 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
   const 不行 = await 公海分不给(me, 给.id);
   if (不行) return { ok: false, error: 不行 };
   if (!ids.length && !项目们.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
+  // 销管、条线总管理只能分本业务线的（P-公海-07）：混了别线的整批不分
+  const 别线 = await 公海按线拦(prisma, me, org, { 客户: ids, 项目: 项目们 }, "分配");
+  if (别线) return { ok: false, error: 别线 };
   const 移交中 = await 移交中不能领(ids, "分");
   if (移交中) return { ok: false, error: 移交中 };
   // 企业版：标了无效的分不出去（统一公海 P7），算「没权限」那几位
@@ -471,7 +475,13 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   const me = await requireUser();
   const ids = 原.map((x) => x.id);
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
-  if (动作 === "分配" && (!能管公海(me, await 权限组织()) || !给谁)) return { ok: false, error: "只有总管理和销售管理能撤销分配" };
+  if (动作 === "分配") {
+    const org = await 权限组织();
+    if (!能管公海(me, org) || !给谁) return { ok: false, error: "只有总管理和销售管理能撤销分配" };
+    // 销管、条线总管理只能撤本业务线的（P-公海-07）
+    const 别线 = await 公海按线拦(prisma, me, org, { 客户: ids, 项目: Array.isArray(公海项目) ? 公海项目.filter((x): x is string => typeof x === "string") : [] }, "撤销分配");
+    if (别线) return { ok: false, error: 别线 };
+  }
   /** 这几位现在归谁：领取 = 我，分配 = 分到的那位 */
   const 现 = 动作 === "分配" ? 给谁! : me.id;
   if (动作 === "放进") {
