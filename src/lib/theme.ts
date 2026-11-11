@@ -132,7 +132,10 @@ export const themeConfig: ThemeConfig = {
     Input: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.14)}` },
     Statistic: { contentFontSize: 26, titleFontSize: 13 },
     Tabs: { titleFontSize: 14, horizontalItemPadding: "10px 0", inkBarColor: palette.ink, itemSelectedColor: palette.ink, itemHoverColor: palette.ink },
-    Segmented: { trackPadding: 2, trackBg: palette.hover },
+    /* 未选中那几段的字用次一级正文 inkSoft（照苹果分段控件：没选中的字也是正文色，选中靠白滑块区分）。
+       默认 colorTextLabel = textMuted #6e6e73，压在 hover #ececee 的轨道上只有 4.30:1，过不了说明文字 4.5 的线；
+       inkSoft #424245 是 8.49:1。其他主题在 skins/shared.css 同一条里跟着换 */
+    Segmented: { trackPadding: 2, trackBg: palette.hover, itemColor: palette.inkSoft },
     Tag: { fontSizeSM: 12, borderRadiusSM: 999 },
     Modal: { titleFontSize: 15, borderRadiusLG: 14 },
     Drawer: { borderRadiusLG: 14 },

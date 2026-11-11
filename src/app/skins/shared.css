@@ -273,7 +273,7 @@
   --ant-tabs-item-selected-color: var(--ink);
   --ant-tabs-item-hover-color: var(--ink);
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-track-bg: var(--hover); --ant-segmented-item-selected-bg: var(--panel); }
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-track-bg: var(--hover); --ant-segmented-item-selected-bg: var(--panel); --ant-segmented-item-color: var(--ink-soft); }
 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-card, .ant-card-css-var) { --ant-color-border-secondary: var(--line); --ant-card-actions-bg: var(--panel); --ant-card-extra-color: var(--ink); }
 :root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-dropdown, .ant-dropdown-css-var) { --ant-border-radius-lg: var(--r-pop); }
 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-tag, .ant-tag-css-var) { --ant-tag-default-bg: var(--hover); --ant-tag-default-color: var(--ink-soft); --ant-tag-solid-text-color: var(--on-ink); }

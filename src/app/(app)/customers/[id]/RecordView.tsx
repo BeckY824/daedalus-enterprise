@@ -6,7 +6,7 @@ import { loadCustomerFeed } from "./follow-history-actions";
 import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch";
 
 
-import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -76,7 +76,7 @@ import { 记下最近客户 } from "@/lib/last-customer";
 import { 金额, 金额或空, 合计文字 } from "@/lib/currency";
 import { 公海标签 } from "@/lib/pool";
 import { 带走说法 } from "@/lib/carry-over";
-import { 滚法 } from "@/lib/reduced-motion";
+import { 少动, 滚法 } from "@/lib/reduced-motion";
 import { 放进公海, 领取, 撤销公海 } from "../pool-actions";
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
@@ -756,6 +756,22 @@ export default function RecordView({
         {身}
       </div>
     );
+  /* 第一屏记录的进场（J-213）：页面接管那一下，已经显出来的记录逐条从下面 6px 落到位，只挪位置、不碰透明度——
+     服务端渲染出来就是不透明的，不会再「记录区先空几秒」（11-11）。间隔照时间线 70ms、八条以后一起，最晚一条 0.88 秒落定。
+     用浏览器自己的 Element.animate、translate 属性：和 motion 的 layout（写 transform）互不覆盖；开了「减弱动态」不动 */
+  const 时间线框 = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const 框 = 时间线框.current;
+    if (!框 || typeof 框.animate !== "function" || 少动()) return;
+    // 曲线直接取样式表里当前主题的 --ease（像素主题是 steps(…)，motion 那边读成函数，Element.animate 认的是 CSS 写法）
+    const 曲 = getComputedStyle(document.documentElement).getPropertyValue("--ease").trim() || "ease-out";
+    const 动 = [...框.querySelectorAll<HTMLElement>(":scope > .rec-tl-item")].map((el, i) =>
+      el.animate([{ translate: "0 6px" }, { translate: "0 0" }], { duration: 时长.morph * 1000, delay: Math.min(i, 8) * 间隔 * 1000, easing: 曲, fill: "backwards" }),
+    );
+    return () => 动.forEach((a) => a.cancel());
+    // 只在第一屏跑一次：之后换主题、换筛选不重放（新出现的那几条走 motion 的淡入）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /* 沟通记录的筛选条和时间线：项目模式装进「沟通记录」卡，其余照旧摊在中栏 */
   const 筛选条 = (
     <div className="rec-filters">
@@ -770,15 +786,15 @@ export default function RecordView({
     </div>
   );
   const 时间线 = (
-    <div className="rec-tl">
+    <div className="rec-tl" ref={时间线框}>
       {entries.length === 0 && (
         <div style={{ padding: "36px 0", textAlign: "center", color: "var(--text-muted)" }}>
           {filter !== "CONTRACT" && history.hasMore ? "已加载的记录中暂无此类型，可继续加载更早的跟进。" : filter === "全部" ? (摆法.沟通汇总 ? 去项目跟进 ? "还没有沟通记录。点右上「新建沟通」记一条" : `还没有沟通记录。点上方「${跟进按钮字}」记一条` : "还没有任何记录。上面随手记一笔，或粘一段聊天记录让 AI 整理。") : "这个类型下还没有记录"}
         </div>
       )}
-      {/* 进场动画只给之后新出现的（换筛选、加载更多、新记一条）：打开页面时第一屏的记录不做淡入（11-11）。
+      {/* 淡入只给之后新出现的（换筛选、加载更多、新记一条）：打开页面时第一屏的记录不做淡入（11-11）。
           原来第一屏也逐条淡入，服务端渲染出来的是透明的，要等页面接管（真页面 4～6 秒）才显出来，
-          卡头、筛选先到、记录区空一大块；现在和卡头同时出现 */}
+          卡头、筛选先到、记录区空一大块；现在和卡头同时出现。第一屏的进场改成上面 useLayoutEffect 里那段只挪位置的 */}
       <AnimatePresence initial={false}>
         {entries.map((e, i) =>
           e.kind === "contract" ? (
