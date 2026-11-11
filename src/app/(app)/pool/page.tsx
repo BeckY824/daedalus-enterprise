@@ -12,6 +12,7 @@ import { 公海分配候选 } from "@/lib/owners";
 import { 持有数 } from "@/lib/project/db";
 import { 持有上限of } from "@/lib/project/org-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 阶段们 } from "@/lib/project/stage-dict";
 import PoolView from "./PoolView";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,9 @@ export default async function PoolPage({
   searchParams,
 }: {
   /** attr：公海属性；quick：快捷按钮；sort：pooled / follow / created */
-  searchParams: Promise<{ keyword?: string; attr?: string; quick?: string; sort?: string; channelId?: string; page?: string; pageSize?: string }>;
+  searchParams: Promise<{ keyword?: string; attr?: string; quick?: string; sort?: string; channelId?: string; page?: string; pageSize?: string;
+    /** 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：项目来源渠道（项目没填跟客户来源）+ 同口径的阶段；按项目一条一行 */
+    projChannel?: string; phase?: string }>;
 }) {
   const me = await requireUser();
   if (!企业版() || (await getBusiness()).projectMode !== true) notFound();
@@ -41,11 +44,14 @@ export default async function PoolPage({
     // 默认排序不写进地址：筛选栏的「重置」看得出没在筛
     sort: sp.sort && 规整排序(sp.sort) === sp.sort ? sp.sort : "",
     channelId: (sp.channelId ?? "").trim(),
+    projChannel: (sp.projChannel ?? "").trim(),
+    // 阶段只认三个，认不出的当没筛（同项目列表 阶段进程条件）
+    phase: 阶段们.includes(sp.phase as never) ? sp.phase! : "",
   };
   const 权限org = await 权限组织();
   const 能分配 = 能管公海(me, 权限org);
   const [d, users, 规则, 有, 渠道筛选项] = await Promise.all([
-    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId }, 正整数(sp.page, 1), pageSize),
+    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId }, 正整数(sp.page, 1), pageSize, 筛.projChannel ? { channelId: 筛.projChannel, phase: 筛.phase } : undefined),
     // 分配给谁：老板、主管才用得上；只列能当负责人的，不是系统管理员只列同业务线的（11-03 B2-7）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
     生效组织规则(),

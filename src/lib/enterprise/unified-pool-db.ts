@@ -21,6 +21,8 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
+import type { Prisma } from "@/generated/prisma";
+import { 公海名单条件, 渠道阶段候选 } from "@/lib/project/list";
 import {
   客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
@@ -52,9 +54,10 @@ function 进程们(projects: readonly 项目片[], 字典: 字典) {
 }
 
 /**
- * 取全量公海行（还没筛）。先跑一遍两种自动回收（同客户页 / 项目页：先收再列），收不动不挡列表
+ * 取全量公海行（还没筛）。先跑一遍两种自动回收（同客户页 / 项目页：先收再列），收不动不挡列表。
+ * 只要（渠道名单，11-11）：只取挂着这些公海项目的客户 / 这些公海项目（名单的条件，见 读公海页），不受「各取最近 公海取上限 条」的框外那些影响
  */
-export async function 读公海行(me: { id: string; name: string; role?: string }): Promise<{ 行: 公海行[]; 截断: boolean }> {
+export async function 读公海行(me: { id: string; name: string; role?: string }, 只要?: Prisma.ProjectWhereInput): Promise<{ 行: 公海行[]; 截断: boolean; 字典: 字典 }> {
   await Promise.all([
     自动掉公海(me).catch((e) => console.error("[自动掉公海] 扫的时候出错，这次先不掉", e)),
     公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e)),
@@ -62,7 +65,7 @@ export async function 读公海行(me: { id: string; name: string; role?: string
   const [查到客户, 项目们, 规则] = await Promise.all([
     // 带限定的客户端：公海里的客户人人看得到（限定层说了算，这里不另写）
     prisma.customer.findMany({
-      where: { pool: { isNot: null } },
+      where: { pool: { isNot: null }, ...(只要 ? { projects: { some: 只要 } } : {}) },
       orderBy: { pool: { at: "desc" } },
       take: 公海取上限,
       select: {
@@ -72,7 +75,7 @@ export async function 读公海行(me: { id: string; name: string; role?: string
     }),
     // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）
     prisma.project.findMany({
-      where: { pooledAt: { not: null }, customer: { pool: null } },
+      where: { pooledAt: { not: null }, customer: { pool: null }, ...(只要 ? { AND: [只要] } : {}) },
       orderBy: { pooledAt: "desc" },
       take: 公海取上限,
       select: {
@@ -169,14 +172,39 @@ export async function 读公海行(me: { id: string; name: string; role?: string
       来源id: p.channelId ?? (露客户(me, p, 可见) ? p.customer.channelId : null),
     };
   });
-  return { 行: [...客户行, ...项目行], 截断: 客户们.length >= 公海取上限 || 项目们.length >= 公海取上限 };
+  return { 行: [...客户行, ...项目行], 截断: 客户们.length >= 公海取上限 || 项目们.length >= 公海取上限, 字典 };
 }
 
 /** 页面用：取全量 → 筛排 → 切这一页 */
-export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number) {
-  const { 行: 全部, 截断 } = await 读公海行(me);
+export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: { channelId: string; phase: string }) {
+  // 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：按项目一条一行，和渠道页数的是同一句（list.ts 公海名单条件）
+  const 名单条件 = 名单?.channelId ? await 公海名单条件(me, 渠道阶段候选(名单.channelId, 名单.phase)) : null;
+  const 取到 = await 读公海行(me, 名单条件 ?? undefined);
+  const 全部 = 名单条件 ? await 按名单展开(取到, 名单条件) : 取到.行;
+  const 截断 = 取到.截断;
   const { 行, 快捷数, 属性数 } = 筛排(全部, sp);
   const 页数 = Math.max(1, Math.ceil(行.length / pageSize));
   const 当前页 = Math.min(Math.max(1, page), 页数);
-  return { 行: 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize), 总数: 行.length, 当前页, 快捷数, 属性数, 截断, 库里有: 全部.length > 0 };
+  return { 行: 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize), 总数: 行.length, 当前页, 快捷数, 属性数, 截断, 库里有: 取到.行.length > 0 };
+}
+
+/**
+ * 渠道名单：名单里的公海项目一个一行（渠道页数的是项目，条数要对得上）。
+ *   - 客户不在客户公海的：就是取到的那一行项目行
+ *   - 客户在客户公海的：取到的是一行客户行（领客户即领项目），按名单里它名下的项目拆成几行，每行写那一个项目的名字和进程；
+ *     领取 / 分配照旧按客户（customerId），id 带上项目以免撞（c:客户:项目）
+ * 名单的项目走带限定的客户端取（可见范围、原负责人回避照旧）；取到的行里没有对应的（框外、刚被领走）不列
+ */
+async function 按名单展开(取到: { 行: 公海行[]; 字典: 字典 }, 名单条件: Prisma.ProjectWhereInput): Promise<公海行[]> {
+  const 们 = await prisma.project.findMany({ where: 名单条件, orderBy: [{ pooledAt: "desc" }, { id: "asc" }], select: { id: true, customerId: true, name: true, phase: true, node: true, result: true } });
+  const 项目行of = new Map(取到.行.flatMap((r) => (r.种 === "项目" && r.projectId ? [[r.projectId, r] as const] : [])));
+  const 客户行of = new Map(取到.行.flatMap((r) => (r.种 === "客户" ? [[r.customerId, r] as const] : [])));
+  return 们.flatMap((p): 公海行[] => {
+    const 项 = 项目行of.get(p.id);
+    if (项) return [项];
+    const 客 = 客户行of.get(p.customerId);
+    if (!客) return [];
+    const x = 进程们([p], 取到.字典);
+    return [{ ...客, id: `c:${p.customerId}:${p.id}`, projectId: p.id, 项目名: p.name, 进程: x.进程, 进程明细: null }];
+  });
 }
