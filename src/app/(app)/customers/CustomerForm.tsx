@@ -22,6 +22,7 @@ import { 查电话 } from "@/lib/phone";
 import { 推荐方式 } from "@/lib/referrer-kind";
 import { 带走说法 } from "@/lib/carry-over";
 import { 聚焦首项 } from "@/lib/modal-focus";
+import { 去空, 有值 } from "@/lib/empty-value";
 import { useFormGuard } from "@/lib/form-guard";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
@@ -394,6 +395,8 @@ function CustomerFormInner({
             ? {
                 ...editing,
                 expectedSignAt: editing.expectedSignAt ? dayjs(editing.expectedSignAt) : null,
+                // 老库落过的「暂不确认」这类占位当没填（11-11），框里空着、不进选项
+                customerType: 去空(editing.customerType),
                 // 企业版级别只认 S/A/B/C：库里还没改过来的 D 显示成 C
                 ...(企业 ? { extra: { ...editing.extra, level: 企业级别(editing.extra?.level) ?? undefined } } : {}),
               }
@@ -518,7 +521,7 @@ function CustomerFormInner({
             {/* 客户类型（P13 第 4 条）：选项在设置 → 字典「客户类型」，能改能停用；原值停用了也照样显示 */}
             <Form.Item label="客户类型" name="customerType">
               <Select allowClear placeholder="选填" {...释义下拉(字典释义?.类型)}
-                options={[...new Set([...客户类型选项, ...(editing?.customerType ? [editing.customerType] : [])])].map((s) => ({ value: s, label: s }))} />
+                options={[...new Set([...客户类型选项, ...(有值(editing?.customerType) ? [editing.customerType] : [])])].map((s) => ({ value: s, label: s }))} />
             </Form.Item>
           </Col>
           <Col span={8}>
