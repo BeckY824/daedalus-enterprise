@@ -1,6 +1,6 @@
 /**
  * 企业版只用项目时，MCP 也不开老表的列表工具（10-28，lib/mcp/tools.ts）：和应用里的 agent 同一张排除表（agent/run.ts）。
- * 钉的是：tools/list 不列 list_leads / list_opportunities / list_contracts，list_projects 照列（list_orders 10-28 整个删了）；
+ * 钉的是：tools/list 不列 list_leads / list_contracts，list_projects 照列（list_orders 10-28、list_opportunities 2026-11-11 整个删了）；
  * tools/call 点名调也拒；不是企业版照旧都在（企业版的 projectMode 读出来就锁成开着，见 business-config.ts 企业版锁定）。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -14,7 +14,9 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 处理 } from "@/lib/mcp/rpc";
 import { 跑工具 } from "@/lib/mcp/tools";
 
-const 老表 = ["list_leads", "list_opportunities", "list_contracts"];
+const 老表 = ["list_leads", "list_contracts"];
+/** 连定义都删了的：哪一种都不列、点名也拒 */
+const 删了的 = ["list_orders", "list_opportunities"];
 let 老板: { id: string; name: string };
 
 async function 列名() {
@@ -48,7 +50,7 @@ describe("MCP 只用项目", () => {
 
   it("只用项目：点名调老表工具也拒", async () => {
     await 只用项目(true);
-    for (const n of 老表) await expect(跑工具(n, {}, 老板)).rejects.toThrow(`没有这个工具：${n}`);
+    for (const n of [...老表, ...删了的]) await expect(跑工具(n, {}, 老板)).rejects.toThrow(`没有这个工具：${n}`);
   });
 
   it("不是企业版：projectMode 开着也不收", async () => {
@@ -57,5 +59,6 @@ describe("MCP 只用项目", () => {
     await 只用项目(true);
     const 名 = await 列名();
     for (const n of 老表) expect(名).toContain(n);
+    for (const n of 删了的) expect(名).not.toContain(n);
   });
 });

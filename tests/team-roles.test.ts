@@ -404,10 +404,6 @@ describe("业务员只看自己的 + 公海", () => {
     expect(跟进).toContain("小王的客户 的跟进");
     for (const n of 同事的) expect(跟进, "搜跟进").not.toContain(`${n} 的跟进`);
 
-    const 商机 = await 跑("list_opportunities", {});
-    expect(商机).toContain("小王的客户 的商机");
-    for (const n of 同事的) expect(商机, "列商机").not.toContain(`${n} 的商机`);
-
     const 盯 = await 跑("get_watchlist", {});
     for (const n of 同事的) expect(盯, "盯盘").not.toContain(n);
   });

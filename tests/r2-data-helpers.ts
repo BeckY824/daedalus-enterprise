@@ -23,6 +23,20 @@ export async function 造客户(销售: string, extra: Record<string, unknown> =
   });
 }
 
+/**
+ * 一个商机（2026-11-11：商机的保存入口 saveOpportunity 删了——企业版只用项目，走不到——要商机做底的测试直接写库）。
+ * 和原来 saveOpportunity 新建时落的一样：带一行币种（不给用人民币）
+ */
+export async function 造商机(data: {
+  name: string; customerId: string; ownerId: string; amount?: number; stage?: string; status?: string; probability?: number;
+  expectedDealAt?: Date | null; remark?: string | null; currency?: string; createdAt?: Date;
+}) {
+  const { currency = "CNY", ...rest } = data;
+  return prisma.opportunity.create({
+    data: { amount: 0, stage: "初步沟通", status: "OPEN", probability: 20, ...rest, money: { create: { currency } } },
+  });
+}
+
 /** 捕获「抛异常」和「返回 {ok:false}」两种失败：界面上前者是没反应，后者是一句话 */
 export async function 结局<T>(p: Promise<T>): Promise<{ 抛了: true; 错: string } | { 抛了: false; 值: T }> {
   try {

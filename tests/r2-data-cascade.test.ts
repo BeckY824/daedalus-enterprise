@@ -22,10 +22,10 @@ for (const m of [
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 造本人, 造客户 } from "./r2-data-helpers";
+import { 造本人, 造客户, 造商机 } from "./r2-data-helpers";
 import { deleteCustomers, 删除前清点, saveContract } from "@/app/(app)/customers/actions";
 import { saveFollowUp, deleteFollowUp, savePlan, saveTask, saveContact, deleteContact, restoreContact, detachContact } from "@/app/(app)/customers/[id]/actions";
-import { saveOpportunity, setOppStatus, deleteOpportunities, restoreOpportunities } from "@/app/(app)/opportunities/actions";
+import { setOppStatus } from "@/app/(app)/opportunities/actions";
 import { saveLead, convertLead, deleteLeads } from "@/app/(app)/leads/actions";
 import { saveChannel, deleteChannel, toggleChannel } from "@/app/(app)/channels/actions";
 import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
@@ -55,8 +55,8 @@ async function 满满的客户(name = "海川外贸") {
   await saveContact({ customerId: c.id, name: "王总", phone: "13800000009", isPrimary: true });
   await saveContact({ customerId: c.id, name: "李工", isPrimary: false });
   const 王 = await prisma.contact.findFirstOrThrow({ where: { name: "王总" } });
-  await saveOpportunity({ name: "年框", customerId: c.id, amount: 50000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: 我 });
-  await saveOpportunity({ name: "试单", customerId: c.id, amount: 3000, stage: "需求确认", status: "OPEN", probability: 40, ownerId: 我 });
+  await 造商机({ name: "年框", customerId: c.id, amount: 50000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: 我 });
+  await 造商机({ name: "试单", customerId: c.id, amount: 3000, stage: "需求确认", status: "OPEN", probability: 40, ownerId: 我 });
   const [年框, 试单] = await prisma.opportunity.findMany({ where: { customerId: c.id }, orderBy: { amount: "desc" } });
   await setOppStatus(试单.id, "WON");
   await saveFollowUp({ customerId: c.id, type: "PHONE", content: "聊报价", status: "已完成", occurredAt: 昨天(), contactId: 王.id, opportunityId: 年框.id, sourceText: "原话" });
@@ -199,20 +199,7 @@ describe("删客户", () => {
   });
 });
 
-describe("删商机 / 联系人", () => {
-  it("删商机：跟进还在、只是不再写是哪个商机；结单时刻一起没；撤销后接回", async () => {
-    const { c, 年框, 试单 } = await 满满的客户();
-    const d = await deleteOpportunities([年框.id, 试单.id]);
-    const f = await prisma.followUp.findFirstOrThrow({ where: { content: "聊报价" } });
-    expect(f.opportunityId).toBeNull();
-    expect(await prisma.opportunityClose.count()).toBe(0);
-    expect(await 外键体检()).toEqual([]);
-    expect(await 各页取数(c.id)).toEqual([]);
-    if (d.ok) await restoreOpportunities(d.快照);
-    expect((await prisma.followUp.findFirstOrThrow({ where: { content: "聊报价" } })).opportunityId).toBe(年框.id);
-    expect(await prisma.opportunityClose.count(), "赢单那个的结单时刻原样回来").toBe(1);
-  });
-
+describe("删联系人", () => {
   it("删联系人：跟进还在、不再写跟谁谈的；撤销后接回、主要联系人还是他", async () => {
     const { c, 王 } = await 满满的客户();
     const d = await deleteContact(王.id);

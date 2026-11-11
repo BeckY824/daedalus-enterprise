@@ -88,34 +88,6 @@ describe("list_leads", () => {
   });
 });
 
-describe("list_opportunities", () => {
-  beforeEach(async () => {
-    const c = await prisma.customer.create({
-      data: { name: "张三", phone: "13800000002", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 我.id },
-    });
-    await prisma.opportunity.createMany({
-      data: [
-        { name: "大单", customerId: c.id, amount: 200000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: 我.id },
-        { name: "小单", customerId: c.id, amount: 5000, stage: "初步沟通", status: "OPEN", probability: 20, ownerId: 我.id },
-        { name: "丢了的", customerId: c.id, amount: 90000, stage: "谈判审核", status: "LOST", probability: 0, ownerId: 我.id },
-      ],
-    });
-  });
-
-  it("默认只列进行中的，按金额从大到小", async () => {
-    const r = await 用("list_opportunities").run({}, ctx());
-    const d = r.data as { 总数: number; 商机: { 名称: string; 金额: number }[] };
-    expect(d.商机.map((o) => o.名称)).toEqual(["大单", "小单"]);
-    expect(r.summary).toContain("¥ 205,000");
-  });
-
-  it("要丢单的得显式要——不然「手上有哪些单子」会把丢掉的也算进去", async () => {
-    const d = (await 用("list_opportunities").run({ status: "LOST" }, ctx())).data as { 商机: { 名称: string; 状态: string }[] };
-    expect(d.商机.map((o) => o.名称)).toEqual(["丢了的"]);
-    expect(d.商机[0].状态).toBe("丢单");
-  });
-});
-
 describe("search_followups", () => {
   beforeEach(async () => {
     const c = await prisma.customer.create({

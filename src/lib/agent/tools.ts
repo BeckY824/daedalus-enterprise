@@ -18,8 +18,8 @@ import { 签约归属人 } from "../contract-owner";
 import { 是逾期, 数逾期跟进 } from "../overdue";
 import { 渠道汇总 } from "../attribution";
 import { 带币种, 商机币种, 签约币种, 签约金额, 签约合计 } from "../money-db";
-import { 金额 as 显示金额, 合计文字, 按币种合计 } from "../currency";
 import { 一行说法 } from "../quote";
+import { 金额 as 显示金额, 合计文字 } from "../currency";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
@@ -34,7 +34,7 @@ import { runQuery } from "../report-run";
 import { recapRange } from "./recap-range";
 import { METRICS, VALID_GROUPS, sanitizeQuerySpec, 指标显示, 维度显示 } from "../report-query";
 import { loadWatchlistPage } from "../sentinel-data";
-import { statusLabel, stageLabel, 阶段值, 外贸精简, 外贸订单 } from "../business-config";
+import { statusLabel, stageLabel, 外贸精简, 外贸订单 } from "../business-config";
 import { 名字在别处, 别处说法, 别处附件, 找人 } from "./find-name";
 import type { BusinessConfig } from "../business-config";
 import type { BriefRecord } from "../ai-draft";
@@ -626,64 +626,6 @@ export const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_opportunities",
-    description: `列商机（在谈的单子），按金额从大到小。阶段是 ${OPP_STAGES.join(" / ")}；status: OPEN 进行中 / WON 赢单 / LOST 丢单。问「手上有哪些单子」「哪些单子快成了」用它；\
-「超过 10 万的单子」用 minAmount，「这个月要关的单子」用 dealFrom/dealTo。`,
-    args: '{"stage": "阶段，可空", "status": "OPEN/WON/LOST，可空，默认 OPEN", "customerName": "客户姓名，可空", "minAmount": 最小金额（按商机自己的币种比），可空, "dealFrom": "预计成交起始 YYYY-MM-DD，可空", "dealTo": "预计成交截止，可空"}',
-    async run(args, ctx) {
-      // 外贸模版下人说「询盘」「已报价」：认回存储值（显示名见 business-config 的 外贸阶段名）
-      const stage = 阶段值(ctx.b, str(args.stage, 10));
-      const status = str(args.status, 6).toUpperCase();
-      const name = str(args.customerName, 20);
-      const 金额下限 = typeof args.minAmount === "number" && args.minAmount > 0 ? args.minAmount : null;
-      const 成交 = 日期区间(args.dealFrom, args.dealTo);
-      if (!成交) return { summary: "日期不合法", data: { error: "dealFrom / dealTo 要写成 YYYY-MM-DD" } };
-      const 成交条件 = 区间条件(成交);
-      const where = {
-        ...(stage ? { stage } : {}),
-        status: ["OPEN", "WON", "LOST"].includes(status) ? status : "OPEN",
-        ...(name ? { customer: { name: { contains: name } } } : {}),
-        ...(金额下限 ? { amount: { gte: 金额下限 } } : {}),
-        // 没填预计成交日的单子，问「这个月要关的」时不该混进来——Prisma 的 gte/lte 本来就会把 null 排除
-        ...(成交条件 ? { expectedDealAt: 成交条件 } : {}),
-      };
-      // 合计用 aggregate 算全量：原来拿前 30 行加起来，超过 30 个时和页面上的数对不上（排查 C4）
-      const [total, 合计, rows] = await Promise.all([
-        prisma.opportunity.count({ where }),
-        // 按币种合计（不换汇），所以取行不用 aggregate
-        prisma.opportunity.findMany({ where, select: { amount: true, ...带币种.商机 } }),
-        prisma.opportunity.findMany({
-          where, orderBy: { amount: "desc" }, take: 30,
-          select: {
-            id: true, name: true, amount: true, stage: true, status: true, probability: true, expectedDealAt: true, updatedAt: true, ...带币种.商机,
-            quotes: { orderBy: [{ quotedAt: "desc" }, { id: "desc" }], take: 1, select: { lines: { orderBy: { sort: "asc" } } } },
-            customer: { select: { id: true, name: true } }, owner: { select: { name: true } },
-          },
-        }),
-      ]);
-      return {
-        summary: `${total} 个商机，合计 ${合计文字(按币种合计(合计, (o) => o.amount, 商机币种))}${total > rows.length ? `（下面列了金额最大的 ${rows.length} 个）` : ""}`,
-        data: {
-          总数: total,
-          商机: rows.map((o) => ({
-            customerId: o.customer.id,
-            客户: o.customer.name,
-            名称: o.name,
-            金额: o.amount,
-            币种: 商机币种(o),
-            ...(o.quotes[0]?.lines.length ? { 报价明细: o.quotes[0].lines.map(一行说法) } : {}),
-            阶段: stageLabel(ctx.b, o.stage),
-            // 外贸：赢单就是转了订单；不说概率、预计成交（界面上没有，G.3）
-            状态: o.status === "OPEN" ? "进行中" : o.status === "WON" ? (外贸订单(ctx.b) ? "已转订单" : "赢单") : "丢单",
-            ...(外贸精简(ctx.b) ? {} : { 成交概率: o.probability, 预计成交: o.expectedDealAt ? dayjs(o.expectedDealAt).format("YYYY-MM-DD") : null }),
-            多久没动: `${dayjs().diff(dayjs(o.updatedAt), "day")} 天`,
-            负责人: o.owner?.name ?? null,
-          })),
-        },
-      };
-    },
-  },
-  {
     name: "list_projects",
     description: `列项目。项目模式下线索、商机、订单是**同一个项目的三个阶段**（${阶段们.join(" → ")}），没有单独的线索表和商机表：\
 问「有哪些新线索」用 phase=线索，「手上的商机」用 phase=商机，「在交付的订单」用 phase=订单。\
@@ -934,12 +876,6 @@ export const TOOLS: Tool[] = [
     "建议修改一位客户档案里的字段。负责人 / 渠道 / 推荐人给**名字**（salesOwnerName / channelName / referrerName），不要给 id，重名时会拒绝。",
     '{"id": "客户 id", "changes": {"要改的字段名": "改成什么"}, "reason": "一句话：为什么"}',
     "update_customer",
-  ),
-  proposeTool(
-    "propose_opportunity",
-    "建议给一位客户新建商机（在谈的单子：金额、阶段、预计成交时间）。",
-    '{"id": "客户 id", "name": "商机名称", "amount": 金额数字, "currency": "币种代码如 USD/EUR，可空（空 = 本位币）", "stage": "初步沟通/需求确认/方案报价/谈判审核/赢单成交", "probability": "0~100，可空", "expectedDealAt": "可空，YYYY-MM-DD", "remark": "可空", "reason": "一句话：为什么"}',
-    "add_opportunity",
   ),
   proposeTool(
     "propose_contract",

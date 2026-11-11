@@ -18,7 +18,6 @@ import { resetDb } from "./reset";
 import { 造本人, 造客户, 结局 } from "./r2-data-helpers";
 import { saveCustomer, saveContract, patchCustomer, checkDuplicate } from "@/app/(app)/customers/actions";
 import { saveFollowUp, saveTask, savePlan, saveContact } from "@/app/(app)/customers/[id]/actions";
-import { saveOpportunity } from "@/app/(app)/opportunities/actions";
 import { saveLead, convertLead } from "@/app/(app)/leads/actions";
 import { saveChannel } from "@/app/(app)/channels/actions";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
@@ -56,11 +55,10 @@ describe("文本：空格、超长、表情、特殊字符", () => {
     expect(r.ok, "存进去了一位 name 为空串的客户").toBe(false);
   });
 
-  it("【B】其余几样「名称」只有空格：线索、商机、渠道、联系人、待办、计划都应拦下", async () => {
+  it("【B】其余几样「名称」只有空格：线索、渠道、联系人、待办、计划都应拦下（商机的保存入口 2026-11-11 删了）", async () => {
     const c = await 造客户(我);
     const 各个 = {
       线索: await 结局(saveLead({ name: "  ", source: "微信", status: "待跟进" })),
-      商机: await 结局(saveOpportunity({ name: "  ", customerId: c.id, amount: 1, stage: "初步沟通", status: "OPEN", probability: 20, ownerId: 我 })),
       渠道: await 结局(saveChannel({ name: "  ", phone: null, remark: null, channelOwnerId: 我 })),
       联系人: await 结局(saveContact({ customerId: c.id, name: "  ", isPrimary: false })),
       待办: await 结局(saveTask({ customerId: c.id, title: "  " })),
@@ -77,21 +75,20 @@ describe("文本：空格、超长、表情、特殊字符", () => {
     expect(await prisma.followUp.count()).toBe(0);
   });
 
-  it.each(["\u200b\u200c\u200d\u2060", "\u034f\u0301\ufe0f", "\u2800\u3164\uffa0"])("八类必填正文拒绝不可见字符 %j 且不写库", async (blank) => {
+  it.each(["\u200b\u200c\u200d\u2060", "\u034f\u0301\ufe0f", "\u2800\u3164\uffa0"])("七类必填正文拒绝不可见字符 %j 且不写库", async (blank) => {
     const c = await 造客户(我);
     const results = [
       await 新客户({ name: blank }),
       await saveLead({ name: blank, source: "微信", status: "待跟进" }),
-      await saveOpportunity({ name: blank, customerId: c.id, amount: 1, stage: "初步沟通", status: "OPEN", probability: 20, ownerId: 我 }),
       await saveChannel({ name: blank, phone: null, remark: null, channelOwnerId: 我 }),
       await saveContact({ customerId: c.id, name: blank, isPrimary: false }),
       await saveTask({ customerId: c.id, title: blank }),
       await savePlan({ customerId: c.id, subject: blank, plannedAt: new Date().toISOString(), method: "电话沟通" }),
       await saveFollowUp({ customerId: c.id, type: "PHONE", content: blank, status: "已完成", occurredAt: new Date().toISOString() }),
     ];
-    expect(results.map(r => r.ok)).toEqual(Array(8).fill(false));
+    expect(results.map(r => r.ok)).toEqual(Array(7).fill(false));
     expect(await prisma.customer.count()).toBe(1);
-    for (const model of [prisma.lead, prisma.opportunity, prisma.channel, prisma.contact, prisma.task, prisma.followPlan, prisma.followUp]) expect(await (model.count as () => Promise<number>)()).toBe(0);
+    for (const model of [prisma.lead, prisma.channel, prisma.contact, prisma.task, prisma.followPlan, prisma.followUp]) expect(await (model.count as () => Promise<number>)()).toBe(0);
   });
 
   it("待办改标题、改截止：saveTask 带 id 改原来那条，不另建（J-079）", async () => {
@@ -230,25 +227,6 @@ describe("金额", () => {
     const r = await 结局(prisma.contract.aggregate({ _sum: { amount: true } }));
     expect(r.抛了, r.抛了 ? r.错 : "").toBe(false);
     if (!r.抛了) expect(r.值._sum.amount).toBe(3_000_000_000);
-  });
-
-  it("商机：0 收、负数拦、超大收、小数留到分（外币有分）", async () => {
-    const c = await 造客户(我);
-    const 存 = (amount: number) => saveOpportunity({ name: "x", customerId: c.id, amount, stage: "初步沟通", status: "OPEN", probability: 20, ownerId: 我 });
-    expect((await 存(0)).ok).toBe(true);
-    expect((await 存(-5)).ok).toBe(false);
-    expect((await 存(1e12)).ok).toBe(true);
-    expect((await 存(12.5)).ok).toBe(true);
-    expect((await 存(3.456)).ok).toBe(true);
-    const 金额 = (await prisma.opportunity.findMany({ orderBy: { createdAt: "asc" } })).map((o) => o.amount);
-    expect(金额).toEqual([0, 1e12, 12.5, 3.46]);
-  });
-
-  it("商机：成交概率填了小数（33.3）不抛，存成整数", async () => {
-    const c = await 造客户(我);
-    const r = await 结局(saveOpportunity({ name: "x", customerId: c.id, amount: 1, stage: "初步沟通", status: "OPEN", probability: 33.3, ownerId: 我 }));
-    expect(r.抛了, r.抛了 ? r.错 : "").toBe(false);
-    expect(Number.isInteger((await prisma.opportunity.findFirstOrThrow()).probability)).toBe(true);
   });
 });
 

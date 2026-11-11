@@ -27,13 +27,12 @@ for (const m of [
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 造本人 } from "./r2-data-helpers";
+import { 造本人, 造商机 } from "./r2-data-helpers";
 import { deleteCustomers, saveContract, deleteContract } from "@/app/(app)/customers/actions";
 import {
   saveFollowUp, deleteFollowUp, savePlan, deletePlan, saveTask, deleteTask,
   saveContact, detachContact, undoDetachContact, saveUnassignedContact, deleteContact, deleteUnassignedContact, restoreContact,
 } from "@/app/(app)/customers/[id]/actions";
-import { saveOpportunity, deleteOpportunities, restoreOpportunities } from "@/app/(app)/opportunities/actions";
 import { saveLead, convertLead, deleteLeads } from "@/app/(app)/leads/actions";
 import { saveChannel, deleteChannel } from "@/app/(app)/channels/actions";
 import { 放进公海 } from "@/app/(app)/customers/pool-actions";
@@ -72,8 +71,8 @@ async function 挂满(id: string, 名: string, 号尾: string, 金额: number) {
   await saveContact({ customerId: id, name: `${名}王总`, phone: `1380000${号尾}9`, isPrimary: true });
   await saveContact({ customerId: id, name: `${名}李工`, isPrimary: false });
   const 王 = await prisma.contact.findFirstOrThrow({ where: { name: `${名}王总` } });
-  await saveOpportunity({ name: `${名}年框`, customerId: id, amount: 50000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: 我 });
-  await saveOpportunity({ name: `${名}试单`, customerId: id, amount: 金额, stage: "需求确认", status: "OPEN", probability: 40, ownerId: 我 });
+  await 造商机({ name: `${名}年框`, customerId: id, amount: 50000, stage: "方案报价", status: "OPEN", probability: 60, ownerId: 我 });
+  await 造商机({ name: `${名}试单`, customerId: id, amount: 金额, stage: "需求确认", status: "OPEN", probability: 40, ownerId: 我 });
   const 年框 = await prisma.opportunity.findFirstOrThrow({ where: { name: `${名}年框` } });
   const 试单 = await prisma.opportunity.findFirstOrThrow({ where: { name: `${名}试单` } });
   const 聊 = await saveFollowUp({ customerId: id, type: "PHONE", content: `${名}聊报价`, status: "已完成", occurredAt: 昨天(), contactId: 王.id, opportunityId: 年框.id, sourceText: "原话" });
@@ -310,16 +309,6 @@ describe("删除矩阵（2a）：每一种删法 × 每一处看到的", () => {
       联系人页: { 少: ["甲|甲王总★"], 多: ["乙|甲王总"] },
       跟进页: { 少: ["甲|甲聊报价|跟甲王总"], 多: ["甲|甲聊报价|跟—"] },
     });
-  });
-
-  it("删商机：只有商机表少了它，跟进、签约、首页不动；撤销后一模一样", async () => {
-    const w = await 造全套();
-    const 前 = await 看一遍();
-    const r = await deleteOpportunities([w.甲的.年框.id, w.甲的.试单.id]);
-    if (!r.ok) throw new Error(r.error);
-    expect(变化(前, await 看一遍())).toEqual({ 商机表: { 少: 属于(前.商机表, "甲"), 多: [] } });
-    await restoreOpportunities(r.快照);
-    expect(await 看一遍()).toEqual(前);
   });
 
   it("删跟进（普通一条）：只有跟进页少了它", async () => {

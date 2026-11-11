@@ -63,7 +63,7 @@ describe("令牌", () => {
 });
 
 describe("开出去的工具", () => {
-  it("只有只读那十六个，propose_* 一个都没有", () => {
+  it("只有只读那十四个，propose_* 一个都没有", () => {
     const 名字 = 列工具().map((t) => t.name);
     expect(名字.sort()).toEqual([...MCP_TOOL_NAMES].sort());
     expect(名字.some((n) => n.startsWith("propose_"))).toBe(false);
@@ -90,7 +90,9 @@ describe("开出去的工具", () => {
     expect(名字).not.toContain("list_suppliers");
     // 2026-10-26 企业版按项目查（三大阶段）：只读，开出去
     expect(名字).toContain("list_projects");
-    expect(名字.length).toBe(15);
+    // list_opportunities 2026-11-11 连定义删了（企业版只用项目，一直被滤掉）
+    expect(名字).not.toContain("list_opportunities");
+    expect(名字.length).toBe(14);
   });
 
   it("每个工具都带说明和 JSON Schema——客户端拿它做补全和校验", () => {
