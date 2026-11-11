@@ -389,7 +389,8 @@ it("迁移 101：没给项目新字段（不是企业版 / 藏了）就不摆这
   } finally { await page.close(); }
 });
 
-it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标题 18、值 16 正文色、字段名 16 灰、辅助 14 灰、待填 16 浅灰；0 照正文色", async () => {
+// 16a（11-11）：客户、项目详情一起回全站六档（原来大一号 26 / 18 / 16 / 16 / 14，和列表页不是一套）
+it("10-31 改版 R7（16a 回六档）：和客户详情同一套字阶——标题 22、卡片标题 15、值 14 正文色、字段名 13 灰、辅助 13 灰、待填 14 浅灰；0 照正文色", async () => {
   const { page, errors } = await open(true);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
@@ -399,15 +400,15 @@ it("10-31 改版 R7：和客户详情同一套字阶——标题 26、卡片标�
     const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = `var(${v})`; document.querySelector(".proj-wrap")!.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
     const 样 = (l: import("playwright").Locator) => l.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; });
     const [墨, 灰, 浅] = [await 色("--ink"), await 色("--text-muted"), await 色("--text-faint")];
-    expect(await 样(page.locator(".proj-wrap .page-head h1"))).toEqual({ 字: "26px", 色: 墨 });
-    expect(await 样(卡.locator(".ant-card-head-title"))).toEqual({ 字: "18px", 色: 墨 });
-    expect(await 样(卡.getByText("定金金额", { exact: true }))).toEqual({ 字: "16px", 色: 灰 });
+    expect(await 样(page.locator(".proj-wrap .page-head h1"))).toEqual({ 字: "22px", 色: 墨 });
+    expect(await 样(卡.locator(".ant-card-head-title"))).toEqual({ 字: "15px", 色: 墨 });
+    expect(await 样(卡.getByText("定金金额", { exact: true }))).toEqual({ 字: "13px", 色: 灰 });
     const 零 = 卡.locator("div").filter({ hasText: /^定金金额/ }).last();
-    expect(await 零.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; })).toEqual({ 字: "16px", 色: 墨 });
-    expect(await 样(卡.locator('[data-empty="合同金额"]'))).toEqual({ 字: "16px", 色: 浅 });
+    expect(await 零.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; })).toEqual({ 字: "14px", 色: 墨 });
+    expect(await 样(卡.locator('[data-empty="合同金额"]'))).toEqual({ 字: "14px", 色: 浅 });
     // 「阶段 / 进程」两格企业版不显示了（F-项目-19），.proj-where-label 只在有回收日时出现，这里不再量
     const 辅 = page.locator(".proj-main .ant-card span").filter({ hasText: / · \d{4}-\d{2}-\d{2}/ }).first();
-    expect(await 样(辅)).toEqual({ 字: "14px", 色: 灰 });
+    expect(await 样(辅)).toEqual({ 字: "13px", 色: 灰 });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
