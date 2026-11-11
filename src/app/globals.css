@@ -1652,6 +1652,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   }
   .shell:has(.rec-page) .pane-roster .pane-rows { scrollbar-width: none; }
   .shell:has(.rec-page) .pane-roster .pane-rows::-webkit-scrollbar { display: none; }
+  /* 11-11 用户：「沟通记录模块，目前是无限长度……给他设一个最长的长度（整页显示上给待办留位置）。多的就在模块内上下移动。」
+     企业版项目模式（沟通记录、待办上下两张卡在同一栏）：沟通记录这张卡最高约占这一格可见高度的 62%（100cqh = .rec 这一格），
+     卡头（标题、AI / 新建沟通）和类型筛选那行不动，只有记录列表在卡里滚；条数少时卡随内容变矮。待办留在一屏里看得到标题和头几条。
+     11-01 拿掉过 60vh 限高，是因为滚到底不往外传、整栏拉不下去：这里不设 overscroll-behavior（默认 auto），
+     列表滚到头再滚就交给整栏，不会卡住。滚动条照 11-01「沟通页内的滚动条要隐藏」不露 */
+  .main .rec-page > .rec > .rec-col-blocks .proj-mod-body > .rec-tl {
+    max-height: max(160px, calc(62cqh - 120px)); overflow-y: auto; scrollbar-width: none;
+  }
+  .main .rec-page > .rec > .rec-col-blocks .proj-mod-body > .rec-tl::-webkit-scrollbar { display: none; }
 }
 
 /* 10-31 改版 R7：客户详情（.rec-page）、项目详情（企业版 .proj-wrap）同一套字阶。
