@@ -113,7 +113,7 @@ describe("统一公海过 999 行", () => {
     expect(报错).not.toHaveBeenCalled();
   }, 大);
 
-  it("公海属性是客户本身的事：每种身份分类和计数都一样，看不到项目也不落到「客户池」（11-11 前是「其他」）；项目名、进程仍按可见范围", async () => {
+  it("公海属性是客户本身的事：每种身份分类和计数都一样，看不到项目也不当成「没有项目」（11-11：混合客户同事只看得到商机项目，仍按全部项目从低往高归线索池）；项目名、进程仍按可见范围", async () => {
     const 客户 = async (id: string, i: number) => {
       await prisma.customer.create({ data: { id, name: id, phone: `14${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id } });
       await prisma.customerPool.create({ data: { customerId: id, reason: "r", at: 时刻(i) } });
@@ -124,15 +124,15 @@ describe("统一公海过 999 行", () => {
     await 客户("商机客户", 2); await 项目("商机项目", "商机客户", "商机", "需求确认");
     await 客户("订单客户", 3); await 项目("订单项目", "订单客户", "订单", "签约");
     await 客户("没项目客户", 4);
-    // 名下两个：销售只看得到自己的线索项目，定状态的是同事那个商机项目，分类也要按全部算
+    // 名下两个：销售只看得到自己的线索项目、同事只看得到自己的商机项目；从低往高定在线索（11-11），分类按全部项目算，谁看都一样
     await 客户("混合客户", 5);
     await 项目("混合线索", "混合客户", "线索", "潜客培育");
     await 项目("混合商机", "混合客户", "商机", "需求确认", 组.同事.id);
 
-    const 期望 = { 线索客户: "线索池", 商机客户: "商机池", 订单客户: "订单池", 没项目客户: "客户池", 混合客户: "商机池" };
+    const 期望 = { 线索客户: "线索池", 商机客户: "商机池", 订单客户: "订单池", 没项目客户: "线索池", 混合客户: "线索池" };
     for (const [名, u] of Object.entries(组)) {
       const r = await 读(u);
-      expect([名, r.属性数]).toEqual([名, { 全部: 5, 线索池: 1, 商机池: 2, 订单池: 1, 客户池: 1 }]);
+      expect([名, r.属性数]).toEqual([名, { 全部: 5, 线索池: 3, 商机池: 1, 订单池: 1, 客户池: 0 }]);
       expect([名, Object.fromEntries(r.行.map((x) => [x.客户名, x.属性]))]).toEqual([名, 期望]);
     }
     // 显示的不跟着放开：同事看不到销售的项目，名字和进程照旧不露，只露自己的
@@ -140,7 +140,7 @@ describe("统一公海过 999 行", () => {
     expect(同事看.行.find((x) => x.客户名 === "线索客户")).toMatchObject({ 项目名: null, 进程: null, projectId: null });
     expect(同事看.行.find((x) => x.客户名 === "混合客户")).toMatchObject({ 项目名: "混合商机" });
     const 销售看 = await 读(组.销售);
-    expect(销售看.行.find((x) => x.客户名 === "混合客户")).toMatchObject({ 项目名: "混合线索", 属性: "商机池" });
+    expect(销售看.行.find((x) => x.客户名 === "混合客户")).toMatchObject({ 项目名: "混合线索", 属性: "线索池" });
     expect(报错).not.toHaveBeenCalled();
   }, 大);
 
@@ -251,7 +251,7 @@ describe("统一公海过 999 行", () => {
         客户: await prisma.customer.findMany({ where: { pool: { isNot: null } }, select: { id: true, projects: { select: { name: true }, orderBy: { createdAt: "asc" } } } }),
         项目: await prisma.project.findMany({
           where: { pooledAt: { not: null }, customer: { pool: null } },
-          select: { id: true, logs: { where: { kind: "pool-release" }, orderBy: { at: "desc" }, take: 1, select: { userId: true, reason: true, at: true } } },
+          select: { id: true, customerId: true, logs: { where: { kind: "pool-release" }, orderBy: { at: "desc" }, take: 1, select: { userId: true, reason: true, at: true } } },
         }),
       }));
       for (const c of 老.客户) {
@@ -261,11 +261,13 @@ describe("统一公海过 999 行", () => {
       // 同事是「退回两次」的历史负责人：这一行回避，老查询不管回避，这里单独算
       const 该有的项目 = 老.项目.filter((p) => !(名 === "同事" && p.id === "退回两次"));
       for (const p of 该有的项目) {
-        const 行 = r.行.find((x) => x.id === `p:${p.id}`)!;
+        // 客户池同客户的几个项目并成一行（11-11）：按里面每个项目对
+        const 行 = r.行.flatMap((x) => x.子 ?? [x]).find((x) => x.id === `p:${p.id}`)!;
         const 类 = 项目入池类(p.logs[0] ?? null);
         expect([名, p.id, 行.类, 行.入池原因]).toEqual([名, p.id, 类, 入池原因文字(类, p.logs[0]?.reason)]);
       }
-      expect([名, r.总数]).toEqual([名, 老.客户.length + 该有的项目.length]);
+      // 总数按并完的行：客户池一位客户一行
+      expect([名, r.总数]).toEqual([名, 老.客户.length + new Set(该有的项目.map((p) => p.customerId)).size]);
     }
     // 差分要真的分得开：销售看不到同事的、已删的、邀请中的；看得到自己的、公海的、已加入的
     const 销售看 = (await 读(销售)).行.find((x) => x.id === "c:客a")!;
@@ -273,7 +275,7 @@ describe("统一公海过 999 行", () => {
     expect((await 读(市场管理)).行.find((x) => x.id === "c:客a")!.项目名).toBe("公海的、市场建的");
     const 总管理看 = (await 读(组.总管理)).行.find((x) => x.id === "c:客a")!;
     expect(总管理看.项目名).toBe("自己的、同事的、公海的、邀请中、已加入、市场建的");
-    expect((await 读(组.总管理)).行.find((x) => x.id === "p:退回两次")!.类).toBe("主动退回");
+    expect((await 读(组.总管理)).行.flatMap((x) => x.子 ?? [x]).find((x) => x.id === "p:退回两次")!.类).toBe("主动退回");
   }, 大);
 
   it("一次分配过 999 位公海客户（11-03 B2-3）：不报 P2029，名下公海项目一起过去，标了无效的那位跳过", async () => {

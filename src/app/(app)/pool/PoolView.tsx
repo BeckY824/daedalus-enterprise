@@ -6,11 +6,13 @@
  * 属性块自己不折行，窄了横向滚）、入池方式下拉（带数和一行说明，M-公海-09 原「入池原因」改名）、排序、搜索；整排太窄才把后面几个挤到下一行
  * 表里「入池原因」一列 = 退回时选的原因（M-公海-09）；「当前进程」一列 = 阶段-节点（如 线索-潜客培育），有结局再带结局（U-公海-04，11-01 改）
  * 条件都在地址栏（useUrlFilters），服务端筛排分页；规矩见 lib/enterprise/unified-pool.ts
+ * 客户池一位客户一行（11-11）：名下不止一个项目在项目公海的，行上写最近那个的进程 +「共 N 个项目」，点行或「展开」逐个看、逐个领 / 分；
+ * 勾这一行 = 勾下面能动的那几个项目（领取：能领的；分配：本业务线的），动不了的在提示条「看原因」里说
  *
  * 10-30 交互改版：领取、分配都带 6 秒撤销（规则 B）；老板、主管行内「⋯」和批量里有「分配给…」，业务员没有；
  * 领取灰着时原因写在按钮下面（规则 A）；持有上限开着时页头写「我手上 N / 上限 M」；批量有没领到的，提示条能展开看每一条为什么
  */
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Checkbox, Dropdown, Segmented, Select, Space, Tag } from "antd";
 import type { MenuProps } from "antd";
@@ -25,7 +27,7 @@ import { fmtDateTime, smartTime, 成员选项, type 可选成员 } from "@/lib/u
 import { useUrlFilters } from "@/lib/url-filters";
 import { 带走说法 } from "@/lib/carry-over";
 import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
-import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, 没原因, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
+import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, 没原因, 入池类叫法, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
 
@@ -65,6 +67,9 @@ type Props = {
 const 项目不能单独领短说 = "要连客户一起领";
 
 const 属性色: Record<公海属性, string> = { 线索池: "green", 商机池: "blue", 订单池: "gold", 客户池: "purple" };
+
+/** 客户池并成一行的里面有别线的项目：勾这一行分配时先不带它们（服务端混了别线的整批拦，P-公海-07） */
+const 别线不分 = "不是你这条业务线的项目，分不了";
 
 /** 入池方式下拉里每一项的一行说明（规则 C）：「多次退回」的门槛是常量，跟着改 */
 const 快捷说明: Record<快捷, string> = {
@@ -123,6 +128,9 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   ) : undefined;
   const 到上限 = !!持有 && 持有.有 >= 持有.上限;
   const 分给谁 = 成员选项(users);
+  /** 客户池并成一行、展开着的（行 id） */
+  const [展开的, set展开的] = useState<string[]>([]);
+  const 切展开 = (id: string) => set展开的((x) => (x.includes(id) ? x.filter((k) => k !== id) : [...x, id]));
   /** 企业版 C-06：领取、分配时，进公海时关掉的原负责人待办一起转给新负责人（默认勾，可以手动关掉；pool-rules.ts） */
   const [带待办, set带待办] = useState<boolean>(公海规则.带待办默认勾);
 
@@ -140,7 +148,19 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
    * 领取 / 分配一行或几行：客户行、项目行一起勾的，一次交给 领取 / 分配公海（同一个事务，持有上限整批核，超了一个都不做）；只勾了项目行的分配走 分配公海项目。
    * 提示条说清领到几个、几个没领到（能展开看原因），带一次撤销：客户行走 撤销公海，项目行走 撤销公海项目
    */
-  async function 动手(动作: "领取" | "分配", 们: 公海行[], 给?: string) {
+  async function 动手(动作: "领取" | "分配", 选的: 公海行[], 给?: string) {
+    // 客户池并成一行的（11-11）：勾它 = 勾下面能动的那几个项目；动不了的不交上去，原因记下来一起说
+    const 先拦: { 名: string; 原因: string }[] = [];
+    const 们 = 选的.flatMap((r) => (r.子 ?? [r]).filter((c) => {
+      if (!r.子) return true;
+      const 因 = 动作 === "领取" ? 领不了(c) : 别线.has(c.id) ? 别线不分 : null;
+      if (因) 先拦.push({ 名: 行名(c), 原因: 因 });
+      return !因;
+    }));
+    if (!们.length) {
+      if (先拦.length === 1) return void message.error(先拦[0].原因);
+      return void message.error({ content: <ResultBar 文案={动作 === "领取" ? "一个都没领到" : "一个都没分出去"} 没领到={先拦} />, duration: 6 });
+    }
     // 企业版 C-06：页头那个勾，这一页的领取、分配都按它（进公海时关掉的待办要不要重新打开给新负责人）
     const 带 = 公海规则.换负责人带待办 ? 带待办 : undefined;
     const 客户们 = 们.filter((r) => r.种 === "客户");
@@ -188,6 +208,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       } else for (const r of 项目们) 没领到.push({ 名: 行名(r), 原因: res.error });
     }
     router.refresh();
+    没领到.push(...先拦);
     const 客户到 = 客户res?.ok ? 客户res.updated : 0;
     const 到数 = 客户到 + 项目到.length;
     if (!到数) {
@@ -196,9 +217,10 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       return void message.error({ content: <ResultBar 文案={`${动作 === "领取" ? "一个都没领到" : "一个都没分出去"}`} 没领到={没领到} />, duration: 6 });
     }
     const 带走 = 客户res?.ok ? 带走说法(客户res.带走) : "";
+    const 单 = 们.length === 1 && !先拦.length;
     const 文案 = 动作 === "领取"
-      ? (们.length === 1 ? `已领取${叫(们[0])}${带走}` : 没领到.length ? `领到 ${到数} 个，${没领到.length} 个没领到` : `已领取 ${到数} 个${带走}`)
-      : (们.length === 1 ? `已把${叫(们[0])}分给 ${给谁?.name ?? "同事"}${带走}` : `已分给 ${给谁?.name ?? "同事"} ${到数} 个${没领到.length ? `，${没领到.length} 个没分出去` : ""}`);
+      ? (单 ? `已领取${叫(们[0])}${带走}` : 没领到.length ? `领到 ${到数} 个，${没领到.length} 个没领到` : `已领取 ${到数} 个${带走}`)
+      : (单 ? `已把${叫(们[0])}分给 ${给谁?.name ?? "同事"}${带走}` : `已分给 ${给谁?.name ?? "同事"} ${到数} 个${没领到.length ? `，${没领到.length} 个没分出去` : ""}`);
     const key = `pool-${动作}-${们[0].id}-${们.length}`;
     const 撤销 = async () => {
       message.destroy(key);
@@ -252,6 +274,49 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     return items;
   }
 
+  /** 一个项目的领取 + ⋯（行末和展开里共用） */
+  function 操作(r: 公海行, 因: string | null, 菜单: MenuProps["items"]): ReactNode {
+    return (
+      <Space size={2}>
+        {!只读 && (
+          <Button className="row-act" aria-label={`领取 ${行名(r)}`} disabled={!!因} size="small"
+            onClick={(e) => { e.stopPropagation(); void 动手("领取", [r]); }}>
+            领取
+          </Button>
+        )}
+        {!!菜单?.length && (
+          <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
+            <Button className="row-act" aria-label={`更多操作 ${行名(r)}`} type="text" size="small" icon={<MoreOutlined />} onClick={(e) => e.stopPropagation()} />
+          </Dropdown>
+        )}
+      </Space>
+    );
+  }
+
+  /** 客户池并成一行的展开（11-11）：每个项目一小行——项目名、当前进程、入池方式 / 原因、入池时间、领取 / 分配 */
+  function 子列表(r: 公海行): ReactNode {
+    return (
+      <div className="pool-sub" role="list" aria-label={`${r.客户名 ?? "这位客户"}名下在公海的 ${r.子?.length ?? 0} 个项目`}>
+        {(r.子 ?? []).map((c) => {
+          const 因 = 领不了(c);
+          const 方式 = c.快捷 ? 快捷叫法(c.快捷) : 入池类叫法[c.类];
+          return (
+            <div key={c.id} className="pool-sub-row" role="listitem">
+              <RowLink href={`/projects/${c.projectId}`} className="fulltext" title={c.项目名 ?? ""}>{c.项目名 ?? "项目"}</RowLink>
+              <span className="clamp" title={c.进程 ?? ""}>{c.进程 ?? 没原因}</span>
+              <span className="clamp muted" title={`${方式}：${c.入池原因}`}>{方式} · {c.入池原因}</span>
+              <span className="nowrap muted" title={fmtDateTime(c.入池时间)}>{smartTime(c.入池时间)}</span>
+              <span className="pool-sub-act">
+                {操作(c, 因, 更多(c))}
+                {因 && !只读 && <span className="muted clamp pool-sub-why" title={因}>{因 === 项目不能单独领提示 ? 项目不能单独领短说 : 因}</span>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   const 全部列: 列<公海行>[] = [
     {
       title: "公海属性", key: "属性", width: 96, 常驻: true,
@@ -265,7 +330,15 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     },
     {
       title: "项目名称", key: "项目", width: 168,
-      render: (_, r) => r.项目名
+      render: (_, r) => r.子
+        // 客户池并成一行（11-11）：最近进公海的那个 +「共 N 个」，展开看每个
+        ? (
+          <span className="pool-many">
+            <span className="fulltext" title={r.子.map((c) => c.项目名 ?? "").join("、")}>{r.项目名}</span>
+            <Tag className="pool-many-n">共 {r.子.length} 个项目</Tag>
+          </span>
+        )
+        : r.项目名
         ? (r.projectId && r.种 === "项目"
           ? <RowLink href={`/projects/${r.projectId}`} className="fulltext" title={r.项目名}>{r.项目名}</RowLink>
           : <span className="fulltext" title={r.项目名}>{r.项目名}</span>)
@@ -298,23 +371,20 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     {
       title: "操作", key: "操作", width: 136, 常驻: true, fixed: "right",
       render: (_, r) => {
+        if (r.子) {
+          const 开 = 展开的.includes(r.id);
+          return (
+            <Button className="row-act" size="small" aria-expanded={开} aria-label={`${开 ? "收起" : "展开"} ${行名(r)} 名下 ${r.子.length} 个项目`}
+              onClick={(e) => { e.stopPropagation(); 切展开(r.id); }}>
+              {开 ? "收起" : `展开 ${r.子.length} 个`}
+            </Button>
+          );
+        }
         const 因 = 领不了(r);
         const 菜单 = 更多(r);
         return (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 0 }}>
-            <Space size={2}>
-              {!只读 && (
-                <Button className="row-act" aria-label={`领取 ${行名(r)}`} disabled={!!因} size="small"
-                  onClick={(e) => { e.stopPropagation(); void 动手("领取", [r]); }}>
-                  领取
-                </Button>
-              )}
-              {!!菜单?.length && (
-                <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
-                  <Button className="row-act" aria-label={`更多操作 ${行名(r)}`} type="text" size="small" icon={<MoreOutlined />} onClick={(e) => e.stopPropagation()} />
-                </Dropdown>
-              )}
-            </Space>
+            {操作(r, 因, 菜单)}
             {/* 操作列只有 136 宽：长的那句（项目不能单独领）行内写短的，整句放悬停里 */}
             {因 && !只读 && <span className="muted nowrap" style={{ fontSize: 12, lineHeight: "18px" }} title={因}>{因 === 项目不能单独领提示 ? 项目不能单独领短说 : 因}</span>}
           </div>
@@ -429,7 +499,10 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
           </Space>
         )}
         加载中={pending}
-        行链接={(r) => (r.种 === "项目" ? `/projects/${r.projectId}` : `/customers/${r.customerId}`)}
+        // 客户池并成一行的：点行展开 / 收起（客户归别人，不跳客户页）
+        行链接={(r) => (r.子 ? "" : r.种 === "项目" ? `/projects/${r.projectId}` : `/customers/${r.customerId}`)}
+        行点击={(r) => { if (r.子) 切展开(r.id); }}
+        展开={{ expandedRowKeys: 展开的, showExpandColumn: false, rowExpandable: (r) => !!r.子, expandedRowRender: 子列表 }}
         行类={(r) => (r.类 === "无效" ? "row-off" : undefined)}
         分页={{ 当前页, 每页: pageSize, 总数, 翻页 }}
       />

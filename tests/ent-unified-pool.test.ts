@@ -31,8 +31,8 @@ import { 放进公海, 领取, 分配公海, 撤销公海 } from "@/app/(app)/cu
 import { 标无效客户, 恢复有效客户 } from "@/app/(app)/pool/actions";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import {
-  客户公海属性, 项目公海属性, 规整公海属性, 公海属性们, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 多次退回起, 规整排序,
-  客户定状态, 进程格, 拆退回原因, 归池, 要选退回原因提示, 快捷们, type 公海行,
+  客户公海属性, 规整公海属性, 公海属性们, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 多次退回起, 规整排序,
+  客户定状态, 进程格, 拆退回原因, 归池, 项目行属性, 没项目进程, 并客户池, 要选退回原因提示, 快捷们, type 公海行,
 } from "@/lib/enterprise/unified-pool";
 
 // ---------- 纯规矩 ----------
@@ -41,21 +41,23 @@ describe("公海属性（按阶段定状态）", () => {
   const 结 = (phase: string, result: string) => ({ phase, result });
   // [说明, 名下项目, 应属, 定状态用的是第几个]
   const 表: [string, { phase: string; result: string | null }[], string, number | null][] = [
-    ["没有项目", [], "客户池", null],
+    ["没有项目 → 线索池（进程格写 线索-潜客培育，见库里那条）", [], "线索池", null],
     ["一个线索、没结束", [未("线索")], "线索池", 0],
     ["一个商机、没结束", [未("商机")], "商机池", 0],
     ["一个订单、没结束", [未("订单")], "订单池", 0],
     ["线索流失", [结("线索", "线索流失")], "线索池", 0],
     ["丢单", [结("商机", "丢单")], "商机池", 0],
     ["订单结束（交付）", [结("订单", "成功交付")], "订单池", 0],
+    ["交付结清", [结("订单", "交付结清")], "订单池", 0],
     ["异常状态按订单结局算", [结("商机", "异常状态")], "订单池", 0],
-    ["多项目：没结束的取最高，订单 > 商机 > 线索", [未("线索"), 未("订单"), 未("商机")], "订单池", 1],
-    ["多项目：商机 > 线索", [未("线索"), 未("商机")], "商机池", 1],
+    ["从低往高：没结束的线索 + 订单 + 商机 → 线索池", [未("订单"), 未("商机"), 未("线索")], "线索池", 2],
+    ["从低往高：没结束的线索 + 订单 → 线索池", [未("订单"), 未("线索")], "线索池", 1],
+    ["从低往高：没结束的只有商机 + 订单 → 商机池", [未("订单"), 未("商机")], "商机池", 1],
+    ["从低往高：没结束的只有订单，另有一个线索流失 → 订单池（先看没结束的）", [结("线索", "线索流失"), 未("订单")], "订单池", 1],
     ["多项目：两个线索，同阶段取前面那个", [未("线索"), 未("线索")], "线索池", 0],
-    ["没结束的优先于结束的：线索进行中 + 订单交付 → 线索", [结("订单", "成功交付"), 未("线索")], "线索池", 1],
     ["没结束的优先于结束的：商机进行中 + 线索流失 → 商机", [结("线索", "线索流失"), 未("商机")], "商机池", 1],
-    ["全部结束取最高结局：线索流失 + 丢单 → 商机", [结("线索", "线索流失"), 结("商机", "丢单")], "商机池", 1],
-    ["全部结束取最高结局：丢单 + 交付 → 订单池", [结("商机", "丢单"), 结("订单", "成功交付")], "订单池", 1],
+    ["全部结束从低往高看结局：线索流失 + 丢单 → 线索池", [结("商机", "丢单"), 结("线索", "线索流失")], "线索池", 1],
+    ["全部结束从低往高看结局：丢单 + 交付 → 商机池", [结("订单", "成功交付"), 结("商机", "丢单")], "商机池", 1],
     ["全部结束：两个线索流失 → 线索", [结("线索", "线索流失"), 结("线索", "线索流失")], "线索池", 0],
   ];
   for (const [说明, 项目们, 应属, 第几] of 表) {
@@ -67,13 +69,9 @@ describe("公海属性（按阶段定状态）", () => {
       expect(r.项目).toBe(第几 === null ? null : 项目们[第几]);
     });
   }
-  it("项目行按它自己的阶段：线索 → 线索池、商机 → 商机池（项目公海只收这两个阶段）；导入自动建的标记暂时不影响", () => {
-    expect(项目公海属性(未("线索"))).toBe("线索池");
-    expect(项目公海属性(未("商机"))).toBe("商机池");
-    expect(项目公海属性(结("线索", "线索流失"))).toBe("线索池");
-    expect(项目公海属性(结("商机", "丢单"))).toBe("商机池");
-    expect(归池({ 种: "项目", 项目们: [{ ...未("线索"), 导入自动建: true }] })).toBe("线索池");
-    expect(归池({ 种: "客户", 项目们: [{ ...未("线索"), 导入自动建: true }] })).toBe("线索池");
+  it("项目行（客户有负责人、项目在项目公海）一律客户池，不按阶段分", () => {
+    for (const p of [未("线索"), 未("商机"), 结("线索", "线索流失"), 结("商机", "丢单")]) expect(归池({ 种: "项目", 项目们: [p] })).toBe("客户池");
+    expect(项目行属性).toBe("客户池");
   });
   it("每行恰好落一个池（四池之一），不会落到别的", () => {
     for (const 项目们 of [[], [未("线索")], [未("商机")], [未("订单")], [结("订单", "交付结清")], [结("商机", "异常状态")], [{ phase: "乱写", result: null }]]) {
@@ -83,7 +81,7 @@ describe("公海属性（按阶段定状态）", () => {
       }
     }
   });
-  it("筛选顺序 线索池 / 商机池 / 订单池 / 客户池；老链接的 attr（公海线索 / 公海商机、线索 / 商机）认回来；老的「其他」「公海客户」拆成了两个池，认回全部", () => {
+  it("筛选顺序 线索池 / 商机池 / 订单池 / 客户池；老链接的 attr（公海线索 / 公海商机、线索 / 商机）认回来；老的「其他」「公海客户」拆进订单池和线索池，认回全部", () => {
     expect(公海属性们).toEqual(["线索池", "商机池", "订单池", "客户池"]);
     expect(规整公海属性("其他")).toBe("");
     expect(规整公海属性("公海客户")).toBe("");
@@ -181,6 +179,34 @@ describe("筛排", () => {
     }
     expect(筛排(带四池, { keyword: "丁" }).属性数).toEqual({ 全部: 1, 线索池: 0, 商机池: 0, 订单池: 1, 客户池: 0 });
   });
+  it("客户池同客户的项目行并一行：属性数、快捷数按并完的行数，四池之和 = 全部；快捷筛完只留对上的项目；按项目（渠道名单）不并", () => {
+    const 项 = (id: string, c: string, 补: Partial<公海行>) => 行(id, { 种: "项目", customerId: c, projectId: id, 属性: "客户池", 项目名: id, 进程: `线索-${id}`, ...补 });
+    const 们 = [
+      ...全部,
+      项("p1", "K", { 入池时间: "2026-10-05T00:00:00Z", 快捷: "超时回收" }),
+      项("p2", "K", { 入池时间: "2026-10-07T00:00:00Z", 快捷: "超时回收" }),
+      项("p3", "K", { 入池时间: "2026-10-06T00:00:00Z", 快捷: "首次退回" }),
+      项("p4", "L", { 入池时间: "2026-09-01T00:00:00Z" }),
+    ];
+    const r = 筛排(们, {});
+    expect(r.属性数).toEqual({ 全部: 5, 线索池: 2, 商机池: 1, 订单池: 0, 客户池: 2 });
+    expect(r.属性数.全部).toBe(公海属性们.reduce((n, k) => n + r.属性数[k], 0));
+    expect(r.快捷数.超时回收).toBe(2); // 甲 + K（K 下两个超时回收算一个）
+    expect(r.快捷数.首次退回).toBe(3); // 乙 + K + L
+    const K = r.行.find((x) => x.customerId === "K")!;
+    expect(K).toMatchObject({ id: "k:K", projectId: null, 项目名: "p2", 进程: "线索-p2", 入池时间: "2026-10-07T00:00:00Z" });
+    expect(K.子!.map((x) => x.id)).toEqual(["p2", "p3", "p1"]);
+    expect(r.行.map((x) => x.id)).toEqual(["k:K", "甲", "乙", "丙", "p4"]);
+    // 快捷筛：K 只留超时回收的两个
+    expect(筛排(们, { 快捷: "超时回收" }).行.find((x) => x.customerId === "K")!.子!.map((x) => x.id)).toEqual(["p2", "p1"]);
+    const 只一个 = 筛排(们, { 快捷: "首次退回" }).行.find((x) => x.customerId === "K")!;
+    expect([只一个.id, 只一个.子]).toEqual(["p3", undefined]);
+    // 关键词搜到一个项目名：只剩那一个，不并
+    expect(筛排(们, { keyword: "p1" }).行.map((x) => x.id)).toEqual(["p1"]);
+    const 名单 = 筛排(们, {}, { 按项目: true });
+    expect(名单.属性数.客户池).toBe(4);
+    expect(名单.行).toHaveLength(7);
+  });
   it("关键词搜客户名和项目名", () => {
     expect(筛排(全部, { keyword: "大单" }).行.map((x) => x.id)).toEqual(["丙"]);
   });
@@ -270,7 +296,7 @@ describe("退回次数", () => {
     const 页 = await 读公海页(丙, {}, 1, 20);
     // 项目退回只进线索公海，客户不动（M-公海-02）：列一行项目行
     expect(页.行).toHaveLength(1);
-    expect(页.行[0]).toMatchObject({ 种: "项目", customerId: c, projectId: p, 属性: "线索池", 入池原因: "线索质量不达标", 快捷: "首次退回" });
+    expect(页.行[0]).toMatchObject({ 种: "项目", customerId: c, projectId: p, 属性: "客户池", 入池原因: "线索质量不达标", 快捷: "首次退回" });
     expect(页.快捷数.首次退回).toBe(1);
     // 丙领了、又放回：第二次
     expect(await 领取公海项目(丙, p)).toEqual({ ok: true });
@@ -379,7 +405,7 @@ describe("无效客户", () => {
 });
 
 describe("项目行", () => {
-  it("客户不在客户公海、项目在项目公海：列成项目行，按项目阶段算属性", async () => {
+  it("客户不在客户公海、项目在项目公海：列成项目行，进客户池（不按阶段分）", async () => {
     const c = await 客户(乙.id);
     // 两个项目：一个订单阶段没结束（客户不跟着进），一个商机放回
     await 项目(乙.id, c, { phase: "订单", node: "签约" });
@@ -387,19 +413,54 @@ describe("项目行", () => {
     expect(await 放回公海(乙, p)).toEqual({ ok: true });
     const 页 = await 读公海页(丙, {}, 1, 20);
     const 项目行 = 页.行.find((r) => r.种 === "项目");
-    expect(项目行).toMatchObject({ projectId: p, 属性: "商机池", 入池原因: "—", 进程: "商机-需求确认", 进程明细: null });
-    expect(页.属性数.商机池).toBeGreaterThanOrEqual(1);
+    expect(项目行).toMatchObject({ projectId: p, 属性: "客户池", 入池原因: "—", 进程: "商机-需求确认", 进程明细: null });
+    expect(项目行!.子).toBeUndefined();
+    expect(页.属性数).toMatchObject({ 客户池: 1, 商机池: 0 });
+  });
+
+  it("客户池一位客户一行：同客户多个项目并成一行，进程写最近进公海的那个、标共 N 个；数按客户；分页按并完的行", async () => {
+    const c = await 客户(乙.id);
+    const 早 = await 项目(乙.id, c, { phase: "线索", node: "线索验证" });
+    const 晚 = await 项目(乙.id, c, { phase: "商机", node: "需求确认" });
+    const 中 = await 项目(乙.id, c, { phase: "线索", node: "潜客培育" });
+    expect(await 放回公海(乙, 早)).toEqual({ ok: true });
+    await prisma.project.update({ where: { id: 早 }, data: { pooledAt: new Date("2026-10-01T00:00:00Z") } });
+    expect(await 放回公海(乙, 中)).toEqual({ ok: true });
+    await prisma.project.update({ where: { id: 中 }, data: { pooledAt: new Date("2026-10-02T00:00:00Z") } });
+    expect(await 放回公海(乙, 晚)).toEqual({ ok: true });
+    await prisma.project.update({ where: { id: 晚 }, data: { pooledAt: new Date("2026-10-03T00:00:00Z") } });
+    // 另一位客户池客户只有一个项目：不并，就是那行项目行
+    const c2 = await 客户(乙.id);
+    const 单 = await 项目(乙.id, c2, { phase: "线索", node: "潜客培育" });
+    expect(await 放回公海(乙, 单)).toEqual({ ok: true });
+    await prisma.project.update({ where: { id: 单 }, data: { pooledAt: new Date("2026-09-01T00:00:00Z") } });
+    const 页 = await 读公海页(丙, {}, 1, 20);
+    expect(页.总数).toBe(2);
+    expect(页.属性数).toEqual({ 全部: 2, 线索池: 0, 商机池: 0, 订单池: 0, 客户池: 2 });
+    const 并 = 页.行.find((r) => r.customerId === c)!;
+    expect(并).toMatchObject({ id: `k:${c}`, 种: "项目", projectId: null, 属性: "客户池", 进程: "商机-需求确认", 入池时间: "2026-10-03T00:00:00.000Z" });
+    expect(并.子!.map((x) => x.projectId)).toEqual([晚, 中, 早]);
+    expect(并.进程明细!.split("；")).toHaveLength(3);
+    expect(页.行.find((r) => r.customerId === c2)).toMatchObject({ id: `p:${单}`, projectId: 单 });
+    // 分页按并完的行：一页一行，两页，第二页是那位单项目的
+    const 一 = await 读公海页(丙, {}, 1, 1), 二 = await 读公海页(丙, {}, 2, 1);
+    expect([一.总数, 一.行.map((r) => r.id), 二.行.map((r) => r.id)]).toEqual([2, [`k:${c}`], [`p:${单}`]]);
+    // 并完的行里每个项目照样单独领
+    expect(await 领取公海项目(丙, 中)).toEqual({ ok: true });
+    const 领后 = (await 读公海页(丙, {}, 1, 20)).行.find((r) => r.customerId === c)!;
+    expect(领后.子!.map((x) => x.projectId)).toEqual([晚, 早]);
+    // 纯规矩：一个就原样返回
+    expect(并客户池([页.行.find((r) => r.customerId === c2)!])).toBe(页.行.find((r) => r.customerId === c2));
   });
 });
 
 describe("按阶段分池在库里走一遍", () => {
-  it("线索流失进线索池、丢单进商机池；订单（进行中 / 交付 / 异常）进订单池、没项目进客户池；多项目按定状态；全部 = 四池之和", async () => {
+  it("线索流失进线索池、丢单进商机池；订单（进行中 / 交付 / 异常）进订单池、没项目进线索池（进程写线索-潜客培育）；项目行进客户池；多项目按定状态；全部 = 四池之和", async () => {
     const 放 = async (c: string) => prisma.customerPool.create({ data: { customerId: c, reason: "手动" } });
     const 线索们: string[] = [];
     const 商机们: string[] = [];
     const 订单们: string[] = [];
-    const 客户池们: string[] = [];
-    const 线索客户 = await 客户(乙.id); await 项目(乙.id, 线索客户, { phase: "线索", node: "潜客培育" }); 线索们.push(线索客户);
+        const 线索客户 = await 客户(乙.id); await 项目(乙.id, 线索客户, { phase: "线索", node: "潜客培育" }); 线索们.push(线索客户);
     const 商机客户 = await 客户(乙.id); await 项目(乙.id, 商机客户, { phase: "商机", node: "需求确认" }); 商机们.push(商机客户);
     const 订单客户 = await 客户(乙.id); await 项目(乙.id, 订单客户, { phase: "订单", node: "签约" }); 订单们.push(订单客户);
     const 流失客户 = await 客户(乙.id); await 项目(乙.id, 流失客户, { phase: "线索", node: "线索验证", result: "线索流失", closedAt: new Date() }); 线索们.push(流失客户);
@@ -407,35 +468,43 @@ describe("按阶段分池在库里走一遍", () => {
     for (const [phase, result] of [["订单", "成功交付"], ["商机", "异常状态"]] as const) {
       const c = await 客户(乙.id); await 项目(乙.id, c, { phase, result, closedAt: new Date() }); 订单们.push(c);
     }
-    const 没项目 = await 客户(乙.id); 客户池们.push(没项目);
+    const 没项目 = await 客户(乙.id); 线索们.push(没项目);
     // 多项目：线索进行中 + 订单已交付 → 没结束的优先 → 线索池；格子里写定状态那个，悬停有每个项目
     const 多项目 = await 客户(乙.id);
     await 项目(乙.id, 多项目, { phase: "订单", node: "签约", result: "成功交付", closedAt: new Date() });
     await 项目(乙.id, 多项目, { phase: "线索", node: "潜客培育" });
     线索们.push(多项目);
-    for (const c of [...线索们, ...商机们, ...订单们, ...客户池们]) await 放(c);
+    // 从低往高：没结束的线索 + 订单 → 线索池，进程格写线索那个
+    const 低高 = await 客户(乙.id);
+    await 项目(乙.id, 低高, { phase: "订单", node: "签约" });
+    await 项目(乙.id, 低高, { phase: "线索", node: "线索验证" });
+    线索们.push(低高);
+    for (const c of [...线索们, ...商机们, ...订单们]) await 放(c);
     // 项目行（客户有负责人、项目在项目公海）：按项目自己的阶段
     const 有主客户 = await 客户(乙.id);
     const 公海线索项目 = await 项目(乙.id, 有主客户, { phase: "线索", node: "线索验证" });
     expect(await 放回公海(乙, 公海线索项目)).toEqual({ ok: true });
     当(丙);
     const 全 = await 读公海页(丙, {}, 1, 50);
-    expect(全.属性数).toEqual({ 全部: 10, 线索池: 4, 商机池: 2, 订单池: 3, 客户池: 1 });
+    expect(全.属性数).toEqual({ 全部: 11, 线索池: 5, 商机池: 2, 订单池: 3, 客户池: 1 });
     expect(全.属性数.全部).toBe(公海属性们.reduce((s, k) => s + 全.属性数[k], 0));
     const ids = async (属性: string) => (await 读公海页(丙, { 属性 }, 1, 50)).行.map((r) => r.customerId).sort();
-    expect(await ids("线索池")).toEqual([...线索们, 有主客户].sort());
+    expect(await ids("线索池")).toEqual([...线索们].sort());
     expect(await ids("商机池")).toEqual([...商机们].sort());
     expect(await ids("订单池")).toEqual([...订单们].sort());
-    expect(await ids("客户池")).toEqual([...客户池们].sort());
+    expect(await ids("客户池")).toEqual([有主客户]);
     // 老链接 attr=其他 认回全部
-    expect((await 读公海页(丙, { 属性: "其他" }, 1, 50)).总数).toBe(10);
+    expect((await 读公海页(丙, { 属性: "其他" }, 1, 50)).总数).toBe(11);
     const 行of = (c: string) => 全.行.find((r) => r.customerId === c)!;
-    expect(行of(有主客户)).toMatchObject({ 种: "项目", projectId: 公海线索项目, 属性: "线索池" });
+    expect(行of(有主客户)).toMatchObject({ 种: "项目", projectId: 公海线索项目, 属性: "客户池" });
     expect(行of(线索客户)).toMatchObject({ 进程: "线索-潜客培育", 进程明细: null });
     expect(行of(订单客户).进程).toBe("订单-签约");
-    expect(行of(没项目).进程).toBeNull();
+    expect(行of(没项目)).toMatchObject({ 进程: 没项目进程, 属性: "线索池", 项目名: null });
+    expect(没项目进程).toBe("线索-潜客培育");
+    expect(await prisma.project.count({ where: { customerId: 没项目 } })).toBe(0); // 只是显示，不建项目
     expect(行of(多项目).进程).toBe("线索-潜客培育");
     expect(行of(多项目).进程明细).toContain("；");
+    expect(行of(低高).进程).toBe("线索-线索验证");
     // 线索 / 商机池的格子不写阶段
     for (const c of [...线索们, ...商机们]) expect(行of(c).进程, c).not.toMatch(/^(线索|商机|订单) · /);
   });

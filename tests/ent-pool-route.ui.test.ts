@@ -35,7 +35,8 @@ beforeAll(async () => {
     const 好 = "async()=>({ok:true,updated:0})";
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){(window.__去=window.__去||[]).push(u)},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
     stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-    stub(/customers\/pool-actions$/, `const f=${好};export const 领取=f,分配公海=f,撤销公海=f;`);
+    // 领取记下传了什么（客户池并成一行勾选那条看）
+    stub(/customers\/pool-actions$/, `const f=${好};export const 领取=async(...a)=>{(window.__调=window.__调||[]).push(a);return {ok:true,updated:0,项目:{领到:[],没领到:[]}}},分配公海=f,撤销公海=f;`);
     stub(/\/projects\/actions$/, `export const 领取项目=${好};`);
     stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
     stub(/^\.\/actions$/, `const f=${好};export const 标无效客户=f,恢复有效客户=f,分配公海项目=f,撤销公海项目=f;`);
@@ -48,6 +49,14 @@ beforeAll(async () => {
     import {快捷们} from '@/lib/enterprise/unified-pool';
     const 快捷数=Object.fromEntries(快捷们.map(k=>[k,9999]));
     const 行=[{id:'c1',种:'客户',customerId:'c1',projectId:null,客户名:'某某超长名字的智能制造装备与工业自动化系统集成有限公司',项目名:null,进程:null,属性:'订单池',最后跟进:null,入池时间:new Date().toISOString(),创建时间:new Date().toISOString(),类:'主动退回',累计:1,进程明细:null,入池原因:'—',快捷:'首次退回',原负责人是我:false}];
+    // 客户池并成一行（11-11）：一位客户三个项目，名字都超长
+    const 长='某某超长名字的智能制造装备与工业自动化系统集成有限公司二期扩建项目';
+    const 子=[3,2,1].map(i=>({id:'p:'+i,种:'项目',customerId:'k1',projectId:''+i,客户名:'客户池里的一位超长名字的客户有限责任公司',项目名:长+i,进程:'商机-方案敲定',属性:'客户池',最后跟进:null,入池时间:new Date(Date.UTC(2026,9,i)).toISOString(),创建时间:new Date().toISOString(),类:'主动退回',累计:1,进程明细:null,入池原因:'客户主动终止合作并要求暂停所有沟通',快捷:'首次退回',原负责人是我:i===1}));
+    const 并行={...子[0],id:'k:k1',projectId:null,进程明细:'x',子};
+    window.__render2=()=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
+      <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
+        <Pool 行={[...行,并行]} 总数={2} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:2,线索池:0,商机池:0,订单池:1,客户池:1}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 能标无效 能恢复 能分配 users={[{id:'u1',name:'同事甲',email:'a'}]} 持有={null}/>
+      </main></div></BusinessProvider></App>);
     // 1024 宽：左边 220 的导航 + 内容区 24 内边距，同 app 外框
     window.__render=(quick='')=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
@@ -171,6 +180,48 @@ it.each([1024, 1280, 1366])("公海页 %ipx：有「公海回收站」入口，�
     await 入口.click();
     expect(await page.evaluate(() => (window as unknown as { __去: string[] }).__去.map(u => new URL(u, location.href).searchParams.get("quick")))).toEqual(["无效客户", null]);
     expect(await 入口.getAttribute("aria-pressed")).toBe("false");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 客户池一位客户一行（11-11）：行上写「共 N 个项目」、展开后每个项目一小行（项目名、进程、入池方式 / 原因、时间、领取），三个宽度都不横向撑出
+it.each([1024, 1280, 1366])("公海页 %ipx：客户池并成一行、展开逐个领，长名字省略不撑破", async (w) => {
+  const page = await browser.newPage({ viewport: { width: w, height: 800 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://route.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+    await page.goto("http://route.test/pool"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 公海bundle });
+    await page.evaluate(() => (window as unknown as { __render2: () => void }).__render2());
+    const 开 = page.getByRole("button", { name: /展开 .* 名下 3 个项目/ });
+    await 开.waitFor();
+    expect(await page.locator("tr[data-row-key='k:k1']").innerText()).toContain("共 3 个项目");
+    await 开.click();
+    const 子行 = page.locator(".pool-sub-row");
+    await 子行.first().waitFor();
+    expect(await 子行.count()).toBe(3);
+    // 最近进公海的在前；原负责人是我的那个领取灰着
+    expect(await 子行.first().innerText()).toContain("二期扩建项目3");
+    const 领 = page.locator(".pool-sub-row").getByRole("button", { name: /^领取/ });
+    expect(await 领.evaluateAll(els => els.map(e => (e as HTMLButtonElement).disabled))).toEqual([false, false, true]);
+    const 框 = await page.evaluate(() => {
+      const 表 = document.querySelector(".ant-table")!.getBoundingClientRect();
+      return [...document.querySelectorAll(".pool-sub-row")].map(r => {
+        const b = r.getBoundingClientRect();
+        const 按 = r.querySelector("button")!.getBoundingClientRect();
+        return { 内: b.right <= 表.right + 1 && b.left >= 表.left - 1, 按钮在屏: 按.right <= window.innerWidth && 按.left >= 0, 单行: b.height <= 40 };
+      });
+    });
+    for (const x of 框) expect(x).toEqual({ 内: true, 按钮在屏: true, 单行: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // 勾这一行 = 勾下面能领的项目（原负责人是我的那个不交上去，提示里说原因）
+    await page.locator("tr[data-row-key='k:k1'] .ant-checkbox-input").check();
+    await page.locator(".list-sel").getByRole("button", { name: /^领\s*取$/ }).click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调?.length ?? 0)).toBe(1);
+    const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调[0]);
+    expect([调[0], 调[2]]).toEqual([[], ["3", "2"]]);
+    // 收起
+    await page.getByRole("button", { name: /收起/ }).click();
+    await expect.poll(() => page.locator(".pool-sub-row:visible").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

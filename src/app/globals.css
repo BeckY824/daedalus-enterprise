@@ -3532,3 +3532,15 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @container rec (max-width: 629px) {
   .rec-acts-r > .acts-g:empty { display: none; }
 }
+/* 公海客户池一位客户多个项目（11-11）：展开后每个项目一小行。列都可缩、长名字省略，1024 宽不横向撑出 */
+.pool-sub { display: flex; flex-direction: column; gap: 4px; padding: 2px 0 2px 40px; min-width: 0; }
+.pool-sub-row {
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1.6fr) minmax(56px, auto) minmax(0, auto);
+  align-items: center; gap: 8px; min-width: 0;
+}
+.pool-sub-act { display: flex; align-items: center; gap: 4px; min-width: 0; justify-content: flex-end; }
+.pool-sub-why { font-size: 12px; }
+/* 客户池并成一行的项目名格：名字可缩、省略，「共 N 个项目」不缩 */
+.pool-many { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.pool-many > .fulltext { flex: 0 1 auto; }
+.pool-many > .pool-many-n { margin-inline-end: 0; flex: none; }

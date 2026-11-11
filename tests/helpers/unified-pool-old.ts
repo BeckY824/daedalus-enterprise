@@ -2,6 +2,7 @@
  * 统一公海取数的改前写法（ent/main dc53fcb5 的 src/lib/enterprise/unified-pool-db.ts），原样抄来只给对拍用：
  * tests/ent-unified-pool-paging.test.ts 拿它和现在的 读公海页 逐个筛选组合、逐页比。
  * 除了两个导出改名（读公海行 → 旧读公海行、读公海页 → 旧读公海页）、相对路径的 import 改成 @/，一个字不改；别在这里修东西。
+ * 例外：11-11 四池改了规矩（不是取数的写法），这里跟着改了两处，标了「11-11」：项目行属性一律客户池；名下一个项目都没有的客户进程写 没项目进程
  */
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
@@ -14,7 +15,7 @@ import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import {
-  客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
+  客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 没项目进程, 项目行属性,
   type 公海行, type 公海筛选, type 入池类,
 } from "@/lib/enterprise/unified-pool";
 
@@ -132,7 +133,7 @@ export async function 旧读公海行(me: { id: string; name: string; role?: str
       id: `c:${c.id}`, 种: "客户", customerId: c.id, projectId: 一个?.id ?? null,
       客户名: c.name,
       项目名: 名下.length ? 名下.map((p) => p.name).join("、") : null,
-      进程: 进.进程, 进程明细: 进.进程明细,
+      进程: (全部项目of客户.get(c.id) ?? []).length ? 进.进程 : 没项目进程, 进程明细: 进.进程明细, // 11-11
       属性: 客户公海属性(全部项目of客户.get(c.id) ?? []),
       最后跟进: c.lastFollowAt?.toISOString() ?? null,
       入池时间: c.pool!.at.toISOString(),
@@ -152,7 +153,7 @@ export async function 旧读公海行(me: { id: string; name: string; role?: str
       客户名: 露客户(me, p, 可见) ? p.customer.name : null,
       项目名: p.name,
       进程: 进.进程, 进程明细: null,
-      属性: 进.属性,
+      属性: 项目行属性, // 11-11
       最后跟进: p.customer.lastFollowAt?.toISOString() ?? null,
       入池时间: p.pooledAt!.toISOString(),
       创建时间: p.createdAt.toISOString(),

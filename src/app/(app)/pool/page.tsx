@@ -66,14 +66,17 @@ export default async function PoolPage({
     持有数(prisma, me.id),
     渠道筛选选项(),
   ]);
+  // 客户池并成一行的（11-11）：按里面每个项目认
+  const 平 = d.行.flatMap((r) => r.子 ?? [r]);
   // 公海不按线分，谁都看得到别线的行：销管、条线总管理对别线的行不摆分配、标无效、恢复（P-公海-07，服务端各入口另拦）
   const 别 = 能分配 || 能恢复(me, 权限org)
-    ? await 公海别线的(prisma, me, 权限org, { 客户: d.行.filter((r) => r.种 === "客户").map((r) => r.customerId), 项目: d.行.flatMap((r) => (r.种 === "项目" && r.projectId ? [r.projectId] : [])) })
+    ? await 公海别线的(prisma, me, 权限org, { 客户: 平.filter((r) => r.种 === "客户").map((r) => r.customerId), 项目: 平.flatMap((r) => (r.种 === "项目" && r.projectId ? [r.projectId] : [])) })
     : { 客户: [], 项目: [] };
-  // 按行 id 给（渠道名单里客户行按项目拆成几行，id 是 c:客户:项目）
+  // 按行 id 给（渠道名单里客户行按项目拆成几行，id 是 c:客户:项目；客户池并出来的那行 k:客户，里面全是别线的才算）
   const 别客户 = new Set(别.客户.map((x) => x.id));
   const 别项目 = new Set(别.项目.map((x) => x.id));
-  const 别线ids = d.行.filter((r) => (r.种 === "客户" ? 别客户.has(r.customerId) : !!r.projectId && 别项目.has(r.projectId))).map((r) => r.id);
+  const 是别线 = (r: (typeof 平)[number]) => (r.种 === "客户" ? 别客户.has(r.customerId) : !!r.projectId && 别项目.has(r.projectId));
+  const 别线ids = [...平.filter(是别线), ...d.行.filter((r) => r.子?.every(是别线))].map((r) => r.id);
   // 持有上限开着（且我不是不限）才在页头写「我手上 N / 上限 M」，领取按钮到上限时灰着写原因（交互规则 A、C）
   const 上限 = 持有上限of(规则, me.id);
   return (
