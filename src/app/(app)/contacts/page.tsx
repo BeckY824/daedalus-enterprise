@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { 搜索词, 号码片段, 号码藏着 } from "@/lib/search-keyword";
 import ContactsView from "./ContactsView";
 import type { Prisma } from "@/generated/prisma";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 负责人候选 } from "@/lib/owners";
 import { 号码种类表, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 import { 企业版 } from "@/lib/enterprise/switch";

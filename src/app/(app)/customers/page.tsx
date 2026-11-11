@@ -8,7 +8,7 @@ import { 待确认的交接 } from "./handover-actions";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 负责人候选, 公海分配候选 } from "@/lib/owners";
 import { 可选渠道 } from "@/lib/options";
-import { 号码脱敏器, 当前是共享区 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 离职交接入口 } from "@/lib/enterprise/offboard-handover";
 import { llmEnabled } from "@/lib/llm";
 import { 客户筛选条件, 客户行字段, 成客户行, 客户金额分页, 在看子集, 只按页签, 关键词分页, 按序取客户行 } from "./query";
@@ -185,7 +185,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 ? 页面字典("custAttr") : [],
     企 ? 页面客户释义() : undefined,
     // 离职交接入口（11-03 B7-2）：开了项目模式摆在项目页头，没开摆在这里
-    企 && !b.projectMode ? 当前是共享区().then((共享) => (共享 ? null : 离职交接入口(me))) : null,
+    企 && !b.projectMode ? 离职交接入口(me) : null,
     // 「客户来源」筛选的候选（11-06 自定义筛选）：含停用的，老客户还挂着
     企 ? 渠道筛选选项() : [],
   ]);

@@ -1,6 +1,6 @@
 /**
  * 企业版「组织架构」设置页的写操作（settings/org-actions.ts）。
- * 钉的是：不是企业版 / 共享区 / 普通人 / 管理员（只读）一律拦、一行不写；11-01 起只认业务角色：总管理能改（含给人定总管理、管理员），
+ * 钉的是：不是企业版 / 普通人 / 管理员（只读）一律拦、一行不写；11-01 起只认业务角色：总管理能改（含给人定总管理、管理员），
  * 勾了「不管设置」的总管理不行，最后一位能管设置的总管理不能被改掉；
  * 部门层数、成环的上级、接口直调塞进来的别的字段都挡住；写成了留一条操作记录。
  */
@@ -9,12 +9,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "老板", email: "a@x", role: "ADMIN", title: "", avatar: null },
   企业版: true,
-  共享区: false,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => mocks.企业版 }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => mocks.共享区 }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -34,7 +32,6 @@ const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, 
 beforeEach(async () => {
   await resetDb();
   mocks.企业版 = true;
-  mocks.共享区 = false;
   const 建人 = async (email: string, name: string, role: string) => (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
   老板 = await 建人("boss", "老板", "ADMIN");
   总管 = await 建人("dir", "总管", "SALES");
@@ -47,10 +44,10 @@ beforeEach(async () => {
 });
 
 describe("谁能改", () => {
-  it("不是企业版、共享区、普通销售、管理员（只读）、账号 ADMIN 没业务角色都拦，一行不写", async () => {
+  it("不是企业版、普通销售、管理员（只读）、账号 ADMIN 没业务角色都拦，一行不写", async () => {
     const 没角色的ADMIN = (await prisma.user.create({ data: { email: "a2", name: "账号管理员", title: "", role: "ADMIN", password: "x" } })).id;
-    for (const 设 of [() => { mocks.企业版 = false; }, () => { mocks.共享区 = true; }, () => 当(销售), () => 当(管员, "ADMIN"), () => 当(没角色的ADMIN, "ADMIN")]) {
-      mocks.企业版 = true; mocks.共享区 = false; 当(老板, "ADMIN");
+    for (const 设 of [() => { mocks.企业版 = false; }, () => 当(销售), () => 当(管员, "ADMIN"), () => 当(没角色的ADMIN, "ADMIN")]) {
+      mocks.企业版 = true; 当(老板, "ADMIN");
       设();
       expect(await 建部门("内贸部", null)).toMatchObject({ ok: false, error: "只有总管理能改组织架构" });
       expect(await 设成员(销售, { line: "内贸" })).toMatchObject({ ok: false });

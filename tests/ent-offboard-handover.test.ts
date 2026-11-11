@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
-vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
@@ -451,13 +450,12 @@ describe("查重：负责人已离职指直属上级（C4-5）", () => {
 });
 
 describe("页面", () => {
-  it("设置成员页企业版办离职不再给「放进公海」；离职交接页只读、共享区、不是谁上级的人 404", async () => {
+  it("设置成员页企业版办离职不再给「放进公海」；离职交接页只读、不是谁上级的人 404", async () => {
     const members = await readFile("src/app/(app)/settings/MembersTab.tsx", "utf8");
     expect(members).toContain("deactivateUser(r.id, \"\")");
     expect(members).not.toMatch(/value[:=]\s*"公海"/);
     const page = await readFile("src/app/(app)/projects/handover/page.tsx", "utf8");
     expect(page).toContain("只读角色(me, org)");
-    expect(page).toContain("当前是共享区()");
     expect(page).toContain("notFound()");
     expect(page).toContain("managerId: me.id, userId: { not: me.id }");
   });

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 客户关键词条件, 搜索词, 号码片段, 号码藏着 } from "@/lib/search-keyword";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 读市场身份, 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 
 /**

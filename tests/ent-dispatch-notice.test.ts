@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => false }));
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();

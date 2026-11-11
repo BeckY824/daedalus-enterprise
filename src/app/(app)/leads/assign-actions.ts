@@ -50,13 +50,10 @@ const 目标of = (x: { leadId?: unknown; projectId?: unknown }): 目标 | null =
   typeof x.projectId === "string" && x.projectId ? { projectId: x.projectId } : typeof x.leadId === "string" && x.leadId ? { leadId: x.leadId } : null;
 const 没开: { ok: false; error: string } = { ok: false, error: `规则「${规则.线索分配.名}」没开：总管理在 设置 → 组织架构 里打开` };
 
-/** 规则开着才放行；共享试用区不让分 */
+/** 规则开着才放行 */
 async function 进门() {
   if (!(await 规则开着("线索分配"))) return null;
-  const me = await requireUser();
-  const { 当前是共享区 } = await import("@/lib/shared-ws/current");
-  if (await 当前是共享区()) return null;
-  return me;
+  return requireUser();
 }
 
 const 是线 = (x: unknown): x is 线 => x === "内贸" || x === "外贸";

@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
-import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 重新试跑, type 试跑报告, type 映射改动 } from "@/lib/enterprise-import/report";
 import { 写一批, 定这批业务线, type 写入结果 } from "@/lib/enterprise-import/apply";
 import { 撤回一批, 恢复一批, 留下说法, type 撤回结果, type 留下明细 } from "@/lib/enterprise-import/revert";
@@ -31,7 +30,7 @@ async function 要管理员() {
   if (!企业版()) throw new Error("企业版没开");
   const me = await requireUser();
   // 10-27 会议：导入只给老板和总管理员（lib/enterprise/import-perm.ts）
-  if (!(await 最高管理(me)) || (await 当前是共享区())) throw new Error("只有总管理能做企业版导入");
+  if (!(await 最高管理(me))) throw new Error("只有总管理能做企业版导入");
   return me;
 }
 

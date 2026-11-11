@@ -19,7 +19,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
-vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();

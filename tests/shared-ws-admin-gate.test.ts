@@ -1,14 +1,9 @@
 /**
- * 共享工作区不给管理员动作，以及「测试连接」不会把服务端的 Key 送到任意地址。
+ * 「测试连接」不会把服务端的 Key 送到任意地址，以及设置页几条容易被改坏的约定。
  *
- * 这两条是同一件事的两面。网页版只有一个共享工作区，一套固定账号密码发给要试用的团队
- * （2026-09-16 起；在那之前是免登录的共享工作区，风险同源）。那个用户的角色是 ADMIN——
- * 它得能展示管理员看到的东西——而密码在多个团队手里，于是「管理员」在那里
- * 等于「拿到过密码的任何人」。设置页里最贵的一个按钮是 AI 接入那栏的「测试连接」：
- * 它会拿一把 Key 往调用方自己填的地址发一次请求。
- *
- * 所以两道都要有：共享工作区整个不给过 requireAdmin；就算过了，环境里那把 Key
- * 也只肯发给环境里配的那个地址。少一道都够把托管版的 LLM Key 送出去。
+ * 文件名沿用网页共享工作区那时的叫法：原来这里还钉着「共享工作区不给过 requireAdmin」，
+ * 企业版没有共享区，那几条随 lib/shared-ws/current.ts 一起去掉了。
+ * Key 只肯发给环境里配的那个地址这一道与共享区无关，照旧留着。
  */
 import { describe, it, expect, afterEach } from "vitest";
 
@@ -49,54 +44,11 @@ describe("「测试连接」不把环境里的 Key 送到别处", () => {
   });
 });
 
-describe("共享工作区的管理员动作", () => {
-  it("settings 的 requireAdmin 里有共享工作区这一道", async () => {
-    /**
-     * 这一条只看源码，不跑动作：requireAdmin 要 Next 的请求上下文和一个真工作区，
-     * 搭起来的成本远大于它能证明的东西。而真正会坏的是「哪天有人把这几行删了」，
-     * 那用源码就看得出来。
-     */
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const src = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/settings/actions.ts"), "utf8");
-    const 段 = src.slice(src.indexOf("async function requireAdmin()"), src.indexOf("async function requireAdmin()") + 400);
-    expect(段).toContain("当前是共享区");
-    expect(段).toContain("FORBIDDEN");
-  });
-
-  it("「导入的自动判断」开关不走 requireAdmin，自己也拦共享区（H-037，2026-10-04）", async () => {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const src = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/settings/actions.ts"), "utf8");
-    const 起 = src.indexOf("export async function 设自动判断开关(");
-    const 段 = src.slice(起, src.indexOf("await 设自动判断(开)", 起));
-    expect(段).toMatch(/if \(await 是共享区\(\)\) throw new Error\("FORBIDDEN"\)/);
-  });
-});
-
 describe("两条容易被下一个人改坏的约定", () => {
-  it("共享工作区里界面上也不摆管理员那几栏", async () => {
+  it("「已登录的机器」只在托管版有：列表和退出都过 我的控制面账号 这一道", async () => {
     /**
-     * 服务端已经不给共享工作区过 requireAdmin 了，但界面还照旧画「AI 接入」那一栏的话：
-     * 一是点了只会报错，二是那一栏会把平台 Key 的尾 4 位显示出来。
-     * 所以取数那份（settings/SettingsBody.tsx，整页和浮层共用它）要在共享工作区里
-     * 把 isAdmin 直接按 false 传。2026-09-17 之前这段在 page.tsx 里，拆浮层时搬了家。
-     */
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const src = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/settings/SettingsBody.tsx"), "utf8");
-    expect(src).toContain("当前是共享区");
-    // 11-01 权限只认业务角色：isAdmin 改传「可进」（企业版按业务角色判能不能进设置），共享区照旧挡在「可进」最前面
-    expect(src).toMatch(/const 可进 = !共享区 &&/);
-    expect(src).toMatch(/isAdmin=\{可进\}/);
-  });
-
-  it("共享工作区里不摆「已登录的机器」——那一栏里会是别人的机器", async () => {
-    /**
-     * 设备令牌挂在控制面账号上，而共享工作区那一套账号密码发给了多个团队：
-     * A 团队打开设置页会看到 B 团队的机器名，「退出」还能把 B 正在用的那台踢下线。
-     * 所以 我的控制面账号 在共享区直接回 null，界面上那一栏整个不出现（机器 && …）。
-     * 自部署版同理：那边桌面端不连控制面，压根没有设备令牌。
+     * 我的控制面账号 在自部署版直接回 null，界面上那一栏整个不出现（机器 && …）：
+     * 那边桌面端不连控制面，压根没有设备令牌。
      */
     const fs = await import("node:fs");
     const path = await import("node:path");
@@ -104,7 +56,6 @@ describe("两条容易被下一个人改坏的约定", () => {
     const i = 动作.indexOf("async function 我的控制面账号");
     expect(i, "找不到 我的控制面账号").toBeGreaterThan(0);
     const 段 = 动作.slice(i, 动作.indexOf("\n}", i));
-    expect(段).toContain("当前是共享区");
     expect(段).toContain("托管版()");
     expect(段).toContain("return null");
     // 列表和「退出」两条路都要过这道闸，只挡住一条等于没挡
@@ -116,7 +67,7 @@ describe("两条容易被下一个人改坏的约定", () => {
 
     const 界面 = fs.readFileSync(path.resolve(__dirname, "../src/app/(app)/settings/PasswordTab.tsx"), "utf8");
     expect(界面).toContain("已登录的机器");
-    // null 就整栏不画：共享区和自部署版拿到的都是 null
+    // null 就整栏不画：自部署版拿到的是 null
     expect(界面).toMatch(/\{机器 && \(/);
   });
 

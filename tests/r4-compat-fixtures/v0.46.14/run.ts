@@ -24,7 +24,7 @@ import type { Emit } from "@/lib/ai-steps";
 import type { BriefRecord } from "@/lib/ai-draft";
 import type { BusinessConfig } from "@/lib/business-config";
 import { dayjs, 现在带周几 } from "@/lib/utils";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 
 export type AgentEvents = {
   emit?: Emit;

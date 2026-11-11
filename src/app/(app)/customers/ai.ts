@@ -151,13 +151,8 @@ export async function 导入认列状态(): Promise<{ 能认列: boolean }> {
   return { 能认列: await 能认列() };
 }
 
-/**
- * 开关开着、并且不是共享试用区。共享区那个开关谁都改不了（H-037），默认关，本来就是关的；
- * 这里再拦一道，是怕 10-04 之前有人在那儿手动打开过、存下了「开」
- */
+/** 开关开着才认列 */
 async function 能认列(): Promise<boolean> {
   if (await 正在切换视图()) return false; // 只读预览不外发，导入认列回落规则
-  if (!(await 自动判断开着())) return false;
-  const { 当前是共享区 } = await import("@/lib/shared-ws/current");
-  return !(await 当前是共享区());
+  return 自动判断开着();
 }

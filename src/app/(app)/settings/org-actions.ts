@@ -40,8 +40,6 @@ function 改完了() {
 async function 能改的人() {
   if (!企业版()) return null;
   const me = await requireUser();
-  const { 当前是共享区 } = await import("@/lib/shared-ws/current");
-  if (await 当前是共享区()) return null;
   return 能改后台设置(me, await 权限组织()) ? { me } : null;
 }
 const 不能改 = { ok: false as const, error: "只有总管理能改组织架构" };
@@ -251,12 +249,10 @@ export async function 设规则(on: boolean, 名: 规则名 = "按组织看客�
   }
 }
 
-/** 「后台设置谁能改」里管的那几样（字段权限表等）：企业版、不在共享区，再按表查；能改给 me，不能改给那句话 */
+/** 「后台设置谁能改」里管的那几样（字段权限表等）：企业版，再按表查；能改给 me，不能改给那句话 */
 async function 能改这项(项: 设置项名): Promise<{ me: SessionUser } | { error: string }> {
   if (!企业版()) return { error: "这是企业版组织架构里的设置" };
   const me = await requireUser();
-  const { 当前是共享区 } = await import("@/lib/shared-ws/current");
-  if (await 当前是共享区()) return { error: "共享试用区不能改后台设置" };
   const 挡 = await 挡改设置(me, 项);
   return 挡 ? { error: `${设置项[项].名}${挡}` } : { me };
 }

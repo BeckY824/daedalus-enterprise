@@ -15,7 +15,7 @@ import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from
 import { 负责人候选 } from "@/lib/owners";
 import { 可选渠道 } from "@/lib/options";
 import { llmEnabled } from "@/lib/llm";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 带币种, 签约金额, 签约币种, 签约合计, 商机币种 } from "@/lib/money-db";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";

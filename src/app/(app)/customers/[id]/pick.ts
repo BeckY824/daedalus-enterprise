@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { 客户关键词条件 } from "@/lib/search-keyword";
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
 import { requireUser } from "@/lib/auth";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 
 /**
  * 列表页上「新建计划 / 记录跟进」先挑人用的两个读取（2026-09-29）。
@@ -31,7 +31,7 @@ export async function 搜客户(关键词: string): Promise<可挑客户[]> {
     take: 词 ? 20 : 8,
     select: { id: true, name: true, school: true, phone: true },
   });
-  // 同名的人靠公司和号码分；共享工作区里号码照样打码（lib/shared-ws/current.ts）
+  // 同名的人靠公司和号码分；电话设成看不到的角色号码照样打码（lib/enterprise/phone-mask.ts）
   return rows.map((c) => ({ id: c.id, name: c.name, 附注: [c.school, 号(c.phone)].filter(Boolean).join(" · ") || null }));
 }
 
