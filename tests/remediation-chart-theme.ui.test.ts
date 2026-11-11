@@ -24,7 +24,7 @@ it("真实ECharts原地切换五主题与底色，主色/文字/背景即时跟�
  }
  await p.evaluate(()=>{document.documentElement.dataset.skin='tech';document.documentElement.dataset.paper='white'});
  await expect.poll(()=>p.evaluate(()=>{const o=Reflect.get(window,"__options")();return [o.tooltip[0].backgroundColor,getComputedStyle(document.documentElement).getPropertyValue('--panel').trim()]})).toSatisfy(v=>v[0].toLowerCase()===v[1].toLowerCase());
- const original=await p.evaluate(()=>Reflect.get(window,"__original"));expect(original.series[0].lineStyle.color).toBe("#2f6bff");
+ const original=await p.evaluate(()=>Reflect.get(window,"__original"));expect(original.series[0].lineStyle.color).toBe("#0a66d8"); // 16a 主色 #2f6bff → #0a66d8（palette.brand）
  }finally{await p.close()}
 });
 it("阶段标签随主题分类色更新，图表渐变透明度保留，卸载后重建正常",async()=>{
