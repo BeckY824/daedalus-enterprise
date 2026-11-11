@@ -39,11 +39,22 @@ export type CustomerRosterData = {
     nextPlanAt?: string | null;
   }[];
   /**
+   * 「我的」页签：自己负责的最近 50 位，另取（不是从 rows 那 50 位里再筛，11-11 实点：「全部」都是别人的时「我的」成了空的）。
+   * 不给就照旧从 rows 里筛 mine
+   */
+  mineRows?: CustomerRosterData["rows"];
+  /**
    * 企业版：按客户状态分组（10-29）。顺序 = 字典里启用的几项按字典排，颜色按字典项给（lib/enterprise/cust-status-color.ts）。
    * 别的版本不给，照旧按跟进状态分
    */
   客户状态?: { 顺序: string[]; 颜色: Record<string, string> } | null;
 };
+
+/** 名单里搜：不分大小写，英文名搜「john」也得找到「John」（第六轮疑似） */
+function 搜名单(xs: CustomerRosterData["rows"], q: string) {
+  const k = q.trim().toLowerCase();
+  return xs.filter((r) => !k || r.name.toLowerCase().includes(k) || (r.lastNote ?? "").toLowerCase().includes(k));
+}
 
 /**
  * 记录页左边的窄名单：最近跟进过的 50 位，点一行就换人看。
@@ -70,11 +81,8 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
   const 搜索框 = useRef<HTMLInputElement>(null);
   const activeId = pathname.startsWith("/customers/") ? pathname.split("/")[2] : "";
 
-  const rows = useMemo(() => {
-    // 不分大小写：英文名搜「john」也得找到「John」（第六轮疑似）
-    const k = q.trim().toLowerCase();
-    return data.rows.filter((r) => !k || r.name.toLowerCase().includes(k) || (r.lastNote ?? "").toLowerCase().includes(k));
-  }, [data.rows, q]);
+  const rows = useMemo(() => 搜名单(data.rows, q), [data.rows, q]);
+  const 我的rows = useMemo(() => (data.mineRows ? 搜名单(data.mineRows, q) : null), [data.mineRows, q]);
 
   /*
     按跟进状态分组、组可以折叠（2026-10-02，学 MonoCode 的会话列表）：50 位挤成一列时，
@@ -93,12 +101,14 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
   const 当前页签 = 页签 === "我的" && !有别人的 ? "全部" : 页签;
   const 页签里 = useMemo(
     () =>
-      rows.filter((r) =>
-        当前页签 === "我的" ? r.mine !== false : 当前页签 === "本周" ? Boolean(r.nextPlanAt && dayjs(r.nextPlanAt).isBefore(七天后)) : true,
-      ),
+      当前页签 === "我的" && 我的rows
+        ? 我的rows
+        : rows.filter((r) =>
+            当前页签 === "我的" ? r.mine !== false : 当前页签 === "本周" ? Boolean(r.nextPlanAt && dayjs(r.nextPlanAt).isBefore(七天后)) : true,
+          ),
     // 七天后 每次渲染都新算，按天变就够了，不进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, 当前页签],
+    [rows, 我的rows, 当前页签],
   );
   const 分组 = !q.trim();
   // 分组规则在 lib/roster-groups.ts：预设外的单独成组、空串归「未填写」，一个人都不能消失（2026-10-04 L-072）

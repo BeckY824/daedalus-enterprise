@@ -47,7 +47,7 @@ export default async function PoolPage({
   const 能分配 = 能管公海(me, 权限org);
   const [d, users, 规则, 有, 渠道筛选项] = await Promise.all([
     读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId }, 正整数(sp.page, 1), pageSize),
-    // 分配给谁：老板、主管才用得上；只列能当负责人的，不是系统管理员只列同业务线的（11-03 B2-7）
+    // 分配给谁：老板、主管才用得上；只列能当负责人的，不限业务线（P-转-08）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
     生效组织规则(),
     持有数(prisma, me.id),

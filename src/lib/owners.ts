@@ -31,7 +31,7 @@ export const 负责人候选 = cache(async () => {
   return prisma.user.findMany({ where: await 负责人口径(), ...选项 });
 });
 
-/** 公海「分配给…」的下拉（11-03 B2-7）：负责人候选里分得过去的——不是系统管理员时只剩同业务线的。不是企业版 = 负责人候选 */
+/** 公海「分配给…」、离职交接接手人的下拉：负责人候选里能当负责人的，不限业务线（P-转-08，覆盖 11-03 B2-7）。不是企业版 = 负责人候选 */
 export async function 公海分配候选(me: 谁) {
   const [们, org] = await Promise.all([负责人候选(), 权限组织()]);
   return org ? 们.filter((u) => 公海分不给话(me, org, u.id) === null) : 们;

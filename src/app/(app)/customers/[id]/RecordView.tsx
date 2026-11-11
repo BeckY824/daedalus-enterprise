@@ -161,6 +161,7 @@ export default function RecordView({
   原负责人领不回 = false,
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
+  只读横幅,
   只能看的格 = 无格,
   管理员只读 = false,
   能领 = true,
@@ -981,8 +982,8 @@ export default function RecordView({
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message={全只读 ? `${虚线的 ? "虚线下属 " : ""}${customer.salesOwnerName} 的${b.customer} · 只能看` : `同事 ${customer.salesOwnerName} 的${b.customer} · 只能看和加跟进`}
-          description={全只读 ? `${全只读话}。要改请找${虚线的 ? "他的直属上级" : "负责人"}或总管理` : "团队开了「同事之间互相看得到客户」。改资料、删除、转交、排计划请找负责人或" + (企业 ? "总管理" : "老板")}
+          message={全只读 ? (只读横幅?.标题 ?? `${虚线的 ? "虚线下属 " : ""}${customer.salesOwnerName} 的${b.customer} · 只能看`) : `同事 ${customer.salesOwnerName} 的${b.customer} · 只能看和加跟进`}
+          description={全只读 ? (只读横幅?.说明 ?? `${全只读话}。要改请找${虚线的 ? "他的直属上级" : "负责人"}或总管理`) : "团队开了「同事之间互相看得到客户」。改资料、删除、转交、排计划请找负责人或" + (企业 ? "总管理" : "老板")}
         />
       )}
 
