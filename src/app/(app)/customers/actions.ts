@@ -42,7 +42,7 @@ import { 查电话, 规整手机号, 认回打码号 } from "@/lib/phone";
 import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
 import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
-import { 带走并记下, 还项目, 带过来对不上, 数转走的项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
+import { 带走并记下, 带走并记下在事务里, 还项目, 带过来对不上, 数转走的项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
@@ -62,8 +62,9 @@ import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/
 import { 号码撞上, 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import { setOppStatus } from "../opportunities/actions";
 import { 认得 } from "@/lib/project/hook";
-import { 客户的项目数, 超上限n } from "@/lib/project/db";
+import { 客户的项目数, 持有上限起点, 写前核上限, 整批或不做 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import type { 组织规则 } from "@/lib/project/org-rules";
 import { 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整外贸档案, 规整阿里ID, 认国家, type 外贸档案 } from "@/lib/customer-extra";
 import { 写外贸档案 } from "@/lib/customer-extra-db";
@@ -72,7 +73,7 @@ import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type �
 import { 认业务线, 业务线不认得 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
-import { 交接通知, 分给你通知, 改负责人通知 } from "@/lib/enterprise/notice-sources";
+import { 交接通知, 分给你通知, 改负责人通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 
@@ -1238,24 +1239,13 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 当场换：正在移交 / 交接中的不能再转（X-38 → P-转-05），上级、系统管理员也一样，先撤回或等对方拒收
   const 中 = await 移交中挡(ids, salesOwnerId);
   if (中) return { ok: false, error: 中 };
-  const 超 = await 接待分配超上限(ids, salesOwnerId);
-  if (超) return { ok: false, error: 超 };
   await 钉住老签约();
-  // 先记下每位原来归谁：他们没做完的活要跟着走（排查 B3）
-  const 换人的 = await prisma.customer.findMany({
-    where: { id: { in: ids }, salesOwnerId: { not: salesOwnerId } },
-    select: { id: true, salesOwnerId: true },
-  });
-  const res = await prisma.customer.updateMany({
-    where: { id: { in: ids }, salesOwnerId: { not: salesOwnerId } },
-    data: { salesOwnerId },
-  });
-  // 限定着改（企业版虚线上级只能看、团队版同事互看）：看得到的客户里有改不动的，那几位没换人，下面的项目和活也不能跟着走
-  const 换成了 = res.count === 换人的.length ? 换人的 : await 看全部(async () => {
-    const 已换 = new Set((await prisma.customer.findMany({ where: { id: { in: 换人的.map((c) => c.id) }, salesOwnerId }, select: { id: true } })).map((c) => c.id));
-    return 换人的.filter((c) => 已换.has(c.id));
-  });
-  const { 数: 带走, 记下: 带过来, 没转成, 留下 } = await 带走并记下(换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, me.id);
+  // 改负责人、名下的活跟着走、核持有上限（接待分配），一个事务做完（M-公海-18，11-11）：超了整批回滚，一个都没转
+  const 写 = await 接待分配写(ids, salesOwnerId, me.id);
+  if (!写.ok) return { ok: false, error: 写.超 };
+  const { res, 换成了, 带: { 数: 带走, 记下: 带过来, 没转成, 留下, 同事待分配 } } = 写.值;
+  // 转客户带走了同事的项目（待分配的、在推的）：事务提交了才告诉这位同事（P-转-19）
+  if (同事待分配.length) await 同事待分配随客户通知(me.id, salesOwnerId, 同事待分配);
   // 改完又被别人改走的不算转成：不通知、不计数、不进撤销（撤销会把别人的改动盖掉）
   const 转成了 = 换成了.filter((c) => !没转成.includes(c.id));
   await 改负责人通知(me, 转成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId);
@@ -1288,12 +1278,45 @@ async function 没转和不存在(ids: string[], 算过: number): Promise<{ miss
 
 /**
  * 直接转客户（不走交接）会随客户带给新负责人的同事待分配项目（= 接待分配，转过去清待分配就算持有；P-转-07）：
- * 加上手上已有的超了持有上限就不转，回一句说清谁、上限、现有几个（M-公海-18，11-09）。
- * 原负责人自己的项目跟着客户走照旧不拦（超上限 的说明）；走交接的到确认那一步再核
+ * 加上手上已有的超了持有上限就不转，回一句说清谁、上限、现有几个、这次要分配几个（M-公海-18，11-09）。
+ * 原负责人自己的项目、同事在推的跟着客户走照旧不拦（超上限 的说明），所以只数同事待分配的、写之前数（写前核上限）；走交接的到确认那一步再核。
+ * 11-11 起数和写在同一个事务里：两次分配同时进来，后到的那次数的时候先到的已经写完，不会两次都过
+ */
+async function 接待分配核上限(tx: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user">, 规则: 组织规则, ids: string[], 新: string): Promise<void> {
+  const 起 = await 持有上限起点(tx, 规则, 新);
+  if (!起) return;
+  await 写前核上限(tx, 起, await 数进手的持有项目(ids, 新, { 同事待分配: true }, tx), "分配");
+}
+
+/**
+ * 批量直接转客户的写入（assignSalesOwner）：一个事务里核接待分配的持有上限、改负责人、名下的活和项目跟着走；超了抛 整批超上限 整批回滚。
+ * 限定着改（企业版虚线上级只能看、团队版同事互看）：看得到的客户里有改不动的，那几位没换人，下面的项目和活也不能跟着走
+ */
+async function 接待分配写(ids: string[], salesOwnerId: string, 操作人: string) {
+  const 规则 = await 生效组织规则();
+  const org = 企业版() ? await 权限组织() : null;
+  return 整批或不做(() => 查完再写(async (tx) => {
+    // 先记下每位原来归谁：他们没做完的活要跟着走（排查 B3）
+    const 换人的 = await tx.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: salesOwnerId } }, select: { id: true, salesOwnerId: true } });
+    await 接待分配核上限(tx, 规则, 换人的.map((c) => c.id), salesOwnerId);
+    const res = await tx.customer.updateMany({ where: { id: { in: 换人的.map((c) => c.id) }, salesOwnerId: { not: salesOwnerId } }, data: { salesOwnerId } });
+    const 换成了 = res.count === 换人的.length ? 换人的 : await 看全部(async () => {
+      const 已换 = new Set((await tx.customer.findMany({ where: { id: { in: 换人的.map((c) => c.id) }, salesOwnerId }, select: { id: true } })).map((c) => c.id));
+      return 换人的.filter((c) => 已换.has(c.id));
+    });
+    const 带 = await 带走并记下在事务里(tx, 换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, 操作人, "assign", org);
+    return { res, 换成了, 带 };
+  }, { timeout: 30_000 }));
+}
+
+/**
+ * 单条改负责人（编辑页保存、就地改）：仍在写之前、事务外按此刻的数据核一遍接待分配，超了回那句话。
+ * 这两条路改负责人走乐观锁 + 合并重试、带活另开事务，没并进同一个事务（并发合计超限的窗口还在，留后续）
  */
 async function 接待分配超上限(ids: string[], 新: string): Promise<string | null> {
-  const 进 = await 数进手的持有项目(ids, 新, { 同事待分配: true });
-  return 进 ? 超上限n(prisma, await 生效组织规则(), 新, 进) : null;
+  const 规则 = await 生效组织规则();
+  const r = await 整批或不做(() => 接待分配核上限(prisma, 规则, ids, 新));
+  return r.ok ? null : r.超;
 }
 
 /**

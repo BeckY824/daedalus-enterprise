@@ -1489,45 +1489,8 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
     };
     afterEach(() => { mocks.读组织前 = null; });
 
-    it("批量转：不写回、不清待分配、不进撤销，也不算转成", async () => {
-      const x = await 市场客户();
-      被抢走(x.c, 甲);
-      const r = await 以(市场, () => assignSalesOwner([x.c], 甲.id));
-      await 都没动(x, 丙.id);
-      expect(r).toMatchObject({ ok: true, updated: 0, 原值: [], 带走: { 没转成: 1 } });
-      if (!r.ok) throw new Error(r.error);
-      expect(r.带过来).toMatchObject({ 项目: [], 公海项目: [] });
-      expect(r.带过来?.清待分配).toBeUndefined();
-      // 接手人没收到「分给你」
-      expect(await 通知们(甲.id)).toHaveLength(0);
-    });
-
-    it("一批里只被抢走一位：另一位照常转，计数只算转成的", async () => {
-      const x = await 市场客户();
-      const y = await 市场客户();
-      被抢走(y.c, 甲);
-      const r = await 以(市场, () => assignSalesOwner([x.c, y.c], 甲.id));
-      expect(r).toMatchObject({ ok: true, updated: 1, 带走: { 没转成: 1 } });
-      if (!r.ok) throw new Error(r.error);
-      expect(r.原值?.map((v) => v.id)).toEqual([x.c]);
-      expect(await 客户负责人(x.c)).toBe(甲.id);
-      expect(await 客户负责人(y.c)).toBe(丙.id);
-      expect((await 项目of(x.等分)).awaitAssignAt).toBeNull();
-      expect((await 项目of(y.等分)).awaitAssignAt).not.toBeNull();
-      // 通知只说转成的这位（单条的标题带客户名）
-      const 分配 = (await 通知们(甲.id)).filter((n) => n.kind === "分配");
-      expect(分配).toHaveLength(1);
-      expect(分配[0].link).toBe(`/customers/${x.c}`);
-    });
-
-    it("确认交接：同样不动，接手数不算这位", async () => {
-      await 开交接确认();
-      const x = await 市场客户();
-      const { h } = await 混批走交接([x.c], 甲);
-      被抢走(x.c, 甲);
-      expect(await 以(甲, () => 确认交接(h.id))).toEqual({ ok: true, 客户: 0 });
-      await 都没动(x, 丙.id);
-    });
+    // 批量转（assignSalesOwner）、确认交接：11-11 起改负责人、带活、核持有上限在同一个事务里（M-公海-18），
+    // 没有「外层改完、进事务前被改走」这个窗口了，这两条不再造；单条改负责人（客户页、编辑表单）仍是两步，照测
 
     it("客户页改负责人：不写回、不通知", async () => {
       const x = await 市场客户();
@@ -1553,13 +1516,6 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
       await 活还在(y.t, y.pl, 市场成员.id);
       expect((await 项目of(y.等分)).awaitAssignAt).not.toBeNull();
       expect(await 通知们(乙.id)).toHaveLength(0);
-    });
-
-    it("被放进公海：一样不走，不会把活带给接手人", async () => {
-      const x = await 市场客户();
-      被抢走(x.c, 甲, () => prisma.customer.update({ where: { id: x.c }, data: { salesOwnerId: 总管.id, pool: { create: {} } } }));
-      await 以(市场, () => assignSalesOwner([x.c], 甲.id));
-      await 都没动(x, null);
     });
   });
 
@@ -2126,9 +2082,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
         const r = await 转();
         expect(r.ok).toBe(false);
         const 话 = (r as { error: string }).error;
-        expect(话).toContain("销售甲某");
-        expect(话).toContain("已经有 1 个");
-        expect(话).toContain("持有上限（1 个）");
+        expect(话).toBe("销售甲某名下现在有 1 个线索 / 商机阶段的项目，持有上限 1 个，这次要分配 1 个，最多还能分配 0 个；超了上限，这一批一个都没分配，先推进或放回一些，或者少选几个再分配");
         expect(await 客户负责人(c)).toBe(市场.id);
         expect(await 项目of(自己的)).toMatchObject({ ownerId: 市场.id });
         expect(await 项目of(待分配)).toMatchObject({ ownerId: 丙.id });
@@ -2187,7 +2141,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       const [h] = (await 以(丙, () => 待确认的交接())).等我确认;
       const r = await 以(丙, () => 确认交接(h.id));
       expect(r.ok).toBe(false);
-      expect((r as { error: string }).error).toContain("再接这 2 个");
+      expect((r as { error: string }).error).toContain("这次要交接 2 个，最多还能交接 1 个；超了上限，这笔交接没有确认、还在等你确认");
       expect(await 客户负责人(c)).toBe(甲.id);
       expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: h.id } })).status).toBe("待确认");
       await 上限(3);
@@ -2205,7 +2159,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       const h = await prisma.entHandover.create({ data: { kind: "离职", way: "转交", fromUserId: 甲.id, toUserId: 丙.id, byUserId: 总管.id, customerIds: JSON.stringify([c]), counts: JSON.stringify({ 客户: 1 }) } });
       const r = await 以(丙, () => 确认交接(h.id));
       expect(r.ok).toBe(false);
-      expect((r as { error: string }).error).toContain("再接这 2 个");
+      expect((r as { error: string }).error).toContain("这次要交接 2 个，最多还能交接 1 个；超了上限，这笔交接没有确认");
       expect(await 客户负责人(c)).toBe(甲.id);
       await 上限(3);
       expect(await 以(丙, () => 确认交接(h.id))).toMatchObject({ ok: true });
@@ -2298,7 +2252,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
         await 上限(2);
         const r = await 以(总管, () => 交接客户(甲.id, x.c, 丙.id));
         expect(r.ok).toBe(false);
-        expect((r as { error: string }).error).toContain("再接这 2 个");
+        expect((r as { error: string }).error).toContain("这次要交接 2 个，最多还能交接 1 个；超了上限，这次一个都没交");
         expect(await 客户负责人(x.c)).toBe(甲.id);
         await 上限(3);
         expect(await 以(总管, () => 交接客户(甲.id, x.c, 丙.id))).toMatchObject({ ok: true });
@@ -2309,7 +2263,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
         await 上限(1);
         const r = await 以(总管, () => 交接项目(甲.id, x.挂别处, 丙.id));
         expect(r.ok).toBe(false);
-        expect((r as { error: string }).error).toContain("到持有上限（1 个）了");
+        expect((r as { error: string }).error).toContain("这次要交接 1 个，最多还能交接 0 个");
         expect(await 项目of(x.挂别处)).toMatchObject({ ownerId: 甲.id });
         await 上限(2);
         expect(await 以(总管, () => 交接项目(甲.id, x.挂别处, 丙.id))).toMatchObject({ ok: true });
@@ -2319,7 +2273,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
         await 上限(3);
         const r = await 以(总管, () => 交接全部(甲.id, 丙.id));
         expect(r.ok).toBe(false);
-        expect((r as { error: string }).error).toContain("再接这 3 个");
+        expect((r as { error: string }).error).toContain("这次要交接 3 个，最多还能交接 2 个");
         expect(await 客户负责人(x.c)).toBe(甲.id);
         await 上限(4);
         expect(await 以(总管, () => 交接全部(甲.id, 丙.id))).toMatchObject({ ok: true });
@@ -2409,14 +2363,14 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
         await 上限(1);
         const r1 = await 以(总管, () => 交接客户(甲.id, x.c, 丙.id));
         expect(r1.ok).toBe(false);
-        expect((r1 as { error: string }).error).toContain("到持有上限（1 个）了");
+        expect((r1 as { error: string }).error).toContain("这次要交接 1 个，最多还能交接 0 个");
         const r2 = await 以(总管, () => 交接项目(甲.id, x.挂别处待分配, 丙.id));
         expect(r2.ok).toBe(false);
-        expect((r2 as { error: string }).error).toContain("到持有上限（1 个）了");
+        expect((r2 as { error: string }).error).toContain("这次要交接 1 个，最多还能交接 0 个");
         await 上限(2);
         const r3 = await 以(总管, () => 交接全部(甲.id, 丙.id));
         expect(r3.ok).toBe(false);
-        expect((r3 as { error: string }).error).toContain("再接这 2 个");
+        expect((r3 as { error: string }).error).toContain("这次要交接 2 个，最多还能交接 1 个");
         await 上限(3);
         expect(await 以(总管, () => 交接全部(甲.id, 丙.id))).toMatchObject({ ok: true });
         expect(await 持有数(prisma, 丙.id)).toBe(3);
@@ -2433,7 +2387,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       const [h] = (await 以(丙, () => 待确认的交接())).等我确认;
       const r = await 以(丙, () => 确认交接(h.id));
       expect(r.ok).toBe(false);
-      expect((r as { error: string }).error).toContain("到持有上限（1 个）了");
+      expect((r as { error: string }).error).toContain("这次要交接 1 个，最多还能交接 0 个");
       await 上限(2);
       expect(await 以(丙, () => 确认交接(h.id))).toMatchObject({ ok: true });
       expect(await 持有数(prisma, 丙.id)).toBe(2);

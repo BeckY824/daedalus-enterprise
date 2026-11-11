@@ -164,7 +164,7 @@ describe("负责人本人转客户 = 申请移交", () => {
     当(接手);
     const r = await 确认交接(h.id);
     expect(r.ok).toBe(false);
-    expect((r as { error: string }).error).toContain("再接这 2 个");
+    expect((r as { error: string }).error).toContain("这次要交接 2 个，最多还能交接 1 个");
     expect(await 归谁(a.id)).toBe(销售.id);
     expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: h.id } })).status).toBe("待确认");
     await 上限(3);

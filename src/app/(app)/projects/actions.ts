@@ -18,7 +18,7 @@ import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, 占位名提示, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
+import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -66,6 +66,9 @@ function 刷新项目(projectId?: string, customerId?: string) {
 }
 
 export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进 };
+
+/** 建档时指派给别人超了持有上限：「超了上限，」后面那半句 */
+const 建档超上限尾 = "客户和项目都没有建；先推进或放回一些，或者换一位负责人";
 
 /**
  * 建档向导的最后一步：客户、主要联系人、项目、首条跟进一笔建好。
@@ -150,8 +153,7 @@ export async function 建档向导(输入: 建档向导输入) {
         // 市场指定给销售 = 市场首次分配，算转客户（X-18，和自动分配同一条）；其余角色指定给别人，客户留在建的人名下（P-转-03）
         转客户 = 算市场转客户(org, { salesOwnerId: me.id, pool: null }, 好.项目.ownerId);
       }
-      const 超 = await 超上限(prisma, 规则, 好.项目.ownerId, { phase: "线索", result: null });
-      if (超) return { ok: false as const, error: 超 };
+      // 持有上限不在这里核：企业版建档的事务里核（接着 里 写前核上限，11-11），两次同时建不会都过；不是企业版不拦
     }
 
     /*
@@ -188,6 +190,8 @@ export async function 建档向导(输入: 建档向导输入) {
     // 指定给别人时，客户一建好在我这儿就可能是只读的（市场成员建的、负责人不是我），
     // 后面写「最后跟进时间」、联系号码、客户状态会被范围拦下，整笔回滚
     const 接着 = !企 ? 登记接着建((tx, customerId) => 看全部(() => 向导(tx, customerId))) : 登记接着建((tx, customerId) => 看全部(async () => {
+      // 持有上限（M-公海-18）：指派给别人，新建的线索项目算 1 个，和建在同一个事务里核（11-11），超了整笔回滚、客户项目都没建
+      if (好.项目.ownerId !== me.id) await 写前核上限(tx, await 持有上限起点(tx, 规则, 好.项目.ownerId), 1, "分配", 建档超上限尾);
       for (const 号 of 要查) {
         const ids = await 全公司查号(tx, 号.类型, 号.值, 号.键, customerId);
         if (ids.length) throw new 联系人号码撞了(ids, 号.格);
@@ -208,6 +212,7 @@ export async function 建档向导(输入: 建档向导输入) {
       const 客户负责人 = 企 && 好.项目.ownerId !== me.id ? { salesOwnerId: me.id } : {};
       r = await saveCustomer({ ...input.客户, ...客户线, ...客户负责人, id: undefined, updatedAt: null, base: null }, 接着);
     } catch (e) {
+      if (e instanceof 整批超上限) return { ok: false as const, error: e.话 };
       if (!(e instanceof 联系人号码撞了)) throw e;
       return { ok: false as const, error: `${e.格}：${(await 撞号结论(prisma, e.ids, me.id, await 读的我(defaultClient))).提示}` };
     }

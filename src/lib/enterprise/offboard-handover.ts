@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 钉住老签约 } from "@/lib/contract-owner";
-import { 带走一位, 转项目, 数进手的持有项目 } from "@/lib/carry-over-db";
+import { 带走一位, 转项目 } from "@/lib/carry-over-db";
 import { 看全部 } from "@/lib/team-scope";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 停用分拣, 停用的同事, 离职进手的持有项目 } from "@/lib/offboard-db";
-import { 算持有的项目, 超上限n } from "@/lib/project/db";
+import { 停用分拣, 停用的同事 } from "@/lib/offboard-db";
+import { 持有上限起点, 整批核上限 } from "@/lib/project/db";
+import { 查完再写 } from "@/lib/check-then-write";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 离职转给接手人 } from "@/lib/offboard-move";
@@ -231,32 +232,25 @@ export async function 交接挡(me: 谁, fromId: string, toId: string): Promise<
 }
 
 /**
- * 交之前核持有上限（M-公海-18，11-09，同确认离职交接）：这一下会新进接手人手上几个算持有的项目，加上他手上已有的超了就不交，回那句话。
- * 按此刻数据数，条件同真交：交一位客户 = 跟着客户走的他自己的（含待分配的）+ 同事待分配的 + 已停用同事进行中的（带走一位 deactivate）；交一个项目 = 这一个（待分配的交过去清掉，也算）；
- * 全部交给 = 此刻重新分拣给接手人的（同确认离职交接）。没开项目模式不动项目，不拦
+ * 持有上限（M-公海-18，11-09 拦；11-11 起核和交在同一个事务里）：交一位客户 / 交一个项目 / 全部交给，动手前记下接手人名下原有几个，
+ * 交完再数，比原来多了又超了上限就抛 整批超上限、整个事务回滚，一个都没交（调用方用 整批或不做 接住回那句话）；并发的两次后到的那次整批失败。
+ * 拦的范围照旧：交一位客户 = 跟着客户走的他自己的（含待分配的）+ 同事待分配的 + 已停用同事进行中的（带走一位 deactivate）；
+ * 交一个项目 = 这一个（待分配的交过去清掉，也算）；全部交给 = 此刻分拣给接手人的。都是真进接手人手上的，写完再数就是原来先数的那个数。
+ * 没开项目模式不动项目，数出来不会多，自然不拦
  */
-export async function 交了超上限(fromId: string, toId: string, 交: { 客户: string } | { 项目: string } | "全部"): Promise<string | null> {
-  if (!(await 项目模式())) return null;
-  const 进 = await 看全部(async () => {
-    if (交 === "全部") return 离职进手的持有项目(prisma, fromId, "转交", toId);
-    if ("客户" in 交) {
-      const c = await prisma.customer.findFirst({ where: { id: 交.客户, salesOwnerId: fromId, pool: { is: null } }, select: { id: true } });
-      return c ? 数进手的持有项目([c.id], toId, { 自己的: true, 同事待分配: true, 停用同事: true }) : 0;
-    }
-    // 他自己占着待分配的也算：交过去清待分配（P-转-20）
-    return prisma.project.count({ where: { id: 交.项目, ownerId: fromId, pooledAt: null, ...算持有的项目 } });
-  });
-  return 进 ? 超上限n(prisma, await 生效组织规则(), toId, 进) : null;
-}
+const 交接超上限尾 = "这次一个都没交；先让接手人推进或放回一些，或者换一位接手人";
 
 /** 交一位客户：负责人还是他、不在公海才交；没做完的活跟着走，开了项目模式项目跟着客户走 */
 export async function 交一位客户(me: 谁, fromId: string, customerId: string, toId: string): Promise<boolean> {
   const 带项目 = await 项目模式();
+  const 规则 = await 生效组织规则();
   await 钉住老签约();
-  return 看全部(() => prisma.$transaction(async (tx) => {
+  return 看全部(() => 查完再写(async (tx) => {
+    const 起 = await 持有上限起点(tx, 规则, toId);
     const 改 = await tx.customer.updateMany({ where: { id: customerId, salesOwnerId: fromId, pool: { is: null } }, data: { salesOwnerId: toId } });
     if (!改.count) return false;
     await 带走一位(tx, customerId, fromId, toId, me.id, "deactivate", 带项目);
+    await 整批核上限(tx, 起, "交接", 交接超上限尾);
     return true;
   }));
 }
@@ -264,10 +258,13 @@ export async function 交一位客户(me: 谁, fromId: string, customerId: strin
 /** 交一个项目（项目模式才有）：还是他负责、没进公海、没结局才交 */
 export async function 交一个项目(me: 谁, fromId: string, projectId: string, toId: string): Promise<boolean> {
   if (!(await 项目模式())) return false;
-  const ids = await 看全部(() => prisma.$transaction(async (tx) => {
+  const 规则 = await 生效组织规则();
+  const ids = await 看全部(() => 查完再写(async (tx) => {
+    const 起 = await 持有上限起点(tx, 规则, toId);
     const 转了 = await 转项目(tx, { id: projectId, ownerId: fromId, pooledAt: null, result: null }, toId, me.id);
     // 他自己占着待分配的，交过去清待分配（P-转-20、X-84）
     if (转了.length) await tx.project.updateMany({ where: { id: { in: 转了 }, awaitAssignAt: { not: null } }, data: { awaitAssignAt: null } });
+    await 整批核上限(tx, 起, "交接", 交接超上限尾);
     return 转了;
   }));
   return ids.length > 0;
@@ -276,12 +273,15 @@ export async function 交一个项目(me: 谁, fromId: string, projectId: string
 /** 一键全部交给一个人：同原来办离职的「全部转交」，客户、商机、待办计划、线索、渠道（连他当负责人的主渠道），开了项目模式再加项目 */
 export async function 全部交给(me: 谁, fromId: string, toId: string) {
   const 带项目 = await 项目模式();
+  const 规则 = await 生效组织规则();
   await 钉住老签约();
   const 记分配 = await 规则开着("线索分配");
-  return 看全部(() => prisma.$transaction(async (tx) => {
+  return 看全部(() => 查完再写(async (tx) => {
+    const 起 = await 持有上限起点(tx, 规则, toId);
     const 分 = await 停用分拣(tx, fromId, "转交", true);
     if (!带项目) 分.项目 = [];
     const 项目 = await 离职转给接手人(tx, 分, fromId, toId, me.id, 记分配);
+    await 整批核上限(tx, 起, "交接", 交接超上限尾);
     return { 客户: 分.客户, 商机: 分.商机, 待办: 分.待办, 计划: 分.计划, 线索: 分.线索, 渠道: 分.渠道, 主渠道: 分.主渠道, 项目 };
   }, { timeout: 30_000 }));
 }

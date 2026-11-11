@@ -11,7 +11,7 @@ import { 公海领走接手理由 } from "@/lib/project/blocker";
 import { 换负责人待办, 待办痕, 接上待办痕 } from "@/lib/project/carry-tasks";
 import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 预览列几个, type 带走数, type 转走项目预览 } from "@/lib/carry-over";
-import { 权限组织 } from "@/lib/enterprise/org";
+import { 权限组织, type 组织 } from "@/lib/enterprise/org";
 import { 算市场转客户, 市场转一位, 客户层分配方式 } from "@/lib/enterprise/market-transfer";
 import { 同事待分配随客户通知, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 停用的同事 } from "@/lib/offboard-db";
@@ -237,11 +237,7 @@ export type 带走的 = {
  * 留下：真按市场转客户转成的那几位，待办、计划还在原负责人名下，分配 / 交接通知据此写条数（P-转-10）；只给通知用，不回浏览器
  */
 export async function 带走并记下(换: { customerId: string; 旧: string }[], 新: string, 操作人: string = 新, kind: 换负责人种类 = "assign"): Promise<{ 数: 带走数; 记下: 带走的; 没转成: string[]; 留下: 留下的活[] }> {
-  const 数: 带走数 = { 计划和待办: 0, 商机: 0, 项目: 0 };
-  const 记下: 带走的 = { 计划: [], 待办: [], 商机: [], 项目: [], 公海项目: [] };
-  const 没转成: string[] = [];
-  const 留下: 留下的活[] = [];
-  const 同事待分配: 同事待分配条[] = [];
+  const 攒 = 新攒();
   // 事务外读：事务占着库的唯一连接，事务里读组织会等到超时
   const org = kind === "assign" && 换.length ? await 权限组织() : null;
   for (const { customerId, 旧 } of 换) {
@@ -255,61 +251,70 @@ export async function 带走并记下(换: { customerId: string; 旧: string }[]
       看全部（团队版业务员，lib/team-scope.ts）：业务员把自己的客户交给同事，客户一换负责人他就看不到了，
       限定着查会漏掉这位客户上的商机（商机跟着客户可见），活带不过去（2026-10-04 五人实测）。要转哪几条由上面的条件定，不靠限定
     */
-    const 这位: (带走的 & { 项目: string[]; 公海项目: string[]; 留在原负责人?: boolean; 同事待分配?: 同事待分配条[] }) | null = await 看全部(() => prisma.$transaction(async (tx) => {
-      if (org && 算市场转客户(org, { salesOwnerId: 旧, pool: null }, 新)) {
-        const 现在 = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
-        if (现在?.salesOwnerId !== 新) return null;
-        if (!现在.pool) return { ...(await 市场转一位(tx, customerId, 旧, 新, 操作人, 客户层分配方式)), 留在原负责人: true };
-      }
-      return 带走一位(tx, customerId, 旧, 新, 操作人, kind);
-    }));
-    if (!这位) {
-      没转成.push(customerId);
-      continue;
-    }
-    if (这位.留在原负责人) 留下.push({ customerId, 原: 旧 });
-    同事待分配.push(...(这位.同事待分配 ?? []));
-    const { 计划, 待办, 商机, 项目, 公海项目 } = 这位;
-    if (这位.清待分配?.length) (记下.清待分配 ??= []).push(...这位.清待分配);
-    if (这位.补方式?.length) (记下.补方式 ??= []).push(...这位.补方式);
-    数.计划和待办 += 计划.length + 待办.length;
-    数.商机 += 商机.length;
-    数.项目 = (数.项目 ?? 0) + 项目.length + 公海项目.length;
-    记下.项目!.push(...项目);
-    记下.公海项目!.push(...公海项目);
-    记下.计划.push(...计划);
-    记下.待办.push(...待办);
-    记下.商机.push(...商机);
+    攒进(攒, customerId, 旧, await 看全部(() => prisma.$transaction((tx) => 带走一位分市场(tx, customerId, 旧, 新, 操作人, kind, org))));
   }
-  if (没转成.length) 数.没转成 = 没转成.length;
   // 转客户带走了同事的项目（待分配的、在推的）：告诉这位同事（P-转-19）。事务都提交了才发，发不出去不影响转让
-  if (同事待分配.length) await 同事待分配随客户通知(操作人, 新, 同事待分配);
-  return { 数, 记下, 没转成, 留下 };
+  if (攒.同事待分配.length) await 同事待分配随客户通知(操作人, 新, 攒.同事待分配);
+  return { 数: 攒.数, 记下: 攒.记下, 没转成: 攒.没转成, 留下: 攒.留下 };
 }
 
 /**
- * 同 带走并记下，但在调用方的事务里一次做完（公海领取 / 分配：整批核持有上限要和改负责人在同一个事务里，M-公海-18，11-10）。
- * 只给不走市场转客户的种类用（claim / pool-assign：带走并记下 里那段只在 assign 时走）；客户负责人调用方已经改成 新
+ * 同 带走并记下，但在调用方的事务里一次做完：持有上限整批核要和改负责人在同一个事务里（M-公海-18，11-10 公海领取 / 分配；
+ * 11-11 起确认转让交接、直接转客户也走这里）。客户负责人调用方已经在这个事务里改成 新。
+ * kind = assign（转客户）要算市场转客户的，org 由调用方在事务外读好传进来（事务里读组织会等到超时）；没传 = 不走市场转客户那一支。
+ * 不发通知：同事待分配 回给调用方，事务提交了再发（同事待分配随客户通知），回滚了就不发
  */
 export async function 带走并记下在事务里(
-  tx: Prisma.TransactionClient, 换: { customerId: string; 旧: string }[], 新: string, 操作人: string, kind: Exclude<换负责人种类, "assign">,
-): Promise<{ 数: 带走数; 记下: 带走的 }> {
-  const 数: 带走数 = { 计划和待办: 0, 商机: 0, 项目: 0 };
-  const 记下: 带走的 = { 计划: [], 待办: [], 商机: [], 项目: [], 公海项目: [] };
+  tx: Prisma.TransactionClient, 换: { customerId: string; 旧: string }[], 新: string, 操作人: string, kind: 换负责人种类, org: 组织 | null = null,
+): Promise<{ 数: 带走数; 记下: 带走的; 没转成: string[]; 留下: 留下的活[]; 同事待分配: 同事待分配条[] }> {
+  const 攒 = 新攒();
   for (const { customerId, 旧 } of 换) {
     if (旧 === 新) continue;
-    const 这位 = await 看全部(() => 带走一位(tx, customerId, 旧, 新, 操作人, kind));
-    if (这位.清待分配?.length) (记下.清待分配 ??= []).push(...这位.清待分配);
-    数.计划和待办 += 这位.计划.length + 这位.待办.length;
-    数.商机 += 这位.商机.length;
-    数.项目 = (数.项目 ?? 0) + 这位.项目.length + 这位.公海项目.length;
-    记下.项目!.push(...这位.项目);
-    记下.公海项目!.push(...这位.公海项目);
-    记下.计划.push(...这位.计划);
-    记下.待办.push(...这位.待办);
-    记下.商机.push(...这位.商机);
+    攒进(攒, customerId, 旧, await 看全部(() => 带走一位分市场(tx, customerId, 旧, 新, 操作人, kind, kind === "assign" ? org : null)));
   }
-  return { 数, 记下 };
+  return 攒;
+}
+
+type 这位带走的 = 带走的 & { 项目: string[]; 公海项目: string[]; 留在原负责人?: boolean; 同事待分配?: 同事待分配条[] };
+
+/**
+ * 一位客户（已经归 新）名下的活跟着走。kind = assign 时企业版里算市场转客户的走 市场转一位（结果和项目分配入口一样，待办、计划不搬，X-45 / P-转-10），
+ * 进来先核对客户还归 新：中间被别人改走（或进了公海）的什么都不动，回 null = 没转成
+ */
+async function 带走一位分市场(tx: Prisma.TransactionClient, customerId: string, 旧: string, 新: string, 操作人: string, kind: 换负责人种类, org: 组织 | null): Promise<这位带走的 | null> {
+  if (org && 算市场转客户(org, { salesOwnerId: 旧, pool: null }, 新)) {
+    const 现在 = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+    if (现在?.salesOwnerId !== 新) return null;
+    if (!现在.pool) return { ...(await 市场转一位(tx, customerId, 旧, 新, 操作人, 客户层分配方式)), 留在原负责人: true };
+  }
+  return 带走一位(tx, customerId, 旧, 新, 操作人, kind);
+}
+
+type 攒着 = { 数: 带走数; 记下: 带走的; 没转成: string[]; 留下: 留下的活[]; 同事待分配: 同事待分配条[] };
+
+function 新攒(): 攒着 {
+  return { 数: { 计划和待办: 0, 商机: 0, 项目: 0 }, 记下: { 计划: [], 待办: [], 商机: [], 项目: [], 公海项目: [] }, 没转成: [], 留下: [], 同事待分配: [] };
+}
+
+function 攒进(攒: 攒着, customerId: string, 旧: string, 这位: 这位带走的 | null): void {
+  const { 数, 记下 } = 攒;
+  if (!这位) {
+    攒.没转成.push(customerId);
+    数.没转成 = 攒.没转成.length;
+    return;
+  }
+  if (这位.留在原负责人) 攒.留下.push({ customerId, 原: 旧 });
+  攒.同事待分配.push(...(这位.同事待分配 ?? []));
+  if (这位.清待分配?.length) (记下.清待分配 ??= []).push(...这位.清待分配);
+  if (这位.补方式?.length) (记下.补方式 ??= []).push(...这位.补方式);
+  数.计划和待办 += 这位.计划.length + 这位.待办.length;
+  数.商机 += 这位.商机.length;
+  数.项目 = (数.项目 ?? 0) + 这位.项目.length + 这位.公海项目.length;
+  记下.项目!.push(...这位.项目);
+  记下.公海项目!.push(...这位.公海项目);
+  记下.计划.push(...这位.计划);
+  记下.待办.push(...这位.待办);
+  记下.商机.push(...这位.商机);
 }
 
 /**

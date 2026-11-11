@@ -28,11 +28,12 @@ function 撞上别的写入(e: unknown): boolean {
   return /database is locked|SQLITE_BUSY/i.test(msg);
 }
 
-export async function 查完再写<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+/** 选项.timeout：一笔要转很多位客户的（确认交接、离职交接一键全部）放宽到 30 秒，同它们原来的事务 */
+export async function 查完再写<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>, 选项: { timeout?: number } = {}): Promise<T> {
   for (let 第几轮 = 1; ; 第几轮++) {
     try {
       // 排队等前一个事务的时间放宽：默认 2 秒，前面恰好有一段同步回放时会误报失败
-      return await prisma.$transaction(fn, { maxWait: 10_000, timeout: 15_000 });
+      return await prisma.$transaction(fn, { maxWait: 10_000, timeout: 选项.timeout ?? 15_000 });
     } catch (e) {
       if (第几轮 >= 3 || !撞上别的写入(e)) throw e;
       await new Promise((r) => setTimeout(r, 30 * 第几轮));

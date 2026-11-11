@@ -747,21 +747,45 @@ export async function 持有上限起点(
   return { userId, 上限, 有: await 持有数(db, userId) };
 }
 
-/** 超了持有上限整批没做的那句：上限多少、现在名下多少、这次要进多少、最多还能进多少 */
-export function 整批超上限话(谁: string, 起: { 上限: number; 有: number }, 要: number, 动作: "领" | "接" = "接"): string {
+/** 整批超上限那句里的动词：领（自己领）、接（分给他）、分配（接待分配、建项目指派）、交接（确认交接、离职交接看板） */
+export type 整批动作 = "领" | "接" | "分配" | "交接";
+
+/**
+ * 超了持有上限整批没做的那句：上限多少、现在名下多少、这次要进多少、最多还能进多少。
+ * 尾：「超了上限，」后面那半句（这次什么没做、接下来怎么办），不给 = 「这一批一个都没X，先推进或放回一些，或者少选几个再X」
+ */
+export function 整批超上限话(谁: string, 起: { 上限: number; 有: number }, 要: number, 动作: 整批动作 = "接", 尾?: string): string {
   const 剩 = Math.max(0, 起.上限 - 起.有);
-  return `${谁}名下现在有 ${起.有} 个线索 / 商机阶段的项目，持有上限 ${起.上限} 个，这次要${动作} ${要} 个，最多还能${动作} ${剩} 个；超了上限，这一批一个都没${动作}，先推进或放回一些，或者少选几个再${动作}`;
+  return `${谁}名下现在有 ${起.有} 个线索 / 商机阶段的项目，持有上限 ${起.上限} 个，这次要${动作} ${要} 个，最多还能${动作} ${剩} 个；超了上限，${尾 ?? `这一批一个都没${动作}，先推进或放回一些，或者少选几个再${动作}`}`;
+}
+
+async function 抛整批超上限(
+  tx: Pick<Prisma.TransactionClient, "user">, 起: { userId: string; 上限: number; 有: number }, 要: number, 动作: 整批动作, 尾?: string,
+): Promise<never> {
+  const 谁 = (await tx.user.findUnique({ where: { id: 起.userId }, select: { name: true } }))?.name ?? "这位成员";
+  throw new 整批超上限(整批超上限话(谁, 起, 要, 动作, 尾));
 }
 
 /** 全部写完再数（同一个事务里）：比原来多了、又超了上限就抛 整批超上限（调用方让事务回滚、回这句话） */
 export async function 整批核上限(
-  tx: Pick<Prisma.TransactionClient, "project" | "user">, 起: { userId: string; 上限: number; 有: number } | null, 动作: "领" | "接" = "接",
+  tx: Pick<Prisma.TransactionClient, "project" | "user">, 起: { userId: string; 上限: number; 有: number } | null, 动作: 整批动作 = "接", 尾?: string,
 ): Promise<void> {
   if (!起) return;
   const 现 = await 持有数(tx, 起.userId);
   if (现 <= 起.有 || 现 <= 起.上限) return;
-  const 谁 = (await tx.user.findUnique({ where: { id: 起.userId }, select: { name: true } }))?.name ?? "这位成员";
-  throw new 整批超上限(整批超上限话(谁, 起, 现 - 起.有, 动作));
+  await 抛整批超上限(tx, 起, 现 - 起.有, 动作, 尾);
+}
+
+/**
+ * 写之前在同一个事务里核（M-公海-18）：给只算一部分进手项目的地方用——接待分配只数同事待分配的、建项目指派只数新建的 1 个 + 市场转客户带的同事待分配的，
+ * 原负责人自己的项目跟着客户走照旧不拦，写完再数会把那些也算进去、拦多了。进 由调用方在同一个事务里、写之前数好；
+ * 事务一个接一个跑，数的时候并发的那次要么还没开始、要么已经写完，不会两次都过
+ */
+export async function 写前核上限(
+  tx: Pick<Prisma.TransactionClient, "user">, 起: { userId: string; 上限: number; 有: number } | null, 进: number, 动作: 整批动作, 尾?: string,
+): Promise<void> {
+  if (!起 || 进 <= 0 || 起.有 + 进 <= 起.上限) return;
+  await 抛整批超上限(tx, 起, 进, 动作, 尾);
 }
 
 /** 跑一段整批的事务：超了上限（整批超上限）回 { 超: 话 }，别的错照抛 */
