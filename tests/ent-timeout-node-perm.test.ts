@@ -20,6 +20,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
 import { 读组织规则 } from "@/lib/project/org-rules-store";
+import { 默认三态规则 } from "@/lib/project/org-rules";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能改时限的节点, 挡时限改动 } from "@/lib/enterprise/edit-perm";
 
@@ -118,3 +119,38 @@ describe("改组织规则按节点拦", () => {
     expect(await 改组织规则(整张({ 潜客培育: 1 }))).toMatchObject({ ok: false, error: "组织规则是企业版的功能" });
   });
 });
+
+describe("改客户三态规则（M-公海-20：只有系统管理员；M-公海-31：改前改后值留在操作日志）", () => {
+  it("条线总管理、销售管理、市场管理、销售都改不了，拦下不写、不留日志", async () => {
+    for (const 谁 of [条线总管, 销售经理, 市场经理, 销售]) {
+      当(谁);
+      expect(await 改组织规则({ 三态: { 开: true } })).toEqual({ ok: false, error: "客户三态规则只有系统管理员能改" });
+      expect(await 改组织规则({ 三态: { 转让归零: { 次数: 5 } } })).toMatchObject({ ok: false });
+    }
+    expect((await 读组织规则()).三态).toEqual(默认三态规则);
+    expect(await prisma.auditLog.count({ where: { summary: { contains: "客户三态" } } })).toBe(0);
+  });
+
+  it("系统管理员能改：存上、别的规则不动；日志摘要带改前 → 改后，再改一次带的是上一次的值", async () => {
+    当(总管);
+    expect(await 改组织规则({ 三态: { 开: true, 成交: { 活跃段: 400 }, 内贸: { 进公海: 21 } } })).toEqual({ ok: true, 收回: 0 });
+    expect(await 改组织规则({ 三态: { 成交: { 活跃段: 365 }, 继续持有: { 累计次数: 4, 累计天数: 120 } } })).toEqual({ ok: true, 收回: 0 });
+    const 规则 = await 读组织规则();
+    expect(规则.三态).toEqual({ ...默认三态规则, 开: true, 内贸: { 沉睡: 90, 待回收: 180, 进公海: 21 }, 继续持有: { 每次天数: 30, 累计次数: 4, 累计天数: 120 } });
+    expect(规则.超时回收).toMatchObject({ 开: true, 节点天数: { 潜客培育: 7, 线索验证: 5, 痛点挖掘: 10 } });
+    const 日志 = await prisma.auditLog.findMany({ where: { entity: "Setting", entityId: "orgRules", summary: { contains: "客户三态" } }, orderBy: { at: "asc" }, select: { summary: true, userId: true } });
+    expect(日志.map((x) => x.summary)).toEqual([
+      "组织规则：客户三态开，开关 关 → 开，内贸客户待回收后进公海的天数 30 → 21，成交客户活跃段天数 365 → 400",
+      "组织规则：客户三态开，成交客户活跃段天数 400 → 365，继续持有累计次数 3 → 4，继续持有累计天数 90 → 120",
+    ]);
+    expect(日志.every((x) => x.userId === 总管)).toBe(true);
+  });
+
+  it("填错的报出来、不写、不留日志", async () => {
+    当(总管);
+    expect(await 改组织规则({ 三态: { 内贸: { 沉睡: 180 } } })).toEqual({ ok: false, error: "内贸客户进待回收的天数要大于进沉睡的天数" });
+    expect((await 读组织规则()).三态).toEqual(默认三态规则);
+    expect(await prisma.auditLog.count({ where: { summary: { contains: "客户三态" } } })).toBe(0);
+  });
+});
+
