@@ -19,7 +19,9 @@ import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 带币种, 签约金额, 签约币种, 签约合计 } from "@/lib/money-db";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
-import { 只读客户, 只读话 } from "@/lib/team-scope";
+import { 只读客户, 只读话, 组员的客户 } from "@/lib/team-scope";
+import { 只读原因of, 只读横幅 } from "@/lib/enterprise/readonly-reason";
+import { getBusiness } from "@/lib/business";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
 import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请 } from "@/lib/enterprise/permissions";
@@ -213,6 +215,13 @@ export default async function CustomerDetailPage({
       参与项目们={参与项目们}
       只读={只读}
       只读话={只读 === "全" ? await 只读话(defaultClient) : undefined}
+      // 企业版「全」只读：横幅按这位为什么看得到来说（虚线下属 / 下属 / 本线 / 因参与项目 / 判不出说中性的），见 lib/enterprise/readonly-reason.ts
+      只读横幅={企 && 只读 === "全" ? await (async () => {
+        const org = await 权限组织();
+        if (!org) return undefined;
+        const 组员 = (await prisma.customer.count({ where: { id: customer.id, ...组员的客户(me.id) } })) > 0;
+        return 只读横幅(只读原因of(org, me.id, customer.salesOwnerId, 组员), 负责人显示名(customer.salesOwner.name), (await getBusiness()).customer, await 只读话(defaultClient));
+      })() : undefined}
       只能看的格={await 只能看的格P}
       管理员只读={企 && 只读角色(me, await 权限组织())}
       能领={!企 || 能新建和领取(me, await 权限组织())}
