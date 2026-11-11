@@ -215,20 +215,20 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-const 属性们 = [undefined, "线索池", "商机池", "其他", "公海线索"];
+const 属性们 = [undefined, "线索池", "商机池", "订单池", "客户池", "其他", "公海线索"];
 const 快捷选 = [undefined, ...快捷们];
 const 排序选 = [undefined, "follow", "created"];
 const 词们 = [undefined, "alpha", "项目1", "  "];
 const 来源们 = [undefined, 来源.甲];
 
 describe("统一公海：和改前的写法对拍", () => {
-  it("造的数据各种情况都有：两种行、每种入池方式、三种属性、回避、客户不露", async () => {
+  it("造的数据各种情况都有：两种行、每种入池方式、四个池、回避、客户不露", async () => {
     const 全 = await 旧(组.总管理, {}, 1, 1000);
     expect(全.行.filter((r) => r.种 === "客户").length).toBe(客户几位 - 2); // 两位进了回收站
     expect(全.行.filter((r) => r.种 === "项目").length).toBe(项目几个 - 2);
     for (const k of 快捷们) expect([k, 全.快捷数[k] > 0]).toEqual([k, true]);
     expect(全.行.some((r) => r.类 === "离职交接")).toBe(true);
-    for (const a of ["线索池", "商机池", "其他"] as const) expect([a, 全.属性数[a] > 0]).toEqual([a, true]);
+    for (const a of ["线索池", "商机池", "订单池", "客户池"] as const) expect([a, 全.属性数[a] > 0]).toEqual([a, true]);
     expect(全.行.some((r) => r.进程明细)).toBe(true);
     // 销售：自己放进公海的客户（P-公海-04）、自己是历史负责人的公海项目都看不到；别人客户上的项目不露客户名；自己还挂着的老数据按钮灰
     const 销售看 = await 旧(组.销售, {}, 1, 1000);

@@ -20,7 +20,7 @@ import PoolView from "./PoolView";
 export const dynamic = "force-dynamic";
 
 /**
- * 企业版统一公海（2026-10-29，P7）：客户公海 + 项目公海一页看，按「公海属性」分开。
+ * 企业版统一公海（2026-10-29，P7）：客户公海 + 项目公海一页看，按「公海属性」分开（11-11 起四池：线索池 / 商机池 / 订单池 / 客户池）。
  * 只在企业版、项目模式开着时有，别的版本 404（侧栏也没有入口）。规矩见 lib/enterprise/unified-pool.ts
  */
 export default async function PoolPage({

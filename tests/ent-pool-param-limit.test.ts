@@ -113,7 +113,7 @@ describe("统一公海过 999 行", () => {
     expect(报错).not.toHaveBeenCalled();
   }, 大);
 
-  it("公海属性是客户本身的事：每种身份分类和计数都一样，看不到项目也不落到「其他」；项目名、进程仍按可见范围", async () => {
+  it("公海属性是客户本身的事：每种身份分类和计数都一样，看不到项目也不落到「客户池」（11-11 前是「其他」）；项目名、进程仍按可见范围", async () => {
     const 客户 = async (id: string, i: number) => {
       await prisma.customer.create({ data: { id, name: id, phone: `14${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id } });
       await prisma.customerPool.create({ data: { customerId: id, reason: "r", at: 时刻(i) } });
@@ -129,10 +129,10 @@ describe("统一公海过 999 行", () => {
     await 项目("混合线索", "混合客户", "线索", "潜客培育");
     await 项目("混合商机", "混合客户", "商机", "需求确认", 组.同事.id);
 
-    const 期望 = { 线索客户: "线索池", 商机客户: "商机池", 订单客户: "其他", 没项目客户: "其他", 混合客户: "商机池" };
+    const 期望 = { 线索客户: "线索池", 商机客户: "商机池", 订单客户: "订单池", 没项目客户: "客户池", 混合客户: "商机池" };
     for (const [名, u] of Object.entries(组)) {
       const r = await 读(u);
-      expect([名, r.属性数]).toEqual([名, { 全部: 5, 线索池: 1, 商机池: 2, 其他: 2 }]);
+      expect([名, r.属性数]).toEqual([名, { 全部: 5, 线索池: 1, 商机池: 2, 订单池: 1, 客户池: 1 }]);
       expect([名, Object.fromEntries(r.行.map((x) => [x.客户名, x.属性]))]).toEqual([名, 期望]);
     }
     // 显示的不跟着放开：同事看不到销售的项目，名字和进程照旧不露，只露自己的

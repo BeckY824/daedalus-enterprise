@@ -10,7 +10,8 @@
  * Prisma 要拆批；范围层给关联补的 看得到的项目 带 pooledAt: { not: null }，否定条件没法拆，受限身份一开就 P2029（总管理不限定所以不报）。
  * 单独查、用关联条件框范围，不拼大 IN；范围层给顶层查询加的条件和原来给关联加的是同一句，口径不变
  *
- * 客户行的公海属性按名下全部项目算，不过范围层（11-02）：属性是客户本身的事，谁看都一样。受限身份看不到项目时不能当成「没有项目」落到其他。
+ * 客户行的公海属性按名下全部项目算，不过范围层（11-02）：属性是客户本身的事，谁看都一样。受限身份看不到项目时不能当成「没有项目」落到客户池（11-11 前是「其他」）。
+ * 一行归哪个池只看 归池（unified-pool.ts）：客户行走 客户公海属性、项目行走 项目公海属性，都是它
  * 项目名、当前进程还是按各人看得到的项目，这句不放开
  */
 import { prisma } from "@/lib/prisma";
@@ -26,7 +27,7 @@ import { 原负责人回避, 回避豁免, 一批id数 } from "@/lib/project/poo
 import type { Prisma } from "@/generated/prisma";
 import { 公海名单条件, 公海名单候选, type 公海名单筛 } from "@/lib/project/list";
 import {
-  客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
+  客户定状态, 客户公海属性, 项目公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
 } from "./unified-pool";
 
@@ -204,7 +205,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       ...项目客户格(!!可见 && 露客户(me, p, 可见), p),
       项目名: p.name,
       进程: 进.进程, 进程明细: null,
-      属性: 进.属性,
+      属性: 项目公海属性(p),
       最后跟进: p.customer.lastFollowAt?.toISOString() ?? null,
       入池时间: p.pooledAt!.toISOString(),
       创建时间: p.createdAt.toISOString(),

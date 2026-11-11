@@ -2454,6 +2454,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   .pool-filters .cf-more-t { display: none; }
   .pool-filters > .ant-select { width: 120px !important; }
   .pool-filters > .ant-input-affix-wrapper { width: 160px !important; }
+  /* 11-11 四池后分段多一项：每项左右各收 5px，1280 宽属性、入池方式、排序、搜索仍在一行 */
+  .pool-filters .ant-segmented-item-label { padding-inline: 6px; }
 }
 /* 渠道表里停用的那几行整行压淡，名字旁边写「已停用」（审查 D12）。操作列不压：恢复键要看得清 */
 .row-off > td:not(.ant-table-cell-fix-end) { color: var(--text-muted); }
