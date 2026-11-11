@@ -46,7 +46,7 @@ export type 组织架构 = {
   /** 回收站副手（V3.5.1）：系统管理员之外能看、能恢复回收站的人 */
   回收站副手?: string[];
 };
-type 结果 = Promise<{ ok: boolean; error?: string }>;
+type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?: string }>;
 
 const 总管级 = (r: string) => r === "director" || r === "admin";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
@@ -106,14 +106,27 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 名 = new Map(value.部门.map((d) => [d.id, d.name]));
   const 部门选项 = 树.map(({ d, 层 }) => ({ value: d.id, label: `${"　".repeat(层 - 1)}${d.name}` }));
 
-  const 跑 = async (f: () => 结果, 成了?: string) => {
+  /** 确认后：服务端回 要确认（改自己会不再是系统管理员，P-判定-06）时先弹二次确认，确认了跑这个 */
+  const 跑 = async (f: () => 结果, 成了?: string, 确认后?: () => 结果): Promise<boolean> => {
     if (忙) return false;
     set忙(true);
     try {
       const r = await f();
+      if (!r.ok && r.要确认 && 确认后) {
+        modal.confirm({
+          title: "你将不再是系统管理员",
+          content: r.要确认,
+          okText: "确定改",
+          okButtonProps: { danger: true },
+          cancelText: "先不改",
+          onOk: () => { void 跑(确认后, 成了); },
+        });
+        return false;
+      }
       if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
       else {
-        if (成了) message.success(成了);
+        if (r.提示) message.warning(r.提示);
+        else if (成了) message.success(成了);
         开始刷新(() => router.refresh());
       }
       return r.ok;
@@ -175,7 +188,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   }
 
   // 上级下拉的空值传 null 不传 undefined：undefined 会让 antd 当不受控，保存失败时框里还留着刚选的人
-  const 设 = (id: string, 改: 成员改动) => void 跑(() => 设成员(id, 改));
+  const 设 = (id: string, 改: 成员改动) => void 跑(() => 设成员(id, 改), undefined, () => 设成员(id, 改, true));
   const 设格 = (f: 字段名, r: 业务角色, v: keyof typeof 级别名) => {
     const 行 = { ...表[f] };
     if (v === "改") delete 行[r];

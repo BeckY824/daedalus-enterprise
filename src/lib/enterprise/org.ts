@@ -11,7 +11,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
-import { 回收站副手键, 只看某人键, 填组织设置, 建组织, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
+import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组织设置, 建组织, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
 
 export * from "./org-core";
 // 部门树在 org-tree.ts（客户端组件也用，不能带 prisma）；这里转出去，服务端照旧从 org 拿
@@ -19,16 +19,29 @@ export { 部门树, type 组织部门 } from "./org-tree";
 
 export { 回收站副手键, 只看某人键 } from "./org-core";
 
+type 库 = Pick<typeof prisma, "user" | "entMember" | "entDept" | "setting">;
+
+/** 从给定的库（事务里传 tx）读整张组织表，不走缓存：写组织架构的事务里改完重查「还有没有系统管理员」用 */
+export async function 读组织于(db: 库): Promise<组织> {
+  // 事务只有一条连接，一条条读（并发读在交互式事务里没好处）
+  const users = await db.user.findMany({ select: { id: true, role: true, active: true } });
+  const members = await db.entMember.findMany();
+  const depts = await db.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } });
+  const 设 = async (key: string) => (await db.setting.findUnique({ where: { key }, select: { value: true } }))?.value ?? null;
+  return 填组织设置(建组织(users, members, depts), await 设(回收站副手键), await 设(只看某人键), await 设(系统管理员标记键));
+}
+
 /** 从库里读整张组织表。二三十人的公司，一次全读比逐条查省事也更快。一次渲染里只读一遍（客户列表一页要问四五次），渲染外（动作、测试）照旧每次现读 */
 export const 读组织 = cache(async (): Promise<组织> => {
-  const [users, members, depts, 副手, 只看] = await Promise.all([
+  const [users, members, depts, 副手, 只看, 标记] = await Promise.all([
     prisma.user.findMany({ select: { id: true, role: true, active: true } }),
     prisma.entMember.findMany(),
     prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
     prisma.setting.findUnique({ where: { key: 回收站副手键 }, select: { value: true } }),
     prisma.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } }),
+    prisma.setting.findUnique({ where: { key: 系统管理员标记键 }, select: { value: true } }),
   ]);
-  return 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value);
+  return 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value, 标记?.value ?? null);
 });
 
 // 类型和读库的函数同名（老写法），类型在这里再转一次

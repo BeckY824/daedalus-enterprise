@@ -2,20 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Checkbox } from "antd";
+import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined, SafetyCertificateFilled, SafetyCertificateOutlined, SettingOutlined } from "@ant-design/icons";
 import { UserCell } from "@/components/ui";
 import { ROLES } from "@/lib/constants";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸订单 } from "@/lib/business-config";
 import type { SessionUser } from "@/lib/auth";
 import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用, 解绑飞书身份 } from "./actions";
-import { 设不管设置 } from "./org-actions";
+import { 设不管设置, 设系统管理员 } from "./org-actions";
 import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 
 /** 设置 · 团队成员：谁能进、谁是管理员。新增、编辑、停用（停用要先把名下的客户转交出去） */
+
+/** 系统管理员小盾牌的悬停说明：说清现在是什么、点了会怎样、为什么拨不动 */
+function 系统管理员说明(x: { on: boolean; 有线: boolean }, 能拨: boolean): string {
+  if (!x.有线) return "系统管理员（没设业务线的总管理就是）。要只管一条线，先在组织架构里给他设业务线";
+  if (!能拨) return "系统管理员，同时是本业务线的条线总管理";
+  return x.on ? "系统管理员，同时是本业务线的条线总管理。点一下取消，只管本业务线" : "只管本业务线（条线总管理）。点一下设为系统管理员，两个身份并存";
+}
 
 export type Row = {
   id: string;
@@ -32,6 +39,8 @@ export type Row = {
   业务角色?: 业务角色[];
   /** 企业版：总管理勾了「不管设置」——还是看全部、能转让，但进不了设置页、改不了后台设置（11-01 C1） */
   不管设置?: boolean;
+  /** 企业版、在职的总管理才有（P-判定-06）：on = 是系统管理员；有线 = 设了业务线（没设线的总管理就是系统管理员，开关关不掉） */
+  系统管理员?: { on: boolean; 有线: boolean };
   followCount: number;
   /** 企业版飞书登录：第一次用飞书登录时按姓名绑上了飞书身份 */
   飞书已绑?: boolean;
@@ -73,6 +82,32 @@ export default function MembersTab({
   const [form] = Form.useForm();
   const 按业务角色 = users.some((u) => u.业务角色);
   const [改不管设置中, set改不管设置中] = useState<string | null>(null);
+  /** 拨「系统管理员」：只有能管设置的系统管理员（服务端 org-actions 设系统管理员 再拦、不能关掉最后一位） */
+  const on系统管理员 = async (r: Row, on: boolean, 确认 = false) => {
+    if (改不管设置中) return;
+    set改不管设置中(r.id);
+    try {
+      const res = await 设系统管理员(r.id, on, 确认);
+      // 关自己的：服务端回 要确认，先弹二次确认，确认了再来一次
+      if (!res.ok && "要确认" in res && res.要确认) {
+        modal.confirm({
+          title: "你将不再是系统管理员",
+          content: res.要确认,
+          okText: "确定关掉",
+          okButtonProps: { danger: true },
+          cancelText: "先不关",
+          onOk: () => { void on系统管理员(r, on, true); },
+        });
+      } else if (!res.ok) message.error(res.error ?? "没改成，请稍后再试");
+      else {
+        if (res.提示) message.warning(res.提示);
+        else message.success(on ? `${r.name} 设为系统管理员，同时还是本线条线总管理` : `${r.name} 不再是系统管理员，只管本业务线`);
+        router.refresh();
+      }
+    } finally {
+      set改不管设置中(null);
+    }
+  };
   /** 勾 / 取消「不管设置」：只有能改组织架构的总管理（服务端 org-actions 设不管设置 再拦一遍、保至少一位能管设置的总管理） */
   const on不管设置 = async (r: Row, on: boolean) => {
     if (改不管设置中) return;
@@ -292,30 +327,56 @@ export default function MembersTab({
           width: 120,
           render: (_: unknown, r: Row) => (
             <div className="member-roles">
-              {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；「不管设置」勾选框不截 */}
-              <span className="member-roles-tags">
-                {(r.业务角色 ?? []).map((x) => (
-                  <Tag key={x} color={业务角色色[x]} style={{ margin: 0, marginRight: 4 }}>
-                    {角色名[x]}
+              {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；系统管理员、不管设置两个小图标不截 */}
+              {/* 一个标签：第一个角色 + 「+N」，放不下标签自己带「…」（Tag 是 inline-block，外层的 text-overflow 管不到它），悬停看全部。
+                  「+N」并进同一个标签：分开摆时窄格里第一个标签只剩半个字、连「…」都放不下 */}
+              {/* 悬停全文走全站的 TruncTip（截了才浮、显示 title）；没截但有「+N」时浏览器原生提示也是全部角色 */}
+              {(r.业务角色 ?? []).length > 0 && (
+                <span className="member-roles-tags">
+                  <Tag color={业务角色色[r.业务角色![0]]} className="member-role-tag" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>
+                    {角色名[r.业务角色![0]]}{r.业务角色!.length > 1 ? ` +${r.业务角色!.length - 1}` : ""}
                   </Tag>
-                ))}
-              </span>
-              {/* 「不管设置」只对总管理有意义（11-01 C1）：能改设置的人勾，别人只看到标记 */}
-              {r.业务角色?.includes("director") &&
-                (企业版 && isAdmin ? (
-                  <Checkbox
-                    checked={!!r.不管设置}
-                    disabled={改不管设置中 !== null}
+                </span>
+              )}
+              {/* 「系统管理员」（P-判定-06）：和业务线并存。角色标签旁一个小盾牌，不加宽角色列（全站一行、不多出横向滚动）。
+                  实心 = 是系统管理员；空心 = 只管本业务线。没设业务线的总管理本来就是，实心、拨不动 */}
+              {企业版 && r.系统管理员 &&
+                (isAdmin || r.系统管理员.on) && (
+                  <Tooltip title={系统管理员说明(r.系统管理员, isAdmin)}>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={r.系统管理员.on}
+                      aria-label={`${r.name} 系统管理员`}
+                      data-testid="member-sysadmin"
+                      // 拨不动用 aria-disabled 不用 disabled：原生 disabled 的按钮收不到悬停，说明就弹不出来
+                      className={`member-flag-btn member-sysadmin${r.系统管理员.on ? " is-on" : ""}${!isAdmin ? " is-readonly" : ""}`}
+                      aria-disabled={!isAdmin || 改不管设置中 !== null || !r.系统管理员.有线}
+                      onClick={() => { if (isAdmin && 改不管设置中 === null && r.系统管理员?.有线) void on系统管理员(r, !r.系统管理员.on); }}
+                    >
+                      {r.系统管理员.on ? <SafetyCertificateFilled /> : <SafetyCertificateOutlined />}
+                    </button>
+                  </Tooltip>
+                )}
+              {/* 「不管设置」只对总管理有意义（11-01 C1）：能改设置的人拨，别人只在勾上时看到标记。
+                  和系统管理员小盾牌一样做成角色标签旁的小图标：原来的「☐ 不管设置」勾选框占掉 84px，120 宽的角色列里总管的角色标签被挤没了 */}
+              {/* 只给当前是系统管理员的人摆（不管设置只管系统管理员进不进设置；条线总管理本来就进不了） */}
+              {r.系统管理员?.on && 企业版 && (isAdmin || r.不管设置) && (
+                <Tooltip title={r.不管设置 ? `不管设置：进不了设置页、改不了后台设置，别的权限照旧${isAdmin ? "。点一下取消" : ""}` : "管设置。点一下设为「不管设置」：进不了设置页，别的权限照旧"}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!r.不管设置}
                     aria-label={`${r.name} 不管设置`}
                     data-testid="member-no-settings"
-                    onChange={(e) => void on不管设置(r, e.target.checked)}
-                    style={{ fontSize: 12 }}
+                    className={`member-flag-btn member-no-settings${r.不管设置 ? " is-on" : ""}${!isAdmin ? " is-readonly" : ""}`}
+                    aria-disabled={!isAdmin || 改不管设置中 !== null}
+                    onClick={() => { if (isAdmin && 改不管设置中 === null) void on不管设置(r, !r.不管设置); }}
                   >
-                    不管设置
-                  </Checkbox>
-                ) : r.不管设置 ? (
-                  <Tag style={{ margin: 0 }}>不管设置</Tag>
-                ) : null)}
+                    <SettingOutlined />
+                  </button>
+                </Tooltip>
+              )}
             </div>
           ),
         }

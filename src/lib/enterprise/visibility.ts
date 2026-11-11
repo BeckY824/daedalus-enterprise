@@ -23,7 +23,7 @@ import { jwtVerify } from "jose";
 import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
 import { 看得到, 组员的客户, type 限定, type 公海回避 } from "@/lib/team-scope";
-import { 回收站副手键, 只看某人键, 填组织设置, 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
+import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组织设置, 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
 import { 按线范围of, 按线项目, 按线客户 } from "./line-viewer";
 import { 规则 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
@@ -164,7 +164,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   if (!id) return 只看公海;
   const 规则开着 = await 开着(db, 规则.按组织看客户.key);
 
-  const [users, members, depts, 设的市场部门, 设的市场人, 副手, 只看] = await Promise.all([
+  const [users, members, depts, 设的市场部门, 设的市场人, 副手, 只看, 标记] = await Promise.all([
     db.user.findMany({ select: { id: true, role: true, active: true } }),
     db.entMember.findMany(),
     db.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
@@ -172,10 +172,11 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     db.setting.findUnique({ where: { key: 市场成员key }, select: { value: true } }),
     db.setting.findUnique({ where: { key: 回收站副手键 }, select: { value: true } }),
     db.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } }),
+    db.setting.findUnique({ where: { key: 系统管理员标记键 }, select: { value: true } }),
   ]);
   const 我 = users.find((u) => u.id === id);
   if (!我 || !我.active) return 只看公海;
-  const org = 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value);
+  const org = 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value, 标记?.value ?? null);
   // 管理员（admin）：看全部、写全拒（规则开不开都一样）
   if (只读角色({ id }, org)) {
     const 线 = 按线范围of(org, id);

@@ -11,7 +11,7 @@
  * - 「直属上级」「虚线上级」只对线索配额有意义：给自己的下属设。
  * 纯数据和纯函数，客户端组件也 import；读库的在 edit-perm.ts。
  */
-import { 直属上级of, 虚线上级of, 管理员类别们of, type 组织, type 管理员类别 } from "./org-core";
+import { 直属上级of, 虚线上级of, 管理员类别们of, 是系统管理员of, type 组织, type 管理员类别 } from "./org-core";
 import { 按本套名, 企业版字典 } from "@/lib/project/stage-dict";
 
 export type 能改的人 = 管理员类别 | "直属上级" | "虚线上级";
@@ -60,8 +60,8 @@ export function 谁能改(配置: 改权限配置, 项: 设置项名): readonly 
 export function 能改设置(org: 组织, 我: { id: string; role: string }, 项: 设置项名, 配置: 改权限配置, 目标?: string): boolean {
   const 类们 = 管理员类别们of(org, 我.id);
   const m = org.成员.get(我.id);
-  // 系统管理员（总管理、没设业务线）每一项都能改；条线总管理只剩线索配额（11-03 D3-7 ①：项目模式设置只给系统管理员）
-  if (类们.has("总管理员") && (!m?.line || 项 === "线索配额")) return !m?.不管设置;
+  // 系统管理员（总管理，没设业务线或带系统管理员标记，P-判定-06）每一项都能改；条线总管理只剩线索配额（11-03 D3-7 ①：项目模式设置只给系统管理员）
+  if (类们.has("总管理员") && (是系统管理员of(org, 我.id) || 项 === "线索配额")) return !m?.不管设置;
   const 谁 = 谁能改(配置, 项);
   // 兼几类管理员的（10-27 角色多选），哪一类在表里都算
   // 管理员（admin）只读（11-01）：表里就算存了这一类也不算；兼了管理员的，写入在限定层另外拦（team-scope 只读拦）

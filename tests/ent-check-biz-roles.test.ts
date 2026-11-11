@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { 业务角色 } from "@/lib/sync/dept-policy";
-import { 核对, 报告, 认的角色 } from "../scripts/check-biz-roles.mjs";
+import { 核对, 报告, 认的角色, 解标记 } from "../scripts/check-biz-roles.mjs";
 
 const 账号 = (id: string, active = 1) => ({ id, name: `${id}名`, email: `${id}@t`, role: "SALES", active });
 
@@ -54,6 +54,22 @@ describe("纯算 核对", () => {
     const 一位没勾 = 核对([账号("a"), 账号("b")], [{ userId: "a", bizRole: "director", noSettings: 1 }, { userId: "b", bizRole: "director", noSettings: 0 }]);
     expect(一位没勾.过).toBe(true);
     expect(一位没勾.不管设置的总管理.map((u) => u.id)).toEqual(["a"]);
+  });
+});
+
+describe("能管设置的系统管理员（P-判定-06，同 org-core.ts 能管设置of）", () => {
+  it("唯一的总管理设了业务线、没带标记 → 不过；带上标记 → 过；标记存坏了当没有", () => {
+    const 行 = [{ userId: "a", bizRole: "director", line: "内贸" }];
+    expect(核对([账号("a")], 行).过).toBe(false);
+    expect(核对([账号("a")], 行).问题.join()).toMatch(/没有能管设置的系统管理员/);
+    expect(核对([账号("a")], 行, 解标记(JSON.stringify(["a"]))).过).toBe(true);
+    expect(核对([账号("a")], 行, 解标记("{坏")).过).toBe(false);
+    expect(核对([账号("a")], 行, 解标记("a, b")).过).toBe(true);
+  });
+
+  it("带标记但勾了「不管设置」不算；没设线的总管理不用标记", () => {
+    expect(核对([账号("a")], [{ userId: "a", bizRole: "director", line: "外贸", noSettings: 1 }], new Set(["a"])).过).toBe(false);
+    expect(核对([账号("a")], [{ userId: "a", bizRole: "director", line: null }]).过).toBe(true);
   });
 });
 

@@ -28,6 +28,11 @@ export type 组织 = {
   回收站副手?: ReadonlySet<string>;
   /** 只看某人（V3.5.1 市管特例）：本人 → 那个人；业务数据只看那个人是创建人或负责人的。Setting enterprise.watch_only（JSON），org.ts 读组织 填 */
   只看某人?: ReadonlyMap<string, string>;
+  /**
+   * 系统管理员标记（P-判定-06）：设了业务线的总管理里，哪几位同时还是系统管理员。Setting enterprise.sysadmin_flag（JSON 数组 userId），org.ts 读组织 填。
+   * 没设业务线的总管理不用进这份，读的时候就算系统管理员（老数据不丢权限，不用跑迁移）；见 是系统管理员of
+   */
+  系统管理员标记?: ReadonlySet<string>;
   /** 停用（离职）的人手填的直属上级：成员里不收停用的人，市场复核要找「离职创建人的直属市场管理」（客户 11-05）时查这里。建组织 填 */
   离职上级?: ReadonlyMap<string, string>;
 };
@@ -37,6 +42,8 @@ export const 回收站副手键 = "enterprise.trash_helpers";
 /** 只看某人存的 Setting 键（JSON {本人 userId: 那个人 userId}），设置页「组织架构」里配 */
 
 export const 只看某人键 = "enterprise.watch_only";
+/** 系统管理员标记存的 Setting 键（JSON 数组 userId）：成员管理里总管理那一格的「系统管理员」开关写它 */
+export const 系统管理员标记键 = "enterprise.sysadmin_flag";
 
 /** Setting 原文：JSON 解得开就解（setSetting 存的），解不开当原样字符串（库里手写的逗号串） */
 function 解码(v: string | null | undefined): unknown {
@@ -48,14 +55,41 @@ function 解码(v: string | null | undefined): unknown {
   }
 }
 
-/** 读完 Setting 后补上组织里的两份名单（org.ts 读组织、visibility.ts 算 共用）：回收站副手（逗号串）、只看某人（JSON） */
-export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined): 组织 {
-  const 解 = 解码(副手);
-  const 副手们 = Array.isArray(解) ? 解 : typeof 解 === "string" ? 解.split(",") : [];
-  org.回收站副手 = new Set(副手们.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter((x) => org.成员.has(x)));
+/** userId 名单（JSON 数组，或手写的逗号串）：只留在职的 */
+function 解名单(v: string | null | undefined, org: 组织): Set<string> {
+  const 解 = 解码(v);
+  const 们 = Array.isArray(解) ? 解 : typeof 解 === "string" ? 解.split(",") : [];
+  return new Set(们.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter((x) => org.成员.has(x)));
+}
+
+/**
+ * 读完 Setting 后补上组织里的几份名单（org.ts 读组织、visibility.ts 算 共用）：回收站副手（逗号串）、只看某人（JSON）、系统管理员标记（JSON 数组）。
+ * 标记没传（undefined）= 不动 org 上原有的，传 null = 没设
+ */
+export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined, 标记?: string | null): 组织 {
+  org.回收站副手 = 解名单(副手, org);
   org.只看某人 = 规整只看某人(只看, org);
+  if (标记 !== undefined) org.系统管理员标记 = 解名单(标记, org);
   return org;
 }
+
+/**
+ * 系统管理员（V3.5.1 P-判定-03、P-判定-06）：业务角色有总管理（director），并且 没设业务线，或 带着系统管理员标记。
+ * 两个身份并存：设了业务线又带标记的，同时是那条线的条线总管理（line-viewer.ts 条线的线）。
+ * 纯函数，permissions.ts 是系统管理员、view-as.ts 能切换视图 都走这里；老规矩（不是企业版）在 permissions.ts 里另判
+ */
+export function 是系统管理员of(org: 组织, userId: string): boolean {
+  const m = org.成员.get(userId);
+  return !!m && m.角色们.includes("director") && (!m.line || !!org.系统管理员标记?.has(userId));
+}
+
+/** 能管设置的系统管理员：是系统管理员、没勾「不管设置」（同 permissions.ts 能进设置）。组织架构、成员管理、停用的「留一位」守卫都按这个数 */
+export const 能管设置of = (org: 组织, userId: string): boolean => 是系统管理员of(org, userId) && !org.成员.get(userId)?.不管设置;
+/** 「留一位」守卫那一句；事务里写完重查不过就抛 留一位系统管理员错，事务回滚，调用方换成这句话回给界面 */
+export const 留一位系统管理员话 = "至少要留一位能管设置的系统管理员（业务角色总管理、是系统管理员、没勾「不管设置」）";
+export class 留一位系统管理员错 extends Error {}
+/** 还有没有一位能管设置的系统管理员；一位都没有就没人能再改角色、进设置了 */
+export const 有人能管设置 = (org: 组织, 除了?: string): boolean => [...org.成员.keys()].some((id) => id !== 除了 && 能管设置of(org, id));
 
 /** 解析 enterprise.watch_only（{本人: 那个人}）：两个都在职、不是同一个人才留；存坏了当没设 */
 export function 规整只看某人(value: unknown, org: 组织): Map<string, string> {
@@ -193,13 +227,12 @@ export function 管理员类别们of(org: 组织, userId: string): Set<管理员
  * 「市场复核」谁能拍（11-05 客户定，同日客户回复两条兜底）：
  * - 建的人不是负责人：建的人本人，或他的直属上级且是市场管理；
  * - 建的人自己就是负责人（初判是他自己判的，不复核自己）、或已离职停用：只有他的直属上级且是市场管理（离职的人按离职前手填的那位）；
- * - 上面那位找不到（没填、不是市场管理、也停用了）：只有系统总管理（业务角色总管理、没设业务线）。
+ * - 上面那位找不到（没填、不是市场管理、也停用了）：只有系统总管理（系统管理员，是系统管理员of）。
  * 不再有「任何市场管理都能拍」的兜底。虚线上级接手等虚线上级能操作以后再加（迭代备忘）
  */
 export function 能市场复核(org: 组织, me: string, p: { creatorId?: string | null; ownerId: string }): boolean {
   const 市管 = (id: string) => 管理员类别们of(org, id).has("市场管理");
-  const 我 = org.成员.get(me);
-  const 系统总管理 = !!我 && 我.角色们.includes("director") && !我.line;
+  const 系统总管理 = 是系统管理员of(org, me);
   const c = p.creatorId;
   const 在 = !!c && org.成员.has(c);
   if (在 && me === c && c !== p.ownerId) return true;

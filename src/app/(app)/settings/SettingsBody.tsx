@@ -17,7 +17,7 @@ import { multiTenant } from "@/lib/tenant/context";
 import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
 import { 同名带邮箱 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 权限组织 } from "@/lib/enterprise/org";
-import { 拆角色 } from "@/lib/enterprise/org-core";
+import { 拆角色, 是系统管理员of } from "@/lib/enterprise/org-core";
 import { 能进设置, 能改后台设置, 是总管理 } from "@/lib/enterprise/permissions";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
@@ -68,11 +68,12 @@ export default async function SettingsBody() {
     : null;
   // 企业版「团队成员」的角色列摆业务角色（10-28 用户：「看所有人的角色都是销售？这个不应该吧」）。
   // 停用的人也要有，所以直接读 EntMember，不走只含在职的 读组织()。没设过的就是空——不按账号角色推（11-01：没设业务角色 = 没权限，界面上也别装作有）
-  const 成员行 = 企业版() ? await prisma.entMember.findMany({ select: { userId: true, bizRole: true, noSettings: true } }) : null;
+  const 成员行 = 企业版() ? await prisma.entMember.findMany({ select: { userId: true, bizRole: true, noSettings: true, line: true } }) : null;
   const 业务角色of = 成员行
     ? ((存) => (u: { id: string }) => 存.get(u.id) ?? [])(new Map(成员行.map((m) => [m.userId, 拆角色(m.bizRole)])))
     : null;
   const 不管设置们 = new Set((成员行 ?? []).filter((m) => m.noSettings).map((m) => m.userId));
+  const 有线们 = new Set((成员行 ?? []).filter((m) => m.line === "内贸" || m.line === "外贸").map((m) => m.userId));
   const 阶段数of = (id: string) => Object.fromEntries((项目数 ?? []).filter((g) => g.ownerId === id).map((g) => [g.phase, g._count._all]));
 
   // 进设置页 / 改后台设置（11-01 #9）：企业版只认业务角色——系统管理员，勾了「不管设置」的不行；
@@ -262,6 +263,8 @@ export default async function SettingsBody() {
         ...(项目数 ? { 项目阶段: 阶段数of(u.id) } : {}),
         ...(业务角色of ? { 业务角色: 业务角色of(u) } : {}),
         ...(成员行 && 不管设置们.has(u.id) ? { 不管设置: true } : {}),
+        // 系统管理员开关（P-判定-06）：只摆给在职的总管理；停用的人不在 权限org 里，不摆
+        ...(权限org?.成员.get(u.id)?.角色们.includes("director") ? { 系统管理员: { on: 是系统管理员of(权限org, u.id), 有线: 有线们.has(u.id) } } : {}),
         followCount: u._count.followUps,
         ...(u.feishuOpenId ? { 飞书已绑: true } : {}),
       }))}
