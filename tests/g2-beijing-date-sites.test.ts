@@ -98,3 +98,43 @@ describe("G2 北京日期串：sync-attach 删除清单的文件名", () => {
     expect(fs.readdirSync(path.join(root, "g2-now", ".deleted")).sort()).toEqual(["2026-12-31.txt", "2027-01-01.txt"]);
   });
 });
+
+/*
+  扫描：业务代码（src，除 business-clock 本身）不许再手写「瞬间 + 8 小时再截前 10 位」取北京日，
+  一律走 beijingDay。11-11 渠道看板 ChannelDash 那一处（周期起点后面的「· YYYY-MM-DD 起」）是 G2 漏的，已改。
+  没有例外名单：新加一处就红。
+*/
+describe("G2 北京日期串：业务代码不再手写 +8 小时取日", () => {
+  const 手写 = /(?:480\s*\*\s*60_?000|8\s*\*\s*3600_?000|8\s*\*\s*60\s*\*\s*60\s*\*\s*1000|28_?800_?000)\s*\)\s*\.toISOString\(\)\s*\.\s*(?:slice|substring|substr)\(\s*0\s*,\s*10\s*\)/;
+  function 源码(dir: string): string[] {
+    const out: string[] = [];
+    for (const n of fs.readdirSync(dir)) {
+      const p = path.join(dir, n);
+      if (fs.statSync(p).isDirectory()) { if (n !== "generated") out.push(...源码(p)); }
+      else if (/\.(?:ts|tsx)$/.test(n)) out.push(p);
+    }
+    return out;
+  }
+
+  it("认得出手写写法", () => {
+    // 拆开拼：整串写出来会被 utc-date-cap 的棘轮当成测试里按 UTC 取日
+    const 截 = ".toISO" + "String().slice(0, 10)";
+    expect(手写.test(`new Date(d.getTime() + 480 * 60_000)${截}`)).toBe(true);
+    expect(手写.test(`new Date(t + 8 * 3600_000)${截}`)).toBe(true);
+    expect(手写.test("beijingDay(d)")).toBe(false);
+  });
+
+  it("src 里除 business-clock 外一处都没有（含渠道看板 ChannelDash）", () => {
+    const 根 = path.join(__dirname, "..", "src");
+    const 撞 = 源码(根)
+      .filter((f) => !f.endsWith(path.join("lib", "business-clock.ts")))
+      .filter((f) => 手写.test(fs.readFileSync(f, "utf8")))
+      .map((f) => path.relative(根, f));
+    expect(撞, "改用 lib/business-clock 的 beijingDay(时刻)").toEqual([]);
+  });
+
+  it("渠道看板用的就是 beijingDay", () => {
+    const s = fs.readFileSync(path.join(__dirname, "..", "src/app/(app)/channels/ChannelDash.tsx"), "utf8");
+    expect(s).toMatch(/import \{ beijingDay \} from "@\/lib\/business-clock"/);
+  });
+});

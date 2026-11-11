@@ -22,6 +22,8 @@ import { 联系人号查重键 } from "@/lib/enterprise/customer-v2";
 import { 成记录, 拆联系人, 拆出的客户ID列, type 读出的表 } from "./excel";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 可选项 } from "@/lib/enterprise/dict";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 能落的主渠道入口 } from "@/lib/enterprise/channel-main";
 import { 猜映射, 说明键, 值对照, 值叫法, 值说法, 进备注, type 建议器, type 成员, type 表概要 } from "./mapping";
 import { 实体顺序, 字段中文, 格式类们, type 格式类, type 来源, type 实体, type 映射, type 原始记录, type 问题, type 待写, type 值对照名, type 列映射 } from "./types";
 
@@ -102,7 +104,9 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
     客户号: new Map(),
     商机名: new Map(),
     客户状态: await 可选项("custStatus"),
-    渠道: 渠道索引(渠道们),
+    // 企业版：只有主渠道（没有子渠道）、现在就落得成渠道的也认（P-渠道-01；同来源下拉、客户导入，channel-main 能落的主渠道入口），
+    // 记占位 id，正式写之前才落成渠道（apply.ts 落主渠道来源）
+    渠道: 渠道索引(渠道们, 企业版() ? await 能落的主渠道入口() : undefined),
     分配方式: await 可选项("custAssign"),
     客户类型: await 可选项("custType"),
   };
@@ -148,9 +152,14 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
 
 /**
  * 来源对渠道用的索引：渠道全称（企业版是「渠道名称|来源」）认，「渠道名称」那一段也认；
- * 一段对上几个渠道的不认（不猜），全称对上的优先
+ * 一段对上几个渠道的不认（不猜），全称对上的优先。
+ * 主渠道入口（主渠道名 → 占位 id「main:…」）：只有主渠道、落得成的那些，名字没被真渠道占着才加。
+ * 有好几个子渠道的主渠道不在这里（P-渠道-01 只让没有子渠道的主渠道当来源），照旧一段对上几个不猜
  */
-export function 渠道索引(渠道们: readonly { id: string; name: string; platform?: string | null }[]): Map<string, string> {
+export function 渠道索引(
+  渠道们: readonly { id: string; name: string; platform?: string | null }[],
+  主渠道入口?: ReadonlyMap<string, string>,
+): Map<string, string> {
   const 全称 = new Map<string, string>();
   const 段 = new Map<string, string | null>();
   for (const c of 渠道们) {
@@ -162,6 +171,10 @@ export function 渠道索引(渠道们: readonly { id: string; name: string; pla
   const m = new Map<string, string>();
   for (const [k, id] of 段) if (id) m.set(k, id);
   for (const [k, id] of 全称) m.set(k, id);
+  for (const [名, 占位] of 主渠道入口 ?? []) {
+    const k = 名键(名);
+    if (k && !m.has(k)) m.set(k, 占位);
+  }
   // 渠道别名（同 AI 建档卡「微信→视频号」的做法）：别名自己对不上启用中的渠道时，按本名再认一次。
   // 只认启用中的本名渠道；本名也不在就照旧对不上（进备注、提醒），不新建
   for (const [别名, 本名] of 来源渠道别名) {

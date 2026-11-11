@@ -2,7 +2,7 @@
  * 线索 / 项目不能挂到客户公海里的客户名下（P-公海-08，X-13 / X-40）：客户在公海 = 没有负责人，先领取。
  * 挂了就会在公海客户名下建出有负责人的项目，绕过「项目不能单独领」（M-公海-06）。
  *
- * 单条转项目 / 并入、老线索批量转项目（lead-to-project.ts）、导入线索落项目（enterprise-import/apply.ts）共用这一个判断：
+ * 单条转项目 / 并入（leads/actions.ts convertLead、mergeLeadInto）、老线索批量转项目（lead-to-project.ts）、导入线索落项目（enterprise-import/apply.ts）共用这一个判断：
  * 只认客户公海那一行（CustomerPool），占位负责人但不在公海的不拦；不是企业版不拦。
  * 拦了怎么办由调用方定：单条回提示，批量跳过这条记原因，导入记成没写进去。
  */
