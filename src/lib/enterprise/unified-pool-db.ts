@@ -22,7 +22,7 @@ import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import type { Prisma } from "@/generated/prisma";
-import { 公海名单条件, 渠道阶段候选 } from "@/lib/project/list";
+import { 公海名单条件, 公海名单候选, type 公海名单筛 } from "@/lib/project/list";
 import {
   客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
   type 公海行, type 公海筛选, type 入池类,
@@ -176,9 +176,11 @@ export async function 读公海行(me: { id: string; name: string; role?: string
 }
 
 /** 页面用：取全量 → 筛排 → 切这一页 */
-export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: { channelId: string; phase: string }) {
+export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: 公海名单筛) {
   // 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：按项目一条一行，和渠道页数的是同一句（list.ts 公海名单条件）
-  const 名单条件 = 名单?.channelId ? await 公海名单条件(me, 渠道阶段候选(名单.channelId, 名单.phase)) : null;
+  // 按创建时间筛（11-11，渠道看板 TOP5 点进来带时间段）也走名单：时间是项目的创建时间，客户行按项目拆开才数得对
+  const 候选 = 名单 ? 公海名单候选(名单) : null;
+  const 名单条件 = 候选 ? await 公海名单条件(me, 候选) : null;
   const 取到 = await 读公海行(me, 名单条件 ?? undefined);
   const 全部 = 名单条件 ? await 按名单展开(取到, 名单条件) : 取到.行;
   const 截断 = 取到.截断;

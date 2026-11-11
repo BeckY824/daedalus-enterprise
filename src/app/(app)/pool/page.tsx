@@ -13,6 +13,7 @@ import { 持有数 } from "@/lib/project/db";
 import { 持有上限of } from "@/lib/project/org-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 阶段们 } from "@/lib/project/stage-dict";
+import { 是日期 } from "@/lib/custom-date-range";
 import PoolView from "./PoolView";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,9 @@ export default async function PoolPage({
   /** attr：公海属性；quick：快捷按钮；sort：pooled / follow / created */
   searchParams: Promise<{ keyword?: string; attr?: string; quick?: string; sort?: string; channelId?: string; page?: string; pageSize?: string;
     /** 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：项目来源渠道（项目没填跟客户来源）+ 同口径的阶段；按项目一条一行 */
-    projChannel?: string; phase?: string }>;
+    projChannel?: string; phase?: string;
+    /** 项目创建时间（渠道看板 TOP5 点进来带时间段，11-11）：两个日历日，北京日，和项目列表同名同读法；带了也按项目一条一行 */
+    createdFrom?: string; createdTo?: string }>;
 }) {
   const me = await requireUser();
   if (!企业版() || (await getBusiness()).projectMode !== true) notFound();
@@ -47,11 +50,15 @@ export default async function PoolPage({
     projChannel: (sp.projChannel ?? "").trim(),
     // 阶段只认三个，认不出的当没筛（同项目列表 阶段进程条件）
     phase: 阶段们.includes(sp.phase as never) ? sp.phase! : "",
+    // 写错的那头当没给（custom-date-range.ts 创建时间段 同样认）
+    createdFrom: 是日期(sp.createdFrom) ? sp.createdFrom : "",
+    createdTo: 是日期(sp.createdTo) ? sp.createdTo : "",
   };
+  const 按名单 = !!(筛.projChannel || 筛.createdFrom || 筛.createdTo);
   const 权限org = await 权限组织();
   const 能分配 = 能管公海(me, 权限org);
   const [d, users, 规则, 有, 渠道筛选项] = await Promise.all([
-    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId }, 正整数(sp.page, 1), pageSize, 筛.projChannel ? { channelId: 筛.projChannel, phase: 筛.phase } : undefined),
+    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo } : undefined),
     // 分配给谁：老板、主管才用得上；只列能当负责人的，不是系统管理员只列同业务线的（11-03 B2-7）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
     生效组织规则(),
