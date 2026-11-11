@@ -33,7 +33,7 @@ import { 有效线索节点, 建档不能过线索验证, 记沟通标记 } from
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 新项目默认值 } from "@/lib/project/proj-fields";
 import { 新项目所在地 } from "@/lib/project/profile-rules";
-import { 超上限n } from "@/lib/project/db";
+import { 持有上限起点, 写前核上限, 整批或不做 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
@@ -108,6 +108,9 @@ export async function 建项目带走的项目(customerId: string, 项目: { 分
   }
 }
 
+/** 指派给别人超了持有上限：「超了上限，」后面那半句 */
+const 建项目超上限尾 = "项目没有建；先推进或放回一些，或者换一位负责人";
+
 export async function 给客户建项目(输入: 给客户建项目输入): Promise<结果> {
   try {
     const me = await requireUser();
@@ -164,12 +167,6 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 指定给别人 = 指定分配名 !== null && 项目.ownerId !== me.id;
     const 读客户 = (db: Parameters<typeof 转客户给销售>[0]) => 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
     const 市场转客户 = 指定给别人 && 算市场转客户(org, await 读客户(prisma), 项目.ownerId);
-    if (项目.ownerId !== me.id) {
-      // 新建的是线索阶段，算 1 个；市场转客户时客户上同事待分配的项目随客户一起进手，照接待分配一起数（M-公海-18）
-      const 另进 = 市场转客户 ? await 数进手的持有项目([customerId], 项目.ownerId, { 同事待分配: true }) : 0;
-      const 超 = await 超上限n(prisma, 规则, 项目.ownerId, 1 + 另进);
-      if (超) return { ok: false, error: 超 };
-    }
 
     const 联系人 = 输入.联系人Id
       ? await prisma.contact.findFirst({ where: { id: String(输入.联系人Id), customerId }, select: { id: true } })
@@ -179,7 +176,18 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 状态开 = await 客户状态自动();
     // 算转客户的：换负责人之前钉住老签约（事务外，它用全局连接）
     if (市场转客户) await 钉住老签约();
-    const { projectId, 留下, 同事待分配 } = await prisma.$transaction(async (tx) => {
+    // 持有上限（M-公海-18）：指派给别人时核，和建在同一个事务里（11-11），超了整笔回滚、项目没建
+    const 建 = await 整批或不做(() => prisma.$transaction(async (tx) => {
+      // 事务里再判一次；转走后我可能就看不到这位客户了，这一段放开范围（同 分项目给）
+      const 现客户 = 指定给别人 ? await 读客户(tx) : null;
+      const 转这位 = !!现客户 && 算市场转客户(org, 现客户, 项目.ownerId);
+      if (项目.ownerId !== me.id) {
+        // 新建的是线索阶段，算 1 个；市场转客户时客户上同事待分配的项目随客户一起进手，照接待分配一起数。
+        // 市场自己的项目跟着客户走不算（同接待分配），所以写之前数、只数这两样（写前核上限）
+        const 起 = await 持有上限起点(tx, 规则, 项目.ownerId);
+        const 另进 = 起 && 转这位 ? await 数进手的持有项目([customerId], 项目.ownerId, { 同事待分配: true }, tx) : 0;
+        await 写前核上限(tx, 起, 1 + 另进, "分配", 建项目超上限尾);
+      }
       const p = await tx.project.create({
         data: {
           ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
@@ -198,16 +206,16 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
         where: { id: customerId, OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: 跟进.occurredAt } }] },
         data: { lastFollowAt: 跟进.occurredAt },
       });
-      // 事务里再判一次；转走后我可能就看不到这位客户了，这一段放开范围（同 分项目给）
-      const 现客户 = 指定给别人 ? await 读客户(tx) : null;
-      const 转 = 现客户 && 算市场转客户(org, 现客户, 项目.ownerId)
+      const 转 = 现客户 && 转这位
         ? await 看全部(() => 转客户给销售(tx, customerId, 现客户.salesOwnerId, 项目.ownerId, me.id, 指定分配名!))
         : undefined;
       const 留下: 留下的活 | undefined = 转?.留下;
       // 企业版客户状态跟着项目算：多了一个项目（没项目的客户从空变潜在）
       await 看全部(() => 跟着项目重算(tx, 状态开, [customerId]));
       return { projectId: p.id, 留下, 同事待分配: 转?.同事待分配 ?? [] };
-    });
+    }));
+    if (!建.ok) return { ok: false, error: 建.超 };
+    const { projectId, 留下, 同事待分配 } = 建.值;
 
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: projectId,

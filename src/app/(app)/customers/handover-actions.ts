@@ -14,11 +14,12 @@ import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 规则开着 } from "@/lib/enterprise/rules";
-import { 停用分拣, 停用方式们, 离职进手的持有项目, type 停用方式 } from "@/lib/offboard-db";
+import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 交接卡点 } from "@/lib/project/blocker";
-import { 带走并记下, 数进手的持有项目 } from "@/lib/carry-over-db";
-import { 超上限n } from "@/lib/project/db";
+import { 带走并记下在事务里 } from "@/lib/carry-over-db";
+import { 持有上限起点, 整批核上限, 整批或不做 } from "@/lib/project/db";
+import { 查完再写 } from "@/lib/check-then-write";
 import { 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 权限组织 } from "@/lib/enterprise/org";
@@ -26,7 +27,7 @@ import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
 import { 待确认, 已作废, 了结, 读ids, 能撤回别人的交接, type 交接种类 } from "@/lib/enterprise/handover-db";
 import { 移交作废天数, 移交作废说法 } from "@/lib/enterprise/handover-expire";
 import { getBusiness } from "@/lib/business";
-import { 交接通知 } from "@/lib/enterprise/notice-sources";
+import { 交接通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
 import { 不能当负责人 } from "@/lib/owners";
 import { notify } from "@/lib/enterprise/notify";
 
@@ -186,22 +187,11 @@ function 刷新() {
 }
 
 /**
- * 确认了会一次进好几个算持有的项目（M-公海-18，11-09）：加上手上已有的超了持有上限就不让确认，交接还是待确认，
- * 回一句说清谁、上限、现有几个（推进或放回一些再确认，或让发起人撤回换人）。在事务外按此刻的数据先数一遍：
- *   离职：此刻重新分拣给接手人的项目里，算持有的（他自己的、挂在别处的；同事待分配的清了也算）；
- *   转让：此刻还归原负责人、不在公海的客户会一起带过来的（他自己的、线索公海里的、同事待分配的、同事在推的），同 带走并记下
+ * 确认了超持有上限（M-公海-18，11-09 拦；11-11 起核和转在同一个事务里）：交接回滚成待确认，那句话的后半句。
+ * 拦的范围照旧：离职 = 此刻分拣给接手人的、转让 = 此刻还归原负责人的客户一起带过来的（他自己的、线索公海里的、同事待分配的、同事在推的），
+ * 都是真转进接手人手上的，所以写完再数（整批核上限）就是原来事务外先数的那个数
  */
-async function 确认了超上限(h: { kind: string; way: string | null; fromUserId: string; customerIds: string }, 接手人: string): Promise<string | null> {
-  let 进 = 0;
-  if (h.kind === "离职") {
-    const 方式: 停用方式 = (停用方式们 as readonly string[]).includes(h.way ?? "") ? (h.way as 停用方式) : "转交";
-    进 = await 看全部(() => 离职进手的持有项目(prisma, h.fromUserId, 方式, 接手人));
-  } else {
-    const 还归他 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: 读ids(h.customerIds) }, salesOwnerId: h.fromUserId, pool: null }, select: { id: true } }))).map((c) => c.id);
-    进 = await 数进手的持有项目(还归他, 接手人, { 公海: true, 自己的: true, 同事待分配: true, 同事在推: true });
-  }
-  return 进 ? 超上限n(prisma, await 生效组织规则(), 接手人, 进) : null;
-}
+const 确认超上限尾 = "这笔交接没有确认、还在等你确认；先推进或放回一些再确认，或者请发起人撤回后换人";
 
 /**
  * 接手人确认：到这时才真转。离职按此刻重新分拣（发起之后他名下又多出、少了的都对得上），给接手人的那半照离职老规矩转；
@@ -214,26 +204,30 @@ export async function 确认交接(id: string): Promise<结果> {
   const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id } }));
   if (!h || h.status !== 待确认) return { ok: false, error: 已处理 };
   if (h.toUserId !== me.id) return { ok: false, error: "只有接手人自己能确认" };
-  const 超 = await 确认了超上限(h, me.id);
-  if (超) return { ok: false, error: 超 };
   const b = await getBusiness();
+  // 规则、组织在事务外读（事务占着库的唯一连接，事务里读设置会等到超时）
+  const 规则 = await 生效组织规则();
   await 钉住老签约();
 
   if (h.kind === "离职") {
     const 方式: 停用方式 = (停用方式们 as readonly string[]).includes(h.way ?? "") ? (h.way as 停用方式) : "转交";
     const 记分配 = await 规则开着("线索分配");
-    const 成 = await 看全部(() => prisma.$transaction(async (tx) => {
+    // 持有上限和转在同一个事务里（M-公海-18）：先记下接手人名下原有几个，全部转完再数，超了抛错整笔回滚，交接还是待确认
+    const 整批 = await 整批或不做(() => 看全部(() => 查完再写(async (tx) => {
       if (!(await 了结(tx, h.id, "已确认", me))) return null;
+      const 起 = await 持有上限起点(tx, 规则, me.id);
       const 分 = await 停用分拣(tx, h.fromUserId, 方式, true);
       const 项目 = await 离职转给接手人(tx, 分, h.fromUserId, me.id, h.byUserId, 记分配);
       // 发起到确认之间又该进公海的（方式 = 公海），这时一起放
       await 离职放进公海(tx, 分, h.byUserId);
       // 企业版卡点：确认了才跟着转给接手人；项目在公海里的回看板
       await 交接卡点(tx, h.fromUserId, me.id, h.byUserId, 分.进公海项目);
+      await 整批核上限(tx, 起, "交接", 确认超上限尾);
       return { 分, 项目 };
-    }, { timeout: 30_000 }));
-    if (!成) return { ok: false, error: 已处理 };
-    const { 分, 项目 } = 成;
+    }, { timeout: 30_000 })));
+    if (!整批.ok) return { ok: false, error: 整批.超 };
+    if (!整批.值) return { ok: false, error: 已处理 };
+    const { 分, 项目 } = 整批.值;
     await 进公海挂靠通知(分.进公海客户); // 进公海关掉的挂靠申请，事务提交了再通知申请人（P-挂靠-01 / 02）
     const 从 = (await prisma.user.findUnique({ where: { id: h.fromUserId }, select: { name: true } }))?.name ?? h.fromUserId;
     await recordAudit({
@@ -251,16 +245,24 @@ export async function 确认交接(id: string): Promise<结果> {
   // 发起之后名下线索进了验证（X-77）：先不确认，验证走完或撤回验证再来；交接留在待确认
   const 验 = await 客户有验证中线索(prisma, (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId }, select: { id: true } }))).map((c) => c.id));
   if (验) return { ok: false, error: 验 };
-  const 换 = await 看全部(() => prisma.$transaction(async (tx) => {
+  const org = await 权限组织();
+  // 改客户负责人、名下的活和项目跟着走、核持有上限，一个事务做完（M-公海-18，11-11）：超了整笔回滚，交接还是待确认、什么都没转
+  const 整批 = await 整批或不做(() => 看全部(() => 查完再写(async (tx) => {
     if (!(await 了结(tx, h.id, "已确认", me))) return null;
+    const 起 = await 持有上限起点(tx, 规则, me.id);
     // 交接期间进了公海的不转（11-03 完成度 C3-2）：转了负责人是接手人、人却在公海里，他看不到也领不到
     const 还归他 = (await tx.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId, pool: null }, select: { id: true } })).map((c) => c.id);
     if (还归他.length) await tx.customer.updateMany({ where: { id: { in: 还归他 } }, data: { salesOwnerId: me.id } });
-    return 还归他;
-  }));
-  if (!换) return { ok: false, error: 已处理 };
-  // 名下的活、项目跟着走，每位记一行换负责人（操作人记发起的那位：是他定的转给谁）
-  const { 数, 记下, 没转成, 留下 } = await 带走并记下(换.map((customerId) => ({ customerId, 旧: h.fromUserId })), me.id, h.byUserId);
+    // 名下的活、项目跟着走，每位记一行换负责人（操作人记发起的那位：是他定的转给谁）
+    const 带 = await 带走并记下在事务里(tx, 还归他.map((customerId) => ({ customerId, 旧: h.fromUserId })), me.id, h.byUserId, "assign", org);
+    await 整批核上限(tx, 起, "交接", 确认超上限尾);
+    return { 换: 还归他, 带 };
+  }, { timeout: 30_000 })));
+  if (!整批.ok) return { ok: false, error: 整批.超 };
+  if (!整批.值) return { ok: false, error: 已处理 };
+  const { 换, 带: { 数, 记下, 没转成, 留下, 同事待分配 } } = 整批.值;
+  // 转客户带走了同事的项目（待分配的、在推的）：事务提交了才告诉这位同事（P-转-19）
+  if (同事待分配.length) await 同事待分配随客户通知(h.byUserId, me.id, 同事待分配);
   // 确认后又被别人改走的不算接手（带走并记下 什么都没动）
   const 转成了 = 换.filter((id) => !没转成.includes(id));
   const 从 = (await prisma.user.findUnique({ where: { id: h.fromUserId }, select: { name: true } }))?.name ?? h.fromUserId;

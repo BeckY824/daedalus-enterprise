@@ -122,7 +122,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   }
 
   /**
-   * 领取 / 分配一行或几行：领取时客户行、项目行一次交给 领取（同一个事务，持有上限整批核）；分配时客户行交给 分配公海、项目行一次分（分配公海项目）。
+   * 领取 / 分配一行或几行：客户行、项目行一起勾的，一次交给 领取 / 分配公海（同一个事务，持有上限整批核，超了一个都不做）；只勾了项目行的分配走 分配公海项目。
    * 提示条说清领到几个、几个没领到（能展开看原因），带一次撤销：客户行走 撤销公海，项目行走 撤销公海项目
    */
   async function 动手(动作: "领取" | "分配", 们: 公海行[], 给?: string) {
@@ -135,9 +135,11 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     let 客户res: 公海结果 | null = null;
     /** 整批没做成的那句（超持有上限等）：一个都没到手时直接说它，不让人展开逐条看同一句 */
     let 整批错: string | null = null;
-    // 领取：客户行、项目行一次交给 领取（同一个事务、整批核持有上限，超了一个都不领，M-公海-18）
-    if (动作 === "领取" && 项目们.length) {
-      客户res = await 领取(客户们.map((r) => r.customerId), 带, 项目们.map((r) => r.projectId!));
+    // 客户行、项目行一次交给 领取 / 分配公海（同一个事务、整批核持有上限，超了一个都不做，M-公海-18）；分配只有项目行的走下面 分配公海项目
+    if (项目们.length && (动作 === "领取" || 客户们.length)) {
+      客户res = 动作 === "领取"
+        ? await 领取(客户们.map((r) => r.customerId), 带, 项目们.map((r) => r.projectId!))
+        : await 分配公海(客户们.map((r) => r.customerId), 给!, 带, 项目们.map((r) => r.projectId!));
       if (客户res.ok) {
         项目到.push(...(客户res.项目?.领到 ?? []));
         for (const x of 客户res.项目?.没领到 ?? []) 没领到.push({ 名: 行名(项目们.find((r) => r.projectId === x.id)!), 原因: x.原因 });
@@ -157,11 +159,10 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       }
     }
     // 分配时客户整包出了客户公海（P-公海-10）：撤销时整包退回
-    let 整包: 整包撤销 | undefined;
+    let 整包: 整包撤销 | undefined = 客户res?.ok ? 客户res.项目?.整包 : undefined;
     let 给谁: { id: string; name: string } | undefined = 客户res?.ok ? 客户res.给谁 : undefined;
-    // 分配时客户行整批没分成（如超了持有上限）：项目行也不再分，别一半分出去一半没有
-    if (项目们.length && 动作 === "分配" && 客户res && !客户res.ok) for (const r of 项目们) 没领到.push({ 名: 行名(r), 原因: 客户res.error });
-    else if (项目们.length && 动作 === "分配") {
+    // 分配只勾了项目行：一次分（分配公海项目）
+    if (项目们.length && 动作 === "分配" && !客户们.length) {
       const res = await 分配公海项目(项目们.map((r) => r.projectId!), 给!, 带);
       if (!res.ok) 整批错 = res.error;
       if (res.ok) {
