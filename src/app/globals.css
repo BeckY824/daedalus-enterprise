@@ -12,23 +12,23 @@
      十组，每组「底 / 字 / 线」齐全。页面里不再出现裸 hex。
      以前同一个浅蓝有 #e9eefb / #eaf2ff / #eef2ff / #eef5ff 四个版本，
      谁也说不出它们的分工——只是不同时候各拍了一个。 */
-  --brand: #2f6bff;          /* 主动作、焦点、链接。一页只给一个主动作 */
-  --brand-deep: #1a3f9e;     /* 压在浅蓝上的字 */
-  --brand-bg: #eef2ff;       /* 选中行、AI 的浅蓝材质 */
-  --brand-line: #c7d6ee;
+  --brand: #0a66d8;          /* 主动作、焦点、链接。一页只给一个主动作 */
+  --brand-deep: #0850a8;     /* 压在浅蓝上的字 */
+  --brand-bg: #e8f0fb;       /* 选中行、AI 的浅蓝材质 */
+  --brand-line: #b9d2f2;
 
-  --ink: #111827;            /* 正文 */
-  --ink-soft: #374151;       /* 次一级正文：长段落、时间线内容 */
-  --text-muted: #6b7280;     /* 说明、元数据。字色最浅到此为止 */
-  --text-faint: #9ca3af;     /* 只给弱提示：placeholder、禁用、装饰点。不许当正文 */
+  --ink: #1d1d1f;            /* 正文 */
+  --ink-soft: #424245;       /* 次一级正文：长段落、时间线内容 */
+  --text-muted: #6e6e73;     /* 说明、元数据。字色最浅到此为止 */
+  --text-faint: #aeaeb2;     /* 只给弱提示：placeholder、禁用、装饰点。不许当正文 */
 
-  --line: #e5e7eb;           /* 主分隔线 */
-  --line-soft: #eceef2;      /* 次分隔线：行与行之间 */
-  --line-strong: #d1d5db;    /* 控件边框 */
+  --line: #e3e3e8;           /* 主分隔线 */
+  --line-soft: #ededf0;      /* 次分隔线：行与行之间 */
+  --line-strong: #d2d2d7;    /* 控件边框 */
   --panel: #ffffff;          /* 面板底 */
-  --workbench: #fafafa;      /* 工作台底 */
-  --hover: #f0f1f4;          /* 悬停灰 */
-  --row-hover: #f7f8fa;      /* 表格整行悬停，比 --hover 再淡一档 */
+  --workbench: #f5f5f7;      /* 工作台底 */
+  --hover: #ececee;          /* 悬停灰 */
+  --row-hover: #f5f5f7;      /* 表格整行悬停，比 --hover 再淡一档 */
 
   --success: #16a34a; --success-text: #15803d; --success-bg: #f0fdf4; --success-line: #bbf7d0;
   --warning: #d97706; --warning-text: #92400e; --warning-bg: #fffbeb; --warning-line: #fde68a;
@@ -67,7 +67,7 @@
 
   /* ---------- 间距与圆角 ---------- */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
-  --r-ctl: 6px;              /* 控件 */
+  --r-ctl: 8px;              /* 控件（16a 起 6 → 8：32 高的控件配 8 圆角；五档 4 / 8 / 10 / 14 / 999） */
   --r-card: 10px;            /* 卡片 */
   --r-pop: 14px;             /* 浮层、抽屉、气泡 */
 
@@ -125,8 +125,8 @@
      别的主题（src/app/skins/*.css）只在这里已有的名字上换值——名字拼错不会报错，
      只会悄悄沿用现状，所以 tests/skins.test.ts 钉着「主题只许定义 :root 里有的名字」。 */
   --seal: var(--ink);                  /* 你确认的那一下（建议卡落的印）。账簿换成朱红，且只许它用 */
-  --nav-on-bg: var(--brand-bg);        /* 左栏当前项的底 */
-  --nav-on-fg: var(--brand-deep);      /* 左栏当前项的字 */
+  --nav-on-bg: var(--hover);           /* 左栏当前项的底：16a 起浅灰底深字，不用蓝底（蓝留给要人点的东西） */
+  --nav-on-fg: var(--ink);             /* 左栏当前项的字 */
   --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "SF Pro SC", "PingFang SC", "Noto Sans SC", "Daedalus YaHei", "Microsoft YaHei", Roboto, sans-serif;
   /* 等宽：中文要有落脚处——Mac 落苹方，Windows 落雅黑（2026-10-14 之前没写雅黑，Windows 上中文掉到宋体） */
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "PingFang SC", "Daedalus YaHei", "Microsoft YaHei", monospace;
@@ -136,8 +136,10 @@
   --r-tag: 999px;                      /* 状态标签 */
   --bw: 1px;                           /* 控件边框粗细（喂给 antd 的 lineWidth） */
   --draft: dashed;                     /* 铅笔的线型：AI 起草、还没确认的 */
-  --shadow-card: none;
-  --shadow-pop: 0 8px 24px rgba(17, 24, 39, 0.08);
+  /* 16a：卡片不画边框，靠两层很淡的阴影从地面（#F5F5F7）上浮起来；浮层（弹窗、抽屉、下拉、气泡）共用 --shadow-pop */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
+  --card-line: transparent;            /* 卡片边框：现状不画；别的主题、暗黑接回 --line */
+  --shadow-pop: 0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10);
   --page-pattern: none;                /* 地面纹理：像素的点阵、科技的坐标格、账簿的稿纸线 */
   --page-pattern-size: auto;
 }
@@ -454,7 +456,7 @@ html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, trans
 .rail-fav-i { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: var(--r-card); color: var(--ink-soft); font-size: var(--fs-body); transition: background var(--t-fast) var(--ease); }
 .rail-fav-i:hover { background: var(--hover); color: var(--ink); }
 .rail-fav-i.on { background: var(--nav-on-bg); color: var(--nav-on-fg); }
-.rail-fav-av { width: 20px; height: 20px; flex: none; border-radius: 6px; display: grid; place-items: center; font-size: var(--fs-min); font-weight: 600; }
+.rail-fav-av { width: 20px; height: 20px; flex: none; border-radius: 4px; display: grid; place-items: center; font-size: var(--fs-min); font-weight: 600; }
 .rail-fav-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 毛玻璃下：当前项是一块白玻璃（原型第 4 版），字压深一档；悬停也是薄薄一层白 */
 html.glass .rail-item { color: var(--ink-soft); }
@@ -1118,7 +1120,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 对方当地时间（2026-10-16 外贸基础）：夜里压暗、带一个「夜里」小标；客户等级是一枚小字母章 */
 .local-time-night { opacity: 0.7; }
 .local-time-tag { margin-left: 4px; padding: 0 4px; border-radius: 4px; font-size: var(--fs-min); line-height: 16px; background: var(--warning-bg); color: var(--warning-text); }
-.cust-level { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 6px; font-size: var(--fs-min); font-weight: 600; line-height: 1; border: 1px solid var(--line); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cust-level { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 4px; font-size: var(--fs-min); font-weight: 600; line-height: 1; border: 1px solid var(--line); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .cust-level-A { border-color: var(--danger-line); color: var(--danger-text); background: var(--danger-bg); }
 /* 完成计划时弹的小框（2026-10-16）：三行，左边一个短标签 */
 .done-plan-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
@@ -1239,7 +1241,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-fold-btn {
   position: absolute; top: 14px; right: 14px; width: 28px; height: 28px;
   display: inline-flex; align-items: center; justify-content: center;
-  padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+  padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
   color: var(--text-muted); cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .proj-fold-btn:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
@@ -1406,7 +1408,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 两头的小箭头：只在那一侧还有没露出来的块时出现。摆在这排两边、占自己的宽度，不叠在块上（叠上去会盖住节点名，排版闸门 10-31 拦过） */
 .proj-stage-scroll {
   flex: none; margin-top: 2px; width: 26px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text-muted); cursor: pointer;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text-muted); cursor: pointer;
   box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 12%, transparent);
 }
 .proj-stage-scroll:hover { color: var(--ink); background: var(--hover); }
@@ -1904,7 +1906,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rtalk-side .btodo-head { flex-wrap: nowrap; }
 .rtalk-side-n { background: var(--warning-bg); color: var(--warning-text); }
 .rtalk-miss { display: flex; flex-direction: column; gap: 2px; margin: 0 0 var(--s2); padding: 0; list-style: none; }
-.rtalk-miss-a { display: flex; flex-direction: column; min-width: 0; padding: var(--s1) var(--s2); border-radius: 6px; color: inherit; }
+.rtalk-miss-a { display: flex; flex-direction: column; min-width: 0; padding: var(--s1) var(--s2); border-radius: 8px; color: inherit; }
 .rtalk-miss-a:hover { background: var(--hover); color: inherit; }
 .rtalk-miss-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .rtalk-miss-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--text-muted); }
@@ -2787,7 +2789,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   display: flex; flex-direction: column; background: var(--page-bg); border: 1px solid var(--line);
   border-radius: 14px; box-shadow: 0 24px 60px rgba(17, 24, 39, 0.18); overflow: hidden; }
 .setm-scroll { overflow: auto; padding: var(--s5); }
-.setm-x { position: absolute; top: 14px; right: 14px; z-index: 1; width: 30px; height: 30px; border: 0; border-radius: 6px;
+.setm-x { position: absolute; top: 14px; right: 14px; z-index: 1; width: 30px; height: 30px; border: 0; border-radius: 8px;
   background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .setm-x:hover { background: var(--hover); color: var(--ink); }
@@ -3408,7 +3410,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .list-none { padding: 40px 0; text-align: center; color: var(--text-muted); font-size: var(--fs-note); }
 
 /* 公海（2026-10-03 第 6 块）：虚线框的「公海（原 X）」——人还挂着原负责人，但这一格是空出来的 */
-.pool-tag { margin: 0; border-radius: 6px; border-style: dashed; color: var(--ink-soft); background: transparent; }
+.pool-tag { margin: 0; border-radius: 8px; border-style: dashed; color: var(--ink-soft); background: transparent; }
 /* 列表那一格：原负责人名字长时在列宽里省略，别压到右边「最近跟进」上（2026-10-04 实机）；全文在悬停提示里 */
 .ant-table-cell .pool-tag { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 .rec-pool { display: inline-flex; align-items: center; gap: 2px; }
@@ -3425,10 +3427,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .att-panel .ant-upload-drag { padding: 4px 0; }
 .att-pics { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
 .att-pic { position: relative; width: 96px; }
-.att-pic .ant-image, .att-pic .ant-image-img { border-radius: 6px; display: block; }
+.att-pic .ant-image, .att-pic .ant-image-img { border-radius: 8px; display: block; }
 .att-pic-name { font-size: var(--fs-note); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-pic > .ant-btn { position: absolute; top: 2px; right: 2px; background: color-mix(in srgb, var(--panel) 85%, transparent); }
-.att-missing { width: 96px; height: 96px; border: 1px dashed var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: var(--fs-note); color: var(--text-muted); padding: 6px; }
+.att-missing { width: 96px; height: 96px; border: 1px dashed var(--line); border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: var(--fs-note); color: var(--text-muted); padding: 6px; }
 .att-files { list-style: none; margin: 12px 0 0; padding: 0; }
 /* 企业版沟通记录上的截图、录音（F-跟进-07，projects/[id]/FollowAttachments.tsx）：长文件名折行不撑宽，录音条跟着栏宽缩 */
 .follow-att { margin-top: 6px; display: grid; gap: 6px; min-width: 0; }

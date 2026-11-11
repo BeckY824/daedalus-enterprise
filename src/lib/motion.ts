@@ -121,3 +121,16 @@ export function 从样式读动效(取: (name: string) => string): 动效 {
     间隔: 读秒(取("--stagger"), 间隔),
   };
 }
+
+/**
+ * antd 的动效 token（16a）：antd 读不了 CSS 变量，在这里从上面同一份曲线、时长拼成它认的字符串，
+ * lib/theme.ts 直接展开。悬停 / 收起 = fast，展开 = base，浮层长出来 = morph
+ */
+export const antd动效 = {
+  motionDurationFast: `${时长.fast}s`,
+  motionDurationMid: `${时长.base}s`,
+  motionDurationSlow: `${时长.morph}s`,
+  motionEaseOut: `cubic-bezier(${曲线.ease.join(", ")})`,
+  motionEaseInOut: `cubic-bezier(${曲线.morph.join(", ")})`,
+  motionEaseOutBack: `cubic-bezier(${曲线.spring.join(", ")})`,
+} as const;

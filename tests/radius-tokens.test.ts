@@ -1,5 +1,6 @@
 /**
- * 圆角只许五档：4 / 6（--r-ctl）/ 10（--r-card）/ 14（--r-pop）/ 999（--r-tag，胶囊），外加 0 和 50%（正圆）。
+ * 圆角只许五档：4 / 8（--r-ctl）/ 10（--r-card）/ 14（--r-pop）/ 999（--r-tag，胶囊），外加 0 和 50%（正圆）。
+ * 16a（2026-11-11）：控件那档 6 → 8（32 高的控件配 8），仍是五档不加档；原来写死 6 的小元素（20px 的头像块、等级章）改 4，其余改 8。
  *
  * 2026-11-10 盘点：圆角写死了 1/2/3/5/8/9/12 多种，主题（luxe 直角、pixel 全 0）改 --r-* 管不到写死的；
  * 状态标签 <Tag> 有三十多处手写 borderRadius: 6，把 antd 主题和 globals.css 的 .ant-tag 规则都盖掉了，标签形状没法统一管。
@@ -16,7 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { 源, 去注释, 根变量 } from "./skin-css";
 
-const 五档 = new Set([0, 4, 6, 10, 14, 999]);
+const 五档 = new Set([0, 4, 8, 10, 14, 999]);
 
 function 所有源文件(dir: string, 后缀: RegExp): string[] {
   const out: string[] = [];
@@ -78,14 +79,14 @@ describe("圆角只用五档 token", () => {
   const 根 = 根变量();
   const 有定义 = new Set([...去注释(fs.readFileSync(path.join(源, "app/globals.css"), "utf8")).matchAll(/(--r-[\w-]+)\s*:/g)].map((m) => m[1]));
 
-  it("css 的 border-radius 只写 var(--r-*) / 4 / 6 / 10 / 14 / 999px / 0 / 50%", () => {
+  it("css 的 border-radius 只写 var(--r-*) / 4 / 8 / 10 / 14 / 999px / 0 / 50%", () => {
     const 错: string[] = [];
     for (const d of css圆角声明()) {
       if (字形放行[d.选择器]) continue;
       const x = 档外(d.值, 有定义);
       if (x.length) 错.push(`${d.rel}:${d.行} ${d.选择器} → ${d.值}（${x.join("、")}）`);
     }
-    expect(错, `这些圆角不在档上，改成 var(--r-ctl|card|pop|tag) 或 4/6/10/14/999px：\n${错.join("\n")}`).toEqual([]);
+    expect(错, `这些圆角不在档上，改成 var(--r-ctl|card|pop|tag) 或 4/8/10/14/999px：\n${错.join("\n")}`).toEqual([]);
   });
 
   it("字形放行名单没有过期的条目（选择器删了或改到档上了，名单也要删）", () => {
@@ -107,7 +108,7 @@ describe("圆角只用五档 token", () => {
         }
       });
     }
-    expect(错, `这些圆角不在 0/4/6/10/14/999 上：\n${错.join("\n")}`).toEqual([]);
+    expect(错, `这些圆角不在 0/4/8/10/14/999 上：\n${错.join("\n")}`).toEqual([]);
   });
 
   it("<Tag> 的 style 里不许写 borderRadius（标签形状只归主题管）", () => {
