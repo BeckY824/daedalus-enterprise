@@ -297,3 +297,49 @@ it("带 AI 浮标、反馈提示出着：栏照样铺到底，滚到底让出提
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+/* 11-11 用户：「沟通记录模块，目前是无限长度。但是我需要你给他设一个最长的长度（整页显示上给待办留位置）。多的就在模块内上下移动。」
+   项目模式 30 条沟通：三档常见笔记本窗口下，首屏同时看得到沟通记录卡头 + 筛选行和待办卡标题；记录列表在卡里滚，卡头、筛选行不动；
+   列表滚到底再滚交给整栏（不套死，11-01 拿掉 60vh 限高就是因为滚不下去） */
+for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]] as const) {
+  it(`${w}×${h} 项目模式 30 条沟通：沟通记录限高、列表卡内滚，待办标题在首屏；列表滚到底整栏接着滚`, async () => {
+    const { page, errors } = await open(w, h);
+    try {
+      const 量2 = () => page.evaluate(() => {
+        const 栏 = document.querySelector(".rec > .rec-col") as HTMLElement;
+        const 列表 = 栏.querySelector(".proj-mod-body > .rec-tl") as HTMLElement;
+        const 沟通卡 = 列表.closest(".ant-card") as HTMLElement;
+        const 待办 = [...栏.querySelectorAll<HTMLElement>(".proj-fold")].find(e => e.querySelector('.proj-fold-btn[aria-label="收起待办"]'))!;
+        const 待办头 = (待办.querySelector(".ant-card-head") ?? 待办) as HTMLElement;
+        const 栏框 = 栏.getBoundingClientRect();
+        return {
+          列表滚: getComputedStyle(列表).overflowY, 列表溢: 列表.scrollHeight - 列表.clientHeight, 列表顶: 列表.scrollTop, 栏顶: 栏.scrollTop,
+          卡头顶: (沟通卡.querySelector(".ant-card-head") as HTMLElement).getBoundingClientRect().top, 筛选顶: (沟通卡.querySelector(".rec-filters") as HTMLElement).getBoundingClientRect().top,
+          待办头底: 待办头.getBoundingClientRect().bottom, 栏底: Math.min(栏框.bottom, window.innerHeight), 栏上: 栏框.top,
+          横滚: document.documentElement.scrollWidth - window.innerWidth, 页滚: document.documentElement.scrollHeight - window.innerHeight,
+        };
+      });
+      const 起 = await 量2();
+      expect([起.横滚 <= 0, 起.页滚 <= 0]).toEqual([true, true]);
+      expect(起.列表滚).toBe("auto");
+      expect(起.列表溢).toBeGreaterThan(0);
+      // 待办卡标题整条落在这一栏的可见窗里（不用先把沟通记录滚完）
+      expect(起.待办头底).toBeLessThanOrEqual(起.栏底);
+      expect(起.卡头顶).toBeGreaterThanOrEqual(起.栏上 - 1);
+      // 滚记录列表：卡头、筛选行不动，整栏不动
+      await page.locator(".rec > .rec-col .proj-mod-body > .rec-tl").evaluate(e => { e.scrollTop = 300; });
+      const 滚 = await 量2();
+      expect(滚.列表顶).toBeGreaterThan(0);
+      expect([滚.卡头顶, 滚.筛选顶, 滚.栏顶]).toEqual([起.卡头顶, 起.筛选顶, 起.栏顶]);
+      // 列表到底以后，鼠标停在列表上接着滚：交给整栏（不套死）
+      await page.locator(".rec > .rec-col .proj-mod-body > .rec-tl").evaluate(e => { e.scrollTop = e.scrollHeight; });
+      const 框 = await page.locator(".rec > .rec-col .proj-mod-body > .rec-tl").boundingBox();
+      await page.mouse.move(框!.x + 40, 框!.y + 40);
+      // 滚轮一格一格停顿着滚（Chrome 一串连续滚轮锁在开头那层，停一下新的一串才交给外层；人手滚就是这样）
+      for (let i = 0; i < 20; i++) { await page.mouse.wheel(0, 300); await page.waitForTimeout(150); }
+      // 三栏时沟通栏自己滚，两栏时（容器 < 1090）第 2 列跟着整格滚：哪一层往下走了都算接上
+      await page.waitForFunction(() => (document.querySelector(".rec > .rec-col") as HTMLElement).scrollTop + (document.querySelector(".rec-page > .rec") as HTMLElement).scrollTop > 0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
