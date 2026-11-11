@@ -30,11 +30,12 @@ let 子渠道: string, 只主: string;
 const 键们 = Object.keys(名单键们) as 名单键[];
 const 统计of = (谁: 人) =>
   以谁的身份(谁.id, () => 读渠道统计([子渠道, 只主].map((id) => ({ id, createdAt: new Date("2026-01-01T00:00:00Z"), endDate: null })), new Date("2026-11-11T00:00:00Z"), 谁));
-/** 照名单链接的地址栏参数去读项目列表 */
+/** 照名单链接的地址栏参数去读项目列表：这一页的行，带上服务端总数（11-11 起分页，渠道数字对的是总数） */
 const 点进去 = async (谁: 人, channelId: string, 键: 名单键) => {
   mocks.user = { ...mocks.user, id: 谁.id, role: 谁.role };
   const sp = Object.fromEntries(new URL(名单链接(channelId, 键), "http://x").searchParams);
-  return (await 以谁的身份(谁.id, () => 读项目列表(谁, sp))).行;
+  const d = await 以谁的身份(谁.id, () => 读项目列表(谁, sp));
+  return Object.assign([...d.行], { 总数: d.总数 });
 };
 
 beforeEach(async () => {
@@ -95,7 +96,7 @@ describe("渠道数字 = 点进去的项目列表条数", () => {
       for (const 键 of 键们) {
         const 列 = await 点进去(老板, ch, 键);
         const 名单 = 统[ch].名单![键];
-        expect(名单.列表, `${ch} ${键}`).toBe(列.length);
+        expect(名单.列表, `${ch} ${键}`).toBe(列.总数);
         expect(统[ch][键] - 名单.列表, `${ch} ${键}`).toBe(名单.公海);
       }
     }
@@ -111,7 +112,7 @@ describe("渠道数字 = 点进去的项目列表条数", () => {
       for (const ch of [子渠道, 只主]) {
         for (const 键 of 键们) {
           const 列 = await 点进去(谁, ch, 键);
-          expect(统[ch].名单![键].列表, `${谁.name} ${ch} ${键}`).toBe(列.length);
+          expect(统[ch].名单![键].列表, `${谁.name} ${ch} ${键}`).toBe(列.总数);
           expect(列.every((r) => r.ownerId === 谁.id)).toBe(true);
         }
       }

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { App, Button, Modal, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
+import { App, Button, Modal, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
 import { CloseOutlined, PlusOutlined, RightOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import dynamic from "next/dynamic";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
@@ -26,7 +26,6 @@ import { 金额, 合计文字 } from "@/lib/currency";
 import { 主题颜色 } from "@/lib/chart-theme";
 import { categorical } from "@/lib/palette";
 import { 认首页卡, 首页卡口径 } from "@/lib/project/home-cards";
-import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 企业级别, 企业级别说明, 级别选项 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
@@ -85,11 +84,19 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [],
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
-  取到上限: boolean;
+  /**
+   * 服务端分页（11-11，同客户列表）：总数 = 全部符合条件的条数；页 = 这一页（越界时服务端落到最后一页）；
+   * 要的页 = 地址栏上原来的 page，和 页 不一样时把地址栏改成实际的页；排序 = 地址栏 sort（lib/project/list.ts 认项目排序）
+   */
+  总数: number;
+  页: number;
+  每页: number;
+  要的页?: string;
+  排序?: string;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
   filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; createdFrom?: string; createdTo?: string; phone?: string };
@@ -180,7 +187,23 @@ export default function ProjectsView({
     const 帧 = requestAnimationFrame(() => document.querySelector(`tr[data-row-key="${CSS.escape(高亮)}"]`)?.scrollIntoView({ block: "center", behavior: 滚法() }));
     return () => cancelAnimationFrame(帧);
   }, [高亮]);
-  const { f, setF, apply, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", filters);
+  // 排序跟筛选一起记在地址栏（sort），翻页、改筛选都带着；每页条数（pageSize）由 翻页 记
+  const { f, setF, apply, 翻页, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", { ...filters, sort: 排序 }, 每页);
+  // 要的页越界（删空了最后一页、手改地址栏）：服务端已给了实际那一页，这里只把地址栏改对，不再取一次（同客户列表）
+  useEffect(() => {
+    if (要的页 === undefined || 要的页 === String(页)) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("page") !== 要的页) return;
+    url.searchParams.set("page", String(页));
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [页, 要的页]);
+  // 表头排序：在全部筛选结果里排（服务端），再点一次回到默认（最近改过在前）
+  const 排序键: Record<string, string> = { createdAt: "created", expectedDealAt: "deal", owner: "owner" };
+  const 点排序 = (key: string, order: "ascend" | "descend" | null) => {
+    const 前 = 排序键[key];
+    if (前) apply({ sort: order === "ascend" ? `${前}-asc` : order === "descend" ? `${前}-desc` : "" });
+  };
+  const 序of = (key: string) => (排序 === `${排序键[key]}-asc` ? ("ascend" as const) : 排序 === `${排序键[key]}-desc` ? ("descend" as const) : null);
   const 看板框 = useRef<HTMLDivElement>(null);
   const [右边还有, 滑一列] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null);
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
@@ -240,14 +263,14 @@ export default function ProjectsView({
     // P11 定稿 -2 版：项目级别显示成实心星（S 4 颗 … C 1 颗），悬停看档名；没分级的是 —
     ...(企业版 ? [
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
-      { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
+      { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: true, sortOrder: 序of("expectedDealAt"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
       { title: "已立项", key: "age", width: 80, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
       { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={渠道显示名(r.项目来源)}>{主渠道显示名(r.项目来源)}</span> : 无) },
-      // 创建时间（11-11 渠道负责人要按入库时间分线索）：默认收在「列」里，点表头在这一页取回来的项目里排（列表最多 项目上限 条，和别的列排序一样）
-      { title: "创建时间", key: "createdAt", width: 104, 默认: false, sorter: (a: 项目行, b: 项目行) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""), render: (_: unknown, r: 项目行) => (r.createdAt ? <span className="nowrap">{fmtDate(r.createdAt)}</span> : 无) },
+      // 创建时间（11-11 渠道负责人要按入库时间分线索）：默认收在「列」里，点表头在全部筛选结果里排（服务端 sort=created-asc / created-desc）
+      { title: "创建时间", key: "createdAt", width: 104, 默认: false, sorter: true, sortOrder: 序of("createdAt"), render: (_: unknown, r: 项目行) => (r.createdAt ? <span className="nowrap">{fmtDate(r.createdAt)}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
-    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, sorter: (a: 项目行, b: 项目行) => a.ownerName.localeCompare(b.ownerName, "zh-CN"), render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),
     // 回公海日：明天（或今天）就回的直接写「明天回公海（11-06）」，再往后只写日期；不会收的（已结束、在订单阶段、在公海）是 —
     ...(企业版 ? [{ title: "回公海日", key: "recycleAt", width: 150, render: (_: unknown, r: 项目行) => (r.即将回收 ? <将收标 日={r.即将回收} /> : r.回收日 ? dayjs(r.回收日).format("MM-DD") : 无) }] : []),
     { title: "最近更新", key: "updatedAt", width: 100, ...收起, render: (_, r) => fmtDate(r.updatedAt) },
@@ -275,7 +298,7 @@ export default function ProjectsView({
   const 市场锁定 = new Set(["name", "phase", "node", "verify", "owner"]);
   // 判无效的写「叫法 · 原因」一行放不下就省略，悬停看每一步谁、哪天、判了什么（客户 11-05（X-09），lib/project/list.ts 读验证痕们）
   const 验证列: 列<项目行> = { title: "验证结果", key: "verify", width: 120, render: (_, r) => (有值(r.验证结果) ? <span className="fulltext" title={r.验证全文 || r.验证结果}>{r.验证结果}</span> : 无) };
-  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, sorter: (a, b) => a.ownerName.localeCompare(b.ownerName, "zh-CN"), render: (_, r) => (r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) };
+  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_, r) => (r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) };
   const 列表: 列<项目行>[] = 市场列
     ? [
         ...市场默认.map((k) => (k === "verify" ? 验证列 : k === "owner" ? 负责人列 : 找列(k))).filter((c): c is 列<项目行> => !!c),
@@ -392,9 +415,7 @@ export default function ProjectsView({
         title={新线索 ? "新线索" : "项目"}
         titleAside={卡标}
         subtitle={
-          取到上限
-            ? `只显示最近改过的 500 个${新线索 ? "新线索" : "项目"}，用搜索找更早的`
-            : 新线索
+          新线索
               ? "项目的线索阶段：潜客培育 → 线索验证 → 线索推进，以转商机或线索流失结束；转了商机到「项目」里接着走"
               : "从线索到交付，一个项目一条线"
         }
@@ -423,12 +444,14 @@ export default function ProjectsView({
           单行={企业版}
           列={列表}
           行={行}
-          空库={行.length === 0 && !在筛}
+          空库={总数 === 0 && !在筛}
           加载中={pending}
           // 只看进度（已分给圈外的人）：行在、点不进详情（服务端详情页另挡，P-看-06）
           行链接={(r) => (r.只看进度 ? "" : `/projects/${r.id}`)}
           行类={(r) => (r.只看进度 ? "row-readonly" : "")}
           亮={高亮 ? [高亮] : undefined}
+          分页={{ 当前页: 页, 每页, 总数, 翻页 }}
+          排序={点排序}
           空态={
             新线索
               ? {
@@ -470,7 +493,7 @@ export default function ProjectsView({
                       <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
-                    {c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
+                    {c.行.length === 0 && <div className="pipe-empty">{c.数 > 0 ? "这一页没有，翻页看" : 在筛 ? "这一列没有对上的" : c.空态}</div>}
                     {c.行.map((r) => {
                       const 异常 = r.result === "异常状态";
                       const 小字 = 卡片小字(r, 字典);
@@ -526,6 +549,13 @@ export default function ProjectsView({
               })}
             </div>
           </div>
+          {/* 看板和列表同一页（服务端分页）：列头的数和金额是全部符合条件的，卡片只摆这一页的，明说，不悄悄截断 */}
+          {总数 > 行.length && (
+            <div className="cust-board-page">
+              <Pagination size="small" current={页} pageSize={每页} total={总数} showSizeChanger onChange={翻页}
+                showTotal={(t) => `共 ${t} 个 · 列头按全部算，卡片只摆这一页`} />
+            </div>
+          )}
         </>
       )}
       {企业版 && !新线索 && (

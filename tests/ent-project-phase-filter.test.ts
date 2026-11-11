@@ -94,14 +94,15 @@ describe("公海项目只在 /pool（11-02）", () => {
     await prisma.project.create({ data: { name: "项目公海", customerId: c.id, ownerId: "", creatorId: 老板.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } });
   };
 
-  it("企业版默认列表、看板、新线索页都不列公海项目，取到上限也只数列出来的；pool=1 只列公海", async () => {
+  it("企业版默认列表、看板、新线索页都不列公海项目，总数和看板列头也只数列出来的；pool=1 只列公海", async () => {
     await 进公海();
     expect(await 名们({})).not.toContain("公海");
     expect(await 名们({}, "线索")).not.toContain("公海");
     expect(await 名们({ phase: "线索" })).not.toContain("公海");
     const d = await 读项目列表(老板, {});
     expect(d.行.length).toBe(7);
-    expect(d.取到上限).toBe(false);
+    expect(d.总数).toBe(7);
+    expect(看板分列(d.行, undefined, undefined, d.看板合计).reduce((n, c) => n + c.数, 0)).toBe(7);
     expect(看板分列(d.行).flatMap((c) => c.行).map((r) => r.name)).not.toContain("项目公海");
     expect((await 读项目列表(老板, { pool: "1" })).行.map((r) => r.name)).toEqual(["项目公海"]);
   });

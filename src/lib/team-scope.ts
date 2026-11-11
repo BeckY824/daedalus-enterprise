@@ -235,6 +235,17 @@ export async function 现在的公海回避(db: PrismaClient): Promise<公海回
 }
 
 /**
+ * 这个请求「读客户」时限定层并进去的那一句（和 加上限定 里 Customer 的读同一个分支），null = 不限定、全看得到。
+ * 给要把「客户看不看得到」写进别的表 where 里的地方用（关联条件里的 customer 不过限定层）：
+ * 项目列表按客户名 / 号码 / 客户来源筛时，客户不露的不算中（lib/project/list.ts 露客户条件），总数和分页才能在库里算
+ */
+export async function 客户读条件(db: PrismaClient): Promise<Record<string, unknown> | null> {
+  const { 我, 读, 互看, 市场, 按线, 公海回避, 组员客户, 市场全看 } = await 现在的限定(db);
+  if (!我) return 公海回避 ? 只回避条件("Customer", 公海回避) : null;
+  return 限定条件("Customer", 读 ?? 我, !读 && 互看, 市场, 按线, 公海回避, 组员客户, 市场全看);
+}
+
+/**
  * 现在这个人是企业版管理员（admin，只读）：页面渲染时顺手做的写（每天一扫这类）跳过，不然一读就报错。
  * db 要传底层 defaultClient：传带限定的 prisma 时，算范围的查询又走回限定钩子、等自己那份范围，缓存冷着就一直卡住
  */
