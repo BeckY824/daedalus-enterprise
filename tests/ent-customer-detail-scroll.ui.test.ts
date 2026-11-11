@@ -202,8 +202,10 @@ it("800px 退成一栏：整页不滚，整格一起滚、页头不动；390 手
 });
 
 /* 10-31 改版 R7：和项目详情同一套字阶（ent-project-detail.ui 里同样的数）。档案字段这里是桩，
-   照 InlineField 的结构在资料栏里补一行有值、一行没填的 */
-it("10-31 改版 R7：标题 26、模块标题 18、值 16 正文色、字段名 16 灰、辅助 14 灰、没填 16 浅灰、链接品牌色", async () => {
+   照 InlineField 的结构在资料栏里补一行有值、一行没填的。
+   16a 界面样板（.ui-v2）起客户详情回到全站六档：标题 22、模块标题 15、值 14、字段名 13、辅助 13
+   （原来大一号的 26 / 18 / 16 / 16 / 14 和列表页 22 / 15 / 14 不是一套）；项目详情（.proj-wrap）不在样板里，照旧大一号 */
+it("10-31 改版 R7（16a 样板回六档）：标题 22、模块标题 15、值 14 正文色、字段名 13 灰、辅助 13 灰、没填 14 浅灰、链接品牌色", async () => {
   const { page, errors } = await open(1680, 900);
   try {
     await page.evaluate(() => {
@@ -214,17 +216,17 @@ it("10-31 改版 R7：标题 26、模块标题 18、值 16 正文色、字段名
     const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = `var(${v})`; document.querySelector(".rec-page")!.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
     const 样 = (sel: string) => page.locator(sel).first().evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; });
     const [墨, 灰, 浅, 蓝] = [await 色("--ink"), await 色("--text-muted"), await 色("--text-faint"), await 色("--brand")];
-    expect(await 样(".rec-head-name")).toEqual({ 字: "26px", 色: 墨 });
+    expect(await 样(".rec-head-name")).toEqual({ 字: "22px", 色: 墨 });
     // 项目模式（11-01 起）模块是卡，模块标题在卡头
-    expect(await 样(".rec-sec-t, .rec-mod > .ant-card-head")).toEqual({ 字: "18px", 色: 墨 });
-    expect(await 样("#r7-有 .rec-field-k")).toEqual({ 字: "16px", 色: 灰 });
-    expect(await 样("#r7-有 .rec-field-v")).toEqual({ 字: "16px", 色: 墨 });
-    expect(await 样("#r7-空 .rec-field-empty")).toEqual({ 字: "16px", 色: 浅 });
-    expect(await 样(".rec-tl-time")).toEqual({ 字: "14px", 色: 灰 });
-    expect(await 样(".rec-contact-p")).toEqual({ 字: "14px", 色: 灰 });
-    expect((await 样(".rec-tl-content")).字).toBe("16px");
+    expect(await 样(".rec-sec-t, .rec-mod > .ant-card-head")).toEqual({ 字: "15px", 色: 墨 });
+    expect(await 样("#r7-有 .rec-field-k")).toEqual({ 字: "13px", 色: 灰 });
+    expect(await 样("#r7-有 .rec-field-v")).toEqual({ 字: "14px", 色: 墨 });
+    expect(await 样("#r7-空 .rec-field-empty")).toEqual({ 字: "14px", 色: 浅 });
+    expect(await 样(".rec-tl-time")).toEqual({ 字: "13px", 色: 灰 });
+    expect(await 样(".rec-contact-p")).toEqual({ 字: "13px", 色: 灰 });
+    expect((await 样(".rec-tl-content")).字).toBe("14px");
     const 链 = ".rec-sec-t a, .rec-mod > .ant-card-head .ant-card-extra a";
-    if (await page.locator(链).count()) expect(await 样(链)).toEqual({ 字: "16px", 色: 蓝 });
+    if (await page.locator(链).count()) expect(await 样(链)).toEqual({ 字: "14px", 色: 蓝 });
     // 最长的内置字段名五个字一行放下
     expect(await page.locator("#r7-有 .rec-field-k").evaluate(e => e.getBoundingClientRect().height)).toBeLessThanOrEqual(25);
     expect(errors).toEqual([]);

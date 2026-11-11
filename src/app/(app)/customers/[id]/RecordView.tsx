@@ -807,7 +807,8 @@ export default function RecordView({
   const 有右栏 = (aiEnabled && !AI在抽屉里) || !去项目跟进 || (!plan && 摆法.下次跟进);
 
   return (
-    <div className="rec-page">
+    /* ui-v2：界面样板（16a，只客户列表 + 客户详情两页），样式全在 globals.css 末尾那一块，只认这个类 */
+    <div className="rec-page ui-v2">
       {醒目条}
       <div className="rec-head">
         {/*

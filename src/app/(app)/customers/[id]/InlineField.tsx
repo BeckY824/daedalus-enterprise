@@ -2,7 +2,7 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 
-import { useContext, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { 是空值, 有值, 空值符 } from "@/lib/empty-value";
 import { useRouter } from "next/navigation";
@@ -135,7 +135,7 @@ export default function InlineField({
 
   if (!editing) {
     return (
-      <div className="rec-field" data-field={field} {...(只读 ? { style: { cursor: "default" }, ...(权限挡 ? { title: `你的角色只能看「${label}」，改不了（设置 → 组织架构 → 字段权限）` } : {}) } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
+      <div className={`rec-field${kind === "textarea" ? " is-multi" : ""}`} data-field={field} {...(只读 ? { style: { cursor: "default" }, ...(权限挡 ? { title: `你的角色只能看「${label}」，改不了（设置 → 组织架构 → 字段权限）` } : {}) } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
         <div className="rec-field-k">{label}</div>
         {/* 一行、放不下打省略号、悬停看全文（11-04 用户：「尽量所有信息都在一行显示完整。除了备注」）；
             悬停浮层是全站的 TruncTip，量到真截了才出。多行的备注照旧换行。
@@ -146,6 +146,8 @@ export default function InlineField({
         >
           {显示 && typeof display === "string" && display ? (
             <span className="rec-field-link">{显示(display)}</span>
+          ) : kind === "textarea" && typeof display === "string" && display ? (
+            <长文 text={display} />
           ) : (
             display || (只读 || 空时横线 ? 空值符 : placeholder)
           )}
@@ -156,7 +158,7 @@ export default function InlineField({
 
   const common = { autoFocus: true, size: "middle" as const, style: { width: "100%" } };
   return (
-    <div className="rec-field rec-field-editing" data-field={field}>
+    <div className={`rec-field rec-field-editing${kind === "textarea" ? " is-multi" : ""}`} data-field={field}>
       <div className="rec-field-k">{label}</div>
       {kind === "select" && (
         <Select
@@ -254,5 +256,41 @@ export default function InlineField({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * 多行字段（备注）的显示（16a 界面样板）：.ui-v2 下超过 4 行收起，右下一颗「展开 / 收起」。
+ * 收不收只看真截没截（scrollHeight 比可见高度高）：样板之外没有 4 行的限制，量出来不截，按钮也不出。
+ * 按钮只管展开，不进编辑（拦住冒泡，和电话旁的复制键一样）；点文字别处照旧进编辑
+ */
+function 长文({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [开, set开] = useState(false);
+  const [截了, set截了] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || 开) return;
+    const 量 = () => set截了(el.scrollHeight > el.clientHeight + 1);
+    量();
+    const ro = new ResizeObserver(量);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, 开]);
+  return (
+    <>
+      <span ref={ref} className={`rec-field-clamp${开 ? " is-open" : ""}`}>{text}</span>
+      {(截了 || 开) && (
+        <button
+          type="button"
+          className="rec-field-more"
+          aria-expanded={开}
+          onClick={(e) => { e.stopPropagation(); set开(!开); }}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          {开 ? "收起" : "展开"}
+        </button>
+      )}
+    </>
   );
 }
