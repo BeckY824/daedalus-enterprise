@@ -35,6 +35,10 @@ import { 预览导入, 执行导入, type 导入方案 } from "@/app/(app)/custo
 import { 字段表, 猜列 } from "@/lib/import/fields";
 import { getBusiness } from "@/lib/business";
 import { 清空暂存 } from "@/lib/import/staging";
+import { 试跑, 渠道索引 } from "@/lib/enterprise-import/report";
+import { 写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
+import { 名键 } from "@/lib/enterprise-import/clean";
+import type { 读出的表 } from "@/lib/enterprise-import/excel";
 
 let 老板: string;
 let 运营: string;
@@ -275,5 +279,81 @@ describe("几条入口", () => {
     expect(丙.channelId).toBeNull();
     expect(丙.remark ?? "").toContain("没人管的");
     expect(await 入口("没人管的")).toBeNull();
+  });
+});
+
+/*
+  飞书拉取（迁移导入 / 同步同一条管道，lib/enterprise-import）：来源写只有主渠道的主渠道名也认（10B-3）。
+  清洗时用 能落的主渠道入口（同来源下拉、客户导入）记占位，正式写之前在事务外 落到渠道；试跑不建东西。
+  有子渠道的主渠道（抖音）名字照旧：只有一条子渠道时按「渠道名称」那段认到那条，几条时不猜、进备注（规则表没说，保持现状）
+*/
+describe("飞书拉取：来源写只有主渠道的主渠道名", () => {
+  const 客户头 = ["记录ID", "客户全称", "手机号码", "客户负责人", "客户来源"];
+  const 行 = (id: string, 名: string, 号: string, 来源: string) => [id, 名, 号, "销售乙", 来源];
+  const 表 = (行们: string[][]): 读出的表 => ({ 名: "飞书客户", 实体: "customer", 表头: 客户头, 行: 行们, 行号: 行们.map((_, i) => i + 2), 提醒: [] });
+  async function 拉(行们: string[][]) {
+    const { 批次Id } = await 试跑({ 来源: "feishu", 用户Id: 老板, 表: [表(行们)], 建议器: null, 清洗器: null });
+    return 批次Id;
+  }
+  const 写 = async (id: string) => {
+    await 定这批业务线(id, "外贸");
+    return 写一批(id, { id: 老板, name: "老板" });
+  };
+
+  it("认得：试跑不建渠道；正式写时落成一条（两位客户同一条），负责人带主渠道的；没定负责人的照对不上进备注", async () => {
+    const id = await 拉([行("F1", "飞书甲", "13500000001", "某展会"), 行("F2", "飞书乙", "13500000002", "某展会"), 行("F3", "飞书丙", "13500000003", "没人管的")]);
+    expect(await 入口("某展会")).toBeNull();
+    const 批 = await prisma.entImportBatch.findUniqueOrThrow({ where: { id } });
+    expect(批.report).not.toContain("来源「某展会」对不上");
+    expect(批.report).toContain("来源「没人管的」对不上");
+    const r = await 写(id);
+    expect(r).toMatchObject({ 完了: true, 失败: 0 });
+    const c = await 入口("某展会");
+    expect(c).toMatchObject({ mainId: 展会, channelOwnerId: 运营, platform: "某展会" });
+    for (const 名 of ["飞书甲", "飞书乙"]) {
+      expect(await prisma.customer.findFirstOrThrow({ where: { name: 名 } })).toMatchObject({ channelId: c!.id, attributionChannelId: c!.id, channelOwnerId: 运营 });
+    }
+    const 丙 = await prisma.customer.findFirstOrThrow({ where: { name: "飞书丙" } });
+    expect(丙.channelId).toBeNull();
+    expect(丙.remark ?? "").toContain("来源：没人管的");
+    expect(await 入口("没人管的")).toBeNull();
+    expect(await prisma.channel.count({ where: { mainId: 展会 } })).toBe(1);
+  });
+
+  it("下一次拉：主渠道名按那条真渠道认，不再建；试跑之后主渠道没了负责人的，这条不挂、不报错", async () => {
+    const id1 = await 拉([行("F1", "飞书甲", "13500000001", "某展会")]);
+    await 写(id1);
+    const c = await 入口("某展会");
+    const id2 = await 拉([行("F2", "飞书乙", "13500000002", "某展会")]);
+    await 写(id2);
+    expect((await prisma.customer.findFirstOrThrow({ where: { name: "飞书乙" } })).channelId).toBe(c!.id);
+    expect(await prisma.channel.count({ where: { mainId: 展会 } })).toBe(1);
+
+    const 会议 = (await prisma.entChannelMain.create({ data: { name: "某会议", ownerId: 运营, sort: 9 } })).id;
+    const id3 = await 拉([行("F3", "飞书丙", "13500000003", "某会议")]);
+    await prisma.entChannelMain.update({ where: { id: 会议 }, data: { ownerId: null } });
+    await prisma.user.update({ where: { id: 运营 }, data: { active: false } });
+    const r = await 写(id3);
+    expect(r).toMatchObject({ 完了: true, 失败: 0 });
+    expect((await prisma.customer.findFirstOrThrow({ where: { name: "飞书丙" } })).channelId).toBeNull();
+    expect(await 入口("某会议")).toBeNull();
+  });
+
+  it("有子渠道的主渠道：一条子渠道按那段认到它；几条子渠道不猜、进备注，不建入口", async () => {
+    const id1 = await 拉([行("F1", "飞书甲", "13500000001", "抖音")]);
+    await 写(id1);
+    expect((await prisma.customer.findFirstOrThrow({ where: { name: "飞书甲" } })).channelId).toBe(抖音号);
+    await prisma.channel.create({ data: { name: "抖音|直播间", platform: "抖音", mainId: 抖音, channelOwnerId: 运营 } });
+    const id2 = await 拉([行("F2", "飞书乙", "13500000002", "抖音")]);
+    await 写(id2);
+    const 乙 = await prisma.customer.findFirstOrThrow({ where: { name: "飞书乙" } });
+    expect(乙.channelId).toBeNull();
+    expect(乙.remark ?? "").toContain("来源：抖音");
+    expect(await 入口("抖音")).toBeNull();
+  });
+
+  it("渠道索引：主渠道入口只补真渠道没占着的名字", () => {
+    expect(渠道索引([], new Map([["某展会", 占位(展会)]])).get(名键("某展会"))).toBe(占位(展会));
+    expect(渠道索引([{ id: "x", name: "某展会", platform: "某展会" }], new Map([["某展会", 占位(展会)]])).get(名键("某展会"))).toBe("x");
   });
 });

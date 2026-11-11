@@ -46,6 +46,8 @@ import { 公海客户要先领取, 公海客户先领取说 } from "../enterpris
 import { 负责人口径 } from "../owners";
 import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-status-auto-db";
 import { 企业版字典, 本套名 } from "../project/stage-dict";
+import { 落到渠道 } from "../enterprise/channel-main";
+import { 是主渠道入口 } from "../enterprise/channel-main-core";
 
 type Tx = Prisma.TransactionClient;
 type 结果 = "新建" | "更新" | "跳过" | "冲突";
@@ -804,6 +806,7 @@ export async function 写一批(批次Id: string, 用户: Actor, opts: { 段长�
   if (!m) throw new Error("这一批没有字段映射，请重新试跑");
   const 现 = await 开现场(批次Id, 批.source as 来源, m, 用户);
   const 失败们 = 解<失败明细[]>(批.note, []);
+  await 落主渠道来源(计划.slice(批.cursor), 用户);
 
   // 每次调用至少写一趟，再看时间：段长再短也不会原地踏步
   const 截止 = 开始 + (opts.段长毫秒 ?? 段长());
@@ -840,6 +843,29 @@ export async function 写一批(批次Id: string, 用户: Actor, opts: { 段长�
 
   if (游标 >= 计划.length) await 收尾(批次Id, 用户);
   return 结果(批次Id);
+}
+
+/**
+ * 来源认成「只有主渠道」的（清洗时记的占位 id main:…，report.ts 渠道索引）：正式写之前、在事务外面落成真渠道，
+ * 和界面选来源、客户导入同一个 落到渠道（同一个主渠道只建一条，并发撞了回头读先到的那条，留痕记点导入 / 开同步的人）。
+ * 落不成（试跑之后主渠道停用了、没了负责人、加了子渠道）：这条不挂渠道，同「试跑之后渠道被删了」，来源文字照存。
+ * 续写时再调一次也没事：已经落过的按名字读回同一条
+ */
+async function 落主渠道来源(计划: 待写[], 用户: Actor): Promise<void> {
+  const 占位们 = new Set(计划.flatMap((w) => (w.实体 === "customer" && 是主渠道入口(串(w.值.channelId ?? null)) ? [String(w.值.channelId)] : [])));
+  if (!占位们.size) return;
+  const 落了 = new Map<string, string | null>();
+  for (const id of 占位们) {
+    const r = await 落到渠道(id, 用户);
+    落了.set(id, r.ok ? r.id : null);
+  }
+  for (const w of 计划) {
+    const id = w.实体 === "customer" ? 串(w.值.channelId ?? null) : null;
+    if (!id || !落了.has(id)) continue;
+    const 真 = 落了.get(id);
+    if (真) w.值.channelId = 真;
+    else delete w.值.channelId;
+  }
 }
 
 /** 一个小事务写几条：游标和计数一起进，对不上（别处在写、或已撤回）就整趟让出来 */
