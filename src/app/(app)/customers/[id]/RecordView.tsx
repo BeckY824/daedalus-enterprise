@@ -769,9 +769,10 @@ export default function RecordView({
           {filter !== "CONTRACT" && history.hasMore ? "已加载的记录中暂无此类型，可继续加载更早的跟进。" : filter === "全部" ? (摆法.沟通汇总 ? 去项目跟进 ? "还没有沟通记录。点右上「新建沟通」记一条" : `还没有沟通记录。点上方「${跟进按钮字}」记一条` : "还没有任何记录。上面随手记一笔，或粘一段聊天记录让 AI 整理。") : "这个类型下还没有记录"}
         </div>
       )}
-      {/* 打开一位的记录时逐条进场（间隔 70ms、八条以后一起）——原来 initial={false}，
-          下面算好的 delay 从来没机会生效，整条时间线是「啪」一下出来的 */}
-      <AnimatePresence>
+      {/* 进场动画只给之后新出现的（换筛选、加载更多、新记一条）：打开页面时第一屏的记录不做淡入（11-11）。
+          原来第一屏也逐条淡入，服务端渲染出来的是透明的，要等页面接管（真页面 4～6 秒）才显出来，
+          卡头、筛选先到、记录区空一大块；现在和卡头同时出现 */}
+      <AnimatePresence initial={false}>
         {entries.map((e, i) =>
           e.kind === "contract" ? (
             <motion.div key={`c-${e.c.id}`} className="rec-tl-item" layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: Math.min(i, 8) * 间隔, duration: 时长.base, ease: 曲线.ease }}>
