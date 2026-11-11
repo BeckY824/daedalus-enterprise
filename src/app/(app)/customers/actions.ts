@@ -69,7 +69,7 @@ import { 外贸键, 外贸字段名, 外贸至少一种, 规整外贸格, 规整
 import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { 挡字段, 客户列字段, type 字段名 } from "@/lib/enterprise/field-perm";
 import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type 客户地址 } from "@/lib/enterprise/customer-v2";
-import { 认业务线, 业务线不认得 } from "@/lib/enterprise/assign-line";
+import { 认业务线, 业务线不认得, 客户业务线必填 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 交接通知, 分给你通知, 改负责人通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
@@ -296,7 +296,7 @@ async function 规整企业资料(
     if (v && v !== 改前?.[格] && !(await 可选项(字典)).includes(v)) return { ok: false, error: `${叫法}「${v}」不在可选范围内，请刷新后重选` };
     企资料[格] = v;
   }
-  // 业务线（迁移 106）：只认内贸 / 外贸 / 暂不分配，空 = 清掉
+  // 业务线（迁移 106）：只认内贸 / 外贸 / 暂不分配；空的在 saveCustomer 里拦（M-必填-13）
   if (交.bizLine !== undefined) {
     const 线 = 认业务线(交.bizLine);
     if (线 === undefined) return { ok: false, error: 业务线不认得 };
@@ -558,6 +558,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   const 企资料结果 = 企业版() && input.企业资料 ? await 规整企业资料(input.企业资料, 改前) : null;
   if (企资料结果 && !企资料结果.ok) return { ok: false, error: 企资料结果.error };
   const 企资料 = 企资料结果?.值 ?? {};
+  /*
+    客户业务线必填（M-必填-13，11-11）：新建一律要有（向导按首个项目的业务线带过来，见 projects/actions.ts）；
+    编辑只在交了这一格时看——交上来是空的就拦（清空、或老客户本来空着在编辑框里保存，都要补上）。
+    没交这一格的（就地改别的格、列表行打开的编辑框、别的入口）不看：存量空着的不因此存不了别的格
+  */
+  if (企业版() && !企资料.bizLine && (!改前 || input.企业资料?.bizLine !== undefined)) return { ok: false, error: 客户业务线必填 };
 
   /**
    * 归属字段什么时候重算。

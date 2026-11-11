@@ -37,6 +37,11 @@ export function 认业务线(x: unknown): 项目线 | null | undefined {
 export const 业务线不认得 = "业务线只能选内贸、外贸或暂不分配";
 /** 新建项目没选业务线时的话（新建必填） */
 export const 业务线必填 = "业务线必填（内贸 / 外贸 / 暂不分配）";
+/**
+ * 客户业务线没填时的话（M-必填-13，11-11）：新建客户必填；编辑时交了这一格又是空的也拦。「暂不分配」算填了。
+ * 存量空着的不补：没交这一格的入口（就地改别的格、列表行里打开的编辑框）照存，不因为它空着被挡
+ */
+export const 客户业务线必填 = "客户业务线必填（内贸 / 外贸 / 暂不分配）";
 
 /** 按 userId 查成员的业务线：组织的 成员（org.成员）、或自己从 EntMember 读出来的 Map 都行 */
 export type 成员线查 = { get(userId: string): { line?: string | null } | undefined };

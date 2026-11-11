@@ -14,6 +14,17 @@ const 原 = vi.hoisted(() => {
   return 原;
 });
 
+// 客户业务线必填（M-必填-13，11-11）：企业版新建客户要有业务线，stress.test 是两种模式共用的、不带这一格。
+// 这里在企业版这一遍给新建补个默认「内贸」，stress.test 照旧一行不改；编辑（带 id）不动——没交这一格的编辑本就不拦
+vi.mock("@/app/(app)/customers/actions", async (importOriginal) => {
+  const m = await importOriginal<typeof import("@/app/(app)/customers/actions")>();
+  return {
+    ...m,
+    saveCustomer: (input: Parameters<typeof m.saveCustomer>[0]) =>
+      m.saveCustomer(input.id ? input : { ...input, 企业资料: { bizLine: "内贸", ...(input.企业资料 ?? {}) } }),
+  };
+});
+
 import "./stress.test";
 import { prisma } from "@/lib/prisma";
 

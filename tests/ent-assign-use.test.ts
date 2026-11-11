@@ -39,7 +39,8 @@ import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 新建分配方式数据, 暂不分配提示 } from "@/lib/project/after-create-assign";
 import { 改项目 } from "@/lib/project/db";
 import { 没业务角色不能新建话, 只读角色话 } from "@/lib/enterprise/permissions";
-import { saveCustomer } from "@/app/(app)/customers/actions";
+import { saveCustomer, patchCustomer } from "@/app/(app)/customers/actions";
+import { 客户业务线必填 } from "@/lib/enterprise/assign-line";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { convertLead } from "@/app/(app)/leads/actions";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -442,6 +443,67 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     const r = await 向导({ 分配方式: 3, 业务线: "外贸" });
     expect(r).toMatchObject({ ok: true });
     if (r.ok) expect((await 项目of(r.projectId)).bizLine).toBe("外贸");
+  });
+
+  describe("客户业务线必填（M-必填-13，11-11）", () => {
+    const 客户入参 = (改: Record<string, unknown> = {}) => ({
+      name: "必填客户", phone: "13922220001", school: null, grade: null, major: null,
+      followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
+      salesOwnerId: 销售, channelId: null, referrerCustomerId: null, ...改,
+    }) as Parameters<typeof saveCustomer>[0];
+    /** 像详情页的编辑框那样保存：整份交回，改 里的盖上去 */
+    const 编辑 = async (id: string, 改: Record<string, unknown>) => {
+      const c = await prisma.customer.findUniqueOrThrow({ where: { id } });
+      const 值 = 客户入参({ name: c.name, phone: c.phone, remark: c.remark, salesOwnerId: c.salesOwnerId });
+      return saveCustomer({ ...值, id, updatedAt: c.updatedAt.toISOString(), base: 值, ...改 } as Parameters<typeof saveCustomer>[0]);
+    };
+    const 客户线 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id }, select: { bizLine: true } })).bizLine;
+
+    it("新建客户按首个项目的业务线带出；客户那一格交了个空的也跟项目", async () => {
+      当(市场);
+      const 外 = await 向导({ 分配方式: 3, 业务线: "外贸" });
+      expect(外).toMatchObject({ ok: true });
+      if (外.ok) expect(await 客户线(外.customerId)).toBe("外贸");
+      const 暂 = await 向导({ 分配方式: 3, 业务线: "暂不分配", 地址: { addrCountry: "", addrProvince: "", addrCity: "", addrDistrict: "", bizLine: null } as never });
+      expect(暂).toMatchObject({ ok: true });
+      if (暂.ok) expect(await 客户线(暂.customerId)).toBe("暂不分配");
+    });
+
+    it("不填被拦：新建没交、交空的都不让建，一行不写；「暂不分配」算填了", async () => {
+      当(销售);
+      expect(await saveCustomer(客户入参())).toMatchObject({ ok: false, error: 客户业务线必填 });
+      expect(await saveCustomer(客户入参({ 企业资料: { bizLine: null } }))).toMatchObject({ ok: false, error: 客户业务线必填 });
+      expect(await saveCustomer(客户入参({ 企业资料: { bizLine: "  " } }))).toMatchObject({ ok: false, error: 客户业务线必填 });
+      expect(await saveCustomer(客户入参({ 企业资料: { bizLine: "国内" } }))).toMatchObject({ ok: false, error: expect.stringContaining("业务线只能选") });
+      expect(await prisma.customer.count()).toBe(0);
+      const r = await saveCustomer(客户入参({ 企业资料: { bizLine: "暂不分配" } }));
+      expect(r).toMatchObject({ ok: true });
+      if (r.ok) expect(await 客户线(r.id)).toBe("暂不分配");
+    });
+
+    it("编辑：填了的不许清空；能换成另一种", async () => {
+      当(销售);
+      const r = await saveCustomer(客户入参({ 企业资料: { bizLine: "内贸" } }));
+      if (!r.ok) throw new Error(r.error);
+      expect(await 编辑(r.id, { 企业资料: { bizLine: null } })).toMatchObject({ ok: false, error: 客户业务线必填 });
+      expect(await 客户线(r.id)).toBe("内贸");
+      expect(await 编辑(r.id, { 企业资料: { bizLine: "外贸" } })).toMatchObject({ ok: true });
+      expect(await 客户线(r.id)).toBe("外贸");
+    });
+
+    it("存量空着的老客户：没交业务线这一格的照存（就地改、别的入口）；编辑框交了空的要补上，补了才存", async () => {
+      当(销售);
+      const id = (await prisma.customer.create({ data: { name: "老客户", phone: "13922220009", salesOwnerId: 销售 } })).id;
+      // 没交这一格：只改备注，存得了，业务线还是空的（不补数）
+      expect(await 编辑(id, { remark: "只改备注" })).toMatchObject({ ok: true });
+      expect(await patchCustomer(id, "remark", "就地改备注")).toMatchObject({ ok: true });
+      expect(await prisma.customer.findUniqueOrThrow({ where: { id }, select: { remark: true, bizLine: true } })).toEqual({ remark: "就地改备注", bizLine: null });
+      // 编辑框（带着这一格）保存：空着被拦，别的格也不写
+      expect(await 编辑(id, { remark: "编辑框改备注", 企业资料: { bizLine: null } })).toMatchObject({ ok: false, error: 客户业务线必填 });
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id } })).remark).toBe("就地改备注");
+      expect(await 编辑(id, { remark: "编辑框改备注", 企业资料: { bizLine: "暂不分配" } })).toMatchObject({ ok: true });
+      expect(await prisma.customer.findUniqueOrThrow({ where: { id }, select: { remark: true, bizLine: true } })).toEqual({ remark: "编辑框改备注", bizLine: "暂不分配" });
+    });
   });
 
   it("自动分配：按选的业务线（内贸）分给一位内贸销售，客户跟着走、项目不待分配；地址不参与", async () => {

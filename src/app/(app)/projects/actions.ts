@@ -204,8 +204,8 @@ export async function 建档向导(输入: 建档向导输入) {
     }));
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {
-      // 新客户的业务线跟项目走（客户那一步没另选时）
-      const 客户线 = 企 && 好.企业?.业务线 && input.客户.企业资料?.bizLine === undefined
+      // 新客户的业务线跟项目走（客户那一步没另选时；交了个空的也算没选，M-必填-13）
+      const 客户线 = 企 && 好.企业?.业务线 && 认业务线(input.客户.企业资料?.bizLine) === null
         ? { 企业资料: { ...(input.客户.企业资料 ?? {}), bizLine: 好.企业.业务线 } }
         : {};
       // 企业版指定给别人：项目归接手人，客户不跟着改（P-转-03，三处同一条）。总管理不走 新建只给自己，这里统一落到建的人

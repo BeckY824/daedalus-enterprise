@@ -24,6 +24,8 @@ import { 选通道 } from "./channel";
 import { 认背调状态 } from "./state";
 import { 报告文本, 背调标题, 背调标题前缀 } from "./report";
 import { 认号码, type 号码信息 } from "./person";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 是业务线 } from "@/lib/enterprise/assign-line";
 
 export async function 背调价目(): Promise<{ 可用: true; 扣次: number; 还剩: number | null; 模拟: boolean } | { 可用: false; 原因: string }> {
   await requireUser();
@@ -79,7 +81,10 @@ export async function 新建客户并存背调(
   const 官网 = s.fields.site?.value;
   // 「德国·汉堡」「Germany, Hamburg」只要国家那一截；国家的规整（中文名）交给 saveCustomer 里的 认国家
   const 国家 = (input.country ?? s.fields.country?.value ?? "").split(/[·,，、/]/)[0].trim();
+  // 企业版客户业务线必填（M-必填-13）：这里没有这一格，同首页建档卡——跟我自己的内贸 / 外贸，我没设线就「暂不分配」，要改到客户编辑里改
+  const 我的线 = 企业版() ? (await prisma.entMember.findUnique({ where: { userId: me.id }, select: { line: true } }))?.line : undefined;
   const 建 = await saveCustomer({
+    ...(企业版() ? { 企业资料: { bizLine: 是业务线(我的线) ? 我的线 : "暂不分配" } } : {}),
     name: (input.name || s.目标.name).trim(),
     phone: (input.phone ?? "").trim(),
     school: null,

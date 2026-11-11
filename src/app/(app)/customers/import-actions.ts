@@ -568,6 +568,8 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
             salesOwnerId: 现场.salesOwnerId,
             referrerCustomerId: null,
             ...attribution,
+            // 企业版客户业务线必填（M-必填-13）：Excel 表里没有这一格，新建的记「暂不分配」（同归档导入没选线时）。只管新建，补空 / 更新不碰业务线
+            ...(企业版() ? { bizLine: "暂不分配" } : {}),
           },
         });
         await 写外贸档案(tx, c.id, Object.fromEntries(外贸导入字段.filter((k) => r.值[k]).map((k) => [k, r.值[k]!])), false);

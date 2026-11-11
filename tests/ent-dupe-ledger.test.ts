@@ -49,6 +49,8 @@ const 新客户 = (name: string, owner: string, 额外: Record<string, unknown> 
   name, phone: "", school: null, grade: null, major: null,
   followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: "",
   salesOwnerId: owner, channelId: null, referrerCustomerId: null,
+  // 客户业务线必填（M-必填-13）：没另给按内贸
+  企业资料: { bizLine: "内贸" },
   企业号码: { 类型: "微信", 值: `wx_${Math.random().toString(36).slice(2, 10)}` }, ...额外,
 });
 
