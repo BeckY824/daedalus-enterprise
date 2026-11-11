@@ -187,7 +187,7 @@ export type 项目详情 = {
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
-const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 4.3em", whiteSpace: "nowrap" };
+const 键样: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-label)", flex: "0 0 4.3em", whiteSpace: "nowrap" }; // 字段名 13（16a 同客户详情）
 // 多行的格子（需求描述、痛点、备注；前两个 11-04 起平时一行）：键和第一行对齐，不居中到一大段字的中间
 const 多行行样: React.CSSProperties = { ...行样, alignItems: "flex-start" };
 
