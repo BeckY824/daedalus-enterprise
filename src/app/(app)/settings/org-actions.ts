@@ -3,7 +3,8 @@
  * 企业版「组织架构」设置页的写操作（2026-10-24）：部门增改删、给人定部门 / 角色 / 业务线 / 上级。
  *
  * 只在企业版开着时可用；11-01 起只认业务角色：总管理（director，没勾「不管设置」）能改，管理员（admin）只能看。
- * 账号 ADMIN 不再多出权限。总管理能给、能改总管理 / 管理员这两个角色，但至少要留一位能管设置的总管理。
+ * 账号 ADMIN 不再多出权限。总管理能给、能改总管理 / 管理员这两个角色，但至少要留一位能管设置的系统管理员。
+ * 系统管理员标记（P-判定-06）：系统管理员和业务线两个身份并存，给系统管理员设业务线不掉权限（设成员 自动带上标记），成员管理里的开关走 设系统管理员。
  * 规则检查都在 lib/enterprise/org.ts 的纯函数里，这里只负责读库、写库、留痕。
  */
 import { revalidatePath } from "next/cache";
@@ -15,7 +16,7 @@ import { setSetting } from "@/lib/settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则, type 规则名 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
+import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 是系统管理员of, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 是业务角色, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
@@ -44,12 +45,33 @@ async function 能改的人() {
 }
 const 不能改 = { ok: false as const, error: "只有总管理能改组织架构" };
 
-/** 改完以后还剩不剩一位能管设置的总管理（在职、director、没勾「不管设置」）；一个都不剩就没人能再改角色了 */
+/** 能管设置的系统管理员（在职、是系统管理员、没勾「不管设置」，同 permissions.ts 能进设置）：一个都不剩就没人能再改角色了 */
+const 能管设置 = (org: 组织, id: string) => 是系统管理员of(org, id) && !org.成员.get(id)?.不管设置;
+/** 除了这个人，还剩不剩一位能管设置的系统管理员 */
 function 还有总管(org: 组织, 除了: string): boolean {
-  for (const [id, m] of org.成员) if (id !== 除了 && m.角色们.includes("director") && !m.不管设置) return true;
+  for (const id of org.成员.keys()) if (id !== 除了 && 能管设置(org, id)) return true;
   return false;
 }
-const 留一位总管 = "至少要留一位能管设置的总管理（业务角色总管理、没勾「不管设置」）";
+const 有人能管设置 = (org: 组织) => [...org.成员.keys()].some((id) => 能管设置(org, id));
+const 留一位总管 = "至少要留一位能管设置的系统管理员（业务角色总管理、是系统管理员、没勾「不管设置」）";
+
+/** 系统管理员标记（Setting 原文）；读组织 外面现建组织时补上 */
+async function 读标记(): Promise<string | null> {
+  return (await prisma.setting.findUnique({ where: { key: 系统管理员标记键 }, select: { value: true } }))?.value ?? null;
+}
+/** 标记原文里的 userId（不按在职滤：停用的人复职回来标记还在）；存坏了当空 */
+function 标记名单(原文: string | null): Set<string> {
+  let v: unknown = null;
+  try { v = 原文 ? JSON.parse(原文) : null; } catch { v = 原文; }
+  const 们 = Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : [];
+  return new Set(们.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean));
+}
+/** 存标记：空了存 null */
+async function 存标记(们: ReadonlySet<string>): Promise<string[] | null> {
+  const 存 = 们.size ? [...们].sort() : null;
+  await setSetting(系统管理员标记键, 存);
+  return 存;
+}
 
 async function 全部部门(): Promise<Map<string, 组织部门>> {
   const ds = await prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } });
@@ -156,10 +178,12 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
     if (改.line !== undefined && 改.line !== null && 改.line !== "内贸" && 改.line !== "外贸") return { ok: false, error: "业务线只能是内贸、外贸或两边都做" };
     if (改.deptId && !depts.some((d) => d.id === 改.deptId)) return { ok: false, error: "这个部门已经不在了，刷新看看" };
 
-    const 原 = 建组织(users, members, depts);
+    const [只看, 标记原文] = await Promise.all([
+      prisma.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } }),
+      读标记(),
+    ]);
+    const 原 = 填组织设置(建组织(users, members, depts), null, 只看?.value, 标记原文);
     const 原角色们 = 原.成员.get(userId)!.角色们;
-    // 总管理把自己（或最后一位总管理）的总管理角色去掉：先看还剩不剩一位能管设置的
-    if (新角色们 && 原角色们.includes("director") && !新角色们.includes("director") && !原.成员.get(userId)!.不管设置 && !还有总管(原, userId)) return { ok: false, error: 留一位总管 };
 
     // 带着这次改动重建一遍再查上级：一次同时改部门和上级时按改完的样子算
     const 旧行 = members.find((m) => m.userId === userId);
@@ -172,9 +196,16 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
       ...改,
       bizRole: 新角色们 ? 合角色(新角色们) : (旧行?.bizRole ?? 合角色(原角色们)),
     };
+    // 系统管理员标记（P-判定-06）：系统管理员设业务线不掉权限——原来是系统管理员、这次设上了线，自动带上标记；不再是总管理了，标记摘掉
+    const 原是系统管理员 = 是系统管理员of(原, userId);
+    const 新标记 = 标记名单(标记原文);
+    const 新是总管理 = (新角色们 ?? 原角色们).includes("director");
+    if (!新是总管理) 新标记.delete(userId);
+    else if (原是系统管理员 && 新行.line) 新标记.add(userId);
     // 带上「只看某人」名单：设了的人不能当别人的实线上级（只认手填的直属上级，V3.5.1 / 11-03 C10-1）
-    const 只看 = await prisma.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } });
-    const 新 = 填组织设置(建组织(users, [...members.filter((m) => m.userId !== userId), 新行], depts), null, 只看?.value);
+    const 新 = 填组织设置(建组织(users, [...members.filter((m) => m.userId !== userId), 新行], depts), null, 只看?.value, JSON.stringify([...新标记]));
+    // 去掉总管理角色（或别的改动）之后一位能管设置的系统管理员都不剩：拦
+    if (有人能管设置(原) && !有人能管设置(新)) return { ok: false, error: 留一位总管 };
     const 问题 =
       (改.managerId !== undefined ? 上级设置问题(新, userId, 改.managerId, "直属") : null) ??
       (改.dottedManagerId !== undefined ? 上级设置问题(新, userId, 改.dottedManagerId, "虚线") : null) ??
@@ -182,13 +213,18 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
     if (问题) return { ok: false, error: 问题 };
 
     const 存 = { ...改, bizRole: 新角色们 ? 合角色(新角色们) : undefined };
+    const 标记变了 = 新标记.has(userId) !== 标记名单(标记原文).has(userId);
+    // 先加标记再写成员、先写成员再摘标记：中途失败也不会让系统管理员掉权限
+    if (标记变了 && 新标记.has(userId)) await 存标记(新标记);
     await prisma.entMember.upsert({ where: { userId }, create: 新行, update: 存 });
+    if (标记变了 && !新标记.has(userId)) await 存标记(新标记);
 
     const 名 = (id: string | null | undefined) => (id ? users.find((u) => u.id === id)?.name ?? id : "不指定");
     const 说 = [
       改.deptId !== undefined && `部门 → ${改.deptId ? depts.find((d) => d.id === 改.deptId)!.name : "未分部门"}`,
       新角色们 && `角色 → ${新角色们.map((r) => 角色名[r]).join("、")}`,
       改.line !== undefined && `业务线 → ${改.line ?? "两边都做"}`,
+      标记变了 && 新标记.has(userId) && "仍是系统管理员",
       改.managerId !== undefined && `直属上级 → ${名(改.managerId)}`,
       改.dottedManagerId !== undefined && `虚线上级 → ${名(改.dottedManagerId)}`,
     ].filter(Boolean);
@@ -216,15 +252,54 @@ export async function 设不管设置(userId: string, on: boolean): Promise<结�
     ]);
     const 人 = users.find((u) => u.id === userId);
     if (!人 || !人.active) return { ok: false, error: "这个人不在职" };
-    const 原 = 建组织(users, members, depts);
+    const 原 = 填组织设置(建组织(users, members, depts), null, null, await 读标记());
     const 他 = 原.成员.get(userId);
-    if (on && 他?.角色们.includes("director") && !他.不管设置 && !还有总管(原, userId)) return { ok: false, error: 留一位总管 };
+    if (on && 能管设置(原, userId) && !还有总管(原, userId)) return { ok: false, error: 留一位总管 };
     await prisma.entMember.upsert({
       where: { userId },
       create: { userId, bizRole: 合角色(他?.角色们 ?? []), noSettings: on },
       update: { noSettings: on },
     });
     await recordAudit({ user: who.me, action: "update", entity: "EntMember", entityId: userId, summary: `组织架构：${人.name} ${on ? "勾上" : "取消"}「不管设置」` });
+    改完了();
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/**
+ * 「系统管理员」开关（P-判定-06，成员管理里总管理那一格）：系统管理员和业务线两个身份并存。只有能管设置的系统管理员能拨。
+ * 只对总管理有意义：没设业务线的总管理读时就是系统管理员，关不掉（要只当条线总管理，先给他设业务线再关）；
+ * 设了线的总管理打开 = 系统管理员 + 本线条线总管理，关掉 = 只是条线总管理。不能把最后一位能管设置的系统管理员关掉
+ */
+export async function 设系统管理员(userId: string, on: boolean): Promise<结果> {
+  const who = await 能改的人();
+  if (!who) return 不能改;
+  if (typeof on !== "boolean") return { ok: false, error: "只能开或关" };
+  try {
+    const [users, members, depts, 标记原文] = await Promise.all([
+      prisma.user.findMany({ select: { id: true, name: true, role: true, active: true } }),
+      prisma.entMember.findMany(),
+      prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
+      读标记(),
+    ]);
+    const 人 = users.find((u) => u.id === userId);
+    if (!人 || !人.active) return { ok: false, error: "这个人不在职" };
+    const 原 = 填组织设置(建组织(users, members, depts), null, null, 标记原文);
+    const 他 = 原.成员.get(userId)!;
+    if (!他.角色们.includes("director")) return { ok: false, error: "只有业务角色是总管理的人能设成系统管理员" };
+    if (on === 是系统管理员of(原, userId)) return { ok: true };
+    if (!他.line) return { ok: false, error: "没设业务线的总管理就是系统管理员；要只当条线总管理，先在组织架构里给他设业务线" };
+    const 新标记 = 标记名单(标记原文);
+    if (on) 新标记.add(userId);
+    else 新标记.delete(userId);
+    if (!on && !还有总管(原, userId) && 能管设置(原, userId)) return { ok: false, error: 留一位总管 };
+    const 存 = await 存标记(新标记);
+    await recordAudit({
+      user: who.me, action: "update", entity: "Setting", entityId: 系统管理员标记键,
+      summary: `成员管理：${人.name} ${on ? "设为系统管理员" : "取消系统管理员"}（业务线 ${他.line}${on ? "，同时是本线条线总管理" : "，只是条线总管理"}）`, detail: 存,
+    });
     改完了();
     return { ok: true };
   } catch (e) {

@@ -6,7 +6,8 @@
  * 不看账号角色（User.role），只看 EntMember.bizRole（可多选，org-core.ts 角色们）。页面、接口都调这里，别各自再写一遍角色判断。
  *
  * 四权（看 / 编 / 转 / 删）：
- *   - 系统管理员（director、没设业务线）：全部；软删、真删、回收站；切换视角、后台设置、导入导出、成员管理只给他
+ *   - 系统管理员（director，没设业务线或带「系统管理员」标记，P-判定-06）：全部；软删、真删、回收站；切换视角、后台设置、导入导出、成员管理只给他。
+ *     带标记又设了业务线的两个身份并存：全局权限照系统管理员，同时也是那条线的条线总管理（不被线收窄）
  *   - 条线总管理（director 又设了业务线）：看本线人员名下全部；条线内别人负责的只看，本人负责的能编（X-07）；条线内能转让；不能删（line-viewer.ts 条线范围of）
  *   - 销管（sales_mgr）：看实线下属整条链 + 自己 + 公海；只编辑自己负责的；转让直属一级（同业务线）；自己负责的能软删
  *   - 销售（sales）：自己 + 公海；编辑、转让、软删自己负责的
@@ -25,7 +26,7 @@
 import type { 业务角色, 业务线 } from "@/lib/sync/dept-policy";
 import { 项目业务线 } from "./assign-line";
 import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
-import { 实线下属, 虚线下属, type 组织 } from "./org-core";
+import { 实线下属, 虚线下属, 是系统管理员of, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
 
 export type 谁 = { id: string; role?: string | null };
@@ -72,13 +73,13 @@ export function 没设业务角色(org: 组织 | null, userId: string): boolean 
 }
 
 /**
- * 系统管理员（V3.5.1）：业务角色总管理（director）、没设业务线。设了业务线的总管理是条线总管理，不算（line-viewer.ts 条线的线）。
+ * 系统管理员（V3.5.1 P-判定-03、P-判定-06）：业务角色总管理（director），没设业务线，或带「系统管理员」标记（org.系统管理员标记）。
+ * 设了业务线、没带标记的总管理是条线总管理，不算（line-viewer.ts 条线的线）；带标记的设了线也算，同时还是那条线的条线总管理。
  * 企业版问「能不能管全公司」（真删、回收站、设置、切换视角、导入导出、成员管理）都调这个。只问「看不看得到全部」用 能看全部
  */
 export function 是系统管理员(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老板(me);
-  const m = org?.成员.get(me.id);
-  return !!m && m.角色们.includes("director") && !m.line;
+  return !!org && 是系统管理员of(org, me.id);
 }
 
 /** 老名字：等于 是系统管理员（V3.5.1 起条线总管理不在内） */
@@ -146,10 +147,10 @@ export function 项目可见业务线(org: 组织, p: { ownerId: string }): 业�
   return org.成员.get(p.ownerId)?.line ?? null;
 }
 
-/** 管理类成员按自己的业务线过滤别人的项目：自己没设业务线不限；项目说不清业务线也不拦 */
+/** 管理类成员按自己的业务线过滤别人的项目：自己没设业务线、系统管理员（设了线也一样，P-判定-06）不限；项目说不清业务线也不拦 */
 export function 业务线放行(org: 组织, 我: string, p: { ownerId: string }): boolean {
   const 我线 = org.成员.get(我)?.line ?? null;
-  if (!我线) return true;
+  if (!我线 || 是系统管理员of(org, 我)) return true;
   const 线 = 项目可见业务线(org, p);
   return !线 || 线 === 我线;
 }

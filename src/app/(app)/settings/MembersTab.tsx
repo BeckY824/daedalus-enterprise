@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Checkbox } from "antd";
+import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Checkbox, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined } from "@ant-design/icons";
 import { UserCell } from "@/components/ui";
@@ -11,7 +11,7 @@ import { useBusiness } from "@/lib/business-client";
 import { 外贸订单 } from "@/lib/business-config";
 import type { SessionUser } from "@/lib/auth";
 import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用, 解绑飞书身份 } from "./actions";
-import { 设不管设置 } from "./org-actions";
+import { 设不管设置, 设系统管理员 } from "./org-actions";
 import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 
@@ -32,6 +32,8 @@ export type Row = {
   业务角色?: 业务角色[];
   /** 企业版：总管理勾了「不管设置」——还是看全部、能转让，但进不了设置页、改不了后台设置（11-01 C1） */
   不管设置?: boolean;
+  /** 企业版、在职的总管理才有（P-判定-06）：on = 是系统管理员；有线 = 设了业务线（没设线的总管理就是系统管理员，开关关不掉） */
+  系统管理员?: { on: boolean; 有线: boolean };
   followCount: number;
   /** 企业版飞书登录：第一次用飞书登录时按姓名绑上了飞书身份 */
   飞书已绑?: boolean;
@@ -73,6 +75,23 @@ export default function MembersTab({
   const [form] = Form.useForm();
   const 按业务角色 = users.some((u) => u.业务角色);
   const [改不管设置中, set改不管设置中] = useState<string | null>(null);
+  /** 拨「系统管理员」：只有能管设置的系统管理员（服务端 org-actions 设系统管理员 再拦、不能关掉最后一位） */
+  const on系统管理员 = async (r: Row, on: boolean) => {
+    if (改不管设置中) return;
+    set改不管设置中(r.id);
+    try {
+      const res = await 设系统管理员(r.id, on);
+      if (!res.ok) message.error(res.error ?? "没改成，请稍后再试");
+      else {
+        message.success(on ? `${r.name} 设为系统管理员，同时还是本线条线总管理` : `${r.name} 不再是系统管理员，只管本业务线`);
+        router.refresh();
+      }
+    } finally {
+      set改不管设置中(null);
+    }
+  };
+  // 有总管理行时角色列加宽，放得下「不管设置」「系统管理员」两个勾选
+  const 有总管行 = 企业版 && users.some((u) => u.系统管理员);
   /** 勾 / 取消「不管设置」：只有能改组织架构的总管理（服务端 org-actions 设不管设置 再拦一遍、保至少一位能管设置的总管理） */
   const on不管设置 = async (r: Row, on: boolean) => {
     if (改不管设置中) return;
@@ -289,7 +308,7 @@ export default function MembersTab({
       ? {
           title: "角色",
           key: "业务角色",
-          width: 120,
+          width: 有总管行 ? 240 : 120,
           render: (_: unknown, r: Row) => (
             <div className="member-roles">
               {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；「不管设置」勾选框不截 */}
@@ -315,6 +334,24 @@ export default function MembersTab({
                   </Checkbox>
                 ) : r.不管设置 ? (
                   <Tag style={{ margin: 0 }}>不管设置</Tag>
+                ) : null)}
+              {/* 「系统管理员」（P-判定-06）：和业务线并存。没设业务线的总管理本来就是，勾着、拨不动 */}
+              {企业版 && r.系统管理员 &&
+                (isAdmin ? (
+                  <Tooltip title={r.系统管理员.有线 ? "打开：系统管理员，同时是本业务线的条线总管理；关掉：只管本业务线" : "没设业务线的总管理就是系统管理员；要只管一条线，先在组织架构里给他设业务线"}>
+                    <Checkbox
+                      checked={r.系统管理员.on}
+                      disabled={改不管设置中 !== null || !r.系统管理员.有线}
+                      aria-label={`${r.name} 系统管理员`}
+                      data-testid="member-sysadmin"
+                      onChange={(e) => void on系统管理员(r, e.target.checked)}
+                      className="member-flag"
+                    >
+                      系统管理员
+                    </Checkbox>
+                  </Tooltip>
+                ) : r.系统管理员.on ? (
+                  <Tag className="member-flag">系统管理员</Tag>
                 ) : null)}
             </div>
           ),

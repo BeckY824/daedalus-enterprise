@@ -6,7 +6,7 @@ import { 钉住老签约 } from "@/lib/contract-owner";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 解绑飞书 } from "@/lib/enterprise/feishu-login";
-import { 读组织, 直属上级of, 权限组织 } from "@/lib/enterprise/org";
+import { 读组织, 直属上级of, 权限组织, 是系统管理员of } from "@/lib/enterprise/org";
 import { 能改后台设置, 是总管理, 只读角色 } from "@/lib/enterprise/permissions";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
@@ -90,11 +90,11 @@ async function 能办离职(id: string) {
  * 而且做完当场看不出问题，下次要加人时才发现。
  */
 async function wouldLoseLastAdmin(targetId: string): Promise<boolean> {
-  // 企业版只认业务角色（11-03 C4-6）：看的是能管设置的总管理（在职、director、没勾「不管设置」），
+  // 企业版只认业务角色（11-03 C4-6）：看的是能管设置的系统管理员（在职、是系统管理员——含设了线带标记的，P-判定-06——没勾「不管设置」），
   // 同组织架构页 org-actions.ts 的「还有总管」；账号 ADMIN 在企业版不多出权限，原来只看它，种子总管理是 SALES 就拦不住
   if (企业版()) {
     const org = await 读组织();
-    const 能管 = (id: string) => { const m = org.成员.get(id); return !!m && m.角色们.includes("director") && !m.不管设置; };
+    const 能管 = (id: string) => 是系统管理员of(org, id) && !org.成员.get(id)?.不管设置;
     if (!能管(targetId)) return false;
     return ![...org.成员.keys()].some((id) => id !== targetId && 能管(id));
   }

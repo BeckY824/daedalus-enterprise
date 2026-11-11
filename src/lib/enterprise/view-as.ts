@@ -23,7 +23,7 @@ import { readSecret } from "@/lib/secret";
 import { 全进程上下文 } from "@/lib/process-als";
 import { 企业版 } from "./switch";
 import { 视图外部话 } from "./view-as-words";
-import type { 组织 } from "./org-core";
+import { 是系统管理员of, type 组织 } from "./org-core";
 
 /** 视图票的 cookie 名 */
 export const 视图票 = "crm_view_as";
@@ -43,12 +43,11 @@ export class 视图只读错误 extends Error {
 }
 
 /**
- * 能不能切换视图：只给系统管理员（V3.5.1，11-03）= 业务角色总管理（director）、没设业务线（同 permissions.ts 是系统管理员）。
+ * 能不能切换视图：只给系统管理员（V3.5.1，11-03）= 业务角色总管理（director），没设业务线或带系统管理员标记（P-判定-06，同 permissions.ts 是系统管理员）。
  * 条线总管理、管理员只读、账号 ADMIN 都不行。菜单（view-as-menu.ts）、action（view-as-actions.ts）、认票（auth.ts）同这一处
  */
 export function 能切换视图(org: 组织, userId: string): boolean {
-  const m = org.成员.get(userId);
-  return !!m && m.角色们.includes("director") && !m.line;
+  return 是系统管理员of(org, userId);
 }
 
 const 钥 = () => new TextEncoder().encode(readSecret());

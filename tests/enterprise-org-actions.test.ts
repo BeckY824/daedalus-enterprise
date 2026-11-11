@@ -16,7 +16,10 @@ vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => mocks.企业版 }))
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 建部门, 改部门, 删部门, 设成员, 设规则, 设不管设置 } from "@/app/(app)/settings/org-actions";
+import { 建部门, 改部门, 删部门, 设成员, 设规则, 设不管设置, 设系统管理员 } from "@/app/(app)/settings/org-actions";
+import { 读组织, 系统管理员标记键 } from "@/lib/enterprise/org";
+import { 是系统管理员, 能进设置 } from "@/lib/enterprise/permissions";
+import { 条线的线 } from "@/lib/enterprise/line-viewer";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 
 let 老板: string;
@@ -150,5 +153,84 @@ describe("规则开关", () => {
   it("接口直调传别的东西拦掉", async () => {
     expect(await 设规则("yes" as unknown as boolean)).toMatchObject({ ok: false });
     expect(await prisma.setting.count({ where: { key: 规则.按组织看客户.key } })).toBe(0);
+  });
+});
+
+describe("系统管理员和业务线并存（P-判定-06）", () => {
+  const 标记 = async () => JSON.parse((await prisma.setting.findUnique({ where: { key: 系统管理员标记键 } }))?.value ?? "null");
+  const 是系管 = async (id: string) => 是系统管理员({ id }, await 读组织());
+
+  it("给系统管理员设业务线：自动带上标记，权限不掉，同时是本线条线总管理；改回两边都做仍是", async () => {
+    expect(await 设成员(老板, { line: "内贸" })).toEqual({ ok: true });
+    expect(await 标记()).toEqual([老板]);
+    const org = await 读组织();
+    expect(是系统管理员({ id: 老板 }, org)).toBe(true);
+    expect(能进设置({ id: 老板, role: "ADMIN" }, org)).toBe(true);
+    expect(条线的线(org, 老板)).toBe("内贸");
+    expect((await 记录()).at(-1)?.summary).toBe("组织架构：老板 业务线 → 内贸，仍是系统管理员");
+    // 再改别的（部门）不动标记
+    await 建部门("内贸部", null);
+    expect(await 设成员(老板, { deptId: await 部门id("内贸部") })).toEqual({ ok: true });
+    expect(await 标记()).toEqual([老板]);
+    expect(await 设成员(老板, { line: null })).toEqual({ ok: true });
+    expect(await 是系管(老板)).toBe(true);
+  });
+
+  it("总管理没标记设了线：只是条线总管理；新给的总管理带着线也不自动成系统管理员", async () => {
+    await prisma.entMember.update({ where: { userId: 总管 }, data: { line: "外贸" } });
+    expect(await 是系管(总管)).toBe(false);
+    expect(await 设成员(销售, { line: "外贸" })).toEqual({ ok: true });
+    expect(await 设成员(销售, { bizRole: "director" })).toEqual({ ok: true });
+    expect(await 是系管(销售)).toBe(false);
+    expect(await 标记()).toBeNull();
+  });
+
+  it("开关：只有能管设置的系统管理员能拨；打开 = 系统管理员 + 条线总管理，关掉 = 只管本线", async () => {
+    await prisma.entMember.update({ where: { userId: 总管 }, data: { line: "外贸" } });
+    for (const [id, role] of [[销售, "SALES"], [管员, "ADMIN"], [总管, "SALES"]] as const) {
+      当(id, role);
+      expect(await 设系统管理员(总管, true)).toMatchObject({ ok: false, error: "只有总管理能改组织架构" });
+    }
+    当(老板, "ADMIN");
+    expect(await 设系统管理员(总管, true)).toEqual({ ok: true });
+    expect(await 是系管(总管)).toBe(true);
+    expect(条线的线(await 读组织(), 总管)).toBe("外贸");
+    // 现在他自己也能拨了
+    当(总管);
+    expect(await 建部门("外贸部", null)).toEqual({ ok: true });
+    expect(await 设系统管理员(总管, false)).toEqual({ ok: true });
+    expect(await 是系管(总管)).toBe(false);
+    expect(await 标记()).toBeNull();
+    当(老板, "ADMIN");
+    expect(await 设系统管理员(销售, true)).toMatchObject({ ok: false, error: expect.stringContaining("总管理") });
+    expect(await 设系统管理员(老板, false)).toMatchObject({ ok: false, error: expect.stringContaining("没设业务线的总管理就是系统管理员") });
+    expect(await 设系统管理员(总管, "on" as unknown as boolean)).toMatchObject({ ok: false });
+    expect((await 记录()).map((x) => x.summary).filter((x) => x.includes("系统管理员"))).toEqual([
+      "成员管理：总管 设为系统管理员（业务线 外贸，同时是本线条线总管理）",
+      "成员管理：总管 取消系统管理员（业务线 外贸，只是条线总管理）",
+    ]);
+  });
+
+  it("不能把最后一位能管设置的系统管理员关掉、去掉总管理角色、勾「不管设置」", async () => {
+    // 只剩老板一位系统管理员：总管改成销售
+    expect(await 设成员(总管, { bizRole: "sales" })).toEqual({ ok: true });
+    expect(await 设成员(老板, { line: "内贸" })).toEqual({ ok: true });
+    expect(await 设系统管理员(老板, false)).toMatchObject({ ok: false, error: expect.stringContaining("至少要留一位") });
+    expect(await 设成员(老板, { bizRole: "sales" })).toMatchObject({ ok: false, error: expect.stringContaining("至少要留一位") });
+    expect(await 设不管设置(老板, true)).toMatchObject({ ok: false, error: expect.stringContaining("至少要留一位") });
+    expect(await 是系管(老板)).toBe(true);
+    // 另一位是系统管理员了才能关
+    expect(await 设成员(总管, { bizRole: "director" })).toEqual({ ok: true });
+    expect(await 设系统管理员(老板, false)).toEqual({ ok: true });
+    expect(await 是系管(老板)).toBe(false);
+  });
+
+  it("带标记的人去掉总管理角色：标记摘掉，以后再给总管理不会悄悄变回系统管理员", async () => {
+    expect(await 设成员(总管, { line: "外贸" })).toEqual({ ok: true });
+    expect(await 标记()).toEqual([总管]);
+    expect(await 设成员(总管, { bizRole: "sales" })).toEqual({ ok: true });
+    expect(await 标记()).toBeNull();
+    expect(await 设成员(总管, { bizRole: "director" })).toEqual({ ok: true });
+    expect(await 是系管(总管)).toBe(false);
   });
 });
