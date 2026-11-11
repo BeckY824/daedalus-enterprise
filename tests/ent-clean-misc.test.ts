@@ -62,7 +62,7 @@ describe("B1 渠道页（2026-10-29 渠道改版后）", () => {
     expect(s).not.toContain("buildReferralRadar");
     expect(s).not.toContain("radar");
     expect(s).toContain('import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";');
-    expect(s).toContain("读渠道统计(channels)");
+    expect(s).toContain("读渠道统计(channels, new Date(), me)");
   });
 
   it("列表：推荐链三列、雷达、副标题都没了；空态只讲渠道清单和投入", async () => {

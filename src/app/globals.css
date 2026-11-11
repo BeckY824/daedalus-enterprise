@@ -2567,6 +2567,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 渠道详情正文一行显示（产出比说明、同名渠道产出比这类说明），放不下「…」，悬停看全文；只有备注折行（11-04 用户：待定第 3 点按优化来） */
 .chan-desc .ant-descriptions-item-content { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chan-desc .ant-descriptions-item-content .chan-desc-wrap { white-space: normal; overflow-wrap: anywhere; }
+/* 渠道详情里数字下面那句「项目列表里 N 条（另 …）」（11-11）：另起一行、小字、长了折行 */
+.chan-desc .chan-num-note { display: block; font-size: var(--fs-note); white-space: normal; overflow-wrap: anywhere; }
 /* 「重置」一直占着位置，没筛时只是看不见（审查 M17）：原来它一出现就把「列」挤到第二行，
    整张表往下跳一截。出现消失只淡入淡出，不位移。visibility 晚一拍再收，淡出才看得见 */
 .list-reset { transition: opacity var(--t-fast) var(--ease), visibility 0s var(--ease) 0s; }

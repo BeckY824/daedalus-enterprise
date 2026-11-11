@@ -7,6 +7,7 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { defaultClient as db, prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 客户关键词条件 } from "@/lib/search-keyword";
+import { 号键SQL } from "@/lib/phone-dedupe";
 
 const 原来 = [
   ['c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE e.whatsapp GLOB ? OR e.whatsapp GLOB ? OR e.email GLOB ? OR e.wechat GLOB ? OR e.country GLOB ? OR e.website GLOB ? OR e."alibabaId" GLOB ?)',
@@ -15,6 +16,13 @@ const 原来 = [
   ['c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND (t.name GLOB ? OR t.phone GLOB ? OR t.phone GLOB ? OR t.email GLOB ? OR t.wechat GLOB ?))',
     'EXISTS (SELECT 1 FROM "Contact" t WHERE t."customerId"=c.id AND t."deletedAt" IS NULL AND (t.name GLOB ? OR t.phone GLOB ? OR t.phone GLOB ? OR t.email GLOB ? OR t.wechat GLOB ?))'],
 ] as const;
+
+/** 号键比 那一句加在 WhatsApp / 联系人电话后面，新旧两种写法同样插进去 */
+function 加号键([现, 旧]: readonly [string, string]): [string, string] {
+  const [列, 锚] = 现.includes('"CustomerExtra"') ? ["e.whatsapp", "e.email GLOB ?"] : ["t.phone", "t.email GLOB ?"];
+  const 插 = `${号键SQL(列)} GLOB ? OR ${锚}`;
+  return [现.replace(锚, 插), 旧.replace(锚, 插)];
+}
 
 let owner = "";
 beforeAll(async () => {
@@ -68,7 +76,9 @@ async function 两边(k: string) {
     expect(spy).toHaveBeenCalledTimes(1);
     const [sql, ...values] = spy.mock.calls[0] as [string, ...unknown[]];
     let 旧sql = sql;
-    for (const [现, 旧] of 原来) {
+    for (const 对 of 原来) {
+      // 像号码的关键词（11-11）：两张子表里多一句按号键比（号键比），换成同样多一句的 EXISTS；联系人号码子表那句本来就是 IN，原样留着
+      const [现, 旧] = sql.includes(对[0]) ? 对 : 加号键(对);
       expect(旧sql.split(现).length - 1).toBe(1);
       旧sql = 旧sql.replace(现, 旧);
     }
