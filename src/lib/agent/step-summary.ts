@@ -17,7 +17,6 @@ export const 工具口语: Record<string, (次: number, 客户: string) => strin
   get_my_plans: () => "看了我的计划和待办",
   list_channels: () => "查了渠道清单",
   list_leads: () => "查了线索",
-  list_opportunities: () => "查了商机",
   list_projects: () => "查了项目",
   // 外贸里签约就是订单：说「成交记录」两个模版都对（F.3）
   list_contracts: () => "查了成交记录",
@@ -35,7 +34,6 @@ export const 工具口语: Record<string, (次: number, 客户: string) => strin
   propose_plan: () => "拟了一张建议卡",
   propose_lead: () => "拟了一张建议卡",
   propose_customer_update: () => "拟了一张建议卡",
-  propose_opportunity: () => "拟了一张建议卡",
   propose_contract: () => "拟了一张建议卡",
   propose_channel_update: () => "拟了一张建议卡",
   propose_project_node: () => "拟了一张建议卡",

@@ -31,7 +31,7 @@ import CopyValue from "@/components/CopyValue";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 跟进类型们, FOLLOW_TYPE_MAP, FOLLOW_STATUSES, DECISION_STATUSES, FOLLOW_RECORD_STATUS_COLOR } from "@/lib/constants";
 import { 成员选项, dayjs, duration, fmtDate, fmtDateTime, initial, avatarColor, AVATAR_TEXT, 独自一人 } from "@/lib/utils";
-import { RowLink, FollowStatusTag, StageTag, DecisionStatusTag, FOLLOW_TYPE_ICON } from "@/components/ui";
+import { RowLink, FollowStatusTag, DecisionStatusTag, FOLLOW_TYPE_ICON } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸订单, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { 国家候选, WhatsApp网址, 官网网址, 客户等级, 客户等级说明, type 客户等级 as 客户等级值 } from "@/lib/customer-extra";
@@ -39,7 +39,6 @@ import LocalTime from "@/components/LocalTime";
 import CompletePlanModal, { 提示记完了, type 要完成的计划 } from "./CompletePlanModal";
 import FollowUpForm from "./FollowUpForm";
 import TaskForm from "./TaskForm";
-import OpportunityForm from "../../opportunities/OpportunityForm";
 import PlanForm from "./PlanForm";
 import { 刚加的排前 } from "@/lib/fresh-first";
 import ContactForm from "./ContactForm";
@@ -145,7 +144,6 @@ export default function RecordView({
   contacts,
   contracts,
   opportunities,
-  报价记录: 报价记录档 = [],
   项目们 = null,
   参与项目们 = null,
   旺旺们 = [],
@@ -203,10 +201,7 @@ export default function RecordView({
   const { 问怎么拿掉 } = useContactRemoval();
   const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
-  // 企业版项目模式：报价挂在商机上，企业版没有商机这条线，报价记录一并不摆（10-26）
-  const 报价记录 = 项目们 ? [] : 报价记录档;
   const revertChoice = useRef<string>(REVERT_CHOICES[0].value);
-  const [报价全开, set报价全开] = useState(false);
   /*
     企业版项目模式（10-27 会议：前台冗余优化，先做一版、对方终稿到了再调）：
     基本资料只摆填了的，没填的收进「展开更多」；联系人每人一张小卡，电话 / 邮箱 / 微信各一行完整显示、点了能拨能发；
@@ -304,7 +299,6 @@ export default function RecordView({
   const [followOpen, setFollowOpen] = useState(false);
   const [followInit, setFollowInit] = useState<{ record: FollowUpRow | null; aiText?: string }>({ record: null });
   const [taskOpen, setTaskOpen] = useState(false);
-  const [opportunityOpen, setOpportunityOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   /*
     从到点提醒点进来（desktop/reminders.js 带 ?focus=plan:… / task:…）：把那一条滚到眼前、闪一下，
@@ -1241,67 +1235,6 @@ export default function RecordView({
               <CustomerResearchTag customerId={customer.id} customerName={customer.name} 档案={背调档案} on记跟进={点跟进} 卡 />
             </ProjectFold>
           )}
-          {!项目们 && (
-            <div className="rec-sec">
-              <div className="rec-sec-t">
-                <span>商机 {opportunities.length > 0 && opportunities.length}</span>
-                <Space size={4}>{!只读 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => setOpportunityOpen(true)} aria-label="新建关联商机" />} <Link href="/opportunities">全部 ›</Link></Space>
-              </div>
-              {opportunities.length === 0 && <div className="rec-empty">还没有商机</div>}
-              {opportunities.map((o) => (
-                // 两行：名字独占一行，阶段和金额在下面（审查 M4）。原来三样挤一行，
-                // 264 宽的左栏里名字只剩「恒拓 · …」，截掉的恰恰是认出这一单的那半截
-                <RowLink key={o.id} href={`/opportunities?opportunity=${encodeURIComponent(o.id)}`} className="rec-mini rec-mini-2">
-                  <span className="rec-mini-n" title={o.name}>{o.name}</span>
-                  <span className="rec-mini-sub">
-                    <StageTag stage={o.stage} />
-                    {/* 赢单 / 丢单挂个标（J-088），和商机列表名称列一样；不挂的话丢掉的单看着也像还在谈 */}
-                    {o.status !== "OPEN" && (
-                      <Tag color={o.status === "WON" ? "success" : "error"} style={{ margin: 0 }}>
-                        {o.status === "WON" ? (是订单 ? "已转订单" : "已赢单") : "已丢单"}
-                      </Tag>
-                    )}
-                    <span className="rec-mini-m rec-mini-money">{金额(o.amount, o.currency)}</span>
-                    {/* 外贸：哪天询的盘（客户：「3 月问了一次没成，5 月又问，这样知道客户计划采购的时间点」） */}
-                    {外贸 && o.createdAt && <span className="rec-mini-m" title="询盘时间">{fmtDate(o.createdAt)} 询盘</span>}
-                  </span>
-                </RowLink>
-              ))}
-            </div>
-          )}
-
-
-          {/*
-            报价记录（2026-10-03）：这个客户历次报过的产品和单价，新的在前。没报过就不出现这一节（少即是多）。
-            先摆 5 行，多了点开——左栏是档案，不是报价单
-          */}
-          {!企业 && 报价记录.length > 0 && (
-            <div className="rec-sec">
-              <div className="rec-sec-t">
-                <span>报价记录 {报价记录.length}</span>
-                {报价记录.length > 5 && (
-                  <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={() => set报价全开(!报价全开)} aria-expanded={报价全开}>
-                    {报价全开 ? "收起" : "全部"}
-                  </Button>
-                )}
-              </div>
-              {(报价全开 ? 报价记录 : 报价记录.slice(0, 5)).map((r, i) => (
-                <RowLink key={`${r.quotedAt}-${i}`} href={`/opportunities?opportunity=${encodeURIComponent(r.商机id)}`} className="rec-mini rec-mini-2" title={`商机「${r.商机}」`}>
-                  <span className="rec-mini-n" title={r.spec ? `${r.product}（${r.spec}）` : r.product}>
-                    {r.product}
-                    {r.spec && <span className="rec-mini-m"> · {r.spec}</span>}
-                  </span>
-                  <span className="rec-mini-sub">
-                    <span className="rec-mini-m rec-mini-money">
-                      {金额(r.unitPrice, r.currency)} × {r.qty}{r.unit ? ` ${r.unit}` : ""}
-                    </span>
-                    <span className="rec-mini-m">{r.状态 === "WON" ? "成交 · " : ""}{fmtDate(r.quotedAt)}</span>
-                  </span>
-                </RowLink>
-              ))}
-            </div>
-          )}
-
           {!企业 && (
           <div className="rec-sec">
             <div className="rec-sec-t">
@@ -1496,7 +1429,6 @@ export default function RecordView({
           提示记完了(message, p, r, () => { void window.desktopReminders?.刷新(); router.refresh(); });
         }}
       />
-      <OpportunityForm open={opportunityOpen} editing={null} initialCustomer={{ id: customer.id, name: customer.name }} users={users} customers={[]} onClose={() => setOpportunityOpen(false)} onSaved={() => { setOpportunityOpen(false); router.refresh(); }} />
       <TaskForm open={taskOpen} onClose={() => setTaskOpen(false)} onSaved={() => { setTaskOpen(false); router.refresh(); }} customerId={customer.id} />
       <PlanForm
         open={planOpen}

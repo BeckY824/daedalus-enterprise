@@ -1,7 +1,7 @@
 /**
  * 企业版只用项目时老入口加闸（10-28 定版前收口，src/lib/enterprise/project-only.ts 只用项目挡老入口）。
  *
- *   合同（saveContract / deleteContract）、商机（saveOpportunity / moveStage / setOppStatus / restoreOpportunities）、
+ *   合同（saveContract / deleteContract）、商机（setOppStatus；新建 / 拖阶段 / 撤销删除那几个入口 2026-11-11 连代码删了）、
  *   只用项目时拒绝、一行不写（订单页和它的写入口 2026-10-28 已整页删除）
  *   没开项目模式、或不是企业版：不挡（团队版 / 个人版照旧）
  */
@@ -20,7 +20,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { saveContract, deleteContract } from "@/app/(app)/customers/actions";
-import { saveOpportunity, moveStage, setOppStatus, restoreOpportunities } from "@/app/(app)/opportunities/actions";
+import { setOppStatus } from "@/app/(app)/opportunities/actions";
 
 let 客户 = "";
 
@@ -54,17 +54,13 @@ describe("只用项目挡老入口", () => {
     const 挡 = (东西: string) => ({ ok: false, error: `这里${东西}已并进项目：请到项目页推进或记成交` });
     expect(await saveContract({ customerId: 客户, amount: 1000, signedAt: new Date() } as never)).toEqual(挡("合同"));
     expect(await deleteContract("x", 客户, null)).toEqual(挡("合同"));
-    expect(await saveOpportunity({ customerId: 客户, name: "二期", amount: 1000, stage: "初步沟通", probability: 20 } as never)).toEqual(挡("商机"));
-    expect(await moveStage("x", "初步沟通")).toEqual(挡("商机"));
     expect(await setOppStatus("x", "WON")).toEqual(挡("商机"));
-    expect(await restoreOpportunities([])).toEqual(挡("商机"));
     expect([await prisma.contract.count(), await prisma.opportunity.count()]).toEqual([0, 0]);
   });
 
-  it("没开项目模式：照旧能记合同、建商机", async () => {
+  it("没开项目模式：照旧能记合同", async () => {
     mocks.开 = false;
     expect(await saveContract({ customerId: 客户, amount: 1000, signedAt: new Date() } as never)).toMatchObject({ ok: true });
-    expect(await saveOpportunity({ customerId: 客户, name: "二期", amount: 1000, stage: "初步沟通", status: "OPEN", probability: 20, expectedDealAt: null, remark: "" } as never)).toMatchObject({ ok: true });
-    expect([await prisma.contract.count(), await prisma.opportunity.count()]).toEqual([1, 1]);
+    expect(await prisma.contract.count()).toBe(1);
   });
 });

@@ -133,11 +133,10 @@ describe("新建时负责人默认是我（T-015 / T-025）", () => {
     expect(默认负责人(我, [])).toBeUndefined();
   });
 
-  it("三张新建表单都只用 默认负责人()，不兜底到名单第一人", () => {
-    // 新建商机原来写成 默认负责人(我, users) ?? users[0]?.id：网页多人管理员不在候选里，默认就是名单第一个销售
+  it("新建表单都只用 默认负责人()，不兜底到名单第一人", () => {
+    // 新建商机原来写成 默认负责人(我, users) ?? users[0]?.id：网页多人管理员不在候选里，默认就是名单第一个销售（商机框 2026-11-11 删了）
     const 表单 = {
       "src/app/(app)/customers/CustomerForm.tsx": "salesOwnerId",
-      "src/app/(app)/opportunities/OpportunityForm.tsx": "ownerId",
       "src/app/(app)/channels/ChannelsView.tsx": "channelOwnerId",
     };
     for (const [文件, 字段] of Object.entries(表单)) {

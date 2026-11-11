@@ -92,11 +92,12 @@ const 可写: Record<string, string[]> = {
   ProjectContact: ["contactId", "roles", "stance"],
   // 未归属联系人：联系人页上点开改资料（saveUnassignedContact）
   UnassignedContact: ["name", "position", "phone", "email", "wechat", "remark"],
+  // 商机（2026-11-11）：商机框 saveOpportunity 删了（企业版只用项目，走不到）；表和老数据留着，下一步删表时整组从这里拿掉
   Opportunity: ["name", "amount", "stage", "status", "probability", "expectedDealAt", "remark", "customerId", "ownerId"],
-  // 币种（2026-10-03）：saveOpportunity / saveContract 收 currency，签约的精确金额跟着 amount 一起写
+  // 币种（2026-10-03）：saveContract 收 currency，签约的精确金额跟着 amount 一起写（商机那边同上，入口已删、表还在）
   OpportunityMoney: ["currency"],
   ContractMoney: ["currency", "amountExact"],
-  // 报价明细（2026-10-03）：saveOpportunity 收 报价，一行五个字段
+  // 报价明细（2026-10-03）：一行五个字段。写入口连同开关 2026-11-11 删了（报价挂在商机上，企业版没有商机）；表留着等删表那一步
   QuoteLine: ["product", "spec", "qty", "unit", "unitPrice"],
   // 客户的外贸档案（2026-10-05）：客户表单 saveCustomer 的 extra、记录页 patchCustomer 单格改、导入、线索转客户
   // 2026-10-16 加客户等级、官网：同样走 saveCustomer 的 extra、patchCustomer、导入
@@ -209,7 +210,7 @@ const 派生: Record<string, Record<string, string>> = {
     opportunityId: "哪个商机，变成赢单或丢单时一起写",
     closedAt: "赢单 / 丢单的那一刻，系统打上；回到进行中就删掉这一行",
   },
-  OpportunityMoney: { opportunityId: "哪个商机，saveOpportunity 新建 / 改币种时一起写" },
+  OpportunityMoney: { opportunityId: "哪个商机，原来 saveOpportunity 新建 / 改币种时一起写（入口 2026-11-11 删了）" },
   ContractMoney: { contractId: "哪一笔签约，saveContract 保存时一起写" },
   // 2026-10-04 L-007：整行是登记签约勾了赢单时系统记下的，删签约时据此退回，没有单改某一格的入口
   ContractWin: {

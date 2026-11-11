@@ -159,8 +159,6 @@ export type RecordProps = {
     createdAt?: string;
   }[];
   contracts: ContractRow[];
-  /** 报价记录（2026-10-03）：这个客户历次报过的每一行，新的在前。没报过是空数组，左栏那一节就不出现 */
-  报价记录?: import("@/lib/quote-db").报价记录行[];
   tasks: { id: string; title: string; dueAt: string | null; dueHasTime?: boolean | null; done: boolean }[];
   /** updatedAt：编辑框的版本号（J-105） */
   plan: { id: string; subject: string; plannedAt: string; plannedHasTime?: boolean | null; method: string; updatedAt: string } | null;

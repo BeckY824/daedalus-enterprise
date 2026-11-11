@@ -12,7 +12,8 @@ import { 带走并记下 } from "@/lib/carry-over-db";
 import { assignSalesOwner, patchCustomer, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 领取, 放进公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
-import { deleteOpportunities, restoreOpportunities, saveOpportunity, moveStage, setOppStatus } from "@/app/(app)/opportunities/actions";
+// 商机编辑框 / 拖阶段 / 删除撤销 2026-11-11 删了（企业版只用项目，走不到）；转交、停滞信号这些仍在跑的照测
+import { setOppStatus } from "@/app/(app)/opportunities/actions";
 let customerId: string; let otherId: string; let old: Date;
 beforeEach(async () => {
   await resetDb(); invalidateSettingsCache();
@@ -24,17 +25,15 @@ beforeEach(async () => {
 });
 afterAll(async () => { await prisma.$disconnect(); });
 const create = (patch = {}) => prisma.opportunity.create({ data: { name: "QA商机", customerId, ownerId: state.user.id, amount: 100, stage: "方案报价", status: "OPEN", probability: 75, updatedAt: old, ...patch } });
-const input = (patch = {}) => ({ name: "QA商机", customerId, ownerId: state.user.id, amount: 100, stage: "方案报价", status: "OPEN", probability: 75, ...patch });
 const read = (id: string) => prisma.opportunity.findUniqueOrThrow({ where: { id } });
 async function stalled() { return (await loadWatchlistPage(dayjs())).items.filter((x) => x.kind === "stalled_opp"); }
 
-it("L-029 批量转交及撤销都不掩盖20天停滞；旧编辑版本仍被拒绝", async () => {
+it("L-029 批量转交及撤销都不掩盖20天停滞", async () => {
   const o = await create(); expect(await stalled()).toHaveLength(1);
   const assigned = await assignSalesOwner([customerId], otherId); expect(assigned.ok).toBe(true);
   if (!assigned.ok) throw new Error(assigned.error);
   const after = await read(o.id); expect(after.ownerId).toBe(otherId); expect(after.activityAt).toEqual(old); expect(after.updatedAt.getTime()).toBeGreaterThan(o.updatedAt.getTime());
   expect(await stalled()).toHaveLength(1);
-  expect(await saveOpportunity(input({ id: o.id, 版本: o.updatedAt.toISOString() }))).toMatchObject({ ok: false });
   expect((await read(o.id)).ownerId).toBe(otherId);
   expect((await 撤销改负责人(assigned.原值!, otherId, assigned.带过来)).ok).toBe(true);
   expect((await read(o.id)).activityAt).toEqual(old); expect((await read(o.id)).ownerId).toBe(state.user.id); expect(await stalled()).toHaveLength(1);
@@ -61,25 +60,10 @@ it("L-029 停用转交保留业务时间，历史赢单仍归停用成员", asyn
   expect((await read(o.id)).ownerId).toBe(state.user.id); expect((await read(o.id)).activityAt).toEqual(old); expect(await stalled()).toHaveLength(1);
   expect(await read(won.id)).toEqual(won);
 });
-it("L-029 商机编辑框仅换人或原样保存不重计停滞；修改金额才更新业务时间", async () => {
-  const o = await create();
-  expect((await saveOpportunity(input({ id: o.id, ownerId: otherId }))).ok).toBe(true);
-  expect((await read(o.id)).activityAt).toEqual(old); expect(await stalled()).toHaveLength(1);
-  expect((await saveOpportunity(input({ id: o.id, ownerId: otherId }))).ok).toBe(true);
-  expect((await read(o.id)).activityAt).toEqual(old);
-  expect((await saveOpportunity(input({ id: o.id, ownerId: otherId, amount: 200 }))).ok).toBe(true);
-  expect((await read(o.id)).activityAt!.getTime()).toBeGreaterThan(old.getTime()); expect(await stalled()).toHaveLength(0);
-});
-it.each(["stage", "currency", "status"])("实际%s推进从现在重计停滞", async (kind) => {
+it("实际改状态从现在重计停滞", async () => {
   const o = await create({ activityAt: old });
-  const result = kind === "stage" ? await moveStage(o.id, "谈判审核") : kind === "status" ? await setOppStatus(o.id, "LOST") : await saveOpportunity(input({ id: o.id, currency: "USD" }));
+  const result = await setOppStatus(o.id, "LOST");
   expect(result.ok).toBe(true); expect((await read(o.id)).activityAt!.getTime()).toBeGreaterThan(old.getTime()); expect(await stalled()).toHaveLength(0);
-});
-it("删除再撤销保留真实停滞时刻，不当成今天刚推进", async () => {
-  const o = await create(); const deleted = await deleteOpportunities([o.id]); expect(deleted.ok).toBe(true);
-  if (!deleted.ok) throw new Error("delete failed");
-  expect((await restoreOpportunities(deleted.快照)).ok).toBe(true);
-  expect((await read(o.id)).activityAt).toEqual(old); expect(await stalled()).toHaveLength(1);
 });
 it("转交事务写入失败，业务时间和负责人都回滚", async () => {
   const o = await create();

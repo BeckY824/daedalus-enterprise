@@ -4,7 +4,7 @@
  *   - 商机转为订单：联动只赢这一单
  *   - 客户的外贸档案：国家 / WhatsApp / 微信 / 邮箱 / 来源；线索转客户带来源和邮箱；搜索搜得到联系人
  *   - 导入认这几列，补空只补空的、撤销还原；导出 xlsx 两张表，第一张能原样导回
- *   - 询盘时间 = 商机 createdAt，能改、不许晚于今天
+ *   - 询盘时间 = 商机 createdAt（改它的商机框 2026-11-11 随商机保存入口删了，企业版走不到）
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
@@ -22,7 +22,7 @@ import { saveContract, deleteContract, patchCustomer, saveCustomer } from "@/app
 import { TOOLS } from "@/lib/agent/tools";
 import { 文字里号码打码 } from "@/lib/utils";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
-import { saveOpportunity, setOppStatus } from "@/app/(app)/opportunities/actions";
+import { setOppStatus } from "@/app/(app)/opportunities/actions";
 import { 补来源 } from "@/lib/customer-extra-db";
 import { saveBusinessSettings } from "@/app/(app)/settings/actions";
 import { getBusiness } from "@/lib/business";
@@ -174,20 +174,6 @@ describe("客户的外贸档案", () => {
   });
 });
 
-describe("询盘时间", () => {
-  it("改得了（补录老询盘），不许晚于今天", async () => {
-    await 外贸();
-    const c = await 客户();
-    const 三月 = new Date(2026, 2, 12, 10);
-    const r = await saveOpportunity({ name: "鸡胸", customerId: c.id, amount: 0, stage: "初步沟通", status: "OPEN", probability: 20, 询盘时间: 三月.toISOString() });
-    expect(r.ok).toBe(true);
-    expect((await prisma.opportunity.findFirstOrThrow()).createdAt.getTime()).toBe(三月.getTime());
-    const 明年 = new Date();
-    明年.setFullYear(明年.getFullYear() + 1);
-    expect(await saveOpportunity({ name: "x", customerId: c.id, amount: 0, stage: "初步沟通", status: "OPEN", probability: 20, 询盘时间: 明年.toISOString() })).toMatchObject({ ok: false, error: "询盘时间不能晚于今天" });
-  });
-});
-
 describe("导入认外贸那几列", () => {
   const 表头 = ["客户名称", "联系电话", "公司", "国家", "WhatsApp", "邮箱", "来源", "微信号"];
   it("外贸模版猜列：来源落来源格（不对渠道）；通用模版不认这几列", async () => {
@@ -284,7 +270,7 @@ describe("团队版：业务员只看自己的外贸档案", () => {
 });
 
 describe("复查一轮（10-06）", () => {
-  it("G.3 外贸下 AI 拿到的状态是这家的叫法：find_person 说「已下单」不说「已签约」；list_opportunities 说「已转订单」、不给概率", async () => {
+  it("G.3 外贸下 AI 拿到的状态是这家的叫法：find_person 说「已下单」不说「已签约」", async () => {
     await 外贸();
     const c = await 客户("Ahmed");
     await prisma.customer.update({ where: { id: c.id }, data: { followStatus: "已签约" } });
@@ -293,10 +279,6 @@ describe("复查一轮（10-06）", () => {
     const 找 = JSON.stringify((await TOOLS.find((t) => t.name === "find_person")!.run({ name: "Ahmed" }, ctx as never)).data);
     expect(找).toContain("已下单");
     expect(找).not.toContain("已签约");
-    const 商机 = JSON.stringify((await TOOLS.find((t) => t.name === "list_opportunities")!.run({ status: "WON" }, ctx as never)).data);
-    expect(商机).toContain("已转订单");
-    expect(商机).not.toContain("赢单\"");
-    expect(商机).not.toContain("成交概率");
     await prisma.opportunity.create({ data: { name: "租赁屏", customerId: c.id, amount: 50, stage: "初步沟通", status: "OPEN", probability: 10, ownerId: jia.id } });
     const 读 = JSON.stringify((await TOOLS.find((t) => t.name === "get_customer")!.run({ id: c.id }, ctx as never)).data);
     expect(读).toContain("租赁屏");
@@ -343,7 +325,6 @@ describe("二审（10-06）", () => {
     const o = await prisma.opportunity.create({ data: { name: "鸡胸", customerId: c.id, amount: 10, ownerId: jia.id } });
     await saveContract({ customerId: c.id, amount: 10, currency: "USD", signedAt: new Date(), remark: null, 联动: { 赢单: [o.id], 完成计划: [], 完成待办: [] } });
     expect(await setOppStatus(o.id, "OPEN")).toMatchObject({ ok: false, error: expect.stringContaining("已经转成订单") });
-    expect(await saveOpportunity({ id: o.id, name: "鸡胸", customerId: c.id, amount: 10, stage: "谈判审核", status: "LOST", probability: 0 })).toMatchObject({ ok: false });
     const k = await prisma.contract.findFirstOrThrow();
     expect((await deleteContract(k.id, c.id, null)).ok).toBe(true);
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("OPEN");
@@ -376,18 +357,6 @@ describe("二审（10-06）", () => {
 });
 
 describe("回归核对补钉（10-06，W-外贸并进）", () => {
-  it("W-013 / W-014 询盘时间：服务器按 UTC 算时，东八区「今天」也收；改了进日志", async () => {
-    await 外贸();
-    const c = await 客户();
-    const 明早 = new Date(Date.now() + 12 * 3600_000);
-    const r = await saveOpportunity({ name: "x", customerId: c.id, amount: 0, stage: "初步沟通", status: "OPEN", probability: 20, 询盘时间: 明早.toISOString() });
-    expect(r.ok).toBe(true);
-    const o = await prisma.opportunity.findFirstOrThrow();
-    await saveOpportunity({ id: o.id, name: "x", customerId: c.id, amount: 0, stage: "初步沟通", status: "OPEN", probability: 20, 询盘时间: new Date(2026, 2, 12).toISOString() });
-    const 痕 = await prisma.auditLog.findFirstOrThrow({ where: { entity: "Opportunity", action: "update" } });
-    expect(痕.detail).toContain("询盘时间");
-  });
-
   it("W-021 WhatsApp、联系人电话按原样的写法也搜得到", async () => {
     await 外贸();
     const c = await 客户("Acme");

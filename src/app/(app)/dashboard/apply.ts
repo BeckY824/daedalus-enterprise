@@ -27,7 +27,6 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
 import { 认出备注里的号码, AI建档查重详 } from "@/lib/enterprise/ai-lead-dedupe";
-import { saveOpportunity } from "../opportunities/actions";
 import { saveChannel } from "../channels/actions";
 import { 按名字找负责人 } from "@/lib/owners";
 import { 是项目卡, type 项目卡 } from "@/lib/agent/project-proposals";
@@ -435,7 +434,8 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     }
   }
 
-  if (只用项目 && p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
+  // 商机卡（add_opportunity）：建议工具 propose_opportunity 2026-11-11 已删，老对话存档里的卡点确认也一律走这句（原来 只用项目 才拦，企业版恒真）
+  if (p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
   if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
   let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
@@ -444,22 +444,6 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     done = await 建成项目(p, me);
   } else if (p.kind === "update_customer") {
     done = await 改档案(p.customerId, p.changes);
-  } else if (p.kind === "add_opportunity") {
-    const r = await saveOpportunity({
-      name: p.name || `${c.name} 的商机`,
-      customerId: p.customerId,
-      amount: p.amount,
-      // 老建议卡没有币种：不传，saveOpportunity 用本位币
-      currency: p.currency || undefined,
-      stage: p.stage,
-      status: "OPEN",
-      probability: p.probability,
-      expectedDealAt: p.expectedDealAt || null,
-      remark: p.remark || null,
-      // 商机负责人跟着客户的销售负责人走，不另外问——问了也只会填成同一个人
-      ownerId: (await prisma.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true } }))!.salesOwnerId,
-    });
-    done = r.ok ? { ok: true } : { ok: false, error: r.error };
   } else if (p.kind === "add_contract") {
     const r = await saveContract({
       customerId: p.customerId,
