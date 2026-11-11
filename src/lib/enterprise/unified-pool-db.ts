@@ -27,14 +27,14 @@ import { 原负责人回避, 回避豁免, 一批id数 } from "@/lib/project/poo
 import type { Prisma } from "@/generated/prisma";
 import { 公海名单条件, 公海名单候选, type 公海名单筛 } from "@/lib/project/list";
 import {
-  客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 并客户池, 没项目进程, 项目行属性,
+  客户定状态, 客户公海属性, 进程显示项目, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 并客户池, 没项目进程, 项目行属性,
   type 公海行, type 公海筛选, type 入池类,
 } from "./unified-pool";
 
 /** 客户公海、项目公海各最多取这么多（按入池时间新的在前） */
 export const 公海取上限 = 2000;
 
-type 项目片 = { name: string; phase: string; node: string; result: string | null };
+type 项目片 = { id: string; createdAt: Date; name: string; phase: string; node: string; result: string | null };
 type 字典 = ReturnType<typeof 字典of>;
 
 /** 一个项目的 阶段 / 节点 / 结局（老节点名、老结局名换成本套叫法；有结局的阶段按结局归） */
@@ -44,19 +44,21 @@ function 位置(p: 项目片, 字典: 字典) {
 }
 
 /**
- * 「当前进程」那一格 + 鼠标停上去的明细（U-公海-04）：按 客户定状态 取定状态的那个项目，写「阶段-节点」（11-01 用户：「应该是阶段+进程名。例如线索-潜客培育」），有结局再带结局；
- * 名下不止一个项目时明细列出每个项目
+ * 「当前进程」那一格 + 鼠标停上去的明细（U-公海-04）：写名下最新创建的那个项目（进程显示项目，11-11 跟进；和归池用的项目故意不同），
+ * 「阶段-节点」（11-01 用户：「应该是阶段+进程名。例如线索-潜客培育」），有结局再带结局；名下不止一个项目时明细列出每个项目。
+ * 范围照旧（11-02）：传进来的是各人看得到的项目，进程格按看得到的里最新的那个；属性另按全部项目算（归池）
  */
 function 进程们(projects: readonly 项目片[], 字典: 字典) {
   const 定 = 客户定状态(projects);
-  const 进程 = 定.项目 ? 进程格(定.属性, 位置(定.项目, 字典)) : null;
+  const 显示 = 进程显示项目(projects);
+  const 进程 = 显示 ? 进程格(定.属性, 位置(显示, 字典)) : null;
   const 进程明细 = projects.length > 1
     ? projects.map((p) => { const x = 位置(p, 字典); return `${p.name}：${进程格(定.属性, x)}`; }).join("；")
     : null;
   return { 属性: 定.属性, 进程, 进程明细 };
 }
 
-type 客户的项目 = { customerId: string; id: string; name: string; phase: string; node: string; result: string | null };
+type 客户的项目 = { customerId: string; id: string; name: string; phase: string; node: string; result: string | null; createdAt: Date };
 
 /** 客户名下、各人看得到的项目（走带限定的客户端），按创建先后：项目名、当前进程、定状态的那个都认这个顺序 */
 function 查客户的项目(where: Prisma.ProjectWhereInput): Promise<客户的项目[]> {
@@ -290,7 +292,7 @@ export async function 读公海页(me: { id: string; name: string; role?: string
  * 名单的项目走带限定的客户端取（可见范围、原负责人回避照旧）；骨架里没有对应行的（框外、刚被领走）不列
  */
 async function 按名单展开(骨: Awaited<ReturnType<typeof 读公海骨架>>, 名单条件: Prisma.ProjectWhereInput): Promise<公海行[]> {
-  const 们 = await prisma.project.findMany({ where: 名单条件, orderBy: [{ pooledAt: "desc" }, { id: "asc" }], select: { id: true, customerId: true, name: true, phase: true, node: true, result: true } });
+  const 们 = await prisma.project.findMany({ where: 名单条件, orderBy: [{ pooledAt: "desc" }, { id: "asc" }], select: { id: true, customerId: true, name: true, phase: true, node: true, result: true, createdAt: true } });
   const 项目行of = new Map(骨.行.flatMap((r) => (r.种 === "项目" && r.projectId ? [[r.projectId, r] as const] : [])));
   const 客户行of = new Map(骨.行.flatMap((r) => (r.种 === "客户" ? [[r.customerId, r] as const] : [])));
   return 们.flatMap((p): 公海行[] => {

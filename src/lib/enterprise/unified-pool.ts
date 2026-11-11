@@ -108,6 +108,21 @@ export function 归池(行: { 种: "客户" | "项目"; 项目们: readonly 项�
   return "订单池";
 }
 
+/**
+ * 「当前进程」那一格显示哪个项目（11-11 跟进，用户定）：名下最新创建的那个（创建时间相同取 id 大的，稳定），不分结没结束，结束了的照旧带结局。
+ * **故意和 归池 用的项目不同**：归池按 客户定状态 从低往高（决定落哪个池），进程格只写最新的那个，所以会有「在线索池、进程写订单-某节点」的行，用户要的，不加提示。
+ * 客户池并成一行的不走这里（写最近进项目公海的那个，见 并客户池）；没有项目 = null（客户行另写 没项目进程）
+ */
+export function 进程显示项目<P extends { id: string; createdAt: Date | string }>(projects: readonly P[]): P | null {
+  let 取: P | null = null;
+  for (const p of projects) {
+    if (!取) { 取 = p; continue; }
+    const 差 = new Date(p.createdAt).getTime() - new Date(取.createdAt).getTime();
+    if (差 > 0 || (差 === 0 && p.id > 取.id)) 取 = p;
+  }
+  return 取;
+}
+
 /** 客户名下的项目 → 公海属性（= 归池 客户行）。只数项目本身（有没有在项目公海不管） */
 export function 客户公海属性(projects: readonly 项目状态片[]): 客户行属性 {
   return 归池({ 种: "客户", 项目们: projects }) as 客户行属性;

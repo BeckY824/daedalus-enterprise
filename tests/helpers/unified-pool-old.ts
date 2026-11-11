@@ -2,6 +2,7 @@
  * 统一公海取数的改前写法（ent/main dc53fcb5 的 src/lib/enterprise/unified-pool-db.ts），原样抄来只给对拍用：
  * tests/ent-unified-pool-paging.test.ts 拿它和现在的 读公海页 逐个筛选组合、逐页比。
  * 除了两个导出改名（读公海行 → 旧读公海行、读公海页 → 旧读公海页）、相对路径的 import 改成 @/，一个字不改；别在这里修东西。
+ * 例外：11-11 进程格改写名下最新创建的项目（进程显示项目），这里的 进程们 跟着改了一处，标了「11-11 跟进」。
  * 例外：11-11 四池改了规矩（不是取数的写法），这里跟着改了两处，标了「11-11」：项目行属性一律客户池；名下一个项目都没有的客户进程写 没项目进程
  */
 import { prisma } from "@/lib/prisma";
@@ -15,13 +16,13 @@ import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import {
-  客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 没项目进程, 项目行属性,
+  客户定状态, 客户公海属性, 进程显示项目, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 没项目进程, 项目行属性,
   type 公海行, type 公海筛选, type 入池类,
 } from "@/lib/enterprise/unified-pool";
 
 import { 公海取上限 } from "@/lib/enterprise/unified-pool-db";
 
-type 项目片 = { name: string; phase: string; node: string; result: string | null };
+type 项目片 = { id: string; createdAt: Date; name: string; phase: string; node: string; result: string | null }; // 11-11 跟进：加 id、createdAt
 type 字典 = ReturnType<typeof 字典of>;
 
 /** 一个项目的 阶段 / 节点 / 结局（老节点名、老结局名换成本套叫法；有结局的阶段按结局归） */
@@ -36,7 +37,8 @@ function 位置(p: 项目片, 字典: 字典) {
  */
 function 进程们(projects: readonly 项目片[], 字典: 字典) {
   const 定 = 客户定状态(projects);
-  const 进程 = 定.项目 ? 进程格(定.属性, 位置(定.项目, 字典)) : null;
+  const 显示 = 进程显示项目(projects); // 11-11 跟进
+  const 进程 = 显示 ? 进程格(定.属性, 位置(显示, 字典)) : null;
   const 进程明细 = projects.length > 1
     ? projects.map((p) => { const x = 位置(p, 字典); return `${p.name}：${进程格(定.属性, x)}`; }).join("；")
     : null;
