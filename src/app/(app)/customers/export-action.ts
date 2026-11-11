@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { 能导入导出, 不能导入导出 } from "@/lib/enterprise/import-perm";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 客户筛选条件, 客户行字段, 成客户行, type 客户条件, type 客户行 } from "./query";
 import { 负责人候选 } from "@/lib/owners";
 import type { 跟进导出行 } from "./export-table";

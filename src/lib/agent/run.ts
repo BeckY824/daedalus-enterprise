@@ -70,7 +70,7 @@ import type { Emit } from "../ai-steps";
 import type { BriefRecord } from "../ai-draft";
 import type { BusinessConfig } from "../business-config";
 import { dayjs, 现在带周几 } from "../utils";
-import { 号码脱敏器 } from "../shared-ws/current";
+import { 号码脱敏器 } from "../enterprise/phone-mask";
 
 export type AgentEvents = {
   emit?: Emit;

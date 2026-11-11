@@ -53,32 +53,16 @@ function 托管版(): boolean {
   return multiTenant();
 }
 
-/**
- * 设置页的所有写操作都要过这里。
- *
- * **网页的共享工作区一律拒绝**，即便登进去的那个账号角色是 ADMIN。那一套账号密码是
- * 发给好几个团队共用的（见 lib/shared-ws），于是「管理员」这个身份在那里等于「任何人」。
- * 放它过去至少有两件事会当场出问题：
- *   - AI 接入那一栏的「测试连接」会把服务端的 LLM Key 发到调用方自己填的地址；
- *   - 业务配置、成员、角色随便改，而别的团队也在用同一个工作区。
- */
-/** 当前是不是网页试用版那个共享工作区 */
-async function 是共享区() {
-  const { 当前是共享区 } = await import("@/lib/shared-ws/current");
-  return 当前是共享区();
-}
-
 /** 能改设置：企业版只认业务角色（QA #9，11-01）= 总管理 director，勾了「不管设置」的不行；管理员 admin 能进来看、不能改。别的版本照旧账号 ADMIN */
 async function 能改设置(me: { id: string; role: string }): Promise<boolean> {
   if (企业版()) return 能改后台设置(me, await 权限组织());
   return me.role === "ADMIN";
 }
 
+/** 设置页的所有写操作都要过这里 */
 async function requireAdmin() {
   const me = await requireUser();
   if (!(await 能改设置(me))) throw new Error("FORBIDDEN");
-  const { 当前是共享区 } = await import("@/lib/shared-ws/current");
-  if (await 当前是共享区()) throw new Error("FORBIDDEN");
   return me;
 }
 
@@ -92,7 +76,6 @@ async function 能办离职(id: string) {
   const me = await requireUser();
   const org = await 权限组织();
   if (能改后台设置(me, org)) return requireAdmin();
-  if (await 是共享区()) throw new Error("FORBIDDEN");
   // 11-01 只认业务角色：上级不能停用总管理（原来看账号 ADMIN）；管理员 admin 只读，当了上级也不能办
   const 有人 = typeof id === "string" && id ? await prisma.user.count({ where: { id } }) : 0;
   if (有人 && org && !是总管理({ id, role: "" }, org) && !只读角色(me, org) && 直属上级of(await 读组织(), id) === me.id) return me;
@@ -629,7 +612,6 @@ export async function 改我的资料(input: { name: string; title: string }) {
   const me = await requireUser();
   // 切换视图（只读）：写库会抛只读错，冒到界面只剩「保存失败」，这里直说
   if (await 正在切换视图()) return { ok: false as const, error: new 视图只读错误().message };
-  if (await 是共享区()) return { ok: false as const, error: "这是几个试用团队共用的账号，名字和密码不能改——改了别的团队就登不进来了" };
   const name = input.name.trim();
   const title = input.title.trim();
   if (!name) return { ok: false as const, error: "名字不能为空" };
@@ -663,11 +645,6 @@ export async function changeMyPassword(oldPwd: string, newPwd: string) {
   const me = await requireUser();
   // 切换视图（只读）：写库会抛只读错，冒到界面只剩「保存失败」，这里直说
   if (await 正在切换视图()) return { ok: false as const, error: new 视图只读错误().message };
-  /*
-    网页试用版是几个团队共用一个账号（memory: web-trial-shared-workspace）。原来这里不拦：
-    任何一个团队改了密码，会吊销这个账号的全部会话，别的团队全被踢出、也登不回来（2026-10-01 排查 A3）
-  */
-  if (await 是共享区()) return { ok: false as const, error: "这是几个试用团队共用的账号，名字和密码不能改——改了别的团队就登不进来了" };
   const user = await prisma.user.findUnique({ where: { id: me.id } });
   if (!user) return { ok: false as const, error: "用户不存在" };
 
@@ -722,15 +699,10 @@ export async function changeMyPassword(oldPwd: string, newPwd: string) {
 /**
  * 这个人背后的控制面账号。设备令牌挂在它名下，不在业务库那条 User 上。
  *
- * 两种情况返回 null，那时「已登录的机器」整栏不出现：
- *   自部署版    —— 桌面端不连我们的控制面，也就没有设备令牌这回事；
- *   共享工作区  —— 那一套账号密码发给了多个团队（见 shared-ws/current.ts），
- *                  列表里会是别的团队的机器名，而「退出」能把他们正在用的机器踢下线。
+ * 自部署版返回 null，那时「已登录的机器」整栏不出现：桌面端不连我们的控制面，也就没有设备令牌这回事。
  */
 async function 我的控制面账号(userId: string): Promise<string | null> {
   if (!托管版()) return null;
-  const { 当前是共享区 } = await import("@/lib/shared-ws/current");
-  if (await 当前是共享区()) return null;
   const link = await prisma.workspaceAccount.findUnique({ where: { userId } });
   return link?.accountId ?? null;
 }
@@ -928,11 +900,6 @@ export async function 查自动判断(): Promise<{ 可用: boolean; 已开: bool
 export async function 设自动判断开关(开: boolean): Promise<void> {
   const me = await requireUser();
   if (!(await 本机说了算(me))) throw new Error("只有管理员能改");
-  /*
-    共享试用区一律不许改（2026-10-04，回归核对 H-037）：那儿的「管理员」是好几个团队共用的一套账号，
-    开了它导入时就能把表头和前三行发给 AI——这个开关不能让别的团队替你打开
-  */
-  if (await 是共享区()) throw new Error("FORBIDDEN");
   await 设自动判断(开);
   await recordAudit({
     user: me, action: "update", entity: "Setting", entityId: "assist",

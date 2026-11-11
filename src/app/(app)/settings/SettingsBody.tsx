@@ -14,9 +14,8 @@ import { 能导入导出 } from "@/lib/enterprise/import-perm";
 import { 全部企业字典, 读分配谁能用 } from "@/lib/enterprise/dict";
 import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
-import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
-import { 文字里号码打码, 同名带邮箱 } from "@/lib/utils";
+import { 同名带邮箱 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 权限组织 } from "@/lib/enterprise/org";
 import { 拆角色 } from "@/lib/enterprise/org-core";
 import { 能进设置, 能改后台设置, 是总管理 } from "@/lib/enterprise/permissions";
@@ -47,10 +46,10 @@ export default async function SettingsBody() {
 
   /**
    * 机器那一栏：托管版里用这个账号登录过桌面端的机器。
-   * 自部署版和共享工作区拿到的是 null，界面上那一栏整个不出现（见 actions.ts 的 我的控制面账号）。
+   * 自部署版拿到的是 null，界面上那一栏整个不出现（见 actions.ts 的 我的控制面账号）。
    */
-  const [llm, business, aiUsage, 共享区, 机器] = await Promise.all([
-    describeLlmConfig(), getBusiness(), aiUsageThisMonth(), 当前是共享区(), 我的机器(),
+  const [llm, business, aiUsage, 机器] = await Promise.all([
+    describeLlmConfig(), getBusiness(), aiUsageThisMonth(), 我的机器(),
   ]);
 
   const users = await prisma.user.findMany({
@@ -79,8 +78,8 @@ export default async function SettingsBody() {
   // 进设置页 / 改后台设置（11-01 #9）：企业版只认业务角色——系统管理员，勾了「不管设置」的不行；
   // 别的版本照旧账号 ADMIN。和服务端 settings/actions.ts 能改设置、org-actions.ts 能改的人 同一套
   const 权限org = 企业版() ? await 权限组织() : null;
-  const 可进 = !共享区 && (企业版() ? 能进设置(me, 权限org) : me.role === "ADMIN");
-  const 可改 = !共享区 && (企业版() ? 能改后台设置(me, 权限org) : me.role === "ADMIN");
+  const 可进 = (企业版() ? 能进设置(me, 权限org) : me.role === "ADMIN");
+  const 可改 = (企业版() ? 能改后台设置(me, 权限org) : me.role === "ADMIN");
   // 企业版不是系统管理员（11-03 D3-1）：只给个人资料、登录与密码、快捷键、外观（回收站副手另多回收站），
   // 成员、组织架构、项目模式、操作日志都不出、数据也不取
   const 只个人 = 企业版() && !可进;
@@ -145,8 +144,7 @@ export default async function SettingsBody() {
    * 企业版按「后台设置谁能改」表（B2 第 6 条），别的版本照旧只有老板。和服务端 挡改设置 同一套。
    */
   const 挡 = (项: 设置项名): string | null =>
-    共享区 ? "共享试用区不能改"
-    : org && 改权限 ? (能改设置(org, me, 项, 改权限) ? null : 谁能改的话(改权限, 项))
+    org && 改权限 ? (能改设置(org, me, 项, 改权限) ? null : 谁能改的话(改权限, 项))
     : me.role === "ADMIN" ? null : "只有老板能改";
   /**
    * 按人单设提成比例（10-28）：列组织里（在职）的销售管理、销售，再加上已经单设过但现在不是销售的人（不列出来就改不掉了）；
@@ -214,36 +212,28 @@ export default async function SettingsBody() {
   // 谁能导入只认 import-perm.ts 一处（现在企业版是老板、总管理员），以后放宽只改那里
   const 能导入 = await 能导入导出(me);
   // 回收站：企业版的系统管理员、回收站副手（谁能看 / 恢复 / 彻底删除只认 lib/enterprise/soft-delete.ts）
-  const 有回收站 = 企业版() && !共享区 && (await 能管回收站(me));
+  const 有回收站 = 企业版() && (await 能管回收站(me));
 
-  /* 共享试用区：留痕里记的是原号，别的团队也翻得到——号码在这儿打掉再交给浏览器（2026-10-01 排查 A5） */
   const 成日志行 = (l: (typeof logs)[number]) => ({
     id: l.id,
     at: l.at.toISOString(),
     userName: l.userName,
     action: l.action,
     entity: l.entity,
-    summary: 共享区 ? 文字里号码打码(l.summary) : l.summary,
-    detail: 共享区 && l.detail ? 文字里号码打码(l.detail) : l.detail,
+    summary: l.summary,
+    detail: l.detail,
   });
 
   return (
     <SettingsView
-      项目设置={项目设置 && { ...项目设置, 能改提成比例: !!项目设置.提成比例 && !共享区 && 能改提成比例(me, org) }}
+      项目设置={项目设置 && { ...项目设置, 能改提成比例: !!项目设置.提成比例 && 能改提成比例(me, org) }}
       组织架构={组织架构}
       me={me}
-      /**
-       * 共享工作区里这个人是 ADMIN（他得能展示管理员看到的东西），但那套账号密码
-       * 发给了多个团队——「管理员」在那里等于「拿到过密码的任何人」。服务端已经
-       * 不给他过 requireAdmin 了（settings/actions.ts），界面这边也别摆那些按钮：
-       * 摆着点了只会报错，而 AI 接入那一栏还会把平台 Key 的尾 4 位显示出来。
-       */
       isAdmin={可进}
       /* 管理员（admin）能进来看、不能改（11-01）：AI 接入 / 业务设置那几栏控件全灰，团队成员不给编辑 */
       只读={可进 && !可改}
-      共享区={共享区}
       /* 勾了「不管设置」的总管理进不了设置（C1）：导入、回收站这几栏也跟着「可进」走，不只看本人能不能导入（D2-1） */
-      企业版导入={企业版() && !共享区 && 可进 && 能导入}
+      企业版导入={企业版() && 可进 && 能导入}
       /* 不能导入的人那栏永远是空的，不摆 */
       导入记录={能导入 && (!企业版() || 可进)}
       /* 回收站副手（V3.5.1）不是系统管理员、进不了后台设置，回收站这栏照样给；勾了「不管设置」的系统管理员仍跟着「可进」走 */

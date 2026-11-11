@@ -8,7 +8,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
-vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma } from "@/lib/prisma";

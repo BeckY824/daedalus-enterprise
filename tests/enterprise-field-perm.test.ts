@@ -19,7 +19,7 @@ import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 规整字段配置, 字段级别of, 改不了的话, 字段权限of, 字段权限key, 推荐字段配置 } from "@/lib/enterprise/field-perm";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { patchCustomer, assignSalesOwner, bulkFollowStatus } from "@/app/(app)/customers/actions";
 import { 设字段权限 } from "@/app/(app)/settings/org-actions";
 import { 改节点, 改项目 } from "@/lib/project/db";

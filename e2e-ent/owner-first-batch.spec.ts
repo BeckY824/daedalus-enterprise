@@ -91,6 +91,8 @@ async function 登录(page: Page, 名: string) {
 
 /** 在 根 里量：页面横向滚动、根内元素超出根、文字被撑出自身。超了返回具体哪些 */
 async function 量(page: Page, 根: string, 标签: string) {
+  // 根里还在转圈就先等它转完：量到的是加载态，不是要量的内容（main CI 红过一次：项目详情 375 宽「文字溢出」10 条全是 .ant-spin-spinning 本身）
+  await expect(page.locator(`${根} .ant-spin-spinning`), `${标签} 还在加载`).toHaveCount(0, { timeout: 15_000 });
   await page.waitForTimeout(450); // 弹窗开场动画缩放时量出来的宽度不准
   const r = await page.evaluate((根选择器) => {
     const 根元素 = document.querySelector(根选择器);
@@ -299,14 +301,24 @@ test("A3 A4 市场成员的客户分给销售：弹窗没有带待办的勾，�
   await expect(正文.getByText("没有找到这条记录")).toBeVisible();
 
   // 销售：通知写 N、M，客户上看得到留下的活并能勾
+  // 通知是分配动作里 await 着写进库的（「已分给」的提示出来时已落库）。先在库里确认有这条：再红时分得清是没写上、还是页面没拿到
+  await expect.poll(async () => db.entNotice.count({ where: { userId: 丁.id, title: { contains: 名 } } }), { message: "分配通知没写进库" }).toBeGreaterThan(0);
   await 登录(page, 丁.email);
   await page.goto("/projects");
   for (const 宽 of [1024, 375]) {
     await page.setViewportSize({ width: 宽, height: 800 });
     await page.goto("/projects");
-    await page.locator("button.notice-bell, button[aria-label*='通知']").first().click();
+    const 铃 = page.locator("button.notice-bell, button[aria-label*='通知']").first();
     const 条 = page.locator(".notice-item", { hasText: 名 }).first();
-    await expect(条).toBeVisible();
+    // 抽屉只在点开时现拉一次列表（NoticeBell 打开 → 读我的通知），开着不轮询：
+    // 刚 goto 完就点可能赶在水合之前（点了没反应、抽屉不开），拉列表失败则显示空列表、不会再拉。
+    // 所以没看到这条就重进页面、重新点开再拉一次，而不是把超时调大干等
+    let 第几次 = 0;
+    await expect(async () => {
+      if (第几次++) await page.goto("/projects");
+      await 铃.click({ timeout: 5_000 });
+      await expect(条).toBeVisible({ timeout: 5_000 });
+    }, `通知 ${宽} 铃铛里没有这条`).toPass({ timeout: 30_000 });
     await expect(条).toContainText("客户上还有原负责人 2 条未完成待办、2 条未完成计划");
     await 量(page, ".notice-list", `通知 ${宽}`);
     await 能点(page, 条, `通知 ${宽}`);

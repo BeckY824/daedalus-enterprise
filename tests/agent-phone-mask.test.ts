@@ -1,7 +1,7 @@
 /**
  * AI 工具吐出来的手机号也要打码。
  *
- * 2026-09-19 补的洞。`lib/shared-ws/current.ts` 的注释写着
+ * 2026-09-19 补的洞。号码脱敏器（原 `lib/shared-ws/current.ts`，现 `lib/enterprise/phone-mask.ts`）的注释写着
  * 「客户列表、联系人、记录页**三处**共用同一个出口」——而 AI 工具是
  * **没人接上的第四个出口**，MCP 是第五个。
  *

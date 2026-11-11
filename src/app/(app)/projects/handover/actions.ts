@@ -11,7 +11,6 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 交接挡, 交了超上限, 交一位客户, 交一个项目, 全部交给 } from "@/lib/enterprise/offboard-handover";
 import { 离职交接通知 } from "@/lib/enterprise/notice-sources";
 
@@ -24,7 +23,6 @@ const 刷新 = () => {
 async function 先挡(fromId: string, toId: string) {
   if (!企业版()) throw new Error("FORBIDDEN");
   const me = await requireUser();
-  if (await 当前是共享区()) throw new Error("FORBIDDEN");
   const 话 = await 交接挡(me, fromId, toId);
   if (话 === "FORBIDDEN") throw new Error("FORBIDDEN");
   const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [fromId, toId].filter((x) => typeof x === "string" && x) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));

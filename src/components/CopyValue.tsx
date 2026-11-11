@@ -9,7 +9,7 @@ import { 是空值 } from "@/lib/empty-value";
  * 电话、邮箱：普通文字 + 紧贴右边的小复制键（11-09 用户：超链接取消，右边加个可复制的按钮）。
  *
  * 复制的是传进来的完整值，不看屏幕上被省略号截成了什么样。
- * 号码在服务端过了脱敏器（lib/shared-ws/current.ts 的 号码脱敏器）：看不到真号的人，这里拿到的就是打了码的值，
+ * 号码在服务端过了脱敏器（lib/enterprise/phone-mask.ts 的 号码脱敏器）：看不到真号的人，这里拿到的就是打了码的值，
  * 带 * 的不给按钮，也就没有东西可以复制。这个组件不能拿没打码的原值当 value 传。
  */
 export default function CopyValue({

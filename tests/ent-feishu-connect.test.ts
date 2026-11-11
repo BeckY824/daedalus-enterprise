@@ -12,11 +12,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "老板", email: "boss@example.com", role: "ADMIN", title: "", avatar: null },
-  共享区: false,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => mocks.共享区 }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -69,7 +67,6 @@ beforeEach(async () => {
   await resetDb();
   invalidateSettingsCache();
   process.env.CRM_ENTERPRISE = "1";
-  mocks.共享区 = false;
   const 建人 = async (email: string, name: string, role: string) => (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
   老板 = await 建人("boss@example.com", "老板", "ADMIN");
   销售 = await 建人("s1@example.com", "小王", "SALES");

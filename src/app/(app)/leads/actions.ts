@@ -37,7 +37,6 @@ import { 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
-import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 线索附件转给联系人 } from "@/lib/attachments";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
@@ -48,7 +47,7 @@ import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
  */
 async function 改负责人不给(user: { id: string; role: string }, 原负责人: string | null | undefined, 新负责人: string): Promise<string | null> {
   if (新负责人 === 原负责人) return null;
-  if (!(await 规则开着("线索分配")) || (await 当前是共享区())) return null;
+  if (!(await 规则开着("线索分配"))) return null;
   return 能分配(await 读组织(), user)
     ? "改负责人请用线索列表里的「分配」：会查接手人的角色、配额，并记进分配记录"
     : "只有总管理、销售管理、市场管理能分配线索";

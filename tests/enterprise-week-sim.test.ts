@@ -23,7 +23,6 @@ vi.mock("@/lib/auth", async (原) => ({
   // 并发的调用（两人同时领）各算各的人：先看 AsyncLocalStorage
   requireUser: async () => (await import("./sim/身份")).当前人.getStore() ?? mocks.user,
 }));
-vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 // 不连团队服务器：公海超时收回 扫全公司（连着时只扫自己名下）
 vi.mock("@/lib/sync/client", async (原) => ({ ...(await 原<object>()), 读团队: () => null }));

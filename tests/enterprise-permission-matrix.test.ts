@@ -57,7 +57,7 @@ import { 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { patchCustomer } from "@/app/(app)/customers/actions";
 import { deleteContact, restoreContact } from "@/app/(app)/customers/[id]/actions";
 import { TOOL_MAP, type ToolContext } from "@/lib/agent/tools";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { maskPhone } from "@/lib/utils";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 字段权限key } from "@/lib/enterprise/field-perm";

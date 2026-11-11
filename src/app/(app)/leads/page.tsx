@@ -1,4 +1,4 @@
-import { 号码脱敏器, 当前是共享区 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { 线索关键词条件 } from "@/lib/search-keyword";
@@ -34,7 +34,7 @@ export default async function LeadsPage({
   if (await 企业版只用项目()) {
     const d = await 读项目列表(me, sp, "线索");
     // 分配、满额提醒照老线索页的口径（下面那段），只是分的是线索阶段的项目
-    const 线索分配开着 = (await 规则开着("线索分配")) && !(await 当前是共享区());
+    const 线索分配开着 = await 规则开着("线索分配");
     const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
     const 满额提醒们 = await 读满额提醒(me.id);
     return <ProjectsView {...d} 列={看板分列(d.行)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 满额提醒={满额提醒们} 能新建={能新建和领取(me, await 权限组织())} />;
@@ -79,7 +79,7 @@ export default async function LeadsPage({
 
   const 号 = await 号码脱敏器();
   // 企业版「线索分配和配额」开着、我能分配（老板、总管理员、市场管理）才摆「分配」「自动分配」；服务端还会再查一遍
-  const 线索分配开着 = (await 规则开着("线索分配")) && !(await 当前是共享区());
+  const 线索分配开着 = await 规则开着("线索分配");
   const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
   // 企业版自动分配因都已满额没分出去的提醒（只发给市场管理、总管理员，见 lib/enterprise/lead-full-notice.ts）
   const 满额提醒们 = 企业版() ? await 读满额提醒(me.id) : [];

@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => true }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => false }));
 
 import { prisma } from "@/lib/prisma";
 import { setSetting } from "@/lib/settings";
