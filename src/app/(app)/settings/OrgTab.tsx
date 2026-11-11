@@ -46,7 +46,7 @@ export type 组织架构 = {
   /** 回收站副手（V3.5.1）：系统管理员之外能看、能恢复回收站的人 */
   回收站副手?: string[];
 };
-type 结果 = Promise<{ ok: boolean; error?: string }>;
+type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string }>;
 
 const 总管级 = (r: string) => r === "director" || r === "admin";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
@@ -113,7 +113,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       const r = await f();
       if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
       else {
-        if (成了) message.success(成了);
+        if (r.提示) message.warning(r.提示);
+        else if (成了) message.success(成了);
         开始刷新(() => router.refresh());
       }
       return r.ok;

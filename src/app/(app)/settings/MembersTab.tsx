@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Checkbox, Tooltip } from "antd";
+import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined, SafetyCertificateFilled, SafetyCertificateOutlined, SettingOutlined } from "@ant-design/icons";
 import { UserCell } from "@/components/ui";
 import { ROLES } from "@/lib/constants";
 import { useBusiness } from "@/lib/business-client";
@@ -16,6 +16,13 @@ import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 
 /** 设置 · 团队成员：谁能进、谁是管理员。新增、编辑、停用（停用要先把名下的客户转交出去） */
+
+/** 系统管理员小盾牌的悬停说明：说清现在是什么、点了会怎样、为什么拨不动 */
+function 系统管理员说明(x: { on: boolean; 有线: boolean }, 能拨: boolean): string {
+  if (!x.有线) return "系统管理员（没设业务线的总管理就是）。要只管一条线，先在组织架构里给他设业务线";
+  if (!能拨) return "系统管理员，同时是本业务线的条线总管理";
+  return x.on ? "系统管理员，同时是本业务线的条线总管理。点一下取消，只管本业务线" : "只管本业务线（条线总管理）。点一下设为系统管理员，两个身份并存";
+}
 
 export type Row = {
   id: string;
@@ -90,8 +97,6 @@ export default function MembersTab({
       set改不管设置中(null);
     }
   };
-  // 有总管理行时角色列加宽，放得下「不管设置」「系统管理员」两个勾选
-  const 有总管行 = 企业版 && users.some((u) => u.系统管理员);
   /** 勾 / 取消「不管设置」：只有能改组织架构的总管理（服务端 org-actions 设不管设置 再拦一遍、保至少一位能管设置的总管理） */
   const on不管设置 = async (r: Row, on: boolean) => {
     if (改不管设置中) return;
@@ -308,51 +313,55 @@ export default function MembersTab({
       ? {
           title: "角色",
           key: "业务角色",
-          width: 有总管行 ? 240 : 120,
+          width: 120,
           render: (_: unknown, r: Row) => (
             <div className="member-roles">
-              {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；「不管设置」勾选框不截 */}
-              <span className="member-roles-tags">
+              {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；系统管理员、不管设置两个小图标不截 */}
+              <span className="member-roles-tags" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>
                 {(r.业务角色 ?? []).map((x) => (
                   <Tag key={x} color={业务角色色[x]} style={{ margin: 0, marginRight: 4 }}>
                     {角色名[x]}
                   </Tag>
                 ))}
               </span>
-              {/* 「不管设置」只对总管理有意义（11-01 C1）：能改设置的人勾，别人只看到标记 */}
-              {r.业务角色?.includes("director") &&
-                (企业版 && isAdmin ? (
-                  <Checkbox
-                    checked={!!r.不管设置}
-                    disabled={改不管设置中 !== null}
-                    aria-label={`${r.name} 不管设置`}
-                    data-testid="member-no-settings"
-                    onChange={(e) => void on不管设置(r, e.target.checked)}
-                    style={{ fontSize: 12 }}
-                  >
-                    不管设置
-                  </Checkbox>
-                ) : r.不管设置 ? (
-                  <Tag style={{ margin: 0 }}>不管设置</Tag>
-                ) : null)}
-              {/* 「系统管理员」（P-判定-06）：和业务线并存。没设业务线的总管理本来就是，勾着、拨不动 */}
+              {/* 「系统管理员」（P-判定-06）：和业务线并存。角色标签旁一个小盾牌，不加宽角色列（全站一行、不多出横向滚动）。
+                  实心 = 是系统管理员；空心 = 只管本业务线。没设业务线的总管理本来就是，实心、拨不动 */}
               {企业版 && r.系统管理员 &&
-                (isAdmin ? (
-                  <Tooltip title={r.系统管理员.有线 ? "打开：系统管理员，同时是本业务线的条线总管理；关掉：只管本业务线" : "没设业务线的总管理就是系统管理员；要只管一条线，先在组织架构里给他设业务线"}>
-                    <Checkbox
-                      checked={r.系统管理员.on}
-                      disabled={改不管设置中 !== null || !r.系统管理员.有线}
+                (isAdmin || r.系统管理员.on) && (
+                  <Tooltip title={系统管理员说明(r.系统管理员, isAdmin)}>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={r.系统管理员.on}
                       aria-label={`${r.name} 系统管理员`}
                       data-testid="member-sysadmin"
-                      onChange={(e) => void on系统管理员(r, e.target.checked)}
-                      className="member-flag"
+                      // 拨不动用 aria-disabled 不用 disabled：原生 disabled 的按钮收不到悬停，说明就弹不出来
+                      className={`member-flag-btn member-sysadmin${r.系统管理员.on ? " is-on" : ""}${!isAdmin ? " is-readonly" : ""}`}
+                      aria-disabled={!isAdmin || 改不管设置中 !== null || !r.系统管理员.有线}
+                      onClick={() => { if (isAdmin && 改不管设置中 === null && r.系统管理员?.有线) void on系统管理员(r, !r.系统管理员.on); }}
                     >
-                      系统管理员
-                    </Checkbox>
+                      {r.系统管理员.on ? <SafetyCertificateFilled /> : <SafetyCertificateOutlined />}
+                    </button>
                   </Tooltip>
-                ) : r.系统管理员.on ? (
-                  <Tag className="member-flag">系统管理员</Tag>
-                ) : null)}
+                )}
+              {/* 「不管设置」只对总管理有意义（11-01 C1）：能改设置的人拨，别人只在勾上时看到标记。
+                  和系统管理员小盾牌一样做成角色标签旁的小图标：原来的「☐ 不管设置」勾选框占掉 84px，120 宽的角色列里总管的角色标签被挤没了 */}
+              {r.业务角色?.includes("director") && 企业版 && (isAdmin || r.不管设置) && (
+                <Tooltip title={r.不管设置 ? `不管设置：进不了设置页、改不了后台设置，别的权限照旧${isAdmin ? "。点一下取消" : ""}` : "管设置。点一下设为「不管设置」：进不了设置页，别的权限照旧"}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!r.不管设置}
+                    aria-label={`${r.name} 不管设置`}
+                    data-testid="member-no-settings"
+                    className={`member-flag-btn member-no-settings${r.不管设置 ? " is-on" : ""}${!isAdmin ? " is-readonly" : ""}`}
+                    aria-disabled={!isAdmin || 改不管设置中 !== null}
+                    onClick={() => { if (isAdmin && 改不管设置中 === null) void on不管设置(r, !r.不管设置); }}
+                  >
+                    <SettingOutlined />
+                  </button>
+                </Tooltip>
+              )}
             </div>
           ),
         }

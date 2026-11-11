@@ -4,7 +4,8 @@
  *
  * 只在企业版开着时可用；11-01 起只认业务角色：总管理（director，没勾「不管设置」）能改，管理员（admin）只能看。
  * 账号 ADMIN 不再多出权限。总管理能给、能改总管理 / 管理员这两个角色，但至少要留一位能管设置的系统管理员。
- * 系统管理员标记（P-判定-06）：系统管理员和业务线两个身份并存，给系统管理员设业务线不掉权限（设成员 自动带上标记），成员管理里的开关走 设系统管理员。
+ * 系统管理员标记（P-判定-06）：系统管理员和业务线两个身份并存，成员管理里的开关走 设系统管理员。
+ * 设成员 只在「他是唯一一位能管设置的系统管理员」时设线自动带上标记（不带就一位不剩）；还有别的系统管理员时设线照旧变成条线总管理，要并存由别的系统管理员打开开关。
  * 规则检查都在 lib/enterprise/org.ts 的纯函数里，这里只负责读库、写库、留痕。
  */
 import { revalidatePath } from "next/cache";
@@ -29,7 +30,8 @@ import {
 import { 测试飞书连接, 读飞书表配置, 存飞书表, 主表们, type 测试结果, type 飞书表概况 } from "@/lib/enterprise/feishu-connect";
 import { 视图外部拒 } from "@/lib/enterprise/view-as";
 
-type 结果 = { ok: true } | { ok: false; error: string };
+/** ok 时可带一句提示（设成员：唯一的系统管理员设了线、自动保留系统管理员） */
+type 结果 = { ok: true; 提示?: string } | { ok: false; error: string };
 
 /** 组织、规则一改，谁看得到谁的客户就变了：页面和限定层的缓存一起清 */
 function 改完了() {
@@ -196,12 +198,13 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
       ...改,
       bizRole: 新角色们 ? 合角色(新角色们) : (旧行?.bizRole ?? 合角色(原角色们)),
     };
-    // 系统管理员标记（P-判定-06）：系统管理员设业务线不掉权限——原来是系统管理员、这次设上了线，自动带上标记；不再是总管理了，标记摘掉
-    const 原是系统管理员 = 是系统管理员of(原, userId);
+    // 系统管理员标记（P-判定-06）：他是唯一一位能管设置的系统管理员、这次又带着线，自动带上标记（不带就一位不剩）；
+    // 还有别的系统管理员时不带：设线照旧变成条线总管理，免得「先给总管理、再设线」的人悄悄留着系统管理员。不再是总管理了，标记摘掉
+    const 唯一系管 = 能管设置(原, userId) && !还有总管(原, userId);
     const 新标记 = 标记名单(标记原文);
     const 新是总管理 = (新角色们 ?? 原角色们).includes("director");
     if (!新是总管理) 新标记.delete(userId);
-    else if (原是系统管理员 && 新行.line) 新标记.add(userId);
+    else if (唯一系管 && 新行.line) 新标记.add(userId);
     // 带上「只看某人」名单：设了的人不能当别人的实线上级（只认手填的直属上级，V3.5.1 / 11-03 C10-1）
     const 新 = 填组织设置(建组织(users, [...members.filter((m) => m.userId !== userId), 新行], depts), null, 只看?.value, JSON.stringify([...新标记]));
     // 去掉总管理角色（或别的改动）之后一位能管设置的系统管理员都不剩：拦
@@ -230,7 +233,7 @@ export async function 设成员(userId: string, 传来的: 成员改动): Promis
     ].filter(Boolean);
     await recordAudit({ user: who.me, action: "update", entity: "EntMember", entityId: userId, summary: `组织架构：${人.name} ${说.join("，")}`, detail: 改 });
     改完了();
-    return { ok: true };
+    return 标记变了 && 新标记.has(userId) ? { ok: true, 提示: `${人.name} 是唯一的系统管理员，已保留系统管理员权限` } : { ok: true };
   } catch (e) {
     return 不在了(e);
   }

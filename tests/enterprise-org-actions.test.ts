@@ -160,8 +160,9 @@ describe("系统管理员和业务线并存（P-判定-06）", () => {
   const 标记 = async () => JSON.parse((await prisma.setting.findUnique({ where: { key: 系统管理员标记键 } }))?.value ?? "null");
   const 是系管 = async (id: string) => 是系统管理员({ id }, await 读组织());
 
-  it("给系统管理员设业务线：自动带上标记，权限不掉，同时是本线条线总管理；改回两边都做仍是", async () => {
-    expect(await 设成员(老板, { line: "内贸" })).toEqual({ ok: true });
+  it("唯一一位系统管理员设业务线：自动带上标记、回一句提示，权限不掉，同时是本线条线总管理；改回两边都做仍是", async () => {
+    expect(await 设成员(总管, { bizRole: "sales" })).toEqual({ ok: true });
+    expect(await 设成员(老板, { line: "内贸" })).toEqual({ ok: true, 提示: "老板 是唯一的系统管理员，已保留系统管理员权限" });
     expect(await 标记()).toEqual([老板]);
     const org = await 读组织();
     expect(是系统管理员({ id: 老板 }, org)).toBe(true);
@@ -174,6 +175,24 @@ describe("系统管理员和业务线并存（P-判定-06）", () => {
     expect(await 标记()).toEqual([老板]);
     expect(await 设成员(老板, { line: null })).toEqual({ ok: true });
     expect(await 是系管(老板)).toBe(true);
+  });
+
+  it("有两位系统管理员时其中一位设线：不带标记，只是条线总管理；之后由另一位打开开关才并存", async () => {
+    expect(await 设成员(总管, { line: "外贸" })).toEqual({ ok: true });
+    expect(await 标记()).toBeNull();
+    expect(await 是系管(总管)).toBe(false);
+    expect(条线的线(await 读组织(), 总管)).toBe("外贸");
+    expect(await 是系管(老板)).toBe(true);
+    expect(await 设系统管理员(总管, true)).toEqual({ ok: true });
+    expect(await 是系管(总管)).toBe(true);
+  });
+
+  it("新给的总管理先给角色、再设线：不是系统管理员（还有别的系统管理员）", async () => {
+    expect(await 设成员(销售, { bizRole: "director" })).toEqual({ ok: true });
+    expect(await 是系管(销售)).toBe(true);
+    expect(await 设成员(销售, { line: "内贸" })).toEqual({ ok: true });
+    expect(await 是系管(销售)).toBe(false);
+    expect(await 标记()).toBeNull();
   });
 
   it("总管理没标记设了线：只是条线总管理；新给的总管理带着线也不自动成系统管理员", async () => {
@@ -214,7 +233,7 @@ describe("系统管理员和业务线并存（P-判定-06）", () => {
   it("不能把最后一位能管设置的系统管理员关掉、去掉总管理角色、勾「不管设置」", async () => {
     // 只剩老板一位系统管理员：总管改成销售
     expect(await 设成员(总管, { bizRole: "sales" })).toEqual({ ok: true });
-    expect(await 设成员(老板, { line: "内贸" })).toEqual({ ok: true });
+    expect(await 设成员(老板, { line: "内贸" })).toMatchObject({ ok: true, 提示: expect.stringContaining("唯一的系统管理员") });
     expect(await 设系统管理员(老板, false)).toMatchObject({ ok: false, error: expect.stringContaining("至少要留一位") });
     expect(await 设成员(老板, { bizRole: "sales" })).toMatchObject({ ok: false, error: expect.stringContaining("至少要留一位") });
     expect(await 设不管设置(老板, true)).toMatchObject({ ok: false, error: expect.stringContaining("至少要留一位") });
@@ -227,6 +246,7 @@ describe("系统管理员和业务线并存（P-判定-06）", () => {
 
   it("带标记的人去掉总管理角色：标记摘掉，以后再给总管理不会悄悄变回系统管理员", async () => {
     expect(await 设成员(总管, { line: "外贸" })).toEqual({ ok: true });
+    expect(await 设系统管理员(总管, true)).toEqual({ ok: true });
     expect(await 标记()).toEqual([总管]);
     expect(await 设成员(总管, { bizRole: "sales" })).toEqual({ ok: true });
     expect(await 标记()).toBeNull();
