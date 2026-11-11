@@ -26,7 +26,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 字段是公司, 字段是行业 } from "@/lib/lead-convert";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 级别选项, 企业级别, 国内叫法, 是国内, 地址每格上限, 地址叫法, 详细地址上限, 简称上限 } from "@/lib/enterprise/customer-v2";
-import { 三种业务线 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 客户业务线必填 } from "@/lib/enterprise/assign-line";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 渠道触点们, 客户介绍触点 } from "@/lib/enterprise/touchpoint";
@@ -264,6 +264,8 @@ function CustomerFormInner({
     渠道负责人选项.push({ value: editing.channelOwnerId, label: `${editing.channelOwnerName ?? "原负责人"}（不在当前候选中）` });
   }
 
+  /** 客户业务线必填（M-必填-13）：新建、或打开时带着这一格的（详情页的编辑）才要；列表行没带这格 = 不交、不拦 */
+  const 业务线要填 = 企业 && (!editing || editing.bizLine !== undefined);
   /** 企业版地址：国家是中国（或空着）就问省 / 市 / 区县，国外只问城市 */
   const 地址国家 = Form.useWatch("addrCountry", form) as string | undefined;
   const 国内址 = !地址国家 || 是国内(地址国家);
@@ -562,8 +564,9 @@ function CustomerFormInner({
           </Col>
           <Col span={8}>
             {/* 业务线（11-01 清单 A1）：内贸 / 外贸 / 暂不分配手动选，新开项目默认跟它；自动分配按项目上的业务线走 */}
-            <Form.Item label="业务线" name="bizLine">
-              <Select allowClear placeholder="内贸 / 外贸 / 暂不分配" data-testid="customer-bizline" options={三种业务线.map((x) => ({ value: x, label: x }))} />
+            {/* 必填（M-必填-13，11-11）：新建、或打开时带着这一格的才标必填；列表行没带这格时不交也不拦（存量空着的不因此存不了别的格）。服务端同一条 */}
+            <Form.Item label="业务线" name="bizLine" rules={业务线要填 ? [{ required: true, message: 客户业务线必填 }] : undefined}>
+              <Select allowClear={!业务线要填} placeholder="内贸 / 外贸 / 暂不分配" data-testid="customer-bizline" options={三种业务线.map((x) => ({ value: x, label: x }))} />
             </Form.Item>
           </Col>
           </>) : (<>

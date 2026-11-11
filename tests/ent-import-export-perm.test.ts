@@ -33,6 +33,8 @@ const 方案 = (数据: string[][]) => ({ 表头, 数据, 映射: 猜列(表头,
 const 新客户 = (name: string, phone: string, salesOwnerId: string, id?: string) => ({
   ...(id ? { id } : {}), name, phone, school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中",
   expectedSignAt: null, remark: null, salesOwnerId, channelId: null, referrerCustomerId: null,
+  // 客户业务线必填（M-必填-13）：没另给按内贸
+  企业资料: { bizLine: "内贸" },
 });
 
 beforeEach(async () => {

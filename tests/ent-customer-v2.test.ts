@@ -54,6 +54,8 @@ const 新建 = (改: Record<string, unknown> = {}) =>
     // 11-02：只有负责人能改，客户归测试员（销售）
     salesOwnerId: "tester-id", channelId: null, referrerCustomerId: null,
     ...改,
+    // 客户业务线必填（M-必填-13）：没另给按内贸
+    企业资料: { bizLine: "内贸", ...((改.企业资料 as object | undefined) ?? {}) },
   } as Parameters<typeof saveCustomer>[0]);
 
 async function 新建id(改: Record<string, unknown> = {}) {

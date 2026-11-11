@@ -207,6 +207,8 @@ describe("assignSalesOwner（直接换负责人）", () => {
 
 describe("saveCustomer / patchCustomer", () => {
   const 基本 = { school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null, channelId: null, referrerCustomerId: null };
+  // 客户业务线必填（M-必填-13）：没另给按内贸
+  const 新建 = { ...基本, 企业资料: { bizLine: "内贸" } };
   const 编辑 = async (id: string, patch: object) => {
     const r = await prisma.customer.findUniqueOrThrow({ where: { id } });
     const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
@@ -214,13 +216,13 @@ describe("saveCustomer / patchCustomer", () => {
   };
 
   it("新建指定别人：接手人收一条；记在自己名下不发", async () => {
-    const r = await saveCustomer({ ...基本, name: "新客户", phone: "13900000011", salesOwnerId: 销售 } as Parameters<typeof saveCustomer>[0]);
+    const r = await saveCustomer({ ...新建, name: "新客户", phone: "13900000011", salesOwnerId: 销售 } as Parameters<typeof saveCustomer>[0]);
     expect(r).toMatchObject({ ok: true });
     const 新 = await prisma.customer.findFirstOrThrow({ where: { name: "新客户" } });
     expect(await 分配通知们()).toMatchObject([{ userId: 销售, link: `/customers/${新.id}` }]);
 
     await prisma.entNotice.deleteMany();
-    await saveCustomer({ ...基本, name: "我的客户", phone: "13900000012", salesOwnerId: 运营 } as Parameters<typeof saveCustomer>[0]);
+    await saveCustomer({ ...新建, name: "我的客户", phone: "13900000012", salesOwnerId: 运营 } as Parameters<typeof saveCustomer>[0]);
     expect(await 分配通知们()).toEqual([]);
   });
 

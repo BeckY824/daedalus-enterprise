@@ -27,7 +27,9 @@ let 乙: string;
 const 客户 = (补: Partial<CustomerInput> = {}): CustomerInput => ({
   name: "新客户", phone: "", school: null, grade: null, major: null,
   followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
-  salesOwnerId: 甲, channelId: null, referrerCustomerId: null, ...补,
+  salesOwnerId: 甲, channelId: null, referrerCustomerId: null,
+  // 客户业务线必填（M-必填-13）：没另给按内贸
+  企业资料: { bizLine: "内贸" }, ...补,
 });
 const 建 = (name: string, salesOwnerId: string, 补: Record<string, unknown> = {}) =>
   prisma.customer.create({ data: { name, phone: "", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId, ...补 } });

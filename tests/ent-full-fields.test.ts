@@ -179,6 +179,8 @@ describe("客户字段：saveCustomer / patchCustomer 真库", () => {
       followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
       salesOwnerId: "tester-id", channelId: null, referrerCustomerId: null,
       ...改,
+      // 客户业务线必填（M-必填-13）：没另给按内贸
+      企业资料: { bizLine: "内贸", ...((改.企业资料 as object | undefined) ?? {}) },
     } as Parameters<typeof saveCustomer>[0]);
   async function 新建id(改: Record<string, unknown> = {}) {
     const r = await 新建(改);

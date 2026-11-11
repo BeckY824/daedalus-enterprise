@@ -64,6 +64,8 @@ describe("保存客户（企业版）", () => {
       followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
       salesOwnerId: "tester-id", channelId: null, referrerCustomerId: null,
       ...改,
+      // 客户业务线必填（M-必填-13）：没另给按内贸
+      企业资料: { bizLine: "内贸", ...((改.企业资料 as object | undefined) ?? {}) },
     } as unknown as Parameters<typeof saveCustomer>[0]);
 
   const 建介绍人 = async () => {
