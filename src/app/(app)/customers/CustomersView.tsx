@@ -808,8 +808,7 @@ export default function CustomersView({
   ];
 
   return (
-    /* ui-v2：界面样板（16a，只客户列表 + 客户详情两页），样式全在 globals.css 末尾那一块，只认这个类 */
-    <div className="ui-v2 ui-v2-list">
+    <>
       <PageHead
         title={b.customer}
         subtitle="全部档案与跟进"
@@ -1126,6 +1125,6 @@ export default function CustomersView({
         看这一批={(id) => router.push(`/customers?batch=${id}`)}
         有别的成员={users.length > 1}
       />}
-    </div>
+    </>
   );
 }
