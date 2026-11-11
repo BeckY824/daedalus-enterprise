@@ -34,7 +34,7 @@ afterAll(async () => { await prisma.$disconnect(); });
 describe("B1 删客户", () => {
   it("删之前数清楚：会删掉什么、什么留下", async () => {
     expect(await 删除前清点([张三.id])).toEqual({
-      跟进: 1, 商机: 1, 计划和待办: 1, 签约: 1, 签约金额: [{ 币种: "CNY", 合计: 12000 }], 联系人: 1, 线索: 1, 进回收站: false, 项目: 0,
+      跟进: 1, 计划和待办: 1, 签约: 1, 签约金额: [{ 币种: "CNY", 合计: 12000 }], 联系人: 1, 线索: 1, 进回收站: false, 项目: 0,
     });
   });
 
@@ -75,7 +75,7 @@ describe("批量删多位客户", () => {
     const 留着 = await 造("留着", "13800000005", 1);
 
     const 清点 = await 删除前清点([张三.id, 李四.id, 王五.id]);
-    expect(清点).toMatchObject({ 跟进: 3, 商机: 3, 计划和待办: 3, 签约: 1, 联系人: 3 });
+    expect(清点).toMatchObject({ 跟进: 3, 计划和待办: 3, 签约: 1, 联系人: 3 });
 
     const r = await deleteCustomers([张三.id, 李四.id, 王五.id]);
     expect(r).toMatchObject({ ok: true, deleted: 3, 留下联系人: 3 });

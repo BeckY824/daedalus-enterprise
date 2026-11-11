@@ -11,7 +11,7 @@ import { buildWatchlist, STALE_DAYS, type SentinelInput } from "@/lib/sentinel";
 const now = new Date("2026-08-31T12:00:00+08:00");
 const daysAgo = (n: number) => new Date(now.getTime() - n * 864e5);
 
-const empty: SentinelInput = { overduePlans: [], customers: [], opportunities: [] };
+const empty: SentinelInput = { overduePlans: [], customers: [] };
 
 function customer(over: Partial<SentinelInput["customers"][number]> = {}) {
   return {
@@ -71,9 +71,6 @@ describe("优先级与去重", () => {
           { customerId: "p", customerName: "李同学", ownerName: "张三", subject: "聊报价", plannedAt: daysAgo(2) },
         ],
         customers: [customer({ id: "s", followStatus: "意向较高", lastFollowAt: daysAgo(40) })],
-        opportunities: [
-          { customerId: "o", customerName: "张同学", ownerName: "张三", name: "考研全程班", stage: "方案报价", updatedAt: daysAgo(50) },
-        ],
       },
       now,
     );
@@ -87,20 +84,11 @@ describe("优先级与去重", () => {
           { customerId: "c1", customerName: "王同学", ownerName: "张三", subject: "约试听", plannedAt: daysAgo(3) },
         ],
         customers: [customer()],
-        opportunities: [],
       },
       now,
     );
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe("overdue_plan");
-  });
-
-  it("商机不满阈值不算停滞；满了理由带天数和阶段", () => {
-    const fresh = { customerId: "o", customerName: "张同学", ownerName: "张三", name: "全程班", stage: "方案报价", updatedAt: daysAgo(5) };
-    expect(buildWatchlist({ ...empty, opportunities: [fresh] }, now)).toHaveLength(0);
-    const items = buildWatchlist({ ...empty, opportunities: [{ ...fresh, updatedAt: daysAgo(20) }] }, now);
-    expect(items[0].reason).toContain("方案报价");
-    expect(items[0].reason).toContain("20 天");
   });
 
   it("最多 8 条——超过 8 条的提醒等于没有提醒", () => {

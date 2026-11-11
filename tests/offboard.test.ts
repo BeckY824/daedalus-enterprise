@@ -121,7 +121,8 @@ describe("全部交给（原来的转交）", () => {
     expect((await 客户of(c.id)).pool).toBeNull();
     expect((await prisma.task.findUniqueOrThrow({ where: { id: 待办.id } })).ownerId).toBe(丙);
     expect((await prisma.followPlan.findUniqueOrThrow({ where: { id: 计划.id } })).ownerId).toBe(丙);
-    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 商机.id } })).ownerId).toBe(丙);
+    // 商机 11-11 起不跟着交（企业版商机表已清空，不再查）
+    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 商机.id } })).ownerId).toBe(乙);
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 赢了的.id } })).ownerId).toBe(乙);
     expect((await 项目of(p1.id)).ownerId).toBe(丙);
     expect((await 项目of(p2.id)).ownerId).toBe(丙);
@@ -175,7 +176,8 @@ describe("放进公海（11-03 C4-4 去掉）", () => {
     expect(await 领取([去公海.id])).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户of(去公海.id)).toMatchObject({ salesOwnerId: 丙, pool: null });
     expect((await prisma.task.findUniqueOrThrow({ where: { id: 公海上的待办.id } })).ownerId).toBe(丙);
-    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 公海上的商机.id } })).ownerId).toBe(丙);
+    // 商机 11-11 起不跟着走（企业版商机表已清空，不再查）
+    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 公海上的商机.id } })).ownerId).toBe(乙);
   });
 });
 

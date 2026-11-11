@@ -59,7 +59,6 @@ export async function 导出客户(条件: 客户条件): Promise<
         take: 跟进上限 + 1,
         select: {
           customerId: true, occurredAt: true, type: true, method: true, title: true, content: true, status: true,
-          opportunity: { select: { name: true } },
           owner: { select: { name: true } },
         },
       })
@@ -79,7 +78,6 @@ export async function 导出客户(条件: 客户条件): Promise<
       title: f.title,
       content: f.content,
       status: f.status,
-      opportunityName: f.opportunity?.name ?? null,
       ownerName: f.owner.name,
     }));
   const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 企业版());
@@ -142,11 +140,10 @@ export async function 读取完整导出批次(条件: 客户条件, 截止文�
   const all = await prisma.followUp.findMany({
     where: { customer: where, ...截止前有(截止), ...(游标 ? { id: { gt: 游标 } } : {}) },
     orderBy: { id: "asc" }, take: 10001,
-    select: { id: true, customerId: true, customer: { select: { name: true, phone: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true,
-      opportunity: { select: { name: true } }, owner: { select: { name: true } } },
+    select: { id: true, customerId: true, customer: { select: { name: true, phone: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
   });
   const rows = all.slice(0, 10000);
-  const values = rows.map((f) => ({ id: f.id, customerId: f.customerId, customerName: f.customer.name, phone: 号(f.customer.phone), occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, opportunityName: f.opportunity?.name ?? null, ownerName: f.owner.name }));
+  const values = rows.map((f) => ({ id: f.id, customerId: f.customerId, customerName: f.customer.name, phone: 号(f.customer.phone), occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name }));
   return { 类别: "跟进" as const, rows: values, 指纹: createHash("sha256").update(JSON.stringify(values)).digest("hex"), 游标: all.length > 10000 ? rows.at(-1)!.id : null };
 }
 

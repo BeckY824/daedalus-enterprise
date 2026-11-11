@@ -16,7 +16,7 @@ import { 负责人候选 } from "@/lib/owners";
 import { 可选渠道 } from "@/lib/options";
 import { llmEnabled } from "@/lib/llm";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
-import { 带币种, 签约金额, 签约币种, 签约合计, 商机币种 } from "@/lib/money-db";
+import { 带币种, 签约金额, 签约币种, 签约合计 } from "@/lib/money-db";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
@@ -72,7 +72,6 @@ export default async function CustomerDetailPage({
       },
       // 企业版联系人的号码几行（定稿 P5 第 24 条）；别的版本这张子表里没有挂联系人的行，带上也是空
       contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], include: { contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } } } },
-      opportunities: { orderBy: { createdAt: "desc" }, include: 带币种.商机 },
       tasks: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
       plans: { where: { done: false, ...(要看的计划 ? { id: 要看的计划 } : {}) }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }] },
       followUps: { orderBy: followHistoryOrder, take: 只项目 ? 0 : 51, include: followHistoryInclude },
@@ -293,17 +292,6 @@ export default async function CustomerDetailPage({
         currency: 签约币种(c),
         signedAt: c.signedAt.toISOString(),
         remark: c.remark,
-      }))}
-      opportunities={customer.opportunities.map((o) => ({
-        id: o.id,
-        name: o.name,
-        amount: o.amount,
-        currency: 商机币种(o),
-        stage: o.stage,
-        status: o.status,
-        probability: o.probability,
-        expectedDealAt: o.expectedDealAt?.toISOString() ?? null,
-        createdAt: o.createdAt.toISOString(),
       }))}
       tasks={customer.tasks.map((t) => ({
         id: t.id,

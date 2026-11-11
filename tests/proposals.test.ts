@@ -176,23 +176,19 @@ describe("改档案的提议", () => {
 });
 
 describe("商机与签约的提议", () => {
-  it("阶段给错要拒，并把合法阶段告诉模型", () => {
-    const r = 建("add_opportunity", { name: "秋季班", amount: 19800, stage: "快成了", reason: "x" });
-    expect(r.ok).toBe(false);
-    expect(!r.ok && r.error).toContain("谈判审核");
+  it("商机卡一律不建（propose_opportunity 2026-11-11 已删；老存档里的卡确认时重收也走这里）", () => {
+    const r = 建("add_opportunity", { name: "秋季班", amount: 19800, stage: "谈判审核", reason: "x" });
+    expect(r).toEqual({ ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" });
   });
 
-  it("没给概率时按阶段推一个，不留空让人瞎填", () => {
-    const p = 提("add_opportunity", { name: "秋季班", amount: 19800, stage: "谈判审核", reason: "x" });
-    expect(p.kind === "add_opportunity" && p.probability).toBeGreaterThan(0);
+  it("老存档里的商机卡：抬头照样说得出来（打开老对话不报错），不缺格", () => {
+    const 老卡 = { id: "p", kind: "add_opportunity", customerId: "c", customerName: "陈立", reason: "x", name: "秋季班", amount: 19800, stage: "谈判审核" } as never;
+    expect(describeProposal(老卡, "学员")).toBe("给「陈立」新建商机「秋季班」");
+    expect(describeProposal({ id: "p", kind: "add_opportunity", customerId: "c", customerName: "陈立", reason: "x" }, "学员")).toBe("给「陈立」新建商机");
+    expect(missingFields(老卡)).toEqual([]);
   });
 
-  it("概率越界要拒——它参与加权预测，越界会让预测数字失真", () => {
-    expect(建("add_opportunity", { name: "x", amount: 1, stage: "初步沟通", probability: 180, reason: "x" }).ok).toBe(false);
-  });
-
-  it("负数金额一律拒，商机和签约都是", () => {
-    expect(建("add_opportunity", { name: "x", amount: -1, stage: "初步沟通", reason: "x" }).ok).toBe(false);
+  it("负数金额一律拒", () => {
     expect(建("add_contract", { amount: -1, signedAt: "2026-09-01", reason: "x" }).ok).toBe(false);
   });
 
@@ -206,10 +202,8 @@ describe("商机与签约的提议", () => {
     expect(missingFields(p).length).toBeGreaterThan(0);
   });
 
-  it("落库日志要分得清商机和签约——一个在谈一个已成交", () => {
-    const 商机 = 提("add_opportunity", { name: "秋季班", amount: 19800, stage: "初步沟通", reason: "x" });
+  it("落库日志写得出签约", () => {
     const 签约 = 提("add_contract", { amount: 19800, signedAt: "2026-09-01", reason: "x" });
-    expect(summarizeApplied(商机, "学员")).toContain("商机");
     expect(summarizeApplied(签约, "学员")).toContain("签约");
   });
 });

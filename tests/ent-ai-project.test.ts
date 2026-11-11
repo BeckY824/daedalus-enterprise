@@ -125,10 +125,9 @@ describe("给哪些工具、直连换成什么", () => {
     expect(关).toContain("list_leads");
   });
 
-  it("直连：线索清单 / 商机清单换成项目的阶段，关键词跟着走；别的原样", () => {
+  it("直连：线索清单换成项目的阶段，关键词跟着走；别的原样（商机清单 11-11 起直接写 list_projects）", () => {
     expect(换成项目({ name: "list_leads", args: {} })).toEqual({ name: "list_projects", args: { phase: "线索" } });
     expect(换成项目({ name: "list_leads", args: { keyword: "云帆" } })).toEqual({ name: "list_projects", args: { phase: "线索", keyword: "云帆" } });
-    expect(换成项目({ name: "list_opportunities", args: { customerName: "云帆" } })).toEqual({ name: "list_projects", args: { phase: "商机", keyword: "云帆" } });
     expect(换成项目({ name: "list_channels", args: {} })).toEqual({ name: "list_channels", args: {} });
   });
 });
@@ -251,11 +250,10 @@ describe("确认新线索卡", () => {
 });
 
 describe("页面上下文", () => {
-  it("新线索页指路的 list_leads、商机页的 list_opportunities 换成按阶段查项目", () => {
+  it("新线索页指路的 list_leads 换成按阶段查项目", () => {
     expect(页面说法换成项目("这一页的数据先用 **list_leads** 查。直接用 list_leads（keyword=那个名字）")).toBe(
       "这一页的数据先用 **list_projects（phase=线索）** 查。直接用 list_projects（phase=线索）（keyword=那个名字）",
     );
-    expect(页面说法换成项目("先用 list_opportunities 查")).toBe("先用 list_projects（phase=商机） 查");
   });
 
   it("项目页指路 list_projects、能按名字查", () => {

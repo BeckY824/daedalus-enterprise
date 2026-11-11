@@ -26,6 +26,7 @@ import { getBusiness } from "@/lib/business";
 import { 线索转档案 } from "@/lib/lead-convert";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
+import { 公海客户要先领取 } from "@/lib/enterprise/pool-customer-guard";
 import { 真删挡 } from "@/lib/enterprise/soft-delete";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 线索建项目 } from "@/lib/project/from-lead";
@@ -264,8 +265,8 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
       // 公海里的客户没有负责人：salesOwner 还挂着原负责人或占位账号「（无负责人）」，别说成现负责人（11-03 测试 B7-5）
       const 在公海 = !!dup.pool || /^（.*）$/.test(dup.salesOwner.name);
       const 负责人 = 在公海 ? "公海" : dup.salesOwner.name;
-      // P-公海-08：客户公海里的客户并不过去，先领取（只认公海行；占位负责人但不在公海的照旧能并）
-      const 先领取 = 能并 && 企业版() && !!dup.pool;
+      // P-公海-08：客户公海里的客户并不过去，先领取（只认公海行；占位负责人但不在公海的照旧能并）。判断共用 pool-customer-guard
+      const 先领取 = 能并 && !!(await 公海客户要先领取(tx, dup.id));
       return {
         ok: false as const,
         error: 先领取
@@ -362,8 +363,9 @@ export async function mergeLeadInto(leadId: string, customerId: string, 跟进?:
   if (lead.customerId || lead.status === "已转化") return { ok: false, error: "该线索已转化" };
   const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, name: true } });
   if (!customer) return { ok: false, error: `你看不到这位${b.customer}，并不过去：请找负责人或${企业版() ? "总管理" : "老板"}` };
-  // P-公海-08（11-09 X-40）：客户在客户公海里不能并，先领取——并了会在公海客户名下建出有负责人的项目
-  if (企业版() && (await prisma.customerPool.findUnique({ where: { customerId }, select: { customerId: true } }))) return { ok: false, error: 公海线索先领取话 };
+  // P-公海-08（11-09 X-40）：客户在客户公海里不能并，先领取——并了会在公海客户名下建出有负责人的项目。
+  // 判断和批量转项目、导入共用（pool-customer-guard）；提示用线索页那句，服务端和页面同一句
+  if (await 公海客户要先领取(prisma, customerId)) return { ok: false, error: 公海线索先领取话 };
   const 邮箱 = 线索认人邮箱(lead, b.template === "trade");
   const 电话 = 查电话(lead.phone, { 必填: true });
   const 条件 = 邮箱 ? await 同邮箱条件(prisma, 邮箱) : 电话.ok ? await 同号条件(prisma, 电话.phone, await 分机留存起()) : null;

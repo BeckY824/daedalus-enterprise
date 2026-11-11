@@ -143,7 +143,6 @@ export default function RecordView({
   sourceLead = null,
   contacts,
   contracts,
-  opportunities,
   项目们 = null,
   参与项目们 = null,
   旺旺们 = [],
@@ -1411,7 +1410,7 @@ export default function RecordView({
         待收口计划={plan && !dayjs(plan.plannedAt).isAfter(dayjs().endOf("day")) ? plan : null}
         完成了计划={(p, 已完成) => void 完成计划(p, `跟进已记录，计划「${p.subject}」一并完成`, 已完成)}
         contacts={contacts}
-        opportunities={项目们 ? [] : opportunities}
+        opportunities={[]}
         projects={记沟通项目}
         aiEnabled={aiEnabled}
         只读={只读}

@@ -448,15 +448,11 @@ describe("对拍：开着缓存和关着一模一样，刚写的马上反映", (
     const now = dayjs();
     const 全部 = (await raw.customer.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((c) => c.id);
     for (let i = 0; i < 5; i++) await raw.followPlan.create({ data: { subject: `过期${i}`, plannedAt: new Date(Date.now() - (i + 1) * 天), customerId: 全部[i * 7], ownerId: 老板 } });
-    for (let i = 0; i < 4; i++) {
-      const 久 = new Date(Date.now() - (20 + i * 3) * 天);
-      await raw.opportunity.create({ data: { name: `停了${i}`, customerId: 全部[i * 5 + 1], ownerId: 老板, updatedAt: 久, activityAt: 久 } });
-    }
     const 取 = (谁的?: string, 哪天 = now) => loadWatchlistPage(哪天, 谁的 ? { ownerId: 谁的 } : {}, 0, 100);
     const r1 = await 两边(() => 取());
     expect(r1.缓存).toEqual(r1.现数);
     expect(r1.再取).toEqual(r1.现数);
-    for (const kind of ["overdue_plan", "sleeping", "stalled_opp"]) expect(r1.现数.items.some((x) => x.kind === kind), kind).toBe(true);
+    for (const kind of ["overdue_plan", "sleeping"]) expect(r1.现数.items.some((x) => x.kind === kind), kind).toBe(true);
 
     // 库没变再取：不再查计划表（企业版读走只读通道，盯它那一份）
     const 查计划 = vi.spyOn((读通道() ?? prisma).followPlan, "findMany");

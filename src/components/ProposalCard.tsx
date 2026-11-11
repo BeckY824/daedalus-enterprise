@@ -19,8 +19,8 @@ import { 认渠道 } from "@/lib/enterprise/channel-match";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
 import { 建议结果, 记下建议结果, 清掉建议结果, 记下回执, 读回执 } from "@/lib/ai-jobs";
-import { statusLabel, stageLabel, 签约叫, 外贸精简, type BusinessConfig } from "@/lib/business-config";
-import { 跟进类型们, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES, OPP_STAGES } from "@/lib/constants";
+import { statusLabel, 签约叫, 外贸精简, type BusinessConfig } from "@/lib/business-config";
+import { 跟进类型们, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES } from "@/lib/constants";
 import { dayjs } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -36,7 +36,7 @@ const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposal
 /**
  * AI 建议卡：唯一一条让模型的输出进到数据库的路。
  *
- * 七种形态（改状态 / 改档案 / 记跟进 / 排计划 / 新建线索 / 新建商机 / 记一笔签约），
+ * 六种形态（改状态 / 改档案 / 记跟进 / 排计划 / 新建线索 / 记一笔签约）加项目类几种；老存档里的商机卡只显示成不可用，
  * 共用一套骨架：
  *   抬头一句话说清要改什么 → 字段就地可改 → 确认 / 忽略
  *
@@ -72,6 +72,9 @@ export const 新线索企业 = createContext<新线索企业格 | null>(null);
 const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
 
 type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string };
+
+/** 老商机卡上那句（和 dashboard/apply.ts 拦下时回的话同一个意思） */
+const 商机卡停用话 = "这里商机已并入项目，这张老建议卡不能再确认：请到项目页把项目推到商机阶段";
 
 export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal; 记号?: string }) {
   const { 曲线, 时长 } = useMotionTheme();
@@ -129,7 +132,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   // 企业版卡上那一格叫「渠道」（术语表），提示里跟着叫；lib 里那句「来源（渠道）」AI 的提示词也在用，不动
   const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们 } } : {}) } : undefined)
     .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m));
-  const 能确认 = state !== "saving" && missing.length === 0 && 勾了.length > 0;
+  const 停用卡 = draft.kind === "add_opportunity";
+  const 能确认 = state !== "saving" && !停用卡 && missing.length === 0 && 勾了.length > 0;
 
   function confirm() {
     if (!能确认) return;
@@ -337,30 +341,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
             );
           })}
 
-        {draft.kind === "add_opportunity" && (
-          <>
-            <Field label="名称">
-              <Input size="small" style={{ width: 220 }} value={draft.name} placeholder="这单叫什么" onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-            </Field>
-            <Field label="金额">
-              <Input size="small" style={{ width: 120 }} prefix={币种符号(draft.currency || b.currency)} value={draft.amount || ""} onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })} />
-            </Field>
-            <Field label="阶段">
-              <Select size="small" style={{ width: 140 }} value={draft.stage} options={OPP_STAGES.map((v) => ({ value: v, label: stageLabel(b, v) }))} onChange={(v) => setDraft({ ...draft, stage: v })} />
-            </Field>
-            {/* 外贸不摆概率、预计成交（和商机表单一样，2026-10-05 外贸客户建议；F.3 卡片上漏了） */}
-            {!外贸精简(b) && (
-              <>
-                <Field label="成交概率">
-                  <Input size="small" style={{ width: 90 }} suffix="%" value={draft.probability} onChange={(e) => setDraft({ ...draft, probability: Math.min(100, Number(e.target.value.replace(/[^\d]/g, "")) || 0) })} />
-                </Field>
-                <Field label="预计成交">
-                  <DatePicker size="small" format="YYYY-MM-DD" placeholder="可不填" value={draft.expectedDealAt ? dayjs(draft.expectedDealAt) : null} onChange={(d) => setDraft({ ...draft, expectedDealAt: d ? d.toISOString() : "" })} />
-                </Field>
-              </>
-            )}
-          </>
-        )}
+        {/* 老对话存档里的商机卡（建议工具 2026-11-11 已删）：商机已并入项目，不给填也不给确认，dashboard/apply.ts 同样拦 */}
+        {draft.kind === "add_opportunity" && <div className="prop-err">{商机卡停用话}</div>}
 
         {draft.kind === "add_contract" && (
           <>
@@ -626,7 +608,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
           </span>
         )}
         <span className="prop-note">
-          {勾了.length === 0 ? "一项都没选" : missing.length ? `还差${missing.join("、")}` : <Shortcut>确认前不会写入任何数据 · ⌘↵</Shortcut>}
+          {停用卡 ? "这张卡不能确认" : 勾了.length === 0 ? "一项都没选" : missing.length ? `还差${missing.join("、")}` : <Shortcut>确认前不会写入任何数据 · ⌘↵</Shortcut>}
         </span>
       </div>
     </motion.div>

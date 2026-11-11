@@ -38,8 +38,6 @@ import { patchCustomer } from "@/app/(app)/customers/actions";
 import { 忘掉限定, 限定的我, 读的我, 只读客户, 只读错误 } from "@/lib/team-scope";
 import { 设传输, 对齐角色, 读团队, type 传输 } from "@/lib/sync/client";
 import { 不在了 } from "@/lib/not-there";
-import { GET as 列附件路由, POST as 传附件路由 } from "@/app/api/attachments/route";
-import { GET as 取附件路由, DELETE as 删附件路由 } from "@/app/api/attachments/[id]/route";
 
 const 老板 = "acct_boss";
 const 小王 = "acct_wang";
@@ -217,16 +215,15 @@ describe("公海由老板指派", () => {
     expect(await raw.customerPool.count({ where: { customerId: ids["公海客户"] } })).toBe(1);
   });
 
-  it("老板分给小王：换负责人、删公海那一行、没做完的活跟过去、记操作日志；撤销全还回去", async () => {
+  it("老板分给小王：换负责人、删公海那一行、没做完的活跟过去（商机 11-11 起不跟：企业版商机表已清空）、记操作日志；撤销全还回去", async () => {
     当("boss"); await 云端说(false);
     const id = ids["公海客户"];
     const r = await 分配公海([id], 小王);
-    expect(r).toMatchObject({ ok: true, updated: 1, 给谁: { id: 小王, name: "小王" }, 带走: { 计划和待办: 1, 商机: 1 } });
+    expect(r).toMatchObject({ ok: true, updated: 1, 给谁: { id: 小王, name: "小王" }, 带走: { 计划和待办: 1, 商机: 0 } });
     expect((await raw.customer.findUnique({ where: { id } }))?.salesOwnerId).toBe(小王);
     expect(await raw.customerPool.count({ where: { customerId: id } })).toBe(0);
     expect(await raw.customerClaim.count({ where: { customerId: id, userId: 小王 } })).toBe(1);
     expect((await raw.task.findUnique({ where: { id: 任务["公海客户"] } }))?.ownerId).toBe(小王);
-    expect((await raw.opportunity.findFirst({ where: { customerId: id } }))?.ownerId).toBe(小王);
     expect(await raw.auditLog.count({ where: { action: "assign", summary: { contains: "分给「小王」" } } })).toBe(1);
     // 小王那边：现在是他的了
     当("wang");
@@ -241,7 +238,6 @@ describe("公海由老板指派", () => {
     expect(await raw.customerPool.count({ where: { customerId: id } })).toBe(1);
     expect(await raw.customerClaim.count({ where: { customerId: id, userId: 小王 } })).toBe(0);
     expect((await raw.task.findUnique({ where: { id: 任务["公海客户"] } }))?.ownerId).toBe(小李);
-    expect((await raw.opportunity.findFirst({ where: { customerId: id } }))?.ownerId).toBe(小李);
   });
 
   it("已经被领走的分不了（和领取同一条：删公海那一行数到 0 = 别人先拿了）", async () => {
@@ -254,36 +250,3 @@ describe("公海由老板指派", () => {
   });
 });
 
-
-describe("商机图片跟着商机走（D-24）", () => {
-  let 图: string;
-  let 李的商机: string;
-  beforeAll(async () => {
-    当("wang");
-    李的商机 = (await raw.opportunity.findFirstOrThrow({ where: { customerId: ids["小李的客户"] }, select: { id: true } })).id;
-    图 = (await raw.attachment.create({ data: { opportunityId: 李的商机, name: "样品.jpg", mime: "image/jpeg", size: 3, sha256: "x".repeat(64), userId: 小李 } })).id;
-  });
-  afterAll(async () => { await raw.attachment.deleteMany({}); });
-  const 列 = () => 列附件路由(new Request(`http://x/api/attachments?opportunityId=${李的商机}`));
-  const 传 = () => 传附件路由(new Request(`http://x/api/attachments?opportunityId=${李的商机}&name=a.jpg`, { method: "POST", headers: { "content-type": "image/jpeg", "content-length": "3" }, body: new Uint8Array([1, 2, 3]) }));
-  const 按编号 = (方法: "GET" | "DELETE") => (方法 === "GET" ? 取附件路由 : 删附件路由)(new Request(`http://x/api/attachments/${图}`, { method: 方法 }), { params: Promise.resolve({ id: 图 }) });
-
-  it("互看开着：同事商机上的图片列得出来，传、删一律 403", async () => {
-    await 云端说(true);
-    const r = await 列();
-    expect(r.status).toBe(200);
-    expect(((await r.json()) as { 附件: { id: string }[] }).附件.map((a) => a.id)).toEqual([图]);
-    expect((await 传()).status).toBe(403);
-    expect((await 按编号("DELETE")).status).toBe(403);
-    expect(await raw.attachment.count({ where: { opportunityId: 李的商机 } })).toBe(1);
-  });
-
-  it("互看关着：看不到的商机，列、按编号取、删都是 404，图片还在", async () => {
-    await 云端说(false);
-    expect((await 列()).status).toBe(404);
-    expect((await 按编号("GET")).status).toBe(404);
-    expect((await 按编号("DELETE")).status).toBe(404);
-    expect((await 传()).status).toBe(404);
-    expect(await raw.attachment.count({ where: { opportunityId: 李的商机 } })).toBe(1);
-  });
-});

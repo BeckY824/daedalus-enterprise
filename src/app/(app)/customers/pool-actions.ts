@@ -4,7 +4,6 @@
  * 公海的动作（2026-10-03，0.46.15 第 6 块）：放进公海、领取、老板分配（2026-10-20）、撤销（每个动作的提示条上都有）。
  * 规矩在 lib/pool.ts、自动掉公海在 lib/pool-db.ts。
  */
-import { 转交商机 } from "@/lib/opportunity-activity";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 公海分不给 } from "@/lib/owners";
@@ -541,7 +540,6 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
         const 实际旧 = 企业版() ? await 公海前负责人(tx, x.id, x.值) : x.值;
         await tx.followPlan.updateMany({ where: { id: { in: 带过来.计划 }, customerId: x.id, ownerId: 现, done: false }, data: { ownerId: 实际旧 } });
         await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: x.id, ownerId: 现, done: false }, data: { ownerId: 实际旧 } });
-        await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: x.id, ownerId: 现, status: "OPEN" }, 实际旧);
         await 还项目(tx, 带过来.项目, x.id, 现, 实际旧, me.id);
       }
       if (企业版() && Array.isArray(公海项目) && 公海项目.length) {

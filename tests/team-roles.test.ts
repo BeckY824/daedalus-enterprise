@@ -408,17 +408,15 @@ describe("业务员只看自己的 + 公海", () => {
     for (const n of 同事的) expect(盯, "盯盘").not.toContain(n);
   });
 
-  it("业务员把自己的客户交给同事：客户一换人他就看不到了，商机、待办照样跟着过去（五人实测）", async () => {
+  it("业务员把自己的客户交给同事：客户一换人他就看不到了，待办照样跟着过去（五人实测；商机 11-11 起不跟）", async () => {
     当("wang");
     进团队();
     const c = await raw.customer.create({ data: { name: "要交出去的", phone: "13900009999", salesOwnerId: 小王 } });
-    await raw.opportunity.create({ data: { customerId: c.id, ownerId: 小王, name: "交出去的商机", amount: 5 } });
     await raw.task.create({ data: { customerId: c.id, ownerId: 小王, title: "交出去的待办" } });
     await db.customer.update({ where: { id: c.id }, data: { salesOwnerId: 小李 } });
     expect(await db.customer.findUnique({ where: { id: c.id } })).toBeNull();
     const 数 = await 带走没做完的([{ customerId: c.id, 旧: 小王 }], 小李);
-    expect(数).toEqual({ 计划和待办: 1, 商机: 1, 项目: 0 });
-    expect((await raw.opportunity.findFirst({ where: { customerId: c.id } }))?.ownerId).toBe(小李);
+    expect(数).toEqual({ 计划和待办: 1, 商机: 0, 项目: 0 });
     expect((await raw.task.findFirst({ where: { customerId: c.id } }))?.ownerId).toBe(小李);
   });
 
@@ -489,11 +487,10 @@ describe("业务员在限定视图下领公海（T-040）", () => {
     expect(await 限定的我(raw)).toBe(小王);
     const id = ids["公海客户"];
     const r = await 领取([id]);
-    expect(r).toMatchObject({ ok: true, updated: 1, 带走: { 计划和待办: 1, 商机: 1 } });
+    expect(r).toMatchObject({ ok: true, updated: 1, 带走: { 计划和待办: 1, 商机: 0 } });
     expect((await raw.customer.findUnique({ where: { id } }))?.salesOwnerId).toBe(小王);
     expect(await raw.customerPool.count({ where: { customerId: id } })).toBe(0);
     expect((await raw.task.findFirst({ where: { customerId: id } }))?.ownerId).toBe(小王);
-    expect((await raw.opportunity.findFirst({ where: { customerId: id } }))?.ownerId).toBe(小王);
     // 领完在小王的限定视图里还看得到（现在是他负责的了）
     忘掉限定();
     expect(await db.customer.findUnique({ where: { id } })).not.toBeNull();

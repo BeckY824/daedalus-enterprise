@@ -1,5 +1,5 @@
 /**
- * 盯盘提醒 —— 三类"正在被遗忘"的信号，按优先级排序。
+ * 盯盘提醒 —— 两类"正在被遗忘"的信号，按优先级排序（停滞商机 11-11 去掉：企业版只用项目，商机表已清空）。
  *
  * 检测是纯规则、实时计算：不需要定时任务、不需要落库、永远不过期。
  * 数据量（几百条）在页面加载里算是毫秒级的事，为它建 cron + 表纯属自找麻烦。
@@ -11,7 +11,7 @@
 import { dayjs } from "@/lib/utils";
 
 export type WatchItem = {
-  kind: "overdue_plan" | "sleeping" | "stalled_opp";
+  kind: "overdue_plan" | "sleeping";
   customerId: string;
   customerName: string;
   ownerName: string;
@@ -22,10 +22,9 @@ export type WatchItem = {
 export const KIND_LABEL: Record<WatchItem["kind"], string> = {
   overdue_plan: "计划逾期",
   sleeping: "沉睡学员",
-  stalled_opp: "商机停滞",
 };
 
-/** 超过这个天数没碰就算沉睡/停滞 */
+/** 超过这个天数没碰就算沉睡 */
 export const STALE_DAYS = 14;
 
 /**
@@ -45,8 +44,6 @@ export type SentinelInput = {
   overduePlans: { customerId: string; customerName: string; ownerName: string; subject: string; plannedAt: Date | string }[];
   /** 非终态、非暂缓的学员 */
   customers: { id: string; name: string; followStatus: string; lastFollowAt: Date | null; createdAt: Date; ownerName: string }[];
-  /** 进行中的商机 */
-  opportunities: { customerId: string; customerName: string; ownerName: string; name: string; stage: string; updatedAt: Date }[];
 };
 
 export function buildWatchlist(
@@ -93,19 +90,6 @@ export function buildWatchlist(
         ? `「${statusLabel(c.followStatus)}」的${customerTerm}已 ${days} 天没人跟进`
         : `录入 ${days} 天从未跟进过`,
       score: weight * 8 + Math.min(days, 40),
-    });
-  }
-
-  for (const o of input.opportunities) {
-    const days = 今天.diff(dayjs(o.updatedAt).startOf("day"), "day");
-    if (days < STALE_DAYS) continue;
-    items.push({
-      kind: "stalled_opp",
-      customerId: o.customerId,
-      customerName: o.customerName,
-      ownerName: o.ownerName,
-      reason: `商机「${o.name}」停在「${o.stage}」已 ${days} 天没动`,
-      score: 50 + Math.min(days - STALE_DAYS, 40),
     });
   }
 

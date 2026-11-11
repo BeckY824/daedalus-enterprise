@@ -53,13 +53,13 @@ export type 演示数据状态 = {
 };
 
 async function 业务数据条数() {
-  const [customers, leads, channels, opportunities] = await Promise.all([
+  // 商机不数（11-11）：企业版只用项目，老商机表由启动清理清空
+  const [customers, leads, channels] = await Promise.all([
     prisma.customer.count(),
     prisma.lead.count(),
     prisma.channel.count(),
-    prisma.opportunity.count(),
   ]);
-  return customers + leads + channels + opportunities;
+  return customers + leads + channels;
 }
 
 export async function 查演示数据状态(): Promise<演示数据状态> {

@@ -11,7 +11,7 @@ import { sanitizeFollowUpDraft, sanitizeBrief, type FollowUpDraft, type Customer
 import { dayjs, 现在带周几 } from "@/lib/utils";
 import { FOLLOW_TYPE_MAP, FOLLOW_STATUSES, DECISION_STATUSES } from "@/lib/constants";
 import { getBusiness } from "@/lib/business";
-import { statusLabel, stageLabel, 外贸精简, 外贸订单, type BusinessConfig } from "@/lib/business-config";
+import { statusLabel, 外贸精简, type BusinessConfig } from "@/lib/business-config";
 
 /**
  * 状态取值写给模型时带上显示名：`已演示（值：已试听）`。
@@ -24,8 +24,8 @@ import { formatTimeline } from "@/lib/ai-context";
 import { stepStart, stepDone, type Emit } from "@/lib/ai-steps";
 import type { BriefRecord } from "@/lib/ai-draft";
 import { 带额度 } from "@/lib/tenant/ai-allowance";
-import { 带币种, 商机币种, 签约合计 } from "@/lib/money-db";
-import { 金额 as 显示金额, 合计文字 } from "@/lib/currency";
+import { 带币种, 签约合计 } from "@/lib/money-db";
+import { 合计文字 } from "@/lib/currency";
 import { AI客户输入错误, AI文本输入错误 } from "@/lib/ai-input";
 import { 视图外部拒 } from "@/lib/enterprise/view-as";
 
@@ -71,7 +71,6 @@ async function 解析速记(input: {
       school: true,
       grade: true,
       contacts: { select: { id: true, name: true, position: true } },
-      opportunities: { where: { status: "OPEN" }, select: { id: true, name: true } },
     },
   });
   if (!customer) return { ok: false, error: `${b.customer}不存在` };
@@ -79,16 +78,11 @@ async function 解析速记(input: {
   const contactLines = customer.contacts.length
     ? customer.contacts.map((c) => `  - ${c.id}：${c.name}${c.position ? `（${c.position}）` : ""}`).join("\n")
     : "  （无）";
-  const oppLines = customer.opportunities.length
-    ? customer.opportunities.map((o) => `  - ${o.id}：${o.name}`).join("\n")
-    : "  （无）";
 
   const prompt = `现在时间：${现在带周几()}
 ${b.customer}：${customer.name}${[customer.school, customer.grade].filter(Boolean).length ? `（${[customer.school, customer.grade].filter(Boolean).join(" · ")}）` : ""}
 该${b.customer}的联系人（contactId：姓名）：
 ${contactLines}
-该${b.customer}进行中的商机（opportunityId：名称）：
-${oppLines}
 
 【销售的原话】
 """
@@ -108,8 +102,7 @@ ${text}
     "status": "已完成",
     "durationMinutes": 20,
     "occurredAt": "YYYY-MM-DD HH:mm",
-    "contactId": null,
-    "opportunityId": null
+    "contactId": null
   },
   "tasks": [{ "title": "销售自己接下来要做的事", "dueAt": "YYYY-MM-DD HH:mm" }],
   "plan": { "subject": "下次沟通主题", "plannedAt": "YYYY-MM-DD HH:mm", "method": "电话沟通" },
@@ -127,15 +120,16 @@ ${text}
 - plan：下一次与${b.customer}的沟通安排，没有就 null；method 取值：电话沟通/线上会议/上门拜访/邮件沟通/微信沟通
 - followStatusSuggestion：仅当原话显示销售推进有明显变化时给，取值：${取值表(b, FOLLOW_STATUSES)}，否则 null
 - decisionStatusSuggestion：仅当${b.customer}决策阶段有明显变化时给，取值：${取值表(b, DECISION_STATUSES)}，否则 null
-- contactId / opportunityId：只在原话能明确对应到上面列表中的某一项时填其 id，否则 null`;
+- contactId：只在原话能明确对应到上面列表中的某一项时填其 id，否则 null`;
 
   try {
-    // 速记要读联系人、商机再换算时间，推理模型偶尔会超过 60 秒；且记录页打开时简报可能正在并发跑
+    // 速记要读联系人再换算时间，推理模型偶尔会超过 60 秒；且记录页打开时简报可能正在并发跑
     // feature 只进成本账（运营台「哪块烧得最凶」按它分组），不影响请求
     const raw = await chatJSON(prompt, { timeoutMs: 120_000, feature: "parse" });
     const draft = sanitizeFollowUpDraft(raw, {
       contactIds: customer.contacts.map((c) => c.id),
-      opportunityIds: customer.opportunities.map((o) => o.id),
+      // 企业版只用项目：跟进不挂商机（商机表由 legacy-cleanup 清空），模型给了也丢掉
+      opportunityIds: [],
     });
     // 解析本身不写业务数据，但按「AI 动了什么都可追溯」的口径留一条使用痕迹
     await recordAiUse(user, "parse", `AI 解析跟进速记（${b.customer}「${customer.name}」，识别为${FOLLOW_TYPE_MAP[draft.followUp.type]?.label ?? draft.followUp.type}）`, input.customerId);
@@ -180,10 +174,6 @@ async function 生成简报(input: {
       contracts: { select: { amount: true, signedAt: true, ...带币种.签约 } },
       // 外贸档案（2026-10-05）：简报里写国家和来源
       extra: { select: { country: true, source: true } },
-      opportunities: {
-        select: { name: true, amount: true, stage: true, status: true, expectedDealAt: true, ...带币种.商机 },
-        orderBy: { createdAt: "desc" },
-      },
       tasks: { where: { done: false }, select: { title: true, dueAt: true, dueOn: true }, orderBy: { dueAt: { sort: "asc", nulls: "last" } } },
       plans: { where: { done: false }, select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true } },
       followUps: {
@@ -223,20 +213,11 @@ async function 生成简报(input: {
     emit,
     "load",
     "读取记录",
-    [`${customer.followUps.length} 条跟进`, sourceCount ? `${sourceCount} 段原文` : null, customer.opportunities.length ? `${customer.opportunities.length} 个商机` : null, customer.plans[0] ? "1 条计划" : null].filter(Boolean).join(" · "),
+    [`${customer.followUps.length} 条跟进`, sourceCount ? `${sourceCount} 段原文` : null, customer.plans[0] ? "1 条计划" : null].filter(Boolean).join(" · "),
   );
   const 名 = 简报名();
   stepStart(emit, "think", question ? "围绕问题重读" : `生成${名}`);
 
-  const oppLines = customer.opportunities.length
-    ? customer.opportunities
-        .map(
-          (o) =>
-            // 外贸：赢单叫已转订单、阶段按这家的叫法（询盘 / 比价中…），简报里才不会冒出界面上没有的词（G.3）
-            `- ${o.name}：${显示金额(o.amount, 商机币种(o))}，${o.status === "WON" ? (外贸订单(b) ? "已转订单" : "已赢单") : o.status === "LOST" ? "已丢单" : `进行中（${stageLabel(b, o.stage)}）`}`,
-        )
-        .join("\n")
-    : "（无）";
   const taskLines = customer.tasks.length
     ? customer.tasks.map((t) => `- ${t.title}${t.dueAt ? `（截止 ${dayjs(scheduleValue(t.dueAt, t.dueOn)).format(t.dueOn ? "MM-DD" : "MM-DD HH:mm")}）` : ""}`).join("\n")
     : "（无）";
@@ -258,9 +239,6 @@ ${外贸精简(b)
   : `推荐来源：${customer.referrerCustomer?.name ?? customer.channel?.name ?? "无记录"}
 预计签约：${customer.expectedSignOn ?? (customer.expectedSignAt ? dayjs(customer.expectedSignAt).format("YYYY-MM-DD") : "未定")}；已签约金额：${已签.length ? 合计文字(已签) : "未签约"}`}
 备注：${customer.remark || "（无）"}
-
-【商机】
-${oppLines}
 
 【未完成的待办】
 ${taskLines}
