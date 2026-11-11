@@ -96,7 +96,8 @@ const 键 = (c: { lastFollowAt: Date | null; createdAt: Date }) => `${c.lastFoll
 /** 照旧用 Prisma（钩子加 可见客户）数和排 */
 async function 照旧(n: number) {
   const total = await db.customer.count();
-  const top = await db.customer.findMany({ orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }], take: n, select: { id: true, lastFollowAt: true, createdAt: true } });
+  // 最近跟进的前 n 位只给记录页窄名单用，不含公海（P-看-03）
+  const top = await db.customer.findMany({ where: { pool: { is: null } }, orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }], take: n, select: { id: true, lastFollowAt: true, createdAt: true } });
   return { total, top };
 }
 

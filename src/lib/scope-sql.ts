@@ -115,14 +115,15 @@ export async function 看得到的跟进数(筛: { type?: string; ownerId?: stri
 }
 
 /**
- * 看得到的客户里最近跟进的前 n 位的编号，顺序同 orderBy [lastFollowAt desc, createdAt desc]（同一列、同一个 ORDER BY，
- * 没跟进过的照 SQLite 排在最后）。null = 不限定，调用方照旧用 Prisma 排
+ * 看得到的客户里**不在公海的**最近跟进的前 n 位的编号，顺序同 orderBy [lastFollowAt desc, createdAt desc]（同一列、同一个 ORDER BY，
+ * 没跟进过的照 SQLite 排在最后）。null = 不限定，调用方照旧用 Prisma 排（条件用客户列表的 客户筛选条件）。
+ * 只给记录页窄名单用：公海只在公海页签出现（P-看-03），不在公海的写法同客户列表 query.ts 关键词分页
  */
 export async function 最近跟进的客户(n: number): Promise<string[] | null> {
   const 范围 = await 看得到的();
   if (!范围) return null;
   const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
-    `SELECT c.id FROM "Customer" c WHERE ${范围.where} ORDER BY c."lastFollowAt" DESC, c."createdAt" DESC LIMIT ?`,
+    `SELECT c.id FROM "Customer" c WHERE ${范围.where} AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) ORDER BY c."lastFollowAt" DESC, c."createdAt" DESC LIMIT ?`,
     ...范围.参数,
     n,
   );
