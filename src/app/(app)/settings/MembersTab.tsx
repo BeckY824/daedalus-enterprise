@@ -83,14 +83,25 @@ export default function MembersTab({
   const 按业务角色 = users.some((u) => u.业务角色);
   const [改不管设置中, set改不管设置中] = useState<string | null>(null);
   /** 拨「系统管理员」：只有能管设置的系统管理员（服务端 org-actions 设系统管理员 再拦、不能关掉最后一位） */
-  const on系统管理员 = async (r: Row, on: boolean) => {
+  const on系统管理员 = async (r: Row, on: boolean, 确认 = false) => {
     if (改不管设置中) return;
     set改不管设置中(r.id);
     try {
-      const res = await 设系统管理员(r.id, on);
-      if (!res.ok) message.error(res.error ?? "没改成，请稍后再试");
+      const res = await 设系统管理员(r.id, on, 确认);
+      // 关自己的：服务端回 要确认，先弹二次确认，确认了再来一次
+      if (!res.ok && "要确认" in res && res.要确认) {
+        modal.confirm({
+          title: "你将不再是系统管理员",
+          content: res.要确认,
+          okText: "确定关掉",
+          okButtonProps: { danger: true },
+          cancelText: "先不关",
+          onOk: () => { void on系统管理员(r, on, true); },
+        });
+      } else if (!res.ok) message.error(res.error ?? "没改成，请稍后再试");
       else {
-        message.success(on ? `${r.name} 设为系统管理员，同时还是本线条线总管理` : `${r.name} 不再是系统管理员，只管本业务线`);
+        if (res.提示) message.warning(res.提示);
+        else message.success(on ? `${r.name} 设为系统管理员，同时还是本线条线总管理` : `${r.name} 不再是系统管理员，只管本业务线`);
         router.refresh();
       }
     } finally {
@@ -317,13 +328,16 @@ export default function MembersTab({
           render: (_: unknown, r: Row) => (
             <div className="member-roles">
               {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；系统管理员、不管设置两个小图标不截 */}
-              <span className="member-roles-tags" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>
-                {(r.业务角色 ?? []).map((x) => (
-                  <Tag key={x} color={业务角色色[x]} style={{ margin: 0, marginRight: 4 }}>
-                    {角色名[x]}
+              {/* 一个标签：第一个角色 + 「+N」，放不下标签自己带「…」（Tag 是 inline-block，外层的 text-overflow 管不到它），悬停看全部。
+                  「+N」并进同一个标签：分开摆时窄格里第一个标签只剩半个字、连「…」都放不下 */}
+              {/* 悬停全文走全站的 TruncTip（截了才浮、显示 title）；没截但有「+N」时浏览器原生提示也是全部角色 */}
+              {(r.业务角色 ?? []).length > 0 && (
+                <span className="member-roles-tags">
+                  <Tag color={业务角色色[r.业务角色![0]]} className="member-role-tag" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>
+                    {角色名[r.业务角色![0]]}{r.业务角色!.length > 1 ? ` +${r.业务角色!.length - 1}` : ""}
                   </Tag>
-                ))}
-              </span>
+                </span>
+              )}
               {/* 「系统管理员」（P-判定-06）：和业务线并存。角色标签旁一个小盾牌，不加宽角色列（全站一行、不多出横向滚动）。
                   实心 = 是系统管理员；空心 = 只管本业务线。没设业务线的总管理本来就是，实心、拨不动 */}
               {企业版 && r.系统管理员 &&
@@ -346,7 +360,8 @@ export default function MembersTab({
                 )}
               {/* 「不管设置」只对总管理有意义（11-01 C1）：能改设置的人拨，别人只在勾上时看到标记。
                   和系统管理员小盾牌一样做成角色标签旁的小图标：原来的「☐ 不管设置」勾选框占掉 84px，120 宽的角色列里总管的角色标签被挤没了 */}
-              {r.业务角色?.includes("director") && 企业版 && (isAdmin || r.不管设置) && (
+              {/* 只给当前是系统管理员的人摆（不管设置只管系统管理员进不进设置；条线总管理本来就进不了） */}
+              {r.系统管理员?.on && 企业版 && (isAdmin || r.不管设置) && (
                 <Tooltip title={r.不管设置 ? `不管设置：进不了设置页、改不了后台设置，别的权限照旧${isAdmin ? "。点一下取消" : ""}` : "管设置。点一下设为「不管设置」：进不了设置页，别的权限照旧"}>
                   <button
                     type="button"

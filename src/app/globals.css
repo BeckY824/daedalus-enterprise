@@ -3492,7 +3492,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .team-dept-acts { display: inline-flex; flex-wrap: nowrap; flex: none; }
 .member-roles { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; min-width: 0; }
 .member-roles > * { flex: none; }
-.member-roles > .member-roles-tags { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-roles > .member-roles-tags { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; }
+/* 角色标签（第一个角色 + 「+N」）：放不下自己出「…」 */
+.member-roles .member-role-tag { margin: 0; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 成员管理角色格里的两个小图标（不加宽角色列）：系统管理员小盾牌（P-判定-06，实心 = 是，空心 = 只管本线）、不管设置齿轮（勾上 = 划掉的橙色齿轮） */
 .member-flag-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); font-size: 14px; cursor: pointer; }
 .member-flag-btn:hover:not([aria-disabled="true"]) { background: var(--brand-bg); }

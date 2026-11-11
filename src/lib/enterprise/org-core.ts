@@ -83,6 +83,14 @@ export function 是系统管理员of(org: 组织, userId: string): boolean {
   return !!m && m.角色们.includes("director") && (!m.line || !!org.系统管理员标记?.has(userId));
 }
 
+/** 能管设置的系统管理员：是系统管理员、没勾「不管设置」（同 permissions.ts 能进设置）。组织架构、成员管理、停用的「留一位」守卫都按这个数 */
+export const 能管设置of = (org: 组织, userId: string): boolean => 是系统管理员of(org, userId) && !org.成员.get(userId)?.不管设置;
+/** 「留一位」守卫那一句；事务里写完重查不过就抛 留一位系统管理员错，事务回滚，调用方换成这句话回给界面 */
+export const 留一位系统管理员话 = "至少要留一位能管设置的系统管理员（业务角色总管理、是系统管理员、没勾「不管设置」）";
+export class 留一位系统管理员错 extends Error {}
+/** 还有没有一位能管设置的系统管理员；一位都没有就没人能再改角色、进设置了 */
+export const 有人能管设置 = (org: 组织, 除了?: string): boolean => [...org.成员.keys()].some((id) => id !== 除了 && 能管设置of(org, id));
+
 /** 解析 enterprise.watch_only（{本人: 那个人}）：两个都在职、不是同一个人才留；存坏了当没设 */
 export function 规整只看某人(value: unknown, org: 组织): Map<string, string> {
   const m = new Map<string, string>();

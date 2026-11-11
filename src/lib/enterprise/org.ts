@@ -19,6 +19,18 @@ export { 部门树, type 组织部门 } from "./org-tree";
 
 export { 回收站副手键, 只看某人键 } from "./org-core";
 
+type 库 = Pick<typeof prisma, "user" | "entMember" | "entDept" | "setting">;
+
+/** 从给定的库（事务里传 tx）读整张组织表，不走缓存：写组织架构的事务里改完重查「还有没有系统管理员」用 */
+export async function 读组织于(db: 库): Promise<组织> {
+  // 事务只有一条连接，一条条读（并发读在交互式事务里没好处）
+  const users = await db.user.findMany({ select: { id: true, role: true, active: true } });
+  const members = await db.entMember.findMany();
+  const depts = await db.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } });
+  const 设 = async (key: string) => (await db.setting.findUnique({ where: { key }, select: { value: true } }))?.value ?? null;
+  return 填组织设置(建组织(users, members, depts), await 设(回收站副手键), await 设(只看某人键), await 设(系统管理员标记键));
+}
+
 /** 从库里读整张组织表。二三十人的公司，一次全读比逐条查省事也更快。一次渲染里只读一遍（客户列表一页要问四五次），渲染外（动作、测试）照旧每次现读 */
 export const 读组织 = cache(async (): Promise<组织> => {
   const [users, members, depts, 副手, 只看, 标记] = await Promise.all([
