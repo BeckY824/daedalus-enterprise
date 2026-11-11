@@ -538,7 +538,7 @@ export default function CustomersView({
               popupMatchSelectWidth={false}
               {...释义下拉(字典释义?.类型)}
               value={f.customerType || undefined} onChange={(v) => apply({ customerType: v ?? "" })}
-              options={[...new Set([...客户类型选项, ...(f.customerType ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
+              options={[...new Set([...客户类型选项, ...(有值(f.customerType) ? [f.customerType] : [])])].map((x) => ({ value: x, label: x }))} />
           ),
         }, {
           // 归档档位（M-导入-23 / X-63）：归档导入来的客户按档位看；默认收着

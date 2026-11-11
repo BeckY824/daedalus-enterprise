@@ -5,6 +5,7 @@
  * 一行只写几张，点开是一个弹窗，里面就是商机 / 订单用的那个附件区（缩略图、看原图、上传、删除）。
  * 只读的客户（同事的、虚线下属的）只能看：没有就写「无」不给点；服务端也会拒（api/attachments/access.ts）
  */
+import { 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import { Button, Modal } from "antd";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
@@ -20,7 +21,7 @@ type 入口参数 = { contactId: string; 名字: string; 起始个数: number; �
 export function ContactAttachmentsButton({ contactId, 名字, 起始个数, 只读, 分类 }: 入口参数) {
   const [开, set开] = useState(false);
   const [个数, set个数] = useState(起始个数);
-  if (只读 && 个数 === 0) return <span className="rec-field-empty">无</span>;
+  if (只读 && 个数 === 0) return <span className="rec-field-empty">{空值符}</span>;
   return (
     <>
       <Button type="link" size="small" style={{ padding: 0, height: "auto", fontSize: "inherit" }} onClick={() => set开(true)} aria-label={`${名字} 的附件`}>
