@@ -89,12 +89,11 @@ export async function proxy(request: NextRequest) {
   const valid = session !== null;
 
   // 未登录也能看的页面。注册页只在托管版有内容，自部署版进去会被服务端动作拒绝；
-  // /admin 是我们的运营台，不属于任何工作区，用它自己的 ADMIN_TOKEN 保护；
   // /terms 与 /privacy 是注册前要读的条款，当然不能要求先登录；
   // /forgot 是找回密码，忘了密码的人当然是未登录状态；
   // /m 是手机版（2026-10-15）：页面本身没有数据，数据在手机本地、接口凭手机自己的令牌（Bearer），不用网页会话
   const 公开 =
-    pathname === "/login" || pathname === "/signup" || pathname === "/forgot" || pathname === "/terms" || pathname === "/privacy" || pathname.startsWith("/admin") ||
+    pathname === "/login" || pathname === "/signup" || pathname === "/forgot" || pathname === "/terms" || pathname === "/privacy" ||
     pathname === "/m" || pathname.startsWith("/m/");
 
   if (!valid && !公开) {
@@ -111,8 +110,7 @@ export async function proxy(request: NextRequest) {
     return res;
   }
 
-  // 已登录时把登录/注册页弹回应用内。这两个不弹：
-  //   /admin  —— 我们自己常是登录状态，弹了就进不去运营台；
+  // 已登录时把登录/注册页弹回应用内。/forgot 不弹：
   //   /forgot —— 要允许「已登录的人也能给自己重置」：密码泄露了想立刻换掉，
   //              弹回去他就没路走了（应用内还没有改密码的入口）。
   if (valid && (pathname === "/login" || pathname === "/signup")) {

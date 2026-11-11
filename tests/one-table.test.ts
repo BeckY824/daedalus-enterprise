@@ -98,8 +98,6 @@ describe("列表页共用一个表格实现", () => {
     const 多出来的: string[] = [];
     for (const f of await 全部源码("src")) {
       if (不算列表页.includes(f)) continue;
-      // 运营台整个不算：列的是账号、工作区、设备，给运营看的，不是产品里的列表页
-      if (f.startsWith("src/app/admin/")) continue;
       const src = await readFile(f, "utf8");
       if (/<Table[\s<]/.test(src)) 多出来的.push(f);
     }

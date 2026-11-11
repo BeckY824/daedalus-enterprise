@@ -24,7 +24,6 @@ import { llmEnabled, listModelOptions } from "@/lib/llm";
 import { 读AI计次, 不计次 } from "@/lib/ai-meter";
 import { AiMeterProvider } from "@/components/AiCost";
 import { 记下分机留存起 } from "@/lib/phone-dedupe";
-import { 是共享工作区 } from "@/lib/shared-ws/config";
 import { ShortcutProvider } from "@/components/Shortcut";
 import { 背调有入口 } from "@/lib/research/channel";
 import { ResearchEntryProvider } from "@/components/research/ResearchEntry";
@@ -120,7 +119,7 @@ export default async function AppLayout({
       <ResearchEntryProvider value={背调有入口()}>
       <AppShell
         user={user}
-        workspace={workspace ? { name: workspace.name, multiple: workspaces.length > 1, billing: multiTenant() && workspace.role === "OWNER" && !是共享工作区(workspace.slug) } : undefined}
+        workspace={workspace ? { name: workspace.name } : undefined}
         要跟={要跟}
         desktop={desktop}
         反馈去向={企业版() ? "none" : multiTenant() ? "cloud" : "github"}

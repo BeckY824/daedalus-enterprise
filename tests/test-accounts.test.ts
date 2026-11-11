@@ -3,11 +3,10 @@ import { closeTestDatabases } from "./close-databases";
  * 测试账号（lib/tenant/test-accounts.ts，2026-10-04）。用户原话：「测试用的账号 AI 不限次数，也不计算到注册用户和（活跃用户）。
  * 在检测中显示测试用户即可，不算真实用户与活跃用户。」
  *
- * 钉四件事：
- *   1. 标 / 取消：运营台动作要验口令；取消不删行、留痕追加；没变化不多记一行；运营账号（OPS_ACCOUNTS）默认就算
+ * 钉三件事：
+ *   1. 标 / 取消：取消不删行、留痕追加；没变化不多记一行；运营账号（OPS_ACCOUNTS）默认就算
  *   2. AI 不限：测试账号次数是 0 也放行、一次都不扣；调用照样记进 AiCall；取消之后立刻回到照常扣、用完就挡
- *   3. 统计排除：总览的注册数、新注册、活跃、设备、调用、注册趋势，模型用量页的合计和功能分布，都不算测试账号
- *   4. 运营通知：测试账号的新注册、用量异常不报
+ *   3. 统计排除：模型用量的合计不算测试账号（运营台总览、用户列表、运营通知 12c 随运营台删了）
  * 外加迁移守卫：control.prisma 和 control-migrations/ 两条安装路径都有这张表，连跑两遍不炸。
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
@@ -18,7 +17,6 @@ import { execFileSync } from "node:child_process";
 
 const 根 = path.resolve(__dirname, "..");
 const 临时根 = path.join(os.tmpdir(), `crm-test-accounts-${process.pid}`);
-const TOKEN = "ops-token-for-tests";
 const 上游 = "https://upstream.example.com/v1";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
@@ -45,7 +43,6 @@ beforeAll(() => {
 
 afterAll(async () => {
   delete process.env.MULTI_TENANT;
-  delete process.env.ADMIN_TOKEN;
   delete process.env.OPS_ACCOUNTS;
   delete process.env.TEST_ACCOUNTS;
   delete process.env.GATEWAY_API_KEY;
@@ -57,7 +54,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  process.env.ADMIN_TOKEN = TOKEN;
   delete process.env.OPS_ACCOUNTS;
   delete process.env.TEST_ACCOUNTS;
   const { control } = await import("@/lib/tenant/control");
@@ -95,31 +91,21 @@ async function 建账号(opts: { email?: string; 送?: number; 注册于?: Date 
 const 账号 = (id: string) => ({ kind: "account" as const, id });
 
 describe("标 / 取消测试账号", () => {
-  it("运营台动作要验口令；不带、带错一律拒，库里什么都没写", async () => {
-    const { 设测试账号 } = await import("@/app/admin/actions");
-    const { control } = await import("@/lib/tenant/control");
-    const id = await 建账号();
-    expect(await 设测试账号({ token: "", accountId: id, on: true })).toEqual({ ok: false, error: "无权操作" });
-    expect(await 设测试账号({ token: "wrong", accountId: id, on: true })).toEqual({ ok: false, error: "无权操作" });
-    expect(await control.testAccount.count()).toBe(0);
-    expect(await 设测试账号({ token: TOKEN, accountId: "nobody", on: true })).toEqual({ ok: false, error: "账号不存在" });
-  });
 
-  it("标上、取消、再标：取消不删行，留痕一次一行（新的在前），用口令进来的记「口令」", async () => {
-    const { 设测试账号 } = await import("@/app/admin/actions");
-    const { 是测试账号, 测试留痕 } = await import("@/lib/tenant/test-accounts");
+  it("标上、取消、再标：取消不删行，留痕一次一行（新的在前），记下是谁标的", async () => {
+    const { 是测试账号, 测试留痕, 设测试账号 } = await import("@/lib/tenant/test-accounts");
     const { control } = await import("@/lib/tenant/control");
     const id = await 建账号();
     expect(await 是测试账号(id)).toBe(false);
 
-    expect(await 设测试账号({ token: TOKEN, accountId: id, on: true })).toEqual({ ok: true });
+    expect(await 设测试账号(id, true, "口令")).toBe(true);
     expect(await 是测试账号(id)).toBe(true);
 
-    expect(await 设测试账号({ token: TOKEN, accountId: id, on: false })).toEqual({ ok: true });
+    expect(await 设测试账号(id, false, "口令")).toBe(true);
     expect(await 是测试账号(id)).toBe(false);
     expect(await control.testAccount.findUnique({ where: { accountId: id } }), "取消不删行，留痕要留着").not.toBeNull();
 
-    await 设测试账号({ token: TOKEN, accountId: id, on: true });
+    await 设测试账号(id, true, "口令");
     const 痕 = await 测试留痕(id);
     expect(痕).toHaveLength(3);
     expect(痕[0]).toMatch(/标为测试账号 · 口令$/);
@@ -151,11 +137,9 @@ describe("标 / 取消测试账号", () => {
   });
 });
 
-it("注册前预设测试名单排除新注册通知和统计，不授予运营权限；移除名单恢复", async () => {
+it("注册前预设测试名单算测试账号，不授予运营权限；移除名单恢复", async () => {
   const { 是测试账号, 测试账号们 } = await import("@/lib/tenant/test-accounts");
   const { 是运营账号 } = await import("@/lib/ops-auth");
-  const { 读运营通知 } = await import("@/lib/ops-notices");
-  const start = new Date(Date.now() - 60_000).toISOString();
   process.env.TEST_ACCOUNTS = "Preset@Example.test; 13900000001";
   const test = await 建账号({ email: "preset@example.test" });
   const real = await 建账号();
@@ -163,7 +147,6 @@ it("注册前预设测试名单排除新注册通知和统计，不授予运营�
   expect(await 是测试账号(real)).toBe(false);
   expect(await 是运营账号(test)).toBe(false);
   expect([...(await 测试账号们()).entries()]).toEqual([[test, "预设"]]);
-  expect((await 读运营通知(start)).事件.filter(e => e.kind === "注册").map(e => e.key)).toEqual([`注册:${real}`]);
   delete process.env.TEST_ACCOUNTS;
   expect(await 是测试账号(test)).toBe(false);
 });
@@ -281,38 +264,8 @@ describe("统计排除测试账号", () => {
     return { 真1, 真2, 测, 运营 };
   }
 
-  it("总览：注册、新注册、活跃、设备、版本、调用、功能、注册趋势只数真实用户；测试账号单独一个数", async () => {
-    const { 读总览 } = await import("@/app/admin/data");
-    const { 真1, 真2 } = await 造一批();
-    const 数 = await 读总览();
-    expect(数.账号.map((a) => a.id).sort()).toEqual([真1, 真2].sort());
-    expect(数.测试账号数).toBe(2);
-    expect(数.新注册7天).toBe(1);
-    expect(数.活跃7天).toBe(2);
-    expect(数.设备).toEqual({ Mac: 2, Windows: 0, Linux: 0, 未知: 0 });
-    expect(数.版本分布).toEqual([{ 版本: "0.46.14", 台数: 2 }]);
-    expect(数.调用30天).toBe(1);
-    expect(数.token30天).toBe(110);
-    expect(数.功能分布).toEqual([{ 功能: "提问", 次数: 1 }]);
-    expect(数.注册趋势.reduce((s, x) => s + x.数, 0)).toBe(2);
-  });
-
-  it("用户列表照样列出测试账号，带上为什么算；次数用完不算测试账号", async () => {
-    const { 读账号们, 真实用户, 用完了 } = await import("@/app/admin/data");
-    const { 真1, 测, 运营 } = await 造一批();
-    const 行 = await 读账号们();
-    expect(行).toHaveLength(4);
-    expect(行.find((a) => a.id === 测)?.测试).toBe("标的");
-    expect(行.find((a) => a.id === 运营)?.测试).toBe("运营");
-    expect(行.find((a) => a.id === 真1)?.测试).toBeNull();
-    expect(真实用户(行)).toHaveLength(2);
-    expect(用完了({ ai: { 送: 30, 剩: 0 }, 测试: "标的" }), "测试账号不限次数，不算用完").toBe(false);
-    expect(用完了({ ai: { 送: 30, 剩: 0 }, 测试: null })).toBe(true);
-  });
-
-  it("模型用量页：合计、按天、按模型、按归属、按功能都不算测试账号，单独给一个数", async () => {
+  it("模型用量：合计、按天、按模型、按归属都不算测试账号，单独给一个数", async () => {
     const { 成本概览 } = await import("@/lib/tenant/ai-cost");
-    const { 读功能分布 } = await import("@/app/admin/data");
     const { 测试账号们 } = await import("@/lib/tenant/test-accounts");
     const { 真1 } = await 造一批();
     const 测试 = new Set((await 测试账号们()).keys());
@@ -322,41 +275,8 @@ describe("统计排除测试账号", () => {
     expect(c.按模型).toEqual([{ model: "m", 次数: 1, 入: 100, 出: 10 }]);
     expect(c.按归属.map((o) => o.id)).toEqual([真1]);
     expect(c.测试).toEqual({ 次数: 3, 入: 17000, 出: 1700 });
-    expect(await 读功能分布(30, new Date(), 测试)).toEqual([{ 功能: "提问", 次数: 1, token: 110 }]);
     // 不传就是老口径：全算
     expect((await 成本概览(30)).合计.次数).toBe(4);
-  });
-});
-
-describe("运营通知不为测试账号响", () => {
-  it("测试账号、运营账号注册不报；真实用户照报", async () => {
-    const { 读运营通知 } = await import("@/lib/ops-notices");
-    const { 设测试账号 } = await import("@/lib/tenant/test-accounts");
-    const 起 = new Date(Date.now() - 60_000).toISOString();
-    const 真 = await 建账号();
-    const 测 = await 建账号();
-    const 运营 = await 建账号({ email: "boss@example.com" });
-    await 设测试账号(测, true, "测");
-    const 事件 = (await 读运营通知(起, new Date(), { OPS_ACCOUNTS: "boss@example.com" })).事件.filter((e) => e.kind === "注册");
-    expect(事件.map((e) => e.key)).toEqual([`注册:${真}`]);
-    expect(事件.map((e) => e.key)).not.toContain(`注册:${运营}`);
-  });
-
-  it("测试账号问得再多、token 烧得再凶也不报用量异常", async () => {
-    const { control } = await import("@/lib/tenant/control");
-    const { 读运营通知 } = await import("@/lib/ops-notices");
-    const { 设测试账号 } = await import("@/lib/tenant/test-accounts");
-    const now = new Date();
-    const 测 = await 建账号();
-    await 设测试账号(测, true, "测");
-    await control.aiCharge.createMany({ data: Array.from({ length: 40 }, (_, i) => ({ ownerKind: "account", ownerId: 测, requestId: `r${i}`, at: new Date(now.getTime() - 10_000) })) });
-    await control.aiCall.create({ data: { ownerKind: "account", ownerId: 测, model: "m", inputTokens: 2_000_000, outputTokens: 0, at: new Date(now.getTime() - 1000) } });
-    const r = await 读运营通知(new Date(now.getTime() - 60_000).toISOString(), now, {});
-    expect(r.事件.filter((e) => e.kind === "用量")).toEqual([]);
-    // 取消测试之后照常报
-    await 设测试账号(测, false, "测");
-    const r2 = await 读运营通知(new Date(now.getTime() - 60_000).toISOString(), now, {});
-    expect(r2.事件.filter((e) => e.kind === "用量").length).toBe(2);
   });
 });
 

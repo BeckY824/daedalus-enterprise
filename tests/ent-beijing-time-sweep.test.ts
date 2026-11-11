@@ -12,7 +12,6 @@ import { 排导入, type 导入用员工 } from "@/lib/enterprise/channel-import
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import { 对方当地 } from "@/lib/country-time";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
-import { 何时 } from "@/app/admin/ui";
 import { 北京日期 } from "@/lib/team-pricing";
 import type { 原始记录, 映射 } from "@/lib/enterprise-import/types";
 
@@ -93,13 +92,10 @@ describe("企业版：不管进程在哪个时区", () => {
     expect(fmtDateTime(瞬间)).toBe("2026-07-22 01:05");
     expect(fmtDate(瞬间)).toBe("2026-07-22");
     expect(北京日期(new Date(瞬间))).toBe("2026-07-22");
-    expect(何时(瞬间, "2026-10-14T08:00:00.000Z")).toBe("2026-07-22");
     const { 多久以前 } = await import("@/components/NoticeBell");
     expect(多久以前(瞬间, Date.parse("2026-10-14T08:00:00.000Z"))).toBe("7月22日");
     const { 留痕行 } = await import("@/lib/tenant/test-accounts");
     expect(留痕行(true, "运营", new Date(瞬间))).toBe("2026-07-22 01:05 标为测试账号 · 运营");
-    const { 近几天 } = await import("@/app/admin/data");
-    expect(近几天(2, new Date(瞬间))).toEqual(["2026-07-21", "2026-07-22"]);
   });
 
   it.each(时区们)("%s：对方当地跟北京比，不跟电脑比", (tz) => {

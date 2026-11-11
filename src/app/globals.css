@@ -2874,8 +2874,6 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   .legal-toc { position: static; flex-direction: row; flex-wrap: wrap; }
 }
 
-/* 运营台（/admin）的样式在 src/app/admin/ops.css，只在那几页加载（2026-09-28 改版） */
-
 /* 刚建出来的那一行：亮一下再退回去。两秒够看见，又不至于留在那儿碍眼。
    用 background-color 从品牌浅底退到表格底色，不动尺寸——列表在动的时候最怕行高跳。
    退到 --panel 而不是透明：名字列和操作列固定着（sticky），底色一透明，
