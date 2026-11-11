@@ -1,8 +1,8 @@
 /**
- * 网页共享试用区：WhatsApp 也是号码，每个出口都和电话一样打码（2026-10-06 测试分期 G.1）。
+ * 号码要打码时（企业版字段权限里电话「藏」的角色），WhatsApp 也是号码，每个出口都和电话一样打码（2026-10-06 测试分期 G.1）。
  *
- * 打码的代码各出口都有（lib/shared-ws/current.ts 的 号码脱敏器），之前只有操作日志那一处有用例钉着。
- * 这里把共享区打开，一次查完：客户列表 / 导出（同一个 成客户行）、导出第二张跟进表、AI 读客户、AI 找客户、
+ * 打码的代码各出口都有（lib/enterprise/phone-mask.ts 的 号码脱敏器；原在网页共享试用区那份 lib/shared-ws/current.ts）。
+ * 这里让脱敏器一律打码，一次查完：客户列表 / 导出（同一个 成客户行）、导出第二张跟进表、AI 读客户、AI 找客户、
  * WhatsApp 链接（打过码的不给 wa.me，剩下几位拼出来是个陌生号）、编辑框交回打码值时库里不变。
  *
  * 跟进正文里人自己写进去的号码不在这里：正文整个产品都原样显示（客户页时间线也是），只有操作日志例外（SettingsBody）。
@@ -14,10 +14,9 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, requireAdmin: async () => mocks.user }));
-vi.mock("@/lib/shared-ws/current", async () => {
+vi.mock("@/lib/enterprise/phone-mask", async () => {
   const { maskPhone } = await import("@/lib/utils");
   return {
-    当前是共享区: async () => true,
     号码脱敏器: async () => <T extends string | null>(p: T): T => (p ? (maskPhone(p) as T) : p),
   };
 });
@@ -29,7 +28,7 @@ import { BUSINESS_PRESETS } from "@/lib/business-config";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { TOOLS } from "@/lib/agent/tools";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { WhatsApp网址 } from "@/lib/customer-extra";
 
 const 全号 = "+971 50 123 4567";
@@ -54,7 +53,7 @@ afterAll(async () => {
 
 const 露了 = (s: string) => s.replace(/\D/g, "").includes(数字) || s.includes(全号);
 
-describe("共享试用区：WhatsApp 每个出口都打码", () => {
+describe("要打码时：WhatsApp 每个出口都打码", () => {
   it("客户列表 / 导出第一张表：WhatsApp 打了码，电话也打了码", async () => {
     const r = await 导出客户({});
     if (!r.ok) throw new Error(r.error);

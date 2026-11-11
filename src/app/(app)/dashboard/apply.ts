@@ -3,7 +3,7 @@
 import { scheduleValue } from "@/lib/schedule-date";
 
 import { 读现值 } from "@/lib/agent/current-values";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 认回打码号 } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { 可选渠道条件, 主渠道入口们 } from "@/lib/enterprise/channel-main";

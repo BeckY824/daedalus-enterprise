@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/utils";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 当前是共享区 } from "@/lib/shared-ws/current";
 import { 最高管理 } from "@/lib/enterprise/import-perm";
 import { 读文件们, type 读出的表 } from "@/lib/enterprise-import/excel";
 import { 试跑 } from "@/lib/enterprise-import/report";
@@ -33,7 +32,7 @@ export async function POST(req: Request) {
   if (!我) return NextResponse.json({ error: "请先登录" }, { status: 401 });
   const 拒 = await 视图拒绝响应();
   if (拒) return 拒;
-  if (!(await 最高管理(我)) || (await 当前是共享区())) return NextResponse.json({ error: "只有总管理能做企业版导入" }, { status: 403 });
+  if (!(await 最高管理(我))) return NextResponse.json({ error: "只有总管理能做企业版导入" }, { status: 403 });
 
   const 切了 = (await 读同步设置("excel")).切换;
   if (切了) return NextResponse.json({ error: `Excel 导入已经在 ${fmtDate(切了.时间)} 切换过了，不再收新文件` }, { status: 400 });

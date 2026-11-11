@@ -13,7 +13,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
 import { 直属上级of, type 组织 } from "./org-core";

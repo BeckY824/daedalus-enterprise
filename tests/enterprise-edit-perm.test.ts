@@ -8,11 +8,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "老板", email: "a@x", role: "ADMIN", title: "", avatar: null },
-  共享区: false,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => mocks.共享区 }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
   return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), projectMode: true }) };
@@ -42,7 +40,6 @@ beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await resetDb();
   invalidateSettingsCache();
-  mocks.共享区 = false;
   const 建人 = async (email: string, name: string, role: string, bizRole?: string) => {
     const id = (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
     if (bizRole) await prisma.entMember.create({ data: { userId: id, bizRole } });
@@ -140,15 +137,13 @@ describe("各处按自己那一行拦", () => {
     expect(await 改组织规则({ 公海: { 默认上限: 5 }, 节点推进: { 开: true } })).toEqual({ ok: true, 收回: 0 });
   });
 
-  it("字段权限表：只有系统管理员能存，勾过销售管理也不算；共享区一律拦", async () => {
+  it("字段权限表：只有系统管理员能存，勾过销售管理也不算", async () => {
     当(销售经理);
     expect(await 设字段权限({})).toMatchObject({ ok: false, error: "字段权限表只有系统管理员能改" });
     await setSetting(改权限key, { 字段权限: ["销售管理"] });
     expect(await 设字段权限({})).toMatchObject({ ok: false, error: "字段权限表只有系统管理员能改" });
     当(总管);
     expect(await 设字段权限({})).toEqual({ ok: true });
-    mocks.共享区 = true;
-    expect(await 设字段权限({})).toMatchObject({ ok: false, error: "共享试用区不能改后台设置" });
   });
 });
 
@@ -168,12 +163,10 @@ describe("这张表本身", () => {
     expect(r.summary).toContain(`${设置项.字典.名}：系统管理员`);
   });
 
-  it("不是企业版、共享区都拦，一行不写", async () => {
+  it("不是企业版拦，一行不写", async () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await 设改权限({ 字典: [] })).toMatchObject({ ok: false });
     vi.stubEnv("CRM_ENTERPRISE", "1");
-    mocks.共享区 = true;
-    expect(await 设改权限({ 字典: [] })).toMatchObject({ ok: false });
     expect(await getSetting(改权限key)).toBeFalsy();
     expect(await 记录()).toEqual([]);
   });

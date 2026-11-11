@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => true }));
-vi.mock("@/lib/shared-ws/current", async (原) => ({ ...(await 原<object>()), 当前是共享区: async () => false }));
 vi.mock("@/lib/prisma", async (原) => {
   const 真 = await 原<typeof import("@/lib/prisma")>();
   type 任意 = Record<string | symbol, unknown>;

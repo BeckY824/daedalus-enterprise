@@ -1,4 +1,4 @@
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import ChannelsView from "./ChannelsView";

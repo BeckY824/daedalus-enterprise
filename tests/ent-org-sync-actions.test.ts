@@ -1,7 +1,7 @@
 /**
  * 企业版 · 设置页「通讯录同步」那一栏的后台操作（settings/org-actions.ts 里 通讯录概况 / 设通讯录同步 / 立即同步通讯录 / 设职务对照 / 设通讯录凭据）。
  * 钉的是：
- *   - 不是企业版、共享区、普通人一律拦，库和设置一行不动；
+ *   - 不是企业版、普通人一律拦，库和设置一行不动；
  *   - 密钥只写不回显，留空保存 = 不改，留痕里没有密钥；和导入共用的连接配置里别的键原样留着；
  *   - 凭据没填不让打开；老板手动同步成了，组织架构落库。
  */
@@ -9,11 +9,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "老板", email: "boss@example.com", role: "ADMIN", title: "", avatar: null },
-  共享区: false,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => mocks.共享区 }));
 
 import feishuContacts from "./fixtures/ent-feishu-contacts.json";
 import { prisma } from "@/lib/prisma";
@@ -40,7 +38,6 @@ beforeEach(async () => {
   await resetDb();
   invalidateSettingsCache();
   process.env.CRM_ENTERPRISE = "1";
-  mocks.共享区 = false;
   const 建人 = async (email: string, name: string, role: string) => (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
   老板 = await 建人("boss@example.com", "老板", "ADMIN");
   销售 = await 建人("s1@example.com", "小王", "SALES");
@@ -60,12 +57,12 @@ afterAll(async () => {
 });
 
 describe("谁能用", () => {
-  it("不是企业版、共享区、普通销售：五个操作都拦，库和设置一行不动", async () => {
+  it("不是企业版、普通销售：五个操作都拦，库和设置一行不动", async () => {
     await setSetting(连接键("feishu"), { appId: "cli_fake", appSecret: "fake-secret" });
     换联网(假网(飞书录).网);
     const 前 = await 库样子();
-    for (const 设 of [() => { delete process.env.CRM_ENTERPRISE; }, () => { mocks.共享区 = true; }, () => 当(销售, "SALES")]) {
-      process.env.CRM_ENTERPRISE = "1"; mocks.共享区 = false; 当(老板, "ADMIN");
+    for (const 设 of [() => { delete process.env.CRM_ENTERPRISE; }, () => 当(销售, "SALES")]) {
+      process.env.CRM_ENTERPRISE = "1"; 当(老板, "ADMIN");
       设();
       expect(await 通讯录概况()).toMatchObject({ ok: false, error: expect.stringContaining("只有总管理能改组织架构") });
       expect(await 设通讯录同步("feishu", true)).toMatchObject({ ok: false });

@@ -18,7 +18,6 @@ vi.mock("next/headers", () => ({
   }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => false }));
 
 import { SignJWT } from "jose";
 import { prisma } from "@/lib/prisma";

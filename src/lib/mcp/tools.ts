@@ -1,7 +1,7 @@
 import { TOOLS, TOOL_MAP, type ToolContext } from "@/lib/agent/tools";
 import { 只读SCHEMAS, type Schema } from "@/lib/agent/schemas";
 import { getBusiness } from "@/lib/business";
-import { 号码脱敏器 } from "@/lib/shared-ws/current";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 只用项目不给 } from "@/lib/agent/run";
 import { 企业版 } from "@/lib/enterprise/switch";
 

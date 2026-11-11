@@ -22,7 +22,6 @@ const 临时 = vi.hoisted(() => {
 const 登录 = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => 登录.user }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => false }));
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
   const { 加上限定 } = await import("@/lib/team-scope");

@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => false }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";

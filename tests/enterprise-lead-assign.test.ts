@@ -9,12 +9,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "老板", email: "a@x", role: "ADMIN", title: "", avatar: null },
   企业版: true,
-  共享区: false,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => mocks.企业版 }));
-vi.mock("@/lib/shared-ws/current", () => ({ 当前是共享区: async () => mocks.共享区 }));
 
 import { prisma } from "@/lib/prisma";
 import { setSetting } from "@/lib/settings";
@@ -47,7 +45,6 @@ const 配 = (userId: string, quota: number | null) =>
 beforeEach(async () => {
   await resetDb();
   mocks.企业版 = true;
-  mocks.共享区 = false;
   const 人 = async (email: string, name: string, role = "SALES") => (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
   老板 = await 人("boss", "老板", "ADMIN");
   总管 = await 人("dir", "总管");
@@ -495,11 +492,6 @@ describe("分配", () => {
     expect(await 分配线索({ leadId: 他的, toUserId: 两边 })).toMatchObject({ ok: false, error: expect.stringContaining("已经在他名下") });
     expect(await prisma.entLeadAssign.count()).toBe(0);
   });
-
-  it("共享试用区不让分", async () => {
-    mocks.共享区 = true;
-    expect(await 分配线索({ leadId: await 建线索("A"), toUserId: 两边 })).toMatchObject({ ok: false });
-  });
 });
 
 describe("配额", () => {
@@ -652,15 +644,12 @@ describe("规则开着时编辑 / 新建不能随手换负责人（F2，10-25 �
     expect((await 存({ id: 空, name: "空" })).ok).toBe(true);
     expect(await 负责人(空)).toBe(市场);
   });
-  it("规则关着、共享试用区、不是企业版：照旧能改负责人", async () => {
+  it("规则关着、不是企业版：照旧能改负责人", async () => {
     当(市场);
     const L = await 建线索("L");
     await 开(false);
     expect((await 存({ id: L, ownerId: 内贸 })).ok).toBe(true);
     await 开(true);
-    mocks.共享区 = true;
-    expect((await 存({ id: L, ownerId: 外贸 })).ok).toBe(true);
-    mocks.共享区 = false;
     mocks.企业版 = false;
     expect((await 存({ id: L, ownerId: 两边 })).ok).toBe(true);
     expect(await 负责人(L)).toBe(两边);
