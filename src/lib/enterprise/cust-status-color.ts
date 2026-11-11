@@ -6,7 +6,9 @@
  * 纯函数，客户端、服务端都能用。
  */
 const 默认色 = ["blue", "purple", "green", "cyan", "magenta", "gold", "volcano", "default", "red"] as const;
-const 备用色 = ["magenta", "lime", "orange", "geekblue", "purple", "cyan", "gold", "blue"] as const;
+/* 16a（11-11）：备用色里去掉 orange——全站标签只有「要人处理」才用橙（globals.css .ant-tag），自己加的状态按名字散到橙上会被误读。
+   换成 default（灰）；其余几种在标签上本来就显示成灰，只在名单分组等处还用得到色相 */
+const 备用色 = ["magenta", "lime", "default", "geekblue", "purple", "cyan", "gold", "blue"] as const;
 
 function 散(name: string): string {
   let h = 0;

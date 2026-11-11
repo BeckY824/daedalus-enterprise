@@ -31,7 +31,7 @@ import { 看全部 } from "../team-scope";
 import { 记号码, 号码库类型, type 验好的号 } from "../enterprise/contact-dedupe";
 import { 验号码 } from "../enterprise/contact-format";
 import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
-import { 客户类型空着 } from "./mapping";
+import { 客户类型未定 } from "./mapping";
 import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目, 无主入池理由, 无主项目进公海 } from "./project-target";
@@ -712,9 +712,12 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
   for (const k of 比对字段[w.实体]) {
     // 新几格 / 渠道：原系统这次没带就不碰（逐格留空，空值不算冲突）
     if (只补的格.has(k) && !(k in v)) continue;
-    const n = 规(v[k]);
-    const l = 规(上次[k]);
-    const c = 规(现值[k]);
+    // 客户类型：老占位「暂不确认」（10-30 ～ 11-11 落过，对照里、库里都可能还有）三边都当空的看——
+    // 脚本 49 把库里的改空之后，原系统再给真类型照「我们没动过」改，不算冲突
+    const 规格 = (x: unknown) => (k === "customerType" && 客户类型未定(规(x)) ? null : 规(x));
+    const n = 规格(v[k]);
+    const l = 规格(上次[k]);
+    const c = 规格(现值[k]);
     if (同(n, l)) continue; // 原系统没改
     if (k === "channelId") {
       // 渠道只补空：我们这边空着、归属也没定才挂；挂了别的渠道不动、不记冲突（归属固化）
@@ -725,8 +728,8 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
       新上次[k] = n;
       continue;
     }
-    if (k === "customerType" && n === 客户类型空着 && c !== null && !同(c, l)) {
-      // 原系统这格空着 / 写的是阶段，落的是「暂不确认」（10-30）：我们这边已经定了类型的不算冲突，不动
+    if (k === "customerType" && n === null && c !== null && !同(c, l)) {
+      // 原系统这格空着 / 写的是阶段（11-11 起留空，10-30 ～ 11-11 落过「暂不确认」）：我们这边已经定了类型的不算冲突，不动
       新上次[k] = n;
       continue;
     }

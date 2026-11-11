@@ -32,6 +32,7 @@
   --nav-on-bg: var(--brand-bg); --nav-on-fg: var(--brand-deep);
   --logo-frame: #e6ebf2; --logo-line: #6f97ff;
   --shadow-card: none;
+  --card-line: var(--line);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
   --page-pattern: none;
 }
@@ -39,7 +40,7 @@
 /* 明暗那一行「浅色」的小样：暗黑下也要画成浅的，值和 :root 那块一样（守卫比对） */
 [data-mode-preview="light"] {
   color-scheme: light;
-  --workbench: #fafafa; --panel: #ffffff; --line: #e5e7eb; --line-soft: #eceef2;
+  --workbench: #f5f5f7; --panel: #ffffff; --line: #e3e3e8; --line-soft: #ededf0;
 }
 
 /* now：蓝主色提亮；八个分类色换成暗底上的亮一档 */

@@ -112,7 +112,7 @@ export default function ReportsView({
           name: `${叫}金额`,
           type: "bar",
           data: trend.map((t) => t.amount),
-          itemStyle: { color: palette.brand, borderRadius: [6, 6, 0, 0] },
+          itemStyle: { color: palette.brand, borderRadius: [4, 4, 0, 0] },
           barMaxWidth: 46,
         },
       ],

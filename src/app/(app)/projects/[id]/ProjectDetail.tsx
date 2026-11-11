@@ -195,7 +195,7 @@ export type 项目详情 = {
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
-const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 4.3em", whiteSpace: "nowrap" };
+const 键样: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-label)", flex: "0 0 4.3em", whiteSpace: "nowrap" }; // 字段名 13（16a 同客户详情）
 // 多行的格子（需求描述、痛点、备注；前两个 11-04 起平时一行）：键和第一行对齐，不居中到一大段字的中间
 const 多行行样: React.CSSProperties = { ...行样, alignItems: "flex-start" };
 
@@ -331,13 +331,13 @@ function 进公海说法(进: 项目详情["进公海"], 原负责人: string): 
 }
 
 /**
- * 页头那行：项目负责人、项目创建人各写各的（11-02，原来的「X 建于」看不出 X 是什么人）；负责人空着写「暂无」。只在页头写，项目卡不再摆一遍。
+ * 页头那行：项目负责人、项目创建人各写各的（11-02，原来的「X 建于」看不出 X 是什么人）；负责人空着写「—」（11-11：没填的一律「—」）。只在页头写，项目卡不再摆一遍。
  * 在公海里时 ownerName 是原负责人：不写成负责人是 X，也不把系统收回说成 X 放回的（QA #14）
  */
 function 项目人说法(p: 项目详情): string {
-  const 负责人 = (p.pooled ? "" : p.ownerName) || "暂无";
+  const 负责人 = (p.pooled ? "" : p.ownerName) || 空值符;
   const 公海 = p.pooled ? `（在公海里${p.ownerName ? `，原负责人 ${p.ownerName}` : ""}${进公海说法(p.进公海, p.ownerName)}）` : "";
-  return `项目负责人：${负责人}${公海} · 项目创建人：${p.creatorName || "暂无"}`;
+  return `项目负责人：${负责人}${公海} · 项目创建人：${p.creatorName || 空值符}`;
 }
 
 /**

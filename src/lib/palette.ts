@@ -11,25 +11,25 @@
  * 语义色一套、分类色八个、头像底色八个，再没有别的。
  */
 export const palette = {
-  brand: "#2f6bff",
-  brandDeep: "#1a3f9e",
-  brandBg: "#eef2ff",
-  brandLine: "#c7d6ee",
+  brand: "#0a66d8",
+  brandDeep: "#0850a8",
+  brandBg: "#e8f0fb",
+  brandLine: "#b9d2f2",
 
-  ink: "#111827",
-  inkSoft: "#374151",
-  textMuted: "#6b7280",
-  textFaint: "#9ca3af",
+  ink: "#1d1d1f",
+  inkSoft: "#424245",
+  textMuted: "#6e6e73",
+  textFaint: "#aeaeb2",
   /** 压在深色底上的字 */
   onInk: "#ffffff",
 
-  line: "#e5e7eb",
-  lineSoft: "#eceef2",
-  lineStrong: "#d1d5db",
+  line: "#e3e3e8",
+  lineSoft: "#ededf0",
+  lineStrong: "#d2d2d7",
   panel: "#ffffff",
-  workbench: "#fafafa",
-  hover: "#f0f1f4",
-  rowHover: "#f7f8fa",
+  workbench: "#f5f5f7",
+  hover: "#ececee",
+  rowHover: "#f5f5f7",
 
   success: "#16a34a", successText: "#15803d", successBg: "#f0fdf4", successLine: "#bbf7d0",
   warning: "#d97706", warningText: "#92400e", warningBg: "#fffbeb", warningLine: "#fde68a",
