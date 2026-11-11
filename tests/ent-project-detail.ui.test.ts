@@ -62,7 +62,7 @@ beforeAll(async () => {
     /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content > 换页那层 div。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
     const 行=(id,name,阶段,进程,x)=>({id,name,阶段,进程,结局:null,pooled:false,customerName:'超长客户名'+串,lastType:'PHONE',lastAt:'2026-10-20T00:00:00.000Z',lastNote:'最近一句'+串,nextAt:null,...x});
     const 名单={取到上限:false,rows:[行('p1',长,'订单','生产备货'+'备'.repeat(20)),行('p2','线索项目'+串,'线索','初次接触'),行('p5','没填阶段的项目',null,null,{lastAt:null,lastNote:null}),行('p3',串,'商机','方案报价',{pooled:true,结局:'输单'}),行('p4','商机二','商机','首款支付',{nextAt:'2026-10-01'})]};
-    window.__shell=(fab)=>root.render(包(<div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/><ProjectRoster data={名单}/><main className='main app-content' style={{padding:'22px 26px'}}><div style={{maxWidth:1720,margin:'0 auto'}}>{详情(true)}</div></main></div>));
+    window.__shell=(fab,x)=>root.render(包(<div className={fab?'shell has-ai-fab':'shell'}><nav className='rail' aria-label='主导航'/><ProjectRoster data={名单}/><main className='main app-content' style={{padding:'22px 26px'}}><div style={{maxWidth:1720,margin:'0 auto'}}>{x?<ProjectDetail {...详情(true).props} p={{...详情(true).props.p,...x}}/>:详情(true)}</div></main></div>));
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -1347,3 +1347,40 @@ describe("沟通卡头：隐藏接手前", () => {
     } finally { await page.close(); }
   });
 });
+
+/* 11-11 用户（客户详情「沟通记录模块设最长长度、整页给待办留位置，多的在模块内上下移动」，项目详情同样）：
+   30 条沟通时，三档笔记本窗口下首屏看得到「卡点与任务」卡头；沟通卡身在卡内滚，卡头不动；两栏第一张卡同一条顶线 */
+for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]] as const) {
+  it(`${w}×${h} 30 条沟通：沟通卡身限高卡内滚，卡点与任务卡头在首屏，两栏顶线齐`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://proj.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+      await page.goto("http://proj.test/projects/p1"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+      const 多 = Array.from({ length: 30 }, (_, i) => ({ id: "f" + i, type: "PHONE", content: "沟通内容，谈了交期和价格。".repeat(3), occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL" + i, 提醒: null }));
+      await page.evaluate(x => (window as unknown as { __shell: (fab: boolean, x: unknown) => void }).__shell(false, x), { followUps: 多 });
+      await page.getByText("进程变更").first().waitFor();
+      const 量 = () => page.evaluate(() => {
+        const 主 = document.querySelector(".proj-main") as HTMLElement, 侧 = document.querySelector(".proj-side") as HTMLElement;
+        const 身 = document.getElementById("project-follow-body") as HTMLElement;
+        const 卡点头 = document.querySelector("#project-blockers .ant-card-head, #project-blockers") as HTMLElement;
+        const 首 = (e: HTMLElement) => (e.querySelector(":scope > .ant-card, :scope > .proj-fold, :scope > *") as HTMLElement).getBoundingClientRect().top;
+        return { 身滚: getComputedStyle(身).overflowY, 身溢: 身.scrollHeight - 身.clientHeight, 身顶: 身.scrollTop, 主顶: 主.scrollTop,
+          沟通头: (身.closest(".ant-card")!.querySelector(".ant-card-head") as HTMLElement).getBoundingClientRect().top,
+          卡点底: 卡点头.getBoundingClientRect().bottom, 主底: Math.min(主.getBoundingClientRect().bottom, window.innerHeight),
+          顶线: [首(主), 首(侧)].map(Math.round), 横滚: document.documentElement.scrollWidth - window.innerWidth };
+      });
+      const 起 = await 量();
+      expect(起.横滚).toBeLessThanOrEqual(0);
+      expect(起.身滚).toBe("auto");
+      expect(起.身溢).toBeGreaterThan(0);
+      expect(起.卡点底).toBeLessThanOrEqual(起.主底);
+      expect(起.顶线[0]).toBe(起.顶线[1]);
+      await page.locator("#project-follow-body").evaluate(e => { e.scrollTop = 300; });
+      const 滚 = await 量();
+      expect(滚.身顶).toBeGreaterThan(0);
+      expect([滚.沟通头, 滚.主顶]).toEqual([起.沟通头, 起.主顶]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}

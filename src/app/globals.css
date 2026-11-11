@@ -1291,6 +1291,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
     .proj-main::-webkit-scrollbar { display: none; }
     .proj-side { scrollbar-width: thin; }
   }
+  /* 11-11 用户（客户详情沟通记录限高，项目详情同样）：沟通卡身限高、卡内滚，下面的「卡点与任务」一屏里看得到标题。
+     .proj-2col 设成 size 容器（高度从 main 一路传下来，是定的），100cqh = 两栏的可见高度；沟通上面还有一张进程卡，留出来。
+     不设 overscroll-behavior：卡身滚到头交给左栏接着滚；滚动条照左栏不露 */
+  .main .proj-wrap > .proj-2col { container-type: size; }
+  .main .proj-wrap > .proj-2col #project-follow-body.proj-mod-body { max-height: max(160px, calc(58cqh - 150px)); overflow-y: auto; scrollbar-width: none; }
+  .main .proj-wrap > .proj-2col #project-follow-body.proj-mod-body::-webkit-scrollbar { display: none; }
   .shell:has(.proj-wrap) .pane-roster .pane-rows { scrollbar-width: none; }
   .shell:has(.proj-wrap) .pane-roster .pane-rows::-webkit-scrollbar { display: none; }
 }
@@ -1594,6 +1600,13 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 }
 @container rec (min-width: 1090px) {
   .rec-ai-guess-btn { display: none; }
+}
+/* 企业版项目模式、还没量到宽度（服务端渲染那一帧到页面接管之前）：右栏里只有一张猜着摆的 AI 栏（两栏时藏着），
+   别让它占掉第一行、把沟通栏往下挤一个行距——和量到以后（rec-no-right）一样，资料、沟通同一条顶线（11-11 两栏顶部不齐） */
+@container rec (min-width: 630px) and (max-width: 1089px) {
+  .rec:has(> .rec-col-blocks):has(> .rec-right .rec-ai-guess-col) { grid-template-rows: none; }
+  .rec:has(> .rec-col-blocks):has(> .rec-right .rec-ai-guess-col) > :is(.rec-rail:first-child, .rec-col) { grid-row: 1; }
+  .rec:has(> .rec-col-blocks):has(> .rec-right .rec-ai-guess-col) > .rec-right { display: none; }
 }
 /* 右栏空着不渲染（RecordView 有右栏）：630 以上就两栏，资料、沟通各占一行到底，不给空栏留位置 */
 @container rec (min-width: 630px) {
@@ -2067,7 +2080,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
    被拉成和卡这一列一样高，上下边齐。框里放得下：问候、欢迎语、三条示例、输入框加起来比四张卡矮（ent-home-frame 量着） */
 .cli-empty .cli-ck-g { flex: none; }
 /* 11-01 用户要过「上下居中」；16a（11-11）改回顶上：居中时上面空一大块，框和四张卡的顶线贴着页边距，下面留白 */
-.cli-empty .cli-ck-g { margin-block: 0 auto; }
+.cli-empty .cli-ck-g { margin-block: auto; }
 .cli-empty .home-cards { align-self: start; position: static; }
 .cli-empty .cli-ck .cli-frame { contain: size; }
 /* 问过之后（10-31 改版 R1）：右边四张卡收起，对话铺满这一格——你的话贴着右边、回答占满，右侧不再空一大片（照 Codex / Claude Code）。
