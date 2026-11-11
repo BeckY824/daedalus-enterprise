@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { 负责人显示名 } from "@/lib/pool";
-import { 看得到的客户数, 最近跟进的客户 } from "@/lib/scope-sql";
+import { 最近跟进的客户 } from "@/lib/scope-sql";
+import { 客户页签数 } from "@/lib/pool-db";
+import { 客户筛选条件 } from "@/app/(app)/customers/query";
+import type { Prisma } from "@/generated/prisma";
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
 import { requireUser } from "@/lib/auth";
 import CustomerRoster from "@/components/CustomerRoster";
@@ -42,7 +45,7 @@ import { 拼地址 } from "@/lib/enterprise/customer-v2";
  */
 
 /**
- * 记录页的窄名单：最近跟进过的 50 位。
+ * 记录页的窄名单：最近跟进过的 50 位（不含公海，P-看-03）。
  *
  * **只在 `/customers/[id]` 出现，列表页没有**（批 2）。列表页已经是一张全宽的表，
  * 旁边再挂一条同样内容的名单等于把同一件事画两遍；而记录页缺的正是「换一个人」
@@ -54,45 +57,51 @@ export async function 学员名单() {
   const me = await requireUser();
   // 业务员（带范围）先用裸 SQL 挑出那 50 位的编号再按编号取，免得范围那句 OR 把客户表整张扫两遍（lib/scope-sql.ts）
   const 企业 = 企业版();
-  // 企业版按客户状态分组（10-29）：字典和名单一起取，字典走请求内缓存（客户页同一屏也要读它）
-  const [total, ids, 状态字典] = await Promise.all([看得到的客户数(), 最近跟进的客户(50), 企业 ? 页面字典("custStatus") : null]);
-  const 取 = await prisma.customer.findMany({
-    where: ids ? { id: { in: ids } } : undefined,
-    orderBy: ids ? undefined : [{ lastFollowAt: "desc" }, { createdAt: "desc" }],
-    take: ids ? undefined : 50,
-    select: {
-      id: true, name: true, followStatus: true, custStatus: true, lastFollowAt: true, salesOwnerId: true,
-      salesOwner: { select: { name: true } },
-      channel: { select: { name: true } },
-      addrCountry: true, addrProvince: true, addrCity: true,
-      referrerCustomerId: true,
-      followUps: { orderBy: { occurredAt: "desc" }, take: 1, select: { content: true, type: true } },
-      // 最近一条还没做的计划：「本周要跟」那个页签和右下角的圆点都看它
-      plans: { where: { done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], select: { plannedAt: true, plannedOn: true } },
-    },
-  });
+  /*
+    公海不进这张名单（P-看-03「公海只在公海页签出现」，11-11 实点：总数和「全部」混进公海、「我的」从 50 位里筛成空）：
+    总数 = 客户列表「客户」页签那个数（lib/pool-db.ts 客户页签数），行的条件 = 客户列表不筛时的条件（query.ts 客户筛选条件），
+    「我的」另取自己负责的最近 50 位，不在「全部」那 50 位里再筛
+  */
+  const [页签数, ids, 列表条件, 状态字典] = await Promise.all([客户页签数(), 最近跟进的客户(50), 客户筛选条件({}, me.id), 企业 ? 页面字典("custStatus") : null]);
+  const 排序 = [{ lastFollowAt: "desc" as const }, { createdAt: "desc" as const }];
+  const 字段 = {
+    id: true, name: true, followStatus: true, custStatus: true, lastFollowAt: true, salesOwnerId: true,
+    salesOwner: { select: { name: true } },
+    channel: { select: { name: true } },
+    addrCountry: true, addrProvince: true, addrCity: true,
+    referrerCustomerId: true,
+    followUps: { orderBy: { occurredAt: "desc" as const }, take: 1, select: { content: true, type: true } },
+    // 最近一条还没做的计划：「本周要跟」那个页签和右下角的圆点都看它
+    plans: { where: { done: false }, orderBy: [{ plannedAt: "asc" as const }, { id: "asc" as const }], select: { plannedAt: true, plannedOn: true } },
+  } satisfies Prisma.CustomerSelect;
+  const [取, 我的] = await Promise.all([
+    prisma.customer.findMany({ where: ids ? { id: { in: ids } } : 列表条件, orderBy: ids ? undefined : 排序, take: ids ? undefined : 50, select: 字段 }),
+    prisma.customer.findMany({ where: { AND: [列表条件, { salesOwnerId: me.id }] }, orderBy: 排序, take: 50, select: 字段 }),
+  ]);
   const 位 = new Map(ids?.map((id, i) => [id, i]));
   const rows = ids ? 取.sort((a, b) => 位.get(a.id)! - 位.get(b.id)!) : 取;
+  const 一行 = (c: (typeof 取)[number]) => {
+    const p = earliestScheduled(c.plans, p => scheduleOrder(p.plannedAt, p.plannedOn), 1)[0];
+    return {
+      id: c.id, name: c.name, followStatus: c.followStatus,
+      ...(企业 ? { custStatus: c.custStatus } : {}),
+      lastFollowAt: c.lastFollowAt ? c.lastFollowAt.toISOString() : null,
+      ownerName: 负责人显示名(c.salesOwner.name),
+      mine: c.salesOwnerId === me.id,
+      lastNote: c.followUps[0]?.content?.trim().slice(0, 60) || null,
+      // 渠道名 > 转介绍 > 最近一次跟进方式，都没有就留空。
+      // 企业版（11-04 用户：名单里名字上方从「来源」改成客户所在国家地区）：国内「省 市」、国外「国家 城市」，不带区；没填就留空
+      source: 企业 ? 拼地址({ addrCountry: c.addrCountry, addrProvince: c.addrProvince, addrCity: c.addrCity }) || null : c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),
+      nextPlanAt: p ? scheduleValue(p.plannedAt, p.plannedOn) : null,
+    };
+  };
   return (
     <CustomerRoster
       data={{
-        total,
+        total: 页签数.非公海,
         客户状态: 状态字典 ? { 顺序: 状态字典.filter((x) => x.active).map((x) => x.name), 颜色: 客户状态色表(状态字典) } : null,
-        rows: rows.map((c) => {
-          const p = earliestScheduled(c.plans, p => scheduleOrder(p.plannedAt, p.plannedOn), 1)[0];
-          return {
-            id: c.id, name: c.name, followStatus: c.followStatus,
-            ...(企业 ? { custStatus: c.custStatus } : {}),
-            lastFollowAt: c.lastFollowAt ? c.lastFollowAt.toISOString() : null,
-            ownerName: 负责人显示名(c.salesOwner.name),
-            mine: c.salesOwnerId === me.id,
-            lastNote: c.followUps[0]?.content?.trim().slice(0, 60) || null,
-            // 渠道名 > 转介绍 > 最近一次跟进方式，都没有就留空。
-            // 企业版（11-04 用户：名单里名字上方从「来源」改成客户所在国家地区）：国内「省 市」、国外「国家 城市」，不带区；没填就留空
-            source: 企业 ? 拼地址({ addrCountry: c.addrCountry, addrProvince: c.addrProvince, addrCity: c.addrCity }) || null : c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),
-            nextPlanAt: p ? scheduleValue(p.plannedAt, p.plannedOn) : null,
-          };
-        }),
+        rows: rows.map(一行),
+        mineRows: 我的.map(一行),
       }}
     />
   );

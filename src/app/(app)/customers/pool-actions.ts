@@ -405,7 +405,7 @@ export async function 分配公海(ids: string[], userId: string, 带待办?: bo
   if (项目们.length && !(企业版() && b.projectMode === true)) return { ok: false, error: "统一公海只在企业版项目模式里有" };
   const 给 = await prisma.user.findFirst({ where: { id: String(userId ?? ""), active: true }, select: { id: true, name: true } });
   if (!给) return { ok: false, error: "这位同事不在了或已停用，换一位" };
-  // 只分给能当负责人的；不是系统管理员只分给同业务线的（11-03 B2-7）
+  // 只分给能当负责人的，不限业务线（P-转-08）；操作人只能动本线的另在下面拦（P-公海-07）
   const 不行 = await 公海分不给(me, 给.id);
   if (不行) return { ok: false, error: 不行 };
   if (!ids.length && !项目们.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };

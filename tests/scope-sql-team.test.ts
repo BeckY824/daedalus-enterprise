@@ -99,7 +99,8 @@ async function 对拍(谁: string, n: number) {
   const 新数 = await 看得到的客户数();
   const 新号 = await 最近跟进的客户(n);
   const 旧数 = await db.customer.count();
-  const 旧 = await db.customer.findMany({ orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }], take: n, select: { id: true, lastFollowAt: true, createdAt: true } });
+  // 最近跟进的前 n 位只给记录页窄名单用，不含公海（P-看-03）
+  const 旧 = await db.customer.findMany({ where: { pool: { is: null } }, orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }], take: n, select: { id: true, lastFollowAt: true, createdAt: true } });
   expect({ 谁, n: 新数 }).toEqual({ 谁, n: 旧数 });
   expect(新号, `${谁} 应该走裸 SQL`).not.toBeNull();
   const 行 = await raw.customer.findMany({ where: { id: { in: 新号! } }, select: { id: true, lastFollowAt: true, createdAt: true } });
