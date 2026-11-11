@@ -12,6 +12,7 @@ import { 离职交接入口 } from "@/lib/enterprise/offboard-handover";
 import { llmEnabled } from "@/lib/llm";
 import { 客户筛选条件, 客户行字段, 成客户行, 客户金额分页, 在看子集, 只按页签, 关键词分页, 按序取客户行 } from "./query";
 import { 规整币种 } from "@/lib/currency";
+import { 号码藏着 } from "@/lib/search-keyword";
 import { 自动掉公海, 客户页签数 } from "@/lib/pool-db";
 import { getBusiness } from "@/lib/business";
 import { 读的我, 虚线只读的 } from "@/lib/team-scope";
@@ -52,6 +53,11 @@ type SP = Promise<{
   dept?: string;
   /** 客户来源（企业版，11-06） */
   channelId?: string;
+  /** 创建（入库）时间段（11-11）：YYYY-MM-DD 两个日历日，两头都算，北京日 */
+  createdFrom?: string;
+  createdTo?: string;
+  /** 「手机号」筛选（11-11）：只比号码，口径见 lib/search-keyword.ts 客户号码SQL；电话藏着的人不认 */
+  phone?: string;
   page?: string;
   pageSize?: string;
   sort?: string;
@@ -99,6 +105,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const sort = sp.sort === "amount-asc" || sp.sort === "amount-desc" ? sp.sort : "";
   /** 按客户等级排（2026-10-16）：A→D 或 D→A，没分级的总在最后 */
   const 等级排序 = sp.sort === "level-asc" || sp.sort === "level-desc" ? sp.sort : "";
+  /** 按创建时间排（11-11）：默认就是新的在前，点表头可以换成旧的在前；不给 = 默认 */
+  const 创建排序 = sp.sort === "created-asc" || sp.sort === "created-desc" ? sp.sort : "";
   const sortCurrency = 规整币种(sp.sortCurrency, b.currency);
 
   /*
@@ -111,7 +119,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 页签数P = 子集 ? Promise.resolve(null) : 客户页签数();
   // 中间那两步先抛了的话，这条别成「没人接的拒绝」；它自己出错照样在下面 Promise.all 里抛
   页签数P.catch(() => {});
-  const 快 = sort || 等级排序 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
+  const 快 = sort || 等级排序 || 创建排序 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
   const where = 快 ? null : await 客户筛选条件(sp);
   /*
     两个页签上的数：都不带筛选、和左栏「客户」角标在同一套限定下数（layout.tsx 的 customer.count()），
@@ -138,12 +146,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
 
   // 这一页的行和页面上别的几样互不依赖，一次并起来取（10-29 提速：原来行取完以后再一个个 await，十来次往返串着）
   const 企 = 企业版();
+  const 能按号码筛 = !(await 号码藏着());
   const 删权限org = 企 ? await 权限组织() : null;
   const 行P = 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
       where: where!,
       orderBy: 等级排序
         ? [{ extra: { level: { sort: 等级排序 === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }]
-        : [{ createdAt: "desc" }, { id: "desc" }],
+        : 创建排序 === "created-asc" ? [{ createdAt: "asc" }, { id: "asc" }] : [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: 客户行字段,
@@ -215,6 +224,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       pageSize={pageSize}
       金额排序={sort}
       等级排序={等级排序}
+      创建排序={创建排序}
+      能按号码筛={能按号码筛}
       排序币种={sortCurrency}
       users={users}
       channels={channels}
@@ -240,6 +251,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         source: sp.source ?? "",
         level: sp.level ?? "",
         dept: sp.dept ?? "",
+        createdFrom: sp.createdFrom ?? "",
+        createdTo: sp.createdTo ?? "",
+        // 电话藏着的人（字段权限 Y27）不按号码筛：服务端不认，这里也不回显，页面不摆这一项
+        phone: 能按号码筛 ? sp.phone ?? "" : "",
         // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
         ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", channelId: sp.channelId ?? "" } : {}),
       }}

@@ -39,3 +39,19 @@ export const 日期段粒度 = (段: 日期段): "day" | "month" => (日期段�
 
 /** 口径 / 标题上的写法 */
 export const 日期段叫法 = (段: 日期段): string => `${段.from} 至 ${段.to}`;
+
+/**
+ * 列表按「创建时间」筛（11-11 客户、项目列表）：地址栏 createdFrom / createdTo 两个日历日，两头都算，边界按业务钟
+ * （企业版北京日：开始日 00:00 到结束日 23:59:59.999，同 日期段界）。和 读日期段 不同：没给 / 写错的那一头不限，
+ * 两头都没有就不筛（返回 null）；两头倒过来对调。
+ */
+export function 创建时间段(from?: string, to?: string): { gte?: Date; lte?: Date } | null {
+  const a = 是日期(from) ? from : "";
+  const b = 是日期(to) ? to : "";
+  if (!a && !b) return null;
+  const [起, 止] = a && b && a > b ? [b, a] : [a, b];
+  return {
+    ...(起 ? { gte: dayjs(起).startOf("day").toDate() } : {}),
+    ...(止 ? { lte: dayjs(止).endOf("day").toDate() } : {}),
+  };
+}

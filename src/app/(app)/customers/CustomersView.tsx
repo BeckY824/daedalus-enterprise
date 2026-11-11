@@ -49,6 +49,8 @@ import { 公海标签, type 客户页签归属 } from "@/lib/pool";
 import { 放进公海, 领取, 分配公海, 撤销公海, type 公海结果 } from "./pool-actions";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import ResetFilters from "@/components/ResetFilters";
+import CreatedRangeFilter from "@/components/CreatedRangeFilter";
+import PhoneFilter from "@/components/PhoneFilter";
 import { useCustomFilters } from "@/components/CustomFilters";
 import CurrencySelect from "@/components/CurrencySelect";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
@@ -91,6 +93,10 @@ type Props = {
   金额排序?: string;
   /** 按客户等级排（2026-10-16）：level-asc / level-desc */
   等级排序?: string;
+  /** 按创建时间排（11-11）：created-asc / created-desc；空 = 默认（新的在前） */
+  创建排序?: string;
+  /** 摆不摆「手机号」筛选：电话藏着的人（字段权限 Y27）不摆，服务端也不认。不给 = 摆 */
+  能按号码筛?: boolean;
   排序币种?: string;
   users: 可选成员[];
   /** 老板（管理员）：公海里的客户能直接「分配给…」某位同事（2026-10-20）。业务员不摆 */
@@ -176,6 +182,11 @@ type Props = {
     customerType?: string;
     /** 客户来源（企业版，11-06）：Customer.channelId */
     channelId?: string;
+    /** 创建（入库）时间段（11-11）：YYYY-MM-DD，两头都算，北京日 */
+    createdFrom?: string;
+    createdTo?: string;
+    /** 「手机号」筛选（11-11）：只比号码 */
+    phone?: string;
   };
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
   渠道筛选项?: { value: string; label: string }[];
@@ -230,7 +241,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -359,7 +370,7 @@ export default function CustomersView({
     setFormOpen(true);
   };
 
-  const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/customers", { ...filters, sort: 金额排序 || 等级排序, sortCurrency: 排序币种 ?? b.currency }, pageSize);
+  const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/customers", { ...filters, sort: 金额排序 || 等级排序 || 创建排序, sortCurrency: 排序币种 ?? b.currency }, pageSize);
   /**
    * 「空库」是「一条都没有 **且** 没在筛」。筛出 0 条不算——
    * 那时筛选栏必须留着，否则人看不见自己筛了什么，也点不到重置。
@@ -537,6 +548,21 @@ export default function CustomersView({
           ),
         }]
       : []),
+    // 手机号（11-11 使用方：「没有手机号……的筛选选项」）：只比号码，和搜索框里像号码的那一半同一套（去空格、横杠、括号、+86；输后几位也行），
+    // 客户电话、WhatsApp、联系人的手机号都比；默认收着，地址栏 phone=
+    ...(能按号码筛 ? [{
+      键: "phone", 名: "手机号", 宽: 160, 默认外露: false, 有值: !!f.phone,
+      渲染: (style: CSSProperties) => (
+        <PhoneFilter style={style} value={f.phone ?? ""} 改={(v) => apply({ phone: v })} />
+      ),
+    }] : []),
+    // 创建时间（11-11 使用方要统计上半年的客资）：默认收在「更多筛选」里，地址栏 createdFrom / createdTo，导出跟着同一份条件
+    {
+      键: "created", 名: "创建时间", 宽: 240, 默认外露: false, 有值: !!(f.createdFrom || f.createdTo),
+      渲染: (style: CSSProperties) => (
+        <CreatedRangeFilter style={style} from={f.createdFrom ?? ""} to={f.createdTo ?? ""} 改={(v) => apply(v)} />
+      ),
+    },
     ...(!企业
       ? [{
           键: "decisionStatus", 名: "决策状态", 宽: 140, 默认外露: false, 有值: !!f.decisionStatus,
@@ -716,6 +742,13 @@ export default function CustomersView({
 
     // 这一列一律打码显示，不给复制键：v 没打码时复制了就比屏幕上看到的多（电话、邮箱复制键见 CopyValue）
     { title: "联系电话", key: "phone", dataIndex: "phone", width: 140, 默认: false, render: (v) => <span className="nowrap">{maskPhone(v)}</span> },
+    // 创建（入库）时间（11-11）：默认收在「列」里；点表头在全部筛选结果里排（服务端 sort=created-asc / created-desc），不点就是默认的新的在前
+    {
+      title: "创建时间", key: "createdAt", dataIndex: "createdAt", width: 104, 默认: false,
+      sorter: true,
+      sortOrder: 创建排序 === "created-asc" ? "ascend" : 创建排序 === "created-desc" ? "descend" : null,
+      render: (v: string) => <span className="muted nowrap">{fmtDate(v)}</span>,
+    },
     { title: b.fields.grade, key: "grade", dataIndex: "grade", width: 90, 默认: false, render: (v) => v ?? <span className="muted">—</span> },
     // 企业版不摆决策状态、签约金额（10-28 去遗留 A1 / A4）
     ...(企业 ? [] : [{ title: "决策状态", key: "decisionStatus", dataIndex: "decisionStatus", width: 128, 默认: false, render: (v: string) => <DecisionStatusTag status={v} /> },
@@ -1047,6 +1080,7 @@ export default function CustomersView({
         排序={(key, order) => {
           if (key === "signedAmount") apply({ sort: order === "ascend" ? "amount-asc" : order === "descend" ? "amount-desc" : "", sortCurrency: f.sortCurrency || b.currency });
           if (key === "level") apply({ sort: order === "ascend" ? "level-asc" : order === "descend" ? "level-desc" : "" });
+          if (key === "createdAt") apply({ sort: order === "ascend" ? "created-asc" : order === "descend" ? "created-desc" : "" });
         }}
         替表格={看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
         汇总={金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}

@@ -12,6 +12,8 @@ import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
 import ResetFilters from "@/components/ResetFilters";
+import CreatedRangeFilter from "@/components/CreatedRangeFilter";
+import PhoneFilter from "@/components/PhoneFilter";
 import { useCustomFilters } from "@/components/CustomFilters";
 import { useBusiness } from "@/lib/business-client";
 import { useLocalPref } from "@/lib/local-pref";
@@ -81,14 +83,16 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [],
+  行, 列: 看板, 取到上限, users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [],
 }: {
   行: 项目行[];
   列: 看板一列[];
   取到上限: boolean;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string };
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; createdFrom?: string; createdTo?: string; phone?: string };
+  /** 摆不摆「手机号」筛选（电话藏着的人不摆）；不给 = 不摆 */
+  能按号码筛?: boolean;
   渠道筛选项?: { value: string; label: string }[];
   /** 服务端的 企业版()：结局叫法跟着字典 */
   企业版?: boolean;
@@ -232,9 +236,11 @@ export default function ProjectsView({
       { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: (a: 项目行, b: 项目行, 序?: string | null) => 按预计成交排(a.expectedDealAt, b.expectedDealAt, 序 === "descend"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
       { title: "已立项", key: "age", width: 80, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
       { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={r.项目来源}>{r.项目来源}</span> : 无) },
+      // 创建时间（11-11 渠道负责人要按入库时间分线索）：默认收在「列」里，点表头在这一页取回来的项目里排（列表最多 项目上限 条，和别的列排序一样）
+      { title: "创建时间", key: "createdAt", width: 104, 默认: false, sorter: (a: 项目行, b: 项目行) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""), render: (_: unknown, r: 项目行) => (r.createdAt ? <span className="nowrap">{fmtDate(r.createdAt)}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
-    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, sorter: (a: 项目行, b: 项目行) => a.ownerName.localeCompare(b.ownerName, "zh-CN"), render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),
     // 回公海日：明天（或今天）就回的直接写「明天回公海（11-06）」，再往后只写日期；不会收的（已结束、在订单阶段、在公海）是 —
     ...(企业版 ? [{ title: "回公海日", key: "recycleAt", width: 150, render: (_: unknown, r: 项目行) => (r.即将回收 ? <将收标 日={r.即将回收} /> : r.回收日 ? dayjs(r.回收日).format("MM-DD") : 无) }] : []),
     { title: "最近更新", key: "updatedAt", width: 100, ...收起, render: (_, r) => fmtDate(r.updatedAt) },
@@ -258,7 +264,7 @@ export default function ProjectsView({
   const 市场锁定 = new Set(["name", "phase", "node", "verify", "owner"]);
   // 判无效的写「叫法 · 原因」一行放不下就省略，悬停看每一步谁、哪天、判了什么（客户 11-05（X-09），lib/project/list.ts 读验证痕们）
   const 验证列: 列<项目行> = { title: "验证结果", key: "verify", width: 120, render: (_, r) => (有值(r.验证结果) ? <span className="fulltext" title={r.验证全文 || r.验证结果}>{r.验证结果}</span> : 无) };
-  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, render: (_, r) => (r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) };
+  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, sorter: (a, b) => a.ownerName.localeCompare(b.ownerName, "zh-CN"), render: (_, r) => (r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) };
   const 列表: 列<项目行>[] = 市场列
     ? [
         ...市场默认.map((k) => (k === "verify" ? 验证列 : k === "owner" ? 负责人列 : 找列(k))).filter((c): c is 列<项目行> => !!c),
@@ -328,6 +334,18 @@ export default function ProjectsView({
               键: "channelId", 名: "渠道", 宽: 150, 默认外露: false, 有值: !!f.channelId,
               渲染: (style: CSSProperties) => (
                 <Select style={style} aria-label="渠道" placeholder="全部渠道" allowClear showSearch={{ optionFilterProp: "label" }} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} popupMatchSelectWidth={false} />
+              ),
+            },
+            ...(能按号码筛 ? [{
+              // 手机号（11-11）：项目的客户号码（客户电话、WhatsApp、联系人手机）对得上的，和客户列表「手机号」同一套比法
+              键: "phone", 名: "手机号", 宽: 160, 默认外露: false, 有值: !!f.phone,
+              渲染: (style: CSSProperties) => <PhoneFilter style={style} value={f.phone ?? ""} 改={(v) => apply({ phone: v })} />,
+            }] : []),
+            {
+              // 创建时间（11-11）：默认收着，渠道页点数字进来要按入库时间分时在「更多筛选」里挑
+              键: "created", 名: "创建时间", 宽: 240, 默认外露: false, 有值: !!(f.createdFrom || f.createdTo),
+              渲染: (style: CSSProperties) => (
+                <CreatedRangeFilter style={style} from={f.createdFrom ?? ""} to={f.createdTo ?? ""} 改={(v) => apply(v)} />
               ),
             },
             {

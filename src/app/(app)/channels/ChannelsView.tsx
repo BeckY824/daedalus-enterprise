@@ -20,7 +20,8 @@ import { saveChannel, toggleChannel, deleteChannel } from "./actions";
 import { useBusiness } from "@/lib/business-client";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
-import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
+import Link from "next/link";
+import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, 名单链接, 名单差话, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../overview/funnel";
 import OptionInput from "@/components/OptionInput";
 import { 子渠道名, 子渠道提示, 主渠道名上限, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
@@ -261,7 +262,15 @@ export default function ChannelsView({
   const 数列 = (键: 数键, 说明: string, 标题: string = 键): 列<Row> => ({
     title: <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 104, align: "right",
     sorter: (a, b2) => 统计(a)[键] - 统计(b2)[键],
-    render: (_: unknown, r: Row) => (统计(r)[键] > 0 ? <span className="chan-num">{统计(r)[键]}</span> : 无),
+    render: (_: unknown, r: Row) => {
+      const n = 统计(r)[键];
+      if (n <= 0) return 无;
+      // 带名单的（企业版）：数字点了去项目列表看这几条（11-11）；没有名单的（团队版）照旧只是个数
+      const 名单 = 统计(r).名单;
+      if (!名单) return <span className="chan-num">{n}</span>;
+      const 差话 = 名单差话(n, 名单[键]);
+      return <Link href={名单链接(r.id, 键)} className="chan-num" title={差话 ?? `在项目列表里看这 ${n} 条`}>{n}</Link>;
+    },
   });
   /** 两个转化率列（10-30 B5）：分母 0 显示「—」，鼠标停上去看几个里有几个；口径见 channel-stats.ts 的 算转化 */
   const 转化列 = (键: "线索转商机" | "商机转订单", 标题: string, 说明: string): 列<Row> => ({
