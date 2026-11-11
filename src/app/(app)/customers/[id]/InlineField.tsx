@@ -143,7 +143,7 @@ export default function InlineField({
           {显示 && typeof display === "string" && display ? (
             <span className="rec-field-link">{显示(display)}</span>
           ) : kind === "textarea" && typeof display === "string" && display ? (
-            <长文 text={display} />
+            <LongText text={display} />
           ) : (
             display || (只读 || 空时横线 ? 空值符 : placeholder)
           )}
@@ -260,7 +260,7 @@ export default function InlineField({
  * 收不收只看真截没截（scrollHeight 比可见高度高）：样板之外没有 4 行的限制，量出来不截，按钮也不出。
  * 按钮只管展开，不进编辑（拦住冒泡，和电话旁的复制键一样）；点文字别处照旧进编辑
  */
-function 长文({ text }: { text: string }) {
+function LongText({ text }: { text: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [开, set开] = useState(false);
   const [截了, set截了] = useState(false);
