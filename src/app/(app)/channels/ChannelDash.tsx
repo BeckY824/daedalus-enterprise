@@ -13,6 +13,7 @@ import { Segmented, Select, Tooltip } from "antd";
 import { 合计文字 } from "@/lib/currency";
 import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
+import { beijingDay } from "@/lib/business-clock";
 import {
   周期们, 周期起点, 算看板, 判够占比, 预警线索下限, 自定义, 算进公海, 进公海明细, 原因最多,
   type 档, type 看板底数, type 看板渠道, type 看板公海,
@@ -27,7 +28,6 @@ function 百分(r: number | null): string {
 const 数 = (n: number) => n.toLocaleString("zh-CN");
 /** 上一层到这一层少了多少（比例超过 1 就是多了） */
 const 差 = (r: number | null) => (r == null ? "—" : r > 1 ? `+${百分(r - 1)}` : `−${百分(1 - r)}`);
-const 北京日 = (d: Date) => new Date(d.getTime() + 480 * 60_000).toISOString().slice(0, 10);
 
 /** 环形图各段的颜色（主题变量），超出的并成「其他」用浅色 */
 const 环色 = ["var(--brand)", "var(--cat-green)", "var(--cat-amber)", "var(--cat-violet)"];
@@ -101,7 +101,7 @@ export default function ChannelDash({
     <section className={`chan-dash${换着 ? " chan-dash-busy" : ""}`} aria-label="渠道总览" aria-busy={换着 || undefined}>
       <div className="chan-dash-bar">
         <span className="chan-dash-hint">
-          按筛选出的 {k.渠道数} 个渠道算{起 ? ` · ${北京日(起)} 起` : ""}
+          按筛选出的 {k.渠道数} 个渠道算{起 ? ` · ${beijingDay(起)} 起` : ""}
         </span>
         <span className="chan-dash-when">
           <Segmented size="small" value={期} onChange={(v) => 换档(v as 档)} options={[...周期们, 自定义]} aria-label="统计周期" />
