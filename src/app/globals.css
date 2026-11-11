@@ -3539,7 +3539,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   align-items: center; gap: 8px; min-width: 0;
 }
 .pool-sub-act { display: flex; align-items: center; gap: 4px; min-width: 0; justify-content: flex-end; }
-.pool-sub-why { font-size: 12px; }
+.pool-sub-why { font-size: var(--fs-min); }
 /* 客户池并成一行的项目名格：名字可缩、省略，「共 N 个项目」不缩 */
 .pool-many { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .pool-many > .fulltext { flex: 0 1 auto; }
