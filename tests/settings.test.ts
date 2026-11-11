@@ -130,7 +130,7 @@ describe("业务配置", () => {
 
   it("盯盘的沉睡文案跟着术语走", () => {
     const items = buildWatchlist(
-      { overduePlans: [], opportunities: [], customers: [{ id: "c", name: "甲", followStatus: "跟进中", lastFollowAt: new Date(Date.now() - 30 * 86400_000), createdAt: new Date(0), ownerName: "张三" }] },
+      { overduePlans: [], customers: [{ id: "c", name: "甲", followStatus: "跟进中", lastFollowAt: new Date(Date.now() - 30 * 86400_000), createdAt: new Date(0), ownerName: "张三" }] },
       new Date(),
       "客户",
     );
@@ -189,7 +189,7 @@ describe("状态显示名", () => {
   });
   it("盯盘文案用显示名", () => {
     const items = buildWatchlist(
-      { overduePlans: [], opportunities: [], customers: [{ id: "c", name: "甲", followStatus: "已试听", lastFollowAt: new Date(Date.now() - 30 * 86400_000), createdAt: new Date(0), ownerName: "张三" }] },
+      { overduePlans: [], customers: [{ id: "c", name: "甲", followStatus: "已试听", lastFollowAt: new Date(Date.now() - 30 * 86400_000), createdAt: new Date(0), ownerName: "张三" }] },
       new Date(),
       "学员",
       (v) => (v === "已试听" ? "已体验" : v),

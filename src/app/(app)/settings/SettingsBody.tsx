@@ -59,7 +59,7 @@ export default async function SettingsBody() {
     orderBy: { createdAt: "asc" },
     include: {
       // 客户数不算公海里的、回收站里的（11-04：公海里的负责人是原负责人，不是他手上的）
-      _count: { select: { salesCustomers: { where: { pool: { is: null }, deletedAt: null } }, opportunities: true, followUps: true } },
+      _count: { select: { salesCustomers: { where: { pool: { is: null }, deletedAt: null } }, followUps: true } },
     },
   });
   // 企业版只用项目（10-27 用户「改成项目数」）：「商机数」换成在跟的项目数（没结局、不在公海——公海里的 ownerId 是放回的人），
@@ -267,7 +267,8 @@ export default async function SettingsBody() {
         role: u.role,
         active: u.active,
         customerCount: u._count.salesCustomers,
-        oppCount: u._count.opportunities,
+        // 老商机表企业版由启动清理清空（11-11 起不再数）；企业版这一列换成上面的项目阶段数
+        oppCount: 0,
         ...(项目数 ? { 项目阶段: 阶段数of(u.id) } : {}),
         ...(业务角色of ? { 业务角色: 业务角色of(u) } : {}),
         ...(成员行 && 不管设置们.has(u.id) ? { 不管设置: true } : {}),

@@ -1,8 +1,8 @@
 /**
- * 盯盘名单在库里先粗筛沉睡客户、停滞商机（lib/sentinel-data.ts，2026-10-24 企业版压测），
+ * 盯盘名单在库里先粗筛沉睡客户（lib/sentinel-data.ts，2026-10-24 企业版压测；停滞商机 11-11 随商机读取收掉），
  * 和原来「全取回来交给 buildWatchlist 判」对拍：名单、顺序、总数必须完全一样。
  *
- *   - 随机数据：客户各种状态（含终态、暂缓、没权重的），最近跟进有空、有未来（录错）、有过去；商机开着 / 关了，activityAt 有空
+ *   - 随机数据：客户各种状态（含终态、暂缓、没权重的），最近跟进有空、有未来（录错）、有过去
  *   - 三成时刻落在边界上：离现在 11–15 个 24 小时前后 1 毫秒、每天零点前后 1 毫秒、现在这一刻
  *   - 时区：Asia/Shanghai、Europe/London、America/New_York（夏令时那几天）
  *   - 按人看（业务员）和看全部各一遍
@@ -17,7 +17,7 @@ import { dayjs } from "@/lib/utils";
 import { buildWatchlist } from "@/lib/sentinel";
 import { loadWatchlistPage, _内部 } from "@/lib/sentinel-data";
 import { getBusiness } from "@/lib/business";
-import { statusLabel, stageLabel } from "@/lib/business-config";
+import { statusLabel } from "@/lib/business-config";
 
 const 原TZ = process.env.TZ;
 afterAll(() => {
@@ -69,29 +69,15 @@ async function 灌(now: Dayjs, 种子: number, 编号 = (i: number) => `pf${种�
     };
   });
   await prisma.customer.createMany({ data: 客户 });
-  await prisma.opportunity.createMany({
-    data: Array.from({ length: 120 }, (_, i) => ({
-      name: `商机${i}`,
-      customerId: 客户[i].id,
-      ownerId: 人们[(i + 1) % 2],
-      status: r() < 0.8 ? "OPEN" : r() < 0.5 ? "WON" : "LOST",
-      updatedAt: 挑(),
-      activityAt: r() < 0.3 ? null : 挑(),
-    })),
-  });
   return 人们;
 }
 
 /** 原来的取法：不粗筛，全取回来交给 buildWatchlist */
 async function 原来(now: Dayjs, 谁的?: string) {
-  const [customers, opps, business] = await Promise.all([
+  const [customers, business] = await Promise.all([
     prisma.customer.findMany({
       where: { followStatus: { notIn: ["已签约", "已流失", "暂缓跟进"] }, ...(谁的 ? { salesOwnerId: 谁的 } : {}) },
       select: { id: true, name: true, followStatus: true, lastFollowAt: true, createdAt: true, salesOwner: { select: { name: true } } },
-    }),
-    prisma.opportunity.findMany({
-      where: { status: "OPEN", ...(谁的 ? { ownerId: 谁的 } : {}) },
-      select: { name: true, stage: true, updatedAt: true, activityAt: true, customer: { select: { id: true, name: true } }, owner: { select: { name: true } } },
     }),
     getBusiness(),
   ]);
@@ -99,7 +85,6 @@ async function 原来(now: Dayjs, 谁的?: string) {
     {
       overduePlans: [],
       customers: customers.map((c) => ({ id: c.id, name: c.name, followStatus: c.followStatus, lastFollowAt: c.lastFollowAt, createdAt: c.createdAt, ownerName: c.salesOwner.name })),
-      opportunities: opps.map((o) => ({ customerId: o.customer.id, customerName: o.customer.name, ownerName: o.owner.name, name: o.name, stage: stageLabel(business, o.stage), updatedAt: o.activityAt ?? o.updatedAt })),
     },
     now.toDate(),
     business.customer,
@@ -143,8 +128,8 @@ describe("盯盘粗筛：和全取回来判一模一样", () => {
         expect(await _内部.沉睡前几名({ now, 边界: 边界!, 前几名: 8, 别的客户: [] }), `走库里 · ${iso}`).not.toBeNull();
         for (const 谁的 of [undefined, 人们[0]]) {
           const 基准 = await 原来(now, 谁的);
-          // 粗筛真的筛到了东西才算测到：基准里得有沉睡和停滞的
-          expect(基准.some((x) => x.kind === "sleeping") && 基准.some((x) => x.kind === "stalled_opp"), `有料 · ${iso}`).toBe(true);
+          // 粗筛真的筛到了东西才算测到：基准里得有沉睡的
+          expect(基准.some((x) => x.kind === "sleeping"), `有料 · ${iso}`).toBe(true);
           const 新 = await 现在的(now, 谁的);
           expect(新.total, `总数 · ${iso} · ${谁的 ?? "全部"}`).toBe(基准.length);
           expect(新.全, `名单 · ${iso} · ${谁的 ?? "全部"}`).toEqual(基准);

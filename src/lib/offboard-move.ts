@@ -1,5 +1,4 @@
 import type { Prisma } from "@/generated/prisma";
-import { 转交商机 } from "@/lib/opportunity-activity";
 import { 转项目 } from "@/lib/carry-over-db";
 import { 记换负责人 } from "@/lib/owner-log-db";
 import { 转让痕 } from "@/lib/project/db";
@@ -17,7 +16,7 @@ import { 换负责人 } from "@/lib/project/owner-write";
  * 两半都在调用方的事务里跑，分拣（停用分拣）也由调用方在同一笔事务里先做
  */
 
-/** 给接手人的那半：客户改负责人（记历史负责人）、进行中商机、没做完的待办计划、线索、渠道（企业版连主渠道负责人）、项目。返回转走的项目 id */
+/** 给接手人的那半：客户改负责人（记历史负责人）、没做完的待办计划、线索、渠道（企业版连主渠道负责人）、项目。返回转走的项目 id */
 export async function 离职转给接手人(
   tx: Prisma.TransactionClient,
   分: 停用分拣结果,
@@ -29,7 +28,6 @@ export async function 离职转给接手人(
   await tx.customer.updateMany({ where: { id: { in: 分.客户 } }, data: { salesOwnerId: 接手人 } });
   // 历史负责人：每位转走的客户记一行「他 → 接手人」（D-36）；进公海的另记，见 离职放进公海
   await 记换负责人(tx, 分.客户.map((customerId) => ({ customerId, from: id, to: 接手人 })), 操作人, "deactivate");
-  await 转交商机(tx, { id: { in: 分.商机 }, ownerId: id, status: "OPEN" }, 接手人);
   await tx.task.updateMany({ where: { id: { in: 分.待办 } }, data: { ownerId: 接手人 } });
   await tx.followPlan.updateMany({ where: { id: { in: 分.计划 } }, data: { ownerId: 接手人 } });
   /**

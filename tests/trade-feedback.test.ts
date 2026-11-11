@@ -221,14 +221,13 @@ describe("导出：xlsx 两张表，带跟进记录", () => {
     expect(strFromU8(文件["xl/worksheets/sheet1.xml"])).toContain('state="frozen"');
   });
 
-  it("导出客户带上这些客户的跟进，按客户、再按时间先后；挂商机的写商机名", async () => {
+  it("导出客户带上这些客户的跟进，按客户、再按时间先后；「关联商机」那一列 11-11 去掉（企业版商机表已清空）", async () => {
     await 外贸();
     const a = await 客户("A");
     const b2 = await 客户("B");
     // 两位同一毫秒建出来时列表顺序不定：把 A 的建档时间往前挪，列表（新的在前）就是 B、A
     await prisma.customer.update({ where: { id: a.id }, data: { createdAt: new Date(2026, 0, 1) } });
-    const opp = await prisma.opportunity.create({ data: { name: "庭院灯", customerId: a.id, amount: 10, ownerId: jia.id } });
-    await saveFollowUp({ customerId: a.id, type: "PHONE", content: "第二次", status: "已完成", occurredAt: new Date(2026, 9, 2).toISOString(), opportunityId: opp.id });
+    await saveFollowUp({ customerId: a.id, type: "PHONE", content: "第二次", status: "已完成", occurredAt: new Date(2026, 9, 2).toISOString() });
     await saveFollowUp({ customerId: a.id, type: "PHONE", content: "第一次", status: "已完成", occurredAt: new Date(2026, 9, 1).toISOString() });
     await saveFollowUp({ customerId: b2.id, type: "EMAIL", content: "B 的", status: "已完成", occurredAt: new Date(2026, 8, 1).toISOString() });
     await patchCustomer(a.id, "country", "美国");
@@ -243,8 +242,7 @@ describe("导出：xlsx 两张表，带跟进记录", () => {
     const 跟 = 跟进导出表(出.跟进, b);
     // 客户顺序同列表（新建的在前：B、A），每位里按时间先后
     expect(跟.body.map((x) => x[5])).toEqual(["B 的", "第一次", "第二次"]);
-    expect(跟.body[2][7]).toBe("庭院灯");
-    expect(跟.head[7]).toBe("关联商机");
+    expect(跟.head.slice(1)).toEqual(["联系电话", "时间", "方式", "标题", "内容", "状态", "记录人"]);
   });
 
   it("外贸导出的第一张表原样导回来：国家、WhatsApp、邮箱、来源各落各的格，不进备注", async () => {
@@ -279,11 +277,10 @@ describe("复查一轮（10-06）", () => {
     const 找 = JSON.stringify((await TOOLS.find((t) => t.name === "find_person")!.run({ name: "Ahmed" }, ctx as never)).data);
     expect(找).toContain("已下单");
     expect(找).not.toContain("已签约");
+    // get_customer 的商机一段 11-11 去掉（企业版商机表已清空）：库里有也不读、不报
     await prisma.opportunity.create({ data: { name: "租赁屏", customerId: c.id, amount: 50, stage: "初步沟通", status: "OPEN", probability: 10, ownerId: jia.id } });
     const 读 = JSON.stringify((await TOOLS.find((t) => t.name === "get_customer")!.run({ id: c.id }, ctx as never)).data);
-    expect(读).toContain("租赁屏");
-    expect(读, "外贸的阶段叫询盘").toContain("询盘");
-    expect(读).not.toContain("初步沟通");
+    expect(读).not.toContain("租赁屏");
     expect(读).not.toMatch(/\bWON\b/);
     const 数 = await TOOLS.find((t) => t.name === "query_metric")!.run({ metric: "contract_count", groupBy: null, from: null, to: null }, ctx as never);
     expect(数.summary).toContain("订单单数");

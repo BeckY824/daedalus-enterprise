@@ -145,19 +145,6 @@ export type RecordProps = {
   参与项目们?: import("@/lib/project/relate").参与项目行[] | null;
   customer: CustomerRow;
   contacts: ContactRow[];
-  opportunities: {
-    id: string;
-    name: string;
-    amount: number;
-    /** 币种（2026-10-03）。老行没有就当人民币 */
-    currency?: string;
-    stage: string;
-    status: string;
-    probability: number;
-    expectedDealAt: string | null;
-    /** 外贸模版下叫「询盘时间」（2026-10-05）：商机是哪天来的，人能改 */
-    createdAt?: string;
-  }[];
   contracts: ContractRow[];
   tasks: { id: string; title: string; dueAt: string | null; dueHasTime?: boolean | null; done: boolean }[];
   /** updatedAt：编辑框的版本号（J-105） */

@@ -159,7 +159,7 @@ describe("企业版：转客户、并进老客户", () => {
     expect((await 列出(`leadId=${l.id}`)).附件).toHaveLength(2);
 
     const 数 = await 客户附件个数(prisma, [r.customerId], true);
-    expect(数.get(r.customerId)).toEqual({ 商机: 0, 联系人: 2 });
+    expect(数.get(r.customerId)).toEqual({ 联系人: 2 });
     expect((await 客户附件个数(prisma, [r.customerId], false)).get(r.customerId)).toBeUndefined();
   });
 
@@ -218,9 +218,9 @@ describe("清孤儿", () => {
 });
 
 describe("导出", () => {
-  it("附件个数说法带上联系人", () => {
-    expect(附件个数说法({ 商机: 1, 联系人: 2 })).toBe("商机 1 张、联系人 2 张");
-    expect(附件个数说法({ 商机: 0 })).toBe("");
+  it("附件个数说法只说联系人（商机附件 11-11 起不数）", () => {
+    expect(附件个数说法({ 联系人: 2 })).toBe("联系人 2 张");
+    expect(附件个数说法({ 联系人: 0 })).toBe("");
   });
 });
 

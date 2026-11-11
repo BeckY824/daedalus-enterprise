@@ -117,7 +117,7 @@ describe("删客户", () => {
     await saveTask({ customerId: 别人.id, title: "别人的待办" });
 
     const 清点 = await 删除前清点([c.id]);
-    expect(清点).toMatchObject({ 跟进: 2, 商机: 2, 签约: 1, 联系人: 2, 线索: 0 });
+    expect(清点).toMatchObject({ 跟进: 2, 签约: 1, 联系人: 2, 线索: 0 });
     const r = await deleteCustomers([c.id]);
     expect(r).toMatchObject({ ok: true, deleted: 1, 留下联系人: 2 });
 

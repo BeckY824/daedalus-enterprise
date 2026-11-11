@@ -26,7 +26,7 @@ import { 卡点类型们, 影响等级们 } from "../project/blocker-rules";
  * 合同的老入口 10-28 也关了（只用项目挡老入口），提议签约 / 查老表只会落到看不见的数据上。
  * 直连里写死的工具不在表里就跳过，交给模型选（订单页和 list_orders 10-28 已删）。
  * 商机的两个工具（list_opportunities、propose_opportunity）2026-11-11 连定义一起删了：企业版只用项目恒真，它们一直被滤掉；
- * 直连和页面说明里写死的 list_opportunities 照旧由下面 换成项目 换成 list_projects（phase=商机）。
+ * 直连（intents.ts 的「商机清单」）直接写 list_projects（phase=商机），不再经 换成项目。
  */
 export const 只用项目不给 = ["list_leads", "propose_contract", "list_contracts"];
 
@@ -54,13 +54,12 @@ export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只�
 export function 换成项目(c: { name: string; args: Record<string, unknown> }): { name: string; args: Record<string, unknown> } {
   const 词 = (v: unknown) => (typeof v === "string" && v.trim() ? { keyword: v.trim() } : {});
   if (c.name === "list_leads") return { name: "list_projects", args: { phase: "线索", ...词(c.args.keyword) } };
-  if (c.name === "list_opportunities") return { name: "list_projects", args: { phase: "商机", ...词(c.args.customerName) } };
   return c;
 }
 
 /** 页面上下文那段话里指路的老表工具，同样换成按阶段查项目（新线索页指的还是 list_leads） */
 export function 页面说法换成项目(s: string): string {
-  return s.replace(/list_leads/g, "list_projects（phase=线索）").replace(/list_opportunities/g, "list_projects（phase=商机）");
+  return s.replace(/list_leads/g, "list_projects（phase=线索）");
 }
 import { SCHEMAS } from "./schemas";
 import { 查询表 } from "./query";
@@ -427,7 +426,7 @@ ${工作方式}
     只用项目
       ? `
 - **这一家只用项目**：线索、商机、订单是同一个项目的三个阶段（新线索 → 商机 → 订单），没有单独的线索表和商机表。
-  问线索、商机、订单都用 list_projects（phase 选阶段）；页面说明里要是写着 list_leads / list_opportunities，也一样换成 list_projects
+  问线索、商机、订单都用 list_projects（phase 选阶段）；页面说明里要是写着 list_leads，也一样换成 list_projects
 - **建档（名片、聊天记录）**：只按已有的字段填，不新造字段；对不上任何字段的写进备注，邮箱、微信、阿里国际站ID（旺旺号、阿里买家 ID 都算这个）各写一行「邮箱：…」「微信：…」「阿里国际站ID：…」。
   回答分「事实」「推断」「建议」三段，能列成表格的用表格；联系方式查重由系统做，撞了会直接告诉你原负责人，你照原话转告即可
 - **改项目、卡点、回款、验证、联系人，或删除东西：只在人明确要求时才用对应的 propose_* 工具**（propose_project_node 推进节点 / 定结局，
@@ -699,7 +698,7 @@ ${工作方式}
         `${TOOLS.filter((t) => SCHEMAS[t.name] && t.name !== tool.name).map((t) => t.name).join("、")}。` +
         (只用项目
           ? `项目（list_projects，线索 / 商机 / 订单是它的三个阶段）、渠道（list_channels）和客户（search_customers）是**不同的表**，`
-          : `线索（list_leads）、商机（list_opportunities）、渠道（list_channels）和客户（search_customers）是**不同的表**，`) +
+          : `线索（list_leads）、渠道（list_channels）和客户（search_customers）是**不同的表**，`) +
         `在一张表里查不到的东西要换一张表查。都查不到就直接作答，如实说没找到。`;
       // 回执的最后一条是留给结果的占位：原生那条按 tool_call_id 对上，JSON 协议那条是 user
       const 回执 = 选择.回执;

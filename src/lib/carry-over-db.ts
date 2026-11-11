@@ -1,5 +1,4 @@
 import type { Prisma } from "@/generated/prisma";
-import { 转交商机 } from "@/lib/opportunity-activity";
 import { prisma } from "@/lib/prisma";
 import { 记转让, 转让痕, 收回提醒尾, 旧收回提醒尾, 将回收提醒跟着换人, 算持有的项目 } from "@/lib/project/db";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -200,7 +199,7 @@ export async function 还项目(tx: Prisma.TransactionClient, ids: string[] | un
 
 /**
  * 企业版撤销转客户之前核对（P-撤销-01 按原样回滚，不半撤）：带过来的每一条都还得是转过去时的样子——
- * 还在这几位客户下、还归 新：计划 / 待办没做完，商机还在谈，项目没进公海；市场转给销售清掉的待分配还空着、补上的分配方式还是那一格。
+ * 还在这几位客户下、还归 新：计划 / 待办没做完，项目没进公海；市场转给销售清掉的待分配还空着、补上的分配方式还是那一格。
  * 被删了、被人改走了、做完了都算对不上。回对不上几条；0 = 都对得上
  */
 export async function 带过来对不上(tx: Prisma.TransactionClient, 带过来: 带走的, customerIds: string[], 新: string): Promise<number> {
@@ -212,7 +211,6 @@ export async function 带过来对不上(tx: Prisma.TransactionClient, 带过来
   const 差 = await Promise.all([
     数(带过来.计划, (ids) => tx.followPlan.count({ where: { id: { in: ids }, customerId: 客户, ownerId: 新, done: false } })),
     数(带过来.待办, (ids) => tx.task.count({ where: { id: { in: ids }, customerId: 客户, ownerId: 新, done: false } })),
-    数(带过来.商机, (ids) => tx.opportunity.count({ where: { id: { in: ids }, customerId: 客户, ownerId: 新, status: "OPEN" } })),
     数([...(带过来.项目 ?? []), ...(带过来.公海项目 ?? [])], (ids) => tx.project.count({ where: { id: { in: ids }, customerId: 客户, ownerId: 新, pooledAt: null } })),
     数(带过来.清待分配?.map((x) => x.id), (ids) => tx.project.count({ where: { id: { in: ids }, customerId: 客户, ownerId: 新, pooledAt: null, result: null, awaitAssignAt: null } })),
     数(带过来.补方式, (ids) => tx.project.count({ where: { id: { in: ids }, customerId: 客户, ownerId: 新, assignMode: 客户层分配方式 } })),
@@ -336,7 +334,7 @@ export function 不跟着转的提醒(kind: 换负责人种类): Prisma.TaskWher
  *   deactivate：再加已停用同事负责、没结局的（P-转-18，11-09 定），接手人再定继续还是放回公海；
  *   claim / pool-assign（从客户公海领 / 分）：线索公海里的由调用方 领客户带走公海项目 带（M-公海-05）；
  * 留下待办计划（只有市场转给销售传，X-18 / X-45 / P-转-10）：原负责人的待办、计划不搬、不关，还归他；
- * 客户负责人、项目、公海项目、联系人（跟客户走）、进行中的商机照走。别的入口不传，照旧带活
+ * 客户负责人、项目、公海项目、联系人（跟客户走）照走。别的入口不传，照旧带活
  * 项目痕（同样只有市场转给销售传）：被带走的项目那行转让痕记这一句，「我分出去的」按它认
  * 记录种类（同样只有市场转给销售传 market-assign）：换负责人记录记成「分配」、不算转客户（P-转-03、P-公海-11）；带什么照 kind
  */
@@ -345,10 +343,10 @@ export async function 带走一位(tx: Prisma.TransactionClient, customerId: str
   const 留下 = 选项.留下待办计划 === true;
   const 计划 = 留下 ? [] : (await tx.followPlan.findMany({ where: { customerId, ownerId: 实际旧, done: false }, select: { id: true } })).map((x) => x.id);
   const 待办 = 留下 ? [] : (await tx.task.findMany({ where: { customerId, ownerId: 实际旧, done: false, AND: 不跟着转的提醒(kind) }, select: { id: true } })).map((x) => x.id);
-  const 商机 = (await tx.opportunity.findMany({ where: { customerId, ownerId: 实际旧, status: "OPEN" }, select: { id: true } })).map((x) => x.id);
+  // 商机不再跟着转（11-11）：企业版只用项目，商机表由启动清理（lib/enterprise/legacy-cleanup.ts）清空；撤销数据里这一格留着空数组，老撤销条照样认
+  const 商机: string[] = [];
   if (计划.length) await tx.followPlan.updateMany({ where: { id: { in: 计划 } }, data: { ownerId: 新 } });
   if (待办.length) await tx.task.updateMany({ where: { id: { in: 待办 } }, data: { ownerId: 新 } });
-  if (商机.length) await 转交商机(tx, { id: { in: 商机 } }, 新);
   const 转客户 = 企业版() && kind === "assign";
   const 项目痕 = 选项.项目痕 ?? null;
   // 同事负责、正在待分配的（用户 11-09 定）：先查（原负责人自己的转完也归 新，不能混进来）；转项目 跳过接手人自己占着的，那些只清状态

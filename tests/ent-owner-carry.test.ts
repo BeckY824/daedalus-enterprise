@@ -159,13 +159,12 @@ afterEach(() => { vi.unstubAllEnvs(); invalidateSettingsCache(); });
 
 describe("决定一 1：市场首次分给销售，待办、计划不搬、不关", () => {
   for (const [说法, 勾] of [["没传勾", undefined], ["伪造 带待办=true", true], ["伪造 带待办=false", false]] as const) {
-    it(`手动分（${说法}）：还归原负责人；客户、原负责人的项目、公海项目、联系人、进行中的商机照走`, async () => {
+    it(`手动分（${说法}）：还归原负责人；客户、原负责人的项目、公海项目、联系人照走（商机 11-11 起不跟）`, async () => {
       const c = await 客户(市场.id);
       const p = await 项目(c, 市场.id);
       const 别的 = await 项目(c, 市场.id);
       const 公海的 = await 项目(c, 市场.id, { pooledAt: new Date() });
       const 联系人 = (await prisma.contact.create({ data: { name: "王联系", customerId: c } })).id;
-      const 商机 = (await prisma.opportunity.create({ data: { name: "商机", customerId: c, ownerId: 市场.id } })).id;
       const t = await 待办(c, 市场.id);
       const 点名 = await 待办(c, 市场.id, `跟进「${(await 项目of(p)).name}」`);
       const pl = await 计划(c, 市场.id);
@@ -178,7 +177,6 @@ describe("决定一 1：市场首次分给销售，待办、计划不搬、不�
       expect(await 客户负责人(c)).toBe(甲.id);
       for (const id of [p, 别的, 公海的]) expect(await 项目of(id)).toMatchObject({ ownerId: 甲.id, pooledAt: null });
       expect((await prisma.contact.findUniqueOrThrow({ where: { id: 联系人 } })).customerId).toBe(c);
-      expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 商机 } })).ownerId).toBe(甲.id);
       // 留痕也不说带了 / 关了待办
       const 痕 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: p, kind: "transfer", toOwnerId: 甲.id } });
       expect(痕.reason).toBe("分配方式：指定分配");

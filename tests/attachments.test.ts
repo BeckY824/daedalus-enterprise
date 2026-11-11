@@ -1,14 +1,15 @@
 /**
- * 商机的附件（2026-10-22 D-24）。
+ * 附件的通用规矩和接口（2026-10-22 D-24 起先挂商机；11-11 商机读取收掉后改挂企业版联系人，联系人那一套的细节在 contact-attachments.test.ts）。
  *
  * 钉的是：
  *   - 规矩：超了说清超了多少、大小写给人看、改成 .jpg、编号挡 ../、文件名去路径
  *   - 存 / 列 / 删：文件在数据目录 attachments/<编号>，行只记名字和大小；文件不在照样列出来、标「不在这台电脑上」
  *   - 接口：传上去、取回来字节一样；这一版只收图片（别的 415）；超上限 413 且说清超了多少；库里万一有不是图片的，取的时候一律当下载；删了文件也没了
- *   - 清孤儿：商机删了先不动（能撤销），满 1 天才连文件删；没有行的文件 10 分钟后删
+ *   - 老商机附件：?opportunityId= 一律当不在（404，不再查商机表）；清孤儿时只挂商机的算孤儿（商机表那行还在也算）
+ *   - 清孤儿：联系人删了先不动（能撤销），满 1 天才连文件删；没有行的文件 10 分钟后删
  *   - 导出客户：Excel 里多一列「图片张数」（不带图片）；导回来这列不收、不并进备注
  */
-import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -30,16 +31,21 @@ const 目录 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-att-"));
 process.env.CRM_DATA_DIR = 目录;
 const 附件夹 = path.join(目录, "attachments");
 
-let ids: { customer: string; opp: string };
+let ids: { customer: string; contact: string; user: string };
 beforeEach(async () => {
+  vi.stubEnv("CRM_ENTERPRISE", "1");
   await resetDb();
+  await prisma.attachment.deleteMany();
   fs.rmSync(附件夹, { recursive: true, force: true });
   const u = await prisma.user.create({ data: { email: "qa-att", name: "QA", role: "ADMIN", password: "unused" } });
+  // 传要负责人（销售），删只给总管理：QA 两个角色都有（同 contact-attachments.test.ts）
+  await prisma.entMember.create({ data: { userId: u.id, bizRole: "sales,director" } });
   state.user = { id: u.id, name: "QA", email: "qa-att", role: "ADMIN", title: "管理员" };
   const c = await prisma.customer.create({ data: { name: "QA-附件客户", phone: "", salesOwnerId: u.id } });
-  const o = await prisma.opportunity.create({ data: { name: "QA-附件商机", customerId: c.id, ownerId: u.id } });
-  ids = { customer: c.id, opp: o.id };
+  const ct = await prisma.contact.create({ data: { name: "QA-附件联系人", customerId: c.id } });
+  ids = { customer: c.id, contact: ct.id, user: u.id };
 });
+afterEach(() => vi.unstubAllEnvs());
 afterAll(async () => {
   await prisma.attachment.deleteMany();
   await prisma.$disconnect();
@@ -84,24 +90,26 @@ describe("规矩", () => {
 
 describe("存 / 列 / 删", () => {
   it("文件按编号存，行记名字大小；文件不在也照样列出来", async () => {
-    const a = await 存附件(prisma, { 挂在: { opportunityId: ids.opp }, name: "报价单.pdf", mime: "application/pdf", 字节: 字节("PDF!") });
+    const a = await 存附件(prisma, { 挂在: { contactId: ids.contact }, name: "报价单.pdf", mime: "application/pdf", 字节: 字节("PDF!") });
     expect(fs.readFileSync(附件文件(a.id), "utf8")).toBe("PDF!");
     expect(a).toMatchObject({ name: "报价单.pdf", size: 4, 有文件: true });
     expect(await 确保文件(a.id)).toBe("有");
     fs.rmSync(附件文件(a.id));
     expect(await 确保文件(a.id)).toBe("没有");
-    expect(await 列附件(prisma, { opportunityId: ids.opp })).toMatchObject([{ id: a.id, 有文件: false }]);
+    expect(await 列附件(prisma, { contactId: ids.contact })).toMatchObject([{ id: a.id, 有文件: false }]);
     await 删附件(prisma, a.id);
-    expect(await 列附件(prisma, { opportunityId: ids.opp })).toEqual([]);
+    expect(await 列附件(prisma, { contactId: ids.contact })).toEqual([]);
   });
 
-  it("个数：按商机，再按客户合起来（订单那种 2026-10-29 随订单表删了）", async () => {
-    for (let i = 0; i < 2; i++) await 存附件(prisma, { 挂在: { opportunityId: ids.opp }, name: `图${i}.jpg`, mime: "image/jpeg", 字节: 字节("x") });
-    const 数 = await 附件个数(prisma, { opportunityIds: [ids.opp] });
-    expect(数.商机.get(ids.opp)).toBe(2);
-    const 按客户 = await 客户附件个数(prisma, [ids.customer, "没有这位"]);
-    expect(按客户.get(ids.customer)).toEqual({ 商机: 2 });
+  it("个数：按联系人，再按客户合起来；商机附件不再数（11-11，商机表企业版已清空）", async () => {
+    for (let i = 0; i < 2; i++) await 存附件(prisma, { 挂在: { contactId: ids.contact }, name: `图${i}.jpg`, mime: "image/jpeg", 字节: 字节("x") });
+    const 数 = await 附件个数(prisma, { contactIds: [ids.contact] });
+    expect(数.联系人.get(ids.contact)).toBe(2);
+    const 按客户 = await 客户附件个数(prisma, [ids.customer, "没有这位"], true);
+    expect(按客户.get(ids.customer)).toEqual({ 联系人: 2 });
     expect(按客户.has("没有这位")).toBe(false);
+    // 不含联系人：什么都不数
+    expect((await 客户附件个数(prisma, [ids.customer])).size).toBe(0);
   });
 });
 
@@ -110,10 +118,10 @@ describe("接口", () => {
     传(new Request(`http://x/api/attachments?${q}`, { method: "POST", body: 体, headers: { "Content-Type": 类型, "Content-Length": String(体.byteLength) } }));
 
   it("传上去、列出来、取回来字节一样；删了文件也没了", async () => {
-    const r = await 传一个(`opportunityId=${ids.opp}&name=${encodeURIComponent("产品图.jpg")}`, 字节("规格"));
+    const r = await 传一个(`contactId=${ids.contact}&name=${encodeURIComponent("产品图.jpg")}`, 字节("规格"));
     expect(r.status).toBe(200);
     const { 附件: a } = await r.json();
-    const 表 = await (await 列(new Request(`http://x/api/attachments?opportunityId=${ids.opp}`))).json();
+    const 表 = await (await 列(new Request(`http://x/api/attachments?contactId=${ids.contact}`))).json();
     expect(表.附件.map((x: { name: string }) => x.name)).toEqual(["产品图.jpg"]);
 
     const 回 = await 取(new Request(`http://x/api/attachments/${a.id}`), { params: Promise.resolve({ id: a.id }) });
@@ -128,7 +136,7 @@ describe("接口", () => {
   });
 
   it("图片按原类型给，能在页面里显示", async () => {
-    const { 附件: a } = await (await 传一个(`opportunityId=${ids.opp}&name=a.png&w=10&h=20`, 字节("PNG"), "image/png")).json();
+    const { 附件: a } = await (await 传一个(`contactId=${ids.contact}&name=a.png&w=10&h=20`, 字节("PNG"), "image/png")).json();
     expect(a).toMatchObject({ width: 10, height: 20, mime: "image/png" });
     const 回 = await 取(new Request(`http://x/api/attachments/${a.id}`), { params: Promise.resolve({ id: a.id }) });
     expect(回.headers.get("content-type")).toBe("image/png");
@@ -140,7 +148,7 @@ describe("接口", () => {
 
   it("这一版只收图片：PDF、SVG、没写类型的都回 415，说清只收哪几种，一个字节都不落", async () => {
     for (const [名, 类型] of [["规格书.pdf", "application/pdf"], ["logo.svg", "image/svg+xml"], ["a.html", "text/html"], ["无类型", ""]]) {
-      const r = await 传(new Request(`http://x/api/attachments?opportunityId=${ids.opp}&name=${encodeURIComponent(名)}`, {
+      const r = await 传(new Request(`http://x/api/attachments?contactId=${ids.contact}&name=${encodeURIComponent(名)}`, {
         method: "POST", body: 字节("x"), headers: 类型 ? { "Content-Type": 类型 } : {},
       }));
       expect(r.status, 名).toBe(415);
@@ -152,14 +160,14 @@ describe("接口", () => {
   });
 
   it("库里万一有不是图片的（以后放开别的文件、或老库），取的时候一律当下载：.html / .svg 在本站打开能跑脚本", async () => {
-    const a = await 存附件(prisma, { 挂在: { opportunityId: ids.opp }, name: "a.html", mime: "text/html", 字节: 字节("<script>") });
+    const a = await 存附件(prisma, { 挂在: { contactId: ids.contact }, name: "a.html", mime: "text/html", 字节: 字节("<script>") });
     const 回 = await 取(new Request(`http://x/api/attachments/${a.id}`), { params: Promise.resolve({ id: a.id }) });
     expect(回.headers.get("content-type")).toBe("application/octet-stream");
     expect(回.headers.get("content-disposition")).toMatch(/^attachment;/);
   });
 
   it("超上限 413，说清超了多少，一个字节都不落", async () => {
-    const r = await 传(new Request(`http://x/api/attachments?opportunityId=${ids.opp}&name=big.jpg`, {
+    const r = await 传(new Request(`http://x/api/attachments?contactId=${ids.contact}&name=big.jpg`, {
       method: "POST", body: 字节("x"), headers: { "Content-Type": "image/jpeg", "Content-Length": String(附件上限字节 + 1024 * 1024) },
     }));
     expect(r.status).toBe(413);
@@ -167,21 +175,34 @@ describe("接口", () => {
     expect(await prisma.attachment.count()).toBe(0);
   });
 
-  it("没登录 401；商机不在 404；参数不对 400；空文件 400", async () => {
-    expect((await 传一个(`opportunityId=nothere0001&name=a.pdf`, 字节("x"))).status).toBe(404);
-    expect((await 传一个(`opportunityId=${ids.opp}&leadId=x`, 字节("x"))).status).toBe(400);
+  it("没登录 401；联系人不在 404；老商机附件一律当不在 404；参数不对 400；空文件 400", async () => {
+    expect((await 传一个(`contactId=nothere0001&name=a.pdf`, 字节("x"))).status).toBe(404);
+    // 商机表那行还在也一样：11-11 起不再查商机表（企业版只用项目，商机表由启动清理清空）
+    const 老商机 = await prisma.opportunity.create({ data: { name: "QA-老商机", customerId: ids.customer, ownerId: ids.user } });
+    expect((await 传一个(`opportunityId=${老商机.id}&name=a.png`, 字节("x"), "image/png")).status).toBe(404);
+    expect((await 列(new Request(`http://x/api/attachments?opportunityId=${老商机.id}`))).status).toBe(404);
+    expect((await 传一个(`contactId=${ids.contact}&leadId=x`, 字节("x"))).status).toBe(400);
     // 订单那种 2026-10-29 随订单表删了：老客户端再传 orderId 当参数不对
     expect((await 传一个(`orderId=whatever&name=a.png`, 字节("x"), "image/png")).status).toBe(400);
-    expect((await 传一个(`opportunityId=${ids.opp}&name=a.pdf`, new Uint8Array())).status).toBe(400);
+    expect((await 传一个(`contactId=${ids.contact}&name=a.pdf`, new Uint8Array())).status).toBe(400);
     state.user = null;
-    expect((await 列(new Request(`http://x/api/attachments?opportunityId=${ids.opp}`))).status).toBe(401);
+    expect((await 列(new Request(`http://x/api/attachments?contactId=${ids.contact}`))).status).toBe(401);
   });
 });
 
 describe("清孤儿", () => {
-  it("商机删了先不动，满 1 天才连文件删；没有行的文件 10 分钟后删", async () => {
-    const a = await 存附件(prisma, { 挂在: { opportunityId: ids.opp }, name: "a.pdf", mime: "application/pdf", 字节: 字节("x") });
-    await prisma.opportunity.delete({ where: { id: ids.opp } });
+  it("只挂商机的附件算孤儿（商机表那行还在也算，11-11 起不再查商机表），满 1 天才连文件删", async () => {
+    const 老商机 = await prisma.opportunity.create({ data: { name: "QA-老商机", customerId: ids.customer, ownerId: ids.user } });
+    const a = await 存附件(prisma, { 挂在: { opportunityId: 老商机.id }, name: "a.pdf", mime: "application/pdf", 字节: 字节("x") });
+    const 现在 = Date.now();
+    expect(await 清孤儿(prisma, 附件夹, 现在, true)).toEqual({ 删行: 0, 删文件: 0 });
+    expect((await 清孤儿(prisma, 附件夹, 现在 + 25 * 3600 * 1000, true)).删行).toBe(1);
+    expect(fs.existsSync(附件文件(a.id))).toBe(false);
+  });
+
+  it("联系人删了先不动，满 1 天才连文件删；没有行的文件 10 分钟后删", async () => {
+    const a = await 存附件(prisma, { 挂在: { contactId: ids.contact }, name: "a.pdf", mime: "application/pdf", 字节: 字节("x") });
+    await prisma.contact.delete({ where: { id: ids.contact } });
     const 现在 = Date.now();
     expect(await 清孤儿(prisma, 附件夹, 现在, true)).toEqual({ 删行: 0, 删文件: 0 });
     expect(fs.existsSync(附件文件(a.id))).toBe(true);
@@ -199,14 +220,14 @@ describe("清孤儿", () => {
 describe("导出客户", () => {
   const 行 = { name: "张三", phone: "1", school: null, major: null, grade: null, followStatus: "", decisionStatus: "", expectedSignAt: null, signedAmount: 0, salesOwnerName: "QA", remark: "老客户" };
   it("多一列「图片张数」，在备注前面；没有图片写空", () => {
-    expect(附件个数说法({ 商机: 2, 联系人: 1 })).toBe("商机 2 张、联系人 1 张");
-    expect(附件个数说法({ 商机: 0, 联系人: 3 })).toBe("联系人 3 张");
-    expect(附件个数说法({ 商机: 0 })).toBe("");
+    expect(附件个数说法({ 联系人: 3 })).toBe("联系人 3 张");
+    expect(附件个数说法({ 联系人: 0 })).toBe("");
+    expect(附件个数说法({})).toBe("");
     expect(附件个数说法(null)).toBe("");
-    const t = 客户导出表([{ ...行, 附件数: { 商机: 2 } }, 行], DEFAULT_BUSINESS);
+    const t = 客户导出表([{ ...行, 附件数: { 联系人: 2 } }, 行], DEFAULT_BUSINESS);
     const i = t.head.indexOf("图片张数");
     expect(t.head.slice(i)).toEqual(["图片张数", "备注"]);
-    expect(t.body[0][i]).toBe("商机 2 张");
+    expect(t.body[0][i]).toBe("联系人 2 张");
     expect(t.body[1][i]).toBe("");
     expect(t.body[0][i + 1]).toBe("老客户");
   });

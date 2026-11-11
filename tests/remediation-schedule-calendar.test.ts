@@ -85,9 +85,9 @@ it("非法/自相矛盾日期模式拒绝；清空待办截止同步清语义", 
   const t = await prisma.task.findFirstOrThrow(); await saveTask({ id: t.id, customerId, title: t.title, dueAt: null });
   expect(await prisma.task.findUniqueOrThrow({ where: { id: t.id } })).toMatchObject({ dueAt: null, dueOn: null, dueHasTime: null });
 });
-it.each(["America/Los_Angeles", "Europe/London"])("L-036 %s跨DST按日历日统计沉睡/停滞，不差一个钟点", tz => {
+it.each(["America/Los_Angeles", "Europe/London"])("L-036 %s跨DST按日历日统计沉睡，不差一个钟点（停滞商机 11-11 随商机读取收掉）", tz => {
   process.env.TZ = tz;
   const n = new Date(2026, 10, 2, 0, 5); const old = new Date(2026, 9, 19, 23, 55);
-  const items = buildWatchlist({ overduePlans: [], customers: [{ id: "sleep", name: "甲", ownerName: "QA", followStatus: "跟进中", lastFollowAt: old, createdAt: old }], opportunities: [{ customerId: "stall", customerName: "乙", ownerName: "QA", name: "报价", stage: "方案报价", updatedAt: old }] }, n);
-  expect(items).toHaveLength(2); expect(items.every(x => x.reason.includes("14 天"))).toBe(true);
+  const items = buildWatchlist({ overduePlans: [], customers: [{ id: "sleep", name: "甲", ownerName: "QA", followStatus: "跟进中", lastFollowAt: old, createdAt: old }] }, n);
+  expect(items).toHaveLength(1); expect(items.every(x => x.reason.includes("14 天"))).toBe(true);
 });

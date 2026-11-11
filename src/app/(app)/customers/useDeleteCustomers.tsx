@@ -34,7 +34,6 @@ export function useDeleteCustomers() {
 
     const 一起删 = [
       数.跟进 && `${数.跟进} 条跟进记录`,
-      数.商机 && `${数.商机} 个商机`,
       数.计划和待办 && `${数.计划和待办} 条计划和待办`,
     ].filter(Boolean);
     const 有签约 = 数.签约 > 0;
