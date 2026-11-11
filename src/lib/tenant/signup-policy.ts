@@ -35,7 +35,6 @@ export function 自助注册已关闭(env: Env = process.env): boolean {
  * 一个人也可以多注册几个号来多薅免费 AI 次数——后者由「每个 IP 每天最多开 3 个」兜着。
  *
  * 通道配好之后把 SIGNUP_VERIFY=1 打开就恢复验证，代码不用动。
- * scripts/enable-email-signup.sh 会顺手打开它。
  */
 export function 需要验证码(env: Env = process.env): boolean {
   return env.SIGNUP_VERIFY === "1";

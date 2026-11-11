@@ -556,13 +556,4 @@ describe("团队版产品图片", () => {
     expect(删代.get(`${teamId}/againdel01`)!.代).not.toBe(第一回);
   });
 
-  it("运营台磁盘线：剩不到 12 GB 或图片超过 10 GB 才报，一天一条", async () => {
-    const { 磁盘通知 } = await import("@/lib/ops-notices");
-    const GB = 1024 ** 3, 现在 = new Date("2026-10-22T10:00:00Z");
-    expect(磁盘通知({ 剩: 50 * GB, 用: 2 * GB }, 现在, {})).toBeNull();
-    expect(磁盘通知(null, 现在, {})).toBeNull();
-    expect(磁盘通知({ 剩: 11 * GB, 用: 2 * GB }, 现在, {})).toMatchObject({ kind: "磁盘", key: "磁盘:2026-10-22", 标题: "服务器磁盘只剩 11.0 GB" });
-    expect(磁盘通知({ 剩: 50 * GB, 用: 11 * GB }, 现在, {})).toMatchObject({ kind: "磁盘", 标题: "团队图片已占 11.0 GB" });
-    expect(磁盘通知({ 剩: 50 * GB, 用: 11 * GB }, 现在, { OPS_ALERT_ATTACH_GB: "20" })).toBeNull();
-  });
 });

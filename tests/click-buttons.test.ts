@@ -19,7 +19,6 @@ const 原生可按 = new Set(["button", "a", "input", "select", "textarea", "sum
 /** 放行：文件 + 标签 → 个数和键盘怎么走 */
 const 放行: Record<string, { 个: number; 为什么: string }> = {
   "app/(app)/projects/[id]/ProjectInlineField.tsx <div>": { 个: 1, 为什么: "点字直接改是鼠标捷径；键盘走旁边那颗「改X」笔按钮" },
-  "app/admin/workspaces/WorkspacesView.tsx <pre>": { 个: 1, 为什么: "点一下全选交付文本；键盘走下面的「复制」按钮" },
   "components/InlineConfirm.tsx <motion.span>": { 个: 1, 为什么: "包着调用方传进来的按钮，只接按钮冒上来的点击" },
   "components/SettingsModal.tsx <motion.div>": { 个: 1, 为什么: "设置浮层外面那层灰（role=presentation）；键盘用 Esc 或右上「关闭设置」" },
 };

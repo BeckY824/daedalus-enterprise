@@ -17,27 +17,24 @@ beforeAll(async () => {
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import Shell from '@/components/AppShell';import Audit from '@/app/(app)/settings/AuditTab';import AuthSide from '@/app/login/AuthSide';
     const root=createRoot(document.getElementById('root'));window.__route='';window.__refresh=0;window.__labels=[];window.desktopNav={onGo:()=>()=>{},setCustomerLabel:async(name)=>{window.__labels.push(name);return true}};
     const logs=['Opportunity','Contact','FollowUp','Task','FollowPlan','TradeOrder','Supplier','Customer'].map((entity,i)=>({id:String(i),at:'2026-10-08T08:00:00Z',userName:'QA',action:i===7?'import':'create',entity,summary:'记录'+i,detail:null}));
-    window.__render=(ai=false)=>root.render(<BusinessProvider value={{...DEFAULT_BUSINESS,customer:window.__customer||DEFAULT_BUSINESS.customer}}>{location.pathname==='/auth'?<AuthSide 门="托管版"/>:<Shell user={{id:'qa',name:'QA',email:'qa@example.test',role:'ADMIN',title:'管理员'}} workspace={{name:'QA工作区',multiple:!location.search.includes('single'),billing:!location.search.includes('no-billing')}} desktop={location.search.includes('desktop')} 反馈去向="github" pane={null} ai={ai?{models:[]}:null} 要跟={{逾期:1,今天:2}}><Audit logs={logs}/></Shell>}</BusinessProvider>);
+    window.__render=(ai=false)=>root.render(<BusinessProvider value={{...DEFAULT_BUSINESS,customer:window.__customer||DEFAULT_BUSINESS.customer}}>{location.pathname==='/auth'?<AuthSide 门="托管版"/>:<Shell user={{id:'qa',name:'QA',email:'qa@example.test',role:'ADMIN',title:'管理员'}} workspace={{name:'QA工作区'}} desktop={location.search.includes('desktop')} 反馈去向="github" pane={null} ai={ai?{models:[]}:null} 要跟={{逾期:1,今天:2}}><Audit logs={logs}/></Shell>}</BusinessProvider>);
     window.__render();`, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(url = "/billing", width = 1200): Promise<Page> {
+async function open(url = "/channels", width = 1200): Promise<Page> {
   const page = await browser.newPage({ viewport: { width, height: 850 } }); page.setDefaultTimeout(5000);
   await page.route("http://shell.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://shell.test" + url); await page.addScriptTag({ content: bundle });
   await page.getByRole("button", { name: "QA，账号菜单" }).waitFor(); return page;
 }
-it("H-100 手机账号菜单可退出并POST注销、刷新会话，工作区和设置入口可操作", async () => {
-  const page = await open("/billing", 390); const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+it("H-100 手机账号菜单可退出并POST注销、刷新会话，设置入口可操作", async () => {
+  const page = await open("/channels", 390); const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.getByRole("button", { name: "QA，账号菜单" }).click();
   expect(await page.getByRole("menu").innerText()).toContain("当前工作区：QA工作区");
-  await page.getByRole("menuitem", { name: "切换工作区" }).hover();
+  await page.getByRole("menuitem", { name: /设置$/ }).hover();
   await page.screenshot({ path: path.resolve("../测试证据-2026-10-08/整改-手机账号菜单.png"), animations: "disabled" });
   expect(await page.locator(".ant-table-content").evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
-  await page.getByRole("menuitem", { name: "切换工作区" }).click();
-  await expect.poll(() => page.evaluate(() => Reflect.get(window, "__route"))).toBe("/workspaces");
-  await page.getByRole("button", { name: "QA，账号菜单" }).click();
   await page.getByRole("menuitem", { name: /设置$/ }).click();
   await expect.poll(() => page.evaluate(() => Reflect.get(window, "__route"))).toBe("/settings");
   let method = ""; await page.route("**/api/auth/logout", r => { method = r.request().method(); return r.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }); });
@@ -45,20 +42,21 @@ it("H-100 手机账号菜单可退出并POST注销、刷新会话，工作区和
   await expect.poll(() => page.evaluate(() => Reflect.get(window, "__route"))).toBe("/login");
   expect(method).toBe("POST"); expect(await page.evaluate(() => Reflect.get(window, "__refresh"))).toBe(1); expect(errors).toEqual([]); await page.close();
 });
-it("手机单工作区不摆无意义切换；开通订阅菜单高亮正确，设置名称一致", async () => {
-  const page = await open("/billing?single", 390);
+it("手机账号菜单不摆切换工作区；「更多」里的项高亮正确，设置名称一致", async () => {
+  const page = await open("/channels", 390);
   await page.getByRole("button", { name: "QA，账号菜单" }).click(); expect(await page.getByRole("menuitem", { name: "切换工作区" }).count()).toBe(0);
   await page.keyboard.press("Escape"); await page.getByRole("button", { name: "打开导航菜单" }).click();
-  const nav = page.getByRole("menu").filter({ hasText: "开通订阅" });
-  expect(await nav.getByRole("menuitem", { name: "开通订阅" }).getAttribute("class")).toContain("selected");
+  const nav = page.getByRole("menu").filter({ hasText: "渠道" });
+  expect(await nav.getByRole("menuitem", { name: "渠道" }).getAttribute("class")).toContain("selected");
   expect(await nav.getByRole("menuitem", { name: /设置$/ }).count()).toBe(1);
-  await page.getByRole("menuitem", { name: "开通订阅" }).click(); expect(await page.evaluate(() => Reflect.get(window, "__route"))).toBe("/billing"); await page.close();
+  expect(await nav.getByRole("menuitem", { name: "开通订阅" }).count()).toBe(0);
+  await page.getByRole("menuitem", { name: "渠道" }).click(); expect(await page.evaluate(() => Reflect.get(window, "__route"))).toBe("/channels"); await page.close();
 });
-it("H-098/J-210 桌面宽度订阅入口被选中，首页不误亮；无权限不显示入口", async () => {
-  const page = await open(); const bill = page.getByRole("link", { name: "开通订阅", exact: true });
-  expect(await bill.getAttribute("class")).toContain(" on"); expect(await page.getByRole("link", { name: "首页", exact: true }).getAttribute("class")).not.toContain(" on");
-  await bill.click(); expect(await page.evaluate(() => Reflect.get(window, "__route"))).toBe("/billing"); await page.close();
-  const hidden = await open("/dashboard?no-billing"); expect(await hidden.getByRole("link", { name: "开通订阅", exact: true }).count()).toBe(0); await hidden.close();
+it("H-098/J-210 桌面宽度「更多」里的入口被选中，首页不误亮；没有开通订阅入口", async () => {
+  const page = await open(); const ch = page.getByRole("link", { name: "渠道", exact: true });
+  expect(await ch.getAttribute("class")).toContain(" on"); expect(await page.getByRole("link", { name: "首页", exact: true }).getAttribute("class")).not.toContain(" on");
+  expect(await page.getByRole("link", { name: "开通订阅", exact: true }).count()).toBe(0);
+  await ch.click(); expect(await page.evaluate(() => Reflect.get(window, "__route"))).toBe("/channels"); await page.close();
 });
 it("J-209 没接AI回车保留问题不跳页；接入后同一句可交给首页", async () => {
   const page = await open("/customers"); await page.keyboard.press("Control+k");

@@ -39,11 +39,10 @@ beforeAll(async () => {
     import Inline from '@/app/(app)/customers/[id]/InlineField';
     import Customer from '@/app/(app)/customers/CustomerForm';
     import Contract from '@/app/(app)/customers/[id]/ContractForm';
-    import Billing from '@/app/(app)/billing/BillingView';
     import Profile from '@/app/(app)/settings/ProfileTab';
     import Channels from '@/app/(app)/channels/ChannelsView';
     const done=()=>window.__saved++;
-    const forms={billing:<Billing workspaceName="QA" status="TRIAL" daysLeft={window.__days??26764} writable={window.__writable??true} isOwner paidUntil={window.__paid??null}/>,inlineSign:<Inline customerId="c1" field="expectedSignAt" label="预计签约" value="2026-10-08" kind="date"/>,inlineEmpty:<Inline customerId="c1" field="major" label="专业" value={null} 空时横线/>,inlineEmptyOld:<Inline customerId="c1" field="major" label="专业" value={null}/>,calendarPlan:<Plan open customerId="c1" record={window.__calendarRecord} onSaved={done} onClose={()=>{}}/>,
+    const forms={inlineSign:<Inline customerId="c1" field="expectedSignAt" label="预计签约" value="2026-10-08" kind="date"/>,inlineEmpty:<Inline customerId="c1" field="major" label="专业" value={null} 空时横线/>,inlineEmptyOld:<Inline customerId="c1" field="major" label="专业" value={null}/>,calendarPlan:<Plan open customerId="c1" record={window.__calendarRecord} onSaved={done} onClose={()=>{}}/>,
       calendarTask:<Task open customerId="c1" record={window.__calendarRecord} onSaved={done} onClose={()=>{}}/>,
       plan:<Plan open customerId="c1" record={null} onSaved={done} onClose={()=>{}}/>,
       contact:<Contact open customerId="c1" record={null} onSaved={done} onClose={()=>{}}/>,
@@ -254,13 +253,4 @@ it("W-020 共享区打码电话不能通过同电话写入WhatsApp",async()=>{
  await page.goto("http://forms.test");await page.evaluate(()=>Object.assign(window,{__kind:"masked",__calls:[],__fail:false}));await page.addScriptTag({content:bundle});
  expect(await page.getByRole("button",{name:"同电话",exact:true}).isDisabled()).toBe(true);
  expect(await page.locator("#extra_whatsapp").inputValue()).toBe("原WhatsApp");expect(await page.evaluate(()=>window.__calls)).toEqual([]);await page.close();
-});
-
-it("H-038 长期有效、正常试用、过期和付费展示真实BillingView",async()=>{
- const page=await browser.newPage();await page.route("http://forms.test/**",r=>r.fulfill({contentType:"text/html",body:"<meta charset='utf-8'><div id='root'></div>"}));
- for(const [days,writable,paid,text] of [[26764,true,null,"长期有效"],[3650,true,null,"试用还剩 3650 天"],[7,true,null,"试用还剩 7 天"],[0,false,null,"试用已结束"],[7,true,"2027-10-08T00:00:00Z","已开通至 2027-10-08"]] as const){
-  await page.goto("http://forms.test");await page.evaluate(v=>Object.assign(window,{__kind:"billing",__days:v[0],__writable:v[1],__paid:v[2],__calls:[]}),[days,writable,paid]);await page.addScriptTag({content:bundle});
-  await page.getByText(new RegExp(text)).waitFor();expect(await page.locator(".bill-sub").innerText()).not.toContain("26764");
- }
- await page.close();
 });

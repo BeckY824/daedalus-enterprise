@@ -74,8 +74,6 @@ Stable versions: [latest Release](https://github.com/BeckY824/daedalus-crm/relea
    - **Your own key**: put your own model API key in **Settings → AI** (DeepSeek recommended) and keep going with no count. The key is encrypted on your computer and only ever sent to the endpoint you typed
 4. **Different industry?** Settings → Business config renames the noun and the three profile fields site-wide (education admissions is a ready-made preset — one click swaps the whole set)
 
-Mac uses delta updates; Windows updates use the full installer. The Windows installer is unsigned — see the [Windows guide](docs/Windows版.md).
-Builds are produced by [GitHub Actions](https://github.com/BeckY824/daedalus-crm/actions/workflows/desktop.yml) on every tag. Install, Gatekeeper and updates: [docs/桌面端安装.md](docs/桌面端安装.md).
 
 ### Setting up a team
 
@@ -173,9 +171,9 @@ To point somewhere else, "Other (enter your own endpoint)" in Settings takes an 
 |---|---|
 | ![](docs/shots/04-customers.jpg) | ![](docs/shots/05-customer-detail.jpg) |
 
-| Deal pipeline | Dashboard |
-|---|---|
-| ![](docs/shots/08-pipeline.jpg) | ![](docs/shots/02b-overview.jpg) |
+| Dashboard |
+|---|
+| ![](docs/shots/02b-overview.jpg) |
 
 More in [docs/shots](docs/shots).
 

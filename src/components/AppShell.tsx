@@ -15,7 +15,6 @@ import {
   ShareAltOutlined,
   TeamOutlined,
   ContactsOutlined,
-  DollarOutlined,
   ProjectOutlined,
   InteractionOutlined,
   SettingOutlined,
@@ -68,7 +67,7 @@ declare global {
 
 type Props = {
   user: SessionUser;
-  workspace?: { name: string; multiple: boolean; billing?: boolean };
+  workspace?: { name: string };
   /** 左栏「收藏的客户」（lib/favorites.ts）。没收藏过就整栏不出现 */
   收藏?: { id: string; name: string }[];
   /** 左栏「收藏的项目」（11-02）。同上，没收藏过就没有这一栏 */
@@ -281,9 +280,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             { key: "/leads", icon: <ShareAltOutlined />, label: "线索", 组: "更多" },
             { key: "/contacts", icon: <ContactsOutlined />, label: "联系人", 组: "更多" },
             { key: "/channels", icon: <DeploymentUnitOutlined />, label: "渠道", 组: "更多" },
-            ...(workspace?.billing ? [{ key: "/billing", icon: <DollarOutlined />, label: "开通订阅", 组: "更多" as const }] : []),
           ],
-    [b.customer, b.projectMode, workspace?.billing, 企业版项目],
+    [b.customer, b.projectMode, 企业版项目],
   );
 
   // 选中项取最长匹配前缀，/customers/xxx 也算在客户管理下
@@ -309,7 +307,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
     const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
     if (企) return 企;
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/pool", "/follow-ups", "/settings", "/billing"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/pool", "/follow-ups", "/settings"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
@@ -541,7 +539,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       if (key === "settings") router.push("/settings");
       if (key === "logout") void logout();
       if (key === "view-exit") void 退出看();
-      if (key === "workspaces") router.push("/workspaces");
     },
     items: [
       {
@@ -559,7 +556,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           </div>
         ),
       },
-      ...(workspace?.multiple ? [{ key: "workspaces", label: "切换工作区" }] : []),
       ...演示菜单,
       ...视图菜单,
       ...(正在视图 ? [{ key: "view-exit", icon: <LogoutOutlined />, label: "退出切换视图" }] : []),

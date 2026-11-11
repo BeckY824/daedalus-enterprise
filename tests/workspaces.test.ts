@@ -6,8 +6,6 @@
  * 所以边界要逐个钉死。
  */
 import { describe, it, expect } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
 import { computeWritable, daysLeft, slugify, 长期有效, TRIAL_DAYS } from "@/lib/tenant/workspaces";
 
 const 天 = 86_400_000;
@@ -81,16 +79,6 @@ describe("长期有效：共享区那个 26764 天", () => {
     expect(长期有效(天)).toBe(true);
   });
 
-  it("运营台不再直接把天数写在共享区那一行上", () => {
-    const view = fs.readFileSync(path.resolve(__dirname, "../src/app/admin/workspaces/WorkspacesView.tsx"), "utf8");
-    const page = fs.readFileSync(path.resolve(__dirname, "../src/app/admin/data.ts"), "utf8");
-    // 判定在服务端做（data.ts），视图只读那个布尔——WorkspacesView 是 "use client"，
-    // 而 lib/tenant/workspaces.ts 带着 node:fs 和 prisma，一 import 就把服务端代码拖进浏览器
-    expect(page).toContain("长期有效(daysLeft(");
-    // 注释里提它没关系，import 它才要命
-    expect(view).not.toMatch(/from "@\/lib\/tenant\/workspaces"/);
-    expect(view).toContain("试用 · 不过期");
-  });
 });
 
 describe("工作区标识", () => {
