@@ -25,6 +25,8 @@
  *   - 查重（M-导入-24 归档导入定的口径，M-导入-29 起普通导入也一样，不再分）：没导过的客户只要电话 / WhatsApp / 座机
  *     任一个号撞了我们这边客户的号（本地索引.归档号），或客户名称一样（名键），整条跳过、记原因，不连上、不补空；
  *     原来普通导入的「同号连上只补空、同名只提醒照建」不要了。本批内部同号合并、同名提醒照老规矩
+ *   - 同名不同号放行（M-导入-29 续）：名字撞上时，这一行和那家（已有客户，或本批前面同名的那条）两边都有 10 位以上的号、
+ *     且没一个相同 → 不算重复、照常导入，问题清单里记一条「同名不同号放行」（提醒级，报告按类可数）；任一边没号仍按名字算重复跳过
  */
 import { createHash } from "node:crypto";
 import { CUSTOMER_SOURCES, FOLLOW_TYPES, OPP_STAGES, STAGE_PROBABILITY, TRADE_SOURCES } from "../constants";
@@ -103,21 +105,75 @@ export function 名键(s: string): string {
  * 导入查重（M-导入-24 归档导入定的口径，M-导入-29 起普通导入和客户页旧导入抽屉都用这一个）：
  * 号（电话 / 另一个号 / WhatsApp / 座机，一格几个号逐个比）或客户名撞了我们这边的客户 → 撞在哪的说法（带上撞的号或名字）；没撞 = null。
  * 号按 归档号键 比（+86 / 0086、空格横杠不算，不足 10 位不比）；给了 客户号 的再按 号键 整串比一遍客户电话（短号也算）。
- * 名字按 名键 比（空白、全半角、大小写不算）
+ * 名字按 名键 比（空白、全半角、大小写不算）。
+ * 名字撞上时再看号（同名不同号放行）：旧系统里不少客户名是泛称（「某总」「某地 咨询某产品」），光按名字会把不同客户当成重复。
+ * 这一行和那家已有客户两边都有有效号键（≥10 位）、且没有一个相同 → 不算重复，照常导入（报告里记「同名不同号放行」）；
+ * 任一边没有有效号键 → 名字一样仍算重复。同名的有几家时，只要有一家算重复就跳过、说那一家；全都不算才放行
  */
 export function 撞已有客户(本地: Pick<本地索引, "客户名" | "客户号" | "归档号">, name: string, 号们: readonly (string | null | undefined)[]): string | null {
+  const 论 = 查已有客户(本地, name, 号们);
+  return 论 && "撞" in 论 ? 论.撞 : null;
+}
+
+/** 查已有客户的结论：撞 = 算重复（说撞在哪）；放行 = 只是同名、两边号码都不同，照常导入；null = 没撞 */
+export type 查重结论 = { 撞: string; 依据?: string } | { 放行: string } | null;
+
+/** 这一行能拿来比的号键（归档号键，≥10 位；占位假号不算；一格几个号逐个拆） */
+export function 行号键们(号们: readonly (string | null | undefined)[]): Set<string> {
+  const 键们 = new Set<string>();
+  for (const v of 号们) {
+    for (const 段 of String(v ?? "").split(/[,，;；/、\n]+/)) {
+      if (是占位号(段)) continue;
+      const k = 归档号键(段);
+      if (k) 键们.add(k);
+    }
+  }
+  return 键们;
+}
+
+/** 已有客户 id → 他身上的有效号键（由 归档号 / 客户号 反查；索引建好后不改，同一份只算一遍） */
+const 反查缓存 = new WeakMap<object, Map<string, Set<string>>>();
+function 客户号键们(本地: Pick<本地索引, "客户号" | "归档号">): Map<string, Set<string>> {
+  const 钥 = 本地.归档号 ?? 本地.客户号;
+  const 有 = 反查缓存.get(钥);
+  if (有) return 有;
+  const 反 = new Map<string, Set<string>>();
+  const 记 = (k: string, ids: readonly string[]) => {
+    if (!k) return;
+    for (const id of ids) {
+      const a = 反.get(id);
+      if (a) a.add(k);
+      else 反.set(id, new Set([k]));
+    }
+  };
+  for (const [k, ids] of 本地.归档号 ?? []) 记(归档号键(k), ids);
+  for (const [k, ids] of 本地.客户号) 记(归档号键(k), ids);
+  反查缓存.set(钥, 反);
+  return 反;
+}
+
+export function 查已有客户(本地: Pick<本地索引, "客户名" | "客户号" | "归档号">, name: string, 号们: readonly (string | null | undefined)[]): 查重结论 {
   for (const v of 号们) {
     for (const 段 of String(v ?? "").split(/[,，;；/、\n]+/)) {
       // 占位假号不参与查重（M-导入-36）：十几家客户都写 11111111111，不能拿它认成同一家
       if (是占位号(段)) continue;
       const k = 归档号键(段);
       const 们 = (k ? 本地.归档号?.get(k) : undefined) ?? (段.trim() ? 本地.客户号.get(号键(段.trim())) : undefined) ?? [];
-      if (们.length) return `号码 ${段.trim()} 和我们这边已有的${们.length > 1 ? ` ${们.length} 个` : ""}客户撞了`;
+      if (们.length) return { 撞: `号码 ${段.trim()} 和我们这边已有的${们.length > 1 ? ` ${们.length} 个` : ""}客户撞了` };
     }
   }
   const 同名 = name ? (本地.客户名.get(名键(name)) ?? []) : [];
-  if (同名.length) return `我们这边已经有叫「${name}」的客户${同名.length > 1 ? `（${同名.length} 个）` : ""}`;
-  return null;
+  if (!同名.length) return null;
+  const 说名 = `我们这边已经有叫「${name}」的客户${同名.length > 1 ? `（${同名.length} 个）` : ""}`;
+  const 我的 = 行号键们(号们);
+  if (!我的.size) return { 撞: 说名, 依据: "这一条没有 10 位以上的号码可比，按名字算重复" };
+  const 反 = 客户号键们(本地);
+  for (const id of 同名) {
+    const 它的 = 反.get(id);
+    if (!它的?.size) return { 撞: 说名, 依据: `同名的${同名.length > 1 ? "其中一家" : "那家"}没有 10 位以上的号码可比，按名字算重复` };
+    if ([...它的].some((k) => 我的.has(k))) return { 撞: 说名, 依据: "同名且号码相同" };
+  }
+  return { 放行: `${说名}，但两边号码都不同，不算重复，照常导入（同名不同号放行）` };
 }
 
 /**
@@ -311,6 +367,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
   /** 本批里写下来的客户 / 商机：外部 ID → 待写；客户名键 → 外部 ID 们 */
   const 批客户 = new Map<string, 待写>();
   const 批客户名 = new Map<string, string[]>();
+  /** 本批客户：外部 ID → 这一条能拿来比的号键（同名不同号放行看它；并进来的那条的号也算在主条上） */
+  const 批号键 = new Map<string, Set<string>>();
   const 批商机 = new Map<string, 待写>();
   /** 本批联系人的号：`${kind}|${查重键}` → 先出现的那条 */
   const 批联系人号 = new Map<string, 原始记录>();
@@ -809,13 +867,20 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         };
         // 没导过的撞了我们这边的客户（号或名），整条不导（M-导入-24 / 29）
         if (!目标) {
-          const 撞 = 撞已有客户(本地, s.值.name, [phone, ...号.另, whatsapp, 座机]);
-          if (撞) {
+          const 论 = 查已有客户(本地, s.值.name, [phone, ...号.另, whatsapp, 座机]);
+          if (论 && "撞" in 论) {
             问题们.splice(起);
-            出问题(r, "跳过", "重名", `${撞}，这一条不导`);
+            出问题(r, "跳过", "重名", `${论.撞}，这一条不导${论.依据 ? `（${论.依据}）` : ""}`);
             continue;
           }
+          if (论) 出问题(r, "提醒", "同名不同号放行", 论.放行);
         }
+        const 我键 = 行号键们([phone, ...号.另, whatsapp, 座机]);
+        const 记号键 = (外部ID: string) => {
+          const a = 批号键.get(外部ID);
+          if (a) for (const k of 我键) a.add(k);
+          else 批号键.set(外部ID, new Set(我键));
+        };
         // 同号：并进前一条（外部 ID 不同，原系统里重复建了）。和我们这边「一个号一位客户」的查重一个口径，名字不同也并，提醒人看
         const 键 = phone ? 号键(phone) : "";
         const 前 = 键 ? 同号.get(键) : undefined;
@@ -832,6 +897,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           const w = 收(r, 值, { 并入: 前.外部ID, 目标 });
           带过去(前, w);
           批客户.set(r.外部ID, w);
+          记号键(前.外部ID);
           continue;
         }
         // AI 清洗 / 人在报告里认作同一家（名字很像、号不同）：也并进前一家
@@ -842,19 +908,43 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           带过去(同家, w);
           批客户.set(r.外部ID, w);
           if (键 && !同号.has(键)) 同号.set(键, 同家);
+          记号键(同家.外部ID);
           continue;
         }
-        // 没导过的撞了我们这边的号或名，上面已经跳过；走到这里的只剩本批里名字很像、号不同的要提醒
+        // 本批里同名（名键一样）、前面那条已经收下的：和我们这边已有客户一个口径——两边都有有效号键且没一个相同才放行，
+        // 任一边没号、或有号相同（WhatsApp / 座机 / 另一个号撞上，电话那格同号的上面已经并了）→ 这一条不导
+        const nk = 名键(s.值.name);
+        let 本批放行 = false;
+        if (!目标) {
+          const 同名前们 = (批客户名.get(nk) ?? []).map((id) => 批客户.get(id)).filter((x): x is 待写 => !!x);
+          const 哪行 = (x: 待写) => (x.行号 ? `第 ${x.行号} 行` : `「${x.外部ID}」`);
+          const 算重复 = 同名前们.find((前) => {
+            const 它的 = 批号键.get(前.外部ID);
+            return !我键.size || !它的?.size || [...它的].some((k) => 我键.has(k));
+          });
+          if (算重复) {
+            const 它的 = 批号键.get(算重复.外部ID);
+            const 依据 = !我键.size ? "这一条没有 10 位以上的号码可比" : !它的?.size ? "那一条没有 10 位以上的号码可比" : "号码也相同";
+            问题们.splice(起);
+            出问题(r, "跳过", "重名", `和${哪行(算重复)}「${算重复.值.name}」同名，${依据}，按重复算，这一条不导`);
+            continue;
+          }
+          if (同名前们.length) {
+            本批放行 = true;
+            出问题(r, "提醒", "同名不同号放行", `和${同名前们.map(哪行).join("、")}「${s.值.name}」同名，但两边号码都不同，不算重复，照常导入（同名不同号放行）`);
+          }
+        }
+        // 没导过的撞了我们这边的号或名，上面已经跳过；走到这里的只剩本批里名字很像、号不同的要提醒（同名不同号放行已经记过的不再重复提醒）
         if (!目标) {
           const k = 公司名键(s.值.name);
           const 像 = k ? 像名.get(k) : undefined;
-          if (像) 出问题(r, "提醒", "疑似重名", `和${像.行号 ? `第 ${像.行号} 行` : "前面一条"}名字很像、电话不同，照写两条，请人看一眼`);
-          else if (k) 像名.set(k, r);
+          if (像 && !本批放行) 出问题(r, "提醒", "疑似重名", `和${像.行号 ? `第 ${像.行号} 行` : "前面一条"}名字很像、电话不同，照写两条，请人看一眼`);
+          else if (!像 && k) 像名.set(k, r);
         }
         const w = 收(r, 值, { 目标 });
         if (键) 同号.set(键, w);
         批客户.set(r.外部ID, w);
-        const nk = 名键(s.值.name);
+        记号键(r.外部ID);
         批客户名.set(nk, [...(批客户名.get(nk) ?? []), r.外部ID]);
         continue;
       }
