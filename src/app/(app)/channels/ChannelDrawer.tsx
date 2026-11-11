@@ -18,7 +18,8 @@ import { useBusiness } from "@/lib/business-client";
 import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
-import { 拆来源, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
+import Link from "next/link";
+import { 拆来源, 名单链接, 名单差话, type 名单键, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 子渠道名 } from "@/lib/enterprise/channel-main-core";
 import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
@@ -122,6 +123,21 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
   /** 转化率：分母 0 是「—」，有数的后面带上几个里几个 */
   const 转 = (z: 转化 | undefined) =>
     z && z.比例 !== null ? <span>{转化率字(z.比例)}<span className="muted">（{z.分母} 个里 {z.分子} 个）</span></span> : 无;
+  /**
+   * 线索 / 商机 / 订单 / 项目几个数（11-11 渠道负责人：「如何能直接看见这 179 条线索」）：点了去项目列表，筛好这个渠道和同口径的阶段，
+   * 在那儿按创建时间、负责人再筛再排。列表比这个数少的（在公海、只能数到的）在数字下面说一句。没有名单（团队版）照旧只是个数
+   */
+  const 数 = (st: 渠道统计 | undefined, 键: 名单键) => {
+    const n = st?.[键] ?? 0;
+    if (!st?.名单 || n === 0) return n;
+    const 差话 = 名单差话(n, st.名单[键]);
+    return (
+      <span>
+        <Link href={名单链接(row.id, 键)} className="chan-num" title={`在项目列表里看这 ${n} 条，能按创建时间、负责人再筛`}>{n}</Link>
+        {差话 && <span className="muted chan-num-note">{差话}</span>}
+      </span>
+    );
+  };
   const 钱 = (x: { 币种: string; 合计: number }[] | undefined) => (x && x.length ? 合计文字(x, b.currency) : "—");
 
   return (
@@ -172,11 +188,11 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
         size="small"
         column={1}
         items={[
-          { key: "线索", label: "关联线索", children: s?.关联线索 ?? 0 },
-          { key: "有效", label: "有效线索", children: s?.有效线索 ?? 0 },
-          { key: "商机", label: "关联商机", children: s?.关联商机 ?? 0 },
-          { key: "订单", label: "关联订单", children: s?.关联订单 ?? 0 },
-          { key: "项目", label: "关联项目", children: s?.关联项目 ?? 0 },
+          { key: "线索", label: "关联线索", children: 数(s, "关联线索") },
+          { key: "有效", label: "有效线索", children: 数(s, "有效线索") },
+          { key: "商机", label: "关联商机", children: 数(s, "关联商机") },
+          { key: "订单", label: "关联订单", children: 数(s, "关联订单") },
+          { key: "项目", label: "关联项目", children: 数(s, "关联项目") },
           { key: "线索转商机", label: "线索→商机", children: 转(s?.线索转商机) },
           { key: "商机转订单", label: "商机→订单", children: 转(s?.商机转订单) },
           { key: "比", label: "投入产出比", children: s?.产出比 ?? <span className="muted" title={s?.产出比说明 ?? undefined}>{s?.产出比说明 ?? "—"}</span> },

@@ -47,6 +47,8 @@ export type 项目行 = {
   amount: number;
   currency: string;
   updatedAt: string;
+  /** 创建（入库）时间 ISO（11-11 列表可选列「创建时间」、按它排）；老调用方不给 */
+  createdAt?: string;
 };
 
 /** 列：分列用的 key；名：列头写的；色：按哪一档上色（团队版五列各自，企业版进程列跟所在阶段、出口列跟成功交付 / 没成）；阶段：进程列所在阶段（出口列没有） */
