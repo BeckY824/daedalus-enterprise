@@ -19,11 +19,12 @@ import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
 import Link from "next/link";
-import { 拆来源, 名单链接, 名单差话, type 名单键, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 拆来源, 数字链接, 名单段, type 名单键, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 子渠道名 } from "@/lib/enterprise/channel-main-core";
 import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
 import type { 渠道行 } from "./ChannelsView";
+import { RosterNote } from "./RosterNote";
 
 const 投入备注上限 = 200;
 const 无 = <span className="muted">—</span>;
@@ -130,11 +131,13 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
   const 数 = (st: 渠道统计 | undefined, 键: 名单键) => {
     const n = st?.[键] ?? 0;
     if (!st?.名单 || n === 0) return n;
-    const 差话 = 名单差话(n, st.名单[键]);
+    const 名单 = st.名单[键];
+    // 项目列表里一条没有、全在公海的：数字直接去公海页的渠道名单，不先落到空的项目列表
+    const 去公海 = 名单.列表 === 0 && 名单.公海 > 0;
     return (
       <span>
-        <Link href={名单链接(row.id, 键)} className="chan-num" title={`在项目列表里看这 ${n} 条，能按创建时间、负责人再筛`}>{n}</Link>
-        {差话 && <span className="muted chan-num-note">{差话}</span>}
+        <Link href={数字链接(row.id, 键, 名单)} className="chan-num" title={去公海 ? `这 ${n} 条都在公海，到公海页看` : `在项目列表里看这 ${n} 条，能按创建时间、负责人再筛`}>{n}</Link>
+        {名单段(n, 名单) && <span className="muted chan-num-note"><RosterNote 总数={n} 名单={名单} channelId={row.id} 键={键} /></span>}
       </span>
     );
   };

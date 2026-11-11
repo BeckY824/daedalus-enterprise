@@ -70,6 +70,11 @@ export type 看板项目 = {
   起步?: string;
   /** 节点日志（kind = node）的到哪、何时，顺序不要紧 */
   节点们: { toPhase: string; at: Date }[];
+  /**
+   * 看的人点进去在哪看得到（11-11）：项目列表 / 公海页（公海名单条件）/ 两边都不列（null，只能数到）。
+   * 读库带了「是谁在看」才有；没有就不拆
+   */
+  名单?: "列表" | "公海" | null;
 };
 export type 看板投入 = { channelId: string; amount: number; currency: string; date: Date };
 
@@ -77,7 +82,10 @@ export type 看板投入 = { channelId: string; amount: number; currency: string
 export type 渠道期数 = {
   线索: number; 已判定: number; 有效: number; 商机: number; 订单: number; 成交: 币种合计[]; 投入: 币种合计[];
   起线索: number; 起有效: number; 起转商机: number;
+  /** 项目带了 名单 才有：线索（同期新建）里项目列表 / 公海页各几条；商机、订单里在公海页的几条（只写字，不链） */
+  名单?: 期名单;
 };
+export type 期名单 = { 列表: number; 公海: number; 商机公海: number; 订单公海: number };
 /** 自定义 只在网址带了区间时有 */
 export type 看板底数 = Record<周期, Record<string, 渠道期数>> & { 自定义?: Record<string, 渠道期数> };
 
@@ -113,17 +121,19 @@ export function 看板各档(今: Date, 区间?: 看板区间 | null): [档, num
 /** 每个渠道 × 每个周期的底数，一次算好交给界面；界面按筛选结果再合。带了区间多算一份 自定义 */
 export function 算看板底数(渠道ids: string[], 项目们: 看板项目[], 投入们: 看板投入[], 今: Date = new Date(), 区间?: 看板区间 | null): 看板底数 {
   const out = {} as 看板底数;
+  const 带名单 = 项目们.some((p) => p.名单 !== undefined);
   for (const [期, 起, 止] of 看板各档(今, 区间)) {
     const 在 = (t: Date | null) => t !== null && t.getTime() >= 起 && t.getTime() <= 止;
     const 表: Record<string, 渠道期数> = {};
     const 成交行 = new Map<string, 看板项目[]>();
-    for (const id of 渠道ids) 表[id] = { ...空期 };
+    for (const id of 渠道ids) 表[id] = { ...空期, ...(带名单 ? { 名单: { 列表: 0, 公海: 0, 商机公海: 0, 订单公海: 0 } } : {}) };
     for (const p of 项目们) {
       const 格 = p.channelId ? 表[p.channelId] : undefined;
       if (!格) continue;
       const 线索起步 = (p.起步 ?? "线索") === "线索";
       if (在(p.createdAt)) {
         格.线索++;
+        if (格.名单 && p.名单) 格.名单[p.名单]++;
         if (已判定(p.判定)) 格.已判定++;
         if (p.判定 === "有效线索") 格.有效++;
         if (线索起步) {
@@ -133,11 +143,13 @@ export function 算看板底数(渠道ids: string[], 项目们: 看板项目[], 
       }
       if (在(商机时间(p))) {
         格.商机++;
+        if (格.名单 && p.名单 === "公海") 格.名单.商机公海++;
         if (线索起步) 格.起转商机++;
       }
       const 进订单 = 订单时间(p);
       if (在(进订单)) {
         格.订单++;
+        if (格.名单 && p.名单 === "公海") 格.名单.订单公海++;
         if (算成交(p)) 成交行.set(p.channelId!, [...(成交行.get(p.channelId!) ?? []), p]);
       }
     }
@@ -190,7 +202,10 @@ export type 看板 = {
   /** null = 这一格收起 */
   环: 环形 | null;
   预警: 预警[];
-  榜: { id: string; name: string; 线索: number }[];
+  /** 名单：这一行的线索点进去，项目列表里几条、公海页几条（带了名单才有） */
+  榜: { id: string; name: string; 线索: number; 名单?: { 列表: number; 公海: number } }[];
+  /** 这批渠道合起来、在公海页的几条（总线索 / 商机 / 订单卡上「其中 M 条在公海」）；没带名单 = undefined */
+  公海?: { 线索: number; 商机: number; 订单: number };
   /** 这批渠道里一笔投入都没录过的个数（不分周期），和第一个的 id */
   未录投入: number;
   首个未录: string | null;
@@ -254,6 +269,8 @@ export function 算看板(渠道们: 看板渠道[], 底: Record<string, 渠道�
   const 分母 = 判够(已判定数, 线索) ? "有效线索" : "总线索";
   const 转商机 = 比(加("起转商机"), 加(分母 === "有效线索" ? "起有效" : "起线索"));
   const 未录 = 渠道们.filter((c) => !c.投入数);
+  const 带名单 = 期.some((d) => d.名单);
+  const 名加 = (k: keyof 期名单) => 期.reduce((s, d) => s + (d.名单?.[k] ?? 0), 0);
   return {
     渠道数: 渠道们.length,
     线索, 已判定: 已判定数, 有效, 商机, 订单, 成交, 投入,
@@ -264,13 +281,38 @@ export function 算看板(渠道们: 看板渠道[], 底: Record<string, 渠道�
     环: 环形of(渠道们, 底, 筛了负责人),
     预警: 低效预警(渠道们, 底, { 有效率, 转商机 }, 分母),
     榜: 渠道们
-      .map((c) => ({ id: c.id, name: c.name, 线索: 底[c.id]?.线索 ?? 0 }))
+      .map((c) => {
+        const 名 = 底[c.id]?.名单;
+        return { id: c.id, name: c.name, 线索: 底[c.id]?.线索 ?? 0, ...(名 ? { 名单: { 列表: 名.列表, 公海: 名.公海 } } : {}) };
+      })
       .filter((x) => x.线索 > 0)
       .sort((a, b) => b.线索 - a.线索)
       .slice(0, 榜最多),
     未录投入: 未录.length,
     首个未录: 未录[0]?.id ?? null,
+    ...(带名单 ? { 公海: { 线索: 名加("公海"), 商机: 名加("商机公海"), 订单: 名加("订单公海") } } : {}),
   };
+}
+
+/**
+ * TOP5 一行点进去（11-11）：这个渠道 + 同一段创建时间。线索 = 这段时间新建的项目、不分阶段，所以不带阶段。
+ * 时间段写成北京日 createdFrom / createdTo（项目列表、公海页同名同读法，custom-date-range.ts 创建时间段）：
+ * 本月 / 本季 = 从第一天起、不写止（看板这两档也没有上限，写成「今天」的话页面开过零点就差几条），自定义 = 那一段，全部 = 不带
+ */
+export type 时段参数 = { createdFrom: string; createdTo?: string };
+export function 看板时段(期: 档, 今: Date, 段?: { from: string; to: string } | null): 时段参数 | null {
+  if (期 === 自定义) return 段 ? { createdFrom: 段.from, createdTo: 段.to } : null;
+  const 起 = 周期起点(期, 今);
+  // 起点就是北京那天零点，加 8 小时取日期即是那一天（线上版没有 business-clock 的 beijingDay）
+  return 起 ? { createdFrom: new Date(起.getTime() + 北京).toISOString().slice(0, 10) } : null;
+}
+
+/** TOP5 的两个去处：项目列表（channelId）/ 公海页渠道名单（projChannel），都带同一段创建时间 */
+export function 榜链接(channelId: string, 时段: 时段参数 | null, 去: "列表" | "公海"): string {
+  const q = new URLSearchParams(去 === "列表" ? { channelId } : { projChannel: channelId });
+  if (时段?.createdFrom) q.set("createdFrom", 时段.createdFrom);
+  if (时段?.createdTo) q.set("createdTo", 时段.createdTo);
+  return `${去 === "列表" ? "/projects" : "/pool"}?${q}`;
 }
 
 /*

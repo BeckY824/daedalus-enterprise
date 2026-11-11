@@ -16,17 +16,30 @@ import { prisma } from "@/lib/prisma";
 import { 算渠道统计, 项目算哪个渠道, type 统计用渠道, type 统计用项目, type 渠道统计 } from "./channel-stats";
 import { 企业版 } from "./switch";
 import { 字典of } from "@/lib/project/stage-dict";
-import { 列表里的项目 } from "@/lib/project/list";
+import { 列表里的项目, 公海名单条件 } from "@/lib/project/list";
 
 /** 归到这批渠道的项目（两种来源都捞，见文件头）；渠道看板 channel-dash-db.ts 也用这一个 */
 export const 渠道项目条件 = (渠道ids: string[]) => ({
   OR: [{ channelId: { in: 渠道ids } }, { channelId: null, customer: { channelId: { in: 渠道ids } } }],
 });
 
+/**
+ * 这批渠道的项目里，看的人点进去在哪看得到（11-11）：项目列表上的（列表里的项目）、公海页渠道名单里的（公海名单条件，和公海页同一句）。
+ * 渠道列表的名单和渠道看板 TOP5 都用这一个；不是企业版 / 没带看的人 = null
+ */
+export async function 名单落点(渠道ids: string[], 看的人?: { id: string }): Promise<{ 列表里: Set<string>; 公海里: Set<string> } | null> {
+  if (!看的人 || !企业版() || 渠道ids.length === 0) return null;
+  const [列表里, 公海里] = await Promise.all([
+    列表里的项目(看的人, 渠道项目条件(渠道ids)),
+    公海名单条件(看的人, 渠道项目条件(渠道ids)).then((where) => prisma.project.findMany({ where, select: { id: true } })).then((rs) => new Set(rs.map((r) => r.id))),
+  ]);
+  return { 列表里, 公海里 };
+}
+
 async function 取项目(渠道ids: string[], 看的人?: { id: string }): Promise<统计用项目[]> {
   if (渠道ids.length === 0) return [];
   // 名单（11-11）：企业版带了是谁在看，再取一趟「这些里哪些在他的项目列表上」，界面上每个数点进去对得上、对不上说清差在哪
-  const [行, 列表里] = await Promise.all([prisma.project.findMany({
+  const [行, 落点] = await Promise.all([prisma.project.findMany({
     where: 渠道项目条件(渠道ids),
     select: {
       id: true, pooledAt: true,
@@ -35,14 +48,16 @@ async function 取项目(渠道ids: string[], 看的人?: { id: string }): Promi
       // 不在这里 orderBy：Prisma 6.16 父行过千时嵌套关系带 orderBy 会让查询引擎崩（record.rs「no entry found for key」），取回来再排
       logs: { where: { kind: "node" }, select: { fromPhase: true, toPhase: true, at: true } },
     },
-  }), 看的人 && 企业版() ? 列表里的项目(看的人, 渠道项目条件(渠道ids)) : Promise.resolve(null)]);
+  }),
+  // 在公海的那几条：只数公海页「渠道名单」里看得到的，点「另 M 条在公海」落地条数 = M
+  名单落点(渠道ids, 看的人)]);
   for (const p of 行) p.logs.sort((a, b) => a.at.getTime() - b.at.getTime());
   return 行.map((p) => ({
     channelId: 项目算哪个渠道(p.channelId, p.customer.channelId), phase: p.phase, result: p.result, amount: p.amount, currency: p.currency,
     // 没有建项目那条日志的（很老的数据）当从线索起
     起步阶段: p.logs.find((l) => l.fromPhase === null)?.toPhase ?? "线索",
     到过阶段们: p.logs.map((l) => l.toPhase),
-    ...(列表里 ? { 在列表: 列表里.has(p.id), 在公海: !!p.pooledAt } : {}),
+    ...(落点 ? { 在列表: 落点.列表里.has(p.id), 在公海: 落点.公海里.has(p.id) } : {}),
   }));
 }
 

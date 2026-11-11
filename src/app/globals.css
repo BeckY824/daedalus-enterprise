@@ -2505,6 +2505,9 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .chan-dash-top { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-min); color: var(--ink); }
 .chan-dash-top li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 48px; align-items: center; gap: var(--s2); }
 .chan-dash-top b { text-align: right; }
+/* TOP5 的数能点（11-11）：链接占数字那一格，靠右 */
+.chan-dash-top-n { justify-self: end; }
+.chan-dash-top-n:hover b { text-decoration: underline; }
 .chan-dash-top-bar { display: block; height: 10px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
 .chan-dash-top-bar i { display: block; height: 100%; border-radius: 3px; background: var(--brand); }
 /* 右上角时间：分段 + 「自定义」的日期段一排放（11-04 P-界面-10），1024 也不折 */

@@ -16,7 +16,7 @@ import ProjectsView from "./ProjectsView";
 export const dynamic = "force-dynamic";
 
 /** 项目模式关着时这一页不存在（404），侧栏也没有入口。见 设计-团队版项目模式1a 第三节 */
-export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string; createdFrom?: string; createdTo?: string; phone?: string; q?: string; hl?: string }> }) {
+export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string; createdFrom?: string; createdTo?: string; phone?: string; page?: string; pageSize?: string; sort?: string; q?: string; hl?: string }> }) {
   const me = await requireUser();
   if ((await getBusiness()).projectMode !== true) notFound();
   const 原 = await searchParams;
@@ -33,5 +33,5 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const 筛线索 = 企业版() && sp.phase === "线索";
   const 线索分配开着 = 筛线索 && (await 规则开着("线索分配")) && !(await 当前是共享区());
   const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
-  return <ProjectsView {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 待交接={企业版() && !(await 当前是共享区()) ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} />;
+  return <ProjectsView {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase, d.看板合计)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 待交接={企业版() && !(await 当前是共享区()) ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} />;
 }

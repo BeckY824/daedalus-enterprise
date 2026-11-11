@@ -64,8 +64,9 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
   const [统计, 看板底数, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管, 公海底数, 圈里的人, 主渠道们, 策略选项] = await Promise.all([
     // 带上是谁在看：每个数点进项目列表能看到几条（名单），对不上的抽屉里写一句
     读渠道统计(channels, new Date(), me),
-    // 总览看板（11-03）：每个渠道 × 本月 / 本季 / 全部（带了「自定义」再加那一段）的底数，界面按列表的筛选结果再合，口径见 channel-dash.ts
-    企业版() ? 读看板底数(渠道ids, new Date(), 区间) : Promise.resolve(null),
+    // 总览看板（11-03）：每个渠道 × 本月 / 本季 / 全部（带了「自定义」再加那一段）的底数，界面按列表的筛选结果再合，口径见 channel-dash.ts；
+    // 带上是谁在看：TOP5 每行拆「项目列表里 N 条、另 M 条在公海」（11-11）
+    企业版() ? 读看板底数(渠道ids, new Date(), 区间, me) : Promise.resolve(null),
     prisma.user.findMany({
       where: { id: { in: [...new Set(channels.map((c) => c.createdById).filter((x): x is string => Boolean(x)))] } },
       select: { id: true, name: true },
