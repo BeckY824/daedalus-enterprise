@@ -21,7 +21,7 @@ import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMeth
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
-import { 阶段们, 交付还差, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
+import { 阶段们, 交付还差, 交付还差话, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
@@ -461,7 +461,8 @@ export default function ProjectDetail({
   const 字典 = 字典of(p.企业版, p.出口叫法);
   const 节点总数 = 节点总数of(字典);
   const 下 = 下一步(当前, 字典);
-  const 差 = 交付还差(p);
+  // 企业版验收两种都行（M-必填-11）：勾了验收通过，或项目附件「验收报告」里传了一份
+  const 差 = 交付还差({ ...p, 有验收报告: p.企业版 && (p.项目附件?.验收报告 ?? 0) > 0 });
   // 订单走成的结局：团队版 成功交付、企业版 交付结清（10-31 改名）；叫法按字典（后台改了就用改的）
   const 交付结局 = 字典.出口们.订单[0].结局 ?? "成功交付";
   const 交付叫法 = 结局叫法(交付结局, 字典);
@@ -564,7 +565,7 @@ export default function ProjectDetail({
       return;
     }
     if (是交付(到.result) && 差.length) {
-      message.warning(`还差${差.join("、")}，勾上才能点${交付叫法}`);
+      message.warning(交付还差话(差, 交付叫法, p.企业版));
       return;
     }
     void 跑(() => 改项目节点(p.id, 到), 附.成了 ?? `已改到 ${位置文字(到, 字典)}`);
@@ -1046,7 +1047,9 @@ export default function ProjectDetail({
         );
       })}
       <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
-        {交付了 ? `已经${交付叫法}` : 差.length ? `两项都勾上才能点${交付叫法}（还差${差.join("、")}）` : `两项都勾上了，可以点${交付叫法}`}
+        {交付了 ? `已经${交付叫法}` : p.企业版
+          ? (差.length ? 交付还差话(差, 交付叫法, true) : `可以点${交付叫法}`)
+          : 差.length ? `两项都勾上才能点${交付叫法}（还差${差.join("、")}）` : `两项都勾上了，可以点${交付叫法}`}
       </div>
       {!交付了 && (
         <Button

@@ -325,7 +325,11 @@ export async function 改节点(
     到 = 本套位置({ ...到, result: 到.result || null }, 字典);
     const result = 到.result || null;
     const 现 = 本套位置(p, 字典);
-    const 问题 = 改节点问题({ ...到, result }, p, 异常, 企业版(), 字典);
+    // 企业版点交付结清：验收认「验收通过」勾或项目附件「验收报告」里有一份（M-必填-11），数一下那一格
+    const 有验收报告 = 企业版() && !!result && 是交付(result) && !p.acceptancePassed
+      ? (await tx.attachment.count({ where: { projectId: p.id, tag: "验收报告" } })) > 0
+      : false;
+    const 问题 = 改节点问题({ ...到, result }, { ...p, 有验收报告 }, 异常, 企业版(), 字典);
     if (问题) return { ok: false as const, error: 问题 };
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };

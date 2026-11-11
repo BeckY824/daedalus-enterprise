@@ -10,7 +10,7 @@
  *     下面这些函数最后一个参数传字典，不传 = 团队版，和原来一模一样
  *   - 签约审批就是一个普通节点，手动推
  *   - 「已转商机」「赢单」不是结局，是进下一阶段的第一个节点；真正的结局只有四个：线索流失、丢单、成功交付、异常状态
- *   - 成功交付：尾款结清、验收通过两项都勾上才让点
+ *   - 成功交付：尾款结清、验收通过两项都勾上才让点；企业版「交付结清」验收两种都行：勾了验收通过，或项目附件「验收报告」里传了一份（M-必填-11）
  *   - 线索流失、丢单：企业版要写一句原因（要原因 = 企业版()），记在节点变更里（10-25 F8）
  *   - 异常状态：从异常类别字典里选一个（默认纠纷取消、项目停滞，老板能加能停用），备注可写可不写；
  *     恢复 = 再改到某个节点（结局清掉），同样守上面的前后规矩
@@ -77,9 +77,22 @@ export function 终止结局(当前: { phase: string; result?: string | null }, 
   return 字典.出口们[当前.phase][1].结局;
 }
 
-/** 成功交付还差哪几项；空 = 能点 */
-export function 交付还差(p: { balanceSettled: boolean; acceptancePassed: boolean }): string[] {
-  return [...(p.balanceSettled ? [] : ["尾款结清"]), ...(p.acceptancePassed ? [] : ["验收通过"])];
+/**
+ * 成功交付还差哪几项；空 = 能点。
+ * 有验收报告：企业版项目附件「验收报告」那一格传了至少一份（M-必填-11，客户 11-08「验收报告用附件，有上传就算过」）——和勾「验收通过」任一成立，验收就算过。
+ * 团队版没有这一格，不传 = 只认勾
+ */
+export function 交付还差(p: { balanceSettled: boolean; acceptancePassed: boolean; 有验收报告?: boolean }): string[] {
+  return [...(p.balanceSettled ? [] : ["尾款结清"]), ...(p.acceptancePassed || p.有验收报告 ? [] : ["验收通过"])];
+}
+
+/**
+ * 点不了交付时那句话。认验收报告（企业版）且验收没过：说清验收两种都行；别的照旧「勾上才能点」
+ */
+export function 交付还差话(差: readonly string[], 叫法: string, 认验收报告: boolean): string {
+  if (!认验收报告 || !差.includes("验收通过")) return `还差${差.join("、")}，勾上才能点${叫法}`;
+  const 名 = 差.map((x) => (x === "验收通过" ? "验收" : x));
+  return `还差${名.join("、")}才能点${叫法}：${差.includes("尾款结清") ? "尾款结清要勾上；" : ""}验收勾上「验收通过」或在项目附件「验收报告」里传一份，任一就行`;
 }
 
 /**
@@ -90,7 +103,7 @@ export function 交付还差(p: { balanceSettled: boolean; acceptancePassed: boo
  */
 export function 改节点问题(
   到: 位置,
-  项目: 位置 & { balanceSettled: boolean; acceptancePassed: boolean },
+  项目: 位置 & { balanceSettled: boolean; acceptancePassed: boolean; 有验收报告?: boolean },
   异常?: { categoryId?: string | null; 备注?: string | null },
   企业 = false,
   字典: 阶段字典 = 团队版字典,
@@ -119,7 +132,7 @@ export function 改节点问题(
   }
   if (是交付(r)) {
     const 差 = 交付还差(项目);
-    if (差.length) return `还差${差.join("、")}，勾上才能点${结局叫法(r, 字典)}`;
+    if (差.length) return 交付还差话(差, 结局叫法(r, 字典), 企业);
   }
   if (r === "异常状态") {
     // 10-23 定：异常只在订单阶段有，线索、商机阶段的项目（哪怕下一步就进订单）都不能直接进异常
