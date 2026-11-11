@@ -25,7 +25,6 @@ export async function 老客户清单(b: Pick<BusinessConfig, "fields">): Promis
       OR: [
         { followStatus: { in: ["已签约", "意向较高"] } },
         { contracts: { some: {} } },
-        { opportunities: { some: {} } },
       ],
     },
     select: {

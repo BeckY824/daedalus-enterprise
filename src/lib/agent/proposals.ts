@@ -10,7 +10,7 @@
  *   还没填（必填项是空的）                    → 照样出卡片，由 missingFields 拦住确认按钮
  * 校验放在纯函数里，生成时和落库时各跑一遍——卡片上的值人能改，改完的同样不可信。
  */
-import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES, GRADES, OPP_STAGES, STAGE_PROBABILITY } from "../constants";
+import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES, GRADES } from "../constants";
 import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "../business-config";
 import { dayjs } from "../utils";
 import { 是币种, 金额 } from "../currency";
@@ -93,7 +93,8 @@ export type Proposal =
       /** 下一步时间（企业版建成项目用，开了超时回收必填，YYYY-MM-DD）；别的版本不看（10-27） */ nextAt?: string }
       & 线索卡多的格 & 线索建档格)
   | (Base & { kind: "update_customer"; changes: 一处改动[] })
-  | (Base & { kind: "add_opportunity"; name: string; amount: number; /** 币种（2026-10-03）。老的建议卡没有：当本位币 */ currency?: string; stage: string; probability: number; expectedDealAt: string; remark: string })
+  /** 老对话存档里的商机卡：建议工具 propose_opportunity 2026-11-11 已删，不再生成；卡片只认出来、显示成不可用（dashboard/apply.ts 也拦） */
+  | (Base & { kind: "add_opportunity"; name?: string })
   | (Base & { kind: "add_contract"; amount: number; currency?: string; signedAt: string; remark: string })
   | (Base & { kind: "update_channel"; channelName: string; ownerName: string; phone: string; remark: string })
   | 项目卡;
@@ -191,14 +192,6 @@ function 收币种(v: unknown, 本位币 = "CNY"): string | null {
   return 是币种(s) ? s : null;
 }
 
-/** 成交概率：没给返回 undefined，由阶段推一个默认值 */
-function 收概率(v: unknown): number | null | undefined {
-  if (v === undefined || v === null || v === "") return undefined;
-  const n = Number(v);
-  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
-  return Math.round(n);
-}
-
 export function buildProposal(
   id: string,
   kind: ProposalKind,
@@ -281,22 +274,8 @@ export function buildProposal(
     return { ok: true, proposal: { ...base, kind, changes } };
   }
 
-  if (kind === "add_opportunity") {
-    const stage = pickEnum(args.stage, OPP_STAGES, OPP_STAGES[0]);
-    if (!stage.ok) return { ok: false, error: `stage 必须是：${OPP_STAGES.join("/")}` };
-    const when = parseWhen(args.expectedDealAt);
-    if (!when.ok) return { ok: false, error: "expectedDealAt 解析不了，用 YYYY-MM-DD" };
-    const amount = 收金额(args.amount);
-    if (amount === null) return { ok: false, error: "amount 要是个非负数字" };
-    const currency = 收币种(args.currency, b.currency);
-    if (currency === null) return { ok: false, error: "currency 要是三位币种代码，如 USD / EUR / CNY" };
-    const p = 收概率(args.probability);
-    if (p === null) return { ok: false, error: "probability 要在 0~100 之间" };
-    return {
-      ok: true,
-      proposal: { ...base, kind, name: str(args.name, 60), amount, currency, stage: stage.value, probability: p ?? STAGE_PROBABILITY[stage.value] ?? 10, expectedDealAt: when.at, remark: str(args.remark, 500) },
-    };
-  }
+  // 老对话存档里的商机卡（工具 2026-11-11 已删）：确认时 dashboard/apply.ts 拿它重收一遍，这里直接拒
+  if (kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
 
   /**
    * 改渠道。单独一种卡，因为**渠道负责人不是客户身上的字段**——
@@ -412,10 +391,6 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
       if (spec.kind === "enum" && !c.value) miss.push(spec.label);
     }
   }
-  if (p.kind === "add_opportunity") {
-    if (!p.name.trim()) miss.push("商机名称");
-    if (!p.amount) miss.push("金额");
-  }
   if (p.kind === "add_contract") {
     if (!p.amount) miss.push(签约叫(b) === "订单" ? "订单金额" : "签约金额");
     if (!p.signedAt) miss.push(签约叫(b) === "订单" ? "订单确认时间" : "签约日期");
@@ -437,7 +412,7 @@ export function describeProposal(p: Proposal, customerNoun: string, 字段表: R
     const 项 = p.changes.map((c) => 字段表[c.field].label);
     return `改${customerNoun}「${p.customerName}」的${项.join("、")}`;
   }
-  if (p.kind === "add_opportunity") return `给「${p.customerName}」新建商机${p.name ? `「${p.name}」` : ""}`;
+  if (p.kind === "add_opportunity") return `给「${p.customerName}」新建商机${typeof p.name === "string" && p.name ? `「${p.name}」` : ""}`;
   if (p.kind === "add_contract") return `给「${p.customerName}」记一笔${签约叫(b)}${p.amount ? ` ${金额(p.amount, p.currency)}` : ""}`;
   if (p.kind === "update_channel") {
     const 项 = [p.ownerName && "负责人", p.phone && "电话", p.remark && "备注"].filter(Boolean);

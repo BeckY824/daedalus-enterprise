@@ -42,6 +42,7 @@ export type 停用分拣结果 = {
   进公海客户: string[];
   /** 本来就在公海里、这次不动的（企业版两种方式都算：负责人是他的老数据 + 最近一次进公海时负责人是他的） */
   本来在公海: string[];
+  /** 进行中的商机：企业版只用项目、商机表已清空（11-11 起不再查），恒为空；留着这一格给交接记录 / 日志的老结构 */
   商机: string[];
   待办: string[];
   计划: string[];
@@ -61,7 +62,7 @@ export type 停用分拣结果 = {
   订单项目: number;
 };
 
-type 读库 = Pick<Prisma.TransactionClient, "customer" | "opportunity" | "task" | "followPlan" | "lead" | "channel" | "entChannelMain" | "project" | "user" | "customerOwnerLog">;
+type 读库 = Pick<Prisma.TransactionClient, "customer" | "task" | "followPlan" | "lead" | "channel" | "entChannelMain" | "project" | "user" | "customerOwnerLog">;
 
 /**
  * 已停用的同事（不含占位账号、不含 除了 里的人）：他们负责、挂在要转走的客户上的进行中项目随客户给接手人（P-转-18，11-09 定），
@@ -73,9 +74,8 @@ export async function 停用的同事(db: Pick<Prisma.TransactionClient, "user">
 
 export async function 停用分拣(db: 读库, id: string, 方式: 停用方式, 企业: boolean): Promise<停用分拣结果> {
   const 公海 = 企业 && 方式 === "公海";
-  const [客户们, 商机们, 待办们, 计划们, 线索们, 渠道们, 他的项目, 主渠道们] = await Promise.all([
+  const [客户们, 待办们, 计划们, 线索们, 渠道们, 他的项目, 主渠道们] = await Promise.all([
     db.customer.findMany({ where: { salesOwnerId: id }, select: { id: true, followStatus: true, pool: { select: { customerId: true } } } }),
-    db.opportunity.findMany({ where: { ownerId: id, status: "OPEN" }, select: { id: true, customerId: true } }),
     db.task.findMany({ where: { ownerId: id, done: false }, select: { id: true, customerId: true } }),
     db.followPlan.findMany({ where: { ownerId: id, done: false }, select: { id: true, customerId: true } }),
     db.lead.findMany({ where: { ownerId: id }, select: { id: true } }),
@@ -133,7 +133,7 @@ export async function 停用分拣(db: 读库, id: string, 方式: 停用方式,
     客户: [...转走的客户],
     进公海客户: 去公海.map((c) => c.id),
     本来在公海: 本来在公海们,
-    商机: 给接手人(商机们),
+    商机: [],
     待办: 给接手人(待办们),
     计划: 给接手人(计划们),
     线索: 线索们.map((r) => r.id),

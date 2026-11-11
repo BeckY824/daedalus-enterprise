@@ -4,7 +4,6 @@ import { 新建只给自己 } from "@/lib/enterprise/import-perm";
 import { 负责人显示名 } from "@/lib/pool";
 import { 软删开着, 软删客户, 回收站保留天数, 删除挡 } from "@/lib/enterprise/soft-delete";
 import { businessDayjs } from "@/lib/business-clock";
-import { 转交商机 } from "@/lib/opportunity-activity";
 import { hasVisibleText } from "@/lib/form-validation";
 
 import { scheduleValue, parseSignDate } from "@/lib/schedule-date";
@@ -1072,7 +1071,6 @@ async function 搬走并删(ids: string[], ownerId: string, 客户叫法: string
 /** 删客户之前数一数：会一起删掉什么、什么会留下来。确认框照着它说，不再只写「跟进、待办与签约」 */
 export type 删除清点 = {
   跟进: number;
-  商机: number;
   计划和待办: number;
   签约: number;
   /** 按币种分开（2026-10-03，不换汇） */
@@ -1091,9 +1089,8 @@ export async function 删除前清点(ids: string[]): Promise<删除清点> {
   await requireUser();
   const 在 = { customerId: { in: ids } };
   const 软 = 软删开着();
-  const [跟进, 商机, 计划, 待办, 签约, 联系人, 线索, 项目] = await Promise.all([
+  const [跟进, 计划, 待办, 签约, 联系人, 线索, 项目] = await Promise.all([
     prisma.followUp.count({ where: 在 }),
-    prisma.opportunity.count({ where: 在 }),
     prisma.followPlan.count({ where: 在 }),
     prisma.task.count({ where: 在 }),
     prisma.contract.findMany({ where: 在, select: { amount: true, ...带币种.签约 } }),
@@ -1102,7 +1099,7 @@ export async function 删除前清点(ids: string[]): Promise<删除清点> {
     软 ? prisma.project.count({ where: 在 }) : 0,
   ]);
   return {
-    跟进, 商机, 计划和待办: 计划 + 待办,
+    跟进, 计划和待办: 计划 + 待办,
     签约: 签约.length, 签约金额: 签约合计(签约),
     联系人, 线索, 进回收站: 软, 项目,
   };
@@ -1455,7 +1452,6 @@ export async function 撤销改负责人(原值: { id: string; 值: string }[], 
         const 这几位 = { in: cs };
         await tx.followPlan.updateMany({ where: { id: { in: 带过来.计划 }, customerId: 这几位, ownerId: 新负责人, done: false }, data: { ownerId: 原 } });
         await tx.task.updateMany({ where: { id: { in: 带过来.待办 }, customerId: 这几位, ownerId: 新负责人, done: false }, data: { ownerId: 原 } });
-        await 转交商机(tx, { id: { in: 带过来.商机 }, customerId: 这几位, ownerId: 新负责人, status: "OPEN" }, 原);
         if (严) await 还待分配状态(tx, 带过来, cs, 新负责人);
         await 还项目(tx, 带过来.项目, cs, 新负责人, 原, me.id);
         // 转客户时一起从线索公海带过来的（P-转-07）：放回线索公海；放不回去整批回滚

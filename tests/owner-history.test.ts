@@ -79,7 +79,7 @@ describe("B2 业绩算在签约那一刻的人头上", () => {
     expect(c.channelOwnerId).toBe(张三.id); // 他带来的人，归属不改写
     expect((await prisma.channel.findUniqueOrThrow({ where: { id: 渠道.id } })).channelOwnerId).toBe(李四.id); // 渠道以后新来的归李四
     expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 赢单.id } })).ownerId).toBe(张三.id);
-    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 在谈.id } })).ownerId).toBe(李四.id);
+    expect((await prisma.opportunity.findUniqueOrThrow({ where: { id: 在谈.id } })).ownerId).toBe(张三.id); // 商机已并入项目，停用不再转商机
     expect((await prisma.task.findUniqueOrThrow({ where: { id: 做完的.id } })).ownerId).toBe(张三.id);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: 没做的.id } })).ownerId).toBe(李四.id);
 
@@ -89,7 +89,7 @@ describe("B2 业绩算在签约那一刻的人头上", () => {
     // 留痕里记下转走了哪些，要手工退回有据可依
     const 痕 = await prisma.auditLog.findFirstOrThrow({ where: { action: "deactivate" } });
     expect(痕.detail).toContain(客户.id);
-    expect(痕.detail).toContain(在谈.id);
+    expect(痕.detail).not.toContain(在谈.id);
     expect(痕.detail).not.toContain(赢单.id);
   });
 
@@ -115,13 +115,13 @@ describe("B3 换客户负责人，原负责人没做完的活跟着走", () => {
     return { 计划, 待办, 做完的, 别人的, 在谈, 赢单, 王五, 主 };
   }
 
-  it("详情页单格改负责人：没做完的计划、待办、在谈商机转给李四；做完的、赢单的、别人的不动", async () => {
+  it("详情页单格改负责人：没做完的计划、待办转给李四；做完的、别人的不动；商机 11-11 起一律不动（企业版商机表已清空）", async () => {
     const { 计划, 待办, 做完的, 别人的, 在谈, 赢单, 王五, 主 } = await 摆活();
     const r = await patchCustomer(客户.id, "salesOwnerId", 李四.id);
-    expect(r).toMatchObject({ ok: true, 带走: { 计划和待办: 2, 商机: 1 } });
+    expect(r).toMatchObject({ ok: true, 带走: { 计划和待办: 2, 商机: 0 } });
     expect(await 主("followPlan", 计划.id)).toBe(李四.id);
     expect(await 主("task", 待办.id)).toBe(李四.id);
-    expect(await 主("opportunity", 在谈.id)).toBe(李四.id);
+    expect(await 主("opportunity", 在谈.id)).toBe(张三.id);
     expect(await 主("task", 做完的.id)).toBe(张三.id);
     expect(await 主("opportunity", 赢单.id)).toBe(张三.id);
     expect(await 主("task", 别人的.id)).toBe(王五.id);
@@ -130,7 +130,7 @@ describe("B3 换客户负责人，原负责人没做完的活跟着走", () => {
   it("列表批量转给李四：一样带走，结果里说得出带走了几条", async () => {
     const { 计划, 主 } = await 摆活();
     const r = await assignSalesOwner([客户.id], 李四.id);
-    expect(r).toMatchObject({ ok: true, updated: 1, 带走: { 计划和待办: 2, 商机: 1 } });
+    expect(r).toMatchObject({ ok: true, updated: 1, 带走: { 计划和待办: 2, 商机: 0 } });
     expect(await 主("followPlan", 计划.id)).toBe(李四.id);
   });
 });

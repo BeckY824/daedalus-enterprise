@@ -112,7 +112,7 @@
   "components/ModelPicker.tsx": 2,
   "components/ProjectProposalFields.tsx": 11,
   "components/ProjectRoster.tsx": 3,
-  "components/ProposalCard.tsx": 31,
+  "components/ProposalCard.tsx": 27,
   "components/SlideConfirm.tsx": 2,
   "components/StatePage.tsx": 1,
   "components/research/ResearchCard.tsx": 1,

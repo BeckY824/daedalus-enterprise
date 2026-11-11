@@ -162,7 +162,7 @@ describe("AI 问数据 / 建议卡 / 转介绍", () => {
     const 签 = buildProposal("p1", "add_contract", 客户, { amount: 3200, signedAt: "2026-10-03", reason: "邮件确认了" }, b);
     expect(签.ok && 签.proposal).toMatchObject({ kind: "add_contract", currency: "USD" });
     if (签.ok) expect(describeProposal(签.proposal, "客户")).toContain("US$ 3,200");
-    const 欧 = buildProposal("p2", "add_opportunity", 客户, { name: "新单", amount: 100, currency: "eur", reason: "询盘" }, b);
+    const 欧 = buildProposal("p2", "add_contract", 客户, { amount: 100, currency: "eur", signedAt: "2026-10-03", reason: "询盘" }, b);
     expect(欧.ok && 欧.proposal).toMatchObject({ currency: "EUR" });
     const 坏 = buildProposal("p3", "add_contract", 客户, { amount: 1, currency: "美刀", signedAt: "2026-10-03", reason: "x" }, b);
     expect(坏.ok).toBe(false);

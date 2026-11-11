@@ -832,7 +832,7 @@ async function 撤这一批(
     id: true,
     name: true,
     updatedAt: true,
-    _count: { select: { followUps: true, opportunities: true, contracts: true, contacts: true, tasks: true, plans: true } },
+    _count: { select: { followUps: true, contracts: true, contacts: true, tasks: true, plans: true } },
     /*
       被别人当推荐人、或是别人的业绩归属对象：删掉他，下游那几位的推荐人和归属会被外键悄悄置空。
       手工删客户（deleteCustomers）早就拦了这种，撤销导入原来漏了（2026-10-01 排查 A7）

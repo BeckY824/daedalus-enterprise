@@ -40,12 +40,9 @@ export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Pro
   let 叫法: string;
   if ("followUpId" in 挂在) return 认沟通(挂在.followUpId, 要改);
   if ("projectId" in 挂在) return 认项目(挂在.projectId, !!要改);
-  if ("opportunityId" in 挂在) {
-    const o = await prisma.opportunity.findFirst({ where: { id: 挂在.opportunityId }, select: { name: true, customerId: true } });
-    if (!o) return { 错: "这个商机已经不在了，刷新看看", 状态: 404 };
-    客户 = o.customerId;
-    叫法 = `商机「${o.name}」`;
-  } else if ("leadId" in 挂在) {
+  // 企业版只用项目：商机表由启动清理（lib/enterprise/legacy-cleanup.ts）清空、写入口全挡，挂商机的一律当不在，不再查库
+  if ("opportunityId" in 挂在) return { 错: "这个商机已经不在了，刷新看看", 状态: 404 };
+  if ("leadId" in 挂在) {
     if (!企业版()) return { 错: "此版本未开放线索附件", 状态: 404 };
     const l = await prisma.lead.findFirst({ where: { id: 挂在.leadId }, select: { name: true, customerId: true, ownerId: true } });
     if (!l) return { 错: "这条线索已经不在了，刷新看看", 状态: 404 };

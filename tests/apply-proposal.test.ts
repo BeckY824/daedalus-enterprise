@@ -138,11 +138,12 @@ describe("该拦的必须拦住——这些校验都在 saveCustomer 里，绕�
 });
 
 describe("签约也走原有 action", () => {
-  it("商机卡一律拦下（propose_opportunity 和商机保存入口 2026-11-11 删了），一行不写", async () => {
+  it("老对话存档里的商机卡一律拦下（propose_opportunity 和商机保存入口 2026-11-11 删了），一行不写", async () => {
+    // 存档里的卡还带着老格子（金额、阶段……），类型里已经只认 name
     const r = await applyProposal({
       id: "p2", kind: "add_opportunity", customerId: 客户, customerName: "陈同学", reason: "测试",
       name: "秋季班", amount: 19800, stage: "谈判审核", probability: 70, expectedDealAt: "", remark: "",
-    });
+    } as never);
     expect(r).toEqual({ ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" });
     expect(await prisma.opportunity.count()).toBe(0);
   });

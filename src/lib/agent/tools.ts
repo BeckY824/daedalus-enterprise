@@ -17,9 +17,8 @@ import type { 页面客户筛选 } from "../ai-page-filters";
 import { 签约归属人 } from "../contract-owner";
 import { 是逾期, 数逾期跟进 } from "../overdue";
 import { 渠道汇总 } from "../attribution";
-import { 带币种, 商机币种, 签约币种, 签约金额, 签约合计 } from "../money-db";
-import { 一行说法 } from "../quote";
-import { 金额 as 显示金额, 合计文字 } from "../currency";
+import { 带币种, 签约币种, 签约金额, 签约合计 } from "../money-db";
+import { 合计文字 } from "../currency";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
@@ -28,13 +27,13 @@ import { 无负责人占位邮箱 } from "../pool";
 import { 现值选取, 现值表 } from "./current-values";
 import { prisma } from "../prisma";
 import { dayjs } from "../utils";
-import { FOLLOW_TYPE_MAP, OPP_STAGES } from "../constants";
+import { FOLLOW_TYPE_MAP } from "../constants";
 import { formatTimeline } from "../ai-context";
 import { runQuery } from "../report-run";
 import { recapRange } from "./recap-range";
 import { METRICS, VALID_GROUPS, sanitizeQuerySpec, 指标显示, 维度显示 } from "../report-query";
 import { loadWatchlistPage } from "../sentinel-data";
-import { statusLabel, stageLabel, 外贸精简, 外贸订单 } from "../business-config";
+import { statusLabel, 外贸精简 } from "../business-config";
 import { 名字在别处, 别处说法, 别处附件, 找人 } from "./find-name";
 import type { BusinessConfig } from "../business-config";
 import type { BriefRecord } from "../ai-draft";
@@ -225,7 +224,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "get_customer",
-    description: "读一位客户的档案、联系人（家长/对接人的电话微信）、商机、待办、下次计划和最近的跟进记录（含聊天原文）。回答里引用记录时用它给的 [编号]。",
+    description: "读一位客户的档案、联系人（家长/对接人的电话微信）、待办、下次计划和最近的跟进记录（含聊天原文）；企业版另给这位名下的项目。回答里引用记录时用它给的 [编号]。",
     args: '{"id": "客户 id", "name": "或者直接给姓名，重名会让你去挑"}',
     async run(args, ctx) {
       let id = str(args.id, 40);
@@ -272,14 +271,6 @@ export const TOOLS: Tool[] = [
           // 联系人是另一张表。不给的话，问「张三家长的微信是多少」时模型只能说没有——
           // 而数据就在库里，等于向用户断言 CRM 丢了东西（同下面电话那条的道理）
           contacts: { select: { name: true, position: true, phone: true, wechat: true, email: true, isPrimary: true }, orderBy: { isPrimary: "desc" } },
-          opportunities: {
-            select: {
-              name: true, amount: true, stage: true, status: true, ...带币种.商机,
-              // 当前那一版报价（2026-10-03）：问「上次给他报的什么价」时它得看得到
-              quotes: { orderBy: [{ quotedAt: "desc" }, { id: "desc" }], take: 1, select: { quotedAt: true, lines: { orderBy: { sort: "asc" } } } },
-            },
-            orderBy: { createdAt: "desc" },
-          },
           tasks: { where: { done: false }, select: { title: true, dueAt: true, dueOn: true } },
           plans: { where: { done: false }, select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true } },
           followUps: { orderBy: { occurredAt: "desc" }, take: 20, select: { id: true, type: true, title: true, content: true, occurredAt: true, duration: true, owner: { select: { name: true } }, source: { select: { text: true } } } },
@@ -334,19 +325,12 @@ export const TOOLS: Tool[] = [
             : `推荐来源 ${c.referrerCustomer?.name ?? c.channel?.name ?? "无"}；预计签约 ${c.expectedSignOn ?? (c.expectedSignAt ? dayjs(c.expectedSignAt).format("YYYY-MM-DD") : "未定")}；已签约 ${c.contracts.length ? 合计文字(签约合计(c.contracts)) : "无"}`
         }；备注：${c.remark || "无"}`,
         contacts: c.contacts.map((p) => `${p.name}${p.position ? `（${p.position}）` : ""}${p.isPrimary ? " 主要联系人" : ""}：${[p.phone && `电话 ${号(p.phone)}`, p.wechat && `微信 ${p.wechat}`, p.email && `邮箱 ${p.email}`].filter(Boolean).join("、") || "没留联系方式"}`),
-        opportunities: c.opportunities.map((o) => {
-          const q = o.quotes[0];
-          const 报 = q?.lines.length ? `；${dayjs(q.quotedAt).format("YYYY-MM-DD")} 报价（${商机币种(o)}）：${q.lines.map(一行说法).join("、")}` : "";
-          // 阶段按这家的叫法（外贸「初步沟通」叫「询盘」），关了的说中文——原来直接给 WON / LOST（G.3）
-          const 状态 = o.status === "OPEN" ? stageLabel(ctx.b, o.stage) : o.status === "WON" ? (外贸订单(ctx.b) ? "已转订单" : "赢单") : "丢单";
-          return `${o.name} ${显示金额(o.amount, 商机币种(o))} ${状态}${报}`;
-        }),
         openTasks: c.tasks.map((t) => `${t.title}${t.dueAt ? `（${dayjs(scheduleValue(t.dueAt, t.dueOn)).format(t.dueOn ? "MM-DD" : "MM-DD HH:mm")}）` : ""}`),
         nextPlan: c.plans[0] ? `${dayjs(scheduleValue(c.plans[0].plannedAt, c.plans[0].plannedOn)).format(c.plans[0].plannedOn ? "MM-DD" : "MM-DD HH:mm")} ${c.plans[0].method}：${c.plans[0].subject}` : null,
         timeline: timeline || "（从未跟进过）",
         ...(只用项目 ? { 项目, ...(项目行.length > 项目最多 ? { 项目说明: `只列最近动过的 ${项目最多} 个，更早的用 list_projects 按客户名查` } : {}) } : {}),
       };
-      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${c.opportunities.length ? `、${c.opportunities.length} 个商机` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length} 个项目` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
+      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length} 个项目` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
     },
   },
   {
@@ -1216,7 +1200,6 @@ export function proposalVocab(b: BusinessConfig): string {
 决策状态：${DECISION_STATUSES.map(带值).join(" / ")}
 跟进类型：${FOLLOW_TYPES.map((t) => t.label).join(" / ")}
 计划方式：${FOLLOW_METHODS.join(" / ")}
-商机阶段：${OPP_STAGES.join(" / ")}
 档案里能改的字段：${可改字段名单.map((f) => `${f}（${字段表[f].label}）`).join("、")}
 渠道负责人有两种改法，别混：
   改**某一位**${b.customer ?? "客户"}的渠道负责人（登记错误、单个订正）→ propose_customer_update 的 channelOwnerName，只动这一位

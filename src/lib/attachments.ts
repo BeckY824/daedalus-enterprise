@@ -114,20 +114,14 @@ export async function 删附件(db: PrismaClient, id: string, 目录 = 附件目
   fs.rmSync(附件文件(id, 目录), { force: true });
 }
 
-/** 导出 Excel 用：每个商机（企业版还有线索 / 联系人 / 项目）各几个附件 */
+/** 导出 Excel 用：每条线索 / 联系人 / 项目各几个附件（企业版） */
 export async function 附件个数(
   db: PrismaClient,
-  q: { opportunityIds?: string[]; leadIds?: string[]; contactIds?: string[]; projectIds?: string[] },
-): Promise<{ 商机: Map<string, number>; 线索: Map<string, number>; 联系人: Map<string, number>; 项目: Map<string, number> }> {
-  const 商机 = new Map<string, number>();
+  q: { leadIds?: string[]; contactIds?: string[]; projectIds?: string[] },
+): Promise<{ 线索: Map<string, number>; 联系人: Map<string, number>; 项目: Map<string, number> }> {
   const 线索 = new Map<string, number>();
   const 联系人 = new Map<string, number>();
   const 项目 = new Map<string, number>();
-  if (q.opportunityIds?.length) {
-    for (const g of await db.attachment.groupBy({ by: ["opportunityId"], where: { opportunityId: { in: q.opportunityIds } }, _count: { _all: true } })) {
-      if (g.opportunityId) 商机.set(g.opportunityId, g._count._all);
-    }
-  }
   if (q.leadIds?.length) {
     for (const g of await db.attachment.groupBy({ by: ["leadId"], where: { leadId: { in: q.leadIds } }, _count: { _all: true } })) {
       if (g.leadId) 线索.set(g.leadId, g._count._all);
@@ -143,7 +137,7 @@ export async function 附件个数(
       if (g.projectId) 项目.set(g.projectId, g._count._all);
     }
   }
-  return { 商机, 线索, 联系人, 项目 };
+  return { 线索, 联系人, 项目 };
 }
 
 /**
@@ -181,40 +175,33 @@ export async function 线索附件转给联系人(db: Pick<PrismaClient, "attach
 }
 
 /**
- * 导出客户用：每位客户的商机上挂了几个附件（D-24：Excel 不带文件，写明个数）。
- * 含联系人（企业版联系人附件）：再数这位的联系人上挂的，加上转成这位客户的线索上、还没挂到联系人的（线索没写联系人时转的）；
- * 有才带「联系人」这一格，关着时结果和原来一模一样。
- * db 传加了限定的 prisma：业务员看不到的商机，它的附件也不算进去。分批查，不拼一条超长的 in
+ * 导出客户用：每位客户的联系人上挂了几个附件（D-24：Excel 不带文件，写明个数）。
+ * 含联系人（企业版联系人附件）：数这位的联系人上挂的，加上转成这位客户的线索上、还没挂到联系人的（线索没写联系人时转的）。
+ * 商机附件不再数（11-11）：企业版只用项目，商机表由启动清理（lib/enterprise/legacy-cleanup.ts）清空，数出来恒为 0。
+ * db 传加了限定的 prisma。分批查，不拼一条超长的 in
  */
-export async function 客户附件个数(db: PrismaClient, customerIds: string[], 含联系人 = false): Promise<Map<string, { 商机: number; 联系人?: number }>> {
-  const 结果 = new Map<string, { 商机: number; 联系人?: number }>();
-  if (!customerIds.length || !(await db.attachment.findFirst({ select: { id: true } }))) return 结果;
-  const 记 = (客户: string, 类: "商机" | "联系人", n: number) => {
-    const x = 结果.get(客户) ?? { 商机: 0 };
-    x[类] = (x[类] ?? 0) + n;
+export async function 客户附件个数(db: PrismaClient, customerIds: string[], 含联系人 = false): Promise<Map<string, { 联系人: number }>> {
+  const 结果 = new Map<string, { 联系人: number }>();
+  if (!含联系人 || !customerIds.length || !(await db.attachment.findFirst({ select: { id: true } }))) return 结果;
+  const 记 = (客户: string, n: number) => {
+    const x = 结果.get(客户) ?? { 联系人: 0 };
+    x.联系人 += n;
     结果.set(客户, x);
   };
   for (let i = 0; i < customerIds.length; i += 500) {
     const 这批 = customerIds.slice(i, i + 500);
-    const 商机们 = await db.opportunity.findMany({ where: { customerId: { in: 这批 } }, select: { id: true, customerId: true } });
-    for (let j = 0; j < 商机们.length; j += 500) {
-      const 数 = await 附件个数(db, { opportunityIds: 商机们.slice(j, j + 500).map((o) => o.id) });
-      for (const o of 商机们.slice(j, j + 500)) { const n = 数.商机.get(o.id); if (n) 记(o.customerId, "商机", n); }
+    const 联系人们 = await db.contact.findMany({ where: { customerId: { in: 这批 } }, select: { id: true, customerId: true } });
+    for (let j = 0; j < 联系人们.length; j += 500) {
+      const 段 = 联系人们.slice(j, j + 500);
+      const 数 = await 附件个数(db, { contactIds: 段.map((c) => c.id) });
+      for (const c of 段) { const n = 数.联系人.get(c.id); if (n) 记(c.customerId, n); }
     }
-    if (含联系人) {
-      const 联系人们 = await db.contact.findMany({ where: { customerId: { in: 这批 } }, select: { id: true, customerId: true } });
-      for (let j = 0; j < 联系人们.length; j += 500) {
-        const 段 = 联系人们.slice(j, j + 500);
-        const 数 = await 附件个数(db, { contactIds: 段.map((c) => c.id) });
-        for (const c of 段) { const n = 数.联系人.get(c.id); if (n) 记(c.customerId, "联系人", n); }
-      }
-      const 线索们 = await db.lead.findMany({ where: { customerId: { in: 这批 } }, select: { id: true, customerId: true } });
-      for (let j = 0; j < 线索们.length; j += 500) {
-        const 段 = 线索们.slice(j, j + 500);
-        for (const g of await db.attachment.groupBy({ by: ["leadId"], where: { leadId: { in: 段.map((l) => l.id) }, contactId: null }, _count: { _all: true } })) {
-          const 客户 = 段.find((l) => l.id === g.leadId)?.customerId;
-          if (客户) 记(客户, "联系人", g._count._all);
-        }
+    const 线索们 = await db.lead.findMany({ where: { customerId: { in: 这批 } }, select: { id: true, customerId: true } });
+    for (let j = 0; j < 线索们.length; j += 500) {
+      const 段 = 线索们.slice(j, j + 500);
+      for (const g of await db.attachment.groupBy({ by: ["leadId"], where: { leadId: { in: 段.map((l) => l.id) }, contactId: null }, _count: { _all: true } })) {
+        const 客户 = 段.find((l) => l.id === g.leadId)?.customerId;
+        if (客户) 记(客户, g._count._all);
       }
     }
   }
@@ -250,9 +237,9 @@ const g = globalThis as unknown as { __附件清理?: number };
 
 /**
  * 清孤儿：
- *   - 行在、商机 / 线索 / 联系人 / 项目（企业版 P11）都不在了（只挂过订单的也算：订单表 2026-10-29 删了，企业版老数据清理早已删过这些附件）：第一次看到记下来（attachments/.orphans.json），满 1 天还不在（没撤销）就连文件删掉
+ *   - 行在、线索 / 联系人 / 项目（企业版 P11）/ 沟通记录都不在了（只挂过商机 / 订单的也算：这两张表企业版已清空，企业版老数据清理早已删过这些附件）：第一次看到记下来（attachments/.orphans.json），满 1 天还不在（没撤销）就连文件删掉
  *   - 文件在、行不在（存到一半断了、从备份恢复了更早的库）：文件 10 分钟没动过就删
- * db 要传**不加限定的**（defaultClient 包在 看全部 里）：业务员那台看不到的商机不等于没了。
+ * db 要传**不加限定的**（defaultClient 包在 看全部 里）：业务员那台看不到的线索 / 联系人不等于没了。
  * 列附件时顺手跑，一小时最多一次；出错不往外抛
  */
 export async function 清孤儿(db: PrismaClient, 目录 = 附件目录(), 现在 = Date.now(), 强制 = false): Promise<{ 删行: number; 删文件: number }> {
@@ -260,8 +247,8 @@ export async function 清孤儿(db: PrismaClient, 目录 = 附件目录(), 现�
   if (!强制 && g.__附件清理 && 现在 - g.__附件清理 < 3600 * 1000) return 结果;
   g.__附件清理 = 现在;
   try {
-    const 行们 = await db.attachment.findMany({ select: { id: true, opportunityId: true, leadId: true, contactId: true, projectId: true, followUpId: true } });
-    const 商机在 = new Set((await db.opportunity.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.opportunityId ? [r.opportunityId] : [])))] } }, select: { id: true } })).map((x) => x.id));
+    // 只挂商机的附件不再查商机表（11-11）：企业版商机表由启动清理清空，挂商机的一律算孤儿
+    const 行们 = await db.attachment.findMany({ select: { id: true, leadId: true, contactId: true, projectId: true, followUpId: true } });
     // 企业版联系人附件：线索、联系人。两列都有（线索转过客户）的，任一条在就留
     const 线索在 = new Set((await db.lead.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.leadId ? [r.leadId] : [])))] } }, select: { id: true } })).map((x) => x.id));
     const 联系人在 = new Set((await db.contact.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.contactId ? [r.contactId] : [])))] } }, select: { id: true } })).map((x) => x.id));
@@ -275,8 +262,7 @@ export async function 清孤儿(db: PrismaClient, 目录 = 附件目录(), 现�
     try { 记 = JSON.parse(fs.readFileSync(记录文件, "utf8")); } catch { /* 没有 / 坏了就从头记 */ }
     const 新记: Record<string, number> = {};
     for (const r of 行们) {
-      const 在 = (!!r.opportunityId && 商机在.has(r.opportunityId))
-        || (!!r.leadId && 线索在.has(r.leadId)) || (!!r.contactId && 联系人在.has(r.contactId))
+      const 在 = (!!r.leadId && 线索在.has(r.leadId)) || (!!r.contactId && 联系人在.has(r.contactId))
         || (!!r.projectId && 项目在.has(r.projectId)) || (!!r.followUpId && 沟通在.has(r.followUpId));
       if (在) continue;
       const 首次 = typeof 记[r.id] === "number" ? 记[r.id] : 现在;
