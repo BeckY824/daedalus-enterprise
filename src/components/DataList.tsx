@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Table, Button, Dropdown, Checkbox, Grid } from "antd";
 import { SettingOutlined } from "@ant-design/icons";
-import type { ColumnType } from "antd/es/table";
+import type { ColumnType, TableProps } from "antd/es/table";
 import type { SortOrder } from "antd/es/table/interface";
 import EmptyState from "@/components/EmptyState";
 import { useLocalPref } from "@/lib/local-pref";
@@ -113,6 +113,8 @@ type Props<T> = {
    * 悬停浮层是全站的 TruncTip，被截了才出。备注列给列上的 折行；整张表不要就传 false
    */
   单行?: boolean;
+  /** 可展开的行（antd expandable 原样传）：公海客户池一位客户多个项目，展开逐个领（11-11）。行上别用 children 字段，antd 会当成树 */
+  展开?: TableProps<T>["expandable"];
 };
 
 const 列键 = <T,>(c: 列<T>) => String(c.key ?? c.dataIndex);
@@ -128,7 +130,7 @@ function 行名(r: object): string | null {
 }
 
 export default function DataList<T extends { id: string }>({
-  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true,
+  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开,
 }: Props<T>) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -357,6 +359,7 @@ export default function DataList<T extends { id: string }>({
           emptyText: 空库 ? <EmptyState {...空态} /> : (没对上 ?? <div className="list-none">没有符合条件的，换个条件或点「重置」看全部</div>),
         }}
         scroll={{ x }}
+        expandable={展开}
         rowSelection={批量 ? { selectedRowKeys: 选中, onChange: (k) => set选中(k as string[]), fixed: true, ...勾选框标签 } : undefined}
         rowClassName={(r) => [新来的.includes(r.id) || 亮?.includes(r.id) ? "row-fresh" : "", 行类?.(r) ?? ""].filter(Boolean).join(" ")}
         onRow={

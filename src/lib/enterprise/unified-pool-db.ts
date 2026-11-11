@@ -10,8 +10,9 @@
  * Prisma 要拆批；范围层给关联补的 看得到的项目 带 pooledAt: { not: null }，否定条件没法拆，受限身份一开就 P2029（总管理不限定所以不报）。
  * 单独查、用关联条件框范围，不拼大 IN；范围层给顶层查询加的条件和原来给关联加的是同一句，口径不变
  *
- * 客户行的公海属性按名下全部项目算，不过范围层（11-02）：属性是客户本身的事，谁看都一样。受限身份看不到项目时不能当成「没有项目」落到其他。
- * 项目名、当前进程还是按各人看得到的项目，这句不放开
+ * 客户行的公海属性按名下全部项目算，不过范围层（11-02）：属性是客户本身的事，谁看都一样。受限身份看不到项目时不能当成「没有项目」落到线索池（11-11 前是「其他」）。
+ * 项目名、当前进程还是按各人看得到的项目，这句不放开；「没有项目」显示 线索-潜客培育 也按全部项目认（真没有才写，看不到的写「—」）
+ * 项目行一律客户池；同一位客户的几行在 筛排 里并成一行（并客户池），补这一页 按里面每个项目补完再并
  */
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
@@ -26,14 +27,14 @@ import { 原负责人回避, 回避豁免, 一批id数 } from "@/lib/project/poo
 import type { Prisma } from "@/generated/prisma";
 import { 公海名单条件, 公海名单候选, type 公海名单筛 } from "@/lib/project/list";
 import {
-  客户定状态, 客户公海属性, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排,
+  客户定状态, 客户公海属性, 进程显示项目, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 并客户池, 没项目进程, 项目行属性,
   type 公海行, type 公海筛选, type 入池类,
 } from "./unified-pool";
 
 /** 客户公海、项目公海各最多取这么多（按入池时间新的在前） */
 export const 公海取上限 = 2000;
 
-type 项目片 = { name: string; phase: string; node: string; result: string | null };
+type 项目片 = { id: string; createdAt: Date; name: string; phase: string; node: string; result: string | null };
 type 字典 = ReturnType<typeof 字典of>;
 
 /** 一个项目的 阶段 / 节点 / 结局（老节点名、老结局名换成本套叫法；有结局的阶段按结局归） */
@@ -43,19 +44,21 @@ function 位置(p: 项目片, 字典: 字典) {
 }
 
 /**
- * 「当前进程」那一格 + 鼠标停上去的明细（U-公海-04）：按 客户定状态 取定状态的那个项目，写「阶段-节点」（11-01 用户：「应该是阶段+进程名。例如线索-潜客培育」），有结局再带结局；
- * 名下不止一个项目时明细列出每个项目
+ * 「当前进程」那一格 + 鼠标停上去的明细（U-公海-04）：写名下最新创建的那个项目（进程显示项目，11-11 跟进；和归池用的项目故意不同），
+ * 「阶段-节点」（11-01 用户：「应该是阶段+进程名。例如线索-潜客培育」），有结局再带结局；名下不止一个项目时明细列出每个项目。
+ * 范围照旧（11-02）：传进来的是各人看得到的项目，进程格按看得到的里最新的那个；属性另按全部项目算（归池）
  */
 function 进程们(projects: readonly 项目片[], 字典: 字典) {
   const 定 = 客户定状态(projects);
-  const 进程 = 定.项目 ? 进程格(定.属性, 位置(定.项目, 字典)) : null;
+  const 显示 = 进程显示项目(projects);
+  const 进程 = 显示 ? 进程格(定.属性, 位置(显示, 字典)) : null;
   const 进程明细 = projects.length > 1
     ? projects.map((p) => { const x = 位置(p, 字典); return `${p.name}：${进程格(定.属性, x)}`; }).join("；")
     : null;
   return { 属性: 定.属性, 进程, 进程明细 };
 }
 
-type 客户的项目 = { customerId: string; id: string; name: string; phase: string; node: string; result: string | null };
+type 客户的项目 = { customerId: string; id: string; name: string; phase: string; node: string; result: string | null; createdAt: Date };
 
 /** 客户名下、各人看得到的项目（走带限定的客户端），按创建先后：项目名、当前进程、定状态的那个都认这个顺序 */
 function 查客户的项目(where: Prisma.ProjectWhereInput): Promise<客户的项目[]> {
@@ -78,13 +81,13 @@ function 按客户分<P extends { customerId: string }>(们: readonly P[]): Map<
 
 const 池要的 = { customerId: true, userId: true, reason: true, at: true } satisfies Prisma.CustomerPoolSelect;
 
-/** 客户行里要「各人看得到的项目」才拼得出的四格 */
-function 客户项目格(名下: readonly 客户的项目[], 字典: 字典) {
+/** 客户行里要「各人看得到的项目」才拼得出的四格。没项目 = 名下一个项目都没有（按全部项目认，不按看得到的）：进程写 线索-潜客培育（11-11） */
+function 客户项目格(名下: readonly 客户的项目[], 字典: 字典, 没项目: boolean) {
   const 进 = 进程们(名下, 字典);
   return {
     projectId: 名下.length === 1 ? 名下[0].id : null,
     项目名: 名下.length ? 名下.map((p) => p.name).join("、") : null,
-    进程: 进.进程, 进程明细: 进.进程明细,
+    进程: 没项目 ? 没项目进程 : 进.进程, 进程明细: 进.进程明细,
   };
 }
 
@@ -166,6 +169,8 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   ]);
   const 项目of客户 = 客户的项目们 ? 按客户分(客户的项目们) : null;
   const 全部项目of客户 = 按客户分(定属性的项目们);
+  // 名下一个项目都没有的（按全部项目认，不按各人看得到的）：归线索池、进程写 线索-潜客培育
+  const 没项目客户 = new Set(客户们.filter((c) => !全部项目of客户.has(c.id)).map((c) => c.id));
   // 每个项目最近一条放回：入池类、入池原因认它；fromOwnerId 就是原负责人 = 最后一次进公海前的负责人
   // （11-01 C-01 起企业版进公海清负责人，只在留痕里，同 lib/project/pool-owner.ts 历史负责人们）
   const 最近放回 = new Map<string, (typeof 留痕们)[number]>();
@@ -181,7 +186,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       id: `c:${c.id}`, 种: "客户", customerId: c.id,
       客户名: c.name,
       // 没全取的先按「一个项目都看不到」摆，补这一页 再填
-      ...客户项目格(项目of客户?.get(c.id) ?? [], 字典),
+      ...客户项目格(项目of客户?.get(c.id) ?? [], 字典, 没项目客户.has(c.id)),
       属性: 客户公海属性(全部项目of客户.get(c.id) ?? []),
       最后跟进: c.lastFollowAt?.toISOString() ?? null,
       入池时间: c.pool!.at.toISOString(),
@@ -204,7 +209,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       ...项目客户格(!!可见 && 露客户(me, p, 可见), p),
       项目名: p.name,
       进程: 进.进程, 进程明细: null,
-      属性: 进.属性,
+      属性: 项目行属性,
       最后跟进: p.customer.lastFollowAt?.toISOString() ?? null,
       入池时间: p.pooledAt!.toISOString(),
       创建时间: p.createdAt.toISOString(),
@@ -217,7 +222,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
     行: [...客户行, ...项目行],
     截断: 客户们.length >= 公海取上限 || 项目们.length >= 公海取上限,
     // 补这一页 要的
-    字典, 框客户, 拦,
+    字典, 框客户, 拦, 没项目客户,
     有客户的项目: !!项目of客户 || !客户们.length,
     有客户可见: !!可见,
     公海项目: new Map(留下的项目.map((p) => [p.id, p])),
@@ -230,7 +235,8 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
  */
 async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof 读公海骨架>>, 页: 公海行[]): Promise<公海行[]> {
   const 客户ids = 页.filter((r) => r.种 === "客户").map((r) => r.customerId);
-  const 页里的项目 = 页.flatMap((r) => (r.种 === "项目" && r.projectId ? [骨.公海项目.get(r.projectId)!] : []));
+  // 客户池并出来的那行：按里面每个项目补
+  const 页里的项目 = 页.flatMap((r) => (r.种 === "项目" ? r.子 ?? [r] : [])).flatMap((r) => (r.projectId ? [骨.公海项目.get(r.projectId)!] : []));
   const [名下们, 我放走的, 可见] = await Promise.all([
     骨.有客户的项目 || !客户ids.length
       ? null
@@ -240,16 +246,19 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
     骨.拦 && 客户ids.length ? 看全部(() => 公海客户原负责人是(prisma, [me.id], 客户ids)) : new Map<string, string>(),
     骨.有客户可见 || !页里的项目.length ? null : 看得到的客户(页里的项目.map((p) => p.customerId)),
   ]);
+  const 补项目 = (r: 公海行): 公海行 => {
+    const p = 可见 && r.projectId ? 骨.公海项目.get(r.projectId) : undefined;
+    return p ? { ...r, ...项目客户格(露客户(me, p, 可见!), p) } : r;
+  };
   return 页.map((r) => {
     if (r.种 === "客户") {
       return {
         ...r,
-        ...(名下们 ? 客户项目格(名下们.get(r.customerId) ?? [], 骨.字典) : {}),
+        ...(名下们 ? 客户项目格(名下们.get(r.customerId) ?? [], 骨.字典, 骨.没项目客户.has(r.customerId)) : {}),
         原负责人是我: r.原负责人是我 || 我放走的.has(r.customerId),
       };
     }
-    const p = 可见 && r.projectId ? 骨.公海项目.get(r.projectId) : undefined;
-    return p ? { ...r, ...项目客户格(露客户(me, p, 可见!), p) } : r;
+    return r.子 ? 并客户池(r.子.map(补项目)) : 补项目(r);
   });
 }
 
@@ -267,7 +276,8 @@ export async function 读公海页(me: { id: string; name: string; role?: string
   const 名单条件 = 候选 ? await 公海名单条件(me, 候选) : null;
   const 骨 = await 读公海骨架(me, { 客户的项目: 有词 || !!名单条件, 客户可见: 有词 || !!sp.来源 || !!名单条件, ...(名单条件 ? { 只要: 名单条件 } : {}) });
   const 全部行 = 名单条件 ? await 按名单展开(骨, 名单条件) : 骨.行;
-  const { 行, 快捷数, 属性数 } = 筛排(全部行, sp);
+  // 名单按项目一条一行（和渠道页对数），客户池不并
+  const { 行, 快捷数, 属性数 } = 筛排(全部行, sp, { 按项目: !!名单条件 });
   const 页数 = Math.max(1, Math.ceil(行.length / pageSize));
   const 当前页 = Math.min(Math.max(1, page), 页数);
   const 这页 = await 补这一页(me, 骨, 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize));
@@ -282,7 +292,7 @@ export async function 读公海页(me: { id: string; name: string; role?: string
  * 名单的项目走带限定的客户端取（可见范围、原负责人回避照旧）；骨架里没有对应行的（框外、刚被领走）不列
  */
 async function 按名单展开(骨: Awaited<ReturnType<typeof 读公海骨架>>, 名单条件: Prisma.ProjectWhereInput): Promise<公海行[]> {
-  const 们 = await prisma.project.findMany({ where: 名单条件, orderBy: [{ pooledAt: "desc" }, { id: "asc" }], select: { id: true, customerId: true, name: true, phase: true, node: true, result: true } });
+  const 们 = await prisma.project.findMany({ where: 名单条件, orderBy: [{ pooledAt: "desc" }, { id: "asc" }], select: { id: true, customerId: true, name: true, phase: true, node: true, result: true, createdAt: true } });
   const 项目行of = new Map(骨.行.flatMap((r) => (r.种 === "项目" && r.projectId ? [[r.projectId, r] as const] : [])));
   const 客户行of = new Map(骨.行.flatMap((r) => (r.种 === "客户" ? [[r.customerId, r] as const] : [])));
   return 们.flatMap((p): 公海行[] => {
