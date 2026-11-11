@@ -14,37 +14,44 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 算渠道统计, 项目算哪个渠道, type 统计用渠道, type 统计用项目, type 渠道统计 } from "./channel-stats";
+import { 企业版 } from "./switch";
+import { 字典of } from "@/lib/project/stage-dict";
+import { 列表里的项目 } from "@/lib/project/list";
 
 /** 归到这批渠道的项目（两种来源都捞，见文件头）；渠道看板 channel-dash-db.ts 也用这一个 */
 export const 渠道项目条件 = (渠道ids: string[]) => ({
   OR: [{ channelId: { in: 渠道ids } }, { channelId: null, customer: { channelId: { in: 渠道ids } } }],
 });
 
-async function 取项目(渠道ids: string[]): Promise<统计用项目[]> {
+async function 取项目(渠道ids: string[], 看的人?: { id: string }): Promise<统计用项目[]> {
   if (渠道ids.length === 0) return [];
-  const 行 = await prisma.project.findMany({
+  // 名单（11-11）：企业版带了是谁在看，再取一趟「这些里哪些在他的项目列表上」，界面上每个数点进去对得上、对不上说清差在哪
+  const [行, 列表里] = await Promise.all([prisma.project.findMany({
     where: 渠道项目条件(渠道ids),
     select: {
+      id: true, pooledAt: true,
       channelId: true, phase: true, result: true, amount: true, currency: true,
       customer: { select: { channelId: true } },
       // 不在这里 orderBy：Prisma 6.16 父行过千时嵌套关系带 orderBy 会让查询引擎崩（record.rs「no entry found for key」），取回来再排
       logs: { where: { kind: "node" }, select: { fromPhase: true, toPhase: true, at: true } },
     },
-  });
+  }), 看的人 && 企业版() ? 列表里的项目(看的人, 渠道项目条件(渠道ids)) : Promise.resolve(null)]);
   for (const p of 行) p.logs.sort((a, b) => a.at.getTime() - b.at.getTime());
   return 行.map((p) => ({
     channelId: 项目算哪个渠道(p.channelId, p.customer.channelId), phase: p.phase, result: p.result, amount: p.amount, currency: p.currency,
     // 没有建项目那条日志的（很老的数据）当从线索起
     起步阶段: p.logs.find((l) => l.fromPhase === null)?.toPhase ?? "线索",
     到过阶段们: p.logs.map((l) => l.toPhase),
+    ...(列表里 ? { 在列表: 列表里.has(p.id), 在公海: !!p.pooledAt } : {}),
   }));
 }
 
-export async function 读渠道统计(渠道们: 统计用渠道[], 今天: Date = new Date()): Promise<Record<string, 渠道统计>> {
+/** 看的人：给了（渠道页传当前登录的人）才算 渠道统计.名单；单测、别处不给就和原来一样 */
+export async function 读渠道统计(渠道们: 统计用渠道[], 今天: Date = new Date(), 看的人?: { id: string }): Promise<Record<string, 渠道统计>> {
   const ids = 渠道们.map((c) => c.id);
   const [项目们, 投入们] = await Promise.all([
-    取项目(ids),
+    取项目(ids, 看的人),
     ids.length ? prisma.entChannelInvest.findMany({ where: { channelId: { in: ids } }, select: { channelId: true, amount: true, currency: true } }) : [],
   ]);
-  return 算渠道统计(渠道们, 项目们, 投入们, 今天);
+  return 算渠道统计(渠道们, 项目们, 投入们, 今天, 字典of(企业版()));
 }

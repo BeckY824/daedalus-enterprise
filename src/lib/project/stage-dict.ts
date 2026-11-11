@@ -160,6 +160,19 @@ export function 同名们(v: string): string[] {
   return [新, ...旧们];
 }
 
+/**
+ * 归这个阶段的结局（含库里的旧名）：项目列表按阶段筛（list.ts 阶段进程条件）和渠道统计（channel-stats.ts）共用，
+ * 两边认「在不在这个阶段」是同一句话，渠道页的数点进项目列表对得上
+ */
+export function 归阶段的结局(字典: 阶段字典, s: 阶段): string[] {
+  return 字典.出口们[s].flatMap((o) => (o.结局 ? 同名们(o.结局) : []));
+}
+
+/** 项目算不算在这个阶段：没结局的看 phase；有结局的看结局归哪个阶段（线索流失归线索、丢单归商机……），不看 phase。同 阶段进程条件 的 where */
+export function 项目在阶段(p: { phase: string; result?: string | null }, s: 阶段, 字典: 阶段字典): boolean {
+  return p.result != null ? 归阶段的结局(字典, s).includes(p.result) : p.phase === s;
+}
+
 /** 订单走成的结局（团队版 成功交付 / 企业版 交付结清，库里旧名也认）：别再写 === "成功交付" */
 export function 是交付(r: string | null | undefined): boolean {
   return r === "成功交付" || r === "交付结清";

@@ -62,7 +62,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
   */
   const 渠道ids = channels.map((c) => c.id);
   const [统计, 看板底数, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管, 公海底数, 圈里的人, 主渠道们, 策略选项] = await Promise.all([
-    读渠道统计(channels),
+    // 带上是谁在看：每个数点进项目列表能看到几条（名单），对不上的抽屉里写一句
+    读渠道统计(channels, new Date(), me),
     // 总览看板（11-03）：每个渠道 × 本月 / 本季 / 全部（带了「自定义」再加那一段）的底数，界面按列表的筛选结果再合，口径见 channel-dash.ts
     企业版() ? 读看板底数(渠道ids, new Date(), 区间) : Promise.resolve(null),
     prisma.user.findMany({

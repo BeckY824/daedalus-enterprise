@@ -24,7 +24,9 @@ export function 搜索词(v: unknown): string {
 export function 号码片段(k: string): string | null {
   const 半角 = 全角数字转半角(k).replace(/＋/g, "+");
   if (!/^[\d\s\-+()（）－]+$/.test(半角)) return null;
-  const 数字 = 半角.replace(/\D/g, "");
+  // 明写了国家码的（「+86 138」「0086-138」「(+86)138」，11-11）：前面的 +86 / 0086 去掉再比，搜号码的一段也认
+  const 去码 = 半角.trim().replace(/^[(（]?\s*(?:\+|00)\s*86\s*[)）]?[\s\-－]*/, "");
+  const 数字 = 去码.replace(/\D/g, "");
   // 完整大陆手机号去国家码，与保存规则相同；短片段和海外号不猜。
   const 规范 = 数字.replace(/^0*86(?=1[3-9]\d{9}$)/, "");
   return 规范.length >= 3 ? 规范 : null;
@@ -92,6 +94,41 @@ export function 客户id集合(ids: readonly string[]): Prisma.CustomerWhereInpu
 }
 
 /**
+ * 联系人号码子表里能按号码搜的那几类（11-11）：手机号、WhatsApp。只算挂在联系人身上、联系人没删进回收站的（客户页上看得到的那些；
+ * 客户本身挂在子表上、contactId 空的号页面上不显示，同退回公海查联系方式 return-contact-check.ts，不算）。值按号键比
+ */
+export const 子表可搜号类 = ["phone", "whatsapp"] as const;
+// 用时再拼（号键SQL 在别的用例里会被 mock 掉，模块加载时就调会让整个导入失败）
+const 联系人子表号SQL = () => `c.id IN (SELECT m."customerId" FROM "ContactMethod" m JOIN "Contact" mt ON mt.id = m."contactId" WHERE mt."deletedAt" IS NULL AND m.kind IN (${子表可搜号类.map((k) => `'${k}'`).join(", ")}) AND ${号键SQL("m.value")} GLOB ?)`;
+
+/**
+ * 「手机号」筛选（11-11 客户列表、项目列表的更多筛选）：只比号码，和搜索框里像号码的那一半同一套——
+ * 输入先去空格、横杠、括号、明写的 +86 / 0086（号码片段），库里那一侧按号键比；包含就算（输后几位、中间一段都行），至少 3 位数字。
+ * 比哪些：客户电话、外贸档案 WhatsApp、没删的联系人的电话、联系人号码子表里的手机号 / WhatsApp（联系人没删的）。
+ * 电话「藏」着的人（字段权限，Y27，同 号码藏着）不按号码比：返回 null，调用方当没筛（页面上也不摆这一项）；
+ * 不像号码的（带字母、不到 3 位数字）返回一个谁都不中的条件。只给客户 id，行照旧经限定层取，可见范围不放宽
+ */
+export async function 客户号码SQL(raw: unknown, userId?: string): Promise<{ sql: string; values: string[] } | null> {
+  const k = 搜索词(raw);
+  if (!k || (await 号码藏着(userId))) return null;
+  const phone = 号码片段(k);
+  if (!phone) return { sql: "(0)", values: [] };
+  const p = 包含模式(phone);
+  return {
+    sql: `(${号键SQL('c."phone"')} GLOB ? OR c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${号键SQL("e.whatsapp")} GLOB ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${号键SQL("t.phone")} GLOB ?) OR ${联系人子表号SQL()})`,
+    values: [p, p, p, p],
+  };
+}
+
+/** 客户号码SQL 换成客户 id 条件（客户列表、导出用）；null = 不筛 */
+export async function 客户号码条件(raw: unknown, userId?: string): Promise<Prisma.CustomerWhereInput | null> {
+  const w = await 客户号码SQL(raw, userId);
+  if (!w) return null;
+  const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(`SELECT c.id FROM "Customer" c WHERE ${w.sql}`, ...w.values);
+  return 客户id集合(rows.map((r) => r.id));
+}
+
+/**
  * 关键词拼成一段 WHERE（客户表别名 c），只有内置列名进 SQL，值全部参数绑定；没关键词返回 null。
  * 客户关键词条件和列表页的 关键词分页（customers/query.ts）共用这一份，号码藏着（Y27）、Unicode 大小写规则都在这里
  */
@@ -111,14 +148,18 @@ export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userI
   if (!onlyPicker) {
     // 电话藏着时 WhatsApp、联系人电话两列不进条件（Y27）
     const 号值 = 藏号 ? [] : [pattern, phonePattern];
+    // 像号码的（11-11）：WhatsApp、联系人电话也按号键（去空格、横杠、括号、+）比，库里带格式存的老号照样搜得到
+    const 号键比 = !藏号 && phone;
     // 两张子表（原来还有订单号，订单表 2026-10-29 删了）用不相关的 IN 子查询：SQLite 各扫一遍、记成一张表，每个客户只查表。
     // 原来写 EXISTS（按 customerId 相关），没被本表列命中的每个客户都要回子表各查一次；
     // 10 万客户一次搜索 ~50 ms → ~26 ms，带扩展资料/联系人的库 ~140 → ~60 ms。customerId 两张表都非空，结果和 EXISTS 一样（2026-10-26）
-    parts.push(`c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${藏号 ? "" : "e.whatsapp GLOB ? OR e.whatsapp GLOB ? OR "}e.email GLOB ? OR e.wechat GLOB ? OR e.country GLOB ? OR e.website GLOB ? OR e."alibabaId" GLOB ?)`);
-    values.push(...号值,pattern,pattern,pattern,sitePattern,pattern);
+    parts.push(`c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${藏号 ? "" : "e.whatsapp GLOB ? OR e.whatsapp GLOB ? OR "}${号键比 ? `${号键SQL("e.whatsapp")} GLOB ? OR ` : ""}e.email GLOB ? OR e.wechat GLOB ? OR e.country GLOB ? OR e.website GLOB ? OR e."alibabaId" GLOB ?)`);
+    values.push(...号值,...(号键比 ? [phonePattern] : []),pattern,pattern,pattern,sitePattern,pattern);
     // 回收站里的联系人（企业版软删，P9）不算命中；不是企业版 deletedAt 一直是空
-    parts.push(`c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND (t.name GLOB ? OR ${藏号 ? "" : "t.phone GLOB ? OR t.phone GLOB ? OR "}t.email GLOB ? OR t.wechat GLOB ?))`);
-    values.push(pattern,...号值,pattern,pattern);
+    parts.push(`c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND (t.name GLOB ? OR ${藏号 ? "" : "t.phone GLOB ? OR t.phone GLOB ? OR "}${号键比 ? `${号键SQL("t.phone")} GLOB ? OR ` : ""}t.email GLOB ? OR t.wechat GLOB ?))`);
+    values.push(pattern,...号值,...(号键比 ? [phonePattern] : []),pattern,pattern);
+    // 联系人号码子表（企业版，ContactMethod）里的手机号、WhatsApp（11-11）：老 Contact.phone 只存了一个号，多出来的号只在子表里
+    if (号键比) { parts.push(联系人子表号SQL()); values.push(phonePattern); }
   }
   return { sql: `(${parts.join(" OR ")})`, values };
 }

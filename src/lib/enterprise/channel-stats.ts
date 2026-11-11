@@ -9,6 +9,9 @@
  * - 关联线索：这个渠道的项目里，眼下还在「线索」阶段的；有效线索 = 关联线索里 是有效线索() 的。
  *   现在没有标无效的字段，是有效线索() 一律算有效——等有了「判无效」记号，只改那一个函数。
  * - 关联商机 / 关联订单：眼下在「商机」/「订单」阶段的；关联项目：全部阶段。
+ *   「在哪个阶段」和项目列表按阶段筛同一句（stage-dict.ts 项目在阶段，11-11）：有结局的按结局归哪个阶段认，不看 phase。
+ * - 名单（11-11 渠道数字点开看名单）：每个数点进项目列表（渠道 + 阶段），列表比这里少的那几条（在公海、
+ *   或你数得到但不在你项目列表里的）单独数出来，界面上写一句；见 渠道统计.名单、名单链接()。
  * - 累计成交：「订单」阶段、结果不是「异常状态」的项目金额，按币种合计、不换汇。
  * - 当前投入：渠道投入按币种合计。
  * - 总投入产出比 = 累计成交 ÷ 投入。投入和成交都只有同一种币种（成交可以是 0）才算；混了币种、或还没录投入，给 null 和一句为什么。
@@ -20,6 +23,7 @@
  */
 import { businessTimeZone } from "../business-clock";
 import { 管理员类别们of, type 组织 } from "./org-core";
+import { 字典of, 项目在阶段, type 阶段字典 } from "../project/stage-dict";
 
 /**
  * 渠道投入谁能录、能删（10-29 P16 对方定的）：只有总管理员、市场管理（11-01 起账号管理员不算）。
@@ -72,6 +76,9 @@ export type 统计用项目 = {
   起步阶段?: string;
   /** 节点日志里到过的阶段（每条 toPhase）；不给就只看眼下的 phase */
   到过阶段们?: string[];
+  /** 读库时给（企业版、带了是谁在看）：这个项目在不在这个人的项目列表里（list.ts 列表里的项目）、在不在公海。不给就不算 名单 */
+  在列表?: boolean;
+  在公海?: boolean;
 };
 export type 统计用投入 = { channelId: string; amount: number; currency: string };
 export type 统计用渠道 = { id: string; createdAt: Date; endDate: Date | null };
@@ -92,7 +99,34 @@ export type 渠道统计 = {
   线索转商机: 转化;
   /** 商机→订单 */
   商机转订单: 转化;
+  /**
+   * 每个数点进项目列表能看到几条（列表）、其中差的里头有几条是在公海（公海）。只有读库带了「是谁在看」才有；
+   * 主渠道合计那一行没有（合并统计 不带）
+   */
+  名单?: Record<名单键, { 列表: number; 公海: number }>;
 };
+
+/** 能点开看名单的那几个数 → 落到项目列表筛哪个阶段（项目 = 不筛阶段）。有效线索现在和关联线索一样（是有效线索 全算有效） */
+export const 名单键们 = { 关联线索: "线索", 有效线索: "线索", 关联商机: "商机", 关联订单: "订单", 关联项目: "" } as const;
+export type 名单键 = keyof typeof 名单键们;
+
+/** 点数字去的项目列表：这个渠道 + 同口径的阶段（项目列表按渠道筛和这里同一条归属规则：项目来源优先，没填跟客户来源） */
+export function 名单链接(channelId: string, 键: 名单键): string {
+  const q = new URLSearchParams({ channelId });
+  if (名单键们[键]) q.set("phase", 名单键们[键]);
+  return `/projects?${q}`;
+}
+
+/** 数字旁边那句：列表里比这个数少几条、为什么；对得上给 null */
+export function 名单差话(总数: number, 名单: { 列表: number; 公海: number } | undefined): string | null {
+  if (!名单 || 名单.列表 === 总数) return null;
+  const 差 = 总数 - 名单.列表;
+  if (差 < 0) return `项目列表里 ${名单.列表} 条`;
+  const 公海 = Math.min(名单.公海, 差);
+  const 其余 = 差 - 公海;
+  const 段 = [公海 ? `${公海} 条在公海，到公海页看` : "", 其余 ? `${其余} 条你只能数到、项目列表不列` : ""].filter(Boolean).join("；");
+  return `项目列表里 ${名单.列表} 条（另 ${段}）`;
+}
 
 export type 转化 = { 分子: number; 分母: number; 比例: number | null };
 
@@ -173,7 +207,7 @@ export function 算产出比(成交: 币种合计[], 投入: 币种合计[]): { 
   return { 产出比: 分(成 / 投[0].合计), 产出比说明: null };
 }
 
-export function 算渠道统计(渠道们: 统计用渠道[], 项目们: 统计用项目[], 投入们: 统计用投入[], 今天: Date = new Date()): Record<string, 渠道统计> {
+export function 算渠道统计(渠道们: 统计用渠道[], 项目们: 统计用项目[], 投入们: 统计用投入[], 今天: Date = new Date(), 字典: 阶段字典 = 字典of(true)): Record<string, 渠道统计> {
   const 项目按渠道 = new Map<string, 统计用项目[]>();
   for (const p of 项目们) {
     if (!p.channelId) continue;
@@ -182,23 +216,30 @@ export function 算渠道统计(渠道们: 统计用渠道[], 项目们: 统计�
   const 投入按渠道 = new Map<string, 统计用投入[]>();
   for (const x of 投入们) (投入按渠道.get(x.channelId) ?? 投入按渠道.set(x.channelId, []).get(x.channelId)!).push(x);
 
+  // 读库带了「在不在列表」才算名单（单测直接调、团队版不带）
+  const 带名单 = 项目们.some((p) => p.在列表 !== undefined);
+  const 名单of = (们: 统计用项目[]) => ({ 列表: 们.filter((p) => p.在列表).length, 公海: 们.filter((p) => !p.在列表 && p.在公海).length });
   const out: Record<string, 渠道统计> = {};
   for (const c of 渠道们) {
     const 项 = 项目按渠道.get(c.id) ?? [];
-    const 线索 = 项.filter((p) => p.phase === "线索");
+    const 在 = (阶段: "线索" | "商机" | "订单") => 项.filter((p) => 项目在阶段(p, 阶段, 字典));
+    const 线索 = 在("线索");
+    const 商机 = 在("商机");
+    const 订单 = 在("订单");
     const 累计成交 = 合计(项.filter(算成交));
     const 当前投入 = 合计(投入按渠道.get(c.id) ?? []);
     out[c.id] = {
       关联线索: 线索.length,
       有效线索: 线索.filter(是有效线索).length,
-      关联商机: 项.filter((p) => p.phase === "商机").length,
-      关联订单: 项.filter((p) => p.phase === "订单").length,
+      关联商机: 商机.length,
+      关联订单: 订单.length,
       关联项目: 项.length,
       累计成交,
       当前投入,
       ...算产出比(累计成交, 当前投入),
       累计运营天数: 运营天数(c.createdAt, c.endDate, 今天),
       ...算转化(项),
+      ...(带名单 ? { 名单: { 关联线索: 名单of(线索), 有效线索: 名单of(线索.filter(是有效线索)), 关联商机: 名单of(商机), 关联订单: 名单of(订单), 关联项目: 名单of(项) } } : {}),
     };
   }
   return out;
