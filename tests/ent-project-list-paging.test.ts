@@ -316,7 +316,10 @@ describe("3 天内回公海", () => {
         expect(o.取到上限).toBe(false);
         expect(n.总数).toBe(o.行.length);
       }
-      expect((await 翻到底(人们.总管理, { f: "due-soon" }, 10)).行.map((r) => r.name).sort()).toEqual(expect.arrayContaining(["项目0", "项目1", "项目3", "项目250"]));
+      // 线上版（8009b421）超时回收的起算和 main 不同，哪几条落在 3 天内不一样：不写死名字，只要求非空、翻到底 = 旧实现
+      const 旧名 = (await 旧(人们.总管理, { f: "due-soon" })).行.map((r) => r.name).sort();
+      expect(旧名.length).toBeGreaterThan(0);
+      expect((await 翻到底(人们.总管理, { f: "due-soon" }, 10)).行.map((r) => r.name).sort()).toEqual(旧名);
     } finally {
       await 存组织规则(默认组织规则);
     }
