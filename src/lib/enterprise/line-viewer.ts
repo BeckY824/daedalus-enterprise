@@ -78,12 +78,39 @@ export function 按线项目(x: 按线范围): Record<string, unknown> {
  * 标签没填时按历史负责人判线：曾由外贸的人放进公海的算外贸。写不出「最近一次」，曾有 pool-release 就算（待解决：只认最近一次要不要收窄）
  */
 function 客户标签条件(x: 按线范围): Record<string, unknown> {
-  const 未填 = { OR: [{ bizLine: null }, { bizLine: { notIn: [...三种业务线] } }] };
-  const 曾属外贸 = { pool: { isNot: null }, ownerLogs: { some: { kind: "pool-release", fromOwnerId: { in: x.外贸们 } } } };
-  return x.线 === "外贸"
-    ? { OR: [{ bizLine: x.线 }, { AND: [未填, { salesOwnerId: { in: x.外贸们 } }] }, { AND: [未填, 曾属外贸] }] }
-    : { OR: [{ bizLine: x.线 }, { AND: [未填, { salesOwnerId: { notIn: x.外贸们 } }, { NOT: 曾属外贸 }] }] };
+  return 客户属线条件(x.线, x.外贸们);
 }
+
+/** 标签没填（或存坏了）：「暂不分配」是填了的，不算没填 */
+const 标签未填 = { OR: [{ bizLine: null }, { bizLine: { notIn: [...三种业务线] } }] };
+
+/**
+ * 客户算不算这条线（客户 where）：同 客户标签条件，只要线和标外贸的成员。公海操作按线（pool-line-guard.ts，P-公海-07）也用这一份。
+ * 标签是这条线；没填按负责人的线；公海里的（负责人清空了）按放进公海的历史负责人，曾由外贸的人放进来的算外贸
+ */
+export function 客户属线条件(线: 业务线, 外贸们: readonly string[]): Record<string, unknown> {
+  const 曾属外贸 = { pool: { isNot: null }, ownerLogs: { some: { kind: "pool-release", fromOwnerId: { in: [...外贸们] } } } };
+  return 线 === "外贸"
+    ? { OR: [{ bizLine: 线 }, { AND: [标签未填, { salesOwnerId: { in: [...外贸们] } }] }, { AND: [标签未填, 曾属外贸] }] }
+    : { OR: [{ bizLine: 线 }, { AND: [标签未填, { salesOwnerId: { notIn: [...外贸们] } }, { NOT: 曾属外贸 }] }] };
+}
+
+/** 客户标签没填、也从没进过公海（没有 pool-release）：说不清哪条线，公海操作按线放行（X-34） */
+export const 客户说不清线 = { AND: [标签未填, { ownerLogs: { none: { kind: "pool-release" } } }] };
+
+/**
+ * 项目算不算这条线（项目 where），照 客户属线条件：标签是这条线；没填按负责人的线；
+ * 公海里的项目负责人清空了（pool-owner.ts），按放进公海的历史负责人（项目留痕 pool-release 的 from）判，曾由外贸的人放进来的算外贸
+ */
+export function 项目属线条件(线: 业务线, 外贸们: readonly string[]): Record<string, unknown> {
+  const 曾属外贸 = { pooledAt: { not: null }, logs: { some: { kind: "pool-release", fromOwnerId: { in: [...外贸们] } } } };
+  return 线 === "外贸"
+    ? { OR: [{ bizLine: 线 }, { AND: [标签未填, { ownerId: { in: [...外贸们] } }] }, { AND: [标签未填, 曾属外贸] }] }
+    : { OR: [{ bizLine: 线 }, { AND: [标签未填, { ownerId: { notIn: [...外贸们] } }, { NOT: 曾属外贸 }] }] };
+}
+
+/** 项目标签没填、也从没进过公海：说不清哪条线，放行 */
+export const 项目说不清线 = { AND: [标签未填, { logs: { none: { kind: "pool-release" } } }] };
 
 /** 客户：标签是这条线，或名下有这条线的项目。「按人」那一半（负责人、创建人、建过 / 负责项目）走 市场相关客户(人们) */
 export function 按线客户(x: 按线范围): Record<string, unknown> {

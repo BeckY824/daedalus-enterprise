@@ -12,6 +12,7 @@ import { 公海分配候选 } from "@/lib/owners";
 import { 持有数 } from "@/lib/project/db";
 import { 持有上限of } from "@/lib/project/org-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import PoolView from "./PoolView";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,11 @@ export default async function PoolPage({
     持有数(prisma, me.id),
     渠道筛选选项(),
   ]);
+  // 公海不按线分，谁都看得到别线的行：销管、条线总管理对别线的行不摆分配、标无效、恢复（P-公海-07，服务端各入口另拦）
+  const 别 = 能分配 || 能恢复(me, 权限org)
+    ? await 公海别线的(prisma, me, 权限org, { 客户: d.行.filter((r) => r.种 === "客户").map((r) => r.customerId), 项目: d.行.flatMap((r) => (r.种 === "项目" && r.projectId ? [r.projectId] : [])) })
+    : { 客户: [], 项目: [] };
+  const 别线ids = [...别.客户.map((x) => `c:${x.id}`), ...别.项目.map((x) => `p:${x.id}`)];
   // 持有上限开着（且我不是不限）才在页头写「我手上 N / 上限 M」，领取按钮到上限时灰着写原因（交互规则 A、C）
   const 上限 = 持有上限of(规则, me.id);
   return (
@@ -63,6 +69,7 @@ export default async function PoolPage({
       能标无效={能分配}
       能恢复={能恢复(me, 权限org)}
       能分配={能分配}
+      别线ids={别线ids}
       users={users}
       持有={上限 === null ? null : { 有, 上限 }}
       // 只读管理员（B2-1）、没设业务角色的（11-03 D3-7 ④）：领取都不摆
