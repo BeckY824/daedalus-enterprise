@@ -240,6 +240,9 @@ model Customer {
   /// 企业版关联客户（迁移 075）：一对客户一行，小的 id 在 customerId。见 EntCustomerLink
   linksFrom      EntCustomerLink[] @relation("EntCustomerLinkFrom")
   linksTo        EntCustomerLink[] @relation("EntCustomerLinkTo")
+  /// 企业版客户三态（迁移 121 / 122）：钟一位客户一行、状态留痕每次一行。见 EntCustomerClock / EntCustomerStateLog
+  entClock       EntCustomerClock?
+  entStateLogs   EntCustomerStateLog[]
 
   @@index([phone])
   @@index([salesOwnerId])
@@ -1010,6 +1013,8 @@ model Project {
   /// 企业版线索有效性验证（2026-10-29，P12）：当前状态一份、每一步一行留痕。见 EntLeadVerify
   entLeadVerify     EntLeadVerify?
   entLeadVerifyLogs EntLeadVerifyLog[]
+  /// 企业版冷项目（迁移 123）：有这一行 = 现在是冷的。见 EntProjectCold
+  entCold           EntProjectCold?
   /// 企业版项目关联客户 / 联系人（2026-10-29 P17，迁移 094 / 095）。见 ProjectCustomer / ProjectContact
   customerLinks ProjectCustomer[]
   contactLinks  ProjectContact[]
@@ -1794,4 +1799,65 @@ model EntCustomerLink {
 
   @@unique([customerId, otherId])
   @@index([otherId])
+}
+
+/// 企业版客户三态的「客户钟」（2026-11-11，迁移 121，机制表 M-公海-16）：钟挂在客户身上，一位客户一行；没有这一行 = 还没算过。
+/// 只在企业版、组织规则开了三态时写：夜扫按「最近沟通 / 最近项目推进 / 最近一次算数的换负责人」算出状态写回来，
+/// 「我还在跟」「写理由继续持有」等按钮改继续持有那几列。日子都存上海时间的 YYYY-MM-DD（和超时回收日同一种写法）。客户删了随客户级联
+model EntCustomerClock {
+  customerId    String   @id
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// 活跃 / 沉睡 / 待回收
+  state         String   @default("活跃")
+  /// 哪天进的这个状态
+  enteredDay    String
+  /// 本轮（进这个状态以来）提醒了几次；换状态清零
+  noticeCount   Int      @default(0)
+  /// 最近一次提醒是哪天（周报、第 180 / 190 / 200 天、被挡的每月一次都靠它防重复）
+  lastNoticeDay String?
+  /// 继续持有累计用了几次、合计顺延了几天（M-公海-19，上限在组织规则里）
+  holdCount     Int      @default(0)
+  holdDays      Int      @default(0)
+  /// 推后到哪天：这天之前不再提醒；空 = 没在推后
+  holdUntil     String?
+  /// 最后一次继续持有写的理由
+  holdReason    String?
+  /// 到期该进公海、被同事在推的项目挡住，等条线总管理裁决（M-公海-27）
+  blocked       Boolean  @default(false)
+  updatedAt     DateTime @updatedAt
+
+  @@index([state, enteredDay])
+}
+
+/// 企业版客户三态的状态留痕（2026-11-11，迁移 122，机制表 M-公海-31）：每次状态变更、继续持有、代选、裁决一行，只加不改。
+/// 指向人的列不建外键；客户删了随客户级联
+model EntCustomerStateLog {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// 从哪个状态来；第一次建钟为空
+  fromState  String?
+  /// 到哪个状态：活跃 / 沉睡 / 待回收 / 公海；继续持有不换状态时和 fromState 一样
+  toState    String
+  /// 谁改的；自动的为空
+  userId     String?
+  /// 方式：自动 / 本人 / 上级代选 / 总管理裁决
+  via        String   @default("自动")
+  /// 理由：继续持有写的那句、代选 / 裁决的说明；自动的写因为什么（如「待回收满 30 天」）
+  reason     String?
+  at         DateTime @default(now())
+
+  @@index([customerId, at])
+}
+
+/// 企业版冷项目（2026-11-11，迁移 123，机制表 M-公海-22）：线索 / 商机项目太久没换节点、也没有挂在它上面的沟通就标冷，
+/// 只点名、不自动收。有这一行 = 现在是冷的，不冷了删行。项目删了随项目级联
+model EntProjectCold {
+  projectId String   @id
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 从哪天冷的（上海时间 YYYY-MM-DD）
+  coldDay   String
+  /// 提醒到第几级：0 = 只标了冷，1 = 已抄直属上级，2 = 已给负责人三选一，3 = 已推条线总管理
+  level     Int      @default(0)
+  updatedAt DateTime @updatedAt
 }
