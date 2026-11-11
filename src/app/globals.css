@@ -751,7 +751,7 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
    所以拆两行：上面是名字和时间，下面是状态和最近那一句。 */
 .roster-row { display: flex; gap: var(--s2); margin: 1px var(--s2); padding: 8px 10px; border-radius: var(--r-card); color: var(--ink); }
 .roster-row:hover { background: var(--row-hover); }
-.roster-row.on { background: var(--brand-bg); }
+.roster-row.on { background: var(--nav-on-bg); } /* 16a：名单选中也是浅灰底，和左栏一样 */
 /* 组头：点一下收起 / 摊开，右边是这一组几位 */
 .roster-group + .roster-group { margin-top: var(--s1); }
 .roster-sec { display: flex; align-items: center; gap: 6px; width: calc(100% - 2 * var(--s2)); margin: 0 var(--s2); padding: var(--s2) 10px var(--s1); border: 0; background: none; font: inherit; font-size: var(--fs-note); font-weight: 500; color: var(--ink-soft); text-align: left; cursor: pointer; border-radius: var(--r-ctl); }
@@ -1660,12 +1660,14 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    颜色只用现成的：正文 --ink、字段名和辅助 --text-muted、没填的占位 --text-faint（字号同正文）、链接 --brand。
    填了 0 算填了，照正文色（项目卡 R4 已经这么判，这里只管字）。长名字一律折行，不截。
    弹窗在 body 底下，不吃这套，照 antd 表单原样 */
+/* 16a（11-11）：详情页不再大一号，回到全站六档（原来 26 / 18 / 16 / 16 / 14，和列表页 22 / 15 / 14 不是一套）。
+   名字留着：两页里一百多处写的是 var(--dt-*)，改值不改名 */
 .rec-page, .proj-wrap {
-  --dt-title: calc(var(--fs-title) + 4px);
-  --dt-module: calc(var(--fs-section) + 3px);
-  --dt-body: calc(var(--fs-body) + 2px);
-  --dt-label: var(--dt-body);
-  --dt-aux: calc(var(--fs-note) + 1px);
+  --dt-title: var(--fs-title);
+  --dt-module: var(--fs-section);
+  --dt-body: var(--fs-body);
+  --dt-label: var(--fs-note);
+  --dt-aux: var(--fs-note);
 }
 /* 页面标题 */
 .rec-page .rec-head-name, .proj-wrap .page-head h1 { font-size: var(--dt-title); color: var(--ink); }
@@ -2817,7 +2819,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .set-nav-i { display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; font: inherit;
   padding: var(--s2) var(--s3); border-radius: var(--r-ctl); }
 .set-nav-i:hover { background: var(--hover); }
-.set-nav-i.on { background: var(--brand-bg); }
+.set-nav-i.on { background: var(--nav-on-bg); color: var(--nav-on-fg); }
 .set-nav-i b { display: block; font-weight: 500; color: var(--ink); }
 .set-nav-i.on b { color: var(--brand-deep); font-weight: 600; }
 .set-nav-i span { display: block; margin-top: 1px; font-size: var(--fs-note); color: var(--text-muted); }
@@ -3319,8 +3321,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
    z-index 25：在正文和顶栏（10）之上、在反馈提示（30）和所有浮层（Modal 1000）之下，弹出来的东西都盖得住它。
    **面板开着就不出现**（AppShell 里那个判断），所以它永远不会压在面板的输入框上。 */
 .ai-fab {
-  position: fixed; z-index: 25; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom));
-  width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+  position: fixed; z-index: 25; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom));
+  width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer;
   isolation: isolate; transition: scale var(--t-fast) var(--ease);
 }
 .ai-fab > span { position: absolute; border-radius: 50%; pointer-events: none; }
@@ -3380,7 +3382,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @keyframes dock-from-fab { from { opacity: 0; scale: .96; } to { opacity: 1; scale: 1; } }
 
 @media (max-width: 767px) {
-  .ai-fab { width: 48px; height: 48px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .ai-fab { width: 40px; height: 40px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
   /* 手机上反馈提示是一整条横在底下：浮标抬到它上面 */
   html.fbt-room .ai-fab { bottom: calc(var(--fbt-room) + 6px + env(safe-area-inset-bottom)); }
   html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: calc(var(--fbt-room) + 72px) !important; }
@@ -3547,95 +3549,74 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .pool-many > .fulltext { flex: 0 1 auto; }
 .pool-many > .pool-many-n { margin-inline-end: 0; flex: none; }
 
-/* ================= 16a 界面样板 .ui-v2（客户列表 /customers、客户详情 /customers/[id]） =================
-   只在这两页的根上挂 .ui-v2（CustomersView 外层、RecordView 的 .rec-page），别的页一个像素不变；侧栏、名单栏不动。
-   用户看过定了再铺全站：那时把下面「现状 · 浅色」那块的值提到 :root、删掉这块里重定义 :root 名字的几行。
 
-   分两层：
-   1. 排版（所有主题都吃）：详情左栏加宽到 320–360、联系人姓名独占一行、备注 4 行折叠、沟通类型筛选一行横滑、字号回六档。
-      这些是「信息显示不全」的修法，跟颜色无关。
-   2. 观感（只给默认主题「现状」的浅色）：#F5F5F7 地面、白卡无边框带两层轻阴影、#1D1D1F 字和两档半透明灰、#0A66D8 强调、
-      标签灰胶囊。别的主题（像素、奢华……）和暗黑照旧用它们自己的 token。
-      色值写成 rgb()：:root 的色值上限 48 已用 47（tests/design-tokens.test.ts），样板先不占名额；铺全站时是替换现有值，不增数。 */
+/* ================= 16a 全站观感（2026-11-11，客户两页样板用户认可后铺开） =================
+   值都在 :root（主色 #0A66D8、文字三档、地面 #F5F5F7、--shadow-card 两层淡阴影、--card-line 现状透明）。
+   这一块只放「形」：卡片不画框、浮层同一阴影和圆角、标签降色、表格成卡、看板去掉框里套框。
+   换主题 / 暗黑时这些规则照样吃，但值是那套主题自己的（--card-line 接回 --line、阴影各有各的），不会坏 */
 
-/* ---------- 1. token：默认值 = 现状的 token，主题、暗黑下样板只改排版 ---------- */
-.ui-v2, .main:has(.ui-v2) {
-  --v2-bg: var(--page-bg);
-  --v2-card-line: var(--line);
-  --v2-shadow: var(--shadow-card);
-  --v2-sep: var(--line-soft);
-  --v2-fill: var(--hover);
-  --v2-fill-soft: var(--row-hover);
-  /* 详情左栏：容器（.rec-page）宽的 36%，夹在 320–360。1024 宽（无名单）正文 752 → 320 + 时间线 416 */
-  --v2-left: clamp(320px, 36cqw, 360px);
+/* ---------- 卡片：antd Card 和几类自家卡，一律无框 + 淡阴影 + 圆角 14 ---------- */
+.ant-card.ant-card-bordered { border-color: var(--card-line); box-shadow: var(--shadow-card); }
+.ant-card .ant-card-head { border-bottom-color: var(--line-soft) !important; }
+:is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-card, .cli-ck .cli-frame) {
+  border-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-pop);
 }
-/* 现状 · 浅色：苹果那一套。重定义 --ink / --text-muted 这些名字，是为了这两页里现成的规则不用一条条改就跟着变 */
-:root:not([data-mode="dark"]):is(:not([data-skin]), [data-skin="now"]) :is(.ui-v2, .main:has(.ui-v2)) {
-  --v2-bg: rgb(245 245 247);
-  --v2-card-line: transparent;
-  --v2-shadow: 0 1px 2px rgb(0 0 0 / .04), 0 4px 16px rgb(0 0 0 / .05);
-  --v2-sep: rgb(0 0 0 / .06);
-  --v2-fill: rgb(0 0 0 / .05);
-  --v2-fill-soft: rgb(0 0 0 / .03);
-  --ink: rgb(29 29 31);
-  --ink-soft: rgb(29 29 31 / .8);
-  --text-muted: rgb(29 29 31 / .56);
-  --text-faint: rgb(29 29 31 / .36);
-  --line-soft: var(--v2-sep);
-  --hover: var(--v2-fill);
-  --row-hover: var(--v2-fill-soft);
-  --brand: rgb(10 102 216);
-  --brand-bg: rgb(10 102 216 / .08);
-  --brand-line: rgb(10 102 216 / .28);
-}
-/* antd 组件读自己的变量（挂在每个组件根上的 .css-var-dd），同样接过来：链接、主按钮、选中、字色 */
-:root:not([data-mode="dark"]):is(:not([data-skin]), [data-skin="now"]) .ui-v2 .css-var-dd {
-  --ant-color-primary: var(--brand);
-  --ant-color-primary-hover: color-mix(in srgb, var(--brand) 85%, var(--panel));
-  --ant-color-primary-active: color-mix(in srgb, var(--brand) 85%, var(--ink));
-  --ant-color-primary-bg: var(--brand-bg);
-  --ant-color-primary-border: var(--brand-line);
-  --ant-color-link: var(--brand);
-  --ant-color-link-hover: color-mix(in srgb, var(--brand) 80%, var(--panel));
-  --ant-color-link-active: color-mix(in srgb, var(--brand) 85%, var(--ink));
-  --ant-color-text: var(--ink);
-  --ant-color-text-secondary: var(--text-muted);
-  --ant-color-text-description: var(--text-muted);
-  --ant-color-text-tertiary: var(--text-faint);
-  --ant-color-split: var(--v2-sep);
-  --ant-color-border-secondary: var(--v2-sep);
-}
-.main:has(.ui-v2) { background: var(--v2-bg); }
 
-/* ---------- 2. 共用：卡、标签、数字、动效 ---------- */
-/* 标签：默认灰底深字 12/500 胶囊；只有三种带色——要人处理（橙）、出问题 / 无效（红）、完成 / 赢单（绿）。
+/* ---------- 浮层：弹窗、抽屉、下拉、气泡、选择框面板，同一个阴影、圆角 14（圆角在 lib/theme.ts） ---------- */
+:is(.ant-modal .ant-modal-content, .ant-drawer .ant-drawer-content-wrapper, .ant-popover .ant-popover-inner, .ant-dropdown .ant-dropdown-menu, .ant-select-dropdown, .ant-picker-dropdown .ant-picker-panel-container) {
+  box-shadow: var(--shadow-pop);
+}
+
+/* ---------- 标签：默认灰底深字 12/500 胶囊；只有三种带色——要人处理（橙）、出问题 / 无效（红）、完成 / 赢单（绿）。
    字和判定不动，只按 antd 现成的颜色类归档：green/success → 绿，red/volcano/error → 红，orange/warning → 橙，其余（蓝紫青金……）→ 灰。
+   「关键」联系人另挂 .tag-key：强调色浅底，一眼认得出。
    .ant-tag 叠三遍是为了压过 antd 预设色那条 .ant-tag.ant-tag-blue:not(.ant-tag-disabled).ant-tag-outlined（权重 0,5,0） */
-.ui-v2 .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled) {
-  border-color: transparent; background: var(--v2-fill); color: var(--ink);
+.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled) {
+  border-color: transparent; background: var(--hover); color: var(--ink);
   font-size: var(--fs-min); font-weight: 500; line-height: 20px; border-radius: var(--r-tag);
 }
-.ui-v2 .ant-tag :is(.anticon, .ant-tag-close-icon) { color: var(--text-muted); }
-.ui-v2 .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-green, .ant-tag-success) { background: var(--success-bg); color: var(--success-text); }
-.ui-v2 .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-red, .ant-tag-volcano, .ant-tag-error) { background: var(--danger-bg); color: var(--danger-text); }
-.ui-v2 .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-orange, .ant-tag-warning) { background: var(--warning-bg); color: var(--warning-text); }
-/* 数字、电话、日期等宽：一列里上下对得齐 */
-.ui-v2 :is(.rec-field-v, .rec-contact-v, .rec-tl-time, .rec-task-due, .rec-mini-m, .rec-tags-n, .rec-plan-m, .ant-table-tbody > tr > td) { font-variant-numeric: tabular-nums; }
+.ant-tag :is(.anticon, .ant-tag-close-icon) { color: var(--text-muted); }
+.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-green, .ant-tag-success) { background: var(--success-bg); color: var(--success-text); }
+.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-red, .ant-tag-volcano, .ant-tag-error) { background: var(--danger-bg); color: var(--danger-text); }
+.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-orange, .ant-tag-warning) { background: var(--warning-bg); color: var(--warning-text); }
+.ant-tag.ant-tag.ant-tag.tag-key:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--brand-bg); color: var(--brand-deep); }
+/* 公海标签原来是虚线框：框去掉以后靠虚线认不出了，留一圈虚线 */
+.ant-tag.ant-tag.ant-tag.pool-tag:not(.ant-tag-solid, .ant-tag-disabled) { border-color: var(--line-strong); border-style: dashed; background: transparent; color: var(--ink-soft); }
 
-/* ---------- 3. 客户详情 ---------- */
-/* 字号回六档：正文 14、卡片标题 15/600、页面标题 22/600、字段名 13（原来详情页整体大一号：16 / 18 / 26，和列表页不是一套） */
-.rec-page.ui-v2 {
-  --dt-title: var(--fs-title);
-  --dt-module: var(--fs-section);
-  --dt-body: var(--fs-body);
-  --dt-label: var(--fs-note);
-  --dt-aux: var(--fs-note);
+/* ---------- 列表页：表格成一张白卡（圆角 14、淡阴影），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
+.list .ant-table-wrapper .ant-table { border-radius: var(--r-pop); box-shadow: var(--shadow-card); background: var(--panel); }
+.list .ant-table-wrapper .ant-table-container { border-radius: var(--r-pop); overflow: hidden; }
+.list .ant-table-thead > tr > th { background: var(--panel); border-bottom-color: var(--line-soft); }
+.list .ant-table-thead > tr > th::before { display: none; }
+.list .ant-table-tbody > tr > td { border-bottom-color: var(--line-soft); }
+/* 操作列的「⋯」靠左：右下角 40 的 AI 浮标停在哪一行都压不到它 */
+.list td.dl-act { text-align: start; }
+/* 筛选条：搜索、下拉、按钮一律 32 高（原来 34 / 28 混着），圆角跟控件档 */
+.list-bar :is(.ant-input-affix-wrapper, .ant-select, .ant-btn, .ant-picker) { height: 32px; border-radius: var(--r-ctl); }
+.list-bar :is(.ant-input-affix-wrapper, .ant-picker) { padding-block: 0; }
+.list-bar .ant-btn-icon-only { min-width: 28px; }
+/* 数字、日期等宽：一列里上下对得齐 */
+.ant-table-tbody > tr > td, .ant-statistic-content, .home-card, .rkpi, .chan-dash-kpi { font-variant-numeric: tabular-nums; }
+
+/* ---------- 看板（项目、客户）：去掉「框里套框」。列是浅底无框，卡片白底淡阴影 ---------- */
+.pipe-col { background: color-mix(in srgb, var(--ink) 4%, transparent); border-color: transparent; border-radius: var(--r-pop); }
+.pipe-card { border-top-color: var(--card-line); border-right-color: var(--card-line); border-bottom-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-card); }
+.pipe-card:hover, .pipe-card.pipe-card-ro:hover { border-top-color: var(--card-line); border-right-color: var(--card-line); border-bottom-color: var(--card-line); box-shadow: var(--shadow-pop); }
+.pipe-card { transition: box-shadow var(--t-fast) var(--ease); }
+
+/* ---------- 侧栏、页头：半透明 + 毛玻璃（支持才开，不支持就是原来的实色地面） ---------- */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html:not(.glass) .rail { background: color-mix(in srgb, var(--page-bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
 }
+.rail { border-right-color: var(--line-soft); }
+
+/* ---------- 16a 客户详情的排版（只认 .rec-page.ui-v2，RecordView 挂着）：信息显示完整 ---------- */
+/* 详情左栏：容器（.rec-page）宽的 36%，夹在 320–360。1024 宽（无名单）正文 752 → 320 + 时间线 416 */
+.rec-page.ui-v2 { --v2-left: clamp(320px, 36cqw, 360px); }
 .rec-page.ui-v2 .rec-head-name { line-height: 28px; letter-spacing: -0.2px; }
 .rec-page.ui-v2 :is(.rec-field-v, .rec-field-k, .rec-contact-line, .rec-tl-content, .rec-tl-title) { line-height: 22px; }
-.rec-page.ui-v2 .rec-field-k { color: var(--text-muted); }
-
-/* 三栏宽：左栏（基本资料、联系人……）从死的 240 改成 --v2-left。几条容器查询照原样各覆盖一遍，只换左栏那个数 */
+.rec-page.ui-v2 :is(.rec-field-v, .rec-contact-v, .rec-tl-time, .rec-task-due, .rec-mini-m, .rec-tags-n, .rec-plan-m) { font-variant-numeric: tabular-nums; }
+/* 三栏宽：左栏从死的 240 改成 --v2-left。几条容器查询照原样各覆盖一遍，只换左栏那个数 */
 .rec-page.ui-v2 > .rec { grid-template-columns: var(--v2-left) minmax(0, 1fr) var(--ai-w); }
 .rec-page.ui-v2 > .rec-acts { grid-template-columns: var(--v2-left) minmax(0, 1fr) var(--ai-w); }
 @container rec (max-width: 1089px) {
@@ -3647,20 +3628,13 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @container rec (max-width: 629px) {
   .rec-page.ui-v2 > .rec, .rec-page.ui-v2 > .rec-acts { grid-template-columns: minmax(0, 1fr); }
 }
-
-/* 卡：纯白、无边框（边框留着 1px 透明，换主题时不跳）、两层轻阴影、圆角 14；卡内分隔线 6% 黑 */
-.rec-page.ui-v2 :is(.rec-card:not(.rec-rail-blocks, .rec-col-blocks), .rec-mod.ant-card) {
-  background: var(--panel); border-color: var(--v2-card-line); box-shadow: var(--v2-shadow); border-radius: var(--r-pop);
-}
-.rec-page.ui-v2 .rec-mod > .ant-card-head { min-height: 48px; border-bottom-color: var(--v2-sep); padding-inline: 16px 52px; }
+/* 卡头、卡身的留白 */
+.rec-page.ui-v2 .rec-mod > .ant-card-head { min-height: 48px; padding-inline: 16px 52px; }
 .rec-page.ui-v2 .rec-rail-blocks .rec-mod > .ant-card-head { padding-inline: 16px 44px; }
 .rec-page.ui-v2 .rec-mod > .ant-card-body { padding: 12px 16px 16px; }
 .rec-page.ui-v2 .rec-rail-blocks .rec-mod > .ant-card-body { padding: 8px 8px 10px; }
 .rec-page.ui-v2 :is(.rec-rail-blocks, .rec-col-blocks) > .proj-fold + .proj-fold { margin-top: 14px; }
-.rec-page.ui-v2 .rec-sec { border-top-color: var(--v2-sep); }
-.rec-page.ui-v2 .rec-tl-item { border-bottom-color: var(--v2-sep); }
-
-/* 字段：字段名 13 次要色、值 14 主色，两列（标签 5 个字宽）。多行的（备注）改上下排，值占满卡宽，一行能放十八九个字 */
+/* 字段：多行的（备注）改上下排，值占满卡宽，一行能放十八九个字 */
 .rec-page.ui-v2 .rec-field.is-multi { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .rec-page.ui-v2 .rec-field-v:not(.is-line) { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 备注超过 4 行收起，「展开」在下面一行（InlineField 的 长文：量到真截了才出按钮） */
@@ -3672,7 +3646,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 }
 .rec-field-more:hover { text-decoration: underline; }
 .rec-field-more:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
-
 /* 联系人：原来「头像 + 姓名 + 关键 + 职位 + 号码保护」挤一行不换，姓名被压到 1px。
    改成头像挂在左上，姓名独占第一行（整行宽，十八九个字放得下；再长照 11-04 的规矩一行省略、悬停看全），标签和职位换到第二行 */
 .rec-page.ui-v2 .rec-contact-h { position: relative; flex-wrap: wrap; min-height: 26px; padding-left: 34px; row-gap: 4px; }
@@ -3681,7 +3654,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .rec-page.ui-v2 .rec-contact-p { flex: 0 1 auto; }
 .rec-page.ui-v2 .rec-contact-line { margin-top: 2px; }
 .rec-page.ui-v2 .rec-contact + .rec-contact { margin-top: 4px; }
-
 /* 沟通记录的类型筛选：原来十来个蓝字链接折两行、选中只变色。改成一行胶囊、放不下横着滑，选中项浅灰底深字 */
 .rec-page.ui-v2 .rec-filters {
   flex-wrap: nowrap; gap: 4px; padding: 0 0 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
@@ -3691,36 +3663,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   flex: none; height: 28px; padding: 0 12px; border: 0; border-radius: var(--r-tag); background: transparent;
   font-size: var(--fs-note); font-weight: 500; line-height: 28px; color: var(--text-muted); white-space: nowrap;
 }
-.rec-page.ui-v2 .rec-filters .rec-chip:hover { background: var(--v2-fill-soft); color: var(--ink); }
-.rec-page.ui-v2 .rec-filters .rec-chip.rec-chip-on, .rec-page.ui-v2 .rec-filters .rec-chip.rec-chip-on:hover { background: var(--v2-fill); color: var(--ink); font-weight: 600; }
+.rec-page.ui-v2 .rec-filters .rec-chip:hover { background: var(--row-hover); color: var(--ink); }
+.rec-page.ui-v2 .rec-filters .rec-chip.rec-chip-on, .rec-page.ui-v2 .rec-filters .rec-chip.rec-chip-on:hover { background: var(--hover); color: var(--ink); font-weight: 600; }
 .rec-page.ui-v2 .rec-filters .rec-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
-/* 时间线里的类型小签照标签那套：灰胶囊 */
-.rec-page.ui-v2 .rec-sum-type { border-radius: var(--r-tag); background: var(--v2-fill); color: var(--ink); font-size: var(--fs-min); font-weight: 500; line-height: 20px; padding: 0 10px; }
-
-/* 动效：悬停、展开一条曲线、一档时长（--t-fast） */
+.rec-page.ui-v2 .rec-sum-type { border-radius: var(--r-tag); background: var(--hover); color: var(--ink); font-size: var(--fs-min); font-weight: 500; line-height: 20px; padding: 0 10px; }
 .rec-page.ui-v2 :is(.rec-field, .rec-contact, .rec-mini, .rec-chip, .proj-fold-btn) {
   transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
-
-/* ---------- 4. 客户列表 ---------- */
-/* 筛选条：搜索、下拉、按钮一律 32 高、圆角 8（原来 34 / 28 混着） */
-.ui-v2-list {
-  --v2-ctl-h: 32px;
-  --r-v2-ctl: 8px;
-}
-.ui-v2-list .list-bar :is(.ant-input-affix-wrapper, .ant-select, .ant-btn:not(.ant-btn-icon-only), .ant-picker) {
-  height: var(--v2-ctl-h); border-radius: var(--r-v2-ctl);
-}
-.ui-v2-list .list-bar :is(.ant-input-affix-wrapper, .ant-picker) { padding-block: 0; }
-.ui-v2-list .list-bar .ant-btn-icon-only { min-width: 28px; height: var(--v2-ctl-h); border-radius: var(--r-v2-ctl); }
-.ui-v2-list .list-bar .ant-select .ant-select-selector { border-radius: var(--r-v2-ctl); }
-/* 表格：白卡 + 圆角 14 + 轻阴影，表头白底灰字；行高、表头高不动（40 / 36） */
-.ui-v2-list .ant-table-wrapper .ant-table { border-radius: var(--r-pop); box-shadow: var(--v2-shadow); background: var(--panel); }
-.ui-v2-list .ant-table-wrapper .ant-table-container { border-radius: var(--r-pop); overflow: hidden; }
-.ui-v2-list .ant-table-thead > tr > th { background: var(--panel); color: var(--text-muted); border-bottom-color: var(--v2-sep); }
-.ui-v2-list .ant-table-thead > tr > th::before { display: none; }
-.ui-v2-list .ant-table-tbody > tr > td { border-bottom-color: var(--v2-sep); transition: background-color var(--t-fast) var(--ease); }
-.ui-v2-list .ant-table-tbody > tr.ant-table-row:hover > td { background: var(--v2-fill-soft); }
-/* 右下角 AI 浮标：这页小一号、往角里收（52 → 40，离边 16），操作列的「⋯」靠左摆，浮标停在哪一行都不压它 */
-.has-ai-fab:has(.ui-v2-list) .ai-fab { width: 40px; height: 40px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
-.ui-v2-list td.dl-act { text-align: start; }
