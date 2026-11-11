@@ -7,13 +7,13 @@
  * 三条：
  *   1. css 里的 font-size 只许 var(--fs-*)，或从它推出来的 var(--dt-*)（详情页大一号）、图标的 var(--ic)、inherit、0（藏字）。图标、字形（箭头、圆点、评分条）放行，名单在下面，每条写了为什么
  *   2. tsx/ts 里写死的 fontSize 数字只许在六档上；比 12 小的只放行图标（*Outlined）和图表轴/图例（echarts 的 axisLabel、textStyle）
- *   3. 两份镜像不许漂：运营台 ops.css 的 .opx 块钉回的六档、antd 主题（lib/theme.ts）抄的字号，都要和 :root 一字不差
+ *   3. 镜像不许漂：antd 主题（lib/theme.ts）抄的字号要和 :root 一字不差
  * 主题（skins/*.css）可以改 --fs-* 的值，那是 token 块，不受第 1 条管。
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 源, 去注释, 根变量, 变量 } from "./skin-css";
+import { 源, 去注释, 根变量 } from "./skin-css";
 
 const 六档 = new Set([12, 13, 14, 15, 22, 26]);
 
@@ -38,7 +38,6 @@ const 字形放行: Record<string, string> = {
   ".slc-k": "滑动确认的把手箭头",
   ".md-code": "行内代码跟着所在段落缩一点（0.92em），不是固定字号",
   ".rs-bars": "背调评分条 ●●●○○，字形当图形用",
-  ".opx-nav a .anticon": "运营台导航图标",
 };
 
 type 声明 = { rel: string; 行: number; 选择器: string; 值: string };
@@ -115,14 +114,6 @@ describe("字号只用六档 token", () => {
       });
     }
     expect(错, `这些字号不在 12/13/14/15/22/26 上：\n${错.join("\n")}`).toEqual([]);
-  });
-
-  it("运营台 .opx 块钉回的六档和 :root 一字不差（运营台不跟主题走，但档位要同一套）", () => {
-    const s = 去注释(fs.readFileSync(path.join(源, "app/admin/ops.css"), "utf8"));
-    const i = s.indexOf(".opx {");
-    const 钉 = [...变量(s.slice(i + 6, s.indexOf("\n}", i))).entries()].filter(([k]) => k.startsWith("--fs-"));
-    const 根六档 = [...根.entries()].filter(([k]) => k.startsWith("--fs-"));
-    expect(钉.sort()).toEqual(根六档.sort());
   });
 
   it("antd 主题抄的字号和 :root 一致", async () => {

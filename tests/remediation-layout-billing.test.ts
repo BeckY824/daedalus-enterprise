@@ -30,19 +30,13 @@ function 找壳(n: unknown): Record<string, unknown> | null {
   return 找壳(e.props?.children);
 }
 afterEach(() => { vi.unstubAllEnvs(); });
-it.each([
-  [true, "OWNER", "qa-private", true],
-  [true, "MEMBER", "qa-private", false],
-  [true, "ADMIN", "qa-private", false],
-  [true, "OWNER", "qa-shared", false],
-  [false, "OWNER", "qa-private", false],
-])("H-098 真实layout按hosted=%s/role=%s/slug=%s决定订阅入口=%s", async (hosted, role, slug, billing) => {
-  state.hosted = hosted; state.workspaces = [{ id: "qa-ws", name: "QA", slug, role }]; vi.stubEnv("SHARED_WORKSPACE", "qa-shared");
+it.each([true, false])("H-098 真实layout hosted=%s：业务时区跟环境走；工作区只传名字（开通订阅入口 12c 随 /billing 删了）", async (hosted) => {
+  state.hosted = hosted; state.workspaces = [{ id: "qa-ws", name: "QA", slug: "qa-private", role: "OWNER" }];
   // 业务时区由 business-clock 按同一份环境变量判（F3），托管版的环境变量要跟 multiTenant() 的桩一致
   vi.stubEnv("MULTI_TENANT", hosted ? "1" : "");
   const layout = await AppLayout({ children: null, pane: null, modal: null });
   expect(layout.props.children.props.timeZone).toBe(hosted ? "Asia/Shanghai" : null);
-  expect(找壳(layout)?.workspace).toMatchObject({ name: "QA", billing });
+  expect(找壳(layout)?.workspace).toEqual({ name: "QA" });
 });
 
 it.each([true,false])("L-112 hosted=%s 每次布局只加载一次实际用于侧栏的计数与收藏",async hosted=>{

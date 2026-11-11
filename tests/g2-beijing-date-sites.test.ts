@@ -9,8 +9,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { 北京日期, 剩几天 } from "@/lib/team-pricing";
-import { 组回复邮件 } from "@/lib/feedback-reply";
-import { 磁盘通知 } from "@/lib/ops-notices";
 import { 北京时间串 } from "@/lib/enterprise-import/net";
 
 /** [UTC 瞬间, 北京日期, 北京钟点] */
@@ -48,15 +46,6 @@ describe("G2 北京日期串：各处现有行为", () => {
     expect(剩几天(到期, new Date("2026-12-31T16:00:00.000Z"))).toBe(-1);
   });
 
-  it.each(边界)("feedback-reply 信里的钟点 %s → %s %s", (瞬间, 日, 钟点) => {
-    const 信 = 组回复邮件({ to: "a@b.co", body: "好的", 原话: "有个问题", 原话时间: new Date(瞬间), replyTo: "r@b.co" }, {});
-    expect(信.text).toContain(`你 ${日.slice(5)} ${钟点} 的反馈：`);
-  });
-
-  it.each(边界)("ops-notices 磁盘通知的键 %s → 磁盘:%s", (瞬间, 日) => {
-    expect(磁盘通知({ 剩: 1, 用: 0 }, new Date(瞬间), {})?.key).toBe(`磁盘:${日}`);
-  });
-
   it.each(边界)("enterprise-import 北京时间串 %s → %s %s", (瞬间, 日, 钟点) => {
     expect(北京时间串(Date.parse(瞬间))).toBe(钟点 === "00:00" ? 日 : `${日} ${钟点}`);
   });
@@ -73,7 +62,6 @@ describe("G2 北京日期串：各处现有行为", () => {
     vi.stubEnv("MULTI_TENANT", "");
     const t = new Date("2026-12-31T16:00:00.000Z");
     expect(北京日期(t)).toBe("2027-01-01");
-    expect(磁盘通知({ 剩: 1, 用: 0 }, t, {})?.key).toBe("磁盘:2027-01-01");
     expect(北京时间串(t.getTime())).toBe("2027-01-01");
   });
 });

@@ -1,6 +1,6 @@
 import { closeTestDatabases } from "./close-databases";
 /**
- * 运营台手动加次数（lib/tenant/admin-credits.ts + 运营台动作 给账号加次数，2026-10-19）。用户原话：
+ * 运营台手动加次数（lib/tenant/admin-credits.ts，2026-10-19；运营台页面和动作 12c 删了，这里直接测 lib）。用户原话：
  * 「如果有用户和我购买了次数，我可以手动添加。包括AI次数……团队版……我可以直接增加背调次数+AI次数。个人版就单独做一个页面做这个。」
  *
  * 钉这几件事：
@@ -17,14 +17,12 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 const 临时根 = path.join(os.tmpdir(), `crm-admin-credits-${process.pid}`);
-const TOKEN = "ops-token-admin-credits";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 beforeAll(() => {
   fs.mkdirSync(临时根, { recursive: true });
   process.env.MULTI_TENANT = "1";
-  process.env.ADMIN_TOKEN = TOKEN;
   // 桌面端读余额走网关：要有网关配置才认令牌（上游不会被调到，这里只读余额）
   process.env.GATEWAY_API_KEY = "upstream-key-admin-credits";
   process.env.GATEWAY_BASE_URL = "https://upstream.example.com/v1";
@@ -47,7 +45,6 @@ beforeAll(() => {
 
 afterAll(async () => {
   delete process.env.MULTI_TENANT;
-  delete process.env.ADMIN_TOKEN;
   delete process.env.OPS_ACCOUNTS;
   delete process.env.TEST_ACCOUNTS;
   delete process.env.GATEWAY_API_KEY;
@@ -101,9 +98,10 @@ const 桌面端读背调 = async (token: string) => {
   return ((await (await GET(new Request("https://app.example.com/api/gateway/v1/research/price", { headers: { Authorization: `Bearer ${token}` } }))).json()) as { 还剩: number }).还剩;
 };
 
-async function 加(input: { accountId: string; 种类: "research" | "ai"; n: number; key?: string; note?: string; teamId?: string; token?: string }) {
-  const { 给账号加次数 } = await import("@/app/admin/actions");
-  return 给账号加次数({ token: input.token ?? TOKEN, key: input.key ?? 编号(), ...input });
+/** 原来走运营台动作 给账号加次数（验口令后转给 运营加次）；运营台 12c 删了，这里直接调 lib，「谁」记「口令」和原来用口令进来时一样 */
+async function 加(input: { accountId: string; 种类: "research" | "ai"; n: number; key?: string; note?: string; teamId?: string }) {
+  const { 运营加次 } = await import("@/lib/tenant/admin-credits");
+  return 运营加次({ ...input, key: input.key ?? 编号(), note: input.note ?? null, teamId: input.teamId ?? null, by: "口令" });
 }
 
 describe("老用户补 1 次背调（10-19）", () => {
@@ -227,11 +225,9 @@ describe("只加不减、1–1000、该拒的拒", () => {
     expect(await control.accountAiGrant.count()).toBe(0);
   });
 
-  it("种类乱写、口令不对、账号不存在：拒", async () => {
+  it("种类乱写、账号不存在：拒", async () => {
     const a = await 建账号();
-    const { 给账号加次数 } = await import("@/app/admin/actions");
-    expect((await 给账号加次数({ token: TOKEN, accountId: a.id, 种类: "money" as "ai", n: 1, key: 编号() })).ok).toBe(false);
-    expect(await 加({ accountId: a.id, 种类: "ai", n: 1, token: "猜的" })).toEqual({ ok: false, error: "无权操作" });
+    expect((await 加({ accountId: a.id, 种类: "money" as "ai", n: 1 })).ok).toBe(false);
     expect(await 加({ accountId: "没有这个人", 种类: "ai", n: 1 })).toEqual({ ok: false, error: "账号不存在" });
   });
 

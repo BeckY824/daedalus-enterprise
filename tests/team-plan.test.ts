@@ -6,7 +6,6 @@
  *   - 10-15 之前开通的老团队没有到期日 = 不限期，升级后照常同步
  *   - 每次开通、续费、改到期、停用都留记录（谁、时长、人数、实收、前后到期日、备注）
  *   - 价格表：没改过用默认，改了存库、桌面端读到新价；乱填不收
- *   - 运营通知：3 天内到期报「快到期」，过了报「已到期」，停用的不报
  *   - 席位（2026-10-19 用户拍板「要拦」）：运营台填的人数就是上限（含老板）；满了新成员入队、被移出的人重新加入都拦，
  *     本人加设备只在人数已经超过上限时拦；运营台「改人数」马上生效；没设人数的老团队按最多人数（100）拦
  */
@@ -321,28 +320,5 @@ describe("价格表", () => {
     expect(await p.存价格({ prices: [{ months: 1, perSeat: 1.234 }, ...p.默认价格.prices.slice(1)], trialDays: 7 }, "x")).toMatch(/1 个月/);
     // 还原，别影响别的用例
     expect(await p.存价格(p.默认价格, "ops@x.com")).toBeNull();
-  });
-});
-
-describe("运营通知", () => {
-  it("3 天内到期报「快到期」，过了报「已到期」；键带到期日；停用的不报", async () => {
-    const p = await import("@/lib/tenant/team-plan");
-    const { 读运营通知 } = await import("@/lib/ops-notices");
-    const 快 = await 团队("快到期的团");
-    const 过 = await 团队("刚到期的团");
-    const 停 = await 团队("停用的团");
-    await p.开通续费({ teamId: 快.teamId, 时长: { months: 1 }, seats: 1, amount: 29.9, by: "口令" });
-    await p.改到期({ teamId: 快.teamId, paidUntil: new Date(Date.now() + 2 * 天), by: "口令" });
-    await p.开通续费({ teamId: 过.teamId, 时长: { months: 1 }, seats: 1, amount: 29.9, by: "口令" });
-    await p.改到期({ teamId: 过.teamId, paidUntil: new Date(Date.now() - 3600_000), by: "口令" });
-    await p.开通续费({ teamId: 停.teamId, 时长: { months: 1 }, seats: 1, amount: 29.9, by: "口令" });
-    await p.改到期({ teamId: 停.teamId, paidUntil: new Date(Date.now() + 天), by: "口令" });
-    await p.停用({ teamId: 停.teamId, by: "口令" });
-    const { 事件 } = await 读运营通知(new Date(Date.now() - 60_000).toISOString());
-    const 这几个 = [快.teamId, 过.teamId, 停.teamId];
-    const 到期 = 事件.filter((e) => e.key.startsWith("团队到期:") && 这几个.some((id) => e.key.includes(id)));
-    expect(到期.map((e) => e.标题).sort()).toEqual(["团队已到期：刚到期的团", "团队快到期：快到期的团"]);
-    expect(到期.every((e) => e.kind === "团队" && e.path === "/admin/sync")).toBe(true);
-    expect(到期.find((e) => e.标题.includes("快到期"))!.key).toMatch(new RegExp(`^团队到期:将:${快.teamId}@\\d{4}-\\d{2}-\\d{2}$`));
   });
 });
