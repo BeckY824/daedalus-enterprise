@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ keyword?: string; status?: string; ownerId?: string; source?: string; pool?: string; recycled?: string; node?: string }>;
+  searchParams: Promise<{ keyword?: string; status?: string; ownerId?: string; source?: string; pool?: string; recycled?: string; node?: string; page?: string; pageSize?: string; sort?: string }>;
 }) {
   const me = await requireUser();
   const sp = await searchParams;
@@ -37,7 +37,7 @@ export default async function LeadsPage({
     const 线索分配开着 = (await 规则开着("线索分配")) && !(await 当前是共享区());
     const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
     const 满额提醒们 = await 读满额提醒(me.id);
-    return <ProjectsView {...d} 列={看板分列(d.行)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 满额提醒={满额提醒们} 能新建={能新建和领取(me, await 权限组织())} />;
+    return <ProjectsView {...d} 列={看板分列(d.行, undefined, undefined, d.看板合计)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 满额提醒={满额提醒们} 能新建={能新建和领取(me, await 权限组织())} />;
   }
   const where: Prisma.LeadWhereInput = {
     AND: [await 线索关键词条件(sp.keyword)],

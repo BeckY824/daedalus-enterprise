@@ -79,7 +79,7 @@ function 进程列们(字典: 阶段字典, 只看阶段?: string): 列定义[] 
 }
 
 /** 企业版这一行落哪列：有结局（异常除外）进出口列，其余进所在进程；认不出的进程落本阶段第一列，不丢 */
-function 进程列(r: 项目行, 字典: 阶段字典): string {
+function 进程列(r: Pick<项目行, "phase" | "node" | "result">, 字典: 阶段字典): string {
   if (r.result && r.result !== "异常状态") return 是交付(r.result) ? (字典.出口们.订单[0].结局 ?? r.result) : r.result;
   const 阶 = 是阶段(r.phase) ? r.phase : "线索";
   return 字典.节点们[阶].includes(r.node) ? r.node : 字典.节点们[阶][0];
@@ -100,15 +100,24 @@ export function 卡片小字(r: 项目行, 字典?: 阶段字典): string {
 }
 
 /**
+ * 看板列头按全部筛选结果算用的一组（11-11 项目列表服务端分页）：库里按 阶段 / 进程 / 结局 / 币种 分组数出来的个数和金额和。
+ * 卡片只摆这一页的，列头的数和金额是全部的（lib/project/list.ts 读项目列表 的 看板合计）
+ */
+export type 看板合计组 = { phase: string; node: string; result: string | null; currency: string; amount: number; 数: number };
+
+/**
  * 每列都在（空的也摆出来，列头写 0），列里按最近改过的排前。
  * 团队版五列（三个阶段 + 成功交付 + 没成）；传了企业版字典按进程分列（进程列们）。
+ * 给了 全部（服务端分页时）：列头的数和金额按它算，行只是这一页的卡片；不给 = 按传进来的行算（行就是全部）
  */
-export function 看板分列(行: 项目行[], 字典?: 阶段字典, 只看阶段?: string): 看板一列[] {
+export function 看板分列(行: 项目行[], 字典?: 阶段字典, 只看阶段?: string, 全部?: 看板合计组[]): 看板一列[] {
   const 企 = 字典?.名 === "企业版";
   const 列们: 列定义[] = 企 ? 进程列们(字典!, 只看阶段) : 看板列们.map((c) => ({ 列: c, 名: c, 色: c, 空态: 五列空态[c] }));
-  const 落 = (r: 项目行) => (企 ? 进程列(r, 字典!) : 看板列(r));
+  const 落 = (r: Pick<项目行, "phase" | "node" | "result">) => (企 ? 进程列(r, 字典!) : 看板列(r));
   return 列们.map((定) => {
     const 这列 = 行.filter((r) => 落(r) === 定.列).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return { ...定, 数: 这列.length, 合计: 按币种合计(这列, (r) => r.amount, (r) => r.currency), 行: 这列 };
+    if (!全部) return { ...定, 数: 这列.length, 合计: 按币种合计(这列, (r) => r.amount, (r) => r.currency), 行: 这列 };
+    const 组 = 全部.filter((g) => 落(g) === 定.列);
+    return { ...定, 数: 组.reduce((n, g) => n + g.数, 0), 合计: 按币种合计(组, (g) => g.amount, (g) => g.currency), 行: 这列 };
   });
 }
