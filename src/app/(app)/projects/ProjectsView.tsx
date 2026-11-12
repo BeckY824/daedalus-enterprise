@@ -1,13 +1,13 @@
 "use client";
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
-import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { useContext, useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { App, Button, Modal, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
-import { CloseOutlined, PlusOutlined, RightOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import dynamic from "next/dynamic";
+import { App, Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
+import { CloseOutlined, PlusOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
@@ -20,8 +20,6 @@ import { useLocalPref } from "@/lib/local-pref";
 import { useUrlFilters } from "@/lib/url-filters";
 import { 列表不问归属ID } from "@/lib/solo";
 import { dayjs, fmtDate, 成员选项, type 可选成员 } from "@/lib/utils";
-import { useMe, 默认负责人 as 我当负责人 } from "@/lib/me-client";
-import CustomerSearchSelect from "@/components/CustomerSearchSelect";
 import { 金额, 合计文字 } from "@/lib/currency";
 import { 主题颜色 } from "@/lib/chart-theme";
 import { categorical } from "@/lib/palette";
@@ -44,17 +42,14 @@ import { 自动分配线索, 分配带走的项目, type 自动分配结果 } fr
 import { useCarryConfirm } from "../customers/useCarryConfirm";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "../leads/AssignLead";
 import LeadFullNotices from "../leads/LeadFullNotices";
-import NewProjectModal from "../customers/[id]/NewProjectModal";
-import { 取客户近况 } from "../customers/[id]/pick";
-import { 取建档数据 } from "./new/wizard-actions";
 import { 滚法 } from "@/lib/reduced-motion";
-import type { 建档数据 } from "./new/ProjectWizard";
 import { 看板要点, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 再看一列 } from "../customers/board-actions";
 import { 再看项目页一列 } from "./board-actions";
+import { useNewProjectFlow } from "./NewProjectFlow";
+import NewMenuButton from "@/components/NewMenuButton";
+import { 看板工具位 } from "../customers/board-slot";
 
-/** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */
-const 建档弹窗 = dynamic(() => import("./new/ProjectWizard").then((m) => m.建档弹窗), { ssr: false });
 
 /** 看板列的颜色：三个阶段沿用商机管道的蓝绿黄（企业版进程列跟所在阶段），成功交付（企业版叫 交付结清）粉、没成（流失 / 丢单）灰 */
 const 列色: Record<看板列, string> = {
@@ -89,7 +84,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 三态点, 每列,
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -157,8 +152,10 @@ export default function ProjectsView({
   基址?: string;
   /** 页头标题，默认「项目」（市场角色的客户页叫客户） */
   标题?: string;
-  /** 市场角色客户页的看板视图（X-107）：页头下面摆客户页那颗「列表 / 看板」，点「列表」回客户列表 */
+  /** 市场角色客户页的看板视图（X-107）：筛选行最左摆客户页那颗「客户列表 / 我分出去的」，点「客户列表」回客户列表 */
   换回客户列表?: boolean;
+  /** 市场角色客户页的看板视图：页头「新建 ▾」里摆不摆「新建客户」（同客户页 能新建和领取，没设业务角色、只读管理员不摆） */
+  能新建客户?: boolean;
   /** 客户页看板、客户三态开着（C5，P-界面-19 ②）：客户 id → 回收状态；沉睡 / 待回收 / 暂缓回收中在卡片客户名后点一个色点。不给 = 不点 */
   三态点?: Record<string, 三态标>;
   /**
@@ -183,26 +180,8 @@ export default function ProjectsView({
   // 线索阶段的项目分给销售（老的 Lead 分配搬过来，见 leads/assign-actions.ts 的 项目 选项）
   const 可分 = (新线索 || 项目页分) && 能自动分配;
   const [分配中, set分配中] = useState<项目行 | null>(null);
-  const [挑老客户, set挑老客户] = useState(false);
-  // 企业版项目首页「新增项目」（11-01 用户：「也是弹窗进行。右侧下拉去掉，打开新增的时候给一个选项新客户还是老客户」）
-  const [选客户, set选客户] = useState(false);
-  const [建档, set建档] = useState<建档数据 | null>(null);
-  const [建档开着, set建档开着] = useState(false);
-  const [取档中, set取档中] = useState(false);
-  const 新客户 = async () => {
-    set取档中(true);
-    try {
-      const d = 建档 ?? (await 取建档数据());
-      if (!d) return void message.error("项目模式没开，不能新增项目");
-      set建档(d);
-      set选客户(false);
-      set建档开着(true);
-    } catch {
-      message.error("没打开，请重试");
-    } finally {
-      set取档中(false);
-    }
-  };
+  // 企业版项目首页「新增项目」（11-01 用户：「也是弹窗进行。右侧下拉去掉，打开新增的时候给一个选项新客户还是老客户」）：和客户页「新建 ▾」同一份（NewProjectFlow.tsx）
+  const 新项目 = useNewProjectFlow({ users, 节点们: 字典.节点们.线索, 要下一步 });
   const [存的看法, set看法] = useLocalPref<"列表" | "看板">("projects-view", "看板");
   // 带着要指出的那一行来：先按列表看（不改存下的看法），自己切回看板就听他的
   const [临时列表, set临时列表] = useState(!!高亮);
@@ -293,12 +272,13 @@ export default function ProjectsView({
       set取中((m) => (m.源 === 源 ? { 源, 列: { ...m.列, [c.列]: false } } : m));
     }
   }
-  const [右边还有, 滑一列] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null);
+  const 还有列钮 = useRef<HTMLButtonElement>(null);
+  const [右边还有, 滑一列, 横向溢出] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null, 还有列钮);
   // 看板每列的卡片（含「再看」追加的）也算：客户页看板不取列表页（行 是空的），不带上的话有「已不在的成员 / 没人」的卡片也会把负责人藏掉
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, [...行, ...看板.flatMap((c) => c.行), ...Object.values(追加.们).flatMap((x) => x.行)].map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
   // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
-  const 新建 = () => (企业版 && !新线索 ? set选客户(true) : router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new"));
+  const 新建 = () => (企业版 && !新线索 ? 新项目.开选客户() : router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new"));
   // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批
   const 卡 = 认首页卡(filters.f);
   const 卡标 = 卡 ? (
@@ -486,7 +466,15 @@ export default function ProjectsView({
     ],
     { 停用: 新线索 },
   );
-  const 筛选 = (
+  /* 市场角色客户页的「我分出去的」视图（X-107）：和客户页同一颗切换、同一个位置——筛选行最左（11-12 用户：「列表｜看板 放到和筛选栏一行，最左边」），
+     点「客户列表」记下并回客户列表。页头那颗「看板 / 列表」是原项目页自己的（这一视图内部两种形态），照原样留着；两颗字不一样，免得看成一回事 */
+  const 换回切换 = 换回客户列表 ? (
+    <div className="list-view-seg">
+      <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[1]} onChange={(v) => v === 市场视图名[0] && 换客户页看法("list", router)} />
+    </div>
+  ) : null;
+  const 筛选 = (<>
+    {换回切换}
     <Space wrap size={[10, 10]}>
       <ListSearch
         width={240}
@@ -500,31 +488,63 @@ export default function ProjectsView({
       <ResetFilters 显示={Object.values(f).some(Boolean)} onClick={reset} />
       {/* 企业版项目首页只留看板、列表（U-项目-08）：「新线索列表」「沟通记录」入口去掉，/leads、/follow-ups 路由还在，⌘K 搜得到 */}
     </Space>
-  );
+  </>);
 
-  /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在看板工具行（C17 / C4） */
+  const 有分配钮 = 项目页分 && 能自动分配;
+  const 有分出去钮 = (新线索 || 项目页分) && 线索分配开着;
+  /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在筛选行右端（C17 / C4；11-12 起新增项目挪进客户页页头「新建 ▾」） */
   const 项目按钮 = (
     <>
-      {项目页分 && 能自动分配 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
-      {(新线索 || 项目页分) && 线索分配开着 && <AssignedOutButton />}
+      {有分配钮 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
+      {有分出去钮 && <AssignedOutButton />}
       {/* 客户页看板视图的离职交接在客户页页头（C15），这里不再摆一个 */}
       {!新线索 && !客户页 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
       {!新线索 && !客户页 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={换看法} />}
-      {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
-      {(能新建 || !新线索) && <Button type={客户页 ? "default" : "primary"} icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>}
+      {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉）。
+          市场角色客户页的「我分出去的」：和客户页页头同一颗「新建 ▾」（新建客户 / 新建项目，11-12）。客户页看板视图不摆（在客户页页头） */}
+      {!客户页 && (换回客户列表
+        ? <NewMenuButton 载入中={新项目.取档中} 项={[
+            ...(能新建客户 ? [{ key: "customer", label: `新建${b.customer}`, onClick: () => void 新项目.开建档("新增客户") }] : []),
+            // 新建项目同客户页：服务端按 能新建和领取 拒（没设业务角色、只读管理员），这里不摆；两样都没有整颗不摆
+            ...(能新建 ? [{ key: "project", label: "新建项目", onClick: 新建 }] : []),
+          ]} />
+        : (能新建 || !新线索) && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>)}
     </>
+  );
+
+  /* 客户页看板视图（11-12 用户：「看板的新建也同步，把新增项目去掉」）：新增项目进了客户页页头，看板上面原来那一行只剩
+     「分配」「我分出去的」（阶段筛到线索、能分配时）、「回到看板」（分配临时切成列表时），挪进客户页筛选行右端那一格
+     （customers/board-slot.ts），不再单独占一行。外面没给那一格时照原来摆在看板上面。
+     「→ 还有 N 列」不进那一格（11-12 审查）：三样都挤进筛选行时 1024 宽会把筛选项收进「更多筛选」、滑到最右后放不回来；
+     它摆回看板上方，只在右边还有列时出现，右对齐一行小字，不出现时不占位 */
+  const 工具位 = useContext(看板工具位);
+  const 进筛选行 = 客户页 && 工具位 !== undefined;
+  const 回到看板 = 临时列表 && <Button onClick={() => set临时列表(false)}>回到看板</Button>;
+  /*
+    「→ 还有 N 列」这一行占不占位看看板有没有横向溢出（11-12 复审：原来随滑动出现 / 消失，看板上下跳约 24px）：
+    有溢出就一直留着这一行，滑到头时按钮藏起来（visibility:hidden 保留高度、不可聚焦、读屏不念）；完全没溢出才不画
+  */
+  const 到头 = 右边还有 === 0;
+  const 还有列 = 看法 === "看板" && 横向溢出 && (
+    <Button ref={还有列钮} type="link" className={到头 ? "pipe-more-right pipe-more-end" : "pipe-more-right"} title={到头 ? undefined : "往右滑一列"} onClick={滑一列}
+      tabIndex={到头 ? -1 : undefined} aria-hidden={到头 || undefined}>
+      → 还有 {到头 ? 0 : 右边还有} 列
+    </Button>
   );
 
   return (
     <div>
-      {客户页 ? (
-        // 看板工具行（C17 / C4）：项目专用的按钮；「分配」临时切到的项目列表从这里回看板
-        <div className="cust-board-tool">
-          <Space wrap>
-            {临时列表 && <Button onClick={() => set临时列表(false)}>回到看板</Button>}
-            {项目按钮}
-          </Space>
-        </div>
+      {进筛选行 ? (
+        工具位 && createPortal(<>{回到看板}{项目按钮}</>, 工具位)
+      ) : 客户页 ? (
+        (临时列表 || 有分配钮 || 有分出去钮) && (
+          <div className="cust-board-tool">
+            <Space wrap>
+              {回到看板}
+              {项目按钮}
+            </Space>
+          </div>
+        )
       ) : (
       <PageHead
         title={新线索 ? "新线索" : 标题 ?? "项目"}
@@ -540,13 +560,8 @@ export default function ProjectsView({
         }
       />
       )}
-      {/* 市场角色客户页的「我分出去的」视图（X-107）：和客户页同一个位置、同一颗切换，点「客户列表」记下并回客户列表。
-          页头那颗「看板 / 列表」是原项目页自己的（这一视图内部两种形态），照原样留着；两颗字不一样，免得看成一回事 */}
-      {换回客户列表 && (
-        <div className="cust-view-seg">
-          <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[1]} onChange={(v) => v === 市场视图名[0] && 换客户页看法("list", router)} />
-        </div>
-      )}
+      {/* 列表一条都没有、也没在筛时筛选行不画（DataList 空库）：那颗「客户列表 / 我分出去的」照原来单独一行，不然回不去客户列表 */}
+      {换回客户列表 && 看法 === "列表" && 总数 === 0 && !在筛 && <div className="cust-view-seg">{换回切换}</div>}
       <InviteInbox 邀请们={邀请们} />
       <VerifyInbox 们={待复核们} />
       <MyBlockersBoard 们={卡点们} />
@@ -587,12 +602,13 @@ export default function ProjectsView({
         />
       ) : (
         <>
-          <div className="pipe-top">
-            {!客户页 && 筛选}
-            {右边还有 > 0 && (
-              <Button type="link" className="pipe-more-right" title="往右滑一列" onClick={滑一列}>→ 还有 {右边还有} 列</Button>
-            )}
-          </div>
+          {/* 客户页看板：筛选行是客户页的，看板上方只有「→ 还有 N 列」这一句（看板横向溢出时这一行一直在、滑到头按钮藏起来不跳；没溢出不占位） */}
+          {(!客户页 || 还有列) && (
+            <div className={客户页 ? "pipe-top pipe-top-hint" : "pipe-top"}>
+              {!客户页 && 筛选}
+              {还有列}
+            </div>
+          )}
           {/* 每列都摆（团队版五列；企业版按进程一个一列 + 三个出口，11-03 客户反馈 6），0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe）。
               右边还有没露全的列：右沿渐隐 + 上面「→ 还有 N 列」（11-01 会议 C12），横向滚动条常显 */}
           <div className={右边还有 > 0 ? "pipe-wrap pipe-fade-right" : "pipe-wrap"}>
@@ -695,35 +711,23 @@ export default function ProjectsView({
           )}
         </>
       )}
-      {企业版 && !新线索 && (
-        <Modal open={选客户} title="新增项目" footer={null} width={420} onCancel={() => set选客户(false)} destroyOnHidden>
-          <div className="new-proj-pick">
-            <button type="button" className="new-proj-opt" disabled={取档中} onClick={() => void 新客户()}>
-              <两行 名={`新${b.customer}`} 说={`一起建好${b.customer}、联系人和首条沟通，号码先查重`} />
-              <RightOutlined aria-hidden />
-            </button>
-            <button type="button" className="new-proj-opt" disabled={取档中} onClick={() => { set选客户(false); set挑老客户(true); }}>
-              <两行 名={`老${b.customer}`} 说={`选一位已有的${b.customer}，接着填项目和首条沟通`} />
-              <RightOutlined aria-hidden />
-            </button>
-          </div>
-        </Modal>
-      )}
-      {建档 && <建档弹窗 open={建档开着} 标题="新增项目" 数据={建档} onClose={() => set建档开着(false)} />}
-      {企业版 && <OldCustomerProject 开={挑老客户} 关={() => set挑老客户(false)} users={users} 节点们={字典.节点们.线索} 要下一步={要下一步} />}
+      {/* 新增项目：先选新老客户、建档向导、给老客户开项目（NewProjectFlow.tsx） */}
+      {企业版 && 新项目.弹框}
       {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分} />}
     </div>
   );
 }
 
 /**
- * 看板右边还有几列没整列露出来（11-01 会议 C12「加横向滚动条和『→ 还有 N 列』的提示」）。
- * 滚动、框变宽窄、列变了都重算；滑一列 = 把右边第一列没露全的整列滑进来，点几下到头
+ * 看板右边还有几列没整列露出来（11-01 会议 C12「加横向滚动条和『→ 还有 N 列』的提示」），以及看板有没有横向溢出。
+ * 滚动、框变宽窄、列变了都重算；滑一列 = 把右边第一列没露全的整列滑进来，点几下到头。
+ * 到头时按钮要藏起来：焦点正在它上面就先挪到看板框上（tabIndex -1，只接程序焦点），不让焦点掉到 body
  */
 /** 看板右沿渐隐的宽（和 globals.css .pipe-fade-right 的 48px 一致）：滑过来的那一列整列落在渐隐外 */
 const 渐隐宽 = 48;
-function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: unknown): [number, () => void] {
+function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: unknown, 钮?: React.RefObject<HTMLButtonElement | null>): [number, () => void, boolean] {
   const [n, setN] = useState(0);
+  const [溢出, set溢出] = useState(false);
   const 没露全的 = (el: HTMLDivElement) => {
     const 右 = el.getBoundingClientRect().right;
     return Array.from(el.children).filter((c) => c.getBoundingClientRect().right > 右 + 1);
@@ -731,7 +735,15 @@ function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: 
   useEffect(() => {
     const el = 框.current;
     if (!el) return; // 提示只在看板里显示，切回看板时重算
-    const 算 = () => setN(没露全的(el).length);
+    const 算 = () => {
+      const 剩 = 没露全的(el).length;
+      if (剩 === 0 && 钮?.current && document.activeElement === 钮.current) {
+        if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+        el.focus({ preventScroll: true });
+      }
+      setN(剩);
+      set溢出(el.scrollWidth > el.clientWidth + 1);
+    };
     算();
     el.addEventListener("scroll", 算, { passive: true });
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(算);
@@ -740,14 +752,14 @@ function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: 
       el.removeEventListener("scroll", 算);
       ro?.disconnect();
     };
-  }, [框, 列们]);
+  }, [框, 列们, 钮]);
   const 滑 = () => {
     const el = 框.current;
     const 下一列 = el && 没露全的(el)[0];
     if (!el || !下一列) return;
     el.scrollBy({ left: 下一列.getBoundingClientRect().right - el.getBoundingClientRect().right + 渐隐宽, behavior: 滚法() });
   };
-  return [n, 滑];
+  return [n, 滑, 溢出];
 }
 
 /** 看板列底「再看 N 个」（11-12 每列各自取数）：左边写已显示几个 / 一共几个，右边次级小按钮；摆全了不画。加载中禁用、读屏报忙 */
@@ -768,82 +780,4 @@ function 列底再看({ 名, 已, 总, 取中, 点 }: { 名: string; 已: number
 function 将收标({ 日 }: { 日: string }) {
   const { 短文字, 级别 } = 回公海文案(日);
   return <Tag color={级别 === "当天" || 级别 === "已过" ? "error" : "warning"} style={{ marginInlineEnd: 0, flexShrink: 0 }}>{短文字}</Tag>;
-}
-
-/** 「新增项目」选项里的一项：名字 + 一行小字说明 */
-function 两行({ 名, 说 }: { 名: string; 说: string }) {
-  return (
-    <div style={{ lineHeight: 1.4, padding: "2px 0" }}>
-      <div>{名}</div>
-      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{说}</div>
-    </div>
-  );
-}
-
-/**
- * 「给老客户开项目」：先挑一位已有的客户，再接客户页同一个新建项目框（customers/[id]/NewProjectModal.tsx）。
- * 能挑到谁走 搜客户 的可见范围，建项目的权限以服务端 给客户建项目 为准
- */
-function OldCustomerProject({ 开, 关, users, 节点们, 要下一步 }: { 开: boolean; 关: () => void; users: 可选成员[]; 节点们: readonly string[]; 要下一步: boolean }) {
-  const { message } = App.useApp();
-  const b = useBusiness();
-  const me = useMe();
-  const [选, set选] = useState<string | undefined>();
-  const [取中, set取中] = useState(false);
-  const [客户, set客户] = useState<{ id: string; name: string; 联系人们: { id: string; name: string; isPrimary: boolean }[] } | null>(null);
-
-  async function 下一步() {
-    if (!选) return;
-    set取中(true);
-    try {
-      const c = await 取客户近况(选);
-      if (!c) {
-        message.error(`没找到这位${b.customer}，或你看不到`);
-        return;
-      }
-      // 近况里不带谁是主要联系人，新建框默认选第一个
-      set客户({ id: c.id, name: c.name, 联系人们: c.contacts.map((x) => ({ id: x.id, name: x.name, isPrimary: false })) });
-      set选(undefined);
-      关();
-    } catch {
-      message.error(`${b.customer}没取到，请重试`);
-    } finally {
-      set取中(false);
-    }
-  }
-
-  return (
-    <>
-      <Modal
-        open={开}
-        title="给老客户开项目"
-        okText="下一步"
-        okButtonProps={{ disabled: !选, loading: 取中 }}
-        onOk={() => void 下一步()}
-        onCancel={() => {
-          set选(undefined);
-          关();
-        }}
-        destroyOnHidden
-      >
-        <CustomerSearchSelect value={选} onChange={set选} placeholder="搜名称 / 公司 / 电话" style={{ width: "100%" }} />
-        <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
-          选一位已有的{b.customer}，接着填项目和首条沟通。新{b.customer}请回「新增项目」选「新{b.customer}」，要先查重。
-        </div>
-      </Modal>
-      {客户 && (
-        <NewProjectModal
-          open
-          onClose={() => set客户(null)}
-          customerId={客户.id}
-          customerName={客户.name}
-          默认负责人={我当负责人(me, users) ?? null}
-          users={users}
-          联系人们={客户.联系人们}
-          节点们={节点们}
-          要下一步={要下一步}
-        />
-      )}
-    </>
-  );
 }

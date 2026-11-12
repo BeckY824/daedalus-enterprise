@@ -26,6 +26,8 @@ const plugin: Plugin = { name: "two-level-boundaries", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   stub(/projects\/new\/ProjectWizard$/, "export function 建档弹窗(){return null}");
+  // 页头「新建 ▾ → 新建项目」那条路（projects/NewProjectFlow.tsx，点了才挂）：里面的选客户、建项目都是 server action，这里换成一块牌子
+  stub(/projects\/NewProjectFlow$/, "export default function F(){return <div className='new-proj-flow-stub'/>}");
   stub(/^\.\/ChannelDrawer$/, "export default function D(){return null}");
   stub(/^\.\.\/channels\/actions$/, `export const saveChannel=${空跑};`);
   // 客户页、渠道页各自的 ./actions 都落到这一份
