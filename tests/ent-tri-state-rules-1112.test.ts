@@ -28,7 +28,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 加天 } from "@/lib/enterprise/tri-state";
 import { 删被撤的换负责人记录, 记换负责人 } from "@/lib/owner-log-db";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 有内容的沟通, 拨钟的沟通, 默认占位词 } from "@/lib/enterprise/tri-state-quota";
+import { 有内容的沟通, 拨钟的沟通, 默认占位词, 英文单词数 } from "@/lib/enterprise/tri-state-quota";
 import { 读占位词, 存占位词 } from "@/lib/enterprise/tri-state-db";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 
@@ -667,6 +667,24 @@ describe("第二轮答复 S1–S8", () => {
     expect(判("!!! ??? ...")).toBe(false);
   });
 
+  it("S5（客户确认）：单个英文词一律算空，两个词起有效；按空白和标点切开数", () => {
+    const 判 = (x: string) => 有内容的沟通(x);
+    expect(["Call", "Met", "Called", "Ok", "Visit"].map(判)).toEqual([false, false, false, false, false]);
+    expect(["Call back", "Met client", "Called twice", "No answer left vm"].map(判)).toEqual([true, true, true, true]);
+    expect(英文单词数("e-mail")).toBe(2);
+    expect(判("e-mail")).toBe(true);
+    expect(判("Call 123")).toBe(false);
+    expect(判("Call 已发报价")).toBe(true); // 中文 4 字那边满足
+  });
+
+  it("S5：俄文、阿拉伯文等按单词书写的文字和英文同一口径；日文、韩文照中文按字数", () => {
+    const 判 = (x: string) => 有内容的沟通(x);
+    expect([判("Звонил"), 判("Звонил клиенту"), 判("اتصلت"), 判("اتصلت بالعميل"), 判("Τηλεφώνησα"), 判("Τηλεφώνησα πελάτη"), 判("התקשרתי"), 判("התקשרתי ללקוח")])
+      .toEqual([false, true, false, true, false, true, false, true]);
+    expect(英文单词数("اتَّصَلْتُ")).toBe(1); // 带变音符号也是一个词
+    expect([判("電話した"), 判("電話"), 判("통화했음"), 判("통화")]).toEqual([true, false, true, false]);
+  });
+
   it("S7：建了项目拨过的钟，项目删了（软删）或作废了也不回退", async () => {
     await 三态夜扫(早(5));
     const p = await prisma.project.create({ data: { name: "建了又删", customerId: 客户, ownerId: 人.乙.id, creatorId: 人.乙.id, createdAt: 白天(60) } });
@@ -693,6 +711,37 @@ describe("第二轮答复 S1–S8", () => {
     await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "sales" } });
     await 三态夜扫(早(8));
     expect((await 变化通知()).at(-1)!.body).toBe(`乙 从市场成员变成销售：名下 1 家客户从 ${日(8)} 起进入三态计时`);
+  });
+
+  it("S8：市场成员停用 → 名下客户起计三态，也列进清单；重新启用同理；新来名下 0 家不算", async () => {
+    const 变化通知 = () => prisma.entNotice.findMany({ where: { userId: 人.系.id, dedupeKey: { startsWith: "tri-market-change:" } }, orderBy: { createdAt: "asc" }, select: { body: true } });
+    await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "marketing_mgr" } });
+    await 三态夜扫(早(5));
+    expect(await 变化通知()).toHaveLength(0);
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    await 三态夜扫(早(6));
+    expect((await 变化通知()).map((x) => x.body)).toEqual([`乙 停用：1 家起计三态（原是市场成员，名下客户从 ${日(6)} 起进入三态计时）`]);
+    expect(await prisma.auditLog.count({ where: { entityId: 人.乙.id, summary: { startsWith: "客户三态：乙 停用" } } })).toBe(1);
+    await 三态夜扫(早(7));
+    expect(await 变化通知()).toHaveLength(1);
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: true } });
+    await 三态夜扫(早(8));
+    expect((await 变化通知()).at(-1)!.body).toBe(`乙 重新启用：1 家不再计三态（是市场成员，名下客户从 ${日(8)} 起市场成员另列）`);
+    // 新入职的市场成员名下 0 家；停用的销售（名下 0 家、本来就计三态）：都不报
+    const 新 = await prisma.user.create({ data: { email: "新", name: "新", title: "", role: "SALES", password: "x" } });
+    await prisma.entMember.create({ data: { userId: 新.id, bizRole: "marketing_mgr" } });
+    await prisma.user.update({ where: { id: 人.丙.id }, data: { active: false } });
+    await 三态夜扫(早(9));
+    expect(await 变化通知()).toHaveLength(2);
+    const 快照 = JSON.parse((await prisma.setting.findUniqueOrThrow({ where: { key: "entTriMarketSnapshot" } })).value);
+    expect(快照).toMatchObject({ [新.id]: true, [人.丙.id]: "停用", [人.乙.id]: true });
+  });
+
+  it("S8：在职销售停用不报（名下客户本来就计三态）", async () => {
+    await 三态夜扫(早(5));
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    await 三态夜扫(早(6));
+    expect(await prisma.entNotice.count({ where: { dedupeKey: { startsWith: "tri-market-change:" } } })).toBe(0);
   });
 
   it("S8：三态关着不跑", async () => {
