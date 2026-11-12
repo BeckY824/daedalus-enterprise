@@ -26,7 +26,8 @@ export type 项目页参数 = { keyword?: string; ownerId?: string; pool?: strin
 export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页?: { 客户: Prisma.CustomerWhereInput | null }, 落在?: { 基址: string; 标题: string; 换回客户列表?: boolean }) {
   // q / hl：进不了详情转过来的（projects/[id]/page.tsx 市场挡，客户 11-05）——q 当搜索词预填，hl 是要指出的那一行。
   // 搜索框照旧认 keyword，q 只在没带 keyword 时顶上；之后再搜就只剩 keyword，hl 也跟着没了
-  const { q, hl, ...其余 } = 原;
+  // 客户：读项目列表 的内部键（客户页看板视图服务端自己给的客户条件），地址栏手写的 ?客户=… 一律剔掉，不顶掉也不进 Prisma
+  const { q, hl, 客户: _地址栏的客户, ...其余 } = 原 as 项目页参数 & { 客户?: unknown };
   const sp = { ...其余, keyword: 其余.keyword ?? q };
   // 企业版：项目公海统一在 /pool（P7），?pool=1 的老链接（含页签、带 recycled 收回次数筛的）转过去，关键词带上
   if (企业版() && sp.pool === "1") redirect(sp.keyword ? `/pool?${new URLSearchParams({ keyword: sp.keyword })}` : "/pool");

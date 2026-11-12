@@ -2794,6 +2794,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .cust-view-seg { margin-bottom: var(--s3); }
 /* 客户页看板视图的工具行（C17）：项目专用的分配、新增项目，靠右，挨着看板 */
 .cust-board-tool { display: flex; justify-content: flex-end; margin-bottom: var(--s3); }
+/* 阶段 / 进程筛选命中太多、没出结果时的那一句（customers/page.tsx 阶段太多） */
+.cust-too-many { margin-bottom: var(--s3); color: var(--text-muted); }
 /* 筛选组里量「折没折」的探针（components/CustomFilters.tsx useSqueezeRow）：那一格不显示、不占间距 */
 .ant-space-item:has(> .cf-probe) { display: none; }
 /* 客户页「新增项目」弹窗（U-客户-05）：带上的客户名一行，超长折行写完不撑宽弹窗 */
