@@ -10,7 +10,7 @@ import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useS
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography } from "antd";
+import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 原负责人不能领回提示, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 号码保护of } from "@/lib/enterprise/contact-guard";
@@ -53,6 +53,7 @@ import AiPanel from "./AiPanel";
 import LinkedCustomers from "./LinkedCustomers";
 import { ProjectFold } from "../../projects/[id]/ProjectFold";
 import NewProjectModal from "./NewProjectModal";
+import { 两行 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
 import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
@@ -195,6 +196,8 @@ export default function RecordView({
   三态条 = null,
   三态留痕 = null,
   留痕放左栏 = false,
+  当前项目菜单 = null,
+  项目动作口 = null,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -617,6 +620,37 @@ export default function RecordView({
   const 转让候选 = 成员选项(users).filter((o) => o.value !== customer.salesOwnerId);
   const 能转让 = 去项目跟进 && !只读 && 能转让客户 && !customer.pool && 转让候选.length > 0;
   const 能退回公海 = 去项目跟进 && !只读 && !独自一人(users) && 能放公海 && !customer.pool;
+  const 开客户转让 = () => { set转给谁(undefined); set头部框("转让"); };
+  /** 右上角「客户操作 ▾」（11-12 用户）：客户转让、客户退回公海，给不给照原来两颗按钮 */
+  const 客户操作项: NonNullable<MenuProps["items"]> = [
+    ...(能转让 ? [{ key: "cust-transfer", label: <span title="客户换负责人，名下项目一起走">客户转让</span>, onClick: 开客户转让 }] : []),
+    ...(能退回公海 ? [{ key: "cust-pool", label: <span title="客户和你自己的项目一起进公海">客户退回公海</span>, onClick: () => void 公海动作("放进") }] : []),
+  ];
+  /**
+   * 右上角「项目操作 ▾」（11-12 用户）：只在项目区（客户详情合并）里有。第一行灰字「当前项目：名字」，再是新建项目、当前项目的几项，
+   * 删除项目放最后、危险色、上面一条线。灰着的项下面一行小字写原因（和项目页头灰按钮悬停那句一样）。没有当前项目只剩「新建项目」
+   */
+  /* 客户三态状态条（C10）：只在沉睡 / 待回收 / 暂缓回收中时服务端才给；三态关着、活跃时什么都不摆。
+     有项目区时交给项目区摆（中栏宽、进程卡正上方），没有就照旧在客户名下面通栏 */
+  const 提醒条 = 三态条 ? <TriStateBar 条={三态条} customerId={customer.id} 开客户转让={能转让 ? 开客户转让 : null} /> : null;
+  const 项目菜单项们 = 项目区 ? 当前项目菜单?.项们 ?? [] : [];
+  const 点项目项 = (key: (typeof 项目菜单项们)[number]["key"]) => 项目动作口?.current?.(key);
+  const 项目操作项: NonNullable<MenuProps["items"]> = !项目区 || (!能建项目 && 项目菜单项们.length === 0) ? [] : [
+    ...(当前项目菜单 && 项目菜单项们.length > 0
+      ? [{ key: "cur", disabled: true, className: "rec-menu-cur", label: <span className="rec-menu-cur-t" title={当前项目菜单.名}>当前项目：{当前项目菜单.名}</span> }]
+      : []),
+    ...(能建项目 ? [{ key: "new", label: "新建项目", onClick: 开建项目 }] : []),
+    ...项目菜单项们.filter((x) => x.key !== "delete").map((x) => ({
+      key: x.key,
+      disabled: !!x.灰,
+      label: x.灰 ? 两行(x.字, x.灰) : <span title={x.注}>{x.字}</span>,
+      onClick: () => 点项目项(x.key),
+    })),
+    ...项目菜单项们.filter((x) => x.key === "delete").flatMap((x) => [
+      { type: "divider" as const },
+      { key: x.key, danger: true, label: x.字, onClick: () => 点项目项(x.key) },
+    ]),
+  ];
   /** 「管理联系人」框里列谁：和联系人卡上露编辑 / 删除的是同一拨（见 联系人操作） */
   const 可管联系人 = 只读 ? [] : contacts.filter((c) => !c.挂靠 || c.挂靠.能改);
   /** 先关框、再开下一个（表单、确认框），不叠两层（同项目详情） */
@@ -880,7 +914,7 @@ export default function RecordView({
         </span>
         <div className="rec-head-id">
           <div className="rec-head-line">
-            <h1 className="rec-head-name" style={{ margin: 0 }}>{customer.name}</h1>
+            <h1 className="rec-head-name" style={{ margin: 0 }} title={customer.name}>{customer.name}</h1>
             <StarButton customerId={customer.id} 初值={已收藏} />
           </div>
           {/* 副标题是这个人的三个定位：年级 · 专业 · 谁在跟。没填的那项不占位 */}
@@ -893,12 +927,22 @@ export default function RecordView({
           </div>
         </div>
         <span style={{ flex: 1 }} />
-        {/* 两层排版（11-12 第 2 批）：客户名这一行右端只放整个客户的事——「客户转让」「客户退回公海」；AI 不占常驻一栏，在这里点开抽屉 */}
-        {去项目跟进 && ((项目区 && aiEnabled) || 能转让 || 能退回公海) && (
+        {/* 两层排版（11-12 用户：「右上角只保存三个按钮：AI，项目操作，客户操作」）：AI 点开抽屉；
+            「项目操作 ▾」= 新建项目 + 当前项目的领取 / 项目转让 / 项目退回公海 / 删除项目；「客户操作 ▾」= 客户转让 / 客户退回公海。
+            每项给不给、灰不灰和原来那几颗按钮同一套判断；一项都没有的那颗不摆 */}
+        {去项目跟进 && ((项目区 && aiEnabled) || 项目操作项.length > 0 || 客户操作项.length > 0) && (
           <span className="rec-head-acts">
             {项目区 && aiEnabled && <Button icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)}>AI</Button>}
-            {能转让 && <Button title="客户换负责人，名下项目一起走" onClick={() => { set转给谁(undefined); set头部框("转让"); }}>客户转让</Button>}
-            {能退回公海 && <Button title="客户和你自己的项目一起进公海" onClick={() => void 公海动作("放进")}>客户退回公海</Button>}
+            {项目操作项.length > 0 && (
+              <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 项目操作项, className: "rec-head-menu" }}>
+                <Button>项目操作 <DownOutlined /></Button>
+              </Dropdown>
+            )}
+            {客户操作项.length > 0 && (
+              <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 客户操作项, className: "rec-head-menu" }}>
+                <Button>客户操作 <DownOutlined /></Button>
+              </Dropdown>
+            )}
           </span>
         )}
         {aiEnabled && (!量到 || AI在抽屉里) && !去项目跟进 && (
@@ -933,11 +977,12 @@ export default function RecordView({
       </div>
 
       {/* 客户三态状态条（C10）：只在沉睡 / 待回收 / 暂缓回收中时服务端才给；三态关着、活跃时什么都不摆 */}
-      {三态条 && <TriStateBar 条={三态条} customerId={customer.id} 开客户转让={能转让 ? () => { set转给谁(undefined); set头部框("转让"); } : null} />}
+      {/* 有项目区时挪进项目区：只占中栏宽、在进程卡正上方（11-12 用户），见 提醒条 */}
+      {!项目区 && 提醒条}
 
       {/*
-        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简 → 11-12 客户详情合并第 2 批）：客户名这一行右端只留「客户转让」「客户退回公海」
-        （11-12 改名，和项目区第一行的「项目转让 / 项目退回公海」分开）；「新开项目」进了项目区页签行的「＋ 新建项目」。
+        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简 → 11-12 客户详情合并第 2 批 → 11-12 用户「右上角只保存三个按钮」）：
+        客户名这一行右端只留「AI」「项目操作 ▾」「客户操作 ▾」，原来的客户转让 / 退回公海、项目转让 / 退回公海 / 删除、「＋ 新建项目」都收进两个菜单。
         编辑资料、添加 / 管理联系人、删除客户、新建待办都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
         「新建沟通」在沟通记录卡头，「新建待办」在待办卡头，删除客户属权限限制不再给入口。原来名字下面单独那一排（.rec-acts）去掉
       */}
@@ -1332,6 +1377,7 @@ export default function RecordView({
           ), <div className="proj-mod-body" aria-label="待办">{待办身}</div>) : null,
           开建项目: 能建项目 ? 开建项目 : null,
           全只读,
+          提醒: 提醒条,
           // C13：状态留痕 + 归零了的换负责人，新的在前，并进「进程变更」卡的「客户状态」一段；三态关着不摆
           客户状态留痕: 留痕放左栏 ? null : 状态留痕,
         })}

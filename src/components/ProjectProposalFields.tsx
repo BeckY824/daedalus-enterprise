@@ -78,7 +78,7 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
           <F label="内容" block>
             <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 8 }} value={draft.content} onChange={(e) => 设({ content: e.target.value })} />
           </F>
-          <F label="下一步">
+          <F label="下一步计划">
             <Input size="small" style={{ width: 240 }} value={draft.下一步} onChange={(e) => 设({ 下一步: e.target.value })} />
           </F>
           <F label={draft.要时间 ? "下一步时间" : "下一步时间（可不填）"}>

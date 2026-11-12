@@ -14,7 +14,7 @@ import { 项目不能单独领提示, 客户在公海项目不单领提示, 公�
 import { 必填叫法 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
-import { dayjs, fmtDateTime, 成员选项, 独自一人 } from "@/lib/utils";
+import { dayjs, fmtDateTime, 成员选项 } from "@/lib/utils";
 import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
 import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
@@ -34,6 +34,7 @@ import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import type { 窗外去处, 草稿们 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
 import ProjectStarButton from "./ProjectStarButton";
+import { 两行, 等复核说法, 能项目转让, type 项目动作键 } from "./project-menu";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
@@ -356,15 +357,6 @@ const 无效原因前缀 = "无效原因：";
 // 规则 E：红只给已经过了的，当天橙，还早的不上色
 const 提醒色 = { 稳: undefined, 拿捏: "gold", 超时: "red" } as const;
 
-/** 菜单项两行：上面是名字，下面一行淡色小字说明（会跳过哪几步、到此结束…） */
-function 两行(名: string, 注?: string) {
-  return (
-    <div style={{ lineHeight: 1.4, padding: "2px 0", maxWidth: 280, whiteSpace: "normal" }}>
-      <div>{名}</div>
-      {注 && <div style={{ fontSize: "var(--dt-aux, 12px)", color: "var(--text-muted)" }}>{注}</div>}
-    </div>
-  );
-}
 
 /**
  * 节点卡「更多」里的去处（10-30 P0-8 / P2）：按 往前 / 退回 / 结束 分组，每项写明会跳过哪几步。
@@ -427,11 +419,16 @@ export type 项目详情Props = {
 
 /**
  * 嵌在客户详情里（11-12 客户详情合并第 2 批，定稿 UI 客户详情-定稿UI-20261112.html 的项目区）：
- * 不画页头，第一行是客户页给的页签行（右端放这个项目的「项目转让」「项目退回公海」）；中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目资料各卡。
+ * 不画页头，第一行是客户页给的页签行；中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目资料各卡。
+ * 这个项目的「领取」「项目转让」「项目退回公海」「删除项目」在客户页右上角「项目操作 ▾」里（11-12 用户），点了经 动作口 递回这里开框
  * 沟通卡标题旁「本项目 / 这位客户全部」，全部 = 客户页那条时间线（客户页给）；待办是客户页那张卡（客户页给）
  */
 export type 嵌在客户页 = {
-  页签行: (右端: ReactNode) => ReactNode;
+  页签行: ReactNode;
+  /** 客户三态提醒条（客户页给，有才摆）：只占中栏宽、在进程卡正上方 */
+  提醒?: ReactNode;
+  /** 客户页「项目操作 ▾」点了哪项：这里把处理函数挂给客户页（卸载时挂 null），客户页调它 */
+  挂动作?: (做: ((key: 项目动作键) => void) | null) => void;
   全部沟通: ReactNode;
   全部沟通数: string;
   待办: ReactNode;
@@ -506,7 +503,7 @@ export default function ProjectDetail({
   // 企业版线索阶段不显示交付（QA #5）：只有订单阶段才有尾款、验收
   const 显示交付 = !p.企业版 || p.phase === "订单";
   // 线索在等复核：服务端这时不给改进程、点结局、放回公海（lib/project/lead-verify-guard.ts），界面直接灰着说清在等谁
-  const 等复核文字 = p.线索验证?.待 === "市场复核" ? "等管理员复核" : p.线索验证?.待 === "总管理终判" ? "等管理员最终确认" : undefined;
+  const 等复核文字 = 等复核说法(p);
   const 等复核 = !!等复核文字;
   // 「下一步」灰着的原因写在按钮下面（规则：灰按钮要写为什么），不靠悬停
   const 动不了 = (节点可改 ? undefined : 节点不能改 ?? 改不了话) ?? 等复核文字;
@@ -1291,7 +1288,7 @@ export default function ProjectDetail({
   );
   // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
   // 11-01：转让按 能转让 给（总管理、上级能转不能改；负责人本人能改不能自己转），和 lib/project/db.ts 改项目 同一个判断
-  const 转给钮 = p.企业版 && !p.pooled && !!p.能转让 && !独自一人(候选, p.ownerId) && (
+  const 转给钮 = 能项目转让(p, 候选) && (
     <Button size={嵌入 ? "small" : undefined} title={嵌入 ? "只转当前页签的项目，客户不动" : undefined} disabled={忙} onClick={() => { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }}>项目转让</Button>
   );
   const 放回问 = () => {
@@ -1300,6 +1297,22 @@ export default function ProjectDetail({
     modal.confirm({ title: "把项目退回公海？", content: "只退这个项目，客户不动；退回去以后谁都能领，你自己不能再领回来", okText: "项目退回公海", onOk: () => 跑(() => 放回项目公海(p.id), "项目已退回公海") });
   };
   const 删问 = () => modal.confirm({ title: "删除这个项目？", content: 删除说明(p.删前清点, b.customer, p.企业版), okText: "删除", okButtonProps: { danger: true }, onOk: 删 });
+  // 嵌在客户页：右上角「项目操作 ▾」点了哪项经 动作口 递到这里，和原来那几颗按钮的 onClick 一样（忙着的时候按钮是灰的，这里同样不理）
+  const 挂动作 = 嵌入?.挂动作;
+  const 做动作 = (key: 项目动作键) => {
+    if (忙) return;
+    if (key === "claim") { if (p.能领取) void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了"); }
+    else if (key === "transfer") { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }
+    else if (key === "pool") { if (!等复核) 放回问(); }
+    else 删问();
+  };
+  const 做动作ref = useRef(做动作);
+  useEffect(() => { 做动作ref.current = 做动作; });
+  useEffect(() => {
+    if (!挂动作) return;
+    挂动作((key) => 做动作ref.current(key));
+    return () => 挂动作(null);
+  }, [挂动作]);
 
   // 企业版页头（11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」）：记一条沟通 / AI 录入回沟通卡头，发卡点回卡点卡头，
   // 关联 + 回关联卡，邀请回项目组卡，改分配回提成卡，项目画像、附件就在各自卡上改 / 传，线索判定一直在节点卡里。
@@ -1567,13 +1580,15 @@ export default function ProjectDetail({
     </div>
   );
   if (嵌入) {
-    const 项目钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删) && <span className="cd-zh-acts">{领取钮}{转给钮}{放回钮}{删钮}</span>;
     return (
-      /* 客户详情的项目区（定稿 UI .zone）：第一行页签 + 这个项目的两颗按钮；中栏干活，右栏看资料。1280 也是两栏，窄到放不下右栏落到中栏下面（globals.css .rec-zone） */
+      /* 客户详情的项目区（定稿 UI .zone）：中栏干活，右栏看资料。1280 也是两栏，窄到放不下右栏落到中栏下面（globals.css .rec-zone）。
+         11-12：提醒条 / 页签行 / 告示 / 两栏都是 .cd-zb 这张网格的直接子项——提醒条只占中栏一格，页签行、告示横跨两栏，
+         进程卡和右栏「项目资料」同在下一行，顶边自然对齐；排布要调只改 globals.css 的 .cd-zb 那几条 */
       <section className="rec-zone" aria-label={`项目：${p.name}`} data-project={p.id}>
-        {嵌入.页签行(项目钮 || null)}
-        {告示}
         <div className="cd-zb">
+          {嵌入.提醒 && <div className="cd-alert">{嵌入.提醒}</div>}
+          {嵌入.页签行}
+          {(p.pooled || 异常) && <div className="cd-notice">{告示}</div>}
           <div className="cd-mid">
             {节点卡}
             {/* 「这位客户全部」是客户页那条时间线，不归这个搜索框管：切过去时清掉词、搜索框先藏起来（审查 #6），切回本项目再出来 */}

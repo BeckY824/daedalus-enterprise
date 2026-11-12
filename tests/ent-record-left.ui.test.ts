@@ -169,16 +169,26 @@ const 全开 = {
   关联们: [],
 };
 const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-head-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")));
-it("企业版项目模式页头（U-客户-03 → 11-12 第 2 批）：客户名这一行右端只留客户转让、客户退回公海；新开项目进了项目区；没有主按钮、删除、下拉", async () => {
+/** 11-12 用户「右上角只保存三个按钮」：客户转让 / 客户退回公海收进「客户操作 ▾」，先点开再点项 */
+const 客户操作菜单 = async (page: import("playwright").Page) => {
+  await page.locator(".rec-head-acts").getByRole("button", { name: /客户操作/ }).click();
+  const 菜单 = page.locator(".rec-head-menu").last();
+  await 菜单.waitFor();
+  return 菜单;
+};
+const 点客户转让 = async (page: import("playwright").Page) => (await 客户操作菜单(page)).getByRole("menuitem", { name: /^客户转让$/ }).click();
+it("企业版项目模式页头（U-客户-03 → 11-12 用户「右上角只保存三个按钮」）：没有项目区时右端只有「客户操作 ▾」，里面客户转让、客户退回公海；没有主按钮、删除", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
     // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通在沟通记录卡头、新建待办在沟通记录下方的待办卡头（11-01）
-    expect(await 头按钮(page)).toEqual(["客户转让", "客户退回公海"]);
+    expect(await 头按钮(page)).toEqual(["客户操作"]);
     expect(await page.locator(".rec-head-acts .ant-btn-primary").count()).toBe(0);
     expect(await page.locator(".rec-head-acts .ant-btn-dangerous").count()).toBe(0);
-    // 名字下面那一排没有了
+    // 名字下面那一排没有了；页头只有「客户操作」这一个下拉
     expect(await page.locator(".rec-acts").count()).toBe(0);
-    expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(0);
+    expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(1);
+    expect((await (await 客户操作菜单(page)).getByRole("menuitem").allInnerTexts()).map(t => t.trim())).toEqual(["客户转让", "客户退回公海"]);
+    await page.keyboard.press("Escape");
     // 页面上别处也不给去掉的入口；新建待办在沟通栏的待办上
     const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
     expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|新开项目/.test(t))).toEqual([]);
@@ -193,7 +203,7 @@ it("企业版项目模式页头（U-客户-03 → 11-12 第 2 批）：客户名
 it("「客户转让」开框挑人：没挑之前「下一步」点不了；挑了能点；取消关框", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    await page.locator(".rec-head-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
+    await 点客户转让(page);
     const 框 = page.getByRole("dialog");
     await 框.getByText("客户转让 · 客户A").waitFor();
     // 不是负责人本人发起（不用对方确认）：不摆「接手人确认后生效」那句
@@ -208,15 +218,15 @@ it("「客户转让」开框挑人：没挑之前「下一步」点不了；挑�
     await 框.getByRole("button", { name: /取\s*消/ }).click();
     await 框.waitFor({ state: "hidden" });
     // 再开一次，上次挑的人清掉
-    await page.locator(".rec-head-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
+    await 点客户转让(page);
     expect(await page.getByRole("dialog").getByRole("button", { name: /下\s*一\s*步/ }).isDisabled()).toBe(true);
   } finally { await page.close(); }
 });
 it("负责人本人发起（转让要申请）：按钮、框标题照样叫「客户转让」，框里写明接手人确认后生效、7 天不确认作废、归属不变（11-12）", async () => {
   const page = await open(true, 1366, true, { ...全开, 转让要申请: true, 转让原因: { 选项: ["客户要求"], 自己: "qa" } });
   try {
-    expect(await 头按钮(page)).toEqual(["客户转让", "客户退回公海"]);
-    await page.locator(".rec-head-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
+    expect(await 头按钮(page)).toEqual(["客户操作"]);
+    await 点客户转让(page);
     const 框 = page.getByRole("dialog");
     await 框.getByText("客户转让 · 客户A").waitFor();
     expect(await 框.getByText("申请移交").count()).toBe(0);
@@ -331,7 +341,7 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧
 it.each([1024, 375])("客户页头 %ipx：超长公司名 + 两颗按钮，不出界、不折行、名字不撑出", async (w) => {
   const page = await open(true, w, true, { ...全开, 客户改: { name: "超长公司名有限责任公司".repeat(8) } });
   try {
-    expect(await 头按钮(page)).toEqual(["客户转让", "客户退回公海"]);
+    expect(await 头按钮(page)).toEqual(["客户操作"]);
     const r = await page.evaluate(() => {
       const vw = document.documentElement.clientWidth;
       const 钮 = [...document.querySelectorAll(".rec-head-acts button")].map((b) => b.getBoundingClientRect());
