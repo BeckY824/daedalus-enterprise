@@ -61,7 +61,7 @@ it("客户详情：壳上有 rail-mini，左栏 56 宽、字藏起来只留图�
       expect(await 窄态(page), `${w}`).toBe(true);
       expect(await 栏宽(page), `${w}`).toBe(56);
       const 项 = page.locator("nav.rail a.rail-item");
-      expect(await 项.evaluateAll(as => as.map(a => a.getAttribute("aria-label")?.split("，")[0]))).toEqual(["首页", "复盘", "渠道", "公海", "客户", "项目"]);
+      expect(await 项.evaluateAll(as => as.map(a => a.getAttribute("aria-label")?.split("，")[0]))).toEqual(["首页", "复盘", "渠道", "公海", "客户"]); // 11-12 第 3 批去掉「项目」
       // 名字都藏了：导航项、搜索框、账号名都看不见
       expect(await 项.locator("b").evaluateAll(bs => bs.filter(b => (b as HTMLElement).offsetParent !== null).length)).toBe(0);
       expect(await page.locator(".rail-search > span:not(.anticon)").isVisible()).toBe(false);
@@ -73,7 +73,8 @@ it("客户详情：壳上有 rail-mini，左栏 56 宽、字藏起来只留图�
         return [...nav.querySelectorAll("a, button, .rail-count")].filter(el => (el as HTMLElement).offsetParent !== null && el.getBoundingClientRect().right > 右 + 0.5).map(el => el.className);
       });
       expect(出界, `${w}`).toEqual([]);
-      expect(await page.locator(".rail-count").innerText()).toBe("99+");
+      // 要跟的红数原来挂在「项目」上；11-12 去掉「项目」后企业版左栏眼下没有哪一项挂它（挂哪儿待用户定），先钉住「不出现」
+      expect(await page.locator(".rail-count").count()).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

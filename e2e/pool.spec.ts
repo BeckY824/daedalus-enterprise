@@ -75,7 +75,8 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
     await 原因.click();
     await 张.page.locator(".ant-select-item-option", { hasText: "超时未跟进" }).click();
   }
-  await 确认框.getByRole("button", { name: "放回公海" }).click();
+  // 企业版确认框统一叫「退回公海」（11-12 D3）
+  await 确认框.getByRole("button", { name: 企业版 ? "退回公海" : "放回公海" }).click();
   await expect(张.page.getByText("已放回公海 1 位")).toBeVisible();
   // 客户页不含公海：放进去就从这一页走了；搜不到时指一条去公海的路，关键词带上
   await expect(行).toHaveCount(0);

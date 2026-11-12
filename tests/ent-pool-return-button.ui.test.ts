@@ -128,7 +128,9 @@ it("客户列表批量条：勾的里有放得了的就摆，不撑出页面、�
       expect(await 不撑出(page), `宽 ${w}`).toBe(true);
       expect(await 点得到(page, ".list-sel button", /放回公海/), `宽 ${w}`).toBe(true);
       await 批量放回(page).click();
-      await page.locator(".ant-modal-confirm").getByRole("button", { name: /放回公海/ }).click();
+      // 批量的确认框统一叫「退回公海」（11-12 D3）；工具条按钮照旧「放回公海」
+      expect(await page.locator(".ant-modal-confirm-title").innerText()).toMatch(/^把 \d+ 位退回公海？$/);
+      await page.locator(".ant-modal-confirm").getByRole("button", { name: "退回公海" }).click();
       await expect.poll(() => page.evaluate(() => (window as unknown as { __放?: string[] }).__放 ?? null)).toEqual(["c1", "c2", "c3"]);
       // 放不了的服务端跳过，提示里说几位没放
       await expect.poll(() => page.locator(".ant-message").innerText()).toMatch(/2 位你放不了，没放/);

@@ -7,11 +7,11 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 读项目详情 } from "../../projects/[id]/load";
 import type { 项目区数据 } from "./ProjectZone";
 import { 默认页签 } from "@/lib/project/customer-detail-href";
+// 页签上写的当前节点（有结局写结局，异常写「异常 · 节点」），和客户列表「当前节点」一列同一句
+import { 节点字 } from "@/lib/project/customer-list-projects";
 
 type 列表项目 = { id: string; name: string; node: string; result: string | null; pooledAt: Date | null };
 
-/** 页签上写的当前节点：有结局写结局，异常写「异常 · 节点」（同原来左栏「项目」那一节） */
-const 节点字 = (p: 列表项目) => (p.result === "异常状态" ? `异常 · ${p.node}` : p.result ?? p.node);
 
 /**
  * 客户详情的项目区（11-12 客户详情合并第 2 批）：

@@ -2788,6 +2788,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .cust-board .pipe-h b { flex: 0 1 auto; min-width: 0; }
 .cust-board-meta { display: inline-flex; align-items: baseline; gap: var(--s1); min-width: 0; }
 .cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
+/* 客户表格「当前节点」（11-12 第 3 批）：标签宽到格子为止，放不下省略号（.clamp-1 是块级，这里改回行内块不撑满格） */
+.cust-node-tag { display: inline-block; vertical-align: middle; margin-inline-end: 0; }
 /* 客户页「新增项目」弹窗（U-客户-05）：带上的客户名一行，超长折行写完不撑宽弹窗 */
 .new-proj-carried { color: var(--text-muted); font-size: var(--fs-note); margin-bottom: var(--s3); overflow-wrap: anywhere; }
 /* 项目首页「新增项目」先选新客户 / 老客户（11-01）：两张整行可点的选项，说明长了折行 */

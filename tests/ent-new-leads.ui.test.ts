@@ -226,6 +226,29 @@ it("企业版项目看板（11-01 会议 C12）：1024 宽五列，右沿渐隐 
   expect(errors).toEqual([]); await page.close();
 });
 
+it("企业版项目看板卡片（11-12 客户详情合并第 3 批）：第一行客户名、第二行项目名，都一行省略；点卡片进客户详情停在这个项目；三种宽度不撑出", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 打开(false, w, false, true, { 样式: true, 看板: true });
+    try {
+      const 卡 = page.locator(".pipe-card").first();
+      await 卡.waitFor();
+      const 行们 = await 卡.evaluate((el) => {
+        const t = el.querySelector(".pipe-card-t") as HTMLElement, o = el.querySelector(".pipe-card-m .pipe-card-o") as HTMLElement;
+        const 一行 = (x: HTMLElement) => x.getBoundingClientRect().height <= parseFloat(getComputedStyle(x).lineHeight) + 1;
+        const 截了 = (x: HTMLElement) => x.scrollWidth > x.clientWidth && getComputedStyle(x).textOverflow === "ellipsis";
+        return { 第一: t.innerText, 第二: o.innerText, 一行: 一行(t) && 一行(o), 截了: 截了(t) && 截了(o), 卡不出列: el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1 };
+      });
+      expect(行们.第一, `宽 ${w}`).toMatch(/^某某超长名字.*第二期$/);
+      expect(行们.第二, `宽 ${w}`).toMatch(/第二期10$/);
+      expect(行们.一行 && 行们.截了 && 行们.卡不出列, `宽 ${w}`).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
+      await 卡.click();
+      expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10"]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 it("宽屏五列放得下的时候不出「还有 N 列」也不渐隐", async () => {
   const { page } = await 打开(false, 1920, false, true, { 样式: true, 看板: true });
   await page.locator(".pipe-col").first().waitFor();

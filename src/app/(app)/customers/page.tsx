@@ -32,6 +32,8 @@ import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-perm";
 import { 删除挡 } from "@/lib/enterprise/soft-delete";
+import { 客户项目概况们 } from "@/lib/project/customer-list-projects";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +64,9 @@ type SP = Promise<{
   createdTo?: string;
   /** 「手机号」筛选（11-11）：只比号码，口径见 lib/search-keyword.ts 客户号码SQL；电话藏着的人不认 */
   phone?: string;
+  /** 「全部阶段」「全部进程」（企业版项目模式，11-12 第 3 批）：名下有一个我能看的项目在这个阶段 / 进程上 */
+  phase?: string;
+  node?: string;
   page?: string;
   pageSize?: string;
   sort?: string;
@@ -152,6 +157,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 企 = 企业版();
   const 能按号码筛 = !(await 号码藏着());
   const 删权限org = 企 ? await 权限组织() : null;
+  /** 企业版项目模式：客户表格多「当前节点」「项目数」两列和「阶段」「进程」两个筛选（第 3 批） */
+  const 按项目 = 企 && b.projectMode;
   const 行P = 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
       where: where!,
       orderBy: 等级排序
@@ -164,7 +171,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
-    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项,
+    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项, 项目概况, 组织规则,
   ] = await Promise.all([
     行P,
     负责人候选(),
@@ -198,6 +205,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 && !b.projectMode ? 离职交接入口(me) : null,
     // 「客户来源」筛选的候选（11-06 自定义筛选）：含停用的，老客户还挂着
     企 ? 渠道筛选选项() : [],
+    // 「当前节点」「项目数」两列（11-12 客户详情合并第 3 批）：这一页的客户一句取项目，只算我能看的（和客户详情的页签同一圈）
+    按项目 ? 行P.then((rs) => 客户项目概况们(me, rs.map((r) => r.id))) : undefined,
+    // 进程下拉的结局叫法跟组织规则里改过的出口叫法（同项目页）
+    按项目 ? 生效组织规则() : null,
   ]);
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
   const 旧职位 = 用着的职位.map((c) => c.grade!.trim()).filter((g) => g && !b.grades.includes(g)).sort();
@@ -263,6 +274,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         createdTo: sp.createdTo ?? "",
         // 电话藏着的人（字段权限 Y27）不按号码筛：服务端不认，这里也不回显，页面不摆这一项
         phone: 能按号码筛 ? sp.phone ?? "" : "",
+        ...(按项目 ? { phase: sp.phase ?? "", node: sp.node ?? "" } : {}),
         // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
         ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", archiveTier: sp.archiveTier ?? "", channelId: sp.channelId ?? "" } : {}),
       }}
@@ -297,6 +309,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       aiEnabled={aiEnabled}
       旧职位={[...new Set(旧职位)]}
       国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
+      项目概况={项目概况}
+      出口叫法={组织规则?.阶段.出口叫法}
     />
   );
   // 没有等确认的交接就只放列表，和原来一样

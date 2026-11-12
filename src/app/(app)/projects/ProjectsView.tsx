@@ -511,7 +511,7 @@ export default function ProjectsView({
                           tabIndex={能进 ? 0 : undefined}
                           role={能进 ? "link" : undefined}
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${小字}${能进 ? "" : " · 已分给他人，只看进度"}`}
-                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}${能进 ? "" : "，已分给他人，只看进度"}`}
+                          aria-label={`${企业版 ? `${r.customerName ?? 领了再看(r)}，${r.name}` : `${r.name}，${r.customerName ?? 领了再看(r)}`}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}${能进 ? "" : "，已分给他人，只看进度"}`}
                           onClick={去}
                           onMouseEnter={能进 ? () => 预取.进(项目地址(r)) : undefined}
                           onMouseLeave={能进 ? 预取.出 : undefined}
@@ -524,10 +524,19 @@ export default function ProjectsView({
                             }
                           }}
                         >
-                          <div className="pipe-card-t fulltext" title={r.name}>{r.name}</div>
-                          <div className="pipe-card-m">
-                            <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
-                          </div>
+                          {/* 企业版（11-12 客户详情合并第 3 批，定稿 UI 看板）：第一行客户名、第二行项目名——点进去是这位客户的详情、停在这个项目页签上。
+                              看不到的客户（领取后可见 / 无权查看）第一行照旧写那句灰字。别的版本照原来项目名在上 */}
+                          {企业版 ? (<>
+                            <div className="pipe-card-t fulltext" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
+                            <div className="pipe-card-m">
+                              <span className="pipe-card-o">{r.name}</span>
+                            </div>
+                          </>) : (<>
+                            <div className="pipe-card-t fulltext" title={r.name}>{r.name}</div>
+                            <div className="pipe-card-m">
+                              <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
+                            </div>
+                          </>)}
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>
                               {小字}

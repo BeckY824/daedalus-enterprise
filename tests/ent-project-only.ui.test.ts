@@ -43,12 +43,12 @@ async function 打开(企业版项目: boolean, 管理员 = true, width = 1280, 
 }
 const 左栏 = (page: Page) => page.getByRole("navigation", { name: "主导航" }).innerText();
 
-it("企业版项目：左栏六个根目录、这个顺序；没有商机、新线索、联系人、跟进、更多", async () => {
+it("企业版项目：左栏五个根目录、这个顺序；没有项目（11-12 并进客户）、商机、新线索、联系人、跟进、更多", async () => {
   const { page, errors } = await 打开(true);
   const t = await 左栏(page);
   expect(t).not.toMatch(/商机|新线索|联系人|跟进|更多|数据/);
   const 名 = await page.getByRole("navigation", { name: "主导航" }).locator("a.rail-item").evaluateAll((as) => as.map((a) => a.getAttribute("aria-label")));
-  expect(名).toEqual(["首页", "复盘", "渠道", "公海", "客户", "项目"]);
+  expect(名).toEqual(["首页", "复盘", "渠道", "公海", "客户"]);
   expect(await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "公海", exact: true }).getAttribute("href")).toBe("/pool");
   expect(errors).toEqual([]); await page.close();
 });
@@ -71,7 +71,7 @@ it("开关关（团队版项目模式）：线索不改名；商机一项 10-28 
   expect(errors).toEqual([]); await page.close();
 });
 
-it("⌘K：没有商机两条，换成项目；开关关也一样（10-28 删了商机两条）", async () => {
+it("⌘K：没有商机两条；开关关（团队版项目模式）有「项目」页，企业版项目 11-12 跟左栏一起去掉「项目」页", async () => {
   for (const 企业版项目 of [true, false]) {
     const { page } = await 打开(企业版项目);
     await page.keyboard.press("Control+k");
@@ -80,7 +80,8 @@ it("⌘K：没有商机两条，换成项目；开关关也一样（10-28 删了
     const t = await dialog.innerText();
     expect(t).not.toMatch(/商机管道/);
     await dialog.locator("input").fill("项目");
-    expect(await dialog.innerText()).toContain("线索、商机、订单三个阶段");
+    if (企业版项目) expect(await dialog.innerText()).not.toContain("线索、商机、订单三个阶段");
+    else expect(await dialog.innerText()).toContain("线索、商机、订单三个阶段");
     await page.close();
   }
 });
