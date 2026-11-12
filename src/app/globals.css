@@ -726,6 +726,15 @@ body.rail-resizing .shell .rail { transition: none; }
 /* 记录页左边那条窄名单。比别的中栏窄一档：它只要装得下
    「名字 + 状态 + 最近什么时候」，再宽就开始和正文抢地方 */
 .pane-roster { width: var(--roster-w); }
+/* 11-12 客户名单可拖宽（CustomerRoster 名单拖条，lib/roster-width.ts）：宽度在 <html> 的 --roster-cust-w，首帧前挂好；
+   默认 280（原 220），最宽 420，再按窗口收紧：右边正文不小于 938（名单刚露出那一档的正文宽） */
+.pane-roster.pane-roster-cust { width: var(--roster-cust-w, 280px); min-width: 220px; max-width: max(220px, min(420px, calc(100vw - var(--rail-w) - 938px))); }
+.pane-resizer { position: absolute; top: 0; right: -4px; bottom: 0; width: 8px; z-index: 3; cursor: col-resize; touch-action: none; background: transparent; }
+.pane-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background-color var(--t-fast) var(--ease); }
+.pane-resizer:hover::after, .pane-resizer:focus-visible::after, .roster-resizing .pane-resizer::after { background: var(--brand); }
+.pane-resizer:focus-visible { outline: none; }
+.roster-resizing, .roster-resizing * { cursor: col-resize !important; user-select: none !important; }
+@media (prefers-reduced-motion: reduce) { .pane-resizer::after { transition: none; } }
 /* 首帧兜底：服务端不知道窗口多宽，那一帧名单一律当「露着」画成整栏，水合后窄窗再收进抽屉，
    正文先窄后宽跳一下（1024 宽实测单栏 → 两栏）。窄于名单门槛（lib/roster.ts，220+312+52+630）时
    水合后它必定在抽屉里，所以这里直接不画整栏那个 aside，不会误藏。服务端那帧右边面板一律收着，门槛不用加 380 */
