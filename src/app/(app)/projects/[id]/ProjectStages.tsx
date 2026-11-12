@@ -27,7 +27,7 @@ const 勾 = <svg className="proj-stage-tick" viewBox="0 0 12 12" aria-hidden foc
  * 父组件用 key={所在阶段} 挂：阶段变了，页签跟着回到新的所在阶段
  */
 /** 系统开了「减弱动态」：滚动不平滑 */
-const 少动 = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+import { 少动 } from "@/lib/reduced-motion";
 
 export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结局, 结局色, 成功交付, 动作, 提示, 卡头, 不摆阶段页签 = false }: {
   字典: 阶段字典;
