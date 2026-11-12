@@ -406,8 +406,8 @@ it("页头「新建 ▾」（11-12）：两样都能建 = 一颗主按钮，键�
   } finally { await page.close(); }
 });
 
-it("只能建一样时直接是那一样（写全称、不出下拉）：没设业务角色 / 只读管理员 = 「新建项目」；没开项目模式 = 「新建客户」；两样都不能不摆", async () => {
-  for (const [旗, 应] of [[{ __不能新建: true }, "新建项目"], [{ __非项目: true }, "新建客户"], [{ __不能新建: true, __非项目: true }, null]] as const) {
+it("只能建一样时直接是那一样（写全称、不出下拉）：没开项目模式 = 「新建客户」；没设业务角色 / 只读管理员（能新建和领取 = 否）两样都建不了（服务端建档向导、给老客户建项目同样拒）= 整颗不摆", async () => {
+  for (const [旗, 应] of [[{ __非项目: true }, "新建客户"], [{ __不能新建: true }, null], [{ __不能新建: true, __非项目: true }, null]] as const) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
@@ -422,7 +422,6 @@ it("只能建一样时直接是那一样（写全称、不出下拉）：没设�
       expect(await 钮.getAttribute("aria-haspopup"), JSON.stringify(旗)).toBeNull();
       await 钮.click();
       expect(await page.getByRole("menu").count(), JSON.stringify(旗)).toBe(0);
-      if (应 === "新建项目") await page.locator(".new-proj-flow-stub").waitFor({ state: "attached" });
     } finally { await page.close(); }
   }
 });

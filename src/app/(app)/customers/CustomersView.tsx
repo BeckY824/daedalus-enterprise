@@ -941,8 +941,9 @@ export default function CustomersView({
   const [新建项目次, set新建项目次] = useState(0);
   const 新建项 = [
     ...(能新建和领取 ? [{ key: "customer", label: `新建${b.customer}`, onClick: 新建 }] : []),
-    // 企业版项目模式：原来只在看板上方「+ 新增项目」（先选新老客户，ProjectsView），11-12 收进页头「新建 ▾」，列表、看板两边都有；权限照原来那颗（服务端向导、建项目另拦）
-    ...(项目看板 ? [{ key: "project", label: "新建项目", onClick: () => set新建项目次((n) => n + 1) }] : []),
+    // 企业版项目模式：原来只在看板上方「+ 新增项目」（先选新老客户，ProjectsView），11-12 收进页头「新建 ▾」，列表、看板两边都有。
+    // 谁看得到照服务端：建档向导（不能新建项目话）、给老客户建项目（没设业务角色 / 只读角色）都按 能新建和领取 拒，这里同一条，免得摆一颗点了必被拒的
+    ...(项目看板 && 能新建和领取 ? [{ key: "project", label: "新建项目", onClick: () => set新建项目次((n) => n + 1) }] : []),
   ];
   const [工具位, set工具位] = useState<HTMLDivElement | null>(null);
 

@@ -504,7 +504,8 @@ export default function ProjectsView({
       {!客户页 && (换回客户列表
         ? <NewMenuButton 项={[
             ...(能新建客户 ? [{ key: "customer", label: `新建${b.customer}`, onClick: () => void 新项目.开建档("新增客户") }] : []),
-            { key: "project", label: "新建项目", onClick: 新建 },
+            // 新建项目同客户页：服务端按 能新建和领取 拒（没设业务角色、只读管理员），这里不摆；两样都没有整颗不摆
+            ...(能新建 ? [{ key: "project", label: "新建项目", onClick: 新建 }] : []),
           ]} />
         : (能新建 || !新线索) && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>)}
     </>

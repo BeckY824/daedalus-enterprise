@@ -55,14 +55,14 @@ beforeAll(async () => {
     window.__再看={ok:true,行:Array.from({length:5},(_,i)=>row(120+i,'潜客培育')),总:25};
     // o.工具位：照客户页那样在上面给一条筛选行、右端留一格（customers/board-slot.ts），看板的按钮和提示画进去
     window.__画=(阶段,能分,企,o={})=>{if(o.工具位&&!document.getElementById('slot'))document.getElementById('root').insertAdjacentHTML('beforebegin',"<div class='list-bar'><span class='list-bar-gap'></span><div class='list-bar-end' id='slot'></div></div>");return (window.__root||=createRoot(document.getElementById('root'))).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><看板工具位.Provider value={o.工具位?document.getElementById('slot'):undefined}>
-      <Projects 行={o.每列?[]:o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?造每列列(o.数):o.看板?五列:[]} 每列={o.每列?{}:undefined} 要的页={o.要的页} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={o.单人?[{id:'u0',name:'王0',email:'a'}]:[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 能新建客户={!!o.能新建客户} 标题={o.换回?'客户':undefined}/>
+      <Projects 行={o.每列?[]:o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?造每列列(o.数):o.看板?五列:[]} 每列={o.每列?{}:undefined} 要的页={o.要的页} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={o.单人?[{id:'u0',name:'王0',email:'a'}]:[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 能新建客户={!!o.能新建客户} 能新建={o.能新建!==false} 标题={o.换回?'客户':undefined}/>
     </看板工具位.Provider></BusinessProvider></App>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 每列?: boolean; 数?: number; 单人?: boolean; 要的页?: string; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean; 能新建客户?: boolean; 工具位?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 每列?: boolean; 数?: number; 单人?: boolean; 要的页?: string; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean; 能新建客户?: boolean; 能新建?: boolean; 工具位?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -549,4 +549,19 @@ it("市场角色「我分出去的」页头：能建客户 = 「新建 ▾」两
     expect(await 去了(page)).toEqual([]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("市场角色「我分出去的」页头：没设业务角色 / 只读管理员（能新建和领取 = 否，服务端建项目、建客户都拒）不摆「新建项目」，两样都没有整颗不摆", async () => {
+  for (const [o, 应] of [[{ 能新建: false, 能新建客户: false }, null], [{ 能新建: false, 能新建客户: true }, "新建客户"]] as const) {
+    const { page, errors } = await 打开(false, 1280, false, true, { 看板: true, 换回: true, ...o });
+    try {
+      const 钮 = page.locator(".page-head").getByRole("button", { name: /新建|新增项目/ });
+      expect(await 钮.count(), JSON.stringify(o)).toBe(应 ? 1 : 0);
+      if (应) {
+        expect((await 钮.innerText()).trim()).toBe(应);
+        expect(await 钮.getAttribute("aria-haspopup")).toBeNull();
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });
