@@ -42,6 +42,7 @@ import { 读组织, type 组织 } from "./org";
 import { 是市场角色, 是销售角色 } from "./permissions";
 import { 无负责人占位Id, 无负责人占位Id只读 } from "@/lib/no-owner-db";
 import { 看全部 } from "@/lib/team-scope";
+import { 看已删 } from "./soft-delete-core";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 交接中的客户, 待确认 } from "./handover-db";
 import { 客户名下在推项目进公海, 客户进公海清负责人 } from "./pool-link";
@@ -150,21 +151,24 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       where: { id: { in: 批 } },
       select: { id: true, name: true, salesOwnerId: true, bizLine: true, poolInvalidAt: true, pool: { select: { customerId: true } }, entClock: true },
     });
-    // 在推的和退回了项目公海的一句读回来，下面分开
-    const 全部项目 = await db.project.findMany({
+    // 在推的、退回了项目公海的、软删了的一句读回来，下面分开。软删的只给额度重置当动静用（M-公海-54：删了项目额度不往回翻，同钟的 progressDay 兜底）
+    const 连删的 = await 看已删(() => db.project.findMany({
       where: { customerId: { in: 批 } },
-      select: { id: true, customerId: true, ownerId: true, phase: true, result: true, bizLine: true, createdAt: true, updatedAt: true, pooledAt: true },
-    });
+      select: { id: true, customerId: true, ownerId: true, phase: true, result: true, bizLine: true, createdAt: true, updatedAt: true, pooledAt: true, deletedAt: true },
+    }));
+    const 全部项目 = 连删的.filter((p) => p.deletedAt === null);
+    const 删了的 = 连删的.filter((p) => p.deletedAt !== null);
     const 项目们 = 全部项目.filter((p) => p.pooledAt === null);
     // T3：退回了项目公海的项目，退回前的推进照算到退回那天为止（不算退回本身，也不往后加成）
     const 退回的 = 全部项目.filter((p) => p.pooledAt !== null);
-    const 项目ids = 全部项目.map((p) => p.id);
+    const 项目ids = 连删的.map((p) => p.id);
     const 推进 = new Map<string, Date>(), 结局 = new Map<string, Date>();
     /** 每个项目换节点的时刻（额度重置判定要知道每次推进是什么时候写的，M-公海-54） */
     const 换节点们 = new Map<string, Date[]>();
     for (const 小 of 分批(项目ids)) {
       // 换节点一句读：最近换节点、最近定结局在内存里取最晚
-      for (const g of await db.projectNodeLog.findMany({ where: { projectId: { in: 小 }, kind: "node" }, select: { projectId: true, at: true, toResult: true } })) {
+      // 软删项目的留痕也要（限定层按项目滤掉了删了的），同上
+      for (const g of await 看已删(() => db.projectNodeLog.findMany({ where: { projectId: { in: 小 }, kind: "node" }, select: { projectId: true, at: true, toResult: true } }))) {
         const t = g.at;
         换节点们.set(g.projectId, [...(换节点们.get(g.projectId) ?? []), t]);
         if (!推进.has(g.projectId) || 推进.get(g.projectId)! < t) 推进.set(g.projectId, t);
@@ -190,7 +194,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       for (const x of xs) m.set(x.customerId, [...(m.get(x.customerId) ?? []), x]);
       return m;
     };
-    const 项目of = 按客户(项目们), 换人of = 按客户(换人), 痕of = 按客户(痕), 退回of = 按客户(退回的);
+    const 项目of = 按客户(项目们), 换人of = 按客户(换人), 痕of = 按客户(痕), 退回of = 按客户(退回的), 删了of = 按客户(删了的);
     for (const c of 客户们) {
       const 有负责人 = !!c.salesOwnerId && c.salesOwnerId !== 占位;
       const ps = 项目of.get(c.id) ?? [];
@@ -220,7 +224,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       const 领取日 = (换人of.get(c.id) ?? []).filter((x) => x.kind === "claim" || x.kind === "pool-assign").map((x) => beijingDay(x.at)).reduce<string | null>(较晚日, null);
       // M-公海-54：额度、暂缓次数只被「严格晚于写入前最近动静日」的有效沟通重置。动静 = 建项目、换节点（退回项目公海的只算退回前）、算数的换负责人
       const 动静: 动静事件[] = [];
-      for (const p of [...ps, ...(退回of.get(c.id) ?? [])]) {
+      for (const p of [...ps, ...(退回of.get(c.id) ?? []), ...(删了of.get(c.id) ?? [])]) {
         动静.push({ 日: beijingDay(p.createdAt), 时: p.createdAt });
         for (const t of 换节点们.get(p.id) ?? []) if (!p.pooledAt || t <= p.pooledAt) 动静.push({ 日: beijingDay(t), 时: t });
       }
@@ -311,10 +315,10 @@ async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date,
   const 出 = new Map<string, 客户沟通>();
   if (!ids.length) return 出;
   const 词们 = 预读词们 ?? await 读占位词(db);
-  type 行 = { cid: string; content: string; src: unknown; at: unknown; cat: unknown };
+  type 行 = { cid: string; content: string; src: unknown; at: unknown; cat: unknown; uat: unknown };
   const 生效 = (x: 行) => { const 写 = 转时刻(x.cat); return 写 ? 沟通生效时刻(转时刻(x.at), 写) : null; };
   const 有效 = (x: 行) => 有内容的沟通(x.content, { 占位词: 词们, AI生成: Number(x.src) === 1 || x.src === true });
-  const 列 = `f."customerId" AS cid, f.content AS content, EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src, f."occurredAt" AS at, f."createdAt" AS cat`;
+  const 列 = `f."customerId" AS cid, f.content AS content, EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src, f."occurredAt" AS at, f."createdAt" AS cat, f."updatedAt" AS uat`;
   const 条件 = `f."deletedAt" IS NULL AND f.content <> ''`;
   const 先看 = await db.$queryRawUnsafe<(行 & { rn: unknown })[]>(
     `SELECT * FROM (SELECT ${列}, ROW_NUMBER() OVER (PARTITION BY f."customerId" ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC) AS rn
@@ -324,8 +328,13 @@ async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date,
   const 按客户 = new Map<string, 行[]>();
   for (const x of 先看) 按客户.set(x.cid, [...(按客户.get(x.cid) ?? []), x]);
   /** 有效的那几条，按生效日倒排（SQL 已排过，这里按同一把尺再排一次，不依赖数据库的日期存法） */
+  /*
+    额度重置判定里「写入它的那一刻」用最后一次改动的时刻（updatedAt），不用建的时刻：先存一条无效的、过后改成有效，
+    要按改的那一刻之前的最近动静日比，不能倒补成建的那天（第四轮复审）。生效日照旧是沟通日期和建的时刻取早的。
+    updatedAt 也会被无关的改动刷新（挂接联系人、改类型），那样只会让判定偏严（更难重置），可以接受
+  */
   const 有效们 = (们: 行[]): 额度候选沟通[] => 们
-    .map((x) => ({ x, t: 生效(x), 写: 转时刻(x.cat) }))
+    .map((x) => ({ x, t: 生效(x), 写: 转时刻(x.uat) ?? 转时刻(x.cat) }))
     .filter((y): y is { x: 行; t: Date; 写: Date } => !!y.t && !!y.写 && y.t.getTime() <= 现在.getTime() + 生效时刻余量 && 有效(y.x))
     .sort((a, b) => b.t.getTime() - a.t.getTime())
     .map((y) => ({ 日: beijingDay(y.t), 写: y.写 }));
@@ -358,9 +367,10 @@ async function 导入完成日们(db: 库, ids: readonly string[]): Promise<Map<
 
 /**
  * 一位客户算出来的结果要往钟上写的（没变化 = null）。纯函数，单测直接测。
- * 额度上次重置日（M-公海-38）：最近一条有内容的沟通日晚于它就记成那天；次数、合计天数按 算三态() 认的写（它只数那天以后的推后）
+ * 额度上次重置日、次数、合计天数：都按事实算出来的写（M-公海-54：额度重置日 = 严格晚于写入前最近动静日的那条有效沟通，或领走那天；
+ * 撤销 / 删了那条沟通会往回挪），钟上只是给界面看的缓存
  */
-export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<三态结果, { 计时: true }>, 今天: string, 换状态说明?: string): {
+export function 钟要改(c: Pick<三态客户, "钟" | "事实" | "留痕">, r: Extract<三态结果, { 计时: true }>, 今天: string, 换状态说明?: string): {
   data: Partial<Omit<Prisma.EntCustomerClockUncheckedCreateInput, "customerId">>;
   留痕: { fromState: string | null; toState: string; reason: string }[];
 } | null {
@@ -384,11 +394,17 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
   /*
     同一轮里进出活跃（白天存了一条有效沟通变活跃、又撤销 / 删掉回到原状态）：本轮已发的提醒（次数、最近提醒日、进入沉睡那条）、
     顺延到哪天、最近一次暂缓回收的日子都留着，回来以后和没发生过一样，不重发、不往后拖进公海。
-    进活跃时这几列不动（活跃时没人读它们）；从活跃回沉睡 / 待回收时，最近提醒日不早于这一轮的节点日 = 同一轮，留着；更早的是旧一轮，清零。
+    进活跃时这几列不动（活跃时没人读它们）；从活跃回去时，要回到的正是进活跃之前那个状态（留痕里最后一条「→ 活跃」的来处），
+    且最近提醒日不早于这一轮的节点日，才算同一轮、留着；回到别的状态（比如待回收时记了沟通、又把日期改早，落到沉睡）、或提醒是旧一轮的，清零。
     沉睡 ↔ 待回收、从公海回来照旧一换就清
   */
-  const 同一轮 = 换了 && 钟.state !== 公海状态 && (状态 === "活跃" || (钟.state === "活跃" && 钟.lastNoticeDay !== null && 钟.lastNoticeDay >= 进入日));
-  const 回到同一轮被挡 = 换了 && 钟.state === "活跃" && 被挡 && !!c.事实.最近被挡日 && c.事实.最近被挡日 >= r.节点.待回收;
+  const 进活跃前 = c.留痕.findLast((x) => x.toState === "活跃" && x.fromState !== null && x.fromState !== "活跃")?.fromState ?? null;
+  const 同一轮 = 换了 && 钟.state !== 公海状态 && (状态 === "活跃" || (钟.state === "活跃" && 进活跃前 === 状态 && 钟.lastNoticeDay !== null && 钟.lastNoticeDay >= 进入日));
+  // 本轮的被挡：和 算三态 的 本轮() 同口径（不早于待回收节点、晚于这一钟最后一次推后、不晚于今天）
+  const 最后推后日 = c.事实.推后们.filter((x) => x.日 > r.归零日).reduce<string | null>((a, x) => (a === null || x.日 > a ? x.日 : a), null);
+  const 被挡日 = c.事实.最近被挡日;
+  const 本轮被挡过 = !!被挡日 && 被挡日 >= r.节点.待回收 && (最后推后日 === null || 被挡日 > 最后推后日) && 被挡日 <= 今天;
+  const 回到同一轮被挡 = 换了 && 钟.state === "活跃" && 进活跃前 === 状态 && 被挡 && 本轮被挡过;
   if (换了) 留痕.push({ fromState: 钟.state, toState: 状态, reason: 换状态说明 ?? 换状态理由(钟.state, 状态, r) });
   if (被挡 && (!钟.blocked || 换了) && !回到同一轮被挡) 留痕.push({ fromState: 状态, toState: 状态, reason: 被挡理由 });
   // T5：今天刚解除（钟上还记着被挡、留痕里还没有解除那行）

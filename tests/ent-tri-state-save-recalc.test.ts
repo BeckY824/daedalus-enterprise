@@ -200,6 +200,30 @@ describe("存了又撤：本轮已发的提醒和没发生过一样（第三轮�
     expect((await 读一位三态(客户))!.提醒).toBeNull();
   });
 
+  it("回到的不是进活跃之前那个状态不算同一轮（第四轮第 2 条）：待回收时记当天沟通变活跃、再把日期改早落到沉睡 = 直接补录同日期沟通", async () => {
+    await 开三态(195);
+    const 另一位 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 乙, createdAt: 那天(400) } })).id;
+    await 三态夜扫();
+    // 两位都待回收、第 190 天（5 天前）发过 1 次待回收提醒
+    await prisma.entCustomerClock.updateMany({ where: { customerId: { in: [客户, 另一位] } }, data: { noticeCount: 1, lastNoticeDay: 前(5) } });
+    expect((await prisma.entCustomerClock.findMany({ where: { customerId: { in: [客户, 另一位] } } })).map((x) => x.state)).toEqual(["待回收", "待回收"]);
+    // 路一：今天记一条当天的有效沟通（变活跃），再把沟通日期改到第 100 天
+    const r = await 记跟进("电话聊了预算和交付时间");
+    expect(await 钟()).toBe("活跃");
+    await prisma.followUp.update({ where: { id: (r as { id: string }).id }, data: { occurredAt: 那天(95) } });
+    await 存沟通后重算三态(客户);
+    // 路二：直接补录一条第 100 天的有效沟通
+    await prisma.followUp.create({ data: { customerId: 另一位, ownerId: 乙, type: "PHONE", title: "", content: "电话聊了预算和交付时间", occurredAt: 那天(95) } });
+    await 存沟通后重算三态(另一位);
+    const 取 = async (id: string) => {
+      const k = await prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: id } });
+      return { state: k.state, enteredDay: k.enteredDay, noticeCount: k.noticeCount, lastNoticeDay: k.lastNoticeDay, 提醒: (await 读一位三态(id))!.提醒?.事由 ?? null };
+    };
+    const 一 = await 取(客户), 二 = await 取(另一位);
+    expect(一).toEqual(二);
+    expect(一).toMatchObject({ state: "沉睡", noticeCount: 0, lastNoticeDay: null, 提醒: "进入沉睡" });
+  });
+
   it("夜扫隔了一轮真的变活跃再到期：照旧清零、重新起一轮", async () => {
     await 开三态(185);
     await 三态夜扫();
@@ -215,8 +239,9 @@ describe("存了又撤：本轮已发的提醒和没发生过一样（第三轮�
 });
 
 /*
-  额度、暂缓次数重置（M-公海-54，客户 11-12）：有效沟通的生效日严格晚于写入前的「当前最近动静日」（钟的归零日）才重置；
-  同一天不算、起算日（设置里的）及以前的不算；按事实算，撤销了回到没记时的样子
+  额度、暂缓次数重置（M-公海-54，客户 11-12 更正）：同一位客户当天只重置一次。实时记的有效沟通（生效日 = 最后改动那天）就重置，
+  不管当天是否已有建项目、换节点；补录的（含先存无效后改有效）要严格晚于改动前的「当前最近动静日」；起算日（设置里的）及以前的不算；
+  只换节点、只建项目不重置（X-109 待客户确认）；按事实算，撤销了回到没记时的样子
 */
 describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
   let 起算: string;
@@ -227,8 +252,8 @@ describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
     const p = await prisma.project.findFirst({ where: { customerId: 客户 } }) ?? await prisma.project.create({ data: { name: "项目", customerId: 客户, ownerId: 乙, creatorId: 乙, createdAt: 第(1) } });
     await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 乙, toPhase: "线索", toNode: "初步接触", at: 第(n, 时) } });
   };
-  /** 沟通日期第 日 天、第 写 天写进来 */
-  const 沟通 = (日: number, 写: number, 时 = "10:00") => prisma.followUp.create({ data: { customerId: 客户, ownerId: 乙, type: "PHONE", title: "", content: "电话聊了预算和交付时间", occurredAt: 第(日, 时), createdAt: 第(写, 时) } });
+  /** 沟通日期第 日 天、第 写 天写进来（最后改动也是那时） */
+  const 沟通 = (日: number, 写: number, 时 = "10:00", content = "电话聊了预算和交付时间") => prisma.followUp.create({ data: { customerId: 客户, ownerId: 乙, type: "PHONE", title: "", content, occurredAt: 第(日, 时), createdAt: 第(写, 时), updatedAt: 第(写, 时) } });
   const 看 = async () => {
     const 规则 = await 生效组织规则();
     const c = (await 收三态客户(prisma, [客户], 规则, await 读组织(), new Date())).get(客户)!;
@@ -249,10 +274,48 @@ describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
     expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 归零日: 加天(起算, 130), 重置日: null });
   });
 
-  it("同一天不算推进：当天已有项目推进，再记一条当天的有效沟通 → 不重置", async () => {
+  it("当天只重置一次、不看当天有没有别的动静：先换节点、再实时记一条有效沟通 → 重置", async () => {
     await 推进(140, "09:00");
     await 沟通(140, 140, "10:00");
+    expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 归零日: 加天(起算, 140), 重置日: 加天(起算, 140) });
+  });
+
+  it("只换节点、没有有效沟通：只推钟、不重置（X-109 待客户确认）", async () => {
+    await 推进(140);
+    expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 归零日: 加天(起算, 140), 重置日: null });
+  });
+
+  it("建项目同时带出的首条沟通（向导 / 新建项目 / 转项目）：有真实内容的重置一次，占位文案不重置", async () => {
+    const 建 = async (content: string) => {
+      const p = await prisma.project.create({ data: { name: "新项目", customerId: 客户, ownerId: 乙, creatorId: 乙, createdAt: 第(140, "09:00") } });
+      await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 乙, toPhase: "线索", toNode: "潜客培育", at: 第(140, "09:00") } });
+      const f = await 沟通(140, 140, "09:00", content);
+      await prisma.followUpProject.create({ data: { followUpId: f.id, projectId: p.id, node: "潜客培育" } });
+      return p.id;
+    };
+    const p = await 建("跟进");
     expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 归零日: 加天(起算, 140) });
+    await prisma.project.update({ where: { id: p }, data: { deletedAt: new Date() } });
+    await 建("客户要华东三个仓的报价，下周给方案");
+    expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 重置日: 加天(起算, 140) });
+  });
+
+  it("防倒补（第四轮第 1 条）：第 129 天记无效短沟通、第 130 天项目推进、第 140 天把它改成有效 → 不重置；当天记无效、当天改成有效、期间没别的动静 → 照常重置", async () => {
+    await 推进(130);
+    const f = await 沟通(129, 129, "10:00", "OK");
+    await prisma.followUp.update({ where: { id: f.id }, data: { content: "电话聊了预算和交付时间", updatedAt: 第(140) } });
+    expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 重置日: null });
+    const g = await 沟通(150, 150, "10:00", "OK");
+    await prisma.followUp.update({ where: { id: g.id }, data: { content: "电话聊了预算和交付时间", updatedAt: 第(150, "11:00") } });
+    expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 重置日: 加天(起算, 150) });
+  });
+
+  it("删了项目额度不往回翻（第四轮第 3 条）：挡住补录沟通的那次推进所在的项目软删了，照样挡", async () => {
+    await 推进(130);
+    await 沟通(100, 199);
+    expect(await 看()).toMatchObject({ 额度用了: 1 });
+    await prisma.project.updateMany({ where: { customerId: 客户 }, data: { deletedAt: new Date() } });
+    expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 重置日: null });
   });
 
   it("同一天第二条沟通不另算：第一条已经重置，第二条不再挪重置日", async () => {
@@ -284,46 +347,77 @@ describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
 });
 
 /*
-  静态守卫（第三轮第 4 条）：凡是写 / 改 / 删 / 恢复沟通（FollowUp）的源文件，要么自己调 存沟通后重算三态，
-  要么写沟通的那段跑在调用方事务里、调用方调，要么列在豁免里写明为什么。新加一个写 FollowUp 的入口没接，这条会红
+  静态守卫（第三轮第 4 条，第四轮改成按调用点）：每个写 / 改 / 删 / 恢复沟通（FollowUp）的调用点，所在的那个函数里要调 存沟通后重算三态；
+  写沟通那段跑在调用方事务里的，列出调用方函数（它们里面要调）；别的逐点豁免、写明为什么。新加一个写 FollowUp 的调用点没接，这条会红。
+  「所在的函数」按源码里顶格的 function / const 声明切（嵌在里面的小函数算进外层那个）
 */
-describe("写沟通的入口都接了存沟通后重算三态", () => {
+describe("写沟通的调用点都接了存沟通后重算三态", () => {
   const 根 = path.resolve("src");
   const 豁免: Record<string, string> = {
-    "app/(app)/demo-data.ts": "灌 / 清演示数据，整批，夜扫补",
-    "app/(app)/customers/import-actions.ts": "导入撤销，整批，夜扫补",
-    "lib/enterprise-import/apply.ts": "导入（含同号只记备注、线索建项目），整批，夜扫补",
-    "lib/enterprise-import/revert.ts": "导入撤销，整批，夜扫补",
-    "lib/enterprise/legacy-cleanup.ts": "只把沟通从商机上解挂，不改内容和日期",
-    "lib/shared-ws/dataset.ts": "桌面端示例数据，不跑三态",
-    "lib/sync/local.ts": "桌面端同步，不跑三态",
-    "lib/enterprise/lead-to-project.ts": "启动时一次性老线索转项目，整批，夜扫补",
+    "app/(app)/demo-data.ts#清除演示数据": "清演示数据，整批",
+    "app/(app)/customers/import-actions.ts#撤这一批": "导入撤销，整批，夜扫补",
+    "app/(app)/customers/[id]/actions.ts#挂上": "联系人挂接沟通，只改 contactId，不改内容和日期",
+    "app/(app)/customers/[id]/actions.ts#restoreContact": "恢复联系人时把沟通挂回去，只改 contactId",
+    "lib/shared-ws/dataset.ts#灌演示数据": "桌面端示例数据，不跑三态",
+    "lib/enterprise/legacy-cleanup.ts#清理老数据": "只把沟通从商机上解挂，不改内容和日期",
+    "lib/enterprise/same-number-collab.ts#同号只记备注": "只有导入在用（apply.ts），整批，夜扫补",
+    "lib/enterprise/soft-delete.ts#清过期": "回收站过期真删，删的本来就是已软删、不算数的沟通",
+    "lib/enterprise-import/apply.ts#建": "导入，整批，夜扫补",
+    "lib/enterprise-import/apply.ts#改": "导入，整批，夜扫补",
+    "lib/enterprise-import/revert.ts#删": "导入撤销，整批，夜扫补",
+    "lib/enterprise-import/revert.ts#建回": "导入撤销，整批，夜扫补",
   };
-  /** 写沟通的那段跑在调用方事务里：调用方（右边这些文件）调 */
+  /** 写沟通的那段跑在调用方事务里（或是通用表映射）：调用方这些函数里要调。线索建项目另有导入、启动时一次性转项目两个调用方，都是整批、夜扫补 */
   const 调用方接: Record<string, string[]> = {
-    "lib/project/db.ts": ["app/(app)/projects/actions.ts"],
-    "lib/project/wizard.ts": ["app/(app)/projects/actions.ts"],
-    "lib/project/from-lead.ts": ["app/(app)/leads/actions.ts"],
+    "lib/project/db.ts#记项目沟通": ["app/(app)/projects/actions.ts#记项目沟通Action"],
+    "lib/project/wizard.ts#向导接着建": ["app/(app)/projects/actions.ts#建档向导"],
+    "lib/project/from-lead.ts#线索建项目": ["app/(app)/leads/actions.ts#转项目之后"],
+    "lib/enterprise/soft-delete.ts#表": ["lib/enterprise/soft-delete.ts#恢复一条"],
   };
   const 写沟通 = /\.followUp\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\b|(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"FollowUp"|FollowUp:\s*tx\.followUp/;
+  const 声明 = /^(export\s+)?(default\s+)?(async\s+)?function\s*\*?\s*([^\s(<]+)|^(export\s+)?const\s+([^\s:=]+)\s*(:[^=]+)?=\s*(cache\()?(async\s*)?(\(|function|[A-Za-z_一-鿿]+\s*=>)/;
   const 文件们 = (d: string): string[] => readdirSync(d).flatMap((n) => {
     const p = path.join(d, n);
     if (statSync(p).isDirectory()) return n === "generated" ? [] : 文件们(p);
     return /\.(ts|tsx)$/.test(n) ? [p] : [];
   });
-  it("没接、也没豁免的写沟通入口：没有", () => {
-    const 读 = (rel: string) => readFileSync(path.join(根, rel), "utf8");
+  /** 一个文件切成顶格声明的函数：名字 → 函数体（到下一个顶格声明为止） */
+  const 切函数 = (文: string) => {
+    const 出 = new Map<string, string>();
+    let 名 = "(顶层)", 体: string[] = [];
+    const 收 = () => 出.set(名, (出.get(名) ?? "") + 体.join("\n"));
+    for (const 行 of 文.split("\n")) {
+      const m = 声明.exec(行);
+      if (m) { 收(); 名 = m[4] ?? m[6]; 体 = []; }
+      体.push(行);
+    }
+    收();
+    return 出;
+  };
+  const 全 = new Map<string, Map<string, string>>();
+  for (const f of 文件们(根)) 全.set(path.relative(根, f).split(path.sep).join("/"), 切函数(readFileSync(f, "utf8")));
+  const 接了 = (键: string) => {
+    const [文件, 名] = 键.split("#");
+    return !!全.get(文件)?.get(名)?.includes("存沟通后重算三态(");
+  };
+
+  it("没接、也没豁免的写沟通调用点：没有；名单里没有过期的条目", () => {
     const 没接: string[] = [];
-    for (const f of 文件们(根)) {
-      const rel = path.relative(根, f).split(path.sep).join("/");
-      const 文 = readFileSync(f, "utf8");
-      if (!写沟通.test(文) || rel === "lib/enterprise/tri-state-db.ts") continue;
-      if (文.includes("存沟通后重算三态(") || rel in 豁免) continue;
-      const 上 = 调用方接[rel];
-      if (上 && 上.every((x) => 读(x).includes("存沟通后重算三态("))) continue;
-      没接.push(rel);
+    const 见到 = new Set<string>();
+    for (const [文件, 函数们] of 全) {
+      if (文件 === "lib/enterprise/tri-state-db.ts") continue;
+      for (const [名, 体] of 函数们) {
+        if (!写沟通.test(体)) continue;
+        const 键 = `${文件}#${名}`;
+        见到.add(键);
+        if (接了(键) || 键 in 豁免) continue;
+        const 上 = 调用方接[键];
+        if (上 && 上.every(接了)) continue;
+        没接.push(键);
+      }
     }
     expect(没接).toEqual([]);
+    // 名单里的调用点都还在（改了函数名、挪了位置，名单要跟着改）
+    expect([...Object.keys(豁免), ...Object.keys(调用方接)].filter((k) => !见到.has(k))).toEqual([]);
   });
 });
-
