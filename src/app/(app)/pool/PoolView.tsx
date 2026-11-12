@@ -65,6 +65,8 @@ type Props = {
   只读?: boolean;
   /** 客户三态开着（P-界面-19 ⑦，构想页 C14）：客户名后「号码不全」小红标签、「号码不全」筛选、领取 / 分配前一句提示（不拦）。关着都不出 */
   三态开?: boolean;
+  /** 我看得到的公海里号码不全的客户几位（三态开着才给，按钮上的数） */
+  号码不全数?: number | null;
 };
 
 /** 「号码不全」标签的悬停说明（M-公海-51：同手动退回公海那把尺） */
@@ -120,7 +122,7 @@ function ResultBar({ 文案, 没领到, 撤销 }: { 文案: string; 没领到: {
   );
 }
 
-export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 持有, 只读 = false, 三态开 = false }: Props) {
+export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 持有, 只读 = false, 三态开 = false, 号码不全数 = null }: Props) {
   const 别线 = new Set(别线ids);
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -499,7 +501,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         <Button className="nowrap" aria-pressed={f.phoneIncomplete === "1"} type={f.phoneIncomplete === "1" ? "primary" : "default"} ghost={f.phoneIncomplete === "1"}
           title="只看到期自动收回时号码不全的客户"
           onClick={() => apply({ phoneIncomplete: f.phoneIncomplete === "1" ? "" : "1" })}>
-          号码不全
+          号码不全{号码不全数 === null ? "" : ` ${号码不全数}`}
         </Button>
       )}
       <ResetFilters 显示={在筛} onClick={reset} />

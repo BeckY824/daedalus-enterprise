@@ -236,25 +236,44 @@ function OffboardReport({ 下属 }: { 下属: 人[] }) {
   );
 }
 
-type 待交接行 = { id: string; name: string; 挂起天数: number; 挂起工作日: number; 超期: boolean; 原负责人: string; 原直属上级: string | null };
+type 待交接行 = {
+  id: string; name: string; 挂起天数: number; 挂起工作日: number; 超期: boolean; 原负责人: string; 原直属上级: string | null;
+  /** 来源：停用账号名下被三态标了待交接 / 离职交接在等接手人确认；两种都占的只列一行 */
+  状态: string; 状态说明: string;
+};
+
+/** 一位客户两种来源合成一行：挂起按先挂起的那个算（天数大的），超期任一超了就算 */
+function 成行(p: 离职待交接, c: 离职待交接["客户"][number]): 待交接行 | null {
+  const 标 = c.待交接日 && c.挂起天数 !== undefined ? { 天: c.挂起天数, 工作日: c.挂起工作日 ?? 0, 超期: !!c.超期 } : null;
+  const 挂 = c.交接中 ? { 天: c.交接中.挂起天数, 工作日: c.交接中.挂起工作日, 超期: c.交接中.超期 } : null;
+  if (!标 && !挂) return null;
+  const 长 = 标 && 挂 ? (挂.天 >= 标.天 ? 挂 : 标) : (挂 ?? 标)!;
+  const 等谁 = c.交接中 ? `交接中 · 等${c.交接中.接手人 ?? "接手人"}确认` : "";
+  return {
+    id: c.id, name: c.name, 挂起天数: 长.天, 挂起工作日: 长.工作日, 超期: !!(标?.超期 || 挂?.超期), 原负责人: p.name, 原直属上级: p.上级,
+    状态: 等谁 || "停用待交接",
+    状态说明: 标 && 挂
+      ? `离职交接 ${c.交接中!.起日} 发起，在等接手人确认；此前 ${c.待交接日} 已被标待交接。挂起天数按先挂起的算`
+      : 挂 ? `离职交接 ${c.交接中!.起日} 发起，在等接手人确认` : `账号已停用，${c.待交接日} 到了回收节点被标待交接`,
+  };
+}
 
 /**
- * 「待交接」（客户三态 T12，M-公海-50 / 52：客户定的三态上线前置）：停用账号名下、被三态夜扫标了「待交接」的客户，
- * 四列：待交接（客户）、挂起天数、原负责人、原直属上级；挂起超过 15 个工作日或 30 个自然日（先到者）的行标红。
- * 交给谁照旧在下面各人的卡片里交；离职交接还在等接手人确认的那几位，下面卡片上已经写着「交接中」，这里不重复列。
- * 久挂的排前面；一个都没有就不摆
+ * 「待交接」（M-公海-49 / 50 / 52：客户定的三态上线前置）：两种来源合成一张表——
+ *   停用账号名下、被三态夜扫标了「待交接」的客户（T12）；离职交接还在等接手人确认的客户（T6，挂起天数从发起那天算）。
+ * 四列必须有：待交接（客户）、挂起天数、原负责人、原直属上级；另加一列状态区分来源。挂起超过 15 个工作日或 30 个自然日（先到者）的行标红。
+ * 只读：交给谁照旧在下面各人的卡片里交（用户 11-12 定）。久挂的排前面；一个都没有就不摆
  */
 function TriPending({ 人们 }: { 人们: 离职待交接[] }) {
   const b = useBusiness();
   const 行们: 待交接行[] = 人们
-    .flatMap((p) => p.客户.flatMap((c) => (c.待交接日 && c.挂起天数 !== undefined
-      ? [{ id: c.id, name: c.name, 挂起天数: c.挂起天数, 挂起工作日: c.挂起工作日 ?? 0, 超期: !!c.超期, 原负责人: p.name, 原直属上级: p.上级 }]
-      : [])))
+    .flatMap((p) => p.客户.flatMap((c) => { const r = 成行(p, c); return r ? [r] : []; }))
     .sort((a, b2) => b2.挂起天数 - a.挂起天数 || (a.name < b2.name ? -1 : a.name > b2.name ? 1 : 0));
   if (!行们.length) return null;
   const 超期数 = 行们.filter((r) => r.超期).length;
   const 列: ColumnsType<待交接行> = [
     { title: "待交接", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/customers/${r.id}`} title={v} style={省略}>{v}</Link> },
+    { title: "状态", dataIndex: "状态", width: "18%", ellipsis: true, render: (v: string, r) => <span title={r.状态说明} style={省略}>{v}</span> },
     {
       title: "挂起天数", key: "days", width: 168,
       render: (_: unknown, r) => (
@@ -263,13 +282,13 @@ function TriPending({ 人们 }: { 人们: 离职待交接[] }) {
         </span>
       ),
     },
-    { title: "原负责人", dataIndex: "原负责人", width: "20%", ellipsis: true, render: (v: string) => <span title={`${v}（已停用）`} style={省略}>{v}（已停用）</span> },
-    { title: "原直属上级", dataIndex: "原直属上级", width: "20%", ellipsis: true, render: (v: string | null) => <span title={v ?? undefined} style={省略}>{v ?? 空值符}</span> },
+    { title: "原负责人", dataIndex: "原负责人", width: "16%", ellipsis: true, render: (v: string) => <span title={`${v}（已停用）`} style={省略}>{v}（已停用）</span> },
+    { title: "原直属上级", dataIndex: "原直属上级", width: "16%", ellipsis: true, render: (v: string | null) => <span title={v ?? undefined} style={省略}>{v ?? 空值符}</span> },
   ];
   return (
     <Card size="small" style={{ marginBottom: 16 }} title={`待交接（${行们.length}）${超期数 ? ` · 超期 ${超期数}` : ""}`}>
       <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 0 }}>
-        已停用账号名下、到了回收节点被标「待交接」的{b.customer}。挂起超过 15 个工作日或 30 个自然日（哪条先到算哪条）的标红；交给谁在下面各人的卡片里交。
+        已停用账号名下、到了回收节点被标「待交接」的{b.customer}，和离职交接还在等接手人确认的{b.customer}。挂起超过 15 个工作日或 30 个自然日（哪条先到算哪条）的标红；交给谁在下面各人的卡片里交。
       </Typography.Paragraph>
       <Table<待交接行>
         size="small"

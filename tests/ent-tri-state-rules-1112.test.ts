@@ -775,4 +775,35 @@ describe("第二轮答复 S1–S8", () => {
     expect(一位.挂起工作日).toBeGreaterThan(15);
     expect(一位.超期).toBe(true);
   });
+
+  it("交接看板：离职交接在等接手人确认的客户带交接中（从发起日算挂起、等谁确认）；也标过待交接的同一位只一条、两样都带", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    const { 读离职交接 } = await import("@/lib/enterprise/offboard-handover");
+    const 读 = async () => (await 读离职交接({ id: 人.系.id, role: "ADMIN" } as never)).find((x) => x.id === 人.乙.id)!;
+    // 没清点客户：按还在他名下的都算
+    await prisma.entHandover.create({ data: { kind: "离职", fromUserId: 人.乙.id, toUserId: 人.丙.id, byUserId: 人.系.id, customerIds: "[]", status: "待确认", createdAt: new Date(Date.now() - 40 * 86_400_000) } });
+    const 组 = await 读();
+    expect(组.交接中).toBe(true);
+    expect(组.客户).toHaveLength(1);
+    expect(组.客户[0].交接中).toMatchObject({ 接手人: "丙", 挂起天数: 40, 超期: true });
+    expect(组.客户[0].交接中!.挂起工作日).toBeGreaterThan(20);
+    expect(组.客户[0].待交接日).toBeUndefined();
+    // 同一位此前也标了待交接：还是一条，两样都带（界面合成一行）
+    await prisma.entCustomerStateLog.create({ data: { customerId: 客户, toState: "活跃", reason: 待交接理由, fromOwnerId: 人.乙.id, at: new Date(Date.now() - 50 * 86_400_000) } });
+    const 两样 = (await 读()).客户;
+    expect(两样).toHaveLength(1);
+    expect(两样[0]).toMatchObject({ 挂起天数: 50, 交接中: { 挂起天数: 40 } });
+  });
+
+  it("交接看板：离职交接清点了客户的只算清点的；没在等确认的不带交接中；查询条数不随交接笔数涨", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    const 另一位 = await prisma.customer.create({ data: { name: "另一位", phone: "13900009999", salesOwnerId: 人.乙.id } });
+    const { 读离职交接 } = await import("@/lib/enterprise/offboard-handover");
+    const 读 = async () => (await 读离职交接({ id: 人.系.id, role: "ADMIN" } as never)).find((x) => x.id === 人.乙.id)!;
+    expect((await 读()).客户.every((c) => !c.交接中)).toBe(true);
+    await prisma.entHandover.create({ data: { kind: "离职", fromUserId: 人.乙.id, toUserId: 人.丙.id, byUserId: 人.系.id, customerIds: JSON.stringify([另一位.id]), status: "待确认", createdAt: new Date(Date.now() - 3 * 86_400_000) } });
+    const 们 = Object.fromEntries((await 读()).客户.map((c) => [c.id, c.交接中 ?? null]));
+    expect(们[另一位.id]).toMatchObject({ 挂起天数: 3, 超期: false, 接手人: "丙" });
+    expect(们[客户]).toBeNull();
+  });
 });

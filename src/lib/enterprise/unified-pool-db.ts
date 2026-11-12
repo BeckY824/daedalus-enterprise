@@ -268,6 +268,14 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
  * 每翻一页不再把公海全部的项目名、当前进程、原负责人、客户可见都取一遍；筛、数、排的口径和原来逐条一致
  * （tests/ent-unified-pool-paging.test.ts 拿改前的写法逐个筛选组合、逐页对）
  */
+/**
+ * 号码不全数（三态 T10，公海「号码不全」按钮上的数，三态界面 B 组）：我看得到的公海里、三态自动收回时打了「号码不全」的客户几位。
+ * 带限定的客户端数（同列表那句，可见范围限定层说了算），不受「各取最近 公海取上限 条」的框、也不受这一页其余筛选影响；调用方三态开着才要
+ */
+export async function 号码不全数(): Promise<number> {
+  return prisma.customer.count({ where: { pool: { is: { phoneIncomplete: true } } } });
+}
+
 export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: 公海名单筛) {
   // 和 筛排 认关键词、来源用的是同一个判断
   const 有词 = !!(sp.keyword ?? "").trim().toLowerCase();

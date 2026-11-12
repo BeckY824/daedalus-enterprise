@@ -39,6 +39,11 @@ export type 交接客户 = {
   id: string; name: string; 项目数: number; 待交接日?: string; 挂起天数?: number;
   /** 挂了几个工作日（周一到周五，不扣节假日，tri-state.ts 工作日数）；超期 = 超过 15 个工作日或 30 个自然日（先到者，交接挂起超了，M-公海-49 / 50） */
   挂起工作日?: number; 超期?: boolean;
+  /**
+   * 离职交接还在等接手人确认（M-公海-49 挂起；三态界面 B 组，用户 11-12 定并进待交接表）：从发起那天算的挂起天数、工作日、超没超期，等谁确认。
+   * 哪些客户算：发起时清点了客户的按清点的，没清点的按「还在他名下」（同 tri-state-db.ts 离职交接中的）
+   */
+  交接中?: { 起日: string; 接手人: string | null; 挂起天数: number; 挂起工作日: number; 超期: boolean };
 };
 export type 交接项目 = { id: string; name: string; 客户: string };
 export type 离职待交接 = {
@@ -105,6 +110,16 @@ const 按人分 = <T,>(们: readonly T[], 谁: (x: T) => string | null): Map<str
   return 出;
 };
 
+/** 离职交接发起时清点的客户（JSON 数组）；没清点 / 坏了 = null（按还在他名下的都算） */
+function 清点的客户(raw: string): Set<string> | null {
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) && v.length ? new Set(v.filter((x): x is string => typeof x === "string")) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 看板的数据：只列名下还有东西（客户、项目、线索、渠道、待办）的人。
  * 所有离职成员一起查、内存里按人分（代码体检 5.2 N+1 第 3 条）：查库次数不随人数涨（过 一批人 位才多一轮），每位的数和原来逐位查的一样
@@ -116,7 +131,15 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
   return 看全部(async () => {
     const 人们 = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
     const 上级of = new Map((await prisma.entMember.findMany({ where: { userId: { in: ids } }, select: { userId: true, managerId: true } })).map((m) => [m.userId, m.managerId]));
-    const 上级ids = [...new Set([...上级of.values()].filter((x): x is string => !!x))];
+    // 还在等接手人确认的离职交接：先读出来，接手人的名字和上级的名字一句取（不另查）；同一位有几笔取最早发起的那笔
+    const 交接们: { fromUserId: string; toUserId: string; createdAt: Date; customerIds: string }[] = [];
+    for (const 批 of 分批(ids)) {
+      交接们.push(...(await prisma.entHandover.findMany({ where: { kind: "离职", fromUserId: { in: 批 }, status: 待确认 }, select: { fromUserId: true, toUserId: true, createdAt: true, customerIds: true }, orderBy: { createdAt: "asc" } })));
+    }
+    const 交接of = new Map<string, (typeof 交接们)[number]>();
+    for (const h of 交接们) if (!交接of.has(h.fromUserId)) 交接of.set(h.fromUserId, h);
+    const 交接中 = new Set(交接of.keys());
+    const 上级ids = [...new Set([...上级of.values(), ...交接们.map((h) => h.toUserId)].filter((x): x is string => !!x))];
     const 上级名 = new Map((await prisma.user.findMany({ where: { id: { in: 上级ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     // 同 停用分拣：客户上已停用同事进行中的项目随客户交（P-转-18），项目数算上
     const 停用 = new Set(带项目 ? await 停用的同事(prisma, []) : []);
@@ -132,12 +155,11 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
     const 客户上的项目of = new Map<string, { ownerId: string; awaitAssignAt: Date | null; result: string | null }[]>();
     const 项目们of = new Map<string, { id: string; name: string; ownerId: string; customerId: string; customer: { name: string } }[]>();
     const 数 = { 线索: new Map<string, number>(), 渠道: new Map<string, number>(), 主渠道: new Map<string, number>(), 待办: new Map<string, number>() };
-    const 交接中 = new Set<string>();
     for (const 批 of 分批(ids)) {
       const 人 = { in: 批 };
       // 同 停用分拣：在公海里的不算他的（谁领谁接）
       const 他的客户 = { salesOwnerId: 人, pool: { is: null } };
-      const [客户们, 项目们, 线索, 渠道, 主渠道, 待办们, 交接们] = await Promise.all([
+      const [客户们, 项目们, 线索, 渠道, 主渠道, 待办们] = await Promise.all([
         prisma.customer.findMany({ where: 他的客户, select: { id: true, name: true, salesOwnerId: true }, orderBy: { name: "asc" } }),
         带项目
           ? prisma.project.findMany({
@@ -151,7 +173,6 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
         prisma.entChannelMain.groupBy({ by: ["ownerId"], where: { ownerId: 人 }, _count: { _all: true } }),
         // 同 停用分拣：他名下客户上的待办跟着客户走（在公海里的谁领谁带），这里数挂在别人客户上的
         prisma.task.findMany({ where: { ownerId: 人, done: false, OR: 挂在别人客户上(批) }, select: { ownerId: true, customerId: true } }),
-        prisma.entHandover.findMany({ where: { kind: "离职", fromUserId: 人, status: 待确认 }, select: { fromUserId: true } }),
       ]);
       // 每位客户的项目数：取这些客户上没进公海的项目，下面按「他自己的、待分配的、别的停用同事进行中的」数。
       // 客户不多就点名（走客户 id 的索引），多了按「他的客户」框，不拼过长的名单
@@ -168,7 +189,6 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
       for (const g of 渠道) if (g.channelOwnerId) 数.渠道.set(g.channelOwnerId, g._count._all);
       for (const g of 主渠道) if (g.ownerId) 数.主渠道.set(g.ownerId, g._count._all);
       for (const [k, v] of 按人分(待办们.filter(没放走), (t) => t.ownerId)) 数.待办.set(k, v.length);
-      for (const h of 交接们) 交接中.add(h.fromUserId);
     }
     // 三态 T12 标的待交接：每位客户最早那次（这位离职成员名下的）
     const 今天 = beijingDay(new Date());
@@ -188,6 +208,13 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
       // 他自己的、待分配的、别的已停用同事进行中的
       const 算项目 = (p: { ownerId: string; awaitAssignAt: Date | null; result: string | null }) =>
         p.ownerId === u.id || p.awaitAssignAt !== null || (停用.has(p.ownerId) && p.result === null);
+      // 离职交接等确认：清点了客户的只算清点的
+      const h = 交接of.get(u.id);
+      const 清点 = h ? 清点的客户(h.customerIds) : null;
+      const 挂 = h ? (() => {
+        const 起日 = beijingDay(h.createdAt);
+        return { 起日, 接手人: 上级名.get(h.toUserId) ?? null, 挂起天数: 差天(起日, 今天), 挂起工作日: 工作日数(起日, 今天), 超期: 交接挂起超了(起日, 今天) };
+      })() : null;
       结果.push({
         id: u.id,
         name: u.name,
@@ -195,7 +222,7 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
         交接中: 交接中.has(u.id),
         客户: 客户们.map((c) => {
           const 标 = 标日.get(`${u.id}|${c.id}`);
-          return { id: c.id, name: c.name, 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length, ...(标 ? { 待交接日: 标, 挂起天数: 差天(标, 今天), 挂起工作日: 工作日数(标, 今天), 超期: 交接挂起超了(标, 今天) } : {}) };
+          return { id: c.id, name: c.name, 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length, ...(挂 && (!清点 || 清点.has(c.id)) ? { 交接中: 挂 } : {}), ...(标 ? { 待交接日: 标, 挂起天数: 差天(标, 今天), 挂起工作日: 工作日数(标, 今天), 超期: 交接挂起超了(标, 今天) } : {}) };
         }),
         项目: 项目们.map((p) => ({ id: p.id, name: p.name, 客户: p.customer.name })),
         其余: { 线索, 渠道, 主渠道, 待办 },
