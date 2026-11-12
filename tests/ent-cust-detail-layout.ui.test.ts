@@ -68,14 +68,14 @@ const 模块们 = (page: Page) => page.evaluate(() => [...document.querySelector
   const r = f.getBoundingClientRect();
   const 栏 = f.closest(".rec > *");
   return {
-    名: (f.querySelector(":scope > .proj-fold-btn")?.getAttribute("aria-label") ?? "").replace(/^(收起|展开)/, ""),
+    名: (f.querySelector(":scope > .proj-fold-btn, :scope > .ant-card > .ant-card-head .split-caret")?.getAttribute("aria-label") ?? "").replace(/^(收起|展开)/, ""),
     栏: 栏?.classList.contains("rec-col") ? "中" : 栏?.classList.contains("rec-right") ? "右" : "左",
     左: r.left, 右: r.right, 上: r.top, 下: r.bottom,
   };
 }));
 
 const 宽们 = [1024, 1280, 1366];
-const 该有 = ["基本资料", "联系人", "项目", "参与的项目", "关联客户", "沟通记录", "待办"];
+const 该有 = ["客户资料", "客户联系人", "项目", "参与的项目", "关联组织", "沟通记录", "所有待办"];
 
 it("1024 / 1280 / 1366：每个模块各一张卡、都有收起钮；待办单独一张卡，不在沟通记录卡里", async () => {
   for (const w of 宽们) {
@@ -84,8 +84,8 @@ it("1024 / 1280 / 1366：每个模块各一张卡、都有收起钮；待办单�
       const 有 = await 模块们(page);
       expect(有.map(m => m.名), `${w}`).toEqual(expect.arrayContaining(该有));
       // 每层壳里正好一张卡、一颗收起钮
-      expect(await page.evaluate(() => [...document.querySelectorAll(".rec-page .proj-fold")].every(f => f.querySelectorAll(":scope > .ant-card").length === 1 && f.querySelectorAll(":scope > .proj-fold-btn").length === 1)), `${w}`).toBe(true);
-      const 待办 = page.locator(".proj-fold", { has: page.getByRole("button", { name: "收起待办" }) });
+      expect(await page.evaluate(() => [...document.querySelectorAll(".rec-page .proj-fold")].every(f => f.querySelectorAll(":scope > .ant-card").length === 1 && f.querySelectorAll(":scope > .proj-fold-btn, :scope > .ant-card > .ant-card-head .split-caret").length === 1)), `${w}`).toBe(true);
+      const 待办 = page.locator(".proj-fold", { has: page.getByRole("button", { name: "收起所有待办" }) });
       const 沟通 = page.locator(".proj-fold", { has: page.getByRole("button", { name: "收起沟通记录" }) });
       // 待办和沟通记录是两张卡，互不包含
       expect(await 沟通.locator(".proj-fold").count(), `${w}`).toBe(0);
@@ -94,7 +94,7 @@ it("1024 / 1280 / 1366：每个模块各一张卡、都有收起钮；待办单�
       expect(await 待办.locator(".rec-task").count(), `${w}`).toBeGreaterThan(10);
       // 待办摆在沟通记录下方、同一栏
       const 中 = 有.filter(m => m.栏 === "中").map(m => m.名);
-      expect(中, `${w}`).toEqual(["沟通记录", "待办"]);
+      expect(中, `${w}`).toEqual(["沟通记录", "所有待办"]);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
@@ -108,17 +108,20 @@ it("1024 / 1280 / 1366：卡头标题 + 计数在左，新增按钮在右，收�
         const 卡 = f.querySelector(":scope > .ant-card")!;
         const 题 = 卡.querySelector(":scope > .ant-card-head .ant-card-head-title");
         const 加 = 卡.querySelector(":scope > .ant-card-head .ant-card-extra");
-        const 钮 = f.querySelector(":scope > .proj-fold-btn")!.getBoundingClientRect();
+        const 钮 = f.querySelector(":scope > .proj-fold-btn, :scope > .ant-card > .ant-card-head .split-caret")!.getBoundingClientRect();
         const 头 = 卡.querySelector(":scope > .ant-card-head")!.getBoundingClientRect();
         const r = (e: Element | null) => e && e.getBoundingClientRect();
-        return { 名: f.querySelector(":scope > .proj-fold-btn")!.getAttribute("aria-label"), 题字: 题?.textContent ?? "", 题: r(题), 加: r(加), 钮: { l: 钮.left, r: 钮.right, t: 钮.top, b: 钮.bottom }, 头: { l: 头.left, r: 头.right, t: 头.top, b: 头.bottom }, 题截: 题 ? 题.scrollWidth > 题.clientWidth + 1 : false };
+        return { 连: f.classList.contains("has-split"), 名: f.querySelector(":scope > .proj-fold-btn, :scope > .ant-card > .ant-card-head .split-caret")!.getAttribute("aria-label"), 题字: 题?.textContent ?? "", 题: r(题), 加: r(加), 钮: { l: 钮.left, r: 钮.right, t: 钮.top, b: 钮.bottom }, 头: { l: 头.left, r: 头.right, t: 头.top, b: 头.bottom }, 题截: 题 ? 题.scrollWidth > 题.clientWidth + 1 : false };
       }));
       for (const h of 头们) {
         // 收起钮在卡头里、最右
         expect(h.钮.t, `${w} ${h.名}`).toBeGreaterThanOrEqual(h.头.t);
         expect(h.钮.b, `${w} ${h.名}`).toBeLessThanOrEqual(h.头.b + 1);
         expect(h.钮.r, `${w} ${h.名}`).toBeLessThanOrEqual(h.头.r);
-        if (h.加) {
+        if (h.连) {
+          // 连体：收起并进卡头那颗连体按钮的右半，标题在它左边
+          expect(h.题!.right, `${w} ${h.名} 标题在连体钮左边`).toBeLessThanOrEqual(h.加!.left + 1);
+        } else if (h.加) {
           expect(h.加.right, `${w} ${h.名} 新增钮在收起钮左边`).toBeLessThanOrEqual(h.钮.l + 1);
           expect(h.题!.right, `${w} ${h.名} 标题在新增钮左边`).toBeLessThanOrEqual(h.加.left + 1);
         } else {
@@ -127,16 +130,16 @@ it("1024 / 1280 / 1366：卡头标题 + 计数在左，新增按钮在右，收�
         expect(h.题截, `${w} ${h.名} 标题不截字`).toBe(false);
       }
       const 题 = Object.fromEntries(头们.map(h => [h.名!.replace(/^收起/, ""), h.题字]));
-      expect(题["联系人"]).toBe("联系人（6）");
+      expect(题["客户联系人"]).toBe("客户联系人（6）");
       expect(题["项目"]).toBe("项目（2）");
-      expect(题["关联客户"]).toBe("关联客户（1）");
-      expect(题["待办"]).toMatch(/^待办（15）$/);
+      expect(题["关联组织"]).toBe("关联组织（1）");
+      expect(题["所有待办"]).toMatch(/^所有待办（15）$/);
       expect(题["沟通记录"]).toBe("沟通记录（30）");
       // 新增按钮跟项目详情一样摆在卡头：沟通记录「新建沟通」、待办「新建待办」、关联客户「关联」
       const 卡头钮 = (名: string, 钮: RegExp) => page.locator(".proj-fold", { has: page.getByRole("button", { name: `收起${名}` }) }).locator(".ant-card-head .ant-card-extra").getByRole("button", { name: 钮 }).count();
       expect(await 卡头钮("沟通记录", /新建沟通/), `${w}`).toBe(1);
-      expect(await 卡头钮("待办", /新建待办/), `${w}`).toBe(1);
-      expect(await 卡头钮("关联客户", /关联/), `${w}`).toBe(1);
+      expect(await 卡头钮("所有待办", /新建待办/), `${w}`).toBe(1);
+      expect(await 卡头钮("关联组织", /关联/), `${w}`).toBe(1);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

@@ -6,6 +6,7 @@
  * 下拉选了就存（同项目画像卡）：存失败提示原因、回到存之前的样子。读写在 lib/project/relate.ts，动作在 ../relate-actions.ts
  */
 import { useEffect, useRef, useState } from "react";
+import { useCardName } from "./card-names";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { App, Button, Card, Select, Space, Tag } from "antd";
@@ -103,6 +104,7 @@ function 名字({ 名, 全称, href, 主, 主叫 }: { 名: string; 全称: strin
 }
 
 function RelateCustomers({ projectId, 关联, 能改, 起手, 不摆加 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean; 不摆加: boolean }) {
+  const 卡名 = useCardName();
   const { 忙, 跑 } = useRelateRun();
   const [加着, set加着] = useState(false);
   const [挑中, set挑中] = useState<string | undefined>();
@@ -121,7 +123,7 @@ function RelateCustomers({ projectId, 关联, 能改, 起手, 不摆加 }: { pro
 
   return (
     <Card
-      title={`关联客户（${关联.客户们.length}）`}
+      title={`${卡名("关联客户")}（${关联.客户们.length}）`}
       extra={能改 && !加着 && !不摆加 && 非主 < 关联.上限 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一家客户">关联</Button> : null}
     >
       <div className="proj-rel">
@@ -204,6 +206,7 @@ function CustomerRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: st
 }
 
 function RelateContacts({ projectId, 关联, 能改, 起手, 不摆加 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean; 不摆加: boolean }) {
+  const 卡名 = useCardName();
   const { 忙, 跑 } = useRelateRun();
   const [加着, set加着] = useState(false);
   const [挑中, set挑中] = useState<string | undefined>();
@@ -223,7 +226,7 @@ function RelateContacts({ projectId, 关联, 能改, 起手, 不摆加 }: { proj
 
   return (
     <Card
-      title={`关联联系人（${关联.联系人们.length}）`}
+      title={`${卡名("关联联系人")}（${关联.联系人们.length}）`}
       extra={能改 && !加着 && !不摆加 && 非主 < 关联.上限 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一位联系人">关联</Button> : null}
     >
       <div className="proj-rel">

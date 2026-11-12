@@ -152,17 +152,24 @@ it("客户列表：没传 放不了ids（都放得了）照旧摆", async () => 
   } finally { await page.close(); }
 });
 
-it("客户详情：能放公海 = false 不摆「客户退回公海」，true 才摆；三种宽度页头不撑出、点得到", async () => {
+it("客户详情：能放公海 = false「客户操作」里没有「客户退回公海」，true 才有；三种宽度页头不撑出、点得到", async () => {
   for (const w of 宽们) {
     for (const 能放 of [false, true]) {
       const { page, errors } = await 开(详情包, { 能放 }, w, ".rec-head");
       try {
-        const 钮 = page.locator(".rec-head-acts button").filter({ hasText: /退回公海/ });
-        expect(await 钮.count(), `宽 ${w} 能放 ${能放}`).toBe(能放 ? 1 : 0);
+        // 11-12 用户「右上角只保存三个按钮」：客户退回公海收进「客户操作 ▾」；能放 = false 时菜单里没有这项（一项都没有整颗不摆）
+        const 头钮 = page.locator(".rec-head-acts button").filter({ hasText: /客户操作/ });
         expect(await 不撑出(page), `宽 ${w}`).toBe(true);
-        if (能放) expect(await 点得到(page, ".rec-head-acts button", /退回公海/), `宽 ${w}`).toBe(true);
-        // 11-12 改名：客户页头叫「客户退回公海」（第 2 批起和客户名同一行），，和项目页的「项目退回公海」分开；三种宽度都不折行
-        if (能放) expect(await 钮.evaluate((el) => [(el as HTMLElement).innerText.replace(/\s+/g, ""), el.getBoundingClientRect().height <= 40]), `宽 ${w}`).toEqual(["客户退回公海", true]);
+        let 项数 = 0;
+        if (await 头钮.count()) {
+          expect(await 点得到(page, ".rec-head-acts button", /客户操作/), `宽 ${w}`).toBe(true);
+          expect(await 头钮.evaluate((el) => el.getBoundingClientRect().height <= 40), `宽 ${w}`).toBe(true);
+          await 头钮.click();
+          const 项 = page.locator(".rec-head-menu").last().getByRole("menuitem", { name: /^客户退回公海$/ });
+          if (能放) await 项.waitFor();
+          项数 = await 项.count();
+        }
+        expect(项数, `宽 ${w} 能放 ${能放}`).toBe(能放 ? 1 : 0);
         expect(errors).toEqual([]);
       } finally { await page.close(); }
     }

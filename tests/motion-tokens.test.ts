@@ -15,6 +15,12 @@ const css = fs.readFileSync(path.resolve(__dirname, "../src/app/globals.css"), "
 const 根 = css.slice(css.indexOf(":root"), css.indexOf("\n}"));
 
 describe("动效底座", () => {
+  it("循环周期（--breath）在 :root 里，阶段条当前节点的呼吸用它，不写死秒数", () => {
+    expect(/--breath:\s*[\d.]+s;/.test(根)).toBe(true);
+    expect(css).toMatch(/animation: proj-stage-breath var\(--breath\) var\(--ease-morph\) infinite/);
+    expect(css).not.toMatch(/proj-stage-breath\s+[\d.]+m?s/);
+  });
+
   it("三条曲线、四档时长都在 :root 里", () => {
     for (const t of ["--ease:", "--ease-spring:", "--ease-morph:"]) {
       expect(根, `${t} 应该定义在 :root`).toContain(t);
@@ -222,5 +228,20 @@ describe("过渡和动画都走曲线 token（主题换曲线时才跟得上）"
       for (const 段 of 值.split(/,(?![^()]*\))/)) if (!/var\(--ease/.test(段)) 散的.push(`${m[1]}: ${段.trim()}`);
     }
     expect(散的, `这些过渡没走曲线 token：\n${散的.join("\n")}`).toEqual([]);
+  });
+});
+
+/* 11-12 阶段条改成分段滑块：浮片用 left / width 滑（不用 transform），曲线走 token；减弱动态时只留透明度过渡 */
+describe("阶段条浮片", () => {
+  const 体 = (sel: string, 从 = 0) => { const i = css.indexOf(`${sel} {`, 从); return i < 0 ? "" : css.slice(i, css.indexOf("}", i)); };
+  it("滑动走 --ease-spring、时长用 token，不用 transform", () => {
+    const 片 = 体(".proj-stage-thumb");
+    expect(片).toContain("left var(--t-morph) var(--ease-spring)");
+    expect(片).not.toMatch(/transform|translate|cubic-bezier|\d+ms/);
+  });
+  it("减弱动态时浮片不滑，只淡入淡出", () => {
+    const i = css.indexOf(".proj-stage-thumb { transition: opacity");
+    expect(i).toBeGreaterThan(-1);
+    expect(css.lastIndexOf("@media (prefers-reduced-motion: reduce)", i)).toBeGreaterThan(css.indexOf(".proj-stage-thumb {"));
   });
 });

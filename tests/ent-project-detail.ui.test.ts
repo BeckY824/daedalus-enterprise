@@ -97,7 +97,9 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     // 11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」记一条沟通、AI 录入、发卡点、改分配回到各自卡头；
     // 「完成节点 ▼」「新增沟通」在阶段页签那一行（M-节点-04 / U-项目-06）
     const 卡上钮 = (await page.locator(".proj-main button, .proj-side button").allInnerTexts()).map(t => t.replace(/\s/g, ""));
-    expect(卡上钮).toEqual(expect.arrayContaining(["新增沟通", "AI录入", "发卡点", "改分配"]));
+    expect(卡上钮).toEqual(expect.arrayContaining(["新增沟通", "发卡点", "改分配"]));
+    // 11-12：「AI 录入」不再单摆在卡头，收进记一条沟通弹窗顶上的「手动录入 | AI 录入」
+    expect(卡上钮).not.toContain("AI录入");
     // 11-01 会议 §5：沟通卡头右边写「新增沟通」（走弹窗），不再有「去客户页看看」
     expect(await page.getByTestId("follow-card-new").innerText()).toBe("新增沟通");
     expect(await page.locator(".proj-main a").filter({ hasText: /页看看/ }).count()).toBe(0);
@@ -118,7 +120,7 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     // 右栏里的卡片内容不能伸出卡片（右栏窄，最容易被长串撑开）
     const 伸出 = await page.locator(".proj-side .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    for (const name of ["AI 录入", "新增沟通", "项目转让"]) {
+    for (const name of ["新增沟通", "项目转让"]) {
       const box = await page.getByRole("button", { name }).first().boundingBox();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
@@ -129,8 +131,15 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     expect(笔.x + 笔.width).toBeLessThanOrEqual(w);
     expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label"), [笔.x + 笔.width / 2, 笔.y + 笔.height / 2])).toBe("编辑项目");
     // 每张卡头最右的收起钮（11-01）：不出屏、点得中、不压卡头别的按钮，和卡标题同一行居中
+    // 11-12 起沟通、卡点的收起并进卡头连体按钮的右半（.split-caret），其余还是独立那颗
+    expect(await page.locator(".proj-fold-btn, .proj-fold .split-caret").count()).toBeGreaterThanOrEqual(7);
+    for (const b of await page.locator(".proj-fold .split-caret").all()) {
+      await b.scrollIntoViewIfNeeded();
+      const box = (await b.boundingBox())!;
+      expect(box.x + box.width).toBeLessThanOrEqual(w);
+      expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.className ?? "", [box.x + box.width / 2, box.y + box.height / 2])).toContain("split-caret");
+    }
     const 收钮 = await page.locator(".proj-fold-btn").all();
-    expect(收钮.length).toBeGreaterThanOrEqual(7);
     for (const b of 收钮) {
       await b.scrollIntoViewIfNeeded();
       const box = (await b.boundingBox())!;
@@ -233,33 +242,59 @@ it("P17 只读：关联卡只列文字，没有下拉、没有关联 / 解除按
   } finally { await page.close(); }
 });
 
-it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注明）；「AI 录入」打开记一条、AI 那格先摆出来，只预填不写", async () => {
+it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注明）；11-12 起卡头只有「新增沟通」，弹窗顶上切「手动录入 | AI 录入」，默认手动、记住上次、切换不丢已填，AI 只预填不写", async () => {
   const { page, errors } = await open(true);
   try {
     const 项目卡 = await page.locator(".proj-side .ant-card").filter({ hasText: "项目来源" }).first().innerText();
     expect(项目卡).toContain("28 天");
     expect(项目卡).toMatch(/同.+来源/);
-    await page.getByRole("button", { name: "AI 录入" }).first().click();
+    expect(await page.getByRole("button", { name: "AI 录入" }).count()).toBe(0);
+    await page.evaluate(() => localStorage.removeItem("daedalus.follow.mode"));
+    await page.getByTestId("follow-card-new").click();
+    const 切 = page.locator(".follow-mode .ant-segmented");
+    await 切.waitFor();
+    const 选中 = () => 切.locator(".ant-segmented-item-selected").innerText();
+    // 默认手动：没有原话框；「更多」里不再有 AI
+    expect(await 选中()).toBe("手动录入");
+    expect(await page.getByRole("textbox", { name: "沟通原话" }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /更多：/ }).innerText()).not.toMatch(/AI/);
+    // 手填了一段，切到 AI：原话框出来、光标落在那，手填的还在
+    await page.getByRole("textbox", { name: "沟通内容" }).fill("手填的内容");
+    await 切.getByText("AI 录入").click();
     const 原话 = page.getByRole("textbox", { name: "沟通原话" });
     await 原话.waitFor();
-    expect(await 原话.evaluate(e => e === document.activeElement)).toBe(true);
+    await expect.poll(() => 原话.evaluate(e => e === document.activeElement)).toBe(true);
+    expect(await page.getByRole("textbox", { name: "沟通内容" }).inputValue()).toBe("手填的内容");
     await page.getByRole("button", { name: /AI 解析填表/ }).click();
     await page.getByText("先把沟通过程随手写几句").waitFor();
     await 原话.fill("刚和王经理通了电话，下周三再聊报价");
     await page.getByRole("button", { name: /AI 解析填表/ }).click();
     await page.getByText("未启用").waitFor();
-    // 「记下」照旧要内容、要选是否明确回复，AI 没填出东西就点不了
+    // 「记下」照旧要下一步计划，AI 没填出东西就点不了（只预填、不写库）
     expect(await page.getByRole("button", { name: "记 下" }).or(page.getByRole("button", { name: "记下" })).first().isDisabled()).toBe(true);
-    await page.getByRole("button", { name: /取\s*消/ }).click();
+    // 切回手动：原话框收起，手填的还在
+    await 切.getByText("手动录入").click();
     await 原话.waitFor({ state: "detached" });
-    // 手填入口：AI 那格收在默认折叠的「更多」里（F-跟进-06），展开后只给一个「用 AI 从原话预填」
+    expect(await page.getByRole("textbox", { name: "沟通内容" }).inputValue()).toBe("手填的内容");
+    await 切.getByText("AI 录入").click();
+    await page.getByRole("button", { name: /取\s*消/ }).click();
+    await page.getByRole("textbox", { name: "沟通原话" }).waitFor({ state: "detached" });
+    // 再开：记得上次选的是 AI
+    expect(await page.evaluate(() => localStorage.getItem("daedalus.follow.mode"))).toBe("AI");
     await page.getByTestId("follow-card-new").click();
-    const 更多 = page.getByRole("button", { name: /更多：/ });
-    await 更多.waitFor();
-    expect(await 更多.getAttribute("aria-expanded")).toBe("false");
-    expect(await page.getByRole("button", { name: "用 AI 从原话预填" }).count()).toBe(0);
-    await 更多.click();
-    await page.getByRole("button", { name: "用 AI 从原话预填" }).waitFor();
+    await page.getByRole("textbox", { name: "沟通原话" }).waitFor();
+    expect(await 选中()).toBe("AI 录入");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("没 AI 权限（模型没配）：记一条沟通弹窗里没有「手动录入 | AI 录入」切换，直接手填", async () => {
+  const { page, errors } = await 覆盖(1280, { 我是负责人: true, 能记沟通: true, aiEnabled: false });
+  try {
+    await page.evaluate(() => localStorage.setItem("daedalus.follow.mode", "AI"));
+    await page.getByTestId("follow-card-new").click();
+    await page.getByRole("textbox", { name: "沟通内容" }).waitFor();
+    expect(await page.locator(".follow-mode").count()).toBe(0);
     expect(await page.getByRole("textbox", { name: "沟通原话" }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -1012,7 +1047,7 @@ it("R5 有结局 / 不能改进程：有结局换成「改回进程」、没有�
   } finally { await page.close(); }
 });
 
-it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是箭头步骤条、一排自己横滚，当前那块滚到看得见；当前进程一圈动画，减少动态效果时不动", async (w) => {
+it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是分段滑块、一排自己横滚，当前那格滚到看得见；当前进程橙点呼吸，减少动态效果时不动", async (w) => {
   const { page, errors } = await open(true, w);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "商机", node: "合同审批", name: "长".repeat(40) }));
@@ -1022,8 +1057,10 @@ it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是箭头步骤条
     expect(伸出).toEqual([]);
     const 排 = page.locator(".proj-stage-nodes");
     expect(await 排.evaluate(e => getComputedStyle(e).overflowX)).toBe("auto");
+    // 11-12 分段滑块：每格等宽、不小于最小宽度（放不下就横滚，不挤扁）
     const 宽们 = await page.locator(".proj-stage-node").evaluateAll(ns => ns.map(n => Math.round(n.getBoundingClientRect().width)));
-    expect(new Set(宽们)).toEqual(new Set([190]));
+    expect(new Set(宽们).size).toBe(1);
+    expect(宽们[0]).toBeGreaterThanOrEqual(136);
     // 打开时「当前」那块整个露在这一排可见范围里
     const 露 = await 排.evaluate(ol => {
       const a = ol.getBoundingClientRect(), b = ol.querySelector("[aria-current=step]")!.getBoundingClientRect();
@@ -1032,7 +1069,7 @@ it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是箭头步骤条
     expect(露).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const 动画 = () => page.locator(".proj-stage-node.is-cur .proj-stage-mark").evaluate(e => getComputedStyle(e).animationName);
-    expect(await 动画()).toBe("proj-stage-ring");
+    expect(await 动画()).toBe("proj-stage-breath");
     await page.emulateMedia({ reducedMotion: "reduce" });
     expect(await 动画()).toBe("none");
     expect(errors).toEqual([]);
@@ -1183,7 +1220,7 @@ const 沟通两条 = [
   { id: "f2", type: "PHONE", content: "对方要重新报价", occurredAt: "2026-10-05T00:00:00.000Z", who: "组员丙", node: "生产备货", code: "FUL0002", 提醒: null,
     附件: [{ id: "a1", name: "通话录音.mp3", mime: "audio/mpeg", size: 2048, width: null, height: null, createdAt: "2026-10-05T00:00:00.000Z", 有文件: true }] },
 ];
-const 头 = (page: import("playwright").Page, id: string) => page.locator(`#${id} > .proj-fold-btn`);
+const 头 = (page: import("playwright").Page, id: string) => page.locator(`#${id} > .proj-fold-btn, #${id} > .ant-card > .ant-card-head .split-caret`);
 
 it("U-项目-01/04：沟通默认摊开、卡点默认收起，点卡头最右的钮开合；搜索框有词时两块都摊开、只列对得上的", async () => {
   const { page, errors } = await 覆盖(1280, { followUps: 沟通两条 });
@@ -1249,7 +1286,7 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
     await 头(page, "project-follow").click();
     expect(await 头(page, "project-follow").getAttribute("aria-expanded")).toBe("false");
     await 组.locator(".proj-att-link").click();
-    await page.waitForFunction(() => document.querySelector("#project-follow > .proj-fold-btn")?.getAttribute("aria-expanded") === "true");
+    await page.waitForFunction(() => document.querySelector("#project-follow > .proj-fold-btn, #project-follow > .ant-card > .ant-card-head .split-caret")?.getAttribute("aria-expanded") === "true");
     await page.locator("#follow-f2").waitFor();
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -1283,23 +1320,34 @@ it("U-项目-07：转让先选人、再点「确认转让」才交；框里写�
   } finally { await page.close(); }
 });
 
-it("箭头步骤条：当前块浅蓝底蓝描边橙点，别的灰底灰点，走过的绿勾；两头小箭头只在那边还有块时出现，点了往那边滚", async () => {
+it("分段滑块：当前格正文色加粗橙点、白浮片垫在下面，走过的次要字绿勾，没到的最浅字；出口在槽外；两头小箭头只在那边还有格时出现，点了往那边滚", async () => {
   const { page, errors } = await open(true, 1024);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "商机", node: "合同审批" }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith("合同审批"));
     const 色 = (v: string) => page.evaluate(x => { const s = document.createElement("span"); s.style.color = x; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
-    const 底 = (sel: string, 伪 = "::before") => page.locator(sel).first().evaluate((e, p) => getComputedStyle(e, p).backgroundColor, 伪);
-    expect(await 底(".proj-stage-node.is-cur")).toBe(await 色("var(--brand-bg)"));
-    expect(await 底(".proj-stage-node.is-cur", "")).toBe(await 色("var(--brand)"));
-    expect(await 底(".proj-stage-node.is-cur .proj-stage-mark", "")).toBe(await 色("var(--warning)"));
-    expect(await 底(".proj-stage-node.is-todo")).toBe(await 色("var(--hover)"));
-    expect(await 底(".proj-stage-node.is-todo .proj-stage-mark", "")).toBe(await 色("var(--line-strong)"));
-    expect(await 底(".proj-stage-node.is-done .proj-stage-mark", "")).toBe(await 色("var(--success)"));
+    const 字 = (sel: string) => page.locator(sel).first().evaluate(e => getComputedStyle(e).color);
+    expect(await 字(".proj-stage-node.is-cur")).toBe(await 色("var(--ink)"));
+    expect(await page.locator(".proj-stage-node.is-cur").evaluate(e => getComputedStyle(e).fontWeight)).toBe("600");
+    expect(await page.locator(".proj-stage-node.is-cur .proj-stage-mark").evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 色("var(--warning)"));
+    expect(await 字(".proj-stage-node.is-todo")).toBe(await 色("var(--text-faint)"));
+    expect(await 字(".proj-stage-node.is-done")).toBe(await 色("var(--text-muted)"));
+    expect(await 字(".proj-stage-node.is-done .proj-stage-mark")).toBe(await 色("var(--success)"));
     expect(await page.locator(".proj-stage-node.is-done svg").count()).toBe(3);
-    // 首尾相接：后一块的左边插进前一块的尖里
+    // 读屏照旧知道哪格是当前（aria-current + 看不见的「当前」）；屏上不再写「当前」两个字
+    expect(await page.locator(".proj-stage-node[aria-current=step]").count()).toBe(1);
+    expect(await page.locator(".proj-stage-node[aria-current=step] .sr-only").innerText()).toContain("当前");
+    // 浮片正垫在当前格下面
+    const 对齐 = await page.evaluate(() => {
+      const 片 = document.querySelector(".proj-stage-thumb") as HTMLElement, 格 = document.querySelector(".proj-stage-node.is-cur") as HTMLElement;
+      return { on: 片.dataset.on, l: Math.round(片.offsetLeft - 格.offsetLeft), w: Math.round(片.offsetWidth - 格.offsetWidth) };
+    });
+    expect(对齐).toEqual({ on: "1", l: 0, w: 0 });
+    // 格与格并排不重叠；出口不在槽里，是槽外单独一颗
     const 盒们 = await page.locator(".proj-stage-node").evaluateAll(ns => ns.map(n => n.getBoundingClientRect()).map(r => ({ l: r.left, r: r.right })));
-    for (let i = 1; i < 盒们.length; i++) expect(盒们[i].l).toBeLessThan(盒们[i - 1].r);
+    for (let i = 1; i < 盒们.length; i++) expect(盒们[i].l).toBeGreaterThanOrEqual(盒们[i - 1].r - 0.5);
+    expect(await page.locator(".proj-stage-nodes .proj-stage-exit").count()).toBe(0);
+    expect(await page.locator(".proj-stage-strip > .proj-stage-exit").innerText()).toBe("商机赢单");
     // 当前在中间，两头都还有块：两个小箭头都在；点右边往右滚
     const 排 = page.locator(".proj-stage-nodes");
     await page.getByRole("button", { name: "往右看节点" }).waitFor();
@@ -1310,10 +1358,12 @@ it("箭头步骤条：当前块浅蓝底蓝描边橙点，别的灰底灰点，�
     // 滚到最右：右箭头收起来
     await 排.evaluate(e => { e.scrollLeft = e.scrollWidth; });
     await page.getByRole("button", { name: "往右看节点" }).waitFor({ state: "detached" });
-    // 换到订单页签：没有当前块，从头摆、左箭头收起来
+    // 换到订单页签：没有当前格，从头摆、左箭头收起来，浮片藏起来
     await page.locator(".proj-stage-tab").filter({ hasText: "订单" }).click();
     await page.getByRole("button", { name: "往左看节点" }).waitFor({ state: "detached" });
     expect(await 排.evaluate(e => e.scrollLeft)).toBe(0);
+    expect(await page.locator(".proj-stage-thumb").evaluate(e => (e as HTMLElement).dataset.on)).toBe("0");
+    await page.waitForFunction(() => getComputedStyle(document.querySelector(".proj-stage-thumb")!).opacity === "0");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -1392,13 +1442,13 @@ describe("沟通卡头：隐藏接手前", () => {
     }
   });
 
-  it.each([800, 1024, 1280])("%ipx：三颗按钮都摆着，标题不被挤断，横向不伸出", async (宽) => {
+  it.each([800, 1024, 1280])("%ipx：两颗按钮（隐藏接手前、新增沟通连体）都摆着，标题不被挤断，横向不伸出", async (宽) => {
     const { page, errors } = await 覆盖(宽, { 我是负责人: true, 能记沟通: true, aiEnabled: true, followUps: 两条 });
     try {
       const 钮 = page.getByTestId("follow-hide-before");
       await 钮.waitFor();
       expect(await page.getByTestId("follow-card-new").count()).toBe(1);
-      expect(await page.getByRole("button", { name: /AI 录入/ }).count()).toBe(1);
+      expect(await page.getByRole("button", { name: /AI 录入/ }).count()).toBe(0);
       expect(await 不伸出(page, ".proj-main")).toEqual([]);
       const 标题 = await 钮.evaluate(e => {
         const t = e.closest(".ant-card-head")!.querySelector(".ant-card-head-title") as HTMLElement;
@@ -1407,8 +1457,11 @@ describe("沟通卡头：隐藏接手前", () => {
       expect(标题).toEqual({ 完整: true, 文字: "沟通（2）" });
       // 折叠按钮（ProjectFold）摆在卡头最右，这几颗不能压上去
       const 压 = await 钮.evaluate(e => {
-        const f = e.closest(".proj-fold")!.querySelector(".proj-fold-btn")!.getBoundingClientRect();
-        return [...e.closest(".proj-follow-acts")!.querySelectorAll("button")].filter(b => { const r = b.getBoundingClientRect(); return r.right > f.left && r.left < f.right && r.bottom > f.top && r.top < f.bottom; }).length;
+        // 11-12 起收起是连体按钮的右半（.split-caret）；同一颗连体里的左半挨着它不算压
+        const 钮 = e.closest(".proj-fold")!.querySelector(".proj-fold-btn, .split-caret")!;
+        const f = 钮.getBoundingClientRect();
+        const 同组 = 钮.closest(".split-btn");
+        return [...e.closest(".proj-follow-acts")!.querySelectorAll("button")].filter(b => b !== 钮 && (!同组 || !同组.contains(b))).filter(b => { const r = b.getBoundingClientRect(); return r.right > f.left && r.left < f.right && r.bottom > f.top && r.top < f.bottom; }).length;
       });
       expect(压).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

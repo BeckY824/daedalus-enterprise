@@ -15,6 +15,8 @@
  * 首次绘制前由 外观预设脚本 读出来挂上（layout.tsx 的 <head>），否则刷新时会先闪一下默认样子。
  */
 
+import { 名单宽预设段 } from "./roster-width";
+
 export const 外观键 = "daedalus.appearance";
 
 export const 底色表 = [
@@ -119,4 +121,4 @@ const 网页玻璃段 = `if(!/Electron\\//.test(navigator.userAgent)){var g=null
  * Windows 上（网页和桌面端都算）顺手挂 os-win：globals.css 只有「压深默认主题浅灰字」那条不限 .shell-desktop，
  * 网页版在 Windows 上也要同样的字色；别的 os-win 规则都限在 .shell-desktop 里，网页不受影响
  */
-export const 外观预设脚本 = `(function(){try{var d=${JSON.stringify(默认外观)},v={};try{v=JSON.parse(localStorage.getItem(${JSON.stringify(外观键)})||"{}")||{};}catch(_){}var P=${JSON.stringify(底色表.map((x) => x.key))},S=${JSON.stringify(主题表.map((x) => x.key))};var e=document.documentElement;e.dataset.paper=P.indexOf(v.paper)>-1?v.paper:d.paper;e.dataset.skin=S.indexOf(v.skin)>-1?v.skin:d.skin;var M=${JSON.stringify(明暗表.map((x) => x.key))},m=M.indexOf(v.mode)>-1?v.mode:d.mode;if(m==="system"){m="light";try{if(matchMedia(${JSON.stringify(系统暗查询)}).matches)m="dark";}catch(_){}}e.dataset.mode=m;if(/Windows/.test(navigator.userAgent))e.classList.add("os-win");${网页玻璃段}}catch(_){}})();`;
+export const 外观预设脚本 = `(function(){try{var d=${JSON.stringify(默认外观)},v={};try{v=JSON.parse(localStorage.getItem(${JSON.stringify(外观键)})||"{}")||{};}catch(_){}var P=${JSON.stringify(底色表.map((x) => x.key))},S=${JSON.stringify(主题表.map((x) => x.key))};var e=document.documentElement;e.dataset.paper=P.indexOf(v.paper)>-1?v.paper:d.paper;e.dataset.skin=S.indexOf(v.skin)>-1?v.skin:d.skin;var M=${JSON.stringify(明暗表.map((x) => x.key))},m=M.indexOf(v.mode)>-1?v.mode:d.mode;if(m==="system"){m="light";try{if(matchMedia(${JSON.stringify(系统暗查询)}).matches)m="dark";}catch(_){}}e.dataset.mode=m;if(/Windows/.test(navigator.userAgent))e.classList.add("os-win");${网页玻璃段}${名单宽预设段}}catch(_){}})();`;
