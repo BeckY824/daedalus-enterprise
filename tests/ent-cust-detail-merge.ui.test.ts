@@ -351,6 +351,11 @@ it("地址上的 ?project= 读不出来、服务端换成了别的：地址改�
     // 没有项目可选、地址还带着：去掉 project
     await 画(page, { 地址: "project=p2", 空: true });
     await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a");
+    // 别的查询参数（?focus= 等）不丢，只改 project 这一项
+    await 画(page, { 地址: "focus=plan:x&project=看不了的&tab=2" });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?focus=plan%3Ax&project=p1&tab=2");
+    await 画(page, { 地址: "focus=plan:x&project=p2", 空: true });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?focus=plan%3Ax");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

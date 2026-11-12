@@ -88,14 +88,20 @@ export function ProjectTabs({ 数据, 当前id, 开建项目, 右端 }: { 数据
 export default function ProjectZone({ 数据, 槽 }: { 数据: 项目区数据; 槽: 项目区槽 }) {
   const 客户页 = `/customers/${encodeURIComponent(数据.customerId)}`;
   const router = useRouter();
-  const 要的 = useSearchParams().get("project");
+  const 参数 = useSearchParams();
+  const 参数字 = 参数.toString();
   const 显示的 = 数据.当前?.p.id ?? null;
   // 地址上带的项目读不出来（看不了、不是这位客户的、删了）时服务端换成了默认那个：把地址改成实际显示的，
-  // 不留「地址写 A、页签和内容是 B」（审查 #5）。只换 query，锚点照留
+  // 不留「地址写 A、页签和内容是 B」（审查 #5）。只改 project 这一项，别的查询参数（?focus= 等）和锚点照留
   useEffect(() => {
-    if (!要的 || 要的 === 显示的) return;
-    router.replace(显示的 ? 客户页项目地址(数据.customerId, 显示的, window.location.hash) : `${客户页}${window.location.hash}`, { scroll: false });
-  }, [要的, 显示的, 数据.customerId, 客户页, router]);
+    const 现在 = new URLSearchParams(参数字);
+    const 要 = 现在.get("project");
+    if (!要 || 要 === 显示的) return;
+    if (显示的) 现在.set("project", 显示的);
+    else 现在.delete("project");
+    const 查 = 现在.toString();
+    router.replace(`${客户页}${查 ? `?${查}` : ""}${window.location.hash}`, { scroll: false });
+  }, [参数字, 显示的, 客户页, router]);
   if (!数据.当前) {
     return (
       <section className="rec-zone" aria-label="项目">
