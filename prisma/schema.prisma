@@ -1825,6 +1825,10 @@ model EntCustomerClock {
   /// 到期该进公海、被同事在推的项目挡住，等条线总管理裁决（M-公海-27）
   blocked       Boolean  @default(false)
   updatedAt     DateTime @updatedAt
+  /// 成交成立日（迁移 124，M-公海-21）：首次满足「成交过」那天（上海日）；成立后永久按成交客户的活跃段算，空 = 还没成立
+  dealDay       String?
+  /// 额度上次重置日（迁移 125，M-公海-38）：最近一次因为有内容的沟通把继续持有额度回满是哪天（上海日），同一天只回满一次
+  quotaResetDay String?
 
   @@index([state, enteredDay])
 }
@@ -1846,6 +1850,8 @@ model EntCustomerStateLog {
   /// 理由：继续持有写的那句、代选 / 裁决的说明；自动的写因为什么（如「待回收满 30 天」）
   reason     String?
   at         DateTime @default(now())
+  /// 这次继续持有顺延了几天（迁移 126，M-公海-19）：本人点、上级代选的那几行存点的那一刻的每次天数；别的行为空
+  holdDays   Int?
 
   @@index([customerId, at])
 }

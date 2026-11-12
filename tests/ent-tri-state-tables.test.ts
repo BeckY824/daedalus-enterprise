@@ -3,6 +3,7 @@
  *   - 两条安装路径一致：全新安装（schema.prisma 推出来的测试库）和老库升级（跑迁移 SQL）建出来的列、默认值、索引一样
  *   - 老库升级：已有客户、项目的库跑 121–123，跑两遍不抛、老数据不动，客户 / 项目删了行跟着级联走
  *   - 用 prisma 读写得通：默认值对、一位客户一行、删客户带走钟和留痕、删项目带走冷标
+ *   - 11-12 补的三列（迁移 124–126）：客户钟「成交成立日」「额度上次重置日」、状态留痕「这次顺延了几天」，老库加列重跑跳过、默认为空
  * 只管表；状态怎么算、谁来写在后面的 PR
  */
 import { describe, it, expect, beforeEach } from "vitest";
@@ -33,7 +34,18 @@ function 在老库上<T>(fn: (db: DatabaseSync) => T): T {
     rmSync(目录, { recursive: true, force: true });
   }
 }
-const 跑迁移 = (db: DatabaseSync) => { for (const f of 三份) db.exec(readFileSync(path.join(DIR, f), "utf8")); };
+/** 11-12 补列：每份只有一句 ADD COLUMN，重跑抛 duplicate column name，runner 当预期跳过（migrations/README.md 第 4 条） */
+const 补列 = readdirSync(DIR).filter((f) => /^12[456]-/.test(f)).sort();
+const 跑迁移 = (db: DatabaseSync) => {
+  for (const f of 三份) db.exec(readFileSync(path.join(DIR, f), "utf8"));
+  for (const f of 补列) {
+    try {
+      db.exec(readFileSync(path.join(DIR, f), "utf8"));
+    } catch (e) {
+      if (!/duplicate column name/.test(String(e))) throw e;
+    }
+  }
+};
 
 type 列 = { name: string; type: string; notnull: number; dflt_value: string | null; pk: number };
 const 归一列 = (rows: 列[]) => rows.map((r) => ({ name: r.name, type: r.type, notnull: Number(r.notnull), dflt: r.dflt_value === null ? null : String(r.dflt_value).replace(/^["']|["']$/g, ""), pk: Number(r.pk) })).sort((a, b) => a.name.localeCompare(b.name));
@@ -44,6 +56,30 @@ describe("迁移文件", () => {
     三份.forEach((f, i) => {
       const sql = readFileSync(path.join(DIR, f), "utf8").replace(/--.*$/gm, "");
       expect([...sql.matchAll(/CREATE TABLE IF NOT EXISTS "(\w+)"/g)].map((m) => m[1]), f).toEqual([三张表[i]]);
+    });
+  });
+});
+
+describe("11-12 补列（124–126）", () => {
+  it("三份各只有一句 ADD COLUMN：钟的成交成立日、额度上次重置日，留痕的顺延天数", () => {
+    expect(补列).toEqual(["124-ent-clock-deal-day.sql", "125-ent-clock-quota-reset-day.sql", "126-ent-state-log-hold-days.sql"]);
+    const 句 = 补列.map((f) => readFileSync(path.join(DIR, f), "utf8").replace(/--.*$/gm, "").trim());
+    expect(句).toEqual([
+      'ALTER TABLE "EntCustomerClock" ADD COLUMN "dealDay" TEXT;',
+      'ALTER TABLE "EntCustomerClock" ADD COLUMN "quotaResetDay" TEXT;',
+      'ALTER TABLE "EntCustomerStateLog" ADD COLUMN "holdDays" INTEGER;',
+    ]);
+  });
+
+  it("老库上已有的钟、留痕加列后还在，新列为空；重跑不抛", () => {
+    在老库上((db) => {
+      for (const f of 三份) db.exec(readFileSync(path.join(DIR, f), "utf8"));
+      db.prepare('INSERT INTO "EntCustomerClock" ("customerId", "enteredDay", "updatedAt") VALUES (?, ?, ?)').run("c1", "2026-11-01", 1);
+      db.prepare('INSERT INTO "EntCustomerStateLog" ("id", "customerId", "toState") VALUES (?, ?, ?)').run("l1", "c1", "活跃");
+      expect(() => 跑迁移(db)).not.toThrow();
+      expect(() => 跑迁移(db)).not.toThrow();
+      expect(db.prepare('SELECT "dealDay", "quotaResetDay" FROM "EntCustomerClock"').all()).toEqual([{ dealDay: null, quotaResetDay: null }]);
+      expect(db.prepare('SELECT "holdDays" FROM "EntCustomerStateLog"').all()).toEqual([{ holdDays: null }]);
     });
   });
 });
@@ -128,7 +164,7 @@ describe("用 prisma 读写", () => {
 
   it("客户钟：只给客户和进入日，别的都是默认（活跃、0 次、没推后、没被挡）；一位客户一行，再写是改", async () => {
     const 钟 = await prisma.entCustomerClock.create({ data: { customerId: 客户, enteredDay: "2026-11-01" } });
-    expect(钟).toMatchObject({ customerId: 客户, state: "活跃", enteredDay: "2026-11-01", noticeCount: 0, lastNoticeDay: null, holdCount: 0, holdDays: 0, holdUntil: null, holdReason: null, blocked: false });
+    expect(钟).toMatchObject({ customerId: 客户, state: "活跃", enteredDay: "2026-11-01", noticeCount: 0, lastNoticeDay: null, holdCount: 0, holdDays: 0, holdUntil: null, holdReason: null, blocked: false, dealDay: null, quotaResetDay: null });
     await expect(prisma.entCustomerClock.create({ data: { customerId: 客户, enteredDay: "2026-11-02" } })).rejects.toThrow();
     await prisma.entCustomerClock.upsert({
       where: { customerId: 客户 },
