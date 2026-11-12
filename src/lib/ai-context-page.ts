@@ -22,6 +22,7 @@
  */
 import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "./business-config";
 import { 客户页面筛选键, type 页面客户筛选 } from "./ai-page-filters";
+import { 三态显示名 } from "./enterprise/tri-state-label";
 export type 页面上下文 = {
   /** 这一页叫什么，不带筛选。落库时当对话标题的前缀用 */
   名: string;
@@ -207,7 +208,7 @@ export function 认页面(pathname: string, params: URLSearchParams | null, 详�
       const v = params?.get(k);
       if (v) {
         const label = k === "grade" ? b.fields.grade : 说法;
-        const value = k === "followStatus" || k === "decisionStatus" ? statusLabel(b, v) : k === "pool" && v === "1" ? "仅公海客户" : v;
+        const value = k === "followStatus" || k === "decisionStatus" ? statusLabel(b, v) : k === "pool" && v === "1" ? "仅公海客户" : k === "triState" ? 三态显示名(v) : v;
         条件.push(`${label} ${value}`);
       }
     }

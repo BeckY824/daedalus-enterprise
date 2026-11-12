@@ -140,15 +140,15 @@ describe("改客户三态规则（M-公海-20：只有系统管理员；M-公海
     expect(规则.超时回收).toMatchObject({ 开: true, 节点天数: { 潜客培育: 7, 线索验证: 5, 痛点挖掘: 10 } });
     const 日志 = await prisma.auditLog.findMany({ where: { entity: "Setting", entityId: "orgRules", summary: { contains: "客户三态" } }, orderBy: { at: "asc" }, select: { summary: true, userId: true } });
     expect(日志.map((x) => x.summary)).toEqual([
-      "组织规则：客户三态开，开关 关 → 开，内贸客户待回收后进公海的天数 30 → 21，成交客户活跃段天数 365 → 400",
-      "组织规则：客户三态开，成交客户活跃段天数 400 → 365，继续持有累计次数 3 → 4，继续持有累计天数 90 → 120",
+      "组织规则：客户三态开，开关 关 → 开，内贸客户进入即将回收后进公海的天数 30 → 21，成交客户正常跟进段天数 365 → 400",
+      "组织规则：客户三态开，成交客户正常跟进段天数 400 → 365，继续持有累计次数 3 → 4，继续持有累计天数 90 → 120",
     ]);
     expect(日志.every((x) => x.userId === 总管)).toBe(true);
   });
 
   it("填错的报出来、不写、不留日志", async () => {
     当(总管);
-    expect(await 改组织规则({ 三态: { 内贸: { 沉睡: 180 } } })).toEqual({ ok: false, error: "内贸客户进待回收的天数要大于进沉睡的天数" });
+    expect(await 改组织规则({ 三态: { 内贸: { 沉睡: 180 } } })).toEqual({ ok: false, error: "内贸客户进入即将回收的天数要大于进入沉睡待定的天数" });
     expect((await 读组织规则()).三态).toEqual(默认三态规则);
     expect(await prisma.auditLog.count({ where: { summary: { contains: "客户三态" } } })).toBe(0);
   });

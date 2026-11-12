@@ -98,7 +98,7 @@ describe("收到提醒的人一定点得了（客户外贸线、负责人内贸�
   it("被挡请裁决推给外贸总管理，外贸总管理能暂缓回收；内贸总管理收不到也点不了；系统管理员能点", async () => {
     await 到期被挡();
     await 钟上三态提醒(八点(210));
-    expect((await 三态通知(人.总外.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家到期暂缓回收、请裁决"]);
+    expect((await 三态通知(人.总外.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家到期进入暂缓待收、请裁决"]);
     expect(await 三态通知(人.总内.id)).toHaveLength(0);
     expect(await 暂缓回收动作(人.总内, 客户, null, 白天(210))).toMatchObject({ ok: false, error: "只有这条线的总管理或系统管理员能裁决" });
     expect(await 暂缓回收动作(人.总外, 客户, null, 白天(210))).toEqual({ ok: true });
@@ -182,7 +182,7 @@ describe("负责人停用", () => {
     expect(await 三态通知(人.乙.id)).toHaveLength(0);
     await 过(120);
     expect(await 三态通知(人.乙.id)).toHaveLength(0);
-    expect((await 三态通知(人.甲.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡", "客户三态提醒：1 家沉睡满 30 天"]);
+    expect((await 三态通知(人.甲.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡待定", "客户三态提醒：1 家沉睡待定满 30 天"]);
   });
 });
 
@@ -260,7 +260,7 @@ describe("08:00 那遍不按白天改的规则对钟", () => {
     const 扫完 = await 痕();
     await setSetting("orgRules", 开三态({ 内贸: { 沉睡: 100, 待回收: 180, 进公海: 30 } }));
     await 钟上三态提醒(八点(95));
-    expect((await 三态通知(人.乙.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡"]);
+    expect((await 三态通知(人.乙.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡待定"]);
     expect((await 钟())!.state).toBe("沉睡");
     expect(await 痕()).toEqual(扫完);
     // 次日 00:05 才按新规则退回活跃

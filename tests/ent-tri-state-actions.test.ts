@@ -91,7 +91,7 @@ describe("权限判定（permissions.ts）", () => {
 
 describe("继续持有", () => {
   it("活跃时不能点；沉睡第 90 天当天本人能点，钟不拨零、三个节点顺延 30 天；同一轮再点被拒", async () => {
-    expect(await 继续持有(人.乙, 客户, null, 第(89))).toMatchObject({ ok: false, error: "只有沉睡、待回收时能继续持有" });
+    expect(await 继续持有(人.乙, 客户, null, 第(89))).toMatchObject({ ok: false, error: "只有沉睡待定、即将回收时能继续持有" });
     expect(await 继续持有(人.乙, 客户, null, 第(90))).toEqual({ ok: true, 剩次数: 2, 剩天数: 60 });
     expect(await 痕()).toEqual([{ via: "本人", reason: "我还在跟", holdDays: 30, userId: 人.乙.id }]);
     const 钟 = await prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: 客户 } });
@@ -99,17 +99,17 @@ describe("继续持有", () => {
     // 顺延后第 119 天还活跃，第 120 天回到沉睡（= 第 90 天 + 30）
     expect((await 读一位三态(客户, 第(119)))!.状态).toBe("活跃");
     expect((await 读一位三态(客户, 第(120)))!.状态).toBe("沉睡");
-    expect(await 继续持有(人.乙, 客户, null, 第(120))).toMatchObject({ ok: false, error: "沉睡这一轮已经继续持有过一次" });
+    expect(await 继续持有(人.乙, 客户, null, 第(120))).toMatchObject({ ok: false, error: "沉睡待定这一轮已经继续持有过一次" });
   });
 
   it("待回收要写理由；写了理由能点", async () => {
-    expect(await 继续持有(人.乙, 客户, "  ", 第(180))).toMatchObject({ ok: false, error: "待回收时要写理由才能继续持有" });
+    expect(await 继续持有(人.乙, 客户, "  ", 第(180))).toMatchObject({ ok: false, error: "即将回收时要写理由才能继续持有" });
     expect(await 继续持有(人.乙, 客户, "下月签约", 第(180))).toMatchObject({ ok: true, 剩次数: 2 });
     expect((await 痕())[0]).toMatchObject({ via: "本人", reason: "下月签约" });
   });
 
   it("直属上级：第 119 天不能代选、第 120 天能；扣 1 次、留痕「由 甲 代选」、通知原负责人；隔级、别人不行", async () => {
-    expect(await 继续持有(人.甲, 客户, null, 第(119))).toMatchObject({ ok: false, error: "直属上级从沉睡第 30 天（第 120 天）起才能代选" });
+    expect(await 继续持有(人.甲, 客户, null, 第(119))).toMatchObject({ ok: false, error: "直属上级从沉睡待定第 30 天（第 120 天）起才能代选" });
     expect(await 继续持有(人.顶, 客户, null, 第(120))).toMatchObject({ ok: false, error: "只有负责人本人或直属上级能继续持有" });
     expect(await 继续持有(人.丙, 客户, null, 第(120))).toMatchObject({ ok: false });
     expect(await 继续持有(人.甲, 客户, null, 第(120))).toEqual({ ok: true, 剩次数: 2, 剩天数: 60 });
@@ -118,7 +118,7 @@ describe("继续持有", () => {
     expect(通知).toHaveLength(1);
     expect(通知[0].title).toContain("由 甲 代选");
     // 本人在同一轮再点被拒（代选占了这一轮）
-    expect(await 继续持有(人.乙, 客户, null, 第(121))).toMatchObject({ ok: false, error: "沉睡这一轮已经继续持有过一次" });
+    expect(await 继续持有(人.乙, 客户, null, 第(121))).toMatchObject({ ok: false, error: "沉睡待定这一轮已经继续持有过一次" });
   });
 
   it("额度挂客户：换负责人后新负责人接着用剩下的；第 4 次被拒；换负责人不回满", async () => {
@@ -179,7 +179,7 @@ describe("被挡裁决", () => {
   }
 
   it("没被挡的不能裁决；被挡后本线总管理暂缓回收：不扣额度、30 天内再点被拒、第 30 天能再点", async () => {
-    expect(await 暂缓回收动作(人.总内, 客户, null, 第(100))).toMatchObject({ ok: false, error: "只有到期该进公海、因同事在推的项目暂缓回收的客户才要裁决" });
+    expect(await 暂缓回收动作(人.总内, 客户, null, 第(100))).toMatchObject({ ok: false, error: "只有到期该进公海、因同事在推的项目进入暂缓待收的客户才要裁决" });
     await 到期被挡();
     expect(await 暂缓回收动作(人.总外, 客户, null, 第(210))).toMatchObject({ ok: false, error: "只有这条线的总管理或系统管理员能裁决" });
     expect(await 暂缓回收动作(人.甲, 客户, null, 第(210))).toMatchObject({ ok: false });
@@ -195,9 +195,9 @@ describe("被挡裁决", () => {
     expect(await 让同事结束项目动作(人.总内, 客户, 第(100))).toMatchObject({ ok: false });
     await 到期被挡();
     expect(await 让同事结束项目动作(人.总内, 客户, 第(210))).toEqual({ ok: true, 通知了: 1 });
-    expect((await prisma.entNotice.findMany({ where: { userId: 人.丙.id } }))[0].title).toContain("因你负责的项目暂缓回收");
+    expect((await prisma.entNotice.findMany({ where: { userId: 人.丙.id } }))[0].title).toContain("因你负责的项目进入暂缓待收");
     expect((await 痕())[0]).toMatchObject({ via: "总管理裁决", reason: "让同事结束项目（1 位同事）" });
     // 被挡时暂缓回收没用满 2 次，继续持有不给（T11）
-    expect(await 继续持有(人.乙, 客户, "还在跟", 第(210))).toMatchObject({ ok: false, error: "到期暂缓回收的客户先由条线总管理裁决暂缓回收（最多 2 次），用满以后才能继续持有" });
+    expect(await 继续持有(人.乙, 客户, "还在跟", 第(210))).toMatchObject({ ok: false, error: "暂缓待收的客户先由条线总管理裁决暂缓回收（最多 2 次），用满以后才能继续持有" });
   });
 });

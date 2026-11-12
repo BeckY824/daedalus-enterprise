@@ -480,7 +480,7 @@ describe("客户三态开着：状态列、回收状态筛选、看板色点（1
     await prisma.entCustomerClock.create({ data: { customerId: c1, state: "待回收", enteredDay: 加天(今天(), -31), noticeCount: 2, lastNoticeDay: 加天(今天(), -1) } });
     const 标 = 参三((await 量()).el).三态标?.[c1];
     expect(标).toEqual({ 态: "待回收", 几天后进公海: 19 });
-    expect(三态标字(标 as 三态标)).not.toContain("即将");
+    expect(三态标字(标 as 三态标)).not.toContain("马上进公海");
     // 一次没发（夜扫漏跑）：今天补第 1 次，进公海排到今天 + 30
     await prisma.entCustomerClock.update({ where: { customerId: c1 }, data: { noticeCount: 0, lastNoticeDay: null } });
     expect(参三((await 量()).el).三态标?.[c1]).toEqual({ 态: "待回收", 几天后进公海: 30 });
@@ -488,7 +488,7 @@ describe("客户三态开着：状态列、回收状态筛选、看板色点（1
     await prisma.entCustomerClock.update({ where: { customerId: c1 }, data: { noticeCount: 3, lastNoticeDay: 加天(今天(), -10) } });
     const 到 = 参三((await 量()).el).三态标?.[c1] as 三态标;
     expect(到).toEqual({ 态: "待回收", 几天后进公海: 0 });
-    expect(三态标字(到)).toContain("即将进公海");
+    expect(三态标字(到)).toContain("马上进公海");
   });
 
   it("负责人是市场成员的写「不计时」，不看钟；回收状态筛选四个值都对；导出、AI 白名单认 triState", async () => {

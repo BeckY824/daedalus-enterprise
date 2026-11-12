@@ -15,6 +15,7 @@ import { App, Button, Card, Input, InputNumber, Space, Switch, Tag } from "antd"
 import { 改组织规则 } from "@/app/(app)/projects/actions";
 import { 三态存占位词 } from "@/app/(app)/customers/tri-state-actions";
 import type { 三态规则, 三态天数 } from "@/lib/project/org-rules";
+import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
 
 export type 客户回收设置 = {
   三态: 三态规则;
@@ -25,13 +26,13 @@ export type 客户回收设置 = {
 };
 
 /** 打开时说清后果（开关旁、确认框里同一句） */
-const 打开后果 = "打开后立即开始按客户计时，几分钟内给每位客户建好状态：很久没有有效沟通的客户会进沉睡、待回收；系统每天 08:00（北京时间）起给负责人和上级发提醒，过了 08:00 才打开的当天就发第一遍；待回收满期还没人处理的自动进客户公海。";
+const 打开后果 = "打开后立即开始按客户计时，几分钟内给每位客户建好状态：很久没有有效沟通的客户会进入沉睡待定、即将回收；系统每天 08:00（北京时间）起给负责人和上级发提醒，过了 08:00 才打开的当天就发第一遍；即将回收满期还没人处理的自动进客户公海。";
 
 const 套们 = ["内贸", "外贸"] as const;
 const 项们: { k: keyof 三态天数; 前: string; 后: string; 最小: number; 最大: number }[] = [
-  { k: "沉睡", 前: "没有有效沟通满", 后: "天进沉睡", 最小: 1, 最大: 3650 },
-  { k: "待回收", 前: "没有有效沟通满", 后: "天进待回收", 最小: 2, 最大: 3650 },
-  { k: "进公海", 前: "进待回收后再满", 后: "天自动进客户公海", 最小: 21, 最大: 365 },
+  { k: "沉睡", 前: "没有有效沟通满", 后: "天进入沉睡待定", 最小: 1, 最大: 3650 },
+  { k: "待回收", 前: "没有有效沟通满", 后: "天进入即将回收", 最小: 2, 最大: 3650 },
+  { k: "进公海", 前: "进入即将回收后再满", 后: "天自动进客户公海", 最小: 21, 最大: 365 },
 ];
 
 export default function RecycleTab({ value }: { value: 客户回收设置 }) {
@@ -75,19 +76,19 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
           <Space>
             {挡 && <span className="tri-muted">{挡}</span>}
             <span className="tri-muted">{三态.开 ? "开" : "关"}</span>
-            <Switch aria-label="客户回收（沉睡 → 待回收 → 自动进公海）" checked={三态.开} disabled={!!挡 || 忙} onChange={切开关} />
+            <Switch aria-label="客户回收（沉睡待定 → 即将回收 → 自动进公海）" checked={三态.开} disabled={!!挡 || 忙} onChange={切开关} />
           </Space>
         }
       >
         <div className="tri-note">
-          沉睡 → 待回收 → 自动进客户公海。{打开后果}负责人是市场成员的客户不计时。默认关。
+          沉睡待定 → 即将回收 → 自动进客户公海。{打开后果}负责人是市场成员的客户不计时。默认关。
         </div>
         {套们.map((t) => (
           <div key={t} className="tri-set">
             <div className="tri-set-t">{t}客户</div>
             {项们.map(({ k, 前, 后, 最小, 最大 }) => (
               <div key={k} className="tri-set-row">
-                <span className="nowrap">{k}：{前}</span>
+                <span className="nowrap">{三态显示名(k)}：{前}</span>
                 <InputNumber
                   aria-label={`${t}客户${后.replace(/^天/, "")}的天数`}
                   min={最小} max={最大} precision={0} className="tri-num"
@@ -101,7 +102,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
           </div>
         ))}
         <div className="tri-note">
-          客户名下内贸、外贸项目都有时取较长的一套；没有项目或项目都是「暂不分配」的按内贸。待回收期间提醒负责人 3 次。改了天数当晚按新的重算。
+          客户名下内贸、外贸项目都有时取较长的一套；没有项目或项目都是「暂不分配」的按内贸。即将回收期间提醒负责人 3 次。改了天数当晚按新的重算。
         </div>
         {!挡 && (
           <Button type="primary" disabled={忙 || !改了} onClick={() => void 存({ 三态: { 内贸: 天.内贸, 外贸: 天.外贸 } }, "已保存")}>保存</Button>
