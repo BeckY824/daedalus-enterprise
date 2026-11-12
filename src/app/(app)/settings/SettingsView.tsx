@@ -150,7 +150,7 @@ export default function SettingsView({
    */
   const 分组表: [string, string[]][] = [
     ["个人", ["profile", "password", "keymap", "appearance"]],
-    ["工作区", ["members", "org", "business", "project", "ai", "imports", "exports", "enterprise", "trash", "audit"]],
+    ["工作区", ["members", "org", "business", "project", "recycle", "ai", "imports", "exports", "enterprise", "trash", "audit"]],
   ];
 
   /**
