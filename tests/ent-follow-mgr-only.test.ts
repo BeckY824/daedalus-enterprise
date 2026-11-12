@@ -33,7 +33,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import ProjectPage from "@/app/(app)/projects/[id]/page";
+import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
 import CustomerPage from "@/app/(app)/customers/[id]/page";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
@@ -58,7 +58,9 @@ const 找 = <T,>(x: unknown, 有: string): T | null => {
 type 项目开关 = { 能记沟通?: boolean; 可改沟通?: boolean; 可删沟通?: boolean };
 type 客户开关 = { 能改沟通?: boolean; 能删沟通?: boolean };
 const 项目页 = async (u: 人, id: string) => {
-  const r = 找<项目开关>(await 以(u, () => ProjectPage({ params: Promise.resolve({ id }) } as never)), "可改沟通");
+  // 11-12 客户详情合并第 2 批：进得了客户详情的人打开项目页会跳到客户详情的项目区，项目区和项目页同一个取数（projects/[id]/load.ts），按它看
+  const 载 = await 以(u, () => 读项目详情(u as never, id));
+  const r = 载.种 === "有" ? (载.props.p as 项目开关) : null;
   if (!r) throw new Error("页面没给 ProjectDetail");
   return { 能记沟通: !!r.能记沟通, 可改沟通: !!r.可改沟通, 可删沟通: !!r.可删沟通 };
 };

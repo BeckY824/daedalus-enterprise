@@ -870,9 +870,9 @@ export default function RecordView({
         </div>
         <span style={{ flex: 1 }} />
         {/* 两层排版（11-12 第 2 批）：客户名这一行右端只放整个客户的事——「客户转让」「客户退回公海」；AI 不占常驻一栏，在这里点开抽屉 */}
-        {项目区 && (aiEnabled || 能转让 || 能退回公海) && (
+        {去项目跟进 && ((项目区 && aiEnabled) || 能转让 || 能退回公海) && (
           <span className="rec-head-acts">
-            {aiEnabled && <Button icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)}>AI</Button>}
+            {项目区 && aiEnabled && <Button icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)}>AI</Button>}
             {能转让 && <Button title="客户换负责人，名下项目一起走" onClick={() => { set转给谁(undefined); set头部框("转让"); }}>客户转让</Button>}
             {能退回公海 && <Button title="客户和你自己的项目一起进公海" onClick={() => void 公海动作("放进")}>客户退回公海</Button>}
           </span>
@@ -909,27 +909,11 @@ export default function RecordView({
       </div>
 
       {/*
-        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简）：只留新开项目、客户转让、客户退回公海（11-01 改名，新开项目在左边；11-12 「转让项目 / 申请移交」统一叫「客户转让」、「退回公海」叫「客户退回公海」，和项目页的「项目转让 / 项目退回公海」分开）。
-        编辑资料、添加 / 管理联系人、删除客户、AI、新建任务都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
-        「新建沟通」挪进沟通记录的标题上，「新建任务」跟着待办挪到沟通记录下面，删除客户属权限限制不再给入口。
-        列宽、断点和 .rec 一样：左组对齐资料栏，整个客户的事（转让、退回公海）在中组最后、靠右
+        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简 → 11-12 客户详情合并第 2 批）：客户名这一行右端只留「客户转让」「客户退回公海」
+        （11-12 改名，和项目区第一行的「项目转让 / 项目退回公海」分开）；「新开项目」进了项目区页签行的「＋ 新建项目」。
+        编辑资料、添加 / 管理联系人、删除客户、新建任务都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
+        「新建沟通」在沟通记录卡头，「新建任务」在待办卡头，删除客户属权限限制不再给入口。原来名字下面单独那一排（.rec-acts）去掉
       */}
-      {去项目跟进 && !项目区 && (能转让 || 能退回公海) && (
-        <div className="rec-acts">
-          <div className="acts-g" />
-          <div className="rec-acts-r">
-            <div className="acts-g">
-              {(能转让 || 能退回公海) && (
-                <span className="acts-whole">
-                  {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>客户转让</Button>}
-                  {能退回公海 && <Button onClick={() => void 公海动作("放进")}>客户退回公海</Button>}
-                </span>
-              )}
-            </div>
-            <div className="acts-g" />
-          </div>
-        </div>
-      )}
 
       {/*
         标签行：跟进状态、决策状态、预计签约（设计稿 12/PAGE 里紧跟在名字下面那一行）。

@@ -3810,3 +3810,4 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
     .main .rec-page > .rec.rec-cd > .rec-zone { position: sticky; top: 0; height: 100cqh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; padding-bottom: max(12px, var(--detail-tail, 0px)); }
   }
 }
+.cd-empty-more { margin-top: 12px; }

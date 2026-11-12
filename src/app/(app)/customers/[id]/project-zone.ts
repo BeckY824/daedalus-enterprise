@@ -6,19 +6,12 @@ import { 能看项目 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 读项目详情 } from "../../projects/[id]/load";
 import type { 项目区数据 } from "./ProjectZone";
+import { 默认页签 } from "@/lib/project/customer-detail-href";
 
 type 列表项目 = { id: string; name: string; node: string; result: string | null; pooledAt: Date | null };
 
 /** 页签上写的当前节点：有结局写结局，异常写「异常 · 节点」（同原来左栏「项目」那一节） */
 const 节点字 = (p: 列表项目) => (p.result === "异常状态" ? `异常 · ${p.node}` : p.result ?? p.node);
-
-/**
- * 默认选哪个页签（?project 没带、或带的那个看不了）：我能看的、没结束的、最近有动静的（不在公海的优先）；
- * 一个没结束的都没有就选最近结束的。列表已按 updatedAt 倒序
- */
-export function 默认页签<T extends { id: string; result: string | null; pooledAt: Date | null }>(们: readonly T[]): T | null {
-  return 们.find((p) => !p.result && !p.pooledAt) ?? 们.find((p) => !p.result) ?? 们[0] ?? null;
-}
 
 /**
  * 客户详情的项目区（11-12 客户详情合并第 2 批）：

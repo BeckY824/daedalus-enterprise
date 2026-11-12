@@ -94,8 +94,9 @@ describe("市场成员打开已分给销售的项目", () => {
     expect(await 打开(小市, id)).toBe("NOT_FOUND");
   });
 
-  it("负责的销售自己打开照常进详情，不跳", async () => {
+  it("负责的销售自己打开：不走市场那条转向，跳到客户详情的项目区、停在这个项目的页签（11-12 客户详情合并第 2 批）", async () => {
     const id = await 项目("丙项目", 小王, 小市);
-    expect(await 打开(小王, id)).toBe("OK");
+    const c = (await prisma.project.findUniqueOrThrow({ where: { id } })).customerId;
+    expect(await 打开(小王, id)).toBe(`REDIRECT:/customers/${c}?project=${id}`);
   });
 });

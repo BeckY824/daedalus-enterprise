@@ -2,6 +2,8 @@
 
 import { type ReactNode } from "react";
 import Link from "next/link";
+import { Card } from "antd";
+import { ProjectFold } from "../../projects/[id]/ProjectFold";
 import ProjectDetail, { type 项目详情Props } from "../../projects/[id]/ProjectDetail";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import type { 项目区槽 } from "./types";
@@ -88,6 +90,13 @@ export default function ProjectZone({ 数据, 槽 }: { 数据: 项目区数据; 
               ＋ 新建项目
             </button>
           )}
+        </div>
+        {/* 没有项目也有这位客户的事：老的沟通记录（不挂项目的）、待办照样摆，只看 */}
+        <div className="cd-mid cd-empty-more">
+          <ProjectFold id="project-follow" 名="沟通记录">
+            <Card className="cd-comm" title={`沟通记录（${槽.全部沟通数}）`}>{槽.全部沟通}</Card>
+          </ProjectFold>
+          {槽.待办}
         </div>
       </section>
     );
