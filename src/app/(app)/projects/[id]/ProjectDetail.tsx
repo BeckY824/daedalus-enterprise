@@ -24,6 +24,7 @@ import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } fro
 import { 阶段们, 交付还差, 交付还差话, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
@@ -1119,7 +1120,7 @@ export default function ProjectDetail({
                 ? <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>
                 : <div style={{ color: "var(--danger-text)", whiteSpace: "pre-wrap" }}>{l.category ? "备注" : "原因"}：{l.reason}</div>)}
               {/* 换人那几行：企业版记的回收原因 / 分配方式（10-27）原样淡色显示；超时、停用上一行已经说了 */}
-              {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{l.reason}</div>}
+              {l.kind !== "node" && l.reason && l.reason !== 超时理由 && (l.放回方式 ?? "手动") === "手动" && <div style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>{进公海理由显示(l.reason)}</div>}
               <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{l.reason === 超时理由 ? "系统" : l.who} · {fmtDateTime(l.at)}</div>
             </div>
           ),

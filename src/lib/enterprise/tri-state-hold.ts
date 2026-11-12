@@ -52,7 +52,7 @@ export function 继续持有身份(me: 谁, c: 三态客户, r: 在计时, org: 
   const 上级 = 是上级 && (能代选了(r) || !是总管理);
   const 总管理 = 是总管理 && !上级;
   if (!本人 && !上级 && !总管理) return { 错: 待回收轮 ? "只有负责人本人、直属上级、这条线的总管理或系统管理员能继续持有" : "只有负责人本人或直属上级能继续持有" };
-  if (上级 && !能代选了(r)) return { 错: `直属上级从沉睡第 ${沉睡抄上级第几天} 天（第 ${代选起始(r)} 天）起才能代选` };
+  if (上级 && !能代选了(r)) return { 错: `直属上级从沉睡待定第 ${沉睡抄上级第几天} 天（第 ${代选起始(r)} 天）起才能代选` };
   if (!r.继续持有.能推) return { 错: r.继续持有.不能原因 ?? "现在不能继续持有" };
   return { 身份: 本人 ? "本人" : 上级 ? "上级" : "总管理", 轮: 待回收轮 ? "待回收" : "沉睡" };
 }
@@ -97,7 +97,7 @@ export async function 继续持有(me: 我, customerId: string, 理由?: string 
     const 上级 = 身份.身份 === "上级", 总管理 = 身份.身份 === "总管理";
     const 代选 = 上级 || 总管理;
     const 轮 = 身份.轮;
-    if (轮 === "待回收" && !话) return { ok: false as const, error: "待回收时要写理由才能继续持有" };
+    if (轮 === "待回收" && !话) return { ok: false as const, error: "即将回收时要写理由才能继续持有" };
     const 天数 = 规则.三态.继续持有.每次天数;
     const 说 = 话 || "我还在跟";
     const 留 = await tx.entCustomerStateLog.create({
@@ -130,7 +130,7 @@ async function 裁决前查(me: 我, customerId: string, 现在: Date, tx: Param
   const r = 算三态(c.事实, 备.规则.三态, 备.今天);
   if (!r.计时) return { 错: 不在计时话(r.原因) };
   if (!能裁决三态(me, c, 备.org)) return { 错: "只有这条线的总管理或系统管理员能裁决" };
-  if (r.状态 !== "该进公海" || !r.被挡) return { 错: "只有到期该进公海、因同事在推的项目暂缓回收的客户才要裁决" };
+  if (r.状态 !== "该进公海" || !r.被挡) return { 错: "只有到期该进公海、因同事在推的项目进入暂缓待收的客户才要裁决" };
   return { c, r };
 }
 
@@ -170,7 +170,7 @@ export async function 让同事结束项目动作(me: 我, customerId: string, �
   // M-公海-33 飞书只推三级提醒链和系统管理员：同事不在链上，只记站内
   const n = await notify(结果.同事们, {
     不推飞书: true,
-    kind: "三态", title: `「${结果.名}」到期该回公海，因你负责的项目暂缓回收`, body: `${me.name} 请你结束这位客户名下你负责、还没结束的项目`,
+    kind: "三态", title: `「${结果.名}」到期该回公海，因你负责的项目进入暂缓待收`, body: `${me.name} 请你结束这位客户名下你负责、还没结束的项目`,
     link: `/customers/${customerId}`, key: `tri-end-colleague:${customerId}:${备.今天}`,
   });
   return { ok: true, 通知了: n };

@@ -299,7 +299,7 @@ describe("T5 · 暂缓回收（被同事项目挡住）：期间提醒不算 3 �
     expect(await 在公海()).toBe(false);
     expect(await 钟()).toMatchObject({ state: "待回收", blocked: false, noticeCount: 3, lastNoticeDay: 日(250) });
     expect((await 痕()).filter((x) => x.reason === 暂缓解除理由)).toHaveLength(1);
-    expect((await 三态通知(人.总内.id)).map((x) => x.title)).toContain("客户三态提醒：1 家暂缓回收已解除（10 天内没人处理就回公海）");
+    expect((await 三态通知(人.总内.id)).map((x) => x.title)).toContain("客户三态提醒：1 家暂缓待收已解除（10 天内没人处理就回公海）");
     expect((await 三态通知(人.乙.id)).length).toBeGreaterThan(0);
     await 过(251);
     await 过(259);
@@ -342,7 +342,7 @@ describe("T11 · 暂缓回收两次至少隔 30 天、累计最多 2 次；第 3
     expect(await 暂缓回收动作(人.总内, 客户, null, 白天(225))).toMatchObject({ ok: false, error: `${日(210)} 已经暂缓回收过，30 天内不用再裁决` });
     expect(await 暂缓回收动作(人.总内, 客户, null, 白天(240))).toEqual({ ok: true });
     expect(await 暂缓回收动作(人.总内, 客户, null, 白天(270))).toMatchObject({ ok: false, error: "暂缓回收已用满 2 次（60 天），要继续留着请写理由继续持有（占继续持有的次数和天数）" });
-    expect(await 继续持有(人.总内, 客户, "", 白天(270))).toMatchObject({ ok: false, error: "待回收时要写理由才能继续持有" });
+    expect(await 继续持有(人.总内, 客户, "", 白天(270))).toMatchObject({ ok: false, error: "即将回收时要写理由才能继续持有" });
     expect(await 继续持有(人.总内, 客户, "同事项目下月结束", 白天(270))).toEqual({ ok: true, 剩次数: 2, 剩天数: 60 });
     expect(await 钟()).toMatchObject({ state: "待回收", blocked: false, holdCount: 1 });
     expect((await 痕()).at(-1)).toMatchObject({ via: "总管理代选", reason: "由 总内 代选：同事项目下月结束" });
@@ -590,13 +590,13 @@ describe("第三轮审查", () => {
     expect(await prisma.customerPool.findUnique({ where: { customerId: 客户 } })).not.toBeNull();
     const 回 = (u: string) => prisma.entNotice.findMany({ where: { userId: u, dedupeKey: { startsWith: "tri-pooled:" } }, select: { title: true } });
     expect(await 回(人.乙.id)).toHaveLength(0);
-    expect((await 回(人.甲.id)).map((x) => x.title)).toEqual(["停用账号名下的客户「客户甲」待回收期满没人处理，已回客户公海"]);
+    expect((await 回(人.甲.id)).map((x) => x.title)).toEqual(["停用账号名下的客户「客户甲」即将回收阶段期满没人处理，已回客户公海"]);
   });
 
   it("到期暂缓回收、暂缓没用满 2 次：继续持有标志就是不能，和服务端拒的话一样；用满后能", async () => {
     await 到期被挡();
     const { 读一位三态 } = await import("@/lib/enterprise/tri-state-hold");
-    const 话 = "到期暂缓回收的客户先由条线总管理裁决暂缓回收（最多 2 次），用满以后才能继续持有";
+    const 话 = "暂缓待收的客户先由条线总管理裁决暂缓回收（最多 2 次），用满以后才能继续持有";
     expect((await 读一位三态(客户, 白天(210)))!.继续持有).toMatchObject({ 能推: false, 不能原因: 话 });
     expect(await 继续持有(人.乙, 客户, "还在跟", 白天(210))).toMatchObject({ ok: false, error: 话 });
     await 暂缓回收动作(人.总内, 客户, null, 白天(210));

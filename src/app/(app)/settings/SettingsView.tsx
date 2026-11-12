@@ -43,7 +43,7 @@ const 说明表: Record<string, string> = {
   trash: "删了的 30 天内能恢复",
   project: "项目组员角色、成员的上级",
   org: "部门、角色、直属和虚线上级",
-  recycle: "沉睡、待回收、自动进公海的天数和占位词",
+  recycle: "沉睡待定、即将回收、自动进公海的天数和占位词",
 };
 
 export default function SettingsView({
