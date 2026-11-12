@@ -4,7 +4,7 @@
  *   - 切换期间 getCurrentUser 回被看的人（带 视图由 = 真身），读按他的范围照常
  *   - **切换期间服务端所有写一律拒**：create / update / upsert / delete、$executeRaw、写库的 $queryRaw；还有走 action 的那一路
  *   - 退出删票、回到自己，开始 / 退出各一条留痕
- *   - 票只认签它的那个会话；真身不再是总管理 / 管理员时票不认人，但照样只读
+ *   - 票只认签它的那个会话（别的会话带着它：不认人、写拒，提示刷新）；真身不再是总管理 / 管理员时票不认人，但照样只读
  * 会话票、视图票都从假的 next/headers 里读（同 enterprise-permission-matrix），set / delete 落在这份假 cookie 上。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -176,13 +176,15 @@ describe("企业版切换视图", () => {
     await expect(prisma.projectRole.create({ data: { name: "视图里加的" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
   });
 
-  it("票只认签它的那个会话：换个人带着这张票，不认、也不拦", async () => {
+  it("票只认签它的那个会话：换个人带着这张票，不认人；这次请求的写拒（视角已失效，请刷新页面），删了票照常写", async () => {
     await 登录成(人.甲);
     罐.票.set(视图票, await 签视图票(人.总管, 人.乙));
     expect(await 当前视图()).toBeNull();
     const me = (await getCurrentUser())!;
     expect(me.id).toBe(人.甲);
     expect(me.视图由).toBeUndefined();
+    await expect(prisma.customer.update({ where: { id: 甲的客户 }, data: { name: "甲自己改" } })).rejects.toMatchObject({ code: "CRM_READONLY", message: "视角已失效，请刷新页面" });
+    罐.票.delete(视图票);
     await prisma.customer.update({ where: { id: 甲的客户 }, data: { name: "甲自己改" } });
     // 会话票塞进视图票的位子也不认（没有 typ / va / vb）
     罐.票.set(视图票, 罐.票.get("crm_session")!);

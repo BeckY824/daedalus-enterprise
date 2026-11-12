@@ -13,6 +13,10 @@
  *     写明在看谁、拦的是哪张表的哪种写），走放行通道；一个请求最多一条，同一真身 / 被看的人 / 同一种写一分钟内只记一条（防刷）
  *   - 切换中真身被降级（不再是系统管理员）、被看的人被停用：getCurrentUser 不再认这张票（读按真身自己），
  *     但写照样拦——拦写只看票（签名、会话），不查库，直到票过期（2 小时）或点「退出」。这是有意的：宁可多拦，不会多放
+ *   - **带着视图票、但票验不过**（过期、上线前签的没绑会话的旧票、退出重登后的旧标签页）：读按真身，可这次请求的写一律拒，
+ *     回「视角已失效，请刷新页面」——没刷新的页面顶上还挂着只读横幅，不能让人以为在看别人、实际以本人身份写进去。
+ *     清票在能改 cookie 的地方：proxy 遇到带坏票的页面请求（GET / HEAD）把票删掉、这次渲染也当没票（横幅消失），
+ *     /api 非 GET 带坏票 403（view-as-gate.ts）；开始 / 退出视图本身照常（退出顺手删票）。删票之后的下一次请求就是普通真身请求
  *
  * 写库之外（11-02）：不经过库的副作用——调外部接口（飞书推送和同步、AI 模型）、往磁盘写附件、把数据带走（导出、下载附件）——
  * 限定那一层看不到，各入口开头调 视图外部拦 / 视图外部拒 / 视图拒绝响应（本文件）统一拒，话术在 view-as-words.ts；
@@ -33,7 +37,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { readSecret } from "@/lib/secret";
 import { 全进程上下文 } from "@/lib/process-als";
 import { 企业版 } from "./switch";
-import { 视图外部话, 视图只读话 } from "./view-as-words";
+import { 视图外部话, 视图只读话, 视图失效话 } from "./view-as-words";
 import { 是系统管理员of, type 组织 } from "./org-core";
 
 /** 视图票的 cookie 名 */
@@ -116,8 +120,11 @@ export async function 读会话身份(票: string | undefined | null): Promise<�
 
 let 头: Promise<typeof import("next/headers")> | undefined;
 
-/** 这个请求带着有效的视图票：回 {由, 谁}；没有、无效、不在请求里（后台、脚本）回 null */
-export async function 当前视图(): Promise<视图 | null> {
+/**
+ * 这个请求的视图票：有效回 {由, 谁}；带着票但验不过回 "坏"；没带、开关关着、不在请求里（后台、脚本）回 null。
+ * 开关关着连 cookie 都不读
+ */
+async function 票情况(): Promise<视图 | "坏" | null> {
   if (!切换视图开着()) return null;
   let 视: string | undefined;
   let 会话: string | undefined;
@@ -132,7 +139,18 @@ export async function 当前视图(): Promise<视图 | null> {
     if (e && typeof e === "object" && "digest" in e) throw e;
     return null;
   }
-  return 验视图票(视, await 读会话身份(会话));
+  return (await 验视图票(视, await 读会话身份(会话))) ?? "坏";
+}
+
+/** 这个请求带着有效的视图票：回 {由, 谁}；没有、无效、不在请求里（后台、脚本）回 null */
+export async function 当前视图(): Promise<视图 | null> {
+  const s = await 票情况();
+  return s === "坏" ? null : s;
+}
+
+/** 这个请求带着视图票、但验不过（见文件头）：写要拒、提示刷新 */
+export async function 视图票失效(): Promise<boolean> {
+  return (await 票情况()) === "坏";
 }
 
 const 放行 = 全进程上下文<true>("视图放行");
@@ -142,7 +160,10 @@ export function 视图放行<T>(fn: () => Promise<T>): Promise<T> {
   return 放行.run(true, async () => await fn());
 }
 
-/** 一个请求一份（React cache：页面渲染、server action 里按请求分；别处每次新给一份，靠下面的一分钟节流兜） */
+/**
+ * 一个请求一份：React cache 只在页面渲染（服务端组件）里按请求分；server action、/api 路由里每次调都新给一份，
+ * 实际靠下面的一分钟去重兜（同一真身 / 被看的人 / 同一种写一分钟一条）
+ */
 const 本请求留痕 = cache((): { 记了: boolean } => ({ 记了: false }));
 /** 真身|被看的人|哪种写 → 上次记的时刻 */
 const 最近留痕 = new Map<string, number>();
@@ -191,41 +212,55 @@ export function 忘掉拦下留痕(): void {
   最近留痕.clear();
 }
 
-/** 每条写之前过一下（lib/team-scope.ts 加上限定）：切换视图期间一律拒。动作 = 哪张表的哪种写（留痕用），如 Customer.update */
+/**
+ * 每条写之前过一下（lib/team-scope.ts 加上限定）：切换视图期间一律拒；带着验不过的视图票也拒（提示刷新，不记留痕）。
+ * 动作 = 哪张表的哪种写（留痕用），如 Customer.update
+ */
 export async function 视图写拦(动作 = "写库"): Promise<void> {
   if (放行.getStore()) return;
-  const v = await 当前视图();
+  const v = await 票情况();
   if (!v) return;
+  if (v === "坏") throw new 视图只读错误(视图失效话);
   记拦下(v, 动作);
   throw new 视图只读错误();
 }
 
-/** 只读预览期间，页面渲染时顺手做的每天一扫（掉公海、超时收回）跳过：回 true = 跳过 */
+/** 只读预览期间（带着验不过的票也算），页面渲染时顺手做的每天一扫（掉公海、超时收回）跳过：回 true = 跳过 */
 export async function 视图中跳过(): Promise<boolean> {
-  return !放行.getStore() && !!(await 当前视图());
+  return !放行.getStore() && !!(await 票情况());
+}
+
+/** 外部副作用被拒时那一句：在切换回 视图外部话，票失效回 视图失效话，都不是回 null */
+async function 外部拒的话(): Promise<string | null> {
+  if (放行.getStore()) return null;
+  const v = await 票情况();
+  return v === "坏" ? 视图失效话 : v ? 视图外部话 : null;
 }
 
 /**
- * 这个请求是不是在切换视图：不经过库的动作（导出、上传、发飞书、调 AI）都问它。
+ * 这个请求是不是在切换视图（带着验不过的票也算：这次请求照样不许改，见文件头）：不经过库的动作（导出、上传、发飞书、调 AI）都问它。
  * 不是企业版的部署直接 false，连 cookie 都不读；不在请求里（定时同步、脚本）读不到票，也是 false
  */
 export async function 正在切换视图(): Promise<boolean> {
   return 切换视图开着() && (await 视图中跳过());
 }
 
-/** 切换视图就抛（code 同只读错误）：会抛错的 action、底层出口用 */
+/** 切换视图（或票失效）就抛（code 同只读错误）：会抛错的 action、底层出口用 */
 export async function 视图外部拦(): Promise<void> {
-  if (await 正在切换视图()) throw new 视图只读错误(视图外部话);
+  const 话 = await 外部拒的话();
+  if (话) throw new 视图只读错误(话);
 }
 
-/** 切换视图就回一个 {ok:false,error}，否则 null：回结果的 action 用，`const 拒 = await 视图外部拒(); if (拒) return 拒;` */
+/** 切换视图（或票失效）就回一个 {ok:false,error}，否则 null：回结果的 action 用，`const 拒 = await 视图外部拒(); if (拒) return 拒;` */
 export async function 视图外部拒(): Promise<{ ok: false; error: string } | null> {
-  return (await 正在切换视图()) ? { ok: false, error: 视图外部话 } : null;
+  const 话 = await 外部拒的话();
+  return 话 ? { ok: false, error: 话 } : null;
 }
 
-/** 切换视图就回 403（{error}），否则 null：route.ts 用 */
+/** 切换视图（或票失效）就回 403（{error}），否则 null：route.ts 用 */
 export async function 视图拒绝响应(): Promise<Response | null> {
-  return (await 正在切换视图()) ? Response.json({ error: 视图外部话 }, { status: 403 }) : null;
+  const 话 = await 外部拒的话();
+  return 话 ? Response.json({ error: 话 }, { status: 403 }) : null;
 }
 
 /** 裸 SQL 扩展钩子拿到的参数里取 SQL 原文：字符串、[字符串, ...参数]、Prisma.sql 模板（带 strings / sql）。认不出回 null */
@@ -240,6 +275,31 @@ export function 原文SQL(args: unknown): string | null {
   return null;
 }
 
+/** 查表结构 / 做检查的只读 PRAGMA：带不带括号参数都只是读（PRAGMA table_info("Customer")） */
+const 只读查询PRAGMA = new Set([
+  "table_info", "table_xinfo", "table_list", "index_list", "index_info", "index_xinfo", "foreign_key_list", "foreign_key_check",
+  "quick_check", "integrity_check", "database_list", "collation_list", "function_list", "module_list", "pragma_list", "compile_options",
+]);
+/** 读设置值的 PRAGMA：只有光秃秃的「PRAGMA journal_mode」是读，带 = 或括号（PRAGMA user_version(5)）就是在改 */
+const 只读设置PRAGMA = new Set([
+  "journal_mode", "user_version", "application_id", "schema_version", "busy_timeout", "synchronous", "foreign_keys", "defer_foreign_keys",
+  "secure_delete", "page_size", "page_count", "freelist_count", "max_page_count", "cache_size", "auto_vacuum", "encoding",
+  "data_version", "locking_mode", "temp_store", "mmap_size", "recursive_triggers", "query_only", "wal_autocheckpoint",
+]);
+
+/** 一条里的每个 PRAGMA 都在白名单里、用的是只读写法才算读；不在白名单的（wal_checkpoint、optimize…）一律当写 */
+function 有写的PRAGMA(s: string): boolean {
+  for (const m of s.matchAll(/\bpragma\s+(?:"?[^\s."=(;]+"?\s*\.\s*)?"?([^\s."=(;]+)"?\s*(=|\()?/gi)) {
+    const 名 = m[1].toLowerCase();
+    const 带 = m[2];
+    if (带 === "=") return true;
+    if (只读查询PRAGMA.has(名)) continue;
+    if (只读设置PRAGMA.has(名) && !带) continue;
+    return true;
+  }
+  return false;
+}
+
 /**
  * 裸 SQL 会不会写库（加上限定拦 $executeRaw* 一律拒；$queryRaw* 看原文）。认不出原文的当会写（宁可拒）
  */
@@ -250,8 +310,6 @@ export function 会写库的SQL(sql: string | null): boolean {
   return (
     /\b(insert|update|delete|create|drop|alter|attach|detach|vacuum|reindex)\b/i.test(s) ||
     /\breplace\s+into\b/i.test(s) ||
-    /\bpragma\s+[\w.]+\s*=/i.test(s) ||
-    // 不带 = 也会动库的 PRAGMA（落检查点、优化统计、回收空页、收内存）
-    /\bpragma\s+(?:\w+\.)?(?:wal_checkpoint|optimize|incremental_vacuum|shrink_memory)\b/i.test(s)
+    有写的PRAGMA(s)
   );
 }

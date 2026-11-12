@@ -27,7 +27,7 @@ import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组�
 import { 按线范围of, 按线项目, 按线客户 } from "./line-viewer";
 import { 规则 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
-import { 视图票, 验视图票, 会话时刻 } from "./view-as";
+import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
 import { 能看全部, 只读角色, 只读角色话, 只看的人, 只看某人话, 没设业务角色, 业务线放行 } from "./permissions";
 
 /** lib/auth.ts 的 COOKIE */
@@ -94,7 +94,8 @@ async function 是谁(): Promise<{ 钥: string; id: string | null } | "无请求
     const { cookies } = await (头 ??= import("next/headers"));
     const c = await cookies();
     票 = c.get(会话票)?.value;
-    视 = c.get(视图票)?.value;
+    // 开关关着（CRM_ENT_VIEW_AS=0）连视图票都不读，同 view-as.ts
+    视 = 切换视图开着() ? c.get(视图票)?.value : undefined;
   } catch (e) {
     // Next 静态渲染时的「这页要动态」信号带 digest，得原样抛回去
     if (e && typeof e === "object" && "digest" in e) throw e;

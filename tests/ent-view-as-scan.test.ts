@@ -407,27 +407,30 @@ describe("proxy 那一道：/api 非 GET 在进路由前就 403", () => {
   const 请求 = (method: string, pathname: string, 票们: Record<string, string>) => ({
     method, nextUrl: { pathname }, cookies: { get: (n: string) => (票们[n] ? { value: 票们[n] } : undefined) },
   });
-  it("这个会话签的有效票：POST / PUT / PATCH / DELETE 挡，GET / HEAD 和退出登录不挡", async () => {
+  it("这个会话签的有效票：POST / PUT / PATCH / DELETE 挡（只读），GET / HEAD 和退出登录不挡", async () => {
     const 票们 = { crm_session: await 签会话(人.总管), [视图票]: await 签视图票(人.总管, 人.甲) };
-    for (const 法 of ["POST", "PUT", "PATCH", "DELETE"]) expect(await 视图挡写(请求(法, "/api/attachments", 票们), 钥()), 法).toBe(true);
-    expect(await 视图挡写(请求("GET", "/api/attachments", 票们), 钥())).toBe(false);
-    expect(await 视图挡写(请求("HEAD", "/api/attachments", 票们), 钥())).toBe(false);
-    expect(await 视图挡写(请求("POST", "/api/auth/logout", 票们), 钥())).toBe(false);
+    for (const 法 of ["POST", "PUT", "PATCH", "DELETE"]) expect(await 视图挡写(请求(法, "/api/attachments", 票们), 钥()), 法).toBe("只读");
+    expect(await 视图挡写(请求("GET", "/api/attachments", 票们), 钥())).toBeNull();
+    expect(await 视图挡写(请求("HEAD", "/api/attachments", 票们), 钥())).toBeNull();
+    expect(await 视图挡写(请求("POST", "/api/auth/logout", 票们), 钥())).toBeNull();
+    expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 票们.crm_session }), 钥())).toBeNull();
   });
-  it("伪造、过期、篡改、别的会话的票不挡；开关关着、不是企业版不挡", async () => {
+  it("伪造、过期、篡改、别的会话的票：不认人，但写照样挡（失效，提示刷新）；开关关着、不是企业版不挡", async () => {
     const 会话 = await 签会话(人.甲);
     const 别人签的 = await 签视图票(人.总管, 人.乙);
     const 过期 = await new SignJWT({ typ: "view-as", va: 人.乙, vb: 人.甲 }).setProtectedHeader({ alg: "HS256" }).setIssuedAt(Math.floor(Date.now() / 1000) - 7200).setExpirationTime(Math.floor(Date.now() / 1000) - 60).sign(钥());
     const 外钥 = await new SignJWT({ typ: "view-as", va: 人.乙, vb: 人.甲 }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("1h").sign(new TextEncoder().encode("x".repeat(40)));
     const 好的 = await 签视图票(人.甲, 人.乙);
     const 篡改 = 好的.slice(0, -3) + (好的.endsWith("aaa") ? "bbb" : "aaa");
-    for (const 票 of [别人签的, 过期, 外钥, 篡改, "乱写的"]) expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 票 }), 钥())).toBe(false);
-    expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 好的 }), 钥())).toBe(true);
+    for (const 票 of [别人签的, 过期, 外钥, 篡改, "乱写的"]) expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 票 }), 钥())).toBe("失效");
+    expect(await 视图挡写(请求("POST", "/api/x", { [视图票]: 好的 }), 钥())).toBe("失效");
+    expect(await 视图挡写(请求("GET", "/api/x", { crm_session: 会话, [视图票]: 过期 }), 钥())).toBeNull();
+    expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 好的 }), 钥())).toBe("只读");
     vi.stubEnv("CRM_ENT_VIEW_AS", "0");
-    expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 好的 }), 钥())).toBe(false);
+    for (const 票 of [好的, 过期, "乱写的"]) expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 票 }), 钥())).toBeNull();
     vi.stubEnv("CRM_ENT_VIEW_AS", "");
     vi.stubEnv("CRM_ENTERPRISE", "");
-    expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 好的 }), 钥())).toBe(false);
+    for (const 票 of [好的, 过期]) expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 票 }), 钥())).toBeNull();
   });
 });
 
@@ -468,7 +471,7 @@ describe("票绑在这一次登录上、演示部署不给", () => {
     const 旧票 = 罐.票.get(视图票)!;
     忘掉企业版范围();
     expect((await getCurrentUser())!.id).toBe(人.甲);
-    expect(await 视图挡写(请求({ crm_session: 罐.票.get("crm_session")!, [视图票]: 旧票 }), 钥())).toBe(true);
+    expect(await 视图挡写(请求({ crm_session: 罐.票.get("crm_session")!, [视图票]: 旧票 }), 钥())).toBe("只读");
     // 退出再登录：同一个人、新会话（新 ims），把旧的视图票塞回去
     罐.票.clear();
     罐.票.set("crm_session", await 签会话(人.总管, "1h", 1_700_000_999_000));
@@ -476,10 +479,11 @@ describe("票绑在这一次登录上、演示部署不给", () => {
     忘掉企业版范围();
     expect(await 当前视图()).toBeNull();
     expect((await getCurrentUser())!.id).toBe(人.总管);
-    expect(await 视图挡写(请求({ crm_session: 罐.票.get("crm_session")!, [视图票]: 旧票 }), 钥())).toBe(false);
+    // 旧票不认人，但带着它的写照样拒（提示刷新），见下面「视图票失效」
+    expect(await 视图挡写(请求({ crm_session: 罐.票.get("crm_session")!, [视图票]: 旧票 }), 钥())).toBe("失效");
+    await expect(prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "新会话" } })).rejects.toMatchObject({ code: "CRM_READONLY", message: "视角已失效，请刷新页面" });
+    罐.票.delete(视图票);
     await prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "新会话照常写" } });
-    // 没有 ims 的会话（老票）签的视图票，换到有 ims 的会话上也不认
-    expect(await 当前视图()).toBeNull();
   });
   it("演示部署（CRM_DEMO_SWITCH=1）：菜单不给，开始视图也拒", async () => {
     vi.stubEnv("CRM_DEMO_SWITCH", "1");
@@ -487,6 +491,97 @@ describe("票绑在这一次登录上、演示部署不给", () => {
     expect(await 读视图名单((await getCurrentUser())!)).toBeNull();
     expect(await 开始视图(人.甲)).toEqual({ ok: false, error: "这个部署没有切换视图" });
     expect(罐.票.has(视图票)).toBe(false);
+  });
+});
+
+describe("视图票失效（过期、上线前签的没绑会话的旧票、退出重登后的旧标签页）：这次请求的写拒，打开页面时删票，之后照常", () => {
+  /** 罐里的 cookie 拼成一个真的页面请求，过一遍 proxy；回 proxy 的响应 */
+  const 过proxy = async (method: string, 址 = "/customers") => {
+    const { proxy } = await import("@/proxy");
+    const { NextRequest } = await import("next/server");
+    return proxy(new NextRequest(`http://ent.test${址}`, { method, headers: { cookie: [...罐.票].map(([k, v]) => `${k}=${v}`).join("; ") } }));
+  };
+  /** 浏览器照 proxy 回的 Set-Cookie 删票 */
+  const 照删 = (res: Response) => {
+    const 设 = res.headers.getSetCookie().find((c) => c.startsWith(`${视图票}=`));
+    if (设 && /Max-Age=0|Expires=Thu, 01 Jan 1970/i.test(设)) 罐.票.delete(视图票);
+    return 设;
+  };
+  const 旧版票 = (由: string, 谁: string) =>
+    new SignJWT({ typ: "view-as", va: 谁, vb: 由 }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("2h").sign(钥()); // 没有 vs：上线前签的
+  const 过期票 = (由: string, 谁: string) =>
+    new SignJWT({ typ: "view-as", va: 谁, vb: 由, vs: 0 }).setProtectedHeader({ alg: "HS256" }).setIssuedAt(Math.floor(Date.now() / 1000) - 7300).setExpirationTime(Math.floor(Date.now() / 1000) - 100).sign(钥());
+
+  for (const [名, 签] of [["没有 vs 的旧票", 旧版票], ["过期的票", 过期票]] as const) {
+    it(`${名}：写拒且库不变（action、/api 都拒）→ 同一会话打开页面，票被删、以真身渲染 → 再写成功`, async () => {
+      await 登录成(人.总管);
+      罐.票.set(视图票, await 签(人.总管, 人.甲));
+      忘掉企业版范围();
+      // 读按真身（不认这张票），但横幅那头 layout 还看得到票在
+      expect((await getCurrentUser())!.id).toBe(人.总管);
+      expect(await 当前视图()).toBeNull();
+      const 前 = await 快照();
+      // 写：库层拒、提示刷新；不记拦下留痕（不知道在看谁）
+      await expect(prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "以本人身份写" } })).rejects.toMatchObject({ code: "CRM_READONLY", message: "视角已失效，请刷新页面" });
+      const { 新建对话 } = await import("@/app/(app)/dashboard/threads");
+      await expect(新建对话("x")).rejects.toMatchObject({ code: "CRM_READONLY" });
+      const { 切换收藏 } = await import("@/app/(app)/favorites");
+      expect(await 切换收藏(物.客户)).toEqual({ ok: false, error: "视角已失效，请刷新页面" });
+      const { 视图外部拒 } = await import("@/lib/enterprise/view-as");
+      expect(await 视图外部拒()).toEqual({ ok: false, error: "视角已失效，请刷新页面" });
+      // /api 非 GET：proxy 那一道 403
+      const api = await 过proxy("POST", "/api/attachments");
+      expect(api.status).toBe(403);
+      expect(await api.json()).toEqual({ error: "视角已失效，请刷新页面" });
+      // server action（页面路径上的 POST）proxy 不删票：删了再点一下就以真身写进去了
+      expect(照删(await 过proxy("POST"))).toBeUndefined();
+      expect(罐.票.has(视图票)).toBe(true);
+      await 等拦下留痕();
+      expect(await 快照()).toBe(前);
+      // 打开页面（GET）：proxy 删票，这一次渲染的请求头里也没有了
+      const 页 = await 过proxy("GET");
+      expect(页.status).toBe(200);
+      expect(照删(页)).toBeDefined();
+      expect(页.headers.get("x-middleware-request-cookie") ?? "").not.toContain(视图票);
+      expect(页.headers.get("x-middleware-request-cookie") ?? "").toContain("crm_session=");
+      expect(罐.票.has(视图票)).toBe(false);
+      // 删票之后就是普通真身请求：写成功
+      忘掉企业版范围();
+      await prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "刷新后照常写" } });
+      expect((await defaultClient.customer.findUniqueOrThrow({ where: { id: 物.客户 } })).remark).toBe("刷新后照常写");
+    });
+  }
+
+  it("有效票的页面请求 proxy 不删；没登录带着坏票被弹去登录页时顺手删", async () => {
+    await 登录成(人.总管);
+    expect(await 开始视图(人.甲)).toEqual({ ok: true });
+    expect(照删(await 过proxy("GET"))).toBeUndefined();
+    expect(罐.票.has(视图票)).toBe(true);
+    罐.票.delete("crm_session");
+    const 弹 = await 过proxy("GET");
+    expect(弹.status).toBe(307);
+    expect(照删(弹)).toBeDefined();
+  });
+
+  it("开关关着（CRM_ENT_VIEW_AS=0）：带着坏票也不拒、不删，当功能不存在", async () => {
+    vi.stubEnv("CRM_ENT_VIEW_AS", "0");
+    await 登录成(人.总管);
+    罐.票.set(视图票, await 旧版票(人.总管, 人.甲));
+    忘掉企业版范围();
+    await prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "关着照常写" } });
+    expect((await 过proxy("POST", "/api/attachments")).status).not.toBe(403);
+    expect(照删(await 过proxy("GET"))).toBeUndefined();
+    expect(罐.票.has(视图票)).toBe(true);
+  });
+
+  it("退出视图带着坏票也照常：删票，之后照常写", async () => {
+    await 登录成(人.总管);
+    罐.票.set(视图票, await 旧版票(人.总管, 人.甲));
+    const { 退出视图 } = await import("@/app/(app)/view-as-actions");
+    expect(await 退出视图()).toEqual({ ok: true });
+    expect(罐.票.has(视图票)).toBe(false);
+    忘掉企业版范围();
+    await prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "退出后照常写" } });
   });
 });
 
