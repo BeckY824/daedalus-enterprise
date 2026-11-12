@@ -28,6 +28,7 @@ import { 项目业务线 } from "./assign-line";
 import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
 import { 实线下属, 虚线下属, 是系统管理员of, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
+import { 找条线总管理 } from "./tri-state-people";
 
 export type 谁 = { id: string; role?: string | null };
 /** 判权限用到的项目字段。已加入 = 点了同意（inviteStatus = JOINED）的组员 userId */
@@ -249,14 +250,20 @@ export function 能代选三态(me: 谁, c: { salesOwnerId: string }, org: 组�
 }
 
 /**
- * 客户三态到期被挡的裁决（M-公海-27，暂缓回收 / 让同事结束项目）：负责人在他这条线上的条线总管理、系统管理员；
- * 别线的条线总管理、销售管理、只读管理员不行。移交走现有转让（能转让客户）
+ * 客户三态到期被挡的裁决（M-公海-27，暂缓回收 / 让同事结束项目）：收得到这条提醒的人——按 tri-state-people.ts 找条线总管理
+ * （客户业务线 → 负责人的线 → 系统管理员）找出来的那几位，外加系统管理员。销售管理、只读管理员、别线的条线总管理不行。移交走现有转让（能转让客户）
  */
-export function 能裁决三态(me: 谁, c: { salesOwnerId: string }, org: 组织 | null): boolean {
+export function 能裁决三态(me: 谁, c: { salesOwnerId: string; bizLine?: string | null }, org: 组织 | null): boolean {
   if (老() || !org || 只读角色(me, org) || 只看的人(org, me.id)) return false;
   if (是系统管理员(me, org)) return true;
-  return !!条线范围of(org, me.id)?.人们.includes(c.salesOwnerId);
+  return 找条线总管理(org, c.bizLine ?? null, c.salesOwnerId).includes(me.id);
 }
+
+/**
+ * 待回收时「写理由继续持有」除本人、直属上级外还有谁能点（M-公海-17「进入待回收推给条线总管理、抄送本人和直属上级（写理由继续持有 / 移交 / 放公海）」）：
+ * 同 能裁决三态 那几位（收到待回收提醒的条线总管理）和系统管理员。只在待回收时，调用方判
+ */
+export const 能总管理继续持有三态 = 能裁决三态;
 
 /** 转让客户（客户详情「转给」、批量转让）：同项目的白名单；公海里的客户走公海分配（能管公海） */
 export function 能转让客户(me: 谁, c: { salesOwnerId: string | null; 在公海: boolean }, org: 组织 | null): boolean {

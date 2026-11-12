@@ -132,29 +132,32 @@ describe("整条", () => {
     expect((await 痕()).map((x) => x.toState)).toEqual(["活跃", "沉睡"]);
   });
 
-  it("一天扫两遍不重复：第二遍记号相同直接跳过；规则改了当晚重算", async () => {
+  it("一天扫两遍不重复；白天改了天数不马上整库重算，第二天 00:05 那遍才按新天数算（M-公海-37 当晚）", async () => {
     await 三态夜扫(第(95));
     const 一 = await 痕();
     expect(await 三态夜扫(第(95))).toMatchObject({ 算了: 0 });
     expect(await 痕()).toEqual(一);
-    // 把沉睡天数改成 100：当晚按新天数重算，退回活跃
+    // 白天把沉睡天数改成 100：今天再跑不重算
     await setSetting("orgRules", 开三态({ 三态: { ...默认三态规则, 开: true, 内贸: { 沉睡: 100, 待回收: 180, 进公海: 30 } } }));
-    expect(await 三态夜扫(第(95))).toMatchObject({ 算了: 1, 换状态: 1 });
+    expect(await 三态夜扫(new Date(`${加天(起, 95)}T15:00:00+08:00`))).toMatchObject({ 算了: 0 });
+    expect((await 钟())!.state).toBe("沉睡");
+    // 第二天按新天数：第 96 天 < 100，退回活跃
+    expect(await 三态夜扫(第(96))).toMatchObject({ 算了: 1, 换状态: 1 });
     expect((await 钟())!.state).toBe("活跃");
     // 记号清掉再扫一遍：算了但什么都不写
     await setSetting(三态扫过键, "");
-    await 三态夜扫(第(95));
+    await 三态夜扫(第(96));
     expect((await 痕()).length).toBe(一.length + 1);
   });
 });
 
 describe("沟通、被挡、交接", () => {
-  it("沉睡里记一条有内容的沟通，当晚回活跃；空内容的不拨钟", async () => {
+  it("X-102 定之前任何沟通都拨钟：空内容也回活跃，但不回满额度；有内容的才记额度重置日", async () => {
     await 三态夜扫(第(100));
     expect((await 钟())!.state).toBe("沉睡");
     await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "   ", customerId: 客户, ownerId: 乙, occurredAt: new Date(`${加天(起, 101)}T10:00:00+08:00`) } });
     await 三态夜扫(第(102));
-    expect((await 钟())!.state).toBe("沉睡");
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 加天(起, 101), quotaResetDay: null });
     await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "约了下周见", customerId: 客户, ownerId: 乙, occurredAt: new Date(`${加天(起, 102)}T10:00:00+08:00`) } });
     await 三态夜扫(第(103));
     expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 加天(起, 102), quotaResetDay: 加天(起, 102) });
@@ -209,7 +212,7 @@ describe("换负责人们of", () => {
   it("转让 / 离职交接按先后算归零：12 个月内第 3 次起不归零；捞取、市场首次分配总归零不计次；undo、pool-release 不算", () => {
     const 行 = (日: string, kind: string) => ({ at: new Date(`${日}T10:00:00+08:00`), kind });
     const r = 换负责人们of([行("2026-11-02", "market-assign"), 行("2026-11-03", "assign"), 行("2026-11-04", "pool-release"), 行("2026-11-05", "claim"), 行("2026-11-06", "deactivate"), 行("2026-11-07", "assign"), 行("2026-11-08", "undo")], 默认三态规则);
-    expect(r).toEqual([
+    expect([...r]).toEqual([
       { 日: "2026-11-02", 方式: "市场首次分配" },
       { 日: "2026-11-03", 方式: "转让", 归零: true },
       { 日: "2026-11-05", 方式: "公海捞取" },

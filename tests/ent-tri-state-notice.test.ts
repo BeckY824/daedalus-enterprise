@@ -149,7 +149,7 @@ describe("找人兜底", () => {
 describe("第 2 次被收回", () => {
   it("入池时抄原负责人的直属上级", async () => {
     // 之前被三态自动收回过一次（留痕），被领回来后又到期
-    await prisma.entCustomerStateLog.create({ data: { customerId: 客户, fromState: "待回收", toState: "公海", via: "自动", reason: "上一次", at: new Date("2026-10-15T00:10:00+08:00") } });
+    await prisma.entCustomerStateLog.create({ data: { customerId: 客户, fromState: "待回收", toState: "公海", via: "自动", reason: "待回收满 30 天、3 次提醒都没人处理，自动进客户公海", at: new Date("2026-10-15T00:10:00+08:00") } });
     for (const n of [180, 190, 200, 210]) await 过(n);
     expect(await prisma.customerPool.findUnique({ where: { customerId: 客户 } })).not.toBeNull();
     const 甲的 = (await 通知(人.甲)).filter((x) => x.dedupeKey.startsWith("tri-pooled:"));

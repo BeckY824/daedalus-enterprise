@@ -5,7 +5,8 @@
  *   - 继续持有：沉睡时叫「我还在跟」（理由可空），待回收时叫「写理由继续持有」（理由必填）。只把三个节点一起顺延规则里的每次天数，钟不拨零。
  *     每轮（沉睡轮、待回收轮）一次；累计次数、合计顺延天数两个上限都查，用满任一个就不给（以 算三态() 的 继续持有 为准）。
  *     额度挂在客户钟上：换负责人不动；记了有内容的沟通回满（读的时候判，见 tri-state-quota.ts）
- *   - 谁能点：负责人本人；直属上级从沉睡第 30 天（第 120 天）起代选，同样扣额度，留痕「由 XX 代选」并通知原负责人（M-公海-23）
+ *   - 谁能点：负责人本人；直属上级从沉睡第 30 天（第 120 天）起代选，同样扣额度，留痕「由 XX 代选」并通知原负责人（M-公海-23）；
+ *     待回收时收到提醒的条线总管理（tri-state-people.ts 找条线总管理）和系统管理员也能写理由继续持有（M-公海-17），同样扣额度、留痕、通知负责人
  *   - 被挡裁决（到期该进公海、被同事在推的项目挡住）：负责人所在条线的总管理 / 系统管理员。
  *     暂缓回收：不扣继续持有额度，裁决后 30 天内不再推、之后每月提醒（提醒节奏在 算三态()）；30 天内再点被拒。
  *     让同事结束项目：通知名下同事项目的负责人，留一行痕。移交走现有转让，这里不另做
@@ -18,9 +19,9 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { beijingDay } from "@/lib/business-clock";
 import { 算三态, 加天, 差天, 沉睡抄上级第几天, 被挡提醒间隔, type 三态结果 } from "./tri-state";
 import { 留痕方式, 暂缓回收, 让同事结束项目 } from "./tri-state-quota";
-import { 收三态客户, 写钟, 三态开着, type 三态客户 } from "./tri-state-db";
+import { 收三态客户, 写钟, 三态开着, 存归零, type 三态客户 } from "./tri-state-db";
 import { 读组织 } from "./org";
-import { 能继续持有三态, 能代选三态, 能裁决三态, type 谁 } from "./permissions";
+import { 能继续持有三态, 能代选三态, 能裁决三态, 能总管理继续持有三态, type 谁 } from "./permissions";
 import { notify } from "./notify";
 
 export type 三态动作结果 = { ok: true; 剩次数?: number; 剩天数?: number; 通知了?: number } | { ok: false; error: string };
@@ -57,17 +58,20 @@ export async function 继续持有(me: 我, customerId: string, 理由?: string 
     if (!c) return { ok: false as const, error: "找不到这位客户" };
     const r = 算三态(c.事实, 规则.三态, 今天);
     if (!r.计时) return { ok: false as const, error: 不在计时话(r.原因) };
+    await 存归零(tx, [c]);
     const 本人 = 能继续持有三态(me, c, org);
-    const 代选 = !本人 && 能代选三态(me, c, org);
-    if (!本人 && !代选) return { ok: false as const, error: "只有负责人本人或直属上级能继续持有" };
-    if (代选 && !能代选了(r)) return { ok: false as const, error: `直属上级从沉睡第 ${沉睡抄上级第几天} 天（第 ${代选起始(r)} 天）起才能代选` };
+    const 上级 = !本人 && 能代选三态(me, c, org);
+    const 总管理 = !本人 && !上级 && r.状态 === "待回收" && 能总管理继续持有三态(me, c, org);
+    const 代选 = 上级 || 总管理;
+    if (!本人 && !代选) return { ok: false as const, error: r.状态 === "待回收" ? "只有负责人本人、直属上级、这条线的总管理或系统管理员能继续持有" : "只有负责人本人或直属上级能继续持有" };
+    if (上级 && !能代选了(r)) return { ok: false as const, error: `直属上级从沉睡第 ${沉睡抄上级第几天} 天（第 ${代选起始(r)} 天）起才能代选` };
     if (!r.继续持有.能推) return { ok: false as const, error: r.继续持有.不能原因 ?? "现在不能继续持有" };
     const 轮 = r.状态 as "沉睡" | "待回收";
     if (轮 === "待回收" && !话) return { ok: false as const, error: "待回收时要写理由才能继续持有" };
     const 天数 = 规则.三态.继续持有.每次天数;
     const 说 = 话 || "我还在跟";
     const 留 = await tx.entCustomerStateLog.create({
-      data: { customerId, fromState: 轮, toState: 轮, userId: me.id, via: 代选 ? 留痕方式.上级代选 : 留痕方式.本人, reason: 代选 ? `由 ${me.name} 代选：${说}` : 说, holdDays: 天数, at: 现在 },
+      data: { customerId, fromState: 轮, toState: 轮, userId: me.id, via: 总管理 ? 留痕方式.总管理代选 : 上级 ? 留痕方式.上级代选 : 留痕方式.本人, reason: 代选 ? `由 ${me.name} 代选：${说}` : 说, holdDays: 天数, at: 现在 },
       select: { id: true },
     });
     // 按写进去的这一行重算，钟（状态、进入日、额度缓存）跟着挪
@@ -92,6 +96,7 @@ export async function 继续持有(me: 我, customerId: string, 理由?: string 
 async function 裁决前查(me: 我, customerId: string, 现在: Date, tx: Parameters<Parameters<typeof 查完再写>[0]>[0], 备: 备好): Promise<{ 错: string } | { c: 三态客户; r: 在计时 }> {
   const c = (await 收三态客户(tx, [customerId], 备.规则, 备.org, 现在)).get(customerId);
   if (!c) return { 错: "找不到这位客户" };
+  await 存归零(tx, [c]);
   const r = 算三态(c.事实, 备.规则.三态, 备.今天);
   if (!r.计时) return { 错: 不在计时话(r.原因) };
   if (!能裁决三态(me, c, 备.org)) return { 错: "只有这条线的总管理或系统管理员能裁决" };
@@ -132,7 +137,9 @@ export async function 让同事结束项目动作(me: 我, customerId: string, �
     return { ok: true as const, 同事们: 查.c.同事们, 名: 查.c.name };
   }));
   if (!结果.ok) return 结果;
+  // M-公海-33 飞书只推三级提醒链和系统管理员：同事不在链上，只记站内
   const n = await notify(结果.同事们, {
+    不推飞书: true,
     kind: "三态", title: `「${结果.名}」到期该回公海，被你负责的项目挡住了`, body: `${me.name} 请你结束这位客户名下你负责、还没结束的项目`,
     link: `/customers/${customerId}`, key: `tri-end-colleague:${customerId}:${备.今天}`,
   });

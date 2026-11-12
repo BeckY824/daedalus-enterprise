@@ -515,6 +515,7 @@ const 派生: Record<string, Record<string, string>> = {
     customerId: "哪位客户，换负责人时系统写", userId: "谁换的，系统写", at: "换的那一刻，系统写",
     fromOwnerId: "换之前的负责人（历史负责人），系统写", toOwnerId: "换之后的负责人，系统写",
     kind: "改负责人、公海领取 / 分配还是成员停用，系统写",
+    clockReset: "企业版三态：这次转让归不归零，夜扫 / 三态按钮第一次算到时系统写，之后不改（迁移 127）",
   },
   // 企业版站内通知 + 飞书推送（2026-11-01，迁移 109）：lib/enterprise/notify.ts 系统写，用户只能点已读
   EntNotice: {

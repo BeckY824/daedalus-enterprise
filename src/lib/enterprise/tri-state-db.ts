@@ -3,18 +3,21 @@
  *
  * 收哪些事实（一位客户）：
  *   - 计时范围（M-公海-34）：有负责人（不是无负责人占位账号）、不在客户公海、没标无效；负责人是市场（市场角色、又不兼销售）的不计；已删的读不到（软删统一滤掉）
- *   - 最近有内容的沟通日：挂客户的、挂名下任一项目的（含同事负责的，沟通都带着 customerId）都算；发生时刻晚于现在的（排着的计划）不算；内容判定见 tri-state-quota.ts 有内容的沟通
- *   - 最近项目推进日：名下没进公海的项目，建项目和换节点（ProjectNodeLog kind = node）里最晚的（建项目算一次动静，同现行超时回收的起点，推断）
+ *   - 最近沟通日（拨钟）和最近有内容的沟通日（回满额度）分开取（X-102）：挂客户的、挂名下任一项目的（含同事负责的，沟通都带着 customerId）都算；
+ *     发生时刻晚于现在的（排着的计划）不算。拨钟现在认任何沟通（tri-state-quota.ts 拨钟的沟通，恒真），额度只认有内容的（有内容的沟通）
+ *   - 最近项目推进日：名下没进公海的项目，建项目和换节点（ProjectNodeLog kind = node）里最晚的（建项目算一次动静，同现行超时回收的起点，推断）。
+ *     现状：项目进了线索公海以后它以前的推进不再算，客户的钟可能因此往前跳（基准日变早）
  *   - 名下项目（没进公海的）：阶段、业务线（项目业务线：没填按负责人的线）、同事负责、结束没有、结束日（最后一行带结局的换节点留痕，没有就 updatedAt）
  *   - 导入完成日：这位客户是哪一批导入建的（EntImportRow entity = customer、kind = create，批次没撤销）那一批的完成时刻
  *   - 换负责人（CustomerOwnerLog）：assign = 转让、deactivate = 离职交接、claim = 公海捞取、pool-assign = 公海指派、market-assign = 市场首次分配；
- *     undo、pool-release 不算。转让 / 离职交接归不归零按时间先后用现在的规则现算（推断：转让那一刻没存，规则后改会回改历史，见 换负责人们of）
+ *     undo、pool-release 不算。转让 / 离职交接归不归零第一次被算到时存在那一行（clockReset，迁移 127），之后只读（M-公海-20 / M-公海-37：改规则不回改历史）。
+ *     撤销转让：企业版撤销会删掉被撤的那一行（owner-log-db.ts 删被撤的换负责人记录），那次不算次数、它造成的归零也跟着没了（推断）
  *   - 推后、暂缓回收：读状态留痕（tri-state-quota.ts 留痕转推后 / 最近暂缓回收日）
  *   - 本轮提醒：钟上的 noticeCount / lastNoticeDay。待回收时当「本轮待回收提醒次数 / 最近提醒日」；沉睡时 lastNoticeDay 当「本轮进入沉睡提醒日」
  *     （沉睡期间发的周报、抄上级也写 lastNoticeDay，日子都不早于沉睡节点日，不影响「进入沉睡那条发过没有」的判法）；换状态时清零
  *
  * 写什么：
- *   - 客户钟：一位客户一行，状态（活跃 / 沉睡 / 待回收；该进公海也记待回收）、进入日、被挡、成交成立日（首次成立那天）、额度缓存（次数、合计天数、额度上次重置日）
+ *   - 客户钟：一位客户一行，状态（活跃 / 沉睡 / 待回收；该进公海也记待回收；进了客户公海记「公海」）、进入日、被挡、成交成立日（首次成立那天）、额度缓存（次数、合计天数、额度上次重置日）
  *   - 状态留痕：第一次建钟、每次换状态、被挡、自动进公海各一行，方式「自动」
  *   - 自动进客户公海（M-公海-17 唯一的自动动作）：同手动放进公海那一套（pool-link.ts 客户名下在推项目进公海 + 客户进公海清负责人），
  *     公海那一行不记操作人（统一公海「入池方式」认成超时回收），项目留痕记系统
@@ -28,14 +31,14 @@ import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 组织规则, 三态规则 } from "@/lib/project/org-rules";
 import { 算三态, 换负责人归零, type 三态事实, type 三态结果, type 三态项目, type 换负责人记录, type 换负责人方式 } from "./tri-state";
-import { 有内容的沟通, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
+import { 有内容的沟通, 拨钟的沟通, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
 import { 读组织, type 组织 } from "./org";
 import { 是市场角色, 是销售角色 } from "./permissions";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 交接中的客户 } from "./handover-db";
+import { 交接中的客户, 待确认 } from "./handover-db";
 import { 客户名下在推项目进公海, 客户进公海清负责人 } from "./pool-link";
 import { 系统 } from "@/lib/project/timeout";
 import { 钉住老签约 } from "@/lib/contract-owner";
@@ -48,6 +51,8 @@ type 库 = Prisma.TransactionClient | typeof prisma;
 
 /** 钟上存的状态：该进公海（被挡、交接中没收成的）也记待回收 */
 export type 钟状态 = "活跃" | "沉睡" | "待回收";
+/** 钟上「进了客户公海」的状态值（自动进公海、或别的路进了公海后夜扫标掉）：列表按状态查时不和待回收混；领走 / 分走后按换负责人重新起算 */
+export const 公海状态 = "公海";
 export const 钟状态of = (r: Extract<三态结果, { 计时: true }>): 钟状态 => (r.状态 === "该进公海" ? "待回收" : r.状态);
 
 /** 自动进客户公海那一行的说明（CustomerPool.reason、项目 pool-release 留痕、状态留痕都写它） */
@@ -73,19 +78,37 @@ export type 三态客户 = {
   留痕: 留痕行[];
   /** 名下同事负责、没结束的项目负责人（裁决「让同事结束项目」时通知谁） */
   同事们: string[];
+  /** 这次才第一次算出归不归零的转让 / 离职交接（CustomerOwnerLog id → 归零），写库的调用方用 存归零 存下 */
+  待存归零: { id: string; 归零: boolean }[];
 };
 
-/** 换负责人记录（按时间正序）→ 算三态要的记录：转让 / 离职交接按先后、拿现在的规则现算归不归零 */
-export function 换负责人们of(行们: readonly { at: Date; kind: string }[], 规则: Pick<三态规则, "转让归零">): 换负责人记录[] {
-  const 出: 换负责人记录[] = [];
+/**
+ * 换负责人记录（按时间正序）→ 算三态要的记录。转让 / 离职交接：存过归不归零（clockReset）的照存的；没存过的按先后、拿现在的规则算一次，
+ * 放进 待存（调用方存下，之后不再重算：M-公海-37 改规则只对之后的转让生效）
+ */
+export function 换负责人们of(
+  行们: readonly { id?: string; at: Date; kind: string; clockReset?: boolean | null }[],
+  规则: Pick<三态规则, "转让归零">,
+): 换负责人记录[] & { 待存: { id: string; 归零: boolean }[] } {
+  const 出 = [] as unknown as 换负责人记录[] & { 待存: { id: string; 归零: boolean }[] };
+  出.待存 = [];
   for (const r of 行们) {
     const 方式 = 换人方式[r.kind];
     if (!方式) continue;
     const 日 = beijingDay(r.at);
-    if (方式 === "转让" || 方式 === "离职交接") 出.push({ 日, 方式, 归零: 换负责人归零(出, { 日, 方式 }, 规则) });
-    else 出.push({ 日, 方式 });
+    if (方式 === "转让" || 方式 === "离职交接") {
+      const 存的 = r.clockReset ?? null;
+      const 归零 = 存的 ?? 换负责人归零(出, { 日, 方式 }, 规则);
+      if (存的 === null && r.id) 出.待存.push({ id: r.id, 归零 });
+      出.push({ 日, 方式, 归零 });
+    } else 出.push({ 日, 方式 });
   }
   return 出;
+}
+
+/** 把第一次算出来的归不归零存到换负责人那一行（只写还空着的，别人先存了不覆盖） */
+export async function 存归零(db: 库, 们: Iterable<Pick<三态客户, "待存归零">>): Promise<void> {
+  for (const c of 们) for (const x of c.待存归零) await db.customerOwnerLog.updateMany({ where: { id: x.id, clockReset: null }, data: { clockReset: x.归零 } });
 }
 
 export const 分批 = <T,>(xs: readonly T[], n = 500): T[][] => {
@@ -120,9 +143,9 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       for (const g of await db.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: 小 }, kind: "node" }, _max: { at: true } })) if (g._max.at) 推进.set(g.projectId, g._max.at);
       for (const g of await db.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: 小 }, kind: "node", toResult: { not: null } }, _max: { at: true } })) if (g._max.at) 结局.set(g.projectId, g._max.at);
     }
-    const 沟通日 = await 最近有内容沟通日们(db, 批, 现在);
+    const { 拨钟: 沟通日, 有内容: 有内容日 } = await 最近沟通日们(db, 批, 现在);
     const 导入 = await 导入完成日们(db, 批);
-    const 换人 = await db.customerOwnerLog.findMany({ where: { customerId: { in: 批 } }, select: { customerId: true, at: true, kind: true }, orderBy: { at: "asc" } });
+    const 换人 = await db.customerOwnerLog.findMany({ where: { customerId: { in: 批 } }, select: { id: true, customerId: true, at: true, kind: true, clockReset: true }, orderBy: [{ at: "asc" }, { id: "asc" }] });
     const 痕 = await db.entCustomerStateLog.findMany({
       where: { customerId: { in: 批 } },
       select: { customerId: true, at: true, fromState: true, toState: true, via: true, reason: true, holdDays: true },
@@ -148,6 +171,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       const 留痕: 留痕行[] = (痕of.get(c.id) ?? []).map((x) => ({ 日: beijingDay(x.at), fromState: x.fromState, toState: x.toState, via: x.via, reason: x.reason, holdDays: x.holdDays }));
       const 钟 = c.entClock;
       const 待回收中 = 钟?.state === "待回收";
+      const 换人们 = 换负责人们of(换人of.get(c.id) ?? [], 规则.三态);
       const 事实: 三态事实 = {
         有负责人,
         在公海: !!c.pool,
@@ -155,46 +179,57 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         无效: !!c.poolInvalidAt,
         负责人是市场: 有负责人 && 是市场角色(org, c.salesOwnerId) && !是销售角色(org, c.salesOwnerId),
         最近沟通日: 沟通日.get(c.id) ?? null,
+        最近有内容沟通日: 有内容日.get(c.id) ?? null,
         最近推进日: 最近推进,
         导入完成日: 导入.get(c.id) ?? null,
         系统起算日: 起算日,
         项目们: 三态项目们,
         成交成立日: 钟?.dealDay ?? null,
         推后们: 留痕转推后(留痕),
-        换负责人们: 换负责人们of(换人of.get(c.id) ?? [], 规则.三态),
+        换负责人们: [...换人们],
         暂缓回收日: 最近暂缓回收日(留痕),
         本轮待回收提醒次数: 待回收中 ? 钟!.noticeCount : 0,
         本轮最近待回收提醒日: 待回收中 ? 钟!.lastNoticeDay : null,
         本轮进入沉睡提醒日: 钟?.state === "沉睡" ? 钟.lastNoticeDay : null,
       };
       const 同事们 = [...new Set(ps.filter((p) => !p.result && p.ownerId && p.ownerId !== c.salesOwnerId).map((p) => p.ownerId))];
-      出.set(c.id, { id: c.id, name: c.name, salesOwnerId: c.salesOwnerId, bizLine: c.bizLine, 在公海: !!c.pool, 事实, 钟, 留痕, 同事们 });
+      出.set(c.id, { id: c.id, name: c.name, salesOwnerId: c.salesOwnerId, bizLine: c.bizLine, 在公海: !!c.pool, 事实, 钟, 留痕, 同事们, 待存归零: 换人们.待存 });
     }
   }
   return 出;
 }
 
 /**
- * 每位客户最近一条有内容的沟通（上海日）。先按客户取发生时刻最晚的非空内容，最晚那条只有空白的（少见）再逐条往前找。
+ * 每位客户最近一条拨钟的沟通、最近一条有内容的沟通（上海日），一批客户两三条查询：
+ *   拨钟：按客户分组取发生时刻最晚的（拨钟的沟通 现在恒真，X-102 定了要按内容判时把这里换成和下面一样的取法）；
+ *   有内容：按客户分组取最晚的非空内容，再一次取回这批「最晚那条」看是不是只有空白；只有空白的（少见）才逐位往前找。
  * 只认发生时刻不晚于现在的（同最近跟进的算法，soft-delete.ts 重算最近跟进）
  */
-async function 最近有内容沟通日们(db: 库, ids: readonly string[], 现在: Date): Promise<Map<string, string>> {
-  const 出 = new Map<string, string>();
-  const 最晚 = await db.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: [...ids] }, occurredAt: { lte: 现在 }, content: { not: "" } }, _max: { occurredAt: true } });
+async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date): Promise<{ 拨钟: Map<string, string>; 有内容: Map<string, string> }> {
+  const 拨钟 = new Map<string, string>(), 有内容 = new Map<string, string>();
+  if (拨钟的沟通(null)) {
+    for (const g of await db.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: [...ids] }, occurredAt: { lte: 现在 } }, _max: { occurredAt: true } })) {
+      if (g._max.occurredAt) 拨钟.set(g.customerId, beijingDay(g._max.occurredAt));
+    }
+  }
+  const 最晚 = (await db.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: [...ids] }, occurredAt: { lte: 现在 }, content: { not: "" } }, _max: { occurredAt: true } }))
+    .filter((g): g is typeof g & { _max: { occurredAt: Date } } => !!g._max.occurredAt);
+  const 那几条 = 最晚.length
+    ? await db.followUp.findMany({ where: { OR: 最晚.map((g) => ({ customerId: g.customerId, occurredAt: g._max.occurredAt })) }, select: { customerId: true, content: true } })
+    : [];
+  const 有字 = new Set(那几条.filter((f) => 有内容的沟通(f.content)).map((f) => f.customerId));
   for (const g of 最晚) {
-    const t = g._max.occurredAt;
-    if (!t) continue;
-    const 那条 = await db.followUp.findMany({ where: { customerId: g.customerId, occurredAt: t }, select: { content: true } });
-    if (那条.some((f) => 有内容的沟通(f.content))) {
-      出.set(g.customerId, beijingDay(t));
+    if (有字.has(g.customerId)) {
+      有内容.set(g.customerId, beijingDay(g._max.occurredAt));
       continue;
     }
-    // 最晚那条只有空白：往前一条条找（只这位客户）
-    const 往前 = await db.followUp.findMany({ where: { customerId: g.customerId, occurredAt: { lt: t }, content: { not: "" } }, orderBy: { occurredAt: "desc" }, select: { content: true, occurredAt: true }, take: 200 });
+    // 最晚那条只有空白：只这位往前找
+    const 往前 = await db.followUp.findMany({ where: { customerId: g.customerId, occurredAt: { lt: g._max.occurredAt }, content: { not: "" } }, orderBy: { occurredAt: "desc" }, select: { content: true, occurredAt: true }, take: 200 });
     const 有 = 往前.find((f) => 有内容的沟通(f.content));
-    if (有) 出.set(g.customerId, beijingDay(有.occurredAt));
+    if (有) 有内容.set(g.customerId, beijingDay(有.occurredAt));
   }
-  return 出;
+  if (!拨钟的沟通(null)) for (const [k, v] of 有内容) 拨钟.set(k, v);
+  return { 拨钟, 有内容 };
 }
 
 /** 这些客户里导入建的那几位：建它们的那一批（完成了、没撤销）的完成日（上海日）；一位被几批碰过取最晚一批 */
@@ -220,7 +255,7 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
   const 进入日 = 状态 === "活跃" ? r.归零日 : 状态 === "沉睡" ? r.节点.沉睡 : r.节点.待回收;
   const 被挡 = r.被挡;
   const 钟 = c.钟;
-  const 额 = 额度回满({ holdCount: 钟?.holdCount ?? 0, holdDays: 钟?.holdDays ?? 0, quotaResetDay: 钟?.quotaResetDay ?? null }, c.事实.最近沟通日);
+  const 额 = 额度回满({ holdCount: 钟?.holdCount ?? 0, holdDays: 钟?.holdDays ?? 0, quotaResetDay: 钟?.quotaResetDay ?? null }, c.事实.最近有内容沟通日 ?? null);
   const 成交日 = 钟?.dealDay ?? (r.成交首次成立 ? 今天 : null);
   const 留痕: { fromState: string | null; toState: string; reason: string }[] = [];
   if (!钟) {
@@ -246,6 +281,7 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
 }
 
 function 换状态理由(从: string, 到: 钟状态, r: Extract<三态结果, { 计时: true }>): string {
+  if (从 === 公海状态) return "从客户公海领走 / 分走，换了负责人，重新起算";
   if (到 === "活跃") return r.订单在推 ? "名下有订单阶段没结束的项目，算活跃" : "有了新动静（沟通、项目推进或换负责人），钟归零";
   if (到 === "沉睡") return 从 === "待回收" ? "继续持有顺延，退回沉睡" : `满 ${r.节点天.沉睡} 天没动静，进入沉睡`;
   return `满 ${r.节点天.待回收} 天没动静，进入待回收`;
@@ -268,52 +304,112 @@ export async function 三态开着(规则?: 组织规则): Promise<boolean> {
   return (规则 ?? (await 生效组织规则())).三态.开;
 }
 
-/** 计时范围里可能有的客户：有负责人、不在公海、没标无效（市场成员名下的算的时候再排） */
+/** 计时范围里可能有的客户：有负责人、不在公海、没标无效（市场成员名下的算的时候再排）；已删的软删统一滤掉 */
 export async function 候选客户(db: 库): Promise<string[]> {
   const 占位 = await 无负责人占位Id(db);
   return (await db.customer.findMany({ where: { pool: { is: null }, poolInvalidAt: null, salesOwnerId: { not: 占位 } }, select: { id: true }, orderBy: { id: "asc" } })).map((c) => c.id);
 }
 
-export type 三态夜扫明细 = { 算了: number; 换状态: number; 进公海: string[]; 新被挡: number; 交接中没收: number };
+/**
+ * 交接中挡自动进公海（X-38 → P-转-05）：转让交接待确认的客户（handover-db.ts 交接中的客户），加上离职交接待确认的——
+ * 离职那一行列了客户的按列的，没列的按「负责人是离职那位」认（推断：离职交接确认前客户还在他名下）
+ */
+export async function 交接挡住的(db: 库, ids: readonly string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const 中 = await 交接中的客户([...ids], db);
+  const 离职 = await db.entHandover.findMany({ where: { kind: "离职", status: 待确认 }, select: { fromUserId: true, customerIds: true } });
+  if (!离职.length) return 中;
+  const 要 = new Set(ids);
+  const 走的人 = new Set<string>();
+  for (const h of 离职) {
+    let 列的: unknown = [];
+    try {
+      列的 = JSON.parse(h.customerIds);
+    } catch {
+      列的 = [];
+    }
+    if (Array.isArray(列的) && 列的.length) for (const id of 列的) { if (typeof id === "string" && 要.has(id)) 中.add(id); }
+    else 走的人.add(h.fromUserId);
+  }
+  if (走的人.size) for (const c of await db.customer.findMany({ where: { id: { in: [...ids] }, salesOwnerId: { in: [...走的人] } }, select: { id: true } })) 中.add(c.id);
+  return 中;
+}
+
+export type 三态夜扫明细 = { 算了: number; 换状态: number; 进公海: string[]; 新被挡: number; 交接中没收: number; 标公海: number };
+const 空明细 = (): 三态夜扫明细 => ({ 算了: 0, 换状态: 0, 进公海: [], 新被挡: 0, 交接中没收: 0, 标公海: 0 });
 
 /** 自动进公海收了的一位：原负责人、这是第几次被三态自动收回（含这次，M-公海-28） */
 export type 自动收了 = { id: string; name: string; 原负责人: string; 第几次: number };
 
 /**
  * 夜扫（00:05 那一遍里，nightly.ts 调）：按客户算三态、写钟和留痕，到了自动进公海的进客户公海。
- * 三态没开 = null，什么都不做。同一天按同一份三态规则只扫一遍（记号见 三态扫过键）；改了规则当晚重算。
- * 停机几天：状态按「今天该是什么」判，开机这一遍自然补上（P-全局-07）
+ * 三态没开 = null，什么都不做。一天只扫一遍（记号见 三态扫过键）：白天改了三态天数不马上整库重算，等第二天 00:05 那遍（M-公海-37「当晚」）；
+ * 今天还没扫过（第一次开三态、停过机）的照扫。停机几天：状态按「今天该是什么」判，开机这一遍自然补上（P-全局-07）
  */
 export async function 三态夜扫(现在: Date = new Date()): Promise<三态夜扫明细 | null> {
   const 规则 = await 生效组织规则();
   if (!(await 三态开着(规则))) return null;
   const 今天 = beijingDay(现在);
-  const 记号 = `${今天} ${JSON.stringify(规则.三态)}`;
-  if ((await getSetting<string>(三态扫过键)) === 记号) return { 算了: 0, 换状态: 0, 进公海: [], 新被挡: 0, 交接中没收: 0 };
+  const 旧 = await getSetting<string>(三态扫过键);
+  if (typeof 旧 === "string" && 旧.slice(0, 10) === 今天) return 空明细();
   const 明细 = await 看全部(() => 按客户扫(规则, 现在, 今天));
-  await setSetting(三态扫过键, 记号);
+  await setSetting(三态扫过键, `${今天} ${JSON.stringify(规则.三态)}`);
   return 明细;
+}
+
+/**
+ * 一批客户写钟：一笔写事务（首次开三态 5 千多位建钟时按 500 一批包）。事务里重读这批的钟，和事务外读到的不一样
+ * （中间有人点了继续持有、按钮先建了钟）的那几位在事务里按最新事实重算，不按旧钟写错留痕。
+ * 返回这批里该进公海的，和每位在计时的客户按最新事实算出来的结果（提醒那遍接着用）
+ */
+export type 算过 = { c: 三态客户; r: Extract<三态结果, { 计时: true }> };
+export async function 写一批(规则: 组织规则, org: 组织, 们: Map<string, 三态客户>, 现在: Date, 今天: string, 明细: 三态夜扫明细 = 空明细()): Promise<{ 要收: string[]; 算: 算过[] }> {
+  return 查完再写(async (tx) => {
+    const ids = [...们.keys()];
+    const 新钟 = new Map((await tx.entCustomerClock.findMany({ where: { customerId: { in: ids } }, select: { customerId: true, updatedAt: true } })).map((x) => [x.customerId, x.updatedAt.getTime()]));
+    const 动过 = ids.filter((id) => (们.get(id)!.钟?.updatedAt.getTime() ?? null) !== (新钟.get(id) ?? null));
+    const 重读 = 动过.length ? await 收三态客户(tx, 动过, 规则, org, 现在) : new Map<string, 三态客户>();
+    const 要收: string[] = [];
+    const 算: 算过[] = [];
+    for (const id of ids) {
+      const c = 重读.get(id) ?? 们.get(id)!;
+      const r = 算三态(c.事实, 规则.三态, 今天);
+      if (!r.计时) continue;
+      算.push({ c, r });
+      明细.算了++;
+      await 存归零(tx, [c]);
+      const w = await 写钟(tx, c, r, 今天, 现在);
+      if (w.换了状态) 明细.换状态++;
+      if (w.新被挡) 明细.新被挡++;
+      if (r.状态 === "该进公海" && !r.被挡) 要收.push(id);
+    }
+    return { 要收, 算 };
+  }, { timeout: 60_000 });
+}
+
+/** 别的路进了客户公海（手动放、离职放公海）的客户，钟还停在原状态：标成「公海」、留一行痕，列表按状态查时不混进待回收 */
+async function 标掉公海里的(现在: Date, 今天: string): Promise<number> {
+  const 们 = await prisma.entCustomerClock.findMany({ where: { state: { not: 公海状态 }, customer: { pool: { isNot: null } } }, select: { customerId: true, state: true } });
+  for (const 批 of 分批(们)) {
+    await 查完再写(async (tx) => {
+      for (const x of 批) {
+        const n = await tx.entCustomerClock.updateMany({ where: { customerId: x.customerId, state: x.state }, data: { state: 公海状态, enteredDay: 今天, noticeCount: 0, lastNoticeDay: null, blocked: false, holdUntil: null } });
+        if (n.count) await tx.entCustomerStateLog.create({ data: { customerId: x.customerId, fromState: x.state, toState: 公海状态, via: 留痕方式.自动, reason: "进了客户公海，停止计时", at: 现在 } });
+      }
+    });
+  }
+  return 们.length;
 }
 
 async function 按客户扫(规则: 组织规则, 现在: Date, 今天: string): Promise<三态夜扫明细> {
   const org = await 读组织();
   const ids = await 候选客户(prisma);
-  const 明细: 三态夜扫明细 = { 算了: 0, 换状态: 0, 进公海: [], 新被挡: 0, 交接中没收: 0 };
+  const 明细 = 空明细();
   const 要收: string[] = [];
-  for (const 批 of 分批(ids)) {
-    const 们 = await 收三态客户(prisma, 批, 规则, org, 现在);
-    for (const c of 们.values()) {
-      const r = 算三态(c.事实, 规则.三态, 今天);
-      if (!r.计时) continue;
-      明细.算了++;
-      const w = await 写钟(prisma, c, r, 今天, 现在);
-      if (w.换了状态) 明细.换状态++;
-      if (w.新被挡) 明细.新被挡++;
-      if (r.状态 === "该进公海" && !r.被挡) 要收.push(c.id);
-    }
-  }
+  for (const 批 of 分批(ids)) 要收.push(...(await 写一批(规则, org, await 收三态客户(prisma, 批, 规则, org, 现在), 现在, 今天, 明细)).要收);
+  明细.标公海 = await 标掉公海里的(现在, 今天);
   if (!要收.length) return 明细;
-  const 中 = await 交接中的客户(要收);
+  const 中 = await 交接挡住的(prisma, 要收);
   明细.交接中没收 = 中.size;
   const 收 = 要收.filter((id) => !中.has(id));
   if (!收.length) return 明细;
@@ -343,7 +439,7 @@ async function 按客户扫(规则: 组织规则, 现在: Date, 今天: string):
 
 /**
  * 一位客户自动进客户公海：事务里按最新的事实重算一遍（查出来到写之间有人记了沟通、点了继续持有、转走了就不收），
- * 还该进、没被挡、不在交接中才收。返回收了没有
+ * 还该进、没被挡、不在交接中（转让 / 离职）才收。钟标成「公海」。返回收了谁
  */
 export async function 自动进公海一位(id: string, 规则: 组织规则, org: 组织, 现在: Date, 今天: string): Promise<自动收了 | null> {
   return 查完再写(async (tx) => {
@@ -351,7 +447,8 @@ export async function 自动进公海一位(id: string, 规则: 组织规则, or
     if (!c) return null;
     const r = 算三态(c.事实, 规则.三态, 今天);
     if (!r.计时 || r.状态 !== "该进公海" || r.被挡) return null;
-    if ((await 交接中的客户([id], tx)).size) return null;
+    if ((await 交接挡住的(tx, [id])).size) return null;
+    await 存归零(tx, [c]);
     const 理由 = 三态进公海理由(r.节点天.进公海 - r.节点天.待回收);
     const 们 = [{ id, salesOwnerId: c.salesOwnerId }];
     // 公海那一行不记操作人：统一公海入池方式认成超时回收（unified-pool.ts 客户入池类）
@@ -359,8 +456,9 @@ export async function 自动进公海一位(id: string, 规则: 组织规则, or
     // 先项目后清负责人：项目那边靠客户原来的负责人认「他自己负责的」
     await 客户名下在推项目进公海(tx, 们, 系统.id, 理由, 现在);
     await 客户进公海清负责人(tx, 们, null);
-    await tx.entCustomerStateLog.create({ data: { customerId: id, fromState: c.钟?.state ?? "待回收", toState: "公海", via: 留痕方式.自动, reason: 理由, at: 现在 } });
-    if (c.钟) await tx.entCustomerClock.update({ where: { customerId: id }, data: { blocked: false, holdUntil: null } });
+    await tx.entCustomerStateLog.create({ data: { customerId: id, fromState: c.钟?.state ?? "待回收", toState: 公海状态, via: 留痕方式.自动, reason: 理由, at: 现在 } });
+    const 标 = { state: 公海状态, enteredDay: 今天, noticeCount: 0, lastNoticeDay: null, blocked: false, holdUntil: null };
+    await tx.entCustomerClock.upsert({ where: { customerId: id }, create: { customerId: id, ...标 }, update: 标 });
     return { id, name: c.name, 原负责人: c.salesOwnerId, 第几次: 自动收回次数(c.留痕) + 1 };
   });
 }

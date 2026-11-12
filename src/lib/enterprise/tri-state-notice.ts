@@ -11,7 +11,7 @@
  *       条线总管理 = 客户业务线那条线的条线总管理；客户没填业务线（或暂不分配）按负责人的线；都没有发系统管理员（M-公海-24）
  *       系统管理员 = 是系统管理员的那几位（P-判定-06）
  *     同一人在几位客户上收到不同级别，合成一条
- *   - 记什么：发了的客户在钟上记 lastNoticeDay = 今天；待回收提醒另记 noticeCount = 第几次（算三态() 靠它排下一次、判能不能进公海）
+ *   - 记什么：发成了（这位客户的收件人都记上了）才在钟上记 lastNoticeDay = 今天；待回收提醒另记 noticeCount = 第几次（算三态() 靠它排下一次、判能不能进公海）；被挡请裁决不记
  *   - 第 2 次被三态自动收回起，「已回公海」抄原负责人的直属上级（原负责人停用了按他停用前填的上级，M-公海-28）
  */
 import { prisma } from "@/lib/prisma";
@@ -19,11 +19,10 @@ import { 看全部 } from "@/lib/team-scope";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { getSetting, setSetting } from "@/lib/settings";
 import { beijingDay, beijingWallIso } from "@/lib/business-clock";
-import { 算三态, type 提醒级, type 今天提醒 } from "./tri-state";
-import { 收三态客户, 写钟, 候选客户, 分批, 三态开着, type 自动收了 } from "./tri-state-db";
-import { 读组织, 直属上级of, 是系统管理员of, type 组织 } from "./org";
-import { 条线的线 } from "./line-viewer";
-import { 是业务线 } from "./assign-line";
+import type { 提醒级, 今天提醒 } from "./tri-state";
+import { 收三态客户, 写一批, 候选客户, 分批, 三态开着, type 自动收了 } from "./tri-state-db";
+import { 读组织, type 组织 } from "./org";
+import { 找条线总管理, 找直属上级, 本人在职, 原负责人上级 } from "./tri-state-people";
 import { notify } from "./notify";
 
 export const 三态提醒时刻 = { 时: 8, 分: 0 } as const;
@@ -36,27 +35,13 @@ export function 过了三态提醒时刻(现在: Date): boolean {
   return 钟点 >= `${String(三态提醒时刻.时).padStart(2, "0")}:${String(三态提醒时刻.分).padStart(2, "0")}`;
 }
 
-const 系统管理员们 = (org: 组织) => [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
-
-/** 一条线的条线总管理（director 又设了这条线；带系统管理员标记设了线的也算） */
-const 条线总管理们 = (org: 组织, 线: string) => [...org.成员.keys()].filter((id) => 条线的线(org, id) === 线);
-
-/** 找哪位条线总管理（M-公海-24）：客户业务线 → 负责人的线 → 系统管理员 */
-export function 找条线总管理(org: 组织, 客户线: string | null, ownerId: string): string[] {
-  const 线 = 是业务线(客户线) ? 客户线 : org.成员.get(ownerId)?.line ?? null;
-  const 们 = 线 ? 条线总管理们(org, 线) : [];
-  return 们.length ? 们 : 系统管理员们(org);
-}
-
-/** 直属上级那一级（M-公海-17 / X-37）：没有 / 停用了往上一级找条线总管理，都没有给系统管理员 */
-export function 找直属上级(org: 组织, 客户线: string | null, ownerId: string): string[] {
-  const 上 = 直属上级of(org, ownerId);
-  return 上 ? [上] : 找条线总管理(org, 客户线, ownerId);
-}
+export { 找条线总管理, 找直属上级 } from "./tri-state-people";
 
 /** 一条提醒的级别 → 具体的人（主送、抄送合在一起，去重） */
 export function 提醒发给(org: 组织, 提醒: 今天提醒, c: { salesOwnerId: string; bizLine: string | null }): string[] {
-  const 级人 = (级: 提醒级): string[] => (级 === "本人" ? [c.salesOwnerId] : 级 === "直属上级" ? 找直属上级(org, c.bizLine, c.salesOwnerId) : 找条线总管理(org, c.bizLine, c.salesOwnerId));
+  // 负责人停用了不给他发；直属上级那一级按他停用前的上级找（tri-state-people.ts）
+  const 级人 = (级: 提醒级): string[] =>
+    级 === "本人" ? (本人在职(org, c.salesOwnerId) ? [c.salesOwnerId] : []) : 级 === "直属上级" ? 找直属上级(org, c.bizLine, c.salesOwnerId) : 找条线总管理(org, c.bizLine, c.salesOwnerId);
   return [...new Set([...提醒.主送, ...提醒.抄送].flatMap(级人))];
 }
 
@@ -100,33 +85,50 @@ export async function 钟上三态提醒(现在: Date = new Date()): Promise<三
   return 明细;
 }
 
+/**
+ * 先算、再按人发、发成了再记（中断重跑不把没送到的算进 3 次提醒）：每发完一个人，查他那条确实记上了（EntNotice 同 key 有了），
+ * 一位客户的收件人都记上了才在钟上记 lastNoticeDay / noticeCount。重跑同一天：已经记上的人 notify 按 key 去重不重发，照样认成发过
+ */
 async function 发三态提醒(规则: Awaited<ReturnType<typeof 生效组织规则>>, 现在: Date, 今天: string): Promise<三态提醒明细> {
   const org = await 读组织();
   const 给 = new Map<string, 条[]>();
-  let 客户数 = 0;
+  const 要记 = new Map<string, { 收件人: Set<string>; data: { noticeCount?: number; lastNoticeDay: string } | null }>();
   for (const 批 of 分批(await 候选客户(prisma))) {
-    for (const c of (await 收三态客户(prisma, 批, 规则, org, 现在)).values()) {
-      const r = 算三态(c.事实, 规则.三态, 今天);
-      if (!r.计时) continue;
-      await 写钟(prisma, c, r, 今天, 现在);
+    // 先按最新事实把钟对一遍（同夜扫一批一笔事务、钟被动过就重算），再按同一份结果发
+    for (const { c, r } of (await 写一批(规则, org, await 收三态客户(prisma, 批, 规则, org, 现在), 现在, 今天)).算) {
       if (!r.提醒) continue;
-      客户数++;
+      const 人们 = 提醒发给(org, r.提醒, c);
+      // 被挡请裁决不记：它按日子每 30 天推一次（算三态() 自己排），记了 lastNoticeDay 会被当成待回收提醒、把最早进公海日往后推
+      const data = r.提醒.事由 === "待回收提醒" ? { noticeCount: r.提醒.第几次 ?? 1, lastNoticeDay: 今天 } : r.提醒.事由 === "被挡请裁决" ? null : { lastNoticeDay: 今天 };
+      // 没人可发（只发本人、本人停用了）：照样算这一级发过，不然第二天又当没发补一遍
+      if (!人们.length) {
+        if (data) await prisma.entCustomerClock.update({ where: { customerId: c.id }, data });
+        continue;
+      }
       const 条: 条 = { 客户: c.id, 名: c.name, 负责人: c.salesOwnerId, 事由: r.提醒.事由, ...(r.提醒.第几次 ? { 第几次: r.提醒.第几次 } : {}) };
-      for (const u of 提醒发给(org, r.提醒, c)) 给.set(u, [...(给.get(u) ?? []), 条]);
-      await prisma.entCustomerClock.update({
-        where: { customerId: c.id },
-        data: r.提醒.事由 === "待回收提醒" ? { noticeCount: r.提醒.第几次 ?? 1, lastNoticeDay: 今天 } : { lastNoticeDay: 今天 },
-      });
+      for (const u of 人们) 给.set(u, [...(给.get(u) ?? []), 条]);
+      要记.set(c.id, { 收件人: new Set(人们), data });
     }
   }
-  if (给.size) {
-    const 名 = await 人名([...new Set([...给.values()].flat().map((x) => x.负责人))]);
-    for (const [u, 条们] of 给) {
-      const { title, body } = 汇总文字(条们, (id) => 名.get(id) ?? "（已停用）");
-      await notify([u], { kind: "三态", title, body, link: "/customers", key: `tri-daily:${今天}` });
+  const key = `tri-daily:${今天}`;
+  const 名 = 给.size ? await 人名([...new Set([...给.values()].flat().map((x) => x.负责人))]) : new Map<string, string>();
+  let 记了 = 0;
+  for (const [u, 条们] of 给) {
+    const { title, body } = 汇总文字(条们, (id) => 名.get(id) ?? "（已停用）");
+    await notify([u], { kind: "三态", title, body, link: "/customers", key });
+    if (!(await prisma.entNotice.findFirst({ where: { userId: u, dedupeKey: key }, select: { id: true } }))) continue; // 没记上：这些客户今天不算提醒过
+    for (const x of 条们) {
+      const 记 = 要记.get(x.客户);
+      if (!记) continue;
+      记.收件人.delete(u);
+      if (!记.收件人.size) {
+        if (记.data) await prisma.entCustomerClock.update({ where: { customerId: x.客户 }, data: 记.data });
+        要记.delete(x.客户);
+        记了++;
+      }
     }
   }
-  return { 客户: 客户数, 人: 给.size };
+  return { 客户: 记了, 人: 给.size };
 }
 
 async function 人名(ids: string[]): Promise<Map<string, string>> {
@@ -138,16 +140,14 @@ async function 人名(ids: string[]): Promise<Map<string, string>> {
  */
 export async function 已回公海通知(们: readonly 自动收了[], org: 组织, 今天: string): Promise<void> {
   for (const x of 们) {
-    const 上 = x.第几次 >= 2 ? 直属上级of(org, x.原负责人) ?? org.离职上级?.get(x.原负责人) ?? null : null;
-    await notify([x.原负责人], {
-      kind: "回收", title: `「${x.name}」待回收期满没人处理，已回客户公海`, body: x.第几次 >= 2 ? `这位客户第 ${x.第几次} 次被自动收回` : "",
-      link: "/pool", key: `tri-pooled:${x.id}:${今天}`,
-    });
+    // 上级要在职（停用了按原负责人停用前的上级，那位也要在职）；原负责人自己停用了不发给他
+    const 上 = x.第几次 >= 2 ? 原负责人上级(org, x.原负责人) : null;
+    const key = `tri-pooled:${x.id}:${今天}`;
+    if (本人在职(org, x.原负责人)) {
+      await notify([x.原负责人], { kind: "回收", title: `「${x.name}」待回收期满没人处理，已回客户公海`, body: x.第几次 >= 2 ? `这位客户第 ${x.第几次} 次被自动收回` : "", link: "/pool", key });
+    }
     if (上 && 上 !== x.原负责人) {
-      await notify([上], {
-        kind: "回收", title: `下属的客户「${x.name}」第 ${x.第几次} 次被自动收回，已回客户公海`, body: "要不要标无效由条线总管理在公海回收站里定",
-        link: "/pool", key: `tri-pooled:${x.id}:${今天}`,
-      });
+      await notify([上], { kind: "回收", title: `下属的客户「${x.name}」第 ${x.第几次} 次被自动收回，已回客户公海`, body: "要不要标无效由条线总管理在公海回收站里定", link: "/pool", key });
     }
   }
 }

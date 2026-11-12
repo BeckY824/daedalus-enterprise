@@ -1256,6 +1256,8 @@ model CustomerOwnerLog {
   toOwnerId   String?
   /// assign = 改负责人 / 批量分配；market-assign = 客户第一次从市场分给销售（算分配、不算转客户，P-转-03）；claim = 从公海领取；pool-assign = 从公海分配；deactivate = 成员停用转交；pool-release = 进公海清负责人（from = 原负责人，to = 占位账号）
   kind        String   @default("assign")
+  /// 企业版客户三态（迁移 127，M-公海-20 / M-公海-37）：这次转让 / 离职交接归不归零，第一次被三态算到时存下，之后不再按新规则重算；空 = 还没算过或不是这两种
+  clockReset  Boolean?
 
   @@index([customerId])
 }
