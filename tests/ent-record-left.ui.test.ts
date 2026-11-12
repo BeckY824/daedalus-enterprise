@@ -12,7 +12,8 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.显示&&p.value?p.显示(p.value):p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectModal|ContactLinks)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)ContactForm$/, "export default function F(p){return p.open?<div role='dialog' aria-label={p.record?'编辑联系人':'新增联系人'}>联系人表单</div>:null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectModal|ContactLinks)$/, "export default function Empty(){return null}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
@@ -65,6 +66,8 @@ async function open(企业: boolean, width = 1366, 项目模式 = false, 加?: R
 it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在；电话、邮箱是文字 + 复制键，不是链接；打码号不给复制键；没留的写明", async () => {
   const page = await open(true);
   try {
+    // 11-12 起左栏第一位联系人摊开、其余收在手风琴里：先全摊开再量
+    while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
     const cards = page.locator(".rec-contact");
     expect(await cards.count()).toBe(3);
     const first = cards.nth(0);
@@ -191,6 +194,7 @@ it("企业版项目模式页头（U-客户-03 → 11-12 用户「右上角只保
     await page.keyboard.press("Escape");
     // 页面上别处也不给去掉的入口；新建待办在沟通栏的待办上
     const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
+    // 11-12 起联系人卡头有一颗「＋」（aria-label 新增联系人），不算这里去掉的入口
     expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|新开项目/.test(t))).toEqual([]);
     expect(await page.locator('.rec > .rec-col > .proj-fold:has(.split-caret[aria-label="收起待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建待办/ }).count()).toBe(1);
     // 按钮和客户名同一行、靠右（定稿 UI：客户名一行 + 右端两颗）
@@ -312,6 +316,8 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧
   for (const w of [1024, 1280, 1366]) {
     const page = await open(true, w, false, { contacts, 号码种类 });
     try {
+      // 11-12 起左栏第一位联系人摊开、其余收在手风琴里：先全摊开再量
+      while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
       const 量 = await page.locator(".rec-contact .copy-val").evaluateAll((vs: HTMLElement[]) => vs.map(v => {
         const 字 = v.querySelector<HTMLElement>(".copy-val-t")!, 键 = v.querySelector<HTMLElement>("button");
         const 卡 = v.closest<HTMLElement>(".rec-contact")!.getBoundingClientRect(), 格 = v.closest<HTMLElement>(".rec-contact-v")!;
@@ -369,3 +375,56 @@ it("客户状态留痕（A1，11-12 用户定）：没有进程变更卡时放�
     } finally { await page.close(); }
   }
 }, 60_000);
+
+/* 11-12 用户：左栏联系人卡头去掉「全部 ›」，换一颗「＋」新增联系人；第一位整张摊开，其余收成手风琴（限高、块内滚），只有一位就不摆 */
+it("左栏联系人：卡头「＋」新增联系人、没有「全部 ›」；第一位整张摊开，其余收着、点开看全；只读不给「＋」", async () => {
+  const page = await open(true);
+  try {
+    // 联系人那一节里没有任何链接（原来的「全部 ›」去 /contacts?keyword=客户名）；「项目」那节自己的「全部 ›」不归这里
+    const 联系人节链 = () => page.locator(".rec-contact").first().evaluate(c => c.closest(".rec-sec, .proj-fold")!.querySelectorAll(":scope a:not(.rec-contact a)").length);
+    expect(await 联系人节链()).toBe(0);
+    expect(await page.locator('a[href^="/contacts"]').count()).toBe(0);
+    const 加 = page.getByRole("button", { name: "新增联系人" });
+    expect(await 加.count()).toBe(1);
+    await 加.hover();
+    await page.getByRole("tooltip").filter({ hasText: "新增联系人" }).waitFor();
+    // 第一位：电话、邮箱、微信都摆着；没有收起钮
+    const 卡们 = page.locator(".rec-contact");
+    const 首 = 卡们.first();
+    expect(await 首.innerText()).toContain("+86 138-0013-8000");
+    expect(await 首.innerText()).toContain("wx_buyer_2026");
+    expect(await 首.locator(".rec-contact-tog").count()).toBe(0);
+    // 其余两位在手风琴里、默认收着：只露名字那一行，号码不在
+    const 余 = page.getByTestId("contact-more").locator(".rec-contact");
+    expect(await 余.count()).toBe(2);
+    expect(await page.getByTestId("contact-more").evaluate(el => getComputedStyle(el).overflowY)).toBe("auto");
+    expect(await 余.first().locator(".rec-contact-line").count()).toBe(0);
+    expect(await 余.first().innerText()).not.toContain("138****8001");
+    const 钮 = 余.first().locator(".rec-contact-tog");
+    expect(await 钮.getAttribute("aria-expanded")).toBe("false");
+    expect(await 钮.getAttribute("aria-label")).toMatch(/^展开联系人 /);
+    await 钮.click();
+    expect(await 钮.getAttribute("aria-expanded")).toBe("true");
+    expect(await 余.first().innerText()).toContain("138****8001");
+    await 钮.click();
+    expect(await 余.first().innerText()).not.toContain("138****8001");
+    // 「＋」打开的还是原来那个新增联系人框
+    await 加.click();
+    await page.getByRole("dialog", { name: "新增联系人" }).waitFor();
+  } finally { await page.close(); }
+});
+
+it("只有一位联系人：整张摊开，不摆手风琴；只读（管理员只读）时卡头没有「＋」", async () => {
+  const 一位 = [{ id: "c1", name: "赵六", position: "采购", phone: "13900001111", email: null, wechat: null, isPrimary: true, remark: null, updatedAt: "2026-01-01T00:00:00.000Z" }];
+  let page = await open(true, 1366, false, { contacts: 一位 });
+  try {
+    expect(await page.locator(".rec-contact").count()).toBe(1);
+    expect(await page.getByTestId("contact-more").count()).toBe(0);
+    expect(await page.locator(".rec-contact").innerText()).toContain("13900001111");
+  } finally { await page.close(); }
+  page = await open(true, 1366, false, { 管理员只读: true });
+  try {
+    expect(await page.getByRole("button", { name: "新增联系人" }).count()).toBe(0);
+    expect(await page.locator('a[href^="/contacts"]').count()).toBe(0);
+  } finally { await page.close(); }
+});

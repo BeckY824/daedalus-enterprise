@@ -128,6 +128,8 @@ it("页签切换后左栏「关键」跟着换：本项目主联系人排最前�
   try {
     expect(await 联系人们(page)).toEqual(["王总*", "李工", "陈经理"]);
     expect(await page.locator(".rec-contact-sub").innerText()).toBe("这位客户的其他联系人");
+    // 11-12 起左栏第一位联系人摊开、其余收在手风琴里：先全摊开再量
+    while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
     // 李工在本项目里是使用方、支持
     expect(await page.locator(".rec-contact", { hasText: "李工" }).getByTestId("contact-project-role").innerText()).toMatch(/本项目\s*使用方 · 支持/);
     // 页签是到客户详情 ?project= 的链接，当前那个标着
@@ -136,6 +138,7 @@ it("页签切换后左栏「关键」跟着换：本项目主联系人排最前�
     // 切到项目二（服务端按 ?project=p2 重画）：关键换成陈经理、排最前；王总变成其他联系人，不再是关键
     await 画(page, { 选: "p2" });
     expect(await 联系人们(page)).toEqual(["陈经理*", "王总", "李工"]);
+    while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
     expect(await page.locator(".rec-contact", { hasText: "李工" }).getByTestId("contact-project-role").count()).toBe(0);
     expect(await page.locator(".cd-pj-pills").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p2");
     expect(await page.locator(".rec-zone").getAttribute("data-project")).toBe("p2");

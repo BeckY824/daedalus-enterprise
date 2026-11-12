@@ -3787,7 +3787,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 
-/* ---------- 客户详情合并（11-12 第 2 批，定稿 UI 客户详情-定稿UI-20261112.html）：两层——左栏客户，右边项目区（带底色） ----------
+/* ---------- 客户详情合并（11-12 第 2 批，定稿 UI 客户详情-定稿UI-20261112.html）：两层——左栏客户，右边项目区（11-12 起不带底色） ----------
    RecordView 有项目区时 .rec 挂 .rec-cd，只有两格：.rec-rail（客户：基本资料、联系人、关联客户、背调）+ .rec-zone（ProjectDetail 嵌入版）。
    左栏约 260，正文窄（1280 开着名单）收到 232；项目区里 中栏自适应 + 右栏 300 / 244，再窄右栏落到中栏下面。全走容器查询，不加视口断点 */
 .rec-head-acts { display: flex; align-items: center; gap: var(--s2); flex: none; }
@@ -3807,8 +3807,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   /* 手机单栏：客户名和客户按钮（页头）→ 项目区（页签、阶段、沟通、待办、卡点、项目资料）→ 客户资料 */
   .rec-page.ui-v2 > .rec.rec-cd > .rec-zone { order: -1; }
 }
-.rec-zone { container: cdzone / inline-size; min-width: 0; background: var(--hover); border-radius: var(--r-pop); padding: 12px; }
-@container rec (max-width: 1039px) { .rec-zone { padding: 10px; } }
+/* 11-12 用户：项目区去掉外面那圈灰底（原 background: var(--hover)、圆角 --r-pop、内边距 12 / 窄档 10）——只有客户详情用 .rec-zone，
+   直接改这条。没了内边距，项目区第一张卡和左栏第一张卡同一条顶线、右边贴齐栏边，和左栏一样不再多缩一圈；深色主题本来也是这一条，无单独规则 */
+.rec-zone { container: cdzone / inline-size; min-width: 0; }
 .cd-zb { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
 .cd-mid, .cd-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; align-content: start; }
 @container cdzone (max-width: 819px) { .cd-zb { grid-template-columns: minmax(0, 1fr) 244px; gap: 12px; } }
@@ -3895,6 +3896,22 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 
 /* 左栏联系人：「这位客户的其他联系人」小标题 */
 .rec-contact-sub { margin: 10px 2px 2px; color: var(--text-muted); font-size: var(--fs-min); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 左栏联系人（11-12）：第一位整张摊开；其余收成手风琴（.rec-contact-more），整块限高、块里自己滚。
+   收着的一行一个：名字、关键 / 挂靠、职位挤在一行（不像摊开时名字独占一行），右边一颗小箭头；摊开整张同第一位 */
+.rec-contact-more { max-height: 264px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); }
+.rec-contact-fold > .rec-contact-h { padding-right: 28px; }
+.rec-page.ui-v2 .rec-contact-fold:not(.is-open) > .rec-contact-h { flex-wrap: nowrap; }
+.rec-page.ui-v2 .rec-contact-fold:not(.is-open) > .rec-contact-h > .rec-contact-n { flex: 0 1 auto; }
+.rec-page.ui-v2 .rec-contact-more > .rec-contact + .rec-contact, .rec-page.ui-v2 .rec-contact-more > .rec-contact-sub + .rec-contact { margin-top: 2px; }
+.rec-contact-tog { position: absolute; right: 4px; top: 6px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0;
+  border: 0; border-radius: var(--r-ctl); background: none; color: var(--text-muted); cursor: pointer; }
+.rec-contact-tog:hover { background: var(--hover); color: var(--ink); }
+.rec-contact-tog:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.rec-contact-tog > svg { transition: transform var(--t-fast) var(--ease); }
+.rec-contact-fold.is-open > .rec-contact-tog > svg { transform: rotate(180deg); }
+/* 摊开的那位：编辑 / 删除浮在箭头左边，不盖住它 */
+.rec-contact-fold .rec-mini-acts { right: 32px; }
+@media (prefers-reduced-motion: reduce) { .rec-contact-tog > svg { transition: none; } }
 
 /* 各栏自己滚（同 10-31 R3）：左栏照旧一扇窗；项目区整块一扇窗，滚它左栏不动 */
 @media (min-width: 768px) {
