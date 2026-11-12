@@ -37,6 +37,15 @@ import { 客户页看板条件 } from "@/app/(app)/customers/board-query";
 import { 再看一列 } from "@/app/(app)/customers/board-actions";
 import { 读项目列表 } from "@/lib/project/list";
 import type { ReactElement } from "react";
+import { 新增仅项目联系人Action, 改仅项目联系人Action } from "@/app/(app)/customers/[id]/project-only-contact-actions";
+import { deleteContact, detachContact } from "@/app/(app)/customers/[id]/actions";
+import { 挂到客户, 换主客户 } from "@/app/(app)/customers/[id]/contact-link-actions";
+import { patchCustomer, assignSalesOwner, deleteCustomers } from "@/app/(app)/customers/actions";
+import { 放进公海 } from "@/app/(app)/customers/pool-actions";
+import { 三态暂缓回收, 三态继续持有 } from "@/app/(app)/customers/tri-state-actions";
+import { 全局搜索 } from "@/app/(app)/global-search";
+import { 导出客户 } from "@/app/(app)/customers/export-action";
+import { 客户页签数 } from "@/lib/pool-db";
 import CustomerDetailPage from "@/app/(app)/customers/[id]/page";
 import type { 受限客户详情 } from "@/app/(app)/customers/[id]/restricted";
 
@@ -353,5 +362,131 @@ describe("受限客户详情（提交 4）", () => {
     vi.stubEnv("CRM_ENTERPRISE", "0");
     忘掉企业版范围();
     expect(await 打开客户(乙, c)).toBe("原详情");
+  });
+});
+
+describe("仅项目联系人（提交 5）", () => {
+  const 搭 = async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 乙.id);
+    const q = await 项目(c, 丙.id);
+    const 老 = await 联系人(c, "客户原有联系");
+    await 挂项目(p, 老);
+    忘掉企业版范围();
+    return { c, p, q, 老 };
+  };
+  const 新增 = (u: 人, c: string, p: string, name = "乙新加的", 号码 = `135${号()}`) =>
+    以(u, () => 新增仅项目联系人Action(c, p, { name, position: "工程师", isPrimary: true, 企业: { 号码们: [{ kind: "phone", value: 号码 }] } }));
+
+  it("乙新增：挂到自己项目上、不是主要联系人、记下建的人；受限详情里给联系方式、能改", async () => {
+    const { c, p } = await 搭();
+    const r = await 新增(乙, c, p);
+    expect(r.ok).toBe(true);
+    const 行 = await prisma.contact.findFirstOrThrow({ where: { name: "乙新加的" } });
+    expect(行).toMatchObject({ customerId: c, isPrimary: false, createdById: 乙.id });
+    expect(await prisma.projectContact.count({ where: { projectId: p, contactId: 行.id } })).toBe(1);
+    expect(await prisma.contactCustomer.count({ where: { contactId: 行.id, customerId: c } })).toBe(1);
+    const el = (await 以(乙, () => CustomerDetailPage({ params: Promise.resolve({ id: c }), searchParams: Promise.resolve({}) } as never))) as ReactElement<{ 数据: 受限客户详情 }>;
+    const 卡上 = el.props.数据.卡.联系人.find((x) => x.name === "乙新加的");
+    expect(卡上).toMatchObject({ id: 行.id, 给联系方式: true });
+    expect(el.props.数据.可改联系人.map((x) => x.id)).toEqual([行.id]);
+    expect(el.props.数据.卡.联系人.find((x) => x.name === "客户原有联系")?.id).toBeUndefined();
+  });
+
+  it("乙改自己新增的：能改，不收主要联系人；版本过期拒", async () => {
+    const { c, p } = await 搭();
+    await 新增(乙, c, p);
+    const 行 = await prisma.contact.findFirstOrThrow({ where: { name: "乙新加的" } });
+    const 改 = await 以(乙, () => 改仅项目联系人Action(行.id, { name: "乙改过的", isPrimary: true, 版本: 行.updatedAt.toISOString() }));
+    expect(改.ok).toBe(true);
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: 行.id } })).toMatchObject({ name: "乙改过的", isPrimary: false });
+    const 旧版 = await 以(乙, () => 改仅项目联系人Action(行.id, { name: "再改", 版本: 行.updatedAt.toISOString() }));
+    expect(旧版.ok).toBe(false);
+  });
+
+  it("拒：同事的项目、不存在的项目、不在集合的客户、客户原有的联系人、别人新增的、组员 / 客户负责人走这个动作", async () => {
+    const { c, p, q, 老 } = await 搭();
+    expect((await 新增(乙, c, q)).ok).toBe(false);
+    expect((await 新增(乙, c, "没有这个项目")).ok).toBe(false);
+    const 别家 = await 客户(甲.id);
+    忘掉企业版范围();
+    expect((await 新增(乙, 别家, p)).ok).toBe(false);
+    const 老行 = await prisma.contact.findUniqueOrThrow({ where: { id: 老 } });
+    expect((await 以(乙, () => 改仅项目联系人Action(老, { name: "乙改客户原有", 版本: 老行.updatedAt.toISOString() }))).ok).toBe(false);
+    // 丙新增在自己项目上的，乙改不了；甲（客户负责人）不走这个动作
+    expect((await 新增(丙, c, q, "丙新加的")).ok).toBe(true);
+    const 丙的 = await prisma.contact.findFirstOrThrow({ where: { name: "丙新加的" } });
+    expect((await 以(乙, () => 改仅项目联系人Action(丙的.id, { name: "乙改丙的", 版本: 丙的.updatedAt.toISOString() }))).ok).toBe(false);
+    expect((await 新增(甲, c, p, "甲走仅项目")).ok).toBe(false);
+    expect(await prisma.contact.count({ where: { name: { in: ["乙改客户原有", "乙改丙的", "甲走仅项目"] } } })).toBe(0);
+  });
+
+  it("撞号：不说撞了谁、哪位客户", async () => {
+    const { c, p } = await 搭();
+    const 外 = await 客户(甲.id, { name: "撞号外客户特征名" });
+    await 联系人(外, "撞号外联系特征名", { phone: "13512345678" });
+    忘掉企业版范围();
+    const r = await 新增(乙, c, p, "撞号新人", "13512345678");
+    expect(r.ok).toBe(false);
+    const 文 = JSON.stringify(r);
+    for (const x of ["撞号外客户特征名", "撞号外联系特征名", 甲.name, 外]) expect(文).not.toContain(x);
+  });
+});
+
+describe("仅项目客户：客户本身、原有联系人照旧动不了，别处不带（提交 5）", () => {
+  const 搭 = async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 乙.id);
+    const 老 = await 联系人(c, "客户原有联系");
+    await 挂项目(p, 老);
+    const 乙自己的客户 = await 客户(乙.id);
+    忘掉企业版范围();
+    const 名 = (await prisma.customer.findUniqueOrThrow({ where: { id: c } })).name;
+    return { c, p, 老, 乙自己的客户, 名 };
+  };
+
+  it("乙调 saveContact / deleteContact / detachContact / 挂到客户 / 换主客户 改客户原有联系人：全拒", async () => {
+    const { c, 老, 乙自己的客户 } = await 搭();
+    const 老行 = await prisma.contact.findUniqueOrThrow({ where: { id: 老 } });
+    const 结果们 = [
+      await 以(乙, () => saveContact({ id: 老, 版本: 老行.updatedAt.toISOString(), customerId: c, name: "乙改名", isPrimary: false })),
+      await 以(乙, () => deleteContact(老)),
+      await 以(乙, () => detachContact(老)),
+      await 以(乙, () => 挂到客户(老, 乙自己的客户)),
+      await 以(乙, () => 换主客户(老, 乙自己的客户)),
+    ];
+    for (const [i, r] of 结果们.entries()) expect(r.ok, String(i)).toBe(false);
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: 老 } })).toMatchObject({ name: "客户原有联系", customerId: c, deletedAt: null });
+    expect(await prisma.contactCustomer.count({ where: { contactId: 老, customerId: 乙自己的客户 } })).toBe(0);
+  });
+
+  it("乙改客户、转让、放公海、删除、三态：全拒，客户原样", async () => {
+    const { c } = await 搭();
+    const 前 = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
+    const 结果们: { ok: boolean }[] = [
+      await 以(乙, () => patchCustomer(c, "remark" as never, "乙改备注")),
+      await 以(乙, () => assignSalesOwner([c], 乙.id)),
+      // 放进公海：看不到的客户不算数（回 ok、动了 0 位）
+      await 以(乙, () => 放进公海([c])).then((r) => ({ ok: r.ok && r.updated > 0 })),
+      await 以(乙, () => 三态暂缓回收(c, "x")),
+      await 以(乙, () => 三态继续持有(c, "x")),
+    ];
+    for (const [i, r] of 结果们.entries()) expect(r.ok, String(i)).toBe(false);
+    await 以(乙, () => deleteCustomers([c] as never)).catch(() => null);
+    const 后 = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
+    expect(后).toMatchObject({ salesOwnerId: 前.salesOwnerId, remark: 前.remark, deletedAt: null });
+    expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(0);
+  });
+
+  it("导出、全局搜索、客户页签数、批量拉、/contacts 都不带这位", async () => {
+    const { c, 老, 名 } = await 搭();
+    expect((await 以(乙, () => 仅项目客户们(乙))).has(c)).toBe(true);
+    expect((await 以(乙, () => 全局搜索(名))).客户.map((x) => x.id)).not.toContain(c);
+    expect((await 以(乙, () => 全局搜索("客户原有联系"))).联系人.map((x) => x.id)).not.toContain(老);
+    expect(JSON.stringify(await 以(乙, () => 导出客户({} as never)))).not.toContain(名);
+    expect((await 以(乙, () => prisma.customer.findMany({ select: { id: true } }))).map((x) => x.id)).not.toContain(c);
+    expect((await 以(乙, () => prisma.contact.findMany({ select: { id: true } }))).map((x) => x.id)).not.toContain(老);
+    const 数 = await 以(乙, () => 客户页签数());
+    expect(数.非公海).toBe(1);
   });
 });

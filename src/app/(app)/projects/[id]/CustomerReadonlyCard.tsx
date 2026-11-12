@@ -2,7 +2,7 @@
 import { useState, type ReactNode } from "react";
 import { Alert, Button, Modal, Skeleton } from "antd";
 import { CustomerLink } from "@/components/ui";
-import type { 客户只读卡 } from "@/lib/enterprise/customer-readonly-card";
+import type { 客户只读卡, 只读卡联系人 } from "@/lib/enterprise/customer-readonly-card";
 import { 打开客户只读卡Action } from "./readonly-card-actions";
 import { 有值 } from "@/lib/empty-value";
 
@@ -18,7 +18,12 @@ function 行({ 名, 值 }: { 名: string; 值: ReactNode }) {
 }
 
 /** 卡里面那一块；挂靠批准后的只读卡（projects/attach）也用它，那边联系方式按申请人自己的项目给，说法另传 */
-export function 卡内容({ 卡, 没给的说法 = "不在这位负责人的项目上，联系方式不显示" }: { 卡: 客户只读卡; 没给的说法?: string }) {
+export function 卡内容({ 卡, 没给的说法 = "不在这位负责人的项目上，联系方式不显示", 操作 }: {
+  卡: 客户只读卡;
+  没给的说法?: string;
+  /** 受限客户详情：联系人那一行右端的按钮（自己新增的那几位给「改」）；项目详情的卡上不给 */
+  操作?: (x: 只读卡联系人) => ReactNode;
+}) {
   const c = 卡.客户;
   const 资料: [string, string | null][] = [
     ["客户", c.name], ["简称", c.shortName], ["公司", c.school], ["客户类型", c.customerType], ["客户属性", c.customerAttr],
@@ -31,7 +36,10 @@ export function 卡内容({ 卡, 没给的说法 = "不在这位负责人的项�
       {!卡.联系人.length && <div style={灰字}>还没有联系人</div>}
       {卡.联系人.map((x, i) => (
         <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line)", minWidth: 0 }}>
-          <div style={{ overflowWrap: "anywhere" }}>{x.name}{x.position && <span style={{ ...灰字, marginInlineStart: 8 }}>{x.position}</span>}</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+            <span style={{ flex: "1 1 auto", minWidth: 0, overflowWrap: "anywhere" }}>{x.name}{x.position && <span style={{ ...灰字, marginInlineStart: 8 }}>{x.position}</span>}</span>
+            {操作?.(x)}
+          </div>
           {x.号码们.map((m, j) => <行 key={j} 名={m.叫法} 值={m.value} />)}
           {!x.号码们.length && <div style={{ ...灰字, fontSize: "var(--fs-note)" }}>{x.给联系方式 ? "没留联系方式" : 没给的说法}</div>}
         </div>
