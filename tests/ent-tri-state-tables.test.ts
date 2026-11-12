@@ -34,8 +34,8 @@ function 在老库上<T>(fn: (db: DatabaseSync) => T): T {
     rmSync(目录, { recursive: true, force: true });
   }
 }
-/** 11-12 补列：每份只有一句 ADD COLUMN，重跑抛 duplicate column name，runner 当预期跳过（migrations/README.md 第 4 条） */
-const 补列 = readdirSync(DIR).filter((f) => /^12[456]-/.test(f)).sort();
+/** 11-12 补列：每份只有一句 ADD COLUMN，重跑抛 duplicate column name，runner 当预期跳过（migrations/README.md 第 4 条）。127 是换负责人日志那张表，不在这三张里 */
+const 补列 = readdirSync(DIR).filter((f) => /^12[45689]-/.test(f)).sort();
 const 跑迁移 = (db: DatabaseSync) => {
   for (const f of 三份) db.exec(readFileSync(path.join(DIR, f), "utf8"));
   for (const f of 补列) {
@@ -60,14 +60,16 @@ describe("迁移文件", () => {
   });
 });
 
-describe("11-12 补列（124–126）", () => {
-  it("三份各只有一句 ADD COLUMN：钟的成交成立日、额度上次重置日，留痕的顺延天数", () => {
-    expect(补列).toEqual(["124-ent-clock-deal-day.sql", "125-ent-clock-quota-reset-day.sql", "126-ent-state-log-hold-days.sql"]);
+describe("11-12 补列（124–126、128–129）", () => {
+  it("每份只有一句 ADD COLUMN：钟的成交成立日、额度上次重置日，留痕的顺延天数、从谁、到谁", () => {
+    expect(补列).toEqual(["124-ent-clock-deal-day.sql", "125-ent-clock-quota-reset-day.sql", "126-ent-state-log-hold-days.sql", "128-state-log-from-owner.sql", "129-state-log-to-owner.sql"]);
     const 句 = 补列.map((f) => readFileSync(path.join(DIR, f), "utf8").replace(/--.*$/gm, "").trim());
     expect(句).toEqual([
       'ALTER TABLE "EntCustomerClock" ADD COLUMN "dealDay" TEXT;',
       'ALTER TABLE "EntCustomerClock" ADD COLUMN "quotaResetDay" TEXT;',
       'ALTER TABLE "EntCustomerStateLog" ADD COLUMN "holdDays" INTEGER;',
+      'ALTER TABLE "EntCustomerStateLog" ADD COLUMN "fromOwnerId" TEXT;',
+      'ALTER TABLE "EntCustomerStateLog" ADD COLUMN "toOwnerId" TEXT;',
     ]);
   });
 
@@ -79,7 +81,7 @@ describe("11-12 补列（124–126）", () => {
       expect(() => 跑迁移(db)).not.toThrow();
       expect(() => 跑迁移(db)).not.toThrow();
       expect(db.prepare('SELECT "dealDay", "quotaResetDay" FROM "EntCustomerClock"').all()).toEqual([{ dealDay: null, quotaResetDay: null }]);
-      expect(db.prepare('SELECT "holdDays" FROM "EntCustomerStateLog"').all()).toEqual([{ holdDays: null }]);
+      expect(db.prepare('SELECT "holdDays", "fromOwnerId", "toOwnerId" FROM "EntCustomerStateLog"').all()).toEqual([{ holdDays: null, fromOwnerId: null, toOwnerId: null }]);
     });
   });
 });

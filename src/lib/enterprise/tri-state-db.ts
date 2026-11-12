@@ -12,7 +12,8 @@
  *   - 导入完成日：这位客户是哪一批导入建的（EntImportRow entity = customer、kind = create，批次没撤销）那一批的完成时刻
  *   - 换负责人（CustomerOwnerLog）：assign = 转让、deactivate = 离职交接、claim = 公海捞取、pool-assign = 公海指派、market-assign = 市场首次分配；
  *     undo、pool-release 不算。转让 / 离职交接归不归零第一次被算到时存在那一行（clockReset，迁移 127），之后只读（M-公海-20 / M-公海-37：改规则不回改历史）。
- *     撤销转让：企业版撤销会删掉被撤的那一行（owner-log-db.ts 删被撤的换负责人记录），那次不算次数、它造成的归零也跟着没了（推断）
+ *     撤销转让（T7）：企业版撤销会删掉被撤的那一行（owner-log-db.ts 删被撤的换负责人记录），次数和钟都还原；
+ *     同一对负责人 7 天内第 2 次起撤销的，状态留痕里记「撤销转让·计次」，算次数时当一次不归零的转让（tri-state-transfer.ts 撤销计次们）
  *   - 推后、暂缓回收：读状态留痕（tri-state-quota.ts 留痕转推后 / 最近暂缓回收日）
  *   - 本轮提醒：钟上的 noticeCount / lastNoticeDay。待回收时当「本轮待回收提醒次数 / 最近提醒日」；沉睡时 lastNoticeDay 当「本轮进入沉睡提醒日」
  *     （沉睡期间发的周报、抄上级也写 lastNoticeDay，日子都不早于沉睡节点日，不影响「进入沉睡那条发过没有」的判法）；换状态时清零
@@ -32,7 +33,7 @@ import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 算三态, 解除后几天收, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
-import { 换负责人们of } from "./tri-state-transfer";
+import { 换负责人们of, 撤销计次们, 并上撤销计次 } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
 import { 有内容的沟通, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
@@ -130,6 +131,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
     const 沟通日 = await 最近沟通日们(db, 批, 现在);
     const 导入 = await 导入完成日们(db, 批);
     const 换人 = await db.customerOwnerLog.findMany({ where: { customerId: { in: 批 } }, select: { id: true, customerId: true, at: true, kind: true, clockReset: true }, orderBy: [{ at: "asc" }, { id: "asc" }] });
+    const 计次 = await 撤销计次们(db, 批);
     const 痕 = await db.entCustomerStateLog.findMany({
       where: { customerId: { in: 批 } },
       select: { customerId: true, at: true, fromState: true, toState: true, via: true, reason: true, holdDays: true },
@@ -165,7 +167,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       const 末 = (理由们: readonly string[]) => { for (let i = 痕们.length - 1; i >= 0; i--) if (理由们.includes(痕们[i].reason ?? "")) return i; return -1; };
       const 解除下标 = 末([暂缓解除理由]);
       const 暂缓解除日 = 解除下标 >= 0 && 解除下标 > 末([被挡理由, 旧被挡理由]) ? beijingDay(痕们[解除下标].at) : null;
-      const 换人们 = 换负责人们of(换人of.get(c.id) ?? [], 规则.三态);
+      const 换人们 = 换负责人们of(并上撤销计次(换人of.get(c.id) ?? [], 计次.get(c.id)), 规则.三态);
       const 领取日 = (换人of.get(c.id) ?? []).filter((x) => x.kind === "claim" || x.kind === "pool-assign").map((x) => beijingDay(x.at)).reduce<string | null>(较晚日, null);
       const 事实: 三态事实 = {
         有负责人,

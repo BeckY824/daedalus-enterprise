@@ -547,6 +547,7 @@ const 派生: Record<string, Record<string, string>> = {
   EntCustomerStateLog: {
     customerId: "哪位客户，系统写", fromState: "变更前的状态，系统写", toState: "变更后的状态，系统写", userId: "谁改的，当前登录账号；自动的留空",
     via: "自动 / 本人 / 上级代选 / 总管理裁决，按谁点的系统定", reason: "理由，随那次动作写入，留痕只加不改", at: "变更的那一刻，系统写", holdDays: "这次继续持有顺延了几天，点按钮时按组织规则的每次天数系统写（迁移 126）",
+    fromOwnerId: "撤销转让 / 标待交接那一行的原负责人，系统写（迁移 128）", toOwnerId: "撤销转让那一行被撤的那次转让转给了谁，系统写（迁移 129）",
   },
   EntProjectCold: {
     projectId: "哪个项目，标冷时系统建", coldDay: "从哪天冷的，系统算", level: "提醒到第几级，发提醒时系统写",

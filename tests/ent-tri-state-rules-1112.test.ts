@@ -355,3 +355,78 @@ describe("T11 · 暂缓回收两次至少隔 30 天、累计最多 2 次；第 3
     expect(await 暂缓回收动作(人.总内, 客户, null, 白天(241 + 210))).toEqual({ ok: true });
   });
 });
+
+describe("T7 · 撤销转让即未发生；同一对负责人 7 天内转—撤—转第二次起，撤销不还原次数（钟仍还原）", () => {
+  async function 撤(n: number, 从: string, 到: string) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(白天(n));
+    await 删被撤的换负责人记录(prisma, 客户, 从, 到);
+    vi.useRealTimers();
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 从 } });
+  }
+  const 撤销痕 = () => prisma.entCustomerStateLog.findMany({ where: { customerId: 客户, via: { startsWith: "撤销转让" } }, orderBy: { at: "asc" }, select: { via: true, fromOwnerId: true, toOwnerId: true, userId: true } });
+  const 归零们 = async () => (await prisma.customerOwnerLog.findMany({ where: { kind: "assign" }, orderBy: { at: "asc" }, select: { clockReset: true } })).map((x) => x.clockReset);
+
+  it("第一次撤销：次数、钟都还原，留一行撤销痕", async () => {
+    await 三态夜扫(早(5));
+    await 转给(人.丙.id, 50);
+    await 撤(50, 人.乙.id, 人.丙.id);
+    expect(await 撤销痕()).toEqual([{ via: "撤销转让", fromOwnerId: 人.乙.id, toOwnerId: 人.丙.id, userId: 人.系.id }]);
+    await 三态夜扫(早(51));
+    expect((await 钟())!.enteredDay).toBe("2026-11-01");
+    // 不占次数：之后两次转让都归零
+    await 转给(人.丙.id, 60);
+    await 转给(人.乙.id, 70);
+    await 三态夜扫(早(71));
+    expect(await 归零们()).toEqual([true, true]);
+  });
+
+  it("7 天内同一对第二次撤销：照算 1 次转让（钟不归零到那天）；之后第 2 次真转让归零、第 3 次不归零", async () => {
+    await 三态夜扫(早(5));
+    await 转给(人.丙.id, 10);
+    await 撤(10, 人.乙.id, 人.丙.id);
+    await 转给(人.丙.id, 12);
+    await 撤(12, 人.乙.id, 人.丙.id);
+    expect((await 撤销痕()).map((x) => x.via)).toEqual(["撤销转让", "撤销转让·计次"]);
+    await 三态夜扫(早(13));
+    expect((await 钟())!.enteredDay).toBe("2026-11-01");
+    await 转给(人.丙.id, 20);
+    await 转给(人.乙.id, 30);
+    await 三态夜扫(早(31));
+    expect(await 归零们()).toEqual([true, false]);
+    expect((await 钟())!.enteredDay).toBe(日(20));
+  });
+
+  it("隔了 7 天以上、或换了一对负责人：照常还原", async () => {
+    await 三态夜扫(早(5));
+    await 转给(人.丙.id, 10);
+    await 撤(10, 人.乙.id, 人.丙.id);
+    await 转给(人.丙.id, 18);
+    await 撤(18, 人.乙.id, 人.丙.id);
+    await 转给(人.甲.id, 19);
+    await 撤(19, 人.乙.id, 人.甲.id);
+    expect((await 撤销痕()).map((x) => x.via)).toEqual(["撤销转让", "撤销转让", "撤销转让"]);
+  });
+
+  it("转让当下算归零也认撤销计次（记换负责人 在事务里）", async () => {
+    await setSetting("orgRules", 开三态({ 转让归零: { 次数: 1, 窗口月数: 12 } }));
+    await 三态夜扫(早(5));
+    await 转给(人.丙.id, 10);
+    await 撤(10, 人.乙.id, 人.丙.id);
+    await 转给(人.丙.id, 12);
+    await 撤(12, 人.乙.id, 人.丙.id);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(白天(20));
+    await 查完再写((tx) => 记换负责人(tx, [{ customerId: 客户, from: 人.乙.id, to: 人.丙.id }], 人.系.id, "assign"));
+    vi.useRealTimers();
+    expect(await 归零们()).toEqual([false]);
+  });
+
+  it("三态关着：撤销照删、不留三态痕", async () => {
+    await setSetting("orgRules", { ...默认组织规则 });
+    await 转给(人.丙.id, 10);
+    await 撤(10, 人.乙.id, 人.丙.id);
+    expect(await prisma.customerOwnerLog.count()).toBe(0);
+    expect(await prisma.entCustomerStateLog.count()).toBe(0);
+  });
+});

@@ -1847,13 +1847,17 @@ model EntCustomerStateLog {
   toState    String
   /// 谁改的；自动的为空
   userId     String?
-  /// 方式：自动 / 本人 / 上级代选 / 总管理裁决
+  /// 方式：自动 / 本人 / 上级代选 / 总管理代选 / 总管理裁决 / 撤销转让 / 撤销转让·计次（T7）
   via        String   @default("自动")
   /// 理由：继续持有写的那句、代选 / 裁决的说明；自动的写因为什么（如「待回收满 30 天」）
   reason     String?
   at         DateTime @default(now())
   /// 这次继续持有顺延了几天（迁移 126，M-公海-19）：本人点、上级代选的那几行存点的那一刻的每次天数；别的行为空
   holdDays   Int?
+  /// 从谁（迁移 128，T7 / T12）：撤销转让那一行 = 被撤的那次转让从谁转出；标「待交接」那一行 = 停用的负责人；别的行为空
+  fromOwnerId String?
+  /// 到谁（迁移 129，T7）：撤销转让那一行 = 被撤的那次转让转给了谁；别的行为空
+  toOwnerId   String?
 
   @@index([customerId, at])
 }
