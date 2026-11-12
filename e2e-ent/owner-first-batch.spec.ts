@@ -4,7 +4,7 @@ import { PrismaClient } from "../src/generated/prisma";
 import { ENT_DB, 账号, 读种子, type 种子 } from "./global-setup";
 
 /**
- * 客户负责人第一批的真实页面：只读卡、指向客户详情的链接、市场分配后待办留下能勾、分配弹窗、批量随客户、项目单领。
+ * 客户负责人第一批的真实页面：只负责项目的人进受限客户详情（11-12 起，原来是项目详情里的只读卡）、指向客户详情的链接、市场分配后待办留下能勾、分配弹窗、批量随客户、项目单领。
  * 人和数据都在这份里现造（global-setup 没有普通市场成员，也没有「只负责项目的人」），和主流程那份共库、串行，互不依赖。
  * 排版数字用 console.log 打出来（量排版 开头），超了直接红。
  */
@@ -21,6 +21,7 @@ const 长号 = `verylongcontactaddressforlayoutmeasure${后缀}@averyveryverylon
 type 造的人 = { id: string; email: string; name: string };
 let 丙: 造的人; // 只负责项目
 let 丁: 造的人; // 客户负责人
+let 戊: 造的人; // 同部门同事，和客户A、项目A都不沾
 let 市场乙: 造的人; // 普通市场成员
 let 市场管: 造的人;
 let 客户A: string;
@@ -59,6 +60,7 @@ test.beforeAll(async () => {
   };
   丙 = await 建("c", `项目丙${后缀}`, "sales", { deptId: 销售部, line: "内贸", managerId: 经理.id });
   丁 = await 建("d", `客户丁${后缀}`, "sales", { deptId: 销售部, line: "内贸", managerId: 经理.id });
+  戊 = await 建("e", `同事戊${后缀}`, "sales", { deptId: 销售部, line: "内贸", managerId: 经理.id });
   市场管 = await 建("mm", `市场管${后缀}`, "marketing_mgr", { deptId: 市场部.id });
   市场乙 = await 建("m", `市场乙${后缀}`, "channel_ops", { deptId: 市场部.id, managerId: 市场管.id });
 
@@ -153,11 +155,26 @@ async function 客户链接(page: Page, 路径: string) {
     们.map((a) => ({ href: a.getAttribute("href") ?? "", 字: (a.textContent ?? "").slice(0, 24) })))).map((x) => ({ 页: 路径, ...x }));
 }
 
-test("A1 只负责项目的人：项目详情客户格开只读卡，字段和联系方式符合规格；直接开客户详情还是 404", async ({ page }) => {
+/** 只负责项目的人（11-12 起）：进 /projects/<id> 跳到客户详情 ?project=<id>，是受限客户详情 */
+async function 停在受限详情(page: Page, 客户: string, 项目: string) {
+  await page.waitForURL(new RegExp(`/customers/${客户}\\?project=${项目}`));
+  await expect(page.getByTestId("restricted-customer-detail")).toBeVisible();
+}
+
+test("A1 只负责项目的人：从项目进客户详情是受限详情（仅项目、只有自己的项目、只读客户资料、没有客户操作）；不沾边的同事开客户详情还是 404", async ({ page }) => {
   await 登录(page, 丙.email);
   await page.goto(`/projects/${项目A}`);
+  await 停在受限详情(page, 客户A, 项目A);
   const 正文 = page.getByRole("main");
-  await 正文.getByRole("button", { name: new RegExp(长公司.slice(0, 12)) }).first().click();
+  const 头 = 正文.locator(".rec-head");
+  await expect(头.getByText("仅项目", { exact: true })).toBeVisible();
+  // 页头只有「项目操作 ▾」：没有客户操作、AI、星标
+  await expect(头.getByRole("button", { name: /客户操作/ })).toHaveCount(0);
+  await expect(头.getByRole("button", { name: /^AI$/ })).toHaveCount(0);
+  // 项目区只有丙自己的项目（只有一个：卡头直接写项目名，没有胶囊），没有带锁的同事项目
+  await expect(正文.locator(".cd-pj-one .cd-pj-nm, .cd-pj-pill .cd-pj-nm")).toHaveCount(1);
+  await expect(正文.locator(".cd-pj-one .cd-pj-nm, .cd-pj-pill .cd-pj-nm").first()).toContainText(`丙的项目${后缀}`);
+  // 左栏客户资料只读：字段和联系方式符合规格
   const 卡 = page.getByTestId("customer-readonly-card");
   await expect(卡).toBeVisible();
   await expect(卡).toContainText(长公司);
@@ -165,15 +182,20 @@ test("A1 只负责项目的人：项目详情客户格开只读卡，字段和�
   await expect(卡).toContainText("采购总监");
   await expect(卡).toContainText(长号);
   await expect(卡).toContainText(`不在项目上的人${后缀}`);
-  await expect(卡).toContainText("不在这位负责人的项目上，联系方式不显示");
-  // 不显示负责人、级别、状态
-  await expect(卡).not.toContainText(丁.name);
-  await expect(卡).not.toContainText("负责人：");
-  await expect(卡.getByText(/^级别$|^状态$/)).toHaveCount(0);
-  await page.locator(".ant-modal-footer").getByRole("button", { name: /关\s*闭/ }).click();
+  await expect(卡).toContainText("不在你的项目上，联系方式不显示");
+  // 不显示客户负责人、级别、状态
+  const 左栏 = 正文.locator("aside.rec-rail");
+  await expect(左栏).not.toContainText(丁.name);
+  await expect(左栏).not.toContainText("负责人");
+  await expect(左栏.getByText(/^级别$|^状态$|^客户状态$/)).toHaveCount(0);
+  // 沟通只看本项目：没有「这位客户全部」
+  await expect(正文.locator(".cd-comm").getByRole("button", { name: "这位客户全部" })).toHaveCount(0);
 
+  // 不沾边的同事：还是 404
+  await 登录(page, 戊.email);
   await page.goto(`/customers/${客户A}`);
   await expect(正文.getByText("没有找到这条记录")).toBeVisible();
+  await expect(正文.getByText(长公司.slice(0, 8))).toHaveCount(0);
 });
 
 test("A2 只负责项目的人：各入口没有点了就 404 的客户链接", async ({ page }) => {
@@ -214,7 +236,8 @@ test("A2 全局搜索：搜得到自己的项目，点进去能开；搜客户�
   await expect(page.locator(".cmdk-list").getByRole("status")).toContainText("没找到");
   await 框.fill(`丙的项目${后缀}`);
   await page.locator(".cmdk-list").getByText(`丙的项目${后缀}`).click();
-  await page.waitForURL(new RegExp(`/projects/${项目A}`));
+  // 11-12 起：只负责项目的人点项目进受限客户详情的项目页签
+  await 停在受限详情(page, 客户A, 项目A);
   await expect(page.getByRole("main").getByText("没有找到这条记录")).toHaveCount(0);
   await expect(page.getByRole("main").getByText(`丙的项目${后缀}`).first()).toBeVisible();
 });
@@ -401,7 +424,7 @@ test("A5 批量自动分配同客户多线索：结果行写已随客户，归�
   }
 });
 
-test("A6 项目单领后开只读卡：领完客户负责人不变，只读卡能开，客户详情还是 404", async ({ page }) => {
+test("A6 项目单领后进受限客户详情：领完客户负责人不变，客户详情是受限详情、看得到客户的联系人名字", async ({ page }) => {
   const 客户 = await 造客户(`${长公司}单领${后缀}`, 丁.id, 长公司);
   const 名 = `单领项目${后缀}`;
   const 项目 = await 造项目(名, 客户, 丁.id, { pooledAt: new Date() });
@@ -416,29 +439,22 @@ test("A6 项目单领后开只读卡：领完客户负责人不变，只读卡�
   expect(p.pooledAt).toBeNull();
   expect((await db.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(丁.id);
   await page.goto(`/projects/${项目}`);
-  await 正文.getByRole("button", { name: new RegExp(长公司.slice(0, 12)) }).first().click();
+  await 停在受限详情(page, 客户, 项目);
   await expect(page.getByTestId("customer-readonly-card")).toContainText(`单领联系人${后缀}`);
-  await page.locator(".ant-modal-footer").getByRole("button", { name: /关\s*闭/ }).click();
   await page.goto(`/customers/${客户}`);
-  await expect(正文.getByText("没有找到这条记录")).toBeVisible();
+  await expect(page.getByTestId("restricted-customer-detail")).toBeVisible();
+  await expect(正文.getByText("没有找到这条记录")).toHaveCount(0);
 });
 
-test("B 只读卡排版：1024、375 宽，超长公司名、超长联系人", async ({ page }) => {
+test("B 受限客户详情排版：1024、375 宽，超长公司名、超长联系人", async ({ page }) => {
   await 登录(page, 丙.email);
   for (const 宽 of [1024, 375]) {
     await page.setViewportSize({ width: 宽, height: 800 });
     await page.goto(`/projects/${项目A}`);
-    const 入口 = page.getByRole("main").getByRole("button", { name: new RegExp(长公司.slice(0, 12)) }).first();
-    await expect(入口).toBeVisible();
-    await 量(page, "main", `项目详情 ${宽}`);
-    await 能点(page, 入口, `客户格 ${宽}`);
-    await 入口.click();
+    await 停在受限详情(page, 客户A, 项目A);
     await expect(page.getByTestId("customer-readonly-card")).toBeVisible();
-    await 量(page, '[data-testid="customer-readonly-card"]', `只读卡 ${宽}`);
-    await 量(page, ".ant-modal-container", `只读卡弹窗 ${宽}`);
-    const 关 = page.locator(".ant-modal-footer").getByRole("button", { name: /关\s*闭/ });
-    await 能点(page, 关, `只读卡关闭 ${宽}`);
-    await 关.click();
-    await expect(page.getByTestId("customer-readonly-card")).toHaveCount(0);
+    await 量(page, "main", `受限客户详情 ${宽}`);
+    await 量(page, '[data-testid="customer-readonly-card"]', `受限详情左栏 ${宽}`);
   }
+  await page.setViewportSize({ width: 1280, height: 800 });
 });
