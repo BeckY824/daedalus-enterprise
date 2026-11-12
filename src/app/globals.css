@@ -3855,7 +3855,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 冷项目（C11）：页签名后一个小灰标「冷」；名字照旧省略号，小标不缩 */
 .cd-tab.cd-tab-cold { display: inline-flex; align-items: center; gap: 4px; }
 .cd-tab-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-cold { flex: none; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 5px; background: var(--hover); color: var(--text-muted); font-size: var(--fs-min); font-weight: 500; }
+.cd-cold { flex: none; height: 18px; line-height: 18px; padding: 0 5px; border-radius: var(--r-tag); background: var(--hover); color: var(--text-muted); font-size: var(--fs-min); font-weight: 500; }
 
 /* 「进程变更」卡里的「客户状态」一段（C13）：默认收起，每条一行 */
 .tri-log { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
