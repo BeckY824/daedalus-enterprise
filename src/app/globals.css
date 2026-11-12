@@ -3558,6 +3558,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .opt-popup-full { max-width: calc(100vw - 32px); }
 .opt-popup-full .ant-select-item-option-content { white-space: normal; word-break: break-word; }
 .follow-more { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+/* 记一条沟通弹窗顶上「手动录入 | AI 录入」（11-12）：AI 灰着时原因写在旁边一行淡字，窄了折到下一行 */
+.follow-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; }
+.follow-mode-why { color: var(--text-muted); font-size: var(--fs-note); min-width: 0; }
+.follow-ai { padding: 10px 12px; border: 1px solid var(--brand-line); border-radius: var(--r-card); min-width: 0; }
 .att-files li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); min-width: 0; }
 .att-files li > a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-files li > .muted { flex: none; font-size: var(--fs-note); }

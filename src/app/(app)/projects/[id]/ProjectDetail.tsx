@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Progress, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
+import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -460,7 +460,7 @@ export default function ProjectDetail({
   const [编辑开着, set编辑开着] = useState(false);
   // 企业版线索验证弹窗（11-01）：项目卡「线索验证」那一行点开，从初判到判定都在框里做
   const [验证开着, set验证开着] = useState(false);
-  const [记一条开着, set记一条开着] = useState<false | "手填" | "AI">(false);
+  const [记一条开着, set记一条开着] = useState(false);
   const [发卡点于, set发卡点于] = useState<string | null>(null);
   /** 沟通的「…」菜单：正在改哪一条 / 删除问句开在哪一条上 */
   const [改沟通于, set改沟通于] = useState<项目详情["followUps"][number] | null>(null);
@@ -697,7 +697,7 @@ export default function ProjectDetail({
             </Space.Compact>
           ))}
         {/* 嵌在客户页：新建沟通只留沟通卡头那颗主按钮（总控 11-12 定，用户原话「新建沟通放沟通模块最上方右侧」），⌘N 的 data-cmd-new 也挂那颗 */}
-        {p.能记沟通 && !嵌入 && <Button type="primary" data-cmd-new disabled={忙} onClick={() => set记一条开着("手填")}>新增沟通</Button>}
+        {p.能记沟通 && !嵌入 && <Button type="primary" data-cmd-new disabled={忙} onClick={() => set记一条开着(true)}>新增沟通</Button>}
       </>
     );
   };
@@ -1216,9 +1216,8 @@ export default function ProjectDetail({
       extra={(
         <Space size={8} className="proj-follow-acts">
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
-          {p.能记沟通 && p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-          {/* 11-12 连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半 */}
-          <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着("手填"), disabled: 忙, testid: "follow-card-new", 主快捷: true } : null} />
+          {/* 11-12：「AI 录入」不再单摆，进「新建沟通」弹窗顶上切「手动录入 | AI 录入」。连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半 */}
+          <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : null} />
         </Space>
       )}
     >
@@ -1231,14 +1230,13 @@ export default function ProjectDetail({
       {...(p.企业版 ? { title: `沟通（${沟通数字}）` } : { id: "project-follow", title: "沟通" })}
       extra={
         p.企业版 ? (
-          // 企业版：「新增沟通」「AI 录入」在这块卡头（11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗。
+          // 企业版：「新增沟通」在这块卡头（「AI 录入」11-12 收进弹窗顶上的切换；11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗。
           // 11-01 会议 §5：企业版删掉「去客户页看看」。窄的时候按钮折行，不把标题挤没（globals.css .proj-follow-acts）
           <Space size={8} wrap className="proj-follow-acts">
             {能隐藏 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
-            {p.能记沟通 && p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-            <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新增沟通", onClick: () => set记一条开着("手填"), disabled: 忙, testid: "follow-card-new" } : null} />
+            <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新增沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new" } : null} />
           </Space>
-        ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
+        ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>
           // 别的版本照旧给「去客户页记一条」
           : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
       }
@@ -1388,7 +1386,7 @@ export default function ProjectDetail({
   /** 「完成节点」框里填不了的必填：关框，打开或滚到能填的地方 */
   const 去补必填 = (去: 窗外去处) => {
     set头部框(null);
-    if (去 === "沟通") set记一条开着("手填");
+    if (去 === "沟通") set记一条开着(true);
     else if (去 === "线索验证") set验证开着(true);
     else if (去 === "附件") 定位到模块("project-attachments-fold");
     else if (去 === "回款") 定位到模块("project-payments-fold");
@@ -1468,7 +1466,7 @@ export default function ProjectDetail({
         </Modal>
       )}
 
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} AI先={记一条开着 === "AI"} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} />}
 
       <Modal
         open={!!异常框}
@@ -1757,11 +1755,19 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
  * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」= 不生成（11-01 答复 #5），选了别的类型记下后照发卡点那一套生成一个。
  * F-跟进-07（企业版）：可先挑截图、录音，记下之后挂到这条沟通上
  */
-function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原因们 = [], onClose, 跑 }: {
+/** 记一条沟通弹窗顶上的「手动录入 | AI 录入」，记在这台浏览器上（存不了就每次手动） */
+type 录入模式 = "手动" | "AI";
+const 录入模式键 = "daedalus.follow.mode";
+function 读录入模式(): 录入模式 {
+  try { return localStorage.getItem(录入模式键) === "AI" ? "AI" : "手动"; } catch { return "手动"; }
+}
+function 存录入模式(v: 录入模式) {
+  try { if (v === "AI") localStorage.setItem(录入模式键, "AI"); else localStorage.removeItem(录入模式键); } catch { /* 无痕、禁用：只这一次 */ }
+}
+
+function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑 }: {
   p: 项目详情;
   外贸: boolean;
-  /** 从「AI 录入」点进来的：「更多」展开、AI 那一格先摆出来、光标先落在那 */
-  AI先?: boolean;
   /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
   卡点默认?: 卡点默认 | null;
   /** 阻碍原因下拉（设置里启用的）；也能现打新的，发出去进待审核 */
@@ -1788,7 +1794,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
   const [下一步文字, set下一步文字] = useState("");
   const [下一步时间, set下一步时间] = useState<string | null>(null);
   const [交中, set交中] = useState(false);
-  const [更多开, set更多开] = useState(AI先);
+  const [更多开, set更多开] = useState(false);
   const [卡点类型, set卡点类型] = useState<string>("暂无卡点");
   const [卡点影响, set卡点影响] = useState<string | null>(null);
   const [卡点描述, set卡点描述] = useState("");
@@ -1800,11 +1806,16 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
   // ---- AI 录入（10-29 P6）：粘原话 → 复用客户页「跟进速记」那条解析（parseFollowUpDraft，同一个模型、同一份额度）→ 只往格子里预填，
   // 人核对后点「记下」才写库；解析本身不写任何业务表。企业版、配了模型、看得到客户才给
   const 给AI = !!(p.企业版 && p.aiEnabled && p.customer);
-  const [AI开, setAI开] = useState(AI先);
+  const AI已用完 = useAiOutOfCredits();
+  /** AI 那一段灰着的原因（有权限但这会儿用不了）；没权限（给AI = false）整个切换都不摆 */
+  const AI灰 = AI已用完 ? "AI 次数已用完，可刷新余额或在设置填自己的模型 Key" : undefined;
+  // 11-12 用户：弹窗顶上「手动录入 | AI 录入」，默认手动、记住上次选的；切来切去格子里写的都留着（同一个表单、同一份状态）
+  const [选的模式, set选的模式] = useState<录入模式>(读录入模式);
+  const 模式: 录入模式 = 给AI && !AI灰 ? 选的模式 : "手动";
+  const 换模式 = (v: 录入模式) => { set选的模式(v); 存录入模式(v); };
   const [原话, set原话] = useState("");
   const [解析, set解析] = useState<{ 起: number; 结果?: string; 出错?: string } | null>(null);
   const 解析中 = Boolean(解析 && !解析.结果 && !解析.出错);
-  const AI已用完 = useAiOutOfCredits();
   const 任务键 = `project-followup-parse:${p.id}`;
   /** 解析途中弹窗关了 / 又点了一次：旧的那轮回来不许再往格子里填 */
   const 这一次 = useRef(0);
@@ -1892,6 +1903,46 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
       onOk={() => void 交()}
     >
       <div style={{ display: "grid", gap: 12 }}>
+        {给AI && (
+          <div className="follow-mode">
+            <Segmented<录入模式>
+              aria-label="录入方式"
+              value={模式}
+              onChange={换模式}
+              // 解析途中不许切走：回来的结果要往格子里填，得让人看得见是 AI 填的
+              disabled={解析中}
+              options={[
+                { value: "手动", label: "手动录入" },
+                { value: "AI", disabled: !!AI灰, label: AI灰 ? <Tooltip title={AI灰}><span>AI 录入</span></Tooltip> : "AI 录入" },
+              ]}
+            />
+            {AI灰 && <span className="follow-mode-why">{AI灰}</span>}
+          </div>
+        )}
+        {模式 === "AI" && (
+          <div className="follow-ai">
+            <Input.TextArea
+              aria-label="沟通原话"
+              autoFocus
+              value={原话}
+              onChange={(e) => set原话(e.target.value)}
+              autoSize={{ minRows: 2, maxRows: 6 }}
+              maxLength={5000}
+              placeholder="把这次沟通随手倒出来，或粘贴聊天记录、语音转的文字，AI 帮你预填沟通内容、下一步等格子"
+            />
+            <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
+                  : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填下面的格子，核对无误再记下</span>}
+              </div>
+              <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
+                {解析?.结果 ? "重新解析" : "AI 解析填表"}
+                <AiCost />
+              </Button>
+            </div>
+            <AiRemaining />
+          </div>
+        )}
         {/* 11-01 客户答复 #2：沟通方式、发起主体都必填，摆在表面不收进「更多」 */}
         <div className="follow-pick-row">
           <div>
@@ -1961,38 +2012,11 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
         )}
         <div>
           <Button type="link" size="small" style={{ paddingInline: 0 }} icon={<DownOutlined rotate={更多开 ? 180 : 0} />} aria-expanded={更多开} onClick={() => set更多开((v) => !v)}>
-            更多{p.企业版 ? "：沟通时间、项目阶段" : "：沟通时间"}{给AI ? "、AI 预填" : ""}
+            更多{p.企业版 ? "：沟通时间、项目阶段" : "：沟通时间"}
           </Button>
         </div>
         {更多开 && (
           <div className="follow-more">
-            {给AI && !AI开 && (
-              <Button size="small" icon={<ThunderboltOutlined />} style={{ justifySelf: "start" }} onClick={() => setAI开(true)}>用 AI 从原话预填</Button>
-            )}
-            {给AI && AI开 && (
-              <div style={{ border: "1px solid var(--brand-line)", borderRadius: 10, padding: "10px 12px" }}>
-                <Input.TextArea
-                  aria-label="沟通原话"
-                  autoFocus={AI先}
-                  value={原话}
-                  onChange={(e) => set原话(e.target.value)}
-                  autoSize={{ minRows: 2, maxRows: 6 }}
-                  maxLength={5000}
-                  placeholder="把这次沟通随手倒出来，或粘贴聊天记录、语音转的文字，AI 帮你预填沟通内容、下一步等格子"
-                />
-                <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
-                      : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填，核对无误再记下</span>}
-                  </div>
-                  <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
-                    {解析?.结果 ? "重新解析" : "AI 解析填表"}
-                    <AiCost />
-                  </Button>
-                </div>
-                {AI已用完 && <AiRemaining />}
-              </div>
-            )}
             <div>
               <div style={{ marginBottom: 4 }}>沟通时间</div>
               <DatePicker

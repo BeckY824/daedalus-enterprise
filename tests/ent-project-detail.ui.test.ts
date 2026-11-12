@@ -97,7 +97,9 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     // 11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」记一条沟通、AI 录入、发卡点、改分配回到各自卡头；
     // 「完成节点 ▼」「新增沟通」在阶段页签那一行（M-节点-04 / U-项目-06）
     const 卡上钮 = (await page.locator(".proj-main button, .proj-side button").allInnerTexts()).map(t => t.replace(/\s/g, ""));
-    expect(卡上钮).toEqual(expect.arrayContaining(["新增沟通", "AI录入", "发卡点", "改分配"]));
+    expect(卡上钮).toEqual(expect.arrayContaining(["新增沟通", "发卡点", "改分配"]));
+    // 11-12：「AI 录入」不再单摆在卡头，收进记一条沟通弹窗顶上的「手动录入 | AI 录入」
+    expect(卡上钮).not.toContain("AI录入");
     // 11-01 会议 §5：沟通卡头右边写「新增沟通」（走弹窗），不再有「去客户页看看」
     expect(await page.getByTestId("follow-card-new").innerText()).toBe("新增沟通");
     expect(await page.locator(".proj-main a").filter({ hasText: /页看看/ }).count()).toBe(0);
@@ -118,7 +120,7 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     // 右栏里的卡片内容不能伸出卡片（右栏窄，最容易被长串撑开）
     const 伸出 = await page.locator(".proj-side .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    for (const name of ["AI 录入", "新增沟通", "项目转让"]) {
+    for (const name of ["新增沟通", "项目转让"]) {
       const box = await page.getByRole("button", { name }).first().boundingBox();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
@@ -240,33 +242,59 @@ it("P17 只读：关联卡只列文字，没有下拉、没有关联 / 解除按
   } finally { await page.close(); }
 });
 
-it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注明）；「AI 录入」打开记一条、AI 那格先摆出来，只预填不写", async () => {
+it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注明）；11-12 起卡头只有「新增沟通」，弹窗顶上切「手动录入 | AI 录入」，默认手动、记住上次、切换不丢已填，AI 只预填不写", async () => {
   const { page, errors } = await open(true);
   try {
     const 项目卡 = await page.locator(".proj-side .ant-card").filter({ hasText: "项目来源" }).first().innerText();
     expect(项目卡).toContain("28 天");
     expect(项目卡).toMatch(/同.+来源/);
-    await page.getByRole("button", { name: "AI 录入" }).first().click();
+    expect(await page.getByRole("button", { name: "AI 录入" }).count()).toBe(0);
+    await page.evaluate(() => localStorage.removeItem("daedalus.follow.mode"));
+    await page.getByTestId("follow-card-new").click();
+    const 切 = page.locator(".follow-mode .ant-segmented");
+    await 切.waitFor();
+    const 选中 = () => 切.locator(".ant-segmented-item-selected").innerText();
+    // 默认手动：没有原话框；「更多」里不再有 AI
+    expect(await 选中()).toBe("手动录入");
+    expect(await page.getByRole("textbox", { name: "沟通原话" }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /更多：/ }).innerText()).not.toMatch(/AI/);
+    // 手填了一段，切到 AI：原话框出来、光标落在那，手填的还在
+    await page.getByRole("textbox", { name: "沟通内容" }).fill("手填的内容");
+    await 切.getByText("AI 录入").click();
     const 原话 = page.getByRole("textbox", { name: "沟通原话" });
     await 原话.waitFor();
-    expect(await 原话.evaluate(e => e === document.activeElement)).toBe(true);
+    await expect.poll(() => 原话.evaluate(e => e === document.activeElement)).toBe(true);
+    expect(await page.getByRole("textbox", { name: "沟通内容" }).inputValue()).toBe("手填的内容");
     await page.getByRole("button", { name: /AI 解析填表/ }).click();
     await page.getByText("先把沟通过程随手写几句").waitFor();
     await 原话.fill("刚和王经理通了电话，下周三再聊报价");
     await page.getByRole("button", { name: /AI 解析填表/ }).click();
     await page.getByText("未启用").waitFor();
-    // 「记下」照旧要内容、要选是否明确回复，AI 没填出东西就点不了
+    // 「记下」照旧要下一步计划，AI 没填出东西就点不了（只预填、不写库）
     expect(await page.getByRole("button", { name: "记 下" }).or(page.getByRole("button", { name: "记下" })).first().isDisabled()).toBe(true);
-    await page.getByRole("button", { name: /取\s*消/ }).click();
+    // 切回手动：原话框收起，手填的还在
+    await 切.getByText("手动录入").click();
     await 原话.waitFor({ state: "detached" });
-    // 手填入口：AI 那格收在默认折叠的「更多」里（F-跟进-06），展开后只给一个「用 AI 从原话预填」
+    expect(await page.getByRole("textbox", { name: "沟通内容" }).inputValue()).toBe("手填的内容");
+    await 切.getByText("AI 录入").click();
+    await page.getByRole("button", { name: /取\s*消/ }).click();
+    await page.getByRole("textbox", { name: "沟通原话" }).waitFor({ state: "detached" });
+    // 再开：记得上次选的是 AI
+    expect(await page.evaluate(() => localStorage.getItem("daedalus.follow.mode"))).toBe("AI");
     await page.getByTestId("follow-card-new").click();
-    const 更多 = page.getByRole("button", { name: /更多：/ });
-    await 更多.waitFor();
-    expect(await 更多.getAttribute("aria-expanded")).toBe("false");
-    expect(await page.getByRole("button", { name: "用 AI 从原话预填" }).count()).toBe(0);
-    await 更多.click();
-    await page.getByRole("button", { name: "用 AI 从原话预填" }).waitFor();
+    await page.getByRole("textbox", { name: "沟通原话" }).waitFor();
+    expect(await 选中()).toBe("AI 录入");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("没 AI 权限（模型没配）：记一条沟通弹窗里没有「手动录入 | AI 录入」切换，直接手填", async () => {
+  const { page, errors } = await 覆盖(1280, { 我是负责人: true, 能记沟通: true, aiEnabled: false });
+  try {
+    await page.evaluate(() => localStorage.setItem("daedalus.follow.mode", "AI"));
+    await page.getByTestId("follow-card-new").click();
+    await page.getByRole("textbox", { name: "沟通内容" }).waitFor();
+    expect(await page.locator(".follow-mode").count()).toBe(0);
     expect(await page.getByRole("textbox", { name: "沟通原话" }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -1414,13 +1442,13 @@ describe("沟通卡头：隐藏接手前", () => {
     }
   });
 
-  it.each([800, 1024, 1280])("%ipx：三颗按钮都摆着，标题不被挤断，横向不伸出", async (宽) => {
+  it.each([800, 1024, 1280])("%ipx：两颗按钮（隐藏接手前、新增沟通连体）都摆着，标题不被挤断，横向不伸出", async (宽) => {
     const { page, errors } = await 覆盖(宽, { 我是负责人: true, 能记沟通: true, aiEnabled: true, followUps: 两条 });
     try {
       const 钮 = page.getByTestId("follow-hide-before");
       await 钮.waitFor();
       expect(await page.getByTestId("follow-card-new").count()).toBe(1);
-      expect(await page.getByRole("button", { name: /AI 录入/ }).count()).toBe(1);
+      expect(await page.getByRole("button", { name: /AI 录入/ }).count()).toBe(0);
       expect(await 不伸出(page, ".proj-main")).toEqual([]);
       const 标题 = await 钮.evaluate(e => {
         const t = e.closest(".ant-card-head")!.querySelector(".ant-card-head-title") as HTMLElement;
