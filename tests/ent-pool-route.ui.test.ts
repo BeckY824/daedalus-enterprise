@@ -58,9 +58,9 @@ beforeAll(async () => {
         <Pool 行={[...行,并行]} 总数={2} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:2,线索池:0,商机池:0,订单池:1,客户池:1}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 能标无效 能恢复 能分配 users={[{id:'u1',name:'同事甲',email:'a'}]} 持有={null}/>
       </main></div></BusinessProvider></App>);
     // 1024 宽：左边 220 的导航 + 内容区 24 内边距，同 app 外框
-    window.__render=(quick='')=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
+    window.__render=(quick='',三态)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
-        <Pool 行={行} 总数={1} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:99999,线索池:33333,商机池:33333,订单池:33333,客户池:33333}} 截断={false} 库里有 filters={{keyword:'',attr:'订单池',quick,sort:''}} 能标无效 能恢复 能分配 users={[]} 持有={null}/>
+        <Pool 行={行} 总数={1} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:99999,线索池:33333,商机池:33333,订单池:33333,客户池:33333}} 截断={false} 库里有 filters={{keyword:'',attr:'订单池',quick,sort:'',phoneIncomplete:三态?.筛??''}} 能标无效 能恢复 能分配 users={[]} 持有={null} 三态开={!!三态} 号码不全数={三态?9999:null}/>
       </main></div></BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [公海插件], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -224,4 +224,41 @@ it.each([1024, 1280, 1366])("公海页 %ipx：客户池并成一行、展开逐�
     await expect.poll(() => page.locator(".pool-sub-row:visible").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+// 客户三态 C14（11-12 三态界面 B 组）：「号码不全 N」收在「更多筛选」里，三态开着筛选行和关着一模一样（1024 有筛选时外面放不下，会折出第三行）
+it.each([1024, 1280, 1366])("公海页 %ipx：三态开着「号码不全 N」在更多筛选里，筛选行排版和关着一样；点了筛 phoneIncomplete", async (w) => {
+  const 打开 = async (三态: { 筛?: string } | null) => {
+    const page = await browser.newPage({ viewport: { width: w, height: 800 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    await page.route("http://route.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+    await page.goto("http://route.test/pool"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 公海bundle });
+    await page.evaluate((t) => (window as unknown as { __render: (q: string, t: unknown) => void }).__render("", t), 三态);
+    await page.locator(".pool-filters").waitFor();
+    const 排 = await page.evaluate(() => { const f = document.querySelector(".pool-filters")!; return { 高: Math.round(f.getBoundingClientRect().height), 子: [...f.children].map(c => { const b = c.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width)]; }) }; });
+    return { page, errors, 排 };
+  };
+  const 关 = await 打开(null);
+  try {
+    await 关.page.getByRole("button", { name: /更多筛选/ }).click();
+    await 关.page.getByRole("button", { name: /自定义筛选项/ }).waitFor();
+    expect(await 关.page.getByRole("button", { name: /号码不全/ }).count()).toBe(0);
+  } finally { await 关.page.close(); }
+  for (const 三态 of [{}, { 筛: "1" }]) {
+    const 开 = await 打开(三态);
+    try {
+      // 筛着号码不全时「更多筛选」按钮多个数字，宽度变了；其余位置都不动
+      if (!三态.筛) expect(开.排).toEqual(关.排);
+      else expect([开.排.高, 开.排.子.map(x => x[1])]).toEqual([关.排.高, 关.排.子.map(x => x[1])]);
+      await 开.page.getByRole("button", { name: /更多筛选/ }).click();
+      const 钮 = 开.page.getByRole("button", { name: /号码不全/ });
+      await 钮.waitFor();
+      expect((await 钮.innerText()).replace(/\s+/g, " ").trim()).toBe("号码不全 9999");
+      expect(await 钮.getAttribute("aria-pressed")).toBe(三态.筛 ? "true" : "false");
+      await 钮.click();
+      expect(await 开.page.evaluate(() => (window as unknown as { __去: string[] }).__去.map(u => new URL(u, location.href).searchParams.get("phoneIncomplete")))).toEqual([三态.筛 ? null : "1"]);
+      expect(await 开.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(开.errors).toEqual([]);
+    } finally { await 开.page.close(); }
+  }
 });

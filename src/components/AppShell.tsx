@@ -54,6 +54,7 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 import { 切换视图Provider } from "@/components/ViewAsContext";
+import ViewAsPicker from "@/components/ViewAsPicker";
 import { 左栏收窄 } from "@/lib/rail-mini";
 
 const { Header, Content } = Layout;
@@ -118,7 +119,7 @@ type Props = {
   视图换人?: (userId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   视图退出?: () => Promise<{ ok: true } | { ok: false; error: string }>;
   /** 正在以别人的视图查看：名 = 被看的人；null = 票还在但已失效。有它顶上就挂一条只读提示 */
-  正在视图?: { 名: string | null } | null;
+  正在视图?: { 名: string | null; 身份?: string } | null;
   children: React.ReactNode;
 };
 
@@ -487,6 +488,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/" + (pathname.split("/")[1] || "dashboard"));
   }
+  const [挑视图, set挑视图] = useState(false);
   async function 退出看() {
     if (!视图退出) return;
     const res = await 视图退出().catch(() => ({ ok: false as const, error: "退出失败，请检查网络连接后重试" }));
@@ -497,25 +499,22 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   const 视图菜单 = 视图名单?.length
     ? [
         { type: "divider" as const },
-        {
-          key: "view-as",
-          icon: <SwapOutlined />,
-          label: 正在视图 ? "换一个人的视图" : "切换视图（只读）",
-          popupClassName: "demo-switch-pop",
-          children: 身份分组(视图名单, "view", user.id),
-        },
+        // 11-12：一项点开挑人的框（按角色分组、能搜），不再是一长串子菜单
+        { key: "view-pick", icon: <SwapOutlined />, label: 正在视图 ? "换一个人的视角" : "以某人的视角查看" },
       ]
     : [];
   /** 切换视图期间钉在顶上的一条：谁的视图、只读、退出。两种布局都挂 */
+  /** 切换视图的挑人框：小屏、宽屏两个分支各挂这一份（账号菜单「以某人的视角查看」打开它） */
+  const 挑人框 = 视图名单?.length ? <ViewAsPicker open={挑视图} 名单={视图名单} 关={() => set挑视图(false)} 选={(id) => { set挑视图(false); void 看成(id); }} /> : null;
   const 视图条 = 正在视图 ? (
     <div className="view-as-bar" role="status">
       <span className="view-as-text">
         {正在视图.名 ? (
           <>
-            正在以 <b>{正在视图.名}</b> 的视图查看（只读）
+            正在以 <b>{正在视图.名}</b>{正在视图.身份 ? `（${正在视图.身份}）` : ""} 的视角查看 · 只读
           </>
         ) : (
-          "切换视图已失效（只读）"
+          "切换视图已失效 · 只读"
         )}
       </span>
       <span aria-hidden>·</span>
@@ -566,6 +565,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       if (key === "settings") router.push("/settings");
       if (key === "logout") void logout();
       if (key === "view-exit") void 退出看();
+      if (key === "view-pick") set挑视图(true);
     },
     items: [
       {
@@ -609,6 +609,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       <切换视图Provider value={!!正在视图}>
       <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         {视图条}
+        {挑人框}
         <Header style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", borderBottom: "1px solid var(--line-soft)", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
           <Dropdown
             trigger={["click"]}
@@ -655,6 +656,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     <DockOpenContext.Provider value={面板占着地方}>
     <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
       {视图条}
+      {挑人框}
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
       {desktop && <div className="drag-strip" aria-hidden="true" />}
       <nav className="rail" aria-label="主导航">

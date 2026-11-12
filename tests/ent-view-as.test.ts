@@ -4,7 +4,7 @@
  *   - 切换期间 getCurrentUser 回被看的人（带 视图由 = 真身），读按他的范围照常
  *   - **切换期间服务端所有写一律拒**：create / update / upsert / delete、$executeRaw、写库的 $queryRaw；还有走 action 的那一路
  *   - 退出删票、回到自己，开始 / 退出各一条留痕
- *   - 票只认签它的那个会话；真身不再是总管理 / 管理员时票不认人，但照样只读
+ *   - 票只认签它的那个会话（别的会话带着它：不认人、写拒，提示刷新）；真身不再是总管理 / 管理员时票不认人，但照样只读
  * 会话票、视图票都从假的 next/headers 里读（同 enterprise-permission-matrix），set / delete 落在这份假 cookie 上。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -107,7 +107,7 @@ describe("企业版切换视图", () => {
   it("总管理员切到业务员甲：按甲的权限看，期间一切写被拒；退出后恢复并留痕", async () => {
     await 登录成(人.总管);
     const 名单 = await 读视图名单((await getCurrentUser())!);
-    expect(名单?.flatMap((g) => g.人.map((p) => p.id)).sort()).toEqual([人.老板, 人.甲, 人.乙].sort()); // 不列自己
+    expect(名单?.flatMap((g) => g.人.map((p) => p.id)).sort()).toEqual([人.甲, 人.乙].sort()); // 不列自己，也不列别的系统管理员（11-12）
     expect(await 开始视图(人.甲)).toEqual({ ok: true });
     expect(罐.票.has(视图票)).toBe(true);
     忘掉企业版范围();
@@ -157,7 +157,7 @@ describe("企业版切换视图", () => {
     expect(痕[0].summary).toContain("业务员甲");
   });
 
-  it("切视图时字典还是空的：第一次读照样建好默认项，不崩页；普通写和手动改字典仍拒", async () => {
+  it("切视图时字典还是空的：内存里给默认项、一笔不落库（11-12 起），不崩页；普通写和手动改字典仍拒", async () => {
     await prisma.entDictItem.deleteMany();
     await prisma.projectRole.deleteMany();
     await prisma.projectExceptionCategory.deleteMany();
@@ -167,17 +167,24 @@ describe("企业版切换视图", () => {
     expect((await 企业字典("assign")).length).toBeGreaterThan(0);
     expect((await 角色字典()).length).toBeGreaterThan(0);
     expect((await 异常类别字典()).length).toBeGreaterThan(0);
+    expect(await prisma.entDictItem.count()).toBe(0);
+    expect(await prisma.projectRole.count()).toBe(0);
+    expect(await prisma.projectExceptionCategory.count()).toBe(0);
+    // 种子写包在 系统写 里也拦（漏网的那种）
+    await expect(系统写(() => prisma.projectRole.create({ data: { name: "种子漏网" } }))).rejects.toMatchObject({ code: "CRM_READONLY" });
     await expect(prisma.customer.update({ where: { id: 甲的客户 }, data: { name: "x" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
     await expect(prisma.projectRole.create({ data: { name: "视图里加的" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
   });
 
-  it("票只认签它的那个会话：换个人带着这张票，不认、也不拦", async () => {
+  it("票只认签它的那个会话：换个人带着这张票，不认人；这次请求的写拒（视角已失效，请刷新页面），删了票照常写", async () => {
     await 登录成(人.甲);
     罐.票.set(视图票, await 签视图票(人.总管, 人.乙));
     expect(await 当前视图()).toBeNull();
     const me = (await getCurrentUser())!;
     expect(me.id).toBe(人.甲);
     expect(me.视图由).toBeUndefined();
+    await expect(prisma.customer.update({ where: { id: 甲的客户 }, data: { name: "甲自己改" } })).rejects.toMatchObject({ code: "CRM_READONLY", message: "视角已失效，请刷新页面" });
+    罐.票.delete(视图票);
     await prisma.customer.update({ where: { id: 甲的客户 }, data: { name: "甲自己改" } });
     // 会话票塞进视图票的位子也不认（没有 typ / va / vb）
     罐.票.set(视图票, 罐.票.get("crm_session")!);

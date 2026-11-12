@@ -760,5 +760,69 @@ describe("第二轮答复 S1–S8", () => {
     expect(乙那组).toMatchObject({ name: "乙", 上级: "甲" });
     expect(乙那组.客户[0]).toMatchObject({ id: 客户, 挂起天数: 5 });
     expect(乙那组.客户[0].待交接日).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // 三态界面 B 组（M-公海-52）：挂起工作日和超期一起给，看板标红按它
+    const { 工作日数 } = await import("@/lib/enterprise/tri-state");
+    expect(乙那组.客户[0]).toMatchObject({ 挂起工作日: 工作日数(乙那组.客户[0].待交接日!, 加天(乙那组.客户[0].待交接日!, 5)), 超期: false });
+  });
+
+  it("交接看板：挂起超过 15 个工作日或 30 个自然日（先到者）标超期", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    // 25 个自然日（不到 30）：里面最多 8 个周末日，工作日至少 17 个 → 超了 15 个工作日那条
+    await prisma.entCustomerStateLog.create({ data: { customerId: 客户, toState: "活跃", reason: 待交接理由, fromOwnerId: 人.乙.id, at: new Date(Date.now() - 25 * 86_400_000) } });
+    const { 读离职交接 } = await import("@/lib/enterprise/offboard-handover");
+    const 一位 = (await 读离职交接({ id: 人.系.id, role: "ADMIN" } as never)).find((x) => x.id === 人.乙.id)!.客户[0];
+    expect(一位.挂起天数).toBe(25);
+    expect(一位.挂起工作日).toBeGreaterThan(15);
+    expect(一位.超期).toBe(true);
+  });
+
+  it("交接看板：离职交接在等接手人确认的客户带交接中（从发起日算挂起、等谁确认）；也标过待交接的同一位只一条、两样都带", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    const { 读离职交接 } = await import("@/lib/enterprise/offboard-handover");
+    const 读 = async () => (await 读离职交接({ id: 人.系.id, role: "ADMIN" } as never)).find((x) => x.id === 人.乙.id)!;
+    // 没清点客户：按还在他名下的都算
+    await prisma.entHandover.create({ data: { kind: "离职", fromUserId: 人.乙.id, toUserId: 人.丙.id, byUserId: 人.系.id, customerIds: "[]", status: "待确认", createdAt: new Date(Date.now() - 40 * 86_400_000) } });
+    const 组 = await 读();
+    expect(组.交接中).toBe(true);
+    expect(组.客户).toHaveLength(1);
+    expect(组.客户[0].交接中).toMatchObject({ 接手人: "丙", 挂起天数: 40, 超期: true });
+    expect(组.客户[0].交接中!.挂起工作日).toBeGreaterThan(20);
+    expect(组.客户[0].待交接日).toBeUndefined();
+    // 同一位此前也标了待交接：还是一条，两样都带（界面合成一行）
+    await prisma.entCustomerStateLog.create({ data: { customerId: 客户, toState: "活跃", reason: 待交接理由, fromOwnerId: 人.乙.id, at: new Date(Date.now() - 50 * 86_400_000) } });
+    const 两样 = (await 读()).客户;
+    expect(两样).toHaveLength(1);
+    expect(两样[0]).toMatchObject({ 挂起天数: 50, 交接中: { 挂起天数: 40 } });
+  });
+
+  it("交接看板：离职交接清点了客户的只算清点的；没在等确认的不带交接中；查询条数不随交接笔数涨", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    const 另一位 = await prisma.customer.create({ data: { name: "另一位", phone: "13900009999", salesOwnerId: 人.乙.id } });
+    const { 读离职交接 } = await import("@/lib/enterprise/offboard-handover");
+    const 读 = async () => (await 读离职交接({ id: 人.系.id, role: "ADMIN" } as never)).find((x) => x.id === 人.乙.id)!;
+    expect((await 读()).客户.every((c) => !c.交接中)).toBe(true);
+    await prisma.entHandover.create({ data: { kind: "离职", fromUserId: 人.乙.id, toUserId: 人.丙.id, byUserId: 人.系.id, customerIds: JSON.stringify([另一位.id]), status: "待确认", createdAt: new Date(Date.now() - 3 * 86_400_000) } });
+    const 们 = Object.fromEntries((await 读()).客户.map((c) => [c.id, c.交接中 ?? null]));
+    expect(们[另一位.id]).toMatchObject({ 挂起天数: 3, 超期: false, 接手人: "丙" });
+    expect(们[客户]).toBeNull();
+  });
+
+  it("交接看板：同一位有几笔离职交接在等确认，几笔清点的客户合起来算（同夜扫 离职交接中的）；落在几笔里的按最早那笔算挂起", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    const 另一位 = await prisma.customer.create({ data: { name: "另一位", phone: "13900009999", salesOwnerId: 人.乙.id } });
+    const 第三位 = await prisma.customer.create({ data: { name: "第三位", phone: "13900009998", salesOwnerId: 人.乙.id } });
+    const { 读离职交接 } = await import("@/lib/enterprise/offboard-handover");
+    const { 离职交接中的 } = await import("@/lib/enterprise/tri-state-db");
+    const 读 = async () => Object.fromEntries((await 读离职交接({ id: 人.系.id, role: "ADMIN" } as never)).find((x) => x.id === 人.乙.id)!.客户.map((c) => [c.id, c.交接中 ?? null]));
+    const 笔 = (ids: string[], 天前: number) => prisma.entHandover.create({ data: { kind: "离职", fromUserId: 人.乙.id, toUserId: 人.丙.id, byUserId: 人.系.id, customerIds: JSON.stringify(ids), status: "待确认", createdAt: new Date(Date.now() - 天前 * 86_400_000) } });
+    await 笔([另一位.id], 10);
+    await 笔([客户, 另一位.id], 4);
+    const 们 = await 读();
+    expect(们[客户]).toMatchObject({ 挂起天数: 4 });
+    expect(们[另一位.id]).toMatchObject({ 挂起天数: 10 });
+    expect(们[第三位.id]).toBeNull();
+    // 和夜扫挂起不收的是同一批
+    const 夜扫的 = await 离职交接中的(prisma, [客户, 另一位.id, 第三位.id]);
+    expect(Object.entries(们).filter(([, v]) => v).map(([k]) => k).sort()).toEqual([...夜扫的].sort());
   });
 });

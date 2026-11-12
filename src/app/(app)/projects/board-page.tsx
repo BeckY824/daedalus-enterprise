@@ -11,6 +11,8 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 能管公海 } from "@/lib/enterprise/permissions";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 离职交接入口 } from "@/lib/enterprise/offboard-handover";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 三态标们 } from "@/lib/enterprise/tri-state-list";
 import ProjectsView from "./ProjectsView";
 
 /** 项目页（看板 / 列表）认的地址栏参数 */
@@ -38,5 +40,13 @@ export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页
   const 筛线索 = 企业版() && sp.phase === "线索";
   const 线索分配开着 = 筛线索 && (await 规则开着("线索分配"));
   const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
-  return <ProjectsView {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase, d.看板合计)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 待交接={企业版() && !客户页 ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} 客户页={!!客户页} 基址={落在?.基址} 标题={落在?.标题} 换回客户列表={!!落在?.换回客户列表} />;
+  /*
+    客户页看板（C5，P-界面-19 ②）：客户三态开着时，沉睡 / 待回收 / 暂缓回收中的客户在卡片客户名后点一个色点。
+    这一页卡片上看得到的客户一次取钟（同客户表格「回收状态」一列）；三态关着、不是客户页不取。规则在设置缓存里读
+  */
+  const 三态规则 = 客户页 && 企业版() ? (await 生效组织规则()).三态 : null;
+  // 卡片上看得到客户名的、客户不在客户公海的；同一位客户几张卡只算一次。负责人是市场成员的在取钟那句里排掉（不点）
+  const 看得到的 = 三态规则?.开 ? [...new Set(d.行.filter((r) => r.customerName != null && !r.客户在公海).map((r) => r.customerId))] : [];
+  const 三态点 = 三态规则?.开 ? await 三态标们(看得到的.map((id) => ({ id, 在公海: false })), 三态规则) : undefined;
+  return <ProjectsView 三态点={三态点} {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase, d.看板合计)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 待交接={企业版() && !客户页 ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} 客户页={!!客户页} 基址={落在?.基址} 标题={落在?.标题} 换回客户列表={!!落在?.换回客户列表} />;
 }

@@ -24,6 +24,7 @@ import { 看已删 } from "../enterprise/soft-delete-core";
 import { 看全部 } from "../team-scope";
 import { getSetting, setSetting } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
 import { 原负责人回避, 历史负责人, 我回避的公海项目 } from "./pool-owner";
@@ -106,6 +107,8 @@ export async function 存卡点角色开关(me: 谁, patch: unknown): Promise<�
 export async function 备好原因(): Promise<void> {
   if (!企业版()) return;
   if (await getSetting<boolean>(原因种子键)) return;
+  // 切换视图（只读预览）：不补种子（原因字典 在内存里给），否则这次写被拦、客户页整页报错
+  if (await 视图中跳过()) return;
   await 看全部(async () => {
     for (const [i, name] of 原因种子们.entries()) {
       const 有 = await prisma.entBlockerReason.findUnique({ where: { name }, select: { id: true } });
@@ -122,6 +125,10 @@ export async function 原因字典(): Promise<原因行[]> {
   await 备好原因();
   return 看全部(async () => {
     const 们 = await prisma.entBlockerReason.findMany({ orderBy: [{ sort: "asc" }, { createdAt: "asc" }], include: { _count: { select: { links: true } } } });
+    // 切换视图时没补上种子（备好原因 跳过了）：内存里给，同补上之后的样子
+    if (!们.length && !(await getSetting<boolean>(原因种子键)) && (await 视图中跳过())) {
+      return 原因种子们.map((name, i) => ({ id: 种子原因id(i), name, status: "启用" as 原因状态, sort: i, 用了: 0, 并入: null }));
+    }
     const 名 = new Map(们.map((r) => [r.id, r.name]));
     return 们.map((r) => ({
       id: r.id, name: r.name, status: r.status as 原因状态, sort: r.sort, 用了: r._count.links, 并入: r.mergedIntoId ? 名.get(r.mergedIntoId) ?? null : null,

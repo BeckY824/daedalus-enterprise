@@ -173,6 +173,7 @@ const 筛选说法: Record<string, string> = {
   createdWithin: "建档时间",
   phase: "项目阶段",
   node: "项目进程",
+  triState: "回收状态",
 };
 
 /**

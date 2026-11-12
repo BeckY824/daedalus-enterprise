@@ -159,6 +159,8 @@ export async function 角色字典(db: Prisma.TransactionClient = prisma) {
   const 种子: [string, string][] = 企业版()
     ? 企业版默认角色们.map((n) => [企业版默认角色id[n], n])
     : 默认角色们.map((n) => [默认角色id[n], n]);
+  // 切换视图（只读预览）：不落库，内存里给默认的
+  if (await 视图中跳过()) return 种子.map(([id, name], sort) => ({ id, name, sort, active: true, createdAt: new Date(0) }));
   // 系统写：管理员（admin，只读）打开页面时也得建得上
   await 系统写(async () => {
     for (const [i, [id, name]] of 种子.entries()) {
@@ -235,6 +237,7 @@ export async function 异常类别字典(db: Prisma.TransactionClient = prisma) 
   // 同 角色字典：有行直接用，空着才建默认再取
   const 有 = await db.projectExceptionCategory.findMany({ orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
   if (有.length) return 有;
+  if (await 视图中跳过()) return 默认异常类别们.map((name, sort) => ({ id: 默认异常类别id[name], name, sort, active: true, createdAt: new Date(0) }));
   await 系统写(async () => {
     for (const [i, name] of 默认异常类别们.entries()) {
       await db.projectExceptionCategory.upsert({ where: { name }, update: {}, create: { id: 默认异常类别id[name], name, sort: i } });

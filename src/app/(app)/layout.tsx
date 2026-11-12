@@ -1,3 +1,5 @@
+// 客户三态的小标（列表状态列、看板色点、公海号码不全、交接看板超期行）：放在应用壳上引，组件里引会让 *.ui.test 的 esbuild 打包失败
+import "./tri-state-ui.css";
 import { redirect } from "next/navigation";
 import { 读收藏, 读项目收藏 } from "@/lib/favorites";
 import { 客户总数 } from "@/lib/pool-db";
@@ -16,7 +18,7 @@ import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import { 演示登录 } from "@/app/login/demo-actions";
 import { 全局搜索 } from "./global-search";
-import { 读视图名单, 有切换视图 } from "@/lib/enterprise/view-as-menu";
+import { 读视图名单, 有切换视图, 视图身份说明 } from "@/lib/enterprise/view-as-menu";
 import { 当前视图 } from "@/lib/enterprise/view-as";
 import { 开始视图, 退出视图 } from "./view-as-actions";
 import { accessibleWorkspacesFor } from "@/lib/tenant/workspace-access";
@@ -98,7 +100,7 @@ export default async function AppLayout({
   const [视图名单, 视图票在] = 有切换视图()
     ? await Promise.all([读视图名单(user), user.视图由 ? Promise.resolve(null) : 当前视图()])
     : [null, null];
-  const 正在视图 = user.视图由 ? { 名: user.name } : 视图票在 ? { 名: null } : null;
+  const 正在视图 = user.视图由 ? { 名: user.name, 身份: await 视图身份说明(user.id) } : 视图票在 ? { 名: null } : null;
   const AI计次 = 有AI ? await 读AI计次({ 问余额: false }) : 不计次;
   /**
    * 跑在桌面端里：Electron 的 UA 带 "Electron/"。本地模式和连服务器两种都识别得到，

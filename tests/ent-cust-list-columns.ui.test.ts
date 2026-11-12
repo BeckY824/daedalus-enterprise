@@ -41,7 +41,7 @@ beforeAll(async () => {
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')];
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 树=(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={3} 企业版 项目概况={项目概况} 项目看板 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined} 市场视图={!!window.__市场}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined} 市场视图={!!window.__市场}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
     const el=document.getElementById('root');
     // __静态：先只放服务端出的那份 HTML（React 还没接管），window.__水合() 再接管——照真实页面的先后
@@ -98,6 +98,36 @@ it("两列紧跟客户名；节点标签一行省略、—、0；三种宽度每
         expect(await page.locator(".ant-popover").getByRole("combobox", { name: "进程" }).count(), `宽 ${w}`).toBe(1);
       } else expect(await page.getByRole("combobox", { name: "进程" }).count(), `宽 ${w}`).toBe(1);
       摆法.push(`${w}${右栏 ? "+AI栏" : ""}:${外面 ? "外面" : "更多筛选"}`);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+// 客户三态开着（11-12 三态界面 B 组）：多「回收状态」一列（紧跟项目数，和「客户状态」分开）、多「回收状态」筛选；三种宽度筛选行仍一行、每格一行、页面不撑出
+it("三态开着：回收状态列在项目数后面、和客户状态两列；1024 / 1280 / 1366 筛选行一行、每格一行、不横向撑出", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      await page.evaluate(() => { (window as unknown as { __三态: boolean }).__三态 = true; });
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 头 = (await page.locator("thead th").allInnerTexts()).map((t) => t.trim());
+      const 名位 = 头.indexOf("客户");
+      expect(头.slice(名位, 名位 + 5), `宽 ${w}`).toEqual(["客户", "当前节点", "项目数", "回收状态", "客户状态"]);
+      const 列 = 头.indexOf("回收状态");
+      const 格 = await page.evaluate((列) => [...document.querySelectorAll("tr.ant-table-row")].map((tr) => { const td = tr.children[列] as HTMLElement; return { 字: td.innerText.trim(), 高: tr.getBoundingClientRect().height }; }), 列);
+      expect(格.map((g) => g.字), `宽 ${w}`).toEqual(["待回收 · 12 天后进公海", "暂缓回收中", "不计时"]);
+      expect(Math.max(...格.map((g) => g.高)), `宽 ${w}`).toBeLessThanOrEqual(60);
+      expect(await page.locator(".list-bar > .ant-space").first().evaluate((el) => el.getBoundingClientRect().height), `宽 ${w} 筛选行一行`).toBeLessThanOrEqual(40);
+      // 回收状态筛选要么在外面、要么收在「更多筛选」里
+      if (!(await page.getByRole("combobox", { name: "回收状态" }).count())) {
+        await page.getByRole("button", { name: /^更多筛选/ }).click();
+        await expect.poll(() => page.locator(".ant-popover").getByRole("combobox", { name: "回收状态" }).count(), { message: `宽 ${w}` }).toBe(1);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

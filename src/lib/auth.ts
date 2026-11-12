@@ -8,7 +8,7 @@ import { resolveTenant } from "./tenant/workspaces";
 import { control } from "./tenant/control";
 import { 会话已作废 } from "./tenant/session-cutoff";
 import { 企业版 } from "./enterprise/switch";
-import { 视图票, 验视图票, 能切换视图 } from "./enterprise/view-as";
+import { 视图票, 验视图票, 读会话身份, 能切换视图, 能被看, 切换视图开着 } from "./enterprise/view-as";
 
 export const SECRET = new TextEncoder().encode(
   readSecret(),
@@ -84,18 +84,23 @@ export async function destroySession() {
  */
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const 真 = await getSessionUser();
-  if (!真 || 真.accountId || !企业版()) return 真;
-  const 票 = (await cookies()).get(视图票)?.value;
-  return (票 && (await 视图里的人(票, 真))) || 真;
+  // 开关关着（CRM_ENT_VIEW_AS=0）连 cookie 都不读：和没有这个功能一样
+  if (!真 || 真.accountId || !企业版() || !切换视图开着()) return 真;
+  const store = await cookies();
+  const 票 = store.get(视图票)?.value;
+  return (票 && (await 视图里的人(票, 真, store.get(COOKIE)?.value))) || 真;
 }
 
-/** 切换视图：票是这个会话签的、真身现在还是总管理员、被看的人还在，才认 */
-async function 视图里的人(票: string, 真: SessionUser): Promise<SessionUser | null> {
+/** 切换视图：票是这个会话（sub + ims）签的、真身现在还是总管理员、被看的人还在，才认 */
+async function 视图里的人(票: string, 真: SessionUser, 会话票: string | undefined): Promise<SessionUser | null> {
   try {
-    const v = await 验视图票(票, 真.id);
+    const 会话 = await 读会话身份(会话票);
+    if (!会话 || 会话.sub !== 真.id) return null;
+    const v = await 验视图票(票, 会话);
     if (!v) return null;
     const { 读组织 } = await import("./enterprise/org");
-    if (!能切换视图(await 读组织(), 真.id)) return null;
+    const org = await 读组织();
+    if (!能切换视图(org, 真.id) || !能被看(org, v.谁)) return null;
     const t = await prisma.user.findUnique({ where: { id: v.谁 } });
     if (!t || !t.active) return null;
     return { id: t.id, name: t.name, email: t.email, role: t.role, title: t.title, avatar: t.avatar, 视图由: { id: 真.id, name: 真.name } };

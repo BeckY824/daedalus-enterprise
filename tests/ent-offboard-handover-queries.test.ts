@@ -149,6 +149,8 @@ async function 逐位数(ids: string[], 带项目: boolean): Promise<number> {
     return n;
   });
 }
+/** 摘掉每位客户上的「交接中」（离职交接等确认的挂起天数、等谁确认），和改前写法比 */
+const 去掉挂起 = (们: 离职待交接[]): 离职待交接[] => 们.map((p) => ({ ...p, 客户: p.客户.map(({ 交接中: _挂, ...c }) => c) }));
 const 离职的 = async () => (await raw.user.findMany({ where: { active: false, email: { not: 无负责人占位邮箱 } }, select: { id: true } })).map((u) => u.id);
 
 beforeEach(async () => {
@@ -264,7 +266,9 @@ describe("离职交接：和逐位查的结果逐条一致", () => {
       const ids = await 离职的();
       const 新 = await 读离职交接(老板);
       const 旧 = await 逐位读(ids, 带项目);
-      expect(新).toEqual(旧);
+      // 改前没有「交接中」挂起信息（三态界面 B 组加的）：比的时候摘掉，有交接的那位另看它带上了
+      expect(去掉挂起(新)).toEqual(旧);
+      expect(新.find((x) => x.id === d.甲.id)!.客户.every((c) => !!c.交接中)).toBe(true);
       expect(await 待交接人数(老板)).toBe(await 逐位数(ids, 带项目));
       // 不是两边都空着对上的
       expect(新.length).toBeGreaterThanOrEqual(带项目 ? 9 : 7);
@@ -285,8 +289,30 @@ describe("离职交接：和逐位查的结果逐条一致", () => {
     const 离职下属 = (await raw.user.findMany({ where: { id: { in: ids }, active: false }, select: { id: true } })).map((u) => u.id);
     mocks.user = { ...mocks.user, id: 上级.id, role: 上级.role, name: 上级.id };
     const 新 = await 读离职交接(上级);
-    expect(新).toEqual(await 逐位读(离职下属, true));
+    expect(去掉挂起(新)).toEqual(await 逐位读(离职下属, true));
     expect(新).toHaveLength(2);
     expect(await 待交接人数(上级)).toBe(await 逐位数(离职下属, true));
+  });
+});
+
+describe("离职交接等确认并进待交接表（三态界面 B 组，用户 11-12 定）：查库次数不随交接笔数涨", () => {
+  it("每位离职成员都有一笔等确认的交接：读离职交接的查库次数和一笔都没有时一样；每位客户带交接中", async () => {
+    const 们: 人[] = [];
+    for (let i = 0; i < 4; i++) {
+      const p = await 建(`gone${i}`, "sales", { active: false, managerId: 上级.id });
+      await 摆(p, 2);
+      们.push(p);
+    }
+    await 读离职交接(老板);
+    const 没有 = await 数查库(() => 读离职交接(老板));
+    for (const p of 们) await raw.entHandover.create({ data: { kind: "离职", fromUserId: p.id, toUserId: 在职.id, byUserId: 老板.id, status: "待确认" } });
+    const 有 = await 数查库(() => 读离职交接(老板));
+    if (process.env.HANDOVER_QUERY_DUMP) (await import("node:fs")).appendFileSync(process.env.HANDOVER_QUERY_DUMP, `读离职交接 没有交接 ${没有.次} 有交接 ${有.次}\n`);
+    expect(有.次).toBe(没有.次);
+    for (const p of 有.值) {
+      expect(p.交接中).toBe(true);
+      expect(p.客户.length).toBeGreaterThan(0);
+      for (const c of p.客户) expect(c.交接中).toMatchObject({ 挂起天数: 0, 超期: false, 接手人: "人-mate" });
+    }
   });
 });
