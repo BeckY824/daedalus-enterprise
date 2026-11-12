@@ -346,7 +346,7 @@ it.each([1024, 375])("客户页头 %ipx：超长公司名 + 两颗按钮，不�
 });
 
 it("客户状态留痕（A1，11-12 用户定）：没有进程变更卡时放左栏客户资料下面；有进程变更卡时左栏不摆；三态关着都不摆", async () => {
-  const 留痕 = [{ at: "2026-11-10T02:00:00.000Z", 谁: "系统", 事: "活跃 → 沉睡（满 90 天没有有效沟通）" }];
+  const 留痕 = [{ at: "2026-11-10T02:00:00.000Z", 谁: "系统", 事: "正常跟进 → 沉睡待定（满 90 天没动静，进入沉睡待定）" }];
   for (const [加, 有] of [[{ 三态留痕: 留痕, 留痕放左栏: true }, true], [{ 三态留痕: 留痕, 留痕放左栏: false }, false], [{ 三态留痕: null, 留痕放左栏: true }, false]] as const) {
     const page = await open(true, 1366, true, 加);
     try {
@@ -354,7 +354,7 @@ it("客户状态留痕（A1，11-12 用户定）：没有进程变更卡时放�
       expect(await 左.count(), JSON.stringify(加)).toBe(有 ? 1 : 0);
       if (有) {
         await 左.getByRole("button", { name: /客户状态/ }).click();
-        await 左.getByText("活跃 → 沉睡（满 90 天没有有效沟通）").waitFor();
+        await 左.getByText("正常跟进 → 沉睡待定（满 90 天没动静，进入沉睡待定）").waitFor();
       }
     } finally { await page.close(); }
   }

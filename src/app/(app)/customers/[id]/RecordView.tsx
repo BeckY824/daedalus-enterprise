@@ -70,6 +70,7 @@ import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责�
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
 import TriStateBar, { TriStateLog } from "./TriStateBar";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { 换负责人怎么来的 } from "@/lib/owner-log";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 截止说法, 已过期 } from "@/lib/deadline";
@@ -1000,7 +1001,7 @@ export default function RecordView({
         {/* 在公海里（第 6 块）：标签写原负责人，旁边就是「领取」——看到就能接手 */}
         {customer.pool && (
           <span className="rec-tags-n rec-pool">
-            <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放回公海" : customer.pool.reason}>{公海标签(customer.salesOwnerName)}</Tag>
+            <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放回公海" : 进公海理由显示(customer.pool.reason)}>{公海标签(customer.salesOwnerName)}</Tag>
             {管理员只读 || !能领 ? null : 原负责人领不回
               ? <Tooltip title={原负责人不能领回提示}><Button size="small" type="link" icon={<UserAddOutlined />} disabled>领取</Button></Tooltip>
               : <Button size="small" type="link" icon={<UserAddOutlined />} onClick={() => void 公海动作("领取")}>领取</Button>}

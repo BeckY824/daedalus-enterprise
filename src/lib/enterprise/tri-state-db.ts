@@ -38,6 +38,7 @@ import { 换负责人们of, 撤销计次方式, 并上撤销计次, 换人方式
 export { 换负责人们of } from "./tri-state-transfer";
 import { 待交接理由, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 额度沟通日of, type 额度候选沟通, type 动静事件, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
+import { 进公海理由句 } from "./tri-state-label";
 import { 读组织, type 组织 } from "./org";
 import { 是市场角色, 是销售角色 } from "./permissions";
 import { 无负责人占位Id, 无负责人占位Id只读 } from "@/lib/no-owner-db";
@@ -64,7 +65,7 @@ export const 公海状态 = "公海";
 export const 钟状态of = (r: Extract<三态结果, { 计时: true }>): 钟状态 => (r.状态 === "该进公海" ? "待回收" : r.状态);
 
 /** 自动进客户公海那一行的说明（CustomerPool.reason、项目 pool-release 留痕、状态留痕都写它） */
-export const 三态进公海理由 = (进公海天数: number) => `即将回收满 ${进公海天数} 天、3 次提醒都没人处理，自动进客户公海`;
+export const 三态进公海理由 = 进公海理由句;
 /** 被挡住时留痕那一句（M-公海-27；T5 起对用户统一叫「暂缓回收」，标识符照旧叫被挡） */
 export const 被挡理由 = "到期该进公海，名下有同事在推的项目，暂缓回收，等条线总管理裁决";
 /** T5 改名前写的那一句（认旧留痕用） */
@@ -446,7 +447,7 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实" | "留痕">, r:
   return Object.keys(data).length || 留痕.length ? { data, 留痕 } : null;
 }
 
-function 换状态理由(从: string, 到: 钟状态, r: Extract<三态结果, { 计时: true }>): string {
+export function 换状态理由(从: string, 到: 钟状态, r: Extract<三态结果, { 计时: true }>): string {
   if (从 === 公海状态) return "从客户公海领走 / 分走，换了负责人，重新起算";
   if (到 === "活跃") return r.订单在推 ? "名下有订单阶段没结束的项目，算正常跟进" : "有了新动静（沟通、项目推进或换负责人），钟归零";
   if (到 === "沉睡") return 从 === "待回收" ? "继续持有顺延，退回沉睡待定" : `满 ${r.节点天.沉睡} 天没动静，进入沉睡待定`;
@@ -645,7 +646,7 @@ async function 按客户扫(规则: 组织规则, 现在: Date, 今天: string):
     await (await import("./attach-approval")).进公海挂靠通知(明细.进公海);
     await recordAudit({
       user: 系统, action: "pool", entity: "Customer", entityId: 明细.进公海.length === 1 ? 明细.进公海[0] : null,
-      summary: `${明细.进公海.length} 位客户即将回收期满、3 次提醒都没人处理，自动进客户公海`,
+      summary: `${明细.进公海.length} 位客户即将回收阶段期满、3 次提醒都没人处理，自动进客户公海`,
       detail: { ids: 明细.进公海, 三态: 规则.三态 },
     });
     // 「已回公海」单独一条（M-公海-26），第 2 次起抄原负责人的直属上级（M-公海-28）。动态引：通知那边引着本文件
